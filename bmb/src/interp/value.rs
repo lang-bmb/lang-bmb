@@ -528,4 +528,131 @@ mod tests {
         assert_eq!(Value::Bool(true).as_str(), None);
         assert_eq!(Value::Float(1.5).as_str(), None);
     }
+
+    // --- Cycle 1231: Additional Value Tests ---
+
+    #[test]
+    fn test_display_struct() {
+        let mut fields = std::collections::HashMap::new();
+        fields.insert("x".to_string(), Value::Int(1));
+        let s = Value::Struct("Point".to_string(), fields);
+        let display = format!("{}", s);
+        assert!(display.starts_with("Point {"));
+        assert!(display.contains("x: 1"));
+        assert!(display.ends_with(" }"));
+    }
+
+    #[test]
+    fn test_display_enum_no_args() {
+        let e = Value::Enum("Color".to_string(), "Red".to_string(), vec![]);
+        assert_eq!(format!("{}", e), "Color::Red");
+    }
+
+    #[test]
+    fn test_display_enum_with_args() {
+        let e = Value::Enum(
+            "Option".to_string(),
+            "Some".to_string(),
+            vec![Value::Int(42)],
+        );
+        assert_eq!(format!("{}", e), "Option::Some(42)");
+    }
+
+    #[test]
+    fn test_display_ref() {
+        let r = Value::Ref(Rc::new(RefCell::new(Value::Int(99))));
+        assert_eq!(format!("{}", r), "&99");
+    }
+
+    #[test]
+    fn test_display_single_tuple_trailing_comma() {
+        let t = Value::Tuple(vec![Value::Int(42)]);
+        assert_eq!(format!("{}", t), "(42,)");
+    }
+
+    #[test]
+    fn test_display_closure() {
+        // Can't construct full Closure without ast, but test type_name instead
+        assert_eq!(Value::Struct("Foo".to_string(), std::collections::HashMap::new()).type_name(), "Foo");
+        assert_eq!(Value::Enum("Bar".to_string(), "V".to_string(), vec![]).type_name(), "Bar");
+        assert_eq!(Value::Ref(Rc::new(RefCell::new(Value::Unit))).type_name(), "&ref");
+    }
+
+    #[test]
+    fn test_truthy_struct() {
+        let s = Value::Struct("S".to_string(), std::collections::HashMap::new());
+        assert!(s.is_truthy()); // Structs always truthy
+    }
+
+    #[test]
+    fn test_truthy_enum() {
+        let e = Value::Enum("E".to_string(), "V".to_string(), vec![]);
+        assert!(e.is_truthy()); // Enums always truthy
+    }
+
+    #[test]
+    fn test_truthy_ref() {
+        let r_truthy = Value::Ref(Rc::new(RefCell::new(Value::Int(1))));
+        assert!(r_truthy.is_truthy());
+
+        let r_falsy = Value::Ref(Rc::new(RefCell::new(Value::Int(0))));
+        assert!(!r_falsy.is_truthy());
+    }
+
+    #[test]
+    fn test_truthy_string_rope() {
+        let empty_rope = Value::StringRope(Rc::new(RefCell::new(vec![])));
+        assert!(!empty_rope.is_truthy());
+
+        let non_empty_rope = Value::StringRope(Rc::new(RefCell::new(vec![
+            Rc::new("hello".to_string()),
+        ])));
+        assert!(non_empty_rope.is_truthy());
+    }
+
+    #[test]
+    fn test_string_rope_type_name() {
+        let rope = Value::StringRope(Rc::new(RefCell::new(vec![])));
+        assert_eq!(rope.type_name(), "String");
+    }
+
+    #[test]
+    fn test_value_cross_type_inequality() {
+        assert_ne!(Value::Int(1), Value::Bool(true));
+        assert_ne!(Value::Int(0), Value::Float(0.0));
+        assert_ne!(Value::Int(0), Value::Unit);
+        assert_ne!(Value::Bool(true), Value::Str(Rc::new("true".to_string())));
+    }
+
+    #[test]
+    fn test_struct_equality() {
+        let mut f1 = std::collections::HashMap::new();
+        f1.insert("x".to_string(), Value::Int(1));
+        let mut f2 = std::collections::HashMap::new();
+        f2.insert("x".to_string(), Value::Int(1));
+
+        assert_eq!(
+            Value::Struct("P".to_string(), f1),
+            Value::Struct("P".to_string(), f2),
+        );
+    }
+
+    #[test]
+    fn test_enum_equality() {
+        assert_eq!(
+            Value::Enum("E".to_string(), "V".to_string(), vec![Value::Int(1)]),
+            Value::Enum("E".to_string(), "V".to_string(), vec![Value::Int(1)]),
+        );
+        assert_ne!(
+            Value::Enum("E".to_string(), "V".to_string(), vec![]),
+            Value::Enum("E".to_string(), "W".to_string(), vec![]),
+        );
+    }
+
+    #[test]
+    fn test_ref_equality() {
+        let r1 = Value::Ref(Rc::new(RefCell::new(Value::Int(42))));
+        let r2 = Value::Ref(Rc::new(RefCell::new(Value::Int(42))));
+        assert_eq!(r1, r2);
+    }
 }

@@ -301,4 +301,422 @@ mod tests {
         let filtered = eval.filter_program(&program);
         assert!(filtered.items.is_empty());
     }
+
+    // --- Cycle 1226: Additional Cfg Tests ---
+
+    #[test]
+    fn test_target_roundtrip() {
+        for target in [Target::Native, Target::Wasm32, Target::Wasm64] {
+            let s = target.as_str();
+            assert_eq!(Target::from_str(s), Some(target));
+        }
+    }
+
+    #[test]
+    fn test_should_include_struct_no_cfg() {
+        let eval = CfgEvaluator::new(Target::Wasm32);
+        let sd = StructDef {
+            attributes: vec![],
+            visibility: Visibility::Public,
+            name: Spanned::new("Point".to_string(), Span::new(0, 5)),
+            type_params: vec![],
+            fields: vec![],
+            span: Span::new(0, 50),
+        };
+        assert!(eval.should_include_item(&Item::StructDef(sd)));
+    }
+
+    #[test]
+    fn test_should_include_struct_with_cfg() {
+        let eval = CfgEvaluator::new(Target::Wasm32);
+        let sd = StructDef {
+            attributes: vec![make_cfg_attr("native")],
+            visibility: Visibility::Private,
+            name: Spanned::new("NativeOnly".to_string(), Span::new(0, 10)),
+            type_params: vec![],
+            fields: vec![],
+            span: Span::new(0, 50),
+        };
+        assert!(!eval.should_include_item(&Item::StructDef(sd)));
+    }
+
+    #[test]
+    fn test_should_include_enum_with_cfg() {
+        let eval = CfgEvaluator::new(Target::Native);
+        let ed = EnumDef {
+            attributes: vec![make_cfg_attr("wasm32")],
+            visibility: Visibility::Private,
+            name: Spanned::new("WasmError".to_string(), Span::new(0, 9)),
+            type_params: vec![],
+            variants: vec![],
+            span: Span::new(0, 50),
+        };
+        assert!(!eval.should_include_item(&Item::EnumDef(ed)));
+    }
+
+    #[test]
+    fn test_should_include_use_always() {
+        let eval = CfgEvaluator::new(Target::Wasm32);
+        let us = UseStmt {
+            path: vec![Spanned::new("std".to_string(), Span::new(0, 3))],
+            span: Span::new(0, 10),
+        };
+        // Use statements should always be included regardless of target
+        assert!(eval.should_include_item(&Item::Use(us)));
+    }
+
+    #[test]
+    fn test_should_include_extern_fn() {
+        let eval = CfgEvaluator::new(Target::Native);
+        let ef = ExternFn {
+            attributes: vec![make_cfg_attr("native")],
+            visibility: Visibility::Public,
+            abi: Abi::C,
+            link_name: None,
+            name: Spanned::new("malloc".to_string(), Span::new(0, 6)),
+            params: vec![],
+            ret_ty: Spanned::new(Type::I64, Span::new(0, 3)),
+            span: Span::new(0, 50),
+        };
+        assert!(eval.should_include_item(&Item::ExternFn(ef)));
+    }
+
+    #[test]
+    fn test_should_include_trait_def() {
+        let eval = CfgEvaluator::new(Target::Wasm32);
+        let td = TraitDef {
+            attributes: vec![make_cfg_attr("wasm32")],
+            visibility: Visibility::Public,
+            name: Spanned::new("WasmTrait".to_string(), Span::new(0, 9)),
+            type_params: vec![],
+            methods: vec![],
+            span: Span::new(0, 50),
+        };
+        assert!(eval.should_include_item(&Item::TraitDef(td)));
+    }
+
+    #[test]
+    fn test_should_include_impl_block() {
+        let eval = CfgEvaluator::new(Target::Native);
+        let ib = ImplBlock {
+            attributes: vec![make_cfg_attr("wasm32")],
+            type_params: vec![],
+            trait_name: Spanned::new("Display".to_string(), Span::new(0, 7)),
+            target_type: Spanned::new(Type::Named("Point".to_string()), Span::new(0, 5)),
+            methods: vec![],
+            span: Span::new(0, 50),
+        };
+        // impl with @cfg(target = "wasm32") should be excluded on native
+        assert!(!eval.should_include_item(&Item::ImplBlock(ib)));
+    }
+
+    #[test]
+    fn test_should_include_type_alias() {
+        let eval = CfgEvaluator::new(Target::Native);
+        let ta = TypeAliasDef {
+            attributes: vec![make_cfg_attr("native")],
+            visibility: Visibility::Private,
+            name: Spanned::new("Size".to_string(), Span::new(0, 4)),
+            type_params: vec![],
+            target: Spanned::new(Type::I64, Span::new(0, 3)),
+            refinement: None,
+            span: Span::new(0, 50),
+        };
+        assert!(eval.should_include_item(&Item::TypeAlias(ta)));
+    }
+
+    #[test]
+    fn test_filter_program_mixed_items() {
+        let eval = CfgEvaluator::new(Target::Native);
+        let program = Program {
+            header: None,
+            items: vec![
+                Item::FnDef(make_fn("fn_native", vec![make_cfg_attr("native")])),
+                Item::FnDef(make_fn("fn_wasm", vec![make_cfg_attr("wasm32")])),
+                Item::Use(UseStmt {
+                    path: vec![Spanned::new("std".to_string(), Span::new(0, 3))],
+                    span: Span::new(0, 10),
+                }),
+            ],
+        };
+        let filtered = eval.filter_program(&program);
+        assert_eq!(filtered.items.len(), 2); // fn_native + Use
+    }
+
+    #[test]
+    fn test_evaluate_attrs_simple_attribute_ignored() {
+        let eval = CfgEvaluator::new(Target::Native);
+        // Simple attribute (not @cfg) should not affect inclusion
+        let attrs = vec![Attribute::Simple {
+            name: Spanned::new("inline".to_string(), Span::new(0, 6)),
+            span: Span::new(0, 7),
+        }];
+        assert!(eval.evaluate_attrs(&attrs));
+    }
+
+    #[test]
+    fn test_cfg_unknown_expression_defaults_true() {
+        let eval = CfgEvaluator::new(Target::Native);
+        // cfg with non-Binary expression should default to true
+        let attr = Attribute::WithArgs {
+            name: Spanned::new("cfg".to_string(), Span::new(0, 3)),
+            args: vec![Spanned::new(Expr::BoolLit(true), Span::new(0, 4))],
+            span: Span::new(0, 10),
+        };
+        assert!(eval.evaluate_attrs(&[attr]));
+    }
+
+    #[test]
+    fn test_filter_program_preserves_header() {
+        let eval = CfgEvaluator::new(Target::Native);
+        let header = ModuleHeader {
+            name: Spanned::new("test".to_string(), Span::new(0, 4)),
+            version: None,
+            summary: None,
+            exports: vec![],
+            depends: vec![],
+            span: Span::new(0, 10),
+        };
+        let program = Program {
+            header: Some(header),
+            items: vec![],
+        };
+        let filtered = eval.filter_program(&program);
+        assert!(filtered.header.is_some());
+    }
+
+    // ================================================================
+    // Additional cfg tests (Cycle 1235)
+    // ================================================================
+
+    #[test]
+    fn test_target_copy() {
+        let t = Target::Wasm32;
+        let t2 = t; // Copy
+        assert_eq!(t, t2);
+    }
+
+    #[test]
+    fn test_target_clone() {
+        let t = Target::Wasm64;
+        let cloned = t.clone();
+        assert_eq!(t, cloned);
+    }
+
+    #[test]
+    fn test_target_debug_format() {
+        let t = Target::Native;
+        let s = format!("{:?}", t);
+        assert_eq!(s, "Native");
+    }
+
+    #[test]
+    fn test_target_from_str_wasm_aliases() {
+        // All wasm32 aliases
+        assert_eq!(Target::from_str("wasm32"), Some(Target::Wasm32));
+        assert_eq!(Target::from_str("wasm"), Some(Target::Wasm32));
+        assert_eq!(Target::from_str("wasm32-wasi"), Some(Target::Wasm32));
+        assert_eq!(Target::from_str("wasm32-unknown"), Some(Target::Wasm32));
+    }
+
+    #[test]
+    fn test_target_from_str_case_insensitive() {
+        assert_eq!(Target::from_str("NATIVE"), Some(Target::Native));
+        assert_eq!(Target::from_str("Wasm32"), Some(Target::Wasm32));
+        assert_eq!(Target::from_str("WASM64"), Some(Target::Wasm64));
+        assert_eq!(Target::from_str("X86_64"), Some(Target::Native));
+    }
+
+    #[test]
+    fn test_target_from_str_empty_and_none() {
+        assert_eq!(Target::from_str(""), None);
+        assert_eq!(Target::from_str("riscv64"), None);
+        assert_eq!(Target::from_str("mips"), None);
+    }
+
+    #[test]
+    fn test_filter_program_all_excluded() {
+        let eval = CfgEvaluator::new(Target::Wasm64);
+        let program = Program {
+            header: None,
+            items: vec![
+                Item::FnDef(make_fn("native_fn", vec![make_cfg_attr("native")])),
+                Item::FnDef(make_fn("wasm32_fn", vec![make_cfg_attr("wasm32")])),
+            ],
+        };
+        let filtered = eval.filter_program(&program);
+        assert!(filtered.items.is_empty());
+    }
+
+    #[test]
+    fn test_filter_program_all_included() {
+        let eval = CfgEvaluator::new(Target::Native);
+        let program = Program {
+            header: None,
+            items: vec![
+                Item::FnDef(make_fn("no_cfg", vec![])),
+                Item::FnDef(make_fn("native_fn", vec![make_cfg_attr("native")])),
+            ],
+        };
+        let filtered = eval.filter_program(&program);
+        assert_eq!(filtered.items.len(), 2);
+    }
+
+    #[test]
+    fn test_evaluate_attrs_empty() {
+        let eval = CfgEvaluator::new(Target::Wasm32);
+        assert!(eval.evaluate_attrs(&[]));
+    }
+
+    #[test]
+    fn test_cfg_evaluator_unknown_binary_key() {
+        let eval = CfgEvaluator::new(Target::Native);
+        // cfg with non-target key should default to true (permissive)
+        let attr = Attribute::WithArgs {
+            name: Spanned::new("cfg".to_string(), Span::new(0, 3)),
+            args: vec![Spanned::new(
+                Expr::Binary {
+                    left: Box::new(Spanned::new(
+                        Expr::Var("feature".to_string()),
+                        Span::new(4, 11),
+                    )),
+                    op: BinOp::Eq,
+                    right: Box::new(Spanned::new(
+                        Expr::StringLit("foo".to_string()),
+                        Span::new(14, 19),
+                    )),
+                },
+                Span::new(4, 19),
+            )],
+            span: Span::new(0, 20),
+        };
+        assert!(eval.evaluate_attrs(&[attr]));
+    }
+
+    // ================================================================
+    // Additional cfg tests (Cycle 1241)
+    // ================================================================
+
+    #[test]
+    fn test_target_ne_variants() {
+        assert_ne!(Target::Native, Target::Wasm32);
+        assert_ne!(Target::Native, Target::Wasm64);
+        assert_ne!(Target::Wasm32, Target::Wasm64);
+    }
+
+    #[test]
+    fn test_target_eq_same() {
+        assert_eq!(Target::Native, Target::Native);
+        assert_eq!(Target::Wasm32, Target::Wasm32);
+        assert_eq!(Target::Wasm64, Target::Wasm64);
+    }
+
+    #[test]
+    fn test_cfg_multiple_cfg_attrs_all_must_pass() {
+        let eval = CfgEvaluator::new(Target::Native);
+        // Multiple @cfg attrs: both must pass
+        let fn_with_two = make_fn("multi", vec![
+            make_cfg_attr("native"),
+            make_cfg_attr("wasm32"), // This one fails for native
+        ]);
+        assert!(!eval.evaluate_attrs(&fn_with_two.attributes));
+    }
+
+    #[test]
+    fn test_filter_program_single_fn_included() {
+        let eval = CfgEvaluator::new(Target::Native);
+        let program = Program {
+            header: None,
+            items: vec![Item::FnDef(make_fn("only", vec![make_cfg_attr("native")]))],
+        };
+        let filtered = eval.filter_program(&program);
+        assert_eq!(filtered.items.len(), 1);
+    }
+
+    #[test]
+    fn test_should_include_enum_no_cfg() {
+        let eval = CfgEvaluator::new(Target::Wasm32);
+        let ed = EnumDef {
+            attributes: vec![],
+            visibility: Visibility::Public,
+            name: Spanned::new("Color".to_string(), Span::new(0, 5)),
+            type_params: vec![],
+            variants: vec![],
+            span: Span::new(0, 20),
+        };
+        assert!(eval.should_include_item(&Item::EnumDef(ed)));
+    }
+
+    #[test]
+    fn test_cfg_non_eq_binary_op_defaults_true() {
+        let eval = CfgEvaluator::new(Target::Native);
+        // Binary expression with non-Eq op should default true
+        let attr = Attribute::WithArgs {
+            name: Spanned::new("cfg".to_string(), Span::new(0, 3)),
+            args: vec![Spanned::new(
+                Expr::Binary {
+                    left: Box::new(Spanned::new(
+                        Expr::Var("target".to_string()),
+                        Span::new(4, 10),
+                    )),
+                    op: BinOp::Ne,
+                    right: Box::new(Spanned::new(
+                        Expr::StringLit("wasm32".to_string()),
+                        Span::new(14, 22),
+                    )),
+                },
+                Span::new(4, 22),
+            )],
+            span: Span::new(0, 23),
+        };
+        // Ne is not handled, defaults to true
+        assert!(eval.evaluate_attrs(&[attr]));
+    }
+
+    #[test]
+    fn test_cfg_evaluator_new_constructor() {
+        let eval = CfgEvaluator::new(Target::Wasm64);
+        // Verify it accepts wasm64 target functions
+        let fn_wasm64 = make_fn("test", vec![make_cfg_attr("wasm64")]);
+        assert!(eval.evaluate_attrs(&fn_wasm64.attributes));
+    }
+
+    #[test]
+    fn test_filter_program_preserves_none_header() {
+        let eval = CfgEvaluator::new(Target::Native);
+        let program = Program { header: None, items: vec![] };
+        let filtered = eval.filter_program(&program);
+        assert!(filtered.header.is_none());
+    }
+
+    #[test]
+    fn test_multiple_non_cfg_attrs_included() {
+        let eval = CfgEvaluator::new(Target::Native);
+        // Non-cfg attributes should not affect inclusion
+        let attrs = vec![
+            Attribute::Simple {
+                name: Spanned::new("inline".to_string(), Span::new(0, 6)),
+                span: Span::new(0, 7),
+            },
+            Attribute::Simple {
+                name: Spanned::new("test".to_string(), Span::new(0, 4)),
+                span: Span::new(0, 5),
+            },
+        ];
+        assert!(eval.evaluate_attrs(&attrs));
+    }
+
+    #[test]
+    fn test_cfg_with_non_cfg_and_cfg_attrs_mixed() {
+        let eval = CfgEvaluator::new(Target::Wasm32);
+        let attrs = vec![
+            Attribute::Simple {
+                name: Spanned::new("inline".to_string(), Span::new(0, 6)),
+                span: Span::new(0, 7),
+            },
+            make_cfg_attr("wasm32"),
+        ];
+        // Non-cfg is ignored, cfg(wasm32) passes for Wasm32 target
+        assert!(eval.evaluate_attrs(&attrs));
+    }
 }

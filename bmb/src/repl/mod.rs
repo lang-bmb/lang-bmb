@@ -323,4 +323,209 @@ mod tests {
         assert_eq!(PROMPT, "> ");
         assert_eq!(HISTORY_FILE, ".bmb_history");
     }
+
+    // --- Cycle 1227: Additional REPL Tests ---
+
+    #[test]
+    fn test_eval_input_expression() {
+        let mut repl = Repl::new().unwrap();
+        // eval_input should not panic for a simple expression
+        repl.eval_input("1 + 2");
+    }
+
+    #[test]
+    fn test_eval_input_invalid_expression() {
+        let mut repl = Repl::new().unwrap();
+        // Should not panic, just print error
+        repl.eval_input("@#$%");
+    }
+
+    #[test]
+    fn test_eval_source_function_def() {
+        let mut repl = Repl::new().unwrap();
+        // Define a function via eval_source
+        repl.eval_source("fn add(a: i64, b: i64) -> i64 = a + b;");
+        // Should not panic
+    }
+
+    #[test]
+    fn test_eval_source_invalid() {
+        let mut repl = Repl::new().unwrap();
+        repl.eval_source("this is not valid bmb code $$$");
+        // Should not panic, just print error
+    }
+
+    #[test]
+    fn test_handle_command_returns_correctly() {
+        let mut repl = Repl::new().unwrap();
+        // Quit commands return true
+        assert!(repl.handle_command(":quit"));
+        assert!(repl.handle_command(":q"));
+        assert!(repl.handle_command(":exit"));
+        // Non-quit commands return false
+        assert!(!repl.handle_command(":help"));
+        assert!(!repl.handle_command(":clear"));
+        assert!(!repl.handle_command(":anything_else"));
+    }
+
+    #[test]
+    fn test_eval_input_bool_expression() {
+        let mut repl = Repl::new().unwrap();
+        repl.eval_input("true");
+    }
+
+    #[test]
+    fn test_eval_input_fn_definition_prefix() {
+        let mut repl = Repl::new().unwrap();
+        // Lines starting with "fn " are treated as function definitions
+        repl.eval_input("fn foo() -> i64 = 42;");
+    }
+
+    #[test]
+    fn test_eval_input_pub_fn_prefix() {
+        let mut repl = Repl::new().unwrap();
+        // Lines starting with "pub fn " are also function definitions
+        repl.eval_input("pub fn bar() -> i64 = 99;");
+    }
+
+    // ================================================================
+    // Additional REPL tests (Cycle 1234)
+    // ================================================================
+
+    #[test]
+    fn test_eval_input_string_literal() {
+        let mut repl = Repl::new().unwrap();
+        repl.eval_input("\"hello\"");
+    }
+
+    #[test]
+    fn test_eval_input_if_expression() {
+        let mut repl = Repl::new().unwrap();
+        repl.eval_input("if true then 1 else 2");
+    }
+
+    #[test]
+    fn test_eval_source_multiple_functions() {
+        let mut repl = Repl::new().unwrap();
+        repl.eval_source("fn double(x: i64) -> i64 = x * 2;");
+        repl.eval_source("fn triple(x: i64) -> i64 = x * 3;");
+        // Both should be loaded without error
+    }
+
+    #[test]
+    fn test_eval_input_float_literal() {
+        let mut repl = Repl::new().unwrap();
+        repl.eval_input("3.14");
+    }
+
+    #[test]
+    fn test_eval_input_comparison() {
+        let mut repl = Repl::new().unwrap();
+        repl.eval_input("1 < 2");
+    }
+
+    #[test]
+    fn test_eval_input_nested_arithmetic() {
+        let mut repl = Repl::new().unwrap();
+        repl.eval_input("(1 + 2) * (3 + 4)");
+    }
+
+    #[test]
+    fn test_history_path_exists() {
+        let repl = Repl::new().unwrap();
+        assert!(repl.history_path.is_some());
+        let path = repl.history_path.unwrap();
+        assert!(path.to_string_lossy().contains(".bmb_history"));
+    }
+
+    #[test]
+    fn test_eval_input_let_expression() {
+        let mut repl = Repl::new().unwrap();
+        // let expressions should work (evaluates to the body)
+        repl.eval_input("let x = 42 in x + 1");
+    }
+
+    #[test]
+    fn test_eval_source_lexer_error() {
+        let mut repl = Repl::new().unwrap();
+        // Completely invalid tokens
+        repl.eval_source("###");
+        // Should not panic
+    }
+
+    #[test]
+    fn test_eval_input_boolean_literal() {
+        let mut repl = Repl::new().unwrap();
+        repl.eval_input("false");
+    }
+
+    // ================================================================
+    // Additional REPL tests (Cycle 1237)
+    // ================================================================
+
+    #[test]
+    fn test_eval_input_subtraction() {
+        let mut repl = Repl::new().unwrap();
+        repl.eval_input("10 - 3");
+    }
+
+    #[test]
+    fn test_eval_input_multiplication() {
+        let mut repl = Repl::new().unwrap();
+        repl.eval_input("6 * 7");
+    }
+
+    #[test]
+    fn test_eval_input_division() {
+        let mut repl = Repl::new().unwrap();
+        repl.eval_input("42 / 6");
+    }
+
+    #[test]
+    fn test_eval_input_modulo() {
+        let mut repl = Repl::new().unwrap();
+        repl.eval_input("10 % 3");
+    }
+
+    #[test]
+    fn test_eval_input_negative_literal() {
+        let mut repl = Repl::new().unwrap();
+        repl.eval_input("0 - 1");
+    }
+
+    #[test]
+    fn test_eval_source_call_defined_function() {
+        let mut repl = Repl::new().unwrap();
+        repl.eval_source("fn square(n: i64) -> i64 = n * n;");
+        // Function should be loaded, calling it should not panic
+        repl.eval_input("square(5)");
+    }
+
+    #[test]
+    fn test_handle_command_all_quit_variants() {
+        let mut repl = Repl::new().unwrap();
+        assert!(repl.handle_command(":quit"));
+        assert!(repl.handle_command(":q"));
+        assert!(repl.handle_command(":exit"));
+    }
+
+    #[test]
+    fn test_eval_input_empty_like_expression() {
+        let mut repl = Repl::new().unwrap();
+        // Various tokens that should not crash
+        repl.eval_input("0");
+    }
+
+    #[test]
+    fn test_eval_input_large_number() {
+        let mut repl = Repl::new().unwrap();
+        repl.eval_input("1000000");
+    }
+
+    #[test]
+    fn test_eval_source_parse_error_message() {
+        let mut repl = Repl::new().unwrap();
+        // Should not panic, just print error
+        repl.eval_source("fn incomplete(");
+    }
 }

@@ -649,4 +649,299 @@ mod tests {
         assert_eq!(nullable, option_generic);
         assert_eq!(option_generic, nullable);
     }
+
+    // --- Cycle 1231: Additional Type Tests ---
+
+    #[test]
+    fn test_type_param_clone() {
+        let tp = TypeParam::with_bounds("T", vec!["Ord".to_string(), "Clone".to_string()]);
+        let cloned = tp.clone();
+        assert_eq!(cloned.name, "T");
+        assert_eq!(cloned.bounds, vec!["Ord", "Clone"]);
+    }
+
+    #[test]
+    fn test_type_param_equality() {
+        let a = TypeParam::new("T");
+        let b = TypeParam::new("T");
+        assert_eq!(a, b);
+
+        let c = TypeParam::new("U");
+        assert_ne!(a, c);
+
+        let d = TypeParam::with_bounds("T", vec!["Ord".to_string()]);
+        assert_ne!(a, d); // Same name, different bounds
+    }
+
+    #[test]
+    fn test_type_struct_equality() {
+        let s1 = Type::Struct {
+            name: "Point".to_string(),
+            fields: vec![
+                ("x".to_string(), Box::new(Type::I64)),
+                ("y".to_string(), Box::new(Type::I64)),
+            ],
+        };
+        let s2 = Type::Struct {
+            name: "Point".to_string(),
+            fields: vec![
+                ("x".to_string(), Box::new(Type::I64)),
+                ("y".to_string(), Box::new(Type::I64)),
+            ],
+        };
+        assert_eq!(s1, s2);
+
+        let s3 = Type::Struct {
+            name: "Vec2".to_string(),
+            fields: vec![
+                ("x".to_string(), Box::new(Type::I64)),
+                ("y".to_string(), Box::new(Type::I64)),
+            ],
+        };
+        assert_ne!(s1, s3); // Different name
+    }
+
+    #[test]
+    fn test_type_enum_equality() {
+        let e1 = Type::Enum {
+            name: "Color".to_string(),
+            variants: vec![
+                ("Red".to_string(), vec![]),
+                ("Green".to_string(), vec![]),
+            ],
+        };
+        let e2 = Type::Enum {
+            name: "Color".to_string(),
+            variants: vec![
+                ("Red".to_string(), vec![]),
+                ("Green".to_string(), vec![]),
+            ],
+        };
+        assert_eq!(e1, e2);
+    }
+
+    #[test]
+    fn test_type_fn_equality() {
+        let f1 = Type::Fn {
+            params: vec![Box::new(Type::I64)],
+            ret: Box::new(Type::Bool),
+        };
+        let f2 = Type::Fn {
+            params: vec![Box::new(Type::I64)],
+            ret: Box::new(Type::Bool),
+        };
+        assert_eq!(f1, f2);
+
+        let f3 = Type::Fn {
+            params: vec![Box::new(Type::I64), Box::new(Type::I64)],
+            ret: Box::new(Type::Bool),
+        };
+        assert_ne!(f1, f3); // Different param count
+
+        let f4 = Type::Fn {
+            params: vec![Box::new(Type::I64)],
+            ret: Box::new(Type::String),
+        };
+        assert_ne!(f1, f4); // Different return type
+    }
+
+    #[test]
+    fn test_type_cross_category_inequality() {
+        assert_ne!(Type::Range(Box::new(Type::I64)), Type::Ref(Box::new(Type::I64)));
+        assert_ne!(Type::Array(Box::new(Type::I64), 10), Type::Tuple(vec![Box::new(Type::I64)]));
+        assert_ne!(Type::Nullable(Box::new(Type::I64)), Type::Ptr(Box::new(Type::I64)));
+        assert_ne!(Type::Thread(Box::new(Type::I64)), Type::Future(Box::new(Type::I64)));
+        assert_ne!(Type::Mutex(Box::new(Type::I64)), Type::Arc(Box::new(Type::I64)));
+        assert_ne!(Type::Sender(Box::new(Type::I64)), Type::Receiver(Box::new(Type::I64)));
+    }
+
+    #[test]
+    fn test_never_equals_compound_types() {
+        assert_eq!(Type::Never, Type::Range(Box::new(Type::I64)));
+        assert_eq!(Type::Never, Type::Array(Box::new(Type::I64), 5));
+        assert_eq!(Type::Never, Type::Tuple(vec![Box::new(Type::Bool)]));
+        assert_eq!(Type::Never, Type::Fn { params: vec![], ret: Box::new(Type::Unit) });
+        assert_eq!(Type::Never, Type::Nullable(Box::new(Type::I64)));
+    }
+
+    #[test]
+    fn test_nested_refined_base_type() {
+        let double_refined = Type::Refined {
+            base: Box::new(Type::Refined {
+                base: Box::new(Type::I64),
+                constraints: vec![],
+            }),
+            constraints: vec![],
+        };
+        assert_eq!(double_refined.base_type(), &Type::I64);
+    }
+
+    #[test]
+    fn test_is_numeric_refined() {
+        let refined_i64 = Type::Refined {
+            base: Box::new(Type::I64),
+            constraints: vec![],
+        };
+        assert!(refined_i64.is_numeric());
+
+        let refined_bool = Type::Refined {
+            base: Box::new(Type::Bool),
+            constraints: vec![],
+        };
+        assert!(!refined_bool.is_numeric());
+    }
+
+    #[test]
+    fn test_is_comparable_refined() {
+        let refined_str = Type::Refined {
+            base: Box::new(Type::String),
+            constraints: vec![],
+        };
+        assert!(refined_str.is_comparable());
+
+        let refined_unit = Type::Refined {
+            base: Box::new(Type::Unit),
+            constraints: vec![],
+        };
+        assert!(!refined_unit.is_comparable());
+    }
+
+    #[test]
+    fn test_display_struct_enum() {
+        let s = Type::Struct {
+            name: "Point".to_string(),
+            fields: vec![("x".to_string(), Box::new(Type::I64))],
+        };
+        assert_eq!(format!("{}", s), "Point");
+
+        let e = Type::Enum {
+            name: "Color".to_string(),
+            variants: vec![],
+        };
+        assert_eq!(format!("{}", e), "Color");
+    }
+
+    #[test]
+    fn test_display_refined() {
+        let r = Type::Refined {
+            base: Box::new(Type::I64),
+            constraints: vec![],
+        };
+        assert_eq!(format!("{}", r), "i64{}");
+    }
+
+    #[test]
+    fn test_nullable_ne_non_option_generic() {
+        let nullable = Type::Nullable(Box::new(Type::I64));
+        let non_option = Type::Generic {
+            name: "Vec".to_string(),
+            type_args: vec![Box::new(Type::I64)],
+        };
+        assert_ne!(nullable, non_option);
+    }
+
+    #[test]
+    fn test_nullable_option_different_inner() {
+        let nullable = Type::Nullable(Box::new(Type::I64));
+        let option_bool = Type::Generic {
+            name: "Option".to_string(),
+            type_args: vec![Box::new(Type::Bool)],
+        };
+        assert_ne!(nullable, option_bool);
+    }
+
+    #[test]
+    fn test_display_generic_multi_args() {
+        let g = Type::Generic {
+            name: "Result".to_string(),
+            type_args: vec![Box::new(Type::I64), Box::new(Type::String)],
+        };
+        assert_eq!(format!("{}", g), "Result<i64, String>");
+    }
+
+    // ================================================================
+    // Additional ast/types tests (Cycle 1240)
+    // ================================================================
+
+    #[test]
+    fn test_type_clone_compound() {
+        let t = Type::Array(Box::new(Type::I64), 5);
+        let cloned = t.clone();
+        assert_eq!(t, cloned);
+
+        let t2 = Type::Fn {
+            params: vec![Box::new(Type::Bool)],
+            ret: Box::new(Type::I64),
+        };
+        let cloned2 = t2.clone();
+        assert_eq!(t2, cloned2);
+    }
+
+    #[test]
+    fn test_display_fn_zero_params() {
+        let f = Type::Fn {
+            params: vec![],
+            ret: Box::new(Type::Unit),
+        };
+        assert_eq!(format!("{}", f), "fn() -> ()");
+    }
+
+    #[test]
+    fn test_display_tuple_single_element() {
+        let t = Type::Tuple(vec![Box::new(Type::I64)]);
+        assert_eq!(format!("{}", t), "(i64)");
+    }
+
+    #[test]
+    fn test_display_tuple_empty() {
+        let t = Type::Tuple(vec![]);
+        assert_eq!(format!("{}", t), "()");
+    }
+
+    #[test]
+    fn test_nullable_ne_different_inner() {
+        let a = Type::Nullable(Box::new(Type::I64));
+        let b = Type::Nullable(Box::new(Type::Bool));
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn test_array_ne_different_element() {
+        let a = Type::Array(Box::new(Type::I64), 10);
+        let b = Type::Array(Box::new(Type::Bool), 10);
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn test_is_numeric_char_false() {
+        assert!(!Type::Char.is_numeric());
+        assert!(!Type::Named("Foo".to_string()).is_numeric());
+        assert!(!Type::Never.is_numeric()); // Never matches in base_type but not in is_numeric pattern
+    }
+
+    #[test]
+    fn test_is_comparable_non_comparable_types() {
+        assert!(!Type::Named("Foo".to_string()).is_comparable());
+        assert!(!Type::Tuple(vec![Box::new(Type::I64)]).is_comparable());
+        assert!(!Type::Array(Box::new(Type::I64), 5).is_comparable());
+    }
+
+    #[test]
+    fn test_type_param_debug_format() {
+        let tp = TypeParam::with_bounds("T", vec!["Ord".to_string(), "Clone".to_string()]);
+        let debug_str = format!("{:?}", tp);
+        assert!(debug_str.contains("TypeParam"));
+        assert!(debug_str.contains("Ord"));
+        assert!(debug_str.contains("Clone"));
+    }
+
+    #[test]
+    fn test_base_type_non_refined() {
+        // Non-refined types return self
+        assert_eq!(Type::Bool.base_type(), &Type::Bool);
+        assert_eq!(Type::String.base_type(), &Type::String);
+        assert_eq!(Type::Char.base_type(), &Type::Char);
+        let arr = Type::Array(Box::new(Type::I64), 3);
+        assert_eq!(arr.base_type(), &Type::Array(Box::new(Type::I64), 3));
+    }
 }

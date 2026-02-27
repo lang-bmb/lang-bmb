@@ -253,7 +253,7 @@ STAGE2_START=$(get_time_ms)
 log "${YELLOW}[2/4] Stage 2: Stage 1 → LLVM IR${NC}"
 log_verbose "Command: $STAGE1_BIN_ACTUAL $BOOTSTRAP_SRC $STAGE2_LL.tmp"
 
-if "$STAGE1_BIN_ACTUAL" "$BOOTSTRAP_SRC" "$STAGE2_LL.tmp" 2>&1; then
+if BMB_ARENA_MAX_SIZE=${BMB_ARENA_MAX_SIZE:-8G} "$STAGE1_BIN_ACTUAL" "$BOOTSTRAP_SRC" "$STAGE2_LL.tmp" 2>&1; then
     # Convert | to newlines for LLVM tools
     tr '|' '\n' < "$STAGE2_LL.tmp" > "$STAGE2_LL"
     rm -f "$STAGE2_LL.tmp"
@@ -341,7 +341,7 @@ if command -v llc &> /dev/null; then
             log_verbose "${GREEN}Stage 2 binary created${NC}"
 
             # Run Stage 2 binary to generate Stage 3 LLVM IR
-            "$STAGE2_BIN" "$BOOTSTRAP_SRC" "$STAGE3_LL.tmp"
+            BMB_ARENA_MAX_SIZE=${BMB_ARENA_MAX_SIZE:-8G} "$STAGE2_BIN" "$BOOTSTRAP_SRC" "$STAGE3_LL.tmp"
         else
             log "${YELLOW}Falling back to interpreter for Stage 3${NC}"
             $RUST_BMB run "$BOOTSTRAP_SRC" "$BOOTSTRAP_SRC" "$STAGE3_LL.tmp"

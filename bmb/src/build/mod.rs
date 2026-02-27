@@ -757,8 +757,8 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         } else {
             TextCodeGen::new()
         };
-        let ir = codegen.generate(&mir).map_err(|_| BuildError::CodeGen(
-            CodeGenError::LlvmNotAvailable, // Use existing error type
+        let ir = codegen.generate(&mir).map_err(|e| BuildError::CodeGen(
+            CodeGenError::LlvmError(format!("Text codegen failed: {}", e)),
         ))?;
 
         let ir_path = config.output.with_extension("ll");
@@ -1650,9 +1650,9 @@ mod tests {
 
     #[test]
     fn test_build_error_codegen_display() {
-        let err = BuildError::CodeGen(CodeGenError::LlvmNotAvailable);
+        let err = BuildError::CodeGen(CodeGenError::LlvmError("test error".to_string()));
         let msg = format!("{}", err);
-        assert!(msg.contains("not available") || msg.contains("LLVM"));
+        assert!(msg.contains("error") || msg.contains("LLVM"));
     }
 
     #[test]

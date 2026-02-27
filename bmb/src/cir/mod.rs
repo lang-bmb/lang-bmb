@@ -1060,4 +1060,898 @@ mod tests {
         assert!(combined.writes);
         assert!(combined.allocates);
     }
+
+    // --- Cycle 1228: CIR Module Test Expansion ---
+
+    // === Proposition Variant Tests ===
+
+    #[test]
+    fn test_proposition_implies() {
+        let p = Proposition::Implies(
+            Box::new(Proposition::True),
+            Box::new(Proposition::False),
+        );
+        match p {
+            Proposition::Implies(lhs, rhs) => {
+                assert_eq!(*lhs, Proposition::True);
+                assert_eq!(*rhs, Proposition::False);
+            }
+            _ => panic!("Expected Implies"),
+        }
+    }
+
+    #[test]
+    fn test_proposition_forall() {
+        let p = Proposition::Forall {
+            var: "i".to_string(),
+            ty: CirType::I64,
+            body: Box::new(Proposition::True),
+        };
+        match p {
+            Proposition::Forall { var, ty, body } => {
+                assert_eq!(var, "i");
+                assert_eq!(ty, CirType::I64);
+                assert_eq!(*body, Proposition::True);
+            }
+            _ => panic!("Expected Forall"),
+        }
+    }
+
+    #[test]
+    fn test_proposition_exists() {
+        let p = Proposition::Exists {
+            var: "x".to_string(),
+            ty: CirType::Bool,
+            body: Box::new(Proposition::False),
+        };
+        match p {
+            Proposition::Exists { var, ty, body } => {
+                assert_eq!(var, "x");
+                assert_eq!(ty, CirType::Bool);
+                assert_eq!(*body, Proposition::False);
+            }
+            _ => panic!("Expected Exists"),
+        }
+    }
+
+    #[test]
+    fn test_proposition_predicate() {
+        let p = Proposition::Predicate {
+            name: "is_sorted".to_string(),
+            args: vec![CirExpr::var("arr")],
+        };
+        match p {
+            Proposition::Predicate { name, args } => {
+                assert_eq!(name, "is_sorted");
+                assert_eq!(args.len(), 1);
+                assert_eq!(args[0], CirExpr::Var("arr".to_string()));
+            }
+            _ => panic!("Expected Predicate"),
+        }
+    }
+
+    #[test]
+    fn test_proposition_inbounds() {
+        let p = Proposition::InBounds {
+            index: Box::new(CirExpr::var("i")),
+            array: Box::new(CirExpr::var("arr")),
+        };
+        match p {
+            Proposition::InBounds { index, array } => {
+                assert_eq!(*index, CirExpr::Var("i".to_string()));
+                assert_eq!(*array, CirExpr::Var("arr".to_string()));
+            }
+            _ => panic!("Expected InBounds"),
+        }
+    }
+
+    #[test]
+    fn test_proposition_nonnull() {
+        let p = Proposition::NonNull(Box::new(CirExpr::var("ptr")));
+        match p {
+            Proposition::NonNull(expr) => {
+                assert_eq!(*expr, CirExpr::Var("ptr".to_string()));
+            }
+            _ => panic!("Expected NonNull"),
+        }
+    }
+
+    #[test]
+    fn test_proposition_old() {
+        let p = Proposition::Old(
+            Box::new(CirExpr::var("x")),
+            Box::new(Proposition::compare(CirExpr::var("x"), CompareOp::Gt, CirExpr::int(0))),
+        );
+        match p {
+            Proposition::Old(expr, prop) => {
+                assert_eq!(*expr, CirExpr::Var("x".to_string()));
+                assert!(matches!(*prop, Proposition::Compare { .. }));
+            }
+            _ => panic!("Expected Old"),
+        }
+    }
+
+    #[test]
+    fn test_proposition_not_of_compare() {
+        let cmp = Proposition::compare(CirExpr::var("x"), CompareOp::Lt, CirExpr::int(0));
+        let p = Proposition::not(cmp);
+        assert!(matches!(p, Proposition::Not(_)));
+    }
+
+    #[test]
+    fn test_proposition_equality() {
+        assert_eq!(Proposition::True, Proposition::True);
+        assert_eq!(Proposition::False, Proposition::False);
+        assert_ne!(Proposition::True, Proposition::False);
+    }
+
+    // === CirExpr Variant Tests ===
+
+    #[test]
+    fn test_cir_expr_float_lit() {
+        let bits = 3.14_f64.to_bits();
+        let expr = CirExpr::FloatLit(bits);
+        assert_eq!(expr, CirExpr::FloatLit(bits));
+    }
+
+    #[test]
+    fn test_cir_expr_bool_lit() {
+        assert_eq!(CirExpr::BoolLit(true), CirExpr::BoolLit(true));
+        assert_ne!(CirExpr::BoolLit(true), CirExpr::BoolLit(false));
+    }
+
+    #[test]
+    fn test_cir_expr_string_lit() {
+        let expr = CirExpr::StringLit("hello".to_string());
+        assert_eq!(expr, CirExpr::StringLit("hello".to_string()));
+    }
+
+    #[test]
+    fn test_cir_expr_unary_op() {
+        let expr = CirExpr::UnaryOp {
+            op: UnaryOp::Neg,
+            operand: Box::new(CirExpr::int(42)),
+        };
+        match expr {
+            CirExpr::UnaryOp { op, operand } => {
+                assert_eq!(op, UnaryOp::Neg);
+                assert_eq!(*operand, CirExpr::IntLit(42));
+            }
+            _ => panic!("Expected UnaryOp"),
+        }
+    }
+
+    #[test]
+    fn test_cir_expr_call() {
+        let expr = CirExpr::Call {
+            func: "add".to_string(),
+            args: vec![CirExpr::int(1), CirExpr::int(2)],
+        };
+        match expr {
+            CirExpr::Call { func, args } => {
+                assert_eq!(func, "add");
+                assert_eq!(args.len(), 2);
+            }
+            _ => panic!("Expected Call"),
+        }
+    }
+
+    #[test]
+    fn test_cir_expr_index() {
+        let expr = CirExpr::Index {
+            base: Box::new(CirExpr::var("arr")),
+            index: Box::new(CirExpr::int(0)),
+        };
+        match expr {
+            CirExpr::Index { base, index } => {
+                assert_eq!(*base, CirExpr::Var("arr".to_string()));
+                assert_eq!(*index, CirExpr::IntLit(0));
+            }
+            _ => panic!("Expected Index"),
+        }
+    }
+
+    #[test]
+    fn test_cir_expr_index_assign() {
+        let expr = CirExpr::IndexAssign {
+            array: Box::new(CirExpr::var("arr")),
+            index: Box::new(CirExpr::int(0)),
+            value: Box::new(CirExpr::int(99)),
+        };
+        assert!(matches!(expr, CirExpr::IndexAssign { .. }));
+    }
+
+    #[test]
+    fn test_cir_expr_field() {
+        let expr = CirExpr::Field {
+            base: Box::new(CirExpr::var("point")),
+            field: "x".to_string(),
+        };
+        match expr {
+            CirExpr::Field { base, field } => {
+                assert_eq!(*base, CirExpr::Var("point".to_string()));
+                assert_eq!(field, "x");
+            }
+            _ => panic!("Expected Field"),
+        }
+    }
+
+    #[test]
+    fn test_cir_expr_field_assign() {
+        let expr = CirExpr::FieldAssign {
+            object: Box::new(CirExpr::var("p")),
+            field: "x".to_string(),
+            value: Box::new(CirExpr::int(10)),
+        };
+        assert!(matches!(expr, CirExpr::FieldAssign { .. }));
+    }
+
+    #[test]
+    fn test_cir_expr_deref_store() {
+        let expr = CirExpr::DerefStore {
+            ptr: Box::new(CirExpr::var("p")),
+            value: Box::new(CirExpr::int(42)),
+        };
+        assert!(matches!(expr, CirExpr::DerefStore { .. }));
+    }
+
+    #[test]
+    fn test_cir_expr_if() {
+        let expr = CirExpr::If {
+            cond: Box::new(CirExpr::BoolLit(true)),
+            then_branch: Box::new(CirExpr::int(1)),
+            else_branch: Box::new(CirExpr::int(0)),
+        };
+        match expr {
+            CirExpr::If { cond, then_branch, else_branch } => {
+                assert_eq!(*cond, CirExpr::BoolLit(true));
+                assert_eq!(*then_branch, CirExpr::IntLit(1));
+                assert_eq!(*else_branch, CirExpr::IntLit(0));
+            }
+            _ => panic!("Expected If"),
+        }
+    }
+
+    #[test]
+    fn test_cir_expr_let() {
+        let expr = CirExpr::Let {
+            name: "x".to_string(),
+            ty: CirType::I64,
+            value: Box::new(CirExpr::int(42)),
+            body: Box::new(CirExpr::var("x")),
+        };
+        match expr {
+            CirExpr::Let { name, ty, value, body } => {
+                assert_eq!(name, "x");
+                assert_eq!(ty, CirType::I64);
+                assert_eq!(*value, CirExpr::IntLit(42));
+                assert_eq!(*body, CirExpr::Var("x".to_string()));
+            }
+            _ => panic!("Expected Let"),
+        }
+    }
+
+    #[test]
+    fn test_cir_expr_let_mut() {
+        let expr = CirExpr::LetMut {
+            name: "y".to_string(),
+            ty: CirType::Bool,
+            value: Box::new(CirExpr::BoolLit(false)),
+            body: Box::new(CirExpr::Unit),
+        };
+        assert!(matches!(expr, CirExpr::LetMut { .. }));
+    }
+
+    #[test]
+    fn test_cir_expr_assign() {
+        let expr = CirExpr::Assign {
+            target: "x".to_string(),
+            value: Box::new(CirExpr::int(99)),
+        };
+        match expr {
+            CirExpr::Assign { target, value } => {
+                assert_eq!(target, "x");
+                assert_eq!(*value, CirExpr::IntLit(99));
+            }
+            _ => panic!("Expected Assign"),
+        }
+    }
+
+    #[test]
+    fn test_cir_expr_while_loop() {
+        let expr = CirExpr::While {
+            cond: Box::new(CirExpr::BoolLit(true)),
+            body: Box::new(CirExpr::Unit),
+            invariant: Some(Proposition::True),
+        };
+        match expr {
+            CirExpr::While { cond, invariant, .. } => {
+                assert_eq!(*cond, CirExpr::BoolLit(true));
+                assert_eq!(invariant, Some(Proposition::True));
+            }
+            _ => panic!("Expected While"),
+        }
+    }
+
+    #[test]
+    fn test_cir_expr_loop() {
+        let expr = CirExpr::Loop {
+            body: Box::new(CirExpr::Break(Box::new(CirExpr::int(0)))),
+        };
+        assert!(matches!(expr, CirExpr::Loop { .. }));
+    }
+
+    #[test]
+    fn test_cir_expr_for() {
+        let expr = CirExpr::For {
+            var: "i".to_string(),
+            iter: Box::new(CirExpr::var("range")),
+            body: Box::new(CirExpr::Unit),
+        };
+        match expr {
+            CirExpr::For { var, .. } => assert_eq!(var, "i"),
+            _ => panic!("Expected For"),
+        }
+    }
+
+    #[test]
+    fn test_cir_expr_break_continue() {
+        let brk = CirExpr::Break(Box::new(CirExpr::Unit));
+        assert!(matches!(brk, CirExpr::Break(_)));
+        let cont = CirExpr::Continue;
+        assert!(matches!(cont, CirExpr::Continue));
+    }
+
+    #[test]
+    fn test_cir_expr_block() {
+        let expr = CirExpr::Block(vec![CirExpr::int(1), CirExpr::int(2)]);
+        match expr {
+            CirExpr::Block(exprs) => assert_eq!(exprs.len(), 2),
+            _ => panic!("Expected Block"),
+        }
+    }
+
+    #[test]
+    fn test_cir_expr_struct_construction() {
+        let expr = CirExpr::Struct {
+            name: "Point".to_string(),
+            fields: vec![
+                ("x".to_string(), CirExpr::int(1)),
+                ("y".to_string(), CirExpr::int(2)),
+            ],
+        };
+        match expr {
+            CirExpr::Struct { name, fields } => {
+                assert_eq!(name, "Point");
+                assert_eq!(fields.len(), 2);
+                assert_eq!(fields[0].0, "x");
+            }
+            _ => panic!("Expected Struct"),
+        }
+    }
+
+    #[test]
+    fn test_cir_expr_array_tuple() {
+        let arr = CirExpr::Array(vec![CirExpr::int(1), CirExpr::int(2), CirExpr::int(3)]);
+        match arr {
+            CirExpr::Array(elems) => assert_eq!(elems.len(), 3),
+            _ => panic!("Expected Array"),
+        }
+        let tup = CirExpr::Tuple(vec![CirExpr::int(1), CirExpr::BoolLit(true)]);
+        match tup {
+            CirExpr::Tuple(elems) => assert_eq!(elems.len(), 2),
+            _ => panic!("Expected Tuple"),
+        }
+    }
+
+    #[test]
+    fn test_cir_expr_ref_refmut_deref() {
+        let r = CirExpr::Ref(Box::new(CirExpr::var("x")));
+        assert!(matches!(r, CirExpr::Ref(_)));
+        let rm = CirExpr::RefMut(Box::new(CirExpr::var("x")));
+        assert!(matches!(rm, CirExpr::RefMut(_)));
+        let d = CirExpr::Deref(Box::new(CirExpr::var("p")));
+        assert!(matches!(d, CirExpr::Deref(_)));
+    }
+
+    #[test]
+    fn test_cir_expr_range() {
+        let expr = CirExpr::Range {
+            start: Box::new(CirExpr::int(0)),
+            end: Box::new(CirExpr::int(10)),
+            inclusive: false,
+        };
+        match expr {
+            CirExpr::Range { start, end, inclusive } => {
+                assert_eq!(*start, CirExpr::IntLit(0));
+                assert_eq!(*end, CirExpr::IntLit(10));
+                assert!(!inclusive);
+            }
+            _ => panic!("Expected Range"),
+        }
+    }
+
+    #[test]
+    fn test_cir_expr_enum_variant() {
+        let expr = CirExpr::EnumVariant {
+            enum_name: "Option".to_string(),
+            variant: "Some".to_string(),
+            args: vec![CirExpr::int(42)],
+        };
+        match expr {
+            CirExpr::EnumVariant { enum_name, variant, args } => {
+                assert_eq!(enum_name, "Option");
+                assert_eq!(variant, "Some");
+                assert_eq!(args.len(), 1);
+            }
+            _ => panic!("Expected EnumVariant"),
+        }
+    }
+
+    #[test]
+    fn test_cir_expr_state_ref() {
+        let pre = CirExpr::StateRef {
+            expr: Box::new(CirExpr::var("x")),
+            is_pre: true,
+        };
+        let post = CirExpr::StateRef {
+            expr: Box::new(CirExpr::var("x")),
+            is_pre: false,
+        };
+        match pre {
+            CirExpr::StateRef { is_pre, .. } => assert!(is_pre),
+            _ => panic!("Expected StateRef"),
+        }
+        match post {
+            CirExpr::StateRef { is_pre, .. } => assert!(!is_pre),
+            _ => panic!("Expected StateRef"),
+        }
+    }
+
+    #[test]
+    fn test_cir_expr_closure() {
+        let expr = CirExpr::Closure {
+            params: vec!["a".to_string(), "b".to_string()],
+            body: Box::new(CirExpr::binop(BinOp::Add, CirExpr::var("a"), CirExpr::var("b"))),
+        };
+        match expr {
+            CirExpr::Closure { params, .. } => {
+                assert_eq!(params.len(), 2);
+                assert_eq!(params[0], "a");
+            }
+            _ => panic!("Expected Closure"),
+        }
+    }
+
+    #[test]
+    fn test_cir_expr_cast() {
+        let expr = CirExpr::Cast {
+            expr: Box::new(CirExpr::int(42)),
+            ty: CirType::F64,
+        };
+        match expr {
+            CirExpr::Cast { expr, ty } => {
+                assert_eq!(*expr, CirExpr::IntLit(42));
+                assert_eq!(ty, CirType::F64);
+            }
+            _ => panic!("Expected Cast"),
+        }
+    }
+
+    #[test]
+    fn test_cir_expr_sizeof() {
+        let expr = CirExpr::Sizeof(CirType::I64);
+        assert_eq!(expr, CirExpr::Sizeof(CirType::I64));
+    }
+
+    #[test]
+    fn test_cir_expr_forall_exists() {
+        let forall = CirExpr::Forall {
+            var: "i".to_string(),
+            ty: CirType::I64,
+            body: Box::new(CirExpr::BoolLit(true)),
+        };
+        assert!(matches!(forall, CirExpr::Forall { .. }));
+        let exists = CirExpr::Exists {
+            var: "j".to_string(),
+            ty: CirType::I64,
+            body: Box::new(CirExpr::BoolLit(false)),
+        };
+        assert!(matches!(exists, CirExpr::Exists { .. }));
+    }
+
+    #[test]
+    fn test_cir_expr_todo() {
+        let expr1 = CirExpr::Todo(None);
+        assert_eq!(expr1, CirExpr::Todo(None));
+        let expr2 = CirExpr::Todo(Some("implement later".to_string()));
+        assert!(matches!(expr2, CirExpr::Todo(Some(_))));
+    }
+
+    #[test]
+    fn test_cir_expr_len() {
+        let expr = CirExpr::Len(Box::new(CirExpr::var("arr")));
+        match expr {
+            CirExpr::Len(inner) => assert_eq!(*inner, CirExpr::Var("arr".to_string())),
+            _ => panic!("Expected Len"),
+        }
+    }
+
+    #[test]
+    fn test_cir_expr_old() {
+        let expr = CirExpr::Old(Box::new(CirExpr::var("x")));
+        match expr {
+            CirExpr::Old(inner) => assert_eq!(*inner, CirExpr::Var("x".to_string())),
+            _ => panic!("Expected Old"),
+        }
+    }
+
+    #[test]
+    fn test_cir_expr_unit() {
+        assert_eq!(CirExpr::Unit, CirExpr::Unit);
+    }
+
+    // === BinOp Variant Tests ===
+
+    #[test]
+    fn test_binop_arithmetic() {
+        for op in [BinOp::Add, BinOp::Sub, BinOp::Mul, BinOp::Div, BinOp::Mod] {
+            let expr = CirExpr::binop(op, CirExpr::int(1), CirExpr::int(2));
+            assert!(matches!(expr, CirExpr::BinOp { .. }));
+        }
+    }
+
+    #[test]
+    fn test_binop_wrapping() {
+        for op in [BinOp::AddWrap, BinOp::SubWrap, BinOp::MulWrap] {
+            let expr = CirExpr::binop(op, CirExpr::int(1), CirExpr::int(2));
+            assert!(matches!(expr, CirExpr::BinOp { .. }));
+        }
+    }
+
+    #[test]
+    fn test_binop_checked() {
+        for op in [BinOp::AddChecked, BinOp::SubChecked, BinOp::MulChecked] {
+            let expr = CirExpr::binop(op, CirExpr::int(1), CirExpr::int(2));
+            assert!(matches!(expr, CirExpr::BinOp { .. }));
+        }
+    }
+
+    #[test]
+    fn test_binop_saturating() {
+        for op in [BinOp::AddSat, BinOp::SubSat, BinOp::MulSat] {
+            let expr = CirExpr::binop(op, CirExpr::int(1), CirExpr::int(2));
+            assert!(matches!(expr, CirExpr::BinOp { .. }));
+        }
+    }
+
+    #[test]
+    fn test_binop_comparison() {
+        for op in [BinOp::Lt, BinOp::Le, BinOp::Gt, BinOp::Ge, BinOp::Eq, BinOp::Ne] {
+            let expr = CirExpr::binop(op, CirExpr::int(1), CirExpr::int(2));
+            assert!(matches!(expr, CirExpr::BinOp { .. }));
+        }
+    }
+
+    #[test]
+    fn test_binop_logical() {
+        for op in [BinOp::And, BinOp::Or, BinOp::Implies] {
+            let expr = CirExpr::binop(op, CirExpr::BoolLit(true), CirExpr::BoolLit(false));
+            assert!(matches!(expr, CirExpr::BinOp { .. }));
+        }
+    }
+
+    #[test]
+    fn test_binop_bitwise() {
+        for op in [BinOp::BitAnd, BinOp::BitOr, BinOp::BitXor, BinOp::Shl, BinOp::Shr] {
+            let expr = CirExpr::binop(op, CirExpr::int(1), CirExpr::int(2));
+            assert!(matches!(expr, CirExpr::BinOp { .. }));
+        }
+    }
+
+    // === UnaryOp Tests ===
+
+    #[test]
+    fn test_unary_op_all_variants() {
+        for op in [UnaryOp::Neg, UnaryOp::Not, UnaryOp::BitNot] {
+            let expr = CirExpr::UnaryOp {
+                op,
+                operand: Box::new(CirExpr::int(1)),
+            };
+            assert!(matches!(expr, CirExpr::UnaryOp { .. }));
+        }
+    }
+
+    // === Struct Constructor Tests ===
+
+    #[test]
+    fn test_cir_program_construction() {
+        let program = CirProgram {
+            functions: vec![],
+            extern_fns: vec![],
+            structs: HashMap::new(),
+            type_invariants: HashMap::new(),
+        };
+        assert!(program.functions.is_empty());
+        assert!(program.extern_fns.is_empty());
+        assert!(program.structs.is_empty());
+    }
+
+    #[test]
+    fn test_cir_function_construction() {
+        let func = CirFunction {
+            name: "add".to_string(),
+            type_params: vec![],
+            params: vec![
+                CirParam { name: "a".to_string(), ty: CirType::I64, constraints: vec![] },
+                CirParam { name: "b".to_string(), ty: CirType::I64, constraints: vec![] },
+            ],
+            ret_ty: CirType::I64,
+            ret_name: "__result".to_string(),
+            preconditions: vec![],
+            postconditions: vec![],
+            loop_invariants: vec![],
+            effects: EffectSet::pure(),
+            body: CirExpr::binop(BinOp::Add, CirExpr::var("a"), CirExpr::var("b")),
+        };
+        assert_eq!(func.name, "add");
+        assert_eq!(func.params.len(), 2);
+        assert!(func.effects.is_pure);
+    }
+
+    #[test]
+    fn test_cir_extern_fn_construction() {
+        let ext = CirExternFn {
+            module: "libc".to_string(),
+            name: "puts".to_string(),
+            params: vec![CirType::Ptr(Box::new(CirType::U8))],
+            ret_ty: CirType::I32,
+            effects: EffectSet { io: true, ..Default::default() },
+        };
+        assert_eq!(ext.module, "libc");
+        assert_eq!(ext.name, "puts");
+        assert!(ext.effects.io);
+    }
+
+    #[test]
+    fn test_cir_struct_construction() {
+        let s = CirStruct {
+            name: "Point".to_string(),
+            fields: vec![
+                ("x".to_string(), CirType::F64),
+                ("y".to_string(), CirType::F64),
+            ],
+            invariants: vec![],
+        };
+        assert_eq!(s.name, "Point");
+        assert_eq!(s.fields.len(), 2);
+    }
+
+    #[test]
+    fn test_cir_param_with_constraints() {
+        let param = CirParam {
+            name: "idx".to_string(),
+            ty: CirType::I64,
+            constraints: vec![
+                Proposition::compare(CirExpr::var("idx"), CompareOp::Ge, CirExpr::int(0)),
+            ],
+        };
+        assert_eq!(param.constraints.len(), 1);
+    }
+
+    #[test]
+    fn test_named_proposition() {
+        let np = NamedProposition {
+            name: Some("valid_index".to_string()),
+            proposition: Proposition::InBounds {
+                index: Box::new(CirExpr::var("i")),
+                array: Box::new(CirExpr::var("arr")),
+            },
+        };
+        assert_eq!(np.name, Some("valid_index".to_string()));
+        assert!(matches!(np.proposition, Proposition::InBounds { .. }));
+    }
+
+    #[test]
+    fn test_loop_invariant() {
+        let inv = LoopInvariant {
+            loop_id: 0,
+            invariant: Proposition::compare(
+                CirExpr::var("i"),
+                CompareOp::Le,
+                CirExpr::var("n"),
+            ),
+        };
+        assert_eq!(inv.loop_id, 0);
+        assert!(matches!(inv.invariant, Proposition::Compare { .. }));
+    }
+
+    // === CirType Equality and Hash Tests ===
+
+    #[test]
+    fn test_cir_type_equality() {
+        assert_eq!(CirType::I64, CirType::I64);
+        assert_ne!(CirType::I64, CirType::I32);
+        assert_eq!(
+            CirType::Array(Box::new(CirType::I64), 10),
+            CirType::Array(Box::new(CirType::I64), 10)
+        );
+        assert_ne!(
+            CirType::Array(Box::new(CirType::I64), 10),
+            CirType::Array(Box::new(CirType::I64), 20)
+        );
+    }
+
+    #[test]
+    fn test_cir_type_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(CirType::I64);
+        set.insert(CirType::I64);
+        set.insert(CirType::Bool);
+        assert_eq!(set.len(), 2);
+    }
+
+    // === EffectSet Edge Cases ===
+
+    #[test]
+    fn test_effect_set_default_is_impure() {
+        let def = EffectSet::default();
+        assert!(!def.is_pure);
+        assert!(!def.is_const);
+        assert!(!def.reads);
+        assert!(!def.writes);
+        assert!(!def.io);
+        assert!(!def.allocates);
+        assert!(!def.diverges);
+    }
+
+    #[test]
+    fn test_effect_set_union_diverges() {
+        let a = EffectSet::pure();
+        let b = EffectSet { diverges: true, ..Default::default() };
+        let c = a.union(&b);
+        assert!(c.diverges);
+        assert!(!c.is_pure);
+    }
+
+    #[test]
+    fn test_effect_set_full_effects() {
+        let full = EffectSet {
+            is_pure: false,
+            is_const: false,
+            reads: true,
+            writes: true,
+            io: true,
+            allocates: true,
+            diverges: true,
+        };
+        let combined = full.union(&EffectSet::pure());
+        assert!(combined.reads);
+        assert!(combined.writes);
+        assert!(combined.io);
+        assert!(combined.allocates);
+        assert!(combined.diverges);
+        assert!(!combined.is_pure);
+    }
+
+    // === CompareOp Edge Cases ===
+
+    #[test]
+    fn test_compare_op_flip_then_negate() {
+        // flip(Lt) = Gt, negate(Gt) = Le
+        assert_eq!(CompareOp::Lt.flip().negate(), CompareOp::Le);
+    }
+
+    #[test]
+    fn test_compare_op_double_flip() {
+        for op in [CompareOp::Lt, CompareOp::Le, CompareOp::Gt, CompareOp::Ge, CompareOp::Eq, CompareOp::Ne] {
+            assert_eq!(op.flip().flip(), op);
+        }
+    }
+
+    // === CirType Display Edge Cases ===
+
+    #[test]
+    fn test_cir_type_display_nested_generic() {
+        let ty = CirType::Generic(
+            "HashMap".to_string(),
+            vec![CirType::String, CirType::Generic("Vec".to_string(), vec![CirType::I64])],
+        );
+        assert_eq!(ty.to_string(), "HashMap<String, Vec<i64>>");
+    }
+
+    #[test]
+    fn test_cir_type_display_fn_no_params() {
+        let ty = CirType::Fn {
+            params: vec![],
+            ret: Box::new(CirType::Unit),
+        };
+        assert_eq!(ty.to_string(), "() -> ()");
+    }
+
+    // === CirProgram with Content ===
+
+    #[test]
+    fn test_cir_program_with_content() {
+        let mut structs = HashMap::new();
+        structs.insert("Point".to_string(), CirStruct {
+            name: "Point".to_string(),
+            fields: vec![("x".to_string(), CirType::F64)],
+            invariants: vec![],
+        });
+
+        let mut type_invariants = HashMap::new();
+        type_invariants.insert("NonEmpty".to_string(), vec![
+            Proposition::compare(CirExpr::var("len"), CompareOp::Gt, CirExpr::int(0)),
+        ]);
+
+        let program = CirProgram {
+            functions: vec![CirFunction {
+                name: "main".to_string(),
+                type_params: vec![],
+                params: vec![],
+                ret_ty: CirType::Unit,
+                ret_name: "__result".to_string(),
+                preconditions: vec![],
+                postconditions: vec![],
+                loop_invariants: vec![],
+                effects: EffectSet::impure(),
+                body: CirExpr::Unit,
+            }],
+            extern_fns: vec![],
+            structs,
+            type_invariants,
+        };
+        assert_eq!(program.functions.len(), 1);
+        assert_eq!(program.structs.len(), 1);
+        assert_eq!(program.type_invariants.len(), 1);
+    }
+
+    #[test]
+    fn test_cir_struct_with_invariant() {
+        let s = CirStruct {
+            name: "Range".to_string(),
+            fields: vec![
+                ("start".to_string(), CirType::I64),
+                ("end".to_string(), CirType::I64),
+            ],
+            invariants: vec![
+                Proposition::compare(
+                    CirExpr::var("start"),
+                    CompareOp::Le,
+                    CirExpr::var("end"),
+                ),
+            ],
+        };
+        assert_eq!(s.invariants.len(), 1);
+    }
+
+    #[test]
+    fn test_cir_function_with_contracts() {
+        let func = CirFunction {
+            name: "safe_div".to_string(),
+            type_params: vec![],
+            params: vec![
+                CirParam { name: "a".to_string(), ty: CirType::I64, constraints: vec![] },
+                CirParam { name: "b".to_string(), ty: CirType::I64, constraints: vec![
+                    Proposition::compare(CirExpr::var("b"), CompareOp::Ne, CirExpr::int(0)),
+                ]},
+            ],
+            ret_ty: CirType::I64,
+            ret_name: "__result".to_string(),
+            preconditions: vec![
+                NamedProposition {
+                    name: Some("divisor_nonzero".to_string()),
+                    proposition: Proposition::compare(CirExpr::var("b"), CompareOp::Ne, CirExpr::int(0)),
+                },
+            ],
+            postconditions: vec![],
+            loop_invariants: vec![],
+            effects: EffectSet::pure(),
+            body: CirExpr::binop(BinOp::Div, CirExpr::var("a"), CirExpr::var("b")),
+        };
+        assert_eq!(func.preconditions.len(), 1);
+        assert_eq!(func.preconditions[0].name, Some("divisor_nonzero".to_string()));
+    }
 }

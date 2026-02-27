@@ -810,4 +810,258 @@ mod tests {
         assert!(summary.contains("Errors: 1"));
         assert!(summary.contains("130ms"));
     }
+
+    // --- Cycle 1229: Additional CIR Verify Tests ---
+
+    #[test]
+    fn test_proof_witness_failed_with_smt_script() {
+        let w = ProofWitness::failed(
+            "div".to_string(),
+            "division by zero".to_string(),
+            Some("(check-sat)\n(get-model)".to_string()),
+            75,
+        );
+        assert!(w.is_failed());
+        assert!(!w.is_verified());
+        assert_eq!(w.function, "div");
+        assert_eq!(w.verification_time_ms, 75);
+        assert!(w.smt_script.is_some());
+        assert!(w.counterexample.is_none());
+    }
+
+    #[test]
+    fn test_proof_outcome_unknown_variants() {
+        assert_eq!(
+            ProofOutcome::Unknown("timeout".to_string()),
+            ProofOutcome::Unknown("timeout".to_string()),
+        );
+        assert_ne!(
+            ProofOutcome::Unknown("timeout".to_string()),
+            ProofOutcome::Unknown("complexity".to_string()),
+        );
+    }
+
+    #[test]
+    fn test_proof_outcome_error_variants() {
+        assert_eq!(
+            ProofOutcome::Error("crash".to_string()),
+            ProofOutcome::Error("crash".to_string()),
+        );
+        assert_ne!(
+            ProofOutcome::Error("crash".to_string()),
+            ProofOutcome::Error("oom".to_string()),
+        );
+    }
+
+    #[test]
+    fn test_verifier_builder_chain() {
+        let v = CirVerifier::new()
+            .with_timeout(60)
+            .with_smt_scripts(true)
+            .with_verbose(false);
+        assert!(v.keep_smt_scripts);
+        assert!(!v.verbose);
+    }
+
+    #[test]
+    fn test_verify_program_all_no_contracts() {
+        let verifier = CirVerifier::new();
+        let program = CirProgram {
+            functions: vec![
+                CirFunction {
+                    name: "f1".to_string(),
+                    type_params: vec![],
+                    params: vec![],
+                    ret_name: "r".to_string(),
+                    ret_ty: CirType::I64,
+                    preconditions: vec![],
+                    postconditions: vec![],
+                    loop_invariants: vec![],
+                    effects: EffectSet::pure(),
+                    body: CirExpr::IntLit(0),
+                },
+                CirFunction {
+                    name: "f2".to_string(),
+                    type_params: vec![],
+                    params: vec![],
+                    ret_name: "r".to_string(),
+                    ret_ty: CirType::Bool,
+                    preconditions: vec![],
+                    postconditions: vec![],
+                    loop_invariants: vec![],
+                    effects: EffectSet::pure(),
+                    body: CirExpr::BoolLit(true),
+                },
+            ],
+            extern_fns: vec![],
+            structs: std::collections::HashMap::new(),
+            type_invariants: std::collections::HashMap::new(),
+        };
+        let report = verifier.verify_program(&program);
+        assert_eq!(report.total_functions, 2);
+        assert_eq!(report.skipped_count, 2);
+        assert!(report.all_verified());
+    }
+
+    #[test]
+    fn test_verification_report_compute_summary_resets() {
+        let mut report = CirVerificationReport::new();
+        report.witnesses.push(ProofWitness::verified("f1".to_string(), None, 10));
+        report.compute_summary();
+        assert_eq!(report.verified_count, 1);
+
+        // Add another and recompute — should reset
+        report.witnesses.push(ProofWitness::failed("f2".to_string(), "err".to_string(), None, 5));
+        report.compute_summary();
+        assert_eq!(report.verified_count, 1);
+        assert_eq!(report.failed_count, 1);
+        assert_eq!(report.total_functions, 2);
+        assert_eq!(report.total_time_ms, 15);
+    }
+
+    #[test]
+    fn test_verification_report_summary_zero_time() {
+        let mut report = CirVerificationReport::new();
+        report.witnesses.push(ProofWitness::skipped("noop".to_string()));
+        report.compute_summary();
+        let summary = report.summary();
+        assert!(summary.contains("0ms"));
+    }
+
+    #[test]
+    fn test_needs_quantifiers_no_quantifier_in_simple_compare() {
+        let verifier = CirVerifier::new();
+        let func = CirFunction {
+            name: "simple".to_string(),
+            type_params: vec![],
+            params: vec![CirParam {
+                name: "x".to_string(),
+                ty: CirType::I64,
+                constraints: vec![],
+            }],
+            ret_name: "r".to_string(),
+            ret_ty: CirType::I64,
+            preconditions: vec![NamedProposition {
+                name: None,
+                proposition: Proposition::Compare {
+                    lhs: Box::new(CirExpr::Var("x".to_string())),
+                    op: CompareOp::Gt,
+                    rhs: Box::new(CirExpr::IntLit(0)),
+                },
+            }],
+            postconditions: vec![NamedProposition {
+                name: None,
+                proposition: Proposition::Compare {
+                    lhs: Box::new(CirExpr::Var("r".to_string())),
+                    op: CompareOp::Ge,
+                    rhs: Box::new(CirExpr::IntLit(0)),
+                },
+            }],
+            loop_invariants: vec![],
+            effects: EffectSet::pure(),
+            body: CirExpr::Var("x".to_string()),
+        };
+        assert!(!verifier.needs_quantifiers(&func));
+    }
+
+    #[test]
+    fn test_needs_quantifiers_no_props_at_all() {
+        let verifier = CirVerifier::new();
+        let func = CirFunction {
+            name: "empty".to_string(),
+            type_params: vec![],
+            params: vec![],
+            ret_name: "r".to_string(),
+            ret_ty: CirType::Unit,
+            preconditions: vec![],
+            postconditions: vec![],
+            loop_invariants: vec![],
+            effects: EffectSet::pure(),
+            body: CirExpr::Unit,
+        };
+        assert!(!verifier.needs_quantifiers(&func));
+    }
+
+    #[test]
+    fn test_proposition_has_quantifier_inbounds_no_quantifier() {
+        let verifier = CirVerifier::new();
+        let mut func = make_test_function();
+        func.preconditions = vec![NamedProposition {
+            name: None,
+            proposition: Proposition::InBounds {
+                index: Box::new(CirExpr::Var("i".to_string())),
+                array: Box::new(CirExpr::Var("arr".to_string())),
+            },
+        }];
+        func.postconditions.clear();
+        assert!(!verifier.needs_quantifiers(&func));
+    }
+
+    #[test]
+    fn test_proposition_has_quantifier_nonnull_no_quantifier() {
+        let verifier = CirVerifier::new();
+        let mut func = make_test_function();
+        func.preconditions = vec![NamedProposition {
+            name: None,
+            proposition: Proposition::NonNull(Box::new(CirExpr::Var("p".to_string()))),
+        }];
+        func.postconditions.clear();
+        assert!(!verifier.needs_quantifiers(&func));
+    }
+
+    #[test]
+    fn test_proposition_has_quantifier_predicate_no_quantifier() {
+        let verifier = CirVerifier::new();
+        let mut func = make_test_function();
+        func.preconditions = vec![NamedProposition {
+            name: None,
+            proposition: Proposition::Predicate {
+                name: "is_valid".to_string(),
+                args: vec![CirExpr::Var("x".to_string())],
+            },
+        }];
+        func.postconditions.clear();
+        assert!(!verifier.needs_quantifiers(&func));
+    }
+
+    #[test]
+    fn test_proof_witness_function_name() {
+        let verified = ProofWitness::verified("alpha".to_string(), None, 0);
+        assert_eq!(verified.function, "alpha");
+        let failed = ProofWitness::failed("beta".to_string(), "err".to_string(), None, 0);
+        assert_eq!(failed.function, "beta");
+        let skipped = ProofWitness::skipped("gamma".to_string());
+        assert_eq!(skipped.function, "gamma");
+        let error = ProofWitness::error("delta".to_string(), "crash".to_string());
+        assert_eq!(error.function, "delta");
+    }
+
+    #[test]
+    fn test_verification_report_only_errors_not_failures() {
+        let mut report = CirVerificationReport::new();
+        report.witnesses.push(ProofWitness::error("f1".to_string(), "crash".to_string()));
+        report.compute_summary();
+        assert!(!report.has_failures());
+        assert!(report.has_errors());
+        assert!(!report.all_verified());
+    }
+
+    #[test]
+    fn test_verification_report_only_unknown() {
+        let mut report = CirVerificationReport::new();
+        report.witnesses.push(ProofWitness {
+            function: "f1".to_string(),
+            outcome: ProofOutcome::Unknown("timeout".to_string()),
+            smt_script: None,
+            counterexample: None,
+            verification_time_ms: 30000,
+        });
+        report.compute_summary();
+        assert_eq!(report.unknown_count, 1);
+        assert_eq!(report.verified_count, 0);
+        assert!(!report.has_failures());
+        assert!(!report.has_errors());
+        // all_verified checks failed_count == 0 && error_count == 0
+        assert!(report.all_verified());
+    }
 }

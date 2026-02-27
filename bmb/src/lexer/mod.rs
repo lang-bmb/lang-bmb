@@ -342,4 +342,237 @@ mod tests {
         assert_eq!(tokens[0].0, Token::Minus);
         assert!(matches!(&tokens[1].0, Token::IntLit(42)));
     }
+
+    // --- Cycle 1222: Untested Token Coverage ---
+
+    #[test]
+    fn test_tokenize_data_keywords() {
+        let tokens = tokenize("new type impl trait").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![Token::New, Token::Type, Token::Impl, Token::Trait]);
+    }
+
+    #[test]
+    fn test_tokenize_control_keywords_extended() {
+        let tokens = tokenize("var then as try mut set ret").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![
+            Token::Var, Token::Then, Token::As, Token::Try,
+            Token::Mut, Token::Set, Token::Ret,
+        ]);
+    }
+
+    #[test]
+    fn test_tokenize_special_keywords() {
+        let tokens = tokenize("null sizeof todo").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![Token::Null, Token::Sizeof, Token::Todo]);
+    }
+
+    #[test]
+    fn test_tokenize_underscore() {
+        let tokens = tokenize("_ foo _bar").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![
+            Token::Underscore,
+            Token::Ident("foo".to_string()),
+            Token::Ident("_bar".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_tokenize_concurrency_types() {
+        let tokens = tokenize("Mutex Arc Atomic").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![Token::MutexType, Token::ArcType, Token::AtomicType]);
+    }
+
+    #[test]
+    fn test_tokenize_channel_types() {
+        let tokens = tokenize("channel Sender Receiver").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![Token::ChannelKw, Token::SenderType, Token::ReceiverType]);
+    }
+
+    #[test]
+    fn test_tokenize_sync_types() {
+        let tokens = tokenize("RwLock Barrier Condvar").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![Token::RwLockType, Token::BarrierType, Token::CondvarType]);
+    }
+
+    #[test]
+    fn test_tokenize_async_types() {
+        let tokens = tokenize("AsyncFile AsyncSocket ThreadPool Scope").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![
+            Token::AsyncFileType, Token::AsyncSocketType,
+            Token::ThreadPoolType, Token::ScopeType,
+        ]);
+    }
+
+    #[test]
+    fn test_tokenize_module_header_keywords() {
+        let tokens = tokenize("module version summary exports depends").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![
+            Token::Module, Token::Version, Token::Summary,
+            Token::Exports, Token::Depends,
+        ]);
+    }
+
+    #[test]
+    fn test_tokenize_hex_literal() {
+        let tokens = tokenize("0xFF").unwrap();
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0].0, Token::IntLit(255)));
+    }
+
+    #[test]
+    fn test_tokenize_octal_literal() {
+        let tokens = tokenize("0o77").unwrap();
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0].0, Token::IntLit(63)));
+    }
+
+    #[test]
+    fn test_tokenize_binary_literal() {
+        let tokens = tokenize("0b1010").unwrap();
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0].0, Token::IntLit(10)));
+    }
+
+    #[test]
+    fn test_tokenize_hex_with_underscores() {
+        let tokens = tokenize("0xFF_FF").unwrap();
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0].0, Token::IntLit(65535)));
+    }
+
+    #[test]
+    fn test_tokenize_char_escape_sequences() {
+        // Newline
+        let tokens = tokenize(r"'\n'").unwrap();
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0].0, Token::CharLit('\n')));
+
+        // Tab
+        let tokens = tokenize(r"'\t'").unwrap();
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0].0, Token::CharLit('\t')));
+
+        // Null
+        let tokens = tokenize(r"'\0'").unwrap();
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0].0, Token::CharLit('\0')));
+    }
+
+    #[test]
+    fn test_tokenize_quantifier_keywords() {
+        let tokens = tokenize("forall exists invariant implies").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![Token::Forall, Token::Exists, Token::Invariant, Token::Implies]);
+    }
+
+    #[test]
+    fn test_tokenize_async_await() {
+        let tokens = tokenize("async await Future select").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![Token::Async, Token::Await, Token::FutureType, Token::Select]);
+    }
+
+    #[test]
+    fn test_tokenize_char_type_keyword() {
+        let tokens = tokenize("char").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![Token::TyChar]);
+    }
+
+    #[test]
+    fn test_tokenize_unsigned_type_keywords() {
+        let tokens = tokenize("u32 u64").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![Token::TyU32, Token::TyU64]);
+    }
+
+    #[test]
+    fn test_tokenize_string_escape_null_char() {
+        let tokens = tokenize(r#""\0\n\t""#).unwrap();
+        assert_eq!(tokens.len(), 1);
+        if let Token::StringLit(s) = &tokens[0].0 {
+            assert_eq!(s, "\0\n\t");
+        } else {
+            panic!("Expected StringLit");
+        }
+    }
+
+    #[test]
+    fn test_tokenize_pipe_and_question() {
+        let tokens = tokenize("| ? @").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![Token::Pipe, Token::Question, Token::At]);
+    }
+
+    #[test]
+    fn test_tokenize_saturating_operators() {
+        let tokens = tokenize("+| -| *|").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![Token::PlusPipe, Token::MinusPipe, Token::StarPipe]);
+    }
+
+    #[test]
+    fn test_tokenize_complete_function() {
+        // Test a complete BMB function tokenization
+        let tokens = tokenize("fn add(a: i64, b: i64) -> i64 = a + b;").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![
+            Token::Fn, Token::Ident("add".to_string()),
+            Token::LParen, Token::Ident("a".to_string()), Token::Colon, Token::TyI64,
+            Token::Comma, Token::Ident("b".to_string()), Token::Colon, Token::TyI64,
+            Token::RParen, Token::Arrow, Token::TyI64, Token::Eq,
+            Token::Ident("a".to_string()), Token::Plus, Token::Ident("b".to_string()),
+            Token::Semi,
+        ]);
+    }
+
+    #[test]
+    fn test_tokenize_closure_syntax() {
+        let tokens = tokenize("fn |x| { x + 1 }").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![
+            Token::Fn, Token::Pipe, Token::Ident("x".to_string()), Token::Pipe,
+            Token::LBrace, Token::Ident("x".to_string()), Token::Plus,
+            Token::IntLit(1), Token::RBrace,
+        ]);
+    }
+
+    #[test]
+    fn test_tokenize_match_syntax() {
+        let tokens = tokenize("match x { 1 => 10, _ => 0 }").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![
+            Token::Match, Token::Ident("x".to_string()), Token::LBrace,
+            Token::IntLit(1), Token::FatArrow, Token::IntLit(10), Token::Comma,
+            Token::Underscore, Token::FatArrow, Token::IntLit(0), Token::RBrace,
+        ]);
+    }
+
+    #[test]
+    fn test_tokenize_extern_function() {
+        let tokens = tokenize("extern fn puts(s: String) -> i64;").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds[0], Token::Extern);
+        assert_eq!(kinds[1], Token::Fn);
+    }
+
+    #[test]
+    fn test_tokenize_where_contract() {
+        let tokens = tokenize("where { pre x > 0 }").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![
+            Token::Where, Token::LBrace, Token::Pre,
+            Token::Ident("x".to_string()), Token::Gt, Token::IntLit(0),
+            Token::RBrace,
+        ]);
+    }
 }

@@ -675,4 +675,250 @@ mod tests {
         assert_eq!(imports.len(), 1);
         assert_eq!(imports.get_import_module("A"), Some("mod2"));
     }
+
+    // ================================================================
+    // Additional resolver tests (Cycle 1233)
+    // ================================================================
+
+    #[test]
+    fn test_exported_item_clone() {
+        let fn_item = ExportedItem::Function("add".to_string());
+        let cloned = fn_item.clone();
+        assert_eq!(format!("{:?}", fn_item), format!("{:?}", cloned));
+
+        let enum_item = ExportedItem::Enum("Color".to_string());
+        let cloned_enum = enum_item.clone();
+        assert_eq!(format!("{:?}", enum_item), format!("{:?}", cloned_enum));
+    }
+
+    #[test]
+    fn test_extract_exports_empty_program() {
+        let program = Program { header: None, items: vec![] };
+        let exports = Resolver::extract_exports(&program);
+        assert!(exports.is_empty());
+    }
+
+    #[test]
+    fn test_resolver_modules_in_order_empty() {
+        let resolver = Resolver::new("/tmp");
+        let modules: Vec<_> = resolver.modules_in_order().collect();
+        assert!(modules.is_empty());
+    }
+
+    #[test]
+    fn test_resolved_imports_enum_variant() {
+        let mut imports = ResolvedImports::new();
+        let span = Span { start: 0, end: 0 };
+        imports.add_import(
+            "Color".to_string(),
+            "colors".to_string(),
+            ExportedItem::Enum("Color".to_string()),
+            span,
+        );
+        assert!(imports.is_imported("Color"));
+        assert_eq!(imports.get_import_module("Color"), Some("colors"));
+    }
+
+    #[test]
+    fn test_mark_used_idempotent() {
+        let mut imports = ResolvedImports::new();
+        let span = Span { start: 0, end: 0 };
+        imports.add_import(
+            "X".to_string(),
+            "mod_x".to_string(),
+            ExportedItem::Struct("X".to_string()),
+            span,
+        );
+        imports.mark_used("X");
+        imports.mark_used("X"); // Mark again — should be no-op
+        assert!(imports.get_unused().is_empty());
+    }
+
+    #[test]
+    fn test_get_unused_all_used() {
+        let mut imports = ResolvedImports::new();
+        let span = Span { start: 0, end: 0 };
+        imports.add_import("A".to_string(), "m".to_string(), ExportedItem::Struct("A".to_string()), span);
+        imports.add_import("B".to_string(), "m".to_string(), ExportedItem::Struct("B".to_string()), span);
+        imports.add_import("C".to_string(), "m".to_string(), ExportedItem::Struct("C".to_string()), span);
+        imports.mark_used("A");
+        imports.mark_used("B");
+        imports.mark_used("C");
+        assert!(imports.get_unused().is_empty());
+    }
+
+    #[test]
+    fn test_import_info_used_default_false() {
+        let mut imports = ResolvedImports::new();
+        let span = Span { start: 5, end: 15 };
+        imports.add_import(
+            "Token".to_string(),
+            "lexer".to_string(),
+            ExportedItem::Struct("Token".to_string()),
+            span,
+        );
+        // Newly added import should have used = false
+        let (_, info) = imports.all_imports().next().unwrap();
+        assert!(!info.used);
+        assert_eq!(info.span, span);
+        assert_eq!(info.module, "lexer");
+    }
+
+    #[test]
+    fn test_extract_exports_multiple_pub_enums() {
+        let source = r#"
+            pub enum Color { Red, Green, Blue }
+            pub enum Shape { Circle, Square }
+        "#;
+        let tokens = crate::lexer::tokenize(source).unwrap();
+        let program = crate::parser::parse("test", source, tokens).unwrap();
+        let exports = Resolver::extract_exports(&program);
+        assert_eq!(exports.len(), 2);
+        assert!(matches!(exports.get("Color"), Some(ExportedItem::Enum(_))));
+        assert!(matches!(exports.get("Shape"), Some(ExportedItem::Enum(_))));
+    }
+
+    #[test]
+    fn test_underscore_mixed_with_regular_unused() {
+        let mut imports = ResolvedImports::new();
+        let span = Span { start: 0, end: 0 };
+        imports.add_import("_hidden".to_string(), "m".to_string(), ExportedItem::Struct("_hidden".to_string()), span);
+        imports.add_import("visible".to_string(), "m".to_string(), ExportedItem::Struct("visible".to_string()), span);
+        // Only 'visible' should be reported as unused
+        let unused = imports.get_unused();
+        assert_eq!(unused.len(), 1);
+        assert_eq!(unused[0].0, "visible");
+    }
+
+    #[test]
+    fn test_resolver_load_module_error_message() {
+        let mut resolver = Resolver::new("/nonexistent/path/bmb_test");
+        let result = resolver.load_module("missing_module");
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("missing_module"));
+    }
+
+    // ================================================================
+    // Additional resolver tests (Cycle 1238)
+    // ================================================================
+
+    #[test]
+    fn test_resolver_debug_format() {
+        let resolver = Resolver::new("/tmp/test");
+        let debug = format!("{:?}", resolver);
+        assert!(debug.contains("Resolver"));
+        assert!(debug.contains("base_dir"));
+    }
+
+    #[test]
+    fn test_module_clone() {
+        let source = "pub fn id(x: i64) -> i64 = x;";
+        let tokens = crate::lexer::tokenize(source).unwrap();
+        let program = crate::parser::parse("test", source, tokens).unwrap();
+        let exports = Resolver::extract_exports(&program);
+        let module = Module {
+            name: "test".to_string(),
+            path: PathBuf::from("/tmp/test.bmb"),
+            program,
+            exports,
+        };
+        let cloned = module.clone();
+        assert_eq!(cloned.name, module.name);
+        assert_eq!(cloned.path, module.path);
+        assert_eq!(cloned.exports.len(), module.exports.len());
+    }
+
+    #[test]
+    fn test_import_info_debug() {
+        let info = ImportInfo {
+            module: "lexer".to_string(),
+            item: ExportedItem::Struct("Token".to_string()),
+            span: Span { start: 0, end: 10 },
+            used: false,
+        };
+        let debug = format!("{:?}", info);
+        assert!(debug.contains("ImportInfo"));
+        assert!(debug.contains("lexer"));
+    }
+
+    #[test]
+    fn test_import_info_clone() {
+        let info = ImportInfo {
+            module: "parser".to_string(),
+            item: ExportedItem::Function("parse".to_string()),
+            span: Span { start: 5, end: 20 },
+            used: true,
+        };
+        let cloned = info.clone();
+        assert_eq!(cloned.module, info.module);
+        assert_eq!(cloned.span, info.span);
+        assert_eq!(cloned.used, info.used);
+    }
+
+    #[test]
+    fn test_resolved_imports_default_trait() {
+        let imports = ResolvedImports::default();
+        assert!(imports.is_empty());
+        assert_eq!(imports.len(), 0);
+    }
+
+    #[test]
+    fn test_exported_item_function_debug() {
+        let item = ExportedItem::Function("compute".to_string());
+        let debug = format!("{:?}", item);
+        assert!(debug.contains("Function"));
+        assert!(debug.contains("compute"));
+    }
+
+    #[test]
+    fn test_exported_item_struct_debug() {
+        let item = ExportedItem::Struct("Point".to_string());
+        let debug = format!("{:?}", item);
+        assert!(debug.contains("Struct"));
+        assert!(debug.contains("Point"));
+    }
+
+    #[test]
+    fn test_exported_item_enum_debug() {
+        let item = ExportedItem::Enum("Direction".to_string());
+        let debug = format!("{:?}", item);
+        assert!(debug.contains("Enum"));
+        assert!(debug.contains("Direction"));
+    }
+
+    #[test]
+    fn test_extract_exports_multiple_pub_fns() {
+        let source = r#"
+            fn private1() -> i64 = 1;
+            pub fn public1() -> i64 = 2;
+            fn private2() -> i64 = 3;
+            pub fn public2() -> i64 = 4;
+            pub fn public3() -> i64 = 5;
+        "#;
+        let tokens = crate::lexer::tokenize(source).unwrap();
+        let program = crate::parser::parse("test", source, tokens).unwrap();
+        let exports = Resolver::extract_exports(&program);
+        assert_eq!(exports.len(), 3);
+        assert!(exports.contains_key("public1"));
+        assert!(exports.contains_key("public2"));
+        assert!(exports.contains_key("public3"));
+        assert!(!exports.contains_key("private1"));
+        assert!(!exports.contains_key("private2"));
+    }
+
+    #[test]
+    fn test_get_unused_partial() {
+        let mut imports = ResolvedImports::new();
+        let span = Span { start: 0, end: 0 };
+        imports.add_import("A".to_string(), "m".to_string(), ExportedItem::Struct("A".to_string()), span);
+        imports.add_import("B".to_string(), "m".to_string(), ExportedItem::Struct("B".to_string()), span);
+        imports.add_import("C".to_string(), "m".to_string(), ExportedItem::Struct("C".to_string()), span);
+        imports.mark_used("B");
+        let unused = imports.get_unused();
+        assert_eq!(unused.len(), 2);
+        let names: Vec<&str> = unused.iter().map(|(n, _)| n.as_str()).collect();
+        assert!(names.contains(&"A"));
+        assert!(names.contains(&"C"));
+    }
 }

@@ -900,4 +900,125 @@ mod tests {
         verifier.database_mut().clear();
         assert!(verifier.database().is_empty());
     }
+
+    // ================================================================
+    // Additional incremental verification tests (Cycle 1237)
+    // ================================================================
+
+    #[test]
+    fn test_extract_callees_in_binop() {
+        let body = CirExpr::BinOp {
+            op: crate::cir::BinOp::Add,
+            lhs: Box::new(CirExpr::Call { func: "left".to_string(), args: vec![] }),
+            rhs: Box::new(CirExpr::Call { func: "right".to_string(), args: vec![] }),
+        };
+        let callees = extract_callees(&body);
+        assert!(callees.contains("left"));
+        assert!(callees.contains("right"));
+    }
+
+    #[test]
+    fn test_extract_callees_in_for() {
+        let body = CirExpr::For {
+            var: "i".to_string(),
+            iter: Box::new(CirExpr::Call { func: "range".to_string(), args: vec![] }),
+            body: Box::new(CirExpr::Call { func: "process".to_string(), args: vec![] }),
+        };
+        let callees = extract_callees(&body);
+        assert!(callees.contains("range"));
+        assert!(callees.contains("process"));
+    }
+
+    #[test]
+    fn test_extract_callees_in_index() {
+        let body = CirExpr::Index {
+            base: Box::new(CirExpr::Call { func: "get_arr".to_string(), args: vec![] }),
+            index: Box::new(CirExpr::Call { func: "get_idx".to_string(), args: vec![] }),
+        };
+        let callees = extract_callees(&body);
+        assert!(callees.contains("get_arr"));
+        assert!(callees.contains("get_idx"));
+    }
+
+    #[test]
+    fn test_extract_callees_in_array() {
+        let body = CirExpr::Array(vec![
+            CirExpr::Call { func: "elem1".to_string(), args: vec![] },
+            CirExpr::Call { func: "elem2".to_string(), args: vec![] },
+        ]);
+        let callees = extract_callees(&body);
+        assert!(callees.contains("elem1"));
+        assert!(callees.contains("elem2"));
+    }
+
+    #[test]
+    fn test_extract_callees_in_let_mut() {
+        let body = CirExpr::LetMut {
+            name: "x".to_string(),
+            ty: CirType::I64,
+            value: Box::new(CirExpr::Call { func: "init_fn".to_string(), args: vec![] }),
+            body: Box::new(CirExpr::IntLit(0)),
+        };
+        let callees = extract_callees(&body);
+        assert!(callees.contains("init_fn"));
+    }
+
+    #[test]
+    fn test_extract_callees_in_unary_op() {
+        let body = CirExpr::UnaryOp {
+            op: crate::cir::UnaryOp::Neg,
+            operand: Box::new(CirExpr::Call { func: "compute".to_string(), args: vec![] }),
+        };
+        let callees = extract_callees(&body);
+        assert!(callees.contains("compute"));
+    }
+
+    #[test]
+    fn test_extract_callees_in_field() {
+        let body = CirExpr::Field {
+            base: Box::new(CirExpr::Call { func: "get_struct".to_string(), args: vec![] }),
+            field: "x".to_string(),
+        };
+        let callees = extract_callees(&body);
+        assert!(callees.contains("get_struct"));
+    }
+
+    #[test]
+    fn test_incremental_result_debug() {
+        let result = IncrementalVerificationResult {
+            verified_functions: vec!["foo".to_string()],
+            skipped_functions: vec!["bar".to_string()],
+            failed_functions: vec![],
+            total_time_ms: 100,
+            time_saved_ms: 50,
+        };
+        let debug = format!("{:?}", result);
+        assert!(debug.contains("foo"));
+        assert!(debug.contains("bar"));
+    }
+
+    #[test]
+    fn test_witness_to_proof_result_error() {
+        let func = make_test_function("foo");
+        let witness = ProofWitness {
+            function: "foo".to_string(),
+            outcome: ProofOutcome::Error("solver crashed".to_string()),
+            verification_time_ms: 0,
+            smt_script: None,
+            counterexample: None,
+        };
+        let result = witness_to_proof_result(&witness, &func);
+        assert_eq!(result.status, VerificationStatus::Unknown);
+        assert!(result.proven_facts.is_empty());
+    }
+
+    #[test]
+    fn test_extract_callees_in_ref() {
+        let body = CirExpr::Ref(Box::new(CirExpr::Call {
+            func: "get_val".to_string(),
+            args: vec![],
+        }));
+        let callees = extract_callees(&body);
+        assert!(callees.contains("get_val"));
+    }
 }

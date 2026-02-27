@@ -118,12 +118,13 @@ fn gen_const_float(dest: String, text: String) -> String =
     dest + " = fadd double 0.0, " + text;
 
 // Parse constant value from MIR format: I:42 or B:1 or S:hello or F:3.14
+// Also handles bare integers: 0, 1, 42 (without type prefix)
 // 'I'=73=int, 'B'=66=bool, 'U'=85=unit, 'S'=83=string, 'F'=70=float
 fn parse_const_type(val: String) -> String =
-    if val.len() < 2 { "unknown" } else if val.byte_at(0) == 73 { "int" } else if val.byte_at(0) == 66 { "bool" } else if val.byte_at(0) == 85 { "unit" } else if val.byte_at(0) == 83 { "string" } else if val.byte_at(0) == 70 { "float" } else { "unknown" };
+    if val.len() < 1 { "unknown" } else if is_digit(val.byte_at(0)) { "int" } else if val.len() < 2 { "unknown" } else if val.byte_at(0) == 73 { "int" } else if val.byte_at(0) == 66 { "bool" } else if val.byte_at(0) == 85 { "unit" } else if val.byte_at(0) == 83 { "string" } else if val.byte_at(0) == 70 { "float" } else { "unknown" };
 
 fn parse_const_value(val: String) -> i64 =
-    if val.len() < 3 { 0 } else { parse_int_from(val, 2, 0) };
+    if val.len() < 1 { 0 } else if is_digit(val.byte_at(0)) { parse_int_from(val, 0, 0) } else if val.len() < 3 { 0 } else { parse_int_from(val, 2, 0) };
 
 // v0.30.51: Extract string content from S:hello format
 fn parse_const_string(val: String) -> String =

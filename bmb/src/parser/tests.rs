@@ -1763,3 +1763,500 @@ fn test_parse_index_assignment() {
     // Just verify it parses without error
     assert_eq!(prog.items.len(), 1);
 }
+
+// ============================================
+// Cycle 1219: Advanced Parser Constructs
+// ============================================
+
+// --- Reference Types and Expressions ---
+
+#[test]
+fn test_parse_ref_expression() {
+    let prog = parse_ok("fn take_ref(x: i64) -> i64 = { let r = &x; *r };");
+    assert_eq!(prog.items.len(), 1);
+    if let Item::FnDef(f) = &prog.items[0] {
+        assert_eq!(f.name.node, "take_ref");
+    }
+}
+
+#[test]
+fn test_parse_ref_mut_expression() {
+    let prog = parse_ok("fn mutate(x: i64) -> i64 = { let r = &mut x; *r };");
+    assert_eq!(prog.items.len(), 1);
+}
+
+#[test]
+fn test_parse_ref_type_parameter() {
+    let prog = parse_ok("fn borrow(x: &i64) -> i64 = *x;");
+    if let Item::FnDef(f) = &prog.items[0] {
+        assert_eq!(f.params.len(), 1);
+    }
+}
+
+#[test]
+fn test_parse_ref_mut_type_parameter() {
+    let prog = parse_ok("fn borrow_mut(x: &mut i64) -> i64 = *x;");
+    if let Item::FnDef(f) = &prog.items[0] {
+        assert_eq!(f.params.len(), 1);
+    }
+}
+
+#[test]
+fn test_parse_deref_assignment() {
+    let source = r#"
+        fn write_ptr(p: *i64) -> () = {
+            set *p = 42;
+            ()
+        };
+    "#;
+    let prog = parse_ok(source);
+    assert_eq!(prog.items.len(), 1);
+}
+
+// --- Uninitialized Let Bindings ---
+
+#[test]
+fn test_parse_let_uninit() {
+    // LetUninit syntax: let [mut] name: Type; body
+    // Note: LetUninit is in Expr (not BlockStmt), so it works in expression position
+    let source = "fn test() -> i64 = let mut x: i64; 0;";
+    let prog = parse_ok(source);
+    assert_eq!(prog.items.len(), 1);
+}
+
+// --- Named Return Binding ---
+
+#[test]
+fn test_parse_named_return() {
+    let prog = parse_ok(
+        "fn increment(x: i64) -> result: i64 post result >= 0 = x + 1;"
+    );
+    if let Item::FnDef(f) = &prog.items[0] {
+        assert!(f.ret_name.is_some());
+        assert_eq!(f.ret_name.as_ref().unwrap().node, "result");
+    }
+}
+
+// --- Where Contract Block ---
+
+#[test]
+fn test_parse_where_contract_block() {
+    let source = r#"
+        fn divide(a: i64, b: i64) -> i64
+          where {
+            nonzero: b != 0
+          }
+        = a / b;
+    "#;
+    let prog = parse_ok(source);
+    assert_eq!(prog.items.len(), 1);
+}
+
+#[test]
+fn test_parse_where_multiple_contracts() {
+    let source = r#"
+        fn bounded_add(a: i64, b: i64) -> r: i64
+          where {
+            positive_a: a >= 0,
+            positive_b: b >= 0,
+            no_overflow: r >= a
+          }
+        = a + b;
+    "#;
+    let prog = parse_ok(source);
+    assert_eq!(prog.items.len(), 1);
+}
+
+// --- Refinement Types ---
+
+#[test]
+fn test_parse_refinement_type_param() {
+    let prog = parse_ok(
+        "fn safe_div(a: i64, b: i64{it != 0}) -> i64 = a / b;"
+    );
+    assert_eq!(prog.items.len(), 1);
+}
+
+#[test]
+fn test_parse_refinement_type_return() {
+    let prog = parse_ok(
+        "fn positive(x: i64) -> i64{it >= 0} = if x >= 0 { x } else { 0 - x };"
+    );
+    assert_eq!(prog.items.len(), 1);
+}
+
+#[test]
+fn test_parse_refinement_type_multiple_constraints() {
+    let prog = parse_ok(
+        "fn clamp(x: i64, lo: i64, hi: i64) -> i64{it >= lo, it <= hi} = if x < lo { lo } else { if x > hi { hi } else { x } };"
+    );
+    assert_eq!(prog.items.len(), 1);
+}
+
+// --- Or-Patterns ---
+
+#[test]
+fn test_parse_or_pattern() {
+    let source = r#"
+        fn classify(x: i64) -> i64 = match x {
+            1 | 2 | 3 => 10,
+            _ => 0
+        };
+    "#;
+    let prog = parse_ok(source);
+    if let Item::FnDef(f) = &prog.items[0] {
+        if let Expr::Match { arms, .. } = &f.body.node {
+            assert_eq!(arms.len(), 2);
+        }
+    }
+}
+
+// --- Struct Patterns ---
+
+#[test]
+fn test_parse_struct_pattern() {
+    let source = r#"
+        struct Point { x: i64, y: i64 }
+        fn get_x(p: Point) -> i64 = match p {
+            Point { x: val, y: _ } => val
+        };
+    "#;
+    let prog = parse_ok(source);
+    assert_eq!(prog.items.len(), 2);
+}
+
+// --- Binding Patterns ---
+
+#[test]
+fn test_parse_binding_pattern() {
+    let source = r#"
+        enum Option { Some(i64), None }
+        fn extract(o: Option) -> i64 = match o {
+            v @ Option::Some(n) => n,
+            Option::None => 0
+        };
+    "#;
+    let prog = parse_ok(source);
+    assert_eq!(prog.items.len(), 2);
+}
+
+// --- Tuple Patterns ---
+
+#[test]
+fn test_parse_tuple_pattern() {
+    let source = r#"
+        fn fst(p: (i64, i64)) -> i64 = match p {
+            (x, _) => x
+        };
+    "#;
+    let prog = parse_ok(source);
+    assert_eq!(prog.items.len(), 1);
+}
+
+// --- Array Patterns ---
+
+#[test]
+fn test_parse_array_pattern_empty() {
+    let source = r#"
+        fn test_arr(a: [i64; 0]) -> i64 = match a {
+            [] => 0
+        };
+    "#;
+    let prog = parse_ok(source);
+    assert_eq!(prog.items.len(), 1);
+}
+
+// --- Range Patterns ---
+
+#[test]
+fn test_parse_range_pattern_exclusive() {
+    let source = r#"
+        fn bucket(x: i64) -> i64 = match x {
+            0..10 => 1,
+            _ => 0
+        };
+    "#;
+    let prog = parse_ok(source);
+    assert_eq!(prog.items.len(), 1);
+}
+
+#[test]
+fn test_parse_range_pattern_inclusive() {
+    let source = r#"
+        fn grade(score: i64) -> i64 = match score {
+            90..=100 => 4,
+            80..=89 => 3,
+            _ => 0
+        };
+    "#;
+    let prog = parse_ok(source);
+    assert_eq!(prog.items.len(), 1);
+}
+
+// --- Float and String Literal Patterns ---
+
+#[test]
+fn test_parse_float_literal_pattern() {
+    let source = r#"
+        fn check_pi(x: f64) -> bool = match x {
+            3.14 => true,
+            _ => false
+        };
+    "#;
+    let prog = parse_ok(source);
+    assert_eq!(prog.items.len(), 1);
+}
+
+#[test]
+fn test_parse_string_literal_pattern() {
+    let source = r#"
+        fn greet(name: String) -> i64 = match name {
+            "Alice" => 1,
+            "Bob" => 2,
+            _ => 0
+        };
+    "#;
+    let prog = parse_ok(source);
+    assert_eq!(prog.items.len(), 1);
+}
+
+// --- Exclusive and Inclusive Range Expressions ---
+
+#[test]
+fn test_parse_exclusive_range_for() {
+    let source = r#"
+        fn sum_exclusive() -> i64 = {
+            let mut s = 0;
+            for i in 0..<10 {
+                s = s + i;
+                0
+            };
+            s
+        };
+    "#;
+    let prog = parse_ok(source);
+    assert_eq!(prog.items.len(), 1);
+}
+
+#[test]
+fn test_parse_inclusive_range_for() {
+    let source = r#"
+        fn sum_inclusive() -> i64 = {
+            let mut s = 0;
+            for i in 1..=5 {
+                s = s + i;
+                0
+            };
+            s
+        };
+    "#;
+    let prog = parse_ok(source);
+    assert_eq!(prog.items.len(), 1);
+}
+
+// --- Type Parameters with Bounds ---
+
+#[test]
+fn test_parse_type_param_with_bound() {
+    let prog = parse_ok("fn max<T: Ord>(a: T, b: T) -> T = if a > b { a } else { b };");
+    if let Item::FnDef(f) = &prog.items[0] {
+        assert_eq!(f.type_params.len(), 1);
+    }
+}
+
+#[test]
+fn test_parse_type_param_multiple_bounds() {
+    let prog = parse_ok("fn process<T: Ord + Clone>(x: T) -> T = x;");
+    if let Item::FnDef(f) = &prog.items[0] {
+        assert_eq!(f.type_params.len(), 1);
+    }
+}
+
+// --- Sizeof Expression ---
+
+#[test]
+fn test_parse_sizeof() {
+    let prog = parse_ok("fn size() -> i64 = sizeof<i64>();");
+    if let Item::FnDef(f) = &prog.items[0] {
+        if let Expr::Sizeof { .. } = &f.body.node {
+            // correct
+        } else {
+            panic!("Expected Sizeof expression");
+        }
+    }
+}
+
+// --- State References (.pre, .post) ---
+
+#[test]
+fn test_parse_state_ref_pre() {
+    let source = r#"
+        fn double(x: i64) -> i64
+          post it == x.pre * 2
+        = x * 2;
+    "#;
+    let prog = parse_ok(source);
+    assert_eq!(prog.items.len(), 1);
+}
+
+// --- Character Literals ---
+
+#[test]
+fn test_parse_char_literal() {
+    let prog = parse_ok("fn first_char() -> char = 'a';");
+    if let Item::FnDef(f) = &prog.items[0] {
+        if let Expr::CharLit(c) = &f.body.node {
+            assert_eq!(*c, 'a');
+        } else {
+            panic!("Expected CharLit");
+        }
+    }
+}
+
+#[test]
+fn test_parse_char_type() {
+    let prog = parse_ok("fn identity(c: char) -> char = c;");
+    if let Item::FnDef(f) = &prog.items[0] {
+        assert_eq!(f.params.len(), 1);
+    }
+}
+
+// --- Tuple Type Annotations ---
+
+#[test]
+fn test_parse_tuple_type_param() {
+    let prog = parse_ok("fn swap(p: (i64, i64)) -> (i64, i64) = (p.1, p.0);");
+    assert_eq!(prog.items.len(), 1);
+}
+
+// --- Tuple Field Access ---
+
+#[test]
+fn test_parse_tuple_field_access() {
+    let prog = parse_ok("fn fst(p: (i64, i64)) -> i64 = p.0;");
+    if let Item::FnDef(f) = &prog.items[0] {
+        if let Expr::TupleField { index, .. } = &f.body.node {
+            assert_eq!(*index, 0);
+        } else {
+            panic!("Expected TupleField expression");
+        }
+    }
+}
+
+#[test]
+fn test_parse_tuple_field_access_second() {
+    let prog = parse_ok("fn snd(p: (i64, i64)) -> i64 = p.1;");
+    if let Item::FnDef(f) = &prog.items[0] {
+        if let Expr::TupleField { index, .. } = &f.body.node {
+            assert_eq!(*index, 1);
+        } else {
+            panic!("Expected TupleField expression");
+        }
+    }
+}
+
+// --- Concurrency: Spawn (already has basic test, add complex) ---
+
+#[test]
+fn test_parse_spawn_with_capture() {
+    let source = r#"
+        fn parallel(x: i64) -> i64 = {
+            let t = spawn { x + 1 };
+            0
+        };
+    "#;
+    let prog = parse_ok(source);
+    assert_eq!(prog.items.len(), 1);
+}
+
+// --- Module Header ---
+
+#[test]
+fn test_parse_module_header() {
+    let source = r#"
+        module math.arith
+        version "1.0"
+        summary "arithmetic operations"
+        exports add, sub
+        ===
+        fn add(a: i64, b: i64) -> i64 = a + b;
+        fn sub(a: i64, b: i64) -> i64 = a - b;
+    "#;
+    let prog = parse_ok(source);
+    // Module header + 2 functions
+    assert!(prog.items.len() >= 2);
+}
+
+// --- Pointer Type ---
+
+#[test]
+fn test_parse_pointer_type() {
+    let prog = parse_ok("fn get_ptr(x: *i64) -> i64 = *x;");
+    assert_eq!(prog.items.len(), 1);
+}
+
+// --- Nullable Type ---
+
+#[test]
+fn test_parse_nullable_with_refinement() {
+    let prog = parse_ok("fn maybe_positive(x: i64?) -> i64 = 0;");
+    assert_eq!(prog.items.len(), 1);
+}
+
+// --- Attribute with Reason ---
+
+#[test]
+fn test_parse_trust_attribute() {
+    let source = r#"
+        @trust "verified externally"
+        fn extern_op() -> i64 = 42;
+    "#;
+    let prog = parse_ok(source);
+    if let Item::FnDef(f) = &prog.items[0] {
+        assert!(!f.attributes.is_empty());
+    }
+}
+
+// --- Type Alias with Refinement ---
+
+#[test]
+fn test_parse_type_alias_with_refinement() {
+    let source = r#"
+        type Positive = i64 where { it > 0 };
+        fn test(x: Positive) -> Positive = x;
+    "#;
+    let prog = parse_ok(source);
+    assert!(prog.items.len() >= 2);
+}
+
+// --- Complex: Combined Features ---
+
+#[test]
+fn test_parse_combined_refinement_where_named() {
+    let source = r#"
+        fn bounded_add(a: i64{it >= 0}, b: i64{it >= 0}) -> r: i64
+          where {
+            no_overflow: r >= a
+          }
+        = a + b;
+    "#;
+    let prog = parse_ok(source);
+    assert_eq!(prog.items.len(), 1);
+}
+
+#[test]
+fn test_parse_complex_match_patterns() {
+    let source = r#"
+        fn test(x: i64) -> i64 = match x {
+            0..10 => 1,
+            10..=20 => 2,
+            _ => 3
+        };
+    "#;
+    let prog = parse_ok(source);
+    if let Item::FnDef(f) = &prog.items[0] {
+        if let Expr::Match { arms, .. } = &f.body.node {
+            assert_eq!(arms.len(), 3);
+        }
+    }
+}

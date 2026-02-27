@@ -1,4 +1,4 @@
-# Local
+# Local / IDE
 local-docs/
 claudedocs/
 /research/
@@ -7,6 +7,8 @@ CLAUDE.md
 *.local
 /tools/
 .claude/
+.bmb/
+dev-docs/
 nul
 
 # Claude Code temp files (known bug: github.com/anthropics/claude-code/issues/8856)
@@ -33,7 +35,6 @@ Cargo.lock
 !golden/**/bmb
 
 # Auto-generated files
-.bmb/index/
 *.mir
 *.ll.raw
 stage2*.ll.raw
@@ -52,15 +53,21 @@ bmb-stage2*
 bmb_stage1*
 bmb_unified*
 stage2_bin
+bootstrap_stage*
+bs_s1_*
 
 # Assembly output
 *.s
 
-# Build directories
+# Build directories & artifacts
 build/
 build_test/
 build_wsl/
 benchmark_run/
+bench_results/
+benchmark_results*/
+output/
+tmp/
 
 # Temporary scripts
 convert_mir.py
@@ -82,4 +89,3 @@ experiments/.env.local
 *.tmp
 *.proofcache
 VERSION
-

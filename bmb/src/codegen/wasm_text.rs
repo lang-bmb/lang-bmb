@@ -4599,4 +4599,1323 @@ mod tests {
         assert_eq!(cg.infer_operand_wasm_type(&Operand::Place(Place::new("y")), &func), "i32");
         assert_eq!(cg.infer_operand_wasm_type(&Operand::Place(Place::new("unknown")), &func), "i64");
     }
+
+    // =========================================================================
+    // Cycle 1217: Loop & Control Flow Tests
+    // =========================================================================
+
+    // --- While loop pattern (goto + branch + phi) ---
+
+    #[test]
+    fn test_while_loop_pattern() {
+        // while (i < n) { sum = sum + i; i = i + 1; }
+        // entry: i=0, sum=0, goto loop_header
+        // loop_header: branch(i < n, loop_body, loop_exit)
+        // loop_body: sum = sum + i; i = i + 1; goto loop_header
+        // loop_exit: return sum
+        let program = multi_block_program(
+            "sum_loop",
+            vec![("n", MirType::I64)],
+            MirType::I64,
+            vec![
+                ("i", MirType::I64),
+                ("sum", MirType::I64),
+                ("_cond", MirType::Bool),
+            ],
+            vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::Const { dest: Place::new("i"), value: Constant::Int(0) },
+                        MirInst::Const { dest: Place::new("sum"), value: Constant::Int(0) },
+                    ],
+                    terminator: Terminator::Goto("loop_header".to_string()),
+                },
+                BasicBlock {
+                    label: "loop_header".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("_cond"),
+                        op: MirBinOp::Lt,
+                        lhs: Operand::Place(Place::new("i")),
+                        rhs: Operand::Place(Place::new("n")),
+                    }],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("_cond")),
+                        then_label: "loop_body".to_string(),
+                        else_label: "loop_exit".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "loop_body".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("sum"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("sum")),
+                            rhs: Operand::Place(Place::new("i")),
+                        },
+                        MirInst::BinOp {
+                            dest: Place::new("i"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("i")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                    ],
+                    terminator: Terminator::Goto("loop_header".to_string()),
+                },
+                BasicBlock {
+                    label: "loop_exit".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("sum")))),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("(block $entry"), "entry block");
+        assert!(wat.contains("(block $loop_header"), "loop_header block");
+        assert!(wat.contains("(block $loop_body"), "loop_body block");
+        assert!(wat.contains("(block $loop_exit"), "loop_exit block");
+        assert!(wat.contains("i64.lt_s"), "loop condition (i < n)");
+        assert!(wat.contains("br $loop_header"), "back-edge to loop header");
+        assert!(wat.contains("br $loop_exit"), "exit branch");
+        assert!(wat.contains("i64.add"), "accumulation in loop body");
+    }
+
+    #[test]
+    fn test_nested_branch_wasm() {
+        // if (x > 0) { if (x > 10) { 2 } else { 1 } } else { 0 }
+        let program = multi_block_program(
+            "nested_branch",
+            vec![("x", MirType::I64)],
+            MirType::I64,
+            vec![("_c1", MirType::Bool), ("_c2", MirType::Bool)],
+            vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("_c1"),
+                        op: MirBinOp::Gt,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Int(0)),
+                    }],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("_c1")),
+                        then_label: "outer_then".to_string(),
+                        else_label: "outer_else".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "outer_then".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("_c2"),
+                        op: MirBinOp::Gt,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Int(10)),
+                    }],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("_c2")),
+                        then_label: "inner_then".to_string(),
+                        else_label: "inner_else".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "inner_then".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(2)))),
+                },
+                BasicBlock {
+                    label: "inner_else".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(1)))),
+                },
+                BasicBlock {
+                    label: "outer_else".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("(block $outer_then"), "outer then block");
+        assert!(wat.contains("(block $inner_then"), "inner then block");
+        assert!(wat.contains("(block $inner_else"), "inner else block");
+        assert!(wat.contains("(block $outer_else"), "outer else block");
+        // Both branches generate if/then/else
+        assert!(wat.contains("(if"), "branch generates if instruction");
+    }
+
+    #[test]
+    fn test_goto_chain_wasm() {
+        // entry → block_a → block_b → block_c → return
+        let program = multi_block_program(
+            "chain_fn",
+            vec![],
+            MirType::I64,
+            vec![("x", MirType::I64)],
+            vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::Const {
+                        dest: Place::new("x"),
+                        value: Constant::Int(1),
+                    }],
+                    terminator: Terminator::Goto("block_a".to_string()),
+                },
+                BasicBlock {
+                    label: "block_a".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("x"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Int(10)),
+                    }],
+                    terminator: Terminator::Goto("block_b".to_string()),
+                },
+                BasicBlock {
+                    label: "block_b".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("x"),
+                        op: MirBinOp::Mul,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Int(2)),
+                    }],
+                    terminator: Terminator::Goto("block_c".to_string()),
+                },
+                BasicBlock {
+                    label: "block_c".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("x")))),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("br $block_a"), "goto block_a");
+        assert!(wat.contains("br $block_b"), "goto block_b");
+        assert!(wat.contains("br $block_c"), "goto block_c");
+        assert!(wat.contains("i64.add"), "add in block_a");
+        assert!(wat.contains("i64.mul"), "mul in block_b");
+    }
+
+    #[test]
+    fn test_branch_with_computation() {
+        // abs(x): if x < 0 then -x else x
+        let program = multi_block_program(
+            "abs_fn",
+            vec![("x", MirType::I64)],
+            MirType::I64,
+            vec![("_cond", MirType::Bool), ("_neg", MirType::I64)],
+            vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("_cond"),
+                        op: MirBinOp::Lt,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Int(0)),
+                    }],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("_cond")),
+                        then_label: "neg_case".to_string(),
+                        else_label: "pos_case".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "neg_case".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("_neg"),
+                        op: MirBinOp::Sub,
+                        lhs: Operand::Constant(Constant::Int(0)),
+                        rhs: Operand::Place(Place::new("x")),
+                    }],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("_neg")))),
+                },
+                BasicBlock {
+                    label: "pos_case".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("x")))),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("i64.lt_s"), "comparison x < 0");
+        assert!(wat.contains("br $neg_case"), "branch to neg_case");
+        assert!(wat.contains("br $pos_case"), "branch to pos_case");
+        assert!(wat.contains("i64.sub"), "negation via 0 - x");
+    }
+
+    #[test]
+    fn test_switch_many_cases() {
+        // switch with 5 cases
+        let program = multi_block_program(
+            "switch5_fn",
+            vec![("x", MirType::I64)],
+            MirType::I64,
+            vec![],
+            vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Switch {
+                        discriminant: Operand::Place(Place::new("x")),
+                        cases: vec![
+                            (0, "c0".to_string()),
+                            (1, "c1".to_string()),
+                            (2, "c2".to_string()),
+                            (3, "c3".to_string()),
+                            (4, "c4".to_string()),
+                        ],
+                        default: "def".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "c0".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(100)))),
+                },
+                BasicBlock {
+                    label: "c1".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(200)))),
+                },
+                BasicBlock {
+                    label: "c2".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(300)))),
+                },
+                BasicBlock {
+                    label: "c3".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(400)))),
+                },
+                BasicBlock {
+                    label: "c4".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(500)))),
+                },
+                BasicBlock {
+                    label: "def".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("br_if $c0"), "branch to case 0");
+        assert!(wat.contains("br_if $c1"), "branch to case 1");
+        assert!(wat.contains("br_if $c2"), "branch to case 2");
+        assert!(wat.contains("br_if $c3"), "branch to case 3");
+        assert!(wat.contains("br_if $c4"), "branch to case 4");
+        assert!(wat.contains("br $def"), "default case branch");
+    }
+
+    #[test]
+    fn test_switch_default_only() {
+        // switch with no cases, just default
+        let program = multi_block_program(
+            "switch_default_fn",
+            vec![("x", MirType::I64)],
+            MirType::I64,
+            vec![],
+            vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Switch {
+                        discriminant: Operand::Place(Place::new("x")),
+                        cases: vec![],
+                        default: "def".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "def".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(99)))),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("br $def"), "branch to default");
+    }
+
+    #[test]
+    fn test_recursive_function_call() {
+        // factorial(n): if n <= 1 return 1 else return n * factorial(n-1)
+        let program = multi_block_program(
+            "factorial",
+            vec![("n", MirType::I64)],
+            MirType::I64,
+            vec![
+                ("_cond", MirType::Bool),
+                ("_n1", MirType::I64),
+                ("_rec", MirType::I64),
+                ("_result", MirType::I64),
+            ],
+            vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("_cond"),
+                        op: MirBinOp::Le,
+                        lhs: Operand::Place(Place::new("n")),
+                        rhs: Operand::Constant(Constant::Int(1)),
+                    }],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("_cond")),
+                        then_label: "base_case".to_string(),
+                        else_label: "rec_case".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "base_case".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(1)))),
+                },
+                BasicBlock {
+                    label: "rec_case".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("_n1"),
+                            op: MirBinOp::Sub,
+                            lhs: Operand::Place(Place::new("n")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                        MirInst::Call {
+                            dest: Some(Place::new("_rec")),
+                            func: "factorial".to_string(),
+                            args: vec![Operand::Place(Place::new("_n1"))],
+                            is_tail: false,
+                        },
+                        MirInst::BinOp {
+                            dest: Place::new("_result"),
+                            op: MirBinOp::Mul,
+                            lhs: Operand::Place(Place::new("n")),
+                            rhs: Operand::Place(Place::new("_rec")),
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("_result")))),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("(func $factorial"), "factorial function declared");
+        assert!(wat.contains("call $factorial"), "recursive call emitted");
+        assert!(wat.contains("i64.le_s"), "base case condition");
+        assert!(wat.contains("i64.sub"), "n - 1 for recursive call");
+        assert!(wat.contains("i64.mul"), "n * factorial(n-1)");
+    }
+
+    #[test]
+    fn test_multi_function_call_chain() {
+        // Two functions: double(x) = x * 2, apply_double(x) = double(x) + 1
+        let program = MirProgram {
+            functions: vec![
+                MirFunction {
+                    name: "double".to_string(),
+                    params: vec![("x".to_string(), MirType::I64)],
+                    ret_ty: MirType::I64,
+                    locals: vec![("_t0".to_string(), MirType::I64)],
+                    blocks: vec![BasicBlock {
+                        label: "entry".to_string(),
+                        instructions: vec![MirInst::BinOp {
+                            dest: Place::new("_t0"),
+                            op: MirBinOp::Mul,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Constant(Constant::Int(2)),
+                        }],
+                        terminator: Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+                    }],
+                    preconditions: vec![],
+                    postconditions: vec![],
+                    is_pure: false,
+                    is_const: false,
+                    always_inline: false,
+                    inline_hint: false,
+                    is_memory_free: false,
+                },
+                MirFunction {
+                    name: "apply_double".to_string(),
+                    params: vec![("x".to_string(), MirType::I64)],
+                    ret_ty: MirType::I64,
+                    locals: vec![
+                        ("_d".to_string(), MirType::I64),
+                        ("_r".to_string(), MirType::I64),
+                    ],
+                    blocks: vec![BasicBlock {
+                        label: "entry".to_string(),
+                        instructions: vec![
+                            MirInst::Call {
+                                dest: Some(Place::new("_d")),
+                                func: "double".to_string(),
+                                args: vec![Operand::Place(Place::new("x"))],
+                                is_tail: false,
+                            },
+                            MirInst::BinOp {
+                                dest: Place::new("_r"),
+                                op: MirBinOp::Add,
+                                lhs: Operand::Place(Place::new("_d")),
+                                rhs: Operand::Constant(Constant::Int(1)),
+                            },
+                        ],
+                        terminator: Terminator::Return(Some(Operand::Place(Place::new("_r")))),
+                    }],
+                    preconditions: vec![],
+                    postconditions: vec![],
+                    is_pure: false,
+                    is_const: false,
+                    always_inline: false,
+                    inline_hint: false,
+                    is_memory_free: false,
+                },
+            ],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("(func $double"), "double function");
+        assert!(wat.contains("(func $apply_double"), "apply_double function");
+        assert!(wat.contains("call $double"), "calls double from apply_double");
+    }
+
+    #[test]
+    fn test_tail_call_wasm() {
+        let program = single_fn_program(
+            "tail_fn",
+            vec![("x", MirType::I64)],
+            MirType::I64,
+            vec![("_r", MirType::I64)],
+            vec![MirInst::Call {
+                dest: Some(Place::new("_r")),
+                func: "helper".to_string(),
+                args: vec![Operand::Place(Place::new("x"))],
+                is_tail: true,
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_r")))),
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        // WASM doesn't have native tail call yet, so it should still emit a regular call
+        assert!(wat.contains("call $helper"), "tail call emits regular call in WASM");
+    }
+
+    #[test]
+    fn test_branch_constant_true_condition() {
+        // Branch with constant true condition — both paths should be present
+        let program = multi_block_program(
+            "const_true_br",
+            vec![],
+            MirType::I64,
+            vec![],
+            vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Constant(Constant::Bool(true)),
+                        then_label: "then_blk".to_string(),
+                        else_label: "else_blk".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "then_blk".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(1)))),
+                },
+                BasicBlock {
+                    label: "else_blk".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("i32.const 1"), "constant true condition");
+        assert!(wat.contains("(if"), "branch generates if");
+        assert!(wat.contains("br $then_blk"), "then branch");
+        assert!(wat.contains("br $else_blk"), "else branch");
+    }
+
+    #[test]
+    fn test_loop_with_float_accumulation() {
+        // Float loop: sum = 0.0; while (i < n) { sum = sum + 1.5; i = i + 1; }
+        let program = multi_block_program(
+            "float_loop",
+            vec![("n", MirType::I64)],
+            MirType::F64,
+            vec![
+                ("i", MirType::I64),
+                ("sum", MirType::F64),
+                ("_cond", MirType::Bool),
+            ],
+            vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::Const { dest: Place::new("i"), value: Constant::Int(0) },
+                        MirInst::Const { dest: Place::new("sum"), value: Constant::Float(0.0) },
+                    ],
+                    terminator: Terminator::Goto("loop_hdr".to_string()),
+                },
+                BasicBlock {
+                    label: "loop_hdr".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("_cond"),
+                        op: MirBinOp::Lt,
+                        lhs: Operand::Place(Place::new("i")),
+                        rhs: Operand::Place(Place::new("n")),
+                    }],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("_cond")),
+                        then_label: "loop_body".to_string(),
+                        else_label: "loop_done".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "loop_body".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("sum"),
+                            op: MirBinOp::FAdd,
+                            lhs: Operand::Place(Place::new("sum")),
+                            rhs: Operand::Constant(Constant::Float(1.5)),
+                        },
+                        MirInst::BinOp {
+                            dest: Place::new("i"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("i")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                    ],
+                    terminator: Terminator::Goto("loop_hdr".to_string()),
+                },
+                BasicBlock {
+                    label: "loop_done".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("sum")))),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("f64.const 0"), "float zero init");
+        assert!(wat.contains("f64.const 1.5"), "float step constant");
+        assert!(wat.contains("f64.add"), "float accumulation");
+        assert!(wat.contains("br $loop_hdr"), "back-edge to loop header");
+    }
+
+    #[test]
+    fn test_diamond_control_flow() {
+        // Diamond pattern: entry → (then | else) → merge → return
+        let program = multi_block_program(
+            "diamond_fn",
+            vec![("x", MirType::I64)],
+            MirType::I64,
+            vec![
+                ("_cond", MirType::Bool),
+                ("result", MirType::I64),
+            ],
+            vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("_cond"),
+                        op: MirBinOp::Gt,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Int(0)),
+                    }],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("_cond")),
+                        then_label: "then_arm".to_string(),
+                        else_label: "else_arm".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "then_arm".to_string(),
+                    instructions: vec![MirInst::Const {
+                        dest: Place::new("result"),
+                        value: Constant::Int(42),
+                    }],
+                    terminator: Terminator::Goto("merge".to_string()),
+                },
+                BasicBlock {
+                    label: "else_arm".to_string(),
+                    instructions: vec![MirInst::Const {
+                        dest: Place::new("result"),
+                        value: Constant::Int(-1),
+                    }],
+                    terminator: Terminator::Goto("merge".to_string()),
+                },
+                BasicBlock {
+                    label: "merge".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("(block $then_arm"), "then arm block");
+        assert!(wat.contains("(block $else_arm"), "else arm block");
+        assert!(wat.contains("(block $merge"), "merge block");
+        assert!(wat.contains("br $merge"), "both arms branch to merge");
+    }
+
+    #[test]
+    fn test_multiple_return_paths() {
+        // Function with 3 different return points
+        let program = multi_block_program(
+            "multi_ret",
+            vec![("x", MirType::I64)],
+            MirType::I64,
+            vec![("_c1", MirType::Bool), ("_c2", MirType::Bool)],
+            vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("_c1"),
+                        op: MirBinOp::Lt,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Int(0)),
+                    }],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("_c1")),
+                        then_label: "neg_ret".to_string(),
+                        else_label: "check2".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "neg_ret".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(-1)))),
+                },
+                BasicBlock {
+                    label: "check2".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("_c2"),
+                        op: MirBinOp::Eq,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Int(0)),
+                    }],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("_c2")),
+                        then_label: "zero_ret".to_string(),
+                        else_label: "pos_ret".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "zero_ret".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                },
+                BasicBlock {
+                    label: "pos_ret".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(1)))),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        // Three return instructions
+        let return_count = wat.matches("return").count();
+        assert!(return_count >= 3, "at least 3 return instructions, got {}", return_count);
+        assert!(wat.contains("(block $neg_ret"), "neg_ret block");
+        assert!(wat.contains("(block $check2"), "check2 block");
+        assert!(wat.contains("(block $zero_ret"), "zero_ret block");
+        assert!(wat.contains("(block $pos_ret"), "pos_ret block");
+    }
+
+    #[test]
+    fn test_void_function_with_branch() {
+        // void function with control flow
+        let program = multi_block_program(
+            "void_branch",
+            vec![("x", MirType::I64)],
+            MirType::Unit,
+            vec![("_cond", MirType::Bool)],
+            vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("_cond"),
+                        op: MirBinOp::Gt,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Int(0)),
+                    }],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("_cond")),
+                        then_label: "do_work".to_string(),
+                        else_label: "skip".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "do_work".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(None),
+                },
+                BasicBlock {
+                    label: "skip".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(None),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("(block $do_work"), "do_work block");
+        assert!(wat.contains("(block $skip"), "skip block");
+        // Void returns should not push a value
+        assert!(wat.contains("return"), "return in void function");
+    }
+
+    #[test]
+    fn test_loop_with_early_exit() {
+        // Loop with early exit: while (true) { if (i >= n) break; i = i + 1; }
+        let program = multi_block_program(
+            "early_exit",
+            vec![("n", MirType::I64)],
+            MirType::I64,
+            vec![
+                ("i", MirType::I64),
+                ("_cond", MirType::Bool),
+            ],
+            vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::Const {
+                        dest: Place::new("i"),
+                        value: Constant::Int(0),
+                    }],
+                    terminator: Terminator::Goto("loop_top".to_string()),
+                },
+                BasicBlock {
+                    label: "loop_top".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("_cond"),
+                        op: MirBinOp::Ge,
+                        lhs: Operand::Place(Place::new("i")),
+                        rhs: Operand::Place(Place::new("n")),
+                    }],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("_cond")),
+                        then_label: "exit".to_string(),
+                        else_label: "continue".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "continue".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("i"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("i")),
+                        rhs: Operand::Constant(Constant::Int(1)),
+                    }],
+                    terminator: Terminator::Goto("loop_top".to_string()),
+                },
+                BasicBlock {
+                    label: "exit".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("i")))),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("i64.ge_s"), "exit condition");
+        assert!(wat.contains("br $exit"), "early exit branch");
+        assert!(wat.contains("br $loop_top"), "loop back-edge");
+    }
+
+    #[test]
+    fn test_switch_with_computations() {
+        // switch where each case has actual computation
+        let program = multi_block_program(
+            "switch_compute",
+            vec![("x", MirType::I64), ("y", MirType::I64)],
+            MirType::I64,
+            vec![("_r", MirType::I64)],
+            vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Switch {
+                        discriminant: Operand::Place(Place::new("x")),
+                        cases: vec![
+                            (0, "add_case".to_string()),
+                            (1, "mul_case".to_string()),
+                        ],
+                        default: "default".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "add_case".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("_r"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("y")),
+                        rhs: Operand::Constant(Constant::Int(10)),
+                    }],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("_r")))),
+                },
+                BasicBlock {
+                    label: "mul_case".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("_r"),
+                        op: MirBinOp::Mul,
+                        lhs: Operand::Place(Place::new("y")),
+                        rhs: Operand::Constant(Constant::Int(2)),
+                    }],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("_r")))),
+                },
+                BasicBlock {
+                    label: "default".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("y")))),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("i64.add"), "add in case 0");
+        assert!(wat.contains("i64.mul"), "mul in case 1");
+        assert!(wat.contains("br_if $add_case"), "branch to add case");
+        assert!(wat.contains("br_if $mul_case"), "branch to mul case");
+    }
+
+    #[test]
+    fn test_nested_loop_pattern() {
+        // Outer: i = 0..n, Inner: j = 0..m (counting total iterations)
+        let program = multi_block_program(
+            "nested_loops",
+            vec![("n", MirType::I64), ("m", MirType::I64)],
+            MirType::I64,
+            vec![
+                ("i", MirType::I64),
+                ("j", MirType::I64),
+                ("count", MirType::I64),
+                ("_c1", MirType::Bool),
+                ("_c2", MirType::Bool),
+            ],
+            vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::Const { dest: Place::new("i"), value: Constant::Int(0) },
+                        MirInst::Const { dest: Place::new("count"), value: Constant::Int(0) },
+                    ],
+                    terminator: Terminator::Goto("outer_hdr".to_string()),
+                },
+                BasicBlock {
+                    label: "outer_hdr".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("_c1"),
+                        op: MirBinOp::Lt,
+                        lhs: Operand::Place(Place::new("i")),
+                        rhs: Operand::Place(Place::new("n")),
+                    }],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("_c1")),
+                        then_label: "inner_init".to_string(),
+                        else_label: "done".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "inner_init".to_string(),
+                    instructions: vec![MirInst::Const {
+                        dest: Place::new("j"),
+                        value: Constant::Int(0),
+                    }],
+                    terminator: Terminator::Goto("inner_hdr".to_string()),
+                },
+                BasicBlock {
+                    label: "inner_hdr".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("_c2"),
+                        op: MirBinOp::Lt,
+                        lhs: Operand::Place(Place::new("j")),
+                        rhs: Operand::Place(Place::new("m")),
+                    }],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("_c2")),
+                        then_label: "inner_body".to_string(),
+                        else_label: "outer_inc".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "inner_body".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("count"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("count")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                        MirInst::BinOp {
+                            dest: Place::new("j"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("j")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                    ],
+                    terminator: Terminator::Goto("inner_hdr".to_string()),
+                },
+                BasicBlock {
+                    label: "outer_inc".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("i"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("i")),
+                        rhs: Operand::Constant(Constant::Int(1)),
+                    }],
+                    terminator: Terminator::Goto("outer_hdr".to_string()),
+                },
+                BasicBlock {
+                    label: "done".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("count")))),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("(block $outer_hdr"), "outer loop header block");
+        assert!(wat.contains("(block $inner_hdr"), "inner loop header block");
+        assert!(wat.contains("(block $inner_body"), "inner body block");
+        assert!(wat.contains("(block $outer_inc"), "outer increment block");
+        assert!(wat.contains("br $inner_hdr"), "inner loop back-edge");
+        assert!(wat.contains("br $outer_hdr"), "outer loop back-edge");
+    }
+
+    #[test]
+    fn test_phi_with_branch_merge() {
+        // Phi node in merge block after branch
+        let program = multi_block_program(
+            "phi_merge",
+            vec![("x", MirType::I64)],
+            MirType::I64,
+            vec![
+                ("_cond", MirType::Bool),
+                ("result", MirType::I64),
+            ],
+            vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("_cond"),
+                        op: MirBinOp::Gt,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Int(0)),
+                    }],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("_cond")),
+                        then_label: "pos".to_string(),
+                        else_label: "neg".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "pos".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("merge".to_string()),
+                },
+                BasicBlock {
+                    label: "neg".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("merge".to_string()),
+                },
+                BasicBlock {
+                    label: "merge".to_string(),
+                    instructions: vec![MirInst::Phi {
+                        dest: Place::new("result"),
+                        values: vec![
+                            (Operand::Constant(Constant::Int(1)), "pos".to_string()),
+                            (Operand::Constant(Constant::Int(-1)), "neg".to_string()),
+                        ],
+                    }],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("PHI node for result"), "phi node placeholder in merge");
+        assert!(wat.contains("br $merge"), "branches converge at merge");
+    }
+
+    #[test]
+    fn test_select_in_control_flow() {
+        // Select instruction within multi-block function
+        let program = multi_block_program(
+            "select_cf",
+            vec![("x", MirType::I64), ("y", MirType::I64)],
+            MirType::I64,
+            vec![
+                ("_max", MirType::I64),
+            ],
+            vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::Select {
+                            dest: Place::new("_max"),
+                            cond_op: MirBinOp::Gt,
+                            cond_lhs: Operand::Place(Place::new("x")),
+                            cond_rhs: Operand::Place(Place::new("y")),
+                            true_val: Operand::Place(Place::new("x")),
+                            false_val: Operand::Place(Place::new("y")),
+                        },
+                    ],
+                    terminator: Terminator::Goto("done".to_string()),
+                },
+                BasicBlock {
+                    label: "done".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("_max")))),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("select"), "select instruction emitted");
+        assert!(wat.contains("br $done"), "goto done block");
+    }
+
+    #[test]
+    fn test_many_blocks_linear() {
+        // Linear chain of 6 blocks with different operations
+        let program = multi_block_program(
+            "many_blocks",
+            vec![("x", MirType::I64)],
+            MirType::I64,
+            vec![("r", MirType::I64)],
+            vec![
+                BasicBlock {
+                    label: "b0".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("r"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Int(1)),
+                    }],
+                    terminator: Terminator::Goto("b1".to_string()),
+                },
+                BasicBlock {
+                    label: "b1".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("r"),
+                        op: MirBinOp::Mul,
+                        lhs: Operand::Place(Place::new("r")),
+                        rhs: Operand::Constant(Constant::Int(2)),
+                    }],
+                    terminator: Terminator::Goto("b2".to_string()),
+                },
+                BasicBlock {
+                    label: "b2".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("r"),
+                        op: MirBinOp::Sub,
+                        lhs: Operand::Place(Place::new("r")),
+                        rhs: Operand::Constant(Constant::Int(3)),
+                    }],
+                    terminator: Terminator::Goto("b3".to_string()),
+                },
+                BasicBlock {
+                    label: "b3".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("r"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("r")),
+                        rhs: Operand::Constant(Constant::Int(100)),
+                    }],
+                    terminator: Terminator::Goto("b4".to_string()),
+                },
+                BasicBlock {
+                    label: "b4".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("r"),
+                        op: MirBinOp::Div,
+                        lhs: Operand::Place(Place::new("r")),
+                        rhs: Operand::Constant(Constant::Int(5)),
+                    }],
+                    terminator: Terminator::Goto("b5".to_string()),
+                },
+                BasicBlock {
+                    label: "b5".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        for i in 0..6 {
+            assert!(wat.contains(&format!("(block $b{}", i)), "block b{} present", i);
+        }
+        assert!(wat.contains("i64.add"), "add operation");
+        assert!(wat.contains("i64.mul"), "mul operation");
+        assert!(wat.contains("i64.sub"), "sub operation");
+        assert!(wat.contains("i64.div_s"), "div operation");
+    }
+
+    #[test]
+    fn test_copy_in_control_flow() {
+        // Copy instruction used in multi-block context
+        let program = multi_block_program(
+            "copy_cf",
+            vec![("x", MirType::I64)],
+            MirType::I64,
+            vec![("y", MirType::I64)],
+            vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::Copy {
+                        dest: Place::new("y"),
+                        src: Place::new("x"),
+                    }],
+                    terminator: Terminator::Goto("done".to_string()),
+                },
+                BasicBlock {
+                    label: "done".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("y")))),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("local.get $x"), "copy reads source");
+        assert!(wat.contains("local.set $y"), "copy writes destination");
+    }
+
+    #[test]
+    fn test_branch_with_f64_comparison() {
+        // Branch based on float comparison
+        let program = multi_block_program(
+            "float_branch",
+            vec![("x", MirType::F64)],
+            MirType::I64,
+            vec![("_cond", MirType::Bool)],
+            vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("_cond"),
+                        op: MirBinOp::FLt,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Float(0.0)),
+                    }],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("_cond")),
+                        then_label: "negative".to_string(),
+                        else_label: "non_neg".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "negative".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(-1)))),
+                },
+                BasicBlock {
+                    label: "non_neg".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(1)))),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("f64.lt"), "float less-than comparison");
+        assert!(wat.contains("br $negative"), "branch to negative");
+        assert!(wat.contains("br $non_neg"), "branch to non_neg");
+    }
+
+    #[test]
+    fn test_goto_with_unreachable_block() {
+        // Goto skips over unreachable dead block
+        let program = multi_block_program(
+            "dead_block_fn",
+            vec![],
+            MirType::I64,
+            vec![],
+            vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("live".to_string()),
+                },
+                BasicBlock {
+                    label: "dead".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Unreachable,
+                },
+                BasicBlock {
+                    label: "live".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(42)))),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("br $live"), "goto live block");
+        assert!(wat.contains("unreachable"), "dead block has unreachable");
+        assert!(wat.contains("(block $dead"), "dead block still emitted");
+    }
+
+    #[test]
+    fn test_switch_with_negative_values() {
+        // Switch with negative case values
+        let program = multi_block_program(
+            "neg_switch",
+            vec![("x", MirType::I64)],
+            MirType::I64,
+            vec![],
+            vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Switch {
+                        discriminant: Operand::Place(Place::new("x")),
+                        cases: vec![
+                            (-1, "neg1".to_string()),
+                            (0, "zero".to_string()),
+                            (1, "pos1".to_string()),
+                        ],
+                        default: "def".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "neg1".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(10)))),
+                },
+                BasicBlock {
+                    label: "zero".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(20)))),
+                },
+                BasicBlock {
+                    label: "pos1".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(30)))),
+                },
+                BasicBlock {
+                    label: "def".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("i64.const -1"), "negative case value");
+        assert!(wat.contains("br_if $neg1"), "branch to neg1 case");
+    }
 }

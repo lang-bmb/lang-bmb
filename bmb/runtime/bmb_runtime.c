@@ -63,6 +63,11 @@ void bmb_println_f64(double f) { printf("%.9f\n", f); }
 void bmb_print_f64(double f) { printf("%.9f", f); }
 int64_t bmb_read_int() { int64_t n; scanf("%" SCNd64, &n); return n; }
 void bmb_assert(int cond) { if (!cond) { fprintf(stderr, "Assertion failed!\n"); exit(1); } }
+void bmb_panic(const BmbString* s) {
+    if (s && s->data) fprintf(stderr, "panic: %s\n", s->data);
+    else fprintf(stderr, "panic\n");
+    exit(1);
+}
 int64_t bmb_abs(int64_t n) { return n < 0 ? -n : n; }
 int64_t bmb_min(int64_t a, int64_t b) { return a < b ? a : b; }
 int64_t bmb_max(int64_t a, int64_t b) { return a > b ? a : b; }
@@ -79,9 +84,16 @@ int64_t bmb_f64_is_nan(double f) { return isnan(f) ? 1 : 0; }
 double bmb_f64_min(double a, double b) { return a < b ? a : b; }
 double bmb_f64_max(double a, double b) { return a > b ? a : b; }
 int64_t bmb_f64_to_int(double f) { return (int64_t)f; }
+double pow_f64(double base, double exp) { return pow(base, exp); }
 
-// Forward declaration for bmb_string_slice (defined later, used by trim)
+// Forward declarations (defined later, used by early functions)
 BmbString* bmb_string_slice(const BmbString* s, int64_t start, int64_t end);
+int64_t bmb_vec_new(void);
+int64_t bmb_vec_push(int64_t vec_ptr, int64_t value);
+int64_t bmb_vec_get(int64_t vec_ptr, int64_t index);
+int64_t bmb_vec_len(int64_t vec_ptr);
+BmbString* bmb_string_new(const char* s, int64_t len);
+BmbString* bmb_string_from_cstr(const char* s);
 
 // v0.90.96: String methods — starts_with, ends_with, contains, index_of, trim, replace
 int64_t bmb_string_starts_with(BmbString* s, BmbString* prefix) {
@@ -200,6 +212,130 @@ int64_t bmb_string_is_empty(BmbString* s) {
     return (!s || s->len == 0) ? 1 : 0;
 }
 
+// v0.95: Count occurrences of substring
+int64_t bmb_string_count(BmbString* s, BmbString* needle) {
+    if (!s || !needle || needle->len == 0) return 0;
+    if (needle->len > s->len) return 0;
+    int64_t count = 0;
+    int64_t limit = s->len - needle->len;
+    for (int64_t i = 0; i <= limit; i++) {
+        if (memcmp(s->data + i, needle->data, (size_t)needle->len) == 0) {
+            count++;
+            i += needle->len - 1; // non-overlapping
+        }
+    }
+    return count;
+}
+
+// v0.95: Reverse a string
+BmbString* bmb_string_reverse(BmbString* s) {
+    if (!s || s->len == 0) return s;
+    char* data = (char*)bmb_alloc(s->len + 1);
+    for (int64_t i = 0; i < s->len; i++) {
+        data[i] = s->data[s->len - 1 - i];
+    }
+    data[s->len] = '\0';
+    return bmb_string_wrap(data);
+}
+
+// v0.95: Pad string on left to given width with given character
+BmbString* bmb_string_pad_left(BmbString* s, int64_t width, int64_t ch) {
+    if (!s || s->len >= width) return s;
+    int64_t pad = width - s->len;
+    char* data = (char*)bmb_alloc(width + 1);
+    memset(data, (char)ch, (size_t)pad);
+    memcpy(data + pad, s->data, (size_t)s->len);
+    data[width] = '\0';
+    return bmb_string_wrap(data);
+}
+
+// v0.95: Pad string on right to given width with given character
+BmbString* bmb_string_pad_right(BmbString* s, int64_t width, int64_t ch) {
+    if (!s || s->len >= width) return s;
+    int64_t pad = width - s->len;
+    char* data = (char*)bmb_alloc(width + 1);
+    memcpy(data, s->data, (size_t)s->len);
+    memset(data + s->len, (char)ch, (size_t)pad);
+    data[width] = '\0';
+    return bmb_string_wrap(data);
+}
+
+// v0.95: Find last occurrence of substring
+int64_t bmb_string_last_index_of(BmbString* s, BmbString* needle) {
+    if (!s || !needle) return -1;
+    if (needle->len == 0) return s->len;
+    if (needle->len > s->len) return -1;
+    for (int64_t i = s->len - needle->len; i >= 0; i--) {
+        if (memcmp(s->data + i, needle->data, (size_t)needle->len) == 0) return i;
+    }
+    return -1;
+}
+
+// v0.95: string_split(str, delim) -> vec of BmbString*
+int64_t bmb_string_split(const BmbString* s, const BmbString* delim) {
+    int64_t v = bmb_vec_new();
+    if (!s || !s->data) return v;
+    if (!delim || !delim->data || delim->len == 0) {
+        // No delimiter: return single element
+        bmb_vec_push(v, (int64_t)s);
+        return v;
+    }
+    const char* p = s->data;
+    const char* end = s->data + s->len;
+    while (p <= end) {
+        const char* found = NULL;
+        if (p + delim->len <= end) {
+            for (const char* q = p; q + delim->len <= end; q++) {
+                if (memcmp(q, delim->data, (size_t)delim->len) == 0) {
+                    found = q;
+                    break;
+                }
+            }
+        }
+        if (found) {
+            int64_t len = (int64_t)(found - p);
+            BmbString* part = bmb_string_new(p, len);
+            bmb_vec_push(v, (int64_t)part);
+            p = found + delim->len;
+        } else {
+            int64_t len = (int64_t)(end - p);
+            BmbString* part = bmb_string_new(p, len);
+            bmb_vec_push(v, (int64_t)part);
+            break;
+        }
+    }
+    return v;
+}
+
+// v0.95: string_join(vec, separator) -> BmbString*
+BmbString* bmb_string_join(int64_t vec_ptr, const BmbString* sep) {
+    int64_t len = bmb_vec_len(vec_ptr);
+    if (len == 0) return bmb_string_from_cstr("");
+    // Calculate total length
+    int64_t total = 0;
+    for (int64_t i = 0; i < len; i++) {
+        BmbString* part = (BmbString*)bmb_vec_get(vec_ptr, i);
+        if (part && part->data) total += part->len;
+    }
+    int64_t sep_len = (sep && sep->data) ? sep->len : 0;
+    total += sep_len * (len - 1);
+    char* data = (char*)bmb_alloc((size_t)(total + 1));
+    int64_t pos = 0;
+    for (int64_t i = 0; i < len; i++) {
+        if (i > 0 && sep_len > 0) {
+            memcpy(data + pos, sep->data, (size_t)sep_len);
+            pos += sep_len;
+        }
+        BmbString* part = (BmbString*)bmb_vec_get(vec_ptr, i);
+        if (part && part->data) {
+            memcpy(data + pos, part->data, (size_t)part->len);
+            pos += part->len;
+        }
+    }
+    data[pos] = '\0';
+    return bmb_string_wrap(data);
+}
+
 // v0.97: Character functions
 // v0.60.107: bmb_chr returns BmbString* to match string type system
 // v0.88.2: Uses arena-aware allocation
@@ -246,7 +382,7 @@ int64_t bmb_vec_with_capacity(int64_t cap) {
     return (int64_t)vec;
 }
 
-void bmb_vec_push(int64_t vec_ptr, int64_t value) {
+int64_t bmb_vec_push(int64_t vec_ptr, int64_t value) {
     int64_t* vec = (int64_t*)vec_ptr;
     int64_t cap = vec[0];
     int64_t len = vec[1];
@@ -259,6 +395,7 @@ void bmb_vec_push(int64_t vec_ptr, int64_t value) {
     }
     vec[2 + len] = value;
     vec[1] = len + 1;
+    return (int64_t)vec;
 }
 
 int64_t bmb_vec_pop(int64_t vec_ptr) {
@@ -296,6 +433,190 @@ void bmb_vec_free(int64_t vec_ptr) {
 void bmb_vec_clear(int64_t vec_ptr) {
     int64_t* vec = (int64_t*)vec_ptr;
     vec[1] = 0;  // Reset length
+}
+
+// v0.95: Vec utility functions
+void bmb_vec_reverse(int64_t vec_ptr) {
+    int64_t* vec = (int64_t*)vec_ptr;
+    int64_t len = vec[1];
+    for (int64_t i = 0; i < len / 2; i++) {
+        int64_t tmp = vec[2 + i];
+        vec[2 + i] = vec[2 + len - 1 - i];
+        vec[2 + len - 1 - i] = tmp;
+    }
+}
+
+int64_t bmb_vec_contains(int64_t vec_ptr, int64_t value) {
+    int64_t* vec = (int64_t*)vec_ptr;
+    int64_t len = vec[1];
+    for (int64_t i = 0; i < len; i++) {
+        if (vec[2 + i] == value) return 1;
+    }
+    return 0;
+}
+
+int64_t bmb_vec_index_of(int64_t vec_ptr, int64_t value) {
+    int64_t* vec = (int64_t*)vec_ptr;
+    int64_t len = vec[1];
+    for (int64_t i = 0; i < len; i++) {
+        if (vec[2 + i] == value) return i;
+    }
+    return -1;
+}
+
+void bmb_vec_swap(int64_t vec_ptr, int64_t i, int64_t j) {
+    int64_t* vec = (int64_t*)vec_ptr;
+    int64_t tmp = vec[2 + i];
+    vec[2 + i] = vec[2 + j];
+    vec[2 + j] = tmp;
+}
+
+void bmb_vec_sort(int64_t vec_ptr) {
+    int64_t* vec = (int64_t*)vec_ptr;
+    int64_t len = vec[1];
+    // Insertion sort (simple, stable, good for small arrays)
+    for (int64_t i = 1; i < len; i++) {
+        int64_t key = vec[2 + i];
+        int64_t j = i - 1;
+        while (j >= 0 && vec[2 + j] > key) {
+            vec[2 + j + 1] = vec[2 + j];
+            j--;
+        }
+        vec[2 + j + 1] = key;
+    }
+}
+
+// v0.95: vec_dedup — remove consecutive duplicates (requires sorted vec)
+void bmb_vec_dedup(int64_t vec_ptr) {
+    int64_t* vec = (int64_t*)vec_ptr;
+    int64_t len = vec[1];
+    if (len <= 1) return;
+    int64_t write = 1;
+    for (int64_t i = 1; i < len; i++) {
+        if (vec[2 + i] != vec[2 + write - 1]) {
+            vec[2 + write] = vec[2 + i];
+            write++;
+        }
+    }
+    vec[1] = write;
+}
+
+// v0.95: vec_fill — set all elements to a value
+void bmb_vec_fill(int64_t vec_ptr, int64_t value) {
+    int64_t* vec = (int64_t*)vec_ptr;
+    int64_t len = vec[1];
+    for (int64_t i = 0; i < len; i++) {
+        vec[2 + i] = value;
+    }
+}
+
+// v0.95: vec_copy — deep copy of vec
+int64_t bmb_vec_copy(int64_t vec_ptr) {
+    int64_t* src = (int64_t*)vec_ptr;
+    int64_t len = src[1];
+    int64_t new_vec = bmb_vec_new();
+    for (int64_t i = 0; i < len; i++) {
+        bmb_vec_push(new_vec, src[2 + i]);
+    }
+    return new_vec;
+}
+
+// v0.95: vec_sum — sum all elements
+int64_t bmb_vec_sum(int64_t vec_ptr) {
+    int64_t* vec = (int64_t*)vec_ptr;
+    int64_t len = vec[1];
+    int64_t sum = 0;
+    for (int64_t i = 0; i < len; i++) {
+        sum += vec[2 + i];
+    }
+    return sum;
+}
+
+// v0.95: vec_min — minimum element (returns INT64_MAX for empty)
+int64_t bmb_vec_min(int64_t vec_ptr) {
+    int64_t* vec = (int64_t*)vec_ptr;
+    int64_t len = vec[1];
+    int64_t min_val = INT64_MAX;
+    for (int64_t i = 0; i < len; i++) {
+        if (vec[2 + i] < min_val) min_val = vec[2 + i];
+    }
+    return min_val;
+}
+
+// v0.95: vec_max — maximum element (returns INT64_MIN for empty)
+int64_t bmb_vec_max(int64_t vec_ptr) {
+    int64_t* vec = (int64_t*)vec_ptr;
+    int64_t len = vec[1];
+    int64_t max_val = INT64_MIN;
+    for (int64_t i = 0; i < len; i++) {
+        if (vec[2 + i] > max_val) max_val = vec[2 + i];
+    }
+    return max_val;
+}
+
+// v0.95: vec_product — product of all elements (returns 1 for empty)
+int64_t bmb_vec_product(int64_t vec_ptr) {
+    int64_t* vec = (int64_t*)vec_ptr;
+    int64_t len = vec[1];
+    int64_t prod = 1;
+    for (int64_t i = 0; i < len; i++) {
+        prod *= vec[2 + i];
+    }
+    return prod;
+}
+
+// v0.95: vec_slice(v, start, end) → new vec with elements [start, end)
+int64_t bmb_vec_slice(int64_t vec_ptr, int64_t start, int64_t end) {
+    int64_t* vec = (int64_t*)vec_ptr;
+    int64_t len = vec[1];
+    if (start < 0) start = 0;
+    if (end > len) end = len;
+    int64_t new_vec = bmb_vec_new();
+    for (int64_t i = start; i < end; i++) {
+        bmb_vec_push(new_vec, vec[2 + i]);
+    }
+    return new_vec;
+}
+
+// v0.95: vec_extend(dest, src) — append all elements from src to dest
+void bmb_vec_extend(int64_t dest_ptr, int64_t src_ptr) {
+    int64_t* src = (int64_t*)src_ptr;
+    int64_t src_len = src[1];
+    for (int64_t i = 0; i < src_len; i++) {
+        bmb_vec_push(dest_ptr, src[2 + i]);
+    }
+}
+
+// v0.95: vec_remove(v, index) — remove element at index, shift remaining left
+int64_t bmb_vec_remove(int64_t vec_ptr, int64_t index) {
+    int64_t* vec = (int64_t*)vec_ptr;
+    int64_t len = vec[1];
+    if (index < 0 || index >= len) return 0;
+    int64_t removed = vec[2 + index];
+    for (int64_t i = index; i < len - 1; i++) {
+        vec[2 + i] = vec[2 + i + 1];
+    }
+    vec[1] = len - 1;
+    return removed;
+}
+
+// v0.95: vec_insert(v, index, value) — insert element at index, shift right
+void bmb_vec_insert(int64_t vec_ptr, int64_t index, int64_t value) {
+    int64_t* vec = (int64_t*)vec_ptr;
+    int64_t len = vec[1];
+    if (index < 0) index = 0;
+    if (index > len) index = len;
+    // Ensure capacity
+    bmb_vec_push(vec_ptr, 0); // grow if needed
+    vec = (int64_t*)vec_ptr; // re-read after potential realloc... but handle is stable
+    // Actually vec_ptr is a handle (pointer to heap struct), push may realloc internal data
+    // Re-read len after push
+    int64_t new_len = vec[1]; // should be len+1 now
+    // Shift elements right from end to index
+    for (int64_t i = new_len - 1; i > index; i--) {
+        vec[2 + i] = vec[2 + i - 1];
+    }
+    vec[2 + index] = value;
 }
 
 // v0.90.98: Functional array methods — push, pop, concat, slice, join return NEW arrays
@@ -373,6 +694,52 @@ int64_t bmb_pow(int64_t base, int64_t exp) {
     return result;
 }
 
+// v0.95: Bitwise utilities
+int64_t bmb_popcount(int64_t n) {
+    uint64_t x = (uint64_t)n;
+    x = x - ((x >> 1) & 0x5555555555555555ULL);
+    x = (x & 0x3333333333333333ULL) + ((x >> 2) & 0x3333333333333333ULL);
+    x = (x + (x >> 4)) & 0x0f0f0f0f0f0f0f0fULL;
+    return (int64_t)((x * 0x0101010101010101ULL) >> 56);
+}
+
+int64_t bmb_clz(int64_t n) {
+    if (n == 0) return 64;
+    uint64_t x = (uint64_t)n;
+    int64_t count = 0;
+    if ((x & 0xFFFFFFFF00000000ULL) == 0) { count += 32; x <<= 32; }
+    if ((x & 0xFFFF000000000000ULL) == 0) { count += 16; x <<= 16; }
+    if ((x & 0xFF00000000000000ULL) == 0) { count += 8;  x <<= 8; }
+    if ((x & 0xF000000000000000ULL) == 0) { count += 4;  x <<= 4; }
+    if ((x & 0xC000000000000000ULL) == 0) { count += 2;  x <<= 2; }
+    if ((x & 0x8000000000000000ULL) == 0) { count += 1; }
+    return count;
+}
+
+int64_t bmb_ctz(int64_t n) {
+    if (n == 0) return 64;
+    uint64_t x = (uint64_t)n;
+    int64_t count = 0;
+    if ((x & 0x00000000FFFFFFFFULL) == 0) { count += 32; x >>= 32; }
+    if ((x & 0x000000000000FFFFULL) == 0) { count += 16; x >>= 16; }
+    if ((x & 0x00000000000000FFULL) == 0) { count += 8;  x >>= 8; }
+    if ((x & 0x000000000000000FULL) == 0) { count += 4;  x >>= 4; }
+    if ((x & 0x0000000000000003ULL) == 0) { count += 2;  x >>= 2; }
+    if ((x & 0x0000000000000001ULL) == 0) { count += 1; }
+    return count;
+}
+
+int64_t bmb_bit_reverse(int64_t n) {
+    uint64_t x = (uint64_t)n;
+    x = ((x >> 1) & 0x5555555555555555ULL) | ((x & 0x5555555555555555ULL) << 1);
+    x = ((x >> 2) & 0x3333333333333333ULL) | ((x & 0x3333333333333333ULL) << 2);
+    x = ((x >> 4) & 0x0F0F0F0F0F0F0F0FULL) | ((x & 0x0F0F0F0F0F0F0F0FULL) << 4);
+    x = ((x >> 8) & 0x00FF00FF00FF00FFULL) | ((x & 0x00FF00FF00FF00FFULL) << 8);
+    x = ((x >> 16) & 0x0000FFFF0000FFFFULL) | ((x & 0x0000FFFF0000FFFFULL) << 16);
+    x = (x >> 32) | (x << 32);
+    return (int64_t)x;
+}
+
 // v0.99: String conversion functions
 // v0.88.2: Uses arena-aware allocation
 char* bmb_char_to_string(int32_t c) {
@@ -400,10 +767,11 @@ char* bmb_char_to_string(int32_t c) {
 }
 
 // v0.88.2: Uses arena-aware allocation
-char* bmb_int_to_string(int64_t n) {
+// v0.93.4: Returns BmbString* (not char*) to match bootstrap String type
+BmbString* bmb_int_to_string(int64_t n) {
     char* s = (char*)bmb_alloc(21);  // Max i64 is 20 digits + sign
-    snprintf(s, 21, "%ld", (long)n);
-    return s;
+    snprintf(s, 21, "%" PRId64, n);
+    return bmb_string_wrap(s);
 }
 
 // v0.60.244: Fast integer-to-BmbString conversion for bootstrap compiler
@@ -413,6 +781,66 @@ BmbString* bmb_fast_i2s(int64_t n) {
     char* s = (char*)bmb_alloc(21);
     snprintf(s, 21, "%" PRId64, n);
     return bmb_string_wrap(s);
+}
+
+// v0.95: integer to hexadecimal string
+BmbString* bmb_to_hex(int64_t n) {
+    char* s = (char*)bmb_alloc(19); // "0x" + 16 hex digits + null
+    if (n < 0) {
+        snprintf(s, 19, "-0x%" PRIx64, (uint64_t)(-(uint64_t)n));
+    } else {
+        snprintf(s, 19, "0x%" PRIx64, (uint64_t)n);
+    }
+    return bmb_string_wrap(s);
+}
+
+// v0.95: integer to binary string
+BmbString* bmb_to_binary(int64_t n) {
+    char* s = (char*)bmb_alloc(67); // "0b" + 64 bits + null
+    uint64_t u = (uint64_t)n;
+    if (u == 0) {
+        s[0] = '0'; s[1] = 'b'; s[2] = '0'; s[3] = '\0';
+        return bmb_string_wrap(s);
+    }
+    // Find highest set bit
+    int bits = 64;
+    while (bits > 0 && !(u & ((uint64_t)1 << (bits - 1)))) bits--;
+    s[0] = '0'; s[1] = 'b';
+    for (int i = 0; i < bits; i++) {
+        s[2 + i] = (u & ((uint64_t)1 << (bits - 1 - i))) ? '1' : '0';
+    }
+    s[2 + bits] = '\0';
+    return bmb_string_wrap(s);
+}
+
+// v0.95: integer to octal string
+BmbString* bmb_to_octal(int64_t n) {
+    char* s = (char*)bmb_alloc(25); // "0o" + 22 octal digits + null
+    if (n < 0) {
+        snprintf(s, 25, "-0o%" PRIo64, (uint64_t)(-(uint64_t)n));
+    } else {
+        snprintf(s, 25, "0o%" PRIo64, (uint64_t)n);
+    }
+    return bmb_string_wrap(s);
+}
+
+// v0.95: f64 to string conversion
+BmbString* bmb_f64_to_string(double f) {
+    char* s = (char*)bmb_alloc(32);
+    snprintf(s, 32, "%.9g", f);
+    return bmb_string_wrap(s);
+}
+
+// v0.95: parse string to i64
+int64_t bmb_parse_int(const BmbString* s) {
+    if (!s || !s->data) return 0;
+    return strtol(s->data, NULL, 10);
+}
+
+// v0.95: parse string to f64
+double bmb_parse_f64(const BmbString* s) {
+    if (!s || !s->data) return 0.0;
+    return strtod(s->data, NULL);
 }
 
 // Memory access functions
@@ -589,6 +1017,31 @@ int64_t bmb_string_eq(const BmbString* a, const BmbString* b) {
     return memcmp(a->data, b->data, (size_t)a->len) == 0 ? 1 : 0;
 }
 
+// v0.95: string_cmp — lexicographic comparison, returns -1/0/1
+int64_t bmb_string_cmp(const BmbString* a, const BmbString* b) {
+    if (a == b) return 0;
+    if (!a || !a->data) return b && b->data ? -1 : 0;
+    if (!b || !b->data) return 1;
+    int64_t min_len = a->len < b->len ? a->len : b->len;
+    int result = memcmp(a->data, b->data, (size_t)min_len);
+    if (result < 0) return -1;
+    if (result > 0) return 1;
+    if (a->len < b->len) return -1;
+    if (a->len > b->len) return 1;
+    return 0;
+}
+
+// v0.95: string_hash — FNV-1a hash of string content
+int64_t bmb_string_hash(const BmbString* s) {
+    if (!s || !s->data) return 0;
+    uint64_t h = 14695981039346656037ULL;
+    for (int64_t i = 0; i < s->len; i++) {
+        h ^= (uint8_t)s->data[i];
+        h *= 1099511628211ULL;
+    }
+    return (int64_t)h;
+}
+
 // String slice (substring from start to end, exclusive) - returns BmbString*
 // v0.88.2: Uses arena-aware allocation
 BmbString* bmb_string_slice(const BmbString* s, int64_t start, int64_t end) {
@@ -667,8 +1120,8 @@ int64_t vec_new(void) {
     return bmb_vec_new();
 }
 
-void vec_push(int64_t vec_ptr, int64_t value) {
-    bmb_vec_push(vec_ptr, value);
+int64_t vec_push(int64_t vec_ptr, int64_t value) {
+    return bmb_vec_push(vec_ptr, value);
 }
 
 int64_t vec_get(int64_t vec_ptr, int64_t index) {
@@ -687,6 +1140,86 @@ void vec_free(int64_t vec_ptr) {
     bmb_vec_free(vec_ptr);
 }
 
+void vec_reverse(int64_t vec_ptr) {
+    bmb_vec_reverse(vec_ptr);
+}
+
+int64_t vec_contains(int64_t vec_ptr, int64_t value) {
+    return bmb_vec_contains(vec_ptr, value);
+}
+
+int64_t vec_index_of(int64_t vec_ptr, int64_t value) {
+    return bmb_vec_index_of(vec_ptr, value);
+}
+
+void vec_swap(int64_t vec_ptr, int64_t i, int64_t j) {
+    bmb_vec_swap(vec_ptr, i, j);
+}
+
+void vec_sort(int64_t vec_ptr) {
+    bmb_vec_sort(vec_ptr);
+}
+
+int64_t vec_with_capacity(int64_t cap) {
+    return bmb_vec_with_capacity(cap);
+}
+
+void vec_clear(int64_t vec_ptr) {
+    bmb_vec_clear(vec_ptr);
+}
+
+int64_t vec_pop(int64_t vec_ptr) {
+    return bmb_vec_pop(vec_ptr);
+}
+
+int64_t vec_cap(int64_t vec_ptr) {
+    return bmb_vec_cap(vec_ptr);
+}
+
+int64_t vec_slice(int64_t vec_ptr, int64_t start, int64_t end) {
+    return bmb_vec_slice(vec_ptr, start, end);
+}
+
+void vec_extend(int64_t dest, int64_t src) {
+    bmb_vec_extend(dest, src);
+}
+
+int64_t vec_remove(int64_t vec_ptr, int64_t index) {
+    return bmb_vec_remove(vec_ptr, index);
+}
+
+void vec_insert(int64_t vec_ptr, int64_t index, int64_t value) {
+    bmb_vec_insert(vec_ptr, index, value);
+}
+
+void vec_dedup(int64_t vec_ptr) {
+    bmb_vec_dedup(vec_ptr);
+}
+
+void vec_fill(int64_t vec_ptr, int64_t value) {
+    bmb_vec_fill(vec_ptr, value);
+}
+
+int64_t vec_copy(int64_t vec_ptr) {
+    return bmb_vec_copy(vec_ptr);
+}
+
+int64_t vec_sum(int64_t vec_ptr) {
+    return bmb_vec_sum(vec_ptr);
+}
+
+int64_t vec_min(int64_t vec_ptr) {
+    return bmb_vec_min(vec_ptr);
+}
+
+int64_t vec_max(int64_t vec_ptr) {
+    return bmb_vec_max(vec_ptr);
+}
+
+int64_t vec_product(int64_t vec_ptr) {
+    return bmb_vec_product(vec_ptr);
+}
+
 // v0.51.51: str_data takes BmbString*, returns pointer to data
 int64_t str_data(const BmbString* s) {
     if (!s || !s->data) return 0;
@@ -696,6 +1229,14 @@ int64_t str_data(const BmbString* s) {
 // v0.51.51: print_str takes BmbString*
 void print_str(const BmbString* s) {
     if (s && s->data) printf("%s", s->data);
+}
+
+void print(int64_t n) {
+    bmb_print_i64(n);
+}
+
+void print_char(int64_t c) {
+    putchar((int)c);
 }
 
 void println(int64_t n) {
@@ -715,6 +1256,32 @@ void print_f64(double f) {
 void println_str(const BmbString* s) {
     if (s && s->data) printf("%s\n", s->data);
     else printf("\n");
+}
+
+// v0.95: stderr output functions
+void eprint(int64_t n) {
+    fprintf(stderr, "%" PRId64, n);
+}
+
+void eprintln(int64_t n) {
+    fprintf(stderr, "%" PRId64 "\n", n);
+}
+
+void eprint_str(const BmbString* s) {
+    if (s && s->data) fprintf(stderr, "%s", s->data);
+}
+
+void eprintln_str(const BmbString* s) {
+    if (s && s->data) fprintf(stderr, "%s\n", s->data);
+    else fprintf(stderr, "\n");
+}
+
+void eprint_f64(double f) {
+    fprintf(stderr, "%.9f", f);
+}
+
+void eprintln_f64(double f) {
+    fprintf(stderr, "%.9f\n", f);
 }
 
 // v0.46: StringBuilder functions for efficient string building
@@ -763,6 +1330,30 @@ int64_t bmb_sb_push(int64_t handle, const BmbString* s) {
 
     // Append with memcpy
     memcpy(sb->data + sb->len, s->data, (size_t)slen);
+    sb->len += slen;
+    sb->data[sb->len] = '\0';
+    return sb->len;
+}
+
+// v0.95.7: Push a substring range [start, end) to StringBuilder without creating intermediate BmbString
+int64_t bmb_sb_push_range(int64_t handle, const BmbString* s, int64_t start, int64_t end) {
+    if (!s || !s->data || !handle || start >= end) return 0;
+    StringBuilder* sb = (StringBuilder*)handle;
+    if (start < 0) start = 0;
+    if (end > s->len) end = s->len;
+    int64_t slen = end - start;
+    if (slen <= 0) return sb->len;
+
+    // Grow if needed
+    int64_t required = sb->len + slen + 1;
+    if (required > sb->cap) {
+        int64_t new_cap = sb->cap;
+        while (new_cap < required) new_cap *= 2;
+        sb->data = (char*)realloc(sb->data, new_cap);
+        sb->cap = new_cap;
+    }
+
+    memcpy(sb->data + sb->len, s->data + start, (size_t)slen);
     sb->len += slen;
     sb->data[sb->len] = '\0';
     return sb->len;
@@ -849,6 +1440,54 @@ int64_t bmb_sb_push_escaped(int64_t handle, const BmbString* s) {
             sb->data[sb->len++] = c;
         }
     }
+    sb->data[sb->len] = '\0';
+    return sb->len;
+}
+
+// v0.95: sb_push_f64 — push formatted double to StringBuilder
+int64_t bmb_sb_push_f64(int64_t handle, double f) {
+    if (!handle) return 0;
+    StringBuilder* sb = (StringBuilder*)handle;
+    char buf[64];
+    int n = snprintf(buf, sizeof(buf), "%.9g", f);
+    while (sb->len + n + 1 > sb->cap) {
+        sb->cap *= 2;
+        sb->data = (char*)realloc(sb->data, sb->cap);
+    }
+    memcpy(sb->data + sb->len, buf, (size_t)n);
+    sb->len += n;
+    sb->data[sb->len] = '\0';
+    return sb->len;
+}
+
+// v0.95: sb_push_hex — push hex-formatted i64 to StringBuilder
+int64_t bmb_sb_push_hex(int64_t handle, int64_t n) {
+    if (!handle) return 0;
+    StringBuilder* sb = (StringBuilder*)handle;
+    char buf[32];
+    int len = snprintf(buf, sizeof(buf), "0x%" PRIx64, (uint64_t)n);
+    while (sb->len + len + 1 > sb->cap) {
+        sb->cap *= 2;
+        sb->data = (char*)realloc(sb->data, sb->cap);
+    }
+    memcpy(sb->data + sb->len, buf, (size_t)len);
+    sb->len += len;
+    sb->data[sb->len] = '\0';
+    return sb->len;
+}
+
+// v0.95: sb_push_bool — push "true"/"false" to StringBuilder
+int64_t bmb_sb_push_bool(int64_t handle, int64_t b) {
+    if (!handle) return 0;
+    StringBuilder* sb = (StringBuilder*)handle;
+    const char* s = b ? "true" : "false";
+    int len = b ? 4 : 5;
+    while (sb->len + len + 1 > sb->cap) {
+        sb->cap *= 2;
+        sb->data = (char*)realloc(sb->data, sb->cap);
+    }
+    memcpy(sb->data + sb->len, s, (size_t)len);
+    sb->len += len;
     sb->data[sb->len] = '\0';
     return sb->len;
 }
@@ -1297,6 +1936,32 @@ int64_t hashmap_contains(int64_t handle, int64_t key) {
     return 0;
 }
 
+// v0.95: hashmap_keys(handle) → vec of keys
+int64_t hashmap_keys(int64_t handle) {
+    int64_t v = bmb_vec_new();
+    if (!handle) return v;
+    HashMap* m = (HashMap*)handle;
+    for (int64_t i = 0; i < m->capacity; i++) {
+        if (m->entries[i].state == 1) {
+            bmb_vec_push(v, m->entries[i].key);
+        }
+    }
+    return v;
+}
+
+// v0.95: hashmap_values(handle) → vec of values
+int64_t hashmap_values(int64_t handle) {
+    int64_t v = bmb_vec_new();
+    if (!handle) return v;
+    HashMap* m = (HashMap*)handle;
+    for (int64_t i = 0; i < m->capacity; i++) {
+        if (m->entries[i].state == 1) {
+            bmb_vec_push(v, m->entries[i].value);
+        }
+    }
+    return v;
+}
+
 // v0.90.82: String-content hashmap (keys compared by string content, not pointer identity)
 // Uses FNV-1a hash of string bytes for distribution, strcmp for equality
 // Same open-addressing with linear probing as the i64 hashmap
@@ -1417,6 +2082,76 @@ int64_t str_hashmap_get(int64_t handle, int64_t key) {
         idx = (idx + 1) & mask;
     }
     return 0;
+}
+
+// v0.95: str_hashmap_contains
+int64_t str_hashmap_contains(int64_t handle, int64_t key) {
+    if (!handle) return 0;
+    StrHashMap* m = (StrHashMap*)handle;
+    int64_t hash = str_hash_content(key);
+    int64_t mask = m->capacity - 1;
+    int64_t idx = hash & mask;
+    for (int64_t i = 0; i < m->capacity; i++) {
+        StrHashEntry* e = &m->entries[idx];
+        if (e->state == 0) return 0;
+        if (e->state == 1 && str_key_eq(e->key, key)) return 1;
+        idx = (idx + 1) & mask;
+    }
+    return 0;
+}
+
+// v0.95: str_hashmap_len
+int64_t str_hashmap_len(int64_t handle) {
+    if (!handle) return 0;
+    StrHashMap* m = (StrHashMap*)handle;
+    return m->count;
+}
+
+// v0.95: str_hashmap_remove
+int64_t str_hashmap_remove(int64_t handle, int64_t key) {
+    if (!handle) return 0;
+    StrHashMap* m = (StrHashMap*)handle;
+    int64_t hash = str_hash_content(key);
+    int64_t mask = m->capacity - 1;
+    int64_t idx = hash & mask;
+    for (int64_t i = 0; i < m->capacity; i++) {
+        StrHashEntry* e = &m->entries[idx];
+        if (e->state == 0) return 0;
+        if (e->state == 1 && str_key_eq(e->key, key)) {
+            int64_t old_val = e->value;
+            e->state = 2; // tombstone
+            m->count--;
+            return old_val;
+        }
+        idx = (idx + 1) & mask;
+    }
+    return 0;
+}
+
+// v0.95: str_hashmap_keys → vec of key ptrs (BmbString*)
+int64_t str_hashmap_keys(int64_t handle) {
+    int64_t v = bmb_vec_new();
+    if (!handle) return v;
+    StrHashMap* m = (StrHashMap*)handle;
+    for (int64_t i = 0; i < m->capacity; i++) {
+        if (m->entries[i].state == 1) {
+            bmb_vec_push(v, m->entries[i].key);
+        }
+    }
+    return v;
+}
+
+// v0.95: str_hashmap_values → vec of values
+int64_t str_hashmap_values(int64_t handle) {
+    int64_t v = bmb_vec_new();
+    if (!handle) return v;
+    StrHashMap* m = (StrHashMap*)handle;
+    for (int64_t i = 0; i < m->capacity; i++) {
+        if (m->entries[i].state == 1) {
+            bmb_vec_push(v, m->entries[i].value);
+        }
+    }
+    return v;
 }
 
 // v0.90.83: Cached registry lookup for type checker performance
@@ -1553,6 +2288,25 @@ BmbString* bmb_system_capture(const BmbString* cmd) {
     s->len = (int64_t)len;
     s->cap = (int64_t)(g_arena_enabled ? len : cap);
     return s;
+}
+
+// v0.95: Delete a file
+int64_t bmb_delete_file(const BmbString* path) {
+    if (!path || !path->data) return 0;
+    return (remove(path->data) == 0) ? 1 : 0;
+}
+
+// v0.95: Get current working directory
+BmbString* bmb_getcwd(void) {
+    char buf[4096];
+#ifdef _WIN32
+    GetCurrentDirectoryA(4096, buf);
+#else
+    getcwd(buf, 4096);
+#endif
+    char* data = (char*)bmb_alloc(strlen(buf) + 1);
+    strcpy(data, buf);
+    return bmb_string_wrap(data);
 }
 
 // Wrapper for BMB code
@@ -1730,6 +2484,11 @@ int64_t sb_with_capacity(int64_t capacity) {
 // v0.51.51: sb_push takes BmbString*
 int64_t sb_push(int64_t handle, const BmbString* s) {
     return bmb_sb_push(handle, s);
+}
+
+// v0.95.7: sb_push_range pushes substring [start, end) without allocating
+int64_t sb_push_range(int64_t handle, const BmbString* s, int64_t start, int64_t end) {
+    return bmb_sb_push_range(handle, s, start, end);
 }
 
 // v0.51.51: sb_push_cstr takes raw char* for internal use
@@ -3293,6 +4052,60 @@ int64_t bmb_strmap_size(int64_t handle) {
     return map->size;
 }
 
+// v0.95: strmap_remove — remove key, return old value (0 if not found)
+int64_t bmb_strmap_remove(int64_t handle, const BmbString* key) {
+    if (!handle || !key) return 0;
+    StrMap* map = (StrMap*)handle;
+    uint64_t h = strmap_hash(key->data, key->len);
+    int64_t idx = (int64_t)(h % (uint64_t)map->capacity);
+    StrMapEntry* prev = NULL;
+    StrMapEntry* entry = map->buckets[idx];
+    while (entry) {
+        if (strcmp(entry->key, key->data) == 0) {
+            int64_t old_value = entry->value;
+            if (prev) prev->next = entry->next;
+            else map->buckets[idx] = entry->next;
+            free(entry->key);
+            free(entry);
+            map->size--;
+            return old_value;
+        }
+        prev = entry;
+        entry = entry->next;
+    }
+    return 0;
+}
+
+// v0.95: strmap_keys — return vec of string pointers (keys)
+int64_t bmb_strmap_keys(int64_t handle) {
+    int64_t v = bmb_vec_new();
+    if (!handle) return v;
+    StrMap* map = (StrMap*)handle;
+    for (int64_t i = 0; i < map->capacity; i++) {
+        StrMapEntry* entry = map->buckets[i];
+        while (entry) {
+            bmb_vec_push(v, (int64_t)bmb_string_from_cstr(entry->key));
+            entry = entry->next;
+        }
+    }
+    return v;
+}
+
+// v0.95: strmap_values — return vec of values
+int64_t bmb_strmap_values(int64_t handle) {
+    int64_t v = bmb_vec_new();
+    if (!handle) return v;
+    StrMap* map = (StrMap*)handle;
+    for (int64_t i = 0; i < map->capacity; i++) {
+        StrMapEntry* entry = map->buckets[i];
+        while (entry) {
+            bmb_vec_push(v, entry->value);
+            entry = entry->next;
+        }
+    }
+    return v;
+}
+
 // Wrapper functions with strmap_ prefix
 int64_t strmap_new(void) { return bmb_strmap_new(); }
 void strmap_free(int64_t handle) { bmb_strmap_free(handle); }
@@ -3306,6 +4119,11 @@ int64_t strmap_contains(int64_t handle, const BmbString* key) {
     return bmb_strmap_contains(handle, key);
 }
 int64_t strmap_size(int64_t handle) { return bmb_strmap_size(handle); }
+int64_t strmap_remove(int64_t handle, const BmbString* key) {
+    return bmb_strmap_remove(handle, key);
+}
+int64_t strmap_keys(int64_t handle) { return bmb_strmap_keys(handle); }
+int64_t strmap_values(int64_t handle) { return bmb_strmap_values(handle); }
 
 // ============================================================================
 // v0.63: Timing functions for bmb-bench
@@ -3313,6 +4131,7 @@ int64_t strmap_size(int64_t handle) { return bmb_strmap_size(handle); }
 
 #ifdef _WIN32
 // Windows: Use QueryPerformanceCounter for high-resolution timing
+// v0.95: Fixed overflow bug — split seconds/remainder to avoid counter*10^9 overflow
 int64_t bmb_time_ns(void) {
     static LARGE_INTEGER freq = {0};
     if (freq.QuadPart == 0) {
@@ -3320,8 +4139,20 @@ int64_t bmb_time_ns(void) {
     }
     LARGE_INTEGER counter;
     QueryPerformanceCounter(&counter);
-    // Convert to nanoseconds
-    return (int64_t)((counter.QuadPart * 1000000000LL) / freq.QuadPart);
+    int64_t seconds = counter.QuadPart / freq.QuadPart;
+    int64_t remainder = counter.QuadPart % freq.QuadPart;
+    return seconds * 1000000000LL + (remainder * 1000000000LL) / freq.QuadPart;
+}
+
+// v0.95: Direct ms calculation avoids ns overflow entirely
+int64_t bmb_time_ms(void) {
+    static LARGE_INTEGER freq = {0};
+    if (freq.QuadPart == 0) {
+        QueryPerformanceFrequency(&freq);
+    }
+    LARGE_INTEGER counter;
+    QueryPerformanceCounter(&counter);
+    return (int64_t)((counter.QuadPart * 1000LL) / freq.QuadPart);
 }
 #else
 // Unix: Use clock_gettime for nanosecond precision
@@ -3331,10 +4162,41 @@ int64_t bmb_time_ns(void) {
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (int64_t)(ts.tv_sec * 1000000000LL + ts.tv_nsec);
 }
+
+int64_t bmb_time_ms(void) { return bmb_time_ns() / 1000000LL; }
 #endif
 
 // Alias for compatibility
 int64_t time_ns(void) { return bmb_time_ns(); }
+
+// v0.95: exit process
+void bmb_exit(int64_t code) { exit((int)code); }
+
+// v0.95: sleep in milliseconds
+#ifdef _WIN32
+void bmb_sleep_ms(int64_t ms) { Sleep((DWORD)ms); }
+#else
+#include <unistd.h>
+void bmb_sleep_ms(int64_t ms) { usleep((useconds_t)(ms * 1000)); }
+#endif
+
+// v0.95: random number generation (xorshift64)
+static uint64_t bmb_rng_state = 0;
+int64_t bmb_random_i64(void) {
+    if (bmb_rng_state == 0) {
+        bmb_rng_state = (uint64_t)bmb_time_ns() ^ 0x5DEECE66DLL;
+    }
+    bmb_rng_state ^= bmb_rng_state << 13;
+    bmb_rng_state ^= bmb_rng_state >> 7;
+    bmb_rng_state ^= bmb_rng_state << 17;
+    return (int64_t)(bmb_rng_state & 0x7FFFFFFFFFFFFFFFLL);
+}
+
+// v0.95: seed the random number generator
+void bmb_random_seed(int64_t seed) {
+    bmb_rng_state = (uint64_t)seed;
+    if (bmb_rng_state == 0) bmb_rng_state = 1;
+}
 
 // ============================================================================
 // v0.83: AsyncFile - Asynchronous File I/O

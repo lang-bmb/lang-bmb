@@ -4,14 +4,15 @@
 // Optimization passes for MIR text format (with fixed-point iteration):
 // Phase 1 (Basic):
 // 1. ConstantFolding - Evaluate constant expressions at compile time
-// 2. AlgebraicSimplification - Simplify x+0, x*1, x*0, etc.
-// 3. CopyPropagation - Replace copies with originals
-// 4. DeadCodeElimination - Remove unused code
-// 5. BranchSimplification - Optimize conditional branches
+// 2. AlgebraicSimplification - Simplify x+0, x*1, x*0, x*2^k→x<<k, etc.
+// 3. PhiSimplification - Eliminate trivial PHI nodes (v0.95)
+// 4. CopyPropagation - Replace copies with originals
+// 5. DeadCodeElimination - Remove unused code
+// 6. BranchSimplification - Optimize conditional branches
 // Phase 2 (CFG):
-// 6. UnreachableBlockElimination - Remove unreachable blocks
-// 7. FallthroughOptimization - Remove redundant gotos
-// 8. TailCallMarking - Mark tail calls for TCO (level >= 2)
+// 7. UnreachableBlockElimination - Remove unreachable blocks
+// 8. FallthroughOptimization - Remove redundant gotos
+// 9. TailCallMarking - Mark tail calls for TCO (level >= 2)
 //
 // MIR text format:
 // fn name(params) -> type {
@@ -71,9 +72,132 @@ fn is_binop_inst(line: String) -> bool =
         starts_with(rest, "% ", 0)
     };
 
+// Check if line is a comparison instruction: %dest = == %a, %b (or !=, <, >, <=, >=)
+fn is_cmp_inst(line: String) -> bool =
+    let eq_pos = find_pattern(line, " = ", 0);
+    if eq_pos < 0 { false } else {
+        let rest = line.slice(eq_pos + 3, line.len());
+        starts_with(rest, "== ", 0) or starts_with(rest, "!= ", 0) or starts_with(rest, "< ", 0) or starts_with(rest, "> ", 0) or starts_with(rest, "<= ", 0) or starts_with(rest, ">= ", 0)
+    };
+
+// Extract comparison operator from: %dest = OP %a, %b
+fn extract_cmp_op(line: String) -> String =
+    let eq_pos = find_pattern(line, " = ", 0);
+    if eq_pos < 0 { "" } else {
+        let rest = line.slice(eq_pos + 3, line.len());
+        if starts_with(rest, "== ", 0) { "==" } else if starts_with(rest, "!= ", 0) { "!=" } else if starts_with(rest, "<= ", 0) { "<=" } else if starts_with(rest, ">= ", 0) { ">=" } else if starts_with(rest, "< ", 0) { "<" } else if starts_with(rest, "> ", 0) { ">" } else { "" }
+    };
+
+// Evaluate comparison operation on integer constants (standalone, not called from eval_binop)
+fn eval_cmp(op: String, left: i64, right: i64) -> i64 =
+    if op == "==" { if left == right { 1 } else { 0 } } else if op == "!=" { if left != right { 1 } else { 0 } } else if op == "<" { if left < right { 1 } else { 0 } } else if op == ">" { if left > right { 1 } else { 0 } } else if op == "<=" { if left <= right { 1 } else { 0 } } else if op == ">=" { if left >= right { 1 } else { 0 } } else { 0 };
+
+// Check if line is a shift instruction: %dest = << %a, %b (or >>)
+fn is_shift_inst(line: String) -> bool =
+    let eq_pos = find_pattern(line, " = ", 0);
+    if eq_pos < 0 { false } else {
+        let rest = line.slice(eq_pos + 3, line.len());
+        starts_with(rest, "<< ", 0) or starts_with(rest, ">> ", 0)
+    };
+
+// Extract shift operator
+fn extract_shift_op(line: String) -> String =
+    let eq_pos = find_pattern(line, " = ", 0);
+    if eq_pos < 0 { "" } else {
+        let rest = line.slice(eq_pos + 3, line.len());
+        if starts_with(rest, "<< ", 0) { "<<" } else if starts_with(rest, ">> ", 0) { ">>" } else { "" }
+    };
+
+// Evaluate shift operation on constants
+fn eval_shift(op: String, left: i64, right: i64) -> i64 =
+    if right < 0 or right > 63 { 0 } else if op == "<<" { left * power_of_two(right) } else if op == ">>" { left / power_of_two(right) } else { 0 };
+
+// Compute 2^n for shift operations
+fn power_of_two(n: i64) -> i64 =
+    if n <= 0 { 1 } else { 2 * power_of_two(n - 1) };
+
+// Check if line is a bitwise instruction: %dest = band/bor/bxor %a, %b
+fn is_bitwise_inst(line: String) -> bool =
+    let eq_pos = find_pattern(line, " = ", 0);
+    if eq_pos < 0 { false } else {
+        let rest = line.slice(eq_pos + 3, line.len());
+        starts_with(rest, "band ", 0) or starts_with(rest, "bor ", 0) or starts_with(rest, "bxor ", 0)
+    };
+
+// Extract bitwise operator
+fn extract_bitwise_op(line: String) -> String =
+    let eq_pos = find_pattern(line, " = ", 0);
+    if eq_pos < 0 { "" } else {
+        let rest = line.slice(eq_pos + 3, line.len());
+        if starts_with(rest, "band ", 0) { "band" } else if starts_with(rest, "bor ", 0) { "bor" } else if starts_with(rest, "bxor ", 0) { "bxor" } else { "" }
+    };
+
+// Evaluate bitwise operation on constants
+fn eval_bitwise(op: String, left: i64, right: i64) -> i64 =
+    if op == "band" { left band right } else if op == "bor" { left bor right } else if op == "bxor" { left bxor right } else { 0 };
+
+// Check if line is a wrapping arithmetic instruction: +%, -%, *%
+fn is_wrap_inst(line: String) -> bool =
+    let eq_pos = find_pattern(line, " = ", 0);
+    if eq_pos < 0 { false } else {
+        let rest = line.slice(eq_pos + 3, line.len());
+        starts_with(rest, "+% ", 0) or starts_with(rest, "-% ", 0) or starts_with(rest, "*% ", 0)
+    };
+
+// Extract wrapping arithmetic operator
+fn extract_wrap_op(line: String) -> String =
+    let eq_pos = find_pattern(line, " = ", 0);
+    if eq_pos < 0 { "" } else {
+        let rest = line.slice(eq_pos + 3, line.len());
+        if starts_with(rest, "+% ", 0) { "+%" } else if starts_with(rest, "-% ", 0) { "-%" } else if starts_with(rest, "*% ", 0) { "*%" } else { "" }
+    };
+
+// Evaluate wrapping arithmetic (same as regular for i64 — wrapping is handled by LLVM)
+fn eval_wrap(op: String, left: i64, right: i64) -> i64 =
+    if op == "+%" { left + right } else if op == "-%" { left - right } else if op == "*%" { left * right } else { 0 };
+
+// Extract operands from wrapping ops: %dest = +% %a, %b
+// Need special handling because +% contains % character
+fn extract_wrap_left(line: String) -> String =
+    let eq_pos = find_pattern(line, " = ", 0);
+    if eq_pos < 0 { "" } else {
+        let rest = line.slice(eq_pos + 3, line.len());
+        // Skip past operator: +%, -%, *% (3 chars including space)
+        let after_op = if starts_with(rest, "+% ", 0) or starts_with(rest, "-% ", 0) or starts_with(rest, "*% ", 0) { rest.slice(3, rest.len()) } else { rest };
+        let pct = find_char(after_op, 37, 0);
+        if pct < 0 { "" } else {
+            let comma = find_char(after_op, 44, pct);
+            if comma < 0 { "" } else { after_op.slice(pct, comma) }
+        }
+    };
+
+fn extract_wrap_right(line: String) -> String =
+    let comma = find_char(line, 44, 0);
+    if comma < 0 { "" } else {
+        let rest = line.slice(comma + 1, line.len());
+        let pct = find_char(rest, 37, 0);
+        if pct < 0 { "" } else { rest.slice(pct, rest.len()) }
+    };
+
 // Check if line is a copy instruction: %let mut = copy %src
 fn is_copy_inst(line: String) -> bool =
     find_pattern(line, " = copy %", 0) > 0;
+
+// Check if line is a unary neg instruction: %dest = neg %src
+fn is_neg_inst(line: String) -> bool =
+    find_pattern(line, " = neg %", 0) > 0;
+
+// Check if line is a unary not instruction: %dest = not %src
+fn is_not_inst(line: String) -> bool =
+    find_pattern(line, " = not %", 0) > 0;
+
+// Extract source operand from unary instruction: %dest = neg %src → %src
+fn extract_unary_src(line: String) -> String =
+    let neg_pos = find_pattern(line, " = neg %", 0);
+    let not_pos = find_pattern(line, " = not %", 0);
+    if neg_pos > 0 { line.slice(neg_pos + 7, line.len()) }
+    else if not_pos > 0 { line.slice(not_pos + 7, line.len()) }
+    else { "" };
 
 // Check if line is a branch: branch %cond, label1, label2
 fn is_branch_inst(line: String) -> bool =
@@ -168,6 +292,9 @@ fn const_table_has(table: String, key: String) -> bool =
 // ============================================================================
 
 // Evaluate binary operation on constants
+// NOTE: eval_binop limited to 5 branches (arithmetic only). Adding a 6th branch
+// causes pre-main crash in compiled binary. Comparison folding deferred.
+// See cycle-1308.md and cycle-1309.md for investigation details.
 fn eval_binop(op: String, left: i64, right: i64) -> i64 =
     if op == "+" { left + right } else if op == "-" { left - right } else if op == "*" { left * right } else if op == "/" { if right == 0 { 0 } else { left / right } } else if op == "%" { if right == 0 { 0 } else { left - (left / right) * right } } else { 0 };
 
@@ -179,6 +306,38 @@ fn fold_const_inst(line: String, const_table: String) -> String =
         let val = extract_const_value(line);
         let new_table = const_table_set(const_table, dest, val);
         "0;" + new_table + ";" + line
+    } else if is_copy_inst(line) {
+        // Copy-through constant propagation: if copy source is a known constant,
+        // add the destination to const_table too
+        let dest = extract_dest(line);
+        let src = extract_copy_src(line);
+        if const_table_has(const_table, src) {
+            let val = const_table_get(const_table, src);
+            let new_table = const_table_set(const_table, dest, val);
+            "0;" + new_table + ";" + line
+        } else { "0;" + const_table + ";" + line }
+    } else if is_neg_inst(line) {
+        // Fold neg of constant: neg %x where %x is known → const I:(-x)
+        let dest = extract_dest(line);
+        let src = extract_unary_src(line);
+        if const_table_has(const_table, src) {
+            let val = const_table_get(const_table, src);
+            let result = 0 - val;
+            let new_line = "  " + dest + " = const I:" + int_to_string(result);
+            let new_table = const_table_set(const_table, dest, result);
+            "1;" + new_table + ";" + new_line
+        } else { "0;" + const_table + ";" + line }
+    } else if is_not_inst(line) {
+        // Fold not of constant: not %x where %x is known → const I:(x==0?1:0)
+        let dest = extract_dest(line);
+        let src = extract_unary_src(line);
+        if const_table_has(const_table, src) {
+            let val = const_table_get(const_table, src);
+            let result = if val == 0 { 1 } else { 0 };
+            let new_line = "  " + dest + " = const I:" + int_to_string(result);
+            let new_table = const_table_set(const_table, dest, result);
+            "1;" + new_table + ";" + new_line
+        } else { "0;" + const_table + ";" + line }
     } else if is_binop_inst(line) {
         let dest = extract_dest(line);
         let op = extract_binop(line);
@@ -188,6 +347,58 @@ fn fold_const_inst(line: String, const_table: String) -> String =
             let left_val = const_table_get(const_table, left);
             let right_val = const_table_get(const_table, right);
             let result = eval_binop(op, left_val, right_val);
+            let new_line = "  " + dest + " = const I:" + int_to_string(result);
+            let new_table = const_table_set(const_table, dest, result);
+            "1;" + new_table + ";" + new_line
+        } else { "0;" + const_table + ";" + line }
+    } else if is_cmp_inst(line) {
+        let dest = extract_dest(line);
+        let op = extract_cmp_op(line);
+        let left = extract_binop_left(line);
+        let right = extract_binop_right(line);
+        if const_table_has(const_table, left) and const_table_has(const_table, right) {
+            let left_val = const_table_get(const_table, left);
+            let right_val = const_table_get(const_table, right);
+            let result = eval_cmp(op, left_val, right_val);
+            let new_line = "  " + dest + " = const I:" + int_to_string(result);
+            let new_table = const_table_set(const_table, dest, result);
+            "1;" + new_table + ";" + new_line
+        } else { "0;" + const_table + ";" + line }
+    } else if is_shift_inst(line) {
+        let dest = extract_dest(line);
+        let op = extract_shift_op(line);
+        let left = extract_binop_left(line);
+        let right = extract_binop_right(line);
+        if const_table_has(const_table, left) and const_table_has(const_table, right) {
+            let left_val = const_table_get(const_table, left);
+            let right_val = const_table_get(const_table, right);
+            let result = eval_shift(op, left_val, right_val);
+            let new_line = "  " + dest + " = const I:" + int_to_string(result);
+            let new_table = const_table_set(const_table, dest, result);
+            "1;" + new_table + ";" + new_line
+        } else { "0;" + const_table + ";" + line }
+    } else if is_bitwise_inst(line) {
+        let dest = extract_dest(line);
+        let op = extract_bitwise_op(line);
+        let left = extract_binop_left(line);
+        let right = extract_binop_right(line);
+        if const_table_has(const_table, left) and const_table_has(const_table, right) {
+            let left_val = const_table_get(const_table, left);
+            let right_val = const_table_get(const_table, right);
+            let result = eval_bitwise(op, left_val, right_val);
+            let new_line = "  " + dest + " = const I:" + int_to_string(result);
+            let new_table = const_table_set(const_table, dest, result);
+            "1;" + new_table + ";" + new_line
+        } else { "0;" + const_table + ";" + line }
+    } else if is_wrap_inst(line) {
+        let dest = extract_dest(line);
+        let op = extract_wrap_op(line);
+        let left = extract_wrap_left(line);
+        let right = extract_wrap_right(line);
+        if const_table_has(const_table, left) and const_table_has(const_table, right) {
+            let left_val = const_table_get(const_table, left);
+            let right_val = const_table_get(const_table, right);
+            let result = eval_wrap(op, left_val, right_val);
             let new_line = "  " + dest + " = const I:" + int_to_string(result);
             let new_table = const_table_set(const_table, dest, result);
             "1;" + new_table + ";" + new_line
@@ -489,6 +700,62 @@ fn run_copy_prop_pass(mir: String, pos: i64, table: String, acc: String, count: 
     };
 
 // ============================================================================
+// SECTION 8.2.1: PHI Simplification Pass (v0.95)
+// ============================================================================
+
+// Check if line is a PHI instruction: %_tN = phi [%_tX, label1], [%_tY, label2]
+fn is_phi_inst(line: String) -> bool =
+    find_pattern(line, " = phi [", 0) > 0;
+
+// Helper: extract variable between % and , starting from a given position
+fn extract_var_between_pct_comma(line: String, from: i64) -> String =
+    let pct = find_char(line, 37, from);
+    if pct < 0 { "" } else {
+        let comma = find_char(line, 44, pct);
+        if comma < 0 { "" } else { line.slice(pct, comma) }
+    };
+
+// Extract first PHI operand variable from: %dest = phi [%var1, label1], [%var2, label2]
+fn extract_phi_var1(line: String) -> String =
+    let phi_pos = find_pattern(line, " = phi [", 0);
+    if phi_pos < 0 { "" } else { extract_var_between_pct_comma(line, phi_pos + 8) };
+
+// Extract second PHI operand variable
+fn extract_phi_var2(line: String) -> String =
+    let sep = find_pattern(line, "], [", 0);
+    if sep < 0 { "" } else { extract_var_between_pct_comma(line, sep + 4) };
+
+// Helper: build copy replacement for trivial phi
+fn build_phi_copy(dest: String, var1: String) -> String =
+    "1;" + dest + " = copy " + var1;
+
+// Simplify a single PHI line: trivial phi (both operands same) → copy
+// Returns "changed;new_line"
+fn phi_simp_line(line: String) -> String =
+    if not is_phi_inst(line) { "0;" + line } else {
+        let var1 = extract_phi_var1(line);
+        let var2 = extract_phi_var2(line);
+        if var1 != "" and var1 == var2 {
+            build_phi_copy(extract_dest(line), var1)
+        } else { "0;" + line }
+    };
+
+// Run PHI simplification pass
+// Returns: "changed_count:optimized_mir"
+fn run_phi_simp_pass(mir: String, pos: i64, acc: String, count: i64) -> String =
+    if pos >= mir.len() { int_to_string(count) + ":" + acc } else {
+        let pipe = find_char(mir, 124, pos);
+        let end_pos = if pipe < 0 { mir.len() } else { pipe };
+        let line = mir.slice(pos, end_pos);
+        let result = phi_simp_line(line);
+        let semi = find_char(result, 59, 0);
+        let changed = parse_int_at(result, 0, 0);
+        let new_line = result.slice(semi + 1, result.len());
+        let new_acc = if acc == "" { new_line } else { acc + "|" + new_line };
+        run_phi_simp_pass(mir, end_pos + 1, new_acc, count + changed)
+    };
+
+// ============================================================================
 // SECTION 8.3: Algebraic Simplification Pass
 // ============================================================================
 
@@ -500,10 +767,95 @@ fn is_const_zero(line: String, table: String, varname: String) -> bool =
 fn is_const_one(line: String, table: String, varname: String) -> bool =
     if const_table_has(table, varname) { const_table_get(table, varname) == 1 } else { false };
 
+// Check if n > 0 and n is a power of 2
+fn is_power_of_two(n: i64) -> bool =
+    if n <= 0 { false }
+    else if n == 1 { true }
+    else if n % 2 != 0 { false }
+    else { is_power_of_two(n / 2) };
+
+// Return log2(n) for power-of-2 values (assumes n is a power of 2)
+fn log2_of(n: i64) -> i64 =
+    if n <= 1 { 0 }
+    else { 1 + log2_of(n / 2) };
+
+// Get shift amount if varname is a const power of 2 (>1), -1 otherwise
+fn get_shift_amount(table: String, varname: String) -> i64 =
+    if const_table_has(table, varname) {
+        let val = const_table_get(table, varname);
+        if val > 1 and is_power_of_two(val) { log2_of(val) } else { 0 - 1 }
+    } else { 0 - 1 };
+
 // Simplify algebraic expression
 // Returns: "changed;new_line" or "0;original_line" if no simplification
 fn simplify_algebraic_inst(line: String, const_table: String) -> String =
-    if not is_binop_inst(line) { "0;" + line } else {
+    if is_wrap_inst(line) {
+        let dest = extract_dest(line);
+        let wop = extract_wrap_op(line);
+        let left = extract_wrap_left(line);
+        let right = extract_wrap_right(line);
+        // x +% 0 → copy x, 0 +% x → copy x
+        if wop == "+%" and is_const_zero(line, const_table, right) {
+            "1;  " + dest + " = copy " + left
+        } else if wop == "+%" and is_const_zero(line, const_table, left) {
+            "1;  " + dest + " = copy " + right
+        // x -% 0 → copy x
+        } else if wop == "-%" and is_const_zero(line, const_table, right) {
+            "1;  " + dest + " = copy " + left
+        // x *% 1 → copy x, 1 *% x → copy x
+        } else if wop == "*%" and is_const_one(line, const_table, right) {
+            "1;  " + dest + " = copy " + left
+        } else if wop == "*%" and is_const_one(line, const_table, left) {
+            "1;  " + dest + " = copy " + right
+        // x *% 0 → 0, 0 *% x → 0
+        } else if wop == "*%" and is_const_zero(line, const_table, right) {
+            "1;  " + dest + " = const I:0"
+        } else if wop == "*%" and is_const_zero(line, const_table, left) {
+            "1;  " + dest + " = const I:0"
+        // x -% x → 0
+        } else if wop == "-%" and left == right {
+            "1;  " + dest + " = const I:0"
+        } else { "0;" + line }
+    } else if is_shift_inst(line) {
+        let dest = extract_dest(line);
+        let sop = extract_shift_op(line);
+        let left = extract_binop_left(line);
+        let right = extract_binop_right(line);
+        // x << 0 → copy x, x >> 0 → copy x
+        if is_const_zero(line, const_table, right) {
+            "1;  " + dest + " = copy " + left
+        // 0 << x → const 0, 0 >> x → const 0
+        } else if is_const_zero(line, const_table, left) {
+            "1;  " + dest + " = const I:0"
+        } else { "0;" + line }
+    } else if is_bitwise_inst(line) {
+        let dest = extract_dest(line);
+        let bop = extract_bitwise_op(line);
+        let left = extract_binop_left(line);
+        let right = extract_binop_right(line);
+        // x band 0 → 0, 0 band x → 0
+        if bop == "band" and is_const_zero(line, const_table, right) {
+            "1;  " + dest + " = const I:0"
+        } else if bop == "band" and is_const_zero(line, const_table, left) {
+            "1;  " + dest + " = const I:0"
+        // x bor 0 → copy x, 0 bor x → copy x
+        } else if bop == "bor" and is_const_zero(line, const_table, right) {
+            "1;  " + dest + " = copy " + left
+        } else if bop == "bor" and is_const_zero(line, const_table, left) {
+            "1;  " + dest + " = copy " + right
+        // x bxor 0 → copy x, 0 bxor x → copy x
+        } else if bop == "bxor" and is_const_zero(line, const_table, right) {
+            "1;  " + dest + " = copy " + left
+        } else if bop == "bxor" and is_const_zero(line, const_table, left) {
+            "1;  " + dest + " = copy " + right
+        // x band x → copy x, x bor x → copy x
+        } else if left == right and (bop == "band" or bop == "bor") {
+            "1;  " + dest + " = copy " + left
+        // x bxor x → 0
+        } else if left == right and bop == "bxor" {
+            "1;  " + dest + " = const I:0"
+        } else { "0;" + line }
+    } else if not is_binop_inst(line) { "0;" + line } else {
         let dest = extract_dest(line);
         let op = extract_binop(line);
         let left = extract_binop_left(line);
@@ -530,17 +882,31 @@ fn simplify_algebraic_inst(line: String, const_table: String) -> String =
         // 0 * x → const 0
         } else if op == "*" and is_const_zero(line, const_table, left) {
             "1;  " + dest + " = const I:0"
+        // Strength reduction: x * 2^k → x << k (emit const + shift as two lines)
+        } else if op == "*" and get_shift_amount(const_table, right) >= 0 {
+            let shift = get_shift_amount(const_table, right);
+            let shift_var = dest + "_sr";
+            "1;  " + shift_var + " = const I:" + int_to_string(shift) + "|  " + dest + " = << " + left + ", " + shift_var
+        // Strength reduction: 2^k * x → x << k
+        } else if op == "*" and get_shift_amount(const_table, left) >= 0 {
+            let shift = get_shift_amount(const_table, left);
+            let shift_var = dest + "_sr";
+            "1;  " + shift_var + " = const I:" + int_to_string(shift) + "|  " + dest + " = << " + right + ", " + shift_var
         // x / 1 → copy x
         } else if op == "/" and is_const_one(line, const_table, right) {
             "1;  " + dest + " = copy " + left
         // 0 / x → const 0 (if x != 0)
         } else if op == "/" and is_const_zero(line, const_table, left) and not is_const_zero(line, const_table, right) {
             "1;  " + dest + " = const I:0"
+        // Strength reduction: x / 2^k → x >> k (unsigned only — for signed, use LLVM)
         // x % 1 → const 0
         } else if op == "%" and is_const_one(line, const_table, right) {
             "1;  " + dest + " = const I:0"
         // 0 % x → const 0 (if x != 0)
         } else if op == "%" and is_const_zero(line, const_table, left) and not is_const_zero(line, const_table, right) {
+            "1;  " + dest + " = const I:0"
+        // x - x → const 0 (identity subtraction)
+        } else if op == "-" and left == right {
             "1;  " + dest + " = const I:0"
         } else {
             "0;" + line
@@ -555,11 +921,18 @@ fn run_algebraic_pass(mir: String, pos: i64, table: String, acc: String, count: 
         let end_pos = if pipe < 0 { mir.len() } else { pipe };
         let line = mir.slice(pos, end_pos);
 
-        // First, update const table if this is a const instruction
+        // First, update const table if this is a const or copy-of-const instruction
         let new_table = if is_const_inst(line) {
             let dest = extract_dest(line);
             let val = extract_const_value(line);
             const_table_set(table, dest, val)
+        } else if is_copy_inst(line) {
+            let dest = extract_dest(line);
+            let src = extract_copy_src(line);
+            if const_table_has(table, src) {
+                let val = const_table_get(table, src);
+                const_table_set(table, dest, val)
+            } else { table }
         } else {
             table
         };
@@ -585,11 +958,18 @@ fn run_branch_simp_pass(mir: String, pos: i64, table: String, acc: String, count
         let end_pos = if pipe < 0 { mir.len() } else { pipe };
         let line = mir.slice(pos, end_pos);
 
-        // Update const table if this is a const instruction
+        // Update const table if this is a const or copy-of-const instruction
         let new_table = if is_const_inst(line) {
             let dest = extract_dest(line);
             let val = extract_const_value(line);
             const_table_set(table, dest, val)
+        } else if is_copy_inst(line) {
+            let dest = extract_dest(line);
+            let src = extract_copy_src(line);
+            if const_table_has(table, src) {
+                let val = const_table_get(table, src);
+                const_table_set(table, dest, val)
+            } else { table }
         } else {
             table
         };
@@ -624,44 +1004,62 @@ fn run_all_passes_once(mir: String, level: i64) -> String =
     let count2 = parse_int_at(r2, 0, 0);
     let mir2 = r2.slice(c2_pos + 1, r2.len());
 
-    // Pass 3: Copy Propagation
-    let r3 = run_copy_prop_pass(mir2, 0, copy_table_empty(), "", 0);
+    // Pass 3: PHI Simplification (v0.95 — trivial phi elimination)
+    let r3 = run_phi_simp_pass(mir2, 0, "", 0);
     let c3_pos = find_char(r3, 58, 0);
     let count3 = parse_int_at(r3, 0, 0);
     let mir3 = r3.slice(c3_pos + 1, r3.len());
 
-    // Pass 4: Dead Code Elimination
-    let r4 = run_dce_pass(mir3, 0, "", 0);
+    // Pass 4: Copy Propagation
+    let r4 = run_copy_prop_pass(mir3, 0, copy_table_empty(), "", 0);
     let c4_pos = find_char(r4, 58, 0);
     let count4 = parse_int_at(r4, 0, 0);
     let mir4 = r4.slice(c4_pos + 1, r4.len());
 
-    // Pass 5: Branch Simplification
-    let r5 = run_branch_simp_pass(mir4, 0, const_table_empty(), "", 0);
+    // Pass 4.5: Cross-Block CSE (after copy prop canonicalizes operands)
+    let r4c = run_global_cse(mir4);
+    let c4c_pos = find_char(r4c, 58, 0);
+    let count4c = parse_int_at(r4c, 0, 0);
+    let mir4c = r4c.slice(c4c_pos + 1, r4c.len());
+
+    // Pass 5: Dead Code Elimination
+    let r5 = run_dce_pass(mir4c, 0, "", 0);
     let c5_pos = find_char(r5, 58, 0);
     let count5 = parse_int_at(r5, 0, 0);
     let mir5 = r5.slice(c5_pos + 1, r5.len());
 
-    // Pass 6: Unreachable Block Elimination (level >= 1)
-    let r6 = run_unreachable_elim_pass(mir5);
+    // Pass 6: Branch Simplification
+    let r6 = run_branch_simp_pass(mir5, 0, const_table_empty(), "", 0);
     let c6_pos = find_char(r6, 58, 0);
     let count6 = parse_int_at(r6, 0, 0);
     let mir6 = r6.slice(c6_pos + 1, r6.len());
 
-    // Pass 7: Fall-through Optimization (level >= 1)
-    let r7 = run_fallthrough_opt(mir6, 0, "", 0);
+    // Pass 7: Unreachable Block Elimination (level >= 1)
+    let r7 = run_unreachable_elim_pass(mir6);
     let c7_pos = find_char(r7, 58, 0);
     let count7 = parse_int_at(r7, 0, 0);
     let mir7 = r7.slice(c7_pos + 1, r7.len());
 
-    // Pass 8: Tail Call Marking (level >= 2 for aggressive)
-    let r8 = if level >= 2 { run_tail_call_pass(mir7) } else { "0:" + mir7 };
+    // Pass 8: Fall-through Optimization (level >= 1)
+    let r8 = run_fallthrough_opt(mir7, 0, "", 0);
     let c8_pos = find_char(r8, 58, 0);
     let count8 = parse_int_at(r8, 0, 0);
     let mir8 = r8.slice(c8_pos + 1, r8.len());
 
-    let total = count1 + count2 + count3 + count4 + count5 + count6 + count7 + count8;
-    int_to_string(total) + ":" + mir8;
+    // Pass 8.5: Block Merging (merge linear chains)
+    let r8m = run_block_merge(mir8);
+    let c8m_pos = find_char(r8m, 58, 0);
+    let count8m = parse_int_at(r8m, 0, 0);
+    let mir8m = r8m.slice(c8m_pos + 1, r8m.len());
+
+    // Pass 9: Tail Call Marking (level >= 2 for aggressive)
+    let r9 = if level >= 2 { run_tail_call_pass(mir8m) } else { "0:" + mir8m };
+    let c9_pos = find_char(r9, 58, 0);
+    let count9 = parse_int_at(r9, 0, 0);
+    let mir9 = r9.slice(c9_pos + 1, r9.len());
+
+    let total = count1 + count2 + count3 + count4 + count4c + count5 + count6 + count7 + count8 + count8m + count9;
+    int_to_string(total) + ":" + mir9;
 
 // Fixed-point iteration loop
 fn fixed_point_loop(mir: String, level: i64, iteration: i64, max_iterations: i64) -> String =
@@ -919,6 +1317,576 @@ fn make_stats(const_fold: i64, dead_code: i64, branches: i64, copies: i64) -> St
     "|dead_code:" + int_to_string(dead_code) +
     "|branches:" + int_to_string(branches) +
     "|copies:" + int_to_string(copies);
+
+// ============================================================================
+// SECTION 9.5: Dominator Tree Infrastructure (v0.95 — Cycle 1300)
+// ============================================================================
+// Enables cross-block CSE by computing which blocks dominate others.
+// A block A dominates block B if every path from entry to B goes through A.
+//
+// Data structures (string-based, matching bootstrap style):
+//   Set: "a,b,c" — comma-separated labels
+//   Table: "key1:val1|key2:val2|..." — maps label to set of labels
+
+// --- Set operations on comma-separated label strings ---
+
+fn set_empty() -> String = "";
+
+fn set_contains_helper(s: String, elem: String, pos: i64) -> bool =
+    if pos >= s.len() { false } else {
+        let comma = find_char(s, 44, pos);
+        let end = if comma < 0 { s.len() } else { comma };
+        let item = s.slice(pos, end);
+        if item == elem { true } else if end >= s.len() { false } else { set_contains_helper(s, elem, end + 1) }
+    };
+
+fn set_contains(s: String, elem: String) -> bool =
+    if s == "" { false } else { set_contains_helper(s, elem, 0) };
+
+fn set_add(s: String, elem: String) -> String =
+    if set_contains(s, elem) { s }
+    else if s == "" { elem }
+    else { s + "," + elem };
+
+fn set_size_helper(s: String, pos: i64, count: i64) -> i64 =
+    if pos >= s.len() { count } else {
+        let comma = find_char(s, 44, pos);
+        let end = if comma < 0 { s.len() } else { comma };
+        set_size_helper(s, end + 1, count + 1)
+    };
+
+fn set_size(s: String) -> i64 =
+    if s == "" { 0 } else { set_size_helper(s, 0, 0) };
+
+// Intersection: keep only elements present in both sets
+fn set_intersect_helper(a: String, b: String, pos: i64, acc: String) -> String =
+    if pos >= a.len() { acc } else {
+        let comma = find_char(a, 44, pos);
+        let end = if comma < 0 { a.len() } else { comma };
+        let item = a.slice(pos, end);
+        let new_acc = if set_contains(b, item) { set_add(acc, item) } else { acc };
+        if end >= a.len() { new_acc } else { set_intersect_helper(a, b, end + 1, new_acc) }
+    };
+
+fn set_intersect(a: String, b: String) -> String =
+    if a == "" or b == "" { "" } else { set_intersect_helper(a, b, 0, "") };
+
+fn set_union_helper(a: String, b: String, pos: i64) -> String =
+    if pos >= b.len() { a } else {
+        let comma = find_char(b, 44, pos);
+        let end = if comma < 0 { b.len() } else { comma };
+        let item = b.slice(pos, end);
+        let new_a = set_add(a, item);
+        if end >= b.len() { new_a } else { set_union_helper(new_a, b, end + 1) }
+    };
+
+fn set_union(a: String, b: String) -> String =
+    if a == "" { b } else if b == "" { a } else { set_union_helper(a, b, 0) };
+
+fn set_equal(a: String, b: String) -> bool =
+    set_size(a) == set_size(b) and set_intersect(a, b) == a;
+
+// Get nth element from comma-separated set
+fn set_nth(s: String, n: i64, pos: i64, idx: i64) -> String =
+    if pos >= s.len() { "" } else {
+        let comma = find_char(s, 44, pos);
+        let end = if comma < 0 { s.len() } else { comma };
+        if idx == n { s.slice(pos, end) }
+        else if end >= s.len() { "" }
+        else { set_nth(s, n, end + 1, idx + 1) }
+    };
+
+// --- Table operations: "key1:val1|key2:val2|..." ---
+
+fn dom_table_empty() -> String = "";
+
+fn dom_table_get_helper(table: String, key: String, pos: i64) -> String =
+    if pos >= table.len() { "" } else {
+        let pipe = find_char(table, 124, pos);
+        let end = if pipe < 0 { table.len() } else { pipe };
+        let entry = table.slice(pos, end);
+        let colon = find_char(entry, 58, 0);
+        if colon < 0 { dom_table_get_helper(table, key, end + 1) } else {
+            let entry_key = entry.slice(0, colon);
+            if entry_key == key { entry.slice(colon + 1, entry.len()) }
+            else { dom_table_get_helper(table, key, end + 1) }
+        }
+    };
+
+fn dom_table_get(table: String, key: String) -> String =
+    dom_table_get_helper(table, key, 0);
+
+fn dom_table_set_helper(table: String, key: String, val: String, pos: i64, acc: String, found: bool) -> String =
+    if pos >= table.len() {
+        if found { acc } else if acc == "" { key + ":" + val } else { acc + "|" + key + ":" + val }
+    } else {
+        let pipe = find_char(table, 124, pos);
+        let end = if pipe < 0 { table.len() } else { pipe };
+        let entry = table.slice(pos, end);
+        let colon = find_char(entry, 58, 0);
+        let entry_key = if colon < 0 { entry } else { entry.slice(0, colon) };
+        let new_entry = if entry_key == key { key + ":" + val } else { entry };
+        let new_found = if entry_key == key { true } else { found };
+        let new_acc = if acc == "" { new_entry } else { acc + "|" + new_entry };
+        if end >= table.len() {
+            if new_found { new_acc } else { new_acc + "|" + key + ":" + val }
+        } else { dom_table_set_helper(table, key, val, end + 1, new_acc, new_found) }
+    };
+
+fn dom_table_set(table: String, key: String, val: String) -> String =
+    if table == "" { key + ":" + val }
+    else { dom_table_set_helper(table, key, val, 0, "", false) };
+
+// --- CFG Building ---
+
+// Check if line is a label (ends with ':' and not indented)
+fn is_label_line(line: String) -> bool =
+    let trimmed = line.slice(skip_ws(line, 0), line.len());
+    let len = trimmed.len();
+    if len <= 1 { false }
+    else if trimmed.byte_at(len - 1) != 58 { false }  // not ':'
+    else if trimmed.byte_at(0) == 37 { false }  // starts with '%' = assignment, not label
+    else { true };
+
+// Extract target labels from branch instruction as comma-separated set
+fn dom_branch_targets(line: String) -> String =
+    let trimmed = line.slice(skip_ws(line, 0), line.len());
+    let branch_pos = find_pattern(trimmed, "branch ", 0);
+    if branch_pos < 0 { "" } else {
+        let comma1 = find_char(trimmed, 44, branch_pos + 7);
+        if comma1 < 0 { "" } else {
+            let then_label = trimmed.slice(skip_ws(trimmed, comma1 + 1), trimmed.len());
+            let comma2 = find_char(then_label, 44, 0);
+            if comma2 < 0 { "" } else {
+                let label1 = then_label.slice(0, comma2);
+                let label2 = then_label.slice(skip_ws(then_label, comma2 + 1), then_label.len());
+                label1 + "," + label2
+            }
+        }
+    };
+
+// Collect all labels from MIR
+fn collect_labels(mir: String, pos: i64, acc: String) -> String =
+    if pos >= mir.len() { acc } else {
+        let pipe = find_char(mir, 124, pos);
+        let end = if pipe < 0 { mir.len() } else { pipe };
+        let line = mir.slice(pos, end);
+        let new_acc = if is_label_line(line) {
+            let label = extract_label_name(line);
+            if label != "" { set_add(acc, label) } else { acc }
+        } else { acc };
+        if end >= mir.len() { new_acc } else { collect_labels(mir, end + 1, new_acc) }
+    };
+
+// Build successor table from MIR
+// Scans through lines tracking current block, records successors for each block
+fn build_successors_scan(mir: String, pos: i64, cur_block: String, succs: String) -> String =
+    if pos >= mir.len() { succs } else {
+        let pipe = find_char(mir, 124, pos);
+        let end = if pipe < 0 { mir.len() } else { pipe };
+        let line = mir.slice(pos, end);
+        let trimmed = line.slice(skip_ws(line, 0), line.len());
+        if is_label_line(line) {
+            let label = extract_label_name(line);
+            let new_succs = if dom_table_get(succs, label) == "" { dom_table_set(succs, label, "") } else { succs };
+            if end >= mir.len() { new_succs } else { build_successors_scan(mir, end + 1, label, new_succs) }
+        } else if starts_with(trimmed, "goto ", 0) {
+            let target = extract_goto_target(line);
+            let cur_succ = dom_table_get(succs, cur_block);
+            let new_succ = set_add(cur_succ, target);
+            let new_succs = dom_table_set(succs, cur_block, new_succ);
+            if end >= mir.len() { new_succs } else { build_successors_scan(mir, end + 1, cur_block, new_succs) }
+        } else if starts_with(trimmed, "branch ", 0) {
+            let targets = dom_branch_targets(line);
+            let cur_succ = dom_table_get(succs, cur_block);
+            let new_succ = set_union(cur_succ, targets);
+            let new_succs = dom_table_set(succs, cur_block, new_succ);
+            if end >= mir.len() { new_succs } else { build_successors_scan(mir, end + 1, cur_block, new_succs) }
+        } else {
+            if end >= mir.len() { succs } else { build_successors_scan(mir, end + 1, cur_block, succs) }
+        }
+    };
+
+fn build_successors(mir: String) -> String =
+    build_successors_scan(mir, 0, "", dom_table_empty());
+
+// Build predecessors from successors table
+fn build_preds_from_label(succs: String, label: String, all_labels: String, idx: i64, preds: String) -> String =
+    let src = set_nth(all_labels, idx, 0, 0);
+    if src == "" { preds } else {
+        let src_succs = dom_table_get(succs, src);
+        let new_preds = if set_contains(src_succs, label) {
+            let cur = dom_table_get(preds, label);
+            dom_table_set(preds, label, set_add(cur, src))
+        } else { preds };
+        build_preds_from_label(succs, label, all_labels, idx + 1, new_preds)
+    };
+
+fn build_predecessors_iter(succs: String, all_labels: String, idx: i64, preds: String) -> String =
+    let label = set_nth(all_labels, idx, 0, 0);
+    if label == "" { preds } else {
+        let new_preds = build_preds_from_label(succs, label, all_labels, 0, preds);
+        build_predecessors_iter(succs, all_labels, idx + 1, new_preds)
+    };
+
+fn build_predecessors(succs: String, all_labels: String) -> String =
+    build_predecessors_iter(succs, all_labels, 0, dom_table_empty());
+
+// --- Dominator Computation (iterative fixed-point) ---
+
+// Compute intersection of dominator sets for all predecessors of a block
+fn intersect_pred_doms(dom_table: String, preds: String, idx: i64, acc: String) -> String =
+    let pred = set_nth(preds, idx, 0, 0);
+    if pred == "" { acc } else {
+        let pred_dom = dom_table_get(dom_table, pred);
+        let new_acc = if acc == "" { pred_dom } else { set_intersect(acc, pred_dom) };
+        intersect_pred_doms(dom_table, preds, idx + 1, new_acc)
+    };
+
+// One iteration: update dom[B] for all blocks except entry
+fn dom_iterate_blocks(dom_table: String, pred_table: String, all_labels: String, ent: String, idx: i64, changed: bool) -> String =
+    let label = set_nth(all_labels, idx, 0, 0);
+    if label == "" {
+        if changed { "1:" + dom_table } else { "0:" + dom_table }
+    } else if label == ent {
+        dom_iterate_blocks(dom_table, pred_table, all_labels, ent, idx + 1, changed)
+    } else {
+        let preds = dom_table_get(pred_table, label);
+        if preds == "" {
+            // No predecessors (unreachable) — dom = {label}
+            let old_dom = dom_table_get(dom_table, label);
+            let new_dom = label;
+            let new_changed = if old_dom != new_dom { true } else { changed };
+            let new_table = dom_table_set(dom_table, label, new_dom);
+            dom_iterate_blocks(new_table, pred_table, all_labels, ent, idx + 1, new_changed)
+        } else {
+            let pred_intersection = intersect_pred_doms(dom_table, preds, 0, "");
+            let new_dom = set_add(pred_intersection, label);
+            let old_dom = dom_table_get(dom_table, label);
+            let new_changed = if set_size(old_dom) != set_size(new_dom) { true } else { changed };
+            let new_table = dom_table_set(dom_table, label, new_dom);
+            dom_iterate_blocks(new_table, pred_table, all_labels, ent, idx + 1, new_changed)
+        }
+    };
+
+// Initialize dominator sets: entry={entry}, all others=all_labels
+fn dom_init_blocks(all_labels: String, ent: String, idx: i64, dom_table: String) -> String =
+    let label = set_nth(all_labels, idx, 0, 0);
+    if label == "" { dom_table } else {
+        let dom_set = if label == ent { ent } else { all_labels };
+        let new_table = dom_table_set(dom_table, label, dom_set);
+        dom_init_blocks(all_labels, ent, idx + 1, new_table)
+    };
+
+// Fixed-point loop for dominator computation
+fn dom_fixed_point(dom_table: String, pred_table: String, all_labels: String, ent: String, iter: i64) -> String =
+    if iter >= 20 { dom_table } else {
+        let result = dom_iterate_blocks(dom_table, pred_table, all_labels, ent, 0, false);
+        let colon = find_char(result, 58, 0);
+        let changed = result.slice(0, colon) == "1";
+        let new_table = result.slice(colon + 1, result.len());
+        if not changed { new_table } else { dom_fixed_point(new_table, pred_table, all_labels, ent, iter + 1) }
+    };
+
+// Main entry point: compute dominator table from MIR
+fn compute_dominators(mir: String) -> String =
+    let all_labels = collect_labels(mir, 0, "");
+    if all_labels == "" { dom_table_empty() } else {
+        let ent = set_nth(all_labels, 0, 0, 0);
+        let succs = build_successors(mir);
+        let preds = build_predecessors(succs, all_labels);
+        let init_dom = dom_init_blocks(all_labels, ent, 0, dom_table_empty());
+        dom_fixed_point(init_dom, preds, all_labels, ent, 0)
+    };
+
+// Query: does block A dominate block B?
+fn dominates(dom_table: String, a: String, b: String) -> bool =
+    let b_doms = dom_table_get(dom_table, b);
+    set_contains(b_doms, a);
+
+// Get immediate dominator of block B (closest strict dominator)
+fn idom_of(dom_table: String, all_labels: String, block: String) -> String =
+    let b_doms = dom_table_get(dom_table, block);
+    // idom is the dominator with the largest dom set (excluding block itself)
+    idom_find_closest(dom_table, b_doms, block, 0, "", 0);
+
+fn idom_find_closest(dom_table: String, b_doms: String, block: String, idx: i64, best: String, best_size: i64) -> String =
+    let dom = set_nth(b_doms, idx, 0, 0);
+    if dom == "" { best }
+    else if dom == block { idom_find_closest(dom_table, b_doms, block, idx + 1, best, best_size) }
+    else {
+        let dom_size = set_size(dom_table_get(dom_table, dom));
+        let new_best = if dom_size > best_size { dom } else { best };
+        let new_size = if dom_size > best_size { dom_size } else { best_size };
+        idom_find_closest(dom_table, b_doms, block, idx + 1, new_best, new_size)
+    };
+
+// ============================================================================
+// SECTION 9.6: Cross-Block CSE (Common Subexpression Elimination)
+// ============================================================================
+// Uses dominator tree to safely eliminate redundant expressions across blocks.
+// If expression E is computed in block A and the same E appears in block B,
+// and A dominates B, then B's computation can be replaced with a copy.
+
+// Check if a binary operator is commutative (a op b == b op a)
+fn is_commutative(op: String) -> bool =
+    op == "+" or op == "*";
+
+// Lexicographic string comparison: returns true if a < b
+fn str_lt_helper(a: String, b: String, idx: i64) -> bool =
+    if idx >= a.len() {
+        // a is a prefix of b (or equal); a < b only if a is shorter
+        a.len() < b.len()
+    } else if idx >= b.len() {
+        // b is a prefix of a; a is not less
+        false
+    } else {
+        let ca = a.byte_at(idx);
+        let cb = b.byte_at(idx);
+        if ca < cb { true }
+        else if ca > cb { false }
+        else { str_lt_helper(a, b, idx + 1) }
+    };
+
+fn str_lt(a: String, b: String) -> bool =
+    str_lt_helper(a, b, 0);
+
+// Create canonical expression key for CSE lookup.
+// Format: "op.left.right" with operands sorted for commutative ops.
+fn cse_expr_key(op: String, left: String, right: String) -> String =
+    if is_commutative(op) and str_lt(right, left) {
+        op + "." + right + "." + left
+    } else {
+        op + "." + left + "." + right
+    };
+
+// Extract const value and format as CSE-safe key (no ':' allowed in keys).
+// "  %_t0 = const I:42" → "I.42"
+// Uses '.' instead of ':' to avoid dom_table format conflict.
+fn extract_const_key(line: String) -> String =
+    let const_pos = find_pattern(line, " = const ", 0);
+    if const_pos < 0 { "" } else {
+        let raw = line.slice(const_pos + 9, line.len());
+        let colon = find_char(raw, 58, 0);
+        if colon < 0 { raw }
+        else { raw.slice(0, colon) + "." + raw.slice(colon + 1, raw.len()) }
+    };
+
+// Extract expression signature from an instruction line.
+// For binop: returns "op.left.right" canonical key
+// For const: returns "C.value" key
+// Returns "" if not a CSE candidate.
+fn cse_extract_sig(line: String) -> String =
+    if is_binop_inst(line) {
+        let op = extract_binop(line);
+        let left = extract_binop_left(line);
+        let right = extract_binop_right(line);
+        if op == "" or left == "" or right == "" { "" }
+        else { cse_expr_key(op, left, right) }
+    } else if is_const_inst(line) {
+        let val = extract_const_key(line);
+        if val == "" { "" } else { "C." + val }
+    } else { "" };
+
+// CSE expression table: maps expr_key → "var.block"
+// Uses dom_table format (pipe-separated key:value pairs).
+// Key: "op.left.right", Value: "var.block"
+fn cse_table_get_var(table: String, key: String) -> String =
+    let val = dom_table_get(table, key);
+    if val == "" { "" } else {
+        let dot = find_char(val, 46, 0);  // '.'
+        if dot < 0 { val } else { val.slice(0, dot) }
+    };
+
+fn cse_table_get_block(table: String, key: String) -> String =
+    let val = dom_table_get(table, key);
+    if val == "" { "" } else {
+        let dot = find_char(val, 46, 0);  // '.'
+        if dot < 0 { "" } else { val.slice(dot + 1, val.len()) }
+    };
+
+fn cse_table_set(table: String, key: String, var_name: String, block: String) -> String =
+    dom_table_set(table, key, var_name + "." + block);
+
+// Process a single MIR line for CSE.
+// Returns "changed;new_table;replacement_line" where changed is "0" or "1".
+fn cse_process_line(line: String, cur_block: String, expr_table: String, dom_table: String) -> String =
+    let sig = cse_extract_sig(line);
+    if sig == "" {
+        // Not a binop — no CSE opportunity
+        "0;" + expr_table + ";" + line
+    } else {
+        let existing_var = cse_table_get_var(expr_table, sig);
+        if existing_var == "" {
+            // First occurrence — add to table
+            let dest = extract_dest(line);
+            let new_table = cse_table_set(expr_table, sig, dest, cur_block);
+            "0;" + new_table + ";" + line
+        } else {
+            let existing_block = cse_table_get_block(expr_table, sig);
+            if dominates(dom_table, existing_block, cur_block) {
+                // CSE hit! Replace binop with copy from existing var
+                let dest = extract_dest(line);
+                let new_line = "  " + dest + " = copy " + existing_var;
+                "1;" + expr_table + ";" + new_line
+            } else {
+                // Same expression exists but in a non-dominating block — add new entry
+                let dest = extract_dest(line);
+                let new_table = cse_table_set(expr_table, sig, dest, cur_block);
+                "0;" + new_table + ";" + line
+            }
+        }
+    };
+
+// Scan MIR line by line for CSE opportunities.
+// Returns "count:optimized_mir"
+fn cse_scan_mir(mir: String, pos: i64, cur_block: String, expr_table: String, dom_table: String, acc: String, count: i64) -> String =
+    if pos >= mir.len() { int_to_string(count) + ":" + acc } else {
+        let pipe = find_char(mir, 124, pos);
+        let end_pos = if pipe < 0 { mir.len() } else { pipe };
+        let line = mir.slice(pos, end_pos);
+        if is_label_line(line) {
+            let label = extract_label_name(line);
+            let new_acc = if acc == "" { line } else { acc + "|" + line };
+            if end_pos >= mir.len() { int_to_string(count) + ":" + new_acc }
+            else { cse_scan_mir(mir, end_pos + 1, label, expr_table, dom_table, new_acc, count) }
+        } else {
+            let result = cse_process_line(line, cur_block, expr_table, dom_table);
+            // Parse result: "changed;new_table;replacement_line"
+            let semi1 = find_char(result, 59, 0);  // ';'
+            let changed_str = result.slice(0, semi1);
+            let rest = result.slice(semi1 + 1, result.len());
+            let semi2 = find_char(rest, 59, 0);
+            let new_table = rest.slice(0, semi2);
+            let new_line = rest.slice(semi2 + 1, rest.len());
+            let new_count = if changed_str == "1" { count + 1 } else { count };
+            let new_acc = if acc == "" { new_line } else { acc + "|" + new_line };
+            if end_pos >= mir.len() { int_to_string(new_count) + ":" + new_acc }
+            else { cse_scan_mir(mir, end_pos + 1, cur_block, new_table, dom_table, new_acc, new_count) }
+        }
+    };
+
+// Entry point for cross-block CSE pass.
+// Returns "count:optimized_mir"
+fn run_global_cse(mir: String) -> String =
+    let dom_table = compute_dominators(mir);
+    cse_scan_mir(mir, 0, "", "", dom_table, "", 0);
+
+// ============================================================================
+// SECTION 9.7: Block Merging
+// ============================================================================
+// Merge linear chains: if block A ends with "goto B" and B has exactly one
+// predecessor (A), remove the goto and B's label, appending B's instructions to A.
+
+// Count predecessors for a label using the predecessor table
+fn pred_count(pred_table: String, label: String) -> i64 =
+    let preds = dom_table_get(pred_table, label);
+    if preds == "" { 0 } else { set_size(preds) };
+
+// Extract block contents (everything between two labels, excluding label lines)
+fn extract_block_body(mir: String, label: String, pos: i64, found: bool, acc: String) -> String =
+    if pos >= mir.len() { if found { acc } else { "" } } else {
+        let pipe = find_char(mir, 124, pos);
+        let end_pos = if pipe < 0 { mir.len() } else { pipe };
+        let line = mir.slice(pos, end_pos);
+        if is_label_line(line) {
+            let lbl = extract_label_name(line);
+            if found {
+                // Hit the next label — stop collecting
+                acc
+            } else if lbl == label {
+                // Found target label — start collecting
+                if end_pos >= mir.len() { "" }
+                else { extract_block_body(mir, label, end_pos + 1, true, "") }
+            } else {
+                if end_pos >= mir.len() { "" }
+                else { extract_block_body(mir, label, end_pos + 1, false, acc) }
+            }
+        } else if found {
+            let new_acc = if acc == "" { line } else { acc + "|" + line };
+            if end_pos >= mir.len() { new_acc }
+            else { extract_block_body(mir, label, end_pos + 1, true, new_acc) }
+        } else {
+            if end_pos >= mir.len() { "" }
+            else { extract_block_body(mir, label, end_pos + 1, false, acc) }
+        }
+    };
+
+// Skip body of a merged block (instructions until next label)
+fn skip_merged_body(mir: String, pos: i64, pred_table: String, acc: String, count: i64, merged_labels: String) -> String =
+    if pos >= mir.len() { int_to_string(count) + ":" + acc } else {
+        let pipe = find_char(mir, 124, pos);
+        let end_pos = if pipe < 0 { mir.len() } else { pipe };
+        let line = mir.slice(pos, end_pos);
+        if is_label_line(line) {
+            // Hit next label — resume normal processing from this label
+            merge_scan(mir, pos, pred_table, acc, count, merged_labels)
+        } else {
+            // Skip this instruction (part of merged block)
+            if end_pos >= mir.len() { int_to_string(count) + ":" + acc }
+            else { skip_merged_body(mir, end_pos + 1, pred_table, acc, count, merged_labels) }
+        }
+    };
+
+// Single pass: scan MIR, merge blocks where goto target has single predecessor.
+// Returns "count:optimized_mir"
+fn merge_scan(mir: String, pos: i64, pred_table: String, acc: String, count: i64, merged_labels: String) -> String =
+    if pos >= mir.len() { int_to_string(count) + ":" + acc } else {
+        let pipe = find_char(mir, 124, pos);
+        let end_pos = if pipe < 0 { mir.len() } else { pipe };
+        let line = mir.slice(pos, end_pos);
+        if is_label_line(line) {
+            let label = extract_label_name(line);
+            // Skip this label and its body if it was merged into a predecessor
+            if set_contains(merged_labels, label) {
+                if end_pos >= mir.len() { int_to_string(count) + ":" + acc }
+                else { skip_merged_body(mir, end_pos + 1, pred_table, acc, count, merged_labels) }
+            } else {
+                let new_acc = if acc == "" { line } else { acc + "|" + line };
+                if end_pos >= mir.len() { int_to_string(count) + ":" + new_acc }
+                else { merge_scan(mir, end_pos + 1, pred_table, new_acc, count, merged_labels) }
+            }
+        } else {
+            // Check if this is a goto instruction eligible for merging
+            let trimmed = line.slice(skip_ws(line, 0), line.len());
+            if starts_with(trimmed, "goto ", 0) {
+                let target = extract_goto_target(line);
+                // Can merge if target has exactly one predecessor and is not "entry"
+                if target != "" and target != "entry" and pred_count(pred_table, target) == 1 {
+                    let body = extract_block_body(mir, target, 0, false, "");
+                    let new_labels = set_add(merged_labels, target);
+                    if body == "" {
+                        // Empty target block — just remove the goto
+                        if end_pos >= mir.len() { int_to_string(count + 1) + ":" + acc }
+                        else { merge_scan(mir, end_pos + 1, pred_table, acc, count + 1, new_labels) }
+                    } else {
+                        // Replace goto with target's body
+                        let new_acc = if acc == "" { body } else { acc + "|" + body };
+                        if end_pos >= mir.len() { int_to_string(count + 1) + ":" + new_acc }
+                        else { merge_scan(mir, end_pos + 1, pred_table, new_acc, count + 1, new_labels) }
+                    }
+                } else {
+                    let new_acc = if acc == "" { line } else { acc + "|" + line };
+                    if end_pos >= mir.len() { int_to_string(count) + ":" + new_acc }
+                    else { merge_scan(mir, end_pos + 1, pred_table, new_acc, count, merged_labels) }
+                }
+            } else {
+                let new_acc = if acc == "" { line } else { acc + "|" + line };
+                if end_pos >= mir.len() { int_to_string(count) + ":" + new_acc }
+                else { merge_scan(mir, end_pos + 1, pred_table, new_acc, count, merged_labels) }
+            }
+        }
+    };
+
+// Entry point for block merging pass.
+// Returns "count:optimized_mir"
+fn run_block_merge(mir: String) -> String =
+    let all_labels = collect_labels(mir, 0, "");
+    if all_labels == "" { "0:" + mir } else {
+        let succs = build_successors(mir);
+        let preds = build_predecessors(succs, all_labels);
+        merge_scan(mir, 0, preds, "", 0, "")
+    };
 
 // ============================================================================
 // SECTION 10: Unit Tests (v0.30.148)
@@ -1537,6 +2505,32 @@ fn test_fixed_point() -> i64 =
 
     t1 + t2;
 
+// v0.95: PHI simplification pass tests
+fn test_phi_simp() -> i64 =
+    // Test 1: is_phi_inst detection
+    let p1 = if is_phi_inst("  %_t5 = phi [%_t3, then_0], [%_t4, else_0]") { 1 } else { 0 };
+    let p2 = if not is_phi_inst("  %_t0 = const I:42") { 1 } else { 0 };
+    let p3 = if not is_phi_inst("  %_t1 = copy %x") { 1 } else { 0 };
+    // Test 2: extract_phi_var1
+    let v1 = extract_phi_var1("  %_t5 = phi [%_t3, then_0], [%_t4, else_0]");
+    let p4 = if v1 == "%_t3" { 1 } else { 0 };
+    // Test 3: extract_phi_var2
+    let v2 = extract_phi_var2("  %_t5 = phi [%_t3, then_0], [%_t4, else_0]");
+    let p5 = if v2 == "%_t4" { 1 } else { 0 };
+    // Test 4: trivial phi (same operands) → copy
+    let r1 = phi_simp_line("  %_t5 = phi [%_t3, then_0], [%_t3, else_0]");
+    let p6 = if find_pattern(r1, "copy %_t3", 0) >= 0 { 1 } else { 0 };
+    // Test 5: non-trivial phi unchanged
+    let r2 = phi_simp_line("  %_t5 = phi [%_t3, then_0], [%_t4, else_0]");
+    let p7 = if find_pattern(r2, "phi [", 0) >= 0 { 1 } else { 0 };
+    // Test 6: full pass on MIR with trivial phi
+    let mir = "entry:|  branch %c, then_0, else_0|then_0:|  goto merge_0|else_0:|  goto merge_0|merge_0:|  %_t5 = phi [%_t3, then_0], [%_t3, else_0]|  return %_t5";
+    let result = run_phi_simp_pass(mir, 0, "", 0);
+    let colon = find_char(result, 58, 0);
+    let count = parse_int_at(result, 0, 0);
+    let p8 = if count == 1 { 1 } else { 0 };
+    p1 + p2 + p3 + p4 + p5 + p6 + p7 + p8;
+
 // ============================================================================
 // SECTION 11: Integration Tests
 // ============================================================================
@@ -1694,6 +2688,711 @@ fn test_opt_levels() -> i64 =
 
     t1 + t2 + t3 + t4 + t5;
 
+// ============================================================================
+// Dominator Infrastructure Tests (v0.95 — Cycle 1300)
+// ============================================================================
+
+fn test_set_ops() -> i64 = {
+    // Test 1: empty set
+    let t1 = if set_size(set_empty()) == 0 { 1 } else { 0 };
+    // Test 2: add to empty
+    let s1 = set_add("", "a");
+    let t2 = if s1 == "a" { 1 } else { 0 };
+    // Test 3: add to non-empty
+    let s2 = set_add("a", "b");
+    let t3 = if s2 == "a,b" { 1 } else { 0 };
+    // Test 4: no duplicate
+    let s3 = set_add("a,b", "a");
+    let t4 = if s3 == "a,b" { 1 } else { 0 };
+    // Test 5: contains
+    let t5 = if set_contains("a,b,c", "b") { 1 } else { 0 };
+    // Test 6: not contains
+    let t6 = if not set_contains("a,b,c", "d") { 1 } else { 0 };
+    // Test 7: size
+    let t7 = if set_size("a,b,c") == 3 { 1 } else { 0 };
+    // Test 8: intersect
+    let si = set_intersect("a,b,c", "b,c,d");
+    let t8 = if set_contains(si, "b") and set_contains(si, "c") and set_size(si) == 2 { 1 } else { 0 };
+    // Test 9: intersect with empty
+    let t9 = if set_intersect("a,b", "") == "" { 1 } else { 0 };
+    // Test 10: union
+    let su = set_union("a,b", "b,c");
+    let t10 = if set_size(su) == 3 and set_contains(su, "a") and set_contains(su, "c") { 1 } else { 0 };
+    // Test 11: set_nth
+    let t11 = if set_nth("a,b,c", 1, 0, 0) == "b" { 1 } else { 0 };
+    // Test 12: set_equal
+    let t12 = if set_equal("a,b", "a,b") and not set_equal("a,b", "a,c") { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12
+};
+
+fn test_dom_table_ops() -> i64 = {
+    // Test 1: empty get
+    let t1 = if dom_table_get("", "a") == "" { 1 } else { 0 };
+    // Test 2: set and get
+    let tbl1 = dom_table_set("", "a", "x,y");
+    let t2 = if dom_table_get(tbl1, "a") == "x,y" { 1 } else { 0 };
+    // Test 3: set multiple
+    let tbl2 = dom_table_set(tbl1, "b", "z");
+    let t3 = if dom_table_get(tbl2, "b") == "z" { 1 } else { 0 };
+    // Test 4: first entry still there
+    let t4 = if dom_table_get(tbl2, "a") == "x,y" { 1 } else { 0 };
+    // Test 5: overwrite
+    let tbl3 = dom_table_set(tbl2, "a", "w");
+    let t5 = if dom_table_get(tbl3, "a") == "w" { 1 } else { 0 };
+    // Test 6: missing key
+    let t6 = if dom_table_get(tbl3, "c") == "" { 1 } else { 0 };
+    // Test 7: is_label_line
+    let t7 = if is_label_line("entry:") and is_label_line("then_0:") and not is_label_line("  %_t0 = const 1") { 1 } else { 0 };
+    // Test 8: dom_branch_targets (comma-separated for set operations)
+    let targets = dom_branch_targets("  branch %_t0, then_0, else_0");
+    let t8 = if set_contains(targets, "then_0") and set_contains(targets, "else_0") { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8
+};
+
+fn test_cfg_building() -> i64 = {
+    // Simple diamond CFG: entry -> then_0/else_0 -> merge_0
+    let mir = "entry:|  %_t0 = const 1|  branch %_t0, then_0, else_0|then_0:|  %_t1 = const 2|  goto merge_0|else_0:|  %_t2 = const 3|  goto merge_0|merge_0:|  return %_t1";
+    // Test 1: collect labels
+    let labels = collect_labels(mir, 0, "");
+    let t1 = if set_size(labels) == 4 { 1 } else { 0 };
+    // Test 2: has all labels
+    let t2 = if set_contains(labels, "entry") and set_contains(labels, "then_0") and set_contains(labels, "else_0") and set_contains(labels, "merge_0") { 1 } else { 0 };
+    // Test 3: successors of entry
+    let succs = build_successors(mir);
+    let entry_succs = dom_table_get(succs, "entry");
+    let t3 = if set_contains(entry_succs, "then_0") and set_contains(entry_succs, "else_0") { 1 } else { 0 };
+    // Test 4: successors of then_0
+    let then_succs = dom_table_get(succs, "then_0");
+    let t4 = if then_succs == "merge_0" { 1 } else { 0 };
+    // Test 5: predecessors of merge_0
+    let preds = build_predecessors(succs, labels);
+    let merge_preds = dom_table_get(preds, "merge_0");
+    let t5 = if set_contains(merge_preds, "then_0") and set_contains(merge_preds, "else_0") { 1 } else { 0 };
+    // Test 6: predecessors of entry (none)
+    let entry_preds = dom_table_get(preds, "entry");
+    let t6 = if entry_preds == "" { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5 + t6
+};
+
+fn test_dominator_diamond() -> i64 = {
+    // Diamond CFG: entry -> then_0/else_0 -> merge_0
+    let mir = "entry:|  %_t0 = const 1|  branch %_t0, then_0, else_0|then_0:|  %_t1 = const 2|  goto merge_0|else_0:|  %_t2 = const 3|  goto merge_0|merge_0:|  return %_t1";
+    let dom = compute_dominators(mir);
+    // Test 1: entry dominates entry
+    let t1 = if dominates(dom, "entry", "entry") { 1 } else { 0 };
+    // Test 2: entry dominates then_0
+    let t2 = if dominates(dom, "entry", "then_0") { 1 } else { 0 };
+    // Test 3: entry dominates else_0
+    let t3 = if dominates(dom, "entry", "else_0") { 1 } else { 0 };
+    // Test 4: entry dominates merge_0
+    let t4 = if dominates(dom, "entry", "merge_0") { 1 } else { 0 };
+    // Test 5: then_0 does NOT dominate merge_0
+    let t5 = if not dominates(dom, "then_0", "merge_0") { 1 } else { 0 };
+    // Test 6: else_0 does NOT dominate merge_0
+    let t6 = if not dominates(dom, "else_0", "merge_0") { 1 } else { 0 };
+    // Test 7: then_0 does NOT dominate else_0
+    let t7 = if not dominates(dom, "then_0", "else_0") { 1 } else { 0 };
+    // Test 8: merge_0 does NOT dominate then_0
+    let t8 = if not dominates(dom, "merge_0", "then_0") { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8
+};
+
+fn test_dominator_loop() -> i64 = {
+    // Loop CFG: entry -> header -> body -> header (back edge), header -> exit
+    let mir = "entry:|  goto header|header:|  %_t0 = const 1|  branch %_t0, body, exit|body:|  %_t1 = const 2|  goto header|exit:|  return %_t1";
+    let dom = compute_dominators(mir);
+    // Test 1: entry dominates all
+    let t1 = if dominates(dom, "entry", "header") and dominates(dom, "entry", "body") and dominates(dom, "entry", "exit") { 1 } else { 0 };
+    // Test 2: header dominates body
+    let t2 = if dominates(dom, "header", "body") { 1 } else { 0 };
+    // Test 3: header dominates exit
+    let t3 = if dominates(dom, "header", "exit") { 1 } else { 0 };
+    // Test 4: body does NOT dominate header (header has entry as pred too)
+    let t4 = if not dominates(dom, "body", "header") { 1 } else { 0 };
+    // Test 5: body does NOT dominate exit
+    let t5 = if not dominates(dom, "body", "exit") { 1 } else { 0 };
+    // Test 6: exit does NOT dominate body
+    let t6 = if not dominates(dom, "exit", "body") { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5 + t6
+};
+
+fn test_dominator_chain() -> i64 = {
+    // Linear chain: entry -> b1 -> b2 -> b3
+    let mir = "entry:|  goto b1|b1:|  goto b2|b2:|  goto b3|b3:|  return %_t0";
+    let dom = compute_dominators(mir);
+    // Test 1: entry dominates all
+    let t1 = if dominates(dom, "entry", "b1") and dominates(dom, "entry", "b2") and dominates(dom, "entry", "b3") { 1 } else { 0 };
+    // Test 2: b1 dominates b2 and b3
+    let t2 = if dominates(dom, "b1", "b2") and dominates(dom, "b1", "b3") { 1 } else { 0 };
+    // Test 3: b2 dominates b3
+    let t3 = if dominates(dom, "b2", "b3") { 1 } else { 0 };
+    // Test 4: b3 does NOT dominate b2
+    let t4 = if not dominates(dom, "b3", "b2") { 1 } else { 0 };
+    // Test 5: b2 does NOT dominate b1
+    let t5 = if not dominates(dom, "b2", "b1") { 1 } else { 0 };
+    // Test 6: self-domination
+    let t6 = if dominates(dom, "b2", "b2") { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5 + t6
+};
+
+// --- Cross-Block CSE Tests ---
+
+fn test_cse_expr_key() -> i64 = {
+    // Test 1: non-commutative preserves order
+    let k1 = cse_expr_key("-", "%_t0", "%_t1");
+    let t1 = if k1 == "-.%_t0.%_t1" { 1 } else { 0 };
+    // Test 2: commutative + sorts operands
+    let k2 = cse_expr_key("+", "%_t1", "%_t0");
+    let t2 = if k2 == "+.%_t0.%_t1" { 1 } else { 0 };
+    // Test 3: commutative + already sorted
+    let k3 = cse_expr_key("+", "%_t0", "%_t1");
+    let t3 = if k3 == "+.%_t0.%_t1" { 1 } else { 0 };
+    // Test 4: commutative * sorts
+    let k4 = cse_expr_key("*", "%_t5", "%_t2");
+    let t4 = if k4 == "*.%_t2.%_t5" { 1 } else { 0 };
+    // Test 5: non-commutative / preserves order
+    let k5 = cse_expr_key("/", "%_t5", "%_t2");
+    let t5 = if k5 == "/.%_t5.%_t2" { 1 } else { 0 };
+    // Test 6: extract sig from binop line
+    let sig = cse_extract_sig("  %_t3 = + %_t0, %_t1");
+    let t6 = if sig == "+.%_t0.%_t1" { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5 + t6
+};
+
+fn test_cse_table() -> i64 = {
+    // Test 1: set and get var
+    let tbl = cse_table_set("", "+.%_t0.%_t1", "%_t3", "entry");
+    let t1 = if cse_table_get_var(tbl, "+.%_t0.%_t1") == "%_t3" { 1 } else { 0 };
+    // Test 2: get block
+    let t2 = if cse_table_get_block(tbl, "+.%_t0.%_t1") == "entry" { 1 } else { 0 };
+    // Test 3: missing key
+    let t3 = if cse_table_get_var(tbl, "-.%_t0.%_t1") == "" { 1 } else { 0 };
+    // Test 4: overwrite
+    let tbl2 = cse_table_set(tbl, "+.%_t0.%_t1", "%_t7", "then_0");
+    let t4 = if cse_table_get_var(tbl2, "+.%_t0.%_t1") == "%_t7" { 1 } else { 0 };
+    t1 + t2 + t3 + t4
+};
+
+fn test_cse_within_block() -> i64 = {
+    // Same expression twice in same block — second should be replaced with copy
+    let mir = "entry:|  %_t0 = const I:5|  %_t1 = const I:3|  %_t2 = + %_t0, %_t1|  %_t3 = + %_t0, %_t1|  return %_t3";
+    let result = run_global_cse(mir);
+    let colon = find_char(result, 58, 0);
+    let count = parse_int_at(result, 0, 0);
+    let opt_mir = result.slice(colon + 1, result.len());
+    // Test 1: one CSE replacement happened
+    let t1 = if count == 1 { 1 } else { 0 };
+    // Test 2: the replacement is a copy
+    let t2 = if find_pattern(opt_mir, "copy %_t2", 0) >= 0 { 1 } else { 0 };
+    // Test 3: original binop still present (first occurrence)
+    let t3 = if find_pattern(opt_mir, "+ %_t0, %_t1", 0) >= 0 { 1 } else { 0 };
+    t1 + t2 + t3
+};
+
+fn test_cse_cross_block() -> i64 = {
+    // Expression in entry block, same in merge_0 (dominated by entry)
+    let mir = "entry:|  %_t0 = const I:5|  %_t1 = const I:3|  %_t2 = + %_t0, %_t1|  branch %_t0, then_0, else_0|then_0:|  goto merge_0|else_0:|  goto merge_0|merge_0:|  %_t5 = + %_t0, %_t1|  return %_t5";
+    let result = run_global_cse(mir);
+    let colon = find_char(result, 58, 0);
+    let count = parse_int_at(result, 0, 0);
+    let opt_mir = result.slice(colon + 1, result.len());
+    // Test 1: one CSE replacement
+    let t1 = if count == 1 { 1 } else { 0 };
+    // Test 2: merge_0 block uses copy instead of binop
+    let merge_pos = find_pattern(opt_mir, "merge_0:", 0);
+    let after_merge = opt_mir.slice(merge_pos, opt_mir.len());
+    let t2 = if find_pattern(after_merge, "copy %_t2", 0) >= 0 { 1 } else { 0 };
+    t1 + t2
+};
+
+fn test_cse_no_dominate() -> i64 = {
+    // Expression in then_0, same in else_0 — they don't dominate each other
+    let mir = "entry:|  %_t0 = const I:5|  %_t1 = const I:3|  branch %_t0, then_0, else_0|then_0:|  %_t2 = + %_t0, %_t1|  goto merge_0|else_0:|  %_t3 = + %_t0, %_t1|  goto merge_0|merge_0:|  return %_t2";
+    let result = run_global_cse(mir);
+    let colon = find_char(result, 58, 0);
+    let count = parse_int_at(result, 0, 0);
+    // Test 1: no CSE (sibling blocks don't dominate each other)
+    let t1 = if count == 0 { 1 } else { 0 };
+    t1
+};
+
+fn test_cse_commutative() -> i64 = {
+    // a+b and b+a should be recognized as the same expression
+    let mir = "entry:|  %_t0 = const I:5|  %_t1 = const I:3|  %_t2 = + %_t0, %_t1|  %_t3 = + %_t1, %_t0|  return %_t3";
+    let result = run_global_cse(mir);
+    let colon = find_char(result, 58, 0);
+    let count = parse_int_at(result, 0, 0);
+    // Test 1: commutative CSE detected
+    let t1 = if count == 1 { 1 } else { 0 };
+    // Test 2: non-commutative subtraction NOT eliminated
+    let mir2 = "entry:|  %_t0 = const I:5|  %_t1 = const I:3|  %_t2 = - %_t0, %_t1|  %_t3 = - %_t1, %_t0|  return %_t3";
+    let result2 = run_global_cse(mir2);
+    let count2 = parse_int_at(result2, 0, 0);
+    let t2 = if count2 == 0 { 1 } else { 0 };
+    t1 + t2
+};
+
+fn test_cse_const() -> i64 = {
+    // Test 1: duplicate const in same block — second replaced with copy
+    let mir1 = "entry:|  %_t0 = const I:42|  %_t1 = const I:42|  return %_t1";
+    let r1 = run_global_cse(mir1);
+    let c1 = parse_int_at(r1, 0, 0);
+    let t1 = if c1 == 1 { 1 } else { 0 };
+
+    // Test 2: duplicate const across dominating blocks
+    let mir2 = "entry:|  %_t0 = const I:10|  branch %_t0, then_0, else_0|then_0:|  %_t1 = const I:10|  goto merge_0|else_0:|  goto merge_0|merge_0:|  return %_t0";
+    let r2 = run_global_cse(mir2);
+    let c2 = parse_int_at(r2, 0, 0);
+    let t2 = if c2 == 1 { 1 } else { 0 };
+
+    // Test 3: different consts NOT eliminated
+    let mir3 = "entry:|  %_t0 = const I:10|  %_t1 = const I:20|  return %_t1";
+    let r3 = run_global_cse(mir3);
+    let c3 = parse_int_at(r3, 0, 0);
+    let t3 = if c3 == 0 { 1 } else { 0 };
+
+    // Test 4: const sig extraction (colon replaced with dot for table safety)
+    let sig = cse_extract_sig("  %_t0 = const I:42");
+    let t4 = if sig == "C.I.42" { 1 } else { 0 };
+
+    t1 + t2 + t3 + t4
+};
+
+// --- Block Merging Tests ---
+
+fn test_block_merge_linear() -> i64 = {
+    // Linear chain: entry -> b1 -> b2 should merge b1 into entry, b2 into result
+    let mir = "entry:|  %_t0 = const I:1|  goto b1|b1:|  %_t1 = const I:2|  goto b2|b2:|  return %_t1";
+    let result = run_block_merge(mir);
+    let colon = find_char(result, 58, 0);
+    let count = parse_int_at(result, 0, 0);
+    let opt = result.slice(colon + 1, result.len());
+    // Test 1: merges happened
+    let t1 = if count >= 1 { 1 } else { 0 };
+    // Test 2: no goto b1 in output
+    let t2 = if find_pattern(opt, "goto b1", 0) < 0 { 1 } else { 0 };
+    // Test 3: no b1: label in output
+    let t3 = if find_pattern(opt, "b1:", 0) < 0 { 1 } else { 0 };
+    // Test 4: instructions preserved
+    let t4 = if find_pattern(opt, "const I:2", 0) >= 0 { 1 } else { 0 };
+    t1 + t2 + t3 + t4
+};
+
+fn test_block_merge_diamond() -> i64 = {
+    // Diamond: entry -> then_0/else_0 -> merge_0
+    // merge_0 has TWO predecessors — should NOT be merged
+    let mir = "entry:|  branch %_t0, then_0, else_0|then_0:|  goto merge_0|else_0:|  goto merge_0|merge_0:|  return %_t1";
+    let result = run_block_merge(mir);
+    let colon = find_char(result, 58, 0);
+    let opt = result.slice(colon + 1, result.len());
+    // Test 1: merge_0 label still present (two predecessors)
+    let t1 = if find_pattern(opt, "merge_0:", 0) >= 0 { 1 } else { 0 };
+    // Test 2: but then_0 might be merged (only one pred: entry)
+    // Actually then_0 contains only "goto merge_0" — but entry has a branch, not goto
+    // So then_0 won't be merged into entry (entry doesn't end with goto)
+    let t2 = if find_pattern(opt, "then_0:", 0) >= 0 { 1 } else { 0 };
+    t1 + t2
+};
+
+fn test_block_merge_partial() -> i64 = {
+    // A -> B -> C, B has one pred, C has two preds
+    // Only B should be merged into A
+    let mir = "entry:|  %_t0 = const I:1|  goto b1|b1:|  %_t1 = const I:2|  branch %_t1, b2, b3|b2:|  return %_t1|b3:|  return %_t0";
+    let result = run_block_merge(mir);
+    let colon = find_char(result, 58, 0);
+    let count = parse_int_at(result, 0, 0);
+    let opt = result.slice(colon + 1, result.len());
+    // Test 1: b1 merged (one predecessor)
+    let t1 = if find_pattern(opt, "b1:", 0) < 0 { 1 } else { 0 };
+    // Test 2: b2 still present (may have other properties)
+    let t2 = if find_pattern(opt, "b2:", 0) >= 0 { 1 } else { 0 };
+    // Test 3: branch instruction preserved
+    let t3 = if find_pattern(opt, "branch", 0) >= 0 { 1 } else { 0 };
+    t1 + t2 + t3
+};
+
+// Section 9.8: Strength Reduction Tests
+fn test_strength_mul_pow2() -> i64 = {
+    // x * 4 should become x << 2
+    let mir = "entry:|  %_t0 = const I:4|  %_t1 = * %x, %_t0|  return %_t1";
+    let table = "%_t0:4";
+    let result = simplify_algebraic_inst("  %_t1 = * %x, %_t0", table);
+    let semi = find_char(result, 59, 0);
+    let changed = parse_int_at(result, 0, 0);
+    let new_line = result.slice(semi + 1, result.len());
+    // Test 1: changed
+    let t1 = if changed == 1 { 1 } else { 0 };
+    // Test 2: result contains <<
+    let t2 = if find_pattern(new_line, "<<", 0) >= 0 { 1 } else { 0 };
+    // Test 3: result contains const I:2 (shift amount)
+    let t3 = if find_pattern(new_line, "const I:2", 0) >= 0 { 1 } else { 0 };
+    t1 + t2 + t3
+};
+
+fn test_strength_pow2_mul() -> i64 = {
+    // 8 * x should become x << 3
+    let table = "%_t0:8";
+    let result = simplify_algebraic_inst("  %_t1 = * %_t0, %x", table);
+    let semi = find_char(result, 59, 0);
+    let changed = parse_int_at(result, 0, 0);
+    let new_line = result.slice(semi + 1, result.len());
+    // Test 1: changed
+    let t1 = if changed == 1 { 1 } else { 0 };
+    // Test 2: result contains <<
+    let t2 = if find_pattern(new_line, "<<", 0) >= 0 { 1 } else { 0 };
+    // Test 3: shift amount is 3
+    let t3 = if find_pattern(new_line, "const I:3", 0) >= 0 { 1 } else { 0 };
+    t1 + t2 + t3
+};
+
+fn test_strength_non_pow2() -> i64 = {
+    // x * 3 should NOT be converted (3 is not a power of 2)
+    let table = "%_t0:3";
+    let result = simplify_algebraic_inst("  %_t1 = * %x, %_t0", table);
+    let semi = find_char(result, 59, 0);
+    let changed = parse_int_at(result, 0, 0);
+    // Test 1: not changed
+    let t1 = if changed == 0 { 1 } else { 0 };
+    // x * 1 should be copy (already handled, not strength reduction)
+    let table2 = "%_t0:1";
+    let result2 = simplify_algebraic_inst("  %_t1 = * %x, %_t0", table2);
+    let semi2 = find_char(result2, 59, 0);
+    let changed2 = parse_int_at(result2, 0, 0);
+    let line2 = result2.slice(semi2 + 1, result2.len());
+    // Test 2: x * 1 is handled as copy, not shift
+    let t2 = if changed2 == 1 and find_pattern(line2, "copy", 0) >= 0 { 1 } else { 0 };
+    t1 + t2
+};
+
+fn test_power_of_two_helpers() -> i64 = {
+    // Test is_power_of_two
+    let t1 = if is_power_of_two(1) { 1 } else { 0 };
+    let t2 = if is_power_of_two(2) { 1 } else { 0 };
+    let t3 = if is_power_of_two(4) { 1 } else { 0 };
+    let t4 = if is_power_of_two(8) { 1 } else { 0 };
+    let t5 = if is_power_of_two(16) { 1 } else { 0 };
+    let t6 = if not is_power_of_two(3) { 1 } else { 0 };
+    let t7 = if not is_power_of_two(6) { 1 } else { 0 };
+    let t8 = if not is_power_of_two(0) { 1 } else { 0 };
+    // Test log2_of
+    let t9 = if log2_of(1) == 0 { 1 } else { 0 };
+    let t10 = if log2_of(2) == 1 { 1 } else { 0 };
+    let t11 = if log2_of(4) == 2 { 1 } else { 0 };
+    let t12 = if log2_of(8) == 3 { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12
+};
+
+// Section 9.9: Comparison Folding and Identity Tests
+fn test_identity_simp() -> i64 = {
+    let table = "";
+    // x - x → 0
+    let r1 = simplify_algebraic_inst("  %_t1 = - %x, %x", table);
+    let s1 = find_char(r1, 59, 0);
+    let t1 = if parse_int_at(r1, 0, 0) == 1 and find_pattern(r1.slice(s1 + 1, r1.len()), "const I:0", 0) >= 0 { 1 } else { 0 };
+    // Different vars should NOT trigger identity
+    let r2 = simplify_algebraic_inst("  %_t1 = - %x, %y", table);
+    let t2 = if parse_int_at(r2, 0, 0) == 0 { 1 } else { 0 };
+    // x - x with complex var names
+    let r3 = simplify_algebraic_inst("  %_t5 = - %_arg0, %_arg0", table);
+    let s3 = find_char(r3, 59, 0);
+    let t3 = if parse_int_at(r3, 0, 0) == 1 and find_pattern(r3.slice(s3 + 1, r3.len()), "const I:0", 0) >= 0 { 1 } else { 0 };
+    t1 + t2 + t3
+};
+
+// --- Comparison Folding Tests ---
+
+fn test_cmp_check() -> i64 = {
+    // Test eval_cmp standalone
+    let r1 = eval_cmp("==", 5, 5);
+    let t1 = if r1 == 1 { 1 } else { 0 };
+    let r2 = eval_cmp("==", 5, 3);
+    let t2 = if r2 == 0 { 1 } else { 0 };
+    let r3 = eval_cmp("!=", 5, 3);
+    let t3 = if r3 == 1 { 1 } else { 0 };
+    let r4 = eval_cmp("<", 3, 5);
+    let t4 = if r4 == 1 { 1 } else { 0 };
+    let r5 = eval_cmp(">", 3, 5);
+    let t5 = if r5 == 0 { 1 } else { 0 };
+    let r6 = eval_cmp("<=", 5, 5);
+    let t6 = if r6 == 1 { 1 } else { 0 };
+    let r7 = eval_cmp(">=", 3, 5);
+    let t7 = if r7 == 0 { 1 } else { 0 };
+    let r8 = eval_cmp(">", 5, 3);
+    let t8 = if r8 == 1 { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8
+};
+
+fn test_cmp_detection() -> i64 = {
+    // Test is_cmp_inst and extract_cmp_op
+    let t1 = if is_cmp_inst("  %_t0 = == %a, %b") { 1 } else { 0 };
+    let t2 = if is_cmp_inst("  %_t0 = != %a, %b") { 1 } else { 0 };
+    let t3 = if is_cmp_inst("  %_t0 = < %a, %b") { 1 } else { 0 };
+    let t4 = if is_cmp_inst("  %_t0 = > %a, %b") { 1 } else { 0 };
+    let t5 = if is_cmp_inst("  %_t0 = <= %a, %b") { 1 } else { 0 };
+    let t6 = if is_cmp_inst("  %_t0 = >= %a, %b") { 1 } else { 0 };
+    // Negative: not a comparison
+    let t7 = if not is_cmp_inst("  %_t0 = + %a, %b") { 1 } else { 0 };
+    let t8 = if not is_cmp_inst("  %_t0 = const I:5") { 1 } else { 0 };
+    // Extract operators
+    let o1 = extract_cmp_op("  %_t0 = == %a, %b");
+    let t9 = if o1 == "==" { 1 } else { 0 };
+    let o2 = extract_cmp_op("  %_t0 = <= %a, %b");
+    let t10 = if o2 == "<=" { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10
+};
+
+fn test_cmp_fold() -> i64 = {
+    // Test fold_const_inst with comparison instructions
+    let mir = "  %_t0 = const I:5|  %_t1 = const I:3|  %_t2 = == %_t0, %_t1";
+    let result = run_constant_folding(mir, 0, const_table_empty(), "", 0);
+    let count = parse_int_at(result, 0, 0);
+    // Should fold 5 == 3 -> const I:0
+    let t1 = if count >= 1 and find_pattern(result, "const I:0", 0) >= 0 { 1 } else { 0 };
+    // 5 < 3 -> 0
+    let mir2 = "  %_t0 = const I:5|  %_t1 = const I:3|  %_t2 = < %_t0, %_t1";
+    let result2 = run_constant_folding(mir2, 0, const_table_empty(), "", 0);
+    let t2 = if find_pattern(result2, "const I:0", 0) >= 0 { 1 } else { 0 };
+    // 3 < 5 -> 1
+    let mir3 = "  %_t0 = const I:3|  %_t1 = const I:5|  %_t2 = < %_t0, %_t1";
+    let result3 = run_constant_folding(mir3, 0, const_table_empty(), "", 0);
+    let t3 = if find_pattern(result3, "const I:1", 0) >= 0 { 1 } else { 0 };
+    t1 + t2 + t3
+};
+
+// --- Shift Folding Tests ---
+
+fn test_shift_helpers() -> i64 = {
+    // power_of_two
+    let t1 = if power_of_two(0) == 1 { 1 } else { 0 };
+    let t2 = if power_of_two(1) == 2 { 1 } else { 0 };
+    let t3 = if power_of_two(3) == 8 { 1 } else { 0 };
+    let t4 = if power_of_two(10) == 1024 { 1 } else { 0 };
+    // eval_shift left
+    let t5 = if eval_shift("<<", 5, 2) == 20 { 1 } else { 0 };
+    let t6 = if eval_shift("<<", 1, 10) == 1024 { 1 } else { 0 };
+    // eval_shift right
+    let t7 = if eval_shift(">>", 20, 2) == 5 { 1 } else { 0 };
+    let t8 = if eval_shift(">>", 1024, 3) == 128 { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8
+};
+
+fn test_shift_detection() -> i64 = {
+    let t1 = if is_shift_inst("  %_t0 = << %a, %b") { 1 } else { 0 };
+    let t2 = if is_shift_inst("  %_t0 = >> %a, %b") { 1 } else { 0 };
+    let t3 = if not is_shift_inst("  %_t0 = + %a, %b") { 1 } else { 0 };
+    let t4 = if not is_shift_inst("  %_t0 = < %a, %b") { 1 } else { 0 };
+    let o1 = extract_shift_op("  %_t0 = << %a, %b");
+    let t5 = if o1 == "<<" { 1 } else { 0 };
+    let o2 = extract_shift_op("  %_t0 = >> %a, %b");
+    let t6 = if o2 == ">>" { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5 + t6
+};
+
+fn test_shift_fold() -> i64 = {
+    // 5 << 2 = 20
+    let mir = "  %_t0 = const I:5|  %_t1 = const I:2|  %_t2 = << %_t0, %_t1";
+    let result = run_constant_folding(mir, 0, const_table_empty(), "", 0);
+    let t1 = if find_pattern(result, "const I:20", 0) >= 0 { 1 } else { 0 };
+    // 1024 >> 3 = 128
+    let mir2 = "  %_t0 = const I:1024|  %_t1 = const I:3|  %_t2 = >> %_t0, %_t1";
+    let result2 = run_constant_folding(mir2, 0, const_table_empty(), "", 0);
+    let t2 = if find_pattern(result2, "const I:128", 0) >= 0 { 1 } else { 0 };
+    t1 + t2
+};
+
+fn test_shift_algebraic() -> i64 = {
+    let table = const_table_set(const_table_empty(), "%zero", 0);
+    // x << 0 -> copy x
+    let r1 = simplify_algebraic_inst("  %_t1 = << %x, %zero", table);
+    let t1 = if parse_int_at(r1, 0, 0) == 1 and find_pattern(r1, "copy %x", 0) >= 0 { 1 } else { 0 };
+    // x >> 0 -> copy x
+    let r2 = simplify_algebraic_inst("  %_t1 = >> %x, %zero", table);
+    let t2 = if parse_int_at(r2, 0, 0) == 1 and find_pattern(r2, "copy %x", 0) >= 0 { 1 } else { 0 };
+    // 0 << x -> const 0
+    let r3 = simplify_algebraic_inst("  %_t1 = << %zero, %x", table);
+    let t3 = if parse_int_at(r3, 0, 0) == 1 and find_pattern(r3, "const I:0", 0) >= 0 { 1 } else { 0 };
+    // 0 >> x -> const 0
+    let r4 = simplify_algebraic_inst("  %_t1 = >> %zero, %x", table);
+    let t4 = if parse_int_at(r4, 0, 0) == 1 and find_pattern(r4, "const I:0", 0) >= 0 { 1 } else { 0 };
+    // Non-zero, non-zero shift should NOT simplify
+    let r5 = simplify_algebraic_inst("  %_t1 = << %x, %y", table);
+    let t5 = if parse_int_at(r5, 0, 0) == 0 { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5
+};
+
+// --- Bitwise Folding Tests ---
+
+fn test_bitwise_eval() -> i64 = {
+    // band: 5 & 3 = 1
+    let t1 = if eval_bitwise("band", 5, 3) == 1 { 1 } else { 0 };
+    // bor: 5 | 3 = 7
+    let t2 = if eval_bitwise("bor", 5, 3) == 7 { 1 } else { 0 };
+    // bxor: 5 ^ 3 = 6
+    let t3 = if eval_bitwise("bxor", 5, 3) == 6 { 1 } else { 0 };
+    // band: 0xFF & 0x0F = 0x0F = 15
+    let t4 = if eval_bitwise("band", 255, 15) == 15 { 1 } else { 0 };
+    t1 + t2 + t3 + t4
+};
+
+fn test_bitwise_detection() -> i64 = {
+    let t1 = if is_bitwise_inst("  %_t0 = band %a, %b") { 1 } else { 0 };
+    let t2 = if is_bitwise_inst("  %_t0 = bor %a, %b") { 1 } else { 0 };
+    let t3 = if is_bitwise_inst("  %_t0 = bxor %a, %b") { 1 } else { 0 };
+    let t4 = if not is_bitwise_inst("  %_t0 = + %a, %b") { 1 } else { 0 };
+    let o1 = extract_bitwise_op("  %_t0 = band %a, %b");
+    let t5 = if o1 == "band" { 1 } else { 0 };
+    let o2 = extract_bitwise_op("  %_t0 = bxor %a, %b");
+    let t6 = if o2 == "bxor" { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5 + t6
+};
+
+fn test_bitwise_algebraic() -> i64 = {
+    let table = const_table_set(const_table_empty(), "%zero", 0);
+    // x band 0 -> 0
+    let r1 = simplify_algebraic_inst("  %_t1 = band %x, %zero", table);
+    let t1 = if parse_int_at(r1, 0, 0) == 1 and find_pattern(r1, "const I:0", 0) >= 0 { 1 } else { 0 };
+    // x bor 0 -> copy x
+    let r2 = simplify_algebraic_inst("  %_t1 = bor %x, %zero", table);
+    let t2 = if parse_int_at(r2, 0, 0) == 1 and find_pattern(r2, "copy %x", 0) >= 0 { 1 } else { 0 };
+    // x bxor 0 -> copy x
+    let r3 = simplify_algebraic_inst("  %_t1 = bxor %x, %zero", table);
+    let t3 = if parse_int_at(r3, 0, 0) == 1 and find_pattern(r3, "copy %x", 0) >= 0 { 1 } else { 0 };
+    // x bxor x -> 0
+    let r4 = simplify_algebraic_inst("  %_t1 = bxor %x, %x", table);
+    let t4 = if parse_int_at(r4, 0, 0) == 1 and find_pattern(r4, "const I:0", 0) >= 0 { 1 } else { 0 };
+    // x band x -> copy x
+    let r5 = simplify_algebraic_inst("  %_t1 = band %x, %x", table);
+    let t5 = if parse_int_at(r5, 0, 0) == 1 and find_pattern(r5, "copy %x", 0) >= 0 { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5
+};
+
+fn test_bitwise_fold() -> i64 = {
+    // 5 band 3 = 1
+    let mir = "  %_t0 = const I:5|  %_t1 = const I:3|  %_t2 = band %_t0, %_t1";
+    let result = run_constant_folding(mir, 0, const_table_empty(), "", 0);
+    let t1 = if find_pattern(result, "const I:1", 0) >= 0 { 1 } else { 0 };
+    // 5 bor 3 = 7
+    let mir2 = "  %_t0 = const I:5|  %_t1 = const I:3|  %_t2 = bor %_t0, %_t1";
+    let result2 = run_constant_folding(mir2, 0, const_table_empty(), "", 0);
+    let t2 = if find_pattern(result2, "const I:7", 0) >= 0 { 1 } else { 0 };
+    t1 + t2
+};
+
+// --- Wrapping Arithmetic Folding Tests ---
+
+fn test_wrap_fold() -> i64 = {
+    // 3 +% 4 = 7
+    let mir = "  %_t0 = const I:3|  %_t1 = const I:4|  %_t2 = +% %_t0, %_t1";
+    let result = run_constant_folding(mir, 0, const_table_empty(), "", 0);
+    let t1 = if find_pattern(result, "const I:7", 0) >= 0 { 1 } else { 0 };
+    // 10 -% 3 = 7
+    let mir2 = "  %_t0 = const I:10|  %_t1 = const I:3|  %_t2 = -% %_t0, %_t1";
+    let result2 = run_constant_folding(mir2, 0, const_table_empty(), "", 0);
+    let t2 = if find_pattern(result2, "const I:7", 0) >= 0 { 1 } else { 0 };
+    // 5 *% 6 = 30
+    let mir3 = "  %_t0 = const I:5|  %_t1 = const I:6|  %_t2 = *% %_t0, %_t1";
+    let result3 = run_constant_folding(mir3, 0, const_table_empty(), "", 0);
+    let t3 = if find_pattern(result3, "const I:30", 0) >= 0 { 1 } else { 0 };
+    t1 + t2 + t3
+};
+
+fn test_wrap_detection() -> i64 = {
+    let t1 = if is_wrap_inst("  %_t0 = +% %a, %b") { 1 } else { 0 };
+    let t2 = if is_wrap_inst("  %_t0 = -% %a, %b") { 1 } else { 0 };
+    let t3 = if is_wrap_inst("  %_t0 = *% %a, %b") { 1 } else { 0 };
+    let t4 = if not is_wrap_inst("  %_t0 = + %a, %b") { 1 } else { 0 };
+    let o1 = extract_wrap_op("  %_t0 = +% %a, %b");
+    let t5 = if o1 == "+%" { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5
+};
+
+fn test_wrap_algebraic() -> i64 = {
+    let table = const_table_set(const_table_set(const_table_empty(), "%zero", 0), "%one", 1);
+    // x +% 0 -> copy x
+    let r1 = simplify_algebraic_inst("  %_t1 = +% %x, %zero", table);
+    let t1 = if parse_int_at(r1, 0, 0) == 1 and find_pattern(r1, "copy %x", 0) >= 0 { 1 } else { 0 };
+    // x *% 1 -> copy x
+    let r2 = simplify_algebraic_inst("  %_t1 = *% %x, %one", table);
+    let t2 = if parse_int_at(r2, 0, 0) == 1 and find_pattern(r2, "copy %x", 0) >= 0 { 1 } else { 0 };
+    // x *% 0 -> 0
+    let r3 = simplify_algebraic_inst("  %_t1 = *% %x, %zero", table);
+    let t3 = if parse_int_at(r3, 0, 0) == 1 and find_pattern(r3, "const I:0", 0) >= 0 { 1 } else { 0 };
+    // x -% x -> 0
+    let r4 = simplify_algebraic_inst("  %_t1 = -% %x, %x", table);
+    let t4 = if parse_int_at(r4, 0, 0) == 1 and find_pattern(r4, "const I:0", 0) >= 0 { 1 } else { 0 };
+    t1 + t2 + t3 + t4
+};
+
+// Test copy-through constant propagation in fold_const_inst
+fn test_copy_const_prop() -> i64 = {
+    // Test 1: copy of a const should be tracked in const_table
+    let r1 = fold_const_inst("  %_t0 = const I:5", const_table_empty());
+    let c1 = find_char(r1, 59, 0);
+    let c2 = find_char(r1, 59, c1 + 1);
+    let table1 = r1.slice(c1 + 1, c2);
+    // Now fold a copy — should propagate the constant
+    let r2 = fold_const_inst("  %a_v0 = copy %_t0", table1);
+    let c3 = find_char(r2, 59, 0);
+    let c4 = find_char(r2, 59, c3 + 1);
+    let table2 = r2.slice(c3 + 1, c4);
+    let t1 = if const_table_has(table2, "%a_v0") { 1 } else { 0 };
+
+    // Test 2: copy-of-const value should match original constant
+    let t2 = if const_table_get(table2, "%a_v0") == 5 { 1 } else { 0 };
+
+    // Test 3: binop with copy-of-const operands should fold
+    let r3 = fold_const_inst("  %_t1 = const I:10", table2);
+    let c5 = find_char(r3, 59, 0);
+    let c6 = find_char(r3, 59, c5 + 1);
+    let table3 = r3.slice(c5 + 1, c6);
+    let r4 = fold_const_inst("  %b_v1 = copy %_t1", table3);
+    let c7 = find_char(r4, 59, 0);
+    let c8 = find_char(r4, 59, c7 + 1);
+    let table4 = r4.slice(c7 + 1, c8);
+    let r5 = fold_const_inst("  %_t2 = + %a_v0, %b_v1", table4);
+    let t3 = if parse_int_at(r5, 0, 0) == 1 and find_pattern(r5, "const I:15", 0) >= 0 { 1 } else { 0 };
+
+    // Test 4: copy of non-const should not add to table
+    let r6 = fold_const_inst("  %c_v2 = copy %unknown", table4);
+    let c9 = find_char(r6, 59, 0);
+    let c10 = find_char(r6, 59, c9 + 1);
+    let table5 = r6.slice(c9 + 1, c10);
+    let t4 = if not const_table_has(table5, "%c_v2") { 1 } else { 0 };
+
+    // Test 5: end-to-end pipeline should fold through copies
+    let mir = "  %_t0 = const I:3|  %a_v0 = copy %_t0|  %_t1 = const I:7|  %b_v1 = copy %_t1|  %_t2 = + %a_v0, %b_v1";
+    let result = run_constant_folding(mir, 0, const_table_empty(), "", 0);
+    let t5 = if find_pattern(result, "const I:10", 0) >= 0 { 1 } else { 0 };
+
+    t1 + t2 + t3 + t4 + t5
+};
+
+// Test unary neg/not detection and constant folding
+fn test_unary_fold() -> i64 = {
+    // Test 1: is_neg_inst detection
+    let t1 = if is_neg_inst("  %_t1 = neg %_t0") { 1 } else { 0 };
+    // Test 2: is_not_inst detection
+    let t2 = if is_not_inst("  %_t1 = not %_t0") { 1 } else { 0 };
+    // Test 3: is_neg should NOT match non-neg
+    let t3 = if not is_neg_inst("  %_t1 = + %a, %b") { 1 } else { 0 };
+    // Test 4: extract_unary_src from neg
+    let t4 = if extract_unary_src("  %_t1 = neg %_t0") == "%_t0" { 1 } else { 0 };
+    // Test 5: extract_unary_src from not
+    let t5 = if extract_unary_src("  %_t1 = not %_t0") == "%_t0" { 1 } else { 0 };
+    // Test 6: fold neg of constant
+    let table = const_table_set(const_table_empty(), "%_t0", 5);
+    let r6 = fold_const_inst("  %_t1 = neg %_t0", table);
+    let t6 = if parse_int_at(r6, 0, 0) == 1 and find_pattern(r6, "const I:-5", 0) >= 0 { 1 } else { 0 };
+    // Test 7: fold not of nonzero constant → 0
+    let r7 = fold_const_inst("  %_t1 = not %_t0", table);
+    let t7 = if parse_int_at(r7, 0, 0) == 1 and find_pattern(r7, "const I:0", 0) >= 0 { 1 } else { 0 };
+    // Test 8: fold not of zero constant → 1
+    let table2 = const_table_set(const_table_empty(), "%_t0", 0);
+    let r8 = fold_const_inst("  %_t1 = not %_t0", table2);
+    let t8 = if parse_int_at(r8, 0, 0) == 1 and find_pattern(r8, "const I:1", 0) >= 0 { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8
+};
+
 fn main() -> i64 =
     let u1 = println(777);
 
@@ -1815,14 +3514,116 @@ fn main() -> i64 =
     let ut54 = test_fixed_point();
     let v54 = println(ut54);  // Should be 2
 
+    // v0.95: PHI simplification tests (8 assertions)
+    let ut55 = test_phi_simp();
+    let v55 = println(ut55);  // Should be 8
+
+    // v0.95: Dominator tree infrastructure tests (Cycle 1300)
+    let ut56 = test_set_ops();
+    let v56 = println(ut56);  // Should be 12
+    let ut57 = test_dom_table_ops();
+    let v57 = println(ut57);  // Should be 8
+    let ut58 = test_cfg_building();
+    let v58 = println(ut58);  // Should be 6
+    let ut59 = test_dominator_diamond();
+    let v59 = println(ut59);  // Should be 8
+    let ut60 = test_dominator_loop();
+    let v60 = println(ut60);  // Should be 6
+    let ut61 = test_dominator_chain();
+    let v61 = println(ut61);  // Should be 6
+
+    // v0.95: Cross-Block CSE tests (Cycle 1301)
+    let ut62 = test_cse_expr_key();
+    let v62 = println(ut62);  // Should be 6
+    let ut63 = test_cse_table();
+    let v63 = println(ut63);  // Should be 4
+    let ut64 = test_cse_within_block();
+    let v64 = println(ut64);  // Should be 3
+    let ut65 = test_cse_cross_block();
+    let v65 = println(ut65);  // Should be 2
+    let ut66 = test_cse_no_dominate();
+    let v66 = println(ut66);  // Should be 1
+    let ut67 = test_cse_commutative();
+    let v67 = println(ut67);  // Should be 2
+    let ut68 = test_cse_const();
+    let v68 = println(ut68);  // Should be 4
+
+    let ut69 = test_block_merge_linear();
+    let v69 = println(ut69);  // Should be 4
+    let ut70 = test_block_merge_diamond();
+    let v70 = println(ut70);  // Should be 2
+    let ut71 = test_block_merge_partial();
+    let v71 = println(ut71);  // Should be 3
+
+    let ut72 = test_strength_mul_pow2();
+    let v72 = println(ut72);  // Should be 3
+    let ut73 = test_strength_pow2_mul();
+    let v73 = println(ut73);  // Should be 3
+    let ut74 = test_strength_non_pow2();
+    let v74 = println(ut74);  // Should be 2
+    let ut75 = test_power_of_two_helpers();
+    let v75 = println(ut75);  // Should be 12
     let unit_base = ut1 + ut2 + ut3 + ut4 + ut5 + ut6 + ut7 + ut8 + ut9 + ut10 +
                     ut11 + ut12 + ut13 + ut14 + ut15 + ut16 + ut17 + ut18 + ut19 + ut20 +
                     ut21 + ut22 + ut23 + ut24 + ut25;
     let unit_ext = ut26 + ut27 + ut28 + ut29 + ut30 + ut31 + ut32 + ut33 + ut34 + ut35 + ut36 + ut37;
     let unit_new = ut38 + ut39 + ut40 + ut41 + ut42 + ut43;
     let unit_phase12 = ut44 + ut45 + ut46 + ut47 + ut48 + ut49 + ut50 + ut51 + ut52 + ut53 + ut54;
-    let unit_total = unit_base + unit_ext + unit_new + unit_phase12;
-    let v26 = println(unit_total);  // Should be 285 (126 base + 72 extended + 36 new + 51 phase1-2)
+    let unit_phi = ut55;
+    let unit_dom = ut56 + ut57 + ut58 + ut59 + ut60 + ut61;
+    let unit_cse = ut62 + ut63 + ut64 + ut65 + ut66 + ut67 + ut68;
+    let unit_merge = ut69 + ut70 + ut71;
+    let unit_strength = ut72 + ut73 + ut74 + ut75;
+
+    let ut76 = test_identity_simp();
+    let v76 = println(ut76);  // Should be 3
+
+    let ut77 = test_cmp_check();
+    let v77 = println(ut77);  // Should be 8
+    let ut78 = test_cmp_detection();
+    let v78 = println(ut78);  // Should be 10
+    let ut79 = test_cmp_fold();
+    let v79 = println(ut79);  // Should be 3
+
+    let ut80 = test_shift_helpers();
+    let v80 = println(ut80);  // Should be 8
+    let ut81 = test_shift_detection();
+    let v81 = println(ut81);  // Should be 6
+    let ut82 = test_shift_fold();
+    let v82 = println(ut82);  // Should be 2
+
+    let ut83 = test_shift_algebraic();
+    let v83 = println(ut83);  // Should be 5
+
+    let ut84 = test_bitwise_eval();
+    let v84 = println(ut84);  // Should be 4
+    let ut85 = test_bitwise_detection();
+    let v85 = println(ut85);  // Should be 6
+    let ut86 = test_bitwise_algebraic();
+    let v86 = println(ut86);  // Should be 5
+    let ut87 = test_bitwise_fold();
+    let v87 = println(ut87);  // Should be 2
+
+    let ut88 = test_wrap_fold();
+    let v88 = println(ut88);  // Should be 3
+    let ut89 = test_wrap_detection();
+    let v89 = println(ut89);  // Should be 5
+    let ut90 = test_wrap_algebraic();
+    let v90 = println(ut90);  // Should be 4
+    let ut91 = test_copy_const_prop();
+    let v91 = println(ut91);  // Should be 5
+    let ut92 = test_unary_fold();
+    let v92 = println(ut92);  // Should be 8
+
+    let unit_identity = ut76;
+    let unit_cmpfold = ut77 + ut78 + ut79;
+    let unit_shiftfold = ut80 + ut81 + ut82 + ut83;
+    let unit_bitwise = ut84 + ut85 + ut86 + ut87;
+    let unit_wrap = ut88 + ut89 + ut90;
+    let unit_copyprop = ut91;
+    let unit_unary = ut92;
+    let unit_total = unit_base + unit_ext + unit_new + unit_phase12 + unit_phi + unit_dom + unit_cse + unit_merge + unit_strength + unit_identity + unit_cmpfold + unit_shiftfold + unit_bitwise + unit_wrap + unit_copyprop + unit_unary;
+    let v26 = println(unit_total);  // Should be 477 (469 + 8 unary)
 
     let u2 = println(555);  // Integration tests marker
 
@@ -1849,6 +3650,6 @@ fn main() -> i64 =
 
     let total = unit_total + integration;
     let u4 = println(888);
-    let u5 = println(total);  // Should be 314 (285 unit + 29 integration)
+    let u5 = println(total);  // Should be 506 (477 unit + 29 integration)
     let u6 = println(999);
     0;

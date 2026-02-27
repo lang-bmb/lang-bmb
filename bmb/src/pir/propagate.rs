@@ -1153,4 +1153,237 @@ mod tests {
         let pir = propagate_proofs(&cir, &db);
         assert_eq!(pir.functions[0].exit_facts.len(), 1);
     }
+
+    // --- Cycle 1231: Additional Propagation Tests ---
+
+    #[test]
+    fn test_propagation_context_new_is_empty() {
+        let ctx = PropagationContext::new();
+        assert!(ctx.current_facts().is_empty());
+        assert!(ctx.get_var_facts("x").is_empty());
+    }
+
+    #[test]
+    fn test_propagation_context_add_fact() {
+        let mut ctx = PropagationContext::new();
+        let fact = ProvenFact::from_precondition(Proposition::True, 1);
+        ctx.add_fact(fact);
+        assert_eq!(ctx.current_facts().len(), 1);
+    }
+
+    #[test]
+    fn test_propagation_context_var_facts() {
+        let mut ctx = PropagationContext::new();
+        let fact1 = ProvenFact::from_precondition(Proposition::True, 1);
+        let fact2 = ProvenFact::from_precondition(Proposition::False, 2);
+        ctx.add_var_fact("x", fact1);
+        ctx.add_var_fact("x", fact2);
+        ctx.add_var_fact("y", ProvenFact::from_precondition(Proposition::True, 3));
+
+        assert_eq!(ctx.get_var_facts("x").len(), 2);
+        assert_eq!(ctx.get_var_facts("y").len(), 1);
+        assert!(ctx.get_var_facts("z").is_empty());
+    }
+
+    #[test]
+    fn test_propagation_context_with_additional_facts() {
+        let mut ctx = PropagationContext::new();
+        ctx.add_fact(ProvenFact::from_precondition(Proposition::True, 1));
+
+        let additional = vec![ProvenFact::from_precondition(Proposition::False, 2)];
+        let child = ctx.with_additional_facts(additional);
+
+        assert_eq!(child.current_facts().len(), 2);
+        // Original unchanged
+        assert_eq!(ctx.current_facts().len(), 1);
+    }
+
+    #[test]
+    fn test_convert_binop_arithmetic() {
+        assert_eq!(convert_binop(BinOp::Add), PirBinOp::Add);
+        assert_eq!(convert_binop(BinOp::AddWrap), PirBinOp::Add);
+        assert_eq!(convert_binop(BinOp::Sub), PirBinOp::Sub);
+        assert_eq!(convert_binop(BinOp::SubSat), PirBinOp::Sub);
+        assert_eq!(convert_binop(BinOp::Mul), PirBinOp::Mul);
+        assert_eq!(convert_binop(BinOp::Mod), PirBinOp::Mod);
+    }
+
+    #[test]
+    fn test_convert_binop_comparisons() {
+        assert_eq!(convert_binop(BinOp::Lt), PirBinOp::Lt);
+        assert_eq!(convert_binop(BinOp::Le), PirBinOp::Le);
+        assert_eq!(convert_binop(BinOp::Gt), PirBinOp::Gt);
+        assert_eq!(convert_binop(BinOp::Ge), PirBinOp::Ge);
+        assert_eq!(convert_binop(BinOp::Eq), PirBinOp::Eq);
+        assert_eq!(convert_binop(BinOp::Ne), PirBinOp::Ne);
+    }
+
+    #[test]
+    fn test_convert_binop_logical_and_bitwise() {
+        assert_eq!(convert_binop(BinOp::And), PirBinOp::And);
+        assert_eq!(convert_binop(BinOp::Or), PirBinOp::Or);
+        assert_eq!(convert_binop(BinOp::BitAnd), PirBinOp::BitAnd);
+        assert_eq!(convert_binop(BinOp::BitOr), PirBinOp::BitOr);
+        assert_eq!(convert_binop(BinOp::BitXor), PirBinOp::BitXor);
+        assert_eq!(convert_binop(BinOp::Shl), PirBinOp::Shl);
+        assert_eq!(convert_binop(BinOp::Shr), PirBinOp::Shr);
+    }
+
+    #[test]
+    fn test_convert_unaryop_all() {
+        assert_eq!(convert_unaryop(UnaryOp::Neg), PirUnaryOp::Neg);
+        assert_eq!(convert_unaryop(UnaryOp::Not), PirUnaryOp::Not);
+        assert_eq!(convert_unaryop(UnaryOp::BitNot), PirUnaryOp::BitNot);
+    }
+
+    #[test]
+    fn test_infer_binop_type_boolean_results() {
+        assert_eq!(infer_binop_type(BinOp::Lt), PirType::Bool);
+        assert_eq!(infer_binop_type(BinOp::Le), PirType::Bool);
+        assert_eq!(infer_binop_type(BinOp::Gt), PirType::Bool);
+        assert_eq!(infer_binop_type(BinOp::Eq), PirType::Bool);
+        assert_eq!(infer_binop_type(BinOp::And), PirType::Bool);
+        assert_eq!(infer_binop_type(BinOp::Or), PirType::Bool);
+        assert_eq!(infer_binop_type(BinOp::Implies), PirType::Bool);
+    }
+
+    #[test]
+    fn test_infer_binop_type_integer_results() {
+        assert_eq!(infer_binop_type(BinOp::Add), PirType::I64);
+        assert_eq!(infer_binop_type(BinOp::Sub), PirType::I64);
+        assert_eq!(infer_binop_type(BinOp::Mul), PirType::I64);
+        assert_eq!(infer_binop_type(BinOp::Div), PirType::I64);
+        assert_eq!(infer_binop_type(BinOp::Mod), PirType::I64);
+        assert_eq!(infer_binop_type(BinOp::BitAnd), PirType::I64);
+    }
+
+    #[test]
+    fn test_mentions_var_forall_exists() {
+        let prop = Proposition::Forall {
+            var: "i".to_string(),
+            ty: CirType::I64,
+            body: Box::new(Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("x".to_string())),
+                op: CompareOp::Gt,
+                rhs: Box::new(CirExpr::IntLit(0)),
+            }),
+        };
+        assert!(mentions_var(&prop, "x"));
+        assert!(!mentions_var(&prop, "z"));
+
+        let prop2 = Proposition::Exists {
+            var: "j".to_string(),
+            ty: CirType::I64,
+            body: Box::new(Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("y".to_string())),
+                op: CompareOp::Eq,
+                rhs: Box::new(CirExpr::IntLit(0)),
+            }),
+        };
+        assert!(mentions_var(&prop2, "y"));
+    }
+
+    #[test]
+    fn test_mentions_var_inbounds() {
+        let prop = Proposition::InBounds {
+            index: Box::new(CirExpr::Var("i".to_string())),
+            array: Box::new(CirExpr::Var("arr".to_string())),
+        };
+        assert!(mentions_var(&prop, "i"));
+        assert!(mentions_var(&prop, "arr"));
+        assert!(!mentions_var(&prop, "x"));
+    }
+
+    #[test]
+    fn test_mentions_var_nonnull() {
+        let prop = Proposition::NonNull(Box::new(CirExpr::Var("ptr".to_string())));
+        assert!(mentions_var(&prop, "ptr"));
+        assert!(!mentions_var(&prop, "other"));
+    }
+
+    #[test]
+    fn test_mentions_var_predicate() {
+        let prop = Proposition::Predicate {
+            name: "sorted".to_string(),
+            args: vec![
+                CirExpr::Var("arr".to_string()),
+                CirExpr::IntLit(0),
+            ],
+        };
+        assert!(mentions_var(&prop, "arr"));
+        assert!(!mentions_var(&prop, "other"));
+    }
+
+    #[test]
+    fn test_mentions_var_old() {
+        let prop = Proposition::Old(
+            Box::new(CirExpr::Var("x".to_string())),
+            Box::new(Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("y".to_string())),
+                op: CompareOp::Eq,
+                rhs: Box::new(CirExpr::IntLit(0)),
+            }),
+        );
+        assert!(mentions_var(&prop, "x"));
+        assert!(mentions_var(&prop, "y"));
+        assert!(!mentions_var(&prop, "z"));
+    }
+
+    #[test]
+    fn test_expr_mentions_var_nested() {
+        // Index: arr[i]
+        let expr = CirExpr::Index {
+            base: Box::new(CirExpr::Var("arr".to_string())),
+            index: Box::new(CirExpr::Var("i".to_string())),
+        };
+        assert!(expr_mentions_var(&expr, "arr"));
+        assert!(expr_mentions_var(&expr, "i"));
+        assert!(!expr_mentions_var(&expr, "x"));
+
+        // Field: obj.field
+        let field_expr = CirExpr::Field {
+            base: Box::new(CirExpr::Var("obj".to_string())),
+            field: "name".to_string(),
+        };
+        assert!(expr_mentions_var(&field_expr, "obj"));
+
+        // Len: len(arr)
+        let len_expr = CirExpr::Len(Box::new(CirExpr::Var("vec".to_string())));
+        assert!(expr_mentions_var(&len_expr, "vec"));
+
+        // Call: f(a, b)
+        let call_expr = CirExpr::Call {
+            func: "f".to_string(),
+            args: vec![
+                CirExpr::Var("a".to_string()),
+                CirExpr::Var("b".to_string()),
+            ],
+        };
+        assert!(expr_mentions_var(&call_expr, "a"));
+        assert!(expr_mentions_var(&call_expr, "b"));
+    }
+
+    #[test]
+    fn test_find_nonzero_proof_found() {
+        let fact = ProvenFact::from_precondition(
+            Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("d".to_string())),
+                op: CompareOp::Ne,
+                rhs: Box::new(CirExpr::IntLit(0)),
+            },
+            42,
+        );
+        let facts = vec![fact];
+        let divisor = CirExpr::Var("d".to_string());
+        let result = find_nonzero_proof(&facts, &divisor);
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_find_nonzero_proof_not_found() {
+        let fact = ProvenFact::from_precondition(Proposition::True, 1);
+        let facts = vec![fact];
+        let divisor = CirExpr::Var("d".to_string());
+        assert!(find_nonzero_proof(&facts, &divisor).is_none());
+    }
 }

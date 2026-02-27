@@ -773,4 +773,266 @@ mod tests {
         };
         assert_eq!(CirOutput::format_expr(&expr), "<expr>");
     }
+
+    // --- Cycle 1229: Additional CIR Output Tests ---
+
+    #[test]
+    fn test_format_expr_var() {
+        assert_eq!(CirOutput::format_expr(&CirExpr::Var("xyz".to_string())), "xyz");
+    }
+
+    #[test]
+    fn test_format_expr_negative_int() {
+        assert_eq!(CirOutput::format_expr(&CirExpr::IntLit(-42)), "-42");
+    }
+
+    #[test]
+    fn test_format_expr_zero() {
+        assert_eq!(CirOutput::format_expr(&CirExpr::IntLit(0)), "0");
+    }
+
+    #[test]
+    fn test_format_expr_empty_string() {
+        assert_eq!(CirOutput::format_expr(&CirExpr::StringLit("".to_string())), "\"\"");
+    }
+
+    #[test]
+    fn test_format_expr_call_no_args() {
+        let expr = CirExpr::Call {
+            func: "noop".to_string(),
+            args: vec![],
+        };
+        assert_eq!(CirOutput::format_expr(&expr), "noop()");
+    }
+
+    #[test]
+    fn test_format_expr_nested_index() {
+        let expr = CirExpr::Index {
+            base: Box::new(CirExpr::Index {
+                base: Box::new(CirExpr::Var("matrix".to_string())),
+                index: Box::new(CirExpr::IntLit(0)),
+            }),
+            index: Box::new(CirExpr::IntLit(1)),
+        };
+        assert_eq!(CirOutput::format_expr(&expr), "matrix[0][1]");
+    }
+
+    #[test]
+    fn test_format_expr_fallback_for_let() {
+        let expr = CirExpr::Let {
+            name: "x".to_string(),
+            ty: CirType::I64,
+            value: Box::new(CirExpr::IntLit(1)),
+            body: Box::new(CirExpr::Var("x".to_string())),
+        };
+        assert_eq!(CirOutput::format_expr(&expr), "<expr>");
+    }
+
+    #[test]
+    fn test_format_expr_fallback_for_if() {
+        let expr = CirExpr::If {
+            cond: Box::new(CirExpr::BoolLit(true)),
+            then_branch: Box::new(CirExpr::IntLit(1)),
+            else_branch: Box::new(CirExpr::IntLit(0)),
+        };
+        assert_eq!(CirOutput::format_expr(&expr), "<expr>");
+    }
+
+    #[test]
+    fn test_format_proposition_predicate_multi_args() {
+        let prop = Proposition::Predicate {
+            name: "in_range".to_string(),
+            args: vec![
+                CirExpr::Var("x".to_string()),
+                CirExpr::IntLit(0),
+                CirExpr::IntLit(100),
+            ],
+        };
+        assert_eq!(CirOutput::format_proposition(&prop), "in_range(x, 0, 100)");
+    }
+
+    #[test]
+    fn test_format_proposition_predicate_no_args() {
+        let prop = Proposition::Predicate {
+            name: "is_initialized".to_string(),
+            args: vec![],
+        };
+        assert_eq!(CirOutput::format_proposition(&prop), "is_initialized()");
+    }
+
+    #[test]
+    fn test_format_proposition_deeply_nested_not() {
+        let prop = Proposition::Not(Box::new(Proposition::Not(Box::new(Proposition::True))));
+        assert_eq!(CirOutput::format_proposition(&prop), "!!true");
+    }
+
+    #[test]
+    fn test_format_effects_all_effects() {
+        let effects = EffectSet {
+            is_pure: false,
+            is_const: false,
+            reads: true,
+            writes: true,
+            io: true,
+            allocates: true,
+            diverges: true,
+        };
+        let formatted = CirOutput::format_effects(&effects);
+        assert!(formatted.contains("reads"));
+        assert!(formatted.contains("writes"));
+        assert!(formatted.contains("io"));
+        assert!(formatted.contains("alloc"));
+        assert!(formatted.contains("diverge"));
+    }
+
+    #[test]
+    fn test_format_effects_pure_with_reads() {
+        let effects = EffectSet {
+            is_pure: true,
+            is_const: false,
+            reads: true,
+            writes: false,
+            io: false,
+            allocates: false,
+            diverges: false,
+        };
+        let formatted = CirOutput::format_effects(&effects);
+        assert!(formatted.contains("pure"));
+        assert!(formatted.contains("reads"));
+    }
+
+    #[test]
+    fn test_format_json_with_function() {
+        let program = CirProgram {
+            functions: vec![CirFunction {
+                name: "id".to_string(),
+                type_params: vec![],
+                params: vec![CirParam {
+                    name: "x".to_string(),
+                    ty: CirType::I64,
+                    constraints: vec![],
+                }],
+                ret_ty: CirType::I64,
+                ret_name: "ret".to_string(),
+                preconditions: vec![],
+                postconditions: vec![],
+                loop_invariants: vec![],
+                effects: EffectSet::pure(),
+                body: CirExpr::Var("x".to_string()),
+            }],
+            extern_fns: vec![],
+            structs: std::collections::HashMap::new(),
+            type_invariants: std::collections::HashMap::new(),
+        };
+        let json = CirOutput::format_json(&program).unwrap();
+        assert!(json.contains("\"name\": \"id\""));
+        assert!(json.contains("\"is_pure\": true"));
+    }
+
+    #[test]
+    fn test_format_text_multiple_functions() {
+        let program = CirProgram {
+            functions: vec![
+                CirFunction {
+                    name: "foo".to_string(),
+                    type_params: vec![],
+                    params: vec![],
+                    ret_ty: CirType::Unit,
+                    ret_name: "r".to_string(),
+                    preconditions: vec![],
+                    postconditions: vec![],
+                    loop_invariants: vec![],
+                    effects: EffectSet::pure(),
+                    body: CirExpr::Unit,
+                },
+                CirFunction {
+                    name: "bar".to_string(),
+                    type_params: vec![],
+                    params: vec![
+                        CirParam { name: "a".to_string(), ty: CirType::I64, constraints: vec![] },
+                        CirParam { name: "b".to_string(), ty: CirType::I64, constraints: vec![] },
+                    ],
+                    ret_ty: CirType::I64,
+                    ret_name: "r".to_string(),
+                    preconditions: vec![],
+                    postconditions: vec![],
+                    loop_invariants: vec![],
+                    effects: EffectSet::impure(),
+                    body: CirExpr::Unit,
+                },
+            ],
+            extern_fns: vec![],
+            structs: std::collections::HashMap::new(),
+            type_invariants: std::collections::HashMap::new(),
+        };
+        let text = CirOutput::format_text(&program);
+        assert!(text.contains("fn foo("));
+        assert!(text.contains("fn bar(a: i64, b: i64)"));
+        assert!(text.contains("Functions: 2"));
+    }
+
+    #[test]
+    fn test_format_text_struct_without_invariants() {
+        let mut structs = std::collections::HashMap::new();
+        structs.insert("Point".to_string(), CirStruct {
+            name: "Point".to_string(),
+            fields: vec![
+                ("x".to_string(), CirType::F64),
+                ("y".to_string(), CirType::F64),
+            ],
+            invariants: vec![],
+        });
+        let program = CirProgram {
+            functions: vec![],
+            extern_fns: vec![],
+            structs,
+            type_invariants: std::collections::HashMap::new(),
+        };
+        let text = CirOutput::format_text(&program);
+        assert!(text.contains("struct Point {"));
+        assert!(text.contains("x: f64"));
+        assert!(text.contains("y: f64"));
+        assert!(!text.contains("Invariants:"));
+    }
+
+    #[test]
+    fn test_proposition_display_complex() {
+        let prop = Proposition::And(vec![
+            Proposition::True,
+            Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("x".to_string())),
+                op: CompareOp::Lt,
+                rhs: Box::new(CirExpr::IntLit(10)),
+            },
+        ]);
+        let display = format!("{}", prop);
+        assert_eq!(display, "(true && x < 10)");
+    }
+
+    #[test]
+    fn test_cir_expr_display_int() {
+        let expr = CirExpr::IntLit(42);
+        assert_eq!(format!("{}", expr), "42");
+    }
+
+    #[test]
+    fn test_format_extern_fn_multiple_params() {
+        let program = CirProgram {
+            functions: vec![],
+            extern_fns: vec![CirExternFn {
+                module: "wasi".to_string(),
+                name: "fd_write".to_string(),
+                params: vec![CirType::I32, CirType::I32, CirType::I32, CirType::Ptr(Box::new(CirType::I32))],
+                ret_ty: CirType::I32,
+                effects: EffectSet { io: true, writes: true, ..Default::default() },
+            }],
+            structs: std::collections::HashMap::new(),
+            type_invariants: std::collections::HashMap::new(),
+        };
+        let text = CirOutput::format_text(&program);
+        assert!(text.contains("extern \"wasi\" fn fd_write("));
+        assert!(text.contains("i32, i32, i32, *i32"));
+        assert!(text.contains("writes"));
+        assert!(text.contains("io"));
+    }
 }

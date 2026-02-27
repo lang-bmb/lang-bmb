@@ -4571,6 +4571,14 @@ impl LoopBoundedNarrowing {
 
         let param_name = &func.params[param_idx].0;
 
+        // v0.93.124: Analysis showed that narrowing alwaysinline function params
+        // creates trunc+sext overhead for pointer indices but HELPS arithmetic-heavy
+        // functions (32-bit division in matrix_a). These effects conflict:
+        // - Blanket guard: helps fannkuch (73ms) but destroys spectral_norm (108ms)
+        // - Targeted guard: creates call-chain inconsistency (callers i32 → callees i64)
+        // - No guard (baseline): best overall (spectral_norm 72ms, fannkuch 77ms)
+        // Conclusion: keep narrowing enabled for all alwaysinline functions.
+
         // v0.60.30: Don't narrow parameters used as values in IndexStore with i64 element type
         // Narrowing would cause type mismatch: storing i32 (4 bytes) but reading i64 (8 bytes)
         if Self::is_used_as_i64_store_value(func, param_name) {
@@ -4607,6 +4615,14 @@ impl LoopBoundedNarrowing {
         // Partially converted functions (like ackermann) still have recursive calls where
         // narrowing creates sext/trunc overhead per call frame.
         if Self::has_remaining_self_recursive_calls(func) {
+            return false;
+        }
+
+        // v0.93.120: Don't narrow params used as loop step values (addends to loop-carried variables).
+        // When a narrowed i32 param is added to an i64 loop variable in each iteration,
+        // LLVM inserts shl+ashr (sext) in the hot loop body. This creates per-iteration overhead.
+        // Example: mark_multiples_loop(arr, n, p) where inner loop does j = j + p.
+        if Self::is_loop_step_param(func, param_name) {
             return false;
         }
 
@@ -4903,10 +4919,18 @@ impl LoopBoundedNarrowing {
             // Also check transitive: if lhs is derived from var with Add
             let lhs_increasing = Self::is_increasing_from_var(lhs, var_name, definitions);
             let rhs_increasing = Self::is_increasing_from_var(rhs, var_name, definitions);
+            // v0.93.120: var + unknown_place is potentially increasing.
+            // If the other operand is a non-constant variable not in definitions
+            // (e.g., call result), it could be positive, making the sum grow unbounded.
+            // Catches: acc_loop + call_result where call_result is from a function call.
+            let rhs_is_unknown_place = matches!(rhs, Operand::Place(r) if r.name != var_name && !definitions.contains_key(&r.name));
+            let lhs_is_unknown_place = matches!(lhs, Operand::Place(l) if l.name != var_name && !definitions.contains_key(&l.name));
             (lhs_is_var && rhs_is_positive) ||
             (rhs_is_var && lhs_is_positive) ||
             (lhs_increasing && rhs_is_positive) ||
-            (rhs_increasing && lhs_is_positive)
+            (rhs_increasing && lhs_is_positive) ||
+            (lhs_is_var && rhs_is_unknown_place) ||
+            (rhs_is_var && lhs_is_unknown_place)
         } else {
             false
         }
@@ -5674,6 +5698,80 @@ impl LoopBoundedNarrowing {
 
         false
     }
+
+    /// v0.93.120: Check if a parameter is used as a loop step value.
+    /// When a narrowed i32 param is added to an i64 loop variable in each iteration,
+    /// LLVM inserts shl+ashr (sext) in the hot loop body after inlining.
+    /// Example: mark_multiples_loop(arr, n, p) where inner loop does j = j + p.
+    fn is_loop_step_param(func: &MirFunction, param_name: &str) -> bool {
+        // Find while-loop back-edges (Goto to earlier block)
+        let block_labels: Vec<String> = func.blocks.iter().map(|b| b.label.clone()).collect();
+        let mut loop_body_blocks: HashSet<String> = HashSet::new();
+
+        for (i, block) in func.blocks.iter().enumerate() {
+            if let Terminator::Goto(target) = &block.terminator {
+                if let Some(target_idx) = block_labels.iter().position(|l| l == target) {
+                    if target_idx <= i {
+                        // All blocks between target_idx and i are loop body
+                        for j in target_idx..=i {
+                            loop_body_blocks.insert(block_labels[j].clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        if loop_body_blocks.is_empty() {
+            return false;
+        }
+
+        // Track variables derived from param (via Copy)
+        let mut param_derived: HashSet<String> = HashSet::new();
+        param_derived.insert(param_name.to_string());
+        for _ in 0..3 {
+            for block in &func.blocks {
+                for inst in &block.instructions {
+                    if let MirInst::Copy { dest, src } = inst {
+                        if param_derived.contains(&src.name) {
+                            param_derived.insert(dest.name.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check if param (or derived) is used in BinOp::Add inside a loop body.
+        // This catches patterns like j = j + p where p is the parameter.
+        // Any addition in a loop body with a narrowed param creates per-iteration sext.
+        for block in &func.blocks {
+            if !loop_body_blocks.contains(&block.label) {
+                continue;
+            }
+            for inst in &block.instructions {
+                if let MirInst::BinOp { op: MirBinOp::Add, lhs, rhs, .. } = inst {
+                    let lhs_is_param = matches!(lhs, Operand::Place(p) if param_derived.contains(&p.name));
+                    let rhs_is_param = matches!(rhs, Operand::Place(p) if param_derived.contains(&p.name));
+
+                    // If param is one operand and the other is a non-constant place,
+                    // this is a loop step pattern (param added to loop variable)
+                    let other_is_place = if lhs_is_param {
+                        matches!(rhs, Operand::Place(_))
+                    } else if rhs_is_param {
+                        matches!(lhs, Operand::Place(_))
+                    } else {
+                        false
+                    };
+
+                    if (lhs_is_param || rhs_is_param) && other_is_place {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
+    }
+
 }
 
 // ============================================================================
@@ -7189,11 +7287,16 @@ impl IfElseToSelect {
         None
     }
 
-    /// Check if all instructions are safe to hoist (no side effects)
+    /// Check if all instructions are safe to hoist (no side effects, no trapping)
     fn is_hoistable(&self, insts: &[MirInst]) -> bool {
         for inst in insts {
             match inst {
-                MirInst::BinOp { .. } |
+                MirInst::BinOp { op, .. } => {
+                    // Div and Mod trap on zero — not safe to hoist unconditionally
+                    if matches!(op, MirBinOp::Div | MirBinOp::Mod) {
+                        return false;
+                    }
+                }
                 MirInst::UnaryOp { .. } |
                 MirInst::Const { .. } |
                 MirInst::Copy { .. } |
@@ -7240,17 +7343,24 @@ impl IfElseToSelect {
 
                 for (val, label) in values {
                     if label == then_label {
-                        // Check if val references a dest from then block
-                        if let Operand::Place(p) = val
-                            && then_dests.contains(&p.name)
-                        {
+                        // Accept if val is produced by then block, OR
+                        // is a pre-existing value (pass-through) not produced by else block.
+                        // Reject only if produced by the OTHER branch (SSA violation).
+                        let is_valid = match val {
+                            Operand::Place(p) => !else_dests.contains(&p.name),
+                            _ => true, // Constants always valid
+                        };
+                        if is_valid {
                             then_val = Some(val.clone());
                         }
-                    } else if label == else_label
-                        && let Operand::Place(p) = val
-                        && else_dests.contains(&p.name)
-                    {
-                        else_val = Some(val.clone());
+                    } else if label == else_label {
+                        let is_valid = match val {
+                            Operand::Place(p) => !then_dests.contains(&p.name),
+                            _ => true,
+                        };
+                        if is_valid {
+                            else_val = Some(val.clone());
+                        }
                     }
                 }
 

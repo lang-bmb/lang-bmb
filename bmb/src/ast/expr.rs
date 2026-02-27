@@ -880,4 +880,705 @@ mod tests {
         let op2 = op; // Copy
         assert_eq!(format!("{}", op), format!("{}", op2));
     }
+
+    // --- Cycle 1225: Expr Variant & Pattern Tests ---
+
+    fn dummy_span() -> Span {
+        Span { start: 0, end: 0 }
+    }
+
+    fn spanned<T>(node: T) -> Spanned<T> {
+        Spanned { node, span: dummy_span() }
+    }
+
+    #[test]
+    fn test_expr_intlit() {
+        let e = Expr::IntLit(42);
+        assert!(matches!(e, Expr::IntLit(42)));
+    }
+
+    #[test]
+    fn test_expr_floatlit() {
+        let e = Expr::FloatLit(3.14);
+        assert!(matches!(e, Expr::FloatLit(v) if (v - 3.14).abs() < f64::EPSILON));
+    }
+
+    #[test]
+    fn test_expr_boollit() {
+        assert!(matches!(Expr::BoolLit(true), Expr::BoolLit(true)));
+        assert!(matches!(Expr::BoolLit(false), Expr::BoolLit(false)));
+    }
+
+    #[test]
+    fn test_expr_stringlit() {
+        let e = Expr::StringLit("hello".to_string());
+        assert!(matches!(e, Expr::StringLit(ref s) if s == "hello"));
+    }
+
+    #[test]
+    fn test_expr_charlit() {
+        let e = Expr::CharLit('x');
+        assert!(matches!(e, Expr::CharLit('x')));
+    }
+
+    #[test]
+    fn test_expr_null_unit() {
+        assert!(matches!(Expr::Null, Expr::Null));
+        assert!(matches!(Expr::Unit, Expr::Unit));
+    }
+
+    #[test]
+    fn test_expr_var() {
+        let e = Expr::Var("x".to_string());
+        assert!(matches!(e, Expr::Var(ref n) if n == "x"));
+    }
+
+    #[test]
+    fn test_expr_binary() {
+        let e = Expr::Binary {
+            left: Box::new(spanned(Expr::IntLit(1))),
+            op: BinOp::Add,
+            right: Box::new(spanned(Expr::IntLit(2))),
+        };
+        assert!(matches!(e, Expr::Binary { op: BinOp::Add, .. }));
+    }
+
+    #[test]
+    fn test_expr_unary() {
+        let e = Expr::Unary {
+            op: UnOp::Neg,
+            expr: Box::new(spanned(Expr::IntLit(5))),
+        };
+        assert!(matches!(e, Expr::Unary { op: UnOp::Neg, .. }));
+    }
+
+    #[test]
+    fn test_expr_if() {
+        let e = Expr::If {
+            cond: Box::new(spanned(Expr::BoolLit(true))),
+            then_branch: Box::new(spanned(Expr::IntLit(1))),
+            else_branch: Box::new(spanned(Expr::IntLit(0))),
+        };
+        assert!(matches!(e, Expr::If { .. }));
+    }
+
+    #[test]
+    fn test_expr_let() {
+        let e = Expr::Let {
+            name: "x".to_string(),
+            mutable: false,
+            ty: None,
+            value: Box::new(spanned(Expr::IntLit(42))),
+            body: Box::new(spanned(Expr::Var("x".to_string()))),
+        };
+        assert!(matches!(e, Expr::Let { mutable: false, .. }));
+    }
+
+    #[test]
+    fn test_expr_let_mut() {
+        let e = Expr::Let {
+            name: "x".to_string(),
+            mutable: true,
+            ty: Some(spanned(Type::I64)),
+            value: Box::new(spanned(Expr::IntLit(0))),
+            body: Box::new(spanned(Expr::Unit)),
+        };
+        assert!(matches!(e, Expr::Let { mutable: true, .. }));
+    }
+
+    #[test]
+    fn test_expr_while() {
+        let e = Expr::While {
+            cond: Box::new(spanned(Expr::BoolLit(true))),
+            invariant: None,
+            body: Box::new(spanned(Expr::Unit)),
+        };
+        assert!(matches!(e, Expr::While { invariant: None, .. }));
+    }
+
+    #[test]
+    fn test_expr_for() {
+        let e = Expr::For {
+            var: "i".to_string(),
+            iter: Box::new(spanned(Expr::Range {
+                start: Box::new(spanned(Expr::IntLit(0))),
+                end: Box::new(spanned(Expr::IntLit(10))),
+                kind: RangeKind::Exclusive,
+            })),
+            body: Box::new(spanned(Expr::Unit)),
+        };
+        assert!(matches!(e, Expr::For { ref var, .. } if var == "i"));
+    }
+
+    #[test]
+    fn test_expr_loop_break_continue() {
+        assert!(matches!(Expr::Loop { body: Box::new(spanned(Expr::Break { value: None })) }, Expr::Loop { .. }));
+        assert!(matches!(Expr::Break { value: None }, Expr::Break { value: None }));
+        assert!(matches!(Expr::Continue, Expr::Continue));
+    }
+
+    #[test]
+    fn test_expr_return() {
+        let e = Expr::Return { value: Some(Box::new(spanned(Expr::IntLit(42)))) };
+        assert!(matches!(e, Expr::Return { value: Some(_) }));
+        let e2 = Expr::Return { value: None };
+        assert!(matches!(e2, Expr::Return { value: None }));
+    }
+
+    #[test]
+    fn test_expr_call() {
+        let e = Expr::Call {
+            func: "add".to_string(),
+            args: vec![spanned(Expr::IntLit(1)), spanned(Expr::IntLit(2))],
+        };
+        assert!(matches!(e, Expr::Call { ref func, ref args } if func == "add" && args.len() == 2));
+    }
+
+    #[test]
+    fn test_expr_block() {
+        let e = Expr::Block(vec![spanned(Expr::IntLit(1)), spanned(Expr::IntLit(2))]);
+        assert!(matches!(e, Expr::Block(ref v) if v.len() == 2));
+    }
+
+    #[test]
+    fn test_expr_struct_init() {
+        let e = Expr::StructInit {
+            name: "Point".to_string(),
+            fields: vec![
+                (spanned("x".to_string()), spanned(Expr::IntLit(1))),
+                (spanned("y".to_string()), spanned(Expr::IntLit(2))),
+            ],
+        };
+        assert!(matches!(e, Expr::StructInit { ref name, ref fields } if name == "Point" && fields.len() == 2));
+    }
+
+    #[test]
+    fn test_expr_field_access() {
+        let e = Expr::FieldAccess {
+            expr: Box::new(spanned(Expr::Var("p".to_string()))),
+            field: spanned("x".to_string()),
+        };
+        assert!(matches!(e, Expr::FieldAccess { .. }));
+    }
+
+    #[test]
+    fn test_expr_tuple_field() {
+        let e = Expr::TupleField {
+            expr: Box::new(spanned(Expr::Var("t".to_string()))),
+            index: 0,
+        };
+        assert!(matches!(e, Expr::TupleField { index: 0, .. }));
+    }
+
+    #[test]
+    fn test_expr_enum_variant() {
+        let e = Expr::EnumVariant {
+            enum_name: "Option".to_string(),
+            variant: "Some".to_string(),
+            args: vec![spanned(Expr::IntLit(42))],
+        };
+        assert!(matches!(e, Expr::EnumVariant { ref variant, .. } if variant == "Some"));
+    }
+
+    #[test]
+    fn test_expr_match() {
+        let e = Expr::Match {
+            expr: Box::new(spanned(Expr::Var("x".to_string()))),
+            arms: vec![
+                MatchArm {
+                    pattern: spanned(Pattern::Literal(LiteralPattern::Int(1))),
+                    guard: None,
+                    body: spanned(Expr::StringLit("one".to_string())),
+                },
+                MatchArm {
+                    pattern: spanned(Pattern::Wildcard),
+                    guard: None,
+                    body: spanned(Expr::StringLit("other".to_string())),
+                },
+            ],
+        };
+        assert!(matches!(e, Expr::Match { ref arms, .. } if arms.len() == 2));
+    }
+
+    #[test]
+    fn test_expr_ref_deref_refmut() {
+        let inner = spanned(Expr::Var("x".to_string()));
+        assert!(matches!(Expr::Ref(Box::new(inner.clone())), Expr::Ref(_)));
+        assert!(matches!(Expr::Deref(Box::new(inner.clone())), Expr::Deref(_)));
+        assert!(matches!(Expr::RefMut(Box::new(inner)), Expr::RefMut(_)));
+    }
+
+    #[test]
+    fn test_expr_array_lit() {
+        let e = Expr::ArrayLit(vec![spanned(Expr::IntLit(1)), spanned(Expr::IntLit(2))]);
+        assert!(matches!(e, Expr::ArrayLit(ref v) if v.len() == 2));
+    }
+
+    #[test]
+    fn test_expr_array_repeat() {
+        let e = Expr::ArrayRepeat {
+            value: Box::new(spanned(Expr::IntLit(0))),
+            count: 100,
+        };
+        assert!(matches!(e, Expr::ArrayRepeat { count: 100, .. }));
+    }
+
+    #[test]
+    fn test_expr_tuple() {
+        let e = Expr::Tuple(vec![spanned(Expr::IntLit(1)), spanned(Expr::BoolLit(true))]);
+        assert!(matches!(e, Expr::Tuple(ref v) if v.len() == 2));
+    }
+
+    #[test]
+    fn test_expr_index() {
+        let e = Expr::Index {
+            expr: Box::new(spanned(Expr::Var("arr".to_string()))),
+            index: Box::new(spanned(Expr::IntLit(0))),
+        };
+        assert!(matches!(e, Expr::Index { .. }));
+    }
+
+    #[test]
+    fn test_expr_index_assign() {
+        let e = Expr::IndexAssign {
+            array: Box::new(spanned(Expr::Var("arr".to_string()))),
+            index: Box::new(spanned(Expr::IntLit(0))),
+            value: Box::new(spanned(Expr::IntLit(42))),
+        };
+        assert!(matches!(e, Expr::IndexAssign { .. }));
+    }
+
+    #[test]
+    fn test_expr_method_call() {
+        let e = Expr::MethodCall {
+            receiver: Box::new(spanned(Expr::Var("v".to_string()))),
+            method: "len".to_string(),
+            args: vec![],
+        };
+        assert!(matches!(e, Expr::MethodCall { ref method, .. } if method == "len"));
+    }
+
+    #[test]
+    fn test_expr_closure() {
+        let e = Expr::Closure {
+            params: vec![
+                ClosureParam {
+                    name: spanned("x".to_string()),
+                    ty: Some(spanned(Type::I64)),
+                },
+            ],
+            ret_ty: None,
+            body: Box::new(spanned(Expr::Var("x".to_string()))),
+        };
+        assert!(matches!(e, Expr::Closure { ref params, .. } if params.len() == 1));
+    }
+
+    #[test]
+    fn test_expr_cast() {
+        let e = Expr::Cast {
+            expr: Box::new(spanned(Expr::IntLit(42))),
+            ty: spanned(Type::F64),
+        };
+        assert!(matches!(e, Expr::Cast { .. }));
+    }
+
+    #[test]
+    fn test_expr_todo() {
+        let e = Expr::Todo { message: Some("not yet".to_string()) };
+        assert!(matches!(e, Expr::Todo { message: Some(ref m) } if m == "not yet"));
+        let e2 = Expr::Todo { message: None };
+        assert!(matches!(e2, Expr::Todo { message: None }));
+    }
+
+    #[test]
+    fn test_expr_ret_and_it() {
+        assert!(matches!(Expr::Ret, Expr::Ret));
+        assert!(matches!(Expr::It, Expr::It));
+    }
+
+    #[test]
+    fn test_expr_state_ref() {
+        let e = Expr::StateRef {
+            expr: Box::new(spanned(Expr::Var("x".to_string()))),
+            state: StateKind::Pre,
+        };
+        assert!(matches!(e, Expr::StateRef { state: StateKind::Pre, .. }));
+    }
+
+    #[test]
+    fn test_expr_spawn() {
+        let e = Expr::Spawn {
+            body: Box::new(spanned(Expr::IntLit(42))),
+        };
+        assert!(matches!(e, Expr::Spawn { .. }));
+    }
+
+    #[test]
+    fn test_expr_concurrency_constructors() {
+        assert!(matches!(Expr::AtomicNew { value: Box::new(spanned(Expr::IntLit(0))) }, Expr::AtomicNew { .. }));
+        assert!(matches!(Expr::MutexNew { value: Box::new(spanned(Expr::IntLit(0))) }, Expr::MutexNew { .. }));
+        assert!(matches!(Expr::RwLockNew { value: Box::new(spanned(Expr::IntLit(0))) }, Expr::RwLockNew { .. }));
+        assert!(matches!(Expr::BarrierNew { count: Box::new(spanned(Expr::IntLit(4))) }, Expr::BarrierNew { .. }));
+        assert!(matches!(Expr::CondvarNew, Expr::CondvarNew));
+    }
+
+    // --- Pattern Tests ---
+
+    #[test]
+    fn test_pattern_wildcard() {
+        assert!(matches!(Pattern::Wildcard, Pattern::Wildcard));
+    }
+
+    #[test]
+    fn test_pattern_var() {
+        let p = Pattern::Var("x".to_string());
+        assert!(matches!(p, Pattern::Var(ref n) if n == "x"));
+    }
+
+    #[test]
+    fn test_pattern_literal_all_variants() {
+        assert!(matches!(Pattern::Literal(LiteralPattern::Int(42)), Pattern::Literal(LiteralPattern::Int(42))));
+        assert!(matches!(Pattern::Literal(LiteralPattern::Bool(true)), Pattern::Literal(LiteralPattern::Bool(true))));
+        let p = Pattern::Literal(LiteralPattern::String("hi".to_string()));
+        assert!(matches!(p, Pattern::Literal(LiteralPattern::String(ref s)) if s == "hi"));
+    }
+
+    #[test]
+    fn test_pattern_enum_variant() {
+        let p = Pattern::EnumVariant {
+            enum_name: "Option".to_string(),
+            variant: "Some".to_string(),
+            bindings: vec![spanned(Pattern::Var("x".to_string()))],
+        };
+        assert!(matches!(p, Pattern::EnumVariant { ref variant, .. } if variant == "Some"));
+    }
+
+    #[test]
+    fn test_pattern_struct() {
+        let p = Pattern::Struct {
+            name: "Point".to_string(),
+            fields: vec![
+                (spanned("x".to_string()), spanned(Pattern::Var("px".to_string()))),
+            ],
+        };
+        assert!(matches!(p, Pattern::Struct { ref name, .. } if name == "Point"));
+    }
+
+    #[test]
+    fn test_pattern_range() {
+        let p = Pattern::Range {
+            start: LiteralPattern::Int(1),
+            end: LiteralPattern::Int(10),
+            inclusive: true,
+        };
+        assert!(matches!(p, Pattern::Range { inclusive: true, .. }));
+    }
+
+    #[test]
+    fn test_pattern_or() {
+        let p = Pattern::Or(vec![
+            spanned(Pattern::Literal(LiteralPattern::Int(1))),
+            spanned(Pattern::Literal(LiteralPattern::Int(2))),
+        ]);
+        assert!(matches!(p, Pattern::Or(ref v) if v.len() == 2));
+    }
+
+    #[test]
+    fn test_pattern_binding() {
+        let p = Pattern::Binding {
+            name: "val".to_string(),
+            pattern: Box::new(spanned(Pattern::Literal(LiteralPattern::Int(42)))),
+        };
+        assert!(matches!(p, Pattern::Binding { ref name, .. } if name == "val"));
+    }
+
+    #[test]
+    fn test_pattern_tuple() {
+        let p = Pattern::Tuple(vec![
+            spanned(Pattern::Var("a".to_string())),
+            spanned(Pattern::Var("b".to_string())),
+        ]);
+        assert!(matches!(p, Pattern::Tuple(ref v) if v.len() == 2));
+    }
+
+    #[test]
+    fn test_pattern_array() {
+        let p = Pattern::Array(vec![
+            spanned(Pattern::Literal(LiteralPattern::Int(1))),
+            spanned(Pattern::Literal(LiteralPattern::Int(2))),
+        ]);
+        assert!(matches!(p, Pattern::Array(ref v) if v.len() == 2));
+    }
+
+    #[test]
+    fn test_pattern_array_rest() {
+        let p = Pattern::ArrayRest {
+            prefix: vec![spanned(Pattern::Var("first".to_string()))],
+            suffix: vec![spanned(Pattern::Var("last".to_string()))],
+        };
+        assert!(matches!(p, Pattern::ArrayRest { ref prefix, ref suffix } if prefix.len() == 1 && suffix.len() == 1));
+    }
+
+    // --- ArrayPatternPart Tests ---
+
+    #[test]
+    fn test_array_pattern_part_no_rest() {
+        let parts = vec![
+            ArrayPatternPart::Pattern(spanned(Pattern::Var("a".to_string()))),
+            ArrayPatternPart::Pattern(spanned(Pattern::Var("b".to_string()))),
+        ];
+        let result = ArrayPatternPart::into_pattern(parts);
+        assert!(matches!(result, Pattern::Array(ref v) if v.len() == 2));
+    }
+
+    #[test]
+    fn test_array_pattern_part_with_rest() {
+        let parts = vec![
+            ArrayPatternPart::Pattern(spanned(Pattern::Var("first".to_string()))),
+            ArrayPatternPart::Rest,
+            ArrayPatternPart::Pattern(spanned(Pattern::Var("last".to_string()))),
+        ];
+        let result = ArrayPatternPart::into_pattern(parts);
+        assert!(matches!(result, Pattern::ArrayRest { ref prefix, ref suffix } if prefix.len() == 1 && suffix.len() == 1));
+    }
+
+    #[test]
+    fn test_array_pattern_part_rest_at_end() {
+        let parts = vec![
+            ArrayPatternPart::Pattern(spanned(Pattern::Var("a".to_string()))),
+            ArrayPatternPart::Rest,
+        ];
+        let result = ArrayPatternPart::into_pattern(parts);
+        assert!(matches!(result, Pattern::ArrayRest { ref prefix, ref suffix } if prefix.len() == 1 && suffix.is_empty()));
+    }
+
+    #[test]
+    fn test_array_pattern_part_rest_at_start() {
+        let parts = vec![
+            ArrayPatternPart::Rest,
+            ArrayPatternPart::Pattern(spanned(Pattern::Var("last".to_string()))),
+        ];
+        let result = ArrayPatternPart::into_pattern(parts);
+        assert!(matches!(result, Pattern::ArrayRest { ref prefix, ref suffix } if prefix.is_empty() && suffix.len() == 1));
+    }
+
+    // --- desugar_block_lets Tests ---
+
+    #[test]
+    fn test_desugar_block_lets_empty() {
+        let result = desugar_block_lets(vec![]);
+        assert!(matches!(result, Expr::Block(ref v) if v.is_empty()));
+    }
+
+    #[test]
+    fn test_desugar_block_lets_no_lets() {
+        let stmts = vec![
+            spanned(Expr::IntLit(1)),
+            spanned(Expr::IntLit(2)),
+        ];
+        let result = desugar_block_lets(stmts);
+        assert!(matches!(result, Expr::Block(ref v) if v.len() == 2));
+    }
+
+    #[test]
+    fn test_desugar_block_lets_with_stmt_let() {
+        // let x = 1; x  → Let(x, 1, x)
+        let stmts = vec![
+            spanned(Expr::Let {
+                name: "x".to_string(),
+                mutable: false,
+                ty: None,
+                value: Box::new(spanned(Expr::IntLit(1))),
+                body: Box::new(spanned(Expr::Unit)),  // stmt-style: body is Unit
+            }),
+            spanned(Expr::Var("x".to_string())),
+        ];
+        let result = desugar_block_lets(stmts);
+        assert!(matches!(result, Expr::Let { ref name, .. } if name == "x"));
+    }
+
+    #[test]
+    fn test_desugar_block_lets_non_stmt_let_passthrough() {
+        // Let with non-Unit body is already nested, not a stmt-style let
+        let stmts = vec![
+            spanned(Expr::Let {
+                name: "x".to_string(),
+                mutable: false,
+                ty: None,
+                value: Box::new(spanned(Expr::IntLit(1))),
+                body: Box::new(spanned(Expr::Var("x".to_string()))),  // not Unit → normal let
+            }),
+        ];
+        let result = desugar_block_lets(stmts);
+        // No stmt-style lets, so returns Block
+        assert!(matches!(result, Expr::Block(_)));
+    }
+
+    // --- MatchArm and SelectArm ---
+
+    #[test]
+    fn test_match_arm_with_guard() {
+        let arm = MatchArm {
+            pattern: spanned(Pattern::Var("x".to_string())),
+            guard: Some(spanned(Expr::Binary {
+                left: Box::new(spanned(Expr::Var("x".to_string()))),
+                op: BinOp::Gt,
+                right: Box::new(spanned(Expr::IntLit(0))),
+            })),
+            body: spanned(Expr::Var("x".to_string())),
+        };
+        assert!(arm.guard.is_some());
+    }
+
+    #[test]
+    fn test_select_arm_construction() {
+        let arm = SelectArm {
+            binding: Some("msg".to_string()),
+            operation: spanned(Expr::Var("rx".to_string())),
+            guard: None,
+            body: spanned(Expr::Var("msg".to_string())),
+        };
+        assert_eq!(arm.binding.as_deref(), Some("msg"));
+        assert!(arm.guard.is_none());
+    }
+
+    #[test]
+    fn test_closure_param_with_type() {
+        let cp = ClosureParam {
+            name: spanned("x".to_string()),
+            ty: Some(spanned(Type::I64)),
+        };
+        assert_eq!(cp.name.node, "x");
+        assert!(cp.ty.is_some());
+    }
+
+    #[test]
+    fn test_closure_param_without_type() {
+        let cp = ClosureParam {
+            name: spanned("y".to_string()),
+            ty: None,
+        };
+        assert_eq!(cp.name.node, "y");
+        assert!(cp.ty.is_none());
+    }
+
+    #[test]
+    fn test_literal_pattern_float() {
+        let lp = LiteralPattern::Float(3.14);
+        assert!(matches!(lp, LiteralPattern::Float(v) if (v - 3.14).abs() < f64::EPSILON));
+    }
+
+    #[test]
+    fn test_expr_sizeof() {
+        let e = Expr::Sizeof { ty: spanned(Type::I64) };
+        assert!(matches!(e, Expr::Sizeof { .. }));
+    }
+
+    #[test]
+    fn test_expr_field_assign() {
+        let e = Expr::FieldAssign {
+            object: Box::new(spanned(Expr::Var("p".to_string()))),
+            field: spanned("x".to_string()),
+            value: Box::new(spanned(Expr::IntLit(10))),
+        };
+        assert!(matches!(e, Expr::FieldAssign { .. }));
+    }
+
+    #[test]
+    fn test_expr_deref_assign() {
+        let e = Expr::DerefAssign {
+            ptr: Box::new(spanned(Expr::Var("ptr".to_string()))),
+            value: Box::new(spanned(Expr::IntLit(42))),
+        };
+        assert!(matches!(e, Expr::DerefAssign { .. }));
+    }
+
+    #[test]
+    fn test_expr_let_uninit() {
+        let e = Expr::LetUninit {
+            name: "arr".to_string(),
+            mutable: true,
+            ty: Box::new(spanned(Type::Array(Box::new(Type::I64), 100))),
+            body: Box::new(spanned(Expr::Unit)),
+        };
+        assert!(matches!(e, Expr::LetUninit { ref name, mutable: true, .. } if name == "arr"));
+    }
+
+    #[test]
+    fn test_expr_assign() {
+        let e = Expr::Assign {
+            name: "x".to_string(),
+            value: Box::new(spanned(Expr::IntLit(10))),
+        };
+        assert!(matches!(e, Expr::Assign { ref name, .. } if name == "x"));
+    }
+
+    #[test]
+    fn test_expr_range() {
+        let e = Expr::Range {
+            start: Box::new(spanned(Expr::IntLit(0))),
+            end: Box::new(spanned(Expr::IntLit(10))),
+            kind: RangeKind::Inclusive,
+        };
+        assert!(matches!(e, Expr::Range { kind: RangeKind::Inclusive, .. }));
+    }
+
+    #[test]
+    fn test_expr_await() {
+        let e = Expr::Await {
+            future: Box::new(spanned(Expr::Var("f".to_string()))),
+        };
+        assert!(matches!(e, Expr::Await { .. }));
+    }
+
+    #[test]
+    fn test_expr_channel_new() {
+        let e = Expr::ChannelNew {
+            elem_ty: Box::new(spanned(Type::I64)),
+            capacity: Box::new(spanned(Expr::IntLit(16))),
+        };
+        assert!(matches!(e, Expr::ChannelNew { .. }));
+    }
+
+    #[test]
+    fn test_expr_forall_exists() {
+        let forall = Expr::Forall {
+            var: spanned("i".to_string()),
+            ty: spanned(Type::I64),
+            body: Box::new(spanned(Expr::BoolLit(true))),
+        };
+        assert!(matches!(forall, Expr::Forall { .. }));
+
+        let exists = Expr::Exists {
+            var: spanned("j".to_string()),
+            ty: spanned(Type::I64),
+            body: Box::new(spanned(Expr::BoolLit(true))),
+        };
+        assert!(matches!(exists, Expr::Exists { .. }));
+    }
+
+    #[test]
+    fn test_expr_select() {
+        let e = Expr::Select {
+            arms: vec![
+                SelectArm {
+                    binding: Some("v".to_string()),
+                    operation: spanned(Expr::Var("rx1".to_string())),
+                    guard: None,
+                    body: spanned(Expr::Var("v".to_string())),
+                },
+            ],
+        };
+        assert!(matches!(e, Expr::Select { ref arms } if arms.len() == 1));
+    }
+
+    #[test]
+    fn test_expr_while_with_invariant() {
+        let e = Expr::While {
+            cond: Box::new(spanned(Expr::BoolLit(true))),
+            invariant: Some(Box::new(spanned(Expr::BoolLit(true)))),
+            body: Box::new(spanned(Expr::Unit)),
+        };
+        assert!(matches!(e, Expr::While { invariant: Some(_), .. }));
+    }
 }

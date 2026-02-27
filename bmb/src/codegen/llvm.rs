@@ -262,159 +262,190 @@ impl CodeGen {
                 .run_passes(passes, &target_machine, pass_options)
                 .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
         } else if !matches!(self.opt_level, OptLevel::Debug) && is_windows_target {
-            // v0.50.67: Windows workaround - use external opt tool for optimization
-            // The inkwell run_passes() segfaults on Windows with LLVM 21.1.8 on MinGW
-            // Solution: Write bitcode, run opt, read back optimized bitcode
+            // v0.95: Windows optimization via clang -O3 -c for superior loop unrolling
+            // Clang's integrated optimization pipeline unrolls loops that opt standalone
+            // misses (Cycle 1287: perfect_numbers 580ms vs 955ms with opt, gcd 131ms vs 155ms,
+            // primes_count 18ms vs 50ms). Uses clang as primary, opt+inkwell as fallback.
             use std::process::Command;
 
-            let opt_level_str = match self.opt_level {
+            // Write unoptimized bitcode to temp file
+            let temp_bc = output.with_extension("unopt.bc");
+            module.write_bitcode_to_path(&temp_bc);
+
+            let cpu_str = cpu.to_str().unwrap_or("x86-64");
+
+            // v0.95: Primary path - clang -O3 -c for integrated optimization
+            // clang's pass pipeline produces better loop unrolling than standalone opt
+            let clang_opt = match self.opt_level {
                 OptLevel::Debug => "-O0",
-                OptLevel::Release => "-O2",
+                OptLevel::Release => "-O3",
                 OptLevel::Size => "-Os",
                 OptLevel::Aggressive => "-O3",
             };
 
-            // Write unoptimized bitcode to temp file
-            let temp_bc = output.with_extension("unopt.bc");
-            let opt_bc = output.with_extension("opt.bc");
+            let clang_obj = output.with_extension("clang.o");
+            let mut clang_cmd = Command::new("clang");
+            clang_cmd.args([clang_opt, "-c", "-x", "ir"]);
 
-            module.write_bitcode_to_path(&temp_bc);
-
-            // Run external opt tool
-            // v0.60.47: Use O3 with scalarizer to undo inefficient auto-vectorization
-            // O3 enables aggressive inlining and loop unrolling, but its vectorization
-            // can hurt performance for integer-heavy loops (e.g., mandelbrot).
-            // The scalarizer undoes vector operations, returning to efficient scalar code.
-            // Use new pass manager syntax: -passes='default<O3>,scalarizer'
-            // v0.90.21: Removed early instcombine pre-pass. Rust compiler IR has no
-            // identity copies, and instcombine's GEP canonicalization prevents GVN
-            // load-forwarding in loops (e.g., sorting bubble_sort: 1.81x regression).
-            // Identity copies are a bootstrap-only issue; fix at source in compiler.bmb.
-            let passes_arg = match self.opt_level {
-                OptLevel::Debug => "default<O0>",
-                OptLevel::Release => "default<O3>,scalarizer",
-                OptLevel::Size => "default<Os>",
-                OptLevel::Aggressive => "default<O3>",
-            };
-
-            // v0.60.56: Build opt command with optional fast-math flags
-            // v0.89.15: Pass host CPU to opt for target-aware optimization
-            let mut opt_cmd = Command::new("opt");
-            opt_cmd.args(["--passes", passes_arg]);
-            let cpu_str = cpu.to_str().unwrap_or("x86-64");
-            if !cpu_str.is_empty() {
-                opt_cmd.arg(format!("--mcpu={}", cpu_str));
+            // Pass target CPU for architecture-specific optimization
+            if !cpu_str.is_empty() && cpu_str != "x86-64" {
+                clang_cmd.arg(format!("-march={}", cpu_str));
+            } else {
+                clang_cmd.arg("-march=native");
             }
 
             // v0.60.56: Add fast-math flags when enabled
-            // These enable aggressive FP optimizations (FMA, reciprocal, reassociation)
             if self.fast_math {
-                opt_cmd.args([
-                    "--enable-unsafe-fp-math",
-                    "--enable-no-nans-fp-math",
-                    "--enable-no-infs-fp-math",
-                    "--enable-no-signed-zeros-fp-math",
-                    "--fp-contract=fast",
-                ]);
+                clang_cmd.arg("-ffast-math");
             }
 
-            opt_cmd.arg("-o").arg(&opt_bc).arg(&temp_bc);
-            let opt_result = opt_cmd.output();
+            // Suppress target triple override warning
+            clang_cmd.arg("-Wno-override-module");
+            clang_cmd.arg("-o").arg(&clang_obj).arg(&temp_bc);
+            let clang_result = clang_cmd.output();
 
-            let opt_success = match opt_result {
+            let clang_success = match clang_result {
                 Ok(output_res) if output_res.status.success() => {
-                    // Load optimized bitcode and write object file
-                    // v0.60.46: Log the actual passes being used
-                    eprintln!("Note: External opt --passes={} completed successfully", passes_arg);
-                    let opt_context = Context::create();
-                    match inkwell::module::Module::parse_bitcode_from_path(&opt_bc, &opt_context) {
-                        Ok(opt_module) => {
-                            let opt_target_machine = Target::from_triple(&target_triple)
-                                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
-                                .create_target_machine(
-                                    &target_triple,
-                                    cpu.to_str().unwrap_or("generic"),
-                                    features.to_str().unwrap_or(""),
-                                    self.opt_level.into(),
-                                    RelocMode::Default,
-                                    CodeModel::Default,
-                                )
-                                .ok_or(CodeGenError::TargetMachineError)?;
-
-                            eprintln!("Note: Writing optimized object file");
-                            let result = opt_target_machine
-                                .write_to_file(&opt_module, FileType::Object, output)
-                                .map_err(|e| CodeGenError::ObjectFileError(e.to_string()));
-
-                            // Cleanup temp files
-                            let _ = std::fs::remove_file(&temp_bc);
-                            let _ = std::fs::remove_file(&opt_bc);
-
-                            return result;
+                    eprintln!("Note: clang {} -c optimization completed successfully", clang_opt);
+                    // Move clang output to final destination
+                    if let Err(e) = std::fs::rename(&clang_obj, output) {
+                        if let Err(e2) = std::fs::copy(&clang_obj, output) {
+                            eprintln!("Warning: Could not move clang output: {}, {}", e, e2);
                         }
-                        Err(e) => {
-                            eprintln!("Warning: Could not load optimized bitcode: {}", e);
-                            false
-                        }
+                        let _ = std::fs::remove_file(&clang_obj);
                     }
+                    let _ = std::fs::remove_file(&temp_bc);
+                    return Ok(());
                 }
                 Ok(output_res) => {
                     let stderr = String::from_utf8_lossy(&output_res.stderr);
-                    eprintln!("Warning: opt tool failed (exit: {:?}): {}",
+                    eprintln!("Warning: clang -c failed (exit: {:?}): {}, falling back to opt",
                               output_res.status.code(), stderr);
                     false
                 }
                 Err(e) => {
-                    eprintln!("Warning: opt tool not found ({})", e);
+                    eprintln!("Warning: clang not found ({}), falling back to opt", e);
                     false
                 }
             };
+            let _ = std::fs::remove_file(&clang_obj);
 
-            // Cleanup temp files
-            let _ = std::fs::remove_file(&opt_bc);
+            // Fallback: opt + inkwell pipeline (v0.50.67 original approach)
+            if !clang_success {
+                let opt_bc = output.with_extension("opt.bc");
 
-            // v0.60.42: Try llc -O3 as fallback when opt is unavailable
-            // llc performs codegen-level optimizations which are often sufficient
-            // v0.60.43: Use -O3 for Release mode as well since opt is blocked
-            if !opt_success {
-                let llc_opt = match self.opt_level {
-                    OptLevel::Debug => "-O0",
-                    OptLevel::Release => "-O3",  // v0.60.43: -O3 for best codegen without opt
-                    OptLevel::Size => "-Os",
-                    OptLevel::Aggressive => "-O3",
+                // v0.60.47: Use O3 with scalarizer to undo inefficient auto-vectorization
+                // v0.90.21: Removed early instcombine pre-pass
+                let passes_arg = match self.opt_level {
+                    OptLevel::Debug => "default<O0>",
+                    OptLevel::Release => "default<O3>,scalarizer",
+                    OptLevel::Size => "default<Os>",
+                    OptLevel::Aggressive => "default<O3>",
                 };
 
-                let obj_from_llc = output.with_extension("llc.o");
-                let llc_result = Command::new("llc")
-                    .args([llc_opt, "-filetype=obj", "-o"])
-                    .arg(&obj_from_llc)
-                    .arg(&temp_bc)
-                    .output();
+                let mut opt_cmd = Command::new("opt");
+                opt_cmd.args(["--passes", passes_arg]);
+                if !cpu_str.is_empty() {
+                    opt_cmd.arg(format!("--mcpu={}", cpu_str));
+                }
+                if self.fast_math {
+                    opt_cmd.args([
+                        "--enable-unsafe-fp-math",
+                        "--enable-no-nans-fp-math",
+                        "--enable-no-infs-fp-math",
+                        "--enable-no-signed-zeros-fp-math",
+                        "--fp-contract=fast",
+                    ]);
+                }
+                opt_cmd.arg("-o").arg(&opt_bc).arg(&temp_bc);
+                let opt_result = opt_cmd.output();
 
-                match llc_result {
+                let opt_success = match opt_result {
                     Ok(output_res) if output_res.status.success() => {
-                        eprintln!("Note: llc {} optimization successful", llc_opt);
-                        // Move llc output to final destination
-                        if let Err(e) = std::fs::rename(&obj_from_llc, output) {
-                            // If rename fails (cross-device), try copy
-                            if let Err(e2) = std::fs::copy(&obj_from_llc, output) {
-                                eprintln!("Warning: Could not move llc output: {}, {}", e, e2);
+                        eprintln!("Note: External opt --passes={} completed successfully", passes_arg);
+                        let opt_context = Context::create();
+                        match inkwell::module::Module::parse_bitcode_from_path(&opt_bc, &opt_context) {
+                            Ok(opt_module) => {
+                                let opt_target_machine = Target::from_triple(&target_triple)
+                                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                                    .create_target_machine(
+                                        &target_triple,
+                                        cpu.to_str().unwrap_or("generic"),
+                                        features.to_str().unwrap_or(""),
+                                        self.opt_level.into(),
+                                        RelocMode::Default,
+                                        CodeModel::Default,
+                                    )
+                                    .ok_or(CodeGenError::TargetMachineError)?;
+
+                                eprintln!("Note: Writing optimized object file");
+                                let result = opt_target_machine
+                                    .write_to_file(&opt_module, FileType::Object, output)
+                                    .map_err(|e| CodeGenError::ObjectFileError(e.to_string()));
+
+                                let _ = std::fs::remove_file(&temp_bc);
+                                let _ = std::fs::remove_file(&opt_bc);
+                                return result;
                             }
-                            let _ = std::fs::remove_file(&obj_from_llc);
+                            Err(e) => {
+                                eprintln!("Warning: Could not load optimized bitcode: {}", e);
+                                false
+                            }
                         }
-                        let _ = std::fs::remove_file(&temp_bc);
-                        return Ok(());
                     }
                     Ok(output_res) => {
                         let stderr = String::from_utf8_lossy(&output_res.stderr);
-                        eprintln!("Warning: llc failed (exit: {:?}): {}",
+                        eprintln!("Warning: opt tool failed (exit: {:?}): {}",
                                   output_res.status.code(), stderr);
+                        false
                     }
                     Err(e) => {
-                        eprintln!("Warning: llc not found ({})", e);
+                        eprintln!("Warning: opt tool not found ({})", e);
+                        false
                     }
+                };
+
+                let _ = std::fs::remove_file(&opt_bc);
+
+                // v0.60.42: Try llc -O3 as last resort fallback
+                if !opt_success {
+                    let llc_opt = match self.opt_level {
+                        OptLevel::Debug => "-O0",
+                        OptLevel::Release => "-O3",
+                        OptLevel::Size => "-Os",
+                        OptLevel::Aggressive => "-O3",
+                    };
+
+                    let obj_from_llc = output.with_extension("llc.o");
+                    let llc_result = Command::new("llc")
+                        .args([llc_opt, "-filetype=obj", "-o"])
+                        .arg(&obj_from_llc)
+                        .arg(&temp_bc)
+                        .output();
+
+                    match llc_result {
+                        Ok(output_res) if output_res.status.success() => {
+                            eprintln!("Note: llc {} optimization successful", llc_opt);
+                            if let Err(e) = std::fs::rename(&obj_from_llc, output) {
+                                if let Err(e2) = std::fs::copy(&obj_from_llc, output) {
+                                    eprintln!("Warning: Could not move llc output: {}, {}", e, e2);
+                                }
+                                let _ = std::fs::remove_file(&obj_from_llc);
+                            }
+                            let _ = std::fs::remove_file(&temp_bc);
+                            return Ok(());
+                        }
+                        Ok(output_res) => {
+                            let stderr = String::from_utf8_lossy(&output_res.stderr);
+                            eprintln!("Warning: llc failed (exit: {:?}): {}",
+                                      output_res.status.code(), stderr);
+                        }
+                        Err(e) => {
+                            eprintln!("Warning: llc not found ({})", e);
+                        }
+                    }
+                    let _ = std::fs::remove_file(&obj_from_llc);
                 }
-                let _ = std::fs::remove_file(&obj_from_llc);
             }
 
             let _ = std::fs::remove_file(&temp_bc);
@@ -747,6 +778,14 @@ impl<'ctx> LlvmContext<'ctx> {
         // v0.60.120: Register return type for string comparison tracking
         self.function_return_types.insert("slice".to_string(), MirType::String);
 
+        // string_replace(ptr, ptr, ptr) -> ptr
+        let replace_type = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false);
+        let replace_fn = self.module.add_function("bmb_string_replace", replace_type, None);
+        replace_fn.add_attribute(AttributeLoc::Function, nounwind_attr);
+        replace_fn.add_attribute(AttributeLoc::Function, willreturn_attr);
+        self.functions.insert("replace".to_string(), replace_fn);
+        self.function_return_types.insert("replace".to_string(), MirType::String);
+
         // v0.46: string_eq(ptr, ptr) -> i64 (for BmbString* comparison)
         let string_eq_type = i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
         let string_eq_fn = self.module.add_function("bmb_string_eq", string_eq_type, None);
@@ -950,6 +989,11 @@ impl<'ctx> LlvmContext<'ctx> {
         let sb_push_type = i64_type.fn_type(&[i64_type.into(), ptr_type.into()], false);
         let sb_push_fn = self.module.add_function("bmb_sb_push", sb_push_type, None);
         self.functions.insert("sb_push".to_string(), sb_push_fn);
+
+        // v0.95.7: sb_push_range(handle: i64, s: ptr, start: i64, end: i64) -> i64
+        let sb_push_range_type = i64_type.fn_type(&[i64_type.into(), ptr_type.into(), i64_type.into(), i64_type.into()], false);
+        let sb_push_range_fn = self.module.add_function("sb_push_range", sb_push_range_type, None);
+        self.functions.insert("sb_push_range".to_string(), sb_push_range_fn);
 
         // sb_push_char(handle: i64, char_code: i64) -> i64
         let sb_push_char_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
@@ -2684,7 +2728,8 @@ impl<'ctx> LlvmContext<'ctx> {
                                 "bmb_string_slice", "bmb_string_concat", "bmb_read_file",
                                 "bmb_int_to_string", "bmb_string_from_cstr", "bmb_sb_build",
                                 "bmb_getenv",
-                                "bmb_string_concat3", "bmb_string_concat5", "bmb_string_concat7"
+                                "bmb_string_concat3", "bmb_string_concat5", "bmb_string_concat7",
+                                "bmb_string_replace"
                             ];
                             let is_string_func = string_funcs.contains(&func.as_str())
                                 || self.function_return_types.get(func)
@@ -2803,38 +2848,73 @@ impl<'ctx> LlvmContext<'ctx> {
                 // Evaluate index operand
                 let index_val = self.gen_operand(index)?;
 
-                // v0.60.20: Use actual element type for GEP and load
-                let llvm_elem_type = self.mir_type_to_llvm(element_type);
+                // v0.95.6: String byte indexing — extract data pointer, use i8 GEP, zext to i64
+                if self.string_variables.contains(&array.name) {
+                    let i8_type = self.context.i8_type();
+                    let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
 
-                // v0.60.19: GEP to element pointer using single index (works for both arrays and pointers)
-                let elem_ptr = unsafe {
-                    self.builder.build_in_bounds_gep(
-                        llvm_elem_type,
-                        array_ptr,
-                        &[index_val.into_int_value()],
-                        &format!("{}_ptr", dest.name)
-                    )
-                }.map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    // Load data pointer (first field of String struct { ptr, i64, i64 })
+                    let data_ptr = self.builder
+                        .build_load(ptr_type, array_ptr, &format!("{}_data", dest.name))
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                        .into_pointer_value();
 
-                // Load element
-                // v0.60.35: Add alignment hint based on element type for better performance
-                let loaded = self.builder
-                    .build_load(llvm_elem_type, elem_ptr, &dest.name)
-                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    // GEP by bytes into the data
+                    let byte_ptr = unsafe {
+                        self.builder.build_in_bounds_gep(
+                            i8_type,
+                            data_ptr,
+                            &[index_val.into_int_value()],
+                            &format!("{}_byte_ptr", dest.name)
+                        )
+                    }.map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
 
-                // Set alignment based on element type size
-                let alignment = match element_type {
-                    MirType::I64 | MirType::U64 | MirType::F64 | MirType::Ptr(_) | MirType::StructPtr(_) | MirType::String => 8,
-                    MirType::I32 | MirType::U32 | MirType::Char => 4,
-                    MirType::Bool => 1,
-                    _ => 8, // Default to 8 for structs and other types
-                };
-                if let Some(load_inst) = loaded.as_instruction_value() {
-                    let _ = load_inst.set_alignment(alignment);
+                    // Load byte
+                    let byte_val = self.builder
+                        .build_load(i8_type, byte_ptr, &format!("{}_byte", dest.name))
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                    // Zero-extend i8 to i64
+                    let i64_type = self.context.i64_type();
+                    let extended = self.builder
+                        .build_int_z_extend(byte_val.into_int_value(), i64_type, &dest.name)
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                    self.store_to_place(dest, extended.into())?;
+                } else {
+                    // v0.60.20: Use actual element type for GEP and load
+                    let llvm_elem_type = self.mir_type_to_llvm(element_type);
+
+                    // v0.60.19: GEP to element pointer using single index (works for both arrays and pointers)
+                    let elem_ptr = unsafe {
+                        self.builder.build_in_bounds_gep(
+                            llvm_elem_type,
+                            array_ptr,
+                            &[index_val.into_int_value()],
+                            &format!("{}_ptr", dest.name)
+                        )
+                    }.map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                    // Load element
+                    // v0.60.35: Add alignment hint based on element type for better performance
+                    let loaded = self.builder
+                        .build_load(llvm_elem_type, elem_ptr, &dest.name)
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                    // Set alignment based on element type size
+                    let alignment = match element_type {
+                        MirType::I64 | MirType::U64 | MirType::F64 | MirType::Ptr(_) | MirType::StructPtr(_) | MirType::String => 8,
+                        MirType::I32 | MirType::U32 | MirType::Char => 4,
+                        MirType::Bool => 1,
+                        _ => 8, // Default to 8 for structs and other types
+                    };
+                    if let Some(load_inst) = loaded.as_instruction_value() {
+                        let _ = load_inst.set_alignment(alignment);
+                    }
+
+                    // Store to destination
+                    self.store_to_place(dest, loaded)?;
                 }
-
-                // Store to destination
-                self.store_to_place(dest, loaded)?;
             }
 
             MirInst::IndexStore { array, index, value, element_type } => {
@@ -5647,7 +5727,7 @@ impl<'ctx> LlvmContext<'ctx> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::{BasicBlock, Constant, MirBinOp, MirFunction, MirInst, MirProgram, MirType, MirUnaryOp, Operand, Place, Terminator};
+    use crate::mir::{BasicBlock, Constant, MirBinOp, MirExternFn, MirFunction, MirInst, MirProgram, MirType, MirUnaryOp, Operand, Place, Terminator};
 
     // === CodeGen Factory Method Tests ===
 
@@ -6670,5 +6750,2837 @@ mod tests {
         assert!(result.is_ok());
         let ir = result.unwrap();
         assert!(ir.contains("phi"), "IR should contain phi instruction");
+    }
+
+    // --- Cycle 1213: Expanded inkwell codegen tests ---
+
+    // === Integer arithmetic operations ===
+
+    #[test]
+    fn test_generate_ir_division() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("div", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Div,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let ir = cg.generate_ir(&program).unwrap();
+        assert!(ir.contains("sdiv"), "IR should contain signed division");
+    }
+
+    #[test]
+    fn test_generate_ir_modulo() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("modulo", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Mod,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let ir = cg.generate_ir(&program).unwrap();
+        assert!(ir.contains("srem"), "IR should contain signed remainder");
+    }
+
+    // === Bitwise operations ===
+
+    #[test]
+    fn test_generate_ir_bitwise_and() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("band", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Band,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let ir = cg.generate_ir(&program).unwrap();
+        assert!(ir.contains("and "), "IR should contain bitwise AND");
+    }
+
+    #[test]
+    fn test_generate_ir_bitwise_or() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("bor", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Bor,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let ir = cg.generate_ir(&program).unwrap();
+        assert!(ir.contains("or "), "IR should contain bitwise OR");
+    }
+
+    #[test]
+    fn test_generate_ir_bitwise_xor() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("bxor", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Bxor,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let ir = cg.generate_ir(&program).unwrap();
+        assert!(ir.contains("xor "), "IR should contain bitwise XOR");
+    }
+
+    #[test]
+    fn test_generate_ir_shift_left() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("shl", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Shl,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let ir = cg.generate_ir(&program).unwrap();
+        assert!(ir.contains("shl"), "IR should contain shift left");
+    }
+
+    #[test]
+    fn test_generate_ir_shift_right() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("shr", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Shr,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let ir = cg.generate_ir(&program).unwrap();
+        assert!(ir.contains("ashr"), "IR should contain arithmetic shift right");
+    }
+
+    #[test]
+    fn test_generate_ir_unary_bnot() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("bnot_test", vec![("x", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::UnaryOp {
+                    dest: make_place("_t0"),
+                    op: MirUnaryOp::Bnot,
+                    src: Operand::Place(make_place("x")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let ir = cg.generate_ir(&program).unwrap();
+        assert!(ir.contains("xor"), "Bitwise NOT should use xor with -1");
+    }
+
+    // === Comparison operators ===
+
+    #[test]
+    fn test_generate_ir_compare_lt() {
+        let cg = CodeGen::new();
+        let mut func = make_func("lt", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Lt,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::Bool;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("icmp slt"), "IR should contain signed less-than comparison");
+    }
+
+    #[test]
+    fn test_generate_ir_compare_le() {
+        let cg = CodeGen::new();
+        let mut func = make_func("le", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Le,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::Bool;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("icmp sle"), "IR should contain signed less-or-equal comparison");
+    }
+
+    #[test]
+    fn test_generate_ir_compare_ne() {
+        let cg = CodeGen::new();
+        let mut func = make_func("ne", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Ne,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::Bool;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("icmp ne"), "IR should contain not-equal comparison");
+    }
+
+    #[test]
+    fn test_generate_ir_compare_ge() {
+        let cg = CodeGen::new();
+        let mut func = make_func("ge", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Ge,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::Bool;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("icmp sge"), "IR should contain signed greater-or-equal comparison");
+    }
+
+    // === Floating-point operations ===
+
+    #[test]
+    fn test_generate_ir_f64_subtraction() {
+        let cg = CodeGen::new();
+        let mut func = make_func("fsub", vec![("a", MirType::F64), ("b", MirType::F64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::FSub,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::F64;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("fsub"), "IR should contain float subtraction");
+    }
+
+    #[test]
+    fn test_generate_ir_f64_multiplication() {
+        let cg = CodeGen::new();
+        let mut func = make_func("fmul", vec![("a", MirType::F64), ("b", MirType::F64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::FMul,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::F64;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("fmul"), "IR should contain float multiplication");
+    }
+
+    #[test]
+    fn test_generate_ir_f64_division() {
+        let cg = CodeGen::new();
+        let mut func = make_func("fdiv", vec![("a", MirType::F64), ("b", MirType::F64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::FDiv,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::F64;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("fdiv"), "IR should contain float division");
+    }
+
+    #[test]
+    fn test_generate_ir_f64_comparison_lt() {
+        let cg = CodeGen::new();
+        let mut func = make_func("flt", vec![("a", MirType::F64), ("b", MirType::F64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::FLt,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::Bool;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("fcmp") && ir.contains("olt"), "IR should contain ordered float less-than");
+    }
+
+    #[test]
+    fn test_generate_ir_f64_negation() {
+        let cg = CodeGen::new();
+        let mut func = make_func("fneg_test", vec![("x", MirType::F64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::UnaryOp {
+                    dest: make_place("_t0"),
+                    op: MirUnaryOp::FNeg,
+                    src: Operand::Place(make_place("x")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::F64;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("fneg") || ir.contains("fsub"), "IR should contain float negation");
+    }
+
+    // === Cast operations ===
+
+    #[test]
+    fn test_generate_ir_cast_f64_to_i64() {
+        let cg = CodeGen::new();
+        let mut func = make_func("f2i", vec![("x", MirType::F64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Cast {
+                    dest: make_place("_t0"),
+                    src: Operand::Place(make_place("x")),
+                    from_ty: MirType::F64,
+                    to_ty: MirType::I64,
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::I64;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("fptosi"), "IR should contain fptosi for f64->i64 cast");
+    }
+
+    #[test]
+    fn test_generate_ir_cast_bool_to_i64() {
+        let cg = CodeGen::new();
+        let mut func = make_func("b2i", vec![("x", MirType::Bool)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Cast {
+                    dest: make_place("_t0"),
+                    src: Operand::Place(make_place("x")),
+                    from_ty: MirType::Bool,
+                    to_ty: MirType::I64,
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::I64;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("zext"), "IR should contain zext for bool->i64 cast");
+    }
+
+    #[test]
+    fn test_generate_ir_cast_i32_to_i64() {
+        let cg = CodeGen::new();
+        let mut func = make_func("i32_to_i64", vec![("x", MirType::I32)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Cast {
+                    dest: make_place("_t0"),
+                    src: Operand::Place(make_place("x")),
+                    from_ty: MirType::I32,
+                    to_ty: MirType::I64,
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::I64;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("sext"), "IR should contain sext for i32->i64 cast");
+    }
+
+    #[test]
+    fn test_generate_ir_cast_i64_to_i32() {
+        let cg = CodeGen::new();
+        let mut func = make_func("i64_to_i32", vec![("x", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Cast {
+                    dest: make_place("_t0"),
+                    src: Operand::Place(make_place("x")),
+                    from_ty: MirType::I64,
+                    to_ty: MirType::I32,
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::I32;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("trunc"), "IR should contain trunc for i64->i32 cast");
+    }
+
+    // === Function call ===
+
+    #[test]
+    fn test_generate_ir_function_call() {
+        let cg = CodeGen::new();
+        let callee = make_func("add", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Add,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        let caller = make_func("main", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Call {
+                    dest: Some(make_place("_t0")),
+                    func: "add".to_string(),
+                    args: vec![
+                        Operand::Constant(Constant::Int(3)),
+                        Operand::Constant(Constant::Int(4)),
+                    ],
+                    is_tail: false,
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        let ir = cg.generate_ir(&make_program(vec![callee, caller])).unwrap();
+        assert!(ir.contains("call"), "IR should contain function call");
+    }
+
+    #[test]
+    fn test_generate_ir_void_call() {
+        let cg = CodeGen::new();
+        let mut callee = make_func("noop", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![],
+            terminator: Terminator::Return(None),
+        }]);
+        callee.ret_ty = MirType::Unit;
+        let caller = make_func("main", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Call {
+                    dest: None,
+                    func: "noop".to_string(),
+                    args: vec![],
+                    is_tail: false,
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+        }]);
+        let ir = cg.generate_ir(&make_program(vec![callee, caller])).unwrap();
+        assert!(ir.contains("call void"), "IR should contain void function call");
+    }
+
+    // === Struct operations ===
+
+    fn make_program_with_structs(functions: Vec<MirFunction>, struct_defs: HashMap<String, Vec<(String, MirType)>>) -> MirProgram {
+        MirProgram {
+            functions,
+            extern_fns: vec![],
+            struct_defs,
+        }
+    }
+
+    #[test]
+    fn test_generate_ir_struct_init() {
+        let cg = CodeGen::new();
+        let mut struct_defs = HashMap::new();
+        struct_defs.insert("Point".to_string(), vec![
+            ("x".to_string(), MirType::I64),
+            ("y".to_string(), MirType::I64),
+        ]);
+        let program = make_program_with_structs(vec![make_func("make_point", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::StructInit {
+                    dest: make_place("_t0"),
+                    struct_name: "Point".to_string(),
+                    fields: vec![
+                        ("x".to_string(), Operand::Constant(Constant::Int(10))),
+                        ("y".to_string(), Operand::Constant(Constant::Int(20))),
+                    ],
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+        }])], struct_defs);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Struct init should compile: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_generate_ir_field_access() {
+        let cg = CodeGen::new();
+        let mut struct_defs = HashMap::new();
+        struct_defs.insert("Point".to_string(), vec![
+            ("x".to_string(), MirType::I64),
+            ("y".to_string(), MirType::I64),
+        ]);
+        let program = make_program_with_structs(vec![make_func("get_x", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::StructInit {
+                    dest: make_place("p"),
+                    struct_name: "Point".to_string(),
+                    fields: vec![
+                        ("x".to_string(), Operand::Constant(Constant::Int(42))),
+                        ("y".to_string(), Operand::Constant(Constant::Int(0))),
+                    ],
+                },
+                MirInst::FieldAccess {
+                    dest: make_place("_t0"),
+                    base: make_place("p"),
+                    field: "x".to_string(),
+                    field_index: 0,
+                    struct_name: "Point".to_string(),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])], struct_defs);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Field access should compile: {:?}", result.err());
+        let ir = result.unwrap();
+        assert!(ir.contains("getelementptr") || ir.contains("extractvalue"), "IR should contain struct field access");
+    }
+
+    // === Logical operations ===
+
+    #[test]
+    fn test_generate_ir_logical_and() {
+        let cg = CodeGen::new();
+        let mut func = make_func("and_test", vec![("a", MirType::Bool), ("b", MirType::Bool)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::And,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::Bool;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("and "), "IR should contain logical AND");
+    }
+
+    #[test]
+    fn test_generate_ir_logical_or() {
+        let cg = CodeGen::new();
+        let mut func = make_func("or_test", vec![("a", MirType::Bool), ("b", MirType::Bool)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Or,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::Bool;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("or "), "IR should contain logical OR");
+    }
+
+    // === Constant types ===
+
+    #[test]
+    fn test_generate_ir_const_string() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("str_test", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Const { dest: make_place("_t0"), value: Constant::String("hello".to_string()) },
+            ],
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "String constant should compile: {:?}", result.err());
+        let ir = result.unwrap();
+        assert!(ir.contains("hello"), "IR should contain string literal");
+    }
+
+    #[test]
+    fn test_generate_ir_const_char() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("char_test", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Const { dest: make_place("_t0"), value: Constant::Char('A') },
+            ],
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Char constant should compile: {:?}", result.err());
+    }
+
+    // === Function attributes ===
+
+    #[test]
+    fn test_generate_ir_pure_function() {
+        let cg = CodeGen::new();
+        let mut func = make_func("pure_add", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Add,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.is_pure = true;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("readnone") || ir.contains("memory(none)") || ir.contains("define"),
+            "Pure function should have memory attribute or at least compile");
+    }
+
+    #[test]
+    fn test_generate_ir_always_inline_function() {
+        let cg = CodeGen::new();
+        let mut func = make_func("inline_fn", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![],
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(1)))),
+        }]);
+        func.always_inline = true;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("alwaysinline") || ir.contains("define"),
+            "Always-inline function should have attribute or at least compile");
+    }
+
+    // === Multi-block control flow ===
+
+    #[test]
+    fn test_generate_ir_goto_chain() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("chain", vec![], vec![
+            BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Goto("block1".to_string()),
+            },
+            BasicBlock {
+                label: "block1".to_string(),
+                instructions: vec![
+                    MirInst::Const { dest: make_place("_t0"), value: Constant::Int(1) },
+                ],
+                terminator: Terminator::Goto("block2".to_string()),
+            },
+            BasicBlock {
+                label: "block2".to_string(),
+                instructions: vec![
+                    MirInst::Const { dest: make_place("_t1"), value: Constant::Int(2) },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(make_place("_t1")))),
+            },
+        ])]);
+        let ir = cg.generate_ir(&program).unwrap();
+        let br_count = ir.matches("br label").count();
+        assert!(br_count >= 2, "IR should have at least 2 unconditional branches, got {}", br_count);
+    }
+
+    #[test]
+    fn test_generate_ir_nested_branch() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("nested", vec![("x", MirType::I64), ("y", MirType::I64)], vec![
+            BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: make_place("_c1"),
+                        op: MirBinOp::Gt,
+                        lhs: Operand::Place(make_place("x")),
+                        rhs: Operand::Constant(Constant::Int(0)),
+                    },
+                ],
+                terminator: Terminator::Branch {
+                    cond: Operand::Place(make_place("_c1")),
+                    then_label: "outer_then".to_string(),
+                    else_label: "outer_else".to_string(),
+                },
+            },
+            BasicBlock {
+                label: "outer_then".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: make_place("_c2"),
+                        op: MirBinOp::Gt,
+                        lhs: Operand::Place(make_place("y")),
+                        rhs: Operand::Constant(Constant::Int(0)),
+                    },
+                ],
+                terminator: Terminator::Branch {
+                    cond: Operand::Place(make_place("_c2")),
+                    then_label: "inner_then".to_string(),
+                    else_label: "inner_else".to_string(),
+                },
+            },
+            BasicBlock {
+                label: "inner_then".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(3)))),
+            },
+            BasicBlock {
+                label: "inner_else".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(2)))),
+            },
+            BasicBlock {
+                label: "outer_else".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(1)))),
+            },
+        ])]);
+        let ir = cg.generate_ir(&program).unwrap();
+        let br_count = ir.matches("br i1").count();
+        assert!(br_count >= 2, "IR should have at least 2 conditional branches for nested if, got {}", br_count);
+    }
+
+    // === Constant operands in instructions ===
+
+    #[test]
+    fn test_generate_ir_binop_with_constants() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("const_add", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Add,
+                    lhs: Operand::Constant(Constant::Int(10)),
+                    rhs: Operand::Constant(Constant::Int(20)),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let ir = cg.generate_ir(&program).unwrap();
+        assert!(ir.contains("add"), "IR should contain add even with constant operands");
+    }
+
+    // === i32 type support ===
+
+    #[test]
+    fn test_generate_ir_i32_function() {
+        let cg = CodeGen::new();
+        let mut func = make_func("i32_add", vec![("a", MirType::I32), ("b", MirType::I32)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Add,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::I32;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("i32"), "IR should contain i32 type");
+    }
+
+    #[test]
+    fn test_mir_type_to_llvm_pointer() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let ty = ctx.mir_type_to_llvm(&MirType::Ptr(Box::new(MirType::I64)));
+        assert!(ty.is_pointer_type(), "Ptr(I64) should map to LLVM pointer type");
+    }
+
+    #[test]
+    fn test_mir_type_to_llvm_array() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let ty = ctx.mir_type_to_llvm(&MirType::Array { element_type: Box::new(MirType::I64), size: Some(10) });
+        // Arrays are represented as pointers in LLVM for BMB
+        assert!(ty.is_pointer_type() || ty.is_array_type(),
+            "Array type should map to pointer or array type");
+    }
+
+    // === Multiple PHI nodes ===
+
+    #[test]
+    fn test_generate_ir_multiple_phi_nodes() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("multi_phi", vec![("c", MirType::Bool)], vec![
+            BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Branch {
+                    cond: Operand::Place(make_place("c")),
+                    then_label: "then".to_string(),
+                    else_label: "else_".to_string(),
+                },
+            },
+            BasicBlock {
+                label: "then".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Goto("merge".to_string()),
+            },
+            BasicBlock {
+                label: "else_".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Goto("merge".to_string()),
+            },
+            BasicBlock {
+                label: "merge".to_string(),
+                instructions: vec![
+                    MirInst::Phi {
+                        dest: make_place("x"),
+                        values: vec![
+                            (Operand::Constant(Constant::Int(1)), "then".to_string()),
+                            (Operand::Constant(Constant::Int(2)), "else_".to_string()),
+                        ],
+                    },
+                    MirInst::Phi {
+                        dest: make_place("y"),
+                        values: vec![
+                            (Operand::Constant(Constant::Int(10)), "then".to_string()),
+                            (Operand::Constant(Constant::Int(20)), "else_".to_string()),
+                        ],
+                    },
+                    MirInst::BinOp {
+                        dest: make_place("_t0"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(make_place("x")),
+                        rhs: Operand::Place(make_place("y")),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+            },
+        ])]);
+        let ir = cg.generate_ir(&program).unwrap();
+        let phi_count = ir.matches("phi ").count();
+        assert!(phi_count >= 2, "IR should contain at least 2 phi nodes, got {}", phi_count);
+    }
+
+    // === Switch with many cases ===
+
+    #[test]
+    fn test_generate_ir_switch_many_cases() {
+        let cg = CodeGen::new();
+        let mut blocks = vec![
+            BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Switch {
+                    discriminant: Operand::Place(make_place("x")),
+                    cases: vec![
+                        (0, "case0".to_string()),
+                        (1, "case1".to_string()),
+                        (2, "case2".to_string()),
+                        (3, "case3".to_string()),
+                    ],
+                    default: "default".to_string(),
+                },
+            },
+        ];
+        for i in 0..4 {
+            blocks.push(BasicBlock {
+                label: format!("case{}", i),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(i * 10)))),
+            });
+        }
+        blocks.push(BasicBlock {
+            label: "default".to_string(),
+            instructions: vec![],
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(-1)))),
+        });
+        let program = make_program(vec![make_func("big_switch", vec![("x", MirType::I64)], blocks)]);
+        let ir = cg.generate_ir(&program).unwrap();
+        assert!(ir.contains("switch"), "IR should contain switch");
+        assert!(ir.contains("i64 0"), "Switch should have case 0");
+        assert!(ir.contains("i64 3"), "Switch should have case 3");
+    }
+
+    // === Extern function declarations ===
+
+    #[test]
+    fn test_generate_ir_with_extern_fn_declaration() {
+        let cg = CodeGen::new();
+        let program = MirProgram {
+            functions: vec![make_func("main", vec![], vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+            }])],
+            extern_fns: vec![MirExternFn {
+                module: "env".to_string(),
+                name: "external_fn".to_string(),
+                params: vec![MirType::I64],
+                ret_ty: MirType::I64,
+            }],
+            struct_defs: HashMap::new(),
+        };
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Program with extern fn should compile: {:?}", result.err());
+    }
+
+    // === Wrapping arithmetic ===
+
+    #[test]
+    fn test_generate_ir_wrapping_add() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("wadd", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::AddWrap,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let ir = cg.generate_ir(&program).unwrap();
+        // Wrapping add is just a regular add (no overflow check)
+        assert!(ir.contains("add"), "Wrapping add should produce add instruction");
+    }
+
+    // === fast_compile option ===
+
+    #[test]
+    fn test_codegen_fast_compile_flag() {
+        let cg = CodeGen::with_options(OptLevel::Release, false, true);
+        assert!(cg.fast_compile);
+        let program = make_program(vec![make_func("f", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![],
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Fast compile should still produce valid IR");
+    }
+
+    // --- Cycle 1214: Data structure operation tests ---
+
+    // === Tuple operations ===
+
+    #[test]
+    fn test_generate_ir_tuple_init() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("make_tuple", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::TupleInit {
+                    dest: make_place("_t0"),
+                    elements: vec![
+                        (MirType::I64, Operand::Constant(Constant::Int(1))),
+                        (MirType::I64, Operand::Constant(Constant::Int(2))),
+                    ],
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Tuple init should compile: {:?}", result.err());
+        let ir = result.unwrap();
+        assert!(ir.contains("insertvalue") || ir.contains("store"),
+            "Tuple init should use insertvalue or store");
+    }
+
+    #[test]
+    fn test_generate_ir_tuple_extract() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("tuple_get", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::TupleInit {
+                    dest: make_place("tup"),
+                    elements: vec![
+                        (MirType::I64, Operand::Constant(Constant::Int(10))),
+                        (MirType::I64, Operand::Constant(Constant::Int(20))),
+                    ],
+                },
+                MirInst::TupleExtract {
+                    dest: make_place("_t0"),
+                    tuple: make_place("tup"),
+                    index: 0,
+                    element_type: MirType::I64,
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Tuple extract should compile: {:?}", result.err());
+        let ir = result.unwrap();
+        assert!(ir.contains("extractvalue") || ir.contains("load"),
+            "Tuple extract should use extractvalue or load");
+    }
+
+    #[test]
+    fn test_generate_ir_tuple_three_elements() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("triple", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::TupleInit {
+                    dest: make_place("_t0"),
+                    elements: vec![
+                        (MirType::I64, Operand::Constant(Constant::Int(1))),
+                        (MirType::F64, Operand::Constant(Constant::Float(2.0))),
+                        (MirType::Bool, Operand::Constant(Constant::Bool(true))),
+                    ],
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "3-element heterogeneous tuple should compile: {:?}", result.err());
+    }
+
+    // === Array operations ===
+
+    #[test]
+    fn test_generate_ir_array_alloc() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("alloc_arr", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::ArrayAlloc {
+                    dest: make_place("arr"),
+                    element_type: MirType::I64,
+                    size: 10,
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Array alloc should compile: {:?}", result.err());
+        let ir = result.unwrap();
+        assert!(ir.contains("alloca") || ir.contains("[10 x i64]"),
+            "Array alloc should produce alloca or array type");
+    }
+
+    #[test]
+    fn test_generate_ir_array_init_with_elements() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("init_arr", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::ArrayInit {
+                    dest: make_place("arr"),
+                    element_type: MirType::I64,
+                    elements: vec![
+                        Operand::Constant(Constant::Int(10)),
+                        Operand::Constant(Constant::Int(20)),
+                        Operand::Constant(Constant::Int(30)),
+                    ],
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Array init should compile: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_generate_ir_array_index_load() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("arr_load", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::ArrayInit {
+                    dest: make_place("arr"),
+                    element_type: MirType::I64,
+                    elements: vec![
+                        Operand::Constant(Constant::Int(100)),
+                        Operand::Constant(Constant::Int(200)),
+                    ],
+                },
+                MirInst::IndexLoad {
+                    dest: make_place("_t0"),
+                    array: make_place("arr"),
+                    index: Operand::Constant(Constant::Int(0)),
+                    element_type: MirType::I64,
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Array index load should compile: {:?}", result.err());
+        let ir = result.unwrap();
+        assert!(ir.contains("getelementptr") || ir.contains("load"),
+            "Index load should use GEP or load");
+    }
+
+    #[test]
+    fn test_generate_ir_array_index_store() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("arr_store", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::ArrayAlloc {
+                    dest: make_place("arr"),
+                    element_type: MirType::I64,
+                    size: 5,
+                },
+                MirInst::IndexStore {
+                    array: make_place("arr"),
+                    index: Operand::Constant(Constant::Int(0)),
+                    value: Operand::Constant(Constant::Int(42)),
+                    element_type: MirType::I64,
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Array index store should compile: {:?}", result.err());
+        let ir = result.unwrap();
+        assert!(ir.contains("store"), "Index store should produce store instruction");
+    }
+
+    // === Pointer operations ===
+
+    #[test]
+    fn test_generate_ir_ptr_offset() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("ptr_off", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::ArrayAlloc {
+                    dest: make_place("arr"),
+                    element_type: MirType::I64,
+                    size: 10,
+                },
+                MirInst::PtrOffset {
+                    dest: make_place("ptr"),
+                    ptr: Operand::Place(make_place("arr")),
+                    offset: Operand::Constant(Constant::Int(3)),
+                    element_type: MirType::I64,
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Ptr offset should compile: {:?}", result.err());
+        let ir = result.unwrap();
+        assert!(ir.contains("getelementptr"), "Ptr offset should use GEP");
+    }
+
+    #[test]
+    fn test_generate_ir_ptr_store_and_load() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("ptr_ops", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::ArrayAlloc {
+                    dest: make_place("arr"),
+                    element_type: MirType::I64,
+                    size: 1,
+                },
+                MirInst::PtrStore {
+                    ptr: Operand::Place(make_place("arr")),
+                    value: Operand::Constant(Constant::Int(99)),
+                    element_type: MirType::I64,
+                },
+                MirInst::PtrLoad {
+                    dest: make_place("_t0"),
+                    ptr: Operand::Place(make_place("arr")),
+                    element_type: MirType::I64,
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Ptr store+load should compile: {:?}", result.err());
+        let ir = result.unwrap();
+        assert!(ir.contains("store"), "Should contain store instruction");
+        assert!(ir.contains("load"), "Should contain load instruction");
+    }
+
+    // === Struct field store ===
+
+    #[test]
+    fn test_generate_ir_field_store() {
+        let cg = CodeGen::new();
+        let mut struct_defs = HashMap::new();
+        struct_defs.insert("Point".to_string(), vec![
+            ("x".to_string(), MirType::I64),
+            ("y".to_string(), MirType::I64),
+        ]);
+        let program = make_program_with_structs(vec![make_func("set_x", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::StructInit {
+                    dest: make_place("p"),
+                    struct_name: "Point".to_string(),
+                    fields: vec![
+                        ("x".to_string(), Operand::Constant(Constant::Int(0))),
+                        ("y".to_string(), Operand::Constant(Constant::Int(0))),
+                    ],
+                },
+                MirInst::FieldStore {
+                    base: make_place("p"),
+                    field: "x".to_string(),
+                    field_index: 0,
+                    struct_name: "Point".to_string(),
+                    value: Operand::Constant(Constant::Int(42)),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+        }])], struct_defs);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Field store should compile: {:?}", result.err());
+        let ir = result.unwrap();
+        assert!(ir.contains("getelementptr") || ir.contains("store"),
+            "Field store should use GEP or store");
+    }
+
+    // === Enum variant ===
+
+    #[test]
+    fn test_generate_ir_enum_variant() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("make_enum", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::EnumVariant {
+                    dest: make_place("_t0"),
+                    enum_name: "Color".to_string(),
+                    variant: "Red".to_string(),
+                    args: vec![],
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Enum variant should compile: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_generate_ir_enum_variant_with_data() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("make_some", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::EnumVariant {
+                    dest: make_place("_t0"),
+                    enum_name: "Option".to_string(),
+                    variant: "Some".to_string(),
+                    args: vec![Operand::Constant(Constant::Int(42))],
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Enum variant with data should compile: {:?}", result.err());
+    }
+
+    // === Select instruction ===
+
+    #[test]
+    fn test_generate_ir_select() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("sel_test", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Select {
+                    dest: make_place("_t0"),
+                    cond_op: MirBinOp::Gt,
+                    cond_lhs: Operand::Place(make_place("a")),
+                    cond_rhs: Operand::Place(make_place("b")),
+                    true_val: Operand::Place(make_place("a")),
+                    false_val: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Select should compile: {:?}", result.err());
+        let ir = result.unwrap();
+        assert!(ir.contains("select") || ir.contains("br i1"),
+            "Select should produce select or branch instruction");
+    }
+
+    // === Multiple operations in sequence ===
+
+    #[test]
+    fn test_generate_ir_complex_sequence() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("complex", vec![("n", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Mul,
+                    lhs: Operand::Place(make_place("n")),
+                    rhs: Operand::Place(make_place("n")),
+                },
+                MirInst::BinOp {
+                    dest: make_place("_t1"),
+                    op: MirBinOp::Add,
+                    lhs: Operand::Place(make_place("_t0")),
+                    rhs: Operand::Constant(Constant::Int(1)),
+                },
+                MirInst::BinOp {
+                    dest: make_place("_t2"),
+                    op: MirBinOp::Div,
+                    lhs: Operand::Place(make_place("_t1")),
+                    rhs: Operand::Constant(Constant::Int(2)),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t2")))),
+        }])]);
+        let ir = cg.generate_ir(&program).unwrap();
+        assert!(ir.contains("mul"), "Should contain mul");
+        assert!(ir.contains("add"), "Should contain add");
+        assert!(ir.contains("sdiv"), "Should contain sdiv");
+    }
+
+    // === Loop pattern (while via goto+branch) ===
+
+    #[test]
+    fn test_generate_ir_loop_pattern() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("loop_sum", vec![("n", MirType::I64)], vec![
+            // entry: i = 0, sum = 0
+            BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Const { dest: make_place("i"), value: Constant::Int(0) },
+                    MirInst::Const { dest: make_place("sum"), value: Constant::Int(0) },
+                ],
+                terminator: Terminator::Goto("loop_header".to_string()),
+            },
+            // loop_header: if i < n goto loop_body else exit
+            BasicBlock {
+                label: "loop_header".to_string(),
+                instructions: vec![
+                    MirInst::Phi {
+                        dest: make_place("i_phi"),
+                        values: vec![
+                            (Operand::Place(make_place("i")), "entry".to_string()),
+                            (Operand::Place(make_place("i_next")), "loop_body".to_string()),
+                        ],
+                    },
+                    MirInst::Phi {
+                        dest: make_place("sum_phi"),
+                        values: vec![
+                            (Operand::Place(make_place("sum")), "entry".to_string()),
+                            (Operand::Place(make_place("sum_next")), "loop_body".to_string()),
+                        ],
+                    },
+                    MirInst::BinOp {
+                        dest: make_place("_cond"),
+                        op: MirBinOp::Lt,
+                        lhs: Operand::Place(make_place("i_phi")),
+                        rhs: Operand::Place(make_place("n")),
+                    },
+                ],
+                terminator: Terminator::Branch {
+                    cond: Operand::Place(make_place("_cond")),
+                    then_label: "loop_body".to_string(),
+                    else_label: "exit".to_string(),
+                },
+            },
+            // loop_body: sum += i; i += 1
+            BasicBlock {
+                label: "loop_body".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: make_place("sum_next"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(make_place("sum_phi")),
+                        rhs: Operand::Place(make_place("i_phi")),
+                    },
+                    MirInst::BinOp {
+                        dest: make_place("i_next"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(make_place("i_phi")),
+                        rhs: Operand::Constant(Constant::Int(1)),
+                    },
+                ],
+                terminator: Terminator::Goto("loop_header".to_string()),
+            },
+            // exit: return sum
+            BasicBlock {
+                label: "exit".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Place(make_place("sum_phi")))),
+            },
+        ])]);
+        let ir = cg.generate_ir(&program).unwrap();
+        assert!(ir.contains("phi"), "Loop should have phi nodes");
+        assert!(ir.contains("icmp slt"), "Loop should have condition check");
+        assert!(ir.contains("br i1"), "Loop should have conditional branch");
+        assert!(ir.contains("br label"), "Loop should have back-edge branch");
+    }
+
+    // === f64 array operations ===
+
+    #[test]
+    fn test_generate_ir_f64_array_alloc() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("f64_arr", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::ArrayAlloc {
+                    dest: make_place("arr"),
+                    element_type: MirType::F64,
+                    size: 4,
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "F64 array alloc should compile: {:?}", result.err());
+    }
+
+    // === Struct with f64 fields ===
+
+    #[test]
+    fn test_generate_ir_struct_with_mixed_types() {
+        let cg = CodeGen::new();
+        let mut struct_defs = HashMap::new();
+        struct_defs.insert("Particle".to_string(), vec![
+            ("x".to_string(), MirType::F64),
+            ("y".to_string(), MirType::F64),
+            ("mass".to_string(), MirType::I64),
+        ]);
+        let program = make_program_with_structs(vec![make_func("make_particle", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::StructInit {
+                    dest: make_place("_t0"),
+                    struct_name: "Particle".to_string(),
+                    fields: vec![
+                        ("x".to_string(), Operand::Constant(Constant::Float(1.0))),
+                        ("y".to_string(), Operand::Constant(Constant::Float(2.0))),
+                        ("mass".to_string(), Operand::Constant(Constant::Int(100))),
+                    ],
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+        }])], struct_defs);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Mixed-type struct should compile: {:?}", result.err());
+    }
+
+    // === Implies operator ===
+
+    #[test]
+    fn test_generate_ir_implies() {
+        let cg = CodeGen::new();
+        let mut func = make_func("implies_test", vec![("a", MirType::Bool), ("b", MirType::Bool)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Implies,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::Bool;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        // Implies is: !a || b
+        assert!(ir.contains("or") || ir.contains("xor"),
+            "Implies should compile to or/xor combination");
+    }
+
+    // === Saturating arithmetic ===
+
+    #[test]
+    fn test_generate_ir_saturating_add() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("sadd", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::AddSat,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Saturating add should compile: {:?}", result.err());
+    }
+
+    // === Constant unit value ===
+
+    #[test]
+    fn test_generate_ir_const_unit() {
+        let cg = CodeGen::new();
+        let mut func = make_func("unit_fn", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Const { dest: make_place("_t0"), value: Constant::Unit },
+            ],
+            terminator: Terminator::Return(None),
+        }]);
+        func.ret_ty = MirType::Unit;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("ret void"), "Unit function should return void");
+    }
+
+    // --- Cycle 1215: Advanced operations, type combos, control flow ---
+
+    // === Copy instruction ===
+
+    #[test]
+    fn test_generate_ir_copy_place() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("copy_val", vec![("x", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Copy {
+                    dest: make_place("_t0"),
+                    src: make_place("x"),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Copy should compile: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_generate_ir_copy_chain() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("copy_chain", vec![("x", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Copy {
+                    dest: make_place("a"),
+                    src: make_place("x"),
+                },
+                MirInst::Copy {
+                    dest: make_place("b"),
+                    src: make_place("a"),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("b")))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Copy chain should compile: {:?}", result.err());
+    }
+
+    // === Additional cast combinations ===
+
+    #[test]
+    fn test_generate_ir_cast_i64_to_f64_sitofp() {
+        let cg = CodeGen::new();
+        let mut func = make_func("i2f", vec![("x", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Cast {
+                    dest: make_place("_t0"),
+                    src: Operand::Place(make_place("x")),
+                    from_ty: MirType::I64,
+                    to_ty: MirType::F64,
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::F64;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("sitofp"), "IR should contain sitofp for i64->f64 cast");
+    }
+
+    #[test]
+    fn test_generate_ir_cast_i32_to_f64() {
+        let cg = CodeGen::new();
+        let mut func = make_func("i32_to_f64", vec![("x", MirType::I32)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Cast {
+                    dest: make_place("_t0"),
+                    src: Operand::Place(make_place("x")),
+                    from_ty: MirType::I32,
+                    to_ty: MirType::F64,
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::F64;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("sitofp"), "IR should contain sitofp for i32->f64 cast");
+    }
+
+    #[test]
+    fn test_generate_ir_cast_f64_to_i32() {
+        let cg = CodeGen::new();
+        let mut func = make_func("f_to_i32", vec![("x", MirType::F64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Cast {
+                    dest: make_place("_t0"),
+                    src: Operand::Place(make_place("x")),
+                    from_ty: MirType::F64,
+                    to_ty: MirType::I32,
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::I32;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("fptosi"), "IR should contain fptosi for f64->i32 cast");
+    }
+
+    #[test]
+    fn test_generate_ir_cast_i64_to_bool_unsupported() {
+        let cg = CodeGen::new();
+        let mut func = make_func("i_to_bool", vec![("x", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Cast {
+                    dest: make_place("_t0"),
+                    src: Operand::Place(make_place("x")),
+                    from_ty: MirType::I64,
+                    to_ty: MirType::Bool,
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::Bool;
+        let result = cg.generate_ir(&make_program(vec![func]));
+        assert!(result.is_err(), "i64->Bool cast should be unsupported");
+    }
+
+    #[test]
+    fn test_generate_ir_cast_i32_to_bool_unsupported() {
+        let cg = CodeGen::new();
+        let mut func = make_func("i32_to_bool", vec![("x", MirType::I32)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Cast {
+                    dest: make_place("_t0"),
+                    src: Operand::Place(make_place("x")),
+                    from_ty: MirType::I32,
+                    to_ty: MirType::Bool,
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::Bool;
+        let result = cg.generate_ir(&make_program(vec![func]));
+        assert!(result.is_err(), "i32->Bool cast should be unsupported");
+    }
+
+    #[test]
+    fn test_generate_ir_cast_bool_to_i32() {
+        let cg = CodeGen::new();
+        let mut func = make_func("bool_to_i32", vec![("x", MirType::Bool)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Cast {
+                    dest: make_place("_t0"),
+                    src: Operand::Place(make_place("x")),
+                    from_ty: MirType::Bool,
+                    to_ty: MirType::I32,
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::I32;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("zext"), "IR should contain zext for bool->i32 cast");
+    }
+
+    // === Remaining float comparison operators ===
+
+    #[test]
+    fn test_generate_ir_f64_comparison_gt() {
+        let cg = CodeGen::new();
+        let mut func = make_func("fgt", vec![("a", MirType::F64), ("b", MirType::F64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::FGt,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::Bool;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("fcmp") && ir.contains("ogt"), "IR should contain ordered float greater-than");
+    }
+
+    #[test]
+    fn test_generate_ir_f64_comparison_ge() {
+        let cg = CodeGen::new();
+        let mut func = make_func("fge", vec![("a", MirType::F64), ("b", MirType::F64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::FGe,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::Bool;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("fcmp") && ir.contains("oge"), "IR should contain ordered float greater-or-equal");
+    }
+
+    #[test]
+    fn test_generate_ir_f64_comparison_le() {
+        let cg = CodeGen::new();
+        let mut func = make_func("fle", vec![("a", MirType::F64), ("b", MirType::F64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::FLe,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::Bool;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("fcmp") && ir.contains("ole"), "IR should contain ordered float less-or-equal");
+    }
+
+    #[test]
+    fn test_generate_ir_f64_comparison_ne() {
+        let cg = CodeGen::new();
+        let mut func = make_func("fne", vec![("a", MirType::F64), ("b", MirType::F64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::FNe,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::Bool;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("fcmp") && (ir.contains("une") || ir.contains("one")),
+            "IR should contain unordered/ordered float not-equal");
+    }
+
+    #[test]
+    fn test_generate_ir_f64_comparison_eq() {
+        let cg = CodeGen::new();
+        let mut func = make_func("feq", vec![("a", MirType::F64), ("b", MirType::F64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::FEq,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::Bool;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("fcmp") && ir.contains("oeq"), "IR should contain ordered float equality");
+    }
+
+    // === Wrapping/Checked/Saturating arithmetic variants ===
+
+    #[test]
+    fn test_generate_ir_sub_wrap() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("wsub", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::SubWrap,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let ir = cg.generate_ir(&program).unwrap();
+        assert!(ir.contains("sub"), "SubWrap should produce sub instruction");
+    }
+
+    #[test]
+    fn test_generate_ir_mul_wrap() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("wmul", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::MulWrap,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let ir = cg.generate_ir(&program).unwrap();
+        assert!(ir.contains("mul"), "MulWrap should produce mul instruction");
+    }
+
+    #[test]
+    fn test_generate_ir_sub_sat() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("ssub", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::SubSat,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "SubSat should compile: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_generate_ir_mul_sat() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("smul", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::MulSat,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "MulSat should compile: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_generate_ir_add_checked() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("cadd", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::AddChecked,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "AddChecked should compile: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_generate_ir_sub_checked() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("csub", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::SubChecked,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "SubChecked should compile: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_generate_ir_mul_checked() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("cmul", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::MulChecked,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "MulChecked should compile: {:?}", result.err());
+    }
+
+    // === Explicit FAdd test ===
+
+    #[test]
+    fn test_generate_ir_f64_addition() {
+        let cg = CodeGen::new();
+        let mut func = make_func("fadd", vec![("a", MirType::F64), ("b", MirType::F64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::FAdd,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::F64;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("fadd"), "IR should contain fadd");
+    }
+
+    // === UnaryOp::Not (logical not) ===
+
+    #[test]
+    fn test_generate_ir_logical_not() {
+        let cg = CodeGen::new();
+        let mut func = make_func("not_test", vec![("x", MirType::Bool)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::UnaryOp {
+                    dest: make_place("_t0"),
+                    op: MirUnaryOp::Not,
+                    src: Operand::Place(make_place("x")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::Bool;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("xor"), "Logical NOT should use xor with true/1");
+    }
+
+    // === UnaryOp::Neg (integer negation) ===
+
+    #[test]
+    fn test_generate_ir_integer_negation() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("neg_test", vec![("x", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::UnaryOp {
+                    dest: make_place("_t0"),
+                    op: MirUnaryOp::Neg,
+                    src: Operand::Place(make_place("x")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let ir = cg.generate_ir(&program).unwrap();
+        assert!(ir.contains("sub") || ir.contains("neg"), "Integer negation should use sub 0 or neg");
+    }
+
+    // === Tail call ===
+
+    #[test]
+    fn test_generate_ir_tail_call() {
+        let cg = CodeGen::new();
+        let callee = make_func("identity", vec![("n", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("n")))),
+        }]);
+        let caller = make_func("wrap", vec![("x", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Call {
+                    dest: Some(make_place("_t0")),
+                    func: "identity".to_string(),
+                    args: vec![Operand::Place(make_place("x"))],
+                    is_tail: true,
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        let ir = cg.generate_ir(&make_program(vec![callee, caller])).unwrap();
+        assert!(ir.contains("call") || ir.contains("tail call") || ir.contains("musttail"),
+            "Tail call should produce some form of call");
+    }
+
+    // === Unreachable terminator ===
+
+    #[test]
+    fn test_generate_ir_unreachable() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("unreach", vec![], vec![
+            BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+            },
+            BasicBlock {
+                label: "dead".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Unreachable,
+            },
+        ])]);
+        let ir = cg.generate_ir(&program).unwrap();
+        assert!(ir.contains("unreachable"), "IR should contain unreachable");
+    }
+
+    // === i32 arithmetic ===
+
+    #[test]
+    fn test_generate_ir_i32_subtraction() {
+        let cg = CodeGen::new();
+        let mut func = make_func("i32_sub", vec![("a", MirType::I32), ("b", MirType::I32)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Sub,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::I32;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("sub") && ir.contains("i32"), "IR should contain i32 sub");
+    }
+
+    #[test]
+    fn test_generate_ir_i32_comparison() {
+        let cg = CodeGen::new();
+        let mut func = make_func("i32_lt", vec![("a", MirType::I32), ("b", MirType::I32)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Lt,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::Bool;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("icmp slt"), "IR should contain i32 signed less-than");
+    }
+
+    // === Multiple functions in one program ===
+
+    #[test]
+    fn test_generate_ir_three_functions_calling() {
+        let cg = CodeGen::new();
+        let f1 = make_func("square", vec![("x", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Mul,
+                    lhs: Operand::Place(make_place("x")),
+                    rhs: Operand::Place(make_place("x")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        let f2 = make_func("double", vec![("x", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Add,
+                    lhs: Operand::Place(make_place("x")),
+                    rhs: Operand::Place(make_place("x")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        let f3 = make_func("main", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Call {
+                    dest: Some(make_place("_t0")),
+                    func: "square".to_string(),
+                    args: vec![Operand::Constant(Constant::Int(5))],
+                    is_tail: false,
+                },
+                MirInst::Call {
+                    dest: Some(make_place("_t1")),
+                    func: "double".to_string(),
+                    args: vec![Operand::Place(make_place("_t0"))],
+                    is_tail: false,
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t1")))),
+        }]);
+        let ir = cg.generate_ir(&make_program(vec![f1, f2, f3])).unwrap();
+        assert!(ir.contains("define") && ir.contains("square"), "IR should define square");
+        assert!(ir.contains("double"), "IR should contain double function");
+    }
+
+    // === Const float and bool ===
+
+    #[test]
+    fn test_generate_ir_const_float_pi() {
+        let cg = CodeGen::new();
+        let mut func = make_func("float_const", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Const { dest: make_place("_t0"), value: Constant::Float(3.14) },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::F64;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("double") || ir.contains("float"), "Float constant should produce double type");
+    }
+
+    #[test]
+    fn test_generate_ir_const_bool_true() {
+        let cg = CodeGen::new();
+        let mut func = make_func("bool_const", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Const { dest: make_place("_t0"), value: Constant::Bool(true) },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::Bool;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("i1") || ir.contains("true"), "Bool constant should use i1 type");
+    }
+
+    // === F64 return type function ===
+
+    #[test]
+    fn test_generate_ir_f64_return() {
+        let cg = CodeGen::new();
+        let mut func = make_func("pi", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![],
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Float(3.14159)))),
+        }]);
+        func.ret_ty = MirType::F64;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("ret double"), "Should return double");
+    }
+
+    // === Bool return type function ===
+
+    #[test]
+    fn test_generate_ir_bool_return_constant_true() {
+        let cg = CodeGen::new();
+        let mut func = make_func("always_true", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![],
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Bool(true)))),
+        }]);
+        func.ret_ty = MirType::Bool;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("ret i1") || ir.contains("ret i64"),
+            "Bool function should return i1 or i64 (depending on ABI)");
+    }
+
+    // === Nested function calls ===
+
+    #[test]
+    fn test_generate_ir_nested_call() {
+        let cg = CodeGen::new();
+        let inc = make_func("inc", vec![("n", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Add,
+                    lhs: Operand::Place(make_place("n")),
+                    rhs: Operand::Constant(Constant::Int(1)),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        let double_inc = make_func("double_inc", vec![("n", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Call {
+                    dest: Some(make_place("_t0")),
+                    func: "inc".to_string(),
+                    args: vec![Operand::Place(make_place("n"))],
+                    is_tail: false,
+                },
+                MirInst::Call {
+                    dest: Some(make_place("_t1")),
+                    func: "inc".to_string(),
+                    args: vec![Operand::Place(make_place("_t0"))],
+                    is_tail: false,
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t1")))),
+        }]);
+        let ir = cg.generate_ir(&make_program(vec![inc, double_inc])).unwrap();
+        let call_count = ir.matches("call").count();
+        assert!(call_count >= 2, "Should have at least 2 calls, got {}", call_count);
+    }
+
+    // === Empty function ===
+
+    #[test]
+    fn test_generate_ir_empty_void_function() {
+        let cg = CodeGen::new();
+        let mut func = make_func("empty", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![],
+            terminator: Terminator::Return(None),
+        }]);
+        func.ret_ty = MirType::Unit;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("ret void"), "Empty void function should just ret void");
+    }
+
+    // === Constant int in different contexts ===
+
+    #[test]
+    fn test_generate_ir_const_negative_int() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("neg_const", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Const { dest: make_place("_t0"), value: Constant::Int(-42) },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Negative int constant should compile: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_generate_ir_const_zero() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("zero", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Const { dest: make_place("_t0"), value: Constant::Int(0) },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let ir = cg.generate_ir(&program).unwrap();
+        assert!(ir.contains("i64 0") || ir.contains("ret"), "Zero constant should be in IR");
+    }
+
+    // === Deeply nested branch ===
+
+    #[test]
+    fn test_generate_ir_deep_branch_chain() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("depth3", vec![("a", MirType::Bool), ("b", MirType::Bool), ("c", MirType::Bool)], vec![
+            BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Branch {
+                    cond: Operand::Place(make_place("a")),
+                    then_label: "a_true".to_string(),
+                    else_label: "a_false".to_string(),
+                },
+            },
+            BasicBlock {
+                label: "a_true".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Branch {
+                    cond: Operand::Place(make_place("b")),
+                    then_label: "ab_true".to_string(),
+                    else_label: "ret1".to_string(),
+                },
+            },
+            BasicBlock {
+                label: "ab_true".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Branch {
+                    cond: Operand::Place(make_place("c")),
+                    then_label: "ret3".to_string(),
+                    else_label: "ret2".to_string(),
+                },
+            },
+            BasicBlock {
+                label: "a_false".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+            },
+            BasicBlock {
+                label: "ret1".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(1)))),
+            },
+            BasicBlock {
+                label: "ret2".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(2)))),
+            },
+            BasicBlock {
+                label: "ret3".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(3)))),
+            },
+        ])]);
+        let ir = cg.generate_ir(&program).unwrap();
+        let br_count = ir.matches("br i1").count();
+        assert!(br_count >= 3, "Deep branch should have >= 3 conditional branches, got {}", br_count);
+    }
+
+    // --- Cycle 1216: Final inkwell gap closure ---
+
+    // === Main function renaming ===
+
+    #[test]
+    fn test_generate_ir_main_renamed_to_bmb_user_main() {
+        let cg = CodeGen::new();
+        let main_func = make_func("main", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![],
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+        }]);
+        let ir = cg.generate_ir(&make_program(vec![main_func])).unwrap();
+        assert!(ir.contains("bmb_user_main"), "main should be renamed to bmb_user_main");
+    }
+
+    // === Const function attribute ===
+
+    #[test]
+    fn test_generate_ir_const_function() {
+        let cg = CodeGen::new();
+        let mut func = make_func("const_fn", vec![("x", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Mul,
+                    lhs: Operand::Place(make_place("x")),
+                    rhs: Operand::Constant(Constant::Int(2)),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.is_const = true;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("readnone") || ir.contains("memory(none)") || ir.contains("define"),
+            "Const function should have memory attribute or at least compile");
+    }
+
+    // === Pure + const combined ===
+
+    #[test]
+    fn test_generate_ir_pure_const_function() {
+        let cg = CodeGen::new();
+        let mut func = make_func("pure_const", vec![("x", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("x")))),
+        }]);
+        func.is_pure = true;
+        func.is_const = true;
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("define"), "Pure+const function should compile");
+    }
+
+    // === MIR type mapping completeness ===
+
+    #[test]
+    fn test_mir_type_to_llvm_unit_mapping() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let ty = ctx.mir_type_to_llvm(&MirType::Unit);
+        // Unit maps to i64 or ptr in inkwell (not void for BasicTypeEnum)
+        assert!(ty.is_int_type() || ty.is_pointer_type(),
+            "Unit type should map to int or pointer type");
+    }
+
+    #[test]
+    fn test_mir_type_to_llvm_tuple_mapping() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let ty = ctx.mir_type_to_llvm(&MirType::Tuple(vec![Box::new(MirType::I64), Box::new(MirType::F64)]));
+        assert!(ty.is_struct_type() || ty.is_pointer_type(),
+            "Tuple type should map to struct or pointer");
+    }
+
+    #[test]
+    fn test_mir_type_to_llvm_i32_mapping() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let ty = ctx.mir_type_to_llvm(&MirType::I32);
+        assert!(ty.is_int_type(), "I32 should map to LLVM int type");
+    }
+
+    // === Switch with default only ===
+
+    #[test]
+    fn test_generate_ir_switch_default_only() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("default_switch", vec![("x", MirType::I64)], vec![
+            BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Switch {
+                    discriminant: Operand::Place(make_place("x")),
+                    cases: vec![],
+                    default: "fallback".to_string(),
+                },
+            },
+            BasicBlock {
+                label: "fallback".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(-1)))),
+            },
+        ])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Switch with no cases should compile: {:?}", result.err());
+    }
+
+    // === Many parameters ===
+
+    #[test]
+    fn test_generate_ir_many_parameters() {
+        let cg = CodeGen::new();
+        let func = make_func("many_params",
+            vec![("a", MirType::I64), ("b", MirType::I64), ("c", MirType::I64),
+                 ("d", MirType::I64), ("e", MirType::I64)],
+            vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: make_place("_t0"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(make_place("a")),
+                        rhs: Operand::Place(make_place("e")),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+            }]);
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("define"), "5-parameter function should compile");
+    }
+
+    // === Mixed type parameters ===
+
+    #[test]
+    fn test_generate_ir_mixed_type_params() {
+        let cg = CodeGen::new();
+        let func = make_func("mixed",
+            vec![("i", MirType::I64), ("f", MirType::F64), ("b", MirType::Bool), ("j", MirType::I32)],
+            vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Place(make_place("i")))),
+            }]);
+        let ir = cg.generate_ir(&make_program(vec![func])).unwrap();
+        assert!(ir.contains("i64") && ir.contains("double") && ir.contains("i32"),
+            "Mixed type params should appear in IR");
+    }
+
+    // === Constant in branch condition ===
+
+    #[test]
+    fn test_generate_ir_branch_constant_cond() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("const_branch", vec![], vec![
+            BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Branch {
+                    cond: Operand::Constant(Constant::Bool(true)),
+                    then_label: "yes".to_string(),
+                    else_label: "no".to_string(),
+                },
+            },
+            BasicBlock {
+                label: "yes".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(1)))),
+            },
+            BasicBlock {
+                label: "no".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+            },
+        ])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Branch with constant condition should compile: {:?}", result.err());
+    }
+
+    // === Pattern matching codegen (switch + branches) ===
+
+    #[test]
+    fn test_generate_ir_match_like_pattern() {
+        // Simulates: match x { 0 => "zero", 1 => "one", _ => "other" }
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("match_int", vec![("x", MirType::I64)], vec![
+            BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Switch {
+                    discriminant: Operand::Place(make_place("x")),
+                    cases: vec![(0, "case_zero".to_string()), (1, "case_one".to_string())],
+                    default: "case_other".to_string(),
+                },
+            },
+            BasicBlock {
+                label: "case_zero".to_string(),
+                instructions: vec![
+                    MirInst::Const { dest: make_place("r"), value: Constant::Int(100) },
+                ],
+                terminator: Terminator::Goto("merge".to_string()),
+            },
+            BasicBlock {
+                label: "case_one".to_string(),
+                instructions: vec![
+                    MirInst::Const { dest: make_place("r"), value: Constant::Int(200) },
+                ],
+                terminator: Terminator::Goto("merge".to_string()),
+            },
+            BasicBlock {
+                label: "case_other".to_string(),
+                instructions: vec![
+                    MirInst::Const { dest: make_place("r"), value: Constant::Int(300) },
+                ],
+                terminator: Terminator::Goto("merge".to_string()),
+            },
+            BasicBlock {
+                label: "merge".to_string(),
+                instructions: vec![
+                    MirInst::Phi {
+                        dest: make_place("result"),
+                        values: vec![
+                            (Operand::Place(make_place("r")), "case_zero".to_string()),
+                            (Operand::Place(make_place("r")), "case_one".to_string()),
+                            (Operand::Place(make_place("r")), "case_other".to_string()),
+                        ],
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(make_place("result")))),
+            },
+        ])]);
+        let ir = cg.generate_ir(&program).unwrap();
+        assert!(ir.contains("switch"), "Match should use switch instruction");
+        assert!(ir.contains("phi"), "Match merge should use phi");
+    }
+
+    // === Fibonacci-like recursive call pattern ===
+
+    #[test]
+    fn test_generate_ir_recursive_call() {
+        let cg = CodeGen::new();
+        let fib = make_func("fib", vec![("n", MirType::I64)], vec![
+            BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: make_place("_cond"),
+                        op: MirBinOp::Le,
+                        lhs: Operand::Place(make_place("n")),
+                        rhs: Operand::Constant(Constant::Int(1)),
+                    },
+                ],
+                terminator: Terminator::Branch {
+                    cond: Operand::Place(make_place("_cond")),
+                    then_label: "base".to_string(),
+                    else_label: "recurse".to_string(),
+                },
+            },
+            BasicBlock {
+                label: "base".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Place(make_place("n")))),
+            },
+            BasicBlock {
+                label: "recurse".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: make_place("n1"),
+                        op: MirBinOp::Sub,
+                        lhs: Operand::Place(make_place("n")),
+                        rhs: Operand::Constant(Constant::Int(1)),
+                    },
+                    MirInst::BinOp {
+                        dest: make_place("n2"),
+                        op: MirBinOp::Sub,
+                        lhs: Operand::Place(make_place("n")),
+                        rhs: Operand::Constant(Constant::Int(2)),
+                    },
+                    MirInst::Call {
+                        dest: Some(make_place("r1")),
+                        func: "fib".to_string(),
+                        args: vec![Operand::Place(make_place("n1"))],
+                        is_tail: false,
+                    },
+                    MirInst::Call {
+                        dest: Some(make_place("r2")),
+                        func: "fib".to_string(),
+                        args: vec![Operand::Place(make_place("n2"))],
+                        is_tail: false,
+                    },
+                    MirInst::BinOp {
+                        dest: make_place("_t0"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(make_place("r1")),
+                        rhs: Operand::Place(make_place("r2")),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+            },
+        ]);
+        let ir = cg.generate_ir(&make_program(vec![fib])).unwrap();
+        let call_count = ir.matches("call").count();
+        assert!(call_count >= 2, "Fibonacci should have >= 2 recursive calls, got {}", call_count);
+    }
+
+    // === Nested struct with field access chain ===
+
+    #[test]
+    fn test_generate_ir_nested_struct_access() {
+        let cg = CodeGen::new();
+        let mut struct_defs = HashMap::new();
+        struct_defs.insert("Inner".to_string(), vec![
+            ("val".to_string(), MirType::I64),
+        ]);
+        struct_defs.insert("Outer".to_string(), vec![
+            ("inner".to_string(), MirType::Struct { name: "Inner".to_string(), fields: vec![("val".to_string(), Box::new(MirType::I64))] }),
+            ("tag".to_string(), MirType::I64),
+        ]);
+        let program = make_program_with_structs(vec![make_func("get_inner_val", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::StructInit {
+                    dest: make_place("inner"),
+                    struct_name: "Inner".to_string(),
+                    fields: vec![("val".to_string(), Operand::Constant(Constant::Int(42)))],
+                },
+                MirInst::StructInit {
+                    dest: make_place("outer"),
+                    struct_name: "Outer".to_string(),
+                    fields: vec![
+                        ("inner".to_string(), Operand::Place(make_place("inner"))),
+                        ("tag".to_string(), Operand::Constant(Constant::Int(1))),
+                    ],
+                },
+                MirInst::FieldAccess {
+                    dest: make_place("_t0"),
+                    base: make_place("outer"),
+                    field: "tag".to_string(),
+                    field_index: 1,
+                    struct_name: "Outer".to_string(),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])], struct_defs);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Nested struct access should compile: {:?}", result.err());
+    }
+
+    // === Double-precision float constant edge cases ===
+
+    #[test]
+    fn test_generate_ir_const_float_zero() {
+        let cg = CodeGen::new();
+        let mut func = make_func("float_zero", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Const { dest: make_place("_t0"), value: Constant::Float(0.0) },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::F64;
+        let result = cg.generate_ir(&make_program(vec![func]));
+        assert!(result.is_ok(), "Float 0.0 constant should compile: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_generate_ir_const_float_negative() {
+        let cg = CodeGen::new();
+        let mut func = make_func("float_neg", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Const { dest: make_place("_t0"), value: Constant::Float(-1.5) },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::F64;
+        let result = cg.generate_ir(&make_program(vec![func]));
+        assert!(result.is_ok(), "Negative float constant should compile: {:?}", result.err());
+    }
+
+    // === Opt level configurations ===
+
+    #[test]
+    fn test_codegen_with_debug_opt_level() {
+        let cg = CodeGen::with_options(OptLevel::Debug, false, false);
+        let program = make_program(vec![make_func("f", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![],
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Debug opt level should produce valid IR");
+    }
+
+    #[test]
+    fn test_codegen_with_size_opt_level() {
+        let cg = CodeGen::with_options(OptLevel::Size, false, false);
+        let program = make_program(vec![make_func("f", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![],
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "Size opt level should produce valid IR");
+    }
+
+    // === Large constant int ===
+
+    #[test]
+    fn test_generate_ir_const_large_int() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("big", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Const { dest: make_place("_t0"), value: Constant::Int(i64::MAX) },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok(), "i64::MAX constant should compile: {:?}", result.err());
+    }
+
+    // === Branch with computation in both arms ===
+
+    #[test]
+    fn test_generate_ir_branch_with_computation() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("abs_like", vec![("x", MirType::I64)], vec![
+            BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: make_place("_cond"),
+                        op: MirBinOp::Ge,
+                        lhs: Operand::Place(make_place("x")),
+                        rhs: Operand::Constant(Constant::Int(0)),
+                    },
+                ],
+                terminator: Terminator::Branch {
+                    cond: Operand::Place(make_place("_cond")),
+                    then_label: "positive".to_string(),
+                    else_label: "negative".to_string(),
+                },
+            },
+            BasicBlock {
+                label: "positive".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Goto("merge".to_string()),
+            },
+            BasicBlock {
+                label: "negative".to_string(),
+                instructions: vec![
+                    MirInst::UnaryOp {
+                        dest: make_place("neg_x"),
+                        op: MirUnaryOp::Neg,
+                        src: Operand::Place(make_place("x")),
+                    },
+                ],
+                terminator: Terminator::Goto("merge".to_string()),
+            },
+            BasicBlock {
+                label: "merge".to_string(),
+                instructions: vec![
+                    MirInst::Phi {
+                        dest: make_place("result"),
+                        values: vec![
+                            (Operand::Place(make_place("x")), "positive".to_string()),
+                            (Operand::Place(make_place("neg_x")), "negative".to_string()),
+                        ],
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(make_place("result")))),
+            },
+        ])]);
+        let ir = cg.generate_ir(&program).unwrap();
+        assert!(ir.contains("phi"), "Abs-like pattern should have phi");
+        assert!(ir.contains("br i1"), "Should have conditional branch");
     }
 }

@@ -1,0 +1,261 @@
+; ModuleID = bmb_bootstrap
+declare void @println(i64) nounwind willreturn
+declare void @print_str(ptr nocapture readonly) nounwind willreturn
+declare void @println_str(ptr nocapture readonly) nounwind willreturn
+declare void @eprint(i64) nounwind willreturn
+declare void @eprintln(i64) nounwind willreturn
+declare void @eprint_str(ptr nocapture readonly) nounwind willreturn
+declare void @eprintln_str(ptr nocapture readonly) nounwind willreturn
+declare void @eprint_f64(double) nounwind willreturn
+declare void @eprintln_f64(double) nounwind willreturn
+declare i64 @bmb_abs(i64) nounwind willreturn memory(none) speculatable
+declare i64 @bmb_min(i64, i64) nounwind willreturn memory(none) speculatable
+declare i64 @bmb_max(i64, i64) nounwind willreturn memory(none) speculatable
+declare i64 @bmb_clamp(i64, i64, i64) nounwind willreturn memory(none) speculatable
+declare i64 @bmb_pow(i64, i64) nounwind willreturn memory(none) speculatable
+declare noalias ptr @bmb_array_push(ptr nocapture readonly, i64) nounwind willreturn
+declare noalias ptr @bmb_array_pop(ptr nocapture readonly) nounwind willreturn
+declare noalias ptr @bmb_array_concat(ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn
+declare noalias ptr @bmb_array_slice(ptr nocapture readonly, i64, i64) nounwind willreturn
+declare i64 @bmb_array_len(ptr nocapture readonly) nounwind willreturn memory(argmem: read) speculatable
+declare noalias ptr @bmb_string_new(ptr nocapture readonly, i64) nounwind willreturn
+declare noalias ptr @bmb_string_from_cstr(ptr nocapture readonly) nounwind willreturn
+declare i64 @bmb_string_len(ptr nocapture readonly) nounwind willreturn memory(argmem: read) speculatable
+declare i64 @bmb_string_char_at(ptr nocapture readonly, i64) nounwind willreturn memory(argmem: read) speculatable
+declare noalias ptr @bmb_string_slice(ptr nocapture readonly, i64, i64) nounwind willreturn
+declare noalias ptr @bmb_string_concat(ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn
+declare noalias ptr @bmb_string_concat3(ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn
+declare noalias ptr @bmb_string_concat5(ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn
+declare noalias ptr @bmb_string_concat7(ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn
+declare i64 @bmb_string_eq(ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn memory(argmem: read)
+declare i64 @bmb_string_cmp(ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn memory(argmem: read)
+declare i64 @bmb_string_hash(ptr nocapture readonly) nounwind willreturn memory(argmem: read) speculatable
+declare i64 @bmb_string_starts_with(ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn memory(argmem: read) speculatable
+declare i64 @bmb_string_ends_with(ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn memory(argmem: read) speculatable
+declare i64 @bmb_string_contains(ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn memory(argmem: read) speculatable
+declare i64 @bmb_string_index_of(ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn memory(argmem: read) speculatable
+declare noalias ptr @bmb_string_trim(ptr nocapture readonly) nounwind willreturn
+declare noalias ptr @bmb_string_replace(ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn
+declare noalias ptr @bmb_string_to_upper(ptr nocapture readonly) nounwind willreturn
+declare noalias ptr @bmb_string_to_lower(ptr nocapture readonly) nounwind willreturn
+declare noalias ptr @bmb_string_repeat(ptr nocapture readonly, i64) nounwind willreturn
+declare i64 @bmb_string_is_empty(ptr nocapture readonly) nounwind willreturn memory(argmem: read) speculatable
+declare i64 @bmb_string_count(ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn memory(argmem: read)
+declare noalias ptr @bmb_string_reverse(ptr nocapture readonly) nounwind willreturn
+declare noalias ptr @bmb_string_pad_left(ptr nocapture readonly, i64, i64) nounwind willreturn
+declare noalias ptr @bmb_string_pad_right(ptr nocapture readonly, i64, i64) nounwind willreturn
+declare i64 @bmb_string_last_index_of(ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn memory(argmem: read)
+declare noalias ptr @bmb_chr(i64) nounwind willreturn
+declare i64 @bmb_ord(ptr nocapture readonly) nounwind willreturn memory(argmem: read)
+declare noalias ptr @bmb_int_to_string(i64) nounwind willreturn
+declare noalias ptr @bmb_f64_to_string(double) nounwind willreturn
+declare noalias ptr @bmb_to_hex(i64) nounwind willreturn
+declare noalias ptr @bmb_to_binary(i64) nounwind willreturn
+declare noalias ptr @bmb_to_octal(i64) nounwind willreturn
+declare i64 @bmb_parse_int(ptr nocapture readonly) nounwind willreturn
+declare double @bmb_parse_f64(ptr nocapture readonly) nounwind willreturn
+declare noalias ptr @bmb_fast_i2s(i64) nounwind willreturn
+declare i64 @bmb_file_exists(ptr nocapture readonly) nounwind
+declare i64 @bmb_file_size(ptr nocapture readonly) nounwind
+declare noalias ptr @bmb_read_file(ptr nocapture readonly) nounwind
+declare i64 @bmb_write_file(ptr nocapture readonly, ptr nocapture readonly) nounwind
+declare i64 @bmb_append_file(ptr nocapture readonly, ptr nocapture readonly) nounwind
+declare i64 @write_file_newlines(ptr nocapture readonly, ptr nocapture readonly) nounwind
+declare i64 @bmb_sb_new() nounwind willreturn
+declare i64 @bmb_sb_push(i64, ptr nocapture readonly) nounwind willreturn
+declare i64 @sb_push_range(i64, ptr nocapture readonly, i64, i64) nounwind willreturn
+declare i64 @bmb_sb_push_int(i64, i64) nounwind willreturn
+declare i64 @bmb_sb_push_char(i64, i64) nounwind willreturn
+declare i64 @bmb_sb_push_escaped(i64, ptr nocapture readonly) nounwind willreturn
+declare i64 @bmb_sb_len(i64) nounwind willreturn memory(read)
+declare noalias ptr @bmb_sb_build(i64) nounwind willreturn
+declare i64 @bmb_sb_clear(i64) nounwind willreturn
+declare i64 @bmb_sb_contains(i64, ptr nocapture readonly) nounwind willreturn memory(read)
+declare i64 @bmb_system(ptr nocapture readonly)
+declare void @bmb_exit(i64) noreturn nounwind
+declare i64 @bmb_time_ms() nounwind willreturn
+declare void @bmb_sleep_ms(i64) nounwind
+declare i64 @bmb_random_i64() nounwind
+declare void @bmb_random_seed(i64) nounwind
+declare noalias ptr @bmb_getenv(ptr nocapture readonly) nounwind
+declare noalias ptr @bmb_system_capture(ptr nocapture readonly)
+declare i64 @bmb_string_free(ptr) nounwind
+declare i64 @bmb_sb_free(i64) nounwind
+declare i64 @bmb_arena_mode(i64) nounwind willreturn
+declare i64 @bmb_arena_reset() nounwind willreturn
+declare i64 @bmb_arena_save() nounwind willreturn
+declare i64 @bmb_arena_restore() nounwind willreturn
+declare i64 @bmb_arena_usage() nounwind willreturn
+declare i64 @arg_count() nounwind willreturn
+declare noalias ptr @get_arg(i64) nounwind willreturn
+declare void @bmb_panic(ptr nocapture readonly) noreturn nounwind
+declare noalias ptr @malloc(i64) nounwind
+declare noalias ptr @calloc(i64, i64) nounwind
+declare void @free(ptr)
+declare double @sqrt(double) nounwind willreturn memory(none) speculatable
+declare double @sin(double) nounwind willreturn memory(none) speculatable
+declare double @cos(double) nounwind willreturn memory(none) speculatable
+declare double @tan(double) nounwind willreturn memory(none) speculatable
+declare double @atan(double) nounwind willreturn memory(none) speculatable
+declare double @atan2(double, double) nounwind willreturn memory(none) speculatable
+declare double @log(double) nounwind willreturn memory(none) speculatable
+declare double @log2(double) nounwind willreturn memory(none) speculatable
+declare double @log10(double) nounwind willreturn memory(none) speculatable
+declare double @exp(double) nounwind willreturn memory(none) speculatable
+declare double @fmod(double, double) nounwind willreturn memory(none) speculatable
+declare double @pow_f64(double, double) nounwind willreturn memory(none) speculatable
+declare void @print_f64(double) nounwind willreturn
+declare void @println_f64(double) nounwind willreturn
+declare void @bmb_print_i64(i64) nounwind willreturn
+declare void @puts_cstr(ptr nocapture readonly) nounwind willreturn
+declare void @store_u8(ptr, i64, i64) nounwind willreturn
+declare i64 @load_u8(ptr, i64) nounwind willreturn memory(argmem: read)
+declare void @store_i64(ptr, i64, i64) nounwind willreturn
+declare i64 @load_i64(ptr, i64) nounwind willreturn memory(argmem: read)
+declare i64 @char_at(ptr nocapture readonly, i64) nounwind willreturn memory(argmem: read)
+declare noalias ptr @hashmap_new() nounwind
+declare void @hashmap_insert(ptr, ptr nocapture readonly, i64) nounwind
+declare i64 @hashmap_get(ptr, ptr nocapture readonly) nounwind
+declare void @hashmap_free(ptr) nounwind
+declare i64 @hashmap_remove(ptr, ptr nocapture readonly) nounwind
+declare i64 @hashmap_contains(ptr, ptr nocapture readonly) nounwind memory(argmem: read)
+declare i64 @hashmap_len(ptr) nounwind memory(argmem: read)
+declare noalias ptr @str_hashmap_new() nounwind
+declare i64 @str_hashmap_insert(ptr, ptr nocapture readonly, i64) nounwind
+declare i64 @str_hashmap_get(ptr, ptr nocapture readonly) nounwind
+declare void @str_hashmap_free(ptr) nounwind
+declare i64 @str_hashmap_contains(ptr, ptr nocapture readonly) nounwind
+declare i64 @str_hashmap_len(ptr) nounwind willreturn
+declare i64 @str_hashmap_remove(ptr, ptr nocapture readonly) nounwind
+declare i64 @str_hashmap_keys(ptr) nounwind
+declare i64 @str_hashmap_values(ptr) nounwind
+declare noalias ptr @reg_cached_lookup(ptr, ptr nocapture readonly, i64) nounwind
+declare noalias ptr @vec_new() nounwind
+declare void @vec_push(ptr, i64) nounwind
+declare i64 @vec_get(ptr, i64) nounwind
+declare void @vec_set(ptr, i64, i64) nounwind
+declare i64 @vec_len(ptr) nounwind memory(argmem: read)
+declare void @vec_free(ptr) nounwind
+declare void @vec_reverse(ptr) nounwind
+declare i64 @vec_contains(ptr, i64) nounwind memory(argmem: read)
+declare i64 @vec_index_of(ptr, i64) nounwind memory(argmem: read)
+declare void @vec_swap(ptr, i64, i64) nounwind
+declare void @vec_sort(ptr) nounwind
+declare noalias ptr @vec_with_capacity(i64) nounwind
+declare void @vec_clear(ptr) nounwind
+declare i64 @sb_println(i64) nounwind
+declare i64 @sb_with_capacity(i64) nounwind willreturn
+declare double @bmb_f64_floor(double) nounwind willreturn memory(none) speculatable
+declare double @bmb_f64_ceil(double) nounwind willreturn memory(none) speculatable
+declare double @bmb_f64_round(double) nounwind willreturn memory(none) speculatable
+declare double @bmb_f64_sqrt(double) nounwind willreturn memory(none) speculatable
+declare double @bmb_f64_abs(double) nounwind willreturn memory(none) speculatable
+declare i64 @bmb_f64_is_nan(double) nounwind willreturn memory(none) speculatable
+declare double @bmb_f64_min(double, double) nounwind willreturn memory(none) speculatable
+declare double @bmb_f64_max(double, double) nounwind willreturn memory(none) speculatable
+declare i64 @bmb_f64_to_int(double) nounwind willreturn memory(none) speculatable
+declare i64 @bmb_delete_file(ptr) nounwind
+declare noalias ptr @bmb_getcwd() nounwind
+declare i64 @vec_pop(ptr) nounwind
+declare i64 @vec_cap(ptr) nounwind willreturn
+declare i64 @bmb_time_ns() nounwind
+declare noalias ptr @bmb_exec_output(ptr, ptr) nounwind
+declare i64 @bmb_string_split(ptr, ptr) nounwind
+declare noalias ptr @bmb_string_join(i64, ptr) nounwind
+declare i64 @bmb_sb_push_f64(i64, double) nounwind
+declare i64 @bmb_sb_push_hex(i64, i64) nounwind
+declare i64 @bmb_sb_push_bool(i64, i64) nounwind
+declare i64 @bmb_popcount(i64) nounwind willreturn memory(none) speculatable
+declare i64 @bmb_clz(i64) nounwind willreturn memory(none) speculatable
+declare i64 @bmb_ctz(i64) nounwind willreturn memory(none) speculatable
+declare i64 @bmb_bit_reverse(i64) nounwind willreturn memory(none) speculatable
+declare i64 @vec_slice(ptr, i64, i64) nounwind
+declare void @vec_extend(ptr, ptr) nounwind
+declare i64 @vec_remove(ptr, i64) nounwind
+declare void @vec_insert(ptr, i64, i64) nounwind
+declare i64 @hashmap_keys(ptr) nounwind
+declare i64 @hashmap_values(ptr) nounwind
+declare void @vec_dedup(ptr) nounwind
+declare void @vec_fill(ptr, i64) nounwind
+declare i64 @vec_copy(ptr) nounwind
+declare i64 @vec_sum(ptr) nounwind willreturn
+declare i64 @strmap_new() nounwind willreturn
+declare void @strmap_free(i64) nounwind
+declare i64 @strmap_insert(i64, ptr nocapture readonly, i64) nounwind
+declare i64 @strmap_get(i64, ptr nocapture readonly) nounwind willreturn memory(argmem: read)
+declare i64 @strmap_contains(i64, ptr nocapture readonly) nounwind willreturn memory(argmem: read)
+declare i64 @strmap_size(i64) nounwind willreturn memory(argmem: read)
+declare i64 @strmap_remove(i64, ptr nocapture readonly) nounwind
+declare i64 @strmap_keys(i64) nounwind
+declare i64 @strmap_values(i64) nounwind
+declare i64 @bmb_read_int() nounwind
+declare i64 @vec_min(ptr) nounwind willreturn memory(argmem: read)
+declare i64 @vec_max(ptr) nounwind willreturn memory(argmem: read)
+declare i64 @vec_product(ptr) nounwind willreturn memory(argmem: read)
+@str_data_0 = private unnamed_addr constant [1 x i8] c"\00"
+@str_bmb_0 = private unnamed_addr constant { ptr, i64, i64 } { ptr @str_data_0, i64 0, i64 0 }
+@str_data_1 = private unnamed_addr constant [6 x i8] c"merge\00"
+@str_bmb_1 = private unnamed_addr constant { ptr, i64, i64 } { ptr @str_data_1, i64 5, i64 5 }
+@str_data_2 = private unnamed_addr constant [6 x i8] c"other\00"
+@str_bmb_2 = private unnamed_addr constant { ptr, i64, i64 } { ptr @str_data_2, i64 5, i64 5 }
+
+define i64 @check_goto(i64 %n_pure, i64 %max_pure, i64 %goto_target, i64 %goto_tgt, i64 %next_p) mustprogress nounwind willreturn nosync {
+entry:
+  %_t2_cmp = icmp sgt i64 %n_pure, %max_pure
+  br i1 %_t2_cmp, label %then_0, label %else_0
+then_0:
+  br label %merge_0
+else_0:
+  %_t6_lp = inttoptr i64 %goto_target to ptr
+  %_t6_streq = call i64 @bmb_string_eq(ptr %_t6_lp, ptr @str_bmb_0)
+  %_t6_cmp = icmp ne i64 %_t6_streq, 0
+  %_t10_lp = inttoptr i64 %goto_tgt to ptr
+  %_t10_rp = inttoptr i64 %goto_target to ptr
+  %_t10_streq = call i64 @bmb_string_eq(ptr %_t10_lp, ptr %_t10_rp)
+  %_t10_cmp = icmp ne i64 %_t10_streq, 0
+  %_t13 = select i1 %_t10_cmp, i64 %next_p, i64 0
+  %_t14 = select i1 %_t6_cmp, i64 %next_p, i64 %_t13
+  br label %merge_1
+merge_1:
+  br label %merge_0
+merge_0:
+  %_t15 = phi i64 [ 0, %then_0 ], [ %_t14, %merge_1 ]
+  ret i64 %_t15
+}
+
+define i64 @bmb_user_main() mustprogress {
+entry:
+  %_t2 = ptrtoint ptr @str_bmb_0 to i64
+  %_t3 = ptrtoint ptr @str_bmb_1 to i64
+  %_t5 = call i64 @check_goto(i64 0, i64 3, i64 %_t2, i64 %_t3, i64 42)
+  %r1_v0 = alloca i64
+  store i64 %_t5, ptr %r1_v0
+  %_t8 = ptrtoint ptr @str_bmb_0 to i64
+  %_t9 = ptrtoint ptr @str_bmb_1 to i64
+  %_t11 = call i64 @check_goto(i64 5, i64 3, i64 %_t8, i64 %_t9, i64 42)
+  %r2_v6 = alloca i64
+  store i64 %_t11, ptr %r2_v6
+  %_t14 = ptrtoint ptr @str_bmb_1 to i64
+  %_t15 = ptrtoint ptr @str_bmb_1 to i64
+  %_t17 = call i64 @check_goto(i64 0, i64 3, i64 %_t14, i64 %_t15, i64 99)
+  %r3_v12 = alloca i64
+  store i64 %_t17, ptr %r3_v12
+  %_t20 = ptrtoint ptr @str_bmb_1 to i64
+  %_t21 = ptrtoint ptr @str_bmb_2 to i64
+  %_t23 = call i64 @check_goto(i64 0, i64 3, i64 %_t20, i64 %_t21, i64 99)
+  %r4_v18 = alloca i64
+  store i64 %_t23, ptr %r4_v18
+  %_t24 = load i64, ptr %r1_v0
+  %_t26 = mul nsw i64 %_t24, 1000000
+  %_t27 = load i64, ptr %r2_v6
+  %_t29 = mul nsw i64 %_t27, 10000
+  %_t30 = add nsw i64 %_t26, %_t29
+  %_t31 = load i64, ptr %r3_v12
+  %_t33 = mul nsw i64 %_t31, 100
+  %_t34 = add nsw i64 %_t30, %_t33
+  %_t35 = load i64, ptr %r4_v18
+  %_t36 = add nsw i64 %_t34, %_t35
+  ret i64 %_t36
+}
+
+!0 = !{}

@@ -11,6 +11,9 @@ use crate::mir::MirProgram;
 pub enum CodeGenError {
     #[error("LLVM code generation is not available. Build with --features llvm")]
     LlvmNotAvailable,
+
+    #[error("LLVM error: {0}")]
+    LlvmError(String),
 }
 
 /// Result type for code generation

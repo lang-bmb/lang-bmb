@@ -192,9 +192,10 @@ main() {
             continue
         fi
 
-        # Step 2: Optimize with opt -O2
-        log_verbose "Optimizing: opt -O2 -S $IR_FILE -o $OPT_FILE"
-        if ! timeout "$OPT_TIMEOUT" opt -O2 -S "$IR_FILE" -o "$OPT_FILE" 2>/dev/null; then
+        # Step 2: Optimize with opt -O2 (--slp-max-vf=1 prevents SLP vectorization
+        # of integer division which scalarizes poorly on x86-64, causing 2.4x regression)
+        log_verbose "Optimizing: opt -O2 --slp-max-vf=1 -S $IR_FILE -o $OPT_FILE"
+        if ! timeout "$OPT_TIMEOUT" opt -O2 --slp-max-vf=1 -S "$IR_FILE" -o "$OPT_FILE" 2>/dev/null; then
             echo -e "${RED}FAIL (opt)${NC}"
             ((FAILED++)) || true
             FAILURES="${FAILURES}  ${TEST_NAME}: opt -O2 failed\n"
@@ -219,8 +220,8 @@ main() {
             continue
         fi
 
-        # Step 5: Run and capture output
-        timeout "$RUN_TIMEOUT" "$EXE_FILE" > "$OUT_FILE" 2>&1 || true
+        # Step 5: Run and capture stdout only (stderr goes to /dev/null for dbg/eprint tests)
+        timeout "$RUN_TIMEOUT" "$EXE_FILE" > "$OUT_FILE" 2>/dev/null || true
 
         # Check output (first line should be expected value)
         ACTUAL=$(head -1 "$OUT_FILE" 2>/dev/null | tr -d '\r')

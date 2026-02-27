@@ -267,4 +267,369 @@ mod tests {
         let traits = extract_derive_traits(&[]);
         assert!(traits.is_empty());
     }
+
+    // --- Cycle 1226: Additional Derive Tests ---
+
+    #[test]
+    fn test_extract_derive_ignores_non_derive_attrs() {
+        let attrs = vec![
+            Attribute::Simple {
+                name: Spanned::new("inline".to_string(), Span::new(0, 6)),
+                span: Span::new(0, 7),
+            },
+            make_derive_attr(&["Debug"]),
+        ];
+        let traits = extract_derive_traits(&attrs);
+        assert_eq!(traits.len(), 1);
+        assert!(traits.contains(&DeriveTrait::Debug));
+    }
+
+    #[test]
+    fn test_extract_derive_ignores_unknown_traits() {
+        let attrs = vec![make_derive_attr(&["Debug", "Unknown", "Clone"])];
+        let traits = extract_derive_traits(&attrs);
+        assert_eq!(traits.len(), 2);
+        assert!(traits.contains(&DeriveTrait::Debug));
+        assert!(traits.contains(&DeriveTrait::Clone));
+    }
+
+    #[test]
+    fn test_derive_trait_equality() {
+        assert_eq!(DeriveTrait::Debug, DeriveTrait::Debug);
+        assert_ne!(DeriveTrait::Debug, DeriveTrait::Clone);
+        assert_ne!(DeriveTrait::PartialEq, DeriveTrait::Eq);
+    }
+
+    #[test]
+    fn test_derive_context_no_derives() {
+        use crate::ast::Visibility;
+
+        let def = StructDef {
+            attributes: vec![],
+            visibility: Visibility::Private,
+            name: Spanned::new("Empty".to_string(), Span::new(0, 5)),
+            type_params: vec![],
+            fields: vec![],
+            span: Span::new(0, 50),
+        };
+        let ctx = DeriveContext::from_struct(&def);
+        assert_eq!(ctx.name, "Empty");
+        assert!(ctx.traits.is_empty());
+        assert!(!ctx.has_trait(DeriveTrait::Debug));
+    }
+
+    #[test]
+    fn test_derive_trait_from_str_case_sensitive() {
+        assert_eq!(DeriveTrait::from_str("debug"), None);
+        assert_eq!(DeriveTrait::from_str("clone"), None);
+        assert_eq!(DeriveTrait::from_str("HASH"), None);
+        assert_eq!(DeriveTrait::from_str("partialeq"), None);
+    }
+
+    #[test]
+    fn test_has_derive_trait_no_attrs() {
+        use crate::ast::Visibility;
+
+        let def = StructDef {
+            attributes: vec![],
+            visibility: Visibility::Private,
+            name: Spanned::new("Bare".to_string(), Span::new(0, 4)),
+            type_params: vec![],
+            fields: vec![],
+            span: Span::new(0, 50),
+        };
+        assert!(!has_derive_trait(&def, DeriveTrait::Debug));
+        assert!(!has_derive_trait(&def, DeriveTrait::Clone));
+    }
+
+    #[test]
+    fn test_has_derive_trait_enum_no_attrs() {
+        let def = EnumDef {
+            attributes: vec![],
+            visibility: crate::ast::Visibility::Private,
+            name: Spanned::new("Empty".to_string(), Span::new(0, 5)),
+            type_params: vec![],
+            variants: vec![],
+            span: Span::new(0, 50),
+        };
+        assert!(!has_derive_trait_enum(&def, DeriveTrait::PartialEq));
+    }
+
+    #[test]
+    fn test_derive_context_all_traits() {
+        use crate::ast::Visibility;
+
+        let def = StructDef {
+            attributes: vec![
+                make_derive_attr(&["Debug", "Clone", "PartialEq", "Eq", "Default", "Hash"]),
+            ],
+            visibility: Visibility::Public,
+            name: Spanned::new("Full".to_string(), Span::new(0, 4)),
+            type_params: vec![],
+            fields: vec![],
+            span: Span::new(0, 50),
+        };
+        let ctx = DeriveContext::from_struct(&def);
+        assert_eq!(ctx.traits.len(), 6);
+        assert!(ctx.has_trait(DeriveTrait::Debug));
+        assert!(ctx.has_trait(DeriveTrait::Clone));
+        assert!(ctx.has_trait(DeriveTrait::PartialEq));
+        assert!(ctx.has_trait(DeriveTrait::Eq));
+        assert!(ctx.has_trait(DeriveTrait::Default));
+        assert!(ctx.has_trait(DeriveTrait::Hash));
+    }
+
+    #[test]
+    fn test_extract_derive_with_reason_attr_ignored() {
+        // WithReason attributes should not be treated as derive
+        let attrs = vec![
+            Attribute::WithReason {
+                name: Spanned::new("derive".to_string(), Span::new(0, 6)),
+                reason: Spanned::new("wrong format".to_string(), Span::new(0, 12)),
+                span: Span::new(0, 20),
+            },
+        ];
+        let traits = extract_derive_traits(&attrs);
+        assert!(traits.is_empty());
+    }
+
+    // ================================================================
+    // Additional derive tests (Cycle 1235)
+    // ================================================================
+
+    #[test]
+    fn test_derive_trait_copy() {
+        let t = DeriveTrait::Debug;
+        let t2 = t; // Copy
+        assert_eq!(t, t2);
+    }
+
+    #[test]
+    fn test_derive_trait_clone() {
+        let t = DeriveTrait::Hash;
+        let cloned = t.clone();
+        assert_eq!(t, cloned);
+    }
+
+    #[test]
+    fn test_derive_trait_from_str_empty() {
+        assert_eq!(DeriveTrait::from_str(""), None);
+    }
+
+    #[test]
+    fn test_derive_trait_roundtrip() {
+        for t in [DeriveTrait::Debug, DeriveTrait::Clone, DeriveTrait::PartialEq,
+                  DeriveTrait::Eq, DeriveTrait::Default, DeriveTrait::Hash] {
+            let s = t.as_str();
+            assert_eq!(DeriveTrait::from_str(s), Some(t));
+        }
+    }
+
+    #[test]
+    fn test_extract_derive_duplicate_traits() {
+        let attrs = vec![make_derive_attr(&["Debug", "Debug", "Clone"])];
+        let traits = extract_derive_traits(&attrs);
+        // Duplicates are not deduplicated
+        assert_eq!(traits.len(), 3);
+    }
+
+    #[test]
+    fn test_derive_context_name() {
+        use crate::ast::Visibility;
+
+        let def = StructDef {
+            attributes: vec![make_derive_attr(&["Debug"])],
+            visibility: Visibility::Public,
+            name: Spanned::new("MyType".to_string(), Span::new(0, 6)),
+            type_params: vec![],
+            fields: vec![],
+            span: Span::new(0, 50),
+        };
+        let ctx = DeriveContext::from_struct(&def);
+        assert_eq!(ctx.name, "MyType");
+    }
+
+    #[test]
+    fn test_has_derive_trait_multiple_attrs() {
+        use crate::ast::Visibility;
+
+        let def = StructDef {
+            attributes: vec![
+                Attribute::Simple {
+                    name: Spanned::new("inline".to_string(), Span::new(0, 6)),
+                    span: Span::new(0, 7),
+                },
+                make_derive_attr(&["Clone"]),
+            ],
+            visibility: Visibility::Private,
+            name: Spanned::new("Mixed".to_string(), Span::new(0, 5)),
+            type_params: vec![],
+            fields: vec![],
+            span: Span::new(0, 50),
+        };
+        assert!(has_derive_trait(&def, DeriveTrait::Clone));
+        assert!(!has_derive_trait(&def, DeriveTrait::Debug));
+    }
+
+    #[test]
+    fn test_derive_context_has_trait_negative() {
+        use crate::ast::Visibility;
+
+        let def = StructDef {
+            attributes: vec![make_derive_attr(&["Debug"])],
+            visibility: Visibility::Private,
+            name: Spanned::new("Single".to_string(), Span::new(0, 6)),
+            type_params: vec![],
+            fields: vec![],
+            span: Span::new(0, 50),
+        };
+        let ctx = DeriveContext::from_struct(&def);
+        assert!(ctx.has_trait(DeriveTrait::Debug));
+        assert!(!ctx.has_trait(DeriveTrait::Clone));
+        assert!(!ctx.has_trait(DeriveTrait::Hash));
+    }
+
+    #[test]
+    fn test_extract_derive_only_var_args() {
+        // Non-Var args in derive should be ignored
+        let attrs = vec![Attribute::WithArgs {
+            name: Spanned::new("derive".to_string(), Span::new(0, 6)),
+            args: vec![
+                Spanned::new(Expr::Var("Debug".to_string()), Span::new(0, 5)),
+                Spanned::new(Expr::IntLit(42), Span::new(0, 2)), // Not a Var
+            ],
+            span: Span::new(0, 20),
+        }];
+        let traits = extract_derive_traits(&attrs);
+        assert_eq!(traits.len(), 1);
+        assert!(traits.contains(&DeriveTrait::Debug));
+    }
+
+    #[test]
+    fn test_derive_trait_debug_format() {
+        let t = DeriveTrait::Default;
+        let debug_str = format!("{:?}", t);
+        assert_eq!(debug_str, "Default");
+    }
+
+    // ================================================================
+    // Additional derive tests (Cycle 1239)
+    // ================================================================
+
+    #[test]
+    fn test_derive_trait_ne_all_pairs() {
+        let all = [
+            DeriveTrait::Debug, DeriveTrait::Clone, DeriveTrait::PartialEq,
+            DeriveTrait::Eq, DeriveTrait::Default, DeriveTrait::Hash,
+        ];
+        for i in 0..all.len() {
+            for j in (i + 1)..all.len() {
+                assert_ne!(all[i], all[j]);
+            }
+        }
+    }
+
+    #[test]
+    fn test_derive_trait_as_str_hash() {
+        assert_eq!(DeriveTrait::Hash.as_str(), "Hash");
+    }
+
+    #[test]
+    fn test_extract_derive_single_trait() {
+        let attrs = vec![make_derive_attr(&["Clone"])];
+        let traits = extract_derive_traits(&attrs);
+        assert_eq!(traits.len(), 1);
+        assert_eq!(traits[0], DeriveTrait::Clone);
+    }
+
+    #[test]
+    fn test_derive_context_from_enum_all_traits() {
+        let def = EnumDef {
+            attributes: vec![
+                make_derive_attr(&["Debug", "Clone", "PartialEq", "Eq", "Default", "Hash"]),
+            ],
+            visibility: crate::ast::Visibility::Public,
+            name: Spanned::new("Full".to_string(), Span::new(0, 4)),
+            type_params: vec![],
+            variants: vec![],
+            span: Span::new(0, 50),
+        };
+        let ctx = DeriveContext::from_enum(&def);
+        assert_eq!(ctx.traits.len(), 6);
+    }
+
+    #[test]
+    fn test_has_derive_trait_enum_all() {
+        let def = EnumDef {
+            attributes: vec![
+                make_derive_attr(&["Debug", "Clone", "PartialEq", "Eq", "Default", "Hash"]),
+            ],
+            visibility: crate::ast::Visibility::Public,
+            name: Spanned::new("AllTraits".to_string(), Span::new(0, 9)),
+            type_params: vec![],
+            variants: vec![],
+            span: Span::new(0, 50),
+        };
+        assert!(has_derive_trait_enum(&def, DeriveTrait::Debug));
+        assert!(has_derive_trait_enum(&def, DeriveTrait::Hash));
+        assert!(has_derive_trait_enum(&def, DeriveTrait::Default));
+    }
+
+    #[test]
+    fn test_derive_context_traits_count() {
+        use crate::ast::Visibility;
+
+        let def = StructDef {
+            attributes: vec![make_derive_attr(&["Debug", "Clone"])],
+            visibility: Visibility::Private,
+            name: Spanned::new("Two".to_string(), Span::new(0, 3)),
+            type_params: vec![],
+            fields: vec![],
+            span: Span::new(0, 50),
+        };
+        let ctx = DeriveContext::from_struct(&def);
+        assert_eq!(ctx.traits.len(), 2);
+    }
+
+    #[test]
+    fn test_extract_derive_multiple_derive_attrs() {
+        let attrs = vec![
+            make_derive_attr(&["Debug"]),
+            make_derive_attr(&["Clone"]),
+            make_derive_attr(&["Hash"]),
+        ];
+        let traits = extract_derive_traits(&attrs);
+        assert_eq!(traits.len(), 3);
+        assert!(traits.contains(&DeriveTrait::Debug));
+        assert!(traits.contains(&DeriveTrait::Clone));
+        assert!(traits.contains(&DeriveTrait::Hash));
+    }
+
+    #[test]
+    fn test_derive_trait_from_str_whitespace() {
+        assert_eq!(DeriveTrait::from_str(" Debug"), None);
+        assert_eq!(DeriveTrait::from_str("Debug "), None);
+        assert_eq!(DeriveTrait::from_str(" "), None);
+    }
+
+    #[test]
+    fn test_extract_derive_empty_args() {
+        let attrs = vec![Attribute::WithArgs {
+            name: Spanned::new("derive".to_string(), Span::new(0, 6)),
+            args: vec![],
+            span: Span::new(0, 10),
+        }];
+        let traits = extract_derive_traits(&attrs);
+        assert!(traits.is_empty());
+    }
+
+    #[test]
+    fn test_derive_trait_debug_all_variants() {
+        assert_eq!(format!("{:?}", DeriveTrait::Debug), "Debug");
+        assert_eq!(format!("{:?}", DeriveTrait::Clone), "Clone");
+        assert_eq!(format!("{:?}", DeriveTrait::PartialEq), "PartialEq");
+        assert_eq!(format!("{:?}", DeriveTrait::Eq), "Eq");
+        assert_eq!(format!("{:?}", DeriveTrait::Default), "Default");
+        assert_eq!(format!("{:?}", DeriveTrait::Hash), "Hash");
+    }
 }

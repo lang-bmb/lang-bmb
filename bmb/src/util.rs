@@ -243,4 +243,189 @@ mod tests {
         assert_eq!(to_pascal_case("foo"), "Foo");
         assert_eq!(to_pascal_case("my_type"), "MyType");
     }
+
+    // --- Cycle 1227: Additional Utility Tests ---
+
+    #[test]
+    fn test_levenshtein_completely_different() {
+        assert_eq!(levenshtein_distance("abc", "xyz"), 3);
+    }
+
+    #[test]
+    fn test_levenshtein_prefix() {
+        assert_eq!(levenshtein_distance("abc", "abcdef"), 3);
+    }
+
+    #[test]
+    fn test_levenshtein_suffix() {
+        assert_eq!(levenshtein_distance("def", "abcdef"), 3);
+    }
+
+    #[test]
+    fn test_levenshtein_substitution_only() {
+        assert_eq!(levenshtein_distance("abc", "axc"), 1);
+    }
+
+    #[test]
+    fn test_levenshtein_transposition() {
+        // Transposition is 2 edits in standard Levenshtein
+        assert_eq!(levenshtein_distance("ab", "ba"), 2);
+    }
+
+    #[test]
+    fn test_find_similar_name_best_match() {
+        let candidates = &["println", "print", "printf"];
+        assert_eq!(find_similar_name("prnt", candidates, 3), Some("print"));
+    }
+
+    #[test]
+    fn test_find_similar_name_threshold_exact() {
+        // Distance of exactly threshold should match
+        let candidates = &["abc"];
+        assert_eq!(find_similar_name("axc", candidates, 1), Some("abc"));
+    }
+
+    #[test]
+    fn test_find_similar_name_threshold_exceeded() {
+        let candidates = &["abc"];
+        assert_eq!(find_similar_name("xyz", candidates, 1), None);
+    }
+
+    #[test]
+    fn test_find_similar_name_empty_candidates() {
+        let candidates: &[&str] = &[];
+        assert_eq!(find_similar_name("abc", candidates, 3), None);
+    }
+
+    #[test]
+    fn test_is_snake_case_leading_underscore_numbers() {
+        assert!(is_snake_case("_x123"));
+        assert!(is_snake_case("a_b_c"));
+        assert!(is_snake_case("x"));
+        assert!(!is_snake_case("A"));
+    }
+
+    #[test]
+    fn test_to_snake_case_consecutive_upper() {
+        // HTMLParser → h_t_m_l_parser (simple char-by-char conversion)
+        let result = to_snake_case("HTMLParser");
+        assert!(result.contains("parser"));
+        assert!(!result.contains('H'));
+    }
+
+    #[test]
+    fn test_to_snake_case_all_upper() {
+        let result = to_snake_case("ABC");
+        assert_eq!(result, "a_b_c");
+    }
+
+    #[test]
+    fn test_is_pascal_case_with_numbers() {
+        assert!(is_pascal_case("F64"));
+        assert!(is_pascal_case("MyType2"));
+        assert!(!is_pascal_case("f64"));
+    }
+
+    #[test]
+    fn test_to_pascal_case_single_char() {
+        assert_eq!(to_pascal_case("f"), "F");
+        assert_eq!(to_pascal_case("a_b"), "AB");
+    }
+
+    #[test]
+    fn test_to_pascal_case_already_pascal() {
+        // Input is already PascalCase — should be preserved
+        assert_eq!(to_pascal_case("Foo"), "Foo");
+    }
+
+    #[test]
+    fn test_format_suggestion_hint_format() {
+        let hint = format_suggestion_hint(Some("method_name"));
+        assert!(hint.starts_with('\n'));
+        assert!(hint.contains("did you mean"));
+        assert!(hint.contains("`method_name`"));
+    }
+
+    #[test]
+    fn test_is_snake_case_double_underscore() {
+        assert!(is_snake_case("__init__"));
+        assert!(is_snake_case("a__b"));
+    }
+
+    #[test]
+    fn test_is_pascal_case_single_uppercase() {
+        assert!(is_pascal_case("A"));
+        assert!(is_pascal_case("Z"));
+    }
+
+    // ================================================================
+    // Additional util tests (Cycle 1240)
+    // ================================================================
+
+    #[test]
+    fn test_levenshtein_symmetric() {
+        assert_eq!(levenshtein_distance("abc", "xyz"), levenshtein_distance("xyz", "abc"));
+        assert_eq!(levenshtein_distance("kitten", "sitting"), levenshtein_distance("sitting", "kitten"));
+    }
+
+    #[test]
+    fn test_levenshtein_insertion_deletion() {
+        // Pure insertions
+        assert_eq!(levenshtein_distance("abc", "aXbYcZ"), 3);
+        // Pure deletions
+        assert_eq!(levenshtein_distance("aXbYcZ", "abc"), 3);
+    }
+
+    #[test]
+    fn test_find_similar_name_threshold_zero() {
+        // threshold 0 means only exact matches
+        let candidates = &["hello", "helo", "world"];
+        assert_eq!(find_similar_name("hello", candidates, 0), Some("hello"));
+        assert_eq!(find_similar_name("helo", candidates, 0), Some("helo"));
+        assert_eq!(find_similar_name("hell", candidates, 0), None);
+    }
+
+    #[test]
+    fn test_find_similar_name_picks_closest() {
+        // Multiple close matches, should return the closest one
+        let candidates = &["print", "printf", "println"];
+        assert_eq!(find_similar_name("print", candidates, 3), Some("print"));
+        assert_eq!(find_similar_name("prnt", candidates, 3), Some("print"));
+    }
+
+    #[test]
+    fn test_to_snake_case_empty() {
+        assert_eq!(to_snake_case(""), "");
+    }
+
+    #[test]
+    fn test_to_snake_case_already_snake() {
+        assert_eq!(to_snake_case("foo_bar_baz"), "foo_bar_baz");
+    }
+
+    #[test]
+    fn test_to_pascal_case_empty() {
+        assert_eq!(to_pascal_case(""), "");
+    }
+
+    #[test]
+    fn test_to_pascal_case_leading_underscores() {
+        // Underscores become capitalize-next triggers
+        assert_eq!(to_pascal_case("_foo"), "Foo");
+        assert_eq!(to_pascal_case("__bar"), "Bar");
+    }
+
+    #[test]
+    fn test_is_snake_case_trailing_underscore() {
+        assert!(is_snake_case("foo_"));
+        assert!(is_snake_case("a_b_"));
+    }
+
+    #[test]
+    fn test_is_pascal_case_number_start_after_upper() {
+        assert!(is_pascal_case("A1B2"));
+        assert!(is_pascal_case("Type3"));
+        // lowercase start is not pascal
+        assert!(!is_pascal_case("a1B2"));
+    }
 }

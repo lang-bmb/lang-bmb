@@ -524,4 +524,461 @@ mod tests {
         let _field = MirRvalue::Field(0, "x".to_string());
         let _len = MirRvalue::Len(0);
     }
+
+    // --- Cycle 1230: Additional PIR lower_to_mir Tests ---
+
+    #[test]
+    fn test_proof_annotation_stores_proposition() {
+        let prop = Proposition::compare(
+            crate::cir::CirExpr::var("x"),
+            crate::cir::CompareOp::Gt,
+            crate::cir::CirExpr::int(0),
+        );
+        let ann = ProofAnnotation::fact(prop.clone(), 10);
+        assert_eq!(ann.proposition, prop);
+        assert_eq!(ann.id, 10);
+    }
+
+    #[test]
+    fn test_mir_binop_all_variants() {
+        let ops = [
+            MirBinOp::Add, MirBinOp::Sub, MirBinOp::Mul, MirBinOp::Div, MirBinOp::Mod,
+            MirBinOp::Lt, MirBinOp::Le, MirBinOp::Gt, MirBinOp::Ge, MirBinOp::Eq, MirBinOp::Ne,
+            MirBinOp::And, MirBinOp::Or,
+            MirBinOp::BitAnd, MirBinOp::BitOr, MirBinOp::BitXor, MirBinOp::Shl, MirBinOp::Shr,
+        ];
+        for op in ops {
+            let rv = MirRvalue::BinaryOp(op, 0, 1);
+            assert!(matches!(rv, MirRvalue::BinaryOp(_, 0, 1)));
+        }
+    }
+
+    #[test]
+    fn test_mir_unaryop_all_variants() {
+        for op in [MirUnaryOp::Neg, MirUnaryOp::Not, MirUnaryOp::BitNot] {
+            let rv = MirRvalue::UnaryOp(op, 0);
+            assert!(matches!(rv, MirRvalue::UnaryOp(_, 0)));
+        }
+    }
+
+    #[test]
+    fn test_mir_terminator_call() {
+        let term = MirTerminator::Call {
+            func: "add".to_string(),
+            args: vec![0, 1],
+            dest: 2,
+            next: 1,
+        };
+        match term {
+            MirTerminator::Call { func, args, dest, next } => {
+                assert_eq!(func, "add");
+                assert_eq!(args.len(), 2);
+                assert_eq!(dest, 2);
+                assert_eq!(next, 1);
+            }
+            _ => panic!("Expected Call"),
+        }
+    }
+
+    #[test]
+    fn test_mir_stmt_kind_call() {
+        let stmt = MirStmtWithProofs {
+            kind: MirStmtKind::Call {
+                dest: 0,
+                func: "foo".to_string(),
+                args: vec![1, 2],
+            },
+            available_proofs: vec![ProofAnnotation::fact(Proposition::True, 1)],
+        };
+        match &stmt.kind {
+            MirStmtKind::Call { dest, func, args } => {
+                assert_eq!(*dest, 0);
+                assert_eq!(func, "foo");
+                assert_eq!(args.len(), 2);
+            }
+            _ => panic!("Expected Call"),
+        }
+        assert_eq!(stmt.available_proofs.len(), 1);
+    }
+
+    #[test]
+    fn test_mir_with_proofs_with_content() {
+        let mir = MirWithProofs {
+            functions: vec![MirFunctionWithProofs {
+                name: "main".to_string(),
+                blocks: vec![MirBlockWithProofs {
+                    id: 0,
+                    statements: vec![MirStmtWithProofs {
+                        kind: MirStmtKind::Assign(0, MirRvalue::Constant(MirConstant::Int(0))),
+                        available_proofs: vec![],
+                    }],
+                    terminator: MirTerminator::Return(0),
+                    entry_proofs: vec![],
+                }],
+                entry_proofs: vec![],
+                exit_proofs: vec![],
+            }],
+            proof_annotations: vec![ProofAnnotation::fact(Proposition::True, 0)],
+        };
+        assert_eq!(mir.functions.len(), 1);
+        assert_eq!(mir.functions[0].blocks.len(), 1);
+        assert_eq!(mir.functions[0].blocks[0].statements.len(), 1);
+        assert_eq!(mir.proof_annotations.len(), 1);
+    }
+
+    #[test]
+    fn test_mir_function_with_entry_exit_proofs() {
+        let func = MirFunctionWithProofs {
+            name: "checked".to_string(),
+            blocks: vec![],
+            entry_proofs: vec![
+                ProofAnnotation::bounds_check(Proposition::True, 1),
+                ProofAnnotation::null_check(Proposition::True, 2),
+            ],
+            exit_proofs: vec![
+                ProofAnnotation::fact(Proposition::True, 3),
+            ],
+        };
+        assert_eq!(func.entry_proofs.len(), 2);
+        assert_eq!(func.exit_proofs.len(), 1);
+    }
+
+    #[test]
+    fn test_proof_annotation_kind_debug() {
+        let kinds = [
+            ProofAnnotationKind::BoundsCheckEliminated,
+            ProofAnnotationKind::NullCheckEliminated,
+            ProofAnnotationKind::DivZeroCheckEliminated,
+            ProofAnnotationKind::Unreachable,
+            ProofAnnotationKind::Fact,
+        ];
+        for kind in kinds {
+            let debug = format!("{:?}", kind);
+            assert!(!debug.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_mir_constant_clone() {
+        let c = MirConstant::String("hello".to_string());
+        let c2 = c.clone();
+        assert!(matches!(c2, MirConstant::String(s) if s == "hello"));
+    }
+
+    #[test]
+    fn test_mir_terminator_switch_int() {
+        let term = MirTerminator::SwitchInt {
+            discr: 0,
+            targets: vec![(0, 1), (1, 2), (2, 3)],
+            default: 4,
+        };
+        match term {
+            MirTerminator::SwitchInt { discr, targets, default } => {
+                assert_eq!(discr, 0);
+                assert_eq!(targets.len(), 3);
+                assert_eq!(default, 4);
+            }
+            _ => panic!("Expected SwitchInt"),
+        }
+    }
+
+    #[test]
+    fn test_lower_pir_expr_int_lit() {
+        use super::super::PirType;
+        let expr = PirExpr {
+            kind: PirExprKind::IntLit(42),
+            proven: vec![],
+            result_facts: vec![],
+            ty: PirType::I64,
+            span: None,
+        };
+        let mut stmts = vec![];
+        let mut next_local = 1;
+        lower_pir_expr_to_mir(&expr, 0, &mut next_local, &mut stmts);
+        assert_eq!(stmts.len(), 1);
+        match &stmts[0].kind {
+            MirStmtKind::Assign(dest, MirRvalue::Constant(MirConstant::Int(v))) => {
+                assert_eq!(*dest, 0);
+                assert_eq!(*v, 42);
+            }
+            _ => panic!("Expected Assign with Int"),
+        }
+    }
+
+    #[test]
+    fn test_lower_pir_expr_bool_lit() {
+        use super::super::PirType;
+        let expr = PirExpr {
+            kind: PirExprKind::BoolLit(true),
+            proven: vec![],
+            result_facts: vec![],
+            ty: PirType::Bool,
+            span: None,
+        };
+        let mut stmts = vec![];
+        let mut next_local = 1;
+        lower_pir_expr_to_mir(&expr, 0, &mut next_local, &mut stmts);
+        assert_eq!(stmts.len(), 1);
+        match &stmts[0].kind {
+            MirStmtKind::Assign(_, MirRvalue::Constant(MirConstant::Bool(b))) => {
+                assert!(*b);
+            }
+            _ => panic!("Expected Assign with Bool"),
+        }
+    }
+
+    #[test]
+    fn test_lower_pir_expr_var() {
+        use super::super::PirType;
+        let expr = PirExpr {
+            kind: PirExprKind::Var("x".to_string()),
+            proven: vec![],
+            result_facts: vec![],
+            ty: PirType::I64,
+            span: None,
+        };
+        let mut stmts = vec![];
+        let mut next_local = 1;
+        lower_pir_expr_to_mir(&expr, 0, &mut next_local, &mut stmts);
+        assert_eq!(stmts.len(), 1);
+        assert!(matches!(&stmts[0].kind, MirStmtKind::Assign(0, MirRvalue::Use(0))));
+    }
+
+    // ================================================================
+    // Additional PIR lower_to_mir tests (Cycle 1236)
+    // ================================================================
+
+    #[test]
+    fn test_lower_pir_expr_nop_fallback() {
+        use super::super::PirType;
+        // Unknown/default expression kind falls back to Nop
+        let expr = PirExpr {
+            kind: PirExprKind::FloatLit(3_14u64),
+            proven: vec![],
+            result_facts: vec![],
+            ty: PirType::F64,
+            span: None,
+        };
+        let mut stmts = vec![];
+        let mut next_local = 1;
+        lower_pir_expr_to_mir(&expr, 0, &mut next_local, &mut stmts);
+        assert_eq!(stmts.len(), 1);
+        assert!(matches!(&stmts[0].kind, MirStmtKind::Nop));
+    }
+
+    #[test]
+    fn test_lower_pir_expr_with_proven_facts() {
+        use super::super::{PirType, ProvenFact};
+        use crate::verify::ProofEvidence;
+        let expr = PirExpr {
+            kind: PirExprKind::IntLit(10),
+            proven: vec![ProvenFact {
+                proposition: Proposition::True,
+                evidence: ProofEvidence::Precondition,
+                id: 42,
+            }],
+            result_facts: vec![],
+            ty: PirType::I64,
+            span: None,
+        };
+        let mut stmts = vec![];
+        let mut next_local = 1;
+        lower_pir_expr_to_mir(&expr, 0, &mut next_local, &mut stmts);
+        assert_eq!(stmts.len(), 1);
+        assert_eq!(stmts[0].available_proofs.len(), 1);
+        assert_eq!(stmts[0].available_proofs[0].id, 42);
+    }
+
+    #[test]
+    fn test_lower_pir_expr_index_no_bounds_proof() {
+        use super::super::PirType;
+        let array_expr = PirExpr {
+            kind: PirExprKind::Var("arr".to_string()),
+            proven: vec![],
+            result_facts: vec![],
+            ty: PirType::I64,
+            span: None,
+        };
+        let index_expr = PirExpr {
+            kind: PirExprKind::IntLit(0),
+            proven: vec![],
+            result_facts: vec![],
+            ty: PirType::I64,
+            span: None,
+        };
+        let expr = PirExpr {
+            kind: PirExprKind::Index {
+                array: Box::new(array_expr),
+                index: Box::new(index_expr),
+                bounds_proof: None,
+            },
+            proven: vec![],
+            result_facts: vec![],
+            ty: PirType::I64,
+            span: None,
+        };
+        let mut stmts = vec![];
+        let mut next_local = 1;
+        lower_pir_expr_to_mir(&expr, 0, &mut next_local, &mut stmts);
+        // array var + index int + index assign = 3 statements
+        assert_eq!(stmts.len(), 3);
+        // Last statement should be the Index
+        assert!(matches!(&stmts[2].kind, MirStmtKind::Assign(0, MirRvalue::Index(_, _))));
+        // No bounds proof → only available_proofs from expr.proven (empty)
+        assert!(stmts[2].available_proofs.is_empty());
+    }
+
+    #[test]
+    fn test_lower_pir_expr_index_with_bounds_proof() {
+        use super::super::{PirType, ProvenFact};
+        let array_expr = PirExpr {
+            kind: PirExprKind::Var("arr".to_string()),
+            proven: vec![],
+            result_facts: vec![],
+            ty: PirType::I64,
+            span: None,
+        };
+        let index_expr = PirExpr {
+            kind: PirExprKind::IntLit(0),
+            proven: vec![],
+            result_facts: vec![],
+            ty: PirType::I64,
+            span: None,
+        };
+        let bounds_fact = ProvenFact {
+            proposition: Proposition::True,
+            evidence: crate::verify::ProofEvidence::Precondition,
+            id: 99,
+        };
+        let expr = PirExpr {
+            kind: PirExprKind::Index {
+                array: Box::new(array_expr),
+                index: Box::new(index_expr),
+                bounds_proof: Some(bounds_fact),
+            },
+            proven: vec![],
+            result_facts: vec![],
+            ty: PirType::I64,
+            span: None,
+        };
+        let mut stmts = vec![];
+        let mut next_local = 1;
+        lower_pir_expr_to_mir(&expr, 0, &mut next_local, &mut stmts);
+        assert_eq!(stmts.len(), 3);
+        // Last statement should have bounds check proof
+        assert_eq!(stmts[2].available_proofs.len(), 1);
+        assert!(matches!(stmts[2].available_proofs[0].kind, ProofAnnotationKind::BoundsCheckEliminated));
+    }
+
+    #[test]
+    fn test_lower_pir_expr_div_no_proof() {
+        use super::super::PirType;
+        let lhs = PirExpr {
+            kind: PirExprKind::IntLit(10),
+            proven: vec![],
+            result_facts: vec![],
+            ty: PirType::I64,
+            span: None,
+        };
+        let rhs = PirExpr {
+            kind: PirExprKind::IntLit(2),
+            proven: vec![],
+            result_facts: vec![],
+            ty: PirType::I64,
+            span: None,
+        };
+        let expr = PirExpr {
+            kind: PirExprKind::Div {
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+                nonzero_proof: None,
+            },
+            proven: vec![],
+            result_facts: vec![],
+            ty: PirType::I64,
+            span: None,
+        };
+        let mut stmts = vec![];
+        let mut next_local = 1;
+        lower_pir_expr_to_mir(&expr, 0, &mut next_local, &mut stmts);
+        assert_eq!(stmts.len(), 3);
+        assert!(matches!(&stmts[2].kind, MirStmtKind::Assign(0, MirRvalue::BinaryOp(MirBinOp::Div, _, _))));
+        assert!(stmts[2].available_proofs.is_empty());
+    }
+
+    #[test]
+    fn test_lower_pir_expr_div_with_nonzero_proof() {
+        use super::super::{PirType, ProvenFact};
+        let lhs = PirExpr {
+            kind: PirExprKind::IntLit(10),
+            proven: vec![],
+            result_facts: vec![],
+            ty: PirType::I64,
+            span: None,
+        };
+        let rhs = PirExpr {
+            kind: PirExprKind::IntLit(2),
+            proven: vec![],
+            result_facts: vec![],
+            ty: PirType::I64,
+            span: None,
+        };
+        let nonzero_fact = ProvenFact {
+            proposition: Proposition::True,
+            evidence: crate::verify::ProofEvidence::Precondition,
+            id: 77,
+        };
+        let expr = PirExpr {
+            kind: PirExprKind::Div {
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+                nonzero_proof: Some(nonzero_fact),
+            },
+            proven: vec![],
+            result_facts: vec![],
+            ty: PirType::I64,
+            span: None,
+        };
+        let mut stmts = vec![];
+        let mut next_local = 1;
+        lower_pir_expr_to_mir(&expr, 0, &mut next_local, &mut stmts);
+        assert_eq!(stmts.len(), 3);
+        assert_eq!(stmts[2].available_proofs.len(), 1);
+        assert!(matches!(stmts[2].available_proofs[0].kind, ProofAnnotationKind::DivZeroCheckEliminated));
+    }
+
+    #[test]
+    fn test_proof_annotation_clone() {
+        let ann = ProofAnnotation::fact(Proposition::True, 1);
+        let cloned = ann.clone();
+        assert_eq!(cloned.id, 1);
+        assert!(matches!(cloned.kind, ProofAnnotationKind::Fact));
+    }
+
+    #[test]
+    fn test_mir_stmt_kind_clone() {
+        let kind = MirStmtKind::Assign(0, MirRvalue::Constant(MirConstant::Bool(false)));
+        let cloned = kind.clone();
+        assert!(matches!(cloned, MirStmtKind::Assign(0, MirRvalue::Constant(MirConstant::Bool(false)))));
+    }
+
+    #[test]
+    fn test_mir_rvalue_field_access() {
+        let rv = MirRvalue::Field(0, "name".to_string());
+        let cloned = rv.clone();
+        match cloned {
+            MirRvalue::Field(local, field) => {
+                assert_eq!(local, 0);
+                assert_eq!(field, "name");
+            }
+            _ => panic!("Expected Field"),
+        }
+    }
+
+    #[test]
+    fn test_mir_rvalue_len() {
+        let rv = MirRvalue::Len(5);
+        let cloned = rv.clone();
+        assert!(matches!(cloned, MirRvalue::Len(5)));
+    }
 }

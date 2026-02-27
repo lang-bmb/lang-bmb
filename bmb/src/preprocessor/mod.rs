@@ -347,4 +347,269 @@ fn main() -> i64 = 42;
         let result = pp.parse_include_directive("@include ");
         assert!(result.is_err());
     }
+
+    // --- Cycle 1226: Additional Preprocessor Tests ---
+
+    #[test]
+    fn test_preprocessor_new_with_include_paths() {
+        let pp = Preprocessor::new(vec![
+            PathBuf::from("/usr/include"),
+            PathBuf::from("./lib"),
+        ]);
+        assert_eq!(pp.include_paths.len(), 2);
+        assert!(pp.included.is_empty());
+    }
+
+    #[test]
+    fn test_parse_include_directive_paren_with_spaces() {
+        let pp = Preprocessor::new(vec![]);
+        assert_eq!(
+            pp.parse_include_directive("@include( \"file.bmb\" )").unwrap(),
+            "file.bmb"
+        );
+    }
+
+    #[test]
+    fn test_parse_include_directive_paren_no_quotes() {
+        let pp = Preprocessor::new(vec![]);
+        let result = pp.parse_include_directive("@include(file.bmb)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_expand_empty_source() {
+        let result = expand_includes("", Path::new("test.bmb"), &[]).unwrap();
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_expand_single_line_no_include() {
+        let result = expand_includes("fn main() -> i64 = 42;", Path::new("test.bmb"), &[]).unwrap();
+        assert!(result.contains("fn main()"));
+    }
+
+    #[test]
+    fn test_preprocessor_error_display_io() {
+        let err = PreprocessorError::IoError(
+            std::io::Error::new(std::io::ErrorKind::NotFound, "file not found")
+        );
+        let msg = format!("{}", err);
+        assert!(msg.contains("IO error"));
+    }
+
+    #[test]
+    fn test_preprocessor_error_from_io() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
+        let pp_err: PreprocessorError = io_err.into();
+        assert!(matches!(pp_err, PreprocessorError::IoError(_)));
+    }
+
+    #[test]
+    fn test_expand_with_prelude_no_path() {
+        let source = "fn add(a: i64, b: i64) -> i64 = a + b;";
+        let result = expand_with_prelude(source, Path::new("test.bmb"), &[], None).unwrap();
+        assert!(result.contains("fn add"));
+    }
+
+    #[test]
+    fn test_resolve_include_path_not_found() {
+        let pp = Preprocessor::new(vec![PathBuf::from("/nonexistent_dir_xyz")]);
+        let result = pp.resolve_include_path("missing.bmb", Path::new("/tmp"));
+        assert!(result.is_err());
+        if let Err(PreprocessorError::FileNotFound(name, searched)) = result {
+            assert_eq!(name, "missing.bmb");
+            assert_eq!(searched.len(), 2); // relative + 1 include path
+        }
+    }
+
+    #[test]
+    fn test_expand_preserves_line_count() {
+        let source = "line1\nline2\nline3\n";
+        let result = expand_includes(source, Path::new("test.bmb"), &[]).unwrap();
+        let line_count = result.lines().count();
+        assert_eq!(line_count, 3);
+    }
+
+    // ================================================================
+    // Additional preprocessor tests (Cycle 1236)
+    // ================================================================
+
+    #[test]
+    fn test_preprocessor_error_is_std_error() {
+        let err = PreprocessorError::InvalidSyntax("test".to_string());
+        let _: &dyn std::error::Error = &err;
+    }
+
+    #[test]
+    fn test_preprocessor_error_debug_format() {
+        let err = PreprocessorError::CircularInclude(PathBuf::from("loop.bmb"));
+        let debug = format!("{:?}", err);
+        assert!(debug.contains("CircularInclude"));
+    }
+
+    #[test]
+    fn test_preprocessor_new_empty() {
+        let pp = Preprocessor::new(vec![]);
+        assert!(pp.include_paths.is_empty());
+        assert!(pp.included.is_empty());
+    }
+
+    #[test]
+    fn test_parse_include_paren_unclosed() {
+        let pp = Preprocessor::new(vec![]);
+        let result = pp.parse_include_directive("@include(\"file.bmb\"");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resolve_include_path_empty_search_paths() {
+        let pp = Preprocessor::new(vec![]);
+        let result = pp.resolve_include_path("missing.bmb", Path::new("/nonexistent"));
+        assert!(result.is_err());
+        if let Err(PreprocessorError::FileNotFound(_, searched)) = result {
+            assert_eq!(searched.len(), 1); // only relative path
+        }
+    }
+
+    #[test]
+    fn test_expand_whitespace_only() {
+        let result = expand_includes("   \n  \n   ", Path::new("test.bmb"), &[]).unwrap();
+        assert!(!result.contains("@include"));
+    }
+
+    #[test]
+    fn test_preprocessor_error_file_not_found_empty_searched() {
+        let err = PreprocessorError::FileNotFound("x.bmb".to_string(), vec![]);
+        let msg = format!("{}", err);
+        assert!(msg.contains("x.bmb"));
+        assert!(msg.contains("Searched in:"));
+    }
+
+    #[test]
+    fn test_expand_includes_preserves_comments() {
+        let source = "// this is a comment\nfn main() -> i64 = 0;";
+        let result = expand_includes(source, Path::new("test.bmb"), &[]).unwrap();
+        assert!(result.contains("// this is a comment"));
+    }
+
+    #[test]
+    fn test_preprocessor_error_io_display() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::Other, "custom error");
+        let pp_err = PreprocessorError::IoError(io_err);
+        let msg = format!("{}", pp_err);
+        assert!(msg.contains("IO error"));
+        assert!(msg.contains("custom error"));
+    }
+
+    #[test]
+    fn test_expand_with_prelude_both_args() {
+        // When prelude path is provided but doesn't exist, source should pass through
+        let source = "fn test() -> i64 = 1;";
+        let result = expand_with_prelude(
+            source,
+            Path::new("test.bmb"),
+            &[PathBuf::from("/some/path")],
+            Some(Path::new("/nonexistent/prelude.bmb")),
+        ).unwrap();
+        assert!(result.contains("fn test()"));
+    }
+
+    // ================================================================
+    // Additional preprocessor tests (Cycle 1242)
+    // ================================================================
+
+    #[test]
+    fn test_preprocessor_error_circular_display_path() {
+        let err = PreprocessorError::CircularInclude(PathBuf::from("/a/b/c.bmb"));
+        let msg = format!("{}", err);
+        assert!(msg.contains("Circular include"));
+        assert!(msg.contains("c.bmb"));
+    }
+
+    #[test]
+    fn test_parse_include_directive_tab_before_path() {
+        let pp = Preprocessor::new(vec![]);
+        // Tab character before quote
+        assert_eq!(
+            pp.parse_include_directive("@include\t\"file.bmb\"").unwrap(),
+            "file.bmb"
+        );
+    }
+
+    #[test]
+    fn test_expand_multiline_preserves_all_lines() {
+        let source = "fn a() -> i64 = 1;\nfn b() -> i64 = 2;\nfn c() -> i64 = 3;\nfn d() -> i64 = 4;";
+        let result = expand_includes(source, Path::new("test.bmb"), &[]).unwrap();
+        assert!(result.contains("fn a()"));
+        assert!(result.contains("fn b()"));
+        assert!(result.contains("fn c()"));
+        assert!(result.contains("fn d()"));
+    }
+
+    #[test]
+    fn test_preprocessor_new_single_include_path() {
+        let pp = Preprocessor::new(vec![PathBuf::from("/lib")]);
+        assert_eq!(pp.include_paths.len(), 1);
+        assert_eq!(pp.include_paths[0], PathBuf::from("/lib"));
+    }
+
+    #[test]
+    fn test_resolve_include_multiple_search_paths_not_found() {
+        let pp = Preprocessor::new(vec![
+            PathBuf::from("/nonexistent_a"),
+            PathBuf::from("/nonexistent_b"),
+            PathBuf::from("/nonexistent_c"),
+        ]);
+        let result = pp.resolve_include_path("missing.bmb", Path::new("/nonexistent_dir"));
+        assert!(result.is_err());
+        if let Err(PreprocessorError::FileNotFound(_, searched)) = result {
+            assert_eq!(searched.len(), 4); // relative + 3 search paths
+        }
+    }
+
+    #[test]
+    fn test_parse_include_directive_empty_path() {
+        let pp = Preprocessor::new(vec![]);
+        // Empty path inside quotes is syntactically valid
+        let result = pp.parse_include_directive("@include \"\"");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "");
+    }
+
+    #[test]
+    fn test_expand_includes_convenience_no_include_paths() {
+        let source = "// just a comment";
+        let result = expand_includes(source, Path::new("test.bmb"), &[]).unwrap();
+        assert!(result.contains("just a comment"));
+    }
+
+    #[test]
+    fn test_preprocessor_error_file_not_found_single() {
+        let err = PreprocessorError::FileNotFound(
+            "one.bmb".to_string(),
+            vec![PathBuf::from("./src")],
+        );
+        let msg = format!("{}", err);
+        assert!(msg.contains("one.bmb"));
+        assert!(msg.contains("./src"));
+    }
+
+    #[test]
+    fn test_expand_source_with_inline_comment_preserved() {
+        let source = "fn add(a: i64, b: i64) -> i64 = a + b; // inline comment";
+        let result = expand_includes(source, Path::new("test.bmb"), &[]).unwrap();
+        assert!(result.contains("// inline comment"));
+    }
+
+    #[test]
+    fn test_expand_with_prelude_none_with_include_paths() {
+        let source = "fn main() -> i64 = 0;";
+        let result = expand_with_prelude(
+            source,
+            Path::new("test.bmb"),
+            &[PathBuf::from("/lib"), PathBuf::from("/stdlib")],
+            None,
+        ).unwrap();
+        assert!(result.contains("fn main()"));
+    }
 }

@@ -421,6 +421,10 @@ void print_str(const BmbString* s) {
     if (s && s->data) printf("%s", s->data);
 }
 
+void print(int64_t n) {
+    bmb_print_i64(n);
+}
+
 void println(int64_t n) {
     bmb_println_i64(n);
 }
@@ -482,6 +486,28 @@ int64_t bmb_sb_push(int64_t handle, const BmbString* s) {
     // Append
     for (int64_t i = 0; i < slen; i++) {
         sb->data[sb->len + i] = s->data[i];
+    }
+    sb->len += slen;
+    sb->data[sb->len] = '\0';
+    return sb->len;
+}
+
+// v0.95.7: Push a substring range [start, end) without creating intermediate BmbString
+int64_t bmb_sb_push_range(int64_t handle, const BmbString* s, int64_t start, int64_t end) {
+    if (!s || !s->data || !handle || start >= end) return 0;
+    StringBuilder* sb = (StringBuilder*)handle;
+    if (start < 0) start = 0;
+    if (end > s->len) end = s->len;
+    int64_t slen = end - start;
+    if (slen <= 0) return sb->len;
+
+    while (sb->len + slen + 1 > sb->cap) {
+        sb->cap *= 2;
+        sb->data = (char*)realloc(sb->data, sb->cap);
+    }
+
+    for (int64_t i = 0; i < slen; i++) {
+        sb->data[sb->len + i] = s->data[start + i];
     }
     sb->len += slen;
     sb->data[sb->len] = '\0';
@@ -1266,6 +1292,11 @@ int64_t sb_with_capacity(int64_t capacity) {
 // v0.51.51: sb_push takes BmbString*
 int64_t sb_push(int64_t handle, const BmbString* s) {
     return bmb_sb_push(handle, s);
+}
+
+// v0.95.7: sb_push_range pushes substring [start, end) without allocating
+int64_t sb_push_range(int64_t handle, const BmbString* s, int64_t start, int64_t end) {
+    return bmb_sb_push_range(handle, s, start, end);
 }
 
 // v0.51.51: sb_push_cstr takes raw char* for internal use

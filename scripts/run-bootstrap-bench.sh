@@ -36,7 +36,7 @@ for bench in $BENCHMARKS; do
     boot_out="$RESULTS_DIR/${bench}_boot"
     boot_time="-"
     if $STAGE2 "$src" "${boot_out}.ll" 2>/dev/null; then
-        if opt -O3 -o "${boot_out}.bc" "${boot_out}.ll" 2>/dev/null; then
+        if opt -O3 --slp-max-vf=1 -o "${boot_out}.bc" "${boot_out}.ll" 2>/dev/null; then
             if llc -O3 -filetype=obj -o "${boot_out}.o" "${boot_out}.bc" 2>/dev/null; then
                 if gcc -o "${boot_out}.exe" "${boot_out}.o" "$RUNTIME" -lm 2>/dev/null; then
                     boot_time=$(time_run "${boot_out}.exe")

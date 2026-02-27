@@ -568,4 +568,110 @@ mod tests {
         let e = SolverError::ParseError("parse".to_string());
         assert!(format!("{}", e).contains("parse error"));
     }
+
+    // ================================================================
+    // Additional SMT solver tests (Cycle 1234)
+    // ================================================================
+
+    #[test]
+    fn test_solver_chaining() {
+        let solver = SmtSolver::new()
+            .with_path("/custom/z3")
+            .with_timeout(60);
+        assert_eq!(solver.z3_path, "/custom/z3");
+        assert_eq!(solver.timeout, 60);
+    }
+
+    #[test]
+    fn test_solver_error_clone() {
+        let e = SolverError::ProcessError("err".to_string());
+        let cloned = e.clone();
+        assert_eq!(format!("{}", e), format!("{}", cloned));
+    }
+
+    #[test]
+    fn test_counterexample_empty_model() {
+        let model = HashMap::new();
+        let ce = Counterexample::from_model(model);
+        assert!(ce.assignments.is_empty());
+    }
+
+    #[test]
+    fn test_solver_result_clone() {
+        let result = SolverResult::Unsat;
+        let cloned = result.clone();
+        assert!(matches!(cloned, SolverResult::Unsat));
+
+        let result = SolverResult::Unknown;
+        let cloned = result.clone();
+        assert!(matches!(cloned, SolverResult::Unknown));
+
+        let result = SolverResult::Timeout;
+        let cloned = result.clone();
+        assert!(matches!(cloned, SolverResult::Timeout));
+    }
+
+    #[test]
+    fn test_verify_result_clone() {
+        let v = VerifyResult::Verified;
+        let cloned = v.clone();
+        assert!(matches!(cloned, VerifyResult::Verified));
+
+        let v = VerifyResult::SolverNotAvailable;
+        let cloned = v.clone();
+        assert!(matches!(cloned, VerifyResult::SolverNotAvailable));
+    }
+
+    #[test]
+    fn test_counterexample_from_model_three_vars_sorted() {
+        let mut model = HashMap::new();
+        model.insert("z".to_string(), "3".to_string());
+        model.insert("a".to_string(), "1".to_string());
+        model.insert("m".to_string(), "2".to_string());
+        let ce = Counterexample::from_model(model);
+        assert_eq!(ce.assignments.len(), 3);
+        assert_eq!(ce.assignments[0].0, "a");
+        assert_eq!(ce.assignments[1].0, "m");
+        assert_eq!(ce.assignments[2].0, "z");
+    }
+
+    #[test]
+    fn test_parse_define_fun_with_spaces() {
+        let solver = SmtSolver::new();
+        let result = solver.parse_define_fun("(define-fun   var_name   ()   Int   99)");
+        assert_eq!(result, Some(("var_name".to_string(), "99".to_string())));
+    }
+
+    #[test]
+    fn test_parse_model_with_indented_lines() {
+        let solver = SmtSolver::new();
+        let lines = &[
+            "  (define-fun x () Int 1)",
+            "  (define-fun y () Int 2)",
+        ];
+        let model = solver.parse_model(lines);
+        assert_eq!(model.get("x"), Some(&"1".to_string()));
+        assert_eq!(model.get("y"), Some(&"2".to_string()));
+    }
+
+    #[test]
+    fn test_counterexample_display_multiple_vars() {
+        let ce = Counterexample {
+            assignments: vec![
+                ("a".to_string(), "1".to_string()),
+                ("b".to_string(), "2".to_string()),
+                ("__ret__".to_string(), "3".to_string()),
+            ],
+        };
+        let display = format!("{}", ce);
+        assert!(display.contains("a = 1"));
+        assert!(display.contains("b = 2"));
+        assert!(display.contains("ret = 3"));
+    }
+
+    #[test]
+    fn test_solver_error_is_std_error() {
+        let e: Box<dyn std::error::Error> = Box::new(SolverError::ParseError("test".to_string()));
+        assert!(e.to_string().contains("parse error: test"));
+    }
 }

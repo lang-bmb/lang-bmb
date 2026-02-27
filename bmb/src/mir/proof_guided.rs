@@ -1140,4 +1140,93 @@ mod tests {
         // ReturnCmp should be ignored in precondition analysis
         assert!(!facts.has_lower_bound("__ret__", 0));
     }
+
+    // ================================================================
+    // Additional proof-guided tests (Cycle 1237)
+    // ================================================================
+
+    #[test]
+    fn test_proven_fact_set_clone() {
+        let mut facts = ProvenFactSet::new();
+        facts.add_non_null("ptr");
+        facts.add_nonzero("div");
+        let cloned = facts.clone();
+        assert!(cloned.has_non_null("ptr"));
+        assert!(cloned.has_nonzero("div"));
+    }
+
+    #[test]
+    fn test_proven_fact_set_debug() {
+        let facts = ProvenFactSet::new();
+        let debug = format!("{:?}", facts);
+        assert!(debug.contains("ProvenFactSet"));
+    }
+
+    #[test]
+    fn test_bce_has_bounds_proof_from_array_bounds() {
+        let bce = BoundsCheckElimination::new();
+        let mut facts = ProvenFactSet::new();
+        facts.add_array_bounds("i", "arr");
+        assert!(bce.has_bounds_proof("arr", "i", &facts));
+    }
+
+    #[test]
+    fn test_bce_no_bounds_proof_empty() {
+        let bce = BoundsCheckElimination::new();
+        let facts = ProvenFactSet::new();
+        assert!(!bce.has_bounds_proof("arr", "i", &facts));
+    }
+
+    #[test]
+    fn test_nce_is_proven_non_null() {
+        let nce = NullCheckElimination::new();
+        let mut facts = ProvenFactSet::new();
+        facts.add_non_null("ptr");
+        assert!(nce.is_proven_non_null("ptr", &facts));
+        assert!(!nce.is_proven_non_null("other", &facts));
+    }
+
+    #[test]
+    fn test_dce_constant_nonzero() {
+        let dce = DivisionCheckElimination::new();
+        let facts = ProvenFactSet::new();
+        assert!(dce.is_proven_nonzero(&Operand::Constant(Constant::Int(5)), &facts));
+        assert!(!dce.is_proven_nonzero(&Operand::Constant(Constant::Int(0)), &facts));
+    }
+
+    #[test]
+    fn test_dce_float_constant_nonzero() {
+        let dce = DivisionCheckElimination::new();
+        let facts = ProvenFactSet::new();
+        assert!(dce.is_proven_nonzero(&Operand::Constant(Constant::Float(1.5)), &facts));
+        assert!(!dce.is_proven_nonzero(&Operand::Constant(Constant::Float(0.0)), &facts));
+    }
+
+    #[test]
+    fn test_stats_debug_format() {
+        let stats = ProofOptimizationStats::new();
+        let debug = format!("{:?}", stats);
+        assert!(debug.contains("ProofOptimizationStats"));
+    }
+
+    #[test]
+    fn test_merge_bounds_conservative() {
+        // x >= 5
+        let prec1 = vec![ContractFact::VarCmp { var: "x".to_string(), op: CmpOp::Ge, value: 5 }];
+        let mut facts1 = ProvenFactSet::from_mir_preconditions(&prec1);
+
+        // x >= 10
+        let prec2 = vec![ContractFact::VarCmp { var: "x".to_string(), op: CmpOp::Ge, value: 10 }];
+        let facts2 = ProvenFactSet::from_mir_preconditions(&prec2);
+
+        facts1.merge(&facts2);
+        // After merge, lower bound should be max(5, 10) = 10
+        assert!(facts1.has_lower_bound("x", 10));
+    }
+
+    #[test]
+    fn test_pue_eliminated_blocks_count() {
+        let pue = ProofUnreachableElimination::new();
+        assert_eq!(pue.eliminated_blocks(), 0);
+    }
 }

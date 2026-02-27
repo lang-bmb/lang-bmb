@@ -536,4 +536,237 @@ mod tests {
         assert!(summary.effects.reads);
         assert!(summary.effects.writes);
     }
+
+    // --- Cycle 1232: Additional Summary Tests ---
+
+    #[test]
+    fn test_termination_status_copy() {
+        let t = TerminationStatus::Terminating;
+        let t2 = t; // Copy
+        assert_eq!(t, t2);
+    }
+
+    #[test]
+    fn test_summary_change_clone() {
+        let c = SummaryChange::ContractChanged;
+        let c2 = c.clone();
+        assert_eq!(c, c2);
+    }
+
+    #[test]
+    fn test_has_unbounded_loop_letmut() {
+        let expr = CirExpr::LetMut {
+            name: "x".to_string(),
+            ty: CirType::I64,
+            value: Box::new(CirExpr::IntLit(0)),
+            body: Box::new(CirExpr::Loop {
+                body: Box::new(CirExpr::Break(Box::new(CirExpr::Unit))),
+            }),
+        };
+        assert!(has_unbounded_loop(&expr));
+    }
+
+    #[test]
+    fn test_has_unbounded_loop_assignment() {
+        let expr = CirExpr::Assign {
+            target: "x".to_string(),
+            value: Box::new(CirExpr::IntLit(42)),
+        };
+        assert!(!has_unbounded_loop(&expr));
+    }
+
+    #[test]
+    fn test_compare_summaries_postcondition_count_changed() {
+        let func1 = make_test_function("foo");
+        let summary1 = extract_function_summary(&func1);
+
+        let mut func2 = make_test_function("foo");
+        func2.postconditions = vec![]; // Remove postconditions
+        let summary2 = extract_function_summary(&func2);
+
+        assert_eq!(
+            compare_summaries(Some(&summary1), Some(&summary2)),
+            SummaryChange::ContractChanged
+        );
+    }
+
+    #[test]
+    fn test_body_hash_deterministic() {
+        let func = make_test_function("deterministic");
+        let hash1 = compute_body_hash(&func);
+        let hash2 = compute_body_hash(&func);
+        assert_eq!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_summary_no_contracts() {
+        let func = CirFunction {
+            name: "bare".to_string(),
+            type_params: vec![],
+            params: vec![],
+            ret_name: "result".to_string(),
+            ret_ty: CirType::I64,
+            preconditions: vec![],
+            postconditions: vec![],
+            loop_invariants: vec![],
+            effects: EffectSet::pure(),
+            body: CirExpr::IntLit(42),
+        };
+        let summary = extract_function_summary(&func);
+        assert!(summary.requires.is_empty());
+        assert!(summary.ensures.is_empty());
+        assert_eq!(summary.termination, TerminationStatus::Terminating);
+    }
+
+    #[test]
+    fn test_infer_termination_for_loop_bounded() {
+        let mut func = make_test_function("for_fn");
+        func.body = CirExpr::For {
+            var: "i".to_string(),
+            iter: Box::new(CirExpr::IntLit(10)),
+            body: Box::new(CirExpr::Unit),
+        };
+        assert_eq!(infer_termination(&func), TerminationStatus::Terminating);
+    }
+
+    #[test]
+    fn test_summary_verified_default_false() {
+        let func = make_test_function("unverified");
+        let summary = extract_function_summary(&func);
+        assert!(!summary.verified);
+    }
+
+    #[test]
+    fn test_function_summary_clone() {
+        let func = make_test_function("clone_test");
+        let summary = extract_function_summary(&func);
+        let cloned = summary.clone();
+        assert_eq!(cloned.requires.len(), summary.requires.len());
+        assert_eq!(cloned.ensures.len(), summary.ensures.len());
+        assert_eq!(cloned.termination, summary.termination);
+        assert_eq!(cloned.body_hash, summary.body_hash);
+    }
+
+    // ================================================================
+    // Additional summary tests (Cycle 1238)
+    // ================================================================
+
+    #[test]
+    fn test_termination_status_debug_format() {
+        assert!(format!("{:?}", TerminationStatus::Terminating).contains("Terminating"));
+        assert!(format!("{:?}", TerminationStatus::MayDiverge).contains("MayDiverge"));
+        assert!(format!("{:?}", TerminationStatus::NonTerminating).contains("NonTerminating"));
+        assert!(format!("{:?}", TerminationStatus::Unknown).contains("Unknown"));
+    }
+
+    #[test]
+    fn test_summary_change_debug_format() {
+        assert!(format!("{:?}", SummaryChange::Unchanged).contains("Unchanged"));
+        assert!(format!("{:?}", SummaryChange::ContractChanged).contains("ContractChanged"));
+        assert!(format!("{:?}", SummaryChange::ImplementationChanged).contains("ImplementationChanged"));
+        assert!(format!("{:?}", SummaryChange::Added).contains("Added"));
+        assert!(format!("{:?}", SummaryChange::Removed).contains("Removed"));
+    }
+
+    #[test]
+    fn test_function_summary_debug() {
+        let func = make_test_function("debug_test");
+        let summary = extract_function_summary(&func);
+        let debug = format!("{:?}", summary);
+        assert!(debug.contains("FunctionSummary"));
+        assert!(debug.contains("requires"));
+        assert!(debug.contains("ensures"));
+    }
+
+    #[test]
+    fn test_has_unbounded_loop_else_branch_only() {
+        let expr = CirExpr::If {
+            cond: Box::new(CirExpr::BoolLit(false)),
+            then_branch: Box::new(CirExpr::Unit),
+            else_branch: Box::new(CirExpr::While {
+                cond: Box::new(CirExpr::BoolLit(true)),
+                body: Box::new(CirExpr::Unit),
+                invariant: None,
+            }),
+        };
+        assert!(has_unbounded_loop(&expr));
+    }
+
+    #[test]
+    fn test_has_unbounded_loop_block_no_loop() {
+        let expr = CirExpr::Block(vec![
+            CirExpr::IntLit(1),
+            CirExpr::IntLit(2),
+            CirExpr::IntLit(3),
+        ]);
+        assert!(!has_unbounded_loop(&expr));
+    }
+
+    #[test]
+    fn test_body_hash_different_params() {
+        let func1 = make_test_function("same_fn");
+        let mut func2 = make_test_function("same_fn");
+        func2.params = vec![
+            CirParam {
+                name: "y".to_string(),
+                ty: CirType::Bool,
+                constraints: vec![],
+            },
+        ];
+        let hash1 = compute_body_hash(&func1);
+        let hash2 = compute_body_hash(&func2);
+        assert_ne!(hash1, hash2, "Different params should produce different hashes");
+    }
+
+    #[test]
+    fn test_extract_summaries_single_function() {
+        let program = CirProgram {
+            functions: vec![make_test_function("only_one")],
+            extern_fns: vec![],
+            structs: std::collections::HashMap::new(),
+            type_invariants: std::collections::HashMap::new(),
+        };
+        let summaries = extract_summaries(&program);
+        assert_eq!(summaries.len(), 1);
+        let (id, summary) = summaries.into_iter().next().unwrap();
+        assert_eq!(id.name, "only_one");
+        assert_eq!(summary.requires.len(), 1);
+        assert_eq!(summary.ensures.len(), 1);
+    }
+
+    #[test]
+    fn test_compare_summaries_added_then_removed() {
+        let func = make_test_function("lifecycle");
+        let summary = extract_function_summary(&func);
+        // Added
+        assert_eq!(compare_summaries(None, Some(&summary)), SummaryChange::Added);
+        // Removed
+        assert_eq!(compare_summaries(Some(&summary), None), SummaryChange::Removed);
+    }
+
+    #[test]
+    fn test_has_unbounded_loop_deeply_nested() {
+        let inner_loop = CirExpr::Loop {
+            body: Box::new(CirExpr::Break(Box::new(CirExpr::Unit))),
+        };
+        let nested = CirExpr::Block(vec![
+            CirExpr::Let {
+                name: "a".to_string(),
+                ty: CirType::I64,
+                value: Box::new(CirExpr::IntLit(1)),
+                body: Box::new(CirExpr::If {
+                    cond: Box::new(CirExpr::BoolLit(true)),
+                    then_branch: Box::new(inner_loop),
+                    else_branch: Box::new(CirExpr::Unit),
+                }),
+            },
+        ]);
+        assert!(has_unbounded_loop(&nested));
+    }
+
+    #[test]
+    fn test_summary_default_body_hash_zero() {
+        let summary = FunctionSummary::default();
+        assert_eq!(summary.body_hash, 0);
+    }
 }

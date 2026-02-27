@@ -678,4 +678,248 @@ mod tests {
         assert_eq!(db.stats().cache_hits, 0);
         assert_eq!(db.stats().cache_misses, 0);
     }
+
+    // ================================================================
+    // Additional proof_db tests (Cycle 1233)
+    // ================================================================
+
+    #[test]
+    fn test_proof_scope_function_variant() {
+        let id = FunctionId::simple("test_fn");
+        let scope = ProofScope::Function(id.clone());
+        let debug_str = format!("{:?}", scope);
+        assert!(debug_str.contains("Function"));
+        assert!(debug_str.contains("test_fn"));
+    }
+
+    #[test]
+    fn test_proof_scope_program_point() {
+        let id = FunctionId::simple("fn_at");
+        let scope = ProofScope::ProgramPoint {
+            function: id,
+            location: 42,
+        };
+        let debug_str = format!("{:?}", scope);
+        assert!(debug_str.contains("ProgramPoint"));
+        assert!(debug_str.contains("42"));
+    }
+
+    #[test]
+    fn test_proof_evidence_smt_proof() {
+        let evidence = ProofEvidence::SmtProof {
+            query_hash: 123456,
+            solver: "z3".to_string(),
+        };
+        let debug_str = format!("{:?}", evidence);
+        assert!(debug_str.contains("SmtProof"));
+        assert!(debug_str.contains("z3"));
+    }
+
+    #[test]
+    fn test_proof_evidence_function_call() {
+        let callee = FunctionId::simple("callee_fn");
+        let evidence = ProofEvidence::FunctionCall {
+            callee,
+            postcondition_index: 0,
+        };
+        let debug_str = format!("{:?}", evidence);
+        assert!(debug_str.contains("FunctionCall"));
+        assert!(debug_str.contains("callee_fn"));
+    }
+
+    #[test]
+    fn test_proof_evidence_trusted() {
+        let evidence = ProofEvidence::Trusted("user annotation".to_string());
+        let debug_str = format!("{:?}", evidence);
+        assert!(debug_str.contains("Trusted"));
+        assert!(debug_str.contains("user annotation"));
+    }
+
+    #[test]
+    fn test_function_id_equality() {
+        let id1 = FunctionId::new("mod", "fn", 42);
+        let id2 = FunctionId::new("mod", "fn", 42);
+        let id3 = FunctionId::new("mod", "fn", 99);
+        assert_eq!(id1, id2);
+        assert_ne!(id1, id3); // Different signature hash
+    }
+
+    #[test]
+    fn test_function_id_as_hashmap_key() {
+        let id1 = FunctionId::new("mod", "fn1", 0);
+        let id2 = FunctionId::new("mod", "fn2", 0);
+        let mut map = HashMap::new();
+        map.insert(id1.clone(), "first");
+        map.insert(id2.clone(), "second");
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.get(&id1), Some(&"first"));
+        assert_eq!(map.get(&id2), Some(&"second"));
+    }
+
+    #[test]
+    fn test_clear_resets_stats_fully() {
+        let mut db = ProofDatabase::new();
+        let id = FunctionId::simple("f");
+        db.store_function_proof(&id, FunctionProofResult {
+            status: VerificationStatus::Verified,
+            smt_queries: 10,
+            verification_time: Duration::from_millis(500),
+            ..FunctionProofResult::default()
+        });
+        db.get_function_proof(&id); // cache hit
+        let _ = db.get_function_proof(&FunctionId::simple("missing")); // cache miss
+
+        db.clear();
+        assert_eq!(db.stats().functions_stored, 0);
+        assert_eq!(db.stats().cache_hits, 0);
+        assert_eq!(db.stats().cache_misses, 0);
+        assert_eq!(db.stats().total_smt_queries, 0);
+        assert_eq!(db.stats().total_verification_time, Duration::ZERO);
+    }
+
+    #[test]
+    fn test_file_hash_matches_different_files() {
+        let mut db = ProofDatabase::new();
+        let path1 = PathBuf::from("a.bmb");
+        let path2 = PathBuf::from("b.bmb");
+
+        db.update_file_hash(&path1, 111);
+        assert!(db.file_hash_matches(&path1, 111));
+        assert!(!db.file_hash_matches(&path2, 111)); // Different file
+    }
+
+    #[test]
+    fn test_proof_db_stats_default() {
+        let stats = ProofDbStats::default();
+        assert_eq!(stats.functions_stored, 0);
+        assert_eq!(stats.cache_hits, 0);
+        assert_eq!(stats.cache_misses, 0);
+        assert_eq!(stats.total_smt_queries, 0);
+        assert_eq!(stats.total_verification_time, Duration::ZERO);
+    }
+
+    // ================================================================
+    // Additional proof_db tests (Cycle 1240)
+    // ================================================================
+
+    #[test]
+    fn test_proof_scope_conditional_variant() {
+        use crate::cir::Proposition;
+        let id = FunctionId::simple("cond_fn");
+        let scope = ProofScope::Conditional {
+            condition: Box::new(Proposition::True),
+            inner: Box::new(ProofScope::Function(id)),
+        };
+        let debug_str = format!("{:?}", scope);
+        assert!(debug_str.contains("Conditional"));
+        assert!(debug_str.contains("True"));
+        assert!(debug_str.contains("cond_fn"));
+    }
+
+    #[test]
+    fn test_proof_evidence_type_invariant() {
+        let evidence = ProofEvidence::TypeInvariant("i64 >= 0".to_string());
+        let debug_str = format!("{:?}", evidence);
+        assert!(debug_str.contains("TypeInvariant"));
+        assert!(debug_str.contains("i64 >= 0"));
+    }
+
+    #[test]
+    fn test_proof_evidence_control_flow_debug() {
+        let evidence = ProofEvidence::ControlFlow;
+        let debug_str = format!("{:?}", evidence);
+        assert_eq!(debug_str, "ControlFlow");
+    }
+
+    #[test]
+    fn test_proof_evidence_precondition_debug() {
+        let evidence = ProofEvidence::Precondition;
+        let debug_str = format!("{:?}", evidence);
+        assert_eq!(debug_str, "Precondition");
+    }
+
+    #[test]
+    fn test_function_proof_result_clone() {
+        use crate::cir::Proposition;
+        let result = FunctionProofResult {
+            status: VerificationStatus::Verified,
+            proven_facts: vec![ProofFact {
+                proposition: Proposition::True,
+                scope: ProofScope::Function(FunctionId::simple("f")),
+                evidence: ProofEvidence::Precondition,
+            }],
+            verification_time: Duration::from_millis(42),
+            smt_queries: 3,
+            verified_at: 100,
+        };
+        let cloned = result.clone();
+        assert_eq!(cloned.smt_queries, 3);
+        assert_eq!(cloned.verified_at, 100);
+        assert_eq!(cloned.proven_facts.len(), 1);
+        assert!(cloned.status.is_verified());
+    }
+
+    #[test]
+    fn test_proof_db_stats_clone() {
+        let stats = ProofDbStats {
+            functions_stored: 5,
+            cache_hits: 10,
+            cache_misses: 2,
+            total_smt_queries: 20,
+            total_verification_time: Duration::from_millis(500),
+        };
+        let cloned = stats.clone();
+        assert_eq!(cloned.functions_stored, 5);
+        assert_eq!(cloned.cache_hits, 10);
+        assert_eq!(cloned.cache_misses, 2);
+        assert_eq!(cloned.total_smt_queries, 20);
+        assert_eq!(cloned.total_verification_time, Duration::from_millis(500));
+    }
+
+    #[test]
+    fn test_verification_status_trusted_is_verified() {
+        let status = VerificationStatus::Trusted("manual audit".to_string());
+        assert!(status.is_verified());
+        assert!(!status.is_failed());
+    }
+
+    #[test]
+    fn test_verification_status_failed_variants() {
+        let status = VerificationStatus::Failed("precondition violated".to_string());
+        assert!(status.is_failed());
+        assert!(!status.is_verified());
+
+        let status2 = VerificationStatus::Failed("".to_string());
+        assert!(status2.is_failed());
+    }
+
+    #[test]
+    fn test_store_overwrite_accumulates_smt_queries() {
+        let mut db = ProofDatabase::new();
+        let id = FunctionId::simple("f");
+
+        db.store_function_proof(&id, FunctionProofResult {
+            smt_queries: 5,
+            ..FunctionProofResult::default()
+        });
+        db.store_function_proof(&id, FunctionProofResult {
+            smt_queries: 3,
+            ..FunctionProofResult::default()
+        });
+
+        // Both stores accumulate smt_queries in stats (5 + 3 = 8)
+        assert_eq!(db.stats().total_smt_queries, 8);
+        // But only one function is stored
+        assert_eq!(db.len(), 1);
+    }
+
+    #[test]
+    fn test_proof_database_debug_format() {
+        let db = ProofDatabase::new();
+        let debug_str = format!("{:?}", db);
+        assert!(debug_str.contains("ProofDatabase"));
+        assert!(debug_str.contains("function_proofs"));
+        assert!(debug_str.contains("file_hashes"));
+        assert!(debug_str.contains("stats"));
+    }
 }

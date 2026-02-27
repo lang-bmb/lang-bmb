@@ -179,6 +179,7 @@ impl Interpreter {
             .insert("sb_with_capacity".to_string(), builtin_sb_with_capacity);  // v0.51.45
         self.builtins.insert("sb_push".to_string(), builtin_sb_push);
         self.builtins.insert("sb_push_char".to_string(), builtin_sb_push_char);
+        self.builtins.insert("sb_push_range".to_string(), builtin_sb_push_range);
         self.builtins.insert("sb_build".to_string(), builtin_sb_build);
         self.builtins.insert("sb_len".to_string(), builtin_sb_len);
         self.builtins.insert("sb_clear".to_string(), builtin_sb_clear);
@@ -8149,6 +8150,34 @@ fn builtin_sb_push_char(args: &[Value]) -> InterpResult<Value> {
     }
 }
 
+/// sb_push_range(id: i64, s: String, start: i64, end: i64) -> i64
+/// Appends substring s[start..end] to the builder without creating intermediate string.
+fn builtin_sb_push_range(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 4 {
+        return Err(RuntimeError::arity_mismatch("sb_push_range", 4, args.len()));
+    }
+    match (&args[0], &args[1], &args[2], &args[3]) {
+        (Value::Int(id), Value::Str(s), Value::Int(start), Value::Int(end)) => {
+            let start = *start as usize;
+            let end = (*end as usize).min(s.len());
+            if start >= end {
+                return Ok(Value::Int(*id));
+            }
+            let substring = &s[start..end];
+            STRING_BUILDERS.with(|builders| {
+                let mut map = builders.borrow_mut();
+                if let Some(builder) = map.get_mut(id) {
+                    builder.push(substring.to_string());
+                    Ok(Value::Int(*id))
+                } else {
+                    Err(RuntimeError::io_error(&format!("Invalid string builder ID: {}", id)))
+                }
+            })
+        }
+        _ => Err(RuntimeError::type_error("(i64, String, i64, i64)", "other")),
+    }
+}
+
 /// sb_build(id: i64) -> String
 /// Materializes the builder into a single string and removes the builder.
 fn builtin_sb_build(args: &[Value]) -> InterpResult<Value> {
@@ -11415,5 +11444,271 @@ mod tests {
     fn test_negate_integer() {
         let result = run_program("fn main() -> i64 = -(42);");
         assert_eq!(result, Value::Int(-42));
+    }
+
+    // ================================================================
+    // Cycle 1221: Advanced Interpreter Tests
+    // ================================================================
+
+    // --- Closure Invocation ---
+
+    #[test]
+    fn test_closure_call_result() {
+        let result = run_program("fn main() -> i64 = { let f = fn |x: i64| { x + 10 }; f(5) };");
+        assert_eq!(result, Value::Int(15));
+    }
+
+    #[test]
+    fn test_closure_capture_value() {
+        let result = run_program("fn main() -> i64 = { let base = 100; let f = fn |x: i64| { base + x }; f(5) };");
+        assert_eq!(result, Value::Int(105));
+    }
+
+    #[test]
+    fn test_closure_multi_param_call() {
+        let result = run_program("fn main() -> i64 = { let add = fn |a: i64, b: i64| { a + b }; add(3, 7) };");
+        assert_eq!(result, Value::Int(10));
+    }
+
+    #[test]
+    fn test_closure_empty_params_call() {
+        let result = run_program("fn main() -> i64 = { let f = fn || { 42 }; f() };");
+        assert_eq!(result, Value::Int(42));
+    }
+
+    // --- For Loop ---
+
+    #[test]
+    fn test_for_loop_sum_exclusive() {
+        let result = run_program("fn main() -> i64 = { let mut s = 0; for i in 0..5 { s = s + i }; s };");
+        assert_eq!(result, Value::Int(10));
+    }
+
+    #[test]
+    fn test_for_loop_nested() {
+        let result = run_program("fn main() -> i64 = { let mut s = 0; for i in 0..3 { for j in 0..3 { s = s + 1 } }; s };");
+        assert_eq!(result, Value::Int(9));
+    }
+
+    // --- While Loop ---
+
+    #[test]
+    fn test_while_countdown() {
+        let result = run_program("fn main() -> i64 = { let mut n = 10; while n > 0 { n = n - 1 }; n };");
+        assert_eq!(result, Value::Int(0));
+    }
+
+    // --- Loop with Break ---
+
+    #[test]
+    fn test_loop_break_early() {
+        let result = run_program("fn main() -> i64 = { let mut x = 0; loop { if x >= 5 { break } else { x = x + 1 } }; x };");
+        assert_eq!(result, Value::Int(5));
+    }
+
+    // --- Match Patterns ---
+
+    #[test]
+    fn test_match_int_cases() {
+        let result = run_program(r#"
+            fn classify(x: i64) -> i64 = match x { 1 => 10, 2 => 20, 3 => 30, _ => 0 };
+            fn main() -> i64 = classify(2);
+        "#);
+        assert_eq!(result, Value::Int(20));
+    }
+
+    #[test]
+    fn test_match_wildcard_result() {
+        let result = run_program(r#"
+            fn classify(x: i64) -> i64 = match x { 1 => 10, _ => 99 };
+            fn main() -> i64 = classify(42);
+        "#);
+        assert_eq!(result, Value::Int(99));
+    }
+
+    #[test]
+    fn test_match_bool_cases() {
+        let result = run_program(r#"
+            fn to_int(b: bool) -> i64 = match b { true => 1, false => 0 };
+            fn main() -> i64 = to_int(true);
+        "#);
+        assert_eq!(result, Value::Int(1));
+    }
+
+    // --- Recursive Functions ---
+
+    #[test]
+    fn test_recursive_factorial_basic() {
+        let result = run_program(r#"
+            fn fact(n: i64) -> i64 = if n <= 1 { 1 } else { n * fact(n - 1) };
+            fn main() -> i64 = fact(5);
+        "#);
+        assert_eq!(result, Value::Int(120));
+    }
+
+    #[test]
+    fn test_recursive_fibonacci_interp() {
+        let result = run_program(r#"
+            fn fib(n: i64) -> i64 = if n <= 1 { n } else { fib(n - 1) + fib(n - 2) };
+            fn main() -> i64 = fib(10);
+        "#);
+        assert_eq!(result, Value::Int(55));
+    }
+
+    // --- Multi-function Programs ---
+
+    #[test]
+    fn test_multi_function_chain() {
+        let result = run_program(r#"
+            fn add(a: i64, b: i64) -> i64 = a + b;
+            fn double(x: i64) -> i64 = add(x, x);
+            fn quad(x: i64) -> i64 = double(double(x));
+            fn main() -> i64 = quad(3);
+        "#);
+        assert_eq!(result, Value::Int(12));
+    }
+
+    // --- Tuple Operations ---
+
+    #[test]
+    fn test_tuple_creation_interp() {
+        let result = run_program("fn main() -> i64 = { let t = (10, 20); t.0 };");
+        assert_eq!(result, Value::Int(10));
+    }
+
+    #[test]
+    fn test_tuple_second_field() {
+        let result = run_program("fn main() -> i64 = { let t = (10, 20); t.1 };");
+        assert_eq!(result, Value::Int(20));
+    }
+
+    // --- Array Operations ---
+
+    #[test]
+    fn test_array_index_value() {
+        let result = run_program("fn main() -> i64 = { let arr = [10, 20, 30]; arr[1] };");
+        assert_eq!(result, Value::Int(20));
+    }
+
+    #[test]
+    fn test_array_mutation_interp() {
+        let result = run_program("fn main() -> i64 = { let mut arr = [1, 2, 3]; set arr[0] = 99; arr[0] };");
+        assert_eq!(result, Value::Int(99));
+    }
+
+    // --- Float Operations ---
+
+    #[test]
+    fn test_float_add() {
+        let result = run_program("fn main() -> f64 = 3.0 + 4.0;");
+        assert_eq!(result, Value::Float(7.0));
+    }
+
+    #[test]
+    fn test_float_comparison_result() {
+        let result = run_program("fn main() -> bool = 3.14 > 2.71;");
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    // --- String Operations ---
+
+    #[test]
+    fn test_string_literal_interp() {
+        let result = run_program(r#"fn main() -> String = "hello";"#);
+        assert_eq!(result, Value::Str(Rc::new("hello".to_string())));
+    }
+
+    // --- Type Cast ---
+
+    #[test]
+    fn test_cast_i64_to_f64_interp() {
+        let result = run_program("fn main() -> f64 = 42 as f64;");
+        assert_eq!(result, Value::Float(42.0));
+    }
+
+    // --- Block Expressions ---
+
+    #[test]
+    fn test_block_expression_result() {
+        let result = run_program("fn main() -> i64 = { let x = 10; let y = 20; x + y };");
+        assert_eq!(result, Value::Int(30));
+    }
+
+    #[test]
+    fn test_nested_blocks() {
+        let result = run_program("fn main() -> i64 = { let a = { let b = 5; b * 2 }; a + 1 };");
+        assert_eq!(result, Value::Int(11));
+    }
+
+    // --- If-Else Expression ---
+
+    #[test]
+    fn test_if_else_as_expression() {
+        let result = run_program("fn main() -> i64 = if true { 10 } else { 20 };");
+        assert_eq!(result, Value::Int(10));
+    }
+
+    #[test]
+    fn test_nested_if_else_interp() {
+        let result = run_program("fn main() -> i64 = if false { 1 } else { if true { 2 } else { 3 } };");
+        assert_eq!(result, Value::Int(2));
+    }
+
+    // --- Logical Operators ---
+
+    #[test]
+    fn test_logical_and_result() {
+        let result = run_program("fn main() -> bool = true and false;");
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_logical_or_result() {
+        let result = run_program("fn main() -> bool = false or true;");
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    // --- Comparison Operators ---
+
+    #[test]
+    fn test_comparison_chain() {
+        let result = run_program("fn main() -> bool = 5 > 3 and 3 > 1;");
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    // --- Complex Programs ---
+
+    #[test]
+    fn test_gcd_algorithm() {
+        let result = run_program(r#"
+            fn gcd(a: i64, b: i64) -> i64 = if b == 0 { a } else { gcd(b, a - (a / b) * b) };
+            fn main() -> i64 = gcd(48, 18);
+        "#);
+        assert_eq!(result, Value::Int(6));
+    }
+
+    #[test]
+    fn test_power_function() {
+        let result = run_program(r#"
+            fn power(base: i64, exp: i64) -> i64 =
+                if exp == 0 { 1 }
+                else { base * power(base, exp - 1) };
+            fn main() -> i64 = power(2, 10);
+        "#);
+        assert_eq!(result, Value::Int(1024));
+    }
+
+    #[test]
+    fn test_accumulator_pattern() {
+        let result = run_program(r#"
+            fn sum_to(n: i64) -> i64 = {
+                let mut acc = 0;
+                let mut i = 1;
+                while i <= n { acc = acc + i; i = i + 1 };
+                acc
+            };
+            fn main() -> i64 = sum_to(100);
+        "#);
+        assert_eq!(result, Value::Int(5050));
     }
 }

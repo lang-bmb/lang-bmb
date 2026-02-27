@@ -23882,3 +23882,332 @@ fn test_set_var_conditional() {
     );
 }
 
+// ============================================
+// Cycle 1223: Error Diagnostics & Type Error Integration Tests
+// ============================================
+
+// --- Type Error Messages ---
+
+#[test]
+fn test_error_add_int_and_bool() {
+    assert!(type_error("fn main() -> i64 = 1 + true;"));
+}
+
+#[test]
+fn test_error_negate_string_literal() {
+    assert!(type_error(
+        r#"fn main() -> String = -"hello";"#
+    ));
+}
+
+#[test]
+fn test_error_return_bool_for_i64() {
+    assert!(type_error("fn main() -> i64 = false;"));
+}
+
+#[test]
+fn test_error_return_string_for_i64() {
+    assert!(type_error(r#"fn main() -> i64 = "hello";"#));
+}
+
+#[test]
+fn test_error_if_cond_is_int() {
+    assert!(type_error("fn main() -> i64 = if 42 { 1 } else { 0 };"));
+}
+
+#[test]
+fn test_error_if_branches_int_vs_string() {
+    assert!(type_error(r#"fn main() -> i64 = if true { 1 } else { "no" };"#));
+}
+
+#[test]
+fn test_error_call_nonexistent_function() {
+    assert!(type_error("fn main() -> i64 = ghost(42);"));
+}
+
+#[test]
+fn test_error_three_args_for_binary_fn() {
+    assert!(type_error(
+        "fn add(a: i64, b: i64) -> i64 = a + b;\nfn main() -> i64 = add(1, 2, 3);"
+    ));
+}
+
+#[test]
+fn test_error_one_arg_for_binary_fn() {
+    assert!(type_error(
+        "fn add(a: i64, b: i64) -> i64 = a + b;\nfn main() -> i64 = add(1);"
+    ));
+}
+
+#[test]
+fn test_error_use_undeclared_var() {
+    assert!(type_error("fn main() -> i64 = x;"));
+}
+
+#[test]
+fn test_error_struct_string_for_int_field() {
+    assert!(type_error(r#"
+        struct Point { x: i64, y: i64 }
+        fn main() -> i64 = { let p = new Point { x: "hello", y: 2 }; p.x };
+    "#));
+}
+
+#[test]
+fn test_error_match_arms_int_vs_string() {
+    assert!(type_error(r#"
+        fn main() -> i64 = match 1 { 1 => 10, _ => "no" };
+    "#));
+}
+
+#[test]
+fn test_error_while_cond_is_int() {
+    assert!(type_error("fn main() -> i64 = { while 1 { () }; 0 };"));
+}
+
+#[test]
+fn test_error_for_range_string_bounds() {
+    assert!(type_error(r#"fn main() -> i64 = { for i in "a".."z" { () }; 0 };"#));
+}
+
+#[test]
+fn test_error_struct_duplicate_field_name() {
+    assert!(type_error("struct Pair { x: i64, x: i64 }\nfn main() -> i64 = 0;"));
+}
+
+#[test]
+fn test_error_closure_returns_wrong_type() {
+    // Closure used in context expecting i64 but body returns bool
+    assert!(type_error(r#"
+        fn main() -> i64 = {
+            let f = fn |x: i64| { true };
+            f(42)
+        };
+    "#));
+}
+
+// --- Warning Detection ---
+
+#[test]
+fn test_warning_unused_let_binding() {
+    assert!(has_warning_kind(
+        "fn main() -> i64 = { let unused = 42; 0 };",
+        "unused_binding"
+    ));
+}
+
+#[test]
+fn test_warning_shadow_let_rebinding() {
+    assert!(has_warning_kind(
+        "fn main() -> i64 = { let x = 1; let x = 2; x };",
+        "shadow_binding"
+    ));
+}
+
+#[test]
+fn test_warning_add_zero_identity() {
+    assert!(has_warning_kind(
+        "fn main() -> i64 = { let x = 5; x + 0 };",
+        "identity_operation"
+    ));
+}
+
+#[test]
+fn test_warning_if_true_literal() {
+    assert!(has_warning_kind(
+        "fn main() -> i64 = if true { 1 } else { 0 };",
+        "constant_condition"
+    ));
+}
+
+#[test]
+fn test_warning_compare_var_to_itself() {
+    assert!(has_warning_kind(
+        "fn main() -> bool = { let x = 5; x == x };",
+        "self_comparison"
+    ));
+}
+
+// --- Parse Error Detection ---
+
+#[test]
+fn test_parse_error_no_trailing_semicolon() {
+    assert!(check_program("fn main() -> i64 = 42").is_err());
+}
+
+#[test]
+fn test_parse_error_no_return_type_arrow() {
+    assert!(check_program("fn main() = 42;").is_err());
+}
+
+#[test]
+fn test_parse_error_unmatched_brace() {
+    assert!(check_program("fn main() -> i64 = { 42;").is_err());
+}
+
+#[test]
+fn test_parse_error_int_as_fn_name() {
+    assert!(check_program("fn 42() -> i64 = 0;").is_err());
+}
+
+// --- Successful Complex Programs (Integration) ---
+
+#[test]
+fn test_integration_closure_let_and_call() {
+    assert_eq!(
+        run_program_i64(r#"
+            fn main() -> i64 = {
+                let triple = fn |n: i64| { n * 3 };
+                triple(14)
+            };
+        "#),
+        42
+    );
+}
+
+#[test]
+fn test_integration_closure_identity_fn() {
+    assert_eq!(
+        run_program_i64(r#"
+            fn main() -> i64 = {
+                let id = fn |n: i64| { n };
+                id(99)
+            };
+        "#),
+        99
+    );
+}
+
+#[test]
+fn test_integration_nested_match() {
+    assert_eq!(
+        run_program_i64(r#"
+            fn classify(x: i64) -> i64 = match x {
+                0 => 0,
+                1 => match x { 1 => 100, _ => 0 },
+                _ => -1
+            };
+            fn main() -> i64 = classify(1);
+        "#),
+        100
+    );
+}
+
+#[test]
+fn test_integration_mutual_recursion() {
+    assert_eq!(
+        run_program_i64(r#"
+            fn is_even(n: i64) -> bool = if n == 0 { true } else { is_odd(n - 1) };
+            fn is_odd(n: i64) -> bool = if n == 0 { false } else { is_even(n - 1) };
+            fn main() -> i64 = if is_even(10) { 1 } else { 0 };
+        "#),
+        1
+    );
+}
+
+#[test]
+fn test_integration_struct_with_trait() {
+    assert_eq!(
+        run_program_i64(r#"
+            struct Counter { value: i64 }
+            trait Incrementable { fn incr(self: Self) -> i64; }
+            impl Incrementable for Counter {
+                fn incr(self: Self) -> i64 = self.value + 1;
+            }
+            fn main() -> i64 = {
+                let c = new Counter { value: 41 };
+                c.incr()
+            };
+        "#),
+        42
+    );
+}
+
+#[test]
+fn test_integration_for_loop_with_array_sum() {
+    assert_eq!(
+        run_program_i64(r#"
+            fn main() -> i64 = {
+                let arr = [10, 20, 30, 40, 50];
+                let mut sum = 0;
+                for i in 0..5 {
+                    set sum = sum + arr[i]
+                };
+                sum
+            };
+        "#),
+        150
+    );
+}
+
+#[test]
+fn test_integration_fibonacci_loop() {
+    assert_eq!(
+        run_program_i64(r#"
+            fn fib(n: i64) -> i64 = {
+                let mut a = 0;
+                let mut b = 1;
+                let mut i = 0;
+                while i < n {
+                    let temp = b;
+                    set b = a + b;
+                    set a = temp;
+                    set i = i + 1
+                };
+                a
+            };
+            fn main() -> i64 = fib(10);
+        "#),
+        55
+    );
+}
+
+#[test]
+fn test_integration_enum_match_computation() {
+    assert_eq!(
+        run_program_i64(r#"
+            enum Op { Add, Sub, Mul }
+            fn compute(op: Op, a: i64, b: i64) -> i64 = match op {
+                Op::Add => a + b,
+                Op::Sub => a - b,
+                Op::Mul => a * b
+            };
+            fn main() -> i64 = compute(Op::Mul, 6, 7);
+        "#),
+        42
+    );
+}
+
+#[test]
+fn test_integration_tuple_swap() {
+    assert_eq!(
+        run_program_i64(r#"
+            fn main() -> i64 = {
+                let t = (10, 20);
+                let swapped = (t.1, t.0);
+                swapped.0
+            };
+        "#),
+        20
+    );
+}
+
+#[test]
+fn test_integration_gcd_iterative() {
+    assert_eq!(
+        run_program_i64(r#"
+            fn gcd(a: i64, b: i64) -> i64 = {
+                let mut x = a;
+                let mut y = b;
+                while y != 0 {
+                    let temp = y;
+                    set y = x - (x / y) * y;
+                    set x = temp
+                };
+                x
+            };
+            fn main() -> i64 = gcd(48, 18);
+        "#),
+        6
+    );
+}
+

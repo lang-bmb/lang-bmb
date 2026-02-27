@@ -101,7 +101,7 @@ while IFS= read -r line || [ -n "$line" ]; do
     fi
 
     # Step 2: Optimize
-    if ! timeout "$OPT_TIMEOUT" opt -O2 -S "$IR_FILE" -o "$OPT_FILE" 2>/dev/null; then
+    if ! timeout "$OPT_TIMEOUT" opt -O2 --slp-max-vf=1 -S "$IR_FILE" -o "$OPT_FILE" 2>/dev/null; then
         echo -e "${RED}FAIL (opt)${NC}"
         ((FAILED++)) || true
         continue

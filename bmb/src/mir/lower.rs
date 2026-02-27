@@ -2386,7 +2386,7 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             // String methods have known return types
             let ret_type = match method.as_str() {
                 "len" | "byte_at" => MirType::I64,
-                "slice" => MirType::String,
+                "slice" | "replace" => MirType::String,
                 // Default to checking user-defined function return types
                 _ => ctx.func_return_types.get(method).cloned().unwrap_or(MirType::I64),
             };
@@ -5801,5 +5801,404 @@ mod tests {
         });
         assert!(has_cast, "Expected Cast from I64 to F64 for (a as f64)");
         assert!(has_fadd, "Expected FAdd for float addition after cast");
+    }
+
+    // =========================================================================
+    // Cycle 1218: Complex Match, Nested Loops, Advanced Control Flow
+    // =========================================================================
+
+    #[test]
+    fn test_lower_match_multiple_int_arms() {
+        let mir = parse_and_lower(
+            "fn classify(x: i64) -> i64 = match x { 0 => 100, 1 => 200, 2 => 300, _ => 0 };"
+        );
+        let func = &mir.functions[0];
+        // Should have Switch terminator for multiple literal arms
+        let has_switch = func.blocks.iter().any(|b| matches!(b.terminator, Terminator::Switch { .. }));
+        let has_branch = func.blocks.iter().any(|b| matches!(b.terminator, Terminator::Branch { .. }));
+        assert!(has_switch || has_branch, "Match with multiple int arms should use Switch or cascading Branch");
+    }
+
+    #[test]
+    fn test_lower_match_bool_two_arms() {
+        let mir = parse_and_lower(
+            "fn bool_match(b: bool) -> i64 = match b { true => 1, false => 0 };"
+        );
+        let func = &mir.functions[0];
+        assert!(func.blocks.len() >= 2, "Bool match should create multiple blocks");
+    }
+
+    #[test]
+    fn test_lower_match_with_guard_pattern() {
+        let mir = parse_and_lower(
+            "fn guarded(x: i64) -> i64 = match x { n if n > 0 => n, _ => 0 };"
+        );
+        let func = &mir.functions[0];
+        // Guard creates additional blocks for comparison
+        assert!(func.blocks.len() >= 2, "Guard match should create multiple blocks: {:#?}", func);
+    }
+
+    #[test]
+    fn test_lower_nested_if_else_deep() {
+        let mir = parse_and_lower(
+            "fn nested(x: i64) -> i64 = if x > 0 { if x > 10 { 2 } else { 1 } } else { 0 };"
+        );
+        let func = &mir.functions[0];
+        // Nested if/else creates more blocks
+        assert!(func.blocks.len() >= 5, "Nested if-else should create >= 5 blocks, got {}", func.blocks.len());
+        // At least two Branch terminators
+        let branch_count = func.blocks.iter()
+            .filter(|b| matches!(b.terminator, Terminator::Branch { .. }))
+            .count();
+        assert!(branch_count >= 2, "Expected >= 2 Branch terminators, got {}", branch_count);
+    }
+
+    #[test]
+    fn test_lower_nested_while_loops_depth_2() {
+        let mir = parse_and_lower(
+            "fn nested_loops() -> i64 = { let mut sum = 0; let mut i = 0; while i < 3 { let mut j = 0; while j < 3 { sum = sum + 1; j = j + 1; 0 }; i = i + 1; 0 }; sum };"
+        );
+        let func = &mir.functions[0];
+        // Nested while loops create many blocks
+        assert!(func.blocks.len() >= 6, "Nested while should create >= 6 blocks, got {}", func.blocks.len());
+        // Two back-edges (gotos to loop headers)
+        let goto_count = func.blocks.iter()
+            .filter(|b| matches!(b.terminator, Terminator::Goto(_)))
+            .count();
+        assert!(goto_count >= 2, "Expected >= 2 Goto terminators for nested loop back-edges, got {}", goto_count);
+    }
+
+    #[test]
+    fn test_lower_for_loop_with_accumulation() {
+        let mir = parse_and_lower(
+            "fn sum_range() -> i64 = { let mut total = 0; for i in 0..100 { total = total + i; 0 }; total };"
+        );
+        let func = &mir.functions[0];
+        // For loop should have condition, body, and exit blocks
+        assert!(func.blocks.len() >= 3, "For loop should create >= 3 blocks");
+        let has_lt = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Lt, .. }))
+        });
+        assert!(has_lt, "For loop condition should use Lt comparison");
+    }
+
+    #[test]
+    fn test_lower_loop_with_break_exit() {
+        let mir = parse_and_lower(
+            "fn find_first() -> i64 = { let mut i = 0; loop { if i >= 10 { break } else { () }; i = i + 1 }; i };"
+        );
+        let func = &mir.functions[0];
+        // The 'break' should create a Goto to the loop exit
+        let has_goto = func.blocks.iter()
+            .filter(|b| matches!(b.terminator, Terminator::Goto(_)))
+            .count();
+        assert!(has_goto >= 1, "Break in loop should create Goto to exit");
+    }
+
+    #[test]
+    fn test_lower_loop_with_continue_skip() {
+        let mir = parse_and_lower(
+            "fn skip_evens() -> i64 = { let mut sum = 0; let mut i = 0; loop { if i >= 10 { break } else { () }; if i % 2 == 0 { i = i + 1; continue } else { () }; sum = sum + i; i = i + 1 }; sum };"
+        );
+        let func = &mir.functions[0];
+        // Continue should create a Goto to the loop header
+        let goto_count = func.blocks.iter()
+            .filter(|b| matches!(b.terminator, Terminator::Goto(_)))
+            .count();
+        assert!(goto_count >= 2, "Continue + loop back-edge should create >= 2 Gotos, got {}", goto_count);
+    }
+
+    #[test]
+    fn test_lower_if_as_expression() {
+        let mir = parse_and_lower(
+            "fn cond_val(x: i64) -> i64 = { let y = if x > 0 { x + 1 } else { x - 1 }; y * 2 };"
+        );
+        let func = &mir.functions[0];
+        // If-expression result should be merged via phi or copy
+        assert!(func.blocks.len() >= 3, "If-expression needs branch blocks");
+        // Should have multiply in the continuation
+        let has_mul = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Mul, .. }))
+        });
+        assert!(has_mul, "Expected multiplication after if-expression result");
+    }
+
+    #[test]
+    fn test_lower_match_expression_result() {
+        let mir = parse_and_lower(
+            "fn classify(x: i64) -> i64 = { let label = match x { 0 => 10, 1 => 20, _ => 30 }; label + 1 };"
+        );
+        let func = &mir.functions[0];
+        // Match result used in subsequent computation
+        let has_add = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Add, .. }))
+        });
+        assert!(has_add, "Expected Add after match expression result");
+    }
+
+    #[test]
+    fn test_lower_multiple_functions() {
+        let mir = parse_and_lower(
+            "fn add(a: i64, b: i64) -> i64 = a + b; fn mul(a: i64, b: i64) -> i64 = a * b;"
+        );
+        assert_eq!(mir.functions.len(), 2, "Should lower both functions");
+        assert_eq!(mir.functions[0].name, "add");
+        assert_eq!(mir.functions[1].name, "mul");
+    }
+
+    #[test]
+    fn test_lower_function_call_with_result() {
+        let mir = parse_and_lower(
+            "fn double(x: i64) -> i64 = x * 2; fn apply(x: i64) -> i64 = double(x) + 1;"
+        );
+        assert_eq!(mir.functions.len(), 2);
+        let apply = &mir.functions[1];
+        let has_call = apply.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::Call { func: f, .. } if f == "double"))
+        });
+        assert!(has_call, "Expected Call to 'double' in 'apply'");
+    }
+
+    #[test]
+    fn test_lower_chain_of_operations() {
+        let mir = parse_and_lower(
+            "fn chain(a: i64, b: i64) -> i64 = { let x = a + b; let y = x * 2; let z = y - 1; z / 3 };"
+        );
+        let func = &mir.functions[0];
+        let has_add = func.blocks.iter().any(|b| b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Add, .. })));
+        let has_mul = func.blocks.iter().any(|b| b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Mul, .. })));
+        let has_sub = func.blocks.iter().any(|b| b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Sub, .. })));
+        let has_div = func.blocks.iter().any(|b| b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Div, .. })));
+        assert!(has_add && has_mul && has_sub && has_div, "Chain should produce Add, Mul, Sub, Div");
+    }
+
+    #[test]
+    fn test_lower_logical_and_or_not() {
+        let mir = parse_and_lower(
+            "fn logic(a: bool, b: bool) -> bool = (a and b) or (not a);"
+        );
+        let func = &mir.functions[0];
+        // Logical operators lower to specific MIR patterns
+        let has_and = func.blocks.iter().any(|b| b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::And, .. })));
+        let has_or = func.blocks.iter().any(|b| b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Or, .. })));
+        // Short-circuit evaluation might use branches instead of direct BinOps
+        let has_branch = func.blocks.iter().any(|b| matches!(b.terminator, Terminator::Branch { .. }));
+        assert!(has_and || has_branch, "Expected And or short-circuit Branch for 'and'");
+        assert!(has_or || has_branch, "Expected Or or short-circuit Branch for 'or'");
+    }
+
+    #[test]
+    fn test_lower_comparison_chain_ge_and_lt() {
+        let mir = parse_and_lower(
+            "fn in_range(x: i64) -> bool = x >= 0 and x < 100;"
+        );
+        let func = &mir.functions[0];
+        let has_ge = func.blocks.iter().any(|b| b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Ge, .. })));
+        let has_lt = func.blocks.iter().any(|b| b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Lt, .. })));
+        assert!(has_ge, "Expected Ge comparison for x >= 0");
+        assert!(has_lt, "Expected Lt comparison for x < 100");
+    }
+
+    #[test]
+    fn test_lower_block_expression() {
+        let mir = parse_and_lower(
+            "fn block_expr() -> i64 = { let a = 1; let b = 2; a + b };"
+        );
+        let func = &mir.functions[0];
+        // Block with let bindings should produce const + add
+        let has_const = func.blocks.iter().any(|b| b.instructions.iter().any(|inst| matches!(inst, MirInst::Const { .. })));
+        let has_add = func.blocks.iter().any(|b| b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Add, .. })));
+        assert!(has_const, "Block should have Const for literals");
+        assert!(has_add, "Block should have Add for a + b");
+    }
+
+    #[test]
+    fn test_lower_f64_operations() {
+        let mir = parse_and_lower(
+            "fn f64_ops(a: f64, b: f64) -> f64 = a * b + a / b;"
+        );
+        let func = &mir.functions[0];
+        let has_fmul = func.blocks.iter().any(|b| b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::FMul, .. })));
+        let has_fdiv = func.blocks.iter().any(|b| b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::FDiv, .. })));
+        let has_fadd = func.blocks.iter().any(|b| b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::FAdd, .. })));
+        assert!(has_fmul, "Expected FMul for a * b");
+        assert!(has_fdiv, "Expected FDiv for a / b");
+        assert!(has_fadd, "Expected FAdd for sum");
+    }
+
+    #[test]
+    fn test_lower_return_in_if_early() {
+        let mir = parse_and_lower(
+            "fn early_ret(x: i64) -> i64 = { if x < 0 { return 0 } else { () }; x * 2 };"
+        );
+        let func = &mir.functions[0];
+        // Early return creates extra blocks
+        assert!(func.blocks.len() >= 3, "Early return creates multiple blocks");
+        // Multiple return terminators
+        let ret_count = func.blocks.iter()
+            .filter(|b| matches!(b.terminator, Terminator::Return(_)))
+            .count();
+        assert!(ret_count >= 1, "Expected at least 1 Return terminator");
+    }
+
+    #[test]
+    fn test_lower_struct_init_three_fields() {
+        let mir = parse_and_lower(
+            "struct Point { x: i64, y: i64, z: i64 } fn make_point() -> Point = new Point { x: 1, y: 2, z: 3 };"
+        );
+        let func = &mir.functions[0];
+        let has_struct_init = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::StructInit { .. }))
+        });
+        assert!(has_struct_init, "Expected StructInit instruction");
+    }
+
+    #[test]
+    fn test_lower_struct_field_access_chain() {
+        let mir = parse_and_lower(
+            "struct Pair { a: i64, b: i64 } fn sum_pair(p: Pair) -> i64 = p.a + p.b;"
+        );
+        let func = &mir.functions[0];
+        // Two field accesses
+        let field_count = func.blocks.iter().flat_map(|b| b.instructions.iter())
+            .filter(|inst| matches!(inst, MirInst::FieldAccess { .. }))
+            .count();
+        assert!(field_count >= 2, "Expected >= 2 FieldAccess for p.a and p.b, got {}", field_count);
+    }
+
+    #[test]
+    fn test_lower_match_wildcard_fallthrough() {
+        let mir = parse_and_lower(
+            "fn test_wild(x: i64) -> i64 = match x { _ => 42 };"
+        );
+        let func = &mir.functions[0];
+        // Wildcard-only match — verify the function lowers and produces meaningful MIR
+        assert!(!func.blocks.is_empty(), "Wildcard match should produce at least one block");
+        // The 42 should appear somewhere in instructions or terminators
+        let mir_text = format!("{:?}", func);
+        assert!(mir_text.contains("42"), "Wildcard match MIR should contain 42 somewhere: {}", mir_text);
+    }
+
+    #[test]
+    fn test_lower_const_function_attr() {
+        let mir = parse_and_lower(
+            "@const\nfn answer() -> i64 = 42;"
+        );
+        let func = &mir.functions[0];
+        assert!(func.is_const, "Function should be marked const");
+    }
+
+    #[test]
+    fn test_lower_pure_function_attr() {
+        let mir = parse_and_lower(
+            "@pure\nfn identity(x: i64) -> i64 = x;"
+        );
+        let func = &mir.functions[0];
+        assert!(func.is_pure, "Function should be marked pure");
+    }
+
+    #[test]
+    fn test_lower_inline_function_attr() {
+        let mir = parse_and_lower(
+            "@inline\nfn small(x: i64) -> i64 = x + 1;"
+        );
+        let func = &mir.functions[0];
+        assert!(func.inline_hint || func.always_inline, "Function should have inline hint");
+    }
+
+    #[test]
+    fn test_lower_unary_negation() {
+        let mir = parse_and_lower(
+            "fn negate(x: i64) -> i64 = -x;"
+        );
+        let func = &mir.functions[0];
+        let has_neg = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::UnaryOp { op: MirUnaryOp::Neg, .. }))
+        });
+        // Unary neg might lower to BinOp(Sub, 0, x) or UnaryOp(Neg, x)
+        let has_sub = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Sub, .. }))
+        });
+        assert!(has_neg || has_sub, "Expected Neg or Sub(0, x) for -x");
+    }
+
+    #[test]
+    fn test_lower_logical_not() {
+        let mir = parse_and_lower(
+            "fn invert(b: bool) -> bool = !b;"
+        );
+        let func = &mir.functions[0];
+        let has_not = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::UnaryOp { op: MirUnaryOp::Not, .. }))
+        });
+        assert!(has_not, "Expected Not operation for !b");
+    }
+
+    #[test]
+    fn test_lower_while_with_nested_if() {
+        let mir = parse_and_lower(
+            "fn count_positive(n: i64) -> i64 = { let mut count = 0; let mut i = 0; while i < n { if i > 0 { count = count + 1 } else { () }; i = i + 1; 0 }; count };"
+        );
+        let func = &mir.functions[0];
+        // Should create blocks for while header, body with if, and exit
+        assert!(func.blocks.len() >= 5, "While with nested if should create >= 5 blocks, got {}", func.blocks.len());
+    }
+
+    #[test]
+    fn test_lower_multiple_match_arms_with_computation() {
+        let mir = parse_and_lower(
+            "fn compute(op: i64, a: i64, b: i64) -> i64 = match op { 0 => a + b, 1 => a - b, 2 => a * b, _ => 0 };"
+        );
+        let func = &mir.functions[0];
+        let has_add = func.blocks.iter().any(|b| b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Add, .. })));
+        let has_sub = func.blocks.iter().any(|b| b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Sub, .. })));
+        let has_mul = func.blocks.iter().any(|b| b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Mul, .. })));
+        assert!(has_add, "Match arm 0 should produce Add");
+        assert!(has_sub, "Match arm 1 should produce Sub");
+        assert!(has_mul, "Match arm 2 should produce Mul");
+    }
+
+    #[test]
+    fn test_lower_void_function() {
+        let mir = parse_and_lower(
+            "fn do_nothing() -> () = ();"
+        );
+        let func = &mir.functions[0];
+        assert_eq!(func.ret_ty, MirType::Unit, "Void function should return Unit");
+    }
+
+    #[test]
+    fn test_lower_bool_constants() {
+        let mir = parse_and_lower(
+            "fn truth() -> bool = true;"
+        );
+        let func = &mir.functions[0];
+        assert_eq!(func.ret_ty, MirType::Bool, "Function should return Bool");
+        let has_true = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::Const { value: Constant::Bool(true), .. }))
+        });
+        // The function might return true directly without a Const instruction
+        let returns_true = func.blocks.iter().any(|b| {
+            matches!(&b.terminator, Terminator::Return(Some(Operand::Constant(Constant::Bool(true)))))
+        });
+        assert!(has_true || returns_true, "Expected true constant");
+    }
+
+    #[test]
+    fn test_lower_float_constant() {
+        let mir = parse_and_lower(
+            "fn pi() -> f64 = 3.14;"
+        );
+        let func = &mir.functions[0];
+        assert_eq!(func.ret_ty, MirType::F64, "Function should return F64");
+    }
+
+    #[test]
+    fn test_lower_string_constant_type() {
+        let mir = parse_and_lower(
+            "fn greeting() -> String = \"hello\";"
+        );
+        let func = &mir.functions[0];
+        assert_eq!(func.ret_ty, MirType::String, "Function should return String");
     }
 }

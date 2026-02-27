@@ -330,6 +330,8 @@ impl TypeChecker {
         functions.insert("sb_push".to_string(), (vec![Type::I64, Type::String], Type::I64));
         // sb_push_char(id: i64, char_code: i64) -> i64 (push single char, no allocation)
         functions.insert("sb_push_char".to_string(), (vec![Type::I64, Type::I64], Type::I64));
+        // v0.95.7: sb_push_range(id: i64, s: String, start: i64, end: i64) -> i64 (push substring without allocation)
+        functions.insert("sb_push_range".to_string(), (vec![Type::I64, Type::String, Type::I64, Type::I64], Type::I64));
         // v0.50.73: sb_push_int(id: i64, n: i64) -> i64 (push integer directly, O(1) allocation)
         functions.insert("sb_push_int".to_string(), (vec![Type::I64, Type::I64], Type::I64));
         // v0.50.74: sb_push_escaped(id: i64, str: String) -> i64 (escape & push entire string in one call)
@@ -11096,5 +11098,415 @@ mod tests {
         assert_eq!(tc.substitute_type_param(&Type::F64, "T", &Type::Bool), Type::F64);
         assert_eq!(tc.substitute_type_param(&Type::Bool, "T", &Type::I64), Type::Bool);
         assert_eq!(tc.substitute_type_param(&Type::String, "T", &Type::I64), Type::String);
+    }
+
+    // ====================================================================
+    // Cycle 1220: Closures, Traits, Generics with Bounds, Advanced Patterns
+    // ====================================================================
+
+    // --- Closure Type Checking ---
+    // BMB closures use `fn |params| { body }` syntax (with `fn` prefix)
+
+    #[test]
+    fn test_tc_closure_basic() {
+        assert!(ok(
+            "fn test() -> i64 = { let f = fn |x: i64| { x + 1 }; f(5) };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_closure_identity() {
+        assert!(ok(
+            "fn test() -> i64 = { let f = fn |x: i64| { x * 2 }; f(3) };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_closure_empty_params() {
+        assert!(ok(
+            "fn test() -> i64 = { let f = fn || { 42 }; f() };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_closure_multi_params() {
+        assert!(ok(
+            "fn test() -> i64 = { let add = fn |a: i64, b: i64| { a + b }; add(1, 2) };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_closure_capture() {
+        assert!(ok(
+            "fn test() -> i64 = { let x = 10; let f = fn |y: i64| { x + y }; f(5) };"
+        ));
+    }
+
+    // --- Trait Definition and Impl ---
+    // BMB requires `impl Trait for Type` syntax (no inherent impls)
+
+    #[test]
+    fn test_tc_trait_definition() {
+        assert!(ok(
+            "trait Printable { fn show(self: Self) -> i64; }"
+        ));
+    }
+
+    #[test]
+    fn test_tc_trait_impl() {
+        assert!(ok(r#"
+            struct Point { x: i64, y: i64 }
+            trait Describable { fn describe(self: Self) -> i64; }
+            impl Describable for Point { fn describe(self: Self) -> i64 = self.x + self.y; }
+        "#));
+    }
+
+    #[test]
+    fn test_tc_impl_block_with_trait() {
+        assert!(ok(r#"
+            struct Counter { value: i64 }
+            trait Gettable { fn get(self: Self) -> i64; }
+            impl Gettable for Counter {
+                fn get(self: Self) -> i64 = self.value;
+            }
+        "#));
+    }
+
+    // --- Generics with Bounds ---
+
+    #[test]
+    fn test_tc_generic_with_bound() {
+        assert!(ok(
+            "fn identity<T: Clone>(x: T) -> T = x;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_generic_pair_with_bounds() {
+        assert!(ok(r#"
+            struct Pair<T> { first: T, second: T }
+            fn make_pair<T>(a: T, b: T) -> Pair<T> = new Pair { first: a, second: b };
+        "#));
+    }
+
+    // --- Or-Patterns ---
+
+    #[test]
+    fn test_tc_match_or_pattern() {
+        assert!(ok(r#"
+            fn classify(x: i64) -> i64 = match x {
+                1 | 2 | 3 => 10,
+                _ => 0
+            };
+        "#));
+    }
+
+    // --- Struct Patterns ---
+
+    #[test]
+    fn test_tc_match_struct_pattern() {
+        assert!(ok(r#"
+            struct Point { x: i64, y: i64 }
+            fn get_x(p: Point) -> i64 = match p {
+                Point { x: val, y: _ } => val
+            };
+        "#));
+    }
+
+    // --- Tuple Patterns ---
+
+    #[test]
+    fn test_tc_match_tuple_pattern() {
+        assert!(ok(r#"
+            fn first(p: (i64, bool)) -> i64 = match p {
+                (x, _) => x
+            };
+        "#));
+    }
+
+    // --- Range Patterns ---
+
+    #[test]
+    fn test_tc_match_range_pattern() {
+        assert!(ok(r#"
+            fn bucket(x: i64) -> i64 = match x {
+                0..10 => 1,
+                10..=20 => 2,
+                _ => 3
+            };
+        "#));
+    }
+
+    // --- Refinement Types ---
+
+    #[test]
+    fn test_tc_refinement_type_param() {
+        assert!(ok(
+            "fn safe_div(a: i64, b: i64{it != 0}) -> i64 = a / b;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_refinement_type_return() {
+        assert!(ok(
+            "fn abs(x: i64) -> i64{it >= 0} = if x >= 0 { x } else { 0 - x };"
+        ));
+    }
+
+    // --- Where Contract Block ---
+
+    #[test]
+    fn test_tc_where_contract() {
+        assert!(ok(r#"
+            fn divide(a: i64, b: i64) -> i64
+              where {
+                nonzero: b != 0
+              }
+            = a / b;
+        "#));
+    }
+
+    // --- Named Return ---
+
+    #[test]
+    fn test_tc_named_return() {
+        // Named return with where block (confirmed syntax from 015_where_contracts.bmb)
+        assert!(ok(r#"
+            fn increment(x: i64) -> result: i64
+              where {
+                incremented: result == x + 1
+              }
+            = x + 1;
+        "#));
+    }
+
+    // --- Sizeof ---
+
+    #[test]
+    fn test_tc_sizeof() {
+        assert!(ok(
+            "fn size_test() -> i64 = sizeof<i64>();"
+        ));
+    }
+
+    // --- Char Type ---
+
+    #[test]
+    fn test_tc_char_identity() {
+        assert!(ok(
+            "fn identity(c: char) -> char = c;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_char_literal_value() {
+        assert!(ok(
+            "fn test() -> char = 'a';"
+        ));
+    }
+
+    // --- Tuple Field Access ---
+
+    #[test]
+    fn test_tc_tuple_field_access() {
+        assert!(ok(
+            "fn fst(p: (i64, bool)) -> i64 = p.0;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_tuple_field_access_second() {
+        assert!(ok(
+            "fn snd(p: (i64, bool)) -> bool = p.1;"
+        ));
+    }
+
+    // --- Pointer Types ---
+
+    #[test]
+    fn test_tc_pointer_type() {
+        assert!(ok(
+            "fn deref(p: *i64) -> i64 = *p;"
+        ));
+    }
+
+    // --- Nullable Types ---
+
+    #[test]
+    fn test_tc_nullable_param() {
+        assert!(ok(
+            "fn maybe(x: i64?) -> i64 = 0;"
+        ));
+    }
+
+    // --- Error Cases: Wrong Types ---
+
+    #[test]
+    fn test_err_closure_wrong_arg_type() {
+        assert!(err(
+            "fn test() -> i64 = { let f = fn |x: i64| { x + 1 }; f(true) };"
+        ));
+    }
+
+    #[test]
+    fn test_err_match_arm_type_mismatch_or_pattern() {
+        // Or-pattern arms should have consistent types
+        assert!(ok(r#"
+            fn test(x: i64) -> i64 = match x {
+                1 | 2 => 10,
+                _ => 0
+            };
+        "#));
+    }
+
+    #[test]
+    fn test_err_tuple_field_out_of_range() {
+        assert!(err(
+            "fn test(p: (i64, bool)) -> i64 = p.5;"
+        ));
+    }
+
+    // --- Loop Type Checking ---
+
+    #[test]
+    fn test_tc_loop_with_break() {
+        // BMB break has no value form; loop returns unit
+        assert!(ok(
+            "fn test() -> i64 = { let mut x = 0; loop { if x > 5 { break } else { x = x + 1 } }; x };"
+        ));
+    }
+
+    // --- For Loop with Range Variants ---
+
+    #[test]
+    fn test_tc_for_exclusive_range() {
+        assert!(ok(
+            "fn test() -> i64 = { let mut s = 0; for i in 0..<10 { s = s + i }; s };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_for_inclusive_range() {
+        assert!(ok(
+            "fn test() -> i64 = { let mut s = 0; for i in 1..=5 { s = s + i }; s };"
+        ));
+    }
+
+    // --- Type Alias ---
+
+    #[test]
+    fn test_tc_type_alias_in_function() {
+        assert!(ok(r#"
+            type Num = i64;
+            fn add(a: Num, b: Num) -> Num = a + b;
+        "#));
+    }
+
+    // --- Float Operations ---
+
+    #[test]
+    fn test_tc_float_comparison() {
+        assert!(ok(
+            "fn greater(a: f64, b: f64) -> bool = a > b;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_float_arithmetic() {
+        assert!(ok(
+            "fn compute(x: f64, y: f64) -> f64 = (x + y) * (x - y) / 2.0;"
+        ));
+    }
+
+    // --- Cast ---
+
+    #[test]
+    fn test_tc_cast_i64_to_f64() {
+        assert!(ok(
+            "fn convert(x: i64) -> f64 = x as f64;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_cast_f64_to_i64_truncate() {
+        assert!(ok(
+            "fn truncate(x: f64) -> i64 = x as i64;"
+        ));
+    }
+
+    // --- Complex Programs ---
+
+    #[test]
+    fn test_tc_multi_function_program() {
+        assert!(ok(r#"
+            fn add(a: i64, b: i64) -> i64 = a + b;
+            fn double(x: i64) -> i64 = add(x, x);
+            fn quad(x: i64) -> i64 = double(double(x));
+        "#));
+    }
+
+    #[test]
+    fn test_tc_struct_with_trait_methods() {
+        assert!(ok(r#"
+            struct Vec2 { x: f64, y: f64 }
+            trait HasLength { fn length_sq(self: Self) -> f64; }
+            impl HasLength for Vec2 {
+                fn length_sq(self: Self) -> f64 = self.x * self.x + self.y * self.y;
+            }
+        "#));
+    }
+
+    #[test]
+    fn test_tc_enum_with_match() {
+        assert!(ok(r#"
+            enum Color { Red, Green, Blue }
+            fn to_int(c: Color) -> i64 = match c {
+                Color::Red => 1,
+                Color::Green => 2,
+                Color::Blue => 3
+            };
+        "#));
+    }
+
+    #[test]
+    fn test_tc_enum_with_data_area() {
+        assert!(ok(r#"
+            enum Shape { Circle(f64), Rect(f64, f64) }
+            fn area(s: Shape) -> f64 = match s {
+                Shape::Circle(r) => r * r * 3.14,
+                Shape::Rect(w, h) => w * h
+            };
+        "#));
+    }
+
+    #[test]
+    fn test_tc_recursive_mutual() {
+        assert!(ok(r#"
+            fn is_even(n: i64) -> bool = if n == 0 { true } else { is_odd(n - 1) };
+            fn is_odd(n: i64) -> bool = if n == 0 { false } else { is_even(n - 1) };
+        "#));
+    }
+
+    // --- Error Cases: Type Mismatches ---
+
+    #[test]
+    fn test_err_return_wrong_type() {
+        assert!(err(
+            "fn test() -> i64 = true;"
+        ));
+    }
+
+    #[test]
+    fn test_err_add_i64_and_f64() {
+        assert!(err(
+            "fn test() -> f64 = 1 + 2.0;"
+        ));
+    }
+
+    #[test]
+    fn test_err_if_cond_not_bool() {
+        assert!(err(
+            "fn test() -> i64 = if 42 { 1 } else { 0 };"
+        ));
     }
 }
