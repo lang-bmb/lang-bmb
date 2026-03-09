@@ -4,7 +4,7 @@
 # Design principles:
 #   1. FAIRNESS: BMB and C use the same LLVM backend (clang -O3 -march=native)
 #   2. REPRODUCIBILITY: IQR-based outlier removal, configurable runs + warmup
-#   3. CONSISTENCY: Text backend emit-ir → opt -O3 → clang -O3 pipeline for BMB
+#   3. CONSISTENCY: Text backend emit-ir → opt -O3 → clang -O3 -fno-unroll-loops pipeline for BMB
 #   4. 3-WAY: BMB vs C vs Rust (rustc --release) for comprehensive comparison
 #   5. CORRECTNESS: Verify BMB/C/Rust produce identical output before timing
 #
@@ -169,13 +169,18 @@ print(f'{median} {mean:.1f} {stddev:.1f} {vals[0]} {vals[-1]}')
 # ─── Build Functions ─────────────────────────────────────────────────────────
 
 # Build BMB benchmark using text backend pipeline
-# Pipeline: bmb --emit-ir → opt -O3 → clang -O3 -march=native
+# Pipeline: bmb --emit-ir → opt -O3 → clang -O3 -fno-unroll-loops
+# opt -O3 handles all loop unrolling. clang -O3 -fno-unroll-loops adds
+# full O3 optimizations (vectorization, scheduling, combining) WITHOUT
+# re-unrolling. This prevents double-unrolling regressions while keeping
+# all other O3 benefits.
 build_bmb() {
     local src=$1
     local out=$2
     local name=$3
     local ir="${BUILD_DIR}/${name}.ll"
     local ir_opt="${BUILD_DIR}/${name}_opt.ll"
+    local obj="${BUILD_DIR}/${name}.o"
 
     # Step 1: Generate text LLVM IR
     if ! "$BMB_ACTUAL" build "$src" --emit-ir -o "$ir" > /dev/null 2>&1; then
@@ -183,17 +188,21 @@ build_bmb() {
         return 1
     fi
 
-    # Step 2: Optimize with LLVM opt
+    # Step 2: Optimize with LLVM opt (all middle-end optimizations)
     if ! opt --mcpu=native -passes="default<O3>,scalarizer,slp-vectorizer" "$ir" -S -o "$ir_opt" 2>/dev/null; then
         echo "FAIL:opt"
         return 1
     fi
 
-    # Step 3: Compile + link with clang (same flags as C baseline)
+    # Step 3: Compile optimized IR + link with clang -O3 -fno-unroll-loops
+    # opt -O3 already handles loop unrolling; -fno-unroll-loops prevents clang
+    # from re-unrolling which causes double-unrolling regressions (bubble_sort
+    # 1.71x, heap_sort 1.08x etc). All other O3 optimizations (vectorization,
+    # instruction combining, scheduling) are preserved.
     local link_flags="-lm"
     [[ "$OSTYPE" == "msys"* || "$OSTYPE" == "mingw"* || "$OSTYPE" == "cygwin"* ]] && link_flags="$link_flags -lws2_32"
 
-    if ! clang -w -O3 -march=native "$ir_opt" "$RUNTIME" -o "$out" $link_flags 2>/dev/null; then
+    if ! clang -w -O3 -fno-unroll-loops -march=native "$ir_opt" "$RUNTIME" -o "$out" $link_flags 2>/dev/null; then
         echo "FAIL:link"
         return 1
     fi
@@ -273,7 +282,7 @@ else:
 # ─── Main ────────────────────────────────────────────────────────────────────
 echo -e "${BOLD}BMB Benchmark Suite v5 — 3-Way Comparison${NC}"
 echo -e "Config: ${RUNS} runs + ${WARMUP} warmup"
-echo -e "Pipeline: BMB emit-ir → opt --mcpu=native -O3 +scalarizer +slp → clang -O3"
+echo -e "Pipeline: BMB emit-ir → opt --mcpu=native -O3 +scalarizer +slp → clang -O3 -fno-unroll-loops"
 echo -e "         C → clang -O3 -march=native"
 [ "$HAS_RUSTC" = true ] && echo -e "         Rust → rustc -C opt-level=3 -C target-cpu=native"
 echo ""
@@ -537,7 +546,7 @@ TOTAL=$((FASTER_COUNT + PASS_COUNT + WARN_COUNT + FAIL_COUNT))
 echo -e "${BOLD}Summary: ${GREEN}${FASTER_COUNT} FASTER${NC}, ${CYAN}${PASS_COUNT} PASS${NC}, ${YELLOW}${WARN_COUNT} WARN${NC}, ${RED}${FAIL_COUNT} FAIL${NC} (${TOTAL} total)"
 echo ""
 echo "Methodology:"
-echo "  BMB:  emit-ir → opt --mcpu=native -O3 +scalarizer +slp → clang -O3 -march=native"
+echo "  BMB:  emit-ir → opt --mcpu=native -O3 +scalarizer +slp → clang -O3 -fno-unroll-loops -march=native"
 echo "  C:    clang -O3 -march=native"
 [ "$HAS_RUSTC" = true ] && echo "  Rust: rustc -C opt-level=3 -C target-cpu=native"
 echo "  Runs: ${WARMUP} warmup (discarded) + ${RUNS} measured, median reported"
@@ -553,7 +562,7 @@ if [ -n "$JSON_FILE" ]; then
         echo "  \"config\": {"
         echo "    \"runs\": ${RUNS},"
         echo "    \"warmup\": ${WARMUP},"
-        echo "    \"bmb_pipeline\": \"emit-ir → opt -O3 --mcpu=native +scalarizer +slp → clang -O3 -march=native\","
+        echo "    \"bmb_pipeline\": \"emit-ir → opt -O3 --mcpu=native +scalarizer +slp → clang -O3 -fno-unroll-loops -march=native\","
         echo "    \"c_pipeline\": \"clang -O3 -march=native\","
         echo "    \"platform\": \"$(uname -s) $(uname -m)\","
         echo "    \"opt_version\": \"$(opt --version 2>&1 | head -2 | tail -1 | tr -d '[:space:]')\","

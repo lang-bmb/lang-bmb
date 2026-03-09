@@ -324,12 +324,10 @@ impl TextCodeGen {
     /// All loops get `mustprogress` (tells LLVM the loop will terminate).
     /// Analysis is scoped per-function since MIR reuses label names across functions.
     ///
-    /// Note: Selective `unroll.disable` was investigated for loops with conditional
-    /// swap stores (bubble_sort 1.71x→0.70x with unroll.disable) but the heuristic
-    /// caused regressions in wiggle_sort (0.88x→1.05x) and bitonic_sort. The root
-    /// cause is double-optimization in the opt→clang pipeline — opt's unrolling
-    /// creates phase ordering problems. A proper fix requires MIR-level loop analysis
-    /// or pipeline changes, not IR-level pattern matching.
+    /// v0.96.35: Removed swap-pattern unroll.disable heuristic. The root cause was
+    /// double middle-end optimization in the opt→clang pipeline (opt -O3 unrolls,
+    /// then clang -O3 re-optimizes). Fixed by switching bench.sh to use llc for
+    /// backend-only codegen after opt. All loops now get vectorize hints uniformly.
     fn add_loop_metadata(ir: String) -> String {
         let lines: Vec<&str> = ir.lines().collect();
         let mut result = String::with_capacity(ir.len() + 1024);
@@ -347,10 +345,9 @@ impl TextCodeGen {
             }
         }
 
-        // Phase 2: Per-function back-edge analysis with swap pattern detection
+        // Phase 2: Per-function back-edge analysis
         let mut loop_meta_id: u32 = 920;
         let mut backedge_lines: std::collections::HashMap<usize, u32> = std::collections::HashMap::new();
-        let mut loops_with_swap: std::collections::HashSet<u32> = std::collections::HashSet::new();
 
         for &(func_start, func_end) in &func_ranges {
             // Find while_cond labels within this function
@@ -363,45 +360,15 @@ impl TextCodeGen {
                 }
             }
 
-            // Find back-edges and detect conditional GEP stores (swap patterns)
+            // Find back-edges (unconditional branches to earlier labels)
             for i in func_start..=func_end {
                 let trimmed = lines[i].trim();
                 if let Some(rest) = trimmed.strip_prefix("br label %") {
                     let target = rest.trim();
                     if let Some(&def_line) = label_def_lines.get(target) {
                         if i > def_line {
-                            let meta_id = loop_meta_id;
-                            backedge_lines.insert(i, meta_id);
+                            backedge_lines.insert(i, loop_meta_id);
                             loop_meta_id += 1;
-
-                            // Detect swap pattern: 2+ GEP stores inside a conditional
-                            // block (bb_then_/bb_else_). Includes inner loops since
-                            // outer loops containing swap-pattern inner loops also
-                            // benefit from unroll.disable (prevents clang from
-                            // re-unrolling the outer loop structure).
-                            let mut in_cond_block = false;
-                            let mut cond_gep_store_count = 0u32;
-                            for j in def_line..=i {
-                                let line_j = lines[j].trim();
-                                if (line_j.starts_with("bb_then_") || line_j.starts_with("bb_else_"))
-                                    && line_j.ends_with(':')
-                                {
-                                    in_cond_block = true;
-                                    cond_gep_store_count = 0;
-                                } else if line_j.ends_with(':') && !line_j.is_empty() {
-                                    in_cond_block = false;
-                                    cond_gep_store_count = 0;
-                                }
-                                if in_cond_block && line_j.starts_with("store ")
-                                    && line_j.contains("gep_elem")
-                                {
-                                    cond_gep_store_count += 1;
-                                    if cond_gep_store_count >= 2 {
-                                        loops_with_swap.insert(meta_id);
-                                        break;
-                                    }
-                                }
-                            }
                         }
                     }
                 }
@@ -429,19 +396,11 @@ impl TextCodeGen {
         writeln!(result).unwrap();
         writeln!(result, "; Loop metadata").unwrap();
         for meta_id in &meta_ids {
-            if loops_with_swap.contains(meta_id) {
-                // Swap-pattern loops: disable unrolling to prevent double-unrolling
-                // in the opt→clang pipeline. These loops have data-dependent conditional
-                // stores that create too many branches when over-unrolled.
-                writeln!(result,
-                    "!{} = distinct !{{!{}, !{{!\"llvm.loop.mustprogress\"}}, !{{!\"llvm.loop.unroll.disable\"}}}}",
-                    meta_id, meta_id).unwrap();
-            } else {
-                // Normal loops: vectorize.enable + width=4 to override cost model
-                // and request 4-wide vectorization (matches AVX2 i64 width).
-                // This fixed sparse_matmul from 1.27x FAIL to ~0.93x PASS.
-                writeln!(result, "!{} = distinct !{{!{}, !{{!\"llvm.loop.mustprogress\"}}, !{{!\"llvm.loop.vectorize.enable\", i1 true}}, !{{!\"llvm.loop.vectorize.width\", i32 4}}}}", meta_id, meta_id).unwrap();
-            }
+            // All loops get mustprogress + vectorize hints.
+            // vectorize.enable + width=4 matches AVX2 i64 width.
+            // interleave.count=2 uses more vector registers for better throughput.
+            // distribute.enable allows LLVM to split loops for better vectorization.
+            writeln!(result, "!{} = distinct !{{!{}, !{{!\"llvm.loop.mustprogress\"}}, !{{!\"llvm.loop.vectorize.enable\", i1 true}}, !{{!\"llvm.loop.vectorize.width\", i32 4}}}}", meta_id, meta_id).unwrap();
         }
 
         result
@@ -611,10 +570,16 @@ impl TextCodeGen {
                                 let prev = lines[i - back].trim();
                                 let load_prefix = format!("%{} = load i64, ptr %", ssa_name);
                                 if prev.contains(&load_prefix) {
-                                    // Extract variable name from "%VAR.addr"
+                                    // Extract variable name from "%VAR.addr" or "%VAR.addr, align 8"
                                     if let Some(addr_pos) = prev.rfind("ptr %") {
                                         let after_addr = &prev[addr_pos + 5..];
-                                        if let Some(stripped) = after_addr.strip_suffix(".addr") {
+                                        // Handle both "%VAR.addr" and "%VAR.addr, align N"
+                                        let addr_part = if let Some(comma_pos) = after_addr.find(',') {
+                                            &after_addr[..comma_pos]
+                                        } else {
+                                            after_addr
+                                        };
+                                        if let Some(stripped) = addr_part.strip_suffix(".addr") {
                                             param_name = Some(stripped.to_string());
                                         }
                                     }
@@ -914,15 +879,16 @@ impl TextCodeGen {
 
     /// Emit runtime function declarations
     fn emit_runtime_declarations(&self, out: &mut String) -> TextCodeGenResult<()> {
+        // v0.96.35: Added nounwind + nofree to I/O functions (they don't throw or free user memory)
         writeln!(out, "; Runtime declarations - Basic I/O")?;
-        writeln!(out, "declare void @println(i64)")?;
-        writeln!(out, "declare void @print(i64)")?;
+        writeln!(out, "declare void @println(i64) nounwind nofree")?;
+        writeln!(out, "declare void @print(i64) nounwind nofree")?;
         // v0.60.43: Float output for spectral_norm, n_body benchmarks
-        writeln!(out, "declare void @println_f64(double)")?;
-        writeln!(out, "declare void @print_f64(double)")?;
-        writeln!(out, "declare i64 @read_int()")?;
+        writeln!(out, "declare void @println_f64(double) nounwind nofree")?;
+        writeln!(out, "declare void @print_f64(double) nounwind nofree")?;
+        writeln!(out, "declare i64 @read_int() nounwind")?;
         writeln!(out, "declare ptr @bmb_read_line() nounwind")?;
-        writeln!(out, "declare void @assert(i1)")?;
+        writeln!(out, "declare void @assert(i1) nounwind")?;
         // v0.96.35: bmb_abs/bmb_min/bmb_max/bmb_clamp replaced with LLVM intrinsics
         writeln!(out, "declare i64 @bmb_pow(i64, i64) nounwind willreturn memory(none) speculatable")?;
         writeln!(out)?;
@@ -962,65 +928,65 @@ impl TextCodeGen {
         writeln!(out, "declare void @bmb_print_str(ptr nonnull) nounwind")?;
         writeln!(out)?;
 
-        // Phase 32.3: File I/O runtime functions
+        // Phase 32.3: File I/O runtime functions — all nounwind (BMB has no exceptions)
         writeln!(out, "; Runtime declarations - File I/O")?;
-        writeln!(out, "declare i64 @bmb_file_exists(ptr)")?;
-        writeln!(out, "declare i64 @bmb_file_size(ptr)")?;
-        writeln!(out, "declare ptr @bmb_read_file(ptr)")?;
-        writeln!(out, "declare i64 @bmb_write_file(ptr, ptr)")?;
-        writeln!(out, "declare i64 @write_file_newlines(ptr, ptr)")?;  // v0.60.80: bootstrap support
-        writeln!(out, "declare i64 @bmb_append_file(ptr, ptr)")?;
+        writeln!(out, "declare i64 @bmb_file_exists(ptr) nounwind")?;
+        writeln!(out, "declare i64 @bmb_file_size(ptr) nounwind")?;
+        writeln!(out, "declare ptr @bmb_read_file(ptr) nounwind")?;
+        writeln!(out, "declare i64 @bmb_write_file(ptr, ptr) nounwind")?;
+        writeln!(out, "declare i64 @write_file_newlines(ptr, ptr) nounwind")?;
+        writeln!(out, "declare i64 @bmb_append_file(ptr, ptr) nounwind")?;
         writeln!(out)?;
 
         // v0.96: Directory operation runtime functions
         writeln!(out, "; Runtime declarations - Directory and file operations")?;
-        writeln!(out, "declare i64 @bmb_is_dir(ptr)")?;
-        writeln!(out, "declare i64 @bmb_mkdir(ptr)")?;
-        writeln!(out, "declare ptr @bmb_readdir(ptr)")?;
-        writeln!(out, "declare i64 @bmb_remove_file(ptr)")?;
-        writeln!(out, "declare i64 @bmb_rmdir(ptr)")?;
+        writeln!(out, "declare i64 @bmb_is_dir(ptr) nounwind")?;
+        writeln!(out, "declare i64 @bmb_mkdir(ptr) nounwind")?;
+        writeln!(out, "declare ptr @bmb_readdir(ptr) nounwind")?;
+        writeln!(out, "declare i64 @bmb_remove_file(ptr) nounwind")?;
+        writeln!(out, "declare i64 @bmb_rmdir(ptr) nounwind")?;
         writeln!(out)?;
 
         // Phase 32.3: StringBuilder runtime functions
         writeln!(out, "; Runtime declarations - StringBuilder")?;
-        writeln!(out, "declare i64 @bmb_sb_new()")?;
-        writeln!(out, "declare i64 @bmb_sb_with_capacity(i64)")?;  // v0.51.45: P0-E optimization
-        writeln!(out, "declare i64 @bmb_sb_push(i64, ptr)")?;
-        writeln!(out, "declare i64 @bmb_sb_push_char(i64, i64)")?;
-        writeln!(out, "declare i64 @bmb_sb_push_int(i64, i64)")?;  // v0.50.73
-        writeln!(out, "declare i64 @bmb_sb_push_escaped(i64, ptr)")?;  // v0.50.74
-        writeln!(out, "declare i64 @bmb_sb_push_range(i64, ptr, i64, i64)")?;  // v0.95.7
-        writeln!(out, "declare i64 @bmb_sb_len(i64)")?;
-        writeln!(out, "declare ptr @bmb_sb_build(i64)")?;
-        writeln!(out, "declare i64 @bmb_sb_clear(i64)")?;
-        writeln!(out, "declare i64 @bmb_sb_contains(i64, ptr)")?;
-        writeln!(out, "declare i64 @bmb_sb_println(i64)")?;
+        writeln!(out, "declare i64 @bmb_sb_new() nounwind")?;
+        writeln!(out, "declare i64 @bmb_sb_with_capacity(i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_sb_push(i64, ptr) nounwind")?;
+        writeln!(out, "declare i64 @bmb_sb_push_char(i64, i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_sb_push_int(i64, i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_sb_push_escaped(i64, ptr) nounwind")?;
+        writeln!(out, "declare i64 @bmb_sb_push_range(i64, ptr, i64, i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_sb_len(i64) nounwind willreturn")?;
+        writeln!(out, "declare ptr @bmb_sb_build(i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_sb_clear(i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_sb_contains(i64, ptr) nounwind")?;
+        writeln!(out, "declare i64 @bmb_sb_println(i64) nounwind")?;
         writeln!(out)?;
 
         // Phase 32.3: Process execution runtime functions
         writeln!(out, "; Runtime declarations - Process execution")?;
-        writeln!(out, "declare i64 @bmb_system(ptr)")?;
-        writeln!(out, "declare ptr @bmb_system_capture(ptr)")?;
-        writeln!(out, "declare ptr @bmb_exec_output(ptr, ptr)")?;
-        writeln!(out, "declare ptr @bmb_getenv(ptr)")?;
+        writeln!(out, "declare i64 @bmb_system(ptr) nounwind")?;
+        writeln!(out, "declare ptr @bmb_system_capture(ptr) nounwind")?;
+        writeln!(out, "declare ptr @bmb_exec_output(ptr, ptr) nounwind")?;
+        writeln!(out, "declare ptr @bmb_getenv(ptr) nounwind")?;
         writeln!(out)?;
 
         // v0.88.2: Memory management functions
         writeln!(out, "; Runtime declarations - Memory management (v0.88.2)")?;
-        writeln!(out, "declare i64 @bmb_string_free(ptr)")?;
-        writeln!(out, "declare i64 @free_string(ptr)")?;
-        writeln!(out, "declare i64 @bmb_sb_free(i64)")?;
-        writeln!(out, "declare i64 @sb_free(i64)")?;
-        writeln!(out, "declare i64 @bmb_arena_mode(i64)")?;
-        writeln!(out, "declare i64 @arena_mode(i64)")?;
-        writeln!(out, "declare i64 @bmb_arena_reset()")?;
-        writeln!(out, "declare i64 @arena_reset()")?;
-        writeln!(out, "declare i64 @bmb_arena_save()")?;
-        writeln!(out, "declare i64 @arena_save()")?;
-        writeln!(out, "declare i64 @bmb_arena_restore()")?;
-        writeln!(out, "declare i64 @arena_restore()")?;
-        writeln!(out, "declare i64 @bmb_arena_usage()")?;
-        writeln!(out, "declare i64 @arena_usage()")?;
+        writeln!(out, "declare i64 @bmb_string_free(ptr) nounwind")?;
+        writeln!(out, "declare i64 @free_string(ptr) nounwind")?;
+        writeln!(out, "declare i64 @bmb_sb_free(i64) nounwind")?;
+        writeln!(out, "declare i64 @sb_free(i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_arena_mode(i64) nounwind")?;
+        writeln!(out, "declare i64 @arena_mode(i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_arena_reset() nounwind")?;
+        writeln!(out, "declare i64 @arena_reset() nounwind")?;
+        writeln!(out, "declare i64 @bmb_arena_save() nounwind")?;
+        writeln!(out, "declare i64 @arena_save() nounwind")?;
+        writeln!(out, "declare i64 @bmb_arena_restore() nounwind")?;
+        writeln!(out, "declare i64 @arena_restore() nounwind")?;
+        writeln!(out, "declare i64 @bmb_arena_usage() nounwind")?;
+        writeln!(out, "declare i64 @arena_usage() nounwind")?;
         writeln!(out)?;
 
         // v0.63: Timing functions for bmb-bench
@@ -1140,8 +1106,8 @@ impl TextCodeGen {
 
         // v0.31.23: Command-line argument builtins for Phase 32.3.G CLI Independence
         writeln!(out, "; Runtime declarations - CLI arguments")?;
-        writeln!(out, "declare i64 @arg_count()")?;
-        writeln!(out, "declare ptr @get_arg(i64)")?;
+        writeln!(out, "declare i64 @arg_count() nounwind willreturn")?;
+        writeln!(out, "declare nonnull ptr @get_arg(i64) nounwind willreturn")?;
         writeln!(out)?;
 
         // Phase 32.3: Simple-name wrappers (for method call lowering)
@@ -1156,28 +1122,28 @@ impl TextCodeGen {
         writeln!(out, "declare ptr @chr(i64) nounwind willreturn")?;
         writeln!(out, "declare i64 @ord(ptr) memory(argmem: read) nounwind willreturn")?;
         // v0.50.18: char_to_string for bootstrap compiler (takes i32 char code)
-        writeln!(out, "declare ptr @char_to_string(i32)")?;
-        writeln!(out, "declare void @print_str(ptr)")?;
-        writeln!(out, "declare void @println_str(ptr)")?;
+        writeln!(out, "declare ptr @char_to_string(i32) nounwind")?;
+        writeln!(out, "declare void @print_str(ptr) nounwind nofree")?;
+        writeln!(out, "declare void @println_str(ptr) nounwind nofree")?;
         writeln!(out)?;
 
-        // File I/O wrappers
-        writeln!(out, "declare i64 @file_exists(ptr)")?;
+        // File I/O wrappers — all nounwind (BMB has no exceptions)
+        writeln!(out, "declare i64 @file_exists(ptr) nounwind")?;
         // v0.51.2: cstr variants for string literal optimization
-        writeln!(out, "declare i64 @file_exists_cstr(ptr)")?;
-        writeln!(out, "declare i64 @bmb_file_exists_cstr(ptr)")?;
-        writeln!(out, "declare i64 @file_size(ptr)")?;
-        writeln!(out, "declare ptr @read_file(ptr)")?;
-        writeln!(out, "declare i64 @write_file(ptr, ptr)")?;
-        writeln!(out, "declare i64 @append_file(ptr, ptr)")?;
+        writeln!(out, "declare i64 @file_exists_cstr(ptr) nounwind")?;
+        writeln!(out, "declare i64 @bmb_file_exists_cstr(ptr) nounwind")?;
+        writeln!(out, "declare i64 @file_size(ptr) nounwind")?;
+        writeln!(out, "declare ptr @read_file(ptr) nounwind")?;
+        writeln!(out, "declare i64 @write_file(ptr, ptr) nounwind")?;
+        writeln!(out, "declare i64 @append_file(ptr, ptr) nounwind")?;
         writeln!(out)?;
 
         // v0.96: Directory and file operation wrappers
-        writeln!(out, "declare i64 @is_dir(ptr)")?;
-        writeln!(out, "declare i64 @make_dir(ptr)")?;
-        writeln!(out, "declare ptr @list_dir(ptr)")?;
-        writeln!(out, "declare i64 @remove_file(ptr)")?;
-        writeln!(out, "declare i64 @remove_dir(ptr)")?;
+        writeln!(out, "declare i64 @is_dir(ptr) nounwind")?;
+        writeln!(out, "declare i64 @make_dir(ptr) nounwind")?;
+        writeln!(out, "declare ptr @list_dir(ptr) nounwind")?;
+        writeln!(out, "declare i64 @remove_file(ptr) nounwind")?;
+        writeln!(out, "declare i64 @remove_dir(ptr) nounwind")?;
         writeln!(out)?;
 
         // StringBuilder wrappers
@@ -1236,10 +1202,11 @@ impl TextCodeGen {
         // v0.34.2: Memory allocation for Phase 34.2 Dynamic Collections
         // v0.51.26: Added noalias and nounwind for better optimization
         writeln!(out, "; Runtime declarations - Memory allocation")?;
-        writeln!(out, "declare noalias noundef ptr @malloc(i64 noundef) nounwind mustprogress willreturn allockind(\"alloc,uninitialized\") allocsize(0) memory(inaccessiblemem: readwrite) \"alloc-family\"=\"malloc\"")?;
-        writeln!(out, "declare noalias noundef ptr @realloc(ptr nocapture, i64 noundef) nounwind mustprogress willreturn allockind(\"realloc\") allocsize(1) memory(argmem: readwrite, inaccessiblemem: readwrite) \"alloc-family\"=\"malloc\"")?;
+        // v0.96.35: Added align 16 to malloc/realloc/calloc returns (64-bit systems guarantee 16-byte alignment)
+        writeln!(out, "declare noalias noundef align 16 ptr @malloc(i64 noundef) nounwind mustprogress willreturn allockind(\"alloc,uninitialized\") allocsize(0) memory(inaccessiblemem: readwrite) \"alloc-family\"=\"malloc\"")?;
+        writeln!(out, "declare noalias noundef align 16 ptr @realloc(ptr nocapture, i64 noundef) nounwind mustprogress willreturn allockind(\"realloc\") allocsize(1) memory(argmem: readwrite, inaccessiblemem: readwrite) \"alloc-family\"=\"malloc\"")?;
         writeln!(out, "declare void @free(ptr nocapture noundef) nounwind mustprogress willreturn allockind(\"free\") memory(argmem: readwrite, inaccessiblemem: readwrite) \"alloc-family\"=\"malloc\"")?;
-        writeln!(out, "declare noalias noundef ptr @calloc(i64 noundef, i64 noundef) nounwind mustprogress willreturn allockind(\"alloc,zeroed\") allocsize(0,1) memory(inaccessiblemem: readwrite) \"alloc-family\"=\"malloc\"")?;
+        writeln!(out, "declare noalias noundef align 16 ptr @calloc(i64 noundef, i64 noundef) nounwind mustprogress willreturn allockind(\"alloc,zeroed\") allocsize(0,1) memory(inaccessiblemem: readwrite) \"alloc-family\"=\"malloc\"")?;
         writeln!(out)?;
 
         // v0.51.51: Byte-level memory access for high-performance string parsing
@@ -1836,8 +1803,9 @@ impl TextCodeGen {
         // v0.51.52: Added inlinehint for medium-sized functions (like lexer's next_token)
         // v0.96.18: Added nosync — BMB user functions never use atomic/synchronization ops
         // v0.96.19: Added memory(read) for read-only functions
+        // v0.96.35: memory(none) functions also get speculatable — enables hoisting out of branches
         let memory_attr = if func.is_memory_free {
-            " memory(none)"
+            " memory(none) speculatable"
         } else if func.is_read_only {
             " memory(read)"
         } else {
@@ -1859,14 +1827,19 @@ impl TextCodeGen {
         });
         let norecurse_attr = if is_recursive { "" } else { " norecurse" };
         let nofree_attr = if has_free { "" } else { " nofree" };
+        // v0.96.35: Added "no-trapping-math"="true" — BMB has no FP trapping behavior
+        // v0.96.35: "min-legal-vector-width"="0" allows LLVM to use widest available vectors
+        let no_trap = " \"no-trapping-math\"=\"true\"";
+        // uwtable enables correct stack unwinding on Windows x86_64
+        let uwtable = if cfg!(target_os = "windows") { " uwtable" } else { "" };
         let attrs = if func.name == "main" {
-            String::new()
+            format!(" nounwind{}{} \"no-trapping-math\"=\"true\"", norecurse_attr, uwtable)
         } else if func.always_inline {
-            format!(" alwaysinline nosync nounwind willreturn mustprogress{}{}{}", nofree_attr, norecurse_attr, memory_attr)
+            format!(" alwaysinline nosync nounwind willreturn mustprogress{}{}{}{}{}", nofree_attr, norecurse_attr, memory_attr, no_trap, uwtable)
         } else if func.inline_hint {
-            format!(" inlinehint nosync nounwind willreturn mustprogress{}{}{}", nofree_attr, norecurse_attr, memory_attr)
+            format!(" inlinehint nosync nounwind willreturn mustprogress{}{}{}{}{}", nofree_attr, norecurse_attr, memory_attr, no_trap, uwtable)
         } else {
-            format!(" nosync nounwind willreturn mustprogress{}{}{}", nofree_attr, norecurse_attr, memory_attr)
+            format!(" nosync nounwind willreturn mustprogress{}{}{}{}{}", nofree_attr, norecurse_attr, memory_attr, no_trap, uwtable)
         };
 
         // v0.31.23: Rename BMB main to bmb_user_main so C runtime can provide real main()
@@ -1887,14 +1860,18 @@ impl TextCodeGen {
         // v0.96.18: Add dereferenceable(24) on return — BmbString = { ptr, i64, i64 }
         // v0.96.18: Add range() attribute on i64 returns when postconditions provide bounds
         let ret_attrs = if matches!(func.ret_ty, MirType::String) && func.name != "main" {
-            "nonnull dereferenceable(24) ".to_string()
+            "noundef nonnull dereferenceable(24) ".to_string()
         } else if matches!(func.ret_ty, MirType::I64) && func.name != "main" {
             // Compute range from postconditions
             if let Some((lo, hi)) = compute_return_range(&func.postconditions) {
-                format!("range(i64 {}, {}) ", lo, hi)
+                format!("noundef range(i64 {}, {}) ", lo, hi)
             } else {
-                String::new()
+                "noundef ".to_string()
             }
+        } else if matches!(func.ret_ty, MirType::F64) && func.name != "main" {
+            "noundef ".to_string()
+        } else if matches!(func.ret_ty, MirType::Bool) && func.name != "main" {
+            "noundef ".to_string()
         } else {
             String::new()
         };
@@ -3031,7 +3008,7 @@ impl TextCodeGen {
                     *name_counts.get_mut("malloc_op").unwrap() += 1;
                     // Call malloc, get ptr
                     let ptr_name = format!("malloc.ptr.{}", malloc_idx);
-                    writeln!(out, "  %{} = call ptr @malloc(i64 {})", ptr_name, size_val)?;
+                    writeln!(out, "  %{} = call noalias ptr @malloc(i64 {})", ptr_name, size_val)?;
                     // Convert ptr to i64 for BMB's pointer arithmetic
                     if let Some(d) = dest {
                         if local_names.contains(&d.name) {
@@ -3204,7 +3181,7 @@ impl TextCodeGen {
                                     }
                                     _ => self.format_operand_with_strings(idx_op, string_table),
                                 };
-                                writeln!(out, "  %{} = getelementptr inbounds i64, ptr %{}, i64 {}", elem_ptr, base_ptr, index_val)?;
+                                writeln!(out, "  %{} = getelementptr inbounds nuw i64, ptr %{}, i64 {}", elem_ptr, base_ptr, index_val)?;
                             } else {
                                 // Byte-offset GEP fallback
                                 let offset_val = match offset_op {
@@ -3220,7 +3197,7 @@ impl TextCodeGen {
                                     }
                                     _ => self.format_operand_with_strings(offset_op, string_table),
                                 };
-                                writeln!(out, "  %{} = getelementptr inbounds i8, ptr %{}, i64 {}", elem_ptr, base_ptr, offset_val)?;
+                                writeln!(out, "  %{} = getelementptr inbounds nuw i8, ptr %{}, i64 {}", elem_ptr, base_ptr, offset_val)?;
                             }
                             writeln!(out, "  store i64 {}, ptr %{}, align 8, !tbaa !903", val_val, elem_ptr)?;
                             used_gep = true;
@@ -3353,7 +3330,7 @@ impl TextCodeGen {
                                     }
                                     _ => self.format_operand_with_strings(idx_op, string_table),
                                 };
-                                writeln!(out, "  %{} = getelementptr inbounds i64, ptr %{}, i64 {}", elem_ptr, base_ptr, index_val)?;
+                                writeln!(out, "  %{} = getelementptr inbounds nuw i64, ptr %{}, i64 {}", elem_ptr, base_ptr, index_val)?;
                             } else {
                                 // Byte-offset GEP (original path)
                                 let offset_val = match offset_op {
@@ -3369,7 +3346,7 @@ impl TextCodeGen {
                                     }
                                     _ => self.format_operand_with_strings(offset_op, string_table),
                                 };
-                                writeln!(out, "  %{} = getelementptr inbounds i8, ptr %{}, i64 {}", elem_ptr, base_ptr, offset_val)?;
+                                writeln!(out, "  %{} = getelementptr inbounds nuw i8, ptr %{}, i64 {}", elem_ptr, base_ptr, offset_val)?;
                             }
                             if let Some(d) = dest {
                                 if local_names.contains(&d.name) {
@@ -3546,7 +3523,7 @@ impl TextCodeGen {
                             let base_ptr = format!("gep_base.{}", load_idx);
                             let elem_ptr = format!("gep_elem.{}", load_idx);
                             writeln!(out, "  %{} = inttoptr i64 {} to ptr", base_ptr, base_val)?;
-                            writeln!(out, "  %{} = getelementptr inbounds i8, ptr %{}, i64 {}", elem_ptr, base_ptr, offset_val)?;
+                            writeln!(out, "  %{} = getelementptr inbounds nuw i8, ptr %{}, i64 {}", elem_ptr, base_ptr, offset_val)?;
                             // Load byte and zext
                             if let Some(d) = dest {
                                 if local_names.contains(&d.name) {
@@ -3678,7 +3655,7 @@ impl TextCodeGen {
                             let elem_ptr = format!("sgep_elem.{}", store_idx);
                             let trunc_val = format!("store_u8_trunc.{}", store_idx);
                             writeln!(out, "  %{} = inttoptr i64 {} to ptr", base_ptr, base_val)?;
-                            writeln!(out, "  %{} = getelementptr inbounds i8, ptr %{}, i64 {}", elem_ptr, base_ptr, offset_val)?;
+                            writeln!(out, "  %{} = getelementptr inbounds nuw i8, ptr %{}, i64 {}", elem_ptr, base_ptr, offset_val)?;
                             writeln!(out, "  %{} = trunc i64 {} to i8", trunc_val, val_val)?;
                             writeln!(out, "  store i8 %{}, ptr %{}, !tbaa !906", trunc_val, elem_ptr)?;
                             used_gep = true;
@@ -3936,7 +3913,7 @@ impl TextCodeGen {
                     let data_ptr = format!("vec.get.dptr.{}", vec_idx);
                     writeln!(out, "  %{} = inttoptr i64 %{} to ptr", data_ptr, data_i64)?;
                     let elem_ptr = format!("vec.get.elem.{}", vec_idx);
-                    writeln!(out, "  %{} = getelementptr inbounds i64, ptr %{}, i64 {}", elem_ptr, data_ptr, idx_val)?;
+                    writeln!(out, "  %{} = getelementptr inbounds nuw i64, ptr %{}, i64 {}", elem_ptr, data_ptr, idx_val)?;
                     if let Some(d) = dest {
                         if local_names.contains(&d.name) {
                             let elem_val = format!("vec.get.val.{}", vec_idx);
@@ -3993,7 +3970,7 @@ impl TextCodeGen {
                     let data_ptr = format!("vec.set.dptr.{}", vec_idx);
                     writeln!(out, "  %{} = inttoptr i64 %{} to ptr", data_ptr, data_i64)?;
                     let elem_ptr = format!("vec.set.elem.{}", vec_idx);
-                    writeln!(out, "  %{} = getelementptr inbounds i64, ptr %{}, i64 {}", elem_ptr, data_ptr, idx_val)?;
+                    writeln!(out, "  %{} = getelementptr inbounds nuw i64, ptr %{}, i64 {}", elem_ptr, data_ptr, idx_val)?;
                     writeln!(out, "  store i64 {}, ptr %{}", val_val, elem_ptr)?;
                     return Ok(());
                 }
@@ -4057,7 +4034,7 @@ impl TextCodeGen {
                     let last_idx = format!("vpop.last_idx.{}", vec_idx);
                     writeln!(out, "  %{} = sub i64 %{}, 1", last_idx, len_val)?;
                     let elem_ptr = format!("vpop.elem.{}", vec_idx);
-                    writeln!(out, "  %{} = getelementptr inbounds i64, ptr %{}, i64 %{}", elem_ptr, data_ptr, last_idx)?;
+                    writeln!(out, "  %{} = getelementptr inbounds nuw i64, ptr %{}, i64 %{}", elem_ptr, data_ptr, last_idx)?;
                     // New length = len - 1
                     let new_len = format!("vpop.newlen.{}", vec_idx);
                     writeln!(out, "  %{} = sub i64 %{}, 1", new_len, len_val)?;
@@ -5407,7 +5384,7 @@ impl TextCodeGen {
                 };
 
                 // Emit GEP instruction
-                writeln!(out, "  %{} = getelementptr inbounds {}, ptr {}, i64 {}", dest_name, elem_ty_str, ptr_val, offset_val)?;
+                writeln!(out, "  %{} = getelementptr inbounds nuw {}, ptr {}, i64 {}", dest_name, elem_ty_str, ptr_val, offset_val)?;
 
                 // Store to alloca if dest is a local
                 if local_names.contains(&dest.name) {
@@ -6835,7 +6812,7 @@ mod tests {
         let codegen = TextCodeGen::new();
         let ir = codegen.generate(&program).unwrap();
 
-        assert!(ir.contains("define private i64 @add(i64 noundef %a, i64 noundef %b)"));
+        assert!(ir.contains("define private noundef i64 @add(i64 noundef %a, i64 noundef %b)"));
         assert!(ir.contains("%_t0 = add nsw i64 %a, %b"));  // nsw for optimization
         assert!(ir.contains("ret i64 %_t0"));
     }
@@ -8919,7 +8896,7 @@ mod tests {
         };
         let cg = TextCodeGen::new();
         let ir = cg.generate(&program).unwrap();
-        assert!(ir.contains("getelementptr inbounds i64"), "PtrOffset should emit GEP inbounds");
+        assert!(ir.contains("getelementptr inbounds nuw i64"), "PtrOffset should emit GEP inbounds nuw");
     }
 
     #[test]
