@@ -1,0 +1,165 @@
+// Golden Test: Numeric/scientific algorithms
+// Newton-Raphson, bisection, trapezoidal rule, Taylor series, etc.
+// All f64 results converted to i64 via scaling for deterministic output.
+
+// 1. Newton-Raphson for cube root: x_{n+1} = (2*x + target/(x*x)) / 3
+fn cube_root(target: f64) -> f64 = {
+    let mut x = target / 3.0;
+    if x < 1.0 { x = 1.0 } else { () };
+    for _i in 0..30 {
+        x = (2.0 * x + target / (x * x)) / 3.0
+    };
+    x
+    };
+
+// 2. Bisection method: find zero of f(x) = x*x - target on [lo, hi]
+fn bisect_sqrt(target: f64, lo_init: f64, hi_init: f64) -> f64 = {
+    let mut lo = lo_init;
+    let mut hi = hi_init;
+    for _i in 0..60 {
+        let mid = (lo + hi) / 2.0;
+        let fmid = mid * mid - target;
+        if fmid > 0.0 { hi = mid } else { lo = mid }
+    };
+    (lo + hi) / 2.0
+    };
+
+// 3. Trapezoidal rule for integral of x^2 from 0 to 1
+fn trapezoidal_x2(n: i64) -> f64 = {
+    let nf = i64_to_f64(n);
+    let h = 1.0 / nf;
+    // f(0) = 0, f(1) = 1
+    let mut sum = 0.0 + 1.0 / 2.0;  // (f(0) + f(1)) / 2
+    for i in 1..n {
+        let x = i64_to_f64(i) * h;
+        sum = sum + x * x
+    };
+    sum * h
+    };
+
+// 4. Taylor series for e^x: sum(x^k / k!, k=0..terms-1)
+fn taylor_exp(x: f64, terms: i64) -> f64 = {
+    let mut result = 1.0;     // k=0 term
+    let mut term = 1.0;       // current term value
+    for k in 1..terms {
+        term = term * x / i64_to_f64(k);
+        result = result + term
+    };
+    result
+    };
+
+// 5. Geometric series: a + a*r + a*r^2 + ... (n terms)
+fn geometric_series(a: f64, r: f64, n: i64) -> f64 = {
+    let mut sum = 0.0;
+    let mut term = a;
+    for _i in 0..n {
+        sum = sum + term;
+        term = term * r
+    };
+    sum
+    };
+
+// 6. Harmonic number H(n) = 1 + 1/2 + 1/3 + ... + 1/n
+fn harmonic(n: i64) -> f64 = {
+    let mut sum = 0.0;
+    for i in 1..=n {
+        sum = sum + 1.0 / i64_to_f64(i)
+    };
+    sum
+    };
+
+// 7. Newton-Raphson for square root: x_{n+1} = (x + target/x) / 2
+fn newton_sqrt(target: f64) -> f64 = {
+    let mut x = target / 2.0;
+    if x < 1.0 { x = 1.0 } else { () };
+    for _i in 0..30 {
+        x = (x + target / x) / 2.0
+    };
+    x
+    };
+
+// 8. Convergence: iterate x = x/2 starting at init, count steps until x < threshold
+fn converge_halving(init: f64, threshold: f64) -> i64 = {
+    let mut x = init;
+    let mut steps = 0;
+    loop {
+        if x < threshold { break } else { () };
+        x = x / 2.0;
+        steps = steps + 1
+    };
+    steps
+    };
+
+// 9. Power series: compute sum(i^2, i=1..n) via iterative accumulation
+fn sum_of_squares(n: i64) -> i64 = {
+    let mut sum = 0;
+    for i in 1..=n {
+        sum = sum + i * i
+    };
+    sum
+    };
+
+// 10. Fixed-point iteration: x_{n+1} = (x + c) / 2, converges to c
+fn fixed_point(c: f64, start: f64, iters: i64) -> f64 = {
+    let mut x = start;
+    for _i in 0..iters {
+        x = (x + c) / 2.0
+    };
+    x
+    };
+
+fn main() -> i64 = {
+    // 1. Cube root of 27 => 3.0, scaled *1000 => 3000
+    let cr27 = cube_root(27.0);
+    let _p1 = println(f64_to_i64(cr27 * 1000.0));  // 3000
+
+    // 2. Cube root of 8 => 2.0, scaled *1000 => 2000
+    let cr8 = cube_root(8.0);
+    let _p2 = println(f64_to_i64(cr8 * 1000.0));  // 2000
+
+    // 3. Bisection sqrt(4) on [0, 4] => 2.0, scaled *1000 => 2000
+    let bs4 = bisect_sqrt(4.0, 0.0, 4.0);
+    let _p3 = println(f64_to_i64(bs4 * 1000.0));  // 2000
+
+    // 4. Trapezoidal integral of x^2 on [0,1], n=100 => ~0.33335, scaled *10000 => 3333
+    let trap = trapezoidal_x2(100);
+    let _p4 = println(f64_to_i64(trap * 10000.0));  // 3333
+
+    // 5. Taylor e^1 (15 terms) => ~2.71828..., scaled *10000 => 27182
+    let e1 = taylor_exp(1.0, 15);
+    let _p5 = println(f64_to_i64(e1 * 10000.0));  // 27182
+
+    // 6. Taylor e^0 = 1.0, scaled *10000 => 10000
+    let e0 = taylor_exp(0.0, 15);
+    let _p6 = println(f64_to_i64(e0 * 10000.0));  // 10000
+
+    // 7. Geometric series 1.0 + 0.5 + 0.25 + ... (10 terms) => 1.998..., scaled *1000 => 1998
+    let gs = geometric_series(1.0, 0.5, 10);
+    let _p7 = println(f64_to_i64(gs * 1000.0));  // 1998
+
+    // 8. Harmonic H(10) => 2.928968..., scaled *1000 => 2928
+    let h10 = harmonic(10);
+    let _p8 = println(f64_to_i64(h10 * 1000.0));  // 2928
+
+    // 9. Newton sqrt(100) => 10.0, scaled *100 => 1000
+    let sq100 = newton_sqrt(100.0);
+    let _p9 = println(f64_to_i64(sq100 * 100.0));  // 1000
+
+    // 10. Newton sqrt(2) => 1.41421356..., scaled *10000 => 14142
+    let sq2 = newton_sqrt(2.0);
+    let _p10 = println(f64_to_i64(sq2 * 10000.0));  // 14142
+
+    // 11. Convergence halving from 1024.0, threshold 1.0 => 11 steps
+    let steps = converge_halving(1024.0, 1.0);
+    let _p11 = println(steps);  // 11
+
+    // 12. Sum of squares 1..10 => 385
+    let ss = sum_of_squares(10);
+    let _p12 = println(ss);  // 385
+
+    // 13. Fixed-point iteration towards 6.0, start=0.0, 60 iters => ~6.0, scaled *100 => 600
+    let fp = fixed_point(6.0, 0.0, 60);
+    let _p13 = println(f64_to_i64(fp * 100.0));  // 600
+
+    0
+    };

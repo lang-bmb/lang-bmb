@@ -1,0 +1,180 @@
+// Golden test: Priority queue (min-heap) simulation using array
+// Tests insert, extract-min, peek with manual heap operations
+
+// Helper: create a vec of n zeros
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { 0 };
+        vec_push(v, 0);
+        i = i + 1
+    };
+    v
+    };
+
+// Parent index: (i-1)/2
+fn heap_parent(i: i64) -> i64 = (i - 1) / 2;
+
+// Left child index: 2*i+1
+fn heap_left(i: i64) -> i64 = 2 * i + 1;
+
+// Right child index: 2*i+2
+fn heap_right(i: i64) -> i64 = 2 * i + 2;
+
+// Swap two elements in the heap array
+fn heap_swap(heap: i64, i: i64, j: i64) -> i64 = {
+    let tmp = vec_get(heap, i);
+    vec_set(heap, i, vec_get(heap, j));
+    vec_set(heap, j, tmp);
+    0
+    };
+
+// Sift up: restore heap property by moving element at idx up
+fn sift_up(heap: i64, idx: i64) -> i64 =
+    if idx == 0 { 0 }
+    else {
+        let p = heap_parent(idx);
+        if vec_get(heap, idx) < vec_get(heap, p) {
+            let _sw = heap_swap(heap, idx, p);
+            sift_up(heap, p)
+        } else { 0 }
+    };
+
+// Sift down: restore heap property by moving element at idx down
+fn sift_down(heap: i64, idx: i64, size: i64) -> i64 = {
+    let l = heap_left(idx);
+    let r = heap_right(idx);
+    let smallest_lr = if l >= size { idx }
+        else if r >= size {
+            if vec_get(heap, l) < vec_get(heap, idx) { l } else { idx }
+        } else {
+            let left_val = vec_get(heap, l);
+            let right_val = vec_get(heap, r);
+            let cur_val = vec_get(heap, idx);
+            if left_val <= right_val {
+                if left_val < cur_val { l } else { idx }
+            } else {
+                if right_val < cur_val { r } else { idx }
+            }
+        };
+    if smallest_lr == idx { 0 }
+    else {
+        let _sw = heap_swap(heap, idx, smallest_lr);
+        sift_down(heap, smallest_lr, size)
+    }
+    };
+
+// Insert a value into the min-heap, returns new size
+fn heap_insert(heap: i64, size: i64, val: i64) -> i64 = {
+    vec_set(heap, size, val);
+    let _su = sift_up(heap, size);
+    size + 1
+    };
+
+// Peek at minimum (root)
+fn heap_peek(heap: i64) -> i64 = vec_get(heap, 0);
+
+// Extract minimum: swap root with last, shrink, sift down. Returns new size.
+fn heap_extract_min(heap: i64, size: i64) -> i64 = {
+    let new_size = size - 1;
+    let _sw = heap_swap(heap, 0, new_size);
+    let _sd = sift_down(heap, 0, new_size);
+    new_size
+    };
+
+// Heap sort: insert all, then extract all in order
+fn heap_sort_insert(heap: i64, arr: i64, idx: i64, n: i64, hsize: i64) -> i64 =
+    if idx >= n { hsize }
+    else {
+        let new_hsize = heap_insert(heap, hsize, vec_get(arr, idx));
+        heap_sort_insert(heap, arr, idx + 1, n, new_hsize)
+    };
+
+fn heap_sort_extract(heap: i64, out: i64, idx: i64, hsize: i64) -> i64 =
+    if hsize == 0 { 0 }
+    else {
+        vec_set(out, idx, heap_peek(heap));
+        let new_hsize = heap_extract_min(heap, hsize);
+        heap_sort_extract(heap, out, idx + 1, new_hsize)
+    };
+
+fn main() -> i64 = {
+    let heap = make_zeros(20);
+
+    // Insert elements: 5, 3, 7, 1, 4, 6, 2
+    let s0 = 0;
+    let s1 = heap_insert(heap, s0, 5);
+    let _p1 = println(heap_peek(heap));        // 5 (only element)
+
+    let s2 = heap_insert(heap, s1, 3);
+    let _p2 = println(heap_peek(heap));        // 3 (3 < 5)
+
+    let s3 = heap_insert(heap, s2, 7);
+    let _p3 = println(heap_peek(heap));        // 3 (unchanged)
+
+    let s4 = heap_insert(heap, s3, 1);
+    let _p4 = println(heap_peek(heap));        // 1 (1 < 3)
+
+    let s5 = heap_insert(heap, s4, 4);
+    let s6 = heap_insert(heap, s5, 6);
+    let s7 = heap_insert(heap, s6, 2);
+    let _p5 = println(heap_peek(heap));        // 1 (still min)
+    let _p6 = println(s7);                     // 7 (size)
+
+    // Extract min repeatedly
+    let _p7 = println(heap_peek(heap));        // 1
+    let s8 = heap_extract_min(heap, s7);
+    let _p8 = println(heap_peek(heap));        // 2
+    let s9 = heap_extract_min(heap, s8);
+    let _p9 = println(heap_peek(heap));        // 3
+    let s10 = heap_extract_min(heap, s9);
+    let _p10 = println(heap_peek(heap));       // 4
+
+    // Size should be 4 now
+    let _p11 = println(s10);                   // 4
+
+    // Extract remaining
+    let s11 = heap_extract_min(heap, s10);
+    let _p12 = println(heap_peek(heap));       // 5
+    let s12 = heap_extract_min(heap, s11);
+    let _p13 = println(heap_peek(heap));       // 6
+    let s13 = heap_extract_min(heap, s12);
+    let _p14 = println(heap_peek(heap));       // 7
+    let _s14 = heap_extract_min(heap, s13);
+
+    // Heap sort test: sort [9, 1, 5, 3, 7, 2, 8, 4, 6]
+    let arr = vec_new();
+    vec_push(arr, 9);
+    vec_push(arr, 1);
+    vec_push(arr, 5);
+    vec_push(arr, 3);
+    vec_push(arr, 7);
+    vec_push(arr, 2);
+    vec_push(arr, 8);
+    vec_push(arr, 4);
+    vec_push(arr, 6);
+
+    let heap2 = make_zeros(20);
+    let out = make_zeros(9);
+    let hs = heap_sort_insert(heap2, arr, 0, 9, 0);
+    let _hs2 = heap_sort_extract(heap2, out, 0, hs);
+
+    let _p15 = println(vec_get(out, 0));       // 1
+    let _p16 = println(vec_get(out, 1));       // 2
+    let _p17 = println(vec_get(out, 2));       // 3
+    let _p18 = println(vec_get(out, 4));       // 5
+    let _p19 = println(vec_get(out, 8));       // 9
+
+    // Verify sorted order: sum of all = 1+2+3+4+5+6+7+8+9 = 45
+    let total = vec_get(out, 0) + vec_get(out, 1) + vec_get(out, 2) +
+        vec_get(out, 3) + vec_get(out, 4) + vec_get(out, 5) +
+        vec_get(out, 6) + vec_get(out, 7) + vec_get(out, 8);
+    let _p20 = println(total);                 // 45
+
+    vec_free(heap);
+    vec_free(arr);
+    vec_free(heap2);
+    vec_free(out);
+    0
+    };

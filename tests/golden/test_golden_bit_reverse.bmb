@@ -1,0 +1,104 @@
+// Golden Test: Bit reversal and trailing zero counting
+// Reverse bits of 8-bit and 16-bit numbers, count trailing zeros
+
+// Reverse bits of an 8-bit value
+fn reverse_bits8(n: i64) -> i64 = {
+    let mut result = 0;
+    let mut x = n;
+    let mut i = 0;
+    loop {
+        if i >= 8 { break } else { () };
+        result = result * 2 + (x band 1);
+        x = x >> 1;
+        i = i + 1
+    };
+    result
+    };
+
+// Reverse bits of a 16-bit value
+fn reverse_bits16(n: i64) -> i64 = {
+    let mut result = 0;
+    let mut x = n;
+    let mut i = 0;
+    loop {
+        if i >= 16 { break } else { () };
+        result = result * 2 + (x band 1);
+        x = x >> 1;
+        i = i + 1
+    };
+    result
+    };
+
+// Count trailing zeros (number of consecutive 0 bits from LSB)
+// Returns 64 if input is 0
+fn count_trailing_zeros(n: i64) -> i64 = {
+    if n == 0 { 64 }
+    else {
+        let mut count = 0;
+        let mut x = n;
+        loop {
+            if (x band 1) != 0 { break } else { () };
+            count = count + 1;
+            x = x >> 1
+        };
+        count
+    }
+    };
+
+// Count leading zeros for 8-bit value (from bit 7 down)
+fn count_leading_zeros8(n: i64) -> i64 = {
+    if n == 0 { 8 }
+    else {
+        let mut count = 0;
+        let mut mask = 128;
+        loop {
+            if mask == 0 { break } else { () };
+            if (n band mask) != 0 { mask = 0 }
+            else {
+                count = count + 1;
+                mask = mask / 2
+            }
+        };
+        count
+    }
+    };
+
+fn main() -> i64 = {
+    // Reverse 8-bit: 1 (00000001) -> 128 (10000000)
+    let _p1 = println(reverse_bits8(1));         // 128
+
+    // Reverse 8-bit: 170 (10101010) -> 85 (01010101)
+    let _p2 = println(reverse_bits8(170));       // 85
+
+    // Reverse 8-bit: 255 (11111111) -> 255 (11111111)
+    let _p3 = println(reverse_bits8(255));       // 255
+
+    // Reverse 16-bit: 1 (0000000000000001) -> 32768 (1000000000000000)
+    let _p4 = println(reverse_bits16(1));        // 32768
+
+    // Reverse 16-bit: 43690 (1010101010101010) -> 21845 (0101010101010101)
+    let _p5 = println(reverse_bits16(43690));    // 21845
+
+    // Trailing zeros: 8 = 1000 -> 3 trailing zeros
+    let _p6 = println(count_trailing_zeros(8));  // 3
+
+    // Trailing zeros: 12 = 1100 -> 2 trailing zeros
+    let _p7 = println(count_trailing_zeros(12)); // 2
+
+    // Trailing zeros: 16 = 10000 -> 4 trailing zeros
+    let _p8 = println(count_trailing_zeros(16)); // 4
+
+    // Trailing zeros: 1 -> 0 trailing zeros
+    let _p9 = println(count_trailing_zeros(1));  // 0
+
+    // Leading zeros 8-bit: 1 (00000001) -> 7 leading zeros
+    let _p10 = println(count_leading_zeros8(1));  // 7
+
+    // Leading zeros 8-bit: 128 (10000000) -> 0 leading zeros
+    let _p11 = println(count_leading_zeros8(128)); // 0
+
+    // Leading zeros 8-bit: 15 (00001111) -> 4 leading zeros
+    let _p12 = println(count_leading_zeros8(15));  // 4
+
+    0
+    };

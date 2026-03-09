@@ -1,0 +1,15 @@
+// Test: safe mode division WITHOUT contracts — divzero checks should remain
+// Compare with contract_safe_divzero.bmb which has pre b != 0
+
+fn unsafe_div(a: i64, b: i64) -> i64
+= a / b;
+
+fn unsafe_mod(a: i64, b: i64) -> i64
+= a % b;
+
+fn main() -> i64 = {
+    let d = unsafe_div(100, 7);
+    let m = unsafe_mod(100, 7);
+    let _u = println(d + m);
+    0
+};

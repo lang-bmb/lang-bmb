@@ -1,0 +1,154 @@
+// Golden Test: Hash Table with Chaining (open hashing)
+// Uses parallel arrays for key-value pairs and linked lists for collision resolution
+
+fn ht_capacity() -> i64 = 16;
+
+// Simple hash function
+fn ht_hash(key: i64) -> i64 = {
+    let k = if key < 0 { 0 - key } else { key };
+    k - (k / ht_capacity()) * ht_capacity()
+};
+
+// Create hash table: t[0]=keys, t[1]=vals, t[2]=nexts, t[3]=count, t[4]=buckets (heads)
+fn ht_new() -> i64 = {
+    let t = vec_new();
+    let keys = vec_new();
+    let vals = vec_new();
+    let nexts = vec_new();
+    vec_push(t, keys);     // t[0]
+    vec_push(t, vals);     // t[1]
+    vec_push(t, nexts);    // t[2]
+    vec_push(t, 0);        // t[3] = node count
+    let buckets = vec_new();
+    for _i in 0..ht_capacity() {
+        vec_push(buckets, 0 - 1);
+    };
+    vec_push(t, buckets);  // t[4]
+    t
+};
+
+fn ht_alloc(t: i64, key: i64, val: i64) -> i64 = {
+    let idx = vec_get(t, 3);
+    vec_push(vec_get(t, 0), key);
+    vec_push(vec_get(t, 1), val);
+    vec_push(vec_get(t, 2), 0 - 1);
+    vec_set(t, 3, idx + 1);
+    idx
+};
+
+// Put key-value pair (updates if exists)
+fn ht_put(t: i64, key: i64, val: i64) -> i64 = {
+    let h = ht_hash(key);
+    let buckets = vec_get(t, 4);
+    let mut cur = vec_get(buckets, h);
+    let keys = vec_get(t, 0);
+    let vals = vec_get(t, 1);
+    let nexts = vec_get(t, 2);
+
+    // Search for existing key
+    let mut found = 0;
+    loop {
+        if cur < 0 or found == 1 { break } else { () };
+        let _x = if vec_get(keys, cur) == key {
+            vec_set(vals, cur, val);
+            set found = 1;
+            0
+        } else {
+            set cur = vec_get(nexts, cur);
+            0
+        };
+    };
+
+    // Insert new if not found
+    let _ins = if found == 0 {
+        let idx = ht_alloc(t, key, val);
+        let old_head = vec_get(buckets, h);
+        vec_set(vec_get(t, 2), idx, old_head);
+        vec_set(buckets, h, idx);
+        0
+    } else { 0 };
+    0
+};
+
+// Get value for key, returns -999 if not found
+fn ht_get(t: i64, key: i64) -> i64 = {
+    let h = ht_hash(key);
+    let buckets = vec_get(t, 4);
+    let mut cur = vec_get(buckets, h);
+    let keys = vec_get(t, 0);
+    let vals = vec_get(t, 1);
+    let nexts = vec_get(t, 2);
+    let mut result = 0 - 999;
+    loop {
+        if cur < 0 or result != 0 - 999 { break } else { () };
+        let _x = if vec_get(keys, cur) == key {
+            set result = vec_get(vals, cur);
+            0
+        } else {
+            set cur = vec_get(nexts, cur);
+            0
+        };
+    };
+    result
+};
+
+// Check if key exists
+fn ht_contains(t: i64, key: i64) -> i64 =
+    if ht_get(t, key) != 0 - 999 { 1 } else { 0 };
+
+// Count entries
+fn ht_size(t: i64) -> i64 = vec_get(t, 3);
+
+fn main() -> i64 = {
+    let t = ht_new();
+
+    // Test 1: Insert and retrieve
+    let _p1 = ht_put(t, 10, 100);
+    let _p2 = ht_put(t, 20, 200);
+    let _p3 = ht_put(t, 30, 300);
+    println(ht_get(t, 10));   // 100
+    println(ht_get(t, 20));   // 200
+    println(ht_get(t, 30));   // 300
+
+    // Test 2: Not found
+    println(ht_get(t, 99));   // -999
+
+    // Test 3: Update existing
+    let _p4 = ht_put(t, 10, 111);
+    println(ht_get(t, 10));   // 111
+
+    // Test 4: Contains
+    println(ht_contains(t, 20));  // 1
+    println(ht_contains(t, 99));  // 0
+
+    // Test 5: Size
+    println(ht_size(t));  // 3 (update doesn't add)
+
+    // Test 6: Collision test (keys that hash to same bucket)
+    // With capacity=16 and hash=key%16: 5 and 21 both hash to 5
+    let _p5 = ht_put(t, 5, 50);
+    let _p6 = ht_put(t, 21, 210);
+    println(ht_get(t, 5));    // 50
+    println(ht_get(t, 21));   // 210
+
+    // Test 7: Negative keys
+    let _p7 = ht_put(t, 0 - 3, 33);
+    println(ht_get(t, 0 - 3));  // 33
+
+    // Test 8: Zero key
+    let _p8 = ht_put(t, 0, 0);
+    println(ht_get(t, 0));    // 0
+
+    // Test 9: Many entries
+    for i in 100..110 {
+        ht_put(t, i, i * 10);
+    };
+    println(ht_get(t, 105));  // 1050
+
+    vec_free(vec_get(t, 0));
+    vec_free(vec_get(t, 1));
+    vec_free(vec_get(t, 2));
+    vec_free(vec_get(t, 4));
+    vec_free(t);
+    0
+};

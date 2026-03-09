@@ -1,0 +1,43 @@
+// Golden Test: String operations
+// Tests string methods and string-returning functions
+
+fn test_string_len() -> i64 = {
+    let s = "hello world";
+    s.len()
+    };
+
+fn test_string_concat() -> i64 = {
+    let a = "abc";
+    let b = "def";
+    let c = a + b;
+    c.len()
+    };
+
+fn test_string_byte_at() -> i64 = {
+    let s = "ABCDE";
+    s.byte_at(0) + s.byte_at(4)
+    };
+
+fn test_string_eq() -> i64 = {
+    let a = "hello";
+    let b = "hello";
+    let c = "world";
+    let eq1 = if a == b { 1 } else { 0 };
+    let eq2 = if a == c { 1 } else { 0 };
+    eq1 * 10 + eq2
+    };
+
+fn test_string_slice() -> i64 = {
+    let s = "hello world";
+    let sub = s.slice(0, 5);
+    sub.len()
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(test_string_len());    // 11
+    let _p2 = println(test_string_concat()); // 6
+    let _p3 = println(test_string_byte_at()); // 65+69=134
+    let _p4 = println(test_string_eq());     // 10 (eq1=1, eq2=0)
+    let _p5 = println(test_string_slice());  // 5
+    0
+    };

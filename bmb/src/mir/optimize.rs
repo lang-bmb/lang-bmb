@@ -352,6 +352,8 @@ impl OptimizationPass for ConstantFolding {
                             changed = true;
                             continue;
                         }
+                        // Dest is non-constant — remove stale constant (Cycle 1466 fix)
+                        constants.remove(&dest.name);
                         new_instructions.push(inst.clone());
                     }
                     MirInst::UnaryOp { dest, op, src } => {
@@ -367,11 +369,17 @@ impl OptimizationPass for ConstantFolding {
                             changed = true;
                             continue;
                         }
+                        // Dest is non-constant — remove stale constant (Cycle 1466 fix)
+                        constants.remove(&dest.name);
                         new_instructions.push(inst.clone());
                     }
                     MirInst::Copy { dest, src } => {
                         if let Some(value) = constants.get(&src.name) {
                             constants.insert(dest.name.clone(), value.clone());
+                        } else {
+                            // Source is not a constant — remove destination from constants map
+                            // to prevent stale constant propagation (Cycle 1466 fix)
+                            constants.remove(&dest.name);
                         }
                         new_instructions.push(inst.clone());
                     }
@@ -415,6 +423,11 @@ impl OptimizationPass for ConstantFolding {
                             changed = true;
                         }
 
+                        // Call dest is non-constant — remove stale constant (Cycle 1466 fix)
+                        if let Some(d) = dest {
+                            constants.remove(&d.name);
+                        }
+
                         new_instructions.push(MirInst::Call {
                             dest: dest.clone(),
                             func: func_name.clone(),
@@ -422,8 +435,21 @@ impl OptimizationPass for ConstantFolding {
                             is_tail: *is_tail,
                         });
                     }
-                    _ => {
-                        new_instructions.push(inst.clone());
+                    other => {
+                        // Cycle 1467: Remove stale constants for any instruction with a dest
+                        let dest_name = match other {
+                            MirInst::IndexLoad { dest, .. } => Some(&dest.name),
+                            MirInst::StructInit { dest, .. } => Some(&dest.name),
+                            MirInst::FieldAccess { dest, .. } => Some(&dest.name),
+                            MirInst::EnumVariant { dest, .. } => Some(&dest.name),
+                            MirInst::ArrayInit { dest, .. } => Some(&dest.name),
+                            MirInst::Phi { dest, .. } => Some(&dest.name),
+                            _ => None,
+                        };
+                        if let Some(name) = dest_name {
+                            constants.remove(name);
+                        }
+                        new_instructions.push(other.clone());
                     }
                 }
             }
@@ -525,6 +551,11 @@ fn fold_binop(op: MirBinOp, lhs: &Constant, rhs: &Constant) -> Option<Constant> 
         (MirBinOp::FDiv, Constant::Float(a), Constant::Float(b)) if *b != 0.0 => {
             Some(Constant::Float(a / b))
         }
+
+        // v0.96.16: Saturating arithmetic constant folding
+        (MirBinOp::AddSat, Constant::Int(a), Constant::Int(b)) => Some(Constant::Int(a.saturating_add(*b))),
+        (MirBinOp::SubSat, Constant::Int(a), Constant::Int(b)) => Some(Constant::Int(a.saturating_sub(*b))),
+        (MirBinOp::MulSat, Constant::Int(a), Constant::Int(b)) => Some(Constant::Int(a.saturating_mul(*b))),
 
         // v0.50.68: String concatenation at compile time
         // "Hello" + " " + "World" → "Hello World"
@@ -689,39 +720,19 @@ fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> O
                     src: operand_to_place(lhs)?,
                 });
             }
-            // v0.60.52: Convert division by power-of-2 to arithmetic right shift
-            // Note: This is safe for unsigned division semantics
-            // For signed division of negative numbers, behavior differs slightly
-            // but LLVM's optimization passes handle this correctly
-            if let Operand::Constant(Constant::Int(divisor)) = rhs
-                && *divisor > 1 && (*divisor & (*divisor - 1)) == 0 {
-                    // divisor is a power of 2
-                    let shift_amount = (*divisor as u64).trailing_zeros() as i64;
-                    return Some(MirInst::BinOp {
-                        dest: dest.clone(),
-                        op: MirBinOp::Shr,
-                        lhs: lhs.clone(),
-                        rhs: Operand::Constant(Constant::Int(shift_amount)),
-                    });
-                }
+            // v0.60.52: REMOVED division-to-shift optimization
+            // ashr rounds toward -inf (floor) but sdiv rounds toward zero (truncation).
+            // For negative dividends: sdiv(-7, 4)=-1 but ashr(-7, 2)=-2.
+            // LLVM opt -O2 performs this correctly with proper rounding adjustment.
             None
         }
 
-        // Modulo: x % 2^n = x & (2^n - 1) for power-of-2 divisors
+        // Modulo: x % 2^n
         MirBinOp::Mod => {
-            // v0.60.52: Convert modulo by power-of-2 to bitwise AND
-            // This is a common optimization for hash table indexing: idx % size → idx & (size - 1)
-            if let Operand::Constant(Constant::Int(divisor)) = rhs
-                && *divisor > 1 && (*divisor & (*divisor - 1)) == 0 {
-                    // divisor is a power of 2
-                    let mask = *divisor - 1;
-                    return Some(MirInst::BinOp {
-                        dest: dest.clone(),
-                        op: MirBinOp::Band,
-                        lhs: lhs.clone(),
-                        rhs: Operand::Constant(Constant::Int(mask)),
-                    });
-                }
+            // v0.60.52: REMOVED modulo-to-AND optimization
+            // x & (2^n - 1) only equals x % 2^n for non-negative x.
+            // For negative x: (-7) % 4 = -3 but (-7) & 3 = 1.
+            // LLVM opt -O2 performs this correctly with proper sign handling.
             None
         }
 
@@ -811,6 +822,60 @@ fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> O
                 return Some(MirInst::Const {
                     dest: dest.clone(),
                     value: Constant::Float(0.0),
+                });
+            }
+            None
+        }
+
+        // v0.96.16: Saturating arithmetic identities
+        // x +| 0 = x, 0 +| x = x (additive identity holds for saturating add)
+        MirBinOp::AddSat => {
+            if matches!(rhs, Operand::Constant(Constant::Int(0))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
+                });
+            }
+            if matches!(lhs, Operand::Constant(Constant::Int(0))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(rhs)?,
+                });
+            }
+            None
+        }
+
+        // x -| 0 = x (subtractive identity holds for saturating sub)
+        MirBinOp::SubSat => {
+            if matches!(rhs, Operand::Constant(Constant::Int(0))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
+                });
+            }
+            None
+        }
+
+        // x *| 1 = x, 1 *| x = x, x *| 0 = 0, 0 *| x = 0
+        MirBinOp::MulSat => {
+            if matches!(rhs, Operand::Constant(Constant::Int(1))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
+                });
+            }
+            if matches!(lhs, Operand::Constant(Constant::Int(1))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(rhs)?,
+                });
+            }
+            if matches!(rhs, Operand::Constant(Constant::Int(0)))
+                || matches!(lhs, Operand::Constant(Constant::Int(0)))
+            {
+                return Some(MirInst::Const {
+                    dest: dest.clone(),
+                    value: Constant::Int(0),
                 });
             }
             None
@@ -2832,10 +2897,20 @@ impl TailCallOptimization {
                 _ => continue,
             };
 
-            // Find phi that produces return_var (should be only instruction or last before return)
-            for inst in &block.instructions {
+            // Find phi that produces return_var AND verify it's the last instruction.
+            // If there are instructions after the phi (e.g. side-effecting calls that
+            // use the phi result), converting source blocks to return early would skip them.
+            let mut found_phi = false;
+            for (phi_idx, inst) in block.instructions.iter().enumerate() {
                 if let MirInst::Phi { dest, values } = inst
                     && dest.name == *return_var {
+                        // The phi must be the last instruction in the block.
+                        // Any instructions after the phi would be skipped if we convert
+                        // source blocks from Goto(merge) to Return(call_result).
+                        if phi_idx + 1 < block.instructions.len() {
+                            break; // Not safe: intervening instructions exist
+                        }
+
                         // Collect incoming edges: (value_name, source_block)
                         let edges: Vec<(String, String)> = values.iter()
                             .filter_map(|(operand, label)| {
@@ -2854,9 +2929,11 @@ impl TailCallOptimization {
                                 edges,
                             ));
                         }
+                        found_phi = true;
                         break;
                     }
             }
+            let _ = found_phi; // suppress unused warning
         }
 
         // For each phi return block, check source blocks for tail calls
@@ -3957,6 +4034,115 @@ fn transform_concat_chain(chain: &ConcatChain, temp_counter: &mut usize) -> Vec<
 
 /// Interprocedural constant propagation for type narrowing
 ///
+/// v0.95.9: Compute which parameters of each function are used as array index operands
+/// (IndexLoad/IndexStore), including interprocedural propagation through call chains.
+/// Returns: function_name → set of param indices that are index operands.
+fn compute_index_param_positions(program: &MirProgram) -> HashMap<String, HashSet<usize>> {
+    // Phase A: Direct usage — scan each function for IndexLoad/IndexStore
+    let mut result: HashMap<String, HashSet<usize>> = HashMap::new();
+    for func in &program.functions {
+        for (param_idx, (param_name, _)) in func.params.iter().enumerate() {
+            if param_directly_indexes_array_standalone(func, param_name) {
+                result.entry(func.name.clone()).or_default().insert(param_idx);
+            }
+        }
+    }
+
+    // Phase B: Interprocedural propagation — if f calls g(... param_i ...) at arg k,
+    // and g's param k is an index param, then f's param i is also an index param.
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for func in &program.functions {
+            for block in &func.blocks {
+                for inst in &block.instructions {
+                    if let MirInst::Call { func: callee, args, .. } = inst {
+                        let callee_indices = result.get(callee).cloned().unwrap_or_default();
+                        if callee_indices.is_empty() {
+                            continue;
+                        }
+                        for (arg_idx, arg) in args.iter().enumerate() {
+                            if !callee_indices.contains(&arg_idx) {
+                                continue;
+                            }
+                            if let Operand::Place(p) = arg {
+                                if let Some(pi) = find_param_origin_standalone(func, &p.name) {
+                                    if result.entry(func.name.clone()).or_default().insert(pi) {
+                                        changed = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    result
+}
+
+/// Check if a parameter is directly used as INDEX operand in IndexLoad/IndexStore.
+fn param_directly_indexes_array_standalone(func: &MirFunction, param_name: &str) -> bool {
+    let mut derived: HashSet<String> = HashSet::new();
+    derived.insert(param_name.to_string());
+    for _ in 0..5 {
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                match inst {
+                    MirInst::IndexLoad { index, .. } => {
+                        if matches!(index, Operand::Place(p) if derived.contains(&p.name)) {
+                            return true;
+                        }
+                    }
+                    MirInst::IndexStore { index, .. } => {
+                        if matches!(index, Operand::Place(p) if derived.contains(&p.name)) {
+                            return true;
+                        }
+                    }
+                    MirInst::Copy { dest, src } if derived.contains(&src.name) => {
+                        derived.insert(dest.name.clone());
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Trace a variable back to a function parameter, returning the param index.
+fn find_param_origin_standalone(func: &MirFunction, var_name: &str) -> Option<usize> {
+    for (idx, (pname, _)) in func.params.iter().enumerate() {
+        if pname == var_name {
+            return Some(idx);
+        }
+    }
+    let mut current = var_name.to_string();
+    for _ in 0..10 {
+        let mut found_src = None;
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let MirInst::Copy { dest, src } = inst {
+                    if dest.name == current {
+                        found_src = Some(src.name.clone());
+                    }
+                }
+            }
+        }
+        if let Some(src) = found_src {
+            for (idx, (pname, _)) in func.params.iter().enumerate() {
+                if *pname == src {
+                    return Some(idx);
+                }
+            }
+            current = src;
+        } else {
+            break;
+        }
+    }
+    None
+}
+
 /// When a function is called with constant arguments from `main()`:
 ///   `main() { fibonacci(35) }`
 /// We can:
@@ -3974,6 +4160,9 @@ pub struct ConstantPropagationNarrowing {
     /// v0.60.35: Set of functions that have direct Mul operations
     /// Used to prevent narrowing params that flow to functions with multiplication
     functions_with_mul: HashSet<String>,
+    /// v0.95.9: Map: function_name → set of param indices used as array index operands
+    /// Interprocedurally computed — prevents narrowing index params that block LLVM strength reduction
+    index_param_positions: HashMap<String, HashSet<usize>>,
 }
 
 impl ConstantPropagationNarrowing {
@@ -4049,14 +4238,19 @@ impl ConstantPropagationNarrowing {
             }
         }
 
-        Self { call_site_constants, functions_with_mul }
+        let index_param_positions = compute_index_param_positions(program);
+
+        Self { call_site_constants, functions_with_mul, index_param_positions }
     }
 
     /// v0.60.35: Check if a function has direct Mul operations
     fn has_direct_multiplication(func: &MirFunction) -> bool {
         for block in &func.blocks {
             for inst in &block.instructions {
-                if let MirInst::BinOp { op: MirBinOp::Mul, .. } = inst {
+                // v0.95.5: Also treat Shl as multiplication (x << n == x * 2^n)
+                // AlgebraicSimplification converts Mul by power-of-2 to Shl before
+                // narrowing runs, so we must detect both.
+                if let MirInst::BinOp { op: MirBinOp::Mul | MirBinOp::Shl, .. } = inst {
                     return true;
                 }
             }
@@ -4114,7 +4308,8 @@ impl ConstantPropagationNarrowing {
                             let rhs_derived = matches!(rhs, Operand::Place(p) if derived.contains(&p.name));
 
                             // If used in multiplication, return true
-                            if matches!(op, MirBinOp::Mul) && (lhs_derived || rhs_derived) {
+                            // v0.95.5: Also treat Shl as multiplication (x << n == x * 2^n)
+                            if matches!(op, MirBinOp::Mul | MirBinOp::Shl) && (lhs_derived || rhs_derived) {
                                 return true;
                             }
 
@@ -4183,6 +4378,13 @@ impl ConstantPropagationNarrowing {
         // i32→i64 sext at entry + i64→i32 trunc at each recursive call site.
         if Self::has_remaining_self_recursive_calls(func) {
             return false;
+        }
+
+        // v0.95.9: Don't narrow params used as array index operands (interprocedural).
+        if let Some(index_params) = self.index_param_positions.get(&func.name) {
+            if index_params.contains(&param_idx) {
+                return false;
+            }
         }
 
         let func_name = &func.name;
@@ -4395,6 +4597,10 @@ pub struct LoopBoundedNarrowing {
     /// v0.60.14: Set of functions that have direct Mul operations
     /// Used to prevent narrowing params that flow to functions with multiplication
     functions_with_mul: HashSet<String>,
+    /// v0.95.9: Map: function_name → set of param indices used as array index operands
+    /// Used to prevent narrowing params that flow to array index positions (IndexLoad/IndexStore)
+    /// across function call boundaries. Enables LLVM typed GEP strength reduction.
+    index_param_positions: HashMap<String, HashSet<usize>>,
 }
 
 impl LoopBoundedNarrowing {
@@ -4467,14 +4673,20 @@ impl LoopBoundedNarrowing {
             }
         }
 
-        Self { param_bounds, functions_with_mul }
+        // v0.95.9: Compute index_param_positions interprocedurally
+        let index_param_positions = compute_index_param_positions(program);
+
+        Self { param_bounds, functions_with_mul, index_param_positions }
     }
 
     /// v0.60.14: Check if a function has direct Mul operations
     fn has_direct_multiplication(func: &MirFunction) -> bool {
         for block in &func.blocks {
             for inst in &block.instructions {
-                if let MirInst::BinOp { op: MirBinOp::Mul, .. } = inst {
+                // v0.95.5: Also treat Shl as multiplication (x << n == x * 2^n)
+                // AlgebraicSimplification converts Mul by power-of-2 to Shl before
+                // narrowing runs, so we must detect both.
+                if let MirInst::BinOp { op: MirBinOp::Mul | MirBinOp::Shl, .. } = inst {
                     return true;
                 }
             }
@@ -4626,6 +4838,16 @@ impl LoopBoundedNarrowing {
             return false;
         }
 
+        // v0.95.9: Don't narrow params used as array index operands (interprocedural).
+        // Uses pre-computed index_param_positions which follows call chains:
+        // if swap_in_array(arr, i, j) calls array_get(arr, i) where i is an index param,
+        // then swap_in_array's i is also an index param. Prevents shl+ashr patterns in LLVM.
+        if let Some(index_params) = self.index_param_positions.get(&func.name) {
+            if index_params.contains(&param_idx) {
+                return false;
+            }
+        }
+
         // Check if we have bounds for this parameter
         if let Some(bounds) = self.param_bounds.get(&func.name)
             && let Some(&max_val) = bounds.get(&param_idx) {
@@ -4647,10 +4869,19 @@ impl LoopBoundedNarrowing {
                 const SAFE_MUL_BOUND: i64 = 46340;
 
                 if Self::is_used_in_multiplication(func, param_name, &self.functions_with_mul) {
-                    // For multiplication, require smaller bound to prevent overflow
-                    // This allows spectral_norm (n=1000, so sum<=2000) to be narrowed
-                    // but blocks mandelbrot (values can be 20000+)
-                    return (0..=SAFE_MUL_BOUND).contains(&max_val);
+                    // v0.95.6: Distinguish direct vs indirect multiplication.
+                    // Direct (BinOp::Mul in function body, e.g. matrix_get: i * n):
+                    //   allow narrowing with SAFE_MUL_BOUND — the multiplication happens
+                    //   in the narrowed domain, so i32 arithmetic is used directly.
+                    // Indirect (through a Call to a function with Mul, e.g. square_fp → mul_fp):
+                    //   DON'T narrow — the callee expects i64, so narrowing just adds
+                    //   trunc at call site + sext in callee body, creating movslq overhead
+                    //   in hot loops (mandelbrot: 1.10x → PASS).
+                    if Self::param_has_direct_multiplication(func, param_name) {
+                        return (0..=SAFE_MUL_BOUND).contains(&max_val);
+                    } else {
+                        return false;
+                    }
                 }
 
                 // For non-multiplication cases, just check i32 fit
@@ -4739,6 +4970,19 @@ impl LoopBoundedNarrowing {
                                         let abs_c = c.abs();
                                         max_constant = Some(max_constant.map_or(abs_c, |m| m.max(abs_c)));
                                     }
+                            }
+
+                            // v0.95.5: Also treat Shl as multiplication (x << n == x * 2^n)
+                            // AlgebraicSimplification converts Mul by power-of-2 to Shl
+                            // before narrowing runs. Without this check, pack32(hi, lo)
+                            // where body has `hi << 32` gets narrowed to i32, overflowing.
+                            if matches!(op, MirBinOp::Shl) && lhs_derived {
+                                if let Operand::Constant(Constant::Int(shift)) = rhs {
+                                    if *shift >= 0 && *shift < 63 {
+                                        let effective_mul = 1i64 << shift;
+                                        max_constant = Some(max_constant.map_or(effective_mul, |m| m.max(effective_mul)));
+                                    }
+                                }
                             }
 
                             // Propagate derived status
@@ -5072,6 +5316,47 @@ impl LoopBoundedNarrowing {
         false
     }
 
+    /// v0.95.6: Check if a parameter is used DIRECTLY in Mul/Shl within this function body.
+    /// Unlike `is_used_in_multiplication`, this does NOT follow call chains.
+    /// Used to distinguish direct multiplication (matrix_get: i * n) from
+    /// indirect multiplication through calls (square_fp → mul_fp).
+    fn param_has_direct_multiplication(func: &MirFunction, param_name: &str) -> bool {
+        let mut derived: std::collections::HashSet<String> = std::collections::HashSet::new();
+        derived.insert(param_name.to_string());
+
+        for _ in 0..5 {
+            for block in &func.blocks {
+                for inst in &block.instructions {
+                    match inst {
+                        MirInst::BinOp { dest, lhs, rhs, op } => {
+                            let lhs_derived = matches!(lhs, Operand::Place(p) if derived.contains(&p.name));
+                            let rhs_derived = matches!(rhs, Operand::Place(p) if derived.contains(&p.name));
+                            if matches!(op, MirBinOp::Mul | MirBinOp::Shl) && (lhs_derived || rhs_derived) {
+                                return true;
+                            }
+                            if lhs_derived || rhs_derived {
+                                derived.insert(dest.name.clone());
+                            }
+                        }
+                        MirInst::Copy { dest, src } if derived.contains(&src.name) => {
+                            derived.insert(dest.name.clone());
+                        }
+                        MirInst::Phi { dest, values } => {
+                            let any_derived = values.iter().any(|(operand, _)| {
+                                matches!(operand, Operand::Place(p) if derived.contains(&p.name))
+                            });
+                            if any_derived {
+                                derived.insert(dest.name.clone());
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        false
+    }
+
     /// v0.60.14: Check if a parameter is used in multiplication
     /// This includes direct use and use through derived variables
     /// Also checks if the parameter flows to a call to a function that has multiplication
@@ -5091,7 +5376,8 @@ impl LoopBoundedNarrowing {
                             let rhs_derived = matches!(rhs, Operand::Place(p) if derived.contains(&p.name));
 
                             // If used in multiplication, return true immediately
-                            if matches!(op, MirBinOp::Mul) && (lhs_derived || rhs_derived) {
+                            // v0.95.5: Also treat Shl as multiplication (x << n == x * 2^n)
+                            if matches!(op, MirBinOp::Mul | MirBinOp::Shl) && (lhs_derived || rhs_derived) {
                                 return true;
                             }
 
@@ -5980,6 +6266,16 @@ impl MemoryEffectAnalysis {
     }
 
     /// Check if an instruction accesses memory or calls functions
+    /// v0.96.19: Interprocedural version checks callee's known memory effects
+    fn inst_accesses_memory_ip(inst: &MirInst, memory_free_fns: &HashSet<String>) -> bool {
+        match inst {
+            // v0.96.19: If callee is known memory-free, this call doesn't access memory
+            MirInst::Call { func, .. } => !memory_free_fns.contains(func),
+            _ => Self::inst_accesses_memory(inst),
+        }
+    }
+
+    /// Check if an instruction accesses memory or calls functions
     fn inst_accesses_memory(inst: &MirInst) -> bool {
         match inst {
             // Function calls might access memory
@@ -6100,14 +6396,214 @@ impl MemoryEffectAnalysis {
         true
     }
 
-    /// Run on the entire program (interprocedural pass)
+    /// v0.96.19: Interprocedural version — calls to known memory-free functions are OK
+    fn is_memory_free_ip(func: &MirFunction, memory_free_fns: &HashSet<String>) -> bool {
+        if func.name == "main" {
+            return false;
+        }
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if Self::inst_accesses_memory_ip(inst, memory_free_fns) {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    /// v0.96.19: Interprocedural version checks callee's known memory effects
+    /// A call to a memory-free or read-only function does not write memory.
+    fn inst_writes_memory_ip(inst: &MirInst, non_writing_fns: &HashSet<String>) -> bool {
+        match inst {
+            MirInst::Call { func, .. } => !non_writing_fns.contains(func),
+            _ => Self::inst_writes_memory(inst),
+        }
+    }
+
+    /// v0.96.18: Check if an instruction writes memory (stores, calls with side effects)
+    /// Returns true for instructions that modify memory state.
+    fn inst_writes_memory(inst: &MirInst) -> bool {
+        match inst {
+            // Stores always write
+            MirInst::IndexStore { .. }
+            | MirInst::FieldStore { .. }
+            | MirInst::PtrStore { .. } => true,
+            // Init operations allocate+write
+            MirInst::ArrayInit { .. }
+            | MirInst::ArrayAlloc { .. }
+            | MirInst::StructInit { .. }
+            | MirInst::EnumVariant { .. }
+            | MirInst::TupleInit { .. } => true,
+            // Calls may write (conservatively true)
+            MirInst::Call { .. } => true,
+            // Thread/sync/channel/IO operations write shared state
+            MirInst::ThreadSpawn { .. }
+            | MirInst::ThreadJoin { .. }
+            | MirInst::MutexNew { .. }
+            | MirInst::MutexLock { .. }
+            | MirInst::MutexUnlock { .. }
+            | MirInst::MutexTryLock { .. }
+            | MirInst::MutexFree { .. }
+            | MirInst::ArcNew { .. }
+            | MirInst::ArcClone { .. }
+            | MirInst::ArcDrop { .. }
+            | MirInst::AtomicNew { .. }
+            | MirInst::AtomicStore { .. }
+            | MirInst::AtomicFetchAdd { .. }
+            | MirInst::AtomicFetchSub { .. }
+            | MirInst::AtomicSwap { .. }
+            | MirInst::AtomicCompareExchange { .. }
+            | MirInst::ChannelNew { .. }
+            | MirInst::ChannelSend { .. }
+            | MirInst::ChannelTrySend { .. }
+            | MirInst::ChannelSendTimeout { .. }
+            | MirInst::ChannelClose { .. }
+            | MirInst::SenderClone { .. }
+            | MirInst::RwLockNew { .. }
+            | MirInst::RwLockWrite { .. }
+            | MirInst::RwLockWriteUnlock { .. }
+            | MirInst::RwLockReadUnlock { .. }
+            | MirInst::BarrierNew { .. }
+            | MirInst::BarrierWait { .. }
+            | MirInst::CondvarNew { .. }
+            | MirInst::CondvarNotifyOne { .. }
+            | MirInst::CondvarNotifyAll { .. }
+            | MirInst::AsyncFileOpen { .. }
+            | MirInst::AsyncFileWrite { .. }
+            | MirInst::AsyncFileClose { .. }
+            | MirInst::AsyncSocketConnect { .. }
+            | MirInst::AsyncSocketWrite { .. }
+            | MirInst::AsyncSocketClose { .. }
+            | MirInst::ThreadPoolNew { .. }
+            | MirInst::ThreadPoolExecute { .. }
+            | MirInst::ThreadPoolJoin { .. }
+            | MirInst::ThreadPoolShutdown { .. }
+            | MirInst::ScopeNew { .. }
+            | MirInst::ScopeSpawn { .. }
+            | MirInst::ScopeWait { .. }
+            | MirInst::BlockOn { .. } => true,
+            // Read-only memory operations
+            MirInst::IndexLoad { .. }
+            | MirInst::FieldAccess { .. }
+            | MirInst::PtrLoad { .. }
+            | MirInst::TupleExtract { .. }
+            | MirInst::ArcGet { .. }
+            | MirInst::ArcStrongCount { .. }
+            | MirInst::AtomicLoad { .. }
+            | MirInst::ChannelRecv { .. }
+            | MirInst::ChannelTryRecv { .. }
+            | MirInst::ChannelRecvTimeout { .. }
+            | MirInst::ChannelRecvOpt { .. }
+            | MirInst::ChannelIsClosed { .. }
+            | MirInst::RwLockRead { .. }
+            | MirInst::CondvarWait { .. }
+            | MirInst::AsyncFileRead { .. }
+            | MirInst::AsyncSocketRead { .. } => false,
+            // Pure operations never write
+            MirInst::BinOp { .. }
+            | MirInst::UnaryOp { .. }
+            | MirInst::Const { .. }
+            | MirInst::Copy { .. }
+            | MirInst::Phi { .. }
+            | MirInst::Cast { .. }
+            | MirInst::PtrOffset { .. }
+            | MirInst::Select { .. } => false,
+        }
+    }
+
+    /// v0.96.18: Check if a function only reads memory (no writes)
+    /// A function is read-only if it accesses memory but never writes.
+    fn is_read_only(func: &MirFunction) -> bool {
+        if func.name == "main" {
+            return false;
+        }
+
+        let mut accesses_memory = false;
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if Self::inst_accesses_memory(inst) {
+                    accesses_memory = true;
+                }
+                if Self::inst_writes_memory(inst) {
+                    return false;
+                }
+            }
+        }
+
+        // Only mark as read-only if it actually accesses memory
+        // (otherwise it should be memory-free)
+        accesses_memory
+    }
+
+    /// v0.96.19: Interprocedural version — calls to known non-writing functions are OK
+    fn is_read_only_ip(func: &MirFunction, memory_free_fns: &HashSet<String>, non_writing_fns: &HashSet<String>) -> bool {
+        if func.name == "main" {
+            return false;
+        }
+
+        let mut accesses_memory = false;
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if Self::inst_accesses_memory_ip(inst, memory_free_fns) {
+                    accesses_memory = true;
+                }
+                if Self::inst_writes_memory_ip(inst, non_writing_fns) {
+                    return false;
+                }
+            }
+        }
+        accesses_memory
+    }
+
+    /// Run on the entire program (interprocedural fixpoint pass)
+    /// v0.96.19: Iterates until no more functions are discovered as memory-free or read-only.
+    /// Each iteration uses previously discovered functions to unlock new ones through call chains.
     pub fn run_on_program(&self, program: &mut MirProgram) -> bool {
         let mut changed = false;
 
+        // Phase 1: Intraprocedural pass (no call info needed)
         for func in &mut program.functions {
             if !func.is_memory_free && Self::is_memory_free(func) {
                 func.is_memory_free = true;
                 changed = true;
+            }
+            if !func.is_memory_free && !func.is_read_only && Self::is_read_only(func) {
+                func.is_read_only = true;
+                changed = true;
+            }
+        }
+
+        // Phase 2: Interprocedural fixpoint — iterate until stable
+        let mut ip_changed = true;
+        while ip_changed {
+            ip_changed = false;
+
+            // Build sets of known memory-free and non-writing functions
+            let memory_free_fns: HashSet<String> = program.functions.iter()
+                .filter(|f| f.is_memory_free)
+                .map(|f| f.name.clone())
+                .collect();
+            // Non-writing = memory-free OR read-only
+            let non_writing_fns: HashSet<String> = program.functions.iter()
+                .filter(|f| f.is_memory_free || f.is_read_only)
+                .map(|f| f.name.clone())
+                .collect();
+
+            for func in &mut program.functions {
+                // Try to promote to memory-free using interprocedural info
+                if !func.is_memory_free && Self::is_memory_free_ip(func, &memory_free_fns) {
+                    func.is_memory_free = true;
+                    ip_changed = true;
+                    changed = true;
+                }
+                // Try to promote to read-only using interprocedural info
+                if !func.is_memory_free && !func.is_read_only
+                    && Self::is_read_only_ip(func, &memory_free_fns, &non_writing_fns)
+                {
+                    func.is_read_only = true;
+                    ip_changed = true;
+                    changed = true;
+                }
             }
         }
 
@@ -7250,6 +7746,47 @@ impl IfElseToSelect {
                 continue;
             }
 
+            // Don't transform if hoisted instructions define variables that are live
+            // beyond the merge block. Hoisting makes both branches execute unconditionally,
+            // so if a variable defined in one branch is used later (e.g., loop variable),
+            // it would be incorrectly modified when the other branch should have been taken.
+            //
+            // Example: if (v < t) { lo = mid+1 } else { hi = mid-1 }
+            // Both lo and hi feed a phi, but they're also live loop variables.
+            // Hoisting both means lo AND hi always get modified, breaking binary search.
+            let mut has_live_defs = false;
+            for inst in then_block.instructions.iter().chain(else_block.instructions.iter()) {
+                let def_name = match inst {
+                    MirInst::Const { dest, .. } | MirInst::Copy { dest, .. }
+                    | MirInst::BinOp { dest, .. } | MirInst::UnaryOp { dest, .. }
+                    | MirInst::Cast { dest, .. } => Some(&dest.name),
+                    _ => None,
+                };
+                if let Some(name) = def_name {
+                    // Check if this variable is used in any block other than then/else/merge.
+                    // If used elsewhere (e.g., loop header), it's a live variable and
+                    // unconditionally executing its definition would be unsound.
+                    let used_elsewhere = func.blocks.iter()
+                        .filter(|b| b.label != then_label && b.label != else_label
+                                  && b.label != merge_label)
+                        .any(|b| {
+                            b.instructions.iter().any(|i| uses_place(i, name)) ||
+                            match &b.terminator {
+                                Terminator::Branch { cond: Operand::Place(p), .. } => p.name == *name,
+                                Terminator::Return(Some(Operand::Place(p))) => p.name == *name,
+                                _ => false,
+                            }
+                        });
+                    if used_elsewhere {
+                        has_live_defs = true;
+                        break;
+                    }
+                }
+            }
+            if has_live_defs {
+                continue;
+            }
+
             patterns.push(IfElseSelectPattern {
                 cond_block_idx: cond_idx,
                 cond_op,
@@ -7550,6 +8087,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         }
     }
 
@@ -7594,6 +8132,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = DeadCodeElimination;
@@ -7652,6 +8191,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ContractBasedOptimization;
@@ -7699,6 +8239,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ContractBasedOptimization;
@@ -7766,6 +8307,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ContractUnreachableElimination;
@@ -7829,6 +8371,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ContractUnreachableElimination;
@@ -7880,6 +8423,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ContractUnreachableElimination;
@@ -7934,6 +8478,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         // Create a pure function set containing "square"
@@ -7989,6 +8534,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let mut pure_functions = HashSet::new();
@@ -8032,6 +8578,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         // Empty pure function set - no functions are pure
@@ -8064,6 +8611,7 @@ mod tests {
         always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let mut caller_fn = MirFunction {
@@ -8096,6 +8644,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         // Create program with both functions
@@ -8148,6 +8697,7 @@ mod tests {
         always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let mut caller_fn = MirFunction {
@@ -8172,6 +8722,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let program = MirProgram {
@@ -8218,6 +8769,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -8257,6 +8809,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -8296,6 +8849,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -8334,6 +8888,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -8372,6 +8927,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -8410,6 +8966,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -8448,6 +9005,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -8521,6 +9079,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         // Create main function that calls fibonacci(35)
@@ -8546,6 +9105,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         // Create program
@@ -8651,6 +9211,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = TailCallOptimization::new();
@@ -8761,6 +9322,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = TailCallOptimization::new();
@@ -8866,6 +9428,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = TailRecursiveToLoop::new();
@@ -8942,6 +9505,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = MemoryLoadCSE;
@@ -9013,6 +9577,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = MemoryLoadCSE;
@@ -9073,6 +9638,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = CopyPropagation;
@@ -9120,6 +9686,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = CopyPropagation;
@@ -9169,6 +9736,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = CopyPropagation;
@@ -9222,6 +9790,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = CommonSubexpressionElimination;
@@ -9271,6 +9840,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = CommonSubexpressionElimination;
@@ -9321,6 +9891,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = CommonSubexpressionElimination;
@@ -9369,6 +9940,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = SimplifyBranches;
@@ -9419,6 +9991,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = SimplifyBranches;
@@ -9469,6 +10042,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = SimplifyBranches;
@@ -9519,6 +10093,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = UnreachableBlockElimination;
@@ -9570,6 +10145,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = UnreachableBlockElimination;
@@ -9609,6 +10185,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = PhiSimplification;
@@ -9651,6 +10228,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = PhiSimplification;
@@ -9694,6 +10272,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = PhiSimplification;
@@ -9737,6 +10316,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = PhiSimplification;
@@ -9789,6 +10369,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = BlockMerging;
@@ -9840,6 +10421,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = BlockMerging;
@@ -9896,6 +10478,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = GlobalFieldAccessCSE;
@@ -9951,6 +10534,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = GlobalFieldAccessCSE;
@@ -10047,6 +10631,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = IfElseToSwitch;
@@ -10104,6 +10689,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = IfElseToSwitch;
@@ -10158,6 +10744,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = StringConcatOptimization;
@@ -10195,6 +10782,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = StringConcatOptimization;
@@ -10281,6 +10869,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = LoopInvariantCodeMotion::new();
@@ -10356,6 +10945,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = LoopInvariantCodeMotion::new();
@@ -10442,6 +11032,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = LinearRecurrenceToLoop;
@@ -10519,6 +11110,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = LinearRecurrenceToLoop;
@@ -10590,6 +11182,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ConditionalIncrementToSelect;
@@ -10659,6 +11252,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ConditionalIncrementToSelect;
@@ -10783,6 +11377,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ConstantFolding;
@@ -10819,6 +11414,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ConstantFolding;
@@ -10853,6 +11449,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ConstantFolding;
@@ -10887,6 +11484,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ConstantFolding;
@@ -10923,6 +11521,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ConstantFolding;
@@ -10959,6 +11558,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ConstantFolding;
@@ -10994,6 +11594,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ConstantFolding;
@@ -11030,6 +11631,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ConstantFolding;
@@ -11066,6 +11668,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ConstantFolding;
@@ -11106,6 +11709,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: HashMap::new(),
@@ -11138,6 +11742,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: HashMap::new(),
@@ -11175,6 +11780,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: HashMap::new(),
@@ -11222,6 +11828,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: HashMap::new(),
@@ -11261,6 +11868,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: HashMap::new(),
@@ -11303,6 +11911,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: HashMap::new(),
@@ -11340,6 +11949,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: HashMap::new(),
@@ -11373,6 +11983,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: HashMap::new(),
@@ -11488,6 +12099,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
         assert!(LoopBoundedNarrowing::has_direct_multiplication(&func_with_mul));
 
@@ -11515,6 +12127,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
         assert!(!LoopBoundedNarrowing::has_direct_multiplication(&func_no_mul));
     }
@@ -11549,6 +12162,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -11582,6 +12196,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -11615,13 +12230,15 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = AlgebraicSimplification;
-        assert!(pass.run_on_function(&mut func));
-        // x / 8 → x >> 3
+        // Division by power-of-2 is NOT converted to shift (incorrect for negative values)
+        // LLVM opt handles this correctly with proper rounding adjustment
+        assert!(!pass.run_on_function(&mut func));
         assert!(matches!(&func.blocks[0].instructions[0],
-            MirInst::BinOp { op: MirBinOp::Shr, rhs: Operand::Constant(Constant::Int(3)), .. }));
+            MirInst::BinOp { op: MirBinOp::Div, .. }));
     }
 
     #[test]
@@ -11650,13 +12267,15 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = AlgebraicSimplification;
-        assert!(pass.run_on_function(&mut func));
-        // x % 16 → x & 15
+        // Modulo by power-of-2 is NOT converted to AND (incorrect for negative values)
+        // LLVM opt handles this correctly with proper sign handling
+        assert!(!pass.run_on_function(&mut func));
         assert!(matches!(&func.blocks[0].instructions[0],
-            MirInst::BinOp { op: MirBinOp::Band, rhs: Operand::Constant(Constant::Int(15)), .. }));
+            MirInst::BinOp { op: MirBinOp::Mod, .. }));
     }
 
     #[test]
@@ -11685,6 +12304,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -11719,6 +12339,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -11753,6 +12374,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -11786,6 +12408,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -11820,6 +12443,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -11854,6 +12478,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -11902,6 +12527,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = DeadCodeElimination;
@@ -11940,6 +12566,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = DeadCodeElimination;
@@ -12018,6 +12645,7 @@ mod tests {
                     always_inline: false,
                     inline_hint: false,
                     is_memory_free: false,
+                is_read_only: false,
                 },
                 MirFunction {
                     name: "f2".to_string(),
@@ -12045,6 +12673,7 @@ mod tests {
                     always_inline: false,
                     inline_hint: false,
                     is_memory_free: false,
+                is_read_only: false,
                 },
             ],
             extern_fns: vec![],
@@ -12150,6 +12779,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ContractBasedOptimization;
@@ -12207,6 +12837,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ContractUnreachableElimination;
@@ -12250,6 +12881,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = CopyPropagation;
@@ -12318,6 +12950,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = PhiSimplification;
@@ -12370,6 +13003,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = BlockMerging;
@@ -12418,6 +13052,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = CommonSubexpressionElimination;
@@ -12450,6 +13085,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = DeadCodeElimination;
@@ -12495,6 +13131,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ConstantFolding;
@@ -12534,6 +13171,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ConstantFolding;
@@ -12599,6 +13237,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = MemoryLoadCSE;
@@ -12648,6 +13287,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = SimplifyBranches;
@@ -12698,6 +13338,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let changed = cse.run_on_function(&mut func);
@@ -12744,6 +13385,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = UnreachableBlockElimination;
@@ -12780,6 +13422,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         assert!(LoopBoundedNarrowing::has_direct_multiplication(&func));
@@ -12812,6 +13455,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         assert!(!LoopBoundedNarrowing::has_direct_multiplication(&func));
@@ -12855,6 +13499,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = GlobalFieldAccessCSE;
@@ -12910,6 +13555,7 @@ mod tests {
                     always_inline: false,
                     inline_hint: false,
                     is_memory_free: false,
+                is_read_only: false,
                 },
                 MirFunction {
                     name: "compute".to_string(),
@@ -12935,6 +13581,7 @@ mod tests {
                     always_inline: false,
                     inline_hint: false,
                     is_memory_free: false,
+                is_read_only: false,
                 },
             ],
             extern_fns: vec![],
@@ -12979,6 +13626,7 @@ mod tests {
                     always_inline: false,
                     inline_hint: false,
                     is_memory_free: false,
+                is_read_only: false,
                 },
                 MirFunction {
                     name: "digit_sum".to_string(),
@@ -13012,6 +13660,7 @@ mod tests {
                     always_inline: false,
                     inline_hint: false,
                     is_memory_free: false,
+                is_read_only: false,
                 },
             ],
             extern_fns: vec![],
@@ -13062,6 +13711,7 @@ mod tests {
                     always_inline: false,
                     inline_hint: false,
                     is_memory_free: false,
+                is_read_only: false,
                 },
                 MirFunction {
                     name: "sum_loop".to_string(),
@@ -13141,6 +13791,7 @@ mod tests {
                     always_inline: false,
                     inline_hint: false,
                     is_memory_free: false,
+                is_read_only: false,
                 },
             ],
             extern_fns: vec![],
@@ -13198,6 +13849,7 @@ mod tests {
                     always_inline: false,
                     inline_hint: false,
                     is_memory_free: false,
+                is_read_only: false,
                 },
                 MirFunction {
                     name: "count_loop".to_string(),
@@ -13268,6 +13920,7 @@ mod tests {
                     always_inline: false,
                     inline_hint: false,
                     is_memory_free: false,
+                is_read_only: false,
                 },
             ],
             extern_fns: vec![],
@@ -13317,6 +13970,7 @@ mod tests {
                     always_inline: false,
                     inline_hint: false,
                     is_memory_free: false,
+                is_read_only: false,
                 },
                 MirFunction {
                     name: "process".to_string(),
@@ -13384,6 +14038,7 @@ mod tests {
                     always_inline: false,
                     inline_hint: false,
                     is_memory_free: false,
+                is_read_only: false,
                 },
             ],
             extern_fns: vec![],
@@ -13479,6 +14134,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = SimplifyBranches;
@@ -13510,6 +14166,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = SimplifyBranches;
@@ -13537,6 +14194,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = SimplifyBranches;
@@ -13638,6 +14296,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = IfElseToSwitch;
@@ -13731,6 +14390,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = IfElseToSwitch;
@@ -13817,6 +14477,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = IfElseToSwitch;
@@ -13851,6 +14512,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ConditionalIncrementToSelect;
@@ -13888,6 +14550,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ConditionalIncrementToSelect;
@@ -13912,6 +14575,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = UnreachableBlockElimination;
@@ -13938,6 +14602,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = UnreachableBlockElimination;
@@ -13986,6 +14651,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = UnreachableBlockElimination;
@@ -14016,6 +14682,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = BlockMerging;
@@ -14059,6 +14726,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = BlockMerging;
@@ -14090,6 +14758,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = PhiSimplification;
@@ -14124,6 +14793,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = PhiSimplification;
@@ -14159,6 +14829,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = CopyPropagation;
@@ -14196,6 +14867,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ConstantFolding;
@@ -14233,6 +14905,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ConstantFolding;
@@ -14270,6 +14943,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ConstantFolding;
@@ -14357,6 +15031,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         }
     }
 
@@ -14462,6 +15137,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = IfElseToSelect;
@@ -14501,6 +15177,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = IfElseToSelect;
@@ -14597,6 +15274,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = IfElseToSelect;
@@ -14674,6 +15352,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = IfElseToSelect;
@@ -14771,6 +15450,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = IfElseToSelect;
@@ -14877,6 +15557,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = IfElseToSelect;
@@ -14968,6 +15649,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = IfElseToSelect;
@@ -15101,6 +15783,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = IfElseToSelect;
@@ -15153,6 +15836,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = DeadCodeElimination;
@@ -15201,6 +15885,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = DeadCodeElimination;
@@ -15245,6 +15930,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = DeadCodeElimination;
@@ -15303,6 +15989,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = DeadCodeElimination;
@@ -15347,6 +16034,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let mut caller_fn = MirFunction {
@@ -15373,6 +16061,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let program = MirProgram {
@@ -15414,6 +16103,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let mut caller_fn = MirFunction {
@@ -15440,6 +16130,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let program = MirProgram {
@@ -15483,6 +16174,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let mut caller_fn = MirFunction {
@@ -15509,6 +16201,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let program = MirProgram {
@@ -15561,6 +16254,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = TailCallOptimization::new();
@@ -15606,6 +16300,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = TailCallOptimization::new();
@@ -15644,6 +16339,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = TailCallOptimization::new();
@@ -15719,6 +16415,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = TailRecursiveToLoop::new();
@@ -15770,6 +16467,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = TailRecursiveToLoop::new();
@@ -15828,6 +16526,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = TailRecursiveToLoop::new();
@@ -15863,6 +16562,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = LinearRecurrenceToLoop;
@@ -15890,6 +16590,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = LinearRecurrenceToLoop;
@@ -15971,6 +16672,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = LinearRecurrenceToLoop;
@@ -16068,6 +16770,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = LinearRecurrenceToLoop;
@@ -16106,6 +16809,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ContractBasedOptimization;
@@ -16148,6 +16852,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ContractBasedOptimization;
@@ -16206,6 +16911,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ContractBasedOptimization;
@@ -16253,6 +16959,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = ContractBasedOptimization;
@@ -16295,6 +17002,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = LoopInvariantCodeMotion::new();
@@ -16377,6 +17085,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = LoopInvariantCodeMotion::new();
@@ -16462,6 +17171,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let pass = LoopInvariantCodeMotion::new();
@@ -16514,6 +17224,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let main_fn = MirFunction {
@@ -16540,6 +17251,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let mut program = MirProgram {
@@ -16585,6 +17297,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let main_fn = MirFunction {
@@ -16611,6 +17324,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let mut program = MirProgram {
@@ -16646,6 +17360,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
 
         let mut program = MirProgram {
@@ -16746,31 +17461,23 @@ mod tests {
     }
 
     #[test]
-    fn test_simplify_div_power_of_two() {
+    fn test_simplify_div_power_of_two_not_optimized() {
         let dest = Place::new("result");
         let lhs = Operand::Place(Place::new("x"));
         let rhs = Operand::Constant(Constant::Int(4));
         let result = simplify_binop(&dest, MirBinOp::Div, &lhs, &rhs);
-        assert!(result.is_some());
-        // x / 4 → x >> 2
-        match result.unwrap() {
-            MirInst::BinOp { op: MirBinOp::Shr, rhs: Operand::Constant(Constant::Int(2)), .. } => {}
-            other => panic!("Expected shift right by 2, got {:?}", other),
-        }
+        // Division by power-of-2 is NOT converted to shift (incorrect for negative values)
+        assert!(result.is_none());
     }
 
     #[test]
-    fn test_simplify_mod_power_of_two() {
+    fn test_simplify_mod_power_of_two_not_optimized() {
         let dest = Place::new("result");
         let lhs = Operand::Place(Place::new("x"));
         let rhs = Operand::Constant(Constant::Int(16));
         let result = simplify_binop(&dest, MirBinOp::Mod, &lhs, &rhs);
-        assert!(result.is_some());
-        // x % 16 → x & 15
-        match result.unwrap() {
-            MirInst::BinOp { op: MirBinOp::Band, rhs: Operand::Constant(Constant::Int(15)), .. } => {}
-            other => panic!("Expected band with 15, got {:?}", other),
-        }
+        // Modulo by power-of-2 is NOT converted to AND (incorrect for negative values)
+        assert!(result.is_none());
     }
 
     #[test]
@@ -16950,6 +17657,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: HashMap::new(),
@@ -17214,6 +17922,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
         let licm = LoopInvariantCodeMotion::new();
         let changed = licm.run_on_function(&mut func);
@@ -17266,6 +17975,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
         let licm = LoopInvariantCodeMotion::new();
         let changed = licm.run_on_function(&mut func);
@@ -17318,6 +18028,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
         let licm = LoopInvariantCodeMotion::new();
         let changed = licm.run_on_function(&mut func);
@@ -17370,6 +18081,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
         let licm = LoopInvariantCodeMotion::new();
         let changed = licm.run_on_function(&mut func);
@@ -18035,6 +18747,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
         assert_eq!(AggressiveInlining::count_instructions(&func), 2);
     }
@@ -18058,6 +18771,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
         assert!(AggressiveInlining::is_simple_control_flow(&func));
     }
@@ -18102,6 +18816,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
         assert!(!AggressiveInlining::is_simple_control_flow(&func), "Loop detected via back edge");
     }
@@ -18130,6 +18845,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
         assert!(AggressiveInlining::is_recursive(&func));
     }
@@ -18158,6 +18874,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
         assert!(!AggressiveInlining::is_recursive(&func));
     }
@@ -18187,6 +18904,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
         assert!(pass.should_inline(&func), "Small non-recursive function should be inlined");
     }
@@ -18211,6 +18929,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
         assert!(!pass.should_inline(&func), "main should never be inlined");
     }
@@ -18239,6 +18958,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
         // 3 instructions > max_instructions(2) but <= max_pure_instructions(20)
         assert!(pass.should_inline(&func), "Pure function uses higher threshold");

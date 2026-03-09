@@ -1,0 +1,81 @@
+// Golden Test: Clock Angle Calculation
+// Compute the angle between hour and minute hands
+// Hour hand: moves 360/12 = 30 degrees per hour, 0.5 degrees per minute
+// Minute hand: moves 360/60 = 6 degrees per minute
+// All angles in tenths of degrees to avoid floating point
+
+// Angle of hour hand in tenths of degrees from 12 o'clock
+// hour_angle = hour * 300 + minute * 5 (tenths of degrees)
+fn hour_angle(h: i64, m: i64) -> i64 = {
+    let hh = if h >= 12 { h - 12 } else { h };
+    hh * 300 + m * 5
+};
+
+// Angle of minute hand in tenths of degrees from 12 o'clock
+// minute_angle = minute * 60 (tenths of degrees)
+fn minute_angle(m: i64) -> i64 = {
+    m * 60
+};
+
+// Absolute value
+fn abs_val(x: i64) -> i64 = {
+    if x < 0 { 0 - x } else { x }
+};
+
+// Angle between hands in tenths of degrees (smaller of two possible angles)
+fn clock_angle(h: i64, m: i64) -> i64 = {
+    let ha = hour_angle(h, m);
+    let ma = minute_angle(m);
+    let diff = abs_val(ha - ma);
+    if diff > 1800 { 3600 - diff } else { diff }
+};
+
+// Check if hands overlap (angle < 1 degree = 10 tenths)
+fn hands_overlap(h: i64, m: i64) -> i64 = {
+    if clock_angle(h, m) < 10 { 1 } else { 0 }
+};
+
+fn main() -> i64 = {
+    // Test 1: 12:00 - hands overlap, angle = 0
+    let _p1 = println(clock_angle(12, 0));  // 0
+
+    // Test 2: 3:00 - hour at 90 degrees (900 tenths), minute at 0
+    let _p2 = println(clock_angle(3, 0));  // 900
+
+    // Test 3: 6:00 - hour at 180 degrees (1800 tenths)
+    let _p3 = println(clock_angle(6, 0));  // 1800
+
+    // Test 4: 9:00 - hour at 270 (2700), minute at 0, diff=2700, min(2700,900)=900
+    let _p4 = println(clock_angle(9, 0));  // 900
+
+    // Test 5: 12:30 - hour at 0*300+30*5=150, minute at 30*60=1800
+    // diff = 1650
+    let _p5 = println(clock_angle(12, 30));  // 1650
+
+    // Test 6: 3:15 - hour at 3*300+15*5=975, minute at 15*60=900
+    // diff = 75
+    let _p6 = println(clock_angle(3, 15));  // 75
+
+    // Test 7: 6:30 - hour at 6*300+30*5=1950, minute at 1800
+    // diff = 150, but check: 1950 vs 1800, diff=150
+    let _p7 = println(clock_angle(6, 30));  // 150
+
+    // Test 8: 1:00 - hour at 300, minute at 0 -> 300 (30 degrees)
+    let _p8 = println(clock_angle(1, 0));  // 300
+
+    // Test 9: hands overlap at ~12:00
+    let _p9 = println(hands_overlap(12, 0));  // 1
+
+    // Test 10: hands don't overlap at 3:00
+    let _p10 = println(hands_overlap(3, 0));  // 0
+
+    // Test 11: 2:20 - hour at 2*300+20*5=700, minute at 20*60=1200
+    // diff = 500
+    let _p11 = println(clock_angle(2, 20));  // 500
+
+    // Test 12: 10:10 - hour at 10*300+10*5=3050, minute at 10*60=600
+    // diff = 2450, min(2450, 3600-2450) = min(2450, 1150) = 1150
+    let _p12 = println(clock_angle(10, 10));  // 1150
+
+    0
+};

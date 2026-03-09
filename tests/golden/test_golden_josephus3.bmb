@@ -1,0 +1,108 @@
+// Golden Test: Josephus Problem
+// Given n people in a circle and every k-th person is eliminated,
+// find the position of the last survivor (0-indexed).
+// Uses the recurrence: J(1,k) = 0, J(n,k) = (J(n-1,k) + k) % n
+
+// Recursive Josephus
+fn josephus_rec(n: i64, k: i64) -> i64 =
+    if n == 1 { 0 }
+    else { (josephus_rec(n - 1, k) + k) % n };
+
+// Iterative Josephus
+fn josephus_iter(n: i64, k: i64) -> i64 = {
+    let mut pos = 0;
+    let mut i = 2;
+    loop {
+        if i > n { break } else { 0 };
+        pos = (pos + k) % i;
+        i = i + 1
+    };
+    pos
+};
+
+// Convert to 1-indexed result
+fn josephus1(n: i64, k: i64) -> i64 =
+    josephus_iter(n, k) + 1;
+
+// Simulate with vec: mark eliminated people, return last survivor (1-indexed)
+fn josephus_sim(n: i64, k: i64) -> i64 = {
+    // alive[i] = 1 if alive, 0 if dead
+    let alive = vec_new();
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { 0 };
+        let _p = vec_push(alive, 1);
+        i = i + 1
+    };
+    let mut remaining = n;
+    let mut cur = 0;
+    loop {
+        if remaining <= 1 { break } else { 0 };
+        // Count k alive people
+        let mut count = 0;
+        loop {
+            if count >= k { break } else { 0 };
+            if vec_get(alive, cur) == 1 {
+                count = count + 1
+            } else { () };
+            if count < k {
+                cur = (cur + 1) % n
+            } else { () }
+        };
+        // Eliminate current
+        vec_set(alive, cur, 0);
+        remaining = remaining - 1;
+        cur = (cur + 1) % n
+    };
+    // Find the last survivor
+    let mut j = 0;
+    let mut survivor = 0;
+    loop {
+        if j >= n { break } else { 0 };
+        if vec_get(alive, j) == 1 {
+            survivor = j + 1
+        } else { () };
+        j = j + 1
+    };
+    let _f = vec_free(alive);
+    survivor
+};
+
+fn main() -> i64 = {
+    // Classic: n=7, k=3 => survivor at position 4 (1-indexed)
+    let _p1 = println(josephus1(7, 3));     // 4
+
+    // n=1, k=1 => trivially 1
+    let _p2 = println(josephus1(1, 1));     // 1
+
+    // n=5, k=2 => survivor at position 3
+    let _p3 = println(josephus1(5, 2));     // 3
+
+    // n=10, k=3 => survivor at position 4
+    let _p4 = println(josephus1(10, 3));    // 4
+
+    // n=6, k=7 => survivor at position 5
+    let _p5 = println(josephus1(6, 7));     // 5
+
+    // n=10, k=1 => last person = 10
+    let _p6 = println(josephus1(10, 1));    // 10
+
+    // n=3, k=2 => survivor at position 3
+    let _p7 = println(josephus1(3, 2));     // 3
+
+    // Verify recursive matches iterative
+    let _p8 = println(josephus_rec(7, 3) + 1);   // 4
+    let _p9 = println(josephus_rec(10, 3) + 1);  // 4
+    let _p10 = println(josephus_rec(5, 2) + 1);  // 3
+
+    // Verify simulation matches formula for small n
+    let _p11 = println(josephus_sim(5, 2));  // 3
+    let _p12 = println(josephus_sim(7, 3));  // 4
+    let _p13 = println(josephus_sim(6, 7));  // 5
+
+    // Larger n with k=2 (classic binary pattern)
+    let _p14 = println(josephus1(16, 2));   // 1
+    let _p15 = println(josephus1(100, 2));  // 73
+
+    0
+};

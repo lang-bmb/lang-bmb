@@ -1,0 +1,82 @@
+// Golden Test: Zigzag scanning of a 4x4 matrix
+// Used in JPEG compression for DCT coefficient ordering
+// Traverses diagonals alternating up-right and down-left
+
+// Get element from flat 4x4 matrix
+fn mat4_get(mat: [i64; 16], row: i64, col: i64) -> i64 =
+    mat[row * 4 + col];
+
+// Zigzag scan: traverse diagonals d=0..6 (row+col=d)
+// Even d: go down (increasing row), Odd d: go up (decreasing row)
+fn zigzag_scan(mat: [i64; 16]) -> [i64; 16] = {
+    let out = [0; 16];
+    let mut pos = 0;
+    for d in 0..7 {
+        // Determine start/end row for this diagonal
+        let r_min = if d > 3 { d - 3 } else { 0 };
+        let r_max = if d < 3 { d } else { 3 };
+        // Check if even or odd diagonal
+        let is_even = d - (d / 2) * 2;
+        if is_even == 0 {
+            // Even diagonal: go down (r_min to r_max)
+            let mut r = r_min;
+            loop {
+                if r > r_max { break } else { () };
+                let c = d - r;
+                set out[pos] = mat4_get(mat, r, c);
+                pos = pos + 1;
+                r = r + 1
+            };
+            0
+        } else {
+            // Odd diagonal: go up (r_max to r_min)
+            let mut r = r_max;
+            loop {
+                if r < r_min { break } else { () };
+                let c = d - r;
+                set out[pos] = mat4_get(mat, r, c);
+                pos = pos + 1;
+                r = r - 1
+            };
+            0
+        }
+    };
+    out
+    };
+
+// Count how many values in zigzag output match expected position
+fn verify_count(out: [i64; 16]) -> i64 = {
+    let mut count = 0;
+    for i in 0..16 {
+        if out[i] > 0 { count = count + 1 } else { () }
+    };
+    count
+    };
+
+fn main() -> i64 = {
+    // 4x4 matrix with values 1..16
+    let mat = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+    let zz = zigzag_scan(mat);
+
+    // Print first 8 zigzag-ordered values
+    let _p1 = println(zz[0]);    // (0,0) = 1
+    let _p2 = println(zz[1]);    // (1,0) = 5
+    let _p3 = println(zz[2]);    // (0,1) = 2
+    let _p4 = println(zz[3]);    // (0,2) = 3
+    let _p5 = println(zz[4]);    // (1,1) = 6
+    let _p6 = println(zz[5]);    // (2,0) = 9
+    let _p7 = println(zz[6]);    // (3,0) = 13
+    let _p8 = println(zz[7]);    // (2,1) = 10
+
+    // Verify all 16 elements are present
+    let _p9 = println(verify_count(zz));  // 16
+
+    // Sum of all zigzag values = sum of 1..16 = 136
+    let mut total = 0;
+    for i in 0..16 {
+        total = total + zz[i]
+    };
+    let _p10 = println(total);   // 136
+
+    0
+    };

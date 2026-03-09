@@ -1,0 +1,162 @@
+// Golden Test: Modular arithmetic
+// Extended Euclidean algorithm, modular exponentiation, Chinese Remainder Theorem
+
+// Modular reduction: a mod m (works for positive a, m)
+fn modp(a: i64, m: i64) -> i64 = a - (a / m) * m;
+
+// Absolute value
+fn abs_val(x: i64) -> i64 = if x < 0 { 0 - x } else { x };
+
+// Extended Euclidean algorithm: returns gcd(a, b)
+// Also computes x, y such that a*x + b*y = gcd(a, b)
+// We store results in a vec: [gcd, x, y]
+fn ext_gcd(a: i64, b: i64, result: i64) -> i64 =
+    if b == 0 {
+        let _s0 = vec_set(result, 0, a);
+        let _s1 = vec_set(result, 1, 1);
+        let _s2 = vec_set(result, 2, 0);
+        0
+    } else {
+        let _r = ext_gcd(b, a - (a / b) * b, result);
+        let g = vec_get(result, 0);
+        let x1 = vec_get(result, 1);
+        let y1 = vec_get(result, 2);
+        let _s0 = vec_set(result, 0, g);
+        let _s1 = vec_set(result, 1, y1);
+        let _s2 = vec_set(result, 2, x1 - (a / b) * y1);
+        0
+    };
+
+// Modular inverse of a mod m (a and m must be coprime)
+// Returns x such that a*x ≡ 1 (mod m), in range [0, m)
+fn mod_inverse(a: i64, m: i64) -> i64 = {
+    let res = vec_new();
+    let _p0 = vec_push(res, 0);
+    let _p1 = vec_push(res, 0);
+    let _p2 = vec_push(res, 0);
+    let _e = ext_gcd(a, m, res);
+    let x = vec_get(res, 1);
+    let _f = vec_free(res);
+    // Normalize to [0, m)
+    let r = x - (x / m) * m;
+    if r < 0 { r + m } else { r }
+    };
+
+// Modular exponentiation: base^exp mod m
+fn mod_pow(base: i64, exp: i64, m: i64) -> i64 = {
+    let mut result = 1;
+    let mut b = modp(base, m);
+    let mut e = exp;
+    loop {
+        if e <= 0 { break } else { () };
+        let odd = e - (e / 2) * 2;
+        if odd == 1 {
+            result = modp(result * b, m)
+        } else { () };
+        e = e / 2;
+        b = modp(b * b, m)
+    };
+    result
+    };
+
+// GCD using Euclidean algorithm
+fn gcd(a: i64, b: i64) -> i64 =
+    if b == 0 { a }
+    else { gcd(b, a - (a / b) * b) };
+
+// Chinese Remainder Theorem for two congruences:
+// x ≡ a1 (mod m1), x ≡ a2 (mod m2)
+// Returns x in [0, m1*m2), requires gcd(m1, m2) = 1
+fn crt2(a1: i64, m1: i64, a2: i64, m2: i64) -> i64 = {
+    let inv = mod_inverse(m1, m2);
+    // x = a1 + m1 * ((a2 - a1) * inv mod m2)
+    let diff = a2 - a1;
+    let t = modp(modp(diff, m2) * modp(inv, m2), m2);
+    let tt = if t < 0 { t + m2 } else { t };
+    let x = a1 + m1 * tt;
+    let product = m1 * m2;
+    let r = x - (x / product) * product;
+    if r < 0 { r + product } else { r }
+    };
+
+// Euler's totient function for prime p: phi(p) = p - 1
+// By Euler's theorem: a^phi(m) ≡ 1 (mod m) when gcd(a, m) = 1
+// So a^(-1) ≡ a^(p-2) (mod p) for prime p
+fn mod_inverse_euler(a: i64, p: i64) -> i64 =
+    mod_pow(a, p - 2, p);
+
+fn main() -> i64 = {
+    // === Extended GCD tests ===
+    // gcd(35, 15) = 5
+    let _p1 = println(gcd(35, 15));
+
+    // gcd(17, 13) = 1 (coprime)
+    let _p2 = println(gcd(17, 13));
+
+    // === Modular inverse via extended Euclidean ===
+    // inv(3, 7): 3*x ≡ 1 (mod 7) => x = 5 (3*5 = 15 ≡ 1 mod 7)
+    let inv1 = mod_inverse(3, 7);
+    let _p3 = println(inv1);
+    let _p4 = println(modp(3 * inv1, 7));
+
+    // inv(5, 11): 5*x ≡ 1 (mod 11) => x = 9 (5*9 = 45 ≡ 1 mod 11)
+    let inv2 = mod_inverse(5, 11);
+    let _p5 = println(inv2);
+    let _p6 = println(modp(5 * inv2, 11));
+
+    // inv(7, 13): 7*x ≡ 1 (mod 13) => x = 2 (7*2 = 14 ≡ 1 mod 13)
+    let inv3 = mod_inverse(7, 13);
+    let _p7 = println(inv3);
+    let _p8 = println(modp(7 * inv3, 13));
+
+    // === Modular exponentiation ===
+    // 2^10 mod 1000 = 1024 mod 1000 = 24
+    let _p9 = println(mod_pow(2, 10, 1000));
+
+    // 3^7 mod 11 = 2187 mod 11 = 9
+    let _p10 = println(mod_pow(3, 7, 11));
+
+    // 5^3 mod 13 = 125 mod 13 = 8
+    let _p11 = println(mod_pow(5, 3, 13));
+
+    // 2^0 mod 7 = 1
+    let _p12 = println(mod_pow(2, 0, 7));
+
+    // === Euler's theorem modular inverse (for prime modulus) ===
+    // inv(3, 7) via Euler = 3^5 mod 7 = 243 mod 7 = 5
+    let inv_euler1 = mod_inverse_euler(3, 7);
+    let _p13 = println(inv_euler1);
+    let _p14 = println(modp(3 * inv_euler1, 7));
+
+    // inv(5, 11) via Euler = 5^9 mod 11 = 1953125 mod 11 = 9
+    let inv_euler2 = mod_inverse_euler(5, 11);
+    let _p15 = println(inv_euler2);
+    let _p16 = println(modp(5 * inv_euler2, 11));
+
+    // === Chinese Remainder Theorem ===
+    // x ≡ 2 (mod 3), x ≡ 3 (mod 5) => x = 8 (mod 15)
+    let x1 = crt2(2, 3, 3, 5);
+    let _p17 = println(x1);
+    let _p18 = println(modp(x1, 3));
+    let _p19 = println(modp(x1, 5));
+
+    // x ≡ 1 (mod 5), x ≡ 2 (mod 7) => x = 16 (mod 35)
+    let x2 = crt2(1, 5, 2, 7);
+    let _p20 = println(x2);
+    let _p21 = println(modp(x2, 5));
+    let _p22 = println(modp(x2, 7));
+
+    // x ≡ 3 (mod 4), x ≡ 5 (mod 9) => x = 23 (mod 36)
+    let x3 = crt2(3, 4, 5, 9);
+    let _p23 = println(x3);
+    let _p24 = println(modp(x3, 4));
+    let _p25 = println(modp(x3, 9));
+
+    // === Fermat's little theorem: a^p ≡ a (mod p) for prime p ===
+    // 2^7 mod 7 = 128 mod 7 = 2
+    let _p26 = println(mod_pow(2, 7, 7));
+    // 5^13 mod 13 = 5
+    let _p27 = println(mod_pow(5, 13, 13));
+
+    0
+    };

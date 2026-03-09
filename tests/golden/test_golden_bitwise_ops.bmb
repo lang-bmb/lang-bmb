@@ -1,0 +1,44 @@
+// Golden Test: Bitwise operation patterns
+// Tests band, bor, bxor, shift operations
+
+fn count_set_bits(n: i64) -> i64 = {
+    let mut x = n;
+    let mut count = 0;
+    loop {
+        if x <= 0 { break } else { () };
+        count = count + (x band 1);
+        x = x >> 1
+    };
+    count
+    };
+
+fn is_power_of_two(n: i64) -> i64 =
+    if n <= 0 { 0 }
+    else if (n band (n - 1)) == 0 { 1 }
+    else { 0 };
+
+fn lowest_set_bit(n: i64) -> i64 = n band (0 - n);
+
+fn clear_lowest_bit(n: i64) -> i64 = n band (n - 1);
+
+fn swap_via_xor(a: i64, b: i64) -> i64 = {
+    let x = a bxor b;
+    let y = b bxor x;
+    let z = a bxor x;
+    y * 100 + z
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(count_set_bits(7));      // 3
+    let _p2 = println(count_set_bits(255));    // 8
+    let _p3 = println(count_set_bits(1024));   // 1
+    let _p4 = println(is_power_of_two(16));    // 1
+    let _p5 = println(is_power_of_two(15));    // 0
+    let _p6 = println(is_power_of_two(1));     // 1
+    let _p7 = println(lowest_set_bit(12));     // 4
+    let _p8 = println(lowest_set_bit(10));     // 2
+    let _p9 = println(clear_lowest_bit(12));   // 8
+    let _p10 = println(clear_lowest_bit(7));   // 6
+    let _p11 = println(swap_via_xor(3, 7));    // 307 (y=3, z=7 → 3*100+7)
+    0
+    };

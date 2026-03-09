@@ -1,0 +1,49 @@
+// Golden Test: Modular exponentiation (fast power mod)
+// Computes base^exp mod m using binary exponentiation
+
+fn mod_pow(base: i64, exp: i64, m: i64) -> i64 = {
+    let mut result = 1;
+    let mut b = base % m;
+    let mut e = exp;
+    while e > 0 {
+        let _x = if e % 2 == 1 {
+            set result = (result * b) % m;
+            0
+        } else { 0 };
+        set b = (b * b) % m;
+        set e = e / 2
+    };
+    result
+};
+
+// Modular inverse using Fermat little theorem (m must be prime)
+fn mod_inv(a: i64, m: i64) -> i64 = {
+    mod_pow(a, m - 2, m)
+};
+
+fn main() -> () = {
+    // Test 1: Basic modular exponentiation
+    print_str("2^10 mod 1000 = "); let _r = println(mod_pow(2, 10, 1000));
+    print_str("3^13 mod 50 = "); let _r = println(mod_pow(3, 13, 50));
+    print_str("7^256 mod 13 = "); let _r = println(mod_pow(7, 256, 13));
+
+    // Test 2: Edge cases
+    print_str("5^0 mod 7 = "); let _r = println(mod_pow(5, 0, 7));
+    print_str("0^5 mod 7 = "); let _r = println(mod_pow(0, 5, 7));
+    print_str("2^1 mod 3 = "); let _r = println(mod_pow(2, 1, 3));
+
+    // Test 3: Large exponent
+    print_str("2^30 mod 1000000007 = "); let _r = println(mod_pow(2, 30, 1000000007));
+    print_str("3^20 mod 1000000007 = "); let _r = println(mod_pow(3, 20, 1000000007));
+
+    // Test 4: Modular inverse (p=1000000007 is prime)
+    let p = 1000000007;
+    // inv(2) mod p = (p+1)/2
+    print_str("inv(2) mod p = "); let _r = println(mod_inv(2, p));
+    // Verify: 2 * inv(2) mod p = 1
+    let inv2 = mod_inv(2, p);
+    print_str("2*inv(2) mod p = "); let _r = println((2 * inv2) % p);
+    // inv(3) mod p
+    let inv3 = mod_inv(3, p);
+    print_str("3*inv(3) mod p = "); let _r = println((3 * inv3) % p)
+};

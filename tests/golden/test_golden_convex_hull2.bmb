@@ -1,0 +1,225 @@
+// Golden Test: Graham scan convex hull
+// Points stored as parallel x[] and y[] vecs
+// Uses cross product for orientation and angle-based sorting
+
+// Cross product of vectors (o->a) and (o->b)
+// Positive = counterclockwise, Negative = clockwise, Zero = collinear
+fn cross(ox: i64, oy: i64, ax: i64, ay: i64, bx: i64, by: i64) -> i64 =
+    (ax - ox) * (by - oy) - (ay - oy) * (bx - ox);
+
+// Find index of lowest-y point (leftmost if tie)
+fn find_pivot(px: i64, py: i64, n: i64) -> i64 = {
+    let mut best = 0;
+    for i in 1..n {
+        let yi = vec_get(py, i);
+        let yb = vec_get(py, best);
+        if yi < yb {
+            best = i
+        } else if yi == yb and vec_get(px, i) < vec_get(px, best) {
+            best = i
+        } else { () }
+    };
+    best
+};
+
+// Swap two points in parallel arrays
+fn swap_points(px: i64, py: i64, i: i64, j: i64) -> i64 = {
+    let tx = vec_get(px, i);
+    let ty = vec_get(py, i);
+    let _s1 = vec_set(px, i, vec_get(px, j));
+    let _s2 = vec_set(py, i, vec_get(py, j));
+    let _s3 = vec_set(px, j, tx);
+    let _s4 = vec_set(py, j, ty);
+    0
+};
+
+// Compare angles of points a and b relative to pivot (px[0], py[0])
+// Returns negative if a should come before b
+fn angle_cmp(px: i64, py: i64, a: i64, b: i64) -> i64 = {
+    let ox = vec_get(px, 0);
+    let oy = vec_get(py, 0);
+    let c = cross(ox, oy, vec_get(px, a), vec_get(py, a), vec_get(px, b), vec_get(py, b));
+    if c != 0 { c }
+    else {
+        // Collinear: closer point first
+        let da = (vec_get(px, a) - ox) * (vec_get(px, a) - ox) + (vec_get(py, a) - oy) * (vec_get(py, a) - oy);
+        let db = (vec_get(px, b) - ox) * (vec_get(px, b) - ox) + (vec_get(py, b) - oy) * (vec_get(py, b) - oy);
+        da - db
+    }
+};
+
+// Simple insertion sort on points[1..n-1] by angle relative to pivot
+fn sort_by_angle(px: i64, py: i64, n: i64) -> i64 = {
+    let mut i = 2;
+    loop {
+        if i >= n { break } else { () };
+        let mut j = i;
+        loop {
+            if j <= 1 { break } else { () };
+            let c = angle_cmp(px, py, j, j - 1);
+            if c > 0 {
+                let _sw = swap_points(px, py, j, j - 1);
+                j = j - 1
+            } else {
+                break
+            }
+        };
+        i = i + 1
+    };
+    0
+};
+
+// Graham scan: build convex hull
+// Returns number of hull points; hull indices stored in hull_x, hull_y vecs
+fn graham_scan(px: i64, py: i64, n: i64, hull_x: i64, hull_y: i64) -> i64 = {
+    if n < 3 {
+        // All points on hull
+        for i in 0..n {
+            let _p1 = vec_push(hull_x, vec_get(px, i));
+            let _p2 = vec_push(hull_y, vec_get(py, i));
+            0
+        };
+        return n
+    } else { () };
+
+    // Step 1: Find pivot and move to index 0
+    let piv = find_pivot(px, py, n);
+    let _sw = swap_points(px, py, 0, piv);
+
+    // Step 2: Sort by polar angle
+    let _so = sort_by_angle(px, py, n);
+
+    // Step 3: Build hull using stack (stored in hull vecs)
+    let _p1 = vec_push(hull_x, vec_get(px, 0));
+    let _p2 = vec_push(hull_y, vec_get(py, 0));
+    let _p3 = vec_push(hull_x, vec_get(px, 1));
+    let _p4 = vec_push(hull_y, vec_get(py, 1));
+    let mut sz = 2;
+
+    let mut i = 2;
+    loop {
+        if i >= n { break } else { () };
+
+        // Pop while clockwise or collinear turn
+        loop {
+            if sz < 2 { break } else { () };
+            let c = cross(
+                vec_get(hull_x, sz - 2), vec_get(hull_y, sz - 2),
+                vec_get(hull_x, sz - 1), vec_get(hull_y, sz - 1),
+                vec_get(px, i), vec_get(py, i)
+            );
+            if c <= 0 {
+                // Remove top of stack by overwriting
+                sz = sz - 1
+            } else {
+                break
+            }
+        };
+
+        // Push current point
+        if sz < vec_len(hull_x) {
+            let _s1 = vec_set(hull_x, sz, vec_get(px, i));
+            let _s2 = vec_set(hull_y, sz, vec_get(py, i));
+            0
+        } else {
+            let _p5 = vec_push(hull_x, vec_get(px, i));
+            let _p6 = vec_push(hull_y, vec_get(py, i));
+            0
+        };
+        sz = sz + 1;
+        i = i + 1
+    };
+
+    sz
+};
+
+// Compute area of convex polygon using shoelace formula (doubled to stay integer)
+fn polygon_area2(hx: i64, hy: i64, sz: i64) -> i64 = {
+    let mut area = 0;
+    for i in 0..sz {
+        let j = if i + 1 >= sz { 0 } else { i + 1 };
+        let xi = vec_get(hx, i);
+        let yi = vec_get(hy, i);
+        let xj = vec_get(hx, j);
+        let yj = vec_get(hy, j);
+        area = area + xi * yj - xj * yi
+    };
+    if area < 0 { 0 - area } else { area }
+};
+
+fn main() -> i64 = {
+    // Test 1: Square (0,0), (4,0), (4,4), (0,4) with interior point (2,2)
+    let px1 = vec_new();
+    let py1 = vec_new();
+    let _a1 = vec_push(px1, 0); let _b1 = vec_push(py1, 0);
+    let _a2 = vec_push(px1, 4); let _b2 = vec_push(py1, 0);
+    let _a3 = vec_push(px1, 4); let _b3 = vec_push(py1, 4);
+    let _a4 = vec_push(px1, 0); let _b4 = vec_push(py1, 4);
+    let _a5 = vec_push(px1, 2); let _b5 = vec_push(py1, 2);
+
+    let hx1 = vec_new();
+    let hy1 = vec_new();
+    let sz1 = graham_scan(px1, py1, 5, hx1, hy1);
+    let _p1 = println(sz1);  // 4 (interior point excluded)
+    let area1 = polygon_area2(hx1, hy1, sz1);
+    let _p2 = println(area1);  // 32 (2 * 16 = 32)
+
+    // Test 2: Triangle (0,0), (6,0), (3,5)
+    let px2 = vec_new();
+    let py2 = vec_new();
+    let _c1 = vec_push(px2, 0); let _d1 = vec_push(py2, 0);
+    let _c2 = vec_push(px2, 6); let _d2 = vec_push(py2, 0);
+    let _c3 = vec_push(px2, 3); let _d3 = vec_push(py2, 5);
+
+    let hx2 = vec_new();
+    let hy2 = vec_new();
+    let sz2 = graham_scan(px2, py2, 3, hx2, hy2);
+    let _p3 = println(sz2);  // 3
+    let area2 = polygon_area2(hx2, hy2, sz2);
+    let _p4 = println(area2);  // 30 (2 * 15 = 30)
+
+    // Test 3: Square with interior points (no collinear edge points)
+    // Hull: (0,0), (10,0), (10,10), (0,10)
+    let px3 = vec_new();
+    let py3 = vec_new();
+    let _e1 = vec_push(px3, 0);  let _f1 = vec_push(py3, 0);
+    let _e2 = vec_push(px3, 10); let _f2 = vec_push(py3, 0);
+    let _e3 = vec_push(px3, 10); let _f3 = vec_push(py3, 10);
+    let _e4 = vec_push(px3, 0);  let _f4 = vec_push(py3, 10);
+    let _e5 = vec_push(px3, 3);  let _f5 = vec_push(py3, 4);   // interior
+    let _e6 = vec_push(px3, 7);  let _f6 = vec_push(py3, 2);   // interior
+    let _e7 = vec_push(px3, 6);  let _f7 = vec_push(py3, 8);   // interior
+
+    let hx3 = vec_new();
+    let hy3 = vec_new();
+    let sz3 = graham_scan(px3, py3, 7, hx3, hy3);
+    let _p5 = println(sz3);
+    let area3 = polygon_area2(hx3, hy3, sz3);
+    let _p6 = println(area3);
+
+    // Test 4: Cross product tests
+    let _p7 = println(cross(0, 0, 1, 0, 0, 1));  // 1 (CCW)
+    let _p8 = println(cross(0, 0, 0, 1, 1, 0));  // -1 (CW)
+    let _p9 = println(cross(0, 0, 2, 2, 4, 4));  // 0 (collinear)
+
+    // Test 5: Two points
+    let px4 = vec_new();
+    let py4 = vec_new();
+    let _g1 = vec_push(px4, 1); let _h1 = vec_push(py4, 2);
+    let _g2 = vec_push(px4, 3); let _h2 = vec_push(py4, 4);
+    let hx4 = vec_new();
+    let hy4 = vec_new();
+    let sz4 = graham_scan(px4, py4, 2, hx4, hy4);
+    let _p10 = println(sz4);  // 2
+
+    // Cleanup
+    let _z1 = vec_free(px1); let _z2 = vec_free(py1);
+    let _z3 = vec_free(hx1); let _z4 = vec_free(hy1);
+    let _z5 = vec_free(px2); let _z6 = vec_free(py2);
+    let _z7 = vec_free(hx2); let _z8 = vec_free(hy2);
+    let _z9 = vec_free(px3); let _z10 = vec_free(py3);
+    let _z11 = vec_free(hx3); let _z12 = vec_free(hy3);
+    let _z13 = vec_free(px4); let _z14 = vec_free(py4);
+    let _z15 = vec_free(hx4); let _z16 = vec_free(hy4);
+    0
+};

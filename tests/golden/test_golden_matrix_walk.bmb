@@ -1,0 +1,177 @@
+// Golden test: Matrix path walking
+// Count paths and find max-sum path in a grid using DP
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n {
+        let _p = vec_push(v, 0);
+        0
+    };
+    v
+    };
+
+fn max_val(a: i64, b: i64) -> i64 =
+    if a > b { a } else { b };
+
+fn min_val(a: i64, b: i64) -> i64 =
+    if a < b { a } else { b };
+
+// Count unique paths from (0,0) to (rows-1, cols-1)
+// Can only move right or down
+fn count_paths(rows: i64, cols: i64) -> i64 = {
+    let dp = make_zeros(rows * cols);
+
+    // First row: all 1s
+    for j in 0..cols {
+        let _s = vec_set(dp, j, 1);
+        0
+    };
+    // First column: all 1s
+    for i in 0..rows {
+        let _s = vec_set(dp, i * cols, 1);
+        0
+    };
+    // Fill rest: dp[i][j] = dp[i-1][j] + dp[i][j-1]
+    for i in 1..rows {
+        for j in 1..cols {
+            let up = vec_get(dp, (i - 1) * cols + j);
+            let left = vec_get(dp, i * cols + (j - 1));
+            let _s = vec_set(dp, i * cols + j, up + left);
+            0
+        };
+        0
+    };
+
+    let result = vec_get(dp, (rows - 1) * cols + (cols - 1));
+    let _f = vec_free(dp);
+    result
+    };
+
+// Maximum sum path from (0,0) to (rows-1, cols-1)
+// grid is a flat vec of size rows*cols
+fn max_path_sum(grid: i64, rows: i64, cols: i64) -> i64 = {
+    let dp = make_zeros(rows * cols);
+
+    // Starting cell
+    let _s0 = vec_set(dp, 0, vec_get(grid, 0));
+
+    // First row
+    for j in 1..cols {
+        let prev = vec_get(dp, j - 1);
+        let _s = vec_set(dp, j, prev + vec_get(grid, j));
+        0
+    };
+    // First column
+    for i in 1..rows {
+        let prev = vec_get(dp, (i - 1) * cols);
+        let _s = vec_set(dp, i * cols, prev + vec_get(grid, i * cols));
+        0
+    };
+    // Fill rest: dp[i][j] = grid[i][j] + max(dp[i-1][j], dp[i][j-1])
+    for i in 1..rows {
+        for j in 1..cols {
+            let up = vec_get(dp, (i - 1) * cols + j);
+            let left = vec_get(dp, i * cols + (j - 1));
+            let _s = vec_set(dp, i * cols + j, vec_get(grid, i * cols + j) + max_val(up, left));
+            0
+        };
+        0
+    };
+
+    let result = vec_get(dp, (rows - 1) * cols + (cols - 1));
+    let _f = vec_free(dp);
+    result
+    };
+
+// Minimum sum path from (0,0) to (rows-1, cols-1)
+fn min_path_sum(grid: i64, rows: i64, cols: i64) -> i64 = {
+    let dp = make_zeros(rows * cols);
+
+    let _s0 = vec_set(dp, 0, vec_get(grid, 0));
+
+    for j in 1..cols {
+        let prev = vec_get(dp, j - 1);
+        let _s = vec_set(dp, j, prev + vec_get(grid, j));
+        0
+    };
+    for i in 1..rows {
+        let prev = vec_get(dp, (i - 1) * cols);
+        let _s = vec_set(dp, i * cols, prev + vec_get(grid, i * cols));
+        0
+    };
+    for i in 1..rows {
+        for j in 1..cols {
+            let up = vec_get(dp, (i - 1) * cols + j);
+            let left = vec_get(dp, i * cols + (j - 1));
+            let _s = vec_set(dp, i * cols + j, vec_get(grid, i * cols + j) + min_val(up, left));
+            0
+        };
+        0
+    };
+
+    let result = vec_get(dp, (rows - 1) * cols + (cols - 1));
+    let _f = vec_free(dp);
+    result
+    };
+
+fn main() -> i64 = {
+    // Count paths in grids of various sizes
+    // C(m+n-2, m-1) = paths in m x n grid
+    let _p1 = println(count_paths(2, 2));  // 2
+    let _p2 = println(count_paths(3, 3));  // 6
+    let _p3 = println(count_paths(3, 4));  // 10
+    let _p4 = println(count_paths(4, 4));  // 20
+    let _p5 = println(count_paths(5, 5));  // 70
+
+    // Max path sum in a 3x3 grid:
+    // 1 3 1
+    // 1 5 1
+    // 4 2 1
+    let grid1 = vec_new();
+    let _g1 = vec_push(grid1, 1); let _g2 = vec_push(grid1, 3); let _g3 = vec_push(grid1, 1);
+    let _g4 = vec_push(grid1, 1); let _g5 = vec_push(grid1, 5); let _g6 = vec_push(grid1, 1);
+    let _g7 = vec_push(grid1, 4); let _g8 = vec_push(grid1, 2); let _g9 = vec_push(grid1, 1);
+
+    // Max path: 1->3->5->2->1 = 12 or 1->1->5->2->1 = 10 or 1->3->5->1->1 = 11
+    // Actually: dp[0][0]=1, dp[0][1]=4, dp[0][2]=5
+    //           dp[1][0]=2, dp[1][1]=max(4,2)+5=9, dp[1][2]=max(9,5)+1=10
+    //           dp[2][0]=6, dp[2][1]=max(9,6)+2=11, dp[2][2]=max(10,11)+1=12
+    let _p6 = println(max_path_sum(grid1, 3, 3));  // 12
+
+    // Min path sum in same grid:
+    // dp[0][0]=1, dp[0][1]=4, dp[0][2]=5
+    // dp[1][0]=2, dp[1][1]=min(4,2)+5=7, dp[1][2]=min(7,5)+1=6
+    // dp[2][0]=6, dp[2][1]=min(7,6)+2=8, dp[2][2]=min(6,8)+1=7
+    let _p7 = println(min_path_sum(grid1, 3, 3));  // 7
+
+    // 3x4 grid:
+    // 1 2 3 4
+    // 5 6 7 8
+    // 9 1 2 3
+    let grid2 = vec_new();
+    let _h1 = vec_push(grid2, 1); let _h2 = vec_push(grid2, 2);
+    let _h3 = vec_push(grid2, 3); let _h4 = vec_push(grid2, 4);
+    let _h5 = vec_push(grid2, 5); let _h6 = vec_push(grid2, 6);
+    let _h7 = vec_push(grid2, 7); let _h8 = vec_push(grid2, 8);
+    let _h9 = vec_push(grid2, 9); let _h10 = vec_push(grid2, 1);
+    let _h11 = vec_push(grid2, 2); let _h12 = vec_push(grid2, 3);
+
+    // Max path: 1->2->3->4->8->3 = 21 or 1->5->6->7->8->3 = 30
+    // dp[0]: 1, 3, 6, 10
+    // dp[1]: 6, max(3,6)+6=12, max(12,6)+7=19, max(19,10)+8=27
+    // dp[2]: 15, max(12,15)+1=16, max(19,16)+2=21, max(27,21)+3=30
+    let _p8 = println(max_path_sum(grid2, 3, 4));  // 30
+
+    // Min path: 1->2->3->4->8->3 = 21 or 1->2->3->7->2->3 = 18
+    // dp[0]: 1, 3, 6, 10
+    // dp[1]: 6, min(3,6)+6=9, min(9,6)+7=13, min(13,10)+8=18
+    // dp[2]: 15, min(9,15)+1=10, min(13,10)+2=12, min(18,12)+3=15
+    let _p9 = println(min_path_sum(grid2, 3, 4));  // 15
+
+    // 1x1 grid
+    let _p10 = println(count_paths(1, 1));  // 1
+
+    let _f1 = vec_free(grid1);
+    let _f2 = vec_free(grid2);
+    0
+    };

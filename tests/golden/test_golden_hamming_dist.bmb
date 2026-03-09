@@ -1,0 +1,48 @@
+// Golden Test: Hamming distance between integers
+// Count number of differing bits using XOR + popcount loop
+
+fn popcount(n: i64) -> i64 = {
+    let mut count = 0;
+    let mut x = n;
+    loop {
+        if x == 0 { break } else { () };
+        count = count + (x band 1);
+        x = x >> 1
+    };
+    count
+    };
+
+fn hamming_dist(a: i64, b: i64) -> i64 =
+    popcount(a bxor b);
+
+fn main() -> i64 = {
+    // Same numbers: distance 0
+    let _p1 = println(hamming_dist(0, 0));       // 0
+
+    // Single bit difference
+    let _p2 = println(hamming_dist(0, 1));       // 1
+
+    // All bits different in lower 3 bits (7 = 111, 0 = 000)
+    let _p3 = println(hamming_dist(0, 7));       // 3
+
+    // 1 (001) vs 4 (100): differ in bits 0 and 2
+    let _p4 = println(hamming_dist(1, 4));       // 2
+
+    // 15 (1111) vs 240 (11110000): 8 bits differ
+    let _p5 = println(hamming_dist(15, 240));    // 8
+
+    // 255 (11111111) vs 0: 8 bits
+    let _p6 = println(hamming_dist(255, 0));     // 8
+
+    // 170 (10101010) vs 85 (01010101): all 8 lower bits differ
+    let _p7 = println(hamming_dist(170, 85));    // 8
+
+    // Symmetric property: dist(a,b) == dist(b,a)
+    let _p8 = println(hamming_dist(42, 13));     // should equal next
+    let _p9 = println(hamming_dist(13, 42));     // should equal prev
+
+    // Self-distance is always 0
+    let _p10 = println(hamming_dist(12345, 12345)); // 0
+
+    0
+    };

@@ -1,0 +1,160 @@
+// Golden Test: Consistent hashing simulation
+// Maps keys to nodes on a hash ring, handles node addition/removal
+
+// Simple hash: (x * 2654435761) mod ring_size
+fn ring_hash(x: i64, ring_size: i64) -> i64 = {
+    let h = x * 2654435761;
+    let r = if h < 0 { 0 - h } else { h };
+    r - (r / ring_size) * ring_size
+};
+
+// Find which node owns a key on the ring
+// Nodes are positioned at sorted locations on the ring
+// Key goes to the first node whose position >= key position (clockwise)
+// node_positions is sorted ascending
+fn find_node(node_positions: i64, key_pos: i64, idx: i64) -> i64 = {
+    let n = vec_len(node_positions);
+    if idx >= n { 0 }  // wrap around to first node
+    else {
+        let pos = vec_get(node_positions, idx);
+        if pos >= key_pos { idx }
+        else { find_node(node_positions, key_pos, idx + 1) }
+    }
+};
+
+// Count how many keys (0..num_keys) map to each node
+// Returns a vec of counts (one per node)
+fn count_distribution(node_positions: i64, num_keys: i64, ring_size: i64) -> i64 = {
+    let num_nodes = vec_len(node_positions);
+    let counts = vec_new();
+    let mut i = 0;
+    loop {
+        if i >= num_nodes { break } else { () };
+        let _p = vec_push(counts, 0);
+        i = i + 1
+    };
+    let mut k = 0;
+    loop {
+        if k >= num_keys { break } else { () };
+        let key_pos = ring_hash(k, ring_size);
+        let node_idx = find_node(node_positions, key_pos, 0);
+        let old = vec_get(counts, node_idx);
+        let _s = vec_set(counts, node_idx, old + 1);
+        k = k + 1
+    };
+    counts
+};
+
+// Count how many keys change node when adding a new node
+fn count_migrations(old_positions: i64, new_positions: i64, num_keys: i64, ring_size: i64) -> i64 = {
+    let mut migrations = 0;
+    let mut k = 0;
+    loop {
+        if k >= num_keys { break } else { () };
+        let key_pos = ring_hash(k, ring_size);
+        let old_node = find_node(old_positions, key_pos, 0);
+        let new_node = find_node(new_positions, key_pos, 0);
+        // Compare positions, not indices (indices change when nodes are added)
+        let old_pos = vec_get(old_positions, old_node);
+        let new_pos = vec_get(new_positions, new_node);
+        let _c = if old_pos != new_pos {
+            migrations = migrations + 1; 0
+        } else { 0 };
+        k = k + 1
+    };
+    migrations
+};
+
+// Insert value into sorted vec at correct position
+fn sorted_insert(v: i64, val: i64) -> i64 = {
+    let n = vec_len(v);
+    let _p = vec_push(v, 0);
+    // Find insertion point
+    let mut pos = n;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let _c = if vec_get(v, i) > val {
+            let _u = if pos == n { pos = i; 0 } else { 0 };
+            0
+        } else { 0 };
+        i = i + 1
+    };
+    // Shift elements right from pos
+    let mut j = n;
+    loop {
+        if j <= pos { break } else { () };
+        let _s = vec_set(v, j, vec_get(v, j - 1));
+        j = j - 1
+    };
+    let _s = vec_set(v, pos, val);
+    v
+};
+
+fn main() -> i64 = {
+    let ring_size = 1000;
+
+    // Setup 3 nodes at positions 100, 400, 700
+    let nodes = vec_new();
+    let _p0 = vec_push(nodes, 100);
+    let _p1 = vec_push(nodes, 400);
+    let _p2 = vec_push(nodes, 700);
+
+    // Key at position 50 -> node 0 (pos 100)
+    let _p3 = println(find_node(nodes, 50, 0));    // 0
+
+    // Key at position 150 -> node 1 (pos 400)
+    let _p4 = println(find_node(nodes, 150, 0));   // 1
+
+    // Key at position 500 -> node 2 (pos 700)
+    let _p5 = println(find_node(nodes, 500, 0));   // 2
+
+    // Key at position 800 -> wraps to node 0
+    let _p6 = println(find_node(nodes, 800, 0));   // 0
+
+    // Key at position 100 -> exact match node 0
+    let _p7 = println(find_node(nodes, 100, 0));   // 0
+
+    // Distribution of 100 keys across 3 nodes
+    let dist = count_distribution(nodes, 100, ring_size);
+    let _p8 = println(vec_get(dist, 0));   // keys mapped to node 0
+    let _p9 = println(vec_get(dist, 1));   // keys mapped to node 1
+    let _p10 = println(vec_get(dist, 2));  // keys mapped to node 2
+    // Sum should be 100
+    let sum = vec_get(dist, 0) + vec_get(dist, 1) + vec_get(dist, 2);
+    let _p11 = println(sum);               // 100
+
+    // Add a new node at position 250
+    let new_nodes = vec_new();
+    let _np0 = vec_push(new_nodes, 100);
+    let _np1 = vec_push(new_nodes, 250);
+    let _np2 = vec_push(new_nodes, 400);
+    let _np3 = vec_push(new_nodes, 700);
+
+    // Count migrations when adding the new node
+    let migrations = count_migrations(nodes, new_nodes, 100, ring_size);
+    let _p12 = println(migrations);
+
+    // New distribution with 4 nodes
+    let dist2 = count_distribution(new_nodes, 100, ring_size);
+    let sum2 = vec_get(dist2, 0) + vec_get(dist2, 1) + vec_get(dist2, 2) + vec_get(dist2, 3);
+    let _p13 = println(sum2);              // 100
+
+    // sorted_insert test
+    let sv = vec_new();
+    let _si1 = vec_push(sv, 10);
+    let _si2 = vec_push(sv, 30);
+    let _si3 = vec_push(sv, 50);
+    let _si4 = sorted_insert(sv, 25);
+    let _p14 = println(vec_get(sv, 0));    // 10
+    let _p15 = println(vec_get(sv, 1));    // 25
+    let _p16 = println(vec_get(sv, 2));    // 30
+    let _p17 = println(vec_get(sv, 3));    // 50
+
+    let _f1 = vec_free(nodes);
+    let _f2 = vec_free(dist);
+    let _f3 = vec_free(new_nodes);
+    let _f4 = vec_free(dist2);
+    let _f5 = vec_free(sv);
+    0
+};

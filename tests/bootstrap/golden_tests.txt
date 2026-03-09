@@ -2823,3 +2823,12 @@ test_golden_select_chain
 test_golden_multi_accum
 test_golden_branch_value
 test_golden_loop_accum
+test_golden_saturating_arith.bmb|300
+test_golden_wrapping_arith.bmb|300
+test_golden_lshr.bmb|4
+test_golden_llvm_intrinsics.bmb|0
+test_golden_llvm_math_intrinsics.bmb|5
+test_golden_clamp_intrinsic.bmb|5
+test_golden_bswap_rotate.bmb|578437695752307201
+test_golden_float_intrinsics.bmb|3
+test_golden_math_intrinsics.bmb|0

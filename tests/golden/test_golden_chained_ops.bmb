@@ -1,0 +1,109 @@
+// Golden Test: Chained arithmetic and comparison operations
+// Tests complex expression chains, operator precedence, and intermediate values
+
+// Chained arithmetic: a * b + c * d - e
+fn chain_arith(a: i64, b: i64, c: i64, d: i64, e: i64) -> i64 =
+    a * b + c * d - e;
+
+// Nested division and modulo
+fn div_mod_chain(n: i64) -> i64 = {
+    let q1 = n / 7;
+    let r1 = n - (n / 7) * 7;
+    let q2 = q1 / 3;
+    let r2 = q1 - (q1 / 3) * 3;
+    q2 * 100 + r2 * 10 + r1
+    };
+
+// Comparison chain: count how many of a,b,c,d,e are positive
+fn count_positive(a: i64, b: i64, c: i64, d: i64, e: i64) -> i64 = {
+    let mut count = 0;
+    if a > 0 { count = count + 1 } else { () };
+    if b > 0 { count = count + 1 } else { () };
+    if c > 0 { count = count + 1 } else { () };
+    if d > 0 { count = count + 1 } else { () };
+    if e > 0 { count = count + 1 } else { () };
+    count
+    };
+
+// Polynomial evaluation: ax^3 + bx^2 + cx + d using Horner's method
+fn horner(a: i64, b: i64, c: i64, d: i64, x: i64) -> i64 =
+    ((a * x + b) * x + c) * x + d;
+
+// Chained min/max without builtins
+fn min2(a: i64, b: i64) -> i64 = if a < b { a } else { b };
+fn max2(a: i64, b: i64) -> i64 = if a > b { a } else { b };
+
+fn min3(a: i64, b: i64, c: i64) -> i64 = min2(min2(a, b), c);
+fn max3(a: i64, b: i64, c: i64) -> i64 = max2(max2(a, b), c);
+
+fn median3(a: i64, b: i64, c: i64) -> i64 =
+    a + b + c - min3(a, b, c) - max3(a, b, c);
+
+// Accumulate powers: 1^k + 2^k + ... + n^k
+fn pow_simple(base: i64, exp: i64) -> i64 = {
+    let mut result = 1;
+    for _i in 0..exp {
+        result = result * base;
+        0
+    };
+    result
+    };
+
+fn sum_of_powers(n: i64, k: i64) -> i64 = {
+    let mut total = 0;
+    for i in 1..n + 1 {
+        total = total + pow_simple(i, k);
+        0
+    };
+    total
+    };
+
+// Digit sum via chained division
+fn digit_sum(n: i64) -> i64 = {
+    let mut x = n;
+    let mut total = 0;
+    loop {
+        if x <= 0 { break } else { () };
+        total = total + x - (x / 10) * 10;
+        x = x / 10
+    };
+    total
+    };
+
+fn main() -> i64 = {
+    // chain_arith: 3*4 + 5*6 - 7 = 12 + 30 - 7 = 35
+    let _p1 = println(chain_arith(3, 4, 5, 6, 7));   // 35
+    // chain_arith: 10*20 + 30*40 - 500 = 200 + 1200 - 500 = 900
+    let _p2 = println(chain_arith(10, 20, 30, 40, 500)); // 900
+
+    // div_mod_chain(100): q1=100/7=14, r1=100-98=2, q2=14/3=4, r2=14-12=2 -> 4*100+2*10+2 = 422
+    let _p3 = println(div_mod_chain(100));   // 422
+    // div_mod_chain(50): q1=50/7=7, r1=50-49=1, q2=7/3=2, r2=7-6=1 -> 2*100+1*10+1 = 211
+    let _p4 = println(div_mod_chain(50));    // 211
+
+    // count_positive
+    let _p5 = println(count_positive(1, 0 - 2, 3, 0, 5));  // 3
+    let _p6 = println(count_positive(0 - 1, 0 - 2, 0 - 3, 0 - 4, 0 - 5)); // 0
+    let _p7 = println(count_positive(1, 2, 3, 4, 5));       // 5
+
+    // horner: 2x^3 + 3x^2 + 4x + 5 at x=10 = 2000+300+40+5 = 2345
+    let _p8 = println(horner(2, 3, 4, 5, 10));  // 2345
+    // horner: 1x^3 + 0x^2 + 0x + 1 at x=5 = 125+0+0+1 = 126
+    let _p9 = println(horner(1, 0, 0, 1, 5));   // 126
+
+    // median3
+    let _p10 = println(median3(1, 5, 3));   // 3
+    let _p11 = println(median3(7, 2, 9));   // 7
+    let _p12 = println(median3(4, 4, 4));   // 4
+
+    // sum_of_powers: 1^2+2^2+3^2+4^2+5^2 = 1+4+9+16+25 = 55
+    let _p13 = println(sum_of_powers(5, 2));  // 55
+    // sum_of_powers: 1^3+2^3+3^3+4^3 = 1+8+27+64 = 100
+    let _p14 = println(sum_of_powers(4, 3));  // 100
+
+    // digit_sum
+    let _p15 = println(digit_sum(12345));  // 15
+    let _p16 = println(digit_sum(9999));   // 36
+    let _p17 = println(digit_sum(1000));   // 1
+    0
+    };

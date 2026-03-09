@@ -1,0 +1,61 @@
+// Golden Test: Shell sort (diminishing increment)
+// Uses Knuth gap sequence: 1, 4, 13, 40, 121, ...
+
+fn shell_sort(arr: i64) -> () = {
+    let n = vec_len(arr);
+    let mut gap = 1;
+    while gap < n / 3 {
+        set gap = gap * 3 + 1
+    };
+    while gap >= 1 {
+        let mut i = gap;
+        while i < n {
+            let key = vec_get(arr, i);
+            let mut j = i;
+            let mut done = 0;
+            while j >= gap and done == 0 {
+                let _x = if vec_get(arr, j - gap) > key {
+                    vec_set(arr, j, vec_get(arr, j - gap));
+                    set j = j - gap;
+                    0
+                } else { set done = 1; 0 };
+                0
+            };
+            vec_set(arr, j, key);
+            set i = i + 1
+        };
+        set gap = gap / 3
+    }
+};
+
+fn print_arr(arr: i64) -> () = {
+    let mut i = 0;
+    while i < vec_len(arr) {
+        let _sp = if i > 0 { print_str(" "); 0 } else { 0 };
+        print(vec_get(arr, i));
+        set i = i + 1
+    };
+    let _nl = print_str("\n")
+};
+
+fn main() -> () = {
+    let arr1 = vec_new();
+    let _p = vec_push(arr1, 35); let _p = vec_push(arr1, 33); let _p = vec_push(arr1, 42);
+    let _p = vec_push(arr1, 10); let _p = vec_push(arr1, 14); let _p = vec_push(arr1, 19);
+    let _p = vec_push(arr1, 27); let _p = vec_push(arr1, 44);
+    shell_sort(arr1);
+    print_arr(arr1);
+
+    let arr2 = vec_new();
+    let _p = vec_push(arr2, 9); let _p = vec_push(arr2, 8); let _p = vec_push(arr2, 7);
+    let _p = vec_push(arr2, 6); let _p = vec_push(arr2, 5); let _p = vec_push(arr2, 4);
+    let _p = vec_push(arr2, 3); let _p = vec_push(arr2, 2); let _p = vec_push(arr2, 1);
+    shell_sort(arr2);
+    print_arr(arr2);
+
+    let arr3 = vec_new();
+    let _p = vec_push(arr3, 5); let _p = vec_push(arr3, 3); let _p = vec_push(arr3, 8);
+    let _p = vec_push(arr3, 3); let _p = vec_push(arr3, 5); let _p = vec_push(arr3, 1);
+    shell_sort(arr3);
+    print_arr(arr3)
+};

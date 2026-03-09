@@ -1,0 +1,156 @@
+// Golden Test: Convex hull simulation on integer point coordinates
+// Gift wrapping (Jarvis march) algorithm on 2D integer points
+// Points stored as two parallel vecs (xs, ys)
+
+// Cross product of vectors (p1->p2) x (p1->p3)
+// Positive = counter-clockwise, negative = clockwise, zero = collinear
+fn cross(x1: i64, y1: i64, x2: i64, y2: i64, x3: i64, y3: i64) -> i64 =
+    (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1);
+
+// Distance squared between two points
+fn dist2(x1: i64, y1: i64, x2: i64, y2: i64) -> i64 =
+    (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
+
+// Find leftmost point (smallest x, then smallest y)
+fn find_leftmost(xs: i64, ys: i64, n: i64) -> i64 = {
+    let mut best = 0;
+    for i in 1..n {
+        let _c = if vec_get(xs, i) < vec_get(xs, best) {
+            set best = i
+        } else if vec_get(xs, i) == vec_get(xs, best) {
+            let _d = if vec_get(ys, i) < vec_get(ys, best) {
+                best = i; 0
+            } else { 0 };
+            set best = best
+        } else { set best = best };
+    };
+    best
+};
+
+// Convex hull using gift wrapping
+// Returns number of hull points and stores hull indices in hull_vec
+fn convex_hull(xs: i64, ys: i64, n: i64, hull_xs: i64, hull_ys: i64) -> i64 = {
+    if n < 3 {
+        // All points are on the hull
+        for i in 0..n {
+            let _a = vec_push(hull_xs, vec_get(xs, i));
+            let _b = vec_push(hull_ys, vec_get(ys, i));
+            0
+        };
+        n
+    } else {
+        let start = find_leftmost(xs, ys, n);
+        let mut current = start;
+        let mut count = 0;
+        loop {
+            let _a = vec_push(hull_xs, vec_get(xs, current));
+            let _b = vec_push(hull_ys, vec_get(ys, current));
+            count = count + 1;
+            // Find next point: most counter-clockwise from current
+            let mut next = 0;
+            for i in 1..n {
+                let cx = vec_get(xs, current);
+                let cy = vec_get(ys, current);
+                let nx = vec_get(xs, next);
+                let ny = vec_get(ys, next);
+                let ix = vec_get(xs, i);
+                let iy = vec_get(ys, i);
+                let cp = cross(cx, cy, nx, ny, ix, iy);
+                // If i is more counter-clockwise, or collinear but farther
+                set next = if cp > 0 { i }
+                           else if cp == 0 {
+                               if dist2(cx, cy, ix, iy) > dist2(cx, cy, nx, ny) { i }
+                               else { next }
+                           }
+                           else { next };
+            };
+            current = next;
+            if current == start { break } else { () }
+        };
+        count
+    }
+};
+
+// Compute area of convex polygon using shoelace formula (2x area to stay integer)
+fn polygon_area2(xs: i64, ys: i64, n: i64) -> i64 = {
+    let mut area2 = 0;
+    for i in 0..n {
+        let j = (i + 1) % n;
+        let xi = vec_get(xs, i);
+        let yi = vec_get(ys, i);
+        let xj = vec_get(xs, j);
+        let yj = vec_get(ys, j);
+        set area2 = area2 + xi * yj - xj * yi;
+    };
+    if area2 < 0 { 0 - area2 } else { area2 }
+};
+
+// Compute perimeter squared approximation: sum of dist2 for each edge
+fn perimeter_dist2_sum(xs: i64, ys: i64, n: i64) -> i64 = {
+    let mut total = 0;
+    for i in 0..n {
+        let j = (i + 1) % n;
+        set total = total + dist2(vec_get(xs, i), vec_get(ys, i),
+                                  vec_get(xs, j), vec_get(ys, j));
+    };
+    total
+};
+
+fn main() -> i64 = {
+    // Test 1: Square (0,0),(4,0),(4,4),(0,4)
+    let xs1 = vec_new(); let ys1 = vec_new();
+    let _a = vec_push(xs1, 0); let _b = vec_push(ys1, 0);
+    let _c = vec_push(xs1, 4); let _d = vec_push(ys1, 0);
+    let _e = vec_push(xs1, 4); let _f = vec_push(ys1, 4);
+    let _g = vec_push(xs1, 0); let _h = vec_push(ys1, 4);
+    let hx1 = vec_new(); let hy1 = vec_new();
+    let n1 = convex_hull(xs1, ys1, 4, hx1, hy1);
+    let _p1 = println(n1);                     // 4 hull points
+    let _p2 = println(polygon_area2(hx1, hy1, n1));  // 2*area = 32
+
+    // Test 2: Triangle (0,0),(6,0),(3,4) with interior point (3,1)
+    let xs2 = vec_new(); let ys2 = vec_new();
+    let _a2 = vec_push(xs2, 0); let _b2 = vec_push(ys2, 0);
+    let _c2 = vec_push(xs2, 6); let _d2 = vec_push(ys2, 0);
+    let _e2 = vec_push(xs2, 3); let _f2 = vec_push(ys2, 4);
+    let _g2 = vec_push(xs2, 3); let _h2 = vec_push(ys2, 1);  // interior
+    let hx2 = vec_new(); let hy2 = vec_new();
+    let n2 = convex_hull(xs2, ys2, 4, hx2, hy2);
+    let _p3 = println(n2);                     // 3 hull points
+    let _p4 = println(polygon_area2(hx2, hy2, n2));  // 2*area = 24
+
+    // Test 3: Pentagon-like shape with collinear points
+    // (0,0),(2,0),(4,0),(4,3),(2,5),(0,3)
+    let xs3 = vec_new(); let ys3 = vec_new();
+    let _a3 = vec_push(xs3, 0); let _b3 = vec_push(ys3, 0);
+    let _c3 = vec_push(xs3, 2); let _d3 = vec_push(ys3, 0);  // collinear with 0,0->4,0
+    let _e3 = vec_push(xs3, 4); let _f3 = vec_push(ys3, 0);
+    let _g3 = vec_push(xs3, 4); let _h3 = vec_push(ys3, 3);
+    let _i3 = vec_push(xs3, 2); let _j3 = vec_push(ys3, 5);
+    let _k3 = vec_push(xs3, 0); let _l3 = vec_push(ys3, 3);
+    let hx3 = vec_new(); let hy3 = vec_new();
+    let n3 = convex_hull(xs3, ys3, 6, hx3, hy3);
+    let _p5 = println(n3);                     // hull points count
+    let _p6 = println(polygon_area2(hx3, hy3, n3));  // 2*area
+
+    // Test 4: Cross product tests
+    let _p7 = println(cross(0, 0, 1, 0, 0, 1));   // 1 (CCW)
+    let _p8 = println(cross(0, 0, 0, 1, 1, 0));   // -1 (CW)
+    let _p9 = println(cross(0, 0, 2, 2, 4, 4));   // 0 (collinear)
+
+    // Test 5: dist2
+    let _p10 = println(dist2(0, 0, 3, 4));        // 25
+
+    // Test 6: Single line of points (degenerate)
+    let xs4 = vec_new(); let ys4 = vec_new();
+    let _a4 = vec_push(xs4, 0); let _b4 = vec_push(ys4, 0);
+    let _c4 = vec_push(xs4, 5); let _d4 = vec_push(ys4, 0);
+    let hx4 = vec_new(); let hy4 = vec_new();
+    let n4 = convex_hull(xs4, ys4, 2, hx4, hy4);
+    let _p11 = println(n4);                       // 2
+
+    // Test 7: Area of the square's hull
+    let _p12 = println(perimeter_dist2_sum(hx1, hy1, n1));  // sum of squared edge lengths
+
+    0
+};

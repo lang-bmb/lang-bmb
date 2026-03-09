@@ -1,0 +1,55 @@
+// Golden Test: Float (f64) Operations
+// Tests f64 arithmetic, conversions, and comparisons
+
+fn main() -> i64 = {
+    // Basic f64 arithmetic
+    let a = 3.14;
+    let b = 2.0;
+    let sum = a + b;
+    let _p1 = println(f64_to_i64(sum * 100.0));  // 514
+
+    // f64 multiply
+    let c = 1.5;
+    let d = 4.0;
+    let _p2 = println(f64_to_i64(c * d));  // 6
+
+    // f64 division
+    let _p3 = println(f64_to_i64(10.0 / 3.0));  // 3
+
+    // i64 to f64 conversion
+    let n = 42;
+    let f = i64_to_f64(n);
+    let _p4 = println(f64_to_i64(f));  // 42
+
+    // f64 negative
+    let neg = 0.0 - 7.5;
+    let _p5 = println(f64_to_i64(neg));  // -7
+
+    // f64 comparisons via arithmetic
+    let x = 5.5;
+    let y = 3.3;
+    let diff = f64_to_i64((x - y) * 10.0);
+    let _p6 = println(diff);  // 22
+
+    // Large f64 values
+    let big = 1000000.5;
+    let _p7 = println(f64_to_i64(big));  // 1000000
+
+    // Small f64 precision
+    let small = 0.001;
+    let _p8 = println(f64_to_i64(small * 1000.0));  // 1
+
+    // f64 in loop
+    let acc = 0.0;
+    for i in 1..=10 {
+        acc = acc + i64_to_f64(i);
+    };
+    let _p9 = println(f64_to_i64(acc));  // 55
+
+    // f64 power pattern
+    let base = 2.0;
+    let result = base * base * base * base * base;
+    let _p10 = println(f64_to_i64(result));  // 32
+
+    0
+};

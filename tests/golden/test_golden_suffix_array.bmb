@@ -1,0 +1,107 @@
+// Golden Test: Suffix array construction (naive)
+// Sorts all suffixes of an integer sequence
+// Also computes LCP array
+
+fn suffix_cmp(arr: i64, i: i64, j: i64) -> i64 = {
+    let n = vec_len(arr);
+    let mut pi = i;
+    let mut pj = j;
+    let mut result = 0;
+    let mut done = 0;
+    while done == 0 {
+        let _x = if pi >= n and pj >= n { set done = 1; 0 }
+        else if pi >= n { set result = -1; set done = 1; 0 }
+        else if pj >= n { set result = 1; set done = 1; 0 }
+        else if vec_get(arr, pi) < vec_get(arr, pj) { set result = -1; set done = 1; 0 }
+        else if vec_get(arr, pi) > vec_get(arr, pj) { set result = 1; set done = 1; 0 }
+        else { set pi = pi + 1; set pj = pj + 1; 0 };
+        0
+    };
+    result
+};
+
+fn build_suffix_array(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    let sa = vec_new();
+    let mut i = 0;
+    while i < n {
+        let _p = vec_push(sa, i);
+        set i = i + 1
+    };
+    set i = 1;
+    while i < n {
+        let key = vec_get(sa, i);
+        let mut j = i - 1;
+        let mut done = 0;
+        while j >= 0 and done == 0 {
+            let _x = if suffix_cmp(arr, vec_get(sa, j), key) > 0 {
+                vec_set(sa, j + 1, vec_get(sa, j));
+                set j = j - 1;
+                0
+            } else { set done = 1; 0 };
+            0
+        };
+        vec_set(sa, j + 1, key);
+        set i = i + 1
+    };
+    sa
+};
+
+fn lcp_of(arr: i64, i: i64, j: i64) -> i64 = {
+    let n = vec_len(arr);
+    let mut len = 0;
+    while i + len < n and j + len < n and vec_get(arr, i + len) == vec_get(arr, j + len) {
+        set len = len + 1
+    };
+    len
+};
+
+fn build_lcp(arr: i64, sa: i64) -> i64 = {
+    let n = vec_len(sa);
+    let lcp = vec_new();
+    let _p = vec_push(lcp, 0);
+    let mut i = 1;
+    while i < n {
+        let _p = vec_push(lcp, lcp_of(arr, vec_get(sa, i - 1), vec_get(sa, i)));
+        set i = i + 1
+    };
+    lcp
+};
+
+fn print_vec_inline(arr: i64) -> () = {
+    let mut i = 0;
+    while i < vec_len(arr) {
+        let _sp = if i > 0 { print_str(" "); 0 } else { 0 };
+        print(vec_get(arr, i));
+        set i = i + 1
+    };
+    let _nl = print_str("\n")
+};
+
+fn main() -> () = {
+    // Test 1: "banana" as [2,1,3,1,3,1]
+    let s1 = vec_new();
+    let _p = vec_push(s1, 2); let _p = vec_push(s1, 1); let _p = vec_push(s1, 3);
+    let _p = vec_push(s1, 1); let _p = vec_push(s1, 3); let _p = vec_push(s1, 1);
+    let sa1 = build_suffix_array(s1);
+    let lcp1 = build_lcp(s1, sa1);
+    print_str("SA: "); print_vec_inline(sa1);
+    print_str("LCP: "); print_vec_inline(lcp1);
+
+    // Test 2: "abab" as [1,2,1,2]
+    let s2 = vec_new();
+    let _p = vec_push(s2, 1); let _p = vec_push(s2, 2);
+    let _p = vec_push(s2, 1); let _p = vec_push(s2, 2);
+    let sa2 = build_suffix_array(s2);
+    let lcp2 = build_lcp(s2, sa2);
+    print_str("SA: "); print_vec_inline(sa2);
+    print_str("LCP: "); print_vec_inline(lcp2);
+
+    // Test 3: "aaa" as [1,1,1]
+    let s3 = vec_new();
+    let _p = vec_push(s3, 1); let _p = vec_push(s3, 1); let _p = vec_push(s3, 1);
+    let sa3 = build_suffix_array(s3);
+    let lcp3 = build_lcp(s3, sa3);
+    print_str("SA: "); print_vec_inline(sa3);
+    print_str("LCP: "); print_vec_inline(lcp3)
+};

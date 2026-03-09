@@ -1,0 +1,84 @@
+// Golden Test: Matrix Multiplication (3x3)
+// Matrices stored as flat arrays in row-major order
+
+fn mat_get(m: i64, cols: i64, r: i64, c: i64) -> i64 =
+    vec_get(m, r * cols + c);
+
+fn mat_set(m: i64, cols: i64, r: i64, c: i64, val: i64) -> i64 = {
+    vec_set(m, r * cols + c, val);
+    0
+};
+
+// Multiply A (ra x ca) by B (rb x cb), result is (ra x cb)
+// Requires ca == rb
+fn mat_mul(a: i64, b: i64, ra: i64, ca: i64, cb: i64) -> i64 = {
+    let result = vec_new();
+    for _i in 0..(ra * cb) { vec_push(result, 0) };
+    for i in 0..ra {
+        for j in 0..cb {
+            let sum = 0;
+            for k in 0..ca {
+                sum = sum + mat_get(a, ca, i, k) * mat_get(b, cb, k, j)
+            };
+            let _s = mat_set(result, cb, i, j, sum)
+        }
+    };
+    result
+};
+
+fn main() -> i64 = {
+    // A = [[1, 2, 3],
+    //      [4, 5, 6],
+    //      [7, 8, 9]]
+    let a = vec_new();
+    vec_push(a, 1); vec_push(a, 2); vec_push(a, 3);
+    vec_push(a, 4); vec_push(a, 5); vec_push(a, 6);
+    vec_push(a, 7); vec_push(a, 8); vec_push(a, 9);
+
+    // B = [[9, 8, 7],
+    //      [6, 5, 4],
+    //      [3, 2, 1]]
+    let b = vec_new();
+    vec_push(b, 9); vec_push(b, 8); vec_push(b, 7);
+    vec_push(b, 6); vec_push(b, 5); vec_push(b, 4);
+    vec_push(b, 3); vec_push(b, 2); vec_push(b, 1);
+
+    // C = A * B
+    // C[0][0] = 1*9 + 2*6 + 3*3 = 9+12+9 = 30
+    // C[0][1] = 1*8 + 2*5 + 3*2 = 8+10+6 = 24
+    // C[0][2] = 1*7 + 2*4 + 3*1 = 7+8+3 = 18
+    // C[1][0] = 4*9 + 5*6 + 6*3 = 36+30+18 = 84
+    // C[1][1] = 4*8 + 5*5 + 6*2 = 32+25+12 = 69
+    // C[1][2] = 4*7 + 5*4 + 6*1 = 28+20+6 = 54
+    // C[2][0] = 7*9 + 8*6 + 9*3 = 63+48+27 = 138
+    // C[2][1] = 7*8 + 8*5 + 9*2 = 56+40+18 = 114
+    // C[2][2] = 7*7 + 8*4 + 9*1 = 49+32+9 = 90
+    let c = mat_mul(a, b, 3, 3, 3);
+    let _p1 = println(mat_get(c, 3, 0, 0));  // 30
+    let _p2 = println(mat_get(c, 3, 0, 1));  // 24
+    let _p3 = println(mat_get(c, 3, 0, 2));  // 18
+    let _p4 = println(mat_get(c, 3, 1, 0));  // 84
+    let _p5 = println(mat_get(c, 3, 1, 1));  // 69
+    let _p6 = println(mat_get(c, 3, 1, 2));  // 54
+    let _p7 = println(mat_get(c, 3, 2, 0));  // 138
+    let _p8 = println(mat_get(c, 3, 2, 1));  // 114
+    let _p9 = println(mat_get(c, 3, 2, 2));  // 90
+
+    // Identity matrix test: A * I = A
+    let ident = vec_new();
+    vec_push(ident, 1); vec_push(ident, 0); vec_push(ident, 0);
+    vec_push(ident, 0); vec_push(ident, 1); vec_push(ident, 0);
+    vec_push(ident, 0); vec_push(ident, 0); vec_push(ident, 1);
+    let ai = mat_mul(a, ident, 3, 3, 3);
+    let _p10 = println(mat_get(ai, 3, 0, 0));  // 1
+    let _p11 = println(mat_get(ai, 3, 1, 1));  // 5
+    let _p12 = println(mat_get(ai, 3, 2, 2));  // 9
+
+    // Trace of C (sum of diagonal)
+    let trace = mat_get(c, 3, 0, 0) + mat_get(c, 3, 1, 1) + mat_get(c, 3, 2, 2);
+    let _p13 = println(trace);  // 30+69+90 = 189
+
+    let _f1 = vec_free(a); let _f2 = vec_free(b); let _f3 = vec_free(c);
+    let _f4 = vec_free(ident); let _f5 = vec_free(ai);
+    0
+};

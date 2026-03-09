@@ -1,0 +1,69 @@
+// Golden Test: Regression test for indirect multiplication narrowing
+// Validates Cycle 1441 fix: LoopBoundedNarrowing must not narrow params
+// that flow to multiplication only through function calls (indirect mul).
+// Previously, square_fp(x: i64) was narrowed to i32, causing trunc/sext
+// overhead (movslq) in tight inner loops like mandelbrot.
+
+// Fixed-point arithmetic functions (mandelbrot pattern)
+@const fn fp_scale() -> i64 = 10000;
+
+@inline
+fn fp_mul(a: i64, b: i64) -> i64 = (a * b) / fp_scale();
+
+@inline
+fn fp_square(x: i64) -> i64 = fp_mul(x, x);
+
+// Test function: compute sum of squares in fixed-point
+// x values range up to 20000 (should NOT be narrowed to i32)
+fn compute_sum(n: i64) -> i64 = {
+    let mut i = 0;
+    let mut sum = 0;
+    while i < n { {
+            let val = i * fp_scale() / n;
+            let sq = fp_square(val);
+            sum = sum + sq;
+            i = i + 1;
+            ()
+        } };
+    sum
+    };
+
+// Direct multiplication test (matrix-like pattern, CAN be narrowed)
+@inline
+fn matrix_idx(row: i64, col: i64, width: i64) -> i64 = row * width + col;
+
+fn matrix_sum_diag(n: i64) -> i64 = {
+    let mut sum = 0;
+    let mut i = 0;
+    while i < n { {
+            sum = sum + matrix_idx(i, i, n);
+            i = i + 1;
+            ()
+        } };
+    sum
+    };
+
+fn main() -> i64 = {
+// Test indirect multiplication (square via fp_mul)
+    let r1 = fp_square(100);
+    let _p1 = println(r1);          // 100*100/10000 = 1
+
+    let r2 = fp_square(20000);
+    let _p2 = println(r2);          // 20000*20000/10000 = 40000
+
+    let r3 = fp_square(10000);
+    let _p3 = println(r3);          // 10000*10000/10000 = 10000
+
+// Test sum computation (loop with indirect mul)
+    let sum1 = compute_sum(10);
+    let _p4 = println(sum1);        // sum of squares of [0, 1000, 2000, ..., 9000] / 10000
+
+// Test direct multiplication (matrix indexing)
+    let idx1 = matrix_idx(3, 5, 10);
+    let _p5 = println(idx1);        // 3*10+5 = 35
+
+    let diag = matrix_sum_diag(5);
+    let _p6 = println(diag);        // 0*5+0 + 1*5+1 + 2*5+2 + 3*5+3 + 4*5+4 = 0+6+12+18+24 = 60
+
+    0
+    };

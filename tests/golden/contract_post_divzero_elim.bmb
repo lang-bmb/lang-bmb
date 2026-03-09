@@ -1,0 +1,15 @@
+// Test: postcondition enables divzero check elimination at caller
+// get_nonzero has post ret != 0, so using its result as divisor is safe
+
+fn get_nonzero(x: i64) -> i64
+    post ret != 0
+= if x == 0 { 1 } else { x };
+
+fn main() -> i64 = {
+    let divisor = get_nonzero(7);
+    // divisor is guaranteed != 0 by postcondition
+    // In --safe mode, divzero check should be eliminable by LLVM
+    let result = 100 / divisor;
+    let _u = println(result);
+    0
+};

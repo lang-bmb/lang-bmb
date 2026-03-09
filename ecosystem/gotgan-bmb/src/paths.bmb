@@ -1,0 +1,45 @@
+// gotgan-bmb/src/paths.bmb: String builder and path utilities
+// v0.1.0
+
+fn str_concat(a: String, b: String) -> String = {
+    let sb = sb_new();
+    let _p1 = sb_push(sb, a);
+    let _p2 = sb_push(sb, b);
+    sb_build(sb)
+};
+
+fn str_concat3(a: String, b: String, c: String) -> String = {
+    let sb = sb_new();
+    let _p1 = sb_push(sb, a);
+    let _p2 = sb_push(sb, b);
+    let _p3 = sb_push(sb, c);
+    sb_build(sb)
+};
+
+fn path_join(dir: String, file: String) -> String =
+    str_concat3(dir, "/", file);
+
+fn build_cmd4(cmd: String, a1: String, a2: String, a3: String, a4: String) -> String = {
+    let sb = sb_new();
+    let _p1 = sb_push(sb, cmd);
+    let _p2 = sb_push(sb, " ");
+    let _p3 = sb_push(sb, a1);
+    let _p4 = sb_push(sb, " ");
+    let _p5 = sb_push(sb, a2);
+    let _p6 = sb_push(sb, " ");
+    let _p7 = sb_push(sb, a3);
+    let _p8 = sb_push(sb, " ");
+    let _p9 = sb_push(sb, a4);
+    sb_build(sb)
+};
+
+fn find_source(pkg_dir: String) -> String = {
+    let main_path = path_join(path_join(pkg_dir, "src"), "main.bmb");
+    let lib_path = path_join(path_join(pkg_dir, "src"), "lib.bmb");
+    if file_exists(main_path) == 1 { main_path }
+    else if file_exists(lib_path) == 1 { lib_path }
+    else { "" }
+};
+
+fn is_binary_pkg(pkg_dir: String) -> bool =
+    file_exists(path_join(path_join(pkg_dir, "src"), "main.bmb")) == 1;

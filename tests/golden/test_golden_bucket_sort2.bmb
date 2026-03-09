@@ -1,0 +1,167 @@
+// Golden Test: Bucket Sort (integer version)
+// Distributes elements into buckets, sorts each bucket with insertion sort
+
+// Insertion sort a vec in-place
+fn isort(arr: i64, n: i64) -> i64 = {
+    for i in 1..n {
+        let key = vec_get(arr, i);
+        let mut j = i - 1;
+        loop {
+            if j < 0 { break } else { () };
+            let _x = if vec_get(arr, j) > key {
+                vec_set(arr, j + 1, vec_get(arr, j));
+                set j = j - 1;
+                0
+            } else {
+                set j = 0 - 1;  // break
+                0
+            };
+        };
+        vec_set(arr, j + 1, key);
+    };
+    0
+};
+
+// Find min and max of array
+fn find_min(arr: i64, n: i64) -> i64 = {
+    let mut mn = vec_get(arr, 0);
+    for i in 1..n {
+        let v = vec_get(arr, i);
+        let _x = if v < mn { set mn = v; 0 } else { 0 };
+    };
+    mn
+};
+
+fn find_max(arr: i64, n: i64) -> i64 = {
+    let mut mx = vec_get(arr, 0);
+    for i in 1..n {
+        let v = vec_get(arr, i);
+        let _x = if v > mx { set mx = v; 0 } else { 0 };
+    };
+    mx
+};
+
+// Bucket sort: sorts arr in-place
+fn bucket_sort(arr: i64, n: i64) -> i64 = {
+    if n <= 1 { return 0 };
+    let mn = find_min(arr, n);
+    let mx = find_max(arr, n);
+    if mn == mx { return 0 };  // all same
+
+    let num_buckets = n;
+    let range = mx - mn + 1;
+
+    // Create buckets (each bucket is a vec)
+    let buckets = vec_new();
+    let bucket_sizes = vec_new();
+    for _i in 0..num_buckets {
+        vec_push(buckets, vec_new());
+        vec_push(bucket_sizes, 0);
+    };
+
+    // Distribute elements into buckets
+    for i in 0..n {
+        let val = vec_get(arr, i);
+        let idx = (val - mn) * num_buckets / range;
+        // Clamp to valid range
+        let bidx = if idx >= num_buckets { num_buckets - 1 } else { idx };
+        let bucket = vec_get(buckets, bidx);
+        vec_push(bucket, val);
+        let old_sz = vec_get(bucket_sizes, bidx);
+        vec_set(bucket_sizes, bidx, old_sz + 1);
+    };
+
+    // Sort each bucket and collect
+    let mut pos = 0;
+    for i in 0..num_buckets {
+        let bucket = vec_get(buckets, i);
+        let sz = vec_get(bucket_sizes, i);
+        let _s = isort(bucket, sz);
+        for j in 0..sz {
+            vec_set(arr, pos, vec_get(bucket, j));
+            set pos = pos + 1;
+        };
+        vec_free(bucket);
+    };
+
+    vec_free(buckets);
+    vec_free(bucket_sizes);
+    0
+};
+
+fn print_arr(arr: i64, n: i64) -> i64 = {
+    for i in 0..n {
+        println(vec_get(arr, i));
+    };
+    0
+};
+
+fn main() -> i64 = {
+    // Test 1: Basic sort
+    let a1 = vec_new();
+    vec_push(a1, 42);
+    vec_push(a1, 17);
+    vec_push(a1, 93);
+    vec_push(a1, 5);
+    vec_push(a1, 28);
+    vec_push(a1, 61);
+    vec_push(a1, 3);
+    vec_push(a1, 85);
+    let _s1 = bucket_sort(a1, 8);
+    let _p1 = print_arr(a1, 8);
+    // 3 5 17 28 42 61 85 93
+
+    // Test 2: Already sorted
+    let a2 = vec_new();
+    vec_push(a2, 1);
+    vec_push(a2, 2);
+    vec_push(a2, 3);
+    vec_push(a2, 4);
+    vec_push(a2, 5);
+    let _s2 = bucket_sort(a2, 5);
+    let _p2 = print_arr(a2, 5);
+    // 1 2 3 4 5
+
+    // Test 3: Reverse sorted
+    let a3 = vec_new();
+    vec_push(a3, 5);
+    vec_push(a3, 4);
+    vec_push(a3, 3);
+    vec_push(a3, 2);
+    vec_push(a3, 1);
+    let _s3 = bucket_sort(a3, 5);
+    let _p3 = print_arr(a3, 5);
+    // 1 2 3 4 5
+
+    // Test 4: All same values
+    let a4 = vec_new();
+    vec_push(a4, 7);
+    vec_push(a4, 7);
+    vec_push(a4, 7);
+    let _s4 = bucket_sort(a4, 3);
+    let _p4 = print_arr(a4, 3);
+    // 7 7 7
+
+    // Test 5: Single element
+    let a5 = vec_new();
+    vec_push(a5, 42);
+    let _s5 = bucket_sort(a5, 1);
+    let _p5 = print_arr(a5, 1);
+    // 42
+
+    // Test 6: Two elements
+    let a6 = vec_new();
+    vec_push(a6, 99);
+    vec_push(a6, 11);
+    let _s6 = bucket_sort(a6, 2);
+    let _p6 = print_arr(a6, 2);
+    // 11 99
+
+    vec_free(a1);
+    vec_free(a2);
+    vec_free(a3);
+    vec_free(a4);
+    vec_free(a5);
+    vec_free(a6);
+    0
+};

@@ -1,0 +1,13 @@
+// Test: dynamic index with contract + safe mode
+// Contract proves idx is in bounds, so LLVM can eliminate the check
+
+fn get_at(arr: &[i64; 10], idx: i64) -> i64
+    pre idx >= 0 and idx < 10
+= arr[idx];
+
+fn main() -> i64 = {
+    let arr: [i64; 10] = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+    let v = get_at(&arr, 7);
+    let _u = println(v);
+    0
+};

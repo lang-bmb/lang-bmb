@@ -1,0 +1,117 @@
+// Golden Test: Polynomial operations — add, multiply, evaluate, derivative, integral
+
+fn poly_eval(coeffs: i64, deg: i64, x: i64) -> i64 = {
+    let mut result = 0;
+    let mut power = 1;
+    let mut i = 0;
+    loop {
+        if i > deg { break } else { () };
+        result = result + vec_get(coeffs, i) * power;
+        power = power * x;
+        i = i + 1
+    };
+    result
+    };
+
+fn poly_add(a: i64, deg_a: i64, b: i64, deg_b: i64, out: i64) -> i64 = {
+    let max_deg = if deg_a > deg_b { deg_a } else { deg_b };
+    let mut i = 0;
+    loop {
+        if i > max_deg { break } else { () };
+        let va = if i <= deg_a { vec_get(a, i) } else { 0 };
+        let vb = if i <= deg_b { vec_get(b, i) } else { 0 };
+        vec_set(out, i, va + vb);
+        i = i + 1
+    };
+    max_deg
+    };
+
+fn poly_mul(a: i64, deg_a: i64, b: i64, deg_b: i64, out: i64) -> i64 = {
+    let result_deg = deg_a + deg_b;
+    let mut k = 0;
+    loop { if k > result_deg { break } else { () }; vec_set(out, k, 0); k = k + 1 };
+    let mut i = 0;
+    loop {
+        if i > deg_a { break } else { () };
+        let mut j = 0;
+        loop {
+            if j > deg_b { break } else { () };
+            let idx = i + j;
+            vec_set(out, idx, vec_get(out, idx) + vec_get(a, i) * vec_get(b, j));
+            j = j + 1
+        };
+        i = i + 1
+    };
+    result_deg
+    };
+
+fn poly_deriv(coeffs: i64, deg: i64, out: i64) -> i64 = {
+    if deg == 0 { vec_set(out, 0, 0); return 0 } else { () };
+    let mut i = 1;
+    loop {
+        if i > deg { break } else { () };
+        vec_set(out, i - 1, vec_get(coeffs, i) * i);
+        i = i + 1
+    };
+    deg - 1
+    };
+
+fn poly_integral_scaled(coeffs: i64, deg: i64, a: i64, b: i64) -> i64 = {
+    let mut val_b = 0;
+    let mut val_a = 0;
+    let mut i = 0;
+    loop {
+        if i > deg { break } else { () };
+        let c = vec_get(coeffs, i);
+        let div = i + 1;
+        let mut pow_b = 1;
+        let mut pow_a = 1;
+        let mut j = 0;
+        loop {
+            if j > i { break } else { () };
+            pow_b = pow_b * b;
+            pow_a = pow_a * a;
+            j = j + 1
+        };
+        val_b = val_b + c * pow_b * 1000 / div;
+        val_a = val_a + c * pow_a * 1000 / div;
+        i = i + 1
+    };
+    val_b - val_a
+    };
+
+fn main() -> i64 = {
+    let p = vec_new(); vec_push(p, 2); vec_push(p, 3); vec_push(p, 1);
+    let q = vec_new(); vec_push(q, 1); vec_push(q, 0-1); vec_push(q, 4);
+    let _r1 = println(poly_eval(p, 2, 0));   // 2
+    let _r2 = println(poly_eval(p, 2, 1));   // 6
+    let _r3 = println(poly_eval(p, 2, 2));   // 12
+    let _r4 = println(poly_eval(p, 2, 3));   // 20
+    let _r5 = println(poly_eval(q, 2, 1));   // 4
+    let _r6 = println(poly_eval(q, 2, 2));   // 15
+    let sum_poly = vec_new();
+    vec_push(sum_poly, 0); vec_push(sum_poly, 0); vec_push(sum_poly, 0);
+    let sum_deg = poly_add(p, 2, q, 2, sum_poly);
+    let _r7 = println(vec_get(sum_poly, 0));  // 3
+    let _r8 = println(vec_get(sum_poly, 1));  // 2
+    let _r9 = println(vec_get(sum_poly, 2));  // 5
+    let _r10 = println(poly_eval(sum_poly, sum_deg, 2)); // 27
+    let mul_poly = vec_new();
+    vec_push(mul_poly, 0); vec_push(mul_poly, 0); vec_push(mul_poly, 0);
+    vec_push(mul_poly, 0); vec_push(mul_poly, 0);
+    let mul_deg = poly_mul(p, 2, q, 2, mul_poly);
+    let _r11 = println(vec_get(mul_poly, 0));  // 2
+    let _r12 = println(vec_get(mul_poly, 1));  // 1
+    let _r13 = println(vec_get(mul_poly, 2));  // 6
+    let _r14 = println(vec_get(mul_poly, 3));  // 11
+    let _r15 = println(vec_get(mul_poly, 4));  // 4
+    let _r16 = println(poly_eval(mul_poly, mul_deg, 1)); // 24
+    let dp = vec_new(); vec_push(dp, 0); vec_push(dp, 0);
+    let dp_deg = poly_deriv(p, 2, dp);
+    let _r17 = println(vec_get(dp, 0));       // 3
+    let _r18 = println(vec_get(dp, 1));       // 2
+    let _r19 = println(poly_eval(dp, dp_deg, 5)); // 13
+    let _r20 = println(poly_integral_scaled(p, 2, 0, 3)); // 28500
+    vec_free(p); vec_free(q); vec_free(sum_poly); vec_free(mul_poly); vec_free(dp);
+    0
+    };

@@ -1,0 +1,138 @@
+// Golden Test: Many nested if-else branches - Cycle 1399
+// Classify numbers, multi-way dispatch, cascading conditions
+
+// Classify a number into a category code
+// 0: zero, 1: small pos (1-9), 2: medium pos (10-99), 3: large pos (>=100)
+// -1: small neg, -2: medium neg, -3: large neg
+fn classify(n: i64) -> i64 =
+    if n == 0 { 0 }
+    else if n > 0 {
+        if n < 10 { 1 }
+        else if n < 100 { 2 }
+        else { 3 }
+    }
+    else {
+        let abs_n = 0 - n;
+        if abs_n < 10 { 0 - 1 }
+        else if abs_n < 100 { 0 - 2 }
+        else { 0 - 3 }
+    };
+
+    // Map digit to descriptive code via cascading conditions
+
+fn digit_code(d: i64) -> i64 =
+    if d == 0 { 100 }
+    else if d == 1 { 101 }
+    else if d == 2 { 102 }
+    else if d == 3 { 103 }
+    else if d == 4 { 104 }
+    else if d == 5 { 105 }
+    else if d == 6 { 106 }
+    else if d == 7 { 107 }
+    else if d == 8 { 108 }
+    else if d == 9 { 109 }
+    else { 0 - 1 };
+
+    // Score a value based on multiple overlapping ranges
+
+fn range_score(n: i64) -> i64 = {
+    let s1 = if n >= 10 and n <= 20 { 1 } else { 0 };
+    let s2 = if n >= 15 and n <= 25 { 2 } else { 0 };
+    let s3 = if n >= 5 and n <= 15 { 4 } else { 0 };
+    let s4 = if n >= 18 and n <= 30 { 8 } else { 0 };
+    s1 + s2 + s3 + s4
+    };
+
+// Compute fizzbuzz style: returns 0=none, 1=fizz, 2=buzz, 3=fizzbuzz
+fn fizzbuzz_code(n: i64) -> i64 =
+    if n % 15 == 0 { 3 }
+    else if n % 3 == 0 { 1 }
+    else if n % 5 == 0 { 2 }
+    else { 0 };
+
+    // Count fizzbuzz codes in range 1..n
+
+fn count_fb_in_range(n: i64, code: i64, i: i64, count: i64) -> i64 =
+    if i > n { count }
+    else {
+        let inc = if fizzbuzz_code(i) == code { 1 } else { 0 };
+        count_fb_in_range(n, code, i + 1, count + inc)
+    };
+
+    // Nested conditional: compute tax bracket
+
+fn tax(income: i64) -> i64 =
+    if income <= 0 { 0 }
+    else if income <= 10000 {
+        income / 10
+    }
+    else if income <= 50000 {
+        1000 + (income - 10000) / 5
+    }
+    else if income <= 100000 {
+        9000 + (income - 50000) / 4
+    }
+    else {
+        21500 + (income - 100000) / 3
+    };
+
+    // Multi-level boolean dispatch
+
+fn bool_dispatch(a: i64, b: i64, c: i64) -> i64 =
+    if a > 0 and b > 0 and c > 0 { 7 }
+    else if a > 0 and b > 0 { 6 }
+    else if a > 0 and c > 0 { 5 }
+    else if b > 0 and c > 0 { 3 }
+    else if a > 0 { 4 }
+    else if b > 0 { 2 }
+    else if c > 0 { 1 }
+    else { 0 };
+
+fn main() -> i64 = {
+// classify
+    let _c1 = println(classify(0));      // 0
+    let _c2 = println(classify(5));      // 1
+    let _c3 = println(classify(42));     // 2
+    let _c4 = println(classify(999));    // 3
+    let _c5 = println(classify(0 - 7));  // -1
+    let _c6 = println(classify(0 - 55)); // -2
+    let _c7 = println(classify(0 - 200));// -3
+
+// digit_code
+    let _d1 = println(digit_code(0));   // 100
+    let _d2 = println(digit_code(5));   // 105
+    let _d3 = println(digit_code(9));   // 109
+    let _d4 = println(digit_code(10));  // -1
+
+// range_score
+    let _r1 = println(range_score(5));   // s3=4 → 4
+    let _r2 = println(range_score(10));  // s1+s3 = 1+4=5
+    let _r3 = println(range_score(15));  // s1+s2+s3 = 1+2+4=7
+    let _r4 = println(range_score(18));  // s1+s2+s4 = 1+2+8=11
+    let _r5 = println(range_score(25));  // s2+s4 = 2+8=10
+
+// fizzbuzz_code
+    let _fb1 = println(fizzbuzz_code(15));  // 3
+    let _fb2 = println(fizzbuzz_code(9));   // 1
+    let _fb3 = println(fizzbuzz_code(10));  // 2
+    let _fb4 = println(fizzbuzz_code(7));   // 0
+
+// count_fb_in_range 1..30
+    let _cf1 = println(count_fb_in_range(30, 3, 1, 0));  // fizzbuzz: 15,30 → 2
+    let _cf2 = println(count_fb_in_range(30, 1, 1, 0));  // fizz (not fb): 3,6,9,12,18,21,24,27 → 8
+    let _cf3 = println(count_fb_in_range(30, 2, 1, 0));  // buzz (not fb): 5,10,20,25 → 4
+
+// tax
+    let _t1 = println(tax(5000));    // 500
+    let _t2 = println(tax(20000));   // 1000 + 10000/5 = 3000
+    let _t3 = println(tax(75000));   // 9000 + 25000/4 = 15250
+    let _t4 = println(tax(150000));  // 21500 + 50000/3 = 38166
+
+// bool_dispatch
+    let _b1 = println(bool_dispatch(1, 1, 1));   // 7
+    let _b2 = println(bool_dispatch(1, 1, 0));   // 6
+    let _b3 = println(bool_dispatch(1, 0, 1));   // 5
+    let _b4 = println(bool_dispatch(0, 1, 1));   // 3
+    let _b5 = println(bool_dispatch(0, 0, 0));   // 0
+    0
+    };

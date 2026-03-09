@@ -1,0 +1,111 @@
+// Golden Test: Matrix exponentiation via repeated squaring
+// 2x2 matrix stored as flat vec [a,b,c,d] = [[a,b],[c,d]]
+// Fibonacci numbers via [[1,1],[1,0]]^n
+
+fn make_mat(a: i64, b: i64, c: i64, d: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    v
+    };
+
+// 2x2 matrix multiply: C = A * B
+fn mat2_mul(a: i64, b: i64) -> i64 = {
+    let a0 = vec_get(a, 0);
+    let a1 = vec_get(a, 1);
+    let a2 = vec_get(a, 2);
+    let a3 = vec_get(a, 3);
+    let b0 = vec_get(b, 0);
+    let b1 = vec_get(b, 1);
+    let b2 = vec_get(b, 2);
+    let b3 = vec_get(b, 3);
+    make_mat(
+        a0 * b0 + a1 * b2,
+        a0 * b1 + a1 * b3,
+        a2 * b0 + a3 * b2,
+        a2 * b1 + a3 * b3
+    )
+    };
+
+// Matrix power by repeated squaring (iterative)
+fn mat2_pow(m: i64, n: i64) -> i64 = {
+    let mut result = make_mat(1, 0, 0, 1);
+    let mut base = make_mat(vec_get(m, 0), vec_get(m, 1), vec_get(m, 2), vec_get(m, 3));
+    let mut exp = n;
+    loop {
+        if exp <= 0 { break } else { () };
+        if exp % 2 == 1 {
+            let new_result = mat2_mul(result, base);
+            let _f = vec_free(result);
+            result = new_result
+        } else { () };
+        let new_base = mat2_mul(base, base);
+        let _f2 = vec_free(base);
+        base = new_base;
+        exp = exp / 2
+    };
+    let _fb = vec_free(base);
+    result
+    };
+
+// Recursive Fibonacci for verification
+fn fib_rec(n: i64) -> i64 =
+    if n <= 1 { n }
+    else { fib_rec(n - 1) + fib_rec(n - 2) };
+
+fn main() -> i64 = {
+    let fmat = make_mat(1, 1, 1, 0);
+
+    // Identity * F = F, check [0][0] = 1
+    let identity = make_mat(1, 0, 0, 1);
+    let r1 = mat2_mul(identity, fmat);
+    let _p1 = println(vec_get(r1, 0));     // 1
+
+    // F * F, check [0][0] = 2
+    let r2 = mat2_mul(fmat, fmat);
+    let _p2 = println(vec_get(r2, 0));     // 2
+
+    // fib(5) via F^5: [0][1] = 5
+    let f5 = mat2_pow(fmat, 5);
+    let _p3 = println(vec_get(f5, 1));     // 5
+
+    // fib(10) via F^10: [0][1] = 55
+    let f10 = mat2_pow(fmat, 10);
+    let _p4 = println(vec_get(f10, 1));    // 55
+
+    // fib(1) via F^1: [0][1] = 1
+    let f1 = mat2_pow(fmat, 1);
+    let _p5 = println(vec_get(f1, 1));     // 1
+
+    // fib(2) via F^2: [0][1] = 1
+    let f2 = mat2_pow(fmat, 2);
+    let _p6 = println(vec_get(f2, 1));     // 1
+
+    // fib(7) via F^7: [0][1] = 13
+    let f7 = mat2_pow(fmat, 7);
+    let _p7 = println(vec_get(f7, 1));     // 13
+
+    // Verify fib(7) recursively = 13
+    let _p8 = println(fib_rec(7));         // 13
+
+    // fib(15) via F^15: [0][1] = 610
+    let f15 = mat2_pow(fmat, 15);
+    let _p9 = println(vec_get(f15, 1));    // 610
+
+    // det(F^5) = a*d - b*c = 8*3 - 5*5 = -1
+    let _p10 = println(vec_get(f5, 0) * vec_get(f5, 3) - vec_get(f5, 1) * vec_get(f5, 2));  // -1
+
+    let _fi = vec_free(identity);
+    let _ff = vec_free(fmat);
+    let _fr1 = vec_free(r1);
+    let _fr2 = vec_free(r2);
+    let _ff1 = vec_free(f1);
+    let _ff2 = vec_free(f2);
+    let _ff5 = vec_free(f5);
+    let _ff7 = vec_free(f7);
+    let _ff10 = vec_free(f10);
+    let _ff15 = vec_free(f15);
+    0
+    };

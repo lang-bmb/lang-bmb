@@ -1,0 +1,97 @@
+// Golden Test: Josephus problem
+// N people in a circle, every K-th person is eliminated
+// Find the position of the last survivor (0-indexed)
+// Uses both simulation (circular array) and mathematical formula
+
+// Simulation approach: use a circular array with active flags
+fn josephus_sim(n: i64, k: i64) -> i64 = {
+    let active = vec_new();
+    let mut i = 0;
+    while i < n {
+        let _p = vec_push(active, 1);
+        set i = i + 1
+    };
+
+    let mut remaining = n;
+    let mut pos = 0;
+    let mut count = 0;
+
+    while remaining > 1 {
+        let _x = if vec_get(active, pos) == 1 {
+            set count = count + 1;
+            let _y = if count == k {
+                vec_set(active, pos, 0);
+                set remaining = remaining - 1;
+                set count = 0;
+                0
+            } else { 0 };
+            0
+        } else { 0 };
+        set pos = (pos + 1) % n
+    };
+
+    // Find the survivor
+    set i = 0;
+    let mut survivor = -1;
+    while i < n {
+        let _x = if vec_get(active, i) == 1 {
+            set survivor = i;
+            0
+        } else { 0 };
+        set i = i + 1
+    };
+    survivor
+};
+
+// Mathematical formula: J(n, k) = (J(n-1, k) + k) % n, with J(1, k) = 0
+fn josephus_math(n: i64, k: i64) -> i64 = {
+    let mut result = 0;
+    let mut i = 2;
+    while i <= n {
+        set result = (result + k) % i;
+        set i = i + 1
+    };
+    result
+};
+
+fn main() -> () = {
+    // Test 1: Classic case n=7, k=3
+    let sim1 = josephus_sim(7, 3);
+    let math1 = josephus_math(7, 3);
+    print_str("n=7,k=3 sim=");
+    print(sim1);
+    print_str(" math=");
+    let _r = println(math1);
+
+    // Test 2: n=5, k=2
+    let sim2 = josephus_sim(5, 2);
+    let math2 = josephus_math(5, 2);
+    print_str("n=5,k=2 sim=");
+    print(sim2);
+    print_str(" math=");
+    let _r = println(math2);
+
+    // Test 3: n=10, k=1 (eliminate in order, last = n-1)
+    let sim3 = josephus_sim(10, 1);
+    let math3 = josephus_math(10, 1);
+    print_str("n=10,k=1 sim=");
+    print(sim3);
+    print_str(" math=");
+    let _r = println(math3);
+
+    // Test 4: n=6, k=4
+    let sim4 = josephus_sim(6, 4);
+    let math4 = josephus_math(6, 4);
+    print_str("n=6,k=4 sim=");
+    print(sim4);
+    print_str(" math=");
+    let _r = println(math4);
+
+    // Test 5: Large case n=100, k=7
+    let sim5 = josephus_sim(100, 7);
+    let math5 = josephus_math(100, 7);
+    print_str("n=100,k=7 sim=");
+    print(sim5);
+    print_str(" math=");
+    let _r = println(math5)
+};

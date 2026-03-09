@@ -1,0 +1,233 @@
+// Golden Test: Prim's Minimum Spanning Tree algorithm
+// Uses adjacency matrix representation
+// 0 = no edge, positive value = edge weight
+// Greedy selection of minimum weight edge crossing the cut
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { let _p = vec_push(v, 0); 0 };
+    v
+};
+
+// Get edge weight from flat n*n adjacency matrix
+fn adj_get(adj: i64, n: i64, u: i64, v: i64) -> i64 =
+    vec_get(adj, u * n + v);
+
+// Set edge weight (both directions for undirected graph)
+fn adj_set(adj: i64, n: i64, u: i64, v: i64, w: i64) -> i64 = {
+    let _s1 = vec_set(adj, u * n + v, w);
+    let _s2 = vec_set(adj, v * n + u, w);
+    0
+};
+
+// Prim's MST algorithm
+// Returns vec [total_weight, edge_count]
+// Also populates mst_from and mst_to arrays with MST edges
+fn prim(adj: i64, n: i64, mst_from: i64, mst_to: i64) -> i64 = {
+    let inf = 999999;
+    // key[i] = minimum weight edge connecting i to MST
+    let key = vec_new();
+    for _i in 0..n { let _p = vec_push(key, inf); 0 };
+    // in_mst[i] = 1 if node i is in MST
+    let in_mst = make_zeros(n);
+    // parent[i] = parent of i in MST (-1 for root)
+    let parent = vec_new();
+    for _i in 0..n { let _p = vec_push(parent, 0 - 1); 0 };
+
+    // Start from node 0
+    let _s = vec_set(key, 0, 0);
+
+    let mut total_weight = 0;
+    let mut edge_count = 0;
+
+    // Repeat n times: pick min-key vertex not in MST
+    for _iter in 0..n {
+        // Find min key vertex not in MST
+        let mut min_key = inf;
+        let mut u = 0 - 1;
+        for j in 0..n {
+            let _c = if vec_get(in_mst, j) == 0 {
+                let _c2 = if vec_get(key, j) < min_key {
+                    set min_key = vec_get(key, j);
+                    set u = j;
+                    ()
+                } else { () };
+                ()
+            } else { () };
+            0
+        };
+
+        // If no vertex found (disconnected graph), skip
+        let _c = if u >= 0 {
+            let _s = vec_set(in_mst, u, 1);
+            let _c2 = if vec_get(parent, u) >= 0 {
+                // Record MST edge
+                let _s = vec_set(mst_from, edge_count, vec_get(parent, u));
+                let _s = vec_set(mst_to, edge_count, u);
+                set total_weight = total_weight + min_key;
+                set edge_count = edge_count + 1;
+                ()
+            } else { () };
+
+            // Update keys of adjacent vertices
+            for v in 0..n {
+                let w = adj_get(adj, n, u, v);
+                let _c3 = if w > 0 {
+                    let _c4 = if vec_get(in_mst, v) == 0 {
+                        let _c5 = if w < vec_get(key, v) {
+                            let _s = vec_set(key, v, w);
+                            let _s = vec_set(parent, v, u);
+                            ()
+                        } else { () };
+                        ()
+                    } else { () };
+                    ()
+                } else { () };
+                0
+            };
+            ()
+        } else { () };
+        0
+    };
+
+    let result = vec_new();
+    let _p = vec_push(result, total_weight);
+    let _p = vec_push(result, edge_count);
+    let _f = vec_free(key);
+    let _f = vec_free(in_mst);
+    let _f = vec_free(parent);
+    result
+};
+
+// Print MST edges
+fn print_edges(mst_from: i64, mst_to: i64, count: i64) -> i64 = {
+    for i in 0..count {
+        let _p = print_str("  ");
+        let _p = print(vec_get(mst_from, i));
+        let _p = print_str("-");
+        let _p = println(vec_get(mst_to, i));
+        0
+    };
+    0
+};
+
+fn main() -> i64 = {
+    // === Test 1: 4-node graph ===
+    //     1
+    //  0 --- 1
+    //  |     |
+    // 4|     |2
+    //  |     |
+    //  3 --- 2
+    //     3
+    // MST: edges 0-1(1), 1-2(2), 2-3(3) = total 6
+    let _p = println_str("=== Test 1: 4-node graph ===");
+    let n1 = 4;
+    let adj1 = make_zeros(n1 * n1);
+    let _e = adj_set(adj1, n1, 0, 1, 1);
+    let _e = adj_set(adj1, n1, 0, 3, 4);
+    let _e = adj_set(adj1, n1, 1, 2, 2);
+    let _e = adj_set(adj1, n1, 2, 3, 3);
+
+    let mst_from1 = make_zeros(n1);
+    let mst_to1 = make_zeros(n1);
+    let r1 = prim(adj1, n1, mst_from1, mst_to1);
+    let _p = print_str("total weight: ");
+    let _p = println(vec_get(r1, 0));
+    let _p = print_str("edges: ");
+    let _p = println(vec_get(r1, 1));
+    let _p = println_str("MST edges:");
+    let _pe = print_edges(mst_from1, mst_to1, vec_get(r1, 1));
+
+    // === Test 2: 5-node complete graph with distinct weights ===
+    //  0-1:2, 0-2:3, 0-3:6, 0-4:7
+    //  1-2:4, 1-3:5, 1-4:8
+    //  2-3:1, 2-4:9
+    //  3-4:10
+    // MST: 2-3(1), 0-1(2), 0-2(3), 1-3(5)? No...
+    // Kruskal order: 2-3(1), 0-1(2), 0-2(3), 1-2(4)skip, 1-3(5), ...
+    // MST: 2-3(1), 0-1(2), 0-2(3), 1-3(5)skip(already connected)
+    // Actually: 2-3(1), 0-1(2), 0-2(3), need 0-4 or via:
+    //   After 2-3(1), 0-1(2), 0-2(3): nodes {0,1,2,3} connected
+    //   Next: 0-4(7), 1-4(8), 2-4(9), 3-4(10) → 0-4(7)
+    // Total = 1+2+3+7 = 13
+    let _p = println_str("=== Test 2: 5-node complete ===");
+    let n2 = 5;
+    let adj2 = make_zeros(n2 * n2);
+    let _e = adj_set(adj2, n2, 0, 1, 2);
+    let _e = adj_set(adj2, n2, 0, 2, 3);
+    let _e = adj_set(adj2, n2, 0, 3, 6);
+    let _e = adj_set(adj2, n2, 0, 4, 7);
+    let _e = adj_set(adj2, n2, 1, 2, 4);
+    let _e = adj_set(adj2, n2, 1, 3, 5);
+    let _e = adj_set(adj2, n2, 1, 4, 8);
+    let _e = adj_set(adj2, n2, 2, 3, 1);
+    let _e = adj_set(adj2, n2, 2, 4, 9);
+    let _e = adj_set(adj2, n2, 3, 4, 10);
+
+    let mst_from2 = make_zeros(n2);
+    let mst_to2 = make_zeros(n2);
+    let r2 = prim(adj2, n2, mst_from2, mst_to2);
+    let _p = print_str("total weight: ");
+    let _p = println(vec_get(r2, 0));
+    let _p = print_str("edges: ");
+    let _p = println(vec_get(r2, 1));
+
+    // === Test 3: Triangle 0-1-2 with weights 3, 4, 5 ===
+    // MST = 2 cheapest edges: 0-1(3), 1-2(4) = 7
+    let _p = println_str("=== Test 3: triangle ===");
+    let n3 = 3;
+    let adj3 = make_zeros(n3 * n3);
+    let _e = adj_set(adj3, n3, 0, 1, 3);
+    let _e = adj_set(adj3, n3, 1, 2, 4);
+    let _e = adj_set(adj3, n3, 0, 2, 5);
+
+    let mst_from3 = make_zeros(n3);
+    let mst_to3 = make_zeros(n3);
+    let r3 = prim(adj3, n3, mst_from3, mst_to3);
+    let _p = print_str("total weight: ");
+    let _p = println(vec_get(r3, 0));
+    let _p = print_str("edges: ");
+    let _p = println(vec_get(r3, 1));
+    let _p = println_str("MST edges:");
+    let _pe = print_edges(mst_from3, mst_to3, vec_get(r3, 1));
+
+    // === Test 4: Path graph 0-1-2-3 with weights 5, 10, 15 ===
+    // MST = all edges (it's a tree already), total = 30
+    let _p = println_str("=== Test 4: path graph ===");
+    let n4 = 4;
+    let adj4 = make_zeros(n4 * n4);
+    let _e = adj_set(adj4, n4, 0, 1, 5);
+    let _e = adj_set(adj4, n4, 1, 2, 10);
+    let _e = adj_set(adj4, n4, 2, 3, 15);
+
+    let mst_from4 = make_zeros(n4);
+    let mst_to4 = make_zeros(n4);
+    let r4 = prim(adj4, n4, mst_from4, mst_to4);
+    let _p = print_str("total weight: ");
+    let _p = println(vec_get(r4, 0));
+    let _p = print_str("edges: ");
+    let _p = println(vec_get(r4, 1));
+
+    // === Test 5: 2-node graph ===
+    let _p = println_str("=== Test 5: 2-node ===");
+    let n5 = 2;
+    let adj5 = make_zeros(n5 * n5);
+    let _e = adj_set(adj5, n5, 0, 1, 42);
+
+    let mst_from5 = make_zeros(n5);
+    let mst_to5 = make_zeros(n5);
+    let r5 = prim(adj5, n5, mst_from5, mst_to5);
+    let _p = print_str("total weight: ");
+    let _p = println(vec_get(r5, 0));
+    let _p = print_str("edges: ");
+    let _p = println(vec_get(r5, 1));
+
+    // Cleanup
+    let _f = vec_free(adj1); let _f = vec_free(mst_from1); let _f = vec_free(mst_to1); let _f = vec_free(r1);
+    let _f = vec_free(adj2); let _f = vec_free(mst_from2); let _f = vec_free(mst_to2); let _f = vec_free(r2);
+    let _f = vec_free(adj3); let _f = vec_free(mst_from3); let _f = vec_free(mst_to3); let _f = vec_free(r3);
+    let _f = vec_free(adj4); let _f = vec_free(mst_from4); let _f = vec_free(mst_to4); let _f = vec_free(r4);
+    let _f = vec_free(adj5); let _f = vec_free(mst_from5); let _f = vec_free(mst_to5); let _f = vec_free(r5);
+    0
+};

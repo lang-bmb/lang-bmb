@@ -1,0 +1,30 @@
+// Golden Test: same-value select elimination in codegen
+// When both branches of if-else return the same value, the select should be
+// eliminated to a direct assignment at codegen time.
+
+fn both_zero(a: i64) -> i64 =
+    if a > 0 { 0 } else { 0 };
+
+fn both_constant(x: i64) -> i64 =
+    if x > 10 { 42 } else { 42 };
+
+fn side_effect_same(n: i64) -> i64 =
+    if n > 0 {
+        let _p = println(1);
+        0
+    } else {
+    let _p = println(2);
+    0
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(both_zero(5));       // 0
+    let _p2 = println(both_zero(0));       // 0
+    let _p3 = println(both_constant(15));  // 42
+    let _p4 = println(both_constant(5));   // 42
+    let r = side_effect_same(5);           // prints 1
+    let _p5 = println(r);                 // 0
+    let r2 = side_effect_same(0);         // prints 2
+    let _p6 = println(r2);               // 0
+    0
+    };

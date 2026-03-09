@@ -1,0 +1,78 @@
+// Golden Test: Catalan Number Computation
+// Multiple methods: direct DP, recursive with memoization, formula-based
+// C(n) = C(2n,n)/(n+1) = sum(C(i)*C(n-1-i)) for i=0..n-1
+
+// Catalan via DP table
+fn catalan_dp(n: i64) -> i64 = {
+    let dp = [0; 20];
+    set dp[0] = 1;
+    let mut i = 1;
+    loop {
+        if i > n { break } else { () };
+        let mut j = 0;
+        loop {
+            if j >= i { break } else { () };
+            set dp[i] = dp[i] + dp[j] * dp[i - 1 - j];
+            j = j + 1
+        };
+        i = i + 1
+    };
+    dp[n]
+};
+
+// Catalan via binomial: C(n) = C(2n,n) / (n+1)
+// Compute binomial coefficient C(a,b) = a! / (b! * (a-b)!)
+fn binomial(a: i64, b: i64) -> i64 = {
+    if b > a { return 0 } else { () };
+    let mut result = 1;
+    let bb = if b > a - b { a - b } else { b };
+    let mut i = 0;
+    loop {
+        if i >= bb { break } else { () };
+        result = result * (a - i);
+        result = result / (i + 1);
+        i = i + 1
+    };
+    result
+};
+
+fn catalan_binom(n: i64) -> i64 = {
+    binomial(2 * n, n) / (n + 1)
+};
+
+// Count valid parenthesizations of n pairs
+// This equals Catalan(n)
+fn count_parens(n: i64) -> i64 = {
+    // Use DP: dp[i][j] = ways with i open, j close remaining
+    // Simplified: dp[open_count] at each step
+    // Actually just verify catalan gives correct ballot numbers
+    catalan_dp(n)
+};
+
+fn main() -> i64 = {
+    // C(0) through C(9) via DP
+    let _p1 = println(catalan_dp(0));   // 1
+    let _p2 = println(catalan_dp(1));   // 1
+    let _p3 = println(catalan_dp(2));   // 2
+    let _p4 = println(catalan_dp(3));   // 5
+    let _p5 = println(catalan_dp(4));   // 14
+    let _p6 = println(catalan_dp(5));   // 42
+
+    // Verify DP matches binomial formula
+    let _p7 = println(catalan_binom(6));   // 132
+    let _p8 = println(catalan_binom(7));   // 429
+    let _p9 = println(catalan_binom(8));   // 1430
+
+    // C(10) = 16796
+    let _p10 = println(catalan_dp(10));    // 16796
+
+    // Verify: C(n) = C(2n,n)/(n+1)
+    // C(5) = C(10,5)/6 = 252/6 = 42
+    let _p11 = println(binomial(10, 5));   // 252
+
+    // Sum property: C(0)+C(1)+C(2)+C(3)+C(4) = 1+1+2+5+14 = 23
+    let sum = catalan_dp(0) + catalan_dp(1) + catalan_dp(2) + catalan_dp(3) + catalan_dp(4);
+    let _p12 = println(sum);  // 23
+
+    0
+};

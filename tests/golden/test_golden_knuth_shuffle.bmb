@@ -1,0 +1,94 @@
+// Golden Test: Fisher-Yates/Knuth shuffle with deterministic PRNG
+
+fn lcg_next(seed: i64) -> i64 = {
+    let raw = 1103515245 * seed + 12345;
+    let m = 2147483648;
+    let r = raw - (raw / m) * m;
+    if r < 0 { r + m } else { r }
+    };
+
+fn lcg_range(seed: i64, n: i64) -> i64 = {
+    let s = if seed < 0 { 0 - seed } else { seed };
+    s - (s / n) * n
+    };
+
+fn knuth_shuffle(arr: i64, n: i64, seed: i64) -> i64 = {
+    let mut s = seed;
+    let mut i = n - 1;
+    loop {
+        if i <= 0 { break } else { () };
+        s = lcg_next(s);
+        let j = lcg_range(s, i + 1);
+        let tmp = vec_get(arr, i);
+        vec_set(arr, i, vec_get(arr, j));
+        vec_set(arr, j, tmp);
+        i = i - 1
+    };
+    s
+    };
+
+fn is_permutation(arr: i64, n: i64) -> i64 = {
+    let counts = vec_new();
+    let mut i = 0;
+    loop { if i >= n { break } else { () }; vec_push(counts, 0); i = i + 1 };
+    let mut valid = 1;
+    let mut j = 0;
+    loop {
+        if j >= n { break } else { () };
+        let v = vec_get(arr, j);
+        if v < 0 or v >= n { valid = 0; break }
+        else { vec_set(counts, v, vec_get(counts, v) + 1) };
+        j = j + 1
+    };
+    if valid == 1 {
+        let mut k = 0;
+        loop {
+            if k >= n { break } else { () };
+            if vec_get(counts, k) != 1 { valid = 0; break } else { () };
+            k = k + 1
+        }
+    } else { () };
+    vec_free(counts);
+    valid
+    };
+
+fn arr_sum(arr: i64, n: i64) -> i64 = {
+    let mut s = 0;
+    let mut i = 0;
+    loop { if i >= n { break } else { () }; s = s + vec_get(arr, i); i = i + 1 };
+    s
+    };
+
+fn main() -> i64 = {
+    let arr = vec_new();
+    let mut i = 0;
+    loop { if i >= 10 { break } else { () }; vec_push(arr, i); i = i + 1 };
+    let _r1 = println(arr_sum(arr, 10));         // 45
+    let seed1 = knuth_shuffle(arr, 10, 42);
+    let _r2 = println(is_permutation(arr, 10));  // 1
+    let _r3 = println(arr_sum(arr, 10));          // 45
+    let _r4 = println(vec_get(arr, 0));
+    let _r5 = println(vec_get(arr, 1));
+    let _r6 = println(vec_get(arr, 2));
+    let _r7 = println(vec_get(arr, 3));
+    let _r8 = println(vec_get(arr, 4));
+    let _r9 = println(vec_get(arr, 5));
+    let _r10 = println(vec_get(arr, 6));
+    let _r11 = println(vec_get(arr, 7));
+    let _r12 = println(vec_get(arr, 8));
+    let _r13 = println(vec_get(arr, 9));
+    let mut k = 0;
+    loop { if k >= 10 { break } else { () }; vec_set(arr, k, k); k = k + 1 };
+    let seed2 = knuth_shuffle(arr, 10, 123);
+    let _r14 = println(is_permutation(arr, 10));  // 1
+    let _r15 = println(arr_sum(arr, 10));          // 45
+    let tiny = vec_new(); vec_push(tiny, 99);
+    let _s = knuth_shuffle(tiny, 1, 0);
+    let _r16 = println(vec_get(tiny, 0));  // 99
+    let pair = vec_new(); vec_push(pair, 10); vec_push(pair, 20);
+    let _s2 = knuth_shuffle(pair, 2, 7);
+    let _r17 = println(arr_sum(pair, 2));         // 30
+    let _r18 = println(is_permutation(pair, 2));  // 0
+    vec_free(arr); vec_free(tiny); vec_free(pair);
+    0
+    };

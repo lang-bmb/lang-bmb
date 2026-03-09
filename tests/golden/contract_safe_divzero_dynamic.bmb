@@ -1,0 +1,27 @@
+// Test: division-by-zero check elimination with DYNAMIC divisor
+// Contract pre b != 0 lets LLVM eliminate divzero check even for non-constant b
+
+fn safe_div(a: i64, b: i64) -> i64
+    pre b != 0
+= a / b;
+
+fn safe_mod(a: i64, b: i64) -> i64
+    pre b != 0
+= a % b;
+
+fn compute(a: i64, b: i64) -> i64
+    pre b != 0
+= {
+    let d = safe_div(a, b);
+    let m = safe_mod(a, b);
+    d + m
+};
+
+fn main() -> i64 = {
+    // Use runtime values to prevent constant folding
+    let a = 100;
+    let b = 3 + 4;  // = 7, but not constant-folded at IR level
+    let result = compute(a, b);
+    let _u = println(result);
+    0
+};

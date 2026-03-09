@@ -1,0 +1,90 @@
+// Golden Test: Finding bridges in undirected graph (Tarjan's algorithm)
+// Bridge = edge whose removal disconnects the graph
+// Adjacency list: adj_data[], adj_off[], adj_cnt[]
+
+fn min(a: i64, b: i64) -> i64 = if a < b { a } else { b };
+
+fn dfs_bridge(ad: i64, ao: i64, ac: i64, disc: i64, low: i64,
+    vis: i64, br: i64, u: i64, par: i64, timer: i64) -> i64 = {
+    let _sv = vec_set(vis, u, 1);
+    let _sd = vec_set(disc, u, timer);
+    let _sl = vec_set(low, u, timer);
+    let mut t = timer + 1;
+    let start = vec_get(ao, u);
+    let cnt = vec_get(ac, u);
+    let mut i = 0;
+    loop {
+        if i >= cnt { break } else { () };
+        let v = vec_get(ad, start + i);
+        if vec_get(vis, v) == 0 {
+            set t = dfs_bridge(ad, ao, ac, disc, low, vis, br, v, u, t);
+            let _ul = vec_set(low, u, min(vec_get(low, u), vec_get(low, v)));
+            let _b = if vec_get(low, v) > vec_get(disc, u) {
+                let _pu = vec_push(br, u); let _pv = vec_push(br, v); 0
+            } else { 0 };
+            0
+        } else if v != par {
+            let _ul = vec_set(low, u, min(vec_get(low, u), vec_get(disc, v))); 0
+        } else { 0 };
+        set i = i + 1
+    };
+    t
+};
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { vec_push(v, 0) };
+    v
+};
+
+fn main() -> i64 = {
+    // Graph: 0-1, 1-2, 2-0 (cycle), 2-3 (bridge), 3-4, 4-5, 5-3 (cycle)
+    let ad = vec_new();
+    let _p = vec_push(ad, 1); let _p = vec_push(ad, 2);
+    let _p = vec_push(ad, 0); let _p = vec_push(ad, 2);
+    let _p = vec_push(ad, 0); let _p = vec_push(ad, 1); let _p = vec_push(ad, 3);
+    let _p = vec_push(ad, 2); let _p = vec_push(ad, 4); let _p = vec_push(ad, 5);
+    let _p = vec_push(ad, 3); let _p = vec_push(ad, 5);
+    let _p = vec_push(ad, 3); let _p = vec_push(ad, 4);
+    let ao = vec_new();
+    let _p = vec_push(ao, 0); let _p = vec_push(ao, 2); let _p = vec_push(ao, 4);
+    let _p = vec_push(ao, 7); let _p = vec_push(ao, 10); let _p = vec_push(ao, 12);
+    let ac = vec_new();
+    let _p = vec_push(ac, 2); let _p = vec_push(ac, 2); let _p = vec_push(ac, 3);
+    let _p = vec_push(ac, 3); let _p = vec_push(ac, 2); let _p = vec_push(ac, 2);
+
+    let br = vec_new();
+    let _t = dfs_bridge(ad, ao, ac, make_zeros(6), make_zeros(6),
+        make_zeros(6), br, 0, 0 - 1, 0);
+    let _h = print_str("Bridges found: ");
+    let _p = println(vec_len(br) / 2);
+    let mut i = 0;
+    loop {
+        if i >= vec_len(br) { break } else { () };
+        let _pu = println(vec_get(br, i));
+        let _pv = println(vec_get(br, i + 1));
+        set i = i + 2
+    };
+
+    // Graph 2: chain 0-1-2-3 (all edges are bridges)
+    let ad2 = vec_new();
+    let _p = vec_push(ad2, 1);
+    let _p = vec_push(ad2, 0); let _p = vec_push(ad2, 2);
+    let _p = vec_push(ad2, 1); let _p = vec_push(ad2, 3);
+    let _p = vec_push(ad2, 2);
+    let ao2 = vec_new();
+    let _p = vec_push(ao2, 0); let _p = vec_push(ao2, 1);
+    let _p = vec_push(ao2, 3); let _p = vec_push(ao2, 5);
+    let ac2 = vec_new();
+    let _p = vec_push(ac2, 1); let _p = vec_push(ac2, 2);
+    let _p = vec_push(ac2, 2); let _p = vec_push(ac2, 1);
+    let br2 = vec_new();
+    let _t2 = dfs_bridge(ad2, ao2, ac2, make_zeros(4), make_zeros(4),
+        make_zeros(4), br2, 0, 0 - 1, 0);
+    let _h2 = print_str("Chain bridges: ");
+    let _p2 = println(vec_len(br2) / 2);
+    let _f = vec_free(ad); let _f = vec_free(ao); let _f = vec_free(ac);
+    let _f = vec_free(br); let _f = vec_free(ad2); let _f = vec_free(ao2);
+    let _f = vec_free(ac2); let _f = vec_free(br2);
+    0
+};

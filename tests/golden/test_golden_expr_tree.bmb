@@ -1,0 +1,99 @@
+// Golden Test: Expression Tree Evaluator
+// Flat array encoding: each node occupies 3 consecutive slots
+//   nodes[i*3+0] = type  (0=num, 1=add, 2=sub, 3=mul, 4=div)
+//   nodes[i*3+1] = left  (value for num; left child index for op)
+//   nodes[i*3+2] = right (0 for num; right child index for op)
+
+fn node_type(nodes: i64, i: i64) -> i64 = vec_get(nodes, i * 3);
+
+fn node_left(nodes: i64, i: i64) -> i64 = vec_get(nodes, i * 3 + 1);
+
+fn node_right(nodes: i64, i: i64) -> i64 = vec_get(nodes, i * 3 + 2);
+
+fn eval_tree(nodes: i64, i: i64) -> i64 =
+    if node_type(nodes, i) == 0 {
+        node_left(nodes, i)
+    } else if node_type(nodes, i) == 1 {
+        eval_tree(nodes, node_left(nodes, i)) + eval_tree(nodes, node_right(nodes, i))
+    } else if node_type(nodes, i) == 2 {
+        eval_tree(nodes, node_left(nodes, i)) - eval_tree(nodes, node_right(nodes, i))
+    } else if node_type(nodes, i) == 3 {
+        eval_tree(nodes, node_left(nodes, i)) * eval_tree(nodes, node_right(nodes, i))
+    } else {
+        eval_tree(nodes, node_left(nodes, i)) / eval_tree(nodes, node_right(nodes, i))
+    };
+
+fn count_nodes(nodes: i64, i: i64) -> i64 =
+    if node_type(nodes, i) == 0 {
+        1
+    } else {
+        1 + count_nodes(nodes, node_left(nodes, i)) + count_nodes(nodes, node_right(nodes, i))
+    };
+
+fn tree_depth(nodes: i64, i: i64) -> i64 =
+    if node_type(nodes, i) == 0 {
+        1
+    } else {
+        let ld = tree_depth(nodes, node_left(nodes, i));
+        let rd = tree_depth(nodes, node_right(nodes, i));
+        let mx = if ld > rd { ld } else { rd };
+        1 + mx
+    };
+
+fn main() -> i64 = {
+    // Expression 1: (3 + 4) = 7
+    // Node 0: add, left=1, right=2
+    // Node 1: num 3
+    // Node 2: num 4
+    let e1 = vec_new();
+    let _p1  = vec_push(e1, 1); let _p2  = vec_push(e1, 1); let _p3  = vec_push(e1, 2);
+    let _p4  = vec_push(e1, 0); let _p5  = vec_push(e1, 3); let _p6  = vec_push(e1, 0);
+    let _p7  = vec_push(e1, 0); let _p8  = vec_push(e1, 4); let _p9  = vec_push(e1, 0);
+
+    let _r1 = println(eval_tree(e1, 0));    // 7
+    let _r2 = println(count_nodes(e1, 0));  // 3
+    let _r3 = println(tree_depth(e1, 0));   // 2
+
+    // Expression 2: (5 * (2 + 3)) = 25
+    // Node 0: mul, left=1, right=2
+    // Node 1: num 5
+    // Node 2: add, left=3, right=4
+    // Node 3: num 2
+    // Node 4: num 3
+    let e2 = vec_new();
+    let _p10 = vec_push(e2, 3); let _p11 = vec_push(e2, 1); let _p12 = vec_push(e2, 2);
+    let _p13 = vec_push(e2, 0); let _p14 = vec_push(e2, 5); let _p15 = vec_push(e2, 0);
+    let _p16 = vec_push(e2, 1); let _p17 = vec_push(e2, 3); let _p18 = vec_push(e2, 4);
+    let _p19 = vec_push(e2, 0); let _p20 = vec_push(e2, 2); let _p21 = vec_push(e2, 0);
+    let _p22 = vec_push(e2, 0); let _p23 = vec_push(e2, 3); let _p24 = vec_push(e2, 0);
+
+    let _r4 = println(eval_tree(e2, 0));    // 25
+    let _r5 = println(count_nodes(e2, 0));  // 5
+    let _r6 = println(tree_depth(e2, 0));   // 3
+
+    // Expression 3: ((10 - 3) * (4 + 2)) = 42
+    // Node 0: mul, left=1, right=2
+    // Node 1: sub, left=3, right=4
+    // Node 2: add, left=5, right=6
+    // Node 3: num 10
+    // Node 4: num 3
+    // Node 5: num 4
+    // Node 6: num 2
+    let e3 = vec_new();
+    let _p25 = vec_push(e3, 3); let _p26 = vec_push(e3, 1); let _p27 = vec_push(e3, 2);
+    let _p28 = vec_push(e3, 2); let _p29 = vec_push(e3, 3); let _p30 = vec_push(e3, 4);
+    let _p31 = vec_push(e3, 1); let _p32 = vec_push(e3, 5); let _p33 = vec_push(e3, 6);
+    let _p34 = vec_push(e3, 0); let _p35 = vec_push(e3, 10); let _p36 = vec_push(e3, 0);
+    let _p37 = vec_push(e3, 0); let _p38 = vec_push(e3, 3); let _p39 = vec_push(e3, 0);
+    let _p40 = vec_push(e3, 0); let _p41 = vec_push(e3, 4); let _p42 = vec_push(e3, 0);
+    let _p43 = vec_push(e3, 0); let _p44 = vec_push(e3, 2); let _p45 = vec_push(e3, 0);
+
+    let _r7 = println(eval_tree(e3, 0));    // 42
+    let _r8 = println(count_nodes(e3, 0));  // 7
+    let _r9 = println(tree_depth(e3, 0));   // 3
+
+    vec_free(e1);
+    vec_free(e2);
+    vec_free(e3);
+    0
+};

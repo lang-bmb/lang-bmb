@@ -1,0 +1,153 @@
+// Golden Test: Run-length encoding/decoding on strings
+// Encodes consecutive repeated characters as count+char pairs
+// Decodes back to original string
+
+// rle_encode: encode string into run-length encoded representation
+// Returns a vec of (count, char_code) pairs in flat layout
+// Example: "AAABBBCC" -> [3,65, 3,66, 2,67]
+fn rle_encode(s: String) -> i64 = {
+    let result = vec_new();
+    let n = s.len();
+    if n == 0 { return result } else { () };
+    let mut cur_char = s.byte_at(0);
+    let mut cur_count = 1;
+    for i in 1..n {
+        let c = s.byte_at(i);
+        if c == cur_char {
+            cur_count = cur_count + 1
+        } else {
+            let _p1 = vec_push(result, cur_count);
+            let _p2 = vec_push(result, cur_char);
+            cur_char = c;
+            cur_count = 1
+        }
+    };
+    // push last run
+    let _p1 = vec_push(result, cur_count);
+    let _p2 = vec_push(result, cur_char);
+    result
+    };
+
+// Print encoded RLE as "count char_code" pairs, one per line
+fn print_rle(encoded: i64) -> i64 = {
+    let num_pairs = vec_len(encoded) / 2;
+    for i in 0..num_pairs {
+        let count = vec_get(encoded, i * 2);
+        let char_code = vec_get(encoded, i * 2 + 1);
+        print(count);
+        print_str(" ");
+        println(char_code)
+    };
+    0
+    };
+
+// Count number of runs in an encoded representation
+fn rle_num_runs(encoded: i64) -> i64 =
+    vec_len(encoded) / 2;
+
+// Get total length after decoding (sum of all counts)
+fn rle_decoded_length(encoded: i64) -> i64 = {
+    let num_pairs = vec_len(encoded) / 2;
+    let mut total = 0;
+    for i in 0..num_pairs {
+        total = total + vec_get(encoded, i * 2)
+    };
+    total
+    };
+
+// Get the max run length in the encoded data
+fn rle_max_run(encoded: i64) -> i64 = {
+    let num_pairs = vec_len(encoded) / 2;
+    let mut best = 0;
+    for i in 0..num_pairs {
+        let count = vec_get(encoded, i * 2);
+        if count > best { best = count } else { () }
+    };
+    best
+    };
+
+// Count distinct characters in encoded data
+fn rle_distinct_chars(encoded: i64) -> i64 = {
+    // Use a small frequency array for ASCII
+    let seen = vec_new();
+    for _i in 0..128 {
+        let _p = vec_push(seen, 0);
+        0
+    };
+    let num_pairs = vec_len(encoded) / 2;
+    let mut count = 0;
+    for i in 0..num_pairs {
+        let ch = vec_get(encoded, i * 2 + 1);
+        if vec_get(seen, ch) == 0 {
+            count = count + 1;
+            let _s = vec_set(seen, ch, 1);
+            0
+        } else { 0 }
+    };
+    let _f = vec_free(seen);
+    count
+    };
+
+// Verify roundtrip: encode string, then check decoded length matches original
+fn verify_roundtrip(s: String) -> i64 = {
+    let encoded = rle_encode(s);
+    let decoded_len = rle_decoded_length(encoded);
+    let original_len = s.len();
+    let _f = vec_free(encoded);
+    if decoded_len == original_len { 1 } else { 0 }
+    };
+
+fn main() -> i64 = {
+    // --- Encode "AAABBBCCDDDDEE" ---
+    // A(65)x3, B(66)x3, C(67)x2, D(68)x4, E(69)x2
+    println_str("=== Encode AAABBBCCDDDDEE ===");
+    let e1 = rle_encode("AAABBBCCDDDDEE");
+    let _pe1 = print_rle(e1);
+    println(rle_num_runs(e1));           // 5 runs
+    println(rle_decoded_length(e1));      // 14
+    println(rle_max_run(e1));             // 4 (DDDD)
+    println(rle_distinct_chars(e1));      // 5 (A,B,C,D,E)
+
+    // --- Encode single char ---
+    println_str("=== Encode X ===");
+    let e2 = rle_encode("X");
+    let _pe2 = print_rle(e2);
+    println(rle_num_runs(e2));           // 1 run
+    println(rle_decoded_length(e2));      // 1
+
+    // --- Encode all different ---
+    println_str("=== Encode ABCDE ===");
+    let e3 = rle_encode("ABCDE");
+    let _pe3 = print_rle(e3);
+    println(rle_num_runs(e3));           // 5 runs (each char unique)
+    println(rle_max_run(e3));             // 1
+
+    // --- Encode all same ---
+    println_str("=== Encode ZZZZZZZ ===");
+    let e4 = rle_encode("ZZZZZZZ");
+    let _pe4 = print_rle(e4);
+    println(rle_num_runs(e4));           // 1 run
+    println(rle_decoded_length(e4));      // 7
+    println(rle_max_run(e4));             // 7
+
+    // --- Encode mixed ---
+    println_str("=== Encode AABBBAA ===");
+    let e5 = rle_encode("AABBBAA");
+    let _pe5 = print_rle(e5);
+    println(rle_num_runs(e5));           // 3 runs
+    println(rle_distinct_chars(e5));      // 2 (A,B)
+
+    // --- Roundtrip verification ---
+    println_str("=== Roundtrip ===");
+    println(verify_roundtrip("AAABBBCCDDDDEE"));  // 1
+    println(verify_roundtrip("X"));                 // 1
+    println(verify_roundtrip("ABCDE"));             // 1
+    println(verify_roundtrip("ZZZZZZZ"));           // 1
+
+    let _f1 = vec_free(e1);
+    let _f2 = vec_free(e2);
+    let _f3 = vec_free(e3);
+    let _f4 = vec_free(e4);
+    let _f5 = vec_free(e5);
+    0
+    };

@@ -1,0 +1,205 @@
+// Golden test: Reservoir sampling with deterministic PRNG
+// Vitter's Algorithm R: select k items from stream of n items uniformly at random
+// Uses LCG (Linear Congruential Generator) for deterministic pseudo-random numbers
+
+// LCG PRNG: next = (a * current + c) mod m
+// Using: a=1103515245, c=12345, m=2^31 = 2147483648
+fn lcg_next(state: i64) -> i64 = {
+    let a = 1103515245;
+    let c = 12345;
+    let m = 2147483648;
+    let raw = a * state + c;
+    // Modulo: raw - (raw / m) * m, ensure positive
+    let r = raw - (raw / m) * m;
+    if r < 0 { r + m } else { r }
+    };
+
+// Get a pseudo-random number in [0, n) from state
+// Returns packed: high bits = new_state, we use two calls
+fn lcg_mod(state: i64, n: i64) -> i64 = {
+    let s = if state < 0 { 0 - state } else { state };
+    s - (s / n) * n
+    };
+
+// Reservoir sampling: fill reservoir with first k elements
+fn fill_reservoir(stream: i64, reservoir: i64, k: i64) -> i64 = {
+    for i in 0..k {
+        vec_push(reservoir, vec_get(stream, i))
+    };
+    0
+    };
+
+// Process remaining elements with replacement
+fn reservoir_sample(stream: i64, n: i64, reservoir: i64, k: i64, seed: i64) -> i64 = {
+    let mut state = seed;
+    let mut i = k;
+    loop {
+        if i >= n { break } else { () };
+        state = lcg_next(state);
+        let j = lcg_mod(state, i + 1);
+        if j < k {
+            vec_set(reservoir, j, vec_get(stream, i));
+            ()
+        } else { () };
+        i = i + 1
+    };
+    state
+    };
+
+// Sum elements in a vec
+fn arr_sum(v: i64, n: i64) -> i64 = {
+    let mut s = 0;
+    for i in 0..n {
+        s = s + vec_get(v, i)
+    };
+    s
+    };
+
+// Find min in vec
+fn arr_min(v: i64, n: i64) -> i64 = {
+    let mut m = vec_get(v, 0);
+    for i in 1..n {
+        let val = vec_get(v, i);
+        if val < m { m = val } else { () }
+    };
+    m
+    };
+
+// Find max in vec
+fn arr_max(v: i64, n: i64) -> i64 = {
+    let mut m = vec_get(v, 0);
+    for i in 1..n {
+        let val = vec_get(v, i);
+        if val > m { m = val } else { () }
+    };
+    m
+    };
+
+// Check all elements in reservoir are from stream [0..n)
+fn all_in_range(v: i64, k: i64, max_val: i64) -> i64 = {
+    let mut ok = 1;
+    for i in 0..k {
+        let val = vec_get(v, i);
+        if val < 0 or val >= max_val { ok = 0 } else { () }
+    };
+    ok
+    };
+
+// Count unique values in reservoir (using O(k^2) comparison)
+fn count_unique(v: i64, k: i64) -> i64 = {
+    let mut count = 0;
+    for i in 0..k {
+        let mut is_first = 1;
+        let mut j = 0;
+        loop {
+            if j >= i { break } else { () };
+            if vec_get(v, j) == vec_get(v, i) {
+                is_first = 0;
+                j = i
+            } else {
+                j = j + 1
+            }
+        };
+        if is_first == 1 { count = count + 1 } else { () }
+    };
+    count
+    };
+
+// Test PRNG sequence determinism
+fn test_prng_sequence(seed: i64, steps: i64) -> i64 = {
+    let mut state = seed;
+    for _i in 0..steps {
+        state = lcg_next(state)
+    };
+    state
+    };
+
+fn main() -> i64 = {
+    // Test 1: PRNG determinism
+    let s1 = lcg_next(42);
+    let s2 = lcg_next(s1);
+    let s3 = lcg_next(s2);
+    let _p1 = println(s1);  // deterministic value
+    let _p2 = println(s2);
+    let _p3 = println(s3);
+
+    // Same seed produces same sequence
+    let t1 = lcg_next(42);
+    let _p4 = println(if s1 == t1 { 1 } else { 0 });  // 1
+
+    // Test 2: Reservoir sample k=3 from stream of 10 values [0..9]
+    let stream1 = vec_new();
+    for i in 0..10 { vec_push(stream1, i) };
+
+    let res1 = vec_new();
+    let _f1 = fill_reservoir(stream1, res1, 3);
+    let _rs1 = reservoir_sample(stream1, 10, res1, 3, 42);
+
+    let _p5 = println(vec_len(res1));  // 3
+    let _p6 = println(all_in_range(res1, 3, 10));  // 1
+
+    // Print the sampled values (deterministic due to fixed seed)
+    let _p7 = println(vec_get(res1, 0));
+    let _p8 = println(vec_get(res1, 1));
+    let _p9 = println(vec_get(res1, 2));
+
+    // Test 3: Reservoir sample k=5 from stream of 20 values [100..119]
+    let stream2 = vec_new();
+    for i in 0..20 { vec_push(stream2, 100 + i) };
+
+    let res2 = vec_new();
+    let _f2 = fill_reservoir(stream2, res2, 5);
+    let _rs2 = reservoir_sample(stream2, 20, res2, 5, 1234);
+
+    let _p10 = println(vec_len(res2));  // 5
+    // All values should be in [100, 120)
+    let mn2 = arr_min(res2, 5);
+    let mx2 = arr_max(res2, 5);
+    let _p11 = println(if mn2 >= 100 { 1 } else { 0 });  // 1
+    let _p12 = println(if mx2 < 120 { 1 } else { 0 });   // 1
+
+    // Print sampled values
+    let _p13 = println(vec_get(res2, 0));
+    let _p14 = println(vec_get(res2, 1));
+    let _p15 = println(vec_get(res2, 2));
+    let _p16 = println(vec_get(res2, 3));
+    let _p17 = println(vec_get(res2, 4));
+
+    // Test 4: k == n (reservoir = entire stream)
+    let stream3 = vec_new();
+    for i in 0..5 { vec_push(stream3, i * 10) };
+
+    let res3 = vec_new();
+    let _f3 = fill_reservoir(stream3, res3, 5);
+    let _rs3 = reservoir_sample(stream3, 5, res3, 5, 999);
+
+    // With k==n, reservoir should contain all elements (sum = 0+10+20+30+40=100)
+    let _p18 = println(arr_sum(res3, 5));  // 100
+
+    // Test 5: Different seeds produce different samples
+    let stream4 = vec_new();
+    for i in 0..15 { vec_push(stream4, i) };
+
+    let res4a = vec_new();
+    let _f4a = fill_reservoir(stream4, res4a, 3);
+    let _rs4a = reservoir_sample(stream4, 15, res4a, 3, 111);
+
+    let res4b = vec_new();
+    let _f4b = fill_reservoir(stream4, res4b, 3);
+    let _rs4b = reservoir_sample(stream4, 15, res4b, 3, 222);
+
+    // Check if at least one element differs between the two samples
+    let mut diff_count = 0;
+    for i in 0..3 {
+        if vec_get(res4a, i) != vec_get(res4b, i) {
+            diff_count = diff_count + 1
+        } else { () }
+    };
+    let _p19 = println(if diff_count > 0 { 1 } else { 0 });  // 1 (very likely different)
+
+    // Test 6: PRNG state after many steps
+    let final_state = test_prng_sequence(42, 100);
+    let _p20 = println(final_state);
+
+    0
+    };

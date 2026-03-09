@@ -1,0 +1,28 @@
+// Golden Test: dead store/alloca elimination
+// When a mutable variable is stored but never loaded after forwarding,
+// the alloca and store should be eliminated.
+
+fn simple_dead_store(x: i64) -> i64 = {
+    let mut unused = x;
+    42
+    };
+
+fn forwarded_dead_store(x: i64) -> i64 = {
+    let mut a = x;
+    let result = a;
+    result + 1
+    };
+
+fn branch_live_store(x: i64) -> i64 = {
+    let mut a = 0;
+    if x > 0 { a = 100 } else { a = 200 };
+    a
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(simple_dead_store(99));       // 42
+    let _p2 = println(forwarded_dead_store(10));    // 11
+    let _p3 = println(branch_live_store(5));        // 100
+    let _p4 = println(branch_live_store(0 - 1));    // 200
+    0
+    };

@@ -1,0 +1,88 @@
+// Golden Test: Maximum non-adjacent subsequence sum (house robber problem)
+// Given an array, find max sum of elements where no two are adjacent
+
+// Iterative DP approach: track "include current" vs "exclude current"
+fn max_subseq_sum(v: i64, n: i64) -> i64 = {
+    if n == 0 { return 0 } else { () };
+    if n == 1 { return vec_get(v, 0) } else { () };
+    let mut incl = vec_get(v, 0);
+    let mut excl = 0;
+    for i in 1..n {
+        let val = vec_get(v, i);
+        let new_incl = excl + val;
+        let new_excl = if incl > excl { incl } else { excl };
+        incl = new_incl;
+        excl = new_excl
+    };
+    if incl > excl { incl } else { excl }
+};
+
+fn main() -> i64 = {
+    // Test 1: [3, 2, 7, 10] -> pick 3+10=13 or 2+10=12 or 3+7=10 -> 13
+    let v1 = vec_new();
+    vec_push(v1, 3);
+    vec_push(v1, 2);
+    vec_push(v1, 7);
+    vec_push(v1, 10);
+    let _p1 = println(max_subseq_sum(v1, 4));  // 13
+
+    // Test 2: [5, 5, 10, 100, 10, 5] -> pick 5+100+5=110
+    let v2 = vec_new();
+    vec_push(v2, 5);
+    vec_push(v2, 5);
+    vec_push(v2, 10);
+    vec_push(v2, 100);
+    vec_push(v2, 10);
+    vec_push(v2, 5);
+    let _p2 = println(max_subseq_sum(v2, 6));  // 110
+
+    // Test 3: [1, 2, 3] -> pick 1+3=4
+    let v3 = vec_new();
+    vec_push(v3, 1);
+    vec_push(v3, 2);
+    vec_push(v3, 3);
+    let _p3 = println(max_subseq_sum(v3, 3));  // 4
+
+    // Test 4: single element [42] -> 42
+    let v4 = vec_new();
+    vec_push(v4, 42);
+    let _p4 = println(max_subseq_sum(v4, 1));  // 42
+
+    // Test 5: two elements [10, 20] -> 20
+    let v5 = vec_new();
+    vec_push(v5, 10);
+    vec_push(v5, 20);
+    let _p5 = println(max_subseq_sum(v5, 2));  // 20
+
+    // Test 6: all equal [5, 5, 5, 5, 5] -> pick 5+5+5=15
+    let v6 = vec_new();
+    vec_push(v6, 5);
+    vec_push(v6, 5);
+    vec_push(v6, 5);
+    vec_push(v6, 5);
+    vec_push(v6, 5);
+    let _p6 = println(max_subseq_sum(v6, 5));  // 15
+
+    // Test 7: descending [10, 8, 6, 4, 2] -> 10+6+2=18
+    let v7 = vec_new();
+    vec_push(v7, 10);
+    vec_push(v7, 8);
+    vec_push(v7, 6);
+    vec_push(v7, 4);
+    vec_push(v7, 2);
+    let _p7 = println(max_subseq_sum(v7, 5));  // 18
+
+    // Test 8: empty -> 0
+    let v8 = vec_new();
+    let _p8 = println(max_subseq_sum(v8, 0));  // 0
+
+    vec_free(v1);
+    vec_free(v2);
+    vec_free(v3);
+    vec_free(v4);
+    vec_free(v5);
+    vec_free(v6);
+    vec_free(v7);
+    vec_free(v8);
+    0
+};

@@ -1,0 +1,56 @@
+// Golden Test: Dead code elimination verification
+// Tests that unused computations are removed while used ones are kept
+
+// Dead intermediate: b is computed but only c is returned
+fn dead_intermediate() -> i64 = {
+    let a = 10;
+    let b = a + 5;
+    let c = a * 2;
+    c
+    };
+
+// Chain of dead code: b, c, d are all dead, only e matters
+fn dead_chain() -> i64 = {
+    let a = 7;
+    let b = a + 1;
+    let c = b * 2;
+    let d = c - 3;
+    let e = a + 3;
+    e
+    };
+
+// All live: every variable is used in computing the result
+fn all_live() -> i64 = {
+    let a = 3;
+    let b = 4;
+    let c = a + b;
+    let d = c * 2;
+    d
+    };
+
+// Side effect preserved: call should not be removed even if result unused
+fn side_effect_kept() -> i64 = {
+    let a = 42;
+    let _p = println(a);
+    let b = 100;
+    b
+    };
+
+// Mixed live and dead
+fn mixed() -> i64 = {
+    let x = 5;
+    let y = 10;
+    let dead1 = x + y;
+    let dead2 = x * y;
+    let live = x - 1;
+    live
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(dead_intermediate());   // 20
+    let _p2 = println(dead_chain());          // 10
+    let _p3 = println(all_live());            // 14
+    let _p4 = println(side_effect_kept());    // 100 (42 also printed)
+    let _p5 = println(mixed());              // 4
+    0
+    };

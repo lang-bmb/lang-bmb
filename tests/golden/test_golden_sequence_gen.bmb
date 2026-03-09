@@ -1,0 +1,77 @@
+// Golden Test: Sequence generation patterns
+// Tests various integer sequences and their properties
+
+// Triangular numbers: T(n) = n*(n+1)/2
+fn triangular(n: i64) -> i64 =
+    n * (n + 1) / 2;
+
+    // Square pyramidal: sum of squares 1^2 + 2^2 + ... + n^2
+
+fn sum_squares(n: i64) -> i64 =
+    n * (n + 1) * (2 * n + 1) / 6;
+
+    // Catalan number via recursive formula
+
+fn catalan(n: i64) -> i64 =
+    if n <= 1 { 1 }
+    else { catalan_sum(n, 0, 0) };
+
+fn catalan_sum(n: i64, i: i64, acc: i64) -> i64 =
+    if i >= n { acc }
+    else { catalan_sum(n, i + 1, acc + catalan(i) * catalan(n - 1 - i)) };
+
+    // Pentagonal numbers: P(n) = n*(3n-1)/2
+
+fn pentagonal(n: i64) -> i64 =
+    n * (3 * n - 1) / 2;
+
+    // Fibonacci-like: Lucas numbers L(0)=2, L(1)=1, L(n)=L(n-1)+L(n-2)
+
+fn lucas(n: i64) -> i64 =
+    if n == 0 { 2 }
+    else if n == 1 { 1 }
+    else { lucas(n - 1) + lucas(n - 2) };
+
+    // Count numbers in range [1,n] coprime to n
+
+fn gcd(a: i64, b: i64) -> i64 =
+    if b == 0 { a }
+    else { gcd(b, a - (a / b) * b) };
+
+fn count_coprime_helper(n: i64, i: i64, count: i64) -> i64 =
+    if i > n { count }
+    else {
+        let inc = if gcd(i, n) == 1 { 1 } else { 0 };
+        count_coprime_helper(n, i + 1, count + inc)
+    };
+
+fn count_coprime(n: i64) -> i64 =
+    count_coprime_helper(n, 1, 0);
+
+fn main() -> i64 = {
+// Triangular numbers
+    let _p1 = println(triangular(1));     // 1
+    let _p2 = println(triangular(10));    // 55
+    let _p3 = println(triangular(100));   // 5050
+
+// Sum of squares
+    let _p4 = println(sum_squares(5));    // 55
+    let _p5 = println(sum_squares(10));   // 385
+
+// Catalan numbers
+    let _p6 = println(catalan(5));        // 42
+    let _p7 = println(catalan(7));        // 429
+
+// Pentagonal numbers
+    let _p8 = println(pentagonal(5));     // 35
+
+// Lucas numbers
+    let _p9 = println(lucas(5));          // 11
+    let _p10 = println(lucas(10));        // 123
+
+// Coprime count (Euler's totient via brute force)
+    let _p11 = println(count_coprime(12));  // 4 (1,5,7,11)
+    let _p12 = println(count_coprime(30));  // 8
+
+    0
+    };

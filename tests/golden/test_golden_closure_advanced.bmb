@@ -1,0 +1,135 @@
+// Golden Test: Advanced closure patterns
+// Tests closure pipeline, apply-n-times, conditional closures,
+// closure with loop, closure composition, index tracking, accumulators
+
+fn main() -> i64 = {
+    // === 1. Closure pipeline: chain 3 closures ===
+    let double = fn |x: i64| { x * 2 };
+    let inc = fn |x: i64| { x + 1 };
+    let sq = fn |x: i64| { x * x };
+
+    // Pipeline: sq(inc(double(3))) = sq(inc(6)) = sq(7) = 49
+    let v = double(3);
+    let v = inc(v);
+    let v = sq(v);
+    let _p1 = println(v);  // 49
+
+    // Pipeline: double(sq(inc(4))) = double(sq(5)) = double(25) = 50
+    let v = inc(4);
+    let v = sq(v);
+    let v = double(v);
+    let _p2 = println(v);  // 50
+
+    // === 2. Apply-n-times: apply closure repeatedly ===
+    // Apply double 5 times to 1: 1->2->4->8->16->32
+    let mut acc = 1;
+    for _i in 0..5 {
+        acc = double(acc);
+        0
+    };
+    let _p3 = println(acc);  // 32
+
+    // Apply inc 10 times to 0: 0->1->2->...->10
+    let mut acc = 0;
+    for _i in 0..10 {
+        acc = inc(acc);
+        0
+    };
+    let _p4 = println(acc);  // 10
+
+    // === 3. Closure capturing outer variable ===
+    let base = 100;
+    let offset = fn |x: i64| { x + base };
+    let _p5 = println(offset(23));   // 123
+    let _p6 = println(offset(0 - 50));  // 50
+
+    // === 4. Conditional closure selection ===
+    let flag = 1;
+    let op = if flag == 1 { fn |x: i64| { x * 3 } } else { fn |x: i64| { x + 3 } };
+    let _p7 = println(op(10));  // 30
+
+    let flag2 = 0;
+    let op2 = if flag2 == 1 { fn |x: i64| { x * 3 } } else { fn |x: i64| { x + 3 } };
+    let _p8 = println(op2(10));  // 13
+
+    // === 5. Closure with complex body (classify and transform) ===
+    let classify = fn |x: i64| {
+        if x > 100 { 3 }
+        else if x > 50 { 2 }
+        else if x > 0 { 1 }
+        else { 0 }
+    };
+    let _p9 = println(classify(200));   // 3
+    let _p10 = println(classify(75));   // 2
+    let _p11 = println(classify(25));   // 1
+    let _p12 = println(classify(0 - 5));  // 0
+
+    // === 6. Multiple closures sharing captured variable ===
+    let factor = 7;
+    let mul_f = fn |x: i64| { x * factor };
+    let add_f = fn |x: i64| { x + factor };
+    let sub_f = fn |x: i64| { x - factor };
+    let _p13 = println(mul_f(6));   // 42
+    let _p14 = println(add_f(6));   // 13
+    let _p15 = println(sub_f(20));  // 13
+
+    // === 7. Closure in loop accumulator: sum of squares via closure ===
+    let sq2 = fn |x: i64| { x * x };
+    let mut total = 0;
+    for i in 1..=5 {
+        total = total + sq2(i);
+        0
+    };
+    let _p16 = println(total);  // 1+4+9+16+25 = 55
+
+    // === 8. Closure composition: manually compose f and g ===
+    let f = fn |x: i64| { x + 10 };
+    let g = fn |x: i64| { x * 2 };
+    // g(f(5)) = g(15) = 30
+    let _p17 = println(g(f(5)));  // 30
+    // f(g(5)) = f(10) = 20
+    let _p18 = println(f(g(5)));  // 20
+
+    // === 9. Transform with index tracking ===
+    // Compute sum of (i * transform(value_i)) for i in 0..4
+    // values: [10, 20, 30, 40], transform: x/10
+    let simplify = fn |x: i64| { x / 10 };
+    let v = vec_new();
+    let _p = vec_push(v, 10);
+    let _p = vec_push(v, 20);
+    let _p = vec_push(v, 30);
+    let _p = vec_push(v, 40);
+    let mut weighted = 0;
+    for i in 0..4 {
+        weighted = weighted + i * simplify(vec_get(v, i));
+        0
+    };
+    // 0*1 + 1*2 + 2*3 + 3*4 = 0+2+6+12 = 20
+    let _p19 = println(weighted);  // 20
+
+    // === 10. Nested closure calls: 3 levels deep ===
+    let a = fn |x: i64| { x + 1 };
+    let b = fn |x: i64| { x * 2 };
+    let c = fn |x: i64| { x - 3 };
+    // c(b(a(10))) = c(b(11)) = c(22) = 19
+    let _p20 = println(c(b(a(10))));  // 19
+
+    // === 11. Closure returning constant captured value ===
+    let secret = 42;
+    let get_secret = fn |_x: i64| { secret };
+    let _p21 = println(get_secret(0));     // 42
+    let _p22 = println(get_secret(999));   // 42
+
+    // === 12. Reduce pattern: fold array with closure ===
+    let adder = fn |a: i64, b: i64| { a + b };
+    let mut sum_val = 0;
+    for i in 0..4 {
+        sum_val = adder(sum_val, vec_get(v, i));
+        0
+    };
+    // 10+20+30+40 = 100
+    let _p23 = println(sum_val);  // 100
+
+    let _fv = vec_free(v);
+    0
+};

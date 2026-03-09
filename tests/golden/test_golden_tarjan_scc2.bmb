@@ -1,0 +1,269 @@
+// Golden Test: Tarjan's SCC algorithm with iterative stack-based DFS
+// Graph stored as adjacency list using vecs
+// adj_off[i] = start offset in adj_list for node i's neighbors
+// adj_cnt[i] = number of neighbors for node i
+
+// Initialize graph structures
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { vec_push(v, 0) };
+    v
+    };
+
+fn make_neg_ones(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { vec_push(v, 0 - 1) };
+    v
+    };
+
+// Tarjan's SCC using iterative approach
+// disc[i] = discovery time, low[i] = low-link value
+// on_stack[i] = 1 if node i is on the stack
+// scc_id[i] = which SCC node i belongs to
+fn tarjan(n: i64, adj_off: i64, adj_cnt: i64, adj_list: i64) -> i64 = {
+    let disc = make_neg_ones(n);
+    let low = make_neg_ones(n);
+    let on_stack = make_zeros(n);
+    let stk = vec_new();
+    let scc_id = make_neg_ones(n);
+    let mut timer = 0;
+    let mut scc_count = 0;
+
+    // Process each unvisited node
+    for start in 0..n {
+        if vec_get(disc, start) < 0 {
+            // DFS from start using explicit recursion simulation
+            // call_stack stores: [node, neighbor_index] pairs
+            let call_stack = vec_new();
+            vec_push(call_stack, start);
+            vec_push(call_stack, 0);
+
+            // Visit start
+            vec_set(disc, start, timer);
+            vec_set(low, start, timer);
+            set timer = timer + 1;
+            vec_push(stk, start);
+            vec_set(on_stack, start, 1);
+
+            loop {
+                if vec_len(call_stack) == 0 { break } else { 0 };
+                let cs_len = vec_len(call_stack);
+                let node = vec_get(call_stack, cs_len - 2);
+                let ni = vec_get(call_stack, cs_len - 1);
+                let off = vec_get(adj_off, node);
+                let cnt = vec_get(adj_cnt, node);
+
+                if ni >= cnt {
+                    // All neighbors processed, pop this frame
+                    // Check if this is an SCC root
+                    if vec_get(low, node) == vec_get(disc, node) {
+                        // Pop SCC members from stack
+                        loop {
+                            let slen = vec_len(stk);
+                            if slen == 0 { break } else { 0 };
+                            let top = vec_get(stk, slen - 1);
+                            let _pop = vec_pop(stk);
+                            vec_set(on_stack, top, 0);
+                            vec_set(scc_id, top, scc_count);
+                            if top == node { break } else { 0 }
+                        };
+                        set scc_count = scc_count + 1
+                    } else { 0 };
+
+                    // Pop call frame
+                    let _p1 = vec_pop(call_stack);
+                    let _p2 = vec_pop(call_stack);
+
+                    // Update parent's low
+                    let cs_len2 = vec_len(call_stack);
+                    if cs_len2 >= 2 {
+                        let parent = vec_get(call_stack, cs_len2 - 2);
+                        let plow = vec_get(low, parent);
+                        let nlow = vec_get(low, node);
+                        let new_low = if plow < nlow { plow } else { nlow };
+                        vec_set(low, parent, new_low)
+                    } else { 0 }
+                } else {
+                    // Process neighbor ni
+                    let neighbor = vec_get(adj_list, off + ni);
+                    // Advance neighbor index
+                    vec_set(call_stack, cs_len - 1, ni + 1);
+
+                    if vec_get(disc, neighbor) < 0 {
+                        // Unvisited: push new frame
+                        vec_set(disc, neighbor, timer);
+                        vec_set(low, neighbor, timer);
+                        set timer = timer + 1;
+                        vec_push(stk, neighbor);
+                        vec_set(on_stack, neighbor, 1);
+                        vec_push(call_stack, neighbor);
+                        vec_push(call_stack, 0)
+                    } else if vec_get(on_stack, neighbor) == 1 {
+                        // Back edge: update low
+                        let cur_low = vec_get(low, node);
+                        let d = vec_get(disc, neighbor);
+                        let new_low = if cur_low < d { cur_low } else { d };
+                        vec_set(low, node, new_low)
+                    } else { 0 }
+                }
+            };
+            vec_free(call_stack)
+        } else { 0 }
+    };
+
+    // Pack results: scc_count in result[0], then scc_id values
+    let result = vec_new();
+    vec_push(result, scc_count);
+    for i in 0..n {
+        vec_push(result, vec_get(scc_id, i))
+    };
+
+    vec_free(disc);
+    vec_free(low);
+    vec_free(on_stack);
+    vec_free(stk);
+    vec_free(scc_id);
+    result
+    };
+
+// Check if two nodes are in the same SCC
+fn same_scc(result: i64, a: i64, b: i64) -> i64 =
+    if vec_get(result, a + 1) == vec_get(result, b + 1) { 1 } else { 0 };
+
+fn main() -> i64 = {
+    // Graph 1: 5 nodes with 2 SCCs
+    // SCC1: {0, 1, 2} cycle: 0->1->2->0
+    // SCC2: {3, 4} cycle: 3->4->3
+    // Bridge: 2->3
+    let adj_off1 = vec_new();
+    let adj_cnt1 = vec_new();
+    let adj_list1 = vec_new();
+
+    // node 0: neighbors [1]
+    vec_push(adj_off1, 0); vec_push(adj_cnt1, 1);
+    vec_push(adj_list1, 1);
+
+    // node 1: neighbors [2]
+    vec_push(adj_off1, 1); vec_push(adj_cnt1, 1);
+    vec_push(adj_list1, 2);
+
+    // node 2: neighbors [0, 3]
+    vec_push(adj_off1, 2); vec_push(adj_cnt1, 2);
+    vec_push(adj_list1, 0);
+    vec_push(adj_list1, 3);
+
+    // node 3: neighbors [4]
+    vec_push(adj_off1, 4); vec_push(adj_cnt1, 1);
+    vec_push(adj_list1, 4);
+
+    // node 4: neighbors [3]
+    vec_push(adj_off1, 5); vec_push(adj_cnt1, 1);
+    vec_push(adj_list1, 3);
+
+    let r1 = tarjan(5, adj_off1, adj_cnt1, adj_list1);
+    let scc_count1 = vec_get(r1, 0);
+    println(scc_count1);  // 2
+
+    // Nodes 0,1,2 should be in same SCC
+    println(same_scc(r1, 0, 1));  // 1
+    println(same_scc(r1, 1, 2));  // 1
+    println(same_scc(r1, 0, 2));  // 1
+
+    // Nodes 3,4 should be in same SCC
+    println(same_scc(r1, 3, 4));  // 1
+
+    // Nodes from different SCCs
+    println(same_scc(r1, 0, 3));  // 0
+    println(same_scc(r1, 2, 4));  // 0
+
+    vec_free(adj_off1); vec_free(adj_cnt1); vec_free(adj_list1); vec_free(r1);
+
+    // Graph 2: DAG (no cycles) - each node is its own SCC
+    // 0->1->2->3
+    let adj_off2 = vec_new();
+    let adj_cnt2 = vec_new();
+    let adj_list2 = vec_new();
+
+    vec_push(adj_off2, 0); vec_push(adj_cnt2, 1);
+    vec_push(adj_list2, 1);
+    vec_push(adj_off2, 1); vec_push(adj_cnt2, 1);
+    vec_push(adj_list2, 2);
+    vec_push(adj_off2, 2); vec_push(adj_cnt2, 1);
+    vec_push(adj_list2, 3);
+    vec_push(adj_off2, 3); vec_push(adj_cnt2, 0);
+
+    let r2 = tarjan(4, adj_off2, adj_cnt2, adj_list2);
+    println(vec_get(r2, 0));  // 4 (each node is its own SCC)
+    println(same_scc(r2, 0, 1));  // 0
+    println(same_scc(r2, 2, 3));  // 0
+
+    vec_free(adj_off2); vec_free(adj_cnt2); vec_free(adj_list2); vec_free(r2);
+
+    // Graph 3: Single large SCC (all connected in cycle)
+    // 0->1->2->3->0
+    let adj_off3 = vec_new();
+    let adj_cnt3 = vec_new();
+    let adj_list3 = vec_new();
+
+    vec_push(adj_off3, 0); vec_push(adj_cnt3, 1);
+    vec_push(adj_list3, 1);
+    vec_push(adj_off3, 1); vec_push(adj_cnt3, 1);
+    vec_push(adj_list3, 2);
+    vec_push(adj_off3, 2); vec_push(adj_cnt3, 1);
+    vec_push(adj_list3, 3);
+    vec_push(adj_off3, 3); vec_push(adj_cnt3, 1);
+    vec_push(adj_list3, 0);
+
+    let r3 = tarjan(4, adj_off3, adj_cnt3, adj_list3);
+    println(vec_get(r3, 0));  // 1 (single SCC)
+    println(same_scc(r3, 0, 3));  // 1
+    println(same_scc(r3, 1, 2));  // 1
+
+    vec_free(adj_off3); vec_free(adj_cnt3); vec_free(adj_list3); vec_free(r3);
+
+    // Graph 4: Single node, no edges
+    let adj_off4 = vec_new();
+    let adj_cnt4 = vec_new();
+    let adj_list4 = vec_new();
+
+    vec_push(adj_off4, 0); vec_push(adj_cnt4, 0);
+
+    let r4 = tarjan(1, adj_off4, adj_cnt4, adj_list4);
+    println(vec_get(r4, 0));  // 1 (one SCC with the single node)
+
+    vec_free(adj_off4); vec_free(adj_cnt4); vec_free(adj_list4); vec_free(r4);
+
+    // Graph 5: 3 separate SCCs with self-loops and inter-SCC edges
+    // SCC {0}: self-loop 0->0
+    // SCC {1,2}: 1->2->1
+    // SCC {3}: isolated
+    // Edge: 0->1
+    let adj_off5 = vec_new();
+    let adj_cnt5 = vec_new();
+    let adj_list5 = vec_new();
+
+    // node 0: [0, 1]
+    vec_push(adj_off5, 0); vec_push(adj_cnt5, 2);
+    vec_push(adj_list5, 0);
+    vec_push(adj_list5, 1);
+
+    // node 1: [2]
+    vec_push(adj_off5, 2); vec_push(adj_cnt5, 1);
+    vec_push(adj_list5, 2);
+
+    // node 2: [1]
+    vec_push(adj_off5, 3); vec_push(adj_cnt5, 1);
+    vec_push(adj_list5, 1);
+
+    // node 3: no neighbors
+    vec_push(adj_off5, 4); vec_push(adj_cnt5, 0);
+
+    let r5 = tarjan(4, adj_off5, adj_cnt5, adj_list5);
+    println(vec_get(r5, 0));  // 3 (three SCCs)
+    println(same_scc(r5, 1, 2));  // 1
+    println(same_scc(r5, 0, 1));  // 0
+
+    vec_free(adj_off5); vec_free(adj_cnt5); vec_free(adj_list5); vec_free(r5);
+
+    0
+    };

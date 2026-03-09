@@ -1,0 +1,149 @@
+// Golden test: Maze solving with BFS flood fill
+// 5x5 grid stored as flat vec: 0=path, 1=wall
+// BFS from start cell, count reachable cells, check if target reachable
+
+// Get cell value from flat grid
+fn grid_get(grid: i64, cols: i64, r: i64, c: i64) -> i64 =
+    vec_get(grid, r * cols + c);
+
+// Check if cell is valid and walkable
+fn is_valid(grid: i64, rows: i64, cols: i64, visited: i64, r: i64, c: i64) -> i64 =
+    if r < 0 or r >= rows or c < 0 or c >= cols { 0 }
+    else if grid_get(grid, cols, r, c) == 1 { 0 }
+    else if vec_get(visited, r * cols + c) == 1 { 0 }
+    else { 1 };
+
+// BFS: process queue from head to tail, enqueue valid neighbors
+// Queue stores packed coords: r * cols + c
+// Returns total cells visited
+fn bfs_step(grid: i64, rows: i64, cols: i64, visited: i64, queue: i64, head: i64, tail: i64, count: i64) -> i64 =
+    if head >= tail { count }
+    else {
+        let pos = vec_get(queue, head);
+        let r = pos / cols;
+        let c = pos - r * cols;
+        // Try 4 neighbors: up, down, left, right
+        let t1 = if is_valid(grid, rows, cols, visited, r - 1, c) == 1 {
+            let np = (r - 1) * cols + c;
+            let _sv = vec_set(visited, np, 1);
+            let _sq = vec_set(queue, tail, np);
+            tail + 1
+        } else { tail };
+        let t2 = if is_valid(grid, rows, cols, visited, r + 1, c) == 1 {
+            let np2 = (r + 1) * cols + c;
+            let _sv2 = vec_set(visited, np2, 1);
+            let _sq2 = vec_set(queue, t1, np2);
+            t1 + 1
+        } else { t1 };
+        let t3 = if is_valid(grid, rows, cols, visited, r, c - 1) == 1 {
+            let np3 = r * cols + (c - 1);
+            let _sv3 = vec_set(visited, np3, 1);
+            let _sq3 = vec_set(queue, t2, np3);
+            t2 + 1
+        } else { t2 };
+        let t4 = if is_valid(grid, rows, cols, visited, r, c + 1) == 1 {
+            let np4 = r * cols + (c + 1);
+            let _sv4 = vec_set(visited, np4, 1);
+            let _sq4 = vec_set(queue, t3, np4);
+            t3 + 1
+        } else { t3 };
+        bfs_step(grid, rows, cols, visited, queue, head + 1, t4, count + 1)
+    };
+
+// Count visited cells
+fn count_visited(visited: i64, idx: i64, n: i64, acc: i64) -> i64 =
+    if idx >= n { acc }
+    else {
+        let inc = if vec_get(visited, idx) == 1 { 1 } else { 0 };
+        count_visited(visited, idx + 1, n, acc + inc)
+    };
+
+// Check if a specific cell was visited
+fn cell_visited(visited: i64, cols: i64, r: i64, c: i64) -> i64 =
+    vec_get(visited, r * cols + c);
+
+// Create a vec of n zeros
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for zi in 0..n { vec_push(v, 0) };
+    v
+    };
+
+// BFS from (sr,sc), returns visited array
+fn bfs(grid: i64, rows: i64, cols: i64, sr: i64, sc: i64) -> i64 = {
+    let visited = make_zeros(rows * cols);
+    let queue = make_zeros(rows * cols);
+    let start = sr * cols + sc;
+    let _sv = vec_set(visited, start, 1);
+    let _sq = vec_set(queue, 0, start);
+    let _result = bfs_step(grid, rows, cols, visited, queue, 0, 1, 0);
+    vec_free(queue);
+    visited
+    };
+
+fn main() -> i64 = {
+    // Maze 1: 5x5 grid
+    // 0 0 1 0 0
+    // 0 1 1 0 0
+    // 0 0 0 0 1
+    // 1 1 0 1 0
+    // 0 0 0 0 0
+    let maze1 = vec_new();
+    // Row 0
+    vec_push(maze1, 0); vec_push(maze1, 0); vec_push(maze1, 1); vec_push(maze1, 0); vec_push(maze1, 0);
+    // Row 1
+    vec_push(maze1, 0); vec_push(maze1, 1); vec_push(maze1, 1); vec_push(maze1, 0); vec_push(maze1, 0);
+    // Row 2
+    vec_push(maze1, 0); vec_push(maze1, 0); vec_push(maze1, 0); vec_push(maze1, 0); vec_push(maze1, 1);
+    // Row 3
+    vec_push(maze1, 1); vec_push(maze1, 1); vec_push(maze1, 0); vec_push(maze1, 1); vec_push(maze1, 0);
+    // Row 4
+    vec_push(maze1, 0); vec_push(maze1, 0); vec_push(maze1, 0); vec_push(maze1, 0); vec_push(maze1, 0);
+
+    let rows = 5;
+    let cols = 5;
+
+    // BFS from (0,0)
+    let vis1 = bfs(maze1, rows, cols, 0, 0);
+    let total1 = count_visited(vis1, 0, 25, 0);
+    let _p1 = println(total1);                          // 18 (all path cells reachable from 0,0)
+    let _p2 = println(cell_visited(vis1, cols, 4, 4));  // 1 (bottom-right reachable)
+    let _p3 = println(cell_visited(vis1, cols, 0, 3));  // 1 (top row right of wall)
+    let _p4 = println(cell_visited(vis1, cols, 2, 4));  // 0 (cell (2,4) is wall)
+
+    // Maze 2: 5x5 grid with isolated region
+    // 0 0 1 0 0
+    // 0 0 1 0 0
+    // 1 1 1 1 1
+    // 0 0 1 0 0
+    // 0 0 1 0 0
+    let maze2 = vec_new();
+    // Row 0
+    vec_push(maze2, 0); vec_push(maze2, 0); vec_push(maze2, 1); vec_push(maze2, 0); vec_push(maze2, 0);
+    // Row 1
+    vec_push(maze2, 0); vec_push(maze2, 0); vec_push(maze2, 1); vec_push(maze2, 0); vec_push(maze2, 0);
+    // Row 2 - full wall row
+    vec_push(maze2, 1); vec_push(maze2, 1); vec_push(maze2, 1); vec_push(maze2, 1); vec_push(maze2, 1);
+    // Row 3
+    vec_push(maze2, 0); vec_push(maze2, 0); vec_push(maze2, 1); vec_push(maze2, 0); vec_push(maze2, 0);
+    // Row 4
+    vec_push(maze2, 0); vec_push(maze2, 0); vec_push(maze2, 1); vec_push(maze2, 0); vec_push(maze2, 0);
+
+    // BFS from (0,0) - should only reach top-left region
+    let vis2 = bfs(maze2, rows, cols, 0, 0);
+    let total2 = count_visited(vis2, 0, 25, 0);
+    let _p5 = println(total2);                          // 4 (cells: 0,0  0,1  1,0  1,1)
+    let _p6 = println(cell_visited(vis2, cols, 4, 4));  // 0 (bottom-right unreachable)
+    let _p7 = println(cell_visited(vis2, cols, 3, 0));  // 0 (below wall, unreachable)
+
+    // BFS from (3,3) - bottom-right region
+    let vis3 = bfs(maze2, rows, cols, 3, 3);
+    let total3 = count_visited(vis3, 0, 25, 0);
+    let _p8 = println(total3);                          // 4 (cells: 3,3  3,4  4,3  4,4)
+    let _p9 = println(cell_visited(vis3, cols, 0, 0));  // 0 (top-left unreachable from 3,3)
+    let _p10 = println(cell_visited(vis3, cols, 4, 4)); // 1 (reachable)
+
+    vec_free(maze1); vec_free(vis1);
+    vec_free(maze2); vec_free(vis2); vec_free(vis3);
+    0
+    };

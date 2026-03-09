@@ -1,0 +1,83 @@
+// Golden test: Directory operations (is_dir, make_dir, list_dir)
+// Tests the v0.96 directory operation builtins
+
+fn str_eq(a: String, b: String) -> bool = a == b;
+
+fn test_is_dir_on_existing() -> bool = {
+// Current directory should be a directory
+    is_dir(".") == 1
+    };
+
+fn test_is_dir_on_nonexistent() -> bool = {
+// Non-existent path should return 0
+    is_dir("__nonexistent_dir_xyz__") == 0
+    };
+
+fn test_make_dir_and_check() -> bool = {
+    let path = "__test_dir_golden__";
+    let result = make_dir(path);
+    let check = is_dir(path) == 1;
+
+// Clean up: use system to remove
+    let _cleanup = system(str_concat("rmdir ", path));
+    result == 0 and check
+    };
+
+fn test_list_dir_nonempty() -> bool = {
+// List current directory - should have at least some entries
+    let entries = list_dir(".");
+    entries.len() > 0
+    };
+
+fn test_list_dir_nonexistent() -> bool = {
+// Non-existent directory should return empty string
+    let entries = list_dir("__nonexistent_dir_xyz__");
+    entries.len() == 0
+    };
+
+fn test_make_dir_nested() -> bool = {
+    let path = "__test_dir_nested__/sub/deep";
+    let result = make_dir(path);
+    let check = is_dir(path) == 1;
+
+// Clean up
+    let _c1 = system("rmdir __test_dir_nested__/sub/deep");
+    let _c2 = system("rmdir __test_dir_nested__/sub");
+    let _c3 = system("rmdir __test_dir_nested__");
+    result == 0 and check
+    };
+
+// String concat helper for cleanup commands
+fn str_concat(a: String, b: String) -> String = {
+    let sb = sb_new();
+    let _p1 = sb_push(sb, a);
+    let _p2 = sb_push(sb, b);
+    sb_build(sb)
+    };
+
+fn run_test(name: String, result: bool) -> i64 = {
+    let _p1 = print_str(if result { "  PASS: " } else { "  FAIL: " });
+    let _p2 = print_str(name);
+    let _p3 = print_str("\n");
+    if result { 1 } else { 0 }
+    };
+
+fn main() -> i64 = {
+    let _h = print_str("dir-ops: running tests\n");
+    let mut passed = 0;
+    let total = 6;
+
+    passed = passed + run_test("is_dir on existing", test_is_dir_on_existing());
+    passed = passed + run_test("is_dir on nonexistent", test_is_dir_on_nonexistent());
+    passed = passed + run_test("make_dir and check", test_make_dir_and_check());
+    passed = passed + run_test("list_dir nonempty", test_list_dir_nonempty());
+    passed = passed + run_test("list_dir nonexistent", test_list_dir_nonexistent());
+    passed = passed + run_test("make_dir nested", test_make_dir_nested());
+
+    let _r1 = print_str("dir-ops: ");
+    let _r2 = print(passed);
+    let _r3 = print_str("/");
+    let _r4 = print(total);
+    let _r5 = print_str(" tests passed\n");
+    if passed == total { 0 } else { 1 }
+    };

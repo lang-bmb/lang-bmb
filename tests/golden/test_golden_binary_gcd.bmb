@@ -1,0 +1,138 @@
+// Golden Test: Binary GCD (Stein's Algorithm)
+// Computes GCD using only subtraction, comparison, and bitwise shifts
+// More efficient than Euclidean algorithm on hardware without fast division
+
+// Helper: check if n is even (divisible by 2)
+fn is_even(n: i64) -> i64 =
+    if n - (n / 2) * 2 == 0 { 1 } else { 0 };
+
+// Count trailing zeros (number of times divisible by 2)
+fn ctz(n: i64) -> i64 = {
+    if n == 0 { return 0 } else { () };
+    let mut count = 0;
+    let mut x = n;
+    loop {
+        if is_even(x) == 0 { break } else { () };
+        count = count + 1;
+        x = x / 2
+    };
+    count
+    };
+
+// Shift right by k positions
+fn shr(n: i64, k: i64) -> i64 = {
+    let mut result = n;
+    for _i in 0..k {
+        result = result / 2
+    };
+    result
+    };
+
+// Shift left by k positions
+fn shl(n: i64, k: i64) -> i64 = {
+    let mut result = n;
+    for _i in 0..k {
+        result = result * 2
+    };
+    result
+    };
+
+// Absolute value
+fn abs_val(n: i64) -> i64 =
+    if n < 0 { 0 - n } else { n };
+
+// Binary GCD (Stein's algorithm)
+// gcd(0, v) = v, gcd(u, 0) = u, gcd(0, 0) = 0
+// If both even: gcd(u, v) = 2 * gcd(u/2, v/2)
+// If u even, v odd: gcd(u, v) = gcd(u/2, v)
+// If u odd, v even: gcd(u, v) = gcd(u, v/2)
+// If both odd: gcd(u, v) = gcd(|u-v|/2, min(u,v))
+fn binary_gcd(a: i64, b: i64) -> i64 = {
+    let mut u = abs_val(a);
+    let mut v = abs_val(b);
+    if u == 0 { return v } else { () };
+    if v == 0 { return u } else { () };
+
+    // Find common factor of 2
+    let shift_u = ctz(u);
+    let shift_v = ctz(v);
+    let shift = if shift_u < shift_v { shift_u } else { shift_v };
+
+    // Remove all factors of 2 from u
+    u = shr(u, shift_u);
+
+    loop {
+        // Remove all factors of 2 from v
+        v = shr(v, ctz(v));
+
+        // Ensure u <= v, then subtract
+        let _x = if u > v {
+            let tmp = u;
+            u = v;
+            v = tmp;
+            0
+        } else { 0 };
+
+        v = v - u;
+        if v == 0 { break } else { () }
+    };
+
+    // Restore common factor of 2
+    shl(u, shift)
+    };
+
+// Classic Euclidean GCD for verification
+fn euclid_gcd(a: i64, b: i64) -> i64 = {
+    let mut x = abs_val(a);
+    let mut y = abs_val(b);
+    loop {
+        if y == 0 { break } else { () };
+        let r = x - (x / y) * y;
+        x = y;
+        y = r
+    };
+    x
+    };
+
+// Extended: LCM using GCD
+fn lcm(a: i64, b: i64) -> i64 = {
+    let g = binary_gcd(a, b);
+    if g == 0 { 0 } else { (a / g) * b }
+    };
+
+// Check if two numbers are coprime
+fn is_coprime(a: i64, b: i64) -> i64 =
+    if binary_gcd(a, b) == 1 { 1 } else { 0 };
+
+fn main() -> i64 = {
+    // Basic GCD tests
+    let _p1 = println(binary_gcd(48, 18));    // 6
+    let _p2 = println(binary_gcd(100, 75));   // 25
+    let _p3 = println(binary_gcd(17, 13));    // 1 (coprime)
+    let _p4 = println(binary_gcd(0, 5));      // 5
+    let _p5 = println(binary_gcd(7, 0));      // 7
+    let _p6 = println(binary_gcd(1024, 512)); // 512
+
+    // Verify against Euclidean GCD
+    let _p7 = println(euclid_gcd(48, 18));    // 6
+    let _p8 = println(euclid_gcd(100, 75));   // 25
+
+    // Power of 2 cases (binary GCD should handle efficiently)
+    let _p9 = println(binary_gcd(64, 32));    // 32
+    let _p10 = println(binary_gcd(128, 96));  // 32
+
+    // LCM tests
+    let _p11 = println(lcm(4, 6));            // 12
+    let _p12 = println(lcm(7, 5));            // 35
+    let _p13 = println(lcm(12, 18));          // 36
+
+    // Coprime tests
+    let _p14 = println(is_coprime(8, 15));    // 1
+    let _p15 = println(is_coprime(12, 9));    // 0 (gcd=3)
+
+    // Trailing zero count
+    let _p16 = println(ctz(24));              // 3 (24 = 11000 in binary)
+    let _p17 = println(ctz(1));               // 0
+
+    0
+    };

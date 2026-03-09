@@ -1,0 +1,56 @@
+// Golden Test: Saturating Arithmetic Operators (+|, -|, *|)
+// Tests that saturating operations clamp to INT_MIN/INT_MAX on overflow
+
+fn main() -> i64 = {
+    // Basic saturating add
+    let a = 100 +| 200;
+    let _p1 = println(a);  // 300
+
+    // Saturating add overflow: INT_MAX + 1 should clamp to INT_MAX
+    let max = 9223372036854775807;
+    let b = max +| 1;
+    let _p2 = println(b);  // 9223372036854775807
+
+    // Saturating add negative overflow: INT_MIN + (-1) should clamp to INT_MIN
+    // Use variables to avoid constant-folding overflow in bootstrap compiler
+    let neg_max = 0 - max;
+    let min_val = neg_max - 1;
+    let c = min_val +| (0 - 1);
+    let _p3 = println(c);  // -9223372036854775808
+
+    // Basic saturating sub
+    let d = 500 -| 200;
+    let _p4 = println(d);  // 300
+
+    // Saturating sub overflow: INT_MIN - 1 should clamp to INT_MIN
+    let e = min_val -| 1;
+    let _p5 = println(e);  // -9223372036854775808
+
+    // Saturating sub positive overflow: INT_MAX - (-1) should clamp to INT_MAX
+    let f = max -| (0 - 1);
+    let _p6 = println(f);  // 9223372036854775807
+
+    // Basic saturating mul
+    let g = 10 *| 20;
+    let _p7 = println(g);  // 200
+
+    // Saturating mul overflow
+    let h = max *| 2;
+    let _p8 = println(h);  // 9223372036854775807
+
+    // Saturating mul negative overflow
+    let i_val = max *| (0 - 2);
+    let _p9 = println(i_val);  // -9223372036854775808
+
+    // No overflow cases should compute correctly
+    let j = (0 - 50) +| 30;
+    let _p10 = println(j);  // -20
+
+    let k = (0 - 50) -| (0 - 30);
+    let _p11 = println(k);  // -20
+
+    let l = (0 - 5) *| 10;
+    let _p12 = println(l);  // -50
+
+    0
+};

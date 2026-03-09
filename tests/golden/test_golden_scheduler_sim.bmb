@@ -1,0 +1,296 @@
+// Golden Test: Task Scheduler / Priority Queue Simulation
+// Tests priority queue operations, round-robin scheduling, and task aging
+
+// Priority queue stored as a sorted vec of (priority, taskId) pairs
+// Vec layout: [pri0, id0, pri1, id1, ...] sorted by priority descending
+// Higher priority value = higher priority
+
+// Create an empty priority queue
+fn pq_new() -> i64 = vec_new();
+
+// Get number of tasks in the priority queue
+fn pq_size(pq: i64) -> i64 = vec_len(pq) / 2;
+
+// Find insertion index for a given priority (sorted descending)
+// Returns the position (in pair units) where the new item should go
+fn pq_find_pos(pq: i64, priority: i64, idx: i64) -> i64 = {
+    let n = vec_len(pq) / 2;
+    if idx >= n { n }
+    else {
+        let cur_pri = vec_get(pq, idx * 2);
+        if priority > cur_pri { idx }
+        else { pq_find_pos(pq, priority, idx + 1) }
+    }
+};
+
+// Shift elements right by 2 positions starting from end down to pos
+fn pq_shift_right(pq: i64, from: i64, pos: i64) -> i64 =
+    if from < pos { 0 }
+    else {
+        let _s1 = vec_set(pq, from * 2 + 2, vec_get(pq, from * 2));
+        let _s2 = vec_set(pq, from * 2 + 3, vec_get(pq, from * 2 + 1));
+        pq_shift_right(pq, from - 1, pos)
+    };
+
+// Enqueue a task with given priority and taskId
+// First expand the vec with 2 dummy slots, then shift and insert
+fn pq_enqueue(pq: i64, priority: i64, task_id: i64) -> i64 = {
+    let n = vec_len(pq) / 2;
+    // Add 2 placeholder slots
+    let _p1 = vec_push(pq, 0);
+    let _p2 = vec_push(pq, 0);
+    // Find sorted position
+    let pos = pq_find_pos(pq, priority, 0);
+    // Shift everything from n-1 down to pos to the right
+    let _sh = if n > pos { pq_shift_right(pq, n - 1, pos) } else { 0 };
+    // Insert at pos
+    let _s1 = vec_set(pq, pos * 2, priority);
+    let _s2 = vec_set(pq, pos * 2 + 1, task_id);
+    pq
+};
+
+// Peek at the highest priority task (returns taskId at index 0)
+fn pq_peek_id(pq: i64) -> i64 = vec_get(pq, 1);
+fn pq_peek_pri(pq: i64) -> i64 = vec_get(pq, 0);
+
+// Dequeue: shift everything left by 2, then conceptually shrink
+// Since we can't shrink vecs, we track logical size externally
+// For simplicity, we'll rebuild a new vec without the first element
+fn pq_dequeue_to(pq: i64, new_pq: i64, idx: i64) -> i64 =
+    if idx >= vec_len(pq) { new_pq }
+    else {
+        let _p = vec_push(new_pq, vec_get(pq, idx));
+        pq_dequeue_to(pq, new_pq, idx + 1)
+    };
+
+fn pq_dequeue(pq: i64) -> i64 = {
+    let new_pq = vec_new();
+    pq_dequeue_to(pq, new_pq, 2)
+};
+
+// Process all tasks from highest to lowest priority, return sum of taskIds
+fn process_all(pq: i64, acc: i64) -> i64 = {
+    let n = pq_size(pq);
+    if n == 0 { acc }
+    else {
+        let tid = pq_peek_id(pq);
+        let new_pq = pq_dequeue(pq);
+        let _f = vec_free(pq);
+        process_all(new_pq, acc + tid)
+    }
+};
+
+// Round-robin: simulate N tasks each getting time slices
+// tasks[i] = remaining_time, quantum = time slice per round
+// Returns number of rounds until all tasks complete
+fn rr_simulate(tasks: i64, quantum: i64) -> i64 = {
+    let mut rounds = 0;
+    let mut done = false;
+    loop {
+        if done { break } else { () };
+        done = true;
+        let n = vec_len(tasks);
+        for i in 0..n {
+            let remaining = vec_get(tasks, i);
+            if remaining > 0 {
+                done = false;
+                if remaining > quantum {
+                    let _s = vec_set(tasks, i, remaining - quantum);
+                    ()
+                } else {
+                    let _s = vec_set(tasks, i, 0);
+                    ()
+                };
+                rounds = rounds + 1
+            } else { () }
+        };
+        0
+    };
+    rounds
+};
+
+// Task aging: increase priority of all waiting tasks by 1 each round
+// Simulate: tasks with initial priorities, age for N rounds
+// Returns: sum of final priorities
+fn age_tasks(priorities: i64, rounds: i64) -> i64 = {
+    let n = vec_len(priorities);
+    for _r in 0..rounds {
+        for i in 0..n {
+            let _s = vec_set(priorities, i, vec_get(priorities, i) + 1);
+            ()
+        };
+        0
+    };
+    // Sum all priorities
+    let mut total = 0;
+    for i in 0..n {
+        total = total + vec_get(priorities, i)
+    };
+    total
+};
+
+// Compute turnaround time: sum of completion times
+// Tasks arrive at time 0 with durations in vec
+// FCFS scheduling
+fn fcfs_turnaround(durations: i64) -> i64 = {
+    let n = vec_len(durations);
+    let mut total_turnaround = 0;
+    let mut current_time = 0;
+    for i in 0..n {
+        current_time = current_time + vec_get(durations, i);
+        total_turnaround = total_turnaround + current_time
+    };
+    total_turnaround
+};
+
+// Shortest job first (non-preemptive): find min duration, process it
+// Returns total turnaround time
+fn sjf_find_min(durations: i64, done: i64) -> i64 = {
+    let n = vec_len(durations);
+    let mut best_idx = 0 - 1;
+    let mut best_dur = 999999;
+    for i in 0..n {
+        let d = vec_get(durations, i);
+        if d > 0 {
+            if vec_get(done, i) == 0 {
+                if d < best_dur {
+                    best_idx = i;
+                    best_dur = d
+                } else { () }
+            } else { () }
+        } else { () }
+    };
+    best_idx
+};
+
+fn sjf_turnaround(durations: i64) -> i64 = {
+    let n = vec_len(durations);
+    let done = vec_new();
+    for _i in 0..n { let _p = vec_push(done, 0); 0 };
+    let mut total_turnaround = 0;
+    let mut current_time = 0;
+    for _round in 0..n {
+        let idx = sjf_find_min(durations, done);
+        if idx >= 0 {
+            let _s = vec_set(done, idx, 1);
+            current_time = current_time + vec_get(durations, idx);
+            total_turnaround = total_turnaround + current_time
+        } else { () };
+        0
+    };
+    let _f = vec_free(done);
+    total_turnaround
+};
+
+fn main() -> i64 = {
+    // === Test 1-3: Priority Queue basic operations ===
+    let pq = pq_new();
+    let pq = pq_enqueue(pq, 5, 100);  // (5,100)
+    let pq = pq_enqueue(pq, 10, 200); // (10,200), (5,100)
+    let pq = pq_enqueue(pq, 3, 300);  // (10,200), (5,100), (3,300)
+    let pq = pq_enqueue(pq, 8, 400);  // (10,200), (8,400), (5,100), (3,300)
+
+    let _p1 = println(pq_size(pq));       // 4
+    let _p2 = println(pq_peek_id(pq));    // 200 (highest pri=10)
+    let _p3 = println(pq_peek_pri(pq));   // 10
+
+    // === Test 4-5: Dequeue highest priority ===
+    let pq2 = pq_dequeue(pq);
+    let _p4 = println(pq_size(pq2));      // 3
+    let _p5 = println(pq_peek_id(pq2));   // 400 (next highest pri=8)
+    let _f1 = vec_free(pq);
+
+    // === Test 6: Process all tasks, sum of taskIds ===
+    let pq3 = pq_new();
+    let pq3 = pq_enqueue(pq3, 1, 10);
+    let pq3 = pq_enqueue(pq3, 2, 20);
+    let pq3 = pq_enqueue(pq3, 3, 30);
+    let _p6 = println(process_all(pq3, 0)); // 10+20+30 = 60
+
+    // === Test 7-8: Round-robin simulation ===
+    // 3 tasks with remaining times [10, 4, 6], quantum=3
+    // Round 1: T0: 10->7, T1: 4->1, T2: 6->3 (3 slices)
+    // Round 2: T0: 7->4, T1: 1->0, T2: 3->0 (3 slices)
+    // Round 3: T0: 4->1 (1 slice)
+    // Round 4: T0: 1->0 (1 slice)
+    // Total slices = 3+3+1+1 = 8
+    let rr1 = vec_new();
+    let _p = vec_push(rr1, 10);
+    let _p = vec_push(rr1, 4);
+    let _p = vec_push(rr1, 6);
+    let _p7 = println(rr_simulate(rr1, 3)); // 8
+    let _f2 = vec_free(rr1);
+
+    // 4 tasks [5, 5, 5, 5], quantum=5 => each finishes in 1 slice => 4 slices
+    let rr2 = vec_new();
+    let _p = vec_push(rr2, 5);
+    let _p = vec_push(rr2, 5);
+    let _p = vec_push(rr2, 5);
+    let _p = vec_push(rr2, 5);
+    let _p8 = println(rr_simulate(rr2, 5)); // 4
+    let _f3 = vec_free(rr2);
+
+    // === Test 9-10: Task aging ===
+    // 3 tasks with priorities [1, 2, 3], age for 5 rounds
+    // After 5 rounds: [6, 7, 8], sum = 21
+    let ages1 = vec_new();
+    let _p = vec_push(ages1, 1);
+    let _p = vec_push(ages1, 2);
+    let _p = vec_push(ages1, 3);
+    let _p9 = println(age_tasks(ages1, 5)); // 21
+    let _f4 = vec_free(ages1);
+
+    // 4 tasks with priorities [0, 0, 0, 0], age for 10 rounds
+    // After 10 rounds: [10, 10, 10, 10], sum = 40
+    let ages2 = vec_new();
+    let _p = vec_push(ages2, 0);
+    let _p = vec_push(ages2, 0);
+    let _p = vec_push(ages2, 0);
+    let _p = vec_push(ages2, 0);
+    let _p10 = println(age_tasks(ages2, 10)); // 40
+    let _f5 = vec_free(ages2);
+
+    // === Test 11-12: FCFS turnaround ===
+    // Tasks with durations [3, 5, 2]
+    // Completion times: 3, 8, 10
+    // Total turnaround = 3 + 8 + 10 = 21
+    let fcfs1 = vec_new();
+    let _p = vec_push(fcfs1, 3);
+    let _p = vec_push(fcfs1, 5);
+    let _p = vec_push(fcfs1, 2);
+    let _p11 = println(fcfs_turnaround(fcfs1)); // 21
+    let _f6 = vec_free(fcfs1);
+
+    // Tasks [1, 2, 3, 4]
+    // Completion: 1, 3, 6, 10 => turnaround = 20
+    let fcfs2 = vec_new();
+    let _p = vec_push(fcfs2, 1);
+    let _p = vec_push(fcfs2, 2);
+    let _p = vec_push(fcfs2, 3);
+    let _p = vec_push(fcfs2, 4);
+    let _p12 = println(fcfs_turnaround(fcfs2)); // 20
+    let _f7 = vec_free(fcfs2);
+
+    // === Test 13-14: SJF turnaround ===
+    // Tasks [3, 5, 2] => sorted: [2, 3, 5]
+    // Completion: 2, 5, 10 => turnaround = 17
+    let sjf1 = vec_new();
+    let _p = vec_push(sjf1, 3);
+    let _p = vec_push(sjf1, 5);
+    let _p = vec_push(sjf1, 2);
+    let _p13 = println(sjf_turnaround(sjf1)); // 17
+    let _f8 = vec_free(sjf1);
+
+    // Tasks [6, 1, 4, 2] => sorted: [1, 2, 4, 6]
+    // Completion: 1, 3, 7, 13 => turnaround = 24
+    let sjf2 = vec_new();
+    let _p = vec_push(sjf2, 6);
+    let _p = vec_push(sjf2, 1);
+    let _p = vec_push(sjf2, 4);
+    let _p = vec_push(sjf2, 2);
+    let _p14 = println(sjf_turnaround(sjf2)); // 24
+    let _f9 = vec_free(sjf2);
+
+    let _f10 = vec_free(pq2);
+    0
+};

@@ -1,0 +1,130 @@
+// Golden Test: Modular exponentiation, Fermat's little theorem applications
+// Fast exponentiation mod m, primality test, modular inverse
+
+// Modular exponentiation: base^exp mod m using binary method
+fn mod_pow(base: i64, exp: i64, m: i64) -> i64 = {
+    let mut result = 1;
+    let mut b = base % m;
+    let mut e = exp;
+    loop {
+        if e <= 0 { break } else { () };
+        let _c = if (e % 2) == 1 {
+            result = (result * b) % m;
+            0
+        } else { 0 };
+        e = e / 2;
+        b = (b * b) % m
+    };
+    result
+};
+
+// Fermat's little theorem: a^(p-1) ≡ 1 (mod p) for prime p
+// Returns 1 if likely prime, 0 if composite
+// Tests with bases 2, 3, 5, 7
+fn fermat_test(n: i64) -> i64 = {
+    if n <= 1 { 0 }
+    else if n <= 3 { 1 }
+    else if n % 2 == 0 { 0 }
+    else {
+        let t1 = mod_pow(2, n - 1, n);
+        let t2 = mod_pow(3, n - 1, n);
+        let t3 = mod_pow(5, n - 1, n);
+        if t1 == 1 {
+            if t2 == 1 {
+                if t3 == 1 { 1 } else { 0 }
+            } else { 0 }
+        } else { 0 }
+    }
+};
+
+// Modular inverse via Fermat's little theorem: a^(-1) ≡ a^(p-2) mod p
+fn mod_inv(a: i64, p: i64) -> i64 =
+    mod_pow(a, p - 2, p);
+
+// Verify: a * mod_inv(a, p) ≡ 1 (mod p)
+fn verify_inverse(a: i64, p: i64) -> i64 =
+    (a * mod_inv(a, p)) % p;
+
+// Compute n! mod p (factorial modulo prime)
+fn factorial_mod(n: i64, p: i64) -> i64 = {
+    let mut result = 1;
+    for i in 1..n + 1 {
+        set result = (result * i) % p;
+    };
+    result
+};
+
+// Compute nCr mod p using Fermat's little theorem
+// nCr = n! / (r! * (n-r)!) mod p = n! * inv(r!) * inv((n-r)!) mod p
+fn ncr_mod(n: i64, r: i64, p: i64) -> i64 = {
+    if r > n { 0 }
+    else {
+        let num = factorial_mod(n, p);
+        let den1 = factorial_mod(r, p);
+        let den2 = factorial_mod(n - r, p);
+        let inv1 = mod_inv(den1, p);
+        let inv2 = mod_inv(den2, p);
+        ((num * inv1) % p * inv2) % p
+    }
+};
+
+// Discrete log (brute force for small values): find x such that base^x ≡ target (mod m)
+// Returns -1 if not found within max_iter steps
+fn discrete_log(base: i64, target: i64, m: i64, max_iter: i64) -> i64 = {
+    let mut result = 0 - 1;
+    let mut power = 1;
+    let mut i = 0;
+    loop {
+        if i >= max_iter { break } else { () };
+        if result >= 0 { break } else { () };
+        let _c = if power == target { result = i; 0 } else { 0 };
+        power = (power * base) % m;
+        i = i + 1
+    };
+    result
+};
+
+fn main() -> i64 = {
+    // mod_pow basic tests
+    let _p1 = println(mod_pow(2, 10, 1000));    // 1024 % 1000 = 24
+    let _p2 = println(mod_pow(3, 7, 100));       // 2187 % 100 = 87
+    let _p3 = println(mod_pow(5, 3, 13));        // 125 % 13 = 8
+    let _p4 = println(mod_pow(2, 0, 7));         // 1
+
+    // Fermat primality test
+    let _p5 = println(fermat_test(2));     // 1
+    let _p6 = println(fermat_test(7));     // 1
+    let _p7 = println(fermat_test(13));    // 1
+    let _p8 = println(fermat_test(97));    // 1
+    let _p9 = println(fermat_test(4));     // 0
+    let _p10 = println(fermat_test(15));   // 0
+    let _p11 = println(fermat_test(100));  // 0
+
+    // Modular inverse verification
+    let _p12 = println(verify_inverse(3, 7));   // 1
+    let _p13 = println(verify_inverse(5, 13));  // 1
+    let _p14 = println(verify_inverse(2, 97));  // 1
+
+    // mod_inv specific values
+    // 3^(-1) mod 7: 3*5=15≡1 mod 7 => 5
+    let _p15 = println(mod_inv(3, 7));    // 5
+    // 2^(-1) mod 13: 2*7=14≡1 mod 13 => 7
+    let _p16 = println(mod_inv(2, 13));   // 7
+
+    // nCr mod p
+    // C(5,2) = 10
+    let _p17 = println(ncr_mod(5, 2, 97));    // 10
+    // C(10,3) = 120
+    let _p18 = println(ncr_mod(10, 3, 997));  // 120
+    // C(10,5) = 252
+    let _p19 = println(ncr_mod(10, 5, 997));  // 252
+
+    // Discrete log: 2^x ≡ 8 (mod 13) -> x=3
+    let _p20 = println(discrete_log(2, 8, 13, 20));   // 3
+    // 3^x ≡ 5 (mod 7): 3^0=1,3^1=3,3^2=2,3^3=6,3^4=4,3^5=5 -> x=5
+    let _p21 = println(discrete_log(3, 5, 7, 20));    // 5
+    // 2^x ≡ 4 (mod 7): 2^0=1,2^1=2,2^2=4 -> x=2
+    let _p22 = println(discrete_log(2, 4, 7, 20));    // 2
+
+    0
+};

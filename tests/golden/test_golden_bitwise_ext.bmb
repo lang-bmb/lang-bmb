@@ -1,0 +1,54 @@
+// Golden Test: Extended Bitwise Operations
+// Tests band, bor, bxor operators and bit manipulation patterns
+
+fn popcount_manual(x: i64) -> i64 = {
+    let n = x;
+    let count = 0;
+    for _i in 0..30 {
+        if n band 1 == 1 { count = count + 1 } else { () };
+        n = n >> 1;
+    };
+    count
+};
+
+fn is_power_of_two(n: i64) -> i64 =
+    if n <= 0 { 0 }
+    else if n band (n - 1) == 0 { 1 }
+    else { 0 };
+
+fn lowest_set_bit(n: i64) -> i64 = n band (0 - n);
+
+fn toggle_bit(n: i64, pos: i64) -> i64 = n bxor (1 << pos);
+
+fn main() -> i64 = {
+    // Basic band
+    let _p1 = println(255 band 15);   // 15
+    let _p2 = println(0 band 123);    // 0
+
+    // Basic bor
+    let _p3 = println(240 bor 15);    // 255
+    let _p4 = println(0 bor 42);      // 42
+
+    // Basic bxor
+    let _p5 = println(255 bxor 255);  // 0
+    let _p6 = println(170 bxor 85);   // 255
+
+    // Popcount (manual, positive values only)
+    let _p7 = println(popcount_manual(255));   // 8
+    let _p8 = println(popcount_manual(1024));  // 1
+
+    // Power of two check
+    let _p9 = println(is_power_of_two(64));   // 1
+    let _p10 = println(is_power_of_two(100)); // 0
+    let _p11 = println(is_power_of_two(1));   // 1
+
+    // Lowest set bit
+    let _p12 = println(lowest_set_bit(12));  // 4 (binary: 1100, lowest=100)
+    let _p13 = println(lowest_set_bit(8));   // 8
+
+    // Toggle bit
+    let _p14 = println(toggle_bit(0, 3));   // 8 (set bit 3)
+    let _p15 = println(toggle_bit(15, 2));  // 11 (clear bit 2: 1111 -> 1011)
+
+    0
+};

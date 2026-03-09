@@ -1,0 +1,141 @@
+// Golden Test: Roman numeral conversion
+// Tests integer to Roman numeral and Roman numeral to integer conversion
+
+// int_to_roman: convert integer to Roman numeral string
+// Uses greedy algorithm with value table stored in vectors
+// Returns the Roman numeral as a String
+fn int_to_roman(n: i64) -> String = {
+    let mut result = "";
+    let mut rem = n;
+
+    // 1000 = M
+    loop {
+        if rem < 1000 { break } else { () };
+        result = result + "M";
+        rem = rem - 1000
+    };
+    // 900 = CM
+    if rem >= 900 {
+        result = result + "CM";
+        rem = rem - 900
+    } else { () };
+    // 500 = D
+    if rem >= 500 {
+        result = result + "D";
+        rem = rem - 500
+    } else { () };
+    // 400 = CD
+    if rem >= 400 {
+        result = result + "CD";
+        rem = rem - 400
+    } else { () };
+    // 100 = C
+    loop {
+        if rem < 100 { break } else { () };
+        result = result + "C";
+        rem = rem - 100
+    };
+    // 90 = XC
+    if rem >= 90 {
+        result = result + "XC";
+        rem = rem - 90
+    } else { () };
+    // 50 = L
+    if rem >= 50 {
+        result = result + "L";
+        rem = rem - 50
+    } else { () };
+    // 40 = XL
+    if rem >= 40 {
+        result = result + "XL";
+        rem = rem - 40
+    } else { () };
+    // 10 = X
+    loop {
+        if rem < 10 { break } else { () };
+        result = result + "X";
+        rem = rem - 10
+    };
+    // 9 = IX
+    if rem >= 9 {
+        result = result + "IX";
+        rem = rem - 9
+    } else { () };
+    // 5 = V
+    if rem >= 5 {
+        result = result + "V";
+        rem = rem - 5
+    } else { () };
+    // 4 = IV
+    if rem >= 4 {
+        result = result + "IV";
+        rem = rem - 4
+    } else { () };
+    // 1 = I
+    loop {
+        if rem < 1 { break } else { () };
+        result = result + "I";
+        rem = rem - 1
+    };
+    result
+    };
+
+// roman_char_value: map ASCII code of single Roman char to its value
+// M=77, D=68, C=67, L=76, X=88, V=86, I=73
+fn roman_char_value(c: i64) -> i64 =
+    if c == 77 { 1000 }
+    else if c == 68 { 500 }
+    else if c == 67 { 100 }
+    else if c == 76 { 50 }
+    else if c == 88 { 10 }
+    else if c == 86 { 5 }
+    else if c == 73 { 1 }
+    else { 0 };
+
+// roman_to_int: convert Roman numeral string to integer
+// If a smaller value precedes a larger value, subtract it; otherwise add it
+fn roman_to_int(s: String) -> i64 = {
+    let n = s.len();
+    if n == 0 { return 0 } else { () };
+    let mut total = 0;
+    for i in 0..n {
+        let cur = roman_char_value(s.byte_at(i));
+        let next = if i + 1 < n { roman_char_value(s.byte_at(i + 1)) } else { 0 };
+        if cur < next {
+            total = total - cur
+        } else {
+            total = total + cur
+        }
+    };
+    total
+    };
+
+fn main() -> i64 = {
+    // --- int_to_roman tests ---
+    let _p1 = println_str(int_to_roman(1994));   // MCMXCIV
+    let _p2 = println_str(int_to_roman(3999));   // MMMCMXCIX
+    let _p3 = println_str(int_to_roman(58));     // LVIII
+    let _p4 = println_str(int_to_roman(1));      // I
+    let _p5 = println_str(int_to_roman(4));      // IV
+    let _p6 = println_str(int_to_roman(9));      // IX
+    let _p7 = println_str(int_to_roman(40));     // XL
+    let _p8 = println_str(int_to_roman(90));     // XC
+    let _p9 = println_str(int_to_roman(400));    // CD
+    let _p10 = println_str(int_to_roman(900));   // CM
+    let _p11 = println_str(int_to_roman(2024));  // MMXXIV
+
+    // --- roman_to_int tests ---
+    let _p12 = println(roman_to_int("MCMXCIV"));  // 1994
+    let _p13 = println(roman_to_int("XIV"));       // 14
+    let _p14 = println(roman_to_int("IX"));        // 9
+    let _p15 = println(roman_to_int("MMMCMXCIX")); // 3999
+    let _p16 = println(roman_to_int("LVIII"));     // 58
+    let _p17 = println(roman_to_int("MMXXIV"));    // 2024
+
+    // --- roundtrip: int -> roman -> int ---
+    let _p18 = println(roman_to_int(int_to_roman(42)));    // 42
+    let _p19 = println(roman_to_int(int_to_roman(100)));   // 100
+    let _p20 = println(roman_to_int(int_to_roman(3888)));  // 3888
+
+    0
+    };

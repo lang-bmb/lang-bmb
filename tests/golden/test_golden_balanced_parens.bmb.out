@@ -1,0 +1,31 @@
+Catalan numbers:
+1
+1
+2
+5
+14
+42
+132
+429
+Validation:
+1
+0
+1
+1
+0
+1
+1
+0
+1
+Max depth:
+1
+2
+1
+3
+2
+Count with max depth <= d:
+1
+4
+5
+1
+8

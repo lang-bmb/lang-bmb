@@ -1,0 +1,278 @@
+// Golden Test: Dynamic programming patterns
+// Fibonacci memoization, climbing stairs, coin change min,
+// longest increasing subsequence, Kadane's max subarray, 0/1 knapsack
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { let _p = vec_push(v, 0); 0 };
+    v
+    };
+
+fn max2(a: i64, b: i64) -> i64 = if a > b { a } else { b };
+fn min2(a: i64, b: i64) -> i64 = if a < b { a } else { b };
+
+// --- Fibonacci with vec memoization ---
+fn fib_memo_helper(memo: i64, n: i64) -> i64 = {
+    if n <= 1 { return n } else { () };
+    let cached = vec_get(memo, n);
+    if cached != 0 { return cached } else { () };
+    let result = fib_memo_helper(memo, n - 1) + fib_memo_helper(memo, n - 2);
+    let _s = vec_set(memo, n, result);
+    result
+    };
+
+fn fib_memo(n: i64) -> i64 = {
+    let memo = make_zeros(n + 1);
+    let result = fib_memo_helper(memo, n);
+    let _f = vec_free(memo);
+    result
+    };
+
+// --- Climbing stairs: ways to climb n steps using 1 or 2 steps ---
+fn climb_stairs(n: i64) -> i64 = {
+    if n <= 1 { return 1 } else { () };
+    let dp = make_zeros(n + 1);
+    let _s0 = vec_set(dp, 0, 1);
+    let _s1 = vec_set(dp, 1, 1);
+    for i in 2..=n {
+        let _s = vec_set(dp, i, vec_get(dp, i - 1) + vec_get(dp, i - 2));
+        0
+    };
+    let result = vec_get(dp, n);
+    let _f = vec_free(dp);
+    result
+    };
+
+// --- Coin change minimum: min coins to make amount ---
+// coins stored in vec, process one coin at a time
+fn coin_change_one(dp: i64, coin: i64, j: i64, amount: i64) -> i64 =
+    if j > amount { 0 }
+    else {
+        if j >= coin {
+            let candidate = vec_get(dp, j - coin) + 1;
+            if candidate < vec_get(dp, j) {
+                let _s = vec_set(dp, j, candidate); 0
+            } else { 0 }
+        } else { 0 };
+        coin_change_one(dp, coin, j + 1, amount)
+    };
+
+fn coin_change_all(dp: i64, coins: i64, i: i64, n: i64, amount: i64) -> i64 =
+    if i >= n { 0 }
+    else {
+        let _u = coin_change_one(dp, vec_get(coins, i), 0, amount);
+        coin_change_all(dp, coins, i + 1, n, amount)
+    };
+
+fn coin_change(coins: i64, n_coins: i64, amount: i64) -> i64 = {
+    let dp = make_zeros(amount + 1);
+    // Initialize all to large value except dp[0]=0
+    for i in 1..=amount {
+        let _s = vec_set(dp, i, 999999);
+        0
+    };
+    let _ca = coin_change_all(dp, coins, 0, n_coins, amount);
+    let result = vec_get(dp, amount);
+    let _f = vec_free(dp);
+    if result >= 999999 { 0 - 1 } else { result }
+    };
+
+// --- Longest increasing subsequence length ---
+// O(n^2) DP: lis[i] = length of LIS ending at index i
+fn lis_inner(arr: i64, lis_dp: i64, i: i64, j: i64, best: i64) -> i64 =
+    if j >= i { best }
+    else {
+        let new_best = if vec_get(arr, j) < vec_get(arr, i) {
+            max2(best, vec_get(lis_dp, j) + 1)
+        } else { best };
+        lis_inner(arr, lis_dp, i, j + 1, new_best)
+    };
+
+fn lis_fill(arr: i64, lis_dp: i64, i: i64, n: i64) -> i64 =
+    if i >= n { 0 }
+    else {
+        let val = lis_inner(arr, lis_dp, i, 0, 1);
+        let _s = vec_set(lis_dp, i, val);
+        lis_fill(arr, lis_dp, i + 1, n)
+    };
+
+fn lis_find_max(lis_dp: i64, i: i64, n: i64, best: i64) -> i64 =
+    if i >= n { best }
+    else { lis_find_max(lis_dp, i + 1, n, max2(best, vec_get(lis_dp, i))) };
+
+fn lis_length(arr: i64, n: i64) -> i64 = {
+    let lis_dp = make_zeros(n);
+    // Initialize all to 1
+    for i in 0..n { let _s = vec_set(lis_dp, i, 1); 0 };
+    let _f = lis_fill(arr, lis_dp, 1, n);
+    let result = lis_find_max(lis_dp, 0, n, 0);
+    let _fr = vec_free(lis_dp);
+    result
+    };
+
+// --- Kadane's maximum subarray sum ---
+fn kadane(arr: i64, n: i64) -> i64 = {
+    let mut max_ending = vec_get(arr, 0);
+    let mut max_so_far = vec_get(arr, 0);
+    for i in 1..n {
+        let val = vec_get(arr, i);
+        if val > max_ending + val {
+            max_ending = val
+        } else {
+            max_ending = max_ending + val
+        };
+        if max_ending > max_so_far {
+            max_so_far = max_ending
+        } else { () }
+    };
+    max_so_far
+    };
+
+// --- 0/1 Knapsack ---
+fn knapsack_item(dp: i64, w: i64, v: i64, j: i64) -> i64 =
+    if j < w { 0 }
+    else {
+        let candidate = vec_get(dp, j - w) + v;
+        if candidate > vec_get(dp, j) {
+            let _s = vec_set(dp, j, candidate); 0
+        } else { 0 };
+        knapsack_item(dp, w, v, j - 1)
+    };
+
+fn knapsack_all(dp: i64, weights: i64, values: i64, i: i64, n: i64, cap: i64) -> i64 =
+    if i >= n { 0 }
+    else {
+        let _u = knapsack_item(dp, vec_get(weights, i), vec_get(values, i), cap);
+        knapsack_all(dp, weights, values, i + 1, n, cap)
+    };
+
+fn knapsack(weights: i64, values: i64, n: i64, capacity: i64) -> i64 = {
+    let dp = make_zeros(capacity + 1);
+    let _ka = knapsack_all(dp, weights, values, 0, n, capacity);
+    let result = vec_get(dp, capacity);
+    let _f = vec_free(dp);
+    result
+    };
+
+// Helper to make small vecs
+fn make_vec3(a: i64, b: i64, c: i64) -> i64 = {
+    let v = vec_new();
+    let _p0 = vec_push(v, a);
+    let _p1 = vec_push(v, b);
+    let _p2 = vec_push(v, c);
+    v
+    };
+
+fn make_vec5(a: i64, b: i64, c: i64, d: i64, e: i64) -> i64 = {
+    let v = vec_new();
+    let _p0 = vec_push(v, a);
+    let _p1 = vec_push(v, b);
+    let _p2 = vec_push(v, c);
+    let _p3 = vec_push(v, d);
+    let _p4 = vec_push(v, e);
+    v
+    };
+
+fn make_vec6(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64) -> i64 = {
+    let v = vec_new();
+    let _p0 = vec_push(v, a);
+    let _p1 = vec_push(v, b);
+    let _p2 = vec_push(v, c);
+    let _p3 = vec_push(v, d);
+    let _p4 = vec_push(v, e);
+    let _p5 = vec_push(v, f);
+    v
+    };
+
+fn make_vec8(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64, h: i64) -> i64 = {
+    let v = vec_new();
+    let _p0 = vec_push(v, a);
+    let _p1 = vec_push(v, b);
+    let _p2 = vec_push(v, c);
+    let _p3 = vec_push(v, d);
+    let _p4 = vec_push(v, e);
+    let _p5 = vec_push(v, f);
+    let _p6 = vec_push(v, g);
+    let _p7 = vec_push(v, h);
+    v
+    };
+
+fn main() -> i64 = {
+// --- Fibonacci memoization ---
+    let _p1 = println(fib_memo(10));   // 55
+    let _p2 = println(fib_memo(15));   // 610
+    let _p3 = println(fib_memo(20));   // 6765
+
+// --- Climbing stairs ---
+    let _p4 = println(climb_stairs(1));    // 1
+    let _p5 = println(climb_stairs(5));    // 8
+    let _p6 = println(climb_stairs(10));   // 89
+
+// --- Coin change minimum ---
+// coins [1,5,10], amount 11 -> 2 (10+1)
+    let coins1 = make_vec3(1, 5, 10);
+    let _p7 = println(coin_change(coins1, 3, 11));
+// coins [1,5,10], amount 15 -> 2 (10+5)
+    let _p8 = println(coin_change(coins1, 3, 15));
+// coins [1,5,10], amount 3 -> 3 (1+1+1)
+    let _p9 = println(coin_change(coins1, 3, 3));
+
+// --- Longest increasing subsequence ---
+// [10,9,2,5,3,7,101,18] -> LIS = [2,3,7,101] or [2,5,7,101] = length 4
+    let lis_arr = make_vec8(10, 9, 2, 5, 3, 7, 101, 18);
+    let _p10 = println(lis_length(lis_arr, 8));
+// [1,2,3,4,5] -> 5 (already sorted)
+    let lis_arr2 = make_vec5(1, 2, 3, 4, 5);
+    let _p11 = println(lis_length(lis_arr2, 5));
+// [5,4,3,2,1] -> 1 (strictly decreasing)
+    let lis_arr3 = make_vec5(5, 4, 3, 2, 1);
+    let _p12 = println(lis_length(lis_arr3, 5));
+
+// --- Kadane's max subarray sum ---
+// [-2,1,-3,4,-1,2,1,-5,4] -> 6 (subarray [4,-1,2,1])
+    let k_arr = vec_new();
+    let _k0 = vec_push(k_arr, 0 - 2);
+    let _k1 = vec_push(k_arr, 1);
+    let _k2 = vec_push(k_arr, 0 - 3);
+    let _k3 = vec_push(k_arr, 4);
+    let _k4 = vec_push(k_arr, 0 - 1);
+    let _k5 = vec_push(k_arr, 2);
+    let _k6 = vec_push(k_arr, 1);
+    let _k7 = vec_push(k_arr, 0 - 5);
+    let _k8 = vec_push(k_arr, 4);
+    let _p13 = println(kadane(k_arr, 9));
+// [1,2,3,-2,5] -> 9 (sum of all)
+    let k_arr2 = make_vec5(1, 2, 3, 0 - 2, 5);
+    let _p14 = println(kadane(k_arr2, 5));
+
+// --- 0/1 Knapsack ---
+// weights [2,3,4,5], values [3,4,5,6], capacity 5
+// items: (2,3),(3,4),(4,5),(5,6)
+// Take (2,3)+(3,4) = weight 5, value 7
+    let kw = vec_new();
+    let _kw0 = vec_push(kw, 2);
+    let _kw1 = vec_push(kw, 3);
+    let _kw2 = vec_push(kw, 4);
+    let _kw3 = vec_push(kw, 5);
+    let kv = vec_new();
+    let _kv0 = vec_push(kv, 3);
+    let _kv1 = vec_push(kv, 4);
+    let _kv2 = vec_push(kv, 5);
+    let _kv3 = vec_push(kv, 6);
+    let _p15 = println(knapsack(kw, kv, 4, 5));
+// Same items, capacity 10 -> take all except (5,6): (2,3)+(3,4)+(4,5)=w9,v12
+// Actually check: (2,3)+(3,4)+(5,6)=w10,v13 vs (2,3)+(3,4)+(4,5)=w9,v12
+// w10<=10, v13 wins
+    let _p16 = println(knapsack(kw, kv, 4, 10));
+
+// Cleanup
+    let _f1 = vec_free(coins1);
+    let _f2 = vec_free(lis_arr);
+    let _f3 = vec_free(lis_arr2);
+    let _f4 = vec_free(lis_arr3);
+    let _f5 = vec_free(k_arr);
+    let _f6 = vec_free(k_arr2);
+    let _f7 = vec_free(kw);
+    let _f8 = vec_free(kv);
+    0
+    };

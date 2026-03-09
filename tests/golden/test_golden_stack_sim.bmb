@@ -1,0 +1,175 @@
+// Golden test: Stack simulation using vec API
+// Tests stack operations with vec-based data structure
+
+// Stack is represented as (vec, top_index)
+// top_index = -1 means empty
+
+fn stack_push(arr: i64, top: i64, val: i64) -> i64 = {
+    let new_top = top + 1;
+    vec_set(arr, new_top, val);
+    new_top
+    };
+
+fn stack_pop(top: i64) -> i64 =
+    if top < 0 { 0 - 1 } else { top - 1 };
+
+fn stack_peek(arr: i64, top: i64) -> i64 =
+    if top < 0 { 0 - 1 } else { vec_get(arr, top) };
+
+fn stack_size(top: i64) -> i64 = top + 1;
+
+fn stack_is_empty(top: i64) -> i64 =
+    if top < 0 { 1 } else { 0 };
+
+    // Check balanced parentheses using stack
+    // Input encoded as vec: 1 = '(' , 2 = ')'
+
+fn check_balanced(input: i64, pos: i64, depth: i64) -> i64 =
+    if pos >= vec_len(input) { if depth == 0 { 1 } else { 0 } }
+    else if vec_get(input, pos) == 1 { check_balanced(input, pos + 1, depth + 1) }
+    else if vec_get(input, pos) == 2 {
+        if depth <= 0 { 0 }
+        else { check_balanced(input, pos + 1, depth - 1) }
+    }
+    else { check_balanced(input, pos + 1, depth) };
+
+    // Evaluate RPN expression
+    // Operations: values 0-99 are operands, 100=add, 101=sub, 102=mul
+
+fn eval_rpn(expr: i64, pos: i64, stack: i64, top: i64) -> i64 =
+    if pos >= vec_len(expr) { stack_peek(stack, top) }
+    else if vec_get(expr, pos) < 100 {
+        // Push operand
+        let new_top = stack_push(stack, top, vec_get(expr, pos));
+        eval_rpn(expr, pos + 1, stack, new_top)
+    }
+    else {
+        // Pop two operands
+        let b = stack_peek(stack, top);
+        let top1 = stack_pop(top);
+        let a = stack_peek(stack, top1);
+        let top2 = stack_pop(top1);
+        let ep = vec_get(expr, pos);
+        let result = if ep == 100 { a + b }
+        else if ep == 101 { a - b }
+        else { a * b };
+        let new_top = stack_push(stack, top2, result);
+        eval_rpn(expr, pos + 1, stack, new_top)
+    };
+
+    // Find maximum in stack
+
+fn stack_max(arr: i64, pos: i64, top: i64, best: i64) -> i64 =
+    if pos > top { best }
+    else {
+        let v = vec_get(arr, pos);
+        let nb = if v > best { v } else { best };
+        stack_max(arr, pos + 1, top, nb)
+    };
+
+    // Helper: create a vec of n zeros
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { 0 };
+        vec_push(v, 0);
+        i = i + 1
+    };
+    v
+    };
+
+fn main() -> i64 = {
+// Basic stack operations
+    let s = make_zeros(10);
+    let top = 0 - 1;
+    let _p1 = println(stack_is_empty(top));  // 1
+
+    let top1 = stack_push(s, top, 10);
+    let top2 = stack_push(s, top1, 20);
+    let top3 = stack_push(s, top2, 30);
+    let _p2 = println(stack_size(top3));    // 3
+    let _p3 = println(stack_peek(s, top3)); // 30
+
+    let top4 = stack_pop(top3);
+    let _p4 = println(stack_peek(s, top4)); // 20
+    let _p5 = println(stack_size(top4));    // 2
+
+// Balanced parentheses
+// (()) = balanced
+    let bal1 = vec_new();
+    vec_push(bal1, 1);
+    vec_push(bal1, 1);
+    vec_push(bal1, 2);
+    vec_push(bal1, 2);
+    let _p6 = println(check_balanced(bal1, 0, 0));  // 1
+
+// (() = unbalanced
+    let bal2 = vec_new();
+    vec_push(bal2, 1);
+    vec_push(bal2, 1);
+    vec_push(bal2, 2);
+    let _p7 = println(check_balanced(bal2, 0, 0));  // 0
+
+// )( = unbalanced
+    let bal3 = vec_new();
+    vec_push(bal3, 2);
+    vec_push(bal3, 1);
+    let _p8 = println(check_balanced(bal3, 0, 0));  // 0
+
+// ()(()) = balanced
+    let bal4 = vec_new();
+    vec_push(bal4, 1);
+    vec_push(bal4, 2);
+    vec_push(bal4, 1);
+    vec_push(bal4, 1);
+    vec_push(bal4, 2);
+    vec_push(bal4, 2);
+    let _p9 = println(check_balanced(bal4, 0, 0));  // 1
+
+// RPN evaluation: 3 4 + 2 * = (3+4)*2 = 14
+    let rpn_stack = make_zeros(10);
+    let rpn1 = vec_new();
+    vec_push(rpn1, 3);
+    vec_push(rpn1, 4);
+    vec_push(rpn1, 100);
+    vec_push(rpn1, 2);
+    vec_push(rpn1, 102);
+    let _p10 = println(eval_rpn(rpn1, 0, rpn_stack, 0 - 1));  // 14
+
+// RPN: 5 1 2 + 4 * + 3 - = 5 + ((1+2)*4) - 3 = 5+12-3 = 14
+    let rpn_stack2 = make_zeros(10);
+    let rpn2 = vec_new();
+    vec_push(rpn2, 5);
+    vec_push(rpn2, 1);
+    vec_push(rpn2, 2);
+    vec_push(rpn2, 100);
+    vec_push(rpn2, 4);
+    vec_push(rpn2, 102);
+    vec_push(rpn2, 100);
+    vec_push(rpn2, 3);
+    vec_push(rpn2, 101);
+    let _p11 = println(eval_rpn(rpn2, 0, rpn_stack2, 0 - 1));  // 14
+
+// Stack max: s has [10, 20, 30] pushed, top2=2 -> max of indices 0..2 = 30
+// But we need to recalculate: stack_push wrote 10 at index 0, 20 at 1, 30 at 2
+// stack_max(s, 0, top2, 0) where top2=1 (after pop from top3=2)
+// Actually top2=1, so we check indices 0..1 = max(10, 20) = 20
+// Wait: _p12 expected output is 20
+// Actually looking at the output file: expected 20 at line 12
+// Original code: stack_max(s, 0, top2, 0) where top2=1
+// s[0]=10, s[1]=20 -> max=20
+    let _p12 = println(stack_max(s, 0, top2, 0));  // 20
+
+    vec_free(s);
+    vec_free(bal1);
+    vec_free(bal2);
+    vec_free(bal3);
+    vec_free(bal4);
+    vec_free(rpn_stack);
+    vec_free(rpn1);
+    vec_free(rpn_stack2);
+    vec_free(rpn2);
+    0
+    };

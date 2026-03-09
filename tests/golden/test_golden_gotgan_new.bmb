@@ -1,0 +1,107 @@
+// Golden Test: gotgan new — create package in new directory
+// Tests package directory creation with gotgan.toml and src/main.bmb
+
+fn str_concat(a: String, b: String) -> String = {
+    let sb = sb_new();
+    let _p1 = sb_push(sb, a);
+    let _p2 = sb_push(sb, b);
+    sb_build(sb)
+    };
+
+fn str_concat3(a: String, b: String, c: String) -> String = {
+    let sb = sb_new();
+    let _p1 = sb_push(sb, a);
+    let _p2 = sb_push(sb, b);
+    let _p3 = sb_push(sb, c);
+    sb_build(sb)
+    };
+
+fn path_join(dir: String, file: String) -> String =
+    str_concat3(dir, "/", file);
+
+fn gen_toml(name: String) -> String = {
+    let sb = sb_new();
+    let _p1 = sb_push(sb, "[package]\nname = \"");
+        let _p2 = sb_push(sb, name);
+        let _p3 = sb_push(sb, "\"\nversion = \"0.1.0\"\ndescription = \"\"\nlicense = \"MIT\"\n\n[dependencies]\n");
+            sb_build(sb)
+        };
+
+fn gen_main_bmb(name: String) -> String = {
+    let sb = sb_new();
+    let _p1 = sb_push(sb, "// ");
+    let _p2 = sb_push(sb, name);
+    let _p3 = sb_push(sb, " - main entry point\n\nfn main() -> i64 = {\n    let _p = print_str(\"hello from ");
+        let _p4 = sb_push(sb, name);
+        let _p5 = sb_push(sb, "!\\n\");\n    0\n};\n");
+    sb_build(sb)
+    };
+
+fn create_pkg(name: String) -> bool = {
+    let src_dir = path_join(name, "src");
+    let _d = make_dir(src_dir);
+    let _w1 = write_file(path_join(name, "gotgan.toml"), gen_toml(name));
+    let _w2 = write_file(path_join(src_dir, "main.bmb"), gen_main_bmb(name));
+
+// Verify all files exist
+    file_exists(path_join(name, "gotgan.toml")) == 1
+    and file_exists(path_join(src_dir, "main.bmb")) == 1
+    and is_dir(name) == 1
+    };
+
+fn cleanup_pkg(name: String) -> i64 = {
+// Windows cleanup
+    let _c1 = system(str_concat3("del /q ", name, "\\src\\main.bmb 2>nul"));
+    let _c2 = system(str_concat3("rmdir ", name, "\\src 2>nul"));
+    let _c3 = system(str_concat3("del /q ", name, "\\gotgan.toml 2>nul"));
+    let _c4 = system(str_concat("rmdir ", name));
+    0
+    };
+
+fn run_test(name: String, result: bool) -> i64 = {
+    let _p1 = print_str(if result { "  PASS: " } else { "  FAIL: " });
+    let _p2 = print_str(name);
+    let _p3 = print_str("\n");
+    if result { 1 } else { 0 }
+    };
+
+fn main() -> i64 = {
+    let _h = print_str("gotgan-new: running tests\n");
+    let mut passed = 0;
+    let total = 6;
+
+// Test 1: create_pkg creates all files
+    let name1 = "__test_new_pkg1__";
+    let ok = create_pkg(name1);
+    passed = passed + run_test("create_pkg creates all files", ok);
+
+// Test 2: gotgan.toml content is valid
+    let toml_content = read_file(path_join(name1, "gotgan.toml"));
+    passed = passed + run_test("toml content non-empty", toml_content.len() > 0);
+
+// Test 3: main.bmb content is valid
+    let main_content = read_file(path_join(path_join(name1, "src"), "main.bmb"));
+    passed = passed + run_test("main.bmb content non-empty", main_content.len() > 0);
+
+    let _cl1 = cleanup_pkg(name1);
+
+// Test 4: is_dir check on new package
+    let name2 = "__test_new_pkg2__";
+    let _c2 = create_pkg(name2);
+    passed = passed + run_test("package dir is directory", is_dir(name2) == 1);
+
+// Test 5: src/ is a directory
+    passed = passed + run_test("src/ is directory", is_dir(path_join(name2, "src")) == 1);
+
+    let _cl2 = cleanup_pkg(name2);
+
+// Test 6: non-existent package dir check
+    passed = passed + run_test("cleaned up dir gone", is_dir(name2) == 0);
+
+    let _r1 = print_str("gotgan-new: ");
+    let _r2 = print(passed);
+    let _r3 = print_str("/");
+    let _r4 = print(total);
+    let _r5 = print_str(" tests passed\n");
+    if passed == total { 0 } else { 1 }
+    };

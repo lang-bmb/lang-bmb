@@ -1,0 +1,191 @@
+// Golden Test: KMP (Knuth-Morris-Pratt) pattern matching
+// Build failure function, then match pattern in text
+// Pattern and text stored as vecs of i64 (character codes)
+
+// Build KMP failure function (partial match table)
+// failure[i] = length of longest proper prefix of pattern[0..i] that is also a suffix
+fn build_failure(pattern: i64, m: i64) -> i64 = {
+    let fail = vec_new();
+    vec_push(fail, 0);
+    let mut i = 1;
+    loop {
+        if i >= m { break } else { () };
+        vec_push(fail, 0);
+        i = i + 1
+    };
+    // fail[0] = 0 always
+    let mut len = 0;
+    i = 1;
+    loop {
+        if i >= m { break } else { () };
+        let _x = if vec_get(pattern, i) == vec_get(pattern, len) {
+            len = len + 1;
+            vec_set(fail, i, len);
+            i = i + 1;
+            0
+        } else if len != 0 {
+            len = vec_get(fail, len - 1);
+            0
+        } else {
+            vec_set(fail, i, 0);
+            i = i + 1;
+            0
+        };
+        0
+    };
+    fail
+    };
+
+// KMP search: returns index of first match, or -1 if not found
+fn kmp_search(text: i64, n: i64, pattern: i64, m: i64) -> i64 = {
+    let fail = build_failure(pattern, m);
+    let mut i = 0;
+    let mut j = 0;
+    let mut result = 0 - 1;
+    let mut found = 0;
+    loop {
+        if i >= n { break } else { () };
+        if found == 1 { break } else { () };
+        let _x = if vec_get(text, i) == vec_get(pattern, j) {
+            i = i + 1;
+            j = j + 1;
+            0
+        } else if j != 0 {
+            j = vec_get(fail, j - 1);
+            0
+        } else {
+            i = i + 1;
+            0
+        };
+        if j == m {
+            result = i - m;
+            found = 1
+        } else { () }
+    };
+    vec_free(fail);
+    result
+    };
+
+// Count all occurrences of pattern in text
+fn kmp_count(text: i64, n: i64, pattern: i64, m: i64) -> i64 = {
+    let fail = build_failure(pattern, m);
+    let mut i = 0;
+    let mut j = 0;
+    let mut count = 0;
+    loop {
+        if i >= n { break } else { () };
+        let _x = if vec_get(text, i) == vec_get(pattern, j) {
+            i = i + 1;
+            j = j + 1;
+            0
+        } else if j != 0 {
+            j = vec_get(fail, j - 1);
+            0
+        } else {
+            i = i + 1;
+            0
+        };
+        if j == m {
+            count = count + 1;
+            j = vec_get(fail, j - 1)
+        } else { () }
+    };
+    vec_free(fail);
+    count
+    };
+
+// Helper: make vec from values
+fn make_text_abc() -> i64 = {
+    // "abcabcabc" = [1,2,3,1,2,3,1,2,3]
+    let v = vec_new();
+    vec_push(v, 1); vec_push(v, 2); vec_push(v, 3);
+    vec_push(v, 1); vec_push(v, 2); vec_push(v, 3);
+    vec_push(v, 1); vec_push(v, 2); vec_push(v, 3);
+    v
+    };
+
+fn make_pattern_abc() -> i64 = {
+    // "abc" = [1,2,3]
+    let v = vec_new();
+    vec_push(v, 1); vec_push(v, 2); vec_push(v, 3);
+    v
+    };
+
+fn main() -> i64 = {
+    // Test 1: basic match "abc" in "abcabcabc" -> index 0
+    let t1 = make_text_abc();
+    let p1 = make_pattern_abc();
+    let _r1 = println(kmp_search(t1, 9, p1, 3));  // 0
+
+    // Test 2: count "abc" in "abcabcabc" -> 3 occurrences
+    let _r2 = println(kmp_count(t1, 9, p1, 3));   // 3
+
+    // Test 3: pattern not found
+    let p2 = vec_new();
+    vec_push(p2, 4); vec_push(p2, 5);
+    let _r3 = println(kmp_search(t1, 9, p2, 2));  // -1
+
+    // Test 4: pattern at end
+    // text = [1,2,3,4,5], pattern = [4,5]
+    let t4 = vec_new();
+    vec_push(t4, 1); vec_push(t4, 2); vec_push(t4, 3);
+    vec_push(t4, 4); vec_push(t4, 5);
+    let p4 = vec_new();
+    vec_push(p4, 4); vec_push(p4, 5);
+    let _r4 = println(kmp_search(t4, 5, p4, 2));  // 3
+
+    // Test 5: overlapping matches "aa" in "aaaa" -> 3
+    let t5 = vec_new();
+    vec_push(t5, 1); vec_push(t5, 1); vec_push(t5, 1); vec_push(t5, 1);
+    let p5 = vec_new();
+    vec_push(p5, 1); vec_push(p5, 1);
+    let _r5 = println(kmp_count(t5, 4, p5, 2));   // 3
+
+    // Test 6: failure function test
+    // pattern "abab" = [1,2,1,2]
+    // failure = [0,0,1,2]
+    let p6 = vec_new();
+    vec_push(p6, 1); vec_push(p6, 2); vec_push(p6, 1); vec_push(p6, 2);
+    let f6 = build_failure(p6, 4);
+    let _r6a = println(vec_get(f6, 0));  // 0
+    let _r6b = println(vec_get(f6, 1));  // 0
+    let _r6c = println(vec_get(f6, 2));  // 1
+    let _r6d = println(vec_get(f6, 3));  // 2
+
+    // Test 7: failure function for "aabaaab" = [1,1,2,1,1,1,2]
+    // failure = [0,1,0,1,1,1,0] -- wait let me compute:
+    // i=0: fail[0] = 0
+    // i=1: p[1]=1 == p[0]=1 -> len=1, fail[1]=1
+    // i=2: p[2]=2 != p[1]=1 -> len=fail[0]=0, p[2]=2 != p[0]=1 -> fail[2]=0
+    // i=3: p[3]=1 == p[0]=1 -> len=1, fail[3]=1
+    // i=4: p[4]=1 == p[1]=1 -> len=2, fail[4]=2
+    // i=5: p[5]=1 != p[2]=2 -> len=fail[1]=1, p[5]=1 == p[1]=1 -> len=2, fail[5]=2
+    // i=6: p[6]=2 == p[2]=2 -> len=3, fail[6]=3
+    let p7 = vec_new();
+    vec_push(p7, 1); vec_push(p7, 1); vec_push(p7, 2);
+    vec_push(p7, 1); vec_push(p7, 1); vec_push(p7, 1); vec_push(p7, 2);
+    let f7 = build_failure(p7, 7);
+    let _r7a = println(vec_get(f7, 0));  // 0
+    let _r7b = println(vec_get(f7, 1));  // 1
+    let _r7c = println(vec_get(f7, 2));  // 0
+    let _r7d = println(vec_get(f7, 3));  // 1
+    let _r7e = println(vec_get(f7, 4));  // 2
+    let _r7f = println(vec_get(f7, 5));  // 2
+    let _r7g = println(vec_get(f7, 6));  // 3
+
+    // Test 8: search with backtracking needed
+    // text = [1,1,1,2,1,1,2], pattern = [1,1,2] -> first match at index 1
+    let t8 = vec_new();
+    vec_push(t8, 1); vec_push(t8, 1); vec_push(t8, 1);
+    vec_push(t8, 2); vec_push(t8, 1); vec_push(t8, 1); vec_push(t8, 2);
+    let p8 = vec_new();
+    vec_push(p8, 1); vec_push(p8, 1); vec_push(p8, 2);
+    let _r8 = println(kmp_search(t8, 7, p8, 3));  // 1
+    let _r9 = println(kmp_count(t8, 7, p8, 3));   // 2
+
+    vec_free(t1); vec_free(p1); vec_free(p2);
+    vec_free(t4); vec_free(p4); vec_free(t5); vec_free(p5);
+    vec_free(p6); vec_free(f6); vec_free(p7); vec_free(f7);
+    vec_free(t8); vec_free(p8);
+    0
+    };

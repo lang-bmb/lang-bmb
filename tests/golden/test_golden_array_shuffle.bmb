@@ -1,0 +1,159 @@
+// Golden Test: Array Shuffle
+// Fisher-Yates shuffle simulation with LCG PRNG + verification
+// Uses a deterministic PRNG so output is reproducible
+
+// LCG parameters (Numerical Recipes)
+// next = (a * cur + c) mod m
+// a = 1103515245, c = 12345, m = 2^31 = 2147483648
+fn lcg_next(state: i64) -> i64 = {
+    let a = 1103515245;
+    let c = 12345;
+    let m = 2147483648;
+    let raw = a * state + c;
+    // mod operation: raw - (raw / m) * m, handle negative
+    let r = raw - (raw / m) * m;
+    if r < 0 { r + m } else { r }
+    };
+
+// Get a value in [0, n) from the PRNG state
+fn lcg_range(state: i64, n: i64) -> i64 = {
+    let r = state - (state / n) * n;
+    if r < 0 { r + n } else { r }
+    };
+
+// Fisher-Yates shuffle: swap arr[i] with arr[rand(i..n)]
+// Returns final PRNG state
+fn shuffle(arr: i64, seed: i64) -> i64 = {
+    let n = vec_len(arr);
+    let mut state = seed;
+    let mut i = n - 1;
+    loop {
+        if i <= 0 { break } else { () };
+        state = lcg_next(state);
+        let j = lcg_range(state, i + 1);
+        // swap arr[i] and arr[j]
+        let tmp = vec_get(arr, i);
+        let _s1 = vec_set(arr, i, vec_get(arr, j));
+        let _s2 = vec_set(arr, j, tmp);
+        i = i - 1
+    };
+    state
+    };
+
+// Verify array is a permutation: same sum, same sum of squares, same length
+fn perm_sum(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    let mut s = 0;
+    for i in 0..n {
+        s = s + vec_get(arr, i)
+    };
+    s
+    };
+
+fn perm_sum_sq(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    let mut s = 0;
+    for i in 0..n {
+        let v = vec_get(arr, i);
+        s = s + v * v
+    };
+    s
+    };
+
+// Check all elements are in range [lo, hi]
+fn all_in_range(arr: i64, lo: i64, hi: i64) -> i64 = {
+    let n = vec_len(arr);
+    let mut ok = 1;
+    for i in 0..n {
+        let v = vec_get(arr, i);
+        let _x = if v < lo or v > hi { ok = 0; 0 } else { 0 };
+    };
+    ok
+    };
+
+// Check no duplicates by checking sum and sum of squares match 0..n-1
+fn is_valid_perm(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    // expected sum of 0..n-1 = n*(n-1)/2
+    let expected_sum = n * (n - 1) / 2;
+    // expected sum of squares of 0..n-1 = n*(n-1)*(2n-1)/6
+    let expected_sq = n * (n - 1) * (2 * n - 1) / 6;
+    let s = perm_sum(arr);
+    let sq = perm_sum_sq(arr);
+    if s == expected_sum and sq == expected_sq { 1 } else { 0 }
+    };
+
+// Count how many elements are in their original position (fixed points)
+fn count_fixed(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    let mut count = 0;
+    for i in 0..n {
+        let _x = if vec_get(arr, i) == i { count = count + 1; 0 } else { 0 };
+    };
+    count
+    };
+
+// Print first few elements
+fn print_first_n(arr: i64, n: i64) -> i64 = {
+    for i in 0..n {
+        let _p = println(vec_get(arr, i));
+        0
+    };
+    0
+    };
+
+fn main() -> i64 = {
+    // Create array [0, 1, 2, ..., 9]
+    let arr = vec_new();
+    for i in 0..10 {
+        let _p = vec_push(arr, i);
+        0
+    };
+
+    // Remember original sum
+    let orig_sum = perm_sum(arr);
+    let _p1 = println(orig_sum);  // 45 (0+1+...+9)
+
+    // Shuffle with seed 42
+    let _st = shuffle(arr, 42);
+
+    // Print shuffled array first 5 elements (deterministic due to fixed seed)
+    let _p2 = print_first_n(arr, 5);
+
+    // Verify permutation properties
+    let _p3 = println(perm_sum(arr));         // 45 (sum preserved)
+    let _p4 = println(is_valid_perm(arr));    // 1 (valid permutation)
+    let _p5 = println(all_in_range(arr, 0, 9)); // 1 (all in [0,9])
+    let _p6 = println(vec_len(arr));          // 10 (length preserved)
+
+    // Test with small array [0, 1, 2]
+    let small = vec_new();
+    for i in 0..3 {
+        let _p = vec_push(small, i);
+        0
+    };
+    let _st2 = shuffle(small, 7);
+    let _p7 = println(is_valid_perm(small));  // 1
+    let _p8 = println(perm_sum(small));       // 3 (0+1+2)
+
+    // Test single element (should remain unchanged)
+    let one = vec_new();
+    let _pp = vec_push(one, 42);
+    let _st3 = shuffle(one, 99);
+    let _p9 = println(vec_get(one, 0));       // 42 (unchanged)
+
+    // Second shuffle with different seed gives different result
+    let arr2 = vec_new();
+    for i in 0..10 {
+        let _p = vec_push(arr2, i);
+        0
+    };
+    let _st4 = shuffle(arr2, 123);
+    let _p10 = println(is_valid_perm(arr2));  // 1
+
+    let _f1 = vec_free(arr);
+    let _f2 = vec_free(small);
+    let _f3 = vec_free(one);
+    let _f4 = vec_free(arr2);
+    0
+    };

@@ -1,0 +1,80 @@
+// Golden Test: Base Conversion (decimal to binary/octal/hex digits)
+// Outputs digits of a number in various bases
+
+// Count digits in given base
+fn count_digits(n: i64, base: i64) -> i64 = {
+    if n == 0 { return 1 } else { () };
+    let count = 0;
+    let val = n;
+    loop {
+        if val <= 0 { break } else { () };
+        count = count + 1;
+        val = val / base
+    };
+    count
+};
+
+// Store digits of n in base into vec (least significant first)
+fn to_base(n: i64, base: i64) -> i64 = {
+    let digits = vec_new();
+    if n == 0 {
+        vec_push(digits, 0);
+        return digits
+    } else { () };
+    let val = n;
+    loop {
+        if val <= 0 { break } else { () };
+        vec_push(digits, val - (val / base) * base);
+        val = val / base
+    };
+    digits
+};
+
+// Compute number from digit vector in given base
+fn from_base(digits: i64, base: i64) -> i64 = {
+    let result = 0;
+    let multiplier = 1;
+    for i in 0..vec_len(digits) {
+        result = result + vec_get(digits, i) * multiplier;
+        multiplier = multiplier * base
+    };
+    result
+};
+
+fn main() -> i64 = {
+    // Binary: 42 = 101010
+    let bin42 = to_base(42, 2);
+    let ndig = vec_len(bin42);
+    let _p1 = println(ndig);             // 6 (101010 has 6 digits)
+    let _p2 = println(vec_get(bin42, 0)); // 0 (LSB)
+    let _p3 = println(vec_get(bin42, 5)); // 1 (MSB)
+    let _p4 = println(from_base(bin42, 2)); // 42 (roundtrip)
+
+    // Octal: 255 = 377
+    let oct255 = to_base(255, 8);
+    let _p5 = println(vec_len(oct255));      // 3
+    let _p6 = println(vec_get(oct255, 0));   // 7 (LSB)
+    let _p7 = println(vec_get(oct255, 1));   // 7
+    let _p8 = println(vec_get(oct255, 2));   // 3 (MSB)
+
+    // Hex: 255 = FF (15, 15)
+    let hex255 = to_base(255, 16);
+    let _p9 = println(vec_len(hex255));      // 2
+    let _p10 = println(vec_get(hex255, 0));  // 15 (F)
+    let _p11 = println(vec_get(hex255, 1));  // 15 (F)
+    let _p12 = println(from_base(hex255, 16)); // 255 (roundtrip)
+
+    // Zero
+    let bin0 = to_base(0, 2);
+    let _p13 = println(vec_len(bin0));       // 1
+    let _p14 = println(vec_get(bin0, 0));    // 0
+
+    // Power of 2: 1024 in binary = 10000000000 (11 digits)
+    let _p15 = println(count_digits(1024, 2));  // 11
+
+    let _f1 = vec_free(bin42);
+    let _f2 = vec_free(oct255);
+    let _f3 = vec_free(hex255);
+    let _f4 = vec_free(bin0);
+    0
+};

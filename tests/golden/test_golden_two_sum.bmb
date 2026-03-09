@@ -1,0 +1,124 @@
+// Golden Test: Two Sum problem
+// Given array and target, find two indices whose values sum to target
+// Uses hash map (open addressing) for O(n) average time
+
+fn hm_new(cap: i64) -> i64 = {
+    let m = vec_new();
+    let _p = vec_push(m, cap);
+    let _p = vec_push(m, 0);
+    let mut i = 0;
+    while i < cap {
+        let _p = vec_push(m, 0);
+        let _p = vec_push(m, 0);
+        let _p = vec_push(m, 0);
+        set i = i + 1
+    };
+    m
+};
+
+fn hm_hash(key: i64, cap: i64) -> i64 = {
+    let k = if key < 0 { 0 - key } else { key };
+    k % cap
+};
+
+fn hm_put(m: i64, key: i64, val: i64) -> () = {
+    let cap = vec_get(m, 0);
+    let mut idx = hm_hash(key, cap);
+    let mut probes = 0;
+    let mut done = 0;
+    while done == 0 and probes < cap {
+        let base = 2 + idx * 3;
+        let occ = vec_get(m, base + 2);
+        let _x = if occ == 0 {
+            vec_set(m, base, key);
+            vec_set(m, base + 1, val);
+            vec_set(m, base + 2, 1);
+            vec_set(m, 1, vec_get(m, 1) + 1);
+            set done = 1;
+            0
+        } else if vec_get(m, base) == key {
+            vec_set(m, base + 1, val);
+            set done = 1;
+            0
+        } else {
+            set idx = (idx + 1) % cap;
+            set probes = probes + 1;
+            0
+        }
+    }
+};
+
+fn hm_get(m: i64, key: i64) -> i64 = {
+    let cap = vec_get(m, 0);
+    let mut idx = hm_hash(key, cap);
+    let mut probes = 0;
+    let mut result = 0 - 1;
+    let mut done = 0;
+    while done == 0 and probes < cap {
+        let base = 2 + idx * 3;
+        let _x = if vec_get(m, base + 2) == 0 {
+            set done = 1; 0
+        } else if vec_get(m, base) == key {
+            set result = vec_get(m, base + 1);
+            set done = 1; 0
+        } else {
+            set idx = (idx + 1) % cap;
+            set probes = probes + 1; 0
+        }
+    };
+    result
+};
+
+fn two_sum(arr: i64, n: i64, target: i64, result: i64) -> i64 = {
+    let m = hm_new(n * 2);
+    let mut i = 0;
+    let mut found = 0;
+    while i < n and found == 0 {
+        let complement = target - vec_get(arr, i);
+        let j = hm_get(m, complement);
+        let _x = if j != 0 - 1 {
+            vec_set(result, 0, j);
+            vec_set(result, 1, i);
+            set found = 1;
+            0
+        } else {
+            hm_put(m, vec_get(arr, i), i);
+            0
+        };
+        set i = i + 1
+    };
+    found
+};
+
+fn main() -> () = {
+    // Test 1: [2, 7, 11, 15], target=9 -> indices 0,1
+    let a1 = vec_new();
+    let _p = vec_push(a1, 2); let _p = vec_push(a1, 7);
+    let _p = vec_push(a1, 11); let _p = vec_push(a1, 15);
+    let r1 = vec_new();
+    let _p = vec_push(r1, 0); let _p = vec_push(r1, 0);
+    let f1 = two_sum(a1, 4, 9, r1);
+    print_str("found="); print(f1);
+    print_str(" ["); print(vec_get(r1, 0));
+    print_str(","); print(vec_get(r1, 1));
+    let _r = println_str("]");
+
+    // Test 2: [3, 2, 4], target=6 -> indices 1,2
+    let a2 = vec_new();
+    let _p = vec_push(a2, 3); let _p = vec_push(a2, 2); let _p = vec_push(a2, 4);
+    let r2 = vec_new();
+    let _p = vec_push(r2, 0); let _p = vec_push(r2, 0);
+    let f2 = two_sum(a2, 3, 6, r2);
+    print_str("found="); print(f2);
+    print_str(" ["); print(vec_get(r2, 0));
+    print_str(","); print(vec_get(r2, 1));
+    let _r = println_str("]");
+
+    // Test 3: No solution [1, 2, 3], target=10
+    let a3 = vec_new();
+    let _p = vec_push(a3, 1); let _p = vec_push(a3, 2); let _p = vec_push(a3, 3);
+    let r3 = vec_new();
+    let _p = vec_push(r3, 0); let _p = vec_push(r3, 0);
+    let f3 = two_sum(a3, 3, 10, r3);
+    print_str("found="); let _r = println(f3)
+};

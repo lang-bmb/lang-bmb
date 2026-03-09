@@ -1,0 +1,98 @@
+// Golden test: filesystem operations (remove_file, remove_dir, recursive make_dir)
+
+fn test_remove_file() -> i64 = {
+// Create a temp file then remove it
+    let _w = write_file("_test_fs_remove.tmp", "hello");
+    let before = file_exists("_test_fs_remove.tmp");
+    let result = remove_file("_test_fs_remove.tmp");
+    let after = file_exists("_test_fs_remove.tmp");
+    if before == 1 {
+        if result == 0 {
+            if after == 0 {
+                let _p = print_str("PASS remove_file\n");
+                0
+            } else {
+            let _p = print_str("FAIL remove_file: still exists\n");
+            1
+        }
+    } else {
+    let _p = print_str("FAIL remove_file: returned error\n");
+    1
+    }
+    } else {
+    let _p = print_str("FAIL remove_file: create failed\n");
+    1
+    }
+    };
+
+fn test_remove_nonexistent() -> i64 = {
+    let result = remove_file("_test_fs_nonexistent_file.tmp");
+    if result == 0 - 1 {
+        let _p = print_str("PASS remove_nonexistent\n");
+        0
+    } else {
+    let _p = print_str("FAIL remove_nonexistent\n");
+    1
+    }
+    };
+
+fn test_remove_dir_fn() -> i64 = {
+    let _d = make_dir("_test_fs_rmdir");
+    let before = is_dir("_test_fs_rmdir");
+    let result = remove_dir("_test_fs_rmdir");
+    let after = is_dir("_test_fs_rmdir");
+    if before == 1 {
+        if result == 0 {
+            if after == 0 {
+                let _p = print_str("PASS remove_dir\n");
+                0
+            } else {
+            let _p = print_str("FAIL remove_dir: still exists\n");
+            1
+        }
+    } else {
+    let _p = print_str("FAIL remove_dir: returned error\n");
+    1
+    }
+    } else {
+    let _p = print_str("FAIL remove_dir: create failed\n");
+    1
+    }
+    };
+
+fn test_recursive_mkdir() -> i64 = {
+// make_dir should create nested directories
+    let _d = make_dir("_test_fs_nested/a/b");
+    let result = is_dir("_test_fs_nested/a/b");
+
+// Clean up
+    let _r1 = remove_dir("_test_fs_nested/a/b");
+    let _r2 = remove_dir("_test_fs_nested/a");
+    let _r3 = remove_dir("_test_fs_nested");
+    if result == 1 {
+        let _p = print_str("PASS recursive_mkdir\n");
+        0
+    } else {
+    let _p = print_str("FAIL recursive_mkdir\n");
+    1
+    }
+    };
+
+fn run_test(name: String, result: i64) -> i64 = {
+    if result == 0 { 1 } else { 0 }
+    };
+
+fn main() -> i64 = {
+    let total = 4;
+    let mut passed = 0;
+    passed = passed + run_test("remove_file", test_remove_file());
+    passed = passed + run_test("remove_nonexistent", test_remove_nonexistent());
+    passed = passed + run_test("remove_dir", test_remove_dir_fn());
+    passed = passed + run_test("recursive_mkdir", test_recursive_mkdir());
+    let _p1 = print_str("fs-ops: ");
+    let _p2 = print(passed);
+    let _p3 = print_str("/");
+    let _p4 = print(total);
+    let _p5 = print_str(" tests passed\n");
+    if passed == total { 0 } else { 1 }
+    };

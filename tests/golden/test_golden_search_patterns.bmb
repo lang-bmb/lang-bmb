@@ -1,0 +1,149 @@
+// Golden Test: Search patterns - Cycle 1402
+// Linear search, binary search, interpolation search concepts
+
+// Linear search: returns index or -1
+fn linear_search(arr: i64, n: i64, target: i64) -> i64 = {
+    let mut result = 0 - 1;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        if vec_get(arr, i) == target and result < 0 {
+            result = i
+        } else { () };
+    i = i + 1
+    };
+    result
+    };
+
+// Binary search on sorted array: returns index or -1
+fn binary_search(arr: i64, n: i64, target: i64) -> i64 = {
+    let mut lo = 0;
+    let mut hi = n - 1;
+    let mut result = 0 - 1;
+    loop {
+        if lo > hi { break } else { () };
+        let mid = lo + (hi - lo) / 2;
+        if vec_get(arr, mid) == target {
+            result = mid;
+            break
+        } else if vec_get(arr, mid) < target {
+        lo = mid + 1
+    } else {
+    hi = mid - 1
+    }
+    };
+    result
+    };
+
+// Count occurrences of target in array
+fn count_occurrences(arr: i64, n: i64, target: i64) -> i64 = {
+    let mut count = 0;
+    for i in 0..n {
+        if vec_get(arr, i) == target { count = count + 1 } else { () }
+    };
+    count
+    };
+
+// Find first element greater than target in sorted array
+fn upper_bound(arr: i64, n: i64, target: i64) -> i64 = {
+    let mut lo = 0;
+    let mut hi = n;
+    loop {
+        if lo >= hi { break } else { () };
+        let mid = lo + (hi - lo) / 2;
+        if vec_get(arr, mid) <= target {
+            lo = mid + 1
+        } else {
+        hi = mid
+    }
+    };
+    lo
+    };
+
+// Find first element >= target in sorted array
+fn lower_bound(arr: i64, n: i64, target: i64) -> i64 = {
+    let mut lo = 0;
+    let mut hi = n;
+    loop {
+        if lo >= hi { break } else { () };
+        let mid = lo + (hi - lo) / 2;
+        if vec_get(arr, mid) < target {
+            lo = mid + 1
+        } else {
+        hi = mid
+    }
+    };
+    lo
+    };
+
+// Find minimum in rotated sorted array
+// e.g. [4,5,6,7,1,2,3] -> index of 1 = 4
+fn find_rotation_point(arr: i64, n: i64) -> i64 = {
+    let mut lo = 0;
+    let mut hi = n - 1;
+    loop {
+        if lo >= hi { break } else { () };
+        let mid = lo + (hi - lo) / 2;
+        if vec_get(arr, mid) > vec_get(arr, hi) {
+            lo = mid + 1
+        } else {
+        hi = mid
+    }
+    };
+    lo
+    };
+
+fn make_vec_10(a0: i64, a1: i64, a2: i64, a3: i64, a4: i64, a5: i64, a6: i64, a7: i64, a8: i64, a9: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a0); vec_push(v, a1); vec_push(v, a2); vec_push(v, a3); vec_push(v, a4);
+    vec_push(v, a5); vec_push(v, a6); vec_push(v, a7); vec_push(v, a8); vec_push(v, a9);
+    v
+    };
+
+fn main() -> i64 = {
+    let arr = make_vec_10(10, 20, 30, 40, 50, 60, 70, 80, 90, 100);
+    let arr_n = 10;
+
+// Linear search
+    let _p1 = println(linear_search(arr, arr_n, 50));   // 4
+    let _p2 = println(linear_search(arr, arr_n, 10));   // 0
+    let _p3 = println(linear_search(arr, arr_n, 99));   // -1
+
+// Binary search
+    let _p4 = println(binary_search(arr, arr_n, 70));   // 6
+    let _p5 = println(binary_search(arr, arr_n, 100));  // 9
+    let _p6 = println(binary_search(arr, arr_n, 5));    // -1
+
+// Count occurrences
+    let arr2 = vec_new();
+    vec_push(arr2, 1); vec_push(arr2, 3); vec_push(arr2, 3); vec_push(arr2, 3);
+    vec_push(arr2, 5); vec_push(arr2, 7); vec_push(arr2, 3); vec_push(arr2, 9);
+    vec_push(arr2, 3);
+    let arr2_n = 9;
+    let _p7 = println(count_occurrences(arr2, arr2_n, 3));  // 5
+    let _p8 = println(count_occurrences(arr2, arr2_n, 9));  // 1
+    let _p9 = println(count_occurrences(arr2, arr2_n, 4));  // 0
+
+// Upper/lower bound on sorted array with duplicates
+    let arr3 = vec_new();
+    vec_push(arr3, 1); vec_push(arr3, 2); vec_push(arr3, 2); vec_push(arr3, 2);
+    vec_push(arr3, 3); vec_push(arr3, 5); vec_push(arr3, 5); vec_push(arr3, 8);
+    let arr3_n = 8;
+    let _p10 = println(lower_bound(arr3, arr3_n, 2));   // 1 (first 2 at index 1)
+    let _p11 = println(upper_bound(arr3, arr3_n, 2));   // 4 (first >2 at index 4)
+    let _p12 = println(lower_bound(arr3, arr3_n, 5));   // 5 (first 5 at index 5)
+    let _p13 = println(upper_bound(arr3, arr3_n, 5));   // 7 (first >5 at index 7)
+
+// Rotated sorted array
+    let arr4 = vec_new();
+    vec_push(arr4, 4); vec_push(arr4, 5); vec_push(arr4, 6); vec_push(arr4, 7);
+    vec_push(arr4, 1); vec_push(arr4, 2); vec_push(arr4, 3);
+    let _p14 = println(find_rotation_point(arr4, 7));  // 4
+
+    let arr5 = vec_new();
+    vec_push(arr5, 3); vec_push(arr5, 4); vec_push(arr5, 5);
+    vec_push(arr5, 1); vec_push(arr5, 2);
+    let _p15 = println(find_rotation_point(arr5, 5));  // 3
+
+    0
+    };

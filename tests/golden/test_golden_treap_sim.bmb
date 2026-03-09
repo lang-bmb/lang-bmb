@@ -1,0 +1,215 @@
+// Golden Test: Treap (tree + heap) BST simulation with priorities
+// Array-based treap: parallel arrays for key, priority, left, right
+// -1 = null pointer; root index tracked separately
+// Maintains BST on keys and max-heap on priorities
+
+// Node storage: flat parallel arrays
+// keys[i], pris[i], lefts[i], rights[i]
+
+fn treap_new() -> i64 = {
+    let t = vec_new();
+    let _a = vec_push(t, vec_new());  // 0: keys
+    let _b = vec_push(t, vec_new());  // 1: priorities
+    let _c = vec_push(t, vec_new());  // 2: left children
+    let _d = vec_push(t, vec_new());  // 3: right children
+    let _e = vec_push(t, 0 - 1);     // 4: root index
+    let _f = vec_push(t, 0);         // 5: size (node count)
+    t
+    };
+
+fn treap_keys(t: i64) -> i64 = vec_get(t, 0);
+fn treap_pris(t: i64) -> i64 = vec_get(t, 1);
+fn treap_lefts(t: i64) -> i64 = vec_get(t, 2);
+fn treap_rights(t: i64) -> i64 = vec_get(t, 3);
+fn treap_root(t: i64) -> i64 = vec_get(t, 4);
+fn treap_size(t: i64) -> i64 = vec_get(t, 5);
+
+fn set_root(t: i64, r: i64) -> i64 = { let _s = vec_set(t, 4, r); 0 };
+fn set_size(t: i64, s: i64) -> i64 = { let _s = vec_set(t, 5, s); 0 };
+
+// Add a new node, returns its index
+fn add_node(t: i64, key: i64, pri: i64) -> i64 = {
+    let idx = treap_size(t);
+    let _a = vec_push(treap_keys(t), key);
+    let _b = vec_push(treap_pris(t), pri);
+    let _c = vec_push(treap_lefts(t), 0 - 1);
+    let _d = vec_push(treap_rights(t), 0 - 1);
+    let _e = set_size(t, idx + 1);
+    idx
+    };
+
+fn get_key(t: i64, i: i64) -> i64 = vec_get(treap_keys(t), i);
+fn get_pri(t: i64, i: i64) -> i64 = vec_get(treap_pris(t), i);
+fn get_left(t: i64, i: i64) -> i64 = vec_get(treap_lefts(t), i);
+fn get_right(t: i64, i: i64) -> i64 = vec_get(treap_rights(t), i);
+fn set_left(t: i64, i: i64, v: i64) -> i64 = { let _s = vec_set(treap_lefts(t), i, v); 0 };
+fn set_right(t: i64, i: i64, v: i64) -> i64 = { let _s = vec_set(treap_rights(t), i, v); 0 };
+
+// Right rotation at node i (left child becomes parent)
+// Returns new root of subtree
+fn rotate_right(t: i64, i: i64) -> i64 = {
+    let l = get_left(t, i);
+    let _s1 = set_left(t, i, get_right(t, l));
+    let _s2 = set_right(t, l, i);
+    l
+    };
+
+// Left rotation at node i (right child becomes parent)
+fn rotate_left(t: i64, i: i64) -> i64 = {
+    let r = get_right(t, i);
+    let _s1 = set_right(t, i, get_left(t, r));
+    let _s2 = set_left(t, r, i);
+    r
+    };
+
+// Insert key with priority into subtree rooted at node
+// Returns new root of subtree
+fn treap_insert_at(t: i64, node: i64, key: i64, pri: i64) -> i64 =
+    if node == 0 - 1 {
+        add_node(t, key, pri)
+    }
+    else if key < get_key(t, node) {
+        let new_left = treap_insert_at(t, get_left(t, node), key, pri);
+        let _s = set_left(t, node, new_left);
+        // Fix heap property: if left child has higher priority, rotate right
+        if get_left(t, node) != 0 - 1 and get_pri(t, get_left(t, node)) > get_pri(t, node) {
+            rotate_right(t, node)
+        } else { node }
+    }
+    else if key > get_key(t, node) {
+        let new_right = treap_insert_at(t, get_right(t, node), key, pri);
+        let _s = set_right(t, node, new_right);
+        // Fix heap property: if right child has higher priority, rotate left
+        if get_right(t, node) != 0 - 1 and get_pri(t, get_right(t, node)) > get_pri(t, node) {
+            rotate_left(t, node)
+        } else { node }
+    }
+    else { node }; // duplicate key, no insert
+
+fn treap_insert(t: i64, key: i64, pri: i64) -> i64 = {
+    let new_root = treap_insert_at(t, treap_root(t), key, pri);
+    let _s = set_root(t, new_root);
+    0
+    };
+
+// Search for key in subtree
+fn treap_find_at(t: i64, node: i64, key: i64) -> i64 =
+    if node == 0 - 1 { 0 }
+    else if key == get_key(t, node) { 1 }
+    else if key < get_key(t, node) { treap_find_at(t, get_left(t, node), key) }
+    else { treap_find_at(t, get_right(t, node), key) };
+
+fn treap_find(t: i64, key: i64) -> i64 =
+    treap_find_at(t, treap_root(t), key);
+
+// Inorder traversal: count nodes (verify BST structure)
+fn inorder_count(t: i64, node: i64) -> i64 =
+    if node == 0 - 1 { 0 }
+    else { inorder_count(t, get_left(t, node)) + 1 + inorder_count(t, get_right(t, node)) };
+
+// Check BST property: all keys in subtree within [lo, hi]
+fn is_bst(t: i64, node: i64, lo: i64, hi: i64) -> i64 =
+    if node == 0 - 1 { 1 }
+    else {
+        let k = get_key(t, node);
+        if k < lo or k > hi { 0 }
+        else {
+            let left_ok = is_bst(t, get_left(t, node), lo, k - 1);
+            let right_ok = is_bst(t, get_right(t, node), k + 1, hi);
+            if left_ok == 1 and right_ok == 1 { 1 } else { 0 }
+        }
+    };
+
+// Check max-heap property on priorities
+fn is_heap(t: i64, node: i64) -> i64 =
+    if node == 0 - 1 { 1 }
+    else {
+        let p = get_pri(t, node);
+        let left_ok = if get_left(t, node) == 0 - 1 { 1 }
+            else if get_pri(t, get_left(t, node)) > p { 0 }
+            else { is_heap(t, get_left(t, node)) };
+        let right_ok = if get_right(t, node) == 0 - 1 { 1 }
+            else if get_pri(t, get_right(t, node)) > p { 0 }
+            else { is_heap(t, get_right(t, node)) };
+        if left_ok == 1 and right_ok == 1 { 1 } else { 0 }
+    };
+
+// Tree height
+fn tree_ht(t: i64, node: i64) -> i64 =
+    if node == 0 - 1 { 0 }
+    else {
+        let lh = tree_ht(t, get_left(t, node));
+        let rh = tree_ht(t, get_right(t, node));
+        let mx = if lh > rh { lh } else { rh };
+        1 + mx
+    };
+
+// Find min key
+fn treap_min(t: i64, node: i64) -> i64 =
+    if node == 0 - 1 { 999999 }
+    else if get_left(t, node) == 0 - 1 { get_key(t, node) }
+    else { treap_min(t, get_left(t, node)) };
+
+// Find max key
+fn treap_max(t: i64, node: i64) -> i64 =
+    if node == 0 - 1 { 0 - 999999 }
+    else if get_right(t, node) == 0 - 1 { get_key(t, node) }
+    else { treap_max(t, get_right(t, node)) };
+
+fn main() -> i64 = {
+    let t = treap_new();
+
+    // Insert: key, priority pairs
+    // Higher priority = closer to root
+    let _i1 = treap_insert(t, 50, 90);  // root (highest priority)
+    let _i2 = treap_insert(t, 30, 70);
+    let _i3 = treap_insert(t, 70, 60);
+    let _i4 = treap_insert(t, 20, 40);
+    let _i5 = treap_insert(t, 40, 50);
+    let _i6 = treap_insert(t, 60, 30);
+    let _i7 = treap_insert(t, 80, 20);
+
+    // Size check
+    let _p1 = println(treap_size(t));    // 7
+    let _p2 = println(inorder_count(t, treap_root(t))); // 7
+
+    // BST property
+    let _p3 = println(is_bst(t, treap_root(t), 0 - 1000000, 1000000)); // 1
+
+    // Heap property
+    let _p4 = println(is_heap(t, treap_root(t))); // 1
+
+    // Root should have key 50 (highest priority 90)
+    let _p5 = println(get_key(t, treap_root(t))); // 50
+
+    // Search
+    let _p6 = println(treap_find(t, 50));  // 1
+    let _p7 = println(treap_find(t, 30));  // 1
+    let _p8 = println(treap_find(t, 99));  // 0
+    let _p9 = println(treap_find(t, 0));   // 0
+
+    // Min and Max
+    let _p10 = println(treap_min(t, treap_root(t))); // 20
+    let _p11 = println(treap_max(t, treap_root(t))); // 80
+
+    // Height (should be reasonable, <= 7 for 7 nodes)
+    let h = tree_ht(t, treap_root(t));
+    let _p12 = println(h); // height of tree
+
+    // Insert duplicate — should not add (key already exists, skipped)
+    let _i8 = treap_insert(t, 50, 100);
+    let _p13 = println(treap_size(t));    // 7 (duplicate key not added)
+    let _p14 = println(inorder_count(t, treap_root(t))); // 7
+
+    // Insert more to test balancing
+    let _i9 = treap_insert(t, 10, 80);   // high priority, should rotate up
+    let _p15 = println(is_bst(t, treap_root(t), 0 - 1000000, 1000000)); // 1
+    let _p16 = println(is_heap(t, treap_root(t))); // 1
+
+    // After inserting key=10 with pri=80 (second highest),
+    // it should be near root
+    let _p17 = println(treap_find(t, 10)); // 1
+    let _p18 = println(treap_min(t, treap_root(t))); // 10
+
+    0
+    };

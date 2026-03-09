@@ -1,0 +1,49 @@
+// Golden Test: Branch simplification and copy propagation
+// Tests constant branch folding and SSA copy elimination
+
+// Branch on true constant: should always take then-branch
+fn branch_true() -> i64 = {
+    let x = 1;
+    if x > 0 { 42 } else { 99 }
+    };
+
+// Branch on false constant: should always take else-branch
+fn branch_false() -> i64 = {
+    let x = 0;
+    if x > 0 { 42 } else { 99 }
+    };
+
+// Chained branch: nested constant conditions
+fn branch_chain() -> i64 = {
+    let a = 5;
+    let b = 3;
+    if a > b {
+        if a > 10 { 1 } else { 2 }
+    } else { 3 }
+    };
+
+// Copy propagation: intermediates should be eliminated
+fn copy_chain() -> i64 = {
+    let a = 7;
+    let b = a;
+    let c = b;
+    let d = c;
+    d + 3
+    };
+
+// Combined: constant fold + branch + copy
+fn combined() -> i64 = {
+    let x = 10;
+    let y = 5;
+    let sum = x + y;
+    if sum > 10 { sum } else { 0 }
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(branch_true());    // 42
+    let _p2 = println(branch_false());   // 99
+    let _p3 = println(branch_chain());   // 2
+    let _p4 = println(copy_chain());     // 10
+    let _p5 = println(combined());       // 15
+    0
+    };

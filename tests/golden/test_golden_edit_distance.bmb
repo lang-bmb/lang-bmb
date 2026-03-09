@@ -1,0 +1,118 @@
+// Golden Test: Edit distance between integer sequences
+// Levenshtein distance using DP on vec-encoded sequences
+
+fn min2(a: i64, b: i64) -> i64 = if a < b { a } else { b };
+fn min3(a: i64, b: i64, c: i64) -> i64 = min2(min2(a, b), c);
+
+// Edit distance between two vec-encoded sequences
+fn edit_distance(a: i64, n: i64, b: i64, m: i64) -> i64 = {
+    if n == 0 { return m } else { () };
+    if m == 0 { return n } else { () };
+    let cols = m + 1;
+    let dp = vec_new();
+    let mut k = 0;
+    loop {
+        if k >= (n + 1) * cols { break } else { () };
+        vec_push(dp, 0);
+        k = k + 1
+    };
+    // Base cases
+    let mut i = 0;
+    loop {
+        if i > n { break } else { () };
+        vec_set(dp, i * cols + 0, i);
+        i = i + 1
+    };
+    let mut j = 0;
+    loop {
+        if j > m { break } else { () };
+        vec_set(dp, 0 * cols + j, j);
+        j = j + 1
+    };
+    // Fill DP
+    let mut i2 = 1;
+    loop {
+        if i2 > n { break } else { () };
+        let mut j2 = 1;
+        loop {
+            if j2 > m { break } else { () };
+            let cost = if vec_get(a, i2 - 1) == vec_get(b, j2 - 1) { 0 } else { 1 };
+            let val = min3(
+                vec_get(dp, (i2 - 1) * cols + j2) + 1,
+                vec_get(dp, i2 * cols + (j2 - 1)) + 1,
+                vec_get(dp, (i2 - 1) * cols + (j2 - 1)) + cost
+            );
+            vec_set(dp, i2 * cols + j2, val);
+            j2 = j2 + 1
+        };
+        i2 = i2 + 1
+    };
+    let result = vec_get(dp, n * cols + m);
+    vec_free(dp);
+    result
+};
+
+fn main() -> i64 = {
+    // Test 1: identical [1,2,3] vs [1,2,3] -> 0
+    let a1 = vec_new(); vec_push(a1, 1); vec_push(a1, 2); vec_push(a1, 3);
+    let b1 = vec_new(); vec_push(b1, 1); vec_push(b1, 2); vec_push(b1, 3);
+    let _p1 = println(edit_distance(a1, 3, b1, 3));
+
+    // Test 2: [1,2,3] vs [1,2,4] -> 1 (substitute)
+    let a2 = vec_new(); vec_push(a2, 1); vec_push(a2, 2); vec_push(a2, 3);
+    let b2 = vec_new(); vec_push(b2, 1); vec_push(b2, 2); vec_push(b2, 4);
+    let _p2 = println(edit_distance(a2, 3, b2, 3));
+
+    // Test 3: [1,2,3] vs [1,2,3,4] -> 1 (insert)
+    let a3 = vec_new(); vec_push(a3, 1); vec_push(a3, 2); vec_push(a3, 3);
+    let b3 = vec_new(); vec_push(b3, 1); vec_push(b3, 2); vec_push(b3, 3); vec_push(b3, 4);
+    let _p3 = println(edit_distance(a3, 3, b3, 4));
+
+    // Test 4: [1,2,3,4] vs [1,2,3] -> 1 (delete)
+    let a4 = vec_new(); vec_push(a4, 1); vec_push(a4, 2); vec_push(a4, 3); vec_push(a4, 4);
+    let b4 = vec_new(); vec_push(b4, 1); vec_push(b4, 2); vec_push(b4, 3);
+    let _p4 = println(edit_distance(a4, 4, b4, 3));
+
+    // Test 5: [1,2,3] vs [4,5,6] -> 3 (all different)
+    let a5 = vec_new(); vec_push(a5, 1); vec_push(a5, 2); vec_push(a5, 3);
+    let b5 = vec_new(); vec_push(b5, 4); vec_push(b5, 5); vec_push(b5, 6);
+    let _p5 = println(edit_distance(a5, 3, b5, 3));
+
+    // Test 6: empty vs [1,2,3] -> 3
+    let a6 = vec_new();
+    let b6 = vec_new(); vec_push(b6, 1); vec_push(b6, 2); vec_push(b6, 3);
+    let _p6 = println(edit_distance(a6, 0, b6, 3));
+
+    // Test 7: [1] vs [2] -> 1
+    let a7 = vec_new(); vec_push(a7, 1);
+    let b7 = vec_new(); vec_push(b7, 2);
+    let _p7 = println(edit_distance(a7, 1, b7, 1));
+
+    // Test 8: "kitten" vs "sitting" encoded
+    // k=11, i=9, t=20, e=5, n=14 vs s=19, i=9, t=20, i=9, n=14, g=7
+    // ed = 3 (k->s, e->i, +g)
+    let a8 = vec_new();
+    vec_push(a8, 11); vec_push(a8, 9); vec_push(a8, 20); vec_push(a8, 20); vec_push(a8, 5); vec_push(a8, 14);
+    let b8 = vec_new();
+    vec_push(b8, 19); vec_push(b8, 9); vec_push(b8, 20); vec_push(b8, 20); vec_push(b8, 9); vec_push(b8, 14); vec_push(b8, 7);
+    let _p8 = println(edit_distance(a8, 6, b8, 7));
+
+    // Test 9: [1,2] vs [2,1] -> 2
+    let a9 = vec_new(); vec_push(a9, 1); vec_push(a9, 2);
+    let b9 = vec_new(); vec_push(b9, 2); vec_push(b9, 1);
+    let _p9 = println(edit_distance(a9, 2, b9, 2));
+
+    // Test 10: [1,2,3,4,5] vs [1,3,5] -> 2 (delete 2 and 4)
+    let a10 = vec_new();
+    vec_push(a10, 1); vec_push(a10, 2); vec_push(a10, 3); vec_push(a10, 4); vec_push(a10, 5);
+    let b10 = vec_new();
+    vec_push(b10, 1); vec_push(b10, 3); vec_push(b10, 5);
+    let _p10 = println(edit_distance(a10, 5, b10, 3));
+
+    vec_free(a1); vec_free(b1); vec_free(a2); vec_free(b2);
+    vec_free(a3); vec_free(b3); vec_free(a4); vec_free(b4);
+    vec_free(a5); vec_free(b5); vec_free(a6); vec_free(b6);
+    vec_free(a7); vec_free(b7); vec_free(a8); vec_free(b8);
+    vec_free(a9); vec_free(b9); vec_free(a10); vec_free(b10);
+    0
+};

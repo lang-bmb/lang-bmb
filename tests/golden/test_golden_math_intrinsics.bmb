@@ -1,0 +1,44 @@
+// Golden Test: Math Intrinsics (sin, cos, tan, atan, atan2, log, log2, log10, exp, pow_f64, fmod)
+// Uses f64_to_i64 conversion with multiplier for precision
+
+fn main() -> i64 = {
+    // sin/cos: sin(pi/6) ≈ 0.5, cos(pi/3) ≈ 0.5
+    let pi = 3.14159265358979;
+    let _p1 = println(f64_to_i64(sin(pi / 6.0) * 1000.0));   // 500
+    let _p2 = println(f64_to_i64(cos(pi / 3.0) * 1000.0));   // 500
+    let _p3 = println(f64_to_i64(sin(0.0)));                  // 0
+    let _p4 = println(f64_to_i64(cos(0.0)));                  // 1
+
+    // tan: tan(pi/4) ≈ 1.0
+    let _p5 = println(f64_to_i64(tan(pi / 4.0) * 1000.0));   // 1000
+
+    // atan: atan(1.0) ≈ pi/4 ≈ 0.7854
+    let _p6 = println(f64_to_i64(atan(1.0) * 10000.0));       // 7853
+
+    // atan2: atan2(1, 1) ≈ pi/4
+    let _p7 = println(f64_to_i64(atan2(1.0, 1.0) * 10000.0)); // 7853
+
+    // log: ln(e) = 1
+    let e = exp(1.0);
+    let _p8 = println(f64_to_i64(log(e) * 1000.0));           // 1000
+
+    // log2: log2(1024) = 10
+    let _p9 = println(f64_to_i64(log2(1024.0)));              // 10
+
+    // log10: log10(1000) = 3
+    let _p10 = println(f64_to_i64(log10(1000.0)));            // 3
+
+    // exp: e^0 = 1, e^1 ≈ 2.718
+    let _p11 = println(f64_to_i64(exp(0.0)));                 // 1
+    let _p12 = println(f64_to_i64(exp(1.0) * 1000.0));        // 2718
+
+    // pow_f64: 2^10 = 1024, 3^3 = 27
+    let _p13 = println(f64_to_i64(pow_f64(2.0, 10.0)));       // 1024
+    let _p14 = println(f64_to_i64(pow_f64(3.0, 3.0)));        // 27
+
+    // fmod: 10.5 % 3.0 = 1.5
+    let _p15 = println(f64_to_i64(fmod(10.5, 3.0) * 10.0));  // 15
+    let _p16 = println(f64_to_i64(fmod(7.0, 2.0) * 10.0));   // 10
+
+    0
+};

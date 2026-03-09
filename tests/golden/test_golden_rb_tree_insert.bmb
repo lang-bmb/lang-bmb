@@ -1,0 +1,223 @@
+// Golden Test: Red-Black Tree Insert (simplified)
+// Properties: root is black, red nodes have black children, equal black-height
+// Parallel arrays: key, color (0=black, 1=red), left, right, parent
+
+fn rb_new() -> i64 = {
+    let t = vec_new();
+    let keys = vec_new();
+    let colors = vec_new();
+    let lefts = vec_new();
+    let rights = vec_new();
+    let parents = vec_new();
+    vec_push(t, keys);      // t[0]
+    vec_push(t, colors);    // t[1]
+    vec_push(t, lefts);     // t[2]
+    vec_push(t, rights);    // t[3]
+    vec_push(t, parents);   // t[4]
+    vec_push(t, 0);         // t[5] = count
+    vec_push(t, -1);        // t[6] = root
+    t
+};
+
+fn rb_alloc(t: i64, key: i64) -> i64 = {
+    let idx = vec_get(t, 5);
+    vec_push(vec_get(t, 0), key);
+    vec_push(vec_get(t, 1), 1);    // new nodes are red
+    vec_push(vec_get(t, 2), -1);
+    vec_push(vec_get(t, 3), -1);
+    vec_push(vec_get(t, 4), -1);
+    vec_set(t, 5, idx + 1);
+    idx
+};
+
+fn rb_key(t: i64, n: i64) -> i64 = vec_get(vec_get(t, 0), n);
+fn rb_color(t: i64, n: i64) -> i64 =
+    if n < 0 { 0 } else { vec_get(vec_get(t, 1), n) };  // NIL is black
+fn rb_left(t: i64, n: i64) -> i64 = vec_get(vec_get(t, 2), n);
+fn rb_right(t: i64, n: i64) -> i64 = vec_get(vec_get(t, 3), n);
+fn rb_parent(t: i64, n: i64) -> i64 = vec_get(vec_get(t, 4), n);
+fn rb_set_color(t: i64, n: i64, c: i64) -> i64 = { vec_set(vec_get(t, 1), n, c); 0 };
+fn rb_set_left(t: i64, n: i64, v: i64) -> i64 = { vec_set(vec_get(t, 2), n, v); 0 };
+fn rb_set_right(t: i64, n: i64, v: i64) -> i64 = { vec_set(vec_get(t, 3), n, v); 0 };
+fn rb_set_parent(t: i64, n: i64, v: i64) -> i64 = { vec_set(vec_get(t, 4), n, v); 0 };
+fn rb_root(t: i64) -> i64 = vec_get(t, 6);
+fn rb_set_root(t: i64, r: i64) -> i64 = { vec_set(t, 6, r); 0 };
+
+fn rb_rotate_left(t: i64, x: i64) -> i64 = {
+    let y = rb_right(t, x);
+    let _sr = rb_set_right(t, x, rb_left(t, y));
+    let _x1 = if rb_left(t, y) >= 0 {
+        rb_set_parent(t, rb_left(t, y), x)
+    } else { 0 };
+    let _sp = rb_set_parent(t, y, rb_parent(t, x));
+    let _x2 = if rb_parent(t, x) < 0 {
+        rb_set_root(t, y)
+    } else if x == rb_left(t, rb_parent(t, x)) {
+        rb_set_left(t, rb_parent(t, x), y)
+    } else {
+        rb_set_right(t, rb_parent(t, x), y)
+    };
+    let _sl = rb_set_left(t, y, x);
+    rb_set_parent(t, x, y)
+};
+
+fn rb_rotate_right(t: i64, y: i64) -> i64 = {
+    let x = rb_left(t, y);
+    let _sl = rb_set_left(t, y, rb_right(t, x));
+    let _x1 = if rb_right(t, x) >= 0 {
+        rb_set_parent(t, rb_right(t, x), y)
+    } else { 0 };
+    let _sp = rb_set_parent(t, x, rb_parent(t, y));
+    let _x2 = if rb_parent(t, y) < 0 {
+        rb_set_root(t, x)
+    } else if y == rb_left(t, rb_parent(t, y)) {
+        rb_set_left(t, rb_parent(t, y), x)
+    } else {
+        rb_set_right(t, rb_parent(t, y), x)
+    };
+    let _sr = rb_set_right(t, x, y);
+    rb_set_parent(t, y, x)
+};
+
+fn rb_fix_insert(t: i64, z: i64) -> i64 = {
+    let mut node = z;
+    loop {
+        let p = rb_parent(t, node);
+        if p < 0 or rb_color(t, p) == 0 { break } else { () };
+        let g = rb_parent(t, p);
+        if g < 0 { break } else { () };
+        let _x = if p == rb_left(t, g) {
+            let uncle = rb_right(t, g);
+            if rb_color(t, uncle) == 1 {
+                // Case 1: uncle is red
+                let _sc1 = rb_set_color(t, p, 0);
+                let _sc2 = rb_set_color(t, uncle, 0);
+                let _sc3 = rb_set_color(t, g, 1);
+                set node = g;
+                0
+            } else {
+                let _c2 = if node == rb_right(t, p) {
+                    // Case 2: node is right child
+                    set node = p;
+                    let _rl = rb_rotate_left(t, node);
+                    0
+                } else { 0 };
+                // Case 3
+                let p2 = rb_parent(t, node);
+                let g2 = rb_parent(t, p2);
+                let _sc = rb_set_color(t, p2, 0);
+                let _sg = rb_set_color(t, g2, 1);
+                let _rr = rb_rotate_right(t, g2);
+                0
+            }
+        } else {
+            // Mirror case
+            let uncle = rb_left(t, g);
+            if rb_color(t, uncle) == 1 {
+                let _sc1 = rb_set_color(t, p, 0);
+                let _sc2 = rb_set_color(t, uncle, 0);
+                let _sc3 = rb_set_color(t, g, 1);
+                set node = g;
+                0
+            } else {
+                let _c2 = if node == rb_left(t, p) {
+                    set node = p;
+                    let _rr = rb_rotate_right(t, node);
+                    0
+                } else { 0 };
+                let p2 = rb_parent(t, node);
+                let g2 = rb_parent(t, p2);
+                let _sc = rb_set_color(t, p2, 0);
+                let _sg = rb_set_color(t, g2, 1);
+                let _rl = rb_rotate_left(t, g2);
+                0
+            }
+        };
+    };
+    let _root_black = rb_set_color(t, rb_root(t), 0);
+    0
+};
+
+fn rb_insert(t: i64, key: i64) -> i64 = {
+    let z = rb_alloc(t, key);
+    let root = rb_root(t);
+    if root < 0 {
+        let _sr = rb_set_root(t, z);
+        let _sc = rb_set_color(t, z, 0);
+        0
+    } else {
+        let mut cur = root;
+        let mut par = 0 - 1;
+        loop {
+            if cur < 0 { break } else { () };
+            set par = cur;
+            set cur = if key < rb_key(t, cur) { rb_left(t, cur) } else { rb_right(t, cur) };
+        };
+        let _sp = rb_set_parent(t, z, par);
+        let _c = if key < rb_key(t, par) { rb_set_left(t, par, z) } else { rb_set_right(t, par, z) };
+        rb_fix_insert(t, z)
+    }
+};
+
+fn rb_inorder(t: i64, n: i64) -> i64 =
+    if n < 0 { 0 }
+    else {
+        let _l = rb_inorder(t, rb_left(t, n));
+        let _p = println(rb_key(t, n));
+        rb_inorder(t, rb_right(t, n))
+    };
+
+fn rb_count(t: i64, n: i64) -> i64 =
+    if n < 0 { 0 }
+    else { 1 + rb_count(t, rb_left(t, n)) + rb_count(t, rb_right(t, n)) };
+
+// Check black-height (returns -1 if invalid)
+fn rb_black_height(t: i64, n: i64) -> i64 =
+    if n < 0 { 1 }  // NIL counts as 1 black node
+    else {
+        let lh = rb_black_height(t, rb_left(t, n));
+        let rh = rb_black_height(t, rb_right(t, n));
+        if lh < 0 or rh < 0 or lh != rh { 0 - 1 }
+        else { lh + (if rb_color(t, n) == 0 { 1 } else { 0 }) }
+    };
+
+fn main() -> i64 = {
+    let t = rb_new();
+
+    // Insert: 7, 3, 18, 10, 22, 8, 11
+    let _i1 = rb_insert(t, 7);
+    let _i2 = rb_insert(t, 3);
+    let _i3 = rb_insert(t, 18);
+    let _i4 = rb_insert(t, 10);
+    let _i5 = rb_insert(t, 22);
+    let _i6 = rb_insert(t, 8);
+    let _i7 = rb_insert(t, 11);
+
+    // Test 1: Root is black
+    let _p1 = println(rb_color(t, rb_root(t)));  // 0 (black)
+
+    // Test 2: Count
+    let _p2 = println(rb_count(t, rb_root(t)));  // 7
+
+    // Test 3: Black-height valid
+    let bh = rb_black_height(t, rb_root(t));
+    let _p3 = println(if bh > 0 { 1 } else { 0 });  // 1 (valid)
+
+    // Test 4: In-order (sorted)
+    let _io = rb_inorder(t, rb_root(t));
+    // Prints: 3 7 8 10 11 18 22
+
+    // Test 5: Insert more
+    let _i8 = rb_insert(t, 1);
+    let _i9 = rb_insert(t, 5);
+    let _p4 = println(rb_count(t, rb_root(t)));  // 9
+    let _p5 = println(rb_color(t, rb_root(t)));  // 0 (root still black)
+
+    vec_free(vec_get(t, 0));
+    vec_free(vec_get(t, 1));
+    vec_free(vec_get(t, 2));
+    vec_free(vec_get(t, 3));
+    vec_free(vec_get(t, 4));
+    vec_free(t);
+    0
+};

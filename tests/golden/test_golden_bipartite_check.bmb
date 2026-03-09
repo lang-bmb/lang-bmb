@@ -1,0 +1,170 @@
+// Golden Test: Bipartite Graph Check using BFS coloring
+// A graph is bipartite if it can be 2-colored with no adjacent same-color vertices
+
+// Adjacency list using flat edge array: adj[v] = start of edge list, edges stored in flat vec
+// For simplicity: use edge list and BFS
+
+fn bip_new(n: i64) -> i64 = {
+    let g = vec_new();
+    let adj = vec_new();     // adj[i] = head of adjacency list for vertex i
+    let edge_to = vec_new(); // edge destination
+    let edge_next = vec_new(); // next edge in list
+    for _i in 0..n {
+        vec_push(adj, 0 - 1);
+    };
+    vec_push(g, adj);       // g[0]
+    vec_push(g, edge_to);   // g[1]
+    vec_push(g, edge_next); // g[2]
+    vec_push(g, 0);         // g[3] = edge count
+    vec_push(g, n);          // g[4] = vertex count
+    g
+};
+
+fn bip_add_edge(g: i64, u: i64, v: i64) -> i64 = {
+    let adj = vec_get(g, 0);
+    let edge_to = vec_get(g, 1);
+    let edge_next = vec_get(g, 2);
+    let eid = vec_get(g, 3);
+    // u -> v
+    vec_push(edge_to, v);
+    vec_push(edge_next, vec_get(adj, u));
+    vec_set(adj, u, eid);
+    vec_set(g, 3, eid + 1);
+    // v -> u
+    let eid2 = eid + 1;
+    vec_push(edge_to, u);
+    vec_push(edge_next, vec_get(adj, v));
+    vec_set(adj, v, eid2);
+    vec_set(g, 3, eid2 + 1);
+    0
+};
+
+// BFS-based bipartite check: returns 1 if bipartite, 0 if not
+fn is_bipartite(g: i64) -> i64 = {
+    let n = vec_get(g, 4);
+    let adj = vec_get(g, 0);
+    let edge_to = vec_get(g, 1);
+    let edge_next = vec_get(g, 2);
+
+    // Color: -1 = unvisited, 0 or 1
+    let color = vec_new();
+    for _i in 0..n {
+        vec_push(color, 0 - 1);
+    };
+
+    // BFS queue
+    let queue = vec_new();
+    for _i in 0..n { vec_push(queue, 0) };
+    let mut result = 1;
+
+    // Process each connected component
+    for start in 0..n {
+        let _skip = if vec_get(color, start) >= 0 or result == 0 {
+            0
+        } else {
+            vec_set(color, start, 0);
+            vec_set(queue, 0, start);
+            let mut qh = 0;
+            let mut qt = 1;
+            loop {
+                if qh >= qt or result == 0 { break } else { () };
+                let u = vec_get(queue, qh);
+                set qh = qh + 1;
+                let uc = vec_get(color, u);
+                // Traverse adjacency list
+                let mut eid = vec_get(adj, u);
+                loop {
+                    if eid < 0 or result == 0 { break } else { () };
+                    let v = vec_get(edge_to, eid);
+                    let vc = vec_get(color, v);
+                    let _chk = if vc < 0 {
+                        vec_set(color, v, 1 - uc);
+                        vec_set(queue, qt, v);
+                        set qt = qt + 1;
+                        0
+                    } else if vc == uc {
+                        set result = 0;
+                        0
+                    } else { 0 };
+                    set eid = vec_get(edge_next, eid);
+                };
+                0
+            };
+            0
+        };
+    };
+
+    vec_free(color);
+    vec_free(queue);
+    result
+};
+
+fn main() -> i64 = {
+    // Test 1: Simple bipartite (even cycle: square)
+    // 0-1-2-3-0
+    let g1 = bip_new(4);
+    let _e1 = bip_add_edge(g1, 0, 1);
+    let _e2 = bip_add_edge(g1, 1, 2);
+    let _e3 = bip_add_edge(g1, 2, 3);
+    let _e4 = bip_add_edge(g1, 3, 0);
+    println(is_bipartite(g1));  // 1
+
+    // Test 2: Not bipartite (triangle)
+    // 0-1-2-0
+    let g2 = bip_new(3);
+    let _e5 = bip_add_edge(g2, 0, 1);
+    let _e6 = bip_add_edge(g2, 1, 2);
+    let _e7 = bip_add_edge(g2, 2, 0);
+    println(is_bipartite(g2));  // 0
+
+    // Test 3: Complete bipartite K_{2,3}
+    // Left: {0,1}, Right: {2,3,4}
+    let g3 = bip_new(5);
+    let _e8 = bip_add_edge(g3, 0, 2);
+    let _e9 = bip_add_edge(g3, 0, 3);
+    let _e10 = bip_add_edge(g3, 0, 4);
+    let _e11 = bip_add_edge(g3, 1, 2);
+    let _e12 = bip_add_edge(g3, 1, 3);
+    let _e13 = bip_add_edge(g3, 1, 4);
+    println(is_bipartite(g3));  // 1
+
+    // Test 4: Odd cycle (pentagon)
+    let g4 = bip_new(5);
+    let _e14 = bip_add_edge(g4, 0, 1);
+    let _e15 = bip_add_edge(g4, 1, 2);
+    let _e16 = bip_add_edge(g4, 2, 3);
+    let _e17 = bip_add_edge(g4, 3, 4);
+    let _e18 = bip_add_edge(g4, 4, 0);
+    println(is_bipartite(g4));  // 0
+
+    // Test 5: Disconnected graph (both components bipartite)
+    let g5 = bip_new(6);
+    let _e19 = bip_add_edge(g5, 0, 1);  // Component 1: 0-1
+    let _e20 = bip_add_edge(g5, 2, 3);  // Component 2: 2-3-4-5 (square)
+    let _e21 = bip_add_edge(g5, 3, 4);
+    let _e22 = bip_add_edge(g5, 4, 5);
+    let _e23 = bip_add_edge(g5, 5, 2);
+    println(is_bipartite(g5));  // 1
+
+    // Test 6: Single vertex (trivially bipartite)
+    let g6 = bip_new(1);
+    println(is_bipartite(g6));  // 1
+
+    // Test 7: Star graph (bipartite)
+    let g7 = bip_new(5);
+    let _e24 = bip_add_edge(g7, 0, 1);
+    let _e25 = bip_add_edge(g7, 0, 2);
+    let _e26 = bip_add_edge(g7, 0, 3);
+    let _e27 = bip_add_edge(g7, 0, 4);
+    println(is_bipartite(g7));  // 1
+
+    // Clean up
+    vec_free(vec_get(g1, 0)); vec_free(vec_get(g1, 1)); vec_free(vec_get(g1, 2)); vec_free(g1);
+    vec_free(vec_get(g2, 0)); vec_free(vec_get(g2, 1)); vec_free(vec_get(g2, 2)); vec_free(g2);
+    vec_free(vec_get(g3, 0)); vec_free(vec_get(g3, 1)); vec_free(vec_get(g3, 2)); vec_free(g3);
+    vec_free(vec_get(g4, 0)); vec_free(vec_get(g4, 1)); vec_free(vec_get(g4, 2)); vec_free(g4);
+    vec_free(vec_get(g5, 0)); vec_free(vec_get(g5, 1)); vec_free(vec_get(g5, 2)); vec_free(g5);
+    vec_free(vec_get(g6, 0)); vec_free(vec_get(g6, 1)); vec_free(vec_get(g6, 2)); vec_free(g6);
+    vec_free(vec_get(g7, 0)); vec_free(vec_get(g7, 1)); vec_free(vec_get(g7, 2)); vec_free(g7);
+    0
+};

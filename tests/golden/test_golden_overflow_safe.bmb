@@ -1,0 +1,108 @@
+// Golden Test: Safe arithmetic - Cycle 1400
+// Checked add (detect overflow), multiply with splitting, large number operations
+
+// Detect if adding a + b would overflow i64 (max ~9.2e18)
+// We use limit = 4611686018427387903 (2^62 - 1) as a safe threshold
+fn add_safe(a: i64, b: i64) -> i64 =
+    if a > 0 and b > 0 and a > 9223372036854775807 - b { 0 - 1 }
+    else if a < 0 and b < 0 and a < 0 - 9223372036854775807 - b { 0 - 2 }
+    else { a + b };
+
+    // Safe multiply: detect if a*b might overflow (conservative check)
+    // Returns result if safe, else -1
+
+fn mul_safe(a: i64, b: i64) -> i64 =
+    if a == 0 or b == 0 { 0 }
+    else if a > 0 and b > 0 and a > 1000000000 / b * 1000000000 { 0 - 1 }
+    else if a < 0 and b < 0 and (0 - a) > 1000000000 / (0 - b) * 1000000000 { 0 - 1 }
+    else { a * b };
+
+    // Compute a^n mod m (fast modular exponentiation)
+
+fn pow_mod(base: i64, exp: i64, m: i64) -> i64 =
+    if exp == 0 { 1 % m }
+    else if exp % 2 == 0 {
+        let half = pow_mod(base, exp / 2, m);
+        (half * half) % m
+    }
+    else {
+        (base % m) * pow_mod(base, exp - 1, m) % m
+    };
+
+    // Sum of large numbers using carry tracking (digit-wise)
+    // Compute sum of squares: 1^2 + 2^2 + ... + n^2 = n*(n+1)*(2n+1)/6
+
+fn sum_squares(n: i64) -> i64 =
+    n * (n + 1) * (2 * n + 1) / 6;
+
+    // Binomial coefficient C(n, k) computed iteratively to stay in range
+
+fn binom(n: i64, k: i64) -> i64 = {
+    let k2 = if k > n - k { n - k } else { k };
+    let mut result = 1;
+    for i in 0..k2 {
+        result = result * (n - i) / (i + 1)
+    };
+    result
+    };
+
+// Compute GCD iteratively (needed for safe fraction operations)
+fn gcd(a: i64, b: i64) -> i64 = {
+    let mut x = if a < 0 { 0 - a } else { a };
+    let mut y = if b < 0 { 0 - b } else { b };
+    loop {
+        if y == 0 { break } else { () };
+        let temp = y;
+        y = x % y;
+        x = temp
+    };
+    x
+    };
+
+// Saturating add: clamp to max_val instead of overflowing
+fn sat_add(a: i64, b: i64, max_val: i64) -> i64 = {
+    let sum = a + b;
+    if sum > max_val { max_val }
+    else if sum < 0 - max_val { 0 - max_val }
+    else { sum }
+    };
+
+fn main() -> i64 = {
+// add_safe: normal additions
+    let _a1 = println(add_safe(1000000, 2000000));      // 3000000
+    let _a2 = println(add_safe(0 - 500, 300));          // -200
+    let _a3 = println(add_safe(100, 200));               // 300
+
+// mul_safe: normal multiplications
+    let _ms1 = println(mul_safe(1000, 2000));    // 2000000
+    let _ms2 = println(mul_safe(0, 999999));     // 0
+    let _ms3 = println(mul_safe(100, 100));      // 10000
+
+// pow_mod: modular exponentiation
+    let _pm1 = println(pow_mod(2, 10, 1000));    // 1024 % 1000 = 24
+    let _pm2 = println(pow_mod(3, 20, 1000000)); // 3486784401 % 1000000 = 784401?
+    let _pm3 = println(pow_mod(7, 100, 1000000007)); // large
+
+// sum_squares
+    let _ss1 = println(sum_squares(10));   // 10*11*21/6 = 385
+    let _ss2 = println(sum_squares(100));  // 100*101*201/6 = 338350
+    let _ss3 = println(sum_squares(50));   // 50*51*101/6 = 42925
+
+// binomial coefficients
+    let _b1 = println(binom(5, 2));    // 10
+    let _b2 = println(binom(10, 3));   // 120
+    let _b3 = println(binom(20, 10));  // 184756
+    let _b4 = println(binom(15, 5));   // 3003
+
+// gcd
+    let _g1 = println(gcd(48, 36));   // 12
+    let _g2 = println(gcd(100, 75));  // 25
+    let _g3 = println(gcd(17, 13));   // 1
+    let _g4 = println(gcd(0, 5));     // 5
+
+// sat_add
+    let _sa1 = println(sat_add(800, 300, 1000));   // 1000 (clamped)
+    let _sa2 = println(sat_add(400, 300, 1000));   // 700
+    let _sa3 = println(sat_add(0 - 800, 0 - 300, 1000));  // -1000 (clamped)
+    0
+    };

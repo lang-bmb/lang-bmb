@@ -1,0 +1,121 @@
+// Golden Test: Matrix Determinant via cofactor expansion
+// Matrices stored as flat vec: mat[row * cols + col]
+
+fn mat_get2(m: i64, n: i64, r: i64, c: i64) -> i64 =
+    vec_get(m, r * n + c);
+
+// Create submatrix by removing row r and col c
+fn submatrix(m: i64, n: i64, skip_r: i64, skip_c: i64) -> i64 = {
+    let sub = vec_new();
+    let mut r = 0;
+    loop {
+        if r >= n { break } else { () };
+        let _x = if r != skip_r {
+            let mut c = 0;
+            loop {
+                if c >= n { break } else { () };
+                let _y = if c != skip_c {
+                    let _p = vec_push(sub, mat_get2(m, n, r, c));
+                    0
+                } else { 0 };
+                c = c + 1
+            };
+            0
+        } else { 0 };
+        r = r + 1
+    };
+    sub
+};
+
+// Determinant via cofactor expansion along first row
+fn det(m: i64, n: i64) -> i64 =
+    if n == 1 { mat_get2(m, 1, 0, 0) }
+    else if n == 2 {
+        mat_get2(m, 2, 0, 0) * mat_get2(m, 2, 1, 1) -
+        mat_get2(m, 2, 0, 1) * mat_get2(m, 2, 1, 0)
+    } else {
+        let mut result = 0;
+        let mut c = 0;
+        loop {
+            if c >= n { break } else { () };
+            let sub = submatrix(m, n, 0, c);
+            let cofactor = det(sub, n - 1);
+            let sign = if c % 2 == 0 { 1 } else { 0 - 1 };
+            result = result + sign * mat_get2(m, n, 0, c) * cofactor;
+            vec_free(sub);
+            c = c + 1
+        };
+        result
+    };
+
+fn push_vals(v: i64, a: i64, b: i64, c: i64, d: i64) -> i64 = {
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    0
+};
+
+fn main() -> i64 = {
+    // Test 1: 2x2 det([1,2],[3,4]) = 1*4 - 2*3 = -2
+    let m1 = vec_new();
+    let _i1 = push_vals(m1, 1, 2, 3, 4);
+    let _p1 = println(det(m1, 2));  // -2
+
+    // Test 2: 2x2 identity det = 1
+    let m2 = vec_new();
+    let _i2 = push_vals(m2, 1, 0, 0, 1);
+    let _p2 = println(det(m2, 2));  // 1
+
+    // Test 3: 3x3 det([1,2,3],[4,5,6],[7,8,9]) = 0
+    let m3 = vec_new();
+    let _a1 = vec_push(m3, 1); let _a2 = vec_push(m3, 2); let _a3 = vec_push(m3, 3);
+    let _a4 = vec_push(m3, 4); let _a5 = vec_push(m3, 5); let _a6 = vec_push(m3, 6);
+    let _a7 = vec_push(m3, 7); let _a8 = vec_push(m3, 8); let _a9 = vec_push(m3, 9);
+    let _p3 = println(det(m3, 3));  // 0
+
+    // Test 4: 3x3 det([2,1,1],[1,3,2],[1,0,1]) = 2(3-0) - 1(1-2) + 1(0-3) = 6+1-3 = 4
+    let m4 = vec_new();
+    let _b1 = vec_push(m4, 2); let _b2 = vec_push(m4, 1); let _b3 = vec_push(m4, 1);
+    let _b4 = vec_push(m4, 1); let _b5 = vec_push(m4, 3); let _b6 = vec_push(m4, 2);
+    let _b7 = vec_push(m4, 1); let _b8 = vec_push(m4, 0); let _b9 = vec_push(m4, 1);
+    let _p4 = println(det(m4, 3));  // 4
+
+    // Test 5: 1x1 det([42]) = 42
+    let m5 = vec_new();
+    let _c1 = vec_push(m5, 42);
+    let _p5 = println(det(m5, 1));  // 42
+
+    // Test 6: 2x2 singular matrix det = 0
+    let m6 = vec_new();
+    let _d1 = push_vals(m6, 2, 4, 1, 2);
+    let _p6 = println(det(m6, 2));  // 0
+
+    // Test 7: 3x3 diagonal det = product of diagonal
+    let m7 = vec_new();
+    let _e1 = vec_push(m7, 3); let _e2 = vec_push(m7, 0); let _e3 = vec_push(m7, 0);
+    let _e4 = vec_push(m7, 0); let _e5 = vec_push(m7, 5); let _e6 = vec_push(m7, 0);
+    let _e7 = vec_push(m7, 0); let _e8 = vec_push(m7, 0); let _e9 = vec_push(m7, 7);
+    let _p7 = println(det(m7, 3));  // 105
+
+    // Test 8: 2x2 with negatives det([-1,3],[2,-5]) = (-1)(-5) - 3*2 = 5-6 = -1
+    let m8 = vec_new();
+    let _f1 = push_vals(m8, 0 - 1, 3, 2, 0 - 5);
+    let _p8 = println(det(m8, 2));  // -1
+
+    // Test 9: 3x3 upper triangular det = product of diagonal
+    let m9 = vec_new();
+    let _g1 = vec_push(m9, 2); let _g2 = vec_push(m9, 3); let _g3 = vec_push(m9, 1);
+    let _g4 = vec_push(m9, 0); let _g5 = vec_push(m9, 4); let _g6 = vec_push(m9, 5);
+    let _g7 = vec_push(m9, 0); let _g8 = vec_push(m9, 0); let _g9 = vec_push(m9, 6);
+    let _p9 = println(det(m9, 3));  // 48
+
+    // Test 10: 2x2 anti-diagonal det([0,1],[1,0]) = -1
+    let m10 = vec_new();
+    let _h1 = push_vals(m10, 0, 1, 1, 0);
+    let _p10 = println(det(m10, 2));  // -1
+
+    vec_free(m1); vec_free(m2); vec_free(m3); vec_free(m4); vec_free(m5);
+    vec_free(m6); vec_free(m7); vec_free(m8); vec_free(m9); vec_free(m10);
+    0
+};

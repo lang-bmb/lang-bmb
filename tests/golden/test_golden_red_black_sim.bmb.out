@@ -1,0 +1,31 @@
+=== Test 1: insert 10, 20, 30 ===
+inorder:
+  10
+  20
+  30
+root key: 20
+root color (0=B): 0
+count: 3
+=== Test 2: insert 5, 15, 25 ===
+inorder:
+  5
+  10
+  15
+  20
+  25
+  30
+count: 6
+=== Test 3: properties ===
+root is black: 1
+red property: 1
+black height valid: 1
+black height: 3
+=== Test 4: find ===
+find 15: 1
+find 99: 0
+=== Test 5: insert 1, 7, 12, 22 ===
+count: 10
+root key: 20
+red property: 1
+black height valid: 1
+black height: 3

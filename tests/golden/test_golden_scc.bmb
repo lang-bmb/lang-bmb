@@ -1,0 +1,119 @@
+// Golden Test: Strongly Connected Components (Kosaraju's two-pass DFS)
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { vec_push(v, 0) };
+    v
+};
+
+fn dfs1(adj: i64, off: i64, cnt: i64, vis: i64, stk: i64, u: i64) -> i64 = {
+    let _sv = vec_set(vis, u, 1);
+    let s = vec_get(off, u);
+    let nc = vec_get(cnt, u);
+    let mut i = 0;
+    loop {
+        if i >= nc { break } else { () };
+        let v = vec_get(adj, s + i);
+        let _d = if vec_get(vis, v) == 0 { dfs1(adj, off, cnt, vis, stk, v) } else { 0 };
+        set i = i + 1
+    };
+    let _ps = vec_push(stk, u); 0
+};
+
+fn dfs2(ra: i64, ro: i64, rc: i64, comp: i64, u: i64, c: i64) -> i64 = {
+    let _sc = vec_set(comp, u, c);
+    let s = vec_get(ro, u);
+    let nc = vec_get(rc, u);
+    let mut i = 0;
+    loop {
+        if i >= nc { break } else { () };
+        let v = vec_get(ra, s + i);
+        let _d = if vec_get(comp, v) == 0 - 1 { dfs2(ra, ro, rc, comp, v, c) } else { 0 };
+        set i = i + 1
+    };
+    0
+};
+
+fn kosaraju(n: i64, adj: i64, off: i64, cnt: i64,
+    ra: i64, ro: i64, rc: i64) -> i64 = {
+    let vis = make_zeros(n);
+    let stk = vec_new();
+    let mut u = 0;
+    loop {
+        if u >= n { break } else { () };
+        let _d = if vec_get(vis, u) == 0 { dfs1(adj, off, cnt, vis, stk, u) } else { 0 };
+        set u = u + 1
+    };
+    let comp = vec_new();
+    for _i in 0..n { vec_push(comp, 0 - 1) };
+    let mut nscc = 0;
+    let mut si = vec_len(stk) - 1;
+    loop {
+        if si < 0 { break } else { () };
+        let nd = vec_get(stk, si);
+        let _d = if vec_get(comp, nd) == 0 - 1 {
+            dfs2(ra, ro, rc, comp, nd, nscc);
+            set nscc = nscc + 1; 0
+        } else { 0 };
+        set si = si - 1
+    };
+    let _f = vec_free(vis); let _f = vec_free(stk); comp
+};
+
+fn count_sccs(comp: i64, n: i64) -> i64 = {
+    let mut mx = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let _u = if vec_get(comp, i) > mx { set mx = vec_get(comp, i); 0 } else { 0 };
+        set i = i + 1
+    };
+    mx + 1
+};
+fn main() -> i64 = {
+    // 5 nodes: SCC1={0,1,2} (0->1->2->0), SCC2={3,4} (3->4->3), bridge 2->3
+    let adj = vec_new();
+    let _p = vec_push(adj, 1); let _p = vec_push(adj, 2);
+    let _p = vec_push(adj, 0); let _p = vec_push(adj, 3);
+    let _p = vec_push(adj, 4); let _p = vec_push(adj, 3);
+    let off = vec_new();
+    let _p = vec_push(off, 0); let _p = vec_push(off, 1);
+    let _p = vec_push(off, 2); let _p = vec_push(off, 4);
+    let _p = vec_push(off, 5);
+    let cnt = vec_new();
+    let _p = vec_push(cnt, 1); let _p = vec_push(cnt, 1);
+    let _p = vec_push(cnt, 2); let _p = vec_push(cnt, 1);
+    let _p = vec_push(cnt, 1);
+    // Reverse graph
+    let ra = vec_new();
+    let _p = vec_push(ra, 2); let _p = vec_push(ra, 0);
+    let _p = vec_push(ra, 1); let _p = vec_push(ra, 2);
+    let _p = vec_push(ra, 4); let _p = vec_push(ra, 3);
+    let ro = vec_new();
+    let _p = vec_push(ro, 0); let _p = vec_push(ro, 1);
+    let _p = vec_push(ro, 2); let _p = vec_push(ro, 3);
+    let _p = vec_push(ro, 5);
+    let rc = vec_new();
+    let _p = vec_push(rc, 1); let _p = vec_push(rc, 1);
+    let _p = vec_push(rc, 1); let _p = vec_push(rc, 2); let _p = vec_push(rc, 1);
+    let comp = kosaraju(5, adj, off, cnt, ra, ro, rc);
+    let _h = print_str("SCCs: "); let _p = println(count_sccs(comp, 5));
+    let s012 = if vec_get(comp, 0) == vec_get(comp, 1) {
+        if vec_get(comp, 1) == vec_get(comp, 2) { 1 } else { 0 }
+    } else { 0 };
+    let _h = print_str("0,1,2 same SCC: "); let _p = println(s012);
+    let s34 = if vec_get(comp, 3) == vec_get(comp, 4) { 1 } else { 0 };
+    let _h = print_str("3,4 same SCC: "); let _p = println(s34);
+    let d03 = if vec_get(comp, 0) != vec_get(comp, 3) { 1 } else { 0 };
+    let _h = print_str("0,3 diff SCC: "); let _p = println(d03);
+    let _h = print_str("Components:\n");
+    let mut i = 0;
+    loop {
+        if i >= 5 { break } else { () };
+        let _pi = print(i); let _sp = print_str(": "); let _pc = println(vec_get(comp, i));
+        set i = i + 1
+    };
+    let _f = vec_free(adj); let _f = vec_free(off); let _f = vec_free(cnt);
+    let _f = vec_free(ra); let _f = vec_free(ro); let _f = vec_free(rc); let _f = vec_free(comp);
+    0
+};

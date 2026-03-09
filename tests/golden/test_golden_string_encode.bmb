@@ -1,0 +1,122 @@
+// Golden Test: String encoding algorithms
+// Tests: Caesar cipher, ROT13, polynomial hashing, Hamming distance
+
+// Caesar cipher: shift each byte by `shift`, wrapping a-z and A-Z
+fn caesar_char(c: i64, shift: i64) -> i64 =
+    if c >= 65 and c <= 90 {
+        // uppercase A-Z
+        65 + (c - 65 + shift) - ((c - 65 + shift) / 26) * 26
+    } else if c >= 97 and c <= 122 {
+    // lowercase a-z
+    97 + (c - 97 + shift) - ((c - 97 + shift) / 26) * 26
+    } else { c };
+
+    // Sum of caesar-encoded bytes (for verification)
+
+fn caesar_sum(s: String, pos: i64, shift: i64, acc: i64) -> i64 =
+    if pos >= s.len() { acc }
+    else {
+        let encoded = caesar_char(s.byte_at(pos), shift);
+        caesar_sum(s, pos + 1, shift, acc + encoded)
+    };
+
+    // ROT13: rotate letters by 13
+
+fn rot13_char(c: i64) -> i64 =
+    if c >= 65 and c <= 90 {
+        65 + (c - 65 + 13) - ((c - 65 + 13) / 26) * 26
+    } else if c >= 97 and c <= 122 {
+    97 + (c - 97 + 13) - ((c - 97 + 13) / 26) * 26
+    } else { c };
+
+fn rot13_sum(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() { acc }
+    else { rot13_sum(s, pos + 1, acc + rot13_char(s.byte_at(pos))) };
+
+    // ROT13 is self-inverse: rot13(rot13(s)) byte sum == original sum
+
+fn original_sum(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() { acc }
+    else { original_sum(s, pos + 1, acc + s.byte_at(pos)) };
+
+    // Polynomial hash: sum(s[i] * base^i) mod modulus
+
+fn poly_hash_helper(s: String, pos: i64, base: i64, power: i64, modulus: i64, acc: i64) -> i64 =
+    if pos >= s.len() { acc }
+    else {
+        let term = s.byte_at(pos) * power;
+        let new_acc = acc + term - ((acc + term) / modulus) * modulus;
+        let new_power = power * base - (power * base / modulus) * modulus;
+        poly_hash_helper(s, pos + 1, base, new_power, modulus, new_acc)
+    };
+
+fn poly_hash(s: String, base: i64, modulus: i64) -> i64 =
+    poly_hash_helper(s, 0, base, 1, modulus, 0);
+
+    // Hamming distance: count positions where bytes differ
+
+fn hamming_helper(s1: String, s2: String, pos: i64, count: i64) -> i64 =
+    if pos >= s1.len() { count }
+    else {
+        let diff = if s1.byte_at(pos) == s2.byte_at(pos) { 0 } else { 1 };
+        hamming_helper(s1, s2, pos + 1, count + diff)
+    };
+
+fn hamming(s1: String, s2: String) -> i64 =
+    if s1.len() != s2.len() { 0 - 1 }
+    else { hamming_helper(s1, s2, 0, 0) };
+
+    // Count letters in string
+
+fn count_letters(s: String, pos: i64, count: i64) -> i64 =
+    if pos >= s.len() { count }
+    else {
+        let c = s.byte_at(pos);
+        let is_letter = if (c >= 65 and c <= 90) or (c >= 97 and c <= 122) { 1 } else { 0 };
+        count_letters(s, pos + 1, count + is_letter)
+    };
+
+fn main() -> i64 = {
+// Caesar cipher shift=3: "abc" -> "def" (97+3=100, 98+3=101, 99+3=102)
+    let s1 = "abc";
+    let _r1 = println(caesar_sum(s1, 0, 3, 0));  // 100+101+102 = 303
+
+// Caesar cipher shift=3: "xyz" -> "abc" (wraps)
+    let s2 = "xyz";
+    let _r2 = println(caesar_sum(s2, 0, 3, 0));  // 97+98+99 = 294
+
+// Caesar shift=13 same as ROT13 for letters
+    let s3 = "Hello";
+    let cs = caesar_sum(s3, 0, 13, 0);
+    let rs = rot13_sum(s3, 0, 0);
+    let _r3 = println(cs);  // caesar and rot13 give same sum
+    let _r4 = println(rs);  // same value
+
+// ROT13 is self-inverse
+// "Uryyb" is ROT13 of "Hello"
+    let s4 = "Uryyb";
+    let rot_sum = rot13_sum(s4, 0, 0);
+    let orig_sum = original_sum("Hello", 0, 0);
+    let _r5 = println(rot_sum);   // should equal original_sum("Hello")
+    let _r6 = println(orig_sum);  // H=72 e=101 l=108 l=108 o=111 = 500
+
+// Polynomial hash
+    let _r7 = println(poly_hash("abc", 31, 1000));
+
+// a=97*1=97, b=98*31=3038, c=99*961=95139 -> 95139+3038+97=98274 mod 1000 = 274
+    let _r8 = println(poly_hash("abcd", 31, 10000));
+
+// a=97, b=98*31=3038, c=99*961=95139, d=100*29791=2979100 -> sum mod 10000
+// 97+3038+95139+2979100 = 3077374 mod 10000 = 7374
+
+// Hamming distance
+    let _r9 = println(hamming("karolin", "kathrin"));  // 3
+    let _r10 = println(hamming("abcdef", "abcdef"));   // 0
+    let _r11 = println(hamming("abcdef", "ghijkl"));   // 6
+
+// Count letters
+    let _r12 = println(count_letters("Hello, World!", 0, 0));  // 10
+    let _r13 = println(count_letters("abc123", 0, 0));          // 3
+
+    0
+    };

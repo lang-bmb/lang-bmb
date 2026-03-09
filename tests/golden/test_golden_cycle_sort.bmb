@@ -1,0 +1,162 @@
+// Golden Test: Cycle sort algorithm
+// Minimizes the number of writes to sort an array
+// Each element is moved at most once to its correct position
+
+// Cycle sort: returns total number of writes performed
+fn cycle_sort(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    let mut writes = 0;
+    let mut cycle_start = 0;
+    loop {
+        if cycle_start >= n - 1 { break } else { () };
+        let item = vec_get(arr, cycle_start);
+
+        // Find where to put the item
+        let mut pos = cycle_start;
+        let mut k = cycle_start + 1;
+        loop {
+            if k >= n { break } else { () };
+            if vec_get(arr, k) < item {
+                pos = pos + 1
+            } else { () };
+            k = k + 1
+        };
+
+        // If item is already in correct position, skip
+        if pos == cycle_start {
+            cycle_start = cycle_start + 1
+        } else {
+            // Skip duplicates
+            let mut skip_pos = pos;
+            loop {
+                if vec_get(arr, skip_pos) != item { break } else { () };
+                skip_pos = skip_pos + 1
+            };
+            pos = skip_pos;
+
+            // Put item to its correct position
+            let mut cur_item = item;
+            if pos != cycle_start {
+                let tmp = vec_get(arr, pos);
+                vec_set(arr, pos, cur_item);
+                cur_item = tmp;
+                writes = writes + 1
+            } else { () };
+
+            // Rotate the rest of the cycle
+            loop {
+                if pos == cycle_start { break } else { () };
+                pos = cycle_start;
+                let mut m = cycle_start + 1;
+                loop {
+                    if m >= n { break } else { () };
+                    if vec_get(arr, m) < cur_item {
+                        pos = pos + 1
+                    } else { () };
+                    m = m + 1
+                };
+                // Skip duplicates
+                loop {
+                    if vec_get(arr, pos) != cur_item { break } else { () };
+                    pos = pos + 1
+                };
+                if cur_item != vec_get(arr, pos) {
+                    let tmp2 = vec_get(arr, pos);
+                    vec_set(arr, pos, cur_item);
+                    cur_item = tmp2;
+                    writes = writes + 1
+                } else { () };
+                0
+            };
+            cycle_start = cycle_start + 1
+        }
+    };
+    writes
+};
+
+// Check if array is sorted
+fn is_sorted(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    if n <= 1 { return 1 } else { () };
+    let mut i = 0;
+    let mut result = 1;
+    loop {
+        if i + 1 >= n { break } else { () };
+        if vec_get(arr, i) > vec_get(arr, i + 1) {
+            result = 0;
+            break
+        } else { () };
+        i = i + 1
+    };
+    result
+};
+
+// Print first and last elements of array as a checksum
+fn print_bounds(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    let _p1 = println(vec_get(arr, 0));
+    let _p2 = println(vec_get(arr, n - 1));
+    0
+};
+
+fn main() -> i64 = {
+    // Test 1: Basic unsorted array [5, 2, 8, 1, 4]
+    let a1 = vec_new();
+    vec_push(a1, 5); vec_push(a1, 2); vec_push(a1, 8);
+    vec_push(a1, 1); vec_push(a1, 4);
+    let w1 = cycle_sort(a1);
+    let _p1 = println(w1);              // writes count
+    let _p2 = println(is_sorted(a1));   // 1
+    let _pb1 = print_bounds(a1);        // 1 then 8
+
+    // Test 2: Already sorted [1, 2, 3, 4, 5]
+    let a2 = vec_new();
+    vec_push(a2, 1); vec_push(a2, 2); vec_push(a2, 3);
+    vec_push(a2, 4); vec_push(a2, 5);
+    let w2 = cycle_sort(a2);
+    let _p3 = println(w2);              // 0 writes
+    let _p4 = println(is_sorted(a2));   // 1
+
+    // Test 3: Reverse sorted [5, 4, 3, 2, 1]
+    let a3 = vec_new();
+    vec_push(a3, 5); vec_push(a3, 4); vec_push(a3, 3);
+    vec_push(a3, 2); vec_push(a3, 1);
+    let w3 = cycle_sort(a3);
+    let _p5 = println(w3);              // writes count
+    let _p6 = println(is_sorted(a3));   // 1
+    let _pb3 = print_bounds(a3);        // 1 then 5
+
+    // Test 4: Single element [99]
+    let a4 = vec_new();
+    vec_push(a4, 99);
+    let w4 = cycle_sort(a4);
+    let _p7 = println(w4);              // 0
+    let _p8 = println(vec_get(a4, 0));  // 99
+
+    // Test 5: Two elements swapped [7, 3]
+    let a5 = vec_new();
+    vec_push(a5, 7); vec_push(a5, 3);
+    let w5 = cycle_sort(a5);
+    let _p9 = println(w5);              // writes
+    let _p10 = println(is_sorted(a5));  // 1
+
+    // Test 6: Array with duplicates [3, 1, 3, 2, 1]
+    let a6 = vec_new();
+    vec_push(a6, 3); vec_push(a6, 1); vec_push(a6, 3);
+    vec_push(a6, 2); vec_push(a6, 1);
+    let w6 = cycle_sort(a6);
+    let _p11 = println(is_sorted(a6));  // 1
+    let _pb6 = print_bounds(a6);        // 1 then 3
+
+    // Test 7: All same elements [5, 5, 5, 5]
+    let a7 = vec_new();
+    vec_push(a7, 5); vec_push(a7, 5);
+    vec_push(a7, 5); vec_push(a7, 5);
+    let w7 = cycle_sort(a7);
+    let _p12 = println(w7);             // 0 writes
+    let _p13 = println(is_sorted(a7));  // 1
+
+    vec_free(a1); vec_free(a2); vec_free(a3); vec_free(a4);
+    vec_free(a5); vec_free(a6); vec_free(a7);
+    0
+};

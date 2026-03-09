@@ -1,0 +1,378 @@
+// Golden Test: Memory Management Patterns
+// Simulates pool allocator, reference counting, arena allocation,
+// memory fragmentation analysis, and slab allocator using vecs
+
+// =========================================================
+// Pool Allocator Simulation
+// =========================================================
+// Pool: vec of fixed-size slots, each slot is [in_use, data]
+
+fn pool_new(capacity: i64) -> i64 = {
+    let pool = vec_new();
+    for _i in 0..capacity {
+        let _p = vec_push(pool, 0);  // in_use = 0
+        let _p = vec_push(pool, 0);  // data = 0
+        0
+    };
+    pool
+};
+
+fn pool_alloc(pool: i64, capacity: i64, value: i64) -> i64 = {
+    let mut found = 0 - 1;
+    for i in 0..capacity {
+        if found < 0 {
+            if vec_get(pool, i * 2) == 0 {
+                let _s1 = vec_set(pool, i * 2, 1);
+                let _s2 = vec_set(pool, i * 2 + 1, value);
+                found = i
+            } else { () }
+        } else { () }
+    };
+    found
+};
+
+fn pool_free(pool: i64, slot: i64) -> i64 = {
+    let _s = vec_set(pool, slot * 2, 0);
+    0
+};
+
+fn pool_get(pool: i64, slot: i64) -> i64 =
+    vec_get(pool, slot * 2 + 1);
+
+fn pool_count_used(pool: i64, capacity: i64) -> i64 = {
+    let mut count = 0;
+    for i in 0..capacity {
+        if vec_get(pool, i * 2) == 1 { count = count + 1 } else { () }
+    };
+    count
+};
+
+// =========================================================
+// Reference Counting Simulation
+// =========================================================
+// Objects: [refcount, data] pairs in a vec
+
+fn rc_new(store: i64, value: i64) -> i64 = {
+    let idx = vec_len(store) / 2;
+    let _p1 = vec_push(store, 1);
+    let _p2 = vec_push(store, value);
+    idx
+};
+
+fn rc_clone(store: i64, idx: i64) -> i64 = {
+    let rc = vec_get(store, idx * 2);
+    let _s = vec_set(store, idx * 2, rc + 1);
+    idx
+};
+
+fn rc_drop(store: i64, idx: i64) -> i64 = {
+    let rc = vec_get(store, idx * 2);
+    let _s = vec_set(store, idx * 2, rc - 1);
+    rc - 1
+};
+
+fn rc_get_count(store: i64, idx: i64) -> i64 =
+    vec_get(store, idx * 2);
+
+fn rc_is_alive(store: i64, idx: i64) -> i64 =
+    if vec_get(store, idx * 2) > 0 { 1 } else { 0 };
+
+// =========================================================
+// Arena / Bump Allocator Simulation
+// =========================================================
+// Arena vec: [capacity, offset, data0, data1, ...]
+
+fn arena_new(capacity: i64) -> i64 = {
+    let arena = vec_new();
+    let _p1 = vec_push(arena, capacity);
+    let _p2 = vec_push(arena, 0);
+    for _i in 0..capacity {
+        let _p = vec_push(arena, 0);
+        0
+    };
+    arena
+};
+
+fn arena_alloc(arena: i64, size: i64) -> i64 = {
+    let capacity = vec_get(arena, 0);
+    let offset = vec_get(arena, 1);
+    if offset + size > capacity { 0 - 1 }
+    else {
+        let _s = vec_set(arena, 1, offset + size);
+        offset
+    }
+};
+
+fn arena_write(arena: i64, pos: i64, value: i64) -> i64 = {
+    let _s = vec_set(arena, pos + 2, value);
+    0
+};
+
+fn arena_read(arena: i64, pos: i64) -> i64 =
+    vec_get(arena, pos + 2);
+
+fn arena_used(arena: i64) -> i64 = vec_get(arena, 1);
+
+fn arena_remaining(arena: i64) -> i64 =
+    vec_get(arena, 0) - vec_get(arena, 1);
+
+fn arena_reset(arena: i64) -> i64 = {
+    let _s = vec_set(arena, 1, 0);
+    0
+};
+
+// =========================================================
+// Fragmentation Analysis
+// =========================================================
+// Memory map: vec of 0=free, 1=used
+
+fn frag_count_free_blocks(mem_map: i64) -> i64 = {
+    let n = vec_len(mem_map);
+    let mut blocks = 0;
+    let mut in_free = false;
+    for i in 0..n {
+        if vec_get(mem_map, i) == 0 {
+            if in_free == false {
+                blocks = blocks + 1;
+                in_free = true
+            } else { () }
+        } else {
+            in_free = false
+        }
+    };
+    blocks
+};
+
+fn frag_total_free(mem_map: i64) -> i64 = {
+    let n = vec_len(mem_map);
+    let mut count = 0;
+    for i in 0..n {
+        if vec_get(mem_map, i) == 0 { count = count + 1 } else { () }
+    };
+    count
+};
+
+fn frag_largest_free(mem_map: i64) -> i64 = {
+    let n = vec_len(mem_map);
+    let mut best = 0;
+    let mut current = 0;
+    for i in 0..n {
+        if vec_get(mem_map, i) == 0 {
+            current = current + 1;
+            if current > best { best = current } else { () }
+        } else {
+            current = 0
+        }
+    };
+    best
+};
+
+// =========================================================
+// Slab Allocator Simulation
+// =========================================================
+// Uses a single vec: [top, slot0, slot1, ..., slotN-1, free0, free1, ...]
+// top = index into free list portion (how many free slots remain)
+// Slots store object data, free list is a stack of available indices
+// Layout: slab_vec[0] = free_top
+//         slab_vec[1..size+1] = data slots
+//         slab_vec[size+1..2*size+1] = free stack
+
+fn slab_new(size: i64) -> i64 = {
+    let slab = vec_new();
+    let _p = vec_push(slab, size);  // [0] = free_top = size (all free)
+    // Data slots initialized to 0
+    for _i in 0..size {
+        let _p = vec_push(slab, 0);
+        0
+    };
+    // Free stack: [0, 1, 2, ..., size-1]
+    for i in 0..size {
+        let _p = vec_push(slab, i);
+        0
+    };
+    slab
+};
+
+fn slab_alloc(slab: i64, size: i64, value: i64) -> i64 = {
+    let top = vec_get(slab, 0);
+    if top == 0 { 0 - 1 }  // no free slots
+    else {
+        // Pop from free stack
+        let new_top = top - 1;
+        let _s = vec_set(slab, 0, new_top);
+        let idx = vec_get(slab, size + 1 + new_top);  // free stack entry
+        // Write value to data slot
+        let _s = vec_set(slab, 1 + idx, value);
+        idx
+    }
+};
+
+fn slab_dealloc(slab: i64, size: i64, idx: i64) -> i64 = {
+    let top = vec_get(slab, 0);
+    // Push idx back onto free stack
+    let _s = vec_set(slab, size + 1 + top, idx);
+    let _s = vec_set(slab, 0, top + 1);
+    0
+};
+
+fn slab_get(slab: i64, idx: i64) -> i64 =
+    vec_get(slab, 1 + idx);
+
+fn slab_free_count(slab: i64) -> i64 =
+    vec_get(slab, 0);
+
+fn main() -> i64 = {
+    // ============================
+    // Pool Allocator Tests (1-5)
+    // ============================
+
+    let pool = pool_new(5);
+    let s0 = pool_alloc(pool, 5, 100);  // slot 0
+    let s1 = pool_alloc(pool, 5, 200);  // slot 1
+    let _s2 = pool_alloc(pool, 5, 300); // slot 2
+
+    // Test 1: 3 slots used
+    let _p1 = println(pool_count_used(pool, 5)); // 3
+
+    // Test 2: Read slot 0
+    let _p2 = println(pool_get(pool, s0)); // 100
+
+    // Test 3: Free slot 1, now 2 used
+    let _f = pool_free(pool, s1);
+    let _p3 = println(pool_count_used(pool, 5)); // 2
+
+    // Test 4-5: Re-allocate reuses slot 1
+    let s3 = pool_alloc(pool, 5, 400);
+    let _p4 = println(s3);                 // 1
+    let _p5 = println(pool_get(pool, s3)); // 400
+
+    let _fpool = vec_free(pool);
+
+    // ============================
+    // Reference Counting Tests (6-10)
+    // ============================
+
+    let store = vec_new();
+
+    // Test 6: New object has refcount 1
+    let obj0 = rc_new(store, 42);
+    let _p6 = println(rc_get_count(store, obj0)); // 1
+
+    // Test 7: Two clones -> refcount 3
+    let _c1 = rc_clone(store, obj0);
+    let _c2 = rc_clone(store, obj0);
+    let _p7 = println(rc_get_count(store, obj0)); // 3
+
+    // Test 8: Drop once -> refcount 2
+    let _d1 = rc_drop(store, obj0);
+    let _p8 = println(rc_get_count(store, obj0)); // 2
+
+    // Test 9: Still alive
+    let _p9 = println(rc_is_alive(store, obj0)); // 1
+
+    // Test 10: Drop to zero -> dead
+    let _d2 = rc_drop(store, obj0);
+    let _d3 = rc_drop(store, obj0);
+    let _p10 = println(rc_is_alive(store, obj0)); // 0
+
+    let _fstore = vec_free(store);
+
+    // ============================
+    // Arena Allocator Tests (11-17)
+    // ============================
+
+    let arena = arena_new(20);
+
+    // Test 11-12: Alloc and read back
+    let pos0 = arena_alloc(arena, 5);
+    let _w = arena_write(arena, pos0, 111);
+    let _w = arena_write(arena, pos0 + 1, 222);
+    let _p11 = println(arena_read(arena, pos0));     // 111
+    let _p12 = println(arena_read(arena, pos0 + 1)); // 222
+
+    // Test 13-14: Check used/remaining after second alloc
+    let _pos1 = arena_alloc(arena, 10);
+    let _p13 = println(arena_used(arena));      // 15
+    let _p14 = println(arena_remaining(arena)); // 5
+
+    // Test 15: Alloc beyond capacity fails
+    let pos2 = arena_alloc(arena, 10);
+    let _p15 = println(pos2); // -1
+
+    // Test 16-17: Reset restores full capacity
+    let _r = arena_reset(arena);
+    let _p16 = println(arena_used(arena));      // 0
+    let _p17 = println(arena_remaining(arena)); // 20
+
+    let _farena = vec_free(arena);
+
+    // ============================
+    // Fragmentation Analysis Tests (18-20)
+    // ============================
+
+    // Map: [1,1,0,0,1,0,0,0,1,1]
+    //       U U F F U F F F U U
+    // Free blocks: {2,3} and {5,6,7} = 2 blocks
+    // Total free: 5
+    // Largest free block: 3
+    let mem_map = vec_new();
+    let _p = vec_push(mem_map, 1);
+    let _p = vec_push(mem_map, 1);
+    let _p = vec_push(mem_map, 0);
+    let _p = vec_push(mem_map, 0);
+    let _p = vec_push(mem_map, 1);
+    let _p = vec_push(mem_map, 0);
+    let _p = vec_push(mem_map, 0);
+    let _p = vec_push(mem_map, 0);
+    let _p = vec_push(mem_map, 1);
+    let _p = vec_push(mem_map, 1);
+
+    let _p18 = println(frag_count_free_blocks(mem_map)); // 2
+    let _p19 = println(frag_total_free(mem_map));         // 5
+    let _p20 = println(frag_largest_free(mem_map));       // 3
+
+    let _fmem = vec_free(mem_map);
+
+    // ============================
+    // Slab Allocator Tests (21-25)
+    // ============================
+
+    // Create slab with 4 slots
+    let slab = slab_new(4);
+    // slab layout: [4, 0,0,0,0, 0,1,2,3]
+    //              top  data     free_stack
+
+    // Test 21: Initially 4 free slots
+    let _p21 = println(slab_free_count(slab)); // 4
+
+    // Allocate 3 objects
+    // alloc: top=4->3, reads free[3]=3, writes data[3]=10 => idx=3
+    let idx_a = slab_alloc(slab, 4, 10);
+    // alloc: top=3->2, reads free[2]=2, writes data[2]=20 => idx=2
+    let idx_b = slab_alloc(slab, 4, 20);
+    // alloc: top=2->1, reads free[1]=1, writes data[1]=30 => idx=1
+    let idx_c = slab_alloc(slab, 4, 30);
+
+    // Test 22: 1 free slot remaining
+    let _p22 = println(slab_free_count(slab)); // 1
+
+    // Test 23-24: Read back values
+    let _p23 = println(slab_get(slab, idx_a)); // 10
+    let _p24 = println(slab_get(slab, idx_b)); // 20
+
+    // Deallocate idx_b (=2), then reallocate
+    let _sd = slab_dealloc(slab, 4, idx_b);
+    // dealloc: top=1, free[1]=2, top->2
+    // Now free_count = 2
+
+    // Allocate new value, should get idx=2 back
+    // alloc: top=2->1, reads free[1]=2, writes data[2]=40
+    let idx_d = slab_alloc(slab, 4, 40);
+
+    // Test 25: Reused slot has new value
+    let _p25 = println(slab_get(slab, idx_d)); // 40
+
+    let _fslab = vec_free(slab);
+
+    0
+};

@@ -1,0 +1,120 @@
+// Golden Test: XOR cipher and checksum algorithms
+// XOR encrypt/decrypt, digit sum checksum, Fletcher-like checksum
+
+// XOR cipher: encrypt a single value with a key
+fn xor_encrypt(val: i64, key: i64) -> i64 = val bxor key;
+
+// XOR cipher: decrypt (same as encrypt for XOR)
+fn xor_decrypt(cipher: i64, key: i64) -> i64 = cipher bxor key;
+
+// XOR all elements in a vec
+fn xor_all(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut result = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        result = result bxor vec_get(v, i);
+        i = i + 1
+    };
+    result
+    };
+
+// Sum of digits of a positive number
+fn digit_sum(n: i64) -> i64 = {
+    let mut total = 0;
+    let mut x = n;
+    loop {
+        if x == 0 { break } else { () };
+        total = total + x % 10;
+        x = x / 10
+    };
+    total
+    };
+
+// Fletcher-like checksum (integer version)
+// sum1 = running sum of values, sum2 = running sum of sum1
+// checksum = sum2 * 256 + sum1
+fn fletcher_checksum(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut sum1 = 0;
+    let mut sum2 = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        sum1 = sum1 + vec_get(v, i);
+        sum2 = sum2 + sum1;
+        i = i + 1
+    };
+    sum2 * 256 + sum1
+    };
+
+// XOR cipher for a vec: encrypt each element with key
+fn xor_encrypt_vec(v: i64, key: i64) -> i64 = {
+    let n = vec_len(v);
+    let result = vec_new();
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let _push = vec_push(result, vec_get(v, i) bxor key);
+        i = i + 1
+    };
+    result
+    };
+
+fn main() -> i64 = {
+    // XOR encrypt: 42 ^ 123 = 81
+    let _p1 = println(xor_encrypt(42, 123));        // 81
+
+    // XOR decrypt: 81 ^ 123 = 42 (round-trip)
+    let _p2 = println(xor_decrypt(81, 123));        // 42
+
+    // XOR all: [10, 20, 30, 40] -> 10^20^30^40 = 40
+    let v1 = vec_new();
+    let _a1 = vec_push(v1, 10);
+    let _a2 = vec_push(v1, 20);
+    let _a3 = vec_push(v1, 30);
+    let _a4 = vec_push(v1, 40);
+    let _p3 = println(xor_all(v1));                 // 40
+
+    // Digit sum: 12345 -> 1+2+3+4+5 = 15
+    let _p4 = println(digit_sum(12345));            // 15
+
+    // Digit sum: 9876 -> 9+8+7+6 = 30
+    let _p5 = println(digit_sum(9876));             // 30
+
+    // Fletcher checksum: [1, 2, 3, 4] -> sum1=10, sum2=20, check=20*256+10=5130
+    let v2 = vec_new();
+    let _b1 = vec_push(v2, 1);
+    let _b2 = vec_push(v2, 2);
+    let _b3 = vec_push(v2, 3);
+    let _b4 = vec_push(v2, 4);
+    let _p6 = println(fletcher_checksum(v2));       // 5130
+
+    // Fletcher checksum: [5, 10, 15] -> sum1=30, sum2=50, check=50*256+30=12830
+    let v3 = vec_new();
+    let _c1 = vec_push(v3, 5);
+    let _c2 = vec_push(v3, 10);
+    let _c3 = vec_push(v3, 15);
+    let _p7 = println(fletcher_checksum(v3));       // 12830
+
+    // Vec XOR encrypt + decrypt round-trip test
+    let v4 = vec_new();
+    let _d1 = vec_push(v4, 100);
+    let _d2 = vec_push(v4, 200);
+    let _d3 = vec_push(v4, 50);
+    let enc = xor_encrypt_vec(v4, 77);
+    let dec = xor_encrypt_vec(enc, 77);
+    // Should recover original: 100, 200, 50
+    let _p8 = println(vec_get(dec, 0));             // 100
+    let _p9 = println(vec_get(dec, 1));             // 200
+    let _p10 = println(vec_get(dec, 2));            // 50
+
+    let _f1 = vec_free(v1);
+    let _f2 = vec_free(v2);
+    let _f3 = vec_free(v3);
+    let _f4 = vec_free(v4);
+    let _f5 = vec_free(enc);
+    let _f6 = vec_free(dec);
+    0
+    };

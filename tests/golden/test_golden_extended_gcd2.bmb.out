@@ -1,0 +1,33 @@
+=== Test 1: ext_gcd ===
+gcd(56,15): 1
+verify: 1
+gcd(120,45): 15
+verify: 15
+=== Test 2: bezout verify ===
+1
+1
+1
+1
+1
+=== Test 3: mod_inverse ===
+inv(3,7): 5
+inv(5,11): 9
+inv(7,13): 2
+inv(6,9): -1
+=== Test 4: CRT ===
+x: 8
+mod: 15
+x: 5
+mod: 12
+x: 8
+mod: 35
+=== Test 5: diophantine ===
+g: 3
+check: 12
+no_sol g: 0
+g: 7
+check: 35
+=== Test 6: edge cases ===
+gcd(-35,15): 5
+verify: 5
+gcd(0,17): 17

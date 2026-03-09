@@ -1,0 +1,130 @@
+// Golden Test: Union-Find (Disjoint Set Union) with path compression + union by rank
+// Supports: find, union, connected, component count, component size
+
+fn uf_new(n: i64) -> i64 = {
+    let uf = vec_new();
+    let parent = vec_new();
+    let rank = vec_new();
+    let size = vec_new();
+    for i in 0..n {
+        vec_push(parent, i);
+        vec_push(rank, 0);
+        vec_push(size, 1);
+    };
+    vec_push(uf, parent);  // uf[0]
+    vec_push(uf, rank);    // uf[1]
+    vec_push(uf, size);    // uf[2]
+    vec_push(uf, n);       // uf[3] = component count
+    uf
+};
+
+// Find with path compression (iterative)
+fn uf_find(uf: i64, x: i64) -> i64 = {
+    let parent = vec_get(uf, 0);
+    let mut cur = x;
+    // Find root
+    loop {
+        if vec_get(parent, cur) == cur { break } else { () };
+        set cur = vec_get(parent, cur);
+    };
+    let root = cur;
+    // Path compression
+    set cur = x;
+    loop {
+        if cur == root { break } else { () };
+        let next = vec_get(parent, cur);
+        vec_set(parent, cur, root);
+        set cur = next;
+    };
+    root
+};
+
+// Union by rank
+fn uf_union(uf: i64, a: i64, b: i64) -> i64 = {
+    let ra = uf_find(uf, a);
+    let rb = uf_find(uf, b);
+    if ra == rb { 0 }
+    else {
+        let rank_arr = vec_get(uf, 1);
+        let size_arr = vec_get(uf, 2);
+        let parent = vec_get(uf, 0);
+        let rank_a = vec_get(rank_arr, ra);
+        let rank_b = vec_get(rank_arr, rb);
+        let _x = if rank_a < rank_b {
+            vec_set(parent, ra, rb);
+            vec_set(size_arr, rb, vec_get(size_arr, ra) + vec_get(size_arr, rb));
+            0
+        } else if rank_a > rank_b {
+            vec_set(parent, rb, ra);
+            vec_set(size_arr, ra, vec_get(size_arr, ra) + vec_get(size_arr, rb));
+            0
+        } else {
+            vec_set(parent, rb, ra);
+            vec_set(size_arr, ra, vec_get(size_arr, ra) + vec_get(size_arr, rb));
+            vec_set(rank_arr, ra, rank_a + 1);
+            0
+        };
+        vec_set(uf, 3, vec_get(uf, 3) - 1);
+        1
+    }
+};
+
+fn uf_connected(uf: i64, a: i64, b: i64) -> i64 =
+    if uf_find(uf, a) == uf_find(uf, b) { 1 } else { 0 };
+
+fn uf_components(uf: i64) -> i64 = vec_get(uf, 3);
+
+fn uf_size(uf: i64, x: i64) -> i64 = {
+    let root = uf_find(uf, x);
+    let size_arr = vec_get(uf, 2);
+    vec_get(size_arr, root)
+};
+
+fn main() -> i64 = {
+    // 6 elements: 0, 1, 2, 3, 4, 5
+    let uf = uf_new(6);
+
+    // Test 1: Initial state
+    let _p1 = println(uf_components(uf));      // 6
+    let _p2 = println(uf_connected(uf, 0, 1)); // 0
+
+    // Test 2: Union operations
+    let _u1 = uf_union(uf, 0, 1);  // {0,1}, {2}, {3}, {4}, {5}
+    let _u2 = uf_union(uf, 2, 3);  // {0,1}, {2,3}, {4}, {5}
+    let _p3 = println(uf_components(uf));      // 4
+    let _p4 = println(uf_connected(uf, 0, 1)); // 1
+    let _p5 = println(uf_connected(uf, 2, 3)); // 1
+    let _p6 = println(uf_connected(uf, 0, 2)); // 0
+
+    // Test 3: Merge two components
+    let _u3 = uf_union(uf, 1, 3);  // {0,1,2,3}, {4}, {5}
+    let _p7 = println(uf_components(uf));      // 3
+    let _p8 = println(uf_connected(uf, 0, 3)); // 1
+    let _p9 = println(uf_size(uf, 0));         // 4
+
+    // Test 4: Redundant union
+    let result = uf_union(uf, 0, 2);  // Already same component
+    let _p10 = println(result);                 // 0 (no change)
+    let _p11 = println(uf_components(uf));      // 3
+
+    // Test 5: Add remaining
+    let _u4 = uf_union(uf, 4, 5);  // {0,1,2,3}, {4,5}
+    let _u5 = uf_union(uf, 0, 4);  // {0,1,2,3,4,5}
+    let _p12 = println(uf_components(uf));      // 1
+    let _p13 = println(uf_size(uf, 5));         // 6
+
+    // Test 6: All connected
+    let _p14 = println(uf_connected(uf, 0, 5)); // 1
+    let _p15 = println(uf_connected(uf, 2, 4)); // 1
+
+    // Test 7: Find with path compression (all point to root)
+    let r0 = uf_find(uf, 0);
+    let r5 = uf_find(uf, 5);
+    let _p16 = println(if r0 == r5 { 1 } else { 0 }); // 1
+
+    vec_free(vec_get(uf, 0));
+    vec_free(vec_get(uf, 1));
+    vec_free(vec_get(uf, 2));
+    vec_free(uf);
+    0
+};

@@ -1,0 +1,150 @@
+// Golden Test: Number conversion algorithms
+// Integer to string, string to integer, base conversion
+
+// Integer to decimal string: returns length of representation
+fn int_to_str_len(n: i64) -> i64 = {
+    if n == 0 { return 1 } else { () };
+    let mut x = if n < 0 { 0 - n } else { n };
+    let mut len = if n < 0 { 1 } else { 0 };
+    loop {
+        if x == 0 { break } else { () };
+        len = len + 1;
+        x = x / 10
+    };
+    len
+    };
+
+// Sum of decimal digits of n
+fn digit_sum(n: i64) -> i64 = {
+    let mut x = if n < 0 { 0 - n } else { n };
+    if x == 0 { return 0 } else { () };
+    let mut s = 0;
+    loop {
+        if x == 0 { break } else { () };
+        s = s + x - (x / 10) * 10;
+        x = x / 10
+    };
+    s
+    };
+
+// Product of decimal digits
+fn digit_product(n: i64) -> i64 = {
+    let mut x = if n < 0 { 0 - n } else { n };
+    if x == 0 { return 0 } else { () };
+    let mut p = 1;
+    loop {
+        if x == 0 { break } else { () };
+        p = p * (x - (x / 10) * 10);
+        x = x / 10
+    };
+    p
+    };
+
+// String to integer (decimal, positive only)
+fn str_to_int(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() { acc }
+    else {
+        let digit = s.byte_at(pos) - 48;
+        str_to_int(s, pos + 1, acc * 10 + digit)
+    };
+
+    // Count digits in base b representation of n
+
+fn count_digits_base(n: i64, base: i64) -> i64 = {
+    if n == 0 { return 1 } else { () };
+    let mut x = if n < 0 { 0 - n } else { n };
+    let mut count = 0;
+    loop {
+        if x == 0 { break } else { () };
+        x = x / base;
+        count = count + 1
+    };
+    count
+    };
+
+// Sum of digits in base b representation of n
+fn digit_sum_base(n: i64, base: i64) -> i64 = {
+    if n == 0 { return 0 } else { () };
+    let mut x = if n < 0 { 0 - n } else { n };
+    let mut s = 0;
+    loop {
+        if x == 0 { break } else { () };
+        s = s + x - (x / base) * base;
+        x = x / base
+    };
+    s
+    };
+
+// Largest digit in decimal representation
+fn max_digit(n: i64) -> i64 = {
+    let mut x = if n < 0 { 0 - n } else { n };
+    if x == 0 { return 0 } else { () };
+    let mut mx = 0;
+    loop {
+        if x == 0 { break } else { () };
+        let d = x - (x / 10) * 10;
+        if d > mx { mx = d } else { () };
+        x = x / 10
+    };
+    mx
+    };
+
+// Number of digits equal to a given digit d in decimal representation
+fn count_digit(n: i64, d: i64) -> i64 = {
+    let mut x = if n < 0 { 0 - n } else { n };
+    if x == 0 {
+        let r = if d == 0 { 1 } else { 0 };
+        return r
+    } else { () };
+    let mut count = 0;
+    loop {
+        if x == 0 { break } else { () };
+        if x - (x / 10) * 10 == d { count = count + 1 } else { () };
+        x = x / 10
+    };
+    count
+    };
+
+fn main() -> i64 = {
+// int_to_str_len
+    let _r1 = println(int_to_str_len(0));       // 1
+    let _r2 = println(int_to_str_len(12345));   // 5
+    let _r3 = println(int_to_str_len(0 - 999)); // 4 (includes minus sign)
+    let _r4 = println(int_to_str_len(1000000)); // 7
+
+// digit_sum
+    let _r5 = println(digit_sum(12345));    // 15
+    let _r6 = println(digit_sum(999));      // 27
+    let _r7 = println(digit_sum(0));        // 0
+    let _r8 = println(digit_sum(100));      // 1
+
+// digit_product
+    let _r9 = println(digit_product(123));   // 6
+    let _r10 = println(digit_product(999));  // 729
+    let _r11 = println(digit_product(105));  // 0 (has zero digit)
+
+// str_to_int
+    let _r12 = println(str_to_int("12345", 0, 0));  // 12345
+    let _r13 = println(str_to_int("0", 0, 0));       // 0
+    let _r14 = println(str_to_int("999", 0, 0));     // 999
+
+// count_digits_base (binary)
+    let _r15 = println(count_digits_base(8, 2));    // 4  (1000 in binary)
+    let _r16 = println(count_digits_base(255, 2));  // 8  (11111111 in binary)
+    let _r17 = println(count_digits_base(64, 8));   // 3  (100 in octal)
+
+// digit_sum_base
+    let _r18 = println(digit_sum_base(255, 2));   // 8  (all 1s in binary)
+    let _r19 = println(digit_sum_base(255, 16));  // 30 (FF in hex: 15+15=30)
+    let _r20 = println(digit_sum_base(100, 10));  // 1  (1+0+0=1)
+
+// max_digit
+    let _r21 = println(max_digit(9876543));  // 9
+    let _r22 = println(max_digit(12345));    // 5
+
+// count_digit
+    let _r23 = println(count_digit(1001001, 1));  // 3 (three 1s)
+    let _r24 = println(count_digit(1001001, 0));  // 4 (four 0s)
+
+    0
+    };

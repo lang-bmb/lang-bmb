@@ -1,0 +1,30 @@
+size:5
+total sum:150
+elements:10
+20
+30
+40
+50
+get:10
+30
+50
+after insert 25 at pos 2:10
+20
+25
+30
+40
+50
+new size:6
+new sum:175
+after insert 5 at pos 0:5
+10
+20
+25
+30
+40
+50
+final size:7
+final sum:180
+final get:5
+25
+50

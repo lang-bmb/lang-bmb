@@ -1,0 +1,9 @@
+# Force LF line endings for golden test output files
+# The BMB interpreter outputs LF; CRLF causes false test failures on Windows
+*.bmb.out text eol=lf
+
+# BMB source files should also use LF for consistency
+*.bmb text eol=lf
+
+# LLVM IR files
+*.ll text eol=lf

@@ -1,0 +1,99 @@
+// Golden Test: Extended GCD Algorithm
+// Extended Euclidean: gcd(a,b) and coefficients x,y such that ax + by = gcd(a,b)
+// Uses iterative approach, returns results encoded
+
+// Basic GCD
+fn gcd(a: i64, b: i64) -> i64 = {
+    let mut aa = a;
+    let mut bb = b;
+    loop {
+        if bb == 0 { break } else { () };
+        let temp = bb;
+        bb = aa - aa / bb * bb;
+        aa = temp
+    };
+    aa
+};
+
+// Extended GCD: returns gcd(a,b)
+// Also computes x,y stored in result vec: res[0]=gcd, res[1]=x, res[2]=y
+fn ext_gcd(a: i64, b: i64, res: i64) -> i64 = {
+    let mut old_r = a;
+    let mut r = b;
+    let mut old_s = 1;
+    let mut s = 0;
+    let mut old_t = 0;
+    let mut t = 1;
+    loop {
+        if r == 0 { break } else { () };
+        let q = old_r / r;
+        // r
+        let tmp_r = r;
+        r = old_r - q * r;
+        old_r = tmp_r;
+        // s
+        let tmp_s = s;
+        s = old_s - q * s;
+        old_s = tmp_s;
+        // t
+        let tmp_t = t;
+        t = old_t - q * t;
+        old_t = tmp_t
+    };
+    vec_set(res, 0, old_r);
+    vec_set(res, 1, old_s);
+    vec_set(res, 2, old_t);
+    old_r
+};
+
+// LCM using GCD
+fn lcm(a: i64, b: i64) -> i64 = {
+    a / gcd(a, b) * b
+};
+
+fn main() -> i64 = {
+    // Test 1: gcd(12, 8) = 4
+    let _p1 = println(gcd(12, 8));  // 4
+
+    // Test 2: gcd(35, 15) = 5
+    let _p2 = println(gcd(35, 15));  // 5
+
+    // Test 3: ext_gcd(35, 15) -> gcd=5, 35*x + 15*y = 5
+    // 35 = 2*15 + 5, 15 = 3*5 + 0 -> gcd=5
+    // Back-substitute: 5 = 35 - 2*15 -> x=1, y=-2
+    let r1 = vec_new();
+    vec_push(r1, 0); vec_push(r1, 0); vec_push(r1, 0);
+    let g1 = ext_gcd(35, 15, r1);
+    let _p3 = println(g1);            // 5
+    let _p4 = println(vec_get(r1, 1));  // 1 (x)
+    let _p5 = println(vec_get(r1, 2));  // -2 (y)
+
+    // Verify: 35*1 + 15*(-2) = 35 - 30 = 5
+    let _p6 = println(35 * vec_get(r1, 1) + 15 * vec_get(r1, 2));  // 5
+
+    // Test 4: ext_gcd(240, 46)
+    // gcd(240,46): 240=5*46+10, 46=4*10+6, 10=1*6+4, 6=1*4+2, 4=2*2+0 -> gcd=2
+    // x=-9, y=47
+    let r2 = vec_new();
+    vec_push(r2, 0); vec_push(r2, 0); vec_push(r2, 0);
+    let g2 = ext_gcd(240, 46, r2);
+    let _p7 = println(g2);            // 2
+    let _p8 = println(vec_get(r2, 1));  // -9
+    let _p9 = println(vec_get(r2, 2));  // 47
+
+    // Verify: 240*(-9) + 46*47 = -2160 + 2162 = 2
+    let _p10 = println(240 * vec_get(r2, 1) + 46 * vec_get(r2, 2));  // 2
+
+    // Test 5: LCM
+    let _p11 = println(lcm(12, 8));   // 24
+    let _p12 = println(lcm(7, 13));   // 91
+
+    // Test 6: coprime numbers gcd(17, 13)
+    let r3 = vec_new();
+    vec_push(r3, 0); vec_push(r3, 0); vec_push(r3, 0);
+    let g3 = ext_gcd(17, 13, r3);
+    let _p13 = println(g3);  // 1
+
+    vec_free(r1); vec_free(r2); vec_free(r3);
+    0
+};

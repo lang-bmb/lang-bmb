@@ -1,0 +1,104 @@
+// Golden Test: Manual popcount (count set bits without intrinsic)
+// Multiple algorithms for counting bits in an integer
+
+// Method 1: Simple loop — shift right and check LSB
+fn popcount_loop(n: i64) -> i64 = {
+    let mut count = 0;
+    let mut x = n;
+    loop {
+        if x == 0 { break } else { () };
+        count = count + (x band 1);
+        x = x >> 1
+    };
+    count
+};
+
+// Method 2: Brian Kernighan's algorithm — clear lowest set bit each iteration
+// x & (x-1) clears the lowest set bit
+fn popcount_kernighan(n: i64) -> i64 = {
+    let mut count = 0;
+    let mut x = n;
+    loop {
+        if x == 0 { break } else { () };
+        x = x band (x - 1);
+        count = count + 1
+    };
+    count
+};
+
+// Method 3: Lookup table for 4-bit nibbles
+fn nibble_popcount(nibble: i64) -> i64 =
+    if nibble == 0 { 0 }
+    else if nibble == 1 { 1 }
+    else if nibble == 2 { 1 }
+    else if nibble == 3 { 2 }
+    else if nibble == 4 { 1 }
+    else if nibble == 5 { 2 }
+    else if nibble == 6 { 2 }
+    else if nibble == 7 { 3 }
+    else if nibble == 8 { 1 }
+    else if nibble == 9 { 2 }
+    else if nibble == 10 { 2 }
+    else if nibble == 11 { 3 }
+    else if nibble == 12 { 2 }
+    else if nibble == 13 { 3 }
+    else if nibble == 14 { 3 }
+    else { 4 };
+
+fn popcount_nibble(n: i64) -> i64 = {
+    let mut count = 0;
+    let mut x = n;
+    loop {
+        if x == 0 { break } else { () };
+        count = count + nibble_popcount(x band 15);
+        x = x >> 4
+    };
+    count
+};
+
+// Hamming weight of byte
+fn byte_weight(b: i64) -> i64 = popcount_loop(b band 255);
+
+// Count bits in range [lo, hi] of an integer (0-indexed from LSB)
+fn count_bits_range(n: i64, lo: i64, hi: i64) -> i64 = {
+    let mask_width = hi - lo + 1;
+    let mut mask = 0;
+    let mut i = 0;
+    loop {
+        if i >= mask_width { break } else { () };
+        mask = mask bor (1 << (lo + i));
+        i = i + 1
+    };
+    popcount_loop(n band mask)
+};
+
+fn main() -> i64 = {
+    // Basic popcount tests (loop method)
+    let _p1 = println(popcount_loop(0));         // 0
+    let _p2 = println(popcount_loop(1));         // 1
+    let _p3 = println(popcount_loop(255));       // 8
+    let _p4 = println(popcount_loop(1023));      // 10 (0b1111111111)
+
+    // Kernighan method
+    let _p5 = println(popcount_kernighan(0));    // 0
+    let _p6 = println(popcount_kernighan(7));    // 3
+    let _p7 = println(popcount_kernighan(170));  // 4 (10101010)
+
+    // Nibble lookup method
+    let _p8 = println(popcount_nibble(255));     // 8
+    let _p9 = println(popcount_nibble(4096));    // 1 (2^12)
+
+    // Byte weight
+    let _p10 = println(byte_weight(0));          // 0
+    let _p11 = println(byte_weight(127));        // 7 (01111111)
+
+    // Count bits in range
+    // 0xFF = 11111111, bits [0,3] = 4 bits set
+    let _p12 = println(count_bits_range(255, 0, 3));  // 4
+    // 0xFF = 11111111, bits [4,7] = 4 bits set
+    let _p13 = println(count_bits_range(255, 4, 7));  // 4
+    // 0xAA = 10101010, bits [0,3] = 2 bits set (bit1, bit3)
+    let _p14 = println(count_bits_range(170, 0, 3));  // 2
+
+    0
+};

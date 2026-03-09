@@ -1,0 +1,184 @@
+// Golden Test: Count inversions using merge sort
+// An inversion is a pair (i,j) where i<j but arr[i]>arr[j]
+// Merge sort counts inversions during the merge step
+
+// Copy elements from src[start..end) into a new vec
+fn vec_slice(src: i64, start: i64, end: i64) -> i64 = {
+    let v = vec_new();
+    for i in start..end {
+        let _p = vec_push(v, vec_get(src, i));
+        0
+    };
+    v
+};
+
+// Merge two sorted vecs and count split inversions
+// Returns inversion count, merged result written into dest starting at offset
+fn merge_count(left: i64, right: i64, dest: i64, offset: i64) -> i64 = {
+    let nl = vec_len(left);
+    let nr = vec_len(right);
+    let mut i = 0;
+    let mut j = 0;
+    let mut k = offset;
+    let mut inv = 0;
+    while i < nl and j < nr {
+        let _c = if vec_get(left, i) <= vec_get(right, j) {
+            let _s = vec_set(dest, k, vec_get(left, i));
+            set i = i + 1;
+            set k = k + 1
+        } else {
+            // Every remaining element in left is an inversion with right[j]
+            let _s = vec_set(dest, k, vec_get(right, j));
+            set inv = inv + (nl - i);
+            set j = j + 1;
+            set k = k + 1
+        }
+    };
+    while i < nl {
+        let _s = vec_set(dest, k, vec_get(left, i));
+        set i = i + 1;
+        set k = k + 1
+    };
+    while j < nr {
+        let _s = vec_set(dest, k, vec_get(right, j));
+        set j = j + 1;
+        set k = k + 1
+    };
+    inv
+};
+
+// Sort arr[lo..hi) in-place and return inversion count
+// Uses temp vec for merging (allocated internally)
+fn merge_sort_count(arr: i64, lo: i64, hi: i64) -> i64 =
+    if hi - lo <= 1 { 0 }
+    else {
+        let mid = lo + (hi - lo) / 2;
+        let left_inv = merge_sort_count(arr, lo, mid);
+        let right_inv = merge_sort_count(arr, mid, hi);
+        // Create slices for merge
+        let left = vec_slice(arr, lo, mid);
+        let right = vec_slice(arr, mid, hi);
+        let split_inv = merge_count(left, right, arr, lo);
+        let _f = vec_free(left);
+        let _f = vec_free(right);
+        left_inv + right_inv + split_inv
+    };
+
+// Count inversions: copies array, sorts copy, returns count
+fn count_inversions(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    // Make a copy to sort
+    let copy = vec_new();
+    for i in 0..n {
+        let _p = vec_push(copy, vec_get(arr, i));
+        0
+    };
+    let inv = merge_sort_count(copy, 0, n);
+    let _f = vec_free(copy);
+    inv
+};
+
+// Count and sort: returns inversions, arr is sorted in-place
+fn count_and_sort(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    merge_sort_count(arr, 0, n)
+};
+
+fn print_vec_inline(v: i64) -> i64 = {
+    let n = vec_len(v);
+    for i in 0..n {
+        let _p = if i > 0 {
+            let _s = print_str(" ");
+            ()
+        } else { () };
+        let _p2 = print(vec_get(v, i));
+        0
+    };
+    let _p = println_str("");
+    0
+};
+
+fn main() -> i64 = {
+    // === Test 1: [2,4,1,3,5] -> 3 inversions ===
+    // Inversions: (2,1), (4,1), (4,3)
+    let _p = println_str("=== Test 1 ===");
+    let a1 = vec_new();
+    let _p = vec_push(a1, 2); let _p = vec_push(a1, 4);
+    let _p = vec_push(a1, 1); let _p = vec_push(a1, 3);
+    let _p = vec_push(a1, 5);
+    let _p = print_str("array: "); let _pv = print_vec_inline(a1);
+    let inv1 = count_and_sort(a1);
+    let _p = print_str("inversions: "); let _p = println(inv1);
+    let _p = print_str("sorted: "); let _pv = print_vec_inline(a1);
+
+    // === Test 2: [5,4,3,2,1] -> 10 inversions (maximum) ===
+    // C(5,2) = 10 inversions for reverse sorted
+    let _p = println_str("=== Test 2 ===");
+    let a2 = vec_new();
+    let _p = vec_push(a2, 5); let _p = vec_push(a2, 4);
+    let _p = vec_push(a2, 3); let _p = vec_push(a2, 2);
+    let _p = vec_push(a2, 1);
+    let _p = print_str("array: "); let _pv = print_vec_inline(a2);
+    let inv2 = count_and_sort(a2);
+    let _p = print_str("inversions: "); let _p = println(inv2);
+    let _p = print_str("sorted: "); let _pv = print_vec_inline(a2);
+
+    // === Test 3: [1,2,3,4,5] -> 0 inversions (sorted) ===
+    let _p = println_str("=== Test 3 ===");
+    let a3 = vec_new();
+    let _p = vec_push(a3, 1); let _p = vec_push(a3, 2);
+    let _p = vec_push(a3, 3); let _p = vec_push(a3, 4);
+    let _p = vec_push(a3, 5);
+    let _p = print_str("array: "); let _pv = print_vec_inline(a3);
+    let inv3 = count_and_sort(a3);
+    let _p = print_str("inversions: "); let _p = println(inv3);
+    let _p = print_str("sorted: "); let _pv = print_vec_inline(a3);
+
+    // === Test 4: [3,1,2] -> 2 inversions ===
+    // Inversions: (3,1), (3,2)
+    let _p = println_str("=== Test 4 ===");
+    let a4 = vec_new();
+    let _p = vec_push(a4, 3); let _p = vec_push(a4, 1);
+    let _p = vec_push(a4, 2);
+    let _p = print_str("array: "); let _pv = print_vec_inline(a4);
+    let inv4 = count_and_sort(a4);
+    let _p = print_str("inversions: "); let _p = println(inv4);
+    let _p = print_str("sorted: "); let _pv = print_vec_inline(a4);
+
+    // === Test 5: [1] -> 0 inversions (single element) ===
+    let _p = println_str("=== Test 5 ===");
+    let a5 = vec_new();
+    let _p = vec_push(a5, 1);
+    let _p = print_str("array: "); let _pv = print_vec_inline(a5);
+    let inv5 = count_and_sort(a5);
+    let _p = print_str("inversions: "); let _p = println(inv5);
+
+    // === Test 6: [8,4,2,1] -> 6 inversions ===
+    // C(4,2) = 6 for strictly decreasing
+    let _p = println_str("=== Test 6 ===");
+    let a6 = vec_new();
+    let _p = vec_push(a6, 8); let _p = vec_push(a6, 4);
+    let _p = vec_push(a6, 2); let _p = vec_push(a6, 1);
+    let _p = print_str("array: "); let _pv = print_vec_inline(a6);
+    let inv6 = count_and_sort(a6);
+    let _p = print_str("inversions: "); let _p = println(inv6);
+    let _p = print_str("sorted: "); let _pv = print_vec_inline(a6);
+
+    // === Test 7: [2,1,3,1,2] -> 4 inversions ===
+    // Inversions: (2,1)@(0,1), (2,1)@(0,3), (3,1)@(2,3), (3,2)@(2,4)
+    let _p = println_str("=== Test 7 ===");
+    let a7 = vec_new();
+    let _p = vec_push(a7, 2); let _p = vec_push(a7, 1);
+    let _p = vec_push(a7, 3); let _p = vec_push(a7, 1);
+    let _p = vec_push(a7, 2);
+    let _p = print_str("array: "); let _pv = print_vec_inline(a7);
+    let inv7 = count_and_sort(a7);
+    let _p = print_str("inversions: "); let _p = println(inv7);
+    let _p = print_str("sorted: "); let _pv = print_vec_inline(a7);
+
+    let _f = vec_free(a1); let _f = vec_free(a2);
+    let _f = vec_free(a3); let _f = vec_free(a4);
+    let _f = vec_free(a5); let _f = vec_free(a6);
+    let _f = vec_free(a7);
+    0
+};

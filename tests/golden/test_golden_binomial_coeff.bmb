@@ -1,0 +1,51 @@
+// Golden Test: Binomial coefficients via Pascal triangle DP
+
+fn binomial(n: i64, k: i64) -> i64 = {
+    let dp = vec_new();
+    let mut i = 0;
+    while i <= n {
+        let _p = vec_push(dp, 0);
+        set i = i + 1
+    };
+    vec_set(dp, 0, 1);
+    set i = 1;
+    while i <= n {
+        let mut j = i;
+        while j >= 1 {
+            vec_set(dp, j, vec_get(dp, j) + vec_get(dp, j - 1));
+            set j = j - 1
+        };
+        set i = i + 1
+    };
+    vec_get(dp, k)
+};
+
+fn pascal_row(n: i64) -> () = {
+    let mut k = 0;
+    while k <= n {
+        let _sp = if k > 0 { print_str(" "); 0 } else { 0 };
+        print(binomial(n, k));
+        set k = k + 1
+    };
+    let _nl = print_str("
+")
+};
+
+fn main() -> () = {
+    print_str("C(5,2)="); let _r = println(binomial(5, 2));
+    print_str("C(10,3)="); let _r = println(binomial(10, 3));
+    print_str("C(10,5)="); let _r = println(binomial(10, 5));
+    print_str("C(20,10)="); let _r = println(binomial(20, 10));
+    print_str("C(0,0)="); let _r = println(binomial(0, 0));
+    print_str("C(5,0)="); let _r = println(binomial(5, 0));
+    print_str("C(5,5)="); let _r = println(binomial(5, 5));
+    print_str("Pascal:
+");
+    pascal_row(0);
+    pascal_row(1);
+    pascal_row(2);
+    pascal_row(3);
+    pascal_row(4);
+    pascal_row(5);
+    pascal_row(6)
+};

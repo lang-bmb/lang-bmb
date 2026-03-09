@@ -1,0 +1,86 @@
+// Golden Test: XorShift random number generator
+// Tests bitwise operations (bxor, <<, >>) with seed-based state
+
+// XorShift32-style RNG using i64
+// state ^= state << 13; state ^= state >> 17; state ^= state << 5
+fn xorshift_next(state: i64) -> i64 = {
+    let s1 = state bxor (state << 13);
+    let s2 = s1 bxor (s1 >> 17);
+    s2 bxor (s2 << 5)
+};
+
+// Generate n-th value from seed
+fn xorshift_nth(seed: i64, n: i64) -> i64 =
+    if n == 0 { seed }
+    else { xorshift_nth(xorshift_next(seed), n - 1) };
+
+// Positive modulo (ensure non-negative result)
+fn pos_mod(x: i64, m: i64) -> i64 = {
+    let r = x - (x / m) * m;
+    if r < 0 { r + m } else { r }
+};
+
+// Count how many of first n values fall in [0, bound)
+fn count_in_range(seed: i64, n: i64, bound: i64, idx: i64, acc: i64) -> i64 =
+    if idx >= n { acc }
+    else {
+        let val = xorshift_nth(seed, idx);
+        let m = pos_mod(val, 100);
+        let new_acc = if m >= 0 && m < bound { acc + 1 } else { acc };
+        count_in_range(seed, n, bound, idx + 1, new_acc)
+    };
+
+fn main() -> i64 = {
+    let seed = 42;
+
+    // Generate first few values from seed 42
+    let v1 = xorshift_next(seed);
+    let _p1 = println(v1);
+
+    let v2 = xorshift_next(v1);
+    let _p2 = println(v2);
+
+    let v3 = xorshift_next(v2);
+    let _p3 = println(v3);
+
+    // 5th value from seed
+    let v5 = xorshift_nth(seed, 5);
+    let _p4 = println(v5);
+
+    // Verify determinism: same seed => same sequence
+    let check1 = xorshift_nth(seed, 3);
+    let check2 = xorshift_nth(seed, 3);
+    let _p5 = println(if check1 == check2 { 1 } else { 0 });  // 1 (deterministic)
+
+    // Different seeds produce different sequences
+    let from_seed1 = xorshift_nth(1, 10);
+    let from_seed2 = xorshift_nth(2, 10);
+    let _p6 = println(if from_seed1 == from_seed2 { 0 } else { 1 });  // 1 (different)
+
+    // Generate values into a vec, compute sum
+    let v = vec_new();
+    let mut state = 123;
+    for _i in 0..10 {
+        state = xorshift_next(state);
+        let _x = vec_push(v, pos_mod(state, 1000));
+        0
+    };
+
+    let mut total = 0;
+    for i in 0..10 {
+        total = total + vec_get(v, i);
+        0
+    };
+    let _p7 = println(total);
+
+    // Check period: after many iterations, should not return to seed
+    let far = xorshift_nth(seed, 100);
+    let _p8 = println(if far == seed { 0 } else { 1 });  // 1 (not periodic at 100)
+
+    // Count values in range [0, 50) out of first 20 from seed 7
+    let cnt = count_in_range(7, 20, 50, 0, 0);
+    let _p9 = println(cnt);
+
+    vec_free(v);
+    0
+};

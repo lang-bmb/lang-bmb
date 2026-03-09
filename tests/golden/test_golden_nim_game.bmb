@@ -1,0 +1,117 @@
+// Golden Test: Nim game theory — Sprague-Grundy, winning positions, game simulation
+
+fn nim_value(piles: i64, n: i64) -> i64 = {
+    let mut result = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        result = result bxor vec_get(piles, i);
+        i = i + 1
+    };
+    result
+    };
+
+fn is_winning(piles: i64, n: i64) -> i64 =
+    if nim_value(piles, n) != 0 { 1 } else { 0 };
+
+fn grundy_sub(n: i64, max_take: i64) -> i64 = {
+    let dp = [0; 50];
+    let mut i = 1;
+    loop {
+        if i > n { break } else { () };
+        let mex_set = [0; 50];
+        let mut t = 1;
+        loop {
+            if t > max_take or t > i { break } else { () };
+            let g = dp[i - t];
+            if g < 50 { set mex_set[g] = 1 } else { () };
+            t = t + 1
+        };
+        let mut m = 0;
+        loop {
+            if mex_set[m] == 0 { break } else { () };
+            m = m + 1
+        };
+        set dp[i] = m;
+        i = i + 1
+    };
+    dp[n]
+    };
+
+fn find_move(piles: i64, n: i64) -> i64 = {
+    let xor_all = nim_value(piles, n);
+    let mut result = 0 - 1;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let pile = vec_get(piles, i);
+        let target = pile bxor xor_all;
+        if target < pile { result = i * 1000 + target; break } else { () };
+        i = i + 1
+    };
+    result
+    };
+
+fn play_nim(piles: i64, n: i64) -> i64 = {
+    let mut player = 1;
+    let mut done = 0;
+    loop {
+        let mut total = 0;
+        let mut i = 0;
+        loop {
+            if i >= n { break } else { () };
+            total = total + vec_get(piles, i);
+            i = i + 1
+        };
+        if total == 0 { done = if player == 1 { 2 } else { 1 }; break } else { () };
+        let mv = find_move(piles, n);
+        if mv >= 0 {
+            let pile_idx = mv / 1000;
+            vec_set(piles, pile_idx, mv - pile_idx * 1000)
+        } else {
+            let mut j = 0;
+            loop {
+                if j >= n { break } else { () };
+                if vec_get(piles, j) > 0 { vec_set(piles, j, vec_get(piles, j) - 1); break } else { () };
+                j = j + 1
+            }
+        };
+        player = if player == 1 { 2 } else { 1 }
+    };
+    done
+    };
+
+fn main() -> i64 = {
+    let p1 = vec_new(); vec_push(p1, 5);
+    let _r1 = println(nim_value(p1, 1));  // 5
+    vec_free(p1);
+    let p2 = vec_new(); vec_push(p2, 3); vec_push(p2, 5);
+    let _r2 = println(nim_value(p2, 2));  // 6
+    let _r3 = println(is_winning(p2, 2)); // 1
+    vec_free(p2);
+    let p3 = vec_new(); vec_push(p3, 4); vec_push(p3, 4);
+    let _r4 = println(nim_value(p3, 2));  // 0
+    let _r5 = println(is_winning(p3, 2)); // 0
+    vec_free(p3);
+    let p4 = vec_new(); vec_push(p4, 1); vec_push(p4, 2); vec_push(p4, 3);
+    let _r6 = println(nim_value(p4, 3));  // 0
+    let _r7 = println(is_winning(p4, 3)); // 0
+    vec_free(p4);
+    let p5 = vec_new(); vec_push(p5, 3); vec_push(p5, 5); vec_push(p5, 7);
+    let _r8 = println(nim_value(p5, 3));  // 1
+    let _r9 = println(is_winning(p5, 3)); // 1
+    let _r10 = println(find_move(p5, 3)); // 2
+    vec_free(p5);
+    let _r11 = println(grundy_sub(0, 3));  // 0
+    let _r12 = println(grundy_sub(3, 3));  // 3
+    let _r13 = println(grundy_sub(4, 3));  // 0
+    let _r14 = println(grundy_sub(7, 3));  // 3
+    let _r15 = println(grundy_sub(10, 3)); // 2
+    let g1 = vec_new(); vec_push(g1, 3); vec_push(g1, 4); vec_push(g1, 5);
+    let _r16 = println(play_nim(g1, 3));   // 1
+    vec_free(g1);
+    let g2 = vec_new(); vec_push(g2, 2); vec_push(g2, 2);
+    let _r17 = println(play_nim(g2, 2));   // 2
+    vec_free(g2);
+    0
+    };

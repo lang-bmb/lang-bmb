@@ -1,0 +1,150 @@
+// Golden test: Stack-based RPN (postfix) calculator simulation
+// Stack pointer stored in sp_vec[0]; stack data in stack vec
+// Operations: positive = push value, -1=ADD, -2=SUB, -3=MUL, -4=DUP, -5=PRINT
+
+fn stack_push(stack: i64, sp_vec: i64, val: i64) -> i64 = {
+    let sp = vec_get(sp_vec, 0);
+    let _w = vec_set(stack, sp, val);
+    let _s = vec_set(sp_vec, 0, sp + 1);
+    0
+    };
+
+fn stack_pop(stack: i64, sp_vec: i64) -> i64 = {
+    let sp = vec_get(sp_vec, 0);
+    let new_sp = sp - 1;
+    let _s = vec_set(sp_vec, 0, new_sp);
+    vec_get(stack, new_sp)
+    };
+
+fn stack_peek(stack: i64, sp_vec: i64) -> i64 = {
+    let sp = vec_get(sp_vec, 0);
+    vec_get(stack, sp - 1)
+    };
+
+fn eval_step(stack: i64, sp_vec: i64, op: i64) -> i64 = {
+    if op == 0 - 1 {
+        // ADD: pop b, pop a, push a+b
+        let b = stack_pop(stack, sp_vec);
+        let a = stack_pop(stack, sp_vec);
+        stack_push(stack, sp_vec, a + b)
+    } else if op == 0 - 2 {
+        // SUB: pop b, pop a, push a-b
+        let b = stack_pop(stack, sp_vec);
+        let a = stack_pop(stack, sp_vec);
+        stack_push(stack, sp_vec, a - b)
+    } else if op == 0 - 3 {
+        // MUL: pop b, pop a, push a*b
+        let b = stack_pop(stack, sp_vec);
+        let a = stack_pop(stack, sp_vec);
+        stack_push(stack, sp_vec, a * b)
+    } else if op == 0 - 4 {
+        // DUP: peek top, push copy
+        let top = stack_peek(stack, sp_vec);
+        stack_push(stack, sp_vec, top)
+    } else if op == 0 - 5 {
+        // PRINT: peek top, print it
+        let top = stack_peek(stack, sp_vec);
+        let _pr = println(top);
+        0
+    } else {
+        // Positive number: push it
+        stack_push(stack, sp_vec, op)
+    }
+    };
+
+fn eval_program(ops: i64, n: i64) -> i64 = {
+    let stack = vec_new();
+    // Pre-allocate 20 slots
+    let _a0 = vec_push(stack, 0);
+    let _a1 = vec_push(stack, 0);
+    let _a2 = vec_push(stack, 0);
+    let _a3 = vec_push(stack, 0);
+    let _a4 = vec_push(stack, 0);
+    let _a5 = vec_push(stack, 0);
+    let _a6 = vec_push(stack, 0);
+    let _a7 = vec_push(stack, 0);
+    let _a8 = vec_push(stack, 0);
+    let _a9 = vec_push(stack, 0);
+    let _a10 = vec_push(stack, 0);
+    let _a11 = vec_push(stack, 0);
+    let _a12 = vec_push(stack, 0);
+    let _a13 = vec_push(stack, 0);
+    let _a14 = vec_push(stack, 0);
+    let _a15 = vec_push(stack, 0);
+    let _a16 = vec_push(stack, 0);
+    let _a17 = vec_push(stack, 0);
+    let _a18 = vec_push(stack, 0);
+    let _a19 = vec_push(stack, 0);
+    let sp_vec = vec_new();
+    let _sp0 = vec_push(sp_vec, 0);
+    for i in 0..n {
+        let op = vec_get(ops, i);
+        let _e = eval_step(stack, sp_vec, op);
+        0
+    };
+    let _fs = vec_free(stack);
+    let _fsp = vec_free(sp_vec);
+    0
+    };
+
+fn main() -> i64 = {
+    // Expression 1: 3 4 ADD PRINT -> 7
+    let e1 = vec_new();
+    let _e1a = vec_push(e1, 3);
+    let _e1b = vec_push(e1, 4);
+    let _e1c = vec_push(e1, 0 - 1);
+    let _e1d = vec_push(e1, 0 - 5);
+    let _r1 = eval_program(e1, 4);
+
+    // Expression 2: 10 3 SUB PRINT -> 7
+    let e2 = vec_new();
+    let _e2a = vec_push(e2, 10);
+    let _e2b = vec_push(e2, 3);
+    let _e2c = vec_push(e2, 0 - 2);
+    let _e2d = vec_push(e2, 0 - 5);
+    let _r2 = eval_program(e2, 4);
+
+    // Expression 3: 5 6 MUL PRINT -> 30
+    let e3 = vec_new();
+    let _e3a = vec_push(e3, 5);
+    let _e3b = vec_push(e3, 6);
+    let _e3c = vec_push(e3, 0 - 3);
+    let _e3d = vec_push(e3, 0 - 5);
+    let _r3 = eval_program(e3, 4);
+
+    // Expression 4: 2 3 ADD 4 MUL PRINT -> (2+3)*4 = 20
+    let e4 = vec_new();
+    let _e4a = vec_push(e4, 2);
+    let _e4b = vec_push(e4, 3);
+    let _e4c = vec_push(e4, 0 - 1);
+    let _e4d = vec_push(e4, 4);
+    let _e4e = vec_push(e4, 0 - 3);
+    let _e4f = vec_push(e4, 0 - 5);
+    let _r4 = eval_program(e4, 6);
+
+    // Expression 5: 8 DUP MUL PRINT -> 8*8 = 64
+    let e5 = vec_new();
+    let _e5a = vec_push(e5, 8);
+    let _e5b = vec_push(e5, 0 - 4);
+    let _e5c = vec_push(e5, 0 - 3);
+    let _e5d = vec_push(e5, 0 - 5);
+    let _r5 = eval_program(e5, 4);
+
+    // Expression 6: 10 2 3 MUL SUB PRINT -> 10-(2*3) = 4
+    let e6 = vec_new();
+    let _e6a = vec_push(e6, 10);
+    let _e6b = vec_push(e6, 2);
+    let _e6c = vec_push(e6, 3);
+    let _e6d = vec_push(e6, 0 - 3);
+    let _e6e = vec_push(e6, 0 - 2);
+    let _e6f = vec_push(e6, 0 - 5);
+    let _r6 = eval_program(e6, 6);
+
+    let _f1 = vec_free(e1);
+    let _f2 = vec_free(e2);
+    let _f3 = vec_free(e3);
+    let _f4 = vec_free(e4);
+    let _f5 = vec_free(e5);
+    let _f6 = vec_free(e6);
+    0
+    };

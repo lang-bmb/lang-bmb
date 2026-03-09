@@ -1,0 +1,115 @@
+// Golden Test: Run-length encoding on arrays
+// Encode: [1,1,1,2,2,3] -> flat pairs [(value,count), ...]
+// Decode back to original array
+
+// Encode array into run-length pairs stored as flat (value, count) in dst
+// Returns number of runs
+fn rle_encode(src: i64, dst: i64) -> i64 = {
+    let n = vec_len(src);
+    if n == 0 { 0 }
+    else {
+        let cur_val = vec_get(src, 0);
+        let cur_count = 1;
+        let runs = 0;
+        let mut i = 1;
+        loop {
+            if i >= n { break } else { 0 };
+            let v = vec_get(src, i);
+            if v == cur_val {
+                cur_count = cur_count + 1
+            } else {
+                let _a = vec_push(dst, cur_val);
+                let _b = vec_push(dst, cur_count);
+                runs = runs + 1;
+                cur_val = v;
+                cur_count = 1
+            };
+            i = i + 1
+        };
+        // emit last run
+        let _c = vec_push(dst, cur_val);
+        let _d = vec_push(dst, cur_count);
+        runs + 1
+    }
+};
+
+// Decode run-length pairs back into flat array
+fn rle_decode(rle: i64, dst: i64) -> i64 = {
+    let num_runs = vec_len(rle) / 2;
+    let total = 0;
+    for r in 0..num_runs {
+        let val = vec_get(rle, r * 2);
+        let cnt = vec_get(rle, r * 2 + 1);
+        for _j in 0..cnt {
+            let _p = vec_push(dst, val)
+        };
+        total = total + cnt
+    };
+    total
+};
+
+// Count total elements from run-length encoding
+fn rle_total(rle: i64) -> i64 = {
+    let num_runs = vec_len(rle) / 2;
+    let total = 0;
+    for r in 0..num_runs {
+        total = total + vec_get(rle, r * 2 + 1)
+    };
+    total
+};
+
+fn main() -> i64 = {
+    // Test 1: [1,1,1,2,2,3]
+    let a1 = vec_new();
+    let _q1 = vec_push(a1, 1);
+    let _q2 = vec_push(a1, 1);
+    let _q3 = vec_push(a1, 1);
+    let _q4 = vec_push(a1, 2);
+    let _q5 = vec_push(a1, 2);
+    let _q6 = vec_push(a1, 3);
+    let e1 = vec_new();
+    let runs1 = rle_encode(a1, e1);
+    let _p1 = println(runs1);            // 3 runs: (1,3),(2,2),(3,1)
+    let _p2 = println(vec_get(e1, 0));   // 1 (first value)
+    let _p3 = println(vec_get(e1, 1));   // 3 (first count)
+    let _p4 = println(rle_total(e1));    // 6 (total elements)
+
+    // Decode back and verify length
+    let d1 = vec_new();
+    let len1 = rle_decode(e1, d1);
+    let _p5 = println(len1);            // 6
+    let _p6 = println(vec_get(d1, 0));  // 1
+    let _p7 = println(vec_get(d1, 3));  // 2 (4th element)
+    let _p8 = println(vec_get(d1, 5));  // 3 (6th element)
+
+    // Test 2: [5,5,5,5,5] all same
+    let a2 = vec_new();
+    let _r1 = vec_push(a2, 5);
+    let _r2 = vec_push(a2, 5);
+    let _r3 = vec_push(a2, 5);
+    let _r4 = vec_push(a2, 5);
+    let _r5 = vec_push(a2, 5);
+    let e2 = vec_new();
+    let runs2 = rle_encode(a2, e2);
+    let _p9 = println(runs2);            // 1 (single run)
+    let _p10 = println(vec_get(e2, 1));  // 5 (count)
+
+    // Test 3: [7,8,9] all different
+    let a3 = vec_new();
+    let _s1 = vec_push(a3, 7);
+    let _s2 = vec_push(a3, 8);
+    let _s3 = vec_push(a3, 9);
+    let e3 = vec_new();
+    let runs3 = rle_encode(a3, e3);
+    let _p11 = println(runs3);           // 3 (each value is its own run)
+    let _p12 = println(rle_total(e3));   // 3
+
+    let _f1 = vec_free(a1);
+    let _f2 = vec_free(e1);
+    let _f3 = vec_free(d1);
+    let _f4 = vec_free(a2);
+    let _f5 = vec_free(e2);
+    let _f6 = vec_free(a3);
+    let _f7 = vec_free(e3);
+    0
+};

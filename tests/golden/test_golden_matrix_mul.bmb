@@ -1,0 +1,100 @@
+// Golden Test: Matrix multiplication (NxN)
+// General NxN matrix multiply using flat vec storage (row-major)
+
+fn mat_new(rows: i64, cols: i64) -> i64 = {
+    let m = vec_new();
+    let _p = vec_push(m, rows);
+    let _p = vec_push(m, cols);
+    let mut i = 0;
+    while i < rows * cols {
+        let _p = vec_push(m, 0);
+        set i = i + 1
+    };
+    m
+};
+
+fn mat_set(m: i64, r: i64, c: i64, val: i64) -> () = {
+    let cols = vec_get(m, 1);
+    vec_set(m, 2 + r * cols + c, val)
+};
+
+fn mat_get(m: i64, r: i64, c: i64) -> i64 = {
+    let cols = vec_get(m, 1);
+    vec_get(m, 2 + r * cols + c)
+};
+
+fn mat_mul(a: i64, b: i64) -> i64 = {
+    let ar = vec_get(a, 0);
+    let ac = vec_get(a, 1);
+    let bc = vec_get(b, 1);
+    let c = mat_new(ar, bc);
+    let mut i = 0;
+    while i < ar {
+        let mut j = 0;
+        while j < bc {
+            let mut sum = 0;
+            let mut k = 0;
+            while k < ac {
+                set sum = sum + mat_get(a, i, k) * mat_get(b, k, j);
+                set k = k + 1
+            };
+            mat_set(c, i, j, sum);
+            set j = j + 1
+        };
+        set i = i + 1
+    };
+    c
+};
+
+fn mat_print(m: i64) -> () = {
+    let rows = vec_get(m, 0);
+    let cols = vec_get(m, 1);
+    let mut i = 0;
+    while i < rows {
+        let mut j = 0;
+        while j < cols {
+            let _sp = if j > 0 { print_str(" "); 0 } else { 0 };
+            print(mat_get(m, i, j));
+            set j = j + 1
+        };
+        let _nl = print_str("
+");
+        set i = i + 1
+    }
+};
+
+fn main() -> () = {
+    // Test 1: 2x2 * 2x2
+    let a = mat_new(2, 2);
+    mat_set(a, 0, 0, 1); mat_set(a, 0, 1, 2);
+    mat_set(a, 1, 0, 3); mat_set(a, 1, 1, 4);
+    let b = mat_new(2, 2);
+    mat_set(b, 0, 0, 5); mat_set(b, 0, 1, 6);
+    mat_set(b, 1, 0, 7); mat_set(b, 1, 1, 8);
+    let c = mat_mul(a, b);
+    print_str("2x2:
+");
+    mat_print(c);
+
+    // Test 2: 2x3 * 3x2
+    let d = mat_new(2, 3);
+    mat_set(d, 0, 0, 1); mat_set(d, 0, 1, 2); mat_set(d, 0, 2, 3);
+    mat_set(d, 1, 0, 4); mat_set(d, 1, 1, 5); mat_set(d, 1, 2, 6);
+    let e = mat_new(3, 2);
+    mat_set(e, 0, 0, 7); mat_set(e, 0, 1, 8);
+    mat_set(e, 1, 0, 9); mat_set(e, 1, 1, 10);
+    mat_set(e, 2, 0, 11); mat_set(e, 2, 1, 12);
+    let f = mat_mul(d, e);
+    print_str("2x3 * 3x2:
+");
+    mat_print(f);
+
+    // Test 3: Identity * A = A
+    let id = mat_new(2, 2);
+    mat_set(id, 0, 0, 1); mat_set(id, 0, 1, 0);
+    mat_set(id, 1, 0, 0); mat_set(id, 1, 1, 1);
+    let g = mat_mul(id, a);
+    print_str("I*A:
+");
+    mat_print(g)
+};

@@ -1,0 +1,105 @@
+// Golden Test: Polynomial arithmetic with coefficient arrays
+// Coefficients stored low-degree first: [a0, a1, a2] = a0 + a1*x + a2*x^2
+
+// Compute value of polynomial at x using Horner's method
+// pre n > 0
+fn poly_eval(coeffs: i64, n: i64, x: i64) -> i64
+    pre n > 0
+= {
+    let mut result = vec_get(coeffs, n - 1);
+    let mut i = n - 2;
+    loop {
+        if i < 0 { break } else { () };
+        result = result * x + vec_get(coeffs, i);
+        i = i - 1
+    };
+    result
+    };
+
+// Add two polynomials, return new vec of length max(an, bn)
+fn poly_add(a: i64, an: i64, b: i64, bn: i64) -> i64 = {
+    let len = if an > bn { an } else { bn };
+    let v = vec_new();
+    for i in 0..len {
+        let ca = if i < an { vec_get(a, i) } else { 0 };
+        let cb = if i < bn { vec_get(b, i) } else { 0 };
+        let _p = vec_push(v, ca + cb);
+        0
+    };
+    v
+    };
+
+// Compute derivative polynomial, return new vec of length n-1
+// derivative of [a0, a1, a2, a3] = [a1, 2*a2, 3*a3]
+fn poly_derivative(coeffs: i64, n: i64) -> i64 = {
+    let v = vec_new();
+    for i in 1..n {
+        let _p = vec_push(v, i * vec_get(coeffs, i));
+        0
+    };
+    v
+    };
+
+// Multiply all coefficients by scalar k, return new vec
+fn poly_scale(coeffs: i64, n: i64, k: i64) -> i64 = {
+    let v = vec_new();
+    for i in 0..n {
+        let _p = vec_push(v, k * vec_get(coeffs, i));
+        0
+    };
+    v
+    };
+
+// Print all coefficients of a polynomial
+fn print_poly(coeffs: i64, n: i64) -> i64 = {
+    for i in 0..n {
+        let _p = println(vec_get(coeffs, i));
+        0
+    };
+    0
+    };
+
+fn main() -> i64 = {
+// p = [2, 3, 1]  =  2 + 3x + x^2
+    let p = vec_new();
+    let _pp0 = vec_push(p, 2);
+    let _pp1 = vec_push(p, 3);
+    let _pp2 = vec_push(p, 1);
+
+// q = [1, 0, 4]  =  1 + 4x^2
+    let q = vec_new();
+    let _pq0 = vec_push(q, 1);
+    let _pq1 = vec_push(q, 0);
+    let _pq2 = vec_push(q, 4);
+
+// Value of p at x=2: 2 + 6 + 4 = 12
+    let _e1 = println(poly_eval(p, 3, 2));   // 12
+
+// Value of p at x=0: 2
+    let _e2 = println(poly_eval(p, 3, 0));   // 2
+
+// Value of q at x=3: 1 + 0 + 36 = 37
+    let _e3 = println(poly_eval(q, 3, 3));   // 37
+
+// sum = p + q = [3, 3, 5]
+    let sum = poly_add(p, 3, q, 3);
+    let _ps = print_poly(sum, 3);            // 3, 3, 5
+
+// dp = derivative of p = [3, 2]  (3 + 2x)
+    let dp = poly_derivative(p, 3);
+    let _pd = print_poly(dp, 2);             // 3, 2
+
+// Value of dp at x=5: 3 + 10 = 13
+    let _e4 = println(poly_eval(dp, 2, 5));  // 13
+
+// scaled = p * 10 = [20, 30, 10]
+    let scaled = poly_scale(p, 3, 10);
+    let _psc = print_poly(scaled, 3);        // 20, 30, 10
+
+    let _f1 = vec_free(p);
+    let _f2 = vec_free(q);
+    let _f3 = vec_free(sum);
+    let _f4 = vec_free(dp);
+    let _f5 = vec_free(scaled);
+    0
+    };

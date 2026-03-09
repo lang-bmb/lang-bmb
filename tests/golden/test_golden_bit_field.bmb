@@ -1,0 +1,88 @@
+// Golden Test: Bit field operations
+// Set, clear, get bits; popcount; pack/unpack nibbles
+
+fn set_bit(val: i64, pos: i64) -> i64
+  pre pos >= 0 and pos < 64
+= val bor (1 << pos);
+
+// Clear bit at pos using: val - (val & (1 << pos))
+fn clear_bit(val: i64, pos: i64) -> i64
+  pre pos >= 0 and pos < 64
+= val - (val band (1 << pos));
+
+fn get_bit(val: i64, pos: i64) -> i64
+  pre pos >= 0 and pos < 64
+  post ret >= 0 and ret <= 1
+= (val >> pos) band 1;
+
+fn count_set_bits(val: i64) -> i64
+  post ret >= 0
+= {
+    let mut count = 0;
+    let mut x = val;
+    loop {
+        if x <= 0 { break } else { () };
+        count = count + (x band 1);
+        x = x >> 1
+    };
+    count
+    };
+
+// Pack 4 nibbles (4-bit values 0-15) into one i64
+// nibble 0 in bits 0-3, nibble 1 in bits 4-7, etc.
+fn pack_4bits(a: i64, b: i64, c: i64, d: i64) -> i64
+  pre a >= 0 and a <= 15 and b >= 0 and b <= 15 and c >= 0 and c <= 15 and d >= 0 and d <= 15
+= a bor (b << 4) bor (c << 8) bor (d << 12);
+
+// Extract 4-bit nibble at position (0=lowest nibble)
+fn unpack_nibble(val: i64, pos: i64) -> i64 =
+    (val >> (pos * 4)) band 15;
+
+fn main() -> i64 = {
+    // set_bit tests
+    let _p1 = println(set_bit(0, 0));   // 1 (bit 0 set)
+    let _p2 = println(set_bit(0, 3));   // 8 (bit 3 set)
+    let _p3 = println(set_bit(5, 1));   // 5 bor 2 = 7
+    let _p4 = println(set_bit(15, 4));  // 15 bor 16 = 31
+
+    // clear_bit tests
+    let _p5 = println(clear_bit(7, 0));   // 7 - 1 = 6
+    let _p6 = println(clear_bit(7, 1));   // 7 - 2 = 5
+    let _p7 = println(clear_bit(15, 3));  // 15 - 8 = 7
+    let _p8 = println(clear_bit(8, 3));   // 8 - 8 = 0
+    let _p9 = println(clear_bit(5, 1));   // bit 1 not set: 5 - 0 = 5
+
+    // get_bit tests
+    let _p10 = println(get_bit(7, 0));   // 1
+    let _p11 = println(get_bit(7, 2));   // 1
+    let _p12 = println(get_bit(7, 3));   // 0
+    let _p13 = println(get_bit(8, 3));   // 1
+    let _p14 = println(get_bit(0, 5));   // 0
+
+    // count_set_bits tests
+    let _p15 = println(count_set_bits(0));    // 0
+    let _p16 = println(count_set_bits(1));    // 1
+    let _p17 = println(count_set_bits(7));    // 3
+    let _p18 = println(count_set_bits(255));  // 8
+    let _p19 = println(count_set_bits(255));  // 8 (11111111)
+    let _p20 = println(count_set_bits(170));  // 4 (10101010)
+
+    // pack_4bits tests
+    // pack(1, 2, 3, 4): 1 + 2*16 + 3*256 + 4*4096 = 1 + 32 + 768 + 16384 = 17185
+    let packed = pack_4bits(1, 2, 3, 4);
+    let _p21 = println(packed);             // 17185
+    let _p22 = println(unpack_nibble(packed, 0));  // 1
+    let _p23 = println(unpack_nibble(packed, 1));  // 2
+    let _p24 = println(unpack_nibble(packed, 2));  // 3
+    let _p25 = println(unpack_nibble(packed, 3));  // 4
+
+    // pack(15, 0, 7, 5): 15 + 0 + 7*256 + 5*4096 = 15 + 0 + 1792 + 20480 = 22287
+    let packed2 = pack_4bits(15, 0, 7, 5);
+    let _p26 = println(packed2);                     // 22287
+    let _p27 = println(unpack_nibble(packed2, 0));   // 15
+    let _p28 = println(unpack_nibble(packed2, 1));   // 0
+    let _p29 = println(unpack_nibble(packed2, 2));   // 7
+    let _p30 = println(unpack_nibble(packed2, 3));   // 5
+
+    0
+    };

@@ -1,0 +1,177 @@
+// Golden Test: Greedy interval scheduling
+// Given intervals (start, end), find maximum set of non-overlapping intervals
+// Uses selection sort by end time, then greedy selection
+
+// Intervals stored as two parallel vecs: starts[] and ends[]
+
+// Swap elements at positions i and j in a vec
+fn vec_swap(v: i64, i: i64, j: i64) -> i64 = {
+    let tmp = vec_get(v, i);
+    let _s1 = vec_set(v, i, vec_get(v, j));
+    let _s2 = vec_set(v, j, tmp);
+    0
+    };
+
+// Selection sort intervals by end time (ascending)
+// Sort both starts and ends arrays in parallel
+fn find_min_end(ends: i64, from: i64, best_idx: i64, pos: i64) -> i64 =
+    if pos >= vec_len(ends) { best_idx }
+    else if vec_get(ends, pos) < vec_get(ends, best_idx) {
+        find_min_end(ends, from, pos, pos + 1)
+    } else {
+        find_min_end(ends, from, best_idx, pos + 1)
+    };
+
+fn sort_by_end(starts: i64, ends: i64, pos: i64) -> i64 =
+    if pos >= vec_len(ends) - 1 { 0 }
+    else {
+        let mi = find_min_end(ends, pos, pos, pos + 1);
+        let _sw1 = if mi != pos { vec_swap(ends, pos, mi) } else { 0 };
+        let _sw2 = if mi != pos { vec_swap(starts, pos, mi) } else { 0 };
+        sort_by_end(starts, ends, pos + 1)
+    };
+
+// Greedy interval scheduling: pick intervals that don't overlap
+// Returns count of selected intervals and marks selected in a vec
+fn greedy_select(starts: i64, ends: i64, selected: i64, n: i64, pos: i64, last_end: i64, count: i64) -> i64 =
+    if pos >= n { count }
+    else if vec_get(starts, pos) >= last_end {
+        // This interval doesn't overlap with the last selected one
+        let _s = vec_set(selected, pos, 1);
+        greedy_select(starts, ends, selected, n, pos + 1, vec_get(ends, pos), count + 1)
+    } else {
+        greedy_select(starts, ends, selected, n, pos + 1, last_end, count)
+    };
+
+// Create a zeros vec of given size
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { let _p = vec_push(v, 0); 0 };
+    v
+    };
+
+// Print selected intervals
+fn print_selected(starts: i64, ends: i64, selected: i64, pos: i64) -> i64 =
+    if pos >= vec_len(selected) { 0 }
+    else {
+        let _p = if vec_get(selected, pos) == 1 {
+            let _a = println(vec_get(starts, pos));
+            let _b = println(vec_get(ends, pos));
+            0
+        } else { 0 };
+        print_selected(starts, ends, selected, pos + 1)
+    };
+
+// Helper to build vecs from known values
+fn push6(v: i64, a: i64, b: i64, c: i64, d: i64, e: i64, f: i64) -> i64 = {
+    let _p0 = vec_push(v, a);
+    let _p1 = vec_push(v, b);
+    let _p2 = vec_push(v, c);
+    let _p3 = vec_push(v, d);
+    let _p4 = vec_push(v, e);
+    let _p5 = vec_push(v, f);
+    0
+    };
+
+fn push4(v: i64, a: i64, b: i64, c: i64, d: i64) -> i64 = {
+    let _p0 = vec_push(v, a);
+    let _p1 = vec_push(v, b);
+    let _p2 = vec_push(v, c);
+    let _p3 = vec_push(v, d);
+    0
+    };
+
+fn push3(v: i64, a: i64, b: i64, c: i64) -> i64 = {
+    let _p0 = vec_push(v, a);
+    let _p1 = vec_push(v, b);
+    let _p2 = vec_push(v, c);
+    0
+    };
+
+fn main() -> i64 = {
+    // === Test 1: Classic interval scheduling ===
+    // Intervals: (1,4), (3,5), (0,6), (5,7), (3,8), (5,9)
+    // Sorted by end: (1,4), (3,5), (0,6), (5,7), (3,8), (5,9)
+    // Greedy picks: (1,4), (5,7) => 2 non-overlapping
+    let s1 = vec_new();
+    let e1 = vec_new();
+    let _ps1 = push6(s1, 1, 3, 0, 5, 3, 5);
+    let _pe1 = push6(e1, 4, 5, 6, 7, 8, 9);
+    let _sort1 = sort_by_end(s1, e1, 0);
+    let sel1 = make_zeros(6);
+    let count1 = greedy_select(s1, e1, sel1, 6, 0, 0, 0);
+    let _p1 = println(count1);
+
+    // Print selected intervals (start, end pairs)
+    let _ps = print_selected(s1, e1, sel1, 0);
+
+    // === Test 2: Non-overlapping intervals ===
+    // Intervals: (1,2), (3,4), (5,6), (7,8)
+    // All non-overlapping, should select all 4
+    let s2 = vec_new();
+    let e2 = vec_new();
+    let _ps2 = push4(s2, 1, 3, 5, 7);
+    let _pe2 = push4(e2, 2, 4, 6, 8);
+    let _sort2 = sort_by_end(s2, e2, 0);
+    let sel2 = make_zeros(4);
+    let count2 = greedy_select(s2, e2, sel2, 4, 0, 0, 0);
+    let _p2 = println(count2);
+
+    // === Test 3: All overlapping ===
+    // Intervals: (1,10), (2,8), (3,6)
+    // Sorted by end: (3,6), (2,8), (1,10)
+    // Greedy picks: (3,6) => 1
+    let s3 = vec_new();
+    let e3 = vec_new();
+    let _ps3 = push3(s3, 1, 2, 3);
+    let _pe3 = push3(e3, 10, 8, 6);
+    let _sort3 = sort_by_end(s3, e3, 0);
+    let sel3 = make_zeros(3);
+    let count3 = greedy_select(s3, e3, sel3, 3, 0, 0, 0);
+    let _p3 = println(count3);
+
+    // Verify the one selected interval
+    let _ps3b = print_selected(s3, e3, sel3, 0);
+
+    // === Test 4: Meetings scenario ===
+    // Intervals: (0,3), (1,2), (3,7), (4,6), (6,8)
+    // Sorted by end: (1,2), (0,3), (4,6), (3,7), (6,8)
+    // Greedy: (1,2) start=1>=0 yes, (0,3) start=0<2 no, (4,6) start=4>=2 yes,
+    //         (3,7) start=3<6 no, (6,8) start=6>=6 yes => 3
+    let s4 = vec_new();
+    let e4 = vec_new();
+    let _ps4a = vec_push(s4, 0);
+    let _ps4b = vec_push(s4, 1);
+    let _ps4c = vec_push(s4, 3);
+    let _ps4d = vec_push(s4, 4);
+    let _ps4e = vec_push(s4, 6);
+    let _pe4a = vec_push(e4, 3);
+    let _pe4b = vec_push(e4, 2);
+    let _pe4c = vec_push(e4, 7);
+    let _pe4d = vec_push(e4, 6);
+    let _pe4e = vec_push(e4, 8);
+    let _sort4 = sort_by_end(s4, e4, 0);
+    let sel4 = make_zeros(5);
+    let count4 = greedy_select(s4, e4, sel4, 5, 0, 0, 0);
+    let _p4 = println(count4);
+
+    // Print selected meeting intervals
+    let _ps4 = print_selected(s4, e4, sel4, 0);
+
+    // === Test 5: Single interval ===
+    let s5 = vec_new();
+    let e5 = vec_new();
+    let _ps5 = vec_push(s5, 2);
+    let _pe5 = vec_push(e5, 5);
+    let sel5 = make_zeros(1);
+    let count5 = greedy_select(s5, e5, sel5, 1, 0, 0, 0);
+    let _p5 = println(count5);
+
+    // Free all vecs
+    let _f1 = vec_free(s1); let _f2 = vec_free(e1); let _f3 = vec_free(sel1);
+    let _f4 = vec_free(s2); let _f5 = vec_free(e2); let _f6 = vec_free(sel2);
+    let _f7 = vec_free(s3); let _f8 = vec_free(e3); let _f9 = vec_free(sel3);
+    let _f10 = vec_free(s4); let _f11 = vec_free(e4); let _f12 = vec_free(sel4);
+    let _f13 = vec_free(s5); let _f14 = vec_free(e5); let _f15 = vec_free(sel5);
+    0
+    };

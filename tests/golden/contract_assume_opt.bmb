@@ -1,0 +1,18 @@
+// Test: llvm.assume enabling optimization of non-constant code
+// The assume should allow LLVM to eliminate impossible branches
+
+fn abs_val(x: i64) -> i64
+    pre x >= 0
+= if x < 0 { 0 - x } else { x };
+
+fn safe_access(arr: &[i64; 10], idx: i64) -> i64
+    pre idx >= 0 and idx < 10
+= arr[idx];
+
+fn main() -> i64 = {
+    let arr: [i64; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let n = abs_val(42);
+    let v = safe_access(&arr, 7);
+    let _u = println(n + v);
+    0
+};

@@ -1,0 +1,133 @@
+// Golden Test: Array-based binary tree traversal
+// Tree stored as vec: node i has left child 2*i+1, right child 2*i+2
+// -1 means no node
+
+fn has_node(tree: i64, sz: i64, i: i64) -> i64 =
+    if i >= sz { 0 }
+    else if vec_get(tree, i) == 0 - 1 { 0 }
+    else { 1 };
+
+    // Preorder sum: root, left, right
+
+fn preorder_sum(tree: i64, sz: i64, i: i64) -> i64 =
+    if has_node(tree, sz, i) == 0 { 0 }
+    else {
+        vec_get(tree, i) + preorder_sum(tree, sz, 2 * i + 1) + preorder_sum(tree, sz, 2 * i + 2)
+    };
+
+    // Inorder sum: left, root, right (same total but verifies traversal works)
+
+fn inorder_sum(tree: i64, sz: i64, i: i64) -> i64 =
+    if has_node(tree, sz, i) == 0 { 0 }
+    else {
+        inorder_sum(tree, sz, 2 * i + 1) + vec_get(tree, i) + inorder_sum(tree, sz, 2 * i + 2)
+    };
+
+    // Count nodes
+
+fn count_nodes(tree: i64, sz: i64, i: i64) -> i64 =
+    if has_node(tree, sz, i) == 0 { 0 }
+    else { 1 + count_nodes(tree, sz, 2 * i + 1) + count_nodes(tree, sz, 2 * i + 2) };
+
+    // Tree height
+
+fn tree_height(tree: i64, sz: i64, i: i64) -> i64 =
+    if has_node(tree, sz, i) == 0 { 0 }
+    else {
+        let lh = tree_height(tree, sz, 2 * i + 1);
+        let rh = tree_height(tree, sz, 2 * i + 2);
+        let mx = if lh > rh { lh } else { rh };
+        1 + mx
+    };
+
+    // Count leaf nodes (nodes with no children)
+
+fn count_leaves(tree: i64, sz: i64, i: i64) -> i64 =
+    if has_node(tree, sz, i) == 0 { 0 }
+    else {
+        let left_exists = has_node(tree, sz, 2 * i + 1);
+        let right_exists = has_node(tree, sz, 2 * i + 2);
+        if left_exists == 0 and right_exists == 0 { 1 }
+        else { count_leaves(tree, sz, 2 * i + 1) + count_leaves(tree, sz, 2 * i + 2) }
+    };
+
+    // Find max value in tree
+
+fn tree_max(tree: i64, sz: i64, i: i64) -> i64 =
+    if has_node(tree, sz, i) == 0 { 0 - 1 }
+    else {
+        let lmax = tree_max(tree, sz, 2 * i + 1);
+        let rmax = tree_max(tree, sz, 2 * i + 2);
+        let child_max = if lmax > rmax { lmax } else { rmax };
+        if vec_get(tree, i) > child_max { vec_get(tree, i) } else { child_max }
+    };
+
+    // Find min value in tree (among existing nodes)
+
+fn tree_min_helper(tree: i64, sz: i64, i: i64, current_min: i64) -> i64 =
+    if has_node(tree, sz, i) == 0 { current_min }
+    else {
+        let v = vec_get(tree, i);
+        let new_min = if v < current_min { v } else { current_min };
+        let lmin = tree_min_helper(tree, sz, 2 * i + 1, new_min);
+        tree_min_helper(tree, sz, 2 * i + 2, lmin)
+    };
+
+fn tree_min(tree: i64, sz: i64) -> i64 =
+    if has_node(tree, sz, 0) == 0 { 0 }
+    else { tree_min_helper(tree, sz, 0, vec_get(tree, 0)) };
+
+    // Sum of values at a specific depth
+
+fn sum_at_depth(tree: i64, sz: i64, i: i64, d: i64, target: i64) -> i64 =
+    if has_node(tree, sz, i) == 0 { 0 }
+    else if d == target { vec_get(tree, i) }
+    else {
+        sum_at_depth(tree, sz, 2 * i + 1, d + 1, target) +
+        sum_at_depth(tree, sz, 2 * i + 2, d + 1, target)
+    };
+
+fn main() -> i64 = {
+// Tree:         10
+//             /    \
+//           5       15
+//          / \     /  \
+//         3   7   12   20
+// Array: [10, 5, 15, 3, 7, 12, 20]
+    let tree = vec_new();
+    vec_push(tree, 10); vec_push(tree, 5); vec_push(tree, 15);
+    vec_push(tree, 3); vec_push(tree, 7); vec_push(tree, 12); vec_push(tree, 20);
+    let tree_sz = 7;
+
+    let _p1 = println(preorder_sum(tree, tree_sz, 0));    // 72 (10+5+15+3+7+12+20)
+    let _p2 = println(inorder_sum(tree, tree_sz, 0));     // 72
+    let _p3 = println(count_nodes(tree, tree_sz, 0));     // 7
+    let _p4 = println(tree_height(tree, tree_sz, 0));     // 3
+    let _p5 = println(count_leaves(tree, tree_sz, 0));    // 4
+    let _p6 = println(tree_max(tree, tree_sz, 0));        // 20
+    let _p7 = println(tree_min(tree, tree_sz));           // 3
+
+// Sum at depth 0 = 10, depth 1 = 20, depth 2 = 42
+    let _p8 = println(sum_at_depth(tree, tree_sz, 0, 0, 0));   // 10
+    let _p9 = println(sum_at_depth(tree, tree_sz, 0, 0, 1));   // 20
+    let _p10 = println(sum_at_depth(tree, tree_sz, 0, 0, 2));  // 42
+
+// Sparse tree:    1
+//                / \
+//               2  -1
+//              / \
+//             4   5
+// Array: [1, 2, -1, 4, 5]
+    let tree2 = vec_new();
+    vec_push(tree2, 1); vec_push(tree2, 2); vec_push(tree2, 0 - 1);
+    vec_push(tree2, 4); vec_push(tree2, 5);
+    let tree2_sz = 5;
+
+    let _p11 = println(count_nodes(tree2, tree2_sz, 0));   // 4 (nodes: 1,2,4,5)
+    let _p12 = println(tree_height(tree2, tree2_sz, 0));   // 3
+    let _p13 = println(count_leaves(tree2, tree2_sz, 0));  // 2 (nodes 4 and 5)
+    let _p14 = println(preorder_sum(tree2, tree2_sz, 0));  // 12 (1+2+4+5)
+    let _p15 = println(tree_max(tree2, tree2_sz, 0));      // 5
+
+    0
+    };

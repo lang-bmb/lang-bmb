@@ -1,0 +1,135 @@
+// Golden Test: Persistent array using path copying (versioned array)
+// Each version stores a full snapshot as a vec; updates create a new version
+// Supports: create, get, set (returns new version), version history
+
+// Create a version store: vec of vecs (version IDs pointing to data vecs)
+// versions[i] = vec_id of the i-th version's data
+
+// Create initial array of given size filled with init_val, return version store
+fn pa_create(size: i64, init_val: i64) -> i64 = {
+    let versions = vec_new();
+    let data = vec_new();
+    for _i in 0..size { vec_push(data, init_val) };
+    vec_push(versions, data);
+    versions
+    };
+
+// Get number of versions
+fn pa_num_versions(versions: i64) -> i64 =
+    vec_len(versions);
+
+// Get value at index from a specific version
+fn pa_get(versions: i64, ver: i64, idx: i64) -> i64 = {
+    let data = vec_get(versions, ver);
+    vec_get(data, idx)
+    };
+
+// Copy a vec (helper)
+fn copy_vec(src: i64, size: i64) -> i64 = {
+    let dst = vec_new();
+    let mut i = 0;
+    loop {
+        if i >= size { break } else { () };
+        vec_push(dst, vec_get(src, i));
+        i = i + 1
+    };
+    dst
+    };
+
+// Set value at index, creating a new version via path copy
+// Returns the new version number
+fn pa_set(versions: i64, ver: i64, idx: i64, val: i64, size: i64) -> i64 = {
+    let old_data = vec_get(versions, ver);
+    let new_data = copy_vec(old_data, size);
+    vec_set(new_data, idx, val);
+    vec_push(versions, new_data);
+    vec_len(versions) - 1
+    };
+
+// Sum all elements of a version
+fn pa_sum(versions: i64, ver: i64, size: i64) -> i64 = {
+    let data = vec_get(versions, ver);
+    let mut s = 0;
+    let mut i = 0;
+    loop {
+        if i >= size { break } else { () };
+        s = s + vec_get(data, i);
+        i = i + 1
+    };
+    s
+    };
+
+// Count how many elements equal a given value in a version
+fn pa_count_eq(versions: i64, ver: i64, size: i64, val: i64) -> i64 = {
+    let data = vec_get(versions, ver);
+    let mut c = 0;
+    let mut i = 0;
+    loop {
+        if i >= size { break } else { () };
+        let eq = if vec_get(data, i) == val { 1 } else { 0 };
+        c = c + eq;
+        i = i + 1
+    };
+    c
+    };
+
+// Find max element in a version
+fn pa_max(versions: i64, ver: i64, size: i64) -> i64 = {
+    let data = vec_get(versions, ver);
+    let mut mx = vec_get(data, 0);
+    let mut i = 1;
+    loop {
+        if i >= size { break } else { () };
+        let v = vec_get(data, i);
+        let _u = if v > mx { mx = v; 0 } else { 0 };
+        i = i + 1
+    };
+    mx
+    };
+
+fn main() -> i64 = {
+    let size = 5;
+
+    // Version 0: [0, 0, 0, 0, 0]
+    let pa = pa_create(size, 0);
+    let _p1 = println(pa_num_versions(pa));  // 1
+    let _p2 = println(pa_sum(pa, 0, size));  // 0
+
+    // Version 1: set index 2 to 10 → [0, 0, 10, 0, 0]
+    let v1 = pa_set(pa, 0, 2, 10, size);
+    let _p3 = println(v1);                    // 1
+    let _p4 = println(pa_get(pa, v1, 2));     // 10
+    let _p5 = println(pa_get(pa, 0, 2));      // 0 (old version unchanged)
+    let _p6 = println(pa_sum(pa, v1, size));  // 10
+
+    // Version 2: set index 0 to 5 (based on v1) → [5, 0, 10, 0, 0]
+    let v2 = pa_set(pa, v1, 0, 5, size);
+    let _p7 = println(pa_get(pa, v2, 0));     // 5
+    let _p8 = println(pa_get(pa, v2, 2));     // 10
+    let _p9 = println(pa_sum(pa, v2, size));  // 15
+
+    // Version 3: set index 4 to 20 (based on v2) → [5, 0, 10, 0, 20]
+    let v3 = pa_set(pa, v2, 4, 20, size);
+    let _p10 = println(pa_get(pa, v3, 4));    // 20
+    let _p11 = println(pa_sum(pa, v3, size)); // 35
+    let _p12 = println(pa_max(pa, v3, size)); // 20
+
+    // Version 4: branch from v1 (not v3), set index 1 to 7 → [0, 7, 10, 0, 0]
+    let v4 = pa_set(pa, v1, 1, 7, size);
+    let _p13 = println(pa_get(pa, v4, 1));    // 7
+    let _p14 = println(pa_get(pa, v4, 0));    // 0 (branched from v1, not v2)
+    let _p15 = println(pa_sum(pa, v4, size)); // 17
+
+    // All old versions still intact
+    let _p16 = println(pa_num_versions(pa));  // 5 (v0..v4)
+    let _p17 = println(pa_sum(pa, 0, size));  // 0 (v0 unchanged)
+    let _p18 = println(pa_sum(pa, v1, size)); // 10 (v1 unchanged)
+
+    // Count elements equal to 0 in v3
+    let _p19 = println(pa_count_eq(pa, v3, size, 0)); // 2
+
+    // Count elements equal to 0 in v0
+    let _p20 = println(pa_count_eq(pa, 0, size, 0));  // 5
+
+    0
+    };

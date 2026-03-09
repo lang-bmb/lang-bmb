@@ -28,7 +28,8 @@ pub use optimize::{
 };
 pub use proof_guided::{
     BoundsCheckElimination, NullCheckElimination, DivisionCheckElimination,
-    ProofUnreachableElimination, ProvenFactSet, ProofOptimizationStats,
+    ProofUnreachableElimination, SaturatingArithmeticElimination,
+    ProvenFactSet, ProofOptimizationStats,
     run_proof_guided_optimizations, run_proof_guided_program,
 };
 
@@ -93,6 +94,10 @@ pub struct MirFunction {
     /// v0.51.11: Function does not access memory (only arithmetic/comparisons)
     /// Set by MemoryEffectAnalysis pass. Used for LLVM memory(none) attribute.
     pub is_memory_free: bool,
+    /// v0.96.18: Function only reads memory (loads but no stores/calls with side effects)
+    /// Set by MemoryEffectAnalysis pass. Used for LLVM memory(read) attribute.
+    /// Only meaningful when is_memory_free is false.
+    pub is_read_only: bool,
 }
 
 /// v0.38: A proven fact from a contract condition
@@ -1981,6 +1986,7 @@ mod tests {
             always_inline: false,
             inline_hint: true,
             is_memory_free: true,
+                is_read_only: false,
         };
         assert_eq!(func.name, "square");
         assert_eq!(func.params.len(), 1);
@@ -2462,6 +2468,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: true,
+                is_read_only: false,
         };
         let prog = MirProgram {
             functions: vec![func],

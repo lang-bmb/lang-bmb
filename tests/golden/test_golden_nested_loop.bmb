@@ -1,0 +1,57 @@
+// Golden Test: Nested loop patterns
+// Tests correctness of nested loops with mutable state
+
+fn multiply_loops(a: i64, b: i64) -> i64 = {
+    let mut result = 0;
+    for _i in 0..a {
+        for _j in 0..b {
+            result = result + 1
+        }
+    };
+    result
+    };
+
+fn triangle_sum(n: i64) -> i64 = {
+    let mut total = 0;
+    for i in 1..n {
+        for j in 0..i {
+            total = total + j
+        }
+    };
+    total
+    };
+
+fn matrix_trace(n: i64) -> i64 = {
+// Simulate n x n matrix where elem(i,j) = i * n + j
+// Trace = sum of diagonal elements = sum(i * n + i for i in 0..n)
+    let mut trace = 0;
+    for i in 0..n {
+        trace = trace + i * n + i
+    };
+    trace
+    };
+
+fn inner_break_sum(n: i64) -> i64 = {
+    let mut total = 0;
+    for i in 0..n {
+        let mut j = 0;
+        loop {
+            if j >= i { break } else { () };
+            total = total + 1;
+            j = j + 1
+        }
+    };
+    total
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(multiply_loops(3, 4));    // 12
+    let _p2 = println(multiply_loops(5, 5));    // 25
+    let _p3 = println(triangle_sum(5));         // 0+0+1+0+1+3 = sum(0..i) for i=1..4 = 0+1+3+6 = 10
+    let _p4 = println(triangle_sum(6));         // 0+1+3+6+10 = 20
+    let _p5 = println(matrix_trace(4));         // 0+5+10+15 = 30 (n=4: 0*4+0 + 1*4+1 + 2*4+2 + 3*4+3)
+    let _p6 = println(matrix_trace(5));         // 0+6+12+18+24 = 60
+    let _p7 = println(inner_break_sum(5));      // 0+1+2+3+4 = 10
+    let _p8 = println(inner_break_sum(10));     // 0+1+2+...+9 = 45
+    0
+    };

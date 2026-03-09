@@ -1,0 +1,77 @@
+// Golden Test: Digital root computation
+// Repeatedly sum digits until single digit remains
+// Mathematical property: digital_root(n) = 1 + ((n-1) % 9) for n > 0
+
+// Sum of digits
+fn sum_digits(n: i64) -> i64 = {
+    let mut x = n;
+    let mut total = 0;
+    loop {
+        if x <= 0 { break } else { () };
+        let d = x - (x / 10) * 10;
+        total = total + d;
+        x = x / 10
+    };
+    total
+    };
+
+// Digital root via repeated summing
+fn digit_root_iter(n: i64) -> i64 = {
+    let mut x = n;
+    loop {
+        if x < 10 { break } else { () };
+        x = sum_digits(x)
+    };
+    x
+    };
+
+// Digital root via formula: 1 + ((n-1) % 9) for n > 0, 0 for n = 0
+fn digit_root_formula(n: i64) -> i64 =
+    if n == 0 { 0 }
+    else { 1 + ((n - 1) % 9) };
+
+// Count how many iterations to reach single digit
+fn digit_root_steps(n: i64) -> i64 = {
+    let mut x = n;
+    let mut steps = 0;
+    loop {
+        if x < 10 { break } else { () };
+        x = sum_digits(x);
+        steps = steps + 1
+    };
+    steps
+    };
+
+fn main() -> i64 = {
+    // Test 1: digit_root(493) = 7  (4+9+3=16, 1+6=7)
+    let _p1 = println(digit_root_iter(493));
+
+    // Test 2: digit_root(9999) = 9  (9+9+9+9=36, 3+6=9)
+    let _p2 = println(digit_root_iter(9999));
+
+    // Test 3: digit_root(1) = 1
+    let _p3 = println(digit_root_iter(1));
+
+    // Test 4: digit_root(123456789) = 9  (sum=45, 4+5=9)
+    let _p4 = println(digit_root_iter(123456789));
+
+    // Test 5: formula matches iterative for 493
+    let _p5 = println(digit_root_formula(493));
+
+    // Test 6: formula matches iterative for 9999
+    let _p6 = println(digit_root_formula(9999));
+
+    // Test 7: steps for 493 = 2 (493->16->7)
+    let _p7 = println(digit_root_steps(493));
+
+    // Test 8: steps for 9999 = 2 (9999->36->9)
+    let _p8 = println(digit_root_steps(9999));
+
+    // Test 9: sum_digits(12345) = 15
+    let _p9 = println(sum_digits(12345));
+
+    // Test 10: digit_root(99999999) = 9
+    let _p10 = println(digit_root_iter(99999999));
+
+    0
+    };

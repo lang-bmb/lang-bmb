@@ -1,0 +1,123 @@
+// Golden Test: Integer Square Root
+// Newton's method and binary search approaches
+
+// Integer square root via Newton's method
+// Returns floor(sqrt(n))
+fn isqrt_newton(n: i64) -> i64 = {
+    if n <= 0 { return 0 } else { () };
+    if n == 1 { return 1 } else { () };
+    let mut x = n / 2;
+    let mut iters = 0;
+    loop {
+        if iters >= 100 { break } else { () };
+        let nx = (x + n / x) / 2;
+        if nx >= x { break } else { () };
+        set x = nx;
+        set iters = iters + 1
+    };
+    x
+};
+
+// Integer square root via binary search
+fn isqrt_bsearch(n: i64) -> i64 = {
+    if n <= 0 { return 0 } else { () };
+    if n == 1 { return 1 } else { () };
+    let mut lo = 1;
+    let mut hi = n / 2 + 1;
+    let mut result = 1;
+    loop {
+        if lo > hi { break } else { () };
+        let mid = lo + (hi - lo) / 2;
+        if mid <= n / mid {
+            set result = mid;
+            set lo = mid + 1
+        } else {
+            set hi = mid - 1
+        }
+    };
+    result
+};
+
+// Check if n is a perfect square
+fn is_perfect_square(n: i64) -> i64 = {
+    let s = isqrt_newton(n);
+    if s * s == n { 1 } else { 0 }
+};
+
+// Integer cube root via Newton's method
+fn icbrt(n: i64) -> i64 = {
+    if n <= 0 { return 0 } else { () };
+    if n == 1 { return 1 } else { () };
+    let mut x = n / 3;
+    if x == 0 { set x = 1 } else { () };
+    let mut iters = 0;
+    loop {
+        if iters >= 100 { break } else { () };
+        let nx = (2 * x + n / (x * x)) / 3;
+        if nx >= x { break } else { () };
+        set x = nx;
+        set iters = iters + 1
+    };
+    // Refine: check if x+1 is also valid
+    if (x + 1) * (x + 1) * (x + 1) <= n { x + 1 } else { x }
+};
+
+// Count perfect squares up to n
+fn count_squares_up_to(n: i64) -> i64 = isqrt_newton(n);
+
+// Nearest perfect square to n
+fn nearest_square(n: i64) -> i64 = {
+    let s = isqrt_newton(n);
+    let lo = s * s;
+    let hi = (s + 1) * (s + 1);
+    let diff_lo = n - lo;
+    let diff_hi = hi - n;
+    if diff_lo <= diff_hi { lo } else { hi }
+};
+
+fn main() -> i64 = {
+    // Newton's method
+    let _r1 = println(isqrt_newton(0));      // 0
+    let _r2 = println(isqrt_newton(1));      // 1
+    let _r3 = println(isqrt_newton(4));      // 2
+    let _r4 = println(isqrt_newton(9));      // 3
+    let _r5 = println(isqrt_newton(16));     // 4
+    let _r6 = println(isqrt_newton(100));    // 10
+    let _r7 = println(isqrt_newton(99));     // 9
+    let _r8 = println(isqrt_newton(10000));  // 100
+    let _r9 = println(isqrt_newton(12345));  // 111
+
+    // Binary search method (should match Newton)
+    let _r10 = println(isqrt_bsearch(0));     // 0
+    let _r11 = println(isqrt_bsearch(4));     // 2
+    let _r12 = println(isqrt_bsearch(100));   // 10
+    let _r13 = println(isqrt_bsearch(10000)); // 100
+    let _r14 = println(isqrt_bsearch(12345)); // 111
+
+    // Perfect square check
+    let _r15 = println(is_perfect_square(49));   // 1
+    let _r16 = println(is_perfect_square(50));   // 0
+    let _r17 = println(is_perfect_square(144));  // 1
+    let _r18 = println(is_perfect_square(145));  // 0
+    let _r19 = println(is_perfect_square(10000)); // 1
+
+    // Cube root
+    let _r20 = println(icbrt(0));     // 0
+    let _r21 = println(icbrt(1));     // 1
+    let _r22 = println(icbrt(8));     // 2
+    let _r23 = println(icbrt(27));    // 3
+    let _r24 = println(icbrt(1000));  // 10
+    let _r25 = println(icbrt(999));   // 9
+
+    // Count perfect squares up to n
+    let _r26 = println(count_squares_up_to(100));  // 10 (1,4,9,...,100)
+    let _r27 = println(count_squares_up_to(50));   // 7 (1,4,9,16,25,36,49)
+
+    // Nearest perfect square
+    let _r28 = println(nearest_square(10));   // 9
+    let _r29 = println(nearest_square(13));   // 16
+    let _r30 = println(nearest_square(24));   // 25
+    let _r31 = println(nearest_square(26));   // 25
+
+    0
+};

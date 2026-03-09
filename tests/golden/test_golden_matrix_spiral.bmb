@@ -1,0 +1,96 @@
+// Golden Test: Spiral matrix traversal
+// Read elements of an NxN matrix in spiral order (clockwise from top-left)
+
+fn mat_get(mat: i64, n: i64, row: i64, col: i64) -> i64 =
+    vec_get(mat, row * n + col);
+
+// Spiral traversal: collect elements in clockwise spiral order into result vec
+fn spiral_traverse(mat: i64, n: i64, result: i64) -> i64 = {
+    let mut top = 0;
+    let mut bottom = n - 1;
+    let mut left = 0;
+    let mut right = n - 1;
+    loop {
+        if top > bottom || left > right { break } else { () };
+        // Right along top row
+        let mut col = left;
+        loop {
+            if col > right { break } else { () };
+            let _p = vec_push(result, mat_get(mat, n, top, col));
+            col = col + 1
+        };
+        top = top + 1;
+        // Down along right column
+        let mut row = top;
+        loop {
+            if row > bottom { break } else { () };
+            let _p = vec_push(result, mat_get(mat, n, row, right));
+            row = row + 1
+        };
+        right = right - 1;
+        // Left along bottom row
+        if top <= bottom {
+            let mut col2 = right;
+            loop {
+                if col2 < left { break } else { () };
+                let _p = vec_push(result, mat_get(mat, n, bottom, col2));
+                col2 = col2 - 1
+            };
+            bottom = bottom - 1
+        } else { () };
+        // Up along left column
+        if left <= right {
+            let mut row2 = bottom;
+            loop {
+                if row2 < top { break } else { () };
+                let _p = vec_push(result, mat_get(mat, n, row2, left));
+                row2 = row2 - 1
+            };
+            left = left + 1
+        } else { () }
+    };
+    0
+    };
+
+fn main() -> i64 = {
+    // Test 1: 3x3 spiral: [1..9] -> 1,2,3,6,9,8,7,4,5
+    let m1 = vec_new();
+    for i in 1..10 { let _p = vec_push(m1, i); 0 };
+    let r1 = vec_new();
+    let _t1 = spiral_traverse(m1, 3, r1);
+    for i in 0..9 { let _p = println(vec_get(r1, i)); 0 };
+
+    // Test 2: 4x4 spiral: [1..16] -> 1,2,3,4,8,12,16,15,14,13,9,5,6,7,11,10
+    let m2 = vec_new();
+    for i in 1..17 { let _p = vec_push(m2, i); 0 };
+    let r2 = vec_new();
+    let _t2 = spiral_traverse(m2, 4, r2);
+    let _p1 = println(vec_get(r2, 0));   // 1
+    let _p2 = println(vec_get(r2, 3));   // 4
+    let _p3 = println(vec_get(r2, 7));   // 15
+    let _p4 = println(vec_get(r2, 11));  // 5
+    let _p5 = println(vec_get(r2, 15));  // 10
+    let _p6 = println(vec_len(r2));      // 16
+
+    // Test 3: 1x1
+    let m3 = vec_new();
+    vec_push(m3, 99);
+    let r3 = vec_new();
+    let _t3 = spiral_traverse(m3, 1, r3);
+    let _p7 = println(vec_get(r3, 0));   // 99
+
+    // Test 4: 2x2 spiral: [10,20,30,40] -> 10,20,40,30
+    let m4 = vec_new();
+    vec_push(m4, 10); vec_push(m4, 20);
+    vec_push(m4, 30); vec_push(m4, 40);
+    let r4 = vec_new();
+    let _t4 = spiral_traverse(m4, 2, r4);
+    for i in 0..4 { let _p = println(vec_get(r4, i)); 0 };
+
+    // Test 5: Verify total element count for 4x4
+    let _p8 = println(vec_len(r1));  // 9
+
+    vec_free(m1); vec_free(r1); vec_free(m2); vec_free(r2);
+    vec_free(m3); vec_free(r3); vec_free(m4); vec_free(r4);
+    0
+    };

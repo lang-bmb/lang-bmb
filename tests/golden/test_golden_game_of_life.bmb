@@ -1,0 +1,121 @@
+// Golden Test: Conway's Game of Life
+// Simulates cellular automaton on a grid
+// Rules: live cell with 2-3 neighbors survives; dead cell with 3 neighbors becomes alive
+
+fn grid_new(rows: i64, cols: i64) -> i64 = {
+    let g = vec_new();
+    let _p = vec_push(g, rows);
+    let _p = vec_push(g, cols);
+    let mut i = 0;
+    while i < rows * cols {
+        let _p = vec_push(g, 0);
+        set i = i + 1
+    };
+    g
+};
+
+fn grid_get(g: i64, r: i64, c: i64) -> i64 = {
+    let cols = vec_get(g, 1);
+    vec_get(g, 2 + r * cols + c)
+};
+
+fn grid_set(g: i64, r: i64, c: i64, val: i64) -> () = {
+    let cols = vec_get(g, 1);
+    vec_set(g, 2 + r * cols + c, val)
+};
+
+fn count_neighbors(g: i64, r: i64, c: i64) -> i64 = {
+    let rows = vec_get(g, 0);
+    let cols = vec_get(g, 1);
+    let mut count = 0;
+    let mut dr = 0 - 1;
+    while dr <= 1 {
+        let mut dc = 0 - 1;
+        while dc <= 1 {
+            let _x = if dr == 0 and dc == 0 { 0 }
+            else {
+                let nr = r + dr;
+                let nc = c + dc;
+                let _y = if nr >= 0 and nr < rows and nc >= 0 and nc < cols {
+                    set count = count + grid_get(g, nr, nc);
+                    0
+                } else { 0 };
+                0
+            };
+            set dc = dc + 1
+        };
+        set dr = dr + 1
+    };
+    count
+};
+
+fn step(g: i64) -> i64 = {
+    let rows = vec_get(g, 0);
+    let cols = vec_get(g, 1);
+    let next = grid_new(rows, cols);
+    let mut r = 0;
+    while r < rows {
+        let mut c = 0;
+        while c < cols {
+            let alive = grid_get(g, r, c);
+            let nb = count_neighbors(g, r, c);
+            let _x = if alive == 1 and (nb == 2 or nb == 3) {
+                grid_set(next, r, c, 1); 0
+            } else if alive == 0 and nb == 3 {
+                grid_set(next, r, c, 1); 0
+            } else { 0 };
+            set c = c + 1
+        };
+        set r = r + 1
+    };
+    next
+};
+
+fn count_alive(g: i64) -> i64 = {
+    let rows = vec_get(g, 0);
+    let cols = vec_get(g, 1);
+    let mut count = 0;
+    let mut i = 0;
+    while i < rows * cols {
+        set count = count + vec_get(g, 2 + i);
+        set i = i + 1
+    };
+    count
+};
+
+fn print_grid(g: i64) -> () = {
+    let rows = vec_get(g, 0);
+    let cols = vec_get(g, 1);
+    let mut r = 0;
+    while r < rows {
+        let mut c = 0;
+        while c < cols {
+            let _x = if grid_get(g, r, c) == 1 { print_str("#"); 0 } else { print_str("."); 0 };
+            set c = c + 1
+        };
+        let _nl = print_str("
+");
+        set r = r + 1
+    }
+};
+
+fn main() -> () = {
+    // Blinker (period 2): horizontal -> vertical -> horizontal
+    let g = grid_new(5, 5);
+    grid_set(g, 2, 1, 1);
+    grid_set(g, 2, 2, 1);
+    grid_set(g, 2, 3, 1);
+    print_str("gen0:
+"); print_grid(g);
+    print_str("alive="); let _r = println(count_alive(g));
+
+    let g1 = step(g);
+    print_str("gen1:
+"); print_grid(g1);
+    print_str("alive="); let _r = println(count_alive(g1));
+
+    let g2 = step(g1);
+    print_str("gen2:
+"); print_grid(g2);
+    print_str("alive="); let _r = println(count_alive(g2))
+};

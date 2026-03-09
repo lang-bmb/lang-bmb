@@ -1,0 +1,241 @@
+// Golden Test: Sparse matrix operations using COO (coordinate) format
+// Tests: sparse matrix creation, addition, matrix-vector multiply
+// Matrices stored as 3 parallel vecs: row_indices, col_indices, values
+
+// Create a sparse matrix (returns vec of 3 handles: rows, cols, vals)
+// We pack 3 handles into one vec for convenience
+fn sparse_new() -> i64 = {
+    let meta = vec_new();
+    let rows = vec_new();
+    let cols = vec_new();
+    let vals = vec_new();
+    let _p = vec_push(meta, rows);
+    let _p = vec_push(meta, cols);
+    let _p = vec_push(meta, vals);
+    meta
+};
+
+fn sparse_rows(sp: i64) -> i64 = vec_get(sp, 0);
+fn sparse_cols(sp: i64) -> i64 = vec_get(sp, 1);
+fn sparse_vals(sp: i64) -> i64 = vec_get(sp, 2);
+fn sparse_nnz(sp: i64) -> i64 = vec_len(sparse_rows(sp));
+
+// Add a non-zero entry to sparse matrix
+fn sparse_add_entry(sp: i64, r: i64, c: i64, v: i64) -> i64 = {
+    let _p = vec_push(sparse_rows(sp), r);
+    let _p = vec_push(sparse_cols(sp), c);
+    let _p = vec_push(sparse_vals(sp), v);
+    0
+};
+
+// Get value at (r,c) by scanning entries (O(nnz))
+fn sparse_get(sp: i64, r: i64, c: i64) -> i64 = {
+    let rows = sparse_rows(sp);
+    let cols = sparse_cols(sp);
+    let vals = sparse_vals(sp);
+    let n = vec_len(rows);
+    let mut result = 0;
+    for i in 0..n {
+        if vec_get(rows, i) == r {
+            if vec_get(cols, i) == c {
+                set result = result + vec_get(vals, i)
+            } else {
+                set result = result
+            }
+        } else {
+            set result = result
+        }
+    };
+    result
+};
+
+// Add two sparse matrices: C = A + B
+// Simply concatenate entries; duplicates at same (r,c) will sum in sparse_get
+fn sparse_add(a: i64, b: i64) -> i64 = {
+    let c = sparse_new();
+    let na = sparse_nnz(a);
+    let nb = sparse_nnz(b);
+    for i in 0..na {
+        let _p = sparse_add_entry(c,
+            vec_get(sparse_rows(a), i),
+            vec_get(sparse_cols(a), i),
+            vec_get(sparse_vals(a), i));
+        0
+    };
+    for i in 0..nb {
+        let _p = sparse_add_entry(c,
+            vec_get(sparse_rows(b), i),
+            vec_get(sparse_cols(b), i),
+            vec_get(sparse_vals(b), i));
+        0
+    };
+    c
+};
+
+// Sparse matrix-vector multiply: y = A * x
+fn sparse_matvec(sp: i64, x: i64, dim: i64) -> i64 = {
+    let y = vec_new();
+    for _i in 0..dim {
+        let _p = vec_push(y, 0);
+        0
+    };
+    let nnz = sparse_nnz(sp);
+    for i in 0..nnz {
+        let r = vec_get(sparse_rows(sp), i);
+        let c = vec_get(sparse_cols(sp), i);
+        let v = vec_get(sparse_vals(sp), i);
+        let _p = vec_set(y, r, vec_get(y, r) + v * vec_get(x, c));
+        0
+    };
+    y
+};
+
+// Print dense vector
+fn print_dense(v: i64, n: i64) -> i64 = {
+    for i in 0..n {
+        let _p = println(vec_get(v, i));
+        0
+    };
+    0
+};
+
+// Free a sparse matrix (meta + 3 inner vecs)
+fn sparse_free(sp: i64) -> i64 = {
+    let _f = vec_free(sparse_rows(sp));
+    let _f = vec_free(sparse_cols(sp));
+    let _f = vec_free(sparse_vals(sp));
+    let _f = vec_free(sp);
+    0
+};
+
+fn main() -> i64 = {
+    // === Test 1: Create 3x3 sparse matrix A ===
+    // A = [[1, 0, 2],
+    //      [0, 3, 0],
+    //      [4, 0, 5]]
+    let a = sparse_new();
+    let _p = sparse_add_entry(a, 0, 0, 1);
+    let _p = sparse_add_entry(a, 0, 2, 2);
+    let _p = sparse_add_entry(a, 1, 1, 3);
+    let _p = sparse_add_entry(a, 2, 0, 4);
+    let _p = sparse_add_entry(a, 2, 2, 5);
+
+    let _p = println_str("=== Matrix A (3x3 sparse) ===");
+    let _p = print_str("nnz(A) = ");
+    let _p = println(sparse_nnz(a));
+    let _p = print_str("A[0,0] = ");
+    let _p = println(sparse_get(a, 0, 0));
+    let _p = print_str("A[0,1] = ");
+    let _p = println(sparse_get(a, 0, 1));
+    let _p = print_str("A[0,2] = ");
+    let _p = println(sparse_get(a, 0, 2));
+    let _p = print_str("A[1,1] = ");
+    let _p = println(sparse_get(a, 1, 1));
+    let _p = print_str("A[2,0] = ");
+    let _p = println(sparse_get(a, 2, 0));
+    let _p = print_str("A[2,2] = ");
+    let _p = println(sparse_get(a, 2, 2));
+
+    // === Test 2: Create 3x3 sparse matrix B ===
+    // B = [[0, 6, 0],
+    //      [7, 0, 8],
+    //      [0, 9, 0]]
+    let b = sparse_new();
+    let _p = sparse_add_entry(b, 0, 1, 6);
+    let _p = sparse_add_entry(b, 1, 0, 7);
+    let _p = sparse_add_entry(b, 1, 2, 8);
+    let _p = sparse_add_entry(b, 2, 1, 9);
+
+    let _p = println_str("");
+    let _p = println_str("=== Matrix B (3x3 sparse) ===");
+    let _p = print_str("nnz(B) = ");
+    let _p = println(sparse_nnz(b));
+
+    // === Test 3: C = A + B ===
+    let c = sparse_add(a, b);
+    let _p = println_str("");
+    let _p = println_str("=== C = A + B ===");
+    let _p = print_str("nnz(C) = ");
+    let _p = println(sparse_nnz(c));
+    let _p = print_str("C[0,0] = ");
+    let _p = println(sparse_get(c, 0, 0));
+    let _p = print_str("C[0,1] = ");
+    let _p = println(sparse_get(c, 0, 1));
+    let _p = print_str("C[0,2] = ");
+    let _p = println(sparse_get(c, 0, 2));
+    let _p = print_str("C[1,0] = ");
+    let _p = println(sparse_get(c, 1, 0));
+    let _p = print_str("C[1,1] = ");
+    let _p = println(sparse_get(c, 1, 1));
+    let _p = print_str("C[1,2] = ");
+    let _p = println(sparse_get(c, 1, 2));
+    let _p = print_str("C[2,0] = ");
+    let _p = println(sparse_get(c, 2, 0));
+    let _p = print_str("C[2,1] = ");
+    let _p = println(sparse_get(c, 2, 1));
+    let _p = print_str("C[2,2] = ");
+    let _p = println(sparse_get(c, 2, 2));
+
+    // === Test 4: Matrix-vector multiply y = A * x ===
+    // x = [1, 2, 3]
+    // A*x = [1*1+0*2+2*3, 0*1+3*2+0*3, 4*1+0*2+5*3] = [7, 6, 19]
+    let x = vec_new();
+    let _p = vec_push(x, 1);
+    let _p = vec_push(x, 2);
+    let _p = vec_push(x, 3);
+
+    let y_a = sparse_matvec(a, x, 3);
+    let _p = println_str("");
+    let _p = println_str("=== y = A * [1,2,3] ===");
+    let _p = print_dense(y_a, 3);
+
+    // === Test 5: y = B * x ===
+    // B*x = [0*1+6*2+0*3, 7*1+0*2+8*3, 0*1+9*2+0*3] = [12, 31, 18]
+    let y_b = sparse_matvec(b, x, 3);
+    let _p = println_str("");
+    let _p = println_str("=== y = B * [1,2,3] ===");
+    let _p = print_dense(y_b, 3);
+
+    // === Test 6: y = C * x = (A+B) * x ===
+    let y_c = sparse_matvec(c, x, 3);
+    let _p = println_str("");
+    let _p = println_str("=== y = (A+B) * [1,2,3] ===");
+    let _p = print_dense(y_c, 3);
+
+    // Verify distributive property: (A+B)*x == A*x + B*x
+    let ok0 = if vec_get(y_c, 0) == vec_get(y_a, 0) + vec_get(y_b, 0) { 1 } else { 0 };
+    let ok1 = if vec_get(y_c, 1) == vec_get(y_a, 1) + vec_get(y_b, 1) { 1 } else { 0 };
+    let ok2 = if vec_get(y_c, 2) == vec_get(y_a, 2) + vec_get(y_b, 2) { 1 } else { 0 };
+    let _p = println_str("");
+    let _p = print_str("distributive check = ");
+    let _p = println(ok0 + ok1 + ok2);
+
+    // === Test 7: Diagonal matrix-vector multiply ===
+    let d = sparse_new();
+    let _p = sparse_add_entry(d, 0, 0, 2);
+    let _p = sparse_add_entry(d, 1, 1, 3);
+    let _p = sparse_add_entry(d, 2, 2, 4);
+
+    let x2 = vec_new();
+    let _p = vec_push(x2, 10);
+    let _p = vec_push(x2, 20);
+    let _p = vec_push(x2, 30);
+
+    let y_d = sparse_matvec(d, x2, 3);
+    let _p = println_str("");
+    let _p = println_str("=== y = diag(2,3,4) * [10,20,30] ===");
+    let _p = print_dense(y_d, 3);
+
+    // Cleanup
+    let _f = sparse_free(a);
+    let _f = sparse_free(b);
+    let _f = sparse_free(c);
+    let _f = sparse_free(d);
+    let _f = vec_free(x);
+    let _f = vec_free(x2);
+    let _f = vec_free(y_a);
+    let _f = vec_free(y_b);
+    let _f = vec_free(y_c);
+    let _f = vec_free(y_d);
+    0
+};

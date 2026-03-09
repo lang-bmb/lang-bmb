@@ -1,0 +1,140 @@
+// Golden test: Graph algorithms on adjacency matrix
+// Uses flat vec as n*n adjacency matrix (0=no edge, weight=edge)
+
+fn adj_get(adj: i64, n: i64, from: i64, to: i64) -> i64 =
+    vec_get(adj, from * n + to);
+
+    // Count edges (non-zero entries)
+
+fn count_edges(adj: i64, pos: i64, sz: i64, count: i64) -> i64 =
+    if pos >= sz { count }
+    else {
+        let inc = if vec_get(adj, pos) > 0 { 1 } else { 0 };
+        count_edges(adj, pos + 1, sz, count + inc)
+    };
+
+    // Compute degree of node (outgoing edges)
+
+fn out_degree(adj: i64, n: i64, node: i64, col: i64, count: i64) -> i64 =
+    if col >= n { count }
+    else {
+        let inc = if adj_get(adj, n, node, col) > 0 { 1 } else { 0 };
+        out_degree(adj, n, node, col + 1, count + inc)
+    };
+
+    // Check if graph has self-loops
+
+fn has_self_loop(adj: i64, n: i64, i: i64) -> i64 =
+    if i >= n { 0 }
+    else if adj_get(adj, n, i, i) > 0 { 1 }
+    else { has_self_loop(adj, n, i + 1) };
+
+    // DFS: count reachable nodes from start
+
+fn dfs_visit(adj: i64, n: i64, visited: i64, node: i64) -> i64 =
+    if vec_get(visited, node) == 1 { visited }
+    else {
+        vec_set(visited, node, 1);
+        dfs_neighbors(adj, n, visited, node, 0)
+    };
+
+fn dfs_neighbors(adj: i64, n: i64, visited: i64, node: i64, neighbor: i64) -> i64 =
+    if neighbor >= n { visited }
+    else if adj_get(adj, n, node, neighbor) > 0 and vec_get(visited, neighbor) == 0 {
+        let v = dfs_visit(adj, n, visited, neighbor);
+        dfs_neighbors(adj, n, v, node, neighbor + 1)
+    }
+    else { dfs_neighbors(adj, n, visited, node, neighbor + 1) };
+
+fn count_visited(visited: i64, pos: i64, sz: i64, count: i64) -> i64 =
+    if pos >= sz { count }
+    else {
+        let inc = if vec_get(visited, pos) == 1 { 1 } else { 0 };
+        count_visited(visited, pos + 1, sz, count + inc)
+    };
+
+    // Check if graph is symmetric (undirected)
+
+fn is_symmetric(adj: i64, n: i64, i: i64, j: i64) -> i64 =
+    if i >= n { 1 }
+    else if j >= n { is_symmetric(adj, n, i + 1, 0) }
+    else if adj_get(adj, n, i, j) != adj_get(adj, n, j, i) { 0 }
+    else { is_symmetric(adj, n, i, j + 1) };
+
+    // Sum of all edge weights
+
+fn sum_weights(adj: i64, pos: i64, sz: i64, acc: i64) -> i64 =
+    if pos >= sz { acc }
+    else { sum_weights(adj, pos + 1, sz, acc + vec_get(adj, pos)) };
+
+fn make_vec4(a: i64, b: i64, c: i64, d: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c); vec_push(v, d);
+    v
+    };
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { vec_push(v, 0) };
+    v
+    };
+
+fn main() -> i64 = {
+// 4-node directed graph:
+// 0 -> 1 (w=1), 0 -> 2 (w=1)
+// 1 -> 3 (w=1)
+// 2 -> 3 (w=1)
+// 3 -> (none)
+    let adj = vec_new();
+
+// Row 0: 0,1,1,0
+    vec_push(adj, 0); vec_push(adj, 1); vec_push(adj, 1); vec_push(adj, 0);
+
+// Row 1: 0,0,0,1
+    vec_push(adj, 0); vec_push(adj, 0); vec_push(adj, 0); vec_push(adj, 1);
+
+// Row 2: 0,0,0,1
+    vec_push(adj, 0); vec_push(adj, 0); vec_push(adj, 0); vec_push(adj, 1);
+
+// Row 3: 0,0,0,0
+    vec_push(adj, 0); vec_push(adj, 0); vec_push(adj, 0); vec_push(adj, 0);
+    let n = 4;
+
+    let _p1 = println(count_edges(adj, 0, vec_len(adj), 0));        // 4
+    let _p2 = println(out_degree(adj, n, 0, 0, 0));   // 2
+    let _p3 = println(out_degree(adj, n, 3, 0, 0));   // 0
+    let _p4 = println(has_self_loop(adj, n, 0));       // 0
+    let _p5 = println(is_symmetric(adj, n, 0, 0));     // 0 (directed)
+
+// DFS from node 0: should reach all 4 nodes
+    let vis1 = make_zeros(4);
+    let v1 = dfs_visit(adj, n, vis1, 0);
+    let _p6 = println(count_visited(v1, 0, 4, 0));  // 4
+
+// DFS from node 3: reaches only node 3
+    let vis2 = make_zeros(4);
+    let v2 = dfs_visit(adj, n, vis2, 3);
+    let _p7 = println(count_visited(v2, 0, 4, 0));  // 1
+
+    let _p8 = println(sum_weights(adj, 0, vec_len(adj), 0));  // 4
+
+// Undirected graph (symmetric)
+    let uadj = vec_new();
+    vec_push(uadj, 0); vec_push(uadj, 1); vec_push(uadj, 1); vec_push(uadj, 0);
+    vec_push(uadj, 1); vec_push(uadj, 0); vec_push(uadj, 0); vec_push(uadj, 1);
+    vec_push(uadj, 1); vec_push(uadj, 0); vec_push(uadj, 0); vec_push(uadj, 1);
+    vec_push(uadj, 0); vec_push(uadj, 1); vec_push(uadj, 1); vec_push(uadj, 0);
+    let _p9 = println(is_symmetric(uadj, n, 0, 0));    // 1
+    let _p10 = println(count_edges(uadj, 0, vec_len(uadj), 0));        // 8 (bidirectional)
+    let _p11 = println(sum_weights(uadj, 0, vec_len(uadj), 0));        // 8
+
+// Weighted graph (3 nodes)
+// 0->1 (w=5), 0->2 (w=3), 1->2 (w=2)
+    let wadj = vec_new();
+    vec_push(wadj, 0); vec_push(wadj, 5); vec_push(wadj, 3);
+    vec_push(wadj, 0); vec_push(wadj, 0); vec_push(wadj, 2);
+    vec_push(wadj, 0); vec_push(wadj, 0); vec_push(wadj, 0);
+    let _p12 = println(sum_weights(wadj, 0, vec_len(wadj), 0));  // 10
+
+    0
+    };

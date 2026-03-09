@@ -1,0 +1,90 @@
+// Golden Test: 1D Discrete Convolution
+// Convolve signal array with kernel array
+// Output[i] = sum(signal[i+j] * kernel[j]) for j=0..kernel_len
+// Valid convolution: output length = signal_len - kernel_len + 1
+
+fn convolve_at(signal: i64, kernel: i64, klen: i64, pos: i64) -> i64 = {
+    let mut acc = 0;
+    for j in 0..klen {
+        set acc = acc + vec_get(signal, pos + j) * vec_get(kernel, j);
+    };
+    acc
+};
+
+fn convolve(signal: i64, slen: i64, kernel: i64, klen: i64, out: i64) -> i64 = {
+    let olen = slen - klen + 1;
+    for i in 0..olen {
+        let val = convolve_at(signal, kernel, klen, i);
+        let _s = vec_set(out, i, val);
+    };
+    olen
+};
+
+fn main() -> i64 = {
+    // Signal: [1, 2, 3, 4, 5]
+    let sig = vec_new();
+    let _p1 = vec_push(sig, 1);
+    let _p2 = vec_push(sig, 2);
+    let _p3 = vec_push(sig, 3);
+    let _p4 = vec_push(sig, 4);
+    let _p5 = vec_push(sig, 5);
+
+    // Kernel 1: [1, 0, -1] (edge detection)
+    let k1 = vec_new();
+    let _k1a = vec_push(k1, 1);
+    let _k1b = vec_push(k1, 0);
+    let _k1c = vec_push(k1, 0 - 1);
+
+    // Output buffer (pre-allocate 3 slots)
+    let out1 = vec_new();
+    let _o1a = vec_push(out1, 0);
+    let _o1b = vec_push(out1, 0);
+    let _o1c = vec_push(out1, 0);
+
+    let olen1 = convolve(sig, 5, k1, 3, out1);
+    let _r1 = println(olen1);                // 3
+    let _r2 = println(vec_get(out1, 0));     // 1*1+2*0+3*(-1) = -2
+    let _r3 = println(vec_get(out1, 1));     // 2*1+3*0+4*(-1) = -2
+    let _r4 = println(vec_get(out1, 2));     // 3*1+4*0+5*(-1) = -2
+
+    // Kernel 2: [1, 1, 1] (averaging / sum)
+    let k2 = vec_new();
+    let _k2a = vec_push(k2, 1);
+    let _k2b = vec_push(k2, 1);
+    let _k2c = vec_push(k2, 1);
+
+    let out2 = vec_new();
+    let _o2a = vec_push(out2, 0);
+    let _o2b = vec_push(out2, 0);
+    let _o2c = vec_push(out2, 0);
+
+    let olen2 = convolve(sig, 5, k2, 3, out2);
+    let _r5 = println(olen2);               // 3
+    let _r6 = println(vec_get(out2, 0));     // 1+2+3 = 6
+    let _r7 = println(vec_get(out2, 1));     // 2+3+4 = 9
+    let _r8 = println(vec_get(out2, 2));     // 3+4+5 = 12
+
+    // Single-element kernel [2] (scaling)
+    let k3 = vec_new();
+    let _k3a = vec_push(k3, 2);
+
+    let out3 = vec_new();
+    let _o3a = vec_push(out3, 0);
+    let _o3b = vec_push(out3, 0);
+    let _o3c = vec_push(out3, 0);
+    let _o3d = vec_push(out3, 0);
+    let _o3e = vec_push(out3, 0);
+
+    let _olen3 = convolve(sig, 5, k3, 1, out3);
+    let _r9 = println(vec_get(out3, 0));     // 1*2 = 2
+    let _r10 = println(vec_get(out3, 4));    // 5*2 = 10
+
+    let _f1 = vec_free(sig);
+    let _f2 = vec_free(k1);
+    let _f3 = vec_free(k2);
+    let _f4 = vec_free(k3);
+    let _f5 = vec_free(out1);
+    let _f6 = vec_free(out2);
+    let _f7 = vec_free(out3);
+    0
+};

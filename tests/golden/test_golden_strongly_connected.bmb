@@ -1,0 +1,242 @@
+// Golden test: Kosaraju's SCC algorithm
+// Two-pass DFS on directed graph stored as adjacency lists (flat vecs)
+// Pass 1: DFS on original graph, record finish order
+// Pass 2: DFS on reversed graph in reverse finish order
+
+// Graph representation: adjacency list via flat vec of vecs
+// adj[i] = vec of neighbors of node i
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { vec_push(v, 0) };
+    v
+    };
+
+fn make_neg_ones(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { vec_push(v, 0 - 1) };
+    v
+    };
+
+// Create empty adjacency list (vec of empty vecs)
+fn make_adj(n: i64) -> i64 = {
+    let adj = vec_new();
+    for _i in 0..n {
+        let row = vec_new();
+        vec_push(adj, row)
+    };
+    adj
+    };
+
+// Add directed edge u -> v
+fn add_edge(adj: i64, u: i64, v: i64) -> i64 = {
+    let row = vec_get(adj, u);
+    vec_push(row, v);
+    0
+    };
+
+// DFS pass 1: visit node, push to finish_order when done
+fn dfs1(adj: i64, visited: i64, finish_order: i64, node: i64) -> i64 = {
+    let _sv = vec_set(visited, node, 1);
+    let neighbors = vec_get(adj, node);
+    let nlen = vec_len(neighbors);
+    let mut i = 0;
+    loop {
+        if i >= nlen { break } else { () };
+        let nb = vec_get(neighbors, i);
+        if vec_get(visited, nb) == 0 {
+            let _r = dfs1(adj, visited, finish_order, nb);
+            ()
+        } else { () };
+        i = i + 1
+    };
+    vec_push(finish_order, node);
+    0
+    };
+
+// Run DFS pass 1 on all nodes
+fn run_pass1(adj: i64, visited: i64, finish_order: i64, n: i64) -> i64 = {
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        if vec_get(visited, i) == 0 {
+            let _r = dfs1(adj, visited, finish_order, i);
+            ()
+        } else { () };
+        i = i + 1
+    };
+    0
+    };
+
+// Build reversed graph
+fn build_reverse(adj: i64, n: i64) -> i64 = {
+    let radj = make_adj(n);
+    let mut u = 0;
+    loop {
+        if u >= n { break } else { () };
+        let neighbors = vec_get(adj, u);
+        let nlen = vec_len(neighbors);
+        let mut j = 0;
+        loop {
+            if j >= nlen { break } else { () };
+            let v = vec_get(neighbors, j);
+            let _e = add_edge(radj, v, u);
+            j = j + 1
+        };
+        u = u + 1
+    };
+    radj
+    };
+
+// DFS pass 2: assign component id to all reachable unvisited nodes
+fn dfs2(radj: i64, comp: i64, node: i64, comp_id: i64) -> i64 = {
+    let _sc = vec_set(comp, node, comp_id);
+    let neighbors = vec_get(radj, node);
+    let nlen = vec_len(neighbors);
+    let mut i = 0;
+    loop {
+        if i >= nlen { break } else { () };
+        let nb = vec_get(neighbors, i);
+        if vec_get(comp, nb) < 0 {
+            let _r = dfs2(radj, comp, nb, comp_id);
+            ()
+        } else { () };
+        i = i + 1
+    };
+    0
+    };
+
+// Run DFS pass 2 in reverse finish order
+fn run_pass2(radj: i64, finish_order: i64, comp: i64, n: i64) -> i64 = {
+    let mut num_comp = 0;
+    let mut i = n - 1;
+    loop {
+        if i < 0 { break } else { () };
+        let node = vec_get(finish_order, i);
+        if vec_get(comp, node) < 0 {
+            let _r = dfs2(radj, comp, node, num_comp);
+            num_comp = num_comp + 1
+        } else { () };
+        i = i - 1
+    };
+    num_comp
+    };
+
+// Count nodes in a given component
+fn count_in_comp(comp: i64, n: i64, cid: i64) -> i64 = {
+    let mut count = 0;
+    for i in 0..n {
+        if vec_get(comp, i) == cid { count = count + 1 } else { () }
+    };
+    count
+    };
+
+// Check if two nodes are in the same SCC
+fn same_scc(comp: i64, a: i64, b: i64) -> i64 =
+    if vec_get(comp, a) == vec_get(comp, b) { 1 } else { 0 };
+
+fn main() -> i64 = {
+    // Test 1: Graph with 3 SCCs
+    // SCC1: {0, 1, 2} (cycle: 0->1->2->0)
+    // SCC2: {3, 4} (cycle: 3->4->3)
+    // SCC3: {5} (sink)
+    // Cross edges: 2->3, 4->5
+    let n1 = 6;
+    let adj1 = make_adj(n1);
+    let _e1 = add_edge(adj1, 0, 1);
+    let _e2 = add_edge(adj1, 1, 2);
+    let _e3 = add_edge(adj1, 2, 0);
+    let _e4 = add_edge(adj1, 2, 3);
+    let _e5 = add_edge(adj1, 3, 4);
+    let _e6 = add_edge(adj1, 4, 3);
+    let _e7 = add_edge(adj1, 4, 5);
+
+    let vis1 = make_zeros(n1);
+    let fo1 = vec_new();
+    let _r1 = run_pass1(adj1, vis1, fo1, n1);
+    let radj1 = build_reverse(adj1, n1);
+    let comp1 = make_neg_ones(n1);
+    let ncomp1 = run_pass2(radj1, fo1, comp1, n1);
+
+    let _p1 = println(ncomp1);  // 3 SCCs
+
+    // Check same-SCC relationships
+    let _p2 = println(same_scc(comp1, 0, 1));  // 1 (same SCC)
+    let _p3 = println(same_scc(comp1, 0, 2));  // 1 (same SCC)
+    let _p4 = println(same_scc(comp1, 3, 4));  // 1 (same SCC)
+    let _p5 = println(same_scc(comp1, 0, 3));  // 0 (different SCC)
+    let _p6 = println(same_scc(comp1, 0, 5));  // 0 (different SCC)
+    let _p7 = println(same_scc(comp1, 3, 5));  // 0 (different SCC)
+
+    // Count SCC sizes (sorted by comp id)
+    // We'll find sizes of comp 0, 1, 2
+    let s0 = count_in_comp(comp1, n1, 0);
+    let s1 = count_in_comp(comp1, n1, 1);
+    let s2 = count_in_comp(comp1, n1, 2);
+
+    // Sort sizes to get deterministic output (bubble sort 3 elements)
+    let sizes = vec_new();
+    vec_push(sizes, s0); vec_push(sizes, s1); vec_push(sizes, s2);
+    // Sort ascending
+    let _sb1 = if vec_get(sizes, 0) > vec_get(sizes, 1) {
+        let tmp = vec_get(sizes, 0);
+        vec_set(sizes, 0, vec_get(sizes, 1));
+        vec_set(sizes, 1, tmp);
+        0
+    } else { 0 };
+    let _sb2 = if vec_get(sizes, 1) > vec_get(sizes, 2) {
+        let tmp = vec_get(sizes, 1);
+        vec_set(sizes, 1, vec_get(sizes, 2));
+        vec_set(sizes, 2, tmp);
+        0
+    } else { 0 };
+    let _sb3 = if vec_get(sizes, 0) > vec_get(sizes, 1) {
+        let tmp = vec_get(sizes, 0);
+        vec_set(sizes, 0, vec_get(sizes, 1));
+        vec_set(sizes, 1, tmp);
+        0
+    } else { 0 };
+    let _p8 = println(vec_get(sizes, 0));   // 1 (singleton)
+    let _p9 = println(vec_get(sizes, 1));   // 2
+    let _p10 = println(vec_get(sizes, 2));  // 3
+
+    // Test 2: Single SCC (complete cycle: 0->1->2->3->0)
+    let n2 = 4;
+    let adj2 = make_adj(n2);
+    let _ea = add_edge(adj2, 0, 1);
+    let _eb = add_edge(adj2, 1, 2);
+    let _ec = add_edge(adj2, 2, 3);
+    let _ed = add_edge(adj2, 3, 0);
+
+    let vis2 = make_zeros(n2);
+    let fo2 = vec_new();
+    let _r2 = run_pass1(adj2, vis2, fo2, n2);
+    let radj2 = build_reverse(adj2, n2);
+    let comp2 = make_neg_ones(n2);
+    let ncomp2 = run_pass2(radj2, fo2, comp2, n2);
+
+    let _p11 = println(ncomp2);  // 1 SCC
+    let _p12 = println(same_scc(comp2, 0, 3));  // 1
+
+    // Test 3: DAG (no cycles, each node is its own SCC)
+    // 0->1, 0->2, 1->3, 2->3
+    let n3 = 4;
+    let adj3 = make_adj(n3);
+    let _ef = add_edge(adj3, 0, 1);
+    let _eg = add_edge(adj3, 0, 2);
+    let _eh = add_edge(adj3, 1, 3);
+    let _ei = add_edge(adj3, 2, 3);
+
+    let vis3 = make_zeros(n3);
+    let fo3 = vec_new();
+    let _r3 = run_pass1(adj3, vis3, fo3, n3);
+    let radj3 = build_reverse(adj3, n3);
+    let comp3 = make_neg_ones(n3);
+    let ncomp3 = run_pass2(radj3, fo3, comp3, n3);
+
+    let _p13 = println(ncomp3);  // 4 SCCs (each node is its own)
+    let _p14 = println(same_scc(comp3, 0, 1));  // 0
+    let _p15 = println(same_scc(comp3, 1, 3));  // 0
+
+    0
+    };

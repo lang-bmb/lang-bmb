@@ -1,0 +1,120 @@
+// Golden test: Priority queue (max-heap) simulation
+// Heap stored as flat vec of (priority, value) pairs
+// Index i: priority at 2*i, value at 2*i+1
+// Parent of i: (i-1)/2, children: 2*i+1, 2*i+2
+
+// Get priority of heap element at index i
+fn heap_prio(heap: i64, i: i64) -> i64 =
+    vec_get(heap, i * 2);
+
+// Get value of heap element at index i
+fn heap_val(heap: i64, i: i64) -> i64 =
+    vec_get(heap, i * 2 + 1);
+
+// Swap elements at indices i and j
+fn heap_swap(heap: i64, i: i64, j: i64) -> i64 = {
+    let pi = vec_get(heap, i * 2);
+    let vi = vec_get(heap, i * 2 + 1);
+    let pj = vec_get(heap, j * 2);
+    let vj = vec_get(heap, j * 2 + 1);
+    let _s1 = vec_set(heap, i * 2, pj);
+    let _s2 = vec_set(heap, i * 2 + 1, vj);
+    let _s3 = vec_set(heap, j * 2, pi);
+    let _s4 = vec_set(heap, j * 2 + 1, vi);
+    0
+    };
+
+// Sift up: move element at idx up until heap property restored
+fn sift_up(heap: i64, idx: i64) -> i64 =
+    if idx <= 0 { 0 }
+    else {
+        let parent = (idx - 1) / 2;
+        if heap_prio(heap, idx) > heap_prio(heap, parent) {
+            let _sw = heap_swap(heap, idx, parent);
+            sift_up(heap, parent)
+        } else { 0 }
+    };
+
+// Sift down: move element at idx down until heap property restored
+fn sift_down(heap: i64, idx: i64, size: i64) -> i64 =
+    if idx >= size { 0 }
+    else {
+        let left = 2 * idx + 1;
+        let right = 2 * idx + 2;
+        let largest_lr = if left < size and right < size {
+            if heap_prio(heap, left) >= heap_prio(heap, right) { left } else { right }
+        } else if left < size { left }
+        else { idx };
+        if largest_lr != idx and heap_prio(heap, largest_lr) > heap_prio(heap, idx) {
+            let _sw = heap_swap(heap, idx, largest_lr);
+            sift_down(heap, largest_lr, size)
+        } else { 0 }
+    };
+
+// Enqueue: add element, return new size
+fn pq_enqueue(heap: i64, size: i64, priority: i64, value: i64) -> i64 = {
+    let _pp = vec_push(heap, priority);
+    let _pv = vec_push(heap, value);
+    let _su = sift_up(heap, size);
+    size + 1
+    };
+
+// Dequeue max: remove root, return (priority * 1000 + value) packed, new_size stored separately
+// After dequeue, caller must reduce size by 1
+fn pq_dequeue_prio(heap: i64, size: i64) -> i64 =
+    heap_prio(heap, 0);
+
+fn pq_dequeue_val(heap: i64, size: i64) -> i64 =
+    heap_val(heap, 0);
+
+fn pq_remove_top(heap: i64, size: i64) -> i64 = {
+    let new_size = size - 1;
+    let _sw = heap_swap(heap, 0, new_size);
+    let _sd = sift_down(heap, 0, new_size);
+    new_size
+    };
+
+fn main() -> i64 = {
+    let heap = vec_new();
+    let sz0 = 0;
+
+    // Insert 5 tasks: (priority, task_id)
+    // Task A: priority 3, id 101
+    let sz1 = pq_enqueue(heap, sz0, 3, 101);
+    // Task B: priority 7, id 102
+    let sz2 = pq_enqueue(heap, sz1, 7, 102);
+    // Task C: priority 1, id 103
+    let sz3 = pq_enqueue(heap, sz2, 1, 103);
+    // Task D: priority 5, id 104
+    let sz4 = pq_enqueue(heap, sz3, 5, 104);
+    // Task E: priority 9, id 105
+    let sz5 = pq_enqueue(heap, sz4, 9, 105);
+
+    let _p1 = println(sz5);  // 5 (size after 5 inserts)
+
+    // Extract max: should be priority 9, id 105
+    let _p2 = println(pq_dequeue_prio(heap, sz5));  // 9
+    let _p3 = println(pq_dequeue_val(heap, sz5));    // 105
+    let sz6 = pq_remove_top(heap, sz5);
+
+    // Extract next max: should be priority 7, id 102
+    let _p4 = println(pq_dequeue_prio(heap, sz6));   // 7
+    let _p5 = println(pq_dequeue_val(heap, sz6));     // 102
+    let sz7 = pq_remove_top(heap, sz6);
+
+    // Extract next: priority 5, id 104
+    let _p6 = println(pq_dequeue_prio(heap, sz7));   // 5
+    let _p7 = println(pq_dequeue_val(heap, sz7));     // 104
+    let sz8 = pq_remove_top(heap, sz7);
+
+    // Extract next: priority 3, id 101
+    let _p8 = println(pq_dequeue_prio(heap, sz8));   // 3
+    let _p9 = println(pq_dequeue_val(heap, sz8));     // 101
+    let sz9 = pq_remove_top(heap, sz8);
+
+    // Extract last: priority 1, id 103
+    let _p10 = println(pq_dequeue_val(heap, sz9));    // 103
+
+    vec_free(heap);
+    0
+    };

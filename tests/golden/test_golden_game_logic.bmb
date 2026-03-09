@@ -1,0 +1,293 @@
+// Golden Test: Game and puzzle logic patterns
+// Tic-tac-toe, nim, rock-paper-scissors, scoring, pathfinding
+
+// ---- Helpers ----
+
+fn make_vec3(a: i64, b: i64, c: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    v
+    };
+
+fn make_vec5(a: i64, b: i64, c: i64, d: i64, e: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    v
+    };
+
+fn make_vec6(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    let _p6 = vec_push(v, f);
+    v
+    };
+
+fn make_vec9(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64, h: i64, ii: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    let _p6 = vec_push(v, f);
+    let _p7 = vec_push(v, g);
+    let _p8 = vec_push(v, h);
+    let _p9 = vec_push(v, ii);
+    v
+    };
+
+// ---- 1. Tic-tac-toe win check ----
+// Grid is vec of 9: positions 0-8 for 3x3. 0=empty, 1=player1, 2=player2
+// Returns: 0=no winner, 1=player1 wins, 2=player2 wins
+
+fn check_line(grid: i64, a: i64, b: i64, c: i64) -> i64 = {
+    let va = vec_get(grid, a);
+    let vb = vec_get(grid, b);
+    let vc = vec_get(grid, c);
+    if va != 0 {
+        if va == vb {
+            if vb == vc { va } else { 0 }
+        } else { 0 }
+    } else { 0 }
+    };
+
+fn tictactoe_winner(grid: i64) -> i64 = {
+    // Check rows
+    let r0 = check_line(grid, 0, 1, 2);
+    if r0 != 0 { return r0 } else { () };
+    let r1 = check_line(grid, 3, 4, 5);
+    if r1 != 0 { return r1 } else { () };
+    let r2 = check_line(grid, 6, 7, 8);
+    if r2 != 0 { return r2 } else { () };
+    // Check columns
+    let c0 = check_line(grid, 0, 3, 6);
+    if c0 != 0 { return c0 } else { () };
+    let c1 = check_line(grid, 1, 4, 7);
+    if c1 != 0 { return c1 } else { () };
+    let c2 = check_line(grid, 2, 5, 8);
+    if c2 != 0 { return c2 } else { () };
+    // Check diagonals
+    let d0 = check_line(grid, 0, 4, 8);
+    if d0 != 0 { return d0 } else { () };
+    let d1 = check_line(grid, 2, 4, 6);
+    if d1 != 0 { return d1 } else { () };
+    0
+    };
+
+fn test_tictactoe() -> i64 = {
+    // Player 1 wins top row: [1,1,1, 0,0,0, 0,0,0]
+    let g1 = make_vec9(1, 1, 1, 0, 0, 0, 0, 0, 0);
+    let _p1 = println(tictactoe_winner(g1));  // 1
+
+    // Player 1 wins main diagonal: [1,0,0, 0,1,0, 0,0,1]
+    let g2 = make_vec9(1, 0, 0, 0, 1, 0, 0, 0, 1);
+    let _p2 = println(tictactoe_winner(g2));  // 1
+
+    // No winner: [1,2,1, 2,1,2, 2,1,2]
+    let g3 = make_vec9(1, 2, 1, 2, 1, 2, 2, 1, 2);
+    // rows: [1,2,1]no [2,1,2]no [2,1,2]no
+    // cols: [1,2,2]no [2,1,1]no [1,2,2]no
+    // diags: [1,1,2]no [1,1,2]no
+    let _p3 = println(tictactoe_winner(g3));  // 0
+
+    // Player 2 wins left column: [2,0,0, 2,0,0, 2,0,0]
+    let g4 = make_vec9(2, 0, 0, 2, 0, 0, 2, 0, 0);
+    let _p4 = println(tictactoe_winner(g4));  // 2
+
+    let _f1 = vec_free(g1);
+    let _f2 = vec_free(g2);
+    let _f3 = vec_free(g3);
+    let _f4 = vec_free(g4);
+    0
+    };
+
+// ---- 2. Nim game: XOR of pile sizes ----
+// nim_sum = pile1 XOR pile2 XOR pile3
+// If nim_sum != 0, first player wins; if 0, second player wins
+
+fn nim_sum3(a: i64, b: i64, c: i64) -> i64 =
+    a bxor b bxor c;
+
+fn test_nim() -> i64 = {
+    // [3, 5, 7]: 3 bxor 5 = 6, 6 bxor 7 = 1 => first player wins
+    let _p1 = println(nim_sum3(3, 5, 7));  // 1
+
+    // [1, 2, 3]: 1 bxor 2 = 3, 3 bxor 3 = 0 => second player wins
+    let _p2 = println(nim_sum3(1, 2, 3));  // 0
+
+    // [4, 4, 0]: 4 bxor 4 = 0, 0 bxor 0 = 0 => second player wins
+    let _p3 = println(nim_sum3(4, 4, 0));  // 0
+
+    // [7, 3, 5]: 7 bxor 3 = 4, 4 bxor 5 = 1 => first player wins
+    let _p4 = println(nim_sum3(7, 3, 5));  // 1
+    0
+    };
+
+// ---- 3. Rock-Paper-Scissors ----
+// 0=rock, 1=paper, 2=scissors
+// Returns: 0=draw, 1=player1 wins, 2=player2 wins
+// Player 1 wins if (p2+1) mod 3 == p1
+
+fn mod3(x: i64) -> i64 =
+    x - (x / 3) * 3;
+
+fn rps(p1: i64, p2: i64) -> i64 = {
+    if p1 == p2 { 0 }
+    else if mod3(p2 + 1) == p1 { 1 }
+    else { 2 }
+    };
+
+fn test_rps() -> i64 = {
+    // rock(0) vs scissors(2): (2+1)%3=0==0 => p1 wins => 1
+    let _p1 = println(rps(0, 2));  // 1
+
+    // paper(1) vs rock(0): (0+1)%3=1==1 => p1 wins => 1
+    let _p2 = println(rps(1, 0));  // 1
+
+    // scissors(2) vs paper(1): (1+1)%3=2==2 => p1 wins => 1
+    let _p3 = println(rps(2, 1));  // 1
+
+    // rock(0) vs paper(1): (1+1)%3=2!=0 => p2 wins => 2
+    let _p4 = println(rps(0, 1));  // 2
+
+    // paper(1) vs paper(1): draw => 0
+    let _p5 = println(rps(1, 1));  // 0
+    0
+    };
+
+// ---- 4. Scoring with multipliers ----
+fn weighted_score(scores: i64, multipliers: i64) -> i64 = {
+    let n = vec_len(scores);
+    let mut total = 0;
+    for i in 0..n {
+        total = total + vec_get(scores, i) * vec_get(multipliers, i)
+    };
+    total
+    };
+
+fn test_scoring() -> i64 = {
+    // scores = [10, 20, 30], multipliers = [1, 2, 3]
+    // 10*1 + 20*2 + 30*3 = 10 + 40 + 90 = 140
+    let scores = make_vec3(10, 20, 30);
+    let mults = make_vec3(1, 2, 3);
+    let _p1 = println(weighted_score(scores, mults));  // 140
+
+    // scores = [5, 10, 15], multipliers = [3, 2, 1]
+    // 5*3 + 10*2 + 15*1 = 15 + 20 + 15 = 50
+    let scores2 = make_vec3(5, 10, 15);
+    let mults2 = make_vec3(3, 2, 1);
+    let _p2 = println(weighted_score(scores2, mults2));  // 50
+
+    let _f1 = vec_free(scores);
+    let _f2 = vec_free(mults);
+    let _f3 = vec_free(scores2);
+    let _f4 = vec_free(mults2);
+    0
+    };
+
+// ---- 5. Count scores above threshold ----
+fn count_above(scores: i64, threshold: i64) -> i64 = {
+    let mut count = 0;
+    for i in 0..vec_len(scores) {
+        if vec_get(scores, i) > threshold {
+            count = count + 1
+        } else { () }
+    };
+    count
+    };
+
+fn test_leaderboard() -> i64 = {
+    // [85, 92, 67, 95, 73, 88], threshold 80 => 4 (85, 92, 95, 88)
+    let scores = make_vec6(85, 92, 67, 95, 73, 88);
+    let _p1 = println(count_above(scores, 80));  // 4
+
+    // threshold 90 => 2 (92, 95)
+    let _p2 = println(count_above(scores, 90));  // 2
+
+    // threshold 100 => 0
+    let _p3 = println(count_above(scores, 100));  // 0
+
+    let _f = vec_free(scores);
+    0
+    };
+
+// ---- 6. Simple 1D path check ----
+// Array of 0s and 1s. Can walk from index 0 to last index if all cells are 1.
+fn path_clear(path: i64) -> i64 = {
+    let n = vec_len(path);
+    let mut blocked = 0;
+    for i in 0..n {
+        if vec_get(path, i) == 0 {
+            blocked = 1
+        } else { () }
+    };
+    if blocked == 0 { 1 } else { 0 }
+    };
+
+fn test_path() -> i64 = {
+    // [1, 1, 1, 1, 1] => clear => 1
+    let p1 = make_vec5(1, 1, 1, 1, 1);
+    let _pp1 = println(path_clear(p1));  // 1
+
+    // [1, 1, 0, 1, 1] => blocked => 0
+    let p2 = make_vec5(1, 1, 0, 1, 1);
+    let _pp2 = println(path_clear(p2));  // 0
+
+    // [1, 1, 1, 0, 0] => blocked => 0
+    let p3 = make_vec5(1, 1, 1, 0, 0);
+    let _pp3 = println(path_clear(p3));  // 0
+
+    let _f1 = vec_free(p1);
+    let _f2 = vec_free(p2);
+    let _f3 = vec_free(p3);
+    0
+    };
+
+// ---- 7. Rank calculation ----
+// Given scores vec, compute rank of a target score (1-indexed)
+// Rank = count of scores strictly better (higher) + 1
+fn compute_rank(scores: i64, target: i64) -> i64 = {
+    let mut better = 0;
+    for i in 0..vec_len(scores) {
+        if vec_get(scores, i) > target {
+            better = better + 1
+        } else { () }
+    };
+    better + 1
+    };
+
+fn test_rank() -> i64 = {
+    // [50, 80, 60, 90, 70], target=70 => 80,90 are better => rank 3
+    let sc = make_vec5(50, 80, 60, 90, 70);
+    let _p1 = println(compute_rank(sc, 70));  // 3
+
+    // target=90 => none better => rank 1
+    let _p2 = println(compute_rank(sc, 90));  // 1
+
+    // target=40 => all 5 are better => rank 6
+    let _p3 = println(compute_rank(sc, 40));  // 6
+
+    let _f = vec_free(sc);
+    0
+    };
+
+fn main() -> i64 = {
+    let _t1 = test_tictactoe();
+    let _t2 = test_nim();
+    let _t3 = test_rps();
+    let _t4 = test_scoring();
+    let _t5 = test_leaderboard();
+    let _t6 = test_path();
+    let _t7 = test_rank();
+    0
+    };

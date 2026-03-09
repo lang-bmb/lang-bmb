@@ -1,0 +1,38 @@
+// Test LICM: s.len() should be hoisted out of the loop
+// After TRL, string iteration functions become loops.
+// LICM detects that s.len() uses an invariant argument and hoists it to entry.
+
+fn find_char(s: String, pos: i64, ch: i64) -> i64 =
+    if pos >= s.len() { -1 }
+    else if s.byte_at(pos) == ch { pos }
+    else { find_char(s, pos + 1, ch) };
+
+fn count_char(s: String, pos: i64, ch: i64, count: i64) -> i64 =
+    if pos >= s.len() { count }
+    else if s.byte_at(pos) == ch { count_char(s, pos + 1, ch, count + 1) }
+    else { count_char(s, pos + 1, ch, count) };
+
+fn str_len(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos }
+    else { str_len(s, pos + 1) };
+
+fn main() -> i64 = {
+    let s = "hello world";
+    // find 'o' at position 4
+    println(find_char(s, 0, 111));
+    // find 'w' at position 6
+    println(find_char(s, 0, 119));
+    // find 'z' = -1
+    println(find_char(s, 0, 122));
+    // count 'l' in "hello world" = 3
+    println(count_char(s, 0, 108, 0));
+    // count 'o' = 2
+    println(count_char(s, 0, 111, 0));
+    // str_len of "hello world" = 11
+    println(str_len(s, 0));
+    // str_len of "" = 0
+    println(str_len("", 0));
+    // find in empty string = -1
+    println(find_char("", 0, 97));
+    0
+};

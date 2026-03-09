@@ -1,0 +1,167 @@
+// Golden test: 2D coordinate geometry with integer arithmetic
+// Points represented as packed i64: x * 10000 + y (non-negative coords only)
+
+fn make_point(x: i64, y: i64) -> i64 = x * 10000 + y;
+fn point_x(p: i64) -> i64 = p / 10000;
+fn point_y(p: i64) -> i64 = p - (p / 10000) * 10000;
+
+// Manhattan distance (works for non-negative coords)
+fn iabs(x: i64) -> i64 = if x < 0 { 0 - x } else { x };
+
+fn manhattan(p1: i64, p2: i64) -> i64 = {
+    let dx = point_x(p1) - point_x(p2);
+    let dy = point_y(p1) - point_y(p2);
+    iabs(dx) + iabs(dy)
+    };
+
+// Squared Euclidean distance
+fn dist_sq(p1: i64, p2: i64) -> i64 = {
+    let dx = point_x(p1) - point_x(p2);
+    let dy = point_y(p1) - point_y(p2);
+    dx * dx + dy * dy
+    };
+
+// Cross product of vectors (p1->p2) x (p1->p3)
+fn cross(p1: i64, p2: i64, p3: i64) -> i64 = {
+    let x1 = point_x(p2) - point_x(p1);
+    let y1 = point_y(p2) - point_y(p1);
+    let x2 = point_x(p3) - point_x(p1);
+    let y2 = point_y(p3) - point_y(p1);
+    x1 * y2 - y1 * x2
+    };
+
+// Check if three points are collinear
+fn collinear(p1: i64, p2: i64, p3: i64) -> i64 =
+    if cross(p1, p2, p3) == 0 { 1 } else { 0 };
+
+    // Check if point p is inside rectangle (x1,y1)-(x2,y2)
+
+fn in_rect(p: i64, x1: i64, y1: i64, x2: i64, y2: i64) -> i64 = {
+    let px = point_x(p);
+    let py = point_y(p);
+    if px >= x1 and px <= x2 and py >= y1 and py <= y2 { 1 } else { 0 }
+    };
+
+// Find closest point in vec to target (by manhattan distance)
+fn closest_point(points: i64, target: i64, pos: i64, best: i64, best_dist: i64) -> i64 =
+    if pos >= vec_len(points) { best }
+    else {
+        let d = manhattan(vec_get(points, pos), target);
+        if d < best_dist { closest_point(points, target, pos + 1, vec_get(points, pos), d) }
+        else { closest_point(points, target, pos + 1, best, best_dist) }
+    };
+
+    // Area of polygon (Shoelace formula) * 2 (to stay in integers)
+
+fn shoelace_sum(pts: i64, i: i64, acc: i64) -> i64 =
+    if i >= vec_len(pts) { acc }
+    else {
+        let j = if i + 1 >= vec_len(pts) { 0 } else { i + 1 };
+        let xi = point_x(vec_get(pts, i));
+        let yi = point_y(vec_get(pts, i));
+        let xj = point_x(vec_get(pts, j));
+        let yj = point_y(vec_get(pts, j));
+        let term = xi * yj - xj * yi;
+        shoelace_sum(pts, i + 1, acc + term)
+    };
+
+fn polygon_area_2(pts: i64) -> i64 = {
+    let area = shoelace_sum(pts, 0, 0);
+    if area < 0 { 0 - area } else { area }
+    };
+
+// Centroid (average of coordinates)
+fn my_sum_x(pts: i64, pos: i64, acc: i64) -> i64 =
+    if pos >= vec_len(pts) { acc }
+    else { my_sum_x(pts, pos + 1, acc + point_x(vec_get(pts, pos))) };
+
+fn my_sum_y(pts: i64, pos: i64, acc: i64) -> i64 =
+    if pos >= vec_len(pts) { acc }
+    else { my_sum_y(pts, pos + 1, acc + point_y(vec_get(pts, pos))) };
+
+    // Bounding box: min/max of x and y
+
+fn bbox_min_x(pts: i64, pos: i64, best: i64) -> i64 =
+    if pos >= vec_len(pts) { best }
+    else {
+        let x = point_x(vec_get(pts, pos));
+        let nb = if x < best { x } else { best };
+        bbox_min_x(pts, pos + 1, nb)
+    };
+
+fn bbox_max_x(pts: i64, pos: i64, best: i64) -> i64 =
+    if pos >= vec_len(pts) { best }
+    else {
+        let x = point_x(vec_get(pts, pos));
+        let nb = if x > best { x } else { best };
+        bbox_max_x(pts, pos + 1, nb)
+    };
+
+fn main() -> i64 = {
+    let origin = make_point(0, 0);
+    let p1 = make_point(3, 4);
+    let p2 = make_point(6, 8);
+    let p3 = make_point(1, 1);
+
+// Manhattan distance
+    let _p1 = println(manhattan(origin, p1));  // 7
+    let _p2 = println(manhattan(p1, p2));      // 7
+    let _p3 = println(manhattan(origin, p2));  // 14
+
+// Squared distance
+    let _p4 = println(dist_sq(origin, p1));  // 25
+    let _p5 = println(dist_sq(origin, p2));  // 100
+
+// Cross product / collinearity
+    let _p6 = println(collinear(origin, p1, p2));  // 1
+    let _p7 = println(collinear(origin, p1, p3));  // 0
+    let _p8 = println(cross(origin, p1, p3));       // 3*1 - 4*1 = -1
+
+// Rectangle containment
+    let _p9 = println(in_rect(p1, 0, 0, 10, 10));   // 1
+    let _p10 = println(in_rect(p2, 0, 0, 5, 5));    // 0
+
+// Closest point
+    let points = vec_new();
+    let _cp1 = vec_push(points, make_point(10, 10));
+    let _cp2 = vec_push(points, make_point(2, 2));
+    let _cp3 = vec_push(points, make_point(5, 5));
+    let target = make_point(3, 3);
+    let cp = closest_point(points, target, 0, vec_get(points, 0), 999999);
+    let _p11 = println(point_x(cp));  // 2
+    let _p12 = println(point_y(cp));  // 2
+
+// Polygon area: triangle (0,0), (4,0), (0,3) -> area = 6, *2 = 12
+    let tri = vec_new();
+    let _t1 = vec_push(tri, make_point(0, 0));
+    let _t2 = vec_push(tri, make_point(4, 0));
+    let _t3 = vec_push(tri, make_point(0, 3));
+    let _p13 = println(polygon_area_2(tri));
+
+// Polygon area: square (0,0),(4,0),(4,4),(0,4) -> area = 16, *2 = 32
+    let sq = vec_new();
+    let _s1 = vec_push(sq, make_point(0, 0));
+    let _s2 = vec_push(sq, make_point(4, 0));
+    let _s3 = vec_push(sq, make_point(4, 4));
+    let _s4 = vec_push(sq, make_point(0, 4));
+    let _p14 = println(polygon_area_2(sq));
+
+// Centroid of triangle (sum_x / n, sum_y / n)
+    let _p15 = println(my_sum_x(tri, 0, 0));  // 0+4+0 = 4
+    let _p16 = println(my_sum_y(tri, 0, 0));  // 0+0+3 = 3
+
+// Bounding box
+    let pts2 = vec_new();
+    let _b1 = vec_push(pts2, make_point(3, 7));
+    let _b2 = vec_push(pts2, make_point(1, 2));
+    let _b3 = vec_push(pts2, make_point(8, 5));
+    let _b4 = vec_push(pts2, make_point(4, 9));
+    let _p17 = println(bbox_min_x(pts2, 0, 9999));  // 1
+    let _p18 = println(bbox_max_x(pts2, 0, 0));     // 8
+
+    let _f1 = vec_free(points);
+    let _f2 = vec_free(tri);
+    let _f3 = vec_free(sq);
+    let _f4 = vec_free(pts2);
+    0
+    };

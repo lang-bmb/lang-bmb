@@ -1,0 +1,157 @@
+// Golden Test: Digit Count DP — count numbers with specific digit properties
+// Implements digit DP to count numbers in [1..n] with various constraints
+
+// Count digits of n
+fn num_digits(n: i64) -> i64 = {
+    if n <= 0 { 1 }
+    else {
+        let mut d = 0;
+        let mut x = n;
+        loop {
+            if x <= 0 { break } else { () };
+            x = x / 10;
+            d = d + 1
+        };
+        d
+    }
+};
+
+// Get digit at position pos (0 = least significant)
+fn get_digit(n: i64, pos: i64) -> i64 = {
+    let mut x = n;
+    let mut i = 0;
+    loop {
+        if i >= pos { break } else { () };
+        x = x / 10;
+        i = i + 1
+    };
+    x % 10
+};
+
+// Power of 10
+fn pow10(n: i64) -> i64 = {
+    let mut r = 1;
+    for _i in 0..n { set r = r * 10; };
+    r
+};
+
+// Count occurrences of digit d in [1..n]
+// For each position, count how many times d appears there
+fn count_digit_in_range(n: i64, d: i64) -> i64 = {
+    let nd = num_digits(n);
+    let mut total = 0;
+    let mut pos = 0;
+    loop {
+        if pos >= nd { break } else { () };
+        let p = pow10(pos);
+        let current = get_digit(n, pos);
+        let higher = n / (p * 10);
+        let lower = n % p;
+        let _c = if d == 0 {
+            // Special case for digit 0
+            let cnt = if current > d { higher * p + p }
+                      else if current == d { higher * p + lower + 1 }
+                      else { higher * p };
+            // Subtract leading zero overcounting: pow10(pos) for d=0
+            total = total + cnt - p;
+            0
+        } else {
+            let cnt = if current > d { higher * p + p }
+                      else if current == d { higher * p + lower + 1 }
+                      else { higher * p };
+            total = total + cnt;
+            0
+        };
+        pos = pos + 1
+    };
+    total
+};
+
+// Count numbers in [1..n] that contain digit d at least once
+fn count_containing_digit(n: i64, d: i64) -> i64 = {
+    let mut count = 0;
+    for i in 1..n + 1 {
+        let mut x = i;
+        let mut found = 0;
+        loop {
+            if x <= 0 { break } else { () };
+            let _c = if x % 10 == d { found = 1; 0 } else { 0 };
+            x = x / 10
+        };
+        set count = count + found;
+    };
+    count
+};
+
+// Sum of all digits of numbers 1..n
+fn digit_sum_range(n: i64) -> i64 = {
+    let mut total = 0;
+    for i in 1..n + 1 {
+        let mut x = i;
+        loop {
+            if x <= 0 { break } else { () };
+            set total = total + (x % 10);
+            x = x / 10
+        };
+    };
+    total
+};
+
+// Count numbers in [1..n] whose digit sum equals target
+fn count_digit_sum_eq(n: i64, target: i64) -> i64 = {
+    let mut count = 0;
+    for i in 1..n + 1 {
+        let mut x = i;
+        let mut ds = 0;
+        loop {
+            if x <= 0 { break } else { () };
+            set ds = ds + (x % 10);
+            x = x / 10
+        };
+        let inc = if ds == target { 1 } else { 0 };
+        set count = count + inc;
+    };
+    count
+};
+
+fn main() -> i64 = {
+    // num_digits tests
+    let _p1 = println(num_digits(1));      // 1
+    let _p2 = println(num_digits(99));     // 2
+    let _p3 = println(num_digits(1000));   // 4
+
+    // get_digit tests: 12345
+    let _p4 = println(get_digit(12345, 0)); // 5
+    let _p5 = println(get_digit(12345, 2)); // 3
+    let _p6 = println(get_digit(12345, 4)); // 1
+
+    // Count digit 1 in [1..13]:
+    // 1,10,11(x2),12,13 = 1+1+2+1+1 = 6
+    let _p7 = println(count_digit_in_range(13, 1));   // 6
+
+    // Count digit 0 in [1..100]: 10,20,30,40,50,60,70,80,90,100(two 0s) = 11
+    let _p8 = println(count_digit_in_range(100, 0));  // 11
+
+    // Count numbers containing digit 5 in [1..50]
+    // 5,15,25,35,45,50 = 6
+    let _p9 = println(count_containing_digit(50, 5)); // 6
+
+    // Count numbers containing digit 1 in [1..20]
+    // 1,10,11,12,13,14,15,16,17,18,19 = 11
+    let _p10 = println(count_containing_digit(20, 1)); // 11
+
+    // digit_sum_range(10): 1+2+3+4+5+6+7+8+9+1 = 46
+    let _p11 = println(digit_sum_range(10));  // 46
+
+    // digit_sum_range(20)
+    let _p12 = println(digit_sum_range(20));  // 102
+
+    // count_digit_sum_eq(100, 5): numbers whose digits sum to 5
+    // 5,14,23,32,41,50 = 6
+    let _p13 = println(count_digit_sum_eq(100, 5));  // 6
+
+    // count_digit_sum_eq(100, 10): 19,28,37,46,55,64,73,82,91 = 9
+    let _p14 = println(count_digit_sum_eq(100, 10)); // 9
+
+    0
+};

@@ -1,0 +1,138 @@
+// Golden Test: Longest Increasing Subsequence (LIS)
+// O(n^2) DP approach: dp[i] = length of LIS ending at index i
+
+fn lis_length(v: i64, n: i64) -> i64 = {
+    let dp = [0; 30];
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        set dp[i] = 1;
+        i = i + 1
+    };
+    // Fill DP
+    let mut i2 = 1;
+    loop {
+        if i2 >= n { break } else { () };
+        let mut j = 0;
+        loop {
+            if j >= i2 { break } else { () };
+            if vec_get(v, j) < vec_get(v, i2) {
+                if dp[j] + 1 > dp[i2] {
+                    set dp[i2] = dp[j] + 1
+                } else { () }
+            } else { () };
+            j = j + 1
+        };
+        i2 = i2 + 1
+    };
+    // Find max in dp
+    let mut best = 0;
+    let mut k = 0;
+    loop {
+        if k >= n { break } else { () };
+        if dp[k] > best { best = dp[k] } else { () };
+        k = k + 1
+    };
+    best
+};
+
+// Count number of distinct LIS of maximum length
+fn lis_count(v: i64, n: i64) -> i64 = {
+    let dp = [0; 30];
+    let cnt = [0; 30];
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        set dp[i] = 1;
+        set cnt[i] = 1;
+        i = i + 1
+    };
+    let mut i2 = 1;
+    loop {
+        if i2 >= n { break } else { () };
+        let mut j = 0;
+        loop {
+            if j >= i2 { break } else { () };
+            if vec_get(v, j) < vec_get(v, i2) {
+                if dp[j] + 1 > dp[i2] {
+                    set dp[i2] = dp[j] + 1;
+                    set cnt[i2] = cnt[j]
+                } else if dp[j] + 1 == dp[i2] {
+                    set cnt[i2] = cnt[i2] + cnt[j]
+                } else { () }
+            } else { () };
+            j = j + 1
+        };
+        i2 = i2 + 1
+    };
+    // Sum counts for all positions with max length
+    let mut best = 0;
+    let mut k = 0;
+    loop {
+        if k >= n { break } else { () };
+        if dp[k] > best { best = dp[k] } else { () };
+        k = k + 1
+    };
+    let mut total = 0;
+    let mut k2 = 0;
+    loop {
+        if k2 >= n { break } else { () };
+        if dp[k2] == best { total = total + cnt[k2] } else { () };
+        k2 = k2 + 1
+    };
+    total
+};
+
+fn main() -> i64 = {
+    // Test 1: [10, 9, 2, 5, 3, 7, 101, 18]
+    // LIS = [2, 3, 7, 18] or [2, 5, 7, 18] etc. -> length 4
+    let v1 = vec_new();
+    vec_push(v1, 10); vec_push(v1, 9); vec_push(v1, 2); vec_push(v1, 5);
+    vec_push(v1, 3); vec_push(v1, 7); vec_push(v1, 101); vec_push(v1, 18);
+    let _p1 = println(lis_length(v1, 8));  // 4
+
+    // Test 2: [0, 1, 0, 3, 2, 3] -> LIS length 4: [0,1,2,3]
+    let v2 = vec_new();
+    vec_push(v2, 0); vec_push(v2, 1); vec_push(v2, 0); vec_push(v2, 3);
+    vec_push(v2, 2); vec_push(v2, 3);
+    let _p2 = println(lis_length(v2, 6));  // 4
+
+    // Test 3: [7, 7, 7, 7] -> LIS length 1 (strictly increasing)
+    let v3 = vec_new();
+    vec_push(v3, 7); vec_push(v3, 7); vec_push(v3, 7); vec_push(v3, 7);
+    let _p3 = println(lis_length(v3, 4));  // 1
+
+    // Test 4: already sorted [1, 2, 3, 4, 5] -> LIS length 5
+    let v4 = vec_new();
+    vec_push(v4, 1); vec_push(v4, 2); vec_push(v4, 3); vec_push(v4, 4); vec_push(v4, 5);
+    let _p4 = println(lis_length(v4, 5));  // 5
+
+    // Test 5: reverse sorted [5, 4, 3, 2, 1] -> LIS length 1
+    let v5 = vec_new();
+    vec_push(v5, 5); vec_push(v5, 4); vec_push(v5, 3); vec_push(v5, 2); vec_push(v5, 1);
+    let _p5 = println(lis_length(v5, 5));  // 1
+
+    // Test 6: single element [42] -> LIS length 1
+    let v6 = vec_new();
+    vec_push(v6, 42);
+    let _p6 = println(lis_length(v6, 1));  // 1
+
+    // Test 7: [3, 1, 2, 1, 4] -> LIS = [1,2,4] length 3
+    let v7 = vec_new();
+    vec_push(v7, 3); vec_push(v7, 1); vec_push(v7, 2); vec_push(v7, 1); vec_push(v7, 4);
+    let _p7 = println(lis_length(v7, 5));  // 3
+
+    // Test 8: Count of LIS for [1, 3, 5, 4, 7]
+    // LIS length = 4, sequences: [1,3,5,7] and [1,3,4,7] -> count 2
+    let v8 = vec_new();
+    vec_push(v8, 1); vec_push(v8, 3); vec_push(v8, 5); vec_push(v8, 4); vec_push(v8, 7);
+    let _p8 = println(lis_length(v8, 5));  // 4
+    let _p9 = println(lis_count(v8, 5));   // 2
+
+    // Test 9: Count of LIS for [1, 2, 3, 4, 5] -> only 1 LIS
+    let _p10 = println(lis_count(v4, 5));  // 1
+
+    vec_free(v1); vec_free(v2); vec_free(v3); vec_free(v4);
+    vec_free(v5); vec_free(v6); vec_free(v7); vec_free(v8);
+    0
+};

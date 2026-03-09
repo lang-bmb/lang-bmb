@@ -1,0 +1,15 @@
+// Test: contract-based bounds check elimination with --safe mode
+// With pre-conditions, safe bounds checks should be optimizable
+
+fn sum_array(arr: &[i64; 5], idx: i64, acc: i64) -> i64
+    pre idx >= 0
+= if idx >= 5 { acc } else {
+    sum_array(arr, idx + 1, acc + arr[idx])
+};
+
+fn main() -> i64 = {
+    let arr: [i64; 5] = [10, 20, 30, 40, 50];
+    let result = sum_array(&arr, 0, 0);
+    let _u = println(result);
+    0
+};

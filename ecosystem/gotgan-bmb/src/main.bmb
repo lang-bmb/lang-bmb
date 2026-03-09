@@ -1,0 +1,847 @@
+// gotgan-bmb: BMB package manager
+// Main entry point with subcommand dispatch
+//
+// Usage:
+//   gotgan build    Build the current package
+//   gotgan check    Type-check the current package
+//   gotgan init     Initialize a new package
+//   gotgan help     Show help message
+
+// ============================================================================
+// TOML Parser (from src/toml.bmb)
+// ============================================================================
+
+fn toml_is_ws(c: i64) -> bool = c == 32 or c == 9;
+
+fn toml_find_byte(s: String, pos: i64, end: i64, b: i64) -> i64 = {
+    let mut p = pos;
+    loop {
+        if p >= end { break } else { () };
+        if s.byte_at(p) == b { break } else { p = p + 1 }
+    };
+    p
+};
+
+fn toml_skip_ws(s: String, pos: i64, end: i64) -> i64 = {
+    let mut p = pos;
+    loop {
+        if p >= end { break } else { () };
+        if toml_is_ws(s.byte_at(p)) { p = p + 1 } else { break }
+    };
+    p
+};
+
+fn toml_trim_end(s: String, end: i64, start: i64) -> i64 = {
+    let mut p = end;
+    loop {
+        if p <= start { break } else { () };
+        if toml_is_ws(s.byte_at(p - 1)) { p = p - 1 } else { break }
+    };
+    p
+};
+
+fn toml_parse(content: String) -> i64
+  post ret != 0
+= {
+    let slen = content.len();
+    let entries = vec_new();
+    let mut pos = 0;
+    let mut sec_off = 0;
+    let mut sec_len = 0;
+
+    while pos < slen {
+        let line_end = toml_find_byte(content, pos, slen, 10);
+        let eff_end = if line_end > pos {
+            if content.byte_at(line_end - 1) == 13 { line_end - 1 }
+            else { line_end }
+        } else { line_end };
+        let ls = toml_skip_ws(content, pos, eff_end);
+
+        let _r = if ls >= eff_end { 0 }
+        else if content.byte_at(ls) == 35 { 0 }
+        else if content.byte_at(ls) == 91 {
+            {
+                let close = toml_find_byte(content, ls + 1, eff_end, 93);
+                sec_off = ls + 1;
+                sec_len = close - ls - 1;
+                0
+            }
+        } else {
+            {
+                let eq_pos = toml_find_byte(content, ls, eff_end, 61);
+                let _store = if eq_pos < eff_end {
+                    {
+                        let key_end = toml_trim_end(content, eq_pos, ls);
+                        let key_off = ls;
+                        let key_len = key_end - ls;
+                        let val_start = toml_skip_ws(content, eq_pos + 1, eff_end);
+                        let val_end = toml_trim_end(content, eff_end, val_start);
+                        let raw_len = val_end - val_start;
+                        let is_quoted = if raw_len >= 2 {
+                            content.byte_at(val_start) == 34
+                            and content.byte_at(val_end - 1) == 34
+                        } else { false };
+                        let final_off = if is_quoted { val_start + 1 } else { val_start };
+                        let final_len = if is_quoted { raw_len - 2 } else { raw_len };
+                        let _s1 = vec_push(entries, sec_off);
+                        let _s2 = vec_push(entries, sec_len);
+                        let _s3 = vec_push(entries, key_off);
+                        let _s4 = vec_push(entries, key_len);
+                        let _s5 = vec_push(entries, final_off);
+                        let _s6 = vec_push(entries, final_len);
+                        0
+                    }
+                } else { 0 };
+                0
+            }
+        };
+        pos = line_end + 1;
+        0
+    };
+    entries
+};
+
+fn toml_entry_count(doc: i64) -> i64
+  pre doc != 0
+  post ret >= 0
+= vec_len(doc) / 6;
+
+fn toml_entry_section(doc: i64, content: String, i: i64) -> String
+  pre doc != 0 and i >= 0
+= {
+    let base = i * 6;
+    let off = vec_get(doc, base);
+    let len = vec_get(doc, base + 1);
+    if len == 0 { "" } else { content.slice(off, off + len) }
+};
+
+fn toml_entry_key(doc: i64, content: String, i: i64) -> String
+  pre doc != 0 and i >= 0
+= {
+    let base = i * 6;
+    let off = vec_get(doc, base + 2);
+    let len = vec_get(doc, base + 3);
+    if len == 0 { "" } else { content.slice(off, off + len) }
+};
+
+fn toml_entry_value(doc: i64, content: String, i: i64) -> String
+  pre doc != 0 and i >= 0
+= {
+    let base = i * 6;
+    let off = vec_get(doc, base + 4);
+    let len = vec_get(doc, base + 5);
+    if len == 0 { "" } else { content.slice(off, off + len) }
+};
+
+fn toml_get(doc: i64, content: String, section: String, key: String) -> String
+  pre doc != 0
+= {
+    let count = toml_entry_count(doc);
+    let mut i = 0;
+    let mut result = "";
+    let mut found = false;
+    loop {
+        if i >= count or found { break } else { () };
+        let sec = toml_entry_section(doc, content, i);
+        let k = toml_entry_key(doc, content, i);
+        let _r = if sec == section and k == key {
+            { result = toml_entry_value(doc, content, i); found = true; 0 }
+        } else { 0 };
+        i = i + 1
+    };
+    result
+};
+
+fn toml_section_count(doc: i64, content: String, section: String) -> i64
+  pre doc != 0
+  post ret >= 0
+= {
+    let count = toml_entry_count(doc);
+    let mut i = 0;
+    let mut n = 0;
+    while i < count {
+        let sec = toml_entry_section(doc, content, i);
+        let _r = if sec == section { n = n + 1; 0 } else { 0 };
+        i = i + 1;
+        0
+    };
+    n
+};
+
+fn toml_section_key_at(doc: i64, content: String, section: String, idx: i64) -> String
+  pre doc != 0 and idx >= 0
+= {
+    let count = toml_entry_count(doc);
+    let mut i = 0;
+    let mut found = 0;
+    let mut result = "";
+    while i < count {
+        let sec = toml_entry_section(doc, content, i);
+        let _r = if sec == section {
+            {
+                let _s = if found == idx {
+                    result = toml_entry_key(doc, content, i);
+                    0
+                } else { 0 };
+                found = found + 1;
+                0
+            }
+        } else { 0 };
+        i = i + 1;
+        0
+    };
+    result
+};
+
+fn toml_section_val_at(doc: i64, content: String, section: String, idx: i64) -> String
+  pre doc != 0 and idx >= 0
+= {
+    let count = toml_entry_count(doc);
+    let mut i = 0;
+    let mut found = 0;
+    let mut result = "";
+    while i < count {
+        let sec = toml_entry_section(doc, content, i);
+        let _r = if sec == section {
+            {
+                let _s = if found == idx {
+                    result = toml_entry_value(doc, content, i);
+                    0
+                } else { 0 };
+                found = found + 1;
+                0
+            }
+        } else { 0 };
+        i = i + 1;
+        0
+    };
+    result
+};
+
+fn toml_free(doc: i64) -> i64
+  pre doc != 0
+= { let _f = vec_free(doc); 0 };
+
+// ============================================================================
+// String Builder Utilities
+// ============================================================================
+
+fn path_join(dir: String, file: String) -> String =
+    dir + "/" + file;
+
+// ============================================================================
+// Manifest Helpers
+// ============================================================================
+
+fn manifest_name(doc: i64, content: String) -> String =
+    toml_get(doc, content, "package", "name");
+
+fn manifest_version(doc: i64, content: String) -> String =
+    toml_get(doc, content, "package", "version");
+
+// ============================================================================
+// Source Discovery
+// ============================================================================
+
+// Find source file: prefer src/main.bmb, then src/lib.bmb
+fn find_source(pkg_dir: String) -> String = {
+    let main_path = path_join(path_join(pkg_dir, "src"), "main.bmb");
+    let lib_path = path_join(path_join(pkg_dir, "src"), "lib.bmb");
+    if file_exists(main_path) == 1 { main_path }
+    else if file_exists(lib_path) == 1 { lib_path }
+    else { "" }
+};
+
+// Determine if package is a binary (has src/main.bmb) or library (has src/lib.bmb)
+fn is_binary_pkg(pkg_dir: String) -> bool =
+    file_exists(path_join(path_join(pkg_dir, "src"), "main.bmb")) == 1;
+
+// ============================================================================
+// Common Helpers
+// ============================================================================
+
+// Load manifest: returns 0 on error (prints error message)
+// On success, prints "<action> <name> v<ver>" and returns source path
+fn load_manifest_and_source(action: String) -> String = {
+    let content = read_file("gotgan.toml");
+    if content.len() == 0 {
+        let _e = print_str("error: no gotgan.toml found in current directory\n");
+        ""
+    } else {
+        let doc = toml_parse(content);
+        let name = manifest_name(doc, content);
+        let ver = manifest_version(doc, content);
+        let _f = toml_free(doc);
+
+        let source = find_source(".");
+        if source == "" {
+            let _e = print_str("error: no src/main.bmb or src/lib.bmb found\n");
+            ""
+        } else {
+            let _p1 = print_str("  ");
+            let _p2 = print_str(action);
+            let _p3 = print_str(" ");
+            let _p4 = print_str(name);
+            let _p5 = print_str(" v");
+            let _p6 = print_str(ver);
+            let _p7 = print_str("\n");
+            source
+        }
+    }
+};
+
+// Run a bmb subcommand on the package source, returns exit code
+fn run_bmb_cmd(subcmd: String, ok_msg: String, fail_msg: String) -> i64 = {
+    let source = load_manifest_and_source(subcmd);
+    if source == "" { 1 }
+    else {
+        let cmd = "bmb " + subcmd + " " + source;
+        let result = system(cmd);
+        if result == 0 {
+            let _s = print_str(ok_msg);
+            0
+        } else {
+            let _s = print_str(fail_msg);
+            1
+        }
+    }
+};
+
+// ============================================================================
+// CLI
+// ============================================================================
+
+fn print_help() -> i64 = {
+    let _p1 = print_str("gotgan-bmb 0.1.0 - BMB Package Manager\n\n");
+    let _p2 = print_str("USAGE:\n");
+    let _p3 = print_str("    gotgan <COMMAND>\n\n");
+    let _p4 = print_str("COMMANDS:\n");
+    let _p5 = print_str("    add      Add a dependency to gotgan.toml\n");
+    let _p6 = print_str("    build    Build the current package\n");
+    let _p7 = print_str("    check    Type-check the current package\n");
+    let _p8x = print_str("    clean    Remove build artifacts (target/)\n");
+    let _p8 = print_str("    deps     Check dependency status\n");
+    let _p9 = print_str("    fmt      Format source files\n");
+    let _p10 = print_str("    init     Initialize a new package in current dir\n");
+    let _p11 = print_str("    lint     Lint source files\n");
+    let _p12 = print_str("    new      Create a new package in a new directory\n");
+    let _p13 = print_str("    remove   Remove a dependency\n");
+    let _p14 = print_str("    run      Run the current package\n");
+    let _p14b = print_str("    test     Run tests in tests/ directory\n");
+    let _p15 = print_str("    verify   Run contract verification\n");
+    let _p16 = print_str("    version  Show package version\n");
+    let _p17 = print_str("    help     Show this help message\n");
+    0
+};
+
+fn cmd_build() -> i64 = {
+    let content = read_file("gotgan.toml");
+    if content.len() == 0 {
+        let _e = print_str("error: no gotgan.toml found in current directory\n");
+        1
+    } else {
+        let doc = toml_parse(content);
+        let name = manifest_name(doc, content);
+        let ver = manifest_version(doc, content);
+        let _f = toml_free(doc);
+
+        // Find source file
+        let source = find_source(".");
+        if source == "" {
+            let _e = print_str("error: no src/main.bmb or src/lib.bmb found\n");
+            1
+        } else {
+            // Build output path
+            let output = path_join("target", name);
+
+            let _p1 = print_str("  Building ");
+            let _p2 = print_str(name);
+            let _p3 = print_str(" v");
+            let _p4 = print_str(ver);
+            let _p5 = print_str("\n");
+
+            // Construct and run build command
+            let cmd = "bmb build " + source + " -o " + output;
+            let _p6 = print_str("  Running: ");
+            let _p7 = print_str(cmd);
+            let _p8 = print_str("\n");
+            let result = system(cmd);
+
+            if result == 0 {
+                let _s = print_str("  Build succeeded\n");
+                0
+            } else {
+                let _s = print_str("  Build failed\n");
+                1
+            }
+        }
+    }
+};
+
+fn cmd_check() -> i64 =
+    run_bmb_cmd("check", "  Check succeeded\n", "  Check failed\n");
+
+// ============================================================================
+// Dependency Resolution
+// ============================================================================
+
+// Default packages directory (relative to project root)
+fn default_packages_dir() -> String = "ecosystem/gotgan-packages/packages";
+
+// Check if a dependency package exists
+fn dep_found(packages_dir: String, dep_name: String) -> bool =
+    file_exists(path_join(path_join(packages_dir, dep_name), "gotgan.toml")) == 1;
+
+fn cmd_deps() -> i64 = {
+    let content = read_file("gotgan.toml");
+    if content.len() == 0 {
+        let _e = print_str("error: no gotgan.toml found in current directory\n");
+        1
+    } else {
+        let doc = toml_parse(content);
+        let name = manifest_name(doc, content);
+        let ver = manifest_version(doc, content);
+        let dep_count = toml_section_count(doc, content, "dependencies");
+
+        let _p1 = print_str("  Dependencies for ");
+        let _p2 = print_str(name);
+        let _p3 = print_str(" v");
+        let _p4 = print_str(ver);
+        let _p5 = print_str(":\n");
+
+        let _r = if dep_count == 0 {
+            let _n = print_str("  (none)\n");
+            0
+        } else {
+            let pkg_dir = default_packages_dir();
+            let mut i = 0;
+            let mut missing = 0;
+            while i < dep_count {
+                let dname = toml_section_key_at(doc, content, "dependencies", i);
+                let dver = toml_section_val_at(doc, content, "dependencies", i);
+                let _p = if dep_found(pkg_dir, dname) {
+                    let _p1 = print_str("  OK: ");
+                    let _p2 = print_str(dname);
+                    let _p3 = print_str(" ");
+                    let _p4 = print_str(dver);
+                    let _p5 = print_str("\n");
+                    0
+                } else {
+                    let _p1 = print_str("  MISSING: ");
+                    let _p2 = print_str(dname);
+                    let _p3 = print_str(" ");
+                    let _p4 = print_str(dver);
+                    let _p5 = print_str("\n");
+                    missing = missing + 1;
+                    0
+                };
+                i = i + 1;
+                0
+            };
+            let _r2 = if missing > 0 {
+                let _e = print_str("error: some dependencies are missing\n");
+                0
+            } else { 0 };
+            missing
+        };
+
+        let _f = toml_free(doc);
+        0
+    }
+};
+
+// ============================================================================
+// Package Initialization
+// ============================================================================
+
+fn gen_toml(name: String) -> String = {
+    let sb = sb_new();
+    let _p1 = sb_push(sb, "[package]\nname = \"");
+    let _p2 = sb_push(sb, name);
+    let _p3 = sb_push(sb, "\"\nversion = \"0.1.0\"\ndescription = \"\"\nlicense = \"MIT\"\n\n[dependencies]\n");
+    sb_build(sb)
+};
+
+fn gen_main_bmb(name: String) -> String = {
+    let sb = sb_new();
+    let _p1 = sb_push(sb, "// ");
+    let _p2 = sb_push(sb, name);
+    let _p3 = sb_push(sb, " - main entry point\n\nfn main() -> i64 = {\n    let _p = print_str(\"hello from ");
+    let _p4 = sb_push(sb, name);
+    let _p5 = sb_push(sb, "!\\n\");\n    0\n};\n");
+    sb_build(sb)
+};
+
+fn cmd_init() -> i64 = {
+    // Check if gotgan.toml already exists
+    if file_exists("gotgan.toml") == 1 {
+        let _e = print_str("error: gotgan.toml already exists in current directory\n");
+        1
+    } else {
+        // Use directory name or default
+        let name = if arg_count() >= 3 { get_arg(2) } else { "my-package" };
+
+        // Create directories
+        let _d1 = make_dir("src");
+
+        // Write gotgan.toml
+        let toml_content = gen_toml(name);
+        let _w1 = write_file("gotgan.toml", toml_content);
+
+        // Write src/main.bmb
+        let main_content = gen_main_bmb(name);
+        let _w2 = write_file("src/main.bmb", main_content);
+
+        let _p1 = print_str("  Created package '");
+        let _p2 = print_str(name);
+        let _p3 = print_str("'\n");
+        let _p4 = print_str("  gotgan.toml\n");
+        let _p5 = print_str("  src/main.bmb\n");
+        0
+    }
+};
+
+fn cmd_test() -> i64 = {
+    let content = read_file("gotgan.toml");
+    if content.len() == 0 {
+        let _e = print_str("error: no gotgan.toml found in current directory\n");
+        1
+    } else {
+        let doc = toml_parse(content);
+        let name = manifest_name(doc, content);
+        let ver = manifest_version(doc, content);
+        let _f = toml_free(doc);
+
+        // Check for tests directory
+        if is_dir("tests") == 0 {
+            let _e = print_str("error: no tests/ directory found\n");
+            1
+        } else {
+            let _p1 = print_str("  Testing ");
+            let _p2 = print_str(name);
+            let _p3 = print_str(" v");
+            let _p4 = print_str(ver);
+            let _p5 = print_str("\n");
+
+            // List test files
+            let entries = list_dir("tests");
+            if entries.len() == 0 {
+                let _e = print_str("  No test files found in tests/\n");
+                0
+            } else {
+                // Run each .bmb file in tests/
+                let elen = entries.len();
+                let mut pos = 0;
+                let mut total = 0;
+                let mut pass_count = 0;
+                while pos < elen {
+                    // Find next newline
+                    let mut end = pos;
+                    while end < elen {
+                        let _r = if entries.byte_at(end) == 10 { break } else { end = end + 1 };
+                        0
+                    };
+                    let fname = entries.slice(pos, end);
+                    let flen = fname.len();
+
+                    // Check if filename ends with .bmb (at least 5 chars: x.bmb)
+                    let _run = if flen >= 5 {
+                        let suffix = fname.slice(flen - 4, flen);
+                        if suffix == ".bmb" {
+                            let test_path = path_join("tests", fname);
+                            let _p1 = print_str("  Running: ");
+                            let _p2 = print_str(test_path);
+                            let _p3 = print_str("\n");
+
+                            let cmd = "bmb run " + test_path;
+                            let result = system(cmd);
+                            total = total + 1;
+                            let _r = if result == 0 {
+                                pass_count = pass_count + 1;
+                                0
+                            } else { 0 };
+                            0
+                        } else { 0 }
+                    } else { 0 };
+
+                    pos = end + 1;
+                    0
+                };
+
+                let _r1 = print_str("\n  ");
+                let _r2 = print(pass_count);
+                let _r3 = print_str("/");
+                let _r4 = print(total);
+                let _r5 = print_str(" test files passed\n");
+                if pass_count == total { 0 } else { 1 }
+            }
+        }
+    }
+};
+
+fn cmd_new() -> i64 = {
+    if arg_count() < 3 {
+        let _e = print_str("error: missing package name\n");
+        let _u = print_str("usage: gotgan new <name>\n");
+        1
+    } else {
+        let name = get_arg(2);
+
+        // Check if directory already exists
+        if is_dir(name) == 1 {
+            let _e1 = print_str("error: directory '");
+            let _e2 = print_str(name);
+            let _e3 = print_str("' already exists\n");
+            1
+        } else {
+            // Create package directory and src/
+            let _d0 = make_dir(name);
+            let src_dir = path_join(name, "src");
+            let _d1 = make_dir(src_dir);
+
+            // Write gotgan.toml
+            let toml_path = path_join(name, "gotgan.toml");
+            let _w1 = write_file(toml_path, gen_toml(name));
+
+            // Write src/main.bmb
+            let main_path = path_join(src_dir, "main.bmb");
+            let _w2 = write_file(main_path, gen_main_bmb(name));
+
+            let _p1 = print_str("  Created package '");
+            let _p2 = print_str(name);
+            let _p3 = print_str("' in ./");
+            let _p4 = print_str(name);
+            let _p5 = print_str("/\n");
+            0
+        }
+    }
+};
+
+fn cmd_fmt() -> i64 =
+    run_bmb_cmd("fmt", "  Format succeeded\n", "  Format failed\n");
+
+fn cmd_verify() -> i64 =
+    run_bmb_cmd("verify", "  Verification succeeded\n", "  Verification failed\n");
+
+fn cmd_lint() -> i64 =
+    run_bmb_cmd("lint", "  Lint passed\n", "  Lint warnings/errors found\n");
+
+// ============================================================================
+// TOML Manipulation
+// ============================================================================
+
+fn str_find(haystack: String, needle: String) -> i64 = {
+    let hlen = haystack.len();
+    let nlen = needle.len();
+    if nlen == 0 { 0 }
+    else if nlen > hlen { 0 - 1 }
+    else {
+        let mut i = 0;
+        let limit = hlen - nlen + 1;
+        let mut result = 0 - 1;
+        while i < limit {
+            let _r = if result < 0 {
+                let sub = haystack.slice(i, i + nlen);
+                if sub == needle { result = i; 0 } else { 0 }
+            } else { 0 };
+            i = i + 1;
+            0
+        };
+        result
+    }
+};
+
+fn find_eol(s: String, pos: i64) -> i64 = {
+    let slen = s.len();
+    let mut p = pos;
+    while p < slen {
+        let _r = if s.byte_at(p) == 10 { break } else { p = p + 1 };
+        0
+    };
+    p
+};
+
+fn add_dep_to_content(content: String, dep_name: String, dep_ver: String) -> String = {
+    let deps_pos = str_find(content, "[dependencies]");
+    if deps_pos < 0 {
+        let sb = sb_new();
+        let _p1 = sb_push(sb, content);
+        let _p2 = sb_push(sb, "\n[dependencies]\n");
+        let _p3 = sb_push(sb, dep_name);
+        let _p4 = sb_push(sb, " = \"");
+        let _p5 = sb_push(sb, dep_ver);
+        let _p6 = sb_push(sb, "\"\n");
+        sb_build(sb)
+    } else {
+        let eol = find_eol(content, deps_pos);
+        let insert_pos = if eol < content.len() { eol + 1 } else { eol };
+        let before = content.slice(0, insert_pos);
+        let after = content.slice(insert_pos, content.len());
+        let sb = sb_new();
+        let _p1 = sb_push(sb, before);
+        let _p2 = sb_push(sb, dep_name);
+        let _p3 = sb_push(sb, " = \"");
+        let _p4 = sb_push(sb, dep_ver);
+        let _p5 = sb_push(sb, "\"\n");
+        let _p6 = sb_push(sb, after);
+        sb_build(sb)
+    }
+};
+
+fn cmd_add() -> i64 = {
+    if arg_count() < 3 {
+        let _e = print_str("error: missing dependency name\n");
+        let _u = print_str("usage: gotgan add <package> [version]\n");
+        1
+    } else {
+        let dep_name = get_arg(2);
+        let dep_ver = if arg_count() >= 4 { get_arg(3) } else { "0.1.0" };
+
+        let content = read_file("gotgan.toml");
+        if content.len() == 0 {
+            let _e = print_str("error: no gotgan.toml found in current directory\n");
+            1
+        } else {
+            // Check if dep already exists
+            let has_dep = str_find(content, dep_name) >= 0;
+            if has_dep {
+                let _e1 = print_str("  Dependency '");
+                let _e2 = print_str(dep_name);
+                let _e3 = print_str("' already exists in gotgan.toml\n");
+                0
+            } else {
+                let new_content = add_dep_to_content(content, dep_name, dep_ver);
+                let _w = write_file("gotgan.toml", new_content);
+                let _p1 = print_str("  Added ");
+                let _p2 = print_str(dep_name);
+                let _p3 = print_str(" = \"");
+                let _p4 = print_str(dep_ver);
+                let _p5 = print_str("\"\n");
+                0
+            }
+        }
+    }
+};
+
+fn cmd_remove() -> i64 = {
+    if arg_count() < 3 {
+        let _e = print_str("error: missing dependency name\n");
+        let _u = print_str("usage: gotgan remove <package>\n");
+        1
+    } else {
+        let dep_name = get_arg(2);
+        let content = read_file("gotgan.toml");
+        if content.len() == 0 {
+            let _e = print_str("error: no gotgan.toml found in current directory\n");
+            1
+        } else {
+            // Find the dependency line
+            let dep_pos = str_find(content, dep_name);
+            if dep_pos < 0 {
+                let _e1 = print_str("  Dependency '");
+                let _e2 = print_str(dep_name);
+                let _e3 = print_str("' not found in gotgan.toml\n");
+                1
+            } else {
+                // Find start of line containing the dep
+                let mut line_start = dep_pos;
+                while line_start > 0 {
+                    let _r = if content.byte_at(line_start - 1) == 10 { break }
+                    else { line_start = line_start - 1 };
+                    0
+                };
+
+                // Find end of line
+                let line_end = find_eol(content, dep_pos);
+                let next_start = if line_end < content.len() { line_end + 1 } else { line_end };
+
+                // Rebuild content without this line
+                let before = content.slice(0, line_start);
+                let after = content.slice(next_start, content.len());
+                let new_content = before + after;
+                let _w = write_file("gotgan.toml", new_content);
+
+                let _p1 = print_str("  Removed ");
+                let _p2 = print_str(dep_name);
+                let _p3 = print_str("\n");
+                0
+            }
+        }
+    }
+};
+
+fn cmd_version() -> i64 = {
+    let content = read_file("gotgan.toml");
+    if content.len() == 0 {
+        let _e = print_str("error: no gotgan.toml found in current directory\n");
+        1
+    } else {
+        let doc = toml_parse(content);
+        let name = manifest_name(doc, content);
+        let ver = manifest_version(doc, content);
+        let _f = toml_free(doc);
+
+        let _p1 = print_str(name);
+        let _p2 = print_str(" v");
+        let _p3 = print_str(ver);
+        let _p4 = print_str("\n");
+        0
+    }
+};
+
+fn cmd_clean() -> i64 = {
+    if is_dir("target") == 0 {
+        let _e = print_str("  Nothing to clean\n");
+        0
+    } else {
+        let _p = print_str("  Cleaning target/\n");
+        // Remove target directory contents
+        let result = system("rm -rf target 2>/dev/null || rmdir /s /q target 2>nul");
+        if is_dir("target") == 0 {
+            let _s = print_str("  Clean succeeded\n");
+            0
+        } else {
+            let _s = print_str("  Clean failed\n");
+            1
+        }
+    }
+};
+
+fn cmd_run() -> i64 = {
+    let source = load_manifest_and_source("Running");
+    if source == "" { 1 }
+    else {
+        let cmd = "bmb run " + source;
+        system(cmd)
+    }
+};
+
+fn main() -> i64 = {
+    let argc = arg_count();
+    if argc < 2 { print_help() }
+    else {
+        let cmd = get_arg(1);
+        if cmd == "add" { cmd_add() }
+        else if cmd == "build" { cmd_build() }
+        else if cmd == "check" { cmd_check() }
+        else if cmd == "clean" { cmd_clean() }
+        else if cmd == "deps" { cmd_deps() }
+        else if cmd == "fmt" { cmd_fmt() }
+        else if cmd == "init" { cmd_init() }
+        else if cmd == "lint" { cmd_lint() }
+        else if cmd == "new" { cmd_new() }
+        else if cmd == "remove" { cmd_remove() }
+        else if cmd == "run" { cmd_run() }
+        else if cmd == "test" { cmd_test() }
+        else if cmd == "verify" { cmd_verify() }
+        else if cmd == "version" { cmd_version() }
+        else if cmd == "help" { print_help() }
+        else {
+            let _e1 = print_str("error: unknown command '");
+            let _e2 = print_str(cmd);
+            let _e3 = print_str("'\n");
+            let _e4 = print_help();
+            1
+        }
+    }
+};

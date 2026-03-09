@@ -1,0 +1,178 @@
+// Golden test: Deterministic Miller-Rabin primality test
+// For numbers < 3,215,031,751 the witnesses {2, 3, 5, 7} suffice
+// Uses modular exponentiation to avoid overflow for small numbers
+
+// Modular exponentiation: (base^exp) % mod
+fn mod_pow(base: i64, exp: i64, m: i64) -> i64 = {
+    let mut result = 1;
+    let mut b = base % m;
+    let mut e = exp;
+    loop {
+        if e <= 0 { break } else { () };
+        let rem = e % 2;
+        if rem == 1 {
+            result = (result * b) % m
+        } else { () };
+        e = e / 2;
+        b = (b * b) % m
+    };
+    result
+    };
+
+// Write n-1 as 2^r * d where d is odd
+// Returns r (number of times 2 divides n-1)
+fn factor_twos_r(n_minus_1: i64) -> i64 = {
+    let mut r = 0;
+    let mut d = n_minus_1;
+    loop {
+        if d % 2 != 0 { break } else { () };
+        r = r + 1;
+        d = d / 2
+    };
+    r
+    };
+
+// Returns d (the odd part of n-1)
+fn factor_twos_d(n_minus_1: i64) -> i64 = {
+    let mut d = n_minus_1;
+    loop {
+        if d % 2 != 0 { break } else { () };
+        d = d / 2
+    };
+    d
+    };
+
+// Single witness test: is n composite according to witness a?
+// Returns 1 if definitely composite, 0 if probably prime
+fn miller_test(n: i64, a: i64, d: i64, r: i64) -> i64 = {
+    if a % n == 0 { return 0 } else { () };
+    let mut x = mod_pow(a, d, n);
+    if x == 1 or x == n - 1 { return 0 } else { () };
+    let mut i = 0;
+    let mut found = 0;
+    loop {
+        if i >= r - 1 { break } else { () };
+        x = (x * x) % n;
+        if x == n - 1 {
+            found = 1;
+            break
+        } else { () };
+        i = i + 1
+    };
+    if found == 1 { 0 } else { 1 }
+    };
+
+// Deterministic Miller-Rabin for small numbers
+// Uses witnesses {2, 3, 5, 7} — correct for n < 3,215,031,751
+fn is_prime_mr(n: i64) -> i64 = {
+    if n < 2 { return 0 } else { () };
+    if n < 4 { return 1 } else { () };
+    if n % 2 == 0 { return 0 } else { () };
+    if n % 3 == 0 { return 0 } else { () };
+    if n == 5 or n == 7 { return 1 } else { () };
+
+    let d = factor_twos_d(n - 1);
+    let r = factor_twos_r(n - 1);
+
+    // Test witness 2
+    if miller_test(n, 2, d, r) == 1 { return 0 } else { () };
+    // Test witness 3
+    if miller_test(n, 3, d, r) == 1 { return 0 } else { () };
+    // Test witness 5
+    if miller_test(n, 5, d, r) == 1 { return 0 } else { () };
+    // Test witness 7
+    if miller_test(n, 7, d, r) == 1 { return 0 } else { () };
+    1
+    };
+
+// Simple trial division for verification
+fn is_prime_trial(n: i64) -> i64 = {
+    if n < 2 { return 0 } else { () };
+    if n < 4 { return 1 } else { () };
+    if n % 2 == 0 { return 0 } else { () };
+    let mut i = 3;
+    loop {
+        if i * i > n { break } else { () };
+        if n % i == 0 { return 0 } else { () };
+        i = i + 2
+    };
+    1
+    };
+
+// Count primes in range [lo, hi] using Miller-Rabin
+fn count_primes_mr(lo: i64, hi: i64) -> i64 = {
+    let mut count = 0;
+    let mut n = lo;
+    loop {
+        if n > hi { break } else { () };
+        if is_prime_mr(n) == 1 {
+            count = count + 1
+        } else { () };
+        n = n + 1
+    };
+    count
+    };
+
+fn main() -> i64 = {
+    // mod_pow tests
+    let _p1 = println(mod_pow(2, 10, 1000));   // 1024 % 1000 = 24
+    let _p2 = println(mod_pow(3, 7, 100));      // 2187 % 100 = 87
+    let _p3 = println(mod_pow(5, 3, 13));       // 125 % 13 = 8
+
+    // factor_twos tests: 24 = 2^3 * 3
+    let _p4 = println(factor_twos_r(24));  // 3
+    let _p5 = println(factor_twos_d(24));  // 3
+    // 36 = 2^2 * 9
+    let _p6 = println(factor_twos_r(36));  // 2
+    let _p7 = println(factor_twos_d(36));  // 9
+
+    // Small primes
+    let _p8 = println(is_prime_mr(2));     // 1
+    let _p9 = println(is_prime_mr(3));     // 1
+    let _p10 = println(is_prime_mr(5));    // 1
+    let _p11 = println(is_prime_mr(7));    // 1
+    let _p12 = println(is_prime_mr(11));   // 1
+    let _p13 = println(is_prime_mr(13));   // 1
+
+    // Small composites
+    let _p14 = println(is_prime_mr(4));    // 0
+    let _p15 = println(is_prime_mr(9));    // 0
+    let _p16 = println(is_prime_mr(15));   // 0
+    let _p17 = println(is_prime_mr(1));    // 0
+
+    // Larger primes
+    let _p18 = println(is_prime_mr(97));   // 1
+    let _p19 = println(is_prime_mr(101));  // 1
+    let _p20 = println(is_prime_mr(541));  // 1
+    let _p21 = println(is_prime_mr(7919)); // 1
+
+    // Larger composites (including Carmichael numbers)
+    let _p22 = println(is_prime_mr(561));  // 0 (Carmichael: 3*11*17)
+    let _p23 = println(is_prime_mr(1105)); // 0 (Carmichael: 5*13*17)
+    let _p24 = println(is_prime_mr(1729)); // 0 (Carmichael: 7*13*19)
+
+    // Count primes in range [1, 100] should be 25
+    let _p25 = println(count_primes_mr(1, 100));  // 25
+
+    // Verify MR matches trial division for first 200 numbers
+    let mut mismatches = 0;
+    let mut n = 1;
+    loop {
+        if n > 200 { break } else { () };
+        let mr = is_prime_mr(n);
+        let td = is_prime_trial(n);
+        if mr != td {
+            mismatches = mismatches + 1
+        } else { () };
+        n = n + 1
+    };
+    let _p26 = println(mismatches);  // 0
+
+    // Edge cases
+    let _p27 = println(is_prime_mr(0));     // 0
+    let _p28 = println(is_prime_mr(2));     // 1 (smallest prime)
+    let _p29 = println(is_prime_mr(10007)); // 1 (prime)
+    let _p30 = println(is_prime_mr(10009)); // 1 (prime)
+
+    0
+    };

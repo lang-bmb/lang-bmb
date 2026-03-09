@@ -1,0 +1,171 @@
+// Golden Test: A* pathfinding on a weighted grid
+// Grid stored as flat vec, heuristic = Manhattan distance
+// Uses open list (priority queue via linear scan) and closed set
+// Finds shortest path from top-left to bottom-right
+
+// Grid: 5x5, 0=passable, negative=wall, positive=cost
+// cost to move = 1 + grid[cell] (only if grid[cell] >= 0)
+
+fn grid_get(grid: i64, rows: i64, cols: i64, r: i64, c: i64) -> i64 = {
+    if r < 0 or r >= rows or c < 0 or c >= cols { -1 }
+    else { vec_get(grid, r * cols + c) }
+};
+
+// Manhattan distance heuristic
+fn heuristic(r: i64, c: i64, gr: i64, gc: i64) -> i64 = {
+    let dr = if r > gr { r - gr } else { gr - r };
+    let dc = if c > gc { c - gc } else { gc - c };
+    dr + dc
+};
+
+// A* search: returns shortest path cost, -1 if unreachable
+// open_f, open_g, open_r, open_c: parallel vecs for open set
+// closed: flat vec (rows*cols), 1 if visited
+// came_cost: flat vec (rows*cols), best g-cost found
+fn astar(grid: i64, rows: i64, cols: i64, sr: i64, sc: i64, gr: i64, gc: i64) -> i64 = {
+    let n = rows * cols;
+    let closed = vec_new();
+    let came_cost = vec_new();
+    // Initialize came_cost to large value
+    let mut i = 0;
+    while i < n {
+        let _p = vec_push(closed, 0);
+        let _p2 = vec_push(came_cost, 999999);
+        set i = i + 1
+    };
+
+    // Open set as parallel vecs
+    let open_f = vec_new();
+    let open_g = vec_new();
+    let open_r = vec_new();
+    let open_c = vec_new();
+
+    // Start node
+    let h0 = heuristic(sr, sc, gr, gc);
+    let _p1 = vec_push(open_f, h0);
+    let _p2 = vec_push(open_g, 0);
+    let _p3 = vec_push(open_r, sr);
+    let _p4 = vec_push(open_c, sc);
+    vec_set(came_cost, sr * cols + sc, 0);
+
+    let mut result = -1;
+    let mut done = 0;
+
+    while vec_len(open_f) > 0 and done == 0 {
+        // Find node with lowest f in open set
+        let mut best_idx = 0;
+        let mut best_f = vec_get(open_f, 0);
+        let mut j = 1;
+        while j < vec_len(open_f) {
+            let _x = if vec_get(open_f, j) < best_f {
+                set best_idx = j;
+                set best_f = vec_get(open_f, j);
+                0
+            } else { 0 };
+            set j = j + 1
+        };
+
+        let cur_g = vec_get(open_g, best_idx);
+        let cur_r = vec_get(open_r, best_idx);
+        let cur_c = vec_get(open_c, best_idx);
+
+        // Remove from open set (swap with last)
+        let last = vec_len(open_f) - 1;
+        let _x1 = if best_idx != last {
+            vec_set(open_f, best_idx, vec_get(open_f, last));
+            vec_set(open_g, best_idx, vec_get(open_g, last));
+            vec_set(open_r, best_idx, vec_get(open_r, last));
+            vec_set(open_c, best_idx, vec_get(open_c, last));
+            0
+        } else { 0 };
+        let _vp1 = vec_pop(open_f);
+        let _vp2 = vec_pop(open_g);
+        let _vp3 = vec_pop(open_r);
+        let _vp4 = vec_pop(open_c);
+
+        // Check if goal
+        let _x2 = if cur_r == gr and cur_c == gc {
+            set result = cur_g;
+            set done = 1;
+            0
+        } else {
+            // Mark closed
+            let idx = cur_r * cols + cur_c;
+            let _x3 = if vec_get(closed, idx) == 1 { 0 } else {
+                vec_set(closed, idx, 1);
+
+                // Expand neighbors (4 directions: up, down, left, right)
+                // Direction offsets: dr = [-1,1,0,0], dc = [0,0,-1,1]
+                let dirs = vec_new();
+                let _d1 = vec_push(dirs, -1); let _d2 = vec_push(dirs, 0);
+                let _d3 = vec_push(dirs, 1); let _d4 = vec_push(dirs, 0);
+                let _d5 = vec_push(dirs, 0); let _d6 = vec_push(dirs, -1);
+                let _d7 = vec_push(dirs, 0); let _d8 = vec_push(dirs, 1);
+
+                let mut d = 0;
+                while d < 4 {
+                    let nr = cur_r + vec_get(dirs, d * 2);
+                    let nc = cur_c + vec_get(dirs, d * 2 + 1);
+                    let _x4 = if nr >= 0 and nr < rows and nc >= 0 and nc < cols {
+                        let nidx = nr * cols + nc;
+                        let cell = vec_get(grid, nidx);
+                        let _x5 = if cell >= 0 and vec_get(closed, nidx) == 0 {
+                            let ng = cur_g + 1 + cell;
+                            let _x6 = if ng < vec_get(came_cost, nidx) {
+                                vec_set(came_cost, nidx, ng);
+                                let nf = ng + heuristic(nr, nc, gr, gc);
+                                let _pa = vec_push(open_f, nf);
+                                let _pb = vec_push(open_g, ng);
+                                let _pc = vec_push(open_r, nr);
+                                let _pd = vec_push(open_c, nc);
+                                0
+                            } else { 0 };
+                            0
+                        } else { 0 };
+                        0
+                    } else { 0 };
+                    set d = d + 1
+                };
+                0
+            };
+            0
+        };
+        0
+    };
+    result
+};
+
+fn main() -> () = {
+    // 5x5 grid: 0=free, -1=wall, positive=extra cost
+    let grid = vec_new();
+    // Row 0: 0 0 0 0 0
+    let _r = vec_push(grid, 0); let _r = vec_push(grid, 0); let _r = vec_push(grid, 0); let _r = vec_push(grid, 0); let _r = vec_push(grid, 0);
+    // Row 1: 0 -1 -1 0 0
+    let _r = vec_push(grid, 0); let _r = vec_push(grid, -1); let _r = vec_push(grid, -1); let _r = vec_push(grid, 0); let _r = vec_push(grid, 0);
+    // Row 2: 0 0 0 -1 0
+    let _r = vec_push(grid, 0); let _r = vec_push(grid, 0); let _r = vec_push(grid, 0); let _r = vec_push(grid, -1); let _r = vec_push(grid, 0);
+    // Row 3: 0 -1 0 0 0
+    let _r = vec_push(grid, 0); let _r = vec_push(grid, -1); let _r = vec_push(grid, 0); let _r = vec_push(grid, 0); let _r = vec_push(grid, 0);
+    // Row 4: 0 0 0 0 0
+    let _r = vec_push(grid, 0); let _r = vec_push(grid, 0); let _r = vec_push(grid, 0); let _r = vec_push(grid, 0); let _r = vec_push(grid, 0);
+
+    let cost = astar(grid, 5, 5, 0, 0, 4, 4);
+    println(cost);
+
+    // Test 2: grid with extra costs
+    let grid2 = vec_new();
+    // 3x3: [0,2,0 / 0,-1,0 / 0,0,0]
+    let _r = vec_push(grid2, 0); let _r = vec_push(grid2, 2); let _r = vec_push(grid2, 0);
+    let _r = vec_push(grid2, 0); let _r = vec_push(grid2, -1); let _r = vec_push(grid2, 0);
+    let _r = vec_push(grid2, 0); let _r = vec_push(grid2, 0); let _r = vec_push(grid2, 0);
+
+    let cost2 = astar(grid2, 3, 3, 0, 0, 2, 2);
+    println(cost2);
+
+    // Test 3: unreachable
+    let grid3 = vec_new();
+    let _r = vec_push(grid3, 0); let _r = vec_push(grid3, -1);
+    let _r = vec_push(grid3, -1); let _r = vec_push(grid3, 0);
+    let cost3 = astar(grid3, 2, 2, 0, 0, 1, 1);
+    let _r = println(cost3)
+};

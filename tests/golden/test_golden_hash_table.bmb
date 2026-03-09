@@ -1,0 +1,191 @@
+// Golden Test: Open-addressing hash table with linear probing
+// Separate key/value arrays, tombstone support for deletion
+// Sentinel: -999999 = empty, -999998 = tombstone
+
+fn ht_empty() -> i64 = 0 - 999999;
+fn ht_tombstone() -> i64 = 0 - 999998;
+
+// Create hash table: keys vec + values vec + size stored in wrapper vec
+// Layout: wrapper[0] = keys_vec, wrapper[1] = vals_vec, wrapper[2] = capacity
+fn ht_create(capacity: i64) -> i64 = {
+    let keys = vec_new();
+    let vals = vec_new();
+    for _i in 0..capacity {
+        let _a = vec_push(keys, ht_empty());
+        let _b = vec_push(vals, 0);
+        0
+    };
+    let wrapper = vec_new();
+    let _a = vec_push(wrapper, keys);
+    let _b = vec_push(wrapper, vals);
+    let _c = vec_push(wrapper, capacity);
+    wrapper
+    };
+
+fn ht_keys(ht: i64) -> i64 = vec_get(ht, 0);
+fn ht_vals(ht: i64) -> i64 = vec_get(ht, 1);
+fn ht_cap(ht: i64) -> i64 = vec_get(ht, 2);
+
+// Hash function: positive modulo
+fn ht_hash(key: i64, cap: i64) -> i64 = {
+    let k = if key < 0 { 0 - key } else { key };
+    k - (k / cap) * cap
+    };
+
+// Insert key-value pair (overwrites if key exists)
+fn ht_put(ht: i64, key: i64, val: i64) -> i64 = {
+    let cap = ht_cap(ht);
+    let keys = ht_keys(ht);
+    let vals = ht_vals(ht);
+    ht_put_probe(keys, vals, cap, key, val, ht_hash(key, cap), 0)
+    };
+
+fn ht_put_probe(keys: i64, vals: i64, cap: i64, key: i64, val: i64, idx: i64, attempt: i64) -> i64 =
+    if attempt >= cap { 0 - 1 } // table full
+    else {
+        let cur = vec_get(keys, idx);
+        if cur == ht_empty() or cur == ht_tombstone() or cur == key {
+            let _s1 = vec_set(keys, idx, key);
+            let _s2 = vec_set(vals, idx, val);
+            1 // success
+        } else {
+            let next = idx + 1;
+            let wrapped = if next >= cap { next - cap } else { next };
+            ht_put_probe(keys, vals, cap, key, val, wrapped, attempt + 1)
+        }
+    };
+
+// Get value for key; returns -1 if not found
+fn ht_get(ht: i64, key: i64) -> i64 = {
+    let cap = ht_cap(ht);
+    let keys = ht_keys(ht);
+    let vals = ht_vals(ht);
+    ht_get_probe(keys, vals, cap, key, ht_hash(key, cap), 0)
+    };
+
+fn ht_get_probe(keys: i64, vals: i64, cap: i64, key: i64, idx: i64, attempt: i64) -> i64 =
+    if attempt >= cap { 0 - 1 }
+    else {
+        let cur = vec_get(keys, idx);
+        if cur == key { vec_get(vals, idx) }
+        else if cur == ht_empty() { 0 - 1 }
+        else {
+            let next = idx + 1;
+            let wrapped = if next >= cap { next - cap } else { next };
+            ht_get_probe(keys, vals, cap, key, wrapped, attempt + 1)
+        }
+    };
+
+// Check if key exists: 1 = yes, 0 = no
+fn ht_contains(ht: i64, key: i64) -> i64 = {
+    let cap = ht_cap(ht);
+    let keys = ht_keys(ht);
+    let vals = ht_vals(ht);
+    ht_contains_probe(keys, cap, key, ht_hash(key, cap), 0)
+    };
+
+fn ht_contains_probe(keys: i64, cap: i64, key: i64, idx: i64, attempt: i64) -> i64 =
+    if attempt >= cap { 0 }
+    else {
+        let cur = vec_get(keys, idx);
+        if cur == key { 1 }
+        else if cur == ht_empty() { 0 }
+        else {
+            let next = idx + 1;
+            let wrapped = if next >= cap { next - cap } else { next };
+            ht_contains_probe(keys, cap, key, wrapped, attempt + 1)
+        }
+    };
+
+// Delete key (replace with tombstone)
+fn ht_delete(ht: i64, key: i64) -> i64 = {
+    let cap = ht_cap(ht);
+    let keys = ht_keys(ht);
+    ht_delete_probe(keys, cap, key, ht_hash(key, cap), 0)
+    };
+
+fn ht_delete_probe(keys: i64, cap: i64, key: i64, idx: i64, attempt: i64) -> i64 =
+    if attempt >= cap { 0 } // not found
+    else {
+        let cur = vec_get(keys, idx);
+        if cur == key {
+            let _s = vec_set(keys, idx, ht_tombstone());
+            1 // deleted
+        }
+        else if cur == ht_empty() { 0 }
+        else {
+            let next = idx + 1;
+            let wrapped = if next >= cap { next - cap } else { next };
+            ht_delete_probe(keys, cap, key, wrapped, attempt + 1)
+        }
+    };
+
+// Count active entries
+fn ht_size(ht: i64) -> i64 = {
+    let keys = ht_keys(ht);
+    let cap = ht_cap(ht);
+    ht_count_active(keys, cap, 0, 0)
+    };
+
+fn ht_count_active(keys: i64, cap: i64, idx: i64, count: i64) -> i64 =
+    if idx >= cap { count }
+    else {
+        let k = vec_get(keys, idx);
+        let inc = if k != ht_empty() and k != ht_tombstone() { 1 } else { 0 };
+        ht_count_active(keys, cap, idx + 1, count + inc)
+    };
+
+fn main() -> i64 = {
+    let ht = ht_create(11);
+
+    // Insert and retrieve
+    let _r1 = ht_put(ht, 42, 100);
+    let _r2 = ht_put(ht, 17, 200);
+    let _r3 = ht_put(ht, 5, 300);
+    let _p1 = println(ht_get(ht, 42));  // 100
+    let _p2 = println(ht_get(ht, 17));  // 200
+    let _p3 = println(ht_get(ht, 5));   // 300
+    let _p4 = println(ht_size(ht));     // 3
+
+    // Key not found
+    let _p5 = println(ht_get(ht, 99));  // -1
+
+    // Contains check
+    let _p6 = println(ht_contains(ht, 42)); // 1
+    let _p7 = println(ht_contains(ht, 99)); // 0
+
+    // Overwrite existing key
+    let _r4 = ht_put(ht, 42, 999);
+    let _p8 = println(ht_get(ht, 42));  // 999
+    let _p9 = println(ht_size(ht));     // 3 (no new entry)
+
+    // Delete
+    let _d1 = ht_delete(ht, 17);
+    let _p10 = println(ht_contains(ht, 17)); // 0
+    let _p11 = println(ht_size(ht));          // 2
+
+    // Insert after delete (should work through tombstone)
+    let _r5 = ht_put(ht, 28, 400);
+    let _p12 = println(ht_get(ht, 28));  // 400
+    let _p13 = println(ht_size(ht));     // 3
+
+    // Collision test: keys that hash to same slot
+    // With capacity 11, keys 3 and 14 both hash to slot 3
+    let ht2 = ht_create(11);
+    let _r6 = ht_put(ht2, 3, 10);
+    let _r7 = ht_put(ht2, 14, 20);  // collides, probes to next
+    let _r8 = ht_put(ht2, 25, 30);  // also hashes to 3, probes further
+    let _p14 = println(ht_get(ht2, 3));   // 10
+    let _p15 = println(ht_get(ht2, 14));  // 20
+    let _p16 = println(ht_get(ht2, 25));  // 30
+
+    // Delete non-existent key
+    let _p17 = println(ht_delete(ht2, 999)); // 0
+
+    // Hash function edge cases
+    let _p18 = println(ht_hash(0, 11));     // 0
+    let _p19 = println(ht_hash(11, 11));    // 0
+    let _p20 = println(ht_hash(0 - 7, 11)); // 7
+
+    0
+    };

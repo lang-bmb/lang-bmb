@@ -1,0 +1,180 @@
+// Golden Test: Sort variants - Cycle 1402
+// Bubble sort, insertion sort, counting sort using vec API
+
+// Bubble sort: repeatedly swap adjacent out-of-order elements
+fn my_bubble_sort(v: i64) -> i64 = {
+    let n = vec_len(v);
+    for _i in 0..n {
+        let mut j = 0;
+        loop {
+            if j + 1 >= n { break } else { 0 };
+            let vj = vec_get(v, j);
+            let vj1 = vec_get(v, j + 1);
+            if vj > vj1 {
+                vec_set(v, j, vj1);
+                vec_set(v, j + 1, vj);
+                0
+            } else { 0 };
+        j = j + 1
+    }
+    };
+    0
+    };
+
+// Insertion sort: for each element, shift it left into sorted position
+fn my_insertion_sort(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { 0 };
+        let key = vec_get(v, i);
+        let mut j = i - 1;
+        loop {
+            if j < 0 { break } else { 0 };
+            if vec_get(v, j) > key {
+                let gj = vec_get(v, j);
+                vec_set(v, j + 1, gj);
+                j = j - 1
+            } else {
+            break
+        }
+    };
+    vec_set(v, j + 1, key);
+    i = i + 1
+    };
+    0
+    };
+
+// Counting sort for values in range [0, max_val]
+fn my_counting_sort(v: i64, count: i64, max_val: i64) -> i64 = {
+    let n = vec_len(v);
+
+// Count occurrences
+    for i in 0..n {
+        let val = vec_get(v, i);
+        let c = vec_get(count, val);
+        vec_set(count, val, c + 1)
+    };
+
+// Write back sorted
+    let mut pos = 0;
+    let mut cv = 0;
+    loop {
+        if cv > max_val { break } else { 0 };
+        let mut c = vec_get(count, cv);
+        loop {
+            if c <= 0 { break } else { 0 };
+            vec_set(v, pos, cv);
+            pos = pos + 1;
+            c = c - 1
+        };
+    cv = cv + 1
+    };
+    0
+    };
+
+fn main() -> i64 = {
+// Test bubble sort [5, 2, 8, 1, 9, 3]
+    let a1 = vec_new();
+    vec_push(a1, 5);
+    vec_push(a1, 2);
+    vec_push(a1, 8);
+    vec_push(a1, 1);
+    vec_push(a1, 9);
+    vec_push(a1, 3);
+    let _s1 = my_bubble_sort(a1);
+    let _p1 = println(vec_get(a1, 0));   // 1
+    let _p2 = println(vec_get(a1, 2));   // 3
+    let _p3 = println(vec_get(a1, 5));   // 9
+
+// Test insertion sort [7, 3, 6, 2, 8, 4, 1]
+    let a2 = vec_new();
+    vec_push(a2, 7);
+    vec_push(a2, 3);
+    vec_push(a2, 6);
+    vec_push(a2, 2);
+    vec_push(a2, 8);
+    vec_push(a2, 4);
+    vec_push(a2, 1);
+    let _s2 = my_insertion_sort(a2);
+    let _p4 = println(vec_get(a2, 0));   // 1
+    let _p5 = println(vec_get(a2, 3));   // 4
+    let _p6 = println(vec_get(a2, 6));   // 8
+
+// Test counting sort (values 0..9) [4, 2, 2, 8, 3, 3, 1, 0, 5, 7]
+    let a3 = vec_new();
+    vec_push(a3, 4);
+    vec_push(a3, 2);
+    vec_push(a3, 2);
+    vec_push(a3, 8);
+    vec_push(a3, 3);
+    vec_push(a3, 3);
+    vec_push(a3, 1);
+    vec_push(a3, 0);
+    vec_push(a3, 5);
+    vec_push(a3, 7);
+    let cnt = vec_new();
+    vec_push(cnt, 0);
+    vec_push(cnt, 0);
+    vec_push(cnt, 0);
+    vec_push(cnt, 0);
+    vec_push(cnt, 0);
+    vec_push(cnt, 0);
+    vec_push(cnt, 0);
+    vec_push(cnt, 0);
+    vec_push(cnt, 0);
+    vec_push(cnt, 0);
+    let _s3 = my_counting_sort(a3, cnt, 9);
+    let _p7 = println(vec_get(a3, 0));   // 0
+    let _p8 = println(vec_get(a3, 4));   // 3
+    let _p9 = println(vec_get(a3, 9));   // 8
+
+// Test sorting already sorted array [1, 2, 3, 4, 5]
+    let a4 = vec_new();
+    vec_push(a4, 1);
+    vec_push(a4, 2);
+    vec_push(a4, 3);
+    vec_push(a4, 4);
+    vec_push(a4, 5);
+    let _s4 = my_bubble_sort(a4);
+    let _p10 = println(vec_get(a4, 0));  // 1
+    let _p11 = println(vec_get(a4, 4));  // 5
+
+// Test single element [42]
+    let a5 = vec_new();
+    vec_push(a5, 42);
+    let _s5 = my_insertion_sort(a5);
+    let _p12 = println(vec_get(a5, 0));  // 42
+
+// Test reverse sorted [5, 4, 3, 2, 1]
+    let a6 = vec_new();
+    vec_push(a6, 5);
+    vec_push(a6, 4);
+    vec_push(a6, 3);
+    vec_push(a6, 2);
+    vec_push(a6, 1);
+    let _s6 = my_insertion_sort(a6);
+    let _p13 = println(vec_get(a6, 0));  // 1
+    let _p14 = println(vec_get(a6, 4));  // 5
+
+// Sum of sorted array as checksum [9, 1, 5, 3, 7]
+    let a7 = vec_new();
+    vec_push(a7, 9);
+    vec_push(a7, 1);
+    vec_push(a7, 5);
+    vec_push(a7, 3);
+    vec_push(a7, 7);
+    let _s7 = my_bubble_sort(a7);
+    let my_sum = vec_get(a7, 0) + vec_get(a7, 1) + vec_get(a7, 2) + vec_get(a7, 3) + vec_get(a7, 4);
+    let _p15 = println(my_sum);    // 25
+
+    vec_free(a1);
+    vec_free(a2);
+    vec_free(a3);
+    vec_free(cnt);
+    vec_free(a4);
+    vec_free(a5);
+    vec_free(a6);
+    vec_free(a7);
+    0
+    };

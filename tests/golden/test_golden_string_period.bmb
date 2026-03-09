@@ -1,0 +1,141 @@
+// Golden Test: String period detection and KMP failure function
+// Compute the KMP failure/prefix function and detect string periodicity
+
+// Compute KMP failure function for a string
+// fail[i] = length of longest proper prefix of s[0..i] that is also a suffix
+// Returns a vec of length n
+fn kmp_failure(s: String) -> i64 = {
+    let n = s.len();
+    let fail = vec_new();
+    let _p = vec_push(fail, 0);
+    let mut i = 1;
+    let mut j = 0;
+    loop {
+        if i >= n { break } else { () };
+        loop {
+            if j <= 0 { break } else { () };
+            if s.byte_at(i) == s.byte_at(j) { break } else { () };
+            j = vec_get(fail, j - 1)
+        };
+        if s.byte_at(i) == s.byte_at(j) {
+            j = j + 1
+        } else { () };
+        let _q = vec_push(fail, j);
+        i = i + 1
+    };
+    fail
+    };
+
+// Find the period of a string using KMP failure function
+// Period = n - fail[n-1] (if n is divisible by period, string is periodic)
+fn string_period(s: String) -> i64 = {
+    let n = s.len();
+    if n == 0 { return 0 } else { () };
+    let fail = kmp_failure(s);
+    let period = n - vec_get(fail, n - 1);
+    let _f = vec_free(fail);
+    period
+    };
+
+// Check if string is fully periodic (period divides length evenly)
+// Returns 1 if periodic, 0 otherwise
+fn is_periodic(s: String) -> i64 = {
+    let n = s.len();
+    if n <= 1 { return 0 } else { () };
+    let p = string_period(s);
+    let rem = n - (n / p) * p;
+    if p < n and rem == 0 { 1 } else { 0 }
+    };
+
+// Count how many times the pattern occurs in text using KMP
+fn kmp_count(text: String, pat: String) -> i64 = {
+    let n = text.len();
+    let m = pat.len();
+    if m == 0 { return 0 } else { () };
+    if m > n { return 0 } else { () };
+
+    let fail = kmp_failure(pat);
+    let mut count = 0;
+    let mut j = 0;
+    for i in 0..n {
+        loop {
+            if j <= 0 { break } else { () };
+            if text.byte_at(i) == pat.byte_at(j) { break } else { () };
+            j = vec_get(fail, j - 1)
+        };
+        if text.byte_at(i) == pat.byte_at(j) {
+            j = j + 1
+        } else { () };
+        if j == m {
+            count = count + 1;
+            j = vec_get(fail, j - 1)
+        } else { () }
+    };
+    let _f = vec_free(fail);
+    count
+    };
+
+// Sum of all failure function values (measures self-similarity)
+fn failure_sum(s: String) -> i64 = {
+    let n = s.len();
+    let fail = kmp_failure(s);
+    let mut total = 0;
+    for i in 0..n {
+        total = total + vec_get(fail, i)
+    };
+    let _f = vec_free(fail);
+    total
+    };
+
+fn main() -> i64 = {
+    // KMP failure function tests
+    // "aabaaab": fail = [0,1,0,1,2,2,3]
+    let f1 = kmp_failure("aabaaab");
+    let _p1 = println(vec_get(f1, 0));   // 0
+    let _p2 = println(vec_get(f1, 1));   // 1
+    let _p3 = println(vec_get(f1, 2));   // 0
+    let _p4 = println(vec_get(f1, 3));   // 1
+    let _p5 = println(vec_get(f1, 4));   // 2
+    let _p6 = println(vec_get(f1, 5));   // 2
+    let _p7 = println(vec_get(f1, 6));   // 3
+    let _f1 = vec_free(f1);
+
+    // String period detection
+    // "abcabc" period = 3, is periodic
+    let _p8 = println(string_period("abcabc"));   // 3
+    let _p9 = println(is_periodic("abcabc"));      // 1
+
+    // "aaaa" period = 1
+    let _p10 = println(string_period("aaaa"));     // 1
+    let _p11 = println(is_periodic("aaaa"));       // 1
+
+    // "abcdef" period = 6 (no repetition), not periodic
+    let _p12 = println(string_period("abcdef"));   // 6
+    let _p13 = println(is_periodic("abcdef"));     // 0
+
+    // "abab" period = 2
+    let _p14 = println(string_period("abab"));     // 2
+    let _p15 = println(is_periodic("abab"));       // 1
+
+    // "abcab" period = 3 but 5 % 3 != 0 so not periodic
+    let _p16 = println(string_period("abcab"));    // 3
+    let _p17 = println(is_periodic("abcab"));      // 0
+
+    // KMP pattern matching
+    // "aaaa" in "aaaaaa" -> 3 occurrences (at positions 0,1,2)
+    let _p18 = println(kmp_count("aaaaaa", "aaaa"));   // 3
+
+    // "ab" in "ababab" -> 3
+    let _p19 = println(kmp_count("ababab", "ab"));     // 3
+
+    // "xyz" in "abcdef" -> 0
+    let _p20 = println(kmp_count("abcdef", "xyz"));    // 0
+
+    // Failure sum: "aaaa" fail=[0,1,2,3] sum=6
+    let _p21 = println(failure_sum("aaaa"));           // 6
+
+    // Failure sum: "abcd" fail=[0,0,0,0] sum=0
+    let _p22 = println(failure_sum("abcd"));           // 0
+
+    0
+    };

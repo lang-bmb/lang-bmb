@@ -1,0 +1,170 @@
+// Golden Test: Simple checksum algorithms
+// XOR fold, Fletcher-16 style, Adler-32 style on integer arrays
+
+// Helper: create vecs from values
+fn make_vec5(a: i64, b: i64, c: i64, d: i64, e: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    v
+    };
+
+fn make_vec9(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64, h: i64, ii: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    let _p6 = vec_push(v, f);
+    let _p7 = vec_push(v, g);
+    let _p8 = vec_push(v, h);
+    let _p9 = vec_push(v, ii);
+    v
+    };
+
+fn make_vec4(a: i64, b: i64, c: i64, d: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    v
+    };
+
+fn make_vec12(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64,
+    g: i64, h: i64, ii: i64, j: i64, k: i64, l: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    let _p6 = vec_push(v, f);
+    let _p7 = vec_push(v, g);
+    let _p8 = vec_push(v, h);
+    let _p9 = vec_push(v, ii);
+    let _p10 = vec_push(v, j);
+    let _p11 = vec_push(v, k);
+    let _p12 = vec_push(v, l);
+    v
+    };
+
+// XOR fold: XOR all elements together
+fn xor_fold(data: i64, i: i64, acc: i64) -> i64 =
+    if i >= vec_len(data) { acc }
+    else { xor_fold(data, i + 1, acc bxor vec_get(data, i)) };
+
+    // Sum all bytes mod 256
+
+fn sum_mod256(data: i64, i: i64, acc: i64) -> i64 =
+    if i >= vec_len(data) { acc - (acc / 256) * 256 }
+    else {
+        let next = acc + vec_get(data, i);
+        sum_mod256(data, i + 1, next)
+    };
+
+    // Fletcher-16 style: two running sums
+    // sum1 = (sum1 + data[i]) mod 255
+    // sum2 = (sum2 + sum1) mod 255
+    // result = sum2 * 256 + sum1
+
+fn fletcher_helper(data: i64, i: i64, s1: i64, s2: i64) -> i64 =
+    if i >= vec_len(data) { s2 * 256 + s1 }
+    else {
+        let ns1 = s1 + vec_get(data, i);
+        let ms1 = ns1 - (ns1 / 255) * 255;
+        let ns2 = s2 + ms1;
+        let ms2 = ns2 - (ns2 / 255) * 255;
+        fletcher_helper(data, i + 1, ms1, ms2)
+    };
+
+fn fletcher16(data: i64) -> i64 =
+    fletcher_helper(data, 0, 0, 0);
+
+    // Adler-32 style (simplified with mod 65521):
+    // a = 1 + sum(data[i]) mod 65521
+    // b = sum(a_i) mod 65521
+    // result = b * 65536 + a
+
+fn adler_helper(data: i64, i: i64, a: i64, b: i64) -> i64 =
+    if i >= vec_len(data) { b * 65536 + a }
+    else {
+        let na = a + vec_get(data, i);
+        let ma = na - (na / 65521) * 65521;
+        let nb = b + ma;
+        let mb = nb - (nb / 65521) * 65521;
+        adler_helper(data, i + 1, ma, mb)
+    };
+
+fn adler32(data: i64) -> i64 =
+    adler_helper(data, 0, 1, 0);
+
+    // Luhn-like checksum on digits array
+    // Double every second digit from right; if > 9, subtract 9
+    // Sum all; valid if sum mod 10 == 0
+
+fn luhn_double(d: i64) -> i64 = {
+    let dd = d * 2;
+    if dd > 9 { dd - 9 } else { dd }
+    };
+
+fn luhn_sum_helper(digits: i64, i: i64, acc: i64, from_right: i64) -> i64 =
+    if i < 0 { acc }
+    else {
+        let v = if from_right - (from_right / 2) * 2 == 1 {
+            luhn_double(vec_get(digits, i))
+        } else {
+        vec_get(digits, i)
+    };
+    luhn_sum_helper(digits, i - 1, acc + v, from_right + 1)
+    };
+
+fn luhn_sum(digits: i64) -> i64 =
+    luhn_sum_helper(digits, vec_len(digits) - 1, 0, 0);
+
+fn main() -> i64 = {
+    let data1 = make_vec5(1, 2, 3, 4, 5);
+    let data2 = make_vec5(10, 20, 30, 40, 50);
+    let data3 = make_vec9(255, 128, 64, 32, 16, 8, 4, 2, 1);
+
+// XOR fold
+    let _p1 = println(xor_fold(data1, 0, 0));    // 1^2^3^4^5 = 1
+    let _p2 = println(xor_fold(data2, 0, 0));    // 10^20^30^40^50 = 26
+    let _p3 = println(xor_fold(data3, 0, 0));    // chain XOR
+
+// Sum mod 256
+    let _p4 = println(sum_mod256(data1, 0, 0));   // (1+2+3+4+5)%256 = 15
+    let _p5 = println(sum_mod256(data2, 0, 0));   // (10+20+30+40+50)%256 = 150
+    let _p6 = println(sum_mod256(data3, 0, 0));   // (255+128+64+32+16+8+4+2+1)%256 = 254
+
+// Fletcher-16
+    let _p7 = println(fletcher16(data1));
+    let _p8 = println(fletcher16(data2));
+
+// Adler-32
+    let _p9 = println(adler32(data1));
+    let _p10 = println(adler32(data2));
+
+// Luhn checksum
+    let luhn1 = make_vec12(4, 5, 3, 9, 1, 4, 8, 8, 0, 3, 4, 3);
+    let _p11 = println(luhn_sum(luhn1));
+
+// Simple digits
+    let luhn2 = make_vec4(0, 0, 0, 0);
+    let _p12 = println(luhn_sum(luhn2));     // 0
+
+    let luhn3 = make_vec4(1, 2, 3, 4);
+    let _p13 = println(luhn_sum(luhn3));
+
+    let _f1 = vec_free(data1);
+    let _f2 = vec_free(data2);
+    let _f3 = vec_free(data3);
+    let _f4 = vec_free(luhn1);
+    let _f5 = vec_free(luhn2);
+    let _f6 = vec_free(luhn3);
+    0
+    };

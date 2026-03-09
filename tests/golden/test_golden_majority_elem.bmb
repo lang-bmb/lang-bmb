@@ -1,0 +1,109 @@
+// Golden Test: Boyer-Moore Majority Vote Algorithm - Cycle 1569
+// Finds element appearing more than n/2 times in an array
+
+// Phase 1: Find candidate using Boyer-Moore voting
+fn find_candidate(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    let mut candidate = vec_get(arr, 0);
+    let mut count = 1;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { 0 };
+        if count == 0 {
+            candidate = vec_get(arr, i);
+            count = 1
+        } else if vec_get(arr, i) == candidate {
+            count = count + 1
+        } else {
+            count = count - 1
+        };
+        i = i + 1
+    };
+    candidate
+    };
+
+// Phase 2: Verify candidate actually has majority
+fn count_elem(arr: i64, val: i64) -> i64 = {
+    let n = vec_len(arr);
+    let mut count = 0;
+    for i in 0..n {
+        if vec_get(arr, i) == val { count = count + 1 } else { () }
+    };
+    count
+    };
+
+// Returns majority element, or -1 if none
+fn majority_vote(arr: i64) -> i64 = {
+    let cand = find_candidate(arr);
+    let n = vec_len(arr);
+    let c = count_elem(arr, cand);
+    if c * 2 > n { cand } else { 0 - 1 }
+    };
+
+// Find the k-th most frequent element (simple approach for small arrays)
+// Returns how many distinct values appear
+fn count_distinct(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    let mut count = 0;
+    for i in 0..n {
+        let val = vec_get(arr, i);
+        let mut found = 0;
+        let mut j = 0;
+        loop {
+            if j >= i { break } else { 0 };
+            if vec_get(arr, j) == val { found = 1; break } else { 0 };
+            j = j + 1
+        };
+        if found == 0 { count = count + 1 } else { () }
+    };
+    count
+    };
+
+fn main() -> i64 = {
+// Test 1: Clear majority [3, 3, 4, 2, 3, 3, 3]
+    let a1 = vec_new();
+    vec_push(a1, 3); vec_push(a1, 3); vec_push(a1, 4);
+    vec_push(a1, 2); vec_push(a1, 3); vec_push(a1, 3);
+    vec_push(a1, 3);
+    let _p1 = println(majority_vote(a1));     // 3
+
+// Test 2: No majority [1, 2, 3, 4, 5]
+    let a2 = vec_new();
+    vec_push(a2, 1); vec_push(a2, 2); vec_push(a2, 3);
+    vec_push(a2, 4); vec_push(a2, 5);
+    let _p2 = println(majority_vote(a2));     // -1
+
+// Test 3: All same [7, 7, 7, 7]
+    let a3 = vec_new();
+    vec_push(a3, 7); vec_push(a3, 7); vec_push(a3, 7);
+    vec_push(a3, 7);
+    let _p3 = println(majority_vote(a3));     // 7
+
+// Test 4: Single element [42]
+    let a4 = vec_new();
+    vec_push(a4, 42);
+    let _p4 = println(majority_vote(a4));     // 42
+
+// Test 5: Two elements tied [1, 2]
+    let a5 = vec_new();
+    vec_push(a5, 1); vec_push(a5, 2);
+    let _p5 = println(majority_vote(a5));     // -1
+
+// Test 6: Majority at edges [5, 1, 5, 2, 5]
+    let a6 = vec_new();
+    vec_push(a6, 5); vec_push(a6, 1); vec_push(a6, 5);
+    vec_push(a6, 2); vec_push(a6, 5);
+    let _p6 = println(majority_vote(a6));     // 5
+
+// Test count_elem
+    let _p7 = println(count_elem(a1, 3));     // 5
+    let _p8 = println(count_elem(a1, 4));     // 1
+
+// Test count_distinct
+    let _p9 = println(count_distinct(a1));    // 3 (values: 3, 4, 2)
+    let _p10 = println(count_distinct(a3));   // 1 (only 7)
+
+    vec_free(a1); vec_free(a2); vec_free(a3);
+    vec_free(a4); vec_free(a5); vec_free(a6);
+    0
+    };

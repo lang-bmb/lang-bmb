@@ -1,0 +1,192 @@
+// Golden Test: Boyer-Moore style bad character shift string matching
+// Implements the bad character rule for efficient string searching.
+// Uses i64 arrays to represent "strings" (each element = character code).
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { vec_push(v, 0) };
+    v
+};
+
+fn make_filled(n: i64, val: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { vec_push(v, val) };
+    v
+};
+
+// Build bad character table: for each character c, bad_char[c] = last position in pattern
+// Characters represented as i64 values 0..alphabet_size
+fn build_bad_char(pattern: i64, pat_len: i64, alpha_size: i64) -> i64 = {
+    let table = make_filled(alpha_size, 0 - 1);
+    for i in 0..pat_len {
+        let c = vec_get(pattern, i);
+        let _s = vec_set(table, c, i);
+        0
+    };
+    table
+};
+
+// Boyer-Moore search using bad character rule
+// Returns number of matches found, prints each match position
+fn bm_search(text: i64, text_len: i64, pattern: i64, pat_len: i64, alpha_size: i64) -> i64 = {
+    let bad_char = build_bad_char(pattern, pat_len, alpha_size);
+    let count = 0;
+    let s = 0;  // shift of pattern relative to text
+    loop {
+        if s > text_len - pat_len { break } else { () };
+        // Match pattern right to left
+        let j = pat_len - 1;
+        let matched = 1;
+        loop {
+            if j < 0 { break } else { () };
+            let tc = vec_get(text, s + j);
+            let pc = vec_get(pattern, j);
+            if tc != pc {
+                matched = 0;
+                // Calculate bad character shift
+                let bc_pos = vec_get(bad_char, tc);
+                let shift = j - bc_pos;
+                let actual_shift = if shift > 0 { shift } else { 1 };
+                s = s + actual_shift;
+                j = 0 - 1  // break inner loop
+            } else {
+                j = j - 1;
+                0
+            }
+        };
+        let _x = if matched == 1 {
+            let _p = println(s);  // print match position
+            count = count + 1;
+            s = s + 1;
+            0
+        } else { 0 }
+    };
+    let _f = vec_free(bad_char);
+    count
+};
+
+// Helper: build array from individual values
+fn make_text1() -> i64 = {
+    // "ABAAABCDABC" encoded as: A=0, B=1, C=2, D=3
+    let v = vec_new();
+    vec_push(v, 0); vec_push(v, 1); vec_push(v, 0); vec_push(v, 0);
+    vec_push(v, 0); vec_push(v, 1); vec_push(v, 2); vec_push(v, 3);
+    vec_push(v, 0); vec_push(v, 1); vec_push(v, 2);
+    v
+};
+
+fn make_pat1() -> i64 = {
+    // "ABC" = [0, 1, 2]
+    let v = vec_new();
+    vec_push(v, 0); vec_push(v, 1); vec_push(v, 2);
+    v
+};
+
+fn make_text2() -> i64 = {
+    // "AAAAAA" = [0,0,0,0,0,0]
+    let v = vec_new();
+    for _i in 0..6 { vec_push(v, 0) };
+    v
+};
+
+fn make_pat2() -> i64 = {
+    // "AA" = [0, 0]
+    let v = vec_new();
+    vec_push(v, 0); vec_push(v, 0);
+    v
+};
+
+fn make_text3() -> i64 = {
+    // "ABCDEFG" = [0,1,2,3,4,5,6]
+    let v = vec_new();
+    for i in 0..7 { vec_push(v, i) };
+    v
+};
+
+fn make_pat3() -> i64 = {
+    // "XYZ" = [23,24,25] — not in text
+    let v = vec_new();
+    vec_push(v, 23); vec_push(v, 24); vec_push(v, 25);
+    v
+};
+
+fn make_text4() -> i64 = {
+    // "ABABABAB" = [0,1,0,1,0,1,0,1]
+    let v = vec_new();
+    for _i in 0..4 {
+        vec_push(v, 0);
+        vec_push(v, 1)
+    };
+    v
+};
+
+fn make_pat4() -> i64 = {
+    // "ABAB" = [0,1,0,1]
+    let v = vec_new();
+    vec_push(v, 0); vec_push(v, 1); vec_push(v, 0); vec_push(v, 1);
+    v
+};
+
+fn main() -> i64 = {
+    let alpha = 26;  // alphabet size
+
+    // Test 1: "ABC" in "ABAAABCDABC"
+    // Matches at positions 0 (? no, ABAAAB: A=0,B=1,A=0 -> not ABC at 0)
+    // Actually: text[0..3] = A,B,A -> no. text[5..8] = B,C,D -> no
+    // text = A B A A A B C D A B C
+    //         0 1 2 3 4 5 6 7 8 9 10
+    // Pattern ABC at pos 4? A,B,C -> text[4]=A, text[5]=B, text[6]=C -> YES at 4
+    // At pos 8? text[8]=A, text[9]=B, text[10]=C -> YES at 8
+    let text1 = make_text1();
+    let pat1 = make_pat1();
+    let _p1 = println(999);  // separator
+    let c1 = bm_search(text1, 11, pat1, 3, alpha);
+    let _p2 = println(c1);  // 2 matches
+
+    // Test 2: "AA" in "AAAAAA"
+    // Matches at 0,1,2,3,4
+    let text2 = make_text2();
+    let pat2 = make_pat2();
+    let _p3 = println(999);  // separator
+    let c2 = bm_search(text2, 6, pat2, 2, alpha);
+    let _p4 = println(c2);  // 5 matches
+
+    // Test 3: "XYZ" in "ABCDEFG" — no match
+    let text3 = make_text3();
+    let pat3 = make_pat3();
+    let _p5 = println(999);  // separator
+    let c3 = bm_search(text3, 7, pat3, 3, alpha);
+    let _p6 = println(c3);  // 0 matches
+
+    // Test 4: "ABAB" in "ABABABAB"
+    // Matches at 0, 2, 4
+    let text4 = make_text4();
+    let pat4 = make_pat4();
+    let _p7 = println(999);  // separator
+    let c4 = bm_search(text4, 8, pat4, 4, alpha);
+    let _p8 = println(c4);  // 3 matches
+
+    // Test 5: bad_char table verification
+    // Pattern "ABCAB" = [0,1,2,0,1]
+    let pat5 = vec_new();
+    vec_push(pat5, 0); vec_push(pat5, 1); vec_push(pat5, 2);
+    vec_push(pat5, 0); vec_push(pat5, 1);
+    let bc = build_bad_char(pat5, 5, alpha);
+    // last pos of A(0) = 3, B(1) = 4, C(2) = 2
+    let _p9 = println(vec_get(bc, 0));   // 3 (A last at index 3)
+    let _p10 = println(vec_get(bc, 1));  // 4 (B last at index 4)
+    let _p11 = println(vec_get(bc, 2));  // 2 (C last at index 2)
+    let _p12 = println(vec_get(bc, 3));  // -1 (D not in pattern)
+
+    let _f1 = vec_free(text1);
+    let _f2 = vec_free(pat1);
+    let _f3 = vec_free(text2);
+    let _f4 = vec_free(pat2);
+    let _f5 = vec_free(text3);
+    let _f6 = vec_free(pat3);
+    let _f7 = vec_free(text4);
+    let _f8 = vec_free(pat4);
+    let _f9 = vec_free(pat5);
+    let _f10 = vec_free(bc);
+    0
+};

@@ -1,0 +1,113 @@
+// Golden Test: Prime factorization, Euler totient, omega, radical, squarefree
+
+fn count_prime_factors(n: i64) -> i64 = {
+    let mut num = n; let mut count = 0; let mut d = 2;
+    loop {
+        if d * d > num { break } else { () };
+        loop { if num - (num / d) * d != 0 { break } else { () }; count = count + 1; num = num / d };
+        d = d + 1
+    };
+    if num > 1 { count + 1 } else { count }
+    };
+
+fn smallest_factor(n: i64) -> i64 = {
+    if n < 2 { return n } else { () };
+    if n - (n / 2) * 2 == 0 { return 2 } else { () };
+    let mut d = 3; let mut result = n;
+    loop {
+        if d * d > n { break } else { () };
+        if n - (n / d) * d == 0 { result = d; break } else { () };
+        d = d + 2
+    }; result
+    };
+
+fn largest_factor(n: i64) -> i64 = {
+    let mut num = n; let mut largest = 1; let mut d = 2;
+    loop {
+        if d * d > num { break } else { () };
+        loop { if num - (num / d) * d != 0 { break } else { () }; largest = d; num = num / d };
+        d = d + 1
+    };
+    if num > 1 { num } else { largest }
+    };
+
+fn euler_totient(n: i64) -> i64 = {
+    let mut result = n; let mut num = n; let mut d = 2;
+    loop {
+        if d * d > num { break } else { () };
+        if num - (num / d) * d == 0 {
+            loop { if num - (num / d) * d != 0 { break } else { () }; num = num / d };
+            result = result - result / d
+        } else { () };
+        d = d + 1
+    };
+    if num > 1 { result = result - result / num } else { () };
+    result
+    };
+
+fn omega(n: i64) -> i64 = {
+    let mut num = n; let mut count = 0; let mut d = 2;
+    loop {
+        if d * d > num { break } else { () };
+        if num - (num / d) * d == 0 {
+            count = count + 1;
+            loop { if num - (num / d) * d != 0 { break } else { () }; num = num / d }
+        } else { () };
+        d = d + 1
+    };
+    if num > 1 { count + 1 } else { count }
+    };
+
+fn radical(n: i64) -> i64 = {
+    let mut num = n; let mut prod = 1; let mut d = 2;
+    loop {
+        if d * d > num { break } else { () };
+        if num - (num / d) * d == 0 {
+            prod = prod * d;
+            loop { if num - (num / d) * d != 0 { break } else { () }; num = num / d }
+        } else { () };
+        d = d + 1
+    };
+    if num > 1 { prod * num } else { prod }
+    };
+
+fn is_squarefree(n: i64) -> i64 = {
+    let mut num = n; let mut d = 2;
+    loop {
+        if d * d > num { break } else { () };
+        if num - (num / d) * d == 0 {
+            num = num / d;
+            if num - (num / d) * d == 0 { return 0 } else { () }
+        } else { () };
+        d = d + 1
+    }; 1
+    };
+
+fn main() -> i64 = {
+    let _r1 = println(count_prime_factors(12));   // 3
+    let _r2 = println(count_prime_factors(60));   // 4
+    let _r3 = println(count_prime_factors(97));   // 1
+    let _r4 = println(count_prime_factors(1024)); // 10
+    let _r5 = println(smallest_factor(15));  // 3
+    let _r6 = println(smallest_factor(49));  // 7
+    let _r7 = println(smallest_factor(100)); // 2
+    let _r8 = println(largest_factor(12));   // 3
+    let _r9 = println(largest_factor(100));  // 5
+    let _r10 = println(largest_factor(91));  // 13
+    let _r11 = println(euler_totient(1));    // 1
+    let _r12 = println(euler_totient(10));   // 4
+    let _r13 = println(euler_totient(12));   // 4
+    let _r14 = println(euler_totient(36));   // 12
+    let _r15 = println(euler_totient(97));   // 96
+    let _r16 = println(omega(12));   // 2
+    let _r17 = println(omega(30));   // 3
+    let _r18 = println(omega(64));   // 1
+    let _r19 = println(radical(12)); // 6
+    let _r20 = println(radical(60)); // 30
+    let _r21 = println(radical(72)); // 6
+    let _r22 = println(is_squarefree(30));  // 1
+    let _r23 = println(is_squarefree(12));  // 0
+    let _r24 = println(is_squarefree(7));   // 1
+    let _r25 = println(is_squarefree(100)); // 0
+    0
+    };

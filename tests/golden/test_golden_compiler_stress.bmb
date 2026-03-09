@@ -1,0 +1,264 @@
+// Golden Test: Compiler stress test
+// Deep call chains, long loops, large vecs, strings, nested if-else, compositions
+
+// === Deep function call chain (10 levels) ===
+fn add1(x: i64) -> i64 = x + 1;
+fn add2(x: i64) -> i64 = add1(add1(x));
+fn add3(x: i64) -> i64 = add2(add1(x));
+fn add4(x: i64) -> i64 = add3(add1(x));
+fn add5(x: i64) -> i64 = add4(add1(x));
+fn add6(x: i64) -> i64 = add5(add1(x));
+fn add7(x: i64) -> i64 = add6(add1(x));
+fn add8(x: i64) -> i64 = add7(add1(x));
+fn add9(x: i64) -> i64 = add8(add1(x));
+fn add10(x: i64) -> i64 = add9(add1(x));
+
+// === Long computation loop (1000 iterations) ===
+fn sum_range(n: i64) -> i64 = {
+    let mut acc = 0;
+    for i in 0..n {
+        acc = acc + i
+    };
+    acc
+    };
+
+// === Large vec operations ===
+fn make_squares_vec(n: i64) -> i64 = {
+    let v = vec_new();
+    for i in 0..n {
+        let _p = vec_push(v, i * i);
+        0
+    };
+    v
+    };
+
+fn vec_sum(v: i64) -> i64 = {
+    let mut acc = 0;
+    for i in 0..vec_len(v) {
+        acc = acc + vec_get(v, i)
+    };
+    acc
+    };
+
+// === Deeply nested if-else (8 levels) ===
+fn deep_classify(x: i64) -> i64 =
+    if x > 1000 {
+        if x > 2000 {
+            if x > 3000 {
+                if x > 4000 {
+                    if x > 5000 {
+                        if x > 6000 {
+                            if x > 7000 {
+                                if x > 8000 { 8 } else { 7 }
+                            } else { 6 }
+                        } else { 5 }
+                    } else { 4 }
+                } else { 3 }
+            } else { 2 }
+        } else { 1 }
+    } else { 0 };
+
+// === Iterative factorial ===
+fn factorial(n: i64) -> i64 = {
+    let mut result = 1;
+    for i in 1..=n {
+        result = result * i
+    };
+    result
+    };
+
+// === GCD ===
+fn gcd(a: i64, b: i64) -> i64 =
+    if b == 0 { a }
+    else { gcd(b, a % b) };
+
+// === Abs, sign, clamp ===
+fn abs_val(x: i64) -> i64 = if x < 0 { 0 - x } else { x };
+fn sign(x: i64) -> i64 = if x > 0 { 1 } else if x < 0 { 0 - 1 } else { 0 };
+fn clamp_val(x: i64, lo: i64, hi: i64) -> i64 =
+    if x < lo { lo } else if x > hi { hi } else { x };
+
+// === Popcount (count set bits) ===
+fn popcount(n: i64) -> i64 = {
+    let mut x = n;
+    let mut count = 0;
+    loop {
+        if x <= 0 { break } else { () };
+        count = count + (x band 1);
+        x = x >> 1
+    };
+    count
+    };
+
+// === Modular exponentiation ===
+fn pow_mod(base: i64, exp: i64, modulus: i64) -> i64 = {
+    let mut result = 1;
+    let mut b = base % modulus;
+    let mut e = exp;
+    loop {
+        if e <= 0 { break } else { () };
+        if (e band 1) == 1 { result = (result * b) % modulus } else { () };
+        e = e >> 1;
+        b = (b * b) % modulus
+    };
+    result
+    };
+
+// === Digit sum ===
+fn digit_sum(n: i64) -> i64 = {
+    let mut x = n;
+    let mut total = 0;
+    loop {
+        if x <= 0 { break } else { () };
+        total = total + (x % 10);
+        x = x / 10
+    };
+    total
+    };
+
+// === Reverse number ===
+fn reverse_num(n: i64) -> i64 = {
+    let mut x = n;
+    let mut rev = 0;
+    loop {
+        if x <= 0 { break } else { () };
+        rev = rev * 10 + (x % 10);
+        x = x / 10
+    };
+    rev
+    };
+
+// === Nested loop: sum of triangular numbers ===
+fn sum_triangulars(n: i64) -> i64 = {
+    let mut total = 0;
+    for i in 1..=n {
+        let mut tri = 0;
+        for j in 1..=i {
+            tri = tri + j
+        };
+        total = total + tri
+    };
+    total
+    };
+
+// === String builder stress ===
+fn sb_repeat_len(word: String, n: i64) -> i64 = {
+    let sb = sb_new();
+    for _i in 0..n {
+        let _p = sb_push(sb, word);
+        0
+    };
+    let result = sb_build(sb);
+    result.len()
+    };
+
+// === Vec accumulate with conditional ===
+fn vec_count_even(v: i64) -> i64 = {
+    let mut count = 0;
+    for i in 0..vec_len(v) {
+        if vec_get(v, i) % 2 == 0 { count = count + 1 } else { () }
+    };
+    count
+    };
+
+// === Fibonacci iterative ===
+fn fib_iter(n: i64) -> i64 = {
+    if n <= 1 { return n } else { () };
+    let mut a = 0;
+    let mut b = 1;
+    for _i in 2..=n {
+        let tmp = a + b;
+        a = b;
+        b = tmp
+    };
+    b
+    };
+
+// === Composed helper: sum of digits of factorial ===
+fn fact_digit_sum(n: i64) -> i64 = digit_sum(factorial(n));
+
+fn main() -> i64 = {
+    // 1. Deep call chain: add10(5) = 15
+    println(add10(5));
+
+    // 2. Deep call chain: add10(0) = 10
+    println(add10(0));
+
+    // 3. Long loop: sum 0..999 = 499500
+    println(sum_range(1000));
+
+    // 4. Large vec (100 elements of i*i), sum = 328350
+    let squares = make_squares_vec(100);
+    println(vec_sum(squares));
+
+    // 5. Large vec element access: vec_get(50) = 2500
+    println(vec_get(squares, 50));
+
+    // 6. Large vec element access: vec_get(99) = 9801
+    println(vec_get(squares, 99));
+
+    // 7. Count even squares in 0..99: 0,4,16,36,64,100,... every other = 50
+    println(vec_count_even(squares));
+
+    // 8. Deeply nested if-else: 8500 -> 8
+    println(deep_classify(8500));
+
+    // 9. Deeply nested if-else: 4500 -> 4
+    println(deep_classify(4500));
+
+    // 10. Deeply nested if-else: 500 -> 0
+    println(deep_classify(500));
+
+    // 11. Factorial(10) = 3628800
+    println(factorial(10));
+
+    // 12. Factorial(12) = 479001600
+    println(factorial(12));
+
+    // 13. GCD(48, 18) = 6
+    println(gcd(48, 18));
+
+    // 14. GCD(GCD(120, 84), 36) = GCD(12, 36) = 12
+    println(gcd(gcd(120, 84), 36));
+
+    // 15. Popcount(255) = 8
+    println(popcount(255));
+
+    // 16. Popcount(12345) = 6
+    println(popcount(12345));
+
+    // 17. pow_mod(2, 10, 1000) = 1024 % 1000 = 24
+    println(pow_mod(2, 10, 1000));
+
+    // 18. pow_mod(3, 7, 100) = 2187 % 100 = 87
+    println(pow_mod(3, 7, 100));
+
+    // 19. Digit sum(12345) = 15
+    println(digit_sum(12345));
+
+    // 20. Reverse(12345) = 54321
+    println(reverse_num(12345));
+
+    // 21. Sum of triangular(1..10) = 220
+    println(sum_triangulars(10));
+
+    // 22. String builder: "ab" repeated 20 times -> len 40
+    println(sb_repeat_len("ab", 20));
+
+    // 23. String concat: "hello" + " " + "world" + "!" -> len 12
+    let s = "hello" + " " + "world" + "!";
+    println(s.len());
+
+    // 24. Fibonacci(20) = 6765
+    println(fib_iter(20));
+
+    // 25. Composed: digit_sum(factorial(8)) = digit_sum(40320) = 9
+    println(fact_digit_sum(8));
+
+    // 26. Abs/sign/clamp composition
+    // sign(-42) = -1, abs_val(-42) = 42, clamp(42, 0, 10) = 10
+    println(sign(0 - 42) + abs_val(0 - 42) + clamp_val(42, 0, 10));
+
+    let _f = vec_free(squares);
+    0
+    };

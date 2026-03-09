@@ -1,0 +1,57 @@
+// Golden Test: Integer pixel blending
+// Pack/unpack RGBA into i64, alpha blending with integer math
+
+// Pack RGBA channels into single i64: (r << 24) | (g << 16) | (b << 8) | a
+fn pack_rgba(r: i64, g: i64, b: i64, a: i64) -> i64 =
+    (r << 24) bor (g << 16) bor (b << 8) bor a;
+
+// Extract individual channels
+fn extract_r(pixel: i64) -> i64 = (pixel >> 24) band 255;
+fn extract_g(pixel: i64) -> i64 = (pixel >> 16) band 255;
+fn extract_b(pixel: i64) -> i64 = (pixel >> 8) band 255;
+fn extract_a(pixel: i64) -> i64 = pixel band 255;
+
+// Alpha blend a single channel: src*alpha/255 + dst*(255-alpha)/255
+fn blend_channel(src_ch: i64, dst_ch: i64, alpha: i64) -> i64 =
+    src_ch * alpha / 255 + dst_ch * (255 - alpha) / 255;
+
+// Blend two pixels using src alpha override
+fn blend_pixels(src: i64, dst: i64, alpha: i64) -> i64 = {
+    let r = blend_channel(extract_r(src), extract_r(dst), alpha);
+    let g = blend_channel(extract_g(src), extract_g(dst), alpha);
+    let b = blend_channel(extract_b(src), extract_b(dst), alpha);
+    pack_rgba(r, g, b, 255)
+    };
+
+fn main() -> i64 = {
+    // Pack red and blue pixels
+    let red = pack_rgba(255, 0, 0, 255);
+    let blue = pack_rgba(0, 0, 255, 255);
+
+    // Print packed values
+    let _p1 = println(red);               // 4278190335
+    let _p2 = println(blue);              // 65535
+
+    // Extract channels from red
+    let _p3 = println(extract_r(red));    // 255
+    let _p4 = println(extract_g(red));    // 0
+
+    // Extract channels from blue
+    let _p5 = println(extract_b(blue));   // 255
+    let _p6 = println(extract_a(blue));   // 255
+
+    // Blend red onto blue at alpha=128
+    let blended = blend_pixels(red, blue, 128);
+    let _p7 = println(extract_r(blended));  // 128
+    let _p8 = println(extract_b(blended));  // 127
+
+    // Blend red onto blue at alpha=0 (pure destination / blue)
+    let blend0 = blend_pixels(red, blue, 0);
+    let _p9 = println(extract_b(blend0));   // 255
+
+    // Blend red onto blue at alpha=255 (pure source / red)
+    let blend255 = blend_pixels(red, blue, 255);
+    let _p10 = println(extract_r(blend255)); // 255
+
+    0
+    };

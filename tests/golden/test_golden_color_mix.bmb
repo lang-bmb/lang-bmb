@@ -1,0 +1,101 @@
+// Golden Test: Color mixing (RGB blend, interpolation)
+// Colors packed as i64: R*65536 + G*256 + B
+
+fn rgb(r: i64, g: i64, b: i64) -> i64 = r * 65536 + g * 256 + b;
+fn get_r(c: i64) -> i64 = c / 65536;
+fn get_g(c: i64) -> i64 = (c / 256) - (c / 65536) * 256;
+fn get_b(c: i64) -> i64 = c - (c / 256) * 256;
+
+fn blend(c1: i64, c2: i64) -> i64 =
+    rgb((get_r(c1)+get_r(c2))/2, (get_g(c1)+get_g(c2))/2, (get_b(c1)+get_b(c2))/2);
+
+fn lerp_ch(a: i64, b: i64, t: i64) -> i64 = a + (b - a) * t / 1000;
+
+fn color_lerp(c1: i64, c2: i64, t: i64) -> i64 =
+    rgb(lerp_ch(get_r(c1),get_r(c2),t), lerp_ch(get_g(c1),get_g(c2),t),
+        lerp_ch(get_b(c1),get_b(c2),t));
+
+fn brightness(c: i64) -> i64 = (get_r(c) + get_g(c) + get_b(c)) / 3;
+
+fn clamp255(v: i64) -> i64 = if v < 0 { 0 } else if v > 255 { 255 } else { v };
+
+fn adjust_brightness(c: i64, pct: i64) -> i64 =
+    rgb(clamp255(get_r(c)*pct/100), clamp255(get_g(c)*pct/100), clamp255(get_b(c)*pct/100));
+
+fn invert(c: i64) -> i64 = rgb(255-get_r(c), 255-get_g(c), 255-get_b(c));
+
+fn grayscale(c: i64) -> i64 = { let avg = brightness(c); rgb(avg, avg, avg) };
+
+fn mix_colors(colors: i64, n: i64) -> i64 = {
+    let mut rs = 0; let mut gs = 0; let mut bs = 0; let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let c = vec_get(colors, i);
+        rs = rs + get_r(c); gs = gs + get_g(c); bs = bs + get_b(c);
+        i = i + 1
+    };
+    rgb(rs / n, gs / n, bs / n)
+    };
+
+fn color_dist(c1: i64, c2: i64) -> i64 = {
+    let dr = get_r(c1) - get_r(c2); let dg = get_g(c1) - get_g(c2);
+    let db = get_b(c1) - get_b(c2);
+    (if dr < 0 { 0 - dr } else { dr }) + (if dg < 0 { 0 - dg } else { dg }) +
+    (if db < 0 { 0 - db } else { db })
+    };
+
+fn main() -> i64 = {
+    let red = rgb(255,0,0); let green = rgb(0,255,0); let blue = rgb(0,0,255);
+    let white = rgb(255,255,255); let black = rgb(0,0,0);
+    // Channel extraction
+    let _p1 = println(get_r(red));      // 255
+    let _p2 = println(get_g(green));    // 255
+    let _p3 = println(get_b(blue));     // 255
+    // Packed values
+    let _p4 = println(red);             // 16711680
+    let _p5 = println(green);           // 65280
+    let _p6 = println(blue);            // 255
+    // Blend red+blue
+    let purple = blend(red, blue);
+    let _p7 = println(get_r(purple));   // 127
+    let _p8 = println(get_g(purple));   // 0
+    let _p9 = println(get_b(purple));   // 127
+    // Lerp red->blue at 50%
+    let mid = color_lerp(red, blue, 500);
+    let _p10 = println(get_r(mid));     // 128
+    let _p11 = println(get_b(mid));     // 127
+    // Lerp red->green at 25%
+    let rg25 = color_lerp(red, green, 250);
+    let _p12 = println(get_r(rg25));    // 192
+    let _p13 = println(get_g(rg25));    // 63
+    // Brightness
+    let _p14 = println(brightness(white)); // 255
+    let _p15 = println(brightness(black)); // 0
+    let _p16 = println(brightness(red));   // 85
+    // Invert
+    let inv = invert(red);
+    let _p17 = println(get_r(inv));     // 0
+    let _p18 = println(get_g(inv));     // 255
+    let _p19 = println(get_b(inv));     // 255
+    // Grayscale
+    let gr = grayscale(red);
+    let _p20 = println(get_r(gr));      // 85
+    let _p21 = println(get_g(gr));      // 85
+    // Adjust brightness 50%
+    let dw = adjust_brightness(white, 50);
+    let _p22 = println(get_r(dw));      // 127
+    let _p23 = println(get_g(dw));      // 127
+    // Color distance
+    let _p24 = println(color_dist(red, blue));    // 510
+    let _p25 = println(color_dist(red, green));   // 510
+    let _p26 = println(color_dist(black, white)); // 765
+    // Mix 3 primary colors
+    let cv = vec_new();
+    let _v1 = vec_push(cv, red); let _v2 = vec_push(cv, green); let _v3 = vec_push(cv, blue);
+    let mixed = mix_colors(cv, 3);
+    let _p27 = println(get_r(mixed));   // 85
+    let _p28 = println(get_g(mixed));   // 85
+    let _p29 = println(get_b(mixed));   // 85
+    let _f = vec_free(cv);
+    0
+    };

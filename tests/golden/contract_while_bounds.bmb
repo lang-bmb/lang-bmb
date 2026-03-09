@@ -1,0 +1,24 @@
+// Test: contract with while loop array access
+// pre+post with bounded loop counter for array iteration
+
+fn safe_sum_range(arr: &[i64; 10], start: i64, end_val: i64) -> i64
+    pre start >= 0
+    pre end_val >= 0 and end_val <= 10
+= safe_sum_iter(arr, start, end_val, 0);
+
+fn safe_sum_iter(arr: &[i64; 10], i: i64, end_val: i64, acc: i64) -> i64
+    pre i >= 0 and i <= 10
+    pre end_val >= 0 and end_val <= 10
+= if i >= end_val { acc }
+  else { safe_sum_iter(arr, i + 1, end_val, acc + arr[i]) };
+
+fn main() -> i64 = {
+    let arr: [i64; 10] = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+    let s1 = safe_sum_range(&arr, 0, 5);
+    let s2 = safe_sum_range(&arr, 3, 8);
+    let s3 = safe_sum_range(&arr, 0, 10);
+    let _u1 = println(s1);
+    let _u2 = println(s2);
+    let _u3 = println(s3);
+    0
+};

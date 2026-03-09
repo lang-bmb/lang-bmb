@@ -1,0 +1,104 @@
+// Golden Test: Tower of Hanoi — move counting and recursive solution
+// Computes number of moves for n disks and tracks peg states
+
+// Number of moves for n disks: 2^n - 1
+fn hanoi_moves(n: i64) -> i64 =
+    if n <= 0 { 0 }
+    else if n == 1 { 1 }
+    else { 2 * hanoi_moves(n - 1) + 1 };
+
+// Iterative power of 2
+fn pow2(n: i64) -> i64 = {
+    let mut result = 1;
+    for _i in 0..n {
+        result = result * 2
+    };
+    result
+};
+
+// Simulate Tower of Hanoi using 3 vec-based stacks
+// Returns total number of moves performed
+fn hanoi_solve(n: i64, from: i64, to: i64, aux: i64, move_count: i64) -> i64 = {
+    if n <= 0 { return vec_get(move_count, 0) } else { 0 };
+    if n == 1 {
+        // Move disk from 'from' to 'to'
+        let disk = vec_pop(from);
+        vec_push(to, disk);
+        let c = vec_get(move_count, 0);
+        vec_set(move_count, 0, c + 1);
+        return vec_get(move_count, 0)
+    } else { 0 };
+    // Move n-1 disks from 'from' to 'aux'
+    let _m1 = hanoi_solve(n - 1, from, aux, to, move_count);
+    // Move largest disk from 'from' to 'to'
+    let disk = vec_pop(from);
+    vec_push(to, disk);
+    let c = vec_get(move_count, 0);
+    vec_set(move_count, 0, c + 1);
+    // Move n-1 disks from 'aux' to 'to'
+    hanoi_solve(n - 1, aux, to, from, move_count)
+};
+
+fn main() -> i64 = {
+    // Test 1: Move counts via formula
+    let _p1 = println(hanoi_moves(1));   // 1
+    let _p2 = println(hanoi_moves(2));   // 3
+    let _p3 = println(hanoi_moves(3));   // 7
+    let _p4 = println(hanoi_moves(4));   // 15
+    let _p5 = println(hanoi_moves(5));   // 31
+    let _p6 = println(hanoi_moves(10));  // 1023
+
+    // Verify formula: hanoi_moves(n) == 2^n - 1
+    let _p7 = println(pow2(10) - 1);    // 1023
+
+    // Test 2: Simulate 3-disk Hanoi
+    let peg_a = vec_new();
+    let peg_b = vec_new();
+    let peg_c = vec_new();
+    let counter = vec_new();
+    vec_push(counter, 0);
+
+    // Place disks 3, 2, 1 on peg_a (3 = largest at bottom)
+    vec_push(peg_a, 3);
+    vec_push(peg_a, 2);
+    vec_push(peg_a, 1);
+
+    let moves = hanoi_solve(3, peg_a, peg_c, peg_b, counter);
+    let _p8 = println(moves);  // 7
+
+    // Verify all disks are on peg_c
+    let _p9 = println(vec_len(peg_a));   // 0
+    let _p10 = println(vec_len(peg_b));  // 0
+    let _p11 = println(vec_len(peg_c));  // 3
+
+    // Verify disk order (bottom to top: 3, 2, 1)
+    let _p12 = println(vec_get(peg_c, 0));  // 3
+    let _p13 = println(vec_get(peg_c, 1));  // 2
+    let _p14 = println(vec_get(peg_c, 2));  // 1
+
+    // Test 3: Simulate 4-disk Hanoi
+    let pa = vec_new();
+    let pb = vec_new();
+    let pc = vec_new();
+    let cnt2 = vec_new();
+    vec_push(cnt2, 0);
+    vec_push(pa, 4);
+    vec_push(pa, 3);
+    vec_push(pa, 2);
+    vec_push(pa, 1);
+    let moves4 = hanoi_solve(4, pa, pc, pb, cnt2);
+    let _p15 = println(moves4);          // 15
+    let _p16 = println(vec_len(pc));     // 4
+    let _p17 = println(vec_get(pc, 0));  // 4 (bottom)
+    let _p18 = println(vec_get(pc, 3));  // 1 (top)
+
+    vec_free(peg_a);
+    vec_free(peg_b);
+    vec_free(peg_c);
+    vec_free(counter);
+    vec_free(pa);
+    vec_free(pb);
+    vec_free(pc);
+    vec_free(cnt2);
+    0
+};

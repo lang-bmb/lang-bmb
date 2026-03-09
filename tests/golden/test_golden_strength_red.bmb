@@ -1,0 +1,37 @@
+// Golden Test: Strength reduction — multiply by power of 2 to shift
+// v0.95: x * 2^k → x << k at MIR level
+
+fn mul_by_2(x: i64) -> i64 = x * 2;
+fn mul_by_4(x: i64) -> i64 = x * 4;
+fn mul_by_8(x: i64) -> i64 = x * 8;
+fn mul_by_16(x: i64) -> i64 = x * 16;
+
+fn mul_pow2_both_sides(a: i64, b: i64) -> i64 = {
+// 4 * a + b * 8 — both should use shifts
+    let left = 4 * a;
+    let right = b * 8;
+    left + right
+    };
+
+fn mul_non_pow2(x: i64) -> i64 = {
+// x * 3 should NOT be converted to shift
+    x * 3
+    };
+
+fn mixed_ops(x: i64) -> i64 = {
+// x * 4 + x * 2 — both shifts, then add
+    let a = x * 4;
+    let b = x * 2;
+    a + b
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(mul_by_2(7));     // 14
+    let _p2 = println(mul_by_4(5));     // 20
+    let _p3 = println(mul_by_8(3));     // 24
+    let _p4 = println(mul_by_16(2));    // 32
+    let _p5 = println(mul_pow2_both_sides(3, 2));  // 28 (12 + 16)
+    let _p6 = println(mul_non_pow2(7)); // 21
+    let _p7 = println(mixed_ops(5));    // 30 (20 + 10)
+    0
+    };

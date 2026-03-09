@@ -1,0 +1,97 @@
+// Golden Test: Double-ended queue (deque) implementation
+// Supports push_front, push_back, pop_front, pop_back
+// Implemented as circular buffer
+
+fn deque_new() -> i64 = {
+    let meta = vec_new();
+    let buf = vec_new();
+    let cap = 8;
+    let mut i = 0;
+    while i < cap {
+        let _p = vec_push(buf, 0);
+        set i = i + 1
+    };
+    let _p = vec_push(meta, buf);
+    let _p = vec_push(meta, 0);
+    let _p = vec_push(meta, 0);
+    let _p = vec_push(meta, cap);
+    meta
+};
+
+fn deque_size(dq: i64) -> i64 = vec_get(dq, 2);
+
+fn deque_push_back(dq: i64, val: i64) -> () = {
+    let buf = vec_get(dq, 0);
+    let front = vec_get(dq, 1);
+    let size = vec_get(dq, 2);
+    let cap = vec_get(dq, 3);
+    let back = (front + size) % cap;
+    vec_set(buf, back, val);
+    vec_set(dq, 2, size + 1)
+};
+
+fn deque_push_front(dq: i64, val: i64) -> () = {
+    let buf = vec_get(dq, 0);
+    let front = vec_get(dq, 1);
+    let size = vec_get(dq, 2);
+    let cap = vec_get(dq, 3);
+    let new_front = (front - 1 + cap) % cap;
+    vec_set(buf, new_front, val);
+    vec_set(dq, 1, new_front);
+    vec_set(dq, 2, size + 1)
+};
+
+fn deque_pop_front(dq: i64) -> i64 = {
+    let buf = vec_get(dq, 0);
+    let front = vec_get(dq, 1);
+    let size = vec_get(dq, 2);
+    let cap = vec_get(dq, 3);
+    let val = vec_get(buf, front);
+    vec_set(dq, 1, (front + 1) % cap);
+    vec_set(dq, 2, size - 1);
+    val
+};
+
+fn deque_pop_back(dq: i64) -> i64 = {
+    let buf = vec_get(dq, 0);
+    let front = vec_get(dq, 1);
+    let size = vec_get(dq, 2);
+    let cap = vec_get(dq, 3);
+    let back = (front + size - 1) % cap;
+    let val = vec_get(buf, back);
+    vec_set(dq, 2, size - 1);
+    val
+};
+
+fn deque_front(dq: i64) -> i64 = {
+    let buf = vec_get(dq, 0);
+    vec_get(buf, vec_get(dq, 1))
+};
+
+fn deque_back(dq: i64) -> i64 = {
+    let buf = vec_get(dq, 0);
+    let front = vec_get(dq, 1);
+    let size = vec_get(dq, 2);
+    let cap = vec_get(dq, 3);
+    vec_get(buf, (front + size - 1) % cap)
+};
+
+fn main() -> () = {
+    let dq = deque_new();
+    deque_push_back(dq, 1);
+    deque_push_back(dq, 2);
+    deque_push_back(dq, 3);
+    print_str("size="); let _r = println(deque_size(dq));
+    print_str("front="); let _r = println(deque_front(dq));
+    print_str("back="); let _r = println(deque_back(dq));
+    deque_push_front(dq, 0);
+    deque_push_front(dq, -1);
+    print_str("size="); let _r = println(deque_size(dq));
+    print_str("front="); let _r = println(deque_front(dq));
+    print_str("pop_front="); let _r = println(deque_pop_front(dq));
+    print_str("pop_front="); let _r = println(deque_pop_front(dq));
+    print_str("pop_front="); let _r = println(deque_pop_front(dq));
+    print_str("pop_back="); let _r = println(deque_pop_back(dq));
+    print_str("pop_back="); let _r = println(deque_pop_back(dq));
+    print_str("size="); let _r = println(deque_size(dq))
+};

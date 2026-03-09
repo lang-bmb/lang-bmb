@@ -1,0 +1,210 @@
+// Golden Test: Trie operations — insert, search, prefix count
+// Trie nodes stored in a flat array: each node uses ALPHA_SIZE+1 slots
+// Layout: [is_end, child_0, child_1, ..., child_25]
+// child_i = index of child node (0 = no child)
+// Words encoded as integer sequences (a=0, b=1, ..., z=25)
+
+// Alphabet size (26 lowercase letters)
+fn alpha_size() -> i64 = 26;
+
+// Node size: 1 (is_end flag) + 26 (children pointers)
+fn node_size() -> i64 = 27;
+
+// Create a new trie; returns the backing vec with root node
+fn trie_new() -> i64 = {
+    let t = vec_new();
+    // Initialize root node (node 0)
+    for _i in 0..node_size() {
+        vec_push(t, 0)
+    };
+    t
+};
+
+// Allocate a new node in the trie, returns its base index
+fn trie_alloc_node(trie: i64) -> i64 = {
+    let base = vec_len(trie);
+    for _i in 0..node_size() {
+        vec_push(trie, 0)
+    };
+    base
+};
+
+// Insert a word (as vec of char codes 0-25) into the trie
+fn trie_insert(trie: i64, word: i64, wlen: i64) -> i64 = {
+    let mut node = 0; // start at root (base index 0)
+    for i in 0..wlen {
+        let ch = vec_get(word, i);
+        let child_slot = node + 1 + ch; // +1 to skip is_end
+        let child = vec_get(trie, child_slot);
+        if child == 0 {
+            let new_node = trie_alloc_node(trie);
+            vec_set(trie, child_slot, new_node);
+            node = new_node
+        } else {
+            node = child
+        }
+    };
+    // Mark end of word
+    vec_set(trie, node, 1);
+    0
+};
+
+// Search for an exact word; returns 1 if found, 0 otherwise
+fn trie_search(trie: i64, word: i64, wlen: i64) -> i64 = {
+    let mut node = 0;
+    let mut found = 1;
+    for i in 0..wlen {
+        let ch = vec_get(word, i);
+        let child = vec_get(trie, node + 1 + ch);
+        if child == 0 {
+            found = 0
+        } else {
+            node = child
+        }
+    };
+    if found == 0 { 0 }
+    else { vec_get(trie, node) } // is_end flag
+};
+
+// Check if a prefix exists in the trie (returns 1 if any word starts with prefix)
+fn trie_has_prefix(trie: i64, prefix: i64, plen: i64) -> i64 = {
+    let mut node = 0;
+    let mut ok = 1;
+    for i in 0..plen {
+        let ch = vec_get(prefix, i);
+        let child = vec_get(trie, node + 1 + ch);
+        if child == 0 {
+            ok = 0
+        } else {
+            node = child
+        }
+    };
+    ok
+};
+
+// Count all words in the trie that start with given prefix
+// Does DFS from the prefix node
+fn trie_count_prefix(trie: i64, prefix: i64, plen: i64) -> i64 = {
+    let mut node = 0;
+    let mut ok = 1;
+    for i in 0..plen {
+        let ch = vec_get(prefix, i);
+        let child = vec_get(trie, node + 1 + ch);
+        if child == 0 {
+            ok = 0
+        } else {
+            node = child
+        }
+    };
+    if ok == 0 { 0 }
+    else { count_words_from(trie, node) }
+};
+
+// Count words in subtree rooted at node (DFS using explicit stack)
+fn count_words_from(trie: i64, start: i64) -> i64 = {
+    let stack = vec_new();
+    vec_push(stack, start);
+    let mut count = 0;
+    let mut sp = 1;
+    loop {
+        if sp == 0 { break } else { () };
+        sp = sp - 1;
+        let node = vec_get(stack, sp);
+        // Check if this node is end of a word
+        if vec_get(trie, node) == 1 {
+            count = count + 1
+        } else { () };
+        // Push all children
+        for c in 0..alpha_size() {
+            let child = vec_get(trie, node + 1 + c);
+            if child != 0 {
+                if sp < vec_len(stack) {
+                    vec_set(stack, sp, child)
+                } else {
+                    vec_push(stack, child)
+                };
+                sp = sp + 1
+            } else { () }
+        }
+    };
+    vec_free(stack);
+    count
+};
+
+// Helper: make a word vec from up to 5 char codes
+fn make_word2(a: i64, b: i64) -> i64 = {
+    let w = vec_new(); vec_push(w, a); vec_push(w, b); w
+};
+fn make_word3(a: i64, b: i64, c: i64) -> i64 = {
+    let w = vec_new(); vec_push(w, a); vec_push(w, b); vec_push(w, c); w
+};
+fn make_word4(a: i64, b: i64, c: i64, d: i64) -> i64 = {
+    let w = vec_new(); vec_push(w, a); vec_push(w, b); vec_push(w, c); vec_push(w, d); w
+};
+fn make_word5(a: i64, b: i64, c: i64, d: i64, e: i64) -> i64 = {
+    let w = vec_new(); vec_push(w, a); vec_push(w, b); vec_push(w, c); vec_push(w, d); vec_push(w, e); w
+};
+
+fn main() -> i64 = {
+    let trie = trie_new();
+
+    // Insert words: "ab"(0,1), "abc"(0,1,2), "abd"(0,1,3), "bc"(1,2), "bcd"(1,2,3)
+    let w1 = make_word2(0, 1);           // "ab"
+    let w2 = make_word3(0, 1, 2);        // "abc"
+    let w3 = make_word3(0, 1, 3);        // "abd"
+    let w4 = make_word2(1, 2);           // "bc"
+    let w5 = make_word3(1, 2, 3);        // "bcd"
+
+    let _i1 = trie_insert(trie, w1, 2);
+    let _i2 = trie_insert(trie, w2, 3);
+    let _i3 = trie_insert(trie, w3, 3);
+    let _i4 = trie_insert(trie, w4, 2);
+    let _i5 = trie_insert(trie, w5, 3);
+
+    // Test 1: Search for existing words
+    let _p1 = println(trie_search(trie, w1, 2));  // 1 (ab exists)
+    let _p2 = println(trie_search(trie, w2, 3));  // 1 (abc exists)
+    let _p3 = println(trie_search(trie, w5, 3));  // 1 (bcd exists)
+
+    // Test 2: Search for non-existing word "a"(0)
+    let wq = vec_new(); vec_push(wq, 0);
+    let _p4 = println(trie_search(trie, wq, 1));  // 0 (a is prefix but not a word)
+
+    // Test 3: Search for non-existing word "xyz"(23,24,25)
+    let wn = make_word3(23, 24, 25);
+    let _p5 = println(trie_search(trie, wn, 3));  // 0
+
+    // Test 4: Prefix exists check
+    let pa = vec_new(); vec_push(pa, 0);
+    let _p6 = println(trie_has_prefix(trie, pa, 1));  // 1 (a is prefix of ab, abc, abd)
+
+    let pb = vec_new(); vec_push(pb, 1);
+    let _p7 = println(trie_has_prefix(trie, pb, 1));  // 1 (b is prefix of bc, bcd)
+
+    let pc = vec_new(); vec_push(pc, 2);
+    let _p8 = println(trie_has_prefix(trie, pc, 1));  // 0 (no word starts with c)
+
+    // Test 5: Count words with prefix "a"(0) -> 3 (ab, abc, abd)
+    let _p9 = println(trie_count_prefix(trie, pa, 1));  // 3
+
+    // Test 6: Count words with prefix "ab"(0,1) -> 3 (ab, abc, abd)
+    let _p10 = println(trie_count_prefix(trie, w1, 2)); // 3
+
+    // Test 7: Count words with prefix "abc"(0,1,2) -> 1 (abc only)
+    let _p11 = println(trie_count_prefix(trie, w2, 3)); // 1
+
+    // Test 8: Count words with prefix "b"(1) -> 2 (bc, bcd)
+    let _p12 = println(trie_count_prefix(trie, pb, 1)); // 2
+
+    // Test 9: Count words with prefix "c"(2) -> 0 (none)
+    let _p13 = println(trie_count_prefix(trie, pc, 1)); // 0
+
+    // Test 10: Total nodes allocated (root + nodes for paths)
+    // Trie size in nodes = vec_len(trie) / node_size
+    let _p14 = println(vec_len(trie) / node_size());    // should be >1
+
+    vec_free(trie);
+    vec_free(w1); vec_free(w2); vec_free(w3); vec_free(w4); vec_free(w5);
+    vec_free(wq); vec_free(wn); vec_free(pa); vec_free(pb); vec_free(pc);
+    0
+};

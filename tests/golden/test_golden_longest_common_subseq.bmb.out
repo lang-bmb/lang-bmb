@@ -1,0 +1,20 @@
+=== Test 1 ===
+seq1: 1 3 4 1 2
+seq2: 1 4 1 2 3
+LCS length: 4
+LCS: 1 4 1 2
+=== Test 2 ===
+seq1: 1 2 3 4 5
+seq2: 5 4 3 2 1
+LCS length: 1
+LCS: 5
+=== Test 3: identical ===
+LCS length: 3
+LCS: 1 2 3
+=== Test 4: no common ===
+LCS length: 0
+=== Test 5: subsequence ===
+seq1: 3 1 4 1 5 9 2 6
+seq2: 1 4 1 5 9
+LCS length: 5
+LCS: 1 4 1 5 9

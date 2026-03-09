@@ -1,0 +1,87 @@
+// Golden Test: Matrix Transpose
+// In-place and out-of-place transpose of NxN matrix
+
+fn mat_new(n: i64) -> i64 = {
+    let m = vec_new();
+    let mut i = 0;
+    while i < n * n {
+        let _p = vec_push(m, 0);
+        set i = i + 1
+    };
+    m
+};
+
+fn mat_transpose(src: i64, n: i64) -> i64 = {
+    let dst = mat_new(n);
+    let mut i = 0;
+    while i < n {
+        let mut j = 0;
+        while j < n {
+            vec_set(dst, j * n + i, vec_get(src, i * n + j));
+            set j = j + 1
+        };
+        set i = i + 1
+    };
+    dst
+};
+
+fn mat_transpose_inplace(m: i64, n: i64) -> () = {
+    let mut i = 0;
+    while i < n {
+        let mut j = i + 1;
+        while j < n {
+            let tmp = vec_get(m, i * n + j);
+            vec_set(m, i * n + j, vec_get(m, j * n + i));
+            vec_set(m, j * n + i, tmp);
+            set j = j + 1
+        };
+        set i = i + 1
+    }
+};
+
+fn print_mat(m: i64, n: i64) -> () = {
+    let mut i = 0;
+    while i < n {
+        let mut j = 0;
+        while j < n {
+            let _sp = if j > 0 { print_str(" "); 0 } else { 0 };
+            print(vec_get(m, i * n + j));
+            set j = j + 1
+        };
+        let _nl = print_str("
+");
+        set i = i + 1
+    }
+};
+
+fn main() -> () = {
+    // Test 1: 3x3 transpose
+    let m1 = mat_new(3);
+    vec_set(m1, 0, 1); vec_set(m1, 1, 2); vec_set(m1, 2, 3);
+    vec_set(m1, 3, 4); vec_set(m1, 4, 5); vec_set(m1, 5, 6);
+    vec_set(m1, 6, 7); vec_set(m1, 7, 8); vec_set(m1, 8, 9);
+    print_str("original:
+"); print_mat(m1, 3);
+    let t1 = mat_transpose(m1, 3);
+    print_str("transposed:
+"); print_mat(t1, 3);
+
+    // Test 2: In-place transpose
+    mat_transpose_inplace(m1, 3);
+    print_str("in-place:
+"); print_mat(m1, 3);
+
+    // Test 3: Identity is its own transpose
+    let id = mat_new(3);
+    vec_set(id, 0, 1); vec_set(id, 4, 1); vec_set(id, 8, 1);
+    let id_t = mat_transpose(id, 3);
+    let mut same = 1;
+    let mut i = 0;
+    while i < 9 {
+        let _x = if vec_get(id, i) != vec_get(id_t, i) {
+            set same = 0; 0
+        } else { 0 };
+        set i = i + 1
+    };
+    print_str("identity_symmetric="); let _r = println(same)
+};

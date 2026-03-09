@@ -1,0 +1,78 @@
+// Golden Test: Linear Congruential Generator (LCG)
+// LCG formula: next = (a * current + c) % m
+// Classic parameters: a=1103515245, c=12345, m=2^31=2147483648
+
+fn lcg_next(seed: i64) -> i64 = {
+    let a = 1103515245;
+    let c = 12345;
+    let m = 2147483648;
+    let product = a * seed + c;
+    product - (product / m) * m
+    };
+
+// Generate nth value in sequence (0-indexed from seed)
+fn lcg_nth(seed: i64, n: i64) -> i64 =
+    if n <= 0 { seed }
+    else { lcg_nth(lcg_next(seed), n - 1) };
+
+// Sum of first n values starting from seed, modulo modulus
+fn lcg_sum_mod(seed: i64, n: i64, acc: i64, modulus: i64) -> i64 =
+    if n <= 0 { acc - (acc / modulus) * modulus }
+    else {
+        let next_val = lcg_next(seed);
+        lcg_sum_mod(next_val, n - 1, acc + next_val, modulus)
+    };
+
+// Count even values in first n outputs
+fn count_even(seed: i64, n: i64, count: i64) -> i64 =
+    if n <= 0 { count }
+    else {
+        let next_val = lcg_next(seed);
+        let is_even = if (next_val - (next_val / 2) * 2) == 0 { 1 } else { 0 };
+        count_even(next_val, n - 1, count + is_even)
+    };
+
+// Compute mean of first n values (integer division)
+fn lcg_mean(seed: i64, n: i64, total_n: i64, acc: i64) -> i64 =
+    if n <= 0 { acc / total_n }
+    else {
+        let next_val = lcg_next(seed);
+        lcg_mean(next_val, n - 1, total_n, acc + next_val)
+    };
+
+fn main() -> i64 = {
+    let seed = 42;
+
+    // First 3 values of the sequence
+    let v1 = lcg_next(seed);
+    let v2 = lcg_next(v1);
+    let v3 = lcg_next(v2);
+    let _p1 = println(v1);  // 1250496027
+    let _p2 = println(v2);  // 1116302264
+    let _p3 = println(v3);  // 1000676753
+
+    // Sum of first 5 values mod 1000000
+    let _p4 = println(lcg_sum_mod(seed, 5, 0, 1000000));  // 245585
+
+    // lcg_next(0) = c = 12345
+    let _p5 = println(lcg_next(0));  // 12345
+
+    // lcg_next(1) = a + c = 1103527590
+    let _p6 = println(lcg_next(1));  // 1103527590
+
+    // Count even values in first 100
+    let _p7 = println(count_even(seed, 100, 0));  // 50
+
+    // Mean of first 1000 values
+    let _p8 = println(lcg_mean(seed, 1000, 1000, 0));  // 1091435684
+
+    // 10th value in sequence
+    let _p9 = println(lcg_nth(seed, 10));  // 1535244752
+
+    // Deterministic: same seed always gives same result
+    let check1 = lcg_next(seed);
+    let check2 = lcg_next(seed);
+    let _p10 = println(if check1 == check2 { 1 } else { 0 });  // 1
+
+    0
+    };

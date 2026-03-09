@@ -1,0 +1,89 @@
+// Golden Test: Sparse Table (Range Minimum Query)
+// O(n log n) build, O(1) query for minimum in range
+
+fn log2_floor(x: i64) -> i64 = {
+    let mut result = 0;
+    let mut v = x;
+    while v > 1 {
+        set v = v / 2;
+        set result = result + 1
+    };
+    result
+};
+
+fn build_sparse_table(arr: i64, n: i64) -> i64 = {
+    let k = log2_floor(n) + 1;
+    // table[i][j] = min of arr[j..j+2^i)
+    // Stored flat: table[i * n + j]
+    let table = vec_new();
+    let mut idx = 0;
+    while idx < k * n {
+        let _p = vec_push(table, 0);
+        set idx = idx + 1
+    };
+    // Level 0: table[0][j] = arr[j]
+    let mut j = 0;
+    while j < n {
+        vec_set(table, 0 * n + j, vec_get(arr, j));
+        set j = j + 1
+    };
+    // Higher levels
+    let mut i = 1;
+    while i < k {
+        set j = 0;
+        let half = 1;
+        let mut s = 0;
+        while s < i - 1 {
+            set half = half * 2;
+            set s = s + 1
+        };
+        while j + half * 2 - 1 < n {
+            let a = vec_get(table, (i - 1) * n + j);
+            let b = vec_get(table, (i - 1) * n + j + half);
+            vec_set(table, i * n + j, if a < b { a } else { b });
+            set j = j + 1
+        };
+        set i = i + 1
+    };
+    // Store k at end for query use
+    let _p = vec_push(table, k);
+    let _p = vec_push(table, n);
+    table
+};
+
+fn query_min(table: i64, l: i64, r: i64) -> i64 = {
+    let total = vec_len(table);
+    let n = vec_get(table, total - 1);
+    let len = r - l + 1;
+    let k = log2_floor(len);
+    let half = 1;
+    let mut s = 0;
+    let mut h = half;
+    while s < k {
+        set h = h * 2;
+        set s = s + 1
+    };
+    let a = vec_get(table, k * n + l);
+    let b = vec_get(table, k * n + r - h + 1);
+    if a < b { a } else { b }
+};
+
+fn main() -> () = {
+    // Array: [1, 3, 2, 7, 9, 11, 3, 5, 6, 2]
+    let arr = vec_new();
+    let _p = vec_push(arr, 1); let _p = vec_push(arr, 3);
+    let _p = vec_push(arr, 2); let _p = vec_push(arr, 7);
+    let _p = vec_push(arr, 9); let _p = vec_push(arr, 11);
+    let _p = vec_push(arr, 3); let _p = vec_push(arr, 5);
+    let _p = vec_push(arr, 6); let _p = vec_push(arr, 2);
+    let n = 10;
+    let table = build_sparse_table(arr, n);
+
+    // Queries
+    print_str("min[0,9]="); let _r = println(query_min(table, 0, 9));
+    print_str("min[0,0]="); let _r = println(query_min(table, 0, 0));
+    print_str("min[2,5]="); let _r = println(query_min(table, 2, 5));
+    print_str("min[4,8]="); let _r = println(query_min(table, 4, 8));
+    print_str("min[6,9]="); let _r = println(query_min(table, 6, 9));
+    print_str("min[0,4]="); let _r = println(query_min(table, 0, 4))
+};

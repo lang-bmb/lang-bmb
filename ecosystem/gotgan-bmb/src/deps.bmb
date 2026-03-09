@@ -1,0 +1,73 @@
+// gotgan-bmb/src/deps.bmb: Dependency resolution
+// v0.1.0
+
+fn str_concat(a: String, b: String) -> String = {
+    let sb = sb_new();
+    let _p1 = sb_push(sb, a);
+    let _p2 = sb_push(sb, b);
+    sb_build(sb)
+};
+
+fn str_concat3(a: String, b: String, c: String) -> String = {
+    let sb = sb_new();
+    let _p1 = sb_push(sb, a);
+    let _p2 = sb_push(sb, b);
+    let _p3 = sb_push(sb, c);
+    sb_build(sb)
+};
+
+fn path_join(dir: String, file: String) -> String =
+    str_concat3(dir, "/", file);
+
+// Check if a dependency package directory exists (has gotgan.toml)
+fn dep_found(packages_dir: String, dep_name: String) -> bool =
+    file_exists(path_join(path_join(packages_dir, dep_name), "gotgan.toml")) == 1;
+
+// Resolve all dependencies: returns count of missing deps (0 = all resolved)
+fn resolve_deps(doc: i64, content: String, packages_dir: String) -> i64 = {
+    let dep_count = toml_section_count(doc, content, "dependencies");
+    let mut i = 0;
+    let mut missing = 0;
+    while i < dep_count {
+        let name = toml_section_key_at(doc, content, "dependencies", i);
+        let _check = if dep_found(packages_dir, name) {
+            0
+        } else {
+            missing = missing + 1;
+            0
+        };
+        i = i + 1;
+        0
+    };
+    missing
+};
+
+// Print dependency resolution status
+fn print_dep_status(doc: i64, content: String, packages_dir: String) -> i64 = {
+    let dep_count = toml_section_count(doc, content, "dependencies");
+    let mut i = 0;
+    let mut missing = 0;
+    while i < dep_count {
+        let name = toml_section_key_at(doc, content, "dependencies", i);
+        let ver = toml_section_val_at(doc, content, "dependencies", i);
+        let _p = if dep_found(packages_dir, name) {
+            let _p1 = print_str("  OK: ");
+            let _p2 = print_str(name);
+            let _p3 = print_str(" ");
+            let _p4 = print_str(ver);
+            let _p5 = print_str("\n");
+            0
+        } else {
+            let _p1 = print_str("  MISSING: ");
+            let _p2 = print_str(name);
+            let _p3 = print_str(" ");
+            let _p4 = print_str(ver);
+            let _p5 = print_str("\n");
+            missing = missing + 1;
+            0
+        };
+        i = i + 1;
+        0
+    };
+    missing
+};

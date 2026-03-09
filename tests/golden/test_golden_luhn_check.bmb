@@ -1,0 +1,106 @@
+// Golden Test: Luhn algorithm for number validation
+// Double every second digit from right, subtract 9 if > 9, sum all
+// Valid if total % 10 == 0
+
+// Double a digit, subtract 9 if result > 9
+fn luhn_double(d: i64) -> i64 = {
+    let doubled = d * 2;
+    if doubled > 9 { doubled - 9 } else { doubled }
+    };
+
+// Compute Luhn sum of digits stored in a vec
+// Digits stored most-significant first
+fn luhn_sum(digits: i64) -> i64 = {
+    let n = vec_len(digits);
+    let mut total = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let d = vec_get(digits, n - 1 - i);
+        if i % 2 == 1 {
+            total = total + luhn_double(d)
+        } else {
+            total = total + d
+        };
+        i = i + 1
+    };
+    total
+    };
+
+// Check if Luhn-valid (1=valid, 0=invalid)
+fn luhn_valid(digits: i64) -> i64 =
+    if luhn_sum(digits) % 10 == 0 { 1 } else { 0 };
+
+// Helper to build digit arrays
+fn make_digits1(a: i64) -> i64 = {
+    let v = vec_new();
+    let _p = vec_push(v, a);
+    v
+    };
+
+fn make_digits2(a: i64, b: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    v
+    };
+
+fn make_digits4(a: i64, b: i64, c: i64, d: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    v
+    };
+
+fn push11(v: i64, a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64, h: i64, i2: i64, j: i64, k: i64) -> i64 = {
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    let _p6 = vec_push(v, f);
+    let _p7 = vec_push(v, g);
+    let _p8 = vec_push(v, h);
+    let _p9 = vec_push(v, i2);
+    let _p10 = vec_push(v, j);
+    let _p11 = vec_push(v, k);
+    v
+    };
+
+fn main() -> i64 = {
+    // Test 1: [0] -> sum=0, valid
+    let d1 = make_digits1(0);
+    let _p1 = println(luhn_sum(d1));       // 0
+    let _p2 = println(luhn_valid(d1));     // 1
+
+    // Test 2: [1,8] -> from right: 8(keep),1*2=2 -> sum=10, valid
+    let d2 = make_digits2(1, 8);
+    let _p3 = println(luhn_sum(d2));       // 10
+    let _p4 = println(luhn_valid(d2));     // 1
+
+    // Test 3: [1,9] -> from right: 9(keep),1*2=2 -> sum=11, invalid
+    let d3 = make_digits2(1, 9);
+    let _p5 = println(luhn_sum(d3));       // 11
+    let _p6 = println(luhn_valid(d3));     // 0
+
+    // Test 4: [4,5,6,1] -> from right: 1(keep),6*2=12->3,5(keep),4*2=8
+    //         sum = 1+3+5+8 = 17, invalid
+    let d4 = make_digits4(4, 5, 6, 1);
+    let _p7 = println(luhn_sum(d4));       // 17
+    let _p8 = println(luhn_valid(d4));     // 0
+
+    // Test 5: [7,9,9,2,7,3,9,8,7,1,3] -> sum=70, valid
+    let d5 = vec_new();
+    let _pd5 = push11(d5, 7, 9, 9, 2, 7, 3, 9, 8, 7, 1, 3);
+    let _p9 = println(luhn_sum(d5));       // 70
+    let _p10 = println(luhn_valid(d5));    // 1
+
+    let _f1 = vec_free(d1);
+    let _f2 = vec_free(d2);
+    let _f3 = vec_free(d3);
+    let _f4 = vec_free(d4);
+    let _f5 = vec_free(d5);
+    0
+    };

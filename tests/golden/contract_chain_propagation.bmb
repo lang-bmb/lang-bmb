@@ -1,0 +1,30 @@
+// Test: contract propagation through function call chains
+// Outer function's contract should enable inner function's check elimination
+
+fn inner_div(a: i64, b: i64) -> i64
+    pre b != 0
+= a / b;
+
+fn inner_mod(a: i64, b: i64) -> i64
+    pre b != 0
+= a % b;
+
+fn outer_compute(x: i64, y: i64) -> i64
+    pre y != 0
+= {
+    let d = inner_div(x, y);
+    let m = inner_mod(x, y);
+    d * 10 + m
+};
+
+fn safe_get(arr: &[i64; 5], idx: i64) -> i64
+    pre idx >= 0 and idx < 5
+= arr[idx];
+
+fn main() -> i64 = {
+    let arr: [i64; 5] = [100, 200, 300, 400, 500];
+    let v = safe_get(&arr, 2);
+    let result = outer_compute(v, 7);
+    let _u = println(result);
+    0
+};

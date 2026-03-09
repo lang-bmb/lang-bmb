@@ -1,0 +1,108 @@
+// Golden test: Number theory algorithms
+// Tests: modular exponentiation, CRT (2-equation brute force),
+//        Legendre symbol, sum of divisors, count divisors, perfect number check
+
+// Modular exponentiation: base^exp mod modulus
+fn mod_pow(base: i64, exp: i64, modulus: i64) -> i64 = {
+    let mut result = 1;
+    let mut b = base - (base / modulus) * modulus;
+    let mut e = exp;
+    loop {
+        if e <= 0 { break } else { () };
+        if e - (e / 2) * 2 == 1 {
+            result = result * b;
+            result = result - (result / modulus) * modulus
+        } else { () };
+    b = b * b;
+    b = b - (b / modulus) * modulus;
+    e = e / 2
+    };
+    result
+    };
+
+// Chinese Remainder Theorem (brute force): find x in [0, m1*m2) s.t. x%m1==r1, x%m2==r2
+fn crt2(r1: i64, m1: i64, r2: i64, m2: i64) -> i64 = {
+    let limit = m1 * m2;
+    let mut x = 0;
+    let mut found = 0 - 1;
+    loop {
+        if x >= limit { break } else { () };
+        let rem1 = x - (x / m1) * m1;
+        let rem2 = x - (x / m2) * m2;
+        if rem1 == r1 and rem2 == r2 {
+            found = x;
+            break
+        } else { () };
+    x = x + 1
+    };
+    found
+    };
+
+// Legendre symbol: n^((p-1)/2) mod p
+// Returns 1 if n is a quadratic residue mod p, p-1 if non-residue, 0 if p|n
+fn legendre(n: i64, p: i64) -> i64 =
+    mod_pow(n, (p - 1) / 2, p);
+
+    // Sum of all divisors of n (including 1 and n)
+
+fn sum_divisors_helper(n: i64, i: i64, acc: i64) -> i64 =
+    if i > n { acc }
+    else {
+        let inc = if n - (n / i) * i == 0 { i } else { 0 };
+        sum_divisors_helper(n, i + 1, acc + inc)
+    };
+
+fn sum_divisors(n: i64) -> i64 =
+    sum_divisors_helper(n, 1, 0);
+
+    // Count divisors of n
+
+fn count_divisors_helper(n: i64, i: i64, count: i64) -> i64 =
+    if i > n { count }
+    else {
+        let inc = if n - (n / i) * i == 0 { 1 } else { 0 };
+        count_divisors_helper(n, i + 1, count + inc)
+    };
+
+fn count_divisors(n: i64) -> i64 =
+    count_divisors_helper(n, 1, 0);
+
+    // Perfect number: sum of proper divisors equals n
+    // sum_divisors(n) - n == n  i.e. sum_divisors(n) == 2*n
+
+fn is_perfect(n: i64) -> i64 =
+    if sum_divisors(n) == 2 * n { 1 } else { 0 };
+
+fn main() -> i64 = {
+// Modular exponentiation
+    let _p1 = println(mod_pow(2, 10, 1000));   // 24  (1024 mod 1000)
+    let _p2 = println(mod_pow(3, 20, 97));     // 91
+    let _p3 = println(mod_pow(7, 13, 100));    // 7
+    let _p4 = println(mod_pow(5, 5, 31));      // 25  (3125 mod 31)
+
+// Chinese Remainder Theorem (brute force)
+    let _p5 = println(crt2(2, 3, 3, 5));       // 8  (8%3=2, 8%5=3)
+    let _p6 = println(crt2(1, 4, 3, 7));       // 17 (17%4=1, 17%7=3)
+    let _p7 = println(crt2(0, 5, 3, 7));       // 10 (10%5=0, 10%7=3)
+
+// Legendre symbol
+    let _p8 = println(legendre(2, 7));          // 1  (2 is QR mod 7: 3^2=2 mod 7)
+    let _p9 = println(legendre(5, 7));          // 6  (5 is NR mod 7, returns p-1=6)
+    let _p10 = println(legendre(5, 11));        // 1  (5 is QR mod 11: 4^2=5 mod 11)
+    let _p11 = println(legendre(2, 11));        // 10 (2 is NR mod 11, returns p-1=10)
+
+// Sum of divisors
+    let _p12 = println(sum_divisors(12));       // 28 (1+2+3+4+6+12)
+    let _p13 = println(sum_divisors(28));       // 56 (1+2+4+7+14+28)
+
+// Count divisors
+    let _p14 = println(count_divisors(12));     // 6
+    let _p15 = println(count_divisors(36));     // 9
+
+// Perfect number check
+    let _p16 = println(is_perfect(6));          // 1  (1+2+3=6)
+    let _p17 = println(is_perfect(28));         // 1  (1+2+4+7+14=28)
+    let _p18 = println(is_perfect(12));         // 0
+
+    0
+    };

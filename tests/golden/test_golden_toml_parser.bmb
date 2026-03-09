@@ -1,0 +1,335 @@
+// Golden Test: Minimal TOML parser for gotgan
+// Parses section headers, key-value pairs, comments, empty lines.
+// Stores entries as position/length pairs in a flat vec.
+
+// ============================================================================
+    // TOML Parser Core
+    // ============================================================================
+
+    // Check if byte is whitespace (space or tab)
+
+fn toml_is_ws(c: i64) -> bool = c == 32 or c == 9;
+
+// Find byte b in string s from pos to end, return position (or end if not found)
+fn toml_find_byte(s: String, pos: i64, end: i64, b: i64) -> i64 = {
+    let mut p = pos;
+    loop {
+        if p >= end { break } else { () };
+        if s.byte_at(p) == b { break } else { p = p + 1 }
+    };
+    p
+    };
+
+// Skip whitespace forward
+fn toml_skip_ws(s: String, pos: i64, end: i64) -> i64 = {
+    let mut p = pos;
+    loop {
+        if p >= end { break } else { () };
+        if toml_is_ws(s.byte_at(p)) { p = p + 1 } else { break }
+    };
+    p
+    };
+
+// Trim trailing whitespace: returns position after last non-ws char
+fn toml_trim_end(s: String, end: i64, start: i64) -> i64 = {
+    let mut p = end;
+    loop {
+        if p <= start { break } else { () };
+        if toml_is_ws(s.byte_at(p - 1)) { p = p - 1 } else { break }
+    };
+    p
+    };
+
+// Parse TOML content into a flat vec of entries.
+// Each entry = 6 i64: [sec_off, sec_len, key_off, key_len, val_off, val_len]
+// Returns the vec handle (doc).
+fn toml_parse(content: String) -> i64
+  post ret != 0
+= {
+    let slen = content.len();
+    let entries = vec_new();
+    let mut pos = 0;
+    let mut sec_off = 0;
+    let mut sec_len = 0;
+
+    while pos < slen {
+        // Find end of line (newline byte = 10)
+        let line_end = toml_find_byte(content, pos, slen, 10);
+
+        // Handle \r\n (carriage return = 13)
+        let eff_end = if line_end > pos {
+            if content.byte_at(line_end - 1) == 13 { line_end - 1 }
+            else { line_end }
+        } else { line_end };
+
+    // Skip leading whitespace
+    let ls = toml_skip_ws(content, pos, eff_end);
+
+    let _r = if ls >= eff_end {
+        // Empty line
+        0
+    } else if content.byte_at(ls) == 35 {
+    // Comment line (# = 35)
+    0
+    } else if content.byte_at(ls) == 91 {
+    // Section header [ = 91, ] = 93
+    {
+        let close = toml_find_byte(content, ls + 1, eff_end, 93);
+        sec_off = ls + 1;
+        sec_len = close - ls - 1;
+        0
+    }
+    } else {
+    // Key = value line (= is 61)
+    {
+        let eq_pos = toml_find_byte(content, ls, eff_end, 61);
+        let _store = if eq_pos < eff_end {
+            {
+                // Key: from ls to before '=', trimmed
+                let key_end = toml_trim_end(content, eq_pos, ls);
+                let key_off = ls;
+                let key_len = key_end - ls;
+
+                // Value: after '=', trimmed
+                let val_start = toml_skip_ws(content, eq_pos + 1, eff_end);
+                let val_end = toml_trim_end(content, eff_end, val_start);
+
+                // Strip quotes if present (" = 34)
+                    let raw_len = val_end - val_start;
+                    let is_quoted = if raw_len >= 2 {
+                    content.byte_at(val_start) == 34
+                    and content.byte_at(val_end - 1) == 34
+                    } else { false };
+                let final_off = if is_quoted { val_start + 1 }
+                else { val_start };
+                let final_len = if is_quoted { raw_len - 2 }
+                else { raw_len };
+
+                // Push entry
+                let _s1 = vec_push(entries, sec_off);
+                let _s2 = vec_push(entries, sec_len);
+                let _s3 = vec_push(entries, key_off);
+                let _s4 = vec_push(entries, key_len);
+                let _s5 = vec_push(entries, final_off);
+                let _s6 = vec_push(entries, final_len);
+                0
+            }
+    } else { 0 };
+    0
+    }
+    };
+
+    pos = line_end + 1;
+    0
+    };
+
+    entries
+    };
+
+    // ============================================================================
+    // Query API
+    // ============================================================================
+
+    // Number of entries in the document
+
+fn toml_entry_count(doc: i64) -> i64
+  pre doc != 0
+  post ret >= 0
+= vec_len(doc) / 6;
+
+    // Get section name for entry i
+
+fn toml_entry_section(doc: i64, content: String, i: i64) -> String
+  pre doc != 0 and i >= 0
+= {
+    let base = i * 6;
+    let off = vec_get(doc, base);
+    let len = vec_get(doc, base + 1);
+    if len == 0 { "" } else { content.slice(off, off + len) }
+    };
+
+    // Get key for entry i
+
+fn toml_entry_key(doc: i64, content: String, i: i64) -> String
+  pre doc != 0 and i >= 0
+= {
+    let base = i * 6;
+    let off = vec_get(doc, base + 2);
+    let len = vec_get(doc, base + 3);
+    if len == 0 { "" } else { content.slice(off, off + len) }
+    };
+
+    // Get value for entry i (quotes already stripped)
+
+fn toml_entry_value(doc: i64, content: String, i: i64) -> String
+  pre doc != 0 and i >= 0
+= {
+    let base = i * 6;
+    let off = vec_get(doc, base + 4);
+    let len = vec_get(doc, base + 5);
+    if len == 0 { "" } else { content.slice(off, off + len) }
+    };
+
+    // Lookup value by section + key. Returns "" if not found.
+
+fn toml_get(doc: i64, content: String, section: String, key: String) -> String
+  pre doc != 0
+= {
+    let count = toml_entry_count(doc);
+    let mut i = 0;
+    let mut result = "";
+    let mut found = false;
+    loop {
+        if i >= count or found { break } else { () };
+        let sec = toml_entry_section(doc, content, i);
+        let k = toml_entry_key(doc, content, i);
+        let _r = if sec == section and k == key {
+            { result = toml_entry_value(doc, content, i); found = true; 0 }
+        } else { 0 };
+    i = i + 1
+    };
+    result
+    };
+
+    // Count keys in a specific section
+
+fn toml_section_count(doc: i64, content: String, section: String) -> i64
+  pre doc != 0
+  post ret >= 0
+= {
+    let count = toml_entry_count(doc);
+    let mut i = 0;
+    let mut n = 0;
+    while i < count {
+        let sec = toml_entry_section(doc, content, i);
+        let _r = if sec == section { n = n + 1; 0 } else { 0 };
+        i = i + 1;
+        0
+    };
+    n
+    };
+
+    // Free the TOML document
+
+fn toml_free(doc: i64) -> i64
+  pre doc != 0
+= { let _f = vec_free(doc); 0 };
+
+    // ============================================================================
+    // Tests
+    // ============================================================================
+
+fn report(name: String, result: i64) -> i64 = {
+    if result == 0 {
+        let _a = print_str("  FAIL: ");
+        let _b = print_str(name);
+        let _c = print_str("\n");
+        0
+    } else { result }
+    };
+
+fn test_entry_count() -> i64 = {
+    let content = "[package]\nname = \"hello\"\nversion = \"0.1.0\"\n\n[dependencies]\nfoo = \"1.0\"\nbar = \"2.0\"\n";
+    let doc = toml_parse(content);
+    let count = toml_entry_count(doc);
+    let _f = toml_free(doc);
+    if count == 4 { 1 } else { 0 }
+    };
+
+fn test_get_name() -> i64 = {
+    let content = "[package]\nname = \"hello\"\nversion = \"0.1.0\"\n";
+    let doc = toml_parse(content);
+    let val = toml_get(doc, content, "package", "name");
+    let _f = toml_free(doc);
+    if val == "hello" { 1 } else { 0 }
+    };
+
+fn test_get_version() -> i64 = {
+    let content = "[package]\nname = \"hello\"\nversion = \"0.1.0\"\n";
+    let doc = toml_parse(content);
+    let val = toml_get(doc, content, "package", "version");
+    let _f = toml_free(doc);
+    if val == "0.1.0" { 1 } else { 0 }
+    };
+
+fn test_get_dependency() -> i64 = {
+    let content = "[package]\nname = \"hello\"\n\n[dependencies]\nfoo = \"1.0\"\nbar = \"2.0\"\n";
+    let doc = toml_parse(content);
+    let foo = toml_get(doc, content, "dependencies", "foo");
+    let bar = toml_get(doc, content, "dependencies", "bar");
+    let _f = toml_free(doc);
+    if foo == "1.0" and bar == "2.0" { 1 } else { 0 }
+    };
+
+fn test_missing_key() -> i64 = {
+    let content = "[package]\nname = \"hello\"\n";
+    let doc = toml_parse(content);
+    let val = toml_get(doc, content, "package", "missing");
+    let _f = toml_free(doc);
+    if val == "" { 1 } else { 0 }
+    };
+
+fn test_comment_skip() -> i64 = {
+    let content = "# file header\n[package]\n# inline comment\nname = \"hello\"\n";
+    let doc = toml_parse(content);
+    let count = toml_entry_count(doc);
+    let val = toml_get(doc, content, "package", "name");
+    let _f = toml_free(doc);
+    if count == 1 and val == "hello" { 1 } else { 0 }
+    };
+
+fn test_entry_access() -> i64 = {
+    let content = "[package]\nname = \"hello\"\nversion = \"0.1.0\"\n";
+    let doc = toml_parse(content);
+    let sec = toml_entry_section(doc, content, 1);
+    let key = toml_entry_key(doc, content, 1);
+    let val = toml_entry_value(doc, content, 1);
+    let _f = toml_free(doc);
+    if sec == "package" and key == "version" and val == "0.1.0" { 1 } else { 0 }
+    };
+
+fn test_section_count() -> i64 = {
+    let content = "[package]\nname = \"hello\"\nversion = \"0.1.0\"\n\n[dependencies]\nfoo = \"1.0\"\n";
+    let doc = toml_parse(content);
+    let pkg_count = toml_section_count(doc, content, "package");
+    let dep_count = toml_section_count(doc, content, "dependencies");
+    let _f = toml_free(doc);
+    if pkg_count == 2 and dep_count == 1 { 1 } else { 0 }
+    };
+
+fn test_unquoted_value() -> i64 = {
+    let content = "[settings]\ncount = 42\n";
+    let doc = toml_parse(content);
+    let val = toml_get(doc, content, "settings", "count");
+    let _f = toml_free(doc);
+    if val == "42" { 1 } else { 0 }
+    };
+
+fn test_whitespace_handling() -> i64 = {
+    let content = "[package]\n  name  =  \"hello\"  \n";
+    let doc = toml_parse(content);
+    let val = toml_get(doc, content, "package", "name");
+    let _f = toml_free(doc);
+    if val == "hello" { 1 } else { 0 }
+    };
+
+fn main() -> i64 = {
+    let t1 = report("entry_count", test_entry_count());
+    let t2 = report("get_name", test_get_name());
+    let t3 = report("get_version", test_get_version());
+    let t4 = report("get_dependency", test_get_dependency());
+    let t5 = report("missing_key", test_missing_key());
+    let t6 = report("comment_skip", test_comment_skip());
+    let t7 = report("entry_access", test_entry_access());
+    let t8 = report("section_count", test_section_count());
+    let t9 = report("unquoted_value", test_unquoted_value());
+    let t10 = report("whitespace_handling", test_whitespace_handling());
+    let passed = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10;
+    let total = 10;
+    let _p1 = print_str("bmb-toml: ");
+    let _p2 = print(passed);
+    let _p3 = print_str("/");
+    let _p4 = print(total);
+    let _p5 = print_str(" tests passed\n");
+    if passed == total { 0 } else { 1 }
+    };

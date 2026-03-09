@@ -1,0 +1,178 @@
+// Golden Test: Min-heap and max-heap property verification — Cycle 1568
+// Build heaps from arrays, verify heap property, extract min/max
+
+// Swap two elements in a vec
+fn heap_swap(v: i64, i: i64, j: i64) -> i64 = {
+    let tmp = vec_get(v, i);
+    vec_set(v, i, vec_get(v, j));
+    vec_set(v, j, tmp);
+    0
+    };
+
+// Sift down for min-heap: parent <= children
+fn sift_down_min(v: i64, n: i64, i: i64) -> i64 = {
+    let mut pos = i;
+    loop {
+        let left = 2 * pos + 1;
+        let right = 2 * pos + 2;
+        let mut smallest = pos;
+        if left < n {
+            if vec_get(v, left) < vec_get(v, smallest) {
+                smallest = left
+            } else { () }
+        } else { () };
+        if right < n {
+            if vec_get(v, right) < vec_get(v, smallest) {
+                smallest = right
+            } else { () }
+        } else { () };
+        if smallest == pos { break } else { () };
+        let _sw = heap_swap(v, pos, smallest);
+        pos = smallest
+    };
+    0
+    };
+
+// Sift down for max-heap: parent >= children
+fn sift_down_max(v: i64, n: i64, i: i64) -> i64 = {
+    let mut pos = i;
+    loop {
+        let left = 2 * pos + 1;
+        let right = 2 * pos + 2;
+        let mut largest = pos;
+        if left < n {
+            if vec_get(v, left) > vec_get(v, largest) {
+                largest = left
+            } else { () }
+        } else { () };
+        if right < n {
+            if vec_get(v, right) > vec_get(v, largest) {
+                largest = right
+            } else { () }
+        } else { () };
+        if largest == pos { break } else { () };
+        let _sw = heap_swap(v, pos, largest);
+        pos = largest
+    };
+    0
+    };
+
+// Build min-heap from array (Floyd's algorithm)
+fn build_min_heap(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut i = n / 2 - 1;
+    loop {
+        if i < 0 { break } else { () };
+        let _sd = sift_down_min(v, n, i);
+        i = i - 1
+    };
+    0
+    };
+
+// Build max-heap from array
+fn build_max_heap(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut i = n / 2 - 1;
+    loop {
+        if i < 0 { break } else { () };
+        let _sd = sift_down_max(v, n, i);
+        i = i - 1
+    };
+    0
+    };
+
+// Verify min-heap property: returns 1 if valid, 0 otherwise
+fn is_min_heap(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut i = 0;
+    let mut valid = 1;
+    loop {
+        if i >= n / 2 { break } else { () };
+        let left = 2 * i + 1;
+        let right = 2 * i + 2;
+        if left < n {
+            if vec_get(v, i) > vec_get(v, left) { valid = 0 } else { () }
+        } else { () };
+        if right < n {
+            if vec_get(v, i) > vec_get(v, right) { valid = 0 } else { () }
+        } else { () };
+        i = i + 1
+    };
+    valid
+    };
+
+// Verify max-heap property
+fn is_max_heap(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut i = 0;
+    let mut valid = 1;
+    loop {
+        if i >= n / 2 { break } else { () };
+        let left = 2 * i + 1;
+        let right = 2 * i + 2;
+        if left < n {
+            if vec_get(v, i) < vec_get(v, left) { valid = 0 } else { () }
+        } else { () };
+        if right < n {
+            if vec_get(v, i) < vec_get(v, right) { valid = 0 } else { () }
+        } else { () };
+        i = i + 1
+    };
+    valid
+    };
+
+fn main() -> i64 = {
+    // Test 1: Build min-heap from [5, 3, 8, 1, 7, 2, 6]
+    let v1 = vec_new();
+    vec_push(v1, 5); vec_push(v1, 3); vec_push(v1, 8);
+    vec_push(v1, 1); vec_push(v1, 7); vec_push(v1, 2);
+    vec_push(v1, 6);
+    let _bm = build_min_heap(v1);
+    // Root should be minimum (1)
+    let _p1 = println(vec_get(v1, 0));      // 1
+    // Verify min-heap property
+    let _p2 = println(is_min_heap(v1));      // 1
+
+    // Test 2: Build max-heap from [5, 3, 8, 1, 7, 2, 6]
+    let v2 = vec_new();
+    vec_push(v2, 5); vec_push(v2, 3); vec_push(v2, 8);
+    vec_push(v2, 1); vec_push(v2, 7); vec_push(v2, 2);
+    vec_push(v2, 6);
+    let _bmx = build_max_heap(v2);
+    // Root should be maximum (8)
+    let _p3 = println(vec_get(v2, 0));       // 8
+    // Verify max-heap property
+    let _p4 = println(is_max_heap(v2));      // 1
+
+    // Test 3: Unsorted array is not a min-heap
+    let v3 = vec_new();
+    vec_push(v3, 5); vec_push(v3, 3); vec_push(v3, 8);
+    vec_push(v3, 1);
+    let _p5 = println(is_min_heap(v3));      // 0 (5 > 3)
+
+    // Test 4: Already sorted ascending is a min-heap
+    let v4 = vec_new();
+    vec_push(v4, 1); vec_push(v4, 2); vec_push(v4, 3);
+    vec_push(v4, 4); vec_push(v4, 5);
+    let _p6 = println(is_min_heap(v4));      // 1
+
+    // Test 5: Single element is both min and max heap
+    let v5 = vec_new();
+    vec_push(v5, 42);
+    let _p7 = println(is_min_heap(v5));      // 1
+    let _p8 = println(is_max_heap(v5));      // 1
+
+    // Test 6: Build min-heap from [10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
+    let v6 = vec_new();
+    vec_push(v6, 10); vec_push(v6, 9); vec_push(v6, 8);
+    vec_push(v6, 7); vec_push(v6, 6); vec_push(v6, 5);
+    vec_push(v6, 4); vec_push(v6, 3); vec_push(v6, 2);
+    vec_push(v6, 1);
+    let _bm6 = build_min_heap(v6);
+    let _p9 = println(vec_get(v6, 0));       // 1
+    let _p10 = println(is_min_heap(v6));     // 1
+
+    vec_free(v1); vec_free(v2); vec_free(v3);
+    vec_free(v4); vec_free(v5); vec_free(v6);
+    0
+    };

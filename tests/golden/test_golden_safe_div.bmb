@@ -1,0 +1,45 @@
+// Golden Test: Safe division and modulo with zero guards
+// Validates fix for D-1366-01: IfElseToSelect must NOT convert
+// division/modulo guard patterns to select (trapping on zero)
+
+fn safe_div(a: i64, b: i64) -> i64 =
+    if b == 0 { 0 } else { a / b };
+
+fn safe_mod(a: i64, b: i64) -> i64 =
+    if b == 0 { 0 } else { a - (a / b) * b };
+
+fn safe_div_default(a: i64, b: i64, default_val: i64) -> i64 =
+    if b == 0 { default_val } else { a / b };
+
+fn avg_or_zero(sum: i64, count: i64) -> i64 =
+    if count == 0 { 0 } else { sum / count };
+
+fn percentage(part: i64, total: i64) -> i64 =
+    if total == 0 { 0 } else { (part * 100) / total };
+
+fn main() -> i64 = {
+// safe_div
+    let _p1 = println(safe_div(10, 3));    // 3
+    let _p2 = println(safe_div(10, 0));    // 0
+    let _p3 = println(safe_div(0, 5));     // 0
+    let _p4 = println(safe_div(100, 7));   // 14
+
+// safe_mod
+    let _p5 = println(safe_mod(10, 3));    // 1
+    let _p6 = println(safe_mod(10, 0));    // 0
+    let _p7 = println(safe_mod(15, 5));    // 0
+    let _p8 = println(safe_mod(17, 6));    // 5
+
+// safe_div_default
+    let _p9 = println(safe_div_default(10, 0, 999));  // 999
+    let _p10 = println(safe_div_default(10, 2, 999)); // 5
+
+// avg_or_zero
+    let _p11 = println(avg_or_zero(100, 4));  // 25
+    let _p12 = println(avg_or_zero(0, 0));    // 0
+
+// percentage
+    let _p13 = println(percentage(75, 100));  // 75
+    let _p14 = println(percentage(1, 0));     // 0
+    0
+    };

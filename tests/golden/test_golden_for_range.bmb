@@ -1,0 +1,50 @@
+// Golden Test: For-range loop patterns
+// Tests for i in a..b loop codegen correctness
+
+fn sum_range(n: i64) -> i64 = {
+    let mut sum = 0;
+    for i in 0..n {
+        sum = sum + i
+    };
+    sum
+    };
+
+fn factorial_for(n: i64) -> i64 = {
+    let mut result = 1;
+    for i in 1..n {
+        result = result * i
+    };
+    result * n
+    };
+
+fn count_evens(n: i64) -> i64 = {
+    let mut count = 0;
+    for i in 0..n {
+        if i - (i / 2) * 2 == 0 {
+            count = count + 1
+        } else { () }
+    };
+    count
+    };
+
+fn sum_odd_squares(n: i64) -> i64 = {
+    let mut sum = 0;
+    for i in 0..n {
+        if i - (i / 2) * 2 == 1 {
+            sum = sum + i * i
+        } else { () }
+    };
+    sum
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(sum_range(10));       // 45
+    let _p2 = println(sum_range(100));      // 4950
+    let _p3 = println(factorial_for(5));    // 120
+    let _p4 = println(factorial_for(10));   // 3628800
+    let _p5 = println(count_evens(10));     // 5
+    let _p6 = println(count_evens(7));      // 4
+    let _p7 = println(sum_odd_squares(6));  // 1+9+25 = 35
+    let _p8 = println(sum_odd_squares(10)); // 1+9+25+49+81 = 165
+    0
+    };

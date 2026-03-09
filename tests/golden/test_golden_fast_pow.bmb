@@ -1,0 +1,101 @@
+// Golden Test: Fast Exponentiation with Modular Arithmetic
+// Binary exponentiation, modular inverse, Fermat's theorem, combinations
+
+// Fast modular exponentiation: base^exp mod m
+fn mod_exp(base: i64, exp: i64, m: i64) -> i64 = {
+    let mut result = 1;
+    let mut b = base - (base / m) * m;
+    let mut e = exp;
+    loop {
+        if e <= 0 { break } else { () };
+        let _x = if e - (e / 2) * 2 == 1 {
+            set result = result * b;
+            set result = result - (result / m) * m
+        } else { () };
+        set b = b * b;
+        set b = b - (b / m) * m;
+        set e = e / 2
+    };
+    result
+};
+
+// Naive power for small values
+fn naive_pow(base: i64, exp: i64) -> i64 =
+    if exp <= 0 { 1 } else { base * naive_pow(base, exp - 1) };
+
+fn mod_mul(a: i64, b: i64, m: i64) -> i64 = {
+    let prod = a * b;
+    prod - (prod / m) * m
+};
+
+// Modular inverse via Fermat's little theorem: a^(p-2) mod p
+fn mod_inv(a: i64, p: i64) -> i64 = mod_exp(a, p - 2, p);
+
+// n! mod m
+fn mod_factorial(n: i64, m: i64) -> i64 = {
+    let mut result = 1;
+    let mut i = 2;
+    loop {
+        if i > n { break } else { () };
+        set result = mod_mul(result, i, m);
+        set i = i + 1
+    };
+    result
+};
+
+// nCr mod p (p prime) using Fermat's inverse
+fn mod_ncr(n: i64, r: i64, p: i64) -> i64 = {
+    let num = mod_factorial(n, p);
+    let den = mod_mul(mod_factorial(r, p), mod_factorial(n - r, p), p);
+    mod_mul(num, mod_inv(den, p), p)
+};
+
+// Count bits in binary representation
+fn bit_count(n: i64) -> i64 = {
+    let mut v = n;
+    let mut count = 0;
+    loop {
+        if v <= 0 { break } else { () };
+        set count = count + 1;
+        set v = v / 2
+    };
+    count
+};
+
+fn main() -> i64 = {
+    // Basic power tests
+    let _p1 = println(mod_exp(2, 10, 1000000));   // 1024
+    let _p2 = println(mod_exp(3, 5, 1000000));    // 243
+    let _p3 = println(mod_exp(7, 4, 1000000));    // 2401
+    // Cross-check with naive
+    let _p4 = println(naive_pow(2, 10));            // 1024
+    let _p5 = println(naive_pow(3, 5));             // 243
+    // Large exponent: 2^20 mod 1000 = 576
+    let _p6 = println(mod_exp(2, 20, 1000));       // 576
+    let _p7 = println(mod_exp(3, 13, 97));         // 31
+
+    // Fermat's little theorem: a^(p-1) = 1 mod p
+    let _p8 = println(mod_exp(2, 96, 97));         // 1
+    let _p9 = println(mod_exp(5, 96, 97));         // 1
+    let _p10 = println(mod_exp(10, 96, 97));       // 1
+
+    // Modular inverse verification: a * a^-1 = 1 mod p
+    let _p11 = println(mod_mul(3, mod_inv(3, 97), 97));   // 1
+    let _p12 = println(mod_mul(7, mod_inv(7, 97), 97));   // 1
+
+    // Modular combinations
+    let _p13 = println(mod_ncr(10, 3, 97));        // 23  (120 mod 97)
+    let _p14 = println(mod_ncr(10, 5, 97));        // 58  (252 mod 97)
+    let _p15 = println(mod_ncr(20, 10, 97));       // 68
+
+    // Bit count
+    let _p16 = println(bit_count(1));               // 1
+    let _p17 = println(bit_count(255));             // 8
+    let _p18 = println(bit_count(1024));            // 11
+
+    // Edge cases
+    let _p19 = println(mod_exp(0, 5, 97));          // 0
+    let _p20 = println(mod_exp(5, 0, 97));          // 1
+    let _p21 = println(mod_exp(1, 1000000, 97));    // 1
+    0
+};

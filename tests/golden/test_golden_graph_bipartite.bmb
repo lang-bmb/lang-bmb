@@ -1,0 +1,301 @@
+// Golden Test: Bipartite graph checking using 2-coloring BFS
+// Uses adjacency list stored as flat array with offset/length tables
+// Color: 0 = uncolored, 1 = color A, 2 = color B
+
+// Queue operations using vec
+fn queue_new() -> i64 = vec_new();
+
+fn queue_push(q: i64, val: i64) -> i64 = {
+    vec_push(q, val);
+    0
+    };
+
+fn queue_front(q: i64, head: i64) -> i64 =
+    vec_get(q, head);
+
+fn queue_empty(q: i64, head: i64) -> i64 =
+    if head >= vec_len(q) { 1 } else { 0 };
+
+// Build adjacency list from edge pairs
+// edges: flat array of [u0, v0, u1, v1, ...] (undirected: add both directions)
+// Returns adj_data (flat neighbor list), adj_off (offset into adj_data), adj_len (# neighbors)
+fn build_adj(edges: i64, num_edges: i64, n: i64, adj_data: i64, adj_off: i64, adj_len: i64) -> i64 = {
+    // First pass: count degree of each node
+    let degree = vec_new();
+    for _i in 0..n { vec_push(degree, 0) };
+
+    for i in 0..num_edges {
+        let u = vec_get(edges, i * 2);
+        let v = vec_get(edges, i * 2 + 1);
+        vec_set(degree, u, vec_get(degree, u) + 1);
+        vec_set(degree, v, vec_get(degree, v) + 1)
+    };
+
+    // Compute offsets (prefix sum)
+    let mut offset = 0;
+    for i in 0..n {
+        vec_set(adj_off, i, offset);
+        vec_set(adj_len, i, 0);
+        offset = offset + vec_get(degree, i)
+    };
+
+    // Allocate adj_data
+    for _i in 0..offset { vec_push(adj_data, 0) };
+
+    // Fill adjacency data
+    for i in 0..num_edges {
+        let u = vec_get(edges, i * 2);
+        let v = vec_get(edges, i * 2 + 1);
+        // Add v to u's list
+        let u_off = vec_get(adj_off, u);
+        let u_len = vec_get(adj_len, u);
+        vec_set(adj_data, u_off + u_len, v);
+        vec_set(adj_len, u, u_len + 1);
+        // Add u to v's list
+        let v_off = vec_get(adj_off, v);
+        let v_len = vec_get(adj_len, v);
+        vec_set(adj_data, v_off + v_len, u);
+        vec_set(adj_len, v, v_len + 1)
+    };
+
+    vec_free(degree);
+    0
+    };
+
+// BFS 2-coloring from a start node
+// Returns 1 if bipartite for this component, 0 if odd cycle found
+fn bfs_color(adj_data: i64, adj_off: i64, adj_len: i64, color: i64, start: i64) -> i64 = {
+    let q = queue_new();
+    vec_set(color, start, 1);
+    let _qp = queue_push(q, start);
+    let mut head = 0;
+    let mut bipartite = 1;
+    loop {
+        if queue_empty(q, head) == 1 or bipartite == 0 { break } else { () };
+        let u = queue_front(q, head);
+        head = head + 1;
+        let u_color = vec_get(color, u);
+        let neighbor_color = if u_color == 1 { 2 } else { 1 };
+        let off = vec_get(adj_off, u);
+        let len = vec_get(adj_len, u);
+        let mut j = 0;
+        loop {
+            if j >= len { break } else { () };
+            let v = vec_get(adj_data, off + j);
+            let v_color = vec_get(color, v);
+            let _x = if v_color == 0 {
+                vec_set(color, v, neighbor_color);
+                let _qp2 = queue_push(q, v);
+                0
+            } else if v_color != neighbor_color {
+                bipartite = 0;
+                0
+            } else { 0 };
+            j = j + 1
+        };
+        0
+    };
+    vec_free(q);
+    bipartite
+    };
+
+// Check if entire graph is bipartite (handles disconnected components)
+fn is_bipartite(adj_data: i64, adj_off: i64, adj_len: i64, n: i64) -> i64 = {
+    let color = vec_new();
+    for _i in 0..n { vec_push(color, 0) };
+    let mut result = 1;
+    let mut i = 0;
+    loop {
+        if i >= n or result == 0 { break } else { () };
+        let _x = if vec_get(color, i) == 0 {
+            result = bfs_color(adj_data, adj_off, adj_len, color, i);
+            0
+        } else { 0 };
+        i = i + 1
+    };
+    vec_free(color);
+    result
+    };
+
+// Count nodes in each partition (assuming bipartite)
+fn count_partitions(adj_data: i64, adj_off: i64, adj_len: i64, n: i64, counts: i64) -> i64 = {
+    let color = vec_new();
+    for _i in 0..n { vec_push(color, 0) };
+    // Color all components
+    for i in 0..n {
+        let _x = if vec_get(color, i) == 0 {
+            let _r = bfs_color(adj_data, adj_off, adj_len, color, i);
+            0
+        } else { 0 };
+        0
+    };
+    let mut c1 = 0;
+    let mut c2 = 0;
+    for i in 0..n {
+        let _x = if vec_get(color, i) == 1 { c1 = c1 + 1; 0 }
+                 else { c2 = c2 + 1; 0 };
+        0
+    };
+    vec_set(counts, 0, c1);
+    vec_set(counts, 1, c2);
+    vec_free(color);
+    0
+    };
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { vec_push(v, 0) };
+    v
+    };
+
+fn main() -> i64 = {
+    // Test 1: Simple bipartite graph (4-cycle: 0-1-2-3-0)
+    //   0 --- 1
+    //   |     |
+    //   3 --- 2
+    let edges1 = vec_new();
+    vec_push(edges1, 0); vec_push(edges1, 1);
+    vec_push(edges1, 1); vec_push(edges1, 2);
+    vec_push(edges1, 2); vec_push(edges1, 3);
+    vec_push(edges1, 3); vec_push(edges1, 0);
+    let n1 = 4;
+    let ad1 = vec_new();
+    let ao1 = make_zeros(n1);
+    let al1 = make_zeros(n1);
+    let _b1 = build_adj(edges1, 4, n1, ad1, ao1, al1);
+    let _p1 = println(is_bipartite(ad1, ao1, al1, n1)); // 1 (even cycle = bipartite)
+
+    // Test 2: Triangle (3-cycle: 0-1-2-0) — NOT bipartite
+    let edges2 = vec_new();
+    vec_push(edges2, 0); vec_push(edges2, 1);
+    vec_push(edges2, 1); vec_push(edges2, 2);
+    vec_push(edges2, 2); vec_push(edges2, 0);
+    let n2 = 3;
+    let ad2 = vec_new();
+    let ao2 = make_zeros(n2);
+    let al2 = make_zeros(n2);
+    let _b2 = build_adj(edges2, 3, n2, ad2, ao2, al2);
+    let _p2 = println(is_bipartite(ad2, ao2, al2, n2)); // 0 (odd cycle)
+
+    // Test 3: Complete bipartite K(2,3)
+    //   0,1 (left) --- 2,3,4 (right)
+    let edges3 = vec_new();
+    vec_push(edges3, 0); vec_push(edges3, 2);
+    vec_push(edges3, 0); vec_push(edges3, 3);
+    vec_push(edges3, 0); vec_push(edges3, 4);
+    vec_push(edges3, 1); vec_push(edges3, 2);
+    vec_push(edges3, 1); vec_push(edges3, 3);
+    vec_push(edges3, 1); vec_push(edges3, 4);
+    let n3 = 5;
+    let ad3 = vec_new();
+    let ao3 = make_zeros(n3);
+    let al3 = make_zeros(n3);
+    let _b3 = build_adj(edges3, 6, n3, ad3, ao3, al3);
+    let _p3 = println(is_bipartite(ad3, ao3, al3, n3)); // 1
+
+    let counts3 = make_zeros(2);
+    let _cp3 = count_partitions(ad3, ao3, al3, n3, counts3);
+    let _p4 = println(vec_get(counts3, 0)); // 2
+    let _p5 = println(vec_get(counts3, 1)); // 3
+
+    // Test 4: Disconnected graph — two separate edges (bipartite)
+    //   0-1   2-3   4 (isolated)
+    let edges4 = vec_new();
+    vec_push(edges4, 0); vec_push(edges4, 1);
+    vec_push(edges4, 2); vec_push(edges4, 3);
+    let n4 = 5;
+    let ad4 = vec_new();
+    let ao4 = make_zeros(n4);
+    let al4 = make_zeros(n4);
+    let _b4 = build_adj(edges4, 2, n4, ad4, ao4, al4);
+    let _p6 = println(is_bipartite(ad4, ao4, al4, n4)); // 1
+
+    // Test 5: 5-cycle (odd) — NOT bipartite
+    let edges5 = vec_new();
+    vec_push(edges5, 0); vec_push(edges5, 1);
+    vec_push(edges5, 1); vec_push(edges5, 2);
+    vec_push(edges5, 2); vec_push(edges5, 3);
+    vec_push(edges5, 3); vec_push(edges5, 4);
+    vec_push(edges5, 4); vec_push(edges5, 0);
+    let n5 = 5;
+    let ad5 = vec_new();
+    let ao5 = make_zeros(n5);
+    let al5 = make_zeros(n5);
+    let _b5 = build_adj(edges5, 5, n5, ad5, ao5, al5);
+    let _p7 = println(is_bipartite(ad5, ao5, al5, n5)); // 0
+
+    // Test 6: 6-cycle (even) — bipartite
+    let edges6 = vec_new();
+    vec_push(edges6, 0); vec_push(edges6, 1);
+    vec_push(edges6, 1); vec_push(edges6, 2);
+    vec_push(edges6, 2); vec_push(edges6, 3);
+    vec_push(edges6, 3); vec_push(edges6, 4);
+    vec_push(edges6, 4); vec_push(edges6, 5);
+    vec_push(edges6, 5); vec_push(edges6, 0);
+    let n6 = 6;
+    let ad6 = vec_new();
+    let ao6 = make_zeros(n6);
+    let al6 = make_zeros(n6);
+    let _b6 = build_adj(edges6, 6, n6, ad6, ao6, al6);
+    let _p8 = println(is_bipartite(ad6, ao6, al6, n6)); // 1
+
+    // Test 7: Star graph (center=0, leaves=1,2,3,4) — bipartite
+    let edges7 = vec_new();
+    vec_push(edges7, 0); vec_push(edges7, 1);
+    vec_push(edges7, 0); vec_push(edges7, 2);
+    vec_push(edges7, 0); vec_push(edges7, 3);
+    vec_push(edges7, 0); vec_push(edges7, 4);
+    let n7 = 5;
+    let ad7 = vec_new();
+    let ao7 = make_zeros(n7);
+    let al7 = make_zeros(n7);
+    let _b7 = build_adj(edges7, 4, n7, ad7, ao7, al7);
+    let _p9 = println(is_bipartite(ad7, ao7, al7, n7)); // 1
+
+    let counts7 = make_zeros(2);
+    let _cp7 = count_partitions(ad7, ao7, al7, n7, counts7);
+    let _p10 = println(vec_get(counts7, 0)); // 1 (center)
+    let _p11 = println(vec_get(counts7, 1)); // 4 (leaves)
+
+    // Test 8: Single node (trivially bipartite)
+    let ad8 = vec_new();
+    let ao8 = make_zeros(1);
+    let al8 = make_zeros(1);
+    let _p12 = println(is_bipartite(ad8, ao8, al8, 1)); // 1
+
+    // Test 9: Two nodes, one edge — bipartite
+    let edges9 = vec_new();
+    vec_push(edges9, 0); vec_push(edges9, 1);
+    let ad9 = vec_new();
+    let ao9 = make_zeros(2);
+    let al9 = make_zeros(2);
+    let _b9 = build_adj(edges9, 1, 2, ad9, ao9, al9);
+    let _p13 = println(is_bipartite(ad9, ao9, al9, 2)); // 1
+
+    // Test 10: K4 complete graph (4 nodes, all connected) — NOT bipartite
+    let edges10 = vec_new();
+    vec_push(edges10, 0); vec_push(edges10, 1);
+    vec_push(edges10, 0); vec_push(edges10, 2);
+    vec_push(edges10, 0); vec_push(edges10, 3);
+    vec_push(edges10, 1); vec_push(edges10, 2);
+    vec_push(edges10, 1); vec_push(edges10, 3);
+    vec_push(edges10, 2); vec_push(edges10, 3);
+    let ad10 = vec_new();
+    let ao10 = make_zeros(4);
+    let al10 = make_zeros(4);
+    let _b10 = build_adj(edges10, 6, 4, ad10, ao10, al10);
+    let _p14 = println(is_bipartite(ad10, ao10, al10, 4)); // 0
+
+    // Cleanup
+    vec_free(edges1); vec_free(ad1); vec_free(ao1); vec_free(al1);
+    vec_free(edges2); vec_free(ad2); vec_free(ao2); vec_free(al2);
+    vec_free(edges3); vec_free(ad3); vec_free(ao3); vec_free(al3); vec_free(counts3);
+    vec_free(edges4); vec_free(ad4); vec_free(ao4); vec_free(al4);
+    vec_free(edges5); vec_free(ad5); vec_free(ao5); vec_free(al5);
+    vec_free(edges6); vec_free(ad6); vec_free(ao6); vec_free(al6);
+    vec_free(edges7); vec_free(ad7); vec_free(ao7); vec_free(al7); vec_free(counts7);
+    vec_free(ad8); vec_free(ao8); vec_free(al8);
+    vec_free(edges9); vec_free(ad9); vec_free(ao9); vec_free(al9);
+    vec_free(edges10); vec_free(ad10); vec_free(ao10); vec_free(al10);
+    0
+    };

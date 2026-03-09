@@ -1,0 +1,240 @@
+// Golden Test: Deeply nested control flow
+// Tests nested if-else chains, if-else as expression with loops,
+// nested for loops with break, complex booleans, early return patterns
+
+// 4-level deep nested if-else classification
+// Classifies a number into one of 16 buckets based on sign, parity, magnitude, mod3
+fn classify_deep(x: i64) -> i64 =
+    if x >= 0 {
+        if x - (x / 2) * 2 == 0 {
+            if x > 100 {
+                if x - (x / 3) * 3 == 0 { 1 } else { 2 }
+            } else {
+                if x - (x / 3) * 3 == 0 { 3 } else { 4 }
+            }
+        } else {
+            if x > 100 {
+                if x - (x / 3) * 3 == 0 { 5 } else { 6 }
+            } else {
+                if x - (x / 3) * 3 == 0 { 7 } else { 8 }
+            }
+        }
+    } else {
+        if x > 0 - 50 {
+            if x - (x / 2) * 2 == 0 { 9 } else { 10 }
+        } else {
+            if x - (x / 2) * 2 == 0 { 11 } else { 12 }
+        }
+    };
+
+// If-else as expression with nested for: sum squares of multiples of k in range
+fn sum_filtered_squares(n: i64, k: i64) -> i64 = {
+    let mut total = 0;
+    for i in 1..=n {
+        let contrib = if i - (i / k) * k == 0 { i * i } else { 0 };
+        total = total + contrib
+    };
+    total
+    };
+
+// Nested for loops with inner break: find first j where i*j > threshold
+fn first_product_above(rows: i64, cols: i64, threshold: i64) -> i64 = {
+    let mut result = 0 - 1;
+    let mut found = 0;
+    for i in 1..=rows {
+        if found == 0 {
+            let mut j = 1;
+            loop {
+                if j > cols { break } else { () };
+                if i * j > threshold {
+                    result = i * 100 + j;
+                    found = 1;
+                    break
+                } else { () };
+                j = j + 1
+            }
+        } else { () }
+    };
+    result
+    };
+
+// Complex boolean expressions in conditions
+fn classify_triple(a: i64, b: i64, c: i64) -> i64 =
+    if a > 0 and b > 0 and c > 0 { 1 }
+    else if a < 0 and b < 0 and c < 0 { 2 }
+    else if (a > 0 and b > 0) or (b > 0 and c > 0) or (a > 0 and c > 0) { 3 }
+    else if a == 0 or b == 0 or c == 0 { 4 }
+    else { 5 };
+
+// Match-like pattern via nested if-else: score grading
+fn grade(score: i64) -> i64 =
+    if score >= 90 {
+        if score >= 97 { 5 }
+        else if score >= 93 { 4 }
+        else { 3 }
+    } else if score >= 80 {
+        if score >= 87 { 2 }
+        else if score >= 83 { 1 }
+        else { 0 }
+    } else if score >= 70 {
+        0 - 1
+    } else if score >= 60 {
+        0 - 2
+    } else {
+        0 - 3
+    };
+
+// Early return from nested structure: find first pair (i,j) where i+j==target
+fn find_pair_sum(n: i64, target: i64) -> i64 = {
+    let mut answer = 0 - 1;
+    let mut done = 0;
+    for i in 0..n {
+        if done == 0 {
+            for j in i..n {
+                if done == 0 {
+                    if i + j == target {
+                        answer = i * 100 + j;
+                        done = 1
+                    } else { () }
+                } else { () }
+            }
+        } else { () }
+    };
+    answer
+    };
+
+// Nested loop with conditional accumulation: count pythagorean-like triples
+// Count (a,b) where a*a + b*b is a perfect square, 1 <= a <= b <= n
+fn count_pyth_pairs(n: i64) -> i64 = {
+    let mut count = 0;
+    for a in 1..=n {
+        for b in a..=n {
+            let ss = a * a + b * b;
+            // integer sqrt via loop
+            let mut r = 1;
+            loop {
+                if r * r > ss { break } else { () };
+                r = r + 1
+            };
+            let r2 = r - 1;
+            if r2 * r2 == ss { count = count + 1 } else { () }
+        }
+    };
+    count
+    };
+
+// Deeply nested expression: compute based on 3 conditions yielding 8 branches
+fn branch8(x: i64, y: i64, z: i64) -> i64 =
+    if x > 0 {
+        if y > 0 {
+            if z > 0 { x + y + z }
+            else { x + y - z }
+        } else {
+            if z > 0 { x - y + z }
+            else { x - y - z }
+        }
+    } else {
+        if y > 0 {
+            if z > 0 { y + z - x }
+            else { y - z - x }
+        } else {
+            if z > 0 { z - x - y }
+            else { 0 - x - y - z }
+        }
+    };
+
+// Chained ternary-like: map value through nested conditions
+fn step_function(x: i64) -> i64 =
+    if x < 0 - 10 { 0 - 2 }
+    else if x < 0 { 0 - 1 }
+    else if x == 0 { 0 }
+    else if x <= 10 { 1 }
+    else if x <= 100 { 2 }
+    else if x <= 1000 { 3 }
+    else { 4 };
+
+// Nested control with accumulator: weighted bucket counting
+fn weighted_bucket_sum(n: i64) -> i64 = {
+    let mut total = 0;
+    for i in 1..=n {
+        let weight = if i - (i / 5) * 5 == 0 { 10 }
+                     else if i - (i / 3) * 3 == 0 { 5 }
+                     else if i - (i / 2) * 2 == 0 { 2 }
+                     else { 1 };
+        total = total + weight
+    };
+    total
+    };
+
+fn main() -> i64 = {
+    // classify_deep: 4-level nesting
+    // 102: >=0, even, >100, 102%3==0 -> 1
+    let _p1 = println(classify_deep(102));
+    // 104: >=0, even, >100, 104%3!=0 -> 2
+    let _p2 = println(classify_deep(104));
+    // 6: >=0, even, <=100, 6%3==0 -> 3
+    let _p3 = println(classify_deep(6));
+    // 8: >=0, even, <=100, 8%3!=0 -> 4
+    let _p4 = println(classify_deep(8));
+    // 105: >=0, odd, >100, 105%3==0 -> 5
+    let _p5 = println(classify_deep(105));
+    // 101: >=0, odd, >100, 101%3!=0 -> 6
+    let _p6 = println(classify_deep(101));
+    // -30: <0, >-50, -30 is even -> 9
+    let _p7 = println(classify_deep(0 - 30));
+    // -51: <0, <=-50, odd -> 12
+    let _p8 = println(classify_deep(0 - 51));
+
+    // sum_filtered_squares(10, 3): multiples of 3 in 1..10: 3,6,9
+    // 9 + 36 + 81 = 126
+    let _p9 = println(sum_filtered_squares(10, 3));
+
+    // first_product_above(5, 5, 12): i=1: 1*1..1*5 all <=12; i=2: 2*7=14>12 but cols=5
+    // i=2: j=1->2, j=2->4, j=3->6, j=4->8, j=5->10 none>12
+    // i=3: j=1->3, j=2->6, j=3->9, j=4->12 not >, j=5->15>12 -> result=305
+    let _p10 = println(first_product_above(5, 5, 12));
+
+    // classify_triple: all positive -> 1
+    let _p11 = println(classify_triple(1, 2, 3));
+    // classify_triple: all negative -> 2
+    let _p12 = println(classify_triple(0 - 1, 0 - 2, 0 - 3));
+    // classify_triple: two positive (a>0,b>0) -> 3
+    let _p13 = println(classify_triple(1, 2, 0 - 1));
+    // classify_triple: one zero -> 4
+    let _p14 = println(classify_triple(0, 0 - 2, 0 - 3));
+
+    // grade: 98 -> 5 (>=97)
+    let _p15 = println(grade(98));
+    // grade: 85 -> 1 (80<=x<87, >=83)
+    let _p16 = println(grade(85));
+    // grade: 55 -> -3 (<60)
+    let _p17 = println(grade(55));
+
+    // find_pair_sum(10, 9): first (i,j) with i+j==9, i<=j
+    // i=0,j=9: 0+9=9 -> answer=009
+    let _p18 = println(find_pair_sum(10, 9));
+
+    // count_pyth_pairs(15): (a,b) with a<=b<=15, a^2+b^2 is perfect square
+    // (3,4):25=5^2, (5,12):169=13^2, (6,8):100=10^2, (8,15):289=17^2, (9,12):225=15^2 = 5
+    let _p19 = println(count_pyth_pairs(15));
+
+    // branch8(3, -2, 5): x>0, y<=0, z>0 -> x-y+z = 3+2+5 = 10
+    let _p20 = println(branch8(3, 0 - 2, 5));
+    // branch8(-1, -2, -3): x<=0, y<=0, z<=0 -> 0-x-y-z = 1+2+3 = 6
+    let _p21 = println(branch8(0 - 1, 0 - 2, 0 - 3));
+
+    // step_function values
+    let _p22 = println(step_function(0 - 20));   // -2
+    let _p23 = println(step_function(0));         // 0
+    let _p24 = println(step_function(50));        // 2
+
+    // weighted_bucket_sum(20):
+    // i=1..20, mult of 5: {5,10,15,20}->4*10=40
+    // mult of 3 not 5: {3,6,9,12,18}->5*5=25
+    // even not mult 3 or 5: {2,4,8,14,16}->5*2=10
+    // odd rest: {1,7,11,13,17,19}->6*1=6
+    // total = 40+25+10+6 = 81
+    let _p25 = println(weighted_bucket_sum(20));
+
+    0
+    };

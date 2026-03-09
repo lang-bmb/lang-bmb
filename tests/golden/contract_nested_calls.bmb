@@ -1,0 +1,24 @@
+// Test: nested function calls with contracts
+// Each layer has its own contracts, all should generate assumes
+
+fn double(x: i64) -> i64
+    pre x >= 0
+    post ret >= 0
+= x * 2;
+
+fn triple(x: i64) -> i64
+    pre x >= 0
+    post ret >= 0
+= x * 3;
+
+fn combine(a: i64, b: i64) -> i64
+    pre a >= 0 and b >= 0
+= a + b;
+
+fn main() -> i64 = {
+    let d = double(15);
+    let t = triple(10);
+    let result = combine(d, t);
+    let _u = println(result);
+    0
+};

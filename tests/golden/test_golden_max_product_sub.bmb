@@ -1,0 +1,59 @@
+// Golden Test: Maximum product subarray
+// Finds contiguous subarray with largest product
+// Tracks both max and min products (negative * negative = positive)
+
+fn max_product_subarray(arr: i64, n: i64) -> i64 = {
+    let mut max_prod = vec_get(arr, 0);
+    let mut min_prod = vec_get(arr, 0);
+    let mut result = vec_get(arr, 0);
+    let mut i = 1;
+    while i < n {
+        let val = vec_get(arr, i);
+        let a = max_prod * val;
+        let b = min_prod * val;
+        let mx = if a > b { a } else { b };
+        let mn = if a < b { a } else { b };
+        set max_prod = if mx > val { mx } else { val };
+        set min_prod = if mn < val { mn } else { val };
+        set result = if max_prod > result { max_prod } else { result };
+        set i = i + 1
+    };
+    result
+};
+
+fn main() -> () = {
+    // Test 1: [2, 3, -2, 4] -> max product = 6 (subarray [2,3])
+    let a1 = vec_new();
+    let _p = vec_push(a1, 2); let _p = vec_push(a1, 3);
+    let _p = vec_push(a1, 0 - 2); let _p = vec_push(a1, 4);
+    print_str("max1="); let _r = println(max_product_subarray(a1, 4));
+
+    // Test 2: [-2, 0, -1] -> max product = 0
+    let a2 = vec_new();
+    let _p = vec_push(a2, 0 - 2); let _p = vec_push(a2, 0);
+    let _p = vec_push(a2, 0 - 1);
+    print_str("max2="); let _r = println(max_product_subarray(a2, 3));
+
+    // Test 3: [-2, 3, -4] -> max product = 24 (entire array)
+    let a3 = vec_new();
+    let _p = vec_push(a3, 0 - 2); let _p = vec_push(a3, 3);
+    let _p = vec_push(a3, 0 - 4);
+    print_str("max3="); let _r = println(max_product_subarray(a3, 3));
+
+    // Test 4: [1, -2, -3, 4] -> max product = 24 ([-2,-3,4])
+    let a4 = vec_new();
+    let _p = vec_push(a4, 1); let _p = vec_push(a4, 0 - 2);
+    let _p = vec_push(a4, 0 - 3); let _p = vec_push(a4, 4);
+    print_str("max4="); let _r = println(max_product_subarray(a4, 4));
+
+    // Test 5: All positive [2, 3, 4] -> 24
+    let a5 = vec_new();
+    let _p = vec_push(a5, 2); let _p = vec_push(a5, 3);
+    let _p = vec_push(a5, 4);
+    print_str("max5="); let _r = println(max_product_subarray(a5, 3));
+
+    // Test 6: Single element [-5] -> -5
+    let a6 = vec_new();
+    let _p = vec_push(a6, 0 - 5);
+    print_str("max6="); let _r = println(max_product_subarray(a6, 1))
+};

@@ -1,0 +1,100 @@
+// Golden Test: Product of Array Except Self
+// For each index i, compute product of all elements except arr[i]
+// Without using division
+
+// Product array except self using prefix and suffix products
+// arr, result are vecs of length n
+fn product_except_self(arr: i64, result: i64, n: i64) -> i64 = {
+    // First pass: prefix products
+    // result[i] = product of arr[0..i-1]
+    vec_set(result, 0, 1);
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        vec_set(result, i, vec_get(result, i - 1) * vec_get(arr, i - 1));
+        i = i + 1
+    };
+    // Second pass: multiply by suffix products from right
+    let mut suffix = 1;
+    let mut j = n - 1;
+    loop {
+        if j < 0 { break } else { () };
+        vec_set(result, j, vec_get(result, j) * suffix);
+        suffix = suffix * vec_get(arr, j);
+        j = j - 1
+    };
+    0
+};
+
+// Sum of vec elements
+fn vec_sum(v: i64, n: i64) -> i64 = {
+    let mut s = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        s = s + vec_get(v, i);
+        i = i + 1
+    };
+    s
+};
+
+// Create vec from values
+fn make_vec4(a: i64, b: i64, c: i64, d: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c); vec_push(v, d);
+    v
+};
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        vec_push(v, 0);
+        i = i + 1
+    };
+    v
+};
+
+fn main() -> i64 = {
+    // Test 1: [1, 2, 3, 4]
+    // Products: [24, 12, 8, 6]
+    let a1 = make_vec4(1, 2, 3, 4);
+    let r1 = make_zeros(4);
+    let _e1 = product_except_self(a1, r1, 4);
+    let _p1 = println(vec_get(r1, 0));  // 24
+    let _p2 = println(vec_get(r1, 1));  // 12
+    let _p3 = println(vec_get(r1, 2));  // 8
+    let _p4 = println(vec_get(r1, 3));  // 6
+
+    // Test 2: [5, 3, 4, 2]
+    // Products: [3*4*2=24, 5*4*2=40, 5*3*2=30, 5*3*4=60]
+    let a2 = make_vec4(5, 3, 4, 2);
+    let r2 = make_zeros(4);
+    let _e2 = product_except_self(a2, r2, 4);
+    let _p5 = println(vec_get(r2, 0));  // 24
+    let _p6 = println(vec_get(r2, 1));  // 40
+    let _p7 = println(vec_get(r2, 2));  // 30
+    let _p8 = println(vec_get(r2, 3));  // 60
+
+    // Test 3: [1, 1, 1, 1] -> all products are 1
+    let a3 = make_vec4(1, 1, 1, 1);
+    let r3 = make_zeros(4);
+    let _e3 = product_except_self(a3, r3, 4);
+    let _p9 = println(vec_get(r3, 0));  // 1
+
+    // Test 4: [2, 2, 2] -> [4, 4, 4]
+    let a4 = vec_new();
+    vec_push(a4, 2); vec_push(a4, 2); vec_push(a4, 2);
+    let r4 = make_zeros(3);
+    let _e4 = product_except_self(a4, r4, 3);
+    let _p10 = println(vec_get(r4, 0));  // 4
+    let _p11 = println(vec_get(r4, 1));  // 4
+
+    // Test 5: sum of product array for [1,2,3,4] = 24+12+8+6 = 50
+    let _p12 = println(vec_sum(r1, 4));  // 50
+
+    vec_free(a1); vec_free(r1); vec_free(a2); vec_free(r2);
+    vec_free(a3); vec_free(r3); vec_free(a4); vec_free(r4);
+    0
+};

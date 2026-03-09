@@ -1,0 +1,137 @@
+// Golden Test: Window Statistics
+// Compute moving sum, min, max over sliding windows on vec arrays
+
+// Sliding window sum of size k
+fn window_sum(arr: i64, n: i64, k: i64, out: i64) -> i64 = {
+    // Compute first window sum
+    let mut s = 0;
+    for i in 0..k {
+        s = s + vec_get(arr, i)
+    };
+    let _w = vec_set(out, 0, s);
+    // Slide the window
+    let mut i = 1;
+    loop {
+        if i + k - 1 >= n { break } else { () };
+        s = s - vec_get(arr, i - 1) + vec_get(arr, i + k - 1);
+        let _w = vec_set(out, i, s);
+        i = i + 1
+    };
+    i  // number of windows
+    };
+
+// Sliding window minimum of size k (brute force O(n*k))
+fn window_min(arr: i64, n: i64, k: i64, out: i64) -> i64 = {
+    let mut wi = 0;
+    loop {
+        if wi + k > n { break } else { () };
+        let mut mn = vec_get(arr, wi);
+        let mut j = 1;
+        loop {
+            if j >= k { break } else { () };
+            let v = vec_get(arr, wi + j);
+            if v < mn { mn = v } else { () };
+            j = j + 1
+        };
+        let _w = vec_set(out, wi, mn);
+        wi = wi + 1
+    };
+    wi
+    };
+
+// Sliding window maximum of size k (brute force O(n*k))
+fn window_max(arr: i64, n: i64, k: i64, out: i64) -> i64 = {
+    let mut wi = 0;
+    loop {
+        if wi + k > n { break } else { () };
+        let mut mx = vec_get(arr, wi);
+        let mut j = 1;
+        loop {
+            if j >= k { break } else { () };
+            let v = vec_get(arr, wi + j);
+            if v > mx { mx = v } else { () };
+            j = j + 1
+        };
+        let _w = vec_set(out, wi, mx);
+        wi = wi + 1
+    };
+    wi
+    };
+
+// Global stats: total sum of all windows
+fn total_window_sum(out: i64, count: i64) -> i64 = {
+    let mut s = 0;
+    for i in 0..count {
+        s = s + vec_get(out, i)
+    };
+    s
+    };
+
+fn make_vec_8(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64, h: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    let _p6 = vec_push(v, f);
+    let _p7 = vec_push(v, g);
+    let _p8 = vec_push(v, h);
+    v
+    };
+
+fn make_zeros_n(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n {
+        let _p = vec_push(v, 0);
+        0
+    };
+    v
+    };
+
+fn main() -> i64 = {
+    // Array: [4, 2, 7, 1, 8, 3, 6, 5]
+    let arr = make_vec_8(4, 2, 7, 1, 8, 3, 6, 5);
+    let out = make_zeros_n(8);
+    let n = 8;
+
+    // Window sum with k=3: [13, 10, 16, 12, 17, 14]
+    let cnt1 = window_sum(arr, n, 3, out);
+    let _p1 = println(cnt1);              // 6
+    let _p2 = println(vec_get(out, 0));   // 13 (4+2+7)
+    let _p3 = println(vec_get(out, 2));   // 16 (7+1+8)
+    let _p4 = println(vec_get(out, 5));   // 14 (3+6+5)
+
+    // Window min with k=3: [2, 1, 1, 1, 3, 3]
+    let out2 = make_zeros_n(8);
+    let cnt2 = window_min(arr, n, 3, out2);
+    let _p5 = println(cnt2);              // 6
+    let _p6 = println(vec_get(out2, 0));  // 2
+    let _p7 = println(vec_get(out2, 1));  // 1
+    let _p8 = println(vec_get(out2, 5));  // 3
+
+    // Window max with k=3: [7, 7, 8, 8, 8, 6]
+    let out3 = make_zeros_n(8);
+    let cnt3 = window_max(arr, n, 3, out3);
+    let _p9 = println(cnt3);              // 6
+    let _p10 = println(vec_get(out3, 0)); // 7
+    let _p11 = println(vec_get(out3, 2)); // 8
+    let _p12 = println(vec_get(out3, 5)); // 6
+
+    // Window sum with k=1 (each element itself)
+    let out4 = make_zeros_n(8);
+    let cnt4 = window_sum(arr, n, 1, out4);
+    let _p13 = println(cnt4);             // 8
+    let _p14 = println(vec_get(out4, 0)); // 4
+    let _p15 = println(vec_get(out4, 7)); // 5
+
+    // Total of all window sums (k=3)
+    let _p16 = println(total_window_sum(out, 6));  // 82
+
+    let _f1 = vec_free(arr);
+    let _f2 = vec_free(out);
+    let _f3 = vec_free(out2);
+    let _f4 = vec_free(out3);
+    let _f5 = vec_free(out4);
+    0
+    };

@@ -1,0 +1,109 @@
+// Golden Test: Min-Heap (binary heap)
+// Array-based min-heap with insert, extract-min, peek operations
+// Parent of i = (i-1)/2, children of i = 2i+1, 2i+2
+
+fn heap_swap(heap: i64, i: i64, j: i64) -> () = {
+    let tmp = vec_get(heap, i);
+    vec_set(heap, i, vec_get(heap, j));
+    vec_set(heap, j, tmp)
+};
+
+fn heap_sift_up(heap: i64, idx: i64) -> () = {
+    let mut i = idx;
+    while i > 0 {
+        let parent = (i - 1) / 2;
+        let _x = if vec_get(heap, i) < vec_get(heap, parent) {
+            heap_swap(heap, i, parent);
+            set i = parent;
+            0
+        } else {
+            set i = 0;
+            0
+        }
+    }
+};
+
+fn heap_sift_down(heap: i64, size: i64, idx: i64) -> () = {
+    let mut i = idx;
+    let mut cont = 1;
+    while cont == 1 {
+        let left = 2 * i + 1;
+        let right = 2 * i + 2;
+        let mut smallest = i;
+        set smallest = if left < size and vec_get(heap, left) < vec_get(heap, smallest) { left } else { smallest };
+        set smallest = if right < size and vec_get(heap, right) < vec_get(heap, smallest) { right } else { smallest };
+        let _x = if smallest != i {
+            heap_swap(heap, i, smallest);
+            set i = smallest;
+            0
+        } else {
+            set cont = 0;
+            0
+        }
+    }
+};
+
+fn heap_insert(heap: i64, size_vec: i64, val: i64) -> () = {
+    let sz = vec_get(size_vec, 0);
+    let _p = vec_push(heap, val);
+    heap_sift_up(heap, sz);
+    vec_set(size_vec, 0, sz + 1)
+};
+
+fn heap_extract_min(heap: i64, size_vec: i64) -> i64 = {
+    let sz = vec_get(size_vec, 0);
+    let min_val = vec_get(heap, 0);
+    vec_set(heap, 0, vec_get(heap, sz - 1));
+    vec_set(size_vec, 0, sz - 1);
+    heap_sift_down(heap, sz - 1, 0);
+    min_val
+};
+
+fn main() -> () = {
+    let heap = vec_new();
+    let size_vec = vec_new();
+    let _p = vec_push(size_vec, 0);
+
+    // Insert: 5, 3, 8, 1, 2, 7, 4, 6
+    heap_insert(heap, size_vec, 5);
+    heap_insert(heap, size_vec, 3);
+    heap_insert(heap, size_vec, 8);
+    heap_insert(heap, size_vec, 1);
+    heap_insert(heap, size_vec, 2);
+    heap_insert(heap, size_vec, 7);
+    heap_insert(heap, size_vec, 4);
+    heap_insert(heap, size_vec, 6);
+
+    print_str("size=");
+    let _r = println(vec_get(size_vec, 0));
+    print_str("min=");
+    let _r = println(vec_get(heap, 0));
+
+    // Extract all in sorted order
+    print_str("sorted:");
+    let mut i = 0;
+    while i < 8 {
+        print_str(" ");
+        print(heap_extract_min(heap, size_vec));
+        set i = i + 1
+    };
+    print_str("\n");
+
+    // Test 2: Insert in reverse order
+    let heap2 = vec_new();
+    let size2 = vec_new();
+    let _p = vec_push(size2, 0);
+    set i = 10;
+    while i >= 1 {
+        heap_insert(heap2, size2, i);
+        set i = i - 1
+    };
+    print_str("sorted2:");
+    set i = 0;
+    while i < 10 {
+        print_str(" ");
+        print(heap_extract_min(heap2, size2));
+        set i = i + 1
+    };
+    let _nl = print_str("\n")
+};

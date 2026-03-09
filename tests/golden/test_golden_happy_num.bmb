@@ -1,0 +1,108 @@
+// Golden Test: Happy Number Detection
+// A happy number: repeatedly sum squares of digits until reaching 1
+// If it loops forever without reaching 1, it's unhappy
+// e.g., 19 -> 1^2+9^2=82 -> 8^2+2^2=68 -> 6^2+8^2=100 -> 1^2+0+0=1 happy!
+
+// Sum of squares of digits
+fn digit_sq_sum(n: i64) -> i64 = {
+    let mut num = n;
+    let mut sum = 0;
+    loop {
+        if num == 0 { break } else { () };
+        let d = num - num / 10 * 10;
+        sum = sum + d * d;
+        num = num / 10
+    };
+    sum
+};
+
+// Check if n is happy (limit iterations to avoid infinite loop)
+// Returns 1 if happy, 0 if not
+fn is_happy(n: i64) -> i64 = {
+    let mut slow = n;
+    let mut fast = n;
+    let mut found = 0;
+    // Use Floyd's cycle detection
+    let mut i = 0;
+    loop {
+        if i >= 200 { break } else { () };
+        slow = digit_sq_sum(slow);
+        fast = digit_sq_sum(digit_sq_sum(fast));
+        if slow == 1 {
+            found = 1;
+            break
+        } else { () };
+        if fast == 1 {
+            found = 1;
+            break
+        } else { () };
+        if slow == fast { break } else { () };
+        i = i + 1
+    };
+    found
+};
+
+// Count happy numbers in range [1, limit]
+fn count_happy(limit: i64) -> i64 = {
+    let mut count = 0;
+    let mut n = 1;
+    loop {
+        if n > limit { break } else { () };
+        if is_happy(n) == 1 { count = count + 1 } else { () };
+        n = n + 1
+    };
+    count
+};
+
+// Steps to reach 1 (or -1 if unhappy)
+fn happy_steps(n: i64) -> i64 = {
+    let mut num = n;
+    let mut steps = 0;
+    loop {
+        if num == 1 { break } else { () };
+        if steps > 200 { return 0 - 1 } else { () };
+        num = digit_sq_sum(num);
+        steps = steps + 1
+    };
+    steps
+};
+
+fn main() -> i64 = {
+    // Test 1: digit_sq_sum(19) = 1+81 = 82
+    let _p1 = println(digit_sq_sum(19));  // 82
+
+    // Test 2: 1 is happy (trivially)
+    let _p2 = println(is_happy(1));  // 1
+
+    // Test 3: 7 is happy: 7->49->97->130->10->1
+    let _p3 = println(is_happy(7));  // 1
+
+    // Test 4: 19 is happy: 19->82->68->100->1
+    let _p4 = println(is_happy(19));  // 1
+
+    // Test 5: 2 is NOT happy (enters cycle 2->4->16->37->58->89->145->42->20->4...)
+    let _p5 = println(is_happy(2));  // 0
+
+    // Test 6: 4 is NOT happy
+    let _p6 = println(is_happy(4));  // 0
+
+    // Test 7: Steps for 7 to reach 1: 7->49->97->130->10->1 = 5 steps
+    let _p7 = println(happy_steps(7));  // 5
+
+    // Test 8: Steps for 19: 19->82->68->100->1 = 4 steps
+    let _p8 = println(happy_steps(19));  // 4
+
+    // Test 9: 100 is happy: 100->1 = 1 step
+    let _p9 = println(is_happy(100));  // 1
+    let _p10 = println(happy_steps(100));  // 1
+
+    // Test 10: Count happy numbers from 1 to 50
+    // Happy: 1,7,10,13,19,23,28,31,32,44,49 = 11 -- wait let me recount
+    // 1,7,10,13,19,23,28,31,32,44,49 = 11
+    let _p11 = println(count_happy(50));  // 11
+
+    // Test 11: 44 is happy
+    let _p12 = println(is_happy(44));  // 1
+
+    0
+};

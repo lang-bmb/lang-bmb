@@ -1,0 +1,58 @@
+// Golden Test: Loop optimization patterns
+// Tests that loops with mutable variables are optimized correctly
+
+fn sum_1_to_n(n: i64) -> i64 = {
+    let mut sum = 0;
+    let mut i = 1;
+    loop {
+        sum = sum + i;
+        i = i + 1;
+        if i > n { break } else { () }
+    };
+    sum
+    };
+
+fn count_down(n: i64) -> i64 = {
+    let mut x = n;
+    let mut steps = 0;
+    loop {
+        if x <= 0 { break } else { () };
+        x = x - 1;
+        steps = steps + 1
+    };
+    steps
+    };
+
+fn power_loop(base: i64, exp: i64) -> i64 = {
+    let mut result = 1;
+    let mut i = 0;
+    loop {
+        if i >= exp { break } else { () };
+        result = result * base;
+        i = i + 1
+    };
+    result
+    };
+
+fn digit_sum(n: i64) -> i64 = {
+    let mut x = if n < 0 { 0 - n } else { n };
+    let mut sum = 0;
+    loop {
+        if x <= 0 { break } else { () };
+        sum = sum + x - (x / 10) * 10;
+        x = x / 10
+    };
+    sum
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(sum_1_to_n(10));    // 55
+    let _p2 = println(sum_1_to_n(100));   // 5050
+    let _p3 = println(count_down(5));     // 5
+    let _p4 = println(count_down(0));     // 0
+    let _p5 = println(power_loop(2, 10)); // 1024
+    let _p6 = println(power_loop(3, 5));  // 243
+    let _p7 = println(digit_sum(12345));  // 15
+    let _p8 = println(digit_sum(9999));   // 36
+    0
+    };

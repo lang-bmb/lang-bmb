@@ -1,0 +1,44 @@
+// Golden Test: Contract-Driven Saturating Arithmetic Elimination
+// When contracts prove operands are bounded, saturating ops can become regular ops
+// The output must be identical whether or not the optimization fires
+
+// Contract proves x and y are small enough that +| can't overflow
+fn bounded_add(x: i64, y: i64) -> i64
+    pre x >= 0 and x <= 1000 and y >= 0 and y <= 1000
+= x +| y;
+
+// Contract proves x > y so -| can't underflow
+fn bounded_sub(x: i64, y: i64) -> i64
+    pre x >= 0 and x <= 2000 and y >= 0 and y <= 1000
+= x -| y;
+
+// Contract proves product fits in i64
+fn bounded_mul(x: i64, y: i64) -> i64
+    pre x >= 0 and x <= 1000 and y >= 0 and y <= 1000
+= x *| y;
+
+// Negative range contract
+fn signed_add(x: i64, y: i64) -> i64
+    pre x >= -500 and x <= 500 and y >= -500 and y <= 500
+= x +| y;
+
+// Mixed negative range mul
+fn signed_mul(x: i64, y: i64) -> i64
+    pre x >= -100 and x <= 100 and y >= -100 and y <= 100
+= x *| y;
+
+fn main() -> i64 = {
+    let _p1 = println(bounded_add(300, 400));
+    let _p2 = println(bounded_add(0, 0));
+    let _p3 = println(bounded_add(1000, 1000));
+    let _p4 = println(bounded_sub(500, 200));
+    let _p5 = println(bounded_sub(0, 0));
+    let _p6 = println(bounded_sub(2000, 1000));
+    let _p7 = println(bounded_mul(30, 40));
+    let _p8 = println(bounded_mul(1000, 1000));
+    let _p9 = println(signed_add(0 - 500, 500));
+    let _p10 = println(signed_add(0 - 200, 0 - 300));
+    let _p11 = println(signed_mul(0 - 100, 100));
+    let _p12 = println(signed_mul(0 - 50, 0 - 60));
+    0
+};

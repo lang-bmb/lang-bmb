@@ -1,0 +1,111 @@
+// Golden Test: Persistent Stack (immutable, structure sharing)
+// Uses cons-cell style linked list stored in parallel arrays
+// Each node: (value, prev_index), where prev_index is -1 for empty
+
+// Stack storage: parallel arrays for values and next pointers
+// stack_top is an index into these arrays (-1 = empty)
+
+fn ps_new() -> i64 = {
+    let s = vec_new();
+    let vals = vec_new();
+    let nexts = vec_new();
+    vec_push(s, vals);    // s[0] = values
+    vec_push(s, nexts);   // s[1] = next pointers
+    vec_push(s, 0);       // s[2] = node count
+    s
+};
+
+fn ps_push(s: i64, top: i64, val: i64) -> i64 = {
+    let vals = vec_get(s, 0);
+    let nexts = vec_get(s, 1);
+    let idx = vec_get(s, 2);
+    vec_push(vals, val);
+    vec_push(nexts, top);
+    vec_set(s, 2, idx + 1);
+    idx  // Return new top index
+};
+
+fn ps_pop(s: i64, top: i64) -> i64 =
+    if top < 0 { -1 }  // empty stack
+    else { vec_get(vec_get(s, 1), top) };  // Return previous top
+
+fn ps_peek(s: i64, top: i64) -> i64 =
+    if top < 0 { -1 }  // empty stack
+    else { vec_get(vec_get(s, 0), top) };
+
+fn ps_is_empty(top: i64) -> i64 =
+    if top < 0 { 1 } else { 0 };
+
+fn ps_size(s: i64, top: i64) -> i64 = {
+    let mut count = 0;
+    let mut cur = top;
+    loop {
+        if cur < 0 { break } else { () };
+        set count = count + 1;
+        set cur = vec_get(vec_get(s, 1), cur);
+    };
+    count
+};
+
+// Convert stack to string representation by collecting values
+fn ps_sum(s: i64, top: i64) -> i64 = {
+    let mut total = 0;
+    let mut cur = top;
+    loop {
+        if cur < 0 { break } else { () };
+        set total = total + vec_get(vec_get(s, 0), cur);
+        set cur = vec_get(vec_get(s, 1), cur);
+    };
+    total
+};
+
+fn main() -> i64 = {
+    let s = ps_new();
+    let empty = 0 - 1;  // -1 = empty top
+
+    // Test 1: Empty stack
+    let _p1 = println(ps_is_empty(empty));  // 1
+    let _p2 = println(ps_size(s, empty));   // 0
+
+    // Test 2: Push elements
+    let t1 = ps_push(s, empty, 10);  // stack: [10]
+    let t2 = ps_push(s, t1, 20);    // stack: [20, 10]
+    let t3 = ps_push(s, t2, 30);    // stack: [30, 20, 10]
+
+    let _p3 = println(ps_peek(s, t3));      // 30
+    let _p4 = println(ps_size(s, t3));      // 3
+    let _p5 = println(ps_is_empty(t3));     // 0
+
+    // Test 3: Pop (returns new top, old stack unchanged!)
+    let t4 = ps_pop(s, t3);  // stack: [20, 10]
+    let _p6 = println(ps_peek(s, t4));  // 20
+    let _p7 = println(ps_size(s, t4));  // 2
+
+    // Test 4: Original stack t3 is still intact (persistence!)
+    let _p8 = println(ps_peek(s, t3));  // 30 (unchanged)
+    let _p9 = println(ps_size(s, t3));  // 3 (unchanged)
+
+    // Test 5: Branch from t2 (creating a tree of versions)
+    let t5 = ps_push(s, t2, 99);  // stack: [99, 20, 10]
+    let _p10 = println(ps_peek(s, t5));  // 99
+    let _p11 = println(ps_size(s, t5));  // 3
+
+    // Both t3 and t5 share t2's suffix [20, 10]
+    let _p12 = println(ps_sum(s, t3));  // 30 + 20 + 10 = 60
+    let _p13 = println(ps_sum(s, t5));  // 99 + 20 + 10 = 129
+
+    // Test 6: Pop all from t3
+    let t6 = ps_pop(s, t3);  // [20, 10]
+    let t7 = ps_pop(s, t6);  // [10]
+    let t8 = ps_pop(s, t7);  // empty
+    let _p14 = println(ps_is_empty(t8));  // 1
+    let _p15 = println(ps_peek(s, t7));   // 10
+
+    // Test 7: Total node count (shared storage)
+    let _p16 = println(vec_get(s, 2));  // 5 (nodes allocated for t1,t2,t3,t4=pop,t5)
+
+    vec_free(vec_get(s, 0));
+    vec_free(vec_get(s, 1));
+    vec_free(s);
+    0
+};

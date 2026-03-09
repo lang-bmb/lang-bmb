@@ -1,0 +1,74 @@
+// Golden Test: Search algorithms
+// Linear search, binary search on sorted vec, count occurrences
+
+fn linear_search(v: i64, target: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut found = 0 - 1;
+    for i in 0..n {
+        if vec_get(v, i) == target and found < 0 {
+            found = i
+        } else { () }
+    };
+    found
+    };
+
+fn binary_search(v: i64, target: i64) -> i64 = {
+    let mut lo = 0;
+    let mut hi = vec_len(v) - 1;
+    let mut result = 0 - 1;
+    loop {
+        if lo > hi { break } else { () };
+        let mid = (lo + hi) / 2;
+        let val = vec_get(v, mid);
+        if val == target {
+            result = mid;
+            break
+        } else if val < target {
+        lo = mid + 1
+    } else {
+    hi = mid - 1
+    }
+    };
+    result
+    };
+
+fn count_occurrences(v: i64, target: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut count = 0;
+    for i in 0..n {
+        if vec_get(v, i) == target {
+            count = count + 1
+        } else { () }
+    };
+    count
+    };
+
+fn main() -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, 10);
+    let _p2 = vec_push(v, 20);
+    let _p3 = vec_push(v, 30);
+    let _p4 = vec_push(v, 40);
+    let _p5 = vec_push(v, 50);
+    let _r1 = println(linear_search(v, 30));   // 2
+    let _r2 = println(linear_search(v, 99));   // -1
+    let _r3 = println(binary_search(v, 40));   // 3
+    let _r4 = println(binary_search(v, 10));   // 0
+    let _r5 = println(binary_search(v, 99));   // -1
+
+    let v2 = vec_new();
+    let _q1 = vec_push(v2, 1);
+    let _q2 = vec_push(v2, 3);
+    let _q3 = vec_push(v2, 3);
+    let _q4 = vec_push(v2, 3);
+    let _q5 = vec_push(v2, 5);
+    let _q6 = vec_push(v2, 7);
+    let _q7 = vec_push(v2, 3);
+    let _r6 = println(count_occurrences(v2, 3)); // 4
+    let _r7 = println(count_occurrences(v2, 5)); // 1
+    let _r8 = println(count_occurrences(v2, 9)); // 0
+
+    let _f1 = vec_free(v);
+    let _f2 = vec_free(v2);
+    0
+    };

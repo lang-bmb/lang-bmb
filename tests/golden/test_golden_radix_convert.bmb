@@ -1,0 +1,111 @@
+// Golden Test: Number base conversion
+// Convert decimal to base-N, compute digit sum, and convert back
+
+// Count digits in base
+fn digit_count(n: i64, base: i64) -> i64 = {
+    if n == 0 { return 1 } else { () };
+    let mut count = 0;
+    let mut val = n;
+    loop {
+        if val <= 0 { break } else { 0 };
+        val = val / base;
+        count = count + 1
+    };
+    count
+};
+
+// Store digits of n in base into vec (least significant first)
+fn to_base(n: i64, base: i64, digits: i64) -> i64 = {
+    if n == 0 {
+        vec_push(digits, 0);
+        return 1
+    } else { () };
+    let mut val = n;
+    let mut count = 0;
+    loop {
+        if val <= 0 { break } else { 0 };
+        let digit = val % base;
+        vec_push(digits, digit);
+        val = val / base;
+        count = count + 1
+    };
+    count
+};
+
+// Convert digits (least significant first) back to decimal
+fn from_base(digits: i64, n: i64, base: i64) -> i64 = {
+    let mut result = 0;
+    let mut power = 1;
+    for i in 0..n {
+        result = result + vec_get(digits, i) * power;
+        power = power * base
+    };
+    result
+};
+
+// Sum of digits
+fn digit_sum(digits: i64, n: i64) -> i64 = {
+    let mut s = 0;
+    for i in 0..n {
+        s = s + vec_get(digits, i)
+    };
+    s
+};
+
+// Largest digit
+fn max_digit(digits: i64, n: i64) -> i64 = {
+    let mut m = 0;
+    for i in 0..n {
+        let d = vec_get(digits, i);
+        if d > m { m = d } else { () }
+    };
+    m
+};
+
+fn main() -> i64 = {
+    // Test 1: 255 in base 2 -> 8 digits, all 1s, sum=8, back=255
+    let d1 = vec_new();
+    let n1 = to_base(255, 2, d1);
+    let _p1 = println(n1);                     // 8
+    let _p2 = println(digit_sum(d1, n1));       // 8
+    let _p3 = println(from_base(d1, n1, 2));    // 255
+
+    // Test 2: 100 in base 8 -> 144 octal -> digits [4, 4, 1], sum=9
+    let d2 = vec_new();
+    let n2 = to_base(100, 8, d2);
+    let _p4 = println(n2);                     // 3
+    let _p5 = println(digit_sum(d2, n2));       // 9
+    let _p6 = println(from_base(d2, n2, 8));    // 100
+
+    // Test 3: 1000 in base 16 -> 0x3E8 -> digits [8, 14, 3]
+    let d3 = vec_new();
+    let n3 = to_base(1000, 16, d3);
+    let _p7 = println(n3);                     // 3
+    let _p8 = println(max_digit(d3, n3));       // 14
+    let _p9 = println(from_base(d3, n3, 16));   // 1000
+
+    // Test 4: 42 in base 3 -> 1120 -> digits [0, 2, 1, 1]
+    let d4 = vec_new();
+    let n4 = to_base(42, 3, d4);
+    let _p10 = println(n4);                    // 4
+    let _p11 = println(digit_sum(d4, n4));      // 4
+    let _p12 = println(from_base(d4, n4, 3));   // 42
+
+    // Test 5: 0 in any base -> 1 digit, value 0
+    let d5 = vec_new();
+    let n5 = to_base(0, 10, d5);
+    let _p13 = println(n5);                    // 1
+    let _p14 = println(from_base(d5, n5, 10)); // 0
+
+    // Test 6: digit_count checks
+    let _p15 = println(digit_count(255, 2));    // 8
+    let _p16 = println(digit_count(1000, 10));  // 4
+    let _p17 = println(digit_count(0, 10));     // 1
+
+    vec_free(d1);
+    vec_free(d2);
+    vec_free(d3);
+    vec_free(d4);
+    vec_free(d5);
+    0
+};

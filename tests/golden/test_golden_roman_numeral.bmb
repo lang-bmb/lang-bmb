@@ -1,0 +1,102 @@
+// Golden test: Roman numeral to integer conversion
+// Roman digits stored as arrays, uses subtraction rule for IV, IX, XL, XC, CD, CM
+
+// Map a single roman digit value (I=73, V=86, X=88, L=76, C=67, D=68, M=77 in ASCII)
+fn roman_val(ch: i64) -> i64 =
+    if ch == 73 { 1 }        // I
+    else if ch == 86 { 5 }   // V
+    else if ch == 88 { 10 }  // X
+    else if ch == 76 { 50 }  // L
+    else if ch == 67 { 100 } // C
+    else if ch == 68 { 500 } // D
+    else if ch == 77 { 1000 } // M
+    else { 0 };
+
+// Convert a vec of ASCII roman digits to integer
+// Subtraction rule: if current < next, subtract current
+fn roman_to_int_rec(digits: i64, idx: i64, n: i64, acc: i64) -> i64 =
+    if idx >= n { acc }
+    else {
+        let cur = roman_val(vec_get(digits, idx));
+        let nxt = if idx + 1 < n { roman_val(vec_get(digits, idx + 1)) } else { 0 };
+        if cur < nxt {
+            roman_to_int_rec(digits, idx + 1, n, acc - cur)
+        } else {
+            roman_to_int_rec(digits, idx + 1, n, acc + cur)
+        }
+    };
+
+fn roman_to_int(digits: i64) -> i64 =
+    roman_to_int_rec(digits, 0, vec_len(digits), 0);
+
+// Helper to make a vec from known values
+fn make_roman3(a: i64, b: i64, c: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c);
+    v
+    };
+
+fn make_roman2(a: i64, b: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b);
+    v
+    };
+
+fn make_roman4(a: i64, b: i64, c: i64, d: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c); vec_push(v, d);
+    v
+    };
+
+fn make_roman7(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c); vec_push(v, d);
+    vec_push(v, e); vec_push(v, f); vec_push(v, g);
+    v
+    };
+
+fn main() -> i64 = {
+    // ASCII: I=73, V=86, X=88, L=76, C=67, D=68, M=77
+
+    // III = 3
+    let r1 = make_roman3(73, 73, 73);
+    let _p1 = println(roman_to_int(r1));   // 3
+
+    // IV = 4
+    let r2 = make_roman2(73, 86);
+    let _p2 = println(roman_to_int(r2));   // 4
+
+    // IX = 9
+    let r3 = make_roman2(73, 88);
+    let _p3 = println(roman_to_int(r3));   // 9
+
+    // XLII = 42
+    let r4 = make_roman4(88, 76, 73, 73);
+    let _p4 = println(roman_to_int(r4));   // 42
+
+    // MCMXCIV = 1994
+    let r5 = make_roman7(77, 67, 77, 88, 67, 73, 86);
+    let _p5 = println(roman_to_int(r5));   // 1994
+
+    // Test individual digit values
+    let _p6 = println(roman_val(73));   // 1 (I)
+    let _p7 = println(roman_val(77));   // 1000 (M)
+
+    // DCCC = 800
+    let r6 = make_roman4(68, 67, 67, 67);
+    let _p8 = println(roman_to_int(r6));   // 800
+
+    // CD = 400
+    let r7 = make_roman2(67, 68);
+    let _p9 = println(roman_to_int(r7));   // 400
+
+    // MMXXVI = 2026
+    let r8 = vec_new();
+    vec_push(r8, 77); vec_push(r8, 77); vec_push(r8, 88);
+    vec_push(r8, 88); vec_push(r8, 86); vec_push(r8, 73);
+    let _p10 = println(roman_to_int(r8));  // 2026
+
+    vec_free(r1); vec_free(r2); vec_free(r3); vec_free(r4);
+    vec_free(r5); vec_free(r6); vec_free(r7); vec_free(r8);
+    0
+    };

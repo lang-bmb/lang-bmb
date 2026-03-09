@@ -1,0 +1,25 @@
+// Golden Test: Redundant Phi Elimination
+// Tests patterns where both branches of an if-else produce the same value
+
+fn same_const(x: i64) -> i64 =
+    let result = if x > 0 { 0 } else { 0 };
+    result + 42;
+
+fn same_value(x: i64, y: i64) -> i64 =
+    let v = if x > 0 { y } else { y };
+    v * 2;
+
+fn nested_same(x: i64) -> i64 =
+    let a = if x > 10 { 0 } else { 0 };
+    let b = if x > 5 { 1 } else { 1 };
+    a + b;
+
+fn main() -> i64 = {
+    println(same_const(5));     // 42
+    println(same_const(-1));    // 42
+    println(same_value(1, 10)); // 20
+    println(same_value(-1, 7)); // 14
+    println(nested_same(15));   // 1
+    println(nested_same(3));    // 1
+    0
+    };

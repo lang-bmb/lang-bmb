@@ -1,0 +1,147 @@
+// Golden test: Stock span problem
+// For each day, find the number of consecutive days before it
+// (including itself) where the price was less than or equal to today's price
+
+fn make_vec(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    let _p6 = vec_push(v, f);
+    let _p7 = vec_push(v, g);
+    v
+    };
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n {
+        let _p = vec_push(v, 0);
+        0
+    };
+    v
+    };
+
+// Stock span using stack simulation
+// Stack stores indices; we use a vec as stack
+fn stock_span(prices: i64, result: i64) -> i64 = {
+    let n = vec_len(prices);
+    let stack = vec_new();  // stack of indices
+
+    for i in 0..n {
+        // Pop elements while stack is not empty and price[top] <= price[i]
+        loop {
+            if vec_len(stack) == 0 { break } else { () };
+            let top_idx = vec_get(stack, vec_len(stack) - 1);
+            if vec_get(prices, top_idx) <= vec_get(prices, i) {
+                let _pop = vec_pop(stack);
+                0
+            } else { break }
+        };
+
+        // Span = i - stack_top_index, or i+1 if stack is empty
+        let span = if vec_len(stack) == 0 { i + 1 }
+                   else { i - vec_get(stack, vec_len(stack) - 1) };
+        let _s = vec_set(result, i, span);
+
+        // Push current index
+        let _push = vec_push(stack, i);
+        0
+    };
+
+    let _f = vec_free(stack);
+    0
+    };
+
+// Maximum stock profit: buy low, sell high (single transaction)
+fn max_profit(prices: i64) -> i64 = {
+    let n = vec_len(prices);
+    let mut min_price = vec_get(prices, 0);
+    let mut best = 0;
+    for i in 1..n {
+        let p = vec_get(prices, i);
+        let profit = p - min_price;
+        let _bp = if profit > best { best = profit } else { () };
+        let _mp = if p < min_price { min_price = p } else { () };
+        0
+    };
+    best
+    };
+
+// Count days where span > 1 (not a local minimum start)
+fn count_wide_spans(result: i64) -> i64 = {
+    let n = vec_len(result);
+    let mut count = 0;
+    for i in 0..n {
+        let _c = if vec_get(result, i) > 1 { count = count + 1 } else { () };
+        0
+    };
+    count
+    };
+
+// Maximum span in the result
+fn max_span(result: i64) -> i64 = {
+    let n = vec_len(result);
+    let mut best = 0;
+    for i in 0..n {
+        let _b = if vec_get(result, i) > best { best = vec_get(result, i) } else { () };
+        0
+    };
+    best
+    };
+
+fn main() -> i64 = {
+    // prices = [100, 80, 60, 70, 60, 75, 85]
+    let prices1 = make_vec(100, 80, 60, 70, 60, 75, 85);
+    let result1 = make_zeros(7);
+    let _ss1 = stock_span(prices1, result1);
+
+    // Expected spans:
+    // day 0: 100, span=1 (no previous)
+    // day 1: 80,  span=1 (80 < 100)
+    // day 2: 60,  span=1 (60 < 80)
+    // day 3: 70,  span=2 (70 > 60, but 70 < 80)
+    // day 4: 60,  span=1 (60 < 70)
+    // day 5: 75,  span=4 (75 > 60, 70, 60, but 75 < 80)
+    // day 6: 85,  span=6 (85 > 75, 60, 70, 60, 80, but 85 < 100)
+    let _p1 = println(vec_get(result1, 0));  // 1
+    let _p2 = println(vec_get(result1, 1));  // 1
+    let _p3 = println(vec_get(result1, 2));  // 1
+    let _p4 = println(vec_get(result1, 3));  // 2
+    let _p5 = println(vec_get(result1, 4));  // 1
+    let _p6 = println(vec_get(result1, 5));  // 4
+    let _p7 = println(vec_get(result1, 6));  // 6
+
+    // Ascending prices: [10, 20, 30, 40, 50, 60, 70]
+    let prices2 = make_vec(10, 20, 30, 40, 50, 60, 70);
+    let result2 = make_zeros(7);
+    let _ss2 = stock_span(prices2, result2);
+    // Each day sees all previous days <= current, spans = 1,2,3,4,5,6,7
+    let _p8 = println(vec_get(result2, 0));   // 1
+    let _p9 = println(vec_get(result2, 3));   // 4
+    let _p10 = println(vec_get(result2, 6));  // 7
+
+    // Descending prices: [70, 60, 50, 40, 30, 20, 10]
+    let prices3 = make_vec(70, 60, 50, 40, 30, 20, 10);
+    let result3 = make_zeros(7);
+    let _ss3 = stock_span(prices3, result3);
+    // Each day is lower than previous, all spans = 1
+    let _p11 = println(vec_get(result3, 0));  // 1
+    let _p12 = println(vec_get(result3, 3));  // 1
+    let _p13 = println(vec_get(result3, 6));  // 1
+
+    // Max profit tests
+    let _p14 = println(max_profit(prices1));  // buy@60, sell@85 = 25
+    let _p15 = println(max_profit(prices2));  // buy@10, sell@70 = 60
+    let _p16 = println(max_profit(prices3));  // no profit possible = 0
+
+    // Count wide spans and max span
+    let _p17 = println(count_wide_spans(result1));  // 3 (spans 2,4,6)
+    let _p18 = println(max_span(result1));           // 6
+
+    let _f1 = vec_free(prices1); let _f2 = vec_free(result1);
+    let _f3 = vec_free(prices2); let _f4 = vec_free(result2);
+    let _f5 = vec_free(prices3); let _f6 = vec_free(result3);
+    0
+    };

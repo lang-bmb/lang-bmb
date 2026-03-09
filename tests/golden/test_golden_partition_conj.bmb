@@ -1,0 +1,237 @@
+// Golden Test: Partition numbers with conjugate partitions (Ferrers diagram)
+// Computes integer partitions, builds Ferrers diagrams, and finds conjugate partitions.
+// A conjugate partition is obtained by transposing the Ferrers diagram.
+
+fn min2(a: i64, b: i64) -> i64 = if a < b { a } else { b };
+fn max2(a: i64, b: i64) -> i64 = if a > b { a } else { b };
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { vec_push(v, 0) };
+    v
+};
+
+// Partition number p(n) using DP
+// dp[j] += dp[j-k] for k=1..n
+fn partition_number(n: i64) -> i64 = {
+    let dp = make_zeros(n + 1);
+    let _s = vec_set(dp, 0, 1);
+    for k in 1..(n + 1) {
+        for j in k..(n + 1) {
+            let cur = vec_get(dp, j);
+            let prev = vec_get(dp, j - k);
+            let _s2 = vec_set(dp, j, cur + prev);
+            0
+        };
+        0
+    };
+    let result = vec_get(dp, n);
+    let _f = vec_free(dp);
+    result
+};
+
+// Generate a specific partition of n into parts (descending order)
+// Uses greedy: start with largest allowed part, fill remaining
+// partition stored in vec, returns vec handle
+fn gen_partition_greedy(n: i64, max_part: i64) -> i64 = {
+    let parts = vec_new();
+    let remaining = n;
+    let cur_max = min2(n, max_part);
+    loop {
+        if remaining <= 0 { break } else { () };
+        let part = min2(remaining, cur_max);
+        vec_push(parts, part);
+        remaining = remaining - part;
+        0
+    };
+    parts
+};
+
+// Compute conjugate partition from a partition (parts in descending order)
+// Conjugate: conj[j] = number of parts >= j+1
+// If partition is [5,3,3,1], Ferrers diagram rows are 5,3,3,1
+// Conjugate columns: col 1 has 4 dots, col 2 has 3, col 3 has 3, col 4 has 1, col 5 has 1
+// So conjugate = [4,3,3,1,1]
+fn conjugate_partition(parts: i64, num_parts: i64) -> i64 = {
+    // Maximum part value = first element (parts are descending)
+    let max_val = if num_parts > 0 { vec_get(parts, 0) } else { 0 };
+    let conj = vec_new();
+    for j in 0..max_val {
+        // Count how many parts are >= (j+1)
+        let count = 0;
+        for i in 0..num_parts {
+            let _x = if vec_get(parts, i) >= j + 1 {
+                count = count + 1;
+                0
+            } else { 0 };
+            0
+        };
+        vec_push(conj, count);
+        0
+    };
+    conj
+};
+
+// Sum of a partition (should equal n)
+fn part_sum(v: i64, n: i64) -> i64 = {
+    let s = 0;
+    for i in 0..n { s = s + vec_get(v, i); 0 };
+    s
+};
+
+// Print all elements of a vec (one per line)
+fn print_vec(v: i64, n: i64) -> i64 = {
+    for i in 0..n { let _p = println(vec_get(v, i)); 0 };
+    0
+};
+
+// Check if a partition is self-conjugate (partition == its conjugate)
+fn is_self_conjugate(parts: i64, num_parts: i64) -> i64 = {
+    let conj = conjugate_partition(parts, num_parts);
+    let conj_len = vec_len(conj);
+    let result = if num_parts != conj_len { 0 }
+    else {
+        let same = 1;
+        for i in 0..num_parts {
+            let _x = if vec_get(parts, i) != vec_get(conj, i) {
+                same = 0;
+                0
+            } else { 0 };
+            0
+        };
+        same
+    };
+    let _f = vec_free(conj);
+    result
+};
+
+// Durfee square size: largest k such that partition has >= k parts each >= k
+fn durfee_square(parts: i64, num_parts: i64) -> i64 = {
+    let k = 0;
+    loop {
+        if k >= num_parts { break } else { () };
+        if vec_get(parts, k) <= k { break } else { () };
+        k = k + 1
+    };
+    k
+};
+
+// Count number of distinct parts
+fn count_distinct(parts: i64, num_parts: i64) -> i64 = {
+    if num_parts == 0 { 0 }
+    else {
+        let count = 1;
+        for i in 1..num_parts {
+            let _x = if vec_get(parts, i) != vec_get(parts, i - 1) {
+                count = count + 1;
+                0
+            } else { 0 };
+            0
+        };
+        count
+    }
+};
+
+fn main() -> i64 = {
+    // Partition numbers
+    let _p1 = println(partition_number(0));   // 1
+    let _p2 = println(partition_number(5));   // 7
+    let _p3 = println(partition_number(10));  // 42
+    let _p4 = println(partition_number(20));  // 627
+
+    // Partition [5,3,3,1] of 12
+    let part1 = vec_new();
+    vec_push(part1, 5); vec_push(part1, 3); vec_push(part1, 3); vec_push(part1, 1);
+    let _p5 = println(part_sum(part1, 4));  // 12
+
+    // Conjugate of [5,3,3,1]
+    // Ferrers:  * * * * *
+    //           * * *
+    //           * * *
+    //           *
+    // Transpose: col1=4, col2=3, col3=3, col4=1, col5=1
+    // Conjugate = [4,3,3,1,1]
+    let conj1 = conjugate_partition(part1, 4);
+    let _p6 = println(vec_len(conj1));        // 5
+    let _p7 = println(999);  // separator
+    let _pv1 = print_vec(conj1, vec_len(conj1));  // 4 3 3 1 1
+    let _p8 = println(part_sum(conj1, vec_len(conj1)));  // 12 (sum preserved)
+
+    // Double conjugate should give back original
+    let conj2 = conjugate_partition(conj1, vec_len(conj1));
+    let _p9 = println(vec_len(conj2));        // 4
+    let _p10 = println(999);  // separator
+    let _pv2 = print_vec(conj2, vec_len(conj2));  // 5 3 3 1
+
+    // Self-conjugate partition: [3,2,1] of 6
+    // Ferrers:  * * *
+    //           * *
+    //           *
+    // Transpose: col1=3, col2=2, col3=1 = [3,2,1] -> self-conjugate!
+    let sc1 = vec_new();
+    vec_push(sc1, 3); vec_push(sc1, 2); vec_push(sc1, 1);
+    let _p11 = println(is_self_conjugate(sc1, 3));  // 1
+
+    // Non self-conjugate: [4,1,1] of 6
+    let nsc1 = vec_new();
+    vec_push(nsc1, 4); vec_push(nsc1, 1); vec_push(nsc1, 1);
+    let _p12 = println(is_self_conjugate(nsc1, 3));  // 0
+
+    // Self-conjugate: [1] of 1
+    let sc2 = vec_new();
+    vec_push(sc2, 1);
+    let _p13 = println(is_self_conjugate(sc2, 1));  // 1
+
+    // Self-conjugate: [4,3,2,1] of 10?
+    // Ferrers:  * * * *    Transpose: col1=4, col2=3, col3=2, col4=1
+    //           * * *      = [4,3,2,1] -> yes!
+    //           * *
+    //           *
+    let sc3 = vec_new();
+    vec_push(sc3, 4); vec_push(sc3, 3); vec_push(sc3, 2); vec_push(sc3, 1);
+    let _p14 = println(is_self_conjugate(sc3, 4));  // 1
+
+    // Durfee square: largest k x k square fitting in Ferrers diagram
+    // [5,3,3,1]: min(part[0],1)=1, min(part[1],2)=2, min(part[2],3)=3, part[3]=1<=3 -> k=3
+    // Actually: k=0: part[0]=5>0, k=1: part[1]=3>1, k=2: part[2]=3>2, k=3: part[3]=1<=3 -> k=3
+    let _p15 = println(durfee_square(part1, 4));  // 3
+
+    // [4,3,2,1]: k=0:4>0, k=1:3>1, k=2:2>2? no -> k=2
+    let _p16 = println(durfee_square(sc3, 4));  // 2
+
+    // [5,5,5]: k=0:5>0, k=1:5>1, k=2:5>2 -> k=3
+    let sq1 = vec_new();
+    vec_push(sq1, 5); vec_push(sq1, 5); vec_push(sq1, 5);
+    let _p17 = println(durfee_square(sq1, 3));  // 3
+
+    // Count distinct parts
+    let _p18 = println(count_distinct(part1, 4));  // 3 (5,3,1)
+    let _p19 = println(count_distinct(sq1, 3));    // 1 (all 5s)
+    let _p20 = println(count_distinct(sc3, 4));    // 4 (4,3,2,1)
+
+    // Greedy partition: 15 with max part 5 -> [5,5,5]
+    let gp1 = gen_partition_greedy(15, 5);
+    let _p21 = println(vec_len(gp1));       // 3
+    let _p22 = println(part_sum(gp1, vec_len(gp1)));  // 15
+    let _p23 = println(999);  // separator
+    let _pv3 = print_vec(gp1, vec_len(gp1));  // 5 5 5
+
+    // Greedy partition: 7 with max part 3 -> [3,3,1]
+    let gp2 = gen_partition_greedy(7, 3);
+    let _p24 = println(vec_len(gp2));       // 3
+    let _p25 = println(999);  // separator
+    let _pv4 = print_vec(gp2, vec_len(gp2));  // 3 3 1
+
+    // Cleanup
+    let _f1 = vec_free(part1);
+    let _f2 = vec_free(conj1);
+    let _f3 = vec_free(conj2);
+    let _f4 = vec_free(sc1);
+    let _f5 = vec_free(nsc1);
+    let _f6 = vec_free(sc2);
+    let _f7 = vec_free(sc3);
+    let _f8 = vec_free(sq1);
+    let _f9 = vec_free(gp1);
+    let _f10 = vec_free(gp2);
+    0
+};

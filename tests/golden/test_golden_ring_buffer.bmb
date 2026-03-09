@@ -1,0 +1,97 @@
+// Golden Test: Ring buffer (circular buffer) with read/write
+// vec slots: 0=head, 1=tail, 2=count, 3=capacity, 4..=data
+
+fn rb_new(cap: i64) -> i64 = {
+    let v = vec_new();
+    let _h = vec_push(v, 0); let _t = vec_push(v, 0);
+    let _c = vec_push(v, 0); let _p = vec_push(v, cap);
+    let mut i = 0;
+    loop { if i >= cap { break } else { () }; let _d = vec_push(v, 0); i = i + 1 };
+    v
+    };
+
+fn rb_is_empty(b: i64) -> i64 = if vec_get(b, 2) == 0 { 1 } else { 0 };
+fn rb_is_full(b: i64) -> i64 = if vec_get(b, 2) == vec_get(b, 3) { 1 } else { 0 };
+fn rb_count(b: i64) -> i64 = vec_get(b, 2);
+
+fn rb_write(b: i64, val: i64) -> i64 = {
+    if vec_get(b, 2) == vec_get(b, 3) { return 0 } else { () };
+    let tail = vec_get(b, 1); let cap = vec_get(b, 3);
+    vec_set(b, 4 + tail, val);
+    vec_set(b, 1, if tail + 1 >= cap { 0 } else { tail + 1 });
+    vec_set(b, 2, vec_get(b, 2) + 1); 1
+    };
+
+fn rb_read(b: i64) -> i64 = {
+    if vec_get(b, 2) == 0 { return 0 - 1 } else { () };
+    let head = vec_get(b, 0); let cap = vec_get(b, 3);
+    let val = vec_get(b, 4 + head);
+    vec_set(b, 0, if head + 1 >= cap { 0 } else { head + 1 });
+    vec_set(b, 2, vec_get(b, 2) - 1); val
+    };
+
+fn rb_peek(b: i64) -> i64 = {
+    if vec_get(b, 2) == 0 { return 0 - 1 } else { () };
+    vec_get(b, 4 + vec_get(b, 0))
+    };
+
+fn rb_overwrite(b: i64, val: i64) -> i64 = {
+    if vec_get(b, 2) == vec_get(b, 3) {
+        let head = vec_get(b, 0); let cap = vec_get(b, 3);
+        vec_set(b, 0, if head + 1 >= cap { 0 } else { head + 1 });
+        vec_set(b, 2, vec_get(b, 2) - 1)
+    } else { () };
+    rb_write(b, val)
+    };
+
+fn rb_sum(b: i64) -> i64 = {
+    let mut sum = 0;
+    let head = vec_get(b, 0); let cap = vec_get(b, 3); let count = vec_get(b, 2);
+    let mut i = 0;
+    loop {
+        if i >= count { break } else { () };
+        let idx = head + i;
+        let idx2 = if idx >= cap { idx - cap } else { idx };
+        sum = sum + vec_get(b, 4 + idx2);
+        i = i + 1
+    };
+    sum
+    };
+
+fn main() -> i64 = {
+    let rb = rb_new(4);
+    let _p1 = println(rb_is_empty(rb));  // 1
+    let _p2 = println(rb_is_full(rb));   // 0
+    let _p3 = println(rb_count(rb));     // 0
+    let _w1 = rb_write(rb, 10); let _w2 = rb_write(rb, 20); let _w3 = rb_write(rb, 30);
+    let _p4 = println(rb_count(rb));     // 3
+    let _p5 = println(rb_is_empty(rb));  // 0
+    let _p6 = println(rb_peek(rb));      // 10
+    let v1 = rb_read(rb);
+    let _p7 = println(v1);              // 10
+    let _p8 = println(rb_count(rb));     // 2
+    let _p9 = println(rb_peek(rb));      // 20
+    let _w4 = rb_write(rb, 40); let _w5 = rb_write(rb, 50);
+    let _p10 = println(rb_is_full(rb));  // 1
+    let _p11 = println(rb_count(rb));    // 4
+    let ok = rb_write(rb, 60);
+    let _p12 = println(ok);             // 0
+    let _p13 = println(rb_count(rb));   // 4
+    let _p14 = println(rb_sum(rb));     // 140
+    let _p15 = println(rb_read(rb));    // 20
+    let _p16 = println(rb_read(rb));    // 30
+    let _p17 = println(rb_read(rb));    // 40
+    let _p18 = println(rb_read(rb));    // 50
+    let _p19 = println(rb_is_empty(rb)); // 1
+    let _p20 = println(rb_read(rb));    // -1
+    let rb2 = rb_new(3);
+    let _o1 = rb_overwrite(rb2, 100); let _o2 = rb_overwrite(rb2, 200);
+    let _o3 = rb_overwrite(rb2, 300);
+    let _p21 = println(rb_sum(rb2));    // 600
+    let _o4 = rb_overwrite(rb2, 400);
+    let _p22 = println(rb_count(rb2));  // 3
+    let _p23 = println(rb_sum(rb2));    // 900
+    let _p24 = println(rb_read(rb2));   // 200
+    let _f1 = vec_free(rb); let _f2 = vec_free(rb2);
+    0
+    };

@@ -1,0 +1,64 @@
+// Golden Test: String Processing Patterns
+// Tests string operations common in real programs
+
+fn str_len_sum(a: String, b: String) -> i64 =
+    a.len() + b.len();
+
+fn count_char(s: String, ch: i64, pos: i64) -> i64 =
+    if pos >= s.len() { 0 }
+    else {
+        let inc = if s.byte_at(pos) == ch { 1 } else { 0 };
+        inc + count_char(s, ch, pos + 1)
+    };
+
+fn is_palindrome(s: String, lo: i64, hi: i64) -> i64 =
+    if lo >= hi { 1 }
+    else if s.byte_at(lo) != s.byte_at(hi) { 0 }
+    else { is_palindrome(s, lo + 1, hi - 1) };
+
+fn repeat_char(ch: i64, n: i64, acc: String) -> String =
+    if n <= 0 { acc }
+    else { repeat_char(ch, n - 1, acc + chr(ch)) };
+
+fn main() -> i64 = {
+    // String length
+    let hello = "hello";
+    let world = "world!";
+    let _p1 = println(hello.len());  // 5
+    let _p2 = println(world.len());  // 6
+
+    // Length sum
+    let _p3 = println(str_len_sum("abc", "defgh"));  // 8
+
+    // String concat
+    let greeting = hello + " " + world;
+    let _p4 = println(greeting.len());  // 12
+
+    // Char at position
+    let _p5 = println(hello.byte_at(0));  // 104 (h)
+    let _p6 = println(hello.byte_at(4));  // 111 (o)
+
+    // Count character occurrences
+    let _p7 = println(count_char("abracadabra", 97, 0));  // 5 (count 'a')
+    let _p8 = println(count_char("mississippi", 115, 0));  // 4 (count 's')
+
+    // Palindrome check
+    let _p9 = println(is_palindrome("racecar", 0, 6));   // 1
+    let _p10 = println(is_palindrome("hello", 0, 4));     // 0
+    let _p11 = println(is_palindrome("abba", 0, 3));      // 1
+
+    // String comparison
+    let _p12 = println(if "abc" == "abc" { 1 } else { 0 });  // 1
+    let _p13 = println(if "abc" == "def" { 1 } else { 0 });  // 0
+
+    // Repeat character
+    let stars = repeat_char(42, 5, "");
+    let _p14 = println(stars.len());  // 5
+
+    // Slice operations
+    let s = "hello world";
+    let sub = s.slice(0, 5);
+    let _p15 = println(sub.len());  // 5
+
+    0
+};

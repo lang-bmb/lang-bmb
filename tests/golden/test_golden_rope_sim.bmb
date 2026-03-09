@@ -1,0 +1,250 @@
+// Golden Test: Rope data structure simulation for string concat operations
+// Simulates a rope (balanced binary tree of strings) using arrays
+// Each node: [weight, left_child, right_child, str_id, str_len]
+// Leaf nodes hold a string ID and length
+// Internal nodes hold total weight of left subtree
+// node_id = -1 means null
+
+// Node storage: flat arrays
+// weights[i], lefts[i], rights[i], str_ids[i], str_lens[i]
+// next_node = next free slot
+
+// Rope operations:
+// - create leaf from string
+// - concat two ropes
+// - total length
+// - char_at (index into rope)
+// - split (conceptual - compute split point)
+
+// Constants
+// MAX_NODES = 50
+
+fn rope_init() -> i64 = {
+    // Store all arrays in a single management vec
+    // [weights_vec, lefts_vec, rights_vec, str_ids_vec, str_lens_vec, next_node_vec]
+    let mgr = vec_new();
+    let weights = vec_new();
+    let lefts = vec_new();
+    let rights = vec_new();
+    let str_ids = vec_new();
+    let str_lens = vec_new();
+    let next_node = vec_new();
+    // Pre-allocate 50 entries
+    for _i in 0..50 {
+        vec_push(weights, 0);
+        vec_push(lefts, 0 - 1);
+        vec_push(rights, 0 - 1);
+        vec_push(str_ids, 0 - 1);
+        vec_push(str_lens, 0)
+    };
+    vec_push(next_node, 0);
+    vec_push(mgr, weights);
+    vec_push(mgr, lefts);
+    vec_push(mgr, rights);
+    vec_push(mgr, str_ids);
+    vec_push(mgr, str_lens);
+    vec_push(mgr, next_node);
+    mgr
+    };
+
+fn rope_alloc(mgr: i64) -> i64 = {
+    let next_vec = vec_get(mgr, 5);
+    let n = vec_get(next_vec, 0);
+    vec_set(next_vec, 0, n + 1);
+    n
+    };
+
+// Create a leaf node for a "string" with given id and length
+fn rope_leaf(mgr: i64, sid: i64, slen: i64) -> i64 = {
+    let node = rope_alloc(mgr);
+    let weights = vec_get(mgr, 0);
+    let str_ids = vec_get(mgr, 3);
+    let str_lens = vec_get(mgr, 4);
+    vec_set(weights, node, slen);
+    vec_set(str_ids, node, sid);
+    vec_set(str_lens, node, slen);
+    node
+    };
+
+// Concatenate two rope nodes
+fn rope_concat(mgr: i64, left: i64, right: i64) -> i64 = {
+    let node = rope_alloc(mgr);
+    let weights = vec_get(mgr, 0);
+    let lefts = vec_get(mgr, 1);
+    let rights = vec_get(mgr, 2);
+    // Weight = total length of left subtree
+    let left_len = rope_length(mgr, left);
+    vec_set(weights, node, left_len);
+    vec_set(lefts, node, left);
+    vec_set(rights, node, right);
+    node
+    };
+
+// Check if node is a leaf
+fn rope_is_leaf(mgr: i64, node: i64) -> i64 = {
+    let lefts = vec_get(mgr, 1);
+    let left = vec_get(lefts, node);
+    if left == 0 - 1 { 1 } else { 0 }
+    };
+
+// Total length of rope
+fn rope_length(mgr: i64, node: i64) -> i64 = {
+    if node == 0 - 1 { return 0 } else { () };
+    let is_leaf = rope_is_leaf(mgr, node);
+    if is_leaf == 1 {
+        let str_lens = vec_get(mgr, 4);
+        vec_get(str_lens, node)
+    } else {
+        let lefts = vec_get(mgr, 1);
+        let rights = vec_get(mgr, 2);
+        rope_length(mgr, vec_get(lefts, node)) + rope_length(mgr, vec_get(rights, node))
+    }
+    };
+
+// Find which leaf contains position idx, return [str_id, offset_within_string]
+// Returns str_id * 1000 + local_offset (encoded as single i64)
+fn rope_char_at(mgr: i64, node: i64, idx: i64) -> i64 = {
+    if node == 0 - 1 { return 0 - 1 } else { () };
+    let is_leaf = rope_is_leaf(mgr, node);
+    if is_leaf == 1 {
+        let str_ids = vec_get(mgr, 3);
+        let sid = vec_get(str_ids, node);
+        sid * 1000 + idx
+    } else {
+        let weights = vec_get(mgr, 0);
+        let w = vec_get(weights, node);
+        let lefts = vec_get(mgr, 1);
+        let rights = vec_get(mgr, 2);
+        if idx < w {
+            rope_char_at(mgr, vec_get(lefts, node), idx)
+        } else {
+            rope_char_at(mgr, vec_get(rights, node), idx - w)
+        }
+    }
+    };
+
+// Count leaf nodes (number of string segments)
+fn rope_leaf_count(mgr: i64, node: i64) -> i64 = {
+    if node == 0 - 1 { return 0 } else { () };
+    let is_leaf = rope_is_leaf(mgr, node);
+    if is_leaf == 1 { 1 }
+    else {
+        let lefts = vec_get(mgr, 1);
+        let rights = vec_get(mgr, 2);
+        rope_leaf_count(mgr, vec_get(lefts, node)) + rope_leaf_count(mgr, vec_get(rights, node))
+    }
+    };
+
+// Depth of rope tree
+fn rope_depth(mgr: i64, node: i64) -> i64 = {
+    if node == 0 - 1 { return 0 } else { () };
+    let is_leaf = rope_is_leaf(mgr, node);
+    if is_leaf == 1 { 1 }
+    else {
+        let lefts = vec_get(mgr, 1);
+        let rights = vec_get(mgr, 2);
+        let ld = rope_depth(mgr, vec_get(lefts, node));
+        let rd = rope_depth(mgr, vec_get(rights, node));
+        let mx = if ld > rd { ld } else { rd };
+        1 + mx
+    }
+    };
+
+// Decode char_at result: extract string id
+fn decode_sid(encoded: i64) -> i64 = encoded / 1000;
+
+// Decode char_at result: extract local offset
+fn decode_off(encoded: i64) -> i64 = encoded - (encoded / 1000) * 1000;
+
+fn main() -> i64 = {
+    let mgr = rope_init();
+
+    // Create leaf nodes for "Hello" (id=0, len=5), " " (id=1, len=1), "World" (id=2, len=5)
+    let leaf0 = rope_leaf(mgr, 0, 5);   // "Hello"
+    let leaf1 = rope_leaf(mgr, 1, 1);   // " "
+    let leaf2 = rope_leaf(mgr, 2, 5);   // "World"
+
+    // Test leaf properties
+    let _p1 = println(rope_length(mgr, leaf0));     // 5
+    let _p2 = println(rope_is_leaf(mgr, leaf0));    // 1
+    let _p3 = println(rope_leaf_count(mgr, leaf0)); // 1
+
+    // Concat "Hello" + " " → "Hello "
+    let r1 = rope_concat(mgr, leaf0, leaf1);
+    let _p4 = println(rope_length(mgr, r1));     // 6
+    let _p5 = println(rope_is_leaf(mgr, r1));    // 0
+    let _p6 = println(rope_leaf_count(mgr, r1)); // 2
+    let _p7 = println(rope_depth(mgr, r1));      // 2
+
+    // Concat "Hello " + "World" → "Hello World"
+    let r2 = rope_concat(mgr, r1, leaf2);
+    let _p8 = println(rope_length(mgr, r2));     // 11
+    let _p9 = println(rope_leaf_count(mgr, r2)); // 3
+    let _p10 = println(rope_depth(mgr, r2));     // 3
+
+    // char_at tests on "Hello World" (len 11)
+    // Index 0 → in "Hello" (sid=0), offset 0
+    let c0 = rope_char_at(mgr, r2, 0);
+    let _p11 = println(decode_sid(c0));  // 0 (string "Hello")
+    let _p12 = println(decode_off(c0));  // 0
+
+    // Index 4 → in "Hello" (sid=0), offset 4
+    let c4 = rope_char_at(mgr, r2, 4);
+    let _p13 = println(decode_sid(c4));  // 0
+    let _p14 = println(decode_off(c4));  // 4
+
+    // Index 5 → in " " (sid=1), offset 0
+    let c5 = rope_char_at(mgr, r2, 5);
+    let _p15 = println(decode_sid(c5));  // 1
+    let _p16 = println(decode_off(c5));  // 0
+
+    // Index 6 → in "World" (sid=2), offset 0
+    let c6 = rope_char_at(mgr, r2, 6);
+    let _p17 = println(decode_sid(c6));  // 2
+    let _p18 = println(decode_off(c6));  // 0
+
+    // Index 10 → in "World" (sid=2), offset 4
+    let c10 = rope_char_at(mgr, r2, 10);
+    let _p19 = println(decode_sid(c10)); // 2
+    let _p20 = println(decode_off(c10)); // 4
+
+    // Build a longer rope: "foo" + "bar" + "baz" + "qux"
+    let la = rope_leaf(mgr, 3, 3);  // "foo"
+    let lb = rope_leaf(mgr, 4, 3);  // "bar"
+    let lc = rope_leaf(mgr, 5, 3);  // "baz"
+    let ld = rope_leaf(mgr, 6, 3);  // "qux"
+    let ab = rope_concat(mgr, la, lb);
+    let cd = rope_concat(mgr, lc, ld);
+    let abcd = rope_concat(mgr, ab, cd);
+    let _p21 = println(rope_length(mgr, abcd));     // 12
+    let _p22 = println(rope_leaf_count(mgr, abcd)); // 4
+    let _p23 = println(rope_depth(mgr, abcd));       // 3 (balanced)
+
+    // char_at on "foobarbazqux"
+    // Index 0 → "foo" (sid=3, off=0)
+    let ca0 = rope_char_at(mgr, abcd, 0);
+    let _p24 = println(decode_sid(ca0));  // 3
+
+    // Index 3 → "bar" (sid=4, off=0)
+    let ca3 = rope_char_at(mgr, abcd, 3);
+    let _p25 = println(decode_sid(ca3));  // 4
+
+    // Index 6 → "baz" (sid=5, off=0)
+    let ca6 = rope_char_at(mgr, abcd, 6);
+    let _p26 = println(decode_sid(ca6));  // 5
+
+    // Index 9 → "qux" (sid=6, off=0)
+    let ca9 = rope_char_at(mgr, abcd, 9);
+    let _p27 = println(decode_sid(ca9));  // 6
+
+    // Index 11 → "qux" (sid=6, off=2)
+    let ca11 = rope_char_at(mgr, abcd, 11);
+    let _p28 = println(decode_sid(ca11)); // 6
+    let _p29 = println(decode_off(ca11)); // 2
+
+    // Total nodes allocated
+    let next_vec = vec_get(mgr, 5);
+    let _p30 = println(vec_get(next_vec, 0));  // 12 (7 leaves + 5 internal)
+
+    0
+    };

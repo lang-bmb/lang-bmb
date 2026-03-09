@@ -1,0 +1,42 @@
+// Golden Test: Pure expression select — binop/unary branches generate select
+// v0.95: Extended select to handle pure expressions (not just simple leaves)
+// Both branches are evaluated but safe since they have no side effects
+
+fn cond_add(x: i64, flag: bool) -> i64 =
+    if flag { x + 10 } else { x - 5 };
+
+fn cond_mul(a: i64, b: i64) -> i64 =
+    if a > b { a * 2 } else { b * 3 };
+
+fn abs_diff(x: i64, y: i64) -> i64 =
+    if x > y { x - y } else { y - x };
+
+fn neg_or_double(x: i64) -> i64 =
+    if x > 0 { 0 - x } else { x + x };
+
+fn main() -> i64 = {
+    let r1 = cond_add(100, true);
+    let _p1 = println(r1);
+
+    let r2 = cond_add(100, false);
+    let _p2 = println(r2);
+
+    let r3 = cond_mul(5, 3);
+    let _p3 = println(r3);
+
+    let r4 = cond_mul(3, 5);
+    let _p4 = println(r4);
+
+    let r5 = abs_diff(10, 7);
+    let _p5 = println(r5);
+
+    let r6 = abs_diff(7, 10);
+    let _p6 = println(r6);
+
+    let r7 = neg_or_double(5);
+    let _p7 = println(r7);
+
+    let r8 = neg_or_double(0 - 3);
+    let _p8 = println(r8);
+    0
+    };

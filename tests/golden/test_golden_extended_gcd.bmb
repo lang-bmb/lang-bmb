@@ -1,0 +1,107 @@
+// Golden Test: Extended GCD (Bezout's Identity)
+// Find x, y such that a*x + b*y = gcd(a, b)
+// Uses iterative extended Euclidean algorithm
+// Returns gcd; x and y are computed via output parameters (vec trick)
+
+fn gcd(a: i64, b: i64) -> i64 = {
+    let mut aa = a;
+    let mut bb = b;
+    loop {
+        if bb == 0 { break } else { () };
+        let temp = bb;
+        set bb = aa % bb;
+        set aa = temp
+    };
+    aa
+};
+
+// Extended GCD: returns vec [gcd, x, y] where a*x + b*y = gcd
+fn ext_gcd(a: i64, b: i64) -> i64 = {
+    let mut old_r = a;
+    let mut r = b;
+    let mut old_s = 1;
+    let mut s = 0;
+    let mut old_t = 0;
+    let mut t = 1;
+    loop {
+        if r == 0 { break } else { () };
+        let q = old_r / r;
+        // Update r
+        let temp_r = r;
+        set r = old_r - q * r;
+        set old_r = temp_r;
+        // Update s (coefficient for a)
+        let temp_s = s;
+        set s = old_s - q * s;
+        set old_s = temp_s;
+        // Update t (coefficient for b)
+        let temp_t = t;
+        set t = old_t - q * t;
+        set old_t = temp_t
+    };
+    // old_r = gcd, old_s = x, old_t = y
+    let result = vec_new();
+    let _p = vec_push(result, old_r);
+    let _p = vec_push(result, old_s);
+    let _p = vec_push(result, old_t);
+    result
+};
+
+// Verify Bezout's identity: a*x + b*y = gcd
+fn verify_bezout(a: i64, b: i64) -> i64 = {
+    let res = ext_gcd(a, b);
+    let g = vec_get(res, 0);
+    let x = vec_get(res, 1);
+    let y = vec_get(res, 2);
+    let check = a * x + b * y;
+    let _f = vec_free(res);
+    if check == g { 1 } else { 0 }
+};
+
+// Solve linear Diophantine equation a*x + b*y = c
+// Returns 1 if solution exists, 0 otherwise
+// Solution exists iff gcd(a,b) divides c
+fn has_solution(a: i64, b: i64, c: i64) -> i64 = {
+    let g = gcd(a, b);
+    if c % g == 0 { 1 } else { 0 }
+};
+
+// LCM using gcd: lcm(a,b) = a * b / gcd(a,b)
+fn lcm(a: i64, b: i64) -> i64 = {
+    let g = gcd(a, b);
+    a / g * b
+};
+
+fn main() -> i64 = {
+    // Test 1: ext_gcd(35, 15) => gcd=5, 35*x + 15*y = 5
+    let r1 = ext_gcd(35, 15);
+    let _p1 = println(vec_get(r1, 0));  // gcd = 5
+
+    // Test 2: ext_gcd(240, 46) => gcd=2
+    let r2 = ext_gcd(240, 46);
+    let _p2 = println(vec_get(r2, 0));  // gcd = 2
+
+    // Test 3: Verify Bezout for several pairs
+    let _p3 = println(verify_bezout(35, 15));    // 1
+    let _p4 = println(verify_bezout(240, 46));   // 1
+    let _p5 = println(verify_bezout(99, 78));    // 1
+    let _p6 = println(verify_bezout(100, 37));   // 1
+
+    // Test 4: ext_gcd(99, 78) => gcd=3
+    let r3 = ext_gcd(99, 78);
+    let _p7 = println(vec_get(r3, 0));  // gcd = 3
+
+    // Test 5: Diophantine solvability
+    let _p8 = println(has_solution(6, 9, 12));   // 1 (gcd=3, 3|12)
+    let _p9 = println(has_solution(6, 9, 7));    // 0 (gcd=3, 3 does not divide 7)
+
+    // Test 6: LCM
+    let _p10 = println(lcm(12, 18));   // 36
+    let _p11 = println(lcm(7, 5));     // 35
+
+    // Cleanup
+    let _f = vec_free(r1);
+    let _f = vec_free(r2);
+    let _f = vec_free(r3);
+    0
+};

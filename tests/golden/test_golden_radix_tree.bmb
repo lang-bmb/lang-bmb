@@ -1,0 +1,227 @@
+// Golden Test: Radix/prefix tree operations with integer keys
+// Trie where each node has 10 children (digits 0-9)
+// Keys are non-negative integers; digits extracted right-to-left
+// Node layout in flat vec: each node uses 12 slots
+//   [0..9] = child node indices (-1 = no child)
+//   [10]   = is_end (1 if a key ends here, 0 otherwise)
+//   [11]   = value stored at this node (-1 if none)
+
+// Constants
+fn node_size() -> i64 = 12;
+fn no_child() -> i64 = 0 - 1;
+
+// Create a new trie with just the root node
+fn trie_new() -> i64 = {
+    let v = vec_new();
+    // Initialize root node: 10 children = -1, is_end=0, value=-1
+    for _i in 0..10 { vec_push(v, 0 - 1) };
+    vec_push(v, 0);
+    vec_push(v, 0 - 1);
+    v
+    };
+
+// Get number of nodes in trie
+fn trie_node_count(trie: i64) -> i64 =
+    vec_len(trie) / node_size();
+
+// Add a new node to trie, return its index
+fn trie_add_node(trie: i64) -> i64 = {
+    let idx = trie_node_count(trie);
+    for _i in 0..10 { vec_push(trie, 0 - 1) };
+    vec_push(trie, 0);
+    vec_push(trie, 0 - 1);
+    idx
+    };
+
+// Get child index for digit d at node_idx
+fn trie_child(trie: i64, node_idx: i64, d: i64) -> i64 =
+    vec_get(trie, node_idx * node_size() + d);
+
+// Set child index for digit d at node_idx
+fn trie_set_child(trie: i64, node_idx: i64, d: i64, child: i64) -> i64 = {
+    let _s = vec_set(trie, node_idx * node_size() + d, child);
+    0
+    };
+
+// Get/set is_end flag
+fn trie_is_end(trie: i64, node_idx: i64) -> i64 =
+    vec_get(trie, node_idx * node_size() + 10);
+
+fn trie_set_end(trie: i64, node_idx: i64, val: i64) -> i64 = {
+    let _s = vec_set(trie, node_idx * node_size() + 10, val);
+    0
+    };
+
+// Get/set stored value
+fn trie_value(trie: i64, node_idx: i64) -> i64 =
+    vec_get(trie, node_idx * node_size() + 11);
+
+fn trie_set_value(trie: i64, node_idx: i64, val: i64) -> i64 = {
+    let _s = vec_set(trie, node_idx * node_size() + 11, val);
+    0
+    };
+
+// Extract digits of a number into a vec (most-significant first)
+// 0 -> [0], 123 -> [1,2,3], 4567 -> [4,5,6,7]
+fn extract_digits(n: i64) -> i64 = {
+    let digits = vec_new();
+    if n == 0 {
+        vec_push(digits, 0);
+        digits
+    } else {
+        // Extract digits in reverse
+        let mut x = n;
+        loop {
+            if x == 0 { break } else { () };
+            vec_push(digits, x - (x / 10) * 10);
+            x = x / 10
+        };
+        // Reverse the vec in-place
+        let len = vec_len(digits);
+        let mut lo = 0;
+        let mut hi = len - 1;
+        loop {
+            if lo >= hi { break } else { () };
+            let tmp = vec_get(digits, lo);
+            vec_set(digits, lo, vec_get(digits, hi));
+            vec_set(digits, hi, tmp);
+            lo = lo + 1;
+            hi = hi - 1
+        };
+        digits
+    }
+    };
+
+// Insert key with value into trie
+fn trie_insert(trie: i64, key: i64, value: i64) -> i64 = {
+    let digits = extract_digits(key);
+    let len = vec_len(digits);
+    let mut node = 0;
+    for i in 0..len {
+        let d = vec_get(digits, i);
+        let child = trie_child(trie, node, d);
+        if child < 0 {
+            let new_node = trie_add_node(trie);
+            trie_set_child(trie, node, d, new_node);
+            node = new_node
+        } else {
+            node = child
+        }
+    };
+    trie_set_end(trie, node, 1);
+    trie_set_value(trie, node, value);
+    vec_free(digits);
+    0
+    };
+
+// Search for key in trie, return value or -1 if not found
+fn trie_search(trie: i64, key: i64) -> i64 = {
+    let digits = extract_digits(key);
+    let len = vec_len(digits);
+    let mut node = 0;
+    let mut found = 1;
+    for i in 0..len {
+        let d = vec_get(digits, i);
+        let child = trie_child(trie, node, d);
+        if child < 0 {
+            found = 0;
+            node = 0  // stop traversal
+        } else {
+            if found == 1 { node = child } else { () }
+        }
+    };
+    vec_free(digits);
+    if found == 1 and trie_is_end(trie, node) == 1 {
+        trie_value(trie, node)
+    } else {
+        0 - 1
+    }
+    };
+
+// Check if any key with given prefix exists
+fn trie_has_prefix(trie: i64, prefix: i64) -> i64 = {
+    let digits = extract_digits(prefix);
+    let len = vec_len(digits);
+    let mut node = 0;
+    let mut found = 1;
+    for i in 0..len {
+        let d = vec_get(digits, i);
+        let child = trie_child(trie, node, d);
+        if child < 0 {
+            found = 0;
+            node = 0
+        } else {
+            if found == 1 { node = child } else { () }
+        }
+    };
+    vec_free(digits);
+    found
+    };
+
+// Count how many end-nodes exist under a given node (recursive via loop + stack)
+fn trie_count_keys(trie: i64) -> i64 = {
+    let total_nodes = trie_node_count(trie);
+    let mut count = 0;
+    for i in 0..total_nodes {
+        if trie_is_end(trie, i) == 1 {
+            count = count + 1
+        } else { () }
+    };
+    count
+    };
+
+fn main() -> i64 = {
+    let t = trie_new();
+
+    // Insert some keys with values
+    trie_insert(t, 42, 100);
+    trie_insert(t, 420, 200);
+    trie_insert(t, 421, 201);
+    trie_insert(t, 7, 700);
+    trie_insert(t, 0, 999);
+    trie_insert(t, 123, 300);
+    trie_insert(t, 1234, 400);
+
+    // Search for existing keys
+    let _p1 = println(trie_search(t, 42));     // 100
+    let _p2 = println(trie_search(t, 420));    // 200
+    let _p3 = println(trie_search(t, 421));    // 201
+    let _p4 = println(trie_search(t, 7));      // 700
+    let _p5 = println(trie_search(t, 0));      // 999
+    let _p6 = println(trie_search(t, 123));    // 300
+    let _p7 = println(trie_search(t, 1234));   // 400
+
+    // Search for non-existing keys
+    let _p8 = println(trie_search(t, 43));     // -1
+    let _p9 = println(trie_search(t, 4));      // -1
+    let _p10 = println(trie_search(t, 12));    // -1
+    let _p11 = println(trie_search(t, 999));   // -1
+
+    // Prefix checks
+    let _p12 = println(trie_has_prefix(t, 4));    // 1 (42, 420, 421 exist)
+    let _p13 = println(trie_has_prefix(t, 42));   // 1
+    let _p14 = println(trie_has_prefix(t, 12));   // 1 (123, 1234 exist)
+    let _p15 = println(trie_has_prefix(t, 5));    // 0 (no keys start with 5)
+    let _p16 = println(trie_has_prefix(t, 99));   // 0
+
+    // Total number of keys
+    let _p17 = println(trie_count_keys(t));    // 7
+
+    // Overwrite a value
+    trie_insert(t, 42, 111);
+    let _p18 = println(trie_search(t, 42));    // 111
+
+    // Count unchanged (same key overwritten)
+    let _p19 = println(trie_count_keys(t));    // 7
+
+    // Insert new key and verify count
+    trie_insert(t, 55, 550);
+    let _p20 = println(trie_count_keys(t));    // 8
+    let _p21 = println(trie_search(t, 55));    // 550
+
+    // Node count check (root + internal + leaf nodes)
+    let _p22 = println(trie_node_count(t));
+
+    vec_free(t);
+    0
+    };

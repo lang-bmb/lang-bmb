@@ -1,0 +1,120 @@
+// Golden Test: Heap sort on small arrays
+// Build max-heap then extract elements
+
+fn swap(arr: i64, i: i64, j: i64) -> i64 = {
+    let tmp = vec_get(arr, i);
+    vec_set(arr, i, vec_get(arr, j));
+    vec_set(arr, j, tmp);
+    0
+};
+
+// Sift down element at index i in heap of size n
+fn sift_down(arr: i64, i: i64, n: i64) -> i64 = {
+    let mut pos = i;
+    loop {
+        let left = 2 * pos + 1;
+        let right = 2 * pos + 2;
+        let mut largest = pos;
+        if left < n {
+            if vec_get(arr, left) > vec_get(arr, largest) {
+                largest = left
+            } else { () }
+        } else { () };
+        if right < n {
+            if vec_get(arr, right) > vec_get(arr, largest) {
+                largest = right
+            } else { () }
+        } else { () };
+        if largest != pos {
+            let _s = swap(arr, pos, largest);
+            pos = largest
+        } else {
+            break
+        }
+    };
+    0
+};
+
+fn heap_sort(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    // Build max-heap (start from last non-leaf)
+    let mut i = n / 2 - 1;
+    loop {
+        if i < 0 { break } else { () };
+        let _s = sift_down(arr, i, n);
+        i = i - 1
+    };
+    // Extract elements
+    let mut size = n - 1;
+    loop {
+        if size <= 0 { break } else { () };
+        let _s = swap(arr, 0, size);
+        let _d = sift_down(arr, 0, size);
+        size = size - 1
+    };
+    0
+};
+
+fn print_vec(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let _p = println(vec_get(arr, i));
+        i = i + 1
+    };
+    0
+};
+
+fn main() -> i64 = {
+    // Test 1: Sort [5, 3, 8, 1, 9, 2]
+    let a1 = vec_new();
+    vec_push(a1, 5); vec_push(a1, 3); vec_push(a1, 8);
+    vec_push(a1, 1); vec_push(a1, 9); vec_push(a1, 2);
+    let _s1 = heap_sort(a1);
+    let _p1 = println(vec_get(a1, 0));  // 1
+    let _p2 = println(vec_get(a1, 2));  // 3
+    let _p3 = println(vec_get(a1, 5));  // 9
+
+    // Test 2: Already sorted [1, 2, 3, 4, 5]
+    let a2 = vec_new();
+    vec_push(a2, 1); vec_push(a2, 2); vec_push(a2, 3);
+    vec_push(a2, 4); vec_push(a2, 5);
+    let _s2 = heap_sort(a2);
+    let _p4 = println(vec_get(a2, 0));  // 1
+    let _p5 = println(vec_get(a2, 4));  // 5
+
+    // Test 3: Reverse sorted [5, 4, 3, 2, 1]
+    let a3 = vec_new();
+    vec_push(a3, 5); vec_push(a3, 4); vec_push(a3, 3);
+    vec_push(a3, 2); vec_push(a3, 1);
+    let _s3 = heap_sort(a3);
+    let _p6 = println(vec_get(a3, 0));  // 1
+    let _p7 = println(vec_get(a3, 4));  // 5
+
+    // Test 4: All same [7, 7, 7, 7]
+    let a4 = vec_new();
+    vec_push(a4, 7); vec_push(a4, 7); vec_push(a4, 7); vec_push(a4, 7);
+    let _s4 = heap_sort(a4);
+    let _p8 = println(vec_get(a4, 0));  // 7
+    let _p9 = println(vec_get(a4, 3));  // 7
+
+    // Test 5: Two elements [10, 3]
+    let a5 = vec_new();
+    vec_push(a5, 10); vec_push(a5, 3);
+    let _s5 = heap_sort(a5);
+    let _p10 = println(vec_get(a5, 0));  // 3
+    let _p11 = println(vec_get(a5, 1));  // 10
+
+    // Test 6: Sum check after sort [9, 1, 5, 3, 7]
+    let a6 = vec_new();
+    vec_push(a6, 9); vec_push(a6, 1); vec_push(a6, 5);
+    vec_push(a6, 3); vec_push(a6, 7);
+    let _s6 = heap_sort(a6);
+    let sum = vec_get(a6, 0) + vec_get(a6, 1) + vec_get(a6, 2) + vec_get(a6, 3) + vec_get(a6, 4);
+    let _p12 = println(sum);  // 25
+
+    vec_free(a1); vec_free(a2); vec_free(a3);
+    vec_free(a4); vec_free(a5); vec_free(a6);
+    0
+};

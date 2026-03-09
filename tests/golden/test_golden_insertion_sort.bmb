@@ -1,0 +1,68 @@
+// Golden Test: Insertion Sort
+// Simple O(n^2) stable sort
+
+fn insertion_sort(arr: i64, n: i64) -> () = {
+    let mut i = 1;
+    while i < n {
+        let key = vec_get(arr, i);
+        let mut j = i - 1;
+        let mut done = 0;
+        while j >= 0 and done == 0 {
+            let _x = if vec_get(arr, j) > key {
+                vec_set(arr, j + 1, vec_get(arr, j));
+                set j = j - 1;
+                0
+            } else {
+                set done = 1;
+                0
+            }
+        };
+        vec_set(arr, j + 1, key);
+        set i = i + 1
+    }
+};
+
+fn print_arr(arr: i64, n: i64) -> () = {
+    let mut i = 0;
+    while i < n {
+        let _sp = if i > 0 { print_str(" "); 0 } else { 0 };
+        print(vec_get(arr, i));
+        set i = i + 1
+    };
+    let _nl = print_str("
+")
+};
+
+fn main() -> () = {
+    let a1 = vec_new();
+    let _p = vec_push(a1, 12); let _p = vec_push(a1, 11);
+    let _p = vec_push(a1, 13); let _p = vec_push(a1, 5);
+    let _p = vec_push(a1, 6);
+    insertion_sort(a1, 5);
+    print_str("sorted1: "); print_arr(a1, 5);
+
+    let a2 = vec_new();
+    let _p = vec_push(a2, 1); let _p = vec_push(a2, 2);
+    let _p = vec_push(a2, 3); let _p = vec_push(a2, 4);
+    insertion_sort(a2, 4);
+    print_str("sorted2: "); print_arr(a2, 4);
+
+    let a3 = vec_new();
+    let _p = vec_push(a3, 9); let _p = vec_push(a3, 7);
+    let _p = vec_push(a3, 5); let _p = vec_push(a3, 3);
+    let _p = vec_push(a3, 1);
+    insertion_sort(a3, 5);
+    print_str("sorted3: "); print_arr(a3, 5);
+
+    let a4 = vec_new();
+    let _p = vec_push(a4, 42);
+    insertion_sort(a4, 1);
+    print_str("sorted4: "); print_arr(a4, 1);
+
+    let a5 = vec_new();
+    let _p = vec_push(a5, 3); let _p = vec_push(a5, 1);
+    let _p = vec_push(a5, 3); let _p = vec_push(a5, 1);
+    let _p = vec_push(a5, 2); let _p = vec_push(a5, 2);
+    insertion_sort(a5, 6);
+    print_str("sorted5: "); print_arr(a5, 6)
+};

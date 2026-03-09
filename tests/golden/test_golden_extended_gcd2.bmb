@@ -1,0 +1,246 @@
+// Golden Test: Extended Euclidean Algorithm with Bezout coefficients
+// Includes modular inverse, Chinese Remainder Theorem, and Diophantine solver
+
+// Basic GCD
+fn gcd(a: i64, b: i64) -> i64 = {
+    let mut aa = a;
+    let mut bb = b;
+    loop {
+        if bb == 0 { break } else { () };
+        let temp = bb;
+        set bb = aa % bb;
+        set aa = temp
+    };
+    aa
+};
+
+// Absolute value
+fn abs_val(x: i64) -> i64 =
+    if x < 0 { 0 - x } else { x };
+
+// Extended GCD: returns vec [gcd, x, y] where a*x + b*y = gcd(a,b)
+// Handles negative inputs by working with absolute values
+fn ext_gcd(a: i64, b: i64) -> i64 = {
+    let mut old_r = abs_val(a);
+    let mut r = abs_val(b);
+    let mut old_s = 1;
+    let mut s = 0;
+    let mut old_t = 0;
+    let mut t = 1;
+    loop {
+        if r == 0 { break } else { () };
+        let q = old_r / r;
+        let temp_r = r;
+        set r = old_r - q * r;
+        set old_r = temp_r;
+        let temp_s = s;
+        set s = old_s - q * s;
+        set old_s = temp_s;
+        let temp_t = t;
+        set t = old_t - q * t;
+        set old_t = temp_t
+    };
+    // Adjust signs for negative inputs
+    let sx = if a < 0 { 0 - old_s } else { old_s };
+    let sy = if b < 0 { 0 - old_t } else { old_t };
+    let result = vec_new();
+    let _p = vec_push(result, old_r);
+    let _p = vec_push(result, sx);
+    let _p = vec_push(result, sy);
+    result
+};
+
+// Verify Bezout identity: a*x + b*y == gcd
+fn verify_bezout(a: i64, b: i64) -> i64 = {
+    let res = ext_gcd(a, b);
+    let g = vec_get(res, 0);
+    let x = vec_get(res, 1);
+    let y = vec_get(res, 2);
+    let check = a * x + b * y;
+    let _f = vec_free(res);
+    if check == g { 1 } else { 0 }
+};
+
+// Modular inverse: find x such that a*x ≡ 1 (mod m)
+// Returns -1 if no inverse exists (gcd(a,m) != 1)
+fn mod_inverse(a: i64, m: i64) -> i64 = {
+    let res = ext_gcd(a, m);
+    let g = vec_get(res, 0);
+    let x = vec_get(res, 1);
+    let _f = vec_free(res);
+    if g != 1 { 0 - 1 }
+    else {
+        // Normalize to positive
+        let r = x % m;
+        if r < 0 { r + m } else { r }
+    }
+};
+
+// Solve system: x ≡ a1 (mod m1), x ≡ a2 (mod m2)
+// Returns vec [x, lcm(m1,m2)] or vec [-1, 0] if no solution
+// Requires gcd(m1,m2) | (a2 - a1)
+fn crt2(a1: i64, m1: i64, a2: i64, m2: i64) -> i64 = {
+    let g = gcd(m1, m2);
+    let result = vec_new();
+    let diff = a2 - a1;
+    let _c = if diff % g != 0 {
+        // No solution
+        let _p = vec_push(result, 0 - 1);
+        let _p = vec_push(result, 0);
+        ()
+    } else {
+        let lcm = m1 / g * m2;
+        // Find t such that m1 * t ≡ (a2 - a1) / g (mod m2 / g)
+        let m2g = m2 / g;
+        let m1g = m1 / g;
+        let diffg = diff / g;
+        let inv = mod_inverse(m1g, m2g);
+        let t_val = inv * diffg % m2g;
+        let t_pos = if t_val < 0 { t_val + m2g } else { t_val };
+        let x = a1 + m1 * t_pos;
+        let x_mod = x % lcm;
+        let x_final = if x_mod < 0 { x_mod + lcm } else { x_mod };
+        let _p = vec_push(result, x_final);
+        let _p = vec_push(result, lcm);
+        ()
+    };
+    result
+};
+
+// Solve linear Diophantine equation: a*x + b*y = c
+// Returns vec [x0, y0, g] where x0,y0 is one particular solution
+// Returns vec [-1, -1, 0] if no solution
+fn diophantine(a: i64, b: i64, c: i64) -> i64 = {
+    let res = ext_gcd(a, b);
+    let g = vec_get(res, 0);
+    let x0 = vec_get(res, 1);
+    let y0 = vec_get(res, 2);
+    let _f = vec_free(res);
+    let result = vec_new();
+    let _c = if c % g != 0 {
+        let _p = vec_push(result, 0 - 1);
+        let _p = vec_push(result, 0 - 1);
+        let _p = vec_push(result, 0);
+        ()
+    } else {
+        let scale = c / g;
+        let _p = vec_push(result, x0 * scale);
+        let _p = vec_push(result, y0 * scale);
+        let _p = vec_push(result, g);
+        ()
+    };
+    result
+};
+
+fn main() -> i64 = {
+    // === Test 1: Extended GCD basic cases ===
+    let _p = println_str("=== Test 1: ext_gcd ===");
+    let r1 = ext_gcd(56, 15);
+    // gcd(56,15) = 1
+    let _p = print_str("gcd(56,15): ");
+    let _p = println(vec_get(r1, 0));
+    // Verify: 56*x + 15*y = 1
+    let _p = print_str("verify: ");
+    let _p = println(56 * vec_get(r1, 1) + 15 * vec_get(r1, 2));
+    let _f = vec_free(r1);
+
+    let r2 = ext_gcd(120, 45);
+    // gcd(120,45) = 15
+    let _p = print_str("gcd(120,45): ");
+    let _p = println(vec_get(r2, 0));
+    let _p = print_str("verify: ");
+    let _p = println(120 * vec_get(r2, 1) + 45 * vec_get(r2, 2));
+    let _f = vec_free(r2);
+
+    // === Test 2: Bezout verification ===
+    let _p = println_str("=== Test 2: bezout verify ===");
+    let _p = println(verify_bezout(35, 15));
+    let _p = println(verify_bezout(240, 46));
+    let _p = println(verify_bezout(17, 13));
+    let _p = println(verify_bezout(100, 37));
+    let _p = println(verify_bezout(1, 1));
+
+    // === Test 3: Modular inverse ===
+    let _p = println_str("=== Test 3: mod_inverse ===");
+    // 3 * x ≡ 1 (mod 7) → x = 5 (3*5=15≡1)
+    let _p = print_str("inv(3,7): ");
+    let _p = println(mod_inverse(3, 7));
+    // 5 * x ≡ 1 (mod 11) → x = 9 (5*9=45≡1)
+    let _p = print_str("inv(5,11): ");
+    let _p = println(mod_inverse(5, 11));
+    // 7 * x ≡ 1 (mod 13) → x = 2 (7*2=14≡1)
+    let _p = print_str("inv(7,13): ");
+    let _p = println(mod_inverse(7, 13));
+    // No inverse: gcd(6,9) = 3 ≠ 1
+    let _p = print_str("inv(6,9): ");
+    let _p = println(mod_inverse(6, 9));
+
+    // === Test 4: Chinese Remainder Theorem ===
+    let _p = println_str("=== Test 4: CRT ===");
+    // x ≡ 2 (mod 3), x ≡ 3 (mod 5) → x = 8 (mod 15)
+    let cr1 = crt2(2, 3, 3, 5);
+    let _p = print_str("x: ");
+    let _p = println(vec_get(cr1, 0));
+    let _p = print_str("mod: ");
+    let _p = println(vec_get(cr1, 1));
+    let _f = vec_free(cr1);
+
+    // x ≡ 1 (mod 4), x ≡ 2 (mod 3) → x = 5 (mod 12)
+    let cr2 = crt2(1, 4, 2, 3);
+    let _p = print_str("x: ");
+    let _p = println(vec_get(cr2, 0));
+    let _p = print_str("mod: ");
+    let _p = println(vec_get(cr2, 1));
+    let _f = vec_free(cr2);
+
+    // x ≡ 3 (mod 5), x ≡ 1 (mod 7) → x = 8 (mod 35)
+    let cr3 = crt2(3, 5, 1, 7);
+    let _p = print_str("x: ");
+    let _p = println(vec_get(cr3, 0));
+    let _p = print_str("mod: ");
+    let _p = println(vec_get(cr3, 1));
+    let _f = vec_free(cr3);
+
+    // === Test 5: Diophantine equation ===
+    let _p = println_str("=== Test 5: diophantine ===");
+    // 6x + 9y = 12 → g=3, 3|12 so solvable
+    let d1 = diophantine(6, 9, 12);
+    let _p = print_str("g: ");
+    let _p = println(vec_get(d1, 2));
+    // Verify solution: 6*x0 + 9*y0 = 12
+    let _p = print_str("check: ");
+    let _p = println(6 * vec_get(d1, 0) + 9 * vec_get(d1, 1));
+    let _f = vec_free(d1);
+
+    // 6x + 9y = 7 → g=3, 3 does not divide 7, no solution
+    let d2 = diophantine(6, 9, 7);
+    let _p = print_str("no_sol g: ");
+    let _p = println(vec_get(d2, 2));
+    let _f = vec_free(d2);
+
+    // 14x + 21y = 35 → g=7, solvable
+    let d3 = diophantine(14, 21, 35);
+    let _p = print_str("g: ");
+    let _p = println(vec_get(d3, 2));
+    let _p = print_str("check: ");
+    let _p = println(14 * vec_get(d3, 0) + 21 * vec_get(d3, 1));
+    let _f = vec_free(d3);
+
+    // === Test 6: Edge cases ===
+    let _p = println_str("=== Test 6: edge cases ===");
+    // ext_gcd with negative input
+    let rn = ext_gcd(0 - 35, 15);
+    let _p = print_str("gcd(-35,15): ");
+    let _p = println(vec_get(rn, 0));
+    let _p = print_str("verify: ");
+    let _p = println((0 - 35) * vec_get(rn, 1) + 15 * vec_get(rn, 2));
+    let _f = vec_free(rn);
+
+    // gcd(0, n) = n
+    let rz = ext_gcd(0, 17);
+    let _p = print_str("gcd(0,17): ");
+    let _p = println(vec_get(rz, 0));
+    let _f = vec_free(rz);
+
+    0
+};

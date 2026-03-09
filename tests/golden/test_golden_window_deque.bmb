@@ -1,0 +1,241 @@
+// Golden Test: Deque-based sliding window algorithms
+// Monotonic deque for O(n) sliding window min/max
+// Also: sliding window product and window count-above-threshold
+
+fn imax(a: i64, b: i64) -> i64 =
+    if a > b { a } else { b };
+
+fn imin(a: i64, b: i64) -> i64 =
+    if a < b { a } else { b };
+
+// Deque implemented as circular buffer with head/tail pointers
+// deque[0] = head, deque[1] = tail, deque[2..] = data
+// head points to first element, tail points past last element
+fn deque_new(cap: i64) -> i64 = {
+    let d = vec_new();
+    vec_push(d, 0);  // head
+    vec_push(d, 0);  // tail
+    for _i in 0..cap {
+        vec_push(d, 0)
+    };
+    d
+    };
+
+fn deque_size(d: i64) -> i64 = {
+    let h = vec_get(d, 0);
+    let t = vec_get(d, 1);
+    let cap = vec_len(d) - 2;
+    let diff = t - h;
+    if diff < 0 { diff + cap } else { diff }
+    };
+
+fn deque_empty(d: i64) -> i64 =
+    if deque_size(d) == 0 { 1 } else { 0 };
+
+fn deque_push_back(d: i64, val: i64) -> i64 = {
+    let t = vec_get(d, 1);
+    let cap = vec_len(d) - 2;
+    vec_set(d, t + 2, val);
+    let new_t = t + 1;
+    let wrapped_t = if new_t >= cap { new_t - cap } else { new_t };
+    vec_set(d, 1, wrapped_t);
+    0
+    };
+
+fn deque_pop_back(d: i64) -> i64 = {
+    let t = vec_get(d, 1);
+    let cap = vec_len(d) - 2;
+    let new_t = if t == 0 { cap - 1 } else { t - 1 };
+    vec_set(d, 1, new_t);
+    vec_get(d, new_t + 2)
+    };
+
+fn deque_pop_front(d: i64) -> i64 = {
+    let h = vec_get(d, 0);
+    let cap = vec_len(d) - 2;
+    let val = vec_get(d, h + 2);
+    let new_h = h + 1;
+    let wrapped_h = if new_h >= cap { new_h - cap } else { new_h };
+    vec_set(d, 0, wrapped_h);
+    val
+    };
+
+fn deque_front(d: i64) -> i64 = {
+    let h = vec_get(d, 0);
+    vec_get(d, h + 2)
+    };
+
+fn deque_back(d: i64) -> i64 = {
+    let t = vec_get(d, 1);
+    let cap = vec_len(d) - 2;
+    let idx = if t == 0 { cap - 1 } else { t - 1 };
+    vec_get(d, idx + 2)
+    };
+
+fn deque_clear(d: i64) -> i64 = {
+    vec_set(d, 0, 0);
+    vec_set(d, 1, 0);
+    0
+    };
+
+// Sliding window maximum using monotonic deque
+// Stores indices in deque, maintains decreasing order of values
+// Returns vec of max values for each window of size k
+fn sliding_max(arr: i64, k: i64) -> i64 = {
+    let n = vec_len(arr);
+    let result = vec_new();
+    let dq = deque_new(n + 2);
+    for i in 0..n {
+        // Remove elements outside window
+        loop {
+            if deque_empty(dq) == 1 { break } else { () };
+            if deque_front(dq) <= i - k {
+                let _pop = deque_pop_front(dq);
+                0
+            } else { break }
+        };
+        // Remove smaller elements from back
+        loop {
+            if deque_empty(dq) == 1 { break } else { () };
+            if vec_get(arr, deque_back(dq)) <= vec_get(arr, i) {
+                let _pop = deque_pop_back(dq);
+                0
+            } else { break }
+        };
+        deque_push_back(dq, i);
+        if i >= k - 1 {
+            vec_push(result, vec_get(arr, deque_front(dq)))
+        } else { () }
+    };
+    vec_free(dq);
+    result
+    };
+
+// Sliding window minimum using monotonic deque
+// Stores indices in deque, maintains increasing order of values
+fn sliding_min(arr: i64, k: i64) -> i64 = {
+    let n = vec_len(arr);
+    let result = vec_new();
+    let dq = deque_new(n + 2);
+    for i in 0..n {
+        // Remove elements outside window
+        loop {
+            if deque_empty(dq) == 1 { break } else { () };
+            if deque_front(dq) <= i - k {
+                let _pop = deque_pop_front(dq);
+                0
+            } else { break }
+        };
+        // Remove larger elements from back
+        loop {
+            if deque_empty(dq) == 1 { break } else { () };
+            if vec_get(arr, deque_back(dq)) >= vec_get(arr, i) {
+                let _pop = deque_pop_back(dq);
+                0
+            } else { break }
+        };
+        deque_push_back(dq, i);
+        if i >= k - 1 {
+            vec_push(result, vec_get(arr, deque_front(dq)))
+        } else { () }
+    };
+    vec_free(dq);
+    result
+    };
+
+// Sliding window: count elements above threshold
+fn window_count_above(arr: i64, k: i64, thresh: i64) -> i64 = {
+    let n = vec_len(arr);
+    let result = vec_new();
+    let mut count = 0;
+    // First window
+    for i in 0..k {
+        if vec_get(arr, i) > thresh { count = count + 1 } else { () }
+    };
+    vec_push(result, count);
+    // Slide
+    let mut j = k;
+    loop {
+        if j >= n { break } else { () };
+        // Add new element
+        if vec_get(arr, j) > thresh { count = count + 1 } else { () };
+        // Remove old element
+        if vec_get(arr, j - k) > thresh { count = count - 1 } else { () };
+        vec_push(result, count);
+        j = j + 1
+    };
+    result
+    };
+
+// Max minus min for each window (range query)
+fn window_range(arr: i64, k: i64) -> i64 = {
+    let maxes = sliding_max(arr, k);
+    let mins = sliding_min(arr, k);
+    let n = vec_len(maxes);
+    let result = vec_new();
+    for i in 0..n {
+        vec_push(result, vec_get(maxes, i) - vec_get(mins, i))
+    };
+    vec_free(maxes);
+    vec_free(mins);
+    result
+    };
+
+fn main() -> i64 = {
+    // arr = [1, 3, -1, -3, 5, 3, 6, 7]
+    let arr = vec_new();
+    vec_push(arr, 1); vec_push(arr, 3); vec_push(arr, 0 - 1); vec_push(arr, 0 - 3);
+    vec_push(arr, 5); vec_push(arr, 3); vec_push(arr, 6); vec_push(arr, 7);
+
+    // Test 1-3: Sliding window max, k=3
+    // Windows: [1,3,-1]->3, [3,-1,-3]->3, [-1,-3,5]->5, [-3,5,3]->5, [5,3,6]->6, [3,6,7]->7
+    let mx = sliding_max(arr, 3);
+    let _p1 = println(vec_get(mx, 0));  // 3
+    let _p2 = println(vec_get(mx, 2));  // 5
+    let _p3 = println(vec_get(mx, 5));  // 7
+    let _p4 = println(vec_len(mx));     // 6
+
+    // Test 5-7: Sliding window min, k=3
+    // Windows: [1,3,-1]->-1, [3,-1,-3]->-3, [-1,-3,5]->-3, [-3,5,3]->-3, [5,3,6]->3, [3,6,7]->3
+    let mn = sliding_min(arr, 3);
+    let _p5 = println(vec_get(mn, 0));  // -1
+    let _p6 = println(vec_get(mn, 1));  // -3
+    let _p7 = println(vec_get(mn, 4));  // 3
+
+    // Test 8-9: Window range (max - min), k=3
+    // [3-(-1), 3-(-3), 5-(-3), 5-(-3), 6-3, 7-3] = [4, 6, 8, 8, 3, 4]
+    let rng = window_range(arr, 3);
+    let _p8 = println(vec_get(rng, 0));  // 4
+    let _p9 = println(vec_get(rng, 2));  // 8
+
+    // Test 10-11: Count above threshold, k=3, thresh=0
+    // [1,3,-1]->2, [3,-1,-3]->1, [-1,-3,5]->1, [-3,5,3]->2, [5,3,6]->3, [3,6,7]->3
+    let ca = window_count_above(arr, 3, 0);
+    let _p10 = println(vec_get(ca, 0));  // 2
+    let _p11 = println(vec_get(ca, 4));  // 3
+
+    // Test 12-14: Sliding max with k=1 (each element is its own window)
+    let mx1 = sliding_max(arr, 1);
+    let _p12 = println(vec_get(mx1, 0));  // 1
+    let _p13 = println(vec_get(mx1, 4));  // 5
+    let _p14 = println(vec_len(mx1));     // 8
+
+    // Test 15: Sliding max with k=8 (whole array)
+    let mx8 = sliding_max(arr, 8);
+    let _p15 = println(vec_get(mx8, 0));  // 7
+
+    // Test 16-17: Different array, all positive
+    // arr2 = [4, 2, 7, 1, 8, 3]
+    let arr2 = vec_new();
+    vec_push(arr2, 4); vec_push(arr2, 2); vec_push(arr2, 7);
+    vec_push(arr2, 1); vec_push(arr2, 8); vec_push(arr2, 3);
+    let mx2 = sliding_max(arr2, 2);
+    // [4,2]->4, [2,7]->7, [7,1]->7, [1,8]->8, [8,3]->8
+    let _p16 = println(vec_get(mx2, 1));  // 7
+    let _p17 = println(vec_get(mx2, 3));  // 8
+
+    vec_free(arr); vec_free(mx); vec_free(mn); vec_free(rng);
+    vec_free(ca); vec_free(mx1); vec_free(mx8);
+    vec_free(arr2); vec_free(mx2);
+    0
+    };

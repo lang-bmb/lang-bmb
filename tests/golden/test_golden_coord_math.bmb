@@ -1,0 +1,50 @@
+// Golden Test: 2D coordinate math with integer arithmetic
+// Manhattan distance, dot product, cross product, point-in-rectangle
+
+fn iabs(x: i64) -> i64 = if x < 0 { 0 - x } else { x };
+
+fn manhattan_dist(x1: i64, y1: i64, x2: i64, y2: i64) -> i64
+  post ret >= 0
+= iabs(x1 - x2) + iabs(y1 - y2);
+
+fn dot_product_2d(x1: i64, y1: i64, x2: i64, y2: i64) -> i64 =
+    x1 * x2 + y1 * y2;
+
+fn cross_product_2d(x1: i64, y1: i64, x2: i64, y2: i64) -> i64 =
+    x1 * y2 - y1 * x2;
+
+fn point_in_rect(px: i64, py: i64, x: i64, y: i64, w: i64, h: i64) -> i64
+  pre w > 0 and h > 0
+  post ret >= 0 and ret <= 1
+= if px >= x and px <= x + w and py >= y and py <= y + h { 1 } else { 0 };
+
+fn main() -> i64 = {
+    // Manhattan distance tests
+    let _p1 = println(manhattan_dist(0, 0, 3, 4));     // |0-3| + |0-4| = 7
+    let _p2 = println(manhattan_dist(1, 1, 4, 5));     // 3 + 4 = 7
+    let _p3 = println(manhattan_dist(0, 0, 0, 0));     // 0
+    let _p4 = println(manhattan_dist(5, 3, 2, 7));     // 3 + 4 = 7
+    let _p5 = println(manhattan_dist(0, 0, 10, 10));   // 20
+
+    // Dot product tests
+    let _p6 = println(dot_product_2d(1, 0, 0, 1));    // 0 (perpendicular)
+    let _p7 = println(dot_product_2d(3, 4, 3, 4));    // 9 + 16 = 25
+    let _p8 = println(dot_product_2d(2, 3, 4, 5));    // 8 + 15 = 23
+    let _p9 = println(dot_product_2d(1, 2, 0 - 1, 0 - 2)); // -1 - 4 = -5
+
+    // Cross product tests
+    let _p10 = println(cross_product_2d(1, 0, 0, 1));  // 1*1 - 0*0 = 1
+    let _p11 = println(cross_product_2d(3, 4, 6, 8));  // 3*8 - 4*6 = 24 - 24 = 0
+    let _p12 = println(cross_product_2d(2, 3, 4, 5));  // 2*5 - 3*4 = 10 - 12 = -2
+    let _p13 = println(cross_product_2d(0, 1, 1, 0));  // 0*0 - 1*1 = -1
+
+    // Point in rectangle: rect at (1,1) with w=4, h=3
+    let _p14 = println(point_in_rect(3, 2, 1, 1, 4, 3));   // inside -> 1
+    let _p15 = println(point_in_rect(1, 1, 1, 1, 4, 3));   // corner -> 1
+    let _p16 = println(point_in_rect(5, 4, 1, 1, 4, 3));   // corner -> 1
+    let _p17 = println(point_in_rect(0, 2, 1, 1, 4, 3));   // left of rect -> 0
+    let _p18 = println(point_in_rect(3, 5, 1, 1, 4, 3));   // above rect -> 0
+    let _p19 = println(point_in_rect(6, 2, 1, 1, 4, 3));   // right of rect -> 0
+
+    0
+    };

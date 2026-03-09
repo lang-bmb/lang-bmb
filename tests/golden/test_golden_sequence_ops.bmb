@@ -1,0 +1,162 @@
+// Golden Test: Sequence operations - Cycle 1403
+// Arithmetic/geometric series, partial sums, running average (scaled integers)
+
+// Arithmetic series sum: a + (a+d) + (a+2d) + ... for n terms
+fn arith_series(a: i64, d: i64, n: i64) -> i64 = {
+// Sum = n*a + d*(n*(n-1)/2)
+    n * a + d * (n * (n - 1) / 2)
+    };
+
+// Geometric series sum using loop: a + a*r + a*r^2 + ... + a*r^(n-1)
+fn geo_series(a: i64, r: i64, n: i64) -> i64 = {
+    let mut my_sum = 0;
+    let mut term = a;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        my_sum = my_sum + term;
+        term = term * r;
+        i = i + 1
+    };
+    my_sum
+    };
+
+// Partial sums: given vec, compute sum of first k elements
+fn partial_sum(arr: i64, k: i64) -> i64 = {
+    let mut my_sum = 0;
+    let limit = if k < vec_len(arr) { k } else { vec_len(arr) };
+    for i in 0..limit {
+        my_sum = my_sum + vec_get(arr, i)
+    };
+    my_sum
+    };
+
+// Running average scaled by 1000 (integer arithmetic)
+// Returns the average of all n elements * 1000
+fn scaled_average(arr: i64, n: i64) -> i64 = {
+    let mut my_sum = 0;
+    for i in 0..n {
+        my_sum = my_sum + vec_get(arr, i)
+    };
+    my_sum * 1000 / n
+    };
+
+// Fibonacci sequence: sum of first n Fibonacci numbers
+fn fib_sum(n: i64) -> i64 = {
+    let mut a = 0;
+    let mut b = 1;
+    let mut my_sum = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        my_sum = my_sum + a;
+        let next = a + b;
+        a = b;
+        b = next;
+        i = i + 1
+    };
+    my_sum
+    };
+
+// Harmonic-like series: sum(1000/i) for i=1..n (scaled by 1000)
+fn harmonic_scaled(n: i64) -> i64 = {
+    let mut my_sum = 0;
+    let mut i = 1;
+    loop {
+        if i > n { break } else { () };
+        my_sum = my_sum + 1000 / i;
+        i = i + 1
+    };
+    my_sum
+    };
+
+// Alternating series: 1 - 2 + 3 - 4 + ... +/- n
+fn alternating_sum(n: i64) -> i64 = {
+    let mut my_sum = 0;
+    let mut i = 1;
+    loop {
+        if i > n { break } else { () };
+        if i % 2 == 1 { my_sum = my_sum + i } else { my_sum = my_sum - i };
+        i = i + 1
+    };
+    my_sum
+    };
+
+// Power sum: 1^k + 2^k + ... + n^k (for small k using loop)
+fn power(base: i64, exp: i64) -> i64 = {
+    let mut result = 1;
+    let mut i = 0;
+    loop {
+        if i >= exp { break } else { () };
+        result = result * base;
+        i = i + 1
+    };
+    result
+    };
+
+fn power_sum(n: i64, k: i64) -> i64 = {
+    let mut my_sum = 0;
+    let mut i = 1;
+    loop {
+        if i > n { break } else { () };
+        my_sum = my_sum + power(i, k);
+        i = i + 1
+    };
+    my_sum
+    };
+
+fn main() -> i64 = {
+// Arithmetic series: a=1, d=2, n=5 -> 1+3+5+7+9 = 25
+    let _p1 = println(arith_series(1, 2, 5));   // 25
+
+// a=10, d=5, n=4 -> 10+15+20+25 = 70
+    let _p2 = println(arith_series(10, 5, 4));   // 70
+
+// Geometric series: a=1, r=2, n=5 -> 1+2+4+8+16 = 31
+    let _p3 = println(geo_series(1, 2, 5));   // 31
+
+// a=3, r=3, n=4 -> 3+9+27+81 = 120
+    let _p4 = println(geo_series(3, 3, 4));   // 120
+
+// Partial sums
+    let data = vec_new();
+    let _d1 = vec_push(data, 10);
+    let _d2 = vec_push(data, 20);
+    let _d3 = vec_push(data, 30);
+    let _d4 = vec_push(data, 40);
+    let _d5 = vec_push(data, 50);
+    let _p5 = println(partial_sum(data, 3));  // 60
+    let _p6 = println(partial_sum(data, 5));  // 150
+
+// Scaled average: [10,20,30] avg=20 -> 20000
+    let avg_data = vec_new();
+    let _a1 = vec_push(avg_data, 10);
+    let _a2 = vec_push(avg_data, 20);
+    let _a3 = vec_push(avg_data, 30);
+    let _a4 = vec_push(avg_data, 40);
+    let _a5 = vec_push(avg_data, 50);
+    let _p7 = println(scaled_average(avg_data, 3));  // 20000
+    let _p8 = println(scaled_average(avg_data, 5));  // 30000
+
+// Fibonacci sum: first 10 fib: 0+1+1+2+3+5+8+13+21+34 = 88
+    let _p9 = println(fib_sum(10));   // 88
+
+// Harmonic scaled: sum(1000/i) for i=1..5 = 1000+500+333+250+200 = 2283
+    let _p10 = println(harmonic_scaled(5));  // 2283
+
+// Alternating sum: n=7 -> 1-2+3-4+5-6+7 = 4
+    let _p11 = println(alternating_sum(7));  // 4
+
+// n=10 -> 1-2+3-4+5-6+7-8+9-10 = -5
+    let _p12 = println(alternating_sum(10)); // -5
+
+// Power sums: 1^2+2^2+3^2+4^2+5^2 = 55
+    let _p13 = println(power_sum(5, 2));  // 55
+
+// 1^3+2^3+3^3+4^3 = 1+8+27+64 = 100
+    let _p14 = println(power_sum(4, 3));  // 100
+
+    let _f1 = vec_free(data);
+    let _f2 = vec_free(avg_data);
+    0
+    };

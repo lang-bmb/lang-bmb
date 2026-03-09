@@ -1,0 +1,307 @@
+// Golden Test: Splay tree with zig, zig-zig, zig-zag rotations
+// Uses parallel arrays: key[], left[], right[], parent[]
+// Node 0 is sentinel/null, real nodes start at index 1
+// Splay tree: after each access, the accessed node is moved to root
+
+// Tree storage
+// key[i], left[i], right[i], parent[i] for each node i
+// root stored externally, 0 = null
+
+fn tree_new(max_nodes: i64) -> i64 = {
+    // Pack 4 arrays into one vec: key, left, right, parent
+    // Offset: key = 0*max, left = 1*max, right = 2*max, parent = 3*max
+    let v = vec_new();
+    for _i in 0..(max_nodes * 4) {
+        vec_push(v, 0)
+    };
+    v
+};
+
+fn get_key(t: i64, mx: i64, i: i64) -> i64 = vec_get(t, i);
+fn get_left(t: i64, mx: i64, i: i64) -> i64 = vec_get(t, mx + i);
+fn get_right(t: i64, mx: i64, i: i64) -> i64 = vec_get(t, mx * 2 + i);
+fn get_parent(t: i64, mx: i64, i: i64) -> i64 = vec_get(t, mx * 3 + i);
+
+fn set_key(t: i64, mx: i64, i: i64, v: i64) -> i64 = { let _s = vec_set(t, i, v); 0 };
+fn set_left(t: i64, mx: i64, i: i64, v: i64) -> i64 = { let _s = vec_set(t, mx + i, v); 0 };
+fn set_right(t: i64, mx: i64, i: i64, v: i64) -> i64 = { let _s = vec_set(t, mx * 2 + i, v); 0 };
+fn set_parent(t: i64, mx: i64, i: i64, v: i64) -> i64 = { let _s = vec_set(t, mx * 3 + i, v); 0 };
+
+// Right rotation: x is left child of p
+// Returns new root (x replaces p)
+fn rotate_right(t: i64, mx: i64, p: i64) -> i64 = {
+    let x = get_left(t, mx, p);
+    let b = get_right(t, mx, x);
+    let g = get_parent(t, mx, p);
+    // x's right becomes p
+    let _s1 = set_right(t, mx, x, p);
+    let _s2 = set_parent(t, mx, p, x);
+    // p's left becomes b
+    let _s3 = set_left(t, mx, p, b);
+    if b != 0 { let _s4 = set_parent(t, mx, b, p); 0 } else { 0 };
+    // x's parent becomes g
+    let _s5 = set_parent(t, mx, x, g);
+    if g != 0 {
+        if get_left(t, mx, g) == p {
+            let _s6 = set_left(t, mx, g, x); 0
+        } else {
+            let _s6 = set_right(t, mx, g, x); 0
+        }
+    } else { 0 };
+    x
+};
+
+// Left rotation: x is right child of p
+fn rotate_left(t: i64, mx: i64, p: i64) -> i64 = {
+    let x = get_right(t, mx, p);
+    let b = get_left(t, mx, x);
+    let g = get_parent(t, mx, p);
+    // x's left becomes p
+    let _s1 = set_left(t, mx, x, p);
+    let _s2 = set_parent(t, mx, p, x);
+    // p's right becomes b
+    let _s3 = set_right(t, mx, p, b);
+    if b != 0 { let _s4 = set_parent(t, mx, b, p); 0 } else { 0 };
+    // x's parent becomes g
+    let _s5 = set_parent(t, mx, x, g);
+    if g != 0 {
+        if get_left(t, mx, g) == p {
+            let _s6 = set_left(t, mx, g, x); 0
+        } else {
+            let _s6 = set_right(t, mx, g, x); 0
+        }
+    } else { 0 };
+    x
+};
+
+// Splay node x to root. Returns new root.
+fn splay(t: i64, mx: i64, x: i64) -> i64 = {
+    let mut root = x;
+    loop {
+        let p = get_parent(t, mx, root);
+        if p == 0 { break } else { () };
+        let g = get_parent(t, mx, p);
+        if g == 0 {
+            // Zig step (parent is root)
+            if get_left(t, mx, p) == root {
+                let _r = rotate_right(t, mx, p);
+                0
+            } else {
+                let _r = rotate_left(t, mx, p);
+                0
+            }
+        } else if get_left(t, mx, p) == root && get_left(t, mx, g) == p {
+            // Zig-zig (both left children)
+            let _r1 = rotate_right(t, mx, g);
+            let _r2 = rotate_right(t, mx, p);
+            0
+        } else if get_right(t, mx, p) == root && get_right(t, mx, g) == p {
+            // Zig-zig (both right children)
+            let _r1 = rotate_left(t, mx, g);
+            let _r2 = rotate_left(t, mx, p);
+            0
+        } else if get_right(t, mx, p) == root && get_left(t, mx, g) == p {
+            // Zig-zag (right child of left child)
+            let _r1 = rotate_left(t, mx, p);
+            let _r2 = rotate_right(t, mx, g);
+            0
+        } else {
+            // Zig-zag (left child of right child)
+            let _r1 = rotate_right(t, mx, p);
+            let _r2 = rotate_left(t, mx, g);
+            0
+        };
+        0
+    };
+    root
+};
+
+// Insert key k; returns new root. next_id is single-element vec for node allocation.
+fn tree_insert(t: i64, mx: i64, root: i64, k: i64, next_id: i64) -> i64 = {
+    if root == 0 {
+        // Empty tree
+        let nid = vec_get(next_id, 0);
+        let _s = vec_set(next_id, 0, nid + 1);
+        let _s1 = set_key(t, mx, nid, k);
+        let _s2 = set_left(t, mx, nid, 0);
+        let _s3 = set_right(t, mx, nid, 0);
+        let _s4 = set_parent(t, mx, nid, 0);
+        nid
+    } else {
+        // BST insert
+        let mut cur = root;
+        let mut done = 0;
+        let mut inserted = 0;
+        loop {
+            if done != 0 { break } else { () };
+            let ck = get_key(t, mx, cur);
+            if k < ck {
+                let lc = get_left(t, mx, cur);
+                if lc == 0 {
+                    let nid = vec_get(next_id, 0);
+                    let _s = vec_set(next_id, 0, nid + 1);
+                    let _s1 = set_key(t, mx, nid, k);
+                    let _s2 = set_left(t, mx, nid, 0);
+                    let _s3 = set_right(t, mx, nid, 0);
+                    let _s4 = set_parent(t, mx, nid, cur);
+                    let _s5 = set_left(t, mx, cur, nid);
+                    set inserted = nid;
+                    set done = 1;
+                    0
+                } else {
+                    set cur = lc;
+                    0
+                }
+            } else if k > ck {
+                let rc = get_right(t, mx, cur);
+                if rc == 0 {
+                    let nid = vec_get(next_id, 0);
+                    let _s = vec_set(next_id, 0, nid + 1);
+                    let _s1 = set_key(t, mx, nid, k);
+                    let _s2 = set_left(t, mx, nid, 0);
+                    let _s3 = set_right(t, mx, nid, 0);
+                    let _s4 = set_parent(t, mx, nid, cur);
+                    let _s5 = set_right(t, mx, cur, nid);
+                    set inserted = nid;
+                    set done = 1;
+                    0
+                } else {
+                    set cur = rc;
+                    0
+                }
+            } else {
+                // Duplicate key: splay existing node
+                set inserted = cur;
+                set done = 1;
+                0
+            };
+            0
+        };
+        // Splay the inserted/found node to root
+        splay(t, mx, inserted)
+    }
+};
+
+// Search for key k; returns new root (splayed). If found, root has key k.
+fn tree_search(t: i64, mx: i64, root: i64, k: i64) -> i64 = {
+    if root == 0 { 0 }
+    else {
+        let mut cur = root;
+        let mut found = 0;
+        let mut last = root;
+        loop {
+            if cur == 0 { break } else { () };
+            set last = cur;
+            let ck = get_key(t, mx, cur);
+            if k == ck {
+                set found = 1;
+                break
+            } else if k < ck {
+                set cur = get_left(t, mx, cur);
+                0
+            } else {
+                set cur = get_right(t, mx, cur);
+                0
+            };
+            0
+        };
+        // Splay the last visited node
+        splay(t, mx, last)
+    }
+};
+
+// Inorder traversal: collect keys into result vec
+fn inorder(t: i64, mx: i64, node: i64, result: i64) -> i64 = {
+    if node == 0 { 0 }
+    else {
+        let _l = inorder(t, mx, get_left(t, mx, node), result);
+        vec_push(result, get_key(t, mx, node));
+        let _r = inorder(t, mx, get_right(t, mx, node), result);
+        0
+    }
+};
+
+// Tree height
+fn tree_height(t: i64, mx: i64, node: i64) -> i64 = {
+    if node == 0 { 0 }
+    else {
+        let lh = tree_height(t, mx, get_left(t, mx, node));
+        let rh = tree_height(t, mx, get_right(t, mx, node));
+        let mx_h = if lh > rh { lh } else { rh };
+        mx_h + 1
+    }
+};
+
+fn main() -> i64 = {
+    let mx = 50;
+    let t = tree_new(mx);
+    let nid = vec_new();
+    vec_push(nid, 1); // node 0 is null, start at 1
+
+    // Insert: 5, 3, 7, 1, 4, 6, 8
+    let mut root = 0;
+    set root = tree_insert(t, mx, root, 5, nid);
+    set root = tree_insert(t, mx, root, 3, nid);
+    set root = tree_insert(t, mx, root, 7, nid);
+    set root = tree_insert(t, mx, root, 1, nid);
+    set root = tree_insert(t, mx, root, 4, nid);
+    set root = tree_insert(t, mx, root, 6, nid);
+    set root = tree_insert(t, mx, root, 8, nid);
+
+    // After last insert, root should be 8 (just splayed)
+    let _p1 = println(get_key(t, mx, root)); // 8
+
+    // Inorder should be sorted: 1 3 4 5 6 7 8
+    let res = vec_new();
+    let _io = inorder(t, mx, root, res);
+    for i in 0..7 {
+        let _p = println(vec_get(res, i));
+        0
+    };
+
+    // Search for 1 — should splay 1 to root
+    set root = tree_search(t, mx, root, 1);
+    let _p2 = println(get_key(t, mx, root)); // 1
+
+    // Search for 5 — should splay 5 to root
+    set root = tree_search(t, mx, root, 5);
+    let _p3 = println(get_key(t, mx, root)); // 5
+
+    // Verify BST property still holds after splays
+    let res2 = vec_new();
+    let _io2 = inorder(t, mx, root, res2);
+    let mut sorted = 1;
+    for i in 1..7 {
+        if vec_get(res2, i) <= vec_get(res2, i - 1) {
+            set sorted = 0;
+            0
+        } else { 0 }
+    };
+    let _p4 = println(sorted); // 1 (still sorted)
+
+    // Tree height after splaying
+    let h = tree_height(t, mx, root);
+    let _p5 = println(h); // height after operations
+
+    // Insert duplicate (4) — should splay existing 4 to root
+    set root = tree_insert(t, mx, root, 4, nid);
+    let _p6 = println(get_key(t, mx, root)); // 4
+
+    // Node count
+    let _p7 = println(vec_get(nid, 0) - 1); // 7 nodes (no dup added)
+
+    // Verify final inorder
+    let res3 = vec_new();
+    let _io3 = inorder(t, mx, root, res3);
+    let mut sum = 0;
+    for i in 0..vec_len(res3) {
+        set sum = sum + vec_get(res3, i);
+        0
+    };
+    let _p8 = println(sum); // 1+3+4+5+6+7+8 = 34
+
+    let _f1 = vec_free(t); let _f2 = vec_free(nid);
+    let _f3 = vec_free(res); let _f4 = vec_free(res2);
+    let _f5 = vec_free(res3);
+    0
+};

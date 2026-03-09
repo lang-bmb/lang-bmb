@@ -1,0 +1,38 @@
+=== Encode AAABBBCCDDDDEE ===
+3 65
+3 66
+2 67
+4 68
+2 69
+5
+14
+4
+5
+=== Encode X ===
+1 88
+1
+1
+=== Encode ABCDE ===
+1 65
+1 66
+1 67
+1 68
+1 69
+5
+1
+=== Encode ZZZZZZZ ===
+7 90
+1
+7
+7
+=== Encode AABBBAA ===
+2 65
+3 66
+2 65
+3
+2
+=== Roundtrip ===
+1
+1
+1
+1

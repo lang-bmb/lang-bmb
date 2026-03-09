@@ -1,0 +1,137 @@
+// Golden Test: Recursive math functions
+// Tests fibonacci, factorial, power, GCD, and more complex recursive patterns
+
+// Classic fibonacci
+fn fib(n: i64) -> i64 =
+    if n <= 0 { 0 }
+    else if n == 1 { 1 }
+    else { fib(n - 1) + fib(n - 2) };
+
+// Factorial
+fn fact(n: i64) -> i64 =
+    if n <= 1 { 1 }
+    else { n * fact(n - 1) };
+
+// Tail-recursive factorial
+fn fact_tail(n: i64, acc: i64) -> i64 =
+    if n <= 1 { acc }
+    else { fact_tail(n - 1, n * acc) };
+
+// Recursive power
+fn power(base: i64, exp: i64) -> i64 =
+    if exp == 0 { 1 }
+    else { base * power(base, exp - 1) };
+
+// Fast power (binary exponentiation)
+fn fast_pow(base: i64, exp: i64) -> i64 =
+    if exp == 0 { 1 }
+    else if exp - (exp / 2) * 2 == 0 {
+        let half = fast_pow(base, exp / 2);
+        half * half
+    }
+    else { base * fast_pow(base, exp - 1) };
+
+// Recursive GCD (Euclidean)
+fn gcd(a: i64, b: i64) -> i64 =
+    if b == 0 { a }
+    else { gcd(b, a - (a / b) * b) };
+
+// LCM via GCD
+fn lcm(a: i64, b: i64) -> i64 =
+    a / gcd(a, b) * b;
+
+// Binomial coefficient C(n, k)
+fn choose(n: i64, k: i64) -> i64 =
+    if k == 0 or k == n { 1 }
+    else { choose(n - 1, k - 1) + choose(n - 1, k) };
+
+// Digital root: repeatedly sum digits until single digit
+fn digit_sum_rec(n: i64) -> i64 =
+    if n < 10 { n }
+    else { digit_sum_rec(n - (n / 10) * 10 + digit_sum_rec(n / 10)) };
+
+// Count digits recursively
+fn num_digits(n: i64) -> i64 =
+    if n < 10 { 1 }
+    else { 1 + num_digits(n / 10) };
+
+// Integer square root via recursive binary search
+fn isqrt_helper(n: i64, lo: i64, hi: i64) -> i64 = {
+    if lo >= hi { return lo } else { () };
+    let mid = (lo + hi + 1) / 2;
+    if mid * mid > n { isqrt_helper(n, lo, mid - 1) }
+    else { isqrt_helper(n, mid, hi) }
+    };
+
+fn isqrt(n: i64) -> i64 = isqrt_helper(n, 0, n);
+
+// Sum of digits of factorial (limited for tractability)
+fn sum_digits(n: i64) -> i64 =
+    if n == 0 { 0 }
+    else { n - (n / 10) * 10 + sum_digits(n / 10) };
+
+fn main() -> i64 = {
+    // Fibonacci
+    let _p1 = println(fib(0));    // 0
+    let _p2 = println(fib(1));    // 1
+    let _p3 = println(fib(10));   // 55
+    let _p4 = println(fib(15));   // 610
+    let _p5 = println(fib(20));   // 6765
+
+    // Factorial
+    let _p6 = println(fact(0));   // 1
+    let _p7 = println(fact(1));   // 1
+    let _p8 = println(fact(5));   // 120
+    let _p9 = println(fact(10));  // 3628800
+
+    // Tail-recursive factorial
+    let _p10 = println(fact_tail(5, 1));   // 120
+    let _p11 = println(fact_tail(10, 1));  // 3628800
+    let _p12 = println(fact_tail(12, 1));  // 479001600
+
+    // Power
+    let _p13 = println(power(2, 10));   // 1024
+    let _p14 = println(power(3, 5));    // 243
+    let _p15 = println(power(5, 0));    // 1
+
+    // Fast power
+    let _p16 = println(fast_pow(2, 20));  // 1048576
+    let _p17 = println(fast_pow(3, 10));  // 59049
+    let _p18 = println(fast_pow(7, 0));   // 1
+
+    // GCD
+    let _p19 = println(gcd(48, 18));    // 6
+    let _p20 = println(gcd(100, 75));   // 25
+    let _p21 = println(gcd(17, 13));    // 1
+
+    // LCM
+    let _p22 = println(lcm(4, 6));      // 12
+    let _p23 = println(lcm(12, 18));    // 36
+    let _p24 = println(lcm(7, 5));      // 35
+
+    // Binomial coefficients
+    let _p25 = println(choose(5, 2));   // 10
+    let _p26 = println(choose(10, 3));  // 120
+    let _p27 = println(choose(6, 0));   // 1
+    let _p28 = println(choose(6, 6));   // 1
+
+    // Digit counting
+    let _p29 = println(num_digits(1));       // 1
+    let _p30 = println(num_digits(99));      // 2
+    let _p31 = println(num_digits(12345));   // 5
+    let _p32 = println(num_digits(1000000)); // 7
+
+    // Integer square root
+    let _p33 = println(isqrt(0));     // 0
+    let _p34 = println(isqrt(1));     // 1
+    let _p35 = println(isqrt(100));   // 10
+    let _p36 = println(isqrt(50));    // 7
+    let _p37 = println(isqrt(10000)); // 100
+
+    // Sum of digits
+    let _p38 = println(sum_digits(12345));    // 15
+    let _p39 = println(sum_digits(999));      // 27
+    let _p40 = println(sum_digits(100));      // 1
+
+    0
+    };

@@ -1,0 +1,372 @@
+// Golden Test: Huffman tree from frequency table
+// Build priority queue (min-heap) via vec, construct tree, compute bit lengths
+
+// Min-heap operations on a flat vec of (freq, node_id) pairs
+// Layout: [freq0, id0, freq1, id1, ...]
+// Each entry is 2 slots: freq at 2*i, id at 2*i+1
+
+fn heap_size(h: i64) -> i64 = vec_len(h) / 2;
+
+fn heap_freq(h: i64, i: i64) -> i64 = vec_get(h, i * 2);
+fn heap_id(h: i64, i: i64) -> i64 = vec_get(h, i * 2 + 1);
+
+fn heap_swap(h: i64, i: i64, j: i64) -> i64 = {
+    let fi = vec_get(h, i * 2);
+    let ii = vec_get(h, i * 2 + 1);
+    let _s1 = vec_set(h, i * 2, vec_get(h, j * 2));
+    let _s2 = vec_set(h, i * 2 + 1, vec_get(h, j * 2 + 1));
+    let _s3 = vec_set(h, j * 2, fi);
+    let _s4 = vec_set(h, j * 2 + 1, ii);
+    0
+};
+
+fn heap_sift_up(h: i64, i: i64) -> i64 =
+    if i <= 0 { 0 }
+    else {
+        let parent = (i - 1) / 2;
+        if heap_freq(h, i) < heap_freq(h, parent) {
+            let _sw = heap_swap(h, i, parent);
+            heap_sift_up(h, parent)
+        } else { 0 }
+    };
+
+fn heap_sift_down(h: i64, n: i64, i: i64) -> i64 = {
+    let left = 2 * i + 1;
+    let right = 2 * i + 2;
+    let mut smallest = i;
+    let _x = if left < n {
+        if heap_freq(h, left) < heap_freq(h, smallest) {
+            set smallest = left
+        } else { () }
+    } else { () };
+    let _y = if right < n {
+        if heap_freq(h, right) < heap_freq(h, smallest) {
+            set smallest = right
+        } else { () }
+    } else { () };
+    if smallest != i {
+        let _sw = heap_swap(h, i, smallest);
+        heap_sift_down(h, n, smallest)
+    } else { 0 }
+};
+
+fn heap_push(h: i64, freq: i64, id: i64) -> i64 = {
+    let _p1 = vec_push(h, freq);
+    let _p2 = vec_push(h, id);
+    heap_sift_up(h, heap_size(h) - 1)
+};
+
+// Pop min: return freq and id via a result vec [freq, id]
+// Actually we'll extract, shrink, and return the id
+fn heap_pop_freq(h: i64) -> i64 = {
+    let f = heap_freq(h, 0);
+    f
+};
+
+fn heap_pop_id(h: i64) -> i64 = {
+    let id = heap_id(h, 0);
+    id
+};
+
+fn heap_remove_min(h: i64) -> i64 = {
+    let n = heap_size(h);
+    // Move last to front
+    let _s1 = vec_set(h, 0, vec_get(h, (n - 1) * 2));
+    let _s2 = vec_set(h, 1, vec_get(h, (n - 1) * 2 + 1));
+    // Shrink by removing last 2 elements
+    // We'll use a trick: create a new vec with n-1 entries
+    // Actually, let's just set size by removing last 2 entries manually
+    // vec doesn't have pop, so we'll track size separately
+    0
+};
+
+// Since vec doesn't have pop, we'll track heap size explicitly
+// Use a separate approach: store entries in vec, track count separately
+
+// Tree nodes: store left[i], right[i], freq[i] as separate vecs
+// Leaf nodes: id 0..n-1 are the original symbols
+// Internal nodes: id n, n+1, ... created during merging
+
+fn huffman_build(freqs: i64, n: i64, left: i64, right: i64, node_freq: i64) -> i64 = {
+    // Initialize heap with leaf nodes
+    let h_freq = vec_new();
+    let h_id = vec_new();
+    let h_count = vec_new();
+    let _pc = vec_push(h_count, 0);
+
+    // Push all leaves into the heap (using insertion)
+    for i in 0..n {
+        let f = vec_get(freqs, i);
+        // Insert into min-heap
+        let pos = vec_get(h_count, 0);
+        let _pf = vec_push(h_freq, f);
+        let _pi = vec_push(h_id, i);
+        let _sc = vec_set(h_count, 0, pos + 1);
+        // Set node_freq for leaf
+        let _snf = vec_set(node_freq, i, f);
+        // Bubble up
+        let _bu = bubble_up(h_freq, h_id, pos);
+        0
+    };
+
+    // next_id starts at n
+    let mut next_id = n;
+
+    // Merge until 1 node remains
+    let mut remaining = n;
+    for _step in 0..(n - 1) {
+        // Extract min 1
+        let sz1 = vec_get(h_count, 0);
+        let f1 = vec_get(h_freq, 0);
+        let id1 = vec_get(h_id, 0);
+        // Move last to front and sift down
+        let _s1 = vec_set(h_freq, 0, vec_get(h_freq, sz1 - 1));
+        let _s2 = vec_set(h_id, 0, vec_get(h_id, sz1 - 1));
+        let _sc1 = vec_set(h_count, 0, sz1 - 1);
+        let _sd1 = sift_down_pq(h_freq, h_id, sz1 - 1, 0);
+
+        // Extract min 2
+        let sz2 = vec_get(h_count, 0);
+        let f2 = vec_get(h_freq, 0);
+        let id2 = vec_get(h_id, 0);
+        let _s3 = vec_set(h_freq, 0, vec_get(h_freq, sz2 - 1));
+        let _s4 = vec_set(h_id, 0, vec_get(h_id, sz2 - 1));
+        let _sc2 = vec_set(h_count, 0, sz2 - 1);
+        let _sd2 = sift_down_pq(h_freq, h_id, sz2 - 1, 0);
+
+        // Create internal node
+        let new_f = f1 + f2;
+        let _sl = vec_set(left, next_id, id1);
+        let _sr = vec_set(right, next_id, id2);
+        let _snf = vec_set(node_freq, next_id, new_f);
+
+        // Insert new node into heap
+        let sz3 = vec_get(h_count, 0);
+        let _x = if sz3 < vec_len(h_freq) {
+            let _sf = vec_set(h_freq, sz3, new_f);
+            let _si = vec_set(h_id, sz3, next_id);
+            0
+        } else {
+            let _pf = vec_push(h_freq, new_f);
+            let _pi = vec_push(h_id, next_id);
+            0
+        };
+        let _sc3 = vec_set(h_count, 0, sz3 + 1);
+        let _bu = bubble_up(h_freq, h_id, sz3);
+
+        set next_id = next_id + 1;
+        set remaining = remaining - 1;
+        0
+    };
+
+    // Return root id
+    let root = vec_get(h_id, 0);
+    let _fh = vec_free(h_freq);
+    let _fi = vec_free(h_id);
+    let _fc = vec_free(h_count);
+    root
+};
+
+fn bubble_up(freqs: i64, ids: i64, i: i64) -> i64 =
+    if i <= 0 { 0 }
+    else {
+        let parent = (i - 1) / 2;
+        if vec_get(freqs, i) < vec_get(freqs, parent) {
+            // Swap
+            let tf = vec_get(freqs, i);
+            let ti = vec_get(ids, i);
+            let _s1 = vec_set(freqs, i, vec_get(freqs, parent));
+            let _s2 = vec_set(ids, i, vec_get(ids, parent));
+            let _s3 = vec_set(freqs, parent, tf);
+            let _s4 = vec_set(ids, parent, ti);
+            bubble_up(freqs, ids, parent)
+        } else { 0 }
+    };
+
+fn sift_down_pq(freqs: i64, ids: i64, n: i64, i: i64) -> i64 = {
+    let left = 2 * i + 1;
+    let right = 2 * i + 2;
+    let mut smallest = i;
+    let _x = if left < n {
+        if vec_get(freqs, left) < vec_get(freqs, smallest) {
+            set smallest = left
+        } else { () }
+    } else { () };
+    let _y = if right < n {
+        if vec_get(freqs, right) < vec_get(freqs, smallest) {
+            set smallest = right
+        } else { () }
+    } else { () };
+    if smallest != i {
+        let tf = vec_get(freqs, i);
+        let ti = vec_get(ids, i);
+        let _s1 = vec_set(freqs, i, vec_get(freqs, smallest));
+        let _s2 = vec_set(ids, i, vec_get(ids, smallest));
+        let _s3 = vec_set(freqs, smallest, tf);
+        let _s4 = vec_set(ids, smallest, ti);
+        sift_down_pq(freqs, ids, n, smallest)
+    } else { 0 }
+};
+
+// Compute bit lengths by traversing the tree
+// depth[i] = bit length for leaf i
+fn compute_depths(left: i64, right: i64, depths: i64, node: i64, depth: i64, n: i64) -> i64 =
+    if node < n {
+        // Leaf node
+        let _sd = vec_set(depths, node, depth);
+        0
+    } else {
+        // Internal node
+        let l = vec_get(left, node);
+        let r = vec_get(right, node);
+        let _cl = compute_depths(left, right, depths, l, depth + 1, n);
+        let _cr = compute_depths(left, right, depths, r, depth + 1, n);
+        0
+    };
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n {
+        let _p = vec_push(v, 0);
+        0
+    };
+    v
+};
+
+fn main() -> i64 = {
+    // === Test 1: Simple 4-symbol Huffman ===
+    // Symbols: A(0)=1, B(1)=1, C(2)=2, D(3)=4
+    // Expected tree: D(4) and (A+B=2, then AB+C=4), root=D+(AB+C)=8
+    // Bit lengths: D=1, C=2, A=3, B=3
+    let n1 = 4;
+    let freqs1 = vec_new();
+    let _p = vec_push(freqs1, 1);  // A
+    let _p = vec_push(freqs1, 1);  // B
+    let _p = vec_push(freqs1, 2);  // C
+    let _p = vec_push(freqs1, 4);  // D
+
+    let total_nodes1 = 2 * n1 - 1;  // 7
+    let left1 = make_zeros(total_nodes1);
+    let right1 = make_zeros(total_nodes1);
+    let node_freq1 = make_zeros(total_nodes1);
+
+    let root1 = huffman_build(freqs1, n1, left1, right1, node_freq1);
+
+    let depths1 = make_zeros(n1);
+    let _cd = compute_depths(left1, right1, depths1, root1, 0, n1);
+
+    // Print root frequency (should be 8 = 1+1+2+4)
+    let _p = println(vec_get(node_freq1, root1));
+
+    // Print bit lengths (sorted by symbol index)
+    // Due to tie-breaking in min-heap, exact depths may vary
+    // but sum of freq*depth should be minimal = 1*3 + 1*3 + 2*2 + 4*1 = 14
+    let d0 = vec_get(depths1, 0);
+    let d1 = vec_get(depths1, 1);
+    let d2 = vec_get(depths1, 2);
+    let d3 = vec_get(depths1, 3);
+    let _p = println(d0);
+    let _p = println(d1);
+    let _p = println(d2);
+    let _p = println(d3);
+
+    // Weighted path length
+    let wpl1 = 1 * d0 + 1 * d1 + 2 * d2 + 4 * d3;
+    let _p = println(wpl1);  // 14 (optimal)
+
+    // === Test 2: 5-symbol equal frequencies ===
+    // All freq=1, n=5
+    // Total nodes = 9
+    let n2 = 5;
+    let freqs2 = vec_new();
+    for _i in 0..n2 {
+        let _p = vec_push(freqs2, 1);
+        0
+    };
+
+    let total_nodes2 = 2 * n2 - 1;
+    let left2 = make_zeros(total_nodes2);
+    let right2 = make_zeros(total_nodes2);
+    let node_freq2 = make_zeros(total_nodes2);
+
+    let root2 = huffman_build(freqs2, n2, left2, right2, node_freq2);
+
+    let depths2 = make_zeros(n2);
+    let _cd2 = compute_depths(left2, right2, depths2, root2, 0, n2);
+
+    // Root freq = 5
+    let _p = println(vec_get(node_freq2, root2));
+
+    // With 5 equal-weight symbols, tree has depths 2,3,3,3,2 or similar
+    // WPL = sum of depths (since all freq=1)
+    let mut wpl2 = 0;
+    for i in 0..n2 {
+        set wpl2 = wpl2 + vec_get(depths2, i);
+        0
+    };
+    let _p = println(wpl2);  // 12 (optimal for 5 equal symbols)
+
+    // Max depth should be 3
+    let mut max_d2 = 0;
+    for i in 0..n2 {
+        let di = vec_get(depths2, i);
+        let _x = if di > max_d2 { set max_d2 = di } else { () };
+        0
+    };
+    let _p = println(max_d2);  // 3
+
+    // === Test 3: 3-symbol Huffman ===
+    // A=5, B=9, C=12
+    // Merge: A+B=14, then 14+12=26 => C=1bit, A=2bits, B=2bits
+    let n3 = 3;
+    let freqs3 = vec_new();
+    let _p = vec_push(freqs3, 5);
+    let _p = vec_push(freqs3, 9);
+    let _p = vec_push(freqs3, 12);
+
+    let total_nodes3 = 2 * n3 - 1;
+    let left3 = make_zeros(total_nodes3);
+    let right3 = make_zeros(total_nodes3);
+    let node_freq3 = make_zeros(total_nodes3);
+
+    let root3 = huffman_build(freqs3, n3, left3, right3, node_freq3);
+
+    let depths3 = make_zeros(n3);
+    let _cd3 = compute_depths(left3, right3, depths3, root3, 0, n3);
+
+    let _p = println(vec_get(node_freq3, root3));  // 26
+
+    let wpl3 = 5 * vec_get(depths3, 0) + 9 * vec_get(depths3, 1) + 12 * vec_get(depths3, 2);
+    let _p = println(wpl3);  // 40 (optimal: 5*2 + 9*2 + 12*1)
+
+    // === Test 4: 2-symbol trivial case ===
+    let n4 = 2;
+    let freqs4 = vec_new();
+    let _p = vec_push(freqs4, 3);
+    let _p = vec_push(freqs4, 7);
+
+    let total_nodes4 = 2 * n4 - 1;
+    let left4 = make_zeros(total_nodes4);
+    let right4 = make_zeros(total_nodes4);
+    let node_freq4 = make_zeros(total_nodes4);
+
+    let root4 = huffman_build(freqs4, n4, left4, right4, node_freq4);
+
+    let depths4 = make_zeros(n4);
+    let _cd4 = compute_depths(left4, right4, depths4, root4, 0, n4);
+
+    let _p = println(vec_get(node_freq4, root4));  // 10
+    let _p = println(vec_get(depths4, 0));  // 1
+    let _p = println(vec_get(depths4, 1));  // 1
+
+    // Cleanup
+    let _f = vec_free(freqs1); let _f = vec_free(left1); let _f = vec_free(right1);
+    let _f = vec_free(node_freq1); let _f = vec_free(depths1);
+    let _f = vec_free(freqs2); let _f = vec_free(left2); let _f = vec_free(right2);
+    let _f = vec_free(node_freq2); let _f = vec_free(depths2);
+    let _f = vec_free(freqs3); let _f = vec_free(left3); let _f = vec_free(right3);
+    let _f = vec_free(node_freq3); let _f = vec_free(depths3);
+    let _f = vec_free(freqs4); let _f = vec_free(left4); let _f = vec_free(right4);
+    let _f = vec_free(node_freq4); let _f = vec_free(depths4);
+    0
+};

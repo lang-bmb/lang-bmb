@@ -1,0 +1,41 @@
+// Golden Test: Perfect number detection
+// A perfect number equals the sum of its proper divisors
+// e.g., 6 = 1 + 2 + 3, 28 = 1 + 2 + 4 + 7 + 14
+
+fn sum_proper_divisors(n: i64) -> i64 = {
+    let mut sum = 0;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        if n - (n / i) * i == 0 {
+            sum = sum + i
+        } else { () };
+        i = i + 1
+    };
+    sum
+    };
+
+fn is_perfect(n: i64) -> i64 =
+    if n <= 1 { 0 }
+    else if sum_proper_divisors(n) == n { 1 }
+    else { 0 };
+
+fn main() -> i64 = {
+    // Perfect numbers
+    let _p1 = println(is_perfect(6));      // 1 (1+2+3=6)
+    let _p2 = println(is_perfect(28));     // 1 (1+2+4+7+14=28)
+    let _p3 = println(is_perfect(496));    // 1 (third perfect number)
+
+    // Not perfect numbers
+    let _p4 = println(is_perfect(1));      // 0
+    let _p5 = println(is_perfect(10));     // 0 (1+2+5=8)
+    let _p6 = println(is_perfect(12));     // 0 (1+2+3+4+6=16)
+    let _p7 = println(is_perfect(100));    // 0
+
+    // Show the actual sum of proper divisors for some numbers
+    let _p8 = println(sum_proper_divisors(6));    // 6
+    let _p9 = println(sum_proper_divisors(12));   // 16
+    let _p10 = println(sum_proper_divisors(28));  // 28
+
+    0
+    };

@@ -1,0 +1,119 @@
+// Golden Test: Interval Scheduling Maximization (greedy by end time)
+
+fn sort_by_end(starts: i64, ends: i64, n: i64) -> i64 = {
+    let mut i = 0;
+    loop {
+        if i >= n - 1 { break } else { 0 };
+        let mut min_idx = i;
+        let mut j = i + 1;
+        loop {
+            if j >= n { break } else { 0 };
+            if vec_get(ends, j) < vec_get(ends, min_idx) {
+                set min_idx = j; 0
+            } else { 0 };
+            j = j + 1
+        };
+        if min_idx != i {
+            let ts = vec_get(starts, i);
+            let te = vec_get(ends, i);
+            vec_set(starts, i, vec_get(starts, min_idx));
+            vec_set(ends, i, vec_get(ends, min_idx));
+            vec_set(starts, min_idx, ts);
+            vec_set(ends, min_idx, te);
+            0
+        } else { 0 };
+        i = i + 1
+    };
+    0
+};
+
+fn max_intervals(starts: i64, ends: i64, n: i64) -> i64 = {
+    let _s = sort_by_end(starts, ends, n);
+    let mut count = 1;
+    let mut last_end = vec_get(ends, 0);
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { 0 };
+        if vec_get(starts, i) >= last_end {
+            set count = count + 1;
+            set last_end = vec_get(ends, i);
+            0
+        } else { 0 };
+        i = i + 1
+    };
+    count
+};
+
+fn collect_selected(starts: i64, ends: i64, n: i64, result: i64) -> i64 = {
+    let _s = sort_by_end(starts, ends, n);
+    vec_push(result, 0);
+    let mut last_end = vec_get(ends, 0);
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { 0 };
+        if vec_get(starts, i) >= last_end {
+            vec_push(result, i);
+            set last_end = vec_get(ends, i);
+            0
+        } else { 0 };
+        i = i + 1
+    };
+    0
+};
+
+fn main() -> i64 = {
+    let s1 = vec_new(); let e1 = vec_new();
+    vec_push(s1, 1); vec_push(e1, 4);
+    vec_push(s1, 3); vec_push(e1, 5);
+    vec_push(s1, 0); vec_push(e1, 6);
+    vec_push(s1, 5); vec_push(e1, 7);
+    vec_push(s1, 3); vec_push(e1, 9);
+    vec_push(s1, 5); vec_push(e1, 9);
+    vec_push(s1, 6); vec_push(e1, 10);
+    vec_push(s1, 8); vec_push(e1, 11);
+    vec_push(s1, 8); vec_push(e1, 12);
+    vec_push(s1, 2); vec_push(e1, 14);
+    vec_push(s1, 12); vec_push(e1, 16);
+
+    let _p1 = println(max_intervals(s1, e1, 11));  // 4
+    let s2 = vec_new(); let e2 = vec_new();
+    vec_push(s2, 1); vec_push(e2, 2);
+    vec_push(s2, 3); vec_push(e2, 4);
+    vec_push(s2, 5); vec_push(e2, 6);
+    vec_push(s2, 7); vec_push(e2, 8);
+    let _p2 = println(max_intervals(s2, e2, 4));   // 4
+    let s3 = vec_new(); let e3 = vec_new();
+    vec_push(s3, 0); vec_push(e3, 10);
+    vec_push(s3, 1); vec_push(e3, 11);
+    vec_push(s3, 2); vec_push(e3, 12);
+    let _p3 = println(max_intervals(s3, e3, 3));   // 1
+    let s4 = vec_new(); let e4 = vec_new();
+    vec_push(s4, 5); vec_push(e4, 10);
+    let _p4 = println(max_intervals(s4, e4, 1));   // 1
+    let s5 = vec_new(); let e5 = vec_new();
+    vec_push(s5, 1); vec_push(e5, 3);
+    vec_push(s5, 2); vec_push(e5, 5);
+    vec_push(s5, 4); vec_push(e5, 7);
+    vec_push(s5, 6); vec_push(e5, 9);
+    let result = vec_new();
+    let _c = collect_selected(s5, e5, 4, result);
+    let _p5 = println(vec_len(result));            // 2 selected
+    let _p6 = println(vec_get(s5, vec_get(result, 0)));  // start of 1st selected
+    let _p7 = println(vec_get(e5, vec_get(result, 0)));  // end of 1st selected
+    let s6 = vec_new(); let e6 = vec_new();
+    vec_push(s6, 0); vec_push(e6, 1);
+    vec_push(s6, 1); vec_push(e6, 2);
+    vec_push(s6, 2); vec_push(e6, 3);
+    vec_push(s6, 3); vec_push(e6, 4);
+    vec_push(s6, 4); vec_push(e6, 5);
+    let _p8 = println(max_intervals(s6, e6, 5));   // 5
+
+    vec_free(s1); vec_free(e1);
+    vec_free(s2); vec_free(e2);
+    vec_free(s3); vec_free(e3);
+    vec_free(s4); vec_free(e4);
+    vec_free(s5); vec_free(e5);
+    vec_free(result);
+    vec_free(s6); vec_free(e6);
+    0
+};

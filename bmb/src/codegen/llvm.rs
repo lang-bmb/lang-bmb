@@ -19,8 +19,8 @@ use inkwell::{FloatPredicate, IntPredicate};
 use thiserror::Error;
 
 use crate::mir::{
-    BasicBlock, Constant, MirBinOp, MirFunction, MirInst, MirProgram, MirType, MirUnaryOp,
-    Operand, Place, Terminator,
+    BasicBlock, CmpOp, Constant, ContractFact, MirBinOp, MirFunction, MirInst, MirProgram,
+    MirType, MirUnaryOp, Operand, Place, Terminator,
 };
 
 /// Code generation error
@@ -530,6 +530,12 @@ struct LlvmContext<'ctx> {
     /// v0.60.253: Track enum-typed variables for switch discriminant handling
     /// Enum values are passed as i64 (ptrtoint), but switch needs to load discriminant
     enum_variables: std::collections::HashSet<String>,
+
+    /// v0.95.7: Track Add instruction components for GEP-based load_u8/store_u8
+    /// When load_u8(base + offset) is emitted, using GEP instead of inttoptr(add)
+    /// preserves pointer provenance and enables LLVM vectorization of sequential access.
+    /// Maps SSA dest name -> (lhs IntValue, rhs IntValue) before the add.
+    add_components: HashMap<String, (inkwell::values::IntValue<'ctx>, inkwell::values::IntValue<'ctx>)>,
 }
 
 impl<'ctx> LlvmContext<'ctx> {
@@ -559,6 +565,7 @@ impl<'ctx> LlvmContext<'ctx> {
             fast_math,
             string_variables: std::collections::HashSet::new(),
             enum_variables: std::collections::HashSet::new(),
+            add_components: HashMap::new(),
         }
     }
 
@@ -622,6 +629,24 @@ impl<'ctx> LlvmContext<'ctx> {
         let sqrt_fn = self.module.add_function("llvm.sqrt.f64", sqrt_type, None);
         self.functions.insert("sqrt".to_string(), sqrt_fn);
 
+        // v0.96: Saturating arithmetic intrinsics
+        let sadd_sat_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+        let sadd_sat_fn = self.module.add_function("llvm.sadd.sat.i64", sadd_sat_type, None);
+        self.functions.insert("llvm.sadd.sat.i64".to_string(), sadd_sat_fn);
+        let ssub_sat_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+        let ssub_sat_fn = self.module.add_function("llvm.ssub.sat.i64", ssub_sat_type, None);
+        self.functions.insert("llvm.ssub.sat.i64".to_string(), ssub_sat_fn);
+        // smul.with.overflow returns {i64, i1}
+        let smul_ovf_ret = self.context.struct_type(&[i64_type.into(), self.context.bool_type().into()], false);
+        let smul_ovf_type = smul_ovf_ret.fn_type(&[i64_type.into(), i64_type.into()], false);
+        let smul_ovf_fn = self.module.add_function("llvm.smul.with.overflow.i64", smul_ovf_type, None);
+        self.functions.insert("llvm.smul.with.overflow.i64".to_string(), smul_ovf_fn);
+
+        // v0.96.16: llvm.assume for contract-driven optimization
+        let assume_type = self.context.void_type().fn_type(&[self.context.bool_type().into()], false);
+        let assume_fn = self.module.add_function("llvm.assume", assume_type, None);
+        self.functions.insert("llvm.assume".to_string(), assume_fn);
+
         // i64_to_f64(i64) -> f64
         // This is handled by sitofp instruction, but we declare it as a placeholder
         // The actual implementation is in gen_call
@@ -659,6 +684,16 @@ impl<'ctx> LlvmContext<'ctx> {
         // v0.51.15: nofree tells LLVM the function doesn't free memory
         // This enables better GVN optimization after loop rotation
         let nofree_attr = self.context.create_string_attribute("nofree", "");
+        // v0.96.16: nonnull for string parameters — BMB strings are always non-null
+        let nonnull_attr = self.context.create_string_attribute("nonnull", "");
+
+        // v0.96.2: read_line() -> String (ptr) for REPL support
+        let read_line_type = ptr_type.fn_type(&[], false);
+        let read_line_fn = self.module.add_function("bmb_read_line", read_line_type, None);
+        read_line_fn.add_attribute(AttributeLoc::Function, nounwind_attr);
+        read_line_fn.add_attribute(AttributeLoc::Return, nonnull_attr);
+        self.functions.insert("read_line".to_string(), read_line_fn);
+        self.function_return_types.insert("read_line".to_string(), MirType::String);
 
         // v0.46: chr(i64) -> ptr (returns single-char string)
         // Note: chr allocates memory, so it's not readonly
@@ -666,6 +701,7 @@ impl<'ctx> LlvmContext<'ctx> {
         let chr_fn = self.module.add_function("bmb_chr", chr_type, None);
         chr_fn.add_attribute(AttributeLoc::Function, nounwind_attr);
         chr_fn.add_attribute(AttributeLoc::Function, willreturn_attr);
+        chr_fn.add_attribute(AttributeLoc::Return, nonnull_attr);
         self.functions.insert("chr".to_string(), chr_fn);
         self.function_return_types.insert("chr".to_string(), MirType::String);
 
@@ -678,17 +714,20 @@ impl<'ctx> LlvmContext<'ctx> {
         ord_fn.add_attribute(AttributeLoc::Function, nosync_attr);
         ord_fn.add_attribute(AttributeLoc::Function, speculatable_attr);
         ord_fn.add_attribute(AttributeLoc::Param(0), nocapture_attr);
+        ord_fn.add_attribute(AttributeLoc::Param(0), nonnull_attr);
         self.functions.insert("ord".to_string(), ord_fn);
 
         // v0.97: String functions
         // print_str(ptr) -> void
         let print_str_type = void_type.fn_type(&[ptr_type.into()], false);
         let print_str_fn = self.module.add_function("bmb_print_str", print_str_type, None);
+        print_str_fn.add_attribute(AttributeLoc::Param(0), nonnull_attr);
         self.functions.insert("print_str".to_string(), print_str_fn);
 
         // println_str(ptr) -> void
         let println_str_type = void_type.fn_type(&[ptr_type.into()], false);
         let println_str_fn = self.module.add_function("bmb_println_str", println_str_type, None);
+        println_str_fn.add_attribute(AttributeLoc::Param(0), nonnull_attr);
         self.functions.insert("println_str".to_string(), println_str_fn);
 
         // len(ptr) -> i64
@@ -705,6 +744,7 @@ impl<'ctx> LlvmContext<'ctx> {
         len_fn.add_attribute(AttributeLoc::Function, nosync_attr);
         len_fn.add_attribute(AttributeLoc::Function, nofree_attr);
         len_fn.add_attribute(AttributeLoc::Param(0), nocapture_attr);
+        len_fn.add_attribute(AttributeLoc::Param(0), nonnull_attr);
         self.functions.insert("len".to_string(), len_fn);
 
         // v0.46: byte_at(ptr, i64) -> i64
@@ -717,6 +757,7 @@ impl<'ctx> LlvmContext<'ctx> {
         byte_at_fn.add_attribute(AttributeLoc::Function, speculatable_attr);
         byte_at_fn.add_attribute(AttributeLoc::Function, nosync_attr);
         byte_at_fn.add_attribute(AttributeLoc::Param(0), nocapture_attr);
+        byte_at_fn.add_attribute(AttributeLoc::Param(0), nonnull_attr);
         self.functions.insert("byte_at".to_string(), byte_at_fn);
 
         // v0.50.75: char_at(ptr, i64) -> i64 (same as byte_at, for compatibility)
@@ -729,6 +770,7 @@ impl<'ctx> LlvmContext<'ctx> {
         char_at_fn.add_attribute(AttributeLoc::Function, speculatable_attr);
         char_at_fn.add_attribute(AttributeLoc::Function, nosync_attr);
         char_at_fn.add_attribute(AttributeLoc::Param(0), nocapture_attr);
+        char_at_fn.add_attribute(AttributeLoc::Param(0), nonnull_attr);
         self.functions.insert("char_at".to_string(), char_at_fn);
 
         // v0.60.1: load_u8(addr: i64) -> i64 - read single byte from memory address
@@ -774,6 +816,8 @@ impl<'ctx> LlvmContext<'ctx> {
         slice_fn.add_attribute(AttributeLoc::Function, nounwind_attr);
         slice_fn.add_attribute(AttributeLoc::Function, willreturn_attr);
         slice_fn.add_attribute(AttributeLoc::Function, nosync_attr);
+        slice_fn.add_attribute(AttributeLoc::Param(0), nonnull_attr);
+        slice_fn.add_attribute(AttributeLoc::Return, nonnull_attr);
         self.functions.insert("slice".to_string(), slice_fn);
         // v0.60.120: Register return type for string comparison tracking
         self.function_return_types.insert("slice".to_string(), MirType::String);
@@ -783,6 +827,10 @@ impl<'ctx> LlvmContext<'ctx> {
         let replace_fn = self.module.add_function("bmb_string_replace", replace_type, None);
         replace_fn.add_attribute(AttributeLoc::Function, nounwind_attr);
         replace_fn.add_attribute(AttributeLoc::Function, willreturn_attr);
+        replace_fn.add_attribute(AttributeLoc::Param(0), nonnull_attr);
+        replace_fn.add_attribute(AttributeLoc::Param(1), nonnull_attr);
+        replace_fn.add_attribute(AttributeLoc::Param(2), nonnull_attr);
+        replace_fn.add_attribute(AttributeLoc::Return, nonnull_attr);
         self.functions.insert("replace".to_string(), replace_fn);
         self.function_return_types.insert("replace".to_string(), MirType::String);
 
@@ -793,6 +841,8 @@ impl<'ctx> LlvmContext<'ctx> {
         string_eq_fn.add_attribute(AttributeLoc::Function, nounwind_attr);
         string_eq_fn.add_attribute(AttributeLoc::Function, willreturn_attr);
         string_eq_fn.add_attribute(AttributeLoc::Function, nosync_attr);
+        string_eq_fn.add_attribute(AttributeLoc::Param(0), nonnull_attr);
+        string_eq_fn.add_attribute(AttributeLoc::Param(1), nonnull_attr);
         self.functions.insert("string_eq".to_string(), string_eq_fn);
 
         // v0.98: Vector functions
@@ -806,8 +856,8 @@ impl<'ctx> LlvmContext<'ctx> {
         let vec_with_cap_fn = self.module.add_function("bmb_vec_with_capacity", vec_with_cap_type, None);
         self.functions.insert("vec_with_capacity".to_string(), vec_with_cap_fn);
 
-        // vec_push(vec: i64, value: i64) -> void
-        let vec_push_type = void_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+        // vec_push(vec: i64, value: i64) -> i64 (returns potentially-new vec pointer after realloc)
+        let vec_push_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
         let vec_push_fn = self.module.add_function("bmb_vec_push", vec_push_type, None);
         self.functions.insert("vec_push".to_string(), vec_push_fn);
 
@@ -935,12 +985,14 @@ impl<'ctx> LlvmContext<'ctx> {
         // char_to_string(c: i32) -> ptr (returns heap-allocated string)
         let char_to_str_type = ptr_type.fn_type(&[i32_type.into()], false);
         let char_to_str_fn = self.module.add_function("bmb_char_to_string", char_to_str_type, None);
+        char_to_str_fn.add_attribute(AttributeLoc::Return, nonnull_attr);
         self.functions.insert("char_to_string".to_string(), char_to_str_fn);
         self.function_return_types.insert("char_to_string".to_string(), MirType::String);
 
         // int_to_string(n: i64) -> ptr
         let int_to_str_type = ptr_type.fn_type(&[i64_type.into()], false);
         let int_to_str_fn = self.module.add_function("bmb_int_to_string", int_to_str_type, None);
+        int_to_str_fn.add_attribute(AttributeLoc::Return, nonnull_attr);
         self.functions.insert("int_to_string".to_string(), int_to_str_fn);
         self.function_return_types.insert("int_to_string".to_string(), MirType::String);
 
@@ -948,6 +1000,7 @@ impl<'ctx> LlvmContext<'ctx> {
         // string_from_cstr(cstr: ptr) -> ptr (returns BmbString*)
         let string_from_cstr_type = ptr_type.fn_type(&[ptr_type.into()], false);
         let string_from_cstr_fn = self.module.add_function("bmb_string_from_cstr", string_from_cstr_type, None);
+        string_from_cstr_fn.add_attribute(AttributeLoc::Return, nonnull_attr);
         self.functions.insert("string_from_cstr".to_string(), string_from_cstr_fn);
         self.function_return_types.insert("string_from_cstr".to_string(), MirType::String);
 
@@ -955,22 +1008,37 @@ impl<'ctx> LlvmContext<'ctx> {
         // string_concat(a: ptr, b: ptr) -> ptr
         let string_concat_type = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
         let string_concat_fn = self.module.add_function("bmb_string_concat", string_concat_type, None);
+        string_concat_fn.add_attribute(AttributeLoc::Param(0), nonnull_attr);
+        string_concat_fn.add_attribute(AttributeLoc::Param(1), nonnull_attr);
+        string_concat_fn.add_attribute(AttributeLoc::Return, nonnull_attr);
         self.functions.insert("string_concat".to_string(), string_concat_fn);
         self.function_return_types.insert("string_concat".to_string(), MirType::String);
 
         // v0.90.90: Multi-string concat — single allocation for 3/5/7 strings
         let concat3_type = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false);
         let concat3_fn = self.module.add_function("bmb_string_concat3", concat3_type, None);
+        concat3_fn.add_attribute(AttributeLoc::Param(0), nonnull_attr);
+        concat3_fn.add_attribute(AttributeLoc::Param(1), nonnull_attr);
+        concat3_fn.add_attribute(AttributeLoc::Param(2), nonnull_attr);
+        concat3_fn.add_attribute(AttributeLoc::Return, nonnull_attr);
         self.functions.insert("concat3".to_string(), concat3_fn);
         self.function_return_types.insert("concat3".to_string(), MirType::String);
 
         let concat5_type = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into()], false);
         let concat5_fn = self.module.add_function("bmb_string_concat5", concat5_type, None);
+        for i in 0..5 {
+            concat5_fn.add_attribute(AttributeLoc::Param(i), nonnull_attr);
+        }
+        concat5_fn.add_attribute(AttributeLoc::Return, nonnull_attr);
         self.functions.insert("concat5".to_string(), concat5_fn);
         self.function_return_types.insert("concat5".to_string(), MirType::String);
 
         let concat7_type = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into()], false);
         let concat7_fn = self.module.add_function("bmb_string_concat7", concat7_type, None);
+        for i in 0..7 {
+            concat7_fn.add_attribute(AttributeLoc::Param(i), nonnull_attr);
+        }
+        concat7_fn.add_attribute(AttributeLoc::Return, nonnull_attr);
         self.functions.insert("concat7".to_string(), concat7_fn);
         self.function_return_types.insert("concat7".to_string(), MirType::String);
 
@@ -988,11 +1056,13 @@ impl<'ctx> LlvmContext<'ctx> {
         // sb_push(handle: i64, s: ptr) -> i64
         let sb_push_type = i64_type.fn_type(&[i64_type.into(), ptr_type.into()], false);
         let sb_push_fn = self.module.add_function("bmb_sb_push", sb_push_type, None);
+        sb_push_fn.add_attribute(AttributeLoc::Param(1), nonnull_attr);
         self.functions.insert("sb_push".to_string(), sb_push_fn);
 
         // v0.95.7: sb_push_range(handle: i64, s: ptr, start: i64, end: i64) -> i64
         let sb_push_range_type = i64_type.fn_type(&[i64_type.into(), ptr_type.into(), i64_type.into(), i64_type.into()], false);
         let sb_push_range_fn = self.module.add_function("sb_push_range", sb_push_range_type, None);
+        sb_push_range_fn.add_attribute(AttributeLoc::Param(1), nonnull_attr);
         self.functions.insert("sb_push_range".to_string(), sb_push_range_fn);
 
         // sb_push_char(handle: i64, char_code: i64) -> i64
@@ -1009,6 +1079,7 @@ impl<'ctx> LlvmContext<'ctx> {
         // Escapes and pushes entire string in one call (eliminates per-char call overhead)
         let sb_push_escaped_type = i64_type.fn_type(&[i64_type.into(), ptr_type.into()], false);
         let sb_push_escaped_fn = self.module.add_function("bmb_sb_push_escaped", sb_push_escaped_type, None);
+        sb_push_escaped_fn.add_attribute(AttributeLoc::Param(1), nonnull_attr);
         self.functions.insert("sb_push_escaped".to_string(), sb_push_escaped_fn);
 
         // sb_len(handle: i64) -> i64
@@ -1019,6 +1090,7 @@ impl<'ctx> LlvmContext<'ctx> {
         // sb_build(handle: i64) -> ptr (returns BmbString*)
         let sb_build_type = ptr_type.fn_type(&[i64_type.into()], false);
         let sb_build_fn = self.module.add_function("bmb_sb_build", sb_build_type, None);
+        sb_build_fn.add_attribute(AttributeLoc::Return, nonnull_attr);
         self.functions.insert("sb_build".to_string(), sb_build_fn);
         self.function_return_types.insert("sb_build".to_string(), MirType::String);
 
@@ -1126,6 +1198,7 @@ impl<'ctx> LlvmContext<'ctx> {
         // v0.88.2: free_string(s: ptr) -> i64 (free a BmbString)
         let free_string_type = i64_type.fn_type(&[ptr_type.into()], false);
         let free_string_fn = self.module.add_function("bmb_string_free", free_string_type, None);
+        free_string_fn.add_attribute(AttributeLoc::Param(0), nonnull_attr);
         self.functions.insert("free_string".to_string(), free_string_fn);
 
         // v0.88.2: arena_mode(enable: i64) -> i64
@@ -1165,6 +1238,33 @@ impl<'ctx> LlvmContext<'ctx> {
         let file_size_type = i64_type.fn_type(&[ptr_type.into()], false);
         let file_size_fn = self.module.add_function("file_size", file_size_type, None);
         self.functions.insert("file_size".to_string(), file_size_fn);
+
+        // v0.96: Directory operations for gotgan-bmb
+        // is_dir(path: ptr) -> i64 (returns 1 if directory, 0 otherwise)
+        let is_dir_type = i64_type.fn_type(&[ptr_type.into()], false);
+        let is_dir_fn = self.module.add_function("is_dir", is_dir_type, None);
+        self.functions.insert("is_dir".to_string(), is_dir_fn);
+
+        // make_dir(path: ptr) -> i64 (returns 0 on success, -1 on error)
+        let make_dir_type = i64_type.fn_type(&[ptr_type.into()], false);
+        let make_dir_fn = self.module.add_function("make_dir", make_dir_type, None);
+        self.functions.insert("make_dir".to_string(), make_dir_fn);
+
+        // list_dir(path: ptr) -> ptr (returns newline-separated directory listing)
+        let list_dir_type = ptr_type.fn_type(&[ptr_type.into()], false);
+        let list_dir_fn = self.module.add_function("list_dir", list_dir_type, None);
+        self.functions.insert("list_dir".to_string(), list_dir_fn);
+        self.function_return_types.insert("list_dir".to_string(), MirType::String);
+
+        // remove_file(path: ptr) -> i64 (0 success, -1 error)
+        let remove_file_type = i64_type.fn_type(&[ptr_type.into()], false);
+        let remove_file_fn = self.module.add_function("remove_file", remove_file_type, None);
+        self.functions.insert("remove_file".to_string(), remove_file_fn);
+
+        // remove_dir(path: ptr) -> i64 (0 success, -1 error)
+        let remove_dir_type = i64_type.fn_type(&[ptr_type.into()], false);
+        let remove_dir_fn = self.module.add_function("remove_dir", remove_dir_type, None);
+        self.functions.insert("remove_dir".to_string(), remove_dir_fn);
 
         // v0.51.18: _cstr variants for string literal optimization (zero overhead)
         let file_exists_cstr_fn = self.module.add_function("file_exists_cstr", file_exists_type, None);
@@ -1522,6 +1622,8 @@ impl<'ctx> LlvmContext<'ctx> {
 
         // Create function declaration
         // v0.60.252: Use private linkage for @inline functions to avoid symbol collision
+        // NOTE: Extending to all functions causes stack overflow in inkwell's module serialization
+        // for large programs (compiler.bmb ~17K lines). Keep alwaysinline-only for now.
         use inkwell::module::Linkage;
         let linkage = if func.always_inline && func.name != "main" && func.name != "bmb_user_main" {
             Some(Linkage::Private)
@@ -1544,6 +1646,9 @@ impl<'ctx> LlvmContext<'ctx> {
         function.add_attribute(AttributeLoc::Function, self.context.create_enum_attribute(nounwind_id, 0));
         function.add_attribute(AttributeLoc::Function, self.context.create_enum_attribute(willreturn_id, 0));
         function.add_attribute(AttributeLoc::Function, self.context.create_enum_attribute(mustprogress_id, 0));
+        // v0.96.18: Add nosync — BMB user functions never use atomic/synchronization ops
+        let nosync_id = Attribute::get_named_enum_kind_id("nosync");
+        function.add_attribute(AttributeLoc::Function, self.context.create_enum_attribute(nosync_id, 0));
 
         // v0.51.8: Add alwaysinline for small functions to eliminate call overhead
         // This is critical for tight loops like spectral_norm's inner loop
@@ -1556,9 +1661,13 @@ impl<'ctx> LlvmContext<'ctx> {
         // v0.69: Add memory(none) for memory-free functions to enable LICM and constant folding
         // Functions marked @pure or detected as memory-free can be hoisted out of loops
         // and constant-folded by LLVM when called with constant arguments
+        // v0.96.19: Add memory(read) for read-only functions
         if func.is_memory_free {
             let memory_none_attr = self.context.create_string_attribute("memory", "none");
             function.add_attribute(AttributeLoc::Function, memory_none_attr);
+        } else if func.is_read_only {
+            let memory_read_attr = self.context.create_string_attribute("memory", "read");
+            function.add_attribute(AttributeLoc::Function, memory_read_attr);
         }
 
         // v0.60.56: Add fast-math attributes for FP-heavy workloads
@@ -1575,6 +1684,50 @@ impl<'ctx> LlvmContext<'ctx> {
             function.add_attribute(AttributeLoc::Function, no_infs_attr);
             function.add_attribute(AttributeLoc::Function, no_signed_zeros_attr);
             function.add_attribute(AttributeLoc::Function, approx_func_attr);
+        }
+
+        // v0.96.16: Add noundef to all parameters (BMB guarantees initialized values)
+        let noundef_id = Attribute::get_named_enum_kind_id("noundef");
+        let noundef_attr = self.context.create_enum_attribute(noundef_id, 0);
+        for i in 0..func.params.len() {
+            function.add_attribute(AttributeLoc::Param(i as u32), noundef_attr);
+        }
+
+        // v0.96.17: Add noalias to String parameters (BMB strings are immutable, no aliasing)
+        let noalias_id = Attribute::get_named_enum_kind_id("noalias");
+        let noalias_attr = self.context.create_enum_attribute(noalias_id, 0);
+        let nocapture_id = Attribute::get_named_enum_kind_id("nocapture");
+        let nocapture_attr = self.context.create_enum_attribute(nocapture_id, 0);
+        let readonly_id = Attribute::get_named_enum_kind_id("readonly");
+        let readonly_attr = self.context.create_enum_attribute(readonly_id, 0);
+        // v0.96.18: Add dereferenceable(24) — BmbString = { ptr, i64, i64 } = 24 bytes
+        let deref_id = Attribute::get_named_enum_kind_id("dereferenceable");
+        let deref_attr = self.context.create_enum_attribute(deref_id, 24);
+        let nonnull_param_id = Attribute::get_named_enum_kind_id("nonnull");
+        let nonnull_param_attr = self.context.create_enum_attribute(nonnull_param_id, 0);
+        // v0.96.18: Add align(8) — BmbString struct is 8-byte aligned
+        let align_id = Attribute::get_named_enum_kind_id("align");
+        let align_attr = self.context.create_enum_attribute(align_id, 8);
+        for (i, (_, ty)) in func.params.iter().enumerate() {
+            if matches!(ty, MirType::String) {
+                function.add_attribute(AttributeLoc::Param(i as u32), noalias_attr);
+                function.add_attribute(AttributeLoc::Param(i as u32), nocapture_attr);
+                function.add_attribute(AttributeLoc::Param(i as u32), readonly_attr);
+                function.add_attribute(AttributeLoc::Param(i as u32), deref_attr);
+                function.add_attribute(AttributeLoc::Param(i as u32), nonnull_param_attr);
+                function.add_attribute(AttributeLoc::Param(i as u32), align_attr);
+            }
+        }
+
+        // v0.96.17: Add nonnull return attribute for String-returning functions
+        // v0.96.18: Add dereferenceable(24) on return — String returns always valid
+        if matches!(func.ret_ty, MirType::String) && func.name != "main" {
+            let nonnull_id = Attribute::get_named_enum_kind_id("nonnull");
+            let nonnull_attr = self.context.create_enum_attribute(nonnull_id, 0);
+            function.add_attribute(AttributeLoc::Return, nonnull_attr);
+            let deref_ret_id = Attribute::get_named_enum_kind_id("dereferenceable");
+            let deref_ret_attr = self.context.create_enum_attribute(deref_ret_id, 24);
+            function.add_attribute(AttributeLoc::Return, deref_ret_attr);
         }
 
         self.functions.insert(func.name.clone(), function);
@@ -1595,6 +1748,7 @@ impl<'ctx> LlvmContext<'ctx> {
         self.phi_nodes.clear();
         self.blocks.clear();
         self.string_variables.clear();
+        self.add_components.clear();
 
         // v0.60.81: Track String-typed variables for proper string comparison
         // This enables bmb_string_eq to be called even when both operands are variables
@@ -1693,6 +1847,80 @@ impl<'ctx> LlvmContext<'ctx> {
                         .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
                     // Store under a special name that coercion can look up
                     self.ssa_values.insert(format!("{}_i64", name), i64_val.into());
+                }
+            }
+        }
+
+        // v0.96.16: Emit llvm.assume for precondition contract facts
+        // Communicates pre-condition knowledge to LLVM optimizer
+        if !func.preconditions.is_empty() {
+            let assume_fn = self.functions.get("llvm.assume")
+                .ok_or_else(|| CodeGenError::LlvmError("llvm.assume not found".to_string()))?;
+            for fact in &func.preconditions {
+                match fact {
+                    ContractFact::VarCmp { var, op, value } => {
+                        // Only emit for function parameters (available at entry)
+                        if let Some((_, ty)) = func.params.iter().find(|(n, _)| n == var) {
+                            if let Some(param_val) = self.ssa_values.get(var).cloned()
+                                .or_else(|| self.variables.get(var).and_then(|(alloca, llvm_ty)| {
+                                    self.builder.build_load(*llvm_ty, *alloca, &format!("{}_load", var)).ok().map(|v| v.into())
+                                }))
+                            {
+                                let llvm_ty = self.mir_type_to_llvm(ty);
+                                let int_val = param_val.into_int_value();
+                                let const_val = llvm_ty.into_int_type().const_int(*value as u64, true);
+                                let pred = match op {
+                                    CmpOp::Lt => inkwell::IntPredicate::SLT,
+                                    CmpOp::Le => inkwell::IntPredicate::SLE,
+                                    CmpOp::Gt => inkwell::IntPredicate::SGT,
+                                    CmpOp::Ge => inkwell::IntPredicate::SGE,
+                                    CmpOp::Eq => inkwell::IntPredicate::EQ,
+                                    CmpOp::Ne => inkwell::IntPredicate::NE,
+                                };
+                                if let Ok(cmp) = self.builder.build_int_compare(pred, int_val, const_val, "_assume_cmp") {
+                                    let _ = self.builder.build_call(*assume_fn, &[cmp.into()], "");
+                                }
+                            }
+                        }
+                    }
+                    ContractFact::VarVarCmp { lhs, op, rhs } => {
+                        if let Some((_, lty)) = func.params.iter().find(|(n, _)| n == lhs) {
+                            if func.params.iter().any(|(n, _)| n == rhs) {
+                                if let (Some(lhs_val), Some(rhs_val)) = (
+                                    self.ssa_values.get(lhs).cloned(),
+                                    self.ssa_values.get(rhs).cloned(),
+                                ) {
+                                    let _ = lty; // type used for documentation
+                                    let pred = match op {
+                                        CmpOp::Lt => inkwell::IntPredicate::SLT,
+                                        CmpOp::Le => inkwell::IntPredicate::SLE,
+                                        CmpOp::Gt => inkwell::IntPredicate::SGT,
+                                        CmpOp::Ge => inkwell::IntPredicate::SGE,
+                                        CmpOp::Eq => inkwell::IntPredicate::EQ,
+                                        CmpOp::Ne => inkwell::IntPredicate::NE,
+                                    };
+                                    if let Ok(cmp) = self.builder.build_int_compare(pred, lhs_val.into_int_value(), rhs_val.into_int_value(), "_assume_cmp") {
+                                        let _ = self.builder.build_call(*assume_fn, &[cmp.into()], "");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    ContractFact::NonNull { var } => {
+                        if func.params.iter().any(|(n, _)| n == var) {
+                            if let Some(param_val) = self.ssa_values.get(var).cloned() {
+                                let ptr_val = param_val.into_pointer_value();
+                                let null_ptr = ptr_val.get_type().const_null();
+                                if let Ok(cmp) = self.builder.build_int_compare(inkwell::IntPredicate::NE, ptr_val, null_ptr, "_assume_nonnull") {
+                                    let _ = self.builder.build_call(*assume_fn, &[cmp.into()], "");
+                                }
+                            }
+                        }
+                    }
+                    // Skip postcondition facts and array bounds
+                    ContractFact::ReturnCmp { .. }
+                    | ContractFact::ReturnVarCmp { .. }
+                    | ContractFact::ArrayBounds { .. } => {}
                 }
             }
         }
@@ -2238,6 +2466,15 @@ impl<'ctx> LlvmContext<'ctx> {
                 let is_string_comparison = lhs_is_string || rhs_is_string;
                 let result = self.gen_binop_with_string_hint(*op, lhs_val, rhs_val, is_string_comparison)?;
                 self.store_to_place(dest, result)?;
+
+                // v0.95.7: Track Add components for GEP-based load_u8/store_u8
+                // This enables LLVM to vectorize sequential byte access patterns
+                if *op == MirBinOp::Add && lhs_val.is_int_value() && rhs_val.is_int_value() {
+                    self.add_components.insert(
+                        dest.name.clone(),
+                        (lhs_val.into_int_value(), rhs_val.into_int_value()),
+                    );
+                }
             }
 
             MirInst::UnaryOp { dest, op, src } => {
@@ -2317,12 +2554,33 @@ impl<'ctx> LlvmContext<'ctx> {
                     }
                 } else if func == "load_i64" && args.len() == 1 {
                     // v0.51.2: Inline load_i64 as direct LLVM load instruction
-                    // This avoids function call overhead for pointer dereference
-                    let ptr_as_i64 = self.gen_operand(&args[0])?;
+                    // v0.95.8: GEP-based access when addr = base + offset
                     let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
-                    let ptr = self.builder
-                        .build_int_to_ptr(ptr_as_i64.into_int_value(), ptr_type, "inttoptr")
-                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    let i8_type = self.context.i8_type();
+
+                    let ptr = if let Operand::Place(addr_place) = &args[0] {
+                        if let Some((base_val, offset_val)) = self.add_components.get(&addr_place.name).copied() {
+                            let base_ptr = self.builder
+                                .build_int_to_ptr(base_val, ptr_type, "gep_base")
+                                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                            unsafe {
+                                self.builder
+                                    .build_in_bounds_gep(i8_type, base_ptr, &[offset_val], "gep_elem")
+                                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                            }
+                        } else {
+                            let addr = self.gen_operand(&args[0])?;
+                            self.builder
+                                .build_int_to_ptr(addr.into_int_value(), ptr_type, "load_ptr")
+                                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                        }
+                    } else {
+                        let addr = self.gen_operand(&args[0])?;
+                        self.builder
+                            .build_int_to_ptr(addr.into_int_value(), ptr_type, "load_ptr")
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    };
+
                     let loaded = self.builder
                         .build_load(self.context.i64_type(), ptr, "load")
                         .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
@@ -2331,13 +2589,34 @@ impl<'ctx> LlvmContext<'ctx> {
                     }
                 } else if func == "store_i64" && args.len() == 2 {
                     // v0.51.2: Inline store_i64 as direct LLVM store instruction
-                    // This avoids function call overhead for pointer write
-                    let ptr_as_i64 = self.gen_operand(&args[0])?;
+                    // v0.95.8: GEP-based access when addr = base + offset
                     let value = self.gen_operand(&args[1])?;
                     let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
-                    let ptr = self.builder
-                        .build_int_to_ptr(ptr_as_i64.into_int_value(), ptr_type, "inttoptr")
-                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    let i8_type = self.context.i8_type();
+
+                    let ptr = if let Operand::Place(addr_place) = &args[0] {
+                        if let Some((base_val, offset_val)) = self.add_components.get(&addr_place.name).copied() {
+                            let base_ptr = self.builder
+                                .build_int_to_ptr(base_val, ptr_type, "sgep_base")
+                                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                            unsafe {
+                                self.builder
+                                    .build_in_bounds_gep(i8_type, base_ptr, &[offset_val], "sgep_elem")
+                                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                            }
+                        } else {
+                            let addr = self.gen_operand(&args[0])?;
+                            self.builder
+                                .build_int_to_ptr(addr.into_int_value(), ptr_type, "store_ptr")
+                                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                        }
+                    } else {
+                        let addr = self.gen_operand(&args[0])?;
+                        self.builder
+                            .build_int_to_ptr(addr.into_int_value(), ptr_type, "store_ptr")
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    };
+
                     self.builder
                         .build_store(ptr, value.into_int_value())
                         .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
@@ -2348,11 +2627,33 @@ impl<'ctx> LlvmContext<'ctx> {
                     }
                 } else if func == "load_f64" && args.len() == 1 {
                     // v0.51.5: Inline load_f64 as direct LLVM load instruction (f64)
-                    let ptr_as_i64 = self.gen_operand(&args[0])?;
+                    // v0.95.8: GEP-based access when addr = base + offset
                     let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
-                    let ptr = self.builder
-                        .build_int_to_ptr(ptr_as_i64.into_int_value(), ptr_type, "inttoptr")
-                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    let i8_type = self.context.i8_type();
+
+                    let ptr = if let Operand::Place(addr_place) = &args[0] {
+                        if let Some((base_val, offset_val)) = self.add_components.get(&addr_place.name).copied() {
+                            let base_ptr = self.builder
+                                .build_int_to_ptr(base_val, ptr_type, "gep_base")
+                                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                            unsafe {
+                                self.builder
+                                    .build_in_bounds_gep(i8_type, base_ptr, &[offset_val], "gep_elem")
+                                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                            }
+                        } else {
+                            let addr = self.gen_operand(&args[0])?;
+                            self.builder
+                                .build_int_to_ptr(addr.into_int_value(), ptr_type, "load_ptr")
+                                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                        }
+                    } else {
+                        let addr = self.gen_operand(&args[0])?;
+                        self.builder
+                            .build_int_to_ptr(addr.into_int_value(), ptr_type, "load_ptr")
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    };
+
                     let loaded = self.builder
                         .build_load(self.context.f64_type(), ptr, "load_f64")
                         .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
@@ -2361,12 +2662,34 @@ impl<'ctx> LlvmContext<'ctx> {
                     }
                 } else if func == "store_f64" && args.len() == 2 {
                     // v0.51.5: Inline store_f64 as direct LLVM store instruction (f64)
-                    let ptr_as_i64 = self.gen_operand(&args[0])?;
+                    // v0.95.8: GEP-based access when addr = base + offset
                     let value = self.gen_operand(&args[1])?;
                     let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
-                    let ptr = self.builder
-                        .build_int_to_ptr(ptr_as_i64.into_int_value(), ptr_type, "inttoptr")
-                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    let i8_type = self.context.i8_type();
+
+                    let ptr = if let Operand::Place(addr_place) = &args[0] {
+                        if let Some((base_val, offset_val)) = self.add_components.get(&addr_place.name).copied() {
+                            let base_ptr = self.builder
+                                .build_int_to_ptr(base_val, ptr_type, "sgep_base")
+                                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                            unsafe {
+                                self.builder
+                                    .build_in_bounds_gep(i8_type, base_ptr, &[offset_val], "sgep_elem")
+                                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                            }
+                        } else {
+                            let addr = self.gen_operand(&args[0])?;
+                            self.builder
+                                .build_int_to_ptr(addr.into_int_value(), ptr_type, "store_ptr")
+                                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                        }
+                    } else {
+                        let addr = self.gen_operand(&args[0])?;
+                        self.builder
+                            .build_int_to_ptr(addr.into_int_value(), ptr_type, "store_ptr")
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    };
+
                     self.builder
                         .build_store(ptr, value.into_float_value())
                         .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
@@ -2455,16 +2778,36 @@ impl<'ctx> LlvmContext<'ctx> {
                 } else if func == "load_u8" && args.len() == 1 {
                     // v0.60.6: Inline load_u8 as direct byte memory access for performance
                     // load_u8(addr) -> *((uint8_t*)addr) as i64
-                    let addr = self.gen_operand(&args[0])?;
-
+                    // v0.95.7: GEP-based access when addr = base + offset
+                    // inttoptr(base) + GEP preserves pointer provenance → enables LLVM vectorization
                     let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
                     let i8_type = self.context.i8_type();
                     let i64_type = self.context.i64_type();
 
-                    // Convert i64 address to pointer
-                    let ptr = self.builder
-                        .build_int_to_ptr(addr.into_int_value(), ptr_type, "addr_ptr")
-                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    // Check if address is an Add result → use GEP for better optimization
+                    let ptr = if let Operand::Place(addr_place) = &args[0] {
+                        if let Some((base_val, offset_val)) = self.add_components.get(&addr_place.name).copied() {
+                            // GEP path: inttoptr(base) + getelementptr i8
+                            let base_ptr = self.builder
+                                .build_int_to_ptr(base_val, ptr_type, "gep_base")
+                                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                            unsafe {
+                                self.builder
+                                    .build_in_bounds_gep(i8_type, base_ptr, &[offset_val], "gep_elem")
+                                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                            }
+                        } else {
+                            let addr = self.gen_operand(&args[0])?;
+                            self.builder
+                                .build_int_to_ptr(addr.into_int_value(), ptr_type, "addr_ptr")
+                                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                        }
+                    } else {
+                        let addr = self.gen_operand(&args[0])?;
+                        self.builder
+                            .build_int_to_ptr(addr.into_int_value(), ptr_type, "addr_ptr")
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    };
 
                     // Load byte as i8
                     let byte_val = self.builder
@@ -2483,16 +2826,36 @@ impl<'ctx> LlvmContext<'ctx> {
                 } else if func == "store_u8" && args.len() == 2 {
                     // v0.60.6: Inline store_u8 as direct byte memory write for performance
                     // store_u8(addr, val) -> *((uint8_t*)addr) = val & 0xFF
-                    let addr = self.gen_operand(&args[0])?;
+                    // v0.95.7: GEP-based access when addr = base + offset
                     let val = self.gen_operand(&args[1])?;
 
                     let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
                     let i8_type = self.context.i8_type();
 
-                    // Convert i64 address to pointer
-                    let ptr = self.builder
-                        .build_int_to_ptr(addr.into_int_value(), ptr_type, "addr_ptr")
-                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    // Check if address is an Add result → use GEP for better optimization
+                    let ptr = if let Operand::Place(addr_place) = &args[0] {
+                        if let Some((base_val, offset_val)) = self.add_components.get(&addr_place.name).copied() {
+                            // GEP path: inttoptr(base) + getelementptr i8
+                            let base_ptr = self.builder
+                                .build_int_to_ptr(base_val, ptr_type, "sgep_base")
+                                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                            unsafe {
+                                self.builder
+                                    .build_in_bounds_gep(i8_type, base_ptr, &[offset_val], "sgep_elem")
+                                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                            }
+                        } else {
+                            let addr = self.gen_operand(&args[0])?;
+                            self.builder
+                                .build_int_to_ptr(addr.into_int_value(), ptr_type, "addr_ptr")
+                                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                        }
+                    } else {
+                        let addr = self.gen_operand(&args[0])?;
+                        self.builder
+                            .build_int_to_ptr(addr.into_int_value(), ptr_type, "addr_ptr")
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    };
 
                     // Truncate i64 value to i8
                     let byte_val = self.builder
@@ -2886,11 +3249,25 @@ impl<'ctx> LlvmContext<'ctx> {
                     let llvm_elem_type = self.mir_type_to_llvm(element_type);
 
                     // v0.60.19: GEP to element pointer using single index (works for both arrays and pointers)
+                    // v0.95.9: Always use i64 index to preserve typed GEP through LLVM optimization.
+                    // i32 indices cause LLVM to canonicalize to byte-offset GEP (shl+ashr pattern),
+                    // blocking loop strength reduction. sext to i64 enables SCEV affine recognition.
+                    let i64_type = self.context.i64_type();
+                    let index_i64 = {
+                        let idx = index_val.into_int_value();
+                        if idx.get_type().get_bit_width() < 64 {
+                            self.builder
+                                .build_int_s_extend(idx, i64_type, &format!("{}_idx64", dest.name))
+                                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                        } else {
+                            idx
+                        }
+                    };
                     let elem_ptr = unsafe {
                         self.builder.build_in_bounds_gep(
                             llvm_elem_type,
                             array_ptr,
-                            &[index_val.into_int_value()],
+                            &[index_i64],
                             &format!("{}_ptr", dest.name)
                         )
                     }.map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
@@ -2939,11 +3316,23 @@ impl<'ctx> LlvmContext<'ctx> {
                 let llvm_elem_type = self.mir_type_to_llvm(element_type);
 
                 // v0.60.19: GEP to element pointer using single index (works for both arrays and pointers)
+                // v0.95.9: Always use i64 index to preserve typed GEP (same as IndexLoad fix)
+                let i64_type = self.context.i64_type();
+                let index_i64 = {
+                    let idx = index_val.into_int_value();
+                    if idx.get_type().get_bit_width() < 64 {
+                        self.builder
+                            .build_int_s_extend(idx, i64_type, &format!("{}_idx64", array.name))
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    } else {
+                        idx
+                    }
+                };
                 let elem_ptr = unsafe {
                     self.builder.build_in_bounds_gep(
                         llvm_elem_type,
                         array_ptr,
-                        &[index_val.into_int_value()],
+                        &[index_i64],
                         &format!("{}_store_ptr", array.name)
                     )
                 }.map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
@@ -5643,16 +6032,52 @@ impl<'ctx> LlvmContext<'ctx> {
                 Ok(result.into())
             }
 
-            // v0.95: Saturating arithmetic
-            MirBinOp::AddSat | MirBinOp::SubSat | MirBinOp::MulSat => {
-                // For now, treat as regular ops (full implementation needs saturation logic)
-                let result = match op {
-                    MirBinOp::AddSat => self.builder.build_int_add(lhs.into_int_value(), rhs.into_int_value(), "addsat"),
-                    MirBinOp::SubSat => self.builder.build_int_sub(lhs.into_int_value(), rhs.into_int_value(), "subsat"),
-                    MirBinOp::MulSat => self.builder.build_int_mul(lhs.into_int_value(), rhs.into_int_value(), "mulsat"),
-                    _ => unreachable!(),
-                }.map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
-                Ok(result.into())
+            // v0.96: Saturating arithmetic using LLVM intrinsics
+            MirBinOp::AddSat => {
+                let intrinsic = self.functions.get("llvm.sadd.sat.i64")
+                    .ok_or_else(|| CodeGenError::LlvmError("llvm.sadd.sat.i64 not found".to_string()))?;
+                let result = self.builder.build_call(*intrinsic, &[lhs.into(), rhs.into()], "addsat")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                Ok(result.try_as_basic_value().basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("sadd.sat returned void".to_string()))?)
+            }
+            MirBinOp::SubSat => {
+                let intrinsic = self.functions.get("llvm.ssub.sat.i64")
+                    .ok_or_else(|| CodeGenError::LlvmError("llvm.ssub.sat.i64 not found".to_string()))?;
+                let result = self.builder.build_call(*intrinsic, &[lhs.into(), rhs.into()], "subsat")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                Ok(result.try_as_basic_value().basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("ssub.sat returned void".to_string()))?)
+            }
+            MirBinOp::MulSat => {
+                // No native LLVM intrinsic for saturating multiply.
+                // Use smul.with.overflow + select to clamp on overflow.
+                let i64_type = self.context.i64_type();
+                let smul_fn = self.functions.get("llvm.smul.with.overflow.i64")
+                    .ok_or_else(|| CodeGenError::LlvmError("llvm.smul.with.overflow.i64 not found".to_string()))?;
+                let call_result = self.builder.build_call(*smul_fn, &[lhs.into(), rhs.into()], "mulsat.res")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                let res_val = call_result.try_as_basic_value().basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("smul.with.overflow returned void".to_string()))?;
+                let val = self.builder.build_extract_value(res_val.into_struct_value(), 0, "mulsat.val")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                let ovf = self.builder.build_extract_value(res_val.into_struct_value(), 1, "mulsat.ovf")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                // Determine result sign: negative if exactly one operand is negative
+                let zero = i64_type.const_zero();
+                let a_neg = self.builder.build_int_compare(inkwell::IntPredicate::SLT, lhs.into_int_value(), zero, "mulsat.a_neg")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                let b_neg = self.builder.build_int_compare(inkwell::IntPredicate::SLT, rhs.into_int_value(), zero, "mulsat.b_neg")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                let neg = self.builder.build_xor(a_neg, b_neg, "mulsat.neg")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                let int_min: BasicValueEnum = i64_type.const_int(i64::MIN as u64, false).into();
+                let int_max: BasicValueEnum = i64_type.const_int(i64::MAX as u64, false).into();
+                let sat_val = self.builder.build_select(neg, int_min, int_max, "mulsat.sat")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                let result = self.builder.build_select(ovf.into_int_value(), sat_val, val.into(), "mulsat")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                Ok(result)
             }
 
             // v0.95: Bitwise operations
@@ -5823,6 +6248,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+            is_read_only: false,
         }
     }
 
@@ -5840,6 +6266,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+            is_read_only: false,
         }
     }
 
@@ -5857,6 +6284,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+            is_read_only: false,
         }
     }
 

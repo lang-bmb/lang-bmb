@@ -1,0 +1,126 @@
+// Golden test: Queue simulation using circular buffer
+// Tests modular arithmetic and wraparound patterns
+
+fn queue_enqueue(buf: i64, head: i64, tail: i64, cap: i64, val: i64) -> i64 = {
+    vec_set(buf, tail, val);
+    let new_tail = tail + 1;
+    if new_tail >= cap { 0 } else { new_tail }
+    };
+
+fn queue_dequeue(buf: i64, head: i64, cap: i64) -> i64 = {
+    let new_head = head + 1;
+    if new_head >= cap { 0 } else { new_head }
+    };
+
+fn queue_front(buf: i64, head: i64) -> i64 = vec_get(buf, head);
+
+fn queue_size(head: i64, tail: i64, cap: i64) -> i64 = {
+    let diff = tail - head;
+    if diff >= 0 { diff }
+    else { diff + cap }
+    };
+
+// BFS-like level order traversal of a complete binary tree in array
+// Tree stored as: root=0, left(i)=2i+1, right(i)=2i+2
+fn bfs_sum(tree: i64, queue: i64, head: i64, tail: i64, cap: i64, acc: i64) -> i64 =
+    if head == tail { acc }  // queue empty
+    else {
+        let node = queue_front(queue, head);
+        let new_head = queue_dequeue(queue, head, cap);
+        let tree_len = vec_len(tree);
+        let val = if node < tree_len { vec_get(tree, node) } else { 0 };
+        let new_acc = acc + val;
+        // Enqueue children
+        let left = 2 * node + 1;
+        let right = 2 * node + 2;
+        let t1 = if left < tree_len { queue_enqueue(queue, new_head, tail, cap, left) } else { tail };
+        let t2 = if right < tree_len { queue_enqueue(queue, new_head, t1, cap, right) } else { t1 };
+        bfs_sum(tree, queue, new_head, t2, cap, new_acc)
+    };
+
+    // Helper: create a vec of n zeros
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { 0 };
+        vec_push(v, 0);
+        i = i + 1
+    };
+    v
+    };
+
+fn main() -> i64 = {
+// Basic queue operations
+    let buf = make_zeros(5);
+    let cap = 5;
+    let head = 0;
+    let tail = 0;
+
+// Enqueue 10, 20, 30
+    let t1 = queue_enqueue(buf, head, tail, cap, 10);    // tail=1
+    let t2 = queue_enqueue(buf, head, t1, cap, 20);      // tail=2
+    let t3 = queue_enqueue(buf, head, t2, cap, 30);      // tail=3
+
+    let _p1 = println(queue_size(head, t3, cap));         // 3
+    let _p2 = println(queue_front(buf, head));            // 10
+
+// Dequeue one
+    let h1 = queue_dequeue(buf, head, cap);               // head=1
+    let _p3 = println(queue_front(buf, h1));              // 20
+    let _p4 = println(queue_size(h1, t3, cap));           // 2
+
+// BFS sum over complete binary tree [1, 2, 3, 4, 5, 6, 7]
+//        1
+//      /   \
+//     2     3
+//    / \   / \
+//   4   5 6   7
+    let tree = vec_new();
+    vec_push(tree, 1);
+    vec_push(tree, 2);
+    vec_push(tree, 3);
+    vec_push(tree, 4);
+    vec_push(tree, 5);
+    vec_push(tree, 6);
+    vec_push(tree, 7);
+    let bfs_buf = make_zeros(10);
+
+// Start with root node 0 in queue
+    vec_set(bfs_buf, 0, 0);
+    let _p5 = println(bfs_sum(tree, bfs_buf, 0, 1, 10, 0));  // 1+2+3+4+5+6+7 = 28
+
+// Tree with different values [10, 20, 30]
+    let tree2 = vec_new();
+    vec_push(tree2, 10);
+    vec_push(tree2, 20);
+    vec_push(tree2, 30);
+    let bfs_buf2 = make_zeros(10);
+    vec_set(bfs_buf2, 0, 0);
+    let _p6 = println(bfs_sum(tree2, bfs_buf2, 0, 1, 10, 0));  // 10+20+30 = 60
+
+// Wraparound test
+    let wbuf = make_zeros(3);
+    let wcap = 3;
+
+// Enqueue 1, 2 -> head=0, tail=2
+    let wt1 = queue_enqueue(wbuf, 0, 0, wcap, 1);  // tail=1
+    let wt2 = queue_enqueue(wbuf, 0, wt1, wcap, 2); // tail=2
+
+// Dequeue -> head=1
+    let wh1 = queue_dequeue(wbuf, 0, wcap);
+
+// Enqueue 3 -> tail wraps to 0
+    let wt3 = queue_enqueue(wbuf, wh1, wt2, wcap, 3); // tail=2->0
+    let _p7 = println(queue_size(wh1, wt3, wcap));     // 2 (slots 1,2 used)
+    let _p8 = println(queue_front(wbuf, wh1));          // 2
+
+    vec_free(buf);
+    vec_free(tree);
+    vec_free(bfs_buf);
+    vec_free(tree2);
+    vec_free(bfs_buf2);
+    vec_free(wbuf);
+    0
+    };

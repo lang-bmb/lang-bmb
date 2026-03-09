@@ -1,0 +1,93 @@
+// Golden Test: Bit matrix operations using i64
+// 8x8 matrix where each row is one i64 (bits 0-7)
+
+// Set bit at column c in row value (pure function)
+fn set_bit(row: i64, c: i64) -> i64 = row bor (1 << c);
+
+// Get bit at column c in row value (returns 0 or 1)
+fn get_bit(row: i64, c: i64) -> i64 = (row >> c) band 1;
+
+// Count set bits in a row
+fn row_popcount(row: i64) -> i64 = {
+    let mut x = row;
+    let mut count = 0;
+    loop {
+        if x <= 0 { break } else { () };
+        count = count + (x band 1);
+        x = x >> 1
+    };
+    count
+    };
+
+// Check if matrix is identity (read-only, safe to pass by value)
+fn is_identity(mat: [i64; 8]) -> i64 = {
+    let mut ok = 1;
+    for r in 0..8 {
+        if mat[r] != (1 << r) { ok = 0 } else { () }
+    };
+    ok
+    };
+
+// Count total set bits (read-only, safe to pass by value)
+fn total_bits(mat: [i64; 8]) -> i64 = {
+    let mut total = 0;
+    for r in 0..8 {
+        total = total + row_popcount(mat[r])
+    };
+    total
+    };
+
+fn main() -> i64 = {
+    // Build identity matrix
+    let id = [0; 8];
+    for i in 0..8 {
+        set id[i] = 1 << i;
+        0
+    };
+    let _p1 = println(is_identity(id));     // 1
+    let _p2 = println(total_bits(id));      // 8
+
+    // Transpose identity inline -> result should also be identity
+    let id_t = [0; 8];
+    for r in 0..8 {
+        for c in 0..8 {
+            let bit = get_bit(id[r], c);
+            if bit == 1 {
+                set id_t[c] = set_bit(id_t[c], r)
+            } else { () }
+        };
+        0
+    };
+    let _p3 = println(is_identity(id_t));   // 1
+
+    // Custom matrix:
+    // Row 0: bits 0,1 set = 3 (0b11)
+    // Row 1: bits 1,2 set = 6 (0b110)
+    // Row 2: bit 0 set = 1 (0b001)
+    let mat = [3, 6, 1, 0, 0, 0, 0, 0];
+    let _p4 = println(get_bit(mat[0], 0));  // 1
+    let _p5 = println(get_bit(mat[0], 1));  // 1
+    let _p6 = println(get_bit(mat[1], 0));  // 0
+    let _p7 = println(get_bit(mat[1], 1));  // 1
+    let _p8 = println(total_bits(mat));     // 2+2+1 = 5
+
+    // Transpose custom matrix inline
+    let mat_t = [0; 8];
+    for r2 in 0..8 {
+        for c2 in 0..8 {
+            let b2 = get_bit(mat[r2], c2);
+            if b2 == 1 {
+                set mat_t[c2] = set_bit(mat_t[c2], r2)
+            } else { () }
+        };
+        0
+    };
+    // col 0 of src -> row 0 of dst: src[0] bit0=1, src[1] bit0=0, src[2] bit0=1
+    //   => dst[0] = (1<<0) | (1<<2) = 5
+    let _p9 = println(mat_t[0]);            // 5
+    // col 1: src[0] bit1=1, src[1] bit1=1, src[2] bit1=0
+    //   => dst[1] = (1<<0) | (1<<1) = 3
+    let _p10 = println(mat_t[1]);           // 3
+
+    0
+    };

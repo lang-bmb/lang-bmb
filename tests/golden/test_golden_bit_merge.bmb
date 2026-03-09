@@ -1,0 +1,109 @@
+// Golden Test: Interleave and deinterleave bits of two integers
+// Morton encoding/decoding for 2D coordinates
+
+// Interleave bits of x and y: result bit 2k = x bit k, bit 2k+1 = y bit k
+// Only works on lower 16 bits of each input
+fn interleave(x: i64, y: i64) -> i64 = {
+    let mut result = 0;
+    let mut i = 0;
+    loop {
+        if i >= 16 { break } else { () };
+        let xbit = (x >> i) band 1;
+        let ybit = (y >> i) band 1;
+        result = result bor (xbit << (i * 2));
+        result = result bor (ybit << (i * 2 + 1));
+        i = i + 1
+    };
+    result
+};
+
+// Extract even-positioned bits (x component)
+fn deinterleave_x(z: i64) -> i64 = {
+    let mut result = 0;
+    let mut i = 0;
+    loop {
+        if i >= 16 { break } else { () };
+        let bit = (z >> (i * 2)) band 1;
+        result = result bor (bit << i);
+        i = i + 1
+    };
+    result
+};
+
+// Extract odd-positioned bits (y component)
+fn deinterleave_y(z: i64) -> i64 = {
+    let mut result = 0;
+    let mut i = 0;
+    loop {
+        if i >= 16 { break } else { () };
+        let bit = (z >> (i * 2 + 1)) band 1;
+        result = result bor (bit << i);
+        i = i + 1
+    };
+    result
+};
+
+// Merge two 8-bit values into a 16-bit value by alternating bits
+fn merge_bytes(a: i64, b: i64) -> i64 = interleave(a, b);
+
+// Split a merged value back
+fn split_lo(merged: i64) -> i64 = deinterleave_x(merged);
+fn split_hi(merged: i64) -> i64 = deinterleave_y(merged);
+
+// Morton code for 2D point
+fn morton_encode(x: i64, y: i64) -> i64 = interleave(x, y);
+fn morton_decode_x(code: i64) -> i64 = deinterleave_x(code);
+fn morton_decode_y(code: i64) -> i64 = deinterleave_y(code);
+
+// Compare two 2D points by their Morton codes (Z-order)
+fn morton_less(x1: i64, y1: i64, x2: i64, y2: i64) -> i64 = {
+    let m1 = morton_encode(x1, y1);
+    let m2 = morton_encode(x2, y2);
+    if m1 < m2 { 1 } else { 0 }
+};
+
+fn main() -> i64 = {
+    // Interleave(0, 0) = 0
+    let _p1 = println(interleave(0, 0));        // 0
+
+    // Interleave(1, 0) = 01 (bit 0 from x)
+    let _p2 = println(interleave(1, 0));        // 1
+
+    // Interleave(0, 1) = 10 (bit 0 from y goes to bit 1)
+    let _p3 = println(interleave(0, 1));        // 2
+
+    // Interleave(1, 1) = 11
+    let _p4 = println(interleave(1, 1));        // 3
+
+    // Interleave(3, 5) = interleave(011, 101)
+    // x=011: bits 0=1, 1=1, 2=0
+    // y=101: bits 0=1, 1=0, 2=1
+    // result: bit0=x0=1, bit1=y0=1, bit2=x1=1, bit3=y1=0, bit4=x2=0, bit5=y2=1
+    // = 100111 = 39
+    let _p5 = println(interleave(3, 5));        // 39
+
+    // Round-trip: deinterleave(interleave(3, 5))
+    let z = interleave(3, 5);
+    let _p6 = println(deinterleave_x(z));       // 3
+    let _p7 = println(deinterleave_y(z));       // 5
+
+    // Round-trip with larger values
+    let z2 = interleave(10, 20);
+    let _p8 = println(deinterleave_x(z2));      // 10
+    let _p9 = println(deinterleave_y(z2));      // 20
+
+    // Morton ordering comparison
+    // (0,0) < (1,0) in Z-order
+    let _p10 = println(morton_less(0, 0, 1, 0)); // 1
+    // (1,0) < (0,1) in Z-order? morton(1,0)=1, morton(0,1)=2 => yes
+    let _p11 = println(morton_less(1, 0, 0, 1)); // 1
+    // (2,0) < (1,1)? morton(2,0)=4, morton(1,1)=3 => no
+    let _p12 = println(morton_less(2, 0, 1, 1)); // 0
+
+    // Merge bytes and split back
+    let merged = merge_bytes(15, 240);
+    let _p13 = println(split_lo(merged));        // 15
+    let _p14 = println(split_hi(merged));        // 240
+
+    0
+};

@@ -1,0 +1,203 @@
+// Golden Test: Polynomial Multiplication
+// Coefficient convolution for polynomial multiplication
+// p(x) = a0 + a1*x + a2*x^2 + ...
+// Polynomials stored as vec of coefficients [a0, a1, a2, ...]
+
+// Create zero-filled polynomial of given degree+1 terms
+fn poly_new(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n {
+        let _p = vec_push(v, 0);
+        0
+    };
+    v
+    };
+
+// Polynomial multiplication via convolution
+// If p has n terms and q has m terms, result has n+m-1 terms
+// result[k] = sum of p[i]*q[k-i] for all valid i
+fn poly_mult(p: i64, q: i64) -> i64 = {
+    let np = vec_len(p);
+    let nq = vec_len(q);
+    let nr = np + nq - 1;
+    let result = poly_new(nr);
+    for i in 0..np {
+        for j in 0..nq {
+            let cur = vec_get(result, i + j);
+            let _s = vec_set(result, i + j, cur + vec_get(p, i) * vec_get(q, j));
+            0
+        }
+    };
+    result
+    };
+
+// Horner's method to compute polynomial at x
+// p(x) = a0 + x*(a1 + x*(a2 + ... x*an))
+fn poly_horner(p: i64, x: i64) -> i64 = {
+    let n = vec_len(p);
+    let mut result = 0;
+    let mut i = n - 1;
+    loop {
+        if i < 0 { break } else { () };
+        result = result * x + vec_get(p, i);
+        i = i - 1
+    };
+    result
+    };
+
+// Polynomial addition (may have different lengths)
+fn poly_add(p: i64, q: i64) -> i64 = {
+    let np = vec_len(p);
+    let nq = vec_len(q);
+    let nr = if np > nq { np } else { nq };
+    let result = poly_new(nr);
+    for i in 0..np {
+        let cur = vec_get(result, i);
+        let _s = vec_set(result, i, cur + vec_get(p, i));
+        0
+    };
+    for i in 0..nq {
+        let cur = vec_get(result, i);
+        let _s = vec_set(result, i, cur + vec_get(q, i));
+        0
+    };
+    result
+    };
+
+// Polynomial subtraction
+fn poly_sub(p: i64, q: i64) -> i64 = {
+    let np = vec_len(p);
+    let nq = vec_len(q);
+    let nr = if np > nq { np } else { nq };
+    let result = poly_new(nr);
+    for i in 0..np {
+        let cur = vec_get(result, i);
+        let _s = vec_set(result, i, cur + vec_get(p, i));
+        0
+    };
+    for i in 0..nq {
+        let cur = vec_get(result, i);
+        let _s = vec_set(result, i, cur - vec_get(q, i));
+        0
+    };
+    result
+    };
+
+// Scalar multiply
+fn poly_scale(p: i64, c: i64) -> i64 = {
+    let n = vec_len(p);
+    let result = poly_new(n);
+    for i in 0..n {
+        let _s = vec_set(result, i, vec_get(p, i) * c);
+        0
+    };
+    result
+    };
+
+// Degree of polynomial (index of highest non-zero coefficient)
+fn poly_degree(p: i64) -> i64 = {
+    let n = vec_len(p);
+    let mut deg = 0;
+    let mut i = n - 1;
+    loop {
+        if i < 0 { break } else { () };
+        let _x = if vec_get(p, i) != 0 {
+            deg = i;
+            i = 0 - 1
+        } else { () };
+        i = i - 1
+    };
+    deg
+    };
+
+// Helper to make polynomials from values
+fn make_poly2(a: i64, b: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    v
+    };
+
+fn make_poly3(a: i64, b: i64, c: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    v
+    };
+
+fn main() -> i64 = {
+    // Test 1: (1 + 2x) * (3 + 4x) = 3 + 10x + 8x^2
+    let p1 = make_poly2(1, 2);
+    let q1 = make_poly2(3, 4);
+    let r1 = poly_mult(p1, q1);
+    let _p1 = println(vec_get(r1, 0));  // 3
+    let _p2 = println(vec_get(r1, 1));  // 10
+    let _p3 = println(vec_get(r1, 2));  // 8
+
+    // Test 2: (1 + x + x^2) * (1 - x) = 1 + 0x + 0x^2 - x^3
+    let p2 = make_poly3(1, 1, 1);
+    let q2 = make_poly2(1, 0 - 1);
+    let r2 = poly_mult(p2, q2);
+    let _p4 = println(vec_get(r2, 0));  // 1
+    let _p5 = println(vec_get(r2, 1));  // 0
+    let _p6 = println(vec_get(r2, 2));  // 0
+    let _p7 = println(vec_get(r2, 3));  // -1
+
+    // Test 3: Horner method
+    // p(x) = 2 + 3x + x^2, p(5) = 2 + 15 + 25 = 42
+    let p3 = make_poly3(2, 3, 1);
+    let _p8 = println(poly_horner(p3, 5));  // 42
+    let _p9 = println(poly_horner(p3, 0));  // 2
+    let _p10 = println(poly_horner(p3, 1)); // 6
+
+    // Test 4: Verify multiplication via Horner
+    // p(x)*q(x) at x should equal p(x) * q(x) separately
+    let pa = make_poly2(2, 3);    // 2 + 3x
+    let qa = make_poly3(1, 0, 1); // 1 + x^2
+    let ra = poly_mult(pa, qa);
+    // At x=2: p(2)=8, q(2)=5, product=40
+    let _p11 = println(poly_horner(ra, 2));  // 40
+
+    // Test 5: Polynomial addition
+    // (1 + 2x + 3x^2) + (4 + 5x) = 5 + 7x + 3x^2
+    let add_p = make_poly3(1, 2, 3);
+    let add_q = make_poly2(4, 5);
+    let add_r = poly_add(add_p, add_q);
+    let _p12 = println(vec_get(add_r, 0));  // 5
+    let _p13 = println(vec_get(add_r, 1));  // 7
+    let _p14 = println(vec_get(add_r, 2));  // 3
+
+    // Test 6: Polynomial degree
+    let deg_p1 = make_poly3(1, 0, 5);
+    let deg_p2 = make_poly2(3, 0);
+    let _p15 = println(poly_degree(deg_p1));  // 2
+    let _p16 = println(poly_degree(deg_p2));  // 0
+
+    // Test 7: Scalar multiply
+    // 3 * (1 + 2x + 3x^2) = 3 + 6x + 9x^2
+    let sc_p = make_poly3(1, 2, 3);
+    let sc = poly_scale(sc_p, 3);
+    let _p17 = println(vec_get(sc, 0));  // 3
+    let _p18 = println(vec_get(sc, 1));  // 6
+    let _p19 = println(vec_get(sc, 2));  // 9
+
+    let _f1 = vec_free(p1);
+    let _f2 = vec_free(q1);
+    let _f3 = vec_free(r1);
+    let _f4 = vec_free(p2);
+    let _f5 = vec_free(q2);
+    let _f6 = vec_free(r2);
+    let _f7 = vec_free(p3);
+    let _f8 = vec_free(pa);
+    let _f9 = vec_free(qa);
+    let _f10 = vec_free(ra);
+    let _f11 = vec_free(add_p);
+    let _f12 = vec_free(add_q);
+    let _f13 = vec_free(add_r);
+    let _f14 = vec_free(deg_p1);
+    let _f15 = vec_free(deg_p2);
+    let _f16 = vec_free(sc_p);
+    let _f17 = vec_free(sc);
+    0
+    };

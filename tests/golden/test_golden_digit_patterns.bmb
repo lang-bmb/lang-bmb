@@ -1,0 +1,80 @@
+// Golden Test: Digit-based number patterns
+// Tests digit extraction, number construction, palindrome checks
+
+fn num_digits(n: i64) -> i64 =
+    if n < 10 { 1 }
+    else { 1 + num_digits(n / 10) };
+
+fn digit_at(n: i64, pos: i64) -> i64 =
+    if pos <= 0 { n - (n / 10) * 10 }
+    else { digit_at(n / 10, pos - 1) };
+
+fn reverse_num_helper(n: i64, acc: i64) -> i64 =
+    if n <= 0 { acc }
+    else { reverse_num_helper(n / 10, acc * 10 + (n - (n / 10) * 10)) };
+
+fn reverse_num(n: i64) -> i64 =
+    reverse_num_helper(n, 0);
+
+fn is_palindrome(n: i64) -> i64 =
+    if n == reverse_num(n) { 1 } else { 0 };
+
+    // Sum of digits raised to power of number of digits (narcissistic check)
+
+fn pow_helper(base: i64, exp: i64) -> i64 =
+    if exp <= 0 { 1 }
+    else { base * pow_helper(base, exp - 1) };
+
+fn narcissistic_sum_helper(n: i64, digits: i64) -> i64 =
+    if n <= 0 { 0 }
+    else {
+        let d = n - (n / 10) * 10;
+        pow_helper(d, digits) + narcissistic_sum_helper(n / 10, digits)
+    };
+
+fn is_narcissistic(n: i64) -> i64 = {
+    let d = num_digits(n);
+    let s = narcissistic_sum_helper(n, d);
+    if s == n { 1 } else { 0 }
+    };
+
+// Digital root: sum digits until single digit
+fn digital_root(n: i64) -> i64 =
+    if n < 10 { n }
+    else {
+        let s = sum_digits_helper(n, 0);
+        digital_root(s)
+    };
+
+fn sum_digits_helper(n: i64, acc: i64) -> i64 =
+    if n <= 0 { acc }
+    else { sum_digits_helper(n / 10, acc + (n - (n / 10) * 10)) };
+
+fn main() -> i64 = {
+// Number of digits
+    let _p1 = println(num_digits(1));        // 1
+    let _p2 = println(num_digits(12345));    // 5
+
+// Digit at position (from right, 0-indexed)
+    let _p3 = println(digit_at(12345, 0));   // 5
+    let _p4 = println(digit_at(12345, 4));   // 1
+
+// Reverse number
+    let _p5 = println(reverse_num(12345));   // 54321
+    let _p6 = println(reverse_num(100));     // 1
+
+// Palindrome check
+    let _p7 = println(is_palindrome(12321)); // 1
+    let _p8 = println(is_palindrome(12345)); // 0
+
+// Narcissistic numbers
+    let _p9 = println(is_narcissistic(153));  // 1 (1^3+5^3+3^3=153)
+    let _p10 = println(is_narcissistic(370)); // 1 (3^3+7^3+0^3=370)
+    let _p11 = println(is_narcissistic(123)); // 0
+
+// Digital root
+    let _p12 = println(digital_root(493));    // 7 (4+9+3=16, 1+6=7)
+    let _p13 = println(digital_root(9999));   // 9 (9+9+9+9=36, 3+6=9)
+
+    0
+    };

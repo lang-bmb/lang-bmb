@@ -1,0 +1,164 @@
+// Golden Test: Counting sort with negative offset + frequency histogram
+// Handles ranges like [-5..5] by shifting, builds histogram, verifies stability
+
+// Counting sort for values in [min_val, max_val]
+// Uses offset to handle negative numbers: index = val - min_val
+fn counting_sort(v: i64, min_val: i64, max_val: i64) -> i64 = {
+    let n = vec_len(v);
+    let range = max_val - min_val + 1;
+    // Create count array
+    let count = vec_new();
+    for _i in 0..range { let _p = vec_push(count, 0); 0 };
+    // Count occurrences
+    for i in 0..n {
+        let val = vec_get(v, i);
+        let idx = val - min_val;
+        let c = vec_get(count, idx);
+        let _s = vec_set(count, idx, c + 1);
+        0
+    };
+    // Write back sorted
+    let mut pos = 0;
+    let mut ci = 0;
+    loop {
+        if ci >= range { break } else { () };
+        let mut c = vec_get(count, ci);
+        loop {
+            if c <= 0 { break } else { () };
+            let _s = vec_set(v, pos, ci + min_val);
+            pos = pos + 1;
+            c = c - 1
+        };
+        ci = ci + 1
+    };
+    let _f = vec_free(count);
+    0
+};
+
+// Build frequency histogram: returns vec of counts for [min_val..max_val]
+fn build_histogram(v: i64, min_val: i64, max_val: i64) -> i64 = {
+    let n = vec_len(v);
+    let range = max_val - min_val + 1;
+    let hist = vec_new();
+    for _i in 0..range { let _p = vec_push(hist, 0); 0 };
+    for i in 0..n {
+        let val = vec_get(v, i);
+        let idx = val - min_val;
+        let c = vec_get(hist, idx);
+        let _s = vec_set(hist, idx, c + 1);
+        0
+    };
+    hist
+};
+
+// Check if array is sorted
+fn is_sorted(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut ok = 1;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let _x = if vec_get(v, i) < vec_get(v, i - 1) {
+            ok = 0; 0
+        } else { 0 };
+        i = i + 1
+    };
+    ok
+};
+
+// Sum all elements
+fn my_vec_sum(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut s = 0;
+    for i in 0..n {
+        s = s + vec_get(v, i)
+    };
+    s
+};
+
+fn main() -> i64 = {
+    // Test 1: Sort array with negative values [-3, 2, -1, 0, 3, -2, 1]
+    let v1 = vec_new();
+    let _a = vec_push(v1, 0 - 3);
+    let _b = vec_push(v1, 2);
+    let _c = vec_push(v1, 0 - 1);
+    let _d = vec_push(v1, 0);
+    let _e = vec_push(v1, 3);
+    let _f = vec_push(v1, 0 - 2);
+    let _g = vec_push(v1, 1);
+    let _s1 = counting_sort(v1, 0 - 3, 3);
+    let _p1 = println(vec_get(v1, 0));   // -3
+    let _p2 = println(vec_get(v1, 3));   // 0
+    let _p3 = println(vec_get(v1, 6));   // 3
+    let _p4 = println(is_sorted(v1));    // 1
+
+    // Test 2: Sort with duplicates [5, 1, 3, 1, 5, 2, 3]
+    let v2 = vec_new();
+    let _a2 = vec_push(v2, 5);
+    let _b2 = vec_push(v2, 1);
+    let _c2 = vec_push(v2, 3);
+    let _d2 = vec_push(v2, 1);
+    let _e2 = vec_push(v2, 5);
+    let _f2 = vec_push(v2, 2);
+    let _g2 = vec_push(v2, 3);
+    let sum_before = my_vec_sum(v2);
+    let _s2 = counting_sort(v2, 1, 5);
+    let sum_after = my_vec_sum(v2);
+    let _p5 = println(vec_get(v2, 0));   // 1
+    let _p6 = println(vec_get(v2, 1));   // 1
+    let _p7 = println(vec_get(v2, 5));   // 5
+    let _p8 = println(vec_get(v2, 6));   // 5
+    // Sum preserved after sort
+    let _p9 = println(if sum_before == sum_after { 1 } else { 0 }); // 1
+
+    // Test 3: Histogram of [2, 3, 2, 1, 3, 3, 1, 2]
+    let v3 = vec_new();
+    let _h1 = vec_push(v3, 2);
+    let _h2 = vec_push(v3, 3);
+    let _h3 = vec_push(v3, 2);
+    let _h4 = vec_push(v3, 1);
+    let _h5 = vec_push(v3, 3);
+    let _h6 = vec_push(v3, 3);
+    let _h7 = vec_push(v3, 1);
+    let _h8 = vec_push(v3, 2);
+    let hist = build_histogram(v3, 1, 3);
+    let _p10 = println(vec_get(hist, 0));  // freq of 1 = 2
+    let _p11 = println(vec_get(hist, 1));  // freq of 2 = 3
+    let _p12 = println(vec_get(hist, 2));  // freq of 3 = 3
+
+    // Test 4: Single element
+    let v4 = vec_new();
+    let _q1 = vec_push(v4, 42);
+    let _s4 = counting_sort(v4, 42, 42);
+    let _p13 = println(vec_get(v4, 0));    // 42
+    let _p14 = println(is_sorted(v4));     // 1
+
+    // Test 5: All same values [7, 7, 7, 7]
+    let v5 = vec_new();
+    for _i in 0..4 { let _q = vec_push(v5, 7); 0 };
+    let _s5 = counting_sort(v5, 7, 7);
+    let _p15 = println(vec_get(v5, 0));    // 7
+    let _p16 = println(vec_get(v5, 3));    // 7
+    let _p17 = println(is_sorted(v5));     // 1
+
+    // Test 6: Large range [-10, 10, -5, 5, 0]
+    let v6 = vec_new();
+    let _r1 = vec_push(v6, 0 - 10);
+    let _r2 = vec_push(v6, 10);
+    let _r3 = vec_push(v6, 0 - 5);
+    let _r4 = vec_push(v6, 5);
+    let _r5 = vec_push(v6, 0);
+    let _s6 = counting_sort(v6, 0 - 10, 10);
+    let _p18 = println(vec_get(v6, 0));    // -10
+    let _p19 = println(vec_get(v6, 2));    // 0
+    let _p20 = println(vec_get(v6, 4));    // 10
+
+    let _f1 = vec_free(v1);
+    let _f2 = vec_free(v2);
+    let _f3 = vec_free(v3);
+    let _fh = vec_free(hist);
+    let _f4 = vec_free(v4);
+    let _f5 = vec_free(v5);
+    let _f6 = vec_free(v6);
+    0
+};

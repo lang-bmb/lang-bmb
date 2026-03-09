@@ -1,0 +1,55 @@
+// Golden Test: Struct Operations
+// Tests struct creation, field access, and struct passing
+
+struct Point {
+    x: i64,
+    y: i64,
+}
+
+struct Rect {
+    x: i64,
+    y: i64,
+    w: i64,
+    h: i64,
+}
+
+fn make_point(x: i64, y: i64) -> Point =
+    Point { x: x, y: y };
+
+fn point_sum(p: Point) -> i64 =
+    p.x + p.y;
+
+fn distance_sq(a: Point, b: Point) -> i64 = {
+    let dx = a.x - b.x;
+    let dy = a.y - b.y;
+    dx * dx + dy * dy
+};
+
+fn rect_area(r: Rect) -> i64 =
+    r.w * r.h;
+
+fn rect_perimeter(r: Rect) -> i64 =
+    2 * (r.w + r.h);
+
+fn main() -> i64 = {
+    // Basic struct creation and field access
+    let p1 = make_point(3, 4);
+    let _p1 = println(p1.x);          // 3
+    let _p2 = println(p1.y);          // 4
+    let _p3 = println(point_sum(p1)); // 7
+
+    // Struct passing between functions
+    let p2 = make_point(6, 8);
+    let _p4 = println(distance_sq(p1, p2)); // (6-3)^2 + (8-4)^2 = 9+16 = 25
+
+    // Larger struct
+    let r = Rect { x: 10, y: 20, w: 30, h: 40 };
+    let _p5 = println(rect_area(r));       // 1200
+    let _p6 = println(rect_perimeter(r));  // 140
+
+    // Nested field access
+    let _p7 = println(r.x + r.y); // 30
+    let _p8 = println(r.w + r.h); // 70
+
+    0
+};

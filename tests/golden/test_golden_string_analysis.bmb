@@ -1,0 +1,133 @@
+// Golden Test: String analysis - Cycle 1404
+// Palindrome check, anagram hash, character frequency
+
+// Check if string is a palindrome (returns 1 or 0)
+fn is_palindrome(s: String) -> i64 = {
+    let n = s.len();
+    if n <= 1 { return 1 } else { () };
+    let mut lo = 0;
+    let mut hi = n - 1;
+    let mut result = 1;
+    loop {
+        if lo >= hi { break } else { () };
+        if s.byte_at(lo) != s.byte_at(hi) {
+            result = 0;
+            break
+        } else { () };
+    lo = lo + 1;
+    hi = hi - 1
+    };
+    result
+    };
+
+// Simple hash of string: sum of (byte * position)
+fn string_hash(s: String) -> i64 = {
+    let n = s.len();
+    let mut hash = 0;
+    for i in 0..n {
+        hash = hash + s.byte_at(i) * (i + 1)
+    };
+    hash
+    };
+
+// Anagram check: two strings are anagrams if they have the same character frequency
+// We use byte frequency counts (for ASCII)
+fn anagram_hash(s: String) -> i64 = {
+// Sum of byte values (order-independent hash)
+    let n = s.len();
+    let mut sum = 0;
+    let mut product_low = 0;
+    for i in 0..n {
+        let b = s.byte_at(i);
+        sum = sum + b;
+        product_low = product_low + b * b
+    };
+    sum * 1000 + product_low % 1000
+    };
+
+// Count how many bytes in string match a given byte value
+fn count_byte(s: String, target: i64) -> i64 = {
+    let n = s.len();
+    let mut count = 0;
+    for i in 0..n {
+        if s.byte_at(i) == target { count = count + 1 } else { () }
+    };
+    count
+    };
+
+// Count distinct bytes in string
+fn count_distinct_bytes(s: String) -> i64 = {
+    let seen = [0; 128];
+    let n = s.len();
+    for i in 0..n {
+        let b = s.byte_at(i);
+        set seen[b] = 1
+    };
+    let mut count = 0;
+    for i in 0..128 {
+        count = count + seen[i]
+    };
+    count
+    };
+
+// Find most frequent byte (returns the byte value)
+fn most_frequent_byte(s: String) -> i64 = {
+    let freq = [0; 128];
+    let n = s.len();
+    for i in 0..n {
+        let b = s.byte_at(i);
+        set freq[b] = freq[b] + 1
+    };
+    let mut best_byte = 0;
+    let mut best_count = 0;
+    for i in 0..128 {
+        if freq[i] > best_count {
+            best_count = freq[i];
+            best_byte = i
+        } else { () }
+    };
+    best_byte
+    };
+
+fn main() -> i64 = {
+// Palindrome checks
+    let _p1 = println(is_palindrome("racecar"));  // 1
+    let _p2 = println(is_palindrome("hello"));     // 0
+    let _p3 = println(is_palindrome("abba"));      // 1
+    let _p4 = println(is_palindrome("a"));         // 1
+
+// Anagram hash: "listen" and "silent" should have same hash
+    let h1 = anagram_hash("listen");
+    let h2 = anagram_hash("silent");
+    let _p5 = println(if h1 == h2 { 1 } else { 0 });  // 1
+
+// Non-anagram should differ
+    let h3 = anagram_hash("hello");
+    let h4 = anagram_hash("world");
+    let _p6 = println(if h3 == h4 { 1 } else { 0 });  // 0
+
+// Count byte ('l' = 108)
+    let _p7 = println(count_byte("hello world", 108));  // 3
+
+// Count 'o' = 111
+    let _p8 = println(count_byte("hello world", 111));  // 2
+
+// Distinct bytes in "abracadabra": a,b,r,c,d = 5
+    let _p9 = println(count_distinct_bytes("abracadabra"));  // 5
+
+// Distinct bytes in "aaa": just a = 1
+    let _p10 = println(count_distinct_bytes("aaa"));  // 1
+
+// String hash: "abc" = 97*1 + 98*2 + 99*3 = 97+196+297 = 590
+    let _p11 = println(string_hash("abc"));  // 590
+
+// Most frequent byte in "abracadabra": 'a'(97) appears 5 times
+    let _p12 = println(most_frequent_byte("abracadabra"));  // 97
+
+// Most frequent in "mississippi": 's'(115) appears 4, 'i'(105) appears 4, 'p'(112) appears 2
+// s=115 and i=105 both appear 4 times, but 'i' comes first in scan
+// Actually: m=1, i=4, s=4, p=2 -- since we scan 0..128, i(105) is checked before s(115)
+    let _p13 = println(most_frequent_byte("mississippi"));  // 105
+
+    0
+    };

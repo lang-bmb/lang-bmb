@@ -1,0 +1,20 @@
+prefix sums:
+0
+3
+4
+8
+9
+14
+23
+25
+31
+36
+39
+range queries:
+14
+21
+39
+max subarray sum:
+39
+inversions:
+15

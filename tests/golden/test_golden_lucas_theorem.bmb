@@ -1,0 +1,156 @@
+// Golden Test: Lucas' theorem for computing C(n,k) mod p
+// Lucas' theorem: C(n,k) mod p = product of C(ni,ki) mod p
+// where ni, ki are digits of n, k in base p
+// Only valid when p is prime
+
+// Modular exponentiation: base^exp mod m
+fn mod_pow(base: i64, exp: i64, m: i64) -> i64 = {
+    let mut result = 1;
+    let mut b = base % m;
+    let mut e = exp;
+    loop {
+        if e <= 0 { break } else { () };
+        let odd = e - (e / 2) * 2;
+        let _u = if odd == 1 {
+            result = (result * b) % m;
+            0
+        } else { 0 };
+        e = e / 2;
+        b = (b * b) % m
+    };
+    result
+    };
+
+// Factorial mod p
+fn fact_mod(n: i64, p: i64) -> i64 = {
+    let mut r = 1;
+    let mut i = 2;
+    loop {
+        if i > n { break } else { () };
+        r = (r * i) % p;
+        i = i + 1
+    };
+    r
+    };
+
+// Modular inverse using Fermat's little theorem: a^(-1) = a^(p-2) mod p
+fn mod_inv(a: i64, p: i64) -> i64 =
+    mod_pow(a, p - 2, p);
+
+// Small binomial C(n,k) mod p using factorial and modular inverse
+// Assumes n < p
+fn small_comb_mod(n: i64, k: i64, p: i64) -> i64 = {
+    if k > n { return 0 } else { () };
+    if k == 0 or k == n { return 1 } else { () };
+    let num = fact_mod(n, p);
+    let den1 = fact_mod(k, p);
+    let den2 = fact_mod(n - k, p);
+    let den = (den1 * den2) % p;
+    (num * mod_inv(den, p)) % p
+    };
+
+// Lucas' theorem: C(n,k) mod p
+// Decompose n and k in base p, multiply C(ni,ki) mod p
+fn lucas(n: i64, k: i64, p: i64) -> i64 = {
+    let mut result = 1;
+    let mut nn = n;
+    let mut kk = k;
+    loop {
+        if nn == 0 and kk == 0 { break } else { () };
+        let ni = nn - (nn / p) * p;
+        let ki = kk - (kk / p) * p;
+        let c = small_comb_mod(ni, ki, p);
+        let _u = if c == 0 {
+            result = 0;
+            0
+        } else {
+            result = (result * c) % p;
+            0
+        };
+        nn = nn / p;
+        kk = kk / p
+    };
+    result
+    };
+
+// Regular C(n,k) for verification (small values)
+fn binom(n: i64, k: i64) -> i64 = {
+    if k > n { return 0 } else { () };
+    if k == 0 or k == n { return 1 } else { () };
+    let row = [0; 30];
+    set row[0] = 1;
+    let mut i = 1;
+    loop {
+        if i > n { break } else { () };
+        let mut j = i;
+        loop {
+            if j < 1 { break } else { () };
+            set row[j] = row[j] + row[j - 1];
+            j = j - 1
+        };
+        i = i + 1
+    };
+    row[k]
+    };
+
+fn main() -> i64 = {
+    // Test mod_pow
+    let _p1 = println(mod_pow(2, 10, 1000));  // 1024 % 1000 = 24
+    let _p2 = println(mod_pow(3, 4, 7));       // 81 % 7 = 4
+
+    // Test small_comb_mod
+    // C(5,2) = 10
+    let _p3 = println(small_comb_mod(5, 2, 13));  // 10 % 13 = 10
+    // C(6,3) = 20
+    let _p4 = println(small_comb_mod(6, 3, 13));  // 20 % 13 = 7
+
+    // Lucas' theorem with p = 5
+    // C(10, 3) = 120, 120 mod 5 = 0
+    let _p5 = println(lucas(10, 3, 5));  // 0
+
+    // C(10, 2) = 45, 45 mod 5 = 0
+    let _p6 = println(lucas(10, 2, 5));  // 0
+
+    // C(7, 3) = 35, 35 mod 5 = 0
+    let _p7 = println(lucas(7, 3, 5));  // 0
+
+    // C(4, 2) = 6, 6 mod 5 = 1
+    let _p8 = println(lucas(4, 2, 5));  // 1
+
+    // Lucas' theorem with p = 7
+    // C(10, 3) = 120, 120 mod 7 = 1
+    let _p9 = println(lucas(10, 3, 7));  // 1
+
+    // C(15, 4) = 1365, 1365 mod 7 = 0
+    let _p10 = println(lucas(15, 4, 7));  // 0
+
+    // Lucas' theorem with p = 13
+    // C(20, 5) = 15504, 15504 mod 13 = 8
+    let _p11 = println(lucas(20, 5, 13));  // 8
+
+    // C(100, 3) = 161700, 161700 mod 13 = 6
+    let _p12 = println(lucas(100, 3, 13));  // 6
+
+    // Verify: C(n,k) mod p == lucas(n,k,p) for small values
+    // C(12, 4) = 495, 495 mod 7 = 5
+    let b1 = binom(12, 4);
+    let r1 = b1 - (b1 / 7) * 7;
+    let _p13 = println(r1);               // 5
+    let _p14 = println(lucas(12, 4, 7));   // 5
+
+    // C(8, 3) = 56, 56 mod 5 = 1
+    let b2 = binom(8, 3);
+    let r2 = b2 - (b2 / 5) * 5;
+    let _p15 = println(r2);               // 1
+    let _p16 = println(lucas(8, 3, 5));   // 1
+
+    // Edge cases
+    let _p17 = println(lucas(0, 0, 5));   // 1 (C(0,0)=1)
+    let _p18 = println(lucas(5, 0, 7));   // 1 (C(n,0)=1)
+    let _p19 = println(lucas(3, 5, 7));   // 0 (k > n)
+
+    // Large n: C(1000, 2) = 499500, 499500 mod 13 = 1
+    let _p20 = println(lucas(1000, 2, 13));  // 1
+
+    0
+    };

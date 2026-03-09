@@ -1,0 +1,71 @@
+// Golden Test: Bubble sort via Vec
+// Tests vector operations + nested loop sorting
+
+fn sort_and_sum(a: i64, b: i64, c: i64, d: i64, e: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+
+// Bubble sort
+    let n = vec_len(v);
+    for _i in 0..n {
+        for j in 0..n {
+            if j + 1 < n {
+                let vj = vec_get(v, j);
+                let vj1 = vec_get(v, j + 1);
+                if vj > vj1 {
+
+// Inline swap
+    let _s1 = vec_set(v, j, vj1);
+    let _s2 = vec_set(v, j + 1, vj);
+    0
+    } else { 0 }
+    } else { 0 }
+    }
+    };
+
+// Return: sorted[0]*1 + sorted[1]*10 + sorted[2]*100 + sorted[3]*1000 + sorted[4]*10000
+    let r = vec_get(v, 0) + vec_get(v, 1) * 10 + vec_get(v, 2) * 100 + vec_get(v, 3) * 1000 + vec_get(v, 4) * 10000;
+    let _f = vec_free(v);
+    r
+    };
+
+fn my_bubble_sort(v: i64) -> i64 = {
+    let n = vec_len(v);
+    for _i in 0..n {
+        for j in 0..n {
+            if j + 1 < n {
+                let vj = vec_get(v, j);
+                let vj1 = vec_get(v, j + 1);
+                if vj > vj1 {
+                    let _s1 = vec_set(v, j, vj1);
+                    let _s2 = vec_set(v, j + 1, vj);
+                    0
+                } else { 0 }
+        } else { 0 }
+    }
+    };
+    0
+    };
+
+fn is_sorted_check(a: i64, b: i64, c: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _s = my_bubble_sort(v);
+    let r = vec_get(v, 0) * 100 + vec_get(v, 1) * 10 + vec_get(v, 2);
+    let _f = vec_free(v);
+    r
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(sort_and_sum(5, 3, 1, 4, 2)); // sorted: 1,2,3,4,5 → 1+20+300+4000+50000 = 54321
+    let _p2 = println(sort_and_sum(9, 1, 5, 3, 7)); // sorted: 1,3,5,7,9 → 1+30+500+7000+90000 = 97531
+    let _p3 = println(is_sorted_check(3, 1, 2));     // sorted: 1,2,3 → 123
+    let _p4 = println(is_sorted_check(9, 5, 7));     // sorted: 5,7,9 → 579
+    0
+    };

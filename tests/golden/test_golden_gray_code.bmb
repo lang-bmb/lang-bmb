@@ -1,0 +1,156 @@
+// Golden Test: Gray Code generation and conversion
+// - Generate n-bit Gray code sequence (binary reflected)
+// - Convert between Gray code and binary
+// - Verify adjacent codes differ by exactly 1 bit
+// - Test for 3-bit (8 values) and 4-bit (16 values)
+
+// Convert binary to Gray code: gray = n XOR (n >> 1)
+fn to_gray(n: i64) -> i64 =
+    n bxor (n / 2);
+
+// Convert Gray code back to binary
+// binary = gray XOR (gray >> 1) XOR (gray >> 2) XOR ...
+fn to_binary(gray: i64) -> i64 = {
+    let mut result = gray;
+    let mut mask = gray / 2;
+    loop {
+        if mask == 0 { break } else { () };
+        set result = result bxor mask;
+        set mask = mask / 2
+    };
+    result
+};
+
+// Count number of bits that differ between a and b
+fn bit_diff_count(a: i64, b: i64) -> i64 = {
+    let mut diff = a bxor b;
+    let mut count = 0;
+    loop {
+        if diff == 0 { break } else { () };
+        set count = count + (diff band 1);
+        set diff = diff / 2
+    };
+    count
+};
+
+// Print all gray codes for n bits (2^n values)
+fn print_gray_codes(bits: i64) -> i64 = {
+    let mut count = 1;
+    let mut i = 0;
+    loop {
+        if i >= bits { break } else { () };
+        set count = count * 2;
+        set i = i + 1
+    };
+    // Generate and print each gray code
+    set i = 0;
+    loop {
+        if i >= count { break } else { () };
+        let gray = to_gray(i);
+        let _p = println(gray);
+        set i = i + 1
+    };
+    count
+};
+
+// Verify all adjacent gray codes differ by exactly 1 bit
+fn verify_adjacent(bits: i64) -> i64 = {
+    let mut count = 1;
+    let mut i = 0;
+    loop {
+        if i >= bits { break } else { () };
+        set count = count * 2;
+        set i = i + 1
+    };
+    let mut all_ok = 1;
+    set i = 0;
+    loop {
+        if i >= count - 1 { break } else { () };
+        let g1 = to_gray(i);
+        let g2 = to_gray(i + 1);
+        let diff = bit_diff_count(g1, g2);
+        let _x = if diff != 1 {
+            set all_ok = 0;
+            0
+        } else { 0 };
+        set i = i + 1
+    };
+    // Also check wrap-around: last and first
+    let g_first = to_gray(0);
+    let g_last = to_gray(count - 1);
+    let wrap_diff = bit_diff_count(g_first, g_last);
+    let _y = if wrap_diff != 1 {
+        set all_ok = 0;
+        0
+    } else { 0 };
+    all_ok
+};
+
+// Verify roundtrip: binary -> gray -> binary
+fn verify_roundtrip(bits: i64) -> i64 = {
+    let mut count = 1;
+    let mut i = 0;
+    loop {
+        if i >= bits { break } else { () };
+        set count = count * 2;
+        set i = i + 1
+    };
+    let mut all_ok = 1;
+    set i = 0;
+    loop {
+        if i >= count { break } else { () };
+        let gray = to_gray(i);
+        let back = to_binary(gray);
+        let _x = if back != i {
+            set all_ok = 0;
+            0
+        } else { 0 };
+        set i = i + 1
+    };
+    all_ok
+};
+
+fn main() -> i64 = {
+    // 3-bit Gray codes (0..7)
+    let _h1 = print_str("3-bit Gray codes:");
+    let _n1 = print_str("\n");
+    let _c1 = print_gray_codes(3);
+
+    // 4-bit Gray codes (0..15)
+    let _h2 = print_str("4-bit Gray codes:");
+    let _n2 = print_str("\n");
+    let _c2 = print_gray_codes(4);
+
+    // Verify adjacent differ by 1 bit
+    let _h3 = print_str("3-bit adjacent verify:");
+    let _n3 = print_str("\n");
+    let _v1 = println(verify_adjacent(3));
+
+    let _h4 = print_str("4-bit adjacent verify:");
+    let _n4 = print_str("\n");
+    let _v2 = println(verify_adjacent(4));
+
+    // Verify roundtrip conversion
+    let _h5 = print_str("3-bit roundtrip verify:");
+    let _n5 = print_str("\n");
+    let _v3 = println(verify_roundtrip(3));
+
+    let _h6 = print_str("4-bit roundtrip verify:");
+    let _n6 = print_str("\n");
+    let _v4 = println(verify_roundtrip(4));
+
+    // Specific conversions
+    let _h7 = print_str("to_gray(5):");
+    let _n7 = print_str("\n");
+    let _v5 = println(to_gray(5));
+
+    let _h8 = print_str("to_gray(11):");
+    let _n8 = print_str("\n");
+    let _v6 = println(to_gray(11));
+
+    let _h9 = print_str("to_binary(to_gray(13)):");
+    let _n9 = print_str("\n");
+    let _v7 = println(to_binary(to_gray(13)));
+
+    0
+};

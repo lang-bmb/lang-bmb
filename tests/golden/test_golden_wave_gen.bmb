@@ -1,0 +1,44 @@
+// Golden Test: Discrete waveform generation using integer math
+// Square, sawtooth, and triangle waves with integer-scaled output
+
+// Square wave: 1 if in first half of period, -1 otherwise
+fn square_wave(t: i64, period: i64) -> i64 =
+    if t % period < period / 2 { 1 } else { -1 };
+
+// Sawtooth wave: linearly ramps from -100 to ~+100 over one period
+// Formula: (t % period) * 200 / period - 100
+fn sawtooth(t: i64, period: i64) -> i64 =
+    (t % period) * 200 / period - 100;
+
+// Triangle wave: ramps up to 100 at midpoint, then back down to 0
+// Range: 0 to 100
+fn triangle(t: i64, period: i64) -> i64 = {
+    let phase = t % period;
+    let half = period / 2;
+    if phase <= half {
+        phase * 200 / period
+    } else {
+        (period - phase) * 200 / period
+    }
+    };
+
+fn main() -> i64 = {
+    // Square wave with period=10
+    // period/2 = 5, so t%10 < 5 => 1, else -1
+    let _p1 = println(square_wave(0, 10));   // 0%10=0 < 5 => 1
+    let _p2 = println(square_wave(3, 10));   // 3%10=3 < 5 => 1
+    let _p3 = println(square_wave(5, 10));   // 5%10=5 < 5? no => -1
+    let _p4 = println(square_wave(8, 10));   // 8%10=8 < 5? no => -1
+
+    // Sawtooth wave with period=10
+    let _p5 = println(sawtooth(0, 10));      // 0*200/10-100 = -100
+    let _p6 = println(sawtooth(5, 10));      // 5*200/10-100 = 0
+    let _p7 = println(sawtooth(9, 10));      // 9*200/10-100 = 80
+
+    // Triangle wave with period=10
+    let _p8 = println(triangle(0, 10));      // 0*200/10 = 0
+    let _p9 = println(triangle(2, 10));      // 2*200/10 = 40
+    let _p10 = println(triangle(5, 10));     // 5<=5, 5*200/10 = 100
+
+    0
+    };

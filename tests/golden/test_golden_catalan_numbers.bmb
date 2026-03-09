@@ -1,0 +1,83 @@
+// Golden Test: Catalan number computation
+// Uses memoization with vec for efficient computation
+// C(n) = sum(C(i) * C(n-1-i)) for i in 0..n, C(0) = 1
+
+// Compute Catalan numbers iteratively using dynamic programming
+// Stores results in a vec: memo[i] = C(i)
+fn catalan_dp(n: i64) -> i64 = {
+    let memo = vec_new();
+    // C(0) = 1
+    let _p0 = vec_push(memo, 1);
+
+    // For each k from 1 to n, compute C(k)
+    let mut k = 1;
+    while k <= n {
+        // C(k) = sum of C(i) * C(k-1-i) for i = 0..k
+        let mut sum = 0;
+        for i in 0..k {
+            set sum = sum + vec_get(memo, i) * vec_get(memo, k - 1 - i)
+        };
+        let _pp = vec_push(memo, sum);
+        set k = k + 1
+    };
+
+    let result = vec_get(memo, n);
+    let _f = vec_free(memo);
+    result
+};
+
+// Recursive Catalan with memoization via vec
+// memo must be pre-filled with -1 except memo[0] = 1
+fn catalan_memo(n: i64, memo: i64) -> i64 =
+    if vec_get(memo, n) >= 0 { vec_get(memo, n) }
+    else {
+        // Compute C(n) = sum C(i)*C(n-1-i) for i=0..n
+        let result = catalan_sum(n, 0, 0, memo);
+        let _s = vec_set(memo, n, result);
+        result
+    };
+
+fn catalan_sum(n: i64, i: i64, acc: i64, memo: i64) -> i64 =
+    if i >= n { acc }
+    else {
+        let ci = catalan_memo(i, memo);
+        let cni = catalan_memo(n - 1 - i, memo);
+        catalan_sum(n, i + 1, acc + ci * cni, memo)
+    };
+
+fn main() -> i64 = {
+    // Print C(0) through C(12) using DP method
+    let _p0 = print_str("Catalan numbers (DP):");
+    let _p1 = println_str("");
+    for i in 0..13 {
+        let _pa = print_str("C(");
+        let _pb = print(i);
+        let _pc = print_str(") = ");
+        let _pd = println(catalan_dp(i));
+        0
+    };
+
+    // Verify using memoized recursive method
+    let _p2 = println_str("");
+    let _p3 = print_str("Catalan numbers (memo):");
+    let _p4 = println_str("");
+
+    // Create memo vec with 13 entries, all -1 except index 0
+    let memo = vec_new();
+    let _m0 = vec_push(memo, 1);  // C(0) = 1
+    for _j in 1..13 {
+        let _mp = vec_push(memo, 0 - 1);
+        0
+    };
+
+    for i in 0..13 {
+        let _pa = print_str("C(");
+        let _pb = print(i);
+        let _pc = print_str(") = ");
+        let _pd = println(catalan_memo(i, memo));
+        0
+    };
+
+    let _f = vec_free(memo);
+    0
+};

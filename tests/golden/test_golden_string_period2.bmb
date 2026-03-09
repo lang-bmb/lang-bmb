@@ -1,0 +1,184 @@
+// Golden Test: KMP failure function for string period detection
+// String is represented as a vec of integers (character codes).
+// The failure function (prefix function) pi[i] = length of longest proper
+// prefix of s[0..i] that is also a suffix.
+// String period = len - pi[len-1] if len % period == 0.
+
+// Build failure function (KMP prefix function)
+fn build_failure(s: i64, n: i64) -> i64 = {
+    let pi = vec_new();
+    vec_push(pi, 0);  // pi[0] = 0 always
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let mut k = vec_get(pi, i - 1);
+        loop {
+            if k > 0 and vec_get(s, k) != vec_get(s, i) {
+                k = vec_get(pi, k - 1)
+            } else {
+                break
+            }
+        };
+        let _x = if vec_get(s, k) == vec_get(s, i) {
+            vec_push(pi, k + 1); 0
+        } else {
+            vec_push(pi, 0); 0
+        };
+        i = i + 1
+    };
+    pi
+};
+
+// Compute shortest period of string s of length n
+// Period p divides n and s[0..p-1] repeats to form s
+fn shortest_period(s: i64, n: i64) -> i64 = {
+    let pi = build_failure(s, n);
+    let last_pi = vec_get(pi, n - 1);
+    let period = n - last_pi;
+    let _f = vec_free(pi);
+    // Only valid if period divides n, otherwise period = n itself
+    if n % period == 0 { period } else { n }
+};
+
+// Check if string has a period (is a repeated pattern)
+fn is_periodic(s: i64, n: i64) -> i64 = {
+    let p = shortest_period(s, n);
+    if p < n { 1 } else { 0 }
+};
+
+// Count number of positions where pi[i] > 0 (prefix-suffix matches)
+fn count_matches(s: i64, n: i64) -> i64 = {
+    let pi = build_failure(s, n);
+    let mut count = 0;
+    for i in 0..n {
+        if vec_get(pi, i) > 0 {
+            count = count + 1
+        } else { () }
+    };
+    let _f = vec_free(pi);
+    count
+};
+
+// Get maximum value in failure function
+fn max_failure(s: i64, n: i64) -> i64 = {
+    let pi = build_failure(s, n);
+    let mut mx = 0;
+    for i in 0..n {
+        let v = vec_get(pi, i);
+        let _x = if v > mx { mx = v; 0 } else { 0 };
+        0
+    };
+    let _f = vec_free(pi);
+    mx
+};
+
+// Helper to make string from individual chars
+fn make_str(chars: i64, n: i64) -> i64 = chars;
+
+// Build a vec from values
+fn vec_of_3(a: i64, b: i64, c: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c);
+    v
+};
+
+fn vec_of_4(a: i64, b: i64, c: i64, d: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c); vec_push(v, d);
+    v
+};
+
+fn vec_of_6(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c);
+    vec_push(v, d); vec_push(v, e); vec_push(v, f);
+    v
+};
+
+fn vec_of_8(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64, h: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c); vec_push(v, d);
+    vec_push(v, e); vec_push(v, f); vec_push(v, g); vec_push(v, h);
+    v
+};
+
+fn main() -> i64 = {
+    // Test 1: "abab" (period 2: "ab" repeats)
+    // chars: a=1, b=2
+    let s1 = vec_of_4(1, 2, 1, 2);
+    let _p1 = println(shortest_period(s1, 4));  // 2
+
+    // Test 2: "abcabc" (period 3: "abc" repeats)
+    let s2 = vec_of_6(1, 2, 3, 1, 2, 3);
+    let _p2 = println(shortest_period(s2, 6));  // 3
+
+    // Test 3: "aaaa" (period 1: "a" repeats)
+    let s3 = vec_of_4(1, 1, 1, 1);
+    let _p3 = println(shortest_period(s3, 4));  // 1
+
+    // Test 4: "abcd" (no period, period = 4)
+    let s4 = vec_of_4(1, 2, 3, 4);
+    let _p4 = println(shortest_period(s4, 4));  // 4
+
+    // Test 5: "abaaba" (period 3: "aba" repeats)
+    let s5 = vec_of_6(1, 2, 1, 1, 2, 1);
+    let _p5 = println(shortest_period(s5, 6));  // 3
+
+    // Test 6: Is periodic checks
+    let _p6 = println(is_periodic(s1, 4));  // 1 (abab)
+    let _p7 = println(is_periodic(s4, 4));  // 0 (abcd)
+
+    // Test 7: Failure function for "aabaaab"
+    // pi = [0, 1, 0, 1, 2, 2, 3]
+    let s7 = vec_new();
+    vec_push(s7, 1); vec_push(s7, 1); vec_push(s7, 2);
+    vec_push(s7, 1); vec_push(s7, 1); vec_push(s7, 1); vec_push(s7, 2);
+    let pi7 = build_failure(s7, 7);
+    let _p8 = println(vec_get(pi7, 6));  // 3 (last value)
+
+    // Test 8: Count prefix-suffix matches
+    let _p9 = println(count_matches(s7, 7));  // 4 positions with pi > 0
+
+    // Test 9: Max failure value for "aabaaab"
+    let _p10 = println(max_failure(s7, 7));  // 3
+
+    // Test 10: "abcabcabc" (period 3)
+    let s10 = vec_new();
+    vec_push(s10, 1); vec_push(s10, 2); vec_push(s10, 3);
+    vec_push(s10, 1); vec_push(s10, 2); vec_push(s10, 3);
+    vec_push(s10, 1); vec_push(s10, 2); vec_push(s10, 3);
+    let _p11 = println(shortest_period(s10, 9));  // 3
+
+    // Test 11: Failure function for "ababab"
+    // pi = [0, 0, 1, 2, 3, 4]
+    let s11 = vec_of_6(1, 2, 1, 2, 1, 2);
+    let pi11 = build_failure(s11, 6);
+    let _p12 = println(vec_get(pi11, 5));  // 4
+
+    // Test 12: Single character
+    let s12 = vec_new();
+    vec_push(s12, 5);
+    let _p13 = println(shortest_period(s12, 1));  // 1
+
+    // Test 13: Two same characters "aa"
+    let s13 = vec_new();
+    vec_push(s13, 1); vec_push(s13, 1);
+    let _p14 = println(shortest_period(s13, 2));  // 1
+
+    // Test 14: Two different characters "ab"
+    let s14 = vec_new();
+    vec_push(s14, 1); vec_push(s14, 2);
+    let _p15 = println(shortest_period(s14, 2));  // 2
+
+    // Test 15: "abacabac" (period 4: "abac" repeats)
+    let s15 = vec_of_8(1, 2, 1, 3, 1, 2, 1, 3);
+    let _p16 = println(shortest_period(s15, 8));  // 4
+
+    // Test 16: Count matches for "abab"
+    // pi = [0, 0, 1, 2] -> 2 positions with pi > 0
+    let _p17 = println(count_matches(s1, 4));  // 2
+
+    let _f1 = vec_free(pi7);
+    let _f2 = vec_free(pi11);
+    0
+};

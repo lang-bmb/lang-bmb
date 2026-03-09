@@ -1,0 +1,41 @@
+// Golden Test: Saturating Arithmetic Edge Cases
+// Tests +|, -|, *| operators at boundary values
+
+fn main() -> i64 = {
+    // Saturating add: basic
+    let _p1 = println(10 +| 20);  // 30
+
+    // Saturating sub: basic
+    let _p2 = println(50 -| 30);  // 20
+
+    // Saturating mul: basic
+    let _p3 = println(6 *| 7);  // 42
+
+    // Saturating add: near max i64
+    let big = 4611686018427387903;  // i64::MAX / 2
+    let _p4 = println(big +| big);  // 9223372036854775806 (no overflow)
+
+    // Saturating add: overflow → clamp to MAX
+    let max = 9223372036854775807;  // i64::MAX
+    let _p5 = println(max +| 1);  // 9223372036854775807 (saturated)
+
+    // Saturating sub: underflow → clamp to MIN
+    let min_val = 0 - 9223372036854775807 - 1;  // i64::MIN
+    let _p6 = println(min_val -| 1);  // -9223372036854775808 (saturated)
+
+    // Saturating sub: result negative
+    let _p7 = println(10 -| 100);  // -90
+
+    // Saturating mul: overflow → clamp to MAX
+    let _p8 = println(max *| 2);  // 9223372036854775807 (saturated)
+
+    // Saturating mul: negative overflow → clamp to MIN
+    let _p9 = println(max *| (0 - 2));  // -9223372036854775808 (saturated)
+
+    // Zero cases
+    let _p10 = println(0 +| 0);  // 0
+    let _p11 = println(0 -| 0);  // 0
+    let _p12 = println(0 *| max);  // 0
+
+    0
+};

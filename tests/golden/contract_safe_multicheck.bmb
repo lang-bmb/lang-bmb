@@ -1,0 +1,26 @@
+// Test: multiple contract patterns in one program
+// Bounds, divzero, and comparison contracts all generate llvm.assume
+
+fn get_elem(arr: &[i64; 8], i: i64) -> i64
+    pre i >= 0 and i < 8
+= arr[i];
+
+fn safe_divide(a: i64, b: i64) -> i64
+    pre b != 0
+= a / b;
+
+fn clamp_positive(x: i64) -> i64
+    pre x >= 0
+= if x > 100 { 100 } else { x };
+
+fn main() -> i64 = {
+    let arr: [i64; 8] = [5, 10, 15, 20, 25, 30, 35, 40];
+    let a = get_elem(&arr, 0);
+    let b = get_elem(&arr, 3);
+    let c = get_elem(&arr, 7);
+    let sum = a + b + c;
+    let d = safe_divide(sum, 5);
+    let clamped = clamp_positive(d);
+    let _u = println(clamped);
+    0
+};

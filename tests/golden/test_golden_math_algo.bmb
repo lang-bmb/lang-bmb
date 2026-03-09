@@ -1,0 +1,59 @@
+// Golden Test: Mathematical algorithms
+// GCD, LCM, modular exponentiation, Euler totient
+
+fn gcd(a: i64, b: i64) -> i64 =
+    if b == 0 { a }
+    else { gcd(b, a - (a / b) * b) };
+
+fn lcm(a: i64, b: i64) -> i64 =
+    a / gcd(a, b) * b;
+
+fn mod_pow_helper(base: i64, exp: i64, modulus: i64) -> i64 = {
+    let mut result = 1;
+    let mut b = base - (base / modulus) * modulus;
+    let mut e = exp;
+    loop {
+        if e <= 0 { break } else { () };
+        if e - (e / 2) * 2 == 1 {
+            result = result * b;
+            result = result - (result / modulus) * modulus
+        } else { () };
+    b = b * b;
+    b = b - (b / modulus) * modulus;
+    e = e / 2
+    };
+    result
+    };
+
+fn euler_totient(n: i64) -> i64 = {
+    let mut result = n;
+    let mut p = 2;
+    let mut m = n;
+    loop {
+        if p * p > m { break } else { () };
+        if m - (m / p) * p == 0 {
+            loop {
+                if m - (m / p) * p != 0 { break } else { () };
+                m = m / p
+            };
+        result = result - result / p
+    } else { () };
+    p = p + 1
+    };
+    if m > 1 {
+        result = result - result / m
+    } else { () };
+    result
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(gcd(48, 18));        // 6
+    let _p2 = println(gcd(100, 75));       // 25
+    let _p3 = println(lcm(12, 8));         // 24
+    let _p4 = println(lcm(15, 20));        // 60
+    let _p5 = println(mod_pow_helper(2, 10, 1000)); // 24 (1024 mod 1000)
+    let _p6 = println(mod_pow_helper(3, 7, 100));   // 87 (2187 mod 100)
+    let _p7 = println(euler_totient(12));   // 4
+    let _p8 = println(euler_totient(36));   // 12
+    0
+    };

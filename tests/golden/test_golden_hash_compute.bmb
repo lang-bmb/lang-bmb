@@ -1,0 +1,138 @@
+// Golden Test: Hash/checksum computation patterns
+// Tests DJB2, FNV-1a, simple checksum, XOR checksum, Adler-32
+
+// Helper: create vec from values
+fn make_vec3(a: i64, b: i64, c: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c);
+    v
+    };
+
+fn make_vec4(a: i64, b: i64, c: i64, d: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c); vec_push(v, d);
+    v
+    };
+
+fn make_vec5(a: i64, b: i64, c: i64, d: i64, e: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c); vec_push(v, d); vec_push(v, e);
+    v
+    };
+
+// DJB2 hash: hash = hash * 33 + byte, starting from 5381
+fn djb2(data: i64, pos: i64, hash: i64) -> i64 =
+    if pos >= vec_len(data) { hash }
+    else { djb2(data, pos + 1, hash * 33 + vec_get(data, pos)) };
+
+// FNV-1a hash: hash = (hash XOR byte) * 16777619, starting from 2166136261
+fn fnv1a(data: i64, pos: i64, hash: i64) -> i64 =
+    if pos >= vec_len(data) { hash }
+    else { fnv1a(data, pos + 1, (hash bxor vec_get(data, pos)) * 16777619) };
+
+// Simple checksum: sum of all bytes mod 256
+fn simple_checksum(data: i64, pos: i64, acc: i64) -> i64 =
+    if pos >= vec_len(data) { acc - (acc / 256) * 256 }
+    else { simple_checksum(data, pos + 1, acc + vec_get(data, pos)) };
+
+// XOR checksum: XOR of all bytes
+fn xor_checksum(data: i64, pos: i64, acc: i64) -> i64 =
+    if pos >= vec_len(data) { acc }
+    else { xor_checksum(data, pos + 1, acc bxor vec_get(data, pos)) };
+
+// Adler-32 inspired: two running sums
+// a = (1 + sum of bytes) mod 65521
+// b = (sum of all running a values) mod 65521
+// result = b * 65536 + a
+fn adler32(data: i64, pos: i64, a: i64, b: i64) -> i64 =
+    if pos >= vec_len(data) { b * 65536 + a }
+    else {
+        let new_a = (a + vec_get(data, pos)) - ((a + vec_get(data, pos)) / 65521) * 65521;
+        let new_b = (b + new_a) - ((b + new_a) / 65521) * 65521;
+        adler32(data, pos + 1, new_a, new_b)
+    };
+
+fn main() -> i64 = {
+    // Test data: [65, 66, 67] = "ABC"
+    let abc = make_vec3(65, 66, 67);
+    // Test data: [67, 66, 65] = "CBA"
+    let cba = make_vec3(67, 66, 65);
+    // Test data: [72, 101, 108, 108, 111] = "Hello"
+    let hello = make_vec5(72, 101, 108, 108, 111);
+    // Single byte
+    let single = vec_new();
+    vec_push(single, 42);
+    // All same bytes
+    let same = make_vec4(100, 100, 100, 100);
+
+    // Test 1: DJB2 on "ABC"
+    let _p1 = println(djb2(abc, 0, 5381));         // 193450027
+
+    // Test 2: DJB2 on "CBA" (different from ABC)
+    let _p2 = println(djb2(cba, 0, 5381));         // 193452203
+
+    // Test 3: DJB2 on "Hello"
+    let _p3 = println(djb2(hello, 0, 5381));       // 210676686969
+
+    // Test 4: DJB2 on empty (just the seed)
+    let empty = vec_new();
+    let _p4 = println(djb2(empty, 0, 5381));       // 5381
+
+    // Test 5: DJB2 on single byte [42]
+    let _p5 = println(djb2(single, 0, 5381));      // 177615
+
+    // Test 6: FNV-1a on "ABC"
+    let _p6 = println(fnv1a(abc, 0, 2166136261));  // -4065009106127933589
+
+    // Test 7: FNV-1a on "CBA"
+    let _p7 = println(fnv1a(cba, 0, 2166136261));  // -3385512217649107069
+
+    // Test 8: FNV-1a on empty
+    let _p8 = println(fnv1a(empty, 0, 2166136261)); // 2166136261
+
+    // Test 9: DJB2 same input gives same hash
+    let abc2 = make_vec3(65, 66, 67);
+    let _p9 = println(if djb2(abc, 0, 5381) == djb2(abc2, 0, 5381) { 1 } else { 0 }); // 1
+
+    // Test 10: DJB2 different input gives different hash
+    let _p10 = println(if djb2(abc, 0, 5381) == djb2(cba, 0, 5381) { 0 } else { 1 }); // 1
+
+    // Test 11: Simple checksum on "ABC" = (65+66+67) % 256 = 198
+    let _p11 = println(simple_checksum(abc, 0, 0));  // 198
+
+    // Test 12: Simple checksum on "Hello" = (72+101+108+108+111) % 256 = 500 % 256 = 244
+    let _p12 = println(simple_checksum(hello, 0, 0)); // 244
+
+    // Test 13: Simple checksum on all-same = (100*4) % 256 = 400 % 256 = 144
+    let _p13 = println(simple_checksum(same, 0, 0));  // 144
+
+    // Test 14: XOR checksum on "ABC" = 65^66^67 = 64
+    let _p14 = println(xor_checksum(abc, 0, 0));     // 64
+
+    // Test 15: XOR checksum on "Hello" = 72^101^108^108^111 = 66
+    let _p15 = println(xor_checksum(hello, 0, 0));   // 66
+
+    // Test 16: XOR checksum on all-same = 100^100^100^100 = 0
+    let _p16 = println(xor_checksum(same, 0, 0));    // 0
+
+    // Test 17: Adler-32 on "ABC" = 26017991
+    let _p17 = println(adler32(abc, 0, 1, 0));       // 26017991
+
+    // Test 18: Adler-32 on "Hello" = 93061621
+    let _p18 = println(adler32(hello, 0, 1, 0));     // 93061621
+
+    // Test 19: Adler-32 on empty = 0*65536 + 1 = 1
+    let _p19 = println(adler32(empty, 0, 1, 0));     // 1
+
+    // Test 20: Adler-32 on single [42] = 2818091
+    let _p20 = println(adler32(single, 0, 1, 0));    // 2818091
+
+    let _f1 = vec_free(abc);
+    let _f2 = vec_free(cba);
+    let _f3 = vec_free(hello);
+    let _f4 = vec_free(single);
+    let _f5 = vec_free(same);
+    let _f6 = vec_free(empty);
+    let _f7 = vec_free(abc2);
+    0
+    };

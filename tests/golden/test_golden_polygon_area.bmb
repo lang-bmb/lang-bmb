@@ -1,0 +1,207 @@
+// Golden Test: Polygon area (shoelace), perimeter, centroid computation
+// All computations use integer arithmetic with scaling for precision.
+// Points packed as x * 10000 + y (non-negative coordinates only).
+
+fn make_pt(x: i64, y: i64) -> i64 = x * 10000 + y;
+fn pt_x(p: i64) -> i64 = p / 10000;
+fn pt_y(p: i64) -> i64 = p - (p / 10000) * 10000;
+
+fn iabs(x: i64) -> i64 = if x < 0 { 0 - x } else { x };
+
+// Shoelace formula: 2*Area = |sum( x_i*(y_{i+1}-y_{i-1}) )|
+// We compute 2*Area to stay in integers
+fn shoelace_2area(pts: i64, n: i64) -> i64 = {
+    let mut sum = 0;
+    for i in 0..n {
+        let j = if i + 1 >= n { 0 } else { i + 1 };
+        let xi = pt_x(vec_get(pts, i));
+        let yi = pt_y(vec_get(pts, i));
+        let xj = pt_x(vec_get(pts, j));
+        let yj = pt_y(vec_get(pts, j));
+        sum = sum + (xi * yj - xj * yi);
+    };
+    iabs(sum)
+};
+
+// Integer square root via Newton's method
+fn isqrt(n: i64) -> i64 = {
+    if n <= 0 { return 0 } else { () };
+    if n == 1 { return 1 } else { () };
+    let mut x = n;
+    let mut y = (x + 1) / 2;
+    loop {
+        if y >= x { break } else { () };
+        x = y;
+        y = (x + n / x) / 2
+    };
+    x
+};
+
+// Squared distance between two points
+fn dist_sq(p1: i64, p2: i64) -> i64 = {
+    let dx = pt_x(p1) - pt_x(p2);
+    let dy = pt_y(p1) - pt_y(p2);
+    dx * dx + dy * dy
+};
+
+// Perimeter * 1000 (scaled for precision using integer sqrt)
+// Each edge length = sqrt(dist_sq) * 1000
+fn perimeter_scaled(pts: i64, n: i64) -> i64 = {
+    let mut sum = 0;
+    for i in 0..n {
+        let j = if i + 1 >= n { 0 } else { i + 1 };
+        let d2 = dist_sq(vec_get(pts, i), vec_get(pts, j));
+        // sqrt(d2) * 1000 = sqrt(d2 * 1000000)
+        let scaled = isqrt(d2 * 1000000);
+        sum = sum + scaled;
+    };
+    sum
+};
+
+// Centroid: (sum_x / n, sum_y / n)
+fn centroid_x(pts: i64, n: i64) -> i64 = {
+    let mut sum = 0;
+    for i in 0..n {
+        sum = sum + pt_x(vec_get(pts, i));
+    };
+    sum / n
+};
+
+fn centroid_y(pts: i64, n: i64) -> i64 = {
+    let mut sum = 0;
+    for i in 0..n {
+        sum = sum + pt_y(vec_get(pts, i));
+    };
+    sum / n
+};
+
+// Cross product of vectors (p1->p2) x (p1->p3)
+fn cross_product(p1: i64, p2: i64, p3: i64) -> i64 = {
+    let x1 = pt_x(p2) - pt_x(p1);
+    let y1 = pt_y(p2) - pt_y(p1);
+    let x2 = pt_x(p3) - pt_x(p1);
+    let y2 = pt_y(p3) - pt_y(p1);
+    x1 * y2 - y1 * x2
+};
+
+// Check convexity: all cross products same sign
+fn is_convex(pts: i64, n: i64) -> i64 = {
+    let mut pos = 0;
+    let mut neg = 0;
+    for i in 0..n {
+        let j = if i + 1 >= n { 0 } else { i + 1 };
+        let k = if j + 1 >= n { 0 } else { j + 1 };
+        let c = cross_product(vec_get(pts, i), vec_get(pts, j), vec_get(pts, k));
+        let _u = if c > 0 { pos = pos + 1 } else { () };
+        let _v = if c < 0 { neg = neg + 1 } else { () };
+    };
+    if pos == 0 { 1 }
+    else if neg == 0 { 1 }
+    else { 0 }
+};
+
+// Point in triangle test using cross products (2*area method)
+// Point p is inside triangle (a,b,c) if all cross products have same sign
+fn point_in_triangle(px: i64, py: i64, ax: i64, ay: i64, bx: i64, by: i64, cx: i64, cy: i64) -> i64 = {
+    let d1 = (px - bx) * (ay - by) - (ax - bx) * (py - by);
+    let d2 = (px - cx) * (by - cy) - (bx - cx) * (py - cy);
+    let d3 = (px - ax) * (cy - ay) - (cx - ax) * (py - ay);
+    let has_neg = if d1 < 0 { 1 } else if d2 < 0 { 1 } else if d3 < 0 { 1 } else { 0 };
+    let has_pos = if d1 > 0 { 1 } else if d2 > 0 { 1 } else if d3 > 0 { 1 } else { 0 };
+    if has_neg == 1 and has_pos == 1 { 0 } else { 1 }
+};
+
+fn main() -> i64 = {
+    // Triangle: (0,0), (6,0), (0,8) -> area = 24, 2*area = 48
+    let tri = vec_new();
+    let _t1 = vec_push(tri, make_pt(0, 0));
+    let _t2 = vec_push(tri, make_pt(6, 0));
+    let _t3 = vec_push(tri, make_pt(0, 8));
+    let _p1 = println(shoelace_2area(tri, 3));  // 48
+
+    // Square: (0,0), (5,0), (5,5), (0,5) -> area = 25, 2*area = 50
+    let sq = vec_new();
+    let _s1 = vec_push(sq, make_pt(0, 0));
+    let _s2 = vec_push(sq, make_pt(5, 0));
+    let _s3 = vec_push(sq, make_pt(5, 5));
+    let _s4 = vec_push(sq, make_pt(0, 5));
+    let _p2 = println(shoelace_2area(sq, 4));  // 50
+
+    // Rectangle: (1,1), (7,1), (7,4), (1,4) -> area = 18, 2*area = 36
+    let rect = vec_new();
+    let _r1 = vec_push(rect, make_pt(1, 1));
+    let _r2 = vec_push(rect, make_pt(7, 1));
+    let _r3 = vec_push(rect, make_pt(7, 4));
+    let _r4 = vec_push(rect, make_pt(1, 4));
+    let _p3 = println(shoelace_2area(rect, 4));  // 36
+
+    // Pentagon: (2,0), (4,0), (5,3), (3,5), (1,3) -> compute 2*area
+    let pent = vec_new();
+    let _pe1 = vec_push(pent, make_pt(2, 0));
+    let _pe2 = vec_push(pent, make_pt(4, 0));
+    let _pe3 = vec_push(pent, make_pt(5, 3));
+    let _pe4 = vec_push(pent, make_pt(3, 5));
+    let _pe5 = vec_push(pent, make_pt(1, 3));
+    // 2*A = |sum of cross terms|
+    // (2*0 - 4*0) + (4*3 - 5*0) + (5*5 - 3*3) + (3*3 - 1*5) + (1*0 - 2*3)
+    // = 0 + 12 + 16 + 4 + (-6) = 26
+    let _p4 = println(shoelace_2area(pent, 5));  // 26
+
+    // Centroid of triangle (0,0),(6,0),(0,8)
+    let _p5 = println(centroid_x(tri, 3));  // (0+6+0)/3 = 2
+    let _p6 = println(centroid_y(tri, 3));  // (0+0+8)/3 = 2
+
+    // Centroid of square (0,0),(5,0),(5,5),(0,5)
+    let _p7 = println(centroid_x(sq, 4));  // (0+5+5+0)/4 = 2
+    let _p8 = println(centroid_y(sq, 4));  // (0+0+5+5)/4 = 2
+
+    // Perimeter of unit square scaled by 1000: 4*1*1000 = 4000
+    let usq = vec_new();
+    let _u1 = vec_push(usq, make_pt(0, 0));
+    let _u2 = vec_push(usq, make_pt(1, 0));
+    let _u3 = vec_push(usq, make_pt(1, 1));
+    let _u4 = vec_push(usq, make_pt(0, 1));
+    let _p9 = println(perimeter_scaled(usq, 4));  // 4000
+
+    // Perimeter of 3-4-5 right triangle scaled: (3+4+5)*1000 = 12000
+    let rt = vec_new();
+    let _rt1 = vec_push(rt, make_pt(0, 0));
+    let _rt2 = vec_push(rt, make_pt(3, 0));
+    let _rt3 = vec_push(rt, make_pt(0, 4));
+    let _p10 = println(perimeter_scaled(rt, 3));  // 12000
+
+    // Convexity checks
+    let _p11 = println(is_convex(sq, 4));   // 1 (square is convex)
+    let _p12 = println(is_convex(tri, 3));  // 1 (triangle is convex)
+
+    // Non-convex polygon: (0,0),(4,0),(2,1),(4,4),(0,4) - "arrow" shape
+    let arrow = vec_new();
+    let _a1 = vec_push(arrow, make_pt(0, 0));
+    let _a2 = vec_push(arrow, make_pt(4, 0));
+    let _a3 = vec_push(arrow, make_pt(2, 1));
+    let _a4 = vec_push(arrow, make_pt(4, 4));
+    let _a5 = vec_push(arrow, make_pt(0, 4));
+    let _p13 = println(is_convex(arrow, 5));  // 0 (concave)
+
+    // Point in triangle tests
+    // Triangle (0,0),(10,0),(0,10)
+    let _p14 = println(point_in_triangle(2, 2, 0, 0, 10, 0, 0, 10));  // 1 (inside)
+    let _p15 = println(point_in_triangle(8, 8, 0, 0, 10, 0, 0, 10));  // 0 (outside)
+    let _p16 = println(point_in_triangle(5, 0, 0, 0, 10, 0, 0, 10));  // 1 (on edge)
+
+    // isqrt tests
+    let _p17 = println(isqrt(0));    // 0
+    let _p18 = println(isqrt(1));    // 1
+    let _p19 = println(isqrt(4));    // 2
+    let _p20 = println(isqrt(100));  // 10
+    let _p21 = println(isqrt(99));   // 9
+
+    let _f1 = vec_free(tri);
+    let _f2 = vec_free(sq);
+    let _f3 = vec_free(rect);
+    let _f4 = vec_free(pent);
+    let _f5 = vec_free(usq);
+    let _f6 = vec_free(rt);
+    let _f7 = vec_free(arrow);
+    0
+};

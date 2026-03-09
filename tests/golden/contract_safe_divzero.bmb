@@ -1,0 +1,17 @@
+// Test: contract-based division-by-zero check elimination
+// pre b != 0 should let LLVM eliminate the divzero check in --safe mode
+
+fn safe_div(a: i64, b: i64) -> i64
+    pre b != 0
+= a / b;
+
+fn safe_mod(a: i64, b: i64) -> i64
+    pre b != 0
+= a % b;
+
+fn main() -> i64 = {
+    let d = safe_div(100, 7);
+    let m = safe_mod(100, 7);
+    let _u = println(d + m);
+    0
+};

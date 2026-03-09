@@ -1,0 +1,145 @@
+// Golden Test: Fibonacci via matrix exponentiation
+// 2x2 matrix multiply, matrix power by repeated squaring
+// Compare with iterative fibonacci
+
+// Matrix is stored as 4 elements in a vec: [a, b, c, d]
+// representing [[a, b], [c, d]]
+
+fn mat_new(a: i64, b: i64, c: i64, d: i64) -> i64 = {
+    let m = vec_new();
+    let _p1 = vec_push(m, a);
+    let _p2 = vec_push(m, b);
+    let _p3 = vec_push(m, c);
+    let _p4 = vec_push(m, d);
+    m
+    };
+
+// Matrix multiply: C = A * B
+fn mat_mul(a: i64, b: i64) -> i64 = {
+    let a00 = vec_get(a, 0);
+    let a01 = vec_get(a, 1);
+    let a10 = vec_get(a, 2);
+    let a11 = vec_get(a, 3);
+    let b00 = vec_get(b, 0);
+    let b01 = vec_get(b, 1);
+    let b10 = vec_get(b, 2);
+    let b11 = vec_get(b, 3);
+    mat_new(
+        a00 * b00 + a01 * b10,
+        a00 * b01 + a01 * b11,
+        a10 * b00 + a11 * b10,
+        a10 * b01 + a11 * b11
+    )
+    };
+
+// Matrix power by repeated squaring
+// base^exp where base is a 2x2 matrix
+fn mat_pow(base: i64, exp: i64) -> i64 = {
+    // result = identity matrix
+    let mut result = mat_new(1, 0, 0, 1);
+    let mut b = base;
+    let mut e = exp;
+    loop {
+        if e <= 0 { break } else { () };
+        let _r = if e - (e / 2) * 2 == 1 {
+            let new_result = mat_mul(result, b);
+            let _f = vec_free(result);
+            result = new_result;
+            0
+        } else { 0 };
+        let new_b = mat_mul(b, b);
+        let _fb = if b != base {
+            vec_free(b)
+        } else { 0 };
+        b = new_b;
+        e = e / 2
+    };
+    let _fb2 = if b != base {
+        vec_free(b)
+    } else { 0 };
+    result
+    };
+
+// Fibonacci via matrix exponentiation
+// [[1,1],[1,0]]^n = [[fib(n+1), fib(n)], [fib(n), fib(n-1)]]
+fn fib_matrix(n: i64) -> i64 = {
+    if n <= 0 { 0 }
+    else {
+        let base = mat_new(1, 1, 1, 0);
+        let result = mat_pow(base, n);
+        let fib_n = vec_get(result, 1);  // fib(n) is at position [0][1]
+        let _f1 = vec_free(base);
+        let _f2 = vec_free(result);
+        fib_n
+    }
+    };
+
+// Iterative fibonacci for verification
+fn fib_iter(n: i64) -> i64 = {
+    if n <= 0 { 0 }
+    else if n == 1 { 1 }
+    else {
+        let mut a = 0;
+        let mut b = 1;
+        let mut i = 2;
+        loop {
+            if i > n { break } else { () };
+            let tmp = a + b;
+            a = b;
+            b = tmp;
+            i = i + 1
+        };
+        b
+    }
+    };
+
+fn main() -> i64 = {
+    // === Matrix multiply test ===
+    // [[1,2],[3,4]] * [[5,6],[7,8]] = [[19,22],[43,50]]
+    let a = mat_new(1, 2, 3, 4);
+    let b = mat_new(5, 6, 7, 8);
+    let c = mat_mul(a, b);
+    let _p1 = println(vec_get(c, 0));  // 19
+    let _p2 = println(vec_get(c, 1));  // 22
+    let _p3 = println(vec_get(c, 2));  // 43
+    let _p4 = println(vec_get(c, 3));  // 50
+
+    // === Identity matrix power ===
+    let id = mat_new(1, 0, 0, 1);
+    let id3 = mat_pow(id, 3);
+    let _p5 = println(vec_get(id3, 0));  // 1
+    let _p6 = println(vec_get(id3, 3));  // 1
+
+    // === Fibonacci via matrix: small values ===
+    let _p7 = println(fib_matrix(1));    // 1
+    let _p8 = println(fib_matrix(2));    // 1
+    let _p9 = println(fib_matrix(5));    // 5
+    let _p10 = println(fib_matrix(10));  // 55
+
+    // === Fibonacci via matrix: larger values ===
+    let _p11 = println(fib_matrix(20));  // 6765
+    let _p12 = println(fib_matrix(30));  // 832040
+    let _p13 = println(fib_matrix(40));  // 102334155
+    let _p14 = println(fib_matrix(50));  // 12586269025
+
+    // === Compare matrix vs iterative ===
+    let match_20 = if fib_matrix(20) == fib_iter(20) { 1 } else { 0 };
+    let match_30 = if fib_matrix(30) == fib_iter(30) { 1 } else { 0 };
+    let match_40 = if fib_matrix(40) == fib_iter(40) { 1 } else { 0 };
+    let match_50 = if fib_matrix(50) == fib_iter(50) { 1 } else { 0 };
+    let _p15 = println(match_20);  // 1
+    let _p16 = println(match_30);  // 1
+    let _p17 = println(match_40);  // 1
+    let _p18 = println(match_50);  // 1
+
+    // === Iterative values for reference ===
+    let _p19 = println(fib_iter(30));  // 832040
+    let _p20 = println(fib_iter(50));  // 12586269025
+
+    let _fa = vec_free(a);
+    let _fb = vec_free(b);
+    let _fc = vec_free(c);
+    let _fid = vec_free(id);
+    let _fid3 = vec_free(id3);
+    0
+    };

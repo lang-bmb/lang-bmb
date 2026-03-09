@@ -1,0 +1,93 @@
+// Golden Test: Fletcher-16, polynomial hash, and sum hash
+// Three different hash/checksum algorithms on integer arrays
+
+// Fletcher-16: two running sums mod 255, result = s2 * 256 + s1
+fn fletcher_helper(data: i64, i: i64, s1: i64, s2: i64) -> i64 =
+    if i >= vec_len(data) { s2 * 256 + s1 }
+    else {
+        let ns1 = s1 + vec_get(data, i);
+        let ms1 = ns1 - (ns1 / 255) * 255;
+        let ns2 = s2 + ms1;
+        let ms2 = ns2 - (ns2 / 255) * 255;
+        fletcher_helper(data, i + 1, ms1, ms2)
+    };
+
+fn fletcher16(data: i64) -> i64 =
+    fletcher_helper(data, 0, 0, 0);
+
+// Polynomial rolling hash: h = (h * 31 + data[i]) mod 10007
+fn poly_helper(data: i64, i: i64, h: i64) -> i64 =
+    if i >= vec_len(data) { h }
+    else {
+        let nh = h * 31 + vec_get(data, i);
+        let mh = nh - (nh / 10007) * 10007;
+        poly_helper(data, i + 1, mh)
+    };
+
+fn poly_hash(data: i64) -> i64 =
+    poly_helper(data, 0, 0);
+
+// Sum hash: sum of all elements mod 997
+fn sum_helper(data: i64, i: i64, acc: i64) -> i64 =
+    if i >= vec_len(data) {
+        let m = acc - (acc / 997) * 997;
+        m
+    }
+    else { sum_helper(data, i + 1, acc + vec_get(data, i)) };
+
+fn sum_hash(data: i64) -> i64 =
+    sum_helper(data, 0, 0);
+
+fn main() -> i64 = {
+    // Data set 1: [1, 2, 3, 4, 5]
+    let d1 = vec_new();
+    vec_push(d1, 1);
+    vec_push(d1, 2);
+    vec_push(d1, 3);
+    vec_push(d1, 4);
+    vec_push(d1, 5);
+
+    // Data set 2: [72, 101, 108, 108, 111] ("Hello" ASCII)
+    let d2 = vec_new();
+    vec_push(d2, 72);
+    vec_push(d2, 101);
+    vec_push(d2, 108);
+    vec_push(d2, 108);
+    vec_push(d2, 111);
+
+    // Data set 3: [200, 150, 100, 50]
+    let d3 = vec_new();
+    vec_push(d3, 200);
+    vec_push(d3, 150);
+    vec_push(d3, 100);
+    vec_push(d3, 50);
+
+    // Data set 4: [255, 255, 255, 255]
+    let d4 = vec_new();
+    vec_push(d4, 255);
+    vec_push(d4, 255);
+    vec_push(d4, 255);
+    vec_push(d4, 255);
+
+    // Fletcher-16 tests
+    let _p1 = println(fletcher16(d1));    // 8975
+    let _p2 = println(fletcher16(d2));    // 36085
+    let _p3 = println(fletcher16(d3));    // 57845
+
+    // Polynomial hash tests
+    let _p4 = println(poly_hash(d1));     // 5429
+    let _p5 = println(poly_hash(d2));     // 958
+    let _p6 = println(poly_hash(d3));     // 1230
+
+    // Sum hash tests
+    let _p7 = println(sum_hash(d1));      // 15
+    let _p8 = println(sum_hash(d2));      // 500
+    let _p9 = println(sum_hash(d3));      // 500
+    let _p10 = println(sum_hash(d4));     // 23
+
+    vec_free(d1);
+    vec_free(d2);
+    vec_free(d3);
+    vec_free(d4);
+    0
+    };

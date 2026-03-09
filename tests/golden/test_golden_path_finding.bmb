@@ -1,0 +1,162 @@
+// Golden test: Path finding algorithms
+// Bellman-Ford shortest path on weighted directed graphs
+// Graph stored as flat n*n adjacency matrix (0 = no edge, positive = weight)
+// INF = 999999 represents unreachable distance
+
+// Get edge weight from flat adjacency matrix
+fn adj_get(adj: i64, n: i64, u: i64, v: i64) -> i64 =
+    vec_get(adj, u * n + v);
+
+    // Initialize distance vec: src=0, others=INF
+
+fn init_dist(dist: i64, n: i64, src: i64, i: i64) -> i64 =
+    if i >= n { dist }
+    else {
+        let _s = vec_set(dist, i, if i == src { 0 } else { 999999 });
+        init_dist(dist, n, src, i + 1)
+    };
+
+    // One relaxation pass over all edges
+
+fn relax_edges(adj: i64, dist: i64, n: i64, u: i64, v: i64) -> i64 =
+    if u >= n { dist }
+    else if v >= n { relax_edges(adj, dist, n, u + 1, 0) }
+    else {
+        let w = adj_get(adj, n, u, v);
+        let du = vec_get(dist, u);
+        let dv = vec_get(dist, v);
+        let new_dist = if w > 0 and du < 999999 and du + w < dv {
+            du + w
+        } else { dv };
+    let _s = vec_set(dist, v, new_dist);
+    relax_edges(adj, dist, n, u, v + 1)
+    };
+
+    // Run n-1 relaxation passes (Bellman-Ford)
+
+fn bellman_ford_loop(adj: i64, dist: i64, n: i64, iter: i64) -> i64 =
+    if iter >= n - 1 { dist }
+    else {
+        let d2 = relax_edges(adj, dist, n, 0, 0);
+        bellman_ford_loop(adj, d2, n, iter + 1)
+    };
+
+    // Full Bellman-Ford for 4-node graph: init + n-1 iterations
+
+fn bellman_ford(adj: i64, n: i64, src: i64) -> i64 = {
+    let dist = vec_new();
+    let _p1 = vec_push(dist, 999999);
+    let _p2 = vec_push(dist, 999999);
+    let _p3 = vec_push(dist, 999999);
+    let _p4 = vec_push(dist, 999999);
+    let d0 = init_dist(dist, n, src, 0);
+    bellman_ford_loop(adj, d0, n, 0)
+    };
+
+// Full Bellman-Ford for 3-node graph
+fn bellman_ford3(adj: i64, n: i64, src: i64) -> i64 = {
+    let dist = vec_new();
+    let _p1 = vec_push(dist, 999999);
+    let _p2 = vec_push(dist, 999999);
+    let _p3 = vec_push(dist, 999999);
+    let d0 = init_dist(dist, n, src, 0);
+    bellman_ford_loop(adj, d0, n, 0)
+    };
+
+// Check if path exists (dist < INF)
+fn path_exists(dist: i64, node: i64) -> i64 =
+    if vec_get(dist, node) < 999999 { 1 } else { 0 };
+
+fn make_vec16(a0: i64, a1: i64, a2: i64, a3: i64,
+    a4: i64, a5: i64, a6: i64, a7: i64,
+    a8: i64, a9: i64, a10: i64, a11: i64,
+    a12: i64, a13: i64, a14: i64, a15: i64) -> i64 = {
+    let v = vec_new();
+    let _p0 = vec_push(v, a0);
+    let _p1 = vec_push(v, a1);
+    let _p2 = vec_push(v, a2);
+    let _p3 = vec_push(v, a3);
+    let _p4 = vec_push(v, a4);
+    let _p5 = vec_push(v, a5);
+    let _p6 = vec_push(v, a6);
+    let _p7 = vec_push(v, a7);
+    let _p8 = vec_push(v, a8);
+    let _p9 = vec_push(v, a9);
+    let _p10 = vec_push(v, a10);
+    let _p11 = vec_push(v, a11);
+    let _p12 = vec_push(v, a12);
+    let _p13 = vec_push(v, a13);
+    let _p14 = vec_push(v, a14);
+    let _p15 = vec_push(v, a15);
+    v
+    };
+
+fn make_vec9(a0: i64, a1: i64, a2: i64,
+    a3: i64, a4: i64, a5: i64,
+    a6: i64, a7: i64, a8: i64) -> i64 = {
+    let v = vec_new();
+    let _p0 = vec_push(v, a0);
+    let _p1 = vec_push(v, a1);
+    let _p2 = vec_push(v, a2);
+    let _p3 = vec_push(v, a3);
+    let _p4 = vec_push(v, a4);
+    let _p5 = vec_push(v, a5);
+    let _p6 = vec_push(v, a6);
+    let _p7 = vec_push(v, a7);
+    let _p8 = vec_push(v, a8);
+    v
+    };
+
+fn main() -> i64 = {
+// 4-node weighted directed graph:
+// 0->1 (w=4), 0->2 (w=2), 1->3 (w=5), 2->1 (w=1), 2->3 (w=8), 3->0 (w=3)
+// Flat adjacency matrix (4x4):
+    let adj4 = make_vec16(0, 4, 2, 0,
+        0, 0, 0, 5,
+        0, 1, 0, 8,
+        3, 0, 0, 0);
+
+// Bellman-Ford from node 0
+    let d0 = bellman_ford(adj4, 4, 0);
+    let _p1 = println(vec_get(d0, 1));               // 3  (0->2->1 = 2+1)
+    let _p2 = println(vec_get(d0, 2));               // 2  (0->2)
+    let _p3 = println(vec_get(d0, 3));               // 8  (0->2->1->3 = 2+1+5)
+    let _p4 = println(path_exists(d0, 1));  // 1
+    let _p5 = println(path_exists(d0, 3));  // 1
+
+// Bellman-Ford from node 1
+    let d1 = bellman_ford(adj4, 4, 1);
+    let _p6 = println(vec_get(d1, 0));               // 8  (1->3->0 = 5+3)
+    let _p7 = println(vec_get(d1, 3));               // 5  (1->3)
+    let _p8 = println(path_exists(d1, 2));  // 1  (1->3->0->2 = 5+3+2=10)
+    let _p9 = println(vec_get(d1, 2));               // 10
+
+// 3-node graph: 0->1 (w=6), 1->2 (w=4)
+    let adj3 = make_vec9(0, 6, 0,
+        0, 0, 4,
+        0, 0, 0);
+
+// Bellman-Ford from node 0
+    let d2 = bellman_ford3(adj3, 3, 0);
+    let _p10 = println(vec_get(d2, 0));              // 0
+    let _p11 = println(vec_get(d2, 1));              // 6
+    let _p12 = println(vec_get(d2, 2));              // 10  (0->1->2 = 6+4)
+    let _p13 = println(path_exists(d2, 0)); // 1
+    let _p14 = println(path_exists(d2, 1)); // 1
+    let _p15 = println(path_exists(d2, 2)); // 1
+
+// Bellman-Ford from node 2 (no outgoing edges, can't reach 0 or 1)
+    let d3 = bellman_ford3(adj3, 3, 2);
+    let _p16 = println(vec_get(d3, 0));              // 999999 (unreachable)
+    let _p17 = println(vec_get(d3, 1));              // 999999 (unreachable)
+    let _p18 = println(path_exists(d3, 0)); // 0
+    let _p19 = println(path_exists(d3, 1)); // 0
+
+    let _f1 = vec_free(adj4);
+    let _f2 = vec_free(d0);
+    let _f3 = vec_free(d1);
+    let _f4 = vec_free(adj3);
+    let _f5 = vec_free(d2);
+    let _f6 = vec_free(d3);
+    0
+    };

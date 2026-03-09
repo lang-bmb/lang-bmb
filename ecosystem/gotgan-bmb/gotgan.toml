@@ -1,0 +1,8 @@
+[package]
+name = "gotgan-bmb"
+version = "0.1.0"
+description = "BMB package manager reimplemented in BMB"
+authors = ["BMB Team"]
+license = "MIT"
+
+[dependencies]

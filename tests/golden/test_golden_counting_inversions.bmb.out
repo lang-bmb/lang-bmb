@@ -1,0 +1,27 @@
+=== Test 1 ===
+array: 2 4 1 3 5
+inversions: 3
+sorted: 1 2 3 4 5
+=== Test 2 ===
+array: 5 4 3 2 1
+inversions: 10
+sorted: 1 2 3 4 5
+=== Test 3 ===
+array: 1 2 3 4 5
+inversions: 0
+sorted: 1 2 3 4 5
+=== Test 4 ===
+array: 3 1 2
+inversions: 2
+sorted: 1 2 3
+=== Test 5 ===
+array: 1
+inversions: 0
+=== Test 6 ===
+array: 8 4 2 1
+inversions: 6
+sorted: 1 2 4 8
+=== Test 7 ===
+array: 2 1 3 1 2
+inversions: 4
+sorted: 1 1 2 2 3

@@ -1,0 +1,197 @@
+// Golden Test: Infix to Postfix (Shunting Yard) + Postfix Evaluation
+// Uses integer-encoded tokens: positive = operand, negative = operator
+// Operators: -1 = +, -2 = -, -3 = *, -4 = /, -5 = (, -6 = )
+
+fn op_add() -> i64 = 0 - 1;
+fn op_sub() -> i64 = 0 - 2;
+fn op_mul() -> i64 = 0 - 3;
+fn op_div() -> i64 = 0 - 4;
+fn op_lparen() -> i64 = 0 - 5;
+fn op_rparen() -> i64 = 0 - 6;
+
+fn precedence(op: i64) -> i64 =
+    if op == op_add() or op == op_sub() { 1 }
+    else if op == op_mul() or op == op_div() { 2 }
+    else { 0 };
+
+fn is_operator(tok: i64) -> i64 =
+    if tok == op_add() or tok == op_sub() or tok == op_mul() or tok == op_div() { 1 } else { 0 };
+
+// Shunting-yard: infix tokens → postfix tokens
+fn to_postfix(infix: i64, n: i64) -> i64 = {
+    let output = vec_new();
+    let stack = vec_new();
+    for _i in 0..n { vec_push(stack, 0) };
+    let mut stop = 0;
+
+    for i in 0..n {
+        let tok = vec_get(infix, i);
+        let _x = if tok >= 0 {
+            // Operand
+            vec_push(output, tok);
+            0
+        } else if tok == op_lparen() {
+            vec_set(stack, stop, tok);
+            set stop = stop + 1;
+            0
+        } else if tok == op_rparen() {
+            // Pop until left paren
+            loop {
+                if stop <= 0 { break } else { () };
+                let top = vec_get(stack, stop - 1);
+                if top == op_lparen() {
+                    set stop = stop - 1;
+                    break
+                } else { () };
+                vec_push(output, top);
+                set stop = stop - 1;
+            };
+            0
+        } else {
+            // Operator: pop higher/equal precedence operators
+            loop {
+                if stop <= 0 { break } else { () };
+                let top = vec_get(stack, stop - 1);
+                if is_operator(top) == 0 or precedence(top) < precedence(tok) { break } else { () };
+                vec_push(output, top);
+                set stop = stop - 1;
+            };
+            vec_set(stack, stop, tok);
+            set stop = stop + 1;
+            0
+        };
+    };
+
+    // Pop remaining operators
+    loop {
+        if stop <= 0 { break } else { () };
+        set stop = stop - 1;
+        vec_push(output, vec_get(stack, stop));
+    };
+
+    vec_free(stack);
+    output
+};
+
+// Evaluate postfix expression
+fn eval_postfix(postfix: i64, n: i64) -> i64 = {
+    let stack = vec_new();
+    for _i in 0..n { vec_push(stack, 0) };
+    let mut stop = 0;
+
+    for i in 0..n {
+        let tok = vec_get(postfix, i);
+        let _x = if tok >= 0 {
+            vec_set(stack, stop, tok);
+            set stop = stop + 1;
+            0
+        } else {
+            let b = vec_get(stack, stop - 1);
+            set stop = stop - 1;
+            let a = vec_get(stack, stop - 1);
+            let result = if tok == op_add() { a + b }
+                else if tok == op_sub() { a - b }
+                else if tok == op_mul() { a * b }
+                else { a / b };
+            vec_set(stack, stop - 1, result);
+            0
+        };
+    };
+
+    let result = vec_get(stack, 0);
+    vec_free(stack);
+    result
+};
+
+fn main() -> i64 = {
+    // Expression: 3 + 4 * 2
+    // Infix: [3, +, 4, *, 2]
+    let e1 = vec_new();
+    vec_push(e1, 3);
+    vec_push(e1, op_add());
+    vec_push(e1, 4);
+    vec_push(e1, op_mul());
+    vec_push(e1, 2);
+    let p1 = to_postfix(e1, 5);
+    let n1 = vec_len(p1);
+    // Postfix: 3 4 2 * + → evaluates to 11
+    println(eval_postfix(p1, n1));  // 11
+
+    // Expression: (3 + 4) * 2
+    // Infix: [(, 3, +, 4, ), *, 2]
+    let e2 = vec_new();
+    vec_push(e2, op_lparen());
+    vec_push(e2, 3);
+    vec_push(e2, op_add());
+    vec_push(e2, 4);
+    vec_push(e2, op_rparen());
+    vec_push(e2, op_mul());
+    vec_push(e2, 2);
+    let p2 = to_postfix(e2, 7);
+    let n2 = vec_len(p2);
+    println(eval_postfix(p2, n2));  // 14
+
+    // Expression: 10 - 2 * 3
+    let e3 = vec_new();
+    vec_push(e3, 10);
+    vec_push(e3, op_sub());
+    vec_push(e3, 2);
+    vec_push(e3, op_mul());
+    vec_push(e3, 3);
+    let p3 = to_postfix(e3, 5);
+    let n3 = vec_len(p3);
+    println(eval_postfix(p3, n3));  // 4
+
+    // Expression: (10 - 2) * 3
+    let e4 = vec_new();
+    vec_push(e4, op_lparen());
+    vec_push(e4, 10);
+    vec_push(e4, op_sub());
+    vec_push(e4, 2);
+    vec_push(e4, op_rparen());
+    vec_push(e4, op_mul());
+    vec_push(e4, 3);
+    let p4 = to_postfix(e4, 7);
+    let n4 = vec_len(p4);
+    println(eval_postfix(p4, n4));  // 24
+
+    // Expression: 2 + 3 * 4 - 5
+    let e5 = vec_new();
+    vec_push(e5, 2);
+    vec_push(e5, op_add());
+    vec_push(e5, 3);
+    vec_push(e5, op_mul());
+    vec_push(e5, 4);
+    vec_push(e5, op_sub());
+    vec_push(e5, 5);
+    let p5 = to_postfix(e5, 7);
+    let n5 = vec_len(p5);
+    println(eval_postfix(p5, n5));  // 9
+
+    // Expression: 100 / 10 / 2
+    let e6 = vec_new();
+    vec_push(e6, 100);
+    vec_push(e6, op_div());
+    vec_push(e6, 10);
+    vec_push(e6, op_div());
+    vec_push(e6, 2);
+    let p6 = to_postfix(e6, 5);
+    let n6 = vec_len(p6);
+    println(eval_postfix(p6, n6));  // 5
+
+    // Simple: just a number
+    let e7 = vec_new();
+    vec_push(e7, 42);
+    let p7 = to_postfix(e7, 1);
+    let n7 = vec_len(p7);
+    println(eval_postfix(p7, n7));  // 42
+
+    vec_free(e1); vec_free(p1);
+    vec_free(e2); vec_free(p2);
+    vec_free(e3); vec_free(p3);
+    vec_free(e4); vec_free(p4);
+    vec_free(e5); vec_free(p5);
+    vec_free(e6); vec_free(p6);
+    vec_free(e7); vec_free(p7);
+    0
+};

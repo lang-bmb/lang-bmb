@@ -1,0 +1,139 @@
+// Golden Test: gotgan add — append dependency to gotgan.toml
+// Tests TOML manipulation: find [dependencies] section, append line, write back
+
+fn str_concat(a: String, b: String) -> String = {
+    let sb = sb_new();
+    let _p1 = sb_push(sb, a);
+    let _p2 = sb_push(sb, b);
+    sb_build(sb)
+    };
+
+fn str_concat3(a: String, b: String, c: String) -> String = {
+    let sb = sb_new();
+    let _p1 = sb_push(sb, a);
+    let _p2 = sb_push(sb, b);
+    let _p3 = sb_push(sb, c);
+    sb_build(sb)
+    };
+
+// Find the position of a substring in a string, returns -1 if not found
+fn str_find(haystack: String, needle: String) -> i64 = {
+    let hlen = haystack.len();
+    let nlen = needle.len();
+    if nlen == 0 { 0 }
+    else if nlen > hlen { 0 - 1 }
+    else {
+        let mut i = 0;
+        let limit = hlen - nlen + 1;
+        let mut result = 0 - 1;
+        while i < limit {
+            let _r = if result < 0 {
+                let sub = haystack.slice(i, i + nlen);
+                if sub == needle { result = i; 0 } else { 0 }
+            } else { 0 };
+        i = i + 1;
+        0
+    };
+    result
+    }
+    };
+
+// Find end of line starting from pos
+fn find_eol(s: String, pos: i64) -> i64 = {
+    let slen = s.len();
+    let mut p = pos;
+    while p < slen {
+        let _r = if s.byte_at(p) == 10 { break } else { p = p + 1 };
+        0
+    };
+    p
+    };
+
+// Add a dependency to TOML content string
+// Returns new content with dependency added after [dependencies] section
+fn add_dep(content: String, dep_name: String, dep_ver: String) -> String = {
+    let deps_pos = str_find(content, "[dependencies]");
+    if deps_pos < 0 {
+
+// No [dependencies] section, append one
+    let sb = sb_new();
+    let _p1 = sb_push(sb, content);
+    let _p2 = sb_push(sb, "\n[dependencies]\n");
+    let _p3 = sb_push(sb, dep_name);
+    let _p4 = sb_push(sb, " = \"");
+        let _p5 = sb_push(sb, dep_ver);
+        let _p6 = sb_push(sb, "\"\n");
+            sb_build(sb)
+        } else {
+
+// Find end of [dependencies] line
+    let eol = find_eol(content, deps_pos);
+    let insert_pos = if eol < content.len() { eol + 1 } else { eol };
+
+// Build new content: before + new dep + after
+    let before = content.slice(0, insert_pos);
+    let after = content.slice(insert_pos, content.len());
+
+    let sb = sb_new();
+    let _p1 = sb_push(sb, before);
+    let _p2 = sb_push(sb, dep_name);
+    let _p3 = sb_push(sb, " = \"");
+        let _p4 = sb_push(sb, dep_ver);
+        let _p5 = sb_push(sb, "\"\n");
+            let _p6 = sb_push(sb, after);
+            sb_build(sb)
+        }
+    };
+
+fn str_contains(haystack: String, needle: String) -> bool =
+    str_find(haystack, needle) >= 0;
+
+fn run_test(name: String, result: bool) -> i64 = {
+    let _p1 = print_str(if result { "  PASS: " } else { "  FAIL: " });
+    let _p2 = print_str(name);
+    let _p3 = print_str("\n");
+    if result { 1 } else { 0 }
+    };
+
+fn main() -> i64 = {
+    let _h = print_str("gotgan-add: running tests\n");
+    let mut passed = 0;
+    let total = 8;
+
+// Test 1: str_find basic
+    passed = passed + run_test("str_find basic", str_find("hello world", "world") == 6);
+
+// Test 2: str_find not found
+    passed = passed + run_test("str_find not found", str_find("hello", "xyz") < 0);
+
+// Test 3: add dep to existing section
+    let toml1 = "[package]\nname = \"test\"\n\n[dependencies]\n";
+    let result1 = add_dep(toml1, "bmb-args", "0.1.0");
+    passed = passed + run_test("add dep to existing", str_contains(result1, "bmb-args = \"0.1.0\""));
+
+// Test 4: add dep preserves package section
+    passed = passed + run_test("preserves [package]", str_contains(result1, "[package]"));
+
+// Test 5: add dep when no deps section
+    let toml2 = "[package]\nname = \"test\"\n";
+    let result2 = add_dep(toml2, "bmb-json", "0.2.0");
+    passed = passed + run_test("creates [dependencies]", str_contains(result2, "[dependencies]"));
+
+// Test 6: newly added dep present
+    passed = passed + run_test("new dep present", str_contains(result2, "bmb-json = \"0.2.0\""));
+
+// Test 7: add multiple deps
+    let result3 = add_dep(result1, "bmb-json", "0.2.0");
+    passed = passed + run_test("two deps present", str_contains(result3, "bmb-args") and str_contains(result3, "bmb-json"));
+
+// Test 8: find_eol
+    let line_end = find_eol("hello\nworld", 0);
+    passed = passed + run_test("find_eol at 5", line_end == 5);
+
+    let _r1 = print_str("gotgan-add: ");
+    let _r2 = print(passed);
+    let _r3 = print_str("/");
+    let _r4 = print(total);
+    let _r5 = print_str(" tests passed\n");
+    if passed == total { 0 } else { 1 }
+    };

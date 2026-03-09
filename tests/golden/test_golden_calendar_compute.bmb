@@ -1,0 +1,112 @@
+// Golden Test: Calendar/date computation patterns
+// Tests leap year, days in month, day of year, days between dates,
+// day of week (Sakamoto's algorithm), count leap years in range
+
+fn is_leap_year(y: i64) -> i64 = {
+    if y % 4 != 0 { 0 }
+    else if y % 100 != 0 { 1 }
+    else if y % 400 == 0 { 1 }
+    else { 0 }
+    };
+
+fn days_in_month(month: i64, year: i64) -> i64 = {
+    if month == 1 { 31 }
+    else if month == 2 {
+        if is_leap_year(year) == 1 { 29 } else { 28 }
+    }
+    else if month == 3 { 31 }
+    else if month == 4 { 30 }
+    else if month == 5 { 31 }
+    else if month == 6 { 30 }
+    else if month == 7 { 31 }
+    else if month == 8 { 31 }
+    else if month == 9 { 30 }
+    else if month == 10 { 31 }
+    else if month == 11 { 30 }
+    else { 31 }
+    };
+
+fn day_of_year(month: i64, day: i64, year: i64) -> i64 = {
+    let mut total = 0;
+    let mut m = 1;
+    loop {
+        if m >= month { break } else { () };
+        total = total + days_in_month(m, year);
+        m = m + 1
+    };
+    total + day
+    };
+
+fn days_between(m1: i64, d1: i64, m2: i64, d2: i64, year: i64) -> i64 = {
+    let doy1 = day_of_year(m1, d1, year);
+    let doy2 = day_of_year(m2, d2, year);
+    doy2 - doy1
+    };
+
+// Sakamoto's day-of-week algorithm
+// Returns 0=Sunday, 1=Monday, ..., 6=Saturday
+fn month_key(m: i64) -> i64 = {
+    if m == 1 { 0 }
+    else if m == 2 { 3 }
+    else if m == 3 { 2 }
+    else if m == 4 { 5 }
+    else if m == 5 { 0 }
+    else if m == 6 { 3 }
+    else if m == 7 { 5 }
+    else if m == 8 { 1 }
+    else if m == 9 { 4 }
+    else if m == 10 { 6 }
+    else if m == 11 { 2 }
+    else { 4 }
+    };
+
+fn day_of_week(year: i64, month: i64, day: i64) -> i64 = {
+    let y = if month < 3 { year - 1 } else { year };
+    let t = month_key(month);
+    (y + y / 4 - y / 100 + y / 400 + t + day) % 7
+    };
+
+fn count_leap_years(from_y: i64, to_y: i64) -> i64 = {
+    let mut count = 0;
+    let mut y = from_y;
+    loop {
+        if y > to_y { break } else { () };
+        count = count + is_leap_year(y);
+        y = y + 1
+    };
+    count
+    };
+
+fn main() -> i64 = {
+    // Leap year tests
+    let _p1 = println(is_leap_year(2000));     // 1 (div by 400)
+    let _p2 = println(is_leap_year(1900));     // 0 (div by 100 not 400)
+    let _p3 = println(is_leap_year(2024));     // 1 (div by 4)
+    let _p4 = println(is_leap_year(2023));     // 0 (not div by 4)
+
+    // Days in month
+    let _p5 = println(days_in_month(2, 2024)); // 29 (leap year Feb)
+    let _p6 = println(days_in_month(2, 2023)); // 28 (non-leap Feb)
+    let _p7 = println(days_in_month(1, 2024)); // 31 (January)
+    let _p8 = println(days_in_month(4, 2024)); // 30 (April)
+
+    // Day of year
+    let _p9 = println(day_of_year(3, 15, 2024));  // 31+29+15 = 75
+    let _p10 = println(day_of_year(1, 1, 2024));  // 1
+    let _p11 = println(day_of_year(12, 31, 2024)); // 366 (leap)
+    let _p12 = println(day_of_year(12, 31, 2023)); // 365 (non-leap)
+
+    // Days between (same year)
+    let _p13 = println(days_between(3, 1, 6, 15, 2024)); // 167-61 = 106
+
+    // Day of week (0=Sun,1=Mon,...,6=Sat)
+    let _p14 = println(day_of_week(2024, 1, 1));  // 1 (Monday)
+    let _p15 = println(day_of_week(2024, 7, 4));  // 4 (Thursday)
+    let _p16 = println(day_of_week(2024, 2, 29)); // 4 (Thursday)
+
+    // Count leap years in range
+    let _p17 = println(count_leap_years(2000, 2024)); // 7
+    let _p18 = println(count_leap_years(1900, 1910)); // 2
+
+    0
+    };

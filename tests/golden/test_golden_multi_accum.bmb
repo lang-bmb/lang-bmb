@@ -1,0 +1,67 @@
+// Golden Test: Multiple accumulator patterns
+// Tests phi threading with multiple accumulator parameters
+
+fn dot_product(arr1: i64, arr2: i64, i: i64, acc: i64) -> i64 =
+    if i >= vec_len(arr1) { acc }
+    else {
+        let prod = vec_get(arr1, i) * vec_get(arr2, i);
+        dot_product(arr1, arr2, i + 1, acc + prod)
+    };
+
+fn count_matches(arr: i64, target: i64, i: i64, count: i64) -> i64 =
+    if i >= vec_len(arr) { count }
+    else {
+        let new_count = if vec_get(arr, i) == target { count + 1 } else { count };
+        count_matches(arr, target, i + 1, new_count)
+    };
+
+fn my_sum_positive(arr: i64, i: i64, acc: i64) -> i64 =
+    if i >= vec_len(arr) { acc }
+    else {
+        let v = vec_get(arr, i);
+        let new_acc = if v > 0 { acc + v } else { acc };
+        my_sum_positive(arr, i + 1, new_acc)
+    };
+
+fn main() -> i64 = {
+    let a = vec_new();
+    vec_push(a, 1);
+    vec_push(a, 2);
+    vec_push(a, 3);
+    vec_push(a, 4);
+    vec_push(a, 5);
+    let b = vec_new();
+    vec_push(b, 5);
+    vec_push(b, 4);
+    vec_push(b, 3);
+    vec_push(b, 2);
+    vec_push(b, 1);
+    println(dot_product(a, b, 0, 0)); // 1*5+2*4+3*3+4*2+5*1 = 35
+
+    let c = vec_new();
+    vec_push(c, 1);
+    vec_push(c, 2);
+    vec_push(c, 3);
+    vec_push(c, 2);
+    vec_push(c, 1);
+    vec_push(c, 2);
+    println(count_matches(c, 2, 0, 0)); // 3
+
+// [3, -1, 4, -1, 5, -9, 2, 6] -> sum positive = 3+4+5+2+6 = 20
+    let d = vec_new();
+    vec_push(d, 3);
+    vec_push(d, 0 - 1);
+    vec_push(d, 4);
+    vec_push(d, 0 - 1);
+    vec_push(d, 5);
+    vec_push(d, 0 - 9);
+    vec_push(d, 2);
+    vec_push(d, 6);
+    println(my_sum_positive(d, 0, 0)); // 3+4+5+2+6 = 20
+
+    vec_free(a);
+    vec_free(b);
+    vec_free(c);
+    vec_free(d);
+    0
+    };

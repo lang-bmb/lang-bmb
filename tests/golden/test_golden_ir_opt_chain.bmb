@@ -1,0 +1,46 @@
+// Golden Test: IR optimization chain verification
+// Tests the full chain: SLF → DSA → identity copy elim → roundtrip elim
+
+fn simple_let(x: i64) -> i64 = {
+    let a = x + 1;
+    let b = a + 2;
+    let c = b + 3;
+    c
+    };
+
+fn mutable_chain(x: i64) -> i64 = {
+    let mut a = x;
+    let v1 = a;
+    { a = v1 + 10 };
+    let v2 = a;
+    { a = v2 + 20 };
+    a
+    };
+
+fn nested_if_let(x: i64) -> i64 = {
+    let result = if x > 0 {
+        let a = x * 2;
+        if a > 10 { a } else { 10 }
+    } else {
+    0
+    };
+    result
+    };
+
+fn mixed_ops(a: i64, b: i64) -> i64 = {
+    let sum = a + b;
+    let diff = a - b;
+    let prod = a * b;
+    let result = if sum > 100 { prod } else { diff };
+    result
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(simple_let(10));       // 16
+    let _p2 = println(mutable_chain(5));     // 35
+    let _p3 = println(nested_if_let(8));     // 16
+    let _p4 = println(nested_if_let(0 - 1)); // 0
+    let _p5 = println(mixed_ops(50, 60));    // 3000
+    let _p6 = println(mixed_ops(5, 6));      // -1
+    0
+    };

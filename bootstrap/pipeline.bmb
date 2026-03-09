@@ -9,6 +9,10 @@
 //
 // Note: Uses | as separator instead of newlines (BMB string limitation)
 
+// Internal separator (Unit Separator, char 31) - avoids conflict with | in sat arithmetic
+fn SEP() -> String = chr(31);
+fn DSEP() -> String = chr(31) + chr(31);
+
 // ============================================================================
 // SECTION 1: Token Constants
 // ============================================================================
@@ -502,7 +506,7 @@ fn unpack_result_text(r: String) -> String =
 fn make_temp(n: i64) -> String = "%_t" + int_to_string(n);
 
 fn join_text(t1: String, t2: String) -> String =
-    if t1.len() == 0 { t2 } else if t2.len() == 0 { t1 } else { t1 + "|" + t2 };
+    if t1.len() == 0 { t2 } else if t2.len() == 0 { t1 } else { t1 + SEP() + t2 };
 
 fn lower_expr(ast: String, temp: i64, block: i64) -> String =
     if is_int_node(ast) { lower_int(ast, temp, block) } else if is_bool_node(ast) { lower_bool(ast, temp, block) } else if is_var_node(ast) { lower_var(ast, temp, block) } else if is_op_node(ast) { lower_binop(ast, temp, block) } else if is_neg_node(ast) { lower_neg(ast, temp, block) } else if is_not_node(ast) { lower_not(ast, temp, block) } else { pack_lower_result(temp, block, "%?", "") };
@@ -694,7 +698,7 @@ fn test_sexp_utils() -> i64 =
 fn test_mir_utils() -> i64 =
     let m1 = if make_temp(0) == "%_t0" { 1 } else { 0 };
     let m2 = if make_temp(5) == "%_t5" { 1 } else { 0 };
-    let m3 = if join_text("a", "b") == "a|b" { 1 } else { 0 };
+    let m3 = if join_text("a", "b") == "a" + SEP() + "b" { 1 } else { 0 };
     let m4 = if join_text("", "b") == "b" { 1 } else { 0 };
     let m5 = if join_text("a", "") == "a" { 1 } else { 0 };
     let r = pack_lower_result(1, 0, "%t1", "text");

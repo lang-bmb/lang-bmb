@@ -1,0 +1,203 @@
+// Golden Test: Aho-Corasick style trie — multi-pattern frequency counting
+// Uses flat array trie with 26 children per node (lowercase a-z encoded as 0-25)
+// Node layout: node_id * 27 + child_letter = child node_id
+//              node_id * 27 + 26 = pattern_id flag (0 = not end, >0 = pattern id)
+
+fn trie_new(max_nodes: i64) -> i64 = {
+    let trie = vec_new();
+    // Each node: 26 children + 1 end marker = 27 slots
+    for _i in 0..(max_nodes * 27) {
+        vec_push(trie, 0)
+    };
+    // Initialize all children to -1 (no child)
+    for n in 0..max_nodes {
+        for c in 0..26 {
+            let _s = vec_set(trie, n * 27 + c, 0 - 1);
+            0
+        };
+        0
+    };
+    trie
+};
+
+// Insert a pattern (vec of letter codes 0-25) into trie
+// pat_id: unique id for this pattern (1-based)
+fn trie_insert(trie: i64, pattern: i64, pat_len: i64, pat_id: i64, node_count: i64) -> i64 = {
+    let mut cur = 0;
+    let mut i = 0;
+    loop {
+        if i >= pat_len { break } else { () };
+        let ch = vec_get(pattern, i);
+        let child_idx = cur * 27 + ch;
+        let child = vec_get(trie, child_idx);
+        if child < 0 {
+            let new_id = vec_get(node_count, 0);
+            let _s = vec_set(node_count, 0, new_id + 1);
+            let _s2 = vec_set(trie, child_idx, new_id);
+            set cur = new_id;
+            0
+        } else {
+            set cur = child;
+            0
+        };
+        set i = i + 1;
+        0
+    };
+    // Mark end of pattern
+    let _s = vec_set(trie, cur * 27 + 26, pat_id);
+    0
+};
+
+// Search text for all pattern occurrences using the trie
+// text: vec of letter codes, text_len: length
+// counts: vec of counts per pattern id (1-based index)
+// For each position in text, walk from root matching as many chars as possible
+fn count_patterns(trie: i64, text: i64, text_len: i64, counts: i64) -> i64 = {
+    let mut pos = 0;
+    loop {
+        if pos >= text_len { break } else { () };
+        // Try matching patterns starting at position pos
+        let mut cur = 0;
+        let mut j = pos;
+        loop {
+            if j >= text_len { break } else { () };
+            let ch = vec_get(text, j);
+            let child = vec_get(trie, cur * 27 + ch);
+            if child < 0 {
+                break
+            } else {
+                set cur = child;
+                // Check if this node marks end of a pattern
+                let pid = vec_get(trie, cur * 27 + 26);
+                if pid > 0 {
+                    let old = vec_get(counts, pid);
+                    let _s = vec_set(counts, pid, old + 1);
+                    0
+                } else { 0 }
+            };
+            set j = j + 1;
+            0
+        };
+        set pos = pos + 1;
+        0
+    };
+    0
+};
+
+// Helper: make vec from individual letter codes
+fn make_pat2(a: i64, b: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b);
+    v
+};
+
+fn make_pat3(a: i64, b: i64, c: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c);
+    v
+};
+
+fn make_pat4(a: i64, b: i64, c: i64, d: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c); vec_push(v, d);
+    v
+};
+
+fn main() -> i64 = {
+    let max_nodes = 200;
+    let trie = trie_new(max_nodes);
+    let nc = vec_new();
+    vec_push(nc, 1); // node 0 is root
+
+    // Patterns (letter codes: a=0, b=1, c=2, d=3, e=4, ...):
+    // Pattern 1: "ab" = [0,1]
+    // Pattern 2: "abc" = [0,1,2]
+    // Pattern 3: "bc" = [1,2]
+    // Pattern 4: "cd" = [2,3]
+    let p1 = make_pat2(0, 1);
+    let p2 = make_pat3(0, 1, 2);
+    let p3 = make_pat2(1, 2);
+    let p4 = make_pat2(2, 3);
+
+    let _i1 = trie_insert(trie, p1, 2, 1, nc);
+    let _i2 = trie_insert(trie, p2, 3, 2, nc);
+    let _i3 = trie_insert(trie, p3, 2, 3, nc);
+    let _i4 = trie_insert(trie, p4, 2, 4, nc);
+
+    // Text: "abcabcd" = [0,1,2,0,1,2,3]
+    let text = vec_new();
+    vec_push(text, 0); vec_push(text, 1); vec_push(text, 2);
+    vec_push(text, 0); vec_push(text, 1); vec_push(text, 2); vec_push(text, 3);
+
+    // Counts vec: index 0 unused, 1-4 for patterns
+    let counts = vec_new();
+    for _i in 0..5 { vec_push(counts, 0) };
+
+    let _c = count_patterns(trie, text, 7, counts);
+
+    // "ab" appears at positions 0, 3 => count = 2
+    let _p1 = println(vec_get(counts, 1));
+    // "abc" appears at positions 0, 3 => count = 2
+    let _p2 = println(vec_get(counts, 2));
+    // "bc" appears at positions 1, 4 => count = 2
+    let _p3 = println(vec_get(counts, 3));
+    // "cd" appears at position 5 => count = 1
+    let _p4 = println(vec_get(counts, 4));
+
+    // Test 2: text with no matches "ddd" = [3,3,3]
+    let text2 = vec_new();
+    vec_push(text2, 3); vec_push(text2, 3); vec_push(text2, 3);
+    let counts2 = vec_new();
+    for _i in 0..5 { vec_push(counts2, 0) };
+    let _c2 = count_patterns(trie, text2, 3, counts2);
+    let _p5 = println(vec_get(counts2, 1)); // 0
+    let _p6 = println(vec_get(counts2, 2)); // 0
+    let _p7 = println(vec_get(counts2, 3)); // 0
+    let _p8 = println(vec_get(counts2, 4)); // 0
+
+    // Test 3: overlapping patterns in "ababc" = [0,1,0,1,2]
+    let text3 = vec_new();
+    vec_push(text3, 0); vec_push(text3, 1); vec_push(text3, 0);
+    vec_push(text3, 1); vec_push(text3, 2);
+    let counts3 = vec_new();
+    for _i in 0..5 { vec_push(counts3, 0) };
+    let _c3 = count_patterns(trie, text3, 5, counts3);
+    // "ab" at 0, 2 => 2
+    let _p9 = println(vec_get(counts3, 1));
+    // "abc" at 2 => 1
+    let _p10 = println(vec_get(counts3, 2));
+    // "bc" at 3 => 1
+    let _p11 = println(vec_get(counts3, 3));
+    // "cd" => 0
+    let _p12 = println(vec_get(counts3, 4));
+
+    // Test 4: node count
+    let _p13 = println(vec_get(nc, 0)); // total nodes allocated
+
+    // Test 5: single char pattern
+    let trie2 = trie_new(50);
+    let nc2 = vec_new();
+    vec_push(nc2, 1);
+    let p5 = vec_new();
+    vec_push(p5, 0); // pattern "a"
+    let _i5 = trie_insert(trie2, p5, 1, 1, nc2);
+    let text4 = vec_new();
+    vec_push(text4, 0); vec_push(text4, 0); vec_push(text4, 0); // "aaa"
+    let counts4 = vec_new();
+    vec_push(counts4, 0); vec_push(counts4, 0);
+    let _c4 = count_patterns(trie2, text4, 3, counts4);
+    // "a" appears at 0, 1, 2 => 3
+    let _p14 = println(vec_get(counts4, 1));
+
+    // Cleanup
+    let _f1 = vec_free(trie); let _f2 = vec_free(nc);
+    let _f3 = vec_free(p1); let _f4 = vec_free(p2);
+    let _f5 = vec_free(p3); let _f6 = vec_free(p4);
+    let _f7 = vec_free(text); let _f8 = vec_free(counts);
+    let _f9 = vec_free(text2); let _f10 = vec_free(counts2);
+    let _f11 = vec_free(text3); let _f12 = vec_free(counts3);
+    let _f13 = vec_free(trie2); let _f14 = vec_free(nc2);
+    let _f15 = vec_free(p5); let _f16 = vec_free(text4);
+    let _f17 = vec_free(counts4);
+    0
+};

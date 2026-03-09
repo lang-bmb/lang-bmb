@@ -1,0 +1,41 @@
+// Golden Test: Mutable variable optimization with branches
+// Tests that DSA correctly preserves live stores while eliminating dead ones
+
+fn conditional_update(x: i64) -> i64 = {
+    let mut result = 0;
+    let v1 = result;
+    { result = if x > 0 { x * 2 } else { x * 3 } };
+    result
+    };
+
+fn chained_conditionals(x: i64) -> i64 = {
+    let mut acc = x;
+    let v1 = acc;
+    { acc = v1 + 10 };
+    let v2 = acc;
+    { acc = if v2 > 20 { v2 - 5 } else { v2 + 5 } };
+    acc
+    };
+
+fn nested_mut(a: i64, b: i64) -> i64 = {
+    let mut x = a;
+    let mut y = b;
+    let vx = x;
+    let vy = y;
+    { x = vx + vy };
+    let vx2 = x;
+    { y = vx2 - vy };
+    let vy2 = y;
+    { x = vx2 * vy2 };
+    x
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(conditional_update(5));     // 10
+    let _p2 = println(conditional_update(0 - 3)); // -9
+    let _p3 = println(chained_conditionals(5));   // acc=15, 15<20 → 20
+    let _p4 = println(chained_conditionals(15));  // acc=25, 25>20 → 20
+    let _p5 = println(nested_mut(3, 7));          // x=10, y=3, x=30
+    let _p6 = println(nested_mut(10, 2));         // x=12, y=10, x=120
+    0
+    };

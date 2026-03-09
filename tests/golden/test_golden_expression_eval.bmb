@@ -1,0 +1,117 @@
+// Golden Test: Evaluate simple RPN expressions (stack-based)
+// Extended RPN with division, modulo, and more complex expressions
+
+// Stack operations using vec
+fn stack_push(s: i64, top: i64, val: i64) -> i64 = {
+    vec_set(s, top + 1, val);
+    top + 1
+};
+
+fn stack_pop(top: i64) -> i64 = top - 1;
+fn stack_peek(s: i64, top: i64) -> i64 = vec_get(s, top);
+
+fn make_stack(n: i64) -> i64 = {
+    let s = vec_new();
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        vec_push(s, 0);
+        i = i + 1
+    };
+    s
+};
+
+// Evaluate RPN expression encoded in vec
+// Values 0-999 are operands, 1000=add, 1001=sub, 1002=mul, 1003=div, 1004=mod
+fn eval_rpn(expr: i64) -> i64 = {
+    let n = vec_len(expr);
+    let stack = make_stack(20);
+    let mut top = 0 - 1;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let tok = vec_get(expr, i);
+        if tok < 1000 {
+            top = stack_push(stack, top, tok)
+        } else {
+            let b = stack_peek(stack, top);
+            top = stack_pop(top);
+            let a = stack_peek(stack, top);
+            top = stack_pop(top);
+            let result = if tok == 1000 { a + b }
+                else if tok == 1001 { a - b }
+                else if tok == 1002 { a * b }
+                else if tok == 1003 { a / b }
+                else { a % b };
+            top = stack_push(stack, top, result)
+        };
+        i = i + 1
+    };
+    let result = stack_peek(stack, top);
+    vec_free(stack);
+    result
+};
+
+fn main() -> i64 = {
+    // Test 1: 3 4 + = 7
+    let e1 = vec_new();
+    vec_push(e1, 3); vec_push(e1, 4); vec_push(e1, 1000);
+    let _p1 = println(eval_rpn(e1));  // 7
+
+    // Test 2: 10 3 - = 7
+    let e2 = vec_new();
+    vec_push(e2, 10); vec_push(e2, 3); vec_push(e2, 1001);
+    let _p2 = println(eval_rpn(e2));  // 7
+
+    // Test 3: 6 7 * = 42
+    let e3 = vec_new();
+    vec_push(e3, 6); vec_push(e3, 7); vec_push(e3, 1002);
+    let _p3 = println(eval_rpn(e3));  // 42
+
+    // Test 4: 20 4 / = 5
+    let e4 = vec_new();
+    vec_push(e4, 20); vec_push(e4, 4); vec_push(e4, 1003);
+    let _p4 = println(eval_rpn(e4));  // 5
+
+    // Test 5: 17 5 % = 2
+    let e5 = vec_new();
+    vec_push(e5, 17); vec_push(e5, 5); vec_push(e5, 1004);
+    let _p5 = println(eval_rpn(e5));  // 2
+
+    // Test 6: 3 4 + 2 * = (3+4)*2 = 14
+    let e6 = vec_new();
+    vec_push(e6, 3); vec_push(e6, 4); vec_push(e6, 1000);
+    vec_push(e6, 2); vec_push(e6, 1002);
+    let _p6 = println(eval_rpn(e6));  // 14
+
+    // Test 7: 5 1 2 + 4 * + 3 - = 5 + (1+2)*4 - 3 = 5+12-3 = 14
+    let e7 = vec_new();
+    vec_push(e7, 5); vec_push(e7, 1); vec_push(e7, 2); vec_push(e7, 1000);
+    vec_push(e7, 4); vec_push(e7, 1002); vec_push(e7, 1000);
+    vec_push(e7, 3); vec_push(e7, 1001);
+    let _p7 = println(eval_rpn(e7));  // 14
+
+    // Test 8: 2 3 + 5 * 10 / = (2+3)*5/10 = 25/10 = 2
+    let e8 = vec_new();
+    vec_push(e8, 2); vec_push(e8, 3); vec_push(e8, 1000);
+    vec_push(e8, 5); vec_push(e8, 1002);
+    vec_push(e8, 10); vec_push(e8, 1003);
+    let _p8 = println(eval_rpn(e8));  // 2
+
+    // Test 9: 100 37 % = 26
+    let e9 = vec_new();
+    vec_push(e9, 100); vec_push(e9, 37); vec_push(e9, 1004);
+    let _p9 = println(eval_rpn(e9));  // 26
+
+    // Test 10: 8 2 * 3 + 7 1 - * = (8*2+3)*(7-1) = 19*6 = 114
+    let e10 = vec_new();
+    vec_push(e10, 8); vec_push(e10, 2); vec_push(e10, 1002);
+    vec_push(e10, 3); vec_push(e10, 1000);
+    vec_push(e10, 7); vec_push(e10, 1); vec_push(e10, 1001);
+    vec_push(e10, 1002);
+    let _p10 = println(eval_rpn(e10));  // 114
+
+    vec_free(e1); vec_free(e2); vec_free(e3); vec_free(e4); vec_free(e5);
+    vec_free(e6); vec_free(e7); vec_free(e8); vec_free(e9); vec_free(e10);
+    0
+};

@@ -1,0 +1,132 @@
+// Golden Test: Basic string operations
+// Tests length, byte_at, slice, comparison, concatenation,
+// character counting, and first occurrence finding
+
+// Count occurrences of a specific byte value in a string
+fn count_byte(s: String, target: i64) -> i64 = {
+    let slen = s.len();
+    let mut count = 0;
+    let mut i = 0;
+    loop {
+        if i >= slen { break } else { () };
+        if s.byte_at(i) == target {
+            count = count + 1
+        } else { () };
+        i = i + 1
+    };
+    count
+    };
+
+// Find first index of a byte value (-1 if not found)
+fn find_byte(s: String, target: i64) -> i64 = {
+    let slen = s.len();
+    let mut i = 0;
+    let mut result = 0 - 1;
+    loop {
+        if i >= slen { break } else { () };
+        if s.byte_at(i) == target {
+            if result < 0 {
+                result = i
+            } else { () };
+            break
+        } else { () };
+        i = i + 1
+    };
+    result
+    };
+
+// Check if a string starts with a given prefix (1=yes, 0=no)
+fn starts_with(s: String, prefix: String) -> i64 = {
+    let slen = s.len();
+    let plen = prefix.len();
+    if plen > slen { 0 }
+    else {
+        let sub = s.slice(0, plen);
+        if sub == prefix { 1 } else { 0 }
+    }
+    };
+
+// Check if a string ends with a given suffix (1=yes, 0=no)
+fn ends_with(s: String, suffix: String) -> i64 = {
+    let slen = s.len();
+    let xlen = suffix.len();
+    if xlen > slen { 0 }
+    else {
+        let sub = s.slice(slen - xlen, slen);
+        if sub == suffix { 1 } else { 0 }
+    }
+    };
+
+fn main() -> i64 = {
+    // Test 1: String length
+    let hello = "hello world";
+    let _p1 = println(hello.len());               // 11
+
+    // Test 2: Empty string length
+    let empty = "";
+    let _p2 = println(empty.len());               // 0
+
+    // Test 3-4: byte_at (ASCII values)
+    let _p3 = println(hello.byte_at(0));           // 104 ('h')
+    let _p4 = println(hello.byte_at(5));           // 32  (' ')
+
+    // Test 5-6: String slicing
+    let sub1 = hello.slice(0, 5);
+    let _p5 = println_str(sub1);                   // hello
+    let sub2 = hello.slice(6, 11);
+    let _p6 = println_str(sub2);                   // world
+
+    // Test 7: Slice length
+    let _p7 = println(sub1.len());                 // 5
+
+    // Test 8-9: String equality
+    let a = "test";
+    let b = "test";
+    let c = "other";
+    let _p8 = println(if a == b { 1 } else { 0 }); // 1
+    let _p9 = println(if a == c { 1 } else { 0 }); // 0
+
+    // Test 10-11: String inequality
+    let _p10 = println(if a != c { 1 } else { 0 }); // 1
+    let _p11 = println(if a != b { 1 } else { 0 }); // 0
+
+    // Test 12-13: String concatenation with +
+    let greeting = "hello" + " " + "world";
+    let _p12 = println(greeting.len());            // 11
+    let _p13 = println_str(greeting);              // hello world
+
+    // Test 14: Concatenation result equality
+    let manual = "hello world";
+    let _p14 = println(if greeting == manual { 1 } else { 0 }); // 1
+
+    // Test 15-16: count_byte (count 'l' = 108 in "hello world")
+    let _p15 = println(count_byte("hello world", 108)); // 3
+    let _p16 = println(count_byte("hello world", 122)); // 0 (no 'z')
+
+    // Test 17-18: find_byte
+    let _p17 = println(find_byte("hello world", 111)); // 4 ('o' at index 4)
+    let _p18 = println(find_byte("hello world", 122)); // -1 ('z' not found)
+
+    // Test 19-20: starts_with
+    let _p19 = println(starts_with("hello world", "hello")); // 1
+    let _p20 = println(starts_with("hello world", "world")); // 0
+
+    // Test 21-22: ends_with
+    let _p21 = println(ends_with("hello world", "world")); // 1
+    let _p22 = println(ends_with("hello world", "hello")); // 0
+
+    // Test 23: Build string via repeated concat
+    let built = "(" + "a" + "b" + "c" + ")";
+    let _p23 = println_str(built);                 // (abc)
+
+    // Test 24: Slice of concatenated string
+    let long = "abcdef" + "ghijkl";
+    let mid = long.slice(3, 9);
+    let _p24 = println_str(mid);                   // defghi
+
+    // Test 25: Nested slice
+    let inner = mid.slice(1, 4);
+    let _p25 = println_str(inner);                 // efg
+
+    0
+    };

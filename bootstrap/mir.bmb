@@ -18,6 +18,10 @@
 // - Text representation only
 // - Simple expressions only (no struct/array)
 
+// Internal separator (Unit Separator, char 31) - avoids conflict with | in sat arithmetic
+fn SEP() -> String = chr(31);
+fn DSEP() -> String = chr(31) + chr(31);
+
 // ============================================================================
 // String Utility Functions (no imports in bootstrap)
 // ============================================================================
@@ -328,15 +332,15 @@ fn lower_if_example(cond_var: String, then_var: String, else_var: String, temp_i
     let merge_label = "merge_" + int_to_string(block_idx);
 
     let branch_text = mir_text_branch(cond_place, then_label, else_label);
-    let then_block = mir_text_block_start(then_label) + "|" +
-                     mir_text_copy(result_place, then_place) + "|" +
+    let then_block = mir_text_block_start(then_label) + SEP() +
+                     mir_text_copy(result_place, then_place) + SEP() +
                      mir_text_goto(merge_label);
-    let else_block = mir_text_block_start(else_label) + "|" +
-                     mir_text_copy(result_place, else_place) + "|" +
+    let else_block = mir_text_block_start(else_label) + SEP() +
+                     mir_text_copy(result_place, else_place) + SEP() +
                      mir_text_goto(merge_label);
     let merge_block = mir_text_block_start(merge_label);
 
-    pack_mir_result(temp_idx + 1, branch_text + "|" + then_block + "|" + else_block + "|" + merge_block);
+    pack_mir_result(temp_idx + 1, branch_text + SEP() + then_block + SEP() + else_block + SEP() + merge_block);
 
 // ============================================================================
 // Example: Complete Function MIR
@@ -353,7 +357,7 @@ fn example_add_function() -> String =
     let inst = mir_text_binop(place_temp(0), binop_add(), place_var("a"), place_var("b"));
     let retinst = mir_text_ret(place_temp(0));
     let footer = mir_text_fn_end();
-    header + "|" + entry + "|" + inst + "|" + retinst + "|" + footer;
+    header + SEP() + entry + SEP() + inst + SEP() + retinst + SEP() + footer;
 
 // ============================================================================
 // Example: Max Function with If
@@ -378,21 +382,21 @@ fn example_max_function() -> String =
     let cmp = mir_text_binop(place_temp(0), binop_gt(), place_var("a"), place_var("b"));
     let branch = mir_text_branch(place_temp(0), "then_0", "else_0");
 
-    let then_block = mir_text_block_start("then_0") + "|" +
-                     mir_text_copy(place_temp(1), place_var("a")) + "|" +
+    let then_block = mir_text_block_start("then_0") + SEP() +
+                     mir_text_copy(place_temp(1), place_var("a")) + SEP() +
                      mir_text_goto("merge_0");
 
-    let else_block = mir_text_block_start("else_0") + "|" +
-                     mir_text_copy(place_temp(1), place_var("b")) + "|" +
+    let else_block = mir_text_block_start("else_0") + SEP() +
+                     mir_text_copy(place_temp(1), place_var("b")) + SEP() +
                      mir_text_goto("merge_0");
 
-    let merge = mir_text_block_start("merge_0") + "|" +
+    let merge = mir_text_block_start("merge_0") + SEP() +
                 mir_text_ret(place_temp(1));
 
     let footer = mir_text_fn_end();
 
-    header + "|" + entry + "|" + cmp + "|" + branch + "|" +
-    then_block + "|" + else_block + "|" + merge + "|" + footer;
+    header + SEP() + entry + SEP() + cmp + SEP() + branch + SEP() +
+    then_block + SEP() + else_block + SEP() + merge + SEP() + footer;
 
 // ============================================================================
 // Unit Tests (v0.30.147)

@@ -1,0 +1,282 @@
+// Golden Test: Advanced sorting algorithms using vec
+// Tests selection sort, insertion sort, merge sort, quick partition,
+// counting sort, sorted check, kth smallest
+
+// Helper: create vec with values
+fn make_vec5(a: i64, b: i64, c: i64, d: i64, e: i64) -> i64 = {
+    let v = vec_new();
+    let _p = vec_push(v, a);
+    let _p = vec_push(v, b);
+    let _p = vec_push(v, c);
+    let _p = vec_push(v, d);
+    let _p = vec_push(v, e);
+    v
+    };
+
+fn make_vec8(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64, h: i64) -> i64 = {
+    let v = vec_new();
+    let _p = vec_push(v, a);
+    let _p = vec_push(v, b);
+    let _p = vec_push(v, c);
+    let _p = vec_push(v, d);
+    let _p = vec_push(v, e);
+    let _p = vec_push(v, f);
+    let _p = vec_push(v, g);
+    let _p = vec_push(v, h);
+    v
+    };
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n {
+        let _p = vec_push(v, 0);
+        0
+    };
+    v
+    };
+
+fn arr_swap(arr: i64, i: i64, j: i64) -> i64 = {
+    let tmp = vec_get(arr, i);
+    let _s1 = vec_set(arr, i, vec_get(arr, j));
+    let _s2 = vec_set(arr, j, tmp);
+    0
+    };
+
+// Check if array is sorted
+fn is_sorted(arr: i64, pos: i64) -> i64 =
+    if pos + 1 >= vec_len(arr) { 1 }
+    else if vec_get(arr, pos) > vec_get(arr, pos + 1) { 0 }
+    else { is_sorted(arr, pos + 1) };
+
+// Print array elements
+fn print_arr(arr: i64, pos: i64) -> i64 =
+    if pos >= vec_len(arr) { 0 }
+    else {
+        let _p = println(vec_get(arr, pos));
+        print_arr(arr, pos + 1)
+    };
+
+// ========== Selection Sort ==========
+fn find_min_idx(arr: i64, pos: i64, best_idx: i64, best_val: i64) -> i64 =
+    if pos >= vec_len(arr) { best_idx }
+    else if vec_get(arr, pos) < best_val {
+        find_min_idx(arr, pos + 1, pos, vec_get(arr, pos))
+    } else {
+        find_min_idx(arr, pos + 1, best_idx, best_val)
+    };
+
+fn selection_sort(arr: i64, pos: i64) -> i64 =
+    if pos >= vec_len(arr) - 1 { 0 }
+    else {
+        let mi = find_min_idx(arr, pos, pos, vec_get(arr, pos));
+        let _sw = if mi != pos { arr_swap(arr, pos, mi) } else { 0 };
+        selection_sort(arr, pos + 1)
+    };
+
+// ========== Insertion Sort ==========
+fn insert_at(arr: i64, pos: i64) -> i64 =
+    if pos <= 0 { 0 }
+    else if vec_get(arr, pos - 1) > vec_get(arr, pos) {
+        let _sw = arr_swap(arr, pos - 1, pos);
+        insert_at(arr, pos - 1)
+    } else { 0 };
+
+fn insertion_sort(arr: i64, pos: i64) -> i64 =
+    if pos >= vec_len(arr) { 0 }
+    else {
+        let _ins = insert_at(arr, pos);
+        insertion_sort(arr, pos + 1)
+    };
+
+// ========== Merge Sort ==========
+// Copy elements from src[start..end] into dst starting at dst_start
+fn copy_range(src: i64, dst: i64, src_pos: i64, end: i64, dst_pos: i64) -> i64 =
+    if src_pos >= end { 0 }
+    else {
+        let _s = vec_set(dst, dst_pos, vec_get(src, src_pos));
+        copy_range(src, dst, src_pos + 1, end, dst_pos + 1)
+    };
+
+// Merge two sorted halves: arr[lo..mid] and arr[mid..hi] using tmp buffer
+fn merge(arr: i64, tmp: i64, lo: i64, mid: i64, hi: i64, i: i64, j: i64, k: i64) -> i64 =
+    if k >= hi { 0 }
+    else if i >= mid {
+        let _s = vec_set(arr, k, vec_get(tmp, j));
+        merge(arr, tmp, lo, mid, hi, i, j + 1, k + 1)
+    } else if j >= hi {
+        let _s = vec_set(arr, k, vec_get(tmp, i));
+        merge(arr, tmp, lo, mid, hi, i + 1, j, k + 1)
+    } else if vec_get(tmp, i) <= vec_get(tmp, j) {
+        let _s = vec_set(arr, k, vec_get(tmp, i));
+        merge(arr, tmp, lo, mid, hi, i + 1, j, k + 1)
+    } else {
+        let _s = vec_set(arr, k, vec_get(tmp, j));
+        merge(arr, tmp, lo, mid, hi, i, j + 1, k + 1)
+    };
+
+fn merge_sort_impl(arr: i64, tmp: i64, lo: i64, hi: i64) -> i64 =
+    if hi - lo <= 1 { 0 }
+    else {
+        let mid = lo + (hi - lo) / 2;
+        let _l = merge_sort_impl(arr, tmp, lo, mid);
+        let _r = merge_sort_impl(arr, tmp, mid, hi);
+        // Copy arr[lo..hi] to tmp[lo..hi]
+        let _c = copy_range(arr, tmp, lo, hi, lo);
+        // Merge from tmp back to arr
+        merge(arr, tmp, lo, mid, hi, lo, mid, lo)
+    };
+
+fn merge_sort(arr: i64) -> i64 = {
+    let len = vec_len(arr);
+    let tmp = make_zeros(len);
+    let _ms = merge_sort_impl(arr, tmp, 0, len);
+    let _f = vec_free(tmp);
+    0
+    };
+
+// ========== Quick Partition (Lomuto scheme) ==========
+// Partition arr[lo..hi] using arr[hi-1] as pivot
+// Returns pivot final position
+fn lomuto_inner(arr: i64, pivot: i64, lo: i64, hi: i64, i: i64, j: i64) -> i64 =
+    if j >= hi - 1 {
+        // Place pivot at position i
+        let _sw = arr_swap(arr, i, hi - 1);
+        i
+    } else if vec_get(arr, j) <= pivot {
+        let _sw = arr_swap(arr, i, j);
+        lomuto_inner(arr, pivot, lo, hi, i + 1, j + 1)
+    } else {
+        lomuto_inner(arr, pivot, lo, hi, i, j + 1)
+    };
+
+fn lomuto_partition(arr: i64, lo: i64, hi: i64) -> i64 =
+    if hi - lo <= 1 { lo }
+    else {
+        let pivot = vec_get(arr, hi - 1);
+        lomuto_inner(arr, pivot, lo, hi, lo, lo)
+    };
+
+// ========== Counting Sort (for values 0..max_val) ==========
+fn count_elements(arr: i64, counts: i64, pos: i64) -> i64 =
+    if pos >= vec_len(arr) { 0 }
+    else {
+        let val = vec_get(arr, pos);
+        let _s = vec_set(counts, val, vec_get(counts, val) + 1);
+        count_elements(arr, counts, pos + 1)
+    };
+
+fn fill_sorted(arr: i64, counts: i64, bucket: i64, max_val: i64, pos: i64) -> i64 =
+    if bucket >= max_val { 0 }
+    else if vec_get(counts, bucket) > 0 {
+        let _s = vec_set(arr, pos, bucket);
+        let _s = vec_set(counts, bucket, vec_get(counts, bucket) - 1);
+        fill_sorted(arr, counts, bucket, max_val, pos + 1)
+    } else {
+        fill_sorted(arr, counts, bucket + 1, max_val, pos)
+    };
+
+fn counting_sort(arr: i64, max_val: i64) -> i64 = {
+    let counts = make_zeros(max_val);
+    let _ce = count_elements(arr, counts, 0);
+    let _fs = fill_sorted(arr, counts, 0, max_val, 0);
+    let _f = vec_free(counts);
+    0
+    };
+
+// ========== Kth Smallest (using selection sort on copy) ==========
+fn copy_vec(src: i64, dst: i64, pos: i64) -> i64 =
+    if pos >= vec_len(src) { 0 }
+    else {
+        let _p = vec_push(dst, vec_get(src, pos));
+        copy_vec(src, dst, pos + 1)
+    };
+
+fn kth_smallest(arr: i64, k: i64) -> i64 = {
+    let tmp = vec_new();
+    let _cp = copy_vec(arr, tmp, 0);
+    let _ss = selection_sort(tmp, 0);
+    let result = vec_get(tmp, k);
+    let _f = vec_free(tmp);
+    result
+    };
+
+fn main() -> i64 = {
+    // === Selection Sort ===
+    let a1 = make_vec5(5, 3, 8, 1, 4);
+    let _ss = selection_sort(a1, 0);
+    let _p1 = println(is_sorted(a1, 0));  // 1
+    let _p2 = println(vec_get(a1, 0));    // 1
+    let _p3 = println(vec_get(a1, 4));    // 8
+
+    // === Insertion Sort ===
+    let a2 = make_vec5(9, 2, 7, 1, 5);
+    let _is = insertion_sort(a2, 1);
+    let _p4 = println(is_sorted(a2, 0));  // 1
+    let _p5 = println(vec_get(a2, 0));    // 1
+    let _p6 = println(vec_get(a2, 4));    // 9
+
+    // === Merge Sort ===
+    let a3 = make_vec8(8, 4, 2, 6, 1, 7, 3, 5);
+    let _ms = merge_sort(a3);
+    let _p7 = println(is_sorted(a3, 0));  // 1
+    let _p8 = println(vec_get(a3, 0));    // 1
+    let _p9 = println(vec_get(a3, 3));    // 4
+    let _p10 = println(vec_get(a3, 7));   // 8
+
+    // === Quick Partition (Lomuto) ===
+    // [3, 7, 2, 5, 1, 4] pivot=4
+    // Walk: i=0,j=0: 3<=4 swap(0,0) i=1
+    //       i=1,j=1: 7>4 skip
+    //       i=1,j=2: 2<=4 swap(1,2) -> [3,2,7,5,1,4] i=2
+    //       i=2,j=3: 5>4 skip
+    //       i=2,j=4: 1<=4 swap(2,4) -> [3,2,1,5,7,4] i=3
+    //       j=5=hi-1: swap(3,5) -> [3,2,1,4,7,5] pivot at 3
+    let a4 = vec_new();
+    let _p = vec_push(a4, 3);
+    let _p = vec_push(a4, 7);
+    let _p = vec_push(a4, 2);
+    let _p = vec_push(a4, 5);
+    let _p = vec_push(a4, 1);
+    let _p = vec_push(a4, 4);
+    let pivot_pos = lomuto_partition(a4, 0, 6);
+    let _p11 = println(pivot_pos);           // 3
+    let _p12 = println(vec_get(a4, 3));      // 4 (pivot in place)
+
+    // === Counting Sort ===
+    // [2, 0, 3, 1, 2, 1, 0] with max_val=4 (values 0-3)
+    let a5 = vec_new();
+    let _p = vec_push(a5, 2);
+    let _p = vec_push(a5, 0);
+    let _p = vec_push(a5, 3);
+    let _p = vec_push(a5, 1);
+    let _p = vec_push(a5, 2);
+    let _p = vec_push(a5, 1);
+    let _p = vec_push(a5, 0);
+    let _cs = counting_sort(a5, 4);
+    let _p13 = println(is_sorted(a5, 0));   // 1
+    let _p14 = println(vec_get(a5, 0));     // 0
+    let _p15 = println(vec_get(a5, 6));     // 3
+
+    // === Is-sorted checks ===
+    let sorted = make_vec5(1, 2, 3, 4, 5);
+    let unsorted = make_vec5(1, 3, 2, 4, 5);
+    let _p16 = println(is_sorted(sorted, 0));    // 1
+    let _p17 = println(is_sorted(unsorted, 0));  // 0
+
+    // === Kth Smallest ===
+    // Original: [5, 3, 8, 1, 4] -> sorted: [1, 3, 4, 5, 8]
+    let a6 = make_vec5(5, 3, 8, 1, 4);
+    let _p18 = println(kth_smallest(a6, 0));  // 1 (smallest)
+    let _p19 = println(kth_smallest(a6, 2));  // 4 (median)
+    let _p20 = println(kth_smallest(a6, 4));  // 8 (largest)
+
+    let _f1 = vec_free(a1);
+    let _f2 = vec_free(a2);
+    let _f3 = vec_free(a3);
+    let _f4 = vec_free(a4);
+    let _f5 = vec_free(a5);
+    let _f6 = vec_free(sorted);
+    let _f7 = vec_free(unsorted);
+    let _f8 = vec_free(a6);
+    0
+    };

@@ -1,0 +1,113 @@
+// Golden Test: Circular queue (ring buffer) simulation
+// Uses a fixed-capacity vec as backing store with head/tail pointers in a state vec
+// state[0] = head, state[1] = tail, state[2] = count, state[3] = capacity
+
+fn cq_create(cap: i64, buf: i64, state: i64) -> i64 = {
+    let mut i = 0;
+    loop {
+        if i >= cap { break } else { () };
+        vec_push(buf, 0);
+        i = i + 1
+    };
+    vec_set(state, 0, 0);
+    vec_set(state, 1, 0);
+    vec_set(state, 2, 0);
+    vec_set(state, 3, cap);
+    0
+    };
+
+fn cq_is_full(state: i64) -> i64 = {
+    let count = vec_get(state, 2);
+    let cap = vec_get(state, 3);
+    if count == cap { 1 } else { 0 }
+    };
+
+fn cq_is_empty(state: i64) -> i64 = {
+    let count = vec_get(state, 2);
+    if count == 0 { 1 } else { 0 }
+    };
+
+fn cq_push(buf: i64, state: i64, val: i64) -> i64 = {
+    if cq_is_full(state) == 1 { 0 - 1 }
+    else {
+        let tail = vec_get(state, 1);
+        let cap = vec_get(state, 3);
+        let count = vec_get(state, 2);
+        vec_set(buf, tail, val);
+        let new_tail = if tail + 1 == cap { 0 } else { tail + 1 };
+        vec_set(state, 1, new_tail);
+        vec_set(state, 2, count + 1);
+        1
+    }
+    };
+
+fn cq_pop(buf: i64, state: i64) -> i64 = {
+    if cq_is_empty(state) == 1 { 0 - 1 }
+    else {
+        let head = vec_get(state, 0);
+        let cap = vec_get(state, 3);
+        let count = vec_get(state, 2);
+        let val = vec_get(buf, head);
+        let new_head = if head + 1 == cap { 0 } else { head + 1 };
+        vec_set(state, 0, new_head);
+        vec_set(state, 2, count - 1);
+        val
+    }
+    };
+
+fn cq_size(state: i64) -> i64 = vec_get(state, 2);
+
+fn main() -> i64 = {
+    let buf = vec_new();
+    let state = vec_new();
+    vec_push(state, 0);
+    vec_push(state, 0);
+    vec_push(state, 0);
+    vec_push(state, 0);
+    let _init = cq_create(4, buf, state);
+
+    // Test 1: empty queue
+    let _p1 = println(cq_is_empty(state));       // 1 (empty)
+
+    // Test 2: push 10, 20, 30
+    let _r1 = cq_push(buf, state, 10);
+    let _r2 = cq_push(buf, state, 20);
+    let _r3 = cq_push(buf, state, 30);
+    let _p2 = println(cq_size(state));           // 3
+
+    // Test 3: pop front
+    let v1 = cq_pop(buf, state);
+    let _p3 = println(v1);                       // 10 (FIFO)
+
+    // Test 4: push to fill (now 20, 30 in queue, push 40, 50)
+    let _r4 = cq_push(buf, state, 40);
+    let _r5 = cq_push(buf, state, 50);
+    let _p4 = println(cq_is_full(state));        // 1 (full, capacity 4)
+
+    // Test 5: push when full returns -1
+    let fail = cq_push(buf, state, 60);
+    let _p5 = println(fail);                     // -1
+
+    // Test 6: pop all and verify FIFO order
+    let v2 = cq_pop(buf, state);
+    let _p6 = println(v2);                       // 20
+
+    let v3 = cq_pop(buf, state);
+    let _p7 = println(v3);                       // 30
+
+    // Test 7: wrap-around push after pops
+    let _r6 = cq_push(buf, state, 60);
+    let _r7 = cq_push(buf, state, 70);
+    let _p8 = println(cq_size(state));           // 4 (40, 50, 60, 70)
+
+    // Test 8: drain all to verify wrap-around correctness
+    let v4 = cq_pop(buf, state);
+    let _p9 = println(v4);                       // 40
+
+    let v5 = cq_pop(buf, state);
+    let _p10 = println(v5);                      // 50
+
+    vec_free(buf);
+    vec_free(state);
+    0
+    };

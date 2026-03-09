@@ -1,0 +1,161 @@
+// Golden Test: Number base conversion patterns
+// Count 1-bits, binary to decimal, palindrome check, count digits,
+// reverse digits, narcissistic number check, digital root
+
+// Count 1-bits in binary representation of n
+fn count_ones(n: i64) -> i64 = {
+    let mut x = n;
+    let mut count = 0;
+    loop {
+        if x == 0 { break } else { () };
+        count = count + (x - (x / 2) * 2);
+        x = x / 2
+    };
+    count
+    };
+
+// Convert vector of binary digits [MSB..LSB] to decimal
+fn binary_to_decimal(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut result = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        result = result * 2 + vec_get(v, i);
+        i = i + 1
+    };
+    result
+    };
+
+// Check if n is a palindrome in base 10
+fn is_palindrome(n: i64) -> i64 = {
+    let original = n;
+    let mut x = n;
+    let mut rev = 0;
+    loop {
+        if x == 0 { break } else { () };
+        let digit = x - (x / 10) * 10;
+        rev = rev * 10 + digit;
+        x = x / 10
+    };
+    if original == 0 { 1 }
+    else if original == rev { 1 }
+    else { 0 }
+    };
+
+// Count digits in base 10
+fn count_digits(n: i64) -> i64 = {
+    if n == 0 { return 1 } else { () };
+    let mut x = n;
+    let mut count = 0;
+    loop {
+        if x == 0 { break } else { () };
+        count = count + 1;
+        x = x / 10
+    };
+    count
+    };
+
+// Reverse digits of n (leading zeros collapse)
+fn reverse_digits(n: i64) -> i64 = {
+    let mut x = n;
+    let mut rev = 0;
+    loop {
+        if x == 0 { break } else { () };
+        let digit = x - (x / 10) * 10;
+        rev = rev * 10 + digit;
+        x = x / 10
+    };
+    rev
+    };
+
+// Sum of cubes of digits
+fn sum_cubes_digits(n: i64) -> i64 = {
+    let mut x = n;
+    let mut s = 0;
+    loop {
+        if x == 0 { break } else { () };
+        let d = x - (x / 10) * 10;
+        s = s + d * d * d;
+        x = x / 10
+    };
+    s
+    };
+
+// Check if n is a narcissistic number (sum of cubes equals n)
+fn is_narcissistic(n: i64) -> i64 =
+    if sum_cubes_digits(n) == n { 1 } else { 0 };
+
+// Single digit sum step
+fn digit_sum_step(n: i64) -> i64 = {
+    let mut x = n;
+    let mut s = 0;
+    loop {
+        if x == 0 { break } else { () };
+        s = s + x - (x / 10) * 10;
+        x = x / 10
+    };
+    s
+    };
+
+// Digital root: repeated digit sum until single digit
+fn digital_root(n: i64) -> i64 = {
+    let mut x = n;
+    loop {
+        if x < 10 { break } else { () };
+        x = digit_sum_step(x)
+    };
+    x
+    };
+
+fn main() -> i64 = {
+    // count_ones: count 1-bits in binary
+    let _p1 = println(count_ones(13));      // 3  (1101)
+    let _p2 = println(count_ones(255));     // 8  (11111111)
+    let _p3 = println(count_ones(1024));    // 1  (10000000000)
+
+    // binary_to_decimal: vec of bits to number
+    let v1 = vec_new();
+    let _b1 = vec_push(v1, 1);
+    let _b2 = vec_push(v1, 0);
+    let _b3 = vec_push(v1, 1);
+    let _b4 = vec_push(v1, 1);
+    let _p4 = println(binary_to_decimal(v1));   // 11  (1011)
+
+    let v2 = vec_new();
+    let _c1 = vec_push(v2, 1);
+    let _c2 = vec_push(v2, 1);
+    let _c3 = vec_push(v2, 0);
+    let _c4 = vec_push(v2, 0);
+    let _c5 = vec_push(v2, 1);
+    let _p5 = println(binary_to_decimal(v2));   // 25  (11001)
+
+    // is_palindrome
+    let _p6 = println(is_palindrome(121));      // 1
+    let _p7 = println(is_palindrome(123));      // 0
+    let _p8 = println(is_palindrome(1221));     // 1
+    let _p9 = println(is_palindrome(5));        // 1
+
+    // count_digits
+    let _p10 = println(count_digits(12345));    // 5
+    let _p11 = println(count_digits(1));        // 1
+    let _p12 = println(count_digits(0));        // 1
+
+    // reverse_digits
+    let _p13 = println(reverse_digits(12345));  // 54321
+    let _p14 = println(reverse_digits(100));    // 1
+
+    // narcissistic number check (sum of cubes of digits == n)
+    let _p15 = println(is_narcissistic(153));   // 1  (1+125+27=153)
+    let _p16 = println(is_narcissistic(370));   // 1  (27+343+0=370)
+    let _p17 = println(is_narcissistic(123));   // 0  (1+8+27=36)
+
+    // digital root (repeated digit sum)
+    let _p18 = println(digital_root(9875));     // 2  (29->11->2)
+    let _p19 = println(digital_root(493));      // 7  (16->7)
+    let _p20 = println(digital_root(1));        // 1
+
+    let _f1 = vec_free(v1);
+    let _f2 = vec_free(v2);
+    0
+    };

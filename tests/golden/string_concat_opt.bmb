@@ -1,0 +1,29 @@
+// Test StringConcatOptimization: chains of 3+ string concats use StringBuilder
+// "a" + b + "c" + "d" + "e" -> sb_new + sb_push * 5 + sb_build (single alloc)
+
+fn greet(name: String) -> String =
+    "Hello, " + name + "! Welcome to " + "BMB" + "!";
+
+fn build_path(dir: String, file: String, ext: String) -> String =
+    dir + "/" + file + "." + ext;
+
+fn wrap(s: String) -> String =
+    "[" + s + "]";
+
+fn main() -> i64 = {
+    // greet: 5 operands -> sb_new + sb_push * 5 + sb_build
+    let s1 = greet("world");
+    println(s1.len());
+    let s2 = greet("BMB");
+    println(s2.len());
+    // build_path: partial chain (mixed 2 + 3 operands)
+    let s3 = build_path("src", "main", "bmb");
+    println(s3.len());
+    // wrap: 3 operands -> sb_new + sb_push * 3 + sb_build
+    let s4 = wrap("test");
+    println(s4.len());
+    // single concat (2 operands): no optimization
+    let s5 = "ab" + "cd";
+    println(s5.len());
+    0
+};

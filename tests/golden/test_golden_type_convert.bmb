@@ -1,0 +1,94 @@
+// Golden Test: Type conversions and casting
+// Tests i64 <-> f64 conversions, as casts, comparison chains, and f64 precision
+
+// i64 to f64 and arithmetic
+fn double_as_float(n: i64) -> f64 =
+    i64_to_f64(n) * 2.0;
+
+// f64 to i64 truncation (toward zero)
+fn truncate(x: f64) -> i64 =
+    f64_to_i64(x);
+
+// Compare chain producing i64 (1 or 0 encoding)
+fn classify(x: i64) -> i64 =
+    if x > 0 { 1 }
+    else if x == 0 { 0 }
+    else { 0 - 1 };
+
+// f64 arithmetic precision check: multiply and truncate
+fn percent(num: i64, den: i64) -> i64 =
+    f64_to_i64(i64_to_f64(num) * 100.0 / i64_to_f64(den));
+
+// Chained comparison: count how many of a,b,c are positive
+fn count_positive(a: i64, b: i64, c: i64) -> i64 = {
+    let ca = if a > 0 { 1 } else { 0 };
+    let cb = if b > 0 { 1 } else { 0 };
+    let cc = if c > 0 { 1 } else { 0 };
+    ca + cb + cc
+    };
+
+// f64 floor via truncation: floor(x) for positive x
+fn floor_pos(x: f64) -> i64 =
+    f64_to_i64(x);
+
+fn main() -> i64 = {
+    // Test 1: i64_to_f64 basic
+    let _p1 = println_f64(i64_to_f64(42));           // 42.000000000
+
+    // Test 2: i64_to_f64 negative
+    let _p2 = println_f64(i64_to_f64(0 - 10));       // -10.000000000
+
+    // Test 3: i64_to_f64 zero
+    let _p3 = println_f64(i64_to_f64(0));             // 0.000000000
+
+    // Test 4: f64_to_i64 truncation (positive)
+    let _p4 = println(f64_to_i64(3.9));               // 3
+
+    // Test 5: f64_to_i64 truncation (negative, toward zero)
+    let _p5 = println(f64_to_i64(0.0 - 3.9));         // -3
+
+    // Test 6: f64_to_i64 zero
+    let _p6 = println(f64_to_i64(0.0));               // 0
+
+    // Test 7: round-trip i64 -> f64 -> i64
+    let _p7 = println(f64_to_i64(i64_to_f64(999)));   // 999
+
+    // Test 8: as cast i64 -> f64
+    let _p8 = println_f64(100 as f64);                // 100.000000000
+
+    // Test 9: as cast f64 -> i64
+    let _p9 = println(7.99 as i64);                   // 7
+
+    // Test 10: double_as_float function
+    let _p10 = println_f64(double_as_float(25));       // 50.000000000
+
+    // Test 11: f64 precision - 0.1 + 0.2
+    let _p11 = println_f64(0.1 + 0.2);                // 0.300000000
+
+    // Test 12: f64 precision - 1/3
+    let _p12 = println_f64(1.0 / 3.0);                // 0.333333333
+
+    // Test 13: f64 large value
+    let _p13 = println_f64(i64_to_f64(1000000) * i64_to_f64(1000000));
+    // 1000000000000.000000000
+
+    // Test 14: classify function (comparison chains)
+    let _p14 = println(classify(5));                   // 1
+    let _p15 = println(classify(0));                   // 0
+    let _p16 = println(classify(0 - 3));               // -1
+
+    // Test 17: percent function (mixed int/float arithmetic)
+    let _p17 = println(percent(1, 3));                 // 33
+    let _p18 = println(percent(2, 3));                 // 66
+    let _p19 = println(percent(7, 8));                 // 87
+
+    // Test 20: count_positive
+    let _p20 = println(count_positive(1, 0 - 2, 3));  // 2
+    let _p21 = println(count_positive(0, 0, 0));       // 0
+
+    // Test 22: floor_pos
+    let _p22 = println(floor_pos(9.99));               // 9
+    let _p23 = println(floor_pos(10.0));               // 10
+
+    0
+    };

@@ -26,6 +26,10 @@
 //     ret i64 %_t0
 //   }
 
+// Internal separator (Unit Separator, char 31) - avoids conflict with | in sat arithmetic
+fn SEP() -> String = chr(31);
+fn DSEP() -> String = chr(31) + chr(31);
+
 // ============================================================================
 // SECTION 1: String Utilities (no imports in bootstrap)
 // ============================================================================
@@ -50,7 +54,7 @@ fn skip_ws(s: String, pos: i64) -> i64 =
 fn find_char(s: String, c: i64, pos: i64) -> i64 =
     if pos >= s.len() { pos } else if s.byte_at(pos) == c { pos } else { find_char(s, c, pos + 1) };
 
-fn find_pipe(s: String, pos: i64) -> i64 = find_char(s, 124, pos);
+fn find_pipe(s: String, pos: i64) -> i64 = find_char(s, 31, pos);
 
 fn starts_with(s: String, prefix: String, pos: i64) -> bool =
     starts_with_at(s, prefix, pos, 0);
@@ -64,7 +68,7 @@ fn read_until_ws(s: String, pos: i64) -> String =
 fn read_until_ws_acc(s: String, pos: i64, acc: String) -> String =
     if pos >= s.len() { acc } else {
         let c = s.byte_at(pos);
-        if c == 32 or c == 44 or c == 40 or c == 41 or c == 124 { acc } else { read_until_ws_acc(s, pos + 1, acc + byte_to_string(c)) }
+        if c == 32 or c == 44 or c == 40 or c == 41 or c == 31 { acc } else { read_until_ws_acc(s, pos + 1, acc + byte_to_string(c)) }
     };
 
 fn strip_trailing_colon(s: String) -> String =
@@ -109,7 +113,7 @@ fn gen_const_bool(dest: String, value: i64) -> String =
 // LLVM: String constants represented as i8* pointer (placeholder for runtime)
 // Full implementation would generate global @.str.N and getelementptr
 fn gen_const_string(dest: String, content: String) -> String =
-    "; string: " + content + "|" + dest + " = inttoptr i64 0 to i8*";
+    "; string: " + content + SEP() + dest + " = inttoptr i64 0 to i8*";
 
 // v0.89.11: Generate LLVM IR for float constant
 // MIR: %_t0 = const F:3.14
@@ -148,13 +152,30 @@ fn parse_int_from(s: String, pos: i64, acc: i64) -> i64 =
 // MIR: %_t0 = % %a, %b  →  LLVM: %_t0 = srem i64 %a, %b
 
 fn gen_binop_arith(dest: String, op: String, lhs: String, rhs: String, ty: String) -> String =
-    let llvm_op = mir_to_llvm_arith(op);
-    dest + " = " + llvm_op + " " + ty + " " + lhs + ", " + rhs;
+    if op == "+|" { dest + " = call i64 @llvm.sadd.sat.i64(i64 " + lhs + ", i64 " + rhs + ")" }
+    else if op == "-|" { dest + " = call i64 @llvm.ssub.sat.i64(i64 " + lhs + ", i64 " + rhs + ")" }
+    else if op == "*|" {
+        dest + ".res = call {i64, i1} @llvm.smul.with.overflow.i64(i64 " + lhs + ", i64 " + rhs + ")" + SEP() +
+        "  " + dest + ".val = extractvalue {i64, i1} " + dest + ".res, 0" + SEP() +
+        "  " + dest + ".ovf = extractvalue {i64, i1} " + dest + ".res, 1" + SEP() +
+        "  " + dest + ".a_neg = icmp slt i64 " + lhs + ", 0" + SEP() +
+        "  " + dest + ".b_neg = icmp slt i64 " + rhs + ", 0" + SEP() +
+        "  " + dest + ".neg = xor i1 " + dest + ".a_neg, " + dest + ".b_neg" + SEP() +
+        "  " + dest + ".sat = select i1 " + dest + ".neg, i64 -9223372036854775808, i64 9223372036854775807" + SEP() +
+        "  " + dest + " = select i1 " + dest + ".ovf, i64 " + dest + ".sat, i64 " + dest + ".val"
+    // v0.96: Wrapping arithmetic — same as regular add/sub/mul but WITHOUT nsw flag
+    } else if op == "+%" { dest + " = add " + ty + " " + lhs + ", " + rhs }
+    else if op == "-%" { dest + " = sub " + ty + " " + lhs + ", " + rhs }
+    else if op == "*%" { dest + " = mul " + ty + " " + lhs + ", " + rhs }
+    else {
+        let llvm_op = mir_to_llvm_arith(op);
+        dest + " = " + llvm_op + " " + ty + " " + lhs + ", " + rhs
+    };
 
 // v0.31.19: Added nsw (no signed wrap) flags for better LLVM optimization
 // nsw enables tail-call accumulator transformation, loop strength reduction, etc.
 fn mir_to_llvm_arith(op: String) -> String =
-    if op == "+" { "add nsw" } else if op == "-" { "sub nsw" } else if op == "*" { "mul nsw" } else if op == "/" { "sdiv" } else if op == "%" { "srem" } else { "add nsw" };  // default
+    if op == "+" { "add nsw" } else if op == "-" { "sub nsw" } else if op == "*" { "mul nsw" } else if op == "/" { "sdiv" } else if op == "%" { "srem" } else if op == "<<" { "shl" } else if op == ">>>" { "lshr" } else if op == ">>" { "ashr" } else { "add nsw" };  // default
 
 // v0.89.11: Float arithmetic operations
 // MIR: %_t0 = f+ %a, %b  →  LLVM: %_t0 = fadd double %a, %b
@@ -170,7 +191,7 @@ fn mir_to_llvm_float_arith(op: String) -> String =
 fn gen_binop_float_cmp(dest: String, op: String, lhs: String, rhs: String) -> String =
     let llvm_cmp = mir_to_llvm_float_cmp(op);
     let tmp = dest + "_cmp";
-    tmp + " = fcmp " + llvm_cmp + " double " + lhs + ", " + rhs + "|  " + dest + " = zext i1 " + tmp + " to i64";
+    tmp + " = fcmp " + llvm_cmp + " double " + lhs + ", " + rhs + SEP() + "  " + dest + " = zext i1 " + tmp + " to i64";
 
 fn mir_to_llvm_float_cmp(op: String) -> String =
     if op == "f==" { "oeq" } else if op == "f!=" { "one" } else if op == "f<" { "olt" } else if op == "f>" { "ogt" } else if op == "f<=" { "ole" } else if op == "f>=" { "oge" } else { "oeq" };
@@ -194,7 +215,7 @@ fn gen_binop_cmp(dest: String, op: String, lhs: String, rhs: String, ty: String)
     let tmp = dest + "_cmp";
     // Line 1: icmp into temp i1 variable
     // Line 2: zext i1 to i64
-    tmp + " = icmp " + llvm_cmp + " " + ty + " " + lhs + ", " + rhs + "|  " + dest + " = zext i1 " + tmp + " to i64";
+    tmp + " = icmp " + llvm_cmp + " " + ty + " " + lhs + ", " + rhs + SEP() + "  " + dest + " = zext i1 " + tmp + " to i64";
 
 fn mir_to_llvm_cmp(op: String) -> String =
     if op == "==" { "eq" } else if op == "!=" { "ne" } else if op == "<" { "slt" } else if op == ">" { "sgt" } else if op == "<=" { "sle" } else if op == ">=" { "sge" } else { "eq" };  // default
@@ -228,7 +249,10 @@ fn is_logic_op(op: String) -> bool =
     op == "and" or op == "or";
 
 fn is_arith_op(op: String) -> bool =
-    op == "+" or op == "-" or op == "*" or op == "/" or op == "%";
+    op == "+" or op == "-" or op == "*" or op == "/" or op == "%"
+    or op == "+|" or op == "-|" or op == "*|"
+    or op == "+%" or op == "-%" or op == "*%"
+    or op == "<<" or op == ">>" or op == ">>>";
 
 // v0.30.70: Range operators
 fn is_range_op(op: String) -> bool =
@@ -245,7 +269,7 @@ fn gen_binop_range(dest: String, op: String, lhs: String, rhs: String) -> String
     let tmp = dest + "_tmp";
     let line1 = tmp + " = insertvalue {i64, i64} undef, i64 " + lhs + ", 0";
     let line2 = dest + " = insertvalue {i64, i64} " + tmp + ", i64 " + rhs + ", 1";
-    line1 + "|" + line2;
+    line1 + SEP() + line2;
 
 // ============================================================================
 // SECTION 8: LLVM IR Unary Operations
@@ -301,7 +325,7 @@ fn parse_struct_init(line: String) -> String =
     let brace_start = find_char(line, 123, pos3);  // '{'
     let brace_end = find_char(line, 125, brace_start);  // '}'
     let fields_str = line.slice(brace_start + 1, brace_end);
-    dest + "|" + struct_name + "|" + fields_str;
+    dest + SEP() + struct_name + SEP() + fields_str;
 
 // Parse field-access instruction
 // MIR format: %dest = field-access %base.field_name
@@ -317,7 +341,7 @@ fn parse_field_access(line: String) -> String =
     let base = line.slice(pos3, dot_pos);
     let field_start = dot_pos + 1;
     let field_name = read_until_ws(line, field_start);
-    dest + "|" + base + "|" + field_name;
+    dest + SEP() + base + SEP() + field_name;
 
 // Find pattern in string, return position
 fn find_pattern(s: String, pat: String, pos: i64) -> i64 =
@@ -346,7 +370,7 @@ fn gen_struct_init_fields_acc(dest: String, struct_name: String, fields_str: Str
         let field_val = extract_field_value(field_pair);
         let temp_dest = if get_next_field_pair(fields_str, idx + 1) == "" { dest } else { dest + "_" + int_to_string(idx) };
         let insert_ir = gen_insertvalue(temp_dest, struct_name, base, field_val, idx);
-        let new_acc = if acc == "" { insert_ir } else { acc + "|" + insert_ir };
+        let new_acc = if acc == "" { insert_ir } else { acc + SEP() + insert_ir };
         gen_struct_init_fields_acc(dest, struct_name, fields_str, idx + 1, temp_dest, new_acc)
     };
 
@@ -425,7 +449,7 @@ fn gen_instr_enum_variant(line: String) -> String =
         let temp = dest + "_d";
         let ir1 = gen_insertvalue(temp, "EnumData", "%EnumData zeroinitializer", discriminant, 0);
         let ir2 = gen_insertvalue(dest, "EnumData", temp, arg, 1);
-        ir1 + "|" + ir2
+        ir1 + SEP() + ir2
     };
 
 // Parse enum-variant line
@@ -442,7 +466,7 @@ fn parse_enum_variant(line: String) -> String =
     let discriminant = read_until_ws(line, pos4);
     let pos5 = skip_ws(line, pos4 + discriminant.len());
     let arg = read_until_ws(line, pos5);
-    dest + "|" + variant + "|" + discriminant + "|" + arg;
+    dest + SEP() + variant + SEP() + discriminant + SEP() + arg;
 
 // Generate LLVM IR for switch instruction
 // MIR format: switch %scrutinee, [cases], default_label
@@ -467,7 +491,7 @@ fn parse_switch(line: String) -> String =
     let cases_str = line.slice(pos2 + 1, pos3);
     let pos4 = skip_ws(line, pos3 + 2);  // skip '], '
     let default_label = read_until_ws(line, pos4);
-    scrutinee + "|" + cases_str + "|" + default_label;
+    scrutinee + SEP() + cases_str + SEP() + default_label;
 
 // Convert switch cases from MIR to LLVM format
 // Input: "0 -> arm0, 1 -> arm1"
@@ -574,18 +598,18 @@ fn gen_instr_unit(dest: String) -> String =
 
 // v0.30.48: BREAK placeholder - generates comment (actual handling in loop context)
 fn gen_instr_break(dest: String) -> String =
-    "; BREAK: " + dest + " - placeholder|  " + dest + " = add i64 0, 0";
+    "; BREAK: " + dest + " - placeholder" + SEP() + "  " + dest + " = add i64 0, 0";
 
 // v0.30.48: CONTINUE placeholder - generates comment (actual handling in loop context)
 fn gen_instr_continue(dest: String) -> String =
-    "; CONTINUE: " + dest + " - placeholder|  " + dest + " = add i64 0, 0";
+    "; CONTINUE: " + dest + " - placeholder" + SEP() + "  " + dest + " = add i64 0, 0";
 
 // v0.30.52: CLOSURE - closure/lambda represented as function pointer
 // MIR: %_t0 = CLOSURE:42
 // LLVM: Closure is represented as i64 pointer (simplified for bootstrap)
 // Full implementation would generate struct { i8* fn_ptr, i8* env_ptr }
 fn gen_instr_closure(dest: String, closure_id: String) -> String =
-    "; closure: " + closure_id + "|" + dest + " = inttoptr i64 0 to i8*";
+    "; closure: " + closure_id + SEP() + dest + " = inttoptr i64 0 to i8*";
 
 // Parse closure ID from CLOSURE:42 format ("CLOSURE:" is 8 chars)
 fn parse_closure_id(op_arg: String) -> String =
@@ -670,13 +694,13 @@ fn gen_closure_env_alloc(dest: String, num_captures: i64) -> String =
 fn gen_capture_store(env: String, cap_var: String, idx: i64) -> String =
     let gep = "%_cap_ptr_" + int_to_string(idx) + " = getelementptr i64, i64* " + env + ", i64 " + int_to_string(idx);
     let store = "store i64 " + cap_var + ", i64* %_cap_ptr_" + int_to_string(idx);
-    gep + "|" + store;
+    gep + SEP() + store;
 
 // Generate capture load: load captured value from environment
 fn gen_capture_load(dest: String, env: String, idx: i64) -> String =
     let gep = "%_cap_ptr_" + int_to_string(idx) + " = getelementptr i64, i64* " + env + ", i64 " + int_to_string(idx);
     let load = dest + " = load i64, i64* %_cap_ptr_" + int_to_string(idx);
-    gep + "|" + load;
+    gep + SEP() + load;
 
 // Generate full closure creation with captures
 fn gen_closure_with_captures(dest: String, fn_ptr: String, env: String) -> String =
@@ -684,7 +708,7 @@ fn gen_closure_with_captures(dest: String, fn_ptr: String, env: String) -> Strin
     let alloc = dest + ".struct = alloca { i64, i64* }";
     let fn_store = "store i64 " + fn_ptr + ", i64* " + dest + ".struct.fn";
     let env_store = "store i64* " + env + ", i64** " + dest + ".struct.env";
-    alloc + "|" + fn_store + "|" + env_store;
+    alloc + SEP() + fn_store + SEP() + env_store;
 
 // ============================================================================
 // v0.30.105: Capture/LoadCapture Instruction Generation
@@ -761,14 +785,14 @@ fn gen_instr_call_closure(line: String) -> String =
     let call_args = if args.len() > 0 { "%_cl_env, " + args } else { "%_cl_env" };
     let call_instr = dest + " = call i64 %_cl_fn_p(" + call_args + ")";
 
-    fn_gep + "|" + fn_load + "|" + fn_cast + "|" + env_gep + "|" + env_load + "|" + call_instr;
+    fn_gep + SEP() + fn_load + SEP() + fn_cast + SEP() + env_gep + SEP() + env_load + SEP() + call_instr;
 
 // Generate simpler closure call (for pure closures without env)
 fn gen_instr_call_closure_pure(dest: String, closure: String, args: String) -> String =
     let fn_load = "%_cl_fn = load i64, i64* " + closure;
     let fn_cast = "%_cl_fn_p = inttoptr i64 %_cl_fn to i64 (...)*";
     let call_instr = if args.len() > 0 { dest + " = call i64 %_cl_fn_p(" + args + ")" } else { dest + " = call i64 %_cl_fn_p()" };
-    fn_load + "|" + fn_cast + "|" + call_instr;
+    fn_load + SEP() + fn_cast + SEP() + call_instr;
 
 // ============================================================================
 // v0.30.71: Array Literal IR Generation
@@ -789,7 +813,7 @@ fn gen_instr_array(dest: String, line: String, pos: i64) -> String =
         if count == 0 { dest + " = alloca [0 x i64]" } else {
             let alloc = dest + " = alloca [" + int_to_string(count) + " x i64]";
             let stores = gen_array_stores(dest, elems_str, count, 0);
-            alloc + "|" + stores
+            alloc + SEP() + stores
         }
     };
 
@@ -808,7 +832,7 @@ fn gen_array_stores(arr: String, elems: String, count: i64, idx: i64) -> String 
         let gep = ptr + " = getelementptr [" + int_to_string(count) + " x i64], [" + int_to_string(count) + " x i64]* " + arr + ", i32 0, i32 " + int_to_string(idx);
         let store = "store i64 " + elem + ", i64* " + ptr;
         let rest = gen_array_stores(arr, elems, count, idx + 1);
-        if rest.len() > 0 { gep + "|" + store + "|" + rest } else { gep + "|" + store }
+        if rest.len() > 0 { gep + SEP() + store + SEP() + rest } else { gep + SEP() + store }
     };
 
 // Extract element at index from comma-separated list
@@ -864,7 +888,7 @@ fn gen_instr_index_unchecked(dest: String, line: String, pos: i64) -> String =
     let ptr = dest + "_ptr";
     let gep = ptr + " = getelementptr i64, i64* " + base + ", i64 " + idx;
     let load = dest + " = load i64, i64* " + ptr;
-    gep + "|" + load;
+    gep + SEP() + load;
 
 fn read_until_bracket(s: String, pos: i64) -> String =
     read_until_bracket_rec(s, pos, "");
@@ -925,7 +949,7 @@ fn gen_br(target: String) -> String =
 //   br i1 %cond_br, label %then, label %else
 fn gen_br_cond(cond: String, then_label: String, else_label: String) -> String =
     let cond_br = cond + "_br";
-    cond_br + " = trunc i64 " + cond + " to i1|  br i1 " + cond_br + ", label %" + then_label + ", label %" + else_label;
+    cond_br + " = trunc i64 " + cond + " to i1" + SEP() + "  br i1 " + cond_br + ", label %" + then_label + ", label %" + else_label;
 
 // Return statement
 // ret i64 %value  or  ret void
@@ -1097,7 +1121,7 @@ fn parse_mir_fn_header(line: String) -> String =
     let pos3 = arrow_pos + 2;
     let pos4 = skip_ws(line, pos3);
     let ret_type = read_until_ws(line, pos4);
-    name + "|" + ret_type + "|" + params_str;
+    name + SEP() + ret_type + SEP() + params_str;
 
 fn read_until_char(s: String, pos: i64, c: i64) -> String =
     read_until_char_acc(s, pos, c, "");
@@ -1144,7 +1168,7 @@ fn parse_mir_call(line: String) -> String =
     let pos4 = pos3 + func_name.len() + 1;
     let args_end = find_char(line, 41, pos4);  // ')'
     let args_str = line.slice(pos4, args_end);
-    dest + "|" + func_name + "|" + args_str;
+    dest + SEP() + func_name + SEP() + args_str;
 
 // Convert MIR call args to LLVM IR format
 // "%a, %b" -> "i64 %a, i64 %b"
@@ -1181,7 +1205,7 @@ fn extract_field(s: String, index: i64) -> String =
     extract_field_acc(s, 0, index, 0, "");
 
 fn extract_field_acc(s: String, pos: i64, target: i64, current: i64, acc: String) -> String =
-    if pos >= s.len() { if current == target { acc } else { "" } } else if s.byte_at(pos) == 124 { if current == target { acc } else { extract_field_acc(s, pos + 1, target, current + 1, "") } } else if current == target { extract_field_acc(s, pos + 1, target, current, acc + byte_to_string(s.byte_at(pos))) } else { extract_field_acc(s, pos + 1, target, current, acc) };
+    if pos >= s.len() { if current == target { acc } else { "" } } else if s.byte_at(pos) == 31 { if current == target { acc } else { extract_field_acc(s, pos + 1, target, current + 1, "") } } else if current == target { extract_field_acc(s, pos + 1, target, current, acc + byte_to_string(s.byte_at(pos))) } else { extract_field_acc(s, pos + 1, target, current, acc) };
 
 // Generate complete function from MIR
 // Input: MIR function text with | separators
@@ -1209,7 +1233,7 @@ fn gen_function_lines_typed(mir: String, pos: i64, acc: String, ret_type: String
         let line_end = find_pipe(mir, pos);
         let line = mir.slice(pos, line_end);
         let llvm_line = gen_mir_line_typed(line, ret_type);
-        let new_acc = if acc == "" { llvm_line } else { acc + "|" + llvm_line };
+        let new_acc = if acc == "" { llvm_line } else { acc + SEP() + llvm_line };
         if line_end >= mir.len() { new_acc } else { gen_function_lines_typed(mir, line_end + 1, new_acc, ret_type) }
     };
 
@@ -1324,7 +1348,7 @@ fn gen_method_dispatch(dest: String, recv: String, method: String, args: String)
 fn gen_method_len(dest: String, recv: String) -> String =
     let lp = dest + "_lp";
     lp + " = getelementptr {ptr, i64, i64}, ptr " + recv + ", i32 0, i32 1" +
-    "|" + dest + " = load i64, ptr " + lp;
+    SEP() + dest + " = load i64, ptr " + lp;
 
 // v0.30.75: String.byte_at(idx) -> GEP into BmbString struct + load + zext
 // v0.90.71: Fixed to use opaque ptr, {ptr, i64, i64} struct layout, zext (not sext)
@@ -1335,10 +1359,10 @@ fn gen_method_byte_at(dest: String, recv: String, args: String) -> String =
     let bp = dest + "_bp";
     let b = dest + "_b";
     dpp + " = getelementptr {ptr, i64, i64}, ptr " + recv + ", i32 0, i32 0" +
-    "|" + dp + " = load ptr, ptr " + dpp +
-    "|" + bp + " = getelementptr i8, ptr " + dp + ", i64 " + idx +
-    "|" + b + " = load i8, ptr " + bp +
-    "|" + dest + " = zext i8 " + b + " to i64";
+    SEP() + dp + " = load ptr, ptr " + dpp +
+    SEP() + bp + " = getelementptr i8, ptr " + dp + ", i64 " + idx +
+    SEP() + b + " = load i8, ptr " + bp +
+    SEP() + dest + " = zext i8 " + b + " to i64";
 
 // v0.30.76: String.slice(start, end) -> call @bmb_string_slice
 fn gen_method_slice(dest: String, recv: String, args: String) -> String =
@@ -1382,7 +1406,7 @@ fn gen_method_array_get(dest: String, recv: String, args: String) -> String =
 fn gen_method_array_set(dest: String, recv: String, args: String) -> String =
     let idx = extract_first_arg(args);
     let val = extract_second_arg(args);
-    "call void @bmb_array_set(i8* " + recv + ", i64 " + idx + ", i64 " + val + ")|" + dest + " = add i64 0, 0";
+    "call void @bmb_array_set(i8* " + recv + ", i64 " + idx + ", i64 " + val + ")" + SEP() + dest + " = add i64 0, 0";
 
 // v0.30.80: Array push/pop methods
 // array_push: Append element to array (returns new length)
@@ -1396,7 +1420,7 @@ fn gen_method_array_pop(dest: String, recv: String) -> String =
 
 // array_clear: Remove all elements (returns void)
 fn gen_method_array_clear(dest: String, recv: String) -> String =
-    "call void @bmb_array_clear(i8* " + recv + ")|" + dest + " = add i64 0, 0";
+    "call void @bmb_array_clear(i8* " + recv + ")" + SEP() + dest + " = add i64 0, 0";
 
 // ============================================================================
 // SECTION 11b: Trait Dispatch Infrastructure (v0.30.96)
@@ -1500,18 +1524,18 @@ fn gen_program_acc(mir: String, pos: i64, acc: String) -> String =
         let fn_end = find_double_pipe(mir, pos);
         let fn_mir = mir.slice(pos, fn_end);
         let fn_llvm = gen_function(fn_mir);
-        let new_acc = if acc == "" { fn_llvm } else { acc + "||" + fn_llvm };
+        let new_acc = if acc == "" { fn_llvm } else { acc + DSEP() + fn_llvm };
         if fn_end + 2 >= mir.len() { new_acc } else { gen_program_acc(mir, fn_end + 2, new_acc) }
     };
 
 fn find_double_pipe(s: String, pos: i64) -> i64 =
-    if pos + 1 >= s.len() { s.len() } else if s.byte_at(pos) == 124 and s.byte_at(pos + 1) == 124 { pos } else { find_double_pipe(s, pos + 1) };
+    if pos + 1 >= s.len() { s.len() } else if s.byte_at(pos) == 31 and s.byte_at(pos + 1) == 31 { pos } else { find_double_pipe(s, pos + 1) };
 
 // Generate LLVM module header with target specification
 fn gen_module_header() -> String =
     // Use chr(34) to produce double-quote character to avoid escape issues
     let dq = chr(34);
-    "; ModuleID = bmb_bootstrap|target triple = " + dq + "x86_64-unknown-linux-gnu" + dq;
+    "; ModuleID = bmb_bootstrap" + SEP() + "target triple = " + dq + "x86_64-unknown-linux-gnu" + dq;
 
 // Generate external function declarations (for runtime support)
 fn gen_extern_println() -> String =
@@ -1698,25 +1722,25 @@ fn gen_extern_block_on() -> String =
 
 // Generate all runtime declarations
 fn gen_runtime_decls() -> String =
-    let basic = gen_extern_println() + "|" + gen_extern_abs() + "|" + gen_extern_min() + "|" + gen_extern_max();
-    let string = gen_extern_string_len() + "|" + gen_extern_string_slice() + "|" + gen_extern_string_concat() + "|" + gen_extern_string_eq();
-    let array = gen_extern_array_len() + "|" + gen_extern_array_get() + "|" + gen_extern_array_set();
-    let array_mut = gen_extern_array_push() + "|" + gen_extern_array_pop() + "|" + gen_extern_array_clear();
-    let memory = gen_extern_alloc() + "|" + gen_extern_free();
+    let basic = gen_extern_println() + SEP() + gen_extern_abs() + SEP() + gen_extern_min() + SEP() + gen_extern_max();
+    let string = gen_extern_string_len() + SEP() + gen_extern_string_slice() + SEP() + gen_extern_string_concat() + SEP() + gen_extern_string_eq();
+    let array = gen_extern_array_len() + SEP() + gen_extern_array_get() + SEP() + gen_extern_array_set();
+    let array_mut = gen_extern_array_push() + SEP() + gen_extern_array_pop() + SEP() + gen_extern_array_clear();
+    let memory = gen_extern_alloc() + SEP() + gen_extern_free();
     let safety = gen_extern_panic_bounds();  // v0.48.0
     let intrinsics = gen_intrinsic_expect();  // v0.52
     // v0.88.10: Concurrency runtime - corrected signatures
-    let concur_thread = gen_extern_thread_spawn() + "|" + gen_extern_thread_join();
-    let concur_mutex = gen_extern_mutex_new() + "|" + gen_extern_mutex_lock() + "|" + gen_extern_mutex_unlock() + "|" + gen_extern_mutex_try_lock() + "|" + gen_extern_mutex_free();
-    let concur_chan1 = gen_extern_channel_new() + "|" + gen_extern_channel_send() + "|" + gen_extern_channel_recv() + "|" + gen_extern_channel_try_send() + "|" + gen_extern_channel_try_recv();
-    let concur_chan2 = gen_extern_channel_recv_timeout() + "|" + gen_extern_channel_send_timeout() + "|" + gen_extern_channel_close() + "|" + gen_extern_channel_is_closed() + "|" + gen_extern_channel_recv_opt() + "|" + gen_extern_sender_clone();
-    let concur_arc = gen_extern_arc_new() + "|" + gen_extern_arc_clone() + "|" + gen_extern_arc_get() + "|" + gen_extern_arc_drop() + "|" + gen_extern_arc_strong_count();
-    let concur_atomic = gen_extern_atomic_new() + "|" + gen_extern_atomic_load() + "|" + gen_extern_atomic_store();
-    let concur_rwlock = gen_extern_rwlock_new() + "|" + gen_extern_rwlock_read() + "|" + gen_extern_rwlock_read_unlock() + "|" + gen_extern_rwlock_write() + "|" + gen_extern_rwlock_write_unlock() + "|" + gen_extern_rwlock_free();
-    let concur_sync = gen_extern_barrier_new() + "|" + gen_extern_barrier_wait() + "|" + gen_extern_barrier_free() + "|" + gen_extern_condvar_new() + "|" + gen_extern_condvar_wait() + "|" + gen_extern_condvar_notify_one() + "|" + gen_extern_condvar_notify_all() + "|" + gen_extern_condvar_free();
-    let concur_async = gen_extern_async_file_open() + "|" + gen_extern_async_file_read() + "|" + gen_extern_async_file_write() + "|" + gen_extern_async_file_close() + "|" + gen_extern_async_socket_connect() + "|" + gen_extern_async_socket_read() + "|" + gen_extern_async_socket_write() + "|" + gen_extern_async_socket_close();
-    let concur_exec = gen_extern_future_await() + "|" + gen_extern_scope_new() + "|" + gen_extern_scope_spawn() + "|" + gen_extern_scope_wait() + "|" + gen_extern_pool_new() + "|" + gen_extern_pool_execute() + "|" + gen_extern_pool_join() + "|" + gen_extern_pool_shutdown() + "|" + gen_extern_block_on();
-    basic + "|" + string + "|" + array + "|" + array_mut + "|" + memory + "|" + safety + "|" + intrinsics + "|" + concur_thread + "|" + concur_mutex + "|" + concur_chan1 + "|" + concur_chan2 + "|" + concur_arc + "|" + concur_atomic + "|" + concur_rwlock + "|" + concur_sync + "|" + concur_async + "|" + concur_exec;
+    let concur_thread = gen_extern_thread_spawn() + SEP() + gen_extern_thread_join();
+    let concur_mutex = gen_extern_mutex_new() + SEP() + gen_extern_mutex_lock() + SEP() + gen_extern_mutex_unlock() + SEP() + gen_extern_mutex_try_lock() + SEP() + gen_extern_mutex_free();
+    let concur_chan1 = gen_extern_channel_new() + SEP() + gen_extern_channel_send() + SEP() + gen_extern_channel_recv() + SEP() + gen_extern_channel_try_send() + SEP() + gen_extern_channel_try_recv();
+    let concur_chan2 = gen_extern_channel_recv_timeout() + SEP() + gen_extern_channel_send_timeout() + SEP() + gen_extern_channel_close() + SEP() + gen_extern_channel_is_closed() + SEP() + gen_extern_channel_recv_opt() + SEP() + gen_extern_sender_clone();
+    let concur_arc = gen_extern_arc_new() + SEP() + gen_extern_arc_clone() + SEP() + gen_extern_arc_get() + SEP() + gen_extern_arc_drop() + SEP() + gen_extern_arc_strong_count();
+    let concur_atomic = gen_extern_atomic_new() + SEP() + gen_extern_atomic_load() + SEP() + gen_extern_atomic_store();
+    let concur_rwlock = gen_extern_rwlock_new() + SEP() + gen_extern_rwlock_read() + SEP() + gen_extern_rwlock_read_unlock() + SEP() + gen_extern_rwlock_write() + SEP() + gen_extern_rwlock_write_unlock() + SEP() + gen_extern_rwlock_free();
+    let concur_sync = gen_extern_barrier_new() + SEP() + gen_extern_barrier_wait() + SEP() + gen_extern_barrier_free() + SEP() + gen_extern_condvar_new() + SEP() + gen_extern_condvar_wait() + SEP() + gen_extern_condvar_notify_one() + SEP() + gen_extern_condvar_notify_all() + SEP() + gen_extern_condvar_free();
+    let concur_async = gen_extern_async_file_open() + SEP() + gen_extern_async_file_read() + SEP() + gen_extern_async_file_write() + SEP() + gen_extern_async_file_close() + SEP() + gen_extern_async_socket_connect() + SEP() + gen_extern_async_socket_read() + SEP() + gen_extern_async_socket_write() + SEP() + gen_extern_async_socket_close();
+    let concur_exec = gen_extern_future_await() + SEP() + gen_extern_scope_new() + SEP() + gen_extern_scope_spawn() + SEP() + gen_extern_scope_wait() + SEP() + gen_extern_pool_new() + SEP() + gen_extern_pool_execute() + SEP() + gen_extern_pool_join() + SEP() + gen_extern_pool_shutdown() + SEP() + gen_extern_block_on();
+    basic + SEP() + string + SEP() + array + SEP() + array_mut + SEP() + memory + SEP() + safety + SEP() + intrinsics + SEP() + concur_thread + SEP() + concur_mutex + SEP() + concur_chan1 + SEP() + concur_chan2 + SEP() + concur_arc + SEP() + concur_atomic + SEP() + concur_rwlock + SEP() + concur_sync + SEP() + concur_async + SEP() + concur_exec;
 
 // Example: Complete add function from MIR to LLVM IR
 // MIR input:
@@ -1724,7 +1748,7 @@ fn gen_runtime_decls() -> String =
 // LLVM output:
 //   define i64 @add(i64 %a, i64 %b) {|entry:|  %_t0 = add i64 %a, %b|  ret i64 %_t0|}
 fn example_add_mir() -> String =
-    "fn add(a: i64, b: i64) -> i64 {|entry:|  %_t0 = + %a, %b|  return %_t0|}";
+    "fn add(a: i64, b: i64) -> i64 {" + SEP() + "entry:" + SEP() + "  %_t0 = + %a, %b" + SEP() + "  return %_t0" + SEP() + "}";
 
 fn example_add_llvm() -> String =
     gen_function(example_add_mir());
@@ -1733,7 +1757,7 @@ fn example_add_llvm() -> String =
 // MIR input:
 //   fn max(a: i64, b: i64) -> i64 {|entry:|  %_t0 = > %a, %b|  branch %_t0, then_0, else_0|then_0:|  goto merge_0|else_0:|  goto merge_0|merge_0:|  return %_t0|}
 fn example_max_mir() -> String =
-    "fn max(a: i64, b: i64) -> i64 {|entry:|  %_t0 = > %a, %b|  branch %_t0, then_0, else_0|then_0:|  goto merge_0|else_0:|  goto merge_0|merge_0:|  return %_t0|}";
+    "fn max(a: i64, b: i64) -> i64 {" + SEP() + "entry:" + SEP() + "  %_t0 = > %a, %b" + SEP() + "  branch %_t0, then_0, else_0" + SEP() + "then_0:" + SEP() + "  goto merge_0" + SEP() + "else_0:" + SEP() + "  goto merge_0" + SEP() + "merge_0:" + SEP() + "  return %_t0" + SEP() + "}";
 
 fn example_max_llvm() -> String =
     gen_function(example_max_mir());
@@ -1741,7 +1765,7 @@ fn example_max_llvm() -> String =
 // v0.30.56: Example compare function (<=, >=, !=)
 // fn compare(a: i64, b: i64) -> bool = a <= b;
 fn example_compare_mir() -> String =
-    "fn compare(a: i64, b: i64) -> bool {|entry:|  %_t0 = <= %a, %b|  return %_t0|}";
+    "fn compare(a: i64, b: i64) -> bool {" + SEP() + "entry:" + SEP() + "  %_t0 = <= %a, %b" + SEP() + "  return %_t0" + SEP() + "}";
 
 fn example_compare_llvm() -> String =
     gen_function(example_compare_mir());
@@ -1749,7 +1773,7 @@ fn example_compare_llvm() -> String =
 // v0.30.56: Example logic function (and, or)
 // fn logic(a: bool, b: bool) -> bool = a and b or not a;
 fn example_logic_mir() -> String =
-    "fn logic(a: bool, b: bool) -> bool {|entry:|  %_t0 = and %a, %b|  %_t1 = not %a|  %_t2 = or %_t0, %_t1|  return %_t2|}";
+    "fn logic(a: bool, b: bool) -> bool {" + SEP() + "entry:" + SEP() + "  %_t0 = and %a, %b" + SEP() + "  %_t1 = not %a" + SEP() + "  %_t2 = or %_t0, %_t1" + SEP() + "  return %_t2" + SEP() + "}";
 
 fn example_logic_llvm() -> String =
     gen_function(example_logic_mir());
@@ -2060,7 +2084,7 @@ fn test_param_convert() -> i64 =
     t1 + t2 + t3;
 
 fn test_extract_field() -> i64 =
-    let s = "add|i64|a: i64, b: i64";
+    let s = "add" + SEP() + "i64" + SEP() + "a: i64, b: i64";
     let t1 = if extract_field(s, 0) == "add" { 1 } else { 0 };
     let t2 = if extract_field(s, 1) == "i64" { 1 } else { 0 };
     let t3 = if extract_field(s, 2) == "a: i64, b: i64" { 1 } else { 0 };
@@ -2147,8 +2171,8 @@ fn test_full_logic_function() -> i64 =
     t1 + t2 + t3 + t4;
 
 fn test_double_pipe() -> i64 =
-    let s = "fn a() -> i64 {}||fn b() -> i64 {}";
-    // Position: fn a() -> i64 {} = 16 chars, || starts at 16
+    let s = "fn a() -> i64 {}" + DSEP() + "fn b() -> i64 {}";
+    // Position: fn a() -> i64 {} = 16 chars, double separator starts at 16
     let t1 = if find_double_pipe(s, 0) == 16 { 1 } else { 0 };
     let s2 = "no double pipe";
     let t2 = if find_double_pipe(s2, 0) == s2.len() { 1 } else { 0 };
@@ -2804,15 +2828,15 @@ fn test_runtime_decls() -> i64 =
 // v0.30.82: Pipeline integration tests
 fn test_pipeline_integration() -> i64 =
     // Test 1: Simple function pipeline
-    let fn1 = gen_function("fn add(a: i64, b: i64) -> i64 {|entry:|  %_t0 = + %a, %b|  return %_t0|}");
+    let fn1 = gen_function("fn add(a: i64, b: i64) -> i64 {" + SEP() + "entry:" + SEP() + "  %_t0 = + %a, %b" + SEP() + "  return %_t0" + SEP() + "}");
     let t1 = if has_pattern(fn1, "define i64 @add", 0) { 1 } else { 0 };
 
     // Test 2: Function with comparison
-    let fn2 = gen_function("fn gt(a: i64, b: i64) -> bool {|entry:|  %_t0 = > %a, %b|  return %_t0|}");
+    let fn2 = gen_function("fn gt(a: i64, b: i64) -> bool {" + SEP() + "entry:" + SEP() + "  %_t0 = > %a, %b" + SEP() + "  return %_t0" + SEP() + "}");
     let t2 = if has_pattern(fn2, "icmp sgt", 0) { 1 } else { 0 };
 
     // Test 3: Function with branches (conditional)
-    let fn3 = gen_function("fn max(a: i64, b: i64) -> i64 {|entry:|  %_t0 = > %a, %b|  branch %_t0, then_0, else_0|then_0:|  %_t1 = copy %a|  goto merge_0|else_0:|  %_t2 = copy %b|  goto merge_0|merge_0:|  return %_t1|}");
+    let fn3 = gen_function("fn max(a: i64, b: i64) -> i64 {" + SEP() + "entry:" + SEP() + "  %_t0 = > %a, %b" + SEP() + "  branch %_t0, then_0, else_0" + SEP() + "then_0:" + SEP() + "  %_t1 = copy %a" + SEP() + "  goto merge_0" + SEP() + "else_0:" + SEP() + "  %_t2 = copy %b" + SEP() + "  goto merge_0" + SEP() + "merge_0:" + SEP() + "  return %_t1" + SEP() + "}");
     let t3 = if has_pattern(fn3, "br i1", 0) { 1 } else { 0 };
 
     // Test 4: gen_module_header contains target
@@ -2824,17 +2848,17 @@ fn test_pipeline_integration() -> i64 =
     let t5 = if has_pattern(decls, "@println", 0) { 1 } else { 0 };
 
     // Test 6: Multi-function program
-    let prog = gen_program("fn one() -> i64 {|entry:|  %_t0 = const I:1|  return %_t0|}||fn two() -> i64 {|entry:|  %_t0 = const I:2|  return %_t0|}");
+    let prog = gen_program("fn one() -> i64 {" + SEP() + "entry:" + SEP() + "  %_t0 = const I:1" + SEP() + "  return %_t0" + SEP() + "}" + SEP() + SEP() + "fn two() -> i64 {" + SEP() + "entry:" + SEP() + "  %_t0 = const I:2" + SEP() + "  return %_t0" + SEP() + "}");
     let t6_a = if has_pattern(prog, "@one", 0) { 1 } else { 0 };
     let t6_b = if has_pattern(prog, "@two", 0) { 1 } else { 0 };
     let t6 = if t6_a == 1 and t6_b == 1 { 1 } else { 0 };
 
     // Test 7: String constant in function
-    let fn4 = gen_function("fn greet() -> String {|entry:|  %_t0 = const S:hello|  return %_t0|}");
+    let fn4 = gen_function("fn greet() -> String {" + SEP() + "entry:" + SEP() + "  %_t0 = const S:hello" + SEP() + "  return %_t0" + SEP() + "}");
     let t7 = if has_pattern(fn4, "hello", 0) { 1 } else { 0 };
 
     // Test 8: Unary negation
-    let fn5 = gen_function("fn negate(x: i64) -> i64 {|entry:|  %_t0 = neg %x|  return %_t0|}");
+    let fn5 = gen_function("fn negate(x: i64) -> i64 {" + SEP() + "entry:" + SEP() + "  %_t0 = neg %x" + SEP() + "  return %_t0" + SEP() + "}");
     let t8 = if has_pattern(fn5, "sub i64 0", 0) { 1 } else { 0 };
 
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
@@ -2935,7 +2959,7 @@ fn test_trait_call_dispatch() -> i64 =
 // v0.30.114: Full MIR → LLVM IR pipeline integration test
 fn test_full_mir_pipeline() -> i64 =
     // Test 1: gen_function processes basic MIR
-    let fn_mir = "fn @test_basic() -> i64 {|entry:|  %_t0 = const I:42|  ret %_t0|}";
+    let fn_mir = "fn @test_basic() -> i64 {" + SEP() + "entry:" + SEP() + "  %_t0 = const I:42" + SEP() + "  ret %_t0" + SEP() + "}";
     let fn_llvm = gen_function(fn_mir);
     let t1 = if has_pattern(fn_llvm, "42", 0) { 1 } else { 0 };
 
@@ -3214,7 +3238,7 @@ fn test_skip_ws_ir() -> i64 =
 fn test_find_char_ir() -> i64 =
     let t1 = if find_char("abc", 98, 0) == 1 { 1 } else { 0 };
     let t2 = if find_char("abc", 120, 0) == 3 { 1 } else { 0 };
-    let t3 = if find_pipe("a|b", 0) == 1 { 1 } else { 0 };
+    let t3 = if find_pipe("a" + SEP() + "b", 0) == 1 { 1 } else { 0 };
     let t4 = if find_pipe("abc", 0) == 3 { 1 } else { 0 };
     let t5 = if find_char("hello", 108, 0) == 2 { 1 } else { 0 };
     let t6 = if find_char("", 97, 0) == 0 { 1 } else { 0 };
@@ -3349,7 +3373,7 @@ fn test_llvm_string_helpers() -> i64 =
     let t1 = if skip_ws(" a", 0) == 1 { 1 } else { 0 };
     let t2 = if skip_ws("abc", 0) == 0 { 1 } else { 0 };
     let t3 = if find_char("abc", 98, 0) == 1 { 1 } else { 0 };  // find 'b'
-    let t4 = if find_pipe("a|b", 0) == 1 { 1 } else { 0 };
+    let t4 = if find_pipe("a" + SEP() + "b", 0) == 1 { 1 } else { 0 };
     let t5 = if starts_with("hello", "he", 0) { 1 } else { 0 };
     let t6 = if is_digit(49) and not is_digit(65) { 1 } else { 0 };  // '1' is digit, 'A' is not
     t1 + t2 + t3 + t4 + t5 + t6;

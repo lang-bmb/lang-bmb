@@ -1,0 +1,113 @@
+// Golden Test: Character operations using integer arrays (ASCII code simulation)
+// Tests is_alpha, is_digit, to_upper, to_lower, count_alpha, count_digits, to_upper_all
+
+// is_alpha: returns 1 if c is a-z (97-122) or A-Z (65-90), else 0
+fn is_alpha(c: i64) -> i64
+    post ret >= 0 and ret <= 1
+= if c >= 65 and c <= 90 { 1 }
+  else if c >= 97 and c <= 122 { 1 }
+  else { 0 };
+
+// is_digit: returns 1 if c is 0-9 (48-57), else 0
+fn is_digit(c: i64) -> i64
+    post ret >= 0 and ret <= 1
+= if c >= 48 and c <= 57 { 1 } else { 0 };
+
+// to_upper: converts lowercase (97-122) to uppercase, leaves others unchanged
+fn to_upper(c: i64) -> i64 =
+    if c >= 97 and c <= 122 { c - 32 } else { c };
+
+// to_lower: converts uppercase (65-90) to lowercase, leaves others unchanged
+fn to_lower(c: i64) -> i64 =
+    if c >= 65 and c <= 90 { c + 32 } else { c };
+
+// count_alpha: count alphabetic characters in arr of length n (recursive)
+fn count_alpha(arr: i64, n: i64) -> i64
+    post ret >= 0
+= {
+    let mut i = 0;
+    let mut count = 0;
+    loop {
+        if i >= n { break } else { () };
+        count = count + is_alpha(vec_get(arr, i));
+        i = i + 1
+    };
+    count
+    };
+
+// count_digits: count digit characters in arr of length n
+fn count_digits(arr: i64, n: i64) -> i64
+    post ret >= 0
+= {
+    let mut i = 0;
+    let mut count = 0;
+    loop {
+        if i >= n { break } else { () };
+        count = count + is_digit(vec_get(arr, i));
+        i = i + 1
+    };
+    count
+    };
+
+// to_upper_all: converts all lowercase chars to uppercase in-place,
+// returns number of characters converted
+fn to_upper_all(arr: i64, n: i64) -> i64 = {
+    let mut i = 0;
+    let mut converted = 0;
+    loop {
+        if i >= n { break } else { () };
+        let c = vec_get(arr, i);
+        if c >= 97 and c <= 122 {
+            let _s = vec_set(arr, i, c - 32);
+            converted = converted + 1
+        } else { () };
+        i = i + 1
+    };
+    converted
+    };
+
+fn main() -> i64 = {
+    // "Hello123World" as ASCII codes:
+    // H=72, e=101, l=108, l=108, o=111, 1=49, 2=50, 3=51, W=87, o=111, r=114, l=108, d=100
+    let arr = vec_new();
+    let _p1  = vec_push(arr, 72);   // H
+    let _p2  = vec_push(arr, 101);  // e
+    let _p3  = vec_push(arr, 108);  // l
+    let _p4  = vec_push(arr, 108);  // l
+    let _p5  = vec_push(arr, 111);  // o
+    let _p6  = vec_push(arr, 49);   // 1
+    let _p7  = vec_push(arr, 50);   // 2
+    let _p8  = vec_push(arr, 51);   // 3
+    let _p9  = vec_push(arr, 87);   // W
+    let _p10 = vec_push(arr, 111);  // o
+    let _p11 = vec_push(arr, 114);  // r
+    let _p12 = vec_push(arr, 108);  // l
+    let _p13 = vec_push(arr, 100);  // d
+    let n = vec_len(arr);
+
+    // Count alphabetic and digit characters
+    let _q1 = println(count_alpha(arr, n));   // 10
+    let _q2 = println(count_digits(arr, n));  // 3
+
+    // Print to_upper of each element
+    let _q3  = println(to_upper(vec_get(arr, 0)));   // H=72 -> 72
+    let _q4  = println(to_upper(vec_get(arr, 1)));   // e=101 -> E=69
+    let _q5  = println(to_upper(vec_get(arr, 2)));   // l=108 -> L=76
+    let _q6  = println(to_upper(vec_get(arr, 3)));   // l=108 -> L=76
+    let _q7  = println(to_upper(vec_get(arr, 4)));   // o=111 -> O=79
+    let _q8  = println(to_upper(vec_get(arr, 5)));   // 1=49  -> 49
+    let _q9  = println(to_upper(vec_get(arr, 6)));   // 2=50  -> 50
+    let _q10 = println(to_upper(vec_get(arr, 7)));   // 3=51  -> 51
+    let _q11 = println(to_upper(vec_get(arr, 8)));   // W=87  -> 87
+    let _q12 = println(to_upper(vec_get(arr, 9)));   // o=111 -> O=79
+    let _q13 = println(to_upper(vec_get(arr, 10)));  // r=114 -> R=82
+    let _q14 = println(to_upper(vec_get(arr, 11)));  // l=108 -> L=76
+    let _q15 = println(to_upper(vec_get(arr, 12)));  // d=100 -> D=68
+
+    // Convert all lowercase to uppercase in-place, print count converted
+    let conv = to_upper_all(arr, n);
+    let _q16 = println(conv);  // 8 (e,l,l,o,o,r,l,d)
+
+    let _f = vec_free(arr);
+    0
+    };

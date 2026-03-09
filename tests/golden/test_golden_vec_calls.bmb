@@ -1,0 +1,32 @@
+// Golden Test: Vec operations with repeated calls
+// Tests vec_push stability (pointer doesn't change with stable-handle)
+
+fn vec_sum_5() -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, 10);
+    let _p2 = vec_push(v, 20);
+    let _p3 = vec_push(v, 30);
+    let _p4 = vec_push(v, 40);
+    let _p5 = vec_push(v, 50);
+    let sum = vec_get(v, 0) + vec_get(v, 1) + vec_get(v, 2) + vec_get(v, 3) + vec_get(v, 4);
+    let _f = vec_free(v);
+    sum
+    };
+
+fn vec_sum_3() -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, 100);
+    let _p2 = vec_push(v, 200);
+    let _p3 = vec_push(v, 300);
+    let sum = vec_get(v, 0) + vec_get(v, 1) + vec_get(v, 2);
+    let _f = vec_free(v);
+    sum
+    };
+
+fn main() -> i64 = {
+    let r1 = vec_sum_5();
+    let _p1 = println(r1);
+    let r2 = vec_sum_3();
+    let _p2 = println(r2);
+    0
+    };

@@ -1,0 +1,60 @@
+// Golden Test: Constant propagation through copies and unary operations
+// Tests that let-bindings propagate constants correctly through the optimizer
+
+// Basic copy-through: let a = 5; let b = 10; a + b should fold
+fn copy_fold_add() -> i64 = {
+    let a = 5;
+    let b = 10;
+    a + b
+    };
+
+// Chained copy-through: a + b → c * 2 → d - 1
+fn copy_fold_chain() -> i64 = {
+    let a = 3;
+    let b = 7;
+    let c = a + b;
+    let d = c * 2;
+    let e = d - 1;
+    e
+    };
+
+// Negation folding through copies
+fn neg_fold() -> i64 = {
+    let x = 42;
+    let y = 0 - x;
+    y
+    };
+
+// Copy-through with comparison folding
+fn copy_cmp_fold() -> i64 = {
+    let a = 5;
+    let b = 10;
+    if a < b { 1 } else { 0 }
+    };
+
+// Mixed: copies + negation + arithmetic
+fn mixed_fold() -> i64 = {
+    let x = 100;
+    let y = 0 - x;
+    let z = x + y;
+    z
+    };
+
+// Multiple let bindings folded together
+fn multi_let_fold() -> i64 = {
+    let a = 1;
+    let b = 2;
+    let c = 3;
+    let d = 4;
+    a + b + c + d
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(copy_fold_add());       // 15
+    let _p2 = println(copy_fold_chain());     // 19
+    let _p3 = println(neg_fold());            // -42
+    let _p4 = println(copy_cmp_fold());       // 1
+    let _p5 = println(mixed_fold());          // 0
+    let _p6 = println(multi_let_fold());      // 10
+    0
+    };

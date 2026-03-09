@@ -1,0 +1,42 @@
+=== Left rotate k=1 ===2
+3
+4
+5
+6
+7
+1
+=== Left rotate k=2 ===3
+4
+5
+6
+7
+1
+2
+=== Left rotate k=3 ===4
+5
+6
+7
+1
+2
+3
+=== Right rotate k=1 ===7
+1
+2
+3
+4
+5
+6
+=== Right rotate k=2 ===6
+7
+1
+2
+3
+4
+5
+=== Right rotate k=3 ===5
+6
+7
+1
+2
+3
+4

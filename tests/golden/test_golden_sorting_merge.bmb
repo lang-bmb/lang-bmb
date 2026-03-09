@@ -1,0 +1,202 @@
+// Golden Test: Bottom-up merge sort
+// Tests iterative merge sort using vectors with various input sizes and patterns
+
+// Helper: create vec and push elements
+fn make_vec5(a: i64, b: i64, c: i64, d: i64, e: i64) -> i64 = {
+    let v = vec_new();
+    let _p = vec_push(v, a);
+    let _p = vec_push(v, b);
+    let _p = vec_push(v, c);
+    let _p = vec_push(v, d);
+    let _p = vec_push(v, e);
+    v
+};
+
+fn make_vec10(a: i64, b: i64, c: i64, d: i64, e: i64,
+              f: i64, g: i64, h: i64, i2: i64, j: i64) -> i64 = {
+    let v = vec_new();
+    let _p = vec_push(v, a);
+    let _p = vec_push(v, b);
+    let _p = vec_push(v, c);
+    let _p = vec_push(v, d);
+    let _p = vec_push(v, e);
+    let _p = vec_push(v, f);
+    let _p = vec_push(v, g);
+    let _p = vec_push(v, h);
+    let _p = vec_push(v, i2);
+    let _p = vec_push(v, j);
+    v
+};
+
+// Create a temp buffer of n zeros
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n {
+        let _p = vec_push(v, 0);
+        0
+    };
+    v
+};
+
+// Print all elements of a vec
+fn print_vec(v: i64) -> i64 = {
+    let n = vec_len(v);
+    for i in 0..n {
+        println(vec_get(v, i))
+    };
+    0
+};
+
+// Min of two values
+fn min_val(a: i64, b: i64) -> i64 =
+    if a < b { a } else { b };
+
+// Merge arr[lo..mid] and arr[mid..hi] using tmp buffer
+// Copy arr[lo..hi] to tmp first, then merge back
+fn copy_to_tmp(arr: i64, tmp: i64, pos: i64, end: i64) -> i64 =
+    if pos >= end { 0 }
+    else {
+        let _s = vec_set(tmp, pos, vec_get(arr, pos));
+        copy_to_tmp(arr, tmp, pos + 1, end)
+    };
+
+fn merge_back(arr: i64, tmp: i64, lo: i64, mid: i64, hi: i64, i: i64, j: i64, k: i64) -> i64 =
+    if k >= hi { 0 }
+    else if i >= mid {
+        let _s = vec_set(arr, k, vec_get(tmp, j));
+        merge_back(arr, tmp, lo, mid, hi, i, j + 1, k + 1)
+    } else if j >= hi {
+        let _s = vec_set(arr, k, vec_get(tmp, i));
+        merge_back(arr, tmp, lo, mid, hi, i + 1, j, k + 1)
+    } else if vec_get(tmp, i) <= vec_get(tmp, j) {
+        let _s = vec_set(arr, k, vec_get(tmp, i));
+        merge_back(arr, tmp, lo, mid, hi, i + 1, j, k + 1)
+    } else {
+        let _s = vec_set(arr, k, vec_get(tmp, j));
+        merge_back(arr, tmp, lo, mid, hi, i, j + 1, k + 1)
+    };
+
+// Merge subarrays of given width starting at position lo
+fn merge_pass_at(arr: i64, tmp: i64, n: i64, width: i64, lo: i64) -> i64 =
+    if lo >= n { 0 }
+    else {
+        let mid = min_val(lo + width, n);
+        let hi = min_val(lo + width * 2, n);
+        let _c = copy_to_tmp(arr, tmp, lo, hi);
+        let _m = merge_back(arr, tmp, lo, mid, hi, lo, mid, lo);
+        merge_pass_at(arr, tmp, n, width, lo + width * 2)
+    };
+
+// Bottom-up merge sort: merge width 1, 2, 4, 8, ...
+fn merge_sort_width(arr: i64, tmp: i64, n: i64, width: i64) -> i64 =
+    if width >= n { 0 }
+    else {
+        let _mp = merge_pass_at(arr, tmp, n, width, 0);
+        merge_sort_width(arr, tmp, n, width * 2)
+    };
+
+fn merge_sort(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    let tmp = make_zeros(n);
+    let _ms = merge_sort_width(arr, tmp, n, 1);
+    let _f = vec_free(tmp);
+    0
+};
+
+// Check if sorted
+fn is_sorted(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    let mut ok = 1;
+    for i in 0..n {
+        if i + 1 < n {
+            if vec_get(arr, i) > vec_get(arr, i + 1) {
+                ok = 0
+            } else { () }
+        } else { () }
+    };
+    ok
+};
+
+fn main() -> i64 = {
+    // === Test 1: single element ===
+    let v1 = vec_new();
+    let _p = vec_push(v1, 42);
+    let _ms = merge_sort(v1);
+    let _p = println(is_sorted(v1));  // 1
+    let _p = print_vec(v1);           // 42
+
+    // === Test 2: two elements (reversed) ===
+    let v2 = vec_new();
+    let _p = vec_push(v2, 9);
+    let _p = vec_push(v2, 3);
+    let _ms = merge_sort(v2);
+    let _p = println(is_sorted(v2));  // 1
+    let _p = print_vec(v2);           // 3 9
+
+    // === Test 3: five elements (random) ===
+    let v3 = make_vec5(5, 2, 8, 1, 4);
+    let _ms = merge_sort(v3);
+    let _p = println(is_sorted(v3));  // 1
+    let _p = print_vec(v3);           // 1 2 4 5 8
+
+    // === Test 4: ten elements ===
+    let v4 = make_vec10(7, 3, 9, 1, 5, 8, 2, 6, 4, 10);
+    let _ms = merge_sort(v4);
+    let _p = println(is_sorted(v4));  // 1
+    let _p = print_vec(v4);           // 1 2 3 4 5 6 7 8 9 10
+
+    // === Test 5: already sorted ===
+    let v5 = make_vec5(1, 2, 3, 4, 5);
+    let _ms = merge_sort(v5);
+    let _p = println(is_sorted(v5));  // 1
+    let _p = print_vec(v5);           // 1 2 3 4 5
+
+    // === Test 6: reverse sorted ===
+    let v6 = make_vec5(5, 4, 3, 2, 1);
+    let _ms = merge_sort(v6);
+    let _p = println(is_sorted(v6));  // 1
+    let _p = print_vec(v6);           // 1 2 3 4 5
+
+    // === Test 7: all same ===
+    let v7 = make_vec5(7, 7, 7, 7, 7);
+    let _ms = merge_sort(v7);
+    let _p = println(is_sorted(v7));  // 1
+    let _p = print_vec(v7);           // 7 7 7 7 7
+
+    // === Test 8: twenty elements ===
+    let v8 = vec_new();
+    let _p = vec_push(v8, 17);
+    let _p = vec_push(v8, 3);
+    let _p = vec_push(v8, 12);
+    let _p = vec_push(v8, 8);
+    let _p = vec_push(v8, 20);
+    let _p = vec_push(v8, 1);
+    let _p = vec_push(v8, 15);
+    let _p = vec_push(v8, 6);
+    let _p = vec_push(v8, 11);
+    let _p = vec_push(v8, 9);
+    let _p = vec_push(v8, 14);
+    let _p = vec_push(v8, 2);
+    let _p = vec_push(v8, 19);
+    let _p = vec_push(v8, 5);
+    let _p = vec_push(v8, 16);
+    let _p = vec_push(v8, 4);
+    let _p = vec_push(v8, 18);
+    let _p = vec_push(v8, 7);
+    let _p = vec_push(v8, 13);
+    let _p = vec_push(v8, 10);
+    let _ms = merge_sort(v8);
+    let _p = println(is_sorted(v8));  // 1
+    let _p = print_vec(v8);           // 1..20
+
+    // Cleanup
+    let _f = vec_free(v1);
+    let _f = vec_free(v2);
+    let _f = vec_free(v3);
+    let _f = vec_free(v4);
+    let _f = vec_free(v5);
+    let _f = vec_free(v6);
+    let _f = vec_free(v7);
+    let _f = vec_free(v8);
+    0
+};

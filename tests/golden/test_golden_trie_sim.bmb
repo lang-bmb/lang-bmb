@@ -1,0 +1,237 @@
+// Golden Test: Trie simulation using flat arrays
+// Each node has 10 children (digits 0-9) and a word_end flag
+// Node layout: node_id * 11 + child_digit = index of child node_id
+//              node_id * 11 + 10 = word_end flag (0 or 1)
+
+// Create a new trie (returns the trie vec, node 0 is root)
+// Pre-allocate space for max_nodes nodes
+fn trie_new(max_nodes: i64) -> i64 = {
+    let trie = vec_new();
+    // Each node uses 11 slots: 10 children + 1 flag
+    for _i in 0..(max_nodes * 11) {
+        vec_push(trie, 0)
+    };
+    // Initialize all children to -1 (no child)
+    for n in 0..max_nodes {
+        for d in 0..10 {
+            let _s = vec_set(trie, n * 11 + d, 0 - 1);
+            0
+        };
+        0
+    };
+    trie
+    };
+
+// Insert a number (represented as vec of digits) into the trie
+// node_count is a single-element vec holding current node count
+fn trie_insert(trie: i64, digits: i64, num_digits: i64, node_count: i64) -> i64 = {
+    let mut cur = 0;  // Start at root
+    let mut i = 0;
+    loop {
+        if i >= num_digits { break } else { () };
+        let d = vec_get(digits, i);
+        let child_idx = cur * 11 + d;
+        let child = vec_get(trie, child_idx);
+        if child < 0 {
+            // Allocate new node
+            let new_id = vec_get(node_count, 0);
+            let _s = vec_set(node_count, 0, new_id + 1);
+            let _s2 = vec_set(trie, child_idx, new_id);
+            cur = new_id
+        } else {
+            cur = child
+        };
+        i = i + 1
+    };
+    // Mark end of word
+    let _s = vec_set(trie, cur * 11 + 10, 1);
+    0
+    };
+
+// Search for exact match of digits in trie
+// Returns 1 if found, 0 otherwise
+fn trie_search(trie: i64, digits: i64, num_digits: i64) -> i64 = {
+    let mut cur = 0;
+    let mut i = 0;
+    let mut found = 1;
+    loop {
+        if i >= num_digits { break } else { () };
+        let d = vec_get(digits, i);
+        let child = vec_get(trie, cur * 11 + d);
+        if child < 0 {
+            found = 0;
+            break
+        } else {
+            cur = child
+        };
+        i = i + 1
+    };
+    if found == 1 {
+        vec_get(trie, cur * 11 + 10)
+    } else {
+        0
+    }
+    };
+
+// Check if any word in trie starts with given prefix
+// Returns 1 if prefix exists, 0 otherwise
+fn trie_has_prefix(trie: i64, digits: i64, num_digits: i64) -> i64 = {
+    let mut cur = 0;
+    let mut i = 0;
+    let mut ok = 1;
+    loop {
+        if i >= num_digits { break } else { () };
+        let d = vec_get(digits, i);
+        let child = vec_get(trie, cur * 11 + d);
+        if child < 0 {
+            ok = 0;
+            break
+        } else {
+            cur = child
+        };
+        i = i + 1
+    };
+    ok
+    };
+
+// Count words in trie with given prefix (DFS from prefix node)
+// Uses iterative DFS with a stack
+fn trie_count_prefix(trie: i64, digits: i64, num_digits: i64, max_nodes: i64) -> i64 = {
+    // Navigate to prefix node
+    let mut cur = 0;
+    let mut i = 0;
+    let mut ok = 1;
+    loop {
+        if i >= num_digits { break } else { () };
+        let d = vec_get(digits, i);
+        let child = vec_get(trie, cur * 11 + d);
+        if child < 0 {
+            ok = 0;
+            break
+        } else {
+            cur = child
+        };
+        i = i + 1
+    };
+    if ok == 0 { return 0 } else { () };
+    // DFS from cur node
+    let stack = vec_new();
+    vec_push(stack, cur);
+    let mut count = 0;
+    loop {
+        if vec_len(stack) == 0 { break } else { () };
+        let node = vec_get(stack, vec_len(stack) - 1);
+        let _pop = vec_pop(stack);
+        // Check if this node is end of word
+        if vec_get(trie, node * 11 + 10) == 1 {
+            count = count + 1
+        } else { () };
+        // Push children
+        for d in 0..10 {
+            let child = vec_get(trie, node * 11 + d);
+            if child >= 0 {
+                vec_push(stack, child)
+            } else { () }
+        };
+        0
+    };
+    let _f = vec_free(stack);
+    count
+    };
+
+// Helper: make a digit vec from individual digits
+fn digits1(a: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a);
+    v
+    };
+
+fn digits2(a: i64, b: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b);
+    v
+    };
+
+fn digits3(a: i64, b: i64, c: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c);
+    v
+    };
+
+fn digits4(a: i64, b: i64, c: i64, d: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c); vec_push(v, d);
+    v
+    };
+
+fn main() -> i64 = {
+    let max_nodes = 100;
+    let trie = trie_new(max_nodes);
+    let nc = vec_new();
+    vec_push(nc, 1);  // node 0 is root, next id = 1
+
+    // Insert numbers as digit sequences:
+    // 1,2,3 (represents "123")
+    // 1,2,4 ("124")
+    // 1,2   ("12")
+    // 5,6,7 ("567")
+    // 5,6   ("56")
+    // 5,6,7,8 ("5678")
+    // 9     ("9")
+    let d_123 = digits3(1, 2, 3);
+    let d_124 = digits3(1, 2, 4);
+    let d_12 = digits2(1, 2);
+    let d_567 = digits3(5, 6, 7);
+    let d_56 = digits2(5, 6);
+    let d_5678 = digits4(5, 6, 7, 8);
+    let d_9 = digits1(9);
+
+    let _i1 = trie_insert(trie, d_123, 3, nc);
+    let _i2 = trie_insert(trie, d_124, 3, nc);
+    let _i3 = trie_insert(trie, d_12, 2, nc);
+    let _i4 = trie_insert(trie, d_567, 3, nc);
+    let _i5 = trie_insert(trie, d_56, 2, nc);
+    let _i6 = trie_insert(trie, d_5678, 4, nc);
+    let _i7 = trie_insert(trie, d_9, 1, nc);
+
+    // Test 1: exact search
+    let _p1 = println(trie_search(trie, d_123, 3));  // 1 (found)
+    let _p2 = println(trie_search(trie, d_124, 3));  // 1 (found)
+    let _p3 = println(trie_search(trie, d_12, 2));   // 1 (found)
+
+    // Test 2: search for non-existent
+    let d_125 = digits3(1, 2, 5);
+    let _p4 = println(trie_search(trie, d_125, 3));  // 0 (not found)
+    let d_1 = digits1(1);
+    let _p5 = println(trie_search(trie, d_1, 1));    // 0 (prefix exists but not a word)
+
+    // Test 3: prefix check
+    let _p6 = println(trie_has_prefix(trie, d_1, 1));   // 1 (prefix "1" exists)
+    let d_13 = digits2(1, 3);
+    let _p7 = println(trie_has_prefix(trie, d_13, 2));  // 0 (no prefix "13")
+    let d_5 = digits1(5);
+    let _p8 = println(trie_has_prefix(trie, d_5, 1));   // 1 (prefix "5" exists)
+
+    // Test 4: count words with prefix
+    let _p9 = println(trie_count_prefix(trie, d_1, 1, max_nodes));   // 3 (12, 123, 124)
+    let _p10 = println(trie_count_prefix(trie, d_5, 1, max_nodes));  // 3 (56, 567, 5678)
+    let _p11 = println(trie_count_prefix(trie, d_12, 2, max_nodes)); // 3 (12, 123, 124)
+    let _p12 = println(trie_count_prefix(trie, d_56, 2, max_nodes)); // 3 (56, 567, 5678)
+
+    // Test 5: count with exact leaf prefix
+    let _p13 = println(trie_count_prefix(trie, d_123, 3, max_nodes)); // 1 (only "123")
+    let _p14 = println(trie_count_prefix(trie, d_9, 1, max_nodes));   // 1 (only "9")
+
+    // Test 6: total node count (verify structure)
+    let _p15 = println(vec_get(nc, 0));  // number of nodes allocated
+
+    // Cleanup
+    let _f1 = vec_free(trie); let _f2 = vec_free(nc);
+    let _f3 = vec_free(d_123); let _f4 = vec_free(d_124);
+    let _f5 = vec_free(d_12); let _f6 = vec_free(d_567);
+    let _f7 = vec_free(d_56); let _f8 = vec_free(d_5678);
+    let _f9 = vec_free(d_9); let _f10 = vec_free(d_125);
+    let _f11 = vec_free(d_1); let _f12 = vec_free(d_13);
+    let _f13 = vec_free(d_5);
+    0
+    };

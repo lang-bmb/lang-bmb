@@ -1,0 +1,5 @@
+PASS remove_file
+PASS remove_nonexistent
+PASS remove_dir
+PASS recursive_mkdir
+fs-ops: 4/4 tests passed

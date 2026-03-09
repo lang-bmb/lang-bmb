@@ -1,0 +1,122 @@
+// Golden Test: Run-length encoding and decoding
+// Encode sequences into (value, count) pairs using flat arrays
+// All array mutations done in the same scope to avoid pass-by-value issues
+
+fn encoded_size(runs: i64) -> i64 = runs * 2;
+
+fn main() -> i64 = {
+    // === Test 1: Encode [1,1,1,2,2,3] ===
+    let data1 = [1, 1, 1, 2, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    let len1 = 6;
+    let enc1 = [0; 40];
+
+    // RLE encode inline
+    let mut runs1 = 0;
+    let mut cur_val1 = data1[0];
+    let mut cur_cnt1 = 1;
+    let mut i = 1;
+    loop {
+        if i >= len1 { break } else { () };
+        if data1[i] == cur_val1 {
+            cur_cnt1 = cur_cnt1 + 1
+        } else {
+            set enc1[runs1 * 2] = cur_val1;
+            set enc1[runs1 * 2 + 1] = cur_cnt1;
+            runs1 = runs1 + 1;
+            cur_val1 = data1[i];
+            cur_cnt1 = 1
+        };
+        i = i + 1
+    };
+    set enc1[runs1 * 2] = cur_val1;
+    set enc1[runs1 * 2 + 1] = cur_cnt1;
+    runs1 = runs1 + 1;
+
+    let _p1 = println(runs1);         // 3 runs
+    let _p2 = println(enc1[0]);       // val=1
+    let _p3 = println(enc1[1]);       // cnt=3
+    let _p4 = println(enc1[2]);       // val=2
+    let _p5 = println(enc1[3]);       // cnt=2
+
+    // === RLE decode test 1: reconstruct original ===
+    let dec1 = [0; 20];
+    let mut pos1 = 0;
+    let mut r1 = 0;
+    loop {
+        if r1 >= runs1 { break } else { () };
+        let val = enc1[r1 * 2];
+        let cnt = enc1[r1 * 2 + 1];
+        let mut j = 0;
+        loop {
+            if j >= cnt { break } else { () };
+            set dec1[pos1] = val;
+            pos1 = pos1 + 1;
+            j = j + 1
+        };
+        r1 = r1 + 1
+    };
+    let _p6 = println(pos1);          // 6 (reconstructed length)
+
+    // === Test 2: [5,5,5,5,5] -> best case (1 run) ===
+    let data2 = [5, 5, 5, 5, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    let len2 = 5;
+    let mut runs2 = 0;
+    let mut cv2 = data2[0];
+    let mut cc2 = 1;
+    let mut i2 = 1;
+    loop {
+        if i2 >= len2 { break } else { () };
+        if data2[i2] == cv2 { cc2 = cc2 + 1 } else {
+            runs2 = runs2 + 1;
+            cv2 = data2[i2];
+            cc2 = 1
+        };
+        i2 = i2 + 1
+    };
+    runs2 = runs2 + 1;
+    let _p7 = println(runs2);                // 1 run
+    let _p8 = println(encoded_size(runs2));   // 2
+
+    // === Test 3: [1,2,3,4] -> worst case (4 runs) ===
+    let data3 = [1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    let len3 = 4;
+    let mut runs3 = 0;
+    let mut cv3 = data3[0];
+    let mut cc3 = 1;
+    let mut i3 = 1;
+    loop {
+        if i3 >= len3 { break } else { () };
+        if data3[i3] == cv3 { cc3 = cc3 + 1 } else {
+            runs3 = runs3 + 1;
+            cv3 = data3[i3];
+            cc3 = 1
+        };
+        i3 = i3 + 1
+    };
+    runs3 = runs3 + 1;
+    let _p9 = println(runs3);                // 4 runs
+    let _p10 = println(encoded_size(runs3));  // 8
+
+    // === Test 4: Compression ratio check ===
+    // [3,3,3,3,3,3,3,3,3,3] (10 same) -> 1 run, ratio = 10/2 = 5
+    let data4 = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    let len4 = 10;
+    let mut runs4 = 0;
+    let mut cv4 = data4[0];
+    let mut cc4 = 1;
+    let mut i4 = 1;
+    loop {
+        if i4 >= len4 { break } else { () };
+        if data4[i4] == cv4 { cc4 = cc4 + 1 } else {
+            runs4 = runs4 + 1;
+            cv4 = data4[i4];
+            cc4 = 1
+        };
+        i4 = i4 + 1
+    };
+    runs4 = runs4 + 1;
+    let ratio = len4 / encoded_size(runs4);
+    let _p11 = println(ratio);               // 10/2 = 5
+
+    0
+    };

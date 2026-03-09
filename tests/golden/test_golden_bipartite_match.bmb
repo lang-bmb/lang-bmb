@@ -1,0 +1,87 @@
+// Golden Test: Maximum Bipartite Matching (Hungarian DFS)
+// Finds maximum matching in bipartite graph
+
+fn try_augment(adj: i64, adj_size: i64, n_left: i64, n_right: i64, u: i64, visited: i64, match_right: i64) -> i64 = {
+    let deg = vec_get(adj_size, u);
+    let base = u * n_right;
+    let mut i = 0;
+    let mut found = 0;
+    while i < deg and found == 0 {
+        let v = vec_get(adj, base + i);
+        let _x = if vec_get(visited, v) == 0 {
+            vec_set(visited, v, 1);
+            let mr = vec_get(match_right, v);
+            let _y = if mr == 0 - 1 or try_augment(adj, adj_size, n_left, n_right, mr, visited, match_right) == 1 {
+                vec_set(match_right, v, u);
+                set found = 1;
+                0
+            } else { 0 };
+            0
+        } else { 0 };
+        set i = i + 1
+    };
+    found
+};
+
+fn max_matching(adj: i64, adj_size: i64, n_left: i64, n_right: i64) -> i64 = {
+    let match_right = vec_new();
+    let mut i = 0;
+    while i < n_right {
+        let _p = vec_push(match_right, 0 - 1);
+        set i = i + 1
+    };
+    let mut result = 0;
+    set i = 0;
+    while i < n_left {
+        let visited = vec_new();
+        let mut j = 0;
+        while j < n_right {
+            let _p = vec_push(visited, 0);
+            set j = j + 1
+        };
+        set result = result + try_augment(adj, adj_size, n_left, n_right, i, visited, match_right);
+        set i = i + 1
+    };
+    result
+};
+
+fn add_bip_edge(adj: i64, adj_size: i64, n_right: i64, u: i64, v: i64) -> () = {
+    let deg = vec_get(adj_size, u);
+    vec_set(adj, u * n_right + deg, v);
+    vec_set(adj_size, u, deg + 1)
+};
+
+fn main() -> () = {
+    // Test 1: 3x3 bipartite, perfect matching = 3
+    let nl = 3;
+    let nr = 3;
+    let adj = vec_new();
+    let adj_size = vec_new();
+    let mut i = 0;
+    while i < nl * nr { let _p = vec_push(adj, 0); set i = i + 1 };
+    set i = 0;
+    while i < nl { let _p = vec_push(adj_size, 0); set i = i + 1 };
+    add_bip_edge(adj, adj_size, nr, 0, 0);
+    add_bip_edge(adj, adj_size, nr, 0, 1);
+    add_bip_edge(adj, adj_size, nr, 1, 0);
+    add_bip_edge(adj, adj_size, nr, 1, 2);
+    add_bip_edge(adj, adj_size, nr, 2, 1);
+    print_str("match1="); let _r = println(max_matching(adj, adj_size, nl, nr));
+
+    // Test 2: 4x4, max matching = 3
+    let nl2 = 4;
+    let nr2 = 4;
+    let adj2 = vec_new();
+    let adj_size2 = vec_new();
+    set i = 0;
+    while i < nl2 * nr2 { let _p = vec_push(adj2, 0); set i = i + 1 };
+    set i = 0;
+    while i < nl2 { let _p = vec_push(adj_size2, 0); set i = i + 1 };
+    add_bip_edge(adj2, adj_size2, nr2, 0, 0);
+    add_bip_edge(adj2, adj_size2, nr2, 1, 0);
+    add_bip_edge(adj2, adj_size2, nr2, 1, 1);
+    add_bip_edge(adj2, adj_size2, nr2, 2, 1);
+    add_bip_edge(adj2, adj_size2, nr2, 2, 2);
+    add_bip_edge(adj2, adj_size2, nr2, 3, 3);
+    print_str("match2="); let _r = println(max_matching(adj2, adj_size2, nl2, nr2))
+};

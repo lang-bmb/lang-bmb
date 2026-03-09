@@ -1,0 +1,40 @@
+// Test: Memory Load CSE optimization
+// Verifies that the optimizer can eliminate redundant memory operations.
+// Uses vec_get/vec_set which generate load/store MIR patterns.
+
+fn main() -> i64 = {
+    // Create arrays
+    let arr = vec_new(4);
+    let _s0 = vec_set(arr, 0, 10);
+    let _s1 = vec_set(arr, 1, 20);
+    let _s2 = vec_set(arr, 2, 30);
+    let _s3 = vec_set(arr, 3, 40);
+
+    // Read same index twice — potential CSE opportunity
+    let a = vec_get(arr, 2);
+    let b = vec_get(arr, 2);
+    println(a);
+    println(b);
+    println(a + b);
+
+    // Different indices — no CSE
+    let c = vec_get(arr, 0);
+    let d = vec_get(arr, 3);
+    println(c);
+    println(d);
+
+    // Store invalidates — no CSE across store
+    let e = vec_get(arr, 1);
+    let _w = vec_set(arr, 1, 99);
+    let f = vec_get(arr, 1);
+    println(e);
+    println(f);
+
+    // Same index again after store
+    let g = vec_get(arr, 0);
+    let h = vec_get(arr, 0);
+    println(g);
+    println(h);
+
+    0
+};

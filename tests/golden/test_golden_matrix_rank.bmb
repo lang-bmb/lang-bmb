@@ -1,0 +1,225 @@
+// Golden test: Matrix rank computation via Gaussian elimination
+// Uses scaled integer arithmetic (multiply by SCALE=10000) to avoid floating point
+// Matrix stored as flat vec: mat[i*cols + j] with scaled values
+
+fn scale() -> i64 = 10000;
+
+// Matrix access helpers
+fn mat_get(mat: i64, cols: i64, row: i64, col: i64) -> i64 =
+    vec_get(mat, row * cols + col);
+
+fn mat_set(mat: i64, cols: i64, row: i64, col: i64, val: i64) -> i64 = {
+    let _s = vec_set(mat, row * cols + col, val);
+    0
+    };
+
+// Absolute value
+fn abs_val(x: i64) -> i64 =
+    if x < 0 { 0 - x } else { x };
+
+// Find pivot row: row with largest absolute value in column col, starting from row start_row
+fn find_pivot(mat: i64, cols: i64, rows: i64, col: i64, start_row: i64) -> i64 = {
+    let mut best_row = 0 - 1;
+    let mut best_val = 0;
+    for r in start_row..rows {
+        let v = abs_val(mat_get(mat, cols, r, col));
+        if v > best_val {
+            set best_val = v;
+            set best_row = r
+        } else { () };
+        0
+    };
+    best_row
+    };
+
+// Swap two rows in the matrix
+fn swap_rows(mat: i64, cols: i64, r1: i64, r2: i64) -> i64 = {
+    if r1 == r2 { 0 }
+    else {
+        for c in 0..cols {
+            let tmp = mat_get(mat, cols, r1, c);
+            let _s1 = mat_set(mat, cols, r1, c, mat_get(mat, cols, r2, c));
+            let _s2 = mat_set(mat, cols, r2, c, tmp);
+            0
+        };
+        0
+    }
+    };
+
+// Eliminate column col in all rows below pivot_row
+// For each row r > pivot_row: row[r] = row[r] - (row[r][col] / row[pivot_row][col]) * row[pivot_row]
+// Using scaled arithmetic: factor = mat[r][col] * SCALE / mat[pivot_row][col]
+// Then mat[r][c] = mat[r][c] - factor * mat[pivot_row][c] / SCALE
+fn eliminate_below(mat: i64, cols: i64, rows: i64, pivot_row: i64, col: i64) -> i64 = {
+    let pivot_val = mat_get(mat, cols, pivot_row, col);
+    for r in (pivot_row + 1)..rows {
+        let cur_val = mat_get(mat, cols, r, col);
+        if cur_val != 0 {
+            // Eliminate: row[r] = row[r] * pivot_val - row[pivot_row] * cur_val
+            // This avoids division entirely
+            for c in 0..cols {
+                let new_val = mat_get(mat, cols, r, c) * pivot_val - mat_get(mat, cols, pivot_row, c) * cur_val;
+                let _s = mat_set(mat, cols, r, c, new_val);
+                0
+            }
+        } else { () };
+        0
+    };
+    0
+    };
+
+// Gaussian elimination to compute rank
+// Returns the number of non-zero rows (= rank)
+fn compute_rank(mat: i64, rows: i64, cols: i64) -> i64 = {
+    let mut current_row = 0;
+    for col in 0..cols {
+        if current_row < rows {
+            // Find pivot
+            let pivot = find_pivot(mat, cols, rows, col, current_row);
+            if pivot >= 0 {
+                // Swap pivot row to current_row
+                let _sw = swap_rows(mat, cols, current_row, pivot);
+                // Eliminate below
+                let _el = eliminate_below(mat, cols, rows, current_row, col);
+                set current_row = current_row + 1
+            } else { () }
+        } else { () };
+        0
+    };
+    current_row
+    };
+
+// Create a matrix from flat values
+fn make_mat(vals: i64, n: i64) -> i64 = {
+    let mat = vec_new();
+    for i in 0..n {
+        let _p = vec_push(mat, vec_get(vals, i));
+        0
+    };
+    mat
+    };
+
+fn main() -> i64 = {
+    // --- Test 1: 3x3 full rank matrix ---
+    // [1 2 3]
+    // [4 5 6]
+    // [7 8 0]  (not linearly dependent)
+    let v1 = vec_new();
+    let _a0 = vec_push(v1, 1); let _a1 = vec_push(v1, 2); let _a2 = vec_push(v1, 3);
+    let _a3 = vec_push(v1, 4); let _a4 = vec_push(v1, 5); let _a5 = vec_push(v1, 6);
+    let _a6 = vec_push(v1, 7); let _a7 = vec_push(v1, 8); let _a8 = vec_push(v1, 0);
+    let m1 = make_mat(v1, 9);
+    let r1 = compute_rank(m1, 3, 3);
+    let _p1 = println(r1);  // 3
+
+    // --- Test 2: 3x3 rank 2 (row 3 = row 1 + row 2) ---
+    // [1 2 3]
+    // [4 5 6]
+    // [5 7 9]  = row1 + row2
+    let v2 = vec_new();
+    let _b0 = vec_push(v2, 1); let _b1 = vec_push(v2, 2); let _b2 = vec_push(v2, 3);
+    let _b3 = vec_push(v2, 4); let _b4 = vec_push(v2, 5); let _b5 = vec_push(v2, 6);
+    let _b6 = vec_push(v2, 5); let _b7 = vec_push(v2, 7); let _b8 = vec_push(v2, 9);
+    let m2 = make_mat(v2, 9);
+    let r2 = compute_rank(m2, 3, 3);
+    let _p2 = println(r2);  // 2
+
+    // --- Test 3: 3x3 rank 1 (all rows proportional) ---
+    // [2 4 6]
+    // [1 2 3]
+    // [3 6 9]
+    let v3 = vec_new();
+    let _c0 = vec_push(v3, 2); let _c1 = vec_push(v3, 4); let _c2 = vec_push(v3, 6);
+    let _c3 = vec_push(v3, 1); let _c4 = vec_push(v3, 2); let _c5 = vec_push(v3, 3);
+    let _c6 = vec_push(v3, 3); let _c7 = vec_push(v3, 6); let _c8 = vec_push(v3, 9);
+    let m3 = make_mat(v3, 9);
+    let r3 = compute_rank(m3, 3, 3);
+    let _p3 = println(r3);  // 1
+
+    // --- Test 4: 3x3 zero matrix (rank 0) ---
+    let v4 = vec_new();
+    for _i in 0..9 { let _p = vec_push(v4, 0); 0 };
+    let m4 = make_mat(v4, 9);
+    let r4 = compute_rank(m4, 3, 3);
+    let _p4 = println(r4);  // 0
+
+    // --- Test 5: 3x3 identity (rank 3) ---
+    let v5 = vec_new();
+    let _d0 = vec_push(v5, 1); let _d1 = vec_push(v5, 0); let _d2 = vec_push(v5, 0);
+    let _d3 = vec_push(v5, 0); let _d4 = vec_push(v5, 1); let _d5 = vec_push(v5, 0);
+    let _d6 = vec_push(v5, 0); let _d7 = vec_push(v5, 0); let _d8 = vec_push(v5, 1);
+    let m5 = make_mat(v5, 9);
+    let r5 = compute_rank(m5, 3, 3);
+    let _p5 = println(r5);  // 3
+
+    // --- Test 6: 4x3 matrix (more rows than columns), rank 2 ---
+    // [1 0 1]
+    // [0 1 1]
+    // [1 1 2]  = row1 + row2
+    // [2 1 3]  = 2*row1 + row2
+    let v6 = vec_new();
+    let _e0 = vec_push(v6, 1); let _e1 = vec_push(v6, 0); let _e2 = vec_push(v6, 1);
+    let _e3 = vec_push(v6, 0); let _e4 = vec_push(v6, 1); let _e5 = vec_push(v6, 1);
+    let _e6 = vec_push(v6, 1); let _e7 = vec_push(v6, 1); let _e8 = vec_push(v6, 2);
+    let _e9 = vec_push(v6, 2); let _e10 = vec_push(v6, 1); let _e11 = vec_push(v6, 3);
+    let m6 = make_mat(v6, 12);
+    let r6 = compute_rank(m6, 4, 3);
+    let _p6 = println(r6);  // 2
+
+    // --- Test 7: 2x4 matrix (more columns than rows), rank 2 ---
+    // [1 2 3 4]
+    // [5 6 7 8]
+    let v7 = vec_new();
+    let _f0 = vec_push(v7, 1); let _f1 = vec_push(v7, 2);
+    let _f2 = vec_push(v7, 3); let _f3 = vec_push(v7, 4);
+    let _f4 = vec_push(v7, 5); let _f5 = vec_push(v7, 6);
+    let _f6 = vec_push(v7, 7); let _f7 = vec_push(v7, 8);
+    let m7 = make_mat(v7, 8);
+    let r7 = compute_rank(m7, 2, 4);
+    let _p7 = println(r7);  // 2
+
+    // --- Test 8: 4x4 rank 3 ---
+    // [1 2 0 1]
+    // [0 1 1 0]
+    // [1 3 1 1]  = row1 + row2
+    // [2 5 1 2]  = row1 + row3 = 2*row1 + row2
+    let v8 = vec_new();
+    let _g0 = vec_push(v8, 1); let _g1 = vec_push(v8, 2);
+    let _g2 = vec_push(v8, 0); let _g3 = vec_push(v8, 1);
+    let _g4 = vec_push(v8, 0); let _g5 = vec_push(v8, 1);
+    let _g6 = vec_push(v8, 1); let _g7 = vec_push(v8, 0);
+    let _g8 = vec_push(v8, 1); let _g9 = vec_push(v8, 3);
+    let _g10 = vec_push(v8, 1); let _g11 = vec_push(v8, 1);
+    let _g12 = vec_push(v8, 2); let _g13 = vec_push(v8, 5);
+    let _g14 = vec_push(v8, 1); let _g15 = vec_push(v8, 2);
+    let m8 = make_mat(v8, 16);
+    let r8 = compute_rank(m8, 4, 4);
+    let _p8 = println(r8);  // 2
+
+    // --- Test 9: 1x1 non-zero ---
+    let v9 = vec_new();
+    let _h0 = vec_push(v9, 42);
+    let m9 = make_mat(v9, 1);
+    let r9 = compute_rank(m9, 1, 1);
+    let _p9 = println(r9);  // 1
+
+    // --- Test 10: 1x1 zero ---
+    let v10 = vec_new();
+    let _i0 = vec_push(v10, 0);
+    let m10 = make_mat(v10, 1);
+    let r10 = compute_rank(m10, 1, 1);
+    let _p10 = println(r10);  // 0
+
+    // Cleanup
+    let _fv1 = vec_free(v1); let _fm1 = vec_free(m1);
+    let _fv2 = vec_free(v2); let _fm2 = vec_free(m2);
+    let _fv3 = vec_free(v3); let _fm3 = vec_free(m3);
+    let _fv4 = vec_free(v4); let _fm4 = vec_free(m4);
+    let _fv5 = vec_free(v5); let _fm5 = vec_free(m5);
+    let _fv6 = vec_free(v6); let _fm6 = vec_free(m6);
+    let _fv7 = vec_free(v7); let _fm7 = vec_free(m7);
+    let _fv8 = vec_free(v8); let _fm8 = vec_free(m8);
+    let _fv9 = vec_free(v9); let _fm9 = vec_free(m9);
+    let _fv10 = vec_free(v10); let _fm10 = vec_free(m10);
+    0
+    };

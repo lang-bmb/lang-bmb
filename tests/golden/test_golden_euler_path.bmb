@@ -1,0 +1,295 @@
+// Golden test: Euler path/circuit detection and construction
+// An Euler circuit visits every edge exactly once and returns to start
+// An Euler path visits every edge exactly once (start != end)
+// Conditions (undirected):
+//   - Circuit: all vertices have even degree, graph is connected
+//   - Path: exactly 2 vertices have odd degree, graph is connected
+// Uses Hierholzer's algorithm for construction
+
+// Graph as adjacency matrix (n*n), with edge counts (supports multigraph)
+fn adj_get(adj: i64, n: i64, u: i64, v: i64) -> i64 =
+    vec_get(adj, u * n + v);
+
+fn adj_set(adj: i64, n: i64, u: i64, v: i64, val: i64) -> i64 = {
+    vec_set(adj, u * n + v, val);
+    0
+    };
+
+// Create n*n zero matrix
+fn make_matrix(n: i64) -> i64 = {
+    let m = vec_new();
+    for _i in 0..(n * n) { vec_push(m, 0) };
+    m
+    };
+
+// Add undirected edge (increment both adj[u][v] and adj[v][u])
+fn add_undirected_edge(adj: i64, n: i64, u: i64, v: i64) -> i64 = {
+    let cur_uv = adj_get(adj, n, u, v);
+    let _s1 = adj_set(adj, n, u, v, cur_uv + 1);
+    let cur_vu = adj_get(adj, n, v, u);
+    let _s2 = adj_set(adj, n, v, u, cur_vu + 1);
+    0
+    };
+
+// Compute degree of vertex u
+fn degree(adj: i64, n: i64, u: i64) -> i64 = {
+    let mut d = 0;
+    for v in 0..n {
+        d = d + adj_get(adj, n, u, v)
+    };
+    d
+    };
+
+// Count vertices with odd degree
+fn count_odd_degree(adj: i64, n: i64) -> i64 = {
+    let mut count = 0;
+    for u in 0..n {
+        let d = degree(adj, n, u);
+        let rem = d - (d / 2) * 2;
+        if rem != 0 { count = count + 1 } else { () }
+    };
+    count
+    };
+
+// Count vertices with non-zero degree
+fn count_nontrivial(adj: i64, n: i64) -> i64 = {
+    let mut count = 0;
+    for u in 0..n {
+        if degree(adj, n, u) > 0 { count = count + 1 } else { () }
+    };
+    count
+    };
+
+// Total number of edges (sum of all entries / 2 for undirected)
+fn total_edges(adj: i64, n: i64) -> i64 = {
+    let mut s = 0;
+    for i in 0..(n * n) {
+        s = s + vec_get(adj, i)
+    };
+    s / 2
+    };
+
+// DFS connectivity check (on vertices with non-zero degree)
+fn dfs_mark(adj: i64, n: i64, visited: i64, u: i64) -> i64 = {
+    vec_set(visited, u, 1);
+    let mut v = 0;
+    loop {
+        if v >= n { break } else { () };
+        if adj_get(adj, n, u, v) > 0 and vec_get(visited, v) == 0 {
+            let _r = dfs_mark(adj, n, visited, v);
+            ()
+        } else { () };
+        v = v + 1
+    };
+    0
+    };
+
+fn is_connected(adj: i64, n: i64) -> i64 = {
+    // Find first vertex with non-zero degree
+    let mut start = 0 - 1;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        if degree(adj, n, i) > 0 and start < 0 {
+            start = i;
+            i = n  // break
+        } else {
+            i = i + 1
+        }
+    };
+    if start < 0 { 1 }  // no edges, trivially connected
+    else {
+        let visited = vec_new();
+        for _j in 0..n { vec_push(visited, 0) };
+        let _r = dfs_mark(adj, n, visited, start);
+        // Check all non-zero degree vertices are visited
+        let mut ok = 1;
+        for u in 0..n {
+            if degree(adj, n, u) > 0 and vec_get(visited, u) == 0 {
+                ok = 0
+            } else { () }
+        };
+        ok
+    }
+    };
+
+// Check if Euler circuit exists
+fn has_euler_circuit(adj: i64, n: i64) -> i64 = {
+    let odd = count_odd_degree(adj, n);
+    let conn = is_connected(adj, n);
+    if odd == 0 and conn == 1 { 1 } else { 0 }
+    };
+
+// Check if Euler path exists (but not circuit)
+fn has_euler_path(adj: i64, n: i64) -> i64 = {
+    let odd = count_odd_degree(adj, n);
+    let conn = is_connected(adj, n);
+    if odd == 2 and conn == 1 { 1 } else { 0 }
+    };
+
+// Find start vertex for Euler path (one of the odd-degree vertices)
+fn find_odd_vertex(adj: i64, n: i64) -> i64 = {
+    let mut result = 0;
+    for u in 0..n {
+        let d = degree(adj, n, u);
+        let rem = d - (d / 2) * 2;
+        if rem != 0 and result == 0 { result = u + 1 } else { () }
+    };
+    result - 1
+    };
+
+// Hierholzer's algorithm: construct Euler path/circuit
+// Uses a stack-based approach with a working copy of the adjacency matrix
+fn hierholzer(adj: i64, n: i64, start: i64) -> i64 = {
+    // Copy adjacency matrix
+    let work = vec_new();
+    for i in 0..(n * n) { vec_push(work, vec_get(adj, i)) };
+
+    let stack = vec_new();
+    let path = vec_new();
+    vec_push(stack, start);
+
+    loop {
+        if vec_len(stack) == 0 { break } else { () };
+        let top = vec_get(stack, vec_len(stack) - 1);
+        // Find an unused edge from top
+        let mut found = 0 - 1;
+        let mut v = 0;
+        loop {
+            if v >= n { break } else { () };
+            if vec_get(work, top * n + v) > 0 and found < 0 {
+                found = v;
+                v = n  // break
+            } else {
+                v = v + 1
+            }
+        };
+        if found >= 0 {
+            // Remove edge (decrement both directions)
+            let cur1 = vec_get(work, top * n + found);
+            vec_set(work, top * n + found, cur1 - 1);
+            let cur2 = vec_get(work, found * n + top);
+            vec_set(work, found * n + top, cur2 - 1);
+            vec_push(stack, found);
+            ()
+        } else {
+            // No more edges from top, pop and add to path
+            let node = vec_pop(stack);
+            vec_push(path, node);
+            ()
+        }
+    };
+    path
+    };
+
+// Verify Euler path: check it uses exactly all edges
+fn verify_path_length(path: i64, expected_edges: i64) -> i64 = {
+    // Path length should be expected_edges + 1
+    if vec_len(path) == expected_edges + 1 { 1 } else { 0 }
+    };
+
+// Check if path is a circuit (first == last)
+fn is_circuit(path: i64) -> i64 = {
+    let len = vec_len(path);
+    if len < 2 { 0 }
+    else if vec_get(path, 0) == vec_get(path, len - 1) { 1 }
+    else { 0 }
+    };
+
+fn main() -> i64 = {
+    // Test 1: Triangle (3 nodes, 3 edges) - Euler circuit exists
+    // 0-1, 1-2, 2-0
+    let n1 = 3;
+    let adj1 = make_matrix(n1);
+    let _e1 = add_undirected_edge(adj1, n1, 0, 1);
+    let _e2 = add_undirected_edge(adj1, n1, 1, 2);
+    let _e3 = add_undirected_edge(adj1, n1, 2, 0);
+
+    let _p1 = println(total_edges(adj1, n1));           // 3
+    let _p2 = println(count_odd_degree(adj1, n1));      // 0 (all even degree 2)
+    let _p3 = println(is_connected(adj1, n1));           // 1
+    let _p4 = println(has_euler_circuit(adj1, n1));      // 1
+    let _p5 = println(has_euler_path(adj1, n1));         // 0 (circuit, not just path)
+
+    // Construct Euler circuit
+    let path1 = hierholzer(adj1, n1, 0);
+    let _p6 = println(vec_len(path1));                   // 4 (3 edges + 1)
+    let _p7 = println(verify_path_length(path1, 3));     // 1
+    let _p8 = println(is_circuit(path1));                // 1
+
+    // Test 2: Path graph 0-1-2-3 (4 nodes, 3 edges) - Euler path (not circuit)
+    // Vertices 0 and 3 have odd degree (1)
+    let n2 = 4;
+    let adj2 = make_matrix(n2);
+    let _e4 = add_undirected_edge(adj2, n2, 0, 1);
+    let _e5 = add_undirected_edge(adj2, n2, 1, 2);
+    let _e6 = add_undirected_edge(adj2, n2, 2, 3);
+
+    let _p9 = println(total_edges(adj2, n2));            // 3
+    let _p10 = println(count_odd_degree(adj2, n2));      // 2
+    let _p11 = println(has_euler_circuit(adj2, n2));      // 0
+    let _p12 = println(has_euler_path(adj2, n2));         // 1
+
+    // Construct Euler path starting from odd vertex
+    let start2 = find_odd_vertex(adj2, n2);
+    let _p13 = println(start2);                          // 0 (first odd vertex)
+    let path2 = hierholzer(adj2, n2, start2);
+    let _p14 = println(vec_len(path2));                  // 4 (3 edges + 1)
+    let _p15 = println(verify_path_length(path2, 3));    // 1
+    let _p16 = println(is_circuit(path2));               // 0
+
+    // Test 3: Square with diagonals (K4 minus one edge)
+    // 0-1, 1-2, 2-3, 3-0, 0-2 (5 edges)
+    // Degrees: 0:3, 1:2, 2:3, 3:2 -> 2 odd -> Euler path
+    let n3 = 4;
+    let adj3 = make_matrix(n3);
+    let _e7 = add_undirected_edge(adj3, n3, 0, 1);
+    let _e8 = add_undirected_edge(adj3, n3, 1, 2);
+    let _e9 = add_undirected_edge(adj3, n3, 2, 3);
+    let _e10 = add_undirected_edge(adj3, n3, 3, 0);
+    let _e11 = add_undirected_edge(adj3, n3, 0, 2);
+
+    let _p17 = println(degree(adj3, n3, 0));             // 3
+    let _p18 = println(degree(adj3, n3, 1));             // 2
+    let _p19 = println(total_edges(adj3, n3));           // 5
+    let _p20 = println(has_euler_path(adj3, n3));        // 1
+    let _p21 = println(has_euler_circuit(adj3, n3));     // 0
+
+    let start3 = find_odd_vertex(adj3, n3);
+    let path3 = hierholzer(adj3, n3, start3);
+    let _p22 = println(verify_path_length(path3, 5));    // 1
+
+    // Test 4: Disconnected graph - no Euler path/circuit
+    let n4 = 4;
+    let adj4 = make_matrix(n4);
+    let _e12 = add_undirected_edge(adj4, n4, 0, 1);
+    let _e13 = add_undirected_edge(adj4, n4, 2, 3);
+    // Two components: {0,1} and {2,3}
+
+    let _p23 = println(is_connected(adj4, n4));          // 0
+    let _p24 = println(has_euler_circuit(adj4, n4));     // 0
+    let _p25 = println(has_euler_path(adj4, n4));        // 0
+
+    // Test 5: Complete graph K4 (all pairs connected)
+    // 6 edges, all vertices degree 3 -> 4 odd vertices -> no Euler path/circuit
+    let n5 = 4;
+    let adj5 = make_matrix(n5);
+    let _e14 = add_undirected_edge(adj5, n5, 0, 1);
+    let _e15 = add_undirected_edge(adj5, n5, 0, 2);
+    let _e16 = add_undirected_edge(adj5, n5, 0, 3);
+    let _e17 = add_undirected_edge(adj5, n5, 1, 2);
+    let _e18 = add_undirected_edge(adj5, n5, 1, 3);
+    let _e19 = add_undirected_edge(adj5, n5, 2, 3);
+
+    let _p26 = println(total_edges(adj5, n5));           // 6
+    let _p27 = println(count_odd_degree(adj5, n5));      // 4
+    let _p28 = println(has_euler_circuit(adj5, n5));     // 0
+    let _p29 = println(has_euler_path(adj5, n5));        // 0
+
+    // Test 6: Single vertex, no edges -> trivially has Euler circuit
+    let n6 = 1;
+    let adj6 = make_matrix(n6);
+    let _p30 = println(has_euler_circuit(adj6, n6));     // 1 (0 odd, connected)
+
+    0
+    };

@@ -1,0 +1,91 @@
+// Golden Test: Various sequence summations
+// Sum of squares, sum of cubes, alternating sums, triangular numbers
+
+// Sum of first n squares: 1^2 + 2^2 + ... + n^2
+fn sum_squares(n: i64) -> i64 = {
+    let mut total = 0;
+    let mut i = 1;
+    loop {
+        if i > n { break } else { () };
+        total = total + i * i;
+        i = i + 1
+    };
+    total
+    };
+
+// Sum of first n cubes: 1^3 + 2^3 + ... + n^3
+fn sum_cubes(n: i64) -> i64 = {
+    let mut total = 0;
+    let mut i = 1;
+    loop {
+        if i > n { break } else { () };
+        total = total + i * i * i;
+        i = i + 1
+    };
+    total
+    };
+
+// Alternating sum: 1 - 2 + 3 - 4 + ... +/- n
+fn alternating_sum(n: i64) -> i64 = {
+    let mut total = 0;
+    let mut i = 1;
+    loop {
+        if i > n { break } else { () };
+        if i % 2 == 1 { total = total + i } else { total = total - i };
+        i = i + 1
+    };
+    total
+    };
+
+// n-th triangular number: n*(n+1)/2
+fn triangular(n: i64) -> i64 = n * (n + 1) / 2;
+
+// Sum of first n triangular numbers: T(1) + T(2) + ... + T(n)
+// = n*(n+1)*(n+2)/6
+fn sum_triangular(n: i64) -> i64 = {
+    let mut total = 0;
+    let mut i = 1;
+    loop {
+        if i > n { break } else { () };
+        total = total + triangular(i);
+        i = i + 1
+    };
+    total
+    };
+
+fn main() -> i64 = {
+    // Sum of squares: 1+4+9+16+25+36+49+64+81+100 = 385
+    let _p1 = println(sum_squares(10));        // 385
+
+    // Sum of squares: 1+4+9+16+25 = 55
+    let _p2 = println(sum_squares(5));         // 55
+
+    // Sum of squares edge: 0
+    let _p3 = println(sum_squares(0));         // 0
+
+    // Sum of cubes: 1+8+27+64+125 = 225
+    let _p4 = println(sum_cubes(5));           // 225
+
+    // Sum of cubes: 1+8+27+64 = 100
+    let _p5 = println(sum_cubes(4));           // 100
+
+    // Alternating sum: 1-2+3-4+5-6+7 = 4
+    let _p6 = println(alternating_sum(7));     // 4
+
+    // Alternating sum: 1-2+3-4+5-6+7-8+9-10 = -5
+    let _p7 = println(alternating_sum(10));    // -5
+
+    // Alternating sum: 1 = 1
+    let _p8 = println(alternating_sum(1));     // 1
+
+    // Triangular numbers: T(7) = 7*8/2 = 28
+    let _p9 = println(triangular(7));          // 28
+
+    // Sum of first 5 triangular numbers: T(1)+T(2)+T(3)+T(4)+T(5) = 1+3+6+10+15 = 35
+    let _p10 = println(sum_triangular(5));     // 35
+
+    // Sum of first 10 triangular numbers: 1+3+6+10+15+21+28+36+45+55 = 220
+    let _p11 = println(sum_triangular(10));    // 220
+
+    0
+    };

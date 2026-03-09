@@ -1,0 +1,186 @@
+// Golden Test: Roman Numeral Value Computation
+// Encode integers as roman-like digit sequences and compute values
+// Using integer arrays to represent roman numeral strings
+
+// Convert a single roman digit code to its value
+// 1=I, 5=V, 10=X, 50=L, 100=C, 500=D, 1000=M
+fn roman_val(code: i64) -> i64 = {
+    if code == 1 { 1 }
+    else if code == 5 { 5 }
+    else if code == 10 { 10 }
+    else if code == 50 { 50 }
+    else if code == 100 { 100 }
+    else if code == 500 { 500 }
+    else if code == 1000 { 1000 }
+    else { 0 }
+};
+
+// Parse a roman numeral (stored as vec of digit codes) into integer
+// Rule: if a smaller value precedes a larger, subtract it; else add
+fn roman_to_int(v: i64) -> i64 = {
+    let n = vec_len(v);
+    if n == 0 { return 0 } else { () };
+    let mut total = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let cur = roman_val(vec_get(v, i));
+        let next_val = if i + 1 < n { roman_val(vec_get(v, i + 1)) } else { 0 };
+        if cur < next_val {
+            total = total - cur
+        } else {
+            total = total + cur
+        };
+        i = i + 1
+    };
+    total
+};
+
+// Convert integer to roman numeral codes (push codes into dst vec)
+// Returns number of digits pushed
+fn int_to_roman(n: i64, dst: i64) -> i64 = {
+    let mut rem = n;
+    let mut count = 0;
+    // 1000s
+    loop {
+        if rem < 1000 { break } else { () };
+        vec_push(dst, 1000);
+        count = count + 1;
+        rem = rem - 1000
+    };
+    // 900 = CM
+    if rem >= 900 {
+        vec_push(dst, 100); vec_push(dst, 1000);
+        count = count + 2;
+        rem = rem - 900
+    } else { () };
+    // 500
+    if rem >= 500 {
+        vec_push(dst, 500);
+        count = count + 1;
+        rem = rem - 500
+    } else { () };
+    // 400 = CD
+    if rem >= 400 {
+        vec_push(dst, 100); vec_push(dst, 500);
+        count = count + 2;
+        rem = rem - 400
+    } else { () };
+    // 100s
+    loop {
+        if rem < 100 { break } else { () };
+        vec_push(dst, 100);
+        count = count + 1;
+        rem = rem - 100
+    };
+    // 90 = XC
+    if rem >= 90 {
+        vec_push(dst, 10); vec_push(dst, 100);
+        count = count + 2;
+        rem = rem - 90
+    } else { () };
+    // 50
+    if rem >= 50 {
+        vec_push(dst, 50);
+        count = count + 1;
+        rem = rem - 50
+    } else { () };
+    // 40 = XL
+    if rem >= 40 {
+        vec_push(dst, 10); vec_push(dst, 50);
+        count = count + 2;
+        rem = rem - 40
+    } else { () };
+    // 10s
+    loop {
+        if rem < 10 { break } else { () };
+        vec_push(dst, 10);
+        count = count + 1;
+        rem = rem - 10
+    };
+    // 9 = IX
+    if rem >= 9 {
+        vec_push(dst, 1); vec_push(dst, 10);
+        count = count + 2;
+        rem = rem - 9
+    } else { () };
+    // 5
+    if rem >= 5 {
+        vec_push(dst, 5);
+        count = count + 1;
+        rem = rem - 5
+    } else { () };
+    // 4 = IV
+    if rem >= 4 {
+        vec_push(dst, 1); vec_push(dst, 5);
+        count = count + 2;
+        rem = rem - 4
+    } else { () };
+    // 1s
+    loop {
+        if rem < 1 { break } else { () };
+        vec_push(dst, 1);
+        count = count + 1;
+        rem = rem - 1
+    };
+    count
+};
+
+fn main() -> i64 = {
+    // Test 1: III = 3 -> codes [1,1,1]
+    let v1 = vec_new();
+    vec_push(v1, 1); vec_push(v1, 1); vec_push(v1, 1);
+    let _p1 = println(roman_to_int(v1));  // 3
+
+    // Test 2: IV = 4 -> codes [1,5]
+    let v2 = vec_new();
+    vec_push(v2, 1); vec_push(v2, 5);
+    let _p2 = println(roman_to_int(v2));  // 4
+
+    // Test 3: IX = 9 -> codes [1,10]
+    let v3 = vec_new();
+    vec_push(v3, 1); vec_push(v3, 10);
+    let _p3 = println(roman_to_int(v3));  // 9
+
+    // Test 4: XLII = 42 -> codes [10,50,1,1]
+    let v4 = vec_new();
+    vec_push(v4, 10); vec_push(v4, 50); vec_push(v4, 1); vec_push(v4, 1);
+    let _p4 = println(roman_to_int(v4));  // 42
+
+    // Test 5: MCMXCIV = 1994 -> codes [1000,100,1000,10,100,1,5]
+    let v5 = vec_new();
+    vec_push(v5, 1000); vec_push(v5, 100); vec_push(v5, 1000);
+    vec_push(v5, 10); vec_push(v5, 100); vec_push(v5, 1); vec_push(v5, 5);
+    let _p5 = println(roman_to_int(v5));  // 1994
+
+    // Test 6: MMXXVI = 2026 -> codes [1000,1000,10,10,5,1]
+    let v6 = vec_new();
+    vec_push(v6, 1000); vec_push(v6, 1000); vec_push(v6, 10);
+    vec_push(v6, 10); vec_push(v6, 5); vec_push(v6, 1);
+    let _p6 = println(roman_to_int(v6));  // 2026
+
+    // Test 7: Round-trip: 58 -> roman -> back to int
+    let enc7 = vec_new();
+    let _c7 = int_to_roman(58, enc7);
+    let _p7 = println(roman_to_int(enc7));  // 58
+
+    // Test 8: Round-trip: 399
+    let enc8 = vec_new();
+    let _c8 = int_to_roman(399, enc8);
+    let _p8 = println(roman_to_int(enc8));  // 399
+
+    // Test 9: Round-trip: 1776
+    let enc9 = vec_new();
+    let _c9 = int_to_roman(1776, enc9);
+    let _p9 = println(roman_to_int(enc9));  // 1776
+
+    // Test 10: Number of digits for 3999
+    let enc10 = vec_new();
+    let c10 = int_to_roman(3999, enc10);
+    let _p10 = println(c10);  // 9 (MMMCMXCIX = 1000,1000,1000,100,1000,10,100,1,10)
+
+    vec_free(v1); vec_free(v2); vec_free(v3);
+    vec_free(v4); vec_free(v5); vec_free(v6);
+    vec_free(enc7); vec_free(enc8); vec_free(enc9); vec_free(enc10);
+    0
+};

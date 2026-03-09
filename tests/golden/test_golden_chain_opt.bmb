@@ -1,0 +1,32 @@
+// Golden Test: Combined optimization chain
+// Tests interaction between copy prop, const fold, DCE, select, and phi threading
+
+fn abs_val(x: i64) -> i64 =
+    if x < 0 { 0 - x } else { x };
+
+fn clamp(x: i64, lo: i64, hi: i64) -> i64 =
+    if x < lo { lo } else if x > hi { hi } else { x };
+
+fn step_fn(x: i64) -> i64 =
+    if x < 0 { 0 }
+    else if x == 0 { 1 }
+    else { 2 };
+
+fn chain_ops(a: i64, b: i64) -> i64 =
+    let x = abs_val(a - b);
+    let y = clamp(x, 0, 100);
+    step_fn(y);
+
+fn main() -> i64 = {
+    println(abs_val(-5));      // 5
+    println(abs_val(3));       // 3
+    println(clamp(50, 0, 100));   // 50
+    println(clamp(-10, 0, 100));  // 0
+    println(clamp(200, 0, 100));  // 100
+    println(step_fn(-1));      // 0
+    println(step_fn(0));       // 1
+    println(step_fn(5));       // 2
+    println(chain_ops(10, 5)); // step_fn(clamp(5,0,100)) = step_fn(5) = 2
+    println(chain_ops(5, 10)); // step_fn(clamp(5,0,100)) = step_fn(5) = 2
+    0
+    };

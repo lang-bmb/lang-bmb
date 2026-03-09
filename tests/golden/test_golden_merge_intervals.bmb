@@ -1,0 +1,129 @@
+// Golden Test: Merge overlapping intervals
+// Intervals stored as flat array pairs: [start0, end0, start1, end1, ...]
+
+// Sort intervals by start (bubble sort on pairs)
+fn sort_intervals(v: i64, count: i64) -> i64 = {
+    for _i in 0..count {
+        let mut j = 0;
+        loop {
+            if j + 1 >= count { break } else { 0 };
+            let s1 = vec_get(v, j * 2);
+            let s2 = vec_get(v, (j + 1) * 2);
+            if s1 > s2 {
+                // Swap both start and end
+                let e1 = vec_get(v, j * 2 + 1);
+                let e2 = vec_get(v, (j + 1) * 2 + 1);
+                vec_set(v, j * 2, s2);
+                vec_set(v, j * 2 + 1, e2);
+                vec_set(v, (j + 1) * 2, s1);
+                vec_set(v, (j + 1) * 2 + 1, e1);
+                0
+            } else { 0 };
+            j = j + 1
+        }
+    };
+    0
+};
+
+// Merge overlapping intervals, return count of merged intervals
+fn merge_intervals(v: i64, count: i64, out: i64) -> i64 = {
+    if count == 0 { return 0 } else { () };
+    let _s = sort_intervals(v, count);
+    let mut cur_start = vec_get(v, 0);
+    let mut cur_end = vec_get(v, 1);
+    let mut merged = 0;
+    for i in 1..count {
+        let s = vec_get(v, i * 2);
+        let e = vec_get(v, i * 2 + 1);
+        if s <= cur_end {
+            // Overlapping: extend end
+            if e > cur_end { cur_end = e } else { () }
+        } else {
+            // No overlap: emit current, start new
+            vec_push(out, cur_start);
+            vec_push(out, cur_end);
+            merged = merged + 1;
+            cur_start = s;
+            cur_end = e
+        }
+    };
+    // Emit last interval
+    vec_push(out, cur_start);
+    vec_push(out, cur_end);
+    merged + 1
+};
+
+fn main() -> i64 = {
+    // Test 1: [[1,3],[2,6],[8,10],[15,18]] -> [[1,6],[8,10],[15,18]]
+    let v1 = vec_new();
+    vec_push(v1, 1); vec_push(v1, 3);
+    vec_push(v1, 2); vec_push(v1, 6);
+    vec_push(v1, 8); vec_push(v1, 10);
+    vec_push(v1, 15); vec_push(v1, 18);
+    let o1 = vec_new();
+    let m1 = merge_intervals(v1, 4, o1);
+    let _p1 = println(m1);                 // 3
+    let _p2 = println(vec_get(o1, 0));      // 1
+    let _p3 = println(vec_get(o1, 1));      // 6
+    let _p4 = println(vec_get(o1, 2));      // 8
+    let _p5 = println(vec_get(o1, 3));      // 10
+
+    // Test 2: [[1,4],[4,5]] -> [[1,5]] (touching intervals merge)
+    let v2 = vec_new();
+    vec_push(v2, 1); vec_push(v2, 4);
+    vec_push(v2, 4); vec_push(v2, 5);
+    let o2 = vec_new();
+    let m2 = merge_intervals(v2, 2, o2);
+    let _p6 = println(m2);                 // 1
+    let _p7 = println(vec_get(o2, 0));      // 1
+    let _p8 = println(vec_get(o2, 1));      // 5
+
+    // Test 3: [[1,10],[2,3],[4,5],[6,7]] -> [[1,10]] (all contained)
+    let v3 = vec_new();
+    vec_push(v3, 1); vec_push(v3, 10);
+    vec_push(v3, 2); vec_push(v3, 3);
+    vec_push(v3, 4); vec_push(v3, 5);
+    vec_push(v3, 6); vec_push(v3, 7);
+    let o3 = vec_new();
+    let m3 = merge_intervals(v3, 4, o3);
+    let _p9 = println(m3);                 // 1
+    let _p10 = println(vec_get(o3, 0));     // 1
+    let _p11 = println(vec_get(o3, 1));     // 10
+
+    // Test 4: no overlap [[1,2],[5,6],[9,10]]
+    let v4 = vec_new();
+    vec_push(v4, 1); vec_push(v4, 2);
+    vec_push(v4, 5); vec_push(v4, 6);
+    vec_push(v4, 9); vec_push(v4, 10);
+    let o4 = vec_new();
+    let m4 = merge_intervals(v4, 3, o4);
+    let _p12 = println(m4);                // 3
+
+    // Test 5: single interval [[3,7]]
+    let v5 = vec_new();
+    vec_push(v5, 3); vec_push(v5, 7);
+    let o5 = vec_new();
+    let m5 = merge_intervals(v5, 1, o5);
+    let _p13 = println(m5);                // 1
+    let _p14 = println(vec_get(o5, 0));     // 3
+    let _p15 = println(vec_get(o5, 1));     // 7
+
+    // Test 6: unsorted [[5,8],[1,3],[2,6]] -> sorted [[1,3],[2,6],[5,8]] -> [[1,8]]
+    let v6 = vec_new();
+    vec_push(v6, 5); vec_push(v6, 8);
+    vec_push(v6, 1); vec_push(v6, 3);
+    vec_push(v6, 2); vec_push(v6, 6);
+    let o6 = vec_new();
+    let m6 = merge_intervals(v6, 3, o6);
+    let _p16 = println(m6);                // 1
+    let _p17 = println(vec_get(o6, 0));     // 1
+    let _p18 = println(vec_get(o6, 1));     // 8
+
+    vec_free(v1); vec_free(o1);
+    vec_free(v2); vec_free(o2);
+    vec_free(v3); vec_free(o3);
+    vec_free(v4); vec_free(o4);
+    vec_free(v5); vec_free(o5);
+    vec_free(v6); vec_free(o6);
+    0
+};

@@ -1,0 +1,162 @@
+// Golden Test: Binary tree simulation using parallel arrays
+// BST stored as three vecs: vals, lefts, rights
+// -1 means no child. Root is node 0.
+
+// Global node count tracked via a counter vec of length 1
+fn make_counter() -> i64 = {
+    let c = vec_new();
+    let _p = vec_push(c, 0);
+    c
+    };
+
+fn counter_get(c: i64) -> i64 = vec_get(c, 0);
+
+fn counter_inc(c: i64) -> i64 = {
+    let v = vec_get(c, 0);
+    let _s = vec_set(c, 0, v + 1);
+    v
+    };
+
+// Create a new node, returns its index
+fn new_node(vals: i64, lefts: i64, rights: i64, cnt: i64, value: i64) -> i64 = {
+    let idx = counter_inc(cnt);
+    let _v = vec_push(vals, value);
+    let _l = vec_push(lefts, 0 - 1);
+    let _r = vec_push(rights, 0 - 1);
+    idx
+    };
+
+// Insert value into BST rooted at node idx. Returns root index.
+fn bst_insert(vals: i64, lefts: i64, rights: i64, cnt: i64, idx: i64, value: i64) -> i64 = {
+    if idx == 0 - 1 {
+        new_node(vals, lefts, rights, cnt, value)
+    } else {
+        let node_val = vec_get(vals, idx);
+        if value < node_val {
+            let left_child = vec_get(lefts, idx);
+            let new_left = bst_insert(vals, lefts, rights, cnt, left_child, value);
+            let _s = vec_set(lefts, idx, new_left);
+            idx
+        } else {
+            let right_child = vec_get(rights, idx);
+            let new_right = bst_insert(vals, lefts, rights, cnt, right_child, value);
+            let _s = vec_set(rights, idx, new_right);
+            idx
+        }
+    }
+    };
+
+// Search BST: returns 1 if found, 0 if not
+fn bst_search(vals: i64, lefts: i64, rights: i64, idx: i64, target: i64) -> i64 = {
+    if idx == 0 - 1 { 0 }
+    else {
+        let node_val = vec_get(vals, idx);
+        if target == node_val { 1 }
+        else if target < node_val {
+            bst_search(vals, lefts, rights, vec_get(lefts, idx), target)
+        }
+        else {
+            bst_search(vals, lefts, rights, vec_get(rights, idx), target)
+        }
+    }
+    };
+
+// Tree height (1-based: single node = 1)
+fn tree_height(vals: i64, lefts: i64, rights: i64, idx: i64) -> i64 = {
+    if idx == 0 - 1 { 0 }
+    else {
+        let lh = tree_height(vals, lefts, rights, vec_get(lefts, idx));
+        let rh = tree_height(vals, lefts, rights, vec_get(rights, idx));
+        let mx = if lh > rh { lh } else { rh };
+        1 + mx
+    }
+    };
+
+// Count all nodes
+fn count_nodes(vals: i64, lefts: i64, rights: i64, idx: i64) -> i64 = {
+    if idx == 0 - 1 { 0 }
+    else {
+        1 + count_nodes(vals, lefts, rights, vec_get(lefts, idx))
+          + count_nodes(vals, lefts, rights, vec_get(rights, idx))
+    }
+    };
+
+// Inorder traversal sum
+fn inorder_sum(vals: i64, lefts: i64, rights: i64, idx: i64) -> i64 = {
+    if idx == 0 - 1 { 0 }
+    else {
+        inorder_sum(vals, lefts, rights, vec_get(lefts, idx))
+        + vec_get(vals, idx)
+        + inorder_sum(vals, lefts, rights, vec_get(rights, idx))
+    }
+    };
+
+// Find minimum in BST (leftmost node)
+fn bst_find_min(vals: i64, lefts: i64, idx: i64) -> i64 = {
+    if idx == 0 - 1 { 999999 }
+    else {
+        let left_child = vec_get(lefts, idx);
+        if left_child == 0 - 1 { vec_get(vals, idx) }
+        else { bst_find_min(vals, lefts, left_child) }
+    }
+    };
+
+// Find maximum in BST (rightmost node)
+fn bst_find_max(vals: i64, rights: i64, idx: i64) -> i64 = {
+    if idx == 0 - 1 { 0 - 999999 }
+    else {
+        let right_child = vec_get(rights, idx);
+        if right_child == 0 - 1 { vec_get(vals, idx) }
+        else { bst_find_max(vals, rights, right_child) }
+    }
+    };
+
+fn main() -> i64 = {
+    let vals = vec_new();
+    let lefts = vec_new();
+    let rights = vec_new();
+    let cnt = make_counter();
+
+    // Build BST: insert 50, 30, 70, 20, 40, 60, 80
+    let root = bst_insert(vals, lefts, rights, cnt, 0 - 1, 50);
+    let root = bst_insert(vals, lefts, rights, cnt, root, 30);
+    let root = bst_insert(vals, lefts, rights, cnt, root, 70);
+    let root = bst_insert(vals, lefts, rights, cnt, root, 20);
+    let root = bst_insert(vals, lefts, rights, cnt, root, 40);
+    let root = bst_insert(vals, lefts, rights, cnt, root, 60);
+    let root = bst_insert(vals, lefts, rights, cnt, root, 80);
+
+    // Search
+    let _p1 = println(bst_search(vals, lefts, rights, root, 40));    // 1 (found)
+    let _p2 = println(bst_search(vals, lefts, rights, root, 55));    // 0 (not found)
+
+    // Height
+    let _p3 = println(tree_height(vals, lefts, rights, root));       // 3
+
+    // Count nodes
+    let _p4 = println(count_nodes(vals, lefts, rights, root));       // 7
+
+    // Inorder sum: 20+30+40+50+60+70+80 = 350
+    let _p5 = println(inorder_sum(vals, lefts, rights, root));       // 350
+
+    // Min and max
+    let _p6 = println(bst_find_min(vals, lefts, root));              // 20
+    let _p7 = println(bst_find_max(vals, rights, root));             // 80
+
+    // Insert 10, goes left of 20
+    let root = bst_insert(vals, lefts, rights, cnt, root, 10);
+    let _p8 = println(tree_height(vals, lefts, rights, root));       // 4
+    let _p9 = println(count_nodes(vals, lefts, rights, root));       // 8
+    let _p10 = println(bst_find_min(vals, lefts, root));             // 10
+
+    // Insert 65, goes right of 60
+    let root = bst_insert(vals, lefts, rights, cnt, root, 65);
+    let _p11 = println(count_nodes(vals, lefts, rights, root));      // 9
+    let _p12 = println(bst_search(vals, lefts, rights, root, 65));   // 1 (found)
+
+    let _f1 = vec_free(vals);
+    let _f2 = vec_free(lefts);
+    let _f3 = vec_free(rights);
+    let _f4 = vec_free(cnt);
+    0
+    };

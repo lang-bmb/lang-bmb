@@ -1,0 +1,168 @@
+// Golden Test: Huffman encoding
+// Builds a Huffman tree from character frequencies
+// Encodes a message using the resulting prefix-free codes
+// Uses a priority queue (min-heap via linear scan) for tree construction
+// Tree stored as flat arrays: left[], right[], freq[], char_val[]
+// Leaf nodes have char_val >= 0, internal nodes have char_val = -1
+
+// Priority queue: parallel vecs (node_idx, priority)
+fn pq_new() -> i64 = {
+    vec_new()
+};
+
+fn pq_push(pq: i64, node: i64, freq: i64) -> () = {
+    let _p1 = vec_push(pq, node);
+    let _p2 = vec_push(pq, freq)
+};
+
+// Extract minimum: returns node index, removes from pq
+fn pq_pop_min(pq: i64) -> i64 = {
+    let len = vec_len(pq) / 2;
+    let mut min_idx = 0;
+    let mut min_freq = vec_get(pq, 1);
+    let mut i = 1;
+    while i < len {
+        let f = vec_get(pq, i * 2 + 1);
+        let _x = if f < min_freq {
+            set min_idx = i;
+            set min_freq = f;
+            0
+        } else { 0 };
+        set i = i + 1
+    };
+
+    let node = vec_get(pq, min_idx * 2);
+
+    // Swap with last and pop
+    let last = len - 1;
+    let _x = if min_idx != last {
+        vec_set(pq, min_idx * 2, vec_get(pq, last * 2));
+        vec_set(pq, min_idx * 2 + 1, vec_get(pq, last * 2 + 1));
+        0
+    } else { 0 };
+    let _vp1 = vec_pop(pq);
+    let _vp2 = vec_pop(pq);
+
+    node
+};
+
+fn pq_size(pq: i64) -> i64 = vec_len(pq) / 2;
+
+// Build Huffman tree from frequencies
+// chars: vec of character codes, freqs: vec of frequencies
+// Returns root node index; tree stored in shared vecs
+fn build_huffman(chars: i64, freqs: i64, tree_left: i64, tree_right: i64, tree_freq: i64, tree_char: i64) -> i64 = {
+    let n = vec_len(chars);
+    let pq = pq_new();
+
+    // Create leaf nodes
+    let mut i = 0;
+    while i < n {
+        let _pl = vec_push(tree_left, -1);
+        let _pr = vec_push(tree_right, -1);
+        let _pf = vec_push(tree_freq, vec_get(freqs, i));
+        let _pc = vec_push(tree_char, vec_get(chars, i));
+        pq_push(pq, i, vec_get(freqs, i));
+        set i = i + 1
+    };
+
+    let mut next_node = n;
+
+    // Build tree: combine two lowest frequency nodes
+    while pq_size(pq) > 1 {
+        let left = pq_pop_min(pq);
+        let right = pq_pop_min(pq);
+        let combined_freq = vec_get(tree_freq, left) + vec_get(tree_freq, right);
+
+        let _pl = vec_push(tree_left, left);
+        let _pr = vec_push(tree_right, right);
+        let _pf = vec_push(tree_freq, combined_freq);
+        let _pc = vec_push(tree_char, -1);
+
+        pq_push(pq, next_node, combined_freq);
+        set next_node = next_node + 1
+    };
+
+    pq_pop_min(pq)
+};
+
+// Generate codes by DFS traversal of Huffman tree
+// code_bits: for each char index, the bit pattern (as integer)
+// code_lens: for each char index, the number of bits
+fn generate_codes(tree_left: i64, tree_right: i64, tree_char: i64,
+                  code_bits: i64, code_lens: i64,
+                  node: i64, current_bits: i64, depth: i64) -> () = {
+    if vec_get(tree_char, node) >= 0 {
+        // Leaf node
+        let ch = vec_get(tree_char, node);
+        vec_set(code_bits, ch, current_bits);
+        vec_set(code_lens, ch, depth)
+    } else {
+        // Internal node: left = 0, right = 1
+        let left = vec_get(tree_left, node);
+        let right = vec_get(tree_right, node);
+        generate_codes(tree_left, tree_right, tree_char, code_bits, code_lens,
+                      left, current_bits * 2, depth + 1);
+        generate_codes(tree_left, tree_right, tree_char, code_bits, code_lens,
+                      right, current_bits * 2 + 1, depth + 1)
+    }
+};
+
+fn pow2(exp: i64) -> i64 = {
+    if exp == 0 { 1 }
+    else { 2 * pow2(exp - 1) }
+};
+
+fn main() -> () = {
+    // Characters: a=0, b=1, c=2, d=3, e=4, f=5
+    // Frequencies: a:5, b:9, c:12, d:13, e:16, f:45
+    let chars = vec_new();
+    let freqs = vec_new();
+    let _p = vec_push(chars, 0); let _p = vec_push(freqs, 5);
+    let _p = vec_push(chars, 1); let _p = vec_push(freqs, 9);
+    let _p = vec_push(chars, 2); let _p = vec_push(freqs, 12);
+    let _p = vec_push(chars, 3); let _p = vec_push(freqs, 13);
+    let _p = vec_push(chars, 4); let _p = vec_push(freqs, 16);
+    let _p = vec_push(chars, 5); let _p = vec_push(freqs, 45);
+
+    let tree_left = vec_new();
+    let tree_right = vec_new();
+    let tree_freq = vec_new();
+    let tree_char = vec_new();
+
+    let root = build_huffman(chars, freqs, tree_left, tree_right, tree_freq, tree_char);
+
+    // Generate codes for 6 characters (indexed 0-5)
+    let code_bits = vec_new();
+    let code_lens = vec_new();
+    let mut i = 0;
+    while i < 6 {
+        let _p = vec_push(code_bits, 0);
+        let _p = vec_push(code_lens, 0);
+        set i = i + 1
+    };
+
+    generate_codes(tree_left, tree_right, tree_char, code_bits, code_lens,
+                  root, 0, 0);
+
+    // Print code lengths
+    let mut total_bits = 0;
+    set i = 0;
+    while i < 6 {
+        let len = vec_get(code_lens, i);
+        let freq = vec_get(freqs, i);
+        set total_bits = total_bits + len * freq;
+        print_str("char ");
+        print(i);
+        print_str(": len=");
+        println(vec_get(code_lens, i));
+        set i = i + 1
+    };
+
+    print_str("total bits: ");
+    println(total_bits);
+
+    // Verify: total frequency
+    print_str("total freq: ");
+    let _r = println(vec_get(tree_freq, root))
+};

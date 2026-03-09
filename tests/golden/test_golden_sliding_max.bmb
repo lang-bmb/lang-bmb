@@ -1,0 +1,53 @@
+// Golden Test: Sliding Window Maximum
+// For each window of size k in an array, find the maximum value.
+
+// Find maximum value in arr[start..end) using for loop
+fn find_max_in_range(arr: i64, start: i64, end_idx: i64) -> i64 = {
+    let mut best = vec_get(arr, start);
+    for i in (start + 1)..end_idx {
+        let v = vec_get(arr, i);
+        let _u = if v > best { set best = v } else { set best = best }
+    };
+    best
+};
+
+// For each window of size k, find the maximum and print it
+fn sliding_window_max(arr: i64, n: i64, k: i64) -> i64 = {
+    let limit = n - k + 1;
+    for start in 0..limit {
+        let m = find_max_in_range(arr, start, start + k);
+        let _p = println(m)
+    };
+    0
+};
+
+// Build the array [3, 1, 5, 2, 8, 4, 7, 6]
+fn build_array() -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, 3);
+    let _p2 = vec_push(v, 1);
+    let _p3 = vec_push(v, 5);
+    let _p4 = vec_push(v, 2);
+    let _p5 = vec_push(v, 8);
+    let _p6 = vec_push(v, 4);
+    let _p7 = vec_push(v, 7);
+    let _p8 = vec_push(v, 6);
+    v
+};
+
+fn main() -> i64 = {
+    let arr = build_array();
+    let n = vec_len(arr);
+
+    // k=3 windows
+    let _r1 = sliding_window_max(arr, n, 3);
+
+    // separator
+    let _sep = println(0 - 1);
+
+    // k=4 windows
+    let _r2 = sliding_window_max(arr, n, 4);
+
+    let _f = vec_free(arr);
+    0
+};

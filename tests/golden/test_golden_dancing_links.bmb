@@ -1,0 +1,171 @@
+// Golden Test: DLX-style exact cover solver for small instances
+// Uses flat arrays to represent a sparse matrix for Algorithm X
+// Finds subsets of rows whose union covers every column exactly once
+
+// Solve exact cover on a small matrix using recursive backtracking
+// Matrix is stored as vec of vecs (row-major); each cell is 0 or 1
+// cols_covered is a bitmask of which columns are already covered
+// selected is a bitmask of which rows are selected
+// Returns count of solutions found
+
+fn matrix_get(matrix: i64, ncols: i64, row: i64, col: i64) -> i64 =
+    vec_get(matrix, row * ncols + col);
+
+// Check if row conflicts with already-covered columns
+fn row_conflicts(matrix: i64, ncols: i64, row: i64, covered: i64, col: i64) -> i64 =
+    if col >= ncols { 0 }
+    else {
+        let cell = matrix_get(matrix, ncols, row, col);
+        let col_bit = 1;
+        // Shift left col times: compute 1 << col manually
+        let mask = shift_left(1, col);
+        if cell == 1 and (covered band mask) != 0 { 1 }
+        else { row_conflicts(matrix, ncols, row, covered, col + 1) }
+    };
+
+// Compute the bitmask of columns covered by a row
+fn row_mask(matrix: i64, ncols: i64, row: i64, col: i64, acc: i64) -> i64 =
+    if col >= ncols { acc }
+    else {
+        let cell = matrix_get(matrix, ncols, row, col);
+        let mask = shift_left(1, col);
+        let new_acc = if cell == 1 { acc bor mask } else { acc };
+        row_mask(matrix, ncols, row, col + 1, new_acc)
+    };
+
+// Shift left by n bits (1 << n)
+fn shift_left(val: i64, n: i64) -> i64 =
+    if n <= 0 { val }
+    else { shift_left(val * 2, n - 1) };
+
+// All columns covered? Check if covered == (1 << ncols) - 1
+fn all_covered(covered: i64, ncols: i64) -> i64 =
+    if covered == shift_left(1, ncols) - 1 { 1 } else { 0 };
+
+// Exact cover solver: try rows starting from start_row
+fn solve(matrix: i64, nrows: i64, ncols: i64, covered: i64, start_row: i64) -> i64 =
+    if all_covered(covered, ncols) == 1 { 1 }
+    else if start_row >= nrows { 0 }
+    else {
+        // Try without this row
+        let without = solve(matrix, nrows, ncols, covered, start_row + 1);
+        // Try with this row (if no conflict)
+        let conflict = row_conflicts(matrix, ncols, start_row, covered, 0);
+        let rmask = row_mask(matrix, ncols, start_row, 0, 0);
+        let with_count = if conflict == 1 or rmask == 0 { 0 }
+            else { solve(matrix, nrows, ncols, covered bor rmask, start_row + 1) };
+        without + with_count
+    };
+
+// Count how many 1s are in a row
+fn row_ones(matrix: i64, ncols: i64, row: i64, col: i64, acc: i64) -> i64 =
+    if col >= ncols { acc }
+    else {
+        let inc = matrix_get(matrix, ncols, row, col);
+        row_ones(matrix, ncols, row, col + 1, acc + inc)
+    };
+
+// Count total 1s in the matrix
+fn total_ones(matrix: i64, nrows: i64, ncols: i64, row: i64, acc: i64) -> i64 =
+    if row >= nrows { acc }
+    else {
+        let cnt = row_ones(matrix, ncols, row, 0, 0);
+        total_ones(matrix, nrows, ncols, row + 1, acc + cnt)
+    };
+
+// Build a matrix from flat data
+fn build_matrix(data: i64, size: i64) -> i64 = {
+    let m = vec_new();
+    for i in 0..size { let _p = vec_push(m, vec_get(data, i)); 0 };
+    m
+    };
+
+fn main() -> i64 = {
+    // Matrix 1: 3 rows x 3 cols (identity-like, exactly 1 solution)
+    // Row 0: [1, 0, 0]
+    // Row 1: [0, 1, 0]
+    // Row 2: [0, 0, 1]
+    let d1 = vec_new();
+    let _a = vec_push(d1, 1); let _a = vec_push(d1, 0); let _a = vec_push(d1, 0);
+    let _a = vec_push(d1, 0); let _a = vec_push(d1, 1); let _a = vec_push(d1, 0);
+    let _a = vec_push(d1, 0); let _a = vec_push(d1, 0); let _a = vec_push(d1, 1);
+    let m1 = build_matrix(d1, 9);
+    let _p1 = println(solve(m1, 3, 3, 0, 0)); // 1 (select all 3 rows)
+
+    // Matrix 2: 4 rows x 4 cols
+    // Row 0: [1, 1, 0, 0]
+    // Row 1: [0, 0, 1, 1]
+    // Row 2: [1, 0, 1, 0]
+    // Row 3: [0, 1, 0, 1]
+    // Solutions: {0,1} and {2,3} => 2 solutions
+    let d2 = vec_new();
+    let _a = vec_push(d2, 1); let _a = vec_push(d2, 1); let _a = vec_push(d2, 0); let _a = vec_push(d2, 0);
+    let _a = vec_push(d2, 0); let _a = vec_push(d2, 0); let _a = vec_push(d2, 1); let _a = vec_push(d2, 1);
+    let _a = vec_push(d2, 1); let _a = vec_push(d2, 0); let _a = vec_push(d2, 1); let _a = vec_push(d2, 0);
+    let _a = vec_push(d2, 0); let _a = vec_push(d2, 1); let _a = vec_push(d2, 0); let _a = vec_push(d2, 1);
+    let m2 = build_matrix(d2, 16);
+    let _p2 = println(solve(m2, 4, 4, 0, 0)); // 2
+
+    // Matrix 3: No solution possible
+    // Row 0: [1, 1, 0]
+    // Row 1: [1, 1, 0]   (same as row 0)
+    // Row 2: [0, 0, 0]   (empty row)
+    // Column 2 can never be covered
+    let d3 = vec_new();
+    let _a = vec_push(d3, 1); let _a = vec_push(d3, 1); let _a = vec_push(d3, 0);
+    let _a = vec_push(d3, 1); let _a = vec_push(d3, 1); let _a = vec_push(d3, 0);
+    let _a = vec_push(d3, 0); let _a = vec_push(d3, 0); let _a = vec_push(d3, 0);
+    let m3 = build_matrix(d3, 9);
+    let _p3 = println(solve(m3, 3, 3, 0, 0)); // 0
+
+    // Matrix 4: Classic exact cover example (Knuth)
+    // 6 rows x 7 cols
+    // Row 0: [1, 0, 0, 1, 0, 0, 1]
+    // Row 1: [1, 0, 0, 1, 0, 0, 0]
+    // Row 2: [0, 0, 0, 1, 1, 0, 1]
+    // Row 3: [0, 0, 1, 0, 1, 1, 0]
+    // Row 4: [0, 1, 1, 0, 0, 1, 1]
+    // Row 5: [0, 1, 0, 0, 0, 0, 1]
+    let d4 = vec_new();
+    let _a = vec_push(d4, 1); let _a = vec_push(d4, 0); let _a = vec_push(d4, 0); let _a = vec_push(d4, 1); let _a = vec_push(d4, 0); let _a = vec_push(d4, 0); let _a = vec_push(d4, 1);
+    let _a = vec_push(d4, 1); let _a = vec_push(d4, 0); let _a = vec_push(d4, 0); let _a = vec_push(d4, 1); let _a = vec_push(d4, 0); let _a = vec_push(d4, 0); let _a = vec_push(d4, 0);
+    let _a = vec_push(d4, 0); let _a = vec_push(d4, 0); let _a = vec_push(d4, 0); let _a = vec_push(d4, 1); let _a = vec_push(d4, 1); let _a = vec_push(d4, 0); let _a = vec_push(d4, 1);
+    let _a = vec_push(d4, 0); let _a = vec_push(d4, 0); let _a = vec_push(d4, 1); let _a = vec_push(d4, 0); let _a = vec_push(d4, 1); let _a = vec_push(d4, 1); let _a = vec_push(d4, 0);
+    let _a = vec_push(d4, 0); let _a = vec_push(d4, 1); let _a = vec_push(d4, 1); let _a = vec_push(d4, 0); let _a = vec_push(d4, 0); let _a = vec_push(d4, 1); let _a = vec_push(d4, 1);
+    let _a = vec_push(d4, 0); let _a = vec_push(d4, 1); let _a = vec_push(d4, 0); let _a = vec_push(d4, 0); let _a = vec_push(d4, 0); let _a = vec_push(d4, 0); let _a = vec_push(d4, 1);
+    let m4 = build_matrix(d4, 42);
+    let _p4 = println(solve(m4, 6, 7, 0, 0)); // 1 (rows {1, 3, 5})
+
+    // Utility tests
+    let _p5 = println(shift_left(1, 0));  // 1
+    let _p6 = println(shift_left(1, 3));  // 8
+    let _p7 = println(shift_left(1, 7));  // 128
+    let _p8 = println(all_covered(7, 3)); // 1 (7 == 0b111)
+    let _p9 = println(all_covered(6, 3)); // 0 (6 == 0b110)
+    let _p10 = println(total_ones(m1, 3, 3, 0, 0));  // 3
+    let _p11 = println(total_ones(m2, 4, 4, 0, 0));  // 8
+
+    // Matrix 5: Single row covers all columns
+    // Row 0: [1, 1]
+    let d5 = vec_new();
+    let _a = vec_push(d5, 1); let _a = vec_push(d5, 1);
+    let m5 = build_matrix(d5, 2);
+    let _p12 = println(solve(m5, 1, 2, 0, 0)); // 1
+
+    // Matrix 6: Two overlapping rows, each covers all
+    // Row 0: [1, 1]
+    // Row 1: [1, 1]
+    // Either row alone works, but not both => 2 solutions
+    let d6 = vec_new();
+    let _a = vec_push(d6, 1); let _a = vec_push(d6, 1);
+    let _a = vec_push(d6, 1); let _a = vec_push(d6, 1);
+    let m6 = build_matrix(d6, 4);
+    let _p13 = println(solve(m6, 2, 2, 0, 0)); // 2
+
+    // Row mask tests
+    let _p14 = println(row_mask(m1, 3, 0, 0, 0)); // 1 (bit 0 set)
+    let _p15 = println(row_mask(m1, 3, 1, 0, 0)); // 2 (bit 1 set)
+    let _p16 = println(row_mask(m1, 3, 2, 0, 0)); // 4 (bit 2 set)
+
+    0
+    };

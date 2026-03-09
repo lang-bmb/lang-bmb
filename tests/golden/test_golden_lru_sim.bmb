@@ -1,0 +1,161 @@
+// Golden Test: LRU cache simulation using vecs
+// cache: stores keys, order: stores access time (higher = more recent)
+// On access: if key exists (hit), update its order; if miss, evict LRU and insert
+
+// Helper: create a vec of n zeros
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { let _p = vec_push(v, 0); 0 };
+    v
+    };
+
+// Find key in cache, return index or -1
+fn cache_find(cache: i64, key: i64, i: i64, size: i64) -> i64 =
+    if i >= size { 0 - 1 }
+    else if vec_get(cache, i) == key { i }
+    else { cache_find(cache, key, i + 1, size) };
+
+    // Find index of minimum order (LRU position)
+
+fn find_lru_idx(order: i64, i: i64, min_idx: i64, min_val: i64, size: i64) -> i64 =
+    if i >= size { min_idx }
+    else if vec_get(order, i) < min_val { find_lru_idx(order, i + 1, i, vec_get(order, i), size) }
+    else { find_lru_idx(order, i + 1, min_idx, min_val, size) };
+
+    // Access a key: returns new hits count
+
+fn lru_access(cache: i64, order: i64, key: i64, time: i64, hits: i64, cache_size: i64) -> i64 = {
+    let idx = cache_find(cache, key, 0, cache_size);
+    if idx >= 0 {
+
+// Hit: update order
+    let _s = vec_set(order, idx, time);
+    hits + 1
+    } else {
+
+// Miss: evict LRU and insert
+    let lru = find_lru_idx(order, 1, 0, vec_get(order, 0), cache_size);
+    let _s1 = vec_set(cache, lru, key);
+    let _s2 = vec_set(order, lru, time);
+    hits
+    }
+    };
+
+// Process a sequence of accesses, return total hits
+fn process_accesses(cache: i64, order: i64, keys: i64, i: i64, time: i64, hits: i64, cache_size: i64, keys_size: i64) -> i64 =
+    if i >= keys_size { hits }
+    else {
+        let new_hits = lru_access(cache, order, vec_get(keys, i), time, hits, cache_size);
+        process_accesses(cache, order, keys, i + 1, time + 1, new_hits, cache_size, keys_size)
+    };
+
+    // Count how many cache slots contain a specific value
+
+fn count_val(cache: i64, val: i64, i: i64, c: i64, size: i64) -> i64 =
+    if i >= size { c }
+    else {
+        let inc = if vec_get(cache, i) == val { 1 } else { 0 };
+        count_val(cache, val, i + 1, c + inc, size)
+    };
+
+    // Sum cache contents
+
+fn sum_cache(cache: i64, i: i64, acc: i64, size: i64) -> i64 =
+    if i >= size { acc }
+    else { sum_cache(cache, i + 1, acc + vec_get(cache, i), size) };
+
+fn main() -> i64 = {
+// Cache size 3, initial empty (0 = empty)
+    let cache1 = make_zeros(3);
+    let order1 = make_zeros(3);
+
+// Access sequence: 1, 2, 3, 1, 4, 2, 5
+    let keys1 = vec_new();
+    let _k10 = vec_push(keys1, 1);
+    let _k11 = vec_push(keys1, 2);
+    let _k12 = vec_push(keys1, 3);
+    let _k13 = vec_push(keys1, 1);
+    let _k14 = vec_push(keys1, 4);
+    let _k15 = vec_push(keys1, 2);
+    let _k16 = vec_push(keys1, 5);
+    let hits1 = process_accesses(cache1, order1, keys1, 0, 1, 0, 3, 7);
+    let misses1 = 7 - hits1;
+    let _p1 = println(hits1);                       // hits
+    let _p2 = println(misses1);                      // misses
+    let _p3 = println(sum_cache(cache1, 0, 0, 3));   // sum of final cache contents
+
+// Cache size 4
+    let cache2 = make_zeros(4);
+    let order2 = make_zeros(4);
+
+// Access sequence: 1,2,3,4,1,2,5,1,2,3,4,5
+    let keys2 = vec_new();
+    let _k20 = vec_push(keys2, 1);
+    let _k21 = vec_push(keys2, 2);
+    let _k22 = vec_push(keys2, 3);
+    let _k23 = vec_push(keys2, 4);
+    let _k24 = vec_push(keys2, 1);
+    let _k25 = vec_push(keys2, 2);
+    let _k26 = vec_push(keys2, 5);
+    let _k27 = vec_push(keys2, 1);
+    let _k28 = vec_push(keys2, 2);
+    let _k29 = vec_push(keys2, 3);
+    let _k2a = vec_push(keys2, 4);
+    let _k2b = vec_push(keys2, 5);
+    let hits2 = process_accesses(cache2, order2, keys2, 0, 1, 0, 4, 12);
+    let misses2 = 12 - hits2;
+    let _p4 = println(hits2);
+    let _p5 = println(misses2);
+
+// Cache size 2, repeated pattern
+    let cache3 = make_zeros(2);
+    let order3 = make_zeros(2);
+
+// Access: 1,2,1,2,1,2,1,2
+    let keys3 = vec_new();
+    let _k30 = vec_push(keys3, 1);
+    let _k31 = vec_push(keys3, 2);
+    let _k32 = vec_push(keys3, 1);
+    let _k33 = vec_push(keys3, 2);
+    let _k34 = vec_push(keys3, 1);
+    let _k35 = vec_push(keys3, 2);
+    let _k36 = vec_push(keys3, 1);
+    let _k37 = vec_push(keys3, 2);
+    let hits3 = process_accesses(cache3, order3, keys3, 0, 1, 0, 2, 8);
+    let _p6 = println(hits3);                       // should have many hits
+    let _p7 = println(8 - hits3);                   // misses
+
+// Cache size 2, thrashing pattern: 1,2,3,1,2,3
+    let cache4 = make_zeros(2);
+    let order4 = make_zeros(2);
+    let keys4 = vec_new();
+    let _k40 = vec_push(keys4, 1);
+    let _k41 = vec_push(keys4, 2);
+    let _k42 = vec_push(keys4, 3);
+    let _k43 = vec_push(keys4, 1);
+    let _k44 = vec_push(keys4, 2);
+    let _k45 = vec_push(keys4, 3);
+    let hits4 = process_accesses(cache4, order4, keys4, 0, 1, 0, 2, 6);
+    let _p8 = println(hits4);                       // should have few/no hits
+    let _p9 = println(6 - hits4);                   // misses
+
+// Cache size 1
+    let cache5 = make_zeros(1);
+    let order5 = make_zeros(1);
+    let keys5 = vec_new();
+    let _k50 = vec_push(keys5, 5);
+    let _k51 = vec_push(keys5, 5);
+    let _k52 = vec_push(keys5, 5);
+    let _k53 = vec_push(keys5, 5);
+    let _k54 = vec_push(keys5, 5);
+    let hits5 = process_accesses(cache5, order5, keys5, 0, 1, 0, 1, 5);
+    let _p10 = println(hits5);                      // 4 hits (first is miss, rest hit)
+    let _p11 = println(vec_get(cache5, 0));          // 5
+
+// Verify cache state after keys1 operations
+    let _p12 = println(vec_get(cache1, 0));
+    let _p13 = println(vec_get(cache1, 1));
+    let _p14 = println(vec_get(cache1, 2));
+
+    0
+    };

@@ -1,0 +1,39 @@
+// Golden test: --safe mode bounds checking
+// Tests that array bounds checks work correctly with --safe flag
+// Note: This test should be compiled with --safe flag for bounds checking
+// Without --safe, it runs normally (no bounds checks, no panic)
+
+// Test valid array access (should work in both modes)
+fn test_valid_access() -> i64 =
+    let arr = [10, 20, 30, 40, 50];
+    let v0 = arr[0];
+    let v2 = arr[2];
+    let v4 = arr[4];
+    let _p1 = print(v0);
+    let _p2 = print(v2);
+    let _p3 = print(v4);
+    0;
+
+// Test valid set access
+fn test_valid_set() -> i64 =
+    let mut arr = [1, 2, 3];
+    let _s = set arr[1] = 99;
+    print(arr[1]);
+
+// Test edge: access at exactly length-1 (last valid index)
+fn test_edge_last() -> i64 =
+    let arr = [100, 200, 300];
+    print(arr[2]);
+
+// Test with computed index
+fn test_computed_index() -> i64 =
+    let arr = [5, 10, 15, 20, 25];
+    let i = 2 + 1;
+    print(arr[i]);
+
+fn main() -> i64 =
+    let _t1 = test_valid_access();
+    let _t2 = test_valid_set();
+    let _t3 = test_edge_last();
+    let _t4 = test_computed_index();
+    0;

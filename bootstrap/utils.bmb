@@ -20,6 +20,19 @@
 // serves as the canonical reference implementation.
 
 // ============================================================================
+// SECTION 0: Internal Separator (Unit Separator, char 31)
+// ============================================================================
+// All bootstrap internal data formats (MIR lines, type descriptors, etc.)
+// use Unit Separator (ASCII 31, \x1F) as field/line delimiter.
+// This avoids conflicts with pipe '|' in saturating arithmetic operators (+|, -|, *|).
+
+// Single separator character as string
+fn SEP() -> String = chr(31);
+
+// Double separator (function boundary in MIR)
+fn DSEP() -> String = chr(31) + chr(31);
+
+// ============================================================================
 // SECTION 1: Character Classification
 // ============================================================================
 
@@ -97,7 +110,7 @@ fn find_char(s: String, c: i64, pos: i64) -> i64 =
     if pos >= s.len() { pos } else if s.byte_at(pos) == c { pos } else { find_char(s, c, pos + 1) };
 
 // Specialized find for common separators
-fn find_pipe(s: String, pos: i64) -> i64 = find_char(s, 124, pos);      // |
+fn find_pipe(s: String, pos: i64) -> i64 = find_char(s, 31, pos);       // Unit Separator (was |)
 fn find_colon(s: String, pos: i64) -> i64 = find_char(s, 58, pos);      // :
 fn find_semicolon(s: String, pos: i64) -> i64 = find_char(s, 59, pos);  // ;
 fn find_comma(s: String, pos: i64) -> i64 = find_char(s, 44, pos);      // ,
@@ -151,7 +164,7 @@ fn read_until_ws(s: String, pos: i64) -> String =
 fn read_until_ws_acc(s: String, pos: i64, acc: String) -> String =
     if pos >= s.len() { acc } else {
         let c = s.byte_at(pos);
-        if c == 32 or c == 44 or c == 40 or c == 41 or c == 124 { acc } else { read_until_ws_acc(s, pos + 1, acc + char_to_string(c)) }
+        if c == 32 or c == 44 or c == 40 or c == 41 or c == 31 { acc } else { read_until_ws_acc(s, pos + 1, acc + char_to_string(c)) }
     };
 
 // Strip trailing colon from string
@@ -212,8 +225,8 @@ fn unpack_ast(result: String) -> String =
     if colon_pos >= result.len() { result } else { result.slice(colon_pos + 1, result.len()) };
 
 // Pack multiple values with pipe separator "a|b|c"
-fn pack_values(a: String, b: String) -> String = a + "|" + b;
-fn pack_values3(a: String, b: String, c: String) -> String = a + "|" + b + "|" + c;
+fn pack_values(a: String, b: String) -> String = a + SEP() + b;
+fn pack_values3(a: String, b: String, c: String) -> String = a + SEP() + b + SEP() + c;
 
 // Unpack first value from pipe-separated string
 fn unpack_first(s: String) -> String =
@@ -642,7 +655,7 @@ fn test_find_char_ext() -> i64 =
     let t3 = if find_char("hello", 111, 0) == 4 { 1 } else { 0 };  // 'o' at 4
     let t4 = if find_char("hello", 120, 0) == 5 { 1 } else { 0 };  // 'x' not found
     let t5 = if find_char("a:b", 58, 0) == 1 { 1 } else { 0 };     // ':' at 1
-    let t6 = if find_char("a|b|c", 124, 0) == 1 { 1 } else { 0 };  // '|' at 1
+    let t6 = if find_char("a" + SEP() + "b" + SEP() + "c", 31, 0) == 1 { 1 } else { 0 };  // SEP at 1
     t1 + t2 + t3 + t4 + t5 + t6;
 
 // v0.30.172: Test tok_encode/tok_kind/tok_end comprehensive

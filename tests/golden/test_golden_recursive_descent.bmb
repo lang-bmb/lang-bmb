@@ -1,0 +1,129 @@
+// Golden Test: Recursive descent parser for arithmetic expressions
+// Tokens: 0-99 are numeric values, 200=add, 201=sub, 202=mul
+// Grammar (prefix notation):
+//   expr := number | (200 expr expr) | (201 expr expr) | (202 expr expr)
+// Vecs encode token sequences in prefix order
+
+// Parse a single expression; pos vec tracks current index (mutable state)
+fn parse_expr(tokens: i64, pos: i64) -> i64 = {
+    let p = vec_get(pos, 0);
+    let tok = vec_get(tokens, p);
+    let _s = vec_set(pos, 0, p + 1);
+    if tok == 200 {
+        let left = parse_expr(tokens, pos);
+        let right = parse_expr(tokens, pos);
+        left + right
+    } else if tok == 201 {
+    let left = parse_expr(tokens, pos);
+    let right = parse_expr(tokens, pos);
+    left - right
+    } else if tok == 202 {
+    let left = parse_expr(tokens, pos);
+    let right = parse_expr(tokens, pos);
+    left * right
+    } else {
+    tok
+    }
+    };
+
+fn run_expr(tokens: i64) -> i64 = {
+    let pos = vec_new();
+    let _p = vec_push(pos, 0);
+    let result = parse_expr(tokens, pos);
+    let _f = vec_free(pos);
+    result
+    };
+
+fn make_vec3(a: i64, b: i64, c: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    v
+    };
+
+fn make_vec5(a: i64, b: i64, c: i64, d: i64, e: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    v
+    };
+
+fn make_vec7(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    let _p6 = vec_push(v, f);
+    let _p7 = vec_push(v, g);
+    v
+    };
+
+fn main() -> i64 = {
+// 3 + 4 = 7
+    let e1 = make_vec3(200, 3, 4);
+    let _r1 = println(run_expr(e1));   // 7
+
+// 10 - 3 = 7
+    let e2 = make_vec3(201, 10, 3);
+    let _r2 = println(run_expr(e2));   // 7
+
+// 5 * 6 = 30
+    let e3 = make_vec3(202, 5, 6);
+    let _r3 = println(run_expr(e3));   // 30
+
+// (2 + 3) * 4 = 20  => [202, 200, 2, 3, 4]
+    let e4 = make_vec5(202, 200, 2, 3, 4);
+    let _r4 = println(run_expr(e4));   // 20
+
+// 2 * (3 + 4) = 14  => [202, 2, 200, 3, 4]
+    let e5 = make_vec5(202, 2, 200, 3, 4);
+    let _r5 = println(run_expr(e5));   // 14
+
+// (1 + 2) * (3 + 4) = 21  => [202, 200, 1, 2, 200, 3, 4]
+    let e6 = make_vec7(202, 200, 1, 2, 200, 3, 4);
+    let _r6 = println(run_expr(e6));   // 21
+
+// (10 - 3) * (2 + 5) = 49  => [202, 201, 10, 3, 200, 2, 5]
+    let e7 = make_vec7(202, 201, 10, 3, 200, 2, 5);
+    let _r7 = println(run_expr(e7));   // 49
+
+// ((2 + 3) * 4) - 1 = 19  => [201, 202, 200, 2, 3, 4, 1]
+    let e8 = make_vec7(201, 202, 200, 2, 3, 4, 1);
+    let _r8 = println(run_expr(e8));   // 19
+
+// 7 * (5 - (1 + 2)) = 14  => [202, 7, 201, 5, 200, 1, 2]
+    let e9 = make_vec7(202, 7, 201, 5, 200, 1, 2);
+    let _r9 = println(run_expr(e9));   // 14
+
+// (3 * 4) + (5 * 6) = 42  => [200, 202, 3, 4, 202, 5, 6]
+    let e10 = make_vec7(200, 202, 3, 4, 202, 5, 6);
+    let _r10 = println(run_expr(e10));  // 42
+
+// 2 * (3 * (4 * 5)) = 120  => [202, 2, 202, 3, 202, 4, 5]
+    let e11 = make_vec7(202, 2, 202, 3, 202, 4, 5);
+    let _r11 = println(run_expr(e11));  // 120
+
+// 99 - (50 + 49) = 0  => [201, 99, 200, 50, 49]
+    let e12 = make_vec5(201, 99, 200, 50, 49);
+    let _r12 = println(run_expr(e12));  // 0
+
+    let _f1 = vec_free(e1);
+    let _f2 = vec_free(e2);
+    let _f3 = vec_free(e3);
+    let _f4 = vec_free(e4);
+    let _f5 = vec_free(e5);
+    let _f6 = vec_free(e6);
+    let _f7 = vec_free(e7);
+    let _f8 = vec_free(e8);
+    let _f9 = vec_free(e9);
+    let _f10 = vec_free(e10);
+    let _f11 = vec_free(e11);
+    let _f12 = vec_free(e12);
+    0
+    };

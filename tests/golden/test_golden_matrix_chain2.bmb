@@ -1,0 +1,191 @@
+// Golden Test: Matrix chain multiplication order optimization with traceback
+// Given matrix dimensions p[0..n], find optimal parenthesization
+// that minimizes total scalar multiplications.
+// Uses O(n^2) DP table + split table for traceback.
+
+// 2D index helper: row-major layout for n x n matrix
+fn idx(i: i64, j: i64, n: i64) -> i64 = i * n + j;
+
+// Matrix chain DP
+// dims: vec of dimensions, length = num_matrices + 1
+// Returns: minimum cost
+// Also fills cost[] and split[] tables (both n x n, flattened)
+fn mcm_solve(dims: i64, n: i64, cost: i64, split: i64) -> i64 = {
+    // cost[i][i] = 0 for all i (already initialized)
+    // Fill for chain lengths 2..n
+    let mut chain_len = 2;
+    while chain_len <= n {
+        let mut i = 0;
+        while i <= n - chain_len {
+            let j = i + chain_len - 1;
+            // Initialize cost[i][j] to large value
+            let _s = vec_set(cost, idx(i, j, n), 999999999);
+            // Try all split points k = i..j-1
+            let mut k = i;
+            while k < j {
+                let q = vec_get(cost, idx(i, k, n))
+                      + vec_get(cost, idx(k + 1, j, n))
+                      + vec_get(dims, i) * vec_get(dims, k + 1) * vec_get(dims, j + 1);
+                if q < vec_get(cost, idx(i, j, n)) {
+                    let _s1 = vec_set(cost, idx(i, j, n), q);
+                    let _s2 = vec_set(split, idx(i, j, n), k);
+                    ()
+                } else { () };
+                set k = k + 1
+            };
+            set i = i + 1
+        };
+        set chain_len = chain_len + 1
+    };
+    vec_get(cost, idx(0, n - 1, n))
+};
+
+// Print optimal parenthesization using split table
+// Uses: A0, A1, A2, ... naming
+// Encodes the parenthesization as a sequence of operations
+fn print_parens(split: i64, n: i64, i: i64, j: i64) -> i64 = {
+    if i == j {
+        // Print matrix index
+        let _p = print_str("A");
+        let _p2 = println(i);
+        0
+    } else {
+        let k = vec_get(split, idx(i, j, n));
+        let _p = println_str("(");
+        let _l = print_parens(split, n, i, k);
+        let _m = print_str(" x ");
+        let _r = print_parens(split, n, k + 1, j);
+        let _p2 = println_str(")");
+        0
+    }
+};
+
+// Helper: push multiple values
+fn push_vals(v: i64, a: i64, b: i64, c: i64, d: i64) -> i64 = {
+    let _p = vec_push(v, a);
+    let _p = vec_push(v, b);
+    let _p = vec_push(v, c);
+    let _p = vec_push(v, d);
+    0
+};
+
+fn main() -> i64 = {
+    // === Test 1: Classic example ===
+    // Matrices: A0(10x30), A1(30x5), A2(5x60)
+    // dims = [10, 30, 5, 60], n = 3 matrices
+    // Optimal: (A0 x A1) x A2 = 10*30*5 + 10*5*60 = 1500 + 3000 = 4500
+    // vs A0 x (A1 x A2) = 30*5*60 + 10*30*60 = 9000 + 18000 = 27000
+    let _p = println_str("=== Test 1: 3 matrices ===");
+    let d1 = vec_new();
+    let _pv = vec_push(d1, 10);
+    let _pv = vec_push(d1, 30);
+    let _pv = vec_push(d1, 5);
+    let _pv = vec_push(d1, 60);
+    let n1 = 3;
+    let c1 = vec_new();
+    let s1 = vec_new();
+    for _i in 0..(n1 * n1) { let _p = vec_push(c1, 0); let _p = vec_push(s1, 0); 0 };
+    let min1 = mcm_solve(d1, n1, c1, s1);
+    let _p = print_str("Min cost: ");
+    let _p = println(min1);
+    let _p = println_str("Parenthesization:");
+    let _pp = print_parens(s1, n1, 0, n1 - 1);
+    let _f = vec_free(d1);
+    let _f = vec_free(c1);
+    let _f = vec_free(s1);
+
+    // === Test 2: 4 matrices ===
+    // A0(40x20), A1(20x30), A2(30x10), A3(10x30)
+    // dims = [40, 20, 30, 10, 30]
+    let _p = println_str("=== Test 2: 4 matrices ===");
+    let d2 = vec_new();
+    let _pv = vec_push(d2, 40);
+    let _pv = vec_push(d2, 20);
+    let _pv = vec_push(d2, 30);
+    let _pv = vec_push(d2, 10);
+    let _pv = vec_push(d2, 30);
+    let n2 = 4;
+    let c2 = vec_new();
+    let s2 = vec_new();
+    for _i in 0..(n2 * n2) { let _p = vec_push(c2, 0); let _p = vec_push(s2, 0); 0 };
+    let min2 = mcm_solve(d2, n2, c2, s2);
+    let _p = print_str("Min cost: ");
+    let _p = println(min2);
+    let _p = println_str("Parenthesization:");
+    let _pp = print_parens(s2, n2, 0, n2 - 1);
+    let _f = vec_free(d2);
+    let _f = vec_free(c2);
+    let _f = vec_free(s2);
+
+    // === Test 3: 5 matrices ===
+    // A0(10x20), A1(20x30), A2(30x40), A3(40x30), A4(30x10)
+    // dims = [10, 20, 30, 40, 30, 10]
+    let _p = println_str("=== Test 3: 5 matrices ===");
+    let d3 = vec_new();
+    let _pv = vec_push(d3, 10);
+    let _pv = vec_push(d3, 20);
+    let _pv = vec_push(d3, 30);
+    let _pv = vec_push(d3, 40);
+    let _pv = vec_push(d3, 30);
+    let _pv = vec_push(d3, 10);
+    let n3 = 5;
+    let c3 = vec_new();
+    let s3 = vec_new();
+    for _i in 0..(n3 * n3) { let _p = vec_push(c3, 0); let _p = vec_push(s3, 0); 0 };
+    let min3 = mcm_solve(d3, n3, c3, s3);
+    let _p = print_str("Min cost: ");
+    let _p = println(min3);
+    let _p = println_str("Parenthesization:");
+    let _pp = print_parens(s3, n3, 0, n3 - 1);
+    let _f = vec_free(d3);
+    let _f = vec_free(c3);
+    let _f = vec_free(s3);
+
+    // === Test 4: 2 matrices (trivial) ===
+    // A0(5x10), A1(10x20)
+    // Only one way: A0 x A1 = 5*10*20 = 1000
+    let _p = println_str("=== Test 4: 2 matrices ===");
+    let d4 = vec_new();
+    let _pv = vec_push(d4, 5);
+    let _pv = vec_push(d4, 10);
+    let _pv = vec_push(d4, 20);
+    let n4 = 2;
+    let c4 = vec_new();
+    let s4 = vec_new();
+    for _i in 0..(n4 * n4) { let _p = vec_push(c4, 0); let _p = vec_push(s4, 0); 0 };
+    let min4 = mcm_solve(d4, n4, c4, s4);
+    let _p = print_str("Min cost: ");
+    let _p = println(min4);
+    let _p = println_str("Parenthesization:");
+    let _pp = print_parens(s4, n4, 0, n4 - 1);
+    let _f = vec_free(d4);
+    let _f = vec_free(c4);
+    let _f = vec_free(s4);
+
+    // === Test 5: 6 matrices ===
+    // A0(30x35), A1(35x15), A2(15x5), A3(5x10), A4(10x20), A5(20x25)
+    // Classic textbook example. Optimal cost = 15125
+    let _p = println_str("=== Test 5: 6 matrices (textbook) ===");
+    let d5 = vec_new();
+    let _pv = vec_push(d5, 30);
+    let _pv = vec_push(d5, 35);
+    let _pv = vec_push(d5, 15);
+    let _pv = vec_push(d5, 5);
+    let _pv = vec_push(d5, 10);
+    let _pv = vec_push(d5, 20);
+    let _pv = vec_push(d5, 25);
+    let n5 = 6;
+    let c5 = vec_new();
+    let s5 = vec_new();
+    for _i in 0..(n5 * n5) { let _p = vec_push(c5, 0); let _p = vec_push(s5, 0); 0 };
+    let min5 = mcm_solve(d5, n5, c5, s5);
+    let _p = print_str("Min cost: ");
+    let _p = println(min5);
+    let _p = println_str("Parenthesization:");
+    let _pp = print_parens(s5, n5, 0, n5 - 1);
+    let _f = vec_free(d5);
+    let _f = vec_free(c5);
+    let _f = vec_free(s5);
+
+    0
+};

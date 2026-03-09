@@ -1,0 +1,201 @@
+// Golden test: Horner's method polynomial computation + polynomial addition
+// Polynomials stored as vec of coefficients: [a0, a1, a2, ...] = a0 + a1*x + a2*x^2 + ...
+
+// Compute polynomial at x using Horner's method
+// p(x) = c0 + c1*x + c2*x^2 + ... + cn*x^n
+// Horner: ((...((cn*x + cn-1)*x + cn-2)...)*x + c0)
+fn horner_compute(coeffs: i64, x: i64) -> i64 = {
+    let n = vec_len(coeffs);
+    let mut result = 0;
+    let mut i = n - 1;
+    loop {
+        if i < 0 { break } else { 0 };
+        result = result * x + vec_get(coeffs, i);
+        i = i - 1
+    };
+    result
+    };
+
+// Naive computation for verification
+fn pow_int(base: i64, exp: i64) -> i64 =
+    if exp == 0 { 1 }
+    else { base * pow_int(base, exp - 1) };
+
+fn naive_compute(coeffs: i64, x: i64) -> i64 = {
+    let n = vec_len(coeffs);
+    let mut result = 0;
+    for i in 0..n {
+        result = result + vec_get(coeffs, i) * pow_int(x, i)
+    };
+    result
+    };
+
+// Polynomial addition: result[i] = a[i] + b[i], padding shorter with zeros
+fn poly_add(a: i64, b: i64) -> i64 = {
+    let na = vec_len(a);
+    let nb = vec_len(b);
+    let max_n = if na > nb { na } else { nb };
+    let result = vec_new();
+    for i in 0..max_n {
+        let ca = if i < na { vec_get(a, i) } else { 0 };
+        let cb = if i < nb { vec_get(b, i) } else { 0 };
+        vec_push(result, ca + cb);
+        0
+    };
+    result
+    };
+
+// Polynomial scalar multiplication: result[i] = k * p[i]
+fn poly_scale(p: i64, k: i64) -> i64 = {
+    let n = vec_len(p);
+    let result = vec_new();
+    for i in 0..n {
+        vec_push(result, vec_get(p, i) * k);
+        0
+    };
+    result
+    };
+
+// Compute derivative polynomial: d/dx (c0 + c1*x + c2*x^2 + ...) = c1 + 2*c2*x + ...
+fn poly_deriv(coeffs: i64) -> i64 = {
+    let n = vec_len(coeffs);
+    let result = vec_new();
+    if n <= 1 {
+        vec_push(result, 0);
+        0
+    } else {
+        let mut i = 1;
+        loop {
+            if i >= n { break } else { 0 };
+            vec_push(result, vec_get(coeffs, i) * i);
+            i = i + 1
+        };
+        0
+    };
+    result
+    };
+
+// Helper to make polynomials
+fn make_poly3(a: i64, b: i64, c: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c);
+    v
+    };
+
+fn make_poly4(a: i64, b: i64, c: i64, d: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c); vec_push(v, d);
+    v
+    };
+
+fn main() -> i64 = {
+    // === Test 1: Basic Horner computation ===
+    // p(x) = 2 + 3x + x^2
+    let p1 = make_poly3(2, 3, 1);
+    let _t1 = println(horner_compute(p1, 0));      // 2
+    let _t2 = println(horner_compute(p1, 1));       // 6
+    let _t3 = println(horner_compute(p1, 2));       // 12
+    let _t4 = println(horner_compute(p1, 3));       // 20
+    let _t5 = println(horner_compute(p1, 0 - 1));   // 0
+
+    // === Test 2: Horner matches naive ===
+    // p(x) = 1 + 2x + 3x^2 + 4x^3
+    let p2 = make_poly4(1, 2, 3, 4);
+    let h5 = horner_compute(p2, 5);
+    let n5 = naive_compute(p2, 5);
+    let _t6 = println(h5);                       // 586
+    let _t7 = println(if h5 == n5 { 1 } else { 0 }); // 1
+
+    // p(x) at x=10: 1 + 20 + 300 + 4000 = 4321
+    let _t8 = println(horner_compute(p2, 10));      // 4321
+
+    // === Test 3: Polynomial addition ===
+    // (2 + 3x) + (1 + x + x^2) = (3 + 4x + x^2)
+    let pa = vec_new();
+    vec_push(pa, 2); vec_push(pa, 3);
+    let pb = make_poly3(1, 1, 1);
+    let psum = poly_add(pa, pb);
+    let _t9 = println(vec_get(psum, 0));         // 3
+    let _t10 = println(vec_get(psum, 1));        // 4
+    let _t11 = println(vec_get(psum, 2));        // 1
+    let _t12 = println(vec_len(psum));           // 3
+
+    // Compute sum at x=2: 3 + 8 + 4 = 15
+    let _t13 = println(horner_compute(psum, 2));    // 15
+
+    // === Test 4: Scalar multiplication ===
+    // 3 * (1 + 2x + x^2) = (3 + 6x + 3x^2)
+    let ps = make_poly3(1, 2, 1);
+    let scaled = poly_scale(ps, 3);
+    let _t14 = println(vec_get(scaled, 0));      // 3
+    let _t15 = println(vec_get(scaled, 1));      // 6
+    let _t16 = println(vec_get(scaled, 2));      // 3
+
+    // At x=2: 3 + 12 + 12 = 27
+    let _t17 = println(horner_compute(scaled, 2));  // 27
+
+    // === Test 5: Derivative ===
+    // d/dx (2 + 3x + x^2) = 3 + 2x
+    let d1 = poly_deriv(p1);
+    let _t18 = println(vec_len(d1));             // 2
+    let _t19 = println(vec_get(d1, 0));          // 3
+    let _t20 = println(vec_get(d1, 1));          // 2
+
+    // d/dx (1 + 2x + 3x^2 + 4x^3) = 2 + 6x + 12x^2
+    let d2 = poly_deriv(p2);
+    let _t21 = println(vec_get(d2, 0));          // 2
+    let _t22 = println(vec_get(d2, 1));          // 6
+    let _t23 = println(vec_get(d2, 2));          // 12
+
+    // Second derivative: d/dx (2 + 6x + 12x^2) = 6 + 24x
+    let d2d = poly_deriv(d2);
+    let _t24 = println(vec_get(d2d, 0));         // 6
+    let _t25 = println(vec_get(d2d, 1));         // 24
+
+    // === Test 6: Chained operations ===
+    // p(x) = 1 + x, q(x) = 2 + x
+    // sum = p + q = 3 + 2x
+    // sum(5) = 3 + 10 = 13
+    let pc = vec_new();
+    vec_push(pc, 1); vec_push(pc, 1);
+    let pd = vec_new();
+    vec_push(pd, 2); vec_push(pd, 1);
+    let chain_sum = poly_add(pc, pd);
+    let _t26 = println(horner_compute(chain_sum, 5)); // 13
+
+    // 2*sum = 6 + 4x
+    let chain_scaled = poly_scale(chain_sum, 2);
+    let _t27 = println(horner_compute(chain_scaled, 5)); // 26
+
+    // derivative of 2*sum = 4 (constant)
+    let chain_deriv = poly_deriv(chain_scaled);
+    let _t28 = println(vec_get(chain_deriv, 0)); // 4
+
+    // === Test 7: Large polynomial ===
+    // p(x) = 1 + x + x^2 + x^3 + x^4
+    // p(2) = 1 + 2 + 4 + 8 + 16 = 31
+    let plarge = vec_new();
+    vec_push(plarge, 1); vec_push(plarge, 1); vec_push(plarge, 1);
+    vec_push(plarge, 1); vec_push(plarge, 1);
+    let _t29 = println(horner_compute(plarge, 2));  // 31
+    // p(3) = 1 + 3 + 9 + 27 + 81 = 121
+    let _t30 = println(horner_compute(plarge, 3));  // 121
+
+    vec_free(p1);
+    vec_free(p2);
+    vec_free(pa);
+    vec_free(pb);
+    vec_free(psum);
+    vec_free(ps);
+    vec_free(scaled);
+    vec_free(d1);
+    vec_free(d2);
+    vec_free(d2d);
+    vec_free(pc);
+    vec_free(pd);
+    vec_free(chain_sum);
+    vec_free(chain_scaled);
+    vec_free(chain_deriv);
+    vec_free(plarge);
+    0
+    };

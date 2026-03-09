@@ -1,0 +1,50 @@
+// Test: Pure Function CSE optimization
+// Verifies that redundant calls to @pure functions are eliminated
+// and produce correct results.
+
+@pure
+fn square(x: i64) -> i64 = x * x;
+
+@pure
+fn cube(x: i64) -> i64 = x * x * x;
+
+@pure
+fn add_pair(a: i64, b: i64) -> i64 = a + b;
+
+@const
+fn magic() -> i64 = 42;
+
+fn main() -> i64 = {
+    // Same pure function, same args → CSE should eliminate duplicates
+    let a = square(5);
+    let b = square(5);
+    println(a);
+    println(b);
+    println(a + b);
+
+    // Different args → no CSE
+    let c = square(3);
+    let d = square(4);
+    println(c);
+    println(d);
+
+    // Multi-arg pure function
+    let e = add_pair(10, 20);
+    let f = add_pair(10, 20);
+    println(e);
+    println(f);
+
+    // @const function CSE
+    let g = magic();
+    let h = magic();
+    println(g);
+    println(h);
+
+    // Cube CSE
+    let i = cube(3);
+    let j = cube(3);
+    println(i);
+    println(j);
+
+    0
+};

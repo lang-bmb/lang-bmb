@@ -1,0 +1,109 @@
+// Golden Test: Huffman-like Frequency Analysis
+// Count frequencies, compute weighted path length estimates
+
+// Count occurrences of each value in data[0..n) into freq[0..max_val]
+fn count_freq(data: i64, n: i64, freq: i64, i: i64) -> i64 =
+    if i >= n { 0 }
+    else {
+        let val = vec_get(data, i);
+        let old = vec_get(freq, val);
+        let _s = vec_set(freq, val, old + 1);
+        count_freq(data, n, freq, i + 1)
+    };
+
+// Find max frequency value in freq[0..max_val]
+fn find_max_freq(freq: i64, max_val: i64, i: i64, best: i64) -> i64 =
+    if i > max_val { best }
+    else {
+        let f = vec_get(freq, i);
+        find_max_freq(freq, max_val, i + 1, if f > best { f } else { best })
+    };
+
+// Count distinct non-zero entries
+fn count_distinct(freq: i64, max_val: i64, i: i64, count: i64) -> i64 =
+    if i > max_val { count }
+    else {
+        let inc = if vec_get(freq, i) > 0 { 1 } else { 0 };
+        count_distinct(freq, max_val, i + 1, count + inc)
+    };
+
+// Sum of all frequencies
+fn sum_freq(freq: i64, max_val: i64, i: i64, acc: i64) -> i64 =
+    if i > max_val { acc }
+    else { sum_freq(freq, max_val, i + 1, acc + vec_get(freq, i)) };
+
+// Integer log2 (floor)
+fn int_log2(x: i64) -> i64 = {
+    let mut v = x;
+    let mut bits = 0;
+    loop {
+        if v <= 1 { break } else { () };
+        set v = v / 2;
+        set bits = bits + 1
+    };
+    bits
+};
+
+// Weighted bits: sum of freq[i] * floor_log2(total / freq[i])
+fn weighted_bits(freq: i64, max_val: i64, total: i64, i: i64, acc: i64) -> i64 =
+    if i > max_val { acc }
+    else {
+        let f = vec_get(freq, i);
+        let contrib = if f > 0 { f * int_log2(total / f) } else { 0 };
+        weighted_bits(freq, max_val, total, i + 1, acc + contrib)
+    };
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { vec_push(v, 0) };
+    v
+};
+
+fn main() -> i64 = {
+    // Test 1: [1, 2, 2, 3, 3, 3, 4, 4, 4, 4]
+    let data1 = vec_new();
+    vec_push(data1, 1); vec_push(data1, 2); vec_push(data1, 2);
+    vec_push(data1, 3); vec_push(data1, 3); vec_push(data1, 3);
+    vec_push(data1, 4); vec_push(data1, 4); vec_push(data1, 4); vec_push(data1, 4);
+    let freq1 = make_zeros(6);
+    let _c1 = count_freq(data1, 10, freq1, 0);
+    let _p1 = println(vec_get(freq1, 1));                     // 1
+    let _p2 = println(vec_get(freq1, 2));                     // 2
+    let _p3 = println(vec_get(freq1, 3));                     // 3
+    let _p4 = println(vec_get(freq1, 4));                     // 4
+    let _p5 = println(find_max_freq(freq1, 5, 0, 0));        // 4
+    let _p6 = println(count_distinct(freq1, 5, 0, 0));       // 4
+    let _p7 = println(sum_freq(freq1, 5, 0, 0));             // 10
+    let _p8 = println(weighted_bits(freq1, 5, 10, 0, 0));    // 14
+
+    // Test 2: Uniform [0,1,2,3,0,1,2,3]
+    let data2 = vec_new();
+    vec_push(data2, 0); vec_push(data2, 1); vec_push(data2, 2); vec_push(data2, 3);
+    vec_push(data2, 0); vec_push(data2, 1); vec_push(data2, 2); vec_push(data2, 3);
+    let freq2 = make_zeros(4);
+    let _c2 = count_freq(data2, 8, freq2, 0);
+    let _p9 = println(vec_get(freq2, 0));                     // 2
+    let _p10 = println(vec_get(freq2, 3));                    // 2
+    let _p11 = println(count_distinct(freq2, 3, 0, 0));      // 4
+    let _p12 = println(weighted_bits(freq2, 3, 8, 0, 0));    // 16
+
+    // Test 3: Skewed [0,0,0,0,0,0,0,1]
+    let data3 = vec_new();
+    vec_push(data3, 0); vec_push(data3, 0); vec_push(data3, 0); vec_push(data3, 0);
+    vec_push(data3, 0); vec_push(data3, 0); vec_push(data3, 0); vec_push(data3, 1);
+    let freq3 = make_zeros(2);
+    let _c3 = count_freq(data3, 8, freq3, 0);
+    let _p13 = println(vec_get(freq3, 0));                    // 7
+    let _p14 = println(vec_get(freq3, 1));                    // 1
+    let _p15 = println(weighted_bits(freq3, 1, 8, 0, 0));    // 3
+
+    // int_log2 tests
+    let _p16 = println(int_log2(1));     // 0
+    let _p17 = println(int_log2(8));     // 3
+    let _p18 = println(int_log2(1024));  // 10
+
+    let _f = vec_free(data1); let _f = vec_free(freq1);
+    let _f = vec_free(data2); let _f = vec_free(freq2);
+    let _f = vec_free(data3); let _f = vec_free(freq3);
+    0
+};

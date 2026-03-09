@@ -1,0 +1,181 @@
+// Golden Test: Sparse matrix multiplication using COO (coordinate list) format
+// Each sparse matrix is stored as 3 parallel vecs: row_indices, col_indices, values
+// Plus dimensions (rows, cols) and nnz (number of non-zeros)
+
+// Create a sparse matrix: returns a vec of 3 vecs [rows_vec, cols_vec, vals_vec]
+fn sparse_new() -> i64 = {
+    let meta = vec_new();
+    let rows = vec_new();
+    let cols = vec_new();
+    let vals = vec_new();
+    vec_push(meta, rows);
+    vec_push(meta, cols);
+    vec_push(meta, vals);
+    meta
+    };
+
+fn sparse_add_entry(sp: i64, r: i64, c: i64, v: i64) -> i64 = {
+    let rows = vec_get(sp, 0);
+    let cols = vec_get(sp, 1);
+    let vals = vec_get(sp, 2);
+    vec_push(rows, r);
+    vec_push(cols, c);
+    vec_push(vals, v);
+    0
+    };
+
+fn sparse_nnz(sp: i64) -> i64 =
+    vec_len(vec_get(sp, 2));
+
+// Get value at (r, c) by scanning entries
+fn sparse_get(sp: i64, r: i64, c: i64) -> i64 = {
+    let rows = vec_get(sp, 0);
+    let cols = vec_get(sp, 1);
+    let vals = vec_get(sp, 2);
+    let n = vec_len(vals);
+    let mut result = 0;
+    for i in 0..n {
+        let _x = if vec_get(rows, i) == r and vec_get(cols, i) == c {
+            set result = result + vec_get(vals, i);
+            0
+        } else { 0 }
+    };
+    result
+    };
+
+// Multiply two sparse matrices A (dim1 x dim2) * B (dim2 x dim3) = C
+// For each entry (ra, ca, va) in A and (rb, cb, vb) in B where ca == rb:
+//   C[ra][cb] += va * vb
+// We accumulate in a dense result vec of size dim1 * dim3
+fn sparse_multiply(a: i64, b: i64, dim1: i64, dim3: i64) -> i64 = {
+    let a_rows = vec_get(a, 0);
+    let a_cols = vec_get(a, 1);
+    let a_vals = vec_get(a, 2);
+    let b_rows = vec_get(b, 0);
+    let b_cols = vec_get(b, 1);
+    let b_vals = vec_get(b, 2);
+    let nnz_a = vec_len(a_vals);
+    let nnz_b = vec_len(b_vals);
+    // Dense result
+    let result = vec_new();
+    let total = dim1 * dim3;
+    for _i in 0..total { vec_push(result, 0) };
+    // O(nnz_a * nnz_b) multiply
+    for i in 0..nnz_a {
+        let ra = vec_get(a_rows, i);
+        let ca = vec_get(a_cols, i);
+        let va = vec_get(a_vals, i);
+        for j in 0..nnz_b {
+            let rb = vec_get(b_rows, j);
+            let cb = vec_get(b_cols, j);
+            let vb = vec_get(b_vals, j);
+            let _upd = if ca == rb {
+                let idx = ra * dim3 + cb;
+                let old = vec_get(result, idx);
+                vec_set(result, idx, old + va * vb);
+                0
+            } else { 0 }
+        }
+    };
+    result
+    };
+
+// Sum all non-zero values
+fn sparse_value_sum(sp: i64) -> i64 = {
+    let vals = vec_get(sp, 2);
+    let n = vec_len(vals);
+    let mut s = 0;
+    for i in 0..n {
+        set s = s + vec_get(vals, i)
+    };
+    s
+    };
+
+// Dense result sum
+fn dense_sum(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut s = 0;
+    for i in 0..n {
+        set s = s + vec_get(v, i)
+    };
+    s
+    };
+
+// Transpose a sparse matrix
+fn sparse_transpose(sp: i64) -> i64 = {
+    let rows = vec_get(sp, 0);
+    let cols = vec_get(sp, 1);
+    let vals = vec_get(sp, 2);
+    let n = vec_len(vals);
+    let t = sparse_new();
+    for i in 0..n {
+        let _e = sparse_add_entry(t, vec_get(cols, i), vec_get(rows, i), vec_get(vals, i));
+        0
+    };
+    t
+    };
+
+fn main() -> i64 = {
+    // Matrix A (3x3): identity matrix
+    // [1 0 0]
+    // [0 1 0]
+    // [0 0 1]
+    let a = sparse_new();
+    let _e1 = sparse_add_entry(a, 0, 0, 1);
+    let _e2 = sparse_add_entry(a, 1, 1, 1);
+    let _e3 = sparse_add_entry(a, 2, 2, 1);
+
+    let _p1 = println(sparse_nnz(a));       // 3
+    let _p2 = println(sparse_get(a, 0, 0)); // 1
+    let _p3 = println(sparse_get(a, 0, 1)); // 0
+    let _p4 = println(sparse_value_sum(a)); // 3
+
+    // Matrix B (3x3):
+    // [2 0 3]
+    // [0 4 0]
+    // [5 0 6]
+    let b = sparse_new();
+    let _e4 = sparse_add_entry(b, 0, 0, 2);
+    let _e5 = sparse_add_entry(b, 0, 2, 3);
+    let _e6 = sparse_add_entry(b, 1, 1, 4);
+    let _e7 = sparse_add_entry(b, 2, 0, 5);
+    let _e8 = sparse_add_entry(b, 2, 2, 6);
+
+    let _p5 = println(sparse_nnz(b));       // 5
+    let _p6 = println(sparse_value_sum(b)); // 20
+
+    // A * B = B (identity times anything)
+    let c = sparse_multiply(a, b, 3, 3);
+    let _p7 = println(vec_get(c, 0));  // C[0][0] = 2
+    let _p8 = println(vec_get(c, 2));  // C[0][2] = 3
+    let _p9 = println(vec_get(c, 4));  // C[1][1] = 4
+    let _p10 = println(vec_get(c, 6)); // C[2][0] = 5
+    let _p11 = println(vec_get(c, 8)); // C[2][2] = 6
+    let _p12 = println(dense_sum(c));  // 2+3+4+5+6 = 20
+
+    // B * B:
+    // [2 0 3]   [2 0 3]   [2*2+3*5  0     2*3+3*6]   [19  0  24]
+    // [0 4 0] * [0 4 0] = [0        4*4   0      ] = [ 0 16   0]
+    // [5 0 6]   [5 0 6]   [5*2+6*5  0     5*3+6*6]   [40  0  51]
+    let d = sparse_multiply(b, b, 3, 3);
+    let _p13 = println(vec_get(d, 0)); // D[0][0] = 19
+    let _p14 = println(vec_get(d, 2)); // D[0][2] = 24
+    let _p15 = println(vec_get(d, 4)); // D[1][1] = 16
+    let _p16 = println(vec_get(d, 6)); // D[2][0] = 40
+    let _p17 = println(vec_get(d, 8)); // D[2][2] = 51
+
+    // Transpose of B:
+    // B^T = [2 0 5]
+    //       [0 4 0]
+    //       [3 0 6]
+    let bt = sparse_transpose(b);
+    let _p18 = println(sparse_get(bt, 0, 2)); // 5
+    let _p19 = println(sparse_get(bt, 2, 0)); // 3
+
+    // Empty matrix multiply
+    let empty = sparse_new();
+    let e = sparse_multiply(empty, b, 3, 3);
+    let _p20 = println(dense_sum(e)); // 0
+
+    0
+    };

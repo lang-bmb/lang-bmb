@@ -1,0 +1,141 @@
+// Golden Test: Division edge cases - Cycle 1400
+// Division by various values, modular arithmetic, remainder patterns
+
+// Integer division truncates toward zero
+fn div_trunc(a: i64, b: i64) -> i64 = a / b;
+
+// Floor division: if signs differ and not evenly divisible, subtract 1
+fn div_floor(a: i64, b: i64) -> i64 = {
+    let q = a / b;
+    let r = a % b;
+    let a_neg = if a < 0 { 1 } else { 0 };
+    let b_neg = if b < 0 { 1 } else { 0 };
+    if r != 0 and a_neg != b_neg { q - 1 }
+    else { q }
+    };
+
+// Ceiling division
+fn div_ceil(a: i64, b: i64) -> i64 = {
+    let q = a / b;
+    let r = a % b;
+    let a_neg = if a < 0 { 1 } else { 0 };
+    let b_neg = if b < 0 { 1 } else { 0 };
+    if r != 0 and a_neg == b_neg { q + 1 }
+    else { q }
+    };
+
+// Check if n is divisible by d
+fn divisible(n: i64, d: i64) -> i64 =
+    if n % d == 0 { 1 } else { 0 };
+
+    // Count divisors of n
+
+fn count_divisors(n: i64) -> i64 = {
+    let abs_n = if n < 0 { 0 - n } else { n };
+    if abs_n == 0 { return 0 } else { () };
+    let mut count = 0;
+    let mut i = 1;
+    loop {
+        if i * i > abs_n { break } else { () };
+        if abs_n % i == 0 {
+            if i * i == abs_n { count = count + 1 }
+            else { count = count + 2 }
+        } else { () };
+    i = i + 1
+    };
+    count
+    };
+
+// Modular arithmetic: compute a^2 % m
+fn mod_square(a: i64, m: i64) -> i64 = (a % m) * (a % m) % m;
+
+// Compute n mod m where n and m can be large
+fn safe_mod(n: i64, m: i64) -> i64 =
+    if n >= 0 { n % m }
+    else { m + n % m };
+
+    // Compute digital root (repeatedly sum digits until single digit)
+
+fn digit_sum(n: i64) -> i64 = {
+    let mut x = if n < 0 { 0 - n } else { n };
+    let mut sum = 0;
+    loop {
+        if x == 0 { break } else { () };
+        sum = sum + x % 10;
+        x = x / 10
+    };
+    sum
+    };
+
+fn digital_root(n: i64) -> i64 = {
+    let abs_n = if n < 0 { 0 - n } else { n };
+    if abs_n == 0 { return 0 } else { () };
+    let r = abs_n % 9;
+    if r == 0 { 9 } else { r }
+    };
+
+// Euclidean division with quotient/remainder pair encoded as q*1000+r
+fn euclid_div(a: i64, b: i64) -> i64 = {
+    let q = a / b;
+    let r = a % b;
+    q * 1000 + r
+    };
+
+// Division rounding: how many groups of size k needed to fit n items (ceiling div)
+fn groups_needed(n: i64, k: i64) -> i64 = (n + k - 1) / k;
+
+fn main() -> i64 = {
+// Basic division truncation behavior
+    let _d1 = println(div_trunc(7, 2));     // 3
+    let _d2 = println(div_trunc(0 - 7, 2)); // -3 (truncates toward zero)
+    let _d3 = println(div_trunc(7, 0 - 2)); // -3
+    let _d4 = println(div_trunc(0 - 7, 0 - 2)); // 3
+
+// Floor division
+    let _f1 = println(div_floor(7, 2));     // 3
+    let _f2 = println(div_floor(0 - 7, 2)); // -4 (floor toward -inf)
+    let _f3 = println(div_floor(7, 0 - 2)); // -4
+    let _f4 = println(div_floor(0 - 7, 0 - 2)); // 3
+
+// Ceiling division
+    let _c1 = println(div_ceil(7, 2));      // 4
+    let _c2 = println(div_ceil(8, 2));      // 4 (exact)
+    let _c3 = println(div_ceil(0 - 7, 2));  // -3
+    let _c4 = println(div_ceil(7, 0 - 2));  // -3
+
+// Divisibility
+    let _dv1 = println(divisible(100, 4));   // 1
+    let _dv2 = println(divisible(100, 7));   // 0
+    let _dv3 = println(divisible(0, 5));     // 1
+
+// Count divisors
+    let _cd1 = println(count_divisors(12));   // 6 (1,2,3,4,6,12)
+    let _cd2 = println(count_divisors(36));   // 9
+    let _cd3 = println(count_divisors(97));   // 2 (prime)
+    let _cd4 = println(count_divisors(100));  // 9
+
+// Modular arithmetic
+    let _ms1 = println(mod_square(7, 13));    // 49 % 13 = 10
+    let _ms2 = println(mod_square(12, 100));  // 144 % 100 = 44
+    let _ms3 = println(mod_square(99, 97));   // 99^2 % 97
+
+// safe_mod for positive (just n % m)
+    let _sm1 = println(safe_mod(17, 5));   // 2
+    let _sm2 = println(safe_mod(100, 7));  // 2
+
+// digital_root
+    let _dr1 = println(digital_root(493));   // 4+9+3=16→1+6=7
+    let _dr2 = println(digital_root(999));   // 9+9+9=27→2+7=9
+    let _dr3 = println(digital_root(100));   // 1
+    let _dr4 = println(digital_root(0));     // 0
+
+// euclid_div encodes q*1000+r
+    let _ed1 = println(euclid_div(17, 5));   // q=3, r=2 → 3002
+    let _ed2 = println(euclid_div(100, 7));  // q=14, r=2 → 14002
+
+// groups_needed
+    let _gn1 = println(groups_needed(10, 3));  // 4
+    let _gn2 = println(groups_needed(12, 3));  // 4 (exact)
+    let _gn3 = println(groups_needed(1, 5));   // 1
+    0
+    };

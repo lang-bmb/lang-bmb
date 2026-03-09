@@ -1,0 +1,34 @@
+// Test: Constant Function Evaluation optimization
+// Verifies that 0-arg functions returning constants are
+// inlined as constants at call sites.
+
+@const
+fn magic() -> i64 = 42;
+
+@const
+fn zero() -> i64 = 0;
+
+@pure
+fn pi_times_100() -> i64 = 314;
+
+fn main() -> i64 = {
+    // @const function calls should be replaced with constants
+    let a = magic();
+    let b = magic();
+    println(a);
+    println(b);
+    println(a + b);
+
+    // Another @const function
+    let c = zero();
+    println(c);
+
+    // @pure 0-arg function also evaluable
+    let d = pi_times_100();
+    let e = pi_times_100();
+    println(d);
+    println(e);
+    println(d + e);
+
+    0
+};

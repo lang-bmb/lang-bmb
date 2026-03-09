@@ -1,0 +1,18 @@
+// Test: combined pre + post conditions generate assumes at both entry and call sites
+// pre b != 0 → assume at function entry
+// post ret >= 0 → assume at each call site
+
+fn safe_abs_div(a: i64, b: i64) -> i64
+    pre b != 0
+    post ret >= 0
+= {
+    let d = a / b;
+    if d < 0 { 0 - d } else { d }
+};
+
+fn main() -> i64 = {
+    let r1 = safe_abs_div(100, 7);
+    let r2 = safe_abs_div(0 - 50, 3);
+    let _u = println(r1 + r2);
+    0
+};

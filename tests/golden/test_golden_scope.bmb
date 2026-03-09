@@ -1,0 +1,57 @@
+// Golden Test: Variable Scoping and Shadowing
+// Tests let bindings, block scope, and variable shadowing
+// Note: BMB's let in blocks modifies the outer scope (flat scoping)
+
+fn main() -> i64 = {
+    // Basic let binding
+    let x = 10;
+    let _p1 = println(x);  // 10
+
+    // Shadowing in same scope
+    let y = 5;
+    let y = y * 2;
+    let _p2 = println(y);  // 10
+
+    // Block scope (let inside block affects outer scope)
+    let a = 100;
+    let b = {
+        let a = 200;
+        a + 50
+    };
+    let _p3 = println(a);  // 200 (modified by inner block)
+    let _p4 = println(b);  // 250 (block result)
+
+    // Nested blocks
+    let result = {
+        let x = 1;
+        let inner = {
+            let x = 2;
+            x * 10
+        };
+        x + inner
+    };
+    let _p5 = println(result);  // 22 (x=2 from inner + 20)
+
+    // For loop scope
+    let total = 0;
+    for i in 0..5 {
+        let sq = i * i;
+        total = total + sq;
+    };
+    let _p6 = println(total);  // 0+1+4+9+16 = 30
+
+    // Multiple let bindings in sequence
+    let a1 = 1;
+    let a2 = a1 + 1;
+    let a3 = a2 + 1;
+    let a4 = a3 + 1;
+    let _p7 = println(a4);  // 4
+
+    // Shadow with different computation
+    let n = 100;
+    let n = n / 10;
+    let n = n + 5;
+    let _p8 = println(n);  // 15
+
+    0
+};

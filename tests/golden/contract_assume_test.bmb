@@ -1,0 +1,18 @@
+// Test: contract-based llvm.assume injection
+// pre conditions should generate llvm.assume calls
+
+fn safe_index(arr: &[i64; 10], idx: i64) -> i64
+    pre idx >= 0 and idx < 10
+= arr[idx];
+
+fn safe_div(a: i64, b: i64) -> i64
+    pre b != 0
+= a / b;
+
+fn main() -> i64 = {
+    let arr: [i64; 10] = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+    let v1 = safe_index(&arr, 3);
+    let v2 = safe_div(100, 5);
+    let _u = println(v1 + v2);
+    0
+};

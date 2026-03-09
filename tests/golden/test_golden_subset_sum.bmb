@@ -1,0 +1,135 @@
+// Golden Test: Subset sum problem with DP boolean table
+// Given a set of integers and a target, determine if any subset sums to target
+
+// DP approach: dp[j] = 1 if sum j is achievable
+fn subset_sum(nums: i64, n: i64, target: i64) -> i64 = {
+    let dp = vec_new();
+    for _i in 0..target + 1 {
+        vec_push(dp, 0)
+    };
+    vec_set(dp, 0, 1);
+
+    for i in 0..n {
+        let num = vec_get(nums, i);
+        let mut j = target;
+        loop {
+            if j < num { break } else { 0 };
+            let _u = if vec_get(dp, j - num) == 1 {
+                vec_set(dp, j, 1)
+            } else { () };
+            j = j - 1
+        }
+    };
+
+    let result = vec_get(dp, target);
+    vec_free(dp);
+    result
+    };
+
+// Count how many distinct sums are achievable
+fn count_achievable(nums: i64, n: i64, max_sum: i64) -> i64 = {
+    let dp = vec_new();
+    for _i in 0..max_sum + 1 {
+        vec_push(dp, 0)
+    };
+    vec_set(dp, 0, 1);
+
+    for i in 0..n {
+        let num = vec_get(nums, i);
+        let mut j = max_sum;
+        loop {
+            if j < num { break } else { 0 };
+            let _u = if vec_get(dp, j - num) == 1 {
+                vec_set(dp, j, 1)
+            } else { () };
+            j = j - 1
+        }
+    };
+
+    let mut count = 0;
+    let mut j2 = 0;
+    loop {
+        if j2 > max_sum { break } else { 0 };
+        if vec_get(dp, j2) == 1 {
+            count = count + 1
+        } else { 0 };
+        j2 = j2 + 1
+    };
+    vec_free(dp);
+    count
+    };
+
+// Find minimum achievable sum >= target
+fn min_sum_at_least(nums: i64, n: i64, target: i64, max_sum: i64) -> i64 = {
+    let dp = vec_new();
+    for _i in 0..max_sum + 1 {
+        vec_push(dp, 0)
+    };
+    vec_set(dp, 0, 1);
+
+    for i in 0..n {
+        let num = vec_get(nums, i);
+        let mut j = max_sum;
+        loop {
+            if j < num { break } else { 0 };
+            let _u = if vec_get(dp, j - num) == 1 {
+                vec_set(dp, j, 1)
+            } else { () };
+            j = j - 1
+        }
+    };
+
+    let mut result = 0 - 1;
+    let mut j2 = target;
+    loop {
+        if j2 > max_sum { break } else { 0 };
+        if vec_get(dp, j2) == 1 {
+            result = j2;
+            break
+        } else { 0 };
+        j2 = j2 + 1
+    };
+    vec_free(dp);
+    result
+    };
+
+fn main() -> i64 = {
+    let s1 = vec_new();
+    vec_push(s1, 3); vec_push(s1, 34); vec_push(s1, 4);
+    vec_push(s1, 12); vec_push(s1, 5); vec_push(s1, 2);
+    let _p1 = println(subset_sum(s1, 6, 9));    // 1
+    let _p2 = println(subset_sum(s1, 6, 30));   // 0
+    let _p3 = println(subset_sum(s1, 6, 0));    // 1
+    let _p4 = println(subset_sum(s1, 6, 3));    // 1
+    let _p5 = println(subset_sum(s1, 6, 60));   // 1
+
+    let s2 = vec_new();
+    vec_push(s2, 7);
+    let _p6 = println(subset_sum(s2, 1, 7));    // 1
+    let _p7 = println(subset_sum(s2, 1, 3));    // 0
+
+    let s3 = vec_new();
+    vec_push(s3, 1); vec_push(s3, 2); vec_push(s3, 3);
+    let _p8 = println(subset_sum(s3, 3, 6));    // 1
+    let _p9 = println(subset_sum(s3, 3, 5));    // 1
+
+    // Count achievable sums for {1,2,3} in 0..6 = 7
+    let _p10 = println(count_achievable(s3, 3, 6));  // 7
+
+    // Count achievable sums for {3,5,7} in 0..15 = 8
+    let s4 = vec_new();
+    vec_push(s4, 3); vec_push(s4, 5); vec_push(s4, 7);
+    let _p11 = println(count_achievable(s4, 3, 15));  // 8
+
+    // Min sum >= 10 for {3,5,7} = 10
+    let _p12 = println(min_sum_at_least(s4, 3, 10, 15));  // 10
+
+    // Min sum >= 13 for {3,5,7} = 15
+    let _p13 = println(min_sum_at_least(s4, 3, 13, 15));  // 15
+
+    // Min sum >= 16 for {3,5,7} = impossible
+    let _p14 = println(min_sum_at_least(s4, 3, 16, 15));  // -1
+
+    vec_free(s1); vec_free(s2); vec_free(s3); vec_free(s4);
+    0
+    };

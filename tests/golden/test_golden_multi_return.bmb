@@ -1,0 +1,52 @@
+// Golden Test: Functions with multiple return paths
+// Tests that optimization handles complex control flow correctly
+
+fn abs_val(x: i64) -> i64 =
+    if x >= 0 { x } else { 0 - x };
+
+fn clamp(x: i64, lo: i64, hi: i64) -> i64 =
+    if x < lo { lo }
+    else if x > hi { hi }
+    else { x };
+
+fn sign(x: i64) -> i64 =
+    if x > 0 { 1 }
+    else if x < 0 { 0 - 1 }
+    else { 0 };
+
+fn classify(x: i64) -> i64 =
+    if x < 0 { 0 - 1 }
+    else if x == 0 { 0 }
+    else if x < 10 { 1 }
+    else if x < 100 { 2 }
+    else { 3 };
+
+fn nested_branch(a: i64, b: i64) -> i64 =
+    if a > 0 {
+        if b > 0 { a + b }
+        else { a - b }
+    } else {
+    if b > 0 { b - a }
+    else { 0 - a - b }
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(abs_val(42));          // 42
+    let _p2 = println(abs_val(0 - 17));      // 17
+    let _p3 = println(clamp(5, 0, 10));      // 5
+    let _p4 = println(clamp(0 - 3, 0, 10));  // 0
+    let _p5 = println(clamp(15, 0, 10));     // 10
+    let _p6 = println(sign(42));             // 1
+    let _p7 = println(sign(0 - 7));          // -1
+    let _p8 = println(sign(0));              // 0
+    let _p9 = println(classify(0 - 5));      // -1
+    let _p10 = println(classify(0));         // 0
+    let _p11 = println(classify(5));         // 1
+    let _p12 = println(classify(50));        // 2
+    let _p13 = println(classify(500));       // 3
+    let _p14 = println(nested_branch(3, 5)); // 8
+    let _p15 = println(nested_branch(3, 0 - 2)); // 5
+    let _p16 = println(nested_branch(0 - 3, 5)); // 8
+    let _p17 = println(nested_branch(0 - 3, 0 - 5)); // 8
+    0
+    };

@@ -1,0 +1,62 @@
+// Golden Test: Key-Value Store via Vec
+// Tests key-value storage patterns using parallel arrays
+
+fn find_key(keys: i64, vals: i64, n: i64, key: i64) -> i64 = {
+    let result = 0 - 1;
+    for i in 0..n {
+        if vec_get(keys, i) == key {
+            result = vec_get(vals, i);
+            break;
+        } else { () };
+    };
+    result
+};
+
+fn main() -> i64 = {
+    // Create parallel key-value arrays
+    let keys = vec_new();
+    let vals = vec_new();
+
+    // Insert entries
+    let _k1 = vec_push(keys, 10);
+    let _v1 = vec_push(vals, 100);
+    let _k2 = vec_push(keys, 20);
+    let _v2 = vec_push(vals, 200);
+    let _k3 = vec_push(keys, 30);
+    let _v3 = vec_push(vals, 300);
+    let _k4 = vec_push(keys, 40);
+    let _v4 = vec_push(vals, 400);
+    let _k5 = vec_push(keys, 50);
+    let _v5 = vec_push(vals, 500);
+
+    // Lookup by key
+    let _p1 = println(find_key(keys, vals, 5, 10));  // 100
+    let _p2 = println(find_key(keys, vals, 5, 30));  // 300
+    let _p3 = println(find_key(keys, vals, 5, 50));  // 500
+    let _p4 = println(find_key(keys, vals, 5, 99));  // -1 (not found)
+
+    // Count entries
+    let _p5 = println(5);  // 5 entries
+
+    // Sum all values
+    let sum = 0;
+    for i in 0..5 {
+        sum = sum + vec_get(vals, i);
+    };
+    let _p6 = println(sum);  // 1500
+
+    // Update a value
+    let _s = vec_set(vals, 2, 999);
+    let _p7 = println(find_key(keys, vals, 5, 30));  // 999
+
+    // Check existence
+    let has_20 = if find_key(keys, vals, 5, 20) >= 0 { 1 } else { 0 };
+    let has_77 = if find_key(keys, vals, 5, 77) >= 0 { 1 } else { 0 };
+    let _p8 = println(has_20);  // 1
+    let _p9 = println(has_77);  // 0
+
+    let _f1 = vec_free(keys);
+    let _f2 = vec_free(vals);
+
+    0
+};

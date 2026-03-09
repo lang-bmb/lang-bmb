@@ -18,6 +18,10 @@
 // - Simple type inference (i64 default)
 // - Text-based output only
 
+// Internal separator (Unit Separator, char 31) - avoids conflict with | in sat arithmetic
+fn SEP() -> String = chr(31);
+fn DSEP() -> String = chr(31) + chr(31);
+
 // ============================================================================
 // String Utility Functions (no imports in bootstrap)
 // ============================================================================
@@ -593,11 +597,11 @@ fn mir_type_name(ty: i64) -> String =
 
 // v0.30.44: Range operators (.., ..=)
 fn binop_from_symbol(s: String) -> i64 =
-    if s == "+" { 1 } else if s == "-" { 2 } else if s == "*" { 3 } else if s == "/" { 4 } else if s == "%" { 5 } else if s == "==" { 6 } else if s == "!=" { 7 } else if s == "<" { 8 } else if s == ">" { 9 } else if s == "<=" { 10 } else if s == ">=" { 11 } else if s == "and" { 12 } else if s == "or" { 13 } else if s == ".." { 14 } else if s == "..=" { 15 } else { 0 };
+    if s == "+" { 1 } else if s == "-" { 2 } else if s == "*" { 3 } else if s == "/" { 4 } else if s == "%" { 5 } else if s == "==" { 6 } else if s == "!=" { 7 } else if s == "<" { 8 } else if s == ">" { 9 } else if s == "<=" { 10 } else if s == ">=" { 11 } else if s == "and" { 12 } else if s == "or" { 13 } else if s == ".." { 14 } else if s == "..=" { 15 } else if s == "+|" { 16 } else if s == "-|" { 17 } else if s == "*|" { 18 } else if s == "+%" { 19 } else if s == "-%" { 20 } else if s == "*%" { 21 } else if s == ">>>" { 22 } else { 0 };
 
 // v0.30.44: Range operators (.., ..=)
 fn binop_symbol(op: i64) -> String =
-    if op == 1 { "+" } else if op == 2 { "-" } else if op == 3 { "*" } else if op == 4 { "/" } else if op == 5 { "%" } else if op == 6 { "==" } else if op == 7 { "!=" } else if op == 8 { "<" } else if op == 9 { ">" } else if op == 10 { "<=" } else if op == 11 { ">=" } else if op == 12 { "and" } else if op == 13 { "or" } else if op == 14 { ".." } else if op == 15 { "..=" } else { "?" };
+    if op == 1 { "+" } else if op == 2 { "-" } else if op == 3 { "*" } else if op == 4 { "/" } else if op == 5 { "%" } else if op == 6 { "==" } else if op == 7 { "!=" } else if op == 8 { "<" } else if op == 9 { ">" } else if op == 10 { "<=" } else if op == 11 { ">=" } else if op == 12 { "and" } else if op == 13 { "or" } else if op == 14 { ".." } else if op == 15 { "..=" } else if op == 16 { "+|" } else if op == 17 { "-|" } else if op == 18 { "*|" } else if op == 19 { "+%" } else if op == 20 { "-%" } else if op == 21 { "*%" } else if op == 22 { ">>>" } else { "?" };
 
 // ============================================================================
 // MIR Place Encoding
@@ -712,7 +716,7 @@ fn pack_result_sb(temp: i64, block: i64, result: String) -> String =
 fn sb_push_mir(sb: i64, text: String) -> i64 =
     if text.len() > 0 {
         let len = sb_len(sb);
-        let w0 = if len > 0 { sb_push(sb, "|") } else { 0 };
+        let w0 = if len > 0 { sb_push(sb, SEP()) } else { 0 };
         sb_push(sb, text)
     } else { 0 };
 
@@ -1120,7 +1124,7 @@ fn gen_captures(closure_place: String, free_vars: String, count: i64, idx: i64) 
         let var_name = name_at_index(free_vars, idx);
         let capture_text = "  Capture " + closure_place + ", %" + var_name + ", " + int_to_string(idx);
         let rest = gen_captures(closure_place, free_vars, count, idx + 1);
-        if rest.len() > 0 { capture_text + "|" + rest } else { capture_text }
+        if rest.len() > 0 { capture_text + SEP() + rest } else { capture_text }
     };
 
 // ============================================================================
@@ -1143,7 +1147,7 @@ fn gen_env_stores(env_place: String, free_vars: String, count: i64, idx: i64) ->
         let var_name = name_at_index(free_vars, idx);
         let store_text = gen_env_store(env_place, idx, "%" + var_name);
         let rest = gen_env_stores(env_place, free_vars, count, idx + 1);
-        if rest.len() > 0 { store_text + "|" + rest } else { store_text }
+        if rest.len() > 0 { store_text + SEP() + rest } else { store_text }
     };
 
 // Generate closure creation with environment
@@ -1169,7 +1173,7 @@ fn gen_closure_prelude(free_vars: String, count: i64, idx: i64) -> String =
         let var_name = name_at_index(free_vars, idx);
         let load_text = "  %" + var_name + " = LoadCapture %env, " + int_to_string(idx);
         let rest = gen_closure_prelude(free_vars, count, idx + 1);
-        if rest.len() > 0 { load_text + "|" + rest } else { load_text }
+        if rest.len() > 0 { load_text + SEP() + rest } else { load_text }
     };
 
 // Generate complete closure function MIR
@@ -1180,8 +1184,8 @@ fn gen_closure_fn(fn_id: i64, params: String, free_vars: String, body_mir: Strin
     let prelude = if capture_count == 0 { "" } else { gen_closure_prelude(free_vars, capture_count, 0) };
     let footer = "}";
     // Combine: header|prelude|body|footer
-    let with_prelude = if prelude == "" { header + "|" + body_mir } else { header + "|" + prelude + "|" + body_mir };
-    with_prelude + "|" + footer;
+    let with_prelude = if prelude == "" { header + SEP() + body_mir } else { header + SEP() + prelude + SEP() + body_mir };
+    with_prelude + SEP() + footer;
 
 // Generate closure function name from id
 fn closure_fn_name(fn_id: i64) -> String =
@@ -1253,12 +1257,12 @@ fn lower_lambda(ast: String, temp: i64, block: i64) -> String =
         let capture_text = if capture_count == 0 { "" } else { gen_captures(dest, free_vars, capture_count, 0) };
 
         // Combine closure + captures
-        let closure_with_captures = if capture_text.len() > 0 { closure_text + "|" + capture_text } else { closure_text };
+        let closure_with_captures = if capture_text.len() > 0 { closure_text + SEP() + capture_text } else { closure_text };
 
         // Lower body for the closure's inner function
         let body_result = lower_expr(body, temp + 1, block);
         let body_text = unpack_text(body_result);
-        let combined = if body_text.len() > 0 { closure_with_captures + "|" + body_text } else { closure_with_captures };
+        let combined = if body_text.len() > 0 { closure_with_captures + SEP() + body_text } else { closure_with_captures };
         pack_lower_result(unpack_temp(body_result), unpack_block(body_result), dest, combined)
     };
 
@@ -1334,7 +1338,7 @@ fn lower_seq(ast: String, temp: i64, block: i64) -> String =
         let b2 = unpack_block(r2);
         let p2 = unpack_result_place(r2);
         let text2 = unpack_text(r2);
-        pack_lower_result(t2, b2, p2, text1 + "|" + text2)
+        pack_lower_result(t2, b2, p2, text1 + SEP() + text2)
     };
 
 // v0.60.126: Lower assignment expression: (assign lhs rhs)
@@ -1368,13 +1372,13 @@ fn lower_assign(ast: String, temp: i64, block: i64) -> String =
         // Extract name and generate store
         let name = extract_assign_target_name(lhs);
         if name == "" {
-            pack_lower_result(tr, br, "%error", textr + "|  ; assign: invalid lhs")
+            pack_lower_result(tr, br, "%error", textr + SEP() + "  ; assign: invalid lhs")
         } else {
             let dest = "%" + name;
             let text_store = "  " + dest + " = copy " + pr;
             let dest_unit = place_temp(tr);
             let text_unit = "  " + dest_unit + " = UNIT";
-            pack_lower_result(tr + 1, br, dest_unit, textr + "|" + text_store + "|" + text_unit)
+            pack_lower_result(tr + 1, br, dest_unit, textr + SEP() + text_store + SEP() + text_unit)
         }
     };
 
@@ -1488,22 +1492,22 @@ fn lower_while(ast: String, temp: i64, block: i64) -> String =
     let result_place = place_temp(tb);
 
     // Build loop_start block (condition evaluation + branch)
-    let loop_start_block = mir_text_block_start(loop_start_lbl) + "|" +
-                           (if textc.len() > 0 { textc + "|" } else { "" }) +
+    let loop_start_block = mir_text_block_start(loop_start_lbl) + SEP() +
+                           (if textc.len() > 0 { textc + SEP() } else { "" }) +
                            branch_text;
 
     // Build body block (body + goto loop_start)
-    let body_block = mir_text_block_start(body_lbl) + "|" +
-                     (if textb.len() > 0 { textb + "|" } else { "" }) +
+    let body_block = mir_text_block_start(body_lbl) + SEP() +
+                     (if textb.len() > 0 { textb + SEP() } else { "" }) +
                      mir_text_goto(loop_start_lbl);
 
     // Build loop_end block (result = unit)
-    let loop_end_block = mir_text_block_start(loop_end_lbl) + "|" +
+    let loop_end_block = mir_text_block_start(loop_end_lbl) + SEP() +
                          "  " + result_place + " = UNIT";
 
     // Combine: goto loop_start, then all blocks
     let entry_text = mir_text_goto(loop_start_lbl);
-    let full_text = entry_text + "|" + loop_start_block + "|" + body_block + "|" + loop_end_block;
+    let full_text = entry_text + SEP() + loop_start_block + SEP() + body_block + SEP() + loop_end_block;
 
     pack_lower_result(tb + 1, bb + 1, result_place, full_text);
 
@@ -1533,17 +1537,17 @@ fn lower_loop(ast: String, temp: i64, block: i64) -> String =
     let result_place = place_temp(tb);
 
     // Build loop_start block (body + unconditional goto back)
-    let loop_start_block = mir_text_block_start(loop_start_lbl) + "|" +
-                           (if textb.len() > 0 { textb + "|" } else { "" }) +
+    let loop_start_block = mir_text_block_start(loop_start_lbl) + SEP() +
+                           (if textb.len() > 0 { textb + SEP() } else { "" }) +
                            mir_text_goto(loop_start_lbl);
 
     // Build loop_end block (result = unit, reached via break)
-    let loop_end_block = mir_text_block_start(loop_end_lbl) + "|" +
+    let loop_end_block = mir_text_block_start(loop_end_lbl) + SEP() +
                          "  " + result_place + " = UNIT";
 
     // Combine: goto loop_start, then blocks
     let entry_text = mir_text_goto(loop_start_lbl);
-    let full_text = entry_text + "|" + loop_start_block + "|" + loop_end_block;
+    let full_text = entry_text + SEP() + loop_start_block + SEP() + loop_end_block;
 
     pack_lower_result(tb + 1, bb + 1, result_place, full_text);
 
@@ -1636,28 +1640,28 @@ fn lower_for_range(varname: String, iter_ast: String, body_ast: String, op_sym: 
     let result_place = place_temp(tb + 2);
 
     // Build loop_start block (condition + branch)
-    let loop_start_block = mir_text_block_start(loop_start_lbl) + "|" +
-                           cond_text + "|" +
+    let loop_start_block = mir_text_block_start(loop_start_lbl) + SEP() +
+                           cond_text + SEP() +
                            branch_text;
 
     // Build body block (body + increment + goto loop_start)
-    let body_block = mir_text_block_start(body_lbl) + "|" +
-                     (if textb.len() > 0 { textb + "|" } else { "" }) +
-                     one_const + "|" +
-                     inc_text + "|" +
-                     var_update + "|" +
+    let body_block = mir_text_block_start(body_lbl) + SEP() +
+                     (if textb.len() > 0 { textb + SEP() } else { "" }) +
+                     one_const + SEP() +
+                     inc_text + SEP() +
+                     var_update + SEP() +
                      mir_text_goto(loop_start_lbl);
 
     // Build loop_end block (result = unit)
-    let loop_end_block = mir_text_block_start(loop_end_lbl) + "|" +
+    let loop_end_block = mir_text_block_start(loop_end_lbl) + SEP() +
                          "  " + result_place + " = UNIT";
 
     // Combine: start/end eval, var init, goto loop_start, then all blocks
-    let init_text = (if texts.len() > 0 { texts + "|" } else { "" }) +
-                    (if texte.len() > 0 { texte + "|" } else { "" }) +
-                    var_init + "|" +
+    let init_text = (if texts.len() > 0 { texts + SEP() } else { "" }) +
+                    (if texte.len() > 0 { texte + SEP() } else { "" }) +
+                    var_init + SEP() +
                     mir_text_goto(loop_start_lbl);
-    let full_text = init_text + "|" + loop_start_block + "|" + body_block + "|" + loop_end_block;
+    let full_text = init_text + SEP() + loop_start_block + SEP() + body_block + SEP() + loop_end_block;
 
     pack_lower_result(tb + 3, bb + 1, result_place, full_text);
 
@@ -1690,23 +1694,23 @@ fn lower_for_generic(varname: String, iter_ast: String, body_ast: String, temp: 
     let result_place = place_temp(tb);
 
     // Build loop_start block
-    let loop_start_block = mir_text_block_start(loop_start_lbl) + "|" +
+    let loop_start_block = mir_text_block_start(loop_start_lbl) + SEP() +
                            mir_text_goto(body_lbl);
 
     // Build body block (execute once, goto loop_end)
-    let body_block = mir_text_block_start(body_lbl) + "|" +
-                     var_init + "|" +
-                     (if textb.len() > 0 { textb + "|" } else { "" }) +
+    let body_block = mir_text_block_start(body_lbl) + SEP() +
+                     var_init + SEP() +
+                     (if textb.len() > 0 { textb + SEP() } else { "" }) +
                      mir_text_goto(loop_end_lbl);
 
     // Build loop_end block
-    let loop_end_block = mir_text_block_start(loop_end_lbl) + "|" +
+    let loop_end_block = mir_text_block_start(loop_end_lbl) + SEP() +
                          "  " + result_place + " = UNIT";
 
     // Combine
-    let entry_text = (if texti.len() > 0 { texti + "|" } else { "" }) +
+    let entry_text = (if texti.len() > 0 { texti + SEP() } else { "" }) +
                      mir_text_goto(loop_start_lbl);
-    let full_text = entry_text + "|" + loop_start_block + "|" + body_block + "|" + loop_end_block;
+    let full_text = entry_text + SEP() + loop_start_block + SEP() + body_block + SEP() + loop_end_block;
 
     pack_lower_result(tb + 1, bb + 1, result_place, full_text);
 
@@ -1739,7 +1743,7 @@ fn lower_return(ast: String, temp: i64, block: i64) -> String =
         let b2 = unpack_block(r);
         let place = unpack_place(r);
         let prev = unpack_mir(r);
-        let text = prev + "|" + mir_text_ret(place);
+        let text = prev + SEP() + mir_text_ret(place);
         pack_lower_result(t2, b2, "%unit", text)
     };
 
@@ -1771,7 +1775,7 @@ fn lower_binop(ast: String, temp: i64, block: i64) -> String =
     // v0.89.11: Use float binop when operands are float expressions
     let is_float = is_float_expr(left) or is_float_expr(right);
     let op_text = if is_float { mir_text_binop_float(dest, op, p1, p2) } else { mir_text_binop(dest, op, p1, p2) };
-    let combined = if text1.len() > 0 and text2.len() > 0 { text1 + "|" + text2 + "|" + op_text } else if text1.len() > 0 { text1 + "|" + op_text } else if text2.len() > 0 { text2 + "|" + op_text } else { op_text };
+    let combined = if text1.len() > 0 and text2.len() > 0 { text1 + SEP() + text2 + SEP() + op_text } else if text1.len() > 0 { text1 + SEP() + op_text } else if text2.len() > 0 { text2 + SEP() + op_text } else { op_text };
     pack_lower_result(t2 + 1, b2, dest, combined);
 
 // Lower negation: (neg expr)
@@ -1787,7 +1791,7 @@ fn lower_neg(ast: String, temp: i64, block: i64) -> String =
     // v0.89.11: Use fneg for float operands
     let is_float = is_float_expr(operand);
     let neg_text = if is_float { mir_text_unary_fneg(dest, p) } else { mir_text_unary_neg(dest, p) };
-    let combined = if text.len() > 0 { text + "|" + neg_text } else { neg_text };
+    let combined = if text.len() > 0 { text + SEP() + neg_text } else { neg_text };
     pack_lower_result(t + 1, b, dest, combined);
 
 // Lower not: (not expr)
@@ -1801,7 +1805,7 @@ fn lower_not(ast: String, temp: i64, block: i64) -> String =
 
     let dest = place_temp(t);
     let not_text = mir_text_unary_not(dest, p);
-    let combined = if text.len() > 0 { text + "|" + not_text } else { not_text };
+    let combined = if text.len() > 0 { text + SEP() + not_text } else { not_text };
     pack_lower_result(t + 1, b, dest, combined);
 
 // Lower if expression: (if cond then else)
@@ -1845,23 +1849,23 @@ fn lower_if(ast: String, temp: i64, block: i64) -> String =
     let texte = unpack_text(re);
 
     // Build then block
-    let then_block = mir_text_block_start(then_lbl) + "|" +
-                     (if textt.len() > 0 { textt + "|" } else { "" }) +
-                     mir_text_copy(result_place, pt) + "|" +
+    let then_block = mir_text_block_start(then_lbl) + SEP() +
+                     (if textt.len() > 0 { textt + SEP() } else { "" }) +
+                     mir_text_copy(result_place, pt) + SEP() +
                      mir_text_goto(merge_lbl);
 
     // Build else block
-    let else_block = mir_text_block_start(else_lbl) + "|" +
-                     (if texte.len() > 0 { texte + "|" } else { "" }) +
-                     mir_text_copy(result_place, pe) + "|" +
+    let else_block = mir_text_block_start(else_lbl) + SEP() +
+                     (if texte.len() > 0 { texte + SEP() } else { "" }) +
+                     mir_text_copy(result_place, pe) + SEP() +
                      mir_text_goto(merge_lbl);
 
     // Build merge block
     let merge_block = mir_text_block_start(merge_lbl);
 
     // Combine all
-    let entry_text = if textc.len() > 0 { textc + "|" + branch_text } else { branch_text };
-    let full_text = entry_text + "|" + then_block + "|" + else_block + "|" + merge_block;
+    let entry_text = if textc.len() > 0 { textc + SEP() + branch_text } else { branch_text };
+    let full_text = entry_text + SEP() + then_block + SEP() + else_block + SEP() + merge_block;
 
     pack_lower_result(te, be + 1, result_place, full_text);
 
@@ -1880,7 +1884,7 @@ fn lower_let(ast: String, temp: i64, block: i64) -> String =
 
     // Assign to named variable
     let assign_text = mir_text_copy(place_var(name), pv);
-    let value_text = if textv.len() > 0 { textv + "|" + assign_text } else { assign_text };
+    let value_text = if textv.len() > 0 { textv + SEP() + assign_text } else { assign_text };
 
     // Lower body
     let rb = lower_expr(body_ast, tv, bv);
@@ -1890,7 +1894,7 @@ fn lower_let(ast: String, temp: i64, block: i64) -> String =
     let textb = unpack_text(rb);
 
     // Combine
-    let combined = if textb.len() > 0 { value_text + "|" + textb } else { value_text };
+    let combined = if textb.len() > 0 { value_text + SEP() + textb } else { value_text };
     pack_lower_result(tb, bb, pb, combined);
 
 // Lower function call: (call <name> arg1 arg2...)
@@ -1904,7 +1908,7 @@ fn lower_call(ast: String, temp: i64, block: i64) -> String =
 
     let dest = place_temp(t);
     let call_text = mir_text_call(dest, name, args_places);
-    let combined = if args_text.len() > 0 { args_text + "|" + call_text } else { call_text };
+    let combined = if args_text.len() > 0 { args_text + SEP() + call_text } else { call_text };
     pack_lower_result(t + 1, b, dest, combined);
 
 // Lower call arguments recursively
@@ -1924,7 +1928,7 @@ fn lower_call_args(ast: String, idx: i64, temp: i64, block: i64, places: String)
         let p2 = unpack_result_place(next_result);
         let text2 = unpack_text(next_result);
 
-        let combined = if text.len() > 0 and text2.len() > 0 { text + "|" + text2 } else if text.len() > 0 { text } else { text2 };
+        let combined = if text.len() > 0 and text2.len() > 0 { text + SEP() + text2 } else if text.len() > 0 { text } else { text2 };
         pack_lower_result(t2, b2, p2, combined)
     };
 
@@ -1944,7 +1948,7 @@ fn lower_struct_init(ast: String, temp: i64, block: i64) -> String =
 
     let dest = place_temp(t);
     let init_text = mir_text_struct_init(dest, struct_name, fields_str);
-    let combined = if fields_text.len() > 0 { fields_text + "|" + init_text } else { init_text };
+    let combined = if fields_text.len() > 0 { fields_text + SEP() + init_text } else { init_text };
     pack_lower_result(t + 1, b, dest, combined);
 
 // Lower struct fields recursively: "(new Point (x val1) (y val2))" -> "x: %t0, y: %t1"
@@ -1969,7 +1973,7 @@ fn lower_struct_fields(ast: String, idx: i64, temp: i64, block: i64, fields: Str
         let p2 = unpack_result_place(next_result);
         let text2 = unpack_text(next_result);
 
-        let combined = if text.len() > 0 and text2.len() > 0 { text + "|" + text2 } else if text.len() > 0 { text } else { text2 };
+        let combined = if text.len() > 0 and text2.len() > 0 { text + SEP() + text2 } else if text.len() > 0 { text } else { text2 };
         pack_lower_result(t2, b2, p2, combined)
     };
 
@@ -1987,7 +1991,7 @@ fn lower_field_access(ast: String, temp: i64, block: i64) -> String =
 
     let dest = place_temp(tb);
     let access_text = mir_text_field_access(dest, pb, field_name);
-    let combined = if textb.len() > 0 { textb + "|" + access_text } else { access_text };
+    let combined = if textb.len() > 0 { textb + SEP() + access_text } else { access_text };
     pack_lower_result(tb + 1, bb, dest, combined);
 
 // ============================================================================
@@ -2005,7 +2009,7 @@ fn lower_array(ast: String, temp: i64, block: i64) -> String =
 
     let dest = place_temp(t);
     let arr_text = "  " + dest + " = Array [" + elems_str + "]";
-    let combined = if elems_text.len() > 0 { elems_text + "|" + arr_text } else { arr_text };
+    let combined = if elems_text.len() > 0 { elems_text + SEP() + arr_text } else { arr_text };
     pack_lower_result(t + 1, b, dest, combined);
 
 // Lower array elements recursively: "(array 1 2 3)" -> "%t0, %t1, %t2"
@@ -2026,7 +2030,7 @@ fn lower_array_elements(ast: String, idx: i64, temp: i64, block: i64, elems: Str
         let p2 = unpack_result_place(next_result);
         let text2 = unpack_text(next_result);
 
-        let combined = if text.len() > 0 and text2.len() > 0 { text + "|" + text2 } else if text.len() > 0 { text } else { text2 };
+        let combined = if text.len() > 0 and text2.len() > 0 { text + SEP() + text2 } else if text.len() > 0 { text } else { text2 };
         pack_lower_result(t2, b2, p2, combined)
     };
 
@@ -2055,8 +2059,8 @@ fn lower_index(ast: String, temp: i64, block: i64) -> String =
 
     let dest = place_temp(ti);
     let index_text = "  " + dest + " = Index " + pb + "[" + pi + "]";
-    let combined_base = if textb.len() > 0 and texti.len() > 0 { textb + "|" + texti } else if textb.len() > 0 { textb } else { texti };
-    let combined = if combined_base.len() > 0 { combined_base + "|" + index_text } else { index_text };
+    let combined_base = if textb.len() > 0 and texti.len() > 0 { textb + SEP() + texti } else if textb.len() > 0 { textb } else { texti };
+    let combined = if combined_base.len() > 0 { combined_base + SEP() + index_text } else { index_text };
     pack_lower_result(ti + 1, bi, dest, combined);
 
 // ============================================================================
@@ -2112,7 +2116,7 @@ fn lower_attr(ast: String, temp: i64, block: i64) -> String =
         // Codegen will use this to emit llvm.expect intrinsic
         let dest = place_temp(t);
         let attr_text = "  " + dest + " = BranchHint " + attr_name + " " + p;
-        let combined = if text.len() > 0 { text + "|" + attr_text } else { attr_text };
+        let combined = if text.len() > 0 { text + SEP() + attr_text } else { attr_text };
         pack_lower_result(t + 1, b, dest, combined)
     };
 
@@ -2193,8 +2197,8 @@ fn lower_trait_call(ast: String, temp: i64, block: i64) -> String =
     let dest = place_temp(ta);
     // Generate TraitCall MIR: %dest = TraitCall Trait::method(%recv, %args)
     let call_text = if args_str.len() == 0 { "  " + dest + " = TraitCall " + trait_name + "::" + method_name + "(" + pr + ")" } else { "  " + dest + " = TraitCall " + trait_name + "::" + method_name + "(" + pr + ", " + args_str + ")" };
-    let combined_recv = if textr.len() > 0 and texta.len() > 0 { textr + "|" + texta } else if textr.len() > 0 { textr } else { texta };
-    let combined = if combined_recv.len() > 0 { combined_recv + "|" + call_text } else { call_text };
+    let combined_recv = if textr.len() > 0 and texta.len() > 0 { textr + SEP() + texta } else if textr.len() > 0 { textr } else { texta };
+    let combined = if combined_recv.len() > 0 { combined_recv + SEP() + call_text } else { call_text };
     pack_lower_result(ta + 1, ba, dest, combined);
 
 // ============================================================================
@@ -2227,8 +2231,8 @@ fn lower_trait_call_static(ast: String, temp: i64, block: i64, type_hint: String
     // Generate static dispatch: %dest = call @Trait_Type_method(%recv, %args)
     let symbol = static_method_symbol(trait_name, type_hint, method_name);
     let call_text = if args_str.len() == 0 { "  " + dest + " = call " + symbol + "(" + pr + ")" } else { "  " + dest + " = call " + symbol + "(" + pr + ", " + args_str + ")" };
-    let combined_recv = if textr.len() > 0 and texta.len() > 0 { textr + "|" + texta } else if textr.len() > 0 { textr } else { texta };
-    let combined = if combined_recv.len() > 0 { combined_recv + "|" + call_text } else { call_text };
+    let combined_recv = if textr.len() > 0 and texta.len() > 0 { textr + SEP() + texta } else if textr.len() > 0 { textr } else { texta };
+    let combined = if combined_recv.len() > 0 { combined_recv + SEP() + call_text } else { call_text };
     pack_lower_result(ta + 1, ba, dest, combined);
 
 // Smart trait dispatch: uses static dispatch if type is concrete, otherwise TraitCall
@@ -2313,13 +2317,13 @@ fn lower_nullable_method(ast: String, method: String, temp: i64, block: i64) -> 
         // %dest = != %recv, 0
         let dest = place_temp(tr);
         let binop_text = mir_text_binop(dest, 7, pr, "I:0");
-        let combined = if textr.len() > 0 { textr + "|" + binop_text } else { binop_text };
+        let combined = if textr.len() > 0 { textr + SEP() + binop_text } else { binop_text };
         pack_lower_result(tr + 1, br, dest, combined)
     } else if method == "is_none" {
         // %dest = == %recv, 0
         let dest = place_temp(tr);
         let binop_text = mir_text_binop(dest, 6, pr, "I:0");
-        let combined = if textr.len() > 0 { textr + "|" + binop_text } else { binop_text };
+        let combined = if textr.len() > 0 { textr + SEP() + binop_text } else { binop_text };
         pack_lower_result(tr + 1, br, dest, combined)
     } else if method == "unwrap" or method == "expect" {
         // unwrap/expect: just return the receiver value (contract-verified)
@@ -2338,8 +2342,8 @@ fn lower_nullable_method(ast: String, method: String, temp: i64, block: i64) -> 
         let cond_text = mir_text_binop(cond, 7, pr, "I:0");
         let dest = place_temp(ta + 1);
         let select_text = "  " + dest + " = select " + cond + ", " + pr + ", " + default_place;
-        let combined_recv = if textr.len() > 0 and texta.len() > 0 { textr + "|" + texta } else if textr.len() > 0 { textr } else { texta };
-        let combined = if combined_recv.len() > 0 { combined_recv + "|" + cond_text + "|" + select_text } else { cond_text + "|" + select_text };
+        let combined_recv = if textr.len() > 0 and texta.len() > 0 { textr + SEP() + texta } else if textr.len() > 0 { textr } else { texta };
+        let combined = if combined_recv.len() > 0 { combined_recv + SEP() + cond_text + SEP() + select_text } else { cond_text + SEP() + select_text };
         pack_lower_result(ta + 2, ba, dest, combined)
     } else {
         // Fallback: treat as regular method call
@@ -2367,8 +2371,8 @@ fn lower_method_call_builtin(ast: String, temp: i64, block: i64) -> String =
 
     let dest = place_temp(ta);
     let call_text = "  " + dest + " = MethodCall " + pr + "." + method_name + "(" + args_str + ")";
-    let combined_recv = if textr.len() > 0 and texta.len() > 0 { textr + "|" + texta } else if textr.len() > 0 { textr } else { texta };
-    let combined = if combined_recv.len() > 0 { combined_recv + "|" + call_text } else { call_text };
+    let combined_recv = if textr.len() > 0 and texta.len() > 0 { textr + SEP() + texta } else if textr.len() > 0 { textr } else { texta };
+    let combined = if combined_recv.len() > 0 { combined_recv + SEP() + call_text } else { call_text };
     pack_lower_result(ta + 1, ba, dest, combined);
 
 // Lower method call arguments: (method_call recv <method> arg1 arg2) -> "%t0, %t1"
@@ -2389,7 +2393,7 @@ fn lower_method_args(ast: String, idx: i64, temp: i64, block: i64, args: String)
         let p2 = unpack_result_place(next_result);
         let text2 = unpack_text(next_result);
 
-        let combined = if text.len() > 0 and text2.len() > 0 { text + "|" + text2 } else if text.len() > 0 { text } else { text2 };
+        let combined = if text.len() > 0 and text2.len() > 0 { text + SEP() + text2 } else if text.len() > 0 { text } else { text2 };
         pack_lower_result(t2, b2, p2, combined)
     };
 
@@ -2424,7 +2428,7 @@ fn lower_enum_variant(ast: String, temp: i64, block: i64) -> String =
 
         let dest = place_temp(ta);
         let variant_text = mir_text_enum_variant(dest, enum_name, variant_name, discriminant, pa);
-        let combined = if texta.len() > 0 { texta + "|" + variant_text } else { variant_text };
+        let combined = if texta.len() > 0 { texta + SEP() + variant_text } else { variant_text };
         pack_lower_result(ta + 1, ba, dest, combined)
     };
 
@@ -2455,8 +2459,8 @@ fn lower_match(ast: String, temp: i64, block: i64) -> String =
     let switch_text = mir_text_switch(ps, cases_str, merge_lbl);
 
     // Combine: scrutinee + switch + arms + merge label
-    let entry_text = if texts.len() > 0 { texts + "|" + switch_text } else { switch_text };
-    let full_text = entry_text + "|" + arms_text + "|" + mir_text_block_start(merge_lbl);
+    let entry_text = if texts.len() > 0 { texts + SEP() + switch_text } else { switch_text };
+    let full_text = entry_text + SEP() + arms_text + SEP() + mir_text_block_start(merge_lbl);
 
     pack_lower_result(ta, ba, result_place, full_text);
 
@@ -2483,9 +2487,9 @@ fn lower_match_arms(ast: String, idx: i64, temp: i64, block: i64, scrutinee: Str
         let textb = unpack_text(rb);
 
         // Build arm block
-        let arm_block = mir_text_block_start(arm_lbl) + "|" +
-                        (if textb.len() > 0 { textb + "|" } else { "" }) +
-                        mir_text_copy(result, pb) + "|" +
+        let arm_block = mir_text_block_start(arm_lbl) + SEP() +
+                        (if textb.len() > 0 { textb + SEP() } else { "" }) +
+                        mir_text_copy(result, pb) + SEP() +
                         mir_text_goto(merge_lbl);
 
         // Add to cases
@@ -2493,7 +2497,7 @@ fn lower_match_arms(ast: String, idx: i64, temp: i64, block: i64, scrutinee: Str
         let new_cases = if cases == "" { case_str } else { cases + ", " + case_str };
 
         // Add to accumulated text
-        let new_acc = if acc == "" { arm_block } else { acc + "|" + arm_block };
+        let new_acc = if acc == "" { arm_block } else { acc + SEP() + arm_block };
 
         // Process next arm
         lower_match_arms(ast, idx + 1, tb, bb, scrutinee, result, merge_lbl, new_cases, new_acc)
@@ -2563,7 +2567,7 @@ fn lower_function_sb(ast: String) -> String =
     let entry = mir_text_block_start("entry");
     let footer = mir_text_fn_end();
 
-    header + "|" + entry + "|" + body_text + "|" + footer;
+    header + SEP() + entry + SEP() + body_text + SEP() + footer;
 
 // Original lower_function (kept for compatibility)
 fn lower_function(ast: String) -> String =
@@ -2586,8 +2590,8 @@ fn lower_function(ast: String) -> String =
     let ret_inst = mir_text_ret(result_place);
     let footer = mir_text_fn_end();
 
-    let body_part = if body_text.len() > 0 { body_text + "|" + ret_inst } else { ret_inst };
-    header + "|" + entry + "|" + body_part + "|" + footer;
+    let body_part = if body_text.len() > 0 { body_text + SEP() + ret_inst } else { ret_inst };
+    header + SEP() + entry + SEP() + body_part + SEP() + footer;
 
 // ============================================================================
 // Program Lowering
@@ -2605,7 +2609,7 @@ fn lower_program_inner_sb(ast: String, idx: i64, sb: i64) -> i64 =
     if fn_ast.len() == 0 or fn_ast == "" { 0 } else if not is_fn_node(fn_ast) { 0 } else {
         let fn_mir = lower_function_sb(fn_ast);
         let len = sb_len(sb);
-        let w1 = if len > 0 { sb_push(sb, "||") } else { 0 };
+        let w1 = if len > 0 { sb_push(sb, DSEP()) } else { 0 };
         let w2 = sb_push(sb, fn_mir);
         lower_program_inner_sb(ast, idx + 1, sb)
     };
@@ -2618,7 +2622,7 @@ fn lower_program_inner(ast: String, idx: i64, acc: String) -> String =
     let fn_ast = get_child(ast, idx);
     if fn_ast.len() == 0 or fn_ast == "" { acc } else if not is_fn_node(fn_ast) { acc } else {
         let fn_mir = lower_function(fn_ast);
-        let new_acc = if acc.len() > 0 { acc + "||" + fn_mir } else { fn_mir };
+        let new_acc = if acc.len() > 0 { acc + DSEP() + fn_mir } else { fn_mir };
         lower_program_inner(ast, idx + 1, new_acc)
     };
 

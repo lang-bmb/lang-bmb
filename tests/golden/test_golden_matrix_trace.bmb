@@ -1,0 +1,151 @@
+// Golden Test: Matrix trace, transpose, and symmetry on flat arrays
+// Matrices stored as flat vecs: mat[i*n + j] for row i, col j
+
+fn mat_get(mat: i64, n: i64, r: i64, c: i64) -> i64 =
+    vec_get(mat, r * n + c);
+
+fn mat_set(mat: i64, n: i64, r: i64, c: i64, val: i64) -> () =
+    vec_set(mat, r * n + c, val);
+
+// Create n x n zero matrix
+fn mat_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..(n * n) {
+        let _p = vec_push(v, 0)
+    };
+    v
+    };
+
+// Trace: sum of diagonal elements
+fn mat_trace(mat: i64, n: i64) -> i64 = {
+    let mut sum = 0;
+    for i in 0..n {
+        sum = sum + mat_get(mat, n, i, i)
+    };
+    sum
+    };
+
+// Anti-trace: sum of anti-diagonal elements (i, n-1-i)
+fn mat_anti_trace(mat: i64, n: i64) -> i64 = {
+    let mut sum = 0;
+    for i in 0..n {
+        sum = sum + mat_get(mat, n, i, n - 1 - i)
+    };
+    sum
+    };
+
+// Transpose in-place for square matrix
+fn mat_transpose(mat: i64, n: i64) -> i64 = {
+    for i in 0..n {
+        for j in (i + 1)..n {
+            let a = mat_get(mat, n, i, j);
+            let b = mat_get(mat, n, j, i);
+            let _s1 = mat_set(mat, n, i, j, b);
+            let _s2 = mat_set(mat, n, j, i, a);
+            0
+        };
+        0
+    };
+    mat
+    };
+
+// Check symmetry: returns 1 if mat[i][j] == mat[j][i] for all i,j
+fn mat_is_symmetric(mat: i64, n: i64) -> i64 = {
+    let mut result = 1;
+    for i in 0..n {
+        for j in (i + 1)..n {
+            if mat_get(mat, n, i, j) != mat_get(mat, n, j, i) {
+                result = 0
+            } else { () }
+        };
+        0
+    };
+    result
+    };
+
+// Sum of all elements
+fn mat_sum(mat: i64, n: i64) -> i64 = {
+    let mut total = 0;
+    for i in 0..(n * n) {
+        total = total + vec_get(mat, i)
+    };
+    total
+    };
+
+// Frobenius norm squared: sum of squares of all elements
+fn mat_frob_sq(mat: i64, n: i64) -> i64 = {
+    let mut total = 0;
+    for i in 0..(n * n) {
+        let v = vec_get(mat, i);
+        total = total + v * v
+    };
+    total
+    };
+
+fn main() -> i64 = {
+    // Build a 3x3 matrix:
+    // [1 2 3]
+    // [4 5 6]
+    // [7 8 9]
+    let m = mat_zeros(3);
+    let _s = mat_set(m, 3, 0, 0, 1);
+    let _s = mat_set(m, 3, 0, 1, 2);
+    let _s = mat_set(m, 3, 0, 2, 3);
+    let _s = mat_set(m, 3, 1, 0, 4);
+    let _s = mat_set(m, 3, 1, 1, 5);
+    let _s = mat_set(m, 3, 1, 2, 6);
+    let _s = mat_set(m, 3, 2, 0, 7);
+    let _s = mat_set(m, 3, 2, 1, 8);
+    let _s = mat_set(m, 3, 2, 2, 9);
+
+    // Test 1: Trace of [1,5,9] = 15
+    let _p1 = println(mat_trace(m, 3));  // 15
+
+    // Test 2: Anti-trace [3,5,7] = 15
+    let _p2 = println(mat_anti_trace(m, 3));  // 15
+
+    // Test 3: Sum of all = 45
+    let _p3 = println(mat_sum(m, 3));  // 45
+
+    // Test 4: Not symmetric (2 != 4, etc.)
+    let _p4 = println(mat_is_symmetric(m, 3));  // 0
+
+    // Build a symmetric 3x3 matrix:
+    // [1 2 3]
+    // [2 4 5]
+    // [3 5 6]
+    let s = mat_zeros(3);
+    let _s = mat_set(s, 3, 0, 0, 1);
+    let _s = mat_set(s, 3, 0, 1, 2);
+    let _s = mat_set(s, 3, 0, 2, 3);
+    let _s = mat_set(s, 3, 1, 0, 2);
+    let _s = mat_set(s, 3, 1, 1, 4);
+    let _s = mat_set(s, 3, 1, 2, 5);
+    let _s = mat_set(s, 3, 2, 0, 3);
+    let _s = mat_set(s, 3, 2, 1, 5);
+    let _s = mat_set(s, 3, 2, 2, 6);
+
+    // Test 5: Symmetric check = 1
+    let _p5 = println(mat_is_symmetric(s, 3));  // 1
+
+    // Test 6: Trace of symmetric [1,4,6] = 11
+    let _p6 = println(mat_trace(s, 3));  // 11
+
+    // Test 7: Frobenius norm squared of m:
+    // 1+4+9+16+25+36+49+64+81 = 285
+    let _p7 = println(mat_frob_sq(m, 3));  // 285
+
+    // Test 8: Transpose m, then check element [0][1] which was 2, now should be 4
+    let _t = mat_transpose(m, 3);
+    let _p8 = println(mat_get(m, 3, 0, 1));  // 4
+
+    // Test 9: Transpose of non-symmetric is also non-symmetric
+    let _p9 = println(mat_is_symmetric(m, 3));  // 0
+
+    // Test 10: Trace unchanged after transpose (diagonal same): still 15
+    let _p10 = println(mat_trace(m, 3));  // 15
+
+    let _f1 = vec_free(m);
+    let _f2 = vec_free(s);
+    0
+    };

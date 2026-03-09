@@ -1,0 +1,100 @@
+// Golden Test: gotgan init — package template generation
+// Tests TOML and main.bmb template generation, and init command flow.
+
+fn str_contains(haystack: String, needle: String) -> bool = {
+    let hlen = haystack.len();
+    let nlen = needle.len();
+    if nlen == 0 { true }
+    else if nlen > hlen { false }
+    else {
+        let mut i = 0;
+        let mut found = false;
+        let limit = hlen - nlen + 1;
+        while i < limit {
+            let _r = if not found {
+                let sub = haystack.slice(i, i + nlen);
+                if sub == needle { found = true; 0 } else { 0 }
+            } else { 0 };
+        i = i + 1;
+        0
+    };
+    found
+    }
+    };
+
+fn gen_toml(name: String) -> String = {
+    let sb = sb_new();
+    let _p1 = sb_push(sb, "[package]\nname = \"");
+        let _p2 = sb_push(sb, name);
+        let _p3 = sb_push(sb, "\"\nversion = \"0.1.0\"\ndescription = \"\"\nlicense = \"MIT\"\n\n[dependencies]\n");
+            sb_build(sb)
+        };
+
+fn gen_main_bmb(name: String) -> String = {
+    let sb = sb_new();
+    let _p1 = sb_push(sb, "// ");
+    let _p2 = sb_push(sb, name);
+    let _p3 = sb_push(sb, " - main entry point\n\nfn main() -> i64 = {\n    let _p = print_str(\"hello from ");
+        let _p4 = sb_push(sb, name);
+        let _p5 = sb_push(sb, "!\\n\");\n    0\n};\n");
+    sb_build(sb)
+    };
+
+fn run_test(name: String, result: bool) -> i64 = {
+    let _p1 = print_str(if result { "  PASS: " } else { "  FAIL: " });
+    let _p2 = print_str(name);
+    let _p3 = print_str("\n");
+    if result { 1 } else { 0 }
+    };
+
+fn main() -> i64 = {
+    let _h = print_str("gotgan-init: running tests\n");
+    let mut passed = 0;
+    let total = 8;
+
+// Test 1: gen_toml contains package name
+    let toml = gen_toml("hello-world");
+    passed = passed + run_test("toml has name", str_contains(toml, "name = \"hello-world\""));
+
+// Test 2: gen_toml contains version
+    passed = passed + run_test("toml has version", str_contains(toml, "version = \"0.1.0\""));
+
+// Test 3: gen_toml contains [package] header
+    passed = passed + run_test("toml has [package]", str_contains(toml, "[package]"));
+
+// Test 4: gen_toml contains [dependencies] header
+    passed = passed + run_test("toml has [dependencies]", str_contains(toml, "[dependencies]"));
+
+// Test 5: gen_main_bmb contains function name
+    let main_src = gen_main_bmb("hello-world");
+    passed = passed + run_test("main has hello-world", str_contains(main_src, "hello-world"));
+
+// Test 6: gen_main_bmb contains fn main
+    passed = passed + run_test("main has fn main", str_contains(main_src, "fn main()"));
+
+// Test 7: gen_main_bmb contains print_str
+    passed = passed + run_test("main has print_str", str_contains(main_src, "print_str"));
+
+// Test 8: init creates files (using temp dir)
+    let tmp_dir = "__test_init_temp__";
+    let _d = make_dir(tmp_dir);
+    let _w1 = write_file("__test_init_temp__/gotgan.toml", gen_toml("test-pkg"));
+    let _d2 = make_dir("__test_init_temp__/src");
+    let _w2 = write_file("__test_init_temp__/src/main.bmb", gen_main_bmb("test-pkg"));
+    let toml_ok = file_exists("__test_init_temp__/gotgan.toml") == 1;
+    let main_ok = file_exists("__test_init_temp__/src/main.bmb") == 1;
+
+// Cleanup
+    let _c1 = system("del /q __test_init_temp__\\src\\main.bmb 2>nul");
+    let _c2 = system("rmdir __test_init_temp__\\src 2>nul");
+    let _c3 = system("del /q __test_init_temp__\\gotgan.toml 2>nul");
+    let _c4 = system("rmdir __test_init_temp__ 2>nul");
+    passed = passed + run_test("init creates files", toml_ok and main_ok);
+
+    let _r1 = print_str("gotgan-init: ");
+    let _r2 = print(passed);
+    let _r3 = print_str("/");
+    let _r4 = print(total);
+    let _r5 = print_str(" tests passed\n");
+    if passed == total { 0 } else { 1 }
+    };

@@ -1,0 +1,80 @@
+// Golden Test: Fenwick Tree (Binary Indexed Tree)
+// Supports point update and prefix sum queries in O(log n)
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { vec_push(v, 0) };
+    v
+};
+
+// lowbit: isolate lowest set bit
+fn lowbit(x: i64) -> i64 = x band (0 - x);
+
+// Update: add delta at position i (1-indexed)
+fn fenwick_update(tree: i64, n: i64, i: i64, delta: i64) -> i64 = {
+    let pos = i;
+    loop {
+        if pos > n { break } else { () };
+        let cur = vec_get(tree, pos);
+        let _s = vec_set(tree, pos, cur + delta);
+        pos = pos + lowbit(pos)
+    };
+    0
+};
+
+// Query: prefix sum from 1 to i (1-indexed)
+fn fenwick_query(tree: i64, i: i64) -> i64 = {
+    let pos = i;
+    let sum = 0;
+    loop {
+        if pos <= 0 { break } else { () };
+        sum = sum + vec_get(tree, pos);
+        pos = pos - lowbit(pos)
+    };
+    sum
+};
+
+// Range sum from l to r (1-indexed, inclusive)
+fn fenwick_range(tree: i64, l: i64, r: i64) -> i64 =
+    fenwick_query(tree, r) - fenwick_query(tree, l - 1);
+
+fn main() -> i64 = {
+    // Tree with 8 elements (indices 1..8, index 0 unused)
+    let n = 8;
+    let tree = make_zeros(n + 1);
+
+    // Insert values: arr = [3, 1, 4, 1, 5, 9, 2, 6]
+    let _u1 = fenwick_update(tree, n, 1, 3);
+    let _u2 = fenwick_update(tree, n, 2, 1);
+    let _u3 = fenwick_update(tree, n, 3, 4);
+    let _u4 = fenwick_update(tree, n, 4, 1);
+    let _u5 = fenwick_update(tree, n, 5, 5);
+    let _u6 = fenwick_update(tree, n, 6, 9);
+    let _u7 = fenwick_update(tree, n, 7, 2);
+    let _u8 = fenwick_update(tree, n, 8, 6);
+
+    // Prefix sums
+    let _p1 = println(fenwick_query(tree, 1));  // 3
+    let _p2 = println(fenwick_query(tree, 3));  // 3+1+4 = 8
+    let _p3 = println(fenwick_query(tree, 5));  // 3+1+4+1+5 = 14
+    let _p4 = println(fenwick_query(tree, 8));  // 3+1+4+1+5+9+2+6 = 31
+
+    // Range queries
+    let _p5 = println(fenwick_range(tree, 2, 5));  // 1+4+1+5 = 11
+    let _p6 = println(fenwick_range(tree, 3, 7));  // 4+1+5+9+2 = 21
+    let _p7 = println(fenwick_range(tree, 1, 1));  // 3
+    let _p8 = println(fenwick_range(tree, 6, 8));  // 9+2+6 = 17
+
+    // Update: add 10 to position 4
+    let _u9 = fenwick_update(tree, n, 4, 10);
+    let _p9 = println(fenwick_query(tree, 4));   // 3+1+4+11 = 19
+    let _p10 = println(fenwick_query(tree, 8));  // 31+10 = 41
+    let _p11 = println(fenwick_range(tree, 3, 5)); // 4+11+5 = 20
+
+    // Lowbit tests
+    let _p12 = println(lowbit(6));  // 2 (110 -> 010)
+    let _p13 = println(lowbit(8));  // 8 (1000 -> 1000)
+
+    let _f = vec_free(tree);
+    0
+};

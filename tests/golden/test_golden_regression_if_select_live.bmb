@@ -1,0 +1,58 @@
+// Golden Test: Regression - IfElseToSelect live variable corruption
+// Bug: IfElseToSelect hoisted both branches unconditionally when they
+// assigned different live variables (lo and hi in binary search).
+// Both assignments executed, corrupting loop state.
+
+fn binary_search(v: i64, target: i64) -> i64 = {
+    let mut lo = 0;
+    let mut hi = vec_len(v) - 1;
+    let mut result = 0 - 1;
+    loop {
+        if lo > hi { break } else { () };
+        let mid = (lo + hi) / 2;
+        let val = vec_get(v, mid);
+        if val == target {
+            result = mid;
+            break
+        } else if val < target {
+        lo = mid + 1
+    } else {
+    hi = mid - 1
+    }
+    };
+    result
+    };
+
+fn linear_search(v: i64, target: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut result = 0 - 1;
+    for i in 0..n {
+        if vec_get(v, i) == target {
+            { result = i };
+            0
+        } else { 0 }
+    };
+    result
+    };
+
+fn main() -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, 10);
+    let _p2 = vec_push(v, 20);
+    let _p3 = vec_push(v, 30);
+    let _p4 = vec_push(v, 40);
+    let _p5 = vec_push(v, 50);
+
+// Binary search tests
+    let _r1 = println(binary_search(v, 40));   // 3
+    let _r2 = println(binary_search(v, 10));   // 0
+    let _r3 = println(binary_search(v, 99));   // -1
+    let _r4 = println(binary_search(v, 50));   // 4
+    let _r5 = println(binary_search(v, 30));   // 2
+
+// Linear search tests
+    let _r6 = println(linear_search(v, 20));   // 1
+    let _r7 = println(linear_search(v, 99));   // -1
+    let _f = vec_free(v);
+    0
+    };

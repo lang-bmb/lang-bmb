@@ -1,0 +1,63 @@
+// Golden Test: Zigzag encoding/decoding
+// Zigzag encoding maps signed integers to unsigned: 0->0, -1->1, 1->2, -2->3, 2->4, ...
+// Encode: (n << 1) bxor (n >> 63)  -- arithmetic right shift
+// Decode uses bit manipulation without logical right shift
+
+// Zigzag encode: maps signed to unsigned-like representation
+fn zigzag_encode(n: i64) -> i64 =
+    (n << 1) bxor (n >> 63);
+
+// Zigzag decode for non-negative zigzag values (positive original or small negative)
+// For encoded value z: if z is even, original = z / 2; if z is odd, original = -(z+1)/2
+fn zigzag_decode(z: i64) -> i64 =
+    if (z band 1) == 0 { z / 2 }
+    else { 0 - ((z + 1) / 2) };
+
+// Count how many 7-bit groups needed for varint encoding
+// Works on the zigzag-encoded (non-negative) value
+fn varint_bytes(n: i64) -> i64 = {
+    let z = zigzag_encode(n);
+    // For non-negative z, simple division works
+    let mut x = z;
+    let mut bytes = 1;
+    loop {
+        if x < 128 { break } else { () };
+        x = x / 128;
+        bytes = bytes + 1
+    };
+    bytes
+    };
+
+fn main() -> i64 = {
+    // Test 1: encode(0) = 0
+    let _p1 = println(zigzag_encode(0));
+
+    // Test 2: encode(-1) = 1
+    let _p2 = println(zigzag_encode(0 - 1));
+
+    // Test 3: encode(1) = 2
+    let _p3 = println(zigzag_encode(1));
+
+    // Test 4: encode(-2) = 3
+    let _p4 = println(zigzag_encode(0 - 2));
+
+    // Test 5: encode(2) = 4
+    let _p5 = println(zigzag_encode(2));
+
+    // Test 6: decode(encode(-100)) = -100 (roundtrip)
+    let _p6 = println(zigzag_decode(zigzag_encode(0 - 100)));
+
+    // Test 7: decode(encode(12345)) = 12345 (roundtrip)
+    let _p7 = println(zigzag_decode(zigzag_encode(12345)));
+
+    // Test 8: encode(-64) = 127  (maps to 1-byte varint boundary)
+    let _p8 = println(zigzag_encode(0 - 64));
+
+    // Test 9: varint_bytes(0) = 1 (small values need 1 byte)
+    let _p9 = println(varint_bytes(0));
+
+    // Test 10: varint_bytes(10000) = 3 (encode(10000)=20000, needs 3 varint bytes)
+    let _p10 = println(varint_bytes(10000));
+
+    0
+    };

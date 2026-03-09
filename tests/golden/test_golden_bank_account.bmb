@@ -1,0 +1,149 @@
+// Golden Test: Bank account transaction simulation
+// Supports deposit, withdrawal, transfer, and balance queries
+
+// Account stored as vec: [balance, num_transactions, min_balance, max_balance]
+fn account_new(initial: i64) -> i64 = {
+    let v = vec_new();
+    let _b = vec_push(v, initial);     // balance
+    let _t = vec_push(v, 0);          // transaction count
+    let _mn = vec_push(v, initial);    // min balance ever
+    let _mx = vec_push(v, initial);    // max balance ever
+    v
+};
+
+fn balance(acc: i64) -> i64 = vec_get(acc, 0);
+fn tx_count(acc: i64) -> i64 = vec_get(acc, 1);
+fn min_balance(acc: i64) -> i64 = vec_get(acc, 2);
+fn max_balance(acc: i64) -> i64 = vec_get(acc, 3);
+
+fn update_minmax(acc: i64) -> i64 = {
+    let bal = balance(acc);
+    let _mn = if bal < min_balance(acc) { vec_set(acc, 2, bal); 0 } else { 0 };
+    let _mx = if bal > max_balance(acc) { vec_set(acc, 3, bal); 0 } else { 0 };
+    0
+};
+
+// Deposit: always succeeds, returns new balance
+fn deposit(acc: i64, amount: i64) -> i64 = {
+    let new_bal = balance(acc) + amount;
+    let _s1 = vec_set(acc, 0, new_bal);
+    let _s2 = vec_set(acc, 1, tx_count(acc) + 1);
+    let _u = update_minmax(acc);
+    new_bal
+};
+
+// Withdraw: fails if insufficient funds, returns new balance or -1
+fn withdraw(acc: i64, amount: i64) -> i64 = {
+    let bal = balance(acc);
+    if amount > bal { 0 - 1 }
+    else {
+        let new_bal = bal - amount;
+        let _s1 = vec_set(acc, 0, new_bal);
+        let _s2 = vec_set(acc, 1, tx_count(acc) + 1);
+        let _u = update_minmax(acc);
+        new_bal
+    }
+};
+
+// Transfer from src to dst, returns 1 on success, 0 on failure
+fn transfer(src: i64, dst: i64, amount: i64) -> i64 = {
+    let result = withdraw(src, amount);
+    if result == 0 - 1 { 0 }
+    else {
+        let _d = deposit(dst, amount);
+        1
+    }
+};
+
+// Apply interest: balance * rate / 100 (integer percentage)
+fn apply_interest(acc: i64, rate_pct: i64) -> i64 = {
+    let interest = balance(acc) * rate_pct / 100;
+    deposit(acc, interest)
+};
+
+// Process a batch of transactions
+// ops: vec of [type, amount] pairs where type: 0=deposit, 1=withdraw
+fn process_batch(acc: i64, ops: i64) -> i64 = {
+    let n = vec_len(ops) / 2;
+    let mut successful = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let op_type = vec_get(ops, i * 2);
+        let amount = vec_get(ops, i * 2 + 1);
+        let _r = if op_type == 0 {
+            let _d = deposit(acc, amount);
+            successful = successful + 1;
+            0
+        } else {
+            let w = withdraw(acc, amount);
+            let _c = if w != 0 - 1 { successful = successful + 1; 0 } else { 0 };
+            0
+        };
+        i = i + 1
+    };
+    successful
+};
+
+fn main() -> i64 = {
+    // Create account with $1000
+    let acc1 = account_new(1000);
+    let _p1 = println(balance(acc1));       // 1000
+    let _p2 = println(tx_count(acc1));      // 0
+
+    // Deposit $500
+    let b1 = deposit(acc1, 500);
+    let _p3 = println(b1);                  // 1500
+
+    // Withdraw $200
+    let b2 = withdraw(acc1, 200);
+    let _p4 = println(b2);                  // 1300
+
+    // Withdraw too much
+    let b3 = withdraw(acc1, 2000);
+    let _p5 = println(b3);                  // -1 (failed)
+    let _p6 = println(balance(acc1));       // 1300 (unchanged)
+    let _p7 = println(tx_count(acc1));      // 2 (only successful ones)
+
+    // Transfer between accounts
+    let acc2 = account_new(500);
+    let t1 = transfer(acc1, acc2, 300);
+    let _p8 = println(t1);                  // 1 (success)
+    let _p9 = println(balance(acc1));       // 1000
+    let _p10 = println(balance(acc2));      // 800
+
+    // Transfer too much
+    let t2 = transfer(acc2, acc1, 1000);
+    let _p11 = println(t2);                // 0 (failed)
+    let _p12 = println(balance(acc2));      // 800 (unchanged)
+
+    // Apply 5% interest on acc2 (800 * 5 / 100 = 40)
+    let b4 = apply_interest(acc2, 5);
+    let _p13 = println(b4);                // 840
+
+    // Min/max balance tracking on acc1: started 1000, went to 1500, then 1300, then 1000
+    let _p14 = println(min_balance(acc1));  // 1000
+    let _p15 = println(max_balance(acc1));  // 1500
+
+    // Batch processing
+    let ops = vec_new();
+    // deposit 100
+    let _o1 = vec_push(ops, 0); let _o2 = vec_push(ops, 100);
+    // deposit 200
+    let _o3 = vec_push(ops, 0); let _o4 = vec_push(ops, 200);
+    // withdraw 50
+    let _o5 = vec_push(ops, 1); let _o6 = vec_push(ops, 50);
+    // withdraw 9999 (will fail)
+    let _o7 = vec_push(ops, 1); let _o8 = vec_push(ops, 9999);
+
+    let acc3 = account_new(500);
+    let success_count = process_batch(acc3, ops);
+    let _p16 = println(success_count);      // 3 (3 of 4 succeed)
+    let _p17 = println(balance(acc3));      // 500 + 100 + 200 - 50 = 750
+
+    let _f1 = vec_free(acc1);
+    let _f2 = vec_free(acc2);
+    let _f3 = vec_free(acc3);
+    let _f4 = vec_free(ops);
+    0
+};

@@ -1,0 +1,111 @@
+// Golden Test: Square Root Decomposition for Range Sum Queries
+// Partition array into blocks of size ~sqrt(n), precompute block sums
+// Query sum(l..r) in O(sqrt(n)), update in O(1)
+
+// Integer square root (floor)
+fn isqrt(n: i64) -> i64 = {
+    if n <= 0 { return 0 } else { () };
+    let mut x = 1;
+    loop {
+        if x * x > n { break } else { 0 };
+        x = x + 1
+    };
+    x - 1
+};
+
+// Build block sums array. block_size must be > 0.
+// blocks[i] = sum of arr[i*block_size .. min((i+1)*block_size, n)]
+fn build_blocks(arr: i64, n: i64, block_size: i64) -> i64 = {
+    let num_blocks = (n + block_size - 1) / block_size;
+    let blocks = vec_new();
+    let mut b = 0;
+    loop {
+        if b >= num_blocks { break } else { 0 };
+        let _p = vec_push(blocks, 0);
+        b = b + 1
+    };
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { 0 };
+        let bi = i / block_size;
+        let cur = vec_get(blocks, bi);
+        vec_set(blocks, bi, cur + vec_get(arr, i));
+        i = i + 1
+    };
+    blocks
+};
+
+// Point update: arr[idx] = new_val, update block sum
+fn point_update(arr: i64, blocks: i64, block_size: i64, idx: i64, new_val: i64) -> i64 = {
+    let old_val = vec_get(arr, idx);
+    vec_set(arr, idx, new_val);
+    let bi = idx / block_size;
+    let bs = vec_get(blocks, bi);
+    vec_set(blocks, bi, bs - old_val + new_val);
+    0
+};
+
+// Range sum query [l, r] inclusive
+fn range_sum(arr: i64, blocks: i64, block_size: i64, l: i64, r: i64) -> i64 = {
+    let mut sum = 0;
+    let mut i = l;
+    loop {
+        if i > r { break } else { 0 };
+        // If i is at block boundary and full block fits in [l,r]
+        let bi = i / block_size;
+        let block_start = bi * block_size;
+        let block_end = block_start + block_size - 1;
+        if i == block_start && block_end <= r {
+            // Add entire block
+            sum = sum + vec_get(blocks, bi);
+            i = block_end + 1
+        } else {
+            sum = sum + vec_get(arr, i);
+            i = i + 1
+        }
+    };
+    sum
+};
+
+fn main() -> i64 = {
+    // Array: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    let arr = vec_new();
+    let _p0 = vec_push(arr, 1);
+    let _p1 = vec_push(arr, 2);
+    let _p2 = vec_push(arr, 3);
+    let _p3 = vec_push(arr, 4);
+    let _p4 = vec_push(arr, 5);
+    let _p5 = vec_push(arr, 6);
+    let _p6 = vec_push(arr, 7);
+    let _p7 = vec_push(arr, 8);
+    let _p8 = vec_push(arr, 9);
+    let n = 9;
+    let bs = isqrt(n);  // block_size = 3
+    let _t1 = println(bs);  // 3
+
+    let blocks = build_blocks(arr, n, bs);
+
+    let _p9 = println(range_sum(arr, blocks, bs, 0, 8));   // 45 (full sum)
+    let _p10 = println(range_sum(arr, blocks, bs, 2, 5));  // 18 (3+4+5+6)
+    let _p11 = println(range_sum(arr, blocks, bs, 4, 4));  // 5 (single)
+    let _p12 = println(range_sum(arr, blocks, bs, 0, 2));  // 6 (first block)
+    let _p13 = println(range_sum(arr, blocks, bs, 6, 8));  // 24 (last block)
+    let _p14 = println(range_sum(arr, blocks, bs, 1, 4));  // 14 (cross-block)
+    // Update arr[3] = 10 (was 4)
+    let _u1 = point_update(arr, blocks, bs, 3, 10);
+    let _p15 = println(range_sum(arr, blocks, bs, 2, 5));  // 24 (3+10+5+6)
+    let _p16 = println(range_sum(arr, blocks, bs, 0, 8));  // 51 (45-4+10)
+    // Update arr[0] = 100 (was 1)
+    let _u2 = point_update(arr, blocks, bs, 0, 100);
+    let _p17 = println(range_sum(arr, blocks, bs, 0, 2));  // 105 (100+2+3)
+    let _p18 = println(range_sum(arr, blocks, bs, 0, 8));  // 150 (51-1+100)
+    // isqrt tests
+    let _p19 = println(isqrt(1));    // 1
+    let _p20 = println(isqrt(4));    // 2
+    let _p21 = println(isqrt(16));   // 4
+    let _p22 = println(isqrt(25));   // 5
+
+    let _f1 = vec_free(arr);
+    let _f2 = vec_free(blocks);
+    0
+};

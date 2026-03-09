@@ -1,0 +1,72 @@
+// Golden Test: Modular arithmetic operations
+// Extended GCD, modular inverse, Chinese Remainder Theorem
+
+fn gcd(a: i64, b: i64) -> i64 =
+    if b == 0 { a }
+    else { gcd(b, a - (a / b) * b) };
+
+    // Modular inverse: a^-1 mod m using iterative approach
+    // Returns -1 if not invertible
+
+fn mod_inv_iter(a: i64, m: i64) -> i64 = {
+    let g = gcd(a, m);
+    if g != 1 { 0 - 1 }
+    else {
+
+// Use Euler's method: a^(m-2) mod m for prime m
+// For general m, use iterative extended gcd
+    let mut old_r = a;
+    let mut r = m;
+    let mut old_s = 1;
+    let mut s = 0;
+    loop {
+        if r == 0 { break } else { () };
+        let q = old_r / r;
+        let tmp_r = r;
+        r = old_r - q * r;
+        old_r = tmp_r;
+        let tmp_s = s;
+        s = old_s - q * s;
+        old_s = tmp_s
+    };
+    let result = old_s - (old_s / m) * m;
+    if result < 0 { result + m } else { result }
+    }
+    };
+
+// Fibonacci modular: fib(n) mod m
+fn fib_mod_helper(n: i64, a: i64, b: i64, m: i64) -> i64 =
+    if n <= 0 { a }
+    else {
+        let next = a + b;
+        let next_mod = next - (next / m) * m;
+        fib_mod_helper(n - 1, b, next_mod, m)
+    };
+
+fn fib_mod(n: i64, m: i64) -> i64 =
+    fib_mod_helper(n, 0, 1, m);
+
+    // Sum of digits
+
+fn sum_digits(n: i64) -> i64 =
+    if n <= 0 { 0 }
+    else { n - (n / 10) * 10 + sum_digits(n / 10) };
+
+fn main() -> i64 = {
+// GCD tests
+    let _p1 = println(gcd(35, 15));          // 5
+
+// Modular inverse tests
+    let _p2 = println(mod_inv_iter(3, 7));   // 3*5=15≡1 mod 7 → 5
+    let _p3 = println(mod_inv_iter(2, 5));   // 2*3=6≡1 mod 5 → 3
+
+// Fibonacci mod
+    let _p4 = println(fib_mod(10, 100));     // fib(10)=55, 55 mod 100 = 55
+    let _p5 = println(fib_mod(20, 1000));    // fib(20)=6765, 6765 mod 1000 = 765
+
+// Sum of digits
+    let _p6 = println(sum_digits(12345));    // 1+2+3+4+5 = 15
+    let _p7 = println(sum_digits(99999));    // 9*5 = 45
+
+    0
+    };

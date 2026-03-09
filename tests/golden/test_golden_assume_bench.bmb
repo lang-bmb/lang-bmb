@@ -1,0 +1,52 @@
+// Test: llvm.assume performance impact measurement
+// Demonstrates contract-driven optimizations with assumes
+
+// Sum array with range contracts
+// pre len > 0: guarantees loop runs at least once (enables LICM)
+// pre len <= 10000: bounds trip count (enables vectorization heuristics)
+fn sum_range(arr: i64, len: i64) -> i64
+  pre len > 0 and len <= 10000
+= {
+  let mut total: i64 = 0;
+  let mut i: i64 = 0;
+  while i < len {
+    let val = load_i64(arr + i * 8);
+    set total = total + val;
+    set i = i + 1;
+  };
+  total
+};
+
+// Positive clamp: pre guarantees x >= 0, so max(x, 0) is just x
+fn positive_scale(x: i64, factor: i64) -> i64
+  pre x >= 0 and factor > 0 and factor <= 100
+= x * factor;
+
+// Safe division with proven non-zero divisor
+fn safe_average(sum: i64, count: i64) -> i64
+  pre count > 0
+= sum / count;
+
+fn main() -> i64 = {
+  // Test sum_range
+  let arr_size: i64 = 100;
+  let arr = malloc(arr_size * 8);
+  let mut i: i64 = 0;
+  while i < arr_size {
+    let _s = store_i64(arr + i * 8, i + 1);
+    set i = i + 1;
+  };
+  let total = sum_range(arr, arr_size);
+  let _p1 = println(total);
+
+  // Test positive_scale
+  let scaled = positive_scale(42, 10);
+  let _p2 = println(scaled);
+
+  // Test safe_average
+  let avg = safe_average(total, arr_size);
+  let _p3 = println(avg);
+
+  let _f = free(arr);
+  0
+};

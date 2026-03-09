@@ -1,0 +1,27 @@
+// Test: chain of division and modulo with nonzero contracts
+// Both / and % should be safe with pre b != 0
+
+fn div_mod(a: i64, b: i64) -> i64
+    pre b != 0
+= {
+    let q = a / b;
+    let r = a % b;
+    q * 1000 + r
+};
+
+fn reduce(n: i64, d: i64) -> i64
+    pre d != 0
+= if n < d { n }
+  else { reduce(n - d, d) };
+
+fn main() -> i64 = {
+    let r1 = div_mod(17, 5);
+    let _u = println(r1);
+    let r2 = div_mod(100, 7);
+    let _v = println(r2);
+    let r3 = reduce(47, 11);
+    let _w = println(r3);
+    let r4 = div_mod(0, 3);
+    let _x = println(r4);
+    0
+};

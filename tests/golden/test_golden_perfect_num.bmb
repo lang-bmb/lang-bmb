@@ -1,0 +1,87 @@
+// Golden Test: Perfect Number Detection
+// A perfect number equals the sum of its proper divisors
+// Examples: 6 = 1+2+3, 28 = 1+2+4+7+14
+
+// Sum of proper divisors of n
+fn divisor_sum(n: i64) -> i64 = {
+    if n <= 1 { return 0 } else { () };
+    let mut sum = 1;  // 1 is always a divisor
+    let mut i = 2;
+    loop {
+        if i * i > n { break } else { () };
+        if n / i * i == n {
+            sum = sum + i;
+            let other = n / i;
+            if other != i {
+                sum = sum + other
+            } else { () }
+        } else { () };
+        i = i + 1
+    };
+    sum
+};
+
+// Check if n is a perfect number (1=yes, 0=no)
+fn is_perfect(n: i64) -> i64 = {
+    if n <= 1 { 0 }
+    else if divisor_sum(n) == n { 1 }
+    else { 0 }
+};
+
+// Classify: 0=deficient, 1=perfect, 2=abundant
+fn classify(n: i64) -> i64 = {
+    if n <= 1 { return 0 } else { () };
+    let s = divisor_sum(n);
+    if s < n { 0 }
+    else if s == n { 1 }
+    else { 2 }
+};
+
+// Count perfect numbers up to limit
+fn count_perfect(limit: i64) -> i64 = {
+    let mut count = 0;
+    let mut n = 2;
+    loop {
+        if n > limit { break } else { () };
+        if is_perfect(n) == 1 { count = count + 1 } else { () };
+        n = n + 1
+    };
+    count
+};
+
+fn main() -> i64 = {
+    // Test 1: divisor_sum(6) = 1+2+3 = 6
+    let _p1 = println(divisor_sum(6));  // 6
+
+    // Test 2: 6 is perfect
+    let _p2 = println(is_perfect(6));   // 1
+
+    // Test 3: divisor_sum(28) = 1+2+4+7+14 = 28
+    let _p3 = println(divisor_sum(28)); // 28
+
+    // Test 4: 28 is perfect
+    let _p4 = println(is_perfect(28));  // 1
+
+    // Test 5: 12 is abundant (1+2+3+4+6 = 16 > 12)
+    let _p5 = println(divisor_sum(12)); // 16
+    let _p6 = println(classify(12));    // 2
+
+    // Test 6: 10 is deficient (1+2+5 = 8 < 10)
+    let _p7 = println(divisor_sum(10)); // 8
+    let _p8 = println(classify(10));    // 0
+
+    // Test 7: 496 is perfect (third perfect number)
+    let _p9 = println(is_perfect(496)); // 1
+
+    // Test 8: Count perfect numbers up to 500
+    // Only 6, 28, 496 in range
+    let _p10 = println(count_perfect(500)); // 3
+
+    // Test 9: 1 is not perfect
+    let _p11 = println(is_perfect(1));  // 0
+
+    // Test 10: divisor_sum(100) = 1+2+4+5+10+20+25+50 = 117
+    let _p12 = println(divisor_sum(100)); // 117
+
+    0
+};

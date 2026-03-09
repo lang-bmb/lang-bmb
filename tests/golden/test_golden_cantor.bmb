@@ -1,0 +1,113 @@
+// Golden test: Cantor pairing function and inverse
+// Encodes two natural numbers into one, and decodes back
+
+// Cantor pairing: pi(k1, k2) = (k1 + k2) * (k1 + k2 + 1) / 2 + k1
+fn cantor_pair(k1: i64, k2: i64) -> i64 = {
+    let s = k1 + k2;
+    s * (s + 1) / 2 + k1
+    };
+
+// Integer square root (floor)
+fn isqrt(n: i64) -> i64 = {
+    if n <= 0 { return 0 } else { () };
+    let mut x = n;
+    let mut y = (x + 1) / 2;
+    loop {
+        if y >= x { break } else { () };
+        x = y;
+        y = (x + n / x) / 2
+    };
+    x
+    };
+
+// Cantor inverse: given z, recover (k1, k2)
+// w = floor((sqrt(8z+1) - 1) / 2)
+// t = w*(w+1)/2
+// k1 = z - t
+// k2 = w - k1
+fn cantor_k1(z: i64) -> i64 = {
+    let w = (isqrt(8 * z + 1) - 1) / 2;
+    let t = w * (w + 1) / 2;
+    z - t
+    };
+
+fn cantor_k2(z: i64) -> i64 = {
+    let w = (isqrt(8 * z + 1) - 1) / 2;
+    let t = w * (w + 1) / 2;
+    let k1 = z - t;
+    w - k1
+    };
+
+// Elegant pairing (Szudzik): more compact
+// if a >= b: a*a + a + b
+// if a < b:  a + b*b
+fn elegant_pair(a: i64, b: i64) -> i64 =
+    if a >= b { a * a + a + b }
+    else { a + b * b };
+
+fn elegant_first(z: i64) -> i64 = {
+    let s = isqrt(z);
+    if z - s * s < s { z - s * s }
+    else { s }
+    };
+
+fn elegant_second(z: i64) -> i64 = {
+    let s = isqrt(z);
+    if z - s * s < s { s }
+    else { z - s * s - s }
+    };
+
+// Test roundtrip: pair then unpair should give back original
+fn test_cantor_roundtrip(a: i64, b: i64) -> i64 = {
+    let z = cantor_pair(a, b);
+    let ra = cantor_k1(z);
+    let rb = cantor_k2(z);
+    if ra == a and rb == b { 1 } else { 0 }
+    };
+
+fn test_elegant_roundtrip(a: i64, b: i64) -> i64 = {
+    let z = elegant_pair(a, b);
+    let ra = elegant_first(z);
+    let rb = elegant_second(z);
+    if ra == a and rb == b { 1 } else { 0 }
+    };
+
+fn main() -> i64 = {
+    // Cantor pairing basic values
+    let _p1 = println(cantor_pair(0, 0));  // 0
+    let _p2 = println(cantor_pair(1, 0));  // 2
+    let _p3 = println(cantor_pair(0, 1));  // 1
+    let _p4 = println(cantor_pair(1, 1));  // 4
+    let _p5 = println(cantor_pair(2, 3));  // (5*6/2)+2 = 17
+    let _p6 = println(cantor_pair(3, 2));  // (5*6/2)+3 = 18
+
+    // Cantor inverse
+    let _p7 = println(cantor_k1(17));  // 2
+    let _p8 = println(cantor_k2(17));  // 3
+    let _p9 = println(cantor_k1(18));  // 3
+    let _p10 = println(cantor_k2(18)); // 2
+
+    // Cantor roundtrip tests
+    let _p11 = println(test_cantor_roundtrip(0, 0));  // 1
+    let _p12 = println(test_cantor_roundtrip(3, 7));  // 1
+    let _p13 = println(test_cantor_roundtrip(5, 5));  // 1
+
+    // Elegant pairing basic values
+    let _p14 = println(elegant_pair(0, 0));  // 0
+    let _p15 = println(elegant_pair(1, 0));  // 2  (1*1+1+0)
+    let _p16 = println(elegant_pair(0, 1));  // 1  (0+1*1)
+    let _p17 = println(elegant_pair(3, 2));  // 14 (3*3+3+2)
+    let _p18 = println(elegant_pair(2, 3));  // 11 (2+3*3)
+
+    // Elegant roundtrip tests
+    let _p19 = println(test_elegant_roundtrip(0, 0));  // 1
+    let _p20 = println(test_elegant_roundtrip(3, 7));  // 1
+    let _p21 = println(test_elegant_roundtrip(5, 5));  // 1
+
+    // Cantor pair is injective: different inputs give different outputs
+    let z1 = cantor_pair(1, 2);
+    let z2 = cantor_pair(2, 1);
+    let _p22 = println(if z1 != z2 { 1 } else { 0 });  // 1
+
+    0
+    };

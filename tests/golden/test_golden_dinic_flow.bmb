@@ -1,0 +1,212 @@
+// Golden test: Dinic's max flow algorithm
+// Uses BFS for level graph + DFS for blocking flow
+// Graph: flat adjacency capacity matrix n*n, flow matrix n*n
+// Small graphs (n<=6) to keep recursion manageable
+
+fn cap_get(cap: i64, n: i64, u: i64, v: i64) -> i64 =
+    vec_get(cap, u * n + v);
+
+fn cap_set(cap: i64, n: i64, u: i64, v: i64, val: i64) -> i64 = {
+    let _s = vec_set(cap, u * n + v, val);
+    0
+};
+
+fn flow_get(flow: i64, n: i64, u: i64, v: i64) -> i64 =
+    vec_get(flow, u * n + v);
+
+fn flow_set(flow: i64, n: i64, u: i64, v: i64, val: i64) -> i64 = {
+    let _s = vec_set(flow, u * n + v, val);
+    0
+};
+
+// Residual capacity = cap - flow
+fn res_cap(cap: i64, flow: i64, n: i64, u: i64, v: i64) -> i64 =
+    cap_get(cap, n, u, v) - flow_get(flow, n, u, v);
+
+// BFS to build level graph from source
+// level[i] = distance from source, -1 if unreachable
+// queue is a vec used as FIFO (head index tracked manually)
+fn bfs_level(cap: i64, flow: i64, n: i64, src: i64, sink: i64, level: i64) -> i64 = {
+    // Reset levels to -1
+    for i in 0..n {
+        let _s = vec_set(level, i, 0 - 1);
+        0
+    };
+    let _s = vec_set(level, src, 0);
+
+    // Simple BFS using vec as queue
+    let queue = vec_new();
+    let _q = vec_push(queue, src);
+    let head = 0;
+
+    loop {
+        if head >= vec_len(queue) { break } else { () };
+        let u = vec_get(queue, head);
+        head = head + 1;
+        for v in 0..n {
+            if res_cap(cap, flow, n, u, v) > 0 and vec_get(level, v) < 0 {
+                let _s = vec_set(level, v, vec_get(level, u) + 1);
+                let _q2 = vec_push(queue, v);
+                0
+            } else { 0 };
+        };
+    };
+    let _fq = vec_free(queue);
+    // Return 1 if sink is reachable
+    if vec_get(level, sink) >= 0 { 1 } else { 0 }
+};
+
+// DFS to find blocking flow
+// Returns amount of flow pushed
+fn dfs_flow(cap: i64, flow: i64, n: i64, level: i64, u: i64, sink: i64, pushed: i64, v_start: i64) -> i64 =
+    if u == sink { pushed }
+    else if v_start >= n { 0 }
+    else {
+        let rc = res_cap(cap, flow, n, u, v_start);
+        let lev_u = vec_get(level, u);
+        let lev_v = vec_get(level, v_start);
+        if rc > 0 and lev_v == lev_u + 1 {
+            let send = if pushed < rc { pushed } else { rc };
+            let result = dfs_flow(cap, flow, n, level, v_start, sink, send, 0);
+            if result > 0 {
+                // Update flow: flow[u][v] += result, flow[v][u] -= result
+                let _f1 = flow_set(flow, n, u, v_start, flow_get(flow, n, u, v_start) + result);
+                let _f2 = flow_set(flow, n, v_start, u, flow_get(flow, n, v_start, u) - result);
+                result
+            } else {
+                // Try next neighbor
+                dfs_flow(cap, flow, n, level, u, sink, pushed, v_start + 1)
+            }
+        } else {
+            dfs_flow(cap, flow, n, level, u, sink, pushed, v_start + 1)
+        }
+    };
+
+// Dinic's main loop: BFS + DFS until no augmenting path
+fn dinic_loop(cap: i64, flow: i64, n: i64, src: i64, sink: i64, level: i64, total: i64) -> i64 = {
+    let reachable = bfs_level(cap, flow, n, src, sink, level);
+    if reachable == 0 { total }
+    else {
+        // Send flow repeatedly until blocking
+        let aug = dinic_send(cap, flow, n, src, sink, level, total);
+        aug
+    }
+};
+
+fn dinic_send(cap: i64, flow: i64, n: i64, src: i64, sink: i64, level: i64, total: i64) -> i64 = {
+    let f = dfs_flow(cap, flow, n, level, src, sink, 999999, 0);
+    if f == 0 {
+        // No more blocking flow, do another BFS
+        dinic_loop(cap, flow, n, src, sink, level, total)
+    } else {
+        dinic_send(cap, flow, n, src, sink, level, total + f)
+    }
+};
+
+fn dinic(cap: i64, n: i64, src: i64, sink: i64) -> i64 = {
+    let flow = vec_new();
+    for _i in 0..(n * n) { let _p = vec_push(flow, 0); 0 };
+    let level = vec_new();
+    for _i in 0..n { let _p = vec_push(level, 0 - 1); 0 };
+    let result = dinic_loop(cap, flow, n, src, sink, level, 0);
+    let _f1 = vec_free(flow);
+    let _f2 = vec_free(level);
+    result
+};
+
+fn make_zeros(sz: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..sz { let _p = vec_push(v, 0); 0 };
+    v
+};
+
+fn main() -> i64 = {
+    // Test 1: Simple 2-node graph (src=0, sink=1, cap=10)
+    let cap1 = make_zeros(4);
+    let _c = cap_set(cap1, 2, 0, 1, 10);
+    let _p1 = println(dinic(cap1, 2, 0, 1)); // 10
+    let _f1 = vec_free(cap1);
+
+    // Test 2: Two parallel paths
+    // 0->1 (cap=5), 0->2 (cap=3), 1->3 (cap=4), 2->3 (cap=3)
+    let cap2 = make_zeros(16);
+    let _c1 = cap_set(cap2, 4, 0, 1, 5);
+    let _c2 = cap_set(cap2, 4, 0, 2, 3);
+    let _c3 = cap_set(cap2, 4, 1, 3, 4);
+    let _c4 = cap_set(cap2, 4, 2, 3, 3);
+    let _p2 = println(dinic(cap2, 4, 0, 3)); // 7 (4 via 1 + 3 via 2)
+    let _f2 = vec_free(cap2);
+
+    // Test 3: Diamond graph with bottleneck
+    // 0->1 (10), 0->2 (10), 1->3 (1), 2->3 (10)
+    let cap3 = make_zeros(16);
+    let _c5 = cap_set(cap3, 4, 0, 1, 10);
+    let _c6 = cap_set(cap3, 4, 0, 2, 10);
+    let _c7 = cap_set(cap3, 4, 1, 3, 1);
+    let _c8 = cap_set(cap3, 4, 2, 3, 10);
+    let _p3 = println(dinic(cap3, 4, 0, 3)); // 11 (1 via 1 + 10 via 2)
+    let _f3 = vec_free(cap3);
+
+    // Test 4: No path from source to sink
+    let cap4 = make_zeros(9);
+    let _c9 = cap_set(cap4, 3, 0, 1, 5);
+    // No edge to node 2
+    let _p4 = println(dinic(cap4, 3, 0, 2)); // 0
+    let _f4 = vec_free(cap4);
+
+    // Test 5: Chain graph: 0->1(3)->2(5)->3(2)
+    // Bottleneck is min(3,5,2) = 2
+    let cap5 = make_zeros(16);
+    let _c10 = cap_set(cap5, 4, 0, 1, 3);
+    let _c11 = cap_set(cap5, 4, 1, 2, 5);
+    let _c12 = cap_set(cap5, 4, 2, 3, 2);
+    let _p5 = println(dinic(cap5, 4, 0, 3)); // 2
+    let _f5 = vec_free(cap5);
+
+    // Test 6: Multiple augmenting paths
+    // 0->1(3), 0->2(2), 1->2(1), 1->3(2), 2->3(3)
+    let cap6 = make_zeros(16);
+    let _c13 = cap_set(cap6, 4, 0, 1, 3);
+    let _c14 = cap_set(cap6, 4, 0, 2, 2);
+    let _c15 = cap_set(cap6, 4, 1, 2, 1);
+    let _c16 = cap_set(cap6, 4, 1, 3, 2);
+    let _c17 = cap_set(cap6, 4, 2, 3, 3);
+    let _p6 = println(dinic(cap6, 4, 0, 3)); // 5
+    let _f6 = vec_free(cap6);
+
+    // Test 7: All edges zero capacity
+    let cap7 = make_zeros(9);
+    let _c28 = cap_set(cap7, 3, 0, 1, 0);
+    let _c29 = cap_set(cap7, 3, 1, 2, 0);
+    let _p7 = println(dinic(cap7, 3, 0, 2)); // 0
+
+    // Test 8: Single edge saturated
+    let cap8 = make_zeros(4);
+    let _c18 = cap_set(cap8, 2, 0, 1, 1);
+    let _p8 = println(dinic(cap8, 2, 0, 1)); // 1
+    let _f7 = vec_free(cap7);
+    let _f8 = vec_free(cap8);
+
+    // Test 9: 5-node with crossing paths
+    // 0->1(4), 0->2(6), 1->3(4), 2->3(4), 2->4(2), 3->4(8)
+    let cap9 = make_zeros(25);
+    let _c19 = cap_set(cap9, 5, 0, 1, 4);
+    let _c20 = cap_set(cap9, 5, 0, 2, 6);
+    let _c21 = cap_set(cap9, 5, 1, 3, 4);
+    let _c22 = cap_set(cap9, 5, 2, 3, 4);
+    let _c23 = cap_set(cap9, 5, 2, 4, 2);
+    let _c24 = cap_set(cap9, 5, 3, 4, 8);
+    let _p9 = println(dinic(cap9, 5, 0, 4)); // 10
+    let _f9 = vec_free(cap9);
+
+    // Test 10: Back edge test (capacity in both directions)
+    // 0->1(5), 1->0(3), 1->2(5)
+    let cap10 = make_zeros(9);
+    let _c25 = cap_set(cap10, 3, 0, 1, 5);
+    let _c26 = cap_set(cap10, 3, 1, 0, 3);
+    let _c27 = cap_set(cap10, 3, 1, 2, 5);
+    let _p10 = println(dinic(cap10, 3, 0, 2)); // 5
+    let _f10 = vec_free(cap10);
+
+    0
+};

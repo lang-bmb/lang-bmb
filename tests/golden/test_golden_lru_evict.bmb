@@ -1,0 +1,143 @@
+// Golden Test: LRU Eviction — array-based LRU with eviction tracking
+// Tracks eviction count, hit/miss ratio, and final cache state
+
+// Initialize an array of n copies of value v
+fn make_filled(n: i64, v: i64) -> i64 = {
+    let arr = vec_new();
+    for _i in 0..n { let _p = vec_push(arr, v); 0 };
+    arr
+};
+
+// Linear search: find key in cache[0..size), return index or -1
+fn find_key(cache: i64, key: i64, size: i64) -> i64 = {
+    let mut idx = 0 - 1;
+    let mut i = 0;
+    loop {
+        if i >= size { break } else { () };
+        let _c = if vec_get(cache, i) == key {
+            idx = i; 0
+        } else { 0 };
+        i = i + 1
+    };
+    idx
+};
+
+// Find index of smallest value in arr[0..size)
+fn find_min_idx(arr: i64, size: i64) -> i64 = {
+    let mut mi = 0;
+    let mut mv = vec_get(arr, 0);
+    let mut i = 1;
+    loop {
+        if i >= size { break } else { () };
+        let _c = if vec_get(arr, i) < mv {
+            mi = i;
+            mv = vec_get(arr, i);
+            0
+        } else { 0 };
+        i = i + 1
+    };
+    mi
+};
+
+// Process sequence of accesses
+// Returns a vec [hits, misses, evictions]
+fn run_lru(cache_size: i64, keys: i64, nkeys: i64) -> i64 = {
+    let cache = make_filled(cache_size, 0 - 1);  // -1 = empty
+    let times = make_filled(cache_size, 0);
+    let mut hits = 0;
+    let mut misses = 0;
+    let mut evictions = 0;
+    let mut clock = 1;
+    let mut k = 0;
+    loop {
+        if k >= nkeys { break } else { () };
+        let key = vec_get(keys, k);
+        let idx = find_key(cache, key, cache_size);
+        let _op = if idx >= 0 {
+            // Hit
+            let _s = vec_set(times, idx, clock);
+            hits = hits + 1;
+            0
+        } else {
+            // Miss — check for empty slot first
+            let empty = find_key(cache, 0 - 1, cache_size);
+            let _e = if empty >= 0 {
+                // Fill empty slot
+                let _s1 = vec_set(cache, empty, key);
+                let _s2 = vec_set(times, empty, clock);
+                0
+            } else {
+                // Evict LRU
+                let lru = find_min_idx(times, cache_size);
+                let _s1 = vec_set(cache, lru, key);
+                let _s2 = vec_set(times, lru, clock);
+                evictions = evictions + 1;
+                0
+            };
+            misses = misses + 1;
+            0
+        };
+        clock = clock + 1;
+        k = k + 1
+    };
+    let result = vec_new();
+    let _r1 = vec_push(result, hits);
+    let _r2 = vec_push(result, misses);
+    let _r3 = vec_push(result, evictions);
+    // Also push final cache contents
+    for i in 0..cache_size {
+        let _r = vec_push(result, vec_get(cache, i));
+        0
+    };
+    result
+};
+
+fn main() -> i64 = {
+    // Test 1: Cache=3, seq=[1,2,3,4,1,2,5,1,2,3]
+    let k1 = vec_new();
+    let _a = vec_push(k1, 1); let _b = vec_push(k1, 2);
+    let _c = vec_push(k1, 3); let _d = vec_push(k1, 4);
+    let _e = vec_push(k1, 1); let _f = vec_push(k1, 2);
+    let _g = vec_push(k1, 5); let _h = vec_push(k1, 1);
+    let _i = vec_push(k1, 2); let _j = vec_push(k1, 3);
+    let r1 = run_lru(3, k1, 10);
+    let _p1 = println(vec_get(r1, 0));  // hits
+    let _p2 = println(vec_get(r1, 1));  // misses
+    let _p3 = println(vec_get(r1, 2));  // evictions
+
+    // Test 2: Cache=2, seq=[1,1,1,1] — all hits after first
+    let k2 = vec_new();
+    let _a2 = vec_push(k2, 1); let _b2 = vec_push(k2, 1);
+    let _c2 = vec_push(k2, 1); let _d2 = vec_push(k2, 1);
+    let r2 = run_lru(2, k2, 4);
+    let _p4 = println(vec_get(r2, 0));  // 3 hits
+    let _p5 = println(vec_get(r2, 1));  // 1 miss
+    let _p6 = println(vec_get(r2, 2));  // 0 evictions
+
+    // Test 3: Cache=2, thrashing [1,2,3,1,2,3] — every access misses after warmup
+    let k3 = vec_new();
+    let _a3 = vec_push(k3, 1); let _b3 = vec_push(k3, 2);
+    let _c3 = vec_push(k3, 3); let _d3 = vec_push(k3, 1);
+    let _e3 = vec_push(k3, 2); let _f3 = vec_push(k3, 3);
+    let r3 = run_lru(2, k3, 6);
+    let _p7 = println(vec_get(r3, 0));  // hits
+    let _p8 = println(vec_get(r3, 1));  // misses
+    let _p9 = println(vec_get(r3, 2));  // evictions
+
+    // Test 4: Cache=4, sequential 1..8 then reverse 8..1
+    let k4 = vec_new();
+    for i in 1..9 { let _x = vec_push(k4, i); 0 };
+    for i in 1..9 { let _x = vec_push(k4, 9 - i); 0 };
+    let r4 = run_lru(4, k4, 16);
+    let _p10 = println(vec_get(r4, 0));  // hits
+    let _p11 = println(vec_get(r4, 1));  // misses
+    let _p12 = println(vec_get(r4, 2));  // evictions
+
+    // Final cache contents of test 4 (indices 3..7 in result)
+    let _p13 = println(vec_get(r4, 3));
+    let _p14 = println(vec_get(r4, 4));
+    let _p15 = println(vec_get(r4, 5));
+    let _p16 = println(vec_get(r4, 6));
+
+    0
+};

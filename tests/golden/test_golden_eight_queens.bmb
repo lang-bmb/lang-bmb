@@ -1,0 +1,81 @@
+// Golden Test: Eight Queens Problem
+// Count solutions to N-Queens using backtracking with vec-based board
+// board[i] = column of queen in row i
+
+// Check if placing a queen at (row, col) is safe
+// given queens already placed in rows 0..row-1
+fn is_safe(board: i64, row: i64, col: i64, r: i64) -> i64 =
+    if r >= row { 1 }
+    else {
+        let c = vec_get(board, r);
+        let diff = row - r;
+        if c == col { 0 }
+        else if c - col == diff { 0 }
+        else if col - c == diff { 0 }
+        else { is_safe(board, row, col, r + 1) }
+    };
+
+// Solve N-Queens recursively, return number of solutions
+// row = current row to place, n = board size
+fn solve(board: i64, n: i64, row: i64) -> i64 =
+    if row >= n { 1 }
+    else { try_cols(board, n, row, 0) };
+
+fn try_cols(board: i64, n: i64, row: i64, col: i64) -> i64 =
+    if col >= n { 0 }
+    else {
+        let count = if is_safe(board, row, col, 0) == 1 {
+            let _s = vec_set(board, row, col);
+            solve(board, n, row + 1)
+        } else { 0 };
+        count + try_cols(board, n, row, col + 1)
+    };
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n {
+        let _p = vec_push(v, 0);
+        0
+    };
+    v
+};
+
+// Count solutions for a given N
+fn queens(n: i64) -> i64 = {
+    let board = make_zeros(n);
+    let result = solve(board, n, 0);
+    let _f = vec_free(board);
+    result
+};
+
+fn main() -> i64 = {
+    // N=1: 1 solution (trivial)
+    let _p1 = println(queens(1));   // 1
+
+    // N=2: 0 solutions
+    let _p2 = println(queens(2));   // 0
+
+    // N=3: 0 solutions
+    let _p3 = println(queens(3));   // 0
+
+    // N=4: 2 solutions
+    let _p4 = println(queens(4));   // 2
+
+    // N=5: 10 solutions
+    let _p5 = println(queens(5));   // 10
+
+    // N=6: 4 solutions
+    let _p6 = println(queens(6));   // 4
+
+    // N=7: 40 solutions
+    let _p7 = println(queens(7));   // 40
+
+    // N=8: 92 solutions
+    let _p8 = println(queens(8));   // 92
+
+    // Sum of all counts as checksum
+    let total = 1 + 0 + 0 + 2 + 10 + 4 + 40 + 92;
+    let _p9 = println(total);      // 149
+
+    0
+};

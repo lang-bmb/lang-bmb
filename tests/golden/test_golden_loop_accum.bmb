@@ -1,0 +1,52 @@
+// Golden Test: Loop accumulator patterns with complex bodies
+// Tests phi threading and copy propagation in loop contexts
+
+fn count_digits(n: i64) -> i64 = {
+    let mut count = 0;
+    let mut val = if n < 0 { 0 - n } else { n };
+    for _i in 0..20 {
+        if val > 0 {
+            val = val / 10;
+            count = count + 1;
+            0
+        } else { 0 }
+    };
+    if count == 0 { 1 } else { count }
+    };
+
+fn sum_digits(n: i64) -> i64 = {
+    let mut result = 0;
+    let mut val = if n < 0 { 0 - n } else { n };
+    for _i in 0..20 {
+        if val > 0 {
+            result = result + val - (val / 10) * 10;
+            val = val / 10;
+            0
+        } else { 0 }
+    };
+    result
+    };
+
+fn reverse_number(n: i64) -> i64 = {
+    let mut result = 0;
+    let mut val = n;
+    for _i in 0..20 {
+        if val > 0 {
+            result = result * 10 + val - (val / 10) * 10;
+            val = val / 10;
+            0
+        } else { 0 }
+    };
+    result
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(count_digits(12345));  // 5
+    let _p2 = println(count_digits(0));      // 1
+    let _p3 = println(count_digits(100));    // 3
+    let _p4 = println(sum_digits(12345));    // 15
+    let _p5 = println(sum_digits(999));      // 27
+    let _p6 = println(reverse_number(12345)); // 54321
+    let _p7 = println(reverse_number(100));   // 1
+    0
+    };

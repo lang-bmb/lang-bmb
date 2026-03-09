@@ -1,0 +1,9 @@
+// Test: compound contract with and
+fn bounded(x: i64) -> i64
+    pre x >= 0 and x < 100
+= x;
+
+fn main() -> i64 = {
+    let _u = println(bounded(42));
+    0
+};

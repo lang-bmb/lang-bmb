@@ -1,0 +1,241 @@
+// Golden test: Ford-Fulkerson max flow with BFS (Edmonds-Karp algorithm)
+// Uses adjacency matrix for capacity and flow
+// BFS finds shortest augmenting path each iteration
+
+// Get value from n*n matrix stored as flat vec
+fn mat_get(mat: i64, n: i64, i: i64, j: i64) -> i64 =
+    vec_get(mat, i * n + j);
+
+// Set value in n*n matrix stored as flat vec
+fn mat_set(mat: i64, n: i64, i: i64, j: i64, val: i64) -> i64 = {
+    vec_set(mat, i * n + j, val);
+    0
+    };
+
+// Create n*n zero matrix
+fn make_matrix(n: i64) -> i64 = {
+    let m = vec_new();
+    let total = n * n;
+    for _i in 0..total {
+        vec_push(m, 0)
+    };
+    m
+    };
+
+// BFS to find augmenting path from source to sink in residual graph
+// Returns 1 if path exists, 0 otherwise
+// parent[v] = predecessor of v in BFS tree (-1 if not visited)
+fn bfs(capacity: i64, flow: i64, n: i64, source: i64, sink: i64, parent: i64) -> i64 = {
+    // Initialize parent to -1
+    for i in 0..n {
+        vec_set(parent, i, 0 - 1)
+    };
+    vec_set(parent, source, source);
+
+    // BFS queue (simple array-based)
+    let queue = vec_new();
+    vec_push(queue, source);
+    let mut front = 0;
+    let mut found = 0;
+
+    loop {
+        if front >= vec_len(queue) { break } else { () };
+        if found == 1 { break } else { () };
+        let u = vec_get(queue, front);
+        front = front + 1;
+
+        let mut v = 0;
+        loop {
+            if v >= n { break } else { () };
+            if found == 1 { break } else { () };
+            // Residual capacity = capacity - flow
+            let cap = mat_get(capacity, n, u, v);
+            let fl = mat_get(flow, n, u, v);
+            let residual = cap - fl;
+            let par_v = vec_get(parent, v);
+            if residual > 0 and par_v == 0 - 1 {
+                vec_set(parent, v, u);
+                if v == sink {
+                    found = 1
+                } else {
+                    vec_push(queue, v);
+                    0
+                }
+            } else { 0 };
+            v = v + 1
+        }
+    };
+    vec_free(queue);
+    found
+    };
+
+// Find bottleneck (min residual capacity) along augmenting path
+fn find_bottleneck(capacity: i64, flow: i64, n: i64, parent: i64, source: i64, sink: i64) -> i64 = {
+    let mut bottleneck = 999999;
+    let mut v = sink;
+    loop {
+        if v == source { break } else { () };
+        let u = vec_get(parent, v);
+        let cap = mat_get(capacity, n, u, v);
+        let fl = mat_get(flow, n, u, v);
+        let residual = cap - fl;
+        if residual < bottleneck {
+            bottleneck = residual
+        } else { () };
+        v = u
+    };
+    bottleneck
+    };
+
+// Update flow along augmenting path
+fn update_flow(flow: i64, n: i64, parent: i64, source: i64, sink: i64, bottleneck: i64) -> i64 = {
+    let mut v = sink;
+    loop {
+        if v == source { break } else { () };
+        let u = vec_get(parent, v);
+        // Forward edge: increase flow
+        let fwd = mat_get(flow, n, u, v);
+        let _s1 = mat_set(flow, n, u, v, fwd + bottleneck);
+        // Backward edge: decrease flow (for residual graph)
+        let bwd = mat_get(flow, n, v, u);
+        let _s2 = mat_set(flow, n, v, u, bwd - bottleneck);
+        v = u
+    };
+    0
+    };
+
+// Edmonds-Karp max flow algorithm
+fn max_flow(capacity: i64, n: i64, source: i64, sink: i64) -> i64 = {
+    let flow = make_matrix(n);
+    let parent = vec_new();
+    for _i in 0..n {
+        vec_push(parent, 0 - 1)
+    };
+
+    let mut total_flow = 0;
+    loop {
+        let found = bfs(capacity, flow, n, source, sink, parent);
+        if found == 0 { break } else { () };
+        let bottleneck = find_bottleneck(capacity, flow, n, parent, source, sink);
+        let _upd = update_flow(flow, n, parent, source, sink, bottleneck);
+        total_flow = total_flow + bottleneck
+    };
+
+    vec_free(flow);
+    vec_free(parent);
+    total_flow
+    };
+
+fn main() -> i64 = {
+    // Test 1: Simple 4-node network
+    // 0 -> 1 (cap 10), 0 -> 2 (cap 10)
+    // 1 -> 2 (cap 2),  1 -> 3 (cap 4),  2 -> 3 (cap 8)
+    // Source=0, Sink=3
+    // Max flow = 12 (0->1->3: 4, 0->1->2->3: 2, 0->2->3: 6)
+    let cap1 = make_matrix(4);
+    let _s1 = mat_set(cap1, 4, 0, 1, 10);
+    let _s2 = mat_set(cap1, 4, 0, 2, 10);
+    let _s3 = mat_set(cap1, 4, 1, 2, 2);
+    let _s4 = mat_set(cap1, 4, 1, 3, 4);
+    let _s5 = mat_set(cap1, 4, 2, 3, 8);
+
+    let mf1 = max_flow(cap1, 4, 0, 3);
+    let _p1 = println(mf1);  // 12
+
+    // Test 2: 6-node network (classic textbook example)
+    // s=0, t=5
+    // 0->1 (16), 0->2 (13)
+    // 1->2 (4),  1->3 (12)
+    // 2->1 (10), 2->4 (14)
+    // 3->2 (9),  3->5 (20)
+    // 4->3 (7),  4->5 (4)
+    // Max flow = 23
+    let cap2 = make_matrix(6);
+    let _a1 = mat_set(cap2, 6, 0, 1, 16);
+    let _a2 = mat_set(cap2, 6, 0, 2, 13);
+    let _a3 = mat_set(cap2, 6, 1, 2, 4);
+    let _a4 = mat_set(cap2, 6, 1, 3, 12);
+    let _a5 = mat_set(cap2, 6, 2, 1, 10);
+    let _a6 = mat_set(cap2, 6, 2, 4, 14);
+    let _a7 = mat_set(cap2, 6, 3, 2, 9);
+    let _a8 = mat_set(cap2, 6, 3, 5, 20);
+    let _a9 = mat_set(cap2, 6, 4, 3, 7);
+    let _a10 = mat_set(cap2, 6, 4, 5, 4);
+
+    let mf2 = max_flow(cap2, 6, 0, 5);
+    let _p2 = println(mf2);  // 23
+
+    // Test 3: Single edge
+    // 0 -> 1 (cap 5)
+    let cap3 = make_matrix(2);
+    let _b1 = mat_set(cap3, 2, 0, 1, 5);
+
+    let mf3 = max_flow(cap3, 2, 0, 1);
+    let _p3 = println(mf3);  // 5
+
+    // Test 4: Parallel edges (two paths)
+    // 0->1 (cap 3), 0->2 (cap 4), 1->3 (cap 3), 2->3 (cap 4)
+    // Max flow = 7 (3 through path 0->1->3, 4 through path 0->2->3)
+    let cap4 = make_matrix(4);
+    let _c1 = mat_set(cap4, 4, 0, 1, 3);
+    let _c2 = mat_set(cap4, 4, 0, 2, 4);
+    let _c3 = mat_set(cap4, 4, 1, 3, 3);
+    let _c4 = mat_set(cap4, 4, 2, 3, 4);
+
+    let mf4 = max_flow(cap4, 4, 0, 3);
+    let _p4 = println(mf4);  // 7
+
+    // Test 5: Bottleneck in the middle
+    // 0->1 (100), 1->2 (1), 2->3 (100)
+    // Max flow = 1 (bottleneck at edge 1->2)
+    let cap5 = make_matrix(4);
+    let _d1 = mat_set(cap5, 4, 0, 1, 100);
+    let _d2 = mat_set(cap5, 4, 1, 2, 1);
+    let _d3 = mat_set(cap5, 4, 2, 3, 100);
+
+    let mf5 = max_flow(cap5, 4, 0, 3);
+    let _p5 = println(mf5);  // 1
+
+    // Test 6: Diamond with different capacities
+    // 0->1 (10), 0->2 (8)
+    // 1->3 (6),  2->3 (10)
+    // Max flow = min(10,6) + min(8,10) = 6 + 8 = 14
+    let cap6 = make_matrix(4);
+    let _e1 = mat_set(cap6, 4, 0, 1, 10);
+    let _e2 = mat_set(cap6, 4, 0, 2, 8);
+    let _e3 = mat_set(cap6, 4, 1, 3, 6);
+    let _e4 = mat_set(cap6, 4, 2, 3, 10);
+
+    let mf6 = max_flow(cap6, 4, 0, 3);
+    let _p6 = println(mf6);  // 14
+
+    // Test 7: No path from source to sink
+    // 0->1 (5), 2->3 (5) (disconnected)
+    let cap7 = make_matrix(4);
+    let _f1 = mat_set(cap7, 4, 0, 1, 5);
+    let _f2 = mat_set(cap7, 4, 2, 3, 5);
+
+    let mf7 = max_flow(cap7, 4, 0, 3);
+    let _p7 = println(mf7);  // 0
+
+    // Test 8: Chain of 5 nodes, each edge capacity 3
+    // 0->1->2->3->4, all cap 3
+    let cap8 = make_matrix(5);
+    let _g1 = mat_set(cap8, 5, 0, 1, 3);
+    let _g2 = mat_set(cap8, 5, 1, 2, 3);
+    let _g3 = mat_set(cap8, 5, 2, 3, 3);
+    let _g4 = mat_set(cap8, 5, 3, 4, 3);
+
+    let mf8 = max_flow(cap8, 5, 0, 4);
+    let _p8 = println(mf8);  // 3
+
+    vec_free(cap1);
+    vec_free(cap2);
+    vec_free(cap3);
+    vec_free(cap4);
+    vec_free(cap5);
+    vec_free(cap6);
+    vec_free(cap7);
+    vec_free(cap8);
+    0
+    };

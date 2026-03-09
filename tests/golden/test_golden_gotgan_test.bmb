@@ -1,0 +1,98 @@
+// Golden Test: gotgan test — test runner logic
+// Tests the file discovery and .bmb suffix checking logic
+
+fn str_concat3(a: String, b: String, c: String) -> String = {
+    let sb = sb_new();
+    let _p1 = sb_push(sb, a);
+    let _p2 = sb_push(sb, b);
+    let _p3 = sb_push(sb, c);
+    sb_build(sb)
+    };
+
+fn path_join(dir: String, file: String) -> String =
+    str_concat3(dir, "/", file);
+
+    // Check if filename ends with .bmb
+
+fn is_bmb_file(fname: String) -> bool = {
+    let flen = fname.len();
+    if flen >= 5 {
+        fname.slice(flen - 4, flen) == ".bmb"
+    } else { false }
+    };
+
+// Parse newline-separated listing and count .bmb files
+fn count_bmb_files(listing: String) -> i64 = {
+    let elen = listing.len();
+    let mut pos = 0;
+    let mut count = 0;
+    while pos < elen {
+        let mut end = pos;
+        while end < elen {
+            let _r = if listing.byte_at(end) == 10 { break } else { end = end + 1 };
+            0
+        };
+    let fname = listing.slice(pos, end);
+    let _r = if is_bmb_file(fname) { count = count + 1; 0 } else { 0 };
+    pos = end + 1;
+    0
+    };
+    count
+    };
+
+fn run_test(name: String, result: bool) -> i64 = {
+    let _p1 = print_str(if result { "  PASS: " } else { "  FAIL: " });
+    let _p2 = print_str(name);
+    let _p3 = print_str("\n");
+    if result { 1 } else { 0 }
+    };
+
+fn main() -> i64 = {
+    let _h = print_str("gotgan-test: running tests\n");
+    let mut passed = 0;
+    let total = 8;
+
+// Test 1: is_bmb_file positive
+    passed = passed + run_test("test.bmb is bmb", is_bmb_file("test.bmb"));
+
+// Test 2: is_bmb_file negative
+    passed = passed + run_test("test.txt not bmb", not is_bmb_file("test.txt"));
+
+// Test 3: is_bmb_file short name
+    passed = passed + run_test("a.bmb is bmb", is_bmb_file("a.bmb"));
+
+// Test 4: is_bmb_file too short
+    passed = passed + run_test(".bmb too short (4 chars)", not is_bmb_file(".bmb"));
+
+// Test 5: count_bmb_files simple
+    let listing = "test1.bmb\ntest2.bmb\nREADME.md\n";
+    passed = passed + run_test("count 2 bmb files", count_bmb_files(listing) == 2);
+
+// Test 6: count_bmb_files empty
+    passed = passed + run_test("count 0 in empty", count_bmb_files("") == 0);
+
+// Test 7: count_bmb_files no bmb
+    passed = passed + run_test("count 0 non-bmb", count_bmb_files("foo.txt\nbar.rs\n") == 0);
+
+// Test 8: Create temp test dir, list it, check bmb count
+    let tmp = "__test_runner_tmp__";
+    let _d = make_dir(path_join(tmp, "tests"));
+    let _w1 = write_file(path_join(path_join(tmp, "tests"), "test1.bmb"), "fn main() -> i64 = 0;\n");
+    let _w2 = write_file(path_join(path_join(tmp, "tests"), "test2.bmb"), "fn main() -> i64 = 0;\n");
+    let entries = list_dir(path_join(tmp, "tests"));
+    let bmb_count = count_bmb_files(entries);
+
+// Cleanup
+    let _c1 = system(str_concat3("del /q ", tmp, "\\tests\\test1.bmb 2>nul"));
+    let _c2 = system(str_concat3("del /q ", tmp, "\\tests\\test2.bmb 2>nul"));
+    let _c3 = system(str_concat3("rmdir ", tmp, "\\tests 2>nul"));
+    let _c4 = system(str_concat3("rmdir ", tmp, " 2>nul"));
+    passed = passed + run_test("real dir has 2 bmb files", bmb_count == 2);
+
+    let _r1 = print_str("gotgan-test: ");
+    let _r2 = print(passed);
+    let _r3 = print_str("/");
+    let _r4 = print(total);
+    let _r5 = print_str(" tests passed\n");
+    if passed == total { 0 } else { 1 }
+    };

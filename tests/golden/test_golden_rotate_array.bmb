@@ -1,0 +1,131 @@
+// Golden Test: Array rotation algorithms
+// Left rotation by k positions using reversal algorithm (3 reverses)
+// Right rotation using same technique
+
+fn print_vec(v: i64) -> i64 = {
+    let n = vec_len(v);
+    for i in 0..n {
+        println(vec_get(v, i))
+    };
+    0
+};
+
+// Reverse elements in v[lo..hi] inclusive
+fn reverse(v: i64, lo_in: i64, hi_in: i64) -> i64 = {
+    let mut lo: i64 = lo_in;
+    let mut hi: i64 = hi_in;
+    while lo < hi {
+        let tmp = vec_get(v, lo);
+        let _s1 = vec_set(v, lo, vec_get(v, hi));
+        let _s2 = vec_set(v, hi, tmp);
+        set lo = lo + 1;
+        set hi = hi - 1
+    };
+    0
+};
+
+// Left rotate by k positions using 3-reverse algorithm
+// [1,2,3,4,5,6,7] rotate left by 2 -> [3,4,5,6,7,1,2]
+fn rotate_left(v: i64, k: i64) -> i64 = {
+    let n = vec_len(v);
+    let kk = k % n;
+    let _u = if kk > 0 {
+        // Reverse first k elements
+        let _r1 = reverse(v, 0, kk - 1);
+        // Reverse remaining elements
+        let _r2 = reverse(v, kk, n - 1);
+        // Reverse entire array
+        let _r3 = reverse(v, 0, n - 1);
+        0
+    } else { 0 };
+    0
+};
+
+// Right rotate by k positions using 3-reverse algorithm
+// [1,2,3,4,5,6,7] rotate right by 2 -> [6,7,1,2,3,4,5]
+fn rotate_right(v: i64, k: i64) -> i64 = {
+    let n = vec_len(v);
+    let kk = k % n;
+    let _u = if kk > 0 {
+        // Reverse entire array
+        let _r1 = reverse(v, 0, n - 1);
+        // Reverse first k elements
+        let _r2 = reverse(v, 0, kk - 1);
+        // Reverse remaining elements
+        let _r3 = reverse(v, kk, n - 1);
+        0
+    } else { 0 };
+    0
+};
+
+// Clone a vec
+fn clone_vec(src: i64) -> i64 = {
+    let n = vec_len(src);
+    let dst = vec_new();
+    for i in 0..n {
+        let _p = vec_push(dst, vec_get(src, i));
+        0
+    };
+    dst
+};
+
+fn make7(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    let _p6 = vec_push(v, f);
+    let _p7 = vec_push(v, g);
+    v
+};
+
+fn main() -> i64 = {
+    // === Left rotation tests ===
+    // Test 1: Left rotate [1,2,3,4,5,6,7] by k=1
+    print_str("=== Left rotate k=1 ===");
+    let v1 = make7(1, 2, 3, 4, 5, 6, 7);
+    let _r1 = rotate_left(v1, 1);
+    let _pv1 = print_vec(v1);
+
+    // Test 2: Left rotate [1,2,3,4,5,6,7] by k=2
+    print_str("=== Left rotate k=2 ===");
+    let v2 = make7(1, 2, 3, 4, 5, 6, 7);
+    let _r2 = rotate_left(v2, 2);
+    let _pv2 = print_vec(v2);
+
+    // Test 3: Left rotate [1,2,3,4,5,6,7] by k=3
+    print_str("=== Left rotate k=3 ===");
+    let v3 = make7(1, 2, 3, 4, 5, 6, 7);
+    let _r3 = rotate_left(v3, 3);
+    let _pv3 = print_vec(v3);
+
+    // === Right rotation tests ===
+    // Test 4: Right rotate [1,2,3,4,5,6,7] by k=1
+    print_str("=== Right rotate k=1 ===");
+    let v4 = make7(1, 2, 3, 4, 5, 6, 7);
+    let _r4 = rotate_right(v4, 1);
+    let _pv4 = print_vec(v4);
+
+    // Test 5: Right rotate [1,2,3,4,5,6,7] by k=2
+    print_str("=== Right rotate k=2 ===");
+    let v5 = make7(1, 2, 3, 4, 5, 6, 7);
+    let _r5 = rotate_right(v5, 2);
+    let _pv5 = print_vec(v5);
+
+    // Test 6: Right rotate [1,2,3,4,5,6,7] by k=3
+    print_str("=== Right rotate k=3 ===");
+    let v6 = make7(1, 2, 3, 4, 5, 6, 7);
+    let _r6 = rotate_right(v6, 3);
+    let _pv6 = print_vec(v6);
+
+    // Cleanup
+    let _f1 = vec_free(v1);
+    let _f2 = vec_free(v2);
+    let _f3 = vec_free(v3);
+    let _f4 = vec_free(v4);
+    let _f5 = vec_free(v5);
+    let _f6 = vec_free(v6);
+    0
+};

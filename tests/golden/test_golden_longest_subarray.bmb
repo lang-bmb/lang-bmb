@@ -1,0 +1,180 @@
+// Golden Test: Longest subarray with given sum/property - Cycle 1629
+// Sliding window and prefix-sum based subarray problems
+
+// Longest subarray with exact sum (non-negative values)
+// Uses sliding window: expand right, shrink left when sum exceeds target
+fn longest_subarray_sum(arr: i64, target: i64) -> i64 = {
+    let n = vec_len(arr);
+    let mut left = 0;
+    let mut cur_sum = 0;
+    let mut best = 0;
+    let mut right = 0;
+    loop {
+        if right >= n { break } else { () };
+        cur_sum = cur_sum + vec_get(arr, right);
+        // Shrink from left while sum exceeds target
+        loop {
+            if cur_sum <= target { break } else { () };
+            if left > right { break } else { () };
+            cur_sum = cur_sum - vec_get(arr, left);
+            left = left + 1
+        };
+        if cur_sum == target {
+            let len = right - left + 1;
+            if len > best { best = len } else { () }
+        } else { () };
+        right = right + 1
+    };
+    best
+};
+
+// Maximum subarray sum (Kadane's algorithm)
+fn max_subarray_sum(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    let mut best = vec_get(arr, 0);
+    let mut cur = vec_get(arr, 0);
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let val = vec_get(arr, i);
+        if cur + val > val {
+            cur = cur + val
+        } else {
+            cur = val
+        };
+        if cur > best { best = cur } else { () };
+        i = i + 1
+    };
+    best
+};
+
+// Longest subarray of equal elements
+fn longest_equal_run(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    if n == 0 { return 0 } else { () };
+    let mut best = 1;
+    let mut cur = 1;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        if vec_get(arr, i) == vec_get(arr, i - 1) {
+            cur = cur + 1;
+            if cur > best { best = cur } else { () }
+        } else {
+            cur = 1
+        };
+        i = i + 1
+    };
+    best
+};
+
+// Longest increasing subarray (contiguous)
+fn longest_increasing(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    if n == 0 { return 0 } else { () };
+    let mut best = 1;
+    let mut cur = 1;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        if vec_get(arr, i) > vec_get(arr, i - 1) {
+            cur = cur + 1;
+            if cur > best { best = cur } else { () }
+        } else {
+            cur = 1
+        };
+        i = i + 1
+    };
+    best
+};
+
+// Count subarrays with sum equal to target (brute force O(n^2))
+fn count_subarrays_sum(arr: i64, target: i64) -> i64 = {
+    let n = vec_len(arr);
+    let mut count = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let mut s = 0;
+        let mut j = i;
+        loop {
+            if j >= n { break } else { () };
+            s = s + vec_get(arr, j);
+            if s == target { count = count + 1 } else { () };
+            j = j + 1
+        };
+        i = i + 1
+    };
+    count
+};
+
+fn main() -> i64 = {
+    // Test 1: Longest subarray with sum=7 in [1, 2, 3, 1, 1, 1, 1, 2]
+    // Subarrays: [3,1,1,1,1]=7 (len 5), [1,2,3,1]=7 (len 4), [2,3,1,1]=7 (len 4)
+    let a1 = vec_new();
+    vec_push(a1, 1); vec_push(a1, 2); vec_push(a1, 3); vec_push(a1, 1);
+    vec_push(a1, 1); vec_push(a1, 1); vec_push(a1, 1); vec_push(a1, 2);
+    println(longest_subarray_sum(a1, 7));   // 5
+
+    // Test 2: No subarray with sum=100
+    println(longest_subarray_sum(a1, 100));   // 0
+
+    // Test 3: Longest subarray with sum=5 in [5, 3, 2, 1]
+    // [5]=5 len 1, [3,2]=5 len 2 -> answer is 2
+    let a3 = vec_new();
+    vec_push(a3, 5); vec_push(a3, 3); vec_push(a3, 2); vec_push(a3, 1);
+    println(longest_subarray_sum(a3, 5));   // 2
+
+    // Test 4: Max subarray sum [-2, 1, -3, 4, -1, 2, 1, -5, 4]
+    let a4 = vec_new();
+    vec_push(a4, 0-2); vec_push(a4, 1); vec_push(a4, 0-3); vec_push(a4, 4);
+    vec_push(a4, 0-1); vec_push(a4, 2); vec_push(a4, 1); vec_push(a4, 0-5);
+    vec_push(a4, 4);
+    println(max_subarray_sum(a4));   // 6 ([4,-1,2,1])
+
+    // Test 5: Max subarray all negative [-3, -5, -1, -8]
+    let a5 = vec_new();
+    vec_push(a5, 0-3); vec_push(a5, 0-5); vec_push(a5, 0-1); vec_push(a5, 0-8);
+    println(max_subarray_sum(a5));   // -1
+
+    // Test 6: Longest equal run [1, 1, 2, 2, 2, 3, 3]
+    let a6 = vec_new();
+    vec_push(a6, 1); vec_push(a6, 1); vec_push(a6, 2); vec_push(a6, 2);
+    vec_push(a6, 2); vec_push(a6, 3); vec_push(a6, 3);
+    println(longest_equal_run(a6));   // 3 (three 2s)
+
+    // Test 7: All same [7, 7, 7, 7, 7]
+    let a7 = vec_new();
+    vec_push(a7, 7); vec_push(a7, 7); vec_push(a7, 7);
+    vec_push(a7, 7); vec_push(a7, 7);
+    println(longest_equal_run(a7));   // 5
+
+    // Test 8: Longest increasing [1, 3, 5, 2, 4, 6, 8, 1]
+    let a8 = vec_new();
+    vec_push(a8, 1); vec_push(a8, 3); vec_push(a8, 5); vec_push(a8, 2);
+    vec_push(a8, 4); vec_push(a8, 6); vec_push(a8, 8); vec_push(a8, 1);
+    println(longest_increasing(a8));   // 4 ([2,4,6,8])
+
+    // Test 9: All decreasing [5, 4, 3, 2, 1]
+    let a9 = vec_new();
+    vec_push(a9, 5); vec_push(a9, 4); vec_push(a9, 3);
+    vec_push(a9, 2); vec_push(a9, 1);
+    println(longest_increasing(a9));   // 1
+
+    // Test 10: Count subarrays with sum=3 in [1, 2, 1, 1, 1]
+    // [1,2]=3, [2,1]=3, [1,1,1]=3 => 3
+    let a10 = vec_new();
+    vec_push(a10, 1); vec_push(a10, 2); vec_push(a10, 1);
+    vec_push(a10, 1); vec_push(a10, 1);
+    println(count_subarrays_sum(a10, 3));   // 3
+
+    // Test 11: Count subarrays sum=0 in [0, 0]
+    let a11 = vec_new();
+    vec_push(a11, 0); vec_push(a11, 0);
+    println(count_subarrays_sum(a11, 0));   // 3 ([0], [0], [0,0])
+
+    vec_free(a1); vec_free(a3); vec_free(a4); vec_free(a5);
+    vec_free(a6); vec_free(a7); vec_free(a8); vec_free(a9);
+    vec_free(a10); vec_free(a11);
+    0
+};

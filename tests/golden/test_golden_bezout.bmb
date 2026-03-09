@@ -1,0 +1,73 @@
+// Golden Test: Extended Euclidean algorithm (Bezout's identity)
+// Find x, y such that a*x + b*y = gcd(a, b)
+// Uses recursive extended GCD returning results via vec
+
+// Standard GCD for verification
+fn gcd(a: i64, b: i64) -> i64 =
+    if b == 0 { a }
+    else { gcd(b, a - (a / b) * b) };
+
+// Extended GCD: stores (gcd, x, y) into result vec at indices 0,1,2
+// Returns gcd(a, b) and sets x, y such that a*x + b*y = gcd
+fn ext_gcd(a: i64, b: i64, res: i64) -> i64 = {
+    if b == 0 {
+        vec_set(res, 0, a);
+        vec_set(res, 1, 1);
+        vec_set(res, 2, 0);
+        a
+    } else {
+        let q = a / b;
+        let r = a - q * b;
+        let g = ext_gcd(b, r, res);
+        let x1 = vec_get(res, 1);
+        let y1 = vec_get(res, 2);
+        vec_set(res, 1, y1);
+        vec_set(res, 2, x1 - q * y1);
+        g
+    }
+    };
+
+fn main() -> i64 = {
+    let res = vec_new();
+    vec_push(res, 0);
+    vec_push(res, 0);
+    vec_push(res, 0);
+
+    // Test 1: gcd(30, 12) = 6, expect 30*1 + 12*(-2) = 6
+    let g1 = ext_gcd(30, 12, res);
+    let x1 = vec_get(res, 1);
+    let y1 = vec_get(res, 2);
+    let _p1 = println(g1);                      // gcd = 6
+    let _p2 = println(30 * x1 + 12 * y1);       // verify: should be 6
+
+    // Test 2: gcd(35, 15) = 5
+    let g2 = ext_gcd(35, 15, res);
+    let x2 = vec_get(res, 1);
+    let y2 = vec_get(res, 2);
+    let _p3 = println(g2);                      // gcd = 5
+    let _p4 = println(35 * x2 + 15 * y2);       // verify: should be 5
+
+    // Test 3: gcd(99, 78) = 3
+    let g3 = ext_gcd(99, 78, res);
+    let x3 = vec_get(res, 1);
+    let y3 = vec_get(res, 2);
+    let _p5 = println(g3);                      // gcd = 3
+    let _p6 = println(99 * x3 + 78 * y3);       // verify: should be 3
+
+    // Test 4: gcd(56, 15) = 1 (coprime)
+    let g4 = ext_gcd(56, 15, res);
+    let x4 = vec_get(res, 1);
+    let y4 = vec_get(res, 2);
+    let _p7 = println(g4);                      // gcd = 1
+    let _p8 = println(56 * x4 + 15 * y4);       // verify: should be 1
+
+    // Test 5: gcd(252, 198) = 18
+    let g5 = ext_gcd(252, 198, res);
+    let x5 = vec_get(res, 1);
+    let y5 = vec_get(res, 2);
+    let _p9 = println(g5);                      // gcd = 18
+    let _p10 = println(252 * x5 + 198 * y5);    // verify: should be 18
+
+    vec_free(res);
+    0
+    };

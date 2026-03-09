@@ -1,0 +1,114 @@
+// Golden Test: Matrix chain multiplication cost (DP)
+// Minimize scalar multiplications for matrix chain product
+
+// Matrix dimensions stored in vec: matrices A0..A(n-1)
+// where Ai has dimensions dims[i] x dims[i+1]
+// DP: dp[i][j] = min cost to multiply Ai..Aj
+// Flattened 2D: dp[i * n + j]
+
+fn matrix_chain_cost(dims: i64, n: i64) -> i64 = {
+    // n = number of matrices = len(dims) - 1
+    // dp table: n x n
+    let dp = vec_new();
+    let mut k = 0;
+    loop {
+        if k >= n * n { break } else { () };
+        vec_push(dp, 0);
+        k = k + 1
+    };
+    // Fill dp for chain length 2..n
+    let mut chain_len = 2;
+    loop {
+        if chain_len > n { break } else { () };
+        let mut i = 0;
+        loop {
+            if i + chain_len > n { break } else { () };
+            let j = i + chain_len - 1;
+            vec_set(dp, i * n + j, 999999999);
+            let mut mid = i;
+            loop {
+                if mid >= j { break } else { () };
+                let cost = vec_get(dp, i * n + mid) + vec_get(dp, (mid + 1) * n + j)
+                    + vec_get(dims, i) * vec_get(dims, mid + 1) * vec_get(dims, j + 1);
+                if cost < vec_get(dp, i * n + j) {
+                    vec_set(dp, i * n + j, cost)
+                } else { () };
+                mid = mid + 1
+            };
+            i = i + 1
+        };
+        chain_len = chain_len + 1
+    };
+    let result = vec_get(dp, 0 * n + n - 1);
+    vec_free(dp);
+    result
+};
+
+fn main() -> i64 = {
+    // Test 1: dims = [10, 30, 5, 60] -> 3 matrices
+    // A0: 10x30, A1: 30x5, A2: 5x60
+    // Options: (A0*A1)*A2 = 10*30*5 + 10*5*60 = 1500+3000 = 4500
+    //          A0*(A1*A2) = 30*5*60 + 10*30*60 = 9000+18000 = 27000
+    // Min = 4500
+    let d1 = vec_new();
+    vec_push(d1, 10); vec_push(d1, 30); vec_push(d1, 5); vec_push(d1, 60);
+    let _p1 = println(matrix_chain_cost(d1, 3));
+
+    // Test 2: dims = [40, 20, 30, 10, 30] -> 4 matrices
+    // Known optimal = 26000
+    let d2 = vec_new();
+    vec_push(d2, 40); vec_push(d2, 20); vec_push(d2, 30); vec_push(d2, 10); vec_push(d2, 30);
+    let _p2 = println(matrix_chain_cost(d2, 4));
+
+    // Test 3: dims = [10, 20, 30] -> 2 matrices, only one way
+    // 10*20*30 = 6000
+    let d3 = vec_new();
+    vec_push(d3, 10); vec_push(d3, 20); vec_push(d3, 30);
+    let _p3 = println(matrix_chain_cost(d3, 2));
+
+    // Test 4: dims = [1, 2, 3, 4] -> 3 matrices
+    // ((A0*A1)*A2) = 1*2*3 + 1*3*4 = 6+12 = 18
+    // (A0*(A1*A2)) = 2*3*4 + 1*2*4 = 24+8 = 32
+    // Min = 18
+    let d4 = vec_new();
+    vec_push(d4, 1); vec_push(d4, 2); vec_push(d4, 3); vec_push(d4, 4);
+    let _p4 = println(matrix_chain_cost(d4, 3));
+
+    // Test 5: dims = [5, 10, 3, 12, 5, 50, 6] -> 6 matrices
+    let d5 = vec_new();
+    vec_push(d5, 5); vec_push(d5, 10); vec_push(d5, 3); vec_push(d5, 12);
+    vec_push(d5, 5); vec_push(d5, 50); vec_push(d5, 6);
+    let _p5 = println(matrix_chain_cost(d5, 6));
+
+    // Test 6: single matrix dims = [3, 5] -> cost 0
+    let d6 = vec_new();
+    vec_push(d6, 3); vec_push(d6, 5);
+    let _p6 = println(matrix_chain_cost(d6, 1));
+
+    // Test 7: dims = [2, 3, 4, 5, 6] -> 4 matrices
+    let d7 = vec_new();
+    vec_push(d7, 2); vec_push(d7, 3); vec_push(d7, 4); vec_push(d7, 5); vec_push(d7, 6);
+    let _p7 = println(matrix_chain_cost(d7, 4));
+
+    // Test 8: dims = [10, 10, 10, 10] -> 3 identical square
+    // All splits give 10*10*10 + 10*10*10 = 2000
+    let d8 = vec_new();
+    vec_push(d8, 10); vec_push(d8, 10); vec_push(d8, 10); vec_push(d8, 10);
+    let _p8 = println(matrix_chain_cost(d8, 3));
+
+    // Test 9: dims = [30, 35, 15, 5, 10, 20, 25] -> classic example, 6 matrices
+    // Known optimal = 15125
+    let d9 = vec_new();
+    vec_push(d9, 30); vec_push(d9, 35); vec_push(d9, 15); vec_push(d9, 5);
+    vec_push(d9, 10); vec_push(d9, 20); vec_push(d9, 25);
+    let _p9 = println(matrix_chain_cost(d9, 6));
+
+    // Test 10: dims = [5, 4, 6, 2, 7] -> 4 matrices
+    let d10 = vec_new();
+    vec_push(d10, 5); vec_push(d10, 4); vec_push(d10, 6); vec_push(d10, 2); vec_push(d10, 7);
+    let _p10 = println(matrix_chain_cost(d10, 4));
+
+    vec_free(d1); vec_free(d2); vec_free(d3); vec_free(d4); vec_free(d5);
+    vec_free(d6); vec_free(d7); vec_free(d8); vec_free(d9); vec_free(d10);
+    0
+};

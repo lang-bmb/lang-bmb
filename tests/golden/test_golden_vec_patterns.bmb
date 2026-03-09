@@ -1,0 +1,91 @@
+// Golden Test: Vec data structure patterns
+// Tests vec operations: push, get, set, len, manual sum/reverse/sort
+
+fn my_vec_sum(v: i64) -> i64 = {
+    let len = vec_len(v);
+    let mut sum = 0;
+    for i in 0..len {
+        sum = sum + vec_get(v, i)
+    };
+    sum
+    };
+
+fn my_vec_reverse(v: i64) -> i64 = {
+    let len = vec_len(v);
+    let half = len / 2;
+    for i in 0..half {
+        let j = len - 1 - i;
+        let tmp = vec_get(v, i);
+        let _s1 = vec_set(v, i, vec_get(v, j));
+        let _s2 = vec_set(v, j, tmp);
+        0
+    };
+    0
+    };
+
+fn my_bubble_sort(v: i64) -> i64 = {
+    let n = vec_len(v);
+    for _i in 0..n {
+        for j in 0..n {
+            if j + 1 < n {
+                let vj = vec_get(v, j);
+                let vj1 = vec_get(v, j + 1);
+                if vj > vj1 {
+                    let _s1 = vec_set(v, j, vj1);
+                    let _s2 = vec_set(v, j + 1, vj);
+                    0
+                } else { 0 }
+        } else { 0 }
+    }
+    };
+    0
+    };
+
+fn vec_sum_range(n: i64) -> i64 = {
+    let v = vec_new();
+    for i in 0..n {
+        let _p = vec_push(v, i * i);
+        0
+    };
+    let result = my_vec_sum(v);
+    let _f = vec_free(v);
+    result
+    };
+
+fn vec_reverse_sum(n: i64) -> i64 = {
+    let v = vec_new();
+    for i in 0..n {
+        let _p = vec_push(v, i + 1);
+        0
+    };
+    let _r = my_vec_reverse(v);
+
+// After reverse: [n, n-1, ..., 1]
+// Sum first 3 = n + (n-1) + (n-2)
+    let result = vec_get(v, 0) + vec_get(v, 1) + vec_get(v, 2);
+    let _f = vec_free(v);
+    result
+    };
+
+fn vec_sorted_median(a: i64, b: i64, c: i64, d: i64, e: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    let _s = my_bubble_sort(v);
+    let result = vec_get(v, 2); // median
+    let _f = vec_free(v);
+    result
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(vec_sum_range(5));   // 0+1+4+9+16 = 30
+    let _p2 = println(vec_sum_range(10));  // 0+1+4+9+16+25+36+49+64+81 = 285
+    let _p3 = println(vec_reverse_sum(10)); // 10+9+8 = 27
+    let _p4 = println(vec_reverse_sum(5));  // 5+4+3 = 12
+    let _p5 = println(vec_sorted_median(5, 3, 1, 4, 2)); // 3
+    let _p6 = println(vec_sorted_median(10, 20, 30, 40, 50)); // 30
+    0
+    };

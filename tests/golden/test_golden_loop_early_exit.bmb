@@ -1,0 +1,69 @@
+// Golden Test: Loop with early exit patterns
+// Tests loops that break early based on conditions
+
+fn find_first_divisor(n: i64) -> i64 = {
+    let mut d = 2;
+    let mut found = 0;
+    loop {
+        if d * d > n { break } else { () };
+        if n - (n / d) * d == 0 {
+            found = d;
+            break
+        } else { () };
+    d = d + 1
+    };
+    if found > 0 { found } else { n }
+    };
+
+fn count_until_threshold(threshold: i64) -> i64 = {
+    let mut sum = 0;
+    let mut count = 0;
+    loop {
+        count = count + 1;
+        sum = sum + count;
+        if sum >= threshold { break } else { () }
+    };
+    count
+    };
+
+fn binary_search_sqrt(n: i64) -> i64 = {
+    let mut lo = 0;
+    let mut hi = n;
+    let mut result = 0;
+    loop {
+        if lo > hi { break } else { () };
+        let mid = (lo + hi) / 2;
+        if mid * mid <= n {
+            result = mid;
+            lo = mid + 1
+        } else {
+        hi = mid - 1
+    }
+    };
+    result
+    };
+
+fn converge_halving(start: i64) -> i64 = {
+// Count steps to reach 1 by halving
+    let mut x = start;
+    let mut steps = 0;
+    loop {
+        if x <= 1 { break } else { () };
+        x = x / 2;
+        steps = steps + 1
+    };
+    steps
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(find_first_divisor(17));   // 17 (prime)
+    let _p2 = println(find_first_divisor(15));   // 3
+    let _p3 = println(find_first_divisor(49));   // 7
+    let _p4 = println(count_until_threshold(10)); // 4 (1+2+3+4=10)
+    let _p5 = println(count_until_threshold(21)); // 6 (1+2+3+4+5+6=21)
+    let _p6 = println(binary_search_sqrt(100));  // 10
+    let _p7 = println(binary_search_sqrt(50));   // 7
+    let _p8 = println(converge_halving(64));     // 6
+    let _p9 = println(converge_halving(1000));   // 9
+    0
+    };

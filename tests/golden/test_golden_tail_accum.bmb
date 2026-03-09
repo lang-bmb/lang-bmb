@@ -1,0 +1,30 @@
+// Golden Test: Tail-recursive accumulator patterns
+// Tests phi threading with accumulator-passing style
+
+fn sum_to(n: i64, acc: i64) -> i64 =
+    if n <= 0 { acc }
+    else { sum_to(n - 1, acc + n) };
+
+fn factorial(n: i64, acc: i64) -> i64 =
+    if n <= 1 { acc }
+    else { factorial(n - 1, acc * n) };
+
+fn fib_tail(n: i64, a: i64, b: i64) -> i64 =
+    if n <= 0 { a }
+    else { fib_tail(n - 1, b, a + b) };
+
+fn power(base: i64, exp: i64, acc: i64) -> i64 =
+    if exp <= 0 { acc }
+    else { power(base, exp - 1, acc * base) };
+
+fn main() -> i64 = {
+    println(sum_to(10, 0));      // 55
+    println(sum_to(100, 0));     // 5050
+    println(factorial(5, 1));    // 120
+    println(factorial(10, 1));   // 3628800
+    println(fib_tail(10, 0, 1)); // 55
+    println(fib_tail(20, 0, 1)); // 6765
+    println(power(2, 10, 1));    // 1024
+    println(power(3, 5, 1));     // 243
+    0
+    };

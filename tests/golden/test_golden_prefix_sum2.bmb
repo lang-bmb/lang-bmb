@@ -1,0 +1,159 @@
+// Golden Test: Prefix sum techniques
+// Tests: prefix sum array, range sum query, equilibrium index, max subarray via prefix
+
+// Build prefix sum array: prefix[i] = sum(v[0..i])
+// prefix[0] = 0, prefix[1] = v[0], prefix[2] = v[0]+v[1], ...
+fn build_prefix(v: i64, n: i64) -> i64 = {
+    let prefix = vec_new();
+    vec_push(prefix, 0);
+    for i in 0..n {
+        let prev = vec_get(prefix, i);
+        vec_push(prefix, prev + vec_get(v, i))
+    };
+    prefix
+};
+
+// Range sum query: sum of v[l..r] (inclusive) using prefix sums
+fn range_sum(prefix: i64, l: i64, r: i64) -> i64 =
+    vec_get(prefix, r + 1) - vec_get(prefix, l);
+
+// Find equilibrium index: where left sum == right sum
+// Returns index or -1 if none
+fn equilibrium(v: i64, n: i64) -> i64 = {
+    let prefix = build_prefix(v, n);
+    let total = vec_get(prefix, n);
+    let mut result = 0 - 1;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { 0 };
+        let left_sum = vec_get(prefix, i);
+        let right_sum = total - vec_get(prefix, i + 1);
+        if left_sum == right_sum {
+            result = i;
+            break
+        } else {
+            i = i + 1
+        }
+    };
+    let _f = vec_free(prefix);
+    result
+};
+
+// Count subarrays with sum equal to target using prefix sum + brute force
+fn count_subarrays_sum(v: i64, n: i64, target: i64) -> i64 = {
+    let prefix = build_prefix(v, n);
+    let mut count = 0;
+    for i in 0..n {
+        let mut j = i;
+        loop {
+            if j >= n { break } else { 0 };
+            let s = range_sum(prefix, i, j);
+            if s == target { count = count + 1 } else { () };
+            j = j + 1
+        }
+    };
+    let _f = vec_free(prefix);
+    count
+};
+
+// Maximum prefix sum
+fn max_prefix_sum(v: i64, n: i64) -> i64 = {
+    let mut max_sum = 0;
+    let mut cur_sum = 0;
+    for i in 0..n {
+        cur_sum = cur_sum + vec_get(v, i);
+        if cur_sum > max_sum { max_sum = cur_sum } else { () }
+    };
+    max_sum
+};
+
+fn main() -> i64 = {
+    // Array: [3, 1, 4, 1, 5, 9, 2, 6]
+    let v = vec_new();
+    vec_push(v, 3);
+    vec_push(v, 1);
+    vec_push(v, 4);
+    vec_push(v, 1);
+    vec_push(v, 5);
+    vec_push(v, 9);
+    vec_push(v, 2);
+    vec_push(v, 6);
+
+    // Test 1: prefix sums
+    let prefix = build_prefix(v, 8);
+    let _p1 = println(vec_get(prefix, 0));  // 0
+    let _p2 = println(vec_get(prefix, 1));  // 3
+    let _p3 = println(vec_get(prefix, 4));  // 9 (3+1+4+1)
+    let _p4 = println(vec_get(prefix, 8));  // 31 (total sum)
+
+    // Test 2: range sum queries
+    let _p5 = println(range_sum(prefix, 0, 2));  // 8 (3+1+4)
+    let _p6 = println(range_sum(prefix, 2, 5));  // 19 (4+1+5+9)
+    let _p7 = println(range_sum(prefix, 0, 7));  // 31 (full array)
+    let _p8 = println(range_sum(prefix, 3, 3));  // 1 (single element)
+
+    // Test 3: equilibrium index
+    // [1, 3, 5, 2, 2] -> equilibrium at 2 (left=4, right=4)
+    let v2 = vec_new();
+    vec_push(v2, 1);
+    vec_push(v2, 3);
+    vec_push(v2, 5);
+    vec_push(v2, 2);
+    vec_push(v2, 2);
+    let _p9 = println(equilibrium(v2, 5));  // 2
+
+    // [1, 2, 3] -> no equilibrium
+    let v3 = vec_new();
+    vec_push(v3, 1);
+    vec_push(v3, 2);
+    vec_push(v3, 3);
+    let _p10 = println(equilibrium(v3, 3));  // -1
+
+    // [10, 0, 10] -> equilibrium at 1
+    let v4 = vec_new();
+    vec_push(v4, 10);
+    vec_push(v4, 0);
+    vec_push(v4, 10);
+    let _p11 = println(equilibrium(v4, 3));  // 1
+
+    // Test 4: count subarrays with given sum
+    // [1, 2, 3, 4, 5] with target=5
+    // subarrays: [2,3], [5] => 2
+    let v5 = vec_new();
+    vec_push(v5, 1);
+    vec_push(v5, 2);
+    vec_push(v5, 3);
+    vec_push(v5, 4);
+    vec_push(v5, 5);
+    let _p12 = println(count_subarrays_sum(v5, 5, 5));  // 2
+
+    // [1, 1, 1] with target=2 -> [1,1] at pos 0, [1,1] at pos 1 => 2
+    let v6 = vec_new();
+    vec_push(v6, 1);
+    vec_push(v6, 1);
+    vec_push(v6, 1);
+    let _p13 = println(count_subarrays_sum(v6, 3, 2));  // 2
+
+    // Test 5: maximum prefix sum
+    // [3, -1, 4, -1, 5, -9, 2, 6]
+    let v7 = vec_new();
+    vec_push(v7, 3);
+    vec_push(v7, 0 - 1);
+    vec_push(v7, 4);
+    vec_push(v7, 0 - 1);
+    vec_push(v7, 5);
+    vec_push(v7, 0 - 9);
+    vec_push(v7, 2);
+    vec_push(v7, 6);
+    let _p14 = println(max_prefix_sum(v7, 8));  // 10 (3-1+4-1+5=10)
+
+    vec_free(v);
+    vec_free(prefix);
+    vec_free(v2);
+    vec_free(v3);
+    vec_free(v4);
+    vec_free(v5);
+    vec_free(v6);
+    vec_free(v7);
+    0
+};

@@ -1,0 +1,91 @@
+// Golden Test: Circular Queue (Ring Buffer)
+// Fixed-capacity FIFO queue using modular arithmetic
+
+fn cq_new(cap: i64) -> i64 = {
+    let q = vec_new();
+    let _p = vec_push(q, cap);
+    let _p = vec_push(q, 0);
+    let _p = vec_push(q, 0);
+    let _p = vec_push(q, 0);
+    let mut i = 0;
+    while i < cap {
+        let _p = vec_push(q, 0);
+        set i = i + 1
+    };
+    q
+};
+
+fn cq_enqueue(q: i64, val: i64) -> i64 = {
+    let cap = vec_get(q, 0);
+    let sz = vec_get(q, 1);
+    if sz >= cap { 0 }
+    else {
+        let back = vec_get(q, 3);
+        vec_set(q, 4 + back, val);
+        vec_set(q, 3, (back + 1) % cap);
+        vec_set(q, 1, sz + 1);
+        1
+    }
+};
+
+fn cq_dequeue(q: i64) -> i64 = {
+    let sz = vec_get(q, 1);
+    if sz <= 0 { 0 - 1 }
+    else {
+        let cap = vec_get(q, 0);
+        let front = vec_get(q, 2);
+        let val = vec_get(q, 4 + front);
+        vec_set(q, 2, (front + 1) % cap);
+        vec_set(q, 1, sz - 1);
+        val
+    }
+};
+
+fn cq_peek(q: i64) -> i64 = {
+    let sz = vec_get(q, 1);
+    if sz <= 0 { 0 - 1 }
+    else {
+        let front = vec_get(q, 2);
+        vec_get(q, 4 + front)
+    }
+};
+
+fn cq_size(q: i64) -> i64 = { vec_get(q, 1) };
+fn cq_is_empty(q: i64) -> i64 = { if vec_get(q, 1) == 0 { 1 } else { 0 } };
+fn cq_is_full(q: i64) -> i64 = { if vec_get(q, 1) >= vec_get(q, 0) { 1 } else { 0 } };
+
+fn main() -> () = {
+    let q = cq_new(5);
+    print_str("empty="); let _r = println(cq_is_empty(q));
+
+    let _ok = cq_enqueue(q, 10);
+    let _ok = cq_enqueue(q, 20);
+    let _ok = cq_enqueue(q, 30);
+    let _ok = cq_enqueue(q, 40);
+    let _ok = cq_enqueue(q, 50);
+
+    print_str("full="); let _r = println(cq_is_full(q));
+    print_str("size="); let _r = println(cq_size(q));
+    print_str("peek="); let _r = println(cq_peek(q));
+    print_str("enq_full="); let _r = println(cq_enqueue(q, 60));
+
+    print_str("deq="); let _r = println(cq_dequeue(q));
+    print_str("deq="); let _r = println(cq_dequeue(q));
+    print_str("deq="); let _r = println(cq_dequeue(q));
+    print_str("size="); let _r = println(cq_size(q));
+
+    let _ok = cq_enqueue(q, 60);
+    let _ok = cq_enqueue(q, 70);
+    let _ok = cq_enqueue(q, 80);
+
+    print_str("all:");
+    let mut i = 0;
+    while i < 5 {
+        print_str(" ");
+        print(cq_dequeue(q));
+        set i = i + 1
+    };
+    print_str("
+");
+    print_str("empty="); let _r = println(cq_is_empty(q))
+};

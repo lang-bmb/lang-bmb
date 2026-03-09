@@ -1,0 +1,28 @@
+// Test: --safe mode with nested if/else containing array access
+// Verifies PHI fix handles multiple nesting levels
+
+fn classify(arr: &[i64; 4], idx: i64, threshold: i64) -> i64
+    pre idx >= 0 and idx < 4
+= {
+    let val = arr[idx];
+    if val > threshold {
+        if val > threshold * 2 { 3 }
+        else { 2 }
+    } else {
+        if val > 0 { 1 }
+        else { 0 }
+    }
+};
+
+fn main() -> i64 = {
+    let arr: [i64; 4] = [0, 5, 15, 50];
+    let a = classify(&arr, 0, 10);
+    let b = classify(&arr, 1, 10);
+    let c = classify(&arr, 2, 10);
+    let d = classify(&arr, 3, 10);
+    let _u = println(a);
+    let _v = println(b);
+    let _w = println(c);
+    let _x = println(d);
+    0
+};

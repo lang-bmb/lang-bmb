@@ -37,6 +37,10 @@
 // - Struct/enum field types not fully tracked (placeholder in v0.22.2)
 // - Type parameters: scope tracking only, no instantiation yet (v0.30.3)
 
+// Internal separator (Unit Separator, char 31) - avoids conflict with | in sat arithmetic
+fn SEP() -> String = chr(31);
+fn DSEP() -> String = chr(31) + chr(31);
+
 // ============================================================================
 // Type Encoding
 // ============================================================================
@@ -358,7 +362,7 @@ fn check_bounds_status_cached(cache: String, arr_type: String, idx_type: String,
 
 // Pack cache and result: "cache|result"
 fn pack_bounds_result(cache: String, result: i64) -> String =
-    cache + "|" + fin_int_to_str(result);
+    cache + SEP() + fin_int_to_str(result);
 
 // Unpack cache from bounds result
 fn unpack_bounds_cache(packed: String) -> String =
@@ -374,7 +378,7 @@ fn unpack_bounds_result(packed: String) -> i64 =
 // Find | position
 fn bounds_find_bar(s: String, pos: i64) -> i64 =
     if pos >= s.len() { -1 }
-    else if s.byte_at(pos) == 124 { pos }  // '|' = 124
+    else if s.byte_at(pos) == 31 { pos }  // Unit Separator = 31
     else { bounds_find_bar(s, pos + 1) };
 
 // ============================================================================
@@ -707,7 +711,7 @@ fn verify_range_mul(cache: String, lo1: i64, hi1: i64, lo2: i64, hi2: i64) -> St
 
 // Pack result: "cache||result||status"
 fn pack_range_proof(cache: String, result: String, status: i64) -> String =
-    cache + "||" + result + "||" + fin_int_to_str(status);
+    cache + DSEP() + result + DSEP() + fin_int_to_str(status);
 
 // Unpack cache from result
 fn unpack_range_cache(packed: String) -> String =
@@ -734,10 +738,10 @@ fn unpack_range_status(packed: String) -> i64 =
         else { fin_parse_int(packed.slice(second_dbar + 2, packed.len())) }
     };
 
-// Find "||" position
+// Find DSEP() position
 fn range_find_dbar(s: String, pos: i64) -> i64 =
     if pos + 1 >= s.len() { -1 }
-    else if s.byte_at(pos) == 124 and s.byte_at(pos + 1) == 124 { pos }
+    else if s.byte_at(pos) == 31 and s.byte_at(pos + 1) == 31 { pos }
     else { range_find_dbar(s, pos + 1) };
 
 // ============================================================================
@@ -2116,7 +2120,7 @@ fn env_add(env: String, name: String, ty: i64) -> String =
 fn tparam_add(tenv: String, name: String) -> String =
     let idx = tparam_count(tenv);
     let new_env = if tenv.len() == 0 { name } else { tenv + "," + name };
-    new_env + "|" + int_to_string(idx);
+    new_env + SEP() + int_to_string(idx);
 
 // Count type parameters in environment
 fn tparam_count(tenv: String) -> i64 =
@@ -2153,7 +2157,7 @@ fn tparam_resolve(tenv: String, name: String) -> i64 =
 
 // Unpack tparam_add result: get environment part
 fn tparam_unpack_env(result: String) -> String =
-    tparam_slice_until(result, 124, 0);  // '|' = 124
+    tparam_slice_until(result, 31, 0);  // Unit Separator = 31
 
 // Unpack tparam_add result: get index part
 fn tparam_unpack_idx(result: String) -> i64 =
@@ -2162,7 +2166,7 @@ fn tparam_unpack_idx(result: String) -> i64 =
 
 // '|' = 124
 fn tparam_find_pipe(s: String, pos: i64) -> i64 =
-    if pos >= s.len() { 0 - 1 } else if s.byte_at(pos) == 124 { pos } else { tparam_find_pipe(s, pos + 1) };
+    if pos >= s.len() { 0 - 1 } else if s.byte_at(pos) == 31 { pos } else { tparam_find_pipe(s, pos + 1) };
 
 fn tparam_slice_until(s: String, delim: i64, pos: i64) -> String =
     let end_pos = tparam_find_char(s, delim, pos);
@@ -2346,15 +2350,15 @@ fn check_call_0args(func_name: String) -> i64 =
 
 // Pack generic function signature
 fn gen_fn_pack(name: String, tparams: String, params: String, ret_ty: String) -> String =
-    name + "|" + tparams + "|" + params + "|" + ret_ty;
+    name + SEP() + tparams + SEP() + params + SEP() + ret_ty;
 
-// Find the nth pipe in a string. '|' = 124
+// Find separator character (Unit Separator, char 31)
 fn find_pipe(s: String, pos: i64) -> i64 =
-    if pos >= s.len() { 0 - 1 } else if s.byte_at(pos) == 124 { pos } else { find_pipe(s, pos + 1) };
+    if pos >= s.len() { 0 - 1 } else if s.byte_at(pos) == 31 { pos } else { find_pipe(s, pos + 1) };
 
-// Find nth pipe (0-indexed)
+// Find nth separator (0-indexed)
 fn find_nth_pipe(s: String, n: i64, pos: i64, count: i64) -> i64 =
-    if pos >= s.len() { 0 - 1 } else if s.byte_at(pos) == 124 { if count == n { pos } else { find_nth_pipe(s, n, pos + 1, count + 1) } } else { find_nth_pipe(s, n, pos + 1, count) };
+    if pos >= s.len() { 0 - 1 } else if s.byte_at(pos) == 31 { if count == n { pos } else { find_nth_pipe(s, n, pos + 1, count + 1) } } else { find_nth_pipe(s, n, pos + 1, count) };
 
 // Extract name from signature
 fn gen_fn_name(sig: String) -> String =
@@ -2562,7 +2566,7 @@ fn infer_build_targs_from(tparams: String, subst: String, idx: i64, acc: String)
 
 // Pack generic struct definition
 fn gen_struct_pack(name: String, tparams: String, fields: String) -> String =
-    name + "|" + tparams + "|" + fields;
+    name + SEP() + tparams + SEP() + fields;
 
 // Extract struct name
 fn gen_struct_name(def: String) -> String =
@@ -2736,7 +2740,7 @@ fn struct_reg_is_generic(reg: String, name: String) -> bool =
 
 // Pack generic enum definition
 fn gen_enum_pack(name: String, tparams: String, variants: String) -> String =
-    name + "|" + tparams + "|" + variants;
+    name + SEP() + tparams + SEP() + variants;
 
 // Extract enum name from definition
 fn gen_enum_name(def: String) -> String =
@@ -3012,26 +3016,26 @@ fn fn_reg_param_count(reg: String, name: String) -> i64 =
 
 // Pack trait definition: name, type params, methods
 fn gen_trait_pack(name: String, tparams: String, methods: String) -> String =
-    name + "|" + tparams + "|" + methods;
+    name + SEP() + tparams + SEP() + methods;
 
 // Unpack trait name
 fn gen_trait_name(def: String) -> String =
-    let pipe = find_char(def, 124, 0);  // '|' = 124
+    let pipe = find_char(def, 31, 0);  // '|' = 124
     if pipe < 0 { def } else { def.slice(0, pipe) };
 
 // Unpack trait type parameters
 fn gen_trait_tparams(def: String) -> String =
-    let pipe1 = find_char(def, 124, 0);
+    let pipe1 = find_char(def, 31, 0);
     if pipe1 < 0 { "" } else {
-        let pipe2 = find_char(def, 124, pipe1 + 1);
+        let pipe2 = find_char(def, 31, pipe1 + 1);
         if pipe2 < 0 { def.slice(pipe1 + 1, def.len()) } else { def.slice(pipe1 + 1, pipe2) }
 
     };
 // Unpack trait methods
 fn gen_trait_methods(def: String) -> String =
-    let pipe1 = find_char(def, 124, 0);
+    let pipe1 = find_char(def, 31, 0);
     if pipe1 < 0 { "" } else {
-        let pipe2 = find_char(def, 124, pipe1 + 1);
+        let pipe2 = find_char(def, 31, pipe1 + 1);
         if pipe2 < 0 { "" } else { def.slice(pipe2 + 1, def.len()) }
 
     };
@@ -3211,39 +3215,39 @@ fn trait_reg_is_generic(reg: String, name: String) -> bool =
 
 // Pack impl definition
 fn gen_impl_pack(trait_name: String, tparams: String, target_type: String, methods: String) -> String =
-    trait_name + "|" + tparams + "|" + target_type + "|" + methods;
+    trait_name + SEP() + tparams + SEP() + target_type + SEP() + methods;
 
 // Unpack impl trait name
 fn gen_impl_trait_name(def: String) -> String =
-    let pipe = find_char(def, 124, 0);
+    let pipe = find_char(def, 31, 0);
     if pipe < 0 { def } else { def.slice(0, pipe) };
 
 // Unpack impl type parameters
 fn gen_impl_tparams(def: String) -> String =
-    let pipe1 = find_char(def, 124, 0);
+    let pipe1 = find_char(def, 31, 0);
     if pipe1 < 0 { "" } else {
-        let pipe2 = find_char(def, 124, pipe1 + 1);
+        let pipe2 = find_char(def, 31, pipe1 + 1);
         if pipe2 < 0 { def.slice(pipe1 + 1, def.len()) } else { def.slice(pipe1 + 1, pipe2) }
 
     };
 // Unpack impl target type
 fn gen_impl_target_type(def: String) -> String =
-    let pipe1 = find_char(def, 124, 0);
+    let pipe1 = find_char(def, 31, 0);
     if pipe1 < 0 { "" } else {
-        let pipe2 = find_char(def, 124, pipe1 + 1);
+        let pipe2 = find_char(def, 31, pipe1 + 1);
         if pipe2 < 0 { "" } else {
-            let pipe3 = find_char(def, 124, pipe2 + 1);
+            let pipe3 = find_char(def, 31, pipe2 + 1);
             if pipe3 < 0 { def.slice(pipe2 + 1, def.len()) } else { def.slice(pipe2 + 1, pipe3) }
 
         }
     };
 // Unpack impl methods
 fn gen_impl_methods(def: String) -> String =
-    let pipe1 = find_char(def, 124, 0);
+    let pipe1 = find_char(def, 31, 0);
     if pipe1 < 0 { "" } else {
-        let pipe2 = find_char(def, 124, pipe1 + 1);
+        let pipe2 = find_char(def, 31, pipe1 + 1);
         if pipe2 < 0 { "" } else {
-            let pipe3 = find_char(def, 124, pipe2 + 1);
+            let pipe3 = find_char(def, 31, pipe2 + 1);
             if pipe3 < 0 { "" } else { def.slice(pipe3 + 1, def.len()) }
 
         }
@@ -5197,9 +5201,9 @@ fn test_tenv_tparam_ops() -> i64 =
 // Test tenv_check_fn_call and tenv_infer_fn_call
 fn test_tenv_fn_call() -> i64 =
     // Setup: add a generic function identity<T>(T) -> T
-    let tenv1 = tenv_add_fn(tenv_new(), "identity|T|T|T");
+    let tenv1 = tenv_add_fn(tenv_new(), "identity" + SEP() + "T" + SEP() + "T" + SEP() + "T");
     // Add a non-generic function: add(i64, i64) -> i64
-    let tenv2 = tenv_add_fn(tenv1, "add||i64,i64|i64");
+    let tenv2 = tenv_add_fn(tenv1, "add" + SEP() + SEP() + "i64,i64" + SEP() + "i64");
 
     // Test explicit type args
     let ret1 = tenv_check_fn_call(tenv2, "identity", "i64", "i64");
@@ -5225,9 +5229,9 @@ fn test_tenv_fn_call() -> i64 =
 // Test tenv_check_field_access
 fn test_tenv_field_access() -> i64 =
     // Setup: add Box<T> { value: T }
-    let tenv1 = tenv_add_struct(tenv_new(), "Box|T|value:T");
+    let tenv1 = tenv_add_struct(tenv_new(), "Box" + SEP() + "T" + SEP() + "value:T");
     // Add Pair<A,B> { first: A, second: B }
-    let tenv2 = tenv_add_struct(tenv1, "Pair|A,B|first:A,second:B");
+    let tenv2 = tenv_add_struct(tenv1, "Pair" + SEP() + "A,B" + SEP() + "first:A,second:B");
 
     // Test field access with type args
     let f1 = tenv_check_field_access(tenv2, "Box", "i64", "value");
@@ -5248,9 +5252,9 @@ fn test_tenv_field_access() -> i64 =
 // Test tenv_check_match_variant
 fn test_tenv_match_variant() -> i64 =
     // Setup: add T? { Some(T), None }
-    let tenv1 = tenv_add_enum(tenv_new(), "Option|T|Some:T,None");
+    let tenv1 = tenv_add_enum(tenv_new(), "Option" + SEP() + "T" + SEP() + "Some:T,None");
     // Add Result<T,E> { Ok(T), Err(E) }
-    let tenv2 = tenv_add_enum(tenv1, "Result|T,E|Ok:T,Err:E");
+    let tenv2 = tenv_add_enum(tenv1, "Result" + SEP() + "T,E" + SEP() + "Ok:T,Err:E");
 
     // Test variant type lookup
     let v1 = tenv_check_match_variant(tenv2, "Option", "i64", "Some");
@@ -5558,7 +5562,7 @@ fn ast_find_return_type_end(ast: String, start: i64) -> i64 =
 
 // Pack string and int: "string|123"
 fn pack_s_i(s: String, i: i64) -> String =
-    s + "|" + int_to_string(i);
+    s + SEP() + int_to_string(i);
 
 // Unpack string part from "string|123"
 fn unpack_first_s(packed: String) -> String =
@@ -5570,10 +5574,9 @@ fn unpack_second_i(packed: String) -> i64 =
     let pipe = find_pipe(packed, 0);
     if pipe < 0 { 0 } else { parse_int(packed, pipe + 1, 0) };
 
-// Find pipe character
-// '|' = 124
+// Find separator character (Unit Separator, char 31)
 fn find_pipe(s: String, pos: i64) -> i64 =
-    if pos >= s.len() { 0 - 1 } else if s.byte_at(pos) == 124 { pos } else { find_pipe(s, pos + 1) };
+    if pos >= s.len() { 0 - 1 } else if s.byte_at(pos) == 31 { pos } else { find_pipe(s, pos + 1) };
 
 // Parse integer from string
 fn parse_int(s: String, pos: i64, acc: i64) -> i64 =
@@ -6219,7 +6222,7 @@ fn type_of_unop(tenv: String, locals: String, op: String, ast: String) -> String
     let arg = expr_op_arg1(ast);
     let arg_t = type_of_expr(tenv, locals, arg);
     // Unary minus requires i64, Logical not requires bool
-    if is_error_str(arg_t) { arg_t } else if op == "-" { if arg_t == "i64" { "i64" } else { "ERR:unary - requires i64" } } else if op == "not" { if arg_t == "bool" { "bool" } else { "ERR:not requires bool" } } else { "ERR:unknown unary operator " + op };
+    if is_error_str(arg_t) { arg_t } else if op == "-" { if arg_t == "i64" { "i64" } else { "ERR:unary - requires i64, got " + arg_t } } else if op == "not" { if arg_t == "bool" { "bool" } else { "ERR:not requires bool, got " + arg_t } } else { "ERR:unknown unary operator " + op };
 
 fn type_of_binop(tenv: String, locals: String, op: String, ast: String) -> String =
     let arg1 = expr_op_arg1(ast);
@@ -6238,17 +6241,17 @@ fn type_of_binop(tenv: String, locals: String, op: String, ast: String) -> Strin
 // v0.30.69: Range operators: .., ..=
 fn binop_result_type(op: String, t1: String, t2: String) -> String =
     if op == "+" {
-        if t1 == "i64" and t2 == "i64" { "i64" } else if t1 == "f64" and t2 == "f64" { "f64" } else if t1 == "String" and t2 == "String" { "String" } else { "ERR:+ requires i64, f64, or String" }
+        if t1 == "i64" and t2 == "i64" { "i64" } else if t1 == "f64" and t2 == "f64" { "f64" } else if t1 == "String" and t2 == "String" { "String" } else { "ERR:+ requires i64, f64, or String, got " + t1 + " and " + t2 }
     } else if op == "-" or op == "*" or op == "/" or op == "%" {
-        if t1 == "i64" and t2 == "i64" { "i64" } else if t1 == "f64" and t2 == "f64" { "f64" } else { "ERR:arithmetic requires i64 or f64" }
+        if t1 == "i64" and t2 == "i64" { "i64" } else if t1 == "f64" and t2 == "f64" { "f64" } else { "ERR:arithmetic requires i64 or f64, got " + t1 + " and " + t2 }
     } else if op == "==" or op == "!=" {
-        if t1 == t2 { "bool" } else { "ERR:comparison requires same types" }
+        if t1 == t2 { "bool" } else { "ERR:comparison requires same types, got " + t1 + " and " + t2 }
     } else if op == "<" or op == ">" or op == "<=" or op == ">=" {
-        if t1 == "i64" and t2 == "i64" { "bool" } else if t1 == "f64" and t2 == "f64" { "bool" } else { "ERR:ordering requires i64 or f64" }
+        if t1 == "i64" and t2 == "i64" { "bool" } else if t1 == "f64" and t2 == "f64" { "bool" } else { "ERR:ordering requires i64 or f64, got " + t1 + " and " + t2 }
     } else if op == "and" or op == "or" {
-        if t1 == "bool" and t2 == "bool" { "bool" } else { "ERR:logical requires bool" }
+        if t1 == "bool" and t2 == "bool" { "bool" } else { "ERR:logical requires bool, got " + t1 + " and " + t2 }
     } else if op == ".." or op == "..=" {
-        if t1 == "i64" and t2 == "i64" { "Range<i64>" } else { "ERR:range requires i64" }
+        if t1 == "i64" and t2 == "i64" { "Range<i64>" } else { "ERR:range requires i64, got " + t1 + " and " + t2 }
     } else { "ERR:unknown operator " + op };
 
 // Check if type string is an error (starts with "ERR:")
@@ -6261,11 +6264,11 @@ fn type_of_if(tenv: String, locals: String, ast: String) -> String =
     let then_e = expr_second_arg(ast, 3);
     let else_e = expr_third_arg(ast, 3);
     let cond_t = type_of_expr(tenv, locals, cond);
-    if is_error_str(cond_t) { cond_t } else if cond_t != "bool" { "ERR:if condition must be bool" } else {
+    if is_error_str(cond_t) { cond_t } else if cond_t != "bool" { "ERR:if condition must be bool, got " + cond_t } else {
         let then_t = type_of_expr(tenv, locals, then_e);
         if is_error_str(then_t) { then_t } else {
             let else_t = type_of_expr(tenv, locals, else_e);
-            if is_error_str(else_t) { else_t } else if then_t == else_t { then_t } else { "ERR:if branches must have same type" }
+            if is_error_str(else_t) { else_t } else if then_t == else_t { then_t } else { "ERR:if branches must have same type, got " + then_t + " and " + else_t }
 
         }
     };
@@ -8589,11 +8592,11 @@ fn test_string_concat_type() -> i64 =
 fn test_trait_pack() -> i64 =
     // Test 1: Pack basic trait definition
     let def1 = gen_trait_pack("Display", "", "fmt:self->String");
-    let r1 = if def1 == "Display||fmt:self->String" { 1 } else { 0 };
+    let r1 = if def1 == "Display" + SEP() + SEP() + "fmt:self->String" { 1 } else { 0 };
 
     // Test 2: Pack generic trait definition
     let def2 = gen_trait_pack("Into", "T", "into:self->T");
-    let r2 = if def2 == "Into|T|into:self->T" { 1 } else { 0 };
+    let r2 = if def2 == "Into" + SEP() + "T" + SEP() + "into:self->T" { 1 } else { 0 };
 
     // Test 3: Unpack trait name
     let n1 = gen_trait_name(def1);
@@ -8702,11 +8705,11 @@ fn test_trait_reg_has() -> i64 =
 fn test_impl_pack() -> i64 =
     // Test 1: Pack basic impl definition
     let def1 = gen_impl_pack("Display", "", "i64", "fmt:self->String");
-    let r1 = if def1 == "Display||i64|fmt:self->String" { 1 } else { 0 };
+    let r1 = if def1 == "Display" + SEP() + SEP() + "i64" + SEP() + "fmt:self->String" { 1 } else { 0 };
 
     // Test 2: Pack generic impl definition
     let def2 = gen_impl_pack("Into", "T", "Vec<T>", "into:self->T");
-    let r2 = if def2 == "Into|T|Vec<T>|into:self->T" { 1 } else { 0 };
+    let r2 = if def2 == "Into" + SEP() + "T" + SEP() + "Vec<T>" + SEP() + "into:self->T" { 1 } else { 0 };
 
     // Test 3: Unpack impl trait name
     let n1 = gen_impl_trait_name(def1);

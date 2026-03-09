@@ -1,0 +1,118 @@
+// Golden Test: Floyd's Cycle Detection on Function Iteration - Cycle 1569
+// Detect cycles in iterated function f(x) = (x*x + c) % m
+
+// Iterated function: f(x) = (x*x + c) % m
+fn iter_fn(x: i64, c: i64, m: i64) -> i64 =
+    (x * x + c) % m;
+
+// Floyd's algorithm: find cycle length and entry point
+// Returns cycle_start * 1000 + cycle_length (packed result)
+fn floyd_detect(x0: i64, c: i64, m: i64) -> i64 = {
+    // Phase 1: Find meeting point (tortoise and hare)
+    let mut tortoise = iter_fn(x0, c, m);
+    let mut hare = iter_fn(iter_fn(x0, c, m), c, m);
+    loop {
+        if tortoise == hare { break } else { 0 };
+        tortoise = iter_fn(tortoise, c, m);
+        hare = iter_fn(iter_fn(hare, c, m), c, m)
+    };
+
+    // Phase 2: Find cycle entry (mu)
+    let mut mu = 0;
+    tortoise = x0;
+    loop {
+        if tortoise == hare { break } else { 0 };
+        tortoise = iter_fn(tortoise, c, m);
+        hare = iter_fn(hare, c, m);
+        mu = mu + 1
+    };
+
+    // Phase 3: Find cycle length (lambda)
+    let mut lambda = 1;
+    hare = iter_fn(tortoise, c, m);
+    loop {
+        if hare == tortoise { break } else { 0 };
+        hare = iter_fn(hare, c, m);
+        lambda = lambda + 1
+    };
+
+    mu * 1000 + lambda
+    };
+
+// Rho factor: count steps until gcd(|x-y|, n) > 1
+// Simplified Pollard's rho idea using Floyd
+fn rho_steps(n: i64, x0: i64, c: i64) -> i64 = {
+    let mut tortoise = x0;
+    let mut hare = x0;
+    let mut steps = 0;
+    loop {
+        tortoise = iter_fn(tortoise, c, n);
+        hare = iter_fn(iter_fn(hare, c, n), c, n);
+        steps = steps + 1;
+        let diff = if tortoise > hare { tortoise - hare } else { hare - tortoise };
+        if diff == 0 { break } else { 0 };
+        // Check if diff shares a factor with n
+        let g = gcd(diff, n);
+        if g > 1 && g < n { break } else { 0 }
+    };
+    steps
+    };
+
+fn gcd(a: i64, b: i64) -> i64 =
+    if b == 0 { a } else { gcd(b, a % b) };
+
+// Iterate function k times starting from x0
+fn iterate_k(x0: i64, c: i64, m: i64, k: i64) -> i64 = {
+    let mut x = x0;
+    let mut i = 0;
+    loop {
+        if i >= k { break } else { 0 };
+        x = iter_fn(x, c, m);
+        i = i + 1
+    };
+    x
+    };
+
+fn main() -> i64 = {
+// Test 1: f(x) = (x^2 + 1) % 11, x0 = 2
+// Sequence: 2 -> 5 -> 4 -> 6 -> 4 -> 6 -> ... (cycle at entry 4, length 2)
+    let r1 = floyd_detect(2, 1, 11);
+    let _p1 = println(r1 / 1000);   // mu (cycle entry index)
+    let _p2 = println(r1 % 1000);   // lambda (cycle length) = 2
+
+// Test 2: f(x) = (x^2 + 1) % 7, x0 = 2
+// Sequence: 2 -> 5 -> 5 -> ... (cycle at entry 5, length 1 = fixed point)
+    let r2 = floyd_detect(2, 1, 7);
+    let _p3 = println(r2 / 1000);   // mu
+    let _p4 = println(r2 % 1000);   // lambda = 1
+
+// Test 3: f(x) = (x^2 + 3) % 13, x0 = 1
+    let r3 = floyd_detect(1, 3, 13);
+    let _p5 = println(r3 / 1000);   // mu
+    let _p6 = println(r3 % 1000);   // lambda
+
+// Test 4: Verify cycle by iterating
+// For test 1, after mu steps from x0 we should be at cycle entry
+    let mu1 = r1 / 1000;
+    let lam1 = r1 % 1000;
+    let entry = iterate_k(2, 1, 11, mu1);
+    // Iterating lambda more times should return to same point
+    let back = iterate_k(entry, 1, 11, lam1);
+    let _p7 = println(if entry == back { 1 } else { 0 });  // 1 (cycle verified)
+
+// Test 5: f(x) = (x^2 + 0) % 10, x0 = 2
+// Sequence: 2 -> 4 -> 6 -> 6 -> ... (fixed point at 6)
+    let r5 = floyd_detect(2, 0, 10);
+    let _p8 = println(r5 / 1000);   // mu
+    let _p9 = println(r5 % 1000);   // lambda = 1
+
+// Test 6: iterate_k basic checks
+    let _p10 = println(iterate_k(2, 1, 11, 0));  // 2 (no steps)
+    let _p11 = println(iterate_k(2, 1, 11, 1));  // 5 (one step: 2^2+1=5)
+    let _p12 = println(iterate_k(2, 1, 11, 2));  // 4 (5^2+1=26%11=4)
+
+// Test 7: rho_steps - find how many iterations until convergence
+    let _p13 = println(rho_steps(77, 2, 1));  // steps to find factor
+
+    0
+    };

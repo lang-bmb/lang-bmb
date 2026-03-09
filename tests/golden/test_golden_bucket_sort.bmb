@@ -1,0 +1,110 @@
+// Golden Test: Bucket sort for bounded integer ranges
+// Tests counting-based distribution sort with duplicates and edge cases
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { let _p = vec_push(v, 0); 0 };
+    v
+    };
+
+// Bucket sort: values must be in [0, max_val]
+fn bucket_sort(arr: i64, max_val: i64) -> i64 = {
+    let n = vec_len(arr);
+    let buckets = make_zeros(max_val + 1);
+    // Count each value
+    for i in 0..n {
+        let val = vec_get(arr, i);
+        let c = vec_get(buckets, val);
+        let _s = vec_set(buckets, val, c + 1);
+        0
+    };
+    // Write back sorted
+    let mut pos = 0;
+    let mut bkt = 0;
+    loop {
+        if bkt > max_val { break } else { () };
+        let mut cnt = vec_get(buckets, bkt);
+        loop {
+            if cnt <= 0 { break } else { () };
+            let _s = vec_set(arr, pos, bkt);
+            pos = pos + 1;
+            cnt = cnt - 1
+        };
+        bkt = bkt + 1
+    };
+    let _f = vec_free(buckets);
+    0
+    };
+
+// Verify array is sorted
+fn is_sorted(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    let mut i = 0;
+    let mut ok = 1;
+    loop {
+        if i + 1 >= n { break } else { () };
+        let _u = if vec_get(arr, i) > vec_get(arr, i + 1) { ok = 0 } else { () };
+        i = i + 1
+    };
+    ok
+    };
+
+fn main() -> i64 = {
+    // Test 1: [5, 3, 8, 1, 9, 2, 7, 4, 6, 0]
+    let a1 = vec_new();
+    vec_push(a1, 5); vec_push(a1, 3); vec_push(a1, 8);
+    vec_push(a1, 1); vec_push(a1, 9); vec_push(a1, 2);
+    vec_push(a1, 7); vec_push(a1, 4); vec_push(a1, 6);
+    vec_push(a1, 0);
+    let _s1 = bucket_sort(a1, 9);
+    let _p1 = println(vec_get(a1, 0));   // 0
+    let _p2 = println(vec_get(a1, 5));   // 5
+    let _p3 = println(vec_get(a1, 9));   // 9
+    let _p4 = println(is_sorted(a1));    // 1
+
+    // Test 2: Duplicates [3, 1, 4, 1, 5, 9, 2, 6, 5, 3]
+    let a2 = vec_new();
+    vec_push(a2, 3); vec_push(a2, 1); vec_push(a2, 4);
+    vec_push(a2, 1); vec_push(a2, 5); vec_push(a2, 9);
+    vec_push(a2, 2); vec_push(a2, 6); vec_push(a2, 5);
+    vec_push(a2, 3);
+    let _s2 = bucket_sort(a2, 9);
+    let _p5 = println(vec_get(a2, 0));   // 1
+    let _p6 = println(vec_get(a2, 1));   // 1
+    let _p7 = println(vec_get(a2, 9));   // 9
+    let _p8 = println(is_sorted(a2));    // 1
+
+    // Test 3: All same values [7, 7, 7, 7]
+    let a3 = vec_new();
+    vec_push(a3, 7); vec_push(a3, 7); vec_push(a3, 7); vec_push(a3, 7);
+    let _s3 = bucket_sort(a3, 9);
+    let _p9 = println(vec_get(a3, 0));   // 7
+    let _p10 = println(vec_get(a3, 3));  // 7
+
+    // Test 4: Already sorted [1, 2, 3, 4, 5]
+    let a4 = vec_new();
+    vec_push(a4, 1); vec_push(a4, 2); vec_push(a4, 3);
+    vec_push(a4, 4); vec_push(a4, 5);
+    let _s4 = bucket_sort(a4, 9);
+    let _p11 = println(vec_get(a4, 0));  // 1
+    let _p12 = println(vec_get(a4, 4));  // 5
+
+    // Test 5: Reverse sorted [5, 4, 3, 2, 1, 0]
+    let a5 = vec_new();
+    vec_push(a5, 5); vec_push(a5, 4); vec_push(a5, 3);
+    vec_push(a5, 2); vec_push(a5, 1); vec_push(a5, 0);
+    let _s5 = bucket_sort(a5, 5);
+    let _p13 = println(vec_get(a5, 0));  // 0
+    let _p14 = println(vec_get(a5, 5));  // 5
+    let _p15 = println(is_sorted(a5));   // 1
+
+    // Test 6: Single element [42]
+    let a6 = vec_new();
+    vec_push(a6, 42);
+    let _s6 = bucket_sort(a6, 50);
+    let _p16 = println(vec_get(a6, 0));  // 42
+
+    vec_free(a1); vec_free(a2); vec_free(a3);
+    vec_free(a4); vec_free(a5); vec_free(a6);
+    0
+    };

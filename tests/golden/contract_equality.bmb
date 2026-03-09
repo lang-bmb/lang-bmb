@@ -1,0 +1,11 @@
+// Test: equality contract pre x == y checks
+
+fn mirror(x: i64, y: i64) -> i64
+    pre x == y
+= x + y;
+
+fn main() -> i64 = {
+    let r = mirror(25, 25);
+    let _u = println(r);
+    0
+};

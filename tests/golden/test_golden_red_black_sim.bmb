@@ -1,0 +1,381 @@
+// Golden Test: Red-black tree simulation with color tracking
+// Simulates insertion into a red-black tree using flat arrays
+// Each node: [key, color, left, right, parent] stored in parallel vecs
+// Color: 0 = BLACK, 1 = RED
+// NIL node = 0 (index 0 is sentinel)
+
+// Node field accessors (5 fields per node)
+fn node_key(nodes: i64, id: i64) -> i64 = vec_get(nodes, id * 5);
+fn node_color(nodes: i64, id: i64) -> i64 = vec_get(nodes, id * 5 + 1);
+fn node_left(nodes: i64, id: i64) -> i64 = vec_get(nodes, id * 5 + 2);
+fn node_right(nodes: i64, id: i64) -> i64 = vec_get(nodes, id * 5 + 3);
+fn node_parent(nodes: i64, id: i64) -> i64 = vec_get(nodes, id * 5 + 4);
+
+fn set_key(nodes: i64, id: i64, val: i64) -> i64 = {
+    let _s = vec_set(nodes, id * 5, val); 0
+};
+fn set_color(nodes: i64, id: i64, val: i64) -> i64 = {
+    let _s = vec_set(nodes, id * 5 + 1, val); 0
+};
+fn set_left(nodes: i64, id: i64, val: i64) -> i64 = {
+    let _s = vec_set(nodes, id * 5 + 2, val); 0
+};
+fn set_right(nodes: i64, id: i64, val: i64) -> i64 = {
+    let _s = vec_set(nodes, id * 5 + 3, val); 0
+};
+fn set_parent(nodes: i64, id: i64, val: i64) -> i64 = {
+    let _s = vec_set(nodes, id * 5 + 4, val); 0
+};
+
+// Create tree storage: node 0 is NIL (black sentinel)
+// Returns vec [nodes, root_ref, next_id_ref]
+// root_ref and next_id_ref are single-element vecs for mutability
+fn create_tree() -> i64 = {
+    let nodes = vec_new();
+    // NIL node (index 0): key=0, color=BLACK, left=0, right=0, parent=0
+    let _p = vec_push(nodes, 0); // key
+    let _p = vec_push(nodes, 0); // color (BLACK)
+    let _p = vec_push(nodes, 0); // left
+    let _p = vec_push(nodes, 0); // right
+    let _p = vec_push(nodes, 0); // parent
+    // Pre-allocate space for 20 nodes (indices 1-19)
+    for _i in 0..95 { let _p = vec_push(nodes, 0); 0 };
+    let root_ref = vec_new();
+    let _p = vec_push(root_ref, 0); // root = NIL initially
+    let next_id = vec_new();
+    let _p = vec_push(next_id, 1); // next available node id
+    let tree = vec_new();
+    let _p = vec_push(tree, nodes);
+    let _p = vec_push(tree, root_ref);
+    let _p = vec_push(tree, next_id);
+    tree
+};
+
+fn get_nodes(tree: i64) -> i64 = vec_get(tree, 0);
+fn get_root(tree: i64) -> i64 = vec_get(vec_get(tree, 1), 0);
+fn set_root(tree: i64, r: i64) -> i64 = { let _s = vec_set(vec_get(tree, 1), 0, r); 0 };
+fn get_next_id(tree: i64) -> i64 = vec_get(vec_get(tree, 2), 0);
+fn inc_next_id(tree: i64) -> i64 = {
+    let nid = vec_get(tree, 2);
+    let cur = vec_get(nid, 0);
+    let _s = vec_set(nid, 0, cur + 1);
+    0
+};
+
+// Left rotate around node x
+fn left_rotate(tree: i64, x: i64) -> i64 = {
+    let nodes = get_nodes(tree);
+    let y = node_right(nodes, x);
+    // x.right = y.left
+    let _s = set_right(nodes, x, node_left(nodes, y));
+    let _c = if node_left(nodes, y) != 0 {
+        let _s = set_parent(nodes, node_left(nodes, y), x); ()
+    } else { () };
+    // y.parent = x.parent
+    let _s = set_parent(nodes, y, node_parent(nodes, x));
+    let _c = if node_parent(nodes, x) == 0 {
+        let _s = set_root(tree, y); ()
+    } else if x == node_left(nodes, node_parent(nodes, x)) {
+        let _s = set_left(nodes, node_parent(nodes, x), y); ()
+    } else {
+        let _s = set_right(nodes, node_parent(nodes, x), y); ()
+    };
+    // y.left = x
+    let _s = set_left(nodes, y, x);
+    let _s = set_parent(nodes, x, y);
+    0
+};
+
+// Right rotate around node x
+fn right_rotate(tree: i64, x: i64) -> i64 = {
+    let nodes = get_nodes(tree);
+    let y = node_left(nodes, x);
+    let _s = set_left(nodes, x, node_right(nodes, y));
+    let _c = if node_right(nodes, y) != 0 {
+        let _s = set_parent(nodes, node_right(nodes, y), x); ()
+    } else { () };
+    let _s = set_parent(nodes, y, node_parent(nodes, x));
+    let _c = if node_parent(nodes, x) == 0 {
+        let _s = set_root(tree, y); ()
+    } else if x == node_right(nodes, node_parent(nodes, x)) {
+        let _s = set_right(nodes, node_parent(nodes, x), y); ()
+    } else {
+        let _s = set_left(nodes, node_parent(nodes, x), y); ()
+    };
+    let _s = set_right(nodes, y, x);
+    let _s = set_parent(nodes, x, y);
+    0
+};
+
+// Fix-up after insertion
+fn insert_fixup(tree: i64, z_init: i64) -> i64 = {
+    let nodes = get_nodes(tree);
+    let mut z = z_init;
+    let mut iters = 0;
+    loop {
+        if iters > 10 { break } else { () };
+        set iters = iters + 1;
+        let p = node_parent(nodes, z);
+        if p == 0 { break } else { () };
+        if node_color(nodes, p) != 1 { break } else { () };
+        let gp = node_parent(nodes, p);
+        if gp == 0 { break } else { () };
+        let _c = if p == node_left(nodes, gp) {
+            let uncle = node_right(nodes, gp);
+            let _c2 = if node_color(nodes, uncle) == 1 {
+                // Case 1: uncle is red
+                let _s = set_color(nodes, p, 0);
+                let _s = set_color(nodes, uncle, 0);
+                let _s = set_color(nodes, gp, 1);
+                set z = gp;
+                ()
+            } else {
+                let _c3 = if z == node_right(nodes, p) {
+                    // Case 2: z is right child
+                    set z = p;
+                    let _lr = left_rotate(tree, z);
+                    ()
+                } else { () };
+                // Case 3
+                let p2 = node_parent(nodes, z);
+                let gp2 = node_parent(nodes, p2);
+                let _s = set_color(nodes, p2, 0);
+                let _s = set_color(nodes, gp2, 1);
+                let _rr = right_rotate(tree, gp2);
+                ()
+            };
+            ()
+        } else {
+            // Mirror cases (parent is right child)
+            let uncle = node_left(nodes, gp);
+            let _c2 = if node_color(nodes, uncle) == 1 {
+                let _s = set_color(nodes, p, 0);
+                let _s = set_color(nodes, uncle, 0);
+                let _s = set_color(nodes, gp, 1);
+                set z = gp;
+                ()
+            } else {
+                let _c3 = if z == node_left(nodes, p) {
+                    set z = p;
+                    let _rr = right_rotate(tree, z);
+                    ()
+                } else { () };
+                let p2 = node_parent(nodes, z);
+                let gp2 = node_parent(nodes, p2);
+                let _s = set_color(nodes, p2, 0);
+                let _s = set_color(nodes, gp2, 1);
+                let _lr = left_rotate(tree, gp2);
+                ()
+            };
+            ()
+        };
+        0
+    };
+    // Root must be black
+    let _s = set_color(nodes, get_root(tree), 0);
+    0
+};
+
+// Insert a key into the RB tree
+fn rb_insert(tree: i64, key: i64) -> i64 = {
+    let nodes = get_nodes(tree);
+    let id = get_next_id(tree);
+    let _inc = inc_next_id(tree);
+    // Initialize new node
+    let _s = set_key(nodes, id, key);
+    let _s = set_color(nodes, id, 1); // RED
+    let _s = set_left(nodes, id, 0);
+    let _s = set_right(nodes, id, 0);
+    let _s = set_parent(nodes, id, 0);
+    // BST insert
+    let mut y = 0;
+    let mut x = get_root(tree);
+    loop {
+        if x == 0 { break } else { () };
+        set y = x;
+        let _c = if key < node_key(nodes, x) {
+            set x = node_left(nodes, x); ()
+        } else {
+            set x = node_right(nodes, x); ()
+        };
+        0
+    };
+    let _s = set_parent(nodes, id, y);
+    let _c = if y == 0 {
+        let _s = set_root(tree, id); ()
+    } else if key < node_key(nodes, y) {
+        let _s = set_left(nodes, y, id); ()
+    } else {
+        let _s = set_right(nodes, y, id); ()
+    };
+    let _fix = insert_fixup(tree, id);
+    0
+};
+
+// In-order traversal: prints keys
+fn inorder(nodes: i64, id: i64) -> i64 = {
+    let _c = if id != 0 {
+        let _l = inorder(nodes, node_left(nodes, id));
+        let _p = print_str("  ");
+        let _p = println(node_key(nodes, id));
+        let _r = inorder(nodes, node_right(nodes, id));
+        ()
+    } else { () };
+    0
+};
+
+// Count black nodes on path from node to root
+fn black_height_to_root(nodes: i64, id: i64) -> i64 = {
+    let mut count = 0;
+    let mut cur = id;
+    loop {
+        if cur == 0 { break } else { () };
+        let _c = if node_color(nodes, cur) == 0 {
+            set count = count + 1; ()
+        } else { () };
+        set cur = node_parent(nodes, cur);
+        0
+    };
+    count
+};
+
+// Find a node by key (returns node id or 0)
+fn find_node(nodes: i64, root: i64, key: i64) -> i64 = {
+    let mut cur = root;
+    let mut result = 0;
+    loop {
+        if cur == 0 { break } else { () };
+        let _c = if key == node_key(nodes, cur) {
+            set result = cur;
+            set cur = 0; // stop
+            ()
+        } else if key < node_key(nodes, cur) {
+            set cur = node_left(nodes, cur);
+            ()
+        } else {
+            set cur = node_right(nodes, cur);
+            ()
+        };
+        0
+    };
+    result
+};
+
+// Count total nodes in subtree
+fn count_nodes(nodes: i64, id: i64) -> i64 =
+    if id == 0 { 0 }
+    else { 1 + count_nodes(nodes, node_left(nodes, id)) + count_nodes(nodes, node_right(nodes, id)) };
+
+// Check red property: no red node has a red child
+fn check_red_property(nodes: i64, id: i64) -> i64 =
+    if id == 0 { 1 }
+    else {
+        let ok_left = check_red_property(nodes, node_left(nodes, id));
+        let ok_right = check_red_property(nodes, node_right(nodes, id));
+        let ok_self = if node_color(nodes, id) == 1 {
+            // Red node: children must be black
+            let lc = node_color(nodes, node_left(nodes, id));
+            let rc = node_color(nodes, node_right(nodes, id));
+            if lc == 0 {
+                if rc == 0 { 1 } else { 0 }
+            } else { 0 }
+        } else { 1 };
+        if ok_left == 1 {
+            if ok_right == 1 {
+                if ok_self == 1 { 1 } else { 0 }
+            } else { 0 }
+        } else { 0 }
+    };
+
+// Check black-height property: all paths have same black height
+// Returns black height or -1 if violated
+fn check_black_height(nodes: i64, id: i64) -> i64 =
+    if id == 0 { 1 }  // NIL counts as 1 black
+    else {
+        let lh = check_black_height(nodes, node_left(nodes, id));
+        let rh = check_black_height(nodes, node_right(nodes, id));
+        if lh == 0 - 1 { 0 - 1 }
+        else if rh == 0 - 1 { 0 - 1 }
+        else if lh != rh { 0 - 1 }
+        else {
+            if node_color(nodes, id) == 0 { lh + 1 } else { lh }
+        }
+    };
+
+fn main() -> i64 = {
+    let tree = create_tree();
+    let nodes = get_nodes(tree);
+
+    // === Test 1: Insert and verify ===
+    let _p = println_str("=== Test 1: insert 10, 20, 30 ===");
+    let _i = rb_insert(tree, 10);
+    let _i = rb_insert(tree, 20);
+    let _i = rb_insert(tree, 30);
+
+    let _p = println_str("inorder:");
+    let _io = inorder(nodes, get_root(tree));
+    let _p = print_str("root key: ");
+    let _p = println(node_key(nodes, get_root(tree)));
+    let _p = print_str("root color (0=B): ");
+    let _p = println(node_color(nodes, get_root(tree)));
+    let _p = print_str("count: ");
+    let _p = println(count_nodes(nodes, get_root(tree)));
+
+    // === Test 2: More insertions ===
+    let _p = println_str("=== Test 2: insert 5, 15, 25 ===");
+    let _i = rb_insert(tree, 5);
+    let _i = rb_insert(tree, 15);
+    let _i = rb_insert(tree, 25);
+
+    let _p = println_str("inorder:");
+    let _io = inorder(nodes, get_root(tree));
+    let _p = print_str("count: ");
+    let _p = println(count_nodes(nodes, get_root(tree)));
+
+    // === Test 3: Verify RB properties ===
+    let _p = println_str("=== Test 3: properties ===");
+    let _p = print_str("root is black: ");
+    let _p = println(if node_color(nodes, get_root(tree)) == 0 { 1 } else { 0 });
+    let _p = print_str("red property: ");
+    let _p = println(check_red_property(nodes, get_root(tree)));
+    let bh = check_black_height(nodes, get_root(tree));
+    let _p = print_str("black height valid: ");
+    let _p = println(if bh > 0 { 1 } else { 0 });
+    let _p = print_str("black height: ");
+    let _p = println(bh);
+
+    // === Test 4: Find nodes ===
+    let _p = println_str("=== Test 4: find ===");
+    let _p = print_str("find 15: ");
+    let n15 = find_node(nodes, get_root(tree), 15);
+    let _p = println(if n15 != 0 { 1 } else { 0 });
+    let _p = print_str("find 99: ");
+    let n99 = find_node(nodes, get_root(tree), 99);
+    let _p = println(if n99 != 0 { 1 } else { 0 });
+
+    // === Test 5: Insert more, verify balance ===
+    let _p = println_str("=== Test 5: insert 1, 7, 12, 22 ===");
+    let _i = rb_insert(tree, 1);
+    let _i = rb_insert(tree, 7);
+    let _i = rb_insert(tree, 12);
+    let _i = rb_insert(tree, 22);
+
+    let _p = print_str("count: ");
+    let _p = println(count_nodes(nodes, get_root(tree)));
+    let _p = print_str("root key: ");
+    let _p = println(node_key(nodes, get_root(tree)));
+    let _p = print_str("red property: ");
+    let _p = println(check_red_property(nodes, get_root(tree)));
+    let bh2 = check_black_height(nodes, get_root(tree));
+    let _p = print_str("black height valid: ");
+    let _p = println(if bh2 > 0 { 1 } else { 0 });
+    let _p = print_str("black height: ");
+    let _p = println(bh2);
+
+    // Cleanup
+    let _f = vec_free(nodes);
+    let _f = vec_free(vec_get(tree, 1));
+    let _f = vec_free(vec_get(tree, 2));
+    let _f = vec_free(tree);
+    0
+};

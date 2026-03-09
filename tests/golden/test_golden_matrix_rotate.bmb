@@ -1,0 +1,151 @@
+// Golden Test: Matrix rotation
+// Rotate NxN matrix 90 degrees clockwise, transpose, flip
+
+// Matrix stored as flat vec: mat[row * n + col]
+fn mat_get(mat: i64, n: i64, row: i64, col: i64) -> i64 =
+    vec_get(mat, row * n + col);
+
+fn mat_set(mat: i64, n: i64, row: i64, col: i64, val: i64) -> i64 = {
+    vec_set(mat, row * n + col, val);
+    0
+};
+
+// Create NxN matrix initialized to 0
+fn make_matrix(n: i64) -> i64 = {
+    let m = vec_new();
+    for _i in 0..n * n {
+        vec_push(m, 0)
+    };
+    m
+};
+
+// Transpose in-place: swap mat[i][j] with mat[j][i]
+fn transpose(mat: i64, n: i64) -> i64 = {
+    for i in 0..n {
+        let mut j = i + 1;
+        loop {
+            if j >= n { break } else { () };
+            let a = mat_get(mat, n, i, j);
+            let b = mat_get(mat, n, j, i);
+            let _s1 = mat_set(mat, n, i, j, b);
+            let _s2 = mat_set(mat, n, j, i, a);
+            j = j + 1
+        }
+    };
+    0
+};
+
+// Reverse each row in-place
+fn reverse_rows(mat: i64, n: i64) -> i64 = {
+    for i in 0..n {
+        let mut lo = 0;
+        let mut hi = n - 1;
+        loop {
+            if lo >= hi { break } else { () };
+            let a = mat_get(mat, n, i, lo);
+            let b = mat_get(mat, n, i, hi);
+            let _s1 = mat_set(mat, n, i, lo, b);
+            let _s2 = mat_set(mat, n, i, hi, a);
+            lo = lo + 1;
+            hi = hi - 1
+        }
+    };
+    0
+};
+
+// Rotate 90 degrees clockwise = transpose + reverse rows
+fn rotate_90_cw(mat: i64, n: i64) -> i64 = {
+    let _t = transpose(mat, n);
+    let _r = reverse_rows(mat, n);
+    0
+};
+
+// Print matrix elements row by row (flat, for testing)
+fn print_matrix(mat: i64, n: i64) -> i64 = {
+    for i in 0..n {
+        for j in 0..n {
+            println(mat_get(mat, n, i, j))
+        }
+    };
+    0
+};
+
+// Sum of diagonal elements
+fn trace(mat: i64, n: i64) -> i64 = {
+    let mut s = 0;
+    for i in 0..n {
+        s = s + mat_get(mat, n, i, i)
+    };
+    s
+};
+
+// Sum of anti-diagonal
+fn anti_trace(mat: i64, n: i64) -> i64 = {
+    let mut s = 0;
+    for i in 0..n {
+        s = s + mat_get(mat, n, i, n - 1 - i)
+    };
+    s
+};
+
+fn main() -> i64 = {
+    // 3x3 matrix:
+    // 1 2 3
+    // 4 5 6
+    // 7 8 9
+    let m = make_matrix(3);
+    let _s1 = mat_set(m, 3, 0, 0, 1); let _s2 = mat_set(m, 3, 0, 1, 2); let _s3 = mat_set(m, 3, 0, 2, 3);
+    let _s4 = mat_set(m, 3, 1, 0, 4); let _s5 = mat_set(m, 3, 1, 1, 5); let _s6 = mat_set(m, 3, 1, 2, 6);
+    let _s7 = mat_set(m, 3, 2, 0, 7); let _s8 = mat_set(m, 3, 2, 1, 8); let _s9 = mat_set(m, 3, 2, 2, 9);
+
+    // Trace and anti-trace before rotation
+    let _p1 = println(trace(m, 3));       // 1+5+9 = 15
+    let _p2 = println(anti_trace(m, 3));  // 3+5+7 = 15
+
+    // Rotate 90 CW: should become
+    // 7 4 1
+    // 8 5 2
+    // 9 6 3
+    let _r1 = rotate_90_cw(m, 3);
+    let _p3 = print_matrix(m, 3);
+    // Prints: 7 4 1 8 5 2 9 6 3
+
+    // Trace after rotation: 7+5+3 = 15
+    let _p4 = println(trace(m, 3));  // 15
+
+    // Rotate again (now 180 from original):
+    // 9 8 7
+    // 6 5 4
+    // 3 2 1
+    let _r2 = rotate_90_cw(m, 3);
+    let _p5 = print_matrix(m, 3);
+    // Prints: 9 8 7 6 5 4 3 2 1
+
+    // Rotate again (270 from original):
+    // 3 6 9
+    // 2 5 8
+    // 1 4 7
+    let _r3 = rotate_90_cw(m, 3);
+    let _p6 = print_matrix(m, 3);
+    // Prints: 3 6 9 2 5 8 1 4 7
+
+    // Rotate once more -> back to original:
+    // 1 2 3
+    // 4 5 6
+    // 7 8 9
+    let _r4 = rotate_90_cw(m, 3);
+    let _p7 = print_matrix(m, 3);
+    // Prints: 1 2 3 4 5 6 7 8 9
+
+    // 2x2 test
+    let m2 = make_matrix(2);
+    let _a1 = mat_set(m2, 2, 0, 0, 10); let _a2 = mat_set(m2, 2, 0, 1, 20);
+    let _a3 = mat_set(m2, 2, 1, 0, 30); let _a4 = mat_set(m2, 2, 1, 1, 40);
+
+    // Rotate 2x2 CW: 30 10 / 40 20
+    let _r5 = rotate_90_cw(m2, 2);
+    let _p8 = print_matrix(m2, 2);
+    // Prints: 30 10 40 20
+
+    0
+};

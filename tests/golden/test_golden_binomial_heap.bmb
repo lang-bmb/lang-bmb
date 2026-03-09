@@ -1,0 +1,204 @@
+// Golden Test: Binomial Heap simulation (min-heap priority queue)
+// Implements binary min-heap with insert, peek-min, extract-min, merge
+// Uses array representation: parent(i)=(i-1)/2, left(i)=2i+1, right(i)=2i+2
+
+fn heap_new() -> i64 = {
+    let h = vec_new();
+    let data = vec_new();
+    vec_push(h, data);  // h[0] = data array
+    vec_push(h, 0);     // h[1] = logical size
+    h
+    };
+
+fn heap_data(h: i64) -> i64 = vec_get(h, 0);
+fn heap_sz(h: i64) -> i64 = vec_get(h, 1);
+
+fn hp(i: i64) -> i64 = (i - 1) / 2;
+fn hl(i: i64) -> i64 = 2 * i + 1;
+fn hr(i: i64) -> i64 = 2 * i + 2;
+
+fn heap_swap(d: i64, i: i64, j: i64) -> i64 = {
+    let vi = vec_get(d, i);
+    let vj = vec_get(d, j);
+    vec_set(d, i, vj);
+    vec_set(d, j, vi);
+    0
+    };
+
+fn sift_up(d: i64, start: i64) -> i64 = {
+    let mut idx = start;
+    loop {
+        if idx == 0 { break } else { () };
+        let p = hp(idx);
+        if vec_get(d, idx) < vec_get(d, p) {
+            let _s = heap_swap(d, idx, p);
+            set idx = p;
+            0
+        } else { break }
+    };
+    0
+    };
+
+fn sift_down(d: i64, sz: i64, start: i64) -> i64 = {
+    let mut idx = start;
+    loop {
+        let l = hl(idx);
+        let r = hr(idx);
+        let mut sm = idx;
+        let _cl = if l < sz and vec_get(d, l) < vec_get(d, sm) {
+            set sm = l; 0
+        } else { 0 };
+        let _cr = if r < sz and vec_get(d, r) < vec_get(d, sm) {
+            set sm = r; 0
+        } else { 0 };
+        if sm == idx { break } else { () };
+        let _s = heap_swap(d, idx, sm);
+        set idx = sm;
+        0
+    };
+    0
+    };
+
+fn heap_push(h: i64, val: i64) -> i64 = {
+    let d = heap_data(h);
+    let sz = heap_sz(h);
+    // If physical vec is larger than logical size, reuse slot; else push
+    let _a = if sz < vec_len(d) {
+        vec_set(d, sz, val); 0
+    } else {
+        vec_push(d, val); 0
+    };
+    vec_set(h, 1, sz + 1);
+    let _s = sift_up(d, sz);
+    0
+    };
+
+fn heap_peek(h: i64) -> i64 =
+    if heap_sz(h) == 0 { -1 }
+    else { vec_get(heap_data(h), 0) };
+
+fn heap_pop(h: i64) -> i64 = {
+    let sz = heap_sz(h);
+    if sz == 0 { -1 }
+    else {
+        let d = heap_data(h);
+        let min_val = vec_get(d, 0);
+        let new_sz = sz - 1;
+        vec_set(d, 0, vec_get(d, new_sz));
+        vec_set(h, 1, new_sz);
+        let _s = if new_sz > 0 { sift_down(d, new_sz, 0) } else { 0 };
+        min_val
+    }
+    };
+
+// Merge: insert all elements of b into a
+fn heap_merge(a: i64, b: i64) -> i64 = {
+    let bd = heap_data(b);
+    let bsz = heap_sz(b);
+    for i in 0..bsz {
+        let _ins = heap_push(a, vec_get(bd, i));
+        0
+    };
+    0
+    };
+
+// Verify min-heap property
+fn heap_valid(h: i64) -> i64 = {
+    let d = heap_data(h);
+    let sz = heap_sz(h);
+    let mut ok = 1;
+    for i in 0..sz {
+        let l = hl(i);
+        let r = hr(i);
+        let _cl = if l < sz and vec_get(d, l) < vec_get(d, i) {
+            set ok = 0; 0
+        } else { 0 };
+        let _cr = if r < sz and vec_get(d, r) < vec_get(d, i) {
+            set ok = 0; 0
+        } else { 0 };
+        0
+    };
+    ok
+    };
+
+// Heapify: build heap from unsorted data in O(n)
+fn heapify(h: i64) -> i64 = {
+    let d = heap_data(h);
+    let sz = heap_sz(h);
+    let mut i = sz / 2 - 1;
+    loop {
+        if i < 0 { break } else { () };
+        let _s = sift_down(d, sz, i);
+        set i = i - 1;
+        0
+    };
+    0
+    };
+
+fn main() -> i64 = {
+    let h = heap_new();
+
+    // Basic insert and peek
+    let _i1 = heap_push(h, 10);
+    let _p1 = println(heap_peek(h));  // 10
+    let _p2 = println(heap_sz(h));    // 1
+
+    let _i2 = heap_push(h, 5);
+    let _p3 = println(heap_peek(h));  // 5
+
+    let _i3 = heap_push(h, 20);
+    let _i4 = heap_push(h, 3);
+    let _i5 = heap_push(h, 15);
+    let _p4 = println(heap_peek(h));  // 3
+    let _p5 = println(heap_sz(h));    // 5
+    let _p6 = println(heap_valid(h)); // 1
+
+    // Extract min repeatedly (ascending order)
+    let m1 = heap_pop(h);
+    let _p7 = println(m1);            // 3
+    let m2 = heap_pop(h);
+    let _p8 = println(m2);            // 5
+    let _p9 = println(heap_peek(h));   // 10
+    let _p10 = println(heap_sz(h));    // 3
+
+    // Merge two heaps
+    let h2 = heap_new();
+    let _j1 = heap_push(h2, 1);
+    let _j2 = heap_push(h2, 7);
+    let _j3 = heap_push(h2, 12);
+    let _pm = heap_merge(h, h2);
+    let _p11 = println(heap_peek(h)); // 1
+    let _p12 = println(heap_sz(h));   // 6
+    let _p13 = println(heap_valid(h)); // 1
+
+    // Extract all in sorted order
+    let e1 = heap_pop(h);
+    let e2 = heap_pop(h);
+    let e3 = heap_pop(h);
+    let e4 = heap_pop(h);
+    let e5 = heap_pop(h);
+    let e6 = heap_pop(h);
+    let _p14 = println(e1);  // 1
+    let _p15 = println(e2);  // 7
+    let _p16 = println(e3);  // 10
+    let _p17 = println(e4);  // 12
+    let _p18 = println(e5);  // 15
+    let _p19 = println(e6);  // 20
+
+    // Empty heap returns -1
+    let _p20 = println(heap_pop(h));  // -1
+
+    // Heapify: build from unsorted
+    let h3 = heap_new();
+    let d3 = heap_data(h3);
+    vec_push(d3, 50); vec_push(d3, 30); vec_push(d3, 10);
+    vec_push(d3, 40); vec_push(d3, 20);
+    vec_set(h3, 1, 5);
+    let _hf = heapify(h3);
+    let _p21 = println(heap_valid(h3)); // 1
+    let _p22 = println(heap_pop(h3));   // 10
+    let _p23 = println(heap_pop(h3));   // 20
+    let _p24 = println(heap_pop(h3));   // 30
+
+    0
+    };

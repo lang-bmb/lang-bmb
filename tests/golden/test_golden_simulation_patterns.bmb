@@ -1,0 +1,108 @@
+// Golden Test: Simulation-style patterns
+// LCG random, population growth, temperature conversion, bank account, bouncing ball, traffic light
+
+// Linear Congruential Generator: seed = (seed * 1103515245 + 12345) % 2147483648
+fn lcg_next(seed: i64) -> i64 =
+    (seed * 1103515245 + 12345) % 2147483648;
+
+// Run LCG n steps from seed, return final seed
+fn lcg_run(seed: i64, n: i64) -> i64 =
+    if n <= 0 { seed }
+    else { lcg_run(lcg_next(seed), n - 1) };
+
+// Population simulation: grow by 10% each gen (multiply by 110, divide by 100), cap at max_pop
+fn pop_step(pop: i64, max_pop: i64) -> i64 = {
+    let grown = pop * 110 / 100;
+    if grown > max_pop { max_pop } else { grown }
+    };
+
+fn pop_sim(pop: i64, max_pop: i64, gens: i64) -> i64 =
+    if gens <= 0 { pop }
+    else { pop_sim(pop_step(pop, max_pop), max_pop, gens - 1) };
+
+// Temperature conversion (integer arithmetic)
+// Celsius to Fahrenheit: f = c * 9 / 5 + 32
+fn c_to_f(c: i64) -> i64 = c * 9 / 5 + 32;
+
+// Fahrenheit to Celsius: c = (f - 32) * 5 / 9
+fn f_to_c(f: i64) -> i64 = (f - 32) * 5 / 9;
+
+// Roundtrip: C -> F -> C
+fn temp_roundtrip(c: i64) -> i64 = f_to_c(c_to_f(c));
+
+// Bank account simulation: apply a series of transactions
+// Transactions stored in a vec, positive = deposit, negative = withdrawal
+fn apply_transactions(balance: i64, txns: i64, pos: i64) -> i64 =
+    if pos >= vec_len(txns) { balance }
+    else { apply_transactions(balance + vec_get(txns, pos), txns, pos + 1) };
+
+// Count deposits (positive transactions)
+fn count_deposits(txns: i64, pos: i64, count: i64) -> i64 =
+    if pos >= vec_len(txns) { count }
+    else {
+        let inc = if vec_get(txns, pos) > 0 { 1 } else { 0 };
+        count_deposits(txns, pos + 1, count + inc)
+    };
+
+// Bouncing ball: height halves each bounce (integer division)
+fn bounce(height: i64, bounces: i64) -> i64 =
+    if bounces <= 0 { height }
+    else { bounce(height / 2, bounces - 1) };
+
+// Traffic light state machine: 0=red, 1=green, 2=yellow
+// Cycle: red->green->yellow->red
+fn traffic_next(state: i64) -> i64 =
+    if state == 0 { 1 }
+    else if state == 1 { 2 }
+    else { 0 };
+
+fn traffic_after(state: i64, steps: i64) -> i64 =
+    if steps <= 0 { state }
+    else { traffic_after(traffic_next(state), steps - 1) };
+
+fn main() -> i64 = {
+    // LCG random number generator
+    // seed=42, after 5 steps
+    let s5 = lcg_run(42, 5);
+    let _p1 = println(s5);           // 908095735
+    let _p2 = println(s5 % 100);     // 35
+
+    // seed=42, after 10 steps
+    let s10 = lcg_run(42, 10);
+    let _p3 = println(s10);          // 1535244752
+    let _p4 = println(s10 % 100);    // 52
+
+    // Population simulation: start=100, cap=500
+    let _p5 = println(pop_sim(100, 500, 10));   // 256
+    let _p6 = println(pop_sim(100, 500, 20));   // 500
+
+    // Temperature conversions
+    let _p7 = println(c_to_f(0));               // 32
+    let _p8 = println(c_to_f(100));             // 212
+    let _p9 = println(temp_roundtrip(0));       // 0
+    let _p10 = println(temp_roundtrip(100));    // 100
+    let _p11 = println(temp_roundtrip(25));     // 25
+
+    // Bank account: start=1000, transactions: +500, -200, +300, -800, +100
+    let txns = vec_new();
+    let _t1 = vec_push(txns, 500);
+    let _t2 = vec_push(txns, 0 - 200);
+    let _t3 = vec_push(txns, 300);
+    let _t4 = vec_push(txns, 0 - 800);
+    let _t5 = vec_push(txns, 100);
+    let _p12 = println(apply_transactions(1000, txns, 0));  // 900
+    let _p13 = println(count_deposits(txns, 0, 0));         // 3
+
+    // Bouncing ball: height=1000
+    let _p14 = println(bounce(1000, 5));    // 31
+    let _p15 = println(bounce(1000, 10));   // 0
+
+    // Traffic light state machine (start=0=red)
+    let _p16 = println(traffic_after(0, 1));    // 1 (green)
+    let _p17 = println(traffic_after(0, 3));    // 0 (red)
+    let _p18 = println(traffic_after(0, 7));    // 1 (green)
+    let _p19 = println(traffic_after(0, 10));   // 1 (green)
+
+    let _f = vec_free(txns);
+    0
+    };

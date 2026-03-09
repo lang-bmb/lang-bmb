@@ -1,0 +1,179 @@
+// Golden Test: Z-algorithm for string/pattern matching on integer sequences
+// Z[i] = length of longest substring starting at i that matches prefix of the array
+// Uses integer arrays (character codes) instead of actual strings
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { let _p = vec_push(v, 0); 0 };
+    v
+};
+
+fn min2(a: i64, b: i64) -> i64 = if a < b { a } else { b };
+
+// Compute Z-array for given integer sequence
+// z[0] is set to 0 by convention
+fn compute_z(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    let z = make_zeros(n);
+    let mut l = 0;
+    let mut r = 0;
+    for i in 1..n {
+        let _c = if i < r {
+            let candidate = vec_get(z, i - l);
+            let remaining = r - i;
+            let init_val = min2(candidate, remaining);
+            let _s = vec_set(z, i, init_val);
+            ()
+        } else {
+            let _s = vec_set(z, i, 0);
+            ()
+        };
+        // Extend z[i] by comparing characters
+        let mut zi = vec_get(z, i);
+        let mut cont = 1;
+        while cont == 1 {
+            let _c2 = if i + zi < n {
+                let _c3 = if vec_get(arr, zi) == vec_get(arr, i + zi) {
+                    set zi = zi + 1;
+                    ()
+                } else {
+                    set cont = 0;
+                    ()
+                };
+                ()
+            } else {
+                set cont = 0;
+                ()
+            }
+        };
+        let _s2 = vec_set(z, i, zi);
+        // Update Z-box boundaries
+        let _c2 = if i + zi > r {
+            set l = i;
+            set r = i + zi;
+            ()
+        } else { () }
+    };
+    z
+};
+
+// Print all elements of a vec
+fn print_vec(v: i64) -> i64 = {
+    let n = vec_len(v);
+    for i in 0..n {
+        let _p = println(vec_get(v, i));
+        0
+    };
+    0
+};
+
+// Find all occurrences of pattern in text using Z-algorithm
+// Concatenates: pattern + sentinel(-1) + text, then checks Z[i] == pattern_len
+fn z_search(pattern: i64, text: i64) -> i64 = {
+    let plen = vec_len(pattern);
+    let tlen = vec_len(text);
+    // Build concatenated array: pattern + [-1] + text
+    let concat = vec_new();
+    for i in 0..plen {
+        let _p = vec_push(concat, vec_get(pattern, i));
+        0
+    };
+    let _p = vec_push(concat, -1);  // sentinel (assumes -1 not in pattern/text)
+    for i in 0..tlen {
+        let _p2 = vec_push(concat, vec_get(text, i));
+        0
+    };
+    let z = compute_z(concat);
+    let results = vec_new();
+    let offset = plen + 1;  // skip pattern + sentinel
+    for i in offset..vec_len(concat) {
+        let _c = if vec_get(z, i) == plen {
+            let _p3 = vec_push(results, i - offset);
+            ()
+        } else { () }
+    };
+    let _f1 = vec_free(concat);
+    let _f2 = vec_free(z);
+    results
+};
+
+fn main() -> i64 = {
+    // === Test 1: Z-array of [1,2,1,2,1] ===
+    // Z[0]=0, Z[1]=0(2!=1), Z[2]=3(1,2,1 matches prefix), Z[3]=0(2!=1), Z[4]=1(1 matches)
+    let _p = println_str("=== Test 1: Z-array ===");
+    let a1 = vec_new();
+    let _p = vec_push(a1, 1); let _p = vec_push(a1, 2);
+    let _p = vec_push(a1, 1); let _p = vec_push(a1, 2);
+    let _p = vec_push(a1, 1);
+    let z1 = compute_z(a1);
+    let _pv = print_vec(z1);
+
+    // === Test 2: Z-array of [1,1,1,1] ===
+    // Z[0]=0, Z[1]=3, Z[2]=2, Z[3]=1
+    let _p = println_str("=== Test 2: all same ===");
+    let a2 = vec_new();
+    let _p = vec_push(a2, 1); let _p = vec_push(a2, 1);
+    let _p = vec_push(a2, 1); let _p = vec_push(a2, 1);
+    let z2 = compute_z(a2);
+    let _pv = print_vec(z2);
+
+    // === Test 3: Z-array of [1,2,3,1,2,3,1] ===
+    // Z[0]=0, Z[1]=0, Z[2]=0, Z[3]=4(1,2,3,1), Z[4]=0, Z[5]=0, Z[6]=1
+    let _p = println_str("=== Test 3: repeating ===");
+    let a3 = vec_new();
+    let _p = vec_push(a3, 1); let _p = vec_push(a3, 2);
+    let _p = vec_push(a3, 3); let _p = vec_push(a3, 1);
+    let _p = vec_push(a3, 2); let _p = vec_push(a3, 3);
+    let _p = vec_push(a3, 1);
+    let z3 = compute_z(a3);
+    let _pv = print_vec(z3);
+
+    // === Test 4: Pattern search - find [1,2] in [3,1,2,4,1,2] ===
+    // Matches at positions 1 and 4
+    let _p = println_str("=== Test 4: search [1,2] in [3,1,2,4,1,2] ===");
+    let pat1 = vec_new();
+    let _p = vec_push(pat1, 1); let _p = vec_push(pat1, 2);
+    let txt1 = vec_new();
+    let _p = vec_push(txt1, 3); let _p = vec_push(txt1, 1);
+    let _p = vec_push(txt1, 2); let _p = vec_push(txt1, 4);
+    let _p = vec_push(txt1, 1); let _p = vec_push(txt1, 2);
+    let r1 = z_search(pat1, txt1);
+    let _p = print_str("matches: ");
+    let _p = println(vec_len(r1));
+    let _p = println_str("positions:");
+    let _pv = print_vec(r1);
+
+    // === Test 5: Pattern search - find [2,2] in [2,2,2,2] ===
+    // Overlapping matches at positions 0, 1, 2
+    let _p = println_str("=== Test 5: overlapping matches ===");
+    let pat2 = vec_new();
+    let _p = vec_push(pat2, 2); let _p = vec_push(pat2, 2);
+    let txt2 = vec_new();
+    let _p = vec_push(txt2, 2); let _p = vec_push(txt2, 2);
+    let _p = vec_push(txt2, 2); let _p = vec_push(txt2, 2);
+    let r2 = z_search(pat2, txt2);
+    let _p = print_str("matches: ");
+    let _p = println(vec_len(r2));
+    let _p = println_str("positions:");
+    let _pv = print_vec(r2);
+
+    // === Test 6: No match ===
+    let _p = println_str("=== Test 6: no match ===");
+    let pat3 = vec_new();
+    let _p = vec_push(pat3, 9); let _p = vec_push(pat3, 8);
+    let txt3 = vec_new();
+    let _p = vec_push(txt3, 1); let _p = vec_push(txt3, 2);
+    let _p = vec_push(txt3, 3);
+    let r3 = z_search(pat3, txt3);
+    let _p = print_str("matches: ");
+    let _p = println(vec_len(r3));
+
+    // Cleanup
+    let _f = vec_free(a1); let _f = vec_free(z1);
+    let _f = vec_free(a2); let _f = vec_free(z2);
+    let _f = vec_free(a3); let _f = vec_free(z3);
+    let _f = vec_free(pat1); let _f = vec_free(txt1); let _f = vec_free(r1);
+    let _f = vec_free(pat2); let _f = vec_free(txt2); let _f = vec_free(r2);
+    let _f = vec_free(pat3); let _f = vec_free(txt3); let _f = vec_free(r3);
+    0
+};

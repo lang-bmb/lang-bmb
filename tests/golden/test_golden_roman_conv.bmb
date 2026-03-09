@@ -1,0 +1,96 @@
+// Golden Test: Roman numeral to decimal conversion
+// Character codes: I=73, V=86, X=88, L=76, C=67, D=68, M=77
+
+fn roman_val(c: i64) -> i64 =
+    if c == 73 { 1 }         // I
+    else if c == 86 { 5 }    // V
+    else if c == 88 { 10 }   // X
+    else if c == 76 { 50 }   // L
+    else if c == 67 { 100 }  // C
+    else if c == 68 { 500 }  // D
+    else if c == 77 { 1000 } // M
+    else { 0 };
+
+// Convert array of char codes to decimal
+// If current value < next value, subtract; else add
+fn roman_to_decimal(arr: i64, n: i64) -> i64 = {
+    let mut result = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let cur = roman_val(vec_get(arr, i));
+        let nxt = if i + 1 < n { roman_val(vec_get(arr, i + 1)) } else { 0 };
+        if cur < nxt {
+            result = result - cur
+        } else {
+            result = result + cur
+        };
+        i = i + 1
+    };
+    result
+    };
+
+fn main() -> i64 = {
+    // XIV = 14: X=88, I=73, V=86
+    let xiv = vec_new();
+    let _x1 = vec_push(xiv, 88);
+    let _x2 = vec_push(xiv, 73);
+    let _x3 = vec_push(xiv, 86);
+    let _p1 = println(roman_to_decimal(xiv, 3));  // 14
+
+    // XLII = 42: X=88, L=76, I=73, I=73
+    let xlii = vec_new();
+    let _xl1 = vec_push(xlii, 88);
+    let _xl2 = vec_push(xlii, 76);
+    let _xl3 = vec_push(xlii, 73);
+    let _xl4 = vec_push(xlii, 73);
+    let _p2 = println(roman_to_decimal(xlii, 4));  // 42
+
+    // MCMXCIV = 1994: M=77, C=67, M=77, X=88, C=67, I=73, V=86
+    let mcm = vec_new();
+    let _m1 = vec_push(mcm, 77);
+    let _m2 = vec_push(mcm, 67);
+    let _m3 = vec_push(mcm, 77);
+    let _m4 = vec_push(mcm, 88);
+    let _m5 = vec_push(mcm, 67);
+    let _m6 = vec_push(mcm, 73);
+    let _m7 = vec_push(mcm, 86);
+    let _p3 = println(roman_to_decimal(mcm, 7));  // 1994
+
+    // MMXXVI = 2026: M=77, M=77, X=88, X=88, V=86, I=73
+    let mmx = vec_new();
+    let _mm1 = vec_push(mmx, 77);
+    let _mm2 = vec_push(mmx, 77);
+    let _mm3 = vec_push(mmx, 88);
+    let _mm4 = vec_push(mmx, 88);
+    let _mm5 = vec_push(mmx, 86);
+    let _mm6 = vec_push(mmx, 73);
+    let _p4 = println(roman_to_decimal(mmx, 6));  // 2026
+
+    // Individual symbol tests
+    let single = vec_new();
+    let _s1 = vec_push(single, 77);
+    let _p5 = println(roman_to_decimal(single, 1));  // M = 1000
+
+    let _s2 = vec_set(single, 0, 67);
+    let _p6 = println(roman_to_decimal(single, 1));  // C = 100
+
+    let _s3 = vec_set(single, 0, 73);
+    let _p7 = println(roman_to_decimal(single, 1));  // I = 1
+
+    // VIII = 8: V=86, I=73, I=73, I=73
+    let viii = vec_new();
+    let _v1 = vec_push(viii, 86);
+    let _v2 = vec_push(viii, 73);
+    let _v3 = vec_push(viii, 73);
+    let _v4 = vec_push(viii, 73);
+    let _p8 = println(roman_to_decimal(viii, 4));  // 8
+
+    let _f1 = vec_free(xiv);
+    let _f2 = vec_free(xlii);
+    let _f3 = vec_free(mcm);
+    let _f4 = vec_free(mmx);
+    let _f5 = vec_free(single);
+    let _f6 = vec_free(viii);
+    0
+    };

@@ -1,0 +1,96 @@
+// Golden Test: Tribonacci sequence
+// T(0)=0, T(1)=0, T(2)=1, T(n)=T(n-1)+T(n-2)+T(n-3) for n>=3
+// Sequence: 0, 0, 1, 1, 2, 4, 7, 13, 24, 44, 81, 149, 274, 504, 927, ...
+
+// Iterative tribonacci
+fn tribonacci(n: i64) -> i64 = {
+    if n == 0 { return 0 } else { () };
+    if n == 1 { return 0 } else { () };
+    if n == 2 { return 1 } else { () };
+    let mut a = 0;
+    let mut b = 0;
+    let mut c = 1;
+    let mut i = 3;
+    loop {
+        if i > n { break } else { () };
+        let next = a + b + c;
+        a = b;
+        b = c;
+        c = next;
+        i = i + 1
+    };
+    c
+    };
+
+// Sum of first n+1 tribonacci numbers T(0)+T(1)+...+T(n)
+fn tribonacci_sum(n: i64) -> i64 = {
+    let mut sum = 0;
+    let mut i = 0;
+    loop {
+        if i > n { break } else { () };
+        sum = sum + tribonacci(i);
+        i = i + 1
+    };
+    sum
+    };
+
+// Count even tribonacci numbers in T(0)..T(n)
+fn count_even_tribonacci(n: i64) -> i64 = {
+    let mut count = 0;
+    let mut i = 0;
+    loop {
+        if i > n { break } else { () };
+        let t = tribonacci(i);
+        if t - (t / 2) * 2 == 0 {
+            count = count + 1
+        } else { () };
+        i = i + 1
+    };
+    count
+    };
+
+// Ratio approximation: T(n) * 1000 / T(n-1)
+// The tribonacci constant is approximately 1.839286...
+// So ratio * 1000 should approach 1839
+fn tribonacci_ratio_approx(n: i64) -> i64 = {
+    let tn = tribonacci(n);
+    let tn1 = tribonacci(n - 1);
+    if tn1 == 0 { 0 }
+    else { tn * 1000 / tn1 }
+    };
+
+fn main() -> i64 = {
+    // T(0) = 0
+    let _p1 = println(tribonacci(0));     // 0
+
+    // T(4) = T(3)+T(2)+T(1) = 1+1+0 = 2
+    let _p2 = println(tribonacci(4));     // 2
+
+    // T(7) = 13
+    let _p3 = println(tribonacci(7));     // 13
+
+    // T(10) = 81
+    let _p4 = println(tribonacci(10));    // 81
+
+    // T(15) = 1705
+    let _p5 = println(tribonacci(15));    // 1705
+
+    // T(20) = 35890
+    let _p6 = println(tribonacci(20));    // 35890
+
+    // Sum T(0)+...+T(10) = 0+0+1+1+2+4+7+13+24+44+81 = 177
+    let _p7 = println(tribonacci_sum(10));    // 177
+
+    // Count even tribonacci in T(0)..T(10)
+    // T: 0,0,1,1,2,4,7,13,24,44,81 => even: 0,0,2,4,24,44 = 6
+    let _p8 = println(count_even_tribonacci(10));  // 6
+
+    // Ratio approximation T(15)/T(14) * 1000
+    // T(14)=927, T(15)=1705, 1705*1000/927 = 1839
+    let _p9 = println(tribonacci_ratio_approx(15));  // 1839
+
+    // T(25) = 755476
+    let _p10 = println(tribonacci(25));   // 755476
+
+    0
+    };

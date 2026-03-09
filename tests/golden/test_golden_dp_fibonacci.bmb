@@ -1,0 +1,78 @@
+// Golden Test: Dynamic programming patterns
+// Fibonacci via loop, stair climbing, Kadane's max subarray
+
+fn fib_loop(n: i64) -> i64 = {
+    if n <= 1 { return n } else { () };
+    let mut a = 0;
+    let mut b = 1;
+    for _i in 2..n {
+        let temp = a + b;
+        a = b;
+        b = temp
+    };
+    a + b
+    };
+
+fn stair_climb(n: i64) -> i64 = {
+// Ways to climb n stairs taking 1 or 2 steps
+    if n <= 1 { return 1 } else { () };
+    let mut a = 1;
+    let mut b = 1;
+    for _i in 2..n {
+        let temp = a + b;
+        a = b;
+        b = temp
+    };
+    a + b
+    };
+
+fn kadane_5(a: i64, b: i64, c: i64, d: i64, e: i64) -> i64 = {
+// Kadane's max subarray for 5 elements (no vec)
+    let mut max_ending = a;
+    let mut max_so_far = a;
+
+// element b
+    if b > max_ending + b { max_ending = b } else { max_ending = max_ending + b };
+    if max_ending > max_so_far { max_so_far = max_ending } else { () };
+
+// element c
+    if c > max_ending + c { max_ending = c } else { max_ending = max_ending + c };
+    if max_ending > max_so_far { max_so_far = max_ending } else { () };
+
+// element d
+    if d > max_ending + d { max_ending = d } else { max_ending = max_ending + d };
+    if max_ending > max_so_far { max_so_far = max_ending } else { () };
+
+// element e
+    if e > max_ending + e { max_ending = e } else { max_ending = max_ending + e };
+    if max_ending > max_so_far { max_so_far = max_ending } else { () };
+
+    max_so_far
+    };
+
+fn tribonacci(n: i64) -> i64 = {
+    if n == 0 { return 0 } else { () };
+    if n <= 2 { return 1 } else { () };
+    let mut a = 0;
+    let mut b = 1;
+    let mut c = 1;
+    for _i in 3..n {
+        let temp = a + b + c;
+        a = b;
+        b = c;
+        c = temp
+    };
+    a + b + c
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(fib_loop(10));    // 55
+    let _p2 = println(fib_loop(20));    // 6765
+    let _p3 = println(stair_climb(5));  // 8
+    let _p4 = println(stair_climb(10)); // 89
+    let _p5 = println(kadane_5(0-2, 1, 0-3, 4, 0-1));  // 4
+    let _p6 = println(kadane_5(1, 2, 3, 0-2, 5));       // 9
+    let _p7 = println(tribonacci(8));   // 24
+    let _p8 = println(tribonacci(10));  // 81
+    0
+    };

@@ -1,0 +1,227 @@
+// Golden Test: Levenshtein edit distance with DP and operation backtrace
+// Uses 2D grid flattened into 1D vec: grid[i][j] = vec[i * (n+1) + j]
+
+// Minimum of two values
+fn min2(a: i64, b: i64) -> i64 =
+    if a <= b { a } else { b };
+
+// Minimum of three values
+fn min3(a: i64, b: i64, c: i64) -> i64 =
+    min2(min2(a, b), c);
+
+// Compute Levenshtein distance between two sequences stored in vecs
+// a has length m, b has length n
+// Returns edit distance
+fn levenshtein(a: i64, m: i64, b: i64, n: i64) -> i64 = {
+    // dp grid of (m+1) x (n+1), flattened
+    let cols = n + 1;
+    let rows = m + 1;
+    let dp = vec_new();
+    // Fill with zeros
+    for _i in 0..(rows * cols) {
+        vec_push(dp, 0)
+    };
+    // Base cases: dp[i][0] = i, dp[0][j] = j
+    for i in 0..rows {
+        let _s = vec_set(dp, i * cols, i);
+        0
+    };
+    for j in 0..cols {
+        let _s = vec_set(dp, j, j);
+        0
+    };
+    // Fill DP table
+    for i in 1..rows {
+        for j in 1..cols {
+            let cost = if vec_get(a, i - 1) == vec_get(b, j - 1) { 0 } else { 1 };
+            let del = vec_get(dp, (i - 1) * cols + j) + 1;
+            let ins = vec_get(dp, i * cols + (j - 1)) + 1;
+            let sub = vec_get(dp, (i - 1) * cols + (j - 1)) + cost;
+            let _s = vec_set(dp, i * cols + j, min3(del, ins, sub));
+            0
+        }
+    };
+    let result = vec_get(dp, m * cols + n);
+    let _f = vec_free(dp);
+    result
+    };
+
+// Backtrace: determine operation count (insert, delete, substitute)
+// Returns encoded: inserts * 10000 + deletes * 100 + substitutes
+fn levenshtein_ops(a: i64, m: i64, b: i64, n: i64) -> i64 = {
+    let cols = n + 1;
+    let rows = m + 1;
+    let dp = vec_new();
+    for _i in 0..(rows * cols) {
+        vec_push(dp, 0)
+    };
+    for i in 0..rows {
+        let _s = vec_set(dp, i * cols, i);
+        0
+    };
+    for j in 0..cols {
+        let _s = vec_set(dp, j, j);
+        0
+    };
+    for i in 1..rows {
+        for j in 1..cols {
+            let cost = if vec_get(a, i - 1) == vec_get(b, j - 1) { 0 } else { 1 };
+            let del = vec_get(dp, (i - 1) * cols + j) + 1;
+            let ins = vec_get(dp, i * cols + (j - 1)) + 1;
+            let sub = vec_get(dp, (i - 1) * cols + (j - 1)) + cost;
+            let _s = vec_set(dp, i * cols + j, min3(del, ins, sub));
+            0
+        }
+    };
+    // Backtrace
+    let mut ci = m;
+    let mut cj = n;
+    let mut inserts = 0;
+    let mut deletes = 0;
+    let mut subs = 0;
+    loop {
+        if ci == 0 and cj == 0 { break } else { () };
+        if ci == 0 {
+            // Must insert
+            inserts = inserts + 1;
+            cj = cj - 1
+        } else if cj == 0 {
+            // Must delete
+            deletes = deletes + 1;
+            ci = ci - 1
+        } else {
+            let cur = vec_get(dp, ci * cols + cj);
+            let diag = vec_get(dp, (ci - 1) * cols + (cj - 1));
+            let up = vec_get(dp, (ci - 1) * cols + cj);
+            let left = vec_get(dp, ci * cols + (cj - 1));
+            if diag <= up and diag <= left {
+                // Substitute (or match)
+                if cur != diag {
+                    subs = subs + 1
+                } else { () };
+                ci = ci - 1;
+                cj = cj - 1
+            } else if up <= left {
+                // Delete
+                deletes = deletes + 1;
+                ci = ci - 1
+            } else {
+                // Insert
+                inserts = inserts + 1;
+                cj = cj - 1
+            }
+        }
+    };
+    let _f = vec_free(dp);
+    inserts * 10000 + deletes * 100 + subs
+    };
+
+fn main() -> i64 = {
+    // Test 1: identical sequences [1,2,3] vs [1,2,3] -> distance 0
+    let a1 = vec_new();
+    vec_push(a1, 1); vec_push(a1, 2); vec_push(a1, 3);
+    let b1 = vec_new();
+    vec_push(b1, 1); vec_push(b1, 2); vec_push(b1, 3);
+    let _p1 = println(levenshtein(a1, 3, b1, 3));  // 0
+
+    // Test 2: completely different [1,2,3] vs [4,5,6] -> distance 3
+    let a2 = vec_new();
+    vec_push(a2, 1); vec_push(a2, 2); vec_push(a2, 3);
+    let b2 = vec_new();
+    vec_push(b2, 4); vec_push(b2, 5); vec_push(b2, 6);
+    let _p2 = println(levenshtein(a2, 3, b2, 3));  // 3
+
+    // Test 3: one insertion [1,2,3] vs [1,2,4,3] -> distance 1
+    let a3 = vec_new();
+    vec_push(a3, 1); vec_push(a3, 2); vec_push(a3, 3);
+    let b3 = vec_new();
+    vec_push(b3, 1); vec_push(b3, 2); vec_push(b3, 4); vec_push(b3, 3);
+    let _p3 = println(levenshtein(a3, 3, b3, 4));  // 1
+
+    // Test 4: one deletion [1,2,3,4] vs [1,3,4] -> distance 1
+    let a4 = vec_new();
+    vec_push(a4, 1); vec_push(a4, 2); vec_push(a4, 3); vec_push(a4, 4);
+    let b4 = vec_new();
+    vec_push(b4, 1); vec_push(b4, 3); vec_push(b4, 4);
+    let _p4 = println(levenshtein(a4, 4, b4, 3));  // 1
+
+    // Test 5: empty vs non-empty
+    let a5 = vec_new();
+    let b5 = vec_new();
+    vec_push(b5, 1); vec_push(b5, 2); vec_push(b5, 3);
+    let _p5 = println(levenshtein(a5, 0, b5, 3));  // 3
+
+    // Test 6: both empty
+    let a6 = vec_new();
+    let b6 = vec_new();
+    let _p6 = println(levenshtein(a6, 0, b6, 0));  // 0
+
+    // Test 7: one substitution [1,2,3] vs [1,9,3] -> distance 1
+    let a7 = vec_new();
+    vec_push(a7, 1); vec_push(a7, 2); vec_push(a7, 3);
+    let b7 = vec_new();
+    vec_push(b7, 1); vec_push(b7, 9); vec_push(b7, 3);
+    let _p7 = println(levenshtein(a7, 3, b7, 3));  // 1
+
+    // Test 8: operation backtrace for [1,2,3] vs [1,9,3] -> 0 ins, 0 del, 1 sub = 1
+    let a8 = vec_new();
+    vec_push(a8, 1); vec_push(a8, 2); vec_push(a8, 3);
+    let b8 = vec_new();
+    vec_push(b8, 1); vec_push(b8, 9); vec_push(b8, 3);
+    let ops1 = levenshtein_ops(a8, 3, b8, 3);
+    let _p8 = println(ops1);  // 1 (0*10000 + 0*100 + 1)
+
+    // Test 9: backtrace for [1,2,3] vs [1,2,4,3] -> 1 ins, 0 del, 0 sub = 10000
+    let a9 = vec_new();
+    vec_push(a9, 1); vec_push(a9, 2); vec_push(a9, 3);
+    let b9 = vec_new();
+    vec_push(b9, 1); vec_push(b9, 2); vec_push(b9, 4); vec_push(b9, 3);
+    let ops2 = levenshtein_ops(a9, 3, b9, 4);
+    let _p9 = println(ops2);  // 10000 (1 insert)
+
+    // Test 10: backtrace for [1,2,3,4] vs [1,3,4] -> 0 ins, 1 del, 0 sub = 100
+    let a10 = vec_new();
+    vec_push(a10, 1); vec_push(a10, 2); vec_push(a10, 3); vec_push(a10, 4);
+    let b10 = vec_new();
+    vec_push(b10, 1); vec_push(b10, 3); vec_push(b10, 4);
+    let ops3 = levenshtein_ops(a10, 4, b10, 3);
+    let _p10 = println(ops3);  // 100 (1 delete)
+
+    // Test 11: longer sequence [1,2,3,4,5] vs [2,3,5,6] -> distance 3
+    let a11 = vec_new();
+    vec_push(a11, 1); vec_push(a11, 2); vec_push(a11, 3);
+    vec_push(a11, 4); vec_push(a11, 5);
+    let b11 = vec_new();
+    vec_push(b11, 2); vec_push(b11, 3); vec_push(b11, 5); vec_push(b11, 6);
+    let _p11 = println(levenshtein(a11, 5, b11, 4));  // 3
+
+    // Test 12: symmetry check - dist(a,b) == dist(b,a)
+    let a12 = vec_new();
+    vec_push(a12, 1); vec_push(a12, 2); vec_push(a12, 3);
+    let b12 = vec_new();
+    vec_push(b12, 4); vec_push(b12, 2);
+    let d1 = levenshtein(a12, 3, b12, 2);
+    let a13 = vec_new();
+    vec_push(a13, 4); vec_push(a13, 2);
+    let b13 = vec_new();
+    vec_push(b13, 1); vec_push(b13, 2); vec_push(b13, 3);
+    let d2 = levenshtein(a13, 2, b13, 3);
+    let _p12 = println(d1);  // 2
+    let _p13 = println(d2);  // 2
+
+    // Cleanup
+    let _f1 = vec_free(a1); let _f2 = vec_free(b1);
+    let _f3 = vec_free(a2); let _f4 = vec_free(b2);
+    let _f5 = vec_free(a3); let _f6 = vec_free(b3);
+    let _f7 = vec_free(a4); let _f8 = vec_free(b4);
+    let _f9 = vec_free(a5); let _f10 = vec_free(b5);
+    let _f11 = vec_free(a6); let _f12 = vec_free(b6);
+    let _f13 = vec_free(a7); let _f14 = vec_free(b7);
+    let _f15 = vec_free(a8); let _f16 = vec_free(b8);
+    let _f17 = vec_free(a9); let _f18 = vec_free(b9);
+    let _f19 = vec_free(a10); let _f20 = vec_free(b10);
+    let _f21 = vec_free(a11); let _f22 = vec_free(b11);
+    let _f23 = vec_free(a12); let _f24 = vec_free(b12);
+    let _f25 = vec_free(a13); let _f26 = vec_free(b13);
+    0
+    };

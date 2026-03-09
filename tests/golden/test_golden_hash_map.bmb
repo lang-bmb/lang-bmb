@@ -1,0 +1,139 @@
+// Golden Test: Simple hash map (open addressing, linear probing)
+// Keys and values are i64, uses vec as backing store
+// Layout: [capacity, size, key0, val0, occupied0, key1, val1, occupied1, ...]
+// Each slot: 3 entries (key, value, occupied flag)
+
+fn hm_new(cap: i64) -> i64 = {
+    let m = vec_new();
+    let _p = vec_push(m, cap);
+    let _p = vec_push(m, 0);
+    let mut i = 0;
+    while i < cap {
+        let _p = vec_push(m, 0);  // key
+        let _p = vec_push(m, 0);  // value
+        let _p = vec_push(m, 0);  // occupied
+        set i = i + 1
+    };
+    m
+};
+
+fn hm_hash(key: i64, cap: i64) -> i64 = {
+    let k = if key < 0 { 0 - key } else { key };
+    k % cap
+};
+
+fn hm_put(m: i64, key: i64, val: i64) -> () = {
+    let cap = vec_get(m, 0);
+    let mut idx = hm_hash(key, cap);
+    let mut probes = 0;
+    let mut done = 0;
+    while done == 0 and probes < cap {
+        let base = 2 + idx * 3;
+        let occ = vec_get(m, base + 2);
+        let _x = if occ == 0 {
+            // Empty slot: insert
+            vec_set(m, base, key);
+            vec_set(m, base + 1, val);
+            vec_set(m, base + 2, 1);
+            let sz = vec_get(m, 1);
+            vec_set(m, 1, sz + 1);
+            set done = 1;
+            0
+        } else if vec_get(m, base) == key {
+            // Key exists: update
+            vec_set(m, base + 1, val);
+            set done = 1;
+            0
+        } else {
+            // Collision: linear probe
+            set idx = (idx + 1) % cap;
+            set probes = probes + 1;
+            0
+        }
+    }
+};
+
+fn hm_get(m: i64, key: i64) -> i64 = {
+    let cap = vec_get(m, 0);
+    let mut idx = hm_hash(key, cap);
+    let mut probes = 0;
+    let mut result = 0 - 1;
+    let mut done = 0;
+    while done == 0 and probes < cap {
+        let base = 2 + idx * 3;
+        let occ = vec_get(m, base + 2);
+        let _x = if occ == 0 {
+            set done = 1;
+            0
+        } else if vec_get(m, base) == key {
+            set result = vec_get(m, base + 1);
+            set done = 1;
+            0
+        } else {
+            set idx = (idx + 1) % cap;
+            set probes = probes + 1;
+            0
+        }
+    };
+    result
+};
+
+fn hm_contains(m: i64, key: i64) -> i64 = {
+    let cap = vec_get(m, 0);
+    let mut idx = hm_hash(key, cap);
+    let mut probes = 0;
+    let mut result = 0;
+    let mut done = 0;
+    while done == 0 and probes < cap {
+        let base = 2 + idx * 3;
+        let occ = vec_get(m, base + 2);
+        let _x = if occ == 0 {
+            set done = 1;
+            0
+        } else if vec_get(m, base) == key {
+            set result = 1;
+            set done = 1;
+            0
+        } else {
+            set idx = (idx + 1) % cap;
+            set probes = probes + 1;
+            0
+        }
+    };
+    result
+};
+
+fn hm_size(m: i64) -> i64 = {
+    vec_get(m, 1)
+};
+
+fn main() -> () = {
+    let m = hm_new(16);
+
+    // Insert key-value pairs
+    hm_put(m, 42, 100);
+    hm_put(m, 7, 200);
+    hm_put(m, 23, 300);
+    hm_put(m, 58, 400);
+    hm_put(m, 42, 500);  // Update existing key
+
+    print_str("size="); let _r = println(hm_size(m));
+    print_str("get(42)="); let _r = println(hm_get(m, 42));
+    print_str("get(7)="); let _r = println(hm_get(m, 7));
+    print_str("get(23)="); let _r = println(hm_get(m, 23));
+    print_str("get(58)="); let _r = println(hm_get(m, 58));
+    print_str("get(99)="); let _r = println(hm_get(m, 99));
+
+    print_str("has(42)="); let _r = println(hm_contains(m, 42));
+    print_str("has(99)="); let _r = println(hm_contains(m, 99));
+
+    // Test collision handling: keys that hash to same bucket
+    let m2 = hm_new(4);
+    hm_put(m2, 0, 10);
+    hm_put(m2, 4, 20);   // Same hash as 0 (mod 4)
+    hm_put(m2, 8, 30);   // Same hash as 0 (mod 4)
+    print_str("collision: ");
+    print(hm_get(m2, 0)); print_str(" ");
+    print(hm_get(m2, 4)); print_str(" ");
+    let _r = println(hm_get(m2, 8))
+};

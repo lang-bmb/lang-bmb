@@ -1,0 +1,159 @@
+// Golden Test: Bitwise Sieve of Eratosthenes
+// Packs boolean "is_composite" flags into i64 words (30 bits each to stay positive)
+
+// Power of 2 via loop
+fn pow2(n: i64) -> i64 = {
+    let mut r = 1;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        r = r * 2;
+        i = i + 1
+    };
+    r
+    };
+
+// Get bit at position `pos` in the sieve
+// sieve is a vec of i64, each holding 30 flags (bits 0..29)
+fn get_bit(sieve: i64, pos: i64) -> i64 = {
+    let word_idx = pos / 30;
+    let bit_idx = pos - word_idx * 30;
+    let word = vec_get(sieve, word_idx);
+    (word / pow2(bit_idx)) band 1
+    };
+
+// Set bit at position `pos` in the sieve (mark composite)
+fn set_bit(sieve: i64, pos: i64) -> i64 = {
+    let word_idx = pos / 30;
+    let bit_idx = pos - word_idx * 30;
+    let word = vec_get(sieve, word_idx);
+    let mask = pow2(bit_idx);
+    let _s = vec_set(sieve, word_idx, word bor mask);
+    0
+    };
+
+// Run sieve of Eratosthenes up to limit
+// Returns a sieve vec where bit i=1 means i is composite
+fn run_sieve(limit: i64) -> i64 = {
+    // Need (limit+1) bits, ceil((limit+1)/30) words
+    let num_words = (limit + 1 + 29) / 30;
+    let sieve = vec_new();
+    for _i in 0..num_words {
+        vec_push(sieve, 0)
+    };
+    // Mark 0 and 1 as composite
+    let _s0 = set_bit(sieve, 0);
+    let _s1 = set_bit(sieve, 1);
+    // Sieve
+    let mut p = 2;
+    loop {
+        if p * p > limit { break } else { () };
+        if get_bit(sieve, p) == 0 {
+            // p is prime, mark multiples
+            let mut m = p * p;
+            loop {
+                if m > limit { break } else { () };
+                let _sm = set_bit(sieve, m);
+                m = m + p
+            };
+            0
+        } else { 0 };
+        p = p + 1
+    };
+    sieve
+    };
+
+// Check if n is prime using the sieve
+fn is_prime(sieve: i64, n: i64) -> i64 =
+    if n < 2 { 0 }
+    else if get_bit(sieve, n) == 0 { 1 }
+    else { 0 };
+
+// Count primes up to limit
+fn count_primes(sieve: i64, limit: i64) -> i64 = {
+    let mut count = 0;
+    for i in 2..(limit + 1) {
+        if get_bit(sieve, i) == 0 {
+            count = count + 1
+        } else { () }
+    };
+    count
+    };
+
+// Get the n-th prime (1-indexed: 1st prime = 2)
+fn nth_prime(sieve: i64, limit: i64, n: i64) -> i64 = {
+    let mut count = 0;
+    let mut result = 0;
+    let mut i = 2;
+    loop {
+        if i > limit { break } else { () };
+        if get_bit(sieve, i) == 0 {
+            count = count + 1;
+            if count == n {
+                result = i;
+                break
+            } else { () }
+        } else { () };
+        i = i + 1
+    };
+    result
+    };
+
+// Sum of all primes up to limit
+fn sum_primes(sieve: i64, limit: i64) -> i64 = {
+    let mut total = 0;
+    for i in 2..(limit + 1) {
+        if get_bit(sieve, i) == 0 {
+            total = total + i
+        } else { () }
+    };
+    total
+    };
+
+// Count twin primes (p, p+2 both prime) up to limit
+fn count_twin_primes(sieve: i64, limit: i64) -> i64 = {
+    let mut count = 0;
+    for i in 2..(limit - 1) {
+        if get_bit(sieve, i) == 0 and get_bit(sieve, i + 2) == 0 {
+            count = count + 1
+        } else { () }
+    };
+    count
+    };
+
+fn main() -> i64 = {
+    let limit = 200;
+    let sieve = run_sieve(limit);
+
+    // Test 1: primality checks
+    let _p1 = println(is_prime(sieve, 2));    // 1
+    let _p2 = println(is_prime(sieve, 3));    // 1
+    let _p3 = println(is_prime(sieve, 4));    // 0
+    let _p4 = println(is_prime(sieve, 17));   // 1
+    let _p5 = println(is_prime(sieve, 100));  // 0
+    let _p6 = println(is_prime(sieve, 197));  // 1
+
+    // Test 2: count primes up to various limits
+    let _p7 = println(count_primes(sieve, 10));   // 4
+    let _p8 = println(count_primes(sieve, 30));   // 10
+    let _p9 = println(count_primes(sieve, 100));  // 25
+    let _p10 = println(count_primes(sieve, 200)); // 46
+
+    // Test 3: nth prime
+    let _p11 = println(nth_prime(sieve, limit, 1));   // 2
+    let _p12 = println(nth_prime(sieve, limit, 10));  // 29
+    let _p13 = println(nth_prime(sieve, limit, 25));  // 97
+
+    // Test 4: sum of primes up to 10
+    let _p14 = println(sum_primes(sieve, 10));  // 17
+
+    // Test 5: edge cases
+    let _p15 = println(is_prime(sieve, 0));   // 0
+    let _p16 = println(is_prime(sieve, 1));   // 0
+
+    // Test 6: twin primes up to 100: (3,5),(5,7),(11,13),(17,19),(29,31),(41,43),(59,61),(71,73)
+    let _p17 = println(count_twin_primes(sieve, 100));  // 8
+
+    let _f = vec_free(sieve);
+    0
+    };

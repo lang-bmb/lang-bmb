@@ -367,18 +367,28 @@ void bmb_println_str(const BmbString* s) {
 int64_t bmb_str_len(const char* s) { int64_t len = 0; while (s[len]) len++; return len; }
 
 // v0.98: Vector functions
-// Layout: ptr[0] = capacity, ptr[1] = length, ptr[2...] = data
+// v0.95.5: Stable-handle layout — header never moves, only data array gets realloc'd
+// Layout: vec[0] = capacity, vec[1] = length, vec[2] = data_ptr
+// Data:   data[0], data[1], ..., data[cap-1]
+// This ensures vec_push never invalidates the handle pointer.
+#define VEC_CAP(v) ((v)[0])
+#define VEC_LEN(v) ((v)[1])
+#define VEC_DATA(v) ((int64_t*)((v)[2]))
+
 int64_t bmb_vec_new() {
-    int64_t* vec = (int64_t*)malloc(10 * sizeof(int64_t));
+    int64_t* vec = (int64_t*)malloc(3 * sizeof(int64_t));
     vec[0] = 8;  // capacity
     vec[1] = 0;  // length
+    vec[2] = (int64_t)malloc(8 * sizeof(int64_t));  // data array
     return (int64_t)vec;
 }
 
 int64_t bmb_vec_with_capacity(int64_t cap) {
-    int64_t* vec = (int64_t*)malloc((cap + 2) * sizeof(int64_t));
+    if (cap < 1) cap = 1;
+    int64_t* vec = (int64_t*)malloc(3 * sizeof(int64_t));
     vec[0] = cap;  // capacity
     vec[1] = 0;    // length
+    vec[2] = (int64_t)malloc(cap * sizeof(int64_t));  // data array
     return (int64_t)vec;
 }
 
@@ -389,13 +399,13 @@ int64_t bmb_vec_push(int64_t vec_ptr, int64_t value) {
     if (len >= cap) {
         // Grow: double capacity
         int64_t new_cap = cap * 2;
-        int64_t* new_vec = (int64_t*)realloc(vec, (new_cap + 2) * sizeof(int64_t));
-        new_vec[0] = new_cap;
-        vec = new_vec;
+        int64_t* new_data = (int64_t*)realloc(VEC_DATA(vec), new_cap * sizeof(int64_t));
+        vec[2] = (int64_t)new_data;  // update data pointer in header
+        vec[0] = new_cap;
     }
-    vec[2 + len] = value;
+    VEC_DATA(vec)[len] = value;
     vec[1] = len + 1;
-    return (int64_t)vec;
+    return vec_ptr;  // handle is always stable
 }
 
 int64_t bmb_vec_pop(int64_t vec_ptr) {
@@ -403,17 +413,17 @@ int64_t bmb_vec_pop(int64_t vec_ptr) {
     int64_t len = vec[1];
     if (len == 0) return 0;  // Empty vector
     vec[1] = len - 1;
-    return vec[2 + len - 1];
+    return VEC_DATA(vec)[len - 1];
 }
 
 int64_t bmb_vec_get(int64_t vec_ptr, int64_t index) {
     int64_t* vec = (int64_t*)vec_ptr;
-    return vec[2 + index];
+    return VEC_DATA(vec)[index];
 }
 
 void bmb_vec_set(int64_t vec_ptr, int64_t index, int64_t value) {
     int64_t* vec = (int64_t*)vec_ptr;
-    vec[2 + index] = value;
+    VEC_DATA(vec)[index] = value;
 }
 
 int64_t bmb_vec_len(int64_t vec_ptr) {
@@ -427,7 +437,9 @@ int64_t bmb_vec_cap(int64_t vec_ptr) {
 }
 
 void bmb_vec_free(int64_t vec_ptr) {
-    free((void*)vec_ptr);
+    int64_t* vec = (int64_t*)vec_ptr;
+    free((void*)vec[2]);  // free data array
+    free(vec);            // free header
 }
 
 void bmb_vec_clear(int64_t vec_ptr) {
@@ -439,18 +451,20 @@ void bmb_vec_clear(int64_t vec_ptr) {
 void bmb_vec_reverse(int64_t vec_ptr) {
     int64_t* vec = (int64_t*)vec_ptr;
     int64_t len = vec[1];
+    int64_t* data = VEC_DATA(vec);
     for (int64_t i = 0; i < len / 2; i++) {
-        int64_t tmp = vec[2 + i];
-        vec[2 + i] = vec[2 + len - 1 - i];
-        vec[2 + len - 1 - i] = tmp;
+        int64_t tmp = data[i];
+        data[i] = data[len - 1 - i];
+        data[len - 1 - i] = tmp;
     }
 }
 
 int64_t bmb_vec_contains(int64_t vec_ptr, int64_t value) {
     int64_t* vec = (int64_t*)vec_ptr;
     int64_t len = vec[1];
+    int64_t* data = VEC_DATA(vec);
     for (int64_t i = 0; i < len; i++) {
-        if (vec[2 + i] == value) return 1;
+        if (data[i] == value) return 1;
     }
     return 0;
 }
@@ -458,31 +472,33 @@ int64_t bmb_vec_contains(int64_t vec_ptr, int64_t value) {
 int64_t bmb_vec_index_of(int64_t vec_ptr, int64_t value) {
     int64_t* vec = (int64_t*)vec_ptr;
     int64_t len = vec[1];
+    int64_t* data = VEC_DATA(vec);
     for (int64_t i = 0; i < len; i++) {
-        if (vec[2 + i] == value) return i;
+        if (data[i] == value) return i;
     }
     return -1;
 }
 
 void bmb_vec_swap(int64_t vec_ptr, int64_t i, int64_t j) {
-    int64_t* vec = (int64_t*)vec_ptr;
-    int64_t tmp = vec[2 + i];
-    vec[2 + i] = vec[2 + j];
-    vec[2 + j] = tmp;
+    int64_t* data = VEC_DATA(((int64_t*)vec_ptr));
+    int64_t tmp = data[i];
+    data[i] = data[j];
+    data[j] = tmp;
 }
 
 void bmb_vec_sort(int64_t vec_ptr) {
     int64_t* vec = (int64_t*)vec_ptr;
     int64_t len = vec[1];
+    int64_t* data = VEC_DATA(vec);
     // Insertion sort (simple, stable, good for small arrays)
     for (int64_t i = 1; i < len; i++) {
-        int64_t key = vec[2 + i];
+        int64_t key = data[i];
         int64_t j = i - 1;
-        while (j >= 0 && vec[2 + j] > key) {
-            vec[2 + j + 1] = vec[2 + j];
+        while (j >= 0 && data[j] > key) {
+            data[j + 1] = data[j];
             j--;
         }
-        vec[2 + j + 1] = key;
+        data[j + 1] = key;
     }
 }
 
@@ -491,10 +507,11 @@ void bmb_vec_dedup(int64_t vec_ptr) {
     int64_t* vec = (int64_t*)vec_ptr;
     int64_t len = vec[1];
     if (len <= 1) return;
+    int64_t* data = VEC_DATA(vec);
     int64_t write = 1;
     for (int64_t i = 1; i < len; i++) {
-        if (vec[2 + i] != vec[2 + write - 1]) {
-            vec[2 + write] = vec[2 + i];
+        if (data[i] != data[write - 1]) {
+            data[write] = data[i];
             write++;
         }
     }
@@ -505,8 +522,9 @@ void bmb_vec_dedup(int64_t vec_ptr) {
 void bmb_vec_fill(int64_t vec_ptr, int64_t value) {
     int64_t* vec = (int64_t*)vec_ptr;
     int64_t len = vec[1];
+    int64_t* data = VEC_DATA(vec);
     for (int64_t i = 0; i < len; i++) {
-        vec[2 + i] = value;
+        data[i] = value;
     }
 }
 
@@ -514,10 +532,14 @@ void bmb_vec_fill(int64_t vec_ptr, int64_t value) {
 int64_t bmb_vec_copy(int64_t vec_ptr) {
     int64_t* src = (int64_t*)vec_ptr;
     int64_t len = src[1];
-    int64_t new_vec = bmb_vec_new();
+    int64_t* src_data = VEC_DATA(src);
+    int64_t new_vec = bmb_vec_with_capacity(len > 0 ? len : 8);
+    int64_t* dst = (int64_t*)new_vec;
+    int64_t* dst_data = VEC_DATA(dst);
     for (int64_t i = 0; i < len; i++) {
-        bmb_vec_push(new_vec, src[2 + i]);
+        dst_data[i] = src_data[i];
     }
+    dst[1] = len;
     return new_vec;
 }
 
@@ -525,9 +547,10 @@ int64_t bmb_vec_copy(int64_t vec_ptr) {
 int64_t bmb_vec_sum(int64_t vec_ptr) {
     int64_t* vec = (int64_t*)vec_ptr;
     int64_t len = vec[1];
+    int64_t* data = VEC_DATA(vec);
     int64_t sum = 0;
     for (int64_t i = 0; i < len; i++) {
-        sum += vec[2 + i];
+        sum += data[i];
     }
     return sum;
 }
@@ -536,9 +559,10 @@ int64_t bmb_vec_sum(int64_t vec_ptr) {
 int64_t bmb_vec_min(int64_t vec_ptr) {
     int64_t* vec = (int64_t*)vec_ptr;
     int64_t len = vec[1];
+    int64_t* data = VEC_DATA(vec);
     int64_t min_val = INT64_MAX;
     for (int64_t i = 0; i < len; i++) {
-        if (vec[2 + i] < min_val) min_val = vec[2 + i];
+        if (data[i] < min_val) min_val = data[i];
     }
     return min_val;
 }
@@ -547,9 +571,10 @@ int64_t bmb_vec_min(int64_t vec_ptr) {
 int64_t bmb_vec_max(int64_t vec_ptr) {
     int64_t* vec = (int64_t*)vec_ptr;
     int64_t len = vec[1];
+    int64_t* data = VEC_DATA(vec);
     int64_t max_val = INT64_MIN;
     for (int64_t i = 0; i < len; i++) {
-        if (vec[2 + i] > max_val) max_val = vec[2 + i];
+        if (data[i] > max_val) max_val = data[i];
     }
     return max_val;
 }
@@ -558,9 +583,10 @@ int64_t bmb_vec_max(int64_t vec_ptr) {
 int64_t bmb_vec_product(int64_t vec_ptr) {
     int64_t* vec = (int64_t*)vec_ptr;
     int64_t len = vec[1];
+    int64_t* data = VEC_DATA(vec);
     int64_t prod = 1;
     for (int64_t i = 0; i < len; i++) {
-        prod *= vec[2 + i];
+        prod *= data[i];
     }
     return prod;
 }
@@ -569,12 +595,18 @@ int64_t bmb_vec_product(int64_t vec_ptr) {
 int64_t bmb_vec_slice(int64_t vec_ptr, int64_t start, int64_t end) {
     int64_t* vec = (int64_t*)vec_ptr;
     int64_t len = vec[1];
+    int64_t* data = VEC_DATA(vec);
     if (start < 0) start = 0;
     if (end > len) end = len;
-    int64_t new_vec = bmb_vec_new();
-    for (int64_t i = start; i < end; i++) {
-        bmb_vec_push(new_vec, vec[2 + i]);
+    int64_t slice_len = end - start;
+    if (slice_len < 0) slice_len = 0;
+    int64_t new_vec = bmb_vec_with_capacity(slice_len > 0 ? slice_len : 8);
+    int64_t* dst = (int64_t*)new_vec;
+    int64_t* dst_data = VEC_DATA(dst);
+    for (int64_t i = 0; i < slice_len; i++) {
+        dst_data[i] = data[start + i];
     }
+    dst[1] = slice_len;
     return new_vec;
 }
 
@@ -582,8 +614,9 @@ int64_t bmb_vec_slice(int64_t vec_ptr, int64_t start, int64_t end) {
 void bmb_vec_extend(int64_t dest_ptr, int64_t src_ptr) {
     int64_t* src = (int64_t*)src_ptr;
     int64_t src_len = src[1];
+    int64_t* src_data = VEC_DATA(src);
     for (int64_t i = 0; i < src_len; i++) {
-        bmb_vec_push(dest_ptr, src[2 + i]);
+        bmb_vec_push(dest_ptr, src_data[i]);
     }
 }
 
@@ -592,9 +625,10 @@ int64_t bmb_vec_remove(int64_t vec_ptr, int64_t index) {
     int64_t* vec = (int64_t*)vec_ptr;
     int64_t len = vec[1];
     if (index < 0 || index >= len) return 0;
-    int64_t removed = vec[2 + index];
+    int64_t* data = VEC_DATA(vec);
+    int64_t removed = data[index];
     for (int64_t i = index; i < len - 1; i++) {
-        vec[2 + i] = vec[2 + i + 1];
+        data[i] = data[i + 1];
     }
     vec[1] = len - 1;
     return removed;
@@ -606,17 +640,16 @@ void bmb_vec_insert(int64_t vec_ptr, int64_t index, int64_t value) {
     int64_t len = vec[1];
     if (index < 0) index = 0;
     if (index > len) index = len;
-    // Ensure capacity
-    bmb_vec_push(vec_ptr, 0); // grow if needed
-    vec = (int64_t*)vec_ptr; // re-read after potential realloc... but handle is stable
-    // Actually vec_ptr is a handle (pointer to heap struct), push may realloc internal data
-    // Re-read len after push
-    int64_t new_len = vec[1]; // should be len+1 now
+    // Ensure capacity by pushing a dummy then overwriting
+    bmb_vec_push(vec_ptr, 0);
+    // After push, data pointer may have changed but header is stable
+    int64_t* data = VEC_DATA(vec);
+    int64_t new_len = vec[1]; // len+1 after push
     // Shift elements right from end to index
     for (int64_t i = new_len - 1; i > index; i--) {
-        vec[2 + i] = vec[2 + i - 1];
+        data[i] = data[i - 1];
     }
-    vec[2 + index] = value;
+    data[index] = value;
 }
 
 // v0.90.98: Functional array methods — push, pop, concat, slice, join return NEW arrays
@@ -674,6 +707,29 @@ int64_t* bmb_array_slice(int64_t* arr, int64_t start, int64_t end) {
 
 int64_t bmb_array_len(int64_t* arr) {
     return arr[1];
+}
+
+// v0.96.20: Bounds-checked array access (--safe mode)
+void bmb_panic_bounds(int64_t idx, int64_t len) {
+    fprintf(stderr, "panic: array index %" PRId64 " out of bounds [0, %" PRId64 ")\n", idx, len);
+    exit(1);
+}
+
+void bmb_panic_divzero(void) {
+    fprintf(stderr, "panic: division by zero\n");
+    exit(1);
+}
+
+int64_t bmb_array_get_safe(int64_t* arr, int64_t idx) {
+    int64_t len = arr[1];
+    if (idx < 0 || idx >= len) bmb_panic_bounds(idx, len);
+    return arr[2 + idx];
+}
+
+void bmb_array_set_safe(int64_t* arr, int64_t idx, int64_t val) {
+    int64_t len = arr[1];
+    if (idx < 0 || idx >= len) bmb_panic_bounds(idx, len);
+    arr[2 + idx] = val;
 }
 
 // v0.90.97: Integer methods — clamp, pow
@@ -990,6 +1046,20 @@ BmbString* bmb_string_new(const char* s, int64_t len) {
     str->len = len;
     str->cap = len;
     return str;
+}
+
+// v0.96.2: Read a line from stdin for REPL support
+BmbString* bmb_read_line() {
+    fflush(stdout);
+    char buf[4096];
+    if (fgets(buf, sizeof(buf), stdin) == NULL) {
+        return bmb_string_from_cstr("__EOF__");
+    }
+    int64_t len = (int64_t)strlen(buf);
+    while (len > 0 && (buf[len-1] == '\n' || buf[len-1] == '\r')) {
+        buf[--len] = '\0';
+    }
+    return bmb_string_new(buf, len);
 }
 
 // String length - parameter is BmbString*
@@ -2395,8 +2465,8 @@ int64_t bmb_write_file(const BmbString* path, const BmbString* content) {
     return (written == (size_t)content->len) ? 0 : -1;
 }
 
-// v0.60.80: write_file_newlines - converts | to newlines during write
-// Used by bootstrap compiler which uses | as line separator
+// v0.60.80: write_file_newlines - converts unit separator (0x1F) to newlines during write
+// Used by bootstrap compiler which uses unit separator (char 31) as line separator
 int64_t bmb_write_file_newlines(const BmbString* path, const BmbString* content) {
     if (!path || !path->data || !content || !content->data) return -1;
     FILE* f = fopen(path->data, "wb");
@@ -2405,7 +2475,7 @@ int64_t bmb_write_file_newlines(const BmbString* path, const BmbString* content)
     size_t written = 0;
     for (size_t i = 0; i < content->len; i++) {
         char c = content->data[i];
-        if (c == '|') {
+        if (c == '\x1F') {
             fputc('\n', f);
         } else {
             fputc(c, f);
@@ -2449,6 +2519,120 @@ int64_t file_size(const BmbString* path) {
     long size = ftell(f);
     fclose(f);
     return (int64_t)size;
+}
+
+// v0.96: Directory operations for gotgan-bmb and file system programs
+#include <dirent.h>
+#ifdef _WIN32
+#include <direct.h>  // _mkdir on Windows/MinGW
+#endif
+
+// is_dir(path) -> i64: returns 1 if path is a directory, 0 otherwise
+int64_t bmb_is_dir(const BmbString* path) {
+    if (!path || !path->data) return 0;
+    struct stat st;
+    if (stat(path->data, &st) != 0) return 0;
+    return S_ISDIR(st.st_mode) ? 1 : 0;
+}
+
+int64_t is_dir(const BmbString* path) {
+    return bmb_is_dir(path);
+}
+
+// mkdir_p(path) -> i64: creates directory and all parents (like mkdir -p), returns 0 on success
+int64_t bmb_mkdir(const BmbString* path) {
+    if (!path || !path->data || path->len == 0) return -1;
+    // Copy path to mutable buffer for in-place separator replacement
+    char* buf = (char*)malloc(path->len + 1);
+    if (!buf) return -1;
+    memcpy(buf, path->data, path->len + 1);
+    // Create each component
+    for (size_t i = 1; i <= (size_t)path->len; i++) {
+        if (buf[i] == '/' || buf[i] == '\\' || buf[i] == '\0') {
+            char saved = buf[i];
+            buf[i] = '\0';
+#ifdef _WIN32
+            mkdir(buf);
+#else
+            mkdir(buf, 0755);
+#endif
+            buf[i] = saved;
+        }
+    }
+    free(buf);
+    // Check if final directory exists
+    struct stat st;
+    if (stat(path->data, &st) == 0 && S_ISDIR(st.st_mode)) return 0;
+    return -1;
+}
+
+int64_t make_dir(const BmbString* path) {
+    return bmb_mkdir(path);
+}
+
+// readdir(path) -> BmbString*: returns newline-separated list of entries
+BmbString* bmb_readdir(const BmbString* path) {
+    if (!path || !path->data) return bmb_string_from_cstr("");
+    DIR* dir = opendir(path->data);
+    if (!dir) return bmb_string_from_cstr("");
+
+    // Build result using dynamic buffer
+    size_t cap = 1024;
+    size_t len = 0;
+    char* buf = (char*)malloc(cap);
+    if (!buf) { closedir(dir); return bmb_string_from_cstr(""); }
+
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != NULL) {
+        // Skip . and ..
+        if (entry->d_name[0] == '.' && (entry->d_name[1] == '\0' ||
+            (entry->d_name[1] == '.' && entry->d_name[2] == '\0'))) {
+            continue;
+        }
+        size_t name_len = strlen(entry->d_name);
+        // Ensure capacity for name + newline
+        while (len + name_len + 1 >= cap) {
+            cap *= 2;
+            buf = (char*)realloc(buf, cap);
+            if (!buf) { closedir(dir); return bmb_string_from_cstr(""); }
+        }
+        memcpy(buf + len, entry->d_name, name_len);
+        len += name_len;
+        buf[len++] = '\n';
+    }
+    closedir(dir);
+
+    // Remove trailing newline
+    if (len > 0 && buf[len - 1] == '\n') len--;
+    buf[len] = '\0';
+
+    BmbString* result = bmb_string_from_cstr(buf);
+    free(buf);
+    return result;
+}
+
+BmbString* list_dir(const BmbString* path) {
+    return bmb_readdir(path);
+}
+
+// remove_file(path) -> i64: deletes a file, returns 0 on success
+int64_t bmb_remove_file(const BmbString* path) {
+    if (!path || !path->data) return -1;
+    return remove(path->data) == 0 ? 0 : -1;
+}
+
+int64_t remove_file(const BmbString* path) {
+    return bmb_remove_file(path);
+}
+
+// remove_dir(path) -> i64: removes an empty directory, returns 0 on success
+int64_t bmb_rmdir(const BmbString* path) {
+    if (!path || !path->data) return -1;
+    return rmdir(path->data) == 0 ? 0 : -1;
+}
+
+int64_t remove_dir(const BmbString* path) {
+    return bmb_rmdir(path);
 }
 
 // v0.46: Command-line argument support for CLI Independence

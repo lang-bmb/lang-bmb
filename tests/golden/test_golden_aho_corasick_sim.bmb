@@ -1,0 +1,317 @@
+// Golden Test: Aho-Corasick multi-pattern matching simulation (integer arrays)
+// Builds a trie with failure links over integer alphabet [0..max_val]
+// Then searches a text (integer array) for all pattern occurrences
+//
+// Trie stored as parallel arrays:
+//   goto_table: flat 2D array [node * ALPHA_SIZE + char] -> next_node (-1 = no edge)
+//   fail: failure link for each node
+//   output: pattern id at this node (-1 = none), also follows output links
+//   depth: depth of each node in trie
+
+fn trie_new(alpha_size: i64) -> i64 = {
+    let t = vec_new();
+    let goto_tbl = vec_new();   // t[0]: goto table
+    let fail_arr = vec_new();   // t[1]: failure links
+    let out_arr = vec_new();    // t[2]: output (pattern id, -1 if none)
+    let depth_arr = vec_new();  // t[3]: depth of each node
+    vec_push(t, goto_tbl);
+    vec_push(t, fail_arr);
+    vec_push(t, out_arr);
+    vec_push(t, depth_arr);
+    vec_push(t, alpha_size);    // t[4]: alphabet size
+    vec_push(t, 0);             // t[5]: node count
+    // Allocate root node (node 0)
+    let _r = trie_alloc_node(t);
+    t
+    };
+
+fn trie_alloc_node(t: i64) -> i64 = {
+    let idx = vec_get(t, 5);
+    let alpha = vec_get(t, 4);
+    let goto_tbl = vec_get(t, 0);
+    for _c in 0..alpha { vec_push(goto_tbl, -1) };
+    vec_push(vec_get(t, 1), -1);  // fail = -1
+    vec_push(vec_get(t, 2), -1);  // output = -1
+    vec_push(vec_get(t, 3), 0);   // depth = 0
+    vec_set(t, 5, idx + 1);
+    idx
+    };
+
+fn trie_goto(t: i64, node: i64, ch: i64) -> i64 = {
+    let alpha = vec_get(t, 4);
+    vec_get(vec_get(t, 0), node * alpha + ch)
+    };
+
+fn trie_set_goto(t: i64, node: i64, ch: i64, target: i64) -> i64 = {
+    let alpha = vec_get(t, 4);
+    vec_set(vec_get(t, 0), node * alpha + ch, target);
+    0
+    };
+
+fn trie_fail(t: i64, node: i64) -> i64 =
+    vec_get(vec_get(t, 1), node);
+
+fn trie_set_fail(t: i64, node: i64, target: i64) -> i64 = {
+    vec_set(vec_get(t, 1), node, target);
+    0
+    };
+
+fn trie_output(t: i64, node: i64) -> i64 =
+    vec_get(vec_get(t, 2), node);
+
+fn trie_set_output(t: i64, node: i64, pat_id: i64) -> i64 = {
+    vec_set(vec_get(t, 2), node, pat_id);
+    0
+    };
+
+fn trie_depth(t: i64, node: i64) -> i64 =
+    vec_get(vec_get(t, 3), node);
+
+fn trie_node_count(t: i64) -> i64 = vec_get(t, 5);
+
+// Insert a pattern (integer array) into trie
+fn trie_insert(t: i64, pat: i64, pat_len: i64, pat_id: i64) -> i64 = {
+    let mut cur = 0;
+    for i in 0..pat_len {
+        let ch = vec_get(pat, i);
+        let next = trie_goto(t, cur, ch);
+        let _x = if next == -1 {
+            let new_node = trie_alloc_node(t);
+            let _sg = trie_set_goto(t, cur, ch, new_node);
+            vec_set(vec_get(t, 3), new_node, trie_depth(t, cur) + 1);
+            set cur = new_node;
+            0
+        } else {
+            set cur = next;
+            0
+        };
+    };
+    let _so = trie_set_output(t, cur, pat_id);
+    0
+    };
+
+// Build failure links using BFS
+fn trie_build_fail(t: i64) -> i64 = {
+    let alpha = vec_get(t, 4);
+    let queue = vec_new();
+
+    // Initialize: children of root have fail = 0
+    for c in 0..alpha {
+        let next = trie_goto(t, 0, c);
+        let _x = if next != -1 {
+            let _sf = trie_set_fail(t, next, 0);
+            vec_push(queue, next);
+            0
+        } else {
+            // Set root goto to itself for missing chars
+            let _sg = trie_set_goto(t, 0, c, 0);
+            0
+        };
+    };
+
+    // BFS
+    let mut qi = 0;
+    loop {
+        if qi >= vec_len(queue) { break } else { () };
+        let u = vec_get(queue, qi);
+        set qi = qi + 1;
+        for c in 0..alpha {
+            let v = trie_goto(t, u, c);
+            let _x = if v != -1 {
+                // Find failure: follow fail links from u's fail until we find goto
+                let mut f = trie_fail(t, u);
+                loop {
+                    if trie_goto(t, f, c) != -1 or f == 0 { break } else { () };
+                    set f = trie_fail(t, f);
+                    0
+                };
+                let fail_target = trie_goto(t, f, c);
+                let ft = if fail_target == v { 0 } else { fail_target };
+                let _sf = trie_set_fail(t, v, ft);
+                // Merge output: if fail node has output, propagate
+                let _mo = if trie_output(t, ft) != -1 and trie_output(t, v) == -1 {
+                    // We store just the primary output for simplicity
+                    0
+                } else { 0 };
+                vec_push(queue, v);
+                0
+            } else {
+                // Set goto to fail's goto for this char (shortcut)
+                let f = trie_fail(t, u);
+                let _sg = trie_set_goto(t, u, c, trie_goto(t, f, c));
+                0
+            };
+        };
+        0
+    };
+    0
+    };
+
+// Search: run text through automaton, count matches
+// Returns total match count
+fn trie_search(t: i64, text: i64, text_len: i64) -> i64 = {
+    let mut state = 0;
+    let mut matches = 0;
+    for i in 0..text_len {
+        let ch = vec_get(text, i);
+        set state = trie_goto(t, state, ch);
+        // Check for output at current state and via fail chain
+        let mut check = state;
+        loop {
+            if check == 0 and trie_output(t, 0) == -1 { break } else { () };
+            let _x = if trie_output(t, check) != -1 {
+                set matches = matches + 1;
+                0
+            } else { 0 };
+            if check == 0 { break } else { () };
+            set check = trie_fail(t, check);
+            0
+        };
+        0
+    };
+    matches
+    };
+
+// Search: collect match positions and pattern ids
+fn trie_search_detail(t: i64, text: i64, text_len: i64, positions: i64, pat_ids: i64) -> i64 = {
+    let mut state = 0;
+    let mut matches = 0;
+    for i in 0..text_len {
+        let ch = vec_get(text, i);
+        set state = trie_goto(t, state, ch);
+        let mut check = state;
+        loop {
+            if check == 0 and trie_output(t, 0) == -1 { break } else { () };
+            let _x = if trie_output(t, check) != -1 {
+                vec_push(positions, i);
+                vec_push(pat_ids, trie_output(t, check));
+                set matches = matches + 1;
+                0
+            } else { 0 };
+            if check == 0 { break } else { () };
+            set check = trie_fail(t, check);
+            0
+        };
+        0
+    };
+    matches
+    };
+
+fn make_arr2(a: i64, b: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b);
+    v
+    };
+
+fn make_arr3(a: i64, b: i64, c: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c);
+    v
+    };
+
+fn main() -> i64 = {
+    // Alphabet: 0, 1, 2, 3 (size 4)
+    let t = trie_new(4);
+
+    // Pattern 0: [1, 2]
+    let pat0 = make_arr2(1, 2);
+    let _i0 = trie_insert(t, pat0, 2, 0);
+
+    // Pattern 1: [2, 3]
+    let pat1 = make_arr2(2, 3);
+    let _i1 = trie_insert(t, pat1, 2, 1);
+
+    // Pattern 2: [1, 2, 3]
+    let pat2 = make_arr3(1, 2, 3);
+    let _i2 = trie_insert(t, pat2, 3, 2);
+
+    let _p1 = println(trie_node_count(t)); // number of trie nodes
+
+    // Build failure links
+    let _bf = trie_build_fail(t);
+
+    // Text: [1, 2, 3, 1, 2, 0]
+    let text1 = vec_new();
+    vec_push(text1, 1); vec_push(text1, 2); vec_push(text1, 3);
+    vec_push(text1, 1); vec_push(text1, 2); vec_push(text1, 0);
+
+    // Search
+    let m1 = trie_search(t, text1, 6);
+    let _p2 = println(m1); // matches: [1,2] at pos 1, [2,3] at pos 2, [1,2,3] at pos 2, [1,2] at pos 4 = 4
+
+    // Detailed search
+    let pos1 = vec_new();
+    let ids1 = vec_new();
+    let m1d = trie_search_detail(t, text1, 6, pos1, ids1);
+    let _p3 = println(m1d); // 4
+
+    // Print first match position and pattern
+    let _p4 = println(vec_get(pos1, 0)); // position of first match
+    let _p5 = println(vec_get(ids1, 0)); // pattern id of first match
+
+    // Text: [0, 0, 0, 0] - no matches
+    let text2 = vec_new();
+    vec_push(text2, 0); vec_push(text2, 0); vec_push(text2, 0); vec_push(text2, 0);
+    let m2 = trie_search(t, text2, 4);
+    let _p6 = println(m2); // 0
+
+    // Text: [1, 2, 1, 2, 1, 2] - pattern [1,2] appears 3 times
+    let text3 = vec_new();
+    vec_push(text3, 1); vec_push(text3, 2);
+    vec_push(text3, 1); vec_push(text3, 2);
+    vec_push(text3, 1); vec_push(text3, 2);
+    let m3 = trie_search(t, text3, 6);
+    let _p7 = println(m3); // 3
+
+    // New trie: single character patterns
+    let t2 = trie_new(3);
+    let p_a = vec_new();
+    vec_push(p_a, 0);
+    let _ia = trie_insert(t2, p_a, 1, 0);
+    let p_b = vec_new();
+    vec_push(p_b, 1);
+    let _ib = trie_insert(t2, p_b, 1, 1);
+    let _bf2 = trie_build_fail(t2);
+
+    // Text: [0, 1, 0, 1, 2]
+    let text4 = vec_new();
+    vec_push(text4, 0); vec_push(text4, 1); vec_push(text4, 0);
+    vec_push(text4, 1); vec_push(text4, 2);
+    let m4 = trie_search(t2, text4, 5);
+    let _p8 = println(m4); // 4 (0 at pos 0, 1 at pos 1, 0 at pos 2, 1 at pos 3)
+
+    // Empty text
+    let text5 = vec_new();
+    let m5 = trie_search(t, text5, 0);
+    let _p9 = println(m5); // 0
+
+    // Pattern that overlaps itself: [1, 1]
+    let t3 = trie_new(3);
+    let p_11 = make_arr2(1, 1);
+    let _i11 = trie_insert(t3, p_11, 2, 0);
+    let _bf3 = trie_build_fail(t3);
+
+    // Text: [1, 1, 1, 1]
+    let text6 = vec_new();
+    vec_push(text6, 1); vec_push(text6, 1); vec_push(text6, 1); vec_push(text6, 1);
+    let m6 = trie_search(t3, text6, 4);
+    let _p10 = println(m6); // 3 (at positions 1, 2, 3)
+
+    // Pattern with all same chars [2, 2, 2]
+    let t4 = trie_new(3);
+    let p_222 = make_arr3(2, 2, 2);
+    let _i222 = trie_insert(t4, p_222, 3, 0);
+    let _bf4 = trie_build_fail(t4);
+
+    let text7 = vec_new();
+    vec_push(text7, 2); vec_push(text7, 2); vec_push(text7, 2);
+    vec_push(text7, 2); vec_push(text7, 2);
+    let m7 = trie_search(t4, text7, 5);
+    let _p11 = println(m7); // 3 (at positions 2, 3, 4)
+
+    // Verify trie structure
+    let _p12 = println(trie_node_count(t));  // nodes in first trie
+    let _p13 = println(trie_node_count(t3)); // nodes in overlapping trie
+
+    0
+    };

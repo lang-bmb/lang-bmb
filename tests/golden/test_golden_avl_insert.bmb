@@ -1,0 +1,165 @@
+// Golden Test: AVL Tree Insert with Balancing
+// Self-balancing BST where height difference between subtrees <= 1
+// Stored in parallel arrays: key, left, right, height
+
+fn avl_new() -> i64 = {
+    let t = vec_new();
+    let keys = vec_new();
+    let lefts = vec_new();
+    let rights = vec_new();
+    let heights = vec_new();
+    vec_push(t, keys);     // t[0]
+    vec_push(t, lefts);    // t[1]
+    vec_push(t, rights);   // t[2]
+    vec_push(t, heights);  // t[3]
+    vec_push(t, 0);        // t[4] = node count
+    t
+};
+
+fn avl_alloc(t: i64, key: i64) -> i64 = {
+    let idx = vec_get(t, 4);
+    vec_push(vec_get(t, 0), key);
+    vec_push(vec_get(t, 1), -1);
+    vec_push(vec_get(t, 2), -1);
+    vec_push(vec_get(t, 3), 1);  // height = 1
+    vec_set(t, 4, idx + 1);
+    idx
+};
+
+fn avl_key(t: i64, n: i64) -> i64 = vec_get(vec_get(t, 0), n);
+fn avl_left(t: i64, n: i64) -> i64 = vec_get(vec_get(t, 1), n);
+fn avl_right(t: i64, n: i64) -> i64 = vec_get(vec_get(t, 2), n);
+fn avl_height(t: i64, n: i64) -> i64 =
+    if n < 0 { 0 } else { vec_get(vec_get(t, 3), n) };
+fn avl_set_left(t: i64, n: i64, v: i64) -> i64 = { vec_set(vec_get(t, 1), n, v); 0 };
+fn avl_set_right(t: i64, n: i64, v: i64) -> i64 = { vec_set(vec_get(t, 2), n, v); 0 };
+fn avl_set_height(t: i64, n: i64, h: i64) -> i64 = { vec_set(vec_get(t, 3), n, h); 0 };
+
+fn avl_max(a: i64, b: i64) -> i64 = if a > b { a } else { b };
+
+fn avl_update_height(t: i64, n: i64) -> i64 = {
+    let lh = avl_height(t, avl_left(t, n));
+    let rh = avl_height(t, avl_right(t, n));
+    avl_set_height(t, n, 1 + avl_max(lh, rh))
+};
+
+fn avl_balance_factor(t: i64, n: i64) -> i64 =
+    if n < 0 { 0 }
+    else { avl_height(t, avl_left(t, n)) - avl_height(t, avl_right(t, n)) };
+
+// Right rotation
+fn avl_rot_right(t: i64, y: i64) -> i64 = {
+    let x = avl_left(t, y);
+    let t2 = avl_right(t, x);
+    let _sr = avl_set_right(t, x, y);
+    let _sl = avl_set_left(t, y, t2);
+    let _uh = avl_update_height(t, y);
+    let _ux = avl_update_height(t, x);
+    x
+};
+
+// Left rotation
+fn avl_rot_left(t: i64, x: i64) -> i64 = {
+    let y = avl_right(t, x);
+    let t2 = avl_left(t, y);
+    let _sl = avl_set_left(t, y, x);
+    let _sr = avl_set_right(t, x, t2);
+    let _uh = avl_update_height(t, x);
+    let _uy = avl_update_height(t, y);
+    y
+};
+
+// Insert and return new root of subtree
+fn avl_insert(t: i64, node: i64, key: i64) -> i64 =
+    if node < 0 { avl_alloc(t, key) }
+    else {
+        let k = avl_key(t, node);
+        let _x = if key < k {
+            let new_left = avl_insert(t, avl_left(t, node), key);
+            avl_set_left(t, node, new_left)
+        } else if key > k {
+            let new_right = avl_insert(t, avl_right(t, node), key);
+            avl_set_right(t, node, new_right)
+        } else { 0 };  // duplicate, no insert
+
+        let _uh = avl_update_height(t, node);
+        let bf = avl_balance_factor(t, node);
+
+        // Left Left
+        if bf > 1 and key < avl_key(t, avl_left(t, node)) {
+            avl_rot_right(t, node)
+        }
+        // Right Right
+        else if bf < -1 and key > avl_key(t, avl_right(t, node)) {
+            avl_rot_left(t, node)
+        }
+        // Left Right
+        else if bf > 1 and key > avl_key(t, avl_left(t, node)) {
+            let _lr = avl_set_left(t, node, avl_rot_left(t, avl_left(t, node)));
+            avl_rot_right(t, node)
+        }
+        // Right Left
+        else if bf < -1 and key < avl_key(t, avl_right(t, node)) {
+            let _rr = avl_set_right(t, node, avl_rot_right(t, avl_right(t, node)));
+            avl_rot_left(t, node)
+        }
+        else { node }
+    };
+
+fn avl_inorder(t: i64, n: i64) -> i64 =
+    if n < 0 { 0 }
+    else {
+        let _l = avl_inorder(t, avl_left(t, n));
+        let _p = println(avl_key(t, n));
+        avl_inorder(t, avl_right(t, n))
+    };
+
+fn avl_count(t: i64, n: i64) -> i64 =
+    if n < 0 { 0 }
+    else { 1 + avl_count(t, avl_left(t, n)) + avl_count(t, avl_right(t, n)) };
+
+fn main() -> i64 = {
+    let t = avl_new();
+    let mut root = 0 - 1;
+
+    // Insert: 10, 20, 30 (triggers left rotation)
+    set root = avl_insert(t, root, 10);
+    set root = avl_insert(t, root, 20);
+    set root = avl_insert(t, root, 30);
+
+    // After balancing, root should be 20
+    let _p1 = println(avl_key(t, root));     // 20
+    let _p2 = println(avl_height(t, root));  // 2
+    let _p3 = println(avl_count(t, root));   // 3
+
+    // Insert more: 40, 50 (triggers more rotations)
+    set root = avl_insert(t, root, 40);
+    set root = avl_insert(t, root, 50);
+    let _p4 = println(avl_height(t, root));  // 3
+
+    // Insert: 25
+    set root = avl_insert(t, root, 25);
+    let _p5 = println(avl_count(t, root));   // 6
+
+    // Balance factor should be in [-1, 1]
+    let bf = avl_balance_factor(t, root);
+    let _p6 = println(if bf >= -1 and bf <= 1 { 1 } else { 0 });  // 1 (balanced)
+
+    // In-order traversal (should be sorted)
+    let _io = avl_inorder(t, root);
+    // Prints: 10 20 25 30 40 50
+
+    // Insert 5, 15 (fills out left side)
+    set root = avl_insert(t, root, 5);
+    set root = avl_insert(t, root, 15);
+    let _p7 = println(avl_count(t, root));   // 8
+    let bf2 = avl_balance_factor(t, root);
+    let _p8 = println(if bf2 >= -1 and bf2 <= 1 { 1 } else { 0 });  // 1
+
+    vec_free(vec_get(t, 0));
+    vec_free(vec_get(t, 1));
+    vec_free(vec_get(t, 2));
+    vec_free(vec_get(t, 3));
+    vec_free(t);
+    0
+};

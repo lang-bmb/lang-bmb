@@ -1,0 +1,116 @@
+// Golden Test: Longest plateau and run analysis
+// Finds longest consecutive sequences of equal/increasing/decreasing elements
+
+fn longest_plateau(arr: [i64; 15], n: i64) -> i64 = {
+    let mut best = 1;
+    let mut cur = 1;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let _u = if arr[i] == arr[i - 1] {
+            set cur = cur + 1;
+            let _b = if cur > best { set best = cur } else { () }; 0
+        } else { set cur = 1; 0 };
+        i = i + 1
+    };
+    best
+    };
+
+fn count_plateaus(arr: [i64; 15], n: i64) -> i64 = {
+    let mut count = 0;
+    let mut in_run = 0;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let _u = if arr[i] == arr[i - 1] {
+            let _c = if in_run == 0 { set count = count + 1; set in_run = 1 } else { () }; 0
+        } else { set in_run = 0; 0 };
+        i = i + 1
+    };
+    count
+    };
+
+fn longest_inc(arr: [i64; 15], n: i64) -> i64 = {
+    let mut best = 1;
+    let mut cur = 1;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let _u = if arr[i] > arr[i - 1] {
+            set cur = cur + 1;
+            let _b = if cur > best { set best = cur } else { () }; 0
+        } else { set cur = 1; 0 };
+        i = i + 1
+    };
+    best
+    };
+
+fn longest_dec(arr: [i64; 15], n: i64) -> i64 = {
+    let mut best = 1;
+    let mut cur = 1;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let _u = if arr[i] < arr[i - 1] {
+            set cur = cur + 1;
+            let _b = if cur > best { set best = cur } else { () }; 0
+        } else { set cur = 1; 0 };
+        i = i + 1
+    };
+    best
+    };
+
+fn plateau_value(arr: [i64; 15], n: i64) -> i64 = {
+    let mut best_len = 1;
+    let mut best_val = arr[0];
+    let mut cur = 1;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let _u = if arr[i] == arr[i - 1] {
+            set cur = cur + 1;
+            let _b = if cur > best_len { set best_len = cur; set best_val = arr[i] } else { () }; 0
+        } else { set cur = 1; 0 };
+        i = i + 1
+    };
+    best_val
+    };
+
+fn count_distinct(arr: [i64; 15], n: i64) -> i64 = {
+    let mut count = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let mut found = 0;
+        let mut j = 0;
+        loop {
+            if j >= i { break } else { () };
+            let _f = if arr[j] == arr[i] { set found = 1 } else { () };
+            j = j + 1
+        };
+        let _c = if found == 0 { set count = count + 1 } else { () };
+        i = i + 1
+    };
+    count
+    };
+
+fn main() -> i64 = {
+    let a1 = [1,1,1,2,2,3,3,3,3,4,5,5,0,0,0];
+    let _p1 = println(longest_plateau(a1, 15));  // 4
+    let _p2 = println(count_plateaus(a1, 15));   // 5
+    let _p3 = println(plateau_value(a1, 15));    // 3
+    let a2 = [1,2,3,4,5,0,0,0,0,0,0,0,0,0,0];
+    let _p4 = println(longest_plateau(a2, 5));   // 1
+    let _p5 = println(longest_inc(a2, 5));       // 5
+    let a3 = [7,7,7,7,7,0,0,0,0,0,0,0,0,0,0];
+    let _p6 = println(longest_plateau(a3, 5));   // 5
+    let _p7 = println(count_plateaus(a3, 5));    // 1
+    let a4 = [9,8,7,6,5,4,3,2,1,0,0,0,0,0,0];
+    let _p8 = println(longest_dec(a4, 9));       // 9
+    let _p9 = println(longest_inc(a4, 9));       // 1
+    let a5 = [1,3,3,5,5,5,2,2,4,0,0,0,0,0,0];
+    let _p10 = println(longest_plateau(a5, 9));  // 3
+    let _p11 = println(count_distinct(a5, 9));   // 5
+    let _p12 = println(plateau_value(a5, 9));    // 5
+    0
+    };

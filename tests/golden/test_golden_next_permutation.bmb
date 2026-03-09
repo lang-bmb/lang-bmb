@@ -1,0 +1,161 @@
+// Golden Test: Next Lexicographic Permutation
+// Algorithm: find rightmost ascent, swap with rightmost larger element, reverse suffix
+// Generates all permutations in lexicographic order
+
+fn print_vec_inline(v: i64) -> i64 = {
+    let n = vec_len(v);
+    for i in 0..n {
+        let _p = if i > 0 {
+            let _s = print_str(" ");
+            ()
+        } else { () };
+        let _p2 = print(vec_get(v, i));
+        0
+    };
+    let _p = println_str("");
+    0
+};
+
+// Swap two elements in a vec
+fn swap(v: i64, i: i64, j: i64) -> i64 = {
+    let tmp = vec_get(v, i);
+    let _s = vec_set(v, i, vec_get(v, j));
+    let _s = vec_set(v, j, tmp);
+    0
+};
+
+// Reverse elements v[lo..hi] (inclusive)
+fn reverse_range(v: i64, lo: i64, hi: i64) -> i64 = {
+    let mut l = lo;
+    let mut r = hi;
+    while l < r {
+        let _s = swap(v, l, r);
+        set l = l + 1;
+        set r = r - 1
+    };
+    0
+};
+
+// Generate next permutation in-place
+// Returns 1 if next permutation exists, 0 if already the last (descending order)
+fn next_permutation(v: i64) -> i64 = {
+    let n = vec_len(v);
+    if n <= 1 { 0 }
+    else {
+        // Step 1: Find rightmost ascent - largest i such that v[i] < v[i+1]
+        let mut i = n - 2;
+        let mut found = 0;
+        while i >= 0 and found == 0 {
+            let _c = if vec_get(v, i) < vec_get(v, i + 1) {
+                set found = 1
+            } else {
+                set i = i - 1
+            };
+            ()
+        };
+        if found == 0 { 0 }  // Last permutation (fully descending)
+        else {
+            // Step 2: Find rightmost element greater than v[i]
+            let mut j = n - 1;
+            while vec_get(v, j) <= vec_get(v, i) {
+                set j = j - 1
+            };
+            // Step 3: Swap v[i] and v[j]
+            let _s = swap(v, i, j);
+            // Step 4: Reverse suffix starting at v[i+1]
+            let _r = reverse_range(v, i + 1, n - 1);
+            1
+        }
+    }
+};
+
+fn main() -> i64 = {
+    // === Test 1: All permutations of [1,2,3] ===
+    let _p = println_str("=== All permutations of [1,2,3] ===");
+    let v1 = vec_new();
+    let _p = vec_push(v1, 1); let _p = vec_push(v1, 2);
+    let _p = vec_push(v1, 3);
+
+    // Print initial permutation
+    let _pv = print_vec_inline(v1);
+    // Generate remaining 5 permutations (3! = 6 total)
+    let mut count1 = 1;
+    let mut has_next = next_permutation(v1);
+    while has_next == 1 {
+        let _pv = print_vec_inline(v1);
+        set count1 = count1 + 1;
+        set has_next = next_permutation(v1)
+    };
+    let _p = print_str("total: "); let _p = println(count1);
+
+    // === Test 2: First 10 permutations of [1,2,3,4] ===
+    let _p = println_str("=== First 10 permutations of [1,2,3,4] ===");
+    let v2 = vec_new();
+    let _p = vec_push(v2, 1); let _p = vec_push(v2, 2);
+    let _p = vec_push(v2, 3); let _p = vec_push(v2, 4);
+
+    let _pv = print_vec_inline(v2);
+    let mut count2 = 1;
+    let mut has_next2 = next_permutation(v2);
+    while has_next2 == 1 and count2 < 10 {
+        let _pv = print_vec_inline(v2);
+        set count2 = count2 + 1;
+        set has_next2 = next_permutation(v2)
+    };
+    let _p = print_str("shown: "); let _p = println(count2);
+
+    // === Test 3: Starting from [3,2,1] (last permutation) ===
+    let _p = println_str("=== From last permutation [3,2,1] ===");
+    let v3 = vec_new();
+    let _p = vec_push(v3, 3); let _p = vec_push(v3, 2);
+    let _p = vec_push(v3, 1);
+    let _pv = print_vec_inline(v3);
+    let result = next_permutation(v3);
+    let _p = print_str("has_next: "); let _p = println(result);
+
+    // === Test 4: Starting from middle [2,3,1] ===
+    let _p = println_str("=== From [2,3,1] ===");
+    let v4 = vec_new();
+    let _p = vec_push(v4, 2); let _p = vec_push(v4, 3);
+    let _p = vec_push(v4, 1);
+    let _pv = print_vec_inline(v4);
+    let _np = next_permutation(v4);
+    let _p = print_str("next: ");
+    let _pv = print_vec_inline(v4);
+
+    // === Test 5: Single element [1] ===
+    let _p = println_str("=== Single element ===");
+    let v5 = vec_new();
+    let _p = vec_push(v5, 1);
+    let result5 = next_permutation(v5);
+    let _p = print_str("has_next: "); let _p = println(result5);
+
+    // === Test 6: Two elements [1,2] -> [2,1] ===
+    let _p = println_str("=== Two elements [1,2] ===");
+    let v6 = vec_new();
+    let _p = vec_push(v6, 1); let _p = vec_push(v6, 2);
+    let _pv = print_vec_inline(v6);
+    let _np = next_permutation(v6);
+    let _pv = print_vec_inline(v6);
+    let result6 = next_permutation(v6);
+    let _p = print_str("has_next: "); let _p = println(result6);
+
+    // === Test 7: Count all permutations of [1,2,3,4] ===
+    let _p = println_str("=== Count permutations of [1,2,3,4] ===");
+    let v7 = vec_new();
+    let _p = vec_push(v7, 1); let _p = vec_push(v7, 2);
+    let _p = vec_push(v7, 3); let _p = vec_push(v7, 4);
+    let mut total = 1;
+    let mut go = next_permutation(v7);
+    while go == 1 {
+        set total = total + 1;
+        set go = next_permutation(v7)
+    };
+    let _p = print_str("total: "); let _p = println(total);
+
+    let _f = vec_free(v1); let _f = vec_free(v2);
+    let _f = vec_free(v3); let _f = vec_free(v4);
+    let _f = vec_free(v5); let _f = vec_free(v6);
+    let _f = vec_free(v7);
+    0
+};

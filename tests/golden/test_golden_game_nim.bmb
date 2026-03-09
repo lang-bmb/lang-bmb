@@ -1,0 +1,148 @@
+// Golden Test: Nim game strategy using XOR (Sprague-Grundy theorem)
+// In Nim, players take turns removing objects from heaps.
+// A position is losing (P-position) iff XOR of all heap sizes = 0.
+// Winning move: find a heap to reduce so that resulting XOR = 0.
+
+// XOR of all heap sizes (Nim-value / Grundy number)
+fn nim_value_2(a: i64, b: i64) -> i64 = a bxor b;
+fn nim_value_3(a: i64, b: i64, c: i64) -> i64 = a bxor b bxor c;
+fn nim_value_4(a: i64, b: i64, c: i64, d: i64) -> i64 = a bxor b bxor c bxor d;
+
+// Is position a winning position for the player to move?
+fn is_winning_2(a: i64, b: i64) -> i64 =
+    if nim_value_2(a, b) != 0 { 1 } else { 0 };
+
+fn is_winning_3(a: i64, b: i64, c: i64) -> i64 =
+    if nim_value_3(a, b, c) != 0 { 1 } else { 0 };
+
+fn is_winning_4(a: i64, b: i64, c: i64, d: i64) -> i64 =
+    if nim_value_4(a, b, c, d) != 0 { 1 } else { 0 };
+
+// Find winning move for 3-heap Nim: returns heap index (0-2) to reduce, or -1
+// For each heap, check if reducing it can make XOR = 0
+fn find_winning_heap_3(a: i64, b: i64, c: i64) -> i64 = {
+    let xor_all = a bxor b bxor c;
+    if xor_all == 0 { 0 - 1 }  // losing position
+    else {
+        // Try reducing heap 0: need a' such that a' XOR b XOR c = 0
+        // So a' = b XOR c. Valid if a' < a.
+        let target_a = b bxor c;
+        let target_b = a bxor c;
+        let target_c = a bxor b;
+        if target_a < a { 0 }
+        else if target_b < b { 1 }
+        else if target_c < c { 2 }
+        else { 0 - 1 }
+    }
+};
+
+// Compute optimal move size for heap at given index in 3-heap game
+fn optimal_move_3(a: i64, b: i64, c: i64, heap_idx: i64) -> i64 = {
+    if heap_idx == 0 {
+        let target = b bxor c;
+        a - target
+    } else if heap_idx == 1 {
+        let target = a bxor c;
+        b - target
+    } else {
+        let target = a bxor b;
+        c - target
+    }
+};
+
+// Simulate a game: both players play optimally from 3 heaps
+// Returns number of moves until game ends
+fn simulate_game(a: i64, b: i64, c: i64) -> i64 = {
+    let heaps = vec_new();
+    vec_push(heaps, a); vec_push(heaps, b); vec_push(heaps, c);
+    let mut moves = 0;
+    loop {
+        let h0 = vec_get(heaps, 0);
+        let h1 = vec_get(heaps, 1);
+        let h2 = vec_get(heaps, 2);
+        // Game over when all heaps empty
+        if h0 == 0 and h1 == 0 and h2 == 0 { break } else { () };
+        let heap_idx = find_winning_heap_3(h0, h1, h2);
+        if heap_idx >= 0 {
+            // Winning move available: play optimally
+            let remove = optimal_move_3(h0, h1, h2, heap_idx);
+            let cur = vec_get(heaps, heap_idx);
+            let _s = vec_set(heaps, heap_idx, cur - remove);
+            moves = moves + 1
+        } else {
+            // Losing position: must make some move; take 1 from first non-empty
+            let _x = if h0 > 0 {
+                let _s = vec_set(heaps, 0, h0 - 1); 0
+            } else if h1 > 0 {
+                let _s = vec_set(heaps, 1, h1 - 1); 0
+            } else {
+                let _s = vec_set(heaps, 2, h2 - 1); 0
+            };
+            moves = moves + 1
+        }
+    };
+    let _f = vec_free(heaps);
+    moves
+};
+
+// Count P-positions (losing for mover) in range [0..max] for single heap pairs
+fn count_p_positions(max_val: i64) -> i64 = {
+    let mut count = 0;
+    for a in 0..max_val {
+        for b in 0..max_val {
+            if (a bxor b) == 0 {
+                count = count + 1
+            } else { () }
+        }
+    };
+    count
+};
+
+fn main() -> i64 = {
+    // Test 1-3: Basic Nim values (XOR)
+    let _p1 = println(nim_value_2(3, 5));     // 3 XOR 5 = 6
+    let _p2 = println(nim_value_3(1, 2, 3));  // 1 XOR 2 XOR 3 = 0
+    let _p3 = println(nim_value_4(1, 3, 5, 7)); // 1^3^5^7 = 0
+
+    // Test 4-6: Winning position detection
+    let _p4 = println(is_winning_2(3, 5));    // 1 (XOR=6, winning)
+    let _p5 = println(is_winning_3(1, 2, 3)); // 0 (XOR=0, losing)
+    let _p6 = println(is_winning_3(3, 4, 5)); // 1 (XOR=2, winning)
+
+    // Test 7-8: Find winning heap
+    let _p7 = println(find_winning_heap_3(3, 4, 5));  // heap to reduce
+    // heaps [3,4,5]: XOR=2. target_a=4^5=1 < 3? yes -> heap 0
+    let _p8 = println(find_winning_heap_3(1, 2, 3));  // -1 (losing, no winning move)
+
+    // Test 9: Optimal move size
+    // [3,4,5]: winning heap=0, target=4^5=1, remove 3-1=2
+    let _p9 = println(optimal_move_3(3, 4, 5, 0));  // 2
+
+    // Test 10: Verify move creates P-position
+    // After removing 2 from heap 0: [1,4,5], XOR = 1^4^5 = 0
+    let _p10 = println(nim_value_3(1, 4, 5));  // 0 (P-position, confirmed)
+
+    // Test 11: Classic Nim [1,1] -> losing (XOR=0)
+    let _p11 = println(is_winning_2(1, 1));  // 0
+
+    // Test 12: [2,1] -> winning (XOR=3)
+    let _p12 = println(is_winning_2(2, 1));  // 1
+
+    // Test 13: Simulate game [1,2,3] (P-position, first player loses)
+    let _p13 = println(simulate_game(1, 2, 3));  // total moves
+
+    // Test 14: Simulate game [3,4,5] (N-position, first player wins)
+    let _p14 = println(simulate_game(3, 4, 5));
+
+    // Test 15: Count P-positions for pairs in [0..5)
+    // P-positions where a XOR b = 0 means a == b: (0,0),(1,1),(2,2),(3,3),(4,4) = 5
+    let _p15 = println(count_p_positions(5));  // 5
+
+    // Test 16: Larger Nim value
+    let _p16 = println(nim_value_3(15, 7, 9));  // 15^7^9 = 1
+
+    // Test 17: All zeros -> losing
+    let _p17 = println(is_winning_3(0, 0, 0));  // 0 (game over, mover loses)
+
+    0
+};

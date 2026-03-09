@@ -1,0 +1,111 @@
+// Golden Test: Floyd-Warshall All-Pairs Shortest Paths
+// O(V^3) algorithm for finding shortest paths between all pairs of vertices
+
+fn fw_inf() -> i64 = 999999;
+
+// Create adjacency matrix (V x V), initialized to INF, diagonal = 0
+fn fw_new(v: i64) -> i64 = {
+    let mat = vec_new();
+    for i in 0..v {
+        for j in 0..v {
+            let _p = vec_push(mat, if i == j { 0 } else { fw_inf() });
+        };
+    };
+    mat
+};
+
+fn fw_get(mat: i64, v: i64, i: i64, j: i64) -> i64 =
+    vec_get(mat, i * v + j);
+
+fn fw_set(mat: i64, v: i64, i: i64, j: i64, w: i64) -> i64 = {
+    vec_set(mat, i * v + j, w);
+    0
+};
+
+// Add directed edge
+fn fw_add_edge(mat: i64, v: i64, from: i64, to: i64, w: i64) -> i64 =
+    fw_set(mat, v, from, to, w);
+
+// Run Floyd-Warshall algorithm
+fn fw_solve(mat: i64, v: i64) -> i64 = {
+    for k in 0..v {
+        for i in 0..v {
+            for j in 0..v {
+                let through_k = fw_get(mat, v, i, k) + fw_get(mat, v, k, j);
+                let _x = if through_k < fw_get(mat, v, i, j) {
+                    let _s = fw_set(mat, v, i, j, through_k);
+                    0
+                } else { 0 };
+            };
+        };
+    };
+    0
+};
+
+// Check for negative cycle (diagonal < 0)
+fn fw_has_neg_cycle(mat: i64, v: i64) -> i64 = {
+    let mut found = 0;
+    for i in 0..v {
+        let _x = if fw_get(mat, v, i, i) < 0 {
+            set found = 1;
+            0
+        } else { 0 };
+    };
+    found
+};
+
+fn main() -> i64 = {
+    // Graph with 4 vertices
+    let v = 4;
+    let mat = fw_new(v);
+
+    // Edges: 0→1:3, 0→3:7, 1→0:8, 1→2:2, 2→0:5, 2→3:1, 3→0:2
+    let _e1 = fw_add_edge(mat, v, 0, 1, 3);
+    let _e2 = fw_add_edge(mat, v, 0, 3, 7);
+    let _e3 = fw_add_edge(mat, v, 1, 0, 8);
+    let _e4 = fw_add_edge(mat, v, 1, 2, 2);
+    let _e5 = fw_add_edge(mat, v, 2, 0, 5);
+    let _e6 = fw_add_edge(mat, v, 2, 3, 1);
+    let _e7 = fw_add_edge(mat, v, 3, 0, 2);
+
+    // Solve
+    let _s = fw_solve(mat, v);
+
+    // Test 1: Self-distances are 0
+    let _p1 = println(fw_get(mat, v, 0, 0));  // 0
+    let _p2 = println(fw_get(mat, v, 1, 1));  // 0
+
+    // Test 2: Direct edges
+    let _p3 = println(fw_get(mat, v, 0, 1));  // 3
+
+    // Test 3: Shortest paths via intermediate vertices
+    let _p4 = println(fw_get(mat, v, 0, 2));  // 5 (0→1→2)
+    let _p5 = println(fw_get(mat, v, 0, 3));  // 6 (0→1→2→3)
+    let _p6 = println(fw_get(mat, v, 1, 3));  // 3 (1→2→3)
+    let _p7 = println(fw_get(mat, v, 3, 1));  // 5 (3→0→1)
+    let _p8 = println(fw_get(mat, v, 3, 2));  // 7 (3→0→1→2)
+
+    // Test 4: No negative cycle
+    let _p9 = println(fw_has_neg_cycle(mat, v));  // 0
+
+    // Test 5: Small graph (2 vertices)
+    let mat2 = fw_new(2);
+    let _e8 = fw_add_edge(mat2, 2, 0, 1, 5);
+    let _e9 = fw_add_edge(mat2, 2, 1, 0, 10);
+    let _s2 = fw_solve(mat2, 2);
+    let _p10 = println(fw_get(mat2, 2, 0, 1));  // 5
+    let _p11 = println(fw_get(mat2, 2, 1, 0));  // 10
+
+    // Test 6: Disconnected vertices
+    let mat3 = fw_new(3);
+    let _e10 = fw_add_edge(mat3, 3, 0, 1, 1);
+    // No edge to vertex 2
+    let _s3 = fw_solve(mat3, 3);
+    let _p12 = println(fw_get(mat3, 3, 0, 1));  // 1
+    let _p13 = println(if fw_get(mat3, 3, 0, 2) >= fw_inf() { 1 } else { 0 });  // 1 (unreachable)
+
+    vec_free(mat);
+    vec_free(mat2);
+    vec_free(mat3);
+    0
+};

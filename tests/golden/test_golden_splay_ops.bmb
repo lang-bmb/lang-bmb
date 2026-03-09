@@ -1,0 +1,221 @@
+// Golden Test: Splay Tree Operations
+// Splay tree: self-adjusting BST that moves accessed node to root
+// Stored in parallel arrays: key, left, right, parent
+
+fn st_new() -> i64 = {
+    let t = vec_new();
+    let keys = vec_new();
+    let left = vec_new();
+    let right = vec_new();
+    let parent = vec_new();
+    vec_push(t, keys);    // t[0]
+    vec_push(t, left);    // t[1]
+    vec_push(t, right);   // t[2]
+    vec_push(t, parent);  // t[3]
+    vec_push(t, 0);       // t[4] = node count
+    vec_push(t, -1);      // t[5] = root (-1 = empty)
+    t
+};
+
+fn st_alloc(t: i64, key: i64) -> i64 = {
+    let idx = vec_get(t, 4);
+    vec_push(vec_get(t, 0), key);
+    vec_push(vec_get(t, 1), -1);   // left = nil
+    vec_push(vec_get(t, 2), -1);   // right = nil
+    vec_push(vec_get(t, 3), -1);   // parent = nil
+    vec_set(t, 4, idx + 1);
+    idx
+};
+
+fn st_key(t: i64, n: i64) -> i64 = vec_get(vec_get(t, 0), n);
+fn st_left(t: i64, n: i64) -> i64 = vec_get(vec_get(t, 1), n);
+fn st_right(t: i64, n: i64) -> i64 = vec_get(vec_get(t, 2), n);
+fn st_parent(t: i64, n: i64) -> i64 = vec_get(vec_get(t, 3), n);
+fn st_set_left(t: i64, n: i64, v: i64) -> i64 = { vec_set(vec_get(t, 1), n, v); 0 };
+fn st_set_right(t: i64, n: i64, v: i64) -> i64 = { vec_set(vec_get(t, 2), n, v); 0 };
+fn st_set_parent(t: i64, n: i64, v: i64) -> i64 = { vec_set(vec_get(t, 3), n, v); 0 };
+fn st_root(t: i64) -> i64 = vec_get(t, 5);
+fn st_set_root(t: i64, r: i64) -> i64 = { vec_set(t, 5, r); 0 };
+
+// Right rotation around x
+fn st_rotate_right(t: i64, x: i64) -> i64 = {
+    let y = st_left(t, x);
+    let _sl = st_set_left(t, x, st_right(t, y));
+    let _x1 = if st_right(t, y) >= 0 {
+        st_set_parent(t, st_right(t, y), x)
+    } else { 0 };
+    let _sp = st_set_parent(t, y, st_parent(t, x));
+    let _x2 = if st_parent(t, x) < 0 {
+        st_set_root(t, y)
+    } else if x == st_left(t, st_parent(t, x)) {
+        st_set_left(t, st_parent(t, x), y)
+    } else {
+        st_set_right(t, st_parent(t, x), y)
+    };
+    let _sr = st_set_right(t, y, x);
+    let _sp2 = st_set_parent(t, x, y);
+    0
+};
+
+// Left rotation around x
+fn st_rotate_left(t: i64, x: i64) -> i64 = {
+    let y = st_right(t, x);
+    let _sr = st_set_right(t, x, st_left(t, y));
+    let _x1 = if st_left(t, y) >= 0 {
+        st_set_parent(t, st_left(t, y), x)
+    } else { 0 };
+    let _sp = st_set_parent(t, y, st_parent(t, x));
+    let _x2 = if st_parent(t, x) < 0 {
+        st_set_root(t, y)
+    } else if x == st_left(t, st_parent(t, x)) {
+        st_set_left(t, st_parent(t, x), y)
+    } else {
+        st_set_right(t, st_parent(t, x), y)
+    };
+    let _sl = st_set_left(t, y, x);
+    let _sp2 = st_set_parent(t, x, y);
+    0
+};
+
+// Splay node x to root
+fn st_splay(t: i64, x: i64) -> i64 = {
+    loop {
+        let p = st_parent(t, x);
+        if p < 0 { break } else { () };
+        let g = st_parent(t, p);
+        let _r = if g < 0 {
+            // Zig step
+            if x == st_left(t, p) {
+                st_rotate_right(t, p)
+            } else {
+                st_rotate_left(t, p)
+            }
+        } else if x == st_left(t, p) and p == st_left(t, g) {
+            // Zig-zig (left-left)
+            let _r1 = st_rotate_right(t, g);
+            st_rotate_right(t, p)
+        } else if x == st_right(t, p) and p == st_right(t, g) {
+            // Zig-zig (right-right)
+            let _r1 = st_rotate_left(t, g);
+            st_rotate_left(t, p)
+        } else if x == st_right(t, p) and p == st_left(t, g) {
+            // Zig-zag (right-left)
+            let _r1 = st_rotate_left(t, p);
+            st_rotate_right(t, g)
+        } else {
+            // Zig-zag (left-right)
+            let _r1 = st_rotate_right(t, p);
+            st_rotate_left(t, g)
+        };
+    };
+    let _sr = st_set_root(t, x);
+    0
+};
+
+// Insert key into splay tree
+fn st_insert(t: i64, key: i64) -> i64 = {
+    let node = st_alloc(t, key);
+    let root = st_root(t);
+    let _x = if root < 0 {
+        st_set_root(t, node)
+    } else {
+        let mut cur = root;
+        let mut par = 0 - 1;
+        loop {
+            if cur < 0 { break } else { () };
+            set par = cur;
+            set cur = if key < st_key(t, cur) {
+                st_left(t, cur)
+            } else {
+                st_right(t, cur)
+            };
+        };
+        let _sp = st_set_parent(t, node, par);
+        let _c = if key < st_key(t, par) {
+            st_set_left(t, par, node)
+        } else {
+            st_set_right(t, par, node)
+        };
+        st_splay(t, node)
+    };
+    0
+};
+
+// Find key (splays it to root if found)
+fn st_find(t: i64, key: i64) -> i64 = {
+    let mut cur = st_root(t);
+    loop {
+        if cur < 0 { break } else { () };
+        let k = st_key(t, cur);
+        if key == k {
+            let _s = st_splay(t, cur);
+            break
+        } else if key < k {
+            set cur = st_left(t, cur)
+        } else {
+            set cur = st_right(t, cur)
+        };
+    };
+    cur  // -1 if not found, node index if found
+};
+
+// In-order traversal: print keys
+fn st_inorder(t: i64, node: i64) -> i64 =
+    if node < 0 { 0 }
+    else {
+        let _l = st_inorder(t, st_left(t, node));
+        let _p = println(st_key(t, node));
+        st_inorder(t, st_right(t, node))
+    };
+
+// Count nodes in subtree
+fn st_count(t: i64, node: i64) -> i64 =
+    if node < 0 { 0 }
+    else { 1 + st_count(t, st_left(t, node)) + st_count(t, st_right(t, node)) };
+
+fn main() -> i64 = {
+    let t = st_new();
+
+    // Insert keys: 5, 3, 7, 1, 4, 6, 8
+    let _i1 = st_insert(t, 5);
+    let _i2 = st_insert(t, 3);
+    let _i3 = st_insert(t, 7);
+    let _i4 = st_insert(t, 1);
+    let _i5 = st_insert(t, 4);
+    let _i6 = st_insert(t, 6);
+    let _i7 = st_insert(t, 8);
+
+    // Test 1: Root should be last inserted (8)
+    let _p1 = println(st_key(t, st_root(t)));  // 8
+
+    // Test 2: Count nodes
+    let _p2 = println(st_count(t, st_root(t)));  // 7
+
+    // Test 3: Find 3 — splays it to root
+    let found = st_find(t, 3);
+    let _p3 = println(st_key(t, st_root(t)));  // 3 (splayed to root)
+    let _p4 = println(st_count(t, st_root(t)));  // 7 (all nodes still present)
+
+    // Test 4: Find 7 — splays to root
+    let _f2 = st_find(t, 7);
+    let _p5 = println(st_key(t, st_root(t)));  // 7
+
+    // Test 5: Find non-existent key
+    let not_found = st_find(t, 99);
+    let _p6 = println(not_found);  // -1
+
+    // Test 6: In-order traversal (should print sorted)
+    let _io = st_inorder(t, st_root(t));
+    // prints: 1 3 4 5 6 7 8
+
+    // Test 7: Insert duplicate
+    let _i8 = st_insert(t, 5);
+    let _p7 = println(st_count(t, st_root(t)));  // 8
+
+    vec_free(vec_get(t, 0));
+    vec_free(vec_get(t, 1));
+    vec_free(vec_get(t, 2));
+    vec_free(vec_get(t, 3));
+    vec_free(t);
+    0
+};

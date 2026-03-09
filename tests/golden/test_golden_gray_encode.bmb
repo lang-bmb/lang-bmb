@@ -1,0 +1,36 @@
+// Golden Test: Gray code encoding and decoding
+// Gray code: encode(n) = n bxor (n >> 1)
+// Decode: iteratively XOR with right-shifted versions
+
+fn gray_encode(n: i64) -> i64 = n bxor (n >> 1);
+
+fn gray_decode(g: i64) -> i64 = {
+    let mut n = g;
+    let mut mask = g >> 1;
+    loop {
+        if mask == 0 { break } else { () };
+        n = n bxor mask;
+        mask = mask >> 1
+    };
+    n
+    };
+
+fn main() -> i64 = {
+    // Encode tests
+    let _p1 = println(gray_encode(0));     // 0
+    let _p2 = println(gray_encode(1));     // 1
+    let _p3 = println(gray_encode(2));     // 3
+    let _p4 = println(gray_encode(7));     // 4
+    let _p5 = println(gray_encode(15));    // 8
+
+    // Decode tests
+    let _p6 = println(gray_decode(0));     // 0
+    let _p7 = println(gray_decode(1));     // 1
+    let _p8 = println(gray_decode(3));     // 2
+
+    // Roundtrip: decode(encode(n)) == n
+    let _p9 = println(gray_decode(gray_encode(10)));  // 10
+    let _p10 = println(gray_decode(gray_encode(42))); // 42
+
+    0
+    };

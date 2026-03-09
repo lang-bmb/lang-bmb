@@ -1,0 +1,41 @@
+// Golden Test: Integer square root via Newton's method
+// isqrt(n) returns the largest integer k such that k*k <= n
+
+fn isqrt(n: i64) -> i64 = {
+    if n <= 0 { 0 }
+    else {
+        let mut x = n;
+        loop {
+            let next = (x + n / x) / 2;
+            if next >= x { break } else { () };
+            x = next
+        };
+        x
+    }
+    };
+
+// Check if n is a perfect square
+fn is_perfect_square(n: i64) -> i64 = {
+    let s = isqrt(n);
+    if s * s == n { 1 } else { 0 }
+    };
+
+fn main() -> i64 = {
+    // Basic square roots
+    let _p1 = println(isqrt(0));       // 0
+    let _p2 = println(isqrt(1));       // 1
+    let _p3 = println(isqrt(4));       // 2
+    let _p4 = println(isqrt(9));       // 3
+    let _p5 = println(isqrt(100));     // 10
+
+    // Non-perfect squares: floor of sqrt
+    let _p6 = println(isqrt(2));       // 1
+    let _p7 = println(isqrt(10));      // 3
+    let _p8 = println(isqrt(99));      // 9
+
+    // Perfect square checks
+    let _p9 = println(is_perfect_square(144));   // 1 (12*12)
+    let _p10 = println(is_perfect_square(145));  // 0
+
+    0
+    };

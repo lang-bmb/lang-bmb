@@ -1,0 +1,68 @@
+// Golden Test: Euclidean algorithm variants
+// GCD, LCM, extended GCD (Bezout coefficients)
+
+fn gcd(a: i64, b: i64) -> i64 = {
+    let mut x = a;
+    let mut y = b;
+    while y != 0 {
+        let tmp = y;
+        set y = x % y;
+        set x = tmp
+    };
+    x
+};
+
+fn lcm(a: i64, b: i64) -> i64 = {
+    a / gcd(a, b) * b
+};
+
+// Extended GCD: returns gcd, stores x,y in result vec such that a*x + b*y = gcd
+fn ext_gcd(a: i64, b: i64, result: i64) -> i64 = {
+    if b == 0 {
+        vec_set(result, 0, 1);
+        vec_set(result, 1, 0);
+        a
+    } else {
+        let g = ext_gcd(b, a % b, result);
+        let x1 = vec_get(result, 0);
+        let y1 = vec_get(result, 1);
+        vec_set(result, 0, y1);
+        vec_set(result, 1, x1 - (a / b) * y1);
+        g
+    }
+};
+
+fn main() -> () = {
+    // GCD tests
+    print_str("gcd(12,8)="); let _r = println(gcd(12, 8));
+    print_str("gcd(100,75)="); let _r = println(gcd(100, 75));
+    print_str("gcd(17,13)="); let _r = println(gcd(17, 13));
+    print_str("gcd(0,5)="); let _r = println(gcd(0, 5));
+    print_str("gcd(7,7)="); let _r = println(gcd(7, 7));
+
+    // LCM tests
+    print_str("lcm(4,6)="); let _r = println(lcm(4, 6));
+    print_str("lcm(12,18)="); let _r = println(lcm(12, 18));
+    print_str("lcm(7,13)="); let _r = println(lcm(7, 13));
+
+    // Extended GCD: verify a*x + b*y = gcd
+    let r1 = vec_new();
+    let _p = vec_push(r1, 0); let _p = vec_push(r1, 0);
+    let g1 = ext_gcd(35, 15, r1);
+    let x1 = vec_get(r1, 0);
+    let y1 = vec_get(r1, 1);
+    print_str("ext_gcd(35,15): g="); print(g1);
+    print_str(" x="); print(x1);
+    print_str(" y="); let _r = println(y1);
+    print_str("verify: "); let _r = println(35 * x1 + 15 * y1);
+
+    let r2 = vec_new();
+    let _p = vec_push(r2, 0); let _p = vec_push(r2, 0);
+    let g2 = ext_gcd(120, 23, r2);
+    let x2 = vec_get(r2, 0);
+    let y2 = vec_get(r2, 1);
+    print_str("ext_gcd(120,23): g="); print(g2);
+    print_str(" x="); print(x2);
+    print_str(" y="); let _r = println(y2);
+    print_str("verify: "); let _r = println(120 * x2 + 23 * y2)
+};

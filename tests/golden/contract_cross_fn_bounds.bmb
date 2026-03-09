@@ -1,0 +1,20 @@
+// Test: cross-function bounds access with contracts
+// Multiple contracted helper functions accessing same array
+
+fn read_at(arr: &[i64; 5], idx: i64) -> i64
+    pre idx >= 0 and idx < 5
+= arr[idx];
+
+fn sum_pair(arr: &[i64; 5], i: i64, j: i64) -> i64
+    pre i >= 0 and i < 5
+    pre j >= 0 and j < 5
+= read_at(arr, i) + read_at(arr, j);
+
+fn main() -> i64 = {
+    let arr: [i64; 5] = [10, 20, 30, 40, 50];
+    let a = read_at(&arr, 0) + read_at(&arr, 2) + read_at(&arr, 4);
+    let _u = println(a);
+    let b = sum_pair(&arr, 1, 3);
+    let _v = println(b);
+    0
+};

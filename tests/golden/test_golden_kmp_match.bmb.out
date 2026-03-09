@@ -1,0 +1,35 @@
+=== Test 1: failure function ===
+0
+0
+1
+2
+3
+0
+=== Test 2: all same ===
+0
+1
+2
+3
+=== Test 3: partial match ===
+0
+0
+0
+1
+2
+0
+=== Test 4: search [1,2] ===
+count: 3
+positions:
+1
+4
+6
+=== Test 5: overlapping ===
+count: 3
+positions:
+0
+1
+2
+=== Test 6: no match ===
+count: 0
+=== Test 7: pattern longer ===
+count: 0

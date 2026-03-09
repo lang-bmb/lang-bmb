@@ -1,0 +1,125 @@
+// Golden Test: Compiler optimization pass verification
+// Tests constant folding, copy propagation, comparison folding,
+// negation/not folding, and algebraic simplification in compiler.bmb
+
+// Constant folding: 3 + 7 should fold to 10 at compile time
+fn const_fold_add() -> i64 = {
+    let a = 3;
+    let b = 7;
+    a + b
+    };
+
+// Chained constant folding: (2 * 5) + 3 = 13
+fn const_fold_chain() -> i64 = {
+    let a = 2;
+    let b = 5;
+    let c = a * b;
+    let d = 3;
+    c + d
+    };
+
+// Comparison folding: 5 < 10 should fold to 1
+fn cmp_fold() -> i64 = {
+    let a = 5;
+    let b = 10;
+    if a < b { 1 } else { 0 }
+    };
+
+// Negation folding: -(42) should fold to -42
+fn neg_fold() -> i64 = {
+    let x = 42;
+    let y = 0 - x;
+    y
+    };
+
+// Algebraic simplification: x + 0 = x
+fn alg_add_zero() -> i64 = {
+    let x = 99;
+    let zero = 0;
+    x + zero
+    };
+
+// Algebraic simplification: x * 1 = x
+fn alg_mul_one() -> i64 = {
+    let x = 77;
+    let one = 1;
+    x * one
+    };
+
+// Algebraic simplification: x - x = 0
+fn alg_sub_self() -> i64 = {
+    let x = 123;
+    x - x
+    };
+
+// Mixed: constant fold + algebraic + copy propagation
+fn mixed_opt() -> i64 = {
+    let a = 10;
+    let b = 0;
+    let c = a + b;
+    let d = c * 1;
+    let e = 5;
+    d + e
+    };
+
+// Shift folding: 5 << 3 = 40
+fn shift_left_fold() -> i64 = {
+    let a = 5;
+    let b = 3;
+    a << b
+    };
+
+// Shift folding: 100 >> 2 = 25
+fn shift_right_fold() -> i64 = {
+    let a = 100;
+    let b = 2;
+    a >> b
+    };
+
+// Bitwise folding: 255 band 15 = 15
+fn bitwise_band_fold() -> i64 = {
+    let a = 255;
+    let b = 15;
+    a band b
+    };
+
+// Bitwise folding: 5 bor 3 = 7
+fn bitwise_bor_fold() -> i64 = {
+    let a = 5;
+    let b = 3;
+    a bor b
+    };
+
+// Bitwise folding: 5 bxor 3 = 6
+fn bitwise_bxor_fold() -> i64 = {
+    let a = 5;
+    let b = 3;
+    a bxor b
+    };
+
+// Chained shift+bitwise: (3 << 4) bor 5 = 48 bor 5 = 53
+fn shift_bitwise_chain() -> i64 = {
+    let a = 3;
+    let b = 4;
+    let c = a << b;
+    let d = 5;
+    c bor d
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(const_fold_add());       // 10
+    let _p2 = println(const_fold_chain());     // 13
+    let _p3 = println(cmp_fold());             // 1
+    let _p4 = println(neg_fold());             // -42
+    let _p5 = println(alg_add_zero());         // 99
+    let _p6 = println(alg_mul_one());          // 77
+    let _p7 = println(alg_sub_self());         // 0
+    let _p8 = println(mixed_opt());            // 15
+    let _p9 = println(shift_left_fold());      // 40
+    let _p10 = println(shift_right_fold());    // 25
+    let _p11 = println(bitwise_band_fold());   // 15
+    let _p12 = println(bitwise_bor_fold());    // 7
+    let _p13 = println(bitwise_bxor_fold());   // 6
+    let _p14 = println(shift_bitwise_chain()); // 53
+    0
+    };

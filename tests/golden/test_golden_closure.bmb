@@ -1,0 +1,59 @@
+// Golden Test: Closures
+// Tests closure creation, variable capture, and nested closures
+
+fn main() -> i64 = {
+    // Basic closure - no capture
+    let double = fn |x: i64| { x * 2 };
+    let _p1 = println(double(5));  // 10
+
+    // Multi-param closure
+    let add = fn |a: i64, b: i64| { a + b };
+    let _p2 = println(add(3, 7));  // 10
+
+    // Empty-param closure
+    let constant = fn || { 42 };
+    let _p3 = println(constant());  // 42
+
+    // Closure capturing one variable
+    let base = 100;
+    let add_base = fn |x: i64| { x + base };
+    let _p4 = println(add_base(23));  // 123
+
+    // Closure capturing multiple variables
+    let a = 10;
+    let b = 20;
+    let sum_with = fn |x: i64| { x + a + b };
+    let _p5 = println(sum_with(5));  // 35
+
+    // Closure with complex body
+    let classify = fn |x: i64| {
+        if x > 0 { 1 }
+        else if x < 0 { 0 - 1 }
+        else { 0 }
+    };
+    let _p6 = println(classify(42));    // 1
+    let _p7 = println(classify(0 - 5)); // -1
+    let _p8 = println(classify(0));     // 0
+
+    // Multiple closures capturing same variable
+    let factor = 3;
+    let mul_f = fn |x: i64| { x * factor };
+    let add_f = fn |x: i64| { x + factor };
+    let _p9 = println(mul_f(10));  // 30
+    let _p10 = println(add_f(10)); // 13
+
+    // Closure result used in computation
+    let sq = fn |x: i64| { x * x };
+    let r = sq(5) + sq(3);
+    let _p11 = println(r);  // 34
+
+    // Nested let with closures
+    let offset = 1000;
+    let shifted = fn |x: i64| { x + offset };
+    let v1 = shifted(234);
+    let v2 = shifted(0 - 500);
+    let _p12 = println(v1);  // 1234
+    let _p13 = println(v2);  // 500
+
+    0
+};

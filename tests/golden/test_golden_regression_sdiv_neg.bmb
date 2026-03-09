@@ -1,0 +1,28 @@
+// Golden Test: Regression for signed division/modulo with negative values
+// Bug: AlgebraicSimplification converted sdiv/srem by power-of-2 to ashr/AND,
+// which gives wrong results for negative numbers (different rounding).
+// Fixed in Cycle 1431.
+
+fn sdiv_neg_by_2(x: i64) -> i64 = x / 2;
+fn sdiv_neg_by_4(x: i64) -> i64 = x / 4;
+fn sdiv_neg_by_8(x: i64) -> i64 = x / 8;
+
+fn srem_neg_by_2(x: i64) -> i64 = x - (x / 2) * 2;
+fn srem_neg_by_4(x: i64) -> i64 = x - (x / 4) * 4;
+
+fn main() -> i64 = {
+// sdiv rounds toward zero: -7/4 = -1 (NOT -2 as ashr would give)
+    let _p1 = println(sdiv_neg_by_4(0 - 7));     // -1
+    let _p2 = println(sdiv_neg_by_4(0 - 8));     // -2
+    let _p3 = println(sdiv_neg_by_4(7));          // 1
+    let _p4 = println(sdiv_neg_by_2(0 - 7));     // -3
+    let _p5 = println(sdiv_neg_by_2(0 - 1));     // 0
+    let _p6 = println(sdiv_neg_by_8(0 - 15));    // -1
+
+// srem: (-7) % 4 = -3 (NOT 1 as AND would give)
+    let _p7 = println(srem_neg_by_4(0 - 7));     // -3
+    let _p8 = println(srem_neg_by_4(0 - 8));     // 0
+    let _p9 = println(srem_neg_by_4(7));          // 3
+    let _p10 = println(srem_neg_by_2(0 - 7));    // -1
+    0
+    };

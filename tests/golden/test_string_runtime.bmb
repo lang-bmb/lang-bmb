@@ -1,0 +1,23 @@
+// Golden Test: String runtime function mapping from bootstrap
+// Validates fix for D-1364-02: int_to_string must map to bmb_int_to_string
+
+fn main() -> i64 = {
+// Test int_to_string free function → bmb_int_to_string
+    let s = int_to_string(42);
+    let slen = s.len();
+    println(slen);           // expect 2
+
+    let s2 = int_to_string(12345);
+    let slen2 = s2.len();
+    println(slen2);          // expect 5
+
+    let s3 = int_to_string(0);
+    let slen3 = s3.len();
+    println(slen3);          // expect 1
+
+    let s4 = int_to_string(1000000);
+    let slen4 = s4.len();
+    println(slen4);          // expect 7
+
+    0
+    };

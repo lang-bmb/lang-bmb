@@ -1,0 +1,180 @@
+// Golden Test: Coin change problem
+// Two classic DP variants:
+//   1. Minimum number of coins to make amount
+//   2. Number of ways to make amount (order-independent)
+
+// Minimum coins to make `amount` using coins in `coins` vec
+// Returns -1 if impossible
+// dp[i] = min coins to make amount i
+fn min_coins(coins: i64, num_coins: i64, amount: i64) -> i64 = {
+    let inf = amount + 1;
+    let dp = vec_new();
+    // Initialize dp[0..amount+1] = inf, dp[0] = 0
+    for _i in 0..amount + 1 {
+        let _p = vec_push(dp, inf);
+        0
+    };
+    let _s0 = vec_set(dp, 0, 0);
+
+    // For each amount from 1 to amount
+    for i in 1..amount + 1 {
+        // Try each coin
+        for c in 0..num_coins {
+            let coin = vec_get(coins, c);
+            if coin <= i {
+                let prev = vec_get(dp, i - coin);
+                let cur = vec_get(dp, i);
+                if prev + 1 < cur {
+                    let _s = vec_set(dp, i, prev + 1);
+                    0
+                } else { 0 }
+            } else { 0 }
+        }
+    };
+
+    let result = vec_get(dp, amount);
+    let _f = vec_free(dp);
+    if result >= inf { 0 - 1 } else { result }
+};
+
+// Count number of ways to make `amount` using coins
+// This counts combinations (not permutations)
+// dp[i] = number of ways to make amount i
+fn count_ways(coins: i64, num_coins: i64, amount: i64) -> i64 = {
+    let dp = vec_new();
+    // dp[0] = 1 (one way to make 0: use no coins)
+    for _i in 0..amount + 1 {
+        let _p = vec_push(dp, 0);
+        0
+    };
+    let _s0 = vec_set(dp, 0, 1);
+
+    // For each coin type
+    for c in 0..num_coins {
+        let coin = vec_get(coins, c);
+        // For each amount from coin to target
+        let mut i = coin;
+        loop {
+            if i > amount { break } else { () };
+            let cur = vec_get(dp, i);
+            let prev = vec_get(dp, i - coin);
+            let _s = vec_set(dp, i, cur + prev);
+            i = i + 1
+        }
+    };
+
+    let result = vec_get(dp, amount);
+    let _f = vec_free(dp);
+    result
+};
+
+// Traceback: which coins are used for minimum solution?
+// Returns a vec of coin counts (one per coin denomination)
+fn min_coins_traceback(coins: i64, num_coins: i64, amount: i64) -> i64 = {
+    let inf = amount + 1;
+    let dp = vec_new();
+    let parent = vec_new();  // which coin was used at each step
+    for _i in 0..amount + 1 {
+        let _p1 = vec_push(dp, inf);
+        let _p2 = vec_push(parent, 0 - 1);
+        0
+    };
+    let _s0 = vec_set(dp, 0, 0);
+
+    for i in 1..amount + 1 {
+        for c in 0..num_coins {
+            let coin = vec_get(coins, c);
+            if coin <= i {
+                let prev = vec_get(dp, i - coin);
+                let cur = vec_get(dp, i);
+                if prev + 1 < cur {
+                    let _s1 = vec_set(dp, i, prev + 1);
+                    let _s2 = vec_set(parent, i, coin);
+                    0
+                } else { 0 }
+            } else { 0 }
+        }
+    };
+
+    // Traceback from amount
+    let used = vec_new();
+    for _c in 0..num_coins {
+        let _p = vec_push(used, 0);
+        0
+    };
+
+    let mut rem = amount;
+    loop {
+        if rem <= 0 { break } else { () };
+        let coin_used = vec_get(parent, rem);
+        if coin_used < 0 { break } else { () };
+        // Find which index this coin is
+        for c in 0..num_coins {
+            if vec_get(coins, c) == coin_used {
+                let _s = vec_set(used, c, vec_get(used, c) + 1);
+                0
+            } else { 0 }
+        };
+        rem = rem - coin_used
+    };
+
+    let _f1 = vec_free(dp);
+    let _f2 = vec_free(parent);
+    used
+};
+
+fn main() -> i64 = {
+    // Coins: [1, 5, 10, 25]
+    let coins1 = vec_new();
+    let _c1 = vec_push(coins1, 1);
+    let _c2 = vec_push(coins1, 5);
+    let _c3 = vec_push(coins1, 10);
+    let _c4 = vec_push(coins1, 25);
+
+    // Test 1: Minimum coins
+    let _p1 = println(min_coins(coins1, 4, 0));    // 0
+    let _p2 = println(min_coins(coins1, 4, 1));    // 1
+    let _p3 = println(min_coins(coins1, 4, 6));    // 2 (5+1)
+    let _p4 = println(min_coins(coins1, 4, 11));   // 2 (10+1)
+    let _p5 = println(min_coins(coins1, 4, 30));   // 2 (25+5)
+    let _p6 = println(min_coins(coins1, 4, 31));   // 3 (25+5+1)
+    let _p7 = println(min_coins(coins1, 4, 43));   // 6 (25+10+5+1+1+1)
+    let _p8 = println(min_coins(coins1, 4, 100));  // 4 (4*25)
+
+    // Test 2: Count ways
+    let _p9 = println(count_ways(coins1, 4, 0));    // 1
+    let _p10 = println(count_ways(coins1, 4, 5));   // 2 (5, 1+1+1+1+1)
+    let _p11 = println(count_ways(coins1, 4, 10));  // 4 (10, 5+5, 5+1*5, 1*10)
+    let _p12 = println(count_ways(coins1, 4, 25));  // 13
+
+    // Test 3: Coins [3, 7] - impossible amounts
+    let coins2 = vec_new();
+    let _d1 = vec_push(coins2, 3);
+    let _d2 = vec_push(coins2, 7);
+
+    let _p13 = println(min_coins(coins2, 2, 1));   // -1 (impossible)
+    let _p14 = println(min_coins(coins2, 2, 2));   // -1 (impossible)
+    let _p15 = println(min_coins(coins2, 2, 3));   // 1
+    let _p16 = println(min_coins(coins2, 2, 7));   // 1
+    let _p17 = println(min_coins(coins2, 2, 10));  // 2 (3+7)
+    let _p18 = println(min_coins(coins2, 2, 11));  // -1 (impossible)
+    let _p19 = println(min_coins(coins2, 2, 12));  // 4 (3+3+3+3)
+    let _p20 = println(count_ways(coins2, 2, 21)); // 2 (7+7+7, 3*7)
+
+    // Test 4: Traceback for coins [1,5,10,25], amount=36
+    let used = min_coins_traceback(coins1, 4, 36);
+    // 36 = 25+10+1 = 3 coins
+    let _p21 = println(vec_get(used, 0));  // 1s used
+    let _p22 = println(vec_get(used, 1));  // 5s used
+    let _p23 = println(vec_get(used, 2));  // 10s used
+    let _p24 = println(vec_get(used, 3));  // 25s used
+    // Verify total
+    let total = vec_get(used, 0) * 1 + vec_get(used, 1) * 5 + vec_get(used, 2) * 10 + vec_get(used, 3) * 25;
+    let _p25 = println(total);  // 36
+
+    // Cleanup
+    let _f1 = vec_free(coins1);
+    let _f2 = vec_free(coins2);
+    let _f3 = vec_free(used);
+    0
+};

@@ -1,0 +1,9 @@
+get 1: 100
+get 2: 200
+get 3: 300
+get 1 (evicted): -1
+get 4: 400
+get 3 (evicted): -1
+get 2: 200
+get 5: 500
+get 2 updated: 222

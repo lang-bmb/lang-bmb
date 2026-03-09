@@ -1,0 +1,212 @@
+// Golden Test: Longest Plateau
+// Find longest run of equal consecutive elements in an array
+// Variants: longest plateau, count of plateaus, plateau at position
+
+fn make_vec(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n {
+        let _p = vec_push(v, 0);
+        0
+    };
+    v
+    };
+
+fn set_arr(v: i64, idx: i64, val: i64) -> i64 = {
+    let _s = vec_set(v, idx, val);
+    0
+    };
+
+// Find length of longest plateau (run of equal consecutive elements)
+fn longest_plateau(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    if n == 0 { return 0 } else { () };
+    let mut best = 1;
+    let mut cur = 1;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let _x = if vec_get(arr, i) == vec_get(arr, i - 1) {
+            cur = cur + 1;
+            let _u = if cur > best { best = cur; 0 } else { 0 };
+            0
+        } else {
+            cur = 1;
+            0
+        };
+        i = i + 1
+    };
+    best
+    };
+
+// Find value of longest plateau element
+fn plateau_value(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    if n == 0 { return 0 } else { () };
+    let mut best_len = 1;
+    let mut best_val = vec_get(arr, 0);
+    let mut cur = 1;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let _x = if vec_get(arr, i) == vec_get(arr, i - 1) {
+            cur = cur + 1;
+            let _u = if cur > best_len {
+                best_len = cur;
+                best_val = vec_get(arr, i);
+                0
+            } else { 0 };
+            0
+        } else {
+            cur = 1;
+            0
+        };
+        i = i + 1
+    };
+    best_val
+    };
+
+// Count number of distinct plateaus (runs of length >= 2)
+fn count_plateaus(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    if n <= 1 { return 0 } else { () };
+    let mut count = 0;
+    let mut in_plateau = 0;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let _x = if vec_get(arr, i) == vec_get(arr, i - 1) {
+            let _u = if in_plateau == 0 {
+                count = count + 1;
+                in_plateau = 1;
+                0
+            } else { 0 };
+            0
+        } else {
+            in_plateau = 0;
+            0
+        };
+        i = i + 1
+    };
+    count
+    };
+
+// Find starting index of longest plateau
+fn plateau_start(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    if n == 0 { return 0 } else { () };
+    let mut best_len = 1;
+    let mut best_start = 0;
+    let mut cur_start = 0;
+    let mut cur = 1;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let _x = if vec_get(arr, i) == vec_get(arr, i - 1) {
+            cur = cur + 1;
+            let _u = if cur > best_len {
+                best_len = cur;
+                best_start = cur_start;
+                0
+            } else { 0 };
+            0
+        } else {
+            cur_start = i;
+            cur = 1;
+            0
+        };
+        i = i + 1
+    };
+    best_start
+    };
+
+// Check if array is all same value (one big plateau)
+fn is_uniform(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    if n <= 1 { return 1 } else { () };
+    let first = vec_get(arr, 0);
+    let mut all_same = 1;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let _x = if vec_get(arr, i) != first {
+            all_same = 0;
+            0
+        } else { 0 };
+        i = i + 1
+    };
+    all_same
+    };
+
+fn make_arr8(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64, h: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    let _p6 = vec_push(v, f);
+    let _p7 = vec_push(v, g);
+    let _p8 = vec_push(v, h);
+    v
+    };
+
+fn make_arr10(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64, h: i64, i: i64, j: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    let _p6 = vec_push(v, f);
+    let _p7 = vec_push(v, g);
+    let _p8 = vec_push(v, h);
+    let _p9 = vec_push(v, i);
+    let _p10 = vec_push(v, j);
+    v
+    };
+
+fn main() -> i64 = {
+    // Test 1: Basic plateau [1,2,2,2,3,3,4,4,4,4]
+    let a1 = make_arr10(1, 2, 2, 2, 3, 3, 4, 4, 4, 4);
+    let _p1 = println(longest_plateau(a1));  // 4 (four 4s)
+    let _p2 = println(plateau_value(a1));    // 4
+    let _p3 = println(count_plateaus(a1));   // 3 (2s, 3s, 4s)
+    let _p4 = println(plateau_start(a1));    // 6 (index of first 4)
+
+    // Test 2: No plateaus [1,2,3,4,5,6,7,8]
+    let a2 = make_arr8(1, 2, 3, 4, 5, 6, 7, 8);
+    let _p5 = println(longest_plateau(a2));  // 1 (all unique)
+    let _p6 = println(count_plateaus(a2));   // 0
+
+    // Test 3: Uniform array [5,5,5,5,5,5,5,5]
+    let a3 = make_arr8(5, 5, 5, 5, 5, 5, 5, 5);
+    let _p7 = println(longest_plateau(a3));  // 8
+    let _p8 = println(is_uniform(a3));       // 1
+    let _p9 = println(count_plateaus(a3));   // 1
+
+    // Test 4: Plateau at beginning [3,3,3,1,2,2,4,5]
+    let a4 = make_arr8(3, 3, 3, 1, 2, 2, 4, 5);
+    let _p10 = println(longest_plateau(a4));  // 3 (three 3s)
+    let _p11 = println(plateau_value(a4));    // 3
+    let _p12 = println(plateau_start(a4));    // 0
+
+    // Test 5: Single element
+    let a5 = vec_new();
+    let _pp = vec_push(a5, 42);
+    let _p13 = println(longest_plateau(a5));  // 1
+    let _p14 = println(is_uniform(a5));       // 1
+
+    // Test 6: Two plateaus same length [1,1,1,2,3,3,3,4]
+    let a6 = make_arr8(1, 1, 1, 2, 3, 3, 3, 4);
+    let _p15 = println(longest_plateau(a6));  // 3 (first one wins)
+    let _p16 = println(plateau_start(a6));    // 0 (first plateau)
+    let _p17 = println(count_plateaus(a6));   // 2
+
+    let _f1 = vec_free(a1);
+    let _f2 = vec_free(a2);
+    let _f3 = vec_free(a3);
+    let _f4 = vec_free(a4);
+    let _f5 = vec_free(a5);
+    let _f6 = vec_free(a6);
+    0
+    };

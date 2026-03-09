@@ -1,0 +1,149 @@
+// Golden Test: Prime factorization
+// Factor numbers, count prime factors, sum prime factors, verify product
+
+// Check if n is divisible by d
+fn is_divisible(n: i64, d: i64) -> i64 =
+    if n - (n / d) * d == 0 { 1 } else { 0 };
+
+// Count how many times factor d divides n
+fn count_factor(n: i64, d: i64) -> i64 = {
+    let mut x = n;
+    let mut count = 0;
+    loop {
+        if is_divisible(x, d) == 0 { break } else { () };
+        count = count + 1;
+        x = x / d
+    };
+    count
+    };
+
+// Remove all occurrences of factor d from n
+fn remove_factor(n: i64, d: i64) -> i64 = {
+    let mut x = n;
+    loop {
+        if is_divisible(x, d) == 0 { break } else { () };
+        x = x / d
+    };
+    x
+    };
+
+// Factorize: store prime factors into a vec, return the vec
+fn factorize(n: i64) -> i64 = {
+    let factors = vec_new();
+    let mut x = n;
+    let mut d = 2;
+    loop {
+        if d * d > x { break } else { () };
+        loop {
+            if is_divisible(x, d) == 0 { break } else { () };
+            let _p = vec_push(factors, d);
+            x = x / d
+        };
+        d = d + 1
+    };
+    // If x > 1, it's a remaining prime factor
+    let _r = if x > 1 {
+        let _p = vec_push(factors, x);
+        0
+    } else { 0 };
+    factors
+    };
+
+// Count distinct prime factors from a sorted factor vec
+fn count_distinct(factors: i64) -> i64 = {
+    let n = vec_len(factors);
+    if n == 0 { 0 }
+    else {
+        let mut count = 1;
+        let mut i = 1;
+        loop {
+            if i >= n { break } else { () };
+            let _c = if vec_get(factors, i) != vec_get(factors, i - 1) {
+                count = count + 1;
+                0
+            } else { 0 };
+            i = i + 1
+        };
+        count
+    }
+    };
+
+// Sum all elements in a vec
+fn vec_sum(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut total = 0;
+    for i in 0..n {
+        total = total + vec_get(v, i)
+    };
+    total
+    };
+
+// Product of all elements in a vec
+fn vec_product(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut result = 1;
+    for i in 0..n {
+        result = result * vec_get(v, i)
+    };
+    result
+    };
+
+// Print all elements of a factor vec on separate lines
+fn print_factors(v: i64) -> i64 = {
+    let n = vec_len(v);
+    for i in 0..n {
+        println(vec_get(v, i))
+    };
+    0
+    };
+
+fn main() -> i64 = {
+    // === Factor 360 = 2^3 * 3^2 * 5 ===
+    let f1 = factorize(360);
+    let _h1 = println(360);
+    let _pf1 = print_factors(f1);
+    let _p1 = println(vec_len(f1));        // 6 total factors
+    let _p2 = println(count_distinct(f1));  // 3 distinct primes
+    let _p3 = println(vec_sum(f1));         // 2+2+2+3+3+5 = 17
+    let _p4 = println(vec_product(f1));     // 360
+
+    // === Factor 1000 = 2^3 * 5^3 ===
+    let f2 = factorize(1000);
+    let _h2 = println(1000);
+    let _pf2 = print_factors(f2);
+    let _p5 = println(vec_len(f2));        // 6
+    let _p6 = println(count_distinct(f2));  // 2
+    let _p7 = println(vec_sum(f2));         // 2+2+2+5+5+5 = 21
+    let _p8 = println(vec_product(f2));     // 1000
+
+    // === Factor 2310 = 2*3*5*7*11 ===
+    let f3 = factorize(2310);
+    let _h3 = println(2310);
+    let _pf3 = print_factors(f3);
+    let _p9 = println(vec_len(f3));         // 5
+    let _p10 = println(count_distinct(f3)); // 5
+    let _p11 = println(vec_sum(f3));        // 2+3+5+7+11 = 28
+    let _p12 = println(vec_product(f3));    // 2310
+
+    // === Factor 997 (prime) ===
+    let f4 = factorize(997);
+    let _h4 = println(997);
+    let _pf4 = print_factors(f4);
+    let _p13 = println(vec_len(f4));        // 1
+    let _p14 = println(count_distinct(f4)); // 1
+    let _p15 = println(vec_sum(f4));        // 997
+    let _p16 = println(vec_product(f4));    // 997
+
+    // === count_factor tests ===
+    let _p17 = println(count_factor(360, 2));  // 3
+    let _p18 = println(count_factor(360, 3));  // 2
+    let _p19 = println(count_factor(360, 5));  // 1
+    let _p20 = println(count_factor(1000, 2)); // 3
+    let _p21 = println(count_factor(1000, 5)); // 3
+
+    let _ff1 = vec_free(f1);
+    let _ff2 = vec_free(f2);
+    let _ff3 = vec_free(f3);
+    let _ff4 = vec_free(f4);
+    0
+    };

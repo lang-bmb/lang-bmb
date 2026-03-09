@@ -1,0 +1,157 @@
+// Golden Test: Extended prime sieve
+// Sieve of Eratosthenes up to 100 using vec
+// Tests: count primes, sum primes, find nth prime
+
+// Build sieve: returns vec where sieve[i]=1 means i is prime
+fn build_sieve(limit: i64) -> i64 = {
+    // Create vec of size limit+1, initialized to 1 (assume all prime)
+    let sieve = vec_new();
+    for i in 0..=limit {
+        let _p = vec_push(sieve, if i < 2 { 0 } else { 1 });
+        0
+    };
+    // Sieve: mark composites
+    let mut p = 2;
+    loop {
+        if p * p > limit { break } else { () };
+        let _r = if vec_get(sieve, p) == 1 {
+            // Mark multiples of p starting from p*p
+            let mut j = p * p;
+            loop {
+                if j > limit { break } else { () };
+                let _s = vec_set(sieve, j, 0);
+                set j = j + p
+            };
+            0
+        } else { 0 };
+        set p = p + 1
+    };
+    sieve
+    };
+
+// Count primes up to limit using sieve
+fn count_primes(sieve: i64, limit: i64) -> i64 = {
+    let mut count = 0;
+    for i in 2..=limit {
+        let _r = if vec_get(sieve, i) == 1 {
+            set count = count + 1;
+            0
+        } else { 0 }
+    };
+    count
+    };
+
+// Sum of primes up to limit using sieve
+fn sum_primes(sieve: i64, limit: i64) -> i64 = {
+    let mut total = 0;
+    for i in 2..=limit {
+        let _r = if vec_get(sieve, i) == 1 {
+            set total = total + i;
+            0
+        } else { 0 }
+    };
+    total
+    };
+
+// Find nth prime (1-indexed) using sieve
+fn nth_prime(sieve: i64, limit: i64, n: i64) -> i64 = {
+    let mut count = 0;
+    let mut result = 0 - 1;
+    let mut i = 2;
+    loop {
+        if i > limit { break } else { () };
+        let _r = if result < 0 {
+            let _r2 = if vec_get(sieve, i) == 1 {
+                set count = count + 1;
+                let _r3 = if count == n {
+                    set result = i;
+                    0
+                } else { 0 };
+                0
+            } else { 0 };
+            0
+        } else { 0 };
+        set i = i + 1
+    };
+    result
+    };
+
+// Check if a number is prime using sieve
+fn is_prime(sieve: i64, n: i64) -> i64 = vec_get(sieve, n);
+
+// Count twin primes (p, p+2 both prime) up to limit
+fn count_twin_primes(sieve: i64, limit: i64) -> i64 = {
+    let mut count = 0;
+    for i in 2..=limit {
+        let _r = if i + 2 <= limit {
+            let _r2 = if vec_get(sieve, i) == 1 {
+                let _r3 = if vec_get(sieve, i + 2) == 1 {
+                    set count = count + 1;
+                    0
+                } else { 0 };
+                0
+            } else { 0 };
+            0
+        } else { 0 }
+    };
+    count
+    };
+
+// Find largest prime gap up to limit
+fn largest_prime_gap(sieve: i64, limit: i64) -> i64 = {
+    let mut prev_prime = 2;
+    let mut max_gap = 0;
+    for i in 3..=limit {
+        let _r = if vec_get(sieve, i) == 1 {
+            let gap = i - prev_prime;
+            let _r2 = if gap > max_gap {
+                set max_gap = gap;
+                0
+            } else { 0 };
+            set prev_prime = i;
+            0
+        } else { 0 }
+    };
+    max_gap
+    };
+
+fn main() -> i64 = {
+    let sieve = build_sieve(100);
+
+    // Count of primes <= 100: 25
+    let _p1 = println(count_primes(sieve, 100));
+
+    // Sum of primes <= 50: 328
+    let _p2 = println(sum_primes(sieve, 50));
+
+    // 10th prime: 29
+    let _p3 = println(nth_prime(sieve, 100, 10));
+
+    // 25th prime: 97
+    let _p4 = println(nth_prime(sieve, 100, 25));
+
+    // 1st prime: 2
+    let _p5 = println(nth_prime(sieve, 100, 1));
+
+    // 5th prime: 11
+    let _p6 = println(nth_prime(sieve, 100, 5));
+
+    // Is 97 prime? 1
+    let _p7 = println(is_prime(sieve, 97));
+
+    // Is 91 prime? 0 (91 = 7*13)
+    let _p8 = println(is_prime(sieve, 91));
+
+    // Count twin primes up to 100
+    // Twin primes: (3,5),(5,7),(11,13),(17,19),(29,31),(41,43),(59,61),(71,73)
+    // That's 8 pairs
+    let _p9 = println(count_twin_primes(sieve, 100));
+
+    // Largest prime gap up to 100
+    // Gaps: 1,2,2,4,2,4,2,4,6,2,6,4,2,4,6,6,2,6,4,2,6,4,6,8
+    // Largest gap = 8 (between 89 and 97)
+    let _p10 = println(largest_prime_gap(sieve, 100));
+
+    let _f = vec_free(sieve);
+    0
+    };

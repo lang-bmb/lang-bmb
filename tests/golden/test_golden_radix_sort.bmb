@@ -1,0 +1,121 @@
+// Golden Test: Radix sort (LSD — Least Significant Digit)
+// Sorts non-negative integers using counting sort on each digit
+// Base-10 radix for clarity
+// O(d * n) where d = number of digits
+
+fn get_digit(num: i64, exp: i64) -> i64 = {
+    (num / exp) % 10
+};
+
+// Counting sort on a specific digit (exp = 1, 10, 100, ...)
+fn counting_sort_digit(arr: i64, n: i64, exp: i64) -> () = {
+    let output = vec_new();
+    let count = vec_new();
+
+    // Initialize output and count
+    let mut i = 0;
+    while i < n {
+        let _p = vec_push(output, 0);
+        set i = i + 1
+    };
+    set i = 0;
+    while i < 10 {
+        let _p = vec_push(count, 0);
+        set i = i + 1
+    };
+
+    // Count occurrences
+    set i = 0;
+    while i < n {
+        let d = get_digit(vec_get(arr, i), exp);
+        vec_set(count, d, vec_get(count, d) + 1);
+        set i = i + 1
+    };
+
+    // Prefix sum
+    set i = 1;
+    while i < 10 {
+        vec_set(count, i, vec_get(count, i) + vec_get(count, i - 1));
+        set i = i + 1
+    };
+
+    // Build output (iterate right to left for stability)
+    set i = n - 1;
+    while i >= 0 {
+        let d = get_digit(vec_get(arr, i), exp);
+        let pos = vec_get(count, d) - 1;
+        vec_set(output, pos, vec_get(arr, i));
+        vec_set(count, d, vec_get(count, d) - 1);
+        set i = i - 1
+    };
+
+    // Copy back
+    set i = 0;
+    while i < n {
+        vec_set(arr, i, vec_get(output, i));
+        set i = i + 1
+    }
+};
+
+fn radix_sort(arr: i64) -> () = {
+    let n = vec_len(arr);
+    let _x = if n <= 1 { 0 } else {
+        // Find max element
+        let mut mx = vec_get(arr, 0);
+        let mut i = 1;
+        while i < n {
+            let _y = if vec_get(arr, i) > mx {
+                set mx = vec_get(arr, i);
+                0
+            } else { 0 };
+            set i = i + 1
+        };
+
+        // Sort by each digit
+        let mut exp = 1;
+        while mx / exp > 0 {
+            counting_sort_digit(arr, n, exp);
+            set exp = exp * 10
+        };
+        0
+    }
+};
+
+fn print_arr(arr: i64) -> () = {
+    let mut i = 0;
+    while i < vec_len(arr) {
+        let _sp = if i > 0 { print_str(" "); 0 } else { 0 };
+        print(vec_get(arr, i));
+        set i = i + 1
+    };
+    let _nl = print_str("\n")
+};
+
+fn main() -> () = {
+    // Test 1: Mixed numbers
+    let arr1 = vec_new();
+    let _p = vec_push(arr1, 170); let _p = vec_push(arr1, 45); let _p = vec_push(arr1, 75);
+    let _p = vec_push(arr1, 90); let _p = vec_push(arr1, 802); let _p = vec_push(arr1, 24);
+    let _p = vec_push(arr1, 2); let _p = vec_push(arr1, 66);
+    radix_sort(arr1);
+    print_arr(arr1);
+
+    // Test 2: Already sorted
+    let arr2 = vec_new();
+    let _p = vec_push(arr2, 1); let _p = vec_push(arr2, 2); let _p = vec_push(arr2, 3);
+    let _p = vec_push(arr2, 4); let _p = vec_push(arr2, 5);
+    radix_sort(arr2);
+    print_arr(arr2);
+
+    // Test 3: Single element
+    let arr3 = vec_new();
+    let _p = vec_push(arr3, 42);
+    radix_sort(arr3);
+    print_arr(arr3);
+
+    // Test 4: Same values
+    let arr4 = vec_new();
+    let _p = vec_push(arr4, 7); let _p = vec_push(arr4, 7); let _p = vec_push(arr4, 7);
+    radix_sort(arr4);
+    print_arr(arr4)
+};

@@ -1,0 +1,135 @@
+// Golden Test: Combination Sum (backtracking-style)
+// Find subsets of candidates that sum to target
+// Uses iterative simulation of backtracking with a stack
+
+// Count subsets of arr[start..n] that sum to target
+fn count_subsets(arr: i64, n: i64, start: i64, target: i64) -> i64 =
+    if target == 0 { 1 }
+    else if target < 0 { 0 }
+    else if start >= n { 0 }
+    else {
+        // Include arr[start] + exclude arr[start]
+        let include = count_subsets(arr, n, start + 1, target - vec_get(arr, start));
+        let exclude = count_subsets(arr, n, start + 1, target);
+        include + exclude
+    };
+
+// Count subsets with repetition allowed (each element reusable)
+fn count_with_rep(arr: i64, n: i64, start: i64, target: i64) -> i64 =
+    if target == 0 { 1 }
+    else if target < 0 { 0 }
+    else if start >= n { 0 }
+    else {
+        // Use arr[start] again (stay at start) + skip arr[start]
+        let use_it = count_with_rep(arr, n, start, target - vec_get(arr, start));
+        let skip = count_with_rep(arr, n, start + 1, target);
+        use_it + skip
+    };
+
+// Find minimum subset size that sums to target (or -1 if impossible)
+fn min_subset_size(arr: i64, n: i64, start: i64, target: i64, depth: i64) -> i64 =
+    if target == 0 { depth }
+    else if target < 0 { 999999 }
+    else if start >= n { 999999 }
+    else {
+        let inc = min_subset_size(arr, n, start + 1, target - vec_get(arr, start), depth + 1);
+        let exc = min_subset_size(arr, n, start + 1, target, depth);
+        if inc < exc { inc } else { exc }
+    };
+
+// Check if any subset sums to target
+fn has_subset_sum(arr: i64, n: i64, start: i64, target: i64) -> i64 =
+    if target == 0 { 1 }
+    else if target < 0 { 0 }
+    else if start >= n { 0 }
+    else {
+        let inc = has_subset_sum(arr, n, start + 1, target - vec_get(arr, start));
+        if inc == 1 { 1 }
+        else { has_subset_sum(arr, n, start + 1, target) }
+    };
+
+// Max subset sum not exceeding limit
+fn max_sum_under(arr: i64, n: i64, start: i64, limit: i64) -> i64 =
+    if start >= n { 0 }
+    else {
+        let skip = max_sum_under(arr, n, start + 1, limit);
+        let v = vec_get(arr, start);
+        if v > limit { skip }
+        else {
+            let take = v + max_sum_under(arr, n, start + 1, limit - v);
+            if take > skip { take } else { skip }
+        }
+    };
+
+fn main() -> i64 = {
+    // arr = [2, 3, 5, 7]
+    let arr = vec_new();
+    let _p = vec_push(arr, 2);
+    let _p = vec_push(arr, 3);
+    let _p = vec_push(arr, 5);
+    let _p = vec_push(arr, 7);
+
+    // Count subsets summing to 10: {2,3,5}, {3,7} = 2
+    let _r1 = println(count_subsets(arr, 4, 0, 10));
+
+    // Count subsets summing to 7: {2,5}, {7} = 2
+    let _r2 = println(count_subsets(arr, 4, 0, 7));
+
+    // Count subsets summing to 0: {} = 1
+    let _r3 = println(count_subsets(arr, 4, 0, 0));
+
+    // Count subsets summing to 100: none = 0
+    let _r4 = println(count_subsets(arr, 4, 0, 100));
+
+    // Count subsets summing to 17: {2,3,5,7} = 1
+    let _r5 = println(count_subsets(arr, 4, 0, 17));
+
+    // With repetition: candidates [1, 2, 3], target = 4
+    // {1,1,1,1}, {1,1,2}, {1,3}, {2,2} = 4
+    let arr2 = vec_new();
+    let _p = vec_push(arr2, 1);
+    let _p = vec_push(arr2, 2);
+    let _p = vec_push(arr2, 3);
+    let _r6 = println(count_with_rep(arr2, 3, 0, 4));
+
+    // With repetition: [2, 3], target = 7
+    // {2,2,3}, {2,5->no}, {3,2,2}, ... actually: {2,2,3} and {2,5->no}
+    // Systematic: start=0(2): 7-2=5 -> 5-2=3 -> 3-2=1 -> 1-2<0; 1-3<0; skip
+    //                                    3-3=0 -> +1; skip
+    //                          5-3=2 -> 2-3<0; skip
+    //             start=1(3): 7-3=4 -> 4-3=1 -> 1-3<0; skip
+    //                          skip -> 0
+    // So: {2,2,3} = 1 way
+    let arr3 = vec_new();
+    let _p = vec_push(arr3, 2);
+    let _p = vec_push(arr3, 3);
+    let _r7 = println(count_with_rep(arr3, 2, 0, 7));
+
+    // Has subset sum: [2,3,5,7], target=8 -> {3,5} yes
+    let _r8 = println(has_subset_sum(arr, 4, 0, 8));
+
+    // Has subset sum: [2,3,5,7], target=4 -> no
+    let _r9 = println(has_subset_sum(arr, 4, 0, 4));
+
+    // Has subset sum: [2,3,5,7], target=12 -> {5,7} or {2,3,7}
+    let _r10 = println(has_subset_sum(arr, 4, 0, 12));
+
+    // Min subset size summing to 10: {3,7}=2 vs {2,3,5}=3 -> min=2
+    let ms = min_subset_size(arr, 4, 0, 10, 0);
+    let _r11 = println(ms);
+
+    // Min subset size summing to 5: {5}=1
+    let ms2 = min_subset_size(arr, 4, 0, 5, 0);
+    let _r12 = println(ms2);
+
+    // Max subset sum under limit 11: {2,3,5}=10 or {2,5}=7 or {3,7}=10 or {2,3,5}=10 -> 10
+    let _r13 = println(max_sum_under(arr, 4, 0, 11));
+
+    // Max subset sum under limit 6: {2,3}=5 or {5}=5 or {3}=3 -> 5 (or {2,3}=5)
+    let _r14 = println(max_sum_under(arr, 4, 0, 6));
+
+    let _f = vec_free(arr);
+    let _f = vec_free(arr2);
+    let _f = vec_free(arr3);
+    0
+};

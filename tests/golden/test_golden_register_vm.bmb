@@ -1,0 +1,99 @@
+// Golden test: Simple register VM simulation
+// 4 registers (R0-R3), instructions encoded as flat vec of i64
+// Each instruction occupies 3 slots: [opcode, arg1, arg2]
+// Opcodes: 0=HALT, 1=SET reg val, 2=ADD reg1 reg2,
+//          3=SUB reg1 reg2, 4=MUL reg1 reg2, 5=PRINT reg
+
+fn vm_new() -> i64 = {
+    let regs = vec_new();
+    let _p0 = vec_push(regs, 0);
+    let _p1 = vec_push(regs, 0);
+    let _p2 = vec_push(regs, 0);
+    let _p3 = vec_push(regs, 0);
+    regs
+    };
+
+fn vm_exec(regs: i64, program: i64, prog_len: i64) -> i64 = {
+    let ip = [0; 1];
+
+    while ip[0] < prog_len {
+        let opcode = vec_get(program, ip[0]);
+        let arg1   = vec_get(program, ip[0] + 1);
+        let arg2   = vec_get(program, ip[0] + 2);
+
+        if opcode == 0 {
+            break;
+        } else { };
+
+        if opcode == 1 {
+            vec_set(regs, arg1, arg2);
+        } else { };
+
+        if opcode == 2 {
+            let va = vec_get(regs, arg1);
+            let vb = vec_get(regs, arg2);
+            vec_set(regs, arg1, va + vb);
+        } else { };
+
+        if opcode == 3 {
+            let va = vec_get(regs, arg1);
+            let vb = vec_get(regs, arg2);
+            vec_set(regs, arg1, va - vb);
+        } else { };
+
+        if opcode == 4 {
+            let va = vec_get(regs, arg1);
+            let vb = vec_get(regs, arg2);
+            vec_set(regs, arg1, va * vb);
+        } else { };
+
+        if opcode == 5 {
+            let val = vec_get(regs, arg1);
+            let _pr = println(val);
+        } else { };
+
+        set ip[0] = ip[0] + 3;
+    };
+
+    0
+    };
+
+fn main() -> i64 = {
+    // Program 1: SET R0 10, SET R1 3, ADD R0 R1, PRINT R0 -> 13
+    let prog1 = vec_new();
+    let _a0 = vec_push(prog1, 1); let _a1 = vec_push(prog1, 0); let _a2 = vec_push(prog1, 10);
+    let _a3 = vec_push(prog1, 1); let _a4 = vec_push(prog1, 1); let _a5 = vec_push(prog1, 3);
+    let _a6 = vec_push(prog1, 2); let _a7 = vec_push(prog1, 0); let _a8 = vec_push(prog1, 1);
+    let _a9 = vec_push(prog1, 5); let _aa = vec_push(prog1, 0); let _ab = vec_push(prog1, 0);
+    let _ac = vec_push(prog1, 0); let _ad = vec_push(prog1, 0); let _ae = vec_push(prog1, 0);
+    let regs1 = vm_new();
+    let _r1 = vm_exec(regs1, prog1, 15);
+
+    // Program 2: SET R0 7, SET R1 8, MUL R0 R1, PRINT R0 -> 56
+    let prog2 = vec_new();
+    let _b0 = vec_push(prog2, 1); let _b1 = vec_push(prog2, 0); let _b2 = vec_push(prog2, 7);
+    let _b3 = vec_push(prog2, 1); let _b4 = vec_push(prog2, 1); let _b5 = vec_push(prog2, 8);
+    let _b6 = vec_push(prog2, 4); let _b7 = vec_push(prog2, 0); let _b8 = vec_push(prog2, 1);
+    let _b9 = vec_push(prog2, 5); let _ba = vec_push(prog2, 0); let _bb = vec_push(prog2, 0);
+    let _bc = vec_push(prog2, 0); let _bd = vec_push(prog2, 0); let _be = vec_push(prog2, 0);
+    let regs2 = vm_new();
+    let _r2 = vm_exec(regs2, prog2, 15);
+
+    // Program 3: SET R0 100, SET R1 37, SUB R0 R1, PRINT R0 -> 63
+    let prog3 = vec_new();
+    let _c0 = vec_push(prog3, 1); let _c1 = vec_push(prog3, 0); let _c2 = vec_push(prog3, 100);
+    let _c3 = vec_push(prog3, 1); let _c4 = vec_push(prog3, 1); let _c5 = vec_push(prog3, 37);
+    let _c6 = vec_push(prog3, 3); let _c7 = vec_push(prog3, 0); let _c8 = vec_push(prog3, 1);
+    let _c9 = vec_push(prog3, 5); let _ca = vec_push(prog3, 0); let _cb = vec_push(prog3, 0);
+    let _cc = vec_push(prog3, 0); let _cd = vec_push(prog3, 0); let _ce = vec_push(prog3, 0);
+    let regs3 = vm_new();
+    let _r3 = vm_exec(regs3, prog3, 15);
+
+    let _f1 = vec_free(prog1);
+    let _f2 = vec_free(regs1);
+    let _f3 = vec_free(prog2);
+    let _f4 = vec_free(regs2);
+    let _f5 = vec_free(prog3);
+    let _f6 = vec_free(regs3);
+    0
+    };

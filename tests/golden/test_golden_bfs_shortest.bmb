@@ -1,0 +1,119 @@
+// Golden Test: BFS shortest path (unweighted graph)
+// Finds shortest path distance from source to all vertices
+
+fn bfs(adj: i64, adj_size: i64, n: i64, src: i64) -> i64 = {
+    let dist = vec_new();
+    let mut i = 0;
+    while i < n {
+        let _p = vec_push(dist, 0 - 1);
+        set i = i + 1
+    };
+    vec_set(dist, src, 0);
+
+    // Queue using vec with front pointer
+    let queue = vec_new();
+    let _p = vec_push(queue, src);
+    let mut front = 0;
+
+    while front < vec_len(queue) {
+        let v = vec_get(queue, front);
+        set front = front + 1;
+        let d = vec_get(dist, v);
+        let deg = vec_get(adj_size, v);
+        let base = v * n;
+        set i = 0;
+        while i < deg {
+            let u = vec_get(adj, base + i);
+            let _x = if vec_get(dist, u) == 0 - 1 {
+                vec_set(dist, u, d + 1);
+                let _p = vec_push(queue, u);
+                0
+            } else { 0 };
+            set i = i + 1
+        };
+        0
+    };
+    dist
+};
+
+fn add_undirected(adj: i64, adj_size: i64, n: i64, u: i64, v: i64) -> () = {
+    let du = vec_get(adj_size, u);
+    vec_set(adj, u * n + du, v);
+    vec_set(adj_size, u, du + 1);
+    let dv = vec_get(adj_size, v);
+    vec_set(adj, v * n + dv, u);
+    vec_set(adj_size, v, dv + 1)
+};
+
+fn main() -> () = {
+    // Test 1: 6-node graph
+    //   0 -- 1 -- 2
+    //   |         |
+    //   3 -- 4 -- 5
+    let n = 6;
+    let adj = vec_new();
+    let adj_size = vec_new();
+    let mut i = 0;
+    while i < n * n {
+        let _p = vec_push(adj, 0);
+        set i = i + 1
+    };
+    set i = 0;
+    while i < n {
+        let _p = vec_push(adj_size, 0);
+        set i = i + 1
+    };
+    add_undirected(adj, adj_size, n, 0, 1);
+    add_undirected(adj, adj_size, n, 1, 2);
+    add_undirected(adj, adj_size, n, 0, 3);
+    add_undirected(adj, adj_size, n, 3, 4);
+    add_undirected(adj, adj_size, n, 4, 5);
+    add_undirected(adj, adj_size, n, 2, 5);
+
+    let dist = bfs(adj, adj_size, n, 0);
+    print_str("from 0:");
+    set i = 0;
+    while i < n {
+        print_str(" "); print(vec_get(dist, i));
+        set i = i + 1
+    };
+    print_str("
+");
+
+    // BFS from vertex 5
+    let dist2 = bfs(adj, adj_size, n, 5);
+    print_str("from 5:");
+    set i = 0;
+    while i < n {
+        print_str(" "); print(vec_get(dist2, i));
+        set i = i + 1
+    };
+    print_str("
+");
+
+    // Test 2: Disconnected graph
+    let n2 = 4;
+    let adj2 = vec_new();
+    let adj_size2 = vec_new();
+    set i = 0;
+    while i < n2 * n2 {
+        let _p = vec_push(adj2, 0);
+        set i = i + 1
+    };
+    set i = 0;
+    while i < n2 {
+        let _p = vec_push(adj_size2, 0);
+        set i = i + 1
+    };
+    add_undirected(adj2, adj_size2, n2, 0, 1);
+    add_undirected(adj2, adj_size2, n2, 2, 3);
+    let dist3 = bfs(adj2, adj_size2, n2, 0);
+    print_str("disconnected:");
+    set i = 0;
+    while i < n2 {
+        print_str(" "); print(vec_get(dist3, i));
+        set i = i + 1
+    };
+    let _nl = print_str("
+")
+};

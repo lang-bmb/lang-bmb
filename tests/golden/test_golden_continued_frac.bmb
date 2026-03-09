@@ -1,0 +1,176 @@
+// Golden Test: Continued Fraction Expansion and Convergents
+// Compute continued fraction representation of rational numbers
+// and evaluate convergents (best rational approximations)
+
+// GCD using Euclidean algorithm
+fn gcd(a: i64, b: i64) -> i64 =
+    if b == 0 { a }
+    else { gcd(b, a - (a / b) * b) };
+
+// Absolute value
+fn abs_val(x: i64) -> i64 =
+    if x < 0 { 0 - x } else { x };
+
+// Compute continued fraction coefficients of p/q
+// Store in arr, return number of coefficients
+fn cf_expand(p: i64, q: i64, arr: [i64; 20]) -> i64 = {
+    let mut num = p;
+    let mut den = q;
+    let mut count = 0;
+    loop {
+        if den == 0 { break } else { () };
+        if count >= 20 { break } else { () };
+        let a = num / den;
+        set arr[count] = a;
+        let rem = num - a * den;
+        num = den;
+        den = rem;
+        count = count + 1
+    };
+    count
+};
+
+// Evaluate continued fraction [a0; a1, a2, ..., a_{n-1}] as p/q
+// Returns numerator. Use cf_eval_den for denominator.
+fn cf_eval_num(arr: [i64; 20], n: i64) -> i64 = {
+    // Work backwards: start from last coefficient
+    let mut num = 1;
+    let mut den = 0;
+    let mut i = n - 1;
+    loop {
+        if i < 0 { break } else { () };
+        // new = a_i + den/num = (a_i * num + den) / num
+        let new_num = arr[i] * num + den;
+        den = num;
+        num = new_num;
+        i = i - 1
+    };
+    num
+};
+
+// Denominator of continued fraction evaluation
+fn cf_eval_den(arr: [i64; 20], n: i64) -> i64 = {
+    let mut num = 1;
+    let mut den = 0;
+    let mut i = n - 1;
+    loop {
+        if i < 0 { break } else { () };
+        let new_num = arr[i] * num + den;
+        den = num;
+        num = new_num;
+        i = i - 1
+    };
+    den
+};
+
+// Compute k-th convergent numerator of CF [a0; a1, ...]
+// h_{-1}=1, h_0=a_0, h_k = a_k*h_{k-1} + h_{k-2}
+fn convergent_num(arr: [i64; 20], k: i64) -> i64 = {
+    if k < 0 { return 1 } else { () };
+    if k == 0 { return arr[0] } else { () };
+    let mut h_prev2 = 1;
+    let mut h_prev1 = arr[0];
+    let mut i = 1;
+    loop {
+        if i > k { break } else { () };
+        let h = arr[i] * h_prev1 + h_prev2;
+        h_prev2 = h_prev1;
+        h_prev1 = h;
+        i = i + 1
+    };
+    h_prev1
+};
+
+// Compute k-th convergent denominator
+// k_{-1}=0, k_0=1, k_k = a_k*k_{k-1} + k_{k-2}
+fn convergent_den(arr: [i64; 20], k: i64) -> i64 = {
+    if k < 0 { return 0 } else { () };
+    if k == 0 { return 1 } else { () };
+    let mut k_prev2 = 0;
+    let mut k_prev1 = 1;
+    let mut i = 1;
+    loop {
+        if i > k { break } else { () };
+        let kk = arr[i] * k_prev1 + k_prev2;
+        k_prev2 = k_prev1;
+        k_prev1 = kk;
+        i = i + 1
+    };
+    k_prev1
+};
+
+// Golden ratio approximation: [1; 1, 1, 1, ...]
+fn golden_cf(arr: [i64; 20], n: i64) -> i64 = {
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        set arr[i] = 1;
+        i = i + 1
+    };
+    n
+};
+
+// sqrt(2) approximation: [1; 2, 2, 2, ...]
+fn sqrt2_cf(arr: [i64; 20], n: i64) -> i64 = {
+    set arr[0] = 1;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        set arr[i] = 2;
+        i = i + 1
+    };
+    n
+};
+
+fn main() -> i64 = {
+    let cf = [0; 20];
+
+    // Test 1: CF expansion of 355/113 (approximation of pi)
+    let len1 = cf_expand(355, 113, cf);
+    let _p1 = println(len1);       // number of CF coefficients
+    let _p2 = println(cf[0]);      // 3 (integer part)
+    let _p3 = println(cf[1]);      // 7
+    let _p4 = println(cf[2]);      // 16
+
+    // Round-trip: evaluate back
+    let num1 = cf_eval_num(cf, len1);
+    let den1 = cf_eval_den(cf, len1);
+    let _p5 = println(num1);  // 355
+    let _p6 = println(den1);  // 113
+
+    // Test 2: CF expansion of 22/7
+    let len2 = cf_expand(22, 7, cf);
+    let _p7 = println(cf[0]);   // 3
+    let _p8 = println(cf[1]);   // 7 (i.e., [3; 7])
+
+    // Test 3: Golden ratio convergents [1; 1, 1, 1, ...]
+    let gr = [0; 20];
+    let _gl = golden_cf(gr, 10);
+    // Convergent 0: 1/1
+    let _p9 = println(convergent_num(gr, 0));  // 1
+    let _p10 = println(convergent_den(gr, 0)); // 1
+    // Convergent 4: 8/5 (Fibonacci ratio)
+    let _p11 = println(convergent_num(gr, 4)); // 8
+    let _p12 = println(convergent_den(gr, 4)); // 5
+    // Convergent 9: 89/55
+    let _p13 = println(convergent_num(gr, 9)); // 89
+    let _p14 = println(convergent_den(gr, 9)); // 55
+
+    // Test 4: sqrt(2) convergents [1; 2, 2, 2, ...]
+    let s2 = [0; 20];
+    let _sl = sqrt2_cf(s2, 8);
+    // Convergent 2: 7/5 (7^2=49, 2*5^2=50, close!)
+    let _p15 = println(convergent_num(s2, 2));  // 7
+    let _p16 = println(convergent_den(s2, 2));  // 5
+    // Convergent 5: 99/70 (99^2=9801, 2*70^2=9800, very close!)
+    let _p17 = println(convergent_num(s2, 5));  // 99
+    let _p18 = println(convergent_den(s2, 5));  // 70
+
+    // Test 5: CF of a simple fraction 17/5 = [3; 2, 2]
+    let cf3 = [0; 20];
+    let len3 = cf_expand(17, 5, cf3);
+    let _p19 = println(len3);     // 3
+    let _p20 = println(cf3[0]);   // 3
+
+    0
+};

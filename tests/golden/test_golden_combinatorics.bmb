@@ -1,0 +1,109 @@
+// Golden Test: Combinatorics - Cycle 1403
+// Catalan numbers, Stirling numbers (2nd kind), Bell numbers via DP
+
+// Catalan number C(n) using DP: C(n) = sum(C(i)*C(n-1-i)) for i=0..n-1
+fn catalan(n: i64) -> i64 = {
+    let dp = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    set dp[0] = 1;
+    set dp[1] = 1;
+    let mut i = 2;
+    loop {
+        if i > n { break } else { () };
+        let mut j = 0;
+        loop {
+            if j >= i { break } else { () };
+            set dp[i] = dp[i] + dp[j] * dp[i - 1 - j];
+            j = j + 1
+        };
+    i = i + 1
+    };
+    dp[n]
+    };
+
+// Stirling numbers of the second kind S(n,k)
+// Number of ways to partition n elements into k non-empty subsets
+// S(n,k) = k*S(n-1,k) + S(n-1,k-1), S(0,0)=1, S(n,0)=0 for n>0
+fn stirling2(n: i64, k: i64) -> i64 = {
+    if n == 0 and k == 0 { return 1 } else { () };
+    if n == 0 or k == 0 { return 0 } else { () };
+    if k > n { return 0 } else { () };
+
+// Use 2D DP stored in flat array of size 15*15
+    let dp = [0; 225];
+    set dp[0] = 1;  // dp[0*15+0] = S(0,0) = 1
+    let mut i = 1;
+    loop {
+        if i > n { break } else { () };
+        let mut j = 1;
+        loop {
+            if j > i { break } else { () };
+            let idx = i * 15 + j;
+            let prev_same = (i - 1) * 15 + j;
+            let prev_less = (i - 1) * 15 + (j - 1);
+            set dp[idx] = j * dp[prev_same] + dp[prev_less];
+            j = j + 1
+        };
+    i = i + 1
+    };
+    dp[n * 15 + k]
+    };
+
+// Bell number B(n) = sum of S(n,k) for k=0..n
+fn bell(n: i64) -> i64 = {
+    let mut sum = 0;
+    let mut k = 0;
+    loop {
+        if k > n { break } else { () };
+        sum = sum + stirling2(n, k);
+        k = k + 1
+    };
+    sum
+    };
+
+// Binomial coefficient C(n,k) using Pascal's triangle row
+fn binomial(n: i64, k: i64) -> i64 = {
+    if k > n { return 0 } else { () };
+    if k == 0 or k == n { return 1 } else { () };
+    let row = [0; 20];
+    set row[0] = 1;
+    let mut i = 1;
+    loop {
+        if i > n { break } else { () };
+
+// Build row in reverse to avoid overwriting
+    let mut j = i;
+    loop {
+        if j < 1 { break } else { () };
+        set row[j] = row[j] + row[j - 1];
+        j = j - 1
+    };
+    i = i + 1
+    };
+    row[k]
+    };
+
+fn main() -> i64 = {
+// Catalan numbers: 1, 1, 2, 5, 14, 42, 132
+    let _p1 = println(catalan(0));   // 1
+    let _p2 = println(catalan(3));   // 5
+    let _p3 = println(catalan(5));   // 42
+    let _p4 = println(catalan(7));   // 429
+
+// Stirling numbers S(n,k)
+    let _p5 = println(stirling2(4, 2));  // 7
+    let _p6 = println(stirling2(5, 3));  // 25
+    let _p7 = println(stirling2(6, 3));  // 90
+
+// Bell numbers: 1, 1, 2, 5, 15, 52, 203
+    let _p8 = println(bell(0));    // 1
+    let _p9 = println(bell(3));    // 5
+    let _p10 = println(bell(5));   // 52
+    let _p11 = println(bell(6));   // 203
+
+// Binomial coefficients
+    let _p12 = println(binomial(5, 2));   // 10
+    let _p13 = println(binomial(10, 3));  // 120
+    let _p14 = println(binomial(10, 5));  // 252
+
+    0
+    };

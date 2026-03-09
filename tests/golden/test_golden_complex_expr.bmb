@@ -1,0 +1,70 @@
+// Golden Test: Complex Expression Patterns
+// Tests nested expressions, chained operations, ternary-like patterns
+
+fn max3(a: i64, b: i64, c: i64) -> i64 =
+    if a >= b and a >= c { a }
+    else if b >= c { b }
+    else { c };
+
+fn min3(a: i64, b: i64, c: i64) -> i64 =
+    if a <= b and a <= c { a }
+    else if b <= c { b }
+    else { c };
+
+fn median3(a: i64, b: i64, c: i64) -> i64 =
+    a + b + c - max3(a, b, c) - min3(a, b, c);
+
+fn is_sorted3(a: i64, b: i64, c: i64) -> i64 =
+    if a <= b and b <= c { 1 } else { 0 };
+
+fn triangle_type(a: i64, b: i64, c: i64) -> i64 =
+    if a == b and b == c { 3 }
+    else if a == b or b == c or a == c { 2 }
+    else { 1 };
+
+fn nested_if(x: i64) -> i64 =
+    if x > 100 { 4 }
+    else if x > 50 { 3 }
+    else if x > 10 { 2 }
+    else if x > 0 { 1 }
+    else { 0 };
+
+fn chain_arith(x: i64) -> i64 =
+    ((x + 1) * 2 - 3) * (x + 4) / 5;
+
+fn main() -> i64 = {
+    // Max/min/median of 3
+    let _p1 = println(max3(10, 30, 20));    // 30
+    let _p2 = println(min3(10, 30, 20));    // 10
+    let _p3 = println(median3(10, 30, 20)); // 20
+
+    // Sorted check
+    let _p4 = println(is_sorted3(1, 2, 3));  // 1
+    let _p5 = println(is_sorted3(3, 1, 2));  // 0
+
+    // Triangle classification
+    let _p6 = println(triangle_type(3, 3, 3));  // 3 (equilateral)
+    let _p7 = println(triangle_type(3, 3, 5));  // 2 (isosceles)
+    let _p8 = println(triangle_type(3, 4, 5));  // 1 (scalene)
+
+    // Nested if cascade
+    let _p9 = println(nested_if(200));  // 4
+    let _p10 = println(nested_if(75));  // 3
+    let _p11 = println(nested_if(25));  // 2
+    let _p12 = println(nested_if(5));   // 1
+    let _p13 = println(nested_if(0));   // 0
+
+    // Chained arithmetic
+    let _p14 = println(chain_arith(10));  // ((10+1)*2-3) * (10+4) / 5 = 19*14/5 = 53
+    let _p15 = println(chain_arith(0));   // ((0+1)*2-3) * (0+4) / 5 = -1*4/5 = 0
+
+    // Let in expression
+    let result = {
+        let a = 10;
+        let b = 20;
+        a * b + a + b
+    };
+    let _p16 = println(result);  // 230
+
+    0
+};

@@ -1,0 +1,125 @@
+// Golden Test: Array Rotation (reversal method)
+// Left and right rotation using three-reversal technique
+
+// Reverse elements in arr[lo..hi] (inclusive)
+fn reverse_range(arr: i64, lo: i64, hi: i64) -> i64 = {
+    let mut l = lo;
+    let mut r = hi;
+    loop {
+        if l >= r { break } else { () };
+        let tmp = vec_get(arr, l);
+        let _s1 = vec_set(arr, l, vec_get(arr, r));
+        let _s2 = vec_set(arr, r, tmp);
+        set l = l + 1;
+        set r = r - 1
+    };
+    0
+};
+
+// Left rotate by k positions using reversal method:
+// reverse(0..k-1), reverse(k..n-1), reverse(0..n-1)
+fn rotate_left(arr: i64, n: i64, k: i64) -> i64 = {
+    let kk = k % n;
+    if kk == 0 { return 0 } else { () };
+    let _r1 = reverse_range(arr, 0, kk - 1);
+    let _r2 = reverse_range(arr, kk, n - 1);
+    let _r3 = reverse_range(arr, 0, n - 1);
+    0
+};
+
+// Right rotate by k positions using reversal method:
+// reverse(0..n-1), reverse(0..k-1), reverse(k..n-1)
+fn rotate_right(arr: i64, n: i64, k: i64) -> i64 = {
+    let kk = k % n;
+    if kk == 0 { return 0 } else { () };
+    let _r1 = reverse_range(arr, 0, n - 1);
+    let _r2 = reverse_range(arr, 0, kk - 1);
+    let _r3 = reverse_range(arr, kk, n - 1);
+    0
+};
+
+// Print all elements of vec
+fn print_vec(arr: i64, n: i64) -> i64 = {
+    for i in 0..n {
+        let _p = println(vec_get(arr, i));
+        0
+    };
+    0
+};
+
+// Make a vec from 5 values
+fn make5(a: i64, b: i64, c: i64, d: i64, e: i64) -> i64 = {
+    let v = vec_new();
+    let _p = vec_push(v, a);
+    let _p = vec_push(v, b);
+    let _p = vec_push(v, c);
+    let _p = vec_push(v, d);
+    let _p = vec_push(v, e);
+    v
+};
+
+// Make a vec from 7 values
+fn make7(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64) -> i64 = {
+    let v = vec_new();
+    let _p = vec_push(v, a);
+    let _p = vec_push(v, b);
+    let _p = vec_push(v, c);
+    let _p = vec_push(v, d);
+    let _p = vec_push(v, e);
+    let _p = vec_push(v, f);
+    let _p = vec_push(v, g);
+    v
+};
+
+fn main() -> i64 = {
+    // Test 1: reverse entire array [1,2,3,4,5] -> [5,4,3,2,1]
+    let a1 = make5(1, 2, 3, 4, 5);
+    let _r = reverse_range(a1, 0, 4);
+    let _p = print_vec(a1, 5);  // 5 4 3 2 1
+
+    // Test 2: left rotate [1,2,3,4,5] by 2 -> [3,4,5,1,2]
+    let a2 = make5(1, 2, 3, 4, 5);
+    let _r = rotate_left(a2, 5, 2);
+    let _p = print_vec(a2, 5);  // 3 4 5 1 2
+
+    // Test 3: right rotate [1,2,3,4,5] by 2 -> [4,5,1,2,3]
+    let a3 = make5(1, 2, 3, 4, 5);
+    let _r = rotate_right(a3, 5, 2);
+    let _p = print_vec(a3, 5);  // 4 5 1 2 3
+
+    // Test 4: left rotate by n (no change) [1,2,3,4,5] by 5 -> [1,2,3,4,5]
+    let a4 = make5(1, 2, 3, 4, 5);
+    let _r = rotate_left(a4, 5, 5);
+    let _p = print_vec(a4, 5);  // 1 2 3 4 5
+
+    // Test 5: left rotate by 1 [10,20,30,40,50,60,70] -> [20,30,40,50,60,70,10]
+    let a5 = make7(10, 20, 30, 40, 50, 60, 70);
+    let _r = rotate_left(a5, 7, 1);
+    let _p = print_vec(a5, 7);  // 20 30 40 50 60 70 10
+
+    // Test 6: right rotate by 3 [10,20,30,40,50,60,70] -> [50,60,70,10,20,30,40]
+    let a6 = make7(10, 20, 30, 40, 50, 60, 70);
+    let _r = rotate_right(a6, 7, 3);
+    let _p = print_vec(a6, 7);  // 50 60 70 10 20 30 40
+
+    // Test 7: left rotate larger than n: k=9 on n=5 -> k%5=4 -> [5,1,2,3,4]
+    let a7 = make5(1, 2, 3, 4, 5);
+    let _r = rotate_left(a7, 5, 9);
+    let _p = print_vec(a7, 5);  // 5 1 2 3 4
+
+    // Test 8: partial reverse [1,2,3,4,5], reverse [1..3] -> [1,5,4,3,2]
+    // Wait, reverse_range(arr, 1, 4) on [1,2,3,4,5] -> [1, 5,4,3,2]
+    let a8 = make5(1, 2, 3, 4, 5);
+    let _r = reverse_range(a8, 1, 4);
+    let _p = print_vec(a8, 5);  // 1 5 4 3 2
+
+    let _f = vec_free(a1);
+    let _f = vec_free(a2);
+    let _f = vec_free(a3);
+    let _f = vec_free(a4);
+    let _f = vec_free(a5);
+    let _f = vec_free(a6);
+    let _f = vec_free(a7);
+    let _f = vec_free(a8);
+    0
+};

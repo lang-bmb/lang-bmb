@@ -1,0 +1,199 @@
+// Golden Test: Brent's cycle detection algorithm
+// Brent's algorithm is faster than Floyd's: uses power-of-2 step sizes
+// Detects cycle length (lambda) and start position (mu) in iterated sequences
+
+// Iterated function: f(x) = (x * x + c) % m
+fn iter_fn(x: i64, c: i64, m: i64) -> i64 =
+    (x * x + c) % m;
+
+// Brent's algorithm: returns lambda * 10000 + mu (packed)
+fn brent_detect(x0: i64, c: i64, m: i64) -> i64 = {
+    // Phase 1: Find cycle length (lambda)
+    let mut power = 1;
+    let mut lambda = 1;
+    let mut tortoise = x0;
+    let mut hare = iter_fn(x0, c, m);
+
+    loop {
+        if tortoise == hare { break } else { () };
+        if lambda == power {
+            set tortoise = hare;
+            set power = power * 2;
+            set lambda = 0;
+            0
+        } else { 0 };
+        set hare = iter_fn(hare, c, m);
+        set lambda = lambda + 1;
+        0
+    };
+
+    // Phase 2: Find cycle start (mu)
+    // Move hare lambda steps ahead of tortoise, both starting from x0
+    set tortoise = x0;
+    set hare = x0;
+    let mut i = 0;
+    loop {
+        if i >= lambda { break } else { () };
+        set hare = iter_fn(hare, c, m);
+        set i = i + 1;
+        0
+    };
+
+    let mut mu = 0;
+    loop {
+        if tortoise == hare { break } else { () };
+        set tortoise = iter_fn(tortoise, c, m);
+        set hare = iter_fn(hare, c, m);
+        set mu = mu + 1;
+        0
+    };
+
+    lambda * 10000 + mu
+};
+
+// Iterate function k times from x0
+fn iterate_k(x0: i64, c: i64, m: i64, k: i64) -> i64 = {
+    let mut x = x0;
+    let mut i = 0;
+    loop {
+        if i >= k { break } else { () };
+        set x = iter_fn(x, c, m);
+        set i = i + 1;
+        0
+    };
+    x
+};
+
+// Verify: from entry point, iterating lambda steps returns to same point
+fn verify_cycle(x0: i64, c: i64, m: i64, lambda: i64, mu: i64) -> i64 = {
+    let entry = iterate_k(x0, c, m, mu);
+    let back = iterate_k(entry, c, m, lambda);
+    if entry == back { 1 } else { 0 }
+};
+
+// Brent on array-based sequence (for non-mathematical sequences)
+// arr: array defining next[i] = arr[i]
+fn brent_array(arr: i64, x0: i64) -> i64 = {
+    let mut power = 1;
+    let mut lambda = 1;
+    let mut tortoise = x0;
+    let mut hare = vec_get(arr, x0);
+
+    loop {
+        if tortoise == hare { break } else { () };
+        if lambda == power {
+            set tortoise = hare;
+            set power = power * 2;
+            set lambda = 0;
+            0
+        } else { 0 };
+        set hare = vec_get(arr, hare);
+        set lambda = lambda + 1;
+        0
+    };
+
+    // Find mu
+    set tortoise = x0;
+    set hare = x0;
+    let mut i = 0;
+    loop {
+        if i >= lambda { break } else { () };
+        set hare = vec_get(arr, hare);
+        set i = i + 1;
+        0
+    };
+
+    let mut mu = 0;
+    loop {
+        if tortoise == hare { break } else { () };
+        set tortoise = vec_get(arr, tortoise);
+        set hare = vec_get(arr, hare);
+        set mu = mu + 1;
+        0
+    };
+
+    lambda * 10000 + mu
+};
+
+fn main() -> i64 = {
+    // Test 1: f(x) = (x^2 + 1) % 11, x0 = 2
+    // Sequence: 2 -> 5 -> 4 -> 6 -> 4 -> 6 -> ...
+    // lambda = 2 (cycle: 4 -> 6 -> 4), mu = 2 (2 steps to enter cycle)
+    let r1 = brent_detect(2, 1, 11);
+    let _p1 = println(r1 / 10000);  // lambda
+    let _p2 = println(r1 % 10000);  // mu
+
+    // Test 2: f(x) = (x^2 + 1) % 7, x0 = 2
+    // Sequence: 2 -> 5 -> 5 -> ... (fixed point)
+    // lambda = 1, mu = 1
+    let r2 = brent_detect(2, 1, 7);
+    let _p3 = println(r2 / 10000);  // lambda = 1
+    let _p4 = println(r2 % 10000);  // mu = 1
+
+    // Verify test 1
+    let lam1 = r1 / 10000;
+    let mu1 = r1 % 10000;
+    let _p5 = println(verify_cycle(2, 1, 11, lam1, mu1)); // 1
+
+    // Verify test 2
+    let lam2 = r2 / 10000;
+    let mu2 = r2 % 10000;
+    let _p6 = println(verify_cycle(2, 1, 7, lam2, mu2)); // 1
+
+    // Test 3: f(x) = (x^2 + 0) % 10, x0 = 2
+    // Sequence: 2 -> 4 -> 6 -> 6 -> ... (fixed point at 6)
+    // lambda = 1, mu = 2
+    let r3 = brent_detect(2, 0, 10);
+    let _p7 = println(r3 / 10000);  // lambda = 1
+    let _p8 = println(r3 % 10000);  // mu = 2
+    let _p9 = println(verify_cycle(2, 0, 10, r3 / 10000, r3 % 10000)); // 1
+
+    // Test 4: f(x) = (x^2 + 3) % 13, x0 = 1
+    let r4 = brent_detect(1, 3, 13);
+    let lam4 = r4 / 10000;
+    let mu4 = r4 % 10000;
+    let _p10 = println(lam4); // lambda
+    let _p11 = println(mu4);  // mu
+    let _p12 = println(verify_cycle(1, 3, 13, lam4, mu4)); // 1
+
+    // Test 5: Array-based cycle detection
+    // Array: [1, 2, 3, 4, 5, 3]
+    // Sequence from 0: 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 3 -> 4 -> 5 -> ...
+    // Cycle: 3 -> 4 -> 5 -> 3, lambda = 3, mu = 3
+    let arr = vec_new();
+    vec_push(arr, 1); vec_push(arr, 2); vec_push(arr, 3);
+    vec_push(arr, 4); vec_push(arr, 5); vec_push(arr, 3);
+
+    let r5 = brent_array(arr, 0);
+    let _p13 = println(r5 / 10000); // lambda = 3
+    let _p14 = println(r5 % 10000); // mu = 3
+
+    // Test 6: Array with immediate cycle
+    // Array: [1, 0]
+    // Sequence from 0: 0 -> 1 -> 0 -> 1 -> ...
+    // lambda = 2, mu = 0
+    let arr2 = vec_new();
+    vec_push(arr2, 1); vec_push(arr2, 0);
+    let r6 = brent_array(arr2, 0);
+    let _p15 = println(r6 / 10000); // lambda = 2
+    let _p16 = println(r6 % 10000); // mu = 0
+
+    // Test 7: Array with self-loop
+    // Array: [1, 2, 2]
+    // Sequence from 0: 0 -> 1 -> 2 -> 2 -> ...
+    // lambda = 1, mu = 2
+    let arr3 = vec_new();
+    vec_push(arr3, 1); vec_push(arr3, 2); vec_push(arr3, 2);
+    let r7 = brent_array(arr3, 0);
+    let _p17 = println(r7 / 10000); // lambda = 1
+    let _p18 = println(r7 % 10000); // mu = 2
+
+    // Test 8: Entry point value
+    let entry_val = iterate_k(2, 1, 11, mu1);
+    let _p19 = println(entry_val); // value at cycle entry for test 1
+
+    let _f1 = vec_free(arr);
+    let _f2 = vec_free(arr2);
+    let _f3 = vec_free(arr3);
+    0
+};

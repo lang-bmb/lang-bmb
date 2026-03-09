@@ -1,0 +1,244 @@
+// Golden Test: Interval scheduling / activity selection
+// Greedy algorithm: select maximum non-overlapping intervals
+// Also: count overlaps at each point, maximum concurrent intervals
+
+fn imax(a: i64, b: i64) -> i64 =
+    if a > b { a } else { b };
+
+fn imin(a: i64, b: i64) -> i64 =
+    if a < b { a } else { b };
+
+// Sort intervals by end time (bubble sort on parallel arrays)
+fn sort_by_end(starts: i64, ends: i64) -> i64 = {
+    let n = vec_len(starts);
+    for _pass in 0..n {
+        let mut j = 0;
+        loop {
+            if j + 1 >= n { break } else { () };
+            if vec_get(ends, j) > vec_get(ends, j + 1) {
+                let ts = vec_get(starts, j);
+                vec_set(starts, j, vec_get(starts, j + 1));
+                vec_set(starts, j + 1, ts);
+                let te = vec_get(ends, j);
+                vec_set(ends, j, vec_get(ends, j + 1));
+                vec_set(ends, j + 1, te);
+                0
+            } else { 0 };
+            j = j + 1
+        }
+    };
+    0
+    };
+
+// Activity selection: greedy, pick non-overlapping intervals
+// sorted by end time. Returns count of selected intervals.
+fn activity_select(starts: i64, ends: i64) -> i64 = {
+    let n = vec_len(starts);
+    if n == 0 { return 0 } else { () };
+    let mut count = 1;
+    let mut last_end = vec_get(ends, 0);
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        if vec_get(starts, i) >= last_end {
+            count = count + 1;
+            last_end = vec_get(ends, i)
+        } else { () };
+        i = i + 1
+    };
+    count
+    };
+
+// Activity selection: returns vec of selected interval indices
+fn activity_select_ids(starts: i64, ends: i64) -> i64 = {
+    let n = vec_len(starts);
+    let selected = vec_new();
+    if n == 0 { return selected } else { () };
+    vec_push(selected, 0);
+    let mut last_end = vec_get(ends, 0);
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        if vec_get(starts, i) >= last_end {
+            vec_push(selected, i);
+            last_end = vec_get(ends, i)
+        } else { () };
+        i = i + 1
+    };
+    selected
+    };
+
+// Maximum number of concurrent/overlapping intervals at any point
+// Uses sweep line: for each interval [s,e), count active at each start point
+fn max_concurrent(starts: i64, ends: i64) -> i64 = {
+    let n = vec_len(starts);
+    let mut best = 0;
+    for i in 0..n {
+        let pt = vec_get(starts, i);
+        let mut count = 0;
+        for j in 0..n {
+            if vec_get(starts, j) <= pt and vec_get(ends, j) > pt {
+                count = count + 1
+            } else { () }
+        };
+        best = imax(best, count)
+    };
+    best
+    };
+
+// Check if a set of intervals is valid schedule (no overlaps)
+// Intervals must be sorted by start
+fn is_valid_schedule(starts: i64, ends: i64) -> i64 = {
+    let n = vec_len(starts);
+    if n <= 1 { return 1 } else { () };
+    let mut valid = 1;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        if vec_get(starts, i) < vec_get(ends, i - 1) {
+            valid = 0
+        } else { () };
+        i = i + 1
+    };
+    valid
+    };
+
+// Total time covered by intervals (union length)
+// Merge overlapping first, then sum lengths
+fn total_time(starts: i64, ends: i64) -> i64 = {
+    let n = vec_len(starts);
+    if n == 0 { return 0 } else { () };
+    // Sort by start (bubble sort)
+    for _pass in 0..n {
+        let mut j = 0;
+        loop {
+            if j + 1 >= n { break } else { () };
+            if vec_get(starts, j) > vec_get(starts, j + 1) {
+                let ts = vec_get(starts, j);
+                vec_set(starts, j, vec_get(starts, j + 1));
+                vec_set(starts, j + 1, ts);
+                let te = vec_get(ends, j);
+                vec_set(ends, j, vec_get(ends, j + 1));
+                vec_set(ends, j + 1, te);
+                0
+            } else { 0 };
+            j = j + 1
+        }
+    };
+    // Merge and sum
+    let mut total = 0;
+    let mut cur_s = vec_get(starts, 0);
+    let mut cur_e = vec_get(ends, 0);
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let ns = vec_get(starts, i);
+        let ne = vec_get(ends, i);
+        if ns <= cur_e {
+            cur_e = imax(cur_e, ne)
+        } else {
+            total = total + cur_e - cur_s;
+            cur_s = ns;
+            cur_e = ne
+        };
+        i = i + 1
+    };
+    total + cur_e - cur_s
+    };
+
+fn main() -> i64 = {
+    // Test 1: Classic activity selection
+    // Activities: [1,3), [2,5), [4,7), [1,8), [5,9), [8,10)
+    let s1 = vec_new();
+    let e1 = vec_new();
+    vec_push(s1, 1); vec_push(e1, 3);
+    vec_push(s1, 2); vec_push(e1, 5);
+    vec_push(s1, 4); vec_push(e1, 7);
+    vec_push(s1, 1); vec_push(e1, 8);
+    vec_push(s1, 5); vec_push(e1, 9);
+    vec_push(s1, 8); vec_push(e1, 10);
+    let _sort1 = sort_by_end(s1, e1);
+    let n1 = activity_select(s1, e1);
+    let _p1 = println(n1);  // 3 (select [1,3), [4,7), [8,10))
+
+    // Test 2: All overlapping activities
+    // [1,5), [2,6), [3,7)
+    let s2 = vec_new();
+    let e2 = vec_new();
+    vec_push(s2, 1); vec_push(e2, 5);
+    vec_push(s2, 2); vec_push(e2, 6);
+    vec_push(s2, 3); vec_push(e2, 7);
+    let _sort2 = sort_by_end(s2, e2);
+    let n2 = activity_select(s2, e2);
+    let _p2 = println(n2);  // 1 (can only pick one)
+
+    // Test 3: Non-overlapping activities
+    // [1,2), [3,4), [5,6), [7,8)
+    let s3 = vec_new();
+    let e3 = vec_new();
+    vec_push(s3, 1); vec_push(e3, 2);
+    vec_push(s3, 3); vec_push(e3, 4);
+    vec_push(s3, 5); vec_push(e3, 6);
+    vec_push(s3, 7); vec_push(e3, 8);
+    let _sort3 = sort_by_end(s3, e3);
+    let n3 = activity_select(s3, e3);
+    let _p3 = println(n3);  // 4 (all non-overlapping)
+
+    // Test 4: Selected indices from test 1
+    let ids = activity_select_ids(s1, e1);
+    let _p4 = println(vec_len(ids));        // 3
+    let _p5 = println(vec_get(ids, 0));     // 0 (first activity)
+    let _p6 = println(vec_get(ids, 1));     // 2 (third activity after sort)
+    let _p7 = println(vec_get(ids, 2));     // 5 (sixth activity after sort)
+
+    // Test 5: Maximum concurrent intervals
+    // [1,5), [2,6), [4,8), [7,10) — at point 4: three overlap
+    let s5 = vec_new();
+    let e5 = vec_new();
+    vec_push(s5, 1); vec_push(e5, 5);
+    vec_push(s5, 2); vec_push(e5, 6);
+    vec_push(s5, 4); vec_push(e5, 8);
+    vec_push(s5, 7); vec_push(e5, 10);
+    let _p8 = println(max_concurrent(s5, e5));  // 3
+
+    // Test 6: No overlaps → max concurrent = 1
+    let _p9 = println(max_concurrent(s3, e3));  // 1
+
+    // Test 7: Valid schedule check
+    // Non-overlapping sorted: [1,2), [3,4), [5,6) → valid
+    let _p10 = println(is_valid_schedule(s3, e3));  // 1
+
+    // Test 8: Overlapping → not valid
+    let sv = vec_new();
+    let ev = vec_new();
+    vec_push(sv, 1); vec_push(ev, 5);
+    vec_push(sv, 3); vec_push(ev, 7);
+    let _p11 = println(is_valid_schedule(sv, ev));  // 0
+
+    // Test 9: Total time covered
+    // [1,4), [3,6), [8,10) → merged: [1,6) + [8,10) = 5 + 2 = 7
+    let st = vec_new();
+    let et = vec_new();
+    vec_push(st, 1); vec_push(et, 4);
+    vec_push(st, 3); vec_push(et, 6);
+    vec_push(st, 8); vec_push(et, 10);
+    let _p12 = println(total_time(st, et));  // 7
+
+    // Test 10: Total time, no overlap
+    // [0,3), [5,8), [10,12) → 3 + 3 + 2 = 8
+    let st2 = vec_new();
+    let et2 = vec_new();
+    vec_push(st2, 0); vec_push(et2, 3);
+    vec_push(st2, 5); vec_push(et2, 8);
+    vec_push(st2, 10); vec_push(et2, 12);
+    let _p13 = println(total_time(st2, et2));  // 8
+
+    vec_free(s1); vec_free(e1); vec_free(ids);
+    vec_free(s2); vec_free(e2);
+    vec_free(s3); vec_free(e3);
+    vec_free(s5); vec_free(e5);
+    vec_free(sv); vec_free(ev);
+    vec_free(st); vec_free(et);
+    vec_free(st2); vec_free(et2);
+    0
+    };

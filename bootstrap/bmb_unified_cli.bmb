@@ -12,6 +12,10 @@
 //
 // Note: Uses | as separator instead of newlines (BMB string limitation)
 
+// Internal separator (Unit Separator, char 31) - avoids conflict with | in sat arithmetic
+fn SEP() -> String = chr(31);
+fn DSEP() -> String = chr(31) + chr(31);
+
 // ============================================================================
 // SECTION 1: String Utilities (required - no imports in bootstrap)
 // ============================================================================
@@ -932,7 +936,7 @@ fn pack_lower_result_sb(temp_id: i64) -> i64 = temp_id;
 fn sb_push_mir(sb: i64, text: String) -> i64 =
     if text.len() > 0 {
         let len = sb_len(sb);
-        let w0 = if len > 0 { sb_push(sb, "|") } else { 0 };
+        let w0 = if len > 0 { sb_push(sb, SEP()) } else { 0 };
         sb_push(sb, text)
     } else { 0 };
 
@@ -998,8 +1002,8 @@ fn escape_pipe_in_string(s: String) -> String =
 
 fn escape_pipe_loop_sb(s: String, pos: i64, sb: i64) -> i64 =
     if pos >= s.len() { 0 }
-    else if s.byte_at(pos) == 124 {
-        let w = sb_push(sb, chr(92) + chr(124));  // | -> \|
+    else if s.byte_at(pos) == 31 {
+        let w = sb_push(sb, chr(92) + chr(31));  // SEP -> \SEP
         escape_pipe_loop_sb(s, pos + 1, sb)
     }
     else {
@@ -1230,7 +1234,7 @@ fn lower_function_sb(ast: String) -> String =
     let return_instr = if ret_type == "String" { "  return_str %_t" + int_to_string(result_id) } else { "  return %_t" + int_to_string(result_id) };
     let w1 = sb_push_mir(sb, return_instr);
     let body_mir = sb_build(sb);
-    "fn " + name + "(" + params + ") -> " + ret_type + " {|entry:|" + body_mir + "|}";
+    "fn " + name + "(" + params + ") -> " + ret_type + " {" + SEP() + "entry:" + SEP() + body_mir + SEP() + "}";
 
 fn lower_program_sb(ast: String) -> String =
     let sb = sb_new();
@@ -1242,7 +1246,7 @@ fn lower_program_inner_sb(ast: String, idx: i64, sb: i64) -> i64 =
     if fn_ast.len() == 0 or fn_ast == "" { 0 } else if not is_fn_node(fn_ast) { 0 } else {
         let fn_mir = lower_function_sb(fn_ast);
         let len = sb_len(sb);
-        let w1 = if len > 0 { sb_push(sb, "||") } else { 0 };
+        let w1 = if len > 0 { sb_push(sb, DSEP()) } else { 0 };
         let w2 = sb_push(sb, fn_mir);
         lower_program_inner_sb(ast, idx + 1, sb)
     };
@@ -1443,7 +1447,7 @@ fn lower_binop_p(ast: String, temp_id: i64, block_id: i64, params: String) -> St
     let rr = lower_expr_p(right_ast, unpack_temp_id(rl), block_id, params);
     let right_id = unpack_temp_id(rr) - 1;
     let result_tmp = "%_t" + int_to_string(unpack_temp_id(rr));
-    let mir = unpack_text(rl) + "|" + unpack_text(rr) + "|" +
+    let mir = unpack_text(rl) + SEP() + unpack_text(rr) + SEP() +
         "  " + result_tmp + " = " + op + " %_t" + int_to_string(left_id) + ", %_t" + int_to_string(right_id);
     pack_lower_result(mir, unpack_temp_id(rr) + 1);
 
@@ -1457,7 +1461,7 @@ fn lower_unary_p(ast: String, temp_id: i64, block_id: i64, params: String) -> St
     let operand_id = unpack_temp_id(ro) - 1;
     let result_tmp = "%_t" + int_to_string(unpack_temp_id(ro));
     let mir_op = if op == "not" { "not" } else if op == "-" { "neg" } else { op };
-    let mir = unpack_text(ro) + "|" +
+    let mir = unpack_text(ro) + SEP() +
         "  " + result_tmp + " = " + mir_op + " %_t" + int_to_string(operand_id);
     pack_lower_result(mir, unpack_temp_id(ro) + 1);
 
@@ -1480,10 +1484,10 @@ fn lower_if_p(ast: String, temp_id: i64, block_id: i64, params: String) -> Strin
     let else_id = unpack_temp_id(re) - 1;
     let phi_tmp = "%_t" + int_to_string(unpack_temp_id(re));
     let phi = "  " + phi_tmp + " = phi [%_t" + int_to_string(then_id) + ", " + then_label + "], [%_t" + int_to_string(else_id) + ", " + else_label + "]";
-    let mir = unpack_text(rc) + "|" + branch + "|" +
-        then_label + ":|" + unpack_text(rt) + "|  goto " + merge_label + "|" +
-        else_label + ":|" + unpack_text(re) + "|  goto " + merge_label + "|" +
-        merge_label + ":|" + phi;
+    let mir = unpack_text(rc) + SEP() + branch + SEP() +
+        then_label + ":" + SEP() + unpack_text(rt) + SEP() + "  goto " + merge_label + SEP() +
+        else_label + ":" + SEP() + unpack_text(re) + SEP() + "  goto " + merge_label + SEP() +
+        merge_label + ":" + SEP() + phi;
     pack_lower_result(mir, unpack_temp_id(re) + 1);
 
 // v0.50.2: Use unique name with block_id to avoid LLVM redefinition errors
@@ -1501,7 +1505,7 @@ fn lower_let_p(ast: String, temp_id: i64, block_id: i64, params: String) -> Stri
     let val_id = unpack_temp_id(rv) - 1;
     let assign = "  %" + unique_name + " = copy %_t" + int_to_string(val_id);
     let rb = lower_expr_p(body_ast, unpack_temp_id(rv), new_block_id, params);
-    let mir = unpack_text(rv) + "|" + assign + "|" + unpack_text(rb);
+    let mir = unpack_text(rv) + SEP() + assign + SEP() + unpack_text(rb);
     pack_lower_result(mir, unpack_temp_id(rb));
 
 fn lower_call(ast: String, temp_id: i64, block_id: i64) -> String =
@@ -1519,13 +1523,13 @@ fn lower_call_args_p(ast: String, name: String, temp_id: i64, block_id: i64, idx
     if arg == "" {
         let result_tmp = "%_t" + int_to_string(temp_id);
         let call_mir = "  " + result_tmp + " = call @" + name + "(" + args_acc + ")";
-        let full_mir = if mir_acc == "" { call_mir } else { mir_acc + "|" + call_mir };
+        let full_mir = if mir_acc == "" { call_mir } else { mir_acc + SEP() + call_mir };
         pack_lower_result(full_mir, temp_id + 1)
     } else {
         let ra = lower_expr_p(arg, temp_id, block_id, params);
         let arg_id = unpack_temp_id(ra) - 1;
         let new_args = if args_acc == "" { "%_t" + int_to_string(arg_id) } else { args_acc + ", %_t" + int_to_string(arg_id) };
-        let new_mir = if mir_acc == "" { unpack_text(ra) } else { mir_acc + "|" + unpack_text(ra) };
+        let new_mir = if mir_acc == "" { unpack_text(ra) } else { mir_acc + SEP() + unpack_text(ra) };
         lower_call_args_p(ast, name, unpack_temp_id(ra), block_id, idx + 1, new_mir, new_args, params)
     };
 
@@ -1542,7 +1546,7 @@ fn lower_function(ast: String) -> String =
     let rb = lower_expr_p(body_ast, 0, 0, param_names);
     let body_mir = unpack_text(rb);
     let result_id = unpack_temp_id(rb) - 1;
-    "fn " + name + "(" + params + ") -> " + ret_type + " {|entry:|" + body_mir + "|  return %_t" + int_to_string(result_id) + "|}";
+    "fn " + name + "(" + params + ") -> " + ret_type + " {" + SEP() + "entry:" + SEP() + body_mir + SEP() + "  return %_t" + int_to_string(result_id) + SEP() + "}";
 
 // v0.50.3: Collect just parameter names (comma-separated) for passing to lower_var
 fn collect_param_names(ast: String, idx: i64, acc: String) -> String =
@@ -1600,7 +1604,7 @@ fn lower_program_inner(ast: String, idx: i64, acc: String) -> String =
     let fn_ast = get_child(ast, idx);
     if fn_ast.len() == 0 or fn_ast == "" { acc } else if not is_fn_node(fn_ast) { acc } else {
         let fn_mir = lower_function(fn_ast);
-        let new_acc = if acc.len() > 0 { acc + "||" + fn_mir } else { fn_mir };
+        let new_acc = if acc.len() > 0 { acc + DSEP() + fn_mir } else { fn_mir };
         lower_program_inner(ast, idx + 1, new_acc)
     };
 
@@ -1608,14 +1612,14 @@ fn lower_program_inner(ast: String, idx: i64, acc: String) -> String =
 // SECTION 11: LLVM IR Generation
 // ============================================================================
 
-// v0.50.39: Skip escaped pipes (\|) which are inside string literals
+// v0.50.39: Skip escaped separators which are inside string literals
 fn find_pipe(s: String, pos: i64) -> i64 =
     if pos >= s.len() { pos }
-    else if s.byte_at(pos) == 92 and pos + 1 < s.len() and s.byte_at(pos + 1) == 124 {
-        // Skip escaped \| - this is a pipe inside a string literal
+    else if s.byte_at(pos) == 92 and pos + 1 < s.len() and s.byte_at(pos + 1) == 31 {
+        // Skip escaped \SEP
         find_pipe(s, pos + 2)
     }
-    else if s.byte_at(pos) == 124 { pos }  // Unescaped | found
+    else if s.byte_at(pos) == 31 { pos }  // Unescaped separator found
     else { find_pipe(s, pos + 1) };
 
 fn llvm_gen_line(line: String) -> String =
@@ -1700,7 +1704,7 @@ fn llvm_gen_cmp(pred: String, line: String, pos: i64, dest: String) -> String =
     let p2 = low_skip_ws(line, comma + 1);
     let right = line.slice(p2, line.len());
     let tmp = dest + "_cmp";
-    "  " + tmp + " = icmp " + pred + " i64 " + trim_end(left) + ", " + trim_end(right) + "|  " + dest + " = zext i1 " + tmp + " to i64";
+    "  " + tmp + " = icmp " + pred + " i64 " + trim_end(left) + ", " + trim_end(right) + SEP() + "  " + dest + " = zext i1 " + tmp + " to i64";
 
 fn llvm_gen_not(line: String, pos: i64, dest: String) -> String =
     let p = low_skip_ws(line, pos);
@@ -1775,8 +1779,8 @@ fn llvm_gen_str_return_call(fname: String, args: String, dest: String) -> String
     let ptr_tmp = dest + "_ptr";
     let conv_instrs = gen_inttoptr_convs(fname, args, 0, "", 0);
     let conv_args = format_str_call_args(fname, args, 0, "", 0);
-    let call_instr = "  " + ptr_tmp + " = call ptr " + fname + "(" + conv_args + ")|  " + dest + " = ptrtoint ptr " + ptr_tmp + " to i64";
-    if conv_instrs == "" { call_instr } else { conv_instrs + "|" + call_instr };
+    let call_instr = "  " + ptr_tmp + " = call ptr " + fname + "(" + conv_args + ")" + SEP() + "  " + dest + " = ptrtoint ptr " + ptr_tmp + " to i64";
+    if conv_instrs == "" { call_instr } else { conv_instrs + SEP() + call_instr };
 
 // Generate call with string args, returns i64 or void
 fn llvm_gen_str_arg_call(fname: String, orig_fn: String, args: String, dest: String) -> String =
@@ -1784,11 +1788,11 @@ fn llvm_gen_str_arg_call(fname: String, orig_fn: String, args: String, dest: Str
     let conv_args = format_str_call_args(fname, args, 0, "", 0);
     // Check for void functions
     let call_instr = if fname == "@print_str" or fname == "@println_str" {
-        "  call void " + fname + "(" + conv_args + ")|  " + dest + " = add nsw i64 0, 0"
+        "  call void " + fname + "(" + conv_args + ")" + SEP() + "  " + dest + " = add nsw i64 0, 0"
     } else {
         "  " + dest + " = call i64 " + fname + "(" + conv_args + ")"
     };
-    if conv_instrs == "" { call_instr } else { conv_instrs + "|" + call_instr };
+    if conv_instrs == "" { call_instr } else { conv_instrs + SEP() + call_instr };
 
 // Generate inttoptr conversion instructions for string arguments
 fn gen_inttoptr_convs(fname: String, args: String, pos: i64, acc: String, idx: i64) -> String =
@@ -1799,7 +1803,7 @@ fn gen_inttoptr_convs(fname: String, args: String, pos: i64, acc: String, idx: i
         let needs_conv = is_str_arg_at(fname, idx);
         let new_acc = if needs_conv {
             let conv_instr = "  " + arg + "_sptr = inttoptr i64 " + arg + " to ptr";
-            if acc == "" { conv_instr } else { acc + "|" + conv_instr }
+            if acc == "" { conv_instr } else { acc + SEP() + conv_instr }
         } else { acc };
         if comma >= args.len() { new_acc } else { gen_inttoptr_convs(fname, args, comma + 1, new_acc, idx + 1) }
     };
@@ -1872,7 +1876,7 @@ fn llvm_gen_return_str(line: String, pos: i64) -> String =
     let val_start = low_skip_ws(line, pos + 10);
     let val = trim_end(line.slice(val_start, line.len()));
     let ptr_tmp = val + "_retptr";
-    "  " + ptr_tmp + " = inttoptr i64 " + val + " to ptr|  ret ptr " + ptr_tmp;
+    "  " + ptr_tmp + " = inttoptr i64 " + val + " to ptr" + SEP() + "  ret ptr " + ptr_tmp;
 
 // v0.50.2: Add trunc i64 to i1 since conditions are now i64
 fn llvm_gen_branch(line: String, pos: i64) -> String =
@@ -1885,7 +1889,7 @@ fn llvm_gen_branch(line: String, pos: i64) -> String =
     let after2 = low_skip_ws(line, comma2 + 1);
     let else_label = trim_end(line.slice(after2, line.len()));
     let cond_br = trim_end(cond) + "_br";
-    "  " + cond_br + " = trunc i64 " + trim_end(cond) + " to i1|  br i1 " + cond_br + ", label %" + trim_end(then_label) + ", label %" + else_label;
+    "  " + cond_br + " = trunc i64 " + trim_end(cond) + " to i1" + SEP() + "  br i1 " + cond_br + ", label %" + trim_end(then_label) + ", label %" + else_label;
 
 fn llvm_gen_goto(line: String, pos: i64) -> String =
     let label_start = low_skip_ws(line, pos + 4);
@@ -1911,7 +1915,7 @@ fn llvm_gen_str(line: String, pos: i64, dest: String) -> String =
     let ptr_tmp = dest + "_ptr";
     let str_ptr_tmp = dest + "_strptr";
     // v0.50.42: GEP to get C string pointer, then call bmb_string_from_cstr, then ptrtoint
-    "  " + ptr_tmp + " = getelementptr [" + int_to_string(str_len) + " x i8], ptr " + str_id + ", i64 0, i64 0|  " + str_ptr_tmp + " = call ptr @bmb_string_from_cstr(ptr " + ptr_tmp + ")|  " + dest + " = ptrtoint ptr " + str_ptr_tmp + " to i64";
+    "  " + ptr_tmp + " = getelementptr [" + int_to_string(str_len) + " x i8], ptr " + str_id + ", i64 0, i64 0" + SEP() + "  " + str_ptr_tmp + " = call ptr @bmb_string_from_cstr(ptr " + ptr_tmp + ")" + SEP() + "  " + dest + " = ptrtoint ptr " + str_ptr_tmp + " to i64";
 
 // Unescape \| back to | in string
 // v0.50.49: Use StringBuilder for O(n) complexity instead of O(n²)
@@ -1922,9 +1926,9 @@ fn unescape_pipe(s: String) -> String =
 
 fn unescape_pipe_loop_sb(s: String, pos: i64, sb: i64) -> i64 =
     if pos >= s.len() { 0 }
-    else if s.byte_at(pos) == 92 and pos + 1 < s.len() and s.byte_at(pos + 1) == 124 {
-        // \| -> |
-        let w = sb_push(sb, chr(124));
+    else if s.byte_at(pos) == 92 and pos + 1 < s.len() and s.byte_at(pos + 1) == 31 {
+        // \SEP -> SEP
+        let w = sb_push(sb, chr(31));
         unescape_pipe_loop_sb(s, pos + 2, sb)
     }
     else {
@@ -1960,7 +1964,7 @@ fn gen_function_lines_sb(mir: String, pos: i64, sb: i64) -> i64 =
         let line = mir.slice(pos, pipe_pos);
         let llvm_line = llvm_gen_fn_line(line);
         let len = sb_len(sb);
-        let w1 = if len > 0 { sb_push(sb, "|") } else { 0 };
+        let w1 = if len > 0 { sb_push(sb, SEP()) } else { 0 };
         let w2 = sb_push(sb, llvm_line);
         if pipe_pos >= mir.len() { 0 } else { gen_function_lines_sb(mir, pipe_pos + 1, sb) }
     };
@@ -1976,7 +1980,7 @@ fn gen_program_acc_sb(mir: String, pos: i64, sb: i64) -> i64 =
         let fn_mir = mir.slice(pos, fn_end);
         let fn_llvm = gen_function_sb(fn_mir);
         let len = sb_len(sb);
-        let w1 = if len > 0 { sb_push(sb, "||") } else { 0 };
+        let w1 = if len > 0 { sb_push(sb, DSEP()) } else { 0 };
         let w2 = sb_push(sb, fn_llvm);
         if fn_end + 2 >= mir.len() { 0 } else { gen_program_acc_sb(mir, fn_end + 2, sb) }
     };
@@ -2027,7 +2031,7 @@ fn ends_with_colon(s: String) -> bool =
     };
 
 fn find_double_pipe(s: String, pos: i64) -> i64 =
-    if pos + 1 >= s.len() { s.len() } else if s.byte_at(pos) == 124 and s.byte_at(pos + 1) == 124 { pos } else { find_double_pipe(s, pos + 1) };
+    if pos + 1 >= s.len() { s.len() } else if s.byte_at(pos) == 31 and s.byte_at(pos + 1) == 31 { pos } else { find_double_pipe(s, pos + 1) };
 
 // v0.50.50: Removed dead code gen_program/gen_program_acc (gen_program_sb used instead)
 
@@ -2039,7 +2043,7 @@ fn find_double_pipe(s: String, pos: i64) -> i64 =
 // sed -i 's/target triple = x86_64/target triple = "x86_64/'
 // sed -i 's/linux-gnu$/linux-gnu"/'
 fn gen_module_header() -> String =
-    "; ModuleID = bmb_bootstrap|target triple = x86_64-unknown-linux-gnu";
+    "; ModuleID = bmb_bootstrap" + SEP() + "target triple = x86_64-unknown-linux-gnu";
 
 fn gen_extern_println() -> String = "declare void @println(i64)";
 fn gen_extern_abs() -> String = "declare i64 @abs(i64)";
@@ -2068,11 +2072,11 @@ fn gen_extern_sb_build() -> String = "declare ptr @sb_build(i64)";
 fn gen_extern_sb_len() -> String = "declare i64 @sb_len(i64)";
 
 fn gen_runtime_decls() -> String =
-    gen_extern_println() + "|" + gen_extern_abs() + "|" + gen_extern_min() + "|" + gen_extern_max() + "|" +
-    gen_extern_str_from_cstr() + "|" + gen_extern_str_concat() + "|" + gen_extern_str_eq() + "|" + gen_extern_len() + "|" + gen_extern_chr() + "|" +
-    gen_extern_byte_at() + "|" + gen_extern_slice() + "|" + gen_extern_print_str() + "|" + gen_extern_println_str() + "|" +
-    gen_extern_read_file() + "|" + gen_extern_write_file() + "|" + gen_extern_arg_count() + "|" + gen_extern_get_arg() + "|" +
-    gen_extern_sb_new() + "|" + gen_extern_sb_push() + "|" + gen_extern_sb_build() + "|" + gen_extern_sb_len();
+    gen_extern_println() + SEP() + gen_extern_abs() + SEP() + gen_extern_min() + SEP() + gen_extern_max() + SEP() +
+    gen_extern_str_from_cstr() + SEP() + gen_extern_str_concat() + SEP() + gen_extern_str_eq() + SEP() + gen_extern_len() + SEP() + gen_extern_chr() + SEP() +
+    gen_extern_byte_at() + SEP() + gen_extern_slice() + SEP() + gen_extern_print_str() + SEP() + gen_extern_println_str() + SEP() +
+    gen_extern_read_file() + SEP() + gen_extern_write_file() + SEP() + gen_extern_arg_count() + SEP() + gen_extern_get_arg() + SEP() +
+    gen_extern_sb_new() + SEP() + gen_extern_sb_push() + SEP() + gen_extern_sb_build() + SEP() + gen_extern_sb_len();
 
 // v0.50.20: Extract string literals from MIR for global declarations
 // Uses content hash to ensure unique IDs for each distinct string
@@ -2105,7 +2109,7 @@ fn extract_strlit_sb(mir: String, pos: i64, sb: i64, seen_ids: String) -> i64 =
             } else {
                 let decl = str_id + " = private unnamed_addr constant [" + int_to_string(str_len) + " x i8] c" + escape_string_for_llvm(str_unescaped);
                 let len = sb_len(sb);
-                let w1 = if len > 0 { sb_push(sb, "|") } else { 0 };
+                let w1 = if len > 0 { sb_push(sb, SEP()) } else { 0 };
                 let w2 = sb_push(sb, decl);
                 let new_seen = if seen_ids == "" { str_id } else { seen_ids + "," + str_id };
                 extract_strlit_sb(mir, str_end + 1, sb, new_seen)
@@ -2136,7 +2140,7 @@ fn is_real_str_assign(mir: String, pos: i64) -> bool =
 
 fn find_line_start(mir: String, pos: i64) -> i64 =
     if pos <= 0 { 0 }
-    else if mir.byte_at(pos - 1) == 124 { pos }  // | character
+    else if mir.byte_at(pos - 1) == 31 { pos }  // Unit separator
     else { find_line_start(mir, pos - 1) };
 
 fn skip_spaces_check_temp(mir: String, pos: i64) -> bool =
@@ -2222,8 +2226,8 @@ fn compile_program(source: String) -> String =
             // v0.31.20: Use StringBuilder-aware LLVM generation for O(1) IR generation
             let code = gen_program_sb(mir);
             // Include string constants after header if any exist
-            if str_consts == "" { header + "|" + decls + "||" + code }
-            else { header + "|" + str_consts + "|" + decls + "||" + code }
+            if str_consts == "" { header + SEP() + decls + DSEP() + code }
+            else { header + SEP() + str_consts + SEP() + decls + DSEP() + code }
         }
     };
 
@@ -2438,11 +2442,11 @@ fn test_low_sexp_funcs() -> i64 =
 fn test_find_functions() -> i64 =
     let t1 = if find_colon("abc:def", 0) == 3 { 1 } else { 0 };
     let t2 = if find_colon("nocolon", 0) == 7 { 1 } else { 0 };  // end of string
-    let t3 = if find_pipe("ab|cd", 0) == 2 { 1 } else { 0 };
+    let t3 = if find_pipe("ab" + SEP() + "cd", 0) == 2 { 1 } else { 0 };
     let t4 = if find_eq("x = 5", 0) == 2 { 1 } else { 0 };
     let t5 = if find_comma("a, b", 0) == 1 { 1 } else { 0 };
     let t6 = if find_char("abc@def", 0, 64) == 3 { 1 } else { 0 };  // '@'
-    let t7 = if find_double_pipe("a||b", 0) == 1 { 1 } else { 0 };
+    let t7 = if find_double_pipe("a" + SEP() + SEP() + "b", 0) == 1 { 1 } else { 0 };
     let t8 = if find_arrow("x -> y", 0) == 2 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 

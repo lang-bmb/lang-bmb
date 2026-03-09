@@ -1,0 +1,143 @@
+// Golden Test: Luhn checksum verification
+// Algorithm: from rightmost digit, double every second digit;
+// if doubling >= 10, subtract 9; sum all digits; valid if sum % 10 == 0
+
+// Compute Luhn checksum of digits stored in a vec
+// Returns 1 if valid (sum % 10 == 0), 0 otherwise
+fn luhn_check(digits: i64) -> i64 = {
+    let n = vec_len(digits);
+    let mut sum = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let pos_from_right = n - 1 - i;
+        let d = vec_get(digits, pos_from_right);
+        let is_double = i - (i / 2) * 2;
+        let val = if is_double == 1 {
+            let doubled = d * 2;
+            if doubled >= 10 { doubled - 9 } else { doubled }
+        } else { d };
+        sum = sum + val;
+        i = i + 1
+    };
+    let rem = sum - (sum / 10) * 10;
+    if rem == 0 { 1 } else { 0 }
+    };
+
+// Compute the Luhn sum (for computing check digits)
+fn luhn_sum(digits: i64) -> i64 = {
+    let n = vec_len(digits);
+    let mut sum = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let pos_from_right = n - 1 - i;
+        let d = vec_get(digits, pos_from_right);
+        let is_double = i - (i / 2) * 2;
+        let val = if is_double == 1 {
+            let doubled = d * 2;
+            if doubled >= 10 { doubled - 9 } else { doubled }
+        } else { d };
+        sum = sum + val;
+        i = i + 1
+    };
+    sum
+    };
+
+// Compute check digit: append 0, compute sum, check digit = (10 - sum%10) % 10
+fn compute_check_digit(digits: i64) -> i64 = {
+    vec_push(digits, 0);
+    let s = luhn_sum(digits);
+    let rem = s - (s / 10) * 10;
+    let check = if rem == 0 { 0 } else { 10 - rem };
+    // Remove the appended 0
+    let n = vec_len(digits);
+    let tmp = vec_new();
+    let mut i = 0;
+    loop {
+        if i >= n - 1 { break } else { () };
+        vec_push(tmp, vec_get(digits, i));
+        i = i + 1
+    };
+    // Note: we just return the check digit, caller manages cleanup
+    vec_free(tmp);
+    check
+    };
+
+fn make_digits(d0: i64, d1: i64, d2: i64, d3: i64, d4: i64, d5: i64, d6: i64, d7: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, d0);
+    vec_push(v, d1);
+    vec_push(v, d2);
+    vec_push(v, d3);
+    vec_push(v, d4);
+    vec_push(v, d5);
+    vec_push(v, d6);
+    vec_push(v, d7);
+    v
+    };
+
+fn main() -> i64 = {
+    // Test 1: Luhn check on 7992739871 (sum=56, 56%10=6, invalid)
+    // Digits: 7 9 9 2 7 3 9 8 7 1
+    let v1 = vec_new();
+    vec_push(v1, 7); vec_push(v1, 9); vec_push(v1, 9); vec_push(v1, 2);
+    vec_push(v1, 7); vec_push(v1, 3); vec_push(v1, 9); vec_push(v1, 8);
+    vec_push(v1, 7); vec_push(v1, 1);
+    let _p1 = println(luhn_check(v1));     // 0 (invalid)
+
+    // Test 2: 7992739872 (also invalid, sum=57)
+    // 7 9 9 2 7 3 9 8 7 2
+    let v2 = vec_new();
+    vec_push(v2, 7); vec_push(v2, 9); vec_push(v2, 9); vec_push(v2, 2);
+    vec_push(v2, 7); vec_push(v2, 3); vec_push(v2, 9); vec_push(v2, 8);
+    vec_push(v2, 7); vec_push(v2, 2);
+    let _p2 = println(luhn_check(v2));     // 0 (invalid)
+
+    // Test 3: Simple valid: 0 (single zero)
+    let v3 = vec_new();
+    vec_push(v3, 0);
+    let _p3 = println(luhn_check(v3));     // 1 (valid, sum=0)
+
+    // Test 4: 1 8 (1*2=2, 8 => sum=10 => valid)
+    let v4 = vec_new();
+    vec_push(v4, 1); vec_push(v4, 8);
+    let _p4 = println(luhn_check(v4));     // 1 (valid)
+
+    // Test 5: 1 9 (1*2=2, 9 => sum=11 => invalid)
+    let v5 = vec_new();
+    vec_push(v5, 1); vec_push(v5, 9);
+    let _p5 = println(luhn_check(v5));     // 0 (invalid)
+
+    // Test 6: Luhn sum of a known sequence
+    let v6 = make_digits(4, 5, 3, 9, 1, 4, 8, 8);
+    let _p6 = println(luhn_sum(v6));       // 49
+
+    // Test 7: Compute check digit for prefix 799273987
+    let v7 = vec_new();
+    vec_push(v7, 7); vec_push(v7, 9); vec_push(v7, 9); vec_push(v7, 2);
+    vec_push(v7, 7); vec_push(v7, 3); vec_push(v7, 9); vec_push(v7, 8);
+    vec_push(v7, 7);
+    let cd = compute_check_digit(v7);
+    let _p7 = println(cd);                // 5 (check digit)
+
+    // Test 8: 4 9 9 2 7 3 9 8 5 0 (check Luhn validity)
+    let v8 = vec_new();
+    vec_push(v8, 4); vec_push(v8, 9); vec_push(v8, 9); vec_push(v8, 2);
+    vec_push(v8, 7); vec_push(v8, 3); vec_push(v8, 9); vec_push(v8, 8);
+    vec_push(v8, 5); vec_push(v8, 0);
+    let _p8 = println(luhn_check(v8));     // 0 (invalid)
+
+    // Test 9: all zeros [0,0,0,0] is valid (sum = 0)
+    let v9 = vec_new();
+    vec_push(v9, 0); vec_push(v9, 0); vec_push(v9, 0); vec_push(v9, 0);
+    let _p9 = println(luhn_check(v9));     // 1 (valid)
+
+    // Test 10: Luhn sum of [1,2,3,4,5,6,7,8]
+    let v10 = make_digits(1, 2, 3, 4, 5, 6, 7, 8);
+    let _p10 = println(luhn_sum(v10));     // 34
+
+    vec_free(v1); vec_free(v2); vec_free(v3); vec_free(v4); vec_free(v5);
+    vec_free(v6); vec_free(v7); vec_free(v8); vec_free(v9); vec_free(v10);
+    0
+    };

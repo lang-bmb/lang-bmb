@@ -1,0 +1,77 @@
+// Golden Test: Enum + Match Integration
+// Tests enum declarations, variant usage, and match on enum values
+
+enum Direction { North, South, East, West }
+
+enum Season { Spring, Summer, Autumn, Winter }
+
+fn direction_dx(d: i64) -> i64 =
+    match d {
+        0 => 0,
+        1 => 0,
+        2 => 1,
+        3 => 0 - 1,
+        _ => 0,
+    };
+
+fn direction_dy(d: i64) -> i64 =
+    match d {
+        0 => 1,
+        1 => 0 - 1,
+        2 => 0,
+        3 => 0,
+        _ => 0,
+    };
+
+fn season_temp(s: i64) -> i64 =
+    match s {
+        0 => 15,
+        1 => 30,
+        2 => 20,
+        3 => 5,
+        _ => 0,
+    };
+
+fn is_warm(s: i64) -> i64 =
+    match s {
+        0 | 1 => 1,
+        _ => 0,
+    };
+
+fn main() -> i64 = {
+    // Enum variants are ordinal integers
+    let n = Direction::North;
+    let s = Direction::South;
+    let e = Direction::East;
+    let w = Direction::West;
+
+    let _p1 = println(n);  // 0
+    let _p2 = println(s);  // 1
+    let _p3 = println(e);  // 2
+    let _p4 = println(w);  // 3
+
+    // Movement deltas
+    let _p5 = println(direction_dx(e));   // 1 (east = +x)
+    let _p6 = println(direction_dy(n));   // 1 (north = +y)
+    let _p7 = println(direction_dx(w));   // -1 (west = -x)
+    let _p8 = println(direction_dy(s));   // -1 (south = -y)
+
+    // Season matching
+    let spring = Season::Spring;
+    let summer = Season::Summer;
+    let autumn = Season::Autumn;
+    let winter = Season::Winter;
+
+    let _p9 = println(season_temp(spring));   // 15
+    let _p10 = println(season_temp(summer));  // 30
+    let _p11 = println(season_temp(autumn));  // 20
+    let _p12 = println(season_temp(winter));  // 5
+
+    // Or-pattern matching
+    let _p13 = println(is_warm(spring));  // 1
+    let _p14 = println(is_warm(summer));  // 1
+    let _p15 = println(is_warm(autumn));  // 0
+    let _p16 = println(is_warm(winter));  // 0
+
+    0
+};

@@ -1,0 +1,169 @@
+// Golden Test: Number base conversion
+// Convert decimal to binary/octal/hex, convert back, verify round-trip
+
+// Store digits of n in base b into a vec (least significant first)
+fn to_base_digits(n: i64, base: i64) -> i64 = {
+    let digits = vec_new();
+    let _r = if n == 0 {
+        let _p = vec_push(digits, 0);
+        0
+    } else {
+        let mut x = n;
+        loop {
+            if x == 0 { break } else { () };
+            let d = x - (x / base) * base;
+            let _p = vec_push(digits, d);
+            x = x / base
+        };
+        0
+    };
+    digits
+    };
+
+// Print digits in reverse order (most significant first)
+fn print_digits_rev(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut i = n - 1;
+    loop {
+        if i < 0 { break } else { () };
+        println(vec_get(v, i));
+        i = i - 1
+    };
+    0
+    };
+
+// Convert digits back to decimal (digits stored LSB first)
+fn from_base_digits(v: i64, base: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut result = 0;
+    let mut power = 1;
+    for i in 0..n {
+        result = result + vec_get(v, i) * power;
+        power = power * base
+    };
+    result
+    };
+
+// Count digits in given base
+fn count_base_digits(n: i64, base: i64) -> i64 = {
+    if n == 0 { 1 }
+    else {
+        let mut x = n;
+        let mut count = 0;
+        loop {
+            if x == 0 { break } else { () };
+            count = count + 1;
+            x = x / base
+        };
+        count
+    }
+    };
+
+// Sum of digits in given base
+fn sum_base_digits(n: i64, base: i64) -> i64 = {
+    let mut x = n;
+    let mut s = 0;
+    loop {
+        if x == 0 { break } else { () };
+        s = s + x - (x / base) * base;
+        x = x / base
+    };
+    s
+    };
+
+// Check if n is a palindrome in given base
+fn is_base_palindrome(n: i64, base: i64) -> i64 = {
+    let digits = to_base_digits(n, base);
+    let len = vec_len(digits);
+    let mut is_pal = 1;
+    let mut i = 0;
+    loop {
+        if i >= len / 2 { break } else { () };
+        let _c = if vec_get(digits, i) != vec_get(digits, len - 1 - i) {
+            is_pal = 0;
+            0
+        } else { 0 };
+        i = i + 1
+    };
+    let _f = vec_free(digits);
+    is_pal
+    };
+
+fn main() -> i64 = {
+    // === Convert 42 to binary (base 2) ===
+    // 42 = 101010 in binary
+    let d1 = to_base_digits(42, 2);
+    let _h1 = println(42);
+    let _pd1 = print_digits_rev(d1);     // 1 0 1 0 1 0
+    let _p1 = println(vec_len(d1));       // 6 digits
+    let _p2 = println(from_base_digits(d1, 2));  // 42 (round trip)
+
+    // === Convert 255 to binary ===
+    // 255 = 11111111 in binary
+    let d2 = to_base_digits(255, 2);
+    let _h2 = println(255);
+    let _pd2 = print_digits_rev(d2);     // 1 1 1 1 1 1 1 1
+    let _p3 = println(vec_len(d2));       // 8 digits
+    let _p4 = println(from_base_digits(d2, 2));  // 255
+
+    // === Convert 255 to octal (base 8) ===
+    // 255 = 377 in octal
+    let d3 = to_base_digits(255, 8);
+    let _h3 = println(255);
+    let _pd3 = print_digits_rev(d3);     // 3 7 7
+    let _p5 = println(vec_len(d3));       // 3 digits
+    let _p6 = println(from_base_digits(d3, 8));  // 255
+
+    // === Convert 255 to hex (base 16) ===
+    // 255 = FF = 15 15 in hex
+    let d4 = to_base_digits(255, 16);
+    let _h4 = println(255);
+    let _pd4 = print_digits_rev(d4);     // 15 15
+    let _p7 = println(vec_len(d4));       // 2 digits
+    let _p8 = println(from_base_digits(d4, 16));  // 255
+
+    // === Convert 1000 to various bases ===
+    // 1000 base 2
+    let d5 = to_base_digits(1000, 2);
+    let _h5 = println(1000);
+    let _p9 = println(count_base_digits(1000, 2));  // 10 digits in binary
+    let _p10 = println(from_base_digits(d5, 2));     // 1000
+
+    // 1000 base 8 = 1750
+    let d6 = to_base_digits(1000, 8);
+    let _pd6 = print_digits_rev(d6);     // 1 7 5 0
+    let _p11 = println(from_base_digits(d6, 8));  // 1000
+
+    // === Digit counts ===
+    let _p12 = println(count_base_digits(100, 2));   // 7 (1100100)
+    let _p13 = println(count_base_digits(100, 8));   // 3 (144)
+    let _p14 = println(count_base_digits(100, 10));  // 3
+    let _p15 = println(count_base_digits(100, 16));  // 2 (64)
+    let _p16 = println(count_base_digits(0, 10));    // 1
+
+    // === Sum of digits ===
+    let _p17 = println(sum_base_digits(42, 10));     // 4+2 = 6
+    let _p18 = println(sum_base_digits(42, 2));      // 1+0+1+0+1+0 = 3
+    let _p19 = println(sum_base_digits(255, 2));     // 8 (all ones)
+    let _p20 = println(sum_base_digits(255, 16));    // 15+15 = 30
+
+    // === Palindrome in base checks ===
+    // 9 in binary is 1001 (palindrome)
+    let _p21 = println(is_base_palindrome(9, 2));    // 1
+    // 10 in binary is 1010 (not palindrome)
+    let _p22 = println(is_base_palindrome(10, 2));   // 0
+    // 121 in decimal is palindrome
+    let _p23 = println(is_base_palindrome(121, 10)); // 1
+    // 7 in base 2 is 111 (palindrome)
+    let _p24 = println(is_base_palindrome(7, 2));    // 1
+    // 0 is palindrome in any base
+    let _p25 = println(is_base_palindrome(0, 2));    // 1
+
+    let _f1 = vec_free(d1);
+    let _f2 = vec_free(d2);
+    let _f3 = vec_free(d3);
+    let _f4 = vec_free(d4);
+    let _f5 = vec_free(d5);
+    let _f6 = vec_free(d6);
+    0
+    };

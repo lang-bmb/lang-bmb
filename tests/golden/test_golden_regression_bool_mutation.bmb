@@ -1,0 +1,52 @@
+// Golden Test: Regression for bool mutation in while-loop
+// Bug: ProofUnreachableElimination folded mutable booleans globally,
+// treating loop-body mutations as if they were constant.
+// Fixed in Cycle 1430.
+
+fn test_bool_stays_true() -> i64 = {
+// Bool set to true, never changed — should remain true
+    let flag = true;
+    let mut count = 0;
+    let mut i = 0;
+    while i < 5 {
+        if flag { count = count + 1 } else { () };
+        i = i + 1;
+        0
+    };
+    count  // Should be 5
+    };
+
+fn test_bool_mutation() -> i64 = {
+// Bool starts true, set to false in first iteration
+    let mut flag = true;
+    let mut count = 0;
+    let mut i = 0;
+    while i < 5 {
+        if flag { count = count + 1 } else { () };
+        flag = false;
+        i = i + 1;
+        0
+    };
+    count  // Should be 1 (only first iteration has flag=true)
+    };
+
+fn test_bool_toggle() -> i64 = {
+// Bool toggled each iteration
+    let mut flag = true;
+    let mut count = 0;
+    let mut i = 0;
+    while i < 6 {
+        if flag { count = count + 1 } else { () };
+        flag = not flag;
+        i = i + 1;
+        0
+    };
+    count  // Should be 3 (iterations 0, 2, 4)
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(test_bool_stays_true());   // 5
+    let _p2 = println(test_bool_mutation());      // 1
+    let _p3 = println(test_bool_toggle());        // 3
+    0
+    };

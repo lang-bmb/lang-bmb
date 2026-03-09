@@ -1,0 +1,111 @@
+// Golden Test: Fibonacci variants
+// Tests recursive, iterative (loop), and matrix-style double accumulator approaches
+// Verifies edge cases: fib(0)=0, fib(1)=1, fib(2)=1
+
+// === 1. Recursive Fibonacci ===
+fn fib_rec(n: i64) -> i64 =
+    if n <= 0 { 0 }
+    else if n == 1 { 1 }
+    else { fib_rec(n - 1) + fib_rec(n - 2) };
+
+// === 2. Iterative Fibonacci using loop ===
+fn fib_iter(n: i64) -> i64 = {
+    if n <= 0 { 0 }
+    else if n == 1 { 1 }
+    else {
+        let mut a = 0;
+        let mut b = 1;
+        let mut i = 2;
+        loop {
+            if i > n { break } else { () };
+            let tmp = a + b;
+            set a = b;
+            set b = tmp;
+            set i = i + 1
+        };
+        b
+    }
+    };
+
+// === 3. Matrix-style double accumulator (fast doubling) ===
+// Uses identities:
+//   fib(2k)   = fib(k) * (2*fib(k+1) - fib(k))
+//   fib(2k+1) = fib(k)^2 + fib(k+1)^2
+// Implemented iteratively by scanning bits of n from high to low
+fn fib_fast(n: i64) -> i64 = {
+    if n <= 0 { 0 }
+    else {
+        let mut a = 0;
+        let mut b = 1;
+        // Find highest bit position
+        let mut hbit = 0;
+        let mut tmp_n = n;
+        loop {
+            if tmp_n == 0 { break } else { () };
+            set hbit = hbit + 1;
+            set tmp_n = tmp_n / 2
+        };
+        // Process bits from high to low
+        let mut pos = hbit - 1;
+        loop {
+            if pos < 0 { break } else { () };
+            // Doubling step: (a, b) -> (a*(2b-a), a^2+b^2)
+            let c = a * (2 * b - a);
+            let d = a * a + b * b;
+            set a = c;
+            set b = d;
+            // If current bit is 1, advance one step: (a, b) -> (b, a+b)
+            let bit = (n / pow2(pos)) - (n / pow2(pos + 1)) * 2;
+            let _r = if bit == 1 {
+                let tmp2 = a + b;
+                set a = b;
+                set b = tmp2;
+                0
+            } else { 0 };
+            set pos = pos - 1
+        };
+        a
+    }
+    };
+
+// Helper: compute 2^k
+fn pow2(k: i64) -> i64 = {
+    if k <= 0 { 1 }
+    else {
+        let mut result = 1;
+        let mut i = 0;
+        loop {
+            if i >= k { break } else { () };
+            set result = result * 2;
+            set i = i + 1
+        };
+        result
+    }
+    };
+
+fn main() -> i64 = {
+    // === Recursive method ===
+    let _p1 = println(fib_rec(0));     // 0
+    let _p2 = println(fib_rec(1));     // 1
+    let _p3 = println(fib_rec(2));     // 1
+    let _p4 = println(fib_rec(10));    // 55
+    let _p5 = println(fib_rec(15));    // 610
+    let _p6 = println(fib_rec(20));    // 6765
+
+    // === Iterative method ===
+    let _p7 = println(fib_iter(0));    // 0
+    let _p8 = println(fib_iter(1));    // 1
+    let _p9 = println(fib_iter(2));    // 1
+    let _p10 = println(fib_iter(10)); // 55
+    let _p11 = println(fib_iter(15)); // 610
+    let _p12 = println(fib_iter(20)); // 6765
+
+    // === Fast doubling method ===
+    let _p13 = println(fib_fast(0));   // 0
+    let _p14 = println(fib_fast(1));   // 1
+    let _p15 = println(fib_fast(2));   // 1
+    let _p16 = println(fib_fast(10)); // 55
+    let _p17 = println(fib_fast(15)); // 610
+    let _p18 = println(fib_fast(20)); // 6765
+    0
+    };

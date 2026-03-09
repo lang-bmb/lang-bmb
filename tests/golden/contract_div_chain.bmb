@@ -1,0 +1,17 @@
+// Test: chain of divisions with contracts
+// Each division has pre b != 0 to prove safety
+
+fn div3(a: i64, b: i64, c: i64, d: i64) -> i64
+    pre b != 0 and c != 0 and d != 0
+= a / b / c / d;
+
+fn gcd(a: i64, b: i64) -> i64
+    pre a >= 0 and b >= 0
+= if b == 0 { a } else { gcd(b, a % b) };
+
+fn main() -> i64 = {
+    let v1 = div3(120, 2, 3, 4);
+    let v2 = gcd(48, 18);
+    let _u = println(v1 + v2);
+    0
+};

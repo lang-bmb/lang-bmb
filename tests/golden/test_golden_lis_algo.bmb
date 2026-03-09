@@ -1,0 +1,176 @@
+// Golden Test: Longest Increasing Subsequence (LIS)
+// O(n^2) DP approach + reconstruction of subsequence length
+
+fn make_vec(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64, h: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    let _p6 = vec_push(v, f);
+    let _p7 = vec_push(v, g);
+    let _p8 = vec_push(v, h);
+    v
+    };
+
+fn make_vec6(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    let _p6 = vec_push(v, f);
+    v
+    };
+
+fn make_vec10(a: i64, b: i64, c: i64, d: i64, e: i64,
+              f: i64, g: i64, h: i64, i: i64, j: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    let _p6 = vec_push(v, f);
+    let _p7 = vec_push(v, g);
+    let _p8 = vec_push(v, h);
+    let _p9 = vec_push(v, i);
+    let _p10 = vec_push(v, j);
+    v
+    };
+
+// O(n^2) LIS: returns the length of the longest increasing subsequence
+fn lis_length(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    if n == 0 { return 0 } else { () };
+    // dp[i] = LIS ending at index i
+    let dp = vec_new();
+    for _i in 0..n {
+        let _p = vec_push(dp, 1);
+        0
+    };
+    let mut best = 1;
+    for i in 1..n {
+        for j in 0..i {
+            if vec_get(arr, j) < vec_get(arr, i) {
+                let candidate = vec_get(dp, j) + 1;
+                if candidate > vec_get(dp, i) {
+                    let _s = vec_set(dp, i, candidate)
+                } else { () }
+            } else { () }
+        };
+        if vec_get(dp, i) > best { best = vec_get(dp, i) } else { () }
+    };
+    let _f = vec_free(dp);
+    best
+    };
+
+// O(n log n) LIS using patience sorting (binary search on tails)
+// Returns length of LIS
+fn lis_patience(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    if n == 0 { return 0 } else { () };
+    // tails[i] = smallest tail element for IS of length i+1
+    let tails = vec_new();
+    let mut size = 0;
+    for i in 0..n {
+        let x = vec_get(arr, i);
+        // Binary search for position to replace in tails
+        let mut lo = 0;
+        let mut hi = size;
+        loop {
+            if lo >= hi { break } else { () };
+            let mid = lo + (hi - lo) / 2;
+            if vec_get(tails, mid) < x {
+                lo = mid + 1
+            } else {
+                hi = mid
+            }
+        };
+        if lo == size {
+            let _p = vec_push(tails, x);
+            size = size + 1
+        } else {
+            let _s = vec_set(tails, lo, x)
+        }
+    };
+    let _f = vec_free(tails);
+    size
+    };
+
+// Count number of distinct LIS ending values at each position
+fn lis_count_endings(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    let mut count = 0;
+    let dp = vec_new();
+    for _i in 0..n {
+        let _p = vec_push(dp, 1);
+        0
+    };
+    for i in 1..n {
+        for j in 0..i {
+            if vec_get(arr, j) < vec_get(arr, i) {
+                let candidate = vec_get(dp, j) + 1;
+                if candidate > vec_get(dp, i) {
+                    let _s = vec_set(dp, i, candidate)
+                } else { () }
+            } else { () }
+        };
+        0
+    };
+    // Count positions where dp[i] equals the max LIS length
+    let mut maxlen = 0;
+    for i in 0..n {
+        if vec_get(dp, i) > maxlen { maxlen = vec_get(dp, i) } else { () }
+    };
+    for i in 0..n {
+        if vec_get(dp, i) == maxlen { count = count + 1 } else { () }
+    };
+    let _f = vec_free(dp);
+    count
+    };
+
+fn main() -> i64 = {
+    // [10, 9, 2, 5, 3, 7, 101, 18] -> LIS = 4 (e.g., 2,3,7,101)
+    let a1 = make_vec(10, 9, 2, 5, 3, 7, 101, 18);
+    let _p1 = println(lis_length(a1));     // 4
+    let _p2 = println(lis_patience(a1));   // 4
+
+    // [0, 1, 0, 3, 2, 3] -> LIS = 4 (0,1,2,3)
+    let a2 = make_vec6(0, 1, 0, 3, 2, 3);
+    let _p3 = println(lis_length(a2));     // 4
+    let _p4 = println(lis_patience(a2));   // 4
+
+    // Strictly decreasing [9,8,7,6,5,4,3,2] -> LIS = 1
+    let a3 = make_vec(9, 8, 7, 6, 5, 4, 3, 2);
+    let _p5 = println(lis_length(a3));     // 1
+    let _p6 = println(lis_patience(a3));   // 1
+
+    // Already sorted [1,2,3,4,5,6,7,8] -> LIS = 8
+    let a4 = make_vec(1, 2, 3, 4, 5, 6, 7, 8);
+    let _p7 = println(lis_length(a4));     // 8
+    let _p8 = println(lis_patience(a4));   // 8
+
+    // [3, 5, 6, 2, 5, 4, 19, 5, 6, 7] -> LIS = 6 (2,4,5,6,7... wait)
+    // Actually: 3,5,6,19 = 4; or 2,4,5,6,7 = 5; or 2,5,6,7 = 4; 3,5,6,19 = 4
+    // 2,4,5,6,7 is length 5; or 2,5,19 = 3. Let me trace carefully:
+    // dp: [1,2,3,1,2,2,4,3,4,5] -> max = 5 (at index 9: 3,5,6,6,7 no... 2,4,5,6,7)
+    let a5 = make_vec10(3, 5, 6, 2, 5, 4, 19, 5, 6, 7);
+    let _p9 = println(lis_length(a5));     // 5
+    let _p10 = println(lis_patience(a5));  // 5
+
+    // Count endings: [10,9,2,5,3,7,101,18] -> LIS=4, endings at 101 and 18
+    let _p11 = println(lis_count_endings(a1));  // 2
+
+    // Count endings: [1,2,3,4,5,6,7,8] -> LIS=8, only ending at index 7
+    let _p12 = println(lis_count_endings(a4));  // 1
+
+    let _f1 = vec_free(a1);
+    let _f2 = vec_free(a2);
+    let _f3 = vec_free(a3);
+    let _f4 = vec_free(a4);
+    let _f5 = vec_free(a5);
+    0
+    };

@@ -1,0 +1,6 @@
+list: 1 -> 2 -> 3
+len=3
+sum=6
+reversed: 3 -> 2 -> 1
+after push: 0 -> 3 -> 2 -> 1
+len=4

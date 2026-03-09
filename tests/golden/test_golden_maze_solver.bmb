@@ -1,0 +1,176 @@
+// Golden test: BFS maze solver on grid stored as flat vec
+// Grid: 0=open, 1=wall. Find shortest path from top-left to bottom-right.
+// BFS uses vec as queue with front/rear pointers.
+
+// Grid access helpers
+fn grid_get(grid: i64, cols: i64, row: i64, col: i64) -> i64 =
+    vec_get(grid, row * cols + col);
+
+// Try to enqueue a neighbor cell. Returns new rear if enqueued, same rear otherwise.
+fn try_enqueue(grid: i64, dist: i64, queue: i64, cols: i64, rows: i64,
+               nr: i64, nc: i64, d: i64, rear: i64) -> i64 =
+    if nr < 0 { rear }
+    else if nr >= rows { rear }
+    else if nc < 0 { rear }
+    else if nc >= cols { rear }
+    else {
+        let npos = nr * cols + nc;
+        if vec_get(grid, npos) == 0 {
+            if vec_get(dist, npos) == 0 - 1 {
+                let _s = vec_set(dist, npos, d + 1);
+                let _q = vec_set(queue, rear, npos);
+                rear + 1
+            } else { rear }
+        } else { rear }
+    };
+
+// BFS step: process one cell from the queue
+fn bfs_step(grid: i64, dist: i64, queue: i64, rows: i64, cols: i64, front: i64, rear: i64) -> i64 =
+    if front >= rear {
+        0 - 1
+    } else {
+        let pos = vec_get(queue, front);
+        let r = pos / cols;
+        let c = pos - r * cols;
+        let d = vec_get(dist, pos);
+        if r == rows - 1 {
+            if c == cols - 1 { d }
+            else {
+                let r1 = try_enqueue(grid, dist, queue, cols, rows, r - 1, c, d, rear);
+                let r2 = try_enqueue(grid, dist, queue, cols, rows, r + 1, c, d, r1);
+                let r3 = try_enqueue(grid, dist, queue, cols, rows, r, c - 1, d, r2);
+                let r4 = try_enqueue(grid, dist, queue, cols, rows, r, c + 1, d, r3);
+                bfs_step(grid, dist, queue, rows, cols, front + 1, r4)
+            }
+        } else {
+            let r1 = try_enqueue(grid, dist, queue, cols, rows, r - 1, c, d, rear);
+            let r2 = try_enqueue(grid, dist, queue, cols, rows, r + 1, c, d, r1);
+            let r3 = try_enqueue(grid, dist, queue, cols, rows, r, c - 1, d, r2);
+            let r4 = try_enqueue(grid, dist, queue, cols, rows, r, c + 1, d, r3);
+            bfs_step(grid, dist, queue, rows, cols, front + 1, r4)
+        }
+    };
+
+fn bfs_solve(grid: i64, rows: i64, cols: i64) -> i64 = {
+    let n = rows * cols;
+    let dist = vec_new();
+    for _i in 0..n {
+        let _p = vec_push(dist, 0 - 1);
+        0
+    };
+    let queue = vec_new();
+    for _i in 0..n {
+        let _p = vec_push(queue, 0);
+        0
+    };
+    let _s = vec_set(dist, 0, 0);
+    let _q = vec_set(queue, 0, 0);
+    let result = bfs_step(grid, dist, queue, rows, cols, 0, 1);
+    let _f1 = vec_free(dist);
+    let _f2 = vec_free(queue);
+    result
+};
+
+fn grid_push(g: i64, val: i64) -> i64 = {
+    let _p = vec_push(g, val);
+    0
+};
+
+fn main() -> i64 = {
+    // Maze 1: 5x5
+    // 0 0 1 0 0
+    // 1 0 1 0 1
+    // 0 0 0 0 0
+    // 0 1 1 1 0
+    // 0 0 0 0 0
+    let g1 = vec_new();
+    let _p = grid_push(g1, 0); let _p = grid_push(g1, 0); let _p = grid_push(g1, 1); let _p = grid_push(g1, 0); let _p = grid_push(g1, 0);
+    let _p = grid_push(g1, 1); let _p = grid_push(g1, 0); let _p = grid_push(g1, 1); let _p = grid_push(g1, 0); let _p = grid_push(g1, 1);
+    let _p = grid_push(g1, 0); let _p = grid_push(g1, 0); let _p = grid_push(g1, 0); let _p = grid_push(g1, 0); let _p = grid_push(g1, 0);
+    let _p = grid_push(g1, 0); let _p = grid_push(g1, 1); let _p = grid_push(g1, 1); let _p = grid_push(g1, 1); let _p = grid_push(g1, 0);
+    let _p = grid_push(g1, 0); let _p = grid_push(g1, 0); let _p = grid_push(g1, 0); let _p = grid_push(g1, 0); let _p = grid_push(g1, 0);
+    let _p1 = println(bfs_solve(g1, 5, 5));
+
+    // Maze 2: 3x3 all open
+    let g2 = vec_new();
+    for _i in 0..9 {
+        let _p = grid_push(g2, 0);
+        0
+    };
+    let _p2 = println(bfs_solve(g2, 3, 3));
+
+    // Maze 3: 3x3 with walls
+    // 0 1 0
+    // 0 1 0
+    // 0 0 0
+    let g3 = vec_new();
+    let _p = grid_push(g3, 0); let _p = grid_push(g3, 1); let _p = grid_push(g3, 0);
+    let _p = grid_push(g3, 0); let _p = grid_push(g3, 1); let _p = grid_push(g3, 0);
+    let _p = grid_push(g3, 0); let _p = grid_push(g3, 0); let _p = grid_push(g3, 0);
+    let _p3 = println(bfs_solve(g3, 3, 3));
+
+    // Maze 4: 4x4
+    // 0 0 0 0
+    // 0 1 1 0
+    // 0 0 0 0
+    // 1 1 0 0
+    let g4 = vec_new();
+    let _p = grid_push(g4, 0); let _p = grid_push(g4, 0); let _p = grid_push(g4, 0); let _p = grid_push(g4, 0);
+    let _p = grid_push(g4, 0); let _p = grid_push(g4, 1); let _p = grid_push(g4, 1); let _p = grid_push(g4, 0);
+    let _p = grid_push(g4, 0); let _p = grid_push(g4, 0); let _p = grid_push(g4, 0); let _p = grid_push(g4, 0);
+    let _p = grid_push(g4, 1); let _p = grid_push(g4, 1); let _p = grid_push(g4, 0); let _p = grid_push(g4, 0);
+    let _p4 = println(bfs_solve(g4, 4, 4));
+
+    // Maze 5: 1x1 trivial
+    let g5 = vec_new();
+    let _p = grid_push(g5, 0);
+    let _p5 = println(bfs_solve(g5, 1, 1));
+
+    // Maze 6: 5x5 serpentine
+    // 0 1 0 0 0
+    // 0 1 0 1 0
+    // 0 1 0 1 0
+    // 0 1 0 1 0
+    // 0 0 0 1 0
+    let g6 = vec_new();
+    let _p = grid_push(g6, 0); let _p = grid_push(g6, 1); let _p = grid_push(g6, 0); let _p = grid_push(g6, 0); let _p = grid_push(g6, 0);
+    let _p = grid_push(g6, 0); let _p = grid_push(g6, 1); let _p = grid_push(g6, 0); let _p = grid_push(g6, 1); let _p = grid_push(g6, 0);
+    let _p = grid_push(g6, 0); let _p = grid_push(g6, 1); let _p = grid_push(g6, 0); let _p = grid_push(g6, 1); let _p = grid_push(g6, 0);
+    let _p = grid_push(g6, 0); let _p = grid_push(g6, 1); let _p = grid_push(g6, 0); let _p = grid_push(g6, 1); let _p = grid_push(g6, 0);
+    let _p = grid_push(g6, 0); let _p = grid_push(g6, 0); let _p = grid_push(g6, 0); let _p = grid_push(g6, 1); let _p = grid_push(g6, 0);
+    let _p6 = println(bfs_solve(g6, 5, 5));
+
+    // Maze 7: 2x2 blocked
+    // 0 1
+    // 1 0
+    let g7 = vec_new();
+    let _p = grid_push(g7, 0); let _p = grid_push(g7, 1);
+    let _p = grid_push(g7, 1); let _p = grid_push(g7, 0);
+    let _p7 = println(bfs_solve(g7, 2, 2));
+
+    // Maze 8: 6x6
+    // 0 0 0 1 0 0
+    // 0 1 0 1 0 0
+    // 0 1 0 0 0 1
+    // 0 0 0 1 0 0
+    // 1 1 0 0 1 0
+    // 0 0 0 0 0 0
+    let g8 = vec_new();
+    let _p = grid_push(g8, 0); let _p = grid_push(g8, 0); let _p = grid_push(g8, 0); let _p = grid_push(g8, 1); let _p = grid_push(g8, 0); let _p = grid_push(g8, 0);
+    let _p = grid_push(g8, 0); let _p = grid_push(g8, 1); let _p = grid_push(g8, 0); let _p = grid_push(g8, 1); let _p = grid_push(g8, 0); let _p = grid_push(g8, 0);
+    let _p = grid_push(g8, 0); let _p = grid_push(g8, 1); let _p = grid_push(g8, 0); let _p = grid_push(g8, 0); let _p = grid_push(g8, 0); let _p = grid_push(g8, 1);
+    let _p = grid_push(g8, 0); let _p = grid_push(g8, 0); let _p = grid_push(g8, 0); let _p = grid_push(g8, 1); let _p = grid_push(g8, 0); let _p = grid_push(g8, 0);
+    let _p = grid_push(g8, 1); let _p = grid_push(g8, 1); let _p = grid_push(g8, 0); let _p = grid_push(g8, 0); let _p = grid_push(g8, 1); let _p = grid_push(g8, 0);
+    let _p = grid_push(g8, 0); let _p = grid_push(g8, 0); let _p = grid_push(g8, 0); let _p = grid_push(g8, 0); let _p = grid_push(g8, 0); let _p = grid_push(g8, 0);
+    let _p8 = println(bfs_solve(g8, 6, 6));
+
+    let _f = vec_free(g1);
+    let _f = vec_free(g2);
+    let _f = vec_free(g3);
+    let _f = vec_free(g4);
+    let _f = vec_free(g5);
+    let _f = vec_free(g6);
+    let _f = vec_free(g7);
+    let _f = vec_free(g8);
+    0
+};

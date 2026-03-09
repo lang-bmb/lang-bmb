@@ -1,0 +1,119 @@
+// Golden Test: Bit manipulation on i64
+// set bit, clear bit, toggle bit, count set bits, bitwise AND/OR/XOR via arithmetic
+
+// Set bit at position pos (0 = LSB)
+fn set_bit(n: i64, pos: i64) -> i64 = {
+    let bit = pow2(pos);
+    n bor bit
+    };
+
+// Clear bit at position pos
+fn clear_bit(n: i64, pos: i64) -> i64 = {
+    let bit = pow2(pos);
+
+// n & (~bit) = n - (n & bit)
+    let current = n band bit;
+    n - current
+    };
+
+// Toggle bit at position pos
+fn toggle_bit(n: i64, pos: i64) -> i64 = {
+    let bit = pow2(pos);
+    n bxor bit
+    };
+
+// Test if bit at position pos is set
+fn test_bit(n: i64, pos: i64) -> i64 =
+    if (n band pow2(pos)) != 0 { 1 } else { 0 };
+
+    // Compute 2^n iteratively
+
+fn pow2(n: i64) -> i64 = {
+    let mut result = 1;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        result = result * 2;
+        i = i + 1
+    };
+    result
+    };
+
+// Count set bits (popcount)
+fn popcount(n: i64) -> i64 = {
+    let mut x = n;
+    let mut count = 0;
+    loop {
+        if x <= 0 { break } else { () };
+        count = count + (x band 1);
+        x = x >> 1
+    };
+    count
+    };
+
+// Bitwise AND via band operator
+fn bit_and(a: i64, b: i64) -> i64 = a band b;
+
+// Bitwise OR via bor operator
+fn bit_or(a: i64, b: i64) -> i64 = a bor b;
+
+// Bitwise XOR via bxor operator
+fn bit_xor(a: i64, b: i64) -> i64 = a bxor b;
+
+// Extract bits from pos lo to hi (inclusive), 0-indexed
+fn extract_bits(n: i64, lo: i64, hi: i64) -> i64 = {
+    let mask = pow2(hi - lo + 1) - 1;
+    (n >> lo) band mask
+    };
+
+// Count bits set in range [lo, hi] of n
+fn count_bits_range(n: i64, lo: i64, hi: i64, pos: i64, count: i64) -> i64 =
+    if pos > hi { count }
+    else {
+        let inc = test_bit(n, pos);
+        count_bits_range(n, lo, hi, pos + 1, count + inc)
+    };
+
+fn main() -> i64 = {
+// set_bit
+    let _r1 = println(set_bit(0, 3));    // 8  (bit 3 = 2^3)
+    let _r2 = println(set_bit(5, 1));    // 7  (5=101, set bit1 -> 111=7)
+    let _r3 = println(set_bit(8, 0));    // 9  (8=1000, set bit0 -> 1001=9)
+
+// clear_bit
+    let _r4 = println(clear_bit(7, 1));  // 5  (7=111, clear bit1 -> 101=5)
+    let _r5 = println(clear_bit(15, 3)); // 7  (15=1111, clear bit3 -> 0111=7)
+    let _r6 = println(clear_bit(8, 3));  // 0  (8=1000, clear bit3 -> 0000=0)
+
+// toggle_bit
+    let _r7 = println(toggle_bit(5, 1));  // 7  (5=101, toggle bit1 -> 111=7)
+    let _r8 = println(toggle_bit(7, 1));  // 5  (7=111, toggle bit1 -> 101=5)
+    let _r9 = println(toggle_bit(0, 5));  // 32
+
+// test_bit
+    let _r10 = println(test_bit(5, 0));   // 1  (5=101, bit0=1)
+    let _r11 = println(test_bit(5, 1));   // 0  (5=101, bit1=0)
+    let _r12 = println(test_bit(5, 2));   // 1  (5=101, bit2=1)
+
+// popcount
+    let _r13 = println(popcount(0));      // 0
+    let _r14 = println(popcount(7));      // 3
+    let _r15 = println(popcount(255));    // 8
+    let _r16 = println(popcount(170));    // 4  (10101010)
+
+// bit operations
+    let _r17 = println(bit_and(12, 10));  // 8  (1100 & 1010 = 1000)
+    let _r18 = println(bit_or(12, 10));   // 14 (1100 | 1010 = 1110)
+    let _r19 = println(bit_xor(12, 10));  // 6  (1100 ^ 1010 = 0110)
+
+// extract_bits
+    let _r20 = println(extract_bits(0b10110100, 2, 5));  // bits 2-5 of 180: 180=10110100, bits[2..5]=1101=13
+
+// 180 = 10110100, >> 2 = 00101101 = 45, mask = 2^4-1 = 15, 45 & 15 = 13
+
+// count_bits_range
+    let _r21 = println(count_bits_range(255, 0, 3, 0, 0));   // 4 (bits 0-3 of 255 = 1111)
+    let _r22 = println(count_bits_range(170, 0, 7, 0, 0));   // 4 (170=10101010)
+
+    0
+    };

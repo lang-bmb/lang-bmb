@@ -1,0 +1,74 @@
+// Golden Test: Combined optimization pipeline
+// Tests that constant folding → comparison folding → branch elimination → DCE
+// work together through fixed-point iteration
+
+// Constant comparison should eliminate dead branch entirely
+fn dead_branch_elim() -> i64 = {
+    let x = 5;
+    let y = 10;
+
+// 5 < 10 → true at compile time, else branch should be eliminated
+    if x < y { 42 } else { 99 }
+    };
+
+// Chain of constant operations that should fold completely
+fn const_chain() -> i64 = {
+    let a = 3;
+    let b = 4;
+    let c = a + b;      // → 7
+    let d = c * 2;      // → 14 (via strength reduction → shift → fold)
+    let e = d - a;      // → 11
+    e
+    };
+
+// Nested comparisons with constant values
+fn nested_const_cmp() -> i64 = {
+    let x = 100;
+    let y = 200;
+    let z = 150;
+
+// All comparisons fold at compile time
+    let r1 = if x < y { 1 } else { 0 };     // → 1
+    let r2 = if z > y { 1 } else { 0 };     // → 0
+    let r3 = if x <= z { 1 } else { 0 };    // → 1
+    r1 + r2 + r3
+    };
+
+// Bitwise operations with constants that should fold
+fn bitwise_chain() -> i64 = {
+    let mask = 255;
+    let val = 1023;
+    let masked = val band mask;   // → 255 (1023 & 255)
+    let shifted = masked << 1;     // → 510
+    shifted
+    };
+
+// Mix of runtime and compile-time values
+fn mixed_ops(x: i64) -> i64 = {
+    let zero = 0;
+    let one = 1;
+
+// These should simplify away:
+    let a = x + zero;     // → x (algebraic: x + 0 → x)
+    let b = a * one;      // → x (algebraic: x * 1 → x)
+    let c = b - zero;     // → x (algebraic: x - 0 → x)
+    c
+    };
+
+// Shift operations with constants
+fn shift_chain() -> i64 = {
+    let x = 3;
+    let shifted = x << 4;     // → 48
+    let back = shifted >> 2;   // → 12
+    back
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(dead_branch_elim());  // 42
+    let _p2 = println(const_chain());       // 11
+    let _p3 = println(nested_const_cmp());  // 2
+    let _p4 = println(bitwise_chain());     // 510
+    let _p5 = println(mixed_ops(7));        // 7
+    let _p6 = println(shift_chain());       // 12
+    0
+    };

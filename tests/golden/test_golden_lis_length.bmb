@@ -1,0 +1,148 @@
+// Golden Test: Longest Increasing Subsequence Length
+// O(n^2) DP approach: dp[i] = length of LIS ending at index i
+
+fn my_max(a: i64, b: i64) -> i64 = if a > b { a } else { b };
+
+fn main() -> i64 = {
+    // Test 1: [10, 9, 2, 5, 3, 7, 101, 18]
+    // LIS: [2, 3, 7, 101] or [2, 5, 7, 101] -> length 4
+    let arr = vec_new();
+    vec_push(arr, 10); vec_push(arr, 9); vec_push(arr, 2); vec_push(arr, 5);
+    vec_push(arr, 3); vec_push(arr, 7); vec_push(arr, 101); vec_push(arr, 18);
+    let n = 8;
+
+    let dp = vec_new();
+    for _i in 0..n { vec_push(dp, 1) };  // Each element is an LIS of length 1
+
+    for i in 1..n {
+        for j in 0..i {
+            if vec_get(arr, j) < vec_get(arr, i) {
+                let new_val = my_max(vec_get(dp, i), vec_get(dp, j) + 1);
+                let _s = vec_set(dp, i, new_val)
+            } else { () }
+        }
+    };
+
+    // Find max in dp
+    let best = 0;
+    for i in 0..n {
+        best = my_max(best, vec_get(dp, i))
+    };
+    let _p1 = println(best);  // 4
+
+    // Test 2: Already sorted [1, 2, 3, 4, 5] -> LIS = 5
+    let arr2 = vec_new();
+    vec_push(arr2, 1); vec_push(arr2, 2); vec_push(arr2, 3);
+    vec_push(arr2, 4); vec_push(arr2, 5);
+    let n2 = 5;
+    let dp2 = vec_new();
+    for _i in 0..n2 { vec_push(dp2, 1) };
+    for i in 1..n2 {
+        for j in 0..i {
+            if vec_get(arr2, j) < vec_get(arr2, i) {
+                let new_val = my_max(vec_get(dp2, i), vec_get(dp2, j) + 1);
+                let _s = vec_set(dp2, i, new_val)
+            } else { () }
+        }
+    };
+    let best2 = 0;
+    for i in 0..n2 { best2 = my_max(best2, vec_get(dp2, i)) };
+    let _p2 = println(best2);  // 5
+
+    // Test 3: Reverse sorted [5, 4, 3, 2, 1] -> LIS = 1
+    let arr3 = vec_new();
+    vec_push(arr3, 5); vec_push(arr3, 4); vec_push(arr3, 3);
+    vec_push(arr3, 2); vec_push(arr3, 1);
+    let n3 = 5;
+    let dp3 = vec_new();
+    for _i in 0..n3 { vec_push(dp3, 1) };
+    for i in 1..n3 {
+        for j in 0..i {
+            if vec_get(arr3, j) < vec_get(arr3, i) {
+                let new_val = my_max(vec_get(dp3, i), vec_get(dp3, j) + 1);
+                let _s = vec_set(dp3, i, new_val)
+            } else { () }
+        }
+    };
+    let best3 = 0;
+    for i in 0..n3 { best3 = my_max(best3, vec_get(dp3, i)) };
+    let _p3 = println(best3);  // 1
+
+    // Test 4: All same [7, 7, 7, 7] -> LIS = 1 (strictly increasing)
+    let arr4 = vec_new();
+    vec_push(arr4, 7); vec_push(arr4, 7); vec_push(arr4, 7); vec_push(arr4, 7);
+    let n4 = 4;
+    let dp4 = vec_new();
+    for _i in 0..n4 { vec_push(dp4, 1) };
+    for i in 1..n4 {
+        for j in 0..i {
+            if vec_get(arr4, j) < vec_get(arr4, i) {
+                let new_val = my_max(vec_get(dp4, i), vec_get(dp4, j) + 1);
+                let _s = vec_set(dp4, i, new_val)
+            } else { () }
+        }
+    };
+    let best4 = 0;
+    for i in 0..n4 { best4 = my_max(best4, vec_get(dp4, i)) };
+    let _p4 = println(best4);  // 1
+
+    // Test 5: [3, 1, 8, 2, 5] -> LIS: [1, 2, 5] = 3
+    let arr5 = vec_new();
+    vec_push(arr5, 3); vec_push(arr5, 1); vec_push(arr5, 8);
+    vec_push(arr5, 2); vec_push(arr5, 5);
+    let n5 = 5;
+    let dp5 = vec_new();
+    for _i in 0..n5 { vec_push(dp5, 1) };
+    for i in 1..n5 {
+        for j in 0..i {
+            if vec_get(arr5, j) < vec_get(arr5, i) {
+                let new_val = my_max(vec_get(dp5, i), vec_get(dp5, j) + 1);
+                let _s = vec_set(dp5, i, new_val)
+            } else { () }
+        }
+    };
+    let best5 = 0;
+    for i in 0..n5 { best5 = my_max(best5, vec_get(dp5, i)) };
+    let _p5 = println(best5);  // 3
+
+    // Test 6: Single element [42] -> LIS = 1
+    let arr6 = vec_new();
+    vec_push(arr6, 42);
+    let _p6 = println(1);  // 1
+
+    // Test 7: [0, 1, 0, 3, 2, 3] -> LIS: [0, 1, 2, 3] = 4
+    let arr7 = vec_new();
+    vec_push(arr7, 0); vec_push(arr7, 1); vec_push(arr7, 0);
+    vec_push(arr7, 3); vec_push(arr7, 2); vec_push(arr7, 3);
+    let n7 = 6;
+    let dp7 = vec_new();
+    for _i in 0..n7 { vec_push(dp7, 1) };
+    for i in 1..n7 {
+        for j in 0..i {
+            if vec_get(arr7, j) < vec_get(arr7, i) {
+                let new_val = my_max(vec_get(dp7, i), vec_get(dp7, j) + 1);
+                let _s = vec_set(dp7, i, new_val)
+            } else { () }
+        }
+    };
+    let best7 = 0;
+    for i in 0..n7 { best7 = my_max(best7, vec_get(dp7, i)) };
+    let _p7 = println(best7);  // 4
+
+    // Individual dp values for test 1
+    // dp = [1, 1, 1, 2, 2, 3, 4, 4]
+    let _p8 = println(vec_get(dp, 0));  // 1
+    let _p9 = println(vec_get(dp, 3));  // 2 (2,5)
+    let _p10 = println(vec_get(dp, 5)); // 3 (2,5,7 or 2,3,7)
+    let _p11 = println(vec_get(dp, 6)); // 4 (2,5,7,101 or 2,3,7,101)
+    let _p12 = println(vec_get(dp, 7)); // 4 (2,5,7,18 or 2,3,7,18)
+
+    let _f1 = vec_free(arr); let _f2 = vec_free(dp);
+    let _f3 = vec_free(arr2); let _f4 = vec_free(dp2);
+    let _f5 = vec_free(arr3); let _f6 = vec_free(dp3);
+    let _f7 = vec_free(arr4); let _f8 = vec_free(dp4);
+    let _f9 = vec_free(arr5); let _f10 = vec_free(dp5);
+    let _f11 = vec_free(arr6);
+    let _f12 = vec_free(arr7); let _f13 = vec_free(dp7);
+    0
+};

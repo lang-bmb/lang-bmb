@@ -1,0 +1,105 @@
+// Golden Test: Edmonds-Karp maximum flow
+// BFS-based Ford-Fulkerson for max flow in directed graph
+
+fn bfs_path(cap: i64, flow: i64, n: i64, src: i64, sink: i64, parent: i64) -> i64 = {
+    let visited = vec_new();
+    let mut i = 0;
+    while i < n {
+        let _p = vec_push(visited, 0);
+        vec_set(parent, i, 0 - 1);
+        set i = i + 1
+    };
+    vec_set(visited, src, 1);
+    let queue = vec_new();
+    let _p = vec_push(queue, src);
+    let mut front = 0;
+    let mut found = 0;
+    while front < vec_len(queue) and found == 0 {
+        let v = vec_get(queue, front);
+        set front = front + 1;
+        set i = 0;
+        while i < n {
+            let residual = vec_get(cap, v * n + i) - vec_get(flow, v * n + i);
+            let _x = if vec_get(visited, i) == 0 and residual > 0 {
+                vec_set(visited, i, 1);
+                vec_set(parent, i, v);
+                let _x2 = if i == sink {
+                    set found = 1;
+                    0
+                } else {
+                    let _p = vec_push(queue, i);
+                    0
+                };
+                0
+            } else { 0 };
+            set i = i + 1
+        };
+        0
+    };
+    found
+};
+
+fn max_flow(cap: i64, n: i64, src: i64, sink: i64) -> i64 = {
+    let flow = vec_new();
+    let mut i = 0;
+    while i < n * n {
+        let _p = vec_push(flow, 0);
+        set i = i + 1
+    };
+    let parent = vec_new();
+    set i = 0;
+    while i < n {
+        let _p = vec_push(parent, 0 - 1);
+        set i = i + 1
+    };
+    let mut total = 0;
+    while bfs_path(cap, flow, n, src, sink, parent) == 1 {
+        let mut path_flow = 999999;
+        let mut v = sink;
+        while v != src {
+            let u = vec_get(parent, v);
+            let residual = vec_get(cap, u * n + v) - vec_get(flow, u * n + v);
+            set path_flow = if residual < path_flow { residual } else { path_flow };
+            set v = u
+        };
+        set v = sink;
+        while v != src {
+            let u = vec_get(parent, v);
+            vec_set(flow, u * n + v, vec_get(flow, u * n + v) + path_flow);
+            vec_set(flow, v * n + u, vec_get(flow, v * n + u) - path_flow);
+            set v = u
+        };
+        set total = total + path_flow
+    };
+    total
+};
+
+fn main() -> () = {
+    // Test 1: Classic 6-node network (max flow = 23)
+    let n = 6;
+    let cap = vec_new();
+    let mut i = 0;
+    while i < n * n {
+        let _p = vec_push(cap, 0);
+        set i = i + 1
+    };
+    vec_set(cap, 0 * n + 1, 16); vec_set(cap, 0 * n + 2, 13);
+    vec_set(cap, 1 * n + 2, 10); vec_set(cap, 1 * n + 3, 12);
+    vec_set(cap, 2 * n + 1, 4);  vec_set(cap, 2 * n + 4, 14);
+    vec_set(cap, 3 * n + 2, 9);  vec_set(cap, 3 * n + 5, 20);
+    vec_set(cap, 4 * n + 3, 7);  vec_set(cap, 4 * n + 5, 4);
+    print_str("max_flow="); let _r = println(max_flow(cap, n, 0, 5));
+
+    // Test 2: Simple 4-node (max flow = 20)
+    let n2 = 4;
+    let cap2 = vec_new();
+    set i = 0;
+    while i < n2 * n2 {
+        let _p = vec_push(cap2, 0);
+        set i = i + 1
+    };
+    vec_set(cap2, 0 * n2 + 1, 10); vec_set(cap2, 0 * n2 + 2, 10);
+    vec_set(cap2, 1 * n2 + 3, 10); vec_set(cap2, 2 * n2 + 3, 10);
+    vec_set(cap2, 1 * n2 + 2, 1);
+    print_str("max_flow2="); let _r = println(max_flow(cap2, n2, 0, 3))
+};

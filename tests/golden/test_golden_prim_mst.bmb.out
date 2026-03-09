@@ -1,0 +1,22 @@
+=== Test 1: 4-node graph ===
+total weight: 6
+edges: 3
+MST edges:
+  0-1
+  1-2
+  2-3
+=== Test 2: 5-node complete ===
+total weight: 13
+edges: 4
+=== Test 3: triangle ===
+total weight: 7
+edges: 2
+MST edges:
+  0-1
+  1-2
+=== Test 4: path graph ===
+total weight: 30
+edges: 3
+=== Test 5: 2-node ===
+total weight: 42
+edges: 1

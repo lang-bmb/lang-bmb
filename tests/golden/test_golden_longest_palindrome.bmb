@@ -1,0 +1,157 @@
+// Golden Test: Longest palindromic substring (expand around center)
+// Uses integer arrays to represent sequences
+// Expands from each center (odd and even length)
+
+fn print_vec(v: i64) -> i64 = {
+    let n = vec_len(v);
+    for i in 0..n {
+        println(vec_get(v, i))
+    };
+    0
+};
+
+// Expand around center for odd-length palindromes
+// Returns length of palindrome centered at 'center'
+fn expand_odd(v: i64, center: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut lo: i64 = center;
+    let mut hi: i64 = center;
+    while lo >= 0 and hi < n and vec_get(v, lo) == vec_get(v, hi) {
+        let _u = if lo > 0 {
+            set lo = lo - 1;
+            set hi = hi + 1
+        } else {
+            set hi = hi + 1;
+            set lo = lo - 1
+        }
+    };
+    // lo+1..hi-1 is the palindrome (lo went one too far, hi went one too far)
+    hi - lo - 1
+};
+
+// Expand around center for even-length palindromes
+// Palindrome between positions left and left+1
+fn expand_even(v: i64, left: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut lo: i64 = left;
+    let mut hi: i64 = left + 1;
+    while lo >= 0 and hi < n and vec_get(v, lo) == vec_get(v, hi) {
+        let _u = if lo > 0 {
+            set lo = lo - 1;
+            set hi = hi + 1
+        } else {
+            set hi = hi + 1;
+            set lo = lo - 1
+        }
+    };
+    hi - lo - 1
+};
+
+// Find longest palindromic substring
+// Returns start_index * 1000 + length (packed)
+fn longest_palindrome(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut best_start: i64 = 0;
+    let mut best_len: i64 = 1;
+    for i in 0..n {
+        // Odd-length palindrome centered at i
+        let odd_len = expand_odd(v, i);
+        let _u1 = if odd_len > best_len {
+            set best_len = odd_len;
+            set best_start = i - (odd_len - 1) / 2
+        } else { () };
+        // Even-length palindrome between i and i+1
+        let _u2 = if i + 1 < n {
+            let even_len = expand_even(v, i);
+            let _u3 = if even_len > best_len {
+                set best_len = even_len;
+                set best_start = i - (even_len - 2) / 2
+            } else { () };
+            0
+        } else { 0 }
+    };
+    best_start * 1000 + best_len
+};
+
+fn make6(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    let _p6 = vec_push(v, f);
+    v
+};
+
+fn make4(a: i64, b: i64, c: i64, d: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    v
+};
+
+fn make5(a: i64, b: i64, c: i64, d: i64, e: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    v
+};
+
+fn main() -> i64 = {
+    // Test 1: [1,2,3,2,1,4] - palindrome is entire [1,2,3,2,1]
+    print_str("=== Test 1: [1,2,3,2,1,4] ===");
+    let v1 = make6(1, 2, 3, 2, 1, 4);
+    let r1 = longest_palindrome(v1);
+    let start1 = r1 / 1000;
+    let len1 = r1 % 1000;
+    print_str("Length:");
+    let _pl1 = println(len1);
+    print_str("Start:");
+    let _ps1 = println(start1);
+
+    // Test 2: [1,1,1,1] - entire array is palindrome
+    print_str("=== Test 2: [1,1,1,1] ===");
+    let v2 = make4(1, 1, 1, 1);
+    let r2 = longest_palindrome(v2);
+    let start2 = r2 / 1000;
+    let len2 = r2 % 1000;
+    print_str("Length:");
+    let _pl2 = println(len2);
+    print_str("Start:");
+    let _ps2 = println(start2);
+
+    // Test 3: [1,2,3,4,5] - no palindrome longer than 1
+    print_str("=== Test 3: [1,2,3,4,5] ===");
+    let v3 = make5(1, 2, 3, 4, 5);
+    let r3 = longest_palindrome(v3);
+    let start3 = r3 / 1000;
+    let len3 = r3 % 1000;
+    print_str("Length:");
+    let _pl3 = println(len3);
+    print_str("Start:");
+    let _ps3 = println(start3);
+
+    // Test 4: [1,2,1,2,1] - palindrome is [1,2,1,2,1] or [2,1,2]
+    print_str("=== Test 4: [1,2,1,2,1] ===");
+    let v4 = make5(1, 2, 1, 2, 1);
+    let r4 = longest_palindrome(v4);
+    let start4 = r4 / 1000;
+    let len4 = r4 % 1000;
+    print_str("Length:");
+    let _pl4 = println(len4);
+    print_str("Start:");
+    let _ps4 = println(start4);
+
+    // Cleanup
+    let _f1 = vec_free(v1);
+    let _f2 = vec_free(v2);
+    let _f3 = vec_free(v3);
+    let _f4 = vec_free(v4);
+    0
+};

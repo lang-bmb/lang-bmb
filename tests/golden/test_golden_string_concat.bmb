@@ -1,0 +1,130 @@
+// Golden Test: String concatenation patterns
+// Tests string + operator, multi-concat, length checks, sb_new/sb_push/sb_build
+
+// Basic concat and length
+fn basic_concat_len() -> i64 = {
+    let a = "hello";
+    let b = " ";
+    let c = "world";
+    let result = a + b + c;
+    result.len()
+    };
+
+// Chained concat
+fn multi_concat_len() -> i64 = {
+    let s = "a" + "b" + "c" + "d" + "e" + "f";
+    s.len()
+    };
+
+// String builder pattern
+fn sb_concat_len() -> i64 = {
+    let sb = sb_new();
+    let _p1 = sb_push(sb, "one");
+    let _p2 = sb_push(sb, "-");
+    let _p3 = sb_push(sb, "two");
+    let _p4 = sb_push(sb, "-");
+    let _p5 = sb_push(sb, "three");
+    let result = sb_build(sb);
+    result.len()
+    };
+
+// Build greeting
+fn make_greeting(name: String) -> String =
+    "Hello, " + name + "!";
+
+// Build with string builder and multiple string args
+fn make_path(dir: String, file: String, ext: String) -> String = {
+    let sb = sb_new();
+    let _p1 = sb_push(sb, dir);
+    let _p2 = sb_push(sb, "/");
+    let _p3 = sb_push(sb, file);
+    let _p4 = sb_push(sb, ".");
+    let _p5 = sb_push(sb, ext);
+    sb_build(sb)
+    };
+
+// Empty string concat
+fn empty_concat_len() -> i64 = {
+    let a = "";
+    let b = "";
+    let c = a + b;
+    c.len()
+    };
+
+// Concat with empty
+fn concat_with_empty_len() -> i64 = {
+    let a = "test";
+    let b = "";
+    let c = a + b;
+    c.len()
+    };
+
+// Repeated concat in loop using sb
+fn repeat_char(n: i64) -> i64 = {
+    let sb = sb_new();
+    for _i in 0..n {
+        let _p = sb_push(sb, "x");
+        0
+    };
+    let result = sb_build(sb);
+    result.len()
+    };
+
+// Nested function concat
+fn wrap(s: String) -> String = "[" + s + "]";
+fn double_wrap(s: String) -> String = wrap(wrap(s));
+
+fn main() -> i64 = {
+    // basic_concat_len: "hello world" = 11
+    let _p1 = println(basic_concat_len());    // 11
+
+    // multi_concat_len: "abcdef" = 6
+    let _p2 = println(multi_concat_len());    // 6
+
+    // sb_concat_len: "one-two-three" = 13
+    let _p3 = println(sb_concat_len());       // 13
+
+    // make_greeting: "Hello, Alice!" = 13
+    let g = make_greeting("Alice");
+    let _p4 = println(g.len());               // 13
+    let _p5 = print_str(g);
+    let _p6 = print_str("\n");
+
+    // make_greeting with longer name: "Hello, World!" = 13
+    let g2 = make_greeting("World");
+    let _p7 = println(g2.len());              // 13
+    let _p8 = print_str(g2);
+    let _p9 = print_str("\n");
+
+    // make_path: "src/main.bmb" = 12
+    let path = make_path("src", "main", "bmb");
+    let _p10 = println(path.len());           // 12
+    let _p11 = print_str(path);
+    let _p12 = print_str("\n");
+
+    // empty concat
+    let _p13 = println(empty_concat_len());        // 0
+    let _p14 = println(concat_with_empty_len());   // 4
+
+    // repeat
+    let _p15 = println(repeat_char(5));   // 5
+    let _p16 = println(repeat_char(0));   // 0
+    let _p17 = println(repeat_char(10));  // 10
+
+    // String equality
+    let s1 = "abc" + "def";
+    let s2 = "abcdef";
+    let _p18 = println(if s1 == s2 { 1 } else { 0 });  // 1
+
+    let s3 = "abc";
+    let s4 = "xyz";
+    let _p19 = println(if s3 == s4 { 1 } else { 0 });  // 0
+
+    // double wrap: "[[hi]]" = 6
+    let dw = double_wrap("hi");
+    let _p20 = println(dw.len());               // 6
+    let _p21 = print_str(dw);
+    let _p22 = print_str("\n");
+
+    0
+    };

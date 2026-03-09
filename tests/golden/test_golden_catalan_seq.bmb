@@ -1,0 +1,160 @@
+// Golden Test: Catalan numbers computation and ballot problem - Cycle 1629
+// Catalan sequence via DP, ballot problem, valid parenthesization count
+
+// Catalan number C(n) using DP: C(n) = sum(C(i)*C(n-1-i)) for i=0..n-1
+// C(0)=1, C(1)=1, C(2)=2, C(3)=5, C(4)=14, C(5)=42, C(6)=132, C(7)=429
+fn catalan_dp(n: i64) -> i64 = {
+    let dp = vec_new();
+    let mut ci = 0;
+    loop {
+        if ci > n { break } else { () };
+        vec_push(dp, 0);
+        ci = ci + 1
+    };
+    vec_set(dp, 0, 1);
+    if n >= 1 { vec_set(dp, 1, 1) } else { () };
+    let mut i = 2;
+    loop {
+        if i > n { break } else { () };
+        let mut s = 0;
+        let mut j = 0;
+        loop {
+            if j >= i { break } else { () };
+            s = s + vec_get(dp, j) * vec_get(dp, i - 1 - j);
+            j = j + 1
+        };
+        vec_set(dp, i, s);
+        i = i + 1
+    };
+    let result = vec_get(dp, n);
+    vec_free(dp);
+    result
+};
+
+// Binomial coefficient C(n,k) using iterative multiplication
+// C(n,k) = n! / (k! * (n-k)!)
+fn binomial(n: i64, k: i64) -> i64 = {
+    if k > n { return 0 } else { () };
+    let mut kk = k;
+    if kk > n - kk { kk = n - kk } else { () };
+    let mut result = 1;
+    let mut i = 0;
+    loop {
+        if i >= kk { break } else { () };
+        result = result * (n - i);
+        result = result / (i + 1);
+        i = i + 1
+    };
+    result
+};
+
+// Catalan number via formula: C(n) = C(2n,n) / (n+1)
+fn catalan_formula(n: i64) -> i64 =
+    binomial(2 * n, n) / (n + 1);
+
+// Ballot problem: number of valid sequences of n pairs of parentheses
+// This is exactly the nth Catalan number
+// But we can also count by simulation: generate all valid sequences
+// by tracking balance (open - close count)
+fn count_ballot_paths(n: i64) -> i64 = {
+    // DP: dp[step][balance] = number of ways
+    // At each step, we can go +1 (open) or -1 (close), balance >= 0
+    // Total 2*n steps, end at balance 0
+    let total_steps = 2 * n;
+    // Flatten: dp[step * (n+1) + balance]
+    let size = (total_steps + 1) * (n + 1);
+    let dp = vec_new();
+    let mut si = 0;
+    loop {
+        if si >= size { break } else { () };
+        vec_push(dp, 0);
+        si = si + 1
+    };
+
+    // Base: dp[0][0] = 1
+    vec_set(dp, 0, 1);
+
+    let mut step = 0;
+    loop {
+        if step >= total_steps { break } else { () };
+        let mut bal = 0;
+        loop {
+            if bal > n { break } else { () };
+            let cur = vec_get(dp, step * (n + 1) + bal);
+            if cur > 0 {
+                // Open paren: balance + 1 (if bal+1 <= n)
+                if bal + 1 <= n {
+                    let idx_open = (step + 1) * (n + 1) + bal + 1;
+                    vec_set(dp, idx_open, vec_get(dp, idx_open) + cur)
+                } else { () };
+                // Close paren: balance - 1 (if bal > 0)
+                if bal > 0 {
+                    let idx_close = (step + 1) * (n + 1) + bal - 1;
+                    vec_set(dp, idx_close, vec_get(dp, idx_close) + cur)
+                } else { () }
+            } else { () };
+            bal = bal + 1
+        };
+        step = step + 1
+    };
+
+    // Answer: dp[2*n][0]
+    let result = vec_get(dp, total_steps * (n + 1) + 0);
+    vec_free(dp);
+    result
+};
+
+// Number of binary trees with n nodes (also Catalan)
+// Verify by counting: T(0) = 1, T(n) = sum(T(i)*T(n-1-i))
+fn count_binary_trees(n: i64) -> i64 = catalan_dp(n);
+
+// Triangulation of polygon with n+2 sides (Catalan number C(n))
+fn polygon_triangulations(sides: i64) -> i64 = catalan_dp(sides - 2);
+
+fn main() -> i64 = {
+    // Test 1: Catalan numbers via DP
+    println(catalan_dp(0));   // 1
+    println(catalan_dp(1));   // 1
+    println(catalan_dp(2));   // 2
+    println(catalan_dp(3));   // 5
+    println(catalan_dp(4));   // 14
+    println(catalan_dp(5));   // 42
+    println(catalan_dp(6));   // 132
+    println(catalan_dp(7));   // 429
+
+    // Test 2: Catalan via formula matches DP
+    println(catalan_formula(0));   // 1
+    println(catalan_formula(3));   // 5
+    println(catalan_formula(5));   // 42
+    println(catalan_formula(7));   // 429
+
+    // Test 3: Ballot paths (valid parenthesization count) matches Catalan
+    println(count_ballot_paths(1));   // 1  (just "()")
+    println(count_ballot_paths(2));   // 2  ("(())", "()()")
+    println(count_ballot_paths(3));   // 5
+    println(count_ballot_paths(4));   // 14
+
+    // Test 4: Binary trees with n nodes
+    println(count_binary_trees(0));   // 1
+    println(count_binary_trees(3));   // 5
+    println(count_binary_trees(5));   // 42
+
+    // Test 5: Polygon triangulations
+    // Triangle (3 sides) -> C(1) = 1
+    println(polygon_triangulations(3));   // 1
+    // Square (4 sides) -> C(2) = 2
+    println(polygon_triangulations(4));   // 2
+    // Pentagon (5 sides) -> C(3) = 5
+    println(polygon_triangulations(5));   // 5
+    // Hexagon (6 sides) -> C(4) = 14
+    println(polygon_triangulations(6));   // 14
+
+    // Test 6: Binomial coefficients
+    println(binomial(5, 2));    // 10
+    println(binomial(10, 3));   // 120
+    println(binomial(6, 0));    // 1
+    println(binomial(6, 6));    // 1
+    println(binomial(8, 4));    // 70
+
+    0
+};

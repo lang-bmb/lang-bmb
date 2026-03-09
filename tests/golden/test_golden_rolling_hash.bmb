@@ -1,0 +1,57 @@
+// Golden Test: Polynomial Rolling Hash
+// Computes hash of integer sequences for fast comparison
+
+fn poly_hash(arr: i64, n: i64, base: i64, modp: i64) -> i64 = {
+    let mut h = 0;
+    let mut pow = 1;
+    let mut i = 0;
+    while i < n {
+        set h = (h + vec_get(arr, i) * pow) % modp;
+        set pow = (pow * base) % modp;
+        set i = i + 1
+    };
+    h
+};
+
+fn main() -> () = {
+    let base = 31;
+    let modp = 1000000007;
+
+    let a1 = vec_new();
+    let _p = vec_push(a1, 1); let _p = vec_push(a1, 2); let _p = vec_push(a1, 3);
+    let a2 = vec_new();
+    let _p = vec_push(a2, 1); let _p = vec_push(a2, 2); let _p = vec_push(a2, 3);
+    let h1 = poly_hash(a1, 3, base, modp);
+    let h2 = poly_hash(a2, 3, base, modp);
+    print_str("same="); let _r = println(if h1 == h2 { 1 } else { 0 });
+
+    let a3 = vec_new();
+    let _p = vec_push(a3, 3); let _p = vec_push(a3, 2); let _p = vec_push(a3, 1);
+    let h3 = poly_hash(a3, 3, base, modp);
+    print_str("diff="); let _r = println(if h1 != h3 { 1 } else { 0 });
+
+    print_str("h1="); let _r = println(h1);
+    print_str("h3="); let _r = println(h3);
+
+    // Substring matching
+    let hay = vec_new();
+    let _p = vec_push(hay, 1); let _p = vec_push(hay, 2);
+    let _p = vec_push(hay, 3); let _p = vec_push(hay, 4);
+    let _p = vec_push(hay, 5);
+    let needle = vec_new();
+    let _p = vec_push(needle, 3); let _p = vec_push(needle, 4);
+    let needle_h = poly_hash(needle, 2, base, modp);
+    let mut found = 0 - 1;
+    let mut i = 0;
+    while i <= 3 {
+        let sub = vec_new();
+        let _p = vec_push(sub, vec_get(hay, i));
+        let _p = vec_push(sub, vec_get(hay, i + 1));
+        let _x = if poly_hash(sub, 2, base, modp) == needle_h and found == 0 - 1 {
+            set found = i;
+            0
+        } else { 0 };
+        set i = i + 1
+    };
+    print_str("found_at="); let _r = println(found)
+};

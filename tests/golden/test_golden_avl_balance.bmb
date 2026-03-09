@@ -1,0 +1,241 @@
+// Golden Test: AVL tree rotation simulation (array-based BST with balance factors)
+// Tree stored as parallel arrays: key[], left[], right[], height[]
+// -1 means null/empty node; node 0 is reserved as null sentinel
+
+// Get height of node (0 if null)
+fn avl_height(h: i64, node: i64) -> i64 =
+    if node <= 0 { 0 }
+    else { vec_get(h, node) };
+
+// Compute balance factor = height(left) - height(right)
+fn balance_factor(left: i64, right: i64, h: i64, node: i64) -> i64 =
+    if node <= 0 { 0 }
+    else {
+        avl_height(h, vec_get(left, node)) - avl_height(h, vec_get(right, node))
+    };
+
+// Update height of a node based on children
+fn update_height(left: i64, right: i64, h: i64, node: i64) -> i64 = {
+    let lh = avl_height(h, vec_get(left, node));
+    let rh = avl_height(h, vec_get(right, node));
+    let mx = if lh > rh { lh } else { rh };
+    vec_set(h, node, mx + 1);
+    0
+    };
+
+// Right rotation at node y:
+//      y            x
+//     / \          / \
+//    x   C  =>   A   y
+//   / \              / \
+//  A   B            B   C
+// Returns new root (x)
+fn rotate_right(key: i64, left: i64, right: i64, h: i64, y: i64) -> i64 = {
+    let x = vec_get(left, y);
+    let b = vec_get(right, x);
+    // Perform rotation
+    vec_set(right, x, y);
+    vec_set(left, y, b);
+    // Update heights
+    let _u1 = update_height(left, right, h, y);
+    let _u2 = update_height(left, right, h, x);
+    x
+    };
+
+// Left rotation at node x:
+//    x              y
+//   / \            / \
+//  A   y    =>    x   C
+//     / \        / \
+//    B   C      A   B
+// Returns new root (y)
+fn rotate_left(key: i64, left: i64, right: i64, h: i64, x: i64) -> i64 = {
+    let y = vec_get(right, x);
+    let b = vec_get(left, y);
+    // Perform rotation
+    vec_set(left, y, x);
+    vec_set(right, x, b);
+    // Update heights
+    let _u1 = update_height(left, right, h, x);
+    let _u2 = update_height(left, right, h, y);
+    y
+    };
+
+// Balance a node after insertion
+fn avl_balance(key: i64, left: i64, right: i64, h: i64, node: i64) -> i64 = {
+    let _uh = update_height(left, right, h, node);
+    let bf = balance_factor(left, right, h, node);
+
+    // Left-heavy (bf > 1)
+    if bf > 1 {
+        let lc = vec_get(left, node);
+        let lbf = balance_factor(left, right, h, lc);
+        if lbf < 0 {
+            // Left-Right case: rotate left child left, then rotate node right
+            let new_lc = rotate_left(key, left, right, h, lc);
+            vec_set(left, node, new_lc);
+            rotate_right(key, left, right, h, node)
+        } else {
+            // Left-Left case: rotate right
+            rotate_right(key, left, right, h, node)
+        }
+    }
+    // Right-heavy (bf < -1)
+    else if bf < 0 - 1 {
+        let rc = vec_get(right, node);
+        let rbf = balance_factor(left, right, h, rc);
+        if rbf > 0 {
+            // Right-Left case: rotate right child right, then rotate node left
+            let new_rc = rotate_right(key, left, right, h, rc);
+            vec_set(right, node, new_rc);
+            rotate_left(key, left, right, h, node)
+        } else {
+            // Right-Right case: rotate left
+            rotate_left(key, left, right, h, node)
+        }
+    }
+    else { node }
+    };
+
+// Allocate a new node, return its index
+fn new_node(key: i64, left: i64, right: i64, h: i64, val: i64, next_id: i64) -> i64 = {
+    let id = vec_get(next_id, 0);
+    vec_set(key, id, val);
+    vec_set(left, id, 0);
+    vec_set(right, id, 0);
+    vec_set(h, id, 1);
+    vec_set(next_id, 0, id + 1);
+    id
+    };
+
+// Insert into AVL tree, return new root
+fn avl_insert(key: i64, left: i64, right: i64, h: i64, node: i64, val: i64, next_id: i64) -> i64 =
+    if node <= 0 {
+        new_node(key, left, right, h, val, next_id)
+    }
+    else if val < vec_get(key, node) {
+        let new_left = avl_insert(key, left, right, h, vec_get(left, node), val, next_id);
+        vec_set(left, node, new_left);
+        avl_balance(key, left, right, h, node)
+    }
+    else if val > vec_get(key, node) {
+        let new_right = avl_insert(key, left, right, h, vec_get(right, node), val, next_id);
+        vec_set(right, node, new_right);
+        avl_balance(key, left, right, h, node)
+    }
+    else { node };
+
+// Inorder traversal sum
+fn inorder_sum(key: i64, left: i64, right: i64, node: i64) -> i64 =
+    if node <= 0 { 0 }
+    else {
+        inorder_sum(key, left, right, vec_get(left, node)) +
+        vec_get(key, node) +
+        inorder_sum(key, left, right, vec_get(right, node))
+    };
+
+// Count nodes
+fn count_nodes(left: i64, right: i64, node: i64) -> i64 =
+    if node <= 0 { 0 }
+    else {
+        1 + count_nodes(left, right, vec_get(left, node)) +
+        count_nodes(left, right, vec_get(right, node))
+    };
+
+// Check if tree is BST (returns 1 if valid)
+fn is_bst(key: i64, left: i64, right: i64, node: i64, lo: i64, hi: i64) -> i64 =
+    if node <= 0 { 1 }
+    else {
+        let k = vec_get(key, node);
+        if k <= lo or k >= hi { 0 }
+        else {
+            let l_ok = is_bst(key, left, right, vec_get(left, node), lo, k);
+            let r_ok = is_bst(key, left, right, vec_get(right, node), k, hi);
+            if l_ok == 1 and r_ok == 1 { 1 } else { 0 }
+        }
+    };
+
+// Check AVL property: |balance| <= 1 for all nodes
+fn is_avl(left: i64, right: i64, h: i64, node: i64) -> i64 =
+    if node <= 0 { 1 }
+    else {
+        let bf = balance_factor(left, right, h, node);
+        if bf > 1 or bf < 0 - 1 { 0 }
+        else {
+            let l_ok = is_avl(left, right, h, vec_get(left, node));
+            let r_ok = is_avl(left, right, h, vec_get(right, node));
+            if l_ok == 1 and r_ok == 1 { 1 } else { 0 }
+        }
+    };
+
+fn main() -> i64 = {
+    // Allocate arrays: max 32 nodes (index 0 = null sentinel, 1..31 = real nodes)
+    let max_n = 32;
+    let key = vec_new();
+    let left = vec_new();
+    let right = vec_new();
+    let h = vec_new();
+    let next_id = vec_new();
+    for _i in 0..max_n {
+        vec_push(key, 0);
+        vec_push(left, 0);
+        vec_push(right, 0);
+        vec_push(h, 0)
+    };
+    vec_push(next_id, 1); // Next free node index
+
+    // Insert values: 10, 20, 30 (triggers Left-Left rotation without 30's children => RR case => rotate left)
+    let mut root = 0;
+    root = avl_insert(key, left, right, h, root, 10, next_id);
+    root = avl_insert(key, left, right, h, root, 20, next_id);
+    root = avl_insert(key, left, right, h, root, 30, next_id);
+
+    // After RR rotation: root should be 20
+    let _p1 = println(vec_get(key, root)); // 20
+    let _p2 = println(avl_height(h, root)); // 2
+    let _p3 = println(count_nodes(left, right, root)); // 3
+
+    // Insert 40, 50 (another RR rotation in right subtree)
+    root = avl_insert(key, left, right, h, root, 40, next_id);
+    root = avl_insert(key, left, right, h, root, 50, next_id);
+    let _p4 = println(count_nodes(left, right, root)); // 5
+    let _p5 = println(is_avl(left, right, h, root)); // 1
+
+    // Insert 25 (RL rotation)
+    root = avl_insert(key, left, right, h, root, 25, next_id);
+    let _p6 = println(count_nodes(left, right, root)); // 6
+    let _p7 = println(is_avl(left, right, h, root)); // 1
+
+    // BST property check
+    let _p8 = println(is_bst(key, left, right, root, 0 - 999999, 999999)); // 1
+
+    // Inorder sum = 10+20+25+30+40+50 = 175
+    let _p9 = println(inorder_sum(key, left, right, root)); // 175
+
+    // Height should be balanced (log2(6) ~ 2.6 => height 3)
+    let _p10 = println(avl_height(h, root)); // 3
+
+    // Insert 5, 15, 35, 45 to build a larger tree
+    root = avl_insert(key, left, right, h, root, 5, next_id);
+    root = avl_insert(key, left, right, h, root, 15, next_id);
+    root = avl_insert(key, left, right, h, root, 35, next_id);
+    root = avl_insert(key, left, right, h, root, 45, next_id);
+
+    let _p11 = println(count_nodes(left, right, root)); // 10
+    let _p12 = println(is_avl(left, right, h, root)); // 1
+    let _p13 = println(is_bst(key, left, right, root, 0 - 999999, 999999)); // 1
+
+    // Inorder sum = 5+10+15+20+25+30+35+40+45+50 = 275
+    let _p14 = println(inorder_sum(key, left, right, root)); // 275
+
+    // Height with 10 nodes: should be 4
+    let _p15 = println(avl_height(h, root)); // 4
+
+    // Balance factor of root should be in {-1, 0, 1}
+    let bf_root = balance_factor(left, right, h, root);
+    let bf_ok = if bf_root >= 0 - 1 and bf_root <= 1 { 1 } else { 0 };
+    let _p16 = println(bf_ok); // 1
+
+    vec_free(key); vec_free(left); vec_free(right); vec_free(h); vec_free(next_id);
+    0
+    };

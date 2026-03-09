@@ -1,0 +1,224 @@
+// Golden Test: Minimax algorithm for two-player game evaluation
+// Simulates a game tree stored as a flat array (complete binary tree)
+// Leaf values are scores; internal nodes computed by minimax
+// Even depth = maximizer, Odd depth = minimizer
+
+// Game tree stored as flat array: node i has children 2*i+1 and 2*i+2
+// -999999 means no node
+
+fn has_node(tree: i64, sz: i64, i: i64) -> i64 =
+    if i >= sz { 0 }
+    else if vec_get(tree, i) == 0 - 999999 { 0 }
+    else { 1 };
+
+fn is_leaf(tree: i64, sz: i64, i: i64) -> i64 = {
+    let left = 2 * i + 1;
+    let right = 2 * i + 2;
+    if has_node(tree, sz, left) == 0 and has_node(tree, sz, right) == 0 { 1 }
+    else { 0 }
+};
+
+// Minimax: is_max=1 for maximizer, is_max=0 for minimizer
+fn minimax(tree: i64, sz: i64, node: i64, is_max: i64) -> i64 = {
+    if has_node(tree, sz, node) == 0 { 0 }
+    else if is_leaf(tree, sz, node) == 1 { vec_get(tree, node) }
+    else {
+        let left = 2 * node + 1;
+        let right = 2 * node + 2;
+        let left_has = has_node(tree, sz, left);
+        let right_has = has_node(tree, sz, right);
+        let next_is_max = if is_max == 1 { 0 } else { 1 };
+        if left_has == 1 and right_has == 1 {
+            let lv = minimax(tree, sz, left, next_is_max);
+            let rv = minimax(tree, sz, right, next_is_max);
+            if is_max == 1 {
+                if lv > rv { lv } else { rv }
+            } else {
+                if lv < rv { lv } else { rv }
+            }
+        } else if left_has == 1 {
+            minimax(tree, sz, left, next_is_max)
+        } else {
+            minimax(tree, sz, right, next_is_max)
+        }
+    }
+};
+
+// Minimax with alpha-beta pruning
+fn minimax_ab(tree: i64, sz: i64, node: i64, is_max: i64, alpha: i64, beta: i64) -> i64 = {
+    if has_node(tree, sz, node) == 0 { 0 }
+    else if is_leaf(tree, sz, node) == 1 { vec_get(tree, node) }
+    else {
+        let left = 2 * node + 1;
+        let right = 2 * node + 2;
+        let next_is_max = if is_max == 1 { 0 } else { 1 };
+        if is_max == 1 {
+            let lv = minimax_ab(tree, sz, left, next_is_max, alpha, beta);
+            let new_alpha = if lv > alpha { lv } else { alpha };
+            if new_alpha >= beta { new_alpha }
+            else {
+                let rv = minimax_ab(tree, sz, right, next_is_max, new_alpha, beta);
+                if rv > new_alpha { rv } else { new_alpha }
+            }
+        } else {
+            let lv = minimax_ab(tree, sz, left, next_is_max, alpha, beta);
+            let new_beta = if lv < beta { lv } else { beta };
+            if alpha >= new_beta { new_beta }
+            else {
+                let rv = minimax_ab(tree, sz, right, next_is_max, alpha, new_beta);
+                if rv < new_beta { rv } else { new_beta }
+            }
+        }
+    }
+};
+
+// Count leaf nodes evaluated (for comparing with/without pruning)
+fn count_leaves(tree: i64, sz: i64, node: i64) -> i64 =
+    if has_node(tree, sz, node) == 0 { 0 }
+    else if is_leaf(tree, sz, node) == 1 { 1 }
+    else {
+        count_leaves(tree, sz, 2 * node + 1) + count_leaves(tree, sz, 2 * node + 2)
+    };
+
+fn main() -> i64 = {
+    // Test 1: Simple 2-level tree (depth 2, 4 leaves)
+    //         root (max)
+    //        /         \
+    //     (min)       (min)
+    //    /    \      /    \
+    //   3      5    2      9
+    //
+    // min(3,5)=3, min(2,9)=2, max(3,2)=3
+    let tree1 = vec_new();
+    vec_push(tree1, 0);    // root (computed)
+    vec_push(tree1, 0);    // node 1 (computed)
+    vec_push(tree1, 0);    // node 2 (computed)
+    vec_push(tree1, 3);    // leaf
+    vec_push(tree1, 5);    // leaf
+    vec_push(tree1, 2);    // leaf
+    vec_push(tree1, 9);    // leaf
+
+    let r1 = minimax(tree1, 7, 0, 1);
+    let _p1 = println(r1);  // 3
+
+    // Alpha-beta should give same result
+    let r1_ab = minimax_ab(tree1, 7, 0, 1, 0 - 999999, 999999);
+    let _p2 = println(r1_ab);  // 3
+
+    // Test 2: 3-level tree (depth 3, 8 leaves)
+    //                 root (max)
+    //              /            \
+    //          (min)            (min)
+    //         /    \           /    \
+    //       (max)  (max)    (max)  (max)
+    //       / \    / \      / \    / \
+    //      3  12  8  2    4  6   14  5
+    //
+    // max(3,12)=12, max(8,2)=8 -> min(12,8)=8
+    // max(4,6)=6, max(14,5)=14 -> min(6,14)=6
+    // max(8,6) = 8
+    let tree2 = vec_new();
+    vec_push(tree2, 0);     // 0: root
+    vec_push(tree2, 0);     // 1
+    vec_push(tree2, 0);     // 2
+    vec_push(tree2, 0);     // 3
+    vec_push(tree2, 0);     // 4
+    vec_push(tree2, 0);     // 5
+    vec_push(tree2, 0);     // 6
+    vec_push(tree2, 3);     // 7: leaf
+    vec_push(tree2, 12);    // 8: leaf
+    vec_push(tree2, 8);     // 9: leaf
+    vec_push(tree2, 2);     // 10: leaf
+    vec_push(tree2, 4);     // 11: leaf
+    vec_push(tree2, 6);     // 12: leaf
+    vec_push(tree2, 14);    // 13: leaf
+    vec_push(tree2, 5);     // 14: leaf
+
+    let r2 = minimax(tree2, 15, 0, 1);
+    let _p3 = println(r2);  // 8
+
+    let r2_ab = minimax_ab(tree2, 15, 0, 1, 0 - 999999, 999999);
+    let _p4 = println(r2_ab);  // 8
+
+    let _p5 = println(count_leaves(tree2, 15, 0));  // 8
+
+    // Test 3: Unbalanced tree (right child of node 2 is missing)
+    //         root (max)
+    //        /         \
+    //     (min)       leaf=7
+    //    /    \
+    //   4      1
+    //
+    // min(4,1)=1, max(1,7)=7
+    let tree3 = vec_new();
+    vec_push(tree3, 0);          // root
+    vec_push(tree3, 0);          // node 1
+    vec_push(tree3, 7);          // leaf (node 2)
+    vec_push(tree3, 4);          // leaf (node 3)
+    vec_push(tree3, 1);          // leaf (node 4)
+
+    let r3 = minimax(tree3, 5, 0, 1);
+    let _p6 = println(r3);  // 7
+
+    // Test 4: All leaves same value
+    let tree4 = vec_new();
+    vec_push(tree4, 0);
+    vec_push(tree4, 0);
+    vec_push(tree4, 0);
+    vec_push(tree4, 5);
+    vec_push(tree4, 5);
+    vec_push(tree4, 5);
+    vec_push(tree4, 5);
+
+    let r4 = minimax(tree4, 7, 0, 1);
+    let _p7 = println(r4);  // 5
+
+    // Test 5: Negative values
+    //         root (max)
+    //        /         \
+    //     (min)       (min)
+    //    /    \      /    \
+    //  -3     -1   -5     -2
+    //
+    // min(-3,-1)=-3, min(-5,-2)=-5, max(-3,-5)=-3
+    let tree5 = vec_new();
+    vec_push(tree5, 0);
+    vec_push(tree5, 0);
+    vec_push(tree5, 0);
+    vec_push(tree5, 0 - 3);
+    vec_push(tree5, 0 - 1);
+    vec_push(tree5, 0 - 5);
+    vec_push(tree5, 0 - 2);
+
+    let r5 = minimax(tree5, 7, 0, 1);
+    let _p8 = println(r5);  // -3
+
+    let r5_ab = minimax_ab(tree5, 7, 0, 1, 0 - 999999, 999999);
+    let _p9 = println(r5_ab);  // -3
+
+    // Test 6: Single leaf (root is leaf)
+    let tree6 = vec_new();
+    vec_push(tree6, 42);
+
+    let r6 = minimax(tree6, 1, 0, 1);
+    let _p10 = println(r6);  // 42
+
+    // Test 7: Minimizer starts (is_max=0)
+    //         root (min)
+    //        /         \
+    //     (max)       (max)
+    //    /    \      /    \
+    //   3      5    2      9
+    //
+    // max(3,5)=5, max(2,9)=9, min(5,9)=5
+    let r7 = minimax(tree1, 7, 0, 0);
+    let _p11 = println(r7);  // 5
+
+    vec_free(tree1);
+    vec_free(tree2);
+    vec_free(tree3);
+    vec_free(tree4);
+    vec_free(tree5);
+    vec_free(tree6);
+    0
+};

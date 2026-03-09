@@ -1,0 +1,81 @@
+// Golden Test: Stirling numbers of the second kind S(n, k)
+// S(n, k) = number of ways to partition n elements into k non-empty subsets
+// Recurrence: S(n, k) = k * S(n-1, k) + S(n-1, k-1)
+// Base cases: S(0, 0) = 1, S(n, 0) = 0 for n>0, S(0, k) = 0 for k>0
+
+// Recursive Stirling number with memoization via vec
+// We store a flat 2D table of size (max_n+1) * (max_k+1) in a vec
+// Index: row * cols + col
+
+fn stirling_table(max_n: i64, max_k: i64) -> i64 = {
+    let cols = max_k + 1;
+    let total = (max_n + 1) * cols;
+    let tbl = vec_new();
+    // Initialize all to 0
+    for _i in 0..total {
+        let _p = vec_push(tbl, 0);
+        0
+    };
+    // Base case: S(0, 0) = 1
+    let _s = vec_set(tbl, 0, 1);
+
+    // Fill table row by row
+    for n in 1..max_n + 1 {
+        for k in 1..max_k + 1 {
+            let _c = if k <= n {
+                // S(n, k) = k * S(n-1, k) + S(n-1, k-1)
+                let prev_same = vec_get(tbl, (n - 1) * cols + k);
+                let prev_less = vec_get(tbl, (n - 1) * cols + (k - 1));
+                let val = k * prev_same + prev_less;
+                let _s = vec_set(tbl, n * cols + k, val);
+                ()
+            } else { () }
+        };
+        0
+    };
+    tbl
+};
+
+fn get_stirling(tbl: i64, n: i64, k: i64, cols: i64) -> i64 =
+    vec_get(tbl, n * cols + k);
+
+fn main() -> i64 = {
+    // Build table up to S(8, 8)
+    let max_n = 8;
+    let max_k = 8;
+    let cols = max_k + 1;
+    let tbl = stirling_table(max_n, max_k);
+
+    // S(0, 0) = 1
+    let _p = println(get_stirling(tbl, 0, 0, cols));  // 1
+
+    // S(1, 1) = 1 (one element, one subset)
+    let _p = println(get_stirling(tbl, 1, 1, cols));  // 1
+
+    // S(3, 2) = 3 ({a,b},{c} or {a,c},{b} or {b,c},{a})
+    let _p = println(get_stirling(tbl, 3, 2, cols));  // 3
+
+    // S(4, 2) = 7
+    let _p = println(get_stirling(tbl, 4, 2, cols));  // 7
+
+    // S(4, 3) = 6
+    let _p = println(get_stirling(tbl, 4, 3, cols));  // 6
+
+    // S(5, 2) = 15
+    let _p = println(get_stirling(tbl, 5, 2, cols));  // 15
+
+    // S(5, 3) = 25
+    let _p = println(get_stirling(tbl, 5, 3, cols));  // 25
+
+    // S(6, 3) = 90
+    let _p = println(get_stirling(tbl, 6, 3, cols));  // 90
+
+    // S(7, 4) = 350
+    let _p = println(get_stirling(tbl, 7, 4, cols));  // 350
+
+    // S(8, 4) = 1701
+    let _p = println(get_stirling(tbl, 8, 4, cols));  // 1701
+
+    let _f = vec_free(tbl);
+    0
+};

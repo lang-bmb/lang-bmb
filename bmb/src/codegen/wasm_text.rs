@@ -1953,6 +1953,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -1990,6 +1991,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -2118,6 +2120,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -2180,6 +2183,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -2345,6 +2349,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -2378,6 +2383,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -2449,6 +2455,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -2478,6 +2485,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -2507,6 +2515,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -2539,6 +2548,7 @@ mod tests {
                     always_inline: false,
                     inline_hint: false,
                     is_memory_free: false,
+                is_read_only: false,
                 },
                 MirFunction {
                     name: "second".to_string(),
@@ -2557,6 +2567,7 @@ mod tests {
                     always_inline: false,
                     inline_hint: false,
                     is_memory_free: false,
+                is_read_only: false,
                 },
             ],
             extern_fns: vec![],
@@ -2593,6 +2604,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -2623,6 +2635,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -2654,6 +2667,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -2687,6 +2701,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -2717,6 +2732,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -2791,6 +2807,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -2831,6 +2848,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -2859,6 +2877,7 @@ mod tests {
                 always_inline: false,
                 inline_hint: false,
                 is_memory_free: false,
+                is_read_only: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -3328,6 +3347,7 @@ mod tests {
                     always_inline: false,
                     inline_hint: false,
                     is_memory_free: false,
+                is_read_only: false,
                 },
                 MirFunction {
                     name: "caller".to_string(),
@@ -3351,6 +3371,7 @@ mod tests {
                     always_inline: false,
                     inline_hint: false,
                     is_memory_free: false,
+                is_read_only: false,
                 },
             ],
             extern_fns: vec![],
@@ -4507,6 +4528,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
         assert_eq!(cg.infer_place_mir_type("x", &func), MirType::F64);
     }
@@ -4527,6 +4549,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
         assert_eq!(cg.infer_place_mir_type("y", &func), MirType::Bool);
     }
@@ -4547,6 +4570,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
         assert_eq!(cg.infer_place_mir_type("unknown", &func), MirType::I64);
     }
@@ -4569,6 +4593,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
         assert_eq!(cg.infer_operand_wasm_type(&Operand::Constant(Constant::Int(42)), &func), "i64");
         assert_eq!(cg.infer_operand_wasm_type(&Operand::Constant(Constant::Float(1.5)), &func), "f64");
@@ -4594,6 +4619,7 @@ mod tests {
             always_inline: false,
             inline_hint: false,
             is_memory_free: false,
+                is_read_only: false,
         };
         assert_eq!(cg.infer_operand_wasm_type(&Operand::Place(Place::new("x")), &func), "f64");
         assert_eq!(cg.infer_operand_wasm_type(&Operand::Place(Place::new("y")), &func), "i32");
@@ -5038,6 +5064,7 @@ mod tests {
                     always_inline: false,
                     inline_hint: false,
                     is_memory_free: false,
+                is_read_only: false,
                 },
                 MirFunction {
                     name: "apply_double".to_string(),
@@ -5072,6 +5099,7 @@ mod tests {
                     always_inline: false,
                     inline_hint: false,
                     is_memory_free: false,
+                is_read_only: false,
                 },
             ],
             extern_fns: vec![],

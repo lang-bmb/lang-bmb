@@ -1,0 +1,61 @@
+// Golden Test: String scanning and character analysis patterns
+
+fn count_char(s: String, ch: i64, pos: i64) -> i64 =
+    if pos >= s.len() { 0 }
+    else {
+        let match_val = if s.byte_at(pos) == ch { 1 } else { 0 };
+        match_val + count_char(s, ch, pos + 1)
+    };
+
+fn is_all_digit(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { 1 }
+    else {
+        let ch = s.byte_at(pos);
+        if ch >= 48 and ch <= 57 { is_all_digit(s, pos + 1) }
+        else { 0 }
+    };
+
+fn find_first(s: String, ch: i64, pos: i64) -> i64 =
+    if pos >= s.len() { 0 - 1 }
+    else if s.byte_at(pos) == ch { pos }
+    else { find_first(s, ch, pos + 1) };
+
+fn count_upper(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { 0 }
+    else {
+        let ch = s.byte_at(pos);
+        let is_upper = if ch >= 65 and ch <= 90 { 1 } else { 0 };
+        is_upper + count_upper(s, pos + 1)
+    };
+
+fn count_lower(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { 0 }
+    else {
+        let ch = s.byte_at(pos);
+        let is_lower = if ch >= 97 and ch <= 122 { 1 } else { 0 };
+        is_lower + count_lower(s, pos + 1)
+    };
+
+fn max_char(s: String, pos: i64, best: i64) -> i64 =
+    if pos >= s.len() { best }
+    else {
+        let ch = s.byte_at(pos);
+        let new_best = if ch > best { ch } else { best };
+        max_char(s, pos + 1, new_best)
+    };
+
+fn main() -> i64 = {
+    let s1 = "Hello, World!";
+    let _p1 = println(s1.len());                 // 13
+    let _p2 = println(count_char(s1, 108, 0));   // 'l' = 108, count = 3
+    let _p3 = println(find_first(s1, 111, 0));   // 'o' = 111, first at 4
+    let _p4 = println(count_upper(s1, 0));        // H, W = 2
+    let _p5 = println(count_lower(s1, 0));        // ello, orld = 8
+
+    let s2 = "12345";
+    let _p6 = println(is_all_digit(s2, 0));       // 1 (true)
+    let _p7 = println(is_all_digit(s1, 0));       // 0 (false)
+
+    let _p8 = println(max_char("abcxyz", 0, 0));  // 'z' = 122
+    0
+    };

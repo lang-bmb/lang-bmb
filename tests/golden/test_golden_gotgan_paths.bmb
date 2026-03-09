@@ -1,0 +1,146 @@
+// Golden Test: Path and command building utilities for gotgan-bmb
+// Tests string concatenation, path construction, and command building.
+
+// ============================================================================
+    // String Builder Utilities
+    // ============================================================================
+
+    // Concatenate two strings
+
+fn str_concat(a: String, b: String) -> String = {
+    let sb = sb_new();
+    let _p1 = sb_push(sb, a);
+    let _p2 = sb_push(sb, b);
+    sb_build(sb)
+    };
+
+// Concatenate three strings
+fn str_concat3(a: String, b: String, c: String) -> String = {
+    let sb = sb_new();
+    let _p1 = sb_push(sb, a);
+    let _p2 = sb_push(sb, b);
+    let _p3 = sb_push(sb, c);
+    sb_build(sb)
+    };
+
+// Join path components with /
+fn path_join(dir: String, file: String) -> String =
+    str_concat3(dir, "/", file);
+
+    // Build a command string with arguments
+
+fn build_cmd(cmd: String, arg1: String) -> String =
+    str_concat3(cmd, " ", arg1);
+
+fn build_cmd2(cmd: String, arg1: String, arg2: String) -> String = {
+    let sb = sb_new();
+    let _p1 = sb_push(sb, cmd);
+    let _p2 = sb_push(sb, " ");
+    let _p3 = sb_push(sb, arg1);
+    let _p4 = sb_push(sb, " ");
+    let _p5 = sb_push(sb, arg2);
+    sb_build(sb)
+    };
+
+fn build_cmd4(cmd: String, a1: String, a2: String, a3: String, a4: String) -> String = {
+    let sb = sb_new();
+    let _p1 = sb_push(sb, cmd);
+    let _p2 = sb_push(sb, " ");
+    let _p3 = sb_push(sb, a1);
+    let _p4 = sb_push(sb, " ");
+    let _p5 = sb_push(sb, a2);
+    let _p6 = sb_push(sb, " ");
+    let _p7 = sb_push(sb, a3);
+    let _p8 = sb_push(sb, " ");
+    let _p9 = sb_push(sb, a4);
+    sb_build(sb)
+    };
+
+// Build gotgan-style build command:
+// "bmb build src/main.bmb -o target/<name>"
+fn make_build_cmd(source: String, output: String) -> String =
+    build_cmd4("bmb", "build", source, "-o", output);
+
+    // Build gotgan-style check command:
+    // "bmb check src/lib.bmb"
+
+fn make_check_cmd(source: String) -> String =
+    build_cmd("bmb check", source);
+
+    // Determine output path for a build
+
+fn make_output_path(pkg_dir: String, name: String) -> String =
+    path_join(path_join(pkg_dir, "target"), name);
+
+    // ============================================================================
+    // Tests
+    // ============================================================================
+
+fn report(name: String, result: i64) -> i64 = {
+    if result == 0 {
+        let _a = print_str("  FAIL: ");
+        let _b = print_str(name);
+        let _c = print_str("\n");
+        0
+    } else { result }
+    };
+
+fn test_concat() -> i64 = {
+    let r = str_concat("hello", " world");
+    if r == "hello world" { 1 } else { 0 }
+    };
+
+fn test_concat3() -> i64 = {
+    let r = str_concat3("a", "b", "c");
+    if r == "abc" { 1 } else { 0 }
+    };
+
+fn test_path_join() -> i64 = {
+    let r = path_join("src", "main.bmb");
+    if r == "src/main.bmb" { 1 } else { 0 }
+    };
+
+fn test_nested_path() -> i64 = {
+    let r = path_join(path_join("packages", "bmb-core"), "src/lib.bmb");
+    if r == "packages/bmb-core/src/lib.bmb" { 1 } else { 0 }
+    };
+
+fn test_build_cmd() -> i64 = {
+    let r = make_build_cmd("src/main.bmb", "target/myapp");
+    if r == "bmb build src/main.bmb -o target/myapp" { 1 } else { 0 }
+    };
+
+fn test_check_cmd() -> i64 = {
+    let r = make_check_cmd("src/lib.bmb");
+    if r == "bmb check src/lib.bmb" { 1 } else { 0 }
+    };
+
+fn test_output_path() -> i64 = {
+    let r = make_output_path(".", "my-app");
+    if r == "./target/my-app" { 1 } else { 0 }
+    };
+
+fn test_empty_concat() -> i64 = {
+    let r1 = str_concat("", "hello");
+    let r2 = str_concat("hello", "");
+    if r1 == "hello" and r2 == "hello" { 1 } else { 0 }
+    };
+
+fn main() -> i64 = {
+    let t1 = report("concat", test_concat());
+    let t2 = report("concat3", test_concat3());
+    let t3 = report("path_join", test_path_join());
+    let t4 = report("nested_path", test_nested_path());
+    let t5 = report("build_cmd", test_build_cmd());
+    let t6 = report("check_cmd", test_check_cmd());
+    let t7 = report("output_path", test_output_path());
+    let t8 = report("empty_concat", test_empty_concat());
+    let passed = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+    let total = 8;
+    let _p1 = print_str("gotgan-paths: ");
+    let _p2 = print(passed);
+    let _p3 = print_str("/");
+    let _p4 = print(total);
+    let _p5 = print_str(" tests passed\n");
+    if passed == total { 0 } else { 1 }
+    };

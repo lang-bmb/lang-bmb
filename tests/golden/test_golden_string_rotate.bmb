@@ -1,0 +1,158 @@
+// Golden Test: String rotation check via integer array encoding
+// Check if one sequence is a rotation of another
+
+// Check if b is a rotation of a (both same length)
+// A rotation of [1,2,3,4] is [3,4,1,2] etc.
+// Method: check if b appears in a++a (concatenation)
+fn is_rotation(a: i64, b: i64) -> i64 = {
+    let na = vec_len(a);
+    let nb = vec_len(b);
+    if na != nb { return 0 } else { () };
+    if na == 0 { return 1 } else { () };
+    // Build a++a
+    let aa = vec_new();
+    let mut i = 0;
+    loop {
+        if i >= na { break } else { () };
+        vec_push(aa, vec_get(a, i));
+        i = i + 1
+    };
+    let mut j = 0;
+    loop {
+        if j >= na { break } else { () };
+        vec_push(aa, vec_get(a, j));
+        j = j + 1
+    };
+    // Search for b in aa (brute force)
+    let mut start = 0;
+    loop {
+        if start + na > 2 * na { break } else { () };
+        let mut match_ok = 1;
+        let mut k = 0;
+        loop {
+            if k >= na { break } else { () };
+            if vec_get(aa, start + k) != vec_get(b, k) {
+                match_ok = 0;
+                break
+            } else { () };
+            k = k + 1
+        };
+        if match_ok == 1 {
+            vec_free(aa);
+            return 1
+        } else { () };
+        start = start + 1
+    };
+    vec_free(aa);
+    0
+};
+
+// Rotate array left by k positions (in-place)
+fn rotate_left(arr: i64, k: i64) -> i64 = {
+    let n = vec_len(arr);
+    if n == 0 { return 0 } else { () };
+    let kk = k % n;
+    // Copy to temp
+    let tmp = vec_new();
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        vec_push(tmp, vec_get(arr, i));
+        i = i + 1
+    };
+    // Write rotated
+    let mut j = 0;
+    loop {
+        if j >= n { break } else { () };
+        vec_set(arr, j, vec_get(tmp, (j + kk) % n));
+        j = j + 1
+    };
+    vec_free(tmp);
+    0
+};
+
+// Find rotation offset: minimum index where rotation of a matches b
+// Returns -1 if not a rotation
+fn rotation_offset(a: i64, b: i64) -> i64 = {
+    let n = vec_len(a);
+    if vec_len(b) != n { return 0 - 1 } else { () };
+    let mut off = 0;
+    loop {
+        if off >= n { break } else { () };
+        let mut ok = 1;
+        let mut i = 0;
+        loop {
+            if i >= n { break } else { () };
+            if vec_get(a, (i + off) % n) != vec_get(b, i) {
+                ok = 0;
+                break
+            } else { () };
+            i = i + 1
+        };
+        if ok == 1 { return off } else { () };
+        off = off + 1
+    };
+    0 - 1
+};
+
+fn main() -> i64 = {
+    // Test 1: [1,2,3,4] and [3,4,1,2] -> rotation
+    let a1 = vec_new();
+    vec_push(a1, 1); vec_push(a1, 2); vec_push(a1, 3); vec_push(a1, 4);
+    let b1 = vec_new();
+    vec_push(b1, 3); vec_push(b1, 4); vec_push(b1, 1); vec_push(b1, 2);
+    let _p1 = println(is_rotation(a1, b1));  // 1
+
+    // Test 2: [1,2,3,4] and [1,2,3,4] -> rotation (by 0)
+    let b2 = vec_new();
+    vec_push(b2, 1); vec_push(b2, 2); vec_push(b2, 3); vec_push(b2, 4);
+    let _p2 = println(is_rotation(a1, b2));  // 1
+
+    // Test 3: [1,2,3,4] and [1,3,2,4] -> NOT a rotation
+    let b3 = vec_new();
+    vec_push(b3, 1); vec_push(b3, 3); vec_push(b3, 2); vec_push(b3, 4);
+    let _p3 = println(is_rotation(a1, b3));  // 0
+
+    // Test 4: Different lengths -> 0
+    let b4 = vec_new();
+    vec_push(b4, 1); vec_push(b4, 2); vec_push(b4, 3);
+    let _p4 = println(is_rotation(a1, b4));  // 0
+
+    // Test 5: rotation_offset [1,2,3,4] vs [3,4,1,2] -> offset 2
+    let _p5 = println(rotation_offset(a1, b1));  // 2
+
+    // Test 6: rotation_offset [1,2,3,4] vs [1,2,3,4] -> offset 0
+    let _p6 = println(rotation_offset(a1, b2));  // 0
+
+    // Test 7: rotation_offset not a rotation -> -1
+    let _p7 = println(rotation_offset(a1, b3));  // -1
+
+    // Test 8: rotate_left [1,2,3,4,5] by 2 -> [3,4,5,1,2]
+    let a5 = vec_new();
+    vec_push(a5, 1); vec_push(a5, 2); vec_push(a5, 3); vec_push(a5, 4); vec_push(a5, 5);
+    let _r = rotate_left(a5, 2);
+    let _p8 = println(vec_get(a5, 0));  // 3
+    let _p9 = println(vec_get(a5, 4));  // 2
+
+    // Test 10: rotate_left [1,2,3] by 0 -> [1,2,3]
+    let a6 = vec_new();
+    vec_push(a6, 1); vec_push(a6, 2); vec_push(a6, 3);
+    let _r2 = rotate_left(a6, 0);
+    let _p10 = println(vec_get(a6, 0));  // 1
+
+    // Test 11: Single element rotation
+    let a7 = vec_new();
+    vec_push(a7, 42);
+    let b7 = vec_new();
+    vec_push(b7, 42);
+    let _p11 = println(is_rotation(a7, b7));  // 1
+
+    // Test 12: [4,1,2,3] is rotation of [1,2,3,4] -> offset 3
+    let b8 = vec_new();
+    vec_push(b8, 4); vec_push(b8, 1); vec_push(b8, 2); vec_push(b8, 3);
+    let _p12 = println(rotation_offset(a1, b8));  // 3
+
+    vec_free(a1); vec_free(b1); vec_free(b2); vec_free(b3); vec_free(b4);
+    vec_free(a5); vec_free(a6); vec_free(a7); vec_free(b7); vec_free(b8);
+    0
+};

@@ -264,11 +264,24 @@ impl DivisionCheckElimination {
     }
 
     /// Check if a divisor is proven non-zero
+    /// v0.96.16: Enhanced with range-based proof (if bounds exclude 0, divisor is non-zero)
     fn is_proven_nonzero(&self, operand: &Operand, facts: &ProvenFactSet) -> bool {
         match operand {
             Operand::Constant(Constant::Int(n)) => *n != 0,
             Operand::Constant(Constant::Float(f)) => *f != 0.0,
-            Operand::Place(place) => facts.has_nonzero(&place.name),
+            Operand::Place(place) => {
+                // Check explicit nonzero fact
+                if facts.has_nonzero(&place.name) {
+                    return true;
+                }
+                // Check range bounds: if lower > 0 or upper < 0, zero is excluded
+                if let Some((lo, hi)) = facts.get_bounds(&place.name) {
+                    if lo > 0 || hi < 0 {
+                        return true;
+                    }
+                }
+                false
+            }
             _ => false,
         }
     }
@@ -427,18 +440,40 @@ impl OptimizationPass for ProofUnreachableElimination {
         // Build proven facts from preconditions
         let facts = ProvenFactSet::from_mir_preconditions(&func.preconditions);
 
-        // Build local definitions (constants defined in each block)
-        let mut local_defs: HashMap<String, bool> = HashMap::new();
+        // Build local definitions: only include bools that have EXACTLY ONE
+        // definition across the entire function, and that definition is a bool
+        // constant. If a variable has any other definition (Copy, UnaryOp, Phi,
+        // etc.), it could change at runtime and must be excluded.
+        // e.g., `flag = not flag` produces Copy/UnaryOp defs alongside const init.
+        let mut total_defs: HashMap<String, usize> = HashMap::new();
+        let mut bool_const_val: HashMap<String, bool> = HashMap::new();
+        for block in func.blocks.iter() {
+            for inst in &block.instructions {
+                // Count ALL definitions of each variable
+                let def_name = match inst {
+                    MirInst::Const { dest, .. } | MirInst::Copy { dest, .. }
+                    | MirInst::BinOp { dest, .. } | MirInst::UnaryOp { dest, .. }
+                    | MirInst::Cast { dest, .. } => Some(&dest.name),
+                    MirInst::Call { dest: Some(dest), .. } => Some(&dest.name),
+                    MirInst::Phi { dest, .. } => Some(&dest.name),
+                    _ => None,
+                };
+                if let Some(name) = def_name {
+                    *total_defs.entry(name.clone()).or_insert(0) += 1;
+                }
+                // Record bool constant values
+                if let MirInst::Const { dest, value: Constant::Bool(b) } = inst {
+                    bool_const_val.insert(dest.name.clone(), *b);
+                }
+            }
+        }
+        // Only use variables with exactly 1 total definition that is a bool constant
+        let local_defs: HashMap<String, bool> = bool_const_val.into_iter()
+            .filter(|(name, _)| total_defs.get(name) == Some(&1))
+            .collect();
 
         // First pass: try to simplify branches to gotos
         for block in &mut func.blocks {
-            // Collect constant definitions
-            for inst in &block.instructions {
-                if let MirInst::Const { dest, value: Constant::Bool(b) } = inst {
-                    local_defs.insert(dest.name.clone(), *b);
-                }
-            }
-
             // Try to simplify branch
             if let Terminator::Branch { cond, then_label, else_label } = &block.terminator
                 && let Some(always_true) = self.evaluate_condition(cond, &facts, &local_defs) {
@@ -480,6 +515,145 @@ impl OptimizationPass for ProofUnreachableElimination {
         }
 
         changed
+    }
+}
+
+// ============================================================================
+// Saturating Arithmetic Elimination (SAE) - v0.96.16
+// ============================================================================
+
+/// Saturating Arithmetic Elimination (SAE)
+///
+/// Converts saturating arithmetic to regular arithmetic when contract facts
+/// prove that overflow/underflow cannot occur. This eliminates the expensive
+/// overflow-check sequences generated for `+|`, `-|`, `*|`.
+///
+/// # Example
+///
+/// ```bmb
+/// fn scale(x: i64, y: i64) -> i64
+///     pre x >= 0 and x <= 1000
+///     pre y >= 0 and y <= 1000
+/// = x *| y;  // MulSat → Mul (max 1000*1000 = 1_000_000 < i64::MAX)
+/// ```
+///
+/// # Optimization Rules
+///
+/// For `a +| b` → `a + b` when: lower(a) + lower(b) >= i64::MIN
+///     AND upper(a) + upper(b) <= i64::MAX (no overflow possible)
+///
+/// For `a -| b` → `a - b` when: lower(a) - upper(b) >= i64::MIN
+///     AND upper(a) - lower(b) <= i64::MAX (no underflow/overflow possible)
+///
+/// For `a *| b` → `a * b` when the product of bounds cannot overflow i64
+pub struct SaturatingArithmeticElimination {
+    pub eliminated_count: usize,
+}
+
+impl SaturatingArithmeticElimination {
+    pub fn new() -> Self {
+        Self { eliminated_count: 0 }
+    }
+}
+
+impl OptimizationPass for SaturatingArithmeticElimination {
+    fn name(&self) -> &'static str {
+        "saturating_arithmetic_elimination"
+    }
+
+    fn run_on_function(&self, func: &mut MirFunction) -> bool {
+        let facts = ProvenFactSet::from_mir_preconditions(&func.preconditions);
+        let mut changed = false;
+
+        for block in &mut func.blocks {
+            for inst in &mut block.instructions {
+                if let MirInst::BinOp { dest: _, op, lhs, rhs } = inst {
+                    let new_op = match *op {
+                        MirBinOp::AddSat => {
+                            if can_eliminate_sat_add(&facts, lhs, rhs) {
+                                Some(MirBinOp::Add)
+                            } else {
+                                None
+                            }
+                        }
+                        MirBinOp::SubSat => {
+                            if can_eliminate_sat_sub(&facts, lhs, rhs) {
+                                Some(MirBinOp::Sub)
+                            } else {
+                                None
+                            }
+                        }
+                        MirBinOp::MulSat => {
+                            if can_eliminate_sat_mul(&facts, lhs, rhs) {
+                                Some(MirBinOp::Mul)
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
+                    };
+
+                    if let Some(replacement) = new_op {
+                        *op = replacement;
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        changed
+    }
+}
+
+/// Get the proven bounds for an operand: (lower, upper)
+fn operand_bounds(facts: &ProvenFactSet, op: &Operand) -> Option<(i64, i64)> {
+    match op {
+        Operand::Constant(Constant::Int(v)) => Some((*v, *v)),
+        Operand::Place(place) => {
+            let lo = facts.get_lower_bound(&place.name)?;
+            let hi = facts.get_upper_bound(&place.name)?;
+            Some((lo, hi))
+        }
+        _ => None,
+    }
+}
+
+/// Check if a +| b can be replaced with a + b (no overflow possible)
+fn can_eliminate_sat_add(facts: &ProvenFactSet, lhs: &Operand, rhs: &Operand) -> bool {
+    if let (Some((lo_a, hi_a)), Some((lo_b, hi_b))) = (operand_bounds(facts, lhs), operand_bounds(facts, rhs)) {
+        // Check: lo_a + lo_b >= i64::MIN (no underflow)
+        //   AND: hi_a + hi_b <= i64::MAX (no overflow)
+        lo_a.checked_add(lo_b).is_some() && hi_a.checked_add(hi_b).is_some()
+    } else {
+        false
+    }
+}
+
+/// Check if a -| b can be replaced with a - b (no overflow possible)
+fn can_eliminate_sat_sub(facts: &ProvenFactSet, lhs: &Operand, rhs: &Operand) -> bool {
+    if let (Some((lo_a, hi_a)), Some((lo_b, hi_b))) = (operand_bounds(facts, lhs), operand_bounds(facts, rhs)) {
+        // Check: lo_a - hi_b >= i64::MIN (no underflow)
+        //   AND: hi_a - lo_b <= i64::MAX (no overflow)
+        lo_a.checked_sub(hi_b).is_some() && hi_a.checked_sub(lo_b).is_some()
+    } else {
+        false
+    }
+}
+
+/// Check if a *| b can be replaced with a * b (no overflow possible)
+fn can_eliminate_sat_mul(facts: &ProvenFactSet, lhs: &Operand, rhs: &Operand) -> bool {
+    if let (Some((lo_a, hi_a)), Some((lo_b, hi_b))) = (operand_bounds(facts, lhs), operand_bounds(facts, rhs)) {
+        // Need to check all four corner products (signs can vary)
+        let corners = [
+            lo_a.checked_mul(lo_b),
+            lo_a.checked_mul(hi_b),
+            hi_a.checked_mul(lo_b),
+            hi_a.checked_mul(hi_b),
+        ];
+        // If any corner overflows, saturation is needed
+        corners.iter().all(|c| c.is_some())
+    } else {
+        false
     }
 }
 
@@ -684,6 +858,17 @@ impl ProvenFactSet {
         self.var_bounds.get(var).and_then(|(_, upper)| *upper)
     }
 
+    /// Get the lower bound of a variable
+    pub fn get_lower_bound(&self, var: &str) -> Option<i64> {
+        self.var_bounds.get(var).and_then(|(lower, _)| *lower)
+    }
+
+    /// v0.96.16: Get both bounds of a variable (if both are known)
+    pub fn get_bounds(&self, var: &str) -> Option<(i64, i64)> {
+        let (lo, hi) = self.var_bounds.get(var)?;
+        Some(((*lo)?, (*hi)?))
+    }
+
     /// Check if a variable is proven non-null
     pub fn has_non_null(&self, var: &str) -> bool {
         self.non_null.contains(var)
@@ -760,6 +945,12 @@ pub struct ProofOptimizationStats {
 
     /// Unreachable blocks eliminated
     pub unreachable_blocks_eliminated: usize,
+
+    /// Saturating arithmetic ops eliminated (converted to regular ops)
+    pub saturating_ops_eliminated: usize,
+
+    /// Postcondition facts propagated from callees to callers
+    pub postconditions_propagated: usize,
 }
 
 impl ProofOptimizationStats {
@@ -773,6 +964,8 @@ impl ProofOptimizationStats {
             + self.null_checks_eliminated
             + self.division_checks_eliminated
             + self.unreachable_blocks_eliminated
+            + self.saturating_ops_eliminated
+            + self.postconditions_propagated
     }
 
     /// Merge statistics from another instance
@@ -781,6 +974,8 @@ impl ProofOptimizationStats {
         self.null_checks_eliminated += other.null_checks_eliminated;
         self.division_checks_eliminated += other.division_checks_eliminated;
         self.unreachable_blocks_eliminated += other.unreachable_blocks_eliminated;
+        self.saturating_ops_eliminated += other.saturating_ops_eliminated;
+        self.postconditions_propagated += other.postconditions_propagated;
     }
 }
 
@@ -816,6 +1011,12 @@ pub fn run_proof_guided_optimizations(func: &mut MirFunction) -> ProofOptimizati
         stats.unreachable_blocks_eliminated += 1;
     }
 
+    // v0.96.16: Run saturating arithmetic elimination
+    let sae = SaturatingArithmeticElimination::new();
+    if sae.run_on_function(func) {
+        stats.saturating_ops_eliminated += 1;
+    }
+
     stats
 }
 
@@ -823,12 +1024,77 @@ pub fn run_proof_guided_optimizations(func: &mut MirFunction) -> ProofOptimizati
 pub fn run_proof_guided_program(program: &mut MirProgram) -> ProofOptimizationStats {
     let mut stats = ProofOptimizationStats::new();
 
+    // v0.96.16: Phase 0 — Postcondition propagation (interprocedural)
+    // Collect callee postconditions and inject as caller facts
+    propagate_postconditions(program, &mut stats);
+
     for func in &mut program.functions {
         let func_stats = run_proof_guided_optimizations(func);
         stats.merge(&func_stats);
     }
 
     stats
+}
+
+/// v0.96.16: Interprocedural postcondition propagation
+///
+/// When function `f` has `post ret >= 0` and function `g` calls `let x = f(...)`,
+/// inject `VarCmp { var: "x", op: Ge, value: 0 }` into `g`'s preconditions.
+/// This enables downstream optimizations (branch elimination, range proof) to use
+/// the callee's guarantees about its return value.
+fn propagate_postconditions(program: &mut MirProgram, stats: &mut ProofOptimizationStats) {
+    // Step 1: Collect postconditions by function name
+    let mut postcondition_map: HashMap<String, Vec<ContractFact>> = HashMap::new();
+    for func in &program.functions {
+        if !func.postconditions.is_empty() {
+            postcondition_map.insert(func.name.clone(), func.postconditions.clone());
+        }
+    }
+
+    if postcondition_map.is_empty() {
+        return;
+    }
+
+    // Step 2: For each function, scan calls and collect postcondition-derived facts
+    for func in &mut program.functions {
+        let mut new_facts: Vec<ContractFact> = Vec::new();
+
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let MirInst::Call { dest: Some(dest), func: callee_name, .. } = inst {
+                    if let Some(postconds) = postcondition_map.get(callee_name.as_str()) {
+                        for postcond in postconds {
+                            match postcond {
+                                ContractFact::ReturnCmp { op, value } => {
+                                    // post ret >= 0 → VarCmp { var: dest, op: Ge, value: 0 }
+                                    new_facts.push(ContractFact::VarCmp {
+                                        var: dest.name.clone(),
+                                        op: *op,
+                                        value: *value,
+                                    });
+                                }
+                                ContractFact::ReturnVarCmp { op, var: rhs_var } => {
+                                    // post ret >= x → VarVarCmp { lhs: dest, op, rhs: x }
+                                    new_facts.push(ContractFact::VarVarCmp {
+                                        lhs: dest.name.clone(),
+                                        op: *op,
+                                        rhs: rhs_var.clone(),
+                                    });
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Inject collected postcondition facts
+        if !new_facts.is_empty() {
+            stats.postconditions_propagated += new_facts.len();
+            func.preconditions.extend(new_facts);
+        }
+    }
 }
 
 // ============================================================================

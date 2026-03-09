@@ -1,0 +1,149 @@
+// Golden Test: String rotation detection and cyclic shift operations
+// Tests rotation, cyclic equivalence, and rotation distance
+
+// Rotate string left by k positions: "abcde" rotl 2 = "cdeab"
+fn rotate_left(s: String, k: i64) -> String = {
+    let n = s.len();
+    if n == 0 { s }
+    else {
+        let kk = k % n;
+        let left = s.slice(kk, n);
+        let right = s.slice(0, kk);
+        left + right
+    }
+};
+
+// Rotate string right by k positions: "abcde" rotr 2 = "deabc"
+fn rotate_right(s: String, k: i64) -> String = {
+    let n = s.len();
+    if n == 0 { s }
+    else {
+        let kk = k % n;
+        let left = s.slice(n - kk, n);
+        let right = s.slice(0, n - kk);
+        left + right
+    }
+};
+
+// Check if b is a rotation of a by testing all rotation amounts
+// Returns the rotation amount (left) or -1 if not a rotation
+fn find_rotation(a: String, b: String) -> i64 = {
+    let na = a.len();
+    let nb = b.len();
+    if na != nb { 0 - 1 }
+    else if na == 0 { 0 }
+    else {
+        let mut result = 0 - 1;
+        let mut k = 0;
+        loop {
+            if k >= na { break } else { () };
+            if result >= 0 { break } else { () };
+            let rotated = rotate_left(a, k);
+            let _c = if rotated == b { result = k; 0 } else { 0 };
+            k = k + 1
+        };
+        result
+    }
+};
+
+// Check rotation using concatenation trick: b is rotation of a iff b is substring of a+a
+// Returns 1 if rotation, 0 otherwise
+fn is_rotation(a: String, b: String) -> i64 = {
+    let na = a.len();
+    let nb = b.len();
+    if na != nb { 0 }
+    else if na == 0 { 1 }
+    else {
+        let doubled = a + a;
+        let dlen = doubled.len();
+        // Search for b in doubled
+        let mut found = 0;
+        let mut i = 0;
+        loop {
+            if i > dlen - nb { break } else { () };
+            if found == 1 { break } else { () };
+            let sub = doubled.slice(i, i + nb);
+            let _c = if sub == b { found = 1; 0 } else { 0 };
+            i = i + 1
+        };
+        found
+    }
+};
+
+// Compute the minimum rotation (lexicographically smallest rotation)
+// Returns the starting index of the smallest rotation
+fn min_rotation_idx(s: String) -> i64 = {
+    let n = s.len();
+    if n == 0 { 0 }
+    else {
+        let mut best = 0;
+        let mut k = 1;
+        loop {
+            if k >= n { break } else { () };
+            let rot_best = rotate_left(s, best);
+            let rot_k = rotate_left(s, k);
+            // Compare byte by byte
+            let mut better = 0;
+            let mut j = 0;
+            let mut decided = 0;
+            loop {
+                if j >= n { break } else { () };
+                if decided == 1 { break } else { () };
+                let bk = rot_k.byte_at(j);
+                let bb = rot_best.byte_at(j);
+                let _c = if bk < bb { better = 1; decided = 1; 0 }
+                         else if bk > bb { decided = 1; 0 }
+                         else { 0 };
+                j = j + 1
+            };
+            let _u = if better == 1 { best = k; 0 } else { 0 };
+            k = k + 1
+        };
+        best
+    }
+};
+
+fn main() -> i64 = {
+    // rotate_left
+    let s1 = rotate_left("abcde", 2);
+    println_str(s1);            // cdeab
+
+    let s2 = rotate_left("hello", 0);
+    println_str(s2);            // hello
+
+    let s3 = rotate_left("xyz", 3);
+    println_str(s3);            // xyz (full rotation)
+
+    // rotate_right
+    let s4 = rotate_right("abcde", 2);
+    println_str(s4);            // deabc
+
+    let s5 = rotate_right("hello", 1);
+    println_str(s5);            // ohell
+
+    // find_rotation
+    let _p1 = println(find_rotation("abcde", "cdeab"));  // 2
+    let _p2 = println(find_rotation("abcde", "eabcd"));  // 4
+    let _p3 = println(find_rotation("abcde", "abcde"));  // 0
+    let _p4 = println(find_rotation("abcde", "abced"));  // -1
+
+    // is_rotation
+    let _p5 = println(is_rotation("abcde", "cdeab"));    // 1
+    let _p6 = println(is_rotation("abcde", "abced"));    // 0
+    let _p7 = println(is_rotation("abc", "cab"));         // 1
+    let _p8 = println(is_rotation("ab", "abc"));          // 0
+
+    // min_rotation_idx: "cab" -> min rotation starts at index 1 ("abc")
+    let _p9 = println(min_rotation_idx("cab"));           // 1
+
+    // "dcba" -> rotations: dcba, cbad, badc, adcb -> min is "adcb" at index 3
+    let _p10 = println(min_rotation_idx("dcba"));         // 3
+
+    // Verify: rotate_left then rotate_right gives original
+    let orig = "teststring";
+    let r1 = rotate_left(orig, 4);
+    let r2 = rotate_right(r1, 4);
+    let _p11 = println(if r2 == orig { 1 } else { 0 });  // 1
+
+    0
+};

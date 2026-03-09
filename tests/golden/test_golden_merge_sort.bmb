@@ -1,0 +1,92 @@
+// Golden Test: Merge Sort (top-down recursive)
+// O(n log n) stable sort
+
+fn merge(arr: i64, temp: i64, lo: i64, mid: i64, hi: i64) -> () = {
+    let mut i = lo;
+    while i <= hi {
+        vec_set(temp, i, vec_get(arr, i));
+        set i = i + 1
+    };
+    let mut left = lo;
+    let mut right = mid + 1;
+    set i = lo;
+    while left <= mid and right <= hi {
+        let _x = if vec_get(temp, left) <= vec_get(temp, right) {
+            vec_set(arr, i, vec_get(temp, left));
+            set left = left + 1;
+            0
+        } else {
+            vec_set(arr, i, vec_get(temp, right));
+            set right = right + 1;
+            0
+        };
+        set i = i + 1
+    };
+    while left <= mid {
+        vec_set(arr, i, vec_get(temp, left));
+        set left = left + 1;
+        set i = i + 1
+    };
+    while right <= hi {
+        vec_set(arr, i, vec_get(temp, right));
+        set right = right + 1;
+        set i = i + 1
+    }
+};
+
+fn merge_sort_rec(arr: i64, temp: i64, lo: i64, hi: i64) -> () = {
+    let _x = if lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        merge_sort_rec(arr, temp, lo, mid);
+        merge_sort_rec(arr, temp, mid + 1, hi);
+        merge(arr, temp, lo, mid, hi);
+        0
+    } else { 0 }
+};
+
+fn merge_sort(arr: i64, n: i64) -> () = {
+    let temp = vec_new();
+    let mut i = 0;
+    while i < n {
+        let _p = vec_push(temp, 0);
+        set i = i + 1
+    };
+    merge_sort_rec(arr, temp, 0, n - 1)
+};
+
+fn print_arr(arr: i64, n: i64) -> () = {
+    let mut i = 0;
+    while i < n {
+        let _sp = if i > 0 { print_str(" "); 0 } else { 0 };
+        print(vec_get(arr, i));
+        set i = i + 1
+    };
+    let _nl = print_str("
+")
+};
+
+fn main() -> () = {
+    let a1 = vec_new();
+    let _p = vec_push(a1, 38); let _p = vec_push(a1, 27);
+    let _p = vec_push(a1, 43); let _p = vec_push(a1, 3);
+    let _p = vec_push(a1, 9); let _p = vec_push(a1, 82);
+    let _p = vec_push(a1, 10);
+    merge_sort(a1, 7);
+    print_str("sorted1: "); print_arr(a1, 7);
+
+    let a2 = vec_new();
+    let _p = vec_push(a2, 5); let _p = vec_push(a2, 4);
+    let _p = vec_push(a2, 3); let _p = vec_push(a2, 2);
+    let _p = vec_push(a2, 1);
+    merge_sort(a2, 5);
+    print_str("sorted2: "); print_arr(a2, 5);
+
+    let a3 = vec_new();
+    let _p = vec_push(a3, 3); let _p = vec_push(a3, 1);
+    let _p = vec_push(a3, 4); let _p = vec_push(a3, 1);
+    let _p = vec_push(a3, 5); let _p = vec_push(a3, 9);
+    let _p = vec_push(a3, 2); let _p = vec_push(a3, 6);
+    let _p = vec_push(a3, 5); let _p = vec_push(a3, 3);
+    merge_sort(a3, 10);
+    print_str("sorted3: "); print_arr(a3, 10)
+};

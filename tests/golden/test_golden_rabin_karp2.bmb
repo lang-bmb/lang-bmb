@@ -1,0 +1,191 @@
+// Golden Test: Rabin-Karp String Matching (integer array version)
+// Rolling hash with polynomial hashing for pattern matching
+
+fn rk_base() -> i64 = 31;
+fn rk_mod() -> i64 = 1000000007;
+
+// Compute hash of array slice [start..start+len)
+fn rk_hash(arr: i64, start: i64, len: i64) -> i64 = {
+    let mut h = 0;
+    let mut pw = 1;
+    for i in 0..len {
+        let val = vec_get(arr, start + i);
+        h = (h + val * pw) - ((h + val * pw) / rk_mod()) * rk_mod();
+        let npw = pw * rk_base();
+        set pw = npw - (npw / rk_mod()) * rk_mod();
+    };
+    h
+};
+
+// Compute power: base^exp mod m
+fn rk_pow(b: i64, e: i64, m: i64) -> i64 = {
+    let mut result = 1;
+    let mut base = b - (b / m) * m;
+    let mut exp = e;
+    loop {
+        if exp <= 0 { break } else { () };
+        let _x = if exp - (exp / 2) * 2 == 1 {
+            let nr = result * base;
+            set result = nr - (nr / m) * m;
+            0
+        } else { 0 };
+        let nb = base * base;
+        set base = nb - (nb / m) * m;
+        set exp = exp / 2;
+    };
+    result
+};
+
+// Rabin-Karp search: returns first match index or -1
+fn rk_search(text: i64, n: i64, pat: i64, m: i64) -> i64 = {
+    if m > n { return 0 - 1 };
+    let pat_hash = rk_hash(pat, 0, m);
+    let mut win_hash = rk_hash(text, 0, m);
+    let high_pow = rk_pow(rk_base(), m - 1, rk_mod());
+    let mut result = 0 - 1;
+
+    let mut i = 0;
+    loop {
+        if i > n - m or result >= 0 { break } else { () };
+        // Check hash match
+        let _check = if win_hash == pat_hash {
+            // Verify character by character
+            let mut match_ok = 1;
+            for j in 0..m {
+                let _v = if vec_get(text, i + j) != vec_get(pat, j) {
+                    set match_ok = 0;
+                    0
+                } else { 0 };
+            };
+            let _s = if match_ok == 1 {
+                set result = i;
+                0
+            } else { 0 };
+            0
+        } else { 0 };
+
+        // Roll hash: remove text[i], add text[i+m]
+        let _roll = if i < n - m {
+            let old_val = vec_get(text, i);
+            let new_val = vec_get(text, i + m);
+            // Remove old: hash - old_val * 1 (old_val was multiplied by base^0 initially)
+            // But our hash is: h = sum(val[j] * base^j)
+            // Rolling: new_hash = (old_hash - val[i]) / base + val[i+m] * base^(m-1)
+            // Since division is hard, recompute: new_hash = (old_hash - old_val) * inv(base) + new_val * base^(m-1)
+            // Simpler: just recompute (for correctness)
+            set win_hash = rk_hash(text, i + 1, m);
+            0
+        } else { 0 };
+
+        set i = i + 1;
+    };
+    result
+};
+
+// Count all occurrences
+fn rk_count(text: i64, n: i64, pat: i64, m: i64) -> i64 = {
+    let mut count = 0;
+    if m > n { return 0 };
+    let pat_hash = rk_hash(pat, 0, m);
+    for i in 0..(n - m + 1) {
+        let win_hash = rk_hash(text, i, m);
+        let _check = if win_hash == pat_hash {
+            let mut match_ok = 1;
+            for j in 0..m {
+                let _v = if vec_get(text, i + j) != vec_get(pat, j) {
+                    set match_ok = 0;
+                    0
+                } else { 0 };
+            };
+            let _s = if match_ok == 1 {
+                set count = count + 1;
+                0
+            } else { 0 };
+            0
+        } else { 0 };
+    };
+    count
+};
+
+fn make_vec3(a: i64, b: i64, c: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a);
+    vec_push(v, b);
+    vec_push(v, c);
+    v
+};
+
+fn main() -> i64 = {
+    // Text: [1, 2, 3, 1, 2, 3, 1, 2, 4]
+    let text = vec_new();
+    vec_push(text, 1);
+    vec_push(text, 2);
+    vec_push(text, 3);
+    vec_push(text, 1);
+    vec_push(text, 2);
+    vec_push(text, 3);
+    vec_push(text, 1);
+    vec_push(text, 2);
+    vec_push(text, 4);
+
+    // Pattern: [1, 2, 3]
+    let pat1 = make_vec3(1, 2, 3);
+
+    // Test 1: First occurrence at index 0
+    let _p1 = println(rk_search(text, 9, pat1, 3));  // 0
+
+    // Test 2: Count occurrences
+    let _p2 = println(rk_count(text, 9, pat1, 3));  // 2
+
+    // Pattern: [1, 2, 4]
+    let pat2 = make_vec3(1, 2, 4);
+    let _p3 = println(rk_search(text, 9, pat2, 3));  // 6
+
+    // Pattern: [3, 1, 2]
+    let pat3 = make_vec3(3, 1, 2);
+    let _p4 = println(rk_search(text, 9, pat3, 3));  // 2
+
+    // Pattern not found: [4, 5, 6]
+    let pat4 = make_vec3(4, 5, 6);
+    let _p5 = println(rk_search(text, 9, pat4, 3));  // -1
+
+    // Test hash consistency
+    let v1 = make_vec3(10, 20, 30);
+    let v2 = make_vec3(10, 20, 30);
+    let h1 = rk_hash(v1, 0, 3);
+    let h2 = rk_hash(v2, 0, 3);
+    let _p6 = println(if h1 == h2 { 1 } else { 0 });  // 1 (same content = same hash)
+
+    // Test single element pattern
+    let pat_single = vec_new();
+    vec_push(pat_single, 3);
+    let _p7 = println(rk_search(text, 9, pat_single, 1));  // 2
+
+    // Test count single element
+    let _p8 = println(rk_count(text, 9, pat_single, 1));  // 2
+
+    // Overlapping: [1,2] in text
+    let pat_overlap = vec_new();
+    vec_push(pat_overlap, 1);
+    vec_push(pat_overlap, 2);
+    let _p9 = println(rk_count(text, 9, pat_overlap, 2));  // 3
+
+    // Pattern longer than text
+    let short = make_vec3(1, 2, 3);
+    let long_pat = vec_new();
+    for _i in 0..10 { vec_push(long_pat, 1) };
+    let _p10 = println(rk_search(short, 3, long_pat, 10));  // -1
+
+    vec_free(text);
+    vec_free(pat1);
+    vec_free(pat2);
+    vec_free(pat3);
+    vec_free(pat4);
+    vec_free(v1);
+    vec_free(v2);
+    vec_free(pat_single);
+    vec_free(pat_overlap);
+    vec_free(short);
+    vec_free(long_pat);
+    0
+};

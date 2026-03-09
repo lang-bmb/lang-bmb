@@ -1,0 +1,163 @@
+// Golden test: Next greater element for each array position
+// Uses stack-based approach (right to left scan)
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n {
+        let _p = vec_push(v, 0);
+        0
+    };
+    v
+    };
+
+// Next Greater Element: for each position, find the first element
+// to the right that is strictly greater. Store -1 if none exists.
+fn next_greater(arr: i64, result: i64) -> i64 = {
+    let n = vec_len(arr);
+    let stack = vec_new();  // stack of values
+
+    // Scan from right to left
+    let mut i = n - 1;
+    loop {
+        if i < 0 { break } else { () };
+
+        // Pop elements <= arr[i]
+        loop {
+            if vec_len(stack) == 0 { break } else { () };
+            if vec_get(stack, vec_len(stack) - 1) <= vec_get(arr, i) {
+                let _pop = vec_pop(stack);
+                0
+            } else { break }
+        };
+
+        // Result is stack top, or -1 if empty
+        let nge = if vec_len(stack) == 0 { 0 - 1 }
+                  else { vec_get(stack, vec_len(stack) - 1) };
+        let _s = vec_set(result, i, nge);
+
+        // Push current element
+        let _push = vec_push(stack, vec_get(arr, i));
+        i = i - 1
+    };
+
+    let _f = vec_free(stack);
+    0
+    };
+
+// Previous Greater Element: for each position, find the first element
+// to the left that is strictly greater. Store -1 if none exists.
+fn prev_greater(arr: i64, result: i64) -> i64 = {
+    let n = vec_len(arr);
+    let stack = vec_new();
+
+    for i in 0..n {
+        // Pop elements <= arr[i]
+        loop {
+            if vec_len(stack) == 0 { break } else { () };
+            if vec_get(stack, vec_len(stack) - 1) <= vec_get(arr, i) {
+                let _pop = vec_pop(stack);
+                0
+            } else { break }
+        };
+
+        let pge = if vec_len(stack) == 0 { 0 - 1 }
+                  else { vec_get(stack, vec_len(stack) - 1) };
+        let _s = vec_set(result, i, pge);
+
+        let _push = vec_push(stack, vec_get(arr, i));
+        0
+    };
+
+    let _f = vec_free(stack);
+    0
+    };
+
+// Count how many elements have a next greater element
+fn count_with_nge(result: i64) -> i64 = {
+    let n = vec_len(result);
+    let mut count = 0;
+    for i in 0..n {
+        let _c = if vec_get(result, i) != (0 - 1) { count = count + 1 } else { () };
+        0
+    };
+    count
+    };
+
+fn main() -> i64 = {
+    // arr = [4, 5, 2, 10, 8]
+    let arr1 = vec_new();
+    let _a1 = vec_push(arr1, 4);
+    let _a2 = vec_push(arr1, 5);
+    let _a3 = vec_push(arr1, 2);
+    let _a4 = vec_push(arr1, 10);
+    let _a5 = vec_push(arr1, 8);
+
+    let nge1 = make_zeros(5);
+    let _ng1 = next_greater(arr1, nge1);
+
+    // Next greater for [4, 5, 2, 10, 8]:
+    // 4 -> 5
+    // 5 -> 10
+    // 2 -> 10
+    // 10 -> -1
+    // 8 -> -1
+    let _p1 = println(vec_get(nge1, 0));  // 5
+    let _p2 = println(vec_get(nge1, 1));  // 10
+    let _p3 = println(vec_get(nge1, 2));  // 10
+    let _p4 = println(vec_get(nge1, 3));  // -1
+    let _p5 = println(vec_get(nge1, 4));  // -1
+
+    // Previous greater for [4, 5, 2, 10, 8]:
+    // 4 -> -1
+    // 5 -> -1
+    // 2 -> 5
+    // 10 -> -1
+    // 8 -> 10
+    let pge1 = make_zeros(5);
+    let _pg1 = prev_greater(arr1, pge1);
+    let _p6 = println(vec_get(pge1, 0));  // -1
+    let _p7 = println(vec_get(pge1, 1));  // -1
+    let _p8 = println(vec_get(pge1, 2));  // 5
+    let _p9 = println(vec_get(pge1, 3));  // -1
+    let _p10 = println(vec_get(pge1, 4)); // 10
+
+    // arr2 = [1, 2, 3, 4, 5] (ascending)
+    let arr2 = vec_new();
+    let _b1 = vec_push(arr2, 1);
+    let _b2 = vec_push(arr2, 2);
+    let _b3 = vec_push(arr2, 3);
+    let _b4 = vec_push(arr2, 4);
+    let _b5 = vec_push(arr2, 5);
+
+    let nge2 = make_zeros(5);
+    let _ng2 = next_greater(arr2, nge2);
+    // [2, 3, 4, 5, -1]
+    let _p11 = println(vec_get(nge2, 0));  // 2
+    let _p12 = println(vec_get(nge2, 3));  // 5
+    let _p13 = println(vec_get(nge2, 4));  // -1
+
+    // arr3 = [5, 4, 3, 2, 1] (descending)
+    let arr3 = vec_new();
+    let _c1 = vec_push(arr3, 5);
+    let _c2 = vec_push(arr3, 4);
+    let _c3 = vec_push(arr3, 3);
+    let _c4 = vec_push(arr3, 2);
+    let _c5 = vec_push(arr3, 1);
+
+    let nge3 = make_zeros(5);
+    let _ng3 = next_greater(arr3, nge3);
+    // All -1 (no next greater for descending)
+    let _p14 = println(vec_get(nge3, 0));  // -1
+    let _p15 = println(vec_get(nge3, 2));  // -1
+    let _p16 = println(vec_get(nge3, 4));  // -1
+
+    // Count elements with next greater
+    let _p17 = println(count_with_nge(nge1));  // 3
+    let _p18 = println(count_with_nge(nge2));  // 4
+    let _p19 = println(count_with_nge(nge3));  // 0
+
+    let _f1 = vec_free(arr1); let _f2 = vec_free(nge1); let _f3 = vec_free(pge1);
+    let _f4 = vec_free(arr2); let _f5 = vec_free(nge2);
+    let _f6 = vec_free(arr3); let _f7 = vec_free(nge3);
+    0
+    };

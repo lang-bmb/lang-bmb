@@ -1,0 +1,162 @@
+// Golden test: Floyd's tortoise and hare cycle detection
+// Simulates linked list with next[] array
+// Detects cycles, finds cycle start, and computes cycle length
+
+// Move pointer one step: follow next[pos]
+fn step(next: i64, pos: i64) -> i64 =
+    if pos < 0 { 0 - 1 }
+    else { vec_get(next, pos) };
+
+// Floyd's cycle detection: returns meeting point or -1
+fn floyd_detect(next: i64, size: i64) -> i64 = {
+    let slow = 0;
+    let fast = 0;
+    let found = 0 - 1;
+    // Max iterations = 2*size to ensure we detect or exhaust
+    let max_iter = size * 2;
+    for _i in 0..max_iter {
+        if found >= 0 { () }
+        else {
+            slow = step(next, slow);
+            fast = step(next, step(next, fast));
+            if slow < 0 or fast < 0 {
+                found = 0 - 2; // No cycle (reached end)
+            } else if slow == fast {
+                found = slow; // Cycle detected, meeting point
+            } else { () };
+        };
+    };
+    if found == 0 - 2 { 0 - 1 } else { found }
+    };
+
+// Find cycle start: after meeting, one pointer from head, one from meeting
+// Both move one step at a time until they meet
+fn find_cycle_start(next: i64, meeting: i64, size: i64) -> i64 = {
+    if meeting < 0 { 0 - 1 }
+    else {
+        let p1 = 0;
+        let p2 = meeting;
+        let result = 0 - 1;
+        for _i in 0..size {
+            if result >= 0 { () }
+            else if p1 == p2 {
+                result = p1;
+            } else {
+                p1 = step(next, p1);
+                p2 = step(next, p2);
+            };
+        };
+        result
+    }
+    };
+
+// Find cycle length: from a node in cycle, count steps back to itself
+fn cycle_length(next: i64, node_in_cycle: i64, size: i64) -> i64 = {
+    if node_in_cycle < 0 { 0 }
+    else {
+        let pos = step(next, node_in_cycle);
+        let len = 1;
+        for _i in 0..size {
+            if pos == node_in_cycle { () }
+            else {
+                pos = step(next, pos);
+                len = len + 1;
+            };
+        };
+        len
+    }
+    };
+
+// Count total reachable nodes from start (up to max steps)
+fn count_reachable(next: i64, max_steps: i64) -> i64 = {
+    let pos = 0;
+    let count = 0;
+    for _i in 0..max_steps {
+        if pos < 0 { () }
+        else {
+            count = count + 1;
+            pos = step(next, pos);
+        };
+    };
+    count
+    };
+
+fn main() -> i64 = {
+    // Test 1: Simple cycle
+    // 0 -> 1 -> 2 -> 3 -> 4 -> 2 (cycle at node 2, length 3)
+    let next1 = vec_new();
+    vec_push(next1, 1);  // 0 -> 1
+    vec_push(next1, 2);  // 1 -> 2
+    vec_push(next1, 3);  // 2 -> 3
+    vec_push(next1, 4);  // 3 -> 4
+    vec_push(next1, 2);  // 4 -> 2 (back to 2)
+
+    let meet1 = floyd_detect(next1, 5);
+    let _p1 = println(if meet1 >= 0 { 1 } else { 0 }); // 1 (cycle exists)
+    let start1 = find_cycle_start(next1, meet1, 5);
+    let _p2 = println(start1); // 2 (cycle starts at node 2)
+    let clen1 = cycle_length(next1, start1, 5);
+    let _p3 = println(clen1); // 3 (cycle: 2->3->4->2)
+
+    // Test 2: No cycle (linear list)
+    // 0 -> 1 -> 2 -> 3 -> -1
+    let next2 = vec_new();
+    vec_push(next2, 1);
+    vec_push(next2, 2);
+    vec_push(next2, 3);
+    vec_push(next2, 0 - 1);
+
+    let meet2 = floyd_detect(next2, 4);
+    let _p4 = println(meet2); // -1 (no cycle)
+
+    // Test 3: Self-loop at node 0
+    // 0 -> 0
+    let next3 = vec_new();
+    vec_push(next3, 0);
+
+    let meet3 = floyd_detect(next3, 1);
+    let _p5 = println(if meet3 >= 0 { 1 } else { 0 }); // 1 (cycle exists)
+    let start3 = find_cycle_start(next3, meet3, 1);
+    let _p6 = println(start3); // 0 (cycle at node 0)
+    let clen3 = cycle_length(next3, start3, 1);
+    let _p7 = println(clen3); // 1 (self-loop)
+
+    // Test 4: Entire list is a cycle
+    // 0 -> 1 -> 2 -> 0
+    let next4 = vec_new();
+    vec_push(next4, 1);
+    vec_push(next4, 2);
+    vec_push(next4, 0);
+
+    let meet4 = floyd_detect(next4, 3);
+    let _p8 = println(if meet4 >= 0 { 1 } else { 0 }); // 1
+    let start4 = find_cycle_start(next4, meet4, 3);
+    let _p9 = println(start4); // 0 (cycle starts at head)
+    let clen4 = cycle_length(next4, start4, 3);
+    let _p10 = println(clen4); // 3
+
+    // Test 5: Long tail then cycle
+    // 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 4 (tail=4, cycle=3)
+    let next5 = vec_new();
+    vec_push(next5, 1);
+    vec_push(next5, 2);
+    vec_push(next5, 3);
+    vec_push(next5, 4);
+    vec_push(next5, 5);
+    vec_push(next5, 6);
+    vec_push(next5, 4);
+
+    let meet5 = floyd_detect(next5, 7);
+    let start5 = find_cycle_start(next5, meet5, 7);
+    let _p11 = println(start5); // 4 (cycle starts at node 4)
+    let clen5 = cycle_length(next5, start5, 7);
+    let _p12 = println(clen5); // 3 (cycle: 4->5->6->4)
+
+    // Test 6: Count reachable (with cycle, saturates at max_steps)
+    let _p13 = println(count_reachable(next1, 10)); // 10 (cycles forever)
+
+    // Test 7: Count reachable (no cycle)
+    let _p14 = println(count_reachable(next2, 10)); // 4 (0,1,2,3 then -1)
+
+    0
+    };

@@ -1,0 +1,180 @@
+// Golden Test: Kahn's algorithm for topological sort
+// BFS-based topological ordering of a directed acyclic graph (DAG)
+// Uses in-degree counting + queue
+// Also detects cycles (if not all nodes processed, cycle exists)
+
+// Graph: adjacency list stored as flat edge vec + offset vec
+// edges[offset[u]..offset[u+1]] = neighbors of u
+
+fn kahn_toposort(edges: i64, offset: i64, n: i64) -> i64 = {
+    // Compute in-degrees
+    let indeg = vec_new();
+    let mut i = 0;
+    while i < n {
+        let _p = vec_push(indeg, 0);
+        set i = i + 1
+    };
+
+    // Count incoming edges
+    set i = 0;
+    while i < n {
+        let start = vec_get(offset, i);
+        let end_val = vec_get(offset, i + 1);
+        let mut j = start;
+        while j < end_val {
+            let v = vec_get(edges, j);
+            vec_set(indeg, v, vec_get(indeg, v) + 1);
+            set j = j + 1
+        };
+        set i = i + 1
+    };
+
+    // Initialize queue with zero in-degree nodes
+    let queue = vec_new();
+    set i = 0;
+    while i < n {
+        let _x = if vec_get(indeg, i) == 0 {
+            let _p = vec_push(queue, i);
+            0
+        } else { 0 };
+        set i = i + 1
+    };
+
+    // BFS: process queue
+    let result = vec_new();
+    let mut front = 0;
+    while front < vec_len(queue) {
+        let u = vec_get(queue, front);
+        set front = front + 1;
+        let _p = vec_push(result, u);
+
+        let start = vec_get(offset, u);
+        let end_val = vec_get(offset, u + 1);
+        let mut j = start;
+        while j < end_val {
+            let v = vec_get(edges, j);
+            vec_set(indeg, v, vec_get(indeg, v) - 1);
+            let _x = if vec_get(indeg, v) == 0 {
+                let _p2 = vec_push(queue, v);
+                0
+            } else { 0 };
+            set j = j + 1
+        };
+        0
+    };
+
+    // Check for cycle
+    let _x = if vec_len(result) < n {
+        println(-1);  // cycle detected
+        0
+    } else { 0 };
+
+    result
+};
+
+// Build graph helper: add directed edge u -> v
+fn add_edge(edges: i64, offset_build: i64, u: i64, v: i64) -> () = {
+    // offset_build[u] tracks count for node u temporarily
+    let _p = vec_push(edges, v);
+    vec_set(offset_build, u, vec_get(offset_build, u) + 1)
+};
+
+fn print_vec(v: i64) -> () = {
+    let mut i = 0;
+    while i < vec_len(v) {
+        let _x = if i > 0 { print_str(" "); 0 } else { 0 };
+        print(vec_get(v, i));
+        set i = i + 1
+    };
+    let _nl = print_str("\n")
+};
+
+fn main() -> () = {
+    // Test 1: Simple DAG with 6 nodes
+    // 5 -> 2 -> 3 -> 1
+    // 5 -> 0 -> 1
+    // 4 -> 0
+    // 4 -> 1
+    let n = 6;
+
+    // Build adjacency list
+    // First pass: count edges per node
+    let counts = vec_new();
+    let mut i = 0;
+    while i <= n {
+        let _p = vec_push(counts, 0);
+        set i = i + 1
+    };
+
+    // Edges: 5->2, 5->0, 4->0, 4->1, 2->3, 3->1
+    // Node 0: no outgoing
+    // Node 1: no outgoing
+    // Node 2: -> 3
+    // Node 3: -> 1
+    // Node 4: -> 0, -> 1
+    // Node 5: -> 2, -> 0
+
+    // Direct construction of offset + edges
+    let edges = vec_new();
+    let offset = vec_new();
+
+    // Node 0: 0 edges, offset 0
+    let _p = vec_push(offset, 0);
+    // Node 1: 0 edges, offset 0
+    let _p = vec_push(offset, 0);
+    // Node 2: 1 edge (->3), offset 0
+    let _p = vec_push(offset, 0);
+    let _pe = vec_push(edges, 3);
+    // Node 3: 1 edge (->1), offset 1
+    let _p = vec_push(offset, 1);
+    let _pe = vec_push(edges, 1);
+    // Node 4: 2 edges (->0, ->1), offset 2
+    let _p = vec_push(offset, 2);
+    let _pe = vec_push(edges, 0);
+    let _pe = vec_push(edges, 1);
+    // Node 5: 2 edges (->2, ->0), offset 4
+    let _p = vec_push(offset, 4);
+    let _pe = vec_push(edges, 2);
+    let _pe = vec_push(edges, 0);
+    // Sentinel
+    let _p = vec_push(offset, 6);
+
+    let result = kahn_toposort(edges, offset, n);
+    print_str("topo: ");
+    print_vec(result);
+    print_str("count: ");
+    println(vec_len(result));
+
+    // Test 2: Linear chain 0->1->2->3
+    let edges2 = vec_new();
+    let offset2 = vec_new();
+    let _p = vec_push(offset2, 0);
+    let _pe = vec_push(edges2, 1);
+    let _p = vec_push(offset2, 1);
+    let _pe = vec_push(edges2, 2);
+    let _p = vec_push(offset2, 2);
+    let _pe = vec_push(edges2, 3);
+    let _p = vec_push(offset2, 3);
+    let _p = vec_push(offset2, 3);  // node 3: no edges
+
+    let result2 = kahn_toposort(edges2, offset2, 4);
+    print_str("linear: ");
+    print_vec(result2);
+
+    // Test 3: Diamond 0->1, 0->2, 1->3, 2->3
+    let edges3 = vec_new();
+    let offset3 = vec_new();
+    let _p = vec_push(offset3, 0);
+    let _pe = vec_push(edges3, 1);
+    let _pe = vec_push(edges3, 2);
+    let _p = vec_push(offset3, 2);
+    let _pe = vec_push(edges3, 3);
+    let _p = vec_push(offset3, 3);
+    let _pe = vec_push(edges3, 3);
+    let _p = vec_push(offset3, 4);
+    let _p = vec_push(offset3, 4);  // node 3: no edges
+
+    let result3 = kahn_toposort(edges3, offset3, 4);
+    print_str("diamond: ");
+    print_vec(result3)
+};

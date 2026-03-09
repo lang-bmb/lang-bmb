@@ -1,0 +1,163 @@
+// Golden Test: Skip list simulation with deterministic level assignment
+// Levels assigned based on trailing zeros of (value * golden_ratio_approx)
+// Level 0: all elements, Level 1: ~50%, Level 2: ~25%, Level 3: ~12.5%
+
+// Deterministic level: count trailing zeros of hash(val)
+// hash(val) = (val * 2654435761) band 0xFFFF (Knuth multiplicative hash, 16-bit)
+fn det_level(val: i64, max_level: i64) -> i64 = {
+    let hash = (val * 2654435761) band 65535;
+    if hash == 0 { return max_level } else { () };
+    let mut level = 0;
+    let mut h = hash;
+    loop {
+        if h band 1 != 0 { break } else { () };
+        if level >= max_level { break } else { () };
+        level = level + 1;
+        h = h >> 1
+    };
+    level
+};
+
+// Skip list node stored as: [value, next_level0, next_level1, ..., next_levelN]
+// We simulate with separate lists per level
+// Each level is a sorted vec of values
+
+fn sorted_insert(list: i64, val: i64) -> i64 = {
+    let n = vec_len(list);
+    vec_push(list, val);
+    // Bubble into position
+    let mut i = n;
+    loop {
+        if i == 0 { break } else { () };
+        if vec_get(list, i - 1) > vec_get(list, i) {
+            let tmp = vec_get(list, i - 1);
+            vec_set(list, i - 1, vec_get(list, i));
+            vec_set(list, i, tmp);
+            i = i - 1
+        } else { break }
+    };
+    0
+};
+
+// Insert value into skip list (all levels it belongs to)
+fn skip_insert(levels: i64, num_levels: i64, val: i64) -> i64 = {
+    let lv = det_level(val, num_levels - 1);
+    for l in 0..lv + 1 {
+        let _s = sorted_insert(vec_get(levels, l), val)
+    };
+    0
+};
+
+// Search in skip list: start from highest level, narrow down
+// Returns 1 if found, 0 if not
+fn skip_search(levels: i64, num_levels: i64, val: i64) -> i64 = {
+    let mut found = 0;
+    // Start from highest level, find approximate position, then go down
+    let mut start_pos = 0;
+    let mut lv = num_levels - 1;
+    loop {
+        if lv < 0 { break } else { () };
+        let list = vec_get(levels, lv);
+        let n = vec_len(list);
+        // Linear search from start_pos approximation
+        let mut i = 0;
+        loop {
+            if i >= n { break } else { () };
+            let v = vec_get(list, i);
+            if v == val { found = 1; lv = 0 - 1; i = n } // break both loops
+            else if v > val { i = n } // break inner loop
+            else { start_pos = i; i = i + 1 }
+        };
+        lv = lv - 1
+    };
+    found
+};
+
+// Binary search in sorted vec, returns 1 if found
+fn bin_search(list: i64, val: i64) -> i64 = {
+    let mut lo = 0;
+    let mut hi = vec_len(list) - 1;
+    let mut found = 0;
+    loop {
+        if lo > hi { break } else { () };
+        let mid = lo + (hi - lo) / 2;
+        let v = vec_get(list, mid);
+        if v == val { found = 1; lo = hi + 1 } // break
+        else if v < val { lo = mid + 1 }
+        else { hi = mid - 1 }
+    };
+    found
+};
+
+fn main() -> i64 = {
+    let num_levels = 4;
+    // Create 4 levels (lists)
+    let levels = vec_new();
+    for _l in 0..num_levels {
+        vec_push(levels, vec_new())
+    };
+
+    // Insert values: 10, 20, 30, 40, 50, 60, 70, 80, 90, 100
+    let _i1 = skip_insert(levels, num_levels, 10);
+    let _i2 = skip_insert(levels, num_levels, 20);
+    let _i3 = skip_insert(levels, num_levels, 30);
+    let _i4 = skip_insert(levels, num_levels, 40);
+    let _i5 = skip_insert(levels, num_levels, 50);
+    let _i6 = skip_insert(levels, num_levels, 60);
+    let _i7 = skip_insert(levels, num_levels, 70);
+    let _i8 = skip_insert(levels, num_levels, 80);
+    let _i9 = skip_insert(levels, num_levels, 90);
+    let _i10 = skip_insert(levels, num_levels, 100);
+
+    // Test 1: Level 0 should have all 10 elements
+    let _p1 = println(vec_len(vec_get(levels, 0)));  // 10
+
+    // Test 2: Higher levels should have fewer elements
+    let l1_len = vec_len(vec_get(levels, 1));
+    let l2_len = vec_len(vec_get(levels, 2));
+    let l3_len = vec_len(vec_get(levels, 3));
+    let _p2 = println(l1_len);   // varies by hash
+    let _p3 = println(l2_len);
+    let _p4 = println(l3_len);
+
+    // Test 3: Level 0 is sorted and contains all values
+    let base = vec_get(levels, 0);
+    let _p5 = println(vec_get(base, 0));   // 10 (first)
+    let _p6 = println(vec_get(base, 9));   // 100 (last)
+
+    // Test 4: Search for existing values
+    let _p7 = println(skip_search(levels, num_levels, 10));   // 1
+    let _p8 = println(skip_search(levels, num_levels, 50));   // 1
+    let _p9 = println(skip_search(levels, num_levels, 100));  // 1
+
+    // Test 5: Search for non-existing values
+    let _p10 = println(skip_search(levels, num_levels, 15));  // 0
+    let _p11 = println(skip_search(levels, num_levels, 99));  // 0
+    let _p12 = println(skip_search(levels, num_levels, 0));   // 0
+
+    // Test 6: Binary search on level 0 for validation
+    let _p13 = println(bin_search(base, 30));   // 1
+    let _p14 = println(bin_search(base, 75));   // 0
+
+    // Test 7: Verify level monotonicity (each level is subset of level below)
+    // l3_len <= l2_len <= l1_len <= l0_len
+    let l0_len = vec_len(vec_get(levels, 0));
+    let mono1 = if l1_len <= l0_len { 1 } else { 0 };
+    let mono2 = if l2_len <= l1_len { 1 } else { 0 };
+    let mono3 = if l3_len <= l2_len { 1 } else { 0 };
+    let _p15 = println(mono1);   // 1
+    let _p16 = println(mono2);   // 1
+    let _p17 = println(mono3);   // 1
+
+    // Test 8: Deterministic levels for specific values
+    let _p18 = println(det_level(10, 3));
+    let _p19 = println(det_level(50, 3));
+    let _p20 = println(det_level(100, 3));
+
+    // Cleanup
+    for l in 0..num_levels {
+        vec_free(vec_get(levels, l))
+    };
+    vec_free(levels);
+    0
+};

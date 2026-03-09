@@ -1,0 +1,164 @@
+// Golden test: Sieve of Eratosthenes with prime gap analysis and twin prime pairs
+// Tests: sieve construction, prime counting, gap analysis, twin prime enumeration up to 200
+
+// Build sieve up to limit (inclusive), returns vec where sieve[i]=1 means i is prime
+fn build_sieve(limit: i64) -> i64 = {
+    let sieve = vec_new();
+    for i in 0..=limit {
+        let _p = vec_push(sieve, if i < 2 { 0 } else { 1 });
+        0
+    };
+    // Mark composites
+    let mut p = 2;
+    loop {
+        if p * p > limit { break } else { () };
+        let _r = if vec_get(sieve, p) == 1 {
+            let mut j = p * p;
+            loop {
+                if j > limit { break } else { () };
+                let _s = vec_set(sieve, j, 0);
+                set j = j + p
+            };
+            0
+        } else { 0 };
+        set p = p + 1
+    };
+    sieve
+};
+
+// Count primes in range [lo, hi] using sieve
+fn count_primes_range(sieve: i64, lo: i64, hi: i64) -> i64 = {
+    let mut count = 0;
+    for i in lo..=hi {
+        let _r = if vec_get(sieve, i) == 1 {
+            set count = count + 1;
+            0
+        } else { 0 }
+    };
+    count
+};
+
+// Collect all primes into a new vec, return it
+fn collect_primes(sieve: i64, limit: i64) -> i64 = {
+    let primes = vec_new();
+    for i in 2..=limit {
+        let _r = if vec_get(sieve, i) == 1 {
+            let _p = vec_push(primes, i);
+            0
+        } else { 0 }
+    };
+    primes
+};
+
+// Find the largest prime gap among primes up to limit
+fn largest_gap(primes: i64) -> i64 = {
+    let n = vec_len(primes);
+    let mut max_gap = 0;
+    for i in 1..n {
+        let gap = vec_get(primes, i) - vec_get(primes, i - 1);
+        let _r = if gap > max_gap {
+            set max_gap = gap;
+            0
+        } else { 0 }
+    };
+    max_gap
+};
+
+// Count twin prime pairs (p, p+2 both prime)
+fn count_twin_pairs(primes: i64) -> i64 = {
+    let n = vec_len(primes);
+    let mut count = 0;
+    for i in 0..n {
+        let _r = if i + 1 < n {
+            let _r2 = if vec_get(primes, i + 1) - vec_get(primes, i) == 2 {
+                set count = count + 1;
+                0
+            } else { 0 };
+            0
+        } else { 0 }
+    };
+    count
+};
+
+// Print all twin prime pairs
+fn print_twin_pairs(primes: i64) -> i64 = {
+    let n = vec_len(primes);
+    for i in 0..n {
+        let _r = if i + 1 < n {
+            let _r2 = if vec_get(primes, i + 1) - vec_get(primes, i) == 2 {
+                let _a = println(vec_get(primes, i));
+                let _b = println(vec_get(primes, i + 1));
+                0
+            } else { 0 };
+            0
+        } else { 0 }
+    };
+    0
+};
+
+// Sum all primes up to limit
+fn sum_primes(primes: i64) -> i64 = {
+    let n = vec_len(primes);
+    let mut total = 0;
+    for i in 0..n {
+        set total = total + vec_get(primes, i)
+    };
+    total
+};
+
+// Find average gap (sum of gaps / count of gaps) as integer division
+fn avg_gap_x100(primes: i64) -> i64 = {
+    let n = vec_len(primes);
+    let mut total_gap = 0;
+    for i in 1..n {
+        set total_gap = total_gap + (vec_get(primes, i) - vec_get(primes, i - 1))
+    };
+    // avg_gap * 100 for integer representation
+    if n > 1 { total_gap * 100 / (n - 1) } else { 0 }
+};
+
+// Count primes in decades: [1-10], [11-20], ..., [191-200]
+fn count_decade(sieve: i64, decade: i64) -> i64 = {
+    let lo = decade * 10 + 1;
+    let hi = lo + 9;
+    count_primes_range(sieve, lo, hi)
+};
+
+fn main() -> i64 = {
+    let sieve = build_sieve(200);
+    let primes = collect_primes(sieve, 200);
+
+    // 1. Number of primes up to 200
+    let n_primes = vec_len(primes);
+    let _p1 = println(n_primes);  // 46
+
+    // 2. Sum of all primes up to 200
+    let _p2 = println(sum_primes(primes));  // 4227
+
+    // 3. Largest prime gap
+    let _p3 = println(largest_gap(primes));  // 14 (gap between 113 and 127)
+
+    // 4. Number of twin prime pairs
+    let _p4 = println(count_twin_pairs(primes));  // 15
+
+    // 5. Average gap * 100 (integer)
+    let _p5 = println(avg_gap_x100(primes));  // 440 (198/45 ~= 4.40)
+
+    // 6. Print all twin prime pairs (first of pair, second of pair)
+    let _p6 = print_twin_pairs(primes);
+
+    // 7. Primes per decade for first 5 decades
+    let _p7 = println(count_decade(sieve, 0));   // decade 1-10: 4 (2,3,5,7)
+    let _p8 = println(count_decade(sieve, 1));   // decade 11-20: 4 (11,13,17,19)
+    let _p9 = println(count_decade(sieve, 2));   // decade 21-30: 2 (23,29)
+    let _p10 = println(count_decade(sieve, 3));  // decade 31-40: 2 (31,37)
+    let _p11 = println(count_decade(sieve, 4));  // decade 41-50: 3 (41,43,47)
+
+    // 8. First and last prime
+    let _p12 = println(vec_get(primes, 0));                    // 2
+    let _p13 = println(vec_get(primes, n_primes - 1));         // 199
+
+    let _f1 = vec_free(sieve);
+    let _f2 = vec_free(primes);
+    0
+};

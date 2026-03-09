@@ -1,0 +1,242 @@
+// Golden Test: Matrix multiplication with flat vec storage
+// Tests: multiply, add, transpose, associativity verification
+// Matrices stored as flat vec of n*n elements, row-major order
+
+// Create vec of n zeros
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { let _p = vec_push(v, 0); 0 };
+    v
+    };
+
+// Get element at (row, col) in n x n matrix
+fn mat_get(mat: i64, n: i64, row: i64, col: i64) -> i64 =
+    vec_get(mat, row * n + col);
+
+// Set element at (row, col) in n x n matrix
+fn mat_set(mat: i64, n: i64, row: i64, col: i64, val: i64) -> i64 = {
+    let _s = vec_set(mat, row * n + col, val);
+    0
+    };
+
+// Matrix multiply: compute single element C[row][col] = sum(A[row][k] * B[k][col])
+fn mat_mul_elem(a: i64, b: i64, n: i64, row: i64, col: i64, k: i64, acc: i64) -> i64 =
+    if k >= n { acc }
+    else {
+        let prod = mat_get(a, n, row, k) * mat_get(b, n, k, col);
+        mat_mul_elem(a, b, n, row, col, k + 1, acc + prod)
+    };
+
+// Fill one row of result matrix
+fn mat_mul_col(a: i64, b: i64, c: i64, n: i64, row: i64, col: i64) -> i64 =
+    if col >= n { 0 }
+    else {
+        let val = mat_mul_elem(a, b, n, row, col, 0, 0);
+        let _s = mat_set(c, n, row, col, val);
+        mat_mul_col(a, b, c, n, row, col + 1)
+    };
+
+// Fill all rows of result matrix
+fn mat_mul_row(a: i64, b: i64, c: i64, n: i64, row: i64) -> i64 =
+    if row >= n { 0 }
+    else {
+        let _r = mat_mul_col(a, b, c, n, row, 0);
+        mat_mul_row(a, b, c, n, row + 1)
+    };
+
+// Matrix multiply: C = A * B (n x n), returns handle to C
+fn mat_mul(a: i64, b: i64, n: i64) -> i64 = {
+    let c = make_zeros(n * n);
+    let _m = mat_mul_row(a, b, c, n, 0);
+    c
+    };
+
+// Matrix add: C = A + B (n x n)
+fn mat_add_elem(a: i64, b: i64, c: i64, pos: i64, total: i64) -> i64 =
+    if pos >= total { 0 }
+    else {
+        let _s = vec_set(c, pos, vec_get(a, pos) + vec_get(b, pos));
+        mat_add_elem(a, b, c, pos + 1, total)
+    };
+
+fn mat_add(a: i64, b: i64, n: i64) -> i64 = {
+    let c = make_zeros(n * n);
+    let _m = mat_add_elem(a, b, c, 0, n * n);
+    c
+    };
+
+// Matrix transpose: C = A^T (n x n)
+fn mat_transpose_elem(a: i64, c: i64, n: i64, row: i64, col: i64) -> i64 =
+    if col >= n { 0 }
+    else {
+        let _s = mat_set(c, n, row, col, mat_get(a, n, col, row));
+        mat_transpose_elem(a, c, n, row, col + 1)
+    };
+
+fn mat_transpose_row(a: i64, c: i64, n: i64, row: i64) -> i64 =
+    if row >= n { 0 }
+    else {
+        let _t = mat_transpose_elem(a, c, n, row, 0);
+        mat_transpose_row(a, c, n, row + 1)
+    };
+
+fn mat_transpose(a: i64, n: i64) -> i64 = {
+    let c = make_zeros(n * n);
+    let _m = mat_transpose_row(a, c, n, 0);
+    c
+    };
+
+// Check if two matrices are equal
+fn mat_equal(a: i64, b: i64, pos: i64, total: i64) -> i64 =
+    if pos >= total { 1 }
+    else if vec_get(a, pos) != vec_get(b, pos) { 0 }
+    else { mat_equal(a, b, pos + 1, total) };
+
+// Print entire matrix elements (for debugging)
+fn print_mat(mat: i64, n: i64, pos: i64) -> i64 =
+    if pos >= n * n { 0 }
+    else {
+        let _p = println(vec_get(mat, pos));
+        print_mat(mat, n, pos + 1)
+    };
+
+// Build a 3x3 matrix from 9 values
+fn make3x3(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64, h: i64, ii: i64) -> i64 = {
+    let v = vec_new();
+    let _p0 = vec_push(v, a); let _p1 = vec_push(v, b); let _p2 = vec_push(v, c);
+    let _p3 = vec_push(v, d); let _p4 = vec_push(v, e); let _p5 = vec_push(v, f);
+    let _p6 = vec_push(v, g); let _p7 = vec_push(v, h); let _p8 = vec_push(v, ii);
+    v
+    };
+
+// Build a 4x4 matrix from 16 values
+fn make4x4(a: i64, b: i64, c: i64, d: i64,
+            e: i64, f: i64, g: i64, h: i64,
+            ii: i64, j: i64, k: i64, l: i64,
+            m: i64, nn: i64, o: i64, p: i64) -> i64 = {
+    let v = vec_new();
+    let _p0 = vec_push(v, a); let _p1 = vec_push(v, b);
+    let _p2 = vec_push(v, c); let _p3 = vec_push(v, d);
+    let _p4 = vec_push(v, e); let _p5 = vec_push(v, f);
+    let _p6 = vec_push(v, g); let _p7 = vec_push(v, h);
+    let _p8 = vec_push(v, ii); let _p9 = vec_push(v, j);
+    let _p10 = vec_push(v, k); let _p11 = vec_push(v, l);
+    let _p12 = vec_push(v, m); let _p13 = vec_push(v, nn);
+    let _p14 = vec_push(v, o); let _p15 = vec_push(v, p);
+    v
+    };
+
+fn main() -> i64 = {
+    // === Test 1: 3x3 Identity * A = A ===
+    let id3 = make3x3(1, 0, 0, 0, 1, 0, 0, 0, 1);
+    let a3 = make3x3(2, 3, 1, 4, 5, 6, 7, 8, 9);
+    let ia3 = mat_mul(id3, a3, 3);
+    // Should equal A
+    let _p1 = println(mat_equal(ia3, a3, 0, 9));
+
+    // Print A * I result (should be same as A)
+    let ai3 = mat_mul(a3, id3, 3);
+    let _p2 = println(mat_equal(ai3, a3, 0, 9));
+
+    // === Test 2: 3x3 multiplication ===
+    // A = [[1,2,3],[4,5,6],[7,8,9]]
+    // B = [[9,8,7],[6,5,4],[3,2,1]]
+    // A*B = [[30,24,18],[84,69,54],[138,114,90]]
+    let ma = make3x3(1, 2, 3, 4, 5, 6, 7, 8, 9);
+    let mb = make3x3(9, 8, 7, 6, 5, 4, 3, 2, 1);
+    let mab = mat_mul(ma, mb, 3);
+    let _p3 = println(mat_get(mab, 3, 0, 0));  // 30
+    let _p4 = println(mat_get(mab, 3, 0, 1));  // 24
+    let _p5 = println(mat_get(mab, 3, 0, 2));  // 18
+    let _p6 = println(mat_get(mab, 3, 1, 0));  // 84
+    let _p7 = println(mat_get(mab, 3, 1, 1));  // 69
+    let _p8 = println(mat_get(mab, 3, 1, 2));  // 54
+    let _p9 = println(mat_get(mab, 3, 2, 0));  // 138
+    let _p10 = println(mat_get(mab, 3, 2, 1)); // 114
+    let _p11 = println(mat_get(mab, 3, 2, 2)); // 90
+
+    // === Test 3: Matrix addition ===
+    // A + B element-wise
+    let sum_ab = mat_add(ma, mb, 3);
+    // Each row should sum to 10: [10,10,10, 10,10,10, 10,10,10]
+    let _p12 = println(mat_get(sum_ab, 3, 0, 0)); // 10
+    let _p13 = println(mat_get(sum_ab, 3, 1, 1)); // 10
+    let _p14 = println(mat_get(sum_ab, 3, 2, 2)); // 10
+
+    // === Test 4: Matrix transpose ===
+    // A = [[1,2,3],[4,5,6],[7,8,9]]
+    // A^T = [[1,4,7],[2,5,8],[3,6,9]]
+    let at = mat_transpose(ma, 3);
+    let _p15 = println(mat_get(at, 3, 0, 0)); // 1
+    let _p16 = println(mat_get(at, 3, 0, 1)); // 4
+    let _p17 = println(mat_get(at, 3, 0, 2)); // 7
+    let _p18 = println(mat_get(at, 3, 1, 0)); // 2
+    let _p19 = println(mat_get(at, 3, 1, 1)); // 5
+    let _p20 = println(mat_get(at, 3, 1, 2)); // 8
+
+    // === Test 5: (A*B)^T = B^T * A^T ===
+    let abt = mat_transpose(mab, 3);
+    let bt = mat_transpose(mb, 3);
+    let btat = mat_mul(bt, at, 3);
+    let _p21 = println(mat_equal(abt, btat, 0, 9)); // 1
+
+    // === Test 6: Associativity (A*B)*C == A*(B*C) with 3x3 ===
+    let mc = make3x3(1, 0, 2, 0, 1, 0, 3, 0, 1);
+    let ab = mat_mul(ma, mb, 3);
+    let abc1 = mat_mul(ab, mc, 3);
+    let bc = mat_mul(mb, mc, 3);
+    let abc2 = mat_mul(ma, bc, 3);
+    let _p22 = println(mat_equal(abc1, abc2, 0, 9)); // 1
+
+    // Print one element to verify
+    let _p23 = println(mat_get(abc1, 3, 0, 0)); // 30*1+24*0+18*3 = 84
+    let _p24 = println(mat_get(abc1, 3, 1, 1)); // 84*0+69*1+54*0 = 69
+
+    // === Test 7: 4x4 Identity * A = A ===
+    let id4 = make4x4(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
+    let a4 = make4x4(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
+    let ia4 = mat_mul(id4, a4, 4);
+    let _p25 = println(mat_equal(ia4, a4, 0, 16)); // 1
+
+    // === Test 8: 4x4 multiplication ===
+    // A = [[1,2,3,4],[5,6,7,8],[9,10,11,12],[13,14,15,16]]
+    // B = [[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]] (identity)
+    // A*B = A
+    // Now with non-trivial B:
+    let b4 = make4x4(2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2);
+    let ab4 = mat_mul(a4, b4, 4);
+    // 2*A
+    let _p26 = println(mat_get(ab4, 4, 0, 0)); // 2
+    let _p27 = println(mat_get(ab4, 4, 0, 3)); // 8
+    let _p28 = println(mat_get(ab4, 4, 3, 3)); // 32
+
+    // === Test 9: 4x4 Associativity ===
+    let c4 = make4x4(1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1);
+    let ab_4 = mat_mul(a4, b4, 4);
+    let abc4_1 = mat_mul(ab_4, c4, 4);
+    let bc_4 = mat_mul(b4, c4, 4);
+    let abc4_2 = mat_mul(a4, bc_4, 4);
+    let _p29 = println(mat_equal(abc4_1, abc4_2, 0, 16)); // 1
+
+    // Print corner elements of (A*B)*C for 4x4
+    let _p30 = println(mat_get(abc4_1, 4, 0, 0)); // 2
+    let _p31 = println(mat_get(abc4_1, 4, 3, 3)); // 32
+
+    // Free all matrices
+    let _f01 = vec_free(id3); let _f02 = vec_free(a3);
+    let _f03 = vec_free(ia3); let _f04 = vec_free(ai3);
+    let _f05 = vec_free(ma); let _f06 = vec_free(mb);
+    let _f07 = vec_free(mab); let _f08 = vec_free(sum_ab);
+    let _f09 = vec_free(at); let _f10 = vec_free(abt);
+    let _f11 = vec_free(bt); let _f12 = vec_free(btat);
+    let _f13 = vec_free(mc); let _f14 = vec_free(ab);
+    let _f15 = vec_free(abc1); let _f16 = vec_free(bc);
+    let _f17 = vec_free(abc2);
+    let _f18 = vec_free(id4); let _f19 = vec_free(a4);
+    let _f20 = vec_free(ia4); let _f21 = vec_free(b4);
+    let _f22 = vec_free(ab4);
+    let _f23 = vec_free(c4); let _f24 = vec_free(ab_4);
+    let _f25 = vec_free(abc4_1); let _f26 = vec_free(bc_4);
+    let _f27 = vec_free(abc4_2);
+    0
+    };

@@ -1,0 +1,164 @@
+// Golden test: Range update and query with lazy propagation
+// Simulates a simple segment tree using flat arrays:
+//   tree[]: sum values, lazy[]: pending range-add updates
+// Tree is 1-indexed, size = 4*n for n elements
+// Supports: range add, range sum query
+
+fn tree_get(tree: i64, i: i64) -> i64 = vec_get(tree, i);
+fn tree_set(tree: i64, i: i64, v: i64) -> i64 = { let _s = vec_set(tree, i, v); 0 };
+fn lazy_get(lazy: i64, i: i64) -> i64 = vec_get(lazy, i);
+fn lazy_set(lazy: i64, i: i64, v: i64) -> i64 = { let _s = vec_set(lazy, i, v); 0 };
+
+// Push down lazy value from node to children
+fn push_down(tree: i64, lazy: i64, node: i64, lo: i64, hi: i64) -> i64 = {
+    let lv = lazy_get(lazy, node);
+    let _r = if lv != 0 {
+        let mid = (lo + hi) / 2;
+        let left = node * 2;
+        let right = node * 2 + 1;
+        let left_cnt = mid - lo + 1;
+        let right_cnt = hi - mid;
+        // Update children sums
+        let _t1 = tree_set(tree, left, tree_get(tree, left) + lv * left_cnt);
+        let _t2 = tree_set(tree, right, tree_get(tree, right) + lv * right_cnt);
+        // Propagate lazy to children
+        let _l1 = lazy_set(lazy, left, lazy_get(lazy, left) + lv);
+        let _l2 = lazy_set(lazy, right, lazy_get(lazy, right) + lv);
+        // Clear current lazy
+        let _l3 = lazy_set(lazy, node, 0);
+        0
+    } else { 0 };
+    0
+};
+
+// Build tree from array arr[0..n-1]
+fn build(tree: i64, arr: i64, node: i64, lo: i64, hi: i64) -> i64 =
+    if lo == hi {
+        let _t = tree_set(tree, node, vec_get(arr, lo));
+        0
+    } else {
+        let mid = (lo + hi) / 2;
+        let _bl = build(tree, arr, node * 2, lo, mid);
+        let _br = build(tree, arr, node * 2 + 1, mid + 1, hi);
+        let _t = tree_set(tree, node, tree_get(tree, node * 2) + tree_get(tree, node * 2 + 1));
+        0
+    };
+
+// Range add: add val to all elements in [ql, qr]
+fn range_add(tree: i64, lazy: i64, node: i64, lo: i64, hi: i64, ql: i64, qr: i64, val: i64) -> i64 =
+    if ql > hi or qr < lo { 0 }
+    else if ql <= lo and hi <= qr {
+        // Fully covered
+        let cnt = hi - lo + 1;
+        let _t = tree_set(tree, node, tree_get(tree, node) + val * cnt);
+        let _l = lazy_set(lazy, node, lazy_get(lazy, node) + val);
+        0
+    } else {
+        let _pd = push_down(tree, lazy, node, lo, hi);
+        let mid = (lo + hi) / 2;
+        let _rl = range_add(tree, lazy, node * 2, lo, mid, ql, qr, val);
+        let _rr = range_add(tree, lazy, node * 2 + 1, mid + 1, hi, ql, qr, val);
+        let _t = tree_set(tree, node, tree_get(tree, node * 2) + tree_get(tree, node * 2 + 1));
+        0
+    };
+
+// Range sum query: sum of elements in [ql, qr]
+fn range_query(tree: i64, lazy: i64, node: i64, lo: i64, hi: i64, ql: i64, qr: i64) -> i64 =
+    if ql > hi or qr < lo { 0 }
+    else if ql <= lo and hi <= qr { tree_get(tree, node) }
+    else {
+        let _pd = push_down(tree, lazy, node, lo, hi);
+        let mid = (lo + hi) / 2;
+        let left_sum = range_query(tree, lazy, node * 2, lo, mid, ql, qr);
+        let right_sum = range_query(tree, lazy, node * 2 + 1, mid + 1, hi, ql, qr);
+        left_sum + right_sum
+    };
+
+fn make_zeros(sz: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..sz { let _p = vec_push(v, 0); 0 };
+    v
+};
+
+fn make_arr(a0: i64, a1: i64, a2: i64, a3: i64, a4: i64, a5: i64, a6: i64, a7: i64) -> i64 = {
+    let v = vec_new();
+    let _p0 = vec_push(v, a0);
+    let _p1 = vec_push(v, a1);
+    let _p2 = vec_push(v, a2);
+    let _p3 = vec_push(v, a3);
+    let _p4 = vec_push(v, a4);
+    let _p5 = vec_push(v, a5);
+    let _p6 = vec_push(v, a6);
+    let _p7 = vec_push(v, a7);
+    v
+};
+
+fn main() -> i64 = {
+    let n = 8;
+    let tree_sz = 4 * n;
+    // Array: [1, 3, 5, 7, 9, 11, 13, 15]
+    let arr = make_arr(1, 3, 5, 7, 9, 11, 13, 15);
+    let tree = make_zeros(tree_sz);
+    let lazy = make_zeros(tree_sz);
+    let _b = build(tree, arr, 1, 0, n - 1);
+
+    // Test 1: Total sum = 1+3+5+7+9+11+13+15 = 64
+    let _p1 = println(range_query(tree, lazy, 1, 0, n - 1, 0, 7)); // 64
+
+    // Test 2: Sum of first 4 elements = 1+3+5+7 = 16
+    let _p2 = println(range_query(tree, lazy, 1, 0, n - 1, 0, 3)); // 16
+
+    // Test 3: Sum of last 4 elements = 9+11+13+15 = 48
+    let _p3 = println(range_query(tree, lazy, 1, 0, n - 1, 4, 7)); // 48
+
+    // Test 4: Single element query (index 3) = 7
+    let _p4 = println(range_query(tree, lazy, 1, 0, n - 1, 3, 3)); // 7
+
+    // Test 5: Range add +10 to [2,5], then query
+    // Before: [1,3,5,7,9,11,13,15]
+    // After:  [1,3,15,17,19,21,13,15]
+    let _ra1 = range_add(tree, lazy, 1, 0, n - 1, 2, 5, 10);
+    let _p5 = println(range_query(tree, lazy, 1, 0, n - 1, 0, 7)); // 64+40=104
+
+    // Test 6: Query updated range [2,5] = 15+17+19+21 = 72
+    let _p6 = println(range_query(tree, lazy, 1, 0, n - 1, 2, 5)); // 72
+
+    // Test 7: Query non-updated prefix [0,1] = 1+3 = 4
+    let _p7 = println(range_query(tree, lazy, 1, 0, n - 1, 0, 1)); // 4
+
+    // Test 8: Single element after update (index 4) = 19
+    let _p8 = println(range_query(tree, lazy, 1, 0, n - 1, 4, 4)); // 19
+
+    // Test 9: Add +5 to entire array [0,7]
+    // After: [6,8,20,22,24,26,18,20]
+    let _ra2 = range_add(tree, lazy, 1, 0, n - 1, 0, 7, 5);
+    let _p9 = println(range_query(tree, lazy, 1, 0, n - 1, 0, 7)); // 104+40=144
+
+    // Test 10: Query single element after two updates (index 0) = 1+5 = 6
+    let _p10 = println(range_query(tree, lazy, 1, 0, n - 1, 0, 0)); // 6
+
+    // Test 11: Point update: add 100 to index 7 only
+    // index 7 was 15+5=20, now 120
+    let _ra3 = range_add(tree, lazy, 1, 0, n - 1, 7, 7, 100);
+    let _p11 = println(range_query(tree, lazy, 1, 0, n - 1, 7, 7)); // 120
+
+    // Test 12: Total after point update
+    let _p12 = println(range_query(tree, lazy, 1, 0, n - 1, 0, 7)); // 244
+
+    // Test 13: Negative range add: subtract 3 from [3,6]
+    // [3]=22-3=19, [4]=24-3=21, [5]=26-3=23, [6]=18-3=15
+    let _ra4 = range_add(tree, lazy, 1, 0, n - 1, 3, 6, -3);
+    let _p13 = println(range_query(tree, lazy, 1, 0, n - 1, 3, 6)); // 19+21+23+15=78
+
+    // Test 14: Total after negative update
+    let _p14 = println(range_query(tree, lazy, 1, 0, n - 1, 0, 7)); // 244-12=232
+
+    // Test 15: Query empty range (qr < ql case handled by ql>hi)
+    // query [5,2] -> ql=5, qr=2, should return 0 since ql>qr is invalid
+    let _p15 = println(range_query(tree, lazy, 1, 0, n - 1, 0, 0) + range_query(tree, lazy, 1, 0, n - 1, 7, 7)); // 6+120=126
+
+    let _f1 = vec_free(arr);
+    let _f2 = vec_free(tree);
+    let _f3 = vec_free(lazy);
+    0
+};

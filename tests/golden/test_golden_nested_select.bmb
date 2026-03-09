@@ -1,0 +1,58 @@
+// Golden Test: Nested conditional patterns for optimizer testing
+// Tests cascading if-else that should trigger select conversion or phi optimization
+
+fn classify(x: i64) -> i64 =
+    if x < 0 { 0 - 1 }
+    else if x == 0 { 0 }
+    else if x < 10 { 1 }
+    else if x < 100 { 2 }
+    else { 3 };
+
+fn clamp_range(x: i64, lo: i64, hi: i64) -> i64 =
+    if x < lo { lo }
+    else if x > hi { hi }
+    else { x };
+
+fn tri_value(a: i64, b: i64, c: i64) -> i64 =
+    if a > b and a > c { a }
+    else if b > c { b }
+    else { c };
+
+fn sign_mul(a: i64, b: i64) -> i64 = {
+    let sa = if a < 0 { 0 - 1 } else if a > 0 { 1 } else { 0 };
+    let sb = if b < 0 { 0 - 1 } else if b > 0 { 1 } else { 0 };
+    sa * sb
+    };
+
+fn grade(score: i64) -> i64 =
+    if score >= 90 { 4 }
+    else if score >= 80 { 3 }
+    else if score >= 70 { 2 }
+    else if score >= 60 { 1 }
+    else { 0 };
+
+fn nested_min3(a: i64, b: i64, c: i64) -> i64 =
+    if a < b {
+        if a < c { a } else { c }
+    } else {
+    if b < c { b } else { c }
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(classify(0 - 5));   // -1
+    let _p2 = println(classify(0));        // 0
+    let _p3 = println(classify(7));        // 1
+    let _p4 = println(classify(42));       // 2
+    let _p5 = println(classify(999));      // 3
+
+    let _p6 = println(clamp_range(0 - 10, 0, 100)); // 0
+    let _p7 = println(clamp_range(50, 0, 100));      // 50
+    let _p8 = println(clamp_range(200, 0, 100));     // 100
+
+    let _p9 = println(tri_value(3, 7, 5));   // 7
+    let _p10 = println(sign_mul(5, 0 - 3));  // -1
+    let _p11 = println(grade(85));            // 3
+    let _p12 = println(nested_min3(5, 2, 8)); // 2
+
+    0
+    };

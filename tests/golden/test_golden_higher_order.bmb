@@ -1,0 +1,50 @@
+// Golden Test: Complex expression patterns
+// Tests deeply nested expressions and multi-step computations
+
+fn eval_polynomial(x: i64) -> i64 =
+    3 * x * x + 2 * x + 1;
+
+fn horner(x: i64) -> i64 =
+    ((3 * x + 2) * x + 1);
+
+fn min3(a: i64, b: i64, c: i64) -> i64 =
+    if a <= b {
+        if a <= c { a } else { c }
+    } else {
+    if b <= c { b } else { c }
+    };
+
+fn max3(a: i64, b: i64, c: i64) -> i64 =
+    if a >= b {
+        if a >= c { a } else { c }
+    } else {
+    if b >= c { b } else { c }
+    };
+
+fn median3(a: i64, b: i64, c: i64) -> i64 =
+    a + b + c - min3(a, b, c) - max3(a, b, c);
+
+fn collatz_steps(n: i64) -> i64 = {
+    let mut x = n;
+    let mut steps = 0;
+    loop {
+        if x <= 1 { break } else { () };
+        x = if (x - (x / 2) * 2) == 0 { x / 2 } else { 3 * x + 1 };
+        steps = steps + 1
+    };
+    steps
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(eval_polynomial(3));  // 3*9+6+1=34
+    let _p2 = println(eval_polynomial(5));  // 3*25+10+1=86
+    let _p3 = println(horner(3));           // 34
+    let _p4 = println(horner(5));           // 86
+    let _p5 = println(min3(3, 1, 2));       // 1
+    let _p6 = println(max3(3, 1, 2));       // 3
+    let _p7 = println(median3(3, 1, 2));    // 2
+    let _p8 = println(median3(5, 5, 5));    // 5
+    let _p9 = println(collatz_steps(27));   // 111
+    let _p10 = println(collatz_steps(1));   // 0
+    0
+    };

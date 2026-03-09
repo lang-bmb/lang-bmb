@@ -1,0 +1,110 @@
+// Golden Test: Circular Buffer (Ring Buffer)
+// Fixed-size FIFO with wrap-around, full/empty detection
+
+fn cb_new(capacity: i64) -> i64 = {
+    let cb = vec_new();
+    let buf = vec_new();
+    for _i in 0..capacity { vec_push(buf, 0) };
+    vec_push(cb, buf);        // cb[0] = buffer
+    vec_push(cb, capacity);   // cb[1] = capacity
+    vec_push(cb, 0);          // cb[2] = head (read position)
+    vec_push(cb, 0);          // cb[3] = tail (write position)
+    vec_push(cb, 0);          // cb[4] = size
+    cb
+};
+
+fn cb_capacity(cb: i64) -> i64 = vec_get(cb, 1);
+fn cb_size(cb: i64) -> i64 = vec_get(cb, 4);
+fn cb_is_empty(cb: i64) -> i64 = if cb_size(cb) == 0 { 1 } else { 0 };
+fn cb_is_full(cb: i64) -> i64 = if cb_size(cb) == cb_capacity(cb) { 1 } else { 0 };
+
+// Push to back (returns 1 if success, 0 if full)
+fn cb_push(cb: i64, val: i64) -> i64 = {
+    if cb_is_full(cb) == 1 { return 0 };
+    let buf = vec_get(cb, 0);
+    let tail = vec_get(cb, 3);
+    let cap = cb_capacity(cb);
+    vec_set(buf, tail, val);
+    let new_tail = tail + 1;
+    vec_set(cb, 3, if new_tail >= cap { 0 } else { new_tail });
+    vec_set(cb, 4, cb_size(cb) + 1);
+    1
+};
+
+// Pop from front (returns value, or -999 if empty)
+fn cb_pop(cb: i64) -> i64 = {
+    if cb_is_empty(cb) == 1 { return 0 - 999 };
+    let buf = vec_get(cb, 0);
+    let head = vec_get(cb, 2);
+    let cap = cb_capacity(cb);
+    let val = vec_get(buf, head);
+    let new_head = head + 1;
+    vec_set(cb, 2, if new_head >= cap { 0 } else { new_head });
+    vec_set(cb, 4, cb_size(cb) - 1);
+    val
+};
+
+// Peek front
+fn cb_peek(cb: i64) -> i64 = {
+    if cb_is_empty(cb) == 1 { return 0 - 999 };
+    let buf = vec_get(cb, 0);
+    vec_get(buf, vec_get(cb, 2))
+};
+
+fn main() -> i64 = {
+    // Test 1: Basic push/pop
+    let cb = cb_new(4);
+    println(cb_is_empty(cb));    // 1
+    println(cb_is_full(cb));     // 0
+
+    let _p1 = cb_push(cb, 10);
+    let _p2 = cb_push(cb, 20);
+    let _p3 = cb_push(cb, 30);
+    println(cb_size(cb));        // 3
+    println(cb_peek(cb));        // 10
+
+    // Test 2: Pop in FIFO order
+    println(cb_pop(cb));         // 10
+    println(cb_pop(cb));         // 20
+    println(cb_pop(cb));         // 30
+    println(cb_is_empty(cb));    // 1
+
+    // Test 3: Fill to capacity
+    let _p4 = cb_push(cb, 1);
+    let _p5 = cb_push(cb, 2);
+    let _p6 = cb_push(cb, 3);
+    let _p7 = cb_push(cb, 4);
+    println(cb_is_full(cb));     // 1
+    println(cb_push(cb, 5));     // 0 (full, rejected)
+    println(cb_size(cb));        // 4
+
+    // Test 4: Wrap-around
+    let _v1 = cb_pop(cb);  // removes 1
+    let _v2 = cb_pop(cb);  // removes 2
+    let _p8 = cb_push(cb, 5);  // wraps around
+    let _p9 = cb_push(cb, 6);  // wraps around
+    // Buffer now: [5, 6, 3, 4] with head at 2
+    println(cb_pop(cb));   // 3
+    println(cb_pop(cb));   // 4
+    println(cb_pop(cb));   // 5
+    println(cb_pop(cb));   // 6
+    println(cb_is_empty(cb));  // 1
+
+    // Test 5: Alternating push/pop
+    let cb2 = cb_new(3);
+    let _a1 = cb_push(cb2, 100);
+    println(cb_pop(cb2));        // 100
+    let _a2 = cb_push(cb2, 200);
+    let _a3 = cb_push(cb2, 300);
+    println(cb_pop(cb2));        // 200
+    println(cb_pop(cb2));        // 300
+
+    // Test 6: Pop from empty
+    println(cb_pop(cb2));        // -999
+
+    vec_free(vec_get(cb, 0));
+    vec_free(cb);
+    vec_free(vec_get(cb2, 0));
+    vec_free(cb2);
+    0
+};

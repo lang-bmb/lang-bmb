@@ -1,0 +1,137 @@
+// Golden Test: Run-length encoding/decoding with roundtrip verification
+// Encodes sequences as (value, count) pairs, decodes back, verifies equality
+
+// RLE encode: input vec -> output vec of [val, count, val, count, ...]
+fn rle_encode(input: i64) -> i64 = {
+    let n = vec_len(input);
+    let out = vec_new();
+    let _x = if n == 0 { 0 } else {
+        let mut i = 0;
+        loop {
+            if i >= n { break } else { () };
+            let val = vec_get(input, i);
+            let mut count = 1;
+            loop {
+                if i + count >= n { break } else { () };
+                let _c = if vec_get(input, i + count) == val {
+                    count = count + 1; 0
+                } else { break };
+                0
+            };
+            let _p1 = vec_push(out, val);
+            let _p2 = vec_push(out, count);
+            i = i + count
+        };
+        0
+    };
+    out
+};
+
+// RLE decode: vec of [val, count, ...] -> original vec
+fn rle_decode(encoded: i64) -> i64 = {
+    let n = vec_len(encoded);
+    let out = vec_new();
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let val = vec_get(encoded, i);
+        let count = vec_get(encoded, i + 1);
+        for _j in 0..count {
+            let _p = vec_push(out, val);
+            0
+        };
+        i = i + 2
+    };
+    out
+};
+
+// Check two vecs are equal
+fn vecs_equal(a: i64, b: i64) -> i64 = {
+    let na = vec_len(a);
+    let nb = vec_len(b);
+    if na != nb { 0 }
+    else {
+        let mut eq = 1;
+        for i in 0..na {
+            let _x = if vec_get(a, i) != vec_get(b, i) {
+                eq = 0; 0
+            } else { 0 }
+        };
+        eq
+    }
+};
+
+fn main() -> i64 = {
+    // Test 1: Basic RLE [1,1,1,2,2,3] -> [1,3,2,2,3,1]
+    let v1 = vec_new();
+    let _a1 = vec_push(v1, 1); let _a2 = vec_push(v1, 1); let _a3 = vec_push(v1, 1);
+    let _a4 = vec_push(v1, 2); let _a5 = vec_push(v1, 2);
+    let _a6 = vec_push(v1, 3);
+    let enc1 = rle_encode(v1);
+    let _p1 = println(vec_len(enc1));       // 6 (3 pairs)
+    let _p2 = println(vec_get(enc1, 0));    // 1 (first value)
+    let _p3 = println(vec_get(enc1, 1));    // 3 (count of 1s)
+    let _p4 = println(vec_get(enc1, 2));    // 2 (second value)
+    let _p5 = println(vec_get(enc1, 3));    // 2 (count of 2s)
+
+    // Test 2: Roundtrip verification
+    let dec1 = rle_decode(enc1);
+    let _p6 = println(vecs_equal(v1, dec1));  // 1 (roundtrip ok)
+
+    // Test 3: All same values [5,5,5,5,5]
+    let v2 = vec_new();
+    for _i in 0..5 { let _p = vec_push(v2, 5); 0 };
+    let enc2 = rle_encode(v2);
+    let _p7 = println(vec_len(enc2));       // 2 (1 pair)
+    let _p8 = println(vec_get(enc2, 0));    // 5
+    let _p9 = println(vec_get(enc2, 1));    // 5 (count)
+    let dec2 = rle_decode(enc2);
+    let _p10 = println(vecs_equal(v2, dec2)); // 1
+
+    // Test 4: All distinct [1,2,3,4]
+    let v3 = vec_new();
+    let _b1 = vec_push(v3, 1); let _b2 = vec_push(v3, 2);
+    let _b3 = vec_push(v3, 3); let _b4 = vec_push(v3, 4);
+    let enc3 = rle_encode(v3);
+    let _p11 = println(vec_len(enc3));      // 8 (4 pairs, worst case)
+    let dec3 = rle_decode(enc3);
+    let _p12 = println(vecs_equal(v3, dec3)); // 1
+
+    // Test 5: Alternating [1,0,1,0,1,0]
+    let v4 = vec_new();
+    let _c1 = vec_push(v4, 1); let _c2 = vec_push(v4, 0);
+    let _c3 = vec_push(v4, 1); let _c4 = vec_push(v4, 0);
+    let _c5 = vec_push(v4, 1); let _c6 = vec_push(v4, 0);
+    let enc4 = rle_encode(v4);
+    let _p13 = println(vec_len(enc4));      // 12 (6 pairs)
+    let dec4 = rle_decode(enc4);
+    let _p14 = println(vecs_equal(v4, dec4)); // 1
+
+    // Test 6: Single element [42]
+    let v5 = vec_new();
+    let _d1 = vec_push(v5, 42);
+    let enc5 = rle_encode(v5);
+    let _p15 = println(vec_len(enc5));      // 2
+    let _p16 = println(vec_get(enc5, 0));   // 42
+    let _p17 = println(vec_get(enc5, 1));   // 1
+    let dec5 = rle_decode(enc5);
+    let _p18 = println(vecs_equal(v5, dec5)); // 1
+
+    // Test 7: Long run then short [9,9,9,9,9,9,9,9,1,2]
+    let v6 = vec_new();
+    for _i in 0..8 { let _p = vec_push(v6, 9); 0 };
+    let _e1 = vec_push(v6, 1);
+    let _e2 = vec_push(v6, 2);
+    let enc6 = rle_encode(v6);
+    let _p19 = println(vec_get(enc6, 1));   // 8 (count of 9s)
+    let dec6 = rle_decode(enc6);
+    let _p20 = println(vecs_equal(v6, dec6)); // 1
+
+    let _f1 = vec_free(v1); let _fe1 = vec_free(enc1); let _fd1 = vec_free(dec1);
+    let _f2 = vec_free(v2); let _fe2 = vec_free(enc2); let _fd2 = vec_free(dec2);
+    let _f3 = vec_free(v3); let _fe3 = vec_free(enc3); let _fd3 = vec_free(dec3);
+    let _f4 = vec_free(v4); let _fe4 = vec_free(enc4); let _fd4 = vec_free(dec4);
+    let _f5 = vec_free(v5); let _fe5 = vec_free(enc5); let _fd5 = vec_free(dec5);
+    let _f6 = vec_free(v6); let _fe6 = vec_free(enc6); let _fd6 = vec_free(dec6);
+    0
+};

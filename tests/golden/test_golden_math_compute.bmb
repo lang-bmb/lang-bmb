@@ -1,0 +1,238 @@
+// Golden Test: Mathematical computations
+// Iterative GCD, LCM, integer sqrt, modular power, Euler totient,
+// sum of proper divisors, perfect numbers, triangular numbers,
+// binomial coefficients, primality test, prime counting
+
+// Iterative GCD using Euclidean algorithm with loop
+fn gcd_iter(a: i64, b: i64) -> i64 = {
+    let mut x = a;
+    let mut y = b;
+    loop {
+        if y == 0 { break } else { () };
+        let r = x - (x / y) * y;
+        x = y;
+        y = r
+    };
+    x
+    };
+
+// LCM using iterative GCD
+fn lcm_iter(a: i64, b: i64) -> i64 =
+    a / gcd_iter(a, b) * b;
+
+// Integer square root using Newton's method (iterative)
+fn isqrt(n: i64) -> i64 = {
+    if n <= 0 { 0 }
+    else {
+        let mut x = n;
+        loop {
+            let x1 = (x + n / x) / 2;
+            if x1 >= x { break } else { () };
+            x = x1
+        };
+        x
+    }
+    };
+
+// Modular exponentiation: base^exp mod m (iterative, binary method)
+fn pow_mod(base: i64, exp: i64, m: i64) -> i64 = {
+    let mut result = 1;
+    let mut b = base - (base / m) * m;
+    let mut e = exp;
+    loop {
+        if e <= 0 { break } else { () };
+        if e - (e / 2) * 2 == 1 {
+            result = result * b;
+            result = result - (result / m) * m
+        } else { () };
+        b = b * b;
+        b = b - (b / m) * m;
+        e = e / 2
+    };
+    result
+    };
+
+// Euler's totient using coprimality counting (brute force, different from trial division)
+fn totient_brute(n: i64) -> i64 = {
+    let mut count = 0;
+    for i in 1..=n {
+        if gcd_iter(i, n) == 1 { count = count + 1 } else { () }
+    };
+    count
+    };
+
+// Sum of proper divisors (all divisors except n itself)
+fn sum_proper_divisors(n: i64) -> i64 = {
+    if n <= 1 { 0 }
+    else {
+        let mut total = 1;
+        let mut i = 2;
+        loop {
+            if i * i > n { break } else { () };
+            if n - (n / i) * i == 0 {
+                total = total + i;
+                let other = n / i;
+                if other != i { total = total + other } else { () }
+            } else { () };
+            i = i + 1
+        };
+        total
+    }
+    };
+
+// Perfect number check: sum of proper divisors equals n
+fn is_perfect_num(n: i64) -> i64 =
+    if sum_proper_divisors(n) == n { 1 } else { 0 };
+
+// Nth triangular number: T(n) = n*(n+1)/2
+fn triangular_num(n: i64) -> i64 =
+    n * (n + 1) / 2;
+
+// Inverse triangular: given T, find n such that T(n) = T (or -1 if not triangular)
+fn inverse_triangular(t: i64) -> i64 = {
+    let n = isqrt(2 * t);
+    if n * (n + 1) / 2 == t { n }
+    else {
+        let n1 = n + 1;
+        if n1 * (n1 + 1) / 2 == t { n1 }
+        else { 0 - 1 }
+    }
+    };
+
+// Binomial coefficient C(n, k) using iterative multiplication
+fn binomial(n: i64, k: i64) -> i64 = {
+    let kk = if k > n - k { n - k } else { k };
+    let mut result = 1;
+    for i in 0..kk {
+        result = result * (n - i);
+        result = result / (i + 1)
+    };
+    result
+    };
+
+// Primality test by trial division
+fn is_prime(n: i64) -> i64 = {
+    if n < 2 { 0 }
+    else {
+        let mut result = 1;
+        let mut d = 2;
+        loop {
+            if d * d > n { break } else { () };
+            if n - (n / d) * d == 0 {
+                result = 0;
+                break
+            } else { () };
+            d = d + 1
+        };
+        result
+    }
+    };
+
+// Count primes up to n using trial division
+fn count_primes(n: i64) -> i64 = {
+    let mut count = 0;
+    for i in 2..=n {
+        if is_prime(i) == 1 { count = count + 1 } else { () }
+    };
+    count
+    };
+
+// Sum of first n primes
+fn sum_first_primes(n: i64) -> i64 = {
+    let mut count = 0;
+    let mut total = 0;
+    let mut candidate = 2;
+    loop {
+        if count >= n { break } else { () };
+        if is_prime(candidate) == 1 {
+            total = total + candidate;
+            count = count + 1
+        } else { () };
+        candidate = candidate + 1
+    };
+    total
+    };
+
+fn main() -> i64 = {
+    // Iterative GCD
+    // gcd(48, 18) = 6
+    let _p1 = println(gcd_iter(48, 18));
+    // gcd(252, 105) = 21
+    let _p2 = println(gcd_iter(252, 105));
+
+    // LCM
+    // lcm(12, 18) = 36
+    let _p3 = println(lcm_iter(12, 18));
+    // lcm(7, 13) = 91
+    let _p4 = println(lcm_iter(7, 13));
+
+    // Integer square root
+    // isqrt(144) = 12
+    let _p5 = println(isqrt(144));
+    // isqrt(200) = 14 (14^2=196 <= 200, 15^2=225 > 200)
+    let _p6 = println(isqrt(200));
+    // isqrt(1) = 1
+    let _p7 = println(isqrt(1));
+
+    // Modular exponentiation
+    // 2^10 mod 1000 = 1024 mod 1000 = 24
+    let _p8 = println(pow_mod(2, 10, 1000));
+    // 3^13 mod 100 = 1594323 mod 100 = 23
+    let _p9 = println(pow_mod(3, 13, 100));
+
+    // Euler's totient (brute force coprimality count)
+    // totient(12) = 4 (1,5,7,11 are coprime to 12)
+    let _p10 = println(totient_brute(12));
+    // totient(15) = 8 (1,2,4,7,8,11,13,14)
+    let _p11 = println(totient_brute(15));
+
+    // Sum of proper divisors
+    // sum_proper_divisors(28) = 1+2+4+7+14 = 28
+    let _p12 = println(sum_proper_divisors(28));
+    // sum_proper_divisors(12) = 1+2+3+4+6 = 16
+    let _p13 = println(sum_proper_divisors(12));
+
+    // Perfect number check
+    // 6: 1+2+3=6 -> 1
+    let _p14 = println(is_perfect_num(6));
+    // 28: 1+2+4+7+14=28 -> 1
+    let _p15 = println(is_perfect_num(28));
+    // 12: 1+2+3+4+6=16 != 12 -> 0
+    let _p16 = println(is_perfect_num(12));
+
+    // Triangular numbers
+    // T(10) = 10*11/2 = 55
+    let _p17 = println(triangular_num(10));
+    // T(20) = 20*21/2 = 210
+    let _p18 = println(triangular_num(20));
+
+    // Inverse triangular
+    // inverse_triangular(55) = 10
+    let _p19 = println(inverse_triangular(55));
+    // inverse_triangular(100) = -1 (not triangular)
+    let _p20 = println(inverse_triangular(100));
+
+    // Binomial coefficients
+    // C(10, 3) = 120
+    let _p21 = println(binomial(10, 3));
+    // C(10, 5) = 252
+    let _p22 = println(binomial(10, 5));
+    // C(20, 10) = 184756
+    let _p23 = println(binomial(20, 10));
+
+    // Primality test
+    // is_prime(17) = 1
+    let _p24 = println(is_prime(17));
+    // is_prime(15) = 0
+    let _p25 = println(is_prime(15));
+
+    // Count primes up to 30: 2,3,5,7,11,13,17,19,23,29 = 10
+    let _p26 = println(count_primes(30));
+
+    // Sum of first 5 primes: 2+3+5+7+11 = 28
+    let _p27 = println(sum_first_primes(5));
+    // Sum of first 10 primes: 2+3+5+7+11+13+17+19+23+29 = 129
+    let _p28 = println(sum_first_primes(10));
+
+    0
+    };

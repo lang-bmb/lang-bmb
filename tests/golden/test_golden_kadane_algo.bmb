@@ -1,0 +1,128 @@
+// Golden Test: Kadane's Algorithm — Maximum Subarray Sum
+// Also computes subarray start/end indices and handles all-negative arrays
+
+fn kadane_sum(v: i64, n: i64) -> i64 = {
+    let mut max_ending = vec_get(v, 0);
+    let mut max_so_far = vec_get(v, 0);
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { 0 };
+        let val = vec_get(v, i);
+        max_ending = if val > max_ending + val { val } else { max_ending + val };
+        max_so_far = if max_ending > max_so_far { max_ending } else { max_so_far };
+        i = i + 1
+    };
+    max_so_far
+};
+
+// Returns the starting index of the maximum subarray
+fn kadane_start(v: i64, n: i64) -> i64 = {
+    let mut max_ending = vec_get(v, 0);
+    let mut max_so_far = vec_get(v, 0);
+    let mut start = 0;
+    let mut best_start = 0;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { 0 };
+        let val = vec_get(v, i);
+        if val > max_ending + val {
+            max_ending = val;
+            start = i
+        } else {
+            max_ending = max_ending + val
+        };
+        if max_ending > max_so_far {
+            max_so_far = max_ending;
+            best_start = start
+        } else { 0 };
+        i = i + 1
+    };
+    best_start
+};
+
+// Returns the ending index of the maximum subarray
+fn kadane_end(v: i64, n: i64) -> i64 = {
+    let mut max_ending = vec_get(v, 0);
+    let mut max_so_far = vec_get(v, 0);
+    let mut best_end = 0;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { 0 };
+        let val = vec_get(v, i);
+        max_ending = if val > max_ending + val { val } else { max_ending + val };
+        if max_ending > max_so_far {
+            max_so_far = max_ending;
+            best_end = i
+        } else { 0 };
+        i = i + 1
+    };
+    best_end
+};
+
+fn main() -> i64 = {
+    // Test 1: mixed positive and negative
+    // [-2, 1, -3, 4, -1, 2, 1, -5, 4]
+    // Max subarray: [4, -1, 2, 1] = 6
+    let v1 = vec_new();
+    vec_push(v1, 0 - 2);
+    vec_push(v1, 1);
+    vec_push(v1, 0 - 3);
+    vec_push(v1, 4);
+    vec_push(v1, 0 - 1);
+    vec_push(v1, 2);
+    vec_push(v1, 1);
+    vec_push(v1, 0 - 5);
+    vec_push(v1, 4);
+    let _p1 = println(kadane_sum(v1, 9));    // 6
+    let _p2 = println(kadane_start(v1, 9));  // 3
+    let _p3 = println(kadane_end(v1, 9));    // 6
+
+    // Test 2: all positive [1, 2, 3, 4, 5]
+    let v2 = vec_new();
+    vec_push(v2, 1);
+    vec_push(v2, 2);
+    vec_push(v2, 3);
+    vec_push(v2, 4);
+    vec_push(v2, 5);
+    let _p4 = println(kadane_sum(v2, 5));  // 15
+
+    // Test 3: all negative [-3, -5, -1, -4, -2]
+    // Max subarray: [-1] = -1
+    let v3 = vec_new();
+    vec_push(v3, 0 - 3);
+    vec_push(v3, 0 - 5);
+    vec_push(v3, 0 - 1);
+    vec_push(v3, 0 - 4);
+    vec_push(v3, 0 - 2);
+    let _p5 = println(kadane_sum(v3, 5));  // -1
+
+    // Test 4: single element [42]
+    let v4 = vec_new();
+    vec_push(v4, 42);
+    let _p6 = println(kadane_sum(v4, 1));  // 42
+
+    // Test 5: two elements [5, -3]
+    let v5 = vec_new();
+    vec_push(v5, 5);
+    vec_push(v5, 0 - 3);
+    let _p7 = println(kadane_sum(v5, 2));  // 5
+
+    // Test 6: subarray in the middle [−1, 3, 5, −2, 6, −4]
+    // Max subarray: [3, 5, -2, 6] = 12
+    let v6 = vec_new();
+    vec_push(v6, 0 - 1);
+    vec_push(v6, 3);
+    vec_push(v6, 5);
+    vec_push(v6, 0 - 2);
+    vec_push(v6, 6);
+    vec_push(v6, 0 - 4);
+    let _p8 = println(kadane_sum(v6, 6));  // 12
+
+    vec_free(v1);
+    vec_free(v2);
+    vec_free(v3);
+    vec_free(v4);
+    vec_free(v5);
+    vec_free(v6);
+    0
+};

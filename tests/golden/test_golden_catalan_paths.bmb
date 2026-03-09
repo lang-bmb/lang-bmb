@@ -1,0 +1,114 @@
+// Golden Test: Catalan Paths
+// Lattice paths, ballot sequences, and Catalan triangle via DP
+
+// Catalan number C(n) = C(2n, n) / (n+1)
+// Using DP: C(n) = sum(C(i) * C(n-1-i)) for i = 0..n-1
+fn catalan(n: i64) -> i64 = {
+    let dp = [0; 16];
+    set dp[0] = 1;
+    let mut i = 1;
+    loop {
+        if i > n { break } else { () };
+        let mut j = 0;
+        loop {
+            if j >= i { break } else { () };
+            set dp[i] = dp[i] + dp[j] * dp[i - 1 - j];
+            j = j + 1
+        };
+    i = i + 1
+    };
+    dp[n]
+    };
+
+// Count monotonic lattice paths from (0,0) to (m,n) that never cross
+// the diagonal. Uses grid DP: paths(i,j) = paths(i-1,j) + paths(i,j-1)
+// but only if i >= j (stay on or below diagonal)
+fn lattice_paths(n: i64) -> i64 = {
+    // flat 2D array (n+1) x (n+1), max n=10
+    let dp = [0; 121];
+    let sz = n + 1;
+    set dp[0] = 1;  // dp[0][0] = 1
+    let mut i = 0;
+    loop {
+        if i > n { break } else { () };
+        let mut j = 0;
+        loop {
+            if j > i { break } else { () };  // j <= i to stay on/below diagonal
+            if i == 0 && j == 0 {
+                j = j + 1
+            } else {
+                let from_left = if j > 0 { dp[i * sz + (j - 1)] } else { 0 };
+                let from_above = if i > 0 { dp[(i - 1) * sz + j] } else { 0 };
+                set dp[i * sz + j] = from_left + from_above;
+                j = j + 1
+            }
+        };
+    i = i + 1
+    };
+    dp[n * sz + n]
+    };
+
+// Ballot problem: Number of valid ballot sequences of length 2n
+// (n votes for A, n votes for B, A always ahead)
+// This equals C(n) for n >= 1, and 1 for n = 0
+fn ballot_sequences(n: i64) -> i64 = catalan(n);
+
+// Catalan triangle: T(n,k) = number of paths from (0,0) to (n,k)
+// not crossing diagonal. T(n,0)=1, T(n,k) = T(n,k-1) + T(n-1,k)
+// if k <= n, else 0
+fn catalan_triangle(n: i64, k: i64) -> i64 = {
+    if k > n { return 0 } else { () };
+    let dp = [0; 121];
+    let sz = n + 1;
+    // First column all 1s
+    let mut i = 0;
+    loop {
+        if i > n { break } else { () };
+        set dp[i * sz + 0] = 1;
+        i = i + 1
+    };
+    // Fill triangle
+    let mut r = 1;
+    loop {
+        if r > n { break } else { () };
+        let mut c = 1;
+        loop {
+            if c > r { break } else { () };
+            set dp[r * sz + c] = dp[r * sz + (c - 1)] + dp[(r - 1) * sz + c];
+            c = c + 1
+        };
+    r = r + 1
+    };
+    dp[n * sz + k]
+    };
+
+// Number of full binary trees with n+1 leaves = C(n)
+fn full_binary_trees(n: i64) -> i64 = catalan(n);
+
+fn main() -> i64 = {
+    // Catalan numbers: C(0)=1, C(1)=1, C(2)=2, C(3)=5, C(4)=14, C(5)=42, C(6)=132
+    let _p1 = println(catalan(0));   // 1
+    let _p2 = println(catalan(4));   // 14
+    let _p3 = println(catalan(6));   // 132
+    let _p4 = println(catalan(8));   // 1430
+
+    // Lattice paths (should equal Catalan numbers)
+    let _p5 = println(lattice_paths(3));  // 5
+    let _p6 = println(lattice_paths(4));  // 14
+    let _p7 = println(lattice_paths(5));  // 42
+
+    // Ballot sequences
+    let _p8 = println(ballot_sequences(5));  // 42
+    let _p9 = println(ballot_sequences(7));  // 429
+
+    // Catalan triangle
+    let _p10 = println(catalan_triangle(4, 2));  // 9
+    let _p11 = println(catalan_triangle(5, 3));  // 28
+    let _p12 = println(catalan_triangle(5, 5));  // 42  (diagonal = Catalan)
+
+    // Full binary trees
+    let _p13 = println(full_binary_trees(4));  // 14
+    let _p14 = println(full_binary_trees(6));  // 132
+
+    0
+    };

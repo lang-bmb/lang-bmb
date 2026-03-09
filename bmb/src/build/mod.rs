@@ -688,6 +688,12 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
             if proof_stats.unreachable_blocks_eliminated > 0 {
                 println!("    - Unreachable blocks eliminated: {}", proof_stats.unreachable_blocks_eliminated);
             }
+            if proof_stats.saturating_ops_eliminated > 0 {
+                println!("    - Saturating ops eliminated: {}", proof_stats.saturating_ops_eliminated);
+            }
+            if proof_stats.postconditions_propagated > 0 {
+                println!("    - Postcondition facts propagated: {}", proof_stats.postconditions_propagated);
+            }
         }
 
         // v0.55: Generate optimization report if requested
@@ -698,6 +704,8 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
             println!("  Null Check Elimination (NCE): {}", proof_stats.null_checks_eliminated);
             println!("  Division Check Elimination (DCE): {}", proof_stats.division_checks_eliminated);
             println!("  Unreachable Block Elimination (PUE): {}", proof_stats.unreachable_blocks_eliminated);
+            println!("  Saturating Arithmetic Elimination (SAE): {}", proof_stats.saturating_ops_eliminated);
+            println!("  Postcondition Propagation: {}", proof_stats.postconditions_propagated);
             println!("=========================================\n");
         }
     }

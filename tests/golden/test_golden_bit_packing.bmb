@@ -1,0 +1,128 @@
+// Golden Test: Bit packing and advanced bit manipulation
+// Power of 2 check, highest bit, bit count, bit reverse, packing/unpacking
+
+fn pow2(n: i64) -> i64 = {
+    let mut r = 1;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        r = r * 2;
+        i = i + 1
+    };
+    r
+    };
+
+// Count set bits
+fn popcount(n: i64) -> i64 = {
+    let mut x = n;
+    let mut c = 0;
+    loop {
+        if x <= 0 { break } else { () };
+        c = c + (x band 1);
+        x = x >> 1
+    };
+    c
+    };
+
+// Is power of 2? (returns 1 or 0)
+fn is_pow2(n: i64) -> i64 =
+    if n <= 0 { 0 }
+    else if popcount(n) == 1 { 1 }
+    else { 0 };
+
+    // Highest set bit position (0-indexed, -1 for 0)
+
+fn highest_bit(n: i64) -> i64 = {
+    if n <= 0 { 0 - 1 }
+    else {
+        let mut pos = 0;
+        let mut x = n;
+        loop {
+            if x <= 1 { break } else { () };
+            x = x >> 1;
+            pos = pos + 1
+        };
+    pos
+    }
+    };
+
+// Reverse bits of an 8-bit value
+fn reverse8(n: i64) -> i64 = {
+    let mut result = 0;
+    let mut x = n;
+    let mut i = 0;
+    loop {
+        if i >= 8 { break } else { () };
+        result = result * 2 + (x band 1);
+        x = x >> 1;
+        i = i + 1
+    };
+    result
+    };
+
+// Pack two 8-bit values into a 16-bit value: hi << 8 | lo
+fn pack16(hi: i64, lo: i64) -> i64 =
+    hi * 256 + lo;
+
+    // Unpack high byte from 16-bit value
+
+fn unpack_hi(v: i64) -> i64 = v / 256;
+
+// Unpack low byte from 16-bit value
+fn unpack_lo(v: i64) -> i64 = v - (v / 256) * 256;
+
+// Pack four 4-bit values into 16 bits
+fn pack4x4(a: i64, b: i64, c: i64, d: i64) -> i64 =
+    a * 4096 + b * 256 + c * 16 + d;
+
+    // Extract 4-bit nibble at position (0=lowest)
+
+fn nibble(v: i64, pos: i64) -> i64 =
+    (v / pow2(pos * 4)) band 15;
+
+    // Rotate left 8-bit value by n positions
+
+fn rotl8(v: i64, n: i64) -> i64 = {
+    let shifted_left = (v * pow2(n)) band 255;
+    let shifted_right = v / pow2(8 - n);
+    shifted_left bor shifted_right
+    };
+
+fn main() -> i64 = {
+// Power of 2 checks
+    let _p1 = println(is_pow2(1));     // 1
+    let _p2 = println(is_pow2(64));    // 1
+    let _p3 = println(is_pow2(100));   // 0
+    let _p4 = println(is_pow2(0));     // 0
+
+// Highest bit
+    let _p5 = println(highest_bit(1));     // 0
+    let _p6 = println(highest_bit(128));   // 7
+    let _p7 = println(highest_bit(255));   // 7
+    let _p8 = println(highest_bit(256));   // 8
+
+// Bit reverse 8-bit
+    let _p9 = println(reverse8(1));        // 128 (00000001 -> 10000000)
+    let _p10 = println(reverse8(170));     // 85  (10101010 -> 01010101)
+    let _p11 = println(reverse8(255));     // 255
+
+// Pack/unpack 16-bit
+    let packed = pack16(171, 205);          // 0xAB=171, 0xCD=205 => 43981
+    let _p12 = println(packed);            // 43981
+    let _p13 = println(unpack_hi(packed)); // 171 (0xAB)
+    let _p14 = println(unpack_lo(packed)); // 205 (0xCD)
+
+// Pack 4x4-bit nibbles
+    let p4 = pack4x4(1, 2, 3, 4);         // 1*4096 + 2*256 + 3*16 + 4 = 4660
+    let _p15 = println(p4);               // 4660
+    let _p16 = println(nibble(p4, 0));    // 4
+    let _p17 = println(nibble(p4, 1));    // 3
+    let _p18 = println(nibble(p4, 2));    // 2
+    let _p19 = println(nibble(p4, 3));    // 1
+
+// Rotate left 8-bit
+    let _p20 = println(rotl8(1, 3));      // 8 (00000001 -> 00001000)
+    let _p21 = println(rotl8(128, 1));    // 1 (10000000 -> 00000001)
+
+    0
+    };

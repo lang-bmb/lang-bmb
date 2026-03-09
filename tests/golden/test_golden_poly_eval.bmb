@@ -1,0 +1,102 @@
+// Golden Test: Polynomial Evaluation (Horner's Method)
+// Evaluate p(x) = a[n]*x^n + ... + a[1]*x + a[0]
+// Horner: p(x) = (...((a[n]*x + a[n-1])*x + a[n-2])*x + ...)*x + a[0]
+
+// Evaluate polynomial with coefficients in vec (a[0] is constant term)
+// Using Horner's method from highest degree down
+fn poly_eval(coeffs: i64, x: i64) -> i64 = {
+    let n = vec_len(coeffs);
+    let result = vec_get(coeffs, n - 1);
+    let i = n - 2;
+    loop {
+        if i < 0 { break } else { () };
+        result = result * x + vec_get(coeffs, i);
+        i = i - 1
+    };
+    result
+};
+
+// Evaluate polynomial using naive method (for verification)
+fn poly_eval_naive(coeffs: i64, x: i64) -> i64 = {
+    let n = vec_len(coeffs);
+    let result = 0;
+    for i in 0..n {
+        let power = 1;
+        for _j in 0..i { power = power * x };
+        result = result + vec_get(coeffs, i) * power
+    };
+    result
+};
+
+// Derivative polynomial: d/dx of a[0] + a[1]*x + ... = a[1] + 2*a[2]*x + ...
+fn poly_derivative(coeffs: i64) -> i64 = {
+    let n = vec_len(coeffs);
+    if n <= 1 {
+        let d = vec_new();
+        vec_push(d, 0);
+        return d
+    } else { () };
+    let deriv = vec_new();
+    for i in 1..n {
+        vec_push(deriv, i * vec_get(coeffs, i))
+    };
+    deriv
+};
+
+fn main() -> i64 = {
+    // p(x) = 3x^3 + 2x^2 - 5x + 7
+    // coeffs = [7, -5, 2, 3]
+    let p = vec_new();
+    vec_push(p, 7); vec_push(p, 0 - 5); vec_push(p, 2); vec_push(p, 3);
+
+    // p(0) = 7
+    let _p1 = println(poly_eval(p, 0));  // 7
+
+    // p(1) = 3 + 2 - 5 + 7 = 7
+    let _p2 = println(poly_eval(p, 1));  // 7
+
+    // p(2) = 3*8 + 2*4 - 5*2 + 7 = 24+8-10+7 = 29
+    let _p3 = println(poly_eval(p, 2));  // 29
+
+    // p(3) = 3*27 + 2*9 - 5*3 + 7 = 81+18-15+7 = 91
+    let _p4 = println(poly_eval(p, 3));  // 91
+
+    // p(-1) = 3*(-1) + 2*1 - 5*(-1) + 7 = -3+2+5+7 = 11
+    let _p5 = println(poly_eval(p, 0 - 1));  // 11
+
+    // Verify with naive method
+    let _p6 = println(poly_eval_naive(p, 2));  // 29
+
+    // Derivative: p'(x) = 9x^2 + 4x - 5
+    // coeffs = [-5, 4, 9]
+    let dp = poly_derivative(p);
+    let _p7 = println(vec_len(dp));  // 3
+
+    // p'(0) = -5
+    let _p8 = println(poly_eval(dp, 0));  // -5
+
+    // p'(1) = 9+4-5 = 8
+    let _p9 = println(poly_eval(dp, 1));  // 8
+
+    // p'(2) = 9*4+4*2-5 = 36+8-5 = 39
+    let _p10 = println(poly_eval(dp, 2));  // 39
+
+    // Constant polynomial: p(x) = 42
+    let q = vec_new();
+    vec_push(q, 42);
+    let _p11 = println(poly_eval(q, 100));  // 42
+
+    // Linear: p(x) = 3x + 1
+    let lin = vec_new();
+    vec_push(lin, 1); vec_push(lin, 3);
+    let _p12 = println(poly_eval(lin, 10));  // 31
+
+    // Quadratic: x^2 - 1 at x=5 -> 25-1=24
+    let quad = vec_new();
+    vec_push(quad, 0 - 1); vec_push(quad, 0); vec_push(quad, 1);
+    let _p13 = println(poly_eval(quad, 5));  // 24
+
+    let _f1 = vec_free(p); let _f2 = vec_free(dp);
+    let _f3 = vec_free(q); let _f4 = vec_free(lin); let _f5 = vec_free(quad);
+    0
+};

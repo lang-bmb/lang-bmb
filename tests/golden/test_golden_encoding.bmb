@@ -1,0 +1,139 @@
+// Golden test: Encoding and decoding patterns
+// Tests integer packing, base conversion, and bit encoding
+
+// Pack two i32 values into one i64
+fn pack32(hi: i64, lo: i64) -> i64 =
+    hi * 4294967296 + lo;
+
+fn unpack_hi(packed: i64) -> i64 =
+    packed / 4294967296;
+
+fn unpack_lo(packed: i64) -> i64 =
+    packed - (packed / 4294967296) * 4294967296;
+
+    // Pack three values: (a, b, c) where each fits in 20 bits (0-1048575)
+
+fn pack3(a: i64, b: i64, c: i64) -> i64 =
+    a * 1099511627776 + b * 1048576 + c;
+
+fn unpack3_a(packed: i64) -> i64 =
+    packed / 1099511627776;
+
+fn unpack3_b(packed: i64) -> i64 = {
+    let rem = packed - (packed / 1099511627776) * 1099511627776;
+    rem / 1048576
+    };
+
+fn unpack3_c(packed: i64) -> i64 = {
+    let rem = packed - (packed / 1099511627776) * 1099511627776;
+    rem - (rem / 1048576) * 1048576
+    };
+
+// Convert integer to base N string (returns encoded as sum of digits)
+fn to_base_digits_sum(n: i64, base: i64) -> i64 =
+    if n < base { n }
+    else { n - (n / base) * base + to_base_digits_sum(n / base, base) };
+
+    // Count digits in base N
+
+fn count_digits(n: i64, base: i64) -> i64 =
+    if n < base { 1 }
+    else { 1 + count_digits(n / base, base) };
+
+    // Run-length encoding of sorted array
+    // Returns count of distinct values
+
+fn rle_count_distinct(arr: i64, pos: i64, prev: i64, count: i64) -> i64 =
+    if pos >= vec_len(arr) { count }
+    else if vec_get(arr, pos) == prev { rle_count_distinct(arr, pos + 1, prev, count) }
+    else { rle_count_distinct(arr, pos + 1, vec_get(arr, pos), count + 1) };
+
+    // Gray code: n XOR (n >> 1)
+
+fn gray_encode(n: i64) -> i64 = {
+    let half = n / 2;
+
+// XOR via: a XOR b = (a + b) - 2 * (a AND b)
+// For gray code: n XOR (n/2)
+// Simpler approach: use bitwise patterns
+    let a = n;
+    let b = half;
+
+// XOR bit by bit
+    gray_xor(a, b, 1, 0)
+    };
+
+fn gray_xor(a: i64, b: i64, bit: i64, result: i64) -> i64 =
+    if bit > 1073741824 { result }
+    else {
+        let a_bit = (a / bit) - (a / bit / 2) * 2;
+        let b_bit = (b / bit) - (b / bit / 2) * 2;
+        let xor_bit = if a_bit != b_bit { 1 } else { 0 };
+        gray_xor(a, b, bit * 2, result + xor_bit * bit)
+    };
+
+    // Fibonacci encoding: represent n as sum of non-consecutive Fibonacci numbers
+    // Returns the count of Fibonacci numbers used
+
+fn fib_encode_count(n: i64) -> i64 =
+    if n <= 0 { 0 }
+    else {
+        let f = largest_fib_le(n, 1, 1);
+        1 + fib_encode_count(n - f)
+    };
+
+fn largest_fib_le(n: i64, a: i64, b: i64) -> i64 =
+    if a + b > n { b }
+    else { largest_fib_le(n, b, a + b) };
+
+fn main() -> i64 = {
+// Pack/unpack 32-bit
+    let p1 = pack32(100, 200);
+    let _p1 = println(unpack_hi(p1));   // 100
+    let _p2 = println(unpack_lo(p1));   // 200
+
+// Pack/unpack 3 values
+    let p3 = pack3(42, 100, 999);
+    let _p3 = println(unpack3_a(p3));  // 42
+    let _p4 = println(unpack3_b(p3));  // 100
+    let _p5 = println(unpack3_c(p3));  // 999
+
+// Base digit sums
+    let _p6 = println(to_base_digits_sum(255, 16));  // F+F = 15+15 = 30
+    let _p7 = println(to_base_digits_sum(100, 10));  // 1+0+0 = 1
+    let _p8 = println(to_base_digits_sum(7, 2));     // 111 = 1+1+1 = 3
+    let _p9 = println(to_base_digits_sum(255, 2));   // 11111111 = 8
+
+// Digit counts
+    let _p10 = println(count_digits(0, 10));    // 1
+    let _p11 = println(count_digits(999, 10));  // 3
+    let _p12 = println(count_digits(255, 2));   // 8
+    let _p13 = println(count_digits(255, 16));  // 2
+
+// RLE distinct count
+    let rle_arr = vec_new();
+    let _r1 = vec_push(rle_arr, 1);
+    let _r2 = vec_push(rle_arr, 1);
+    let _r3 = vec_push(rle_arr, 2);
+    let _r4 = vec_push(rle_arr, 2);
+    let _r5 = vec_push(rle_arr, 2);
+    let _r6 = vec_push(rle_arr, 3);
+    let _r7 = vec_push(rle_arr, 4);
+    let _r8 = vec_push(rle_arr, 4);
+    let _p14 = println(rle_count_distinct(rle_arr, 1, 1, 1)); // 4 distinct
+
+// Gray code
+    let _p15 = println(gray_encode(0));   // 0
+    let _p16 = println(gray_encode(1));   // 1
+    let _p17 = println(gray_encode(2));   // 3
+    let _p18 = println(gray_encode(3));   // 2
+    let _p19 = println(gray_encode(7));   // 4
+
+// Fibonacci encoding count
+    let _p20 = println(fib_encode_count(1));   // 1 (1)
+    let _p21 = println(fib_encode_count(10));  // 2 (8+2)
+    let _p22 = println(fib_encode_count(20));  // 2 (13+5+2) = 3
+
+    let _f1 = vec_free(rle_arr);
+    0
+    };

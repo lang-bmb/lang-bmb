@@ -1,0 +1,149 @@
+// Golden Test: Matrix chain multiplication DP
+// Find minimum number of scalar multiplications to multiply a chain of matrices
+// Matrices: A1(p0 x p1), A2(p1 x p2), ..., An(p_{n-1} x p_n)
+// dims[] has n+1 entries for n matrices
+
+// dp[i*n + j] = minimum cost to multiply matrices i..j (0-indexed)
+// We fill diagonally: length 1 (cost 0), then length 2, 3, ... n
+
+fn matrix_chain_order(dims: i64, n: i64) -> i64 = {
+    // dp is n x n table (flat), initialized to 0
+    let dp = vec_new();
+    for _i in 0..n {
+        for _j in 0..n {
+            let _p = vec_push(dp, 0);
+            0
+        }
+    };
+
+    // length = 2..n (chain length)
+    let mut length = 2;
+    loop {
+        if length > n { break } else { () };
+        let mut i = 0;
+        loop {
+            if i + length > n { break } else { () };
+            let j = i + length - 1;
+            // Set dp[i][j] to a large number
+            vec_set(dp, i * n + j, 999999999);
+            // Try all split points k in [i, j)
+            let mut k = i;
+            loop {
+                if k >= j { break } else { () };
+                let cost = vec_get(dp, i * n + k)
+                    + vec_get(dp, (k + 1) * n + j)
+                    + vec_get(dims, i) * vec_get(dims, k + 1) * vec_get(dims, j + 1);
+                if cost < vec_get(dp, i * n + j) {
+                    vec_set(dp, i * n + j, cost)
+                } else { () };
+                k = k + 1
+            };
+            i = i + 1
+        };
+        length = length + 1
+    };
+
+    let result = vec_get(dp, 0 * n + n - 1);
+    vec_free(dp);
+    result
+};
+
+// Helper: compute cost of naive left-to-right multiplication
+fn naive_left_to_right(dims: i64, n: i64) -> i64 = {
+    // Multiply A1*A2 first, then result*A3, etc.
+    // After multiplying first i matrices: result is dims[0] x dims[i]
+    let mut cost = 0;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        // Multiplying (dims[0] x dims[i]) * (dims[i] x dims[i+1])
+        cost = cost + vec_get(dims, 0) * vec_get(dims, i) * vec_get(dims, i + 1);
+        i = i + 1
+    };
+    cost
+};
+
+fn main() -> i64 = {
+    // Test 1: Classic example - dims [10, 30, 5, 60]
+    // 3 matrices: 10x30, 30x5, 5x60
+    // Optimal: (A1*A2)*A3 = 10*30*5 + 10*5*60 = 1500 + 3000 = 4500
+    // vs A1*(A2*A3) = 30*5*60 + 10*30*60 = 9000 + 18000 = 27000
+    let d1 = vec_new();
+    vec_push(d1, 10); vec_push(d1, 30); vec_push(d1, 5); vec_push(d1, 60);
+    let _p1 = println(matrix_chain_order(d1, 3));  // 4500
+
+    // Test 2: dims [40, 20, 30, 10, 30]
+    // 4 matrices
+    let d2 = vec_new();
+    vec_push(d2, 40); vec_push(d2, 20); vec_push(d2, 30);
+    vec_push(d2, 10); vec_push(d2, 30);
+    let _p2 = println(matrix_chain_order(d2, 4));  // 26000
+
+    // Test 3: Two matrices only - dims [5, 10, 20]
+    // Only one way: 5*10*20 = 1000
+    let d3 = vec_new();
+    vec_push(d3, 5); vec_push(d3, 10); vec_push(d3, 20);
+    let _p3 = println(matrix_chain_order(d3, 2));  // 1000
+
+    // Test 4: Single matrix - dims [3, 7]
+    // No multiplication needed
+    let d4 = vec_new();
+    vec_push(d4, 3); vec_push(d4, 7);
+    let _p4 = println(matrix_chain_order(d4, 1));  // 0
+
+    // Test 5: Square matrices - dims [10, 10, 10, 10]
+    // 3 matrices each 10x10: any order gives 10*10*10 * 2 = 2000
+    let d5 = vec_new();
+    vec_push(d5, 10); vec_push(d5, 10); vec_push(d5, 10); vec_push(d5, 10);
+    let _p5 = println(matrix_chain_order(d5, 3));  // 2000
+
+    // Test 6: dims [1, 2, 3, 4]
+    // 3 matrices: 1x2, 2x3, 3x4
+    // (A1*A2)*A3: 1*2*3 + 1*3*4 = 6+12 = 18
+    // A1*(A2*A3): 2*3*4 + 1*2*4 = 24+8 = 32
+    let d6 = vec_new();
+    vec_push(d6, 1); vec_push(d6, 2); vec_push(d6, 3); vec_push(d6, 4);
+    let _p6 = println(matrix_chain_order(d6, 3));  // 18
+
+    // Test 7: dims [5, 10, 3, 12, 5, 50, 6]
+    // 6 matrices
+    let d7 = vec_new();
+    vec_push(d7, 5); vec_push(d7, 10); vec_push(d7, 3);
+    vec_push(d7, 12); vec_push(d7, 5); vec_push(d7, 50);
+    vec_push(d7, 6);
+    let _p7 = println(matrix_chain_order(d7, 6));  // 2010
+
+    // Test 8: Naive vs optimal comparison for d1
+    let naive1 = naive_left_to_right(d1, 3);
+    let _p8 = println(naive1);   // 10*30*5 + 10*5*60 = 1500+3000 = 4500
+
+    // Test 9: Naive vs optimal comparison for d2
+    let naive2 = naive_left_to_right(d2, 4);
+    let _p9 = println(naive2);   // 40*20*30 + 40*30*10 + 40*10*30 = 24000+12000+12000 = 48000
+
+    // Test 10: Verify optimal is always <= naive for d2
+    let opt2 = matrix_chain_order(d2, 4);
+    let _p10 = println(if naive2 >= opt2 { 1 } else { 0 });  // 1 (naive >= optimal)
+
+    // Test 11: dims [2, 3, 4, 5, 6]
+    // 4 matrices
+    let d11 = vec_new();
+    vec_push(d11, 2); vec_push(d11, 3); vec_push(d11, 4);
+    vec_push(d11, 5); vec_push(d11, 6);
+    let _p11 = println(matrix_chain_order(d11, 4));  // 124
+
+    // Test 12: Large dimensions [100, 1, 100, 1, 100]
+    // 4 matrices: 100x1, 1x100, 100x1, 1x100
+    // Optimal: pair them -> (A1*A2)*(A3*A4) = 100*1*100 + 100*1*100 + 100*100*100 = bad
+    // Actually: ((A1*A2)*A3)*A4 = 10000 + 100*100*1 + 100*1*100 = 10000+10000+10000 = 30000
+    // Or (A1*(A2*A3))*A4 = 1*100*1 + 100*1*1 + 100*1*100 = 100+100+10000 = 10200
+    let d12 = vec_new();
+    vec_push(d12, 100); vec_push(d12, 1); vec_push(d12, 100);
+    vec_push(d12, 1); vec_push(d12, 100);
+    let _p12 = println(matrix_chain_order(d12, 4));  // 10200
+
+    vec_free(d1); vec_free(d2); vec_free(d3); vec_free(d4);
+    vec_free(d5); vec_free(d6); vec_free(d7);
+    vec_free(d11); vec_free(d12);
+    0
+};

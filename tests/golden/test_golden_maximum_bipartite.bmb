@@ -1,0 +1,171 @@
+// Golden Test: Maximum bipartite matching via augmenting paths (Hungarian/Kuhn's algorithm)
+// Bipartite graph: left nodes 0..n-1, right nodes 0..m-1
+// Adjacency stored as flat array: adj[i * m + j] = 1 if edge (i, j) exists
+// match_right[j] = left node matched to right node j, or -1
+
+// Try to find augmenting path from left node u
+// visited: marks right nodes visited in this DFS round
+fn try_augment(adj: i64, n: i64, m: i64, match_right: i64, visited: i64, u: i64) -> i64 = {
+    let mut j = 0;
+    let mut found = 0;
+    loop {
+        if j >= m { break } else { () };
+        if found != 0 { break } else { () };
+        // Check if edge (u, j) exists and j not visited
+        if vec_get(adj, u * m + j) != 0 && vec_get(visited, j) == 0 {
+            let _sv = vec_set(visited, j, 1);
+            let mr = vec_get(match_right, j);
+            if mr < 0 {
+                // j is unmatched — augmenting path found
+                let _sm = vec_set(match_right, j, u);
+                set found = 1;
+                0
+            } else {
+                // Try to find alternate path from mr's current match
+                let res = try_augment(adj, n, m, match_right, visited, mr);
+                if res != 0 {
+                    let _sm = vec_set(match_right, j, u);
+                    set found = 1;
+                    0
+                } else { 0 }
+            }
+        } else { 0 };
+        set j = j + 1;
+        0
+    };
+    found
+};
+
+// Compute maximum matching
+fn max_matching(adj: i64, n: i64, m: i64) -> i64 = {
+    // match_right[j] = which left node is matched to right j, -1 = unmatched
+    let match_right = vec_new();
+    for _j in 0..m {
+        vec_push(match_right, 0 - 1)
+    };
+
+    let mut result = 0;
+    for i in 0..n {
+        // Reset visited array for each left node
+        let visited = vec_new();
+        for _j in 0..m {
+            vec_push(visited, 0)
+        };
+        let aug = try_augment(adj, n, m, match_right, visited, i);
+        if aug != 0 {
+            set result = result + 1;
+            0
+        } else { 0 };
+        let _fv = vec_free(visited);
+        0
+    };
+
+    // Print matching details
+    for j in 0..m {
+        let mr = vec_get(match_right, j);
+        if mr >= 0 {
+            // Print: left_node matched to right_node
+            let _p = println(mr * 100 + j); // encoded as left*100+right
+            0
+        } else { 0 }
+    };
+
+    let _fm = vec_free(match_right);
+    result
+};
+
+// Helper: create adjacency matrix n x m, all zeros
+fn make_adj(n: i64, m: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..(n * m) {
+        vec_push(v, 0)
+    };
+    v
+};
+
+// Helper: add edge from left i to right j
+fn add_edge(adj: i64, m: i64, i: i64, j: i64) -> i64 = {
+    let _s = vec_set(adj, i * m + j, 1);
+    0
+};
+
+fn main() -> i64 = {
+    // Test 1: Simple 3x3 bipartite graph
+    // Left: {0,1,2}, Right: {0,1,2}
+    // Edges: 0-0, 0-1, 1-0, 1-2, 2-1
+    let n1 = 3;
+    let m1 = 3;
+    let adj1 = make_adj(n1, m1);
+    let _e1 = add_edge(adj1, m1, 0, 0);
+    let _e2 = add_edge(adj1, m1, 0, 1);
+    let _e3 = add_edge(adj1, m1, 1, 0);
+    let _e4 = add_edge(adj1, m1, 1, 2);
+    let _e5 = add_edge(adj1, m1, 2, 1);
+
+    let r1 = max_matching(adj1, n1, m1);
+    let _p1 = println(r1); // max matching size = 3
+
+    // Test 2: 4x4 with perfect matching possible
+    // Edges: 0-1, 1-0, 1-2, 2-1, 2-3, 3-2, 3-0
+    let n2 = 4;
+    let m2 = 4;
+    let adj2 = make_adj(n2, m2);
+    let _e6 = add_edge(adj2, m2, 0, 1);
+    let _e7 = add_edge(adj2, m2, 1, 0);
+    let _e8 = add_edge(adj2, m2, 1, 2);
+    let _e9 = add_edge(adj2, m2, 2, 1);
+    let _e10 = add_edge(adj2, m2, 2, 3);
+    let _e11 = add_edge(adj2, m2, 3, 2);
+    let _e12 = add_edge(adj2, m2, 3, 0);
+
+    let r2 = max_matching(adj2, n2, m2);
+    let _p2 = println(r2); // max matching size = 4
+
+    // Test 3: No matching possible (disconnected)
+    let n3 = 2;
+    let m3 = 2;
+    let adj3 = make_adj(n3, m3);
+    // No edges!
+    let r3 = max_matching(adj3, n3, m3);
+    let _p3 = println(r3); // 0
+
+    // Test 4: All left connected to one right
+    // 3 left nodes all connected to right node 0 only
+    let n4 = 3;
+    let m4 = 3;
+    let adj4 = make_adj(n4, m4);
+    let _e13 = add_edge(adj4, m4, 0, 0);
+    let _e14 = add_edge(adj4, m4, 1, 0);
+    let _e15 = add_edge(adj4, m4, 2, 0);
+    let r4 = max_matching(adj4, n4, m4);
+    let _p4 = println(r4); // 1 (only one can match)
+
+    // Test 5: Complete bipartite K(2,3)
+    // 2 left, 3 right, all edges
+    let n5 = 2;
+    let m5 = 3;
+    let adj5 = make_adj(n5, m5);
+    let _e16 = add_edge(adj5, m5, 0, 0);
+    let _e17 = add_edge(adj5, m5, 0, 1);
+    let _e18 = add_edge(adj5, m5, 0, 2);
+    let _e19 = add_edge(adj5, m5, 1, 0);
+    let _e20 = add_edge(adj5, m5, 1, 1);
+    let _e21 = add_edge(adj5, m5, 1, 2);
+
+    let r5 = max_matching(adj5, n5, m5);
+    let _p5 = println(r5); // 2 (min(2,3))
+
+    // Test 6: Single node matching
+    let n6 = 1;
+    let m6 = 1;
+    let adj6 = make_adj(n6, m6);
+    let _e22 = add_edge(adj6, m6, 0, 0);
+    let r6 = max_matching(adj6, n6, m6);
+    let _p6 = println(r6); // 1
+
+    // Cleanup
+    let _f1 = vec_free(adj1); let _f2 = vec_free(adj2);
+    let _f3 = vec_free(adj3); let _f4 = vec_free(adj4);
+    let _f5 = vec_free(adj5); let _f6 = vec_free(adj6);
+    0
+};

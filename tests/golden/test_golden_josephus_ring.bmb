@@ -1,0 +1,107 @@
+// Golden Test: Josephus Ring — step-size variants and survivor analysis
+// Uses iterative formula J(n,k) = (J(n-1,k)+k) mod n
+
+// Classic iterative formula: 0-indexed survivor position
+fn josephus(n: i64, k: i64) -> i64 = {
+    let mut pos = 0;
+    for i in 2..n + 1 {
+        set pos = (pos + k) % i;
+    };
+    pos
+};
+
+// 1-indexed version
+fn josephus1(n: i64, k: i64) -> i64 = josephus(n, k) + 1;
+
+// Survivor for all step sizes 1..max_k, returns vec of results
+fn survivor_by_step(n: i64, max_k: i64) -> i64 = {
+    let results = vec_new();
+    for k in 1..max_k + 1 {
+        let _p = vec_push(results, josephus(n, k));
+        0
+    };
+    results
+};
+
+// Count how many people survive before position p is eliminated
+// (i.e., find elimination round of position p)
+fn find_elimination_round(n: i64, k: i64, target: i64) -> i64 = {
+    // Simulate by computing survivor for shrinking groups
+    // If J(m, k) maps to target in the original, then target is the last survivor of m
+    // Instead: track which position survives for each prefix
+    let mut round = 0;
+    let mut sz = n;
+    loop {
+        if sz <= 0 { break } else { () };
+        let surv = josephus(sz, k);
+        // Map survivor back to original position
+        // This is complex; use direct simulation instead
+        let _c = if surv == target {
+            round = sz;
+            sz = 0;
+            0
+        } else {
+            sz = sz - 1;
+            0
+        };
+        0
+    };
+    // round tells us the survivor is last when round people remain
+    // elimination round = n - round + 1 if found, else 0
+    if round > 0 { n - round + 1 } else { 0 }
+};
+
+// For n people, compute which position is eliminated k-th
+// Uses brute force: try each starting count
+fn last_n_survivors(n: i64, k: i64, count: i64) -> i64 = {
+    // Returns vec of the last 'count' survivors (in reverse elimination order)
+    // The last survivor is josephus(n, k)
+    // The second-to-last would be josephus(n-1, k) mapped back, etc.
+    // Simplification: compute josephus for sizes n, n-1, ..., n-count+1
+    let survivors = vec_new();
+    for i in 0..count {
+        let _p = vec_push(survivors, josephus(n - i, k));
+        0
+    };
+    survivors
+};
+
+fn main() -> i64 = {
+    // Basic cases
+    let _p1 = println(josephus(1, 1));    // 0
+    let _p2 = println(josephus(2, 1));    // 1
+    let _p3 = println(josephus(3, 2));    // 2
+
+    // Classic: n=5, various step sizes
+    let _p4 = println(josephus(5, 1));    // 4
+    let _p5 = println(josephus(5, 2));    // 2
+    let _p6 = println(josephus(5, 3));    // 3
+    let _p7 = println(josephus(5, 4));    // 0
+    let _p8 = println(josephus(5, 5));    // 1
+
+    // Famous: 41 soldiers, k=3 (Flavius Josephus)
+    let _p9 = println(josephus1(41, 3));  // 31
+
+    // Survivor by step for n=7, steps 1..5
+    let sv = survivor_by_step(7, 5);
+    let _p10 = println(vec_get(sv, 0));   // k=1: 6
+    let _p11 = println(vec_get(sv, 1));   // k=2: 6
+    let _p12 = println(vec_get(sv, 2));   // k=3: 3
+    let _p13 = println(vec_get(sv, 3));   // k=4: 1
+    let _p14 = println(vec_get(sv, 4));   // k=5: 4
+
+    // Large n
+    let _p15 = println(josephus(100, 2));     // known result
+    let _p16 = println(josephus(100, 7));     // known result
+
+    // Verify josephus(n,2) = 2*L+1 where n = 2^m + L (Josephus binary trick)
+    // n=100: 100 = 64 + 36, J = 2*36 + 1 - 1 = 72 (0-indexed)
+    // Actually for k=2: J(n) = 2L+1 (1-indexed), so 0-indexed = 2L
+    // n=100, 2^6=64, L=36, J1=73, J0=72
+    let _p17 = println(josephus1(100, 2));    // 73
+
+    // n=1024: exact power of 2, survivor = position 1 (1-indexed)
+    let _p18 = println(josephus1(1024, 2));   // 1
+
+    0
+};

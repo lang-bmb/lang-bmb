@@ -1,0 +1,95 @@
+// Golden Test: KMP String Matching (on integer arrays)
+// Knuth-Morris-Pratt pattern matching algorithm
+
+fn build_kmp_table(pattern: i64, m: i64) -> i64 = {
+    let table = vec_new();
+    let _p = vec_push(table, 0);
+    let mut len = 0;
+    let mut i = 1;
+    while i < m {
+        let _x = if vec_get(pattern, i) == vec_get(pattern, len) {
+            set len = len + 1;
+            let _p = vec_push(table, len);
+            set i = i + 1;
+            0
+        } else if len != 0 {
+            set len = vec_get(table, len - 1);
+            0
+        } else {
+            let _p = vec_push(table, 0);
+            set i = i + 1;
+            0
+        }
+    };
+    table
+};
+
+fn kmp_search(text: i64, n: i64, pattern: i64, m: i64) -> i64 = {
+    let table = build_kmp_table(pattern, m);
+    let matches = vec_new();
+    let mut i = 0;
+    let mut j = 0;
+    while i < n {
+        let _x = if vec_get(text, i) == vec_get(pattern, j) {
+            set i = i + 1;
+            set j = j + 1;
+            0
+        } else if j != 0 {
+            set j = vec_get(table, j - 1);
+            0
+        } else {
+            set i = i + 1;
+            0
+        };
+        let _y = if j == m {
+            let _p = vec_push(matches, i - j);
+            set j = vec_get(table, j - 1);
+            0
+        } else { 0 }
+    };
+    matches
+};
+
+fn main() -> () = {
+    // Test 1: Find [2,3] in [1,2,3,4,2,3,5]
+    let text1 = vec_new();
+    let _p = vec_push(text1, 1); let _p = vec_push(text1, 2);
+    let _p = vec_push(text1, 3); let _p = vec_push(text1, 4);
+    let _p = vec_push(text1, 2); let _p = vec_push(text1, 3);
+    let _p = vec_push(text1, 5);
+    let pat1 = vec_new();
+    let _p = vec_push(pat1, 2); let _p = vec_push(pat1, 3);
+    let matches1 = kmp_search(text1, 7, pat1, 2);
+    print_str("matches1:");
+    let mut i = 0;
+    while i < vec_len(matches1) {
+        print_str(" "); print(vec_get(matches1, i));
+        set i = i + 1
+    };
+    print_str("
+");
+
+    // Test 2: Find [1,1] in [1,1,1,1]
+    let text2 = vec_new();
+    let _p = vec_push(text2, 1); let _p = vec_push(text2, 1);
+    let _p = vec_push(text2, 1); let _p = vec_push(text2, 1);
+    let pat2 = vec_new();
+    let _p = vec_push(pat2, 1); let _p = vec_push(pat2, 1);
+    let matches2 = kmp_search(text2, 4, pat2, 2);
+    print_str("matches2:");
+    set i = 0;
+    while i < vec_len(matches2) {
+        print_str(" "); print(vec_get(matches2, i));
+        set i = i + 1
+    };
+    print_str("
+");
+
+    // Test 3: No match
+    let text3 = vec_new();
+    let _p = vec_push(text3, 1); let _p = vec_push(text3, 2); let _p = vec_push(text3, 3);
+    let pat3 = vec_new();
+    let _p = vec_push(pat3, 4); let _p = vec_push(pat3, 5);
+    let matches3 = kmp_search(text3, 3, pat3, 2);
+    print_str("matches3="); let _r = println(vec_len(matches3))
+};

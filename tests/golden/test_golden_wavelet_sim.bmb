@@ -1,0 +1,208 @@
+// Golden test: Wavelet tree simulation for rank/select queries
+// Simulates wavelet tree operations on small alphabets
+// rank(c, i) = count of character c in arr[0..i]
+// select(c, k) = position of k-th occurrence of character c
+// quantile(l, r, k) = k-th smallest element in arr[l..r]
+
+// Build frequency table: freq[c] = count of c in arr[0..n)
+fn build_freq(arr: i64, n: i64, max_val: i64) -> i64 = {
+    let freq = vec_new();
+    for _i in 0..max_val {
+        vec_push(freq, 0)
+    };
+    for i in 0..n {
+        let c = vec_get(arr, i);
+        let old = vec_get(freq, c);
+        vec_set(freq, c, old + 1)
+    };
+    freq
+    };
+
+// rank(c, i): count of character c in arr[0..i] (inclusive)
+fn rank(arr: i64, c: i64, i: i64) -> i64 = {
+    let mut count = 0;
+    let mut j = 0;
+    loop {
+        if j > i { break } else { () };
+        if vec_get(arr, j) == c {
+            count = count + 1
+        } else { () };
+        j = j + 1
+    };
+    count
+    };
+
+// select(c, k): position of k-th occurrence of c (1-indexed k)
+// Returns -1 if fewer than k occurrences
+fn wt_select(arr: i64, n: i64, c: i64, k: i64) -> i64 = {
+    let mut count = 0;
+    let mut result = 0 - 1;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        if vec_get(arr, i) == c {
+            count = count + 1;
+            if count == k {
+                result = i;
+                break
+            } else { () }
+        } else { () };
+        i = i + 1
+    };
+    result
+    };
+
+// Range rank: count of c in arr[l..r] (inclusive)
+fn range_rank(arr: i64, c: i64, l: i64, r: i64) -> i64 = {
+    let mut count = 0;
+    let mut i = l;
+    loop {
+        if i > r { break } else { () };
+        if vec_get(arr, i) == c {
+            count = count + 1
+        } else { () };
+        i = i + 1
+    };
+    count
+    };
+
+// quantile(l, r, k): k-th smallest element in arr[l..r] (1-indexed k)
+// Uses counting approach: count occurrences of each value, find k-th
+fn quantile(arr: i64, l: i64, r: i64, k: i64, max_val: i64) -> i64 = {
+    // Build frequency for range [l, r]
+    let freq = vec_new();
+    for _i in 0..max_val {
+        vec_push(freq, 0)
+    };
+    let mut i = l;
+    loop {
+        if i > r { break } else { () };
+        let c = vec_get(arr, i);
+        let old = vec_get(freq, c);
+        vec_set(freq, c, old + 1);
+        i = i + 1
+    };
+
+    // Find k-th smallest
+    let mut cumul = 0;
+    let mut result = 0;
+    let mut v = 0;
+    let mut found = 0;
+    loop {
+        if v >= max_val { break } else { () };
+        if found == 1 { break } else { () };
+        cumul = cumul + vec_get(freq, v);
+        if cumul >= k and found == 0 {
+            result = v;
+            found = 1
+        } else { () };
+        v = v + 1
+    };
+    vec_free(freq);
+    result
+    };
+
+// Count distinct values in range [l, r]
+fn count_distinct(arr: i64, l: i64, r: i64, max_val: i64) -> i64 = {
+    let seen = vec_new();
+    for _i in 0..max_val {
+        vec_push(seen, 0)
+    };
+    let mut i = l;
+    loop {
+        if i > r { break } else { () };
+        let c = vec_get(arr, i);
+        vec_set(seen, c, 1);
+        i = i + 1
+    };
+    let mut count = 0;
+    for v in 0..max_val {
+        if vec_get(seen, v) == 1 {
+            count = count + 1
+        } else { () }
+    };
+    vec_free(seen);
+    count
+    };
+
+// Range frequency: count of values in [lo_val, hi_val] within arr[l..r]
+fn range_freq(arr: i64, l: i64, r: i64, lo_val: i64, hi_val: i64) -> i64 = {
+    let mut count = 0;
+    let mut i = l;
+    loop {
+        if i > r { break } else { () };
+        let v = vec_get(arr, i);
+        if v >= lo_val and v <= hi_val {
+            count = count + 1
+        } else { () };
+        i = i + 1
+    };
+    count
+    };
+
+fn main() -> i64 = {
+    // Array: [3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5, 8, 9, 7, 9]
+    // Values in range [0, 10)
+    let arr = vec_new();
+    vec_push(arr, 3); vec_push(arr, 1); vec_push(arr, 4);
+    vec_push(arr, 1); vec_push(arr, 5); vec_push(arr, 9);
+    vec_push(arr, 2); vec_push(arr, 6); vec_push(arr, 5);
+    vec_push(arr, 3); vec_push(arr, 5); vec_push(arr, 8);
+    vec_push(arr, 9); vec_push(arr, 7); vec_push(arr, 9);
+    let n = 15;
+    let max_val = 10;
+
+    // rank tests: count of c in arr[0..i]
+    let _p1 = println(rank(arr, 1, 3));   // 2 (positions 1,3)
+    let _p2 = println(rank(arr, 5, 10));  // 3 (positions 4,8,10)
+    let _p3 = println(rank(arr, 9, 14));  // 3 (positions 5,12,14)
+    let _p4 = println(rank(arr, 3, 9));   // 2 (positions 0,9)
+    let _p5 = println(rank(arr, 7, 5));   // 0 (7 not in 0..5)
+
+    // select tests: position of k-th occurrence
+    let _p6 = println(wt_select(arr, n, 5, 1));  // 4 (first 5)
+    let _p7 = println(wt_select(arr, n, 5, 2));  // 8 (second 5)
+    let _p8 = println(wt_select(arr, n, 5, 3));  // 10 (third 5)
+    let _p9 = println(wt_select(arr, n, 9, 2));  // 12 (second 9)
+    let _p10 = println(wt_select(arr, n, 1, 3)); // -1 (only 2 ones)
+
+    // range_rank tests
+    let _p11 = println(range_rank(arr, 5, 0, 14));  // 3 (all 5s)
+    let _p12 = println(range_rank(arr, 5, 4, 10));  // 3 (positions 4,8,10)
+    let _p13 = println(range_rank(arr, 9, 5, 14));  // 3 (positions 5,12,14)
+    let _p14 = println(range_rank(arr, 1, 5, 14));  // 0 (no 1s after index 3)
+
+    // quantile tests: k-th smallest in range
+    // arr[0..4] = [3,1,4,1,5] sorted: [1,1,3,4,5]
+    let _p15 = println(quantile(arr, 0, 4, 1, max_val)); // 1 (1st smallest)
+    let _p16 = println(quantile(arr, 0, 4, 3, max_val)); // 3 (3rd smallest)
+    let _p17 = println(quantile(arr, 0, 4, 5, max_val)); // 5 (5th smallest)
+    // arr[5..9] = [9,2,6,5,3] sorted: [2,3,5,6,9]
+    let _p18 = println(quantile(arr, 5, 9, 1, max_val)); // 2
+    let _p19 = println(quantile(arr, 5, 9, 3, max_val)); // 5
+    let _p20 = println(quantile(arr, 5, 9, 5, max_val)); // 9
+
+    // count_distinct tests
+    let _p21 = println(count_distinct(arr, 0, 14, max_val)); // 9 (1,2,3,4,5,6,7,8,9)
+    let _p22 = println(count_distinct(arr, 0, 4, max_val));  // 4 ({1,3,4,5})
+
+    // range_freq tests: count values in [lo, hi] within arr[l..r]
+    // arr[0..14], values in [1,5]: 1,1,3,4,5,2,5,3,5 = 9
+    let _p23 = println(range_freq(arr, 0, 14, 1, 5));  // 9
+    // arr[0..14], values in [7,9]: 9,8,9,7,9 = 5
+    let _p24 = println(range_freq(arr, 0, 14, 7, 9));  // 5
+    // arr[0..4], values in [1,3]: 3,1,1 = 3
+    let _p25 = println(range_freq(arr, 0, 4, 1, 3));   // 3
+
+    // Build global frequency table
+    let freq = build_freq(arr, n, max_val);
+    let _p26 = println(vec_get(freq, 1));  // 2 (two 1s)
+    let _p27 = println(vec_get(freq, 5));  // 3 (three 5s)
+    let _p28 = println(vec_get(freq, 9));  // 3 (three 9s)
+    let _p29 = println(vec_get(freq, 0));  // 0 (no zeros)
+    let _p30 = println(vec_get(freq, 4));  // 1 (one 4)
+
+    vec_free(arr);
+    vec_free(freq);
+    0
+    };

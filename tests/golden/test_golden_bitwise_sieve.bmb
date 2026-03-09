@@ -1,0 +1,198 @@
+// Golden Test: Bitwise-packed sieve of Eratosthenes + twin prime detection
+// Uses i64 as 64-bit packed arrays for space-efficient prime sieve
+
+// Each i64 holds 63 "bits" using division/modulo (avoiding sign bit issues)
+// bit k is stored at arr[k/63], bit position k%63, value 2^(k%63)
+
+fn pow2(k: i64) -> i64 = {
+    let mut r = 1;
+    let mut i = 0;
+    loop {
+        if i >= k { break } else { () };
+        r = r * 2;
+        i = i + 1
+    };
+    r
+    };
+
+// Get bit k from packed array
+fn get_bit(arr: i64, k: i64) -> i64 = {
+    let word = k / 63;
+    let bit = k - word * 63;
+    let val = vec_get(arr, word);
+    let mask = pow2(bit);
+    // (val / mask) % 2
+    (val / mask) - (val / mask / 2) * 2
+    };
+
+// Set bit k in packed array (set to 1)
+fn set_bit(arr: i64, k: i64) -> i64 = {
+    let word = k / 63;
+    let bit = k - word * 63;
+    let val = vec_get(arr, word);
+    let mask = pow2(bit);
+    // Check if already set
+    let cur = (val / mask) - (val / mask / 2) * 2;
+    let _u = if cur == 0 {
+        let _s = vec_set(arr, word, val + mask);
+        0
+    } else { 0 };
+    0
+    };
+
+// Sieve of Eratosthenes using bitwise packed array
+// Returns a packed array where bit k = 1 means k is composite (not prime)
+// So prime = (bit == 0) for k >= 2
+fn sieve(limit: i64) -> i64 = {
+    let num_words = (limit + 63) / 63;
+    let composite = vec_new();
+    for _i in 0..num_words {
+        let _p = vec_push(composite, 0);
+        0
+    };
+    // Mark 0 and 1 as composite
+    let _m0 = set_bit(composite, 0);
+    let _m1 = set_bit(composite, 1);
+    // Sieve
+    let mut p = 2;
+    loop {
+        if p * p > limit { break } else { () };
+        if get_bit(composite, p) == 0 {
+            // p is prime, mark multiples
+            let mut m = p * p;
+            loop {
+                if m > limit { break } else { () };
+                let _s = set_bit(composite, m);
+                m = m + p
+            };
+            0
+        } else { 0 };
+        p = p + 1
+    };
+    composite
+    };
+
+// Check if n is prime using the sieve result
+fn is_prime(composite: i64, n: i64) -> i64 = {
+    if n < 2 { 0 }
+    else if get_bit(composite, n) == 0 { 1 }
+    else { 0 }
+    };
+
+// Count primes up to limit
+fn count_primes(composite: i64, limit: i64) -> i64 = {
+    let mut count = 0;
+    let mut i = 2;
+    loop {
+        if i > limit { break } else { () };
+        let _u = if get_bit(composite, i) == 0 { count = count + 1; 0 } else { 0 };
+        i = i + 1
+    };
+    count
+    };
+
+// Count twin primes (p, p+2 both prime) up to limit
+fn count_twin_primes(composite: i64, limit: i64) -> i64 = {
+    let mut count = 0;
+    let mut i = 2;
+    loop {
+        if i + 2 > limit { break } else { () };
+        let _u = if get_bit(composite, i) == 0 and get_bit(composite, i + 2) == 0 {
+            count = count + 1;
+            0
+        } else { 0 };
+        i = i + 1
+    };
+    count
+    };
+
+// Find the n-th prime (1-indexed)
+fn nth_prime(composite: i64, n: i64, limit: i64) -> i64 = {
+    let mut count = 0;
+    let mut result = 0;
+    let mut i = 2;
+    loop {
+        if i > limit { break } else { () };
+        if get_bit(composite, i) == 0 {
+            count = count + 1;
+            let _u = if count == n { result = i; 0 } else { 0 };
+            0
+        } else { 0 };
+        i = i + 1
+    };
+    result
+    };
+
+// Sum of all primes up to limit
+fn sum_primes(composite: i64, limit: i64) -> i64 = {
+    let mut s = 0;
+    let mut i = 2;
+    loop {
+        if i > limit { break } else { () };
+        let _u = if get_bit(composite, i) == 0 { s = s + i; 0 } else { 0 };
+        i = i + 1
+    };
+    s
+    };
+
+// Find largest prime gap up to limit
+fn largest_prime_gap(composite: i64, limit: i64) -> i64 = {
+    let mut max_gap = 0;
+    let mut prev = 2;
+    let mut i = 3;
+    loop {
+        if i > limit { break } else { () };
+        if get_bit(composite, i) == 0 {
+            let gap = i - prev;
+            let _u = if gap > max_gap { max_gap = gap; 0 } else { 0 };
+            prev = i;
+            0
+        } else { 0 };
+        i = i + 1
+    };
+    max_gap
+    };
+
+fn main() -> i64 = {
+    let limit = 200;
+    let composite = sieve(limit);
+
+    // Test 1: Basic primality
+    let _p1 = println(is_prime(composite, 2));   // 1
+    let _p2 = println(is_prime(composite, 17));  // 1
+    let _p3 = println(is_prime(composite, 20));  // 0
+    let _p4 = println(is_prime(composite, 1));   // 0
+
+    // Test 2: Count primes up to 100 (should be 25)
+    let _p5 = println(count_primes(composite, 100));  // 25
+
+    // Test 3: Count primes up to 200 (should be 46)
+    let _p6 = println(count_primes(composite, 200));  // 46
+
+    // Test 4: Twin primes up to 100
+    // (3,5), (5,7), (11,13), (17,19), (29,31), (41,43), (59,61), (71,73) = 8
+    let _p7 = println(count_twin_primes(composite, 100));  // 8
+
+    // Test 5: Twin primes up to 200
+    let _p8 = println(count_twin_primes(composite, 200));  // 15
+
+    // Test 6: n-th prime
+    let _p9 = println(nth_prime(composite, 1, limit));   // 2
+    let _p10 = println(nth_prime(composite, 10, limit));  // 29
+    let _p11 = println(nth_prime(composite, 25, limit));  // 97
+
+    // Test 7: Sum of primes up to 10: 2+3+5+7 = 17
+    let _p12 = println(sum_primes(composite, 10));  // 17
+
+    // Test 8: Largest prime gap up to 100
+    // Gaps: 1,2,2,4,2,4,2,4,6,2,6,4,2,4,6,6,2,6,4,2,6,4,6,8
+    // Largest gap up to 100 is 8 (between 89 and 97)
+    let _p13 = println(largest_prime_gap(composite, 100));  // 8
+
+    // Test 9: Primality of edge cases
+    let _p14 = println(is_prime(composite, 199));  // 1 (199 is prime)
+    let _p15 = println(is_prime(composite, 197));  // 1 (197 is prime)
+
+    let _f1 = vec_free(composite);
+    0
+    };

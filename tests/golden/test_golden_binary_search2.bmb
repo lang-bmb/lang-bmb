@@ -1,0 +1,157 @@
+// Golden Test: Binary search variants
+// Tests: standard binary search, lower/upper bound, search in rotated array
+
+// Standard binary search on sorted vec, returns index or -1
+fn bin_search(v: i64, n: i64, target: i64) -> i64 = {
+    let mut lo = 0;
+    let mut hi = n - 1;
+    let mut result = 0 - 1;
+    loop {
+        if lo > hi { break } else { 0 };
+        let mid = lo + (hi - lo) / 2;
+        let val = vec_get(v, mid);
+        if val == target {
+            result = mid;
+            break
+        } else if val < target {
+            lo = mid + 1
+        } else {
+            hi = mid - 1
+        }
+    };
+    result
+};
+
+// Lower bound: first index where v[i] >= target
+fn lower_bound(v: i64, n: i64, target: i64) -> i64 = {
+    let mut lo = 0;
+    let mut hi = n;
+    loop {
+        if lo >= hi { break } else { 0 };
+        let mid = lo + (hi - lo) / 2;
+        if vec_get(v, mid) < target {
+            lo = mid + 1
+        } else {
+            hi = mid
+        }
+    };
+    lo
+};
+
+// Upper bound: first index where v[i] > target
+fn upper_bound(v: i64, n: i64, target: i64) -> i64 = {
+    let mut lo = 0;
+    let mut hi = n;
+    loop {
+        if lo >= hi { break } else { 0 };
+        let mid = lo + (hi - lo) / 2;
+        if vec_get(v, mid) <= target {
+            lo = mid + 1
+        } else {
+            hi = mid
+        }
+    };
+    lo
+};
+
+// Count occurrences of target in sorted array
+fn count_in_sorted(v: i64, n: i64, target: i64) -> i64 =
+    upper_bound(v, n, target) - lower_bound(v, n, target);
+
+// Search in rotated sorted array [4,5,6,7,0,1,2]
+fn search_rotated(v: i64, n: i64, target: i64) -> i64 = {
+    let mut lo = 0;
+    let mut hi = n - 1;
+    let mut result = 0 - 1;
+    loop {
+        if lo > hi { break } else { 0 };
+        let mid = lo + (hi - lo) / 2;
+        let mv = vec_get(v, mid);
+        if mv == target {
+            result = mid;
+            break
+        } else {
+            let lv = vec_get(v, lo);
+            if lv <= mv {
+                // left half is sorted
+                if target >= lv and target < mv {
+                    hi = mid - 1
+                } else {
+                    lo = mid + 1
+                }
+            } else {
+                // right half is sorted
+                let hv = vec_get(v, hi);
+                if target > mv and target <= hv {
+                    lo = mid + 1
+                } else {
+                    hi = mid - 1
+                }
+            }
+        }
+    };
+    result
+};
+
+fn main() -> i64 = {
+    // Sorted array: [1, 3, 5, 7, 9, 11, 13, 15]
+    let v = vec_new();
+    vec_push(v, 1);
+    vec_push(v, 3);
+    vec_push(v, 5);
+    vec_push(v, 7);
+    vec_push(v, 9);
+    vec_push(v, 11);
+    vec_push(v, 13);
+    vec_push(v, 15);
+
+    // Test 1: Standard binary search
+    let _p1 = println(bin_search(v, 8, 7));    // 3
+    let _p2 = println(bin_search(v, 8, 1));    // 0
+    let _p3 = println(bin_search(v, 8, 15));   // 7
+    let _p4 = println(bin_search(v, 8, 6));    // -1
+    let _p5 = println(bin_search(v, 8, 0));    // -1
+
+    // Test 2: Lower and upper bound
+    // Array with duplicates: [1, 2, 2, 2, 3, 4, 4, 5]
+    let v2 = vec_new();
+    vec_push(v2, 1);
+    vec_push(v2, 2);
+    vec_push(v2, 2);
+    vec_push(v2, 2);
+    vec_push(v2, 3);
+    vec_push(v2, 4);
+    vec_push(v2, 4);
+    vec_push(v2, 5);
+
+    let _p6 = println(lower_bound(v2, 8, 2));   // 1
+    let _p7 = println(upper_bound(v2, 8, 2));   // 4
+    let _p8 = println(lower_bound(v2, 8, 4));   // 5
+    let _p9 = println(upper_bound(v2, 8, 4));   // 7
+
+    // Test 3: Count occurrences
+    let _p10 = println(count_in_sorted(v2, 8, 2));  // 3
+    let _p11 = println(count_in_sorted(v2, 8, 4));  // 2
+    let _p12 = println(count_in_sorted(v2, 8, 3));  // 1
+    let _p13 = println(count_in_sorted(v2, 8, 6));  // 0
+
+    // Test 4: Rotated array [4, 5, 6, 7, 0, 1, 2]
+    let v3 = vec_new();
+    vec_push(v3, 4);
+    vec_push(v3, 5);
+    vec_push(v3, 6);
+    vec_push(v3, 7);
+    vec_push(v3, 0);
+    vec_push(v3, 1);
+    vec_push(v3, 2);
+
+    let _p14 = println(search_rotated(v3, 7, 0));  // 4
+    let _p15 = println(search_rotated(v3, 7, 4));  // 0
+    let _p16 = println(search_rotated(v3, 7, 7));  // 3
+    let _p17 = println(search_rotated(v3, 7, 3));  // -1
+
+    vec_free(v);
+    vec_free(v2);
+    vec_free(v3);
+    0
+};

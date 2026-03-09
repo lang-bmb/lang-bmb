@@ -1,0 +1,10 @@
+// Test: contract with reference parameter
+fn access(arr: &[i64; 5], idx: i64) -> i64
+    pre idx >= 0
+= arr[idx];
+
+fn main() -> i64 = {
+    let arr: [i64; 5] = [10, 20, 30, 40, 50];
+    let _u = println(access(&arr, 2));
+    0
+};

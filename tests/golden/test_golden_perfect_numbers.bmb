@@ -1,0 +1,133 @@
+// Golden Test: Perfect numbers, amicable pairs, abundant/deficient classification
+// Sum of divisors, perfect detection, amicable pairs, number classification
+
+// Sum of proper divisors (divisors of n excluding n itself)
+fn sum_divisors(n: i64) -> i64 = {
+    if n <= 1 { 0 }
+    else {
+        let mut total = 1;
+        let mut i = 2;
+        loop {
+            if i * i > n { break } else { () };
+            let _c = if n - (n / i) * i == 0 {
+                total = total + i;
+                let other = n / i;
+                let _o = if other != i {
+                    total = total + other;
+                    0
+                } else { 0 };
+                0
+            } else { 0 };
+            i = i + 1
+        };
+        total
+    }
+    };
+
+// Check if n is a perfect number (sum of proper divisors == n)
+fn is_perfect(n: i64) -> i64 =
+    if n <= 1 { 0 }
+    else if sum_divisors(n) == n { 1 }
+    else { 0 };
+
+// Check if (a, b) is an amicable pair
+// a and b are amicable if sum_divisors(a) == b and sum_divisors(b) == a, and a != b
+fn is_amicable_pair(a: i64, b: i64) -> i64 =
+    if a == b { 0 }
+    else if sum_divisors(a) == b {
+        if sum_divisors(b) == a { 1 } else { 0 }
+    }
+    else { 0 };
+
+// Classify: 0 = deficient, 1 = perfect, 2 = abundant
+fn classify(n: i64) -> i64 = {
+    let s = sum_divisors(n);
+    if s < n { 0 }
+    else if s == n { 1 }
+    else { 2 }
+    };
+
+// Count perfect numbers up to limit
+fn count_perfect_up_to(limit: i64) -> i64 = {
+    let mut count = 0;
+    let mut n = 2;
+    loop {
+        if n > limit { break } else { () };
+        let _c = if is_perfect(n) == 1 {
+            count = count + 1;
+            0
+        } else { 0 };
+        n = n + 1
+    };
+    count
+    };
+
+// Count abundant numbers up to limit
+fn count_abundant_up_to(limit: i64) -> i64 = {
+    let mut count = 0;
+    let mut n = 2;
+    loop {
+        if n > limit { break } else { () };
+        let _c = if classify(n) == 2 {
+            count = count + 1;
+            0
+        } else { 0 };
+        n = n + 1
+    };
+    count
+    };
+
+// Sum of divisors including n itself (sigma function)
+fn sigma(n: i64) -> i64 =
+    sum_divisors(n) + n;
+
+fn main() -> i64 = {
+    // === Sum of divisors ===
+    let _p1 = println(sum_divisors(6));     // 1+2+3 = 6
+    let _p2 = println(sum_divisors(28));    // 1+2+4+7+14 = 28
+    let _p3 = println(sum_divisors(12));    // 1+2+3+4+6 = 16
+    let _p4 = println(sum_divisors(220));   // 284
+    let _p5 = println(sum_divisors(284));   // 220
+
+    // === Perfect number checks ===
+    let _p6 = println(is_perfect(6));       // 1
+    let _p7 = println(is_perfect(28));      // 1
+    let _p8 = println(is_perfect(496));     // 1
+    let _p9 = println(is_perfect(8128));    // 1
+    let _p10 = println(is_perfect(10));     // 0
+    let _p11 = println(is_perfect(100));    // 0
+    let _p12 = println(is_perfect(1));      // 0
+
+    // === Amicable pair check ===
+    // (220, 284) is the smallest amicable pair
+    let _p13 = println(is_amicable_pair(220, 284));   // 1
+    let _p14 = println(is_amicable_pair(284, 220));   // 1
+    // (6, 6) is not amicable (same number, perfect)
+    let _p15 = println(is_amicable_pair(6, 6));       // 0
+    // (10, 20) is not amicable
+    let _p16 = println(is_amicable_pair(10, 20));     // 0
+
+    // === Classification: 0=deficient, 1=perfect, 2=abundant ===
+    let _p17 = println(classify(6));     // 1 (perfect)
+    let _p18 = println(classify(28));    // 1 (perfect)
+    let _p19 = println(classify(7));     // 0 (deficient: 1 < 7)
+    let _p20 = println(classify(10));    // 0 (deficient: 1+2+5=8 < 10)
+    let _p21 = println(classify(12));    // 2 (abundant: 1+2+3+4+6=16 > 12)
+    let _p22 = println(classify(18));    // 2 (abundant: 1+2+3+6+9=21 > 18)
+    let _p23 = println(classify(2));     // 0 (deficient: 1 < 2)
+    let _p24 = println(classify(24));    // 2 (abundant: 1+2+3+4+6+8+12=36 > 24)
+
+    // === Count perfect numbers up to 10000 ===
+    let _p25 = println(count_perfect_up_to(10000));   // 4 (6, 28, 496, 8128)
+
+    // === Count abundant numbers up to 100 ===
+    let _p26 = println(count_abundant_up_to(100));    // 22
+
+    // === Sigma function (sum including n) ===
+    let _p27 = println(sigma(6));    // 12 (1+2+3+6)
+    let _p28 = println(sigma(28));   // 56 (1+2+4+7+14+28)
+    let _p29 = println(sigma(12));   // 28 (1+2+3+4+6+12)
+    let _p30 = println(sigma(1));    // 1 (just 1)
+
+    0
+    };

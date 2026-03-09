@@ -1,0 +1,223 @@
+// Golden Test: Sparse table for Range Minimum Query (RMQ)
+// O(n log n) preprocessing, O(1) query
+// Uses floor(log2) to determine query level
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { let _p = vec_push(v, 0); 0 };
+    v
+};
+
+fn min2(a: i64, b: i64) -> i64 = if a < b { a } else { b };
+fn max2(a: i64, b: i64) -> i64 = if a > b { a } else { b };
+
+// Compute floor(log2(n)) iteratively
+fn floor_log2(n: i64) -> i64 = {
+    let mut result = 0;
+    let mut val = n;
+    while val > 1 {
+        set val = val / 2;
+        set result = result + 1
+    };
+    result
+};
+
+// Build sparse table for an array of length n
+// table is a flattened 2D array: table[k * n + i] = min(arr[i..i+2^k])
+// max_k = floor(log2(n)) + 1
+fn build_sparse(arr: i64, n: i64) -> i64 = {
+    let max_k = floor_log2(n) + 1;
+    let table = make_zeros(max_k * n);
+
+    // Level 0: table[0*n + i] = arr[i]
+    for i in 0..n {
+        let _s = vec_set(table, i, vec_get(arr, i));
+        0
+    };
+
+    // Fill levels 1..max_k
+    let mut k = 1;
+    while k < max_k {
+        let half = 1;
+        // Compute 2^(k-1)
+        let mut pow_prev = 1;
+        let mut pp = 0;
+        while pp < k - 1 {
+            set pow_prev = pow_prev * 2;
+            set pp = pp + 1
+        };
+
+        for i in 0..n {
+            let j = i + pow_prev;
+            let _c = if j < n {
+                let left = vec_get(table, (k - 1) * n + i);
+                let right = vec_get(table, (k - 1) * n + j);
+                let _s = vec_set(table, k * n + i, min2(left, right));
+                ()
+            } else {
+                // Copy from previous level
+                let _s = vec_set(table, k * n + i, vec_get(table, (k - 1) * n + i));
+                ()
+            }
+        };
+        set k = k + 1
+    };
+    table
+};
+
+// Query minimum in range [l, r] (inclusive) using sparse table
+fn query_min(table: i64, n: i64, l: i64, r: i64) -> i64 = {
+    let len = r - l + 1;
+    let k = floor_log2(len);
+    // Compute 2^k
+    let mut pow_k = 1;
+    let mut pk = 0;
+    while pk < k {
+        set pow_k = pow_k * 2;
+        set pk = pk + 1
+    };
+    let left = vec_get(table, k * n + l);
+    let right = vec_get(table, k * n + r - pow_k + 1);
+    min2(left, right)
+};
+
+// Build sparse table for maximum queries
+fn build_sparse_max(arr: i64, n: i64) -> i64 = {
+    let max_k = floor_log2(n) + 1;
+    let table = make_zeros(max_k * n);
+
+    for i in 0..n {
+        let _s = vec_set(table, i, vec_get(arr, i));
+        0
+    };
+
+    let mut k = 1;
+    while k < max_k {
+        let mut pow_prev = 1;
+        let mut pp = 0;
+        while pp < k - 1 {
+            set pow_prev = pow_prev * 2;
+            set pp = pp + 1
+        };
+
+        for i in 0..n {
+            let j = i + pow_prev;
+            let _c = if j < n {
+                let left = vec_get(table, (k - 1) * n + i);
+                let right = vec_get(table, (k - 1) * n + j);
+                let _s = vec_set(table, k * n + i, max2(left, right));
+                ()
+            } else {
+                let _s = vec_set(table, k * n + i, vec_get(table, (k - 1) * n + i));
+                ()
+            }
+        };
+        set k = k + 1
+    };
+    table
+};
+
+fn query_max(table: i64, n: i64, l: i64, r: i64) -> i64 = {
+    let len = r - l + 1;
+    let k = floor_log2(len);
+    let mut pow_k = 1;
+    let mut pk = 0;
+    while pk < k {
+        set pow_k = pow_k * 2;
+        set pk = pk + 1
+    };
+    let left = vec_get(table, k * n + l);
+    let right = vec_get(table, k * n + r - pow_k + 1);
+    max2(left, right)
+};
+
+fn main() -> i64 = {
+    // === Test 1: RMQ on [3, 1, 4, 1, 5, 9, 2, 6] ===
+    let _p = println_str("=== Test 1: basic RMQ ===");
+    let n1 = 8;
+    let arr1 = vec_new();
+    let _p = vec_push(arr1, 3); let _p = vec_push(arr1, 1);
+    let _p = vec_push(arr1, 4); let _p = vec_push(arr1, 1);
+    let _p = vec_push(arr1, 5); let _p = vec_push(arr1, 9);
+    let _p = vec_push(arr1, 2); let _p = vec_push(arr1, 6);
+
+    let table1 = build_sparse(arr1, n1);
+
+    // min(0, 7) = 1
+    let _p = print_str("min(0,7): ");
+    let _p = println(query_min(table1, n1, 0, 7));
+    // min(2, 5) = min(4,1,5,9) = 1
+    let _p = print_str("min(2,5): ");
+    let _p = println(query_min(table1, n1, 2, 5));
+    // min(4, 7) = min(5,9,2,6) = 2
+    let _p = print_str("min(4,7): ");
+    let _p = println(query_min(table1, n1, 4, 7));
+    // min(0, 0) = 3 (single element)
+    let _p = print_str("min(0,0): ");
+    let _p = println(query_min(table1, n1, 0, 0));
+    // min(5, 5) = 9
+    let _p = print_str("min(5,5): ");
+    let _p = println(query_min(table1, n1, 5, 5));
+    // min(6, 7) = min(2,6) = 2
+    let _p = print_str("min(6,7): ");
+    let _p = println(query_min(table1, n1, 6, 7));
+
+    // === Test 2: RMQ on sorted array [1, 2, 3, 4, 5] ===
+    let _p = println_str("=== Test 2: sorted array ===");
+    let n2 = 5;
+    let arr2 = vec_new();
+    let _p = vec_push(arr2, 1); let _p = vec_push(arr2, 2);
+    let _p = vec_push(arr2, 3); let _p = vec_push(arr2, 4);
+    let _p = vec_push(arr2, 5);
+    let table2 = build_sparse(arr2, n2);
+    // min always returns leftmost
+    let _p = print_str("min(0,4): ");
+    let _p = println(query_min(table2, n2, 0, 4));
+    let _p = print_str("min(2,4): ");
+    let _p = println(query_min(table2, n2, 2, 4));
+    let _p = print_str("min(3,4): ");
+    let _p = println(query_min(table2, n2, 3, 4));
+
+    // === Test 3: Range maximum queries ===
+    let _p = println_str("=== Test 3: range max ===");
+    let table1_max = build_sparse_max(arr1, n1);
+    // max(0, 7) = 9
+    let _p = print_str("max(0,7): ");
+    let _p = println(query_max(table1_max, n1, 0, 7));
+    // max(0, 3) = max(3,1,4,1) = 4
+    let _p = print_str("max(0,3): ");
+    let _p = println(query_max(table1_max, n1, 0, 3));
+    // max(6, 7) = max(2,6) = 6
+    let _p = print_str("max(6,7): ");
+    let _p = println(query_max(table1_max, n1, 6, 7));
+
+    // === Test 4: floor_log2 verification ===
+    let _p = println_str("=== Test 4: floor_log2 ===");
+    let _p = println(floor_log2(1));   // 0
+    let _p = println(floor_log2(2));   // 1
+    let _p = println(floor_log2(3));   // 1
+    let _p = println(floor_log2(4));   // 2
+    let _p = println(floor_log2(7));   // 2
+    let _p = println(floor_log2(8));   // 3
+    let _p = println(floor_log2(16));  // 4
+    let _p = println(floor_log2(100)); // 6
+
+    // === Test 5: Two-element array ===
+    let _p = println_str("=== Test 5: two elements ===");
+    let n5 = 2;
+    let arr5 = vec_new();
+    let _p = vec_push(arr5, 10); let _p = vec_push(arr5, 3);
+    let table5 = build_sparse(arr5, n5);
+    let _p = print_str("min(0,1): ");
+    let _p = println(query_min(table5, n5, 0, 1));
+    let _p = print_str("min(0,0): ");
+    let _p = println(query_min(table5, n5, 0, 0));
+    let _p = print_str("min(1,1): ");
+    let _p = println(query_min(table5, n5, 1, 1));
+
+    // Cleanup
+    let _f = vec_free(arr1); let _f = vec_free(table1); let _f = vec_free(table1_max);
+    let _f = vec_free(arr2); let _f = vec_free(table2);
+    let _f = vec_free(arr5); let _f = vec_free(table5);
+    0
+};

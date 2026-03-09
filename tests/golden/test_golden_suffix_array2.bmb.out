@@ -1,0 +1,38 @@
+SA banana:5
+3
+1
+0
+4
+2
+LCP banana:0
+1
+3
+0
+0
+2
+SA abcabc:3
+0
+4
+1
+5
+2
+LCP abcabc:0
+3
+0
+2
+0
+1
+SA aaa:2
+1
+0
+LCP aaa:0
+1
+2
+SA abcd:0
+1
+2
+3
+LCP abcd:0
+0
+0
+0

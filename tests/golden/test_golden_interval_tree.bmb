@@ -1,0 +1,138 @@
+// Golden Test: Interval Tree (simplified, BST-based)
+// Stores intervals [low, high], supports overlap queries
+// Augmented BST where each node stores max endpoint in subtree
+
+fn it_new() -> i64 = {
+    let t = vec_new();
+    let lows = vec_new();
+    let highs = vec_new();
+    let maxs = vec_new();     // max endpoint in subtree
+    let lefts = vec_new();
+    let rights = vec_new();
+    vec_push(t, lows);       // t[0]
+    vec_push(t, highs);      // t[1]
+    vec_push(t, maxs);       // t[2]
+    vec_push(t, lefts);      // t[3]
+    vec_push(t, rights);     // t[4]
+    vec_push(t, 0);          // t[5] = count
+    t
+};
+
+fn it_alloc(t: i64, lo: i64, hi: i64) -> i64 = {
+    let idx = vec_get(t, 5);
+    vec_push(vec_get(t, 0), lo);
+    vec_push(vec_get(t, 1), hi);
+    vec_push(vec_get(t, 2), hi);
+    vec_push(vec_get(t, 3), 0 - 1);
+    vec_push(vec_get(t, 4), 0 - 1);
+    vec_set(t, 5, idx + 1);
+    idx
+};
+
+fn it_lo(t: i64, n: i64) -> i64 = vec_get(vec_get(t, 0), n);
+fn it_hi(t: i64, n: i64) -> i64 = vec_get(vec_get(t, 1), n);
+fn it_max(t: i64, n: i64) -> i64 = if n < 0 { 0 - 1 } else { vec_get(vec_get(t, 2), n) };
+fn it_left(t: i64, n: i64) -> i64 = vec_get(vec_get(t, 3), n);
+fn it_right(t: i64, n: i64) -> i64 = vec_get(vec_get(t, 4), n);
+fn it_set_left(t: i64, n: i64, v: i64) -> i64 = { vec_set(vec_get(t, 3), n, v); 0 };
+fn it_set_right(t: i64, n: i64, v: i64) -> i64 = { vec_set(vec_get(t, 4), n, v); 0 };
+
+fn it_max3(a: i64, b: i64, c: i64) -> i64 = {
+    let m = if a > b { a } else { b };
+    if m > c { m } else { c }
+};
+
+fn it_update_max(t: i64, n: i64) -> i64 = {
+    let hi = it_hi(t, n);
+    let lm = it_max(t, it_left(t, n));
+    let rm = it_max(t, it_right(t, n));
+    let new_max = it_max3(hi, lm, rm);
+    vec_set(vec_get(t, 2), n, new_max);
+    0
+};
+
+// Insert interval, returns new root
+fn it_insert(t: i64, node: i64, lo: i64, hi: i64) -> i64 =
+    if node < 0 { it_alloc(t, lo, hi) }
+    else {
+        let _x = if lo <= it_lo(t, node) {
+            let nl = it_insert(t, it_left(t, node), lo, hi);
+            it_set_left(t, node, nl)
+        } else {
+            let nr = it_insert(t, it_right(t, node), lo, hi);
+            it_set_right(t, node, nr)
+        };
+        let _u = it_update_max(t, node);
+        node
+    };
+
+// Check if interval [lo, hi] overlaps with any interval in tree
+fn it_overlaps(t: i64, node: i64, lo: i64, hi: i64) -> i64 =
+    if node < 0 { 0 }
+    else if it_lo(t, node) <= hi and lo <= it_hi(t, node) { 1 }
+    else if it_left(t, node) >= 0 and it_max(t, it_left(t, node)) >= lo {
+        it_overlaps(t, it_left(t, node), lo, hi)
+    } else {
+        it_overlaps(t, it_right(t, node), lo, hi)
+    };
+
+// Count overlapping intervals
+fn it_count_overlaps(t: i64, node: i64, lo: i64, hi: i64) -> i64 =
+    if node < 0 { 0 }
+    else {
+        let self_overlap = if it_lo(t, node) <= hi and lo <= it_hi(t, node) { 1 } else { 0 };
+        let left_count = if it_left(t, node) >= 0 and it_max(t, it_left(t, node)) >= lo {
+            it_count_overlaps(t, it_left(t, node), lo, hi)
+        } else { 0 };
+        let right_count = if it_right(t, node) >= 0 and it_lo(t, node) <= hi {
+            it_count_overlaps(t, it_right(t, node), lo, hi)
+        } else { 0 };
+        self_overlap + left_count + right_count
+    };
+
+// Count all nodes
+fn it_count(t: i64, n: i64) -> i64 =
+    if n < 0 { 0 }
+    else { 1 + it_count(t, it_left(t, n)) + it_count(t, it_right(t, n)) };
+
+fn main() -> i64 = {
+    let t = it_new();
+    let mut root = 0 - 1;
+
+    // Insert intervals: [15,20], [10,30], [17,19], [5,20], [12,15], [30,40]
+    set root = it_insert(t, root, 15, 20);
+    set root = it_insert(t, root, 10, 30);
+    set root = it_insert(t, root, 17, 19);
+    set root = it_insert(t, root, 5, 20);
+    set root = it_insert(t, root, 12, 15);
+    set root = it_insert(t, root, 30, 40);
+
+    // Test 1: Count
+    println(it_count(t, root));  // 6
+
+    // Test 2: Max in tree
+    println(it_max(t, root));    // 40
+
+    // Test 3: Overlap queries
+    println(it_overlaps(t, root, 14, 16));  // 1 (overlaps [15,20], [10,30], [12,15], [5,20])
+    println(it_overlaps(t, root, 21, 23));  // 1 (overlaps [10,30])
+    println(it_overlaps(t, root, 0, 4));    // 0 (no overlap)
+    println(it_overlaps(t, root, 41, 50));  // 0 (no overlap)
+    println(it_overlaps(t, root, 25, 35));  // 1 (overlaps [10,30], [30,40])
+
+    // Test 4: Point query (degenerate interval [x,x])
+    println(it_overlaps(t, root, 18, 18));  // 1 (inside [15,20], [10,30], [17,19])
+    println(it_overlaps(t, root, 50, 50));  // 0
+
+    // Test 5: Boundary cases
+    println(it_overlaps(t, root, 20, 20));  // 1 (endpoint of [15,20], [5,20], inside [10,30])
+    println(it_overlaps(t, root, 40, 40));  // 1 (endpoint of [30,40])
+
+    vec_free(vec_get(t, 0));
+    vec_free(vec_get(t, 1));
+    vec_free(vec_get(t, 2));
+    vec_free(vec_get(t, 3));
+    vec_free(vec_get(t, 4));
+    vec_free(t);
+    0
+};

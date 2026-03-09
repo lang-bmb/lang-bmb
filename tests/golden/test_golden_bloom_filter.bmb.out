@@ -1,0 +1,10 @@
+contains 10: 1
+contains 20: 1
+contains 30: 1
+contains 40: 1
+contains 50: 1
+contains 11: 0
+contains 99: 0
+contains 100: 0
+bits set: 14
+total bits: 64

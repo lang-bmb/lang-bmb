@@ -1,0 +1,131 @@
+// Golden Test: Next Permutation Algorithm
+// Find the next lexicographically greater permutation of a vec
+// Algorithm: find rightmost ascent, swap with smallest larger to right, reverse suffix
+
+fn vec_swap(v: i64, i: i64, j: i64) -> i64 = {
+    let tmp = vec_get(v, i);
+    vec_set(v, i, vec_get(v, j));
+    vec_set(v, j, tmp);
+    0
+};
+
+// Reverse v[lo..hi] inclusive
+fn vec_reverse_range(v: i64, lo: i64, hi: i64) -> i64 = {
+    let mut l = lo;
+    let mut r = hi;
+    loop {
+        if l >= r { break } else { () };
+        let _s = vec_swap(v, l, r);
+        l = l + 1;
+        r = r - 1
+    };
+    0
+};
+
+// Next permutation in-place. Returns 1 if found, 0 if already last (wraps to first)
+fn next_perm(v: i64, n: i64) -> i64 = {
+    // Step 1: find largest i such that v[i] < v[i+1]
+    let mut i = n - 2;
+    let mut found_i = 0 - 1;
+    loop {
+        if i < 0 { break } else { () };
+        if vec_get(v, i) < vec_get(v, i + 1) {
+            found_i = i;
+            break
+        } else { () };
+        i = i - 1
+    };
+    if found_i < 0 {
+        // Last permutation; reverse to get first
+        let _r = vec_reverse_range(v, 0, n - 1);
+        0
+    } else {
+        // Step 2: find largest j > i such that v[j] > v[i]
+        let mut j = n - 1;
+        loop {
+            if vec_get(v, j) > vec_get(v, found_i) { break } else { () };
+            j = j - 1
+        };
+        // Step 3: swap
+        let _s = vec_swap(v, found_i, j);
+        // Step 4: reverse from i+1 to end
+        let _r = vec_reverse_range(v, found_i + 1, n - 1);
+        1
+    }
+};
+
+// Encode vec as a single number (digits concatenated)
+fn encode_vec(v: i64, n: i64) -> i64 = {
+    let mut result = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        result = result * 10 + vec_get(v, i);
+        i = i + 1
+    };
+    result
+};
+
+fn make_vec3(a: i64, b: i64, c: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c);
+    v
+};
+
+fn main() -> i64 = {
+    // Test 1: [1,2,3] -> [1,3,2]
+    let a1 = make_vec3(1, 2, 3);
+    let _np1 = next_perm(a1, 3);
+    let _p1 = println(encode_vec(a1, 3));  // 132
+
+    // Test 2: [1,3,2] -> [2,1,3]
+    let _np2 = next_perm(a1, 3);
+    let _p2 = println(encode_vec(a1, 3));  // 213
+
+    // Test 3: [2,1,3] -> [2,3,1]
+    let _np3 = next_perm(a1, 3);
+    let _p3 = println(encode_vec(a1, 3));  // 231
+
+    // Test 4: [2,3,1] -> [3,1,2]
+    let _np4 = next_perm(a1, 3);
+    let _p4 = println(encode_vec(a1, 3));  // 312
+
+    // Test 5: [3,1,2] -> [3,2,1]
+    let _np5 = next_perm(a1, 3);
+    let _p5 = println(encode_vec(a1, 3));  // 321
+
+    // Test 6: [3,2,1] -> wraps to [1,2,3], returns 0
+    let r6 = next_perm(a1, 3);
+    let _p6 = println(r6);                 // 0
+    let _p7 = println(encode_vec(a1, 3));  // 123
+
+    // Test 7: [1,1,2] -> [1,2,1]
+    let a2 = make_vec3(1, 1, 2);
+    let _np7 = next_perm(a2, 3);
+    let _p8 = println(encode_vec(a2, 3));  // 121
+
+    // Test 8: [1,2,1] -> [2,1,1]
+    let _np8 = next_perm(a2, 3);
+    let _p9 = println(encode_vec(a2, 3));  // 211
+
+    // Test 9: 4-element: [1,2,3,4] -> [1,2,4,3]
+    let a3 = vec_new();
+    vec_push(a3, 1); vec_push(a3, 2); vec_push(a3, 3); vec_push(a3, 4);
+    let _np9 = next_perm(a3, 4);
+    let _p10 = println(encode_vec(a3, 4));  // 1243
+
+    // Test 10: Count all permutations of [1,2,3] (should cycle through 6 = 3!)
+    let a4 = make_vec3(1, 2, 3);
+    let mut count = 0;
+    let _first = next_perm(a4, 3);
+    count = count + 1;
+    loop {
+        if encode_vec(a4, 3) == 123 { break } else { () };
+        let _np = next_perm(a4, 3);
+        count = count + 1
+    };
+    let _p11 = println(count);  // 6
+
+    vec_free(a1); vec_free(a2); vec_free(a3); vec_free(a4);
+    0
+};

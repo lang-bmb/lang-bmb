@@ -1,0 +1,35 @@
+// Test: nested if/else with contracts and array access
+// Multiple levels of branching with safe checks
+
+fn classify(arr: &[i64; 5], idx: i64) -> i64
+    pre idx >= 0 and idx < 5
+= {
+    let val = arr[idx];
+    if val > 50 {
+        if val > 100 { 3 } else { 2 }
+    } else {
+        if val > 0 { 1 } else { 0 }
+    }
+};
+
+fn process_all(arr: &[i64; 5], i: i64, sum: i64) -> i64
+    pre i >= 0
+= if i >= 5 { sum }
+  else { process_all(arr, i + 1, sum + classify(arr, i)) };
+
+fn main() -> i64 = {
+    let arr: [i64; 5] = [0, 25, 75, 150, 0 - 10];
+    let result = process_all(&arr, 0, 0);
+    let _u = println(result);
+    let c0 = classify(&arr, 0);
+    let c1 = classify(&arr, 1);
+    let c2 = classify(&arr, 2);
+    let c3 = classify(&arr, 3);
+    let c4 = classify(&arr, 4);
+    let _p0 = println(c0);
+    let _p1 = println(c1);
+    let _p2 = println(c2);
+    let _p3 = println(c3);
+    let _p4 = println(c4);
+    0
+};

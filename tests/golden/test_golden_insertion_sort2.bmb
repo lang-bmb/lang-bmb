@@ -1,0 +1,114 @@
+// Golden Test: Insertion Sort with various test cases
+// Tests sorted, reversed, duplicates, single element, negatives
+
+fn insertion_sort(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { 0 };
+        let key = vec_get(v, i);
+        let mut j = i - 1;
+        loop {
+            if j < 0 { break } else { 0 };
+            if vec_get(v, j) > key {
+                let gj = vec_get(v, j);
+                vec_set(v, j + 1, gj);
+                j = j - 1
+            } else {
+                break
+            }
+        };
+        vec_set(v, j + 1, key);
+        i = i + 1
+    };
+    0
+};
+
+// Check if vec is sorted (returns 1 if sorted, 0 otherwise)
+fn is_sorted(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut i = 1;
+    let mut ok = 1;
+    loop {
+        if i >= n { break } else { 0 };
+        if vec_get(v, i - 1) > vec_get(v, i) {
+            ok = 0
+        } else { () };
+        i = i + 1
+    };
+    ok
+};
+
+fn make_vec(a: i64, b: i64, c: i64, d: i64, e: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    v
+};
+
+fn main() -> i64 = {
+    // Test 1: Random order [3, 1, 4, 1, 5]
+    let v1 = make_vec(3, 1, 4, 1, 5);
+    let _s1 = insertion_sort(v1);
+    let _p1 = println(is_sorted(v1));       // 1
+    let _p2 = println(vec_get(v1, 0));      // 1
+    let _p3 = println(vec_get(v1, 1));      // 1
+    let _p4 = println(vec_get(v1, 4));      // 5
+
+    // Test 2: Already sorted [1, 2, 3, 4, 5]
+    let v2 = make_vec(1, 2, 3, 4, 5);
+    let _s2 = insertion_sort(v2);
+    let _p5 = println(is_sorted(v2));       // 1
+    let _p6 = println(vec_get(v2, 0));      // 1
+    let _p7 = println(vec_get(v2, 4));      // 5
+
+    // Test 3: Reverse sorted [5, 4, 3, 2, 1]
+    let v3 = make_vec(5, 4, 3, 2, 1);
+    let _s3 = insertion_sort(v3);
+    let _p8 = println(is_sorted(v3));       // 1
+    let _p9 = println(vec_get(v3, 0));      // 1
+    let _p10 = println(vec_get(v3, 4));     // 5
+
+    // Test 4: All same values [7, 7, 7, 7, 7]
+    let v4 = make_vec(7, 7, 7, 7, 7);
+    let _s4 = insertion_sort(v4);
+    let _p11 = println(is_sorted(v4));      // 1
+    let _p12 = println(vec_get(v4, 0));     // 7
+    let _p13 = println(vec_get(v4, 4));     // 7
+
+    // Test 5: Negative numbers [0-3, 0-1, 0-4, 0-1, 0-5]
+    let v5 = make_vec(0-3, 0-1, 0-4, 0-1, 0-5);
+    let _s5 = insertion_sort(v5);
+    let _p14 = println(is_sorted(v5));      // 1
+    let _p15 = println(vec_get(v5, 0));     // -5
+    let _p16 = println(vec_get(v5, 2));     // -3
+    let _p17 = println(vec_get(v5, 4));     // -1
+
+    // Test 6: Single element [42]
+    let v6 = vec_new();
+    let _pp = vec_push(v6, 42);
+    let _s6 = insertion_sort(v6);
+    let _p18 = println(is_sorted(v6));      // 1
+    let _p19 = println(vec_get(v6, 0));     // 42
+
+    // Test 7: Two elements reversed [9, 2]
+    let v7 = vec_new();
+    let _pp1 = vec_push(v7, 9);
+    let _pp2 = vec_push(v7, 2);
+    let _s7 = insertion_sort(v7);
+    let _p20 = println(is_sorted(v7));      // 1
+    let _p21 = println(vec_get(v7, 0));     // 2
+    let _p22 = println(vec_get(v7, 1));     // 9
+
+    let _f1 = vec_free(v1);
+    let _f2 = vec_free(v2);
+    let _f3 = vec_free(v3);
+    let _f4 = vec_free(v4);
+    let _f5 = vec_free(v5);
+    let _f6 = vec_free(v6);
+    let _f7 = vec_free(v7);
+    0
+};

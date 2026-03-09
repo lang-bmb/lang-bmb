@@ -1,0 +1,73 @@
+// Golden Test: Tower of Hanoi move counting
+// Counts the number of moves needed for n disks
+// Classic formula: moves(n) = 2^n - 1
+
+// Recursive move count: T(n) = 2*T(n-1) + 1, T(1) = 1
+fn hanoi_moves(n: i64) -> i64 =
+    if n <= 1 { 1 }
+    else { 2 * hanoi_moves(n - 1) + 1 };
+
+// Iterative move count using the formula 2^n - 1
+fn hanoi_formula(n: i64) -> i64 = {
+    let mut power = 1;
+    for _i in 0..n {
+        set power = power * 2
+    };
+    power - 1
+};
+
+// Simulate and count moves (recursive, tracking pegs as integers)
+// pegs: 1=A, 2=B, 3=C
+// Returns number of moves performed
+fn hanoi_sim(n: i64, from: i64, to: i64, aux: i64) -> i64 =
+    if n <= 0 { 0 }
+    else {
+        let m1 = hanoi_sim(n - 1, from, aux, to);
+        // move disk n from 'from' to 'to' (1 move)
+        let m2 = hanoi_sim(n - 1, aux, to, from);
+        m1 + 1 + m2
+    };
+
+// Verify that moves(n) == 2^n - 1
+fn verify_formula(n: i64, recursive: i64, formula: i64) -> i64 =
+    if recursive == formula { 1 } else { 0 };
+
+fn main() -> i64 = {
+    let _p0 = println_str("Tower of Hanoi: move counts");
+    let _p1 = println_str("n | recursive | formula | sim | match");
+
+    for n in 1..11 {
+        let rec = hanoi_moves(n);
+        let form = hanoi_formula(n);
+        let sim = hanoi_sim(n, 1, 3, 2);
+        let ok = if rec == form {
+            if form == sim { 1 } else { 0 }
+        } else { 0 };
+
+        let _pa = print(n);
+        let _pb = print_str(" | ");
+        let _pc = print(rec);
+        let _pd = print_str(" | ");
+        let _pe = print(form);
+        let _pf = print_str(" | ");
+        let _pg = print(sim);
+        let _ph = print_str(" | ");
+        let _pi = println(ok);
+        0
+    };
+
+    // Also verify some specific values
+    let _p2 = println_str("");
+    let _p3 = println_str("Specific checks:");
+    let _p4 = print_str("hanoi(1) = ");
+    let _p5 = println(hanoi_moves(1));
+    let _p6 = print_str("hanoi(5) = ");
+    let _p7 = println(hanoi_moves(5));
+    let _p8 = print_str("hanoi(10) = ");
+    let _p9 = println(hanoi_moves(10));
+    let _pa = print_str("hanoi(15) = ");
+    let _pb = println(hanoi_moves(15));
+    let _pc = print_str("hanoi(20) = ");
+    let _pd = println(hanoi_moves(20));
+    0
+};

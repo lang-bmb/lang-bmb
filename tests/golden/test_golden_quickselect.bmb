@@ -1,0 +1,79 @@
+// Golden Test: Quickselect (Hoare selection algorithm)
+// Finds kth smallest element in O(n) average time
+
+fn qs_swap(arr: i64, i: i64, j: i64) -> () = {
+    let tmp = vec_get(arr, i);
+    vec_set(arr, i, vec_get(arr, j));
+    vec_set(arr, j, tmp)
+};
+
+fn partition(arr: i64, lo: i64, hi: i64) -> i64 = {
+    let pivot = vec_get(arr, hi);
+    let mut i = lo;
+    let mut j = lo;
+    while j < hi {
+        let _x = if vec_get(arr, j) <= pivot {
+            qs_swap(arr, i, j);
+            set i = i + 1;
+            0
+        } else { 0 };
+        set j = j + 1
+    };
+    qs_swap(arr, i, hi);
+    i
+};
+
+fn quickselect(arr: i64, lo: i64, hi: i64, k: i64) -> i64 = {
+    let mut l = lo;
+    let mut h = hi;
+    let mut result = 0;
+    let mut done = 0;
+    while done == 0 {
+        let p = partition(arr, l, h);
+        let _x = if p == k {
+            set result = vec_get(arr, p);
+            set done = 1;
+            0
+        } else if p < k {
+            set l = p + 1;
+            0
+        } else {
+            set h = p - 1;
+            0
+        }
+    };
+    result
+};
+
+fn copy_vec(src: i64, n: i64) -> i64 = {
+    let dst = vec_new();
+    let mut i = 0;
+    while i < n {
+        let _p = vec_push(dst, vec_get(src, i));
+        set i = i + 1
+    };
+    dst
+};
+
+fn main() -> () = {
+    // Array: [3, 1, 4, 1, 5, 9, 2, 6, 5, 3]
+    let arr = vec_new();
+    let _p = vec_push(arr, 3); let _p = vec_push(arr, 1);
+    let _p = vec_push(arr, 4); let _p = vec_push(arr, 1);
+    let _p = vec_push(arr, 5); let _p = vec_push(arr, 9);
+    let _p = vec_push(arr, 2); let _p = vec_push(arr, 6);
+    let _p = vec_push(arr, 5); let _p = vec_push(arr, 3);
+    let n = 10;
+
+    // sorted: [1, 1, 2, 3, 3, 4, 5, 5, 6, 9]
+    let a0 = copy_vec(arr, n);
+    print_str("k=0: "); let _r = println(quickselect(a0, 0, n - 1, 0));
+    let a1 = copy_vec(arr, n);
+    print_str("k=4: "); let _r = println(quickselect(a1, 0, n - 1, 4));
+    let a2 = copy_vec(arr, n);
+    print_str("k=5: "); let _r = println(quickselect(a2, 0, n - 1, 5));
+    let a3 = copy_vec(arr, n);
+    print_str("k=9: "); let _r = println(quickselect(a3, 0, n - 1, 9));
+    let a4 = copy_vec(arr, n);
+    print_str("k=1: "); let _r = println(quickselect(a4, 0, n - 1, 1))
+};

@@ -1,0 +1,205 @@
+// Golden Test: Square root decomposition for range min/max queries
+// Block-based preprocessing for O(sqrt(n)) range queries
+
+// Integer square root (floor)
+fn isqrt(n: i64) -> i64 = {
+    let mut r = 1;
+    loop {
+        if r * r > n { break } else { () };
+        r = r + 1
+    };
+    r - 1
+    };
+
+// Build block minimums: block_min[b] = min of block b
+fn build_block_min(arr: i64, block_min: i64, n: i64, block_sz: i64) -> i64 = {
+    let num_blocks = (n + block_sz - 1) / block_sz;
+    for b in 0..num_blocks {
+        let start = b * block_sz;
+        let mut end = start + block_sz;
+        let _clamp = if end > n { end = n; 0 } else { 0 };
+        let mut mn = vec_get(arr, start);
+        let mut i = start + 1;
+        loop {
+            if i >= end { break } else { () };
+            let v = vec_get(arr, i);
+            let _u = if v < mn { mn = v; 0 } else { 0 };
+            i = i + 1
+        };
+        let _s = vec_set(block_min, b, mn);
+        0
+    };
+    0
+    };
+
+// Build block maximums: block_max[b] = max of block b
+fn build_block_max(arr: i64, block_max: i64, n: i64, block_sz: i64) -> i64 = {
+    let num_blocks = (n + block_sz - 1) / block_sz;
+    for b in 0..num_blocks {
+        let start = b * block_sz;
+        let mut end = start + block_sz;
+        let _clamp = if end > n { end = n; 0 } else { 0 };
+        let mut mx = vec_get(arr, start);
+        let mut i = start + 1;
+        loop {
+            if i >= end { break } else { () };
+            let v = vec_get(arr, i);
+            let _u = if v > mx { mx = v; 0 } else { 0 };
+            i = i + 1
+        };
+        let _s = vec_set(block_max, b, mx);
+        0
+    };
+    0
+    };
+
+// Range minimum query [l, r) using sqrt decomposition
+fn query_min(arr: i64, block_min: i64, l: i64, r: i64, block_sz: i64) -> i64 = {
+    let mut result = vec_get(arr, l);
+    let mut i = l;
+    loop {
+        if i >= r { break } else { () };
+        // Check if we can process a full block
+        let block_start = (i / block_sz) * block_sz;
+        let block_end = block_start + block_sz;
+        if i == block_start and block_end <= r {
+            // Use precomputed block min
+            let bm = vec_get(block_min, i / block_sz);
+            let _u = if bm < result { result = bm; 0 } else { 0 };
+            i = block_end
+        } else {
+            // Process individual element
+            let v = vec_get(arr, i);
+            let _u = if v < result { result = v; 0 } else { 0 };
+            i = i + 1
+        }
+    };
+    result
+    };
+
+// Range maximum query [l, r) using sqrt decomposition
+fn query_max(arr: i64, block_max: i64, l: i64, r: i64, block_sz: i64) -> i64 = {
+    let mut result = vec_get(arr, l);
+    let mut i = l;
+    loop {
+        if i >= r { break } else { () };
+        let block_start = (i / block_sz) * block_sz;
+        let block_end = block_start + block_sz;
+        if i == block_start and block_end <= r {
+            let bm = vec_get(block_max, i / block_sz);
+            let _u = if bm > result { result = bm; 0 } else { 0 };
+            i = block_end
+        } else {
+            let v = vec_get(arr, i);
+            let _u = if v > result { result = v; 0 } else { 0 };
+            i = i + 1
+        }
+    };
+    result
+    };
+
+// Range sum query [l, r) using sqrt decomposition with block sums
+fn build_block_sum(arr: i64, block_sum: i64, n: i64, block_sz: i64) -> i64 = {
+    let num_blocks = (n + block_sz - 1) / block_sz;
+    for b in 0..num_blocks {
+        let start = b * block_sz;
+        let mut end = start + block_sz;
+        let _clamp = if end > n { end = n; 0 } else { 0 };
+        let mut s = 0;
+        let mut i = start;
+        loop {
+            if i >= end { break } else { () };
+            s = s + vec_get(arr, i);
+            i = i + 1
+        };
+        let _st = vec_set(block_sum, b, s);
+        0
+    };
+    0
+    };
+
+fn query_sum(arr: i64, block_sum: i64, l: i64, r: i64, block_sz: i64) -> i64 = {
+    let mut result = 0;
+    let mut i = l;
+    loop {
+        if i >= r { break } else { () };
+        let block_start = (i / block_sz) * block_sz;
+        let block_end = block_start + block_sz;
+        if i == block_start and block_end <= r {
+            result = result + vec_get(block_sum, i / block_sz);
+            i = block_end
+        } else {
+            result = result + vec_get(arr, i);
+            i = i + 1
+        }
+    };
+    result
+    };
+
+fn main() -> i64 = {
+    // Array: [3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5, 8, 9, 7, 9, 3]
+    let n = 16;
+    let arr = vec_new();
+    let _p0 = vec_push(arr, 3); let _p1 = vec_push(arr, 1);
+    let _p2 = vec_push(arr, 4); let _p3 = vec_push(arr, 1);
+    let _p4 = vec_push(arr, 5); let _p5 = vec_push(arr, 9);
+    let _p6 = vec_push(arr, 2); let _p7 = vec_push(arr, 6);
+    let _p8 = vec_push(arr, 5); let _p9 = vec_push(arr, 3);
+    let _pa = vec_push(arr, 5); let _pb = vec_push(arr, 8);
+    let _pc = vec_push(arr, 9); let _pd = vec_push(arr, 7);
+    let _pe = vec_push(arr, 9); let _pf = vec_push(arr, 3);
+
+    let block_sz = isqrt(n);
+    let _t1 = println(block_sz);  // 4 (sqrt(16) = 4)
+
+    let num_blocks = (n + block_sz - 1) / block_sz;
+
+    // Build block structures
+    let bmin = vec_new();
+    let bmax = vec_new();
+    let bsum = vec_new();
+    for _i in 0..num_blocks {
+        let _a = vec_push(bmin, 0);
+        let _b = vec_push(bmax, 0);
+        let _c = vec_push(bsum, 0);
+        0
+    };
+    let _bm1 = build_block_min(arr, bmin, n, block_sz);
+    let _bm2 = build_block_max(arr, bmax, n, block_sz);
+    let _bm3 = build_block_sum(arr, bsum, n, block_sz);
+
+    // Block mins: [1, 2, 3, 3]
+    let _t2 = println(vec_get(bmin, 0));  // 1 (min of [3,1,4,1])
+    let _t3 = println(vec_get(bmin, 1));  // 2 (min of [5,9,2,6])
+
+    // Block maxs: [4, 9, 8, 9]
+    let _t4 = println(vec_get(bmax, 0));  // 4 (max of [3,1,4,1])
+    let _t5 = println(vec_get(bmax, 1));  // 9 (max of [5,9,2,6])
+
+    // Range min queries
+    let _t6 = println(query_min(arr, bmin, 0, 16, block_sz));  // 1 (entire array)
+    let _t7 = println(query_min(arr, bmin, 4, 8, block_sz));   // 2 (subarray [5,9,2,6])
+    let _t8 = println(query_min(arr, bmin, 2, 6, block_sz));   // 1 (subarray [4,1,5,9])
+    let _t9 = println(query_min(arr, bmin, 10, 14, block_sz)); // 5 (subarray [5,8,9,7])
+
+    // Range max queries
+    let _ta = println(query_max(arr, bmax, 0, 16, block_sz));  // 9 (entire array)
+    let _tb = println(query_max(arr, bmax, 0, 4, block_sz));   // 4 (first block [3,1,4,1])
+    let _tc = println(query_max(arr, bmax, 8, 12, block_sz));  // 8 (subarray [5,3,5,8])
+
+    // Range sum queries
+    let _td = println(query_sum(arr, bsum, 0, 16, block_sz));  // 80 (total sum)
+    let _te = println(query_sum(arr, bsum, 0, 4, block_sz));   // 9 (3+1+4+1)
+    let _tf = println(query_sum(arr, bsum, 4, 8, block_sz));   // 22 (5+9+2+6)
+    let _tg = println(query_sum(arr, bsum, 2, 10, block_sz));  // 35 (4+1+5+9+2+6+5+3)
+
+    // Edge: single element query
+    let _th = println(query_min(arr, bmin, 5, 6, block_sz));   // 9 (just element at index 5)
+    let _ti = println(query_sum(arr, bsum, 5, 6, block_sz));   // 9
+
+    let _f1 = vec_free(arr);
+    let _f2 = vec_free(bmin);
+    let _f3 = vec_free(bmax);
+    let _f4 = vec_free(bsum);
+    0
+    };

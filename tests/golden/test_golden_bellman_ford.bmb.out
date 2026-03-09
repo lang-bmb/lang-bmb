@@ -1,0 +1,3 @@
+dist: 0 2 7 4 -2
+neg_cycle=0
+dist2: 0 3 2

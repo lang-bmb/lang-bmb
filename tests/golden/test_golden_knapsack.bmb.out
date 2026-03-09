@@ -1,0 +1,14 @@
+=== Test 1: 4 items, cap=10 ===
+max value: 13
+=== Test 2: 4 items, cap=7 ===
+max value: 21
+=== Test 3: single item fits ===
+max value: 10
+=== Test 4: single item too heavy ===
+max value: 0
+=== Test 5: all items fit ===
+max value: 60
+=== Test 6: textbook ===
+max value: 22
+=== Test 7: zero capacity ===
+max value: 0

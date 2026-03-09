@@ -1,0 +1,232 @@
+// Golden Test: Longest Increasing Subsequence with binary search O(n log n)
+// Uses patience sorting approach with tails array
+
+// Binary search: find leftmost position in tails[0..len) where tails[pos] >= val
+fn lower_bound_lis(tails: i64, len: i64, val: i64) -> i64 = {
+    let mut lo = 0;
+    let mut hi = len;
+    loop {
+        if lo >= hi { break } else { () };
+        let mid = lo + (hi - lo) / 2;
+        if vec_get(tails, mid) < val {
+            lo = mid + 1
+        } else {
+            hi = mid
+        }
+    };
+    lo
+    };
+
+// Upper bound: find leftmost position where tails[pos] > val
+fn upper_bound_lis(tails: i64, len: i64, val: i64) -> i64 = {
+    let mut lo = 0;
+    let mut hi = len;
+    loop {
+        if lo >= hi { break } else { () };
+        let mid = lo + (hi - lo) / 2;
+        if vec_get(tails, mid) <= val {
+            lo = mid + 1
+        } else {
+            hi = mid
+        }
+    };
+    lo
+    };
+
+// Longest Increasing Subsequence length using O(n log n) algorithm
+fn lis_length(arr: i64, n: i64) -> i64 = {
+    let tails = vec_new();
+    let mut len = 0;
+    for i in 0..n {
+        let val = vec_get(arr, i);
+        let pos = lower_bound_lis(tails, len, val);
+        if pos == len {
+            let _p = vec_push(tails, val);
+            len = len + 1;
+            ()
+        } else {
+            let _s = vec_set(tails, pos, val);
+            ()
+        }
+    };
+    let _f = vec_free(tails);
+    len
+    };
+
+// Longest Non-Decreasing Subsequence (allows equal elements)
+fn lnds_length(arr: i64, n: i64) -> i64 = {
+    let tails = vec_new();
+    let mut len = 0;
+    for i in 0..n {
+        let val = vec_get(arr, i);
+        let pos = upper_bound_lis(tails, len, val);
+        if pos == len {
+            let _p = vec_push(tails, val);
+            len = len + 1;
+            ()
+        } else {
+            let _s = vec_set(tails, pos, val);
+            ()
+        }
+    };
+    let _f = vec_free(tails);
+    len
+    };
+
+// Longest Decreasing Subsequence = LIS of reversed array
+fn lds_length(arr: i64, n: i64) -> i64 = {
+    let rev = vec_new();
+    let mut i = n - 1;
+    loop {
+        if i < 0 { break } else { () };
+        let _p = vec_push(rev, vec_get(arr, i));
+        i = i - 1;
+        ()
+    };
+    let result = lis_length(rev, n);
+    let _f = vec_free(rev);
+    result
+    };
+
+// Find position in pos_arr where value == k, searching from start downward
+fn find_pos(pos_arr: i64, k: i64, start: i64) -> i64 = {
+    let mut i = start;
+    let mut result = 0;
+    loop {
+        if i < 0 { break } else { () };
+        if vec_get(pos_arr, i) == k {
+            result = i;
+            break
+        } else {
+            i = i - 1;
+            ()
+        }
+    };
+    result
+    };
+
+// Reconstruct one LIS
+fn lis_reconstruct(arr: i64, n: i64, out: i64) -> i64 = {
+    let tails = vec_new();
+    let pos_arr = vec_new();
+    let mut len = 0;
+    for i in 0..n {
+        let val = vec_get(arr, i);
+        let pos = lower_bound_lis(tails, len, val);
+        if pos == len {
+            let _p = vec_push(tails, val);
+            len = len + 1;
+            ()
+        } else {
+            let _s = vec_set(tails, pos, val);
+            ()
+        };
+        let _pp = vec_push(pos_arr, pos);
+        ()
+    };
+    let mut k = len - 1;
+    let mut idx = n - 1;
+    loop {
+        if k < 0 { break } else { () };
+        let p = find_pos(pos_arr, k, idx);
+        let _s = vec_set(out, k, vec_get(arr, p));
+        idx = p - 1;
+        k = k - 1;
+        ()
+    };
+    let _f1 = vec_free(tails);
+    let _f2 = vec_free(pos_arr);
+    len
+    };
+
+fn main() -> i64 = {
+    // Test 1: Classic LIS - [10, 9, 2, 5, 3, 7, 101, 18]
+    let a1 = vec_new();
+    let _q1 = vec_push(a1, 10); let _q2 = vec_push(a1, 9);
+    let _q3 = vec_push(a1, 2);  let _q4 = vec_push(a1, 5);
+    let _q5 = vec_push(a1, 3);  let _q6 = vec_push(a1, 7);
+    let _q7 = vec_push(a1, 101); let _q8 = vec_push(a1, 18);
+    let _p1 = println(lis_length(a1, 8));  // 4 (e.g., [2, 3, 7, 18])
+
+    // Test 2: Already sorted - [1, 2, 3, 4, 5]
+    let a2 = vec_new();
+    let _r1 = vec_push(a2, 1); let _r2 = vec_push(a2, 2);
+    let _r3 = vec_push(a2, 3); let _r4 = vec_push(a2, 4);
+    let _r5 = vec_push(a2, 5);
+    let _p2 = println(lis_length(a2, 5));  // 5 (entire array)
+
+    // Test 3: Reverse sorted - [5, 4, 3, 2, 1]
+    let a3 = vec_new();
+    let _s1 = vec_push(a3, 5); let _s2 = vec_push(a3, 4);
+    let _s3 = vec_push(a3, 3); let _s4 = vec_push(a3, 2);
+    let _s5 = vec_push(a3, 1);
+    let _p3 = println(lis_length(a3, 5));  // 1 (any single element)
+
+    // Test 4: All equal - [7, 7, 7, 7]
+    let a4 = vec_new();
+    let _t1 = vec_push(a4, 7); let _t2 = vec_push(a4, 7);
+    let _t3 = vec_push(a4, 7); let _t4 = vec_push(a4, 7);
+    let _p4 = println(lis_length(a4, 4));  // 1 (strictly increasing)
+
+    // Test 5: Non-decreasing subsequence with equal elements
+    let _p5 = println(lnds_length(a4, 4));  // 4 (allows equal)
+
+    // Test 6: Single element
+    let a5 = vec_new();
+    let _u1 = vec_push(a5, 42);
+    let _p6 = println(lis_length(a5, 1));  // 1
+
+    // Test 7: Two elements increasing
+    let a6 = vec_new();
+    let _v1 = vec_push(a6, 3); let _v2 = vec_push(a6, 8);
+    let _p7 = println(lis_length(a6, 2));  // 2
+
+    // Test 8: Two elements decreasing
+    let a7 = vec_new();
+    let _w1 = vec_push(a7, 8); let _w2 = vec_push(a7, 3);
+    let _p8 = println(lis_length(a7, 2));  // 1
+
+    // Test 9: Longest Decreasing Subsequence
+    let _p9 = println(lds_length(a1, 8));  // 4 (e.g., [10, 9, 5, 3])
+
+    // Test 10: LDS on descending array
+    let _p10 = println(lds_length(a3, 5));  // 5 (entire array is decreasing)
+
+    // Test 11: LNDS on [1, 3, 3, 5, 4, 5]
+    let a8 = vec_new();
+    let _x1 = vec_push(a8, 1); let _x2 = vec_push(a8, 3);
+    let _x3 = vec_push(a8, 3); let _x4 = vec_push(a8, 5);
+    let _x5 = vec_push(a8, 4); let _x6 = vec_push(a8, 5);
+    let _p11 = println(lnds_length(a8, 6));  // 5 (e.g., [1, 3, 3, 4, 5])
+
+    // Test 12: LIS on [0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15]
+    let a9 = vec_new();
+    let _y0 = vec_push(a9, 0);  let _y1 = vec_push(a9, 8);
+    let _y2 = vec_push(a9, 4);  let _y3 = vec_push(a9, 12);
+    let _y4 = vec_push(a9, 2);  let _y5 = vec_push(a9, 10);
+    let _y6 = vec_push(a9, 6);  let _y7 = vec_push(a9, 14);
+    let _y8 = vec_push(a9, 1);  let _y9 = vec_push(a9, 9);
+    let _ya = vec_push(a9, 5);  let _yb = vec_push(a9, 13);
+    let _yc = vec_push(a9, 3);  let _yd = vec_push(a9, 11);
+    let _ye = vec_push(a9, 7);  let _yf = vec_push(a9, 15);
+    let _p12 = println(lis_length(a9, 16));  // 6
+
+    // Test 13: Reconstruct LIS
+    let out = vec_new();
+    for _i in 0..6 {
+        let _z = vec_push(out, 0);
+        ()
+    };
+    let rlen = lis_reconstruct(a9, 16, out);
+    let _p13 = println(rlen);  // 6
+    // First and last elements of reconstructed LIS
+    let _p14 = println(vec_get(out, 0));          // 0 (starts with 0)
+    let _p15 = println(vec_get(out, rlen - 1));   // 15 (ends with 15)
+
+    let _f1 = vec_free(a1); let _f2 = vec_free(a2);
+    let _f3 = vec_free(a3); let _f4 = vec_free(a4);
+    let _f5 = vec_free(a5); let _f6 = vec_free(a6);
+    let _f7 = vec_free(a7); let _f8 = vec_free(a8);
+    let _f9 = vec_free(a9); let _f10 = vec_free(out);
+    0
+    };

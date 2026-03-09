@@ -1,0 +1,151 @@
+// Golden Test: Elevator state machine simulation
+// Elevator with floor tracking, direction, and request queue
+
+// Elevator state: vec [current_floor, direction, doors_open, trips_completed]
+// direction: 0=idle, 1=up, 2=down
+// doors_open: 0=closed, 1=open
+fn elev_new(start_floor: i64) -> i64 = {
+    let v = vec_new();
+    let _f = vec_push(v, start_floor);
+    let _d = vec_push(v, 0);   // idle
+    let _o = vec_push(v, 0);   // doors closed
+    let _t = vec_push(v, 0);   // trips completed
+    v
+};
+
+fn elev_floor(e: i64) -> i64 = vec_get(e, 0);
+fn elev_dir(e: i64) -> i64 = vec_get(e, 1);
+fn elev_doors(e: i64) -> i64 = vec_get(e, 2);
+fn elev_trips(e: i64) -> i64 = vec_get(e, 3);
+
+// Move elevator one floor in current direction
+fn elev_move(e: i64) -> i64 = {
+    let dir = elev_dir(e);
+    let floor = elev_floor(e);
+    let new_floor = if dir == 1 { floor + 1 }
+        else if dir == 2 { floor - 1 }
+        else { floor };
+    let _sf = vec_set(e, 0, new_floor);
+    new_floor
+};
+
+// Open doors and increment trip counter
+fn elev_open_doors(e: i64) -> i64 = {
+    let _s1 = vec_set(e, 2, 1);
+    let _s2 = vec_set(e, 3, elev_trips(e) + 1);
+    0
+};
+
+fn elev_close_doors(e: i64) -> i64 = {
+    let _s = vec_set(e, 2, 0);
+    0
+};
+
+fn elev_set_dir(e: i64, dir: i64) -> i64 = {
+    let _s = vec_set(e, 1, dir);
+    0
+};
+
+// Go to target floor: set direction, move step by step, open doors at arrival
+// Returns number of steps taken
+fn elev_goto(e: i64, target: i64) -> i64 = {
+    let floor = elev_floor(e);
+    let _cd = elev_close_doors(e);
+    let _sd = if target > floor { elev_set_dir(e, 1) }
+        else if target < floor { elev_set_dir(e, 2) }
+        else { elev_set_dir(e, 0) };
+    let mut steps = 0;
+    loop {
+        if elev_floor(e) == target { break } else { () };
+        let _m = elev_move(e);
+        steps = steps + 1
+    };
+    let _o = elev_open_doors(e);
+    let _i = elev_set_dir(e, 0);
+    steps
+};
+
+// Process a request queue: vec of target floors
+// Returns total steps
+fn process_requests(e: i64, requests: i64) -> i64 = {
+    let n = vec_len(requests);
+    let mut total_steps = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let target = vec_get(requests, i);
+        total_steps = total_steps + elev_goto(e, target);
+        i = i + 1
+    };
+    total_steps
+};
+
+// Calculate total distance traveled for a sequence of floors
+fn total_distance(floors: i64) -> i64 = {
+    let n = vec_len(floors);
+    let mut dist = 0;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let d = vec_get(floors, i) - vec_get(floors, i - 1);
+        let abs_d = if d < 0 { 0 - d } else { d };
+        dist = dist + abs_d;
+        i = i + 1
+    };
+    dist
+};
+
+fn main() -> i64 = {
+    // Create elevator at floor 1
+    let e = elev_new(1);
+    let _p1 = println(elev_floor(e));       // 1
+    let _p2 = println(elev_dir(e));         // 0 (idle)
+    let _p3 = println(elev_doors(e));       // 0 (closed)
+
+    // Go to floor 5
+    let s1 = elev_goto(e, 5);
+    let _p4 = println(s1);                  // 4 (moved 4 floors)
+    let _p5 = println(elev_floor(e));       // 5
+    let _p6 = println(elev_doors(e));       // 1 (open)
+    let _p7 = println(elev_trips(e));       // 1
+
+    // Go to floor 2
+    let s2 = elev_goto(e, 2);
+    let _p8 = println(s2);                  // 3 (moved 3 floors)
+    let _p9 = println(elev_floor(e));       // 2
+    let _p10 = println(elev_trips(e));      // 2
+
+    // Go to same floor (0 steps)
+    let s3 = elev_goto(e, 2);
+    let _p11 = println(s3);                 // 0
+    let _p12 = println(elev_trips(e));      // 3
+
+    // Process request queue: [10, 1, 7, 3]
+    let reqs = vec_new();
+    let _r1 = vec_push(reqs, 10);
+    let _r2 = vec_push(reqs, 1);
+    let _r3 = vec_push(reqs, 7);
+    let _r4 = vec_push(reqs, 3);
+
+    let e2 = elev_new(1);
+    let total = process_requests(e2, reqs);
+    // 1->10: 9, 10->1: 9, 1->7: 6, 7->3: 4 = 28
+    let _p13 = println(total);              // 28
+    let _p14 = println(elev_trips(e2));     // 4
+    let _p15 = println(elev_floor(e2));     // 3
+
+    // Total distance calculation
+    let floors = vec_new();
+    let _f1 = vec_push(floors, 1);
+    let _f2 = vec_push(floors, 5);
+    let _f3 = vec_push(floors, 2);
+    let _f4 = vec_push(floors, 8);
+    // |5-1| + |2-5| + |8-2| = 4 + 3 + 6 = 13
+    let _p16 = println(total_distance(floors));  // 13
+
+    let _vf1 = vec_free(e);
+    let _vf2 = vec_free(e2);
+    let _vf3 = vec_free(reqs);
+    let _vf4 = vec_free(floors);
+    0
+};

@@ -1,0 +1,163 @@
+// Golden test: Trie-like counting structure for digit sequences
+// Flat array trie: each node = 11 slots [count, child0, child1, ..., child9]
+// child values: 0 = no child, >0 = index of child node in the flat array
+// Node at index i: count at i*11, child[d] at i*11+1+d
+
+// Node size constant
+fn node_size() -> i64 = 11;
+
+// Get count at node
+fn trie_count(trie: i64, node: i64) -> i64 =
+    vec_get(trie, node * 11);
+
+// Set count at node (returns 0, vec_set returns unit)
+fn trie_set_count(trie: i64, node: i64, val: i64) -> i64 = {
+    let _s = vec_set(trie, node * 11, val);
+    0
+    };
+
+// Get child index for digit d at node (0 means no child)
+fn trie_child(trie: i64, node: i64, d: i64) -> i64 =
+    vec_get(trie, node * 11 + 1 + d);
+
+// Set child index for digit d at node (returns 0, vec_set returns unit)
+fn trie_set_child(trie: i64, node: i64, d: i64, child_node: i64) -> i64 = {
+    let _s = vec_set(trie, node * 11 + 1 + d, child_node);
+    0
+    };
+
+// Allocate a new node (append 11 zeros), return node index
+// next_id is the current number of nodes
+fn trie_alloc(trie: i64, next_id: i64) -> i64 = {
+    let mut ai = 0;
+    loop {
+        if ai >= 11 { break } else { 0 };
+        vec_push(trie, 0);
+        ai = ai + 1
+    };
+    next_id
+    };
+
+// Insert a digit sequence (stored as vec of digits) into trie
+// Increments count at each node along the path
+fn trie_insert_rec(trie: i64, seq: i64, seq_idx: i64, seq_len: i64, node: i64, next_id: i64) -> i64 =
+    if seq_idx >= seq_len { next_id }
+    else {
+        let d = vec_get(seq, seq_idx);
+        let child = trie_child(trie, node, d);
+        let actual_child = if child == 0 {
+            // Allocate new child
+            let new_id = trie_alloc(trie, next_id);
+            let _sc = trie_set_child(trie, node, d, new_id);
+            new_id
+        } else { child };
+        let new_next = if child == 0 { next_id + 1 } else { next_id };
+        // Increment count at child
+        let _ic = trie_set_count(trie, actual_child, trie_count(trie, actual_child) + 1);
+        trie_insert_rec(trie, seq, seq_idx + 1, seq_len, actual_child, new_next)
+    };
+
+// Insert a sequence, returns updated next_id
+fn trie_insert(trie: i64, seq: i64, next_id: i64) -> i64 =
+    trie_insert_rec(trie, seq, 0, vec_len(seq), 0, next_id);
+
+// Query: count sequences with given prefix
+// Navigate trie along prefix digits, return count at final node (0 if path doesn't exist)
+fn trie_prefix_count_rec(trie: i64, prefix: i64, idx: i64, plen: i64, node: i64) -> i64 =
+    if idx >= plen { trie_count(trie, node) }
+    else {
+        let d = vec_get(prefix, idx);
+        let child = trie_child(trie, node, d);
+        if child == 0 { 0 }
+        else { trie_prefix_count_rec(trie, prefix, idx + 1, plen, child) }
+    };
+
+fn trie_prefix_count(trie: i64, prefix: i64) -> i64 =
+    trie_prefix_count_rec(trie, prefix, 0, vec_len(prefix), 0);
+
+// Helper to create small vecs
+fn make_seq3(a: i64, b: i64, c: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c);
+    v
+    };
+
+fn make_seq2(a: i64, b: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b);
+    v
+    };
+
+fn make_seq1(a: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a);
+    v
+    };
+
+fn main() -> i64 = {
+    // Create trie with root node (node 0)
+    let trie = vec_new();
+    let _root = trie_alloc(trie, 0);  // node 0 = root
+    let nid0 = 1;  // next available node id
+
+    // Insert "123" (digits 1,2,3)
+    let s1 = make_seq3(1, 2, 3);
+    let nid1 = trie_insert(trie, s1, nid0);
+
+    // Insert "124" (digits 1,2,4)
+    let s2 = make_seq3(1, 2, 4);
+    let nid2 = trie_insert(trie, s2, nid1);
+
+    // Insert "132" (digits 1,3,2)
+    let s3 = make_seq3(1, 3, 2);
+    let nid3 = trie_insert(trie, s3, nid2);
+
+    // Insert "245" (digits 2,4,5)
+    let s4 = make_seq3(2, 4, 5);
+    let nid4 = trie_insert(trie, s4, nid3);
+
+    // Query prefix "12" -> should match "123" and "124" = 2
+    let p1 = make_seq2(1, 2);
+    let _o1 = println(trie_prefix_count(trie, p1));  // 2
+
+    // Query prefix "1" -> should match "123", "124", "132" = 3
+    let p2 = make_seq1(1);
+    let _o2 = println(trie_prefix_count(trie, p2));  // 3
+
+    // Query prefix "13" -> should match "132" = 1
+    let p3 = make_seq2(1, 3);
+    let _o3 = println(trie_prefix_count(trie, p3));  // 1
+
+    // Query prefix "2" -> should match "245" = 1
+    let p4 = make_seq1(2);
+    let _o4 = println(trie_prefix_count(trie, p4));  // 1
+
+    // Query prefix "24" -> should match "245" = 1
+    let p5 = make_seq2(2, 4);
+    let _o5 = println(trie_prefix_count(trie, p5));  // 1
+
+    // Query prefix "3" -> no sequences start with 3 = 0
+    let p6 = make_seq1(3);
+    let _o6 = println(trie_prefix_count(trie, p6));  // 0
+
+    // Insert another "123"
+    let s5 = make_seq3(1, 2, 3);
+    let _nid5 = trie_insert(trie, s5, nid4);
+
+    // Query prefix "12" -> now "123"(x2) + "124" = 3
+    let p7 = make_seq2(1, 2);
+    let _o7 = println(trie_prefix_count(trie, p7));  // 3
+
+    // Query full path "123" -> 2 occurrences
+    let p8 = make_seq3(1, 2, 3);
+    let _o8 = println(trie_prefix_count(trie, p8));  // 2
+
+    // Total number of nodes allocated
+    let _o9 = println(nid4);  // number of nodes before last insert
+
+    vec_free(trie);
+    vec_free(s1); vec_free(s2); vec_free(s3); vec_free(s4); vec_free(s5);
+    vec_free(p1); vec_free(p2); vec_free(p3); vec_free(p4);
+    vec_free(p5); vec_free(p6); vec_free(p7); vec_free(p8);
+    0
+    };

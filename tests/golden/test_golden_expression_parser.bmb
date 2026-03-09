@@ -1,0 +1,204 @@
+// Golden Test: Recursive descent expression parser for simple arithmetic
+// Parses integer expressions with +, -, *, /, parentheses
+// Input is encoded as a vec of tokens: numbers as positive values,
+// operators as negative codes: -1='+', -2='-', -3='*', -4='/', -5='(', -6=')', -7=EOF
+
+fn tok_plus() -> i64 = 0 - 1;
+fn tok_minus() -> i64 = 0 - 2;
+fn tok_star() -> i64 = 0 - 3;
+fn tok_slash() -> i64 = 0 - 4;
+fn tok_lparen() -> i64 = 0 - 5;
+fn tok_rparen() -> i64 = 0 - 6;
+fn tok_eof() -> i64 = 0 - 7;
+
+// Parser state: tokens vec and position stored in a 2-element vec [tokens, pos]
+fn ps_new(tokens: i64) -> i64 = {
+    let ps = vec_new();
+    vec_push(ps, tokens);
+    vec_push(ps, 0);
+    ps
+};
+
+fn ps_peek(ps: i64) -> i64 = {
+    let tokens = vec_get(ps, 0);
+    let pos = vec_get(ps, 1);
+    if pos >= vec_len(tokens) { tok_eof() }
+    else { vec_get(tokens, pos) }
+};
+
+fn ps_advance(ps: i64) -> i64 = {
+    let pos = vec_get(ps, 1);
+    let _s = vec_set(ps, 1, pos + 1);
+    0
+};
+
+// Grammar:
+//   expr   = term (('+' | '-') term)*
+//   term   = factor (('*' | '/') factor)*
+//   factor = NUMBER | '(' expr ')'
+
+// Parse a factor: number or parenthesized expression
+fn parse_factor(ps: i64) -> i64 = {
+    let tok = ps_peek(ps);
+    if tok == tok_lparen() {
+        let _a = ps_advance(ps);
+        let result = parse_expr(ps);
+        let _a2 = ps_advance(ps);  // consume ')'
+        result
+    } else if tok == tok_minus() {
+        // Unary minus: treat as 0 - factor
+        let _a = ps_advance(ps);
+        0 - parse_factor(ps)
+    } else {
+        // It's a number (non-negative)
+        let _a = ps_advance(ps);
+        tok
+    }
+};
+
+// Parse a term: factor (('*' | '/') factor)*
+fn parse_term(ps: i64) -> i64 = {
+    let mut result = parse_factor(ps);
+    loop {
+        let tok = ps_peek(ps);
+        if tok == tok_star() {
+            let _a = ps_advance(ps);
+            let right = parse_factor(ps);
+            result = result * right
+        } else if tok == tok_slash() {
+            let _a = ps_advance(ps);
+            let right = parse_factor(ps);
+            result = result / right
+        } else {
+            break
+        }
+    };
+    result
+};
+
+// Parse an expression: term (('+' | '-') term)*
+fn parse_expr(ps: i64) -> i64 = {
+    let mut result = parse_term(ps);
+    loop {
+        let tok = ps_peek(ps);
+        if tok == tok_plus() {
+            let _a = ps_advance(ps);
+            let right = parse_term(ps);
+            result = result + right
+        } else if tok == tok_minus() {
+            let _a = ps_advance(ps);
+            let right = parse_term(ps);
+            result = result - right
+        } else {
+            break
+        }
+    };
+    result
+};
+
+// Evaluate a token sequence
+fn evaluate(tokens: i64) -> i64 = {
+    let ps = ps_new(tokens);
+    let result = parse_expr(ps);
+    let _f = vec_free(ps);
+    result
+};
+
+// Helper to build token vecs
+fn make_tokens3(a: i64, b: i64, c: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c);
+    v
+};
+
+fn make_tokens5(a: i64, b: i64, c: i64, d: i64, e: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c);
+    vec_push(v, d); vec_push(v, e);
+    v
+};
+
+fn make_tokens7(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c);
+    vec_push(v, d); vec_push(v, e); vec_push(v, f); vec_push(v, g);
+    v
+};
+
+fn main() -> i64 = {
+    // Test 1: Simple number: 42
+    let t1 = vec_new();
+    vec_push(t1, 42);
+    let _p1 = println(evaluate(t1));  // 42
+
+    // Test 2: Addition: 3 + 5
+    let t2 = make_tokens3(3, tok_plus(), 5);
+    let _p2 = println(evaluate(t2));  // 8
+
+    // Test 3: Subtraction: 10 - 3
+    let t3 = make_tokens3(10, tok_minus(), 3);
+    let _p3 = println(evaluate(t3));  // 7
+
+    // Test 4: Multiplication: 6 * 7
+    let t4 = make_tokens3(6, tok_star(), 7);
+    let _p4 = println(evaluate(t4));  // 42
+
+    // Test 5: Division: 100 / 4
+    let t5 = make_tokens3(100, tok_slash(), 4);
+    let _p5 = println(evaluate(t5));  // 25
+
+    // Test 6: Precedence: 2 + 3 * 4 = 14 (not 20)
+    let t6 = make_tokens5(2, tok_plus(), 3, tok_star(), 4);
+    let _p6 = println(evaluate(t6));  // 14
+
+    // Test 7: Left-to-right: 10 - 3 - 2 = 5
+    let t7 = make_tokens5(10, tok_minus(), 3, tok_minus(), 2);
+    let _p7 = println(evaluate(t7));  // 5
+
+    // Test 8: Parenthesized: (2 + 3) * 4 = 20
+    let t8 = make_tokens7(tok_lparen(), 2, tok_plus(), 3, tok_rparen(), tok_star(), 4);
+    let _p8 = println(evaluate(t8));  // 20
+
+    // Test 9: Nested parens: (10 - (3 + 2)) * 2 = 10
+    let t9 = vec_new();
+    vec_push(t9, tok_lparen()); vec_push(t9, 10); vec_push(t9, tok_minus());
+    vec_push(t9, tok_lparen()); vec_push(t9, 3); vec_push(t9, tok_plus());
+    vec_push(t9, 2); vec_push(t9, tok_rparen()); vec_push(t9, tok_rparen());
+    vec_push(t9, tok_star()); vec_push(t9, 2);
+    let _p9 = println(evaluate(t9));  // 10
+
+    // Test 10: Complex: 2 * 3 + 4 * 5 = 26
+    let t10 = make_tokens7(2, tok_star(), 3, tok_plus(), 4, tok_star(), 5);
+    let _p10 = println(evaluate(t10));  // 26
+
+    // Test 11: Division and addition: 100 / 5 + 3 = 23
+    let t11 = make_tokens5(100, tok_slash(), 5, tok_plus(), 3);
+    let _p11 = println(evaluate(t11));  // 23
+
+    // Test 12: Mixed: 1 + 2 * 3 - 4 / 2 = 5
+    let t12 = vec_new();
+    vec_push(t12, 1); vec_push(t12, tok_plus()); vec_push(t12, 2);
+    vec_push(t12, tok_star()); vec_push(t12, 3); vec_push(t12, tok_minus());
+    vec_push(t12, 4); vec_push(t12, tok_slash()); vec_push(t12, 2);
+    let _p12 = println(evaluate(t12));  // 1 + 6 - 2 = 5
+
+    // Test 13: Single zero
+    let t13 = vec_new();
+    vec_push(t13, 0);
+    let _p13 = println(evaluate(t13));  // 0
+
+    // Test 14: Large computation: 1000 * 1000 / 100 = 10000
+    let t14 = make_tokens5(1000, tok_star(), 1000, tok_slash(), 100);
+    let _p14 = println(evaluate(t14));  // 10000
+
+    // Test 15: Deeply nested: ((((5)))) = 5
+    let t15 = vec_new();
+    vec_push(t15, tok_lparen()); vec_push(t15, tok_lparen());
+    vec_push(t15, tok_lparen()); vec_push(t15, tok_lparen());
+    vec_push(t15, 5);
+    vec_push(t15, tok_rparen()); vec_push(t15, tok_rparen());
+    vec_push(t15, tok_rparen()); vec_push(t15, tok_rparen());
+    let _p15 = println(evaluate(t15));  // 5
+
+    0
+};

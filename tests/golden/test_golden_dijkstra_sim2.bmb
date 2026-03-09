@@ -1,0 +1,213 @@
+// Golden test: Dijkstra's shortest path with adjacency list + priority extraction
+// Graph stored as adjacency list: edges[node] = vec of (neighbor, weight) pairs
+// Priority queue simulated via linear scan of distance array for min unvisited
+
+// INF represents unreachable
+fn inf() -> i64 = 999999;
+
+// Adjacency list: edges stored as flat vec of pairs per node
+// edge_list: vec of vecs, each inner vec has [dest0, weight0, dest1, weight1, ...]
+// We store all edges in a single flat vec with offsets
+
+// Create edge storage: flat vec with node offsets
+// Format: [num_edges_0, dest, wt, dest, wt, ..., num_edges_1, dest, wt, ...]
+// For simplicity, use separate vecs per node and a "graph" vec of vec handles
+
+fn graph_new(n: i64) -> i64 = {
+    let g = vec_new();
+    for _i in 0..n {
+        let edge_list = vec_new();
+        let _p = vec_push(g, edge_list);
+        0
+    };
+    g
+    };
+
+fn graph_add_edge(g: i64, from: i64, to: i64, weight: i64) -> i64 = {
+    let edges = vec_get(g, from);
+    let _p1 = vec_push(edges, to);
+    let _p2 = vec_push(edges, weight);
+    0
+    };
+
+// Find unvisited node with minimum distance (linear scan priority extraction)
+fn find_min_unvisited(dist: i64, visited: i64, n: i64) -> i64 = {
+    let mut min_dist = inf() + 1;
+    let mut min_node = 0 - 1;
+    for i in 0..n {
+        let is_visited = vec_get(visited, i);
+        if is_visited == 0 {
+            let d = vec_get(dist, i);
+            if d < min_dist {
+                set min_dist = d;
+                set min_node = i
+            } else { () }
+        } else { () };
+        0
+    };
+    min_node
+    };
+
+// Relax all edges from a given node
+fn relax_neighbors(g: i64, dist: i64, u: i64) -> i64 = {
+    let edges = vec_get(g, u);
+    let num_pairs = vec_len(edges) / 2;
+    let du = vec_get(dist, u);
+    for i in 0..num_pairs {
+        let v = vec_get(edges, i * 2);
+        let w = vec_get(edges, i * 2 + 1);
+        let new_dist = du + w;
+        let old_dist = vec_get(dist, v);
+        if new_dist < old_dist {
+            let _s = vec_set(dist, v, new_dist)
+        } else { () };
+        0
+    };
+    0
+    };
+
+// Dijkstra's algorithm: returns distance vec
+fn dijkstra(g: i64, n: i64, src: i64) -> i64 = {
+    let dist = vec_new();
+    let visited = vec_new();
+    for i in 0..n {
+        let d = if i == src { 0 } else { inf() };
+        let _p1 = vec_push(dist, d);
+        let _p2 = vec_push(visited, 0);
+        0
+    };
+
+    // Process n nodes
+    for _iter in 0..n {
+        let u = find_min_unvisited(dist, visited, n);
+        if u >= 0 {
+            let _sv = vec_set(visited, u, 1);
+            let _r = relax_neighbors(g, dist, u)
+        } else { () };
+        0
+    };
+
+    let _fv = vec_free(visited);
+    dist
+    };
+
+// Free graph structure
+fn graph_free(g: i64, n: i64) -> i64 = {
+    for i in 0..n {
+        let edges = vec_get(g, i);
+        let _f = vec_free(edges);
+        0
+    };
+    let _fg = vec_free(g);
+    0
+    };
+
+fn main() -> i64 = {
+    // --- Test 1: Simple 5-node graph ---
+    // Node 0 --1--> Node 1 --2--> Node 3
+    //   |              |
+    //   4              3
+    //   v              v
+    // Node 2 --5--> Node 4
+    //   |
+    //   2
+    //   v
+    // Node 3
+    let g1 = graph_new(5);
+    let _e0 = graph_add_edge(g1, 0, 1, 1);
+    let _e1 = graph_add_edge(g1, 0, 2, 4);
+    let _e2 = graph_add_edge(g1, 1, 2, 3);
+    let _e3 = graph_add_edge(g1, 1, 3, 2);
+    let _e4 = graph_add_edge(g1, 2, 3, 2);
+    let _e5 = graph_add_edge(g1, 2, 4, 5);
+    let _e6 = graph_add_edge(g1, 3, 4, 1);
+
+    let d1 = dijkstra(g1, 5, 0);
+    // Shortest paths from 0:
+    // 0->0: 0
+    // 0->1: 1
+    // 0->2: 4 (0->2 directly, or 0->1->2=4, same)
+    // 0->3: 3 (0->1->3 = 1+2)
+    // 0->4: 4 (0->1->3->4 = 1+2+1)
+    let _p1 = println(vec_get(d1, 0));  // 0
+    let _p2 = println(vec_get(d1, 1));  // 1
+    let _p3 = println(vec_get(d1, 2));  // 4
+    let _p4 = println(vec_get(d1, 3));  // 3
+    let _p5 = println(vec_get(d1, 4));  // 4
+
+    // --- Test 2: From different source ---
+    let d2 = dijkstra(g1, 5, 2);
+    // From node 2: can reach 3 (weight 2), 4 (weight 3 via 2->3->4)
+    // Cannot reach 0 or 1 (no backward edges)
+    let _p6 = println(vec_get(d2, 0));  // 999999
+    let _p7 = println(vec_get(d2, 1));  // 999999
+    let _p8 = println(vec_get(d2, 2));  // 0
+    let _p9 = println(vec_get(d2, 3));  // 2
+    let _p10 = println(vec_get(d2, 4)); // 3
+
+    // --- Test 3: Disconnected node ---
+    let g2 = graph_new(4);
+    let _e10 = graph_add_edge(g2, 0, 1, 5);
+    let _e11 = graph_add_edge(g2, 1, 2, 3);
+    // Node 3 is disconnected
+
+    let d3 = dijkstra(g2, 4, 0);
+    let _p11 = println(vec_get(d3, 0));  // 0
+    let _p12 = println(vec_get(d3, 1));  // 5
+    let _p13 = println(vec_get(d3, 2));  // 8
+    let _p14 = println(vec_get(d3, 3));  // 999999 (unreachable)
+
+    // --- Test 4: Diamond graph (multiple paths, choose shorter) ---
+    //     0
+    //    / \
+    //   1   10
+    //  /     \
+    // 1       2
+    //  \     /
+    //   1   1
+    //    \ /
+    //     3
+    let g3 = graph_new(4);
+    let _e20 = graph_add_edge(g3, 0, 1, 1);
+    let _e21 = graph_add_edge(g3, 0, 2, 10);
+    let _e22 = graph_add_edge(g3, 1, 3, 1);
+    let _e23 = graph_add_edge(g3, 2, 3, 1);
+
+    let d4 = dijkstra(g3, 4, 0);
+    let _p15 = println(vec_get(d4, 0));  // 0
+    let _p16 = println(vec_get(d4, 1));  // 1
+    let _p17 = println(vec_get(d4, 2));  // 10
+    let _p18 = println(vec_get(d4, 3));  // 2 (0->1->3, not 0->2->3=11)
+
+    // --- Test 5: Single node graph ---
+    let g4 = graph_new(1);
+    let d5 = dijkstra(g4, 1, 0);
+    let _p19 = println(vec_get(d5, 0));  // 0
+
+    // --- Test 6: Linear chain ---
+    // 0 --3--> 1 --4--> 2 --5--> 3
+    let g5 = graph_new(4);
+    let _e30 = graph_add_edge(g5, 0, 1, 3);
+    let _e31 = graph_add_edge(g5, 1, 2, 4);
+    let _e32 = graph_add_edge(g5, 2, 3, 5);
+
+    let d6 = dijkstra(g5, 4, 0);
+    let _p20 = println(vec_get(d6, 0));  // 0
+    let _p21 = println(vec_get(d6, 1));  // 3
+    let _p22 = println(vec_get(d6, 2));  // 7
+    let _p23 = println(vec_get(d6, 3));  // 12
+
+    // Cleanup
+    let _fg1 = graph_free(g1, 5);
+    let _fd1 = vec_free(d1);
+    let _fd2 = vec_free(d2);
+    let _fg2 = graph_free(g2, 4);
+    let _fd3 = vec_free(d3);
+    let _fg3 = graph_free(g3, 4);
+    let _fd4 = vec_free(d4);
+    let _fg4 = graph_free(g4, 1);
+    let _fd5 = vec_free(d5);
+    let _fg5 = graph_free(g5, 4);
+    let _fd6 = vec_free(d6);
+    0
+    };

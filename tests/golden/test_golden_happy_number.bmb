@@ -1,0 +1,90 @@
+// Golden Test: Happy number detection
+// A happy number: repeatedly sum squares of digits until reaching 1 (happy) or looping (sad)
+// Uses Floyd's cycle detection to avoid infinite loops
+
+// Sum of squares of digits
+fn sum_sq_digits(n: i64) -> i64 = {
+    let mut x = n;
+    let mut total = 0;
+    loop {
+        if x <= 0 { break } else { () };
+        let d = x - (x / 10) * 10;
+        total = total + d * d;
+        x = x / 10
+    };
+    total
+    };
+
+// Check if n is a happy number (returns 1 or 0)
+// Uses iteration limit as cycle detection
+fn is_happy(n: i64) -> i64 = {
+    let mut slow = n;
+    let mut fast = n;
+    let mut found = 0;
+    let mut i = 0;
+    loop {
+        if i >= 100 { break } else { () };
+        slow = sum_sq_digits(slow);
+        fast = sum_sq_digits(sum_sq_digits(fast));
+        if slow == 1 {
+            found = 1;
+            i = 100
+        } else if fast == 1 {
+            found = 1;
+            i = 100
+        } else if slow == fast {
+            found = 0;
+            i = 100
+        } else {
+            i = i + 1
+        }
+    };
+    found
+    };
+
+// Count steps to reach 1 (or -1 if not happy)
+fn happy_steps(n: i64) -> i64 = {
+    let mut x = n;
+    let mut steps = 0;
+    loop {
+        if x == 1 { break } else { () };
+        if steps >= 200 { steps = 0 - 1; break } else { () };
+        x = sum_sq_digits(x);
+        steps = steps + 1
+    };
+    steps
+    };
+
+fn main() -> i64 = {
+    // Test 1: is_happy(1) = 1 (trivially happy)
+    let _p1 = println(is_happy(1));
+
+    // Test 2: is_happy(7) = 1 (7->49->97->130->10->1)
+    let _p2 = println(is_happy(7));
+
+    // Test 3: is_happy(4) = 0 (4->16->37->58->89->145->42->20->4 cycle)
+    let _p3 = println(is_happy(4));
+
+    // Test 4: is_happy(19) = 1 (19->82->68->100->1)
+    let _p4 = println(is_happy(19));
+
+    // Test 5: is_happy(2) = 0 (enters cycle)
+    let _p5 = println(is_happy(2));
+
+    // Test 6: sum_sq_digits(49) = 4^2 + 9^2 = 16 + 81 = 97
+    let _p6 = println(sum_sq_digits(49));
+
+    // Test 7: sum_sq_digits(100) = 1+0+0 = 1
+    let _p7 = println(sum_sq_digits(100));
+
+    // Test 8: happy_steps(7) = 5 steps
+    let _p8 = println(happy_steps(7));
+
+    // Test 9: happy_steps(19) = 4 steps
+    let _p9 = println(happy_steps(19));
+
+    // Test 10: is_happy(44) = 1
+    let _p10 = println(is_happy(44));
+
+    0
+    };

@@ -1,0 +1,140 @@
+// Golden test: Karatsuba multiplication O(n^1.585)
+// Bigints in base 10000, little-endian digit arrays
+
+fn bi_from(val: i64) -> i64 = {
+    let v = vec_new();
+    let mut n = if val < 0 { 0 - val } else { val };
+    if n == 0 { vec_push(v, 0); v }
+    else {
+        loop {
+            if n <= 0 { break } else { () };
+            vec_push(v, n - (n / 10000) * 10000);
+            set n = n / 10000
+        }; v
+    }
+};
+
+fn bi_d(b: i64, i: i64) -> i64 = if i >= vec_len(b) { 0 } else { vec_get(b, i) };
+
+fn bi_trim(b: i64) -> i64 = {
+    loop {
+        if vec_len(b) <= 1 { break } else { () };
+        if vec_get(b, vec_len(b) - 1) == 0 { let _p = vec_pop(b); 0 } else { break }
+    }; 0
+};
+
+fn bi_add(a: i64, b: i64) -> i64 = {
+    let ml = if vec_len(a) > vec_len(b) { vec_len(a) } else { vec_len(b) };
+    let r = vec_new();
+    let mut c = 0;
+    let mut i = 0;
+    loop {
+        if i >= ml and c == 0 { break } else { () };
+        let s = bi_d(a, i) + bi_d(b, i) + c;
+        vec_push(r, s - (s / 10000) * 10000);
+        set c = s / 10000;
+        set i = i + 1
+    }; r
+};
+
+fn bi_sub(a: i64, b: i64) -> i64 = {
+    let r = vec_new();
+    let mut bw = 0;
+    for i in 0..vec_len(a) {
+        let d = bi_d(a, i) - bi_d(b, i) - bw;
+        if d < 0 { vec_push(r, d + 10000); set bw = 1 }
+        else { vec_push(r, d); set bw = 0 }; 0
+    };
+    bi_trim(r); r
+};
+
+fn bi_shift(a: i64, n: i64) -> i64 = {
+    let r = vec_new();
+    for _i in 0..n { vec_push(r, 0); 0 };
+    for i in 0..vec_len(a) { vec_push(r, vec_get(a, i)); 0 };
+    r
+};
+
+fn bi_mul_s(a: i64, b: i64) -> i64 = {
+    let la = vec_len(a);
+    let lb = vec_len(b);
+    let r = vec_new();
+    for _i in 0..(la + lb) { vec_push(r, 0); 0 };
+    for i in 0..la {
+        let mut c = 0;
+        for j in 0..lb {
+            let cur = vec_get(r, i+j) + vec_get(a,i) * vec_get(b,j) + c;
+            let _s = vec_set(r, i+j, cur - (cur/10000)*10000);
+            set c = cur / 10000; 0
+        };
+        if c > 0 { let _s = vec_set(r, i+lb, vec_get(r,i+lb)+c); 0 } else { 0 }
+    };
+    bi_trim(r); r
+};
+
+fn bi_slice(a: i64, from: i64, to: i64) -> i64 = {
+    let r = vec_new();
+    let at = if to > vec_len(a) { vec_len(a) } else { to };
+    let mut i = from;
+    loop {
+        if i >= at { break } else { () };
+        vec_push(r, vec_get(a, i)); set i = i + 1
+    };
+    if vec_len(r) == 0 { vec_push(r, 0); 0 } else { 0 };
+    bi_trim(r); r
+};
+
+fn karatsuba(a: i64, b: i64) -> i64 = {
+    let la = vec_len(a);
+    let lb = vec_len(b);
+    if la <= 2 or lb <= 2 { bi_mul_s(a, b) }
+    else {
+        let m = if la > lb { la / 2 } else { lb / 2 };
+        let a0 = bi_slice(a,0,m);  let a1 = bi_slice(a,m,la);
+        let b0 = bi_slice(b,0,m);  let b1 = bi_slice(b,m,lb);
+        let z0 = karatsuba(a0, b0);
+        let z2 = karatsuba(a1, b1);
+        let sa = bi_add(a0, a1);   let sb = bi_add(b0, b1);
+        let zf = karatsuba(sa, sb);
+        let zt = bi_sub(zf, z0);   let z1 = bi_sub(zt, z2);
+        let zs2 = bi_shift(z2, 2*m);
+        let zs1 = bi_shift(z1, m);
+        let tmp = bi_add(zs2, zs1);
+        let res = bi_add(tmp, z0);
+        vec_free(a0); vec_free(a1); vec_free(b0); vec_free(b1);
+        vec_free(z0); vec_free(z2); vec_free(sa); vec_free(sb);
+        vec_free(zf); vec_free(zt); vec_free(z1);
+        vec_free(zs2); vec_free(zs1); vec_free(tmp);
+        res
+    }
+};
+
+fn bi_val(b: i64) -> i64 = {
+    let mut r = 0;
+    let mut pw = 1;
+    for i in 0..vec_len(b) { set r = r + vec_get(b,i) * pw; set pw = pw * 10000; 0 }; r
+};
+
+fn main() -> i64 = {
+    let r1 = karatsuba(bi_from(12), bi_from(34));
+    println(bi_val(r1));       // 408
+    let r2 = karatsuba(bi_from(100), bi_from(200));
+    println(bi_val(r2));       // 20000
+    let r3 = karatsuba(bi_from(9999), bi_from(9999));
+    println(bi_val(r3));       // 99980001
+    let r4 = karatsuba(bi_from(54321), bi_from(1));
+    println(bi_val(r4));       // 54321
+    let r5 = karatsuba(bi_from(12345), bi_from(0));
+    println(bi_val(r5));       // 0
+    let r6 = karatsuba(bi_from(12345), bi_from(67890));
+    println(bi_val(r6));       // 838102050
+    let a7 = bi_from(1234);
+    let b7 = bi_from(5678);
+    println(bi_val(bi_mul_s(a7, b7)));  // 7006652
+    println(bi_val(karatsuba(a7, b7))); // 7006652
+    let r8 = karatsuba(bi_from(1111), bi_from(1111));
+    println(bi_val(r8));       // 1234321
+    let r9 = karatsuba(bi_from(99999), bi_from(99999));
+    println(bi_val(r9));       // 9999800001
+    0
+};

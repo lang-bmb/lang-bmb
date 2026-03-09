@@ -1,0 +1,135 @@
+// Golden Test: 0/1 Knapsack problem using dynamic programming
+// dp[i][w] = max value using items 0..i-1 with capacity w
+// Flat array for 2D DP table: dp[i * (capacity+1) + w]
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { let _p = vec_push(v, 0); 0 };
+    v
+};
+
+fn max2(a: i64, b: i64) -> i64 = if a > b { a } else { b };
+
+// 0/1 Knapsack
+// weights: vec of item weights
+// values: vec of item values
+// n: number of items
+// cap: knapsack capacity
+// Returns maximum value achievable
+fn knapsack(weights: i64, values: i64, n: i64, cap: i64) -> i64 = {
+    let cols = cap + 1;
+    // dp has (n+1) rows and (cap+1) columns
+    let dp = make_zeros((n + 1) * cols);
+
+    // Fill DP table
+    for i in 1..n + 1 {
+        let wi = vec_get(weights, i - 1);
+        let vi = vec_get(values, i - 1);
+        for w in 0..cols {
+            // Don't take item i
+            let skip = vec_get(dp, (i - 1) * cols + w);
+            let best = if wi <= w {
+                // Can take item i
+                let take = vec_get(dp, (i - 1) * cols + (w - wi)) + vi;
+                max2(skip, take)
+            } else {
+                skip
+            };
+            let _s = vec_set(dp, i * cols + w, best);
+            0
+        };
+        0
+    };
+
+    let result = vec_get(dp, n * cols + cap);
+    let _f = vec_free(dp);
+    result
+};
+
+fn main() -> i64 = {
+    // === Test 1: items [(w=2,v=3),(w=3,v=4),(w=4,v=5),(w=5,v=6)], capacity=10 ===
+    // Optimal: take items 0,1,2 (w=2+3+4=9, v=3+4+5=12) or 0,1,3 (w=2+3+5=10, v=3+4+6=13)
+    // Best: take items with w=2,3,5 -> v=3+4+6=13
+    let _p = println_str("=== Test 1: 4 items, cap=10 ===");
+    let w1 = vec_new();
+    let _p = vec_push(w1, 2); let _p = vec_push(w1, 3);
+    let _p = vec_push(w1, 4); let _p = vec_push(w1, 5);
+    let v1 = vec_new();
+    let _p = vec_push(v1, 3); let _p = vec_push(v1, 4);
+    let _p = vec_push(v1, 5); let _p = vec_push(v1, 6);
+    let _p = print_str("max value: ");
+    let _p = println(knapsack(w1, v1, 4, 10));
+
+    // === Test 2: items [(w=1,v=1),(w=2,v=6),(w=3,v=10),(w=5,v=15)], capacity=7 ===
+    // Try: items 1+2 (w=2+3=5, v=6+10=16), items 1+2+0 (w=1+2+3=6, v=1+6+10=17)
+    // items 2+3 (w=3+5=8 > 7), items 0+1+2 (w=6, v=17), items 0+2+gap (w=1+3=4, v=11)
+    // Best: items 0,1,2 -> w=6, v=17 or items 1,3 -> w=7, v=21? No: w=2+5=7, v=6+15=21
+    // Actually: items 1+3: w=2+5=7<=7, v=6+15=21. Check all: 0+1+3: w=1+2+5=8>7
+    let _p = println_str("=== Test 2: 4 items, cap=7 ===");
+    let w2 = vec_new();
+    let _p = vec_push(w2, 1); let _p = vec_push(w2, 2);
+    let _p = vec_push(w2, 3); let _p = vec_push(w2, 5);
+    let v2 = vec_new();
+    let _p = vec_push(v2, 1); let _p = vec_push(v2, 6);
+    let _p = vec_push(v2, 10); let _p = vec_push(v2, 15);
+    let _p = print_str("max value: ");
+    let _p = println(knapsack(w2, v2, 4, 7));
+
+    // === Test 3: Single item that fits ===
+    let _p = println_str("=== Test 3: single item fits ===");
+    let w3 = vec_new();
+    let _p = vec_push(w3, 3);
+    let v3 = vec_new();
+    let _p = vec_push(v3, 10);
+    let _p = print_str("max value: ");
+    let _p = println(knapsack(w3, v3, 1, 5));
+
+    // === Test 4: Single item too heavy ===
+    let _p = println_str("=== Test 4: single item too heavy ===");
+    let w4 = vec_new();
+    let _p = vec_push(w4, 10);
+    let v4 = vec_new();
+    let _p = vec_push(v4, 100);
+    let _p = print_str("max value: ");
+    let _p = println(knapsack(w4, v4, 1, 5));
+
+    // === Test 5: All items fit ===
+    let _p = println_str("=== Test 5: all items fit ===");
+    let w5 = vec_new();
+    let _p = vec_push(w5, 1); let _p = vec_push(w5, 2); let _p = vec_push(w5, 3);
+    let v5 = vec_new();
+    let _p = vec_push(v5, 10); let _p = vec_push(v5, 20); let _p = vec_push(v5, 30);
+    let _p = print_str("max value: ");
+    let _p = println(knapsack(w5, v5, 3, 10));
+
+    // === Test 6: Classic textbook example ===
+    // items: [(w=1,v=6),(w=2,v=10),(w=3,v=12)], cap=5
+    // Optimal: items 0+1 (w=3,v=16) or 0+2 (w=4,v=18) or 1+2 (w=5,v=22)
+    // Best: items 1+2 -> w=5, v=22
+    let _p = println_str("=== Test 6: textbook ===");
+    let w6 = vec_new();
+    let _p = vec_push(w6, 1); let _p = vec_push(w6, 2); let _p = vec_push(w6, 3);
+    let v6 = vec_new();
+    let _p = vec_push(v6, 6); let _p = vec_push(v6, 10); let _p = vec_push(v6, 12);
+    let _p = print_str("max value: ");
+    let _p = println(knapsack(w6, v6, 3, 5));
+
+    // === Test 7: Zero capacity ===
+    let _p = println_str("=== Test 7: zero capacity ===");
+    let w7 = vec_new();
+    let _p = vec_push(w7, 1); let _p = vec_push(w7, 2);
+    let v7 = vec_new();
+    let _p = vec_push(v7, 10); let _p = vec_push(v7, 20);
+    let _p = print_str("max value: ");
+    let _p = println(knapsack(w7, v7, 2, 0));
+
+    // Cleanup
+    let _f = vec_free(w1); let _f = vec_free(v1);
+    let _f = vec_free(w2); let _f = vec_free(v2);
+    let _f = vec_free(w3); let _f = vec_free(v3);
+    let _f = vec_free(w4); let _f = vec_free(v4);
+    let _f = vec_free(w5); let _f = vec_free(v5);
+    let _f = vec_free(w6); let _f = vec_free(v6);
+    let _f = vec_free(w7); let _f = vec_free(v7);
+    0
+};

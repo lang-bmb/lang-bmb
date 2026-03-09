@@ -1,0 +1,210 @@
+// Golden Test: Advanced matrix operations using flat 1D vec as 2D matrix
+// Tests identity, addition, multiplication, transpose, determinant, trace
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { let _p = vec_push(v, 0); 0 };
+    v
+    };
+
+fn make_vec4(a: i64, b: i64, c: i64, d: i64) -> i64 = {
+    let v = vec_new();
+    let _p0 = vec_push(v, a);
+    let _p1 = vec_push(v, b);
+    let _p2 = vec_push(v, c);
+    let _p3 = vec_push(v, d);
+    v
+    };
+
+fn make_vec9(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64, h: i64, ii: i64) -> i64 = {
+    let v = vec_new();
+    let _p0 = vec_push(v, a);
+    let _p1 = vec_push(v, b);
+    let _p2 = vec_push(v, c);
+    let _p3 = vec_push(v, d);
+    let _p4 = vec_push(v, e);
+    let _p5 = vec_push(v, f);
+    let _p6 = vec_push(v, g);
+    let _p7 = vec_push(v, h);
+    let _p8 = vec_push(v, ii);
+    v
+    };
+
+// Matrix get: mat[row * cols + col]
+fn mget(m: i64, cols: i64, r: i64, c: i64) -> i64 =
+    vec_get(m, r * cols + c);
+
+// Create 3x3 identity matrix
+fn make_identity3() -> i64 = make_vec9(1, 0, 0, 0, 1, 0, 0, 0, 1);
+
+// Matrix addition (n x n), stores result in out
+fn mat_add_cell(a: i64, b: i64, out: i64, pos: i64, total: i64) -> i64 =
+    if pos >= total { 0 }
+    else {
+        let _s = vec_set(out, pos, vec_get(a, pos) + vec_get(b, pos));
+        mat_add_cell(a, b, out, pos + 1, total)
+    };
+
+fn mat_add(a: i64, b: i64, n: i64) -> i64 = {
+    let out = make_zeros(n * n);
+    let _f = mat_add_cell(a, b, out, 0, n * n);
+    out
+    };
+
+// 2x2 matrix multiply: C = A * B
+fn mat_mul2(a: i64, b: i64) -> i64 = {
+    let c00 = mget(a, 2, 0, 0) * mget(b, 2, 0, 0) + mget(a, 2, 0, 1) * mget(b, 2, 1, 0);
+    let c01 = mget(a, 2, 0, 0) * mget(b, 2, 0, 1) + mget(a, 2, 0, 1) * mget(b, 2, 1, 1);
+    let c10 = mget(a, 2, 1, 0) * mget(b, 2, 0, 0) + mget(a, 2, 1, 1) * mget(b, 2, 1, 0);
+    let c11 = mget(a, 2, 1, 0) * mget(b, 2, 0, 1) + mget(a, 2, 1, 1) * mget(b, 2, 1, 1);
+    make_vec4(c00, c01, c10, c11)
+    };
+
+// 3x3 matrix multiply via recursive helpers
+fn mul3_elem(a: i64, b: i64, r: i64, c: i64, k: i64, acc: i64) -> i64 =
+    if k >= 3 { acc }
+    else { mul3_elem(a, b, r, c, k + 1, acc + mget(a, 3, r, k) * mget(b, 3, k, c)) };
+
+fn mul3_col(a: i64, b: i64, out: i64, r: i64, c: i64) -> i64 =
+    if c >= 3 { 0 }
+    else {
+        let _s = vec_set(out, r * 3 + c, mul3_elem(a, b, r, c, 0, 0));
+        mul3_col(a, b, out, r, c + 1)
+    };
+
+fn mul3_row(a: i64, b: i64, out: i64, r: i64) -> i64 =
+    if r >= 3 { 0 }
+    else {
+        let _c = mul3_col(a, b, out, r, 0);
+        mul3_row(a, b, out, r + 1)
+    };
+
+fn mat_mul3(a: i64, b: i64) -> i64 = {
+    let out = make_zeros(9);
+    let _f = mul3_row(a, b, out, 0);
+    out
+    };
+
+// Transpose n x n matrix
+fn transpose_cell(src: i64, dst: i64, n: i64, r: i64, c: i64) -> i64 =
+    if r >= n { 0 }
+    else if c >= n { transpose_cell(src, dst, n, r + 1, 0) }
+    else {
+        let _s = vec_set(dst, c * n + r, vec_get(src, r * n + c));
+        transpose_cell(src, dst, n, r, c + 1)
+    };
+
+fn mat_transpose(src: i64, n: i64) -> i64 = {
+    let dst = make_zeros(n * n);
+    let _f = transpose_cell(src, dst, n, 0, 0);
+    dst
+    };
+
+// Determinant of 2x2: a*d - b*c
+fn det2(m: i64) -> i64 =
+    vec_get(m, 0) * vec_get(m, 3) - vec_get(m, 1) * vec_get(m, 2);
+
+// Determinant of 3x3 by cofactor expansion along first row
+fn det3(m: i64) -> i64 = {
+    let a = vec_get(m, 0); let b = vec_get(m, 1); let c = vec_get(m, 2);
+    let d = vec_get(m, 3); let e = vec_get(m, 4); let f = vec_get(m, 5);
+    let g = vec_get(m, 6); let h = vec_get(m, 7); let ii = vec_get(m, 8);
+    a * (e * ii - f * h) - b * (d * ii - f * g) + c * (d * h - e * g)
+    };
+
+// Trace of n x n matrix (sum of diagonal)
+fn trace_helper(m: i64, n: i64, i: i64, acc: i64) -> i64 =
+    if i >= n { acc }
+    else { trace_helper(m, n, i + 1, acc + vec_get(m, i * n + i)) };
+
+fn trace(m: i64, n: i64) -> i64 = trace_helper(m, n, 0, 0);
+
+// Sum all elements
+fn mat_sum_helper(m: i64, pos: i64, total: i64, acc: i64) -> i64 =
+    if pos >= total { acc }
+    else { mat_sum_helper(m, pos + 1, total, acc + vec_get(m, pos)) };
+
+fn mat_sum(m: i64, total: i64) -> i64 = mat_sum_helper(m, 0, total, 0);
+
+fn main() -> i64 = {
+// Test 1: 3x3 identity trace = 3
+    let id3 = make_identity3();
+    let _p1 = println(trace(id3, 3));
+
+// Test 2: 3x3 identity determinant = 1
+    let _p2 = println(det3(id3));
+
+// Test 3: 2x2 det: [3,8; 4,6] => 3*6 - 8*4 = 18 - 32 = -14
+    let m2a = make_vec4(3, 8, 4, 6);
+    let _p3 = println(det2(m2a));
+
+// Test 4: 2x2 multiply [1,2;3,4] * [5,6;7,8]
+//   c00 = 1*5+2*7 = 19, c01 = 1*6+2*8 = 22
+//   c10 = 3*5+4*7 = 43, c11 = 3*6+4*8 = 50
+    let a2 = make_vec4(1, 2, 3, 4);
+    let b2 = make_vec4(5, 6, 7, 8);
+    let c2 = mat_mul2(a2, b2);
+    let _p4 = println(vec_get(c2, 0));
+    let _p5 = println(vec_get(c2, 1));
+    let _p6 = println(vec_get(c2, 2));
+    let _p7 = println(vec_get(c2, 3));
+
+// Test 5: 3x3 matrix addition
+// [1,2,3;4,5,6;7,8,9] + [9,8,7;6,5,4;3,2,1]
+// = [10,10,10;10,10,10;10,10,10]
+    let ma = make_vec9(1, 2, 3, 4, 5, 6, 7, 8, 9);
+    let mb = make_vec9(9, 8, 7, 6, 5, 4, 3, 2, 1);
+    let mc = mat_add(ma, mb, 3);
+    let _p8 = println(vec_get(mc, 0));
+    let _p9 = println(vec_get(mc, 4));
+    let _p10 = println(vec_get(mc, 8));
+
+// Test 6: Transpose 3x3
+// [1,2,3;4,5,6;7,8,9] transposed = [1,4,7;2,5,8;3,6,9]
+    let mt = mat_transpose(ma, 3);
+    let _p11 = println(mget(mt, 3, 0, 1));
+    let _p12 = println(mget(mt, 3, 1, 0));
+    let _p13 = println(mget(mt, 3, 2, 0));
+
+// Test 7: 3x3 determinant
+// [2,0,1; 3,0,0; 5,1,1]
+// = 2*(0*1-0*1) - 0*(3*1-0*5) + 1*(3*1-0*5) = 0 - 0 + 3 = 3
+    let m3d = make_vec9(2, 0, 1, 3, 0, 0, 5, 1, 1);
+    let _p14 = println(det3(m3d));
+
+// Test 8: 3x3 multiply identity * m = m
+    let prod = mat_mul3(id3, m3d);
+    let _p15 = println(vec_get(prod, 0));
+    let _p16 = println(vec_get(prod, 3));
+    let _p17 = println(vec_get(prod, 8));
+
+// Test 9: Trace of [2,0,1; 3,0,0; 5,1,1] = 2+0+1 = 3
+    let _p18 = println(trace(m3d, 3));
+
+// Test 10: Sum of all elements in [1,2,3;4,5,6;7,8,9] = 45
+    let _p19 = println(mat_sum(ma, 9));
+
+// Test 11: 3x3 multiply [1,2,3;4,5,6;7,8,9] * [1,0,0;0,1,0;0,0,1] = original
+    let prod2 = mat_mul3(ma, id3);
+    let _p20 = println(vec_get(prod2, 0));
+    let _p21 = println(vec_get(prod2, 4));
+    let _p22 = println(vec_get(prod2, 8));
+
+// Test 12: 2x2 trace = 1+4 = 5
+    let _p23 = println(trace(a2, 2));
+
+// Cleanup
+    let _f1 = vec_free(id3);
+    let _f2 = vec_free(m2a);
+    let _f3 = vec_free(a2);
+    let _f4 = vec_free(b2);
+    let _f5 = vec_free(c2);
+    let _f6 = vec_free(ma);
+    let _f7 = vec_free(mb);
+    let _f8 = vec_free(mc);
+    let _f9 = vec_free(mt);
+    let _f10 = vec_free(m3d);
+    let _f11 = vec_free(prod);
+    let _f12 = vec_free(prod2);
+    0
+    };

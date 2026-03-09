@@ -1,0 +1,42 @@
+// Golden Test: Deep let-binding chains
+// Tests SLF forwarding across many consecutive let bindings
+
+fn chain_10(x: i64) -> i64 = {
+    let a = x + 1;
+    let b = a + 1;
+    let c = b + 1;
+    let d = c + 1;
+    let e = d + 1;
+    let f = e + 1;
+    let g = f + 1;
+    let h = g + 1;
+    let i = h + 1;
+    let j = i + 1;
+    j
+    };
+
+fn chain_with_use(x: i64) -> i64 = {
+    let a = x * 2;
+    let b = a + 3;
+    let c = b * a;
+    let d = c - b;
+    d
+    };
+
+fn chain_reuse(x: i64) -> i64 = {
+    let a = x + 1;
+    let b = a + a;
+    let c = b + a;
+    let d = c + b + a;
+    d
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(chain_10(0));       // 10
+    let _p2 = println(chain_10(5));       // 15
+    let _p3 = println(chain_with_use(3)); // (3*2+3)*(3*2) - (3*2+3) = 9*6 - 9 = 45
+    let _p4 = println(chain_with_use(5)); // (5*2+3)*(5*2) - (5*2+3) = 13*10 - 13 = 117
+    let _p5 = println(chain_reuse(1));    // a=2, b=4, c=6, d=6+4+2=12
+    let _p6 = println(chain_reuse(3));    // a=4, b=8, c=12, d=12+8+4=24
+    0
+    };

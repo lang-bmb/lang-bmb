@@ -1,0 +1,200 @@
+// Golden Test: Maximum/minimum subarray problems
+// Kadane's algorithm + circular variant + max product subarray (simplified)
+
+// Kadane's algorithm: maximum sum contiguous subarray
+// Returns the maximum sum
+fn kadane_max(arr: i64, n: i64) -> i64 = {
+    let mut max_ending = vec_get(arr, 0);
+    let mut max_so_far = vec_get(arr, 0);
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let v = vec_get(arr, i);
+        // max_ending = max(v, max_ending + v)
+        let candidate = max_ending + v;
+        let _u = if candidate > v { max_ending = candidate; 0 } else { max_ending = v; 0 };
+        let _u2 = if max_ending > max_so_far { max_so_far = max_ending; 0 } else { 0 };
+        i = i + 1
+    };
+    max_so_far
+    };
+
+// Minimum sum contiguous subarray (Kadane's inverted)
+fn kadane_min(arr: i64, n: i64) -> i64 = {
+    let mut min_ending = vec_get(arr, 0);
+    let mut min_so_far = vec_get(arr, 0);
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let v = vec_get(arr, i);
+        let candidate = min_ending + v;
+        let _u = if candidate < v { min_ending = candidate; 0 } else { min_ending = v; 0 };
+        let _u2 = if min_ending < min_so_far { min_so_far = min_ending; 0 } else { 0 };
+        i = i + 1
+    };
+    min_so_far
+    };
+
+// Total sum of array
+fn array_sum(arr: i64, n: i64) -> i64 = {
+    let mut s = 0;
+    for i in 0..n {
+        s = s + vec_get(arr, i)
+    };
+    s
+    };
+
+// Maximum sum circular subarray
+// = max(kadane_max, total_sum - kadane_min) when not all negative
+fn circular_max_subarray(arr: i64, n: i64) -> i64 = {
+    let max_sub = kadane_max(arr, n);
+    let min_sub = kadane_min(arr, n);
+    let total = array_sum(arr, n);
+    // If all elements are negative, total - min_sub = 0, use max_sub
+    let circular = total - min_sub;
+    if circular == 0 { max_sub }
+    else if circular > max_sub { circular }
+    else { max_sub }
+    };
+
+// Maximum sum subarray with indices: returns max_sum * 1000000 + start * 1000 + end
+// (encoding start and end into the result for testing)
+fn kadane_with_indices(arr: i64, n: i64) -> i64 = {
+    let mut max_ending = vec_get(arr, 0);
+    let mut max_so_far = vec_get(arr, 0);
+    let mut start = 0;
+    let mut end = 0;
+    let mut temp_start = 0;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let v = vec_get(arr, i);
+        let candidate = max_ending + v;
+        let _u = if candidate > v {
+            max_ending = candidate; 0
+        } else {
+            max_ending = v;
+            temp_start = i;
+            0
+        };
+        let _u2 = if max_ending > max_so_far {
+            max_so_far = max_ending;
+            start = temp_start;
+            end = i;
+            0
+        } else { 0 };
+        i = i + 1
+    };
+    // Return encoded: sum, start, end separately via prints
+    max_so_far
+    };
+
+// Count number of subarrays with positive sum (brute force, small n)
+fn count_positive_subarrays(arr: i64, n: i64) -> i64 = {
+    let mut count = 0;
+    for i in 0..n {
+        let mut s = 0;
+        let mut j = i;
+        loop {
+            if j >= n { break } else { () };
+            s = s + vec_get(arr, j);
+            let _u = if s > 0 { count = count + 1; 0 } else { 0 };
+            j = j + 1
+        };
+        0
+    };
+    count
+    };
+
+fn main() -> i64 = {
+    // Test 1: Standard Kadane's - [−2, 1, −3, 4, −1, 2, 1, −5, 4]
+    let a1 = vec_new();
+    let _q = vec_push(a1, 0 - 2); let _q1 = vec_push(a1, 1);
+    let _q2 = vec_push(a1, 0 - 3); let _q3 = vec_push(a1, 4);
+    let _q4 = vec_push(a1, 0 - 1); let _q5 = vec_push(a1, 2);
+    let _q6 = vec_push(a1, 1); let _q7 = vec_push(a1, 0 - 5);
+    let _q8 = vec_push(a1, 4);
+    let _p1 = println(kadane_max(a1, 9));  // 6 (subarray [4,-1,2,1])
+
+    // Test 2: All negative - [-3, -5, -1, -8]
+    let a2 = vec_new();
+    let _r1 = vec_push(a2, 0 - 3); let _r2 = vec_push(a2, 0 - 5);
+    let _r3 = vec_push(a2, 0 - 1); let _r4 = vec_push(a2, 0 - 8);
+    let _p2 = println(kadane_max(a2, 4));  // -1 (single element [-1])
+
+    // Test 3: All positive - [1, 2, 3, 4, 5]
+    let a3 = vec_new();
+    let _s1 = vec_push(a3, 1); let _s2 = vec_push(a3, 2);
+    let _s3 = vec_push(a3, 3); let _s4 = vec_push(a3, 4);
+    let _s5 = vec_push(a3, 5);
+    let _p3 = println(kadane_max(a3, 5));  // 15 (entire array)
+
+    // Test 4: Minimum sum subarray on a1
+    let _p4 = println(kadane_min(a1, 9));  // -5 (subarray [-5])
+
+    // Test 5: Min subarray - [3, -4, 2, -3, -1, 7, -5]
+    let a4 = vec_new();
+    let _t1 = vec_push(a4, 3); let _t2 = vec_push(a4, 0 - 4);
+    let _t3 = vec_push(a4, 2); let _t4 = vec_push(a4, 0 - 3);
+    let _t5 = vec_push(a4, 0 - 1); let _t6 = vec_push(a4, 7);
+    let _t7 = vec_push(a4, 0 - 5);
+    let _p5 = println(kadane_min(a4, 7));  // -6 (subarray [-4,2,-3,-1])
+
+    // Test 6: Circular max subarray - [5, -3, 5]
+    // Non-circular max: 5+(-3)+5=7 or 5; Circular: wraps around -> 5+5=10
+    let a5 = vec_new();
+    let _u1 = vec_push(a5, 5); let _u2 = vec_push(a5, 0 - 3);
+    let _u3 = vec_push(a5, 5);
+    let _p6 = println(circular_max_subarray(a5, 3));  // 10 (circular: [5, ..., 5])
+
+    // Test 7: Circular - [8, -1, 3, 4]
+    // Non-circular: 8+(-1)+3+4 = 14; total=14, min_sub=-1, circular=15
+    let a6 = vec_new();
+    let _v1 = vec_push(a6, 8); let _v2 = vec_push(a6, 0 - 1);
+    let _v3 = vec_push(a6, 3); let _v4 = vec_push(a6, 4);
+    let _p7 = println(circular_max_subarray(a6, 4));  // 15 (total - min_sub = 14-(-1) = 15)
+
+    // Test 8: Circular with all negative - [-2, -3, -1]
+    let a7 = vec_new();
+    let _w1 = vec_push(a7, 0 - 2); let _w2 = vec_push(a7, 0 - 3);
+    let _w3 = vec_push(a7, 0 - 1);
+    let _p8 = println(circular_max_subarray(a7, 3));  // -1
+
+    // Test 9: Kadane with indices on a1
+    let max_val = kadane_with_indices(a1, 9);
+    let _p9 = println(max_val);  // 6
+
+    // Test 10: Single element
+    let a8 = vec_new();
+    let _x1 = vec_push(a8, 42);
+    let _p10 = println(kadane_max(a8, 1));  // 42
+
+    // Test 11: Single negative element
+    let a9 = vec_new();
+    let _y1 = vec_push(a9, 0 - 7);
+    let _p11 = println(kadane_max(a9, 1));  // -7
+
+    // Test 12: Count positive subarrays in [1, -2, 3]
+    let a10 = vec_new();
+    let _z1 = vec_push(a10, 1); let _z2 = vec_push(a10, 0 - 2);
+    let _z3 = vec_push(a10, 3);
+    let _p12 = println(count_positive_subarrays(a10, 3));  // 3 ([1], [3], [1,-2,3]=2)
+
+    // Test 13: Array sum
+    let _p13 = println(array_sum(a1, 9));  // 1 (-2+1-3+4-1+2+1-5+4)
+
+    // Test 14: Circular on [3, -1, 2, -1]
+    // Non-circular max: 3+(-1)+2 = 4; total=3, min=-1, circular=4
+    let a11 = vec_new();
+    let _aa = vec_push(a11, 3); let _ab = vec_push(a11, 0 - 1);
+    let _ac = vec_push(a11, 2); let _ad = vec_push(a11, 0 - 1);
+    let _p14 = println(circular_max_subarray(a11, 4));  // 4
+
+    let _f1 = vec_free(a1); let _f2 = vec_free(a2);
+    let _f3 = vec_free(a3); let _f4 = vec_free(a4);
+    let _f5 = vec_free(a5); let _f6 = vec_free(a6);
+    let _f7 = vec_free(a7); let _f8 = vec_free(a8);
+    let _f9 = vec_free(a9); let _f10 = vec_free(a10);
+    let _f11 = vec_free(a11);
+    0
+    };

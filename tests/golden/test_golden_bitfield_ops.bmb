@@ -1,0 +1,142 @@
+// Golden Test: Bitfield pack/unpack, flag operations, bitmask iteration
+// Uses band, bor, bxor, <<, >> for bitfield manipulation
+
+// Pack 3 fields: [r:8][g:8][b:8] into a single i64
+fn pack_rgb(r: i64, g: i64, b: i64) -> i64 =
+    ((r band 255) << 16) bor ((g band 255) << 8) bor (b band 255);
+
+fn unpack_r(rgb: i64) -> i64 = (rgb >> 16) band 255;
+fn unpack_g(rgb: i64) -> i64 = (rgb >> 8) band 255;
+fn unpack_b(rgb: i64) -> i64 = rgb band 255;
+
+// Pack 4 fields: [a:4][b:4][c:4][d:4] into 16 bits
+fn pack4(a: i64, b: i64, c: i64, d: i64) -> i64 =
+    ((a band 15) << 12) bor ((b band 15) << 8) bor ((c band 15) << 4) bor (d band 15);
+
+fn unpack4(v: i64, pos: i64) -> i64 =
+    (v >> (pos * 4)) band 15;
+
+// Flag operations
+fn set_flag(flags: i64, bit: i64) -> i64 = flags bor (1 << bit);
+fn clear_flag(flags: i64, bit: i64) -> i64 = flags band (((1 << 32) - 1) bxor (1 << bit));
+fn toggle_flag(flags: i64, bit: i64) -> i64 = flags bxor (1 << bit);
+fn has_flag(flags: i64, bit: i64) -> i64 = (flags >> bit) band 1;
+
+// Count set bits in a mask
+fn popcount(n: i64) -> i64 = {
+    let mut x = n;
+    let mut c = 0;
+    loop {
+        if x <= 0 { break } else { () };
+        c = c + (x band 1);
+        x = x >> 1
+    };
+    c
+};
+
+// Iterate over set bits: returns sum of positions of set bits
+fn sum_set_positions(mask: i64) -> i64 = {
+    let mut x = mask;
+    let mut pos = 0;
+    let mut total = 0;
+    loop {
+        if x <= 0 { break } else { () };
+        let _c = if (x band 1) == 1 { total = total + pos; 0 } else { 0 };
+        x = x >> 1;
+        pos = pos + 1
+    };
+    total
+};
+
+// Extract lowest set bit
+fn lowest_set_bit(n: i64) -> i64 = {
+    if n == 0 { 0 }
+    else {
+        let mut pos = 0;
+        let mut x = n;
+        loop {
+            if (x band 1) == 1 { break } else { () };
+            x = x >> 1;
+            pos = pos + 1
+        };
+        pos
+    }
+};
+
+// Create bitmask for range [lo..hi] (inclusive)
+fn range_mask(lo: i64, hi: i64) -> i64 = {
+    let mut mask = 0;
+    let mut i = lo;
+    loop {
+        if i > hi { break } else { () };
+        mask = mask bor (1 << i);
+        i = i + 1
+    };
+    mask
+};
+
+// Bit field insert: replace bits [lo..lo+width) in target with value
+fn bf_insert(target: i64, lo: i64, width: i64, value: i64) -> i64 = {
+    let mask = ((1 << width) - 1) << lo;
+    let cleared = target band (((1 << 32) - 1) bxor mask);
+    cleared bor (((value band ((1 << width) - 1)) << lo))
+};
+
+// Bit field extract: get bits [lo..lo+width) from source
+fn bf_extract(source: i64, lo: i64, width: i64) -> i64 =
+    (source >> lo) band ((1 << width) - 1);
+
+fn main() -> i64 = {
+    // RGB packing
+    let color = pack_rgb(255, 128, 64);
+    let _p1 = println(unpack_r(color));   // 255
+    let _p2 = println(unpack_g(color));   // 128
+    let _p3 = println(unpack_b(color));   // 64
+
+    // 4-nibble packing
+    let v = pack4(10, 5, 3, 7);
+    let _p4 = println(unpack4(v, 3));     // 10
+    let _p5 = println(unpack4(v, 2));     // 5
+    let _p6 = println(unpack4(v, 1));     // 3
+    let _p7 = println(unpack4(v, 0));     // 7
+
+    // Flag operations
+    let mut flags = 0;
+    flags = set_flag(flags, 0);          // bit 0
+    flags = set_flag(flags, 3);          // bit 3
+    flags = set_flag(flags, 7);          // bit 7
+    let _p8 = println(has_flag(flags, 0));   // 1
+    let _p9 = println(has_flag(flags, 1));   // 0
+    let _p10 = println(has_flag(flags, 3));  // 1
+    let _p11 = println(has_flag(flags, 7));  // 1
+
+    flags = toggle_flag(flags, 3);       // clear bit 3
+    let _p12 = println(has_flag(flags, 3));  // 0
+
+    flags = clear_flag(flags, 0);        // clear bit 0
+    let _p13 = println(has_flag(flags, 0));  // 0
+    let _p14 = println(popcount(flags));     // 1 (only bit 7)
+
+    // Iterate set bits: mask = 0b10101 = 21 -> positions 0, 2, 4 -> sum = 6
+    let _p15 = println(sum_set_positions(21));   // 6
+
+    // Lowest set bit
+    let _p16 = println(lowest_set_bit(12));   // 2 (0b1100)
+    let _p17 = println(lowest_set_bit(8));    // 3 (0b1000)
+    let _p18 = println(lowest_set_bit(1));    // 0
+
+    // Range mask [2..5] = 0b00111100 = 60
+    let _p19 = println(range_mask(2, 5));     // 60
+
+    // Bit field insert/extract
+    let target = 0;
+    let t2 = bf_insert(target, 4, 4, 9);  // insert 9 at bits [4..8)
+    let _p20 = println(bf_extract(t2, 4, 4));  // 9
+    let _p21 = println(bf_extract(t2, 0, 4));  // 0
+
+    let t3 = bf_insert(t2, 0, 4, 5);      // insert 5 at bits [0..4)
+    let _p22 = println(bf_extract(t3, 0, 4));  // 5
+    let _p23 = println(bf_extract(t3, 4, 4));  // 9
+
+    0
+};

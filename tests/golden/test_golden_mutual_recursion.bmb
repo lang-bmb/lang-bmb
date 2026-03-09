@@ -1,0 +1,93 @@
+// Golden test: Mutual recursion patterns
+// Tests correctness when functions call each other recursively
+
+// Hofstadter Female/Male sequences (simplified with i64)
+// F(0) = 1, M(0) = 0
+// F(n) = n - M(F(n-1))
+// M(n) = n - F(M(n-1))
+
+fn hof_f(n: i64) -> i64 =
+    if n == 0 { 1 }
+    else { n - hof_m(hof_f(n - 1)) };
+
+fn hof_m(n: i64) -> i64 =
+    if n == 0 { 0 }
+    else { n - hof_f(hof_m(n - 1)) };
+
+    // Even/odd via mutual recursion
+
+fn is_even(n: i64) -> i64 =
+    if n == 0 { 1 }
+    else { is_odd(n - 1) };
+
+fn is_odd(n: i64) -> i64 =
+    if n == 0 { 0 }
+    else { is_even(n - 1) };
+
+    // Ping-pong accumulator: two functions that bounce a value back and forth
+
+fn ping(n: i64, acc: i64) -> i64 =
+    if n <= 0 { acc }
+    else { pong(n - 1, acc + n) };
+
+fn pong(n: i64, acc: i64) -> i64 =
+    if n <= 0 { acc }
+    else { ping(n - 1, acc + n * 2) };
+
+    // Three-way mutual recursion: A calls B, B calls C, C calls A
+
+fn tri_a(n: i64) -> i64 =
+    if n <= 0 { 1 }
+    else { tri_b(n - 1) + 1 };
+
+fn tri_b(n: i64) -> i64 =
+    if n <= 0 { 2 }
+    else { tri_c(n - 1) + 2 };
+
+fn tri_c(n: i64) -> i64 =
+    if n <= 0 { 3 }
+    else { tri_a(n - 1) + 3 };
+
+    // Mutual recursion with different base cases
+
+fn count_up(n: i64, target: i64) -> i64 =
+    if n >= target { n }
+    else { count_down(n + 3, target) };
+
+fn count_down(n: i64, target: i64) -> i64 =
+    if n >= target { n }
+    else { count_up(n - 1, target) };
+
+fn main() -> i64 = {
+// Hofstadter
+    let _p1 = println(hof_f(0));   // 1
+    let _p2 = println(hof_f(1));   // 1
+    let _p3 = println(hof_f(5));   // 3
+    let _p4 = println(hof_f(10));  // 6
+    let _p5 = println(hof_m(0));   // 0
+    let _p6 = println(hof_m(1));   // 0
+    let _p7 = println(hof_m(5));   // 3
+    let _p8 = println(hof_m(10));  // 6
+
+// Even/odd
+    let _p9 = println(is_even(0));   // 1
+    let _p10 = println(is_even(7));  // 0
+    let _p11 = println(is_even(10)); // 1
+    let _p12 = println(is_odd(5));   // 1
+    let _p13 = println(is_odd(8));   // 0
+
+// Ping-pong
+    let _p14 = println(ping(5, 0));  // ping(5,0)->pong(4,5)->ping(3,13)->pong(2,16)->ping(1,20)->pong(0,21) = 21
+    let _p15 = println(ping(10, 0)); // complex accumulation
+
+// Three-way
+    let _p16 = println(tri_a(0));   // 1
+    let _p17 = println(tri_a(3));   // tri_b(2)+1 = (tri_c(1)+2)+1 = ((tri_a(0)+3)+2)+1 = (1+3+2)+1 = 7
+    let _p18 = println(tri_b(3));   // tri_c(2)+2 = (tri_a(1)+3)+2 = ((tri_b(0)+1)+3)+2 = (2+1+3)+2 = 8
+    let _p19 = println(tri_c(3));   // tri_a(2)+3 = (tri_b(1)+1)+3 = ((tri_c(0)+2)+1)+3 = (3+2+1)+3 = 9
+
+// Count up/down
+    let _p20 = println(count_up(0, 10));  // 0->count_down(3,10)->count_up(2,10)->count_down(5,10)->count_up(4,10)->count_down(7,10)->count_up(6,10)->count_down(9,10)->count_up(8,10)->count_down(11,10) = 11
+
+    0
+    };

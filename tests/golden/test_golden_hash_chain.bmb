@@ -1,0 +1,105 @@
+// Golden Test: Hash chain computation (iterative hashing)
+// Simulates hash chains used in authentication, password storage, etc.
+
+// Simple hash function: h(x) = (x * 2654435761) % 2^32
+// Uses Knuth's multiplicative hash constant
+fn hash_one(x: i64) -> i64 = {
+    let m = 4294967296;
+    let product = x * 2654435761;
+    // Ensure positive modulo
+    let r = product - (product / m) * m;
+    if r < 0 { r + m } else { r }
+};
+
+// Apply hash n times: h(h(h(...h(x)...)))
+fn hash_chain(x: i64, n: i64) -> i64 = {
+    let mut val = x;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        val = hash_one(val);
+        i = i + 1
+    };
+    val
+};
+
+// Verify: given end of chain and length, recompute and check
+fn verify_chain(start: i64, expected_end: i64, length: i64) -> i64 = {
+    let computed = hash_chain(start, length);
+    if computed == expected_end { 1 } else { 0 }
+};
+
+// Find chain length until a collision with target (mod small)
+// Returns steps or max_steps if not found
+fn find_preimage_mod(target_mod: i64, modulus: i64, start: i64, max_steps: i64) -> i64 = {
+    let mut val = start;
+    let mut steps = 0;
+    let mut found = 0;
+    loop {
+        if steps >= max_steps { break } else { () };
+        if found == 1 { break } else { () };
+        val = hash_one(val);
+        steps = steps + 1;
+        let r = val - (val / modulus) * modulus;
+        let _c = if r == target_mod { found = 1; 0 } else { 0 }
+    };
+    if found == 1 { steps } else { 0 - 1 }
+};
+
+// XOR-combine two chains: hash_chain(a,n) XOR hash_chain(b,n)
+fn xor_chains(a: i64, b: i64, n: i64) -> i64 = {
+    let ha = hash_chain(a, n);
+    let hb = hash_chain(b, n);
+    ha bxor hb
+};
+
+// Chain accumulator: sum of all intermediate hash values mod m
+fn chain_sum(x: i64, n: i64, modulus: i64) -> i64 = {
+    let mut val = x;
+    let mut total = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        val = hash_one(val);
+        total = total + val;
+        // Keep total manageable
+        total = total - (total / modulus) * modulus;
+        i = i + 1
+    };
+    total
+};
+
+fn main() -> i64 = {
+    // Single hash
+    let _p1 = println(hash_one(0));            // 0
+    let _p2 = println(hash_one(1));            // 2654435761
+
+    // Hash chain of length 1 = single hash
+    let _p3 = println(hash_chain(1, 1));       // 2654435761
+
+    // Hash chain of length 2
+    let h2 = hash_chain(1, 2);
+    let _p4 = println(h2);                     // hash_one(2654435761)
+
+    // Verify chain: start=1, length=1 should give hash_one(1)
+    let _p5 = println(verify_chain(1, 2654435761, 1));  // 1
+
+    // Verify chain with wrong expected value
+    let _p6 = println(verify_chain(1, 999, 1));         // 0
+
+    // Hash chain of length 0 = identity
+    let _p7 = println(hash_chain(42, 0));               // 42
+
+    // XOR of two chains
+    let _p8 = println(xor_chains(1, 2, 1));    // hash(1) XOR hash(2)
+
+    // Chain sum mod 1000000
+    let _p9 = println(chain_sum(1, 5, 1000000));
+
+    // Determinism: same input always same output
+    let c1 = hash_chain(100, 10);
+    let c2 = hash_chain(100, 10);
+    let _p10 = println(if c1 == c2 { 1 } else { 0 }); // 1
+
+    0
+};

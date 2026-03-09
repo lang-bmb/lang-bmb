@@ -1,0 +1,106 @@
+// Golden Test: Parity bit computation — Cycle 1568
+// Compute even/odd parity of integers, arrays, and detect single-bit errors
+
+// Count set bits (popcount via loop)
+fn popcount(n: i64) -> i64 = {
+    let mut count = 0;
+    let mut x = n;
+    loop {
+        if x == 0 { break } else { () };
+        count = count + (x band 1);
+        x = x >> 1
+    };
+    count
+    };
+
+// Even parity: 1 if odd number of set bits (parity bit makes total even)
+fn even_parity(n: i64) -> i64 = popcount(n) band 1;
+
+// Odd parity: 1 if even number of set bits (parity bit makes total odd)
+fn odd_parity(n: i64) -> i64 = {
+    let ep = even_parity(n);
+    if ep == 0 { 1 } else { 0 }
+    };
+
+// Compute XOR parity of an array (XOR all elements)
+fn array_xor_parity(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut result = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        result = result bxor vec_get(v, i);
+        i = i + 1
+    };
+    result
+    };
+
+// Append even parity bit to data: data << 1 | parity
+fn add_parity_bit(data: i64) -> i64 = {
+    let p = even_parity(data);
+    (data << 1) bor p
+    };
+
+// Check if data with parity bit is valid (even parity of entire word should be 0)
+fn check_parity(data_with_parity: i64) -> i64 = {
+    let p = even_parity(data_with_parity);
+    if p == 0 { 1 } else { 0 }
+    };
+
+// Simulate single-bit error and detect it
+fn detect_error(data: i64, bit_pos: i64) -> i64 = {
+    let encoded = add_parity_bit(data);
+    // Flip bit at position bit_pos to simulate error
+    let corrupted = encoded bxor (1 << bit_pos);
+    // Check parity - should detect the error (return 0 = invalid)
+    check_parity(corrupted)
+    };
+
+fn main() -> i64 = {
+    // Test 1: Even parity of 0b1010 (2 bits set) -> 0
+    let _p1 = println(even_parity(10));      // 0 (1010 has 2 set bits)
+
+    // Test 2: Even parity of 0b1011 (3 bits set) -> 1
+    let _p2 = println(even_parity(11));      // 1 (1011 has 3 set bits)
+
+    // Test 3: Odd parity of 0b1111 (4 bits set) -> 1
+    let _p3 = println(odd_parity(15));       // 1 (1111 has 4 set bits, even count)
+
+    // Test 4: Encode 5 (101) with parity bit -> 1010 (5<<1 | 0) = 10
+    let _p4 = println(add_parity_bit(5));    // 10 (101 has 2 bits, parity=0, 1010)
+
+    // Test 5: Encode 7 (111) with parity bit -> 1111 (7<<1 | 1) = 15
+    let _p5 = println(add_parity_bit(7));    // 15 (111 has 3 bits, parity=1, 1111)
+
+    // Test 6: Check valid encoded data (15 = 1111, even parity = 0 -> valid)
+    let _p6 = println(check_parity(15));     // 1 (valid, 4 bits set)
+
+    // Test 7: Check corrupted data (14 = 1110, even parity = 1 -> invalid)
+    let _p7 = println(check_parity(14));     // 0 (invalid, 3 bits set)
+
+    // Test 8: Detect single-bit error in encoded data=5
+    let _p8 = println(detect_error(5, 1));   // 0 (error detected)
+
+    // Test 9: Array XOR parity [1, 2, 3, 4] -> 1^2^3^4 = 4
+    let v1 = vec_new();
+    vec_push(v1, 1); vec_push(v1, 2);
+    vec_push(v1, 3); vec_push(v1, 4);
+    let _p9 = println(array_xor_parity(v1)); // 4
+
+    // Test 10: Array XOR parity detects missing element
+    // [1, 2, 3, 4, 5] XOR = 1 (complete), remove 3 -> [1, 2, 4, 5] XOR = 2
+    // XOR of complete ^ incomplete = missing element
+    let v2 = vec_new();
+    vec_push(v2, 1); vec_push(v2, 2);
+    vec_push(v2, 3); vec_push(v2, 4);
+    vec_push(v2, 5);
+    let full_xor = array_xor_parity(v2);
+    let v3 = vec_new();
+    vec_push(v3, 1); vec_push(v3, 2);
+    vec_push(v3, 4); vec_push(v3, 5);
+    let partial_xor = array_xor_parity(v3);
+    let _p10 = println(full_xor bxor partial_xor);  // 3 (missing element)
+
+    vec_free(v1); vec_free(v2); vec_free(v3);
+    0
+    };

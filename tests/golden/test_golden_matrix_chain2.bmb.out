@@ -1,0 +1,65 @@
+=== Test 1: 3 matrices ===
+Min cost: 4500
+Parenthesization:
+(
+(
+A0
+ x A1
+)
+ x A2
+)
+=== Test 2: 4 matrices ===
+Min cost: 26000
+Parenthesization:
+(
+(
+A0
+ x (
+A1
+ x A2
+)
+)
+ x A3
+)
+=== Test 3: 5 matrices ===
+Min cost: 32000
+Parenthesization:
+(
+A0
+ x (
+A1
+ x (
+A2
+ x (
+A3
+ x A4
+)
+)
+)
+)
+=== Test 4: 2 matrices ===
+Min cost: 1000
+Parenthesization:
+(
+A0
+ x A1
+)
+=== Test 5: 6 matrices (textbook) ===
+Min cost: 15125
+Parenthesization:
+(
+(
+A0
+ x (
+A1
+ x A2
+)
+)
+ x (
+(
+A3
+ x A4
+)
+ x A5
+)
+)

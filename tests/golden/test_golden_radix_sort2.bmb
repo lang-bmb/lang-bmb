@@ -1,0 +1,247 @@
+// Golden Test: LSD radix sort for multi-digit numbers + MSD variant
+// LSD (Least Significant Digit) radix sort: sort by each digit from right to left
+// Base-10 radix for clarity
+
+// Extract digit at position pos (0 = ones, 1 = tens, etc.)
+fn get_digit(val: i64, pos: i64) -> i64 = {
+    let mut divisor = 1;
+    for _i in 0..pos { divisor = divisor * 10 };
+    (val / divisor) % 10
+    };
+
+// Find max value in array
+fn find_max(v: i64, n: i64) -> i64 = {
+    let mut mx = vec_get(v, 0);
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let val = vec_get(v, i);
+        let _x = if val > mx { mx = val; 0 } else { 0 };
+        i = i + 1
+    };
+    mx
+    };
+
+// Count number of digits in a number
+fn num_digits(n: i64) -> i64 =
+    if n < 10 { 1 }
+    else { 1 + num_digits(n / 10) };
+
+// LSD Radix Sort: stable sort by each digit position
+fn lsd_radix_sort(v: i64, n: i64) -> i64 = {
+    let mx = find_max(v, n);
+    let digits = num_digits(mx);
+    let output = vec_new();
+    for _i in 0..n { vec_push(output, 0) };
+
+    let mut pos = 0;
+    loop {
+        if pos >= digits { break } else { () };
+        // Counting sort by digit at position pos
+        let count = vec_new();
+        for _i in 0..10 { vec_push(count, 0) };
+
+        // Count occurrences
+        for i in 0..n {
+            let d = get_digit(vec_get(v, i), pos);
+            let c = vec_get(count, d);
+            vec_set(count, d, c + 1)
+        };
+
+        // Prefix sums
+        let mut ci = 1;
+        loop {
+            if ci >= 10 { break } else { () };
+            let prev = vec_get(count, ci - 1);
+            let curr = vec_get(count, ci);
+            vec_set(count, ci, prev + curr);
+            ci = ci + 1
+        };
+
+        // Build output in reverse for stability
+        let mut j = n - 1;
+        loop {
+            if j < 0 { break } else { () };
+            let d = get_digit(vec_get(v, j), pos);
+            let idx = vec_get(count, d) - 1;
+            vec_set(output, idx, vec_get(v, j));
+            vec_set(count, d, idx);
+            j = j - 1
+        };
+
+        // Copy back
+        for i in 0..n {
+            vec_set(v, i, vec_get(output, i))
+        };
+
+        vec_free(count);
+        pos = pos + 1
+    };
+    vec_free(output);
+    0
+    };
+
+// MSD Radix Sort helper: sort v[lo..hi) by digit at position pos
+fn msd_sort(v: i64, lo: i64, hi: i64, pos: i64, temp: i64) -> i64 = {
+    if hi - lo <= 1 or pos < 0 { 0 }
+    else {
+        // Counting sort by digit at pos for range [lo, hi)
+        let count = vec_new();
+        for _i in 0..11 { vec_push(count, 0) };
+
+        // Count occurrences (digit + 1 for prefix sum technique)
+        let mut i = lo;
+        loop {
+            if i >= hi { break } else { () };
+            let d = get_digit(vec_get(v, i), pos);
+            let c = vec_get(count, d + 1);
+            vec_set(count, d + 1, c + 1);
+            i = i + 1
+        };
+
+        // Prefix sums
+        let mut ci = 1;
+        loop {
+            if ci <= 10 { () } else { break };
+            let prev = vec_get(count, ci - 1);
+            let curr = vec_get(count, ci);
+            vec_set(count, ci, prev + curr);
+            ci = ci + 1
+        };
+
+        // Scatter into temp
+        i = lo;
+        loop {
+            if i >= hi { break } else { () };
+            let d = get_digit(vec_get(v, i), pos);
+            let idx = vec_get(count, d);
+            vec_set(temp, lo + idx, vec_get(v, i));
+            vec_set(count, d, idx + 1);
+            i = i + 1
+        };
+
+        // Copy back
+        i = lo;
+        loop {
+            if i >= hi { break } else { () };
+            vec_set(v, i, vec_get(temp, i));
+            i = i + 1
+        };
+
+        // Recurse on each bucket
+        // Recount to find bucket boundaries
+        let starts = vec_new();
+        for _bi in 0..10 { vec_push(starts, 0) };
+
+        // Recount from sorted range
+        i = lo;
+        loop {
+            if i >= hi { break } else { () };
+            let d = get_digit(vec_get(v, i), pos);
+            let c = vec_get(starts, d);
+            vec_set(starts, d, c + 1);
+            i = i + 1
+        };
+
+        // Recurse each non-empty bucket
+        let mut bucket_start = lo;
+        let mut bi = 0;
+        loop {
+            if bi >= 10 { break } else { () };
+            let bucket_size = vec_get(starts, bi);
+            let _r = if bucket_size > 1 {
+                msd_sort(v, bucket_start, bucket_start + bucket_size, pos - 1, temp);
+                0
+            } else { 0 };
+            bucket_start = bucket_start + bucket_size;
+            bi = bi + 1
+        };
+
+        vec_free(count);
+        vec_free(starts);
+        0
+    }
+    };
+
+fn msd_radix_sort(v: i64, n: i64) -> i64 = {
+    let mx = find_max(v, n);
+    let max_pos = num_digits(mx) - 1;
+    let temp = vec_new();
+    for _i in 0..n { vec_push(temp, 0) };
+    let _r = msd_sort(v, 0, n, max_pos, temp);
+    vec_free(temp);
+    0
+    };
+
+// Check if array is sorted
+fn is_sorted(v: i64, n: i64) -> i64 = {
+    let mut ok = 1;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let _x = if vec_get(v, i) < vec_get(v, i - 1) { ok = 0; 0 } else { 0 };
+        i = i + 1
+    };
+    ok
+    };
+
+fn print_arr(v: i64, n: i64) -> i64 = {
+    for i in 0..n {
+        let _p = println(vec_get(v, i));
+        0
+    };
+    0
+    };
+
+fn main() -> i64 = {
+    // Test 1: LSD radix sort on [170, 45, 75, 90, 802, 24, 2, 66]
+    let v1 = vec_new();
+    vec_push(v1, 170); vec_push(v1, 45); vec_push(v1, 75); vec_push(v1, 90);
+    vec_push(v1, 802); vec_push(v1, 24); vec_push(v1, 2); vec_push(v1, 66);
+    let _s1 = lsd_radix_sort(v1, 8);
+    let _p1 = println(vec_get(v1, 0)); // 2
+    let _p2 = println(vec_get(v1, 3)); // 66
+    let _p3 = println(vec_get(v1, 7)); // 802
+    let _p4 = println(is_sorted(v1, 8)); // 1
+
+    // Test 2: LSD with duplicates [5, 3, 5, 1, 3, 1]
+    let v2 = vec_new();
+    vec_push(v2, 5); vec_push(v2, 3); vec_push(v2, 5);
+    vec_push(v2, 1); vec_push(v2, 3); vec_push(v2, 1);
+    let _s2 = lsd_radix_sort(v2, 6);
+    let _p5 = println(vec_get(v2, 0)); // 1
+    let _p6 = println(vec_get(v2, 1)); // 1
+    let _p7 = println(vec_get(v2, 5)); // 5
+    let _p8 = println(is_sorted(v2, 6)); // 1
+
+    // Test 3: MSD radix sort [432, 8, 530, 90, 88, 231, 11, 45]
+    let v3 = vec_new();
+    vec_push(v3, 432); vec_push(v3, 8); vec_push(v3, 530); vec_push(v3, 90);
+    vec_push(v3, 88); vec_push(v3, 231); vec_push(v3, 11); vec_push(v3, 45);
+    let _s3 = msd_radix_sort(v3, 8);
+    let _p9 = println(vec_get(v3, 0)); // 8
+    let _p10 = println(vec_get(v3, 4)); // 90
+    let _p11 = println(vec_get(v3, 7)); // 530
+    let _p12 = println(is_sorted(v3, 8)); // 1
+
+    // Test 4: Single element
+    let v4 = vec_new();
+    vec_push(v4, 42);
+    let _s4 = lsd_radix_sort(v4, 1);
+    let _p13 = println(vec_get(v4, 0)); // 42
+
+    // Test 5: Already sorted
+    let v5 = vec_new();
+    vec_push(v5, 10); vec_push(v5, 20); vec_push(v5, 30); vec_push(v5, 40);
+    let _s5 = lsd_radix_sort(v5, 4);
+    let _p14 = println(is_sorted(v5, 4)); // 1
+    let _p15 = println(vec_get(v5, 0)); // 10
+
+    // Test 6: get_digit utility
+    let _p16 = println(get_digit(1234, 0)); // 4
+    let _p17 = println(get_digit(1234, 2)); // 2
+    let _p18 = println(num_digits(99999)); // 5
+
+    vec_free(v1); vec_free(v2); vec_free(v3); vec_free(v4); vec_free(v5);
+    0
+    };

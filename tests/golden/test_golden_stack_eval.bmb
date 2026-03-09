@@ -1,0 +1,226 @@
+// Golden Test: Stack-based expression evaluator (RPN)
+// Evaluates Reverse Polish Notation expressions with +, -, *, /
+// Also includes postfix evaluation of more complex expressions
+
+// Stack operations using vec
+fn stack_push(s: i64, top: i64, val: i64) -> i64 = {
+    vec_set(s, top + 1, val);
+    top + 1
+    };
+
+fn stack_peek(s: i64, top: i64) -> i64 =
+    vec_get(s, top);
+
+fn stack_pop(top: i64) -> i64 =
+    top - 1;
+
+fn make_stack(size: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..size {
+        vec_push(v, 0)
+    };
+    v
+    };
+
+// Operation codes:
+// Values 0-999 are operands
+// 1000 = add, 1001 = subtract, 1002 = multiply, 1003 = divide
+// 1004 = negate (unary minus), 1005 = duplicate top, 1006 = swap top two
+
+fn is_operand(code: i64) -> i64 =
+    if code < 1000 { 1 } else { 0 };
+
+// Run a single RPN expression stored in a vec
+// Returns the result left on top of stack
+fn rpn_run(expr: i64) -> i64 = {
+    let n = vec_len(expr);
+    let stk = make_stack(32);
+    let mut top = 0 - 1;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let code = vec_get(expr, i);
+        if is_operand(code) == 1 {
+            top = stack_push(stk, top, code)
+        } else if code == 1000 {
+            // Add
+            let b = stack_peek(stk, top);
+            top = stack_pop(top);
+            let a = stack_peek(stk, top);
+            top = stack_pop(top);
+            top = stack_push(stk, top, a + b)
+        } else if code == 1001 {
+            // Subtract
+            let b = stack_peek(stk, top);
+            top = stack_pop(top);
+            let a = stack_peek(stk, top);
+            top = stack_pop(top);
+            top = stack_push(stk, top, a - b)
+        } else if code == 1002 {
+            // Multiply
+            let b = stack_peek(stk, top);
+            top = stack_pop(top);
+            let a = stack_peek(stk, top);
+            top = stack_pop(top);
+            top = stack_push(stk, top, a * b)
+        } else if code == 1003 {
+            // Divide
+            let b = stack_peek(stk, top);
+            top = stack_pop(top);
+            let a = stack_peek(stk, top);
+            top = stack_pop(top);
+            top = stack_push(stk, top, a / b)
+        } else if code == 1004 {
+            // Negate
+            let a = stack_peek(stk, top);
+            top = stack_pop(top);
+            top = stack_push(stk, top, 0 - a)
+        } else if code == 1005 {
+            // Duplicate
+            let a = stack_peek(stk, top);
+            top = stack_push(stk, top, a)
+        } else if code == 1006 {
+            // Swap
+            let b = stack_peek(stk, top);
+            top = stack_pop(top);
+            let a = stack_peek(stk, top);
+            top = stack_pop(top);
+            top = stack_push(stk, top, b);
+            top = stack_push(stk, top, a)
+        } else { () };
+        i = i + 1
+    };
+    let result = stack_peek(stk, top);
+    vec_free(stk);
+    result
+    };
+
+// Helper: push a code into expression vec
+fn push_code(expr: i64, code: i64) -> i64 = {
+    vec_push(expr, code);
+    0
+    };
+
+// Compute polynomial a*x^2 + b*x + c using RPN
+// Stack sequence: a x dup * * b x * + c +
+fn compute_quadratic(a: i64, b: i64, c: i64, x: i64) -> i64 = {
+    let expr = vec_new();
+    push_code(expr, a);       // a
+    push_code(expr, x);       // a x
+    push_code(expr, 1005);    // a x x (dup)
+    push_code(expr, 1002);    // a x^2 (mul)
+    push_code(expr, 1002);    // a*x^2 (mul)
+    push_code(expr, b);       // a*x^2 b
+    push_code(expr, x);       // a*x^2 b x
+    push_code(expr, 1002);    // a*x^2 b*x (mul)
+    push_code(expr, 1000);    // a*x^2+b*x (add)
+    push_code(expr, c);       // a*x^2+b*x c
+    push_code(expr, 1000);    // a*x^2+b*x+c (add)
+    let result = rpn_run(expr);
+    vec_free(expr);
+    result
+    };
+
+fn main() -> i64 = {
+    // Test 1: Simple addition 3 4 +  = 7
+    let e1 = vec_new();
+    push_code(e1, 3);
+    push_code(e1, 4);
+    push_code(e1, 1000);
+    let _p1 = println(rpn_run(e1));  // 7
+    vec_free(e1);
+
+    // Test 2: Subtraction 10 3 - = 7
+    let e2 = vec_new();
+    push_code(e2, 10);
+    push_code(e2, 3);
+    push_code(e2, 1001);
+    let _p2 = println(rpn_run(e2));  // 7
+    vec_free(e2);
+
+    // Test 3: Multiplication 6 7 * = 42
+    let e3 = vec_new();
+    push_code(e3, 6);
+    push_code(e3, 7);
+    push_code(e3, 1002);
+    let _p3 = println(rpn_run(e3));  // 42
+    vec_free(e3);
+
+    // Test 4: Division 100 4 / = 25
+    let e4 = vec_new();
+    push_code(e4, 100);
+    push_code(e4, 4);
+    push_code(e4, 1003);
+    let _p4 = println(rpn_run(e4));  // 25
+    vec_free(e4);
+
+    // Test 5: Complex: 3 4 + 2 * = (3+4)*2 = 14
+    let e5 = vec_new();
+    push_code(e5, 3);
+    push_code(e5, 4);
+    push_code(e5, 1000);
+    push_code(e5, 2);
+    push_code(e5, 1002);
+    let _p5 = println(rpn_run(e5));  // 14
+    vec_free(e5);
+
+    // Test 6: 5 1 2 + 4 * + 3 - = 5 + (1+2)*4 - 3 = 5+12-3 = 14
+    let e6 = vec_new();
+    push_code(e6, 5);
+    push_code(e6, 1);
+    push_code(e6, 2);
+    push_code(e6, 1000);
+    push_code(e6, 4);
+    push_code(e6, 1002);
+    push_code(e6, 1000);
+    push_code(e6, 3);
+    push_code(e6, 1001);
+    let _p6 = println(rpn_run(e6));  // 14
+    vec_free(e6);
+
+    // Test 7: Negate: 5 negate = -5, then + 10 = 5
+    let e7 = vec_new();
+    push_code(e7, 5);
+    push_code(e7, 1004);
+    push_code(e7, 10);
+    push_code(e7, 1000);
+    let _p7 = println(rpn_run(e7));  // 5
+    vec_free(e7);
+
+    // Test 8: Duplicate: 7 dup * = 7*7 = 49
+    let e8 = vec_new();
+    push_code(e8, 7);
+    push_code(e8, 1005);
+    push_code(e8, 1002);
+    let _p8 = println(rpn_run(e8));  // 49
+    vec_free(e8);
+
+    // Test 9: Swap: 10 3 swap - = 3 - 10 = -7
+    let e9 = vec_new();
+    push_code(e9, 10);
+    push_code(e9, 3);
+    push_code(e9, 1006);
+    push_code(e9, 1001);
+    let _p9 = println(rpn_run(e9));  // -7
+    vec_free(e9);
+
+    // Test 10: Quadratic 2*x^2 + 3*x + 1, x=5 = 50+15+1 = 66
+    let _p10 = println(compute_quadratic(2, 3, 1, 5));  // 66
+
+    // Test 11: Quadratic 1*x^2 + 0*x + 0, x=10 = 100
+    let _p11 = println(compute_quadratic(1, 0, 0, 10));  // 100
+
+    // Test 12: Chain: 2 3 + 4 5 + * = 5 * 9 = 45
+    let e12 = vec_new();
+    push_code(e12, 2);
+    push_code(e12, 3);
+    push_code(e12, 1000);
+    push_code(e12, 4);
+    push_code(e12, 5);
+    push_code(e12, 1000);
+    push_code(e12, 1002);
+    let _p12 = println(rpn_run(e12));  // 45
+    vec_free(e12);
+
+    0
+    };

@@ -1,0 +1,129 @@
+// Golden Test: 0/1 Knapsack with DP + item traceback reconstruction
+// Uses 2D DP table stored as flat vec (n+1) * (W+1)
+// Traceback reconstructs which items are selected
+
+fn dp_get(dp: i64, cols: i64, r: i64, c: i64) -> i64 =
+    vec_get(dp, r * cols + c);
+
+fn dp_set_val(dp: i64, cols: i64, r: i64, c: i64, val: i64) -> i64 = {
+    let _s = vec_set(dp, r * cols + c, val);
+    0
+    };
+
+fn max2(a: i64, b: i64) -> i64 =
+    if a > b { a } else { b };
+
+fn knapsack_fill_w(dp: i64, wts: i64, vals: i64, n: i64, cap: i64, i: i64, w: i64) -> i64 =
+    if w > cap { 0 }
+    else {
+        let wi = vec_get(wts, i - 1);
+        let vi = vec_get(vals, i - 1);
+        let without = dp_get(dp, cap + 1, i - 1, w);
+        let best = if w >= wi {
+            max2(without, dp_get(dp, cap + 1, i - 1, w - wi) + vi)
+        } else { without };
+        let _s = dp_set_val(dp, cap + 1, i, w, best);
+        knapsack_fill_w(dp, wts, vals, n, cap, i, w + 1)
+    };
+
+fn knapsack_fill(dp: i64, wts: i64, vals: i64, n: i64, cap: i64, i: i64) -> i64 =
+    if i > n { 0 }
+    else {
+        let _r = knapsack_fill_w(dp, wts, vals, n, cap, i, 0);
+        knapsack_fill(dp, wts, vals, n, cap, i + 1)
+    };
+
+fn knapsack_trace(dp: i64, wts: i64, sel: i64, cap: i64, i: i64, w: i64) -> i64 =
+    if i <= 0 { 0 }
+    else {
+        let cur = dp_get(dp, cap + 1, i, w);
+        let above = dp_get(dp, cap + 1, i - 1, w);
+        if cur != above {
+            let _s = vec_set(sel, i - 1, 1);
+            knapsack_trace(dp, wts, sel, cap, i - 1, w - vec_get(wts, i - 1))
+        } else {
+            knapsack_trace(dp, wts, sel, cap, i - 1, w)
+        }
+    };
+
+fn count_sel(sel: i64, n: i64, i: i64, acc: i64) -> i64 =
+    if i >= n { acc }
+    else {
+        let inc = if vec_get(sel, i) == 1 { 1 } else { 0 };
+        count_sel(sel, n, i + 1, acc + inc)
+    };
+
+fn weight_sel(sel: i64, wts: i64, n: i64, i: i64, acc: i64) -> i64 =
+    if i >= n { acc }
+    else {
+        let w = if vec_get(sel, i) == 1 { vec_get(wts, i) } else { 0 };
+        weight_sel(sel, wts, n, i + 1, acc + w)
+    };
+
+fn make_table(sz: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..sz { vec_push(v, 0) };
+    v
+    };
+
+fn run_knapsack(wts: i64, vals: i64, n: i64, cap: i64) -> i64 = {
+    let dp = make_table((n + 1) * (cap + 1));
+    let _f = knapsack_fill(dp, wts, vals, n, cap, 1);
+    let opt = dp_get(dp, cap + 1, n, cap);
+    let _po = println(opt);
+
+    let sel = make_table(n);
+    let _t = knapsack_trace(dp, wts, sel, cap, n, cap);
+    let _pc = println(count_sel(sel, n, 0, 0));
+    let _pw = println(weight_sel(sel, wts, n, 0, 0));
+    opt
+    };
+
+fn main() -> i64 = {
+    // Test 1: Items (w,v): (2,3),(3,4),(4,5),(5,6), cap=8
+    // Optimal: items 1+3 (w=3+5=8, v=4+6=10)
+    let w1 = vec_new();
+    vec_push(w1, 2); vec_push(w1, 3); vec_push(w1, 4); vec_push(w1, 5);
+    let v1 = vec_new();
+    vec_push(v1, 3); vec_push(v1, 4); vec_push(v1, 5); vec_push(v1, 6);
+    let _r1 = run_knapsack(w1, v1, 4, 8);
+
+    // Test 2: All items fit: (1,10),(1,20),(1,30), cap=5
+    let w2 = vec_new();
+    vec_push(w2, 1); vec_push(w2, 1); vec_push(w2, 1);
+    let v2 = vec_new();
+    vec_push(v2, 10); vec_push(v2, 20); vec_push(v2, 30);
+    let _r2 = run_knapsack(w2, v2, 3, 5);
+
+    // Test 3: Item too heavy: (10,100), cap=5
+    let w3 = vec_new();
+    vec_push(w3, 10);
+    let v3 = vec_new();
+    vec_push(v3, 100);
+    let _r3 = run_knapsack(w3, v3, 1, 5);
+
+    // Test 4: Greedy fails: (6,6),(5,5),(5,5), cap=10
+    // Optimal: items 1+2 (w=10, v=10), not item 0
+    let w4 = vec_new();
+    vec_push(w4, 6); vec_push(w4, 5); vec_push(w4, 5);
+    let v4 = vec_new();
+    vec_push(v4, 6); vec_push(v4, 5); vec_push(v4, 5);
+    let _r4 = run_knapsack(w4, v4, 3, 10);
+
+    // Test 5: Exact fit: (3,4),(4,5),(2,3), cap=7
+    // Optimal: items 0+1 (w=7, v=9)
+    let w5 = vec_new();
+    vec_push(w5, 3); vec_push(w5, 4); vec_push(w5, 2);
+    let v5 = vec_new();
+    vec_push(v5, 4); vec_push(v5, 5); vec_push(v5, 3);
+    let _r5 = run_knapsack(w5, v5, 3, 7);
+
+    // Test 6: Classic (1,6),(2,10),(3,12), cap=5 => items 1+2 (w=5, v=22)
+    let w6 = vec_new();
+    vec_push(w6, 1); vec_push(w6, 2); vec_push(w6, 3);
+    let v6 = vec_new();
+    vec_push(v6, 6); vec_push(v6, 10); vec_push(v6, 12);
+    let _r6 = run_knapsack(w6, v6, 3, 5);
+
+    0
+    };

@@ -1,0 +1,157 @@
+// Golden Test: Hash Map Simulation with Open Addressing (Linear Probing)
+// Uses two parallel vecs: keys[] (sentinel -1 = empty) and vals[]
+// Demonstrates collision handling, update-in-place, and wraparound probing
+
+// Hash function: key % capacity, negatives handled via abs
+fn hash(key: i64, capacity: i64) -> i64
+  pre capacity > 0
+= if key >= 0 { key - (key / capacity) * capacity }
+  else { (0 - key) - ((0 - key) / capacity) * capacity };
+
+// Create a vec of `cap` entries all set to -1 (empty sentinel)
+fn hm_new_keys(cap: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..cap {
+        let _p = vec_push(v, 0 - 1);
+    };
+    v
+    };
+
+// Create a vec of `cap` zeros for values
+fn hm_new_vals(cap: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..cap {
+        let _p = vec_push(v, 0);
+    };
+    v
+    };
+
+// Insert or update key->val using linear probing.
+// Returns 1 on success.
+// pre: key >= 0 (keys must be non-negative; -1 is the empty sentinel)
+fn hm_put(keys: i64, vals: i64, cap: i64, key: i64, val: i64) -> i64
+  pre key >= 0
+= {
+    let start = hash(key, cap);
+    let mut idx = start;
+    let mut probe = 0;
+    let mut done = 0;
+    let mut result = 0;
+    for _i in 0..cap {
+        if done == 0 {
+            let slot_key = vec_get(keys, idx);
+            if slot_key == key {
+                // Update existing entry
+                let _s = vec_set(vals, idx, val);
+                done = 1;
+                result = 1;
+            } else if slot_key == 0 - 1 {
+                // Empty slot — insert here
+                let _sk = vec_set(keys, idx, key);
+                let _sv = vec_set(vals, idx, val);
+                done = 1;
+                result = 1;
+            } else {
+                // Probe next slot (wrap around)
+                probe = probe + 1;
+                idx = (start + probe) - ((start + probe) / cap) * cap;
+            };
+        } else { () };
+    };
+    result
+    };
+
+// Look up a key and return its value, or -1 if not found.
+fn hm_get(keys: i64, vals: i64, cap: i64, key: i64) -> i64 = {
+    let start = hash(key, cap);
+    let mut idx = start;
+    let mut probe = 0;
+    let mut result = 0 - 1;
+    let mut done = 0;
+    for _i in 0..cap {
+        if done == 0 {
+            let slot_key = vec_get(keys, idx);
+            if slot_key == key {
+                result = vec_get(vals, idx);
+                done = 1;
+            } else if slot_key == 0 - 1 {
+                // Empty slot means key is absent
+                done = 1;
+            } else {
+                probe = probe + 1;
+                idx = (start + probe) - ((start + probe) / cap) * cap;
+            };
+        } else { () };
+    };
+    result
+    };
+
+// Returns 1 if key is in the map, 0 otherwise.
+fn hm_contains(keys: i64, vals: i64, cap: i64, key: i64) -> i64 = {
+    let start = hash(key, cap);
+    let mut idx = start;
+    let mut probe = 0;
+    let mut result = 0;
+    let mut done = 0;
+    for _i in 0..cap {
+        if done == 0 {
+            let slot_key = vec_get(keys, idx);
+            if slot_key == key {
+                result = 1;
+                done = 1;
+            } else if slot_key == 0 - 1 {
+                done = 1;
+            } else {
+                probe = probe + 1;
+                idx = (start + probe) - ((start + probe) / cap) * cap;
+            };
+        } else { () };
+    };
+    result
+    };
+
+// Count how many slots are occupied (key != -1).
+fn hm_count(keys: i64, cap: i64) -> i64 = {
+    let mut count = 0;
+    for i in 0..cap {
+        if vec_get(keys, i) != 0 - 1 {
+            count = count + 1;
+        } else { () };
+    };
+    count
+    };
+
+fn main() -> i64 = {
+    let cap = 8;
+    let keys = hm_new_keys(cap);
+    let vals = hm_new_vals(cap);
+
+    // Insert three keys that all hash to slot 5 (5%8=5, 13%8=5, 21%8=5)
+    // This forces a collision chain: 5->slot5, 13->slot6, 21->slot7
+    let _r1 = println(hm_put(keys, vals, cap, 5, 100));   // 1
+    let _r2 = println(hm_put(keys, vals, cap, 13, 200));  // 1
+    let _r3 = println(hm_put(keys, vals, cap, 21, 300));  // 1
+
+    // Retrieve values
+    let _g1 = println(hm_get(keys, vals, cap, 5));   // 100
+    let _g2 = println(hm_get(keys, vals, cap, 13));  // 200
+    let _g3 = println(hm_get(keys, vals, cap, 21));  // 300
+    let _g4 = println(hm_get(keys, vals, cap, 7));   // -1 (not found)
+
+    // Containment checks
+    let _c1 = println(hm_contains(keys, vals, cap, 5));   // 1
+    let _c2 = println(hm_contains(keys, vals, cap, 13));  // 1
+    let _c3 = println(hm_contains(keys, vals, cap, 99));  // 0
+
+    // Count occupied slots
+    let _cnt = println(hm_count(keys, cap));  // 3
+
+    // Update key 5 in place (should not grow count)
+    let _u1 = println(hm_put(keys, vals, cap, 5, 999));  // 1
+    let _g5 = println(hm_get(keys, vals, cap, 5));       // 999
+
+    let _f1 = vec_free(keys);
+    let _f2 = vec_free(vals);
+
+    0
+    };

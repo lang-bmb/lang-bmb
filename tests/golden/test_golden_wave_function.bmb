@@ -1,0 +1,148 @@
+// Golden Test: 1D Wave Equation Simulation
+// Finite difference method for wave propagation on a 1D string
+// u(x, t+1) = 2*u(x,t) - u(x,t-1) + c^2 * (u(x-1,t) - 2*u(x,t) + u(x+1,t))
+// Using scaled integer arithmetic (scale factor 1000)
+
+// Initialize a plucked string: triangle wave centered at mid
+fn init_pluck(arr: [i64; 20], n: i64, mid: i64, amp: i64) -> i64 = {
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let _x = if i <= mid {
+            set arr[i] = amp * i / mid;
+            0
+        } else {
+            set arr[i] = amp * (n - 1 - i) / (n - 1 - mid);
+            0
+        };
+        i = i + 1
+    };
+    0
+};
+
+// One time step of the wave equation
+// c2 = c^2 * 1000 (scaled), prev and curr are scaled by 1000
+fn wave_step(prev: [i64; 20], curr: [i64; 20], next_arr: [i64; 20], n: i64, c2: i64) -> i64 = {
+    // Boundary conditions: fixed ends
+    set next_arr[0] = 0;
+    set next_arr[n - 1] = 0;
+    let mut i = 1;
+    loop {
+        if i >= n - 1 { break } else { () };
+        let laplacian = curr[i - 1] - 2 * curr[i] + curr[i + 1];
+        set next_arr[i] = 2 * curr[i] - prev[i] + c2 * laplacian / 1000;
+        i = i + 1
+    };
+    0
+};
+
+// Copy array b into a
+fn copy_arr(a: [i64; 20], b: [i64; 20], n: i64) -> i64 = {
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        set a[i] = b[i];
+        i = i + 1
+    };
+    0
+};
+
+// Sum of all values (total energy proxy)
+fn arr_sum(arr: [i64; 20], n: i64) -> i64 = {
+    let mut s = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        s = s + arr[i];
+        i = i + 1
+    };
+    s
+};
+
+// Max absolute value in array
+fn arr_max_abs(arr: [i64; 20], n: i64) -> i64 = {
+    let mut mx = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let v = if arr[i] < 0 { 0 - arr[i] } else { arr[i] };
+        let _u = if v > mx { mx = v; 0 } else { 0 };
+        i = i + 1
+    };
+    mx
+};
+
+// Value at a specific index
+fn arr_at(arr: [i64; 20], idx: i64) -> i64 = arr[idx];
+
+fn main() -> i64 = {
+    let n = 11;
+    let mid = 5;
+    let amp = 1000;  // scaled amplitude
+    let c2 = 250;    // c^2 = 0.25 scaled by 1000
+
+    // Three time slices
+    let prev = [0; 20];
+    let curr = [0; 20];
+    let next_arr = [0; 20];
+
+    // Initialize: pluck at center
+    let _init = init_pluck(curr, n, mid, amp);
+    // prev starts as zero (string at rest, impulse start)
+
+    // Print initial state: value at center
+    let _p1 = println(arr_at(curr, 5));  // 1000 (peak)
+    let _p2 = println(arr_at(curr, 0));  // 0 (boundary)
+    let _p3 = println(arr_sum(curr, n)); // sum of initial pluck
+
+    // Step 1
+    let _s1 = wave_step(prev, curr, next_arr, n, c2);
+    let _c1 = copy_arr(prev, curr, n);
+    let _c2 = copy_arr(curr, next_arr, n);
+
+    let _p4 = println(arr_at(curr, 5));  // center after step 1
+    let _p5 = println(arr_max_abs(curr, n));
+
+    // Step 2
+    let _s2 = wave_step(prev, curr, next_arr, n, c2);
+    let _c3 = copy_arr(prev, curr, n);
+    let _c4 = copy_arr(curr, next_arr, n);
+
+    let _p6 = println(arr_at(curr, 5));  // center after step 2
+
+    // Steps 3-5
+    let _s3 = wave_step(prev, curr, next_arr, n, c2);
+    let _c5 = copy_arr(prev, curr, n);
+    let _c6 = copy_arr(curr, next_arr, n);
+
+    let _s4 = wave_step(prev, curr, next_arr, n, c2);
+    let _c7 = copy_arr(prev, curr, n);
+    let _c8 = copy_arr(curr, next_arr, n);
+
+    let _s5 = wave_step(prev, curr, next_arr, n, c2);
+    let _c9 = copy_arr(prev, curr, n);
+    let _c10 = copy_arr(curr, next_arr, n);
+
+    let _p7 = println(arr_at(curr, 5));  // center after step 5
+    let _p8 = println(arr_max_abs(curr, n));
+    let _p9 = println(arr_sum(curr, n)); // total energy proxy
+
+    // Steps 6-10
+    let mut step = 0;
+    loop {
+        if step >= 5 { break } else { () };
+        let _si = wave_step(prev, curr, next_arr, n, c2);
+        let _ci1 = copy_arr(prev, curr, n);
+        let _ci2 = copy_arr(curr, next_arr, n);
+        step = step + 1
+    };
+
+    let _p10 = println(arr_at(curr, 5));   // center after step 10
+    let _p11 = println(arr_max_abs(curr, n));
+
+    // Boundary check: endpoints always zero
+    let _p12 = println(arr_at(curr, 0));   // 0
+    let _p13 = println(arr_at(curr, 10));  // 0
+
+    0
+};

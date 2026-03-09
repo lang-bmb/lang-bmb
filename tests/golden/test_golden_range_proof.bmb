@@ -1,0 +1,111 @@
+// Golden Test: Range Proof and Contract Verification Patterns
+// Demonstrates pre/post conditions for division safety, bounded shifts,
+// percentage calculation, midpoint, fibonacci, modular exponentiation, and GCD.
+
+// 1. Safe division: pre guarantees b > 0 so division never traps
+fn safe_div(a: i64, b: i64) -> i64
+    pre b > 0
+= a / b;
+
+// 2. Safe modulo: pre guarantees b > 0 so modulo never traps
+fn safe_mod(a: i64, b: i64) -> i64
+    pre b > 0
+= a % b;
+
+// 3. Bounded shift: pre proves shift amount is in [0, 63]
+fn bounded_shift(x: i64, n: i64) -> i64
+    pre n >= 0 and n < 64
+= x << n;
+
+// 4. Percentage: pre guarantees total > 0, post proves result in [0, 100]
+fn percentage(part: i64, total: i64) -> i64
+    pre total > 0
+    post ret >= 0 and ret <= 100
+= (part * 100) / total;
+
+// 5. Midpoint: pre proves lo <= hi, post proves result is in [lo, hi]
+fn midpoint(lo: i64, hi: i64) -> i64
+    pre lo <= hi
+    post ret >= lo and ret <= hi
+= (lo + hi) / 2;
+
+// 6. Fibonacci: pre bounds n to [0, 30] for tractability, post proves non-negative
+fn fibonacci(n: i64) -> i64
+    pre n >= 0 and n <= 30
+    post ret >= 0
+= if n <= 0 { 0 }
+  else if n == 1 { 1 }
+  else { fibonacci(n - 1) + fibonacci(n - 2) };
+
+// 7. Modular exponentiation: pre bounds ensure correctness, result is in [0, m-1]
+fn power_mod(base: i64, exp: i64, m: i64) -> i64
+    pre exp >= 0 and m > 0
+= {
+    let mut result = 1;
+    let mut b = base % m;
+    let mut e = exp;
+    while e > 0 {
+        if e % 2 == 1 {
+            set result = (result * b) % m
+        } else { () };
+        set b = (b * b) % m;
+        set e = e / 2
+    };
+    result
+};
+
+// 8. GCD internal helper — allows b = 0 for recursive termination
+fn gcd_inner(a: i64, b: i64) -> i64 =
+    if b == 0 { a }
+    else { gcd_inner(b, a % b) };
+
+// GCD with contract: pre proves both inputs positive, post proves result positive
+fn gcd_contract(a: i64, b: i64) -> i64
+    pre a > 0 and b > 0
+    post ret > 0
+= gcd_inner(a, b);
+
+fn main() -> i64 = {
+    // safe_div: contract guarantees b > 0
+    let _p1 = println(safe_div(10, 3));     // 3
+    let _p2 = println(safe_div(100, 7));    // 14
+    let _p3 = println(safe_div(0, 5));      // 0
+
+    // safe_mod: contract guarantees b > 0
+    let _p4 = println(safe_mod(17, 5));     // 2
+    let _p5 = println(safe_mod(100, 9));    // 1
+    let _p6 = println(safe_mod(0, 7));      // 0
+
+    // bounded_shift: contract ensures n in [0, 63]
+    let _p7 = println(bounded_shift(1, 10));    // 1024
+    let _p8 = println(bounded_shift(3, 4));     // 48
+    let _p9 = println(bounded_shift(1, 0));     // 1
+
+    // percentage: contract ensures total > 0 and result in [0, 100]
+    let _p10 = println(percentage(75, 100));    // 75
+    let _p11 = println(percentage(1, 3));       // 33
+    let _p12 = println(percentage(0, 50));      // 0
+
+    // midpoint: contract ensures lo <= hi and result in [lo, hi]
+    let _p13 = println(midpoint(0, 10));        // 5
+    let _p14 = println(midpoint(3, 7));         // 5
+    let _p15 = println(midpoint(100, 200));     // 150
+
+    // fibonacci: contract bounds n in [0, 30] and proves ret >= 0
+    let _p16 = println(fibonacci(0));           // 0
+    let _p17 = println(fibonacci(1));           // 1
+    let _p18 = println(fibonacci(10));          // 55
+    let _p19 = println(fibonacci(20));          // 6765
+
+    // power_mod: contract ensures exp >= 0 and m > 0
+    let _p20 = println(power_mod(2, 10, 1000)); // 24 (1024 mod 1000)
+    let _p21 = println(power_mod(3, 5, 7));     // 5 (243 mod 7)
+    let _p22 = println(power_mod(5, 0, 13));    // 1 (any^0 = 1)
+
+    // gcd_contract: contract proves a > 0 and b > 0 and ret > 0
+    let _p23 = println(gcd_contract(12, 8));    // 4
+    let _p24 = println(gcd_contract(100, 75));  // 25
+    let _p25 = println(gcd_contract(17, 13));   // 1
+
+    0
+};

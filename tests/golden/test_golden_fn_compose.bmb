@@ -1,0 +1,88 @@
+// Golden test: Function composition chains
+// Tests passing results through multiple function calls
+
+fn double(x: i64) -> i64 = x * 2;
+fn inc(x: i64) -> i64 = x + 1;
+fn square(x: i64) -> i64 = x * x;
+fn negate(x: i64) -> i64 = 0 - x;
+fn abs_val(x: i64) -> i64 = if x < 0 { 0 - x } else { x };
+
+// Apply a chain of transformations
+fn chain_dsi(x: i64) -> i64 = square(inc(double(x)));    // (2x+1)^2
+fn chain_ids(x: i64) -> i64 = double(square(inc(x)));    // 2*(x+1)^2
+fn chain_sdi(x: i64) -> i64 = inc(double(square(x)));    // 2*x^2 + 1
+
+// Multi-argument composition
+fn add(a: i64, b: i64) -> i64 = a + b;
+fn mul(a: i64, b: i64) -> i64 = a * b;
+
+fn dot2(a1: i64, b1: i64, a2: i64, b2: i64) -> i64 =
+    add(mul(a1, b1), mul(a2, b2));
+
+    // Iterated function application
+
+fn apply_n(x: i64, n: i64) -> i64 =
+    if n <= 0 { x }
+    else { apply_n(double(x), n - 1) };
+
+    // Conditional composition
+
+fn step(x: i64) -> i64 =
+    if x > 100 { x / 2 }
+    else if x > 50 { x + 10 }
+    else { x * 2 };
+
+fn iterate_step(x: i64, n: i64) -> i64 =
+    if n <= 0 { x }
+    else { iterate_step(step(x), n - 1) };
+
+    // Map-like: apply function to range and sum
+
+fn sum_squares(lo: i64, hi: i64) -> i64 =
+    if lo > hi { 0 }
+    else { square(lo) + sum_squares(lo + 1, hi) };
+
+fn sum_doubled(lo: i64, hi: i64) -> i64 =
+    if lo > hi { 0 }
+    else { double(lo) + sum_doubled(lo + 1, hi) };
+
+    // Function pipeline with accumulation
+
+fn pipeline_sum(n: i64) -> i64 = {
+    let s1 = sum_squares(1, n);
+    let s2 = sum_doubled(1, n);
+    add(s1, s2)
+    };
+
+fn main() -> i64 = {
+// Basic composition
+    let _p1 = println(chain_dsi(3));   // (2*3+1)^2 = 49
+    let _p2 = println(chain_dsi(5));   // (2*5+1)^2 = 121
+    let _p3 = println(chain_ids(3));   // 2*(3+1)^2 = 32
+    let _p4 = println(chain_ids(5));   // 2*(5+1)^2 = 72
+    let _p5 = println(chain_sdi(3));   // 2*9+1 = 19
+    let _p6 = println(chain_sdi(5));   // 2*25+1 = 51
+
+// Dot product
+    let _p7 = println(dot2(3, 4, 5, 6));  // 12+30 = 42
+    let _p8 = println(dot2(1, 2, 3, 4));  // 2+12 = 14
+
+// Iterated doubling (x * 2^n)
+    let _p9 = println(apply_n(1, 10));   // 1024
+    let _p10 = println(apply_n(3, 5));   // 96
+
+// Conditional iteration
+    let _p11 = println(iterate_step(1, 10));  // complex path
+    let _p12 = println(iterate_step(30, 5));  // complex path
+
+// Sum compositions
+    let _p13 = println(sum_squares(1, 10));  // 385
+    let _p14 = println(sum_doubled(1, 10));  // 110
+    let _p15 = println(pipeline_sum(10));    // 385 + 110 = 495
+
+// Nested abs/negate
+    let _p16 = println(abs_val(negate(5)));   // 5
+    let _p17 = println(negate(abs_val(0 - 7))); // -7
+
+    0
+    };

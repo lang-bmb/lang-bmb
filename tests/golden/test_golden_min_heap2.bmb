@@ -1,0 +1,173 @@
+// Golden Test: Binary Min-Heap with decrease-key
+// Array-based min-heap supporting insert, extract-min, decrease-key
+
+fn heap_new() -> i64 = {
+    let h = vec_new();
+    let data = vec_new();
+    vec_push(h, data);   // h[0] = array of values
+    vec_push(h, 0);      // h[1] = size
+    h
+};
+
+fn heap_size(h: i64) -> i64 = vec_get(h, 1);
+fn heap_parent(i: i64) -> i64 = (i - 1) / 2;
+fn heap_left(i: i64) -> i64 = 2 * i + 1;
+fn heap_right(i: i64) -> i64 = 2 * i + 2;
+
+fn heap_get(h: i64, i: i64) -> i64 = vec_get(vec_get(h, 0), i);
+fn heap_set(h: i64, i: i64, v: i64) -> i64 = { vec_set(vec_get(h, 0), i, v); 0 };
+
+fn heap_swap(h: i64, i: i64, j: i64) -> i64 = {
+    let vi = heap_get(h, i);
+    let vj = heap_get(h, j);
+    let _si = heap_set(h, i, vj);
+    heap_set(h, j, vi)
+};
+
+// Bubble up from index i
+fn heap_sift_up(h: i64, idx: i64) -> i64 = {
+    let mut i = idx;
+    loop {
+        if i <= 0 { break } else { () };
+        let p = heap_parent(i);
+        let _x = if heap_get(h, i) < heap_get(h, p) {
+            let _sw = heap_swap(h, i, p);
+            set i = p;
+            0
+        } else {
+            set i = 0;  // break
+            0
+        };
+    };
+    0
+};
+
+// Bubble down from index i
+fn heap_sift_down(h: i64, idx: i64) -> i64 = {
+    let n = heap_size(h);
+    let mut i = idx;
+    loop {
+        let l = heap_left(i);
+        let r = heap_right(i);
+        let mut smallest = i;
+        let _cl = if l < n and heap_get(h, l) < heap_get(h, smallest) {
+            set smallest = l;
+            0
+        } else { 0 };
+        let _cr = if r < n and heap_get(h, r) < heap_get(h, smallest) {
+            set smallest = r;
+            0
+        } else { 0 };
+        if smallest == i { break } else { () };
+        let _sw = heap_swap(h, i, smallest);
+        set i = smallest;
+    };
+    0
+};
+
+// Insert value
+fn heap_push(h: i64, val: i64) -> i64 = {
+    let data = vec_get(h, 0);
+    let n = heap_size(h);
+    // Use vec_set if slot exists (after pop), vec_push if at end
+    let _w = if n < vec_len(data) {
+        vec_set(data, n, val);
+        0
+    } else {
+        vec_push(data, val);
+        0
+    };
+    vec_set(h, 1, n + 1);
+    heap_sift_up(h, n)
+};
+
+// Peek minimum
+fn heap_peek(h: i64) -> i64 = heap_get(h, 0);
+
+// Extract minimum
+fn heap_pop(h: i64) -> i64 = {
+    let n = heap_size(h);
+    let min_val = heap_get(h, 0);
+    let _sw = heap_set(h, 0, heap_get(h, n - 1));
+    vec_set(h, 1, n - 1);
+    let _sd = if n > 1 { heap_sift_down(h, 0) } else { 0 };
+    min_val
+};
+
+// Decrease key at index i to new_val
+fn heap_decrease(h: i64, idx: i64, new_val: i64) -> i64 = {
+    let _s = heap_set(h, idx, new_val);
+    heap_sift_up(h, idx)
+};
+
+// Find index of value (linear search)
+fn heap_find(h: i64, val: i64) -> i64 = {
+    let n = heap_size(h);
+    let mut result = 0 - 1;
+    for i in 0..n {
+        let _x = if heap_get(h, i) == val and result < 0 {
+            set result = i;
+            0
+        } else { 0 };
+    };
+    result
+};
+
+fn main() -> i64 = {
+    let h = heap_new();
+
+    // Test 1: Insert and peek
+    let _i1 = heap_push(h, 10);
+    let _i2 = heap_push(h, 5);
+    let _i3 = heap_push(h, 20);
+    let _i4 = heap_push(h, 3);
+    let _i5 = heap_push(h, 8);
+    println(heap_peek(h));    // 3
+    println(heap_size(h));    // 5
+
+    // Test 2: Extract min in order
+    println(heap_pop(h));     // 3
+    println(heap_pop(h));     // 5
+    println(heap_peek(h));    // 8
+    println(heap_size(h));    // 3
+
+    // Test 3: Continue extraction
+    println(heap_pop(h));     // 8
+    println(heap_pop(h));     // 10
+    println(heap_pop(h));     // 20
+    println(heap_size(h));    // 0
+
+    // Test 4: Build heap and decrease key
+    let h2 = heap_new();
+    let _j1 = heap_push(h2, 50);
+    let _j2 = heap_push(h2, 30);
+    let _j3 = heap_push(h2, 40);
+    let _j4 = heap_push(h2, 20);
+    let _j5 = heap_push(h2, 60);
+
+    // Decrease 60 to 10
+    let idx60 = heap_find(h2, 60);
+    let _dk = heap_decrease(h2, idx60, 10);
+    println(heap_peek(h2));   // 10
+
+    // Test 5: Extract all from h2 (should be sorted)
+    println(heap_pop(h2));    // 10
+    println(heap_pop(h2));    // 20
+    println(heap_pop(h2));    // 30
+    println(heap_pop(h2));    // 40
+    println(heap_pop(h2));    // 50
+
+    // Test 6: Single element
+    let h3 = heap_new();
+    let _k1 = heap_push(h3, 42);
+    println(heap_pop(h3));    // 42
+    println(heap_size(h3));   // 0
+
+    vec_free(vec_get(h, 0));
+    vec_free(h);
+    vec_free(vec_get(h2, 0));
+    vec_free(h2);
+    vec_free(vec_get(h3, 0));
+    vec_free(h3);
+    0
+};

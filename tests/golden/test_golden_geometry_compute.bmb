@@ -1,0 +1,241 @@
+// Golden test: Computational geometry patterns
+// Uses integer-scaled arithmetic to avoid floating point
+
+// Integer square root via Newton's method
+fn isqrt(n: i64) -> i64 =
+    if n <= 0 { 0 }
+    else { isqrt_iter(n, n) };
+
+fn isqrt_iter(n: i64, guess: i64) -> i64 = {
+    let next = (guess + n / guess) / 2;
+    if next >= guess { guess }
+    else { isqrt_iter(n, next) }
+    };
+
+// Absolute value
+fn iabs(x: i64) -> i64 =
+    if x < 0 { 0 - x } else { x };
+
+// Distance between (x1,y1) and (x2,y2) scaled by 1000
+// dist = sqrt((dx^2 + dy^2)) * 1000
+// We compute isqrt((dx^2 + dy^2) * 1000000)
+fn distance_scaled(x1: i64, y1: i64, x2: i64, y2: i64) -> i64 = {
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    isqrt((dx * dx + dy * dy) * 1000000)
+    };
+
+// 2x area of triangle with vertices (x1,y1), (x2,y2), (x3,y3)
+// Using cross product: |x1(y2-y3) + x2(y3-y1) + x3(y1-y2)|
+fn triangle_area2(x1: i64, y1: i64, x2: i64, y2: i64, x3: i64, y3: i64) -> i64 = {
+    let area = x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2);
+    iabs(area)
+    };
+
+// Point inside rectangle check
+// Rectangle defined by (rx1,ry1) lower-left and (rx2,ry2) upper-right
+fn point_in_rect(px: i64, py: i64, rx1: i64, ry1: i64, rx2: i64, ry2: i64) -> i64 =
+    if px >= rx1 {
+        if px <= rx2 {
+            if py >= ry1 {
+                if py <= ry2 { 1 }
+                else { 0 }
+            } else { 0 }
+        } else { 0 }
+    } else { 0 };
+
+// Manhattan distance: |dx| + |dy|
+fn manhattan(x1: i64, y1: i64, x2: i64, y2: i64) -> i64 =
+    iabs(x2 - x1) + iabs(y2 - y1);
+
+// Polygon perimeter (scaled by 1000)
+// Points stored as parallel x and y vecs
+fn polygon_perimeter(xs: i64, ys: i64, n: i64) -> i64 =
+    poly_perim_helper(xs, ys, n, 0, 0);
+
+fn poly_perim_helper(xs: i64, ys: i64, n: i64, idx: i64, acc: i64) -> i64 =
+    if idx >= n { acc }
+    else {
+        let next_idx = if idx + 1 >= n { 0 } else { idx + 1 };
+        let d = distance_scaled(vec_get(xs, idx), vec_get(ys, idx),
+                                vec_get(xs, next_idx), vec_get(ys, next_idx));
+        poly_perim_helper(xs, ys, n, idx + 1, acc + d)
+    };
+
+// Centroid: (sum_x / n, sum_y / n)
+fn centroid_x(xs: i64, pos: i64, acc: i64) -> i64 =
+    if pos >= vec_len(xs) { acc / vec_len(xs) }
+    else { centroid_x(xs, pos + 1, acc + vec_get(xs, pos)) };
+
+fn centroid_y(ys: i64, pos: i64, acc: i64) -> i64 =
+    if pos >= vec_len(ys) { acc / vec_len(ys) }
+    else { centroid_y(ys, pos + 1, acc + vec_get(ys, pos)) };
+
+// Shoelace formula: 2 * area of polygon
+// = |sum of (x_i * y_{i+1} - x_{i+1} * y_i)|
+fn shoelace_helper(xs: i64, ys: i64, n: i64, idx: i64, acc: i64) -> i64 =
+    if idx >= n { iabs(acc) }
+    else {
+        let next_idx = if idx + 1 >= n { 0 } else { idx + 1 };
+        let xi = vec_get(xs, idx);
+        let yi = vec_get(ys, idx);
+        let xn = vec_get(xs, next_idx);
+        let yn = vec_get(ys, next_idx);
+        let cross = xi * yn - xn * yi;
+        shoelace_helper(xs, ys, n, idx + 1, acc + cross)
+    };
+
+fn shoelace_area2(xs: i64, ys: i64, n: i64) -> i64 =
+    shoelace_helper(xs, ys, n, 0, 0);
+
+// Dot product of 2D vectors
+fn dot2d(x1: i64, y1: i64, x2: i64, y2: i64) -> i64 =
+    x1 * x2 + y1 * y2;
+
+// Cross product magnitude of 2D vectors (z-component)
+fn cross2d(x1: i64, y1: i64, x2: i64, y2: i64) -> i64 =
+    x1 * y2 - y1 * x2;
+
+// Collinearity check: three points are collinear if cross product = 0
+fn collinear(x1: i64, y1: i64, x2: i64, y2: i64, x3: i64, y3: i64) -> i64 = {
+    let cp = cross2d(x2 - x1, y2 - y1, x3 - x1, y3 - y1);
+    if cp == 0 { 1 } else { 0 }
+    };
+
+fn make_vec3(a: i64, b: i64, c: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    v
+    };
+
+fn make_vec4(a: i64, b: i64, c: i64, d: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    v
+    };
+
+fn main() -> i64 = {
+    // Test 1: Distance between (0,0) and (3,4) scaled by 1000
+    // sqrt(9+16) * 1000 = 5 * 1000 = 5000
+    // isqrt(25 * 1000000) = isqrt(25000000) = 5000
+    let _p1 = println(distance_scaled(0, 0, 3, 4));  // 5000
+
+    // Test 2: Distance between (1,1) and (4,5) scaled by 1000
+    // sqrt(9+16) * 1000 = 5000
+    let _p2 = println(distance_scaled(1, 1, 4, 5));  // 5000
+
+    // Test 3: Distance between (0,0) and (1,1) scaled by 1000
+    // sqrt(2) * 1000 = isqrt(2000000) = 1414
+    let _p3 = println(distance_scaled(0, 0, 1, 1));  // 1414
+
+    // Test 4: 2x area of triangle (0,0), (4,0), (0,3)
+    // = |0*(0-3) + 4*(3-0) + 0*(0-0)| = |0 + 12 + 0| = 12
+    let _p4 = println(triangle_area2(0, 0, 4, 0, 0, 3));  // 12
+
+    // Test 5: 2x area of triangle (1,1), (5,1), (3,4)
+    // = |1*(1-4) + 5*(4-1) + 3*(1-1)| = |-3 + 15 + 0| = 12
+    let _p5 = println(triangle_area2(1, 1, 5, 1, 3, 4));  // 12
+
+    // Test 6: 2x area of triangle (0,0), (6,0), (3,4)
+    // = |0*(0-4) + 6*(4-0) + 3*(0-0)| = |0 + 24 + 0| = 24
+    let _p6 = println(triangle_area2(0, 0, 6, 0, 3, 4));  // 24
+
+    // Test 7: Point in rectangle
+    // Rect (0,0)-(10,10), point (5,5) -> inside
+    let _p7 = println(point_in_rect(5, 5, 0, 0, 10, 10));  // 1
+
+    // Test 8: Point outside rectangle
+    // Rect (0,0)-(10,10), point (11,5) -> outside
+    let _p8 = println(point_in_rect(11, 5, 0, 0, 10, 10));  // 0
+
+    // Test 9: Point on rectangle edge
+    // Rect (0,0)-(10,10), point (10,5) -> on edge (inside by our def)
+    let _p9 = println(point_in_rect(10, 5, 0, 0, 10, 10));  // 1
+
+    // Test 10: Point below rectangle
+    let _p10 = println(point_in_rect(5, 0 - 1, 0, 0, 10, 10));  // 0
+
+    // Test 11: Manhattan distance (0,0) to (3,4) = 7
+    let _p11 = println(manhattan(0, 0, 3, 4));  // 7
+
+    // Test 12: Manhattan distance (1,2) to (5,7) = 4+5 = 9
+    let _p12 = println(manhattan(1, 2, 5, 7));  // 9
+
+    // Test 13: Manhattan with negative coords (-3,2) to (4,-1) = 7+3 = 10
+    let _p13 = println(manhattan(0 - 3, 2, 4, 0 - 1));  // 10
+
+    // Test 14: Polygon perimeter of unit square (0,0),(1,0),(1,1),(0,1)
+    // 4 edges of length 1, total = 4 * 1000 = 4000
+    let xs1 = make_vec4(0, 1, 1, 0);
+    let ys1 = make_vec4(0, 0, 1, 1);
+    let _p14 = println(polygon_perimeter(xs1, ys1, 4));  // 4000
+
+    // Test 15: Polygon perimeter of right triangle (0,0),(3,0),(0,4)
+    // edges: 3, 4, 5 -> total = 12 * 1000 = 12000
+    let xs2 = make_vec3(0, 3, 0);
+    let ys2 = make_vec3(0, 0, 4);
+    let _p15 = println(polygon_perimeter(xs2, ys2, 3));  // 12000
+
+    // Test 16: Centroid of (0,0),(6,0),(6,6),(0,6)
+    // cx = (0+6+6+0)/4 = 3, cy = (0+0+6+6)/4 = 3
+    let xs3 = make_vec4(0, 6, 6, 0);
+    let ys3 = make_vec4(0, 0, 6, 6);
+    let _p16 = println(centroid_x(xs3, 0, 0));  // 3
+    let _p17 = println(centroid_y(ys3, 0, 0));  // 3
+
+    // Test 17: Centroid of (0,0),(10,0),(5,8)
+    // cx = 15/3 = 5, cy = 8/3 = 2 (integer division)
+    let xs4 = make_vec3(0, 10, 5);
+    let ys4 = make_vec3(0, 0, 8);
+    let _p18 = println(centroid_x(xs4, 0, 0));  // 5
+    let _p19 = println(centroid_y(ys4, 0, 0));  // 2
+
+    // Test 18: Shoelace area of unit square (0,0),(1,0),(1,1),(0,1)
+    // 2*area = |0*0-1*0 + 1*1-1*0 + 1*1-0*1 + 0*0-0*1| = |0+1+1+0| = 2
+    let _p20 = println(shoelace_area2(xs1, ys1, 4));  // 2
+
+    // Test 19: Shoelace area of rectangle (0,0),(6,0),(6,6),(0,6)
+    // 2*area = 72
+    // cross terms: 0*0-6*0=0, 6*6-6*0=36, 6*6-0*6=36, 0*0-0*6=0
+    // sum = 72, |72| = 72
+    let _p21 = println(shoelace_area2(xs3, ys3, 4));  // 72
+
+    // Test 20: Shoelace area of triangle (0,0),(6,0),(3,4)
+    // 2*area = |0*0-6*0 + 6*4-3*0 + 3*0-0*4| = |0+24+0| = 24
+    let xs5 = make_vec3(0, 6, 3);
+    let ys5 = make_vec3(0, 0, 4);
+    let _p22 = println(shoelace_area2(xs5, ys5, 3));  // 24
+
+    // Test 21: Dot product (1,0).(0,1) = 0 (perpendicular)
+    let _p23 = println(dot2d(1, 0, 0, 1));  // 0
+
+    // Test 22: Dot product (3,4).(3,4) = 9+16 = 25
+    let _p24 = println(dot2d(3, 4, 3, 4));  // 25
+
+    // Test 23: Cross product magnitude (1,0) x (0,1) = 1
+    let _p25 = println(cross2d(1, 0, 0, 1));  // 1
+
+    // Test 24: Collinearity (0,0),(1,1),(2,2) -> yes
+    let _p26 = println(collinear(0, 0, 1, 1, 2, 2));  // 1
+
+    // Test 25: Collinearity (0,0),(1,1),(2,3) -> no
+    let _p27 = println(collinear(0, 0, 1, 1, 2, 3));  // 0
+
+    // Cleanup
+    let _f1 = vec_free(xs1);
+    let _f2 = vec_free(ys1);
+    let _f3 = vec_free(xs2);
+    let _f4 = vec_free(ys2);
+    let _f5 = vec_free(xs3);
+    let _f6 = vec_free(ys3);
+    let _f7 = vec_free(xs4);
+    let _f8 = vec_free(ys4);
+    let _f9 = vec_free(xs5);
+    let _f10 = vec_free(ys5);
+    0
+    };

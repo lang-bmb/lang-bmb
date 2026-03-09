@@ -1,0 +1,124 @@
+// Golden Test: Stack Machine (RPN expression evaluator)
+// Evaluates reverse Polish notation expressions using a stack
+// Supports: add, sub, mul, div, dup, swap
+
+fn stack_new() -> i64 = {
+    let s = vec_new();
+    let _p = vec_push(s, 0);
+    s
+};
+
+fn stack_push(s: i64, val: i64) -> () = {
+    let sz = vec_get(s, 0);
+    let pos = sz + 1;
+    let _x = if pos < vec_len(s) {
+        vec_set(s, pos, val);
+        0
+    } else {
+        let _p = vec_push(s, val);
+        0
+    };
+    vec_set(s, 0, sz + 1)
+};
+
+fn stack_pop(s: i64) -> i64 = {
+    let sz = vec_get(s, 0);
+    let val = vec_get(s, sz);
+    vec_set(s, 0, sz - 1);
+    val
+};
+
+fn stack_peek(s: i64) -> i64 = {
+    let sz = vec_get(s, 0);
+    vec_get(s, sz)
+};
+
+fn stack_size(s: i64) -> i64 = { vec_get(s, 0) };
+
+// Operations encoded as: positive = push literal, negative = operation
+// -1=add, -2=sub, -3=mul, -4=div, -5=dup, -6=swap
+fn eval_rpn(ops: i64, n: i64) -> i64 = {
+    let s = stack_new();
+    let mut i = 0;
+    while i < n {
+        let op = vec_get(ops, i);
+        let _x = if op >= 0 {
+            stack_push(s, op);
+            0
+        } else if op == 0 - 1 {
+            let b = stack_pop(s);
+            let a = stack_pop(s);
+            stack_push(s, a + b);
+            0
+        } else if op == 0 - 2 {
+            let b = stack_pop(s);
+            let a = stack_pop(s);
+            stack_push(s, a - b);
+            0
+        } else if op == 0 - 3 {
+            let b = stack_pop(s);
+            let a = stack_pop(s);
+            stack_push(s, a * b);
+            0
+        } else if op == 0 - 4 {
+            let b = stack_pop(s);
+            let a = stack_pop(s);
+            stack_push(s, a / b);
+            0
+        } else if op == 0 - 5 {
+            let a = stack_peek(s);
+            stack_push(s, a);
+            0
+        } else if op == 0 - 6 {
+            let b = stack_pop(s);
+            let a = stack_pop(s);
+            stack_push(s, b);
+            stack_push(s, a);
+            0
+        } else { 0 };
+        set i = i + 1
+    };
+    stack_pop(s)
+};
+
+fn main() -> () = {
+    // Test 1: 3 4 + => 7
+    let ops1 = vec_new();
+    let _p = vec_push(ops1, 3); let _p = vec_push(ops1, 4);
+    let _p = vec_push(ops1, 0 - 1);
+    print_str("3 4 + = "); let _r = println(eval_rpn(ops1, 3));
+
+    // Test 2: 5 3 - => 2
+    let ops2 = vec_new();
+    let _p = vec_push(ops2, 5); let _p = vec_push(ops2, 3);
+    let _p = vec_push(ops2, 0 - 2);
+    print_str("5 3 - = "); let _r = println(eval_rpn(ops2, 3));
+
+    // Test 3: 2 3 * 4 + => 10
+    let ops3 = vec_new();
+    let _p = vec_push(ops3, 2); let _p = vec_push(ops3, 3);
+    let _p = vec_push(ops3, 0 - 3); let _p = vec_push(ops3, 4);
+    let _p = vec_push(ops3, 0 - 1);
+    print_str("2 3 * 4 + = "); let _r = println(eval_rpn(ops3, 5));
+
+    // Test 4: 10 2 / 3 * => 15
+    let ops4 = vec_new();
+    let _p = vec_push(ops4, 10); let _p = vec_push(ops4, 2);
+    let _p = vec_push(ops4, 0 - 4); let _p = vec_push(ops4, 3);
+    let _p = vec_push(ops4, 0 - 3);
+    print_str("10 2 / 3 * = "); let _r = println(eval_rpn(ops4, 5));
+
+    // Test 5: 5 dup * => 25
+    let ops5 = vec_new();
+    let _p = vec_push(ops5, 5);
+    let _p = vec_push(ops5, 0 - 5);
+    let _p = vec_push(ops5, 0 - 3);
+    print_str("5 dup * = "); let _r = println(eval_rpn(ops5, 3));
+
+    // Test 6: 3 7 swap - => 4 (7-3)
+    let ops6 = vec_new();
+    let _p = vec_push(ops6, 3); let _p = vec_push(ops6, 7);
+    let _p = vec_push(ops6, 0 - 6);
+    let _p = vec_push(ops6, 0 - 2);
+    print_str("3 7 swap - = "); let _r = println(eval_rpn(ops6, 4))
+};

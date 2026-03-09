@@ -1,0 +1,118 @@
+// Golden Test: Power Set via bitmask enumeration
+// For a set of n elements, enumerate all 2^n subsets using bitmasks
+
+// Count bits set in x (popcount)
+fn popcount(x: i64) -> i64 = {
+    let mut n = x;
+    let mut count = 0;
+    loop {
+        if n == 0 { break } else { () };
+        count = count + (n band 1);
+        n = n >> 1
+    };
+    count
+    };
+
+// Size of power set of n elements = 2^n
+fn power_set_size(n: i64) -> i64 = {
+    let mut result = 1;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        result = result * 2;
+        i = i + 1
+    };
+    result
+    };
+
+// Sum of all subset sizes for set of n elements
+// Each element appears in 2^(n-1) subsets, so total = n * 2^(n-1)
+fn sum_subset_sizes(n: i64) -> i64 = {
+    let total = power_set_size(n);
+    let mut sum = 0;
+    let mut mask = 0;
+    loop {
+        if mask >= total { break } else { () };
+        sum = sum + popcount(mask);
+        mask = mask + 1
+    };
+    sum
+    };
+
+// Count subsets of {0..n-1} with exactly k elements
+fn count_subsets_of_size(n: i64, k: i64) -> i64 = {
+    let total = power_set_size(n);
+    let mut count = 0;
+    let mut mask = 0;
+    loop {
+        if mask >= total { break } else { () };
+        if popcount(mask) == k {
+            count = count + 1
+        } else { () };
+        mask = mask + 1
+    };
+    count
+    };
+
+// Sum of elements in subset represented by bitmask
+// Elements are 1, 2, ..., n
+fn subset_sum(mask: i64, n: i64) -> i64 = {
+    let mut sum = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        if (mask >> i) band 1 == 1 {
+            sum = sum + (i + 1)
+        } else { () };
+        i = i + 1
+    };
+    sum
+    };
+
+// Count subsets whose element sum equals target
+fn count_subsets_with_sum(n: i64, target: i64) -> i64 = {
+    let total = power_set_size(n);
+    let mut count = 0;
+    let mut mask = 0;
+    loop {
+        if mask >= total { break } else { () };
+        if subset_sum(mask, n) == target {
+            count = count + 1
+        } else { () };
+        mask = mask + 1
+    };
+    count
+    };
+
+fn main() -> i64 = {
+    // Power set size: 2^0=1, 2^3=8, 2^5=32
+    let _p1 = println(power_set_size(0));    // 1
+    let _p2 = println(power_set_size(3));    // 8
+    let _p3 = println(power_set_size(5));    // 32
+
+    // Sum of subset sizes for set of 4 elements
+    // Each element in 2^3=8 subsets, total = 4*8 = 32
+    let _p4 = println(sum_subset_sizes(4));  // 32
+
+    // C(4,2) = 6 subsets of size 2 from 4 elements
+    let _p5 = println(count_subsets_of_size(4, 2));  // 6
+
+    // C(5,3) = 10 subsets of size 3 from 5 elements
+    let _p6 = println(count_subsets_of_size(5, 3));  // 10
+
+    // Subset sum: mask=0b110 (elements 2,3) from n=4 => 2+3=5
+    let _p7 = println(subset_sum(6, 4));     // 5
+
+    // Subset sum: mask=0b1111 (all 4 elements) => 1+2+3+4=10
+    let _p8 = println(subset_sum(15, 4));    // 10
+
+    // Count subsets of {1,2,3,4} with sum = 5
+    // {1,4}, {2,3}, {5 impossible since max elem is 4} => 2
+    let _p9 = println(count_subsets_with_sum(4, 5));  // 2
+
+    // Count subsets of {1,2,3,4} with sum = 7
+    // {3,4}, {1,2,4} => 2
+    let _p10 = println(count_subsets_with_sum(4, 7));  // 2
+
+    0
+    };

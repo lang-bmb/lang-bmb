@@ -1,0 +1,115 @@
+// Golden Test: Longest Common Subsequence Length
+// O(m*n) DP with 2D table (flattened to 1D)
+
+fn my_max(a: i64, b: i64) -> i64 = if a > b { a } else { b };
+
+// LCS of two arrays a[0..m-1] and b[0..n-1]
+// dp[(i+1)*(n+1) + (j+1)] = LCS(a[0..i], b[0..j])
+fn lcs(a: i64, m: i64, b: i64, n: i64) -> i64 = {
+    let cols = n + 1;
+    let dp = vec_new();
+    for _i in 0..((m + 1) * cols) { vec_push(dp, 0) };
+
+    for i in 0..m {
+        for j in 0..n {
+            if vec_get(a, i) == vec_get(b, j) {
+                let prev = vec_get(dp, i * cols + j);
+                let _s = vec_set(dp, (i + 1) * cols + (j + 1), prev + 1)
+            } else {
+                let up = vec_get(dp, i * cols + (j + 1));
+                let left = vec_get(dp, (i + 1) * cols + j);
+                let _s = vec_set(dp, (i + 1) * cols + (j + 1), my_max(up, left))
+            }
+        }
+    };
+    let result = vec_get(dp, m * cols + n);
+    let _f = vec_free(dp);
+    result
+};
+
+fn main() -> i64 = {
+    // Test 1: a=[1,3,4,1,2,1,3], b=[3,4,1,2,1,3]
+    // LCS = [3,4,1,2,1,3] -> length 6
+    let a1 = vec_new();
+    vec_push(a1, 1); vec_push(a1, 3); vec_push(a1, 4); vec_push(a1, 1);
+    vec_push(a1, 2); vec_push(a1, 1); vec_push(a1, 3);
+    let b1 = vec_new();
+    vec_push(b1, 3); vec_push(b1, 4); vec_push(b1, 1); vec_push(b1, 2);
+    vec_push(b1, 1); vec_push(b1, 3);
+    let _p1 = println(lcs(a1, 7, b1, 6));  // 6
+
+    // Test 2: a=[1,2,3], b=[4,5,6] -> no common -> 0
+    let a2 = vec_new();
+    vec_push(a2, 1); vec_push(a2, 2); vec_push(a2, 3);
+    let b2 = vec_new();
+    vec_push(b2, 4); vec_push(b2, 5); vec_push(b2, 6);
+    let _p2 = println(lcs(a2, 3, b2, 3));  // 0
+
+    // Test 3: a=[1,2,3], b=[1,2,3] -> identical -> 3
+    let a3 = vec_new();
+    vec_push(a3, 1); vec_push(a3, 2); vec_push(a3, 3);
+    let b3 = vec_new();
+    vec_push(b3, 1); vec_push(b3, 2); vec_push(b3, 3);
+    let _p3 = println(lcs(a3, 3, b3, 3));  // 3
+
+    // Test 4: a=[1,3,2,4,5], b=[1,2,4,3,5]
+    // LCS = [1,2,4,5] or [1,3,4,5] -> length 4
+    let a4 = vec_new();
+    vec_push(a4, 1); vec_push(a4, 3); vec_push(a4, 2); vec_push(a4, 4); vec_push(a4, 5);
+    let b4 = vec_new();
+    vec_push(b4, 1); vec_push(b4, 2); vec_push(b4, 4); vec_push(b4, 3); vec_push(b4, 5);
+    let _p4 = println(lcs(a4, 5, b4, 5));  // 4
+
+    // Test 5: Empty array
+    let a5 = vec_new();
+    let b5 = vec_new();
+    vec_push(b5, 1); vec_push(b5, 2);
+    let _p5 = println(lcs(a5, 0, b5, 2));  // 0
+
+    // Test 6: Single match a=[5], b=[3,5,7]
+    let a6 = vec_new();
+    vec_push(a6, 5);
+    let b6 = vec_new();
+    vec_push(b6, 3); vec_push(b6, 5); vec_push(b6, 7);
+    let _p6 = println(lcs(a6, 1, b6, 3));  // 1
+
+    // Test 7: a=[1,0,0,1,0,1,0,1], b=[0,1,0,1,1,0,1,1,0]
+    // Classic binary LCS
+    let a7 = vec_new();
+    vec_push(a7, 1); vec_push(a7, 0); vec_push(a7, 0); vec_push(a7, 1);
+    vec_push(a7, 0); vec_push(a7, 1); vec_push(a7, 0); vec_push(a7, 1);
+    let b7 = vec_new();
+    vec_push(b7, 0); vec_push(b7, 1); vec_push(b7, 0); vec_push(b7, 1);
+    vec_push(b7, 1); vec_push(b7, 0); vec_push(b7, 1); vec_push(b7, 1); vec_push(b7, 0);
+    let _p7 = println(lcs(a7, 8, b7, 9));  // 6
+
+    // Test 8: Subsequence a=[2,4] is subsequence of b=[1,2,3,4,5] -> LCS=2
+    let a8 = vec_new();
+    vec_push(a8, 2); vec_push(a8, 4);
+    let b8 = vec_new();
+    vec_push(b8, 1); vec_push(b8, 2); vec_push(b8, 3); vec_push(b8, 4); vec_push(b8, 5);
+    let _p8 = println(lcs(a8, 2, b8, 5));  // 2
+
+    // Test 9: a=[1,2,3,4,5], b=[5,4,3,2,1]
+    // LCS = any single match -> length 1
+    // Actually: [1] or [2] or [3] -> max=1? No.
+    // LCS = [1], [2], [3], [4], [5] -> all length 1? No.
+    // Actually [3] or any decreasing-then-increasing won't help.
+    // Correct: LCS = 1 (e.g. just [1] or [5])
+    let a9 = vec_new();
+    vec_push(a9, 1); vec_push(a9, 2); vec_push(a9, 3); vec_push(a9, 4); vec_push(a9, 5);
+    let b9 = vec_new();
+    vec_push(b9, 5); vec_push(b9, 4); vec_push(b9, 3); vec_push(b9, 2); vec_push(b9, 1);
+    let _p9 = println(lcs(a9, 5, b9, 5));  // 1
+
+    let _f = vec_free(a1); let _f = vec_free(b1);
+    let _f = vec_free(a2); let _f = vec_free(b2);
+    let _f = vec_free(a3); let _f = vec_free(b3);
+    let _f = vec_free(a4); let _f = vec_free(b4);
+    let _f = vec_free(a5); let _f = vec_free(b5);
+    let _f = vec_free(a6); let _f = vec_free(b6);
+    let _f = vec_free(a7); let _f = vec_free(b7);
+    let _f = vec_free(a8); let _f = vec_free(b8);
+    let _f = vec_free(a9); let _f = vec_free(b9);
+    0
+};

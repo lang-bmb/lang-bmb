@@ -1,0 +1,86 @@
+// Golden Test: Pascal's Triangle Row Computation
+// Compute rows of Pascal's triangle and verify properties
+
+// Compute n-th row of Pascal's triangle (0-indexed) using vec
+fn pascal_row(n: i64, row: i64) -> i64 = {
+    vec_set(row, 0, 1);
+    let mut i = 1;
+    loop {
+        if i > n { break } else { () };
+        // Build from right to left to avoid overwriting
+        let mut j = i;
+        loop {
+            if j < 1 { break } else { () };
+            vec_set(row, j, vec_get(row, j) + vec_get(row, j - 1));
+            j = j - 1
+        };
+        i = i + 1
+    };
+    n + 1
+};
+
+// Sum of row n = 2^n
+fn row_sum(row: i64, len: i64) -> i64 = {
+    let mut s = 0;
+    let mut i = 0;
+    loop {
+        if i >= len { break } else { () };
+        s = s + vec_get(row, i);
+        i = i + 1
+    };
+    s
+};
+
+// Create a vec of n zeros
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        vec_push(v, 0);
+        i = i + 1
+    };
+    v
+};
+
+fn main() -> i64 = {
+    // Row 0: [1]
+    let r0 = make_zeros(20);
+    let _l0 = pascal_row(0, r0);
+    let _p1 = println(vec_get(r0, 0));  // 1
+
+    // Row 4: [1, 4, 6, 4, 1]
+    let r4 = make_zeros(20);
+    let _l4 = pascal_row(4, r4);
+    let _p2 = println(vec_get(r4, 0));  // 1
+    let _p3 = println(vec_get(r4, 1));  // 4
+    let _p4 = println(vec_get(r4, 2));  // 6
+    let _p5 = println(vec_get(r4, 3));  // 4
+    let _p6 = println(vec_get(r4, 4));  // 1
+
+    // Row 7: [1, 7, 21, 35, 35, 21, 7, 1]
+    let r7 = make_zeros(20);
+    let _l7 = pascal_row(7, r7);
+    let _p7 = println(vec_get(r7, 3));  // 35
+    let _p8 = println(vec_get(r7, 4));  // 35
+
+    // Sum of row 10 = 2^10 = 1024
+    let r10 = make_zeros(20);
+    let _l10 = pascal_row(10, r10);
+    let _p9 = println(row_sum(r10, 11));  // 1024
+
+    // C(10,5) = middle element of row 10
+    let _p10 = println(vec_get(r10, 5));  // 252
+
+    // Row 12 middle: C(12,6) = 924
+    let r12 = make_zeros(20);
+    let _l12 = pascal_row(12, r12);
+    let _p11 = println(vec_get(r12, 6));  // 924
+
+    // Symmetry check: C(12,3) == C(12,9)
+    let _p12 = println(vec_get(r12, 3));  // 220
+    let _p13 = println(vec_get(r12, 9));  // 220
+
+    vec_free(r0); vec_free(r4); vec_free(r7); vec_free(r10); vec_free(r12);
+    0
+};

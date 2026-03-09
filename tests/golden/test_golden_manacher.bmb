@@ -1,0 +1,224 @@
+// Golden Test: Manacher's algorithm for longest palindromic substrings
+// Works on integer arrays; computes palindrome radii for both odd and even lengths
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { let _p = vec_push(v, 0); 0 };
+    v
+};
+
+fn min2(a: i64, b: i64) -> i64 = if a < b { a } else { b };
+fn max2(a: i64, b: i64) -> i64 = if a > b { a } else { b };
+
+// Manacher's algorithm for odd-length palindromes
+// Returns array p where p[i] = radius of longest odd palindrome centered at i
+// (palindrome length = 2*p[i] + 1)
+fn manacher_odd(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    let p = make_zeros(n);
+    let mut c = 0;
+    let mut r = 0;
+    for i in 0..n {
+        let _c = if i < r {
+            let mirror = 2 * c - i;
+            let init = min2(vec_get(p, mirror), r - i);
+            let _s = vec_set(p, i, init);
+            ()
+        } else {
+            let _s = vec_set(p, i, 0);
+            ()
+        };
+        // Try to expand palindrome at center i
+        let mut pi = vec_get(p, i);
+        let mut cont = 1;
+        while cont == 1 {
+            let left = i - pi - 1;
+            let right = i + pi + 1;
+            let _c2 = if left >= 0 {
+                let _c3 = if right < n {
+                    let _c4 = if vec_get(arr, left) == vec_get(arr, right) {
+                        set pi = pi + 1;
+                        ()
+                    } else {
+                        set cont = 0;
+                        ()
+                    };
+                    ()
+                } else {
+                    set cont = 0;
+                    ()
+                };
+                ()
+            } else {
+                set cont = 0;
+                ()
+            }
+        };
+        let _s2 = vec_set(p, i, pi);
+        // Update center and right boundary
+        let _c5 = if i + pi > r {
+            set c = i;
+            set r = i + pi;
+            ()
+        } else { () }
+    };
+    p
+};
+
+// Manacher's algorithm for even-length palindromes
+// Returns array q where q[i] = half-length of longest even palindrome
+// centered between positions i-1 and i (palindrome length = 2*q[i])
+fn manacher_even(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    let q = make_zeros(n);
+    let mut c = 0;
+    let mut r = 0;
+    for i in 0..n {
+        let _c = if i < r {
+            let mirror = 2 * c - i;
+            let init = min2(vec_get(q, mirror), r - i);
+            let _s = vec_set(q, i, init);
+            ()
+        } else {
+            let _s = vec_set(q, i, 0);
+            ()
+        };
+        // Try to expand even palindrome at gap between i-1 and i
+        let mut qi = vec_get(q, i);
+        let mut cont = 1;
+        while cont == 1 {
+            let left = i - qi - 1;
+            let right = i + qi;
+            let _c2 = if left >= 0 {
+                let _c3 = if right < n {
+                    let _c4 = if vec_get(arr, left) == vec_get(arr, right) {
+                        set qi = qi + 1;
+                        ()
+                    } else {
+                        set cont = 0;
+                        ()
+                    };
+                    ()
+                } else {
+                    set cont = 0;
+                    ()
+                };
+                ()
+            } else {
+                set cont = 0;
+                ()
+            }
+        };
+        let _s2 = vec_set(q, i, qi);
+        let _c5 = if i + qi > r {
+            set c = i;
+            set r = i + qi;
+            ()
+        } else { () }
+    };
+    q
+};
+
+// Find the longest palindromic substring length
+fn longest_palindrome(arr: i64) -> i64 = {
+    let p = manacher_odd(arr);
+    let q = manacher_even(arr);
+    let n = vec_len(arr);
+    let mut best = 0;
+    for i in 0..n {
+        let odd_len = 2 * vec_get(p, i) + 1;
+        let even_len = 2 * vec_get(q, i);
+        set best = max2(best, max2(odd_len, even_len))
+    };
+    let _f1 = vec_free(p);
+    let _f2 = vec_free(q);
+    best
+};
+
+fn print_vec(v: i64) -> i64 = {
+    let n = vec_len(v);
+    for i in 0..n {
+        let _p = println(vec_get(v, i));
+        0
+    };
+    0
+};
+
+fn main() -> i64 = {
+    // === Test 1: "abacaba" = [1,2,1,3,1,2,1] ===
+    // Palindromes: entire string is a palindrome of length 7
+    let _p = println_str("=== Test 1: abacaba ===");
+    let a1 = vec_new();
+    let _p = vec_push(a1, 1); let _p = vec_push(a1, 2);
+    let _p = vec_push(a1, 1); let _p = vec_push(a1, 3);
+    let _p = vec_push(a1, 1); let _p = vec_push(a1, 2);
+    let _p = vec_push(a1, 1);
+    let p1 = manacher_odd(a1);
+    let _p = println_str("odd radii:");
+    let _pv = print_vec(p1);
+    let _p = print_str("longest: ");
+    let _p = println(longest_palindrome(a1));
+
+    // === Test 2: "aabaa" = [1,1,2,1,1] ===
+    let _p = println_str("=== Test 2: aabaa ===");
+    let a2 = vec_new();
+    let _p = vec_push(a2, 1); let _p = vec_push(a2, 1);
+    let _p = vec_push(a2, 2); let _p = vec_push(a2, 1);
+    let _p = vec_push(a2, 1);
+    let p2 = manacher_odd(a2);
+    let _p = println_str("odd radii:");
+    let _pv = print_vec(p2);
+    let q2 = manacher_even(a2);
+    let _p = println_str("even radii:");
+    let _pv = print_vec(q2);
+    let _p = print_str("longest: ");
+    let _p = println(longest_palindrome(a2));
+
+    // === Test 3: "abba" = [1,2,2,1] ===
+    // Even palindrome of length 4
+    let _p = println_str("=== Test 3: abba ===");
+    let a3 = vec_new();
+    let _p = vec_push(a3, 1); let _p = vec_push(a3, 2);
+    let _p = vec_push(a3, 2); let _p = vec_push(a3, 1);
+    let p3 = manacher_odd(a3);
+    let _p = println_str("odd radii:");
+    let _pv = print_vec(p3);
+    let q3 = manacher_even(a3);
+    let _p = println_str("even radii:");
+    let _pv = print_vec(q3);
+    let _p = print_str("longest: ");
+    let _p = println(longest_palindrome(a3));
+
+    // === Test 4: all same [5,5,5,5,5] ===
+    let _p = println_str("=== Test 4: all same ===");
+    let a4 = vec_new();
+    let _p = vec_push(a4, 5); let _p = vec_push(a4, 5);
+    let _p = vec_push(a4, 5); let _p = vec_push(a4, 5);
+    let _p = vec_push(a4, 5);
+    let _p = print_str("longest: ");
+    let _p = println(longest_palindrome(a4));
+
+    // === Test 5: no repeats [1,2,3,4] ===
+    let _p = println_str("=== Test 5: all different ===");
+    let a5 = vec_new();
+    let _p = vec_push(a5, 1); let _p = vec_push(a5, 2);
+    let _p = vec_push(a5, 3); let _p = vec_push(a5, 4);
+    let _p = print_str("longest: ");
+    let _p = println(longest_palindrome(a5));
+
+    // === Test 6: single element [7] ===
+    let _p = println_str("=== Test 6: single ===");
+    let a6 = vec_new();
+    let _p = vec_push(a6, 7);
+    let _p = print_str("longest: ");
+    let _p = println(longest_palindrome(a6));
+
+    // Cleanup
+    let _f = vec_free(a1); let _f = vec_free(p1);
+    let _f = vec_free(a2); let _f = vec_free(p2); let _f = vec_free(q2);
+    let _f = vec_free(a3); let _f = vec_free(p3); let _f = vec_free(q3);
+    let _f = vec_free(a4);
+    let _f = vec_free(a5);
+    let _f = vec_free(a6);
+    0
+};

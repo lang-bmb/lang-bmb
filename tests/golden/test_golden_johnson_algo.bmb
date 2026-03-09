@@ -1,0 +1,257 @@
+// Golden Test: Johnson's all-pairs shortest paths
+// Uses Bellman-Ford for reweighting + Dijkstra for each source
+// Graph: n nodes, edges stored as flat arrays (src, dst, weight)
+// Supports negative weights (but no negative cycles)
+
+// INF constant
+fn inf() -> i64 = 999999;
+
+// --- Bellman-Ford from source node (used for reweighting) ---
+// dist: vec of n elements, edges: (src_arr, dst_arr, wt_arr), m = num edges
+fn bellman_ford(dist: i64, src_arr: i64, dst_arr: i64, wt_arr: i64, n: i64, m: i64, src: i64) -> i64 = {
+    // Init distances
+    for i in 0..n {
+        vec_set(dist, i, inf())
+    };
+    vec_set(dist, src, 0);
+    // Relax n-1 times
+    for _iter in 0..n {
+        for e in 0..m {
+            let u = vec_get(src_arr, e);
+            let v = vec_get(dst_arr, e);
+            let w = vec_get(wt_arr, e);
+            let du = vec_get(dist, u);
+            let dv = vec_get(dist, v);
+            let cand = du + w;
+            if du < inf() and cand < dv {
+                vec_set(dist, v, cand)
+            } else { () }
+        }
+    };
+    0
+};
+
+// --- Dijkstra from source with non-negative weights ---
+// Simple O(n^2) Dijkstra using adjacency matrix (reweighted)
+// adj: n*n matrix, dist_out: result distances
+fn dijkstra(adj: i64, dist_out: i64, visited: i64, n: i64, src: i64) -> i64 = {
+    for i in 0..n {
+        vec_set(dist_out, i, inf());
+        vec_set(visited, i, 0)
+    };
+    vec_set(dist_out, src, 0);
+    // n iterations to settle all nodes
+    for _iter in 0..n {
+        // Find unvisited node with minimum distance
+        let mut min_d = inf();
+        let mut min_u = 0 - 1;
+        for i in 0..n {
+            let vi = vec_get(visited, i);
+            let di = vec_get(dist_out, i);
+            if vi == 0 and di < min_d {
+                min_d = di;
+                min_u = i
+            } else { () }
+        };
+        // If no reachable unvisited node, break
+        if min_u < 0 { () }
+        else {
+            vec_set(visited, min_u, 1);
+            // Relax neighbors
+            for v in 0..n {
+                let w = vec_get(adj, min_u * n + v);
+                if w < inf() {
+                    let nd = min_d + w;
+                    let old = vec_get(dist_out, v);
+                    if nd < old {
+                        vec_set(dist_out, v, nd)
+                    } else { () }
+                } else { () }
+            }
+        }
+    };
+    0
+};
+
+// Johnson's algorithm
+// 1. Add virtual node q with zero-weight edges to all nodes
+// 2. Bellman-Ford from q to get h[] (potential function)
+// 3. Reweight: w'(u,v) = w(u,v) + h[u] - h[v] >= 0
+// 4. Dijkstra from each node using reweighted graph
+// 5. Recover: d(u,v) = d'(u,v) - h[u] + h[v]
+//
+// result: n*n matrix of shortest distances
+
+fn johnson(src_arr: i64, dst_arr: i64, wt_arr: i64, n: i64, m: i64, result: i64) -> i64 = {
+    // Step 1: Add virtual node (index n) with edges to all nodes with weight 0
+    // Total edges: m + n (original + virtual)
+    let total_m = m + n;
+    let ext_src = vec_new();
+    let ext_dst = vec_new();
+    let ext_wt = vec_new();
+    // Copy original edges
+    for e in 0..m {
+        vec_push(ext_src, vec_get(src_arr, e));
+        vec_push(ext_dst, vec_get(dst_arr, e));
+        vec_push(ext_wt, vec_get(wt_arr, e))
+    };
+    // Add virtual edges: q -> each node with weight 0
+    for i in 0..n {
+        vec_push(ext_src, n);
+        vec_push(ext_dst, i);
+        vec_push(ext_wt, 0)
+    };
+
+    // Step 2: Bellman-Ford from virtual node q (index n)
+    let h = vec_new();
+    for _i in 0..n {
+        vec_push(h, 0)
+    };
+    // h has n+1 entries for nodes 0..n
+    vec_push(h, 0);
+    let _bf = bellman_ford(h, ext_src, ext_dst, ext_wt, n + 1, total_m, n);
+
+    // Step 3: Build reweighted adjacency matrix (n x n)
+    let adj = vec_new();
+    for _i in 0..n {
+        for _j in 0..n {
+            vec_push(adj, inf())
+        }
+    };
+    // Set reweighted edge weights
+    for e in 0..m {
+        let u = vec_get(src_arr, e);
+        let v = vec_get(dst_arr, e);
+        let w = vec_get(wt_arr, e);
+        let hu = vec_get(h, u);
+        let hv = vec_get(h, v);
+        let rw = w + hu - hv;
+        // Keep minimum if multiple edges
+        let old = vec_get(adj, u * n + v);
+        if rw < old {
+            vec_set(adj, u * n + v, rw)
+        } else { () }
+    };
+
+    // Step 4: Dijkstra from each source
+    let dist_out = vec_new();
+    let visited = vec_new();
+    for _i in 0..n {
+        vec_push(dist_out, 0);
+        vec_push(visited, 0)
+    };
+
+    for src in 0..n {
+        let _dj = dijkstra(adj, dist_out, visited, n, src);
+        // Step 5: Recover original distances and store in result
+        for v in 0..n {
+            let dp = vec_get(dist_out, v);
+            let actual = if dp >= inf() { inf() }
+                else {
+                    let hu = vec_get(h, src);
+                    let hv = vec_get(h, v);
+                    dp - hu + hv
+                };
+            vec_set(result, src * n + v, actual)
+        }
+    };
+
+    vec_free(ext_src);
+    vec_free(ext_dst);
+    vec_free(ext_wt);
+    vec_free(h);
+    vec_free(adj);
+    vec_free(dist_out);
+    vec_free(visited);
+    0
+};
+
+fn main() -> i64 = {
+    // Test 1: 4-node graph with some negative weights
+    // Edges: 0->1 (w=3), 0->2 (w=8), 1->2 (w=-2), 2->3 (w=1), 3->0 (w=2)
+    let n1 = 4;
+    let m1 = 5;
+    let s1 = vec_new();
+    let d1 = vec_new();
+    let w1 = vec_new();
+    // Edge 0: 0->1 w=3
+    vec_push(s1, 0); vec_push(d1, 1); vec_push(w1, 3);
+    // Edge 1: 0->2 w=8
+    vec_push(s1, 0); vec_push(d1, 2); vec_push(w1, 8);
+    // Edge 2: 1->2 w=-2
+    vec_push(s1, 1); vec_push(d1, 2); vec_push(w1, 0 - 2);
+    // Edge 3: 2->3 w=1
+    vec_push(s1, 2); vec_push(d1, 3); vec_push(w1, 1);
+    // Edge 4: 3->0 w=2
+    vec_push(s1, 3); vec_push(d1, 0); vec_push(w1, 2);
+
+    let result1 = vec_new();
+    for _i in 0..16 {
+        vec_push(result1, 0)
+    };
+
+    let _j1 = johnson(s1, d1, w1, n1, m1, result1);
+
+    // Shortest paths from 0:
+    // 0->0: 0
+    // 0->1: 3
+    // 0->2: 1 (0->1->2 = 3 + (-2) = 1)
+    // 0->3: 2 (0->1->2->3 = 3 + (-2) + 1 = 2)
+    println(vec_get(result1, 0 * n1 + 0));  // 0
+    println(vec_get(result1, 0 * n1 + 1));  // 3
+    println(vec_get(result1, 0 * n1 + 2));  // 1
+    println(vec_get(result1, 0 * n1 + 3));  // 2
+
+    // Shortest paths from 1:
+    // 1->0: 1 (1->2->3->0 = -2+1+2 = 1)
+    // 1->1: 0
+    // 1->2: -2
+    // 1->3: -1 (1->2->3 = -2+1 = -1)
+    println(vec_get(result1, 1 * n1 + 0));  // 1
+    println(vec_get(result1, 1 * n1 + 1));  // 0
+    println(vec_get(result1, 1 * n1 + 2));  // -2
+    println(vec_get(result1, 1 * n1 + 3));  // -1
+
+    // Shortest paths from 3:
+    // 3->0: 2
+    // 3->1: 5 (3->0->1 = 2+3)
+    // 3->2: 3 (3->0->1->2 = 2+3+(-2))
+    // 3->3: 0
+    println(vec_get(result1, 3 * n1 + 0));  // 2
+    println(vec_get(result1, 3 * n1 + 1));  // 5
+    println(vec_get(result1, 3 * n1 + 2));  // 3
+    println(vec_get(result1, 3 * n1 + 3));  // 0
+
+    // Test 2: Simple 3-node graph (no negative weights)
+    // 0->1 (w=4), 1->2 (w=3), 0->2 (w=10)
+    let n2 = 3;
+    let m2 = 3;
+    let s2 = vec_new();
+    let d2 = vec_new();
+    let w2 = vec_new();
+    vec_push(s2, 0); vec_push(d2, 1); vec_push(w2, 4);
+    vec_push(s2, 1); vec_push(d2, 2); vec_push(w2, 3);
+    vec_push(s2, 0); vec_push(d2, 2); vec_push(w2, 10);
+
+    let result2 = vec_new();
+    for _i in 0..9 {
+        vec_push(result2, 0)
+    };
+
+    let _j2 = johnson(s2, d2, w2, n2, m2, result2);
+
+    // From 0: 0->0=0, 0->1=4, 0->2=7
+    println(vec_get(result2, 0 * n2 + 0));  // 0
+    println(vec_get(result2, 0 * n2 + 1));  // 4
+    println(vec_get(result2, 0 * n2 + 2));  // 7
+
+    // From 2: unreachable to 0 and 1
+    let r20 = vec_get(result2, 2 * n2 + 0);
+    let r21 = vec_get(result2, 2 * n2 + 1);
+    let _pr = println(if r20 >= inf() { 1 } else { 0 });  // 1 (unreachable)
+    let _pr2 = println(if r21 >= inf() { 1 } else { 0 }); // 1 (unreachable)
+
+    vec_free(s1); vec_free(d1); vec_free(w1); vec_free(result1);
+    vec_free(s2); vec_free(d2); vec_free(w2); vec_free(result2);
+    0
+};

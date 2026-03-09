@@ -1,0 +1,158 @@
+// Golden Test: Comprehensive bit manipulation operations
+// Tests: popcount via loop, power-of-2 check, lowest set bit,
+// bit reversal (32-bit), bit query/set/clear/toggle
+// Values tested: 0, 1, 255, 1024, 0x5555 (21845), max_i32 (2147483647)
+
+// Count set bits (popcount) via loop
+fn popcount(n: i64) -> i64 = {
+    let mut x = n;
+    let mut count = 0;
+    while x != 0 {
+        set count = count + (x band 1);
+        // Logical shift right: mask off sign extension after arithmetic shift
+        set x = (x >> 1) band 4611686018427387903
+    };
+    count
+};
+
+// Check if n is a power of 2 (returns 1 if true, 0 if false)
+fn is_power_of_2(n: i64) -> i64 =
+    if n <= 0 { 0 }
+    else if (n band (n - 1)) == 0 { 1 }
+    else { 0 };
+
+// Find position of lowest set bit (0-indexed, returns -1 if n == 0)
+fn lowest_set_bit_pos(n: i64) -> i64 =
+    if n == 0 { -1 }
+    else {
+        let lsb = n band (0 - n);
+        let mut pos = 0;
+        let mut x = lsb;
+        while x > 1 {
+            set x = x >> 1;
+            set pos = pos + 1
+        };
+        pos
+    };
+
+// Reverse bits of a 32-bit value (only lower 32 bits)
+fn reverse_bits_32(n: i64) -> i64 = {
+    let mut result = 0;
+    let mut x = n band 4294967295;
+    for _i in 0..32 {
+        set result = (result << 1) bor (x band 1);
+        set x = x >> 1
+    };
+    result
+};
+
+// Check if bit at position pos is set (0-indexed)
+fn bit_is_set(n: i64, pos: i64) -> i64 =
+    if (n >> pos) band 1 == 1 { 1 } else { 0 };
+
+// Set bit at position pos
+fn set_bit(n: i64, pos: i64) -> i64 =
+    n bor (1 << pos);
+
+// Clear bit at position pos
+fn clear_bit(n: i64, pos: i64) -> i64 =
+    n band (0 - 1 - (1 << pos));
+
+// Toggle bit at position pos
+fn toggle_bit(n: i64, pos: i64) -> i64 =
+    n bxor (1 << pos);
+
+fn main() -> i64 = {
+    // === Popcount tests ===
+    let _p = println_str("=== Popcount ===");
+    let _p = print_str("popcount(0) = ");
+    let _p = println(popcount(0));
+    let _p = print_str("popcount(1) = ");
+    let _p = println(popcount(1));
+    let _p = print_str("popcount(255) = ");
+    let _p = println(popcount(255));
+    let _p = print_str("popcount(1024) = ");
+    let _p = println(popcount(1024));
+    let _p = print_str("popcount(21845) = ");
+    let _p = println(popcount(21845));
+    let _p = print_str("popcount(2147483647) = ");
+    let _p = println(popcount(2147483647));
+    let _p = print_str("popcount(7) = ");
+    let _p = println(popcount(7));
+    let _p = print_str("popcount(65535) = ");
+    let _p = println(popcount(65535));
+
+    // === Power of 2 tests ===
+    let _p = println_str("");
+    let _p = println_str("=== Power of 2 ===");
+    let _p = print_str("is_power_of_2(0) = ");
+    let _p = println(is_power_of_2(0));
+    let _p = print_str("is_power_of_2(1) = ");
+    let _p = println(is_power_of_2(1));
+    let _p = print_str("is_power_of_2(2) = ");
+    let _p = println(is_power_of_2(2));
+    let _p = print_str("is_power_of_2(3) = ");
+    let _p = println(is_power_of_2(3));
+    let _p = print_str("is_power_of_2(4) = ");
+    let _p = println(is_power_of_2(4));
+    let _p = print_str("is_power_of_2(1024) = ");
+    let _p = println(is_power_of_2(1024));
+    let _p = print_str("is_power_of_2(1023) = ");
+    let _p = println(is_power_of_2(1023));
+    let _p = print_str("is_power_of_2(65536) = ");
+    let _p = println(is_power_of_2(65536));
+
+    // === Lowest set bit position ===
+    let _p = println_str("");
+    let _p = println_str("=== Lowest Set Bit Position ===");
+    let _p = print_str("lowest_set_bit_pos(0) = ");
+    let _p = println(lowest_set_bit_pos(0));
+    let _p = print_str("lowest_set_bit_pos(1) = ");
+    let _p = println(lowest_set_bit_pos(1));
+    let _p = print_str("lowest_set_bit_pos(2) = ");
+    let _p = println(lowest_set_bit_pos(2));
+    let _p = print_str("lowest_set_bit_pos(4) = ");
+    let _p = println(lowest_set_bit_pos(4));
+    let _p = print_str("lowest_set_bit_pos(12) = ");
+    let _p = println(lowest_set_bit_pos(12));
+    let _p = print_str("lowest_set_bit_pos(40) = ");
+    let _p = println(lowest_set_bit_pos(40));
+    let _p = print_str("lowest_set_bit_pos(1024) = ");
+    let _p = println(lowest_set_bit_pos(1024));
+    let _p = print_str("lowest_set_bit_pos(255) = ");
+    let _p = println(lowest_set_bit_pos(255));
+
+    // === Reverse bits (32-bit) ===
+    let _p = println_str("");
+    let _p = println_str("=== Reverse Bits (32-bit) ===");
+    let _p = print_str("reverse_bits_32(0) = ");
+    let _p = println(reverse_bits_32(0));
+    let _p = print_str("reverse_bits_32(1) = ");
+    let _p = println(reverse_bits_32(1));
+    let _p = print_str("reverse_bits_32(2) = ");
+    let _p = println(reverse_bits_32(2));
+    let _p = print_str("reverse_bits_32(255) = ");
+    let _p = println(reverse_bits_32(255));
+    let _p = print_str("reverse_bits_32(43261596) = ");
+    let _p = println(reverse_bits_32(43261596));
+
+    // === Bit operations ===
+    let _p = println_str("");
+    let _p = println_str("=== Bit Operations ===");
+    let _p = print_str("bit_is_set(5,0) = ");
+    let _p = println(bit_is_set(5, 0));
+    let _p = print_str("bit_is_set(5,1) = ");
+    let _p = println(bit_is_set(5, 1));
+    let _p = print_str("bit_is_set(5,2) = ");
+    let _p = println(bit_is_set(5, 2));
+    let _p = print_str("set_bit(5,1) = ");
+    let _p = println(set_bit(5, 1));
+    let _p = print_str("clear_bit(7,1) = ");
+    let _p = println(clear_bit(7, 1));
+    let _p = print_str("toggle_bit(5,1) = ");
+    let _p = println(toggle_bit(5, 1));
+    let _p = print_str("toggle_bit(7,1) = ");
+    let _p = println(toggle_bit(7, 1));
+
+    0
+};

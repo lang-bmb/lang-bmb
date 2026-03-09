@@ -1,0 +1,164 @@
+// Golden Test: Top-K selection using quickselect-style partitioning
+// Finds the K smallest elements via partial sort
+
+// Swap elements at indices i and j
+fn swap(v: i64, i: i64, j: i64) -> i64 = {
+    let tmp = vec_get(v, i);
+    let _s1 = vec_set(v, i, vec_get(v, j));
+    let _s2 = vec_set(v, j, tmp);
+    0
+    };
+
+// Partition around pivot at index `pivot_idx`
+// Returns final position of pivot after partitioning
+fn partition(v: i64, lo: i64, hi: i64, pivot_idx: i64) -> i64 = {
+    let pivot_val = vec_get(v, pivot_idx);
+    // Move pivot to end
+    let _sw1 = swap(v, pivot_idx, hi);
+    let mut store = lo;
+    let mut i = lo;
+    loop {
+        if i >= hi { break } else { () };
+        if vec_get(v, i) < pivot_val {
+            let _sw = swap(v, store, i);
+            store = store + 1
+        } else { () };
+        i = i + 1
+    };
+    // Move pivot to final position
+    let _sw2 = swap(v, store, hi);
+    store
+    };
+
+// Quickselect: rearranges so that v[k] is the k-th smallest element
+// Elements v[0..k-1] are all <= v[k] (but not necessarily sorted)
+fn quickselect(v: i64, lo: i64, hi: i64, k: i64) -> i64 = {
+    if lo >= hi { return vec_get(v, k) } else { () };
+    // Use middle element as pivot
+    let pivot_idx = lo + (hi - lo) / 2;
+    let p = partition(v, lo, hi, pivot_idx);
+    if k == p {
+        vec_get(v, k)
+    } else if k < p {
+        quickselect(v, lo, p - 1, k)
+    } else {
+        quickselect(v, p + 1, hi, k)
+    }
+    };
+
+// Find k-th smallest element (0-indexed)
+fn kth_smallest(v: i64, k: i64) -> i64 = {
+    let n = vec_len(v);
+    quickselect(v, 0, n - 1, k)
+    };
+
+// Get top-K smallest elements (sorted) by doing quickselect then sorting prefix
+fn topk_sorted(v: i64, k: i64) -> i64 = {
+    let n = vec_len(v);
+    // quickselect ensures v[0..k-1] <= v[k]
+    let _qs = quickselect(v, 0, n - 1, k - 1);
+    // Now sort the first k elements with insertion sort
+    let mut i = 1;
+    loop {
+        if i >= k { break } else { () };
+        let key = vec_get(v, i);
+        let mut j = i - 1;
+        loop {
+            if j < 0 { break } else { () };
+            if vec_get(v, j) > key {
+                let _s = vec_set(v, j + 1, vec_get(v, j));
+                j = j - 1
+            } else {
+                break
+            }
+        };
+        let _s = vec_set(v, j + 1, key);
+        i = i + 1
+    };
+    0
+    };
+
+// Find median (middle element for odd-length arrays)
+fn find_median(v: i64) -> i64 = {
+    let n = vec_len(v);
+    kth_smallest(v, n / 2)
+    };
+
+fn main() -> i64 = {
+    // Test 1: kth_smallest on [7, 2, 9, 1, 5, 3, 8, 4, 6]
+    let a1 = vec_new();
+    vec_push(a1, 7); vec_push(a1, 2); vec_push(a1, 9);
+    vec_push(a1, 1); vec_push(a1, 5); vec_push(a1, 3);
+    vec_push(a1, 8); vec_push(a1, 4); vec_push(a1, 6);
+    let _p1 = println(kth_smallest(a1, 0));  // 1 (smallest)
+
+    // Rebuild for fresh test
+    let a2 = vec_new();
+    vec_push(a2, 7); vec_push(a2, 2); vec_push(a2, 9);
+    vec_push(a2, 1); vec_push(a2, 5); vec_push(a2, 3);
+    vec_push(a2, 8); vec_push(a2, 4); vec_push(a2, 6);
+    let _p2 = println(kth_smallest(a2, 4));  // 5 (median of 1..9)
+
+    let a3 = vec_new();
+    vec_push(a3, 7); vec_push(a3, 2); vec_push(a3, 9);
+    vec_push(a3, 1); vec_push(a3, 5); vec_push(a3, 3);
+    vec_push(a3, 8); vec_push(a3, 4); vec_push(a3, 6);
+    let _p3 = println(kth_smallest(a3, 8));  // 9 (largest)
+
+    // Test 2: top-3 from [50, 10, 40, 20, 30]
+    let b1 = vec_new();
+    vec_push(b1, 50); vec_push(b1, 10); vec_push(b1, 40);
+    vec_push(b1, 20); vec_push(b1, 30);
+    let _tk = topk_sorted(b1, 3);
+    let _p4 = println(vec_get(b1, 0));  // 10
+    let _p5 = println(vec_get(b1, 1));  // 20
+    let _p6 = println(vec_get(b1, 2));  // 30
+
+    // Test 3: median of [100, 1, 50]
+    let c1 = vec_new();
+    vec_push(c1, 100); vec_push(c1, 1); vec_push(c1, 50);
+    let _p7 = println(find_median(c1));  // 50
+
+    // Test 4: median of [3, 1, 4, 1, 5, 9, 2, 6]  (8 elements, median at idx 4)
+    let d1 = vec_new();
+    vec_push(d1, 3); vec_push(d1, 1); vec_push(d1, 4);
+    vec_push(d1, 1); vec_push(d1, 5); vec_push(d1, 9);
+    vec_push(d1, 2); vec_push(d1, 6);
+    // sorted: [1,1,2,3,4,5,6,9], idx 4 = 4
+    let _p8 = println(find_median(d1));  // 4
+
+    // Test 5: single element
+    let e1 = vec_new();
+    vec_push(e1, 42);
+    let _p9 = println(kth_smallest(e1, 0));  // 42
+
+    // Test 6: two elements
+    let f1 = vec_new();
+    vec_push(f1, 99); vec_push(f1, 11);
+    let _p10 = println(kth_smallest(f1, 0));  // 11
+    let f2 = vec_new();
+    vec_push(f2, 99); vec_push(f2, 11);
+    let _p11 = println(kth_smallest(f2, 1));  // 99
+
+    // Test 7: top-5 from [9, 8, 7, 6, 5, 4, 3, 2, 1]
+    let g1 = vec_new();
+    vec_push(g1, 9); vec_push(g1, 8); vec_push(g1, 7);
+    vec_push(g1, 6); vec_push(g1, 5); vec_push(g1, 4);
+    vec_push(g1, 3); vec_push(g1, 2); vec_push(g1, 1);
+    let _tk2 = topk_sorted(g1, 5);
+    let _p12 = println(vec_get(g1, 0));  // 1
+    let _p13 = println(vec_get(g1, 2));  // 3
+    let _p14 = println(vec_get(g1, 4));  // 5
+
+    // Test 8: duplicates [5, 5, 3, 3, 1, 1]
+    let h1 = vec_new();
+    vec_push(h1, 5); vec_push(h1, 5); vec_push(h1, 3);
+    vec_push(h1, 3); vec_push(h1, 1); vec_push(h1, 1);
+    let _p15 = println(kth_smallest(h1, 2));  // 3 (sorted: 1,1,3,3,5,5)
+
+    let _f1 = vec_free(a1); let _f2 = vec_free(a2); let _f3 = vec_free(a3);
+    let _f4 = vec_free(b1); let _f5 = vec_free(c1); let _f6 = vec_free(d1);
+    let _f7 = vec_free(e1); let _f8 = vec_free(f1); let _f9 = vec_free(f2);
+    let _f10 = vec_free(g1); let _f11 = vec_free(h1);
+    0
+    };

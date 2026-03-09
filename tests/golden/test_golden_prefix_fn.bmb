@@ -1,0 +1,119 @@
+// Golden Test: Prefix Function (KMP failure function)
+// pi[i] = longest proper prefix of s[0..i] that is also a suffix
+
+fn compute_prefix(s: i64, n: i64) -> i64 = {
+    let pi = vec_new();
+    let _p = vec_push(pi, 0);
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let mut k = vec_get(pi, i - 1);
+        loop {
+            if k <= 0 { break } else { () };
+            if vec_get(s, k) == vec_get(s, i) { break } else { () };
+            set k = vec_get(pi, k - 1)
+        };
+        let _pp = if vec_get(s, k) == vec_get(s, i) {
+            vec_push(pi, k + 1)
+        } else { vec_push(pi, 0) };
+        set i = i + 1
+    };
+    pi
+};
+
+// KMP: concat pattern + sentinel(-1) + text, find pi[i] == m
+fn kmp_count(pat: i64, m: i64, txt: i64, n: i64) -> i64 = {
+    let c = vec_new();
+    let mut i = 0;
+    loop {
+        if i >= m { break } else { () };
+        let _p = vec_push(c, vec_get(pat, i));
+        set i = i + 1
+    };
+    let _s = vec_push(c, 0 - 1);
+    set i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let _p = vec_push(c, vec_get(txt, i));
+        set i = i + 1
+    };
+    let total = m + 1 + n;
+    let pi = compute_prefix(c, total);
+    let mut count = 0;
+    set i = 0;
+    loop {
+        if i >= total { break } else { () };
+        let _x = if vec_get(pi, i) == m { set count = count + 1; 0 } else { 0 };
+        set i = i + 1
+    };
+    let _f = vec_free(c); let _f = vec_free(pi);
+    count
+};
+
+fn shortest_period(s: i64, n: i64) -> i64 = {
+    let pi = compute_prefix(s, n);
+    let p = n - vec_get(pi, n - 1);
+    let _f = vec_free(pi);
+    if n % p == 0 { p } else { n }
+};
+
+fn print_vec(arr: i64, n: i64) -> i64 = {
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let _p = print(vec_get(arr, i));
+        let _s = if i < n - 1 { print_str(" ") } else { print_str("") };
+        set i = i + 1
+    };
+    let _nl = print_str("\n"); 0
+};
+
+fn main() -> i64 = {
+    // "abcabcabc" (a=1,b=2,c=3) -> pi: 0 0 0 1 2 3 4 5 6
+    let s1 = vec_new();
+    let _p = vec_push(s1, 1); let _p = vec_push(s1, 2); let _p = vec_push(s1, 3);
+    let _p = vec_push(s1, 1); let _p = vec_push(s1, 2); let _p = vec_push(s1, 3);
+    let _p = vec_push(s1, 1); let _p = vec_push(s1, 2); let _p = vec_push(s1, 3);
+    let pi1 = compute_prefix(s1, 9);
+    let _h = print_str("pi(abcabcabc): "); let _pa = print_vec(pi1, 9);
+    // "aabaaab" (a=1,b=2) -> pi: 0 1 0 1 2 2 3
+    let s2 = vec_new();
+    let _p = vec_push(s2, 1); let _p = vec_push(s2, 1); let _p = vec_push(s2, 2);
+    let _p = vec_push(s2, 1); let _p = vec_push(s2, 1); let _p = vec_push(s2, 1);
+    let _p = vec_push(s2, 2);
+    let pi2 = compute_prefix(s2, 7);
+    let _h = print_str("pi(aabaaab): "); let _pa = print_vec(pi2, 7);
+    // KMP: "ab" in "ababab" -> 3
+    let pat = vec_new();
+    let _p = vec_push(pat, 1); let _p = vec_push(pat, 2);
+    let txt = vec_new();
+    let _p = vec_push(txt, 1); let _p = vec_push(txt, 2);
+    let _p = vec_push(txt, 1); let _p = vec_push(txt, 2);
+    let _p = vec_push(txt, 1); let _p = vec_push(txt, 2);
+    let _h = print_str("Count ab in ababab: "); let _p = println(kmp_count(pat, 2, txt, 6));
+    // KMP: "aa" in "aaaa" -> 3
+    let pat2 = vec_new();
+    let _p = vec_push(pat2, 1); let _p = vec_push(pat2, 1);
+    let txt2 = vec_new();
+    let _p = vec_push(txt2, 1); let _p = vec_push(txt2, 1);
+    let _p = vec_push(txt2, 1); let _p = vec_push(txt2, 1);
+    let _h = print_str("Count aa in aaaa: "); let _p = println(kmp_count(pat2, 2, txt2, 4));
+    // Periods: "abcabc"=3, "abab"=2, "abcd"=4
+    let s3 = vec_new();
+    let _p = vec_push(s3, 1); let _p = vec_push(s3, 2); let _p = vec_push(s3, 3);
+    let _p = vec_push(s3, 1); let _p = vec_push(s3, 2); let _p = vec_push(s3, 3);
+    let _h = print_str("Period of abcabc: "); let _p = println(shortest_period(s3, 6));
+    let s4 = vec_new();
+    let _p = vec_push(s4, 1); let _p = vec_push(s4, 2);
+    let _p = vec_push(s4, 1); let _p = vec_push(s4, 2);
+    let _h = print_str("Period of abab: "); let _p = println(shortest_period(s4, 4));
+    let s5 = vec_new();
+    let _p = vec_push(s5, 1); let _p = vec_push(s5, 2);
+    let _p = vec_push(s5, 3); let _p = vec_push(s5, 4);
+    let _h = print_str("Period of abcd: "); let _p = println(shortest_period(s5, 4));
+    let _f = vec_free(s1); let _f = vec_free(pi1); let _f = vec_free(s2);
+    let _f = vec_free(pi2); let _f = vec_free(pat); let _f = vec_free(txt);
+    let _f = vec_free(pat2); let _f = vec_free(txt2);
+    let _f = vec_free(s3); let _f = vec_free(s4); let _f = vec_free(s5);
+    0
+};

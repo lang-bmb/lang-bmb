@@ -1,0 +1,107 @@
+// Golden Test: String-like Compression using Integer Arrays - Cycle 1569
+// Count consecutive identical elements (run-length encoding)
+
+// Compress: output (value, count) pairs into result vec, return num runs
+fn compress(arr: i64, result: i64) -> i64 = {
+    let n = vec_len(arr);
+    if n == 0 { return 0 } else { 0 };
+    let mut runs = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { 0 };
+        let val = vec_get(arr, i);
+        let mut count = 1;
+        loop {
+            if i + count >= n { break } else { 0 };
+            if vec_get(arr, i + count) == val { count = count + 1 } else { break }
+        };
+        vec_push(result, val);
+        vec_push(result, count);
+        runs = runs + 1;
+        i = i + count
+    };
+    runs
+    };
+
+// Decompress: expand (value, count) pairs back into full array
+fn decompress(compressed: i64, output: i64) -> i64 = {
+    let n = vec_len(compressed);
+    let mut total = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { 0 };
+        let val = vec_get(compressed, i);
+        let count = vec_get(compressed, i + 1);
+        let mut j = 0;
+        loop {
+            if j >= count { break } else { 0 };
+            vec_push(output, val);
+            j = j + 1
+        };
+        total = total + count;
+        i = i + 2
+    };
+    total
+    };
+
+fn compression_ratio(orig_len: i64, num_runs: i64) -> i64 =
+    if num_runs == 0 { 0 } else { orig_len * 100 / (num_runs * 2) };
+
+fn arrays_equal(a: i64, b: i64) -> i64 = {
+    let na = vec_len(a);
+    let nb = vec_len(b);
+    if na != nb { return 0 } else { 0 };
+    let mut i = 0;
+    let mut eq = 1;
+    loop {
+        if i >= na { break } else { 0 };
+        if vec_get(a, i) != vec_get(b, i) { eq = 0; break } else { 0 };
+        i = i + 1
+    };
+    eq
+    };
+
+fn main() -> i64 = {
+// Test 1: [1,1,1,2,2,3] -> [(1,3),(2,2),(3,1)]
+    let a1 = vec_new();
+    vec_push(a1, 1); vec_push(a1, 1); vec_push(a1, 1);
+    vec_push(a1, 2); vec_push(a1, 2); vec_push(a1, 3);
+    let c1 = vec_new();
+    let runs1 = compress(a1, c1);
+    let _p1 = println(runs1);               // 3
+    let _p2 = println(vec_get(c1, 0));       // 1 (val)
+    let _p3 = println(vec_get(c1, 1));       // 3 (count)
+    let _p4 = println(vec_get(c1, 2));       // 2
+    let _p5 = println(vec_get(c1, 3));       // 2
+    let _p6 = println(vec_get(c1, 4));       // 3
+    let _p7 = println(vec_get(c1, 5));       // 1
+
+// Test 2: All same [5,5,5,5,5]
+    let a2 = vec_new();
+    vec_push(a2, 5); vec_push(a2, 5); vec_push(a2, 5);
+    vec_push(a2, 5); vec_push(a2, 5);
+    let c2 = vec_new();
+    let _p8 = println(compress(a2, c2));     // 1
+    let _p9 = println(vec_get(c2, 0));       // 5
+    let _p10 = println(vec_get(c2, 1));      // 5
+
+// Test 3: All different [1,2,3,4]
+    let a3 = vec_new();
+    vec_push(a3, 1); vec_push(a3, 2); vec_push(a3, 3); vec_push(a3, 4);
+    let c3 = vec_new();
+    let _p11 = println(compress(a3, c3));    // 4
+
+// Test 4: Roundtrip decompress
+    let d1 = vec_new();
+    let _p12 = println(decompress(c1, d1));  // 6
+    let _p13 = println(arrays_equal(a1, d1)); // 1
+
+// Test 5: Compression ratio
+    let _p14 = println(compression_ratio(6, 3));   // 100
+    let _p15 = println(compression_ratio(5, 1));   // 250
+    let _p16 = println(compression_ratio(4, 4));   // 50
+
+    vec_free(a1); vec_free(c1); vec_free(a2); vec_free(c2);
+    vec_free(a3); vec_free(c3); vec_free(d1);
+    0
+    };

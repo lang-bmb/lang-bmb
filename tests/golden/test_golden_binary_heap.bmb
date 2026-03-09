@@ -1,0 +1,109 @@
+// Golden Test: Binary Min-Heap (insert, extract-min, heapify)
+
+fn heap_swap(h: i64, i: i64, j: i64) -> i64 = {
+    let tmp = vec_get(h, i);
+    vec_set(h, i, vec_get(h, j));
+    vec_set(h, j, tmp);
+    0
+};
+
+fn sift_up(h: i64, idx: i64) -> i64 =
+    if idx <= 0 { 0 }
+    else {
+        let parent = (idx - 1) / 2;
+        if vec_get(h, idx) < vec_get(h, parent) {
+            let _s = heap_swap(h, idx, parent);
+            sift_up(h, parent)
+        } else { 0 }
+    };
+
+fn sift_down(h: i64, idx: i64, size: i64) -> i64 = {
+    let left = 2 * idx + 1;
+    let right = 2 * idx + 2;
+    let mut smallest = idx;
+    let _l = if left < size {
+        if vec_get(h, left) < vec_get(h, smallest) {
+            set smallest = left; 0
+        } else { 0 }
+    } else { 0 };
+    let _r = if right < size {
+        if vec_get(h, right) < vec_get(h, smallest) {
+            set smallest = right; 0
+        } else { 0 }
+    } else { 0 };
+    if smallest != idx {
+        let _s = heap_swap(h, idx, smallest);
+        sift_down(h, smallest, size)
+    } else { 0 }
+};
+
+fn heap_insert(h: i64, size: i64, val: i64) -> i64 = {
+    let vlen = vec_len(h);
+    let _w = if size < vlen {
+        vec_set(h, size, val); 0
+    } else {
+        vec_push(h, val); 0
+    };
+    let _u = sift_up(h, size);
+    size + 1
+};
+
+fn heap_extract_min(h: i64, size: i64) -> i64 = {
+    let min_val = vec_get(h, 0);
+    vec_set(h, 0, vec_get(h, size - 1));
+    let _d = sift_down(h, 0, size - 1);
+    min_val
+};
+
+fn heapify(h: i64, n: i64) -> i64 = {
+    let mut i = n / 2 - 1;
+    loop {
+        if i < 0 { break } else { 0 };
+        let _d = sift_down(h, i, n);
+        i = i - 1
+    };
+    0
+};
+
+fn main() -> i64 = {
+    let h1 = vec_new();
+    let mut sz = 0;
+    sz = heap_insert(h1, sz, 50);
+    sz = heap_insert(h1, sz, 30);
+    sz = heap_insert(h1, sz, 70);
+    sz = heap_insert(h1, sz, 10);
+    sz = heap_insert(h1, sz, 40);
+    sz = heap_insert(h1, sz, 20);
+
+    let _p1 = println(vec_get(h1, 0));    // min = 10
+    let _p2 = println(sz);                // size = 6
+    let m1 = heap_extract_min(h1, sz); sz = sz - 1;
+    let _p3 = println(m1);               // 10
+    let m2 = heap_extract_min(h1, sz); sz = sz - 1;
+    let _p4 = println(m2);               // 20
+    let m3 = heap_extract_min(h1, sz); sz = sz - 1;
+    let _p5 = println(m3);               // 30
+    let _p6 = println(vec_get(h1, 0));    // current min = 40
+
+    let h2 = vec_new();
+    vec_push(h2, 90); vec_push(h2, 15); vec_push(h2, 80);
+    vec_push(h2, 25); vec_push(h2, 60); vec_push(h2, 10);
+    vec_push(h2, 45);
+    let _hf = heapify(h2, 7);
+    let _p7 = println(vec_get(h2, 0));    // min after heapify = 10
+
+    let mut sz2 = 7;
+    let e1 = heap_extract_min(h2, sz2); sz2 = sz2 - 1;
+    let e2 = heap_extract_min(h2, sz2); sz2 = sz2 - 1;
+    let e3 = heap_extract_min(h2, sz2); sz2 = sz2 - 1;
+    let _p8 = println(e1);               // 10
+    let _p9 = println(e2);               // 15
+    let _p10 = println(e3);              // 25
+    let _p11 = println(vec_get(h2, 0));   // 45
+    sz2 = heap_insert(h2, sz2, 5);
+    let _p12 = println(vec_get(h2, 0));   // new min = 5
+
+    vec_free(h1);
+    vec_free(h2);
+    0
+};

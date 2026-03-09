@@ -1,0 +1,159 @@
+// Golden Test: Treap (Tree + Heap) Operations
+// Randomized BST where each node has key (BST) and priority (heap)
+// Uses deterministic LCG PRNG for priorities
+
+fn lcg_next(state: i64) -> i64 = {
+    let raw = 1103515245 * state + 12345;
+    let m = 2147483648;
+    let r = raw - (raw / m) * m;
+    if r < 0 { r + m } else { r }
+};
+
+fn treap_new() -> i64 = {
+    let t = vec_new();
+    let keys = vec_new();
+    let pris = vec_new();    // priorities
+    let lefts = vec_new();
+    let rights = vec_new();
+    vec_push(t, keys);       // t[0]
+    vec_push(t, pris);       // t[1]
+    vec_push(t, lefts);      // t[2]
+    vec_push(t, rights);     // t[3]
+    vec_push(t, 0);          // t[4] = node count
+    vec_push(t, 42);         // t[5] = PRNG seed
+    t
+};
+
+fn treap_alloc(t: i64, key: i64) -> i64 = {
+    let idx = vec_get(t, 4);
+    let seed = vec_get(t, 5);
+    let new_seed = lcg_next(seed);
+    vec_set(t, 5, new_seed);
+    vec_push(vec_get(t, 0), key);
+    vec_push(vec_get(t, 1), new_seed);  // priority = random
+    vec_push(vec_get(t, 2), -1);
+    vec_push(vec_get(t, 3), -1);
+    vec_set(t, 4, idx + 1);
+    idx
+};
+
+fn treap_key(t: i64, n: i64) -> i64 = vec_get(vec_get(t, 0), n);
+fn treap_pri(t: i64, n: i64) -> i64 = vec_get(vec_get(t, 1), n);
+fn treap_left(t: i64, n: i64) -> i64 = vec_get(vec_get(t, 2), n);
+fn treap_right(t: i64, n: i64) -> i64 = vec_get(vec_get(t, 3), n);
+fn treap_set_left(t: i64, n: i64, v: i64) -> i64 = { vec_set(vec_get(t, 2), n, v); 0 };
+fn treap_set_right(t: i64, n: i64, v: i64) -> i64 = { vec_set(vec_get(t, 3), n, v); 0 };
+
+// Right rotation
+fn treap_rot_right(t: i64, y: i64) -> i64 = {
+    let x = treap_left(t, y);
+    let _sl = treap_set_left(t, y, treap_right(t, x));
+    let _sr = treap_set_right(t, x, y);
+    x
+};
+
+// Left rotation
+fn treap_rot_left(t: i64, x: i64) -> i64 = {
+    let y = treap_right(t, x);
+    let _sr = treap_set_right(t, x, treap_left(t, y));
+    let _sl = treap_set_left(t, y, x);
+    y
+};
+
+// Insert key, returns new root
+fn treap_insert(t: i64, node: i64, key: i64) -> i64 =
+    if node < 0 { treap_alloc(t, key) }
+    else if key < treap_key(t, node) {
+        let new_left = treap_insert(t, treap_left(t, node), key);
+        let _sl = treap_set_left(t, node, new_left);
+        // Fix heap: if left child has higher priority, rotate right
+        if treap_pri(t, new_left) > treap_pri(t, node) {
+            treap_rot_right(t, node)
+        } else { node }
+    } else if key > treap_key(t, node) {
+        let new_right = treap_insert(t, treap_right(t, node), key);
+        let _sr = treap_set_right(t, node, new_right);
+        if treap_pri(t, new_right) > treap_pri(t, node) {
+            treap_rot_left(t, node)
+        } else { node }
+    } else { node };  // duplicate
+
+// Search
+fn treap_find(t: i64, node: i64, key: i64) -> i64 =
+    if node < 0 { 0 }
+    else if key == treap_key(t, node) { 1 }
+    else if key < treap_key(t, node) { treap_find(t, treap_left(t, node), key) }
+    else { treap_find(t, treap_right(t, node), key) };
+
+// In-order traversal
+fn treap_inorder(t: i64, n: i64) -> i64 =
+    if n < 0 { 0 }
+    else {
+        let _l = treap_inorder(t, treap_left(t, n));
+        let _p = println(treap_key(t, n));
+        treap_inorder(t, treap_right(t, n))
+    };
+
+// Count nodes
+fn treap_count(t: i64, n: i64) -> i64 =
+    if n < 0 { 0 }
+    else { 1 + treap_count(t, treap_left(t, n)) + treap_count(t, treap_right(t, n)) };
+
+// Verify heap property: parent priority >= children
+fn treap_verify_heap(t: i64, n: i64) -> i64 =
+    if n < 0 { 1 }
+    else {
+        let p = treap_pri(t, n);
+        let l = treap_left(t, n);
+        let r = treap_right(t, n);
+        let lok = if l < 0 { 1 } else if treap_pri(t, l) <= p { 1 } else { 0 };
+        let rok = if r < 0 { 1 } else if treap_pri(t, r) <= p { 1 } else { 0 };
+        if lok == 1 and rok == 1 {
+            let lv = treap_verify_heap(t, l);
+            let rv = treap_verify_heap(t, r);
+            if lv == 1 and rv == 1 { 1 } else { 0 }
+        } else { 0 }
+    };
+
+fn main() -> i64 = {
+    let t = treap_new();
+    let mut root = 0 - 1;
+
+    // Insert: 5, 3, 7, 1, 4, 6, 8
+    set root = treap_insert(t, root, 5);
+    set root = treap_insert(t, root, 3);
+    set root = treap_insert(t, root, 7);
+    set root = treap_insert(t, root, 1);
+    set root = treap_insert(t, root, 4);
+    set root = treap_insert(t, root, 6);
+    set root = treap_insert(t, root, 8);
+
+    // Test 1: Count
+    let _p1 = println(treap_count(t, root));  // 7
+
+    // Test 2: Search
+    let _p2 = println(treap_find(t, root, 4));  // 1
+    let _p3 = println(treap_find(t, root, 9));  // 0
+    let _p4 = println(treap_find(t, root, 1));  // 1
+
+    // Test 3: Heap property verified
+    let _p5 = println(treap_verify_heap(t, root));  // 1
+
+    // Test 4: In-order (sorted)
+    let _io = treap_inorder(t, root);
+    // Prints: 1 3 4 5 6 7 8
+
+    // Test 5: Insert more, verify heap
+    set root = treap_insert(t, root, 2);
+    set root = treap_insert(t, root, 9);
+    set root = treap_insert(t, root, 0);
+    let _p6 = println(treap_count(t, root));  // 10
+    let _p7 = println(treap_verify_heap(t, root));  // 1
+
+    vec_free(vec_get(t, 0));
+    vec_free(vec_get(t, 1));
+    vec_free(vec_get(t, 2));
+    vec_free(vec_get(t, 3));
+    vec_free(t);
+    0
+};

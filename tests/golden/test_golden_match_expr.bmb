@@ -1,0 +1,61 @@
+// Golden Test: Match Expressions
+// Tests pattern matching on integers, strings, booleans
+
+fn classify(n: i64) -> i64 =
+    match n {
+        0 => 100,
+        1 => 200,
+        2 => 300,
+        _ => 999,
+    };
+
+fn sign(n: i64) -> i64 =
+    match n {
+        x if x > 0 => 1,
+        x if x < 0 => 0 - 1,
+        _ => 0,
+    };
+
+fn range_match(n: i64) -> i64 =
+    match n {
+        1..=5 => 10,
+        6..=10 => 20,
+        _ => 30,
+    };
+
+fn bool_match(b: bool) -> i64 =
+    match b {
+        true => 1,
+        false => 0,
+    };
+
+fn or_pattern(n: i64) -> i64 =
+    match n {
+        1 | 3 | 5 | 7 | 9 => 1,
+        2 | 4 | 6 | 8 | 10 => 0,
+        _ => 0 - 1,
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(classify(0));   // 100
+    let _p2 = println(classify(1));   // 200
+    let _p3 = println(classify(2));   // 300
+    let _p4 = println(classify(42));  // 999
+
+    let _p5 = println(sign(10));      // 1
+    let _p6 = println(sign(0 - 5));   // -1
+    let _p7 = println(sign(0));       // 0
+
+    let _p8 = println(range_match(3));   // 10
+    let _p9 = println(range_match(8));   // 20
+    let _p10 = println(range_match(15)); // 30
+
+    let _p11 = println(bool_match(true));   // 1
+    let _p12 = println(bool_match(false));  // 0
+
+    let _p13 = println(or_pattern(3));    // 1
+    let _p14 = println(or_pattern(4));    // 0
+    let _p15 = println(or_pattern(11));   // -1
+
+    0
+};

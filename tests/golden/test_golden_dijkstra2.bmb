@@ -1,0 +1,136 @@
+// Golden Test: Dijkstra's Shortest Path with adjacency list + min-heap
+// Single-source shortest paths for non-negative edge weights
+
+fn dj_inf() -> i64 = 999999;
+
+fn dj_new_graph(n: i64) -> i64 = {
+    let g = vec_new();
+    let adj = vec_new();
+    let edge_to = vec_new();
+    let edge_w = vec_new();
+    let edge_next = vec_new();
+    for _i in 0..n { vec_push(adj, 0 - 1) };
+    vec_push(g, adj);       // g[0]
+    vec_push(g, edge_to);   // g[1]
+    vec_push(g, edge_w);    // g[2]
+    vec_push(g, edge_next); // g[3]
+    vec_push(g, 0);         // g[4] = edge count
+    vec_push(g, n);          // g[5] = vertex count
+    g
+};
+
+fn dj_add_edge(g: i64, u: i64, v: i64, w: i64) -> i64 = {
+    let adj = vec_get(g, 0);
+    let eid = vec_get(g, 4);
+    vec_push(vec_get(g, 1), v);
+    vec_push(vec_get(g, 2), w);
+    vec_push(vec_get(g, 3), vec_get(adj, u));
+    vec_set(adj, u, eid);
+    vec_set(g, 4, eid + 1);
+    0
+};
+
+// Simple O(V^2) Dijkstra (no heap needed for small graphs)
+fn dijkstra(g: i64, src: i64) -> i64 = {
+    let n = vec_get(g, 5);
+    let adj = vec_get(g, 0);
+    let edge_to = vec_get(g, 1);
+    let edge_w = vec_get(g, 2);
+    let edge_next = vec_get(g, 3);
+
+    let dist = vec_new();
+    let visited = vec_new();
+    for i in 0..n {
+        vec_push(dist, if i == src { 0 } else { dj_inf() });
+        vec_push(visited, 0);
+    };
+
+    for _iter in 0..n {
+        // Find unvisited vertex with minimum distance
+        let mut u = 0 - 1;
+        let mut min_d = dj_inf() + 1;
+        for v in 0..n {
+            let _x = if vec_get(visited, v) == 0 and vec_get(dist, v) < min_d {
+                set u = v;
+                set min_d = vec_get(dist, v);
+                0
+            } else { 0 };
+        };
+        if u < 0 { break } else { () };
+        vec_set(visited, u, 1);
+
+        // Relax edges
+        let mut eid = vec_get(adj, u);
+        loop {
+            if eid < 0 { break } else { () };
+            let v = vec_get(edge_to, eid);
+            let w = vec_get(edge_w, eid);
+            let new_d = vec_get(dist, u) + w;
+            let _r = if new_d < vec_get(dist, v) {
+                vec_set(dist, v, new_d);
+                0
+            } else { 0 };
+            set eid = vec_get(edge_next, eid);
+        };
+    };
+
+    vec_free(visited);
+    dist
+};
+
+fn main() -> i64 = {
+    // Graph with 6 vertices
+    let g = dj_new_graph(6);
+    // 0→1:7, 0→2:9, 0→5:14, 1→2:10, 1→3:15, 2→3:11, 2→5:2, 3→4:6, 4→5:9
+    let _e0 = dj_add_edge(g, 0, 1, 7);
+    let _e1 = dj_add_edge(g, 0, 2, 9);
+    let _e2 = dj_add_edge(g, 0, 5, 14);
+    let _e3 = dj_add_edge(g, 1, 2, 10);
+    let _e4 = dj_add_edge(g, 1, 3, 15);
+    let _e5 = dj_add_edge(g, 2, 3, 11);
+    let _e6 = dj_add_edge(g, 2, 5, 2);
+    let _e7 = dj_add_edge(g, 3, 4, 6);
+    let _e8 = dj_add_edge(g, 4, 5, 9);
+
+    let dist = dijkstra(g, 0);
+
+    // Test 1: Distances from source 0
+    println(vec_get(dist, 0));  // 0
+    println(vec_get(dist, 1));  // 7
+    println(vec_get(dist, 2));  // 9
+    println(vec_get(dist, 3));  // 20 (0→2→3)
+    println(vec_get(dist, 4));  // 26 (0→2→3→4)
+    println(vec_get(dist, 5));  // 11 (0→2→5)
+
+    // Test 2: Simple triangle
+    let g2 = dj_new_graph(3);
+    let _f0 = dj_add_edge(g2, 0, 1, 1);
+    let _f1 = dj_add_edge(g2, 0, 2, 4);
+    let _f2 = dj_add_edge(g2, 1, 2, 2);
+    let dist2 = dijkstra(g2, 0);
+    println(vec_get(dist2, 1));  // 1
+    println(vec_get(dist2, 2));  // 3 (0→1→2)
+
+    // Test 3: Unreachable vertex
+    let g3 = dj_new_graph(3);
+    let _g0 = dj_add_edge(g3, 0, 1, 5);
+    // No edge to vertex 2
+    let dist3 = dijkstra(g3, 0);
+    println(vec_get(dist3, 1));  // 5
+    println(if vec_get(dist3, 2) >= dj_inf() { 1 } else { 0 });  // 1
+
+    // Test 4: Single vertex
+    let g4 = dj_new_graph(1);
+    let dist4 = dijkstra(g4, 0);
+    println(vec_get(dist4, 0));  // 0
+
+    vec_free(dist);
+    vec_free(dist2);
+    vec_free(dist3);
+    vec_free(dist4);
+    vec_free(vec_get(g, 0)); vec_free(vec_get(g, 1)); vec_free(vec_get(g, 2)); vec_free(vec_get(g, 3)); vec_free(g);
+    vec_free(vec_get(g2, 0)); vec_free(vec_get(g2, 1)); vec_free(vec_get(g2, 2)); vec_free(vec_get(g2, 3)); vec_free(g2);
+    vec_free(vec_get(g3, 0)); vec_free(vec_get(g3, 1)); vec_free(vec_get(g3, 2)); vec_free(vec_get(g3, 3)); vec_free(g3);
+    vec_free(vec_get(g4, 0)); vec_free(vec_get(g4, 1)); vec_free(vec_get(g4, 2)); vec_free(vec_get(g4, 3)); vec_free(g4);
+    0
+};

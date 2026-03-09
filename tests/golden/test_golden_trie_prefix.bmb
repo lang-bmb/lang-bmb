@@ -1,0 +1,149 @@
+// Golden Test: Trie (prefix tree) for integer sequences
+// Since BMB doesn't have string character access, we use sequences of integers
+// Each node has children[0..9] and is_end flag
+// Supports insert, search, prefix count
+
+// Trie node: stored in flat parallel vecs
+// children[node * 10 + digit] = child node index (-1 if none)
+// is_end[node] = 1 if word ends here
+// count[node] = number of words passing through
+
+fn trie_new(max_nodes: i64) -> i64 = {
+    let children = vec_new();
+    let is_end = vec_new();
+    let count = vec_new();
+    let mut i = 0;
+    while i < max_nodes * 10 {
+        let _p = vec_push(children, -1);
+        set i = i + 1
+    };
+    set i = 0;
+    while i < max_nodes {
+        let _p = vec_push(is_end, 0);
+        let _p2 = vec_push(count, 0);
+        set i = i + 1
+    };
+    // Return packed: [children, is_end, count, next_node_id]
+    let result = vec_new();
+    let _p = vec_push(result, children);
+    let _p = vec_push(result, is_end);
+    let _p = vec_push(result, count);
+    let _p = vec_push(result, 1);  // next_node = 1 (root is 0)
+    result
+};
+
+fn trie_insert(trie: i64, word: i64) -> () = {
+    let children = vec_get(trie, 0);
+    let is_end = vec_get(trie, 1);
+    let count_vec = vec_get(trie, 2);
+    let mut node = 0;
+    let mut i = 0;
+    while i < vec_len(word) {
+        let digit = vec_get(word, i);
+        vec_set(count_vec, node, vec_get(count_vec, node) + 1);
+        let child_idx = node * 10 + digit;
+        let _x = if vec_get(children, child_idx) == -1 {
+            // Allocate new node
+            let new_node = vec_get(trie, 3);
+            vec_set(trie, 3, new_node + 1);
+            vec_set(children, child_idx, new_node);
+            0
+        } else { 0 };
+        set node = vec_get(children, child_idx);
+        set i = i + 1
+    };
+    vec_set(count_vec, node, vec_get(count_vec, node) + 1);
+    vec_set(is_end, node, 1)
+};
+
+// Search exact word
+fn trie_search(trie: i64, word: i64) -> i64 = {
+    let children = vec_get(trie, 0);
+    let is_end = vec_get(trie, 1);
+    let mut node = 0;
+    let mut i = 0;
+    let mut found = 1;
+    while i < vec_len(word) and found == 1 {
+        let digit = vec_get(word, i);
+        let child_idx = node * 10 + digit;
+        let _x = if vec_get(children, child_idx) == -1 {
+            set found = 0;
+            0
+        } else {
+            set node = vec_get(children, child_idx);
+            0
+        };
+        set i = i + 1
+    };
+    if found == 1 { vec_get(is_end, node) } else { 0 }
+};
+
+// Count words with given prefix
+fn trie_prefix_count(trie: i64, prefix: i64) -> i64 = {
+    let children = vec_get(trie, 0);
+    let count_vec = vec_get(trie, 2);
+    let mut node = 0;
+    let mut i = 0;
+    let mut found = 1;
+    while i < vec_len(prefix) and found == 1 {
+        let digit = vec_get(prefix, i);
+        let child_idx = node * 10 + digit;
+        let _x = if vec_get(children, child_idx) == -1 {
+            set found = 0;
+            0
+        } else {
+            set node = vec_get(children, child_idx);
+            0
+        };
+        set i = i + 1
+    };
+    if found == 1 { vec_get(count_vec, node) } else { 0 }
+};
+
+fn make_word2(a: i64, b: i64) -> i64 = {
+    let w = vec_new();
+    let _p = vec_push(w, a); let _p = vec_push(w, b);
+    w
+};
+
+fn make_word3(a: i64, b: i64, c: i64) -> i64 = {
+    let w = vec_new();
+    let _p = vec_push(w, a); let _p = vec_push(w, b); let _p = vec_push(w, c);
+    w
+};
+
+fn main() -> () = {
+    let trie = trie_new(100);
+
+    // Insert words: [1,2], [1,2,3], [1,3], [2,1], [2,1,3]
+    trie_insert(trie, make_word2(1, 2));
+    trie_insert(trie, make_word3(1, 2, 3));
+    trie_insert(trie, make_word2(1, 3));
+    trie_insert(trie, make_word2(2, 1));
+    trie_insert(trie, make_word3(2, 1, 3));
+
+    // Exact search
+    print_str("search [1,2]: "); let _r = println(trie_search(trie, make_word2(1, 2)));
+    print_str("search [1,2,3]: "); let _r = println(trie_search(trie, make_word3(1, 2, 3)));
+    print_str("search [1,3]: "); let _r = println(trie_search(trie, make_word2(1, 3)));
+    print_str("search [2,1]: "); let _r = println(trie_search(trie, make_word2(2, 1)));
+    print_str("search [3,1]: "); let _r = println(trie_search(trie, make_word2(3, 1)));
+
+    // Prefix count: prefix [1] should match [1,2], [1,2,3], [1,3] = 3
+    let p1 = vec_new();
+    let _p = vec_push(p1, 1);
+    print_str("prefix [1] count: "); let _r = println(trie_prefix_count(trie, p1));
+
+    // Prefix [1,2] matches [1,2], [1,2,3] = 2
+    print_str("prefix [1,2] count: "); let _r = println(trie_prefix_count(trie, make_word2(1, 2)));
+
+    // Prefix [2] matches [2,1], [2,1,3] = 2
+    let p2 = vec_new();
+    let _p = vec_push(p2, 2);
+    print_str("prefix [2] count: "); let _r = println(trie_prefix_count(trie, p2));
+
+    // Prefix [9] matches nothing = 0
+    let p9 = vec_new();
+    let _p = vec_push(p9, 9);
+    print_str("prefix [9] count: "); let _r = println(trie_prefix_count(trie, p9))
+};

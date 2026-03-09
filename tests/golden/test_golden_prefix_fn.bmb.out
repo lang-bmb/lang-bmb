@@ -1,0 +1,7 @@
+pi(abcabcabc): 0 0 0 1 2 3 4 5 6
+pi(aabaaab): 0 1 0 1 2 2 3
+Count ab in ababab: 3
+Count aa in aaaa: 3
+Period of abcabc: 3
+Period of abab: 2
+Period of abcd: 4

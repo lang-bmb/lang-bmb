@@ -1,0 +1,150 @@
+// Golden Test: Ternary search on unimodal arrays
+// Find peak element in bitonic (rise then fall) arrays
+
+// Find the index of the peak element in a bitonic array
+// using ternary search: repeatedly narrow [lo, hi] by thirds
+fn ternary_search_peak(arr: i64) -> i64 = {
+    let mut lo = 0;
+    let mut hi = vec_len(arr) - 1;
+    loop {
+        if hi - lo < 3 { break } else { () };
+        let mid1 = lo + (hi - lo) / 3;
+        let mid2 = hi - (hi - lo) / 3;
+        if vec_get(arr, mid1) < vec_get(arr, mid2) {
+            lo = mid1 + 1
+        } else {
+            hi = mid2 - 1
+        }
+    };
+    // Linear scan over remaining 1-3 elements
+    let mut best_idx = lo;
+    let mut best_val = vec_get(arr, lo);
+    let mut i = lo + 1;
+    loop {
+        if i > hi { break } else { () };
+        let v = vec_get(arr, i);
+        if v > best_val {
+            best_idx = i;
+            best_val = v
+        } else { () };
+        i = i + 1
+    };
+    best_idx
+};
+
+// Find the maximum value in a bitonic array
+fn ternary_search_max(arr: i64) -> i64 = {
+    let idx = ternary_search_peak(arr);
+    vec_get(arr, idx)
+};
+
+// Find minimum in a valley-shaped (fall then rise) array
+// Mirror of peak search: pick the side with smaller value
+fn ternary_search_valley(arr: i64) -> i64 = {
+    let mut lo = 0;
+    let mut hi = vec_len(arr) - 1;
+    loop {
+        if hi - lo < 3 { break } else { () };
+        let mid1 = lo + (hi - lo) / 3;
+        let mid2 = hi - (hi - lo) / 3;
+        if vec_get(arr, mid1) > vec_get(arr, mid2) {
+            lo = mid1 + 1
+        } else {
+            hi = mid2 - 1
+        }
+    };
+    let mut best_val = vec_get(arr, lo);
+    let mut i = lo + 1;
+    loop {
+        if i > hi { break } else { () };
+        let v = vec_get(arr, i);
+        if v < best_val {
+            best_val = v
+        } else { () };
+        i = i + 1
+    };
+    best_val
+};
+
+// Evaluate a discrete unimodal "function" f(x) = -(x-peak)^2 + height
+// Stored in an array for ternary search
+fn build_parabola(n: i64, peak: i64, height: i64) -> i64 = {
+    let v = vec_new();
+    for i in 0..n {
+        let diff = i - peak;
+        let val = height - diff * diff;
+        let _p = vec_push(v, val);
+        0
+    };
+    v
+};
+
+fn main() -> i64 = {
+    // Test 1: Bitonic array [1, 3, 7, 12, 9, 5, 2]
+    let a1 = vec_new();
+    vec_push(a1, 1); vec_push(a1, 3); vec_push(a1, 7);
+    vec_push(a1, 12); vec_push(a1, 9); vec_push(a1, 5);
+    vec_push(a1, 2);
+    let _p1 = println(ternary_search_peak(a1));  // 3 (index of 12)
+    let _p2 = println(ternary_search_max(a1));   // 12
+
+    // Test 2: Peak at beginning [100, 90, 50, 20, 5]
+    let a2 = vec_new();
+    vec_push(a2, 100); vec_push(a2, 90); vec_push(a2, 50);
+    vec_push(a2, 20); vec_push(a2, 5);
+    let _p3 = println(ternary_search_max(a2));   // 100
+
+    // Test 3: Peak at end [2, 5, 10, 30, 99]
+    let a3 = vec_new();
+    vec_push(a3, 2); vec_push(a3, 5); vec_push(a3, 10);
+    vec_push(a3, 30); vec_push(a3, 99);
+    let _p4 = println(ternary_search_max(a3));   // 99
+
+    // Test 4: Single element [42]
+    let a4 = vec_new();
+    vec_push(a4, 42);
+    let _p5 = println(ternary_search_max(a4));   // 42
+
+    // Test 5: Two elements [3, 7]
+    let a5 = vec_new();
+    vec_push(a5, 3); vec_push(a5, 7);
+    let _p6 = println(ternary_search_max(a5));   // 7
+
+    // Test 6: Valley-shaped [20, 10, 3, 1, 5, 15, 30]
+    let a6 = vec_new();
+    vec_push(a6, 20); vec_push(a6, 10); vec_push(a6, 3);
+    vec_push(a6, 1); vec_push(a6, 5); vec_push(a6, 15);
+    vec_push(a6, 30);
+    let _p7 = println(ternary_search_valley(a6));  // 1
+
+    // Test 7: Valley with minimum at start [0, 5, 10, 20, 50]
+    let a7 = vec_new();
+    vec_push(a7, 0); vec_push(a7, 5); vec_push(a7, 10);
+    vec_push(a7, 20); vec_push(a7, 50);
+    let _p8 = println(ternary_search_valley(a7));  // 0
+
+    // Test 8: Discrete parabola, peak at index 5, height 100
+    // f(x) = 100 - (x-5)^2
+    let a8 = build_parabola(11, 5, 100);
+    let _p9 = println(ternary_search_peak(a8));   // 5
+    let _p10 = println(ternary_search_max(a8));   // 100
+
+    // Test 9: Larger bitonic [1,4,9,16,25,20,15,10,5,2,1]
+    let a9 = vec_new();
+    vec_push(a9, 1); vec_push(a9, 4); vec_push(a9, 9);
+    vec_push(a9, 16); vec_push(a9, 25); vec_push(a9, 20);
+    vec_push(a9, 15); vec_push(a9, 10); vec_push(a9, 5);
+    vec_push(a9, 2); vec_push(a9, 1);
+    let _p11 = println(ternary_search_max(a9));   // 25
+
+    // Test 10: Parabola peak at index 10, height 200, size 21
+    let a10 = build_parabola(21, 10, 200);
+    let _p12 = println(ternary_search_peak(a10)); // 10
+    let _p13 = println(ternary_search_max(a10));  // 200
+
+    vec_free(a1); vec_free(a2); vec_free(a3);
+    vec_free(a4); vec_free(a5); vec_free(a6);
+    vec_free(a7); vec_free(a8); vec_free(a9);
+    vec_free(a10);
+    0
+};

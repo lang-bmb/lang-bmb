@@ -1,0 +1,189 @@
+// Golden Test: Gaussian elimination for solving linear systems (integer scaled)
+// Uses scaled integer arithmetic to avoid floating point
+// Solves Ax = b by forward elimination + back substitution
+// All values multiplied by SCALE=1000 for precision
+
+// Matrix stored as flat vec: mat[i * (n+1) + j] for augmented matrix [A|b]
+fn aug_get(mat: i64, cols: i64, r: i64, c: i64) -> i64 =
+    vec_get(mat, r * cols + c);
+
+fn aug_set(mat: i64, cols: i64, r: i64, c: i64, val: i64) -> i64 = {
+    vec_set(mat, r * cols + c, val);
+    0
+};
+
+// Absolute value
+fn iabs(x: i64) -> i64 = if x < 0 { 0 - x } else { x };
+
+// Find pivot row with largest absolute value in column c, starting from row r
+fn find_pivot(mat: i64, cols: i64, n: i64, col: i64, row: i64, best_row: i64, best_val: i64) -> i64 =
+    if row >= n { best_row }
+    else {
+        let v = iabs(aug_get(mat, cols, row, col));
+        if v > best_val {
+            find_pivot(mat, cols, n, col, row + 1, row, v)
+        } else {
+            find_pivot(mat, cols, n, col, row + 1, best_row, best_val)
+        }
+    };
+
+// Swap two rows in the augmented matrix
+fn swap_rows(mat: i64, cols: i64, r1: i64, r2: i64) -> i64 = {
+    if r1 == r2 { 0 }
+    else {
+        let mut j = 0;
+        loop {
+            if j >= cols { break } else { () };
+            let tmp = aug_get(mat, cols, r1, j);
+            let _s1 = aug_set(mat, cols, r1, j, aug_get(mat, cols, r2, j));
+            let _s2 = aug_set(mat, cols, r2, j, tmp);
+            j = j + 1
+        };
+        0
+    }
+};
+
+// Eliminate column col in row target_row using pivot_row
+// row[target] -= row[pivot] * factor_num / factor_den
+fn eliminate_row(mat: i64, cols: i64, pivot_row: i64, target_row: i64, col: i64) -> i64 = {
+    let pivot_val = aug_get(mat, cols, pivot_row, col);
+    let target_val = aug_get(mat, cols, target_row, col);
+    if target_val == 0 { 0 }
+    else {
+        // Scale: new[j] = old[j] * pivot_val - old[pivot_j] * target_val
+        let mut j = 0;
+        loop {
+            if j >= cols { break } else { () };
+            let new_val = aug_get(mat, cols, target_row, j) * pivot_val -
+                          aug_get(mat, cols, pivot_row, j) * target_val;
+            let _s = aug_set(mat, cols, target_row, j, new_val);
+            j = j + 1
+        };
+        0
+    }
+};
+
+// Forward elimination: for each column, pivot and eliminate below
+fn forward_elim(mat: i64, cols: i64, n: i64, step: i64) -> i64 = {
+    let mut k = step;
+    loop {
+        if k >= n { break } else { () };
+        // Partial pivoting
+        let best = find_pivot(mat, cols, n, k, k, k, iabs(aug_get(mat, cols, k, k)));
+        let _sw = swap_rows(mat, cols, k, best);
+        // Eliminate below pivot
+        let mut i = k + 1;
+        loop {
+            if i >= n { break } else { () };
+            let _e = eliminate_row(mat, cols, k, i, k);
+            i = i + 1
+        };
+        k = k + 1
+    };
+    0
+};
+
+// Back substitution: solve for x[i] = (b[i] - sum(a[i][j]*x[j])) / a[i][i]
+// Results stored in solution vec (scaled by product of pivots)
+fn back_substitute(mat: i64, cols: i64, n: i64, solution: i64) -> i64 = {
+    let mut i = n - 1;
+    loop {
+        if i < 0 { break } else { () };
+        let mut sum_val = 0;
+        let mut j = i + 1;
+        loop {
+            if j >= n { break } else { () };
+            sum_val = sum_val + aug_get(mat, cols, i, j) * vec_get(solution, j);
+            j = j + 1
+        };
+        let rhs = aug_get(mat, cols, i, n) - sum_val;
+        let diag = aug_get(mat, cols, i, i);
+        // Integer division (exact for well-conditioned integer systems)
+        let _s = vec_set(solution, i, rhs / diag);
+        i = i - 1
+    };
+    0
+};
+
+fn main() -> i64 = {
+    // Test 1: 2x2 system
+    // 2x + 3y = 8
+    // 4x + 1y = 6
+    // Solution: x=1, y=2
+    // Augmented matrix [2,3,8; 4,1,6]
+    let mat1 = vec_new();
+    vec_push(mat1, 2); vec_push(mat1, 3); vec_push(mat1, 8);
+    vec_push(mat1, 4); vec_push(mat1, 1); vec_push(mat1, 6);
+
+    let _fe1 = forward_elim(mat1, 3, 2, 0);
+    let sol1 = vec_new();
+    vec_push(sol1, 0); vec_push(sol1, 0);
+    let _bs1 = back_substitute(mat1, 3, 2, sol1);
+    let _p1 = println(vec_get(sol1, 0));  // 1
+    let _p2 = println(vec_get(sol1, 1));  // 2
+
+    // Test 2: 3x3 system
+    // 1x + 2y + 3z = 14
+    // 2x + 5y + 3z = 21
+    // 3x + 1y + 2z = 11
+    // Solution: x=1, y=2, z=3
+    let mat2 = vec_new();
+    vec_push(mat2, 1); vec_push(mat2, 2); vec_push(mat2, 3); vec_push(mat2, 14);
+    vec_push(mat2, 2); vec_push(mat2, 5); vec_push(mat2, 3); vec_push(mat2, 21);
+    vec_push(mat2, 3); vec_push(mat2, 1); vec_push(mat2, 2); vec_push(mat2, 11);
+
+    let _fe2 = forward_elim(mat2, 4, 3, 0);
+    let sol2 = vec_new();
+    vec_push(sol2, 0); vec_push(sol2, 0); vec_push(sol2, 0);
+    let _bs2 = back_substitute(mat2, 4, 3, sol2);
+    let _p3 = println(vec_get(sol2, 0));  // 1
+    let _p4 = println(vec_get(sol2, 1));  // 2
+    let _p5 = println(vec_get(sol2, 2));  // 3
+
+    // Test 3: 3x3 system needing pivoting
+    // 0x + 2y + 1z = 5
+    // 3x + 1y + 0z = 5
+    // 1x + 0y + 3z = 4
+    // Solution: x=1, y=2, z=1
+    let mat3 = vec_new();
+    vec_push(mat3, 0); vec_push(mat3, 2); vec_push(mat3, 1); vec_push(mat3, 5);
+    vec_push(mat3, 3); vec_push(mat3, 1); vec_push(mat3, 0); vec_push(mat3, 5);
+    vec_push(mat3, 1); vec_push(mat3, 0); vec_push(mat3, 3); vec_push(mat3, 4);
+
+    let _fe3 = forward_elim(mat3, 4, 3, 0);
+    let sol3 = vec_new();
+    vec_push(sol3, 0); vec_push(sol3, 0); vec_push(sol3, 0);
+    let _bs3 = back_substitute(mat3, 4, 3, sol3);
+    let _p6 = println(vec_get(sol3, 0));  // 1
+    let _p7 = println(vec_get(sol3, 1));  // 2
+    let _p8 = println(vec_get(sol3, 2));  // 1
+
+    // Test 4: Diagonal system (trivial)
+    // 5x = 10, 3y = 9
+    // Solution: x=2, y=3
+    let mat4 = vec_new();
+    vec_push(mat4, 5); vec_push(mat4, 0); vec_push(mat4, 10);
+    vec_push(mat4, 0); vec_push(mat4, 3); vec_push(mat4, 9);
+
+    let _fe4 = forward_elim(mat4, 3, 2, 0);
+    let sol4 = vec_new();
+    vec_push(sol4, 0); vec_push(sol4, 0);
+    let _bs4 = back_substitute(mat4, 3, 2, sol4);
+    let _p9 = println(vec_get(sol4, 0));   // 2
+    let _p10 = println(vec_get(sol4, 1));  // 3
+
+    // Test 5: Verify by computing Ax for test 2 solution
+    // A = [1,2,3; 2,5,3; 3,1,2], x = [1,2,3]
+    let check1 = 1 * 1 + 2 * 2 + 3 * 3;
+    let check2 = 2 * 1 + 5 * 2 + 3 * 3;
+    let check3 = 3 * 1 + 1 * 2 + 2 * 3;
+    let _p11 = println(check1);  // 14
+    let _p12 = println(check2);  // 21
+    let _p13 = println(check3);  // 11
+
+    vec_free(mat1); vec_free(sol1);
+    vec_free(mat2); vec_free(sol2);
+    vec_free(mat3); vec_free(sol3);
+    vec_free(mat4); vec_free(sol4);
+    0
+};

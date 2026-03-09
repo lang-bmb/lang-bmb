@@ -1,0 +1,137 @@
+// Golden Test: Birthday paradox probability computation + collision simulation
+// P(collision) = 1 - (365/365 * 364/365 * ... * (366-n)/365)
+// Scaled to parts-per-million (0 to 1000000) for integer output
+
+// Compute collision probability in parts per million
+fn birthday_collision_ppm(n: i64) -> i64 = {
+    let mut scale = 1000000;
+    for i in 0..n {
+        scale = scale * (365 - i) / 365;
+    };
+    1000000 - scale
+};
+
+// Count how many people needed for collision probability >= threshold (in ppm)
+fn people_for_threshold(threshold_ppm: i64) -> i64 = {
+    let mut n = 1;
+    loop {
+        if birthday_collision_ppm(n) >= threshold_ppm { break } else { () };
+        n = n + 1
+    };
+    n
+};
+
+// Non-linear hash: mix bits to get pseudo-random birthday in [0, 365)
+fn pseudo_birthday(person: i64, seed: i64) -> i64 = {
+    let mut h = person * 2654435761 + seed;
+    h = h bxor (h >> 13);
+    h = h * 1103515245;
+    h = h bxor (h >> 17);
+    // Take absolute value then mod 365
+    let pos = if h < 0 { 0 - h } else { h };
+    pos - (pos / 365) * 365
+};
+
+// Simulate n people: return 1 if collision found, 0 otherwise
+fn simulate_has_collision(n: i64, seed: i64) -> i64 = {
+    let seen = [0; 365];
+    let mut found = 0;
+    for i in 0..n {
+        let bday = pseudo_birthday(i, seed);
+        let _c = if seen[bday] == 1 and found == 0 {
+            found = 1
+        } else {
+            ()
+        };
+        set seen[bday] = 1;
+    };
+    found
+};
+
+// Find first collision index: return index or n if no collision
+fn first_collision_index(n: i64, seed: i64) -> i64 = {
+    let seen = [0; 365];
+    let mut result = n;
+    let mut done = 0;
+    for i in 0..n {
+        let bday = pseudo_birthday(i, seed);
+        let _c = if seen[bday] == 1 and done == 0 {
+            result = i;
+            done = 1
+        } else {
+            ()
+        };
+        set seen[bday] = 1;
+    };
+    result
+};
+
+// Count number of distinct birthdays among n people
+fn count_distinct(n: i64, seed: i64) -> i64 = {
+    let seen = [0; 365];
+    for i in 0..n {
+        let bday = pseudo_birthday(i, seed);
+        set seen[bday] = 1;
+    };
+    let mut count = 0;
+    for d in 0..365 {
+        let _c = if seen[d] == 1 { count = count + 1 } else { () };
+    };
+    count
+};
+
+// Run multiple simulations and count how many have collisions
+fn collision_frequency(n_people: i64, n_trials: i64) -> i64 = {
+    let mut hits = 0;
+    for trial in 0..n_trials {
+        hits = hits + simulate_has_collision(n_people, trial * 7 + 13);
+    };
+    hits
+};
+
+// Generalized birthday: probability ppm for k people, d days
+fn generalized_collision_ppm(k: i64, d: i64) -> i64 = {
+    let mut scale = 1000000;
+    for i in 0..k {
+        scale = scale * (d - i) / d;
+    };
+    1000000 - scale
+};
+
+fn main() -> i64 = {
+    // Probability computations (parts per million)
+    let _p1 = println(birthday_collision_ppm(1));
+    let _p2 = println(birthday_collision_ppm(5));
+    let _p3 = println(birthday_collision_ppm(10));
+    let _p4 = println(birthday_collision_ppm(20));
+    let _p5 = println(birthday_collision_ppm(23));
+    let _p6 = println(birthday_collision_ppm(30));
+    let _p7 = println(birthday_collision_ppm(50));
+
+    // Threshold finders
+    let _p8 = println(people_for_threshold(500000));
+    let _p9 = println(people_for_threshold(990000));
+
+    // Simulation: 50 people with seed 42
+    let _p10 = println(simulate_has_collision(50, 42));
+
+    // Simulation: 3 people with seed 42
+    let _p11 = println(simulate_has_collision(3, 42));
+
+    // First collision index with 50 people
+    let _p12 = println(first_collision_index(50, 42));
+
+    // Count distinct birthdays among 30 people
+    let _p13 = println(count_distinct(30, 99));
+
+    // Frequency: 23 people over 20 trials
+    let _p14 = println(collision_frequency(23, 20));
+
+    // Generalized: 10 people, 1000 days
+    let _p15 = println(generalized_collision_ppm(10, 1000));
+
+    // Generalized: 30 people, 100 days
+    let _p16 = println(generalized_collision_ppm(30, 100));
+
+    0
+};

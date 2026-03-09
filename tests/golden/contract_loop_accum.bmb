@@ -1,0 +1,25 @@
+// Test: recursive loop accumulation with array bounds contracts
+// Pre conditions on bounds propagate through recursive calls
+
+fn sum_range(arr: &[i64; 10], start: i64, count: i64) -> i64
+    pre start >= 0 and count >= 0 and start + count <= 10
+= if count == 0 { 0 }
+  else { arr[start] + sum_range(arr, start + 1, count - 1) };
+
+fn dot_rec(a: &[i64; 10], b: &[i64; 10], n: i64) -> i64
+    pre n >= 0 and n <= 10
+= if n == 0 { 0 }
+  else { a[n - 1] * b[n - 1] + dot_rec(a, b, n - 1) };
+
+fn main() -> i64 = {
+    let arr: [i64; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let s1 = sum_range(&arr, 0, 5);
+    let _u = println(s1);
+    let s2 = sum_range(&arr, 5, 5);
+    let _v = println(s2);
+    let a: [i64; 10] = [1, 0, 1, 0, 1, 0, 1, 0, 1, 0];
+    let b: [i64; 10] = [2, 3, 2, 3, 2, 3, 2, 3, 2, 3];
+    let dp = dot_rec(&a, &b, 10);
+    let _w = println(dp);
+    0
+};

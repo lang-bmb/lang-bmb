@@ -1,0 +1,191 @@
+// Golden Test: String algorithm patterns
+// Tests palindrome, vowel count, word count, LCP, Caesar cipher, RLE
+
+// Check if string is palindrome (1=yes, 0=no)
+fn is_palindrome(s: String) -> i64 = {
+    let n = s.len();
+    if n <= 1 { return 1 } else { () };
+    let mut lo = 0;
+    let mut hi = n - 1;
+    let mut result = 1;
+    loop {
+        if lo >= hi { break } else { () };
+        if s.byte_at(lo) != s.byte_at(hi) {
+            result = 0;
+            break
+        } else { () };
+    lo = lo + 1;
+    hi = hi - 1
+    };
+    result
+    };
+
+// Count vowels (a=97,e=101,i=105,o=111,u=117, A=65,E=69,I=73,O=79,U=85)
+fn is_vowel(c: i64) -> i64 =
+    if c == 97 or c == 101 or c == 105 or c == 111 or c == 117 { 1 }
+    else if c == 65 or c == 69 or c == 73 or c == 79 or c == 85 { 1 }
+    else { 0 };
+
+fn count_vowels(s: String) -> i64 = {
+    let n = s.len();
+    let mut count = 0;
+    for i in 0..n {
+        count = count + is_vowel(s.byte_at(i))
+    };
+    count
+    };
+
+// Count words: number of space-separated tokens (space=32)
+// Counts transitions from space to non-space
+fn count_words(s: String) -> i64 = {
+    let n = s.len();
+    if n == 0 { return 0 } else { () };
+    let mut count = 0;
+    let mut in_word = 0;
+    for i in 0..n {
+        let c = s.byte_at(i);
+        if c == 32 {
+            in_word = 0
+        } else {
+            if in_word == 0 {
+                count = count + 1;
+                in_word = 1
+            } else { () }
+        }
+    };
+    count
+    };
+
+// Longest common prefix length of two strings
+fn lcp_length(a: String, b: String) -> i64 = {
+    let la = a.len();
+    let lb = b.len();
+    let limit = if la < lb { la } else { lb };
+    let mut count = 0;
+    let mut done = 0;
+    for i in 0..limit {
+        if done == 0 {
+            if a.byte_at(i) == b.byte_at(i) {
+                count = count + 1
+            } else {
+                done = 1
+            }
+        } else { () }
+    };
+    count
+    };
+
+// Caesar cipher: shift each letter, non-letters unchanged
+// Returns sum of encoded bytes (for verification without int_to_string)
+fn caesar_char(c: i64, shift: i64) -> i64 =
+    if c >= 97 and c <= 122 {
+        97 + (c - 97 + shift) - ((c - 97 + shift) / 26) * 26
+    } else if c >= 65 and c <= 90 {
+        65 + (c - 65 + shift) - ((c - 65 + shift) / 26) * 26
+    } else { c };
+
+fn caesar_byte_sum(s: String, shift: i64) -> i64 = {
+    let n = s.len();
+    let mut total = 0;
+    for i in 0..n {
+        total = total + caesar_char(s.byte_at(i), shift)
+    };
+    total
+    };
+
+// Run-length encoding: count number of "runs" (consecutive same bytes)
+fn count_runs(s: String) -> i64 = {
+    let n = s.len();
+    if n == 0 { return 0 } else { () };
+    let mut runs = 1;
+    for i in 1..n {
+        if s.byte_at(i) != s.byte_at(i - 1) {
+            runs = runs + 1
+        } else { () }
+    };
+    runs
+    };
+
+// Max run length: length of longest consecutive same-byte run
+fn max_run_length(s: String) -> i64 = {
+    let n = s.len();
+    if n == 0 { return 0 } else { () };
+    let mut best = 1;
+    let mut current = 1;
+    for i in 1..n {
+        if s.byte_at(i) == s.byte_at(i - 1) {
+            current = current + 1;
+            if current > best { best = current } else { () }
+        } else {
+            current = 1
+        }
+    };
+    best
+    };
+
+// Count occurrences of a byte in string
+fn count_byte(s: String, target: i64) -> i64 = {
+    let n = s.len();
+    let mut count = 0;
+    for i in 0..n {
+        if s.byte_at(i) == target { count = count + 1 } else { () }
+    };
+    count
+    };
+
+fn main() -> i64 = {
+// Palindrome tests
+    let _p1 = println(is_palindrome("racecar"));   // 1
+    let _p2 = println(is_palindrome("hello"));      // 0
+    let _p3 = println(is_palindrome("abcba"));      // 1
+    let _p4 = println(is_palindrome("a"));           // 1
+
+// Vowel count
+// "hello" -> e,o = 2
+    let _p5 = println(count_vowels("hello"));
+// "aeiou" -> 5
+    let _p6 = println(count_vowels("aeiou"));
+// "rhythm" -> 0
+    let _p7 = println(count_vowels("rhythm"));
+
+// Word count
+// "hello world" -> 2
+    let _p8 = println(count_words("hello world"));
+// "  one  two  three  " -> 3
+    let _p9 = println(count_words("  one  two  three  "));
+// "single" -> 1
+    let _p10 = println(count_words("single"));
+
+// Longest common prefix
+// "abcdef" vs "abcxyz" -> 3
+    let _p11 = println(lcp_length("abcdef", "abcxyz"));
+// "hello" vs "hello" -> 5
+    let _p12 = println(lcp_length("hello", "hello"));
+// "abc" vs "xyz" -> 0
+    let _p13 = println(lcp_length("abc", "xyz"));
+
+// Caesar cipher byte sum
+// "abc" shifted by 3 -> "def" = 100+101+102 = 303
+    let _p14 = println(caesar_byte_sum("abc", 3));
+// "xyz" shifted by 3 -> "abc" = 97+98+99 = 294
+    let _p15 = println(caesar_byte_sum("xyz", 3));
+
+// Run-length encoding: count runs
+// "aaabbbcc" -> 3 runs (aaa, bbb, cc)
+    let _p16 = println(count_runs("aaabbbcc"));
+// "abcd" -> 4 runs (each char different)
+    let _p17 = println(count_runs("abcd"));
+// "aaaaaa" -> 1 run
+    let _p18 = println(count_runs("aaaaaa"));
+
+// Max run length
+// "aaabbbbbcc" -> 5 (bbbbb)
+    let _p19 = println(max_run_length("aaabbbbbcc"));
+// "abcabc" -> 1 (all different)
+    let _p20 = println(max_run_length("abcabc"));
+
+// Count byte: count 'l'(108) in "hello world" -> 3
+    let _p21 = println(count_byte("hello world", 108));
+
+    0
+    };

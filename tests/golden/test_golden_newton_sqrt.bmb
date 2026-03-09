@@ -1,0 +1,48 @@
+// Golden Test: Integer Square Root via Newton's Method
+// isqrt(n) = floor(sqrt(n)) using integer Newton iteration
+// x_{k+1} = (x_k + n / x_k) / 2
+
+fn isqrt(n: i64) -> i64 = {
+    if n <= 0 { return 0 } else { () };
+    if n == 1 { return 1 } else { () };
+    let x = n;
+    loop {
+        let x1 = (x + n / x) / 2;
+        if x1 >= x { break } else { () };
+        x = x1
+    };
+    x
+};
+
+// Verify: isqrt(n)^2 <= n < (isqrt(n)+1)^2
+fn verify_sqrt(n: i64) -> i64 = {
+    let s = isqrt(n);
+    if s * s <= n and (s + 1) * (s + 1) > n { 1 } else { 0 }
+};
+
+fn main() -> i64 = {
+    // Basic values
+    let _p1 = println(isqrt(0));    // 0
+    let _p2 = println(isqrt(1));    // 1
+    let _p3 = println(isqrt(4));    // 2
+    let _p4 = println(isqrt(9));    // 3
+    let _p5 = println(isqrt(16));   // 4
+    let _p6 = println(isqrt(100));  // 10
+
+    // Non-perfect squares
+    let _p7 = println(isqrt(2));    // 1
+    let _p8 = println(isqrt(3));    // 1
+    let _p9 = println(isqrt(5));    // 2
+    let _p10 = println(isqrt(10));  // 3
+    let _p11 = println(isqrt(99));  // 9
+    let _p12 = println(isqrt(101)); // 10
+
+    // Larger values
+    let _p13 = println(isqrt(10000));  // 100
+    let _p14 = println(isqrt(12345)); // 111 (111^2=12321, 112^2=12544)
+
+    // Verification
+    let _p15 = println(verify_sqrt(12345));  // 1
+
+    0
+};

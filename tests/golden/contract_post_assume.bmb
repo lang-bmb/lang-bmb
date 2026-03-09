@@ -1,0 +1,17 @@
+// Test: post-condition generates llvm.assume at call sites
+// post ret >= 0 should produce llvm.assume(icmp sge %result, 0)
+
+fn abs_val(x: i64) -> i64
+    post ret >= 0
+= if x < 0 { 0 - x } else { x };
+
+fn positive_add(a: i64, b: i64) -> i64
+    post ret >= 0
+= a + b;
+
+fn main() -> i64 = {
+    let a = abs_val(0 - 42);
+    let b = positive_add(10, 20);
+    let _u = println(a + b);
+    0
+};

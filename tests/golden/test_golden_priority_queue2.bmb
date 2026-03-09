@@ -1,0 +1,172 @@
+// Golden Test: Priority Queue (Max-Heap) with key-value pairs
+// Stores (priority, value) pairs, extracts highest priority first
+
+fn pq_new() -> i64 = {
+    let q = vec_new();
+    let pris = vec_new();   // priorities
+    let vals = vec_new();   // associated values
+    vec_push(q, pris);      // q[0]
+    vec_push(q, vals);      // q[1]
+    vec_push(q, 0);         // q[2] = size
+    q
+};
+
+fn pq_size(q: i64) -> i64 = vec_get(q, 2);
+fn pq_pri(q: i64, i: i64) -> i64 = vec_get(vec_get(q, 0), i);
+fn pq_val(q: i64, i: i64) -> i64 = vec_get(vec_get(q, 1), i);
+
+fn pq_set_pri(q: i64, i: i64, p: i64) -> i64 = { vec_set(vec_get(q, 0), i, p); 0 };
+fn pq_set_val(q: i64, i: i64, v: i64) -> i64 = { vec_set(vec_get(q, 1), i, v); 0 };
+
+fn pq_swap(q: i64, i: i64, j: i64) -> i64 = {
+    let pi = pq_pri(q, i);
+    let vi = pq_val(q, i);
+    let _sp = pq_set_pri(q, i, pq_pri(q, j));
+    let _sv = pq_set_val(q, i, pq_val(q, j));
+    let _sp2 = pq_set_pri(q, j, pi);
+    pq_set_val(q, j, vi)
+};
+
+fn pq_sift_up(q: i64, idx: i64) -> i64 = {
+    let mut i = idx;
+    loop {
+        if i <= 0 { break } else { () };
+        let p = (i - 1) / 2;
+        let _x = if pq_pri(q, i) > pq_pri(q, p) {
+            let _sw = pq_swap(q, i, p);
+            set i = p;
+            0
+        } else {
+            set i = 0;  // break
+            0
+        };
+    };
+    0
+};
+
+fn pq_sift_down(q: i64, idx: i64) -> i64 = {
+    let n = pq_size(q);
+    let mut i = idx;
+    loop {
+        let l = 2 * i + 1;
+        let r = 2 * i + 2;
+        let mut largest = i;
+        let _cl = if l < n and pq_pri(q, l) > pq_pri(q, largest) {
+            set largest = l;
+            0
+        } else { 0 };
+        let _cr = if r < n and pq_pri(q, r) > pq_pri(q, largest) {
+            set largest = r;
+            0
+        } else { 0 };
+        if largest == i { break } else { () };
+        let _sw = pq_swap(q, i, largest);
+        set i = largest;
+    };
+    0
+};
+
+// Insert (priority, value)
+fn pq_push(q: i64, pri: i64, val: i64) -> i64 = {
+    let n = pq_size(q);
+    let pris = vec_get(q, 0);
+    let vals = vec_get(q, 1);
+    // Use vec_set if slot exists (after pop), vec_push if at end
+    let _w = if n < vec_len(pris) {
+        vec_set(pris, n, pri);
+        vec_set(vals, n, val);
+        0
+    } else {
+        vec_push(pris, pri);
+        vec_push(vals, val);
+        0
+    };
+    vec_set(q, 2, n + 1);
+    pq_sift_up(q, n)
+};
+
+// Peek top priority and value
+fn pq_top_pri(q: i64) -> i64 = pq_pri(q, 0);
+fn pq_top_val(q: i64) -> i64 = pq_val(q, 0);
+
+// Extract max: returns value of max-priority element
+fn pq_pop(q: i64) -> i64 = {
+    let n = pq_size(q);
+    let max_val = pq_val(q, 0);
+    let _sp = pq_set_pri(q, 0, pq_pri(q, n - 1));
+    let _sv = pq_set_val(q, 0, pq_val(q, n - 1));
+    vec_set(q, 2, n - 1);
+    let _sd = if n > 1 { pq_sift_down(q, 0) } else { 0 };
+    max_val
+};
+
+fn main() -> i64 = {
+    let q = pq_new();
+
+    // Test 1: Insert with priorities
+    // (priority, task_id)
+    let _i1 = pq_push(q, 3, 100);   // low priority, task 100
+    let _i2 = pq_push(q, 10, 200);  // high priority, task 200
+    let _i3 = pq_push(q, 5, 300);   // medium priority, task 300
+    let _i4 = pq_push(q, 1, 400);   // lowest, task 400
+    let _i5 = pq_push(q, 7, 500);   // medium-high, task 500
+
+    println(pq_size(q));         // 5
+    println(pq_top_pri(q));      // 10
+    println(pq_top_val(q));      // 200
+
+    // Test 2: Extract in priority order
+    println(pq_pop(q));          // 200 (pri=10)
+    println(pq_pop(q));          // 500 (pri=7)
+    println(pq_pop(q));          // 300 (pri=5)
+    println(pq_pop(q));          // 100 (pri=3)
+    println(pq_pop(q));          // 400 (pri=1)
+    println(pq_size(q));         // 0
+
+    // Test 3: Same priority
+    let q2 = pq_new();
+    let _j1 = pq_push(q2, 5, 10);
+    let _j2 = pq_push(q2, 5, 20);
+    let _j3 = pq_push(q2, 5, 30);
+    println(pq_size(q2));        // 3
+    // All same priority, extract all
+    let v1 = pq_pop(q2);
+    let v2 = pq_pop(q2);
+    let v3 = pq_pop(q2);
+    // Sum should be 60
+    println(v1 + v2 + v3);      // 60
+
+    // Test 4: Interleaved push/pop
+    let q3 = pq_new();
+    let _k1 = pq_push(q3, 4, 40);
+    let _k2 = pq_push(q3, 8, 80);
+    println(pq_pop(q3));         // 80 (pri=8)
+    let _k3 = pq_push(q3, 6, 60);
+    let _k4 = pq_push(q3, 2, 20);
+    println(pq_pop(q3));         // 60 (pri=6)
+    println(pq_pop(q3));         // 40 (pri=4)
+    println(pq_pop(q3));         // 20 (pri=2)
+
+    // Test 5: Large priorities
+    let q4 = pq_new();
+    let _l1 = pq_push(q4, 1000000, 1);
+    let _l2 = pq_push(q4, 999999, 2);
+    let _l3 = pq_push(q4, 1000001, 3);
+    println(pq_pop(q4));         // 3 (pri=1000001)
+    println(pq_pop(q4));         // 1 (pri=1000000)
+    println(pq_pop(q4));         // 2 (pri=999999)
+
+    vec_free(vec_get(q, 0));
+    vec_free(vec_get(q, 1));
+    vec_free(q);
+    vec_free(vec_get(q2, 0));
+    vec_free(vec_get(q2, 1));
+    vec_free(q2);
+    vec_free(vec_get(q3, 0));
+    vec_free(vec_get(q3, 1));
+    vec_free(q3);
+    vec_free(vec_get(q4, 0));
+    vec_free(vec_get(q4, 1));
+    vec_free(q4);
+    0
+};

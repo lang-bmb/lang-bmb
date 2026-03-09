@@ -1,0 +1,73 @@
+// Golden Test: String Permutations (integer sequences)
+// Generates all permutations of [0..n-1] using backtracking
+
+fn perm_count(n: i64) -> i64 = {
+    let mut result = 1;
+    let mut i = 2;
+    while i <= n {
+        set result = result * i;
+        set i = i + 1
+    };
+    result
+};
+
+fn swap(arr: i64, i: i64, j: i64) -> () = {
+    let tmp = vec_get(arr, i);
+    vec_set(arr, i, vec_get(arr, j));
+    vec_set(arr, j, tmp)
+};
+
+fn permute(arr: i64, n: i64, idx: i64, count: i64, do_print: i64) -> () = {
+    let _x = if idx == n {
+        vec_set(count, 0, vec_get(count, 0) + 1);
+        let _y = if do_print == 1 {
+            let mut i = 0;
+            while i < n {
+                let _sp = if i > 0 { print_str(" "); 0 } else { 0 };
+                print(vec_get(arr, i));
+                set i = i + 1
+            };
+            let _nl = print_str("
+");
+            0
+        } else { 0 };
+        0
+    } else {
+        let mut i = idx;
+        while i < n {
+            swap(arr, idx, i);
+            permute(arr, n, idx + 1, count, do_print);
+            swap(arr, idx, i);
+            set i = i + 1
+        };
+        0
+    }
+};
+
+fn main() -> () = {
+    // Test 1: Permutations of [0,1,2] (print all, count=6)
+    let a1 = vec_new();
+    let _p = vec_push(a1, 0); let _p = vec_push(a1, 1); let _p = vec_push(a1, 2);
+    let count1 = vec_new();
+    let _p = vec_push(count1, 0);
+    print_str("perms of [0,1,2]:
+");
+    permute(a1, 3, 0, count1, 1);
+    print_str("count="); let _r = println(vec_get(count1, 0));
+
+    // Test 2: Count permutations of [0..4] (should be 120)
+    let a2 = vec_new();
+    let mut i = 0;
+    while i < 5 {
+        let _p = vec_push(a2, i);
+        set i = i + 1
+    };
+    let count2 = vec_new();
+    let _p = vec_push(count2, 0);
+    permute(a2, 5, 0, count2, 0);
+    print_str("count5="); let _r = println(vec_get(count2, 0));
+
+    // Verify factorial
+    print_str("5!="); let _r = println(perm_count(5));
+    print_str("6!="); let _r = println(perm_count(6))
+};

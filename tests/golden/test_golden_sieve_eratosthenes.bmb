@@ -1,0 +1,68 @@
+// Golden Test: Sieve of Eratosthenes
+// Finds all prime numbers up to N
+
+fn sieve(limit: i64) -> i64 = {
+    let is_prime = vec_new();
+    let _p = vec_push(is_prime, 0);
+    let _p = vec_push(is_prime, 0);
+    let mut i = 2;
+    while i <= limit {
+        let _p = vec_push(is_prime, 1);
+        set i = i + 1
+    };
+    set i = 2;
+    while i * i <= limit {
+        let _x = if vec_get(is_prime, i) == 1 {
+            let mut j = i * i;
+            while j <= limit {
+                vec_set(is_prime, j, 0);
+                set j = j + i
+            };
+            0
+        } else { 0 };
+        set i = i + 1
+    };
+    is_prime
+};
+
+fn count_primes(is_prime: i64, limit: i64) -> i64 = {
+    let mut count = 0;
+    let mut i = 2;
+    while i <= limit {
+        let _x = if vec_get(is_prime, i) == 1 {
+            set count = count + 1;
+            0
+        } else { 0 };
+        set i = i + 1
+    };
+    count
+};
+
+fn main() -> () = {
+    let limit = 100;
+    let is_prime = sieve(limit);
+
+    print_str("primes:");
+    let mut i = 2;
+    while i <= 50 {
+        let _x = if vec_get(is_prime, i) == 1 {
+            print_str(" ");
+            print(i);
+            0
+        } else { 0 };
+        set i = i + 1
+    };
+    print_str("
+");
+
+    print_str("pi(10)="); let _r = println(count_primes(is_prime, 10));
+    print_str("pi(20)="); let _r = println(count_primes(is_prime, 20));
+    print_str("pi(50)="); let _r = println(count_primes(is_prime, 50));
+    print_str("pi(100)="); let _r = println(count_primes(is_prime, 100));
+
+    print_str("is_prime(2)="); let _r = println(vec_get(is_prime, 2));
+    print_str("is_prime(17)="); let _r = println(vec_get(is_prime, 17));
+    print_str("is_prime(97)="); let _r = println(vec_get(is_prime, 97));
+    print_str("is_prime(4)="); let _r = println(vec_get(is_prime, 4));
+    print_str("is_prime(99)="); let _r = println(vec_get(is_prime, 99))
+};

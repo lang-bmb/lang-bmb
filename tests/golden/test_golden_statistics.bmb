@@ -1,0 +1,177 @@
+// Golden Test: Basic statistics on integer arrays
+// Sum, mean (x10), variance (x100), median, min, max
+
+fn sum_arr(arr: i64, n: i64) -> i64 = {
+    let mut s = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        s = s + vec_get(arr, i);
+        i = i + 1
+    };
+    s
+    };
+
+fn mean_x10(arr: i64, n: i64) -> i64
+  pre n > 0
+= sum_arr(arr, n) * 10 / n;
+
+// variance * 100 = sum(x^2) * 100 / n - mean_x10^2
+fn sum_sq(arr: i64, n: i64) -> i64 = {
+    let mut s = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let v = vec_get(arr, i);
+        s = s + v * v;
+        i = i + 1
+    };
+    s
+    };
+
+fn variance_x100(arr: i64, n: i64) -> i64
+  pre n > 0
+= {
+    let m = mean_x10(arr, n);
+    sum_sq(arr, n) * 100 / n - m * m
+    };
+
+// Median for a pre-sorted array
+// n even: average of two middle elements (x1), n odd: middle element
+fn median_sorted(arr: i64, n: i64) -> i64
+  pre n > 0
+= {
+    let mid = n / 2;
+    if n - (n / 2) * 2 == 1 {
+        // odd: return middle element
+        vec_get(arr, mid)
+    } else {
+        // even: return (a + b) / 2
+        (vec_get(arr, mid - 1) + vec_get(arr, mid)) / 2
+    }
+    };
+
+fn min_val(arr: i64, n: i64) -> i64
+  pre n > 0
+= {
+    let mut best = vec_get(arr, 0);
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let v = vec_get(arr, i);
+        if v < best { best = v } else { () };
+        i = i + 1
+    };
+    best
+    };
+
+fn max_val(arr: i64, n: i64) -> i64
+  pre n > 0
+= {
+    let mut best = vec_get(arr, 0);
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let v = vec_get(arr, i);
+        if v > best { best = v } else { () };
+        i = i + 1
+    };
+    best
+    };
+
+// Selection sort helper: find min index from start
+fn find_min_from(arr: i64, n: i64, start: i64) -> i64 = {
+    let mut mi = start;
+    let mut i = start + 1;
+    loop {
+        if i >= n { break } else { () };
+        if vec_get(arr, i) < vec_get(arr, mi) { mi = i } else { () };
+        i = i + 1
+    };
+    mi
+    };
+
+// Selection sort in-place
+fn sort_arr(arr: i64, n: i64) -> i64 = {
+    let mut i = 0;
+    loop {
+        if i >= n - 1 { break } else { () };
+        let mi = find_min_from(arr, n, i);
+        if mi != i {
+            let tmp = vec_get(arr, i);
+            let _s1 = vec_set(arr, i, vec_get(arr, mi));
+            let _s2 = vec_set(arr, mi, tmp)
+        } else { () };
+        i = i + 1
+    };
+    0
+    };
+
+fn main() -> i64 = {
+    // Array: [3, 7, 2, 8, 5, 1, 9, 4, 6, 10], n=10
+    let arr = vec_new();
+    let _a1 = vec_push(arr, 3);
+    let _a2 = vec_push(arr, 7);
+    let _a3 = vec_push(arr, 2);
+    let _a4 = vec_push(arr, 8);
+    let _a5 = vec_push(arr, 5);
+    let _a6 = vec_push(arr, 1);
+    let _a7 = vec_push(arr, 9);
+    let _a8 = vec_push(arr, 4);
+    let _a9 = vec_push(arr, 6);
+    let _a10 = vec_push(arr, 10);
+
+    let _p1 = println(sum_arr(arr, 10));       // 55
+    let _p2 = println(mean_x10(arr, 10));      // 55
+    let _p3 = println(variance_x100(arr, 10)); // 825
+    let _p4 = println(min_val(arr, 10));       // 1
+    let _p5 = println(max_val(arr, 10));       // 10
+
+    // Sort for median
+    let sorted = vec_new();
+    let _b1 = vec_push(sorted, 1);
+    let _b2 = vec_push(sorted, 2);
+    let _b3 = vec_push(sorted, 3);
+    let _b4 = vec_push(sorted, 4);
+    let _b5 = vec_push(sorted, 5);
+    let _b6 = vec_push(sorted, 6);
+    let _b7 = vec_push(sorted, 7);
+    let _b8 = vec_push(sorted, 8);
+    let _b9 = vec_push(sorted, 9);
+    let _b10 = vec_push(sorted, 10);
+    // n=10 (even): median = (sorted[4] + sorted[5]) / 2 = (5 + 6) / 2 = 5
+    let _p6 = println(median_sorted(sorted, 10)); // 5
+
+    // Odd-length array: [1, 3, 5, 7, 9], n=5, median = 5
+    let odd = vec_new();
+    let _o1 = vec_push(odd, 1);
+    let _o2 = vec_push(odd, 3);
+    let _o3 = vec_push(odd, 5);
+    let _o4 = vec_push(odd, 7);
+    let _o5 = vec_push(odd, 9);
+    let _p7 = println(median_sorted(odd, 5));  // 5
+
+    // Small array stats: [2, 4, 4, 4, 5, 5, 7, 9], n=8
+    // sum=40, mean_x10=50, sum_sq=4+16+16+16+25+25+49+81=232
+    // variance_x100 = 232*100/8 - 50*50 = 2900 - 2500 = 400
+    let arr2 = vec_new();
+    let _c1 = vec_push(arr2, 2);
+    let _c2 = vec_push(arr2, 4);
+    let _c3 = vec_push(arr2, 4);
+    let _c4 = vec_push(arr2, 4);
+    let _c5 = vec_push(arr2, 5);
+    let _c6 = vec_push(arr2, 5);
+    let _c7 = vec_push(arr2, 7);
+    let _c8 = vec_push(arr2, 9);
+    let _p8 = println(sum_arr(arr2, 8));        // 40
+    let _p9 = println(mean_x10(arr2, 8));       // 50
+    let _p10 = println(variance_x100(arr2, 8)); // 400
+    let _p11 = println(min_val(arr2, 8));       // 2
+    let _p12 = println(max_val(arr2, 8));       // 9
+
+    let _f1 = vec_free(arr);
+    let _f2 = vec_free(sorted);
+    let _f3 = vec_free(odd);
+    let _f4 = vec_free(arr2);
+    0
+    };

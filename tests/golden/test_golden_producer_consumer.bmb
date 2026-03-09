@@ -1,0 +1,147 @@
+// Golden Test: Producer-consumer buffer simulation
+// Circular buffer with produce/consume operations
+
+// Buffer layout: vec with [head, tail, size, cap, data...]
+// head = index of next read position
+// tail = index of next write position
+// size = current number of elements
+// cap = maximum capacity
+// data starts at index 4
+
+fn buf_new(capacity: i64) -> i64 = {
+    let v = vec_new();
+    let _h = vec_push(v, 0);   // head = 0
+    let _t = vec_push(v, 0);   // tail = 0
+    let _s = vec_push(v, 0);   // size = 0
+    let _c = vec_push(v, capacity);
+    // Fill data slots with zeros
+    let mut i = 0;
+    loop {
+        if i >= capacity { break } else { () };
+        let _p = vec_push(v, 0);
+        i = i + 1
+    };
+    v
+};
+
+fn buf_size(buf: i64) -> i64 = vec_get(buf, 2);
+fn buf_cap(buf: i64) -> i64 = vec_get(buf, 3);
+fn buf_is_full(buf: i64) -> i64 = if buf_size(buf) >= buf_cap(buf) { 1 } else { 0 };
+fn buf_is_empty(buf: i64) -> i64 = if buf_size(buf) == 0 { 1 } else { 0 };
+
+// Produce: add item to buffer. Returns 1 on success, 0 if full.
+fn produce(buf: i64, item: i64) -> i64 = {
+    if buf_is_full(buf) == 1 { 0 }
+    else {
+        let tail = vec_get(buf, 1);
+        let cap = vec_get(buf, 3);
+        let _s1 = vec_set(buf, 4 + tail, item);
+        let new_tail = tail + 1;
+        let wrapped = if new_tail >= cap { 0 } else { new_tail };
+        let _s2 = vec_set(buf, 1, wrapped);
+        let _s3 = vec_set(buf, 2, vec_get(buf, 2) + 1);
+        1
+    }
+};
+
+// Consume: remove item from buffer. Returns item or -1 if empty.
+fn consume(buf: i64) -> i64 = {
+    if buf_is_empty(buf) == 1 { 0 - 1 }
+    else {
+        let head = vec_get(buf, 0);
+        let cap = vec_get(buf, 3);
+        let item = vec_get(buf, 4 + head);
+        let new_head = head + 1;
+        let wrapped = if new_head >= cap { 0 } else { new_head };
+        let _s1 = vec_set(buf, 0, wrapped);
+        let _s2 = vec_set(buf, 2, vec_get(buf, 2) - 1);
+        item
+    }
+};
+
+// Simulate: producer adds items 1..n, consumer takes between each produce
+// Pattern: produce 2, consume 1, produce 2, consume 1, ...
+fn simulate_interleaved(buf: i64, num_items: i64) -> i64 = {
+    let mut produced = 0;
+    let mut consumed_sum = 0;
+    let mut next_item = 1;
+    loop {
+        if next_item > num_items { break } else { () };
+        // Produce up to 2 items
+        let r1 = produce(buf, next_item);
+        let _u1 = if r1 == 1 { produced = produced + 1; next_item = next_item + 1; 0 } else { 0 };
+        let _u2 = if next_item <= num_items {
+            let r2 = produce(buf, next_item);
+            let _u3 = if r2 == 1 { produced = produced + 1; next_item = next_item + 1; 0 } else { 0 };
+            0
+        } else { 0 };
+        // Consume 1 item
+        let c = consume(buf);
+        let _u4 = if c >= 0 { consumed_sum = consumed_sum + c; 0 } else { 0 };
+        0
+    };
+    // Drain remaining
+    loop {
+        if buf_is_empty(buf) == 1 { break } else { () };
+        let c = consume(buf);
+        consumed_sum = consumed_sum + c
+    };
+    consumed_sum
+};
+
+fn main() -> i64 = {
+    // Basic operations
+    let buf = buf_new(4);
+    let _p1 = println(buf_size(buf));        // 0
+    let _p2 = println(buf_is_empty(buf));    // 1
+
+    // Produce items
+    let r1 = produce(buf, 10);
+    let _p3 = println(r1);                   // 1 (success)
+    let _p4 = println(buf_size(buf));        // 1
+
+    let r2 = produce(buf, 20);
+    let r3 = produce(buf, 30);
+    let r4 = produce(buf, 40);
+    let _p5 = println(buf_size(buf));        // 4
+    let _p6 = println(buf_is_full(buf));     // 1
+
+    // Try to produce when full
+    let r5 = produce(buf, 50);
+    let _p7 = println(r5);                   // 0 (failed, full)
+
+    // Consume in FIFO order
+    let c1 = consume(buf);
+    let _p8 = println(c1);                   // 10
+    let c2 = consume(buf);
+    let _p9 = println(c2);                   // 20
+    let _p10 = println(buf_size(buf));       // 2
+
+    // Produce after consume (tests wrap-around)
+    let r6 = produce(buf, 50);
+    let r7 = produce(buf, 60);
+    let _p11 = println(buf_size(buf));       // 4
+
+    // Consume all
+    let c3 = consume(buf);
+    let _p12 = println(c3);                 // 30
+    let c4 = consume(buf);
+    let _p13 = println(c4);                 // 40
+    let c5 = consume(buf);
+    let _p14 = println(c5);                 // 50
+    let c6 = consume(buf);
+    let _p15 = println(c6);                 // 60
+
+    // Consume from empty
+    let c7 = consume(buf);
+    let _p16 = println(c7);                 // -1
+
+    // Interleaved simulation: produce items 1..10 with capacity 3
+    let buf2 = buf_new(3);
+    let total = simulate_interleaved(buf2, 10);
+    let _p17 = println(total);              // 1+2+...+10 = 55
+
+    let _f1 = vec_free(buf);
+    let _f2 = vec_free(buf2);
+    0
+};

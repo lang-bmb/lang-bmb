@@ -1,0 +1,189 @@
+// Golden Test: Lowest Common Ancestor using Binary Lifting
+// Tree stored as parent array. Precompute up[k][v] = 2^k-th ancestor of v.
+// LCA query in O(log n) using binary lifting.
+// Uses flat vec for up table: up[k][v] = vec_get(up, k * n + v)
+
+fn max2(a: i64, b: i64) -> i64 = if a > b { a } else { b };
+
+fn make_filled(n: i64, val: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { vec_push(v, val) };
+    v
+};
+
+// Compute depth of each node via parent traversal
+fn compute_depth(parent: i64, depth: i64, node: i64, n: i64) -> i64 = {
+    if node >= n { 0 }
+    else {
+        // Walk up from node to root, counting steps
+        let d = 0;
+        let cur = node;
+        loop {
+            if cur == 0 { break } else { () };
+            d = d + 1;
+            cur = vec_get(parent, cur)
+        };
+        let _s = vec_set(depth, node, d);
+        compute_depth(parent, depth, node + 1, n)
+    }
+};
+
+// Build binary lifting table
+// up[0][v] = parent[v]
+// up[k][v] = up[k-1][up[k-1][v]]
+fn init_up_base(up: i64, parent: i64, n: i64, v: i64) -> i64 = {
+    if v >= n { 0 }
+    else {
+        let _s = vec_set(up, v, vec_get(parent, v));
+        init_up_base(up, parent, n, v + 1)
+    }
+};
+
+fn build_up_level(up: i64, n: i64, k: i64, v: i64) -> i64 = {
+    if v >= n { 0 }
+    else {
+        let prev_ancestor = vec_get(up, (k - 1) * n + v);
+        let val = if prev_ancestor == 0 - 1 { 0 - 1 } else { vec_get(up, (k - 1) * n + prev_ancestor) };
+        let _s = vec_set(up, k * n + v, val);
+        build_up_level(up, n, k, v + 1)
+    }
+};
+
+fn build_up_all(up: i64, n: i64, log_n: i64, k: i64) -> i64 = {
+    if k >= log_n { 0 }
+    else {
+        let _b = build_up_level(up, n, k, 0);
+        build_up_all(up, n, log_n, k + 1)
+    }
+};
+
+// Lift node u up by `steps` levels
+fn lift(up: i64, n: i64, log_n: i64, u: i64, steps: i64) -> i64 = {
+    let cur = u;
+    let rem = steps;
+    let k = 0;
+    loop {
+        if k >= log_n { break } else { () };
+        if rem <= 0 { break } else { () };
+        let bit = rem band 1;
+        let _x = if bit == 1 {
+            cur = vec_get(up, k * n + cur);
+            0
+        } else { 0 };
+        rem = rem >> 1;
+        k = k + 1
+    };
+    cur
+};
+
+// LCA using binary lifting
+fn lca(up: i64, depth: i64, n: i64, log_n: i64, u: i64, v: i64) -> i64 = {
+    let du = vec_get(depth, u);
+    let dv = vec_get(depth, v);
+    // Make u the deeper node
+    let a = if du >= dv { u } else { v };
+    let b = if du >= dv { v } else { u };
+    let da = if du >= dv { du } else { dv };
+    let db = if du >= dv { dv } else { du };
+    // Lift a up to same depth as b
+    let a2 = lift(up, n, log_n, a, da - db);
+    // If they meet, that's the LCA
+    if a2 == b { b }
+    else {
+        // Binary lift both until they diverge
+        let aa = a2;
+        let bb = b;
+        let k = log_n - 1;
+        loop {
+            if k < 0 { break } else { () };
+            let ua = vec_get(up, k * n + aa);
+            let ub = vec_get(up, k * n + bb);
+            let _x = if ua != ub {
+                aa = ua;
+                bb = ub;
+                0
+            } else { 0 };
+            k = k - 1
+        };
+        // Parent of aa (or bb) is the LCA
+        vec_get(up, aa)
+    }
+};
+
+fn main() -> i64 = {
+    // Tree (0-indexed, 0 is root):
+    //          0
+    //        / | \
+    //       1  2  3
+    //      / \    |
+    //     4   5   6
+    //    /       / \
+    //   7       8   9
+    //  /
+    // 10
+    let n = 11;
+    let log_n = 4;  // ceil(log2(11)) = 4
+
+    // parent array: parent[0] = -1 (root), parent[i] = parent of node i
+    let parent = vec_new();
+    vec_push(parent, 0 - 1);  // 0: root
+    vec_push(parent, 0);      // 1 -> 0
+    vec_push(parent, 0);      // 2 -> 0
+    vec_push(parent, 0);      // 3 -> 0
+    vec_push(parent, 1);      // 4 -> 1
+    vec_push(parent, 1);      // 5 -> 1
+    vec_push(parent, 3);      // 6 -> 3
+    vec_push(parent, 4);      // 7 -> 4
+    vec_push(parent, 6);      // 8 -> 6
+    vec_push(parent, 6);      // 9 -> 6
+    vec_push(parent, 7);      // 10 -> 7
+
+    // Compute depths
+    let depth = make_filled(n, 0);
+    let _cd = compute_depth(parent, depth, 0, n);
+
+    // Verify depths
+    let _p1 = println(vec_get(depth, 0));   // 0
+    let _p2 = println(vec_get(depth, 1));   // 1
+    let _p3 = println(vec_get(depth, 4));   // 2
+    let _p4 = println(vec_get(depth, 7));   // 3
+    let _p5 = println(vec_get(depth, 10));  // 4
+
+    // Build binary lifting table: log_n levels, n nodes
+    let up = make_filled(log_n * n, 0 - 1);
+    let _ib = init_up_base(up, parent, n, 0);
+    let _ba = build_up_all(up, n, log_n, 1);
+
+    // Verify ancestors
+    // up[0][10] = parent of 10 = 7
+    let _p6 = println(vec_get(up, 0 * n + 10));  // 7
+    // up[1][10] = 2^1 ancestor of 10 = grandparent = 4
+    let _p7 = println(vec_get(up, 1 * n + 10));  // 4
+    // up[2][10] = 2^2 ancestor of 10 = 4th ancestor = 0
+    let _p8 = println(vec_get(up, 2 * n + 10));  // 0
+
+    // LCA queries
+    // lca(10, 5) = 1 (10->7->4->1, 5->1)
+    let _p9 = println(lca(up, depth, n, log_n, 10, 5));   // 1
+    // lca(10, 9) = 0 (10->7->4->1->0, 9->6->3->0)
+    let _p10 = println(lca(up, depth, n, log_n, 10, 9));  // 0
+    // lca(8, 9) = 6 (8->6, 9->6)
+    let _p11 = println(lca(up, depth, n, log_n, 8, 9));   // 6
+    // lca(4, 5) = 1 (4->1, 5->1)
+    let _p12 = println(lca(up, depth, n, log_n, 4, 5));   // 1
+    // lca(7, 5) = 1 (7->4->1, 5->1)
+    let _p13 = println(lca(up, depth, n, log_n, 7, 5));   // 1
+    // lca(2, 6) = 0 (2->0, 6->3->0)
+    let _p14 = println(lca(up, depth, n, log_n, 2, 6));   // 0
+    // lca(10, 10) = 10 (same node)
+    let _p15 = println(lca(up, depth, n, log_n, 10, 10)); // 10
+    // lca(0, 10) = 0 (root is ancestor of everything)
+    let _p16 = println(lca(up, depth, n, log_n, 0, 10));  // 0
+    // lca(1, 3) = 0 (1->0, 3->0)
+    let _p17 = println(lca(up, depth, n, log_n, 1, 3));   // 0
+
+    let _f1 = vec_free(parent);
+    let _f2 = vec_free(depth);
+    let _f3 = vec_free(up);
+    0
+};

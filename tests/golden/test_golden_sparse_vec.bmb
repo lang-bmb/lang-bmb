@@ -1,0 +1,151 @@
+// Golden Test: Sparse Vector Operations
+// A sparse vector stores only non-zero entries as (index, value) pairs
+// using two parallel vecs: one for indices, one for values.
+// n_vec[0] tracks the current count of entries.
+
+// Create a new empty index vec
+fn sv_new_idx() -> i64 = vec_new();
+
+// Create a new empty value vec
+fn sv_new_val() -> i64 = vec_new();
+
+// Insert (index, value) pair into sparse vector.
+// n_vec[0] holds the current entry count.
+// Returns updated count.
+fn sv_insert(idx_vec: i64, val_vec: i64, n_vec: i64, index: i64, value: i64) -> i64
+    pre value != 0
+= {
+    let n = vec_get(n_vec, 0);
+    vec_push(idx_vec, index);
+    vec_push(val_vec, value);
+    let new_n = n + 1;
+    vec_set(n_vec, 0, new_n);
+    new_n
+    };
+
+// Find value at given index; return 0 if not found.
+fn sv_get(idx_vec: i64, val_vec: i64, n: i64, index: i64) -> i64 = {
+    let mut result = 0;
+    for i in 0..n {
+        if vec_get(idx_vec, i) == index {
+            result = vec_get(val_vec, i)
+        } else { () }
+    };
+    result
+    };
+
+// Sparse dot product: sum of val1[k] * val2[k] for matching indices.
+fn sv_dot(idx1: i64, val1: i64, n1: i64, idx2: i64, val2: i64, n2: i64) -> i64 = {
+    let mut acc = 0;
+    for i in 0..n1 {
+        let idx = vec_get(idx1, i);
+        let v1 = vec_get(val1, i);
+        let v2 = sv_get(idx2, val2, n2, idx);
+        acc = acc + v1 * v2
+    };
+    acc
+    };
+
+// Sparse vector addition: C = A + B.
+// Writes result into out_idx, out_val; out_n[0] tracks count.
+fn sv_add(idx1: i64, val1: i64, n1: i64, idx2: i64, val2: i64, n2: i64, out_idx: i64, out_val: i64, out_n: i64) -> i64 = {
+    // Copy all of A into output
+    for i in 0..n1 {
+        let idx = vec_get(idx1, i);
+        let v = vec_get(val1, i);
+        let _ins = sv_insert(out_idx, out_val, out_n, idx, v);
+        ()
+    };
+    // Add entries from B; if index already in output, update in place; else insert
+    for j in 0..n2 {
+        let idx = vec_get(idx2, j);
+        let vb = vec_get(val2, j);
+        let cur_n = vec_get(out_n, 0);
+        // Search for idx in out_idx
+        let mut found_pos = 0 - 1;
+        for k in 0..cur_n {
+            if vec_get(out_idx, k) == idx {
+                found_pos = k
+            } else { () }
+        };
+        if found_pos >= 0 {
+            // Update existing entry
+            let old_v = vec_get(out_val, found_pos);
+            vec_set(out_val, found_pos, old_v + vb)
+        } else {
+            // New index from B — insert it
+            let _ins2 = sv_insert(out_idx, out_val, out_n, idx, vb);
+            ()
+        }
+    };
+    vec_get(out_n, 0)
+    };
+
+// Sum of squares of all values in sparse vector.
+fn sv_norm_sq(val_vec: i64, n: i64) -> i64
+    post ret >= 0
+= {
+    let mut acc = 0;
+    for i in 0..n {
+        let v = vec_get(val_vec, i);
+        acc = acc + v * v
+    };
+    acc
+    };
+
+fn main() -> i64 = {
+    // Vector A: {0:3, 2:5, 4:7}
+    let a_idx = sv_new_idx();
+    let a_val = sv_new_val();
+    let a_n = vec_new();
+    vec_push(a_n, 0);
+    let _a1 = sv_insert(a_idx, a_val, a_n, 0, 3);
+    let _a2 = sv_insert(a_idx, a_val, a_n, 2, 5);
+    let _a3 = sv_insert(a_idx, a_val, a_n, 4, 7);
+    let na = vec_get(a_n, 0);
+
+    // Vector B: {1:2, 2:4, 3:6}
+    let b_idx = sv_new_idx();
+    let b_val = sv_new_val();
+    let b_n = vec_new();
+    vec_push(b_n, 0);
+    let _b1 = sv_insert(b_idx, b_val, b_n, 1, 2);
+    let _b2 = sv_insert(b_idx, b_val, b_n, 2, 4);
+    let _b3 = sv_insert(b_idx, b_val, b_n, 3, 6);
+    let nb = vec_get(b_n, 0);
+
+    // dot(A, B): only index 2 matches -> 5*4 = 20
+    let dot_ab = sv_dot(a_idx, a_val, na, b_idx, b_val, nb);
+    let _p1 = println(dot_ab);  // 20
+
+    // norm_sq(A): 3^2 + 5^2 + 7^2 = 9 + 25 + 49 = 83
+    let nsq_a = sv_norm_sq(a_val, na);
+    let _p2 = println(nsq_a);  // 83
+
+    // norm_sq(B): 2^2 + 4^2 + 6^2 = 4 + 16 + 36 = 56
+    let nsq_b = sv_norm_sq(b_val, nb);
+    let _p3 = println(nsq_b);  // 56
+
+    // C = A + B: {0:3, 1:2, 2:9, 3:6, 4:7}
+    let c_idx = sv_new_idx();
+    let c_val = sv_new_val();
+    let c_n = vec_new();
+    vec_push(c_n, 0);
+    let nc = sv_add(a_idx, a_val, na, b_idx, b_val, nb, c_idx, c_val, c_n);
+    let _p4 = println(nc);                           // 5
+
+    let _p5 = println(sv_get(c_idx, c_val, nc, 0)); // 3
+    let _p6 = println(sv_get(c_idx, c_val, nc, 2)); // 9
+    let _p7 = println(sv_get(c_idx, c_val, nc, 5)); // 0 (not found)
+
+    vec_free(a_idx);
+    vec_free(a_val);
+    vec_free(a_n);
+    vec_free(b_idx);
+    vec_free(b_val);
+    vec_free(b_n);
+    vec_free(c_idx);
+    vec_free(c_val);
+    vec_free(c_n);
+    0
+    };

@@ -1,0 +1,266 @@
+// Golden test: Advanced stack machine / calculator patterns
+// Uses vec as stack with push/pop/peek operations
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n {
+        let _p = vec_push(v, 0);
+        0
+    };
+    v
+    };
+
+// Stack operations: stack is a vec, top is an index (-1 = empty)
+fn spush(stk: i64, top: i64, val: i64) -> i64 = {
+    let nt = top + 1;
+    let _s = vec_set(stk, nt, val);
+    nt
+    };
+
+fn spop(top: i64) -> i64 =
+    if top < 0 { 0 - 1 } else { top - 1 };
+
+fn speek(stk: i64, top: i64) -> i64 =
+    if top < 0 { 0 - 999 } else { vec_get(stk, top) };
+
+fn ssize(top: i64) -> i64 = top + 1;
+
+fn sempty(top: i64) -> i64 =
+    if top < 0 { 1 } else { 0 };
+
+// Evaluate postfix expression encoded in a vec
+// Values 0-99 are operands
+// 200 = add, 201 = subtract, 202 = multiply, 203 = divide
+fn eval_post(expr: i64, pos: i64, stk: i64, top: i64) -> i64 =
+    if pos >= vec_len(expr) { speek(stk, top) }
+    else {
+        let op = vec_get(expr, pos);
+        if op < 200 {
+            // Push operand
+            let nt = spush(stk, top, op);
+            eval_post(expr, pos + 1, stk, nt)
+        }
+        else {
+            // Binary operation: pop two
+            let b = speek(stk, top);
+            let t1 = spop(top);
+            let a = speek(stk, t1);
+            let t2 = spop(t1);
+            let result =
+                if op == 200 { a + b }
+                else if op == 201 { a - b }
+                else if op == 202 { a * b }
+                else { a / b };  // 203 = divide
+            let nt = spush(stk, t2, result);
+            eval_post(expr, pos + 1, stk, nt)
+        }
+    };
+
+// Fibonacci via stack operations:
+// Push fib(0)=0, fib(1)=1, then repeatedly: peek two, add, push
+fn fib_stack(n: i64) -> i64 = {
+    let stk = make_zeros(50);
+    let t0 = spush(stk, 0 - 1, 0);    // stack: [0], top=0
+    let t1 = spush(stk, t0, 1);        // stack: [0, 1], top=1
+    let mut top = t1;
+    let mut i = 2;
+    loop {
+        if i > n { break } else { () };
+        let b = speek(stk, top);
+        let a = speek(stk, top - 1);
+        top = spush(stk, top, a + b);
+        i = i + 1
+    };
+    let result = speek(stk, top);
+    let _f = vec_free(stk);
+    result
+    };
+
+// Reverse a sequence on the stack
+fn reverse_via_stack(arr: i64, n: i64) -> i64 = {
+    let stk = make_zeros(20);
+    let mut top = 0 - 1;
+    // Push all elements
+    for i in 0..n {
+        top = spush(stk, top, vec_get(arr, i))
+    };
+    // Pop all back into result
+    let result = vec_new();
+    let mut j = 0;
+    loop {
+        if j >= n { break } else { () };
+        let val = speek(stk, top);
+        let _p = vec_push(result, val);
+        top = spop(top);
+        j = j + 1
+    };
+    let _f = vec_free(stk);
+    result
+    };
+
+// Check if a sequence is a palindrome using stack
+fn is_palindrome(arr: i64, n: i64) -> i64 = {
+    let rev = reverse_via_stack(arr, n);
+    let mut same = 1;
+    for i in 0..n {
+        if vec_get(arr, i) != vec_get(rev, i) { same = 0 } else { () }
+    };
+    let _f = vec_free(rev);
+    same
+    };
+
+// Compute max depth of nested operations
+// Encoded: 300 = open paren, 301 = close paren
+fn max_nesting(expr: i64, pos: i64, depth: i64, best: i64) -> i64 =
+    if pos >= vec_len(expr) { best }
+    else {
+        let op = vec_get(expr, pos);
+        if op == 300 {
+            let nd = depth + 1;
+            let nb = if nd > best { nd } else { best };
+            max_nesting(expr, pos + 1, nd, nb)
+        }
+        else if op == 301 {
+            max_nesting(expr, pos + 1, depth - 1, best)
+        }
+        else {
+            max_nesting(expr, pos + 1, depth, best)
+        }
+    };
+
+fn main() -> i64 = {
+    // Test 1: Basic push/pop/peek
+    let s = make_zeros(20);
+    let t0 = 0 - 1;
+    let _p1 = println(sempty(t0));  // 1
+
+    let t1 = spush(s, t0, 42);
+    let t2 = spush(s, t1, 17);
+    let t3 = spush(s, t2, 99);
+    let _p2 = println(ssize(t3));     // 3
+    let _p3 = println(speek(s, t3));  // 99
+    let t4 = spop(t3);
+    let _p4 = println(speek(s, t4));  // 17
+    let _p5 = println(sempty(t4));    // 0
+
+    // Test 2: Stack underflow returns sentinel -999
+    let _p6 = println(speek(s, 0 - 1));  // -999
+
+    // Test 3: Postfix eval: 3 4 + = 7
+    let stk1 = make_zeros(20);
+    let e1 = vec_new();
+    let _pe1 = vec_push(e1, 3);
+    let _pe2 = vec_push(e1, 4);
+    let _pe3 = vec_push(e1, 200);
+    let _p7 = println(eval_post(e1, 0, stk1, 0 - 1));  // 7
+
+    // Test 4: Postfix eval: 3 4 + 2 * = (3+4)*2 = 14
+    let stk2 = make_zeros(20);
+    let e2 = vec_new();
+    let _pe4 = vec_push(e2, 3);
+    let _pe5 = vec_push(e2, 4);
+    let _pe6 = vec_push(e2, 200);
+    let _pe7 = vec_push(e2, 2);
+    let _pe8 = vec_push(e2, 202);
+    let _p8 = println(eval_post(e2, 0, stk2, 0 - 1));  // 14
+
+    // Test 5: Postfix eval: 10 3 - = 7
+    let stk3 = make_zeros(20);
+    let e3 = vec_new();
+    let _pe9 = vec_push(e3, 10);
+    let _pe10 = vec_push(e3, 3);
+    let _pe11 = vec_push(e3, 201);
+    let _p9 = println(eval_post(e3, 0, stk3, 0 - 1));  // 7
+
+    // Test 6: Postfix eval: 20 4 / = 5
+    let stk4 = make_zeros(20);
+    let e4 = vec_new();
+    let _pe12 = vec_push(e4, 20);
+    let _pe13 = vec_push(e4, 4);
+    let _pe14 = vec_push(e4, 203);
+    let _p10 = println(eval_post(e4, 0, stk4, 0 - 1));  // 5
+
+    // Test 7: Complex postfix: 5 1 2 + 4 * + 3 - = 5+(1+2)*4-3 = 5+12-3 = 14
+    let stk5 = make_zeros(20);
+    let e5 = vec_new();
+    let _q1 = vec_push(e5, 5);
+    let _q2 = vec_push(e5, 1);
+    let _q3 = vec_push(e5, 2);
+    let _q4 = vec_push(e5, 200);
+    let _q5 = vec_push(e5, 4);
+    let _q6 = vec_push(e5, 202);
+    let _q7 = vec_push(e5, 200);
+    let _q8 = vec_push(e5, 3);
+    let _q9 = vec_push(e5, 201);
+    let _p11 = println(eval_post(e5, 0, stk5, 0 - 1));  // 14
+
+    // Test 8: Fibonacci via stack
+    let _p12 = println(fib_stack(0));   // 0
+    let _p13 = println(fib_stack(1));   // 1
+    let _p14 = println(fib_stack(10));  // 55
+    let _p15 = println(fib_stack(15));  // 610
+
+    // Test 9: Reverse via stack
+    let arr1 = vec_new();
+    let _r1 = vec_push(arr1, 10);
+    let _r2 = vec_push(arr1, 20);
+    let _r3 = vec_push(arr1, 30);
+    let _r4 = vec_push(arr1, 40);
+    let rev1 = reverse_via_stack(arr1, 4);
+    let _p16 = println(vec_get(rev1, 0));  // 40
+    let _p17 = println(vec_get(rev1, 1));  // 30
+    let _p18 = println(vec_get(rev1, 2));  // 20
+    let _p19 = println(vec_get(rev1, 3));  // 10
+
+    // Test 10: Palindrome check
+    let pal1 = vec_new();
+    let _pp1 = vec_push(pal1, 1);
+    let _pp2 = vec_push(pal1, 2);
+    let _pp3 = vec_push(pal1, 1);
+    let _p20 = println(is_palindrome(pal1, 3));  // 1
+
+    let pal2 = vec_new();
+    let _pp4 = vec_push(pal2, 1);
+    let _pp5 = vec_push(pal2, 2);
+    let _pp6 = vec_push(pal2, 3);
+    let _p21 = println(is_palindrome(pal2, 3));  // 0
+
+    // Test 11: Max nesting depth
+    // (( )) = depth 2, encoded as 300 300 301 301
+    let nest1 = vec_new();
+    let _n1 = vec_push(nest1, 300);
+    let _n2 = vec_push(nest1, 300);
+    let _n3 = vec_push(nest1, 301);
+    let _n4 = vec_push(nest1, 301);
+    let _p22 = println(max_nesting(nest1, 0, 0, 0));  // 2
+
+    // ((( ))) = depth 3
+    let nest2 = vec_new();
+    let _n5 = vec_push(nest2, 300);
+    let _n6 = vec_push(nest2, 300);
+    let _n7 = vec_push(nest2, 300);
+    let _n8 = vec_push(nest2, 301);
+    let _n9 = vec_push(nest2, 301);
+    let _n10 = vec_push(nest2, 301);
+    let _p23 = println(max_nesting(nest2, 0, 0, 0));  // 3
+
+    // Cleanup
+    let _f1 = vec_free(s);
+    let _f2 = vec_free(stk1);
+    let _f3 = vec_free(e1);
+    let _f4 = vec_free(stk2);
+    let _f5 = vec_free(e2);
+    let _f6 = vec_free(stk3);
+    let _f7 = vec_free(e3);
+    let _f8 = vec_free(stk4);
+    let _f9 = vec_free(e4);
+    let _f10 = vec_free(stk5);
+    let _f11 = vec_free(e5);
+    let _f12 = vec_free(arr1);
+    let _f13 = vec_free(rev1);
+    let _f14 = vec_free(pal1);
+    let _f15 = vec_free(pal2);
+    let _f16 = vec_free(nest1);
+    let _f17 = vec_free(nest2);
+    0
+    };

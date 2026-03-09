@@ -1,0 +1,121 @@
+// Golden Test: Matrix determinant calculations - Cycle 1569
+// 2x2 and 3x3 determinants with various matrix types
+
+// Matrix stored row-major as flat vec
+fn mat_get(m: i64, cols: i64, r: i64, c: i64) -> i64 =
+    vec_get(m, r * cols + c);
+
+// 2x2 determinant: ad - bc
+// | a b |
+// | c d |
+fn det2(m: i64) -> i64 =
+    vec_get(m, 0) * vec_get(m, 3) - vec_get(m, 1) * vec_get(m, 2);
+
+// 3x3 determinant: cofactor expansion along row 0
+// | a b c |
+// | d e f |
+// | g h i |
+// = a*(ei - fh) - b*(di - fg) + c*(dh - eg)
+fn det3(m: i64) -> i64 = {
+    let a = vec_get(m, 0);
+    let b = vec_get(m, 1);
+    let c = vec_get(m, 2);
+    let d = vec_get(m, 3);
+    let e = vec_get(m, 4);
+    let f = vec_get(m, 5);
+    let g = vec_get(m, 6);
+    let h = vec_get(m, 7);
+    let ii = vec_get(m, 8);
+    a * (e * ii - f * h) - b * (d * ii - f * g) + c * (d * h - e * g)
+    };
+
+// Helper: make a 2x2 matrix (4 elements)
+fn mk2(a: i64, b: i64, c: i64, d: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    v
+    };
+
+// Helper: make a 3x3 matrix (9 elements)
+fn mk3(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64, h: i64, ii: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    let _p6 = vec_push(v, f);
+    let _p7 = vec_push(v, g);
+    let _p8 = vec_push(v, h);
+    let _p9 = vec_push(v, ii);
+    v
+    };
+
+fn main() -> i64 = {
+// Test 1: 2x2 identity matrix -> det = 1
+    let m1 = mk2(1, 0, 0, 1);
+    let _p1 = println(det2(m1));                // 1
+
+// Test 2: 2x2 matrix [[3,8],[4,6]] -> 3*6 - 8*4 = 18 - 32 = -14
+    let m2 = mk2(3, 8, 4, 6);
+    let _p2 = println(det2(m2));                // -14
+
+// Test 3: 3x3 identity -> det = 1
+    let m3 = mk3(1, 0, 0, 0, 1, 0, 0, 0, 1);
+    let _p3 = println(det3(m3));                // 1
+
+// Test 4: 3x3 [[1,2,3],[4,5,6],[7,8,9]] -> singular, det = 0
+// 1*(5*9-6*8) - 2*(4*9-6*7) + 3*(4*8-5*7)
+// = 1*(45-48) - 2*(36-42) + 3*(32-35)
+// = 1*(-3) - 2*(-6) + 3*(-3)
+// = -3 + 12 - 9 = 0
+    let m4 = mk3(1, 2, 3, 4, 5, 6, 7, 8, 9);
+    let _p4 = println(det3(m4));                // 0
+
+// Test 5: 3x3 [[2,0,1],[3,1,0],[1,2,1]]
+// 2*(1*1-0*2) - 0*(3*1-0*1) + 1*(3*2-1*1)
+// = 2*(1) - 0 + 1*(5)
+// = 2 + 5 = 7
+    let m5 = mk3(2, 0, 1, 3, 1, 0, 1, 2, 1);
+    let _p5 = println(det3(m5));                // 7
+
+// Test 6: 2x2 [[5,3],[2,1]] -> 5*1 - 3*2 = 5 - 6 = -1
+    let m6 = mk2(5, 3, 2, 1);
+    let _p6 = println(det2(m6));                // -1
+
+// Test 7: 3x3 diagonal [[3,0,0],[0,4,0],[0,0,5]] -> det = 3*4*5 = 60
+    let m7 = mk3(3, 0, 0, 0, 4, 0, 0, 0, 5);
+    let _p7 = println(det3(m7));                // 60
+
+// Test 8: 3x3 upper triangular [[2,3,1],[0,4,5],[0,0,6]] -> det = 2*4*6 = 48
+// 2*(4*6-5*0) - 3*(0*6-5*0) + 1*(0*0-4*0)
+// = 2*24 - 0 + 0 = 48
+    let m8 = mk3(2, 3, 1, 0, 4, 5, 0, 0, 6);
+    let _p8 = println(det3(m8));                // 48
+
+// Test 9: 2x2 zero matrix -> det = 0
+    let m9 = mk2(0, 0, 0, 0);
+    let _p9 = println(det2(m9));                // 0
+
+// Test 10: 3x3 [[1,3,2],[4,1,3],[2,5,2]]
+// 1*(1*2-3*5) - 3*(4*2-3*2) + 2*(4*5-1*2)
+// = 1*(2-15) - 3*(8-6) + 2*(20-2)
+// = -13 - 6 + 36 = 17
+    let m10 = mk3(1, 3, 2, 4, 1, 3, 2, 5, 2);
+    let _p10 = println(det3(m10));              // 17
+
+    let _f1 = vec_free(m1);
+    let _f2 = vec_free(m2);
+    let _f3 = vec_free(m3);
+    let _f4 = vec_free(m4);
+    let _f5 = vec_free(m5);
+    let _f6 = vec_free(m6);
+    let _f7 = vec_free(m7);
+    let _f8 = vec_free(m8);
+    let _f9 = vec_free(m9);
+    let _f10 = vec_free(m10);
+    0
+    };

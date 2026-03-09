@@ -1,0 +1,188 @@
+// Golden Test: Segment tree with lazy propagation
+// Supports range add updates and range min queries
+// Tree and lazy arrays stored as flat vecs of size 4*n, 1-indexed
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { let _p = vec_push(v, 0); 0 };
+    v
+};
+
+fn min_val(a: i64, b: i64) -> i64 =
+    if a < b { a } else { b };
+
+// Build segment tree for range min queries
+fn build(tree: i64, arr: i64, node: i64, start: i64, end: i64) -> i64 = {
+    let _c = if start == end {
+        let _s = vec_set(tree, node, vec_get(arr, start));
+        ()
+    } else {
+        let mid = (start + end) / 2;
+        let _l = build(tree, arr, node * 2, start, mid);
+        let _r = build(tree, arr, node * 2 + 1, mid + 1, end);
+        let _s = vec_set(tree, node, min_val(vec_get(tree, node * 2), vec_get(tree, node * 2 + 1)));
+        ()
+    };
+    0
+};
+
+// Push pending lazy value down to children
+fn push_down(tree: i64, lazy: i64, node: i64) -> i64 = {
+    let lz = vec_get(lazy, node);
+    let _c = if lz != 0 {
+        // Propagate to left child
+        let _s1 = vec_set(tree, node * 2, vec_get(tree, node * 2) + lz);
+        let _s2 = vec_set(lazy, node * 2, vec_get(lazy, node * 2) + lz);
+        // Propagate to right child
+        let _s3 = vec_set(tree, node * 2 + 1, vec_get(tree, node * 2 + 1) + lz);
+        let _s4 = vec_set(lazy, node * 2 + 1, vec_get(lazy, node * 2 + 1) + lz);
+        // Clear lazy for current node
+        let _s5 = vec_set(lazy, node, 0);
+        ()
+    } else {
+        ()
+    };
+    0
+};
+
+// Range update: add val to all elements in [l, r]
+fn range_update(tree: i64, lazy: i64, node: i64, start: i64, end: i64, l: i64, r: i64, val: i64) -> i64 = {
+    let _c = if l > end {
+        ()
+    } else if r < start {
+        ()
+    } else if l <= start {
+        let _c2 = if end <= r {
+            // Entire segment covered
+            let _s1 = vec_set(tree, node, vec_get(tree, node) + val);
+            let _s2 = vec_set(lazy, node, vec_get(lazy, node) + val);
+            ()
+        } else {
+            let _pd = push_down(tree, lazy, node);
+            let mid = (start + end) / 2;
+            let _lu = range_update(tree, lazy, node * 2, start, mid, l, r, val);
+            let _ru = range_update(tree, lazy, node * 2 + 1, mid + 1, end, l, r, val);
+            let _s = vec_set(tree, node, min_val(vec_get(tree, node * 2), vec_get(tree, node * 2 + 1)));
+            ()
+        };
+        ()
+    } else {
+        let _pd = push_down(tree, lazy, node);
+        let mid = (start + end) / 2;
+        let _lu = range_update(tree, lazy, node * 2, start, mid, l, r, val);
+        let _ru = range_update(tree, lazy, node * 2 + 1, mid + 1, end, l, r, val);
+        let _s = vec_set(tree, node, min_val(vec_get(tree, node * 2), vec_get(tree, node * 2 + 1)));
+        ()
+    };
+    0
+};
+
+// Range min query on [l, r]
+fn query_min(tree: i64, lazy: i64, node: i64, start: i64, end: i64, l: i64, r: i64) -> i64 =
+    if l > end { 999999 }
+    else if r < start { 999999 }
+    else if l <= start {
+        if end <= r { vec_get(tree, node) }
+        else {
+            let _pd = push_down(tree, lazy, node);
+            let mid = (start + end) / 2;
+            min_val(
+                query_min(tree, lazy, node * 2, start, mid, l, r),
+                query_min(tree, lazy, node * 2 + 1, mid + 1, end, l, r)
+            )
+        }
+    } else {
+        let _pd = push_down(tree, lazy, node);
+        let mid = (start + end) / 2;
+        min_val(
+            query_min(tree, lazy, node * 2, start, mid, l, r),
+            query_min(tree, lazy, node * 2 + 1, mid + 1, end, l, r)
+        )
+    };
+
+fn main() -> i64 = {
+    // === Test 1: Build from [5, 3, 7, 1, 4, 6] and query mins ===
+    let _p = println_str("=== Test 1: initial min queries ===");
+    let n = 6;
+    let arr = vec_new();
+    let _p = vec_push(arr, 5); let _p = vec_push(arr, 3);
+    let _p = vec_push(arr, 7); let _p = vec_push(arr, 1);
+    let _p = vec_push(arr, 4); let _p = vec_push(arr, 6);
+
+    let tree = make_zeros(n * 4);
+    let lazy = make_zeros(n * 4);
+    let _b = build(tree, arr, 1, 0, n - 1);
+
+    // min(0, 5) = 1
+    let _p = print_str("min(0,5): ");
+    let _p = println(query_min(tree, lazy, 1, 0, n - 1, 0, 5));
+
+    // min(0, 2) = min(5,3,7) = 3
+    let _p = print_str("min(0,2): ");
+    let _p = println(query_min(tree, lazy, 1, 0, n - 1, 0, 2));
+
+    // min(3, 5) = min(1,4,6) = 1
+    let _p = print_str("min(3,5): ");
+    let _p = println(query_min(tree, lazy, 1, 0, n - 1, 3, 5));
+
+    // min(1, 3) = min(3,7,1) = 1
+    let _p = print_str("min(1,3): ");
+    let _p = println(query_min(tree, lazy, 1, 0, n - 1, 1, 3));
+
+    // === Test 2: Range update — add 10 to [0, 2] ===
+    // Array becomes [15, 13, 17, 1, 4, 6]
+    let _p = println_str("=== Test 2: after add 10 to [0,2] ===");
+    let _u = range_update(tree, lazy, 1, 0, n - 1, 0, 2, 10);
+
+    // min(0, 2) = min(15,13,17) = 13
+    let _p = print_str("min(0,2): ");
+    let _p = println(query_min(tree, lazy, 1, 0, n - 1, 0, 2));
+
+    // min(0, 5) = min(15,13,17,1,4,6) = 1
+    let _p = print_str("min(0,5): ");
+    let _p = println(query_min(tree, lazy, 1, 0, n - 1, 0, 5));
+
+    // min(3, 3) = 1 (single element, untouched)
+    let _p = print_str("min(3,3): ");
+    let _p = println(query_min(tree, lazy, 1, 0, n - 1, 3, 3));
+
+    // === Test 3: Range update — add 5 to [2, 4] ===
+    // Array becomes [15, 13, 22, 6, 9, 6]
+    let _p = println_str("=== Test 3: after add 5 to [2,4] ===");
+    let _u2 = range_update(tree, lazy, 1, 0, n - 1, 2, 4, 5);
+
+    // min(0, 5) = min(15,13,22,6,9,6) = 6
+    let _p = print_str("min(0,5): ");
+    let _p = println(query_min(tree, lazy, 1, 0, n - 1, 0, 5));
+
+    // min(2, 4) = min(22,6,9) = 6
+    let _p = print_str("min(2,4): ");
+    let _p = println(query_min(tree, lazy, 1, 0, n - 1, 2, 4));
+
+    // min(4, 5) = min(9,6) = 6
+    let _p = print_str("min(4,5): ");
+    let _p = println(query_min(tree, lazy, 1, 0, n - 1, 4, 5));
+
+    // === Test 4: Small array [10, 20] with update ===
+    let _p = println_str("=== Test 4: two elements ===");
+    let n2 = 2;
+    let arr2 = vec_new();
+    let _p = vec_push(arr2, 10); let _p = vec_push(arr2, 20);
+    let tree2 = make_zeros(n2 * 4);
+    let lazy2 = make_zeros(n2 * 4);
+    let _b2 = build(tree2, arr2, 1, 0, n2 - 1);
+
+    let _p = print_str("min(0,1): ");
+    let _p = println(query_min(tree2, lazy2, 1, 0, n2 - 1, 0, 1));
+    // Add 15 to [0, 0] → [25, 20]
+    let _u3 = range_update(tree2, lazy2, 1, 0, n2 - 1, 0, 0, 15);
+    let _p = print_str("min(0,1) after: ");
+    let _p = println(query_min(tree2, lazy2, 1, 0, n2 - 1, 0, 1));
+    let _p = print_str("min(0,0): ");
+    let _p = println(query_min(tree2, lazy2, 1, 0, n2 - 1, 0, 0));
+
+    // Cleanup
+    let _f = vec_free(arr); let _f = vec_free(tree); let _f = vec_free(lazy);
+    let _f = vec_free(arr2); let _f = vec_free(tree2); let _f = vec_free(lazy2);
+    0
+};

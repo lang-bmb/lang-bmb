@@ -1,0 +1,121 @@
+// Golden test: Simple regex-like pattern matching
+// Expected output: 17
+
+// Pattern matching with literals and wildcard (9 = any char)
+// Single digit patterns only for simplicity
+
+fn match_one(pattern: i64, ch: i64) -> i64 = {
+    if pattern == 9 { 1 } // wildcard matches anything
+    else if pattern == ch { 1 }
+    else { 0 }
+    };
+
+fn match_two(p1: i64, p2: i64, c1: i64, c2: i64) -> i64 = {
+    if match_one(p1, c1) == 1 {
+        if match_one(p2, c2) == 1 { 1 } else { 0 }
+    } else { 0 }
+    };
+
+fn match_three(p1: i64, p2: i64, p3: i64, c1: i64, c2: i64, c3: i64) -> i64 = {
+    if match_one(p1, c1) == 1 {
+        if match_one(p2, c2) == 1 {
+            if match_one(p3, c3) == 1 { 1 } else { 0 }
+        } else { 0 }
+    } else { 0 }
+    };
+
+fn main() -> i64 = {
+// Pattern: single char matches
+// 1 matches 1
+    let r1 = match_one(1, 1);
+    println(r1);
+
+// 1 does not match 2
+    let r2 = match_one(1, 2);
+    println(r2);
+
+// 9 (wildcard) matches 1
+    let r3 = match_one(9, 1);
+    println(r3);
+
+// 9 (wildcard) matches 2
+    let r4 = match_one(9, 2);
+    println(r4);
+
+// Two-char patterns
+// Pattern "12" matches "12"
+    let r5 = match_two(1, 2, 1, 2);
+    println(r5);
+
+// Pattern "12" does not match "13"
+    let r6 = match_two(1, 2, 1, 3);
+    println(r6);
+
+// Pattern "1*" (1,9) matches "12"
+    let r7 = match_two(1, 9, 1, 2);
+    println(r7);
+
+// Pattern "1*" matches "13"
+    let r8 = match_two(1, 9, 1, 3);
+    println(r8);
+
+// Pattern "*2" matches "12"
+    let r9 = match_two(9, 2, 1, 2);
+    println(r9);
+
+// Pattern "*2" matches "32"
+    let r10 = match_two(9, 2, 3, 2);
+    println(r10);
+
+// Pattern "*2" does not match "23"
+    let r11 = match_two(9, 2, 2, 3);
+    println(r11);
+
+// Pattern "**" matches "12"
+    let r12 = match_two(9, 9, 1, 2);
+    println(r12);
+
+// Pattern "**" matches "99"
+    let r13 = match_two(9, 9, 9, 9);
+    println(r13);
+
+// Three-char patterns
+// Pattern "123" matches "123"
+    let r14 = match_three(1, 2, 3, 1, 2, 3);
+    println(r14);
+
+// Pattern "123" does not match "124"
+    let r15 = match_three(1, 2, 3, 1, 2, 4);
+    println(r15);
+
+// Pattern "1*3" matches "123"
+    let r16 = match_three(1, 9, 3, 1, 2, 3);
+    println(r16);
+
+// Pattern "1*3" matches "143"
+    let r17 = match_three(1, 9, 3, 1, 4, 3);
+    println(r17);
+
+// Pattern "*2*" matches "123"
+    let r18 = match_three(9, 2, 9, 1, 2, 3);
+    println(r18);
+
+// Pattern "*2*" matches "424"
+    let r19 = match_three(9, 2, 9, 4, 2, 4);
+    println(r19);
+
+// Pattern "*2*" does not match "134"
+    let r20 = match_three(9, 2, 9, 1, 3, 4);
+    println(r20);
+
+// Pattern "***" matches "123"
+    let r21 = match_three(9, 9, 9, 1, 2, 3);
+    println(r21);
+
+// Pattern "***" matches "999"
+    let r22 = match_three(9, 9, 9, 9, 9, 9);
+    println(r22);
+
+// Sum: 1+0+1+1+1+0+1+1+1+1+0+1+1+1+0+1+1+1+1+0+1+1 = 17
+    0
+    };

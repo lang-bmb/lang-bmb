@@ -1,0 +1,62 @@
+// Golden Test: N-Queens problem
+// Counts solutions to placing N queens on NxN board
+// Uses backtracking with column/diagonal conflict tracking
+
+fn nqueens_solve(n: i64, row: i64, cols: i64, diag1: i64, diag2: i64, count: i64) -> () = {
+    let _x = if row == n {
+        vec_set(count, 0, vec_get(count, 0) + 1);
+        0
+    } else {
+        let mut c = 0;
+        while c < n {
+            let d1 = row + c;
+            let d2 = row - c + n - 1;
+            let ok = if vec_get(cols, c) == 0 and vec_get(diag1, d1) == 0 and vec_get(diag2, d2) == 0 { 1 } else { 0 };
+            let _y = if ok == 1 {
+                vec_set(cols, c, 1);
+                vec_set(diag1, d1, 1);
+                vec_set(diag2, d2, 1);
+                nqueens_solve(n, row + 1, cols, diag1, diag2, count);
+                vec_set(cols, c, 0);
+                vec_set(diag1, d1, 0);
+                vec_set(diag2, d2, 0);
+                0
+            } else { 0 };
+            set c = c + 1
+        };
+        0
+    }
+};
+
+fn nqueens(n: i64) -> i64 = {
+    let cols = vec_new();
+    let diag1 = vec_new();
+    let diag2 = vec_new();
+    let count = vec_new();
+    let _p = vec_push(count, 0);
+    let mut i = 0;
+    while i < n {
+        let _p = vec_push(cols, 0);
+        set i = i + 1
+    };
+    set i = 0;
+    while i < 2 * n {
+        let _p = vec_push(diag1, 0);
+        let _p = vec_push(diag2, 0);
+        set i = i + 1
+    };
+    nqueens_solve(n, 0, cols, diag1, diag2, count);
+    vec_get(count, 0)
+};
+
+fn main() -> () = {
+    // Known values: N=1:1, N=2:0, N=3:0, N=4:2, N=5:10, N=6:4, N=7:40, N=8:92
+    print_str("Q(1)="); let _r = println(nqueens(1));
+    print_str("Q(2)="); let _r = println(nqueens(2));
+    print_str("Q(3)="); let _r = println(nqueens(3));
+    print_str("Q(4)="); let _r = println(nqueens(4));
+    print_str("Q(5)="); let _r = println(nqueens(5));
+    print_str("Q(6)="); let _r = println(nqueens(6));
+    print_str("Q(7)="); let _r = println(nqueens(7));
+    print_str("Q(8)="); let _r = println(nqueens(8))
+};

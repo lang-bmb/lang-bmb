@@ -1,0 +1,179 @@
+// Golden Test: Digit DP - count integers in [1..N] with specific digit properties
+// Property 1: Count numbers whose digit sum equals a target
+// Property 2: Count numbers with no repeated adjacent digits
+
+fn count_digs(n: i64) -> i64 =
+    if n <= 0 { 0 }
+    else { 1 + count_digs(n / 10) };
+
+fn fill_digits(v: i64, n: i64, idx: i64) -> i64 =
+    if n <= 0 { 0 }
+    else {
+        let _s = vec_set(v, idx, n - (n / 10) * 10);
+        fill_digits(v, n / 10, idx - 1)
+    };
+
+fn extract_digits(n: i64) -> i64 = {
+    if n == 0 { let vz = vec_new(); vec_push(vz, 0); return vz } else { () };
+    let cnt = count_digs(n);
+    let v = vec_new();
+    for _i in 0..cnt { vec_push(v, 0) };
+    let _h = fill_digits(v, n, cnt - 1);
+    v
+    };
+
+fn get_digit(digs: i64, pos: i64) -> i64 = vec_get(digs, pos);
+
+// Digit DP 1: Count numbers in [1..N] with digit sum = target
+// memo key: pos * 2 * (max_sum+1) + tight * (max_sum+1) + cur_sum
+fn mk1(pos: i64, tight: i64, cs: i64, ms: i64) -> i64 =
+    pos * 2 * (ms + 1) + tight * (ms + 1) + cs;
+
+fn dp_sum(digs: i64, nd: i64, memo: i64, ms: i64, tgt: i64,
+    pos: i64, tight: i64, cs: i64) -> i64 = {
+    if cs > tgt { return 0 } else { () };
+    if pos == nd { let rv = if cs == tgt { 1 } else { 0 }; return rv } else { () };
+    let key = mk1(pos, tight, cs, ms);
+    if vec_get(memo, key) != 0 - 1 { return vec_get(memo, key) } else { () };
+    let lim = if tight == 1 { get_digit(digs, pos) } else { 9 };
+    let mut res = 0;
+    let mut d = 0;
+    while d <= lim {
+        let nt = if tight == 1 and d == lim { 1 } else { 0 };
+        set res = res + dp_sum(digs, nd, memo, ms, tgt, pos + 1, nt, cs + d);
+        set d = d + 1
+    };
+    let _s = vec_set(memo, key, res);
+    res
+    };
+
+fn count_digit_sum(n: i64, tgt: i64) -> i64 = {
+    if n <= 0 { return 0 } else { () };
+    let digs = extract_digits(n);
+    let nd = vec_len(digs);
+    let ms = 9 * nd;
+    if tgt > ms { return 0 } else { () };
+    let msz = (nd + 1) * 2 * (ms + 1);
+    let memo = vec_new();
+    for _i in 0..msz { vec_push(memo, 0 - 1) };
+    dp_sum(digs, nd, memo, ms, tgt, 0, 1, 0)
+    };
+
+// Digit DP 2: Count numbers in [1..N] with no adjacent repeated digits
+// memo key: pos * 2 * 11 * 2 + tight * 11 * 2 + last * 2 + started
+fn mk2(pos: i64, tight: i64, last: i64, started: i64) -> i64 =
+    pos * 2 * 11 * 2 + tight * 11 * 2 + last * 2 + started;
+
+fn dp_noadj(digs: i64, nd: i64, memo: i64,
+    pos: i64, tight: i64, last: i64, started: i64) -> i64 = {
+    if pos == nd { let rv = if started == 1 { 1 } else { 0 }; return rv } else { () };
+    let key = mk2(pos, tight, last, started);
+    if vec_get(memo, key) != 0 - 1 { return vec_get(memo, key) } else { () };
+    let lim = if tight == 1 { get_digit(digs, pos) } else { 9 };
+    let mut res = 0;
+    let mut d = 0;
+    while d <= lim {
+        let nt = if tight == 1 and d == lim { 1 } else { 0 };
+        let nst = if started == 1 { 1 } else { if d > 0 { 1 } else { 0 } };
+        let nl = if nst == 1 { d } else { 10 };
+        let skip = if started == 1 and d == last { 1 } else { 0 };
+        let _x = if skip == 0 {
+            set res = res + dp_noadj(digs, nd, memo, pos + 1, nt, nl, nst);
+            0
+        } else { 0 };
+        set d = d + 1
+    };
+    let _s = vec_set(memo, key, res);
+    res
+    };
+
+fn count_no_adj(n: i64) -> i64 = {
+    if n <= 0 { return 0 } else { () };
+    let digs = extract_digits(n);
+    let nd = vec_len(digs);
+    let msz = (nd + 1) * 2 * 11 * 2;
+    let memo = vec_new();
+    for _i in 0..msz { vec_push(memo, 0 - 1) };
+    dp_noadj(digs, nd, memo, 0, 1, 10, 0)
+    };
+
+// Brute force helpers
+fn digit_sum_bf(n: i64) -> i64 = {
+    let mut s = 0;
+    let mut x = n;
+    while x > 0 {
+        set s = s + (x - (x / 10) * 10);
+        set x = x / 10
+    };
+    s
+    };
+
+fn has_adj_bf(n: i64) -> i64 = {
+    let mut x = n;
+    let mut prev = 0 - 1;
+    let mut found = 0;
+    while x > 0 {
+        let d = x - (x / 10) * 10;
+        let _c = if d == prev { set found = 1; 0 } else { 0 };
+        set prev = d;
+        set x = x / 10
+    };
+    found
+    };
+
+fn bf_digit_sum(n: i64, tgt: i64) -> i64 = {
+    let mut cnt = 0;
+    for i in 1..n {
+        let _c = if digit_sum_bf(i) == tgt { set cnt = cnt + 1; 0 } else { 0 };
+        0
+    };
+    let _c2 = if digit_sum_bf(n) == tgt { set cnt = cnt + 1; 0 } else { 0 };
+    cnt
+    };
+
+fn bf_no_adj(n: i64) -> i64 = {
+    let mut cnt = 0;
+    for i in 1..n {
+        let _c = if has_adj_bf(i) == 0 { set cnt = cnt + 1; 0 } else { 0 };
+        0
+    };
+    let _c2 = if has_adj_bf(n) == 0 { set cnt = cnt + 1; 0 } else { 0 };
+    cnt
+    };
+
+fn main() -> i64 = {
+    // Test digit extraction
+    let d100 = extract_digits(100);
+    let _p0 = println(vec_len(d100));
+    let _p0b = println(get_digit(d100, 0));
+    let _p0c = println(get_digit(d100, 1));
+    let _p0d = println(get_digit(d100, 2));
+
+    // Digit sum DP
+    let _p1 = println(count_digit_sum(100, 1));
+    let _p2 = println(count_digit_sum(20, 5));
+    let _p3 = println(count_digit_sum(50, 10));
+
+    // Brute force verify
+    let _p4 = println(bf_digit_sum(100, 1));
+    let _p5 = println(bf_digit_sum(20, 5));
+    let _p6 = println(bf_digit_sum(50, 10));
+
+    // No adjacent repeat DP
+    let _p7 = println(count_no_adj(20));
+    let _p8 = println(bf_no_adj(20));
+
+    let _p9 = println(count_no_adj(100));
+    let _p10 = println(bf_no_adj(100));
+
+    // Larger tests
+    let _p11 = println(count_digit_sum(999, 27));
+    let _p12 = println(count_digit_sum(1000, 1));
+    let _p13 = println(count_no_adj(10));
+
+    // Edge cases
+    let _p14 = println(count_digit_sum(9, 9));
+    let _p15 = println(count_digit_sum(9, 10));
+
+    0
+    };

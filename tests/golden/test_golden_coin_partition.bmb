@@ -1,0 +1,139 @@
+// Golden Test: Coin partition / coin change DP
+// Count the number of ways to make change for a given amount
+
+// Count ways to partition amount using coins[0..num_coins-1]
+// Uses 1D DP: dp[j] = number of ways to make amount j
+fn count_ways(coins: i64, num_coins: i64, amount: i64) -> i64 = {
+    // dp[0..amount] initialized to 0, dp[0] = 1
+    let dp = vec_new();
+    let _p = vec_push(dp, 1);
+    for _i in 1..amount {
+        let _p2 = vec_push(dp, 0);
+        0
+    };
+    // Need amount+1 entries total, we pushed 'amount' so far
+    // Actually: pushed 1 + (amount-1) = amount entries for indices 0..amount-1
+    // Need one more for index = amount
+    let _pa = vec_push(dp, 0);
+
+    // For each coin, update dp
+    let mut ci = 0;
+    loop {
+        if ci >= num_coins { break } else { () };
+        let coin = vec_get(coins, ci);
+        let mut j = coin;
+        loop {
+            if j > amount { break } else { () };
+            let cur = vec_get(dp, j);
+            let add = vec_get(dp, j - coin);
+            vec_set(dp, j, cur + add);
+            j = j + 1
+        };
+        ci = ci + 1
+    };
+
+    let result = vec_get(dp, amount);
+    vec_free(dp);
+    result
+};
+
+// Minimum coins needed to make amount (or -1 if impossible)
+fn min_coins(coins: i64, num_coins: i64, amount: i64) -> i64 = {
+    if amount == 0 { return 0 } else { () };
+    let dp = vec_new();
+    let _p = vec_push(dp, 0);
+    for _i in 1..amount {
+        let _p2 = vec_push(dp, 999999);
+        0
+    };
+    let _pa = vec_push(dp, 999999);
+
+    let mut ci = 0;
+    loop {
+        if ci >= num_coins { break } else { () };
+        let coin = vec_get(coins, ci);
+        let mut j = coin;
+        loop {
+            if j > amount { break } else { () };
+            let candidate = vec_get(dp, j - coin) + 1;
+            if candidate < vec_get(dp, j) {
+                vec_set(dp, j, candidate)
+            } else { () };
+            j = j + 1
+        };
+        ci = ci + 1
+    };
+
+    let result = vec_get(dp, amount);
+    vec_free(dp);
+    if result >= 999999 { 0 - 1 } else { result }
+};
+
+// Integer partition: ways to write n as sum of positive integers
+// Uses coins = [1, 2, 3, ..., n]
+fn integer_partition(n: i64) -> i64 = {
+    let coins = vec_new();
+    for i in 1..n {
+        let _p = vec_push(coins, i);
+        0
+    };
+    let _pn = vec_push(coins, n);
+    let result = count_ways(coins, n, n);
+    vec_free(coins);
+    result
+};
+
+fn main() -> i64 = {
+    // Test 1: coins [1,2,5], amount 5
+    // Ways: 5, 2+2+1, 2+1+1+1, 1+1+1+1+1, 5 = 4 ways
+    let c1 = vec_new();
+    vec_push(c1, 1); vec_push(c1, 2); vec_push(c1, 5);
+    let _p1 = println(count_ways(c1, 3, 5));  // 4
+
+    // Test 2: coins [1,2,5], amount 10
+    let _p2 = println(count_ways(c1, 3, 10));  // 10
+
+    // Test 3: coins [1,2,5], amount 0
+    let _p3 = println(count_ways(c1, 3, 0));   // 1 (empty partition)
+
+    // Test 4: coins [2], amount 3 (impossible for count, but with coin 2 only)
+    let c2 = vec_new();
+    vec_push(c2, 2);
+    let _p4 = println(count_ways(c2, 1, 3));   // 0
+
+    // Test 5: coins [2], amount 4
+    let _p5 = println(count_ways(c2, 1, 4));   // 1 (2+2)
+
+    // Test 6: coins [1,5,10,25], amount 30
+    let c3 = vec_new();
+    vec_push(c3, 1); vec_push(c3, 5);
+    vec_push(c3, 10); vec_push(c3, 25);
+    let _p6 = println(count_ways(c3, 4, 30));  // 18
+
+    // Test 7: min coins [1,5,10,25], amount 30
+    let _p7 = println(min_coins(c3, 4, 30));   // 2 (25+5)
+
+    // Test 8: min coins [1,5,10,25], amount 11
+    let _p8 = println(min_coins(c3, 4, 11));   // 2 (10+1)
+
+    // Test 9: min coins [3,7], amount 5 (impossible)
+    let c4 = vec_new();
+    vec_push(c4, 3); vec_push(c4, 7);
+    let _p9 = println(min_coins(c4, 2, 5));    // -1
+
+    // Test 10: min coins [1,2,5], amount 0
+    let _p10 = println(min_coins(c1, 3, 0));   // 0
+
+    // Test 11: Integer partition p(5) = 7
+    // 5, 4+1, 3+2, 3+1+1, 2+2+1, 2+1+1+1, 1+1+1+1+1
+    let _p11 = println(integer_partition(5));   // 7
+
+    // Test 12: Integer partition p(10) = 42
+    let _p12 = println(integer_partition(10));  // 42
+
+    // Test 13: Integer partition p(1) = 1
+    let _p13 = println(integer_partition(1));   // 1
+
+    vec_free(c1); vec_free(c2); vec_free(c3); vec_free(c4);
+    0
+};

@@ -1,0 +1,11 @@
+empty=1
+full=1
+size=5
+peek=10
+enq_full=0
+deq=10
+deq=20
+deq=30
+size=2
+all: 40 50 60 70 80
+empty=1

@@ -1,0 +1,92 @@
+// Golden Test: Bloom filter (probabilistic set membership)
+// Uses multiple hash functions to test set membership
+// False positives possible, false negatives impossible
+// Bit array stored as vec of i64 (manual bit manipulation)
+
+// Hash function 1: simple multiplicative hash
+fn hash1(val: i64, size: i64) -> i64 = {
+    let h = ((val * 2654435761) / 256) % size;
+    if h < 0 { h + size } else { h }
+};
+
+// Hash function 2: different multiplier
+fn hash2(val: i64, size: i64) -> i64 = {
+    let h = ((val * 40503) / 16) % size;
+    if h < 0 { h + size } else { h }
+};
+
+// Hash function 3: XOR-based
+fn hash3(val: i64, size: i64) -> i64 = {
+    let x = val bxor (val / 16);
+    let h = ((x * 73244475) / 256) % size;
+    if h < 0 { h + size } else { h }
+};
+
+// Create bloom filter with given bit count
+fn bloom_new(num_bits: i64) -> i64 = {
+    let bits = vec_new();
+    let mut i = 0;
+    while i < num_bits {
+        let _p = vec_push(bits, 0);
+        set i = i + 1
+    };
+    bits
+};
+
+// Insert value into bloom filter
+fn bloom_insert(bits: i64, size: i64, val: i64) -> () = {
+    let h1 = hash1(val, size);
+    let h2 = hash2(val, size);
+    let h3 = hash3(val, size);
+    vec_set(bits, h1, 1);
+    vec_set(bits, h2, 1);
+    vec_set(bits, h3, 1)
+};
+
+// Check if value might be in bloom filter
+fn bloom_maybe_contains(bits: i64, size: i64, val: i64) -> i64 = {
+    let h1 = hash1(val, size);
+    let h2 = hash2(val, size);
+    let h3 = hash3(val, size);
+    if vec_get(bits, h1) == 1 and vec_get(bits, h2) == 1 and vec_get(bits, h3) == 1 { 1 }
+    else { 0 }
+};
+
+// Count set bits
+fn count_bits(bits: i64) -> i64 = {
+    let mut count = 0;
+    let mut i = 0;
+    while i < vec_len(bits) {
+        let _x = if vec_get(bits, i) == 1 { set count = count + 1; 0 } else { 0 };
+        set i = i + 1
+    };
+    count
+};
+
+fn main() -> () = {
+    let size = 64;
+    let bf = bloom_new(size);
+
+    // Insert values 10, 20, 30, 40, 50
+    bloom_insert(bf, size, 10);
+    bloom_insert(bf, size, 20);
+    bloom_insert(bf, size, 30);
+    bloom_insert(bf, size, 40);
+    bloom_insert(bf, size, 50);
+
+    // Test: inserted values should be found (no false negatives)
+    print_str("contains 10: "); let _r = println(bloom_maybe_contains(bf, size, 10));
+    print_str("contains 20: "); let _r = println(bloom_maybe_contains(bf, size, 20));
+    print_str("contains 30: "); let _r = println(bloom_maybe_contains(bf, size, 30));
+    print_str("contains 40: "); let _r = println(bloom_maybe_contains(bf, size, 40));
+    print_str("contains 50: "); let _r = println(bloom_maybe_contains(bf, size, 50));
+
+    // Test: values not inserted (may have false positives)
+    print_str("contains 11: "); let _r = println(bloom_maybe_contains(bf, size, 11));
+    print_str("contains 99: "); let _r = println(bloom_maybe_contains(bf, size, 99));
+    print_str("contains 100: "); let _r = println(bloom_maybe_contains(bf, size, 100));
+
+    // Stats
+    print_str("bits set: "); let _r = println(count_bits(bf));
+    print_str("total bits: "); let _r = println(size)
+};

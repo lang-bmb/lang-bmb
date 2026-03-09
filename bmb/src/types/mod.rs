@@ -260,6 +260,8 @@ impl TypeChecker {
         functions.insert("assert".to_string(), (vec![Type::Bool], Type::Unit));
         // read_int() -> i64
         functions.insert("read_int".to_string(), (vec![], Type::I64));
+        // v0.96.2: read_line() -> String (for REPL support)
+        functions.insert("read_line".to_string(), (vec![], Type::String));
         // abs(n) -> i64
         functions.insert("abs".to_string(), (vec![Type::I64], Type::I64));
         // min(a, b) -> i64
@@ -280,6 +282,18 @@ impl TypeChecker {
         functions.insert("file_exists".to_string(), (vec![Type::String], Type::I64));
         // file_size(path: String) -> i64 (-1 = error)
         functions.insert("file_size".to_string(), (vec![Type::String], Type::I64));
+
+        // v0.96: Directory operation builtins for gotgan-bmb
+        // is_dir(path: String) -> i64 (1 = directory, 0 = not)
+        functions.insert("is_dir".to_string(), (vec![Type::String], Type::I64));
+        // make_dir(path: String) -> i64 (0 = success, -1 = error)
+        functions.insert("make_dir".to_string(), (vec![Type::String], Type::I64));
+        // list_dir(path: String) -> String (newline-separated entries)
+        functions.insert("list_dir".to_string(), (vec![Type::String], Type::String));
+        // remove_file(path: String) -> i64 (0 = success, -1 = error)
+        functions.insert("remove_file".to_string(), (vec![Type::String], Type::I64));
+        // remove_dir(path: String) -> i64 (0 = success, removes empty dir)
+        functions.insert("remove_dir".to_string(), (vec![Type::String], Type::I64));
 
         // v0.31.11: Process execution builtins for Phase 32.0.2 Bootstrap Infrastructure
         // exec(command: String, args: String) -> i64 (exit code)
@@ -377,6 +391,8 @@ impl TypeChecker {
         // str_len(s: String) -> i64 (Unicode character count, O(n))
         // Note: s.len() returns byte length (O(1)), str_len returns char count
         functions.insert("str_len".to_string(), (vec![Type::String], Type::I64));
+        // int_to_string(n: i64) -> String (convert integer to string representation)
+        functions.insert("int_to_string".to_string(), (vec![Type::I64], Type::String));
 
         // v0.34: Math intrinsics for Phase 34.4 Benchmark Gate (n_body, mandelbrot_fp)
         // sqrt(x: f64) -> f64 (square root)

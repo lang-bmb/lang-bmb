@@ -1,0 +1,101 @@
+// Golden Test: Count valid parenthesizations (Catalan numbers)
+// C(n) = (2n)! / ((n+1)! * n!) = number of valid parenthesizations
+
+// Catalan number via DP: C(0)=1, C(n) = sum(C(i)*C(n-1-i), i=0..n-1)
+fn catalan(n: i64) -> i64 = {
+    let dp = vec_new();
+    vec_push(dp, 1);  // C(0) = 1
+    let mut k = 1;
+    loop {
+        if k > n { break } else { () };
+        let mut s = 0;
+        let mut i = 0;
+        loop {
+            if i >= k { break } else { () };
+            s = s + vec_get(dp, i) * vec_get(dp, k - 1 - i);
+            i = i + 1
+        };
+        vec_push(dp, s);
+        k = k + 1
+    };
+    let result = vec_get(dp, n);
+    vec_free(dp);
+    result
+};
+
+// Count valid parenthesizations using recursive formula with memoization
+// Stored in flat vec indexed by value, -1 means not computed
+fn catalan_memo(n: i64, memo: i64) -> i64 = {
+    if vec_get(memo, n) >= 0 { return vec_get(memo, n) } else { () };
+    let mut s = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let left = catalan_memo(i, memo);
+        let right = catalan_memo(n - 1 - i, memo);
+        s = s + left * right;
+        i = i + 1
+    };
+    vec_set(memo, n, s);
+    s
+};
+
+// Binomial coefficient C(n, k)
+fn binomial(n: i64, k: i64) -> i64 = {
+    if k > n { return 0 } else { () };
+    if k == 0 { return 1 } else { () };
+    if k > n - k {
+        return binomial(n, n - k)
+    } else { () };
+    let mut result = 1;
+    let mut i = 0;
+    loop {
+        if i >= k { break } else { () };
+        result = result * (n - i);
+        result = result / (i + 1);
+        i = i + 1
+    };
+    result
+};
+
+// Catalan via binomial: C(n) = C(2n,n) / (n+1)
+fn catalan_binom(n: i64) -> i64 = binomial(2 * n, n) / (n + 1);
+
+fn main() -> i64 = {
+    // Test 1-5: Catalan numbers via DP
+    let _p1 = println(catalan(0));   // 1
+    let _p2 = println(catalan(1));   // 1
+    let _p3 = println(catalan(2));   // 2
+    let _p4 = println(catalan(3));   // 5
+    let _p5 = println(catalan(4));   // 14
+
+    // Test 6-7: Larger Catalan numbers
+    let _p6 = println(catalan(5));   // 42
+    let _p7 = println(catalan(6));   // 132
+
+    // Test 8: Memoized version
+    let memo = vec_new();
+    vec_push(memo, 1);  // C(0) = 1
+    let mut k = 1;
+    loop {
+        if k > 10 { break } else { () };
+        vec_push(memo, 0 - 1);
+        k = k + 1
+    };
+    let _p8 = println(catalan_memo(7, memo));  // 429
+
+    // Test 9: Catalan via binomial
+    let _p9 = println(catalan_binom(5));  // 42
+
+    // Test 10: Binomial coefficient C(10, 3) = 120
+    let _p10 = println(binomial(10, 3));  // 120
+
+    // Test 11: Catalan(8) = 1430
+    let _p11 = println(catalan(8));  // 1430
+
+    // Test 12: Catalan(9) = 4862
+    let _p12 = println(catalan(9));  // 4862
+
+    vec_free(memo);
+    0
+};

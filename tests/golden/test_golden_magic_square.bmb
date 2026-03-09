@@ -1,0 +1,102 @@
+// Golden Test: Magic Square verification and construction
+// A magic square has equal sums for all rows, columns, and diagonals
+
+// Check if a 3x3 vec (9 elements) is a magic square
+// Layout: [r0c0, r0c1, r0c2, r1c0, r1c1, r1c2, r2c0, r2c1, r2c2]
+fn row_sum(sq: i64, row: i64) -> i64 =
+    vec_get(sq, row * 3) + vec_get(sq, row * 3 + 1) + vec_get(sq, row * 3 + 2);
+
+fn col_sum(sq: i64, col: i64) -> i64 =
+    vec_get(sq, col) + vec_get(sq, 3 + col) + vec_get(sq, 6 + col);
+
+fn diag_main(sq: i64) -> i64 =
+    vec_get(sq, 0) + vec_get(sq, 4) + vec_get(sq, 8);
+
+fn diag_anti(sq: i64) -> i64 =
+    vec_get(sq, 2) + vec_get(sq, 4) + vec_get(sq, 6);
+
+fn is_magic(sq: i64) -> i64 = {
+    let target = row_sum(sq, 0);
+    let r1_ok = if row_sum(sq, 1) == target { 1 } else { 0 };
+    let r2_ok = if row_sum(sq, 2) == target { 1 } else { 0 };
+    let c0_ok = if col_sum(sq, 0) == target { 1 } else { 0 };
+    let c1_ok = if col_sum(sq, 1) == target { 1 } else { 0 };
+    let c2_ok = if col_sum(sq, 2) == target { 1 } else { 0 };
+    let d1_ok = if diag_main(sq) == target { 1 } else { 0 };
+    let d2_ok = if diag_anti(sq) == target { 1 } else { 0 };
+    if r1_ok + r2_ok + c0_ok + c1_ok + c2_ok + d1_ok + d2_ok == 7 { 1 } else { 0 }
+};
+
+// Construct 3x3 magic square using Siamese method for odd n
+// Classic: start at (0, n/2), move up-right, wrap, drop down on collision
+fn build_magic3(sq: i64) -> i64 = {
+    // Fill with zeros
+    for _i in 0..9 { let _p = vec_push(sq, 0); 0 };
+    let n = 3;
+    let mut row = 0;
+    let mut col = 1;
+    for num in 1..10 {
+        vec_set(sq, row * n + col, num);
+        let nr = row - 1;
+        let nc = col + 1;
+        let new_row = if nr < 0 { nr + n } else { nr };
+        let new_col = if nc >= n { nc - n } else { nc };
+        let _u = if vec_get(sq, new_row * n + new_col) != 0 {
+            row = row + 1;
+            if row >= n { set row = 0; 0 } else { 0 }
+        } else {
+            row = new_row;
+            col = new_col;
+            0
+        };
+        0
+    };
+    0
+};
+
+fn main() -> i64 = {
+    // Classic 3x3 magic square: 2 7 6 / 9 5 1 / 4 3 8
+    let sq1 = vec_new();
+    vec_push(sq1, 2); vec_push(sq1, 7); vec_push(sq1, 6);
+    vec_push(sq1, 9); vec_push(sq1, 5); vec_push(sq1, 1);
+    vec_push(sq1, 4); vec_push(sq1, 3); vec_push(sq1, 8);
+
+    let _p1 = println(is_magic(sq1));      // 1
+    let _p2 = println(row_sum(sq1, 0));    // 15
+    let _p3 = println(diag_main(sq1));     // 15
+
+    // Not a magic square: 1 2 3 / 4 5 6 / 7 8 9
+    let sq2 = vec_new();
+    vec_push(sq2, 1); vec_push(sq2, 2); vec_push(sq2, 3);
+    vec_push(sq2, 4); vec_push(sq2, 5); vec_push(sq2, 6);
+    vec_push(sq2, 7); vec_push(sq2, 8); vec_push(sq2, 9);
+
+    let _p4 = println(is_magic(sq2));      // 0
+    let _p5 = println(row_sum(sq2, 0));    // 6
+    let _p6 = println(row_sum(sq2, 2));    // 24
+
+    // Construct magic square via Siamese method
+    let sq3 = vec_new();
+    let _b = build_magic3(sq3);
+    let _p7 = println(is_magic(sq3));      // 1
+    let _p8 = println(row_sum(sq3, 0));    // 15
+
+    // Print constructed square elements
+    let _p9 = println(vec_get(sq3, 0));    // top-left
+    let _p10 = println(vec_get(sq3, 4));   // center (should be 5)
+
+    // Scaled magic square: multiply all by 10
+    let sq4 = vec_new();
+    for i in 0..9 {
+        let _x = vec_push(sq4, vec_get(sq1, i) * 10);
+        0
+    };
+    let _p11 = println(is_magic(sq4));     // 1
+    let _p12 = println(row_sum(sq4, 0));   // 150
+
+    vec_free(sq1);
+    vec_free(sq2);
+    vec_free(sq3);
+    vec_free(sq4);
+    0
+};

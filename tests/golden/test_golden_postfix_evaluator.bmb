@@ -1,0 +1,153 @@
+// Golden Test: Postfix (Reverse Polish Notation) expression evaluator
+// Uses a vec-based stack to evaluate arithmetic expressions
+// Encoding: digit values 0-9 directly, operators: 100=+, 101=-, 102=*, 103=/
+// Test cases: "23+", "523+*", "92/", "34+2*1+", "99*"
+
+// Evaluate postfix expression stored in a vec using a stack
+// stack is pre-allocated, sp tracks stack pointer
+fn eval_postfix(expr: i64) -> i64 = {
+    let stack = vec_new();
+    let mut sp = 0;
+    let len = vec_len(expr);
+    let mut i = 0;
+    loop {
+        if i >= len { break } else { () };
+        let token = vec_get(expr, i);
+        let _x = if token < 100 {
+            // Operand: push
+            let _p = if sp < vec_len(stack) {
+                let _s = vec_set(stack, sp, token);
+                ()
+            } else {
+                let _s = vec_push(stack, token);
+                ()
+            };
+            set sp = sp + 1;
+            ()
+        } else {
+            // Operator: pop b, pop a, compute, push result
+            let b = vec_get(stack, sp - 1);
+            set sp = sp - 1;
+            let a = vec_get(stack, sp - 1);
+            set sp = sp - 1;
+            let result = if token == 100 { a + b }
+                else if token == 101 { a - b }
+                else if token == 102 { a * b }
+                else { a / b };
+            let _p = if sp < vec_len(stack) {
+                let _s = vec_set(stack, sp, result);
+                ()
+            } else {
+                let _s = vec_push(stack, result);
+                ()
+            };
+            set sp = sp + 1;
+            ()
+        };
+        set i = i + 1
+    };
+    let result = vec_get(stack, 0);
+    let _f = vec_free(stack);
+    result
+};
+
+fn main() -> i64 = {
+    // Test 1: "23+" => 2 + 3 = 5
+    let e1 = vec_new();
+    let _p = vec_push(e1, 2);
+    let _p = vec_push(e1, 3);
+    let _p = vec_push(e1, 100);
+    let _p = println(eval_postfix(e1));
+
+    // Test 2: "523+*" => 5 * (2 + 3) = 25
+    let e2 = vec_new();
+    let _p = vec_push(e2, 5);
+    let _p = vec_push(e2, 2);
+    let _p = vec_push(e2, 3);
+    let _p = vec_push(e2, 100);
+    let _p = vec_push(e2, 102);
+    let _p = println(eval_postfix(e2));
+
+    // Test 3: "92/" => 9 / 2 = 4 (integer division)
+    let e3 = vec_new();
+    let _p = vec_push(e3, 9);
+    let _p = vec_push(e3, 2);
+    let _p = vec_push(e3, 103);
+    let _p = println(eval_postfix(e3));
+
+    // Test 4: "34+2*1+" => (3+4)*2+1 = 15
+    let e4 = vec_new();
+    let _p = vec_push(e4, 3);
+    let _p = vec_push(e4, 4);
+    let _p = vec_push(e4, 100);
+    let _p = vec_push(e4, 2);
+    let _p = vec_push(e4, 102);
+    let _p = vec_push(e4, 1);
+    let _p = vec_push(e4, 100);
+    let _p = println(eval_postfix(e4));
+
+    // Test 5: "99*" => 9 * 9 = 81
+    let e5 = vec_new();
+    let _p = vec_push(e5, 9);
+    let _p = vec_push(e5, 9);
+    let _p = vec_push(e5, 102);
+    let _p = println(eval_postfix(e5));
+
+    // Test 6: "82-" => 8 - 2 = 6
+    let e6 = vec_new();
+    let _p = vec_push(e6, 8);
+    let _p = vec_push(e6, 2);
+    let _p = vec_push(e6, 101);
+    let _p = println(eval_postfix(e6));
+
+    // Test 7: single operand "7" => 7
+    let e7 = vec_new();
+    let _p = vec_push(e7, 7);
+    let _p = println(eval_postfix(e7));
+
+    // Test 8: "52+83-*4/" => (5+2)*(8-3)/4 = 7*5/4 = 8 (integer div)
+    let e8 = vec_new();
+    let _p = vec_push(e8, 5);
+    let _p = vec_push(e8, 2);
+    let _p = vec_push(e8, 100);
+    let _p = vec_push(e8, 8);
+    let _p = vec_push(e8, 3);
+    let _p = vec_push(e8, 101);
+    let _p = vec_push(e8, 102);
+    let _p = vec_push(e8, 4);
+    let _p = vec_push(e8, 103);
+    let _p = println(eval_postfix(e8));
+
+    // Test 9: "321++" => 3, 2, 1, +, + => 2+1=3, 3+3=6
+    let e9 = vec_new();
+    let _p = vec_push(e9, 3);
+    let _p = vec_push(e9, 2);
+    let _p = vec_push(e9, 1);
+    let _p = vec_push(e9, 100);
+    let _p = vec_push(e9, 100);
+    let _p = println(eval_postfix(e9));
+
+    // Test 10: "55*33*+" => 5*5 + 3*3 = 25 + 9 = 34
+    let e10 = vec_new();
+    let _p = vec_push(e10, 5);
+    let _p = vec_push(e10, 5);
+    let _p = vec_push(e10, 102);
+    let _p = vec_push(e10, 3);
+    let _p = vec_push(e10, 3);
+    let _p = vec_push(e10, 102);
+    let _p = vec_push(e10, 100);
+    let _p = println(eval_postfix(e10));
+
+    // Cleanup
+    let _f = vec_free(e1);
+    let _f = vec_free(e2);
+    let _f = vec_free(e3);
+    let _f = vec_free(e4);
+    let _f = vec_free(e5);
+    let _f = vec_free(e6);
+    let _f = vec_free(e7);
+    let _f = vec_free(e8);
+    let _f = vec_free(e9);
+    let _f = vec_free(e10);
+    0
+};

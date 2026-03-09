@@ -1,0 +1,54 @@
+// Golden Test: Tower of Hanoi
+// Count moves for n disks and verify against formula 2^n - 1
+// Also simulate peg states using arrays
+
+// Recursive move counter
+fn hanoi_moves(n: i64) -> i64 =
+    if n <= 0 { 0 }
+    else { 2 * hanoi_moves(n - 1) + 1 };
+
+// Compute 2^n iteratively
+fn pow2(n: i64) -> i64 = {
+    let mut result = 1;
+    for _i in 0..n {
+        set result = result * 2;
+    };
+    result
+};
+
+// Verify move count matches formula: 2^n - 1
+fn verify_formula(n: i64) -> i64 = {
+    let moves = hanoi_moves(n);
+    let formula = pow2(n) - 1;
+    if moves == formula { 1 } else { 0 }
+};
+
+// Iterative move counter using loop
+fn hanoi_moves_iter(n: i64) -> i64 = {
+    let mut moves = 0;
+    let mut disks = n;
+    for _i in 0..n {
+        set moves = 2 * moves + 1;
+    };
+    moves
+};
+
+fn main() -> i64 = {
+    // Move counts for n=1..5
+    let _p1 = println(hanoi_moves(1));      // 1
+    let _p2 = println(hanoi_moves(2));      // 3
+    let _p3 = println(hanoi_moves(3));      // 7
+    let _p4 = println(hanoi_moves(4));      // 15
+    let _p5 = println(hanoi_moves(5));      // 31
+
+    // Verify formula matches for each
+    let _p6 = println(verify_formula(1));   // 1
+    let _p7 = println(verify_formula(5));   // 1
+    let _p8 = println(verify_formula(10));  // 1
+
+    // Iterative version should agree
+    let _p9 = println(hanoi_moves_iter(5));  // 31
+    let _p10 = println(hanoi_moves_iter(10)); // 1023
+
+    0
+};

@@ -1,0 +1,36 @@
+// Golden Test: Floating point operations
+// Tests f64 arithmetic and conversion
+
+fn area_circle(r: f64) -> f64 =
+    3.14159265 * r * r;
+
+fn distance(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 = {
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    sqrt(dx * dx + dy * dy)
+    };
+
+fn fahrenheit_to_celsius(f: f64) -> f64 =
+    (f - 32.0) * 5.0 / 9.0;
+
+fn main() -> i64 = {
+    let a1 = area_circle(1.0);
+    let _p1 = println(f64_to_i64(a1 * 1000.0)); // 3141 (pi * 1000)
+
+    let a2 = area_circle(5.0);
+    let _p2 = println(f64_to_i64(a2 * 100.0)); // 7853 (pi*25 * 100)
+
+    let d1 = distance(0.0, 0.0, 3.0, 4.0);
+    let _p3 = println(f64_to_i64(d1 * 100.0)); // 500
+
+    let d2 = distance(1.0, 2.0, 4.0, 6.0);
+    let _p4 = println(f64_to_i64(d2 * 100.0)); // 500
+
+    let c1 = fahrenheit_to_celsius(212.0);
+    let _p5 = println(f64_to_i64(c1)); // 100
+
+    let c2 = fahrenheit_to_celsius(32.0);
+    let _p6 = println(f64_to_i64(c2)); // 0
+
+    0
+    };

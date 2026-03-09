@@ -1,0 +1,134 @@
+// Golden Test: Sudoku board validation using bitmasks
+// Checks rows, columns, and 3x3 boxes for duplicate values
+
+// Check if row r has all unique values using bitmask
+fn check_row_helper(board: i64, r: i64, c: i64, mask: i64) -> i64 =
+    if c >= 9 { 1 }
+    else {
+        let val = vec_get(board, r * 9 + c);
+        let bit = 1 << val;
+        if (mask band bit) != 0 { 0 }
+        else { check_row_helper(board, r, c + 1, mask bor bit) }
+    };
+
+fn check_row(board: i64, r: i64) -> i64 =
+    check_row_helper(board, r, 0, 0);
+
+// Check if column c has all unique values
+fn check_col_helper(board: i64, c: i64, r: i64, mask: i64) -> i64 =
+    if r >= 9 { 1 }
+    else {
+        let val = vec_get(board, r * 9 + c);
+        let bit = 1 << val;
+        if (mask band bit) != 0 { 0 }
+        else { check_col_helper(board, c, r + 1, mask bor bit) }
+    };
+
+fn check_col(board: i64, c: i64) -> i64 =
+    check_col_helper(board, c, 0, 0);
+
+// Check 3x3 box starting at (br*3, bc*3)
+fn check_box_cell(board: i64, br: i64, bc: i64, idx: i64, mask: i64) -> i64 =
+    if idx >= 9 { 1 }
+    else {
+        let dr = idx / 3;
+        let dc = idx - (idx / 3) * 3;
+        let row = br * 3 + dr;
+        let col = bc * 3 + dc;
+        let val = vec_get(board, row * 9 + col);
+        let bit = 1 << val;
+        if (mask band bit) != 0 { 0 }
+        else { check_box_cell(board, br, bc, idx + 1, mask bor bit) }
+    };
+
+fn check_box(board: i64, br: i64, bc: i64) -> i64 =
+    check_box_cell(board, br, bc, 0, 0);
+
+// Check all rows
+fn check_all_rows(board: i64, r: i64) -> i64 =
+    if r >= 9 { 1 }
+    else if check_row(board, r) == 0 { 0 }
+    else { check_all_rows(board, r + 1) };
+
+// Check all columns
+fn check_all_cols(board: i64, c: i64) -> i64 =
+    if c >= 9 { 1 }
+    else if check_col(board, c) == 0 { 0 }
+    else { check_all_cols(board, c + 1) };
+
+// Check all 3x3 boxes
+fn check_all_boxes_inner(board: i64, br: i64, bc: i64) -> i64 =
+    if br >= 3 { 1 }
+    else if bc >= 3 { check_all_boxes_inner(board, br + 1, 0) }
+    else if check_box(board, br, bc) == 0 { 0 }
+    else { check_all_boxes_inner(board, br, bc + 1) };
+
+fn check_all_boxes(board: i64) -> i64 =
+    check_all_boxes_inner(board, 0, 0);
+
+// Full validation
+fn is_valid(board: i64) -> i64 =
+    if check_all_rows(board, 0) == 0 { 0 }
+    else if check_all_cols(board, 0) == 0 { 0 }
+    else { check_all_boxes(board) };
+
+fn main() -> i64 = {
+    // Build a valid sudoku board
+    let b = vec_new();
+    // Row 0: 5 3 4 6 7 8 9 1 2
+    let _a0 = vec_push(b, 5); let _a1 = vec_push(b, 3); let _a2 = vec_push(b, 4);
+    let _a3 = vec_push(b, 6); let _a4 = vec_push(b, 7); let _a5 = vec_push(b, 8);
+    let _a6 = vec_push(b, 9); let _a7 = vec_push(b, 1); let _a8 = vec_push(b, 2);
+    // Row 1: 6 7 2 1 9 5 3 4 8
+    let _b0 = vec_push(b, 6); let _b1 = vec_push(b, 7); let _b2 = vec_push(b, 2);
+    let _b3 = vec_push(b, 1); let _b4 = vec_push(b, 9); let _b5 = vec_push(b, 5);
+    let _b6 = vec_push(b, 3); let _b7 = vec_push(b, 4); let _b8 = vec_push(b, 8);
+    // Row 2: 1 9 8 3 4 2 5 6 7
+    let _c0 = vec_push(b, 1); let _c1 = vec_push(b, 9); let _c2 = vec_push(b, 8);
+    let _c3 = vec_push(b, 3); let _c4 = vec_push(b, 4); let _c5 = vec_push(b, 2);
+    let _c6 = vec_push(b, 5); let _c7 = vec_push(b, 6); let _c8 = vec_push(b, 7);
+    // Row 3: 8 5 9 7 6 1 4 2 3
+    let _d0 = vec_push(b, 8); let _d1 = vec_push(b, 5); let _d2 = vec_push(b, 9);
+    let _d3 = vec_push(b, 7); let _d4 = vec_push(b, 6); let _d5 = vec_push(b, 1);
+    let _d6 = vec_push(b, 4); let _d7 = vec_push(b, 2); let _d8 = vec_push(b, 3);
+    // Row 4: 4 2 6 8 5 3 7 9 1
+    let _e0 = vec_push(b, 4); let _e1 = vec_push(b, 2); let _e2 = vec_push(b, 6);
+    let _e3 = vec_push(b, 8); let _e4 = vec_push(b, 5); let _e5 = vec_push(b, 3);
+    let _e6 = vec_push(b, 7); let _e7 = vec_push(b, 9); let _e8 = vec_push(b, 1);
+    // Row 5: 7 1 3 9 2 4 8 5 6
+    let _f0 = vec_push(b, 7); let _f1 = vec_push(b, 1); let _f2 = vec_push(b, 3);
+    let _f3 = vec_push(b, 9); let _f4 = vec_push(b, 2); let _f5 = vec_push(b, 4);
+    let _f6 = vec_push(b, 8); let _f7 = vec_push(b, 5); let _f8 = vec_push(b, 6);
+    // Row 6: 9 6 1 5 3 7 2 8 4
+    let _g0 = vec_push(b, 9); let _g1 = vec_push(b, 6); let _g2 = vec_push(b, 1);
+    let _g3 = vec_push(b, 5); let _g4 = vec_push(b, 3); let _g5 = vec_push(b, 7);
+    let _g6 = vec_push(b, 2); let _g7 = vec_push(b, 8); let _g8 = vec_push(b, 4);
+    // Row 7: 2 8 7 4 1 9 6 3 5
+    let _h0 = vec_push(b, 2); let _h1 = vec_push(b, 8); let _h2 = vec_push(b, 7);
+    let _h3 = vec_push(b, 4); let _h4 = vec_push(b, 1); let _h5 = vec_push(b, 9);
+    let _h6 = vec_push(b, 6); let _h7 = vec_push(b, 3); let _h8 = vec_push(b, 5);
+    // Row 8: 3 4 5 2 8 6 1 7 9
+    let _i0 = vec_push(b, 3); let _i1 = vec_push(b, 4); let _i2 = vec_push(b, 5);
+    let _i3 = vec_push(b, 2); let _i4 = vec_push(b, 8); let _i5 = vec_push(b, 6);
+    let _i6 = vec_push(b, 1); let _i7 = vec_push(b, 7); let _i8 = vec_push(b, 9);
+
+    // Test valid board
+    let _p1 = println(check_row(b, 0));    // 1
+    let _p2 = println(check_row(b, 4));    // 1
+    let _p3 = println(check_col(b, 0));    // 1
+    let _p4 = println(check_col(b, 8));    // 1
+    let _p5 = println(check_box(b, 0, 0)); // 1
+    let _p6 = println(check_box(b, 2, 2)); // 1
+    let _p7 = println(is_valid(b));        // 1
+
+    // Create invalid board: set b[1] = 5 (row 0 becomes 5,5,4,6,7,8,9,1,2)
+    let _sv = vec_set(b, 1, 5);
+    let _p8 = println(check_row(b, 0));    // 0 (duplicate 5)
+    let _p9 = println(is_valid(b));        // 0
+
+    // Row 1 is still valid
+    let _p10 = println(check_row(b, 1));   // 1
+
+    vec_free(b);
+    0
+    };

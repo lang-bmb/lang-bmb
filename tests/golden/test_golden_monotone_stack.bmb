@@ -1,0 +1,113 @@
+// Golden Test: Monotone Stack - Next Greater Element
+// For each element, find the index of the next greater element to its right
+// Uses a decreasing monotone stack
+
+fn main() -> i64 = {
+    // Array: [4, 5, 2, 25, 7, 18, 3, 6]
+    let n = 8;
+    let arr = vec_new();
+    vec_push(arr, 4); vec_push(arr, 5); vec_push(arr, 2); vec_push(arr, 25);
+    vec_push(arr, 7); vec_push(arr, 18); vec_push(arr, 3); vec_push(arr, 6);
+
+    // result[i] = next greater element for arr[i], or -1 if none
+    let result = vec_new();
+    for _i in 0..n { vec_push(result, 0 - 1) };
+
+    // Stack stores indices (simulated with vec)
+    let stack = vec_new();
+    let stack_top = 0 - 1;  // -1 means empty
+
+    // Process left to right
+    for i in 0..n {
+        let val = vec_get(arr, i);
+        // Pop elements smaller than current
+        loop {
+            if stack_top < 0 { break } else { () };
+            let top_idx = vec_get(stack, stack_top);
+            if vec_get(arr, top_idx) < val {
+                let _s = vec_set(result, top_idx, val);
+                stack_top = stack_top - 1
+            } else { break }
+        };
+        // Push current index
+        stack_top = stack_top + 1;
+        if stack_top < vec_len(stack) {
+            let _s = vec_set(stack, stack_top, i)
+        } else {
+            vec_push(stack, i)
+        }
+    };
+
+    // Print next greater elements
+    // arr =    [4,  5,  2, 25,  7, 18,  3,  6]
+    // result = [5, 25, 25, -1, 18, -1,  6, -1]
+    let _p1 = println(vec_get(result, 0));  // 5 (next > 4 is 5)
+    let _p2 = println(vec_get(result, 1));  // 25 (next > 5 is 25)
+    let _p3 = println(vec_get(result, 2));  // 25 (next > 2 is 25)
+    let _p4 = println(vec_get(result, 3));  // -1 (no element > 25)
+    let _p5 = println(vec_get(result, 4));  // 18 (next > 7 is 18)
+    let _p6 = println(vec_get(result, 5));  // -1 (no element > 18)
+    let _p7 = println(vec_get(result, 6));  // 6 (next > 3 is 6)
+    let _p8 = println(vec_get(result, 7));  // -1 (last element)
+
+    // Second test: all increasing [1, 2, 3, 4]
+    let arr2 = vec_new();
+    vec_push(arr2, 1); vec_push(arr2, 2); vec_push(arr2, 3); vec_push(arr2, 4);
+    let res2 = vec_new();
+    for _i in 0..4 { vec_push(res2, 0 - 1) };
+    let stk2 = vec_new();
+    let stop2 = 0 - 1;
+    for i in 0..4 {
+        let val = vec_get(arr2, i);
+        loop {
+            if stop2 < 0 { break } else { () };
+            let top_idx = vec_get(stk2, stop2);
+            if vec_get(arr2, top_idx) < val {
+                let _s = vec_set(res2, top_idx, val);
+                stop2 = stop2 - 1
+            } else { break }
+        };
+        stop2 = stop2 + 1;
+        if stop2 < vec_len(stk2) {
+            let _s = vec_set(stk2, stop2, i)
+        } else {
+            vec_push(stk2, i)
+        }
+    };
+    // [2, 3, 4, -1]
+    let _p9 = println(vec_get(res2, 0));   // 2
+    let _p10 = println(vec_get(res2, 3));  // -1
+
+    // Third test: all decreasing [4, 3, 2, 1]
+    let arr3 = vec_new();
+    vec_push(arr3, 4); vec_push(arr3, 3); vec_push(arr3, 2); vec_push(arr3, 1);
+    let res3 = vec_new();
+    for _i in 0..4 { vec_push(res3, 0 - 1) };
+    let stk3 = vec_new();
+    let stop3 = 0 - 1;
+    for i in 0..4 {
+        let val = vec_get(arr3, i);
+        loop {
+            if stop3 < 0 { break } else { () };
+            let top_idx = vec_get(stk3, stop3);
+            if vec_get(arr3, top_idx) < val {
+                let _s = vec_set(res3, top_idx, val);
+                stop3 = stop3 - 1
+            } else { break }
+        };
+        stop3 = stop3 + 1;
+        if stop3 < vec_len(stk3) {
+            let _s = vec_set(stk3, stop3, i)
+        } else {
+            vec_push(stk3, i)
+        }
+    };
+    // All -1 since no next greater
+    let _p11 = println(vec_get(res3, 0));  // -1
+    let _p12 = println(vec_get(res3, 3));  // -1
+
+    let _f1 = vec_free(arr); let _f2 = vec_free(result); let _f3 = vec_free(stack);
+    let _f4 = vec_free(arr2); let _f5 = vec_free(res2); let _f6 = vec_free(stk2);
+    let _f7 = vec_free(arr3); let _f8 = vec_free(res3); let _f9 = vec_free(stk3);
+    0
+};

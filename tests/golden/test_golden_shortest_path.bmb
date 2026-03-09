@@ -1,0 +1,132 @@
+// Golden Test: Shortest Path in Unweighted Graph (BFS)
+// Finds shortest distance from source to all reachable nodes
+
+fn make_filled(n: i64, val: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { vec_push(v, val) };
+    v
+};
+
+fn main() -> i64 = {
+    // Graph with 7 nodes (0..6), undirected edges:
+    // 0-1, 0-2, 1-3, 2-3, 3-4, 4-5, 4-6
+    // Adjacency list as edge pairs (both directions)
+    let n = 7;
+    let edge_from = vec_new();
+    let edge_to = vec_new();
+    // 0-1
+    vec_push(edge_from, 0); vec_push(edge_to, 1);
+    vec_push(edge_from, 1); vec_push(edge_to, 0);
+    // 0-2
+    vec_push(edge_from, 0); vec_push(edge_to, 2);
+    vec_push(edge_from, 2); vec_push(edge_to, 0);
+    // 1-3
+    vec_push(edge_from, 1); vec_push(edge_to, 3);
+    vec_push(edge_from, 3); vec_push(edge_to, 1);
+    // 2-3
+    vec_push(edge_from, 2); vec_push(edge_to, 3);
+    vec_push(edge_from, 3); vec_push(edge_to, 2);
+    // 3-4
+    vec_push(edge_from, 3); vec_push(edge_to, 4);
+    vec_push(edge_from, 4); vec_push(edge_to, 3);
+    // 4-5
+    vec_push(edge_from, 4); vec_push(edge_to, 5);
+    vec_push(edge_from, 5); vec_push(edge_to, 4);
+    // 4-6
+    vec_push(edge_from, 4); vec_push(edge_to, 6);
+    vec_push(edge_from, 6); vec_push(edge_to, 4);
+    let num_edges = 14;
+
+    // BFS from source 0
+    let dist = make_filled(n, 0 - 1);  // -1 = unreachable
+    let _s = vec_set(dist, 0, 0);      // distance to source = 0
+
+    let queue = vec_new();
+    vec_push(queue, 0);
+    let front = 0;
+
+    loop {
+        if front >= vec_len(queue) { break } else { () };
+        let node = vec_get(queue, front);
+        front = front + 1;
+        let d = vec_get(dist, node);
+
+        // Scan all edges from this node
+        for i in 0..num_edges {
+            if vec_get(edge_from, i) == node {
+                let to = vec_get(edge_to, i);
+                if vec_get(dist, to) == 0 - 1 {
+                    let _s = vec_set(dist, to, d + 1);
+                    vec_push(queue, to)
+                } else { () }
+            } else { () }
+        }
+    };
+
+    // Distances from node 0:
+    // 0->0: 0, 0->1: 1, 0->2: 1, 0->3: 2, 0->4: 3, 0->5: 4, 0->6: 4
+    let _p1 = println(vec_get(dist, 0));  // 0
+    let _p2 = println(vec_get(dist, 1));  // 1
+    let _p3 = println(vec_get(dist, 2));  // 1
+    let _p4 = println(vec_get(dist, 3));  // 2
+    let _p5 = println(vec_get(dist, 4));  // 3
+    let _p6 = println(vec_get(dist, 5));  // 4
+    let _p7 = println(vec_get(dist, 6));  // 4
+
+    // BFS from source 4
+    let dist2 = make_filled(n, 0 - 1);
+    let _s2 = vec_set(dist2, 4, 0);
+    let queue2 = vec_new();
+    vec_push(queue2, 4);
+    let front2 = 0;
+    loop {
+        if front2 >= vec_len(queue2) { break } else { () };
+        let node = vec_get(queue2, front2);
+        front2 = front2 + 1;
+        let d = vec_get(dist2, node);
+        for i in 0..num_edges {
+            if vec_get(edge_from, i) == node {
+                let to = vec_get(edge_to, i);
+                if vec_get(dist2, to) == 0 - 1 {
+                    let _s = vec_set(dist2, to, d + 1);
+                    vec_push(queue2, to)
+                } else { () }
+            } else { () }
+        }
+    };
+    // Distances from node 4: 4->0: 3, 4->3: 1, 4->5: 1, 4->6: 1
+    let _p8 = println(vec_get(dist2, 0));  // 3
+    let _p9 = println(vec_get(dist2, 3));  // 1
+    let _p10 = println(vec_get(dist2, 5)); // 1
+    let _p11 = println(vec_get(dist2, 6)); // 1
+
+    // Disconnected node test: add node 7 with no edges
+    // Use n=8 but no edges to node 7
+    let dist3 = make_filled(8, 0 - 1);
+    let _s3 = vec_set(dist3, 0, 0);
+    let queue3 = vec_new();
+    vec_push(queue3, 0);
+    let front3 = 0;
+    loop {
+        if front3 >= vec_len(queue3) { break } else { () };
+        let node = vec_get(queue3, front3);
+        front3 = front3 + 1;
+        let d = vec_get(dist3, node);
+        for i in 0..num_edges {
+            if vec_get(edge_from, i) == node {
+                let to = vec_get(edge_to, i);
+                if vec_get(dist3, to) == 0 - 1 {
+                    let _s = vec_set(dist3, to, d + 1);
+                    vec_push(queue3, to)
+                } else { () }
+            } else { () }
+        }
+    };
+    let _p12 = println(vec_get(dist3, 7)); // -1 (unreachable)
+
+    let _f1 = vec_free(edge_from); let _f2 = vec_free(edge_to);
+    let _f3 = vec_free(dist); let _f4 = vec_free(queue);
+    let _f5 = vec_free(dist2); let _f6 = vec_free(queue2);
+    let _f7 = vec_free(dist3); let _f8 = vec_free(queue3);
+    0
+};

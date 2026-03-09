@@ -1115,14 +1115,14 @@ fn source_to_ir_unopt(source: &str) -> String {
 fn test_codegen_simple_function_signature() {
     let ir = source_to_ir("fn add(a: i64, b: i64) -> i64 = a + b;");
     // Functions are defined as `define private` with attributes
-    assert!(ir.contains("@add(i64 %a, i64 %b)"),
+    assert!(ir.contains("@add(i64 noundef %a, i64 noundef %b)"),
         "IR should contain add function signature");
 }
 
 #[test]
 fn test_codegen_bool_return_type() {
     let ir = source_to_ir("fn is_zero(x: i64) -> bool = x == 0;");
-    assert!(ir.contains("i1 @is_zero(i64 %x)"),
+    assert!(ir.contains("i1 @is_zero(i64 noundef %x)"),
         "IR should define bool (i1) return type");
 }
 
@@ -1193,7 +1193,7 @@ fn test_codegen_multiple_functions() {
 #[test]
 fn test_codegen_f64_operations() {
     let ir = source_to_ir("fn add_f(a: f64, b: f64) -> f64 = a + b;");
-    assert!(ir.contains("double @add_f(double %a, double %b)"),
+    assert!(ir.contains("double @add_f(double noundef %a, double noundef %b)"),
         "IR should define f64 (double) function");
     assert!(ir.contains("fadd"),
         "IR should contain floating-point add");
@@ -3966,14 +3966,14 @@ fn main() -> f64 = {
 #[test]
 fn test_codegen_i32_function_signature() {
     let ir = source_to_ir("fn add32(a: i32, b: i32) -> i32 = a + b;");
-    assert!(ir.contains("@add32(i32 %a, i32 %b)"),
+    assert!(ir.contains("@add32(i32 noundef %a, i32 noundef %b)"),
         "IR should contain i32 parameter types: {}", ir);
 }
 
 #[test]
 fn test_codegen_i32_return_type() {
     let ir = source_to_ir("fn ret32(x: i32) -> i32 = x;");
-    assert!(ir.contains("i32 @ret32(i32 %x)"),
+    assert!(ir.contains("i32 @ret32(i32 noundef %x)"),
         "IR should have i32 return type: {}", ir);
 }
 
@@ -4124,7 +4124,7 @@ fn test_benchmark_gcd_i64_ir_quality() {
     let ir = source_to_ir(
         "fn gcd(a: i64, b: i64) -> i64 = if b == 0 { a } else { gcd(b, a % b) };"
     );
-    assert!(ir.contains("@gcd(i64 %a, i64 %b)"),
+    assert!(ir.contains("@gcd(i64 noundef %a, i64 noundef %b)"),
         "GCD i64 should have i64 params: {}", ir);
 }
 
@@ -4133,7 +4133,7 @@ fn test_benchmark_gcd_i32_ir_quality() {
     let ir = source_to_ir(
         "fn gcd32(a: i32, b: i32) -> i32 = if b == 0 { a } else { gcd32(b, a % b) };"
     );
-    assert!(ir.contains("@gcd32(i32 %a, i32 %b)"),
+    assert!(ir.contains("@gcd32(i32 noundef %a, i32 noundef %b)"),
         "GCD i32 should have i32 params: {}", ir);
 }
 

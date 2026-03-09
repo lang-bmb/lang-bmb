@@ -1,0 +1,95 @@
+// Golden Test: Day of week calculation
+// Uses Tomohiko Sakamoto's algorithm (variant of Zeller's congruence)
+// Returns 0=Sunday, 1=Monday, ... 6=Saturday
+
+// Month offset table stored as array
+// t = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4]
+fn month_offset(m: i64) -> i64 = {
+    let t = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
+    t[m]
+};
+
+// Sakamoto's algorithm for day of week
+// y = year, m = month (1-12), d = day (1-31)
+// Returns 0=Sun, 1=Mon, ..., 6=Sat
+fn day_of_week(y: i64, m: i64, d: i64) -> i64 = {
+    let mut yr = y;
+    if m < 3 { yr = yr - 1 } else { () };
+    let t_val = month_offset(m - 1);
+    let raw = yr + yr / 4 - yr / 100 + yr / 400 + t_val + d;
+    // Compute raw % 7 safely (raw is always positive for valid dates)
+    let r = raw - (raw / 7) * 7;
+    r
+};
+
+// Is leap year?
+fn is_leap(y: i64) -> i64 = {
+    if y - (y / 400) * 400 == 0 { 1 }
+    else if y - (y / 100) * 100 == 0 { 0 }
+    else if y - (y / 4) * 4 == 0 { 1 }
+    else { 0 }
+};
+
+// Days in month
+fn days_in_month(y: i64, m: i64) -> i64 = {
+    let base = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let d = base[m - 1];
+    if m == 2 && is_leap(y) == 1 { d + 1 } else { d }
+};
+
+// Count weekdays (Mon-Fri) in a given month
+fn count_weekdays(y: i64, m: i64) -> i64 = {
+    let total = days_in_month(y, m);
+    let mut count = 0;
+    let mut d = 1;
+    loop {
+        if d > total { break } else { () };
+        let dow = day_of_week(y, m, d);
+        if dow >= 1 && dow <= 5 { count = count + 1 } else { () };
+        d = d + 1
+    };
+    count
+};
+
+fn main() -> i64 = {
+    // Known dates verification
+    // 2000-01-01 = Saturday (6)
+    let _p1 = println(day_of_week(2000, 1, 1));    // 6
+
+    // 2024-01-01 = Monday (1)
+    let _p2 = println(day_of_week(2024, 1, 1));    // 1
+
+    // 2023-12-25 = Monday (1)
+    let _p3 = println(day_of_week(2023, 12, 25));  // 1
+
+    // 1970-01-01 (Unix epoch) = Thursday (4)
+    let _p4 = println(day_of_week(1970, 1, 1));    // 4
+
+    // 2000-02-29 (leap day) = Tuesday (2)
+    let _p5 = println(day_of_week(2000, 2, 29));   // 2
+
+    // 1999-12-31 = Friday (5)
+    let _p6 = println(day_of_week(1999, 12, 31));  // 5
+
+    // 2026-03-01 (today) = Sunday (0)
+    let _p7 = println(day_of_week(2026, 3, 1));    // 0
+
+    // Leap year checks
+    let _p8 = println(is_leap(2000));   // 1 (div by 400)
+    let _p9 = println(is_leap(1900));   // 0 (div by 100 not 400)
+    let _p10 = println(is_leap(2024));  // 1 (div by 4)
+    let _p11 = println(is_leap(2023));  // 0
+
+    // Days in month
+    let _p12 = println(days_in_month(2024, 2));  // 29 (leap)
+    let _p13 = println(days_in_month(2023, 2));  // 28
+    let _p14 = println(days_in_month(2024, 7));  // 31
+
+    // Weekdays in January 2024 (Mon-Fri count)
+    let _p15 = println(count_weekdays(2024, 1));  // 23
+
+    // Weekdays in February 2024 (leap year)
+    let _p16 = println(count_weekdays(2024, 2));  // 21
+
+    0
+};

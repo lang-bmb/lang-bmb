@@ -1,0 +1,106 @@
+// Golden test: Division and modulo operations with edge cases
+// Tests large numbers, negative division, modular arithmetic chains
+
+// Safe division: returns 0 on division by zero
+fn safe_div(a: i64, b: i64) -> i64 =
+    if b == 0 { 0 } else { a / b };
+
+// Safe modulo: returns 0 on division by zero
+fn safe_mod(a: i64, b: i64) -> i64 =
+    if b == 0 { 0 } else { a - (a / b) * b };
+
+// Absolute value
+fn abs_val(x: i64) -> i64 =
+    if x < 0 { 0 - x } else { x };
+
+// Modular exponentiation: (base^exp) mod m
+fn mod_pow(base: i64, exp: i64, m: i64) -> i64 =
+    if m == 1 { 0 }
+    else if exp == 0 { 1 }
+    else {
+        let half = mod_pow(base, exp / 2, m);
+        let half_sq = safe_mod(half * half, m);
+        if safe_mod(exp, 2) == 0 { half_sq }
+        else { safe_mod(half_sq * base, m) }
+    };
+
+// GCD using Euclidean algorithm
+fn gcd(a: i64, b: i64) -> i64 =
+    if b == 0 { a }
+    else { gcd(b, safe_mod(a, b)) };
+
+// Modular inverse using extended GCD iterative approach
+// Returns x such that (a*x) mod m == 1, or 0 if no inverse
+fn mod_inv_step(a: i64, m: i64, x0: i64, x1: i64, r0: i64, r1: i64) -> i64 =
+    if r1 == 0 {
+        if r0 == 1 { safe_mod(x0 + m, m) } else { 0 }
+    } else {
+        let q = r0 / r1;
+        let new_r = r0 - q * r1;
+        let new_x = x0 - q * x1;
+        mod_inv_step(a, m, x1, new_x, r1, new_r)
+    };
+
+fn mod_inv(a: i64, m: i64) -> i64 =
+    mod_inv_step(a, m, 1, 0, a, m);
+
+// Chinese Remainder Theorem for 2 equations:
+// x = a1 (mod m1), x = a2 (mod m2)
+// Returns x mod (m1*m2)
+fn crt2(a1: i64, m1: i64, a2: i64, m2: i64) -> i64 = {
+    let m1_inv = mod_inv(m1, m2);
+    let diff = safe_mod(a2 - a1 + m2 * 100, m2);
+    let k = safe_mod(diff * m1_inv, m2);
+    safe_mod(a1 + k * m1, m1 * m2)
+    };
+
+fn main() -> i64 = {
+    // Basic division
+    let _p1 = println(safe_div(100, 7));        // 14
+    let _p2 = println(safe_div(0, 5));          // 0
+    let _p3 = println(safe_div(999, 0));        // 0
+    let _p4 = println(safe_div(1000000, 1000)); // 1000
+
+    // Basic modulo
+    let _p5 = println(safe_mod(100, 7));        // 2
+    let _p6 = println(safe_mod(17, 5));         // 2
+    let _p7 = println(safe_mod(100, 0));        // 0
+    let _p8 = println(safe_mod(1000000, 997));  // 9
+
+    // Negative division (BMB truncates toward zero)
+    let _p9 = println(safe_div(0 - 10, 3));     // -3
+    let _p10 = println(safe_div(10, 0 - 3));    // -3
+    let _p11 = println(safe_div(0 - 10, 0 - 3)); // 3
+
+    // Large number division
+    let _p12 = println(safe_div(1000000000, 7));  // 142857142
+    let _p13 = println(safe_mod(1000000000, 7));  // 6
+
+    // Modular exponentiation
+    let _p14 = println(mod_pow(2, 10, 1000));     // 1024 mod 1000 = 24
+    let _p15 = println(mod_pow(3, 5, 100));       // 243 mod 100 = 43
+    let _p16 = println(mod_pow(7, 0, 13));        // 1
+    let _p17 = println(mod_pow(5, 3, 1));         // 0
+
+    // GCD
+    let _p18 = println(gcd(48, 18));              // 6
+    let _p19 = println(gcd(100, 75));             // 25
+    let _p20 = println(gcd(17, 13));              // 1 (coprime)
+
+    // Modular inverse
+    let _p21 = println(mod_inv(3, 7));            // 5 (3*5=15, 15 mod 7=1)
+    let _p22 = println(mod_inv(2, 11));           // 6 (2*6=12, 12 mod 11=1)
+
+    // CRT: x = 2 (mod 3), x = 3 (mod 5) => x = 8 (mod 15)
+    let _p23 = println(crt2(2, 3, 3, 5));         // 8
+
+    // CRT: x = 1 (mod 3), x = 4 (mod 5) => x = 4 (mod 15)
+    let _p24 = println(crt2(1, 3, 4, 5));         // 4
+
+    // Division chain: ((100 / 3) * 3) + (100 mod 3) == 100
+    let q = safe_div(100, 3);
+    let r = safe_mod(100, 3);
+    let _p25 = println(q * 3 + r);                // 100
+
+    0
+    };

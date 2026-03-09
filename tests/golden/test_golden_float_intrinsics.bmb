@@ -1,0 +1,37 @@
+// Golden Test: Float Intrinsics (fabs, floor, ceil, round, sqrt)
+// Uses f64_to_i64 conversion pattern for integer output
+
+fn main() -> i64 = {
+    // fabs: absolute value
+    let _p1 = println(f64_to_i64(fabs(3.14) * 100.0));     // 314
+    let _p2 = println(f64_to_i64(fabs(0.0 - 3.14) * 100.0)); // 314
+
+    // floor: round down
+    let _p3 = println(f64_to_i64(floor(3.7)));     // 3
+    let _p4 = println(f64_to_i64(floor(3.2)));     // 3
+    let _p5 = println(f64_to_i64(floor(0.0 - 0.5))); // -1
+
+    // ceil: round up
+    let _p6 = println(f64_to_i64(ceil(3.2)));      // 4
+    let _p7 = println(f64_to_i64(ceil(3.7)));      // 4
+    let _p8 = println(f64_to_i64(ceil(0.0 - 0.5))); // 0
+
+    // round: round to nearest
+    let _p9 = println(f64_to_i64(round(3.4)));     // 3
+    let _p10 = println(f64_to_i64(round(3.5)));    // 4
+    let _p11 = println(f64_to_i64(round(0.0 - 3.5))); // -4
+
+    // sqrt: square root (multiply for precision)
+    let _p12 = println(f64_to_i64(sqrt(4.0)));     // 2
+    let _p13 = println(f64_to_i64(sqrt(9.0)));     // 3
+    let _p14 = println(f64_to_i64(sqrt(2.0) * 1000.0)); // 1414
+    let _p15 = println(f64_to_i64(sqrt(100.0)));   // 10
+
+    // f64_min/f64_max (multiply by 10 for precision)
+    let _p16 = println(f64_to_i64(f64_min(1.5, 2.5) * 10.0)); // 15
+    let _p17 = println(f64_to_i64(f64_max(1.5, 2.5) * 10.0)); // 25
+    let _p18 = println(f64_to_i64(f64_min(0.0 - 3.0, 0.0 - 1.0) * 10.0)); // -30
+    let _p19 = println(f64_to_i64(f64_max(0.0 - 3.0, 0.0 - 1.0) * 10.0)); // -10
+
+    0
+};

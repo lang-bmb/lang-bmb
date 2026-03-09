@@ -1,0 +1,71 @@
+// Golden Test: Power series computation
+// Taylor series approximations for mathematical functions
+
+// Factorial helper
+fn factorial(n: i64) -> i64 =
+    if n <= 1 { 1 }
+    else { n * factorial(n - 1) };
+
+    // Integer power
+
+fn ipow(base: i64, exp: i64) -> i64 =
+    if exp <= 0 { 1 }
+    else { base * ipow(base, exp - 1) };
+
+    // Approximate e * 10000 using Taylor series: sum(1/k!) for k=0..n
+
+fn approx_e_helper(n: i64, k: i64, sum: i64) -> i64 =
+    if k > n { sum }
+    else {
+        // sum += 10000 / k!
+        let term = 10000 / factorial(k);
+        approx_e_helper(n, k + 1, sum + term)
+    };
+
+fn approx_e(terms: i64) -> i64 =
+    approx_e_helper(terms, 0, 0);
+
+    // Compute sum of geometric series: a + ar + ar^2 + ... + ar^(n-1)
+    // scaled by 1000 to avoid float
+
+fn geometric_sum(a: i64, r_num: i64, r_den: i64, n: i64) -> i64 = {
+    let mut sum = 0;
+    let mut term = a * 1000;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        sum = sum + term;
+        term = term * r_num / r_den;
+        i = i + 1
+    };
+    sum
+    };
+
+// Harmonic number * 1000: H(n) = 1 + 1/2 + 1/3 + ... + 1/n
+fn harmonic_helper(n: i64, k: i64, sum: i64) -> i64 =
+    if k > n { sum }
+    else { harmonic_helper(n, k + 1, sum + 1000 / k) };
+
+fn harmonic(n: i64) -> i64 =
+    harmonic_helper(n, 1, 0);
+
+fn main() -> i64 = {
+// e approximation (10 terms) ≈ 2.7182... → 27182
+    let _p1 = println(approx_e(10));          // 27182
+
+// Factorial values
+    let _p2 = println(factorial(5));           // 120
+    let _p3 = println(factorial(8));           // 40320
+
+// Integer power
+    let _p4 = println(ipow(2, 10));            // 1024
+    let _p5 = println(ipow(3, 5));             // 243
+
+// Geometric sum: 1 + 1/2 + 1/4 + ... (8 terms) * 1000 ≈ 1996
+    let _p6 = println(geometric_sum(1, 1, 2, 8));  // 1996
+
+// Harmonic number H(10) * 1000 ≈ 2928
+    let _p7 = println(harmonic(10));           // 2928
+
+    0
+    };

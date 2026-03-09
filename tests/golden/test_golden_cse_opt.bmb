@@ -1,0 +1,55 @@
+// Golden Test: CSE optimization — redundant expressions across blocks
+// v0.95: Cross-block CSE eliminates duplicate computations using dominator tree
+
+fn compute_twice(x: i64, y: i64) -> i64 = {
+// Same expression computed twice in same block — CSE should optimize
+    let sum = x + y;
+    let also_sum = x + y;  // redundant, should be eliminated by CSE
+    sum + also_sum
+    };
+
+fn diamond_cse(x: i64, y: i64, flag: bool) -> i64 = {
+// Expression in entry, same in merge — cross-block CSE
+    let product = x * y;
+    let branch_val = if flag { product + 1 } else { product - 1 };
+
+// x*y already computed in entry block, dominates this point
+    let product_again = x * y;
+    branch_val + product_again
+    };
+
+fn const_cse(flag: bool) -> i64 = {
+// Same constant loaded in multiple places — const CSE
+    let a = 42;
+    let result = if flag { a + 1 } else { a - 1 };
+    let b = 42;  // same const, dominated by entry
+    result + b
+    };
+
+fn commutative_cse(a: i64, b: i64) -> i64 = {
+// a+b and b+a are the same expression (commutative)
+    let sum1 = a + b;
+    let sum2 = b + a;  // CSE should detect this
+    sum1 + sum2
+    };
+
+fn main() -> i64 = {
+    let r1 = compute_twice(10, 20);
+    let _p1 = println(r1);  // 60 (30 + 30)
+
+    let r2 = diamond_cse(3, 4, true);
+    let _p2 = println(r2);  // 25 (13 + 12)
+
+    let r3 = diamond_cse(3, 4, false);
+    let _p3 = println(r3);  // 23 (11 + 12)
+
+    let r4 = const_cse(true);
+    let _p4 = println(r4);  // 85 (43 + 42)
+
+    let r5 = const_cse(false);
+    let _p5 = println(r5);  // 83 (41 + 42)
+
+    let r6 = commutative_cse(7, 3);
+    let _p6 = println(r6);  // 20 (10 + 10)
+    0
+    };

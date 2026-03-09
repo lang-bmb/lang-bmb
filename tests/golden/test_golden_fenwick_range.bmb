@@ -1,0 +1,108 @@
+// Golden Test: Fenwick tree with range update + range query
+// Uses two BIT arrays (B1, B2) to support:
+//   - Range update: add delta to all elements in [l..r]
+//   - Point query: get value at position i
+//   - Prefix sum query: sum of elements [1..i]
+// Based on the identity: range update can be decomposed into
+// two point-update BITs for O(log n) range operations.
+
+fn lowbit(x: i64) -> i64 = x band (0 - x);
+
+// Point update on a single BIT
+fn bit_update(tree: i64, n: i64, i: i64, delta: i64) -> i64 = {
+    let mut pos = i;
+    loop {
+        if pos > n { break } else { () };
+        let cur = vec_get(tree, pos);
+        let _s = vec_set(tree, pos, cur + delta);
+        pos = pos + lowbit(pos)
+    };
+    0
+};
+
+// Prefix sum on a single BIT
+fn bit_query(tree: i64, i: i64) -> i64 = {
+    let mut pos = i;
+    let mut sum = 0;
+    loop {
+        if pos <= 0 { break } else { () };
+        sum = sum + vec_get(tree, pos);
+        pos = pos - lowbit(pos)
+    };
+    sum
+};
+
+// Make a zero-filled vec of size n+1
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..(n + 1) { vec_push(v, 0) };
+    v
+};
+
+// Range update [l..r] by delta using two BITs
+// To support prefix sum after range updates:
+//   B1 stores delta values, B2 stores delta*(i-1) values
+fn range_update(b1: i64, b2: i64, n: i64, l: i64, r: i64, delta: i64) -> i64 = {
+    let _u1 = bit_update(b1, n, l, delta);
+    let _u2 = bit_update(b1, n, r + 1, 0 - delta);
+    let _u3 = bit_update(b2, n, l, delta * (l - 1));
+    let _u4 = bit_update(b2, n, r + 1, (0 - delta) * r);
+    0
+};
+
+// Prefix sum [1..i] after range updates
+fn prefix_sum(b1: i64, b2: i64, i: i64) -> i64 =
+    bit_query(b1, i) * i - bit_query(b2, i);
+
+// Range sum [l..r]
+fn range_sum(b1: i64, b2: i64, l: i64, r: i64) -> i64 =
+    prefix_sum(b1, b2, r) - prefix_sum(b1, b2, l - 1);
+
+// Point query: value at position i
+fn point_query(b1: i64, i: i64) -> i64 = bit_query(b1, i);
+
+fn main() -> i64 = {
+    let n = 10;
+    let b1 = make_zeros(n + 1);
+    let b2 = make_zeros(n + 1);
+
+    // Test 1: Add 5 to range [2..5]
+    // Array becomes: [0, 5, 5, 5, 5, 0, 0, 0, 0, 0]
+    let _u1 = range_update(b1, b2, n, 2, 5, 5);
+    let _p1 = println(point_query(b1, 1));   // 0
+    let _p2 = println(point_query(b1, 3));   // 5
+    let _p3 = println(point_query(b1, 5));   // 5
+    let _p4 = println(point_query(b1, 6));   // 0
+
+    // Test 2: Prefix sum queries
+    let _p5 = println(prefix_sum(b1, b2, 5));   // 0+5+5+5+5 = 20
+    let _p6 = println(prefix_sum(b1, b2, 10));  // 20 (rest are 0)
+
+    // Test 3: Add 3 to range [4..8]
+    // Array becomes: [0, 5, 5, 8, 8, 3, 3, 3, 0, 0]
+    let _u2 = range_update(b1, b2, n, 4, 8, 3);
+    let _p7 = println(point_query(b1, 4));   // 5+3 = 8
+    let _p8 = println(point_query(b1, 7));   // 3
+    let _p9 = println(point_query(b1, 9));   // 0
+
+    // Test 4: Range sum queries
+    let _p10 = println(range_sum(b1, b2, 2, 5));  // 5+5+8+8 = 26
+    let _p11 = println(range_sum(b1, b2, 1, 10)); // 0+5+5+8+8+3+3+3+0+0 = 35
+    let _p12 = println(range_sum(b1, b2, 6, 8));  // 3+3+3 = 9
+
+    // Test 5: Add -2 to range [1..3] (subtraction)
+    // Array becomes: [-2, 3, 3, 8, 8, 3, 3, 3, 0, 0]
+    let _u3 = range_update(b1, b2, n, 1, 3, 0 - 2);
+    let _p13 = println(point_query(b1, 1));  // -2
+    let _p14 = println(point_query(b1, 2));  // 3
+    let _p15 = println(range_sum(b1, b2, 1, 10)); // -2+3+3+8+8+3+3+3+0+0 = 29
+
+    // Test 6: Single element update [7..7]
+    let _u4 = range_update(b1, b2, n, 7, 7, 100);
+    let _p16 = println(point_query(b1, 7));  // 103
+    let _p17 = println(range_sum(b1, b2, 7, 7));  // 103
+
+    let _f1 = vec_free(b1);
+    let _f2 = vec_free(b2);
+    0
+};

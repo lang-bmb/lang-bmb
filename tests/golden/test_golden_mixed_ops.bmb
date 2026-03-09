@@ -1,0 +1,144 @@
+// Golden Test: Mixed operations - Cycle 1400
+// String and integer ops combined, multi-type chains
+
+// Convert single digit to its ASCII character string
+fn digit_to_str(d: i64) -> String =
+    if d == 0 { "0" }
+    else if d == 1 { "1" }
+    else if d == 2 { "2" }
+    else if d == 3 { "3" }
+    else if d == 4 { "4" }
+    else if d == 5 { "5" }
+    else if d == 6 { "6" }
+    else if d == 7 { "7" }
+    else if d == 8 { "8" }
+    else if d == 9 { "9" }
+    else { "?" };
+
+    // Count digits in a string
+
+fn count_digits_in_str(s: String, pos: i64, count: i64) -> i64 =
+    if pos >= s.len() { count }
+    else {
+        let ch = s.byte_at(pos);
+        let is_digit = if ch >= 48 and ch <= 57 { 1 } else { 0 };
+        count_digits_in_str(s, pos + 1, count + is_digit)
+    };
+
+    // Sum of digit values in a string
+
+fn sum_digits_in_str(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() { acc }
+    else {
+        let ch = s.byte_at(pos);
+        let digit_val = if ch >= 48 and ch <= 57 { ch - 48 } else { 0 };
+        sum_digits_in_str(s, pos + 1, acc + digit_val)
+    };
+
+    // Compute string score: length * (number of uppercase letters)
+
+fn string_score(s: String, pos: i64, upper_count: i64) -> i64 =
+    if pos >= s.len() { s.len() * upper_count }
+    else {
+        let ch = s.byte_at(pos);
+        let is_upper = if ch >= 65 and ch <= 90 { 1 } else { 0 };
+        string_score(s, pos + 1, upper_count + is_upper)
+    };
+
+    // Find position of first non-space character
+
+fn first_nonspace(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { 0 - 1 }
+    else if s.byte_at(pos) == 32 { first_nonspace(s, pos + 1) }
+    else { pos };
+
+    // Compute total ASCII value of all characters in an integer's digit string
+
+fn int_ascii_sum(n: i64) -> i64 = {
+// Convert digits of n to ASCII and sum
+    let mut x = if n < 0 { 0 - n } else { n };
+    let mut total = 0;
+    loop {
+        if x == 0 { break } else { () };
+        let d = x % 10;
+        total = total + 48 + d;  // ASCII for '0'..'9'
+        x = x / 10
+    };
+    total
+    };
+
+// Compute hash as weighted sum of string lengths for 4 strings
+// weights: 1, 2, 4, 8
+fn str_array_hash4(s0: String, s1: String, s2: String, s3: String) -> i64 =
+    s0.len() * 1 + s1.len() * 2 + s2.len() * 4 + s3.len() * 8;
+
+    // Compare two strings lexicographically, return their length difference if equal, or 1 if s1>s2, -1 if s1<s2
+
+fn str_cmp_then_diff(s1: String, s2: String, pos: i64) -> i64 =
+    if pos >= s1.len() and pos >= s2.len() { s1.len() - s2.len() }
+    else if pos >= s1.len() { 0 - 1 }
+    else if pos >= s2.len() { 1 }
+    else if s1.byte_at(pos) < s2.byte_at(pos) { 0 - 1 }
+    else if s1.byte_at(pos) > s2.byte_at(pos) { 1 }
+    else { str_cmp_then_diff(s1, s2, pos + 1) };
+
+    // Chain: int -> string -> length -> int operations
+
+fn chain_compute(n: i64) -> i64 = {
+// Create digit string representation length
+    let s = digit_to_str(n % 10);
+    let len = s.len();
+
+// Multiply by digit value, add position info
+    len * (n % 10 + 1) + n / 10
+    };
+
+fn main() -> i64 = {
+// digit_to_str and counting
+    let s1 = "Hello123World456";
+    let _dc1 = println(count_digits_in_str(s1, 0, 0));  // 6
+    let _sd1 = println(sum_digits_in_str(s1, 0, 0));    // 1+2+3+4+5+6=21
+
+    let s2 = "ABC123def";
+    let _dc2 = println(count_digits_in_str(s2, 0, 0));  // 3
+    let _sd2 = println(sum_digits_in_str(s2, 0, 0));    // 1+2+3=6
+
+// string_score
+    let _ss1 = println(string_score("Hello World", 0, 0));   // len=11, upper=2 -> 22
+    let _ss2 = println(string_score("HELLO", 0, 0));          // len=5, upper=5 -> 25
+    let _ss3 = println(string_score("hello", 0, 0));          // len=5, upper=0 -> 0
+    let _ss4 = println(string_score("ABCdef", 0, 0));         // len=6, upper=3 -> 18
+
+// first_nonspace
+    let _fn1 = println(first_nonspace("   hello", 0));  // 3
+    let _fn2 = println(first_nonspace("world", 0));     // 0
+    let _fn3 = println(first_nonspace("  ", 0));        // -1
+
+// int_ascii_sum: for n=123, digits are 3,2,1 (reversed), ASCII: 51,50,49 -> sum 150
+    let _ia1 = println(int_ascii_sum(123));   // 150
+    let _ia2 = println(int_ascii_sum(999));   // 57*3=171
+    let _ia3 = println(int_ascii_sum(100));   // 49+48+48=145
+
+// str_array_hash: hash of strings with weights 1,2,4,8
+// ["hi", "hello", "hey", "howdy"]
+// len: 2,5,3,5; weights: 1,2,4,8
+// hash = 2*1 + 5*2 + 3*4 + 5*8 = 2+10+12+40 = 64
+    let _sh1 = println(str_array_hash4("hi", "hello", "hey", "howdy"));  // 64
+
+// ["a", "bb", "ccc", "dddd"]
+// len: 1,2,3,4; weights: 1,2,4,8
+// hash = 1+4+12+32 = 49
+    let _sh2 = println(str_array_hash4("a", "bb", "ccc", "dddd"));  // 49
+
+// str_cmp_then_diff (both equal -> length diff)
+    let _sc1 = println(str_cmp_then_diff("abc", "abc", 0));   // 0
+    let _sc2 = println(str_cmp_then_diff("abcd", "abc", 0));  // 1
+    let _sc3 = println(str_cmp_then_diff("ab", "abc", 0));    // -1
+    let _sc4 = println(str_cmp_then_diff("abd", "abc", 0));   // 1 (d > c)
+
+// chain_compute
+    let _ch1 = println(chain_compute(37));   // n=37: d=7, s="7" len=1, 1*(7+1)+3=11
+    let _ch2 = println(chain_compute(45));   // n=45: d=5, s="5" len=1, 1*(5+1)+4=10
+    let _ch3 = println(chain_compute(99));   // n=99: d=9, s="9" len=1, 1*(9+1)+9=19
+    0
+    };

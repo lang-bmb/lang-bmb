@@ -1,0 +1,41 @@
+// Golden Test: Bitwise constant folding and algebraic simplification
+// v0.95: band/bor/bxor operations folded and simplified at MIR level
+
+fn const_band() -> i64 = {
+    let a = 255;
+    let b = 15;
+    a band b
+    };
+
+fn const_bor() -> i64 = {
+    let a = 5;
+    let b = 3;
+    a bor b
+    };
+
+fn const_bxor() -> i64 = {
+    let a = 5;
+    let b = 3;
+    a bxor b
+    };
+
+fn band_with_zero(x: i64) -> i64 = x band 0;
+fn bor_with_zero(x: i64) -> i64 = x bor 0;
+fn bxor_self(x: i64) -> i64 = x bxor x;
+
+fn mask_and_shift(x: i64) -> i64 = {
+    let masked = x band 255;
+    let shifted = masked << 2;
+    shifted
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(const_band());    // 15
+    let _p2 = println(const_bor());     // 7
+    let _p3 = println(const_bxor());    // 6
+    let _p4 = println(band_with_zero(42)); // 0
+    let _p5 = println(bor_with_zero(42));  // 42
+    let _p6 = println(bxor_self(99));      // 0
+    let _p7 = println(mask_and_shift(300)); // 176 (300 & 255 = 44, 44 << 2 = 176)
+    0
+    };

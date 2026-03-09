@@ -1,0 +1,105 @@
+// Golden Test: Chinese Remainder Theorem with Extended GCD
+// Extended Euclidean algorithm, modular inverse, CRT for multiple congruences
+
+// Extended GCD: returns gcd(a, b) and stores Bezout coefficients in xy vec
+fn ext_gcd(a: i64, b: i64, xy: i64) -> i64 = {
+    if b == 0 {
+        vec_set(xy, 0, 1);
+        vec_set(xy, 1, 0);
+        a
+    } else {
+        let g = ext_gcd(b, a - (a / b) * b, xy);
+        let x1 = vec_get(xy, 0);
+        let y1 = vec_get(xy, 1);
+        vec_set(xy, 0, y1);
+        vec_set(xy, 1, x1 - (a / b) * y1);
+        g
+    }
+};
+
+// Manual mod that handles negatives
+fn my_mod(a: i64, m: i64) -> i64 = {
+    let r = a - (a / m) * m;
+    if r < 0 { r + m } else { r }
+};
+
+// Modular inverse of a mod m using extended GCD
+fn mod_inv(a: i64, m: i64) -> i64 = {
+    let xy = vec_new();
+    vec_push(xy, 0);
+    vec_push(xy, 0);
+    let _g = ext_gcd(a, m, xy);
+    let x = vec_get(xy, 0);
+    vec_free(xy);
+    my_mod(x, m)
+};
+
+// CRT for 2 equations: x = r1 (mod m1), x = r2 (mod m2)
+fn crt2(r1: i64, m1: i64, r2: i64, m2: i64) -> i64 = {
+    let m = m1 * m2;
+    let inv1 = mod_inv(m2, m1);
+    let inv2 = mod_inv(m1, m2);
+    let x = r1 * m2 * inv1 + r2 * m1 * inv2;
+    my_mod(x, m)
+};
+
+// CRT for 3 equations by applying CRT twice
+fn crt3(r1: i64, m1: i64, r2: i64, m2: i64, r3: i64, m3: i64) -> i64 = {
+    let x12 = crt2(r1, m1, r2, m2);
+    let m12 = m1 * m2;
+    crt2(x12, m12, r3, m3)
+};
+
+fn main() -> i64 = {
+// Extended GCD tests
+    let xy = vec_new();
+    vec_push(xy, 0);
+    vec_push(xy, 0);
+
+// gcd(35, 15) = 5
+    let g1 = ext_gcd(35, 15, xy);
+    let _p1 = println(g1);                 // 5
+
+// gcd(12, 8) = 4
+    let g2 = ext_gcd(12, 8, xy);
+    let _p2 = println(g2);                 // 4
+
+// gcd(17, 13) = 1 (coprime)
+    let g3 = ext_gcd(17, 13, xy);
+    let _p3 = println(g3);                 // 1
+
+// Modular inverse tests
+// 3 * 5 = 15, 15 mod 7 = 1
+    let _p4 = println(mod_inv(3, 7));      // 5
+
+// 5 * 9 = 45, 45 mod 11 = 1
+    let _p5 = println(mod_inv(5, 11));     // 9
+
+// 2 * 7 = 14, 14 mod 13 = 1
+    let _p6 = println(mod_inv(2, 13));     // 7
+
+// CRT for 2 equations
+// x = 2 (mod 3), x = 3 (mod 5) => x = 8
+    let _p7 = println(crt2(2, 3, 3, 5));  // 8
+
+// x = 1 (mod 4), x = 3 (mod 7) => x = 17
+    let _p8 = println(crt2(1, 4, 3, 7));  // 17
+
+// x = 3 (mod 5), x = 1 (mod 7) => x = 8
+    let _p9 = println(crt2(3, 5, 1, 7));  // 8
+
+// CRT for 3 equations
+// x = 2 (mod 3), x = 3 (mod 5), x = 2 (mod 7) => x = 23
+    let _p10 = println(crt3(2, 3, 3, 5, 2, 7)); // 23
+
+// x = 1 (mod 2), x = 2 (mod 3), x = 3 (mod 5) => x = 23
+    let _p11 = println(crt3(1, 2, 2, 3, 3, 5)); // 23
+
+// Verify: 23 mod 3 = 2, 23 mod 5 = 3, 23 mod 7 = 2
+    let _p12 = println(my_mod(23, 3));     // 2
+    let _p13 = println(my_mod(23, 5));     // 3
+    let _p14 = println(my_mod(23, 7));     // 2
+
+    vec_free(xy);
+    0
+};

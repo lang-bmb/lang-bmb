@@ -1,0 +1,142 @@
+// Golden Test: Matrix transpose and rotation operations
+// Matrices stored as flat vecs in row-major order
+// Supports non-square (rectangular) matrices
+
+// Get element at (row, col) in matrix with given number of cols
+fn mat_get(m: i64, cols: i64, row: i64, col: i64) -> i64 =
+    vec_get(m, row * cols + col);
+
+// Set element at (row, col) in matrix with given number of cols
+fn mat_set(m: i64, cols: i64, row: i64, col: i64, val: i64) -> i64 = {
+    let _s = vec_set(m, row * cols + col, val);
+    0
+    };
+
+// Internal: fill transpose dst[c][r] = src[r][c], iterate col then row
+fn mat_transpose_inner(src: i64, dst: i64, src_rows: i64, src_cols: i64, r: i64, c: i64) -> i64 =
+    if r >= src_rows { 0 }
+    else if c >= src_cols {
+        mat_transpose_inner(src, dst, src_rows, src_cols, r + 1, 0)
+    }
+    else {
+        let val = mat_get(src, src_cols, r, c);
+        // transposed matrix has dst_cols = src_rows
+        let _s = mat_set(dst, src_rows, c, r, val);
+        mat_transpose_inner(src, dst, src_rows, src_cols, r, c + 1)
+    };
+
+// Transpose: (rows x cols) -> (cols x rows), returns new vec
+fn mat_transpose(m: i64, rows: i64, cols: i64) -> i64 = {
+    let dst = vec_new();
+    for _i in 0..cols * rows { let _p = vec_push(dst, 0); 0 };
+    let _f = mat_transpose_inner(m, dst, rows, cols, 0, 0);
+    dst
+    };
+
+// Trace: sum of diagonal of n x n square matrix
+// post condition: result is non-negative when all diagonal elements are >= 0
+fn mat_trace(m: i64, n: i64) -> i64
+    post ret >= 0
+= {
+    let mut sum = 0;
+    for i in 0..n {
+        sum = sum + mat_get(m, n, i, i)
+    };
+    sum
+    };
+
+// Element-wise multiply: two n x n matrices -> new n x n matrix
+fn mat_multiply_element_inner(a: i64, b: i64, dst: i64, total: i64, idx: i64) -> i64 =
+    if idx >= total { 0 }
+    else {
+        let _s = vec_set(dst, idx, vec_get(a, idx) * vec_get(b, idx));
+        mat_multiply_element_inner(a, b, dst, total, idx + 1)
+    };
+
+fn mat_multiply_element(a: i64, b: i64, n: i64) -> i64 = {
+    let dst = vec_new();
+    for _i in 0..n * n { let _p = vec_push(dst, 0); 0 };
+    let _f = mat_multiply_element_inner(a, b, dst, n * n, 0);
+    dst
+    };
+
+// Print all elements of a matrix row by row (one element per line)
+fn print_matrix_inner(m: i64, total: i64, pos: i64) -> i64 =
+    if pos >= total { 0 }
+    else {
+        let _p = println(vec_get(m, pos));
+        print_matrix_inner(m, total, pos + 1)
+    };
+
+fn print_matrix(m: i64, rows: i64, cols: i64) -> i64 =
+    print_matrix_inner(m, rows * cols, 0);
+
+fn main() -> i64 = {
+    // === 3x3 matrix: [[1,2,3],[4,5,6],[7,8,9]] ===
+    let m3 = vec_new();
+    let _p01 = vec_push(m3, 1);
+    let _p02 = vec_push(m3, 2);
+    let _p03 = vec_push(m3, 3);
+    let _p04 = vec_push(m3, 4);
+    let _p05 = vec_push(m3, 5);
+    let _p06 = vec_push(m3, 6);
+    let _p07 = vec_push(m3, 7);
+    let _p08 = vec_push(m3, 8);
+    let _p09 = vec_push(m3, 9);
+
+    // Print original 3x3: 1 2 3 4 5 6 7 8 9 (one per line)
+    let _pm1 = print_matrix(m3, 3, 3);
+
+    // Transpose 3x3: [[1,4,7],[2,5,8],[3,6,9]]
+    let t3 = mat_transpose(m3, 3, 3);
+    // Print transposed 3x3: 1 4 7 2 5 8 3 6 9 (one per line)
+    let _pm2 = print_matrix(t3, 3, 3);
+
+    // Trace of 3x3: 1+5+9 = 15
+    let tr3 = mat_trace(m3, 3);
+    let _ptr = println(tr3);
+
+    // === 2x3 matrix: [[10,20,30],[40,50,60]] ===
+    let m23 = vec_new();
+    let _q01 = vec_push(m23, 10);
+    let _q02 = vec_push(m23, 20);
+    let _q03 = vec_push(m23, 30);
+    let _q04 = vec_push(m23, 40);
+    let _q05 = vec_push(m23, 50);
+    let _q06 = vec_push(m23, 60);
+
+    // Print original 2x3: 10 20 30 40 50 60 (one per line)
+    let _pm3 = print_matrix(m23, 2, 3);
+
+    // Transpose 2x3 -> 3x2: [[10,40],[20,50],[30,60]]
+    let t23 = mat_transpose(m23, 2, 3);
+    // Print transposed 3x2: 10 40 20 50 30 60 (one per line)
+    let _pm4 = print_matrix(t23, 3, 2);
+
+    // === Element-wise multiply 3x3 ===
+    // a = [[1,2,3],[4,5,6],[7,8,9]]
+    // b = [[9,8,7],[6,5,4],[3,2,1]]
+    // result = [[9,16,21],[24,25,24],[21,16,9]]
+    let mb = vec_new();
+    let _r01 = vec_push(mb, 9);
+    let _r02 = vec_push(mb, 8);
+    let _r03 = vec_push(mb, 7);
+    let _r04 = vec_push(mb, 6);
+    let _r05 = vec_push(mb, 5);
+    let _r06 = vec_push(mb, 4);
+    let _r07 = vec_push(mb, 3);
+    let _r08 = vec_push(mb, 2);
+    let _r09 = vec_push(mb, 1);
+
+    let ew = mat_multiply_element(m3, mb, 3);
+    // Print element-wise result: 9 16 21 24 25 24 21 16 9 (one per line)
+    let _pm5 = print_matrix(ew, 3, 3);
+
+    let _f1 = vec_free(m3);
+    let _f2 = vec_free(t3);
+    let _f3 = vec_free(m23);
+    let _f4 = vec_free(t23);
+    let _f5 = vec_free(mb);
+    let _f6 = vec_free(ew);
+    0
+    };

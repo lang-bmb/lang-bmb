@@ -1,0 +1,71 @@
+// Golden Test: Integer partition function — Cycle 1568
+// Count ways to write n as sum of positive integers (order doesn't matter)
+// Uses DP table: p(n, k) = ways to partition n using parts <= k
+
+// Partition count using flattened 2D DP table
+// p[i * cols + j] = ways to partition i using parts <= j
+fn partition_count(n: i64) -> i64 = {
+    let cols = n + 1;
+    let size = (n + 1) * cols;
+    let dp = vec_new();
+    // Initialize table to 0
+    let mut idx = 0;
+    loop {
+        if idx >= size { break } else { () };
+        vec_push(dp, 0);
+        idx = idx + 1
+    };
+    // Base case: p(0, k) = 1 for all k (empty partition)
+    let mut k = 0;
+    loop {
+        if k > n { break } else { () };
+        vec_set(dp, 0 * cols + k, 1);
+        k = k + 1
+    };
+    // Fill table: p(i, j) = p(i, j-1) + (if j <= i then p(i-j, j) else 0)
+    let mut i = 1;
+    loop {
+        if i > n { break } else { () };
+        let mut j = 0;
+        loop {
+            if j > n { break } else { () };
+            let val = if j == 0 {
+                0
+            } else {
+                let without_j = vec_get(dp, i * cols + (j - 1));
+                let with_j = if j <= i { vec_get(dp, (i - j) * cols + j) } else { 0 };
+                without_j + with_j
+            };
+            vec_set(dp, i * cols + j, val);
+            j = j + 1
+        };
+        i = i + 1
+    };
+    let result = vec_get(dp, n * cols + n);
+    vec_free(dp);
+    result
+    };
+
+fn main() -> i64 = {
+    // p(0) = 1 (empty partition)
+    let _p1 = println(partition_count(0));    // 1
+    // p(1) = 1: {1}
+    let _p2 = println(partition_count(1));    // 1
+    // p(2) = 2: {2}, {1,1}
+    let _p3 = println(partition_count(2));    // 2
+    // p(3) = 3: {3}, {2,1}, {1,1,1}
+    let _p4 = println(partition_count(3));    // 3
+    // p(4) = 5: {4},{3,1},{2,2},{2,1,1},{1,1,1,1}
+    let _p5 = println(partition_count(4));    // 5
+    // p(5) = 7
+    let _p6 = println(partition_count(5));    // 7
+    // p(6) = 11
+    let _p7 = println(partition_count(6));    // 11
+    // p(7) = 15
+    let _p8 = println(partition_count(7));    // 15
+    // p(10) = 42
+    let _p9 = println(partition_count(10));   // 42
+    // p(12) = 77
+    let _p10 = println(partition_count(12));  // 77
+    0
+    };

@@ -1,0 +1,87 @@
+// Golden Test: Bit manipulation tricks
+// Common bit manipulation patterns and algorithms
+
+// Count set bits (popcount via loop)
+fn popcount(n: i64) -> i64 = {
+    let mut count = 0;
+    let mut x = n;
+    loop {
+        if x == 0 { break } else { () };
+        count = count + (x - (x / 2) * 2);
+        x = x / 2
+    };
+    count
+    };
+
+// Check if power of 2
+fn is_power2(n: i64) -> i64 =
+    if n <= 0 { 0 }
+    else {
+        // n & (n-1) == 0 check via popcount
+        if popcount(n) == 1 { 1 } else { 0 }
+    };
+
+    // Next power of 2 >= n
+
+fn next_pow2(n: i64) -> i64 = {
+    let mut p = 1;
+    loop {
+        if p >= n { break } else { () };
+        p = p * 2
+    };
+    p
+    };
+
+// Highest bit position (0-indexed from LSB)
+fn highest_bit(n: i64) -> i64 = {
+    let mut pos = 0;
+    let mut x = n;
+    loop {
+        if x <= 1 { break } else { () };
+        x = x / 2;
+        pos = pos + 1
+    };
+    pos
+    };
+
+// Reverse bits of an 8-bit value
+fn reverse_bits8(n: i64) -> i64 = {
+    let mut result = 0;
+    let mut x = n;
+    let mut i = 0;
+    loop {
+        if i >= 8 { break } else { () };
+        result = result * 2 + (x - (x / 2) * 2);
+        x = x / 2;
+        i = i + 1
+    };
+    result
+    };
+
+// Parity (1 if odd number of bits, 0 if even)
+fn parity(n: i64) -> i64 =
+    popcount(n) - (popcount(n) / 2) * 2;
+
+fn main() -> i64 = {
+    let _p1 = println(popcount(0));         // 0
+    let _p2 = println(popcount(7));         // 3 (111)
+    let _p3 = println(popcount(255));       // 8 (11111111)
+    let _p4 = println(popcount(1024));      // 1 (10000000000)
+
+    let _p5 = println(is_power2(64));       // 1
+    let _p6 = println(is_power2(100));      // 0
+
+    let _p7 = println(next_pow2(5));        // 8
+    let _p8 = println(next_pow2(16));       // 16
+
+    let _p9 = println(highest_bit(128));    // 7
+    let _p10 = println(highest_bit(255));   // 7
+
+    let _p11 = println(reverse_bits8(1));   // 128 (00000001 → 10000000)
+    let _p12 = println(reverse_bits8(170)); // 85 (10101010 → 01010101)
+
+    let _p13 = println(parity(7));          // 1 (3 bits = odd)
+    let _p14 = println(parity(15));         // 0 (4 bits = even)
+
+    0
+    };

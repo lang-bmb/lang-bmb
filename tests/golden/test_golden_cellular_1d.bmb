@@ -1,0 +1,93 @@
+// Golden test: 1D cellular automaton Rule 30
+// Rule 30: 00011110 in binary
+// Patterns: 111->0, 110->0, 101->0, 100->1, 011->1, 010->1, 001->1, 000->0
+// Start: 11 cells, only center (index 5) active. Run 5 generations.
+
+// Apply Rule 30 to a 3-cell neighborhood
+// pattern = left*4 + center*2 + right
+// result = (30 >> pattern) band 1
+fn apply_rule(left: i64, center: i64, right: i64) -> i64 = {
+    let pattern = left * 4 + center * 2 + right;
+    (30 >> pattern) band 1
+    };
+
+// Compute one generation step into result buffer
+// Uses boundary = 0 outside [0, n)
+fn step_cell(arr: i64, result: i64, pos: i64, n: i64) -> i64 =
+    if pos >= n { 0 }
+    else {
+        let left = if pos == 0 { 0 } else { vec_get(arr, pos - 1) };
+        let center = vec_get(arr, pos);
+        let right = if pos + 1 >= n { 0 } else { vec_get(arr, pos + 1) };
+        let val = apply_rule(left, center, right);
+        let _s = vec_set(result, pos, val);
+        step_cell(arr, result, pos + 1, n)
+    };
+
+// Copy src into dst (both length n)
+fn copy_vec(src: i64, dst: i64, pos: i64, n: i64) -> i64 =
+    if pos >= n { 0 }
+    else {
+        let _s = vec_set(dst, pos, vec_get(src, pos));
+        copy_vec(src, dst, pos + 1, n)
+    };
+
+// Count active (=1) cells
+fn count_ones(arr: i64, pos: i64, n: i64) -> i64 =
+    if pos >= n { 0 }
+    else {
+        let inc = if vec_get(arr, pos) == 1 { 1 } else { 0 };
+        inc + count_ones(arr, pos + 1, n)
+    };
+
+fn main() -> i64 = {
+    let n = 11;
+
+    // Create initial grid: all zeros
+    let cells = vec_new();
+    for _i in 0..n {
+        let _p = vec_push(cells, 0);
+        0
+    };
+    // Set center cell (index 5) active
+    let _sc = vec_set(cells, 5, 1);
+
+    // Temporary buffer for next generation
+    let buf = vec_new();
+    for _i in 0..n {
+        let _p = vec_push(buf, 0);
+        0
+    };
+
+    // Gen 0 count
+    let _p0 = println(count_ones(cells, 0, n));
+
+    // Gen 1
+    let _step1 = step_cell(cells, buf, 0, n);
+    let _copy1 = copy_vec(buf, cells, 0, n);
+    let _p1 = println(count_ones(cells, 0, n));
+
+    // Gen 2
+    let _step2 = step_cell(cells, buf, 0, n);
+    let _copy2 = copy_vec(buf, cells, 0, n);
+    let _p2 = println(count_ones(cells, 0, n));
+
+    // Gen 3
+    let _step3 = step_cell(cells, buf, 0, n);
+    let _copy3 = copy_vec(buf, cells, 0, n);
+    let _p3 = println(count_ones(cells, 0, n));
+
+    // Gen 4
+    let _step4 = step_cell(cells, buf, 0, n);
+    let _copy4 = copy_vec(buf, cells, 0, n);
+    let _p4 = println(count_ones(cells, 0, n));
+
+    // Gen 5
+    let _step5 = step_cell(cells, buf, 0, n);
+    let _copy5 = copy_vec(buf, cells, 0, n);
+    let _p5 = println(count_ones(cells, 0, n));
+
+    let _f1 = vec_free(cells);
+    let _f2 = vec_free(buf);
+    0
+    };

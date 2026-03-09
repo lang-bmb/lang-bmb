@@ -1,0 +1,66 @@
+// Golden Test: Quicksort (Lomuto partition)
+// In-place O(n log n) average-case sort
+
+fn qs_swap(arr: i64, i: i64, j: i64) -> () = {
+    let tmp = vec_get(arr, i);
+    vec_set(arr, i, vec_get(arr, j));
+    vec_set(arr, j, tmp)
+};
+
+fn qs_partition(arr: i64, lo: i64, hi: i64) -> i64 = {
+    let pivot = vec_get(arr, hi);
+    let mut i = lo;
+    let mut j = lo;
+    while j < hi {
+        let _x = if vec_get(arr, j) <= pivot {
+            qs_swap(arr, i, j);
+            set i = i + 1;
+            0
+        } else { 0 };
+        set j = j + 1
+    };
+    qs_swap(arr, i, hi);
+    i
+};
+
+fn quicksort(arr: i64, lo: i64, hi: i64) -> () = {
+    let _x = if lo < hi {
+        let p = qs_partition(arr, lo, hi);
+        let _a = if p > lo { quicksort(arr, lo, p - 1); 0 } else { 0 };
+        quicksort(arr, p + 1, hi);
+        0
+    } else { 0 }
+};
+
+fn print_arr(arr: i64, n: i64) -> () = {
+    let mut i = 0;
+    while i < n {
+        let _sp = if i > 0 { print_str(" "); 0 } else { 0 };
+        print(vec_get(arr, i));
+        set i = i + 1
+    };
+    let _nl = print_str("
+")
+};
+
+fn main() -> () = {
+    let a1 = vec_new();
+    let _p = vec_push(a1, 10); let _p = vec_push(a1, 7);
+    let _p = vec_push(a1, 8); let _p = vec_push(a1, 9);
+    let _p = vec_push(a1, 1); let _p = vec_push(a1, 5);
+    quicksort(a1, 0, 5);
+    print_str("sorted1: "); print_arr(a1, 6);
+
+    let a2 = vec_new();
+    let _p = vec_push(a2, 3); let _p = vec_push(a2, 1);
+    let _p = vec_push(a2, 4); let _p = vec_push(a2, 1);
+    let _p = vec_push(a2, 5); let _p = vec_push(a2, 9);
+    let _p = vec_push(a2, 2); let _p = vec_push(a2, 6);
+    quicksort(a2, 0, 7);
+    print_str("sorted2: "); print_arr(a2, 8);
+
+    let a3 = vec_new();
+    let _p = vec_push(a3, 1);
+    quicksort(a3, 0, 0);
+    print_str("sorted3: "); print_arr(a3, 1)
+};

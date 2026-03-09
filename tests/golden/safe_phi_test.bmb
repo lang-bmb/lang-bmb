@@ -1,0 +1,12 @@
+// Minimal reproduction of --safe PHI node bug
+// if/else with array access inside one arm
+
+fn process(arr: &[i64; 5], x: i64) -> i64
+= if x > 0 { arr[0] + x } else { x };
+
+fn main() -> i64 = {
+    let arr: [i64; 5] = [10, 20, 30, 40, 50];
+    let r = process(&arr, 5);
+    let _u = println(r);
+    0
+};

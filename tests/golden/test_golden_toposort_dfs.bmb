@@ -1,0 +1,125 @@
+// Golden Test: DFS-based topological sort
+// Uses DFS with post-order reversal to produce topological ordering
+// Handles DAGs; detects cycles via 3-color marking (0=white, 1=gray, 2=black)
+
+fn topo_dfs(adj: i64, adj_size: i64, n: i64, v: i64, color: i64, order: i64, has_cycle: i64) -> () = {
+    vec_set(color, v, 1);
+    let deg = vec_get(adj_size, v);
+    let base = v * n;
+    let mut i = 0;
+    while i < deg {
+        let u = vec_get(adj, base + i);
+        let c = vec_get(color, u);
+        let _x = if c == 1 {
+            vec_set(has_cycle, 0, 1);
+            0
+        } else if c == 0 {
+            topo_dfs(adj, adj_size, n, u, color, order, has_cycle);
+            0
+        } else { 0 };
+        set i = i + 1
+    };
+    vec_set(color, v, 2);
+    let _p = vec_push(order, v)
+};
+
+fn topological_sort(adj: i64, adj_size: i64, n: i64) -> i64 = {
+    let color = vec_new();
+    let order = vec_new();
+    let has_cycle = vec_new();
+    let _p = vec_push(has_cycle, 0);
+    let mut i = 0;
+    while i < n {
+        let _p = vec_push(color, 0);
+        set i = i + 1
+    };
+    set i = 0;
+    while i < n {
+        let _x = if vec_get(color, i) == 0 {
+            topo_dfs(adj, adj_size, n, i, color, order, has_cycle);
+            0
+        } else { 0 };
+        set i = i + 1
+    };
+    // Reverse order for topological sort
+    let result = vec_new();
+    let len = vec_len(order);
+    set i = 0;
+    while i < len {
+        let _p = vec_push(result, vec_get(order, len - 1 - i));
+        set i = i + 1
+    };
+    // Store cycle flag at position n in result for checking
+    let _p = vec_push(result, vec_get(has_cycle, 0));
+    result
+};
+
+fn add_edge(adj: i64, adj_size: i64, n: i64, from: i64, to: i64) -> () = {
+    let base = from * n;
+    let deg = vec_get(adj_size, from);
+    vec_set(adj, base + deg, to);
+    vec_set(adj_size, from, deg + 1)
+};
+
+fn main() -> () = {
+    // Test 1: 6-node DAG
+    let n = 6;
+    let adj = vec_new();
+    let adj_size = vec_new();
+    let mut i = 0;
+    while i < n * n {
+        let _p = vec_push(adj, 0);
+        set i = i + 1
+    };
+    set i = 0;
+    while i < n {
+        let _p = vec_push(adj_size, 0);
+        set i = i + 1
+    };
+    // Edges: 5->2, 5->0, 4->0, 4->1, 2->3, 3->1
+    add_edge(adj, adj_size, n, 5, 2);
+    add_edge(adj, adj_size, n, 5, 0);
+    add_edge(adj, adj_size, n, 4, 0);
+    add_edge(adj, adj_size, n, 4, 1);
+    add_edge(adj, adj_size, n, 2, 3);
+    add_edge(adj, adj_size, n, 3, 1);
+
+    let result = topological_sort(adj, adj_size, n);
+    print_str("topo:");
+    set i = 0;
+    while i < n {
+        print_str(" ");
+        print(vec_get(result, i));
+        set i = i + 1
+    };
+    print_str("\n");
+    print_str("cycle=");
+    let _r = println(vec_get(result, n));
+
+    // Test 2: Linear chain 0->1->2->3
+    let n2 = 4;
+    let adj2 = vec_new();
+    let adj_size2 = vec_new();
+    set i = 0;
+    while i < n2 * n2 {
+        let _p = vec_push(adj2, 0);
+        set i = i + 1
+    };
+    set i = 0;
+    while i < n2 {
+        let _p = vec_push(adj_size2, 0);
+        set i = i + 1
+    };
+    add_edge(adj2, adj_size2, n2, 0, 1);
+    add_edge(adj2, adj_size2, n2, 1, 2);
+    add_edge(adj2, adj_size2, n2, 2, 3);
+    let result2 = topological_sort(adj2, adj_size2, n2);
+    print_str("linear:");
+    set i = 0;
+    while i < n2 {
+        print_str(" ");
+        print(vec_get(result2, i));
+        set i = i + 1
+    };
+    let _nl = print_str("\n")
+};

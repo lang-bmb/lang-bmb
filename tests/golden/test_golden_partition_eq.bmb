@@ -1,0 +1,178 @@
+// Golden Test: Equal Partition Sum Problem
+// Can the array be partitioned into two subsets with equal sum?
+// Reduces to subset sum with target = total_sum / 2
+
+fn main() -> i64 = {
+    // Test 1: [1, 5, 11, 5] -> total=22, target=11 -> {1,5,5} and {11} -> YES
+    let arr = vec_new();
+    vec_push(arr, 1); vec_push(arr, 5); vec_push(arr, 11); vec_push(arr, 5);
+    let n = 4;
+    let total = 0;
+    for i in 0..n { total = total + vec_get(arr, i) };
+    let _p1 = println(total);  // 22
+
+    // If total is odd, impossible
+    let can = if total - (total / 2) * 2 != 0 { 0 } else {
+        let target = total / 2;
+        let dp = vec_new();
+        for _i in 0..(target + 1) { vec_push(dp, 0) };
+        let _s = vec_set(dp, 0, 1);
+        for i in 0..n {
+            let val = vec_get(arr, i);
+            let j = target;
+            loop {
+                if j < val { break } else { () };
+                if vec_get(dp, j - val) == 1 {
+                    let _s = vec_set(dp, j, 1)
+                } else { () };
+                j = j - 1
+            }
+        };
+        let result = vec_get(dp, target);
+        let _f = vec_free(dp);
+        result
+    };
+    let _p2 = println(can);  // 1
+
+    // Test 2: [1, 2, 3, 5] -> total=11 (odd) -> NO
+    let arr2 = vec_new();
+    vec_push(arr2, 1); vec_push(arr2, 2); vec_push(arr2, 3); vec_push(arr2, 5);
+    let n2 = 4;
+    let total2 = 0;
+    for i in 0..n2 { total2 = total2 + vec_get(arr2, i) };
+    let _p3 = println(total2);  // 11
+    let odd2 = total2 - (total2 / 2) * 2;
+    let _p4 = println(odd2);    // 1 (odd, so impossible)
+
+    // Test 3: [1, 2, 3, 4, 5, 5] -> total=20, target=10 -> {1,4,5} and {2,3,5} -> YES
+    let arr3 = vec_new();
+    vec_push(arr3, 1); vec_push(arr3, 2); vec_push(arr3, 3);
+    vec_push(arr3, 4); vec_push(arr3, 5); vec_push(arr3, 5);
+    let n3 = 6;
+    let total3 = 0;
+    for i in 0..n3 { total3 = total3 + vec_get(arr3, i) };
+    let target3 = total3 / 2;  // 10
+    let dp3 = vec_new();
+    for _i in 0..(target3 + 1) { vec_push(dp3, 0) };
+    let _s = vec_set(dp3, 0, 1);
+    for i in 0..n3 {
+        let val = vec_get(arr3, i);
+        let j = target3;
+        loop {
+            if j < val { break } else { () };
+            if vec_get(dp3, j - val) == 1 {
+                let _s = vec_set(dp3, j, 1)
+            } else { () };
+            j = j - 1
+        }
+    };
+    let _p5 = println(vec_get(dp3, target3));  // 1
+
+    // Test 4: [3, 3, 3, 4, 5] -> total=18, target=9 -> {4,5} and {3,3,3} -> YES
+    let arr4 = vec_new();
+    vec_push(arr4, 3); vec_push(arr4, 3); vec_push(arr4, 3);
+    vec_push(arr4, 4); vec_push(arr4, 5);
+    let n4 = 5;
+    let total4 = 0;
+    for i in 0..n4 { total4 = total4 + vec_get(arr4, i) };
+    let target4 = total4 / 2;  // 9
+    let dp4 = vec_new();
+    for _i in 0..(target4 + 1) { vec_push(dp4, 0) };
+    let _s = vec_set(dp4, 0, 1);
+    for i in 0..n4 {
+        let val = vec_get(arr4, i);
+        let j = target4;
+        loop {
+            if j < val { break } else { () };
+            if vec_get(dp4, j - val) == 1 {
+                let _s = vec_set(dp4, j, 1)
+            } else { () };
+            j = j - 1
+        }
+    };
+    let _p6 = println(vec_get(dp4, target4));  // 1
+
+    // Test 5: [1, 1] -> total=2, target=1 -> YES
+    let arr5 = vec_new();
+    vec_push(arr5, 1); vec_push(arr5, 1);
+    let dp5 = vec_new();
+    vec_push(dp5, 1); vec_push(dp5, 0);
+    // Process element 1: j=1: dp[0]=1 -> dp[1]=1
+    // Process element 1: j=1: dp[0]=1 -> dp[1] already 1
+    for i in 0..2 {
+        let val = vec_get(arr5, i);
+        let j = 1;
+        loop {
+            if j < val { break } else { () };
+            if vec_get(dp5, j - val) == 1 {
+                let _s = vec_set(dp5, j, 1)
+            } else { () };
+            j = j - 1
+        }
+    };
+    let _p7 = println(vec_get(dp5, 1));  // 1
+
+    // Test 6: [2, 2, 3, 5] -> total=12, target=6 -> {2,2} can't reach 6. {3,2}=5. {5,2}=7 no.
+    // Actually: {2,2}+{3}=7 no. But wait, can we reach 6? {2+2+... } {3+2}=5, {5+2-1}? no.
+    // {2+2}=4, {3+2}=5, {5}=5, {3+2+2}=7, {5+2}=7, {5+2}=7, {5+3}=8. So we CAN'T reach 6!
+    // Wait: {2+2}=4, {3}=3, {5}=5, {2+3}=5, {2+5}=7, {3+5}=8, {2+2+3}=7, {2+2+5}=9, {2+3+5}=10, {2+2+3+5}=12. target=6: NO!
+    let arr6 = vec_new();
+    vec_push(arr6, 2); vec_push(arr6, 2); vec_push(arr6, 3); vec_push(arr6, 5);
+    let n6 = 4;
+    let total6 = 0;
+    for i in 0..n6 { total6 = total6 + vec_get(arr6, i) };
+    let target6 = total6 / 2;  // 6
+    let dp6 = vec_new();
+    for _i in 0..(target6 + 1) { vec_push(dp6, 0) };
+    let _s = vec_set(dp6, 0, 1);
+    for i in 0..n6 {
+        let val = vec_get(arr6, i);
+        let j = target6;
+        loop {
+            if j < val { break } else { () };
+            if vec_get(dp6, j - val) == 1 {
+                let _s = vec_set(dp6, j, 1)
+            } else { () };
+            j = j - 1
+        }
+    };
+    let _p8 = println(vec_get(dp6, target6));  // 0
+
+    // Test 7: [100] -> total=100, target=50 -> can't reach 50 with just 100 -> NO
+    let arr7 = vec_new();
+    vec_push(arr7, 100);
+    let dp7 = vec_new();
+    for _i in 0..51 { vec_push(dp7, 0) };
+    let _s = vec_set(dp7, 0, 1);
+    // 100 > 50, so loop never executes
+    let _p9 = println(vec_get(dp7, 50));  // 0
+
+    // Test 8: [10, 10, 10, 10] -> total=40, target=20 -> {10,10} YES
+    let arr8 = vec_new();
+    vec_push(arr8, 10); vec_push(arr8, 10); vec_push(arr8, 10); vec_push(arr8, 10);
+    let n8 = 4;
+    let target8 = 20;
+    let dp8 = vec_new();
+    for _i in 0..(target8 + 1) { vec_push(dp8, 0) };
+    let _s = vec_set(dp8, 0, 1);
+    for i in 0..n8 {
+        let val = vec_get(arr8, i);
+        let j = target8;
+        loop {
+            if j < val { break } else { () };
+            if vec_get(dp8, j - val) == 1 {
+                let _s = vec_set(dp8, j, 1)
+            } else { () };
+            j = j - 1
+        }
+    };
+    let _p10 = println(vec_get(dp8, target8));  // 1
+
+    let _f = vec_free(arr); let _f = vec_free(arr2); let _f = vec_free(arr3);
+    let _f = vec_free(dp3); let _f = vec_free(arr4); let _f = vec_free(dp4);
+    let _f = vec_free(arr5); let _f = vec_free(dp5);
+    let _f = vec_free(arr6); let _f = vec_free(dp6);
+    let _f = vec_free(arr7); let _f = vec_free(dp7);
+    let _f = vec_free(arr8); let _f = vec_free(dp8);
+    0
+};

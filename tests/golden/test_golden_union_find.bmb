@@ -1,0 +1,101 @@
+// Golden Test: Union-Find (Disjoint Set Union)
+// With path compression and union by rank
+
+fn uf_new(n: i64) -> i64 = {
+    let uf = vec_new();
+    let mut i = 0;
+    while i < n {
+        let _p = vec_push(uf, i);
+        set i = i + 1
+    };
+    set i = 0;
+    while i < n {
+        let _p = vec_push(uf, 0);
+        set i = i + 1
+    };
+    uf
+};
+
+fn uf_find(uf: i64, n: i64, x: i64) -> i64 = {
+    let mut cur = x;
+    while vec_get(uf, cur) != cur {
+        set cur = vec_get(uf, cur)
+    };
+    let root = cur;
+    set cur = x;
+    while cur != root {
+        let next = vec_get(uf, cur);
+        vec_set(uf, cur, root);
+        set cur = next
+    };
+    root
+};
+
+fn uf_union(uf: i64, n: i64, x: i64, y: i64) -> () = {
+    let rx = uf_find(uf, n, x);
+    let ry = uf_find(uf, n, y);
+    let _skip = if rx != ry {
+        let rank_x = vec_get(uf, n + rx);
+        let rank_y = vec_get(uf, n + ry);
+        let _z = if rank_x < rank_y {
+            vec_set(uf, rx, ry);
+            0
+        } else if rank_x > rank_y {
+            vec_set(uf, ry, rx);
+            0
+        } else {
+            vec_set(uf, ry, rx);
+            vec_set(uf, n + rx, rank_x + 1);
+            0
+        };
+        0
+    } else { 0 }
+};
+
+fn uf_connected(uf: i64, n: i64, x: i64, y: i64) -> i64 = {
+    if uf_find(uf, n, x) == uf_find(uf, n, y) { 1 } else { 0 }
+};
+
+fn count_components(uf: i64, n: i64) -> i64 = {
+    let mut count = 0;
+    let mut i = 0;
+    while i < n {
+        let _x = if uf_find(uf, n, i) == i {
+            set count = count + 1;
+            0
+        } else { 0 };
+        set i = i + 1
+    };
+    count
+};
+
+fn main() -> () = {
+    let n = 8;
+    let uf = uf_new(n);
+    print_str("components="); let _r = println(count_components(uf, n));
+    uf_union(uf, n, 0, 1);
+    uf_union(uf, n, 2, 3);
+    uf_union(uf, n, 4, 5);
+    uf_union(uf, n, 6, 7);
+    print_str("components="); let _r = println(count_components(uf, n));
+    uf_union(uf, n, 0, 2);
+    uf_union(uf, n, 4, 6);
+    print_str("components="); let _r = println(count_components(uf, n));
+    uf_union(uf, n, 0, 4);
+    print_str("components="); let _r = println(count_components(uf, n));
+    print_str("0-7="); let _r = println(uf_connected(uf, n, 0, 7));
+    print_str("1-6="); let _r = println(uf_connected(uf, n, 1, 6));
+
+    // Kruskal-style cycle detection
+    let n2 = 5;
+    let uf2 = uf_new(n2);
+    print_str("add 0-1: "); let _r = println(1 - uf_connected(uf2, n2, 0, 1));
+    uf_union(uf2, n2, 0, 1);
+    print_str("add 1-2: "); let _r = println(1 - uf_connected(uf2, n2, 1, 2));
+    uf_union(uf2, n2, 1, 2);
+    print_str("add 2-3: "); let _r = println(1 - uf_connected(uf2, n2, 2, 3));
+    uf_union(uf2, n2, 2, 3);
+    print_str("add 3-4: "); let _r = println(1 - uf_connected(uf2, n2, 3, 4));
+    uf_union(uf2, n2, 3, 4);
+    print_str("add 0-4: "); let _r = println(1 - uf_connected(uf2, n2, 0, 4))
+};

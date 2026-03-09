@@ -1,0 +1,96 @@
+// Golden Test: For-Range + Loop Patterns
+// Tests various loop constructs and patterns
+
+fn sum_range(n: i64) -> i64 = {
+    let s = 0;
+    for i in 0..n {
+        s = s + i;
+    };
+    s
+};
+
+fn sum_inclusive(n: i64) -> i64 = {
+    let s = 0;
+    for i in 1..=n {
+        s = s + i;
+    };
+    s
+};
+
+fn count_even(limit: i64) -> i64 = {
+    let i = 1;
+    let count = 0;
+    loop {
+        if i > limit { break } else { () };
+        if i % 2 == 0 {
+            count = count + 1;
+        } else { () };
+        i = i + 1;
+    };
+    count
+};
+
+fn factorial(n: i64) -> i64 = {
+    let result = 1;
+    for i in 1..=n {
+        result = result * i;
+    };
+    result
+};
+
+fn power(base: i64, exp: i64) -> i64 = {
+    let result = 1;
+    for _i in 0..exp {
+        result = result * base;
+    };
+    result
+};
+
+fn main() -> i64 = {
+    // For-range: 0..n (exclusive)
+    let _p1 = println(sum_range(10));  // 0+1+...+9 = 45
+
+    // For-range: 1..=n (inclusive)
+    let _p2 = println(sum_inclusive(10));  // 1+2+...+10 = 55
+
+    // Loop with condition
+    let _p3 = println(count_even(20));  // even numbers 2,4,...,20 = 10
+
+    // Factorial via for-range
+    let _p4 = println(factorial(6));  // 720
+    let _p5 = println(factorial(10)); // 3628800
+
+    // Power via for-range
+    let _p6 = println(power(2, 10));  // 1024
+    let _p7 = println(power(3, 5));   // 243
+
+    // Nested for loops
+    let total = 0;
+    for i in 0..5 {
+        for j in 0..5 {
+            if i == j {
+                total = total + 1;
+            } else { () };
+        };
+    };
+    let _p8 = println(total);  // 5 (diagonal)
+
+    // Loop with early break
+    let found = 0;
+    for i in 0..100 {
+        if i * i > 50 {
+            found = i;
+            break;
+        } else { () };
+    };
+    let _p9 = println(found);  // 8 (8*8=64 > 50)
+
+    // Accumulate product
+    let product = 1;
+    for i in 1..=5 {
+        product = product * (i + 1);
+    };
+    let _p10 = println(product);  // 2*3*4*5*6 = 720
+
+    0
+};

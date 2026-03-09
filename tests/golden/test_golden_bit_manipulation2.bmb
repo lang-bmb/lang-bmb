@@ -1,0 +1,137 @@
+// Golden Test: Bit Manipulation Tricks
+// Collection of common bitwise operations and tricks
+
+// Count set bits (population count)
+fn popcount(n: i64) -> i64 = {
+    let mut x = n;
+    let mut count = 0;
+    loop {
+        if x == 0 { break } else { () };
+        set count = count + (x band 1);
+        set x = x >>> 1;  // logical shift right
+    };
+    count
+};
+
+// Check if power of 2
+fn is_power2(n: i64) -> i64 =
+    if n > 0 and (n band (n - 1)) == 0 { 1 } else { 0 };
+
+// Lowest set bit
+fn lowest_bit(n: i64) -> i64 = n band (0 - n);
+
+// Highest set bit position (0-indexed from LSB)
+fn highest_bit_pos(n: i64) -> i64 = {
+    let mut x = n;
+    let mut pos = 0 - 1;
+    loop {
+        if x == 0 { break } else { () };
+        set pos = pos + 1;
+        set x = x >>> 1;
+    };
+    pos
+};
+
+// Next power of 2 >= n
+fn next_pow2(n: i64) -> i64 = {
+    if n <= 1 { return 1 };
+    let mut p = 1;
+    loop {
+        if p >= n { break } else { () };
+        set p = p * 2;
+    };
+    p
+};
+
+// Swap using XOR
+fn xor_swap(arr: i64, i: i64, j: i64) -> i64 = {
+    let a = vec_get(arr, i);
+    let b = vec_get(arr, j);
+    let a2 = a bxor b;
+    let b2 = a2 bxor b;
+    let a3 = a2 bxor b2;
+    vec_set(arr, i, a3);
+    vec_set(arr, j, b2);
+    0
+};
+
+// Reverse bits of a byte (8 bits)
+fn reverse_byte(n: i64) -> i64 = {
+    let mut result = 0;
+    let mut x = n;
+    for _i in 0..8 {
+        set result = (result * 2) bor (x band 1);
+        set x = x >>> 1;
+    };
+    result
+};
+
+// Count trailing zeros
+fn ctz(n: i64) -> i64 = {
+    if n == 0 { return 64 };
+    let mut x = n;
+    let mut count = 0;
+    loop {
+        if (x band 1) == 1 { break } else { () };
+        set count = count + 1;
+        set x = x >>> 1;
+    };
+    count
+};
+
+fn main() -> i64 = {
+    // Test 1: popcount
+    println(popcount(0));     // 0
+    println(popcount(1));     // 1
+    println(popcount(7));     // 3 (111)
+    println(popcount(255));   // 8
+
+    // Test 2: power of 2
+    println(is_power2(1));    // 1
+    println(is_power2(2));    // 1
+    println(is_power2(4));    // 1
+    println(is_power2(6));    // 0
+    println(is_power2(16));   // 1
+    println(is_power2(0));    // 0
+
+    // Test 3: lowest set bit
+    println(lowest_bit(12));  // 4 (1100 → lowest = 100 = 4)
+    println(lowest_bit(10));  // 2 (1010 → lowest = 10 = 2)
+    println(lowest_bit(8));   // 8 (1000 → lowest = 1000 = 8)
+
+    // Test 4: highest bit position
+    println(highest_bit_pos(1));   // 0
+    println(highest_bit_pos(8));   // 3
+    println(highest_bit_pos(255)); // 7
+    println(highest_bit_pos(256)); // 8
+
+    // Test 5: next power of 2
+    println(next_pow2(1));   // 1
+    println(next_pow2(3));   // 4
+    println(next_pow2(5));   // 8
+    println(next_pow2(16));  // 16
+    println(next_pow2(17));  // 32
+
+    // Test 6: XOR swap
+    let arr = vec_new();
+    vec_push(arr, 42);
+    vec_push(arr, 99);
+    let _sw = xor_swap(arr, 0, 1);
+    println(vec_get(arr, 0));  // 99
+    println(vec_get(arr, 1));  // 42
+
+    // Test 7: reverse byte
+    println(reverse_byte(0));     // 0
+    println(reverse_byte(1));     // 128 (00000001 → 10000000)
+    println(reverse_byte(255));   // 255 (11111111 → 11111111)
+    println(reverse_byte(170));   // 85  (10101010 → 01010101)
+
+    // Test 8: count trailing zeros
+    println(ctz(1));    // 0
+    println(ctz(4));    // 2
+    println(ctz(16));   // 4
+    println(ctz(12));   // 2
+
+    vec_free(arr);
+    0
+};

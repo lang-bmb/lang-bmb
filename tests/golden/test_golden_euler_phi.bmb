@@ -1,0 +1,99 @@
+// Golden Test: Euler's totient function (phi)
+// phi(n) = count of integers in [1, n) that are coprime to n
+// Properties: phi(p) = p-1 for prime p, phi(p*q) = (p-1)*(q-1), multiplicative
+
+// GCD using Euclidean algorithm
+fn gcd(a: i64, b: i64) -> i64 =
+    if b == 0 { a }
+    else { gcd(b, a - (a / b) * b) };
+
+// Euler's totient: count integers in [1, n] coprime to n
+fn euler_phi(n: i64) -> i64 = {
+    let mut count = 0;
+    for i in 1..(n + 1) {
+        let _x = if gcd(i, n) == 1 {
+            count = count + 1; 0
+        } else { 0 }
+    };
+    count
+};
+
+// Optimized phi using prime factorization trial division
+// phi(n) = n * prod(1 - 1/p) for each prime factor p of n
+fn euler_phi_fast(n: i64) -> i64 = {
+    let mut result = n;
+    let mut m = n;
+    let mut p = 2;
+    loop {
+        if p * p > m { break } else { () };
+        let _x = if m - (m / p) * p == 0 {
+            // p divides m, remove all factors of p
+            loop {
+                if m - (m / p) * p != 0 { break } else { () };
+                m = m / p
+            };
+            // Apply phi formula: result = result * (p - 1) / p
+            result = result / p * (p - 1)
+        } else { () };
+        p = p + 1
+    };
+    // If m > 1, then m is a remaining prime factor
+    let _y = if m > 1 {
+        result = result / m * (m - 1); 0
+    } else { 0 };
+    result
+};
+
+// Sum of phi(d) for all d dividing n should equal n
+fn sum_phi_divisors(n: i64) -> i64 = {
+    let mut s = 0;
+    for d in 1..(n + 1) {
+        let _x = if n - (n / d) * d == 0 {
+            s = s + euler_phi(d); 0
+        } else { 0 }
+    };
+    s
+};
+
+// Check if n is prime using phi: phi(p) == p - 1
+fn is_prime_via_phi(n: i64) -> i64 =
+    if n < 2 { 0 }
+    else { if euler_phi(n) == n - 1 { 1 } else { 0 } };
+
+fn main() -> i64 = {
+    // Test 1: phi of small primes
+    let _p1 = println(euler_phi(2));    // 1
+    let _p2 = println(euler_phi(3));    // 2
+    let _p3 = println(euler_phi(5));    // 4
+    let _p4 = println(euler_phi(7));    // 6
+    let _p5 = println(euler_phi(11));   // 10
+    let _p6 = println(euler_phi(13));   // 12
+
+    // Test 2: phi of composite numbers
+    let _p7 = println(euler_phi(6));    // phi(2*3) = 1*2 = 2
+    let _p8 = println(euler_phi(10));   // phi(2*5) = 1*4 = 4
+    let _p9 = println(euler_phi(12));   // phi(4*3) = 12*(1-1/2)*(1-1/3) = 4
+    let _p10 = println(euler_phi(15));  // phi(3*5) = 2*4 = 8
+
+    // Test 3: phi(1) = 1
+    let _p11 = println(euler_phi(1));   // 1
+
+    // Test 4: phi of prime powers
+    let _p12 = println(euler_phi(4));   // phi(2^2) = 2
+    let _p13 = println(euler_phi(8));   // phi(2^3) = 4
+    let _p14 = println(euler_phi(9));   // phi(3^2) = 6
+
+    // Test 5: Fast phi matches naive phi
+    let _p15 = println(euler_phi_fast(12));   // 4
+    let _p16 = println(euler_phi_fast(30));   // 8
+    let _p17 = println(if euler_phi(20) == euler_phi_fast(20) { 1 } else { 0 }); // 1
+
+    // Test 6: Sum of phi(d) for d|n equals n (Gauss identity)
+    let _p18 = println(sum_phi_divisors(12));  // 12
+    let _p19 = println(sum_phi_divisors(10));  // 10
+
+    // Test 7: Primality via phi
+    let _p20 = println(is_prime_via_phi(17));  // 1 (prime)
+
+    0
+};

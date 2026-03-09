@@ -1,0 +1,40 @@
+// Golden Test: Deeply nested branching patterns
+// Tests goto chain simplification and phi threading on deep nesting
+
+fn classify_char(c: i64) -> i64 =
+    if c >= 48 and c <= 57 { 1 }       // digit
+    else if c >= 65 and c <= 90 { 2 }  // uppercase
+    else if c >= 97 and c <= 122 { 3 } // lowercase
+    else if c == 32 { 4 }              // space
+    else { 0 };                         // other
+
+fn priority(a: i64, b: i64, c: i64) -> i64 =
+    if a > b {
+        if a > c { a } else { c }
+    } else {
+    if b > c { b } else { c }
+    };
+
+fn nested_cond(x: i64) -> i64 =
+    if x > 1000 {
+        if x > 2000 {
+            if x > 3000 { 4 } else { 3 }
+        } else { 2 }
+    } else if x > 0 { 1 } else { 0 };
+
+fn main() -> i64 = {
+    println(classify_char(65));  // 2 (A)
+    println(classify_char(97));  // 3 (a)
+    println(classify_char(48));  // 1 (0)
+    println(classify_char(32));  // 4 (space)
+    println(classify_char(33));  // 0 (!)
+    println(priority(10, 20, 15)); // 20
+    println(priority(30, 10, 20)); // 30
+    println(priority(5, 10, 25));  // 25
+    println(nested_cond(3500));    // 4
+    println(nested_cond(2500));    // 3
+    println(nested_cond(1500));    // 2
+    println(nested_cond(500));     // 1
+    println(nested_cond(-5));      // 0
+    0
+    };

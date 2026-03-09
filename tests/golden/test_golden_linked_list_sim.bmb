@@ -1,0 +1,133 @@
+// Golden Test: Linked List Simulation via Parallel Arrays
+// Tests pointer-following patterns using vec-based node storage
+
+fn main() -> i64 = {
+    // Simulated linked list: data[] + next[]
+    // next[i] = index of next node, -1 = end
+    let data = vec_new();
+    let next = vec_new();
+
+    // Build list: 10 -> 20 -> 30 -> 40 -> 50
+    let _d0 = vec_push(data, 10);  // node 0
+    let _n0 = vec_push(next, 1);   // next = node 1
+    let _d1 = vec_push(data, 20);  // node 1
+    let _n1 = vec_push(next, 2);   // next = node 2
+    let _d2 = vec_push(data, 30);  // node 2
+    let _n2 = vec_push(next, 3);   // next = node 3
+    let _d3 = vec_push(data, 40);  // node 3
+    let _n3 = vec_push(next, 4);   // next = node 4
+    let _d4 = vec_push(data, 50);  // node 4
+    let _n4 = vec_push(next, 0 - 1); // next = -1 (end)
+
+    // Traverse: sum all elements
+    let sum = 0;
+    let cur = 0;
+    for _i in 0..10 {
+        if cur < 0 { break } else { () };
+        sum = sum + vec_get(data, cur);
+        cur = vec_get(next, cur);
+    };
+    let _p1 = println(sum);  // 150
+
+    // Count nodes
+    let count = 0;
+    let cur2 = 0;
+    for _i in 0..10 {
+        if cur2 < 0 { break } else { () };
+        count = count + 1;
+        cur2 = vec_get(next, cur2);
+    };
+    let _p2 = println(count);  // 5
+
+    // Find max
+    let mx = 0 - 999999;
+    let cur3 = 0;
+    for _i in 0..10 {
+        if cur3 < 0 { break } else { () };
+        let v = vec_get(data, cur3);
+        if v > mx { mx = v } else { () };
+        cur3 = vec_get(next, cur3);
+    };
+    let _p3 = println(mx);  // 50
+
+    // Find min
+    let mn = 999999;
+    let cur4 = 0;
+    for _i in 0..10 {
+        if cur4 < 0 { break } else { () };
+        let v = vec_get(data, cur4);
+        if v < mn { mn = v } else { () };
+        cur4 = vec_get(next, cur4);
+    };
+    let _p4 = println(mn);  // 10
+
+    // Search for value 30 -> return index
+    let found = 0 - 1;
+    let cur5 = 0;
+    for _i in 0..10 {
+        if cur5 < 0 { break } else { () };
+        if vec_get(data, cur5) == 30 {
+            found = cur5;
+            break;
+        } else { () };
+        cur5 = vec_get(next, cur5);
+    };
+    let _p5 = println(found);  // 2
+
+    // Search for value 99 -> not found
+    let found2 = 0 - 1;
+    let cur6 = 0;
+    for _i in 0..10 {
+        if cur6 < 0 { break } else { () };
+        if vec_get(data, cur6) == 99 {
+            found2 = cur6;
+            break;
+        } else { () };
+        cur6 = vec_get(next, cur6);
+    };
+    let _p6 = println(found2);  // -1
+
+    // Modify: insert 25 between node 1 (20) and node 2 (30)
+    // New node 5 with data=25, next=2; update node 1 next to 5
+    let _d5 = vec_push(data, 25);
+    let _n5 = vec_push(next, 2);
+    let _s1 = vec_set(next, 1, 5);
+
+    // Re-traverse and sum: 10+20+25+30+40+50=175
+    let sum2 = 0;
+    let cur7 = 0;
+    for _i in 0..10 {
+        if cur7 < 0 { break } else { () };
+        sum2 = sum2 + vec_get(data, cur7);
+        cur7 = vec_get(next, cur7);
+    };
+    let _p7 = println(sum2);  // 175
+
+    // Count after insert
+    let count2 = 0;
+    let cur8 = 0;
+    for _i in 0..10 {
+        if cur8 < 0 { break } else { () };
+        count2 = count2 + 1;
+        cur8 = vec_get(next, cur8);
+    };
+    let _p8 = println(count2);  // 6
+
+    // Delete node 2 (30): set node 5's next to node 3
+    let _s2 = vec_set(next, 5, 3);
+
+    // Re-traverse: 10+20+25+40+50=145
+    let sum3 = 0;
+    let cur9 = 0;
+    for _i in 0..10 {
+        if cur9 < 0 { break } else { () };
+        sum3 = sum3 + vec_get(data, cur9);
+        cur9 = vec_get(next, cur9);
+    };
+    let _p9 = println(sum3);  // 145
+
+    let _f1 = vec_free(data);
+    let _f2 = vec_free(next);
+
+    0
+};

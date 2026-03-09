@@ -1,0 +1,118 @@
+// Golden Test: Best Time to Buy and Sell Stock - Cycle 1569
+// Single transaction, multiple transactions, max drawdown
+
+// Single transaction: buy low, sell high (one pair)
+fn max_profit_single(prices: i64) -> i64 = {
+    let n = vec_len(prices);
+    let mut min_price = vec_get(prices, 0);
+    let mut max_profit = 0;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { 0 };
+        let p = vec_get(prices, i);
+        if p < min_price {
+            min_price = p
+        } else {
+            let profit = p - min_price;
+            if profit > max_profit { max_profit = profit } else { 0 }
+        };
+        i = i + 1
+    };
+    max_profit
+    };
+
+// Multiple transactions: buy and sell as many times as you want
+// Greedy: collect every upward movement
+fn max_profit_multi(prices: i64) -> i64 = {
+    let n = vec_len(prices);
+    let mut total = 0;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { 0 };
+        let diff = vec_get(prices, i) - vec_get(prices, i - 1);
+        if diff > 0 { total = total + diff } else { 0 };
+        i = i + 1
+    };
+    total
+    };
+
+// Maximum drawdown: largest peak-to-trough decline
+fn max_drawdown(prices: i64) -> i64 = {
+    let n = vec_len(prices);
+    let mut peak = vec_get(prices, 0);
+    let mut max_dd = 0;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { 0 };
+        let p = vec_get(prices, i);
+        if p > peak { peak = p } else { 0 };
+        let dd = peak - p;
+        if dd > max_dd { max_dd = dd } else { 0 };
+        i = i + 1
+    };
+    max_dd
+    };
+
+// Count profitable days (price went up from previous day)
+fn count_up_days(prices: i64) -> i64 = {
+    let n = vec_len(prices);
+    let mut count = 0;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { 0 };
+        if vec_get(prices, i) > vec_get(prices, i - 1) {
+            count = count + 1
+        } else { 0 };
+        i = i + 1
+    };
+    count
+    };
+
+fn main() -> i64 = {
+// Test 1: Classic case [7, 1, 5, 3, 6, 4]
+    let p1 = vec_new();
+    vec_push(p1, 7); vec_push(p1, 1); vec_push(p1, 5);
+    vec_push(p1, 3); vec_push(p1, 6); vec_push(p1, 4);
+    let _r1 = println(max_profit_single(p1));  // 5 (buy@1, sell@6)
+    let _r2 = println(max_profit_multi(p1));   // 7 (1->5=4, 3->6=3)
+    let _r3 = println(max_drawdown(p1));       // 6 (peak=7, trough=1)
+    let _r4 = println(count_up_days(p1));      // 3
+
+// Test 2: Monotone decreasing [5, 4, 3, 2, 1]
+    let p2 = vec_new();
+    vec_push(p2, 5); vec_push(p2, 4); vec_push(p2, 3);
+    vec_push(p2, 2); vec_push(p2, 1);
+    let _r5 = println(max_profit_single(p2));  // 0 (no profit possible)
+    let _r6 = println(max_profit_multi(p2));   // 0
+    let _r7 = println(max_drawdown(p2));       // 4 (5->1)
+    let _r8 = println(count_up_days(p2));      // 0
+
+// Test 3: Monotone increasing [1, 2, 3, 4, 5]
+    let p3 = vec_new();
+    vec_push(p3, 1); vec_push(p3, 2); vec_push(p3, 3);
+    vec_push(p3, 4); vec_push(p3, 5);
+    let _r9 = println(max_profit_single(p3));  // 4 (buy@1, sell@5)
+    let _r10 = println(max_profit_multi(p3));  // 4 (same as single)
+    let _r11 = println(max_drawdown(p3));      // 0 (never declines)
+    let _r12 = println(count_up_days(p3));     // 4
+
+// Test 4: Volatile [2, 4, 1, 7, 5, 3, 6, 8]
+    let p4 = vec_new();
+    vec_push(p4, 2); vec_push(p4, 4); vec_push(p4, 1);
+    vec_push(p4, 7); vec_push(p4, 5); vec_push(p4, 3);
+    vec_push(p4, 6); vec_push(p4, 8);
+    let _r13 = println(max_profit_single(p4)); // 7 (buy@1, sell@8)
+    let _r14 = println(max_profit_multi(p4));  // 13 (2->4=2, 1->7=6, 3->6=3, 6->8=2)
+    let _r15 = println(max_drawdown(p4));      // 4 (peak=7, trough=3)
+    let _r16 = println(count_up_days(p4));     // 5
+
+// Test 5: Single price [100]
+    let p5 = vec_new();
+    vec_push(p5, 100);
+    let _r17 = println(max_profit_single(p5)); // 0
+    let _r18 = println(max_profit_multi(p5));  // 0
+
+    vec_free(p1); vec_free(p2); vec_free(p3);
+    vec_free(p4); vec_free(p5);
+    0
+    };

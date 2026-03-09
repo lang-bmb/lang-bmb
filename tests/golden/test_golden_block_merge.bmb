@@ -1,0 +1,55 @@
+// Golden Test: Block merge optimization — linear chains merged into single blocks
+// v0.95: When block A ends with goto B and B has one predecessor, merge B into A
+
+fn linear_chain(x: i64, y: i64) -> i64 = {
+// Sequential let bindings create linear block chains
+    let a = x + y;
+    let b = a * 2;
+    let c = b + 1;
+    c
+    };
+
+fn branch_no_merge(x: i64, flag: bool) -> i64 = {
+// Diamond pattern — merge block has 2 predecessors, cannot merge
+    let base = x * 3;
+    let result = if flag { base + 10 } else { base - 10 };
+    result + 1
+    };
+
+fn nested_lets(a: i64, b: i64, c: i64) -> i64 = {
+// Multiple sequential computations — ideal for block merging
+    let sum = a + b;
+    let product = sum * c;
+    let adjusted = product - a;
+    let final_val = adjusted + b;
+    final_val
+    };
+
+fn mixed_pattern(x: i64, y: i64, flag: bool) -> i64 = {
+// Mix of linear and branching — partial merging possible
+    let a = x + y;
+    let b = if flag { a * 2 } else { a * 3 };
+    let c = b + x;
+    c
+    };
+
+fn main() -> i64 = {
+    let r1 = linear_chain(5, 3);
+    let _p1 = println(r1);  // 17 ((5+3)*2+1)
+
+    let r2 = branch_no_merge(4, true);
+    let _p2 = println(r2);  // 23 (4*3+10+1)
+
+    let r3 = branch_no_merge(4, false);
+    let _p3 = println(r3);  // 3 (4*3-10+1)
+
+    let r4 = nested_lets(2, 3, 4);
+    let _p4 = println(r4);  // 21 ((2+3)*4-2+3)
+
+    let r5 = mixed_pattern(5, 3, true);
+    let _p5 = println(r5);  // 21 ((5+3)*2+5)
+
+    let r6 = mixed_pattern(5, 3, false);
+    let _p6 = println(r6);  // 29 ((5+3)*3+5)
+    0
+    };

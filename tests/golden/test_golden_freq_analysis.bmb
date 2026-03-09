@@ -1,0 +1,219 @@
+// Golden Test: Frequency analysis with counting sort and histogram - Cycle 1629
+// Counting sort for bounded integers, mode finding, frequency histogram
+
+// Counting sort: sort values in [0, max_val] using frequency counting
+fn freq_sort(arr: i64, max_val: i64) -> i64 = {
+    let n = vec_len(arr);
+    let freq = vec_new();
+    let mut fi = 0;
+    loop {
+        if fi > max_val { break } else { () };
+        vec_push(freq, 0);
+        fi = fi + 1
+    };
+
+    // Count occurrences
+    let mut ci = 0;
+    loop {
+        if ci >= n { break } else { () };
+        let val = vec_get(arr, ci);
+        vec_set(freq, val, vec_get(freq, val) + 1);
+        ci = ci + 1
+    };
+
+    // Write back sorted
+    let mut pos = 0;
+    let mut v = 0;
+    loop {
+        if v > max_val { break } else { () };
+        let mut c = vec_get(freq, v);
+        loop {
+            if c <= 0 { break } else { () };
+            vec_set(arr, pos, v);
+            pos = pos + 1;
+            c = c - 1
+        };
+        v = v + 1
+    };
+    vec_free(freq);
+    0
+};
+
+// Find the mode (most frequent value) in array with values in [0, max_val]
+// Ties broken by smallest value
+fn find_mode(arr: i64, max_val: i64) -> i64 = {
+    let n = vec_len(arr);
+    let freq = vec_new();
+    let mut fi = 0;
+    loop {
+        if fi > max_val { break } else { () };
+        vec_push(freq, 0);
+        fi = fi + 1
+    };
+
+    let mut ci = 0;
+    loop {
+        if ci >= n { break } else { () };
+        let val = vec_get(arr, ci);
+        vec_set(freq, val, vec_get(freq, val) + 1);
+        ci = ci + 1
+    };
+
+    let mut best_val = 0;
+    let mut best_count = 0;
+    let mut vi = 0;
+    loop {
+        if vi > max_val { break } else { () };
+        let c = vec_get(freq, vi);
+        if c > best_count {
+            best_val = vi;
+            best_count = c
+        } else { () };
+        vi = vi + 1
+    };
+    vec_free(freq);
+    best_val
+};
+
+// Count distinct values in array with values in [0, max_val]
+fn count_distinct(arr: i64, max_val: i64) -> i64 = {
+    let n = vec_len(arr);
+    let seen = vec_new();
+    let mut si = 0;
+    loop {
+        if si > max_val { break } else { () };
+        vec_push(seen, 0);
+        si = si + 1
+    };
+
+    let mut ci = 0;
+    loop {
+        if ci >= n { break } else { () };
+        vec_set(seen, vec_get(arr, ci), 1);
+        ci = ci + 1
+    };
+
+    let mut count = 0;
+    let mut vi = 0;
+    loop {
+        if vi > max_val { break } else { () };
+        count = count + vec_get(seen, vi);
+        vi = vi + 1
+    };
+    vec_free(seen);
+    count
+};
+
+// Build cumulative frequency: result[i] = count of elements <= i
+fn cumulative_freq(arr: i64, max_val: i64, result: i64) -> i64 = {
+    let n = vec_len(arr);
+    let freq = vec_new();
+    let mut fi = 0;
+    loop {
+        if fi > max_val { break } else { () };
+        vec_push(freq, 0);
+        fi = fi + 1
+    };
+
+    let mut ci = 0;
+    loop {
+        if ci >= n { break } else { () };
+        let val = vec_get(arr, ci);
+        vec_set(freq, val, vec_get(freq, val) + 1);
+        ci = ci + 1
+    };
+
+    let mut running = 0;
+    let mut vi = 0;
+    loop {
+        if vi > max_val { break } else { () };
+        running = running + vec_get(freq, vi);
+        vec_set(result, vi, running);
+        vi = vi + 1
+    };
+    vec_free(freq);
+    0
+};
+
+// Frequency of a specific value in array
+fn freq_of(arr: i64, val: i64) -> i64 = {
+    let n = vec_len(arr);
+    let mut cnt = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        if vec_get(arr, i) == val { cnt = cnt + 1 } else { () };
+        i = i + 1
+    };
+    cnt
+};
+
+fn main() -> i64 = {
+    // Test 1: Sort [4, 2, 7, 1, 3, 5, 2, 8, 0, 6]
+    let a1 = vec_new();
+    vec_push(a1, 4); vec_push(a1, 2); vec_push(a1, 7); vec_push(a1, 1);
+    vec_push(a1, 3); vec_push(a1, 5); vec_push(a1, 2); vec_push(a1, 8);
+    vec_push(a1, 0); vec_push(a1, 6);
+    let _s1 = freq_sort(a1, 9);
+    println(vec_get(a1, 0));   // 0
+    println(vec_get(a1, 5));   // 4
+    println(vec_get(a1, 9));   // 8
+
+    // Test 2: Sort with many duplicates [3, 1, 3, 1, 2, 2, 0, 3]
+    let a2 = vec_new();
+    vec_push(a2, 3); vec_push(a2, 1); vec_push(a2, 3); vec_push(a2, 1);
+    vec_push(a2, 2); vec_push(a2, 2); vec_push(a2, 0); vec_push(a2, 3);
+    let _s2 = freq_sort(a2, 3);
+    println(vec_get(a2, 0));   // 0
+    println(vec_get(a2, 1));   // 1
+    println(vec_get(a2, 7));   // 3
+
+    // Test 3: Mode finding [2, 5, 2, 3, 5, 2, 1, 5, 2]
+    let a3 = vec_new();
+    vec_push(a3, 2); vec_push(a3, 5); vec_push(a3, 2); vec_push(a3, 3);
+    vec_push(a3, 5); vec_push(a3, 2); vec_push(a3, 1); vec_push(a3, 5);
+    vec_push(a3, 2);
+    println(find_mode(a3, 9));   // 2 (appears 4 times)
+
+    // Test 4: Mode with tie [1, 2, 1, 2, 3]
+    let a4 = vec_new();
+    vec_push(a4, 1); vec_push(a4, 2); vec_push(a4, 1);
+    vec_push(a4, 2); vec_push(a4, 3);
+    println(find_mode(a4, 9));   // 1 (tie: 1 and 2 both appear twice, smallest wins)
+
+    // Test 5: Count distinct [1, 3, 3, 7, 7, 7, 2]
+    let a5 = vec_new();
+    vec_push(a5, 1); vec_push(a5, 3); vec_push(a5, 3); vec_push(a5, 7);
+    vec_push(a5, 7); vec_push(a5, 7); vec_push(a5, 2);
+    println(count_distinct(a5, 9));   // 4
+
+    // Test 6: Cumulative frequency [1, 0, 2, 1, 3, 0, 1]
+    let a6 = vec_new();
+    vec_push(a6, 1); vec_push(a6, 0); vec_push(a6, 2); vec_push(a6, 1);
+    vec_push(a6, 3); vec_push(a6, 0); vec_push(a6, 1);
+    let cf = vec_new();
+    vec_push(cf, 0); vec_push(cf, 0); vec_push(cf, 0); vec_push(cf, 0);
+    let _cf_r = cumulative_freq(a6, 3, cf);
+    println(vec_get(cf, 0));   // 2 (two 0s)
+    println(vec_get(cf, 1));   // 5 (two 0s + three 1s)
+    println(vec_get(cf, 2));   // 6 (+ one 2)
+    println(vec_get(cf, 3));   // 7 (+ one 3)
+
+    // Test 7: Frequency of specific values
+    let a7 = vec_new();
+    vec_push(a7, 4); vec_push(a7, 4); vec_push(a7, 4); vec_push(a7, 2);
+    vec_push(a7, 2); vec_push(a7, 1);
+    println(freq_of(a7, 4));   // 3
+    println(freq_of(a7, 2));   // 2
+    println(freq_of(a7, 0));   // 0
+
+    // Test 8: Single element
+    let a8 = vec_new();
+    vec_push(a8, 5);
+    let _s8 = freq_sort(a8, 9);
+    println(vec_get(a8, 0));   // 5
+
+    vec_free(a1); vec_free(a2); vec_free(a3); vec_free(a4);
+    vec_free(a5); vec_free(a6); vec_free(cf); vec_free(a7); vec_free(a8);
+    0
+};

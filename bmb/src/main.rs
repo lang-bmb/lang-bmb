@@ -3072,8 +3072,8 @@ fn escape_bmb_source(source: &str) -> String {
 /// Focuses on function definitions, ignoring target triple and runtime declarations
 fn normalize_ir(ir: &str) -> String {
     ir
-        // Replace | separators with newlines (bootstrap convention)
-        .replace("|", "\n")
+        // Replace Unit Separator (char 31) with newlines (bootstrap convention)
+        .replace('\x1F', "\n")
         // Split into lines
         .lines()
         // Trim whitespace
@@ -3388,7 +3388,7 @@ mod formatter_tests {
 
     #[test]
     fn test_normalize_ir_replaces_pipe_separators() {
-        let ir = "define i64 @main() {|ret i64 0|}";
+        let ir = "define i64 @main() {\x1Fret i64 0\x1F}";
         let normalized = normalize_ir(ir);
         assert!(normalized.contains("define i64 @main() {"));
         assert!(normalized.contains("ret i64 0"));

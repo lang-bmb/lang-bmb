@@ -1,0 +1,97 @@
+// Golden Test: Bit manipulation
+// Manual popcount, leading zeros, trailing zeros, power-of-two check
+// No LLVM intrinsics used — pure BMB implementation
+
+fn popcount(x: i64) -> i64 = {
+    let mut count = 0;
+    let mut v = x;
+    while v != 0 {
+        set count = count + (v % 2);
+        set v = v / 2
+    };
+    count
+};
+
+fn clz64(x: i64) -> i64 = {
+    if x == 0 { 64 }
+    else {
+        let mut count = 0;
+        let mut bit = 62;
+        let mut found = 0;
+        while bit >= 0 and found == 0 {
+            let mask = 1;
+            let mut shifted = mask;
+            let mut s = 0;
+            while s < bit {
+                set shifted = shifted * 2;
+                set s = s + 1
+            };
+            let _x = if (x / shifted) % 2 == 1 {
+                set found = 1;
+                0
+            } else {
+                set count = count + 1;
+                0
+            };
+            set bit = bit - 1
+        };
+        let _x = if found == 0 {
+            set count = count + 1;
+            0
+        } else { 0 };
+        count
+    }
+};
+
+fn ctz(x: i64) -> i64 = {
+    if x == 0 { 64 }
+    else {
+        let mut count = 0;
+        let mut v = x;
+        while v % 2 == 0 {
+            set count = count + 1;
+            set v = v / 2
+        };
+        count
+    }
+};
+
+fn is_power_of_two(x: i64) -> i64 = {
+    if x <= 0 { 0 }
+    else { if popcount(x) == 1 { 1 } else { 0 } }
+};
+
+fn next_power_of_two(x: i64) -> i64 = {
+    let mut p = 1;
+    while p < x {
+        set p = p * 2
+    };
+    p
+};
+
+fn main() -> () = {
+    // popcount tests
+    print_str("pop(0)="); let _r = println(popcount(0));
+    print_str("pop(1)="); let _r = println(popcount(1));
+    print_str("pop(7)="); let _r = println(popcount(7));
+    print_str("pop(255)="); let _r = println(popcount(255));
+    print_str("pop(1024)="); let _r = println(popcount(1024));
+
+    // ctz tests
+    print_str("ctz(0)="); let _r = println(ctz(0));
+    print_str("ctz(1)="); let _r = println(ctz(1));
+    print_str("ctz(8)="); let _r = println(ctz(8));
+    print_str("ctz(12)="); let _r = println(ctz(12));
+
+    // power of two
+    print_str("pow2(1)="); let _r = println(is_power_of_two(1));
+    print_str("pow2(4)="); let _r = println(is_power_of_two(4));
+    print_str("pow2(6)="); let _r = println(is_power_of_two(6));
+    print_str("pow2(1024)="); let _r = println(is_power_of_two(1024));
+
+    // next power of two
+    print_str("next(1)="); let _r = println(next_power_of_two(1));
+    print_str("next(5)="); let _r = println(next_power_of_two(5));
+    print_str("next(17)="); let _r = println(next_power_of_two(17));
+    print_str("next(1024)="); let _r = println(next_power_of_two(1024))
+};

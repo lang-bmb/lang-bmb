@@ -1,0 +1,149 @@
+// Golden Test: Stable merge sort preserving original order of equal elements
+// Encodes (key, original_index) as key * 100 + index to verify stability
+// After sorting by key, equal keys must retain ascending original indices
+
+// Merge two sorted subarrays arr[lo..mid) and arr[mid..hi) into tmp, then copy back
+fn merge(arr: i64, tmp: i64, lo: i64, mid: i64, hi: i64) -> i64 = {
+    let mut i = lo;
+    let mut j = mid;
+    let mut k = lo;
+    // Merge step
+    loop {
+        if i >= mid or j >= hi { break } else { () };
+        let ai = vec_get(arr, i);
+        let aj = vec_get(arr, j);
+        // Compare by key (value / 100). Stable: use <= so left side wins on tie
+        if ai / 100 <= aj / 100 {
+            vec_set(tmp, k, ai);
+            i = i + 1
+        } else {
+            vec_set(tmp, k, aj);
+            j = j + 1
+        };
+        k = k + 1
+    };
+    // Copy remaining from left half
+    loop {
+        if i >= mid { break } else { () };
+        vec_set(tmp, k, vec_get(arr, i));
+        i = i + 1;
+        k = k + 1
+    };
+    // Copy remaining from right half
+    loop {
+        if j >= hi { break } else { () };
+        vec_set(tmp, k, vec_get(arr, j));
+        j = j + 1;
+        k = k + 1
+    };
+    // Copy tmp back to arr
+    let mut p = lo;
+    loop {
+        if p >= hi { break } else { () };
+        vec_set(arr, p, vec_get(tmp, p));
+        p = p + 1
+    };
+    0
+};
+
+// Bottom-up merge sort (iterative, avoids deep recursion)
+fn merge_sort(arr: i64, tmp: i64, n: i64) -> i64 = {
+    let mut width = 1;
+    loop {
+        if width >= n { break } else { () };
+        let mut lo = 0;
+        loop {
+            if lo >= n { break } else { () };
+            let mid_raw = lo + width;
+            let mid = if mid_raw < n { mid_raw } else { n };
+            let hi_raw = lo + 2 * width;
+            let hi = if hi_raw < n { hi_raw } else { n };
+            let _m = if mid < hi { merge(arr, tmp, lo, mid, hi) } else { 0 };
+            lo = lo + 2 * width
+        };
+        width = width * 2
+    };
+    0
+};
+
+// Extract key from encoded value
+fn get_key(encoded: i64) -> i64 = encoded / 100;
+
+// Extract original index from encoded value
+fn get_idx(encoded: i64) -> i64 = encoded - (encoded / 100) * 100;
+
+fn main() -> i64 = {
+    // Test 1: Sort 8 elements with duplicate keys
+    // Elements: (key=3, idx=0), (key=1, idx=1), (key=4, idx=2), (key=1, idx=3),
+    //           (key=5, idx=4), (key=3, idx=5), (key=1, idx=6), (key=4, idx=7)
+    // Encoded: key*100 + original_index
+    let arr = vec_new();
+    vec_push(arr, 300);  // key=3, idx=0
+    vec_push(arr, 101);  // key=1, idx=1
+    vec_push(arr, 402);  // key=4, idx=2
+    vec_push(arr, 103);  // key=1, idx=3
+    vec_push(arr, 504);  // key=5, idx=4
+    vec_push(arr, 305);  // key=3, idx=5
+    vec_push(arr, 106);  // key=1, idx=6
+    vec_push(arr, 407);  // key=4, idx=7
+    let n = 8;
+
+    let tmp = vec_new();
+    for _i in 0..n { vec_push(tmp, 0) };
+
+    let _s = merge_sort(arr, tmp, n);
+
+    // Expected sorted order by key, stable within equal keys:
+    // key=1: idx=1, idx=3, idx=6  -> 101, 103, 106
+    // key=3: idx=0, idx=5         -> 300, 305
+    // key=4: idx=2, idx=7         -> 402, 407
+    // key=5: idx=4                -> 504
+
+    // Print keys in sorted order
+    let _p1 = println(get_key(vec_get(arr, 0)));  // 1
+    let _p2 = println(get_key(vec_get(arr, 1)));  // 1
+    let _p3 = println(get_key(vec_get(arr, 2)));  // 1
+    let _p4 = println(get_key(vec_get(arr, 3)));  // 3
+    let _p5 = println(get_key(vec_get(arr, 4)));  // 3
+    let _p6 = println(get_key(vec_get(arr, 5)));  // 4
+    let _p7 = println(get_key(vec_get(arr, 6)));  // 4
+    let _p8 = println(get_key(vec_get(arr, 7)));  // 5
+
+    // Verify stability: original indices within equal keys must be ascending
+    let _p9 = println(get_idx(vec_get(arr, 0)));   // 1 (first key=1)
+    let _p10 = println(get_idx(vec_get(arr, 1)));  // 3 (second key=1)
+    let _p11 = println(get_idx(vec_get(arr, 2)));  // 6 (third key=1)
+    let _p12 = println(get_idx(vec_get(arr, 3)));  // 0 (first key=3)
+    let _p13 = println(get_idx(vec_get(arr, 4)));  // 5 (second key=3)
+    let _p14 = println(get_idx(vec_get(arr, 5)));  // 2 (first key=4)
+    let _p15 = println(get_idx(vec_get(arr, 6)));  // 7 (second key=4)
+    let _p16 = println(get_idx(vec_get(arr, 7)));  // 4 (key=5)
+
+    // Test 2: Already sorted input stays sorted
+    let arr2 = vec_new();
+    vec_push(arr2, 100);  // key=1, idx=0
+    vec_push(arr2, 201);  // key=2, idx=1
+    vec_push(arr2, 302);  // key=3, idx=2
+    let tmp2 = vec_new();
+    for _i in 0..3 { vec_push(tmp2, 0) };
+    let _s2 = merge_sort(arr2, tmp2, 3);
+    let _p17 = println(get_key(vec_get(arr2, 0)));  // 1
+    let _p18 = println(get_key(vec_get(arr2, 1)));  // 2
+    let _p19 = println(get_key(vec_get(arr2, 2)));  // 3
+
+    // Test 3: Single element
+    let arr3 = vec_new();
+    vec_push(arr3, 500);
+    let tmp3 = vec_new();
+    vec_push(tmp3, 0);
+    let _s3 = merge_sort(arr3, tmp3, 1);
+    let _p20 = println(get_key(vec_get(arr3, 0)));  // 5
+
+    vec_free(arr);
+    vec_free(tmp);
+    vec_free(arr2);
+    vec_free(tmp2);
+    vec_free(arr3);
+    vec_free(tmp3);
+    0
+};

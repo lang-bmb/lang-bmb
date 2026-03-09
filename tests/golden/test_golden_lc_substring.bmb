@@ -1,0 +1,76 @@
+// Golden Test: Longest Common Substring (DP)
+// Finds length of longest common substring between two integer sequences
+
+fn lcs_len(a: i64, na: i64, b: i64, nb: i64) -> i64 = {
+    // dp[i][j] = length of common substring ending at a[i-1] and b[j-1]
+    // Stored as flat (na+1)*(nb+1) matrix
+    let cols = nb + 1;
+    let dp = vec_new();
+    let mut i = 0;
+    while i < (na + 1) * cols {
+        let _p = vec_push(dp, 0);
+        set i = i + 1
+    };
+    let mut best = 0;
+    set i = 1;
+    while i <= na {
+        let mut j = 1;
+        while j <= nb {
+            let _x = if vec_get(a, i - 1) == vec_get(b, j - 1) {
+                let val = vec_get(dp, (i - 1) * cols + (j - 1)) + 1;
+                vec_set(dp, i * cols + j, val);
+                set best = if val > best { val } else { best };
+                0
+            } else {
+                vec_set(dp, i * cols + j, 0);
+                0
+            };
+            set j = j + 1
+        };
+        set i = i + 1
+    };
+    best
+};
+
+fn main() -> () = {
+    // Test 1: [1,2,3,4,5] vs [2,3,4,6,7] -> LCS = [2,3,4], len=3
+    let a1 = vec_new();
+    let _p = vec_push(a1, 1); let _p = vec_push(a1, 2);
+    let _p = vec_push(a1, 3); let _p = vec_push(a1, 4);
+    let _p = vec_push(a1, 5);
+    let b1 = vec_new();
+    let _p = vec_push(b1, 2); let _p = vec_push(b1, 3);
+    let _p = vec_push(b1, 4); let _p = vec_push(b1, 6);
+    let _p = vec_push(b1, 7);
+    print_str("lcs1="); let _r = println(lcs_len(a1, 5, b1, 5));
+
+    // Test 2: No common substring
+    let a2 = vec_new();
+    let _p = vec_push(a2, 1); let _p = vec_push(a2, 3); let _p = vec_push(a2, 5);
+    let b2 = vec_new();
+    let _p = vec_push(b2, 2); let _p = vec_push(b2, 4); let _p = vec_push(b2, 6);
+    print_str("lcs2="); let _r = println(lcs_len(a2, 3, b2, 3));
+
+    // Test 3: Identical sequences
+    let a3 = vec_new();
+    let _p = vec_push(a3, 1); let _p = vec_push(a3, 2); let _p = vec_push(a3, 3);
+    let b3 = vec_new();
+    let _p = vec_push(b3, 1); let _p = vec_push(b3, 2); let _p = vec_push(b3, 3);
+    print_str("lcs3="); let _r = println(lcs_len(a3, 3, b3, 3));
+
+    // Test 4: One element common
+    let a4 = vec_new();
+    let _p = vec_push(a4, 1); let _p = vec_push(a4, 2); let _p = vec_push(a4, 3);
+    let b4 = vec_new();
+    let _p = vec_push(b4, 4); let _p = vec_push(b4, 2); let _p = vec_push(b4, 5);
+    print_str("lcs4="); let _r = println(lcs_len(a4, 3, b4, 3));
+
+    // Test 5: Multiple common substrings, find longest
+    let a5 = vec_new();
+    let _p = vec_push(a5, 1); let _p = vec_push(a5, 2); let _p = vec_push(a5, 8);
+    let _p = vec_push(a5, 3); let _p = vec_push(a5, 4); let _p = vec_push(a5, 5);
+    let b5 = vec_new();
+    let _p = vec_push(b5, 7); let _p = vec_push(b5, 3); let _p = vec_push(b5, 4);
+    let _p = vec_push(b5, 5); let _p = vec_push(b5, 9); let _p = vec_push(b5, 1);
+    print_str("lcs5="); let _r = println(lcs_len(a5, 6, b5, 6))
+};

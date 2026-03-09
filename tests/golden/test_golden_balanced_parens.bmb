@@ -1,0 +1,211 @@
+// Golden Test: Balanced parentheses
+// 1. Count valid balanced parenthesis strings of length 2n (Catalan numbers via DP)
+// 2. Validate if a sequence of parens is balanced using a counter (stack simulation)
+// 3. Generate count of strings with exactly k nesting depth
+
+// Count balanced paren strings of length 2n (Catalan number C(n))
+// C(n) = sum_{i=0}^{n-1} C(i) * C(n-1-i), C(0)=1
+fn catalan(n: i64) -> i64 = {
+    let memo = vec_new();
+    let _p0 = vec_push(memo, 1);  // C(0) = 1
+    let mut k = 1;
+    while k <= n {
+        let mut sum = 0;
+        for i in 0..k {
+            set sum = sum + vec_get(memo, i) * vec_get(memo, k - 1 - i)
+        };
+        let _pp = vec_push(memo, sum);
+        set k = k + 1
+    };
+    let result = vec_get(memo, n);
+    let _f = vec_free(memo);
+    result
+};
+
+// Validate balanced parens using a counter
+// Encoding: 1 = '(', 0 = ')'
+// Returns 1 if balanced, 0 if not
+fn validate_loop(v: i64, n: i64, i: i64, depth: i64) -> i64 =
+    if depth < 0 { 0 }
+    else if i >= n {
+        if depth == 0 { 1 } else { 0 }
+    } else {
+        let ch = vec_get(v, i);
+        if ch == 1 {
+            validate_loop(v, n, i + 1, depth + 1)
+        } else {
+            validate_loop(v, n, i + 1, depth - 1)
+        }
+    };
+
+fn validate(v: i64) -> i64 =
+    validate_loop(v, vec_len(v), 0, 0);
+
+// Compute max nesting depth of a paren sequence
+fn max_depth_loop(v: i64, n: i64, i: i64, depth: i64, best: i64) -> i64 =
+    if i >= n { best }
+    else {
+        let ch = vec_get(v, i);
+        let new_depth = if ch == 1 { depth + 1 } else { depth - 1 };
+        let new_best = if new_depth > best { new_depth } else { best };
+        max_depth_loop(v, n, i + 1, new_depth, new_best)
+    };
+
+fn max_depth(v: i64) -> i64 =
+    max_depth_loop(v, vec_len(v), 0, 0, 0);
+
+// Count number of balanced paren strings of length 2n with max depth exactly d
+// Use DP: dp[open][close][max_d] but simplified to recursive with memoization
+// Instead, count strings with max depth <= d and subtract max depth <= d-1
+// count_leq_depth(n, d) = number of balanced strings of length 2n with max depth <= d
+// Using DP: dp[i][j] = ways to place i opens and j closes with depth <= d
+// depth at any point = opens_placed - closes_placed, must be <= d
+fn count_leq_depth(n: i64, max_d: i64) -> i64 = {
+    // dp[(n+1)*(n+1)]: dp[i][j] = ways with i opens, j closes placed
+    // i - j = current depth, must be <= max_d and >= 0
+    // j <= i always (can't close more than opened)
+    let sz = (n + 1) * (n + 1);
+    let dp = vec_new();
+    for _k in 0..sz {
+        let _pp = vec_push(dp, 0);
+        0
+    };
+    // dp[0][0] = 1
+    let _s0 = vec_set(dp, 0, 1);
+
+    // Fill: for each (i,j), try adding open (i+1,j) or close (i,j+1)
+    for i in 0..n+1 {
+        for j in 0..n+1 {
+            let cur = vec_get(dp, i * (n + 1) + j);
+            if cur > 0 {
+                // Add open paren: depth becomes (i+1)-j
+                if i + 1 <= n and (i + 1 - j) <= max_d {
+                    let idx = (i + 1) * (n + 1) + j;
+                    let _su = vec_set(dp, idx, vec_get(dp, idx) + cur);
+                    0
+                } else { 0 };
+                // Add close paren: j+1 <= i (valid)
+                if j + 1 <= i and j + 1 <= n {
+                    let idx2 = i * (n + 1) + j + 1;
+                    let _su2 = vec_set(dp, idx2, vec_get(dp, idx2) + cur);
+                    0
+                } else { 0 }
+            } else { 0 }
+        }
+    };
+    let result = vec_get(dp, n * (n + 1) + n);
+    let _fd = vec_free(dp);
+    result
+};
+
+// Helper to build encoded paren sequences
+// 1 = '(', 0 = ')'
+fn make_parens2(a: i64, b: i64) -> i64 = {
+    let v = vec_new();
+    let _p0 = vec_push(v, a); let _p1 = vec_push(v, b);
+    v
+};
+
+fn make_parens4(a: i64, b: i64, c: i64, d: i64) -> i64 = {
+    let v = vec_new();
+    let _p0 = vec_push(v, a); let _p1 = vec_push(v, b);
+    let _p2 = vec_push(v, c); let _p3 = vec_push(v, d);
+    v
+};
+
+fn make_parens6(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64) -> i64 = {
+    let v = vec_new();
+    let _p0 = vec_push(v, a); let _p1 = vec_push(v, b);
+    let _p2 = vec_push(v, c); let _p3 = vec_push(v, d);
+    let _p4 = vec_push(v, e); let _p5 = vec_push(v, f);
+    v
+};
+
+fn make_parens8(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64, h: i64) -> i64 = {
+    let v = vec_new();
+    let _p0 = vec_push(v, a); let _p1 = vec_push(v, b);
+    let _p2 = vec_push(v, c); let _p3 = vec_push(v, d);
+    let _p4 = vec_push(v, e); let _p5 = vec_push(v, f);
+    let _p6 = vec_push(v, g); let _p7 = vec_push(v, h);
+    v
+};
+
+fn main() -> i64 = {
+    // Part 1: Catalan numbers C(0)..C(7)
+    let _h1 = print_str("Catalan numbers:");
+    let _n1 = println_str("");
+    for i in 0..8 {
+        println(catalan(i))
+    };
+    // Expected: 1, 1, 2, 5, 14, 42, 132, 429
+
+    // Part 2: Validate sequences
+    // 1='(', 0=')'
+    let _h2 = print_str("Validation:");
+    let _n2 = println_str("");
+
+    // "()" = [1,0] -> balanced
+    let s1 = make_parens2(1, 0);
+    let _v1 = println(validate(s1));  // 1
+
+    // ")(" = [0,1] -> not balanced
+    let s2 = make_parens2(0, 1);
+    let _v2 = println(validate(s2));  // 0
+
+    // "(())" = [1,1,0,0] -> balanced
+    let s3 = make_parens4(1, 1, 0, 0);
+    let _v3 = println(validate(s3));  // 1
+
+    // "()()" = [1,0,1,0] -> balanced
+    let s4 = make_parens4(1, 0, 1, 0);
+    let _v4 = println(validate(s4));  // 1
+
+    // "((" = [1,1] -> not balanced (unclosed)
+    let s5 = make_parens2(1, 1);
+    let _v5 = println(validate(s5));  // 0
+
+    // "((()))" = [1,1,1,0,0,0] -> balanced
+    let s6 = make_parens6(1, 1, 1, 0, 0, 0);
+    let _v6 = println(validate(s6));  // 1
+
+    // "(())()" = [1,1,0,0,1,0] -> balanced
+    let s7 = make_parens6(1, 1, 0, 0, 1, 0);
+    let _v7 = println(validate(s7));  // 1
+
+    // "())(" = [1,0,0,1] -> not balanced
+    let s8 = make_parens4(1, 0, 0, 1);
+    let _v8 = println(validate(s8));  // 0
+
+    // empty -> balanced
+    let s9 = vec_new();
+    let _v9 = println(validate(s9));  // 1
+
+    // Part 3: Max nesting depth
+    let _h3 = print_str("Max depth:");
+    let _n3 = println_str("");
+    let _d1 = println(max_depth(s1));  // "()" -> 1
+    let _d3 = println(max_depth(s3));  // "(())" -> 2
+    let _d4 = println(max_depth(s4));  // "()()" -> 1
+    let _d6 = println(max_depth(s6));  // "((()))" -> 3
+    let _d7 = println(max_depth(s7));  // "(())()" -> 2
+
+    // Part 4: Count balanced strings with max depth <= d
+    let _h4 = print_str("Count with max depth <= d:");
+    let _n4 = println_str("");
+    // n=3 (length 6), depth <= 1: only "()()()" = 1
+    let _c1 = println(count_leq_depth(3, 1));  // 1
+    // n=3, depth <= 2: "()(())", "(())()", "(()())", "()()()" = 4
+    let _c2 = println(count_leq_depth(3, 2));  // 4
+    // n=3, depth <= 3: all C(3) = 5
+    let _c3 = println(count_leq_depth(3, 3));  // 5
+    // n=4, depth <= 1: "()()()()" = 1
+    let _c4 = println(count_leq_depth(4, 1));  // 1
+    // n=4, depth <= 2: 8 (C(4)=14, depth<=2 = 8)
+    let _c5 = println(count_leq_depth(4, 2));  // 8
+
+    // Cleanup
+    let _f1 = vec_free(s1); let _f2 = vec_free(s2); let _f3 = vec_free(s3);
+    let _f4 = vec_free(s4); let _f5 = vec_free(s5); let _f6 = vec_free(s6);
+    let _f7 = vec_free(s7); let _f8 = vec_free(s8); let _f9 = vec_free(s9);
+    0
+};

@@ -1,0 +1,266 @@
+fn pack32(hi: i32, lo: i32) -> i64 @alwaysinline @memory(none) {
+entry:
+  %_t0 = << %hi, I:32
+  %_t1 = + %_t0, %lo
+  return %_t1
+}
+
+
+fn unpack_hi(packed: i64) -> i64 @alwaysinline @memory(none) {
+entry:
+  %_t0 = / %packed, I:4294967296
+  return %_t0
+}
+
+
+fn unpack_lo(packed: i64) -> i64 @alwaysinline @memory(none) {
+entry:
+  %_t0 = / %packed, I:4294967296
+  %_t1 = << %_t0, I:32
+  %_t2 = - %packed, %_t1
+  return %_t2
+}
+
+
+fn pack3(a: i32, b: i32, c: i32) -> i64 @alwaysinline @memory(none) {
+entry:
+  %_t0 = << %a, I:40
+  %_t1 = << %b, I:20
+  %_t2 = + %_t0, %_t1
+  %_t3 = + %_t2, %c
+  return %_t3
+}
+
+
+fn unpack3_a(packed: i64) -> i64 @alwaysinline @memory(none) {
+entry:
+  %_t0 = / %packed, I:1099511627776
+  return %_t0
+}
+
+
+fn unpack3_b(packed: i64) -> i64 @alwaysinline @memory(none) {
+entry:
+  %_t0 = / %packed, I:1099511627776
+  %_t1 = << %_t0, I:40
+  %_t2 = - %packed, %_t1
+  %_t4 = / %_t2, I:1048576
+  return %_t4
+}
+
+
+fn unpack3_c(packed: i64) -> i64 @alwaysinline @memory(none) {
+entry:
+  %_t0 = / %packed, I:1099511627776
+  %_t1 = << %_t0, I:40
+  %_t2 = - %packed, %_t1
+  %_t4 = / %_t2, I:1048576
+  %_t5 = << %_t4, I:20
+  %_t6 = - %_t2, %_t5
+  return %_t6
+}
+
+
+fn to_base_digits_sum(n: i64, base: i64) -> i64 {
+entry:
+  %_t0 = < %n, %base
+  branch %_t0, then_0, else_1
+then_0:
+  goto merge_2
+else_1:
+  %_t2 = / %n, %base
+  %_t3 = * %_t2, %base
+  %_t4 = - %n, %_t3
+  %_t5 = / %n, %base
+  %_t6 = call to_base_digits_sum(%_t5, %base)
+  %_t7 = + %_t4, %_t6
+  goto merge_2
+merge_2:
+  %_t1 = phi [%n, then_0], [%_t7, else_1]
+  return %_t1
+}
+
+
+fn count_digits(n: i64, base: i64) -> i64 {
+entry:
+  %_t0 = < %n, %base
+  branch %_t0, then_0, else_1
+then_0:
+  goto merge_2
+else_1:
+  %_t2 = / %n, %base
+  %_t3 = call count_digits(%_t2, %base)
+  %_t4 = + I:1, %_t3
+  goto merge_2
+merge_2:
+  %_t1 = phi [I:1, then_0], [%_t4, else_1]
+  return %_t1
+}
+
+
+fn rle_count_distinct(arr: i64, pos: i64, prev: i64, count: i64) -> i64 @inlinehint {
+entry:
+  goto loop_header_7
+loop_header_7:
+  %pos_loop = phi [%pos, entry], [%_t6, then_3], [%_t8, else_4]
+  %prev_loop = phi [%prev, entry], [%prev_loop, then_3], [%_t9, else_4]
+  %count_loop = phi [%count, entry], [%count_loop, then_3], [%_t10, else_4]
+  %_t0 = call vec_len(%arr)
+  %_t1 = >= %pos_loop, %_t0
+  branch %_t1, then_0, else_1
+then_0:
+  return %count_loop
+else_1:
+  %_t3 = call vec_get(%arr, %pos_loop)
+  %_t4 = == %_t3, %prev_loop
+  branch %_t4, then_3, else_4
+then_3:
+  %_t6 = + %pos_loop, I:1
+  goto loop_header_7
+else_4:
+  %_t8 = + %pos_loop, I:1
+  %_t9 = call vec_get(%arr, %pos_loop)
+  %_t10 = + %count_loop, I:1
+  goto loop_header_7
+}
+
+
+fn gray_encode(n: i64) -> i64 @alwaysinline {
+entry:
+  %_t0 = / %n, I:2
+  %_t4 = tail call gray_xor(%n, %_t0, I:1, I:0)
+  return %_t4
+}
+
+
+fn gray_xor(a: i64, b: i64, bit: i32, result: i32) -> i64 @inlinehint @memory(none) {
+entry:
+  goto loop_header_7
+loop_header_7:
+  %bit_loop = phi [%bit, entry], [%_t17, merge_5]
+  %result_loop = phi [%result, entry], [%_t19, merge_5]
+  %_t0 = > %bit_loop, I:1073741824
+  branch %_t0, then_0, else_1
+then_0:
+  return %result_loop
+else_1:
+  %_t2 = / %a, %bit_loop
+  %_t3 = / %a, %bit_loop
+  %_t4 = / %_t3, I:2
+  %_t5 = << %_t4, I:1
+  %_t6 = - %_t2, %_t5
+  %_t8 = / %b, %bit_loop
+  %_t9 = / %b, %bit_loop
+  %_t10 = / %_t9, I:2
+  %_t11 = << %_t10, I:1
+  %_t12 = - %_t8, %_t11
+  %_t14 = != %_t6, %_t12
+  branch %_t14, then_3, else_4
+then_3:
+  goto merge_5
+else_4:
+  goto merge_5
+merge_5:
+  %_t15 = phi [I:1, then_3], [I:0, else_4]
+  %_t17 = << %bit_loop, I:1
+  %_t18 = * %_t15, %bit_loop
+  %_t19 = + %result_loop, %_t18
+  goto loop_header_7
+}
+
+
+fn fib_encode_count(n: i64) -> i64 {
+entry:
+  %_t0 = <= %n, I:0
+  branch %_t0, then_0, else_1
+then_0:
+  goto merge_2
+else_1:
+  %_t2 = call largest_fib_le(%n, I:1, I:1)
+  %_t4 = - %n, %_t2
+  %_t5 = call fib_encode_count(%_t4)
+  %_t6 = + I:1, %_t5
+  goto merge_2
+merge_2:
+  %_t1 = phi [I:0, then_0], [%_t6, else_1]
+  return %_t1
+}
+
+
+fn largest_fib_le(n: i64, a: i64, b: i64) -> i64 @inlinehint @memory(none) {
+entry:
+  goto loop_header_4
+loop_header_4:
+  %a_loop = phi [%a, entry], [%b_loop, else_1]
+  %b_loop = phi [%b, entry], [%_t3, else_1]
+  %_t0 = + %a_loop, %b_loop
+  %_t1 = > %_t0, %n
+  branch %_t1, then_0, else_1
+then_0:
+  return %b_loop
+else_1:
+  %_t3 = + %a_loop, %b_loop
+  goto loop_header_4
+}
+
+
+fn main() -> i64 {
+entry:
+  %_t0 = call pack32(I:100, I:200)
+  %_t2 = call unpack_hi(%_t0)
+  call println(%_t2)
+  %_t4 = call unpack_lo(%_t0)
+  call println(%_t4)
+  %_t6 = call pack3(I:42, I:100, I:999)
+  %_t8 = call unpack3_a(%_t6)
+  call println(%_t8)
+  %_t10 = call unpack3_b(%_t6)
+  call println(%_t10)
+  %_t12 = call unpack3_c(%_t6)
+  call println(%_t12)
+  %_t14 = call to_base_digits_sum(I:255, I:16)
+  call println(%_t14)
+  %_t16 = call to_base_digits_sum(I:100, I:10)
+  call println(%_t16)
+  %_t18 = call to_base_digits_sum(I:7, I:2)
+  call println(%_t18)
+  %_t20 = call to_base_digits_sum(I:255, I:2)
+  call println(%_t20)
+  %_t22 = call count_digits(I:0, I:10)
+  call println(%_t22)
+  %_t24 = call count_digits(I:999, I:10)
+  call println(%_t24)
+  %_t26 = call count_digits(I:255, I:2)
+  call println(%_t26)
+  %_t28 = call count_digits(I:255, I:16)
+  call println(%_t28)
+  %_t30 = call vec_new()
+  %_t32 = call vec_push(%_t30, I:1)
+  %_t34 = call vec_push(%_t30, I:1)
+  %_t36 = call vec_push(%_t30, I:2)
+  %_t38 = call vec_push(%_t30, I:2)
+  %_t40 = call vec_push(%_t30, I:2)
+  %_t42 = call vec_push(%_t30, I:3)
+  %_t44 = call vec_push(%_t30, I:4)
+  %_t46 = call vec_push(%_t30, I:4)
+  %_t48 = call rle_count_distinct(%_t30, I:1, I:1, I:1)
+  call println(%_t48)
+  %_t50 = call gray_encode(I:0)
+  call println(%_t50)
+  %_t52 = call gray_encode(I:1)
+  call println(%_t52)
+  %_t54 = call gray_encode(I:2)
+  call println(%_t54)
+  %_t56 = call gray_encode(I:3)
+  call println(%_t56)
+  %_t58 = call gray_encode(I:7)
+  call println(%_t58)
+  %_t60 = call fib_encode_count(I:1)
+  call println(%_t60)
+  %_t62 = call fib_encode_count(I:10)
+  call println(%_t62)
+  %_t64 = call fib_encode_count(I:20)
+  call println(%_t64)
+  %_t66 = call vec_free(%_t30)
+  return I:0
+}

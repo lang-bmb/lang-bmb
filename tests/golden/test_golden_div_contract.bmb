@@ -1,0 +1,36 @@
+// Golden Test: Contract-Driven Division Safety
+// When contracts prove divisor is non-zero via range bounds, the compiler
+// can safely assume no division-by-zero trap is possible.
+
+// Contract proves b > 0, so division is safe
+fn safe_divide(a: i64, b: i64) -> i64
+    pre b >= 1 and b <= 100
+= a / b;
+
+// Contract proves b is in [-10, -1], excluding zero
+fn neg_divide(a: i64, b: i64) -> i64
+    pre b >= 0 - 10 and b <= 0 - 1
+= a / b;
+
+// Contract proves b > 0, mod is safe
+fn safe_mod(a: i64, b: i64) -> i64
+    pre b >= 1 and b <= 1000
+= a % b;
+
+// Bounded both operands
+fn bounded_div(a: i64, b: i64) -> i64
+    pre a >= 0 and a <= 1000 and b >= 1 and b <= 10
+= a / b;
+
+fn main() -> i64 = {
+    let _p1 = println(safe_divide(100, 5));
+    let _p2 = println(safe_divide(0, 10));
+    let _p3 = println(safe_divide(999, 3));
+    let _p4 = println(neg_divide(100, 0 - 5));
+    let _p5 = println(neg_divide(0 - 50, 0 - 10));
+    let _p6 = println(safe_mod(17, 5));
+    let _p7 = println(safe_mod(100, 7));
+    let _p8 = println(bounded_div(100, 3));
+    let _p9 = println(bounded_div(0, 5));
+    0
+};

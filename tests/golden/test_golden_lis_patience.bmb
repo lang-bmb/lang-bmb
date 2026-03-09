@@ -1,0 +1,59 @@
+// Golden Test: Longest Increasing Subsequence (patience sorting)
+// O(n log n) using binary search on pile tops
+
+fn lower_bound(piles: i64, len: i64, target: i64) -> i64 = {
+    let mut lo = 0;
+    let mut hi = len;
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        let _x = if vec_get(piles, mid) < target {
+            set lo = mid + 1; 0
+        } else { set hi = mid; 0 };
+        0
+    };
+    lo
+};
+
+fn lis_length(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    let piles = vec_new();
+    let mut num_piles = 0;
+    let mut i = 0;
+    while i < n {
+        let val = vec_get(arr, i);
+        let pos = lower_bound(piles, num_piles, val);
+        let _x = if pos == num_piles {
+            let _p = vec_push(piles, val);
+            set num_piles = num_piles + 1; 0
+        } else { vec_set(piles, pos, val); 0 };
+        set i = i + 1
+    };
+    num_piles
+};
+
+fn main() -> () = {
+    let arr1 = vec_new();
+    let _p = vec_push(arr1, 10); let _p = vec_push(arr1, 9); let _p = vec_push(arr1, 2);
+    let _p = vec_push(arr1, 5); let _p = vec_push(arr1, 3); let _p = vec_push(arr1, 7);
+    let _p = vec_push(arr1, 101); let _p = vec_push(arr1, 18);
+    print_str("LIS: "); let _r = println(lis_length(arr1));
+
+    let arr2 = vec_new();
+    let _p = vec_push(arr2, 0); let _p = vec_push(arr2, 1); let _p = vec_push(arr2, 0);
+    let _p = vec_push(arr2, 3); let _p = vec_push(arr2, 2); let _p = vec_push(arr2, 3);
+    print_str("LIS: "); let _r = println(lis_length(arr2));
+
+    let arr3 = vec_new();
+    let _p = vec_push(arr3, 7); let _p = vec_push(arr3, 7); let _p = vec_push(arr3, 7);
+    print_str("LIS: "); let _r = println(lis_length(arr3));
+
+    let arr4 = vec_new();
+    let _p = vec_push(arr4, 1); let _p = vec_push(arr4, 2); let _p = vec_push(arr4, 3);
+    let _p = vec_push(arr4, 4); let _p = vec_push(arr4, 5);
+    print_str("LIS: "); let _r = println(lis_length(arr4));
+
+    let arr5 = vec_new();
+    let _p = vec_push(arr5, 5); let _p = vec_push(arr5, 4); let _p = vec_push(arr5, 3);
+    let _p = vec_push(arr5, 2); let _p = vec_push(arr5, 1);
+    print_str("LIS: "); let _r = println(lis_length(arr5))
+};

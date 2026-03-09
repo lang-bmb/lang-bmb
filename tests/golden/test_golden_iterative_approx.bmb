@@ -1,0 +1,121 @@
+// Golden test: Iterative approximation algorithms
+// Tests convergence loops and fixed-point iteration
+
+// Integer square root via Newton's method
+fn isqrt(n: i64) -> i64 =
+    if n <= 1 { n }
+    else { isqrt_iter(n, n / 2) };
+
+fn isqrt_iter(n: i64, guess: i64) -> i64 = {
+    let next = (guess + n / guess) / 2;
+    if next >= guess { guess }
+    else { isqrt_iter(n, next) }
+    };
+
+// Integer cube root
+fn icbrt(n: i64) -> i64 =
+    if n <= 1 { n }
+    else { icbrt_iter(n, n / 3) };
+
+fn icbrt_iter(n: i64, guess: i64) -> i64 = {
+    let next = (2 * guess + n / (guess * guess)) / 3;
+    if next >= guess { guess }
+    else { icbrt_iter(n, next) }
+    };
+
+// Bisection: find x where x^2 >= target (integer square root from below)
+fn bisect_sqrt(target: i64, lo: i64, hi: i64) -> i64 =
+    if lo >= hi { lo }
+    else {
+        let mid = lo + (hi - lo) / 2;
+        if mid * mid < target { bisect_sqrt(target, mid + 1, hi) }
+        else { bisect_sqrt(target, lo, mid) }
+    };
+
+    // Fixed-point iteration: f(x) = (x + n/x) / 2, starting from n
+
+fn fixed_point_sqrt(n: i64, x: i64, iters: i64) -> i64 =
+    if iters <= 0 { x }
+    else {
+        let next = (x + n / x) / 2;
+        fixed_point_sqrt(n, next, iters - 1)
+    };
+
+    // Babylonian method for integer division: n / d using only multiplication
+    // Binary search: find largest q where q * d <= n
+
+fn idiv_bisect(n: i64, d: i64, lo: i64, hi: i64) -> i64 =
+    if lo >= hi { lo }
+    else {
+        let mid = lo + (hi - lo + 1) / 2;
+        if mid * d <= n { idiv_bisect(n, d, mid, hi) }
+        else { idiv_bisect(n, d, lo, mid - 1) }
+    };
+
+    // Sum of isqrt(1..n)
+
+fn sum_isqrt(n: i64, i: i64, acc: i64) -> i64 =
+    if i > n { acc }
+    else { sum_isqrt(n, i + 1, acc + isqrt(i)) };
+
+    // Count perfect squares up to n
+
+fn count_perfect_squares(n: i64, i: i64, count: i64) -> i64 =
+    if i * i > n { count }
+    else { count_perfect_squares(n, i + 1, count + 1) };
+
+    // Integer log base 2 (floor)
+
+fn ilog2(n: i64) -> i64 =
+    if n <= 1 { 0 }
+    else { 1 + ilog2(n / 2) };
+
+    // Integer log base 10 (floor)
+
+fn ilog10(n: i64) -> i64 =
+    if n < 10 { 0 }
+    else { 1 + ilog10(n / 10) };
+
+fn main() -> i64 = {
+// Newton integer sqrt
+    let _p1 = println(isqrt(0));     // 0
+    let _p2 = println(isqrt(1));     // 1
+    let _p3 = println(isqrt(4));     // 2
+    let _p4 = println(isqrt(100));   // 10
+    let _p5 = println(isqrt(1000));  // 31
+
+// Cube root
+    let _p6 = println(icbrt(8));     // 2
+    let _p7 = println(icbrt(27));    // 3
+    let _p8 = println(icbrt(1000));  // 10
+
+// Bisection sqrt
+    let _p9 = println(bisect_sqrt(100, 0, 100));   // 10
+    let _p10 = println(bisect_sqrt(50, 0, 50));    // 8 (8^2=64>=50)
+
+// Fixed-point sqrt (10 iterations from n)
+    let _p11 = println(fixed_point_sqrt(100, 100, 10));  // 10
+    let _p12 = println(fixed_point_sqrt(144, 144, 10));  // 12
+
+// Bisection division
+    let _p13 = println(idiv_bisect(100, 7, 0, 100));   // 14
+    let _p14 = println(idiv_bisect(1000, 33, 0, 1000)); // 30
+
+// Sum of isqrt(1..10): 1+1+1+2+2+2+2+2+3+3 = 19
+    let _p15 = println(sum_isqrt(10, 1, 0));
+
+// Count perfect squares up to 100
+    let _p16 = println(count_perfect_squares(100, 1, 0));  // 10
+
+// Log base 2
+    let _p17 = println(ilog2(1));    // 0
+    let _p18 = println(ilog2(8));    // 3
+    let _p19 = println(ilog2(1024)); // 10
+
+// Log base 10
+    let _p20 = println(ilog10(1));     // 0
+    let _p21 = println(ilog10(100));   // 2
+    let _p22 = println(ilog10(99999)); // 4
+
+    0
+    };

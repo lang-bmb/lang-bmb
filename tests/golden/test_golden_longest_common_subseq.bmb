@@ -1,0 +1,184 @@
+// Golden Test: Longest Common Subsequence (LCS) via Dynamic Programming
+// Uses flat array for 2D DP table, reconstructs actual LCS
+
+// dp[i][j] stored at flat index i * (len2+1) + j
+fn dp_idx(i: i64, j: i64, cols: i64) -> i64 = i * cols + j;
+
+// Compute LCS length using DP
+// Returns the dp table as a vec (flat 2D array of size (len1+1)*(len2+1))
+fn lcs_table(seq1: i64, len1: i64, seq2: i64, len2: i64) -> i64 = {
+    let cols = len2 + 1;
+    let rows = len1 + 1;
+    let dp = vec_new();
+    // Initialize dp table with zeros
+    for i in 0..(rows * cols) {
+        let _p = vec_push(dp, 0);
+        0
+    };
+    // Fill dp table
+    for i in 1..rows {
+        for j in 1..cols {
+            let _c = if vec_get(seq1, i - 1) == vec_get(seq2, j - 1) {
+                let val = vec_get(dp, dp_idx(i - 1, j - 1, cols)) + 1;
+                let _s = vec_set(dp, dp_idx(i, j, cols), val)
+            } else {
+                let up = vec_get(dp, dp_idx(i - 1, j, cols));
+                let left = vec_get(dp, dp_idx(i, j - 1, cols));
+                let val = if up > left { up } else { left };
+                let _s = vec_set(dp, dp_idx(i, j, cols), val)
+            };
+            0
+        };
+        0
+    };
+    dp
+};
+
+// Reconstruct the LCS from the dp table
+// Returns a vec containing the LCS elements
+fn lcs_reconstruct(dp: i64, seq1: i64, len1: i64, seq2: i64, len2: i64) -> i64 = {
+    let cols = len2 + 1;
+    let lcs_len = vec_get(dp, dp_idx(len1, len2, cols));
+    // Build LCS in reverse
+    let result = vec_new();
+    // Pre-fill with zeros
+    for i in 0..lcs_len {
+        let _p = vec_push(result, 0);
+        0
+    };
+    let mut i = len1;
+    let mut j = len2;
+    let mut k = lcs_len - 1;
+    while i > 0 and j > 0 {
+        let _c = if vec_get(seq1, i - 1) == vec_get(seq2, j - 1) {
+            let _s = vec_set(result, k, vec_get(seq1, i - 1));
+            set i = i - 1;
+            set j = j - 1;
+            set k = k - 1
+        } else {
+            let up = vec_get(dp, dp_idx(i - 1, j, cols));
+            let left = vec_get(dp, dp_idx(i, j - 1, cols));
+            let _m = if up > left {
+                set i = i - 1
+            } else {
+                set j = j - 1
+            };
+            ()
+        }
+    };
+    result
+};
+
+fn print_vec_inline(v: i64) -> i64 = {
+    let n = vec_len(v);
+    for i in 0..n {
+        let _p = if i > 0 {
+            let _s = print_str(" ");
+            ()
+        } else { () };
+        let _p2 = print(vec_get(v, i));
+        0
+    };
+    let _p = println_str("");
+    0
+};
+
+fn main() -> i64 = {
+    // === Test 1: [1,3,4,1,2] vs [1,4,1,2,3] ===
+    let _p = println_str("=== Test 1 ===");
+    let s1 = vec_new();
+    let _p = vec_push(s1, 1); let _p = vec_push(s1, 3);
+    let _p = vec_push(s1, 4); let _p = vec_push(s1, 1);
+    let _p = vec_push(s1, 2);
+    let s2 = vec_new();
+    let _p = vec_push(s2, 1); let _p = vec_push(s2, 4);
+    let _p = vec_push(s2, 1); let _p = vec_push(s2, 2);
+    let _p = vec_push(s2, 3);
+    let _p = print_str("seq1: "); let _pv = print_vec_inline(s1);
+    let _p = print_str("seq2: "); let _pv = print_vec_inline(s2);
+
+    let dp1 = lcs_table(s1, 5, s2, 5);
+    let lcs_len1 = vec_get(dp1, dp_idx(5, 5, 6));
+    let _p = print_str("LCS length: "); let _p = println(lcs_len1);
+
+    let lcs1 = lcs_reconstruct(dp1, s1, 5, s2, 5);
+    let _p = print_str("LCS: "); let _pv = print_vec_inline(lcs1);
+
+    // === Test 2: [1,2,3,4,5] vs [5,4,3,2,1] ===
+    let _p = println_str("=== Test 2 ===");
+    let s3 = vec_new();
+    let _p = vec_push(s3, 1); let _p = vec_push(s3, 2);
+    let _p = vec_push(s3, 3); let _p = vec_push(s3, 4);
+    let _p = vec_push(s3, 5);
+    let s4 = vec_new();
+    let _p = vec_push(s4, 5); let _p = vec_push(s4, 4);
+    let _p = vec_push(s4, 3); let _p = vec_push(s4, 2);
+    let _p = vec_push(s4, 1);
+    let _p = print_str("seq1: "); let _pv = print_vec_inline(s3);
+    let _p = print_str("seq2: "); let _pv = print_vec_inline(s4);
+
+    let dp2 = lcs_table(s3, 5, s4, 5);
+    let lcs_len2 = vec_get(dp2, dp_idx(5, 5, 6));
+    let _p = print_str("LCS length: "); let _p = println(lcs_len2);
+
+    let lcs2 = lcs_reconstruct(dp2, s3, 5, s4, 5);
+    let _p = print_str("LCS: "); let _pv = print_vec_inline(lcs2);
+
+    // === Test 3: [1,2,3] vs [1,2,3] (identical) ===
+    let _p = println_str("=== Test 3: identical ===");
+    let s5 = vec_new();
+    let _p = vec_push(s5, 1); let _p = vec_push(s5, 2);
+    let _p = vec_push(s5, 3);
+    let s6 = vec_new();
+    let _p = vec_push(s6, 1); let _p = vec_push(s6, 2);
+    let _p = vec_push(s6, 3);
+    let dp3 = lcs_table(s5, 3, s6, 3);
+    let lcs_len3 = vec_get(dp3, dp_idx(3, 3, 4));
+    let _p = print_str("LCS length: "); let _p = println(lcs_len3);
+    let lcs3 = lcs_reconstruct(dp3, s5, 3, s6, 3);
+    let _p = print_str("LCS: "); let _pv = print_vec_inline(lcs3);
+
+    // === Test 4: [1,3,5,7] vs [2,4,6,8] (no common) ===
+    let _p = println_str("=== Test 4: no common ===");
+    let s7 = vec_new();
+    let _p = vec_push(s7, 1); let _p = vec_push(s7, 3);
+    let _p = vec_push(s7, 5); let _p = vec_push(s7, 7);
+    let s8 = vec_new();
+    let _p = vec_push(s8, 2); let _p = vec_push(s8, 4);
+    let _p = vec_push(s8, 6); let _p = vec_push(s8, 8);
+    let dp4 = lcs_table(s7, 4, s8, 4);
+    let lcs_len4 = vec_get(dp4, dp_idx(4, 4, 5));
+    let _p = print_str("LCS length: "); let _p = println(lcs_len4);
+
+    // === Test 5: [3,1,4,1,5,9,2,6] vs [1,4,1,5,9] ===
+    let _p = println_str("=== Test 5: subsequence ===");
+    let s9 = vec_new();
+    let _p = vec_push(s9, 3); let _p = vec_push(s9, 1);
+    let _p = vec_push(s9, 4); let _p = vec_push(s9, 1);
+    let _p = vec_push(s9, 5); let _p = vec_push(s9, 9);
+    let _p = vec_push(s9, 2); let _p = vec_push(s9, 6);
+    let s10 = vec_new();
+    let _p = vec_push(s10, 1); let _p = vec_push(s10, 4);
+    let _p = vec_push(s10, 1); let _p = vec_push(s10, 5);
+    let _p = vec_push(s10, 9);
+    let _p = print_str("seq1: "); let _pv = print_vec_inline(s9);
+    let _p = print_str("seq2: "); let _pv = print_vec_inline(s10);
+    let dp5 = lcs_table(s9, 8, s10, 5);
+    let lcs_len5 = vec_get(dp5, dp_idx(8, 5, 6));
+    let _p = print_str("LCS length: "); let _p = println(lcs_len5);
+    let lcs5 = lcs_reconstruct(dp5, s9, 8, s10, 5);
+    let _p = print_str("LCS: "); let _pv = print_vec_inline(lcs5);
+
+    // Cleanup
+    let _f = vec_free(s1); let _f = vec_free(s2);
+    let _f = vec_free(s3); let _f = vec_free(s4);
+    let _f = vec_free(s5); let _f = vec_free(s6);
+    let _f = vec_free(s7); let _f = vec_free(s8);
+    let _f = vec_free(s9); let _f = vec_free(s10);
+    let _f = vec_free(dp1); let _f = vec_free(dp2);
+    let _f = vec_free(dp3); let _f = vec_free(dp4);
+    let _f = vec_free(dp5);
+    let _f = vec_free(lcs1); let _f = vec_free(lcs2);
+    let _f = vec_free(lcs3); let _f = vec_free(lcs5);
+    0
+};

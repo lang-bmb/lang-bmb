@@ -1,0 +1,83 @@
+// Golden Test: Array Operations (vec API)
+// Tests dynamic array creation, modification, and algorithms
+
+fn vec_sum(v: i64, n: i64) -> i64 = {
+    let s = 0;
+    for i in 0..n {
+        s = s + vec_get(v, i);
+    };
+    s
+};
+
+fn vec_max(v: i64, n: i64) -> i64 = {
+    let m = vec_get(v, 0);
+    for i in 1..n {
+        let val = vec_get(v, i);
+        if val > m { m = val } else { () };
+    };
+    m
+};
+
+fn vec_min(v: i64, n: i64) -> i64 = {
+    let m = vec_get(v, 0);
+    for i in 1..n {
+        let val = vec_get(v, i);
+        if val < m { m = val } else { () };
+    };
+    m
+};
+
+fn main() -> i64 = {
+    // Create and populate
+    let v = vec_new();
+    let _a = vec_push(v, 10);
+    let _b = vec_push(v, 30);
+    let _c = vec_push(v, 20);
+    let _d = vec_push(v, 50);
+    let _e = vec_push(v, 40);
+
+    // Sum
+    let _p1 = println(vec_sum(v, 5));  // 150
+
+    // Max and min
+    let _p2 = println(vec_max(v, 5));  // 50
+    let _p3 = println(vec_min(v, 5));  // 10
+
+    // Modify element
+    let _s1 = vec_set(v, 2, 99);
+    let _p4 = println(vec_get(v, 2));  // 99
+    let _p5 = println(vec_sum(v, 5));  // 10+30+99+50+40 = 229
+
+    // Build array with pattern
+    let v2 = vec_new();
+    for i in 0..8 {
+        let _x = vec_push(v2, i * i);
+    };
+    // squares: 0, 1, 4, 9, 16, 25, 36, 49
+    let _p6 = println(vec_get(v2, 4));  // 16
+    let _p7 = println(vec_get(v2, 7));  // 49
+    let _p8 = println(vec_sum(v2, 8));  // 0+1+4+9+16+25+36+49 = 140
+
+    // Count elements matching predicate
+    let count = 0;
+    for i in 0..8 {
+        if vec_get(v2, i) > 10 {
+            count = count + 1;
+        } else { () };
+    };
+    let _p9 = println(count);  // 4 (16, 25, 36, 49)
+
+    // Reverse into new vec
+    let v3 = vec_new();
+    for i in 0..5 {
+        let _x = vec_push(v3, vec_get(v, 4 - i));
+    };
+    let _p10 = println(vec_get(v3, 0));  // 40
+    let _p11 = println(vec_get(v3, 4));  // 10
+
+    let _f1 = vec_free(v);
+    let _f2 = vec_free(v2);
+    let _f3 = vec_free(v3);
+
+    0
+};

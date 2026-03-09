@@ -1,0 +1,65 @@
+// Golden Test: Comparison constant folding + branch elimination
+// v0.95: Constant comparisons folded at compile time, enabling dead branch removal
+
+// Constant comparisons should fold to known values
+fn const_eq() -> i64 = {
+// 5 == 5 should fold to true, taking the then branch
+    let x = 5;
+    let y = 5;
+    if x == y { 1 } else { 0 }
+    };
+
+fn const_neq() -> i64 = {
+// 3 != 7 should fold to true
+    let x = 3;
+    let y = 7;
+    if x != y { 1 } else { 0 }
+    };
+
+fn const_lt() -> i64 = {
+// 3 < 10 should fold to true
+    let x = 3;
+    let y = 10;
+    if x < y { 1 } else { 0 }
+    };
+
+fn const_gt_false() -> i64 = {
+// 3 > 10 should fold to false
+    let x = 3;
+    let y = 10;
+    if x > y { 1 } else { 0 }
+    };
+
+fn const_lte_eq() -> i64 = {
+// 5 <= 5 should fold to true (equal case)
+    let x = 5;
+    let y = 5;
+    if x <= y { 1 } else { 0 }
+    };
+
+fn chain_compare(a: i64) -> i64 = {
+// Mix of runtime and constant comparisons
+    let threshold = 10;
+    if a > threshold { a } else { threshold }
+    };
+
+fn nested_const_cmp() -> i64 = {
+// Both branches use constant comparisons
+    let a = 5;
+    let b = 3;
+    let r1 = if a > b { a - b } else { b - a };
+    let r2 = if a == b { 0 } else { r1 };
+    r2
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(const_eq());       // 1
+    let _p2 = println(const_neq());      // 1
+    let _p3 = println(const_lt());       // 1
+    let _p4 = println(const_gt_false()); // 0
+    let _p5 = println(const_lte_eq());   // 1
+    let _p6 = println(chain_compare(15)); // 15
+    let _p7 = println(chain_compare(5));  // 10
+    let _p8 = println(nested_const_cmp()); // 2
+    0
+    };

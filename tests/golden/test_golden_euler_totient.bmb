@@ -1,0 +1,145 @@
+// Golden Test: Euler's totient function
+// Compute phi(n), verify sum property, count coprimes
+
+// GCD using Euclidean algorithm
+fn gcd(a: i64, b: i64) -> i64 =
+    if b == 0 { a }
+    else { gcd(b, a - (a / b) * b) };
+
+// Euler's totient function phi(n)
+// phi(n) = n * product(1 - 1/p) for all prime factors p of n
+fn euler_totient(n: i64) -> i64 = {
+    let mut result = n;
+    let mut m = n;
+    let mut p = 2;
+    for _step in 0..50 {
+        let _x = if p * p <= m {
+            if m - (m / p) * p == 0 {
+                // p divides m, remove all factors of p
+                for _j in 0..50 {
+                    let _y = if m - (m / p) * p == 0 {
+                        set m = m / p
+                    } else { () };
+                    0
+                };
+                // Apply formula: result = result * (1 - 1/p) = result - result/p
+                set result = result - result / p
+            } else { () };
+            set p = p + 1
+        } else { () };
+        0
+    };
+    // If m > 1, then m is a prime factor
+    let _z = if m > 1 {
+        set result = result - result / m
+    } else { () };
+    result
+};
+
+// Naive totient by counting coprimes directly
+fn totient_naive(n: i64) -> i64 = {
+    let mut count = 0;
+    for k in 1..n {
+        let _x = if gcd(n, k) == 1 { set count = count + 1 } else { () };
+        0
+    };
+    count
+};
+
+// Verify: sum of phi(d) for all d|n equals n
+fn sum_totient_divisors(n: i64) -> i64 = {
+    let mut total = 0;
+    for d in 1..(n + 1) {
+        let _x = if n - (n / d) * d == 0 {
+            set total = total + euler_totient(d)
+        } else { () };
+        0
+    };
+    total
+};
+
+// Count coprimes of n in range [1, n]
+fn count_coprimes(n: i64) -> i64 = {
+    let mut count = 0;
+    for k in 1..(n + 1) {
+        let _x = if gcd(n, k) == 1 { set count = count + 1 } else { () };
+        0
+    };
+    count
+};
+
+// Check multiplicativity: phi(a*b) = phi(a)*phi(b) when gcd(a,b)=1
+fn check_multiplicative(a: i64, b: i64) -> i64 =
+    if gcd(a, b) != 1 { 0 - 1 }
+    else {
+        let lhs = euler_totient(a * b);
+        let rhs = euler_totient(a) * euler_totient(b);
+        if lhs == rhs { 1 } else { 0 }
+    };
+
+fn main() -> i64 = {
+    // === Test 1: Basic totient values ===
+    let _p = println(euler_totient(1));    // 1
+    let _p = println(euler_totient(2));    // 1
+    let _p = println(euler_totient(3));    // 2
+    let _p = println(euler_totient(4));    // 2
+    let _p = println(euler_totient(5));    // 4
+    let _p = println(euler_totient(6));    // 2
+    let _p = println(euler_totient(7));    // 6
+    let _p = println(euler_totient(8));    // 4
+    let _p = println(euler_totient(9));    // 6
+    let _p = println(euler_totient(10));   // 4
+    let _p = println(euler_totient(12));   // 4
+    let _p = println(euler_totient(15));   // 8
+    let _p = println(euler_totient(20));   // 8
+    let _p = println(euler_totient(24));   // 8
+    let _p = println(euler_totient(30));   // 8
+    let _p = println(euler_totient(36));   // 12
+    let _p = println(euler_totient(100));  // 40
+
+    // === Test 2: Verify against naive computation ===
+    let _p = println(totient_naive(12));   // 4
+    let _p = println(totient_naive(15));   // 8
+    let _p = println(totient_naive(20));   // 8
+
+    // === Test 3: Sum property: sum of phi(d) for d|n == n ===
+    let _p = println(sum_totient_divisors(1));    // 1
+    let _p = println(sum_totient_divisors(6));    // 6
+    let _p = println(sum_totient_divisors(12));   // 12
+    let _p = println(sum_totient_divisors(15));   // 15
+    let _p = println(sum_totient_divisors(20));   // 20
+    let _p = println(sum_totient_divisors(30));   // 30
+
+    // === Test 4: Primes have phi(p) = p - 1 ===
+    let _p = println(euler_totient(2));    // 1
+    let _p = println(euler_totient(3));    // 2
+    let _p = println(euler_totient(5));    // 4
+    let _p = println(euler_totient(7));    // 6
+    let _p = println(euler_totient(11));   // 10
+    let _p = println(euler_totient(13));   // 12
+    let _p = println(euler_totient(17));   // 16
+    let _p = println(euler_totient(19));   // 18
+    let _p = println(euler_totient(23));   // 22
+
+    // === Test 5: Prime powers: phi(p^k) = p^k - p^(k-1) ===
+    let _p = println(euler_totient(4));    // 2  (2^2 - 2^1)
+    let _p = println(euler_totient(8));    // 4  (2^3 - 2^2)
+    let _p = println(euler_totient(16));   // 8  (2^4 - 2^3)
+    let _p = println(euler_totient(27));   // 18 (3^3 - 3^2)
+    let _p = println(euler_totient(25));   // 20 (5^2 - 5^1)
+
+    // === Test 6: Coprime counting ===
+    // count_coprimes(n) should equal phi(n)
+    let _p = println(count_coprimes(12));  // 4
+    let _p = println(count_coprimes(15));  // 8
+    let _p = println(count_coprimes(30));  // 8
+
+    // === Test 7: Multiplicativity ===
+    // phi(a*b) = phi(a)*phi(b) when gcd(a,b)=1
+    let _p = println(check_multiplicative(3, 5));   // 1
+    let _p = println(check_multiplicative(4, 9));   // 1
+    let _p = println(check_multiplicative(7, 11));  // 1
+    let _p = println(check_multiplicative(8, 15));  // 1
+
+    0
+};

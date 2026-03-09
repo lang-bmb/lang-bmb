@@ -1,0 +1,196 @@
+// Golden Test: String distance and similarity measures
+// Tests Hamming distance, character frequency analysis, longest common prefix
+
+// Hamming distance: count positions where bytes differ
+// Requires equal-length strings
+fn hamming_distance(a: String, b: String) -> i64 = {
+    let n = a.len();
+    let mut dist = 0;
+    for i in 0..n {
+        if a.byte_at(i) != b.byte_at(i) {
+            dist = dist + 1
+        } else { () }
+    };
+    dist
+};
+
+// Count occurrences of a specific byte in a string
+fn count_char(s: String, target: i64) -> i64 = {
+    let n = s.len();
+    let mut count = 0;
+    for i in 0..n {
+        if s.byte_at(i) == target {
+            count = count + 1
+        } else { () }
+    };
+    count
+};
+
+// Count distinct bytes in a string
+// Use a vec of 128 slots (ASCII range) as frequency table
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n {
+        let _p = vec_push(v, 0);
+        0
+    };
+    v
+};
+
+fn count_distinct(s: String) -> i64 = {
+    let freq = make_zeros(128);
+    let n = s.len();
+    for i in 0..n {
+        let c = s.byte_at(i);
+        let _s = vec_set(freq, c, vec_get(freq, c) + 1);
+        0
+    };
+    let mut distinct = 0;
+    for i in 0..128 {
+        if vec_get(freq, i) > 0 {
+            distinct = distinct + 1
+        } else { () }
+    };
+    let _f = vec_free(freq);
+    distinct
+};
+
+// Most frequent byte value in string (returns ASCII code)
+// Returns the smallest code if tied
+fn most_frequent_byte(s: String) -> i64 = {
+    let freq = make_zeros(128);
+    let n = s.len();
+    for i in 0..n {
+        let c = s.byte_at(i);
+        let _s = vec_set(freq, c, vec_get(freq, c) + 1);
+        0
+    };
+    let mut best_idx = 0;
+    let mut best_count = 0;
+    for i in 0..128 {
+        if vec_get(freq, i) > best_count {
+            set best_idx = i;
+            set best_count = vec_get(freq, i)
+        } else { () }
+    };
+    let _f = vec_free(freq);
+    best_idx
+};
+
+// Longest common prefix length
+fn lcp_length(a: String, b: String) -> i64 = {
+    let la = a.len();
+    let lb = b.len();
+    let limit = if la < lb { la } else { lb };
+    let mut count = 0;
+    let mut done = 0;
+    for i in 0..limit {
+        if done == 0 {
+            if a.byte_at(i) == b.byte_at(i) {
+                count = count + 1
+            } else {
+                done = 1
+            }
+        } else { () }
+    };
+    count
+};
+
+// Longest common suffix length
+fn lcs_length(a: String, b: String) -> i64 = {
+    let la = a.len();
+    let lb = b.len();
+    let limit = if la < lb { la } else { lb };
+    let mut count = 0;
+    let mut done = 0;
+    for i in 0..limit {
+        if done == 0 {
+            if a.byte_at(la - 1 - i) == b.byte_at(lb - 1 - i) {
+                count = count + 1
+            } else {
+                done = 1
+            }
+        } else { () }
+    };
+    count
+};
+
+// Count matching characters (at same positions)
+fn count_matches(a: String, b: String) -> i64 = {
+    let la = a.len();
+    let lb = b.len();
+    let limit = if la < lb { la } else { lb };
+    let mut matches = 0;
+    for i in 0..limit {
+        if a.byte_at(i) == b.byte_at(i) {
+            matches = matches + 1
+        } else { () }
+    };
+    matches
+};
+
+fn main() -> i64 = {
+    // === Hamming distance tests ===
+    // Same strings -> 0
+    let _p = println(hamming_distance("hello", "hello"));  // 0
+    // Differ at all positions
+    let _p = println(hamming_distance("abcde", "fghij"));  // 5
+    // Differ at one position
+    let _p = println(hamming_distance("kitten", "sitten")); // 1
+    // Differ at some positions
+    let _p = println(hamming_distance("abcdef", "azcxef")); // 2
+
+    // === Character frequency: count specific char ===
+    // 'l' = 108 in "hello world" -> 3
+    let _p = println(count_char("hello world", 108)); // 3
+    // 'a' = 97 in "banana" -> 3
+    let _p = println(count_char("banana", 97));       // 3
+    // 'z' = 122 in "hello" -> 0
+    let _p = println(count_char("hello", 122));       // 0
+
+    // === Distinct character count ===
+    // "aaa" -> 1
+    let _p = println(count_distinct("aaa"));          // 1
+    // "abcabc" -> 3
+    let _p = println(count_distinct("abcabc"));       // 3
+    // "hello" -> 4 (h,e,l,o)
+    let _p = println(count_distinct("hello"));        // 4
+    // "abcdefghij" -> 10
+    let _p = println(count_distinct("abcdefghij"));   // 10
+
+    // === Most frequent byte ===
+    // "aabbbcc" -> 'b' = 98
+    let _p = println(most_frequent_byte("aabbbcc"));  // 98
+    // "hello" -> 'l' = 108 (appears twice)
+    let _p = println(most_frequent_byte("hello"));    // 108
+    // "aaaa" -> 'a' = 97
+    let _p = println(most_frequent_byte("aaaa"));     // 97
+
+    // === Longest common prefix ===
+    // "abcdef" vs "abcxyz" -> 3
+    let _p = println(lcp_length("abcdef", "abcxyz")); // 3
+    // "hello" vs "hello" -> 5
+    let _p = println(lcp_length("hello", "hello"));   // 5
+    // "abc" vs "xyz" -> 0
+    let _p = println(lcp_length("abc", "xyz"));       // 0
+    // "prefix" vs "pre" -> 3
+    let _p = println(lcp_length("prefix", "pre"));    // 3
+
+    // === Longest common suffix ===
+    // "testing" vs "running" -> 3 ("ing")
+    let _p = println(lcs_length("testing", "running")); // 3
+    // "abc" vs "xbc" -> 2
+    let _p = println(lcs_length("abc", "xbc"));       // 2
+    // "hello" vs "world" -> 0
+    let _p = println(lcs_length("hello", "world"));   // 0
+
+    // === Count matches at same positions ===
+    // "abcde" vs "axcxe" -> 3 (a,c,e match)
+    let _p = println(count_matches("abcde", "axcxe")); // 3
+    // "hello" vs "hello" -> 5
+    let _p = println(count_matches("hello", "hello")); // 5
+    // "abc" vs "xyz" -> 0
+    let _p = println(count_matches("abc", "xyz"));     // 0
+
+    0
+};

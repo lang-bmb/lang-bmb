@@ -1,0 +1,107 @@
+// Golden Test: Prefix sum array with range queries
+// Demonstrates O(1) range sum queries after O(n) build
+
+// Build prefix sum array of size n+1 where:
+//   prefix[0] = 0
+//   prefix[i] = arr[0] + arr[1] + ... + arr[i-1]
+fn build_prefix_sum(arr: i64, n: i64) -> i64 = {
+    let prefix = vec_new();
+    let _p0 = vec_push(prefix, 0);
+    let mut i = 0;
+    let mut running = 0;
+    while i < n {
+        set running = running + vec_get(arr, i);
+        let _pp = vec_push(prefix, running);
+        set i = i + 1
+    };
+    prefix
+};
+
+// O(1) range sum query: sum of arr[l..r) = prefix[r] - prefix[l]
+fn range_sum(prefix: i64, l: i64, r: i64) -> i64
+  pre l >= 0 and r >= l
+= vec_get(prefix, r) - vec_get(prefix, l);
+
+// Kadane's algorithm: maximum contiguous subarray sum
+// Keeps current running sum, resets to 0 when it goes negative
+fn find_max_subarray_sum(arr: i64, n: i64) -> i64
+  post ret >= 0
+= {
+    let mut max_sum = 0;
+    let mut current = 0;
+    let mut i = 0;
+    while i < n {
+        set current = current + vec_get(arr, i);
+        let _c = if current > max_sum {
+            set max_sum = current;
+            ()
+        } else { () };
+        let _c2 = if current < 0 {
+            set current = 0;
+            ()
+        } else { () };
+        set i = i + 1
+    };
+    max_sum
+};
+
+// Count inversions: pairs (i,j) where i<j and arr[i]>arr[j]
+// Uses nested loops: O(n^2)
+fn count_inversions(arr: i64, n: i64) -> i64 = {
+    let mut count = 0;
+    let mut i = 0;
+    while i < n {
+        let mut j = i + 1;
+        while j < n {
+            let _c = if vec_get(arr, i) > vec_get(arr, j) {
+                set count = count + 1;
+                ()
+            } else { () };
+            set j = j + 1
+        };
+        set i = i + 1
+    };
+    count
+};
+
+fn main() -> i64 = {
+    // Array: [3, 1, 4, 1, 5, 9, 2, 6, 5, 3]
+    let arr = vec_new();
+    let _p0 = vec_push(arr, 3);
+    let _p1 = vec_push(arr, 1);
+    let _p2 = vec_push(arr, 4);
+    let _p3 = vec_push(arr, 1);
+    let _p4 = vec_push(arr, 5);
+    let _p5 = vec_push(arr, 9);
+    let _p6 = vec_push(arr, 2);
+    let _p7 = vec_push(arr, 6);
+    let _p8 = vec_push(arr, 5);
+    let _p9 = vec_push(arr, 3);
+
+    let n = 10;
+    let prefix = build_prefix_sum(arr, n);
+
+    // Print all 11 prefix sum values (prefix[0]..prefix[10])
+    let _h1 = println_str("prefix sums:");
+    for i in 0..11 {
+        println(vec_get(prefix, i))
+    };
+
+    // Range sum queries
+    let _h2 = println_str("range queries:");
+    let _r1 = println(range_sum(prefix, 0, 5));   // 14
+    let _r2 = println(range_sum(prefix, 2, 7));   // 21
+    let _r3 = println(range_sum(prefix, 0, 10));  // 39
+
+    // Maximum subarray sum (Kadane's)
+    let _h3 = println_str("max subarray sum:");
+    let _ms = println(find_max_subarray_sum(arr, n));  // 39
+
+    // Count inversions
+    let _h4 = println_str("inversions:");
+    let _ci = println(count_inversions(arr, n));  // 15
+
+    let _f1 = vec_free(arr);
+    let _f2 = vec_free(prefix);
+    0
+};

@@ -1,0 +1,131 @@
+// Golden Test: Digit sum and digit manipulation
+// Tests: sum of digits, digital root, count digits, reverse digits
+
+// Sum of digits of a non-negative number
+fn digit_sum(n: i64) -> i64 =
+    if n < 10 { n }
+    else { n - (n / 10) * 10 + digit_sum(n / 10) };
+
+// Digital root: repeatedly sum digits until single digit
+// e.g., 9875 -> 29 -> 11 -> 2
+fn digital_root(n: i64) -> i64 = {
+    let mut x = n;
+    while x >= 10 {
+        set x = digit_sum(x)
+    };
+    x
+};
+
+// Count the number of digits in a positive number
+fn count_digits(n: i64) -> i64 =
+    if n < 10 { 1 }
+    else { 1 + count_digits(n / 10) };
+
+// Reverse the digits of a number
+fn reverse_helper(n: i64, acc: i64) -> i64 =
+    if n <= 0 { acc }
+    else {
+        let digit = n - (n / 10) * 10;
+        reverse_helper(n / 10, acc * 10 + digit)
+    };
+
+fn reverse_digits(n: i64) -> i64 =
+    if n == 0 { 0 }
+    else { reverse_helper(n, 0) };
+
+// Sum of squares of digits
+fn digit_square_sum(n: i64) -> i64 =
+    if n <= 0 { 0 }
+    else {
+        let d = n - (n / 10) * 10;
+        d * d + digit_square_sum(n / 10)
+    };
+
+// Check if a number is a happy number (digit square sum eventually reaches 1)
+// Limit iterations to avoid infinite loop for unhappy numbers
+fn is_happy_iter(n: i64, steps: i64) -> i64 =
+    if n == 1 { 1 }
+    else if steps <= 0 { 0 }
+    else { is_happy_iter(digit_square_sum(n), steps - 1) };
+
+fn is_happy(n: i64) -> i64 =
+    is_happy_iter(n, 100);
+
+fn main() -> i64 = {
+    // === digit_sum tests ===
+    let _p0 = println_str("=== Digit Sum ===");
+    let _p1 = print_str("digit_sum(0) = ");
+    let _p2 = println(digit_sum(0));
+    let _p3 = print_str("digit_sum(5) = ");
+    let _p4 = println(digit_sum(5));
+    let _p5 = print_str("digit_sum(123) = ");
+    let _p6 = println(digit_sum(123));
+    let _p7 = print_str("digit_sum(9999) = ");
+    let _p8 = println(digit_sum(9999));
+    let _p9 = print_str("digit_sum(12345) = ");
+    let _pa = println(digit_sum(12345));
+    let _pb = print_str("digit_sum(999999) = ");
+    let _pc = println(digit_sum(999999));
+
+    // === digital_root tests ===
+    let _p10 = println_str("");
+    let _p11 = println_str("=== Digital Root ===");
+    let _p12 = print_str("digital_root(0) = ");
+    let _p13 = println(digital_root(0));
+    let _p14 = print_str("digital_root(5) = ");
+    let _p15 = println(digital_root(5));
+    let _p16 = print_str("digital_root(38) = ");
+    let _p17 = println(digital_root(38));
+    let _p18 = print_str("digital_root(9875) = ");
+    let _p19 = println(digital_root(9875));
+    let _p20 = print_str("digital_root(123456) = ");
+    let _p21 = println(digital_root(123456));
+
+    // === count_digits tests ===
+    let _p30 = println_str("");
+    let _p31 = println_str("=== Count Digits ===");
+    let _p32 = print_str("count_digits(0) = ");
+    let _p33 = println(count_digits(0));
+    let _p34 = print_str("count_digits(5) = ");
+    let _p35 = println(count_digits(5));
+    let _p36 = print_str("count_digits(99) = ");
+    let _p37 = println(count_digits(99));
+    let _p38 = print_str("count_digits(1000) = ");
+    let _p39 = println(count_digits(1000));
+    let _p3a = print_str("count_digits(123456789) = ");
+    let _p3b = println(count_digits(123456789));
+
+    // === reverse_digits tests ===
+    let _p40 = println_str("");
+    let _p41 = println_str("=== Reverse Digits ===");
+    let _p42 = print_str("reverse_digits(0) = ");
+    let _p43 = println(reverse_digits(0));
+    let _p44 = print_str("reverse_digits(5) = ");
+    let _p45 = println(reverse_digits(5));
+    let _p46 = print_str("reverse_digits(123) = ");
+    let _p47 = println(reverse_digits(123));
+    let _p48 = print_str("reverse_digits(12345) = ");
+    let _p49 = println(reverse_digits(12345));
+    let _p4a = print_str("reverse_digits(100) = ");
+    let _p4b = println(reverse_digits(100));
+
+    // === happy numbers ===
+    let _p50 = println_str("");
+    let _p51 = println_str("=== Happy Numbers ===");
+    // Happy: 1, 7, 10, 13, 19, 23, 28, 31, 32, 44, 49, 68, 70, 79, 82, 86, 91, 94, 97, 100
+    let _p52 = print_str("is_happy(1) = ");
+    let _p53 = println(is_happy(1));
+    let _p54 = print_str("is_happy(7) = ");
+    let _p55 = println(is_happy(7));
+    let _p56 = print_str("is_happy(10) = ");
+    let _p57 = println(is_happy(10));
+    let _p58 = print_str("is_happy(2) = ");
+    let _p59 = println(is_happy(2));
+    let _p5a = print_str("is_happy(4) = ");
+    let _p5b = println(is_happy(4));
+    let _p5c = print_str("is_happy(19) = ");
+    let _p5d = println(is_happy(19));
+    let _p5e = print_str("is_happy(100) = ");
+    let _p5f = println(is_happy(100));
+    0
+};

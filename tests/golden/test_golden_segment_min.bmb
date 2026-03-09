@@ -1,0 +1,95 @@
+// Golden Test: Segment Tree for Range Minimum Queries
+// Array-based segment tree: node i has children 2*i and 2*i+1
+
+fn make_filled(n: i64, val: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { vec_push(v, val) };
+    v
+};
+
+fn my_min(a: i64, b: i64) -> i64 = if a < b { a } else { b };
+
+// Build segment tree from array arr[0..n-1]
+// tree is 1-indexed, size 4*n
+fn seg_build(tree: i64, arr: i64, node: i64, lo: i64, hi: i64) -> i64 = {
+    if lo == hi {
+        let _s = vec_set(tree, node, vec_get(arr, lo));
+        0
+    } else {
+        let mid = (lo + hi) / 2;
+        let _l = seg_build(tree, arr, 2 * node, lo, mid);
+        let _r = seg_build(tree, arr, 2 * node + 1, mid + 1, hi);
+        let lv = vec_get(tree, 2 * node);
+        let rv = vec_get(tree, 2 * node + 1);
+        let _s = vec_set(tree, node, my_min(lv, rv));
+        0
+    }
+};
+
+// Query minimum in range [ql, qr]
+fn seg_query(tree: i64, node: i64, lo: i64, hi: i64, ql: i64, qr: i64) -> i64 = {
+    if ql > hi or qr < lo { 999999999 }
+    else if ql <= lo and hi <= qr { vec_get(tree, node) }
+    else {
+        let mid = (lo + hi) / 2;
+        let lv = seg_query(tree, 2 * node, lo, mid, ql, qr);
+        let rv = seg_query(tree, 2 * node + 1, mid + 1, hi, ql, qr);
+        my_min(lv, rv)
+    }
+};
+
+// Point update: set arr[pos] = val
+fn seg_update(tree: i64, node: i64, lo: i64, hi: i64, pos: i64, val: i64) -> i64 = {
+    if lo == hi {
+        let _s = vec_set(tree, node, val);
+        0
+    } else {
+        let mid = (lo + hi) / 2;
+        if pos <= mid {
+            let _l = seg_update(tree, 2 * node, lo, mid, pos, val);
+            0
+        } else {
+            let _r = seg_update(tree, 2 * node + 1, mid + 1, hi, pos, val);
+            0
+        };
+        let lv = vec_get(tree, 2 * node);
+        let rv = vec_get(tree, 2 * node + 1);
+        let _s = vec_set(tree, node, my_min(lv, rv));
+        0
+    }
+};
+
+fn main() -> i64 = {
+    // Array: [5, 2, 8, 1, 7, 3, 6, 4]
+    let arr = vec_new();
+    vec_push(arr, 5); vec_push(arr, 2); vec_push(arr, 8); vec_push(arr, 1);
+    vec_push(arr, 7); vec_push(arr, 3); vec_push(arr, 6); vec_push(arr, 4);
+    let n = 8;
+
+    let tree = make_filled(4 * n, 999999999);
+    let _b = seg_build(tree, arr, 1, 0, n - 1);
+
+    // Range minimum queries
+    let _p1 = println(seg_query(tree, 1, 0, 7, 0, 7));  // min of all = 1
+    let _p2 = println(seg_query(tree, 1, 0, 7, 0, 3));  // min(5,2,8,1) = 1
+    let _p3 = println(seg_query(tree, 1, 0, 7, 4, 7));  // min(7,3,6,4) = 3
+    let _p4 = println(seg_query(tree, 1, 0, 7, 0, 1));  // min(5,2) = 2
+    let _p5 = println(seg_query(tree, 1, 0, 7, 2, 5));  // min(8,1,7,3) = 1
+    let _p6 = println(seg_query(tree, 1, 0, 7, 6, 6));  // min(6) = 6
+    let _p7 = println(seg_query(tree, 1, 0, 7, 5, 7));  // min(3,6,4) = 3
+
+    // Update: set position 3 to 10 (was 1)
+    let _u1 = seg_update(tree, 1, 0, 7, 3, 10);
+    let _p8 = println(seg_query(tree, 1, 0, 7, 0, 7));  // min of all = 2
+    let _p9 = println(seg_query(tree, 1, 0, 7, 0, 3));  // min(5,2,8,10) = 2
+
+    // Update: set position 1 to 0 (was 2)
+    let _u2 = seg_update(tree, 1, 0, 7, 1, 0);
+    let _p10 = println(seg_query(tree, 1, 0, 7, 0, 7));  // min of all = 0
+    let _p11 = println(seg_query(tree, 1, 0, 7, 0, 1));  // min(5,0) = 0
+    let _p12 = println(seg_query(tree, 1, 0, 7, 2, 7));  // min(8,10,7,3,6,4) = 3
+
+    let _f1 = vec_free(arr);
+    let _f2 = vec_free(tree);
+    0
+};

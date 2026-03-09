@@ -1,0 +1,10 @@
+primes: 2 3 5 7 11 13 17 19 23 29 31 37 41 43 47
+pi(10)=4
+pi(20)=8
+pi(50)=15
+pi(100)=25
+is_prime(2)=1
+is_prime(17)=1
+is_prime(97)=1
+is_prime(4)=0
+is_prime(99)=0

@@ -1,0 +1,211 @@
+// Golden Test: Skip list with deterministic level assignment
+// Uses parallel arrays: keys[], forward[node * MAX_LEVEL + level]
+// Deterministic levels: level = count trailing zeros of insert order + 1 (capped)
+
+// Constants
+// MAX_LEVEL = 4, MAX_NODES = 32
+// Node 0 is the header (sentinel), real nodes start at 1
+
+// Count trailing zeros (deterministic level assignment)
+fn count_tz(x: i64) -> i64 = {
+    if x == 0 { 0 }
+    else {
+        let mut n = x;
+        let mut count = 0;
+        loop {
+            if n - (n / 2) * 2 != 0 { break } else { () };
+            count = count + 1;
+            n = n / 2
+        };
+        count
+    }
+};
+
+// Deterministic level: based on insertion order (1-indexed)
+fn det_level(order: i64, max_level: i64) -> i64 = {
+    let tz = count_tz(order);
+    let lev = tz + 1;
+    if lev > max_level { max_level } else { lev }
+};
+
+// Get forward pointer: forward[node * MAX_LEVEL + level]
+fn fwd_get(fwd: i64, node: i64, level: i64, max_lev: i64) -> i64 =
+    vec_get(fwd, node * max_lev + level);
+
+fn fwd_set(fwd: i64, node: i64, level: i64, max_lev: i64, val: i64) -> i64 = {
+    vec_set(fwd, node * max_lev + level, val);
+    0
+};
+
+// Search: find key in skip list, return 1 if found, 0 if not
+fn skip_search(keys: i64, fwd: i64, max_lev: i64, cur_level: i64, target: i64) -> i64 = {
+    let mut node = 0;  // start at header
+    let mut lev = cur_level - 1;
+    loop {
+        if lev < 0 { break } else { () };
+        loop {
+            let next = fwd_get(fwd, node, lev, max_lev);
+            if next == 0 - 1 { break }
+            else if vec_get(keys, next) < target {
+                node = next
+            } else { break }
+        };
+        lev = lev - 1
+    };
+    // Check level 0 successor
+    let next0 = fwd_get(fwd, node, 0, max_lev);
+    if next0 != 0 - 1 and vec_get(keys, next0) == target { 1 } else { 0 }
+};
+
+// Insert: add key at given node_id with given level
+// update[] stores the predecessor at each level
+fn skip_insert(keys: i64, fwd: i64, max_lev: i64, cur_level: i64,
+               node_id: i64, key: i64, node_level: i64) -> i64 = {
+    // Find update pointers (predecessor at each level)
+    let update = vec_new();
+    for _i in 0..max_lev { vec_push(update, 0) };  // init all to header (0)
+
+    let mut node = 0;
+    let mut lev = cur_level - 1;
+    loop {
+        if lev < 0 { break } else { () };
+        loop {
+            let next = fwd_get(fwd, node, lev, max_lev);
+            if next == 0 - 1 { break }
+            else if vec_get(keys, next) < key {
+                node = next
+            } else { break }
+        };
+        let _su = vec_set(update, lev, node);
+        lev = lev - 1
+    };
+
+    // Set key
+    let _sk = vec_set(keys, node_id, key);
+
+    // Wire forward pointers at each level up to node_level
+    let mut l = 0;
+    loop {
+        if l >= node_level { break } else { () };
+        let pred = vec_get(update, l);
+        let old_next = fwd_get(fwd, pred, l, max_lev);
+        let _s1 = fwd_set(fwd, node_id, l, max_lev, old_next);
+        let _s2 = fwd_set(fwd, pred, l, max_lev, node_id);
+        l = l + 1
+    };
+
+    vec_free(update);
+    // Return new current level (max of old and node_level)
+    if node_level > cur_level { node_level } else { cur_level }
+};
+
+// Traverse level 0 and collect sorted keys into result vec
+fn traverse_level0(keys: i64, fwd: i64, max_lev: i64, result: i64) -> i64 = {
+    let mut node = fwd_get(fwd, 0, 0, max_lev);
+    let mut count = 0;
+    loop {
+        if node == 0 - 1 { break } else { () };
+        vec_push(result, vec_get(keys, node));
+        count = count + 1;
+        node = fwd_get(fwd, node, 0, max_lev)
+    };
+    count
+};
+
+fn main() -> i64 = {
+    let max_lev = 4;
+    let max_nodes = 20;
+
+    // keys[0..max_nodes]: key values (-1 = unused)
+    let keys = vec_new();
+    for _i in 0..max_nodes { vec_push(keys, 0 - 1) };
+
+    // fwd[node * max_lev + level]: forward pointers (-1 = no next)
+    let fwd = vec_new();
+    for _i in 0..(max_nodes * max_lev) { vec_push(fwd, 0 - 1) };
+
+    let mut cur_level = 1;
+    let mut next_id = 1;  // node 0 is header
+
+    // Insert sequence: 50, 30, 70, 20, 60, 40, 80, 10
+    // order=1: level=det_level(1,4)=count_tz(1)+1=0+1=1 -> key=50
+    let lev1 = det_level(1, max_lev);
+    cur_level = skip_insert(keys, fwd, max_lev, cur_level, next_id, 50, lev1);
+    next_id = next_id + 1;
+
+    // order=2: count_tz(2)=1, level=2 -> key=30
+    let lev2 = det_level(2, max_lev);
+    cur_level = skip_insert(keys, fwd, max_lev, cur_level, next_id, 30, lev2);
+    next_id = next_id + 1;
+
+    // order=3: count_tz(3)=0, level=1 -> key=70
+    let lev3 = det_level(3, max_lev);
+    cur_level = skip_insert(keys, fwd, max_lev, cur_level, next_id, 70, lev3);
+    next_id = next_id + 1;
+
+    // order=4: count_tz(4)=2, level=3 -> key=20
+    let lev4 = det_level(4, max_lev);
+    cur_level = skip_insert(keys, fwd, max_lev, cur_level, next_id, 20, lev4);
+    next_id = next_id + 1;
+
+    // order=5: count_tz(5)=0, level=1 -> key=60
+    let lev5 = det_level(5, max_lev);
+    cur_level = skip_insert(keys, fwd, max_lev, cur_level, next_id, 60, lev5);
+    next_id = next_id + 1;
+
+    // order=6: count_tz(6)=1, level=2 -> key=40
+    let lev6 = det_level(6, max_lev);
+    cur_level = skip_insert(keys, fwd, max_lev, cur_level, next_id, 40, lev6);
+    next_id = next_id + 1;
+
+    // order=7: count_tz(7)=0, level=1 -> key=80
+    let lev7 = det_level(7, max_lev);
+    cur_level = skip_insert(keys, fwd, max_lev, cur_level, next_id, 80, lev7);
+    next_id = next_id + 1;
+
+    // order=8: count_tz(8)=3, level=4 -> key=10
+    let lev8 = det_level(8, max_lev);
+    cur_level = skip_insert(keys, fwd, max_lev, cur_level, next_id, 10, lev8);
+    next_id = next_id + 1;
+
+    // Print deterministic levels
+    let _p1 = println(lev1);   // 1
+    let _p2 = println(lev2);   // 2
+    let _p3 = println(lev3);   // 1
+    let _p4 = println(lev4);   // 3
+    let _p5 = println(lev5);   // 1
+    let _p6 = println(lev6);   // 2
+    let _p7 = println(lev7);   // 1
+    let _p8 = println(lev8);   // 4
+
+    // Print current level of skip list
+    let _p9 = println(cur_level);  // 4
+
+    // Search tests
+    let _p10 = println(skip_search(keys, fwd, max_lev, cur_level, 50));  // 1 (found)
+    let _p11 = println(skip_search(keys, fwd, max_lev, cur_level, 10));  // 1 (found)
+    let _p12 = println(skip_search(keys, fwd, max_lev, cur_level, 80));  // 1 (found)
+    let _p13 = println(skip_search(keys, fwd, max_lev, cur_level, 35));  // 0 (not found)
+    let _p14 = println(skip_search(keys, fwd, max_lev, cur_level, 90));  // 0 (not found)
+    let _p15 = println(skip_search(keys, fwd, max_lev, cur_level, 5));   // 0 (not found)
+
+    // Traverse sorted order
+    let result = vec_new();
+    let count = traverse_level0(keys, fwd, max_lev, result);
+    let _p16 = println(count);  // 8
+
+    // Print sorted order: 10 20 30 40 50 60 70 80
+    let _p17 = println(vec_get(result, 0));  // 10
+    let _p18 = println(vec_get(result, 1));  // 20
+    let _p19 = println(vec_get(result, 2));  // 30
+    let _p20 = println(vec_get(result, 3));  // 40
+    let _p21 = println(vec_get(result, 4));  // 50
+    let _p22 = println(vec_get(result, 5));  // 60
+    let _p23 = println(vec_get(result, 6));  // 70
+    let _p24 = println(vec_get(result, 7));  // 80
+
+    vec_free(keys);
+    vec_free(fwd);
+    vec_free(result);
+    0
+};

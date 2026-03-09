@@ -1,0 +1,38 @@
+// Golden Test: Integer LLVM Intrinsics
+// Tests popcount, clz, ctz, bit_reverse, abs, min, max, clamp, bswap, rotate
+
+fn main() -> i64 = {
+    // popcount: count set bits
+    let _p1 = println(popcount(0));          // 0
+    let _p2 = println(popcount(1));          // 1
+    let _p3 = println(popcount(255));        // 8
+    let _p4 = println(popcount(1023));       // 10
+
+    // clz: count leading zeros (64-bit)
+    let _p5 = println(clz(1));              // 63
+    let _p6 = println(clz(256));            // 55
+    let _p7 = println(clz(1024));           // 53
+
+    // ctz: count trailing zeros
+    let _p8 = println(ctz(1));              // 0
+    let _p9 = println(ctz(8));              // 3
+    let _p10 = println(ctz(1024));          // 10
+
+    // abs
+    let _p11 = println(abs(42));            // 42
+    let _p12 = println(abs(0 - 42));        // 42
+    let _p13 = println(abs(0));             // 0
+
+    // min/max
+    let _p14 = println(min(10, 20));        // 10
+    let _p15 = println(max(10, 20));        // 20
+    let _p16 = println(min(0 - 5, 5));      // -5
+    let _p17 = println(max(0 - 5, 5));      // 5
+
+    // clamp
+    let _p18 = println(clamp(15, 0, 10));   // 10
+    let _p19 = println(clamp(5, 0, 10));    // 5
+    let _p20 = println(clamp(0 - 5, 0, 10)); // 0
+
+    0
+};

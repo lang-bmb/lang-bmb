@@ -1,0 +1,123 @@
+// Golden Test: Topological Sort via Kahn's Algorithm (BFS-based)
+// Uses adjacency list as flat edge array + in-degree count
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { vec_push(v, 0) };
+    v
+};
+
+fn main() -> i64 = {
+    // DAG with 6 nodes (0..5):
+    // 5 -> 0, 5 -> 2
+    // 4 -> 0, 4 -> 1
+    // 2 -> 3
+    // 3 -> 1
+    // Edges as pairs: (from, to) stored in two parallel vecs
+    let n = 6;
+    let edge_from = vec_new();
+    let edge_to = vec_new();
+    vec_push(edge_from, 5); vec_push(edge_to, 0);
+    vec_push(edge_from, 5); vec_push(edge_to, 2);
+    vec_push(edge_from, 4); vec_push(edge_to, 0);
+    vec_push(edge_from, 4); vec_push(edge_to, 1);
+    vec_push(edge_from, 2); vec_push(edge_to, 3);
+    vec_push(edge_from, 3); vec_push(edge_to, 1);
+    let num_edges = 6;
+
+    // Compute in-degree
+    let indeg = make_zeros(n);
+    for i in 0..num_edges {
+        let to = vec_get(edge_to, i);
+        let _s = vec_set(indeg, to, vec_get(indeg, to) + 1)
+    };
+
+    // In-degrees: 0->2, 1->2, 2->1, 3->1, 4->0, 5->0
+    let _p1 = println(vec_get(indeg, 0));  // 2
+    let _p2 = println(vec_get(indeg, 4));  // 0
+
+    // BFS queue (simulated with vec + front pointer)
+    let queue = vec_new();
+    let front = 0;
+
+    // Enqueue all nodes with in-degree 0
+    for i in 0..n {
+        if vec_get(indeg, i) == 0 {
+            vec_push(queue, i)
+        } else { () }
+    };
+
+    // Topological order result
+    let topo = vec_new();
+    let count = 0;
+
+    loop {
+        if front >= vec_len(queue) { break } else { () };
+        let node = vec_get(queue, front);
+        front = front + 1;
+        vec_push(topo, node);
+        count = count + 1;
+
+        // For each edge from this node, decrease in-degree of target
+        for i in 0..num_edges {
+            if vec_get(edge_from, i) == node {
+                let to = vec_get(edge_to, i);
+                let new_deg = vec_get(indeg, to) - 1;
+                let _s = vec_set(indeg, to, new_deg);
+                if new_deg == 0 {
+                    vec_push(queue, to)
+                } else { () }
+            } else { () }
+        }
+    };
+
+    // Count of sorted nodes should be n (6) if no cycle
+    let _p3 = println(count);  // 6
+
+    // Print topological order
+    // With nodes 4,5 both at in-degree 0, order depends on iteration
+    // For i=0..5, we find 4 first, then 5
+    // Process 4: edges 4->0, 4->1. indeg[0]=1, indeg[1]=1
+    // Process 5: edges 5->0, 5->2. indeg[0]=0(enqueue), indeg[2]=0(enqueue)
+    // Queue now: [4, 5, 0, 2]
+    // Process 0: no outgoing edges
+    // Process 2: edge 2->3. indeg[3]=0(enqueue)
+    // Queue: [4, 5, 0, 2, 3]
+    // Process 3: edge 3->1. indeg[1]=0(enqueue)
+    // Queue: [4, 5, 0, 2, 3, 1]
+    let _p4 = println(vec_get(topo, 0));  // 4
+    let _p5 = println(vec_get(topo, 1));  // 5
+    let _p6 = println(vec_get(topo, 2));  // 0
+    let _p7 = println(vec_get(topo, 3));  // 2
+    let _p8 = println(vec_get(topo, 4));  // 3
+    let _p9 = println(vec_get(topo, 5));  // 1
+
+    // Verify topological property: for each edge (u,v), u appears before v
+    // Check edge 5->0: topo position of 5=1, topo position of 0=2 -> OK
+    // Check edge 3->1: topo position of 3=4, topo position of 1=5 -> OK
+    // Simply verify last node has no outgoing edges in the sorted order
+    let last = vec_get(topo, 5);
+    let _p10 = println(last);  // 1
+
+    // Test: empty graph (3 nodes, 0 edges)
+    let indeg2 = make_zeros(3);
+    let queue2 = vec_new();
+    let front2 = 0;
+    for i in 0..3 {
+        if vec_get(indeg2, i) == 0 {
+            vec_push(queue2, i)
+        } else { () }
+    };
+    let count2 = 0;
+    loop {
+        if front2 >= vec_len(queue2) { break } else { () };
+        front2 = front2 + 1;
+        count2 = count2 + 1
+    };
+    let _p11 = println(count2);  // 3 (all nodes valid)
+
+    let _f1 = vec_free(edge_from); let _f2 = vec_free(edge_to);
+    let _f3 = vec_free(indeg); let _f4 = vec_free(queue);
+    let _f5 = vec_free(topo); let _f6 = vec_free(indeg2); let _f7 = vec_free(queue2);
+    0
+};

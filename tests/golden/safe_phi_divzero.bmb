@@ -1,0 +1,15 @@
+// Test: --safe mode PHI with division inside if/else
+// Verifies PHI predecessor update for divzero check
+
+fn safe_compute(a: i64, b: i64) -> i64
+= if b != 0 { a / b + a % b } else { 0 };
+
+fn main() -> i64 = {
+    let r1 = safe_compute(100, 7);
+    let r2 = safe_compute(50, 0);
+    let r3 = safe_compute(99, 3);
+    let _u1 = println(r1);
+    let _u2 = println(r2);
+    let _u3 = println(r3);
+    0
+};

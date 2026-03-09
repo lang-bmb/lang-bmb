@@ -1,0 +1,189 @@
+// Golden Test: Rope Data Structure Operations
+// Rope: balanced binary tree for efficient string-like operations on integer sequences
+// Each leaf holds up to LEAF_SIZE elements, internal nodes hold size of left subtree
+// Stored in parallel arrays: type(0=leaf,1=internal), left, right, size, data(leaf vec)
+
+fn rope_new() -> i64 = {
+    let r = vec_new();
+    let types = vec_new();    // r[0] node types
+    let lefts = vec_new();    // r[1] left children
+    let rights = vec_new();   // r[2] right children
+    let sizes = vec_new();    // r[3] total size of subtree
+    let data = vec_new();     // r[4] data vectors (for leaves)
+    vec_push(r, types);
+    vec_push(r, lefts);
+    vec_push(r, rights);
+    vec_push(r, sizes);
+    vec_push(r, data);
+    vec_push(r, 0);           // r[5] node count
+    r
+};
+
+fn rope_alloc_leaf(r: i64, vals: i64) -> i64 = {
+    let idx = vec_get(r, 5);
+    let types = vec_get(r, 0);
+    vec_push(types, 0);        // type = leaf
+    let lefts = vec_get(r, 1);
+    vec_push(lefts, -1);
+    let rights = vec_get(r, 2);
+    vec_push(rights, -1);
+    let sizes = vec_get(r, 3);
+    vec_push(sizes, vec_len(vals));
+    let data = vec_get(r, 4);
+    vec_push(data, vals);
+    vec_set(r, 5, idx + 1);
+    idx
+};
+
+fn rope_alloc_internal(r: i64, left: i64, right: i64) -> i64 = {
+    let idx = vec_get(r, 5);
+    let sizes = vec_get(r, 3);
+    let ls = vec_get(sizes, left);
+    let rs = vec_get(sizes, right);
+    let types = vec_get(r, 0);
+    vec_push(types, 1);        // type = internal
+    let lefts = vec_get(r, 1);
+    vec_push(lefts, left);
+    let rights = vec_get(r, 2);
+    vec_push(rights, right);
+    vec_push(sizes, ls + rs);
+    let data = vec_get(r, 4);
+    vec_push(data, -1);       // no data for internal
+    vec_set(r, 5, idx + 1);
+    idx
+};
+
+fn rope_type(r: i64, n: i64) -> i64 = vec_get(vec_get(r, 0), n);
+fn rope_left(r: i64, n: i64) -> i64 = vec_get(vec_get(r, 1), n);
+fn rope_right(r: i64, n: i64) -> i64 = vec_get(vec_get(r, 2), n);
+fn rope_size(r: i64, n: i64) -> i64 = vec_get(vec_get(r, 3), n);
+fn rope_data(r: i64, n: i64) -> i64 = vec_get(vec_get(r, 4), n);
+
+// Create a leaf rope from a vector of values
+fn rope_from_vec(r: i64, v: i64) -> i64 = {
+    let leaf_data = vec_new();
+    for i in 0..vec_len(v) {
+        let _p = vec_push(leaf_data, vec_get(v, i));
+    };
+    rope_alloc_leaf(r, leaf_data)
+};
+
+// Concatenate two ropes
+fn rope_concat(r: i64, a: i64, b: i64) -> i64 =
+    if a < 0 { b }
+    else if b < 0 { a }
+    else { rope_alloc_internal(r, a, b) };
+
+// Get element at index i in rope rooted at node
+fn rope_get(r: i64, node: i64, idx: i64) -> i64 =
+    if rope_type(r, node) == 0 {
+        // Leaf: direct access
+        vec_get(rope_data(r, node), idx)
+    } else {
+        // Internal: check left subtree size
+        let left_size = rope_size(r, rope_left(r, node));
+        if idx < left_size {
+            rope_get(r, rope_left(r, node), idx)
+        } else {
+            rope_get(r, rope_right(r, node), idx - left_size)
+        }
+    };
+
+// Collect all elements into a vector
+fn rope_collect(r: i64, node: i64, out: i64) -> i64 =
+    if node < 0 { 0 }
+    else if rope_type(r, node) == 0 {
+        let d = rope_data(r, node);
+        for i in 0..vec_len(d) {
+            let _p = vec_push(out, vec_get(d, i));
+        };
+        0
+    } else {
+        let _l = rope_collect(r, rope_left(r, node), out);
+        rope_collect(r, rope_right(r, node), out)
+    };
+
+// Sum all elements in rope
+fn rope_sum(r: i64, node: i64) -> i64 =
+    if node < 0 { 0 }
+    else if rope_type(r, node) == 0 {
+        let d = rope_data(r, node);
+        let mut s = 0;
+        for i in 0..vec_len(d) {
+            set s = s + vec_get(d, i);
+        };
+        s
+    } else {
+        rope_sum(r, rope_left(r, node)) + rope_sum(r, rope_right(r, node))
+    };
+
+fn main() -> i64 = {
+    let r = rope_new();
+
+    // Create two leaf ropes
+    let v1 = vec_new();
+    vec_push(v1, 1);
+    vec_push(v1, 2);
+    vec_push(v1, 3);
+    let leaf1 = rope_from_vec(r, v1);
+
+    let v2 = vec_new();
+    vec_push(v2, 4);
+    vec_push(v2, 5);
+    let leaf2 = rope_from_vec(r, v2);
+
+    // Test 1: Leaf sizes
+    let _p1 = println(rope_size(r, leaf1));  // 3
+    let _p2 = println(rope_size(r, leaf2));  // 2
+
+    // Test 2: Concatenate
+    let cat1 = rope_concat(r, leaf1, leaf2);
+    let _p3 = println(rope_size(r, cat1));  // 5
+
+    // Test 3: Index access
+    let _p4 = println(rope_get(r, cat1, 0));  // 1
+    let _p5 = println(rope_get(r, cat1, 2));  // 3
+    let _p6 = println(rope_get(r, cat1, 3));  // 4
+    let _p7 = println(rope_get(r, cat1, 4));  // 5
+
+    // Test 4: Sum
+    let _p8 = println(rope_sum(r, cat1));  // 15
+
+    // Test 5: Build a bigger rope by concatenation
+    let v3 = vec_new();
+    vec_push(v3, 6);
+    vec_push(v3, 7);
+    vec_push(v3, 8);
+    let leaf3 = rope_from_vec(r, v3);
+    let cat2 = rope_concat(r, cat1, leaf3);
+
+    let _p9 = println(rope_size(r, cat2));   // 8
+    let _p10 = println(rope_get(r, cat2, 5));  // 6
+    let _p11 = println(rope_get(r, cat2, 7));  // 8
+    let _p12 = println(rope_sum(r, cat2));     // 36
+
+    // Test 6: Collect all elements
+    let collected = vec_new();
+    let _c = rope_collect(r, cat2, collected);
+    let _p13 = println(vec_len(collected));  // 8
+    let _p14 = println(vec_get(collected, 0));  // 1
+    let _p15 = println(vec_get(collected, 7));  // 8
+
+    // Test 7: Node count
+    let _p16 = println(vec_get(r, 5));  // 5 (3 leaves + 2 internal)
+
+    // Test 8: Empty concat
+    let v4 = vec_new();
+    let leaf4 = rope_from_vec(r, v4);
+    let _p17 = println(rope_size(r, leaf4));  // 0
+
+    vec_free(v1); vec_free(v2); vec_free(v3); vec_free(v4);
+    vec_free(collected);
+    vec_free(vec_get(r, 0));
+    vec_free(vec_get(r, 1));
+    vec_free(vec_get(r, 2));
+    vec_free(vec_get(r, 3));
+    vec_free(vec_get(r, 4));
+    vec_free(r);
+    0
+};

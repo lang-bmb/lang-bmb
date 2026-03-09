@@ -1,0 +1,155 @@
+// Golden Test: Fractional Knapsack (Greedy)
+// Uses integer arithmetic scaled by 1000 for fixed-point
+// Items: (value, weight) pairs, capacity W
+// Greedy: sort by value/weight ratio, take items greedily
+
+// Sort items by value-per-weight ratio (descending)
+// Ratio = value * 1000 / weight (scaled integer)
+fn sort_by_ratio(vals: i64, wts: i64, n: i64) -> i64 = {
+    // Bubble sort by ratio descending
+    for i in 0..n {
+        for j in 0..(n - i - 1) {
+            let r1 = vec_get(vals, j) * 1000 / vec_get(wts, j);
+            let r2 = vec_get(vals, j + 1) * 1000 / vec_get(wts, j + 1);
+            let _x = if r1 < r2 {
+                // Swap vals
+                let tv = vec_get(vals, j);
+                vec_set(vals, j, vec_get(vals, j + 1));
+                vec_set(vals, j + 1, tv);
+                // Swap wts
+                let tw = vec_get(wts, j);
+                vec_set(wts, j, vec_get(wts, j + 1));
+                vec_set(wts, j + 1, tw);
+                0
+            } else { 0 };
+        };
+    };
+    0
+};
+
+// Fractional knapsack: returns total value * 1000 (fixed-point)
+// Takes fractions of items
+fn fractional_knapsack(vals: i64, wts: i64, n: i64, capacity: i64) -> i64 = {
+    let _s = sort_by_ratio(vals, wts, n);
+    let mut total_value = 0;
+    let mut remaining = capacity;
+    for i in 0..n {
+        let _x = if remaining > 0 {
+            let w = vec_get(wts, i);
+            let v = vec_get(vals, i);
+            if w <= remaining {
+                // Take whole item
+                set total_value = total_value + v * 1000;
+                set remaining = remaining - w;
+                0
+            } else {
+                // Take fraction: remaining/weight * value
+                let fraction_val = remaining * v * 1000 / w;
+                set total_value = total_value + fraction_val;
+                set remaining = 0;
+                0
+            }
+        } else { 0 };
+    };
+    total_value
+};
+
+// 0/1 Knapsack for comparison (DP, returns max value)
+fn knapsack_01(vals: i64, wts: i64, n: i64, capacity: i64) -> i64 = {
+    // dp[j] = max value with capacity j
+    let dp = vec_new();
+    for _j in 0..(capacity + 1) {
+        let _p = vec_push(dp, 0);
+    };
+    for i in 0..n {
+        let w = vec_get(wts, i);
+        let v = vec_get(vals, i);
+        let mut j = capacity;
+        loop {
+            if j < w { break } else { () };
+            let prev = vec_get(dp, j - w) + v;
+            let _x = if prev > vec_get(dp, j) {
+                vec_set(dp, j, prev);
+                0
+            } else { 0 };
+            set j = j - 1;
+        };
+    };
+    let result = vec_get(dp, capacity);
+    let _f = vec_free(dp);
+    result
+};
+
+fn main() -> i64 = {
+    // Items: (value, weight)
+    // Item 0: value=60, weight=10
+    // Item 1: value=100, weight=20
+    // Item 2: value=120, weight=30
+    let vals = vec_new();
+    let wts = vec_new();
+    vec_push(vals, 60);  vec_push(wts, 10);
+    vec_push(vals, 100); vec_push(wts, 20);
+    vec_push(vals, 120); vec_push(wts, 30);
+
+    // Fractional knapsack with capacity 50
+    // Optimal: take all of item 0 (60), all of item 1 (100),
+    //          2/3 of item 2 (80) = 240
+    // Sorted by ratio: item0 (6.0), item1 (5.0), item2 (4.0)
+    let fk = fractional_knapsack(vals, wts, 3, 50);
+    let _p1 = println(fk / 1000);  // 240
+
+    // 0/1 Knapsack with capacity 50
+    // Optimal: item1 (100) + item2 (120) = 220
+    let vals2 = vec_new();
+    let wts2 = vec_new();
+    vec_push(vals2, 60);  vec_push(wts2, 10);
+    vec_push(vals2, 100); vec_push(wts2, 20);
+    vec_push(vals2, 120); vec_push(wts2, 30);
+    let ok = knapsack_01(vals2, wts2, 3, 50);
+    let _p2 = println(ok);  // 220
+
+    // Fractional with capacity = total weight (60)
+    // Take everything: 60 + 100 + 120 = 280
+    let vals3 = vec_new();
+    let wts3 = vec_new();
+    vec_push(vals3, 60);  vec_push(wts3, 10);
+    vec_push(vals3, 100); vec_push(wts3, 20);
+    vec_push(vals3, 120); vec_push(wts3, 30);
+    let fk2 = fractional_knapsack(vals3, wts3, 3, 60);
+    let _p3 = println(fk2 / 1000);  // 280
+
+    // Fractional with capacity 10 (only first item fits)
+    let vals4 = vec_new();
+    let wts4 = vec_new();
+    vec_push(vals4, 60);  vec_push(wts4, 10);
+    vec_push(vals4, 100); vec_push(wts4, 20);
+    vec_push(vals4, 120); vec_push(wts4, 30);
+    let fk3 = fractional_knapsack(vals4, wts4, 3, 10);
+    let _p4 = println(fk3 / 1000);  // 60
+
+    // Fractional with capacity 0
+    let vals5 = vec_new();
+    let wts5 = vec_new();
+    vec_push(vals5, 60);  vec_push(wts5, 10);
+    let fk4 = fractional_knapsack(vals5, wts5, 1, 0);
+    let _p5 = println(fk4 / 1000);  // 0
+
+    // Single item, partial take
+    let vals6 = vec_new();
+    let wts6 = vec_new();
+    vec_push(vals6, 100); vec_push(wts6, 50);
+    let fk5 = fractional_knapsack(vals6, wts6, 1, 30);
+    let _p6 = println(fk5 / 1000);  // 60 (30/50 * 100)
+
+    // Difference: fractional >= 0/1 always
+    let diff = fk / 1000 - ok;
+    let _p7 = println(diff);  // 20
+
+    vec_free(vals); vec_free(wts);
+    vec_free(vals2); vec_free(wts2);
+    vec_free(vals3); vec_free(wts3);
+    vec_free(vals4); vec_free(wts4);
+    vec_free(vals5); vec_free(wts5);
+    vec_free(vals6); vec_free(wts6);
+    0
+};

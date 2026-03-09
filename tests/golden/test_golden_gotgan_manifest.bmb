@@ -1,0 +1,374 @@
+// Golden Test: gotgan manifest parsing
+// Parses realistic gotgan.toml manifests and extracts package metadata + dependencies.
+// Self-contained: includes TOML parser inline.
+
+// ============================================================================
+    // TOML Parser (inline from ecosystem/gotgan-bmb/src/toml.bmb)
+    // ============================================================================
+
+fn toml_is_ws(c: i64) -> bool = c == 32 or c == 9;
+
+fn toml_find_byte(s: String, pos: i64, end: i64, b: i64) -> i64 = {
+    let mut p = pos;
+    loop {
+        if p >= end { break } else { () };
+        if s.byte_at(p) == b { break } else { p = p + 1 }
+    };
+    p
+    };
+
+fn toml_skip_ws(s: String, pos: i64, end: i64) -> i64 = {
+    let mut p = pos;
+    loop {
+        if p >= end { break } else { () };
+        if toml_is_ws(s.byte_at(p)) { p = p + 1 } else { break }
+    };
+    p
+    };
+
+fn toml_trim_end(s: String, end: i64, start: i64) -> i64 = {
+    let mut p = end;
+    loop {
+        if p <= start { break } else { () };
+        if toml_is_ws(s.byte_at(p - 1)) { p = p - 1 } else { break }
+    };
+    p
+    };
+
+fn toml_parse(content: String) -> i64
+  post ret != 0
+= {
+    let slen = content.len();
+    let entries = vec_new();
+    let mut pos = 0;
+    let mut sec_off = 0;
+    let mut sec_len = 0;
+
+    while pos < slen {
+        let line_end = toml_find_byte(content, pos, slen, 10);
+        let eff_end = if line_end > pos {
+            if content.byte_at(line_end - 1) == 13 { line_end - 1 }
+            else { line_end }
+        } else { line_end };
+    let ls = toml_skip_ws(content, pos, eff_end);
+
+    let _r = if ls >= eff_end { 0 }
+    else if content.byte_at(ls) == 35 { 0 }
+    else if content.byte_at(ls) == 91 {
+        {
+            let close = toml_find_byte(content, ls + 1, eff_end, 93);
+            sec_off = ls + 1;
+            sec_len = close - ls - 1;
+            0
+        }
+    } else {
+    {
+        let eq_pos = toml_find_byte(content, ls, eff_end, 61);
+        let _store = if eq_pos < eff_end {
+            {
+                let key_end = toml_trim_end(content, eq_pos, ls);
+                let key_off = ls;
+                let key_len = key_end - ls;
+                let val_start = toml_skip_ws(content, eq_pos + 1, eff_end);
+                let val_end = toml_trim_end(content, eff_end, val_start);
+                let raw_len = val_end - val_start;
+                let is_quoted = if raw_len >= 2 {
+                    content.byte_at(val_start) == 34
+                    and content.byte_at(val_end - 1) == 34
+                } else { false };
+            let final_off = if is_quoted { val_start + 1 } else { val_start };
+            let final_len = if is_quoted { raw_len - 2 } else { raw_len };
+            let _s1 = vec_push(entries, sec_off);
+            let _s2 = vec_push(entries, sec_len);
+            let _s3 = vec_push(entries, key_off);
+            let _s4 = vec_push(entries, key_len);
+            let _s5 = vec_push(entries, final_off);
+            let _s6 = vec_push(entries, final_len);
+            0
+        }
+    } else { 0 };
+    0
+    }
+    };
+    pos = line_end + 1;
+    0
+    };
+    entries
+    };
+
+fn toml_entry_count(doc: i64) -> i64
+  pre doc != 0
+  post ret >= 0
+= vec_len(doc) / 6;
+
+fn toml_entry_section(doc: i64, content: String, i: i64) -> String
+  pre doc != 0 and i >= 0
+= {
+    let base = i * 6;
+    let off = vec_get(doc, base);
+    let len = vec_get(doc, base + 1);
+    if len == 0 { "" } else { content.slice(off, off + len) }
+    };
+
+fn toml_entry_key(doc: i64, content: String, i: i64) -> String
+  pre doc != 0 and i >= 0
+= {
+    let base = i * 6;
+    let off = vec_get(doc, base + 2);
+    let len = vec_get(doc, base + 3);
+    if len == 0 { "" } else { content.slice(off, off + len) }
+    };
+
+fn toml_entry_value(doc: i64, content: String, i: i64) -> String
+  pre doc != 0 and i >= 0
+= {
+    let base = i * 6;
+    let off = vec_get(doc, base + 4);
+    let len = vec_get(doc, base + 5);
+    if len == 0 { "" } else { content.slice(off, off + len) }
+    };
+
+fn toml_get(doc: i64, content: String, section: String, key: String) -> String
+  pre doc != 0
+= {
+    let count = toml_entry_count(doc);
+    let mut i = 0;
+    let mut result = "";
+    let mut found = false;
+    loop {
+        if i >= count or found { break } else { () };
+        let sec = toml_entry_section(doc, content, i);
+        let k = toml_entry_key(doc, content, i);
+        let _r = if sec == section and k == key {
+            { result = toml_entry_value(doc, content, i); found = true; 0 }
+        } else { 0 };
+    i = i + 1
+    };
+    result
+    };
+
+fn toml_section_count(doc: i64, content: String, section: String) -> i64
+  pre doc != 0
+  post ret >= 0
+= {
+    let count = toml_entry_count(doc);
+    let mut i = 0;
+    let mut n = 0;
+    while i < count {
+        let sec = toml_entry_section(doc, content, i);
+        let _r = if sec == section { n = n + 1; 0 } else { 0 };
+        i = i + 1;
+        0
+    };
+    n
+    };
+
+fn toml_section_key_at(doc: i64, content: String, section: String, idx: i64) -> String
+  pre doc != 0 and idx >= 0
+= {
+    let count = toml_entry_count(doc);
+    let mut i = 0;
+    let mut sec_idx = 0;
+    let mut result = "";
+    let mut found = false;
+    while i < count and not found {
+        let sec = toml_entry_section(doc, content, i);
+        let _r = if sec == section {
+            if sec_idx == idx {
+                { result = toml_entry_key(doc, content, i); found = true; 0 }
+            } else { sec_idx = sec_idx + 1; 0 }
+    } else { 0 };
+    i = i + 1;
+    0
+    };
+    result
+    };
+
+fn toml_section_val_at(doc: i64, content: String, section: String, idx: i64) -> String
+  pre doc != 0 and idx >= 0
+= {
+    let count = toml_entry_count(doc);
+    let mut i = 0;
+    let mut sec_idx = 0;
+    let mut result = "";
+    let mut found = false;
+    while i < count and not found {
+        let sec = toml_entry_section(doc, content, i);
+        let _r = if sec == section {
+            if sec_idx == idx {
+                { result = toml_entry_value(doc, content, i); found = true; 0 }
+            } else { sec_idx = sec_idx + 1; 0 }
+    } else { 0 };
+    i = i + 1;
+    0
+    };
+    result
+    };
+
+fn toml_free(doc: i64) -> i64
+  pre doc != 0
+= { let _f = vec_free(doc); 0 };
+
+    // ============================================================================
+    // Manifest Helpers
+    // ============================================================================
+
+    // Get package name
+
+fn manifest_name(doc: i64, content: String) -> String =
+    toml_get(doc, content, "package", "name");
+
+    // Get package version
+
+fn manifest_version(doc: i64, content: String) -> String =
+    toml_get(doc, content, "package", "version");
+
+    // Get package description
+
+fn manifest_description(doc: i64, content: String) -> String =
+    toml_get(doc, content, "package", "description");
+
+    // Get package license
+
+fn manifest_license(doc: i64, content: String) -> String =
+    toml_get(doc, content, "package", "license");
+
+    // Number of dependencies
+
+fn manifest_dep_count(doc: i64, content: String) -> i64 =
+    toml_section_count(doc, content, "dependencies");
+
+    // Get dependency name at index
+
+fn manifest_dep_name(doc: i64, content: String, idx: i64) -> String =
+    toml_section_key_at(doc, content, "dependencies", idx);
+
+    // Get dependency version spec at index
+
+fn manifest_dep_spec(doc: i64, content: String, idx: i64) -> String =
+    toml_section_val_at(doc, content, "dependencies", idx);
+
+    // ============================================================================
+    // Tests
+    // ============================================================================
+
+fn report(name: String, result: i64) -> i64 = {
+    if result == 0 {
+        let _a = print_str("  FAIL: ");
+        let _b = print_str(name);
+        let _c = print_str("\n");
+        0
+    } else { result }
+    };
+
+// Realistic gotgan.toml content
+fn sample_manifest() -> String =
+    "[package]\nname = \"bmb-json\"\nversion = \"0.2.0\"\ndescription = \"High-performance JSON parser\"\nlicense = \"MIT\"\n\n# Dependencies for JSON parsing\n[dependencies]\nbmb-core = \"0.1.0\"\nbmb-string-algo = \"0.1.0\"\nbmb-assert = \"0.1.0\"\n";
+
+fn test_package_name() -> i64 = {
+    let content = sample_manifest();
+    let doc = toml_parse(content);
+    let name = manifest_name(doc, content);
+    let _f = toml_free(doc);
+    if name == "bmb-json" { 1 } else { 0 }
+    };
+
+fn test_package_version() -> i64 = {
+    let content = sample_manifest();
+    let doc = toml_parse(content);
+    let ver = manifest_version(doc, content);
+    let _f = toml_free(doc);
+    if ver == "0.2.0" { 1 } else { 0 }
+    };
+
+fn test_package_description() -> i64 = {
+    let content = sample_manifest();
+    let doc = toml_parse(content);
+    let desc = manifest_description(doc, content);
+    let _f = toml_free(doc);
+    if desc == "High-performance JSON parser" { 1 } else { 0 }
+    };
+
+fn test_package_license() -> i64 = {
+    let content = sample_manifest();
+    let doc = toml_parse(content);
+    let lic = manifest_license(doc, content);
+    let _f = toml_free(doc);
+    if lic == "MIT" { 1 } else { 0 }
+    };
+
+fn test_dep_count() -> i64 = {
+    let content = sample_manifest();
+    let doc = toml_parse(content);
+    let count = manifest_dep_count(doc, content);
+    let _f = toml_free(doc);
+    if count == 3 { 1 } else { 0 }
+    };
+
+fn test_dep_names() -> i64 = {
+    let content = sample_manifest();
+    let doc = toml_parse(content);
+    let d0 = manifest_dep_name(doc, content, 0);
+    let d1 = manifest_dep_name(doc, content, 1);
+    let d2 = manifest_dep_name(doc, content, 2);
+    let _f = toml_free(doc);
+    if d0 == "bmb-core" and d1 == "bmb-string-algo" and d2 == "bmb-assert" { 1 } else { 0 }
+    };
+
+fn test_dep_specs() -> i64 = {
+    let content = sample_manifest();
+    let doc = toml_parse(content);
+    let s0 = manifest_dep_spec(doc, content, 0);
+    let s1 = manifest_dep_spec(doc, content, 1);
+    let s2 = manifest_dep_spec(doc, content, 2);
+    let _f = toml_free(doc);
+    if s0 == "0.1.0" and s1 == "0.1.0" and s2 == "0.1.0" { 1 } else { 0 }
+    };
+
+fn test_dep_out_of_range() -> i64 = {
+    let content = sample_manifest();
+    let doc = toml_parse(content);
+    let d = manifest_dep_name(doc, content, 99);
+    let _f = toml_free(doc);
+    if d == "" { 1 } else { 0 }
+    };
+
+fn test_no_deps() -> i64 = {
+    let content = "[package]\nname = \"standalone\"\nversion = \"1.0.0\"\n";
+    let doc = toml_parse(content);
+    let count = manifest_dep_count(doc, content);
+    let _f = toml_free(doc);
+    if count == 0 { 1 } else { 0 }
+    };
+
+fn test_multi_section() -> i64 = {
+    let content = "[package]\nname = \"app\"\nversion = \"1.0.0\"\n\n[dependencies]\nfoo = \"1.0\"\n\n[dev-dependencies]\nbar = \"2.0\"\n";
+    let doc = toml_parse(content);
+    let name = manifest_name(doc, content);
+    let dep_count = manifest_dep_count(doc, content);
+    let dev_count = toml_section_count(doc, content, "dev-dependencies");
+    let dev_name = toml_section_key_at(doc, content, "dev-dependencies", 0);
+    let _f = toml_free(doc);
+    if name == "app" and dep_count == 1 and dev_count == 1 and dev_name == "bar" { 1 } else { 0 }
+    };
+
+fn main() -> i64 = {
+    let t1 = report("package_name", test_package_name());
+    let t2 = report("package_version", test_package_version());
+    let t3 = report("package_description", test_package_description());
+    let t4 = report("package_license", test_package_license());
+    let t5 = report("dep_count", test_dep_count());
+    let t6 = report("dep_names", test_dep_names());
+    let t7 = report("dep_specs", test_dep_specs());
+    let t8 = report("dep_out_of_range", test_dep_out_of_range());
+    let t9 = report("no_deps", test_no_deps());
+    let t10 = report("multi_section", test_multi_section());
+    let passed = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10;
+    let total = 10;
+    let _p1 = print_str("gotgan-manifest: ");
+    let _p2 = print(passed);
+    let _p3 = print_str("/");
+    let _p4 = print(total);
+    let _p5 = print_str(" tests passed\n");
+    if passed == total { 0 } else { 1 }
+    };

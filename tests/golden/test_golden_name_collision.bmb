@@ -1,0 +1,22 @@
+// Test: user-defined functions should NOT collide with runtime built-in names
+// Bug: parse_int was mapped to bmb_parse_int (runtime) even when user-defined
+
+fn parse_int(x: i64) -> i64 = x * 2 + 1;
+
+fn string_len(x: i64) -> i64 = x + 100;
+
+fn abs(x: i64) -> i64 = x * 3;
+
+fn main() -> i64 = {
+    let a = parse_int(5);
+    let _p1 = println(a);
+    let b = string_len(7);
+    let _p2 = println(b);
+    let c = abs(4);
+    let _p3 = println(c);
+
+// Test from nested context (original bug only manifested in deep if/else)
+    let d = if a > 0 { parse_int(3) } else { 0 };
+    let _p4 = println(d);
+    0
+    };

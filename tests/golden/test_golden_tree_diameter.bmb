@@ -1,0 +1,245 @@
+// Golden test: Tree diameter (longest path) using BFS on adjacency list
+// Tree stored as adjacency list using flat arrays: edges[] and edge_start[]
+// edge_start[v] = starting index in edges[] for vertex v's neighbors
+// edge_start[v+1] - edge_start[v] = degree of v
+
+// BFS from source node, returns (farthest_node, max_distance) encoded as farthest * 10000 + dist
+fn bfs(edges: i64, edge_start: i64, n: i64, source: i64) -> i64 = {
+    let dist = vec_new();
+    for _i in 0..n { vec_push(dist, 0 - 1); }; // -1 = not visited
+
+    let queue = vec_new();
+    vec_push(queue, source);
+    vec_set(dist, source, 0);
+    let front = 0;
+
+    for _iter in 0..1000 {
+        if front >= vec_len(queue) { () }
+        else {
+            let u = vec_get(queue, front);
+            front = front + 1;
+            let start = vec_get(edge_start, u);
+            let end = vec_get(edge_start, u + 1);
+            for ei in start..end {
+                let v = vec_get(edges, ei);
+                if vec_get(dist, v) < 0 {
+                    vec_set(dist, v, vec_get(dist, u) + 1);
+                    vec_push(queue, v);
+                } else { () };
+            };
+        };
+    };
+
+    // Find farthest node
+    let farthest = source;
+    let max_dist = 0;
+    for i in 0..n {
+        let d = vec_get(dist, i);
+        if d > max_dist {
+            max_dist = d;
+            farthest = i;
+        } else { () };
+    };
+
+    let _fd = vec_free(dist);
+    let _fq = vec_free(queue);
+    farthest * 10000 + max_dist
+    };
+
+// Tree diameter: BFS from any node, then BFS from farthest
+fn tree_diameter(edges: i64, edge_start: i64, n: i64) -> i64 = {
+    // First BFS from node 0
+    let result1 = bfs(edges, edge_start, n, 0);
+    let far1 = result1 / 10000;
+    // Second BFS from farthest node
+    let result2 = bfs(edges, edge_start, n, far1);
+    let diameter = result2 - (result2 / 10000) * 10000;
+    diameter
+    };
+
+// Get farthest node from BFS result
+fn get_farthest(bfs_result: i64) -> i64 = bfs_result / 10000;
+fn get_dist(bfs_result: i64) -> i64 = bfs_result - (bfs_result / 10000) * 10000;
+
+// Build tree from edge list (undirected: add both directions)
+// edges_from, edges_to: parallel arrays of from->to edges (one direction)
+// Returns (edges, edge_start) packed in a vec of 2 vecs
+fn build_adjacency(edges_from: i64, edges_to: i64, num_edges: i64, n: i64) -> i64 = {
+    // Count degree of each node (each undirected edge contributes to both endpoints)
+    let degree = vec_new();
+    for _i in 0..n { vec_push(degree, 0); };
+    for i in 0..num_edges {
+        let u = vec_get(edges_from, i);
+        let v = vec_get(edges_to, i);
+        vec_set(degree, u, vec_get(degree, u) + 1);
+        vec_set(degree, v, vec_get(degree, v) + 1);
+    };
+
+    // Build edge_start (prefix sum of degrees)
+    let edge_start = vec_new();
+    let sum = 0;
+    for i in 0..n {
+        vec_push(edge_start, sum);
+        sum = sum + vec_get(degree, i);
+    };
+    vec_push(edge_start, sum); // edge_start[n] = total edges
+
+    // Fill adjacency list
+    let adj_edges = vec_new();
+    for _i in 0..sum { vec_push(adj_edges, 0); };
+
+    // Use degree as offset counter (reset to 0)
+    let offset = vec_new();
+    for _i in 0..n { vec_push(offset, 0); };
+
+    for i in 0..num_edges {
+        let u = vec_get(edges_from, i);
+        let v = vec_get(edges_to, i);
+        // Add v to u's list
+        let pos_u = vec_get(edge_start, u) + vec_get(offset, u);
+        vec_set(adj_edges, pos_u, v);
+        vec_set(offset, u, vec_get(offset, u) + 1);
+        // Add u to v's list
+        let pos_v = vec_get(edge_start, v) + vec_get(offset, v);
+        vec_set(adj_edges, pos_v, u);
+        vec_set(offset, v, vec_get(offset, v) + 1);
+    };
+
+    let _fd = vec_free(degree);
+    let _fo = vec_free(offset);
+
+    // Return both as a vec of vecs
+    let result = vec_new();
+    vec_push(result, adj_edges);
+    vec_push(result, edge_start);
+    result
+    };
+
+// Count leaves (degree 1 nodes)
+fn count_leaves(edge_start: i64, n: i64) -> i64 = {
+    let count = 0;
+    for i in 0..n {
+        let deg = vec_get(edge_start, i + 1) - vec_get(edge_start, i);
+        if deg == 1 { count = count + 1; } else { () };
+    };
+    count
+    };
+
+fn main() -> i64 = {
+    // Test 1: Path graph 0 - 1 - 2 - 3 - 4 (diameter = 4)
+    let ef1 = vec_new();
+    let et1 = vec_new();
+    vec_push(ef1, 0); vec_push(et1, 1);
+    vec_push(ef1, 1); vec_push(et1, 2);
+    vec_push(ef1, 2); vec_push(et1, 3);
+    vec_push(ef1, 3); vec_push(et1, 4);
+
+    let adj1 = build_adjacency(ef1, et1, 4, 5);
+    let edges1 = vec_get(adj1, 0);
+    let starts1 = vec_get(adj1, 1);
+
+    let _p1 = println(tree_diameter(edges1, starts1, 5)); // 4
+    let _p2 = println(count_leaves(starts1, 5)); // 2 (nodes 0, 4)
+
+    // Test 2: Star graph (center=0, leaves=1,2,3,4) diameter = 2
+    let ef2 = vec_new();
+    let et2 = vec_new();
+    vec_push(ef2, 0); vec_push(et2, 1);
+    vec_push(ef2, 0); vec_push(et2, 2);
+    vec_push(ef2, 0); vec_push(et2, 3);
+    vec_push(ef2, 0); vec_push(et2, 4);
+
+    let adj2 = build_adjacency(ef2, et2, 4, 5);
+    let edges2 = vec_get(adj2, 0);
+    let starts2 = vec_get(adj2, 1);
+
+    let _p3 = println(tree_diameter(edges2, starts2, 5)); // 2
+    let _p4 = println(count_leaves(starts2, 5)); // 4
+
+    // Test 3: Caterpillar tree
+    //     1   3   5
+    //     |   |   |
+    // 0 - 2 - 4 - 6 - 7
+    // Diameter: 0-2-4-6-7 = 4
+    let ef3 = vec_new();
+    let et3 = vec_new();
+    vec_push(ef3, 0); vec_push(et3, 2);
+    vec_push(ef3, 1); vec_push(et3, 2);
+    vec_push(ef3, 2); vec_push(et3, 4);
+    vec_push(ef3, 3); vec_push(et3, 4);
+    vec_push(ef3, 4); vec_push(et3, 6);
+    vec_push(ef3, 5); vec_push(et3, 6);
+    vec_push(ef3, 6); vec_push(et3, 7);
+
+    let adj3 = build_adjacency(ef3, et3, 7, 8);
+    let edges3 = vec_get(adj3, 0);
+    let starts3 = vec_get(adj3, 1);
+
+    let _p5 = println(tree_diameter(edges3, starts3, 8)); // 4
+    let _p6 = println(count_leaves(starts3, 8)); // 5 (nodes 0, 1, 3, 5, 7)
+
+    // Test 4: Single node (diameter = 0)
+    let ef4 = vec_new();
+    let et4 = vec_new();
+    let adj4 = build_adjacency(ef4, et4, 0, 1);
+    let edges4 = vec_get(adj4, 0);
+    let starts4 = vec_get(adj4, 1);
+
+    let _p7 = println(tree_diameter(edges4, starts4, 1)); // 0
+
+    // Test 5: Two nodes (diameter = 1)
+    let ef5 = vec_new();
+    let et5 = vec_new();
+    vec_push(ef5, 0); vec_push(et5, 1);
+
+    let adj5 = build_adjacency(ef5, et5, 1, 2);
+    let edges5 = vec_get(adj5, 0);
+    let starts5 = vec_get(adj5, 1);
+
+    let _p8 = println(tree_diameter(edges5, starts5, 2)); // 1
+
+    // Test 6: Balanced binary tree (7 nodes)
+    //        0
+    //       / \
+    //      1   2
+    //     / \ / \
+    //    3  4 5  6
+    // Diameter: 3-1-0-2-6 = 4
+    let ef6 = vec_new();
+    let et6 = vec_new();
+    vec_push(ef6, 0); vec_push(et6, 1);
+    vec_push(ef6, 0); vec_push(et6, 2);
+    vec_push(ef6, 1); vec_push(et6, 3);
+    vec_push(ef6, 1); vec_push(et6, 4);
+    vec_push(ef6, 2); vec_push(et6, 5);
+    vec_push(ef6, 2); vec_push(et6, 6);
+
+    let adj6 = build_adjacency(ef6, et6, 6, 7);
+    let edges6 = vec_get(adj6, 0);
+    let starts6 = vec_get(adj6, 1);
+
+    let _p9 = println(tree_diameter(edges6, starts6, 7)); // 4
+    let _p10 = println(count_leaves(starts6, 7)); // 4 (nodes 3,4,5,6)
+
+    // Test 7: BFS distance verification
+    // From node 0 of path graph: farthest should be node 4 at distance 4
+    let r1 = bfs(edges1, starts1, 5, 0);
+    let _p11 = println(get_farthest(r1)); // 4
+    let _p12 = println(get_dist(r1)); // 4
+
+    // From center of star: farthest is any leaf at distance 1
+    let r2 = bfs(edges2, starts2, 5, 0);
+    let _p13 = println(get_dist(r2)); // 1
+
+    // Test 8: Linear tree with 3 nodes, diameter = 2
+    let ef8 = vec_new();
+    let et8 = vec_new();
+    vec_push(ef8, 0); vec_push(et8, 1);
+    vec_push(ef8, 1); vec_push(et8, 2);
+    let adj8 = build_adjacency(ef8, et8, 2, 3);
+    let edges8 = vec_get(adj8, 0);
+    let starts8 = vec_get(adj8, 1);
+    let _p14 = println(tree_diameter(edges8, starts8, 3)); // 2
+
+    0
+    };

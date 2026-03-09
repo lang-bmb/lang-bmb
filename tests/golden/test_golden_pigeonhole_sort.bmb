@@ -1,0 +1,138 @@
+// Golden Test: Pigeonhole sort
+// Sorts integers by placing each into its "pigeonhole" (bucket)
+// Then collecting them back in order
+// Works well when range of values is close to number of elements
+
+// Find min value in vec
+fn vec_min(v: i64) -> i64 = {
+    let mut m = vec_get(v, 0);
+    let n = vec_len(v);
+    for i in 1..n {
+        let val = vec_get(v, i);
+        let _c = if val < m { set m = val } else { () }
+    };
+    m
+};
+
+// Find max value in vec
+fn vec_max(v: i64) -> i64 = {
+    let mut m = vec_get(v, 0);
+    let n = vec_len(v);
+    for i in 1..n {
+        let val = vec_get(v, i);
+        let _c = if val > m { set m = val } else { () }
+    };
+    m
+};
+
+// Create vec of n zeros
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n {
+        let _p = vec_push(v, 0);
+        0
+    };
+    v
+};
+
+// Pigeonhole sort: in-place sort of vec v
+fn pigeonhole_sort(v: i64) -> i64 = {
+    let n = vec_len(v);
+    if n <= 1 { 0 }
+    else {
+        let lo = vec_min(v);
+        let hi = vec_max(v);
+        let range = hi - lo + 1;
+
+        // Create pigeonhole counts
+        let holes = make_zeros(range);
+
+        // Count occurrences
+        for i in 0..n {
+            let val = vec_get(v, i);
+            let idx = val - lo;
+            let _s = vec_set(holes, idx, vec_get(holes, idx) + 1);
+            0
+        };
+
+        // Collect back into v in sorted order
+        let mut pos = 0;
+        for h in 0..range {
+            let cnt = vec_get(holes, h);
+            let mut j = 0;
+            loop {
+                if j >= cnt { break } else { () };
+                let _s = vec_set(v, pos, h + lo);
+                set pos = pos + 1;
+                set j = j + 1;
+            };
+            0
+        };
+
+        let _f = vec_free(holes);
+        0
+    }
+};
+
+// Print all elements
+fn print_vec(v: i64) -> i64 = {
+    for i in 0..vec_len(v) {
+        println(vec_get(v, i))
+    };
+    0
+};
+
+fn main() -> i64 = {
+    // Test 1: Sort [5, 3, 8, 1, 2] -> [1, 2, 3, 5, 8]
+    let v1 = vec_new();
+    let _p = vec_push(v1, 5);
+    let _p = vec_push(v1, 3);
+    let _p = vec_push(v1, 8);
+    let _p = vec_push(v1, 1);
+    let _p = vec_push(v1, 2);
+    let _s = pigeonhole_sort(v1);
+    // Print first element (should be 1)
+    let _p = println(vec_get(v1, 0));  // 1
+    // Print last element (should be 8)
+    let _p = println(vec_get(v1, 4));  // 8
+
+    // Test 2: Sort with duplicates [4, 2, 4, 1, 2] -> [1, 2, 2, 4, 4]
+    let v2 = vec_new();
+    let _p = vec_push(v2, 4);
+    let _p = vec_push(v2, 2);
+    let _p = vec_push(v2, 4);
+    let _p = vec_push(v2, 1);
+    let _p = vec_push(v2, 2);
+    let _s = pigeonhole_sort(v2);
+    // Print sorted: 1 2 2 4 4
+    let _p = println(vec_get(v2, 0));  // 1
+    let _p = println(vec_get(v2, 1));  // 2
+    let _p = println(vec_get(v2, 2));  // 2
+
+    // Test 3: Already sorted [10, 20, 30]
+    let v3 = vec_new();
+    let _p = vec_push(v3, 10);
+    let _p = vec_push(v3, 20);
+    let _p = vec_push(v3, 30);
+    let _s = pigeonhole_sort(v3);
+    let _p = println(vec_get(v3, 0));  // 10
+    let _p = println(vec_get(v3, 2));  // 30
+
+    // Test 4: Reverse sorted [9, 7, 5, 3, 1]
+    let v4 = vec_new();
+    let _p = vec_push(v4, 9);
+    let _p = vec_push(v4, 7);
+    let _p = vec_push(v4, 5);
+    let _p = vec_push(v4, 3);
+    let _p = vec_push(v4, 1);
+    let _s = pigeonhole_sort(v4);
+    let _p = println(vec_get(v4, 0));  // 1
+    let _p = println(vec_get(v4, 2));  // 5
+    let _p = println(vec_get(v4, 4));  // 9
+
+    let _f = vec_free(v1);
+    let _f = vec_free(v2);
+    let _f = vec_free(v3);
+    let _f = vec_free(v4);
+    0
+};

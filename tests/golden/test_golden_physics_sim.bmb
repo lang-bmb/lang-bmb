@@ -1,0 +1,101 @@
+// Golden Test: Simple physics simulation (integer arithmetic)
+// Free fall, projectile, momentum, kinetic energy, work, potential energy
+
+// Free fall height: h = h0 - g*t*t/2
+fn free_fall(h0: i64, g: i64, t: i64) -> i64 =
+    h0 - g * t * t / 2;
+
+// Horizontal distance: d = vx * t
+fn horiz_distance(vx: i64, t: i64) -> i64 =
+    vx * t;
+
+// Momentum: p = m * v
+fn momentum(mass: i64, velocity: i64) -> i64 =
+    mass * velocity;
+
+// Perfectly inelastic collision: final velocity = (m1*v1 + m2*v2) / (m1 + m2)
+fn collision_velocity(m1: i64, v1: i64, m2: i64, v2: i64) -> i64 =
+    (m1 * v1 + m2 * v2) / (m1 + m2);
+
+// Kinetic energy: KE = m * v * v / 2
+fn kinetic_energy(mass: i64, velocity: i64) -> i64 =
+    mass * velocity * velocity / 2;
+
+// Work done: W = F * d
+fn work_done(force: i64, distance: i64) -> i64 =
+    force * distance;
+
+// Gravitational potential energy: PE = m * g * h
+fn gravitational_pe(mass: i64, g: i64, height: i64) -> i64 =
+    mass * g * height;
+
+// Spring potential energy: PE = k * x * x / 2
+fn spring_pe(k: i64, x: i64) -> i64 =
+    k * x * x / 2;
+
+// Energy conservation: object dropped from height h
+// At ground: KE = initial PE = m*g*h
+// Velocity squared: v^2 = 2*g*h, so v_squared = 2*g*h
+fn impact_velocity_sq(g: i64, height: i64) -> i64 =
+    2 * g * height;
+
+// Simple uniform acceleration: final velocity = v0 + a*t
+fn final_velocity(v0: i64, accel: i64, t: i64) -> i64 =
+    v0 + accel * t;
+
+// Distance under uniform acceleration: d = v0*t + a*t*t/2
+fn accel_distance(v0: i64, accel: i64, t: i64) -> i64 =
+    v0 * t + accel * t * t / 2;
+
+// Power: P = W / t = F * d / t
+fn power(force: i64, distance: i64, time: i64) -> i64 =
+    force * distance / time;
+
+fn main() -> i64 = {
+    // Free fall: h = h0 - g*t^2/2
+    let _p1 = println(free_fall(1000, 10, 3));     // 1000 - 10*9/2 = 1000 - 45 = 955
+    let _p2 = println(free_fall(1000, 10, 10));    // 1000 - 10*100/2 = 1000 - 500 = 500
+    let _p3 = println(free_fall(1000, 10, 14));    // 1000 - 10*196/2 = 1000 - 980 = 20
+
+    // Horizontal distance
+    let _p4 = println(horiz_distance(5, 10));      // 50
+    let _p5 = println(horiz_distance(20, 3));      // 60
+
+    // Perfectly inelastic collision
+    let _p6 = println(collision_velocity(10, 5, 10, 0));          // (50+0)/20 = 2
+    let _p7 = println(collision_velocity(3, 20, 7, 0));           // 60/10 = 6
+    let _p8 = println(collision_velocity(5, 10, 5, 0 - 10));     // (50-50)/10 = 0
+
+    // Kinetic energy: m*v^2/2
+    let _p9 = println(kinetic_energy(10, 4));      // 10*16/2 = 80
+    let _p10 = println(kinetic_energy(2, 10));     // 2*100/2 = 100
+    let _p11 = println(kinetic_energy(5, 6));      // 5*36/2 = 90
+
+    // Work done: F*d
+    let _p12 = println(work_done(10, 5));          // 50
+    let _p13 = println(work_done(100, 20));        // 2000
+
+    // Gravitational PE: m*g*h
+    let _p14 = println(gravitational_pe(5, 10, 20));   // 1000
+    let _p15 = println(gravitational_pe(2, 10, 50));   // 1000
+
+    // Spring PE: k*x^2/2
+    let _p16 = println(spring_pe(100, 3));         // 100*9/2 = 450
+    let _p17 = println(spring_pe(200, 5));         // 200*25/2 = 2500
+
+    // Impact velocity squared (dropped from height): v^2 = 2*g*h
+    let _p18 = println(impact_velocity_sq(10, 45));    // 2*10*45 = 900
+
+    // Uniform acceleration: v = v0 + a*t
+    let _p19 = println(final_velocity(0, 10, 5));      // 0 + 10*5 = 50
+    let _p20 = println(final_velocity(10, 3, 8));      // 10 + 3*8 = 34
+
+    // Distance under acceleration: d = v0*t + a*t^2/2
+    let _p21 = println(accel_distance(0, 10, 4));      // 0 + 10*16/2 = 80
+    let _p22 = println(accel_distance(5, 2, 10));      // 50 + 2*100/2 = 150
+
+    // Power: F*d/t
+    let _p23 = println(power(100, 50, 10));        // 5000/10 = 500
+
+    0
+    };

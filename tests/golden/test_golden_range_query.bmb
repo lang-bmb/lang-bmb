@@ -1,0 +1,165 @@
+// Golden Test: Range query data structure (sparse table) - Cycle 1629
+// Sparse table for O(1) range minimum queries after O(n log n) preprocessing
+// Also includes prefix sum range queries and range max
+
+fn my_min(a: i64, b: i64) -> i64 = if a < b { a } else { b };
+fn my_max(a: i64, b: i64) -> i64 = if a > b { a } else { b };
+
+// Floor of log2(x)
+fn log2_floor(x: i64) -> i64 = {
+    let mut result = 0;
+    let mut val = x;
+    loop {
+        if val <= 1 { break } else { () };
+        result = result + 1;
+        val = val / 2
+    };
+    result
+};
+
+// 2^k
+fn pow2(k: i64) -> i64 = {
+    let mut result = 1;
+    for _i in 0..k { result = result * 2 };
+    result
+};
+
+// Build sparse table for range minimum
+// table is flat 2D: table[k * n + i] = min of arr[i..i+2^k-1]
+fn build_sparse_min(arr: i64, n: i64, table: i64, max_k: i64) -> i64 = {
+    // Level 0: table[0*n + i] = arr[i]
+    for i in 0..n {
+        vec_set(table, i, vec_get(arr, i))
+    };
+    // Fill levels 1..max_k-1
+    let mut k = 1;
+    loop {
+        if k >= max_k { break } else { () };
+        let half = pow2(k - 1);
+        let mut i = 0;
+        loop {
+            if i + pow2(k) - 1 >= n { break } else { () };
+            let left = vec_get(table, (k - 1) * n + i);
+            let right = vec_get(table, (k - 1) * n + i + half);
+            vec_set(table, k * n + i, my_min(left, right));
+            i = i + 1
+        };
+        k = k + 1
+    };
+    0
+};
+
+// Query min of arr[l..r] using sparse table
+fn query_min(table: i64, n: i64, l: i64, r: i64) -> i64 = {
+    let len = r - l + 1;
+    let k = log2_floor(len);
+    my_min(vec_get(table, k * n + l), vec_get(table, k * n + r - pow2(k) + 1))
+};
+
+// Build prefix sum array: ps[i] = arr[0] + ... + arr[i-1], ps[0] = 0
+fn build_prefix_sum(arr: i64, n: i64, ps: i64) -> i64 = {
+    vec_set(ps, 0, 0);
+    for i in 0..n {
+        vec_set(ps, i + 1, vec_get(ps, i) + vec_get(arr, i))
+    };
+    0
+};
+
+// Range sum query arr[l..r] using prefix sum
+fn range_sum(ps: i64, l: i64, r: i64) -> i64 =
+    vec_get(ps, r + 1) - vec_get(ps, l);
+
+// Brute force range min for verification
+fn brute_min(arr: i64, l: i64, r: i64) -> i64 = {
+    let mut best = vec_get(arr, l);
+    let mut i = l + 1;
+    loop {
+        if i > r { break } else { () };
+        let v = vec_get(arr, i);
+        if v < best { best = v } else { () };
+        i = i + 1
+    };
+    best
+};
+
+// Brute force range max for verification
+fn brute_max(arr: i64, l: i64, r: i64) -> i64 = {
+    let mut best = vec_get(arr, l);
+    let mut i = l + 1;
+    loop {
+        if i > r { break } else { () };
+        let v = vec_get(arr, i);
+        if v > best { best = v } else { () };
+        i = i + 1
+    };
+    best
+};
+
+fn main() -> i64 = {
+    // Array: [7, 2, 3, 0, 5, 10, 3, 12, 18, 1]
+    let n = 10;
+    let arr = vec_new();
+    vec_push(arr, 7); vec_push(arr, 2); vec_push(arr, 3); vec_push(arr, 0);
+    vec_push(arr, 5); vec_push(arr, 10); vec_push(arr, 3); vec_push(arr, 12);
+    vec_push(arr, 18); vec_push(arr, 1);
+
+    let max_k = log2_floor(n) + 1;
+
+    // Allocate sparse table
+    let table = vec_new();
+    for _i in 0..(max_k * n) { vec_push(table, 999999) };
+
+    let _b = build_sparse_min(arr, n, table, max_k);
+
+    // Query 1: min of entire array [0..9] = 0
+    println(query_min(table, n, 0, 9));   // 0
+
+    // Query 2: min [0..1] = min(7,2) = 2
+    println(query_min(table, n, 0, 1));   // 2
+
+    // Query 3: min [2..5] = min(3,0,5,10) = 0
+    println(query_min(table, n, 2, 5));   // 0
+
+    // Query 4: min [4..7] = min(5,10,3,12) = 3
+    println(query_min(table, n, 4, 7));   // 3
+
+    // Query 5: min [6..9] = min(3,12,18,1) = 1
+    println(query_min(table, n, 6, 9));   // 1
+
+    // Query 6: single element min [3..3] = 0
+    println(query_min(table, n, 3, 3));   // 0
+
+    // Query 7: min [7..8] = min(12,18) = 12
+    println(query_min(table, n, 7, 8));   // 12
+
+    // Verify with brute force
+    println(brute_min(arr, 0, 9));   // 0
+    println(brute_min(arr, 4, 7));   // 3
+    println(brute_max(arr, 0, 9));   // 18
+    println(brute_max(arr, 2, 5));   // 10
+
+    // Prefix sum range queries
+    let ps = vec_new();
+    for _i in 0..(n + 1) { vec_push(ps, 0) };
+    let _ps_b = build_prefix_sum(arr, n, ps);
+
+    // Range sum [0..9] = 7+2+3+0+5+10+3+12+18+1 = 61
+    println(range_sum(ps, 0, 9));   // 61
+
+    // Range sum [2..5] = 3+0+5+10 = 18
+    println(range_sum(ps, 2, 5));   // 18
+
+    // Range sum [7..9] = 12+18+1 = 31
+    println(range_sum(ps, 7, 9));   // 31
+
+    // Range sum single element [3..3] = 0
+    println(range_sum(ps, 3, 3));   // 0
+
+    // log2 tests
+    println(log2_floor(1));    // 0
+    println(log2_floor(4));    // 2
+    println(log2_floor(10));   // 3
+
+    vec_free(arr); vec_free(table); vec_free(ps);
+    0
+};

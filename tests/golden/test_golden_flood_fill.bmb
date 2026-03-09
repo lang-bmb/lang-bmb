@@ -1,0 +1,181 @@
+// Golden Test: Flood Fill on a 2D Grid (via flat array)
+// BFS-based flood fill replacing connected component
+
+fn make_grid(rows: i64, cols: i64, default_val: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..(rows * cols) { vec_push(v, default_val) };
+    v
+};
+
+fn grid_get(grid: i64, cols: i64, r: i64, c: i64) -> i64 =
+    vec_get(grid, r * cols + c);
+
+fn grid_set(grid: i64, cols: i64, r: i64, c: i64, val: i64) -> i64 = {
+    vec_set(grid, r * cols + c, val);
+    0
+};
+
+fn main() -> i64 = {
+    // 5x5 grid:
+    // 1 1 0 0 0
+    // 1 1 0 1 1
+    // 0 0 0 1 1
+    // 0 0 1 0 0
+    // 0 0 1 1 0
+    let rows = 5;
+    let cols = 5;
+    let grid = make_grid(rows, cols, 0);
+    // Row 0
+    let _s = grid_set(grid, cols, 0, 0, 1);
+    let _s = grid_set(grid, cols, 0, 1, 1);
+    // Row 1
+    let _s = grid_set(grid, cols, 1, 0, 1);
+    let _s = grid_set(grid, cols, 1, 1, 1);
+    let _s = grid_set(grid, cols, 1, 3, 1);
+    let _s = grid_set(grid, cols, 1, 4, 1);
+    // Row 2
+    let _s = grid_set(grid, cols, 2, 3, 1);
+    let _s = grid_set(grid, cols, 2, 4, 1);
+    // Row 3
+    let _s = grid_set(grid, cols, 3, 2, 1);
+    // Row 4
+    let _s = grid_set(grid, cols, 4, 2, 1);
+    let _s = grid_set(grid, cols, 4, 3, 1);
+
+    // Count 1s before fill
+    let count_before = 0;
+    for i in 0..(rows * cols) {
+        if vec_get(grid, i) == 1 { count_before = count_before + 1 } else { () }
+    };
+    let _p1 = println(count_before);  // 11
+
+    // BFS flood fill starting at (0,0), replace 1->2
+    let old_color = 1;
+    let new_color = 2;
+    let start_r = 0;
+    let start_c = 0;
+
+    // Queue stores encoded positions: r * cols + c
+    let queue = vec_new();
+    let front = 0;
+
+    if grid_get(grid, cols, start_r, start_c) == old_color {
+        let _s = grid_set(grid, cols, start_r, start_c, new_color);
+        vec_push(queue, start_r * cols + start_c)
+    } else { () };
+
+    loop {
+        if front >= vec_len(queue) { break } else { () };
+        let pos = vec_get(queue, front);
+        front = front + 1;
+        let r = pos / cols;
+        let c = pos - r * cols;
+
+        // Check 4 neighbors: up, down, left, right
+        // Up
+        if r > 0 {
+            if grid_get(grid, cols, r - 1, c) == old_color {
+                let _s = grid_set(grid, cols, r - 1, c, new_color);
+                vec_push(queue, (r - 1) * cols + c)
+            } else { () }
+        } else { () };
+        // Down
+        if r < rows - 1 {
+            if grid_get(grid, cols, r + 1, c) == old_color {
+                let _s = grid_set(grid, cols, r + 1, c, new_color);
+                vec_push(queue, (r + 1) * cols + c)
+            } else { () }
+        } else { () };
+        // Left
+        if c > 0 {
+            if grid_get(grid, cols, r, c - 1) == old_color {
+                let _s = grid_set(grid, cols, r, c - 1, new_color);
+                vec_push(queue, r * cols + (c - 1))
+            } else { () }
+        } else { () };
+        // Right
+        if c < cols - 1 {
+            if grid_get(grid, cols, r, c + 1) == old_color {
+                let _s = grid_set(grid, cols, r, c + 1, new_color);
+                vec_push(queue, r * cols + (c + 1))
+            } else { () }
+        } else { () }
+    };
+
+    // Count how many cells got new_color (2)
+    let filled = 0;
+    for i in 0..(rows * cols) {
+        if vec_get(grid, i) == 2 { filled = filled + 1 } else { () }
+    };
+    let _p2 = println(filled);  // 4 (the top-left 2x2 block of 1s)
+
+    // Verify specific cells
+    let _p3 = println(grid_get(grid, cols, 0, 0));  // 2 (filled)
+    let _p4 = println(grid_get(grid, cols, 1, 1));  // 2 (filled)
+    let _p5 = println(grid_get(grid, cols, 1, 3));  // 1 (not connected to top-left)
+    let _p6 = println(grid_get(grid, cols, 2, 3));  // 1 (different component)
+    let _p7 = println(grid_get(grid, cols, 3, 2));  // 1 (different component)
+
+    // Count remaining 1s (unfilled)
+    let remaining = 0;
+    for i in 0..(rows * cols) {
+        if vec_get(grid, i) == 1 { remaining = remaining + 1 } else { () }
+    };
+    let _p8 = println(remaining);  // 7 (11 - 4 = 7)
+
+    // Flood fill from (1,3) with color 3
+    let queue2 = vec_new();
+    let front2 = 0;
+    let _s2 = grid_set(grid, cols, 1, 3, 3);
+    vec_push(queue2, 1 * cols + 3);
+    loop {
+        if front2 >= vec_len(queue2) { break } else { () };
+        let pos = vec_get(queue2, front2);
+        front2 = front2 + 1;
+        let r = pos / cols;
+        let c = pos - r * cols;
+        if r > 0 {
+            if grid_get(grid, cols, r - 1, c) == 1 {
+                let _s = grid_set(grid, cols, r - 1, c, 3);
+                vec_push(queue2, (r - 1) * cols + c)
+            } else { () }
+        } else { () };
+        if r < rows - 1 {
+            if grid_get(grid, cols, r + 1, c) == 1 {
+                let _s = grid_set(grid, cols, r + 1, c, 3);
+                vec_push(queue2, (r + 1) * cols + c)
+            } else { () }
+        } else { () };
+        if c > 0 {
+            if grid_get(grid, cols, r, c - 1) == 1 {
+                let _s = grid_set(grid, cols, r, c - 1, 3);
+                vec_push(queue2, r * cols + (c - 1))
+            } else { () }
+        } else { () };
+        if c < cols - 1 {
+            if grid_get(grid, cols, r, c + 1) == 1 {
+                let _s = grid_set(grid, cols, r, c + 1, 3);
+                vec_push(queue2, r * cols + (c + 1))
+            } else { () }
+        } else { () }
+    };
+
+    // Count color 3 cells
+    let filled3 = 0;
+    for i in 0..(rows * cols) {
+        if vec_get(grid, i) == 3 { filled3 = filled3 + 1 } else { () }
+    };
+    let _p9 = println(filled3);  // 4 (the right-side 1s at (1,3),(1,4),(2,3),(2,4))
+
+    // Remaining 1s after both fills
+    let remaining2 = 0;
+    for i in 0..(rows * cols) {
+        if vec_get(grid, i) == 1 { remaining2 = remaining2 + 1 } else { () }
+    };
+    let _p10 = println(remaining2);  // 3 (cells at (3,2),(4,2),(4,3))
+
+    let _f1 = vec_free(grid);
+    let _f2 = vec_free(queue);
+    let _f3 = vec_free(queue2);
+    0
+};

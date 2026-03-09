@@ -1,0 +1,113 @@
+// Golden Test: RGB Color Packing
+// Pack/unpack RGB channels into a single i64 using bitwise operations
+// Format: 0x00RRGGBB (R in bits 16-23, G in bits 8-15, B in bits 0-7)
+
+// Pack RGB components into a single value
+fn rgb_pack(r: i64, g: i64, b: i64) -> i64 =
+    (r << 16) bor (g << 8) bor b;
+
+// Extract red channel (bits 16-23)
+fn rgb_red(color: i64) -> i64 = (color >> 16) band 255;
+
+// Extract green channel (bits 8-15)
+fn rgb_green(color: i64) -> i64 = (color >> 8) band 255;
+
+// Extract blue channel (bits 0-7)
+fn rgb_blue(color: i64) -> i64 = color band 255;
+
+// Blend two colors: result = (c1 * alpha + c2 * (256 - alpha)) / 256
+fn blend_channel(c1: i64, c2: i64, alpha: i64) -> i64 =
+    (c1 * alpha + c2 * (256 - alpha)) / 256;
+
+fn rgb_blend(color1: i64, color2: i64, alpha: i64) -> i64 = {
+    let r = blend_channel(rgb_red(color1), rgb_red(color2), alpha);
+    let g = blend_channel(rgb_green(color1), rgb_green(color2), alpha);
+    let b = blend_channel(rgb_blue(color1), rgb_blue(color2), alpha);
+    rgb_pack(r, g, b)
+    };
+
+// Invert a color: 255 - channel
+fn rgb_invert(color: i64) -> i64 = {
+    let r = 255 - rgb_red(color);
+    let g = 255 - rgb_green(color);
+    let b = 255 - rgb_blue(color);
+    rgb_pack(r, g, b)
+    };
+
+// Grayscale: weighted average (approximate: 77*R + 150*G + 29*B) / 256
+fn rgb_grayscale(color: i64) -> i64 = {
+    let r = rgb_red(color);
+    let g = rgb_green(color);
+    let b = rgb_blue(color);
+    let gray = (77 * r + 150 * g + 29 * b) / 256;
+    rgb_pack(gray, gray, gray)
+    };
+
+// Brightness: clamp each channel to [0, 255] after adding delta
+fn clamp255(x: i64) -> i64 =
+    if x < 0 { 0 } else if x > 255 { 255 } else { x };
+
+fn rgb_brightness(color: i64, delta: i64) -> i64 = {
+    let r = clamp255(rgb_red(color) + delta);
+    let g = clamp255(rgb_green(color) + delta);
+    let b = clamp255(rgb_blue(color) + delta);
+    rgb_pack(r, g, b)
+    };
+
+// Channel max (for determining dominant color)
+fn rgb_max_channel(color: i64) -> i64 = {
+    let r = rgb_red(color);
+    let g = rgb_green(color);
+    let b = rgb_blue(color);
+    let rg = if r > g { r } else { g };
+    if rg > b { rg } else { b }
+    };
+
+fn main() -> i64 = {
+    // Basic pack/unpack
+    let red = rgb_pack(255, 0, 0);
+    let _p1 = println(red);               // 16711680 (0xFF0000)
+    let _p2 = println(rgb_red(red));       // 255
+    let _p3 = println(rgb_green(red));     // 0
+    let _p4 = println(rgb_blue(red));      // 0
+
+    let color = rgb_pack(100, 150, 200);
+    let _p5 = println(rgb_red(color));     // 100
+    let _p6 = println(rgb_green(color));   // 150
+    let _p7 = println(rgb_blue(color));    // 200
+
+    // Invert white -> black
+    let white = rgb_pack(255, 255, 255);
+    let inv = rgb_invert(white);
+    let _p8 = println(inv);               // 0 (black)
+
+    // Invert color
+    let inv2 = rgb_invert(color);
+    let _p9 = println(rgb_red(inv2));      // 155
+    let _p10 = println(rgb_green(inv2));   // 105
+    let _p11 = println(rgb_blue(inv2));    // 55
+
+    // Blend red and blue at 50% (alpha=128)
+    let blue = rgb_pack(0, 0, 255);
+    let blended = rgb_blend(red, blue, 128);
+    let _p12 = println(rgb_red(blended));   // 127
+    let _p13 = println(rgb_blue(blended));  // 127
+
+    // Grayscale of (100, 150, 200)
+    let gray = rgb_grayscale(color);
+    let _p14 = println(rgb_red(gray));     // gray value ~140
+
+    // Brightness +50 on (200, 200, 200)
+    let light = rgb_pack(200, 200, 200);
+    let brighter = rgb_brightness(light, 50);
+    let _p15 = println(rgb_red(brighter));  // 250
+
+    // Brightness -300 (clamp to 0)
+    let dark = rgb_brightness(light, -300);
+    let _p16 = println(rgb_red(dark));      // 0
+
+    // Max channel
+    let _p17 = println(rgb_max_channel(color)); // 200
+
+    0
+    };

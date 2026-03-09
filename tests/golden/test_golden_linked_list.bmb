@@ -1,0 +1,81 @@
+// Golden Test: Linked List operations (vec-based)
+// Each node: [value, next_index] stored as pairs in a vec
+// -1 = null pointer, head stored at index 0
+
+fn ll_new() -> i64 = {
+    let ll = vec_new();
+    let _p = vec_push(ll, 0 - 1);  // head = null
+    ll
+};
+
+fn ll_push_front(ll: i64, val: i64) -> () = {
+    let head = vec_get(ll, 0);
+    let new_idx = (vec_len(ll) - 1) / 2;
+    let _p = vec_push(ll, val);
+    let _p = vec_push(ll, head);
+    vec_set(ll, 0, new_idx)
+};
+
+fn ll_print(ll: i64) -> () = {
+    let mut cur = vec_get(ll, 0);
+    let mut first = 1;
+    while cur != 0 - 1 {
+        let _sp = if first == 0 { print_str(" -> "); 0 } else { 0 };
+        print(vec_get(ll, 1 + cur * 2));
+        set first = 0;
+        set cur = vec_get(ll, 1 + cur * 2 + 1)
+    };
+    let _nl = print_str("
+")
+};
+
+fn ll_length(ll: i64) -> i64 = {
+    let mut count = 0;
+    let mut cur = vec_get(ll, 0);
+    while cur != 0 - 1 {
+        set count = count + 1;
+        set cur = vec_get(ll, 1 + cur * 2 + 1)
+    };
+    count
+};
+
+fn ll_sum(ll: i64) -> i64 = {
+    let mut total = 0;
+    let mut cur = vec_get(ll, 0);
+    while cur != 0 - 1 {
+        set total = total + vec_get(ll, 1 + cur * 2);
+        set cur = vec_get(ll, 1 + cur * 2 + 1)
+    };
+    total
+};
+
+fn ll_reverse(ll: i64) -> () = {
+    let mut prev = 0 - 1;
+    let mut cur = vec_get(ll, 0);
+    while cur != 0 - 1 {
+        let next = vec_get(ll, 1 + cur * 2 + 1);
+        vec_set(ll, 1 + cur * 2 + 1, prev);
+        set prev = cur;
+        set cur = next
+    };
+    vec_set(ll, 0, prev)
+};
+
+fn main() -> () = {
+    let ll = ll_new();
+    ll_push_front(ll, 3);
+    ll_push_front(ll, 2);
+    ll_push_front(ll, 1);
+    print_str("list: "); ll_print(ll);
+    print_str("len="); let _r = println(ll_length(ll));
+    print_str("sum="); let _r = println(ll_sum(ll));
+
+    // Reverse
+    ll_reverse(ll);
+    print_str("reversed: "); ll_print(ll);
+
+    // Add more
+    ll_push_front(ll, 0);
+    print_str("after push: "); ll_print(ll);
+    print_str("len="); let _r = println(ll_length(ll))
+};

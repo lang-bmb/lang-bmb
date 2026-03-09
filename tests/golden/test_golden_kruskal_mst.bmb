@@ -1,0 +1,247 @@
+// Golden Test: Kruskal's Minimum Spanning Tree algorithm
+// Uses Union-Find for cycle detection and edge sorting by weight
+// Edges stored as flat vec: [u, v, weight, u, v, weight, ...]
+
+// Union-Find: find root with path compression
+fn uf_find(parent: i64, x: i64) -> i64 = {
+    let p = vec_get(parent, x);
+    if p == x { x }
+    else {
+        let root = uf_find(parent, p);
+        vec_set(parent, x, root);
+        root
+    }
+    };
+
+// Union by rank, returns 1 if merged, 0 if same component
+fn uf_union(parent: i64, rank_arr: i64, a: i64, b: i64) -> i64 = {
+    let ra = uf_find(parent, a);
+    let rb = uf_find(parent, b);
+    if ra == rb { 0 }
+    else {
+        let rk_a = vec_get(rank_arr, ra);
+        let rk_b = vec_get(rank_arr, rb);
+        if rk_a < rk_b {
+            vec_set(parent, ra, rb)
+        } else if rk_a > rk_b {
+            vec_set(parent, rb, ra)
+        } else {
+            vec_set(parent, rb, ra);
+            vec_set(rank_arr, ra, rk_a + 1)
+        };
+        1
+    }
+    };
+
+// Sort edges by weight using bubble sort on triplets
+// edges = [u0, v0, w0, u1, v1, w1, ...]
+fn sort_edges(edges: i64) -> i64 = {
+    let num_edges = vec_len(edges) / 3;
+    for _pass in 0..num_edges {
+        let mut j = 0;
+        loop {
+            if j + 1 >= num_edges { break } else { 0 };
+            let w1 = vec_get(edges, j * 3 + 2);
+            let w2 = vec_get(edges, (j + 1) * 3 + 2);
+            if w1 > w2 {
+                // Swap edge j and j+1
+                let u1 = vec_get(edges, j * 3);
+                let v1 = vec_get(edges, j * 3 + 1);
+                let u2 = vec_get(edges, (j + 1) * 3);
+                let v2 = vec_get(edges, (j + 1) * 3 + 1);
+                vec_set(edges, j * 3, u2);
+                vec_set(edges, j * 3 + 1, v2);
+                vec_set(edges, j * 3 + 2, w2);
+                vec_set(edges, (j + 1) * 3, u1);
+                vec_set(edges, (j + 1) * 3 + 1, v1);
+                vec_set(edges, (j + 1) * 3 + 2, w1)
+            } else { 0 };
+            set j = j + 1
+        }
+    };
+    0
+    };
+
+// Kruskal's MST: returns [total_weight, num_edges_in_mst, e1_u, e1_v, e1_w, ...]
+fn kruskal(n: i64, edges: i64) -> i64 = {
+    // Sort edges by weight
+    let _s = sort_edges(edges);
+
+    // Initialize Union-Find
+    let parent = vec_new();
+    let rank_arr = vec_new();
+    for i in 0..n {
+        vec_push(parent, i);
+        vec_push(rank_arr, 0)
+    };
+
+    let result = vec_new();
+    vec_push(result, 0);  // total_weight (index 0)
+    vec_push(result, 0);  // num_edges (index 1)
+
+    let num_edges = vec_len(edges) / 3;
+    let mut total_weight = 0;
+    let mut mst_edges = 0;
+
+    for i in 0..num_edges {
+        let u = vec_get(edges, i * 3);
+        let v = vec_get(edges, i * 3 + 1);
+        let w = vec_get(edges, i * 3 + 2);
+        let merged = uf_union(parent, rank_arr, u, v);
+        let _x = if merged == 1 {
+            set total_weight = total_weight + w;
+            set mst_edges = mst_edges + 1;
+            vec_push(result, u);
+            vec_push(result, v);
+            vec_push(result, w);
+            0
+        } else { 0 }
+    };
+
+    vec_set(result, 0, total_weight);
+    vec_set(result, 1, mst_edges);
+
+    vec_free(parent);
+    vec_free(rank_arr);
+    result
+    };
+
+fn add_edge(edges: i64, u: i64, v: i64, w: i64) -> i64 = {
+    vec_push(edges, u);
+    vec_push(edges, v);
+    vec_push(edges, w);
+    0
+    };
+
+fn main() -> i64 = {
+    // Test 1: Simple triangle graph
+    //   0 --2-- 1
+    //   |      /
+    //   3    1
+    //   |  /
+    //   2
+    // Edges: (0,1,2), (1,2,1), (0,2,3)
+    // MST: (1,2,1), (0,1,2) => weight=3, 2 edges
+    let e1 = vec_new();
+    add_edge(e1, 0, 1, 2);
+    add_edge(e1, 1, 2, 1);
+    add_edge(e1, 0, 2, 3);
+
+    let r1 = kruskal(3, e1);
+    println(vec_get(r1, 0));  // 3 (total weight)
+    println(vec_get(r1, 1));  // 2 (edges in MST)
+    vec_free(e1); vec_free(r1);
+
+    // Test 2: Square with diagonals
+    //   0 --1-- 1
+    //   |  \ |
+    //   4  5  2
+    //   |    \|
+    //   3 --3-- 2
+    // Edges: (0,1,1), (1,2,2), (2,3,3), (0,3,4), (0,2,5)
+    // MST: (0,1,1), (1,2,2), (2,3,3) => weight=6, 3 edges
+    let e2 = vec_new();
+    add_edge(e2, 0, 1, 1);
+    add_edge(e2, 1, 2, 2);
+    add_edge(e2, 2, 3, 3);
+    add_edge(e2, 0, 3, 4);
+    add_edge(e2, 0, 2, 5);
+
+    let r2 = kruskal(4, e2);
+    println(vec_get(r2, 0));  // 6 (total weight)
+    println(vec_get(r2, 1));  // 3 (edges in MST)
+    vec_free(e2); vec_free(r2);
+
+    // Test 3: Classic example (7 nodes)
+    //        1
+    //      / | \
+    //    4   8   11
+    //   /   |     \
+    //  0    2      3
+    //   \  /|\    /
+    //    7 2 6  14
+    //    | | |  /
+    //    6-1-5-4
+    //       |
+    //      10
+    //       |
+    //       4
+    // Using a well-known graph:
+    // 0-1: 4, 0-6: 7
+    // 1-2: 8, 1-6: 11
+    // 2-3: 7, 2-5: 4, 2-8: 2 (using 7 nodes: 0-6)
+    // Let's use a simpler 5-node graph
+    // 0-1:10, 0-2:6, 0-3:5, 1-3:15, 2-3:4
+    // Sorted: (2,3,4), (0,3,5), (0,2,6), (0,1,10), (1,3,15)
+    // MST: (2,3,4), (0,3,5), (0,1,10) => weight=19, 3 edges
+    let e3 = vec_new();
+    add_edge(e3, 0, 1, 10);
+    add_edge(e3, 0, 2, 6);
+    add_edge(e3, 0, 3, 5);
+    add_edge(e3, 1, 3, 15);
+    add_edge(e3, 2, 3, 4);
+
+    let r3 = kruskal(4, e3);
+    println(vec_get(r3, 0));  // 19 (total weight)
+    println(vec_get(r3, 1));  // 3 (edges in MST)
+    vec_free(e3); vec_free(r3);
+
+    // Test 4: Disconnected graph (forest)
+    // Component 1: nodes 0,1 with edge (0,1,5)
+    // Component 2: nodes 2,3 with edge (2,3,3)
+    // MSF: both edges, weight=8, 2 edges
+    let e4 = vec_new();
+    add_edge(e4, 0, 1, 5);
+    add_edge(e4, 2, 3, 3);
+
+    let r4 = kruskal(4, e4);
+    println(vec_get(r4, 0));  // 8
+    println(vec_get(r4, 1));  // 2
+    vec_free(e4); vec_free(r4);
+
+    // Test 5: Single node (no edges)
+    let e5 = vec_new();
+    let r5 = kruskal(1, e5);
+    println(vec_get(r5, 0));  // 0
+    println(vec_get(r5, 1));  // 0
+    vec_free(e5); vec_free(r5);
+
+    // Test 6: Two nodes, one edge
+    let e6 = vec_new();
+    add_edge(e6, 0, 1, 42);
+    let r6 = kruskal(2, e6);
+    println(vec_get(r6, 0));  // 42
+    println(vec_get(r6, 1));  // 1
+    vec_free(e6); vec_free(r6);
+
+    // Test 7: Complete graph K4 (all pairs connected)
+    // 0-1:3, 0-2:1, 0-3:6, 1-2:5, 1-3:4, 2-3:2
+    // Sorted: (0,2,1), (2,3,2), (0,1,3), (1,3,4), (1,2,5), (0,3,6)
+    // MST: (0,2,1), (2,3,2), (0,1,3) => weight=6, 3 edges
+    let e7 = vec_new();
+    add_edge(e7, 0, 1, 3);
+    add_edge(e7, 0, 2, 1);
+    add_edge(e7, 0, 3, 6);
+    add_edge(e7, 1, 2, 5);
+    add_edge(e7, 1, 3, 4);
+    add_edge(e7, 2, 3, 2);
+
+    let r7 = kruskal(4, e7);
+    println(vec_get(r7, 0));  // 6
+    println(vec_get(r7, 1));  // 3
+
+    // Print MST edges for verification
+    let ne = vec_get(r7, 1);
+    for i in 0..ne {
+        let eu = vec_get(r7, 2 + i * 3);
+        let ev = vec_get(r7, 2 + i * 3 + 1);
+        let ew = vec_get(r7, 2 + i * 3 + 2);
+        println(eu);
+        println(ev);
+        println(ew)
+    };
+
+    vec_free(e7); vec_free(r7);
+
+    0
+    };

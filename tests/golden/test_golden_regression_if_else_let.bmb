@@ -1,0 +1,49 @@
+// Golden Test: Regression for if-else-in-let with side effects after phi
+// Bug: TailCallOptimization detect_phi_tail_calls incorrectly marked calls
+// as tail calls when the merge block had instructions between phi and return.
+// This caused intervening side-effecting code (e.g., vec_push) to be skipped.
+// Fixed in Cycle 1432.
+
+fn grow(v: i64) -> i64 = {
+    let new_v = vec_new();
+    let len = vec_len(v);
+    let mut i = 0;
+    while i < len {
+        let val = vec_get(v, i);
+        let _p = vec_push(new_v, val);
+        i = i + 1;
+        0
+    };
+    let _f = vec_free(v);
+    new_v
+    };
+
+fn push_with_grow(v: i64, val: i64) -> i64 = {
+// This pattern triggered the bug: if-else producing a pointer,
+// then using that pointer for a side-effecting call.
+    let cur = if vec_len(v) >= 4 { grow(v) } else { v };
+    let _p = vec_push(cur, val);
+    cur
+    };
+
+fn main() -> i64 = {
+    let mut v = vec_new();
+    v = push_with_grow(v, 10);
+    v = push_with_grow(v, 20);
+    v = push_with_grow(v, 30);
+    v = push_with_grow(v, 40);
+
+// This 5th push triggers grow — the bug would lose this element
+    v = push_with_grow(v, 50);
+    let len = vec_len(v);
+    let _p1 = println(len);           // 5
+
+// Verify all values are present
+    let _p2 = println(vec_get(v, 0)); // 10
+    let _p3 = println(vec_get(v, 1)); // 20
+    let _p4 = println(vec_get(v, 2)); // 30
+    let _p5 = println(vec_get(v, 3)); // 40
+    let _p6 = println(vec_get(v, 4)); // 50
+    let _f = vec_free(v);
+    0
+    };

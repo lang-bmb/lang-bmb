@@ -1,0 +1,187 @@
+// Golden Test: Longest Increasing Subsequence (LIS) via O(n^2) DP
+// Finds length and reconstructs one valid LIS
+
+// Create vec of n zeros
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { let _p = vec_push(v, 0); 0 };
+    v
+    };
+
+// Create vec of n copies of value val
+fn make_filled(n: i64, val: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { let _p = vec_push(v, val); 0 };
+    v
+    };
+
+// Compute LIS dp array: dp[i] = length of LIS ending at arr[i]
+// prev[i] = index of previous element in LIS ending at i (-1 if none)
+fn compute_lis_inner(arr: i64, dp: i64, prev: i64, n: i64, i: i64, j: i64) -> i64 =
+    if j >= i { 0 }
+    else {
+        let _u = if vec_get(arr, j) < vec_get(arr, i) {
+            if vec_get(dp, j) + 1 > vec_get(dp, i) {
+                let _s1 = vec_set(dp, i, vec_get(dp, j) + 1);
+                let _s2 = vec_set(prev, i, j);
+                0
+            } else { 0 }
+        } else { 0 };
+        compute_lis_inner(arr, dp, prev, n, i, j + 1)
+    };
+
+fn compute_lis(arr: i64, dp: i64, prev: i64, n: i64, i: i64) -> i64 =
+    if i >= n { 0 }
+    else {
+        let _inner = compute_lis_inner(arr, dp, prev, n, i, 0);
+        compute_lis(arr, dp, prev, n, i + 1)
+    };
+
+// Find index of maximum value in dp array
+fn find_max_idx(dp: i64, n: i64, pos: i64, best_idx: i64) -> i64 =
+    if pos >= n { best_idx }
+    else if vec_get(dp, pos) > vec_get(dp, best_idx) {
+        find_max_idx(dp, n, pos + 1, pos)
+    } else {
+        find_max_idx(dp, n, pos + 1, best_idx)
+    };
+
+// Reconstruct LIS by following prev pointers backward
+// Stores result in lis vec (in reverse order)
+fn reconstruct(prev: i64, arr: i64, lis: i64, idx: i64) -> i64 =
+    if idx < 0 { 0 }
+    else {
+        let _p = vec_push(lis, vec_get(arr, idx));
+        reconstruct(prev, arr, lis, vec_get(prev, idx))
+    };
+
+// Reverse a vec in-place
+fn reverse_vec(v: i64, lo: i64, hi: i64) -> i64 =
+    if lo >= hi { 0 }
+    else {
+        let tmp = vec_get(v, lo);
+        let _s1 = vec_set(v, lo, vec_get(v, hi));
+        let _s2 = vec_set(v, hi, tmp);
+        reverse_vec(v, lo + 1, hi - 1)
+    };
+
+// Print all elements of a vec
+fn print_vec(v: i64, pos: i64) -> i64 =
+    if pos >= vec_len(v) { 0 }
+    else {
+        let _p = println(vec_get(v, pos));
+        print_vec(v, pos + 1)
+    };
+
+// Full LIS solver: returns length and prints the subsequence
+fn solve_lis(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    if n == 0 { 0 }
+    else {
+        // dp[i] = 1 initially (each element is an LIS of length 1)
+        let dp = make_filled(n, 1);
+        // prev[i] = -1 initially (no predecessor)
+        let prev = make_filled(n, 0 - 1);
+
+        let _c = compute_lis(arr, dp, prev, n, 1);
+
+        // Find the maximum dp value (LIS length)
+        let best_idx = find_max_idx(dp, n, 1, 0);
+        let lis_len = vec_get(dp, best_idx);
+
+        // Reconstruct the LIS
+        let lis = vec_new();
+        let _r = reconstruct(prev, arr, lis, best_idx);
+        let _rev = reverse_vec(lis, 0, vec_len(lis) - 1);
+
+        // Print length
+        let _p = println(lis_len);
+        // Print the LIS elements
+        let _pv = print_vec(lis, 0);
+
+        let _f1 = vec_free(dp);
+        let _f2 = vec_free(prev);
+        let _f3 = vec_free(lis);
+        lis_len
+    }
+    };
+
+fn make_vec(vals: i64, n: i64) -> i64 = vals;
+
+fn main() -> i64 = {
+    // === Test 1: Classic example ===
+    // arr = [10, 9, 2, 5, 3, 7, 101, 18]
+    // LIS length = 4, one valid LIS = [2, 3, 7, 18] or [2, 5, 7, 18] or [2, 5, 7, 101]
+    let a1 = vec_new();
+    let _p = vec_push(a1, 10);
+    let _p = vec_push(a1, 9);
+    let _p = vec_push(a1, 2);
+    let _p = vec_push(a1, 5);
+    let _p = vec_push(a1, 3);
+    let _p = vec_push(a1, 7);
+    let _p = vec_push(a1, 101);
+    let _p = vec_push(a1, 18);
+    let _r1 = solve_lis(a1);
+
+    // === Test 2: Already sorted ===
+    // arr = [1, 2, 3, 4, 5]
+    // LIS = entire array, length = 5
+    let a2 = vec_new();
+    let _p = vec_push(a2, 1);
+    let _p = vec_push(a2, 2);
+    let _p = vec_push(a2, 3);
+    let _p = vec_push(a2, 4);
+    let _p = vec_push(a2, 5);
+    let _r2 = solve_lis(a2);
+
+    // === Test 3: Decreasing sequence ===
+    // arr = [5, 4, 3, 2, 1]
+    // LIS length = 1 (any single element)
+    let a3 = vec_new();
+    let _p = vec_push(a3, 5);
+    let _p = vec_push(a3, 4);
+    let _p = vec_push(a3, 3);
+    let _p = vec_push(a3, 2);
+    let _p = vec_push(a3, 1);
+    let _r3 = solve_lis(a3);
+
+    // === Test 4: Mixed pattern ===
+    // arr = [3, 1, 4, 1, 5, 9, 2, 6]
+    // LIS length = 4, one valid LIS = [1, 4, 5, 9] or [1, 4, 5, 6] or [3, 4, 5, 9] etc.
+    let a4 = vec_new();
+    let _p = vec_push(a4, 3);
+    let _p = vec_push(a4, 1);
+    let _p = vec_push(a4, 4);
+    let _p = vec_push(a4, 1);
+    let _p = vec_push(a4, 5);
+    let _p = vec_push(a4, 9);
+    let _p = vec_push(a4, 2);
+    let _p = vec_push(a4, 6);
+    let _r4 = solve_lis(a4);
+
+    // === Test 5: Single element ===
+    let a5 = vec_new();
+    let _p = vec_push(a5, 42);
+    let _r5 = solve_lis(a5);
+
+    // === Test 6: Two elements ascending ===
+    let a6 = vec_new();
+    let _p = vec_push(a6, 3);
+    let _p = vec_push(a6, 7);
+    let _r6 = solve_lis(a6);
+
+    // === Test 7: Two elements descending ===
+    let a7 = vec_new();
+    let _p = vec_push(a7, 7);
+    let _p = vec_push(a7, 3);
+    let _r7 = solve_lis(a7);
+
+    let _f1 = vec_free(a1);
+    let _f2 = vec_free(a2);
+    let _f3 = vec_free(a3);
+    let _f4 = vec_free(a4);
+    let _f5 = vec_free(a5);
+    let _f6 = vec_free(a6);
+    let _f7 = vec_free(a7);
+    0
+    };

@@ -1,0 +1,180 @@
+// Golden test: Compression-related algorithms
+// Tests: run-length encoding (count consecutive runs),
+//        delta encoding/decoding, zigzag encoding, frequency counting
+
+// === Run-Length Encoding ===
+    // Count consecutive equal elements starting at position pos with value val
+
+fn rle_run_len(arr: i64, pos: i64, val: i64, count: i64, size: i64) -> i64 =
+    if pos >= size { count }
+    else if vec_get(arr, pos) == val { rle_run_len(arr, pos + 1, val, count + 1, size) }
+    else { count };
+
+    // Find position of next different element
+
+fn rle_next_pos(arr: i64, pos: i64, val: i64, size: i64) -> i64 =
+    if pos >= size { pos }
+    else if vec_get(arr, pos) != val { pos }
+    else { rle_next_pos(arr, pos + 1, val, size) };
+
+    // Count total number of distinct runs in array
+
+fn rle_count_runs(arr: i64, pos: i64, count: i64, size: i64) -> i64 =
+    if pos >= size { count }
+    else {
+        let next = rle_next_pos(arr, pos, vec_get(arr, pos), size);
+        rle_count_runs(arr, next, count + 1, size)
+    };
+
+    // Get the run-length count at run index k (0-based)
+
+fn rle_run_count_at(arr: i64, arr_pos: i64, run_idx: i64, target: i64, size: i64) -> i64 =
+    if arr_pos >= size { 0 }
+    else if run_idx == target {
+        rle_run_len(arr, arr_pos, vec_get(arr, arr_pos), 0, size)
+    } else {
+    let next = rle_next_pos(arr, arr_pos, vec_get(arr, arr_pos), size);
+    rle_run_count_at(arr, next, run_idx + 1, target, size)
+    };
+
+    // Get the run value at run index k (0-based)
+
+fn rle_run_val_at(arr: i64, arr_pos: i64, run_idx: i64, target: i64, size: i64) -> i64 =
+    if arr_pos >= size { 0 }
+    else if run_idx == target { vec_get(arr, arr_pos) }
+    else {
+        let next = rle_next_pos(arr, arr_pos, vec_get(arr, arr_pos), size);
+        rle_run_val_at(arr, next, run_idx + 1, target, size)
+    };
+
+    // === Delta Encoding ===
+    // delta[0] = arr[0], delta[i] = arr[i] - arr[i-1]
+
+fn delta_first(arr: i64) -> i64 = vec_get(arr, 0);
+
+fn delta_at(arr: i64, i: i64) -> i64 =
+    vec_get(arr, i) - vec_get(arr, i - 1);
+
+    // Delta decode: reconstruct arr[i] from delta array
+    // arr[0] = delta[0], arr[i] = delta[0] + delta[1] + ... + delta[i]
+
+fn delta_decode_at(delta: i64, i: i64, pos: i64, acc: i64) -> i64 =
+    if pos > i { acc }
+    else { delta_decode_at(delta, i, pos + 1, acc + vec_get(delta, pos)) };
+
+    // === Zigzag Encoding ===
+    // Maps signed integers to non-negative: 0->0, -1->1, 1->2, -2->3, 2->4, ...
+
+fn zigzag(n: i64) -> i64 =
+    if n >= 0 { 2 * n }
+    else { 0 - 2 * n - 1 };
+
+    // Zigzag decode: inverse of zigzag
+
+fn zigzag_decode(n: i64) -> i64 =
+    if n - (n / 2) * 2 == 0 { n / 2 }
+    else { 0 - (n / 2) - 1 };
+
+    // === Frequency Count ===
+
+fn freq_count(arr: i64, pos: i64, val: i64, count: i64, size: i64) -> i64 =
+    if pos >= size { count }
+    else {
+        let inc = if vec_get(arr, pos) == val { 1 } else { 0 };
+        freq_count(arr, pos + 1, val, count + inc, size)
+    };
+
+fn main() -> i64 = {
+// RLE test: [1,1,1,2,2,3,3,3,3] has 3 runs
+// run 0: val=1, count=3
+// run 1: val=2, count=2
+// run 2: val=3, count=4
+    let arr1 = vec_new();
+    let _a10 = vec_push(arr1, 1);
+    let _a11 = vec_push(arr1, 1);
+    let _a12 = vec_push(arr1, 1);
+    let _a13 = vec_push(arr1, 2);
+    let _a14 = vec_push(arr1, 2);
+    let _a15 = vec_push(arr1, 3);
+    let _a16 = vec_push(arr1, 3);
+    let _a17 = vec_push(arr1, 3);
+    let _a18 = vec_push(arr1, 3);
+    let _p1 = println(rle_run_val_at(arr1, 0, 0, 0, 9));    // 1
+    let _p2 = println(rle_run_count_at(arr1, 0, 0, 0, 9));  // 3
+    let _p3 = println(rle_run_val_at(arr1, 0, 0, 1, 9));    // 2
+    let _p4 = println(rle_run_count_at(arr1, 0, 0, 1, 9));  // 2
+    let _p5 = println(rle_run_val_at(arr1, 0, 0, 2, 9));    // 3
+    let _p6 = println(rle_run_count_at(arr1, 0, 0, 2, 9));  // 4
+
+// RLE test: [5,5,1,2,2,2] has 3 runs
+// run 0: val=5, count=2
+// run 1: val=1, count=1
+// run 2: val=2, count=3
+    let arr2 = vec_new();
+    let _a20 = vec_push(arr2, 5);
+    let _a21 = vec_push(arr2, 5);
+    let _a22 = vec_push(arr2, 1);
+    let _a23 = vec_push(arr2, 2);
+    let _a24 = vec_push(arr2, 2);
+    let _a25 = vec_push(arr2, 2);
+    let _p7 = println(rle_run_val_at(arr2, 0, 0, 0, 6));    // 5
+    let _p8 = println(rle_run_count_at(arr2, 0, 0, 0, 6));  // 2
+    let _p9 = println(rle_run_val_at(arr2, 0, 0, 1, 6));    // 1
+    let _p10 = println(rle_run_count_at(arr2, 0, 0, 1, 6)); // 1
+    let _p11 = println(rle_run_val_at(arr2, 0, 0, 2, 6));   // 2
+    let _p12 = println(rle_run_count_at(arr2, 0, 0, 2, 6)); // 3
+
+// Delta encoding: [10, 12, 15, 19, 24] -> [10, 2, 3, 4, 5]
+    let arr3 = vec_new();
+    let _a30 = vec_push(arr3, 10);
+    let _a31 = vec_push(arr3, 12);
+    let _a32 = vec_push(arr3, 15);
+    let _a33 = vec_push(arr3, 19);
+    let _a34 = vec_push(arr3, 24);
+    let _p13 = println(delta_first(arr3));     // 10
+    let _p14 = println(delta_at(arr3, 1));     // 2
+    let _p15 = println(delta_at(arr3, 2));     // 3
+    let _p16 = println(delta_at(arr3, 3));     // 4
+    let _p17 = println(delta_at(arr3, 4));     // 5
+
+// Delta decoding: delta=[10,2,3,4,5] -> sum to index i
+    let delta3 = vec_new();
+    let _d30 = vec_push(delta3, 10);
+    let _d31 = vec_push(delta3, 2);
+    let _d32 = vec_push(delta3, 3);
+    let _d33 = vec_push(delta3, 4);
+    let _d34 = vec_push(delta3, 5);
+    let decoded_sum = delta_decode_at(delta3, 0, 0, 0) +
+    delta_decode_at(delta3, 1, 0, 0) +
+    delta_decode_at(delta3, 2, 0, 0) +
+    delta_decode_at(delta3, 3, 0, 0) +
+    delta_decode_at(delta3, 4, 0, 0);
+    let _p18 = println(decoded_sum);          // 80 (10+12+15+19+24)
+
+// Zigzag encoding
+    let _p19 = println(zigzag(0));    // 0
+    let _p20 = println(zigzag(0 - 1)); // 1
+    let _p21 = println(zigzag(1));    // 2
+    let _p22 = println(zigzag(0 - 3)); // 5
+    let _p23 = println(zigzag(3));    // 6
+
+// Frequency count: [3,1,4,1,5,9,2,6,5,3,5]
+    let arr4 = vec_new();
+    let _a40 = vec_push(arr4, 3);
+    let _a41 = vec_push(arr4, 1);
+    let _a42 = vec_push(arr4, 4);
+    let _a43 = vec_push(arr4, 1);
+    let _a44 = vec_push(arr4, 5);
+    let _a45 = vec_push(arr4, 9);
+    let _a46 = vec_push(arr4, 2);
+    let _a47 = vec_push(arr4, 6);
+    let _a48 = vec_push(arr4, 5);
+    let _a49 = vec_push(arr4, 3);
+    let _a4a = vec_push(arr4, 5);
+    let _p24 = println(freq_count(arr4, 0, 1, 0, 11));  // 2
+    let _p25 = println(freq_count(arr4, 0, 5, 0, 11));  // 3
+    let _p26 = println(freq_count(arr4, 0, 9, 0, 11));  // 1
+    let _p27 = println(freq_count(arr4, 0, 7, 0, 11));  // 0
+
+    0
+    };

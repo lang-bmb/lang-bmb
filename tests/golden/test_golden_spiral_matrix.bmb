@@ -1,0 +1,125 @@
+// Golden Test: Spiral Matrix Traversal
+// Fill NxN matrix in spiral order (1, 2, 3, ..., N*N)
+// Flat array storage with row-major indexing: mat[row*n + col]
+
+fn spiral_fill(mat: i64, n: i64) -> i64 = {
+    let mut top = 0;
+    let mut bottom = n - 1;
+    let mut left = 0;
+    let mut right = n - 1;
+    let mut num = 1;
+
+    let mut done = 0;
+    for _iter in 0..n * n {
+        if done == 0 {
+            // Right: top row, left to right
+            if top <= bottom {
+                for col in left..right + 1 {
+                    if done == 0 {
+                        let _s = vec_set(mat, top * n + col, num);
+                        set num = num + 1;
+                    } else { () };
+                };
+                set top = top + 1;
+            } else { set done = 1 };
+
+            // Down: right column, top to bottom
+            if done == 0 {
+                if top <= bottom {
+                    for row in top..bottom + 1 {
+                        if done == 0 {
+                            let _s = vec_set(mat, row * n + right, num);
+                            set num = num + 1;
+                        } else { () };
+                    };
+                    set right = right - 1;
+                } else { set done = 1 };
+            } else { () };
+
+            // Left: bottom row, right to left
+            if done == 0 {
+                if left <= right {
+                    let mut col2 = right;
+                    for _c in left..right + 1 {
+                        if done == 0 {
+                            let _s = vec_set(mat, bottom * n + col2, num);
+                            set num = num + 1;
+                            set col2 = col2 - 1;
+                        } else { () };
+                    };
+                    set bottom = bottom - 1;
+                } else { set done = 1 };
+            } else { () };
+
+            // Up: left column, bottom to top
+            if done == 0 {
+                if top <= bottom {
+                    let mut row2 = bottom;
+                    for _r in top..bottom + 1 {
+                        if done == 0 {
+                            let _s = vec_set(mat, row2 * n + left, num);
+                            set num = num + 1;
+                            set row2 = row2 - 1;
+                        } else { () };
+                    };
+                    set left = left + 1;
+                } else { set done = 1 };
+            } else { () };
+        } else { () };
+    };
+    0
+};
+
+fn mat_get(mat: i64, n: i64, row: i64, col: i64) -> i64 =
+    vec_get(mat, row * n + col);
+
+fn main() -> i64 = {
+    // 3x3 spiral matrix
+    let m3 = vec_new();
+    for _i in 0..9 {
+        let _p = vec_push(m3, 0);
+    };
+    let _fill3 = spiral_fill(m3, 3);
+
+    // 3x3 expected:
+    // 1 2 3
+    // 8 9 4
+    // 7 6 5
+
+    // Corners
+    let _p1 = println(mat_get(m3, 3, 0, 0));   // 1  (top-left)
+    let _p2 = println(mat_get(m3, 3, 0, 2));   // 3  (top-right)
+    let _p3 = println(mat_get(m3, 3, 2, 2));   // 5  (bottom-right)
+    let _p4 = println(mat_get(m3, 3, 2, 0));   // 7  (bottom-left)
+
+    // Center and diagonal
+    let _p5 = println(mat_get(m3, 3, 1, 1));   // 9  (center)
+    let _p6 = println(mat_get(m3, 3, 1, 0));   // 8  (mid-left)
+
+    // 4x4 spiral matrix
+    let m4 = vec_new();
+    for _i in 0..16 {
+        let _p = vec_push(m4, 0);
+    };
+    let _fill4 = spiral_fill(m4, 4);
+
+    // 4x4 expected:
+    //  1  2  3  4
+    // 12 13 14  5
+    // 11 16 15  6
+    // 10  9  8  7
+
+    // Corners
+    let _p7 = println(mat_get(m4, 4, 0, 0));   // 1   (top-left)
+    let _p8 = println(mat_get(m4, 4, 0, 3));   // 4   (top-right)
+    let _p9 = println(mat_get(m4, 4, 3, 3));   // 7   (bottom-right)
+    let _p10 = println(mat_get(m4, 4, 3, 0));  // 10  (bottom-left)
+
+    // Diagonal
+    let _p11 = println(mat_get(m4, 4, 1, 1));  // 13
+    let _p12 = println(mat_get(m4, 4, 2, 2));  // 15
+
+    let _f1 = vec_free(m3);
+    let _f2 = vec_free(m4);
+    0
+};

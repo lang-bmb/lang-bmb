@@ -1,0 +1,48 @@
+// Golden Test: Postcondition Propagation
+// When a function has `post` conditions, callers can use those facts
+// to optimize their own code (branch elimination, range proof, etc.)
+
+// abs() guarantees non-negative return
+fn abs(x: i64) -> i64
+    post ret >= 0
+= if x < 0 { 0 - x } else { x };
+
+// clamp_positive guarantees result is in [0, max]
+fn clamp_positive(x: i64, max: i64) -> i64
+    pre max > 0
+    post ret >= 0
+= if x < 0 { 0 } else { if x > max { max } else { x } };
+
+// Uses abs() — caller knows result >= 0
+fn test_abs_positive() -> i64 = {
+    let a = abs(0 - 42);
+    // a is guaranteed >= 0 by abs's postcondition
+    a + 100
+};
+
+// Uses clamp_positive — caller knows result >= 0
+fn test_clamp() -> i64 = {
+    let c = clamp_positive(0 - 10, 50);
+    // c is guaranteed >= 0 by clamp_positive's postcondition
+    c + 200
+};
+
+// Chain: abs result fed to another computation
+fn test_chain() -> i64 = {
+    let a = abs(0 - 7);
+    let b = abs(0 - 3);
+    a + b
+};
+
+fn main() -> i64 = {
+    let _p1 = println(abs(0 - 42));
+    let _p2 = println(abs(17));
+    let _p3 = println(abs(0));
+    let _p4 = println(clamp_positive(0 - 10, 50));
+    let _p5 = println(clamp_positive(30, 50));
+    let _p6 = println(clamp_positive(100, 50));
+    let _p7 = println(test_abs_positive());
+    let _p8 = println(test_clamp());
+    let _p9 = println(test_chain());
+    0
+};

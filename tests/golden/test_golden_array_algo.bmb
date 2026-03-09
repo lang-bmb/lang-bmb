@@ -1,0 +1,205 @@
+// Golden test: Array algorithm patterns
+// Tests array manipulation, searching, and aggregation
+
+// Helper: create a vec and push values
+fn make_vec9(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64, h: i64, i: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    let _p6 = vec_push(v, f);
+    let _p7 = vec_push(v, g);
+    let _p8 = vec_push(v, h);
+    let _p9 = vec_push(v, i);
+    v
+    };
+
+fn make_vec5(a: i64, b: i64, c: i64, d: i64, e: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    v
+    };
+
+fn make_vec3(a: i64, b: i64, c: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    v
+    };
+
+fn make_vec4(a: i64, b: i64, c: i64, d: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    v
+    };
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n {
+        let _p = vec_push(v, 0);
+        0
+    };
+    v
+    };
+
+// Find minimum value in array
+fn arr_min(arr: i64, pos: i64, best: i64) -> i64 =
+    if pos >= vec_len(arr) { best }
+    else {
+        let nb = if vec_get(arr, pos) < best { vec_get(arr, pos) } else { best };
+        arr_min(arr, pos + 1, nb)
+    };
+
+    // Find maximum value in array
+
+fn arr_max(arr: i64, pos: i64, best: i64) -> i64 =
+    if pos >= vec_len(arr) { best }
+    else {
+        let nb = if vec_get(arr, pos) > best { vec_get(arr, pos) } else { best };
+        arr_max(arr, pos + 1, nb)
+    };
+
+    // Sum all elements
+
+fn arr_sum(arr: i64, pos: i64, acc: i64) -> i64 =
+    if pos >= vec_len(arr) { acc }
+    else { arr_sum(arr, pos + 1, acc + vec_get(arr, pos)) };
+
+    // Count elements matching predicate (> threshold)
+
+fn count_greater(arr: i64, pos: i64, thresh: i64, count: i64) -> i64 =
+    if pos >= vec_len(arr) { count }
+    else {
+        let inc = if vec_get(arr, pos) > thresh { 1 } else { 0 };
+        count_greater(arr, pos + 1, thresh, count + inc)
+    };
+
+    // Binary search (array must be sorted)
+
+fn binary_search(arr: i64, target: i64, lo: i64, hi: i64) -> i64 =
+    if lo > hi { 0 - 1 }
+    else {
+        let mid = lo + (hi - lo) / 2;
+        if vec_get(arr, mid) == target { mid }
+        else if vec_get(arr, mid) < target { binary_search(arr, target, mid + 1, hi) }
+        else { binary_search(arr, target, lo, mid - 1) }
+    };
+
+    // Check if array is sorted
+
+fn is_sorted(arr: i64, pos: i64) -> i64 =
+    if pos + 1 >= vec_len(arr) { 1 }
+    else if vec_get(arr, pos) > vec_get(arr, pos + 1) { 0 }
+    else { is_sorted(arr, pos + 1) };
+
+    // Selection sort step: find min index from pos onwards
+
+fn find_min_idx(arr: i64, pos: i64, best_idx: i64, best_val: i64) -> i64 =
+    if pos >= vec_len(arr) { best_idx }
+    else if vec_get(arr, pos) < best_val { find_min_idx(arr, pos + 1, pos, vec_get(arr, pos)) }
+    else { find_min_idx(arr, pos + 1, best_idx, best_val) };
+
+    // Swap two elements
+
+fn arr_swap(arr: i64, i: i64, j: i64) -> i64 = {
+    let tmp = vec_get(arr, i);
+    let _s1 = vec_set(arr, i, vec_get(arr, j));
+    let _s2 = vec_set(arr, j, tmp);
+    0
+    };
+
+// Selection sort
+fn selection_sort(arr: i64, pos: i64) -> i64 =
+    if pos >= vec_len(arr) - 1 { 0 }
+    else {
+        let min_idx = find_min_idx(arr, pos, pos, vec_get(arr, pos));
+        let _sw = if min_idx != pos { arr_swap(arr, pos, min_idx) } else { 0 };
+        selection_sort(arr, pos + 1)
+    };
+
+    // Prefix sum: compute running totals
+
+fn prefix_sum(arr: i64, pos: i64, running: i64, result: i64) -> i64 =
+    if pos >= vec_len(arr) { 0 }
+    else {
+        let new_running = running + vec_get(arr, pos);
+        let _s = vec_set(result, pos, new_running);
+        prefix_sum(arr, pos + 1, new_running, result)
+    };
+
+    // Count inversions (pairs where i < j but arr[i] > arr[j])
+
+fn count_inversions_inner(arr: i64, i: i64, j: i64, count: i64) -> i64 =
+    if j >= vec_len(arr) { count }
+    else {
+        let inc = if vec_get(arr, i) > vec_get(arr, j) { 1 } else { 0 };
+        count_inversions_inner(arr, i, j + 1, count + inc)
+    };
+
+fn count_inversions(arr: i64, i: i64, count: i64) -> i64 =
+    if i >= vec_len(arr) - 1 { count }
+    else {
+        let c = count_inversions_inner(arr, i, i + 1, count);
+        count_inversions(arr, i + 1, c)
+    };
+
+fn main() -> i64 = {
+    let data = make_vec9(7, 3, 9, 1, 5, 8, 2, 6, 4);
+
+// Basic aggregation
+    let _p1 = println(arr_min(data, 0, 999));   // 1
+    let _p2 = println(arr_max(data, 0, 0));      // 9
+    let _p3 = println(arr_sum(data, 0, 0));      // 45
+    let _p4 = println(count_greater(data, 0, 5, 0));  // 4 (7, 9, 8, 6)
+
+// Sorted check
+    let _p5 = println(is_sorted(data, 0));       // 0
+    let sorted = make_vec9(1, 2, 3, 4, 5, 6, 7, 8, 9);
+    let _p6 = println(is_sorted(sorted, 0));     // 1
+
+// Binary search on sorted array
+    let _p7 = println(binary_search(sorted, 5, 0, 8));  // 4 (index of 5)
+    let _p8 = println(binary_search(sorted, 1, 0, 8));  // 0 (index of 1)
+    let _p9 = println(binary_search(sorted, 10, 0, 8)); // -1 (not found)
+
+// Selection sort
+    let to_sort = make_vec9(5, 3, 8, 1, 9, 2, 7, 4, 6);
+    let _ss = selection_sort(to_sort, 0);
+    let _p10 = println(vec_get(to_sort, 0));  // 1
+    let _p11 = println(vec_get(to_sort, 4));  // 5
+    let _p12 = println(vec_get(to_sort, 8));  // 9
+    let _p13 = println(is_sorted(to_sort, 0));  // 1
+
+// Prefix sum
+    let arr2 = make_vec5(1, 2, 3, 4, 5);
+    let ps = make_zeros(5);
+    let _ps_r = prefix_sum(arr2, 0, 0, ps);
+    let _p14 = println(vec_get(ps, 0));  // 1
+    let _p15 = println(vec_get(ps, 2));  // 6
+    let _p16 = println(vec_get(ps, 4));  // 15
+
+// Count inversions
+    let inv_arr = make_vec3(3, 1, 2);  // inversions: (3,1), (3,2) = 2
+    let _p17 = println(count_inversions(inv_arr, 0, 0));  // 2
+    let inv_arr2 = make_vec4(4, 3, 2, 1);  // inversions: 6 (all pairs)
+    let _p18 = println(count_inversions(inv_arr2, 0, 0)); // 6
+
+    let _f1 = vec_free(data);
+    let _f2 = vec_free(sorted);
+    let _f3 = vec_free(to_sort);
+    let _f4 = vec_free(arr2);
+    let _f5 = vec_free(ps);
+    let _f6 = vec_free(inv_arr);
+    let _f7 = vec_free(inv_arr2);
+    0
+    };

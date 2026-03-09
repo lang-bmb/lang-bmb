@@ -1,0 +1,125 @@
+// Golden Test: Basic sorting algorithms
+// Bubble sort and selection sort on vecs
+
+// === Print all elements of a vec ===
+fn print_vec(v: i64) -> i64 = {
+    let n = vec_len(v);
+    for i in 0..n {
+        println(vec_get(v, i))
+    };
+    0
+};
+
+// === Bubble Sort (in-place) ===
+fn bubble_sort(v: i64) -> i64 = {
+    let n = vec_len(v);
+    for _i in 0..n {
+        for j in 0..n {
+            if j + 1 < n {
+                let vj = vec_get(v, j);
+                let vj1 = vec_get(v, j + 1);
+                if vj > vj1 {
+                    let _s1 = vec_set(v, j, vj1);
+                    let _s2 = vec_set(v, j + 1, vj);
+                    0
+                } else { 0 }
+            } else { 0 }
+        }
+    };
+    0
+};
+
+// === Selection Sort (in-place) ===
+fn selection_sort(v: i64) -> i64 = {
+    let n = vec_len(v);
+    for i in 0..n {
+        // Find minimum in v[i..n]
+        let mut min_idx = i;
+        for j in i..n {
+            if vec_get(v, j) < vec_get(v, min_idx) {
+                set min_idx = j
+            } else { () }
+        };
+        // Swap v[i] and v[min_idx]
+        let tmp = vec_get(v, i);
+        let _s1 = vec_set(v, i, vec_get(v, min_idx));
+        let _s2 = vec_set(v, min_idx, tmp);
+        0
+    };
+    0
+};
+
+// === Helper: build a vec from 9 elements ===
+fn make9(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64, h: i64, ii: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    let _p6 = vec_push(v, f);
+    let _p7 = vec_push(v, g);
+    let _p8 = vec_push(v, h);
+    let _p9 = vec_push(v, ii);
+    v
+};
+
+fn main() -> i64 = {
+    // === Bubble sort: [5,3,8,1,9,2,7,4,6] ===
+    let v1 = make9(5, 3, 8, 1, 9, 2, 7, 4, 6);
+    let _bs = bubble_sort(v1);
+    let _pv1 = print_vec(v1);
+    // Expected: 1 2 3 4 5 6 7 8 9
+
+    // === Selection sort: [5,3,8,1,9,2,7,4,6] ===
+    let v2 = make9(5, 3, 8, 1, 9, 2, 7, 4, 6);
+    let _ss = selection_sort(v2);
+    let _pv2 = print_vec(v2);
+    // Expected: 1 2 3 4 5 6 7 8 9
+
+    // === Edge case: single element [1] ===
+    let v3 = vec_new();
+    let _p31 = vec_push(v3, 1);
+    let _bs3 = bubble_sort(v3);
+    let _pv3 = print_vec(v3);
+    // Expected: 1
+
+    // === Edge case: two elements [3,1] ===
+    let v4 = vec_new();
+    let _p41 = vec_push(v4, 3);
+    let _p42 = vec_push(v4, 1);
+    let _ss4 = selection_sort(v4);
+    let _pv4 = print_vec(v4);
+    // Expected: 1 3
+
+    // === Already sorted [1,2,3,4,5] ===
+    let v5 = vec_new();
+    let _p51 = vec_push(v5, 1);
+    let _p52 = vec_push(v5, 2);
+    let _p53 = vec_push(v5, 3);
+    let _p54 = vec_push(v5, 4);
+    let _p55 = vec_push(v5, 5);
+    let _bs5 = bubble_sort(v5);
+    let _pv5 = print_vec(v5);
+    // Expected: 1 2 3 4 5
+
+    // === Reverse sorted [5,4,3,2,1] ===
+    let v6 = vec_new();
+    let _p61 = vec_push(v6, 5);
+    let _p62 = vec_push(v6, 4);
+    let _p63 = vec_push(v6, 3);
+    let _p64 = vec_push(v6, 2);
+    let _p65 = vec_push(v6, 1);
+    let _ss6 = selection_sort(v6);
+    let _pv6 = print_vec(v6);
+    // Expected: 1 2 3 4 5
+
+    // Cleanup
+    let _f1 = vec_free(v1);
+    let _f2 = vec_free(v2);
+    let _f3 = vec_free(v3);
+    let _f4 = vec_free(v4);
+    let _f5 = vec_free(v5);
+    let _f6 = vec_free(v6);
+    0
+};

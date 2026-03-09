@@ -1,0 +1,256 @@
+// Golden test: Rabin fingerprint for rolling hash deduplication
+// Uses polynomial rolling hash: h(s) = sum(s[i] * base^(len-1-i)) mod prime
+// Demonstrates: rolling hash update, chunk deduplication, collision-free matching
+
+// Modular arithmetic: a mod m (positive result)
+fn pos_mod(a: i64, m: i64) -> i64 = {
+    let r = a - (a / m) * m;
+    if r < 0 { r + m } else { r }
+    };
+
+// Compute base^exp mod prime
+fn mod_pow(base: i64, exp: i64, prime: i64) -> i64 = {
+    let mut result = 1;
+    let mut b = pos_mod(base, prime);
+    let mut e = exp;
+    loop {
+        if e <= 0 { break } else { () };
+        let odd = e - (e / 2) * 2;
+        if odd == 1 {
+            result = pos_mod(result * b, prime)
+        } else { () };
+        b = pos_mod(b * b, prime);
+        e = e / 2
+    };
+    result
+    };
+
+// Full hash of a chunk: arr[start..start+len]
+// hash = sum(arr[start+i] * base^(len-1-i)) mod prime
+fn chunk_hash(arr: i64, start: i64, len: i64, base: i64, prime: i64) -> i64 = {
+    let mut h = 0;
+    for i in 0..len {
+        let val = vec_get(arr, start + i);
+        let power = mod_pow(base, len - 1 - i, prime);
+        h = pos_mod(h + pos_mod(val * power, prime), prime);
+        0
+    };
+    h
+    };
+
+// Rolling hash: remove leftmost, add new rightmost
+// new_hash = (old_hash - old_val * base^(len-1)) * base + new_val
+fn roll_hash(old_hash: i64, old_val: i64, new_val: i64, base: i64, len: i64, prime: i64) -> i64 = {
+    let high_power = mod_pow(base, len - 1, prime);
+    let removed = pos_mod(old_hash - pos_mod(old_val * high_power, prime), prime);
+    let shifted = pos_mod(removed * base, prime);
+    pos_mod(shifted + new_val, prime)
+    };
+
+// Count unique chunk hashes in an array using a simple hash set (vec of flags)
+// Chunks of given size, sliding by 1
+fn count_unique_chunks(arr: i64, arr_len: i64, chunk_len: i64, base: i64, prime: i64) -> i64 = {
+    let num_chunks = arr_len - chunk_len + 1;
+    // Use a vec as a hash set (size = prime, 0 = empty, 1 = occupied)
+    let seen = vec_new();
+    for _i in 0..prime { let _p = vec_push(seen, 0); 0 };
+
+    // Compute first chunk hash
+    let mut h = chunk_hash(arr, 0, chunk_len, base, prime);
+    let _s0 = vec_set(seen, h, 1);
+    let mut unique = 1;
+
+    // Roll through remaining positions
+    for i in 1..num_chunks {
+        let old_val = vec_get(arr, i - 1);
+        let new_val = vec_get(arr, i + chunk_len - 1);
+        h = roll_hash(h, old_val, new_val, base, chunk_len, prime);
+        let already = vec_get(seen, h);
+        if already == 0 {
+            let _s = vec_set(seen, h, 1);
+            set unique = unique + 1
+        } else { () };
+        0
+    };
+    let _f = vec_free(seen);
+    unique
+    };
+
+// Find first occurrence of pattern in text using Rabin-Karp
+// Returns index or -1 if not found
+fn rabin_karp_search(text: i64, text_len: i64, pat: i64, pat_len: i64, base: i64, prime: i64) -> i64 = {
+    let pat_hash = chunk_hash(pat, 0, pat_len, base, prime);
+    let mut text_hash = chunk_hash(text, 0, pat_len, base, prime);
+    let mut result = 0 - 1;
+    let mut found = 0;
+    let num_pos = text_len - pat_len + 1;
+
+    // Check first position
+    if text_hash == pat_hash {
+        set result = 0;
+        set found = 1
+    } else { () };
+
+    // Roll through remaining positions
+    for i in 1..num_pos {
+        if found == 0 {
+            let old_val = vec_get(text, i - 1);
+            let new_val = vec_get(text, i + pat_len - 1);
+            set text_hash = roll_hash(text_hash, old_val, new_val, base, pat_len, prime);
+            if text_hash == pat_hash {
+                set result = i;
+                set found = 1
+            } else { () }
+        } else { () };
+        0
+    };
+    result
+    };
+
+// Count all occurrences of a pattern hash in text
+fn count_pattern_matches(text: i64, text_len: i64, pat_len: i64, pat_hash: i64, base: i64, prime: i64) -> i64 = {
+    let mut text_hash = chunk_hash(text, 0, pat_len, base, prime);
+    let mut count = if text_hash == pat_hash { 1 } else { 0 };
+    let num_pos = text_len - pat_len + 1;
+
+    for i in 1..num_pos {
+        let old_val = vec_get(text, i - 1);
+        let new_val = vec_get(text, i + pat_len - 1);
+        set text_hash = roll_hash(text_hash, old_val, new_val, base, pat_len, prime);
+        if text_hash == pat_hash {
+            set count = count + 1
+        } else { () };
+        0
+    };
+    count
+    };
+
+fn main() -> i64 = {
+    let base = 31;
+    let prime = 997;
+
+    // --- Test 1: Basic chunk hashing ---
+    // Array: [10, 20, 30, 40, 50]
+    let arr1 = vec_new();
+    let _a0 = vec_push(arr1, 10);
+    let _a1 = vec_push(arr1, 20);
+    let _a2 = vec_push(arr1, 30);
+    let _a3 = vec_push(arr1, 40);
+    let _a4 = vec_push(arr1, 50);
+
+    // Hash of [10,20,30] = 10*31^2 + 20*31 + 30 = 9610 + 620 + 30 = 10260 mod 997
+    let h1 = chunk_hash(arr1, 0, 3, base, prime);
+    let _p1 = println(h1);  // 10260 mod 997 = 290
+
+    // Hash of [20,30,40] computed directly
+    let h2 = chunk_hash(arr1, 1, 3, base, prime);
+    let _p2 = println(h2);
+
+    // Rolling hash from h1 should equal h2
+    let h2_rolled = roll_hash(h1, 10, 40, base, 3, prime);
+    let _p3 = println(h2_rolled);
+
+    // Verify rolling hash equals direct hash
+    let match1 = if h2 == h2_rolled { 1 } else { 0 };
+    let _p4 = println(match1);  // 1
+
+    // --- Test 2: Rolling through all windows ---
+    let h3 = chunk_hash(arr1, 2, 3, base, prime);
+    let h3_rolled = roll_hash(h2, 20, 50, base, 3, prime);
+    let match2 = if h3 == h3_rolled { 1 } else { 0 };
+    let _p5 = println(match2);  // 1
+
+    // --- Test 3: Unique chunk count ---
+    // Array: [1, 2, 3, 1, 2, 3] with chunk_len=3
+    // Chunks: [1,2,3], [2,3,1], [3,1,2], [1,2,3]
+    // [1,2,3] appears twice, so 3 unique
+    let arr2 = vec_new();
+    let _b0 = vec_push(arr2, 1);
+    let _b1 = vec_push(arr2, 2);
+    let _b2 = vec_push(arr2, 3);
+    let _b3 = vec_push(arr2, 1);
+    let _b4 = vec_push(arr2, 2);
+    let _b5 = vec_push(arr2, 3);
+    let unique1 = count_unique_chunks(arr2, 6, 3, base, prime);
+    let _p6 = println(unique1);  // 3
+
+    // --- Test 4: All identical chunks ---
+    // Array: [5, 5, 5, 5, 5] with chunk_len=2
+    // Chunks: [5,5], [5,5], [5,5], [5,5] — all same
+    let arr3 = vec_new();
+    let _c0 = vec_push(arr3, 5);
+    let _c1 = vec_push(arr3, 5);
+    let _c2 = vec_push(arr3, 5);
+    let _c3 = vec_push(arr3, 5);
+    let _c4 = vec_push(arr3, 5);
+    let unique2 = count_unique_chunks(arr3, 5, 2, base, prime);
+    let _p7 = println(unique2);  // 1
+
+    // --- Test 5: All unique chunks ---
+    // Array: [1, 2, 3, 4, 5] with chunk_len=2
+    // Chunks: [1,2], [2,3], [3,4], [4,5] — all different
+    let arr4 = vec_new();
+    let _d0 = vec_push(arr4, 1);
+    let _d1 = vec_push(arr4, 2);
+    let _d2 = vec_push(arr4, 3);
+    let _d3 = vec_push(arr4, 4);
+    let _d4 = vec_push(arr4, 5);
+    let unique3 = count_unique_chunks(arr4, 5, 2, base, prime);
+    let _p8 = println(unique3);  // 4
+
+    // --- Test 6: Rabin-Karp pattern search ---
+    // Text: [3, 1, 4, 1, 5, 9, 2, 6]
+    // Pattern: [1, 5, 9]
+    let text1 = vec_new();
+    let _t0 = vec_push(text1, 3);
+    let _t1 = vec_push(text1, 1);
+    let _t2 = vec_push(text1, 4);
+    let _t3 = vec_push(text1, 1);
+    let _t4 = vec_push(text1, 5);
+    let _t5 = vec_push(text1, 9);
+    let _t6 = vec_push(text1, 2);
+    let _t7 = vec_push(text1, 6);
+
+    let pat1 = vec_new();
+    let _q0 = vec_push(pat1, 1);
+    let _q1 = vec_push(pat1, 5);
+    let _q2 = vec_push(pat1, 9);
+    let pos1 = rabin_karp_search(text1, 8, pat1, 3, base, prime);
+    let _p9 = println(pos1);  // 3
+
+    // Pattern not found
+    let pat2 = vec_new();
+    let _r0 = vec_push(pat2, 7);
+    let _r1 = vec_push(pat2, 8);
+    let _r2 = vec_push(pat2, 9);
+    let pos2 = rabin_karp_search(text1, 8, pat2, 3, base, prime);
+    let _p10 = println(pos2);  // -1
+
+    // --- Test 7: Count pattern occurrences ---
+    // Text: [2, 3, 2, 3, 2, 3] pattern hash of [2,3]
+    let text2 = vec_new();
+    let _u0 = vec_push(text2, 2);
+    let _u1 = vec_push(text2, 3);
+    let _u2 = vec_push(text2, 2);
+    let _u3 = vec_push(text2, 3);
+    let _u4 = vec_push(text2, 2);
+    let _u5 = vec_push(text2, 3);
+    let pat_h = chunk_hash(text2, 0, 2, base, prime);
+    let cnt = count_pattern_matches(text2, 6, 2, pat_h, base, prime);
+    let _p11 = println(cnt);  // 3 occurrences of [2,3]
+
+    // --- Test 8: mod_pow correctness ---
+    let _p12 = println(mod_pow(2, 10, 1000));  // 1024 mod 1000 = 24
+    let _p13 = println(mod_pow(31, 0, 997));   // 1
+
+    // Cleanup
+    let _f1 = vec_free(arr1);
+    let _f2 = vec_free(arr2);
+    let _f3 = vec_free(arr3);
+    let _f4 = vec_free(arr4);
+    let _f5 = vec_free(text1);
+    let _f6 = vec_free(pat1);
+    let _f7 = vec_free(pat2);
+    let _f8 = vec_free(text2);
+    0
+    };

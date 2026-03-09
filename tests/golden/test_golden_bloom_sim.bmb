@@ -1,0 +1,139 @@
+// Golden Test: Bloom filter simulation with bit array
+// Uses multiple hash functions to set/check bits in an integer-based bit array
+
+// Bit array using vec of i64, each holding 64 bits
+// Total capacity: num_words * 64 bits
+
+fn bit_set(arr: i64, bit_pos: i64) -> i64 = {
+    let word_idx = bit_pos / 64;
+    let bit_idx = bit_pos - (bit_pos / 64) * 64;
+    let old_val = vec_get(arr, word_idx);
+    let _s = vec_set(arr, word_idx, old_val bor (1 << bit_idx));
+    0
+};
+
+fn bit_test(arr: i64, bit_pos: i64) -> i64 = {
+    let word_idx = bit_pos / 64;
+    let bit_idx = bit_pos - (bit_pos / 64) * 64;
+    let val = vec_get(arr, word_idx);
+    if (val band (1 << bit_idx)) != 0 { 1 } else { 0 }
+};
+
+// Hash function 1: multiplicative hash
+fn hash1(x: i64, size: i64) -> i64 = {
+    let h = x * 2654435761;
+    let r = if h < 0 { 0 - h } else { h };
+    r - (r / size) * size
+};
+
+// Hash function 2: LCG-style
+fn hash2(x: i64, size: i64) -> i64 = {
+    let h = x * 1103515245 + 12345;
+    let r = if h < 0 { 0 - h } else { h };
+    r - (r / size) * size
+};
+
+// Hash function 3: different multiplicative constant + shift
+fn hash3(x: i64, size: i64) -> i64 = {
+    let h = (x + 7) * 6364136223846793005;
+    let r = if h < 0 { 0 - h } else { h };
+    r - (r / size) * size
+};
+
+// Create bloom filter with given number of words
+fn bloom_new(num_words: i64) -> i64 = {
+    let v = vec_new();
+    let mut i = 0;
+    loop {
+        if i >= num_words { break } else { () };
+        let _p = vec_push(v, 0);
+        i = i + 1
+    };
+    v
+};
+
+// Add element to bloom filter
+fn bloom_add(filter: i64, size: i64, elem: i64) -> i64 = {
+    let _s1 = bit_set(filter, hash1(elem, size));
+    let _s2 = bit_set(filter, hash2(elem, size));
+    let _s3 = bit_set(filter, hash3(elem, size));
+    0
+};
+
+// Check if element might be in bloom filter (1=maybe, 0=definitely not)
+fn bloom_check(filter: i64, size: i64, elem: i64) -> i64 = {
+    let t1 = bit_test(filter, hash1(elem, size));
+    let t2 = bit_test(filter, hash2(elem, size));
+    let t3 = bit_test(filter, hash3(elem, size));
+    if t1 == 1 {
+        if t2 == 1 {
+            if t3 == 1 { 1 } else { 0 }
+        } else { 0 }
+    } else { 0 }
+};
+
+// Count set bits in the filter
+fn bloom_popcount(filter: i64) -> i64 = {
+    let n = vec_len(filter);
+    let mut count = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let mut w = vec_get(filter, i);
+        loop {
+            if w == 0 { break } else { () };
+            w = w band (w - 1);
+            count = count + 1
+        };
+        i = i + 1
+    };
+    count
+};
+
+fn main() -> i64 = {
+    // 4 words = 256 bits
+    let size = 256;
+    let filter = bloom_new(4);
+
+    // Empty filter: nothing found
+    let _p1 = println(bloom_check(filter, size, 42));  // 0
+
+    // Add element 42
+    let _a1 = bloom_add(filter, size, 42);
+    let _p2 = println(bloom_check(filter, size, 42));  // 1
+
+    // Element not added: 99
+    let _p3 = println(bloom_check(filter, size, 99));  // 0
+
+    // Add more elements
+    let _a2 = bloom_add(filter, size, 10);
+    let _a3 = bloom_add(filter, size, 20);
+    let _a4 = bloom_add(filter, size, 30);
+
+    // Check all added elements
+    let _p4 = println(bloom_check(filter, size, 10));  // 1
+    let _p5 = println(bloom_check(filter, size, 20));  // 1
+    let _p6 = println(bloom_check(filter, size, 30));  // 1
+    let _p7 = println(bloom_check(filter, size, 42));  // 1
+
+    // Check some not-added elements
+    let _p8 = println(bloom_check(filter, size, 1));
+    let _p9 = println(bloom_check(filter, size, 2));
+
+    // Count bits set in filter
+    let bits = bloom_popcount(filter);
+    let _p10 = println(bits);
+
+    // Check false positive rate with known non-members
+    let mut false_positives = 0;
+    let mut i = 1000;
+    loop {
+        if i >= 1010 { break } else { () };
+        false_positives = false_positives + bloom_check(filter, size, i);
+        i = i + 1
+    };
+    let _p11 = println(false_positives);
+
+    let _f = vec_free(filter);
+    0
+};

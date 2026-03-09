@@ -1,0 +1,170 @@
+// Golden Test #200: BMB Language Feature Showcase
+// Demonstrates all major language features in a single comprehensive test:
+//   i64/f64/bool/String types, closures, for loops, loop+break,
+//   vec ops, string ops, bitwise, recursion, nested if-else, f64 math, bool logic
+
+// === Section 1: Multi-type function parameters ===
+
+fn weighted_score(base: i64, multiplier: f64, bonus: bool) -> i64 = {
+    let scaled = i64_to_f64(base) * multiplier;
+    let extra = if bonus { 10 } else { 0 };
+    f64_to_i64(scaled) + extra
+    };
+
+fn greet_len(name: String, repeat: i64) -> i64 = {
+    let nlen = name.len();
+    nlen * repeat
+    };
+
+// === Section 2: Recursive function (factorial and power) ===
+
+fn factorial(n: i64) -> i64 =
+    if n <= 1 { 1 }
+    else { n * factorial(n - 1) };
+
+fn power(base: i64, exp: i64) -> i64 =
+    if exp == 0 { 1 }
+    else { base * power(base, exp - 1) };
+
+// === Section 3: Nested if-else classifier ===
+
+fn classify_temp(t: i64) -> i64 =
+    if t >= 100 { 4 }
+    else if t >= 60 { 3 }
+    else if t >= 32 { 2 }
+    else if t >= 0 { 1 }
+    else { 0 };
+
+fn fizzbuzz_class(n: i64) -> i64 = {
+    let by3 = n - (n / 3) * 3 == 0;
+    let by5 = n - (n / 5) * 5 == 0;
+    if by3 and by5 { 3 }
+    else if by3 { 1 }
+    else if by5 { 2 }
+    else { 0 }
+    };
+
+// === Main: 25 test cases ===
+
+fn main() -> i64 = {
+    // --- Test 1-3: Multi-type functions ---
+    // weighted_score(50, 2.5, true) = f64_to_i64(50*2.5) + 10 = 125 + 10 = 135
+    let _p1 = println(weighted_score(50, 2.5, true));          // 135
+    // weighted_score(80, 1.25, false) = f64_to_i64(80*1.25) + 0 = 100
+    let _p2 = println(weighted_score(80, 1.25, false));        // 100
+    // greet_len("BMB", 4) = 3 * 4 = 12
+    let _p3 = println(greet_len("BMB", 4));                    // 12
+
+    // --- Test 4-5: Closures with captures ---
+    let offset = 1000;
+    let scale = 3;
+    let transform = fn |x: i64| { x * scale + offset };
+    // transform(7) = 7*3 + 1000 = 1021
+    let _p4 = println(transform(7));                           // 1021
+    let negate = fn |x: i64| { 0 - x };
+    // negate(transform(5)) = negate(5*3+1000) = negate(1015) = -1015
+    let _p5 = println(negate(transform(5)));                   // -1015
+
+    // --- Test 6-7: For loops with ranges ---
+    // Sum 1..=10 = 55
+    let mut sum_inc = 0;
+    for i in 1..=10 {
+        sum_inc = sum_inc + i
+    };
+    let _p6 = println(sum_inc);                                // 55
+    // Sum of squares 0..5: 0+1+4+9+16 = 30
+    let mut sum_sq = 0;
+    for i in 0..5 {
+        sum_sq = sum_sq + i * i
+    };
+    let _p7 = println(sum_sq);                                 // 30
+
+    // --- Test 8: Loop with break (find first power of 2 >= 100) ---
+    let mut pw = 1;
+    loop {
+        if pw >= 100 { break } else { () };
+        pw = pw * 2
+    };
+    // 1,2,4,8,16,32,64,128 -> 128
+    let _p8 = println(pw);                                     // 128
+
+    // --- Test 9-12: Vec operations ---
+    let v = vec_new();
+    let _vp = vec_push(v, 10);
+    let _vp = vec_push(v, 20);
+    let _vp = vec_push(v, 30);
+    let _vp = vec_push(v, 40);
+    let _vp = vec_push(v, 50);
+    // vec_len = 5
+    let _p9 = println(vec_len(v));                             // 5
+    // vec_get(v, 2) = 30
+    let _p10 = println(vec_get(v, 2));                         // 30
+    // vec_set(v, 2, 99), then get again
+    let _vs = vec_set(v, 2, 99);
+    let _p11 = println(vec_get(v, 2));                         // 99
+    // sum all elements: 10+20+99+40+50 = 219
+    let mut vsum = 0;
+    for i in 0..vec_len(v) {
+        vsum = vsum + vec_get(v, i)
+    };
+    let _p12 = println(vsum);                                  // 219
+    let _vf = vec_free(v);
+
+    // --- Test 13-15: String operations ---
+    let s1 = "Hello";
+    let s2 = " World";
+    let s3 = s1 + s2;
+    // s3.len() = 11
+    let _p13 = println(s3.len());                              // 11
+    // s3.byte_at(0) = 'H' = 72
+    let _p14 = println(s3.byte_at(0));                         // 72
+    // s3.slice(6, 11) = "World", len = 5
+    let sub = s3.slice(6, 11);
+    let _p15 = println(sub.len());                             // 5
+
+    // --- Test 16-18: Bitwise operations ---
+    // 0xFF band 0x0F = 15
+    let _p16 = println(255 band 15);                           // 15
+    // 0xA0 bor 0x0A = 170 (0xAA)
+    let _p17 = println(160 bor 10);                            // 170
+    // 1 << 8 = 256
+    let _p18 = println(1 << 8);                                // 256
+
+    // --- Test 19-20: Recursion ---
+    // factorial(7) = 5040
+    let _p19 = println(factorial(7));                          // 5040
+    // power(3, 5) = 243
+    let _p20 = println(power(3, 5));                           // 243
+
+    // --- Test 21-22: Nested if-else classifier ---
+    // classify_temp(75) -> >= 60 -> 3
+    let _p21 = println(classify_temp(75));                     // 3
+    // classify_temp(-5) -> < 0 -> 0
+    let _p22 = println(classify_temp(0 - 5));                  // 0
+
+    // --- Test 23: f64 arithmetic ---
+    // pi * r^2 for r=5: 3.14159 * 25 = 78.53975
+    let pi = 3.14159;
+    let r = 5.0;
+    let area = pi * r * r;
+    let _p23 = println_f64(area);                              // 78.539750000
+
+    // --- Test 24: Bool logic ---
+    // Majority vote: 2 of 3 true => 1
+    let a_val = true;
+    let b_val = false;
+    let c_val = true;
+    let maj = if (a_val and b_val) or (b_val and c_val) or (a_val and c_val) { 1 } else { 0 };
+    let _p24 = println(maj);                                   // 1
+
+    // --- Test 25: FizzBuzz classifier ---
+    // fizzbuzz_class(15) -> divisible by 3 and 5 -> 3
+    // fizzbuzz_class(9) -> divisible by 3 only -> 1
+    // fizzbuzz_class(10) -> divisible by 5 only -> 2
+    // fizzbuzz_class(7) -> neither -> 0
+    // encode: 3*1000 + 1*100 + 2*10 + 0 = 3120
+    let fb = fizzbuzz_class(15) * 1000 + fizzbuzz_class(9) * 100 + fizzbuzz_class(10) * 10 + fizzbuzz_class(7);
+    let _p25 = println(fb);                                    // 3120
+
+    0
+    };

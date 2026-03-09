@@ -1,0 +1,29 @@
+// Test: full contract pipeline — pre + post across multiple functions
+// Demonstrates: postcondition of one function satisfies precondition of another
+
+fn validated_index(x: i64) -> i64
+    post ret >= 0 and ret < 8
+= if x < 0 { 0 } else if x >= 8 { 7 } else { x };
+
+fn safe_get(arr: &[i64; 8], idx: i64) -> i64
+    pre idx >= 0 and idx < 8
+= arr[idx];
+
+fn safe_divide(a: i64, b: i64) -> i64
+    pre b != 0
+    post ret >= 0
+= {
+    let d = a / b;
+    if d < 0 { 0 - d } else { d }
+};
+
+fn main() -> i64 = {
+    let arr: [i64; 8] = [5, 10, 15, 20, 25, 30, 35, 40];
+    // validated_index post guarantees safe_get pre
+    let idx = validated_index(3);
+    let val = safe_get(&arr, idx);
+    // safe_divide post guarantees result >= 0
+    let result = safe_divide(val, 4);
+    let _u = println(result);
+    0
+};

@@ -1,0 +1,101 @@
+// Golden Test: Binary search variants
+// lower_bound, upper_bound, exact search, count occurrences
+// All on sorted arrays stored as vecs
+
+// Find first index where arr[i] >= target (lower bound)
+fn lower_bound(arr: i64, n: i64, target: i64) -> i64 = {
+    let mut lo = 0;
+    let mut hi = n;
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        let _x = if vec_get(arr, mid) < target {
+            set lo = mid + 1;
+            0
+        } else {
+            set hi = mid;
+            0
+        }
+    };
+    lo
+};
+
+// Find first index where arr[i] > target (upper bound)
+fn upper_bound(arr: i64, n: i64, target: i64) -> i64 = {
+    let mut lo = 0;
+    let mut hi = n;
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        let _x = if vec_get(arr, mid) <= target {
+            set lo = mid + 1;
+            0
+        } else {
+            set hi = mid;
+            0
+        }
+    };
+    lo
+};
+
+// Exact search: returns index or -1
+fn binary_search(arr: i64, n: i64, target: i64) -> i64 = {
+    let mut lo = 0;
+    let mut hi = n - 1;
+    let mut result = 0 - 1;
+    while lo <= hi {
+        let mid = lo + (hi - lo) / 2;
+        let val = vec_get(arr, mid);
+        let _x = if val == target {
+            set result = mid;
+            set lo = hi + 1;
+            0
+        } else if val < target {
+            set lo = mid + 1;
+            0
+        } else {
+            set hi = mid - 1;
+            0
+        }
+    };
+    result
+};
+
+// Count occurrences = upper_bound - lower_bound
+fn count_occurrences(arr: i64, n: i64, target: i64) -> i64 = {
+    upper_bound(arr, n, target) - lower_bound(arr, n, target)
+};
+
+fn main() -> () = {
+    // Sorted array with duplicates: [1, 2, 2, 3, 3, 3, 4, 5, 5, 7]
+    let arr = vec_new();
+    let _p = vec_push(arr, 1); let _p = vec_push(arr, 2);
+    let _p = vec_push(arr, 2); let _p = vec_push(arr, 3);
+    let _p = vec_push(arr, 3); let _p = vec_push(arr, 3);
+    let _p = vec_push(arr, 4); let _p = vec_push(arr, 5);
+    let _p = vec_push(arr, 5); let _p = vec_push(arr, 7);
+    let n = 10;
+
+    // Test lower_bound
+    print_str("lb(1)="); let _r = println(lower_bound(arr, n, 1));
+    print_str("lb(3)="); let _r = println(lower_bound(arr, n, 3));
+    print_str("lb(5)="); let _r = println(lower_bound(arr, n, 5));
+    print_str("lb(6)="); let _r = println(lower_bound(arr, n, 6));
+    print_str("lb(8)="); let _r = println(lower_bound(arr, n, 8));
+
+    // Test upper_bound
+    print_str("ub(1)="); let _r = println(upper_bound(arr, n, 1));
+    print_str("ub(3)="); let _r = println(upper_bound(arr, n, 3));
+    print_str("ub(5)="); let _r = println(upper_bound(arr, n, 5));
+    print_str("ub(7)="); let _r = println(upper_bound(arr, n, 7));
+
+    // Test exact search
+    print_str("find(3)="); let _r = println(binary_search(arr, n, 3));
+    print_str("find(6)="); let _r = println(binary_search(arr, n, 6));
+    print_str("find(7)="); let _r = println(binary_search(arr, n, 7));
+
+    // Test count occurrences
+    print_str("count(1)="); let _r = println(count_occurrences(arr, n, 1));
+    print_str("count(3)="); let _r = println(count_occurrences(arr, n, 3));
+    print_str("count(5)="); let _r = println(count_occurrences(arr, n, 5));
+    print_str("count(6)="); let _r = println(count_occurrences(arr, n, 6));
+    print_str("count(7)="); let _r = println(count_occurrences(arr, n, 7))
+};

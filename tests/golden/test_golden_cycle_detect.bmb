@@ -1,0 +1,155 @@
+// Golden Test: Cycle Detection in Directed Graph (DFS coloring)
+// Colors: 0=white(unvisited), 1=gray(in-stack), 2=black(done)
+// A back edge (to gray node) indicates a cycle
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { vec_push(v, 0) };
+    v
+};
+
+// DFS from node; returns 1 if cycle found
+fn dfs(color: i64, edge_from: i64, edge_to: i64, num_edges: i64, node: i64) -> i64 = {
+    let _s = vec_set(color, node, 1);  // Mark gray
+    let found = 0;
+    let i = 0;
+    // Check all edges from this node using loop
+    // (can't use for+break with early return, so use loop)
+    loop {
+        if i >= num_edges { break } else { () };
+        if found == 1 { break } else { () };
+        if vec_get(edge_from, i) == node {
+            let to = vec_get(edge_to, i);
+            let c = vec_get(color, to);
+            if c == 1 {
+                // Back edge -> cycle!
+                found = 1
+            } else if c == 0 {
+                // Unvisited -> recurse
+                found = dfs(color, edge_from, edge_to, num_edges, to)
+            } else { () }
+        } else { () };
+        i = i + 1
+    };
+    let _s2 = vec_set(color, node, 2);  // Mark black
+    found
+};
+
+// Check if graph has cycle by running DFS from all nodes
+fn has_cycle(n: i64, edge_from: i64, edge_to: i64, num_edges: i64) -> i64 = {
+    let color = make_zeros(n);
+    let result = 0;
+    let i = 0;
+    loop {
+        if i >= n { break } else { () };
+        if result == 1 { break } else { () };
+        if vec_get(color, i) == 0 {
+            result = dfs(color, edge_from, edge_to, num_edges, i)
+        } else { () };
+        i = i + 1
+    };
+    let _f = vec_free(color);
+    result
+};
+
+fn main() -> i64 = {
+    // Test 1: DAG (no cycle) - 4 nodes
+    // 0->1, 0->2, 1->3, 2->3
+    let ef1 = vec_new();
+    let et1 = vec_new();
+    vec_push(ef1, 0); vec_push(et1, 1);
+    vec_push(ef1, 0); vec_push(et1, 2);
+    vec_push(ef1, 1); vec_push(et1, 3);
+    vec_push(ef1, 2); vec_push(et1, 3);
+    let _p1 = println(has_cycle(4, ef1, et1, 4));  // 0 (no cycle)
+
+    // Test 2: Simple cycle - 3 nodes
+    // 0->1, 1->2, 2->0
+    let ef2 = vec_new();
+    let et2 = vec_new();
+    vec_push(ef2, 0); vec_push(et2, 1);
+    vec_push(ef2, 1); vec_push(et2, 2);
+    vec_push(ef2, 2); vec_push(et2, 0);
+    let _p2 = println(has_cycle(3, ef2, et2, 3));  // 1 (cycle)
+
+    // Test 3: Self-loop
+    // 0->0
+    let ef3 = vec_new();
+    let et3 = vec_new();
+    vec_push(ef3, 0); vec_push(et3, 0);
+    let _p3 = println(has_cycle(1, ef3, et3, 1));  // 1 (self-loop = cycle)
+
+    // Test 4: Disconnected graph, one component has cycle
+    // 0->1 (no cycle), 2->3, 3->4, 4->2 (cycle)
+    let ef4 = vec_new();
+    let et4 = vec_new();
+    vec_push(ef4, 0); vec_push(et4, 1);
+    vec_push(ef4, 2); vec_push(et4, 3);
+    vec_push(ef4, 3); vec_push(et4, 4);
+    vec_push(ef4, 4); vec_push(et4, 2);
+    let _p4 = println(has_cycle(5, ef4, et4, 4));  // 1 (cycle in 2-3-4)
+
+    // Test 5: Single node, no edges
+    let ef5 = vec_new();
+    let et5 = vec_new();
+    let _p5 = println(has_cycle(1, ef5, et5, 0));  // 0
+
+    // Test 6: Linear chain 0->1->2->3->4
+    let ef6 = vec_new();
+    let et6 = vec_new();
+    vec_push(ef6, 0); vec_push(et6, 1);
+    vec_push(ef6, 1); vec_push(et6, 2);
+    vec_push(ef6, 2); vec_push(et6, 3);
+    vec_push(ef6, 3); vec_push(et6, 4);
+    let _p6 = println(has_cycle(5, ef6, et6, 4));  // 0 (no cycle)
+
+    // Test 7: Diamond with back edge
+    // 0->1, 0->2, 1->3, 2->3, 3->0 (back edge creates cycle)
+    let ef7 = vec_new();
+    let et7 = vec_new();
+    vec_push(ef7, 0); vec_push(et7, 1);
+    vec_push(ef7, 0); vec_push(et7, 2);
+    vec_push(ef7, 1); vec_push(et7, 3);
+    vec_push(ef7, 2); vec_push(et7, 3);
+    vec_push(ef7, 3); vec_push(et7, 0);
+    let _p7 = println(has_cycle(4, ef7, et7, 5));  // 1
+
+    // Test 8: Two separate DAGs
+    // 0->1, 2->3
+    let ef8 = vec_new();
+    let et8 = vec_new();
+    vec_push(ef8, 0); vec_push(et8, 1);
+    vec_push(ef8, 2); vec_push(et8, 3);
+    let _p8 = println(has_cycle(4, ef8, et8, 2));  // 0
+
+    // Test 9: Cross edge doesn't create cycle
+    // 0->1, 0->2, 1->2
+    let ef9 = vec_new();
+    let et9 = vec_new();
+    vec_push(ef9, 0); vec_push(et9, 1);
+    vec_push(ef9, 0); vec_push(et9, 2);
+    vec_push(ef9, 1); vec_push(et9, 2);
+    let _p9 = println(has_cycle(3, ef9, et9, 3));  // 0
+
+    // Test 10: Longer cycle 0->1->2->3->4->0
+    let ef10 = vec_new();
+    let et10 = vec_new();
+    vec_push(ef10, 0); vec_push(et10, 1);
+    vec_push(ef10, 1); vec_push(et10, 2);
+    vec_push(ef10, 2); vec_push(et10, 3);
+    vec_push(ef10, 3); vec_push(et10, 4);
+    vec_push(ef10, 4); vec_push(et10, 0);
+    let _p10 = println(has_cycle(5, ef10, et10, 5));  // 1
+
+    let _f = vec_free(ef1); let _f = vec_free(et1);
+    let _f = vec_free(ef2); let _f = vec_free(et2);
+    let _f = vec_free(ef3); let _f = vec_free(et3);
+    let _f = vec_free(ef4); let _f = vec_free(et4);
+    let _f = vec_free(ef5); let _f = vec_free(et5);
+    let _f = vec_free(ef6); let _f = vec_free(et6);
+    let _f = vec_free(ef7); let _f = vec_free(et7);
+    let _f = vec_free(ef8); let _f = vec_free(et8);
+    let _f = vec_free(ef9); let _f = vec_free(et9);
+    let _f = vec_free(ef10); let _f = vec_free(et10);
+    0
+};

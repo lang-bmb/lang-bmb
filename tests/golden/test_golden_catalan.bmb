@@ -1,0 +1,87 @@
+// Golden Test: Catalan Numbers
+// C(n) = sum(C(i)*C(n-1-i)) for i=0..n-1, C(0)=1
+// Also verify parenthesization count equals Catalan number
+
+// Catalan via DP with contract
+fn catalan_dp(n: i64) -> i64
+    pre n >= 0
+    post ret > 0
+= {
+    let dp = [0; 15];
+    set dp[0] = 1;
+    for i in 1..n + 1 {
+        for j in 0..i {
+            set dp[i] = dp[i] + dp[j] * dp[i - 1 - j]
+        }
+    };
+    dp[n]
+};
+
+// Catalan via recursive formula: C(n) = (2*(2n-1)*C(n-1)) / (n+1)
+fn catalan_rec(n: i64) -> i64 = {
+    if n <= 1 { return 1 } else { () };
+    let prev = catalan_rec(n - 1);
+    prev * (2 * (2 * n - 1)) / (n + 1)
+};
+
+// Count valid parenthesis sequences of length 2*n
+// This equals the nth Catalan number
+// Uses DP: ways[open][close] where open = unmatched opens remaining
+fn count_parens(n: i64) -> i64 = {
+    // dp[i][j] = number of valid sequences with i opens used, j closes used
+    // Flat 2D: dp[i * (n+1) + j], size (n+1)*(n+1)
+    let size = (n + 1) * (n + 1);
+    let dp = vec_new();
+    for _k in 0..size {
+        let _p = vec_push(dp, 0);
+        0
+    };
+    // Base: dp[0][0] = 1 (empty sequence)
+    let _s = vec_set(dp, 0, 1);
+
+    // Fill: for each state (i opens used, j closes used)
+    // Can add open if i < n
+    // Can add close if j < i
+    for i in 0..n + 1 {
+        for j in 0..i + 1 {
+            let cur = vec_get(dp, i * (n + 1) + j);
+            let _x = if cur > 0 {
+                // Add open paren: go to (i+1, j)
+                let _y = if i < n {
+                    let next_idx = (i + 1) * (n + 1) + j;
+                    let _s2 = vec_set(dp, next_idx, vec_get(dp, next_idx) + cur);
+                    0
+                } else { 0 };
+                // Add close paren: go to (i, j+1)
+                let _z = if j < i {
+                    let next_idx2 = i * (n + 1) + (j + 1);
+                    let _s3 = vec_set(dp, next_idx2, vec_get(dp, next_idx2) + cur);
+                    0
+                } else { 0 };
+                0
+            } else { 0 }
+        }
+    };
+
+    let result = vec_get(dp, n * (n + 1) + n);
+    let _f = vec_free(dp);
+    result
+};
+
+fn main() -> i64 = {
+    // Catalan numbers: C(0)=1, C(1)=1, C(2)=2, C(3)=5, C(4)=14, C(5)=42, C(6)=132
+    let _p1 = println(catalan_dp(0));   // 1
+    let _p2 = println(catalan_dp(1));   // 1
+    let _p3 = println(catalan_dp(2));   // 2
+    let _p4 = println(catalan_dp(3));   // 5
+    let _p5 = println(catalan_dp(4));   // 14
+    let _p6 = println(catalan_dp(5));   // 42
+    let _p7 = println(catalan_dp(6));   // 132
+
+    // Verify parenthesization count matches Catalan
+    let _p8 = println(count_parens(3));  // 5 = C(3)
+    let _p9 = println(count_parens(4));  // 14 = C(4)
+    let _p10 = println(count_parens(5)); // 42 = C(5)
+
+    0
+};

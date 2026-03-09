@@ -1,0 +1,127 @@
+// Golden Test: Sliding window maximum/sum
+// Fixed-size window operations on arrays
+
+// Sliding window sum: sum of each window of size k
+// Returns vec of sums
+fn window_sums(arr: i64, k: i64) -> i64 = {
+    let n = vec_len(arr);
+    let result = vec_new();
+    if k > n { return result } else { () };
+    // First window
+    let mut s = 0;
+    let mut i = 0;
+    loop {
+        if i >= k { break } else { () };
+        s = s + vec_get(arr, i);
+        i = i + 1
+    };
+    vec_push(result, s);
+    // Slide
+    let mut j = k;
+    loop {
+        if j >= n { break } else { () };
+        s = s + vec_get(arr, j) - vec_get(arr, j - k);
+        vec_push(result, s);
+        j = j + 1
+    };
+    result
+};
+
+// Maximum of array
+fn arr_max(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    let mut best = vec_get(arr, 0);
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let v = vec_get(arr, i);
+        if v > best { best = v } else { () };
+        i = i + 1
+    };
+    best
+};
+
+// Sliding window maximum (brute force for small arrays)
+fn window_max(arr: i64, k: i64) -> i64 = {
+    let n = vec_len(arr);
+    let result = vec_new();
+    if k > n { return result } else { () };
+    let mut start = 0;
+    loop {
+        if start + k > n { break } else { () };
+        let mut best = vec_get(arr, start);
+        let mut j = start + 1;
+        loop {
+            if j >= start + k { break } else { () };
+            let v = vec_get(arr, j);
+            if v > best { best = v } else { () };
+            j = j + 1
+        };
+        vec_push(result, best);
+        start = start + 1
+    };
+    result
+};
+
+// Sliding window average (integer, truncated)
+fn window_avg(arr: i64, k: i64) -> i64 = {
+    let sums = window_sums(arr, k);
+    let n = vec_len(sums);
+    let result = vec_new();
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        vec_push(result, vec_get(sums, i) / k);
+        i = i + 1
+    };
+    vec_free(sums);
+    result
+};
+
+fn main() -> i64 = {
+    // arr = [1, 3, 5, 2, 8, 1, 4, 6]
+    let arr = vec_new();
+    vec_push(arr, 1); vec_push(arr, 3); vec_push(arr, 5); vec_push(arr, 2);
+    vec_push(arr, 8); vec_push(arr, 1); vec_push(arr, 4); vec_push(arr, 6);
+
+    // Test 1-3: Window sums with k=3
+    // [1+3+5, 3+5+2, 5+2+8, 2+8+1, 8+1+4, 1+4+6] = [9, 10, 15, 11, 13, 11]
+    let ws = window_sums(arr, 3);
+    let _p1 = println(vec_get(ws, 0));  // 9
+    let _p2 = println(vec_get(ws, 2));  // 15
+    let _p3 = println(vec_get(ws, 5));  // 11
+
+    // Test 4-6: Window max with k=3
+    // [max(1,3,5), max(3,5,2), max(5,2,8), max(2,8,1), max(8,1,4), max(1,4,6)]
+    // = [5, 5, 8, 8, 8, 6]
+    let wm = window_max(arr, 3);
+    let _p4 = println(vec_get(wm, 0));  // 5
+    let _p5 = println(vec_get(wm, 2));  // 8
+    let _p6 = println(vec_get(wm, 5));  // 6
+
+    // Test 7-8: Window avg with k=4 (integer division)
+    // sums: [1+3+5+2, 3+5+2+8, 5+2+8+1, 2+8+1+4, 8+1+4+6] = [11, 18, 16, 15, 19]
+    // avgs: [11/4, 18/4, 16/4, 15/4, 19/4] = [2, 4, 4, 3, 4]
+    let wa = window_avg(arr, 4);
+    let _p7 = println(vec_get(wa, 0));  // 2
+    let _p8 = println(vec_get(wa, 2));  // 4
+
+    // Test 9: Window sum with k=1 (each element)
+    let ws1 = window_sums(arr, 1);
+    let _p9 = println(vec_get(ws1, 4));  // 8
+
+    // Test 10: Window sum with k=8 (whole array)
+    let ws8 = window_sums(arr, 8);
+    let _p10 = println(vec_get(ws8, 0));  // 30 (1+3+5+2+8+1+4+6)
+
+    // Test 11: Max of whole array
+    let _p11 = println(arr_max(arr));  // 8
+
+    // Test 12: Window max with k=1
+    let wm1 = window_max(arr, 1);
+    let _p12 = println(vec_get(wm1, 3));  // 2
+
+    vec_free(arr); vec_free(ws); vec_free(wm);
+    vec_free(wa); vec_free(ws1); vec_free(ws8); vec_free(wm1);
+    0
+};

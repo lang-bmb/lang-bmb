@@ -1,0 +1,185 @@
+// Golden Test: Sliding Window Maximum using Monotone Deque
+// Given array and window size k, find max in each window position
+
+// Simple deque using pre-allocated buffer with head/tail pointers
+fn dq_new(capacity: i64) -> i64 = {
+    let d = vec_new();
+    let buf = vec_new();
+    for _i in 0..capacity {
+        vec_push(buf, 0);
+    };
+    vec_push(d, buf);   // d[0] = buffer
+    vec_push(d, 0);     // d[1] = head (front index)
+    vec_push(d, 0);     // d[2] = tail (one past last)
+    d
+};
+
+fn dq_clear(d: i64) -> i64 = {
+    vec_set(d, 1, 0);
+    vec_set(d, 2, 0);
+    0
+};
+
+fn dq_size(d: i64) -> i64 = vec_get(d, 2) - vec_get(d, 1);
+
+fn dq_empty(d: i64) -> i64 =
+    if vec_get(d, 1) == vec_get(d, 2) { 1 } else { 0 };
+
+fn dq_push_back(d: i64, val: i64) -> i64 = {
+    let tail = vec_get(d, 2);
+    let buf = vec_get(d, 0);
+    vec_set(buf, tail, val);
+    vec_set(d, 2, tail + 1);
+    0
+};
+
+fn dq_pop_back(d: i64) -> i64 = {
+    let tail = vec_get(d, 2) - 1;
+    let buf = vec_get(d, 0);
+    let val = vec_get(buf, tail);
+    vec_set(d, 2, tail);
+    val
+};
+
+fn dq_pop_front(d: i64) -> i64 = {
+    let head = vec_get(d, 1);
+    let buf = vec_get(d, 0);
+    let val = vec_get(buf, head);
+    vec_set(d, 1, head + 1);
+    val
+};
+
+fn dq_front(d: i64) -> i64 = {
+    let head = vec_get(d, 1);
+    let buf = vec_get(d, 0);
+    vec_get(buf, head)
+};
+
+fn dq_back(d: i64) -> i64 = {
+    let tail = vec_get(d, 2) - 1;
+    let buf = vec_get(d, 0);
+    vec_get(buf, tail)
+};
+
+// Sliding window maximum
+fn sliding_max(arr: i64, n: i64, k: i64) -> i64 = {
+    let result = vec_new();
+    let dq = dq_new(n);
+
+    for i in 0..n {
+        // Remove elements outside window
+        let _x1 = if dq_empty(dq) == 0 and dq_front(dq) <= i - k {
+            let _pf = dq_pop_front(dq);
+            0
+        } else { 0 };
+
+        // Remove elements smaller than current from back
+        let mut done = 0;
+        loop {
+            if done == 1 or dq_empty(dq) == 1 { break } else { () };
+            if vec_get(arr, dq_back(dq)) <= vec_get(arr, i) {
+                let _pb = dq_pop_back(dq);
+                0
+            } else {
+                set done = 1;
+                0
+            };
+        };
+
+        let _push = dq_push_back(dq, i);
+
+        // Window is full, record max
+        let _x2 = if i >= k - 1 {
+            vec_push(result, vec_get(arr, dq_front(dq)));
+            0
+        } else { 0 };
+    };
+
+    vec_free(vec_get(dq, 0));
+    vec_free(dq);
+    result
+};
+
+// Sliding window minimum
+fn sliding_min(arr: i64, n: i64, k: i64) -> i64 = {
+    let result = vec_new();
+    let dq = dq_new(n);
+
+    for i in 0..n {
+        let _x1 = if dq_empty(dq) == 0 and dq_front(dq) <= i - k {
+            let _pf = dq_pop_front(dq);
+            0
+        } else { 0 };
+
+        let mut done = 0;
+        loop {
+            if done == 1 or dq_empty(dq) == 1 { break } else { () };
+            if vec_get(arr, dq_back(dq)) >= vec_get(arr, i) {
+                let _pb = dq_pop_back(dq);
+                0
+            } else {
+                set done = 1;
+                0
+            };
+        };
+
+        let _push = dq_push_back(dq, i);
+        let _x2 = if i >= k - 1 {
+            vec_push(result, vec_get(arr, dq_front(dq)));
+            0
+        } else { 0 };
+    };
+
+    vec_free(vec_get(dq, 0));
+    vec_free(dq);
+    result
+};
+
+fn main() -> i64 = {
+    // Array: [1, 3, -1, -3, 5, 3, 6, 7]
+    let arr = vec_new();
+    vec_push(arr, 1);
+    vec_push(arr, 3);
+    vec_push(arr, 0 - 1);
+    vec_push(arr, 0 - 3);
+    vec_push(arr, 5);
+    vec_push(arr, 3);
+    vec_push(arr, 6);
+    vec_push(arr, 7);
+
+    // Test 1: Sliding max with k=3
+    // Windows: [1,3,-1]=3, [3,-1,-3]=3, [-1,-3,5]=5, [-3,5,3]=5, [5,3,6]=6, [3,6,7]=7
+    let maxes = sliding_max(arr, 8, 3);
+    let _p1 = println(vec_len(maxes));  // 6
+    for i in 0..vec_len(maxes) {
+        let _p = println(vec_get(maxes, i));
+    };
+    // Prints: 3 3 5 5 6 7
+
+    // Test 2: Sliding min with k=3
+    // Windows: [1,3,-1]=-1, [3,-1,-3]=-3, [-1,-3,5]=-3, [-3,5,3]=-3, [5,3,6]=3, [3,6,7]=3
+    let mins = sliding_min(arr, 8, 3);
+    let _p2 = println(vec_len(mins));  // 6
+    for i in 0..vec_len(mins) {
+        let _p = println(vec_get(mins, i));
+    };
+    // Prints: -1 -3 -3 -3 3 3
+
+    // Test 3: Window size = 1
+    let maxes1 = sliding_max(arr, 8, 1);
+    let _p3 = println(vec_len(maxes1));  // 8
+    let _p4 = println(vec_get(maxes1, 0));  // 1
+    let _p5 = println(vec_get(maxes1, 7));  // 7
+
+    // Test 4: Window size = array length
+    let maxes_all = sliding_max(arr, 8, 8);
+    let _p6 = println(vec_len(maxes_all));  // 1
+    let _p7 = println(vec_get(maxes_all, 0));  // 7
+
+    vec_free(arr);
+    vec_free(maxes);
+    vec_free(mins);
+    vec_free(maxes1);
+    vec_free(maxes_all);
+    0
+};

@@ -1,0 +1,99 @@
+// Golden Test: Various recursion patterns
+// Hanoi, power, digit sum, palindrome, bit count, Catalan, McCarthy 91
+
+// Tower of Hanoi: count moves needed for n discs
+fn hanoi_moves(n: i64) -> i64 =
+    if n <= 0 { 0 }
+    else { 2 * hanoi_moves(n - 1) + 1 };
+
+// Recursive power: base^exp
+fn power(base: i64, exp: i64) -> i64 =
+    if exp == 0 { 1 }
+    else { base * power(base, exp - 1) };
+
+// Sum of digits of a non-negative number
+fn sum_digits(n: i64) -> i64 =
+    if n < 10 { n }
+    else { n % 10 + sum_digits(n / 10) };
+
+// Reverse digits of a positive number (helper for palindrome)
+fn reverse_num_helper(n: i64, acc: i64) -> i64 =
+    if n <= 0 { acc }
+    else { reverse_num_helper(n / 10, acc * 10 + n % 10) };
+
+fn reverse_num(n: i64) -> i64 = reverse_num_helper(n, 0);
+
+// Palindrome check: returns 1 if n is a palindrome, 0 otherwise
+fn is_palindrome(n: i64) -> i64 =
+    if n == reverse_num(n) { 1 } else { 0 };
+
+// Binary digit count: number of bits needed to represent n
+fn bit_count(n: i64) -> i64 =
+    if n <= 1 { 1 }
+    else { 1 + bit_count(n / 2) };
+
+// Catalan number (recursive with summation)
+fn catalan_helper(n: i64, i: i64, acc: i64) -> i64 =
+    if i >= n { acc }
+    else { catalan_helper(n, i + 1, acc + catalan(i) * catalan(n - 1 - i)) };
+
+fn catalan(n: i64) -> i64 =
+    if n <= 1 { 1 }
+    else { catalan_helper(n, 0, 0) };
+
+// McCarthy 91 function
+fn mccarthy91(n: i64) -> i64 =
+    if n > 100 { n - 10 }
+    else { mccarthy91(mccarthy91(n + 11)) };
+
+fn main() -> i64 = {
+    // Tower of Hanoi
+    let _p1 = println(hanoi_moves(1));      // 1
+    let _p2 = println(hanoi_moves(3));      // 7
+    let _p3 = println(hanoi_moves(5));      // 31
+    let _p4 = println(hanoi_moves(10));     // 1023
+
+    // Recursive power
+    let _p5 = println(power(2, 10));        // 1024
+    let _p6 = println(power(3, 5));         // 243
+    let _p7 = println(power(5, 3));         // 125
+
+    // Sum of digits
+    let _p8 = println(sum_digits(12345));   // 15
+    let _p9 = println(sum_digits(999));     // 27
+    let _p10 = println(sum_digits(1));      // 1
+    let _p11 = println(sum_digits(0));      // 0
+    let _p12 = println(sum_digits(54321));  // 15
+
+    // Palindrome check
+    let _p13 = println(is_palindrome(12321));    // 1
+    let _p14 = println(is_palindrome(12345));    // 0
+    let _p15 = println(is_palindrome(1));        // 1
+    let _p16 = println(is_palindrome(121));      // 1
+    let _p17 = println(is_palindrome(1234321));  // 1
+    let _p18 = println(is_palindrome(123));      // 0
+
+    // Binary digit count
+    let _p19 = println(bit_count(1));       // 1
+    let _p20 = println(bit_count(7));       // 3
+    let _p21 = println(bit_count(8));       // 4
+    let _p22 = println(bit_count(255));     // 8
+    let _p23 = println(bit_count(1024));    // 11
+
+    // Catalan numbers
+    let _p24 = println(catalan(0));         // 1
+    let _p25 = println(catalan(1));         // 1
+    let _p26 = println(catalan(2));         // 2
+    let _p27 = println(catalan(3));         // 5
+    let _p28 = println(catalan(4));         // 14
+    let _p29 = println(catalan(5));         // 42
+
+    // McCarthy 91 function
+    let _p30 = println(mccarthy91(99));     // 91
+    let _p31 = println(mccarthy91(100));    // 91
+    let _p32 = println(mccarthy91(101));    // 91
+    let _p33 = println(mccarthy91(111));    // 101
+    let _p34 = println(mccarthy91(200));    // 190
+
+    0
+    };

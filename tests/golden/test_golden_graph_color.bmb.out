@@ -1,0 +1,5 @@
+5-cycle colors: 0 1 0 1 2
+chromatic<=3
+K4 colors: 0 1 2 3
+K4 chromatic=4
+star chromatic=2

@@ -1,0 +1,18 @@
+// Test: --safe mode PHI with array write inside if/else
+// Verifies PHI predecessor update for set_index + safe bounds check
+
+fn update(arr: &[i64; 5], idx: i64, val: i64) -> i64
+= if idx >= 0 and idx < 5 {
+    set arr[idx] = val;
+    val
+  } else { 0 - 1 };
+
+fn main() -> i64 = {
+    let arr: [i64; 5] = [1, 2, 3, 4, 5];
+    let r1 = update(&arr, 2, 99);
+    let r2 = update(&arr, 7, 42);
+    let _u = println(r1);
+    let _u2 = println(r2);
+    let _u3 = println(arr[2]);
+    0
+};

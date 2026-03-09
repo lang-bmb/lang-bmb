@@ -1,0 +1,136 @@
+// Golden Test: Sieve of Eratosthenes using array
+// Count primes up to various limits using sieve
+
+// Sieve of Eratosthenes for small limits (up to 200)
+// Returns count of primes up to n
+fn sieve_count(n: i64) -> i64 = {
+    // is_composite array: 0 = prime, 1 = composite
+    let sieve = [0; 201];
+    set sieve[0] = 1;
+    set sieve[1] = 1;
+    let mut i = 2;
+    loop {
+        if i * i > n { break } else { () };
+        if sieve[i] == 0 {
+            // Mark multiples of i as composite
+            let mut j = i * i;
+            loop {
+                if j > n { break } else { () };
+                set sieve[j] = 1;
+                j = j + i
+            }
+        } else { () };
+        i = i + 1
+    };
+    // Count primes
+    let mut count = 0;
+    let mut k = 2;
+    loop {
+        if k > n { break } else { () };
+        if sieve[k] == 0 {
+            count = count + 1
+        } else { () };
+        k = k + 1
+    };
+    count
+    };
+
+// Sum of primes up to n using sieve
+fn sieve_sum(n: i64) -> i64 = {
+    let sieve = [0; 201];
+    set sieve[0] = 1;
+    set sieve[1] = 1;
+    let mut i = 2;
+    loop {
+        if i * i > n { break } else { () };
+        if sieve[i] == 0 {
+            let mut j = i * i;
+            loop {
+                if j > n { break } else { () };
+                set sieve[j] = 1;
+                j = j + i
+            }
+        } else { () };
+        i = i + 1
+    };
+    let mut sum = 0;
+    let mut k = 2;
+    loop {
+        if k > n { break } else { () };
+        if sieve[k] == 0 {
+            sum = sum + k
+        } else { () };
+        k = k + 1
+    };
+    sum
+    };
+
+// Find the nth prime using sieve (n >= 1)
+fn nth_prime_sieve(n: i64) -> i64 = {
+    let sieve = [0; 201];
+    set sieve[0] = 1;
+    set sieve[1] = 1;
+    let mut i = 2;
+    loop {
+        if i * i > 200 { break } else { () };
+        if sieve[i] == 0 {
+            let mut j = i * i;
+            loop {
+                if j > 200 { break } else { () };
+                set sieve[j] = 1;
+                j = j + i
+            }
+        } else { () };
+        i = i + 1
+    };
+    let mut count = 0;
+    let mut k = 2;
+    let mut result = 0;
+    loop {
+        if k > 200 { break } else { () };
+        if sieve[k] == 0 {
+            count = count + 1;
+            if count == n {
+                result = k;
+                break
+            } else { () }
+        } else { () };
+        k = k + 1
+    };
+    result
+    };
+
+fn main() -> i64 = {
+    // Count primes up to 10: 2,3,5,7 = 4
+    let _p1 = println(sieve_count(10));    // 4
+
+    // Count primes up to 30: 2,3,5,7,11,13,17,19,23,29 = 10
+    let _p2 = println(sieve_count(30));    // 10
+
+    // Count primes up to 100: 25 primes
+    let _p3 = println(sieve_count(100));   // 25
+
+    // Count primes up to 200: 46 primes
+    let _p4 = println(sieve_count(200));   // 46
+
+    // Sum of primes up to 10: 2+3+5+7 = 17
+    let _p5 = println(sieve_sum(10));      // 17
+
+    // Sum of primes up to 50
+    // 2+3+5+7+11+13+17+19+23+29+31+37+41+43+47 = 328
+    let _p6 = println(sieve_sum(50));      // 328
+
+    // Sum of primes up to 100: 1060
+    let _p7 = println(sieve_sum(100));     // 1060
+
+    // 1st prime = 2
+    let _p8 = println(nth_prime_sieve(1));   // 2
+
+    // 10th prime = 29
+    let _p9 = println(nth_prime_sieve(10));  // 29
+
+    // 25th prime = 97
+    let _p10 = println(nth_prime_sieve(25)); // 97
+
+    0
+    };

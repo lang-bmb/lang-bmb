@@ -1,0 +1,96 @@
+// Golden test: NFA simulation (epsilon-free)
+// Expected output: 3
+
+// NFA: states 0,1,2; alphabet {0,1}; accept state 2
+// Transition: 0 --0--> {0,1}, 0 --1--> {0}, 1 --1--> {2}
+// Pattern: contains "01" substring
+
+fn has_bit(bitset: i64, pos: i64) -> i64 = {
+    if (bitset >> pos) band 1 == 1 { 1 } else { 0 }
+    };
+
+fn set_bit(bitset: i64, pos: i64) -> i64 = {
+    bitset bor (1 << pos)
+    };
+
+fn nfa_step(active: i64, input: i64) -> i64 = {
+    let next = [0; 1];
+
+// State 0: always loops
+    if has_bit(active, 0) == 1 {
+        if input == 0 {
+
+// 0 --0--> {0,1}
+    set next[0] = set_bit(next[0], 0);
+    set next[0] = set_bit(next[0], 1);
+    } else {
+
+// 0 --1--> {0}
+    set next[0] = set_bit(next[0], 0);
+    };
+    } else { };
+
+// State 1: on '1' go to 2
+    if has_bit(active, 1) == 1 {
+        if input == 1 {
+            set next[0] = set_bit(next[0], 2);
+        } else { };
+    } else { };
+
+    next[0]
+    };
+
+fn nfa_accept(states: i64) -> i64 = {
+    has_bit(states, 2)
+    };
+
+fn simulate(input: i64, len: i64) -> i64 = {
+    let active = [1; 1]; // Start at state 0
+    let i = [0; 1];
+
+    while i[0] < len {
+        let digit = (input / pow10(len - 1 - i[0])) % 10;
+        set active[0] = nfa_step(active[0], digit);
+        set i[0] = i[0] + 1;
+    };
+
+    nfa_accept(active[0])
+    };
+
+fn pow10(n: i64) -> i64 = {
+    if n == 0 { 1 }
+    else if n == 1 { 10 }
+    else if n == 2 { 100 }
+    else if n == 3 { 1000 }
+    else { 10000 }
+    };
+
+fn main() -> i64 = {
+// Test strings as integers (0,1 only)
+    let r1 = simulate(0, 1);      // "0" -> reject
+    println(r1);
+
+    let r2 = simulate(1, 1);      // "1" -> reject
+    println(r2);
+
+    let r3 = simulate(01, 2);     // "01" -> accept
+    println(r3);
+
+    let r4 = simulate(10, 2);     // "10" -> reject
+    println(r4);
+
+    let r5 = simulate(001, 3);    // "001" -> accept
+    println(r5);
+
+    let r6 = simulate(1011, 4);   // "1011" -> reject
+    println(r6);
+
+    let r7 = simulate(0101, 4);   // "0101" -> accept
+    println(r7);
+
+    let r8 = simulate(10011, 5);  // "10011" -> no match (NFA doesn't find 01)
+    println(r8);
+
+// Sum: 0+0+1+0+1+0+1+0 = 3
+    0
+    };

@@ -1,0 +1,67 @@
+// Golden Test: Number processing patterns
+// Tests numeric algorithms that simulate string-like operations
+
+fn count_digits(n: i64) -> i64 = {
+    if n == 0 { return 1 } else { () };
+    let mut x = if n < 0 { 0 - n } else { n };
+    let mut count = 0;
+    loop {
+        if x == 0 { break } else { () };
+        x = x / 10;
+        count = count + 1
+    };
+    count
+    };
+
+fn reverse_number(n: i64) -> i64 = {
+    let mut x = if n < 0 { 0 - n } else { n };
+    let mut rev = 0;
+    loop {
+        if x == 0 { break } else { () };
+        rev = rev * 10 + x - (x / 10) * 10;
+        x = x / 10
+    };
+    if n < 0 { 0 - rev } else { rev }
+    };
+
+fn is_palindrome_num(n: i64) -> i64 =
+    if n < 0 { 0 }
+    else if reverse_number(n) == n { 1 }
+    else { 0 };
+
+fn concat_numbers(a: i64, b: i64) -> i64 = {
+// Concatenate two positive integers: concat(12, 34) = 1234
+    let mut multiplier = 1;
+    let mut temp = b;
+    loop {
+        if temp == 0 { break } else { () };
+        multiplier = multiplier * 10;
+        temp = temp / 10
+    };
+    a * multiplier + b
+    };
+
+fn sum_digits(n: i64) -> i64 = {
+    let mut x = if n < 0 { 0 - n } else { n };
+    let mut sum = 0;
+    loop {
+        if x == 0 { break } else { () };
+        sum = sum + x - (x / 10) * 10;
+        x = x / 10
+    };
+    sum
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(count_digits(12345));      // 5
+    let _p2 = println(count_digits(0));           // 1
+    let _p3 = println(count_digits(1000000));     // 7
+    let _p4 = println(reverse_number(12345));     // 54321
+    let _p5 = println(reverse_number(100));       // 1
+    let _p6 = println(is_palindrome_num(12321));  // 1
+    let _p7 = println(is_palindrome_num(12345));  // 0
+    let _p8 = println(concat_numbers(12, 34));    // 1234
+    let _p9 = println(concat_numbers(100, 200));  // 100200
+    let _p10 = println(sum_digits(12345));        // 15
+    0
+    };

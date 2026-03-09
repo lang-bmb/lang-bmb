@@ -1,0 +1,60 @@
+// Golden Test: Collatz sequence analysis
+// Tests various properties of Collatz sequences
+
+fn collatz_steps(n: i64) -> i64 =
+    if n <= 1 { 0 }
+    else if n - (n / 2) * 2 == 0 { 1 + collatz_steps(n / 2) }
+    else { 1 + collatz_steps(3 * n + 1) };
+
+fn collatz_max_helper(n: i64, current_max: i64) -> i64 =
+    if n <= 1 { current_max }
+    else {
+        let new_max = if n > current_max { n } else { current_max };
+        if n - (n / 2) * 2 == 0 { collatz_max_helper(n / 2, new_max) }
+        else { collatz_max_helper(3 * n + 1, new_max) }
+    };
+
+    // Maximum value reached in Collatz sequence
+
+fn collatz_max(n: i64) -> i64 =
+    collatz_max_helper(n, n);
+
+    // Find which number in [1,limit] has the longest Collatz sequence
+
+fn longest_collatz_helper(limit: i64, i: i64, best_n: i64, best_steps: i64) -> i64 =
+    if i > limit { best_n }
+    else {
+        let s = collatz_steps(i);
+        if s > best_steps { longest_collatz_helper(limit, i + 1, i, s) }
+        else { longest_collatz_helper(limit, i + 1, best_n, best_steps) }
+    };
+
+fn longest_collatz(limit: i64) -> i64 =
+    longest_collatz_helper(limit, 1, 1, 0);
+
+    // Count even steps in Collatz sequence
+
+fn even_steps(n: i64) -> i64 =
+    if n <= 1 { 0 }
+    else if n - (n / 2) * 2 == 0 { 1 + even_steps(n / 2) }
+    else { even_steps(3 * n + 1) };
+
+fn main() -> i64 = {
+// Collatz steps
+    let _p1 = println(collatz_steps(1));    // 0
+    let _p2 = println(collatz_steps(6));    // 8 (6→3→10→5→16→8→4→2→1)
+    let _p3 = println(collatz_steps(27));   // 111
+
+// Maximum value reached
+    let _p4 = println(collatz_max(6));      // 16
+    let _p5 = println(collatz_max(27));     // 9232
+
+// Longest sequence in range
+    let _p6 = println(longest_collatz(10)); // 9 (9 has 19 steps)
+    let _p7 = println(longest_collatz(100)); // 97
+
+// Even steps count
+    let _p8 = println(even_steps(6));       // 5 (6→3, 10→5, 16→8, 8→4, 4→2, 2→1 = 5 even)
+
+    0
+    };

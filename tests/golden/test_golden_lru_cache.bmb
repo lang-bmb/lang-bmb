@@ -1,0 +1,132 @@
+// Golden Test: LRU (Least Recently Used) cache
+// Fixed capacity cache that evicts least recently used item
+// Implemented with parallel vecs: keys, values, timestamps
+// O(n) operations (linear scan for simplicity, real LRU uses hashmap+DLL)
+
+fn lru_new(capacity: i64) -> i64 = {
+    // [keys_vec, vals_vec, times_vec, capacity, size, clock]
+    let meta = vec_new();
+    let keys = vec_new();
+    let vals = vec_new();
+    let times = vec_new();
+    let _p = vec_push(meta, keys);
+    let _p = vec_push(meta, vals);
+    let _p = vec_push(meta, times);
+    let _p = vec_push(meta, capacity);
+    let _p = vec_push(meta, 0);   // size
+    let _p = vec_push(meta, 0);   // clock
+    meta
+};
+
+fn lru_get(cache: i64, key: i64) -> i64 = {
+    let keys = vec_get(cache, 0);
+    let vals = vec_get(cache, 1);
+    let times = vec_get(cache, 2);
+    let size = vec_get(cache, 4);
+    let clock = vec_get(cache, 5);
+
+    let mut i = 0;
+    let mut found = -1;
+    while i < size {
+        let _x = if vec_get(keys, i) == key {
+            set found = vec_get(vals, i);
+            // Update access time
+            vec_set(times, i, clock + 1);
+            vec_set(cache, 5, clock + 1);
+            0
+        } else { 0 };
+        set i = i + 1
+    };
+    found
+};
+
+fn lru_put(cache: i64, key: i64, val: i64) -> () = {
+    let keys = vec_get(cache, 0);
+    let vals = vec_get(cache, 1);
+    let times = vec_get(cache, 2);
+    let capacity = vec_get(cache, 3);
+    let size = vec_get(cache, 4);
+    let clock = vec_get(cache, 5) + 1;
+    vec_set(cache, 5, clock);
+
+    // Check if key already found_idx
+    let mut i = 0;
+    let mut found_idx = -1;
+    while i < size {
+        let _x = if vec_get(keys, i) == key {
+            set found_idx = i;
+            0
+        } else { 0 };
+        set i = i + 1
+    };
+
+    let _x = if found_idx >= 0 {
+        // Update existing
+        vec_set(vals, found_idx, val);
+        vec_set(times, found_idx, clock);
+        0
+    } else if size < capacity {
+        // Add new
+        let _pk = vec_push(keys, key);
+        let _pv = vec_push(vals, val);
+        let _pt = vec_push(times, clock);
+        vec_set(cache, 4, size + 1);
+        0
+    } else {
+        // Evict LRU (find minimum timestamp)
+        let mut min_idx = 0;
+        let mut min_time = vec_get(times, 0);
+        set i = 1;
+        while i < size {
+            let _y = if vec_get(times, i) < min_time {
+                set min_idx = i;
+                set min_time = vec_get(times, i);
+                0
+            } else { 0 };
+            set i = i + 1
+        };
+        // Replace evicted entry
+        vec_set(keys, min_idx, key);
+        vec_set(vals, min_idx, val);
+        vec_set(times, min_idx, clock);
+        0
+    }
+};
+
+fn main() -> () = {
+    let cache = lru_new(3);
+
+    // Insert 3 items
+    lru_put(cache, 1, 100);
+    lru_put(cache, 2, 200);
+    lru_put(cache, 3, 300);
+
+    // All should be found
+    print_str("get 1: "); let _r = println(lru_get(cache, 1));
+    print_str("get 2: "); let _r = println(lru_get(cache, 2));
+    print_str("get 3: "); let _r = println(lru_get(cache, 3));
+
+    // Insert 4th: should evict LRU (key 1, since 2 and 3 were accessed more recently)
+    // Wait, we just accessed all 3. Let me trace timestamps:
+    // After puts: key1=t1, key2=t2, key3=t3
+    // After gets: key1=t4, key2=t5, key3=t6
+    // So LRU is key1 (t4 < t5 < t6)
+    lru_put(cache, 4, 400);  // Evicts key1 (oldest access)
+
+    print_str("get 1 (evicted): "); let _r = println(lru_get(cache, 1));
+    print_str("get 4: "); let _r = println(lru_get(cache, 4));
+
+    // Access key2 to make it recent
+    let _g = lru_get(cache, 2);
+
+    // Insert 5th: should evict key3 (LRU after key2 was accessed)
+    lru_put(cache, 5, 500);
+
+    print_str("get 3 (evicted): "); let _r = println(lru_get(cache, 3));
+    print_str("get 2: "); let _r = println(lru_get(cache, 2));
+    print_str("get 5: "); let _r = println(lru_get(cache, 5));
+
+    // Update existing key
+    lru_put(cache, 2, 222);
+    print_str("get 2 updated: "); let _r = println(lru_get(cache, 2))
+};

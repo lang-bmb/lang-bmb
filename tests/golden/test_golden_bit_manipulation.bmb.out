@@ -1,0 +1,45 @@
+=== Popcount ===
+popcount(0) = 0
+popcount(1) = 1
+popcount(255) = 8
+popcount(1024) = 1
+popcount(21845) = 8
+popcount(2147483647) = 31
+popcount(7) = 3
+popcount(65535) = 16
+
+=== Power of 2 ===
+is_power_of_2(0) = 0
+is_power_of_2(1) = 1
+is_power_of_2(2) = 1
+is_power_of_2(3) = 0
+is_power_of_2(4) = 1
+is_power_of_2(1024) = 1
+is_power_of_2(1023) = 0
+is_power_of_2(65536) = 1
+
+=== Lowest Set Bit Position ===
+lowest_set_bit_pos(0) = -1
+lowest_set_bit_pos(1) = 0
+lowest_set_bit_pos(2) = 1
+lowest_set_bit_pos(4) = 2
+lowest_set_bit_pos(12) = 2
+lowest_set_bit_pos(40) = 3
+lowest_set_bit_pos(1024) = 10
+lowest_set_bit_pos(255) = 0
+
+=== Reverse Bits (32-bit) ===
+reverse_bits_32(0) = 0
+reverse_bits_32(1) = 2147483648
+reverse_bits_32(2) = 1073741824
+reverse_bits_32(255) = 4278190080
+reverse_bits_32(43261596) = 964176192
+
+=== Bit Operations ===
+bit_is_set(5,0) = 1
+bit_is_set(5,1) = 0
+bit_is_set(5,2) = 1
+set_bit(5,1) = 7
+clear_bit(7,1) = 5
+toggle_bit(5,1) = 7
+toggle_bit(7,1) = 5

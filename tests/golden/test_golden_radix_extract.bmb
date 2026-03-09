@@ -1,0 +1,119 @@
+// Golden Test: Radix/digit extraction utilities
+// Extract digits, reverse number, digit sum, etc.
+
+// Number of digits in a positive integer (base 10)
+fn num_digits(n: i64) -> i64 = {
+    if n == 0 { return 1 } else { () };
+    let mut x = n;
+    let mut count = 0;
+    loop {
+        if x <= 0 { break } else { () };
+        count = count + 1;
+        x = x / 10
+    };
+    count
+};
+
+// Extract k-th digit from right (0-indexed)
+fn digit_at(n: i64, k: i64) -> i64 = {
+    let mut x = n;
+    let mut i = 0;
+    loop {
+        if i >= k { break } else { () };
+        x = x / 10;
+        i = i + 1
+    };
+    x % 10
+};
+
+// Sum of all digits
+fn digit_sum(n: i64) -> i64 = {
+    let mut x = n;
+    let mut s = 0;
+    loop {
+        if x <= 0 { break } else { () };
+        s = s + x % 10;
+        x = x / 10
+    };
+    s
+};
+
+// Reverse a number
+fn reverse_num(n: i64) -> i64 = {
+    let mut x = n;
+    let mut rev = 0;
+    loop {
+        if x <= 0 { break } else { () };
+        rev = rev * 10 + x % 10;
+        x = x / 10
+    };
+    rev
+};
+
+// Convert number to vec of digits (most significant first)
+fn to_digits(n: i64) -> i64 = {
+    let v = vec_new();
+    if n == 0 {
+        vec_push(v, 0);
+        return v
+    } else { () };
+    let mut x = n;
+    loop {
+        if x <= 0 { break } else { () };
+        vec_push(v, x % 10);
+        x = x / 10
+    };
+    // Reverse in place
+    let len = vec_len(v);
+    let mut i = 0;
+    loop {
+        if i >= len / 2 { break } else { () };
+        let tmp = vec_get(v, i);
+        vec_set(v, i, vec_get(v, len - 1 - i));
+        vec_set(v, len - 1 - i, tmp);
+        i = i + 1
+    };
+    v
+};
+
+// Reconstruct number from vec of digits
+fn from_digits(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut result = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        result = result * 10 + vec_get(v, i);
+        i = i + 1
+    };
+    result
+};
+
+fn main() -> i64 = {
+    // num_digits tests
+    let _p1 = println(num_digits(12345));  // 5
+    let _p2 = println(num_digits(0));      // 1
+    let _p3 = println(num_digits(9));      // 1
+
+    // digit_at tests (0-indexed from right)
+    let _p4 = println(digit_at(12345, 0));  // 5
+    let _p5 = println(digit_at(12345, 4));  // 1
+    let _p6 = println(digit_at(12345, 2));  // 3
+
+    // digit_sum tests
+    let _p7 = println(digit_sum(12345));  // 15
+    let _p8 = println(digit_sum(999));    // 27
+
+    // reverse_num tests
+    let _p9 = println(reverse_num(12345));   // 54321
+    let _p10 = println(reverse_num(1000));   // 1
+
+    // to_digits and from_digits roundtrip
+    let d1 = to_digits(9876);
+    let _p11 = println(vec_get(d1, 0));       // 9
+    let _p12 = println(vec_get(d1, 3));       // 6
+    let _p13 = println(from_digits(d1));      // 9876
+
+    vec_free(d1);
+    0
+};

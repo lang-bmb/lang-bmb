@@ -1,0 +1,32 @@
+// Golden Test: store-load forwarding at IR level
+// When a mutable variable is stored and then immediately loaded,
+// the load should be forwarded to the stored value.
+
+fn mutable_forward(x: i64) -> i64 = {
+    let mut a = x;
+    let result = a;
+    result
+    };
+
+fn mutable_update(x: i64) -> i64 = {
+    let mut a = x;
+    { a = a + 10 };
+    let result = a;
+    result
+    };
+
+fn mutable_branch(x: i64) -> i64 = {
+    let mut a = 0;
+    if x > 0 { a = x } else { a = 0 - x };
+    a
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(mutable_forward(42));     // 42
+    let _p2 = println(mutable_forward(0));      // 0
+    let _p3 = println(mutable_update(5));       // 15
+    let _p4 = println(mutable_update(100));     // 110
+    let _p5 = println(mutable_branch(7));       // 7
+    let _p6 = println(mutable_branch(0 - 3));   // 3
+    0
+    };

@@ -1,0 +1,258 @@
+// Golden Test: Finding articulation points (cut vertices) in undirected graph
+// Uses DFS-based Tarjan's algorithm
+// Adjacency list stored as flat vec with offset table
+
+// Graph representation:
+// adj_off[i] = start offset of neighbors of node i in adj_data
+// adj_off[n] = total number of entries in adj_data
+// adj_data = flat list of neighbor node IDs
+
+// Build adjacency list for a graph with edges provided as pairs
+// edges: vec of [u, v] pairs (undirected, stored both ways)
+// Returns: [adj_off_vec, adj_data_vec]
+
+fn make_adj_off(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..(n + 1) { vec_push(v, 0) };
+    v
+    };
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { vec_push(v, 0) };
+    v
+    };
+
+fn make_neg_ones(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { vec_push(v, 0 - 1) };
+    v
+    };
+
+// DFS for articulation points
+// disc[u] = discovery time, low[u] = lowest discovery reachable
+// parent[u] = parent in DFS tree (-1 if root)
+// is_ap[u] = 1 if u is articulation point
+// timer_vec[0] = current timer value
+
+fn dfs_ap(u: i64, adj_off: i64, adj_data: i64, disc: i64, low: i64,
+          parent: i64, is_ap: i64, timer_vec: i64, n: i64) -> i64 = {
+    let t = vec_get(timer_vec, 0);
+    vec_set(disc, u, t);
+    vec_set(low, u, t);
+    vec_set(timer_vec, 0, t + 1);
+
+    let start = vec_get(adj_off, u);
+    let end_idx = vec_get(adj_off, u + 1);
+    let mut child_count = 0;
+    let mut i = start;
+    loop {
+        if i >= end_idx { break } else { () };
+        let v = vec_get(adj_data, i);
+        let disc_v = vec_get(disc, v);
+        let _x = if disc_v == 0 - 1 {
+            // v not visited
+            vec_set(parent, v, u);
+            child_count = child_count + 1;
+            let _r = dfs_ap(v, adj_off, adj_data, disc, low, parent, is_ap, timer_vec, n);
+            // Update low[u]
+            let low_v = vec_get(low, v);
+            let low_u = vec_get(low, u);
+            let new_low = if low_v < low_u { low_v } else { low_u };
+            vec_set(low, u, new_low);
+            // Check articulation point conditions
+            let par_u = vec_get(parent, u);
+            let is_root = if par_u == 0 - 1 { 1 } else { 0 };
+            let _check = if is_root == 1 and child_count > 1 {
+                vec_set(is_ap, u, 1);
+                0
+            } else if is_root == 0 and low_v >= vec_get(disc, u) {
+                vec_set(is_ap, u, 1);
+                0
+            } else { 0 };
+            0
+        } else if v != vec_get(parent, u) {
+            // Back edge: update low[u]
+            let low_u2 = vec_get(low, u);
+            let new_low2 = if disc_v < low_u2 { disc_v } else { low_u2 };
+            vec_set(low, u, new_low2);
+            0
+        } else { 0 };
+        i = i + 1
+    };
+    0
+    };
+
+// Find all articulation points
+fn find_aps(n: i64, adj_off: i64, adj_data: i64) -> i64 = {
+    let disc = make_neg_ones(n);
+    let low = make_zeros(n);
+    let parent = make_neg_ones(n);
+    let is_ap = make_zeros(n);
+    let timer_vec = vec_new();
+    vec_push(timer_vec, 0);
+
+    // Run DFS from all unvisited nodes (handles disconnected graphs)
+    let mut u = 0;
+    loop {
+        if u >= n { break } else { () };
+        let _x = if vec_get(disc, u) == 0 - 1 {
+            let _r = dfs_ap(u, adj_off, adj_data, disc, low, parent, is_ap, timer_vec, n);
+            0
+        } else { 0 };
+        u = u + 1
+    };
+    is_ap
+    };
+
+// Count articulation points
+fn count_aps(is_ap: i64, n: i64) -> i64 = {
+    let mut c = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        c = c + vec_get(is_ap, i);
+        i = i + 1
+    };
+    c
+    };
+
+// Print which nodes are articulation points
+fn print_aps(is_ap: i64, n: i64) -> i64 = {
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let _x = if vec_get(is_ap, i) == 1 {
+            println(i);
+            0
+        } else { 0 };
+        i = i + 1
+    };
+    0
+    };
+
+fn main() -> i64 = {
+    // Test 1: Simple chain graph  0 - 1 - 2 - 3
+    // Articulation points: 1, 2
+    let n1 = 4;
+    let off1 = vec_new();
+    // Node 0: neighbors [1]
+    // Node 1: neighbors [0, 2]
+    // Node 2: neighbors [1, 3]
+    // Node 3: neighbors [2]
+    // offsets: [0, 1, 3, 5, 6]
+    vec_push(off1, 0); vec_push(off1, 1); vec_push(off1, 3);
+    vec_push(off1, 5); vec_push(off1, 6);
+    let data1 = vec_new();
+    vec_push(data1, 1);          // node 0 → 1
+    vec_push(data1, 0); vec_push(data1, 2);  // node 1 → 0, 2
+    vec_push(data1, 1); vec_push(data1, 3);  // node 2 → 1, 3
+    vec_push(data1, 2);          // node 3 → 2
+
+    let ap1 = find_aps(n1, off1, data1);
+    let _p1 = println(count_aps(ap1, n1));  // 2
+    let _p2 = print_aps(ap1, n1);           // 1 then 2
+
+    // Test 2: Triangle 0-1-2 (cycle, no articulation points)
+    let n2 = 3;
+    let off2 = vec_new();
+    // Node 0: [1, 2], Node 1: [0, 2], Node 2: [0, 1]
+    vec_push(off2, 0); vec_push(off2, 2); vec_push(off2, 4); vec_push(off2, 6);
+    let data2 = vec_new();
+    vec_push(data2, 1); vec_push(data2, 2);
+    vec_push(data2, 0); vec_push(data2, 2);
+    vec_push(data2, 0); vec_push(data2, 1);
+
+    let ap2 = find_aps(n2, off2, data2);
+    let _p3 = println(count_aps(ap2, n2));  // 0
+
+    // Test 3: Bridge graph
+    //   0 - 1 - 2
+    //   |       |
+    //   3       4
+    // Edges: 0-1, 1-2, 0-3, 2-4
+    // Articulation points: 0 (removing disconnects 3), 1 (bridge), 2 (removing disconnects 4)
+    let n3 = 5;
+    let off3 = vec_new();
+    // Node 0: [1, 3]
+    // Node 1: [0, 2]
+    // Node 2: [1, 4]
+    // Node 3: [0]
+    // Node 4: [2]
+    // offsets: [0, 2, 4, 6, 7, 8]
+    vec_push(off3, 0); vec_push(off3, 2); vec_push(off3, 4);
+    vec_push(off3, 6); vec_push(off3, 7); vec_push(off3, 8);
+    let data3 = vec_new();
+    vec_push(data3, 1); vec_push(data3, 3);
+    vec_push(data3, 0); vec_push(data3, 2);
+    vec_push(data3, 1); vec_push(data3, 4);
+    vec_push(data3, 0);
+    vec_push(data3, 2);
+
+    let ap3 = find_aps(n3, off3, data3);
+    let _p4 = println(count_aps(ap3, n3));  // 3
+    let _p5 = print_aps(ap3, n3);           // 0, 1, 2
+
+    // Test 4: Two triangles connected by a bridge
+    //   0 - 1       3 - 4
+    //    \ |    2    | /
+    //     \|   / \   |/
+    //      1 - 2 - 3
+    // Wait, simpler: 0-1-2-0 connected to 3-4-5-3 via edge 2-3
+    // Articulation points: 2, 3 (bridge between triangles)
+    let n4 = 6;
+    let off4 = vec_new();
+    // Node 0: [1, 2]
+    // Node 1: [0, 2]
+    // Node 2: [0, 1, 3]
+    // Node 3: [2, 4, 5]
+    // Node 4: [3, 5]
+    // Node 5: [3, 4]
+    // offsets: [0, 2, 4, 7, 10, 12, 14]
+    vec_push(off4, 0); vec_push(off4, 2); vec_push(off4, 4);
+    vec_push(off4, 7); vec_push(off4, 10); vec_push(off4, 12); vec_push(off4, 14);
+    let data4 = vec_new();
+    vec_push(data4, 1); vec_push(data4, 2);          // node 0
+    vec_push(data4, 0); vec_push(data4, 2);          // node 1
+    vec_push(data4, 0); vec_push(data4, 1); vec_push(data4, 3);  // node 2
+    vec_push(data4, 2); vec_push(data4, 4); vec_push(data4, 5);  // node 3
+    vec_push(data4, 3); vec_push(data4, 5);          // node 4
+    vec_push(data4, 3); vec_push(data4, 4);          // node 5
+
+    let ap4 = find_aps(n4, off4, data4);
+    let _p6 = println(count_aps(ap4, n4));  // 2
+    let _p7 = print_aps(ap4, n4);           // 2, 3
+
+    // Test 5: Single node (no articulation point)
+    let n5 = 1;
+    let off5 = vec_new();
+    vec_push(off5, 0); vec_push(off5, 0);
+    let data5 = vec_new();
+
+    let ap5 = find_aps(n5, off5, data5);
+    let _p8 = println(count_aps(ap5, n5));  // 0
+
+    // Test 6: Star graph: center=0, leaves=1,2,3,4
+    // Only center (0) is articulation point if n > 2
+    let n6 = 5;
+    let off6 = vec_new();
+    // Node 0: [1, 2, 3, 4]
+    // Node 1: [0]
+    // Node 2: [0]
+    // Node 3: [0]
+    // Node 4: [0]
+    vec_push(off6, 0); vec_push(off6, 4); vec_push(off6, 5);
+    vec_push(off6, 6); vec_push(off6, 7); vec_push(off6, 8);
+    let data6 = vec_new();
+    vec_push(data6, 1); vec_push(data6, 2); vec_push(data6, 3); vec_push(data6, 4);
+    vec_push(data6, 0);
+    vec_push(data6, 0);
+    vec_push(data6, 0);
+    vec_push(data6, 0);
+
+    let ap6 = find_aps(n6, off6, data6);
+    let _p9 = println(count_aps(ap6, n6));   // 1
+    let _p10 = println(vec_get(ap6, 0));     // 1 (node 0 is AP)
+
+    0
+    };

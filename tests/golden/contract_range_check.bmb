@@ -1,0 +1,14 @@
+// Test: range check contract with both lower and upper bounds
+// pre x >= 0 and x < 100 with safe mode division
+
+fn in_range(x: i64) -> i64
+    pre x >= 0 and x < 100
+= x / 10;
+
+fn main() -> i64 = {
+    let r1 = in_range(42);
+    let r2 = in_range(99);
+    let r3 = in_range(0);
+    let _u = println(r1 + r2 + r3);
+    0
+};

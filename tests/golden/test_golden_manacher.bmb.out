@@ -1,0 +1,42 @@
+=== Test 1: abacaba ===
+odd radii:
+0
+1
+0
+3
+0
+1
+0
+longest: 7
+=== Test 2: aabaa ===
+odd radii:
+0
+0
+2
+0
+0
+even radii:
+0
+1
+0
+0
+1
+longest: 5
+=== Test 3: abba ===
+odd radii:
+0
+0
+0
+0
+even radii:
+0
+0
+2
+0
+longest: 4
+=== Test 4: all same ===
+longest: 5
+=== Test 5: all different ===
+longest: 1
+=== Test 6: single ===
+longest: 1

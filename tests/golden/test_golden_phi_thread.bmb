@@ -1,0 +1,24 @@
+// Golden Test: Phi-aware empty block threading
+// Tests patterns where empty else branches create forwarding blocks in phi nodes
+
+fn classify(x: i64) -> i64 =
+    if x > 100 {
+        if x > 200 { 3 } else { 2 }
+    } else if x > 50 { 1 } else { 0 };
+
+fn accumulate(n: i64, acc: i64) -> i64 =
+    if n <= 0 { acc }
+    else {
+        let delta = if n > 10 { n * 2 } else { n };
+        accumulate(n - 1, acc + delta)
+    };
+
+fn main() -> i64 = {
+    println(classify(250));    // 3
+    println(classify(150));    // 2
+    println(classify(75));     // 1
+    println(classify(25));     // 0
+    println(accumulate(5, 0)); // 1+2+3+4+5 = 15
+    println(accumulate(12, 0)); // 12*2+11*2+10+9+8+7+6+5+4+3+2+1 = 46+55 = 101
+    0
+    };

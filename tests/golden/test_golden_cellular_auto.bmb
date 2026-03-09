@@ -1,0 +1,139 @@
+// Golden test: 1D cellular automaton (Rule 110 and variants)
+// Tests array transformation patterns
+
+// Apply rule to 3-cell neighborhood
+fn rule110(left: i64, center: i64, right: i64) -> i64 = {
+    let pattern = left * 4 + center * 2 + right;
+
+// Rule 110: 01101110 in binary
+    if pattern == 7 { 0 }       // 111 -> 0
+    else if pattern == 6 { 1 }  // 110 -> 1
+    else if pattern == 5 { 1 }  // 101 -> 1
+    else if pattern == 4 { 0 }  // 100 -> 0
+    else if pattern == 3 { 1 }  // 011 -> 1
+    else if pattern == 2 { 1 }  // 010 -> 1
+    else if pattern == 1 { 1 }  // 001 -> 1
+    else { 0 }                  // 000 -> 0
+    };
+
+// Apply rule 30 (chaotic)
+fn rule30(left: i64, center: i64, right: i64) -> i64 = {
+    let pattern = left * 4 + center * 2 + right;
+
+// Rule 30: 00011110 in binary
+    if pattern == 4 { 1 }
+    else if pattern == 3 { 1 }
+    else if pattern == 2 { 1 }
+    else if pattern == 1 { 1 }
+    else { 0 }
+    };
+
+// Helper: create a vec of n zeros
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { let _p = vec_push(v, 0); 0 };
+    v
+    };
+
+// Helper: create a vec from known values (9 cells, center=1)
+fn make_grid9() -> i64 = {
+    let v = vec_new();
+    let _p0 = vec_push(v, 0);
+    let _p1 = vec_push(v, 0);
+    let _p2 = vec_push(v, 0);
+    let _p3 = vec_push(v, 0);
+    let _p4 = vec_push(v, 1);
+    let _p5 = vec_push(v, 0);
+    let _p6 = vec_push(v, 0);
+    let _p7 = vec_push(v, 0);
+    let _p8 = vec_push(v, 0);
+    v
+    };
+
+// Step: apply rule to entire array
+fn step_cell(arr: i64, result: i64, pos: i64, size: i64, rule: i64) -> i64 =
+    if pos >= size { result }
+    else {
+        let left = if pos == 0 { 0 } else { vec_get(arr, pos - 1) };
+        let center = vec_get(arr, pos);
+        let right = if pos + 1 >= size { 0 } else { vec_get(arr, pos + 1) };
+        let val = if rule == 110 { rule110(left, center, right) }
+        else { rule30(left, center, right) };
+        let _s = vec_set(result, pos, val);
+        step_cell(arr, result, pos + 1, size, rule)
+    };
+
+    // Run N steps
+
+fn run_steps(arr: i64, buf: i64, size: i64, steps: i64, rule: i64) -> i64 =
+    if steps <= 0 { arr }
+    else {
+        let next = step_cell(arr, buf, 0, size, rule);
+        // Copy back (swap buffers by running again)
+        let buf2 = step_cell(next, arr, 0, size, rule);
+        if steps <= 1 { next }
+        else if steps <= 2 { buf2 }
+        else { run_steps(buf2, next, size, steps - 2, rule) }
+    };
+
+    // Count alive cells
+
+fn count_alive(arr: i64, pos: i64, count: i64, size: i64) -> i64 =
+    if pos >= size { count }
+    else {
+        let inc = if vec_get(arr, pos) == 1 { 1 } else { 0 };
+        count_alive(arr, pos + 1, count + inc, size)
+    };
+
+    // Encode array as integer (binary number, up to 10 bits)
+
+fn encode_bits(arr: i64, pos: i64, acc: i64, size: i64) -> i64 =
+    if pos >= size { acc }
+    else { encode_bits(arr, pos + 1, acc * 2 + vec_get(arr, pos), size) };
+
+fn main() -> i64 = {
+// Rule 110 single cell
+    let _p1 = println(rule110(0, 0, 0));  // 0
+    let _p2 = println(rule110(0, 0, 1));  // 1
+    let _p3 = println(rule110(0, 1, 0));  // 1
+    let _p4 = println(rule110(1, 1, 1));  // 0
+
+// Start with single cell in center of 9 cells
+    let grid = make_grid9();
+    let buf = make_zeros(9);
+
+// One step of rule 110
+    let g1 = step_cell(grid, buf, 0, 9, 110);
+    let _p5 = println(count_alive(g1, 0, 0, 9));  // 2 (cells 3 and 4 should be alive)
+    let _p6 = println(encode_bits(g1, 0, 0, 9));   // binary encoding
+
+// Rule 30 single step
+    let grid2 = make_grid9();
+    let buf2 = make_zeros(9);
+    let g30 = step_cell(grid2, buf2, 0, 9, 30);
+    let _p7 = println(count_alive(g30, 0, 0, 9));
+
+// Small grid test: [1, 0, 1] -> rule 110
+    let small = vec_new();
+    let _ps0 = vec_push(small, 1);
+    let _ps1 = vec_push(small, 0);
+    let _ps2 = vec_push(small, 1);
+    let sbuf = make_zeros(3);
+    let s1 = step_cell(small, sbuf, 0, 3, 110);
+    let _p8 = println(vec_get(s1, 0));  // rule110(0,1,0) = 1
+    let _p9 = println(vec_get(s1, 1));  // rule110(1,0,1) = 1
+    let _p10 = println(vec_get(s1, 2)); // rule110(0,1,0) = 1
+
+// [1, 1, 0] -> rule 110
+    let sm2 = vec_new();
+    let _pm0 = vec_push(sm2, 1);
+    let _pm1 = vec_push(sm2, 1);
+    let _pm2 = vec_push(sm2, 0);
+    let sb2 = make_zeros(3);
+    let s2 = step_cell(sm2, sb2, 0, 3, 110);
+    let _p11 = println(vec_get(s2, 0));  // rule110(0,1,1) = 1
+    let _p12 = println(vec_get(s2, 1));  // rule110(1,1,0) = 1
+    let _p13 = println(vec_get(s2, 2));  // rule110(1,0,0) = 0
+
+    0
+    };

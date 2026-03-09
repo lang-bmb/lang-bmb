@@ -1,0 +1,232 @@
+// Golden test: Merge k sorted arrays using min-heap simulation
+// Heap stored as flat array: parent(i)=(i-1)/2, left(i)=2*i+1, right(i)=2*i+2
+// Each heap entry: (value, array_index, position_in_array) packed as 3 consecutive elements
+
+// Heap entry accessors (3 elements per entry)
+fn heap_val(heap: i64, i: i64) -> i64 = vec_get(heap, i * 3);
+fn heap_arr(heap: i64, i: i64) -> i64 = vec_get(heap, i * 3 + 1);
+fn heap_pos(heap: i64, i: i64) -> i64 = vec_get(heap, i * 3 + 2);
+
+fn heap_set_entry(heap: i64, i: i64, val: i64, arr_idx: i64, pos: i64) -> i64 = {
+    vec_set(heap, i * 3, val);
+    vec_set(heap, i * 3 + 1, arr_idx);
+    vec_set(heap, i * 3 + 2, pos);
+    0
+    };
+
+// Swap two entries in the heap
+fn heap_swap(heap: i64, a: i64, b: i64) -> i64 = {
+    let va = heap_val(heap, a);
+    let aa = heap_arr(heap, a);
+    let pa = heap_pos(heap, a);
+    let vb = heap_val(heap, b);
+    let ab = heap_arr(heap, b);
+    let pb = heap_pos(heap, b);
+    let _s1 = heap_set_entry(heap, a, vb, ab, pb);
+    let _s2 = heap_set_entry(heap, b, va, aa, pa);
+    0
+    };
+
+// Sift up: restore heap property upward
+fn sift_up(heap: i64, i: i64) -> i64 = {
+    let pos = i;
+    for _iter in 0..100 {
+        if pos <= 0 { () }
+        else {
+            let parent = (pos - 1) / 2;
+            if heap_val(heap, pos) < heap_val(heap, parent) {
+                let _sw = heap_swap(heap, pos, parent);
+                pos = parent;
+            } else {
+                pos = 0 - 1; // Signal done
+            };
+        };
+    };
+    0
+    };
+
+// Sift down: restore heap property downward
+fn sift_down(heap: i64, i: i64, size: i64) -> i64 = {
+    let pos = i;
+    for _iter in 0..100 {
+        let left = 2 * pos + 1;
+        let right = 2 * pos + 2;
+        let smallest = pos;
+        let _x = if left < size {
+            if heap_val(heap, left) < heap_val(heap, smallest) {
+                smallest = left;
+            } else { () };
+            0
+        } else { 0 };
+        let _y = if right < size {
+            if heap_val(heap, right) < heap_val(heap, smallest) {
+                smallest = right;
+            } else { () };
+            0
+        } else { 0 };
+        if smallest != pos {
+            let _sw = heap_swap(heap, pos, smallest);
+            pos = smallest;
+        } else {
+            pos = size; // Signal done (will fail left < size check)
+        };
+    };
+    0
+    };
+
+// Get element from 2D array simulation: arrays[arr_idx][pos]
+// arrays is a vec of vecs, lengths is a vec of lengths
+fn get_elem(arrays: i64, arr_idx: i64, pos: i64) -> i64 = {
+    let arr = vec_get(arrays, arr_idx);
+    vec_get(arr, pos)
+    };
+
+// Merge k sorted arrays into one sorted result
+fn merge_k_sorted(arrays: i64, lengths: i64, k: i64) -> i64 = {
+    let heap = vec_new();
+    let heap_size = 0;
+
+    // Initialize heap with first element of each array
+    for i in 0..k {
+        let arr_len = vec_get(lengths, i);
+        if arr_len > 0 {
+            let val = get_elem(arrays, i, 0);
+            vec_push(heap, val);    // value
+            vec_push(heap, i);      // array index
+            vec_push(heap, 0);      // position in array
+            let _su = sift_up(heap, heap_size);
+            heap_size = heap_size + 1;
+        } else { () };
+    };
+
+    let result = vec_new();
+
+    // Extract min and add next element from same array
+    let total_iters = 1000; // Safety bound
+    for _iter in 0..total_iters {
+        if heap_size <= 0 { () }
+        else {
+            // Extract min
+            let min_val = heap_val(heap, 0);
+            let min_arr = heap_arr(heap, 0);
+            let min_pos = heap_pos(heap, 0);
+            vec_push(result, min_val);
+
+            let next_pos = min_pos + 1;
+            let arr_len = vec_get(lengths, min_arr);
+            if next_pos < arr_len {
+                // Replace root with next element from same array
+                let next_val = get_elem(arrays, min_arr, next_pos);
+                let _se = heap_set_entry(heap, 0, next_val, min_arr, next_pos);
+                let _sd = sift_down(heap, 0, heap_size);
+            } else {
+                // Array exhausted: move last to root and shrink
+                heap_size = heap_size - 1;
+                if heap_size > 0 {
+                    let _se = heap_set_entry(heap, 0,
+                        heap_val(heap, heap_size),
+                        heap_arr(heap, heap_size),
+                        heap_pos(heap, heap_size));
+                    let _sd = sift_down(heap, 0, heap_size);
+                } else { () };
+            };
+        };
+    };
+
+    let _hf = vec_free(heap);
+    result
+    };
+
+fn print_vec(v: i64, len: i64) -> i64 = {
+    for i in 0..len {
+        let _p = println(vec_get(v, i));
+    };
+    0
+    };
+
+fn is_sorted(v: i64, len: i64) -> i64 = {
+    let ok = 1;
+    for i in 1..len {
+        if vec_get(v, i) < vec_get(v, i - 1) {
+            ok = 0;
+        } else { () };
+    };
+    ok
+    };
+
+fn main() -> i64 = {
+    // Test 1: Merge 3 sorted arrays
+    // [1, 4, 7], [2, 5, 8], [3, 6, 9]
+    let a1 = vec_new();
+    vec_push(a1, 1); vec_push(a1, 4); vec_push(a1, 7);
+    let a2 = vec_new();
+    vec_push(a2, 2); vec_push(a2, 5); vec_push(a2, 8);
+    let a3 = vec_new();
+    vec_push(a3, 3); vec_push(a3, 6); vec_push(a3, 9);
+
+    let arrays = vec_new();
+    vec_push(arrays, a1); vec_push(arrays, a2); vec_push(arrays, a3);
+    let lengths = vec_new();
+    vec_push(lengths, 3); vec_push(lengths, 3); vec_push(lengths, 3);
+
+    let merged = merge_k_sorted(arrays, lengths, 3);
+    let _p1 = println(vec_len(merged)); // 9
+    let _p2 = println(is_sorted(merged, 9)); // 1
+
+    // Print merged result
+    let _p3 = println(vec_get(merged, 0)); // 1
+    let _p4 = println(vec_get(merged, 4)); // 5
+    let _p5 = println(vec_get(merged, 8)); // 9
+
+    // Test 2: Merge arrays of different lengths
+    // [1, 3], [2], [4, 5, 6, 7]
+    let b1 = vec_new();
+    vec_push(b1, 1); vec_push(b1, 3);
+    let b2 = vec_new();
+    vec_push(b2, 2);
+    let b3 = vec_new();
+    vec_push(b3, 4); vec_push(b3, 5); vec_push(b3, 6); vec_push(b3, 7);
+
+    let arrays2 = vec_new();
+    vec_push(arrays2, b1); vec_push(arrays2, b2); vec_push(arrays2, b3);
+    let lengths2 = vec_new();
+    vec_push(lengths2, 2); vec_push(lengths2, 1); vec_push(lengths2, 4);
+
+    let merged2 = merge_k_sorted(arrays2, lengths2, 3);
+    let _p6 = println(vec_len(merged2)); // 7
+    let _p7 = println(is_sorted(merged2, 7)); // 1
+    let _p8 = println(vec_get(merged2, 0)); // 1
+    let _p9 = println(vec_get(merged2, 6)); // 7
+
+    // Test 3: Single array (trivial merge)
+    let c1 = vec_new();
+    vec_push(c1, 10); vec_push(c1, 20); vec_push(c1, 30);
+    let arrays3 = vec_new();
+    vec_push(arrays3, c1);
+    let lengths3 = vec_new();
+    vec_push(lengths3, 3);
+
+    let merged3 = merge_k_sorted(arrays3, lengths3, 1);
+    let _p10 = println(vec_len(merged3)); // 3
+    let _p11 = println(vec_get(merged3, 0)); // 10
+    let _p12 = println(vec_get(merged3, 2)); // 30
+
+    // Test 4: Arrays with duplicate values
+    // [1, 3, 5], [1, 3, 5]
+    let d1 = vec_new();
+    vec_push(d1, 1); vec_push(d1, 3); vec_push(d1, 5);
+    let d2 = vec_new();
+    vec_push(d2, 1); vec_push(d2, 3); vec_push(d2, 5);
+    let arrays4 = vec_new();
+    vec_push(arrays4, d1); vec_push(arrays4, d2);
+    let lengths4 = vec_new();
+    vec_push(lengths4, 3); vec_push(lengths4, 3);
+
+    let merged4 = merge_k_sorted(arrays4, lengths4, 2);
+    let _p13 = println(vec_len(merged4)); // 6
+    let _p14 = println(is_sorted(merged4, 6)); // 1
+    let _p15 = println(vec_get(merged4, 0)); // 1
+    let _p16 = println(vec_get(merged4, 5)); // 5
+
+    0
+    };

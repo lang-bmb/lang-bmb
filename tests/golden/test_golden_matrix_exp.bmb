@@ -1,0 +1,131 @@
+// Golden Test: Matrix exponentiation
+// Computes M^n using fast exponentiation (binary method)
+// Application: computing n-th Fibonacci number in O(log n) time
+// Matrices stored as flat vecs (row-major, 2x2 only for simplicity)
+
+// 2x2 matrix multiplication: C = A * B
+// Matrices stored as [a00, a01, a10, a11]
+fn mat_mul(a: i64, b: i64) -> i64 = {
+    let c = vec_new();
+    let c00 = vec_get(a, 0) * vec_get(b, 0) + vec_get(a, 1) * vec_get(b, 2);
+    let c01 = vec_get(a, 0) * vec_get(b, 1) + vec_get(a, 1) * vec_get(b, 3);
+    let c10 = vec_get(a, 2) * vec_get(b, 0) + vec_get(a, 3) * vec_get(b, 2);
+    let c11 = vec_get(a, 2) * vec_get(b, 1) + vec_get(a, 3) * vec_get(b, 3);
+    let _p = vec_push(c, c00);
+    let _p = vec_push(c, c01);
+    let _p = vec_push(c, c10);
+    let _p = vec_push(c, c11);
+    c
+};
+
+// 2x2 matrix multiplication with modular arithmetic
+fn mat_mul_mod(a: i64, b: i64, m: i64) -> i64 = {
+    let c = vec_new();
+    let c00 = (vec_get(a, 0) * vec_get(b, 0) + vec_get(a, 1) * vec_get(b, 2)) % m;
+    let c01 = (vec_get(a, 0) * vec_get(b, 1) + vec_get(a, 1) * vec_get(b, 3)) % m;
+    let c10 = (vec_get(a, 2) * vec_get(b, 0) + vec_get(a, 3) * vec_get(b, 2)) % m;
+    let c11 = (vec_get(a, 2) * vec_get(b, 1) + vec_get(a, 3) * vec_get(b, 3)) % m;
+    let _p = vec_push(c, c00);
+    let _p = vec_push(c, c01);
+    let _p = vec_push(c, c10);
+    let _p = vec_push(c, c11);
+    c
+};
+
+// Identity matrix 2x2
+fn mat_identity() -> i64 = {
+    let m = vec_new();
+    let _p = vec_push(m, 1); let _p = vec_push(m, 0);
+    let _p = vec_push(m, 0); let _p = vec_push(m, 1);
+    m
+};
+
+// Matrix exponentiation: M^n using binary method
+fn mat_pow(base: i64, exp: i64) -> i64 = {
+    let mut result = mat_identity();
+    let mut b = base;
+    let mut e = exp;
+    while e > 0 {
+        let _x = if e % 2 == 1 {
+            set result = mat_mul(result, b);
+            0
+        } else { 0 };
+        set b = mat_mul(b, b);
+        set e = e / 2
+    };
+    result
+};
+
+// Matrix exponentiation with modular arithmetic
+fn mat_pow_mod(base: i64, exp: i64, m: i64) -> i64 = {
+    let mut result = mat_identity();
+    let mut b = base;
+    let mut e = exp;
+    while e > 0 {
+        let _x = if e % 2 == 1 {
+            set result = mat_mul_mod(result, b, m);
+            0
+        } else { 0 };
+        set b = mat_mul_mod(b, b, m);
+        set e = e / 2
+    };
+    result
+};
+
+// Fibonacci using matrix exponentiation
+// [[1,1],[1,0]]^n gives [[F(n+1),F(n)],[F(n),F(n-1)]]
+fn fib_matrix(n: i64) -> i64 = {
+    if n <= 0 { 0 }
+    else if n == 1 { 1 }
+    else {
+        let base = vec_new();
+        let _p = vec_push(base, 1); let _p = vec_push(base, 1);
+        let _p = vec_push(base, 1); let _p = vec_push(base, 0);
+        let result = mat_pow(base, n - 1);
+        vec_get(result, 0)
+    }
+};
+
+// Fibonacci mod m using modular matrix exponentiation
+fn fib_mod(n: i64, m: i64) -> i64 = {
+    if n <= 0 { 0 }
+    else if n == 1 { 1 % m }
+    else {
+        let base = vec_new();
+        let _p = vec_push(base, 1); let _p = vec_push(base, 1);
+        let _p = vec_push(base, 1); let _p = vec_push(base, 0);
+        let result = mat_pow_mod(base, n - 1, m);
+        vec_get(result, 0) % m
+    }
+};
+
+fn main() -> () = {
+    // Test 1: Small Fibonacci numbers
+    print_str("fib(0)="); let _r = println(fib_matrix(0));
+    print_str("fib(1)="); let _r = println(fib_matrix(1));
+    print_str("fib(2)="); let _r = println(fib_matrix(2));
+    print_str("fib(5)="); let _r = println(fib_matrix(5));
+    print_str("fib(10)="); let _r = println(fib_matrix(10));
+    print_str("fib(20)="); let _r = println(fib_matrix(20));
+
+    // Test 2: Larger Fibonacci
+    print_str("fib(30)="); let _r = println(fib_matrix(30));
+    print_str("fib(40)="); let _r = println(fib_matrix(40));
+
+    // Test 3: Fibonacci mod (to avoid overflow for large n)
+    let m = 1000000007;
+    print_str("fib(50)mod="); let _r = println(fib_mod(50, m));
+    print_str("fib(100)mod="); let _r = println(fib_mod(100, m));
+
+    // Test 4: Matrix power directly
+    // [[2,0],[0,3]]^4 = [[16,0],[0,81]]
+    let diag = vec_new();
+    let _p = vec_push(diag, 2); let _p = vec_push(diag, 0);
+    let _p = vec_push(diag, 0); let _p = vec_push(diag, 3);
+    let result = mat_pow(diag, 4);
+    print_str("diag^4: ");
+    print(vec_get(result, 0)); print_str(" ");
+    print(vec_get(result, 1)); print_str(" ");
+    print(vec_get(result, 2)); print_str(" ");
+    let _r = println(vec_get(result, 3))
+};

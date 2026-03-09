@@ -1,0 +1,136 @@
+// Golden Test: Pancake Sort
+// Sort by repeatedly finding max and flipping subarrays
+// Also tests: prefix reversal, sorted check
+
+// Reverse elements in vec from index 0 to end (inclusive)
+fn flip(v: i64, end: i64) -> i64 = {
+    let mut lo = 0;
+    let mut hi = end;
+    loop {
+        if lo >= hi { break } else { () };
+        let tmp = vec_get(v, lo);
+        let _s1 = vec_set(v, lo, vec_get(v, hi));
+        let _s2 = vec_set(v, hi, tmp);
+        lo = lo + 1;
+        hi = hi - 1
+    };
+    0
+    };
+
+// Find index of maximum element in v[0..end] (inclusive)
+fn find_max_idx(v: i64, end: i64) -> i64 = {
+    let mut max_idx = 0;
+    let mut max_val = vec_get(v, 0);
+    let mut i = 1;
+    loop {
+        if i > end { break } else { () };
+        let val = vec_get(v, i);
+        if val > max_val {
+            max_val = val;
+            max_idx = i
+        } else { () };
+        i = i + 1
+    };
+    max_idx
+    };
+
+// Pancake sort: O(n^2) flips
+// For each unsorted suffix, flip max to front, then flip to correct position
+fn pancake_sort(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut size = n - 1;
+    loop {
+        if size <= 0 { break } else { () };
+        let mi = find_max_idx(v, size);
+        if mi != size {
+            // Flip max to front if not already there
+            if mi > 0 {
+                let _f1 = flip(v, mi);
+                0
+            } else { 0 };
+            // Flip from front to correct position
+            let _f2 = flip(v, size);
+            0
+        } else { 0 };
+        size = size - 1
+    };
+    0
+    };
+
+// Check if vec is sorted in ascending order
+fn is_sorted(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut i = 1;
+    let mut ok = 1;
+    loop {
+        if i >= n { break } else { () };
+        if vec_get(v, i) < vec_get(v, i - 1) {
+            ok = 0;
+            break
+        } else { () };
+        i = i + 1
+    };
+    ok
+    };
+
+// Print all elements of a vec
+fn print_vec(v: i64) -> i64 = {
+    let n = vec_len(v);
+    for i in 0..n {
+        let _p = println(vec_get(v, i));
+        0
+    };
+    0
+    };
+
+fn make_vec(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    let _p6 = vec_push(v, f);
+    v
+    };
+
+fn main() -> i64 = {
+    // Test 1: Sort [3, 1, 5, 2, 6, 4]
+    let v1 = make_vec(3, 1, 5, 2, 6, 4);
+    let _s1 = pancake_sort(v1);
+    let _p1 = println(is_sorted(v1));       // 1 (sorted)
+    let _p2 = print_vec(v1);                // 1 2 3 4 5 6
+
+    // Test 2: Already sorted [1, 2, 3, 4, 5, 6]
+    let v2 = make_vec(1, 2, 3, 4, 5, 6);
+    let _s2 = pancake_sort(v2);
+    let _p3 = println(is_sorted(v2));       // 1
+
+    // Test 3: Reverse sorted [6, 5, 4, 3, 2, 1]
+    let v3 = make_vec(6, 5, 4, 3, 2, 1);
+    let _s3 = pancake_sort(v3);
+    let _p4 = println(is_sorted(v3));       // 1
+    let _p5 = print_vec(v3);                // 1 2 3 4 5 6
+
+    // Test 4: Test flip function directly
+    let v4 = make_vec(1, 2, 3, 4, 5, 6);
+    let _f = flip(v4, 3);  // Reverse first 4 elements
+    let _p6 = println(vec_get(v4, 0));  // 4
+    let _p7 = println(vec_get(v4, 1));  // 3
+    let _p8 = println(vec_get(v4, 2));  // 2
+    let _p9 = println(vec_get(v4, 3));  // 1
+    let _p10 = println(vec_get(v4, 4)); // 5 (unchanged)
+
+    // Test 5: Sort with duplicates [3, 1, 3, 1, 2, 2]
+    let v5 = make_vec(3, 1, 3, 1, 2, 2);
+    let _s5 = pancake_sort(v5);
+    let _p11 = println(is_sorted(v5));  // 1
+    let _p12 = print_vec(v5);           // 1 1 2 2 3 3
+
+    let _f1 = vec_free(v1);
+    let _f2 = vec_free(v2);
+    let _f3 = vec_free(v3);
+    let _f4 = vec_free(v4);
+    let _f5 = vec_free(v5);
+    0
+    };

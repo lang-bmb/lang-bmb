@@ -1,0 +1,83 @@
+// Golden Test: Prefix sum array operations
+// Build prefix sum, range query, point update, difference array
+
+// Build prefix sum in-place: arr[i] = arr[0] + arr[1] + ... + arr[i]
+// We simulate with a fixed array approach
+
+// Prefix sum of first n elements
+fn prefix_sum_at(arr0: i64, arr1: i64, arr2: i64, arr3: i64, arr4: i64, idx: i64) -> i64 =
+    if idx == 0 { arr0 }
+    else if idx == 1 { arr0 + arr1 }
+    else if idx == 2 { arr0 + arr1 + arr2 }
+    else if idx == 3 { arr0 + arr1 + arr2 + arr3 }
+    else { arr0 + arr1 + arr2 + arr3 + arr4 };
+
+// Range sum query: sum(arr[l..r]) using prefix sums
+// sum(l, r) = prefix[r] - prefix[l-1]
+fn range_sum(arr0: i64, arr1: i64, arr2: i64, arr3: i64, arr4: i64, l: i64, r: i64) -> i64 = {
+    let pr = prefix_sum_at(arr0, arr1, arr2, arr3, arr4, r);
+    if l == 0 { pr }
+    else { pr - prefix_sum_at(arr0, arr1, arr2, arr3, arr4, l - 1) }
+    };
+
+// Using arrays for prefix sum operations
+fn main() -> i64 = {
+    // Array: [3, 1, 4, 1, 5]
+    let arr = [3, 1, 4, 1, 5];
+
+    // Test 1: prefix_sum[0] = 3
+    let _p1 = println(prefix_sum_at(3, 1, 4, 1, 5, 0));
+
+    // Test 2: prefix_sum[2] = 3+1+4 = 8
+    let _p2 = println(prefix_sum_at(3, 1, 4, 1, 5, 2));
+
+    // Test 3: prefix_sum[4] = 3+1+4+1+5 = 14
+    let _p3 = println(prefix_sum_at(3, 1, 4, 1, 5, 4));
+
+    // Test 4: range_sum(1, 3) = arr[1]+arr[2]+arr[3] = 1+4+1 = 6
+    let _p4 = println(range_sum(3, 1, 4, 1, 5, 1, 3));
+
+    // Test 5: range_sum(0, 4) = total = 14
+    let _p5 = println(range_sum(3, 1, 4, 1, 5, 0, 4));
+
+    // Test 6: range_sum(2, 2) = arr[2] = 4
+    let _p6 = println(range_sum(3, 1, 4, 1, 5, 2, 2));
+
+    // Build prefix sum array using mutable array
+    let mut psum = [0, 0, 0, 0, 0];
+    set psum[0] = arr[0];
+    let mut i = 1;
+    loop {
+        if i >= 5 { break } else { () };
+        set psum[i] = psum[i - 1] + arr[i];
+        i = i + 1
+    };
+
+    // Test 7: psum[4] = 14 (built via loop)
+    let _p7 = println(psum[4]);
+
+    // Test 8: Range query via psum: sum(2..4) = psum[4] - psum[1] = 14 - 4 = 10
+    let _p8 = println(psum[4] - psum[1]);
+
+    // Difference array: diff[i] = arr[i] - arr[i-1], diff[0] = arr[0]
+    // Applying prefix sum to difference array recovers original
+    let mut diff = [0, 0, 0, 0, 0];
+    set diff[0] = arr[0];
+    let mut j = 1;
+    loop {
+        if j >= 5 { break } else { () };
+        set diff[j] = arr[j] - arr[j - 1];
+        j = j + 1
+    };
+
+    // Test 9: diff array: [3, -2, 3, -3, 4]
+    // Recover arr[2] by prefix sum of diff: diff[0]+diff[1]+diff[2] = 3+(-2)+3 = 4
+    let recovered = diff[0] + diff[1] + diff[2];
+    let _p9 = println(recovered);
+
+    // Test 10: Recover arr[4]: sum all diffs = 3+(-2)+3+(-3)+4 = 5
+    let total_diff = diff[0] + diff[1] + diff[2] + diff[3] + diff[4];
+    let _p10 = println(total_diff);
+
+    0
+    };

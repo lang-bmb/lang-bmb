@@ -1,0 +1,106 @@
+// Golden Test: Newton's Method Approximation
+// Tests iterative convergence patterns using loop+break
+
+fn abs_val(x: i64) -> i64 =
+    if x < 0 { 0 - x } else { x };
+
+fn isqrt_newton(n: i64) -> i64 = {
+    // Integer square root via Newton's method
+    if n <= 1 { n }
+    else {
+        let x = n;
+        for _i in 0..30 {
+            let next = (x + n / x) / 2;
+            if next >= x { break } else { () };
+            x = next;
+        };
+        x
+    }
+};
+
+fn icbrt(n: i64) -> i64 = {
+    // Integer cube root approximation
+    if n <= 0 { 0 }
+    else {
+        let x = n;
+        for _i in 0..40 {
+            let next = (2 * x + n / (x * x)) / 3;
+            if next >= x { break } else { () };
+            x = next;
+        };
+        x
+    }
+};
+
+fn binary_search(target: i64) -> i64 = {
+    // Find target in sorted range [0, 100)
+    let lo = 0;
+    let hi = 100;
+    let result = 0 - 1;
+    for _i in 0..20 {
+        if lo >= hi { break } else { () };
+        let mid = (lo + hi) / 2;
+        let mid_val = mid * mid;  // searching for sqrt
+        if mid_val == target {
+            result = mid;
+            break;
+        } else if mid_val < target {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        };
+    };
+    result
+};
+
+fn converge_series(n: i64) -> i64 = {
+    // Compute sum = 1 + 1/2 + 1/4 + ... (as scaled integer x1000)
+    let sum = 0;
+    let term = 1000;  // 1.0 * 1000
+    for _i in 0..n {
+        sum = sum + term;
+        term = term / 2;
+    };
+    sum
+};
+
+fn fixed_point_iter(start: i64) -> i64 = {
+    // f(x) = (x + 10) / 2, iterate until convergence
+    let x = start;
+    for _i in 0..50 {
+        let next = (x + 10) / 2;
+        if next == x { break } else { () };
+        x = next;
+    };
+    x
+};
+
+fn main() -> i64 = {
+    // Integer square root
+    let _p1 = println(isqrt_newton(0));     // 0
+    let _p2 = println(isqrt_newton(1));     // 1
+    let _p3 = println(isqrt_newton(4));     // 2
+    let _p4 = println(isqrt_newton(100));   // 10
+    let _p5 = println(isqrt_newton(1000));  // 31
+
+    // Integer cube root
+    let _p6 = println(icbrt(8));     // 2
+    let _p7 = println(icbrt(27));    // 3
+    let _p8 = println(icbrt(1000));  // 10
+
+    // Binary search (find sqrt)
+    let _p9 = println(binary_search(49));   // 7  (7*7=49)
+    let _p10 = println(binary_search(64));  // 8  (8*8=64)
+    let _p11 = println(binary_search(50));  // -1 (no exact sqrt)
+
+    // Geometric series convergence (scaled x1000)
+    let _p12 = println(converge_series(1));   // 1000
+    let _p13 = println(converge_series(5));   // 1937 (1000+500+250+125+62)
+    let _p14 = println(converge_series(10));  // 1998
+
+    // Fixed-point iteration: (x+10)/2 converges to 10
+    let _p15 = println(fixed_point_iter(0));    // 10
+    let _p16 = println(fixed_point_iter(100));  // 10
+
+    0
+};

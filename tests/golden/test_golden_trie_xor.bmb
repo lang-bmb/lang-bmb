@@ -1,0 +1,205 @@
+// Golden test: Binary trie for maximum XOR pair query
+// Insert numbers bit-by-bit (MSB first) into a binary trie
+// Query: for a given number, find the number in the trie that gives maximum XOR
+//
+// Trie node layout: each node has 2 children (bit 0, bit 1)
+// Stored in flat array: node i has children at nodes[2*i + bit_val]
+// node_children[2*i + 0] = left child (bit 0), node_children[2*i + 1] = right child (bit 1)
+// -1 means no child
+
+// Max bits to consider (for i64 values up to 1023, 10 bits suffice)
+fn max_bits() -> i64 = 10;
+
+// Get bit at position pos (0 = LSB) from val
+fn get_bit(val: i64, pos: i64) -> i64 = {
+    let shifted = val >> pos;
+    shifted band 1
+    };
+
+// Initialize trie: allocate space for up to max_nodes nodes
+// Each node has 2 child pointers, stored in children vec
+// children[2*node + bit] = child node index, -1 = none
+fn trie_new(max_nodes: i64) -> i64 = {
+    let children = vec_new();
+    // Allocate space: max_nodes * 2 entries, all -1
+    for _i in 0..(max_nodes * 2) {
+        vec_push(children, 0 - 1)
+    };
+    // We also need a counter for next free node
+    // Store it as first element of a separate vec
+    let meta = vec_new();
+    vec_push(meta, 1);  // next_node = 1 (node 0 is root)
+    // Pack both vecs: return children, store meta separately
+    // Actually, let's use a simple approach: children vec + meta vec packed
+    // We'll pass both around
+    let pair = vec_new();
+    vec_push(pair, children);
+    vec_push(pair, meta);
+    pair
+    };
+
+fn trie_children(trie: i64) -> i64 = vec_get(trie, 0);
+fn trie_meta(trie: i64) -> i64 = vec_get(trie, 1);
+
+fn trie_alloc_node(trie: i64) -> i64 = {
+    let meta = trie_meta(trie);
+    let node_id = vec_get(meta, 0);
+    vec_set(meta, 0, node_id + 1);
+    node_id
+    };
+
+fn trie_get_child(trie: i64, node: i64, bit: i64) -> i64 = {
+    let children = trie_children(trie);
+    vec_get(children, node * 2 + bit)
+    };
+
+fn trie_set_child(trie: i64, node: i64, bit: i64, child: i64) -> i64 = {
+    let children = trie_children(trie);
+    vec_set(children, node * 2 + bit, child);
+    0
+    };
+
+// Insert a value into the trie (MSB first, max_bits-1 down to 0)
+fn trie_insert(trie: i64, val: i64) -> i64 = {
+    let bits = max_bits();
+    let mut cur = 0;  // start at root
+    let mut pos = bits - 1;
+    loop {
+        if pos < 0 { break } else { () };
+        let bit = get_bit(val, pos);
+        let child = trie_get_child(trie, cur, bit);
+        if child < 0 {
+            let new_node = trie_alloc_node(trie);
+            let _s = trie_set_child(trie, cur, bit, new_node);
+            cur = new_node
+        } else {
+            cur = child
+        };
+        pos = pos - 1
+    };
+    0
+    };
+
+// Query: find the value in the trie that maximizes XOR with val
+// At each bit position, try to go to the opposite bit (to maximize XOR)
+fn trie_max_xor(trie: i64, val: i64) -> i64 = {
+    let bits = max_bits();
+    let mut cur = 0;
+    let mut result = 0;
+    let mut pos = bits - 1;
+    loop {
+        if pos < 0 { break } else { () };
+        let bit = get_bit(val, pos);
+        let want = 1 - bit;  // opposite bit
+        let child_want = trie_get_child(trie, cur, want);
+        if child_want >= 0 {
+            // Can go opposite direction -> set this bit in result
+            result = result bor (1 << pos);
+            cur = child_want
+        } else {
+            // Must go same direction -> this bit is 0 in XOR
+            let child_same = trie_get_child(trie, cur, bit);
+            cur = child_same
+        };
+        pos = pos - 1
+    };
+    result
+    };
+
+// Find maximum XOR among all pairs in array
+fn max_xor_pair(arr: i64, n: i64) -> i64 = {
+    // Allocate trie with enough nodes (n * max_bits + 1)
+    let trie = trie_new(n * max_bits() + 2);
+    // Insert first element
+    let _i0 = trie_insert(trie, vec_get(arr, 0));
+    let mut best = 0;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let val = vec_get(arr, i);
+        let xor_val = trie_max_xor(trie, val);
+        if xor_val > best { best = xor_val } else { () };
+        let _ins = trie_insert(trie, val);
+        i = i + 1
+    };
+    best
+    };
+
+// Direct XOR of two values (for verification)
+fn xor_val(a: i64, b: i64) -> i64 = a bxor b;
+
+fn main() -> i64 = {
+    // Test 1: Basic bit operations
+    let _p1 = println(get_bit(5, 0));   // 1 (5 = 101)
+    let _p2 = println(get_bit(5, 1));   // 0
+    let _p3 = println(get_bit(5, 2));   // 1
+    let _p4 = println(get_bit(6, 0));   // 0 (6 = 110)
+    let _p5 = println(get_bit(6, 1));   // 1
+    let _p6 = println(get_bit(6, 2));   // 1
+
+    // Test 2: XOR verification
+    let _p7 = println(xor_val(5, 3));    // 6 (101 ^ 011 = 110)
+    let _p8 = println(xor_val(15, 0));   // 15
+    let _p9 = println(xor_val(10, 10));  // 0
+
+    // Test 3: Simple trie insert and max XOR query
+    // Array: [3, 10, 5, 25, 2, 8]
+    // 3  = 0000000011
+    // 10 = 0000001010
+    // 5  = 0000000101
+    // 25 = 0000011001
+    // 2  = 0000000010
+    // 8  = 0000001000
+    // Max XOR pair: 3 ^ 25 = 26, or 2 ^ 25 = 27
+    let arr1 = vec_new();
+    vec_push(arr1, 3); vec_push(arr1, 10); vec_push(arr1, 5);
+    vec_push(arr1, 25); vec_push(arr1, 2); vec_push(arr1, 8);
+
+    let mx1 = max_xor_pair(arr1, 6);
+    let _p10 = println(mx1);  // 27 (2 ^ 25)
+
+    // Test 4: All same values -> max XOR = 0
+    let arr2 = vec_new();
+    vec_push(arr2, 7); vec_push(arr2, 7); vec_push(arr2, 7);
+
+    let mx2 = max_xor_pair(arr2, 3);
+    let _p11 = println(mx2);  // 0
+
+    // Test 5: Two elements
+    let arr3 = vec_new();
+    vec_push(arr3, 1); vec_push(arr3, 1023);  // 0000000001 ^ 1111111111 = 1111111110 = 1022
+    let mx3 = max_xor_pair(arr3, 2);
+    let _p12 = println(mx3);  // 1022
+
+    // Test 6: Powers of 2
+    // [1, 2, 4, 8, 16]
+    // 1^16 = 17, 2^16 = 18, 4^16 = 20, 8^16 = 24
+    // 1^2 = 3, 1^4 = 5, 1^8 = 9, 2^4 = 6, 2^8 = 10, 4^8 = 12
+    // Max XOR: 8 ^ 16 = 24
+    let arr4 = vec_new();
+    vec_push(arr4, 1); vec_push(arr4, 2); vec_push(arr4, 4);
+    vec_push(arr4, 8); vec_push(arr4, 16);
+
+    let mx4 = max_xor_pair(arr4, 5);
+    let _p13 = println(mx4);  // 24 (8 ^ 16)
+
+    // Test 7: Trie with single insert + query
+    let trie7 = trie_new(100);
+    let _i7a = trie_insert(trie7, 12);  // 12 = 0000001100
+    let q7 = trie_max_xor(trie7, 7);    // 7 = 0000000111, XOR = 0000001011 = 11
+    let _p14 = println(q7);  // 11
+
+    // Test 8: Sequential values [0..8]
+    // Max XOR should be 0^7 = 7, or actually 1^6=7, 0^7=7, etc.
+    // Actually: 0 ^ 7 = 7, but also 1 ^ 6 = 7, 2 ^ 5 = 7, 3 ^ 4 = 7
+    // But wait: what about larger? 0=000, 7=111 -> 111=7
+    // Actually we need to check all pairs:
+    // Biggest MSB difference: 0(000) vs 7(111) = 7
+    // Or 4(100) vs 3(011) = 111 = 7
+    let arr5 = vec_new();
+    for i in 0..8 { vec_push(arr5, i) };
+    let mx5 = max_xor_pair(arr5, 8);
+    let _p15 = println(mx5);  // 7
+
+    0
+    };

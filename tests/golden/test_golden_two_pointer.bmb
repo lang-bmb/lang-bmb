@@ -1,0 +1,229 @@
+// Golden Test: Two-pointer technique - Cycle 1402
+// Partition, Dutch national flag, merge sorted arrays
+
+// Helper: create vecs from values
+fn make_vec5(a: i64, b: i64, c: i64, d: i64, e: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    v
+    };
+
+fn make_vec6(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    let _p6 = vec_push(v, f);
+    v
+    };
+
+fn make_vec8(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64, h: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    let _p5 = vec_push(v, e);
+    let _p6 = vec_push(v, f);
+    let _p7 = vec_push(v, g);
+    let _p8 = vec_push(v, h);
+    v
+    };
+
+fn make_vec4(a: i64, b: i64, c: i64, d: i64) -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, a);
+    let _p2 = vec_push(v, b);
+    let _p3 = vec_push(v, c);
+    let _p4 = vec_push(v, d);
+    v
+    };
+
+fn make_zeros(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n {
+        let _p = vec_push(v, 0);
+        0
+    };
+    v
+    };
+
+// Partition array around pivot value: elements < pivot go left
+// Returns count of elements less than pivot
+fn my_partition(arr: i64, pivot: i64) -> i64 = {
+    let n = vec_len(arr);
+    let mut lo = 0;
+    let mut hi = n - 1;
+    loop {
+        if lo >= hi { break } else { () };
+
+// Find first element >= pivot from left
+    loop {
+        if lo >= hi { break } else { () };
+        if vec_get(arr, lo) < pivot { lo = lo + 1 } else { break }
+    };
+
+// Find first element < pivot from right
+    loop {
+        if hi <= lo { break } else { () };
+        if vec_get(arr, hi) >= pivot { hi = hi - 1 } else { break }
+    };
+    if lo < hi {
+        let tmp = vec_get(arr, lo);
+        let _s1 = vec_set(arr, lo, vec_get(arr, hi));
+        let _s2 = vec_set(arr, hi, tmp);
+        lo = lo + 1;
+        hi = hi - 1
+    } else { () }
+    };
+
+// Count elements less than pivot
+    let mut count = 0;
+    for i in 0..n {
+        if vec_get(arr, i) < pivot { count = count + 1 } else { () }
+    };
+    count
+    };
+
+// Merge two sorted arrays into a result array
+// Both arrays must fit within result (pre-allocated)
+fn merge_sorted(a: i64, b: i64, result: i64) -> i64 = {
+    let na = vec_len(a);
+    let nb = vec_len(b);
+    let mut ia = 0;
+    let mut ib = 0;
+    let mut ir = 0;
+    loop {
+        if ia >= na and ib >= nb { break } else { () };
+        if ia >= na {
+            let _s = vec_set(result, ir, vec_get(b, ib));
+            ib = ib + 1
+        } else if ib >= nb {
+        let _s = vec_set(result, ir, vec_get(a, ia));
+        ia = ia + 1
+    } else if vec_get(a, ia) <= vec_get(b, ib) {
+    let _s = vec_set(result, ir, vec_get(a, ia));
+    ia = ia + 1
+    } else {
+    let _s = vec_set(result, ir, vec_get(b, ib));
+    ib = ib + 1
+    };
+    ir = ir + 1
+    };
+    0
+    };
+
+// Two-sum: find if any two elements sum to target in sorted array
+// Returns 1 if found, 0 otherwise
+fn two_sum_sorted(arr: i64, target: i64) -> i64 = {
+    let mut lo = 0;
+    let mut hi = vec_len(arr) - 1;
+    let mut found = 0;
+    loop {
+        if lo >= hi { break } else { () };
+        let s = vec_get(arr, lo) + vec_get(arr, hi);
+        if s == target {
+            found = 1;
+            break
+        } else if s < target {
+        lo = lo + 1
+    } else {
+    hi = hi - 1
+    }
+    };
+    found
+    };
+
+// Remove duplicates from sorted array (in-place)
+// Returns new length
+fn remove_duplicates(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    if n <= 1 { return n } else { () };
+    let mut write = 1;
+    let mut read = 1;
+    loop {
+        if read >= n { break } else { () };
+        if vec_get(arr, read) != vec_get(arr, write - 1) {
+            let _s = vec_set(arr, write, vec_get(arr, read));
+            write = write + 1
+        } else { () };
+    read = read + 1
+    };
+    write
+    };
+
+// Move zeros to end, preserve relative order of non-zero elements
+fn move_zeros(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    let mut write = 0;
+
+// Write non-zeros first
+    for i in 0..n {
+        if vec_get(arr, i) != 0 {
+            let _s = vec_set(arr, write, vec_get(arr, i));
+            write = write + 1
+        } else { () }
+    };
+
+// Fill rest with zeros
+    let mut j = write;
+    loop {
+        if j >= n { break } else { () };
+        let _s = vec_set(arr, j, 0);
+        j = j + 1
+    };
+    0
+    };
+
+fn main() -> i64 = {
+// Test partition
+    let a1 = make_vec8(7, 2, 8, 1, 5, 3, 9, 4);
+    let cnt = my_partition(a1, 5);
+    let _p1 = println(cnt);   // 4 (elements 1,2,3,4 are < 5)
+
+// Test merge sorted
+    let x = make_vec5(1, 3, 5, 7, 9);
+    let y = make_vec4(2, 4, 6, 8);
+    let res = make_zeros(9);
+    let _ms = merge_sorted(x, y, res);
+    let _p2 = println(vec_get(res, 0));  // 1
+    let _p3 = println(vec_get(res, 4));  // 5
+    let _p4 = println(vec_get(res, 8));  // 9
+
+// Test two-sum on sorted array
+    let s1 = make_vec6(1, 2, 4, 7, 11, 15);
+    let _p5 = println(two_sum_sorted(s1, 15));  // 1 (4+11)
+    let _p6 = println(two_sum_sorted(s1, 3));   // 1 (1+2)
+    let _p7 = println(two_sum_sorted(s1, 100)); // 0 (no pair)
+
+// Test remove duplicates
+    let d1 = make_vec8(1, 1, 2, 2, 3, 4, 4, 5);
+    let new_len = remove_duplicates(d1);
+    let _p8 = println(new_len);     // 5 (unique: 1,2,3,4,5)
+    let _p9 = println(vec_get(d1, 0));       // 1
+    let _p10 = println(vec_get(d1, 4));      // 5
+
+// Test move zeros
+    let z1 = make_vec8(0, 1, 0, 3, 0, 5, 2, 0);
+    let _mz = move_zeros(z1);
+    let _p11 = println(vec_get(z1, 0)); // 1
+    let _p12 = println(vec_get(z1, 1)); // 3
+    let _p13 = println(vec_get(z1, 2)); // 5
+    let _p14 = println(vec_get(z1, 3)); // 2
+    let _p15 = println(vec_get(z1, 4)); // 0
+
+    let _f1 = vec_free(a1);
+    let _f2 = vec_free(x);
+    let _f3 = vec_free(y);
+    let _f4 = vec_free(res);
+    let _f5 = vec_free(s1);
+    let _f6 = vec_free(d1);
+    let _f7 = vec_free(z1);
+    0
+    };

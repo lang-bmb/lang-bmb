@@ -1,0 +1,70 @@
+// Golden Test: Selection Sort
+// Simple O(n^2) sort that finds minimum and swaps
+
+fn selection_sort(arr: i64, n: i64) -> () = {
+    let mut i = 0;
+    while i < n - 1 {
+        let mut min_idx = i;
+        let mut j = i + 1;
+        while j < n {
+            let _x = if vec_get(arr, j) < vec_get(arr, min_idx) {
+                set min_idx = j;
+                0
+            } else { 0 };
+            set j = j + 1
+        };
+        let _x = if min_idx != i {
+            let tmp = vec_get(arr, i);
+            vec_set(arr, i, vec_get(arr, min_idx));
+            vec_set(arr, min_idx, tmp);
+            0
+        } else { 0 };
+        set i = i + 1
+    }
+};
+
+fn print_arr(arr: i64, n: i64) -> () = {
+    let mut i = 0;
+    while i < n {
+        let _sp = if i > 0 { print_str(" "); 0 } else { 0 };
+        print(vec_get(arr, i));
+        set i = i + 1
+    };
+    let _nl = print_str("
+")
+};
+
+fn main() -> () = {
+    // Test 1: Random order
+    let a1 = vec_new();
+    let _p = vec_push(a1, 64); let _p = vec_push(a1, 25);
+    let _p = vec_push(a1, 12); let _p = vec_push(a1, 22);
+    let _p = vec_push(a1, 11);
+    selection_sort(a1, 5);
+    print_str("sorted1: "); print_arr(a1, 5);
+
+    // Test 2: Already sorted
+    let a2 = vec_new();
+    let _p = vec_push(a2, 1); let _p = vec_push(a2, 2);
+    let _p = vec_push(a2, 3); let _p = vec_push(a2, 4);
+    let _p = vec_push(a2, 5);
+    selection_sort(a2, 5);
+    print_str("sorted2: "); print_arr(a2, 5);
+
+    // Test 3: Reverse sorted
+    let a3 = vec_new();
+    let _p = vec_push(a3, 5); let _p = vec_push(a3, 4);
+    let _p = vec_push(a3, 3); let _p = vec_push(a3, 2);
+    let _p = vec_push(a3, 1);
+    selection_sort(a3, 5);
+    print_str("sorted3: "); print_arr(a3, 5);
+
+    // Test 4: With duplicates
+    let a4 = vec_new();
+    let _p = vec_push(a4, 3); let _p = vec_push(a4, 1);
+    let _p = vec_push(a4, 4); let _p = vec_push(a4, 1);
+    let _p = vec_push(a4, 5); let _p = vec_push(a4, 9);
+    let _p = vec_push(a4, 2); let _p = vec_push(a4, 6);
+    selection_sort(a4, 8);
+    print_str("sorted4: "); print_arr(a4, 8)
+};

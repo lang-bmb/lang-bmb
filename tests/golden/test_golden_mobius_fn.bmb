@@ -1,0 +1,95 @@
+// Golden Test: Mobius function mu(n) from number theory
+// mu(1) = 1
+// mu(n) = 0 if n has a squared prime factor
+// mu(n) = (-1)^k if n is a product of k distinct primes
+//
+// Examples: mu(1)=1, mu(2)=-1, mu(3)=-1, mu(4)=0, mu(5)=-1, mu(6)=1
+
+// Count how many times prime p divides n
+fn count_factor(n: i64, p: i64) -> i64 = {
+    let mut count = 0;
+    let mut x = n;
+    loop {
+        if x % p != 0 { break } else { () };
+        set count = count + 1;
+        set x = x / p;
+    };
+    count
+};
+
+// Remove all factors of p from n
+fn remove_factor(n: i64, p: i64) -> i64 = {
+    let mut x = n;
+    loop {
+        if x % p != 0 { break } else { () };
+        set x = x / p;
+    };
+    x
+};
+
+// Mobius function: trial division approach
+fn mobius(n: i64) -> i64 = {
+    if n == 1 { 1 }
+    else {
+        let mut remaining = n;
+        let mut num_prime_factors = 0;
+        let mut has_square = 0;
+        let mut p = 2;
+        loop {
+            if p * p > remaining { break } else { () };
+            if has_square != 0 { break } else { () };
+            let _c = if remaining % p == 0 {
+                let cnt = count_factor(remaining, p);
+                let _c2 = if cnt > 1 {
+                    set has_square = 1
+                } else {
+                    set num_prime_factors = num_prime_factors + 1
+                };
+                set remaining = remove_factor(remaining, p)
+            } else { () };
+            set p = p + 1;
+        };
+        // If remaining > 1, it's one more prime factor
+        let _c = if remaining > 1 {
+            set num_prime_factors = num_prime_factors + 1
+        } else { () };
+
+        if has_square != 0 { 0 }
+        else if num_prime_factors % 2 == 0 { 1 }
+        else { 0 - 1 }
+    }
+};
+
+fn main() -> i64 = {
+    // mu(1) = 1 (by definition)
+    let _p = println(mobius(1));    // 1
+
+    // mu(2) = -1 (2 is prime, 1 prime factor)
+    let _p = println(mobius(2));    // -1
+
+    // mu(6) = 1 (6 = 2*3, 2 distinct primes, (-1)^2 = 1)
+    let _p = println(mobius(6));    // 1
+
+    // mu(4) = 0 (4 = 2^2, has squared factor)
+    let _p = println(mobius(4));    // 0
+
+    // mu(30) = -1 (30 = 2*3*5, 3 distinct primes, (-1)^3 = -1)
+    let _p = println(mobius(30));   // -1
+
+    // mu(12) = 0 (12 = 2^2 * 3, has squared factor)
+    let _p = println(mobius(12));   // 0
+
+    // mu(7) = -1 (7 is prime)
+    let _p = println(mobius(7));    // -1
+
+    // mu(210) = 1 (210 = 2*3*5*7, 4 distinct primes, (-1)^4 = 1)
+    let _p = println(mobius(210));  // 1
+
+    // mu(9) = 0 (9 = 3^2, has squared factor)
+    let _p = println(mobius(9));    // 0
+
+    // mu(15) = 1 (15 = 3*5, 2 distinct primes, (-1)^2 = 1)
+    let _p = println(mobius(15));   // 1
+
+    0
+};

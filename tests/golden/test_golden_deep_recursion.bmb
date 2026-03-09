@@ -1,0 +1,85 @@
+// Golden Test: Deeply recursive functions - Cycle 1399
+// Ackermann (bounded), fib with array memo, mutual recursion, tail-recursive accumulator
+
+// Ackermann function - bounded to avoid stack overflow
+fn ackermann(m: i64, n: i64) -> i64 =
+    if m == 0 { n + 1 }
+    else if n == 0 { ackermann(m - 1, 1) }
+    else { ackermann(m - 1, ackermann(m, n - 1)) };
+
+    // Fibonacci with vec-based memoization
+
+fn fib_memo(n: i64, memo: i64) -> i64 = {
+    if n <= 1 { return n } else { () };
+    if vec_get(memo, n) != 0 - 1 { return vec_get(memo, n) } else { () };
+    let result = fib_memo(n - 1, memo) + fib_memo(n - 2, memo);
+    let _s = vec_set(memo, n, result);
+    result
+    };
+
+fn fib_with_memo(n: i64) -> i64 = {
+    let memo = vec_new();
+    for _i in 0..50 { let _p = vec_push(memo, 0 - 1); 0 };
+    let _s0 = vec_set(memo, 0, 0);
+    let _s1 = vec_set(memo, 1, 1);
+    fib_memo(n, memo)
+    };
+
+// Mutual recursion: is_even / is_odd
+fn is_even_r(n: i64) -> i64 =
+    if n == 0 { 1 }
+    else { is_odd_r(n - 1) };
+
+fn is_odd_r(n: i64) -> i64 =
+    if n == 0 { 0 }
+    else { is_even_r(n - 1) };
+
+    // Tail-recursive sum with large accumulator
+
+fn sum_tail(n: i64, acc: i64) -> i64 =
+    if n <= 0 { acc }
+    else { sum_tail(n - 1, acc + n) };
+
+    // Tail-recursive power
+
+fn pow_tail(base: i64, exp: i64, acc: i64) -> i64 =
+    if exp <= 0 { acc }
+    else { pow_tail(base, exp - 1, acc * base) };
+
+    // Nested recursion: compute sum of fib values
+
+fn fib_sum(n: i64) -> i64 =
+    if n <= 0 { 0 }
+    else { fib_with_memo(n) + fib_sum(n - 1) };
+
+fn main() -> i64 = {
+// Ackermann(3, n) for small n
+    let _a1 = println(ackermann(3, 0));   // 5
+    let _a2 = println(ackermann(3, 1));   // 13
+    let _a3 = println(ackermann(3, 2));   // 29
+    let _a4 = println(ackermann(3, 3));   // 61
+    let _a5 = println(ackermann(3, 4));   // 125
+    let _a6 = println(ackermann(3, 5));   // 253
+
+// Fibonacci with memoization
+    let _f1 = println(fib_with_memo(10));  // 55
+    let _f2 = println(fib_with_memo(20));  // 6765
+    let _f3 = println(fib_with_memo(30));  // 832040
+    let _f4 = println(fib_with_memo(40));  // 102334155
+
+// Mutual recursion
+    let _m1 = println(is_even_r(10));  // 1
+    let _m2 = println(is_even_r(7));   // 0
+    let _m3 = println(is_odd_r(9));    // 1
+    let _m4 = println(is_odd_r(4));    // 0
+
+// Tail-recursive accumulator
+    let _t1 = println(sum_tail(100, 0));   // 5050
+    let _t2 = println(sum_tail(1000, 0));  // 500500
+    let _t3 = println(pow_tail(2, 20, 1)); // 1048576
+    let _t4 = println(pow_tail(3, 10, 1)); // 59049
+
+// Fib sum
+    let _s1 = println(fib_sum(10));  // 0+1+1+2+3+5+8+13+21+34+55 = 143
+    0
+    };

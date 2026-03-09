@@ -1,0 +1,109 @@
+// Golden Test: Bellman-Ford Shortest Paths (with negative edge detection)
+// Single-source shortest paths that handles negative edge weights
+
+fn bf_inf() -> i64 = 999999;
+
+// Edge list representation: edges[i*3+0]=from, edges[i*3+1]=to, edges[i*3+2]=weight
+fn bf_add_edge(edges: i64, from: i64, to: i64, w: i64) -> i64 = {
+    vec_push(edges, from);
+    vec_push(edges, to);
+    vec_push(edges, w);
+    0
+};
+
+// Bellman-Ford: returns distance array
+fn bf_solve(edges: i64, num_edges: i64, num_v: i64, src: i64) -> i64 = {
+    let dist = vec_new();
+    for i in 0..num_v {
+        vec_push(dist, if i == src { 0 } else { bf_inf() });
+    };
+
+    // Relax all edges V-1 times
+    for _iter in 0..(num_v - 1) {
+        for e in 0..num_edges {
+            let u = vec_get(edges, e * 3);
+            let v = vec_get(edges, e * 3 + 1);
+            let w = vec_get(edges, e * 3 + 2);
+            let du = vec_get(dist, u);
+            let _x = if du < bf_inf() and du + w < vec_get(dist, v) {
+                vec_set(dist, v, du + w);
+                0
+            } else { 0 };
+        };
+    };
+    dist
+};
+
+// Check for negative cycle: one more relaxation pass
+fn bf_has_neg_cycle(edges: i64, num_edges: i64, dist: i64) -> i64 = {
+    let mut found = 0;
+    for e in 0..num_edges {
+        let u = vec_get(edges, e * 3);
+        let v = vec_get(edges, e * 3 + 1);
+        let w = vec_get(edges, e * 3 + 2);
+        let du = vec_get(dist, u);
+        let _x = if du < bf_inf() and du + w < vec_get(dist, v) {
+            set found = 1;
+            0
+        } else { 0 };
+    };
+    found
+};
+
+fn main() -> i64 = {
+    // Graph with 5 vertices, edges including negative weights
+    let edges = vec_new();
+    // 0→1:6, 0→3:7, 1→2:5, 1→3:8, 1→4:-4, 2→1:-2, 3→2:-3, 3→4:9, 4→0:2, 4→2:7
+    let _e0 = bf_add_edge(edges, 0, 1, 6);
+    let _e1 = bf_add_edge(edges, 0, 3, 7);
+    let _e2 = bf_add_edge(edges, 1, 2, 5);
+    let _e3 = bf_add_edge(edges, 1, 3, 8);
+    let _e4 = bf_add_edge(edges, 1, 4, 0 - 4);
+    let _e5 = bf_add_edge(edges, 2, 1, 0 - 2);
+    let _e6 = bf_add_edge(edges, 3, 2, 0 - 3);
+    let _e7 = bf_add_edge(edges, 3, 4, 9);
+    let _e8 = bf_add_edge(edges, 4, 0, 2);
+    let _e9 = bf_add_edge(edges, 4, 2, 7);
+
+    let dist = bf_solve(edges, 10, 5, 0);
+
+    // Test 1: Distances from source 0
+    println(vec_get(dist, 0));  // 0
+    println(vec_get(dist, 1));  // 2 (0→3→2→1 = 7-3-2=2)
+    println(vec_get(dist, 2));  // 4 (0→3→2 = 7-3=4)
+    println(vec_get(dist, 3));  // 7 (0→3)
+    println(vec_get(dist, 4));  // -2 (0→3→2→1→4 = 7-3-2-4=-2)
+
+    // Test 2: No negative cycle in this graph
+    println(bf_has_neg_cycle(edges, 10, dist));  // 0
+
+    // Test 3: Simple graph with no negative edges
+    let edges2 = vec_new();
+    let _f0 = bf_add_edge(edges2, 0, 1, 4);
+    let _f1 = bf_add_edge(edges2, 0, 2, 1);
+    let _f2 = bf_add_edge(edges2, 2, 1, 2);
+    let _f3 = bf_add_edge(edges2, 1, 3, 1);
+    let _f4 = bf_add_edge(edges2, 2, 3, 5);
+    let dist2 = bf_solve(edges2, 5, 4, 0);
+    println(vec_get(dist2, 0));  // 0
+    println(vec_get(dist2, 1));  // 3 (0→2→1)
+    println(vec_get(dist2, 2));  // 1 (0→2)
+    println(vec_get(dist2, 3));  // 4 (0→2→1→3)
+
+    // Test 4: Unreachable vertex
+    let edges3 = vec_new();
+    let _g0 = bf_add_edge(edges3, 0, 1, 5);
+    // vertex 2 has no incoming edges
+    let dist3 = bf_solve(edges3, 1, 3, 0);
+    println(vec_get(dist3, 0));  // 0
+    println(vec_get(dist3, 1));  // 5
+    println(if vec_get(dist3, 2) >= bf_inf() { 1 } else { 0 });  // 1 (unreachable)
+
+    vec_free(edges);
+    vec_free(dist);
+    vec_free(edges2);
+    vec_free(dist2);
+    vec_free(edges3);
+    vec_free(dist3);
+    0
+};

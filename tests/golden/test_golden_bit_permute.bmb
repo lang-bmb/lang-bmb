@@ -1,0 +1,115 @@
+// Golden Test: Bit permutation and rotation operations
+
+fn get_bit(n: i64, pos: i64) -> i64 = {
+    let mut shifted = n;
+    let mut i = 0;
+    loop {
+        if i >= pos { break } else { () };
+        shifted = shifted / 2;
+        i = i + 1
+    };
+    shifted - (shifted / 2) * 2
+    };
+
+fn set_bit(n: i64, pos: i64) -> i64 = {
+    let mut mask = 1;
+    let mut i = 0;
+    loop {
+        if i >= pos { break } else { () };
+        mask = mask * 2;
+        i = i + 1
+    };
+    n bor mask
+    };
+
+fn clear_bit(n: i64, pos: i64) -> i64 = {
+    let mut mask = 1;
+    let mut i = 0;
+    loop {
+        if i >= pos { break } else { () };
+        mask = mask * 2;
+        i = i + 1
+    };
+    n band (0 - 1 bxor mask)
+    };
+
+fn rotate_left(n: i64, k: i64, w: i64) -> i64 = {
+    let mut mask = 0;
+    let mut i = 0;
+    loop {
+        if i >= w { break } else { () };
+        mask = mask * 2 + 1;
+        i = i + 1
+    };
+    let val = n band mask;
+    let sl = (val << k) band mask;
+    let sr = val >> (w - k);
+    (sl bor sr) band mask
+    };
+
+fn rotate_right(n: i64, k: i64, w: i64) -> i64 = rotate_left(n, w - k, w);
+
+fn reverse_bits(n: i64, w: i64) -> i64 = {
+    let mut result = 0;
+    let mut i = 0;
+    loop {
+        if i >= w { break } else { () };
+        let _s = if get_bit(n, i) == 1 {
+            set result = set_bit(result, w - 1 - i); 0
+        } else { 0 };
+        i = i + 1
+    };
+    result
+    };
+
+fn swap_bits(n: i64, p1: i64, p2: i64) -> i64 = {
+    let b1 = get_bit(n, p1);
+    let b2 = get_bit(n, p2);
+    let mut r = n;
+    let _s1 = if b2 == 1 { set r = set_bit(r, p1) } else { set r = clear_bit(r, p1) };
+    let _s2 = if b1 == 1 { set r = set_bit(r, p2) } else { set r = clear_bit(r, p2) };
+    r
+    };
+
+fn clz_w(n: i64, w: i64) -> i64 = {
+    let mut count = 0;
+    let mut i = w - 1;
+    loop {
+        if i < 0 { break } else { () };
+        if get_bit(n, i) == 1 { break } else { () };
+        count = count + 1;
+        i = i - 1
+    };
+    count
+    };
+
+fn morton_encode(x: i64, y: i64) -> i64 = {
+    let mut result = 0;
+    let mut i = 0;
+    loop {
+        if i >= 4 { break } else { () };
+        let _sx = if get_bit(x, i) == 1 { set result = set_bit(result, i * 2) } else { () };
+        let _sy = if get_bit(y, i) == 1 { set result = set_bit(result, i * 2 + 1) } else { () };
+        i = i + 1
+    };
+    result
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(get_bit(10, 0));          // 0
+    let _p2 = println(get_bit(10, 1));          // 1
+    let _p3 = println(get_bit(10, 3));          // 1
+    let _p4 = println(set_bit(10, 0));          // 11
+    let _p5 = println(clear_bit(10, 1));        // 8
+    let _p6 = println(rotate_left(11, 1, 4));   // 7
+    let _p7 = println(rotate_right(11, 1, 4));  // 13
+    let _p8 = println(reverse_bits(10, 4));     // 5
+    let _p9 = println(reverse_bits(176, 8));    // 13
+    let _p10 = println(swap_bits(10, 0, 1));    // 9
+    let _p11 = println(clz_w(1, 8));            // 7
+    let _p12 = println(clz_w(128, 8));          // 0
+    let _p13 = println(clz_w(0, 8));            // 8
+    let _p14 = println(morton_encode(5, 3));     // 27
+    let _p15 = println(morton_encode(15, 0));    // 85
+    0
+    };

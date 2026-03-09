@@ -1,0 +1,132 @@
+// Golden Test: Kadane's algorithm
+// Maximum subarray sum, max circular subarray, max subarray length
+
+// Kadane's algorithm: find maximum contiguous subarray sum
+fn kadane(v: i64, n: i64) -> i64 = {
+    let mut max_ending = vec_get(v, 0);
+    let mut max_so_far = vec_get(v, 0);
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let val = vec_get(v, i);
+        max_ending = if val > max_ending + val { val } else { max_ending + val };
+        if max_ending > max_so_far {
+            max_so_far = max_ending
+        } else { () };
+        i = i + 1
+    };
+    max_so_far
+};
+
+// Find the start and end indices of max subarray, return encoded as start * 1000 + end
+fn kadane_indices(v: i64, n: i64) -> i64 = {
+    let mut max_ending = vec_get(v, 0);
+    let mut max_so_far = vec_get(v, 0);
+    let mut start = 0;
+    let mut end = 0;
+    let mut temp_start = 0;
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let val = vec_get(v, i);
+        if val > max_ending + val {
+            max_ending = val;
+            temp_start = i
+        } else {
+            max_ending = max_ending + val
+        };
+        if max_ending > max_so_far {
+            max_so_far = max_ending;
+            start = temp_start;
+            end = i
+        } else { () };
+        i = i + 1
+    };
+    start * 1000 + end
+};
+
+// Total array sum
+fn array_sum(v: i64, n: i64) -> i64 = {
+    let mut s = 0;
+    for i in 0..n {
+        s = s + vec_get(v, i)
+    };
+    s
+};
+
+// Min subarray sum (Kadane inverted)
+fn min_subarray_sum(v: i64, n: i64) -> i64 = {
+    let mut min_ending = vec_get(v, 0);
+    let mut min_so_far = vec_get(v, 0);
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let val = vec_get(v, i);
+        min_ending = if val < min_ending + val { val } else { min_ending + val };
+        if min_ending < min_so_far {
+            min_so_far = min_ending
+        } else { () };
+        i = i + 1
+    };
+    min_so_far
+};
+
+// Max circular subarray sum = max(kadane, total - min_subarray)
+fn max_circular(v: i64, n: i64) -> i64 = {
+    let max_normal = kadane(v, n);
+    let total = array_sum(v, n);
+    let min_sub = min_subarray_sum(v, n);
+    let max_wrap = total - min_sub;
+    // If all negative, max_wrap = 0, use normal kadane
+    if max_wrap > max_normal && max_wrap != 0 { max_wrap } else { max_normal }
+};
+
+fn main() -> i64 = {
+    // Test 1: Classic Kadane [-2, 1, -3, 4, -1, 2, 1, -5, 4]
+    // Max subarray: [4, -1, 2, 1] = 6
+    let v1 = vec_new();
+    vec_push(v1, 0 - 2); vec_push(v1, 1); vec_push(v1, 0 - 3); vec_push(v1, 4);
+    vec_push(v1, 0 - 1); vec_push(v1, 2); vec_push(v1, 1); vec_push(v1, 0 - 5);
+    vec_push(v1, 4);
+    let _p1 = println(kadane(v1, 9));  // 6
+
+    // Test 2: All positive [1, 2, 3, 4, 5]
+    let v2 = vec_new();
+    vec_push(v2, 1); vec_push(v2, 2); vec_push(v2, 3); vec_push(v2, 4); vec_push(v2, 5);
+    let _p2 = println(kadane(v2, 5));  // 15
+
+    // Test 3: All negative [-3, -5, -1, -8]
+    let v3 = vec_new();
+    vec_push(v3, 0 - 3); vec_push(v3, 0 - 5); vec_push(v3, 0 - 1); vec_push(v3, 0 - 8);
+    let _p3 = println(kadane(v3, 4));  // -1
+
+    // Test 4: Single element [42]
+    let v4 = vec_new();
+    vec_push(v4, 42);
+    let _p4 = println(kadane(v4, 1));  // 42
+
+    // Test 5: Kadane with indices on v1
+    let idx = kadane_indices(v1, 9);
+    let _p5 = println(idx / 1000);  // start = 3
+    let _p6 = println(idx - (idx / 1000) * 1000);  // end = 6
+
+    // Test 6: Circular max subarray [5, -3, 5]
+    // Normal kadane: 5 or 5 = 7 (5 + -3 + 5), circular wrap: same = 7
+    let v5 = vec_new();
+    vec_push(v5, 5); vec_push(v5, 0 - 3); vec_push(v5, 5);
+    let _p7 = println(max_circular(v5, 3));  // 7
+
+    // Test 7: Circular [8, -1, 3, 4]
+    // Normal kadane: [-1, 3, 4] or [8, -1, 3, 4] = 14, total=14
+    let v6 = vec_new();
+    vec_push(v6, 8); vec_push(v6, 0 - 1); vec_push(v6, 3); vec_push(v6, 4);
+    let _p8 = println(max_circular(v6, 4));  // 14
+
+    // Test 8: Circular [3, -1, 2, -1]
+    // Normal: [3, -1, 2] = 4, wrap: [2, -1, 3] = total - min(-1) = 3 - (-1) = 3+1 = 4
+    let v7 = vec_new();
+    vec_push(v7, 3); vec_push(v7, 0 - 1); vec_push(v7, 2); vec_push(v7, 0 - 1);
+    let _p9 = println(max_circular(v7, 4));  // 4
+
+    0
+};

@@ -1,0 +1,121 @@
+// Golden Test: Jump game variants
+// Given array of max jump lengths, determine reachability and min jumps
+
+// Jump Game I: Can you reach the last index?
+// Each element is max jump from that position. Returns 1 if reachable, 0 if not.
+fn can_jump(v: i64, n: i64) -> i64 = {
+    let mut max_reach = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        if i > max_reach {
+            // Can't reach position i
+            max_reach = 0 - 1;
+            break
+        } else { () };
+        let reach = i + vec_get(v, i);
+        if reach > max_reach {
+            max_reach = reach
+        } else { () };
+        i = i + 1
+    };
+    if max_reach >= n - 1 { 1 } else { 0 }
+};
+
+// Jump Game II: Minimum number of jumps to reach end (BFS / greedy)
+// Returns min jumps, or -1 if impossible
+fn min_jumps(v: i64, n: i64) -> i64 = {
+    if n <= 1 { 0 }
+    else {
+        let mut jumps = 0;
+        let mut curr_end = 0;
+        let mut farthest = 0;
+        let mut i = 0;
+        let mut possible = 1;
+        loop {
+            if i >= n - 1 { break } else { () };
+            let reach = i + vec_get(v, i);
+            if reach > farthest {
+                farthest = reach
+            } else { () };
+            if i == curr_end {
+                jumps = jumps + 1;
+                curr_end = farthest;
+                if curr_end >= n - 1 {
+                    break
+                } else { () };
+                if farthest <= i {
+                    possible = 0;
+                    break
+                } else { () }
+            } else { () };
+            i = i + 1
+        };
+        if possible == 1 { jumps } else { 0 - 1 }
+    }
+};
+
+// Maximum index reachable from start
+fn max_reachable(v: i64, n: i64) -> i64 = {
+    let mut max_reach = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        if i > max_reach { break } else { () };
+        let reach = i + vec_get(v, i);
+        if reach > max_reach {
+            max_reach = reach
+        } else { () };
+        i = i + 1
+    };
+    if max_reach >= n - 1 { n - 1 } else { max_reach }
+};
+
+fn main() -> i64 = {
+    // Test 1: [2, 3, 1, 1, 4] -> can reach end
+    let v1 = vec_new();
+    vec_push(v1, 2); vec_push(v1, 3); vec_push(v1, 1); vec_push(v1, 1); vec_push(v1, 4);
+    let _p1 = println(can_jump(v1, 5));    // 1
+    let _p2 = println(min_jumps(v1, 5));   // 2
+
+    // Test 2: [3, 2, 1, 0, 4] -> stuck at index 3
+    let v2 = vec_new();
+    vec_push(v2, 3); vec_push(v2, 2); vec_push(v2, 1); vec_push(v2, 0); vec_push(v2, 4);
+    let _p3 = println(can_jump(v2, 5));    // 0
+    let _p4 = println(min_jumps(v2, 5));   // -1
+
+    // Test 3: [1, 1, 1, 1, 1] -> linear hops
+    let v3 = vec_new();
+    vec_push(v3, 1); vec_push(v3, 1); vec_push(v3, 1); vec_push(v3, 1); vec_push(v3, 1);
+    let _p5 = println(can_jump(v3, 5));    // 1
+    let _p6 = println(min_jumps(v3, 5));   // 4
+
+    // Test 4: [5, 0, 0, 0, 0] -> single big jump
+    let v4 = vec_new();
+    vec_push(v4, 5); vec_push(v4, 0); vec_push(v4, 0); vec_push(v4, 0); vec_push(v4, 0);
+    let _p7 = println(can_jump(v4, 5));    // 1
+    let _p8 = println(min_jumps(v4, 5));   // 1
+
+    // Test 5: Single element [0]
+    let v5 = vec_new();
+    vec_push(v5, 0);
+    let _p9 = println(can_jump(v5, 1));    // 1 (already at end)
+    let _p10 = println(min_jumps(v5, 1));  // 0
+
+    // Test 6: [2, 0, 0] -> exactly reaches end
+    let v6 = vec_new();
+    vec_push(v6, 2); vec_push(v6, 0); vec_push(v6, 0);
+    let _p11 = println(can_jump(v6, 3));   // 1
+    let _p12 = println(min_jumps(v6, 3));  // 1
+
+    // Test 7: Max reachable index
+    let _p13 = println(max_reachable(v1, 5));  // 4 (reaches end)
+    let _p14 = println(max_reachable(v2, 5));  // 3 (stuck at 3)
+
+    // Test 8: [1, 2, 3] -> min jumps
+    let v7 = vec_new();
+    vec_push(v7, 1); vec_push(v7, 2); vec_push(v7, 3);
+    let _p15 = println(min_jumps(v7, 3));  // 2
+
+    0
+};

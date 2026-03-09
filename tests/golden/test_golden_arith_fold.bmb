@@ -1,0 +1,48 @@
+// Golden Test: Arithmetic constant folding and strength reduction
+// Tests MIR constant folding, copy propagation, and identity elimination
+
+fn identity_ops(x: i64) -> i64 = {
+    let a = x + 0;
+    let b = a * 1;
+    let c = b - 0;
+    c
+    };
+
+fn zero_ops(x: i64) -> i64 = {
+    let a = x * 0;
+    let b = x - x;
+    a + b
+    };
+
+fn const_fold_chain() -> i64 = {
+    let a = 3 + 4;
+    let b = a * 2;
+    let c = b - 1;
+    c
+    };
+
+fn mixed_const_var(x: i64) -> i64 = {
+    let a = x + 5;
+    let b = 10 - 3;
+    let c = a * b;
+    c
+    };
+
+fn power_of_two_mul(x: i64) -> i64 = {
+    let a = x * 2;
+    let b = x * 4;
+    let c = x * 8;
+    a + b + c
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(identity_ops(42));    // 42
+    let _p2 = println(identity_ops(0 - 7)); // -7
+    let _p3 = println(zero_ops(100));       // 0
+    let _p4 = println(const_fold_chain());  // 13
+    let _p5 = println(mixed_const_var(3));  // 8*7=56
+    let _p6 = println(mixed_const_var(10)); // 15*7=105
+    let _p7 = println(power_of_two_mul(3)); // 6+12+24=42
+    let _p8 = println(power_of_two_mul(5)); // 10+20+40=70
+    0
+    };

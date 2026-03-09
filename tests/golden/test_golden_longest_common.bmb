@@ -1,0 +1,119 @@
+// Golden Test: Longest common prefix/suffix of integer arrays
+// Tests array comparison patterns and boundary handling
+
+// Longest common prefix length between two arrays
+fn lcp_len(a: i64, b: i64) -> i64 = {
+    let na = vec_len(a);
+    let nb = vec_len(b);
+    let limit = if na < nb { na } else { nb };
+    let mut i = 0;
+    loop {
+        if i >= limit { break } else { () };
+        if vec_get(a, i) != vec_get(b, i) { break } else { () };
+        i = i + 1
+    };
+    i
+    };
+
+// Longest common suffix length between two arrays
+fn lcs_len(a: i64, b: i64) -> i64 = {
+    let na = vec_len(a);
+    let nb = vec_len(b);
+    let limit = if na < nb { na } else { nb };
+    let mut count = 0;
+    loop {
+        if count >= limit { break } else { () };
+        if vec_get(a, na - 1 - count) != vec_get(b, nb - 1 - count) { break } else { () };
+        count = count + 1
+    };
+    count
+    };
+
+// Check if b is a prefix of a
+fn is_prefix(a: i64, b: i64) -> i64 = {
+    let nb = vec_len(b);
+    if nb > vec_len(a) { return 0 } else { () };
+    if lcp_len(a, b) == nb { 1 } else { 0 }
+    };
+
+// Check if b is a suffix of a
+fn is_suffix(a: i64, b: i64) -> i64 = {
+    let nb = vec_len(b);
+    if nb > vec_len(a) { return 0 } else { () };
+    if lcs_len(a, b) == nb { 1 } else { 0 }
+    };
+
+// Longest repeated prefix: longest prefix appearing at 2+ positions
+fn longest_repeated_prefix(arr: i64) -> i64 = {
+    let n = vec_len(arr);
+    let mut best = 0;
+    let mut start = 1;
+    loop {
+        if start >= n { break } else { () };
+        let mut matched = 0;
+        loop {
+            if matched + start >= n { break } else { () };
+            if vec_get(arr, matched) != vec_get(arr, matched + start) { break } else { () };
+            matched = matched + 1
+        };
+        let _u = if matched > best { best = matched } else { () };
+        start = start + 1
+    };
+    best
+    };
+
+fn main() -> i64 = {
+    // Arrays for testing
+    let a1 = vec_new();  // [1,2,3,4,5]
+    vec_push(a1, 1); vec_push(a1, 2); vec_push(a1, 3);
+    vec_push(a1, 4); vec_push(a1, 5);
+    let a2 = vec_new();  // [1,2,3,7,8]
+    vec_push(a2, 1); vec_push(a2, 2); vec_push(a2, 3);
+    vec_push(a2, 7); vec_push(a2, 8);
+
+    // Test 1: LCP [1,2,3,4,5] vs [1,2,3,7,8] -> 3
+    let _p1 = println(lcp_len(a1, a2));  // 3
+    // Test 2: LCS same pair -> 0
+    let _p2 = println(lcs_len(a1, a2));  // 0
+
+    // Test 3: LCS [1,2,3,4,5] vs [7,8,3,4,5] -> 3
+    let a3 = vec_new();
+    vec_push(a3, 7); vec_push(a3, 8); vec_push(a3, 3);
+    vec_push(a3, 4); vec_push(a3, 5);
+    let _p3 = println(lcs_len(a1, a3));  // 3
+
+    // Test 4: No common prefix -> 0
+    let a4 = vec_new();
+    vec_push(a4, 9); vec_push(a4, 8); vec_push(a4, 7);
+    let _p4 = println(lcp_len(a1, a4));  // 0
+
+    // Test 5: Identical arrays -> full length
+    let _p5 = println(lcp_len(a1, a1));  // 5
+    let _p6 = println(lcs_len(a1, a1));  // 5
+
+    // Test 6: Different lengths [1,2,3,4,5] vs [1,2] -> 2
+    let a5 = vec_new();
+    vec_push(a5, 1); vec_push(a5, 2);
+    let _p7 = println(lcp_len(a1, a5));  // 2
+
+    // Test 7: is_prefix / is_suffix
+    let _p8 = println(is_prefix(a1, a5));   // 1
+    let _p9 = println(is_prefix(a5, a1));   // 0
+    let suf = vec_new();
+    vec_push(suf, 4); vec_push(suf, 5);
+    let _p10 = println(is_suffix(a1, suf)); // 1
+    let _p11 = println(is_suffix(a1, a5));  // 0
+
+    // Test 8: Longest repeated prefix [1,2,3,1,2,5] -> 2
+    let rp = vec_new();
+    vec_push(rp, 1); vec_push(rp, 2); vec_push(rp, 3);
+    vec_push(rp, 1); vec_push(rp, 2); vec_push(rp, 5);
+    let _p12 = println(longest_repeated_prefix(rp));  // 2
+
+    // Test 9: Empty vs non-empty -> 0
+    let _p13 = println(lcp_len(a1, vec_new()));  // 0
+
+    vec_free(a1); vec_free(a2); vec_free(a3); vec_free(a4);
+    vec_free(a5); vec_free(suf); vec_free(rp);
+    0
+    };

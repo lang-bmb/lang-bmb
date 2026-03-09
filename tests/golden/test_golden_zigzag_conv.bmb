@@ -1,0 +1,48 @@
+// Golden Test: Zigzag Encoding/Decoding of Integers
+// Zigzag encoding maps signed integers to unsigned:
+//   0 -> 0, -1 -> 1, 1 -> 2, -2 -> 3, 2 -> 4, ...
+// Formula: encode(n) = (n << 1) ^ (n >> 63) [arithmetic shift]
+// Decode: (n >>> 1) ^ -(n & 1)
+
+// Zigzag encode: maps signed to non-negative
+fn zigzag_encode(n: i64) -> i64 = {
+    // (n << 1) ^ (n >> 63)
+    // n >> 63 is arithmetic shift: 0 for non-negative, -1 for negative
+    let shifted = n * 2;
+    let sign = if n < 0 { 0 - 1 } else { 0 };
+    shifted bxor sign
+};
+
+// Zigzag decode: maps non-negative back to signed
+fn zigzag_decode(n: i64) -> i64 = {
+    // (n >>> 1) ^ -(n & 1)
+    let half = n / 2;  // logical right shift by 1 for non-negative
+    let sign_bit = n band 1;
+    if sign_bit == 1 { 0 - half - 1 } else { half }
+};
+
+fn main() -> i64 = {
+    // Basic encoding tests
+    let _p1 = println(zigzag_encode(0));     // 0
+    let _p2 = println(zigzag_encode(0 - 1)); // 1
+    let _p3 = println(zigzag_encode(1));     // 2
+    let _p4 = println(zigzag_encode(0 - 2)); // 3
+    let _p5 = println(zigzag_encode(2));     // 4
+
+    // Larger values
+    let _p6 = println(zigzag_encode(100));     // 200
+    let _p7 = println(zigzag_encode(0 - 100)); // 199
+
+    // Round-trip decode tests
+    let _p8 = println(zigzag_decode(0));   // 0
+    let _p9 = println(zigzag_decode(1));   // -1
+    let _p10 = println(zigzag_decode(2));  // 1
+    let _p11 = println(zigzag_decode(3));  // -2
+    let _p12 = println(zigzag_decode(4));  // 2
+
+    // Round-trip: encode then decode
+    let _p13 = println(zigzag_decode(zigzag_encode(42)));      // 42
+    let _p14 = println(zigzag_decode(zigzag_encode(0 - 42)));  // -42
+
+    0
+};

@@ -1,0 +1,97 @@
+// Golden Test: Dutch National Flag problem (3-way partition)
+// Partitions array into three sections: values < pivot, == pivot, > pivot
+// Uses Dijkstra's algorithm with three pointers: lo, mid, hi
+// O(n) time, O(1) space (in-place)
+
+fn dutch_flag_partition(arr: i64, pivot: i64) -> () = {
+    let n = vec_len(arr);
+    let mut lo = 0;
+    let mut mid = 0;
+    let mut hi = n - 1;
+
+    while mid <= hi {
+        let val = vec_get(arr, mid);
+        let _x = if val < pivot {
+            // Swap arr[lo] and arr[mid]
+            let tmp = vec_get(arr, lo);
+            vec_set(arr, lo, vec_get(arr, mid));
+            vec_set(arr, mid, tmp);
+            set lo = lo + 1;
+            set mid = mid + 1;
+            0
+        } else if val == pivot {
+            set mid = mid + 1;
+            0
+        } else {
+            // val > pivot: swap arr[mid] and arr[hi]
+            let tmp = vec_get(arr, mid);
+            vec_set(arr, mid, vec_get(arr, hi));
+            vec_set(arr, hi, tmp);
+            set hi = hi - 1;
+            0
+        };
+        0
+    }
+};
+
+fn print_arr(arr: i64) -> () = {
+    let mut i = 0;
+    while i < vec_len(arr) {
+        let _sp = if i > 0 { print_str(" "); 0 } else { 0 };
+        print(vec_get(arr, i));
+        set i = i + 1
+    };
+    let _nl = print_str("\n")
+};
+
+// Count elements in each partition
+fn count_partitions(arr: i64, pivot: i64) -> () = {
+    let mut lt = 0;
+    let mut eq = 0;
+    let mut gt = 0;
+    let mut i = 0;
+    while i < vec_len(arr) {
+        let v = vec_get(arr, i);
+        let _x = if v < pivot { set lt = lt + 1; 0 }
+                 else if v == pivot { set eq = eq + 1; 0 }
+                 else { set gt = gt + 1; 0 };
+        set i = i + 1
+    };
+    print_str("lt="); print(lt);
+    print_str(" eq="); print(eq);
+    print_str(" gt="); let _r = println(gt)
+};
+
+fn main() -> () = {
+    // Test 1: Classic Dutch flag with values 0, 1, 2
+    let arr1 = vec_new();
+    let _p = vec_push(arr1, 2); let _p = vec_push(arr1, 0); let _p = vec_push(arr1, 1);
+    let _p = vec_push(arr1, 2); let _p = vec_push(arr1, 0); let _p = vec_push(arr1, 1);
+    let _p = vec_push(arr1, 0); let _p = vec_push(arr1, 2); let _p = vec_push(arr1, 1);
+    dutch_flag_partition(arr1, 1);
+    print_arr(arr1);
+    count_partitions(arr1, 1);
+
+    // Test 2: All same
+    let arr2 = vec_new();
+    let _p = vec_push(arr2, 5); let _p = vec_push(arr2, 5); let _p = vec_push(arr2, 5);
+    dutch_flag_partition(arr2, 5);
+    print_arr(arr2);
+    count_partitions(arr2, 5);
+
+    // Test 3: Reverse sorted with pivot=3
+    let arr3 = vec_new();
+    let _p = vec_push(arr3, 5); let _p = vec_push(arr3, 4); let _p = vec_push(arr3, 3);
+    let _p = vec_push(arr3, 2); let _p = vec_push(arr3, 1);
+    dutch_flag_partition(arr3, 3);
+    print_arr(arr3);
+    count_partitions(arr3, 3);
+
+    // Test 4: No elements equal to pivot
+    let arr4 = vec_new();
+    let _p = vec_push(arr4, 8); let _p = vec_push(arr4, 1); let _p = vec_push(arr4, 6);
+    let _p = vec_push(arr4, 3); let _p = vec_push(arr4, 9);
+    dutch_flag_partition(arr4, 5);
+    print_arr(arr4);
+    count_partitions(arr4, 5)
+};

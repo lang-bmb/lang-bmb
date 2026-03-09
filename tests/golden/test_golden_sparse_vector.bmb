@@ -1,0 +1,119 @@
+// Golden Test: Sparse vector operations using parallel index/value arrays
+// A sparse vector is represented by two vecs: indices and values
+// Only non-zero entries are stored
+
+// Create a sparse vector from index/value pairs
+fn sparse_new() -> i64 = {
+    // Returns a "handle" vec containing [indices_vec, values_vec]
+    let indices = vec_new();
+    let vals = vec_new();
+    let handle = vec_new();
+    let _p = vec_push(handle, indices);
+    let _p = vec_push(handle, vals);
+    handle
+    };
+
+fn sparse_indices(sv: i64) -> i64 = vec_get(sv, 0);
+fn sparse_values(sv: i64) -> i64 = vec_get(sv, 1);
+
+fn sparse_push(sv: i64, idx: i64, val: i64) -> () = {
+    let _p = vec_push(sparse_indices(sv), idx);
+    let _p = vec_push(sparse_values(sv), val);
+    ()
+    };
+
+fn sparse_len(sv: i64) -> i64 = vec_len(sparse_indices(sv));
+
+// Get value at logical index (returns 0 if not present)
+fn sparse_get(sv: i64, idx: i64, pos: i64) -> i64 =
+    if pos >= sparse_len(sv) { 0 }
+    else if vec_get(sparse_indices(sv), pos) == idx { vec_get(sparse_values(sv), pos) }
+    else { sparse_get(sv, idx, pos + 1) };
+
+// Dot product of two sparse vectors
+// For each entry in a, find matching index in b and multiply
+fn sparse_dot_inner(a: i64, b: i64, pos: i64, acc: i64) -> i64 =
+    if pos >= sparse_len(a) { acc }
+    else {
+        let idx = vec_get(sparse_indices(a), pos);
+        let a_val = vec_get(sparse_values(a), pos);
+        let b_val = sparse_get(b, idx, 0);
+        sparse_dot_inner(a, b, pos + 1, acc + a_val * b_val)
+    };
+
+fn sparse_dot(a: i64, b: i64) -> i64 =
+    sparse_dot_inner(a, b, 0, 0);
+
+// Sum of all values in sparse vector
+fn sparse_sum(sv: i64, pos: i64, acc: i64) -> i64 =
+    if pos >= sparse_len(sv) { acc }
+    else { sparse_sum(sv, pos + 1, acc + vec_get(sparse_values(sv), pos)) };
+
+// L1 norm (sum of absolute values)
+fn i64_abs(x: i64) -> i64 = if x < 0 { 0 - x } else { x };
+
+fn sparse_l1(sv: i64, pos: i64, acc: i64) -> i64 =
+    if pos >= sparse_len(sv) { acc }
+    else { sparse_l1(sv, pos + 1, acc + i64_abs(vec_get(sparse_values(sv), pos))) };
+
+// Squared L2 norm (sum of squares)
+fn sparse_l2sq(sv: i64, pos: i64, acc: i64) -> i64 =
+    if pos >= sparse_len(sv) { acc }
+    else {
+        let v = vec_get(sparse_values(sv), pos);
+        sparse_l2sq(sv, pos + 1, acc + v * v)
+    };
+
+fn main() -> i64 = {
+    // Sparse vector a: dimension 10, non-zero at indices 0,3,7
+    // a = [5, 0, 0, 3, 0, 0, 0, -2, 0, 0]
+    let a = sparse_new();
+    let _s = sparse_push(a, 0, 5);
+    let _s = sparse_push(a, 3, 3);
+    let _s = sparse_push(a, 7, 0 - 2);
+
+    // Sparse vector b: dimension 10, non-zero at indices 0,3,5
+    // b = [2, 0, 0, 4, 0, 6, 0, 0, 0, 0]
+    let b = sparse_new();
+    let _s = sparse_push(b, 0, 2);
+    let _s = sparse_push(b, 3, 4);
+    let _s = sparse_push(b, 5, 6);
+
+    // Test 1: Number of non-zero entries in a = 3
+    let _p1 = println(sparse_len(a));
+
+    // Test 2: Get value at index 3 of a = 3
+    let _p2 = println(sparse_get(a, 3, 0));
+
+    // Test 3: Get value at index 5 of a = 0 (not present)
+    let _p3 = println(sparse_get(a, 5, 0));
+
+    // Test 4: Dot product a . b = 5*2 + 3*4 + (-2)*0 = 10 + 12 + 0 = 22
+    let _p4 = println(sparse_dot(a, b));
+
+    // Test 5: Sum of a = 5 + 3 + (-2) = 6
+    let _p5 = println(sparse_sum(a, 0, 0));
+
+    // Test 6: Sum of b = 2 + 4 + 6 = 12
+    let _p6 = println(sparse_sum(b, 0, 0));
+
+    // Test 7: L1 norm of a = |5| + |3| + |-2| = 10
+    let _p7 = println(sparse_l1(a, 0, 0));
+
+    // Test 8: Squared L2 norm of a = 25 + 9 + 4 = 38
+    let _p8 = println(sparse_l2sq(a, 0, 0));
+
+    // Test 9: Dot product b . a (commutative) = same as a . b = 22
+    let _p9 = println(sparse_dot(b, a));
+
+    // Test 10: Get value at index 7 of a = -2
+    let _p10 = println(sparse_get(a, 7, 0));
+
+    let _f1 = vec_free(sparse_indices(a));
+    let _f2 = vec_free(sparse_values(a));
+    let _f3 = vec_free(a);
+    let _f4 = vec_free(sparse_indices(b));
+    let _f5 = vec_free(sparse_values(b));
+    let _f6 = vec_free(b);
+    0
+    };

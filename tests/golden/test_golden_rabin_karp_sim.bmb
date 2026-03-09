@@ -1,0 +1,179 @@
+// Golden test: Rabin-Karp rolling hash string matching simulation
+// Uses integer arrays to simulate text and pattern matching
+// Rolling hash: hash = (hash - old * base^(m-1)) * base + new
+
+// Compute base^exp mod modulus
+fn pow_mod(base: i64, exp: i64, modulus: i64) -> i64 =
+    if exp == 0 { 1 }
+    else {
+        let half = pow_mod(base, exp / 2, modulus);
+        let sq = (half * half) - ((half * half) / modulus) * modulus;
+        if exp - (exp / 2) * 2 == 0 { sq }
+        else { (sq * base) - ((sq * base) / modulus) * modulus }
+    };
+
+// Positive modulo (handles negative values)
+fn pos_mod(v: i64, m: i64) -> i64 = {
+    let r = v - (v / m) * m;
+    if r < 0 { r + m } else { r }
+    };
+
+// Compute hash of arr[start..start+len)
+fn compute_hash(arr: i64, start: i64, len: i64, base: i64, modulus: i64) -> i64 = {
+    let h = 0;
+    for i in 0..len {
+        let val = vec_get(arr, start + i);
+        h = pos_mod(h * base + val, modulus);
+    };
+    h
+    };
+
+// Check if arr1[s1..s1+len) == arr2[s2..s2+len)
+fn arrays_equal(arr1: i64, s1: i64, arr2: i64, s2: i64, len: i64) -> i64 = {
+    let eq = 1;
+    for i in 0..len {
+        if vec_get(arr1, s1 + i) != vec_get(arr2, s2 + i) {
+            eq = 0;
+            break;
+        } else { () };
+    };
+    eq
+    };
+
+// Rabin-Karp search: find first occurrence of pattern in text
+// Returns index of first match, or -1 if not found
+fn rabin_karp(text: i64, text_len: i64, pat: i64, pat_len: i64, base: i64, modulus: i64) -> i64 = {
+    if pat_len > text_len { 0 - 1 }
+    else {
+        let pat_hash = compute_hash(pat, 0, pat_len, base, modulus);
+        let txt_hash = compute_hash(text, 0, pat_len, base, modulus);
+        let high_pow = pow_mod(base, pat_len - 1, modulus);
+        let result = 0 - 1;
+        let windows = text_len - pat_len + 1;
+        for i in 0..windows {
+            if result >= 0 { () }
+            else {
+                let cur_hash = if i == 0 { txt_hash }
+                else {
+                    let old_val = vec_get(text, i - 1);
+                    let new_val = vec_get(text, i + pat_len - 1);
+                    let removed = pos_mod(txt_hash - pos_mod(old_val * high_pow, modulus) + modulus, modulus);
+                    let rolled = pos_mod(removed * base + new_val, modulus);
+                    txt_hash = rolled;
+                    rolled
+                };
+                if cur_hash == pat_hash {
+                    if arrays_equal(text, i, pat, 0, pat_len) == 1 {
+                        result = i;
+                    } else { () };
+                } else { () };
+            };
+        };
+        result
+    }
+    };
+
+// Count all occurrences of pattern in text
+fn rabin_karp_count(text: i64, text_len: i64, pat: i64, pat_len: i64, base: i64, modulus: i64) -> i64 = {
+    if pat_len > text_len { 0 }
+    else {
+        let pat_hash = compute_hash(pat, 0, pat_len, base, modulus);
+        let txt_hash = compute_hash(text, 0, pat_len, base, modulus);
+        let high_pow = pow_mod(base, pat_len - 1, modulus);
+        let count = 0;
+        let windows = text_len - pat_len + 1;
+        for i in 0..windows {
+            let cur_hash = if i == 0 { txt_hash }
+            else {
+                let old_val = vec_get(text, i - 1);
+                let new_val = vec_get(text, i + pat_len - 1);
+                let removed = pos_mod(txt_hash - pos_mod(old_val * high_pow, modulus) + modulus, modulus);
+                let rolled = pos_mod(removed * base + new_val, modulus);
+                txt_hash = rolled;
+                rolled
+            };
+            if cur_hash == pat_hash {
+                if arrays_equal(text, i, pat, 0, pat_len) == 1 {
+                    count = count + 1;
+                } else { () };
+            } else { () };
+        };
+        count
+    }
+    };
+
+fn make_arr(a: i64, b: i64, c: i64) -> i64 = {
+    let v = vec_new();
+    vec_push(v, a); vec_push(v, b); vec_push(v, c);
+    v
+    };
+
+fn main() -> i64 = {
+    let base = 31;
+    let modulus = 1000000007;
+
+    // Text: [1, 2, 3, 4, 2, 3, 5, 2, 3, 4]
+    let text = vec_new();
+    vec_push(text, 1); vec_push(text, 2); vec_push(text, 3);
+    vec_push(text, 4); vec_push(text, 2); vec_push(text, 3);
+    vec_push(text, 5); vec_push(text, 2); vec_push(text, 3);
+    vec_push(text, 4);
+
+    // Pattern: [2, 3, 4]
+    let pat1 = make_arr(2, 3, 4);
+    let _p1 = println(rabin_karp(text, 10, pat1, 3, base, modulus)); // 1 (first at index 1)
+    let _p2 = println(rabin_karp_count(text, 10, pat1, 3, base, modulus)); // 2 (at 1 and 7)
+
+    // Pattern: [2, 3]
+    let pat2 = vec_new();
+    vec_push(pat2, 2); vec_push(pat2, 3);
+    let _p3 = println(rabin_karp(text, 10, pat2, 2, base, modulus)); // 1
+    let _p4 = println(rabin_karp_count(text, 10, pat2, 2, base, modulus)); // 3 (at 1, 4, 7)
+
+    // Pattern: [5, 2, 3]
+    let pat3 = make_arr(5, 2, 3);
+    let _p5 = println(rabin_karp(text, 10, pat3, 3, base, modulus)); // 6
+
+    // Pattern not found: [9, 9]
+    let pat4 = vec_new();
+    vec_push(pat4, 9); vec_push(pat4, 9);
+    let _p6 = println(rabin_karp(text, 10, pat4, 2, base, modulus)); // -1
+
+    // Single element pattern: [5]
+    let pat5 = vec_new();
+    vec_push(pat5, 5);
+    let _p7 = println(rabin_karp(text, 10, pat5, 1, base, modulus)); // 6
+    let _p8 = println(rabin_karp_count(text, 10, pat5, 1, base, modulus)); // 1
+
+    // Pattern longer than text
+    let short = vec_new();
+    vec_push(short, 1); vec_push(short, 2);
+    let long_pat = vec_new();
+    vec_push(long_pat, 1); vec_push(long_pat, 2); vec_push(long_pat, 3);
+    let _p9 = println(rabin_karp(short, 2, long_pat, 3, base, modulus)); // -1
+
+    // Exact match (pattern == text)
+    let exact = make_arr(1, 2, 3);
+    let exact_pat = make_arr(1, 2, 3);
+    let _p10 = println(rabin_karp(exact, 3, exact_pat, 3, base, modulus)); // 0
+
+    // All same values: [7, 7, 7, 7, 7], pattern [7, 7]
+    let same = vec_new();
+    vec_push(same, 7); vec_push(same, 7); vec_push(same, 7);
+    vec_push(same, 7); vec_push(same, 7);
+    let same_pat = vec_new();
+    vec_push(same_pat, 7); vec_push(same_pat, 7);
+    let _p11 = println(rabin_karp_count(same, 5, same_pat, 2, base, modulus)); // 4
+
+    // Hash function tests
+    let _p12 = println(pow_mod(2, 10, 1000)); // 24 (1024 mod 1000)
+    let _p13 = println(pow_mod(3, 5, 100));   // 43 (243 mod 100)
+
+    // Compute hash consistency
+    let h1 = compute_hash(text, 0, 3, base, modulus);
+    let h2 = compute_hash(pat1, 0, 3, base, modulus);
+    // text[0..3] = [1,2,3], pat1 = [2,3,4] — different hashes
+    let _p14 = println(if h1 == h2 { 1 } else { 0 }); // 0
+
+    0
+    };

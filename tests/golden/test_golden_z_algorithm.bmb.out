@@ -1,0 +1,32 @@
+=== Test 1: Z-array ===
+0
+0
+3
+0
+1
+=== Test 2: all same ===
+0
+3
+2
+1
+=== Test 3: repeating ===
+0
+0
+0
+4
+0
+0
+1
+=== Test 4: search [1,2] in [3,1,2,4,1,2] ===
+matches: 2
+positions:
+1
+4
+=== Test 5: overlapping matches ===
+matches: 3
+positions:
+0
+1
+2
+=== Test 6: no match ===
+matches: 0

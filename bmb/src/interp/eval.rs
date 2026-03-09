@@ -159,6 +159,12 @@ impl Interpreter {
         self.builtins.insert("append_file".to_string(), builtin_append_file);
         self.builtins.insert("file_exists".to_string(), builtin_file_exists);
         self.builtins.insert("file_size".to_string(), builtin_file_size);
+        // v0.96: Directory operation builtins for gotgan-bmb
+        self.builtins.insert("is_dir".to_string(), builtin_is_dir);
+        self.builtins.insert("make_dir".to_string(), builtin_make_dir);
+        self.builtins.insert("list_dir".to_string(), builtin_list_dir);
+        self.builtins.insert("remove_file".to_string(), builtin_remove_file);
+        self.builtins.insert("remove_dir".to_string(), builtin_remove_dir);
 
         // v0.31.11: Process execution builtins for Phase 32.0.2 Bootstrap Infrastructure
         self.builtins.insert("exec".to_string(), builtin_exec);
@@ -377,18 +383,18 @@ impl Interpreter {
 
     /// Call a function by name with arguments (v0.30.246: Stage 3 verification support)
     pub fn call_function_with_args(&mut self, name: &str, args: Vec<Value>) -> InterpResult<Value> {
-        // Check builtins first
-        if let Some(builtin) = self.builtins.get(name) {
-            return builtin(&args);
-        }
-
-        // Then user-defined functions
+        // Check user-defined functions first (they shadow builtins)
         if let Some(fn_def) = self.functions.get(name).cloned() {
             // v0.30.280: Use ScopeStack fast path when enabled
             if self.use_scope_stack {
                 return self.call_function_fast(&fn_def, &args);
             }
             return self.call_function(&fn_def, &args);
+        }
+
+        // Then builtins
+        if let Some(builtin) = self.builtins.get(name) {
+            return builtin(&args);
         }
 
         Err(RuntimeError::undefined_function(name))
@@ -5680,14 +5686,14 @@ impl Interpreter {
 
     /// Call a function by name
     fn call(&mut self, name: &str, args: Vec<Value>) -> InterpResult<Value> {
-        // Check builtins first
-        if let Some(builtin) = self.builtins.get(name) {
-            return builtin(&args);
-        }
-
-        // Then user-defined functions
+        // Check user-defined functions first (they shadow builtins)
         if let Some(fn_def) = self.functions.get(name).cloned() {
             return self.call_function(&fn_def, &args);
+        }
+
+        // Then builtins
+        if let Some(builtin) = self.builtins.get(name) {
+            return builtin(&args);
         }
 
         Err(RuntimeError::undefined_function(name))
@@ -6505,11 +6511,12 @@ impl Interpreter {
 
     /// Call a function by name using ScopeStack
     fn call_fast(&mut self, name: &str, args: Vec<Value>) -> InterpResult<Value> {
-        if let Some(builtin) = self.builtins.get(name) {
-            return builtin(&args);
-        }
+        // Check user-defined functions first (they shadow builtins)
         if let Some(fn_def) = self.functions.get(name).cloned() {
             return self.call_function_fast(&fn_def, &args);
+        }
+        if let Some(builtin) = self.builtins.get(name) {
+            return builtin(&args);
         }
         Err(RuntimeError::undefined_function(name))
     }
@@ -7864,6 +7871,99 @@ fn builtin_file_size(args: &[Value]) -> InterpResult<Value> {
                 Ok(meta) => Ok(Value::Int(meta.len() as i64)),
                 Err(_) => Ok(Value::Int(-1)),
             }
+        }
+        None => Err(RuntimeError::type_error("string", args[0].type_name())),
+    }
+}
+
+// ============ v0.96: Directory Operation Builtins for gotgan-bmb ============
+
+/// is_dir(path: String) -> i64
+/// Returns 1 if path is a directory, 0 otherwise.
+fn builtin_is_dir(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("is_dir", 1, args.len()));
+    }
+    match extract_string(&args[0]) {
+        Some(path) => {
+            let is_dir = Path::new(&path).is_dir();
+            Ok(Value::Int(if is_dir { 1 } else { 0 }))
+        }
+        None => Err(RuntimeError::type_error("string", args[0].type_name())),
+    }
+}
+
+/// make_dir(path: String) -> i64
+/// Creates directory, returns 0 on success, -1 on error.
+fn builtin_make_dir(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("make_dir", 1, args.len()));
+    }
+    match extract_string(&args[0]) {
+        Some(path) => {
+            match fs::create_dir_all(&path) {
+                Ok(()) => Ok(Value::Int(0)),
+                Err(_) => Ok(Value::Int(-1)),
+            }
+        }
+        None => Err(RuntimeError::type_error("string", args[0].type_name())),
+    }
+}
+
+/// list_dir(path: String) -> String
+/// Returns newline-separated directory listing, or empty string on error.
+fn builtin_list_dir(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("list_dir", 1, args.len()));
+    }
+    match extract_string(&args[0]) {
+        Some(path) => {
+            match fs::read_dir(&path) {
+                Ok(entries) => {
+                    let mut names = Vec::new();
+                    for entry in entries {
+                        if let Ok(e) = entry {
+                            let name = e.file_name().to_string_lossy().to_string();
+                            if name != "." && name != ".." {
+                                names.push(name);
+                            }
+                        }
+                    }
+                    names.sort();
+                    Ok(Value::Str(Rc::new(names.join("\n"))))
+                }
+                Err(_) => Ok(Value::Str(Rc::new(String::new()))),
+            }
+        }
+        None => Err(RuntimeError::type_error("string", args[0].type_name())),
+    }
+}
+
+/// remove_file(path: String) -> i64
+/// Deletes a file. Returns 0 on success, -1 on error.
+fn builtin_remove_file(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("remove_file", 1, args.len()));
+    }
+    match extract_string(&args[0]) {
+        Some(path) => {
+            let result = if fs::remove_file(&path).is_ok() { 0i64 } else { -1i64 };
+            Ok(Value::Int(result))
+        }
+        None => Err(RuntimeError::type_error("string", args[0].type_name())),
+    }
+}
+
+/// remove_dir(path: String) -> i64
+/// Removes an empty directory. Returns 0 on success, -1 on error.
+fn builtin_remove_dir(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("remove_dir", 1, args.len()));
+    }
+    match extract_string(&args[0]) {
+        Some(path) => {
+            let result = if fs::remove_dir(&path).is_ok() { 0i64 } else { -1i64 };
+            Ok(Value::Int(result))
         }
         None => Err(RuntimeError::type_error("string", args[0].type_name())),
     }

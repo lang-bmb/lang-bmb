@@ -1,0 +1,55 @@
+// Golden Test: Matrix simulation using flat computation
+// Simulates 2D matrix operations without Vec to avoid runtime issues
+
+fn mat_elem(rows: i64, cols: i64, r: i64, c: i64) -> i64 =
+    r * cols + c;
+
+fn mat_trace(n: i64) -> i64 = {
+// Trace of n x n matrix where mat[i][j] = i * n + j
+    let mut trace = 0;
+    for i in 0..n {
+        trace = trace + mat_elem(n, n, i, i)
+    };
+    trace
+    };
+
+fn mat_row_sum(n: i64, row: i64) -> i64 = {
+// Sum of row in matrix where mat[i][j] = i + j + 1
+    let mut sum = 0;
+    for j in 0..n {
+        sum = sum + row + j + 1
+    };
+    sum
+    };
+
+fn mat_col_sum(n: i64, col: i64) -> i64 = {
+// Sum of column in matrix where mat[i][j] = i + j + 1
+    let mut sum = 0;
+    for i in 0..n {
+        sum = sum + i + col + 1
+    };
+    sum
+    };
+
+fn mat_mul_elem(n: i64, r: i64, c: i64) -> i64 = {
+// Element [r][c] of A*A where A[i][j] = i == j ? 1 : 0 (identity)
+// A*A = A for identity matrix
+// More interesting: A[i][j] = i + j, compute (A*A)[r][c]
+    let mut sum = 0;
+    for k in 0..n {
+        sum = sum + (r + k) * (k + c)
+    };
+    sum
+    };
+
+fn main() -> i64 = {
+    let _p1 = println(mat_trace(3));    // 0+4+8 = 12
+    let _p2 = println(mat_trace(4));    // 0+5+10+15 = 30
+    let _p3 = println(mat_row_sum(4, 0)); // 1+2+3+4 = 10
+    let _p4 = println(mat_row_sum(4, 2)); // 3+4+5+6 = 18
+    let _p5 = println(mat_col_sum(4, 0)); // 1+2+3+4 = 10
+    let _p6 = println(mat_col_sum(4, 1)); // 2+3+4+5 = 14
+    let _p7 = println(mat_mul_elem(3, 0, 0)); // (0*0 + 1*1 + 2*2) = 5
+    let _p8 = println(mat_mul_elem(3, 1, 1)); // (1*1 + 2*2 + 3*3) = 14
+    0
+    };

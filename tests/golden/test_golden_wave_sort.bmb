@@ -1,0 +1,130 @@
+// Golden Test: Wave sort — Cycle 1568
+// Rearrange array so a[0]>=a[1]<=a[2]>=a[3]<=a[4]...
+// Verify wave property after sorting
+
+// Swap two elements in vec
+fn ws_swap(v: i64, i: i64, j: i64) -> i64 = {
+    let tmp = vec_get(v, i);
+    vec_set(v, i, vec_get(v, j));
+    vec_set(v, j, tmp);
+    0
+    };
+
+// Wave sort: traverse even indices, ensure a[i] >= neighbors
+fn wave_sort(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        // Check left neighbor
+        if i > 0 {
+            if vec_get(v, i) < vec_get(v, i - 1) {
+                let _s = ws_swap(v, i, i - 1);
+                0
+            } else { 0 }
+        } else { 0 };
+        // Check right neighbor
+        if i + 1 < n {
+            if vec_get(v, i) < vec_get(v, i + 1) {
+                let _s = ws_swap(v, i, i + 1);
+                0
+            } else { 0 }
+        } else { 0 };
+        i = i + 2
+    };
+    0
+    };
+
+// Verify wave property: a[0]>=a[1]<=a[2]>=a[3]...
+// Returns 1 if valid wave, 0 otherwise
+fn is_wave(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut i = 0;
+    let mut valid = 1;
+    loop {
+        if i >= n { break } else { () };
+        // Even index: should be >= neighbors
+        if i > 0 {
+            if vec_get(v, i) < vec_get(v, i - 1) { valid = 0 } else { () }
+        } else { () };
+        if i + 1 < n {
+            if vec_get(v, i) < vec_get(v, i + 1) { valid = 0 } else { () }
+        } else { () };
+        i = i + 2
+    };
+    valid
+    };
+
+// Sum all elements (to verify no elements lost)
+fn vec_sum(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut s = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        s = s + vec_get(v, i);
+        i = i + 1
+    };
+    s
+    };
+
+fn main() -> i64 = {
+    // Test 1: Wave sort [3, 6, 5, 10, 7, 20]
+    let v1 = vec_new();
+    vec_push(v1, 3); vec_push(v1, 6); vec_push(v1, 5);
+    vec_push(v1, 10); vec_push(v1, 7); vec_push(v1, 20);
+    let _ws1 = wave_sort(v1);
+    let _p1 = println(is_wave(v1));          // 1 (valid wave)
+    // Sum should be preserved: 3+6+5+10+7+20 = 51
+    let _p2 = println(vec_sum(v1));          // 51
+
+    // Test 2: Wave sort [1, 2, 3, 4, 5, 6, 7]
+    let v2 = vec_new();
+    vec_push(v2, 1); vec_push(v2, 2); vec_push(v2, 3);
+    vec_push(v2, 4); vec_push(v2, 5); vec_push(v2, 6);
+    vec_push(v2, 7);
+    let _ws2 = wave_sort(v2);
+    let _p3 = println(is_wave(v2));          // 1
+    // Sum: 1+2+3+4+5+6+7 = 28
+    let _p4 = println(vec_sum(v2));          // 28
+
+    // Test 3: Already sorted descending [5, 4, 3, 2, 1]
+    let v3 = vec_new();
+    vec_push(v3, 5); vec_push(v3, 4); vec_push(v3, 3);
+    vec_push(v3, 2); vec_push(v3, 1);
+    let _ws3 = wave_sort(v3);
+    let _p5 = println(is_wave(v3));          // 1
+
+    // Test 4: All equal [3, 3, 3, 3]
+    let v4 = vec_new();
+    vec_push(v4, 3); vec_push(v4, 3);
+    vec_push(v4, 3); vec_push(v4, 3);
+    let _ws4 = wave_sort(v4);
+    let _p6 = println(is_wave(v4));          // 1
+
+    // Test 5: Two elements [1, 2]
+    let v5 = vec_new();
+    vec_push(v5, 1); vec_push(v5, 2);
+    let _ws5 = wave_sort(v5);
+    let _p7 = println(is_wave(v5));          // 1
+
+    // Test 6: Single element [42]
+    let v6 = vec_new();
+    vec_push(v6, 42);
+    let _ws6 = wave_sort(v6);
+    let _p8 = println(is_wave(v6));          // 1
+
+    // Test 7: Large values [100, 1, 50, 2, 75, 3]
+    let v7 = vec_new();
+    vec_push(v7, 100); vec_push(v7, 1); vec_push(v7, 50);
+    vec_push(v7, 2); vec_push(v7, 75); vec_push(v7, 3);
+    let _ws7 = wave_sort(v7);
+    let _p9 = println(is_wave(v7));          // 1
+    // Sum preserved: 100+1+50+2+75+3 = 231
+    let _p10 = println(vec_sum(v7));         // 231
+
+    vec_free(v1); vec_free(v2); vec_free(v3);
+    vec_free(v4); vec_free(v5); vec_free(v6);
+    vec_free(v7);
+    0
+    };

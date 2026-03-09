@@ -1,0 +1,116 @@
+// Golden Test: Convex Hull (Andrew's Monotone Chain)
+// Points as flat vec [x0,y0,x1,y1,...], cross product orientation
+
+fn px(pts: i64, i: i64) -> i64 = vec_get(pts, i * 2);
+fn py(pts: i64, i: i64) -> i64 = vec_get(pts, i * 2 + 1);
+
+fn cross(pts: i64, o: i64, a: i64, b: i64) -> i64 =
+    (px(pts, a) - px(pts, o)) * (py(pts, b) - py(pts, o)) -
+    (py(pts, a) - py(pts, o)) * (px(pts, b) - px(pts, o));
+
+fn sort_points(pts: i64, n: i64) -> i64 = {
+    for _i in 0..n {
+        let mut j = 0;
+        loop {
+            if j + 1 >= n { break } else { 0 };
+            let swap = if px(pts, j) > px(pts, j + 1) { 1 }
+                else if px(pts, j) == px(pts, j + 1) and py(pts, j) > py(pts, j + 1) { 1 }
+                else { 0 };
+            if swap == 1 {
+                let tx = px(pts, j);
+                let ty = py(pts, j);
+                vec_set(pts, j * 2, px(pts, j + 1));
+                vec_set(pts, j * 2 + 1, py(pts, j + 1));
+                vec_set(pts, (j + 1) * 2, tx);
+                vec_set(pts, (j + 1) * 2 + 1, ty);
+                0
+            } else { 0 };
+        j = j + 1
+        }
+    };
+    0
+};
+
+fn convex_hull(pts: i64, n: i64, hull: i64) -> i64 = {
+    let _s = sort_points(pts, n);
+    let mut k = 0;
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { 0 };
+        loop {
+            if k < 2 { break } else { 0 };
+            if cross(pts, vec_get(hull, k - 2), vec_get(hull, k - 1), i) <= 0 {
+                k = k - 1
+            } else { break }
+        };
+        vec_set(hull, k, i);
+        k = k + 1;
+    i = i + 1
+    };
+    let lower_k = k + 1;
+    let mut i2 = n - 2;
+    loop {
+        if i2 < 0 { break } else { 0 };
+        loop {
+            if k < lower_k { break } else { 0 };
+            if cross(pts, vec_get(hull, k - 2), vec_get(hull, k - 1), i2) <= 0 {
+                k = k - 1
+            } else { break }
+        };
+        vec_set(hull, k, i2);
+        k = k + 1;
+    i2 = i2 - 1
+    };
+    k - 1
+};
+
+fn main() -> i64 = {
+    let pts0 = vec_new();
+    vec_push(pts0, 0); vec_push(pts0, 0);
+    vec_push(pts0, 1); vec_push(pts0, 0);
+    vec_push(pts0, 0); vec_push(pts0, 1);
+    let _p1 = println(cross(pts0, 0, 1, 2));   // 1 (CCW)
+    let _p2 = println(cross(pts0, 0, 2, 1));   // -1 (CW)
+
+    let pts1 = vec_new();
+    vec_push(pts1, 0); vec_push(pts1, 0);
+    vec_push(pts1, 4); vec_push(pts1, 0);
+    vec_push(pts1, 4); vec_push(pts1, 4);
+    vec_push(pts1, 0); vec_push(pts1, 4);
+    vec_push(pts1, 2); vec_push(pts1, 2);
+    let hull1 = vec_new();
+    for _a in 0..12 { vec_push(hull1, 0) };
+    let h1 = convex_hull(pts1, 5, hull1);
+    let _p3 = println(h1);   // 4
+    let pts2 = vec_new();
+    vec_push(pts2, 0); vec_push(pts2, 0);
+    vec_push(pts2, 5); vec_push(pts2, 0);
+    vec_push(pts2, 2); vec_push(pts2, 3);
+    let hull2 = vec_new();
+    for _b in 0..8 { vec_push(hull2, 0) };
+    let h2 = convex_hull(pts2, 3, hull2);
+    let _p4 = println(h2);   // 3
+    let pts3 = vec_new();
+    vec_push(pts3, 0); vec_push(pts3, 0);
+    vec_push(pts3, 1); vec_push(pts3, 1);
+    vec_push(pts3, 2); vec_push(pts3, 2);
+    vec_push(pts3, 3); vec_push(pts3, 3);
+    let hull3 = vec_new();
+    for _c in 0..10 { vec_push(hull3, 0) };
+    let h3 = convex_hull(pts3, 4, hull3);
+    let _p5 = println(h3);   // 2
+    let pts4 = vec_new();
+    vec_push(pts4, 0); vec_push(pts4, 0);
+    vec_push(pts4, 3); vec_push(pts4, 0);
+    vec_push(pts4, 5); vec_push(pts4, 2);
+    vec_push(pts4, 3); vec_push(pts4, 5);
+    vec_push(pts4, 0); vec_push(pts4, 3);
+    let hull4 = vec_new();
+    for _d in 0..12 { vec_push(hull4, 0) };
+    let h4 = convex_hull(pts4, 5, hull4);
+    let _p6 = println(h4);   // 5
+    vec_free(pts0); vec_free(pts1); vec_free(hull1);
+    vec_free(pts2); vec_free(hull2);
+    vec_free(pts3); vec_free(hull3); vec_free(pts4); vec_free(hull4);
+    0
+};

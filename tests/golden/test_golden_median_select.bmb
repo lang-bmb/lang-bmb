@@ -1,0 +1,182 @@
+// Golden Test: Median finding — quickselect, sorted median, running median
+// Array-based median computation with multiple approaches
+
+// Helper: clone a vec
+fn vec_clone(src: i64, n: i64) -> i64 = {
+    let dst = vec_new();
+    for i in 0..n { let _p = vec_push(dst, vec_get(src, i)); 0 };
+    dst
+};
+
+// Swap two elements in a vec
+fn vec_swap(v: i64, i: i64, j: i64) -> i64 = {
+    let tmp = vec_get(v, i);
+    let _s1 = vec_set(v, i, vec_get(v, j));
+    let _s2 = vec_set(v, j, tmp);
+    0
+};
+
+// Insertion sort a vec in-place
+fn isort(v: i64, n: i64) -> i64 = {
+    let mut i = 1;
+    loop {
+        if i >= n { break } else { () };
+        let key = vec_get(v, i);
+        let mut j = i - 1;
+        loop {
+            if j < 0 { break } else { () };
+            if vec_get(v, j) <= key { break } else { () };
+            let _s = vec_set(v, j + 1, vec_get(v, j));
+            j = j - 1
+        };
+        let _s = vec_set(v, j + 1, key);
+        i = i + 1
+    };
+    0
+};
+
+// Sorted median: sort a copy, return middle element
+fn sorted_median(v: i64, n: i64) -> i64 = {
+    let tmp = vec_clone(v, n);
+    let _s = isort(tmp, n);
+    vec_get(tmp, n / 2)
+};
+
+// Partition around pivot at index p, return final pivot position
+fn partition(v: i64, lo: i64, hi: i64, p: i64) -> i64 = {
+    let pivot = vec_get(v, p);
+    let _sw = vec_swap(v, p, hi);
+    let mut store = lo;
+    let mut i = lo;
+    loop {
+        if i >= hi { break } else { () };
+        let _c = if vec_get(v, i) < pivot {
+            let _sw2 = vec_swap(v, i, store);
+            store = store + 1;
+            0
+        } else { 0 };
+        i = i + 1
+    };
+    let _sw3 = vec_swap(v, store, hi);
+    store
+};
+
+// Quickselect: find k-th smallest element (0-indexed)
+fn qselect_helper(v: i64, lo: i64, hi: i64, k: i64) -> i64 = {
+    if lo == hi { vec_get(v, lo) }
+    else {
+        // Use middle element as pivot
+        let mid = lo + (hi - lo) / 2;
+        let pi = partition(v, lo, hi, mid);
+        if k == pi { vec_get(v, pi) }
+        else if k < pi { qselect_helper(v, lo, pi - 1, k) }
+        else { qselect_helper(v, pi + 1, hi, k) }
+    }
+};
+
+fn quickselect(v: i64, n: i64, k: i64) -> i64 = {
+    let tmp = vec_clone(v, n);
+    qselect_helper(tmp, 0, n - 1, k)
+};
+
+// Median via quickselect
+fn qs_median(v: i64, n: i64) -> i64 =
+    quickselect(v, n, n / 2);
+
+// Running median: for each prefix [0..i], compute median
+// Returns vec of medians
+fn running_medians(v: i64, n: i64) -> i64 = {
+    let medians = vec_new();
+    for i in 0..n {
+        // Sort prefix [0..i+1] each time (simple but O(n^2 log n))
+        let prefix = vec_clone(v, i + 1);
+        let _s = isort(prefix, i + 1);
+        let med = vec_get(prefix, (i + 1) / 2);
+        let _p = vec_push(medians, med);
+        0
+    };
+    medians
+};
+
+// Min of vec
+fn vec_min(v: i64, n: i64) -> i64 = {
+    let mut m = vec_get(v, 0);
+    for i in 1..n {
+        let _c = if vec_get(v, i) < m { set m = vec_get(v, i) } else { set m = m };
+    };
+    m
+};
+
+// Max of vec
+fn vec_max(v: i64, n: i64) -> i64 = {
+    let mut m = vec_get(v, 0);
+    for i in 1..n {
+        let _c = if vec_get(v, i) > m { set m = vec_get(v, i) } else { set m = m };
+    };
+    m
+};
+
+fn main() -> i64 = {
+    // Test 1: odd-length array [3, 1, 4, 1, 5]
+    let v1 = vec_new();
+    let _a = vec_push(v1, 3); let _b = vec_push(v1, 1);
+    let _c = vec_push(v1, 4); let _d = vec_push(v1, 1);
+    let _e = vec_push(v1, 5);
+    // Sorted: [1,1,3,4,5], median index 2 = 3
+    let _p1 = println(sorted_median(v1, 5));    // 3
+    let _p2 = println(qs_median(v1, 5));        // 3
+
+    // Test 2: even-length array [7, 2, 9, 4, 6, 1]
+    let v2 = vec_new();
+    let _a2 = vec_push(v2, 7); let _b2 = vec_push(v2, 2);
+    let _c2 = vec_push(v2, 9); let _d2 = vec_push(v2, 4);
+    let _e2 = vec_push(v2, 6); let _f2 = vec_push(v2, 1);
+    // Sorted: [1,2,4,6,7,9], median index 3 = 6
+    let _p3 = println(sorted_median(v2, 6));    // 6
+    let _p4 = println(qs_median(v2, 6));        // 6
+
+    // Test 3: already sorted [10, 20, 30, 40, 50]
+    let v3 = vec_new();
+    let _a3 = vec_push(v3, 10); let _b3 = vec_push(v3, 20);
+    let _c3 = vec_push(v3, 30); let _d3 = vec_push(v3, 40);
+    let _e3 = vec_push(v3, 50);
+    let _p5 = println(sorted_median(v3, 5));    // 30
+    let _p6 = println(qs_median(v3, 5));        // 30
+
+    // Test 4: reverse sorted [5, 4, 3, 2, 1]
+    let v4 = vec_new();
+    let _a4 = vec_push(v4, 5); let _b4 = vec_push(v4, 4);
+    let _c4 = vec_push(v4, 3); let _d4 = vec_push(v4, 2);
+    let _e4 = vec_push(v4, 1);
+    let _p7 = println(sorted_median(v4, 5));    // 3
+    let _p8 = println(qs_median(v4, 5));        // 3
+
+    // Test 5: quickselect for k-th smallest
+    // v1 = [3,1,4,1,5], sorted = [1,1,3,4,5]
+    let _p9 = println(quickselect(v1, 5, 0));   // 1 (minimum)
+    let _p10 = println(quickselect(v1, 5, 4));  // 5 (maximum)
+    let _p11 = println(quickselect(v1, 5, 1));  // 1
+
+    // Test 6: running medians of [5, 2, 8, 1, 9]
+    let v5 = vec_new();
+    let _a5 = vec_push(v5, 5); let _b5 = vec_push(v5, 2);
+    let _c5 = vec_push(v5, 8); let _d5 = vec_push(v5, 1);
+    let _e5 = vec_push(v5, 9);
+    let rm = running_medians(v5, 5);
+    // Prefix [5]: sorted [5], med idx 0 = 5
+    let _p12 = println(vec_get(rm, 0));   // 5
+    // Prefix [5,2]: sorted [2,5], med idx 1 = 5
+    let _p13 = println(vec_get(rm, 1));   // 5
+    // Prefix [5,2,8]: sorted [2,5,8], med idx 1 = 5
+    let _p14 = println(vec_get(rm, 2));   // 5
+    // Prefix [5,2,8,1]: sorted [1,2,5,8], med idx 2 = 5
+    let _p15 = println(vec_get(rm, 3));   // 5
+    // Prefix [5,2,8,1,9]: sorted [1,2,5,8,9], med idx 2 = 5
+    let _p16 = println(vec_get(rm, 4));   // 5
+
+    // Test 7: min and max
+    let _p17 = println(vec_min(v1, 5));   // 1
+    let _p18 = println(vec_max(v1, 5));   // 5
+
+    0
+};

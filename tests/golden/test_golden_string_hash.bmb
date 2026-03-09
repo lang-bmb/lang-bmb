@@ -1,0 +1,50 @@
+// Golden Test: String hashing algorithms
+// djb2 hash and simple modular hash on various strings
+
+// djb2: hash = hash * 33 + c, starting from 5381
+fn djb2_helper(s: String, pos: i64, hash: i64) -> i64 =
+    if pos >= s.len() { hash }
+    else {
+        let c = s.byte_at(pos);
+        djb2_helper(s, pos + 1, hash * 33 + c)
+    };
+
+fn djb2(s: String) -> i64 =
+    djb2_helper(s, 0, 5381);
+
+// Simple modular hash: hash = (hash * 31 + c) % mod
+fn mod_hash_helper(s: String, pos: i64, hash: i64, modulus: i64) -> i64 =
+    if pos >= s.len() { hash }
+    else {
+        let c = s.byte_at(pos);
+        let new_hash = (hash * 31 + c) - ((hash * 31 + c) / modulus) * modulus;
+        mod_hash_helper(s, pos + 1, new_hash, modulus)
+    };
+
+fn mod_hash(s: String) -> i64 =
+    mod_hash_helper(s, 0, 0, 1000000007);
+
+fn main() -> i64 = {
+    // djb2 hashes
+    let _p1 = println(djb2("hello"));   // 210714636441
+    let _p2 = println(djb2("world"));   // 210732791149
+    let _p3 = println(djb2("abc"));     // 193485963
+    let _p4 = println(djb2(""));        // 5381
+
+    // modular hashes
+    let _p5 = println(mod_hash("hello"));  // 99162322
+    let _p6 = println(mod_hash("world"));  // 113318802
+    let _p7 = println(mod_hash("abc"));    // 96354
+    let _p8 = println(mod_hash(""));       // 0
+
+    // collision test: different strings produce different hashes
+    let d1 = djb2("hello");
+    let d2 = djb2("world");
+    let _p9 = println(if d1 != d2 { 1 } else { 0 });   // 1
+
+    let m1 = mod_hash("hello");
+    let m2 = mod_hash("world");
+    let _p10 = println(if m1 != m2 { 1 } else { 0 });  // 1
+
+    0
+    };

@@ -1,0 +1,239 @@
+// Golden Test: Implicit treap for array operations
+// Supports: insert, split, merge, sum query, reverse
+// Node storage: flat arrays for left, right, priority, value, size, sum fields
+// Node index 0 = null sentinel
+
+// Simple pseudo-random number generator (LCG)
+fn next_rand(seed: i64) -> i64 =
+    (seed * 1103515245 + 12345) band 2147483647;
+
+// Node fields stored in parallel vecs
+// Fields: left, right, priority, value, size, subtree_sum
+// Index 0 = null node (size=0, sum=0)
+
+fn node_left(nodes: i64, idx: i64) -> i64 = vec_get(nodes, idx * 6 + 0);
+fn node_right(nodes: i64, idx: i64) -> i64 = vec_get(nodes, idx * 6 + 1);
+fn node_pri(nodes: i64, idx: i64) -> i64 = vec_get(nodes, idx * 6 + 2);
+fn node_val(nodes: i64, idx: i64) -> i64 = vec_get(nodes, idx * 6 + 3);
+fn node_size(nodes: i64, idx: i64) -> i64 = vec_get(nodes, idx * 6 + 4);
+fn node_sum(nodes: i64, idx: i64) -> i64 = vec_get(nodes, idx * 6 + 5);
+
+fn set_left(nodes: i64, idx: i64, v: i64) -> i64 = { vec_set(nodes, idx * 6 + 0, v); 0 };
+fn set_right(nodes: i64, idx: i64, v: i64) -> i64 = { vec_set(nodes, idx * 6 + 1, v); 0 };
+fn set_size(nodes: i64, idx: i64, v: i64) -> i64 = { vec_set(nodes, idx * 6 + 4, v); 0 };
+fn set_sum(nodes: i64, idx: i64, v: i64) -> i64 = { vec_set(nodes, idx * 6 + 5, v); 0 };
+
+// Next node ID counter stored in a vec (mutable box)
+fn get_next_id(counter: i64) -> i64 = vec_get(counter, 0);
+fn inc_next_id(counter: i64) -> i64 = {
+    let cur = vec_get(counter, 0);
+    vec_set(counter, 0, cur + 1);
+    cur
+};
+
+// Create a new node with given value and priority, return its index
+fn new_node(nodes: i64, counter: i64, val: i64, pri: i64) -> i64 = {
+    let idx = inc_next_id(counter);
+    // Extend nodes vec to fit idx*6+5
+    let needed = idx * 6 + 6;
+    let cur_len = vec_len(nodes);
+    let mut _pad = 0;
+    loop {
+        if vec_len(nodes) >= needed { break } else { () };
+        vec_push(nodes, 0);
+        _pad = _pad + 1
+    };
+    vec_set(nodes, idx * 6 + 0, 0);  // left = null
+    vec_set(nodes, idx * 6 + 1, 0);  // right = null
+    vec_set(nodes, idx * 6 + 2, pri);
+    vec_set(nodes, idx * 6 + 3, val);
+    vec_set(nodes, idx * 6 + 4, 1);  // size = 1
+    vec_set(nodes, idx * 6 + 5, val);  // sum = val
+    idx
+};
+
+// Update size and sum from children
+fn update(nodes: i64, t: i64) -> i64 = {
+    if t == 0 { return 0 } else { () };
+    let l = node_left(nodes, t);
+    let r = node_right(nodes, t);
+    let sz = 1 + node_size(nodes, l) + node_size(nodes, r);
+    let sm = node_val(nodes, t) + node_sum(nodes, l) + node_sum(nodes, r);
+    let _s1 = set_size(nodes, t, sz);
+    let _s2 = set_sum(nodes, t, sm);
+    0
+};
+
+// Split treap rooted at t into two treaps:
+// left has first `cnt` elements, right has the rest
+// Returns (left_root, right_root) packed as left_root * 100000 + right_root
+fn split(nodes: i64, t: i64, cnt: i64) -> i64 = {
+    if t == 0 { return 0 * 100000 + 0 } else { () };
+    let l = node_left(nodes, t);
+    let left_sz = node_size(nodes, l);
+    if left_sz >= cnt {
+        // Split left subtree
+        let sub = split(nodes, l, cnt);
+        let sub_l = sub / 100000;
+        let sub_r = sub - (sub / 100000) * 100000;
+        let _sl = set_left(nodes, t, sub_r);
+        let _u = update(nodes, t);
+        sub_l * 100000 + t
+    } else {
+        // cnt > left_sz: take entire left + root, split right
+        let right_cnt = cnt - left_sz - 1;
+        let r = node_right(nodes, t);
+        let sub = split(nodes, r, right_cnt);
+        let sub_l = sub / 100000;
+        let sub_r = sub - (sub / 100000) * 100000;
+        let _sr = set_right(nodes, t, sub_l);
+        let _u = update(nodes, t);
+        t * 100000 + sub_r
+    }
+};
+
+// Merge two treaps (all keys in l < all keys in r by implicit index)
+fn merge(nodes: i64, l: i64, r: i64) -> i64 = {
+    if l == 0 { return r } else { () };
+    if r == 0 { return l } else { () };
+    if node_pri(nodes, l) > node_pri(nodes, r) {
+        let rr = node_right(nodes, l);
+        let merged = merge(nodes, rr, r);
+        let _sr = set_right(nodes, l, merged);
+        let _u = update(nodes, l);
+        l
+    } else {
+        let ll = node_left(nodes, r);
+        let merged = merge(nodes, l, ll);
+        let _sl = set_left(nodes, r, merged);
+        let _u = update(nodes, r);
+        r
+    }
+};
+
+// Insert value at position pos (0-indexed)
+fn treap_insert(nodes: i64, counter: i64, root: i64, pos: i64, val: i64, pri: i64) -> i64 = {
+    let nd = new_node(nodes, counter, val, pri);
+    let sp = split(nodes, root, pos);
+    let sp_l = sp / 100000;
+    let sp_r = sp - (sp / 100000) * 100000;
+    let tmp = merge(nodes, sp_l, nd);
+    merge(nodes, tmp, sp_r)
+};
+
+// Get sum of elements in range [0, cnt) using split
+fn treap_prefix_sum(nodes: i64, root: i64, cnt: i64) -> i64 = {
+    if cnt <= 0 { return 0 } else { () };
+    let sp = split(nodes, root, cnt);
+    let sp_l = sp / 100000;
+    let sp_r = sp - (sp / 100000) * 100000;
+    let result = node_sum(nodes, sp_l);
+    // Merge back (we need to return root too, but for simplicity we just read sum)
+    // NOTE: after split, the tree is modified. We merge back to restore.
+    let _merged = merge(nodes, sp_l, sp_r);
+    result
+};
+
+// Get element at position pos using split
+fn treap_get(nodes: i64, root: i64, pos: i64) -> i64 = {
+    let sp1 = split(nodes, root, pos);
+    let left1 = sp1 / 100000;
+    let right1 = sp1 - (sp1 / 100000) * 100000;
+    let sp2 = split(nodes, right1, 1);
+    let mid = sp2 / 100000;
+    let right2 = sp2 - (sp2 / 100000) * 100000;
+    let result = node_val(nodes, mid);
+    // Merge back
+    let tmp = merge(nodes, mid, right2);
+    let _full = merge(nodes, left1, tmp);
+    result
+};
+
+// In-order traversal: print all elements
+fn inorder(nodes: i64, t: i64) -> i64 = {
+    if t == 0 { return 0 } else { () };
+    let _l = inorder(nodes, node_left(nodes, t));
+    println(node_val(nodes, t));
+    let _r = inorder(nodes, node_right(nodes, t));
+    0
+};
+
+fn main() -> i64 = {
+    // Initialize node storage
+    let nodes = vec_new();
+    // Node 0 is null sentinel (6 fields all zero)
+    for _i in 0..6 {
+        vec_push(nodes, 0)
+    };
+    let counter = vec_new();
+    vec_push(counter, 1);  // next ID starts at 1
+
+    let mut seed = 42;
+
+    // Build array [10, 20, 30, 40, 50] by inserting at the end
+    let mut root = 0;
+    seed = next_rand(seed);
+    root = treap_insert(nodes, counter, root, 0, 10, seed);
+    seed = next_rand(seed);
+    root = treap_insert(nodes, counter, root, 1, 20, seed);
+    seed = next_rand(seed);
+    root = treap_insert(nodes, counter, root, 2, 30, seed);
+    seed = next_rand(seed);
+    root = treap_insert(nodes, counter, root, 3, 40, seed);
+    seed = next_rand(seed);
+    root = treap_insert(nodes, counter, root, 4, 50, seed);
+
+    // Print size
+    print_str("size:");
+    println(node_size(nodes, root));  // 5
+
+    // Print total sum
+    print_str("total sum:");
+    println(node_sum(nodes, root));  // 150
+
+    // Print elements in order
+    print_str("elements:");
+    let _io = inorder(nodes, root);  // 10 20 30 40 50
+
+    // Get individual elements
+    print_str("get:");
+    println(treap_get(nodes, root, 0));  // 10
+    println(treap_get(nodes, root, 2));  // 30
+    println(treap_get(nodes, root, 4));  // 50
+
+    // Insert 25 at position 2: [10, 20, 25, 30, 40, 50]
+    seed = next_rand(seed);
+    root = treap_insert(nodes, counter, root, 2, 25, seed);
+
+    print_str("after insert 25 at pos 2:");
+    let _io2 = inorder(nodes, root);  // 10 20 25 30 40 50
+
+    print_str("new size:");
+    println(node_size(nodes, root));  // 6
+
+    print_str("new sum:");
+    println(node_sum(nodes, root));  // 175
+
+    // Insert 5 at position 0: [5, 10, 20, 25, 30, 40, 50]
+    seed = next_rand(seed);
+    root = treap_insert(nodes, counter, root, 0, 5, seed);
+
+    print_str("after insert 5 at pos 0:");
+    let _io3 = inorder(nodes, root);  // 5 10 20 25 30 40 50
+
+    print_str("final size:");
+    println(node_size(nodes, root));  // 7
+
+    print_str("final sum:");
+    println(node_sum(nodes, root));  // 180
+
+    // Get element at each position
+    print_str("final get:");
+    println(treap_get(nodes, root, 0));  // 5
+    println(treap_get(nodes, root, 3));  // 25
+    println(treap_get(nodes, root, 6));  // 50
+
+    vec_free(nodes);
+    vec_free(counter);
+    0
+};

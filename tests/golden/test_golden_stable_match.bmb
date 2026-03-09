@@ -1,0 +1,120 @@
+// Golden Test: Gale-Shapley Stable Matching (N=3)
+// pref_p[i*N+j] = j-th pref of proposer i, rank_r[i*N+p] = rank of p for responder i
+
+fn make_neg1(n: i64) -> i64 = {
+    let v = vec_new();
+    for _i in 0..n { vec_push(v, 0 - 1) };
+    v
+};
+
+fn build_rank(pref_r: i64, rank_r: i64, n: i64) -> i64 = {
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let mut j = 0;
+        loop {
+            if j >= n { break } else { () };
+            let _s = vec_set(rank_r, i * n + vec_get(pref_r, i * n + j), j);
+            set j = j + 1
+        };
+        set i = i + 1
+    };
+    0
+};
+
+fn gale_shapley(pref_p: i64, rank_r: i64, n: i64) -> i64 = {
+    let mp = make_neg1(n);
+    let mr = make_neg1(n);
+    let next = vec_new();
+    for _i in 0..n { vec_push(next, 0) };
+    let mut free = n;
+    loop {
+        if free <= 0 { break } else { () };
+        let mut p = 0;
+        loop {
+            if p >= n { break } else { () };
+            if vec_get(mp, p) == 0 - 1 { break } else { () };
+            set p = p + 1
+        };
+        if p >= n { break } else { () };
+        let ni = vec_get(next, p);
+        let r = vec_get(pref_p, p * n + ni);
+        let _sn = vec_set(next, p, ni + 1);
+        let cur = vec_get(mr, r);
+        if cur == 0 - 1 {
+            let _sp = vec_set(mp, p, r);
+            let _sr = vec_set(mr, r, p);
+            set free = free - 1
+        } else {
+            if vec_get(rank_r, r * n + p) < vec_get(rank_r, r * n + cur) {
+                let _so = vec_set(mp, cur, 0 - 1);
+                let _sp = vec_set(mp, p, r);
+                let _sr = vec_set(mr, r, p);
+                0
+            } else { 0 }
+        }
+    };
+    let _fn = vec_free(next); let _fm = vec_free(mr);
+    mp
+};
+
+fn is_stable(mp: i64, pp: i64, rr: i64, n: i64) -> i64 = {
+    let mut stable = 1;
+    let mut p = 0;
+    loop {
+        if p >= n { break } else { () };
+        let rm = vec_get(mp, p);
+        let mut j = 0;
+        loop {
+            if j >= n { break } else { () };
+            let r = vec_get(pp, p * n + j);
+            if r == rm { break } else { () };
+            let mut rp = 0 - 1;
+            let mut k = 0;
+            loop {
+                if k >= n { break } else { () };
+                if vec_get(mp, k) == r { set rp = k; break } else { () };
+                set k = k + 1
+            };
+            let _c = if rp >= 0 {
+                if vec_get(rr, r * n + p) < vec_get(rr, r * n + rp) {
+                    set stable = 0; 0
+                } else { 0 }
+            } else { 0 };
+            set j = j + 1
+        };
+        set p = p + 1
+    };
+    stable
+};
+
+fn main() -> i64 = {
+    let n = 3;
+    // P0: R0>R1>R2, P1: R1>R0>R2, P2: R0>R1>R2
+    let pp = vec_new();
+    let _p = vec_push(pp, 0); let _p = vec_push(pp, 1); let _p = vec_push(pp, 2);
+    let _p = vec_push(pp, 1); let _p = vec_push(pp, 0); let _p = vec_push(pp, 2);
+    let _p = vec_push(pp, 0); let _p = vec_push(pp, 1); let _p = vec_push(pp, 2);
+    // R0: P1>P0>P2, R1: P0>P1>P2, R2: P0>P1>P2
+    let pr = vec_new();
+    let _p = vec_push(pr, 1); let _p = vec_push(pr, 0); let _p = vec_push(pr, 2);
+    let _p = vec_push(pr, 0); let _p = vec_push(pr, 1); let _p = vec_push(pr, 2);
+    let _p = vec_push(pr, 0); let _p = vec_push(pr, 1); let _p = vec_push(pr, 2);
+    let rr = vec_new();
+    for _i in 0..(n * n) { vec_push(rr, 0) };
+    let _br = build_rank(pr, rr, n);
+    let mp = gale_shapley(pp, rr, n);
+    let _h = print_str("Matching:\n");
+    let mut i = 0;
+    loop {
+        if i >= n { break } else { () };
+        let _pi = print(i); let _s = print_str(" -> ");
+        let _pr = println(vec_get(mp, i));
+        set i = i + 1
+    };
+    let _sh = print_str("Stable: ");
+    let _sp = println(is_stable(mp, pp, rr, n));
+    let _f = vec_free(pp); let _f = vec_free(pr);
+    let _f = vec_free(rr); let _f = vec_free(mp);
+    0
+};

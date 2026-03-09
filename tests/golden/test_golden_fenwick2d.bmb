@@ -1,0 +1,142 @@
+// Golden Test: 2D Binary Indexed Tree (Fenwick) for rectangle sum queries
+// Supports point update and rectangle prefix sum in O(log(n) * log(m))
+// Uses flat vec of size (n+1)*(m+1) to represent 2D BIT (1-indexed)
+
+fn lowbit(x: i64) -> i64 = x band (0 - x);
+
+// Get element from 2D array stored as flat vec
+fn get2d(tree: i64, cols: i64, r: i64, c: i64) -> i64 =
+    vec_get(tree, r * cols + c);
+
+// Set element in 2D array stored as flat vec
+fn set2d(tree: i64, cols: i64, r: i64, c: i64, val: i64) -> i64 = {
+    let _s = vec_set(tree, r * cols + c, val);
+    0
+};
+
+// Create zero-filled 2D array as flat vec
+fn make_zeros2d(rows: i64, cols: i64) -> i64 = {
+    let v = vec_new();
+    let total = rows * cols;
+    for _i in 0..total { vec_push(v, 0) };
+    v
+};
+
+// Update: add delta at position (r, c) — inner column loop
+fn update_col(tree: i64, rows: i64, cols: i64, r: i64, c: i64, delta: i64) -> i64 = {
+    let cc = c;
+    loop {
+        if cc >= cols { break } else { () };
+        let cur = get2d(tree, cols, r, cc);
+        let _s = set2d(tree, cols, r, cc, cur + delta);
+        cc = cc + lowbit(cc)
+    };
+    0
+};
+
+// Update: add delta at position (r, c) — outer row loop
+fn update2d(tree: i64, rows: i64, cols: i64, r: i64, c: i64, delta: i64) -> i64 = {
+    let rr = r;
+    loop {
+        if rr >= rows { break } else { () };
+        let _u = update_col(tree, rows, cols, rr, c, delta);
+        rr = rr + lowbit(rr)
+    };
+    0
+};
+
+// Query: prefix sum from (1,1) to (r,c) — inner column loop
+fn query_col(tree: i64, cols: i64, r: i64, c: i64) -> i64 = {
+    let sum = 0;
+    let cc = c;
+    loop {
+        if cc <= 0 { break } else { () };
+        sum = sum + get2d(tree, cols, r, cc);
+        cc = cc - lowbit(cc)
+    };
+    sum
+};
+
+// Query: prefix sum from (1,1) to (r,c) — outer row loop
+fn query2d(tree: i64, cols: i64, r: i64, c: i64) -> i64 = {
+    let sum = 0;
+    let rr = r;
+    loop {
+        if rr <= 0 { break } else { () };
+        sum = sum + query_col(tree, cols, rr, c);
+        rr = rr - lowbit(rr)
+    };
+    sum
+};
+
+// Rectangle sum query: sum of elements in rectangle (r1,c1) to (r2,c2), inclusive
+fn rect_sum(tree: i64, cols: i64, r1: i64, c1: i64, r2: i64, c2: i64) -> i64 =
+    query2d(tree, cols, r2, c2)
+    - query2d(tree, cols, r1 - 1, c2)
+    - query2d(tree, cols, r2, c1 - 1)
+    + query2d(tree, cols, r1 - 1, c1 - 1);
+
+fn main() -> i64 = {
+    // 4x5 grid (1-indexed), so allocate (4+1)*(5+1) = 30
+    let rows = 5;
+    let cols = 6;
+    let tree = make_zeros2d(rows, cols);
+
+    // Insert a 4x5 matrix:
+    // Row 1: 1 2 3 4 5
+    // Row 2: 6 7 8 9 10
+    // Row 3: 11 12 13 14 15
+    // Row 4: 16 17 18 19 20
+    let _u01 = update2d(tree, rows, cols, 1, 1, 1);
+    let _u02 = update2d(tree, rows, cols, 1, 2, 2);
+    let _u03 = update2d(tree, rows, cols, 1, 3, 3);
+    let _u04 = update2d(tree, rows, cols, 1, 4, 4);
+    let _u05 = update2d(tree, rows, cols, 1, 5, 5);
+    let _u06 = update2d(tree, rows, cols, 2, 1, 6);
+    let _u07 = update2d(tree, rows, cols, 2, 2, 7);
+    let _u08 = update2d(tree, rows, cols, 2, 3, 8);
+    let _u09 = update2d(tree, rows, cols, 2, 4, 9);
+    let _u10 = update2d(tree, rows, cols, 2, 5, 10);
+    let _u11 = update2d(tree, rows, cols, 3, 1, 11);
+    let _u12 = update2d(tree, rows, cols, 3, 2, 12);
+    let _u13 = update2d(tree, rows, cols, 3, 3, 13);
+    let _u14 = update2d(tree, rows, cols, 3, 4, 14);
+    let _u15 = update2d(tree, rows, cols, 3, 5, 15);
+    let _u16 = update2d(tree, rows, cols, 4, 1, 16);
+    let _u17 = update2d(tree, rows, cols, 4, 2, 17);
+    let _u18 = update2d(tree, rows, cols, 4, 3, 18);
+    let _u19 = update2d(tree, rows, cols, 4, 4, 19);
+    let _u20 = update2d(tree, rows, cols, 4, 5, 20);
+
+    // Prefix sums: query2d(r,c) = sum from (1,1) to (r,c)
+    let _p1 = println(query2d(tree, cols, 1, 1));  // 1
+    let _p2 = println(query2d(tree, cols, 1, 5));  // 1+2+3+4+5 = 15
+    let _p3 = println(query2d(tree, cols, 2, 2));  // 1+2+6+7 = 16
+    let _p4 = println(query2d(tree, cols, 4, 5));  // sum of all = 210
+
+    // Rectangle sums
+    // rect (1,1)-(1,5) = row 1 = 15
+    let _p5 = println(rect_sum(tree, cols, 1, 1, 1, 5));  // 15
+    // rect (2,2)-(3,4) = 7+8+9 + 12+13+14 = 63
+    let _p6 = println(rect_sum(tree, cols, 2, 2, 3, 4));  // 63
+    // rect (1,1)-(4,5) = all = 210
+    let _p7 = println(rect_sum(tree, cols, 1, 1, 4, 5));  // 210
+    // rect (3,3)-(4,5) = 13+14+15 + 18+19+20 = 99
+    let _p8 = println(rect_sum(tree, cols, 3, 3, 4, 5));  // 99
+    // Single element: rect (2,3)-(2,3) = 8
+    let _p9 = println(rect_sum(tree, cols, 2, 3, 2, 3));  // 8
+    // rect (1,1)-(2,3) = 1+2+3+6+7+8 = 27
+    let _p10 = println(rect_sum(tree, cols, 1, 1, 2, 3)); // 27
+
+    // Point update: add 100 to position (2,3)
+    let _u21 = update2d(tree, rows, cols, 2, 3, 100);
+    // Now rect (2,3)-(2,3) = 108
+    let _p11 = println(rect_sum(tree, cols, 2, 3, 2, 3)); // 108
+    // rect (1,1)-(4,5) = 210 + 100 = 310
+    let _p12 = println(rect_sum(tree, cols, 1, 1, 4, 5)); // 310
+    // rect (2,2)-(3,4) = 63 + 100 = 163
+    let _p13 = println(rect_sum(tree, cols, 2, 2, 3, 4)); // 163
+
+    let _f = vec_free(tree);
+    0
+};
