@@ -819,9 +819,10 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
 
         // Compile runtime with same optimization level as BMB code
         // v0.51: Critical fix - runtime was compiled with -O0, causing 3x slowdown in FFI calls
+        // v0.96.37: Add -ffunction-sections/-fdata-sections to enable linker dead code elimination
         let runtime_obj = config.output.with_file_name("runtime").with_extension(if cfg!(windows) { "obj" } else { "o" });
         let mut cmd = Command::new(&clang);
-        cmd.args([opt_flag, "-c", path_str(&runtime_path)?, "-o", path_str(&runtime_obj)?]);
+        cmd.args([opt_flag, "-ffunction-sections", "-fdata-sections", "-c", path_str(&runtime_path)?, "-o", path_str(&runtime_obj)?]);
 
         // Add Windows SDK include paths if on Windows
         #[cfg(target_os = "windows")]
@@ -850,6 +851,7 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
                 "/SUBSYSTEM:CONSOLE",
                 "/ENTRY:mainCRTStartup",
                 "/STACK:16777216",  // 16MB stack for deep recursion in bootstrap compiler
+                "/OPT:REF",        // v0.96.37: Remove unreferenced functions (reduces binary size + icache pressure)
             ]);
 
             // Add Windows SDK and MSVC library paths
@@ -886,6 +888,7 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
                 path_str(&runtime_obj)?,
                 "-o",
                 path_str(&config.output)?,
+                "-Wl,--gc-sections",  // v0.96.37: Remove unreferenced functions
             ]);
 
             let output_result = cmd.output()?;

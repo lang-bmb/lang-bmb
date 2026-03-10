@@ -398,8 +398,6 @@ impl TextCodeGen {
         for meta_id in &meta_ids {
             // All loops get mustprogress + vectorize hints.
             // vectorize.enable + width=4 matches AVX2 i64 width.
-            // interleave.count=2 uses more vector registers for better throughput.
-            // distribute.enable allows LLVM to split loops for better vectorization.
             writeln!(result, "!{} = distinct !{{!{}, !{{!\"llvm.loop.mustprogress\"}}, !{{!\"llvm.loop.vectorize.enable\", i1 true}}, !{{!\"llvm.loop.vectorize.width\", i32 4}}}}", meta_id, meta_id).unwrap();
         }
 
@@ -543,12 +541,16 @@ impl TextCodeGen {
                 // Match ALL inttoptr patterns that derive from parameter/local bases:
                 //   %li64_gep_base.N = inttoptr ...  (load_i64 GEP path)
                 //   %si64_gep_base.N = inttoptr ...  (store_i64 GEP path)
+                //   %lf64_gep_base.N = inttoptr ...  (load_f64 GEP path)
+                //   %sf64_gep_base.N = inttoptr ...  (store_f64 GEP path)
                 //   %gep_base.N = inttoptr ...       (load_u8 GEP path)
                 //   %sgep_base.N = inttoptr ...      (store_u8 GEP path)
                 //   %load_ptr.N = inttoptr ...       (load_i64 fallback path)
                 //   %store_ptr.N = inttoptr ...      (store_i64 fallback path)
                 //   %load_u8_ptr.N = inttoptr ...    (load_u8 fallback path)
                 //   %store_u8_ptr.N = inttoptr ...   (store_u8 fallback path)
+                //   %load_f64_ptr.N = inttoptr ...   (load_f64 fallback path)
+                //   %store_f64_ptr.N = inttoptr ...  (store_f64 fallback path)
                 if trimmed.contains("inttoptr i64 %") && trimmed.ends_with("to ptr")
                    && (trimmed.contains("gep_base.") || trimmed.contains("_ptr."))
                 {
@@ -2004,11 +2006,52 @@ impl TextCodeGen {
             .map(|(name, _)| name.clone())
             .collect();
 
+        // v0.96.36: Pointer provenance tracking for native ptr optimization
+        // When a local variable receives a value from malloc/realloc/calloc, we create
+        // a parallel ptr-typed alloca (%var.ptr.addr) alongside the i64 alloca (%var.addr).
+        // In load_i64/store_i64 GEP paths, the ptr alloca is used directly, eliminating
+        // the inttoptr instruction that blocks LLVM's alias analysis (BasicAA).
+        // This preserves pointer provenance from malloc through GEP to load/store,
+        // enabling LLVM to prove non-aliasing between distinct allocations.
+        let ptr_provenance_vars: std::collections::HashSet<String> = {
+            let mut vars = std::collections::HashSet::new();
+            for block in &func.blocks {
+                for inst in &block.instructions {
+                    if let MirInst::Call { dest: Some(d), func: fn_name, .. } = inst {
+                        if matches!(fn_name.as_str(), "malloc" | "realloc" | "calloc")
+                            && local_names.contains(&d.name)
+                        {
+                            vars.insert(d.name.clone());
+                        }
+                    }
+                }
+            }
+            // Propagate through Copy instructions (iterate until stable)
+            for _ in 0..10 {
+                let mut changed = false;
+                for block in &func.blocks {
+                    for inst in &block.instructions {
+                        if let MirInst::Copy { dest, src } = inst {
+                            if vars.contains(&src.name)
+                                && local_names.contains(&dest.name)
+                                && !vars.contains(&dest.name)
+                            {
+                                vars.insert(dest.name.clone());
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+                if !changed { break; }
+            }
+            vars
+        };
+
         // Emit entry block with allocas for local variables (excluding phi-referenced ones)
         // Use "alloca_entry" to avoid conflicts with user variables named "entry"
         // v0.96.16: Also emit when preconditions exist (for llvm.assume)
         let has_assumes = !func.preconditions.is_empty();
-        if !local_names.is_empty() || has_assumes {
+        if !local_names.is_empty() || has_assumes || !ptr_provenance_vars.is_empty() {
             writeln!(out, "alloca_entry:")?;
             for (name, ty) in &func.locals {
                 if local_names.contains(name) {
@@ -2034,6 +2077,12 @@ impl TextCodeGen {
                         writeln!(out, "  %{}.addr = alloca {}{}", name, llvm_ty, align)?;
                     }
                 }
+            }
+            // v0.96.36: Emit ptr-typed allocas for pointer provenance tracking
+            // These parallel allocas store the native ptr from malloc (no ptrtoint),
+            // enabling load_i64/store_i64 GEP paths to use ptr directly.
+            for name in &ptr_provenance_vars {
+                writeln!(out, "  %{}.ptr.addr = alloca ptr, align 8", name)?;
             }
             // v0.96.16: Emit llvm.assume for precondition contract facts
             // This communicates pre-condition knowledge to LLVM optimizer, enabling:
@@ -2090,7 +2139,7 @@ impl TextCodeGen {
 
         // Emit basic blocks with place type information
         for block in &func.blocks {
-            self.emit_block_with_strings(out, block, func, string_table, fn_return_types, fn_param_types, sret_functions, small_struct_functions, tuple_functions, &tuple_var_types, &place_types, &mut name_counts, &local_names, &narrowed_param_names, &phi_load_map, &phi_string_map, &phi_coerce_map, struct_defs, fn_postconditions)?;
+            self.emit_block_with_strings(out, block, func, string_table, fn_return_types, fn_param_types, sret_functions, small_struct_functions, tuple_functions, &tuple_var_types, &place_types, &mut name_counts, &local_names, &narrowed_param_names, &phi_load_map, &phi_string_map, &phi_coerce_map, struct_defs, fn_postconditions, &ptr_provenance_vars)?;
         }
 
         writeln!(out, "}}")?;
@@ -2123,7 +2172,8 @@ impl TextCodeGen {
         let empty_tuple_var_types = HashMap::new();
         let empty_struct_defs = HashMap::new();
         let empty_postconditions = HashMap::new();
-        self.emit_block_with_strings(out, block, func, &empty_str_table, &empty_fn_types, &empty_fn_param_types, &empty_sret_functions, &empty_small_struct_functions, &empty_tuple_functions, &empty_tuple_var_types, &empty_place_types, &mut empty_name_counts, &empty_local_names, &empty_narrowed, &empty_phi_map, &empty_phi_string_map, &empty_phi_coerce_map, &empty_struct_defs, &empty_postconditions)
+        let empty_ptr_provenance = std::collections::HashSet::new();
+        self.emit_block_with_strings(out, block, func, &empty_str_table, &empty_fn_types, &empty_fn_param_types, &empty_sret_functions, &empty_small_struct_functions, &empty_tuple_functions, &empty_tuple_var_types, &empty_place_types, &mut empty_name_counts, &empty_local_names, &empty_narrowed, &empty_phi_map, &empty_phi_string_map, &empty_phi_coerce_map, &empty_struct_defs, &empty_postconditions, &empty_ptr_provenance)
     }
 
     /// Emit a basic block with string table support
@@ -2149,13 +2199,14 @@ impl TextCodeGen {
         phi_coerce_map: &std::collections::HashMap<(String, String, String), (String, &'static str, &'static str)>,
         struct_defs: &HashMap<String, Vec<(String, MirType)>>,
         fn_postconditions: &HashMap<String, Vec<ContractFact>>,
+        ptr_provenance_vars: &std::collections::HashSet<String>,
     ) -> TextCodeGenResult<()> {
         // Use bb_ prefix to avoid collision with variable names
         writeln!(out, "bb_{}:", block.label)?;
 
         // Emit instructions (pass phi_load_map for phi node handling)
         for inst in &block.instructions {
-            self.emit_instruction_with_strings(out, inst, func, string_table, fn_return_types, fn_param_types, sret_functions, small_struct_functions, tuple_functions, tuple_var_types, place_types, name_counts, local_names, narrowed_param_names, phi_load_map, phi_string_map, phi_coerce_map, &block.label, struct_defs)?;
+            self.emit_instruction_with_strings(out, inst, func, string_table, fn_return_types, fn_param_types, sret_functions, small_struct_functions, tuple_functions, tuple_var_types, place_types, name_counts, local_names, narrowed_param_names, phi_load_map, phi_string_map, phi_coerce_map, &block.label, struct_defs, ptr_provenance_vars)?;
 
             // v0.96.16: Emit llvm.assume for postcondition-derived facts after call sites
             if let MirInst::Call { dest: Some(d), func: callee_name, .. } = inst {
@@ -2287,6 +2338,7 @@ impl TextCodeGen {
         phi_coerce_map: &std::collections::HashMap<(String, String, String), (String, &'static str, &'static str)>,
         current_block_label: &str,
         struct_defs: &HashMap<String, Vec<(String, MirType)>>,
+        ptr_provenance_vars: &std::collections::HashSet<String>,
     ) -> TextCodeGenResult<()> {
         match inst {
             MirInst::Const { dest, value } => {
@@ -2430,6 +2482,12 @@ impl TextCodeGen {
                         writeln!(out, "  store i64 %{}, ptr %{}.addr", sext_name, dest.name)?;
                     } else {
                         writeln!(out, "  store {} {}, ptr %{}.addr", ty, src_val, dest.name)?;
+                    }
+                    // v0.96.36: Propagate pointer provenance through Copy
+                    if ptr_provenance_vars.contains(&src.name) && ptr_provenance_vars.contains(&dest.name) {
+                        let prov_load = self.unique_name(&format!("{}.prov.cp", src.name), name_counts);
+                        writeln!(out, "  %{} = load ptr, ptr %{}.ptr.addr", prov_load, src.name)?;
+                        writeln!(out, "  store ptr %{}, ptr %{}.ptr.addr", prov_load, dest.name)?;
                     }
                     // Suppress unused warning for is_tuple
                     let _ = is_tuple;
@@ -3015,6 +3073,10 @@ impl TextCodeGen {
                             let conv_name = format!("malloc.conv.{}", malloc_idx);
                             writeln!(out, "  %{} = ptrtoint ptr %{} to i64", conv_name, ptr_name)?;
                             writeln!(out, "  store i64 %{}, ptr %{}.addr", conv_name, d.name)?;
+                            // v0.96.36: Also store native ptr for provenance tracking
+                            if ptr_provenance_vars.contains(&d.name) {
+                                writeln!(out, "  store ptr %{}, ptr %{}.ptr.addr", ptr_name, d.name)?;
+                            }
                         } else {
                             let dest_name = self.unique_name(&d.name, name_counts);
                             writeln!(out, "  %{} = ptrtoint ptr %{} to i64", dest_name, ptr_name)?;
@@ -3035,6 +3097,9 @@ impl TextCodeGen {
                         _ => false,
                     };
 
+                    // v0.96.36: Check if argument has pointer provenance tracking
+                    let arg_has_provenance = matches!(&args[0], Operand::Place(p) if ptr_provenance_vars.contains(&p.name));
+
                     if arg_is_ptr {
                         // Argument is already ptr - load as ptr, no inttoptr needed
                         let ptr_val = match &args[0] {
@@ -3046,6 +3111,13 @@ impl TextCodeGen {
                             _ => self.format_operand_with_strings(&args[0], string_table),
                         };
                         writeln!(out, "  call void @free(ptr {})", ptr_val)?;
+                    } else if arg_has_provenance {
+                        // v0.96.36: Argument has ptr provenance - load native ptr, no inttoptr needed
+                        if let Operand::Place(p) = &args[0] {
+                            let load_name = format!("{}.free.prov", p.name);
+                            writeln!(out, "  %{} = load ptr, ptr %{}.ptr.addr", load_name, p.name)?;
+                            writeln!(out, "  call void @free(ptr %{})", load_name)?;
+                        }
                     } else {
                         // Argument is i64 - need inttoptr
                         let ptr_val = match &args[0] {
@@ -3060,6 +3132,68 @@ impl TextCodeGen {
                         *name_counts.get_mut("free_ptr").unwrap() += 1;
                         writeln!(out, "  %{} = inttoptr i64 {} to ptr", ptr_conv, ptr_val)?;
                         writeln!(out, "  call void @free(ptr %{})", ptr_conv)?;
+                    }
+                    return Ok(());
+                }
+
+                // v0.96.36: realloc(ptr, size) -> i64 - reallocates memory with provenance tracking
+                if fn_name == "realloc" && args.len() == 2 {
+                    // Load ptr argument
+                    let arg_has_provenance = matches!(&args[0], Operand::Place(p) if ptr_provenance_vars.contains(&p.name));
+                    let realloc_idx = *name_counts.entry("realloc_op".to_string()).or_insert(0);
+                    *name_counts.get_mut("realloc_op").unwrap() += 1;
+
+                    let ptr_arg = if arg_has_provenance {
+                        if let Operand::Place(p) = &args[0] {
+                            let load_name = format!("realloc.old.{}", realloc_idx);
+                            writeln!(out, "  %{} = load ptr, ptr %{}.ptr.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        } else { unreachable!() }
+                    } else {
+                        let i64_val = match &args[0] {
+                            Operand::Place(p) if local_names.contains(&p.name) => {
+                                let load_name = format!("realloc.old.i64.{}", realloc_idx);
+                                writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                                format!("%{}", load_name)
+                            }
+                            _ => self.format_operand_with_strings(&args[0], string_table),
+                        };
+                        let conv_name = format!("realloc.old.conv.{}", realloc_idx);
+                        writeln!(out, "  %{} = inttoptr i64 {} to ptr", conv_name, i64_val)?;
+                        format!("%{}", conv_name)
+                    };
+
+                    // Load size argument
+                    let size_val = match &args[1] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("realloc.size.{}", realloc_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        Operand::Place(p) if narrowed_param_names.contains(&p.name) => {
+                            let sext_name = format!("realloc.size.sext.{}", realloc_idx);
+                            writeln!(out, "  %{} = sext i32 %{} to i64", sext_name, p.name)?;
+                            format!("%{}", sext_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[1], string_table),
+                    };
+
+                    let ptr_name = format!("realloc.ptr.{}", realloc_idx);
+                    writeln!(out, "  %{} = call noalias ptr @realloc(ptr {}, i64 {})", ptr_name, ptr_arg, size_val)?;
+
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let conv_name = format!("realloc.conv.{}", realloc_idx);
+                            writeln!(out, "  %{} = ptrtoint ptr %{} to i64", conv_name, ptr_name)?;
+                            writeln!(out, "  store i64 %{}, ptr %{}.addr", conv_name, d.name)?;
+                            // v0.96.36: Also store native ptr for provenance tracking
+                            if ptr_provenance_vars.contains(&d.name) {
+                                writeln!(out, "  store ptr %{}, ptr %{}.ptr.addr", ptr_name, d.name)?;
+                            }
+                        } else {
+                            let dest_name = self.unique_name(&d.name, name_counts);
+                            writeln!(out, "  %{} = ptrtoint ptr %{} to i64", dest_name, ptr_name)?;
+                        }
                     }
                     return Ok(());
                 }
@@ -3126,6 +3260,8 @@ impl TextCodeGen {
 
                             // Check if offset = index * 8 for element-type GEP
                             let mut scaled_index: Option<&Operand> = None;
+                            // v0.96.35: Also detect constant offsets divisible by 8
+                            let mut const_elem_index: Option<i64> = None;
                             if let Operand::Place(off_place) = offset_op {
                                 for blk2 in &func.blocks {
                                     for inst3 in &blk2.instructions {
@@ -3146,25 +3282,36 @@ impl TextCodeGen {
                                         }
                                     }
                                 }
+                            } else if let Operand::Constant(Constant::Int(n)) = offset_op {
+                                if *n != 0 && *n % 8 == 0 {
+                                    const_elem_index = Some(*n / 8);
+                                }
                             }
 
-                            let base_val = match base_op {
-                                Operand::Place(p) if local_names.contains(&p.name) => {
-                                    let n = format!("si64_gep_base_load.{}", store_idx);
-                                    writeln!(out, "  %{} = load i64, ptr %{}.addr", n, p.name)?;
-                                    format!("%{}", n)
-                                }
-                                Operand::Place(p) if narrowed_param_names.contains(&p.name) => {
-                                    let n = format!("si64_gep_base_sext.{}", store_idx);
-                                    writeln!(out, "  %{} = sext i32 %{} to i64", n, p.name)?;
-                                    format!("%{}", n)
-                                }
-                                _ => self.format_operand_with_strings(base_op, string_table),
-                            };
-
+                            // v0.96.36: Use ptr provenance when available — skip inttoptr
                             let base_ptr = format!("si64_gep_base.{}", store_idx);
                             let elem_ptr = format!("si64_gep_elem.{}", store_idx);
-                            writeln!(out, "  %{} = inttoptr i64 {} to ptr", base_ptr, base_val)?;
+                            let base_has_provenance = matches!(base_op, Operand::Place(p) if ptr_provenance_vars.contains(&p.name));
+                            if base_has_provenance {
+                                if let Operand::Place(p) = base_op {
+                                    writeln!(out, "  %{} = load ptr, ptr %{}.ptr.addr", base_ptr, p.name)?;
+                                }
+                            } else {
+                                let base_val = match base_op {
+                                    Operand::Place(p) if local_names.contains(&p.name) => {
+                                        let n = format!("si64_gep_base_load.{}", store_idx);
+                                        writeln!(out, "  %{} = load i64, ptr %{}.addr", n, p.name)?;
+                                        format!("%{}", n)
+                                    }
+                                    Operand::Place(p) if narrowed_param_names.contains(&p.name) => {
+                                        let n = format!("si64_gep_base_sext.{}", store_idx);
+                                        writeln!(out, "  %{} = sext i32 %{} to i64", n, p.name)?;
+                                        format!("%{}", n)
+                                    }
+                                    _ => self.format_operand_with_strings(base_op, string_table),
+                                };
+                                writeln!(out, "  %{} = inttoptr i64 {} to ptr", base_ptr, base_val)?;
+                            }
 
                             if let Some(idx_op) = scaled_index {
                                 // Element-type GEP: getelementptr i64, ptr %base, i64 %index
@@ -3182,6 +3329,9 @@ impl TextCodeGen {
                                     _ => self.format_operand_with_strings(idx_op, string_table),
                                 };
                                 writeln!(out, "  %{} = getelementptr inbounds nuw i64, ptr %{}, i64 {}", elem_ptr, base_ptr, index_val)?;
+                            } else if let Some(elem_idx) = const_elem_index {
+                                // v0.96.35: Constant element-type GEP for offsets divisible by 8
+                                writeln!(out, "  %{} = getelementptr inbounds nuw i64, ptr %{}, i64 {}", elem_ptr, base_ptr, elem_idx)?;
                             } else {
                                 // Byte-offset GEP fallback
                                 let offset_val = match offset_op {
@@ -3213,23 +3363,33 @@ impl TextCodeGen {
                         return Ok(());
                     }
 
-                    // Fallback: original inttoptr pattern
-                    let ptr_val = match &args[0] {
-                        Operand::Place(p) if local_names.contains(&p.name) => {
-                            let load_name = format!("{}.store.ptr.{}", p.name, store_idx);
-                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
-                            format!("%{}", load_name)
+                    // Fallback: inttoptr pattern (or direct ptr load for provenance vars)
+                    // v0.96.36: Check for ptr provenance before falling back to inttoptr
+                    let addr_has_provenance = matches!(&args[0], Operand::Place(p) if ptr_provenance_vars.contains(&p.name));
+                    if addr_has_provenance {
+                        if let Operand::Place(p) = &args[0] {
+                            let ptr_name = format!("store_ptr.{}", store_idx);
+                            writeln!(out, "  %{} = load ptr, ptr %{}.ptr.addr", ptr_name, p.name)?;
+                            writeln!(out, "  store i64 {}, ptr %{}, align 8, !tbaa !903", val_val, ptr_name)?;
                         }
-                        Operand::Place(p) if narrowed_param_names.contains(&p.name) => {
-                            let sext_name = format!("{}.store.ptr.sext.{}", p.name, store_idx);
-                            writeln!(out, "  %{} = sext i32 %{} to i64", sext_name, p.name)?;
-                            format!("%{}", sext_name)
-                        }
-                        _ => self.format_operand_with_strings(&args[0], string_table),
-                    };
-                    let ptr_conv = format!("store_ptr.{}", store_idx);
-                    writeln!(out, "  %{} = inttoptr i64 {} to ptr", ptr_conv, ptr_val)?;
-                    writeln!(out, "  store i64 {}, ptr %{}, align 8, !tbaa !903", val_val, ptr_conv)?;
+                    } else {
+                        let ptr_val = match &args[0] {
+                            Operand::Place(p) if local_names.contains(&p.name) => {
+                                let load_name = format!("{}.store.ptr.{}", p.name, store_idx);
+                                writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                                format!("%{}", load_name)
+                            }
+                            Operand::Place(p) if narrowed_param_names.contains(&p.name) => {
+                                let sext_name = format!("{}.store.ptr.sext.{}", p.name, store_idx);
+                                writeln!(out, "  %{} = sext i32 %{} to i64", sext_name, p.name)?;
+                                format!("%{}", sext_name)
+                            }
+                            _ => self.format_operand_with_strings(&args[0], string_table),
+                        };
+                        let ptr_conv = format!("store_ptr.{}", store_idx);
+                        writeln!(out, "  %{} = inttoptr i64 {} to ptr", ptr_conv, ptr_val)?;
+                        writeln!(out, "  store i64 {}, ptr %{}, align 8, !tbaa !903", val_val, ptr_conv)?;
+                    }
                     return Ok(());
                 }
 
@@ -3274,6 +3434,7 @@ impl TextCodeGen {
                             // structural information that enables LLVM alias analysis to reason
                             // about distinct array indices (gep(base, j) vs gep(base, j+1)).
                             let mut scaled_index: Option<&Operand> = None;
+                            let mut const_elem_index: Option<i64> = None;
                             if let Operand::Place(off_place) = offset_op {
                                 for blk2 in &func.blocks {
                                     for inst3 in &blk2.instructions {
@@ -3295,25 +3456,39 @@ impl TextCodeGen {
                                         }
                                     }
                                 }
+                            } else if let Operand::Constant(Constant::Int(n)) = offset_op {
+                                // v0.96.35: Constant offset divisible by 8 → element-type GEP
+                                if *n != 0 && *n % 8 == 0 {
+                                    const_elem_index = Some(*n / 8);
+                                }
                             }
 
-                            let base_val = match base_op {
-                                Operand::Place(p) if local_names.contains(&p.name) => {
-                                    let n = format!("li64_gep_base_load.{}", load_idx);
-                                    writeln!(out, "  %{} = load i64, ptr %{}.addr", n, p.name)?;
-                                    format!("%{}", n)
-                                }
-                                Operand::Place(p) if narrowed_param_names.contains(&p.name) => {
-                                    let n = format!("li64_gep_base_sext.{}", load_idx);
-                                    writeln!(out, "  %{} = sext i32 %{} to i64", n, p.name)?;
-                                    format!("%{}", n)
-                                }
-                                _ => self.format_operand_with_strings(base_op, string_table),
-                            };
-
+                            // v0.96.36: Use ptr provenance when available — skip inttoptr
                             let base_ptr = format!("li64_gep_base.{}", load_idx);
                             let elem_ptr = format!("li64_gep_elem.{}", load_idx);
-                            writeln!(out, "  %{} = inttoptr i64 {} to ptr", base_ptr, base_val)?;
+                            let base_has_provenance = matches!(base_op, Operand::Place(p) if ptr_provenance_vars.contains(&p.name));
+                            if base_has_provenance {
+                                // Load native ptr directly from .ptr.addr — no inttoptr needed
+                                // This preserves pointer provenance from malloc, enabling BasicAA
+                                if let Operand::Place(p) = base_op {
+                                    writeln!(out, "  %{} = load ptr, ptr %{}.ptr.addr", base_ptr, p.name)?;
+                                }
+                            } else {
+                                let base_val = match base_op {
+                                    Operand::Place(p) if local_names.contains(&p.name) => {
+                                        let n = format!("li64_gep_base_load.{}", load_idx);
+                                        writeln!(out, "  %{} = load i64, ptr %{}.addr", n, p.name)?;
+                                        format!("%{}", n)
+                                    }
+                                    Operand::Place(p) if narrowed_param_names.contains(&p.name) => {
+                                        let n = format!("li64_gep_base_sext.{}", load_idx);
+                                        writeln!(out, "  %{} = sext i32 %{} to i64", n, p.name)?;
+                                        format!("%{}", n)
+                                    }
+                                    _ => self.format_operand_with_strings(base_op, string_table),
+                                };
+                                writeln!(out, "  %{} = inttoptr i64 {} to ptr", base_ptr, base_val)?;
+                            }
 
                             if let Some(idx_op) = scaled_index {
                                 // Emit element-type GEP: getelementptr i64, ptr %base, i64 %index
@@ -3331,6 +3506,9 @@ impl TextCodeGen {
                                     _ => self.format_operand_with_strings(idx_op, string_table),
                                 };
                                 writeln!(out, "  %{} = getelementptr inbounds nuw i64, ptr %{}, i64 {}", elem_ptr, base_ptr, index_val)?;
+                            } else if let Some(elem_idx) = const_elem_index {
+                                // v0.96.35: Constant element-type GEP
+                                writeln!(out, "  %{} = getelementptr inbounds nuw i64, ptr %{}, i64 {}", elem_ptr, base_ptr, elem_idx)?;
                             } else {
                                 // Byte-offset GEP (original path)
                                 let offset_val = match offset_op {
@@ -3365,24 +3543,30 @@ impl TextCodeGen {
                         return Ok(());
                     }
 
-                    // Fallback: original inttoptr pattern for non-Add addresses
-                    // v0.93.122: Handle narrowed i32 params with sext for inttoptr
-                    let ptr_val = match &args[0] {
-                        Operand::Place(p) if local_names.contains(&p.name) => {
-                            let load_name = format!("{}.load.ptr.{}", p.name, load_idx);
-                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
-                            format!("%{}", load_name)
-                        }
-                        Operand::Place(p) if narrowed_param_names.contains(&p.name) => {
-                            let sext_name = format!("{}.load.ptr.sext.{}", p.name, load_idx);
-                            writeln!(out, "  %{} = sext i32 %{} to i64", sext_name, p.name)?;
-                            format!("%{}", sext_name)
-                        }
-                        _ => self.format_operand_with_strings(&args[0], string_table),
-                    };
-                    // Convert i64 pointer to ptr type and load
+                    // Fallback: inttoptr pattern or direct ptr load for provenance vars
+                    // v0.96.36: Check for ptr provenance before falling back to inttoptr
+                    let addr_has_provenance = matches!(&args[0], Operand::Place(p) if ptr_provenance_vars.contains(&p.name));
                     let ptr_conv = format!("load_ptr.{}", load_idx);
-                    writeln!(out, "  %{} = inttoptr i64 {} to ptr", ptr_conv, ptr_val)?;
+                    if addr_has_provenance {
+                        if let Operand::Place(p) = &args[0] {
+                            writeln!(out, "  %{} = load ptr, ptr %{}.ptr.addr", ptr_conv, p.name)?;
+                        }
+                    } else {
+                        let ptr_val = match &args[0] {
+                            Operand::Place(p) if local_names.contains(&p.name) => {
+                                let load_name = format!("{}.load.ptr.{}", p.name, load_idx);
+                                writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                                format!("%{}", load_name)
+                            }
+                            Operand::Place(p) if narrowed_param_names.contains(&p.name) => {
+                                let sext_name = format!("{}.load.ptr.sext.{}", p.name, load_idx);
+                                writeln!(out, "  %{} = sext i32 %{} to i64", sext_name, p.name)?;
+                                format!("%{}", sext_name)
+                            }
+                            _ => self.format_operand_with_strings(&args[0], string_table),
+                        };
+                        writeln!(out, "  %{} = inttoptr i64 {} to ptr", ptr_conv, ptr_val)?;
+                    }
                     if let Some(d) = dest {
                         if local_names.contains(&d.name) {
                             let temp_name = format!("{}.load.{}", d.name, load_idx);
@@ -3397,18 +3581,10 @@ impl TextCodeGen {
                 }
 
                 // v0.51.5: store_f64(ptr, value) -> Unit - writes f64 value to memory
+                // v0.96.35: GEP-based access when addr = base + offset (same as store_i64)
                 if fn_name == "store_f64" && args.len() == 2 {
                     let store_idx = *name_counts.entry("store_f64_op".to_string()).or_insert(0);
                     *name_counts.get_mut("store_f64_op").unwrap() += 1;
-                    // Get pointer argument
-                    let ptr_val = match &args[0] {
-                        Operand::Place(p) if local_names.contains(&p.name) => {
-                            let load_name = format!("{}.store_f64.ptr.{}", p.name, store_idx);
-                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
-                            format!("%{}", load_name)
-                        }
-                        _ => self.format_operand_with_strings(&args[0], string_table),
-                    };
                     // Get value argument (f64)
                     let val_val = match &args[1] {
                         Operand::Place(p) if local_names.contains(&p.name) => {
@@ -3419,7 +3595,133 @@ impl TextCodeGen {
                         Operand::Constant(crate::mir::Constant::Float(f)) => format!("{:e}", f),
                         _ => self.format_operand_with_strings(&args[1], string_table),
                     };
-                    // Convert i64 pointer to ptr type and store f64
+
+                    // Try GEP-based access
+                    let mut used_gep = false;
+                    if let Operand::Place(addr_place) = &args[0] {
+                        let mut add_parts: Option<(&Operand, &Operand)> = None;
+                        'outer_sf64: for blk in &func.blocks {
+                            for inst2 in &blk.instructions {
+                                if let MirInst::BinOp { dest: d2, op: MirBinOp::Add, lhs: l2, rhs: r2 } = inst2 {
+                                    if d2.name == addr_place.name {
+                                        add_parts = Some((l2, r2));
+                                        break 'outer_sf64;
+                                    }
+                                }
+                            }
+                        }
+                        if let Some((add_lhs, add_rhs)) = add_parts {
+                            let param_set: std::collections::HashSet<&String> = func.params.iter().map(|(n,_)| n).collect();
+                            let (base_op, offset_op) = if matches!(add_rhs, Operand::Place(p) if param_set.contains(&p.name)) {
+                                (add_rhs, add_lhs)
+                            } else {
+                                (add_lhs, add_rhs)
+                            };
+
+                            // Check if offset = index * 8 for element-type GEP (f64 is 8 bytes)
+                            let mut scaled_index: Option<&Operand> = None;
+                            let mut const_elem_index: Option<i64> = None;
+                            if let Operand::Place(off_place) = offset_op {
+                                for blk2 in &func.blocks {
+                                    for inst3 in &blk2.instructions {
+                                        match inst3 {
+                                            MirInst::BinOp { dest: d3, op: MirBinOp::Mul, lhs: l3, rhs: r3 } if d3.name == off_place.name => {
+                                                if matches!(r3, Operand::Constant(Constant::Int(8))) {
+                                                    scaled_index = Some(l3);
+                                                } else if matches!(l3, Operand::Constant(Constant::Int(8))) {
+                                                    scaled_index = Some(r3);
+                                                }
+                                            }
+                                            MirInst::BinOp { dest: d3, op: MirBinOp::Shl, lhs: l3, rhs: r3 } if d3.name == off_place.name => {
+                                                if matches!(r3, Operand::Constant(Constant::Int(3))) {
+                                                    scaled_index = Some(l3);
+                                                }
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+                            } else if let Operand::Constant(Constant::Int(n)) = offset_op {
+                                if *n != 0 && *n % 8 == 0 {
+                                    const_elem_index = Some(*n / 8);
+                                }
+                            }
+
+                            // v0.96.36: Use ptr provenance when available — skip inttoptr
+                            let base_ptr = format!("sf64_gep_base.{}", store_idx);
+                            let elem_ptr = format!("sf64_gep_elem.{}", store_idx);
+                            let base_has_provenance = matches!(base_op, Operand::Place(p) if ptr_provenance_vars.contains(&p.name));
+                            if base_has_provenance {
+                                if let Operand::Place(p) = base_op {
+                                    writeln!(out, "  %{} = load ptr, ptr %{}.ptr.addr", base_ptr, p.name)?;
+                                }
+                            } else {
+                                let base_val = match base_op {
+                                    Operand::Place(p) if local_names.contains(&p.name) => {
+                                        let n = format!("sf64_gep_base_load.{}", store_idx);
+                                        writeln!(out, "  %{} = load i64, ptr %{}.addr", n, p.name)?;
+                                        format!("%{}", n)
+                                    }
+                                    Operand::Place(p) if narrowed_param_names.contains(&p.name) => {
+                                        let n = format!("sf64_gep_base_sext.{}", store_idx);
+                                        writeln!(out, "  %{} = sext i32 %{} to i64", n, p.name)?;
+                                        format!("%{}", n)
+                                    }
+                                    _ => self.format_operand_with_strings(base_op, string_table),
+                                };
+                                writeln!(out, "  %{} = inttoptr i64 {} to ptr", base_ptr, base_val)?;
+                            }
+
+                            if let Some(idx_op) = scaled_index {
+                                let index_val = match idx_op {
+                                    Operand::Place(p) if local_names.contains(&p.name) => {
+                                        let n = format!("sf64_gep_idx_load.{}", store_idx);
+                                        writeln!(out, "  %{} = load i64, ptr %{}.addr", n, p.name)?;
+                                        format!("%{}", n)
+                                    }
+                                    Operand::Place(p) if narrowed_param_names.contains(&p.name) => {
+                                        let n = format!("sf64_gep_idx_sext.{}", store_idx);
+                                        writeln!(out, "  %{} = sext i32 %{} to i64", n, p.name)?;
+                                        format!("%{}", n)
+                                    }
+                                    _ => self.format_operand_with_strings(idx_op, string_table),
+                                };
+                                writeln!(out, "  %{} = getelementptr inbounds nuw double, ptr %{}, i64 {}", elem_ptr, base_ptr, index_val)?;
+                            } else if let Some(elem_idx) = const_elem_index {
+                                writeln!(out, "  %{} = getelementptr inbounds nuw double, ptr %{}, i64 {}", elem_ptr, base_ptr, elem_idx)?;
+                            } else {
+                                let offset_val = match offset_op {
+                                    Operand::Place(p) if local_names.contains(&p.name) => {
+                                        let n = format!("sf64_gep_offset_load.{}", store_idx);
+                                        writeln!(out, "  %{} = load i64, ptr %{}.addr", n, p.name)?;
+                                        format!("%{}", n)
+                                    }
+                                    Operand::Place(p) if narrowed_param_names.contains(&p.name) => {
+                                        let n = format!("sf64_gep_offset_sext.{}", store_idx);
+                                        writeln!(out, "  %{} = sext i32 %{} to i64", n, p.name)?;
+                                        format!("%{}", n)
+                                    }
+                                    _ => self.format_operand_with_strings(offset_op, string_table),
+                                };
+                                writeln!(out, "  %{} = getelementptr inbounds nuw i8, ptr %{}, i64 {}", elem_ptr, base_ptr, offset_val)?;
+                            }
+                            writeln!(out, "  store double {}, ptr %{}, align 8, !tbaa !905", val_val, elem_ptr)?;
+                            used_gep = true;
+                        }
+                    }
+                    if used_gep {
+                        return Ok(());
+                    }
+
+                    // Fallback: original inttoptr pattern
+                    let ptr_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("{}.store_f64.ptr.{}", p.name, store_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
                     let ptr_conv = format!("store_f64_ptr.{}", store_idx);
                     writeln!(out, "  %{} = inttoptr i64 {} to ptr", ptr_conv, ptr_val)?;
                     writeln!(out, "  store double {}, ptr %{}, align 8, !tbaa !905", val_val, ptr_conv)?;
@@ -3427,10 +3729,138 @@ impl TextCodeGen {
                 }
 
                 // v0.51.5: load_f64(ptr) -> f64 - reads f64 value from memory
+                // v0.96.35: GEP-based access when addr = base + offset (same as load_i64)
                 if fn_name == "load_f64" && args.len() == 1 {
                     let load_idx = *name_counts.entry("load_f64_op".to_string()).or_insert(0);
                     *name_counts.get_mut("load_f64_op").unwrap() += 1;
-                    // Get pointer argument
+
+                    // Try GEP-based access
+                    let mut used_gep = false;
+                    if let Operand::Place(addr_place) = &args[0] {
+                        let mut add_parts: Option<(&Operand, &Operand)> = None;
+                        'outer_lf64: for blk in &func.blocks {
+                            for inst2 in &blk.instructions {
+                                if let MirInst::BinOp { dest: d2, op: MirBinOp::Add, lhs: l2, rhs: r2 } = inst2 {
+                                    if d2.name == addr_place.name {
+                                        add_parts = Some((l2, r2));
+                                        break 'outer_lf64;
+                                    }
+                                }
+                            }
+                        }
+                        if let Some((add_lhs, add_rhs)) = add_parts {
+                            let param_set: std::collections::HashSet<&String> = func.params.iter().map(|(n,_)| n).collect();
+                            let (base_op, offset_op) = if matches!(add_rhs, Operand::Place(p) if param_set.contains(&p.name)) {
+                                (add_rhs, add_lhs)
+                            } else {
+                                (add_lhs, add_rhs)
+                            };
+
+                            // Check if offset = index * 8 for element-type GEP (f64 is 8 bytes)
+                            let mut scaled_index: Option<&Operand> = None;
+                            let mut const_elem_index: Option<i64> = None;
+                            if let Operand::Place(off_place) = offset_op {
+                                for blk2 in &func.blocks {
+                                    for inst3 in &blk2.instructions {
+                                        match inst3 {
+                                            MirInst::BinOp { dest: d3, op: MirBinOp::Mul, lhs: l3, rhs: r3 } if d3.name == off_place.name => {
+                                                if matches!(r3, Operand::Constant(Constant::Int(8))) {
+                                                    scaled_index = Some(l3);
+                                                } else if matches!(l3, Operand::Constant(Constant::Int(8))) {
+                                                    scaled_index = Some(r3);
+                                                }
+                                            }
+                                            MirInst::BinOp { dest: d3, op: MirBinOp::Shl, lhs: l3, rhs: r3 } if d3.name == off_place.name => {
+                                                if matches!(r3, Operand::Constant(Constant::Int(3))) {
+                                                    scaled_index = Some(l3);
+                                                }
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+                            } else if let Operand::Constant(Constant::Int(n)) = offset_op {
+                                if *n != 0 && *n % 8 == 0 {
+                                    const_elem_index = Some(*n / 8);
+                                }
+                            }
+
+                            // v0.96.36: Use ptr provenance when available — skip inttoptr
+                            let base_ptr = format!("lf64_gep_base.{}", load_idx);
+                            let elem_ptr = format!("lf64_gep_elem.{}", load_idx);
+                            let base_has_provenance = matches!(base_op, Operand::Place(p) if ptr_provenance_vars.contains(&p.name));
+                            if base_has_provenance {
+                                if let Operand::Place(p) = base_op {
+                                    writeln!(out, "  %{} = load ptr, ptr %{}.ptr.addr", base_ptr, p.name)?;
+                                }
+                            } else {
+                                let base_val = match base_op {
+                                    Operand::Place(p) if local_names.contains(&p.name) => {
+                                        let n = format!("lf64_gep_base_load.{}", load_idx);
+                                        writeln!(out, "  %{} = load i64, ptr %{}.addr", n, p.name)?;
+                                        format!("%{}", n)
+                                    }
+                                    Operand::Place(p) if narrowed_param_names.contains(&p.name) => {
+                                        let n = format!("lf64_gep_base_sext.{}", load_idx);
+                                        writeln!(out, "  %{} = sext i32 %{} to i64", n, p.name)?;
+                                        format!("%{}", n)
+                                    }
+                                    _ => self.format_operand_with_strings(base_op, string_table),
+                                };
+                                writeln!(out, "  %{} = inttoptr i64 {} to ptr", base_ptr, base_val)?;
+                            }
+
+                            if let Some(idx_op) = scaled_index {
+                                let index_val = match idx_op {
+                                    Operand::Place(p) if local_names.contains(&p.name) => {
+                                        let n = format!("lf64_gep_idx_load.{}", load_idx);
+                                        writeln!(out, "  %{} = load i64, ptr %{}.addr", n, p.name)?;
+                                        format!("%{}", n)
+                                    }
+                                    Operand::Place(p) if narrowed_param_names.contains(&p.name) => {
+                                        let n = format!("lf64_gep_idx_sext.{}", load_idx);
+                                        writeln!(out, "  %{} = sext i32 %{} to i64", n, p.name)?;
+                                        format!("%{}", n)
+                                    }
+                                    _ => self.format_operand_with_strings(idx_op, string_table),
+                                };
+                                writeln!(out, "  %{} = getelementptr inbounds nuw double, ptr %{}, i64 {}", elem_ptr, base_ptr, index_val)?;
+                            } else if let Some(elem_idx) = const_elem_index {
+                                writeln!(out, "  %{} = getelementptr inbounds nuw double, ptr %{}, i64 {}", elem_ptr, base_ptr, elem_idx)?;
+                            } else {
+                                let offset_val = match offset_op {
+                                    Operand::Place(p) if local_names.contains(&p.name) => {
+                                        let n = format!("lf64_gep_offset_load.{}", load_idx);
+                                        writeln!(out, "  %{} = load i64, ptr %{}.addr", n, p.name)?;
+                                        format!("%{}", n)
+                                    }
+                                    Operand::Place(p) if narrowed_param_names.contains(&p.name) => {
+                                        let n = format!("lf64_gep_offset_sext.{}", load_idx);
+                                        writeln!(out, "  %{} = sext i32 %{} to i64", n, p.name)?;
+                                        format!("%{}", n)
+                                    }
+                                    _ => self.format_operand_with_strings(offset_op, string_table),
+                                };
+                                writeln!(out, "  %{} = getelementptr inbounds nuw i8, ptr %{}, i64 {}", elem_ptr, base_ptr, offset_val)?;
+                            }
+                            if let Some(d) = dest {
+                                if local_names.contains(&d.name) {
+                                    let temp_name = format!("{}.load_f64.{}", d.name, load_idx);
+                                    writeln!(out, "  %{} = load double, ptr %{}, align 8, !tbaa !905", temp_name, elem_ptr)?;
+                                    writeln!(out, "  store double %{}, ptr %{}.addr", temp_name, d.name)?;
+                                } else {
+                                    let dest_name = self.unique_name(&d.name, name_counts);
+                                    writeln!(out, "  %{} = load double, ptr %{}, align 8, !tbaa !905", dest_name, elem_ptr)?;
+                                }
+                            }
+                            used_gep = true;
+                        }
+                    }
+                    if used_gep {
+                        return Ok(());
+                    }
+
+                    // Fallback: original inttoptr pattern for non-Add addresses
                     let ptr_val = match &args[0] {
                         Operand::Place(p) if local_names.contains(&p.name) => {
                             let load_name = format!("{}.load_f64.ptr.{}", p.name, load_idx);
@@ -3439,7 +3869,6 @@ impl TextCodeGen {
                         }
                         _ => self.format_operand_with_strings(&args[0], string_table),
                     };
-                    // Convert i64 pointer to ptr type and load f64
                     let ptr_conv = format!("load_f64_ptr.{}", load_idx);
                     writeln!(out, "  %{} = inttoptr i64 {} to ptr", ptr_conv, ptr_val)?;
                     if let Some(d) = dest {
@@ -3519,10 +3948,17 @@ impl TextCodeGen {
                                 }
                                 _ => self.format_operand_with_strings(offset_op, string_table),
                             };
-                            // Generate GEP: inttoptr base, then getelementptr i8
+                            // Generate GEP: inttoptr base (or load ptr directly), then getelementptr i8
                             let base_ptr = format!("gep_base.{}", load_idx);
                             let elem_ptr = format!("gep_elem.{}", load_idx);
-                            writeln!(out, "  %{} = inttoptr i64 {} to ptr", base_ptr, base_val)?;
+                            let base_has_provenance = matches!(base_op, Operand::Place(p) if ptr_provenance_vars.contains(&p.name));
+                            if base_has_provenance {
+                                if let Operand::Place(p) = base_op {
+                                    writeln!(out, "  %{} = load ptr, ptr %{}.ptr.addr", base_ptr, p.name)?;
+                                }
+                            } else {
+                                writeln!(out, "  %{} = inttoptr i64 {} to ptr", base_ptr, base_val)?;
+                            }
                             writeln!(out, "  %{} = getelementptr inbounds nuw i8, ptr %{}, i64 {}", elem_ptr, base_ptr, offset_val)?;
                             // Load byte and zext
                             if let Some(d) = dest {
@@ -3654,7 +4090,14 @@ impl TextCodeGen {
                             let base_ptr = format!("sgep_base.{}", store_idx);
                             let elem_ptr = format!("sgep_elem.{}", store_idx);
                             let trunc_val = format!("store_u8_trunc.{}", store_idx);
-                            writeln!(out, "  %{} = inttoptr i64 {} to ptr", base_ptr, base_val)?;
+                            let base_has_provenance = matches!(base_op, Operand::Place(p) if ptr_provenance_vars.contains(&p.name));
+                            if base_has_provenance {
+                                if let Operand::Place(p) = base_op {
+                                    writeln!(out, "  %{} = load ptr, ptr %{}.ptr.addr", base_ptr, p.name)?;
+                                }
+                            } else {
+                                writeln!(out, "  %{} = inttoptr i64 {} to ptr", base_ptr, base_val)?;
+                            }
                             writeln!(out, "  %{} = getelementptr inbounds nuw i8, ptr %{}, i64 {}", elem_ptr, base_ptr, offset_val)?;
                             writeln!(out, "  %{} = trunc i64 {} to i8", trunc_val, val_val)?;
                             writeln!(out, "  store i8 %{}, ptr %{}, !tbaa !906", trunc_val, elem_ptr)?;
@@ -6349,11 +6792,15 @@ impl TextCodeGen {
                     self.format_operand_with_narrowing(cond, narrowed_param_names)
                 };
                 // v0.96.36: Add branch weight hints for loop condition branches
-                // While-loop conditions branch to body (hot) vs exit (cold).
+                // Loop conditions branch to body (hot) vs exit (cold).
                 // Weight ratio 2000:1 tells LLVM to lay out body contiguously
                 // and predict the branch as taken, improving icache behavior.
-                let is_loop_cond = then_label.starts_with("while_body_")
-                    && else_label.starts_with("while_exit_");
+                let is_loop_cond = (then_label.starts_with("while_body_")
+                    && else_label.starts_with("while_exit_"))
+                    || (then_label.starts_with("for_body_")
+                        && else_label.starts_with("for_exit_"))
+                    || (then_label.starts_with("for_recv_body_")
+                        && else_label.starts_with("for_recv_exit_"));
                 if is_loop_cond {
                     writeln!(
                         out,
