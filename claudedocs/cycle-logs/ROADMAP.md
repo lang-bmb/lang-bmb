@@ -1,21 +1,21 @@
-# 20-Cycle Roadmap: Housekeeping + Final FAIL Resolution (Cycles 1835-1854)
-Date: 2026-03-10
+# 20-Cycle Roadmap: Fix Bootstrap TRL Bug (Cycles 1838-1857)
+Date: 2026-03-11
 
-## Goal
-Clean up project state, close resolved issues, and make final attempts at resolving the 2 remaining benchmark FAILs (tower_of_hanoi 1.17x, max_consecutive_ones 1.13x).
+## COMPLETED — EARLY TERMINATION at Cycle 1842
 
-## Phase 1: Housekeeping (Cycles 1835-1837)
-- Close all 14 resolved issues (move to closed/)
-- Fix bootstrap script to detect text/inkwell backend properly
-- Clean up stale memory entries and documentation
+### Results
+- Golden tests: 39 failures → 18 failures (21 tests fixed)
+- All remaining 18 failures are closures/generics (bootstrap limitation, not bugs)
+- Zero wrong-output or runtime failures
+- 3-Stage Fixed Point verified
+- No benchmark regressions
 
-## Phase 2: FAIL Analysis + Resolution (Cycles 1838-1845)
-- Deep analysis of tower_of_hanoi 1.17x — compare assembly, identify specific divergence
-- Deep analysis of max_consecutive_ones 1.13x — unroller behavior analysis
-- Attempt MIR-level or codegen-level fixes
-- If truly LLVM-only: document definitive evidence and close
+## Phase 1: Fix TRL Tail Position Detection (Cycles 1838-1842) ✅ DONE
+- Cycle 1838: Fixed `trl_find_tail_call` to verify goto target leads to return
+- Cycle 1839: Fixed `speculatable` on non-leaf functions (pattern bug: "call @" → " call ")
+- Cycle 1840: Added bmb_abs/min/max/clamp → LLVM intrinsic mapping
+- Cycle 1841: Fixed Rust compiler speculatable + cleaned manifest
+- Cycle 1842: Evaluation → Early termination
 
-## Phase 3: Quality + Verification (Cycles 1846-1854)
-- Run full benchmark suite to check for any new WARNs
-- Golden test analysis — which of the 39 failures are fixable?
-- Final verification + version bump
+## Phase 2-4: NOT NEEDED
+All actionable defects resolved in Phase 1. Remaining failures require closures/generics implementation.

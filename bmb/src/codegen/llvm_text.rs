@@ -1923,8 +1923,20 @@ impl TextCodeGen {
         // v0.96.18: Added nosync — BMB user functions never use atomic/synchronization ops
         // v0.96.19: Added memory(read) for read-only functions
         // v0.96.35: memory(none) functions also get speculatable — enables hoisting out of branches
+        // v0.96.41: Don't add speculatable to non-leaf functions (LLVM may speculate calls past base case)
+        let has_user_call = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| {
+                matches!(inst, MirInst::Call { func: callee, .. }
+                    if !callee.starts_with("llvm.")
+                    && !callee.starts_with("bmb_")
+                    && callee != "malloc" && callee != "calloc" && callee != "realloc" && callee != "free"
+                    && callee != "println" && callee != "print" && callee != "eprintln"
+                    && callee != "print_f64" && callee != "read_int" && callee != "bmb_read_line"
+                    && callee != "abs" && callee != "min" && callee != "max" && callee != "clamp" && callee != "pow")
+            })
+        });
         let memory_attr = if func.is_memory_free {
-            " memory(none) speculatable"
+            if has_user_call { " memory(none)" } else { " memory(none) speculatable" }
         } else if func.is_read_only {
             " memory(read)"
         } else {

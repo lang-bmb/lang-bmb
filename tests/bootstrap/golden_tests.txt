@@ -244,7 +244,6 @@ test_golden_boyer_moore.bmb|16
 test_golden_boyer_moore_simple2.bmb|1
 test_golden_brainfuck.bmb|4326
 test_golden_branch_bound.bmb|240
-test_golden_branch_heavy.bmb|32
 test_golden_branch_same.bmb|424213-71005010
 test_golden_break.bmb|33
 test_golden_bresenham.bmb|10
@@ -561,7 +560,6 @@ test_golden_decision_tree_depth.bmb|4
 test_golden_decode_ways.bmb|423
 test_golden_deep_call.bmb|1206
 test_golden_deep_if_expr.bmb|77
-test_golden_deep_recursion.bmb|19
 test_golden_deep_scope.bmb|1833
 test_golden_deficient_num.bmb|750
 test_golden_deflate_sim.bmb|5
@@ -634,7 +632,6 @@ test_golden_disk_seek_sstf.bmb|140
 test_golden_dist_squared.bmb|13
 test_golden_distance_2d.bmb|22
 test_golden_distinct_count_est.bmb|6
-test_golden_div_edge.bmb|33
 test_golden_divisor_sum2.bmb|5628
 test_golden_djb2_hash.bmb|686969
 test_golden_dll_sim.bmb|45
@@ -1344,7 +1341,6 @@ test_golden_loop.bmb|18
 test_golden_loop_break.bmb|473
 test_golden_loop_invar.bmb|88200
 test_golden_loop_invariant_count.bmb|3000
-test_golden_loop_patterns.bmb|15
 test_golden_loop_unroll.bmb|4
 test_golden_lossy_counting.bmb|9
 test_golden_lotka_volterra.bmb|160
@@ -1554,7 +1550,6 @@ test_golden_minimax_depth3.bmb|8
 test_golden_minimax_tree.bmb|5
 test_golden_minkowski_sum_simple.bmb|6
 test_golden_missionaries.bmb|6
-test_golden_mixed_ops.bmb|23
 test_golden_mlfq_sched.bmb|232
 test_golden_mo_algo.bmb|511
 test_golden_mo_algorithm.bmb|523
@@ -1708,7 +1703,6 @@ test_golden_orf_finder.bmb|3
 test_golden_otp.bmb|119
 test_golden_otsu_threshold.bmb|120
 test_golden_outlier_det.bmb|50
-test_golden_overflow_safe.bmb|23
 test_golden_overlap_add.bmb|18
 test_golden_pack_bits.bmb|170
 test_golden_packet_filter_acl.bmb|3

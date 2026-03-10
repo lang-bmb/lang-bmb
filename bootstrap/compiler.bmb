@@ -6443,25 +6443,25 @@ fn llvm_gen_call(line: String, pos: i64, dest: String) -> String =
         // v0.96: LLVM intrinsic — bit reversal
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = call i64 @llvm.bitreverse.i64(i64 " + arg + ")"
-    } else if fn_name == "@abs" {
+    } else if fn_name == "@abs" or fn_name == "@bmb_abs" {
         // v0.96: LLVM intrinsic — abs; i1 false = INT_MIN is not poison
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = call i64 @llvm.abs.i64(i64 " + arg + ", i1 false)"
-    } else if fn_name == "@min" {
+    } else if fn_name == "@min" or fn_name == "@bmb_min" {
         // v0.96: LLVM intrinsic — signed minimum
         let args = line.slice(paren_pos + 1, close_pos);
         let comma = find_char(args, 0, 44);
         let left = trim_end(args.slice(0, comma));
         let right = trim(args.slice(comma + 1, args.len()));
         "  " + dest + " = call i64 @llvm.smin.i64(i64 " + left + ", i64 " + right + ")"
-    } else if fn_name == "@max" {
+    } else if fn_name == "@max" or fn_name == "@bmb_max" {
         // v0.96: LLVM intrinsic — signed maximum
         let args = line.slice(paren_pos + 1, close_pos);
         let comma = find_char(args, 0, 44);
         let left = trim_end(args.slice(0, comma));
         let right = trim(args.slice(comma + 1, args.len()));
         "  " + dest + " = call i64 @llvm.smax.i64(i64 " + left + ", i64 " + right + ")"
-    } else if fn_name == "@clamp" {
+    } else if fn_name == "@clamp" or fn_name == "@bmb_clamp" {
         // v0.96: clamp(value, lo, hi) = smin(smax(value, lo), hi) — two LLVM intrinsics
         let args = line.slice(paren_pos + 1, close_pos);
         let comma1 = find_char(args, 0, 44);
@@ -6653,22 +6653,22 @@ fn llvm_gen_call_reg(line: String, pos: i64, dest: String, registry: String) -> 
     } else if fn_name == "@bit_reverse" {
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = call i64 @llvm.bitreverse.i64(i64 " + arg + ")"
-    } else if fn_name == "@abs" {
+    } else if fn_name == "@abs" or fn_name == "@bmb_abs" {
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = call i64 @llvm.abs.i64(i64 " + arg + ", i1 false)"
-    } else if fn_name == "@min" {
+    } else if fn_name == "@min" or fn_name == "@bmb_min" {
         let args = line.slice(paren_pos + 1, close_pos);
         let comma = find_char(args, 0, 44);
         let left = trim_end(args.slice(0, comma));
         let right = trim(args.slice(comma + 1, args.len()));
         "  " + dest + " = call i64 @llvm.smin.i64(i64 " + left + ", i64 " + right + ")"
-    } else if fn_name == "@max" {
+    } else if fn_name == "@max" or fn_name == "@bmb_max" {
         let args = line.slice(paren_pos + 1, close_pos);
         let comma = find_char(args, 0, 44);
         let left = trim_end(args.slice(0, comma));
         let right = trim(args.slice(comma + 1, args.len()));
         "  " + dest + " = call i64 @llvm.smax.i64(i64 " + left + ", i64 " + right + ")"
-    } else if fn_name == "@clamp" {
+    } else if fn_name == "@clamp" or fn_name == "@bmb_clamp" {
         let args = line.slice(paren_pos + 1, close_pos);
         let comma1 = find_char(args, 0, 44);
         let value = trim_end(args.slice(0, comma1));
@@ -8063,7 +8063,10 @@ fn spec_rebuild(ir: String, pos: i64, sb: i64, count: i64) -> i64 =
         let has_mem_none = find_pattern_noa_range(header, "memory(none)", 0, header.len()) >= 0;
         let has_spec = find_pattern_noa_range(header, "speculatable", 0, header.len()) >= 0;
         let has_define = find_pattern_noa_range(header, "define ", 0, header.len()) >= 0;
-        let section = if has_define and has_mem_none and not has_spec {
+        // v0.96.41: Don't add speculatable to non-leaf functions (LLVM may speculate past base case)
+        let fn_body = if pipe < fn_end { ir.slice(pipe, fn_end) } else { "" };
+        let has_call = find_pattern_noa_range(fn_body, " call ", 0, fn_body.len()) >= 0;
+        let section = if has_define and has_mem_none and not has_spec and not has_call {
             let body_start = pipe + 1;
             if ipr_has_div_rem(ir, body_start, fn_end) { ir.slice(pos, fn_end) }
             else {
@@ -10681,6 +10684,7 @@ fn trl_count_chars(s: String, pos: i64, ch: i64, count: i64) -> i64 =
 // Returns the block label containing the tail call, or "" if none.
 // A tail call is: %_tN = call @self_name(...) immediately followed by goto merge_M
 // where merge_M has: phi [..., %_tN, this_block] then return %phi_result
+// v0.96.41: Also verify that goto target block leads to return (not loop continuation)
 fn trl_find_tail_call(fn_mir: String, pos: i64, fn_name: String) -> String =
     if pos >= fn_mir.len() { "" }
     else {
@@ -10692,10 +10696,48 @@ fn trl_find_tail_call(fn_mir: String, pos: i64, fn_name: String) -> String =
             // Check next line is "goto ..." (not part of larger computation)
             let next_pipe = if pipe < fn_mir.len() { find_pipe_skip_quotes(fn_mir, pipe + 1) } else { fn_mir.len() };
             let next_line = if pipe < fn_mir.len() { fn_mir.slice(pipe + 1, next_pipe) } else { "" };
-            let is_goto = find_pattern_at(trim(next_line), "goto ", 0) == 0;
-            if is_goto { line } else { trl_find_tail_call(fn_mir, pipe + 1, fn_name) }
+            let trimmed_next = trim(next_line);
+            let is_goto = find_pattern_at(trimmed_next, "goto ", 0) == 0;
+            // v0.96.41: Verify goto target block contains return (true tail position)
+            let is_tail_pos = if is_goto {
+                let goto_target = trim(trimmed_next.slice(5, trimmed_next.len()));
+                trl_block_has_return(fn_mir, goto_target)
+            } else { false };
+            if is_tail_pos { line } else { trl_find_tail_call(fn_mir, pipe + 1, fn_name) }
         } else {
             if pipe >= fn_mir.len() { "" } else { trl_find_tail_call(fn_mir, pipe + 1, fn_name) }
+        }
+    };
+
+// v0.96.41: Check if a block (identified by label) contains a return statement.
+// Scans from the label until the next label or end of function.
+// A block is a tail position if it contains "return ..." (possibly preceded by phi).
+fn trl_block_has_return(fn_mir: String, label: String) -> bool =
+    let label_pat = label + ":";
+    let label_pos = find_pattern_at(fn_mir, label_pat, 0);
+    if label_pos < 0 { false }
+    else {
+        // Skip past the label line itself
+        let pipe_after = find_pipe_skip_quotes(fn_mir, label_pos);
+        if pipe_after >= fn_mir.len() { false }
+        else { trl_scan_block_for_return(fn_mir, pipe_after + 1) }
+    };
+
+// Scan lines within a block for "return". Stop at the next label or end.
+fn trl_scan_block_for_return(fn_mir: String, pos: i64) -> bool =
+    if pos >= fn_mir.len() { false }
+    else {
+        let pipe = find_pipe_skip_quotes(fn_mir, pos);
+        let line = fn_mir.slice(pos, pipe);
+        let trimmed = trim(line);
+        // Stop if we hit another block label
+        let is_label = if trimmed.len() > 0 { ube_is_label(trimmed) } else { false };
+        if is_label { false }
+        else {
+            let is_return = find_pattern_at(trimmed, "return ", 0) == 0;
+            if is_return { true }
+            else if pipe >= fn_mir.len() { false }
+            else { trl_scan_block_for_return(fn_mir, pipe + 1) }
         }
     };
 
