@@ -728,7 +728,7 @@ pub enum Terminator {
 }
 
 /// An operand in MIR (either a place or constant)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Operand {
     /// Reference to a place (variable/temporary)
     Place(Place),
@@ -737,7 +737,7 @@ pub enum Operand {
 }
 
 /// A place represents a memory location (variable or temporary)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Place {
     pub name: String,
 }
@@ -749,7 +749,7 @@ impl Place {
 }
 
 /// Constant value
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Constant {
     Int(i64),
     Float(f64),

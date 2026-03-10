@@ -652,9 +652,82 @@ fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> O
             None
         }
 
-        // Subtraction: x - 0 = x
+        // Subtraction: x - 0 = x, x - x = 0
         MirBinOp::Sub => {
             if matches!(rhs, Operand::Constant(Constant::Int(0))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
+                });
+            }
+            // v0.96.37: x - x → 0 (self-subtraction)
+            if lhs == rhs {
+                if let Operand::Place(_) = lhs {
+                    return Some(MirInst::Const {
+                        dest: dest.clone(),
+                        value: Constant::Int(0),
+                    });
+                }
+            }
+            None
+        }
+
+        // v0.96.37: Float addition: x + 0.0 = x, 0.0 + x = x
+        MirBinOp::FAdd => {
+            if matches!(rhs, Operand::Constant(Constant::Float(f)) if *f == 0.0) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
+                });
+            }
+            if matches!(lhs, Operand::Constant(Constant::Float(f)) if *f == 0.0) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(rhs)?,
+                });
+            }
+            None
+        }
+
+        // v0.96.37: Float subtraction: x - 0.0 = x
+        MirBinOp::FSub => {
+            if matches!(rhs, Operand::Constant(Constant::Float(f)) if *f == 0.0) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
+                });
+            }
+            None
+        }
+
+        // v0.96.37: Float multiplication: x * 1.0 = x, 1.0 * x = x, x * 0.0 = 0.0, 0.0 * x = 0.0
+        MirBinOp::FMul => {
+            if matches!(rhs, Operand::Constant(Constant::Float(f)) if *f == 1.0) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
+                });
+            }
+            if matches!(lhs, Operand::Constant(Constant::Float(f)) if *f == 1.0) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(rhs)?,
+                });
+            }
+            if matches!(rhs, Operand::Constant(Constant::Float(f)) if *f == 0.0)
+                || matches!(lhs, Operand::Constant(Constant::Float(f)) if *f == 0.0)
+            {
+                return Some(MirInst::Const {
+                    dest: dest.clone(),
+                    value: Constant::Float(0.0),
+                });
+            }
+            None
+        }
+
+        // v0.96.37: Float division: x / 1.0 = x
+        MirBinOp::FDiv => {
+            if matches!(rhs, Operand::Constant(Constant::Float(f)) if *f == 1.0) {
                 return Some(MirInst::Copy {
                     dest: dest.clone(),
                     src: operand_to_place(lhs)?,
@@ -786,47 +859,6 @@ fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> O
             None
         }
 
-        // Float operations: same patterns
-        MirBinOp::FAdd => {
-            if matches!(rhs, Operand::Constant(Constant::Float(f)) if *f == 0.0) {
-                return Some(MirInst::Copy {
-                    dest: dest.clone(),
-                    src: operand_to_place(lhs)?,
-                });
-            }
-            if matches!(lhs, Operand::Constant(Constant::Float(f)) if *f == 0.0) {
-                return Some(MirInst::Copy {
-                    dest: dest.clone(),
-                    src: operand_to_place(rhs)?,
-                });
-            }
-            None
-        }
-
-        MirBinOp::FMul => {
-            if matches!(rhs, Operand::Constant(Constant::Float(f)) if *f == 1.0) {
-                return Some(MirInst::Copy {
-                    dest: dest.clone(),
-                    src: operand_to_place(lhs)?,
-                });
-            }
-            if matches!(lhs, Operand::Constant(Constant::Float(f)) if *f == 1.0) {
-                return Some(MirInst::Copy {
-                    dest: dest.clone(),
-                    src: operand_to_place(rhs)?,
-                });
-            }
-            if matches!(rhs, Operand::Constant(Constant::Float(f)) if *f == 0.0)
-                || matches!(lhs, Operand::Constant(Constant::Float(f)) if *f == 0.0)
-            {
-                return Some(MirInst::Const {
-                    dest: dest.clone(),
-                    value: Constant::Float(0.0),
-                });
-            }
-            None
-        }
-
         // v0.96.16: Saturating arithmetic identities
         // x +| 0 = x, 0 +| x = x (additive identity holds for saturating add)
         MirBinOp::AddSat => {
@@ -876,6 +908,111 @@ fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> O
                 return Some(MirInst::Const {
                     dest: dest.clone(),
                     value: Constant::Int(0),
+                });
+            }
+            None
+        }
+
+        // v0.96.37: Bitwise AND: x & 0 = 0, x & -1 = x (all bits set), x & x = x
+        MirBinOp::Band => {
+            if matches!(rhs, Operand::Constant(Constant::Int(0)))
+                || matches!(lhs, Operand::Constant(Constant::Int(0)))
+            {
+                return Some(MirInst::Const {
+                    dest: dest.clone(),
+                    value: Constant::Int(0),
+                });
+            }
+            if matches!(rhs, Operand::Constant(Constant::Int(-1))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
+                });
+            }
+            if matches!(lhs, Operand::Constant(Constant::Int(-1))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(rhs)?,
+                });
+            }
+            // x & x → x
+            if lhs == rhs {
+                if let Operand::Place(_) = lhs {
+                    return Some(MirInst::Copy {
+                        dest: dest.clone(),
+                        src: operand_to_place(lhs)?,
+                    });
+                }
+            }
+            None
+        }
+
+        // v0.96.37: Bitwise OR: x | 0 = x, x | -1 = -1, x | x = x
+        MirBinOp::Bor => {
+            if matches!(rhs, Operand::Constant(Constant::Int(0))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
+                });
+            }
+            if matches!(lhs, Operand::Constant(Constant::Int(0))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(rhs)?,
+                });
+            }
+            if matches!(rhs, Operand::Constant(Constant::Int(-1)))
+                || matches!(lhs, Operand::Constant(Constant::Int(-1)))
+            {
+                return Some(MirInst::Const {
+                    dest: dest.clone(),
+                    value: Constant::Int(-1),
+                });
+            }
+            // x | x → x
+            if lhs == rhs {
+                if let Operand::Place(_) = lhs {
+                    return Some(MirInst::Copy {
+                        dest: dest.clone(),
+                        src: operand_to_place(lhs)?,
+                    });
+                }
+            }
+            None
+        }
+
+        // v0.96.37: Bitwise XOR: x ^ 0 = x, x ^ x = 0
+        MirBinOp::Bxor => {
+            if matches!(rhs, Operand::Constant(Constant::Int(0))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
+                });
+            }
+            if matches!(lhs, Operand::Constant(Constant::Int(0))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(rhs)?,
+                });
+            }
+            // x ^ x → 0
+            if lhs == rhs {
+                if let Operand::Place(_) = lhs {
+                    return Some(MirInst::Const {
+                        dest: dest.clone(),
+                        value: Constant::Int(0),
+                    });
+                }
+            }
+            None
+        }
+
+        // v0.96.37: Shift by 0: x << 0 = x, x >> 0 = x
+        MirBinOp::Shl | MirBinOp::Shr => {
+            if matches!(rhs, Operand::Constant(Constant::Int(0))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
                 });
             }
             None
@@ -1523,19 +1660,7 @@ fn phi_operand_to_inst(dest: Place, op: &Operand) -> MirInst {
 
 /// Check if two operands are equal for phi simplification
 fn phi_operands_equal(a: &Operand, b: &Operand) -> bool {
-    match (a, b) {
-        (Operand::Place(pa), Operand::Place(pb)) => pa.name == pb.name,
-        (Operand::Constant(ca), Operand::Constant(cb)) => match (ca, cb) {
-            (Constant::Int(a), Constant::Int(b)) => a == b,
-            (Constant::Float(a), Constant::Float(b)) => a == b,
-            (Constant::Bool(a), Constant::Bool(b)) => a == b,
-            (Constant::String(a), Constant::String(b)) => a == b,
-            (Constant::Char(a), Constant::Char(b)) => a == b,
-            (Constant::Unit, Constant::Unit) => true,
-            _ => false,
-        },
-        _ => false,
-    }
+    a == b
 }
 
 // ============================================================================
