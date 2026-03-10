@@ -806,6 +806,9 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         };
 
         cmd.args([opt_flag, "-c", path_str(&ir_path)?, "-o", path_str(&obj_path)?]);
+        // v0.96.40: Use MinGW target on Windows to avoid MSVC header conflicts
+        #[cfg(target_os = "windows")]
+        cmd.arg("--target=x86_64-pc-windows-gnu");
 
         let output_result = cmd.output()?;
         if !output_result.status.success() {
@@ -823,16 +826,9 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         let runtime_obj = config.output.with_file_name("runtime").with_extension(if cfg!(windows) { "obj" } else { "o" });
         let mut cmd = Command::new(&clang);
         cmd.args([opt_flag, "-ffunction-sections", "-fdata-sections", "-c", path_str(&runtime_path)?, "-o", path_str(&runtime_obj)?]);
-
-        // Add Windows SDK include paths if on Windows
+        // v0.96.40: Use MinGW target on Windows to avoid MSVC header conflicts
         #[cfg(target_os = "windows")]
-        {
-            if let Some(include_paths) = find_windows_sdk_includes() {
-                for path in include_paths {
-                    cmd.arg("-I").arg(path);
-                }
-            }
-        }
+        cmd.arg("--target=x86_64-pc-windows-gnu");
 
         let output_result = cmd.output()?;
         if !output_result.status.success() {
@@ -840,56 +836,49 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
             return Err(BuildError::Linker(format!("runtime compile failed: {}", stderr)));
         }
 
-        // Link using lld-link on Windows (more reliable than clang auto-detection)
-        #[cfg(target_os = "windows")]
-        {
-            let mut cmd = Command::new("lld-link");
-            cmd.args([
-                path_str(&obj_path)?,
-                path_str(&runtime_obj)?,
-                &format!("/OUT:{}", path_str(&config.output)?),
-                "/SUBSYSTEM:CONSOLE",
-                "/ENTRY:mainCRTStartup",
-                "/STACK:16777216",  // 16MB stack for deep recursion in bootstrap compiler
-                "/OPT:REF",        // v0.96.37: Remove unreferenced functions (reduces binary size + icache pressure)
-            ]);
-
-            // Add Windows SDK and MSVC library paths
-            if let Some(lib_paths) = find_windows_lib_paths() {
-                for path in lib_paths {
-                    cmd.arg(format!("/LIBPATH:{}", path));
-                }
-            }
-
-            // Link required libraries
-            cmd.args([
-                "libcmt.lib",      // C runtime
-                "libucrt.lib",     // Universal CRT
-                "kernel32.lib",    // Windows kernel
-                "legacy_stdio_definitions.lib",  // printf and friends
-            ]);
-
-            if config.verbose {
-                println!("  Linking with lld-link...");
-            }
-
+        // v0.96.40: Compile event loop if present (sibling of runtime file)
+        let event_loop_obj = config.output.with_file_name("event_loop").with_extension(if cfg!(windows) { "obj" } else { "o" });
+        let event_loop_src = runtime_path.parent().unwrap().join("bmb_event_loop.c");
+        let has_event_loop = if event_loop_src.exists() {
+            let mut cmd = Command::new(&clang);
+            cmd.args([opt_flag, "-ffunction-sections", "-fdata-sections", "-c",
+                       path_str(&event_loop_src)?, "-o", path_str(&event_loop_obj)?]);
+            #[cfg(target_os = "windows")]
+            cmd.arg("--target=x86_64-pc-windows-gnu");
             let output_result = cmd.output()?;
             if !output_result.status.success() {
                 let stderr = String::from_utf8_lossy(&output_result.stderr);
-                return Err(BuildError::Linker(format!("link failed: {}", stderr)));
+                return Err(BuildError::Linker(format!("event loop compile failed: {}", stderr)));
             }
-        }
+            true
+        } else {
+            false
+        };
 
-        #[cfg(not(target_os = "windows"))]
+        // v0.96.40: Link using clang (works on both MSVC and MinGW environments)
         {
             let mut cmd = Command::new(&clang);
-            cmd.args([
-                path_str(&obj_path)?,
-                path_str(&runtime_obj)?,
-                "-o",
-                path_str(&config.output)?,
-                "-Wl,--gc-sections",  // v0.96.37: Remove unreferenced functions
-            ]);
+            cmd.arg(path_str(&obj_path)?);
+            cmd.arg(path_str(&runtime_obj)?);
+            if has_event_loop {
+                cmd.arg(path_str(&event_loop_obj)?);
+            }
+            cmd.args(["-o", path_str(&config.output)?]);
+
+            // v0.96.37: Remove unreferenced functions
+            #[cfg(target_os = "windows")]
+            cmd.arg("-Wl,--gc-sections");
+
+            #[cfg(not(target_os = "windows"))]
+            cmd.arg("-Wl,--gc-sections");
+
+            // v0.83.1: Link ws2_32 for AsyncSocket (WinSock) support on Windows
+            #[cfg(target_os = "windows")]
+            cmd.arg("-lws2_32");
+
+            if config.verbose {
+                println!("  Linking with {}...", clang);
+            }
 
             let output_result = cmd.output()?;
             if !output_result.status.success() {
@@ -902,6 +891,7 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         let _ = std::fs::remove_file(&ir_path);
         let _ = std::fs::remove_file(&obj_path);
         let _ = std::fs::remove_file(&runtime_obj);
+        let _ = std::fs::remove_file(&event_loop_obj);
 
         if config.verbose {
             println!("  Created executable: {}", config.output.display());
@@ -924,8 +914,9 @@ fn find_clang() -> Result<String, String> {
     let candidates = if cfg!(target_os = "windows") {
         vec![
             "clang",
-            "C:\\Program Files\\LLVM\\bin\\clang.exe",
+            "C:\\msys64\\ucrt64\\bin\\clang.exe",
             "C:\\msys64\\mingw64\\bin\\clang.exe",
+            "C:\\Program Files\\LLVM\\bin\\clang.exe",
         ]
     } else {
         vec!["clang", "clang-18", "clang-17", "clang-16", "clang-15"]
@@ -946,11 +937,24 @@ fn find_runtime_c() -> Result<std::path::PathBuf, String> {
 
     // Check BMB_RUNTIME_PATH environment variable
     if let Ok(path) = std::env::var("BMB_RUNTIME_PATH") {
-        let p = PathBuf::from(path);
-        if p.exists() {
+        let p = PathBuf::from(&path);
+        // v0.96.40: If path is a directory, look for bmb_runtime.c (preferred) or runtime.c
+        if p.is_dir() {
+            let bmb_rt = p.join("bmb_runtime.c");
+            if bmb_rt.exists() {
+                return Ok(bmb_rt);
+            }
+            let rt = p.join("runtime.c");
+            if rt.exists() {
+                return Ok(rt);
+            }
+        } else if p.exists() {
             return Ok(p);
         }
     }
+
+    // v0.96.40: Prefer bmb_runtime.c (full runtime) over runtime.c (legacy)
+    let runtime_names = ["bmb_runtime.c", "runtime.c"];
 
     // Check relative to executable
     if let Ok(exe) = std::env::current_exe()
@@ -958,24 +962,32 @@ fn find_runtime_c() -> Result<std::path::PathBuf, String> {
         && let Some(grandparent) = parent.parent()
         && let Some(project_root) = grandparent.parent()
     {
-        // target/release/ -> runtime/
-        let runtime = project_root.join("runtime").join("runtime.c");
-        if runtime.exists() {
-            return Ok(runtime);
+        // target/release/ -> runtime/ or bmb/runtime/
+        for name in &runtime_names {
+            let runtime = project_root.join("runtime").join(name);
+            if runtime.exists() {
+                return Ok(runtime);
+            }
+            let bmb_runtime = project_root.join("bmb").join("runtime").join(name);
+            if bmb_runtime.exists() {
+                return Ok(bmb_runtime);
+            }
         }
     }
 
     // Check current working directory patterns
-    let patterns = [
-        "runtime/runtime.c",
-        "../runtime/runtime.c",
-        "../../runtime/runtime.c",
-    ];
-
-    for pattern in patterns {
-        let p = PathBuf::from(pattern);
-        if p.exists() {
-            return Ok(p);
+    for name in &runtime_names {
+        let patterns = [
+            format!("runtime/{name}"),
+            format!("bmb/runtime/{name}"),
+            format!("../runtime/{name}"),
+            format!("../../runtime/{name}"),
+        ];
+        for pattern in &patterns {
+            let p = PathBuf::from(pattern);
+            if p.exists() {
+                return Ok(p);
+            }
         }
     }
 
@@ -1139,6 +1151,7 @@ fn find_linker() -> BuildResult<String> {
 
 /// Find Windows SDK and MSVC include paths
 #[cfg(target_os = "windows")]
+#[allow(dead_code)]
 fn find_windows_sdk_includes() -> Option<Vec<String>> {
     use std::path::Path;
 
@@ -1225,6 +1238,7 @@ fn find_windows_sdk_includes() -> Option<Vec<String>> {
 
 /// Find Windows SDK and MSVC library paths for linking
 #[cfg(target_os = "windows")]
+#[allow(dead_code)]
 fn find_windows_lib_paths() -> Option<Vec<String>> {
     use std::path::Path;
 

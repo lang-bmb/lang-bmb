@@ -402,44 +402,57 @@ fn main() {
         HUMAN_OUTPUT.store(true, Ordering::Relaxed);
     }
 
-    let result = match cli.command {
-        Command::Build {
-            file,
-            output,
-            debug,
-            release,
-            aggressive,
-            fast_compile,
-            emit_ir,
-            emit_mir,
-            emit_cir,
-            emit_wasm,
-            wasm_target,
-            all_targets,
-            target,
-            verbose,
-            verify,
-            trust_contracts,
-            verification_timeout,
-            fast_math,
-            include_paths,
-            prelude_path,
-            no_prelude,
-        } => build_file(&file, output, debug, release, aggressive, fast_compile, emit_ir, emit_mir, emit_cir, emit_wasm, &wasm_target, all_targets, target.as_deref(), verbose, verify.as_deref(), trust_contracts, verification_timeout, fast_math, &include_paths, prelude_path.as_ref(), no_prelude),
-        Command::Run { file, args, human: _ } => run_file(&file, &args),
-        Command::Repl => start_repl(),
-        Command::Check { file, include_paths } => check_file_with_includes(&file, &include_paths),
-        Command::Verify { file, z3_path, timeout } => verify_file(&file, &z3_path, timeout),
-        Command::Parse { file, format } => parse_file(&file, &format),
-        Command::Tokens { file } => tokenize_file(&file),
-        Command::Test { file, filter, verbose } => test_file(&file, filter.as_deref(), verbose),
-        Command::Fmt { file, check } => fmt_file(&file, check),
-        Command::Lint { file, strict, include_paths } => lint_file(&file, strict, &include_paths),
-        Command::Lsp => start_lsp(),
-        Command::Index { path, watch, verbose } => index_project(&path, watch, verbose),
-        Command::Query { query_type } => run_query(query_type),
-        Command::VerifyStage3 { file, verbose, output } => verify_stage3(&file, verbose, output.as_ref()),
-    };
+    // v0.96.40: Run command dispatch on a thread with larger stack to handle
+    // deeply nested ASTs (e.g., compiler.bmb 19K lines with 30-level if-else chains).
+    // Default Windows stack (1-2MB) is insufficient for type checking large files.
+    let handle = std::thread::Builder::new()
+        .name("bmb-main".to_string())
+        .stack_size(COMPILER_STACK_SIZE)
+        .spawn(move || -> Result<(), String> {
+            match cli.command {
+                Command::Build {
+                    file,
+                    output,
+                    debug,
+                    release,
+                    aggressive,
+                    fast_compile,
+                    emit_ir,
+                    emit_mir,
+                    emit_cir,
+                    emit_wasm,
+                    wasm_target,
+                    all_targets,
+                    target,
+                    verbose,
+                    verify,
+                    trust_contracts,
+                    verification_timeout,
+                    fast_math,
+                    include_paths,
+                    prelude_path,
+                    no_prelude,
+                } => build_file(&file, output, debug, release, aggressive, fast_compile, emit_ir, emit_mir, emit_cir, emit_wasm, &wasm_target, all_targets, target.as_deref(), verbose, verify.as_deref(), trust_contracts, verification_timeout, fast_math, &include_paths, prelude_path.as_ref(), no_prelude),
+                Command::Run { file, args, human: _ } => run_file(&file, &args),
+                Command::Repl => start_repl(),
+                Command::Check { file, include_paths } => check_file_with_includes(&file, &include_paths),
+                Command::Verify { file, z3_path, timeout } => verify_file(&file, &z3_path, timeout),
+                Command::Parse { file, format } => parse_file(&file, &format),
+                Command::Tokens { file } => tokenize_file(&file),
+                Command::Test { file, filter, verbose } => test_file(&file, filter.as_deref(), verbose),
+                Command::Fmt { file, check } => fmt_file(&file, check),
+                Command::Lint { file, strict, include_paths } => lint_file(&file, strict, &include_paths),
+                Command::Lsp => start_lsp(),
+                Command::Index { path, watch, verbose } => index_project(&path, watch, verbose),
+                Command::Query { query_type } => run_query(query_type),
+                Command::VerifyStage3 { file, verbose, output } => verify_stage3(&file, verbose, output.as_ref()),
+            }.map_err(|e| e.to_string())
+        })
+        .expect("Failed to spawn main thread");
+
+    let result = handle.join().unwrap_or_else(|e| {
+        Err(format!("Thread panicked: {:?}", e))
+    });
 
     if let Err(e) = result {
         // v0.71: Default machine output, --human for human-readable
@@ -447,7 +460,7 @@ fn main() {
             eprintln!("Error: {e}");
         } else {
             println!(r#"{{"type":"error","message":"{}"}}"#,
-                e.to_string().replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n"));
+                e.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n"));
         }
         std::process::exit(1);
     }
@@ -818,6 +831,12 @@ fn emit_cir_file(
 
 /// v0.30.241: Stack size for interpreter thread (64MB for deep recursion in bootstrap)
 const INTERPRETER_STACK_SIZE: usize = 64 * 1024 * 1024;
+
+/// v0.96.40: Stack size for compiler threads (64MB for type checking large files like compiler.bmb)
+/// The type checker's `infer` function is ~1600 lines with 57 match arms, creating large
+/// stack frames. Deeply nested if-else chains (e.g., 30-level chains in next_token_raw)
+/// cause stack overflow on the default 1-2MB Windows thread stack.
+const COMPILER_STACK_SIZE: usize = 64 * 1024 * 1024;
 
 fn run_file(path: &Path, extra_args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     // v0.30.241: Run entire pipeline in a thread with larger stack to prevent overflow

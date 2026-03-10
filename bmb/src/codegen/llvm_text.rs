@@ -1604,11 +1604,12 @@ impl TextCodeGen {
                     MirInst::Copy { dest, src } => {
                         // v0.51.48: If dest is a local with explicit type annotation, preserve it
                         // This prevents i64 constants from overriding i32 declared variables
+                        // v0.96.40: Exception: if source is ptr (String), always propagate
+                        // MIR lowering may create locals with I64 type for String variables
                         let is_declared_local = func.locals.iter().any(|(name, _)| name == &dest.name);
-                        if !is_declared_local {
-                            // Only inherit type from source for temps, not declared locals
-                            let ty = place_types.get(&src.name).copied().unwrap_or("i64");
-                            place_types.insert(dest.name.clone(), ty);
+                        let src_ty = place_types.get(&src.name).copied().unwrap_or("i64");
+                        if !is_declared_local || src_ty == "ptr" || src_ty == "double" {
+                            place_types.insert(dest.name.clone(), src_ty);
                         }
                     }
                     // v0.50.50: ArrayInit produces ptr type (pointer to allocated array)
@@ -1662,7 +1663,83 @@ impl TextCodeGen {
                     }
                     // v0.60.20: PtrStore has no destination
                     MirInst::PtrStore { .. } => {}
+                    // v0.96.40: Select produces the type of its value operands
+                    MirInst::Select { dest, true_val, false_val, .. } => {
+                        let true_ty = match true_val {
+                            Operand::Place(p) => place_types.get(&p.name).copied().unwrap_or("i64"),
+                            Operand::Constant(Constant::String(_)) => "ptr",
+                            _ => "i64",
+                        };
+                        let false_ty = match false_val {
+                            Operand::Place(p) => place_types.get(&p.name).copied().unwrap_or("i64"),
+                            Operand::Constant(Constant::String(_)) => "ptr",
+                            _ => "i64",
+                        };
+                        let val_ty = if true_ty == "ptr" || false_ty == "ptr" {
+                            "ptr"
+                        } else if true_ty == "i64" || false_ty == "i64" {
+                            "i64"
+                        } else {
+                            true_ty
+                        };
+                        place_types.insert(dest.name.clone(), val_ty);
+                    }
                     _ => {}
+                }
+            }
+        }
+
+        // v0.96.40: Second pass to fix phi types that referenced not-yet-typed variables
+        // In loops, phi inputs from back edges may not have been typed in the first pass
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let MirInst::Phi { dest, values } = inst {
+                    let mut widest_ty = "i1";
+                    for (val, _) in values {
+                        let ty = match val {
+                            Operand::Constant(c) => self.constant_type(c),
+                            Operand::Place(p) => place_types.get(&p.name).copied().unwrap_or("i64"),
+                        };
+                        widest_ty = match (widest_ty, ty) {
+                            (_, "ptr") | ("ptr", _) => "ptr",
+                            (_, "double") | ("double", _) => "double",
+                            (_, "i64") | ("i64", _) => "i64",
+                            ("i32", "i32") => "i32",
+                            ("i32", "i1") | ("i1", "i32") => "i32",
+                            ("i1", "i1") => "i1",
+                            _ => ty,
+                        };
+                    }
+                    place_types.insert(dest.name.clone(), widest_ty);
+                }
+                // Also re-check Copy types that may have inherited from unresolved phis
+                if let MirInst::Copy { dest, src } = inst {
+                    let is_declared_local = func.locals.iter().any(|(name, _)| name == &dest.name);
+                    if !is_declared_local {
+                        let ty = place_types.get(&src.name).copied().unwrap_or("i64");
+                        place_types.insert(dest.name.clone(), ty);
+                    }
+                }
+                // Also re-check Select types
+                if let MirInst::Select { dest, true_val, false_val, .. } = inst {
+                    let true_ty = match true_val {
+                        Operand::Place(p) => place_types.get(&p.name).copied().unwrap_or("i64"),
+                        Operand::Constant(Constant::String(_)) => "ptr",
+                        _ => "i64",
+                    };
+                    let false_ty = match false_val {
+                        Operand::Place(p) => place_types.get(&p.name).copied().unwrap_or("i64"),
+                        Operand::Constant(Constant::String(_)) => "ptr",
+                        _ => "i64",
+                    };
+                    let val_ty = if true_ty == "ptr" || false_ty == "ptr" {
+                        "ptr"
+                    } else if true_ty == "i64" || false_ty == "i64" {
+                        "i64"
+                    } else {
+                        true_ty
+                    };
+                    place_types.insert(dest.name.clone(), val_ty);
                 }
             }
         }
@@ -6571,15 +6648,34 @@ impl TextCodeGen {
                         _ => "eq",
                     };
                     // v0.93.121: Load local condition operands from .addr
+                    // v0.96.40: Handle narrowed (i32) non-local operands by sext to i64
                     let lhs_cond = if let Operand::Place(p) = cond_lhs {
                         if local_names.contains(&p.name) {
-                            writeln!(out, "  %{}_cond.lhs = load i64, ptr %{}.addr", dest.name, p.name)?;
+                            let op_ty = place_types.get(&p.name).copied().unwrap_or("i64");
+                            if op_ty == "i32" {
+                                writeln!(out, "  %{}_cond.lhs.i32 = load i32, ptr %{}.addr", dest.name, p.name)?;
+                                writeln!(out, "  %{}_cond.lhs = sext i32 %{}_cond.lhs.i32 to i64", dest.name, dest.name)?;
+                            } else {
+                                writeln!(out, "  %{}_cond.lhs = load i64, ptr %{}.addr", dest.name, p.name)?;
+                            }
+                            format!("%{}_cond.lhs", dest.name)
+                        } else if place_types.get(&p.name).copied() == Some("i32") || narrowed_param_names.contains(&p.name) {
+                            writeln!(out, "  %{}_cond.lhs = sext i32 %{} to i64", dest.name, p.name)?;
                             format!("%{}_cond.lhs", dest.name)
                         } else { lhs_val.clone() }
                     } else { lhs_val.clone() };
                     let rhs_cond = if let Operand::Place(p) = cond_rhs {
                         if local_names.contains(&p.name) {
-                            writeln!(out, "  %{}_cond.rhs = load i64, ptr %{}.addr", dest.name, p.name)?;
+                            let op_ty = place_types.get(&p.name).copied().unwrap_or("i64");
+                            if op_ty == "i32" {
+                                writeln!(out, "  %{}_cond.rhs.i32 = load i32, ptr %{}.addr", dest.name, p.name)?;
+                                writeln!(out, "  %{}_cond.rhs = sext i32 %{}_cond.rhs.i32 to i64", dest.name, dest.name)?;
+                            } else {
+                                writeln!(out, "  %{}_cond.rhs = load i64, ptr %{}.addr", dest.name, p.name)?;
+                            }
+                            format!("%{}_cond.rhs", dest.name)
+                        } else if place_types.get(&p.name).copied() == Some("i32") || narrowed_param_names.contains(&p.name) {
+                            writeln!(out, "  %{}_cond.rhs = sext i32 %{} to i64", dest.name, p.name)?;
                             format!("%{}_cond.rhs", dest.name)
                         } else { rhs_val.clone() }
                     } else { rhs_val.clone() };
