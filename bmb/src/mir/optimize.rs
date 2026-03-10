@@ -4206,7 +4206,11 @@ fn compute_index_param_positions(program: &MirProgram) -> HashMap<String, HashSe
     result
 }
 
-/// Check if a parameter is directly used as INDEX operand in IndexLoad/IndexStore.
+/// Check if a parameter is directly used as INDEX operand in IndexLoad/IndexStore,
+/// or flows into load_i64/store_i64/load_f64/store_f64 address computations.
+/// v0.96.38: Extended to track through BinOp (Shl/Mul/Add) into memory builtins.
+/// This prevents narrowing params that become GEP indices after inlining,
+/// which would create unnecessary shl 32 + ashr 32 sign-extension pairs.
 fn param_directly_indexes_array_standalone(func: &MirFunction, param_name: &str) -> bool {
     let mut derived: HashSet<String> = HashSet::new();
     derived.insert(param_name.to_string());
@@ -4224,8 +4228,30 @@ fn param_directly_indexes_array_standalone(func: &MirFunction, param_name: &str)
                             return true;
                         }
                     }
+                    // v0.96.38: Check if param flows into load_i64/store_i64/load_f64/store_f64
+                    // address arguments. These builtins generate GEP in codegen, and narrowed
+                    // params create sext overhead in the GEP index path after inlining.
+                    MirInst::Call { func: fn_name, args, .. }
+                        if matches!(fn_name.as_str(), "load_i64" | "store_i64" | "load_f64" | "store_f64" | "load_u8" | "store_u8") =>
+                    {
+                        // Check if any argument derives from the param
+                        for arg in args {
+                            if matches!(arg, Operand::Place(p) if derived.contains(&p.name)) {
+                                return true;
+                            }
+                        }
+                    }
                     MirInst::Copy { dest, src } if derived.contains(&src.name) => {
                         derived.insert(dest.name.clone());
+                    }
+                    // v0.96.38: Track through BinOp — params flow through
+                    // shl(x, 3), mul(x, 8), add(base, offset) into memory addresses
+                    MirInst::BinOp { dest, lhs, rhs, .. } => {
+                        let lhs_derived = matches!(lhs, Operand::Place(p) if derived.contains(&p.name));
+                        let rhs_derived = matches!(rhs, Operand::Place(p) if derived.contains(&p.name));
+                        if lhs_derived || rhs_derived {
+                            derived.insert(dest.name.clone());
+                        }
                     }
                     _ => {}
                 }

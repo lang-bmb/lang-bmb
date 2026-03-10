@@ -528,8 +528,11 @@ impl TextCodeGen {
             }
         }
 
-        // Phase 2: For each function, find which params are used as GEP bases
-        // Pattern: %*_gep_base.N = inttoptr i64 %PARAM to ptr
+        // Phase 2: For each function, find which params/locals are used as GEP bases
+        // Patterns detected:
+        //   A) inttoptr: %*_gep_base.N = inttoptr i64 %SSA to ptr (original path)
+        //   B) ptr-provenance: %*_gep_base.N = load ptr, ptr %VAR.ptr.addr (v0.96.38)
+        // Both trace back to find the originating variable name.
         let mut noalias_info: BTreeMap<usize, HashMap<String, Vec<usize>>> = BTreeMap::new(); // func_start -> (param_name -> [load/store_lines])
         let mut all_base_params: BTreeMap<usize, Vec<String>> = BTreeMap::new();
 
@@ -538,6 +541,43 @@ impl TextCodeGen {
 
             for i in func_start..=func_end {
                 let trimmed = lines[i].trim();
+
+                // v0.96.38: Pattern B — ptr-provenance GEP base
+                // %li64_gep_base.N = load ptr, ptr %VAR.ptr.addr
+                // %si64_gep_base.N = load ptr, ptr %VAR.ptr.addr
+                if trimmed.contains("= load ptr, ptr %") && trimmed.contains(".ptr.addr")
+                   && (trimmed.contains("gep_base.") || trimmed.contains("_ptr."))
+                {
+                    // Skip free_ptr patterns
+                    if trimmed.contains("free_ptr.") {
+                        continue;
+                    }
+                    // Extract variable name from "ptr %VAR.ptr.addr"
+                    if let Some(pct_pos) = trimmed.rfind("ptr %") {
+                        let after_pct = &trimmed[pct_pos + 5..];
+                        if let Some(ptr_addr_pos) = after_pct.find(".ptr.addr") {
+                            let var_name = &after_pct[..ptr_addr_pos];
+                            // Find the memory access line after this ptr load
+                            for j in (i+1)..std::cmp::min(i+6, func_end+1) {
+                                let check = lines[j].trim();
+                                if (check.contains("= load i64,") || check.contains("= load double,") ||
+                                    check.contains("= load i8,") ||
+                                    check.starts_with("store i64 ") || check.starts_with("store double ") ||
+                                    check.starts_with("store i8 "))
+                                   && check.contains("!tbaa")
+                                {
+                                    base_param_lines.entry(var_name.to_string())
+                                        .or_default()
+                                        .push(j);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    continue; // Already handled, skip inttoptr check below
+                }
+
+                // Pattern A — inttoptr GEP base (original path)
                 // Match ALL inttoptr patterns that derive from parameter/local bases:
                 //   %li64_gep_base.N = inttoptr ...  (load_i64 GEP path)
                 //   %si64_gep_base.N = inttoptr ...  (store_i64 GEP path)
@@ -630,7 +670,7 @@ impl TextCodeGen {
                 }
             }
 
-            // Only add metadata if 2+ distinct base params
+            // Only add metadata if 2+ distinct base params/locals
             if base_param_lines.len() >= 2 {
                 let mut sorted_params: Vec<String> = base_param_lines.keys().cloned().collect();
                 sorted_params.sort();
