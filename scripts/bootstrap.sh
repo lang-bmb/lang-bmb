@@ -26,13 +26,17 @@ set -e
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-# Try MinGW build first (required on Windows for native compilation), then fall back to regular
-if [ -f "${PROJECT_ROOT}/target/x86_64-pc-windows-gnu/release/bmb.exe" ]; then
+# v0.96.40: Prefer text backend (target/release/) over inkwell backend (x86_64-pc-windows-gnu/)
+# The inkwell backend segfaults with --fast-compile on Windows (known issue v0.50.54)
+# The text backend works correctly and uses clang for native compilation
+if [ -f "${PROJECT_ROOT}/target/release/bmb.exe" ]; then
+    RUST_BMB="${PROJECT_ROOT}/target/release/bmb.exe"
+elif [ -f "${PROJECT_ROOT}/target/release/bmb" ]; then
+    RUST_BMB="${PROJECT_ROOT}/target/release/bmb"
+elif [ -f "${PROJECT_ROOT}/target/x86_64-pc-windows-gnu/release/bmb.exe" ]; then
     RUST_BMB="${PROJECT_ROOT}/target/x86_64-pc-windows-gnu/release/bmb.exe"
 elif [ -f "${PROJECT_ROOT}/target/x86_64-pc-windows-gnu/release/bmb" ]; then
     RUST_BMB="${PROJECT_ROOT}/target/x86_64-pc-windows-gnu/release/bmb"
-elif [ -f "${PROJECT_ROOT}/target/release/bmb.exe" ]; then
-    RUST_BMB="${PROJECT_ROOT}/target/release/bmb.exe"
 else
     RUST_BMB="${PROJECT_ROOT}/target/release/bmb"
 fi
