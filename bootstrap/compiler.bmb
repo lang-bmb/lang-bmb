@@ -4337,12 +4337,14 @@ fn lower_lambda_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit:
     let lambda_name = "__lambda_" + int_to_string(temp_id);
     let params = collect_lambda_params(ast, 0, "");
     let body_ast = get_lambda_body(ast, 0);
-    let lambda_sb = sb_new();
+    let lambda_sb_raw = sb_new();
+    // v0.96.41: Encode sb for lower_expr_sb (expects sb_raw * 2 + safe_bit)
+    let lambda_sb = lambda_sb_raw * 2;
     let lambda_result = lower_expr_sb(body_ast, 0, 0, lambda_sb, "");
     let lambda_temp = unpack_temp(lambda_result);
     let result_id = lambda_temp - 1;
     let w1 = sb_push_mir(lambda_sb, "  return %_t" + int_to_string(result_id));
-    let lambda_body = sb_build(lambda_sb);
+    let lambda_body = sb_build(lambda_sb_raw);
     // v0.95: Uniform closure convention — ALL lambdas get __closure: i64 first param
     let free_vars = find_free_vars_in_mir(lambda_body, params);
     let tmp = "%_t" + int_to_string(temp_id);
