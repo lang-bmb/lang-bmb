@@ -12663,14 +12663,16 @@ fn llvm_gen_fn_header(line: String, pos: i64) -> String =
     // v0.95: i32 return type support
     let llvm_ret = if ret_type == "f64" { "double" } else if ret_type == "i32" { "i32" } else { "i64" };
     let emitted_name = if fn_name == "main" { "bmb_user_main" } else { fn_name };
-    let base_attrs = if fn_name == "main" { " mustprogress" } else { " mustprogress nounwind willreturn nosync" };
+    let base_attrs = if fn_name == "main" { " mustprogress \"no-trapping-math\"=\"true\" uwtable" } else { " mustprogress nounwind willreturn nosync \"no-trapping-math\"=\"true\" uwtable" };
     let pure_attrs = if ann == "pure" or ann == "const" { " memory(none) nofree" } else { "" };
     let inline_attrs = if ann == "inline" { " alwaysinline" } else { "" };
     let attrs = base_attrs + pure_attrs + inline_attrs;
     // Prevents symbol collision and enables better optimization for inlined functions
     // v0.96.13: All non-main functions get private linkage for better LLVM optimization
     let linkage = if fn_name == "main" { "define " } else { "define private " };
-    let header = linkage + llvm_ret + " @" + emitted_name + "(" + formatted_params + ")" + attrs + " {";
+    // v0.96.44: Add noundef on return values — all BMB functions return initialized values
+    let ret_attrs = if fn_name == "main" { "" } else { "noundef " };
+    let header = linkage + ret_attrs + llvm_ret + " @" + emitted_name + "(" + formatted_params + ")" + attrs + " {";
     // v0.95: Generate sext prologue for i32 parameters
     let i32_prologue = gen_i32_param_sexts(params, 0, "");
     if i32_prologue == "" { header } else { header + SEP() + "i32_entry:" + SEP() + i32_prologue + SEP() + "  br label %entry" };
@@ -13214,6 +13216,68 @@ fn add_norecurse_attr(ir: String) -> String =
         before + "norecurse " + after + rest
     };
 
+// v0.96.44: Add nofree attribute to functions that don't call free/realloc
+fn add_nofree_attr(ir: String) -> String =
+    let pipe_pos = find_pipe_skip_quotes(ir, 0);
+    let header = ir.slice(0, pipe_pos);
+    // Skip if already has nofree (pure/const functions)
+    if find_pattern_noa(header, "nofree", 0) >= 0 { ir }
+    // Check body for free/realloc calls
+    else if find_pattern_noa(ir, "@free(", pipe_pos) >= 0 { ir }
+    else if find_pattern_noa(ir, "@realloc(", pipe_pos) >= 0 { ir }
+    else if find_pattern_noa(ir, "@bmb_realloc(", pipe_pos) >= 0 { ir }
+    else {
+        let rest = if pipe_pos >= ir.len() { "" } else { ir.slice(pipe_pos, ir.len()) };
+        let mp_pos = find_pattern_noa(header, "mustprogress", 0);
+        if mp_pos < 0 { ir }
+        else {
+            let before = header.slice(0, mp_pos);
+            let after = header.slice(mp_pos, header.len());
+            before + "nofree " + after + rest
+        }
+    };
+
+// v0.96.44: Add speculatable to memory(none) leaf functions (no user-defined calls)
+// Only safe for leaf functions — LLVM may speculate calls past base case in recursive functions
+fn add_speculatable_attr(ir: String) -> String =
+    let pipe_pos = find_pipe_skip_quotes(ir, 0);
+    let header = ir.slice(0, pipe_pos);
+    // Only apply to memory(none) functions
+    if find_pattern_noa(header, "memory(none)", 0) < 0 { ir }
+    // Skip if already has speculatable
+    else if find_pattern_noa(header, "speculatable", 0) >= 0 { ir }
+    // Check if function has any user-defined calls (non-intrinsic, non-runtime)
+    // Leaf = only calls llvm.* intrinsics — no @user_func() calls
+    else if has_user_call_in_body(ir, pipe_pos) { ir }
+    else {
+        let rest = if pipe_pos >= ir.len() { "" } else { ir.slice(pipe_pos, ir.len()) };
+        let mn_pos = find_pattern_noa(header, "memory(none)", 0);
+        let before = header.slice(0, mn_pos + 12);
+        let after = header.slice(mn_pos + 12, header.len());
+        before + " speculatable" + after + rest
+    };
+
+// Check if IR body has user-defined function calls (not llvm.* intrinsics)
+fn has_user_call_in_body(ir: String, pos: i64) -> bool =
+    if pos >= ir.len() { false }
+    else {
+        let call_pos = find_pattern_noa(ir, " call ", pos);
+        if call_pos < 0 { false }
+        else {
+            // Find @name after "call <type> @"
+            let at_pos = find_byte_in_range(ir, 64, call_pos + 6, ir.len());
+            if at_pos < 0 { false }
+            else {
+                // Check if it's an llvm.* intrinsic
+                let after_at = at_pos + 1;
+                if after_at + 4 < ir.len() and ir.byte_at(after_at) == 108 and ir.byte_at(after_at + 1) == 108 and ir.byte_at(after_at + 2) == 118 and ir.byte_at(after_at + 3) == 109 {
+                    // starts with "llvm" — skip this call and check next
+                    has_user_call_in_body(ir, call_pos + 6)
+                } else { true }
+            }
+        }
+    };
+
 fn gen_function_sb_structs_reuse(mir: String, strings: String, string_fns: String, registry: String, struct_reg: String, ptr_ret_reg: String, fn_sb: i64, str_sb: i64, ptr_sb: i64) -> String =
     let _c1 = sb_clear(fn_sb);
     let _c2 = sb_clear(str_sb);
@@ -13240,7 +13304,11 @@ fn gen_function_sb_structs_reuse(mir: String, strings: String, string_fns: Strin
     // v0.93.6: Annotate read-only functions with memory(read)
     let pass7 = annotate_memory_read_ir(pass6);
     // v0.93.4: Add norecurse for non-recursive functions
-    if is_recursive { pass7 } else { add_norecurse_attr(pass7) };
+    let pass8 = if is_recursive { pass7 } else { add_norecurse_attr(pass7) };
+    // v0.96.44: Add nofree for functions without free/realloc calls
+    let pass9 = add_nofree_attr(pass8);
+    // v0.96.44: Add speculatable for memory(none) leaf functions
+    add_speculatable_attr(pass9);
 
 fn init_string_params_sb(mir: String, str_sb: i64) -> i64 =
     let fn_start = find_pattern_at(mir, "fn ", 0);

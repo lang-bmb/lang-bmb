@@ -3183,9 +3183,19 @@ impl TextCodeGen {
                     let malloc_idx_pre = *name_counts.entry("malloc_op".to_string()).or_insert(0);
                     let size_val = match &args[0] {
                         Operand::Place(p) if local_names.contains(&p.name) => {
-                            // v0.96.43: Use malloc_idx to avoid duplicate SSA names
+                            // v0.96.44: Check if the local was narrowed to i32 by
+                            // ConstantPropagationNarrowing — load as i32 + sext to i64.
+                            // Without this, `load i64` from an `alloca i32` reads
+                            // garbage in the upper 4 bytes, causing heap corruption.
                             let load_name = format!("{}.malloc.size.{}", p.name, malloc_idx_pre);
-                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            let is_i32 = place_types.get(&p.name).map_or(false, |t| *t == "i32");
+                            if is_i32 {
+                                let load32_name = format!("{}.malloc.size32.{}", p.name, malloc_idx_pre);
+                                writeln!(out, "  %{} = load i32, ptr %{}.addr, align 4", load32_name, p.name)?;
+                                writeln!(out, "  %{} = sext i32 %{} to i64", load_name, load32_name)?;
+                            } else {
+                                writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            }
                             format!("%{}", load_name)
                         }
                         // v0.93.122: Narrowed i32 params need sext for malloc i64 size
@@ -3298,10 +3308,18 @@ impl TextCodeGen {
                     };
 
                     // Load size argument
+                    // v0.96.44: Same narrowing fix as malloc — check place_types for i32
                     let size_val = match &args[1] {
                         Operand::Place(p) if local_names.contains(&p.name) => {
                             let load_name = format!("realloc.size.{}", realloc_idx);
-                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            let is_i32 = place_types.get(&p.name).map_or(false, |t| *t == "i32");
+                            if is_i32 {
+                                let load32_name = format!("realloc.size32.{}", realloc_idx);
+                                writeln!(out, "  %{} = load i32, ptr %{}.addr, align 4", load32_name, p.name)?;
+                                writeln!(out, "  %{} = sext i32 %{} to i64", load_name, load32_name)?;
+                            } else {
+                                writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            }
                             format!("%{}", load_name)
                         }
                         Operand::Place(p) if narrowed_param_names.contains(&p.name) => {

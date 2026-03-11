@@ -1844,6 +1844,14 @@ impl OptimizationPass for CopyPropagation {
                     changed = true;
                 }
 
+                // v0.96.44: When ANY instruction defines a dest variable,
+                // invalidate stale copy map entries whose VALUE references it.
+                // Without this, `old = x; x = y; z = old` incorrectly
+                // propagates to `z = x` (stale — x was overwritten).
+                if let Some(def_name) = inst.dest_name() {
+                    copies.retain(|_, v| v.name != def_name);
+                }
+
                 // Then add this instruction to copy map if it's a Copy
                 if let MirInst::Copy { dest, src } = inst {
                     copies.insert(dest.name.clone(), src.clone());

@@ -4,7 +4,7 @@ source_filename = "tests/golden/const_fn_eval.ll"
 ; Function Attrs: mustprogress nofree nounwind willreturn
 declare void @println(i64) local_unnamed_addr #0
 
-; Function Attrs: mustprogress nofree norecurse nounwind willreturn
+; Function Attrs: mustprogress nofree norecurse nounwind willreturn uwtable
 define noundef i64 @bmb_user_main() local_unnamed_addr #1 {
 entry:
   tail call void @println(i64 42)
@@ -18,4 +18,4 @@ entry:
 }
 
 attributes #0 = { mustprogress nofree nounwind willreturn }
-attributes #1 = { mustprogress nofree norecurse nounwind willreturn }
+attributes #1 = { mustprogress nofree norecurse nounwind willreturn uwtable "no-trapping-math"="true" }

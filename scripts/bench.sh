@@ -189,7 +189,10 @@ build_bmb() {
     fi
 
     # Step 2: Optimize with LLVM opt (all middle-end optimizations)
-    if ! opt --mcpu=native -passes="default<O3>,scalarizer,slp-vectorizer" "$ir" -S -o "$ir_opt" 2>/dev/null; then
+    # v0.96.44: Use -O3 instead of -passes="default<O3>,scalarizer,slp-vectorizer"
+    # Running scalarizer+slp AFTER O3 can break already-optimized IR, causing
+    # 10-15% regressions on stencil benchmarks (wave_equation 1.10x→1.00x)
+    if ! opt -O3 --mcpu=native "$ir" -S -o "$ir_opt" 2>/dev/null; then
         echo "FAIL:opt"
         return 1
     fi
@@ -202,7 +205,14 @@ build_bmb() {
     local link_flags="-lm"
     [[ "$OSTYPE" == "msys"* || "$OSTYPE" == "mingw"* || "$OSTYPE" == "cygwin"* ]] && link_flags="$link_flags -lws2_32"
 
-    if ! clang -w -O3 -fno-unroll-loops -march=native "$ir_opt" "$RUNTIME" -o "$out" $link_flags 2>/dev/null; then
+    # v0.96.44: Use lld if available for proper gc-sections on Windows COFF PE
+    local lld_flag=""
+    if command -v ld.lld &>/dev/null; then
+        lld_flag="-fuse-ld=lld -Wl,--gc-sections"
+    fi
+    # v0.96.44: -ffunction-sections enables gc-sections dead code removal from runtime .a
+    # Do NOT use -fdata-sections — it can affect data alignment and cause 5-10% regressions
+    if ! clang -w -O3 -fno-unroll-loops -march=native -ffunction-sections $lld_flag "$ir_opt" "$RUNTIME" -o "$out" $link_flags 2>/dev/null; then
         echo "FAIL:link"
         return 1
     fi
@@ -282,7 +292,7 @@ else:
 # ─── Main ────────────────────────────────────────────────────────────────────
 echo -e "${BOLD}BMB Benchmark Suite v5 — 3-Way Comparison${NC}"
 echo -e "Config: ${RUNS} runs + ${WARMUP} warmup"
-echo -e "Pipeline: BMB emit-ir → opt --mcpu=native -O3 +scalarizer +slp → clang -O3 -fno-unroll-loops"
+echo -e "Pipeline: BMB emit-ir → opt -O3 --mcpu=native → clang -O3 -fno-unroll-loops"
 echo -e "         C → clang -O3 -march=native"
 [ "$HAS_RUSTC" = true ] && echo -e "         Rust → rustc -C opt-level=3 -C target-cpu=native"
 echo ""
@@ -546,7 +556,7 @@ TOTAL=$((FASTER_COUNT + PASS_COUNT + WARN_COUNT + FAIL_COUNT))
 echo -e "${BOLD}Summary: ${GREEN}${FASTER_COUNT} FASTER${NC}, ${CYAN}${PASS_COUNT} PASS${NC}, ${YELLOW}${WARN_COUNT} WARN${NC}, ${RED}${FAIL_COUNT} FAIL${NC} (${TOTAL} total)"
 echo ""
 echo "Methodology:"
-echo "  BMB:  emit-ir → opt --mcpu=native -O3 +scalarizer +slp → clang -O3 -fno-unroll-loops -march=native"
+echo "  BMB:  emit-ir → opt -O3 --mcpu=native → clang -O3 -fno-unroll-loops -march=native"
 echo "  C:    clang -O3 -march=native"
 [ "$HAS_RUSTC" = true ] && echo "  Rust: rustc -C opt-level=3 -C target-cpu=native"
 echo "  Runs: ${WARMUP} warmup (discarded) + ${RUNS} measured, median reported"
@@ -562,7 +572,7 @@ if [ -n "$JSON_FILE" ]; then
         echo "  \"config\": {"
         echo "    \"runs\": ${RUNS},"
         echo "    \"warmup\": ${WARMUP},"
-        echo "    \"bmb_pipeline\": \"emit-ir → opt -O3 --mcpu=native +scalarizer +slp → clang -O3 -fno-unroll-loops -march=native\","
+        echo "    \"bmb_pipeline\": \"emit-ir → opt -O3 --mcpu=native → clang -O3 -fno-unroll-loops -march=native\","
         echo "    \"c_pipeline\": \"clang -O3 -march=native\","
         echo "    \"platform\": \"$(uname -s) $(uname -m)\","
         echo "    \"opt_version\": \"$(opt --version 2>&1 | head -2 | tail -1 | tr -d '[:space:]')\","

@@ -1,12 +1,12 @@
 ; ModuleID = bmb_bootstrap
 declare void @println(i64) nofree nounwind willreturn
 
-define private i64 @pi_times_100() norecurse alwaysinline mustprogress nounwind willreturn nosync speculatable memory(none) nofree {
+define private noundef i64 @pi_times_100() norecurse alwaysinline mustprogress nounwind willreturn nosync "no-trapping-math"="true" uwtable memory(none) speculatable nofree {
 entry:
   ret i64 314
 }
 
-define i64 @bmb_user_main() norecurse mustprogress {
+define i64 @bmb_user_main() norecurse nofree mustprogress "no-trapping-math"="true" uwtable {
 entry:
   %a_v0 = alloca i64
   store i64 42, ptr %a_v0

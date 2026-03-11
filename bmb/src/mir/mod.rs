@@ -703,6 +703,75 @@ pub enum MirInst {
     },
 }
 
+impl MirInst {
+    /// v0.96.44: Get the destination variable name if this instruction defines one.
+    /// Used by CopyPropagation to invalidate stale entries when a variable is redefined.
+    pub fn dest_name(&self) -> Option<&str> {
+        match self {
+            MirInst::Const { dest, .. }
+            | MirInst::Copy { dest, .. }
+            | MirInst::BinOp { dest, .. }
+            | MirInst::UnaryOp { dest, .. }
+            | MirInst::Phi { dest, .. }
+            | MirInst::StructInit { dest, .. }
+            | MirInst::FieldAccess { dest, .. }
+            | MirInst::EnumVariant { dest, .. }
+            | MirInst::ArrayInit { dest, .. }
+            | MirInst::IndexLoad { dest, .. }
+            | MirInst::TupleInit { dest, .. }
+            | MirInst::TupleExtract { dest, .. }
+            | MirInst::Cast { dest, .. }
+            | MirInst::PtrOffset { dest, .. }
+            | MirInst::ArrayAlloc { dest, .. }
+            | MirInst::PtrLoad { dest, .. }
+            | MirInst::ThreadSpawn { dest, .. }
+            | MirInst::MutexNew { dest, .. }
+            | MirInst::MutexLock { dest, .. }
+            | MirInst::MutexTryLock { dest, .. }
+            | MirInst::ArcNew { dest, .. }
+            | MirInst::ArcClone { dest, .. }
+            | MirInst::ArcGet { dest, .. }
+            | MirInst::ArcStrongCount { dest, .. }
+            | MirInst::AtomicNew { dest, .. }
+            | MirInst::AtomicLoad { dest, .. }
+            | MirInst::AtomicFetchAdd { dest, .. }
+            | MirInst::AtomicFetchSub { dest, .. }
+            | MirInst::AtomicSwap { dest, .. }
+            | MirInst::AtomicCompareExchange { dest, .. }
+            | MirInst::ChannelRecv { dest, .. }
+            | MirInst::ChannelTrySend { dest, .. }
+            | MirInst::ChannelTryRecv { dest, .. }
+            | MirInst::ChannelRecvTimeout { dest, .. }
+            | MirInst::ChannelSendTimeout { dest, .. }
+            | MirInst::ChannelIsClosed { dest, .. }
+            | MirInst::ChannelRecvOpt { dest, .. }
+            | MirInst::SenderClone { dest, .. }
+            | MirInst::BlockOn { dest, .. }
+            | MirInst::RwLockNew { dest, .. }
+            | MirInst::RwLockRead { dest, .. }
+            | MirInst::RwLockWrite { dest, .. }
+            | MirInst::BarrierNew { dest, .. }
+            | MirInst::BarrierWait { dest, .. }
+            | MirInst::CondvarNew { dest, .. }
+            | MirInst::CondvarWait { dest, .. }
+            | MirInst::Select { dest, .. }
+            | MirInst::AsyncFileOpen { dest, .. }
+            | MirInst::AsyncFileRead { dest, .. }
+            | MirInst::AsyncSocketConnect { dest, .. }
+            | MirInst::AsyncSocketRead { dest, .. }
+            | MirInst::ThreadPoolNew { dest, .. }
+            | MirInst::ScopeNew { dest, .. } => Some(&dest.name),
+            // Option<Place> variants
+            MirInst::Call { dest, .. }
+            | MirInst::ThreadJoin { dest, .. } => dest.as_ref().map(|d| d.name.as_str()),
+            // ChannelNew has two dests — return sender_dest
+            MirInst::ChannelNew { sender_dest, .. } => Some(&sender_dest.name),
+            // No dest
+            _ => None,
+        }
+    }
+}
+
 /// Block terminator (control flow)
 #[derive(Debug, Clone)]
 pub enum Terminator {

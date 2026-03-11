@@ -857,6 +857,10 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         };
 
         // v0.96.40: Link using clang (works on both MSVC and MinGW environments)
+        // v0.96.44: Use lld linker on Windows for proper --gc-sections support on COFF PE
+        //   MinGW ld (GNU ld) doesn't support --gc-sections on COFF PE, resulting in
+        //   all runtime functions being linked even when unused (90KB .text bloat)
+        //   lld properly eliminates unreferenced functions from -ffunction-sections objects
         {
             let mut cmd = Command::new(&clang);
             cmd.arg(path_str(&obj_path)?);
@@ -866,11 +870,15 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
             }
             cmd.args(["-o", path_str(&config.output)?]);
 
-            // v0.96.37: Remove unreferenced functions
+            // v0.96.44: Use lld if available (proper gc-sections on Windows COFF PE)
             #[cfg(target_os = "windows")]
-            cmd.arg("-Wl,--gc-sections");
+            {
+                if Command::new("ld.lld.exe").arg("--version").output().is_ok() {
+                    cmd.arg("-fuse-ld=lld");
+                }
+            }
 
-            #[cfg(not(target_os = "windows"))]
+            // v0.96.37: Remove unreferenced functions
             cmd.arg("-Wl,--gc-sections");
 
             // v0.83.1: Link ws2_32 for AsyncSocket (WinSock) support on Windows
