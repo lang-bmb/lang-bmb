@@ -74,6 +74,8 @@ impl OptimizationPipeline {
                 // v0.51.8: If-else chain to switch for jump tables
                 pipeline.add_pass(Box::new(IfElseToSwitch));
                 pipeline.add_pass(Box::new(CopyPropagation));
+                // v0.96.43: Add CSE to Release pipeline (was only in Aggressive)
+                pipeline.add_pass(Box::new(CommonSubexpressionElimination));
                 // v0.51.10: Memory load CSE for repeated load_f64/load_i64 calls
                 pipeline.add_pass(Box::new(MemoryLoadCSE));
                 // v0.60.38: Global field access CSE for cross-block field access dedup
@@ -1881,6 +1883,80 @@ fn propagate_copies_in_inst(inst: &mut MirInst, copies: &HashMap<String, Place>)
                 }
             }
         }
+        // v0.96.43: Propagate copies into Select operands
+        // Without this, CSE can replace a BinOp with Copy, but Select still references
+        // the eliminated variable, causing undefined SSA values in codegen
+        MirInst::Select { cond_lhs, cond_rhs, true_val, false_val, .. } => {
+            if propagate_operand(cond_lhs, copies) { changed = true; }
+            if propagate_operand(cond_rhs, copies) { changed = true; }
+            if propagate_operand(true_val, copies) { changed = true; }
+            if propagate_operand(false_val, copies) { changed = true; }
+        }
+        // v0.96.43: Propagate copies transitively through Copy chains
+        MirInst::Copy { src, .. } => {
+            if let Some(transitive_src) = copies.get(&src.name) {
+                *src = transitive_src.clone();
+                changed = true;
+            }
+        }
+        // v0.96.43: Propagate into Phi, Cast, FieldStore, IndexLoad/Store, PtrOffset/Load/Store
+        MirInst::Phi { values, .. } => {
+            for (op, _) in values {
+                if propagate_operand(op, copies) { changed = true; }
+            }
+        }
+        MirInst::Cast { src, .. } => {
+            if propagate_operand(src, copies) { changed = true; }
+        }
+        MirInst::FieldStore { value, .. } => {
+            if propagate_operand(value, copies) { changed = true; }
+        }
+        MirInst::IndexLoad { index, .. } => {
+            if propagate_operand(index, copies) { changed = true; }
+        }
+        MirInst::IndexStore { index, value, .. } => {
+            if propagate_operand(index, copies) { changed = true; }
+            if propagate_operand(value, copies) { changed = true; }
+        }
+        MirInst::PtrOffset { ptr, offset, .. } => {
+            if propagate_operand(ptr, copies) { changed = true; }
+            if propagate_operand(offset, copies) { changed = true; }
+        }
+        MirInst::PtrLoad { ptr, .. } => {
+            if propagate_operand(ptr, copies) { changed = true; }
+        }
+        MirInst::PtrStore { ptr, value, .. } => {
+            if propagate_operand(ptr, copies) { changed = true; }
+            if propagate_operand(value, copies) { changed = true; }
+        }
+        MirInst::StructInit { fields, .. } => {
+            for (_, op) in fields {
+                if propagate_operand(op, copies) { changed = true; }
+            }
+        }
+        MirInst::ArrayInit { elements, .. } => {
+            for op in elements {
+                if propagate_operand(op, copies) { changed = true; }
+            }
+        }
+        MirInst::TupleInit { elements, .. } => {
+            for (_, op) in elements {
+                if propagate_operand(op, copies) { changed = true; }
+            }
+        }
+        MirInst::EnumVariant { args, .. } => {
+            for op in args {
+                if propagate_operand(op, copies) { changed = true; }
+            }
+        }
+        MirInst::ThreadSpawn { captures, .. } => {
+            for op in captures {
+                if propagate_operand(op, copies) { changed = true; }
+            }
+        }
+        MirInst::ThreadJoin { handle, .. } => {
+            if propagate_operand(handle, copies) { changed = true; }
+        }
         _ => {}
     }
 
@@ -1938,7 +2014,19 @@ impl OptimizationPass for CommonSubexpressionElimination {
 
             for inst in &block.instructions {
                 if let MirInst::BinOp { dest, op, lhs, rhs } = inst {
-                    let key = format!("{:?}:{:?}:{:?}", op, lhs, rhs);
+                    // v0.96.43: Canonicalize operand order for commutative operations
+                    // This ensures a+b and b+a produce the same CSE key
+                    let key = if Self::is_commutative(op) {
+                        let lhs_str = format!("{:?}", lhs);
+                        let rhs_str = format!("{:?}", rhs);
+                        if lhs_str <= rhs_str {
+                            format!("{:?}:{:?}:{:?}", op, lhs, rhs)
+                        } else {
+                            format!("{:?}:{:?}:{:?}", op, rhs, lhs)
+                        }
+                    } else {
+                        format!("{:?}:{:?}:{:?}", op, lhs, rhs)
+                    };
 
                     if let Some(existing) = expressions.get(&key) {
                         // Replace with copy - safe because both are in the same block
@@ -1960,6 +2048,23 @@ impl OptimizationPass for CommonSubexpressionElimination {
         }
 
         changed
+    }
+}
+
+impl CommonSubexpressionElimination {
+    /// v0.96.43: Check if a binary operation is commutative (a op b == b op a)
+    fn is_commutative(op: &MirBinOp) -> bool {
+        matches!(op,
+            MirBinOp::Add | MirBinOp::Mul |
+            MirBinOp::AddWrap | MirBinOp::MulWrap |
+            MirBinOp::AddChecked | MirBinOp::MulChecked |
+            MirBinOp::AddSat | MirBinOp::MulSat |
+            MirBinOp::FAdd | MirBinOp::FMul |
+            MirBinOp::Eq | MirBinOp::Ne |
+            MirBinOp::FEq | MirBinOp::FNe |
+            MirBinOp::And | MirBinOp::Or |
+            MirBinOp::Band | MirBinOp::Bor | MirBinOp::Bxor
+        )
     }
 }
 

@@ -805,7 +805,8 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
             OptLevel::Aggressive => "-O3",
         };
 
-        cmd.args([opt_flag, "-c", path_str(&ir_path)?, "-o", path_str(&obj_path)?]);
+        // v0.96.43: Add -ffunction-sections/-fdata-sections to enable linker dead code elimination
+        cmd.args([opt_flag, "-ffunction-sections", "-fdata-sections", "-c", path_str(&ir_path)?, "-o", path_str(&obj_path)?]);
         // v0.96.40: Use MinGW target on Windows to avoid MSVC header conflicts
         #[cfg(target_os = "windows")]
         cmd.arg("--target=x86_64-pc-windows-gnu");

@@ -1538,187 +1538,188 @@ fn gen_module_header() -> String =
     "; ModuleID = bmb_bootstrap" + SEP() + "target triple = " + dq + "x86_64-unknown-linux-gnu" + dq;
 
 // Generate external function declarations (for runtime support)
+// v0.96.43: Added nocallback + nounwind + nofree + nosync for better LLVM interprocedural analysis
 fn gen_extern_println() -> String =
-    "declare void @println(i64)";
+    "declare void @println(i64) nocallback nounwind nofree nosync";
 
 fn gen_extern_abs() -> String =
-    "declare i64 @abs(i64)";
+    "declare i64 @abs(i64) nocallback nounwind nofree nosync willreturn memory(none) speculatable";
 
 fn gen_extern_min() -> String =
-    "declare i64 @min(i64, i64)";
+    "declare i64 @min(i64, i64) nocallback nounwind nofree nosync willreturn memory(none) speculatable";
 
 fn gen_extern_max() -> String =
-    "declare i64 @max(i64, i64)";
+    "declare i64 @max(i64, i64) nocallback nounwind nofree nosync willreturn memory(none) speculatable";
 
 // v0.30.73-76: String method runtime declarations
 fn gen_extern_string_len() -> String =
-    "declare i64 @bmb_string_len(i8*)";
+    "declare i64 @bmb_string_len(i8*) nocallback nofree nosync nounwind willreturn memory(argmem: read) speculatable";
 
 fn gen_extern_string_slice() -> String =
-    "declare i8* @bmb_string_slice(i8*, i64, i64)";
+    "declare i8* @bmb_string_slice(i8*, i64, i64) nocallback nosync nounwind willreturn memory(argmem: read)";
 
 // v0.30.77: Array method runtime declarations
-// Arrays are represented as {i64, ptr} structs (length + data pointer)
 fn gen_extern_array_len() -> String =
-    "declare i64 @bmb_array_len(i8*)";
+    "declare i64 @bmb_array_len(i8*) nocallback nofree nosync nounwind willreturn";
 
 fn gen_extern_array_get() -> String =
-    "declare i64 @bmb_array_get(i8*, i64)";
+    "declare i64 @bmb_array_get(i8*, i64) nocallback nofree nosync nounwind willreturn";
 
 fn gen_extern_array_set() -> String =
-    "declare void @bmb_array_set(i8*, i64, i64)";
+    "declare void @bmb_array_set(i8*, i64, i64) nocallback nofree nosync nounwind";
 
 // v0.30.80: Array mutation runtime declarations
 fn gen_extern_array_push() -> String =
-    "declare i64 @bmb_array_push(i8*, i64)";
+    "declare i64 @bmb_array_push(i8*, i64) nocallback nounwind nosync";
 
 fn gen_extern_array_pop() -> String =
-    "declare i64 @bmb_array_pop(i8*)";
+    "declare i64 @bmb_array_pop(i8*) nocallback nounwind nosync";
 
 fn gen_extern_array_clear() -> String =
-    "declare void @bmb_array_clear(i8*)";
+    "declare void @bmb_array_clear(i8*) nocallback nounwind nosync";
 
 // v0.30.81: String and memory runtime declarations
 fn gen_extern_string_concat() -> String =
-    "declare i8* @bmb_string_concat(i8*, i8*)";
+    "declare i8* @bmb_string_concat(i8*, i8*) nocallback nounwind nosync";
 
 fn gen_extern_string_eq() -> String =
-    "declare i1 @bmb_string_eq(i8*, i8*)";
+    "declare i1 @bmb_string_eq(i8*, i8*) nocallback nofree nosync nounwind willreturn memory(argmem: read)";
 
 fn gen_extern_alloc() -> String =
-    "declare i8* @bmb_alloc(i64)";
+    "declare noalias i8* @bmb_alloc(i64) nounwind";
 
 fn gen_extern_free() -> String =
-    "declare void @bmb_free(i8*)";
+    "declare void @bmb_free(i8*) nounwind";
 
 // v0.48.0: Bounds check panic (for array index out of bounds)
 fn gen_extern_panic_bounds() -> String =
-    "declare void @bmb_panic_bounds() noreturn";
+    "declare void @bmb_panic_bounds() noreturn nounwind";
 
 // v0.52: LLVM expect intrinsic for branch prediction hints
 fn gen_intrinsic_expect() -> String =
-    "declare i64 @llvm.expect.i64(i64, i64) nounwind readnone";
+    "declare i64 @llvm.expect.i64(i64, i64) nounwind willreturn memory(none)";
 
 // v0.88: Concurrency runtime declarations
+// NOTE: Threading/sync functions do NOT get nosync — they genuinely synchronize
 fn gen_extern_thread_spawn() -> String =
-    "declare i64 @bmb_thread_spawn(i64)";
+    "declare i64 @bmb_thread_spawn(i64) nocallback nounwind";
 fn gen_extern_thread_join() -> String =
-    "declare i64 @bmb_thread_join(i64)";
+    "declare i64 @bmb_thread_join(i64) nocallback nounwind";
 fn gen_extern_mutex_new() -> String =
-    "declare i64 @bmb_mutex_new(i64)";
+    "declare i64 @bmb_mutex_new(i64) nocallback nounwind";
 fn gen_extern_mutex_lock() -> String =
-    "declare i64 @bmb_mutex_lock(i64)";
+    "declare i64 @bmb_mutex_lock(i64) nocallback nounwind";
 fn gen_extern_mutex_unlock() -> String =
-    "declare void @bmb_mutex_unlock(i64, i64)";
+    "declare void @bmb_mutex_unlock(i64, i64) nocallback nounwind";
 fn gen_extern_mutex_try_lock() -> String =
-    "declare i64 @bmb_mutex_try_lock(i64)";
+    "declare i64 @bmb_mutex_try_lock(i64) nocallback nounwind";
 fn gen_extern_mutex_free() -> String =
-    "declare void @bmb_mutex_free(i64)";
+    "declare void @bmb_mutex_free(i64) nocallback nounwind nofree";
 fn gen_extern_channel_new() -> String =
-    "declare void @bmb_channel_new(i64, ptr, ptr)";
+    "declare void @bmb_channel_new(i64, ptr, ptr) nocallback nounwind";
 fn gen_extern_channel_send() -> String =
-    "declare void @bmb_channel_send(i64, i64)";
+    "declare void @bmb_channel_send(i64, i64) nocallback nounwind";
 fn gen_extern_channel_recv() -> String =
-    "declare i64 @bmb_channel_recv(i64)";
+    "declare i64 @bmb_channel_recv(i64) nocallback nounwind";
 fn gen_extern_channel_try_send() -> String =
-    "declare i64 @bmb_channel_try_send(i64, i64)";
+    "declare i64 @bmb_channel_try_send(i64, i64) nocallback nounwind";
 fn gen_extern_channel_try_recv() -> String =
-    "declare i64 @bmb_channel_try_recv(i64, ptr)";
+    "declare i64 @bmb_channel_try_recv(i64, ptr) nocallback nounwind";
 fn gen_extern_channel_recv_timeout() -> String =
-    "declare i64 @bmb_channel_recv_timeout(i64, i64, ptr)";
+    "declare i64 @bmb_channel_recv_timeout(i64, i64, ptr) nocallback nounwind";
 fn gen_extern_channel_send_timeout() -> String =
-    "declare i64 @bmb_channel_send_timeout(i64, i64, i64)";
+    "declare i64 @bmb_channel_send_timeout(i64, i64, i64) nocallback nounwind";
 fn gen_extern_channel_close() -> String =
-    "declare void @bmb_channel_close(i64)";
+    "declare void @bmb_channel_close(i64) nocallback nounwind";
 fn gen_extern_channel_is_closed() -> String =
-    "declare i64 @bmb_channel_is_closed(i64)";
+    "declare i64 @bmb_channel_is_closed(i64) nocallback nounwind nofree willreturn";
 fn gen_extern_channel_recv_opt() -> String =
-    "declare i64 @bmb_channel_recv_opt(i64, ptr)";
+    "declare i64 @bmb_channel_recv_opt(i64, ptr) nocallback nounwind";
 fn gen_extern_sender_clone() -> String =
-    "declare i64 @bmb_sender_clone(i64)";
+    "declare i64 @bmb_sender_clone(i64) nocallback nounwind";
 fn gen_extern_atomic_new() -> String =
-    "declare i64 @bmb_atomic_new(i64)";
+    "declare i64 @bmb_atomic_new(i64) nocallback nounwind";
 fn gen_extern_atomic_load() -> String =
-    "declare i64 @bmb_atomic_load(i64)";
+    "declare i64 @bmb_atomic_load(i64) nocallback nounwind";
 fn gen_extern_atomic_store() -> String =
-    "declare void @bmb_atomic_store(i64, i64)";
+    "declare void @bmb_atomic_store(i64, i64) nocallback nounwind";
 // v0.88.10: Arc runtime
 fn gen_extern_arc_new() -> String =
-    "declare i64 @bmb_arc_new(i64)";
+    "declare i64 @bmb_arc_new(i64) nocallback nounwind";
 fn gen_extern_arc_clone() -> String =
-    "declare i64 @bmb_arc_clone(i64)";
+    "declare i64 @bmb_arc_clone(i64) nocallback nounwind";
 fn gen_extern_arc_get() -> String =
-    "declare i64 @bmb_arc_get(i64)";
+    "declare i64 @bmb_arc_get(i64) nocallback nounwind nofree willreturn";
 fn gen_extern_arc_drop() -> String =
-    "declare void @bmb_arc_drop(i64)";
+    "declare void @bmb_arc_drop(i64) nocallback nounwind";
 fn gen_extern_arc_strong_count() -> String =
-    "declare i64 @bmb_arc_strong_count(i64)";
+    "declare i64 @bmb_arc_strong_count(i64) nocallback nounwind nofree willreturn";
 // v0.88.10: RwLock runtime
 fn gen_extern_rwlock_new() -> String =
-    "declare i64 @bmb_rwlock_new(i64)";
+    "declare i64 @bmb_rwlock_new(i64) nocallback nounwind";
 fn gen_extern_rwlock_read() -> String =
-    "declare i64 @bmb_rwlock_read(i64)";
+    "declare i64 @bmb_rwlock_read(i64) nocallback nounwind";
 fn gen_extern_rwlock_read_unlock() -> String =
-    "declare void @bmb_rwlock_read_unlock(i64)";
+    "declare void @bmb_rwlock_read_unlock(i64) nocallback nounwind";
 fn gen_extern_rwlock_write() -> String =
-    "declare i64 @bmb_rwlock_write(i64)";
+    "declare i64 @bmb_rwlock_write(i64) nocallback nounwind";
 fn gen_extern_rwlock_write_unlock() -> String =
-    "declare void @bmb_rwlock_write_unlock(i64, i64)";
+    "declare void @bmb_rwlock_write_unlock(i64, i64) nocallback nounwind";
 fn gen_extern_rwlock_free() -> String =
-    "declare void @bmb_rwlock_free(i64)";
+    "declare void @bmb_rwlock_free(i64) nocallback nounwind nofree";
 // v0.88.10: Barrier runtime
 fn gen_extern_barrier_new() -> String =
-    "declare i64 @bmb_barrier_new(i64)";
+    "declare i64 @bmb_barrier_new(i64) nocallback nounwind";
 fn gen_extern_barrier_wait() -> String =
-    "declare i64 @bmb_barrier_wait(i64)";
+    "declare i64 @bmb_barrier_wait(i64) nocallback nounwind";
 fn gen_extern_barrier_free() -> String =
-    "declare void @bmb_barrier_free(i64)";
+    "declare void @bmb_barrier_free(i64) nocallback nounwind nofree";
 // v0.88.10: Condvar runtime
 fn gen_extern_condvar_new() -> String =
-    "declare i64 @bmb_condvar_new()";
+    "declare i64 @bmb_condvar_new() nocallback nounwind";
 fn gen_extern_condvar_wait() -> String =
-    "declare i64 @bmb_condvar_wait(i64, i64)";
+    "declare i64 @bmb_condvar_wait(i64, i64) nocallback nounwind";
 fn gen_extern_condvar_notify_one() -> String =
-    "declare void @bmb_condvar_notify_one(i64)";
+    "declare void @bmb_condvar_notify_one(i64) nocallback nounwind";
 fn gen_extern_condvar_notify_all() -> String =
-    "declare void @bmb_condvar_notify_all(i64)";
+    "declare void @bmb_condvar_notify_all(i64) nocallback nounwind";
 fn gen_extern_condvar_free() -> String =
-    "declare void @bmb_condvar_free(i64)";
+    "declare void @bmb_condvar_free(i64) nocallback nounwind nofree";
 // v0.88.10: Async I/O runtime
 fn gen_extern_async_file_open() -> String =
-    "declare i64 @bmb_async_file_open(i64)";
+    "declare i64 @bmb_async_file_open(i64) nocallback nounwind";
 fn gen_extern_async_file_read() -> String =
-    "declare i64 @bmb_async_file_read(i64)";
+    "declare i64 @bmb_async_file_read(i64) nocallback nounwind";
 fn gen_extern_async_file_write() -> String =
-    "declare void @bmb_async_file_write(i64, i64)";
+    "declare void @bmb_async_file_write(i64, i64) nocallback nounwind";
 fn gen_extern_async_file_close() -> String =
-    "declare void @bmb_async_file_close(i64)";
+    "declare void @bmb_async_file_close(i64) nocallback nounwind";
 fn gen_extern_async_socket_connect() -> String =
-    "declare i64 @bmb_async_socket_connect(i64, i64)";
+    "declare i64 @bmb_async_socket_connect(i64, i64) nocallback nounwind";
 fn gen_extern_async_socket_read() -> String =
-    "declare i64 @bmb_async_socket_read(i64)";
+    "declare i64 @bmb_async_socket_read(i64) nocallback nounwind";
 fn gen_extern_async_socket_write() -> String =
-    "declare void @bmb_async_socket_write(i64, i64)";
+    "declare void @bmb_async_socket_write(i64, i64) nocallback nounwind";
 fn gen_extern_async_socket_close() -> String =
-    "declare void @bmb_async_socket_close(i64)";
+    "declare void @bmb_async_socket_close(i64) nocallback nounwind";
 fn gen_extern_future_await() -> String =
-    "declare i64 @__future_await(i64)";
+    "declare i64 @__future_await(i64) nocallback nounwind";
 fn gen_extern_scope_new() -> String =
-    "declare i64 @bmb_scope_new()";
+    "declare i64 @bmb_scope_new() nocallback nounwind";
 fn gen_extern_scope_spawn() -> String =
-    "declare void @bmb_scope_spawn(i64, i64)";
+    "declare void @bmb_scope_spawn(i64, i64) nocallback nounwind";
 fn gen_extern_scope_wait() -> String =
-    "declare void @bmb_scope_wait(i64)";
+    "declare void @bmb_scope_wait(i64) nocallback nounwind";
 fn gen_extern_pool_new() -> String =
-    "declare i64 @bmb_thread_pool_new(i64)";
+    "declare i64 @bmb_thread_pool_new(i64) nocallback nounwind";
 fn gen_extern_pool_execute() -> String =
-    "declare void @bmb_thread_pool_execute(i64, i64)";
+    "declare void @bmb_thread_pool_execute(i64, i64) nocallback nounwind";
 fn gen_extern_pool_join() -> String =
-    "declare void @bmb_thread_pool_join(i64)";
+    "declare void @bmb_thread_pool_join(i64) nocallback nounwind";
 fn gen_extern_pool_shutdown() -> String =
-    "declare void @bmb_thread_pool_shutdown(i64)";
+    "declare void @bmb_thread_pool_shutdown(i64) nocallback nounwind";
 fn gen_extern_block_on() -> String =
-    "declare i64 @bmb_block_on(i64)";
+    "declare i64 @bmb_block_on(i64) nocallback nounwind";
 
 // Generate all runtime declarations
 fn gen_runtime_decls() -> String =

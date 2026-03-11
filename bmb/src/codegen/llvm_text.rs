@@ -922,17 +922,18 @@ impl TextCodeGen {
     /// Emit runtime function declarations
     fn emit_runtime_declarations(&self, out: &mut String) -> TextCodeGenResult<()> {
         // v0.96.35: Added nounwind + nofree to I/O functions (they don't throw or free user memory)
+        // v0.96.43: Added nocallback + nosync to non-threading functions for better interprocedural analysis
         writeln!(out, "; Runtime declarations - Basic I/O")?;
-        writeln!(out, "declare void @println(i64) nounwind nofree")?;
-        writeln!(out, "declare void @print(i64) nounwind nofree")?;
+        writeln!(out, "declare void @println(i64) nocallback nounwind nofree nosync")?;
+        writeln!(out, "declare void @print(i64) nocallback nounwind nofree nosync")?;
         // v0.60.43: Float output for spectral_norm, n_body benchmarks
-        writeln!(out, "declare void @println_f64(double) nounwind nofree")?;
-        writeln!(out, "declare void @print_f64(double) nounwind nofree")?;
-        writeln!(out, "declare i64 @read_int() nounwind")?;
-        writeln!(out, "declare ptr @bmb_read_line() nounwind")?;
-        writeln!(out, "declare void @assert(i1) nounwind")?;
+        writeln!(out, "declare void @println_f64(double) nocallback nounwind nofree nosync")?;
+        writeln!(out, "declare void @print_f64(double) nocallback nounwind nofree nosync")?;
+        writeln!(out, "declare i64 @read_int() nocallback nounwind nofree nosync")?;
+        writeln!(out, "declare ptr @bmb_read_line() nocallback nounwind nofree nosync")?;
+        writeln!(out, "declare void @assert(i1) nocallback nounwind nofree nosync")?;
         // v0.96.35: bmb_abs/bmb_min/bmb_max/bmb_clamp replaced with LLVM intrinsics
-        writeln!(out, "declare i64 @bmb_pow(i64, i64) nounwind willreturn memory(none) speculatable")?;
+        writeln!(out, "declare i64 @bmb_pow(i64, i64) nocallback nounwind nofree nosync willreturn memory(none) speculatable")?;
         writeln!(out)?;
 
         // Phase 32.3: String runtime functions
@@ -942,99 +943,102 @@ impl TextCodeGen {
         // BMB strings are always non-null (bmb_string_wrap always allocates)
         // This enables LLVM to eliminate null guard branches in runtime functions
         writeln!(out, "; Runtime declarations - String operations")?;
-        writeln!(out, "declare nonnull ptr @bmb_string_new(ptr, i64) nounwind")?;
-        writeln!(out, "declare nonnull ptr @bmb_string_from_cstr(ptr) nounwind")?;
+        // v0.96.43: nocallback + nosync on all string functions (they don't call user code or sync)
+        writeln!(out, "declare nonnull ptr @bmb_string_new(ptr, i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare nonnull ptr @bmb_string_from_cstr(ptr) nocallback nounwind nosync")?;
         // v0.51.15: memory(argmem: read) tells LLVM these only read from args, enabling LICM
-        // This is more precise than "readonly" which means "may read any memory"
-        writeln!(out, "declare i64 @bmb_string_len(ptr nonnull nocapture) memory(argmem: read) nounwind willreturn speculatable")?;
-        // Note: Returns byte at index, not Unicode char. Name kept for ABI compatibility.
-        // v0.67: Interpreter method renamed to byte_at for clarity
-        writeln!(out, "declare i64 @bmb_string_char_at(ptr nonnull nocapture, i64) memory(argmem: read) nounwind willreturn speculatable")?;
-        writeln!(out, "declare nonnull ptr @bmb_string_slice(ptr nonnull, i64, i64) memory(argmem: read) nounwind willreturn")?;
-        writeln!(out, "declare nonnull ptr @bmb_string_concat(ptr nonnull, ptr nonnull) nounwind")?;
-        writeln!(out, "declare nonnull ptr @bmb_string_concat3(ptr nonnull, ptr nonnull, ptr nonnull) nounwind willreturn")?;
-        writeln!(out, "declare i64 @bmb_string_eq(ptr nonnull, ptr nonnull) memory(argmem: read) nounwind willreturn")?;
-        // v0.93.7: String method runtime declarations
-        writeln!(out, "declare i64 @bmb_string_starts_with(ptr nonnull nocapture, ptr nonnull nocapture) memory(argmem: read) nounwind willreturn speculatable")?;
-        writeln!(out, "declare i64 @bmb_string_ends_with(ptr nonnull nocapture, ptr nonnull nocapture) memory(argmem: read) nounwind willreturn speculatable")?;
-        writeln!(out, "declare i64 @bmb_string_contains(ptr nonnull nocapture, ptr nonnull nocapture) memory(argmem: read) nounwind willreturn speculatable")?;
-        writeln!(out, "declare i64 @bmb_string_index_of(ptr nonnull nocapture, ptr nonnull nocapture) memory(argmem: read) nounwind willreturn speculatable")?;
-        writeln!(out, "declare nonnull ptr @bmb_string_trim(ptr nonnull nocapture) nounwind willreturn")?;
-        writeln!(out, "declare nonnull ptr @bmb_string_replace(ptr nonnull nocapture, ptr nonnull nocapture, ptr nonnull nocapture) nounwind willreturn")?;
-        writeln!(out, "declare nonnull ptr @bmb_string_to_upper(ptr nonnull nocapture) nounwind willreturn")?;
-        writeln!(out, "declare nonnull ptr @bmb_string_to_lower(ptr nonnull nocapture) nounwind willreturn")?;
-        writeln!(out, "declare nonnull ptr @bmb_string_repeat(ptr nonnull nocapture, i64) nounwind willreturn")?;
-        writeln!(out, "declare i64 @bmb_string_is_empty(ptr nonnull nocapture) memory(argmem: read) nounwind willreturn speculatable")?;
-        writeln!(out, "declare nonnull ptr @bmb_chr(i64) nounwind willreturn")?;
-        writeln!(out, "declare i64 @bmb_ord(ptr nonnull nocapture) memory(argmem: read) nounwind willreturn speculatable")?;
-        writeln!(out, "declare void @bmb_print_str(ptr nonnull) nounwind")?;
+        writeln!(out, "declare i64 @bmb_string_len(ptr nonnull nocapture readonly) nocallback nofree nosync memory(argmem: read) nounwind willreturn speculatable")?;
+        writeln!(out, "declare i64 @bmb_string_char_at(ptr nonnull nocapture readonly, i64) nocallback nofree nosync memory(argmem: read) nounwind willreturn speculatable")?;
+        writeln!(out, "declare nonnull ptr @bmb_string_slice(ptr nonnull, i64, i64) nocallback nosync memory(argmem: read) nounwind willreturn")?;
+        writeln!(out, "declare nonnull ptr @bmb_string_concat(ptr nonnull, ptr nonnull) nocallback nounwind nosync")?;
+        writeln!(out, "declare nonnull ptr @bmb_string_concat3(ptr nonnull, ptr nonnull, ptr nonnull) nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare i64 @bmb_string_eq(ptr nonnull readonly, ptr nonnull readonly) nocallback nofree nosync memory(argmem: read) nounwind willreturn")?;
+        writeln!(out, "declare i64 @bmb_string_starts_with(ptr nonnull nocapture readonly, ptr nonnull nocapture readonly) nocallback nofree nosync memory(argmem: read) nounwind willreturn speculatable")?;
+        writeln!(out, "declare i64 @bmb_string_ends_with(ptr nonnull nocapture readonly, ptr nonnull nocapture readonly) nocallback nofree nosync memory(argmem: read) nounwind willreturn speculatable")?;
+        writeln!(out, "declare i64 @bmb_string_contains(ptr nonnull nocapture readonly, ptr nonnull nocapture readonly) nocallback nofree nosync memory(argmem: read) nounwind willreturn speculatable")?;
+        writeln!(out, "declare i64 @bmb_string_index_of(ptr nonnull nocapture readonly, ptr nonnull nocapture readonly) nocallback nofree nosync memory(argmem: read) nounwind willreturn speculatable")?;
+        writeln!(out, "declare nonnull ptr @bmb_string_trim(ptr nonnull nocapture) nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare nonnull ptr @bmb_string_replace(ptr nonnull nocapture, ptr nonnull nocapture, ptr nonnull nocapture) nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare nonnull ptr @bmb_string_to_upper(ptr nonnull nocapture) nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare nonnull ptr @bmb_string_to_lower(ptr nonnull nocapture) nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare nonnull ptr @bmb_string_repeat(ptr nonnull nocapture, i64) nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare i64 @bmb_string_is_empty(ptr nonnull nocapture readonly) nocallback nofree nosync memory(argmem: read) nounwind willreturn speculatable")?;
+        writeln!(out, "declare nonnull ptr @bmb_chr(i64) nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare i64 @bmb_ord(ptr nonnull nocapture) nocallback nofree nosync memory(argmem: read) nounwind willreturn speculatable")?;
+        writeln!(out, "declare void @bmb_print_str(ptr nonnull) nocallback nounwind nofree nosync")?;
         writeln!(out)?;
 
         // Phase 32.3: File I/O runtime functions — all nounwind (BMB has no exceptions)
+        // v0.96.43: nocallback + nofree (file I/O doesn't call user code or free user memory)
         writeln!(out, "; Runtime declarations - File I/O")?;
-        writeln!(out, "declare i64 @bmb_file_exists(ptr) nounwind")?;
-        writeln!(out, "declare i64 @bmb_file_size(ptr) nounwind")?;
-        writeln!(out, "declare ptr @bmb_read_file(ptr) nounwind")?;
-        writeln!(out, "declare i64 @bmb_write_file(ptr, ptr) nounwind")?;
-        writeln!(out, "declare i64 @write_file_newlines(ptr, ptr) nounwind")?;
-        writeln!(out, "declare i64 @bmb_append_file(ptr, ptr) nounwind")?;
+        writeln!(out, "declare i64 @bmb_file_exists(ptr) nocallback nounwind nofree")?;
+        writeln!(out, "declare i64 @bmb_file_size(ptr) nocallback nounwind nofree")?;
+        writeln!(out, "declare ptr @bmb_read_file(ptr) nocallback nounwind")?;
+        writeln!(out, "declare i64 @bmb_write_file(ptr, ptr) nocallback nounwind nofree")?;
+        writeln!(out, "declare i64 @write_file_newlines(ptr, ptr) nocallback nounwind nofree")?;
+        writeln!(out, "declare i64 @bmb_append_file(ptr, ptr) nocallback nounwind nofree")?;
         writeln!(out)?;
 
         // v0.96: Directory operation runtime functions
+        // v0.96.43: nocallback + nofree
         writeln!(out, "; Runtime declarations - Directory and file operations")?;
-        writeln!(out, "declare i64 @bmb_is_dir(ptr) nounwind")?;
-        writeln!(out, "declare i64 @bmb_mkdir(ptr) nounwind")?;
-        writeln!(out, "declare ptr @bmb_readdir(ptr) nounwind")?;
-        writeln!(out, "declare i64 @bmb_remove_file(ptr) nounwind")?;
-        writeln!(out, "declare i64 @bmb_rmdir(ptr) nounwind")?;
+        writeln!(out, "declare i64 @bmb_is_dir(ptr) nocallback nounwind nofree")?;
+        writeln!(out, "declare i64 @bmb_mkdir(ptr) nocallback nounwind nofree")?;
+        writeln!(out, "declare ptr @bmb_readdir(ptr) nocallback nounwind")?;
+        writeln!(out, "declare i64 @bmb_remove_file(ptr) nocallback nounwind nofree")?;
+        writeln!(out, "declare i64 @bmb_rmdir(ptr) nocallback nounwind nofree")?;
         writeln!(out)?;
 
         // Phase 32.3: StringBuilder runtime functions
+        // v0.96.43: nocallback + nosync (StringBuilder is single-threaded)
         writeln!(out, "; Runtime declarations - StringBuilder")?;
-        writeln!(out, "declare i64 @bmb_sb_new() nounwind")?;
-        writeln!(out, "declare i64 @bmb_sb_with_capacity(i64) nounwind")?;
-        writeln!(out, "declare i64 @bmb_sb_push(i64, ptr) nounwind")?;
-        writeln!(out, "declare i64 @bmb_sb_push_char(i64, i64) nounwind")?;
-        writeln!(out, "declare i64 @bmb_sb_push_int(i64, i64) nounwind")?;
-        writeln!(out, "declare i64 @bmb_sb_push_escaped(i64, ptr) nounwind")?;
-        writeln!(out, "declare i64 @bmb_sb_push_range(i64, ptr, i64, i64) nounwind")?;
-        writeln!(out, "declare i64 @bmb_sb_len(i64) nounwind willreturn")?;
-        writeln!(out, "declare ptr @bmb_sb_build(i64) nounwind")?;
-        writeln!(out, "declare i64 @bmb_sb_clear(i64) nounwind")?;
-        writeln!(out, "declare i64 @bmb_sb_contains(i64, ptr) nounwind")?;
-        writeln!(out, "declare i64 @bmb_sb_println(i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_sb_new() nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @bmb_sb_with_capacity(i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @bmb_sb_push(i64, ptr) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @bmb_sb_push_char(i64, i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @bmb_sb_push_int(i64, i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @bmb_sb_push_escaped(i64, ptr) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @bmb_sb_push_range(i64, ptr, i64, i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @bmb_sb_len(i64) nocallback nofree nosync nounwind willreturn")?;
+        writeln!(out, "declare ptr @bmb_sb_build(i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @bmb_sb_clear(i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @bmb_sb_contains(i64, ptr) nocallback nofree nosync nounwind")?;
+        writeln!(out, "declare i64 @bmb_sb_println(i64) nocallback nounwind nosync")?;
         writeln!(out)?;
 
         // Phase 32.3: Process execution runtime functions
+        // v0.96.43: nocallback (process exec doesn't call back into BMB code)
         writeln!(out, "; Runtime declarations - Process execution")?;
-        writeln!(out, "declare i64 @bmb_system(ptr) nounwind")?;
-        writeln!(out, "declare ptr @bmb_system_capture(ptr) nounwind")?;
-        writeln!(out, "declare ptr @bmb_exec_output(ptr, ptr) nounwind")?;
-        writeln!(out, "declare ptr @bmb_getenv(ptr) nounwind")?;
+        writeln!(out, "declare i64 @bmb_system(ptr) nocallback nounwind")?;
+        writeln!(out, "declare ptr @bmb_system_capture(ptr) nocallback nounwind")?;
+        writeln!(out, "declare ptr @bmb_exec_output(ptr, ptr) nocallback nounwind")?;
+        writeln!(out, "declare ptr @bmb_getenv(ptr) nocallback nounwind nofree nosync")?;
         writeln!(out)?;
 
         // v0.88.2: Memory management functions
         writeln!(out, "; Runtime declarations - Memory management (v0.88.2)")?;
-        writeln!(out, "declare i64 @bmb_string_free(ptr) nounwind")?;
-        writeln!(out, "declare i64 @free_string(ptr) nounwind")?;
-        writeln!(out, "declare i64 @bmb_sb_free(i64) nounwind")?;
-        writeln!(out, "declare i64 @sb_free(i64) nounwind")?;
-        writeln!(out, "declare i64 @bmb_arena_mode(i64) nounwind")?;
-        writeln!(out, "declare i64 @arena_mode(i64) nounwind")?;
-        writeln!(out, "declare i64 @bmb_arena_reset() nounwind")?;
-        writeln!(out, "declare i64 @arena_reset() nounwind")?;
-        writeln!(out, "declare i64 @bmb_arena_save() nounwind")?;
-        writeln!(out, "declare i64 @arena_save() nounwind")?;
-        writeln!(out, "declare i64 @bmb_arena_restore() nounwind")?;
-        writeln!(out, "declare i64 @arena_restore() nounwind")?;
-        writeln!(out, "declare i64 @bmb_arena_usage() nounwind")?;
-        writeln!(out, "declare i64 @arena_usage() nounwind")?;
+        // v0.96.43: nocallback + nosync on memory management
+        writeln!(out, "declare i64 @bmb_string_free(ptr) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @free_string(ptr) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @bmb_sb_free(i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @sb_free(i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @bmb_arena_mode(i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @arena_mode(i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @bmb_arena_reset() nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @arena_reset() nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @bmb_arena_save() nocallback nounwind nosync nofree willreturn")?;
+        writeln!(out, "declare i64 @arena_save() nocallback nounwind nosync nofree willreturn")?;
+        writeln!(out, "declare i64 @bmb_arena_restore() nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @arena_restore() nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @bmb_arena_usage() nocallback nounwind nosync nofree willreturn")?;
+        writeln!(out, "declare i64 @arena_usage() nocallback nounwind nosync nofree willreturn")?;
         writeln!(out)?;
 
         // v0.63: Timing functions for bmb-bench
+        // v0.96.43: nocallback + nofree + nosync (time_ns is a simple syscall)
         writeln!(out, "; Runtime declarations - Timing (v0.63)")?;
-        writeln!(out, "declare i64 @bmb_time_ns() nounwind willreturn")?;
-        writeln!(out, "declare i64 @time_ns() nounwind willreturn")?;
+        writeln!(out, "declare i64 @bmb_time_ns() nocallback nounwind nofree nosync willreturn")?;
+        writeln!(out, "declare i64 @time_ns() nocallback nounwind nofree nosync willreturn")?;
         writeln!(out)?;
 
         // v0.70: Threading runtime functions
@@ -1147,72 +1151,69 @@ impl TextCodeGen {
         writeln!(out)?;
 
         // v0.31.23: Command-line argument builtins for Phase 32.3.G CLI Independence
+        // v0.96.43: nocallback + nofree + nosync
         writeln!(out, "; Runtime declarations - CLI arguments")?;
-        writeln!(out, "declare i64 @arg_count() nounwind willreturn")?;
-        writeln!(out, "declare nonnull ptr @get_arg(i64) nounwind willreturn")?;
+        writeln!(out, "declare i64 @arg_count() nocallback nofree nosync nounwind willreturn")?;
+        writeln!(out, "declare nonnull ptr @get_arg(i64) nocallback nofree nosync nounwind willreturn")?;
         writeln!(out)?;
 
         // Phase 32.3: Simple-name wrappers (for method call lowering)
-        // BMB methods like s.len() generate calls to @len
-        // v0.51.15: memory(argmem: read) enables full LICM hoisting
+        // v0.96.43: nocallback + nofree + nosync on method wrappers
         writeln!(out, "; Runtime declarations - Method name wrappers")?;
-        writeln!(out, "declare i64 @len(ptr nocapture) memory(argmem: read) nounwind willreturn speculatable")?;
-        writeln!(out, "declare i64 @char_at(ptr nocapture, i64) memory(argmem: read) nounwind willreturn speculatable")?;
-        // v0.46: byte_at is the preferred name (same as interpreter)
-        writeln!(out, "declare i64 @byte_at(ptr nocapture, i64) memory(argmem: read) nounwind willreturn speculatable")?;
-        writeln!(out, "declare ptr @slice(ptr, i64, i64) memory(argmem: read) nounwind willreturn")?;
-        writeln!(out, "declare ptr @chr(i64) nounwind willreturn")?;
-        writeln!(out, "declare i64 @ord(ptr) memory(argmem: read) nounwind willreturn")?;
-        // v0.50.18: char_to_string for bootstrap compiler (takes i32 char code)
-        writeln!(out, "declare ptr @char_to_string(i32) nounwind")?;
-        writeln!(out, "declare void @print_str(ptr) nounwind nofree")?;
-        writeln!(out, "declare void @println_str(ptr) nounwind nofree")?;
+        writeln!(out, "declare i64 @len(ptr nocapture readonly) nocallback nofree nosync memory(argmem: read) nounwind willreturn speculatable")?;
+        writeln!(out, "declare i64 @char_at(ptr nocapture readonly, i64) nocallback nofree nosync memory(argmem: read) nounwind willreturn speculatable")?;
+        writeln!(out, "declare i64 @byte_at(ptr nocapture readonly, i64) nocallback nofree nosync memory(argmem: read) nounwind willreturn speculatable")?;
+        writeln!(out, "declare ptr @slice(ptr, i64, i64) nocallback nosync memory(argmem: read) nounwind willreturn")?;
+        writeln!(out, "declare ptr @chr(i64) nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare i64 @ord(ptr) nocallback nofree nosync memory(argmem: read) nounwind willreturn")?;
+        writeln!(out, "declare ptr @char_to_string(i32) nocallback nounwind nosync")?;
+        writeln!(out, "declare void @print_str(ptr) nocallback nounwind nofree nosync")?;
+        writeln!(out, "declare void @println_str(ptr) nocallback nounwind nofree nosync")?;
         writeln!(out)?;
 
-        // File I/O wrappers — all nounwind (BMB has no exceptions)
-        writeln!(out, "declare i64 @file_exists(ptr) nounwind")?;
-        // v0.51.2: cstr variants for string literal optimization
-        writeln!(out, "declare i64 @file_exists_cstr(ptr) nounwind")?;
-        writeln!(out, "declare i64 @bmb_file_exists_cstr(ptr) nounwind")?;
-        writeln!(out, "declare i64 @file_size(ptr) nounwind")?;
-        writeln!(out, "declare ptr @read_file(ptr) nounwind")?;
-        writeln!(out, "declare i64 @write_file(ptr, ptr) nounwind")?;
-        writeln!(out, "declare i64 @append_file(ptr, ptr) nounwind")?;
+        // File I/O wrappers — v0.96.43: nocallback + nofree
+        writeln!(out, "declare i64 @file_exists(ptr) nocallback nounwind nofree")?;
+        writeln!(out, "declare i64 @file_exists_cstr(ptr) nocallback nounwind nofree")?;
+        writeln!(out, "declare i64 @bmb_file_exists_cstr(ptr) nocallback nounwind nofree")?;
+        writeln!(out, "declare i64 @file_size(ptr) nocallback nounwind nofree")?;
+        writeln!(out, "declare ptr @read_file(ptr) nocallback nounwind")?;
+        writeln!(out, "declare i64 @write_file(ptr, ptr) nocallback nounwind nofree")?;
+        writeln!(out, "declare i64 @append_file(ptr, ptr) nocallback nounwind nofree")?;
         writeln!(out)?;
 
-        // v0.96: Directory and file operation wrappers
-        writeln!(out, "declare i64 @is_dir(ptr) nounwind")?;
-        writeln!(out, "declare i64 @make_dir(ptr) nounwind")?;
-        writeln!(out, "declare ptr @list_dir(ptr) nounwind")?;
-        writeln!(out, "declare i64 @remove_file(ptr) nounwind")?;
-        writeln!(out, "declare i64 @remove_dir(ptr) nounwind")?;
+        // v0.96: Directory and file operation wrappers — v0.96.43: nocallback + nofree
+        writeln!(out, "declare i64 @is_dir(ptr) nocallback nounwind nofree")?;
+        writeln!(out, "declare i64 @make_dir(ptr) nocallback nounwind nofree")?;
+        writeln!(out, "declare ptr @list_dir(ptr) nocallback nounwind")?;
+        writeln!(out, "declare i64 @remove_file(ptr) nocallback nounwind nofree")?;
+        writeln!(out, "declare i64 @remove_dir(ptr) nocallback nounwind nofree")?;
         writeln!(out)?;
 
-        // StringBuilder wrappers
-        // v0.51.26: Added nounwind for better optimization
-        writeln!(out, "declare i64 @sb_new() nounwind")?;
-        writeln!(out, "declare i64 @sb_with_capacity(i64) nounwind")?;  // v0.51.46: P0-E optimization
-        writeln!(out, "declare i64 @sb_push(i64, ptr) nounwind")?;
-        writeln!(out, "declare i64 @sb_push_cstr(i64, ptr) nounwind")?;  // v0.50.77: zero allocation for string literals
-        writeln!(out, "declare i64 @sb_push_char(i64, i64) nounwind")?;
-        writeln!(out, "declare i64 @sb_push_int(i64, i64) nounwind")?;  // v0.50.73
-        writeln!(out, "declare i64 @sb_push_escaped(i64, ptr) nounwind")?;  // v0.50.74
-        writeln!(out, "declare i64 @sb_push_range(i64, ptr, i64, i64) nounwind")?;  // v0.95.7
-        writeln!(out, "declare i64 @sb_len(i64) nounwind willreturn")?;
-        writeln!(out, "declare ptr @sb_build(i64) nounwind")?;
-        writeln!(out, "declare i64 @sb_clear(i64) nounwind")?;
-        writeln!(out, "declare i64 @sb_contains(i64, ptr) nounwind")?;
-        writeln!(out, "declare i64 @sb_println(i64) nounwind")?;
-        writeln!(out, "declare i64 @puts_cstr(ptr) nounwind")?;
+        // StringBuilder wrappers — v0.96.43: nocallback + nosync
+        writeln!(out, "declare i64 @sb_new() nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @sb_with_capacity(i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @sb_push(i64, ptr) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @sb_push_cstr(i64, ptr) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @sb_push_char(i64, i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @sb_push_int(i64, i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @sb_push_escaped(i64, ptr) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @sb_push_range(i64, ptr, i64, i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @sb_len(i64) nocallback nofree nosync nounwind willreturn")?;
+        writeln!(out, "declare ptr @sb_build(i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @sb_clear(i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @sb_contains(i64, ptr) nocallback nofree nosync nounwind")?;
+        writeln!(out, "declare i64 @sb_println(i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @puts_cstr(ptr) nocallback nounwind nofree nosync")?;
         writeln!(out)?;
 
         // v0.60.246: String-key HashMap for O(1) lookups (strmap_*)
+        // v0.96.43: nocallback + nosync
         writeln!(out, "; Runtime declarations - String HashMap")?;
-        writeln!(out, "declare i64 @strmap_new() nounwind")?;
-        writeln!(out, "declare i64 @strmap_insert(i64, ptr, i64) nounwind")?;
-        writeln!(out, "declare i64 @strmap_get(i64, ptr) nounwind")?;
-        writeln!(out, "declare i64 @strmap_contains(i64, ptr) nounwind")?;
-        writeln!(out, "declare i64 @strmap_size(i64) nounwind")?;
+        writeln!(out, "declare i64 @strmap_new() nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @strmap_insert(i64, ptr, i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @strmap_get(i64, ptr) nocallback nofree nosync nounwind")?;
+        writeln!(out, "declare i64 @strmap_contains(i64, ptr) nocallback nofree nosync nounwind")?;
+        writeln!(out, "declare i64 @strmap_size(i64) nocallback nofree nosync nounwind")?;
         writeln!(out)?;
 
         // v0.50.36: find_close_paren is now defined in BMB, no extern needed
@@ -1252,43 +1253,45 @@ impl TextCodeGen {
         writeln!(out)?;
 
         // v0.51.51: Byte-level memory access for high-performance string parsing
+        // v0.96.43: nocallback + nofree + nosync (pure memory operations)
         writeln!(out, "; Runtime declarations - Low-level memory access")?;
-        writeln!(out, "declare i64 @load_u8(i64) memory(read) nounwind willreturn speculatable")?;
-        writeln!(out, "declare void @store_u8(i64, i64) memory(write) nounwind willreturn")?;
-        writeln!(out, "declare i64 @str_data(ptr nocapture) memory(argmem: read) nounwind willreturn speculatable")?;
+        writeln!(out, "declare i64 @load_u8(i64) nocallback nofree nosync memory(read) nounwind willreturn speculatable")?;
+        writeln!(out, "declare void @store_u8(i64, i64) nocallback nofree nosync memory(write) nounwind willreturn")?;
+        writeln!(out, "declare i64 @str_data(ptr nocapture readonly) nocallback nofree nosync memory(argmem: read) nounwind willreturn speculatable")?;
         writeln!(out)?;
 
         // v0.50.70: Vector runtime functions (avoids inline PHI bug)
-        // v0.51.26: Added nounwind attributes for better optimization
+        // v0.96.43: nocallback + nosync (vector ops are single-threaded)
         writeln!(out, "; Runtime declarations - Vector")?;
-        writeln!(out, "declare i64 @vec_new() nounwind")?;
-        writeln!(out, "declare void @vec_free(i64) nounwind")?;
-        writeln!(out, "declare i64 @vec_len(i64) nounwind willreturn")?;
-        writeln!(out, "declare i64 @vec_get(i64, i64) nounwind willreturn")?;
-        writeln!(out, "declare void @vec_set(i64, i64, i64) nounwind")?;
-        writeln!(out, "declare i64 @vec_push(i64, i64) nounwind")?;
-        writeln!(out, "declare i64 @bmb_vec_push(i64, i64) nounwind")?;
+        writeln!(out, "declare i64 @vec_new() nocallback nounwind nosync")?;
+        writeln!(out, "declare void @vec_free(i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @vec_len(i64) nocallback nofree nosync nounwind willreturn")?;
+        writeln!(out, "declare i64 @vec_get(i64, i64) nocallback nofree nosync nounwind willreturn")?;
+        writeln!(out, "declare void @vec_set(i64, i64, i64) nocallback nofree nosync nounwind")?;
+        writeln!(out, "declare i64 @vec_push(i64, i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @bmb_vec_push(i64, i64) nocallback nounwind nosync")?;
         writeln!(out)?;
 
         // v0.50.64: Hashmap runtime functions
-        // v0.51.26: Added optimization attributes - readonly for get/len, nounwind for all
+        // v0.96.43: nocallback + nosync (hashmap ops don't call user code)
         writeln!(out, "; Runtime declarations - Hashmap")?;
-        writeln!(out, "declare i64 @hashmap_new() nounwind")?;
-        writeln!(out, "declare i64 @hashmap_insert(i64, i64, i64) nounwind")?;
-        writeln!(out, "declare i64 @hashmap_get(i64, i64) nounwind willreturn")?;
-        writeln!(out, "declare i64 @hashmap_remove(i64, i64) nounwind")?;
-        writeln!(out, "declare i64 @hashmap_len(i64) nounwind willreturn")?;
-        writeln!(out, "declare i64 @hashmap_contains(i64, i64) nounwind willreturn")?;
-        writeln!(out, "declare void @hashmap_free(i64) nounwind")?;
+        writeln!(out, "declare i64 @hashmap_new() nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @hashmap_insert(i64, i64, i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @hashmap_get(i64, i64) nocallback nofree nosync nounwind willreturn")?;
+        writeln!(out, "declare i64 @hashmap_remove(i64, i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @hashmap_len(i64) nocallback nofree nosync nounwind willreturn")?;
+        writeln!(out, "declare i64 @hashmap_contains(i64, i64) nocallback nofree nosync nounwind willreturn")?;
+        writeln!(out, "declare void @hashmap_free(i64) nocallback nounwind nosync")?;
         writeln!(out)?;
 
         // v0.90.83: String-content hashmap + cached registry lookup
+        // v0.96.43: nocallback + nosync
         writeln!(out, "; Runtime declarations - String Hashmap")?;
-        writeln!(out, "declare ptr @str_hashmap_new() nounwind")?;
-        writeln!(out, "declare i64 @str_hashmap_insert(ptr, ptr, i64) nounwind")?;
-        writeln!(out, "declare i64 @str_hashmap_get(ptr, ptr) nounwind willreturn")?;
-        writeln!(out, "declare void @str_hashmap_free(ptr) nounwind")?;
-        writeln!(out, "declare ptr @reg_cached_lookup(ptr, ptr, i64) nounwind willreturn")?;
+        writeln!(out, "declare ptr @str_hashmap_new() nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @str_hashmap_insert(ptr, ptr, i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @str_hashmap_get(ptr, ptr) nocallback nofree nosync nounwind willreturn")?;
+        writeln!(out, "declare void @str_hashmap_free(ptr) nocallback nounwind nosync")?;
+        writeln!(out, "declare ptr @reg_cached_lookup(ptr, ptr, i64) nocallback nounwind nosync willreturn")?;
         writeln!(out)?;
 
         Ok(())
@@ -3177,15 +3180,17 @@ impl TextCodeGen {
 
                 // v0.50.72: malloc(size) -> i64 - allocates memory and returns as i64 (for arithmetic)
                 if fn_name == "malloc" && args.len() == 1 {
+                    let malloc_idx_pre = *name_counts.entry("malloc_op".to_string()).or_insert(0);
                     let size_val = match &args[0] {
                         Operand::Place(p) if local_names.contains(&p.name) => {
-                            let load_name = format!("{}.malloc.size", p.name);
+                            // v0.96.43: Use malloc_idx to avoid duplicate SSA names
+                            let load_name = format!("{}.malloc.size.{}", p.name, malloc_idx_pre);
                             writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
                             format!("%{}", load_name)
                         }
                         // v0.93.122: Narrowed i32 params need sext for malloc i64 size
                         Operand::Place(p) if narrowed_param_names.contains(&p.name) => {
-                            let sext_name = format!("{}.malloc.sext", p.name);
+                            let sext_name = format!("{}.malloc.sext.{}", p.name, malloc_idx_pre);
                             writeln!(out, "  %{} = sext i32 %{} to i64", sext_name, p.name)?;
                             format!("%{}", sext_name)
                         }
