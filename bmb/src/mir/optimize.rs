@@ -559,6 +559,43 @@ fn fold_binop(op: MirBinOp, lhs: &Constant, rhs: &Constant) -> Option<Constant> 
         (MirBinOp::SubSat, Constant::Int(a), Constant::Int(b)) => Some(Constant::Int(a.saturating_sub(*b))),
         (MirBinOp::MulSat, Constant::Int(a), Constant::Int(b)) => Some(Constant::Int(a.saturating_mul(*b))),
 
+        // v0.96.45: Float comparison constant folding
+        (MirBinOp::FEq, Constant::Float(a), Constant::Float(b)) => Some(Constant::Bool(*a == *b)),
+        (MirBinOp::FNe, Constant::Float(a), Constant::Float(b)) => Some(Constant::Bool(*a != *b)),
+        (MirBinOp::FLt, Constant::Float(a), Constant::Float(b)) => Some(Constant::Bool(*a < *b)),
+        (MirBinOp::FLe, Constant::Float(a), Constant::Float(b)) => Some(Constant::Bool(*a <= *b)),
+        (MirBinOp::FGt, Constant::Float(a), Constant::Float(b)) => Some(Constant::Bool(*a > *b)),
+        (MirBinOp::FGe, Constant::Float(a), Constant::Float(b)) => Some(Constant::Bool(*a >= *b)),
+
+        // v0.96.45: Bitwise operations constant folding
+        (MirBinOp::Band, Constant::Int(a), Constant::Int(b)) => Some(Constant::Int(a & b)),
+        (MirBinOp::Bor, Constant::Int(a), Constant::Int(b)) => Some(Constant::Int(a | b)),
+        (MirBinOp::Bxor, Constant::Int(a), Constant::Int(b)) => Some(Constant::Int(a ^ b)),
+
+        // v0.96.45: Shift operations constant folding
+        (MirBinOp::Shl, Constant::Int(a), Constant::Int(b)) if *b >= 0 && *b < 64 => {
+            Some(Constant::Int(a << b))
+        }
+        (MirBinOp::Shr, Constant::Int(a), Constant::Int(b)) if *b >= 0 && *b < 64 => {
+            Some(Constant::Int(a >> b))
+        }
+
+        // v0.96.45: Wrapping arithmetic constant folding
+        (MirBinOp::AddWrap, Constant::Int(a), Constant::Int(b)) => Some(Constant::Int(a.wrapping_add(*b))),
+        (MirBinOp::SubWrap, Constant::Int(a), Constant::Int(b)) => Some(Constant::Int(a.wrapping_sub(*b))),
+        (MirBinOp::MulWrap, Constant::Int(a), Constant::Int(b)) => Some(Constant::Int(a.wrapping_mul(*b))),
+
+        // v0.96.45: Checked arithmetic constant folding (no overflow at const-time → fold)
+        (MirBinOp::AddChecked, Constant::Int(a), Constant::Int(b)) => {
+            a.checked_add(*b).map(Constant::Int)
+        }
+        (MirBinOp::SubChecked, Constant::Int(a), Constant::Int(b)) => {
+            a.checked_sub(*b).map(Constant::Int)
+        }
+        (MirBinOp::MulChecked, Constant::Int(a), Constant::Int(b)) => {
+            a.checked_mul(*b).map(Constant::Int)
+        }
+
         // v0.50.68: String concatenation at compile time
         // "Hello" + " " + "World" → "Hello World"
         (MirBinOp::Add, Constant::String(a), Constant::String(b)) => {
@@ -787,12 +824,19 @@ fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> O
             None
         }
 
-        // Division: x / 1 = x, x / 2^n = x >> n (for positive divisors)
+        // Division: x / 1 = x, 0 / x = 0
         MirBinOp::Div => {
             if matches!(rhs, Operand::Constant(Constant::Int(1))) {
                 return Some(MirInst::Copy {
                     dest: dest.clone(),
                     src: operand_to_place(lhs)?,
+                });
+            }
+            // v0.96.45: 0 / x = 0 (for any non-zero x; LLVM handles the zero case)
+            if matches!(lhs, Operand::Constant(Constant::Int(0))) {
+                return Some(MirInst::Const {
+                    dest: dest.clone(),
+                    value: Constant::Int(0),
                 });
             }
             // v0.60.52: REMOVED division-to-shift optimization
@@ -802,8 +846,22 @@ fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> O
             None
         }
 
-        // Modulo: x % 2^n
+        // Modulo: x % 1 = 0, 0 % x = 0
         MirBinOp::Mod => {
+            // v0.96.45: x % 1 = 0 (always true for any integer x)
+            if matches!(rhs, Operand::Constant(Constant::Int(1))) {
+                return Some(MirInst::Const {
+                    dest: dest.clone(),
+                    value: Constant::Int(0),
+                });
+            }
+            // v0.96.45: 0 % x = 0 (for any non-zero x)
+            if matches!(lhs, Operand::Constant(Constant::Int(0))) {
+                return Some(MirInst::Const {
+                    dest: dest.clone(),
+                    value: Constant::Int(0),
+                });
+            }
             // v0.60.52: REMOVED modulo-to-AND optimization
             // x & (2^n - 1) only equals x % 2^n for non-negative x.
             // For negative x: (-7) % 4 = -3 but (-7) & 3 = 1.
@@ -892,6 +950,109 @@ fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> O
 
         // x *| 1 = x, 1 *| x = x, x *| 0 = 0, 0 *| x = 0
         MirBinOp::MulSat => {
+            if matches!(rhs, Operand::Constant(Constant::Int(1))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
+                });
+            }
+            if matches!(lhs, Operand::Constant(Constant::Int(1))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(rhs)?,
+                });
+            }
+            if matches!(rhs, Operand::Constant(Constant::Int(0)))
+                || matches!(lhs, Operand::Constant(Constant::Int(0)))
+            {
+                return Some(MirInst::Const {
+                    dest: dest.clone(),
+                    value: Constant::Int(0),
+                });
+            }
+            None
+        }
+
+        // v0.96.45: Wrapping arithmetic identities
+        // x +% 0 = x, 0 +% x = x
+        MirBinOp::AddWrap => {
+            if matches!(rhs, Operand::Constant(Constant::Int(0))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
+                });
+            }
+            if matches!(lhs, Operand::Constant(Constant::Int(0))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(rhs)?,
+                });
+            }
+            None
+        }
+        // x -% 0 = x
+        MirBinOp::SubWrap => {
+            if matches!(rhs, Operand::Constant(Constant::Int(0))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
+                });
+            }
+            None
+        }
+        // x *% 1 = x, 1 *% x = x, x *% 0 = 0, 0 *% x = 0
+        MirBinOp::MulWrap => {
+            if matches!(rhs, Operand::Constant(Constant::Int(1))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
+                });
+            }
+            if matches!(lhs, Operand::Constant(Constant::Int(1))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(rhs)?,
+                });
+            }
+            if matches!(rhs, Operand::Constant(Constant::Int(0)))
+                || matches!(lhs, Operand::Constant(Constant::Int(0)))
+            {
+                return Some(MirInst::Const {
+                    dest: dest.clone(),
+                    value: Constant::Int(0),
+                });
+            }
+            None
+        }
+        // v0.96.45: Checked arithmetic identities
+        // x +? 0 = x, 0 +? x = x
+        MirBinOp::AddChecked => {
+            if matches!(rhs, Operand::Constant(Constant::Int(0))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
+                });
+            }
+            if matches!(lhs, Operand::Constant(Constant::Int(0))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(rhs)?,
+                });
+            }
+            None
+        }
+        // x -? 0 = x
+        MirBinOp::SubChecked => {
+            if matches!(rhs, Operand::Constant(Constant::Int(0))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
+                });
+            }
+            None
+        }
+        // x *? 1 = x, 1 *? x = x, x *? 0 = 0, 0 *? x = 0
+        MirBinOp::MulChecked => {
             if matches!(rhs, Operand::Constant(Constant::Int(1))) {
                 return Some(MirInst::Copy {
                     dest: dest.clone(),
@@ -1016,6 +1177,55 @@ fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> O
                     dest: dest.clone(),
                     src: operand_to_place(lhs)?,
                 });
+            }
+            None
+        }
+
+        // v0.96.45: Self-comparison identities
+        // x == x → true, x != x → false, x < x → false, x > x → false, x <= x → true, x >= x → true
+        MirBinOp::Eq | MirBinOp::Le | MirBinOp::Ge => {
+            if lhs == rhs {
+                if let Operand::Place(_) = lhs {
+                    return Some(MirInst::Const {
+                        dest: dest.clone(),
+                        value: Constant::Bool(true),
+                    });
+                }
+            }
+            None
+        }
+        MirBinOp::Ne | MirBinOp::Lt | MirBinOp::Gt => {
+            if lhs == rhs {
+                if let Operand::Place(_) = lhs {
+                    return Some(MirInst::Const {
+                        dest: dest.clone(),
+                        value: Constant::Bool(false),
+                    });
+                }
+            }
+            None
+        }
+
+        // v0.96.45: Float self-comparison (NaN-safe: x ==. x is false for NaN, but BMB has no NaN)
+        MirBinOp::FEq | MirBinOp::FLe | MirBinOp::FGe => {
+            if lhs == rhs {
+                if let Operand::Place(_) = lhs {
+                    return Some(MirInst::Const {
+                        dest: dest.clone(),
+                        value: Constant::Bool(true),
+                    });
+                }
+            }
+            None
+        }
+        MirBinOp::FNe | MirBinOp::FLt | MirBinOp::FGt => {
+            if lhs == rhs {
+                if let Operand::Place(_) = lhs {
+                    return Some(MirInst::Const {
+                        dest: dest.clone(),
+                        value: Constant::Bool(false),
+                    });
+                }
             }
             None
         }
@@ -2104,6 +2314,20 @@ impl CommonSubexpressionElimination {
 /// ```
 pub struct MemoryLoadCSE;
 
+/// v0.96.45: Helper — generate a Copy or Const instruction to materialize a cached Operand
+fn operand_to_inst(dest: &Place, operand: &Operand) -> MirInst {
+    match operand {
+        Operand::Place(src) => MirInst::Copy {
+            dest: dest.clone(),
+            src: src.clone(),
+        },
+        Operand::Constant(c) => MirInst::Const {
+            dest: dest.clone(),
+            value: c.clone(),
+        },
+    }
+}
+
 impl OptimizationPass for MemoryLoadCSE {
     fn name(&self) -> &'static str {
         "memory_load_cse"
@@ -2113,40 +2337,41 @@ impl OptimizationPass for MemoryLoadCSE {
         let mut changed = false;
 
         for block in &mut func.blocks {
-            // Track: (load_fn_name, ptr_operand_key) -> cached_place
-            let mut load_cache: HashMap<(String, String), Place> = HashMap::new();
-            // v0.60.38: Track: (base_name, field_index, struct_name) -> cached_dest
-            let mut field_cache: HashMap<(String, usize, String), Place> = HashMap::new();
+            // Track: (load_fn_name, ptr_operand_key) -> cached value (Operand for store-load forwarding)
+            let mut load_cache: HashMap<(String, String), Operand> = HashMap::new();
+            // v0.60.38: Track: (base_name, field_index, struct_name) -> cached value
+            let mut field_cache: HashMap<(String, usize, String), Operand> = HashMap::new();
             let mut new_instructions = Vec::new();
 
             for inst in &block.instructions {
                 match inst {
                     // v0.60.38: FieldAccess CSE - eliminate duplicate struct field loads
+                    // v0.96.45: Also forwards stored values (FieldStore → FieldAccess)
                     MirInst::FieldAccess { dest, base, field_index, struct_name, .. } => {
                         let cache_key = (base.name.clone(), *field_index, struct_name.clone());
 
                         if let Some(cached) = field_cache.get(&cache_key) {
-                            // Replace with copy from cached value
-                            new_instructions.push(MirInst::Copy {
-                                dest: dest.clone(),
-                                src: cached.clone(),
-                            });
+                            new_instructions.push(operand_to_inst(dest, cached));
                             changed = true;
                         } else {
-                            // Cache this field access and keep original instruction
-                            field_cache.insert(cache_key, dest.clone());
+                            // Cache this field access result and keep original instruction
+                            field_cache.insert(cache_key, Operand::Place(dest.clone()));
                             new_instructions.push(inst.clone());
                         }
                     }
                     // v0.60.38: FieldStore invalidates field cache for that base
-                    MirInst::FieldStore { base, .. } => {
-                        // Invalidate all cached fields for this base
+                    // v0.96.45: Store-Load Forwarding — cache stored value for subsequent FieldAccess
+                    MirInst::FieldStore { base, field_index, struct_name, value, .. } => {
+                        // Invalidate all cached fields for this base (conservative)
                         field_cache.retain(|(b, _, _), _| b != &base.name);
+                        // Forward: cache the stored value so next FieldAccess can reuse it
+                        let cache_key = (base.name.clone(), *field_index, struct_name.clone());
+                        field_cache.insert(cache_key, value.clone());
                         new_instructions.push(inst.clone());
                     }
                     MirInst::Call { dest, func: fn_name, args, .. } => {
                         // Check if this is a memory load function with a destination
-                        if (fn_name == "load_f64" || fn_name == "load_i64")
+                        if (fn_name == "load_f64" || fn_name == "load_i64" || fn_name == "load_u8" || fn_name == "load_i32")
                             && args.len() == 1
                             && dest.is_some()
                         {
@@ -2156,24 +2381,33 @@ impl OptimizationPass for MemoryLoadCSE {
                             let cache_key = (fn_name.clone(), ptr_key);
 
                             if let Some(cached) = load_cache.get(&cache_key) {
-                                // Replace with copy from cached value
-                                new_instructions.push(MirInst::Copy {
-                                    dest: dest.clone(),
-                                    src: cached.clone(),
-                                });
+                                new_instructions.push(operand_to_inst(dest, cached));
                                 changed = true;
                             } else {
-                                // Cache this load and keep original instruction
-                                load_cache.insert(cache_key, dest.clone());
+                                // Cache this load result and keep original instruction
+                                load_cache.insert(cache_key, Operand::Place(dest.clone()));
                                 new_instructions.push(inst.clone());
                             }
                         }
-                        // Check if this is a memory store function - invalidate cache
-                        else if fn_name == "store_f64" || fn_name == "store_i64" {
+                        // v0.96.45: Store-Load Forwarding for store_i64/store_f64
+                        // store_i64(ptr, val) → subsequent load_i64(ptr) → forward val
+                        else if (fn_name == "store_f64" || fn_name == "store_i64" || fn_name == "store_u8" || fn_name == "store_i32")
+                            && args.len() == 2
+                        {
                             // Conservative: invalidate ALL loads since we don't track aliasing
-                            // A more sophisticated analysis could check if store ptr might alias
                             load_cache.clear();
-                            field_cache.clear(); // Also invalidate field cache
+                            field_cache.clear();
+                            // Forward: cache the stored value for the matching load function
+                            let load_fn = match fn_name.as_str() {
+                                "store_i64" => "load_i64",
+                                "store_f64" => "load_f64",
+                                "store_u8" => "load_u8",
+                                "store_i32" => "load_i32",
+                                _ => "load_i64",
+                            };
+                            let ptr_key = format!("{:?}", args[0]);
+                            let cache_key = (load_fn.to_string(), ptr_key);
+                            load_cache.insert(cache_key, args[1].clone());
                             new_instructions.push(inst.clone());
                         }
                         else {
@@ -9778,7 +10012,7 @@ mod tests {
         // Should have made changes
         assert!(changed, "MemoryLoadCSE should have made changes");
 
-        // Second instruction should now be a Copy
+        // Second instruction should now be a Copy (forwarding cached Place operand)
         let second_inst = &func.blocks[0].instructions[1];
         assert!(
             matches!(second_inst, MirInst::Copy { dest, src }
@@ -9847,14 +10081,15 @@ mod tests {
         let pass = MemoryLoadCSE;
         let changed = pass.run_on_function(&mut func);
 
-        // Should NOT have made changes (store invalidates)
-        assert!(!changed, "MemoryLoadCSE should not CSE across store");
+        // v0.96.45: Store-Load Forwarding — load after store to same ptr IS forwarded
+        assert!(changed, "MemoryLoadCSE should forward store→load");
 
-        // Third instruction should still be a Call
+        // Third instruction should be a Copy forwarding the stored value
         let third_inst = &func.blocks[0].instructions[2];
         assert!(
-            matches!(third_inst, MirInst::Call { func: f, .. } if f == "load_f64"),
-            "Load after store should not be CSE'd, got {:?}",
+            matches!(third_inst, MirInst::Copy { dest, src }
+                if dest.name == "b" && src.name == "val"),
+            "Load after store should be forwarded to stored value, got {:?}",
             third_inst
         );
     }
@@ -13507,7 +13742,7 @@ mod tests {
         let pass = MemoryLoadCSE;
         let changed = pass.run_on_function(&mut func);
         assert!(changed);
-        // Second load_f64 should be replaced with Copy
+        // Second load_f64 should be replaced with Copy (CSE forwards cached Place)
         assert!(func.blocks[0].instructions.iter().any(|i| matches!(i, MirInst::Copy { dest, .. } if dest.name == "b")));
     }
 

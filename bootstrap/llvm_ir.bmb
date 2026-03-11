@@ -1040,16 +1040,22 @@ fn gen_label_line(line: String) -> String =
 // willreturn: all functions eventually return (enables dead code after call elimination)
 fn gen_fn_header(name: String, ret_type: String, params: String) -> String =
     let attrs = if name == "main" { "" } else { " nounwind mustprogress willreturn" };
-    "define " + llvm_type(ret_type) + " @" + name + "(" + params + ")" + attrs + " {";
+    let ret_attrs = if ret_type == "String" { "noundef nonnull " } else if ret_type == "unit" { "" } else { "noundef " };
+    "define " + ret_attrs + llvm_type(ret_type) + " @" + name + "(" + params + ")" + attrs + " {";
 
 // Generate function footer
 fn gen_fn_footer() -> String =
     "}";
 
-// Generate single parameter
-// i64 %a
+// Generate single parameter with type-appropriate attributes
+// String → i8* noundef nonnull noalias nocapture readonly dereferenceable(24) align 8 %a
+// i64/i32/bool → type noundef %a
 fn gen_param(param_type: String, param_name: String) -> String =
-    llvm_type(param_type) + " %" + param_name;
+    if param_type == "String" {
+        "i8* noundef nonnull noalias nocapture readonly dereferenceable(24) align 8 %" + param_name
+    } else {
+        llvm_type(param_type) + " noundef %" + param_name
+    };
 
 // ============================================================================
 // v0.50.0: Parameter Attributes for Aliasing Optimization
