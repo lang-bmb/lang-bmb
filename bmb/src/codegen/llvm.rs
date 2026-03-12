@@ -1696,8 +1696,14 @@ impl<'ctx> LlvmContext<'ctx> {
         // v0.96.17: Add noalias to String parameters (BMB strings are immutable, no aliasing)
         let noalias_id = Attribute::get_named_enum_kind_id("noalias");
         let noalias_attr = self.context.create_enum_attribute(noalias_id, 0);
+        // v0.96.46: LLVM 21 replaced nocapture with captures(none); guard against kind_id=0
         let nocapture_id = Attribute::get_named_enum_kind_id("nocapture");
-        let nocapture_attr = self.context.create_enum_attribute(nocapture_id, 0);
+        let nocapture_attr = if nocapture_id != 0 {
+            self.context.create_enum_attribute(nocapture_id, 0)
+        } else {
+            // Fallback: use string attribute for LLVM versions where nocapture is removed
+            self.context.create_string_attribute("nocapture", "")
+        };
         let readonly_id = Attribute::get_named_enum_kind_id("readonly");
         let readonly_attr = self.context.create_enum_attribute(readonly_id, 0);
         // v0.96.18: Add dereferenceable(24) — BmbString = { ptr, i64, i64 } = 24 bytes

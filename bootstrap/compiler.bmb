@@ -6405,10 +6405,34 @@ fn llvm_gen_call(line: String, pos: i64, dest: String) -> String =
         let comma = find_char(args, 0, 44);
         let addr = trim_end(args.slice(0, comma));
         let value = trim(args.slice(comma + 1, args.len()));
-        "  " + dest + "_p = inttoptr i64 " + addr + " to ptr" + SEP() + "  store i64 " + value + ", ptr " + dest + "_p, align 8" + SEP() + "  " + dest + " = add nsw i64 0, 0"
+        // v0.96.46: TBAA metadata for alias analysis
+        "  " + dest + "_p = inttoptr i64 " + addr + " to ptr" + SEP() + "  store i64 " + value + ", ptr " + dest + "_p, align 8, !tbaa !903" + SEP() + "  " + dest + " = add nsw i64 0, 0"
     } else if fn_name == "@load_i64" {
         let addr = trim_end(line.slice(paren_pos + 1, close_pos));
-        "  " + dest + "_p = inttoptr i64 " + addr + " to ptr" + SEP() + "  " + dest + " = load i64, ptr " + dest + "_p, align 8"
+        // v0.96.46: TBAA metadata for alias analysis
+        "  " + dest + "_p = inttoptr i64 " + addr + " to ptr" + SEP() + "  " + dest + " = load i64, ptr " + dest + "_p, align 8, !tbaa !903"
+    } else if fn_name == "@store_f64" {
+        // v0.96.46: Inline store double with TBAA
+        let args = line.slice(paren_pos + 1, close_pos);
+        let comma = find_char(args, 0, 44);
+        let addr = trim_end(args.slice(0, comma));
+        let value = trim(args.slice(comma + 1, args.len()));
+        "  " + dest + "_p = inttoptr i64 " + addr + " to ptr" + SEP() + "  store double " + value + ", ptr " + dest + "_p, align 8, !tbaa !905" + SEP() + "  " + dest + " = add nsw i64 0, 0"
+    } else if fn_name == "@load_f64" {
+        // v0.96.46: Inline load double with TBAA
+        let addr = trim_end(line.slice(paren_pos + 1, close_pos));
+        "  " + dest + "_p = inttoptr i64 " + addr + " to ptr" + SEP() + "  " + dest + "_d = load double, ptr " + dest + "_p, align 8, !tbaa !905" + SEP() + "  " + dest + " = bitcast double " + dest + "_d to i64"
+    } else if fn_name == "@store_i32" {
+        // v0.96.46: Inline store i32 with TBAA
+        let args = line.slice(paren_pos + 1, close_pos);
+        let comma = find_char(args, 0, 44);
+        let addr = trim_end(args.slice(0, comma));
+        let value = trim(args.slice(comma + 1, args.len()));
+        "  " + dest + "_p = inttoptr i64 " + addr + " to ptr" + SEP() + "  " + dest + "_v = trunc i64 " + value + " to i32" + SEP() + "  store i32 " + dest + "_v, ptr " + dest + "_p, align 4" + SEP() + "  " + dest + " = add nsw i64 0, 0"
+    } else if fn_name == "@load_i32" {
+        // v0.96.46: Inline load i32 with sext to i64
+        let addr = trim_end(line.slice(paren_pos + 1, close_pos));
+        "  " + dest + "_p = inttoptr i64 " + addr + " to ptr" + SEP() + "  " + dest + "_i32 = load i32, ptr " + dest + "_p, align 4" + SEP() + "  " + dest + " = sext i32 " + dest + "_i32 to i64"
     } else if fn_name == "@ord" {
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = add nsw i64 0, " + arg
@@ -6620,10 +6644,34 @@ fn llvm_gen_call_reg(line: String, pos: i64, dest: String, registry: String) -> 
         let comma = find_char(args, 0, 44);
         let addr = trim_end(args.slice(0, comma));
         let value = trim(args.slice(comma + 1, args.len()));
-        "  " + dest + "_p = inttoptr i64 " + addr + " to ptr" + SEP() + "  store i64 " + value + ", ptr " + dest + "_p, align 8" + SEP() + "  " + dest + " = add nsw i64 0, 0"
+        // v0.96.46: TBAA metadata for alias analysis
+        "  " + dest + "_p = inttoptr i64 " + addr + " to ptr" + SEP() + "  store i64 " + value + ", ptr " + dest + "_p, align 8, !tbaa !903" + SEP() + "  " + dest + " = add nsw i64 0, 0"
     } else if fn_name == "@load_i64" {
         let addr = trim_end(line.slice(paren_pos + 1, close_pos));
-        "  " + dest + "_p = inttoptr i64 " + addr + " to ptr" + SEP() + "  " + dest + " = load i64, ptr " + dest + "_p, align 8"
+        // v0.96.46: TBAA metadata for alias analysis
+        "  " + dest + "_p = inttoptr i64 " + addr + " to ptr" + SEP() + "  " + dest + " = load i64, ptr " + dest + "_p, align 8, !tbaa !903"
+    } else if fn_name == "@store_f64" {
+        // v0.96.46: Inline store double with TBAA
+        let args = line.slice(paren_pos + 1, close_pos);
+        let comma = find_char(args, 0, 44);
+        let addr = trim_end(args.slice(0, comma));
+        let value = trim(args.slice(comma + 1, args.len()));
+        "  " + dest + "_p = inttoptr i64 " + addr + " to ptr" + SEP() + "  store double " + value + ", ptr " + dest + "_p, align 8, !tbaa !905" + SEP() + "  " + dest + " = add nsw i64 0, 0"
+    } else if fn_name == "@load_f64" {
+        // v0.96.46: Inline load double with TBAA
+        let addr = trim_end(line.slice(paren_pos + 1, close_pos));
+        "  " + dest + "_p = inttoptr i64 " + addr + " to ptr" + SEP() + "  " + dest + "_d = load double, ptr " + dest + "_p, align 8, !tbaa !905" + SEP() + "  " + dest + " = bitcast double " + dest + "_d to i64"
+    } else if fn_name == "@store_i32" {
+        // v0.96.46: Inline store i32 with TBAA
+        let args = line.slice(paren_pos + 1, close_pos);
+        let comma = find_char(args, 0, 44);
+        let addr = trim_end(args.slice(0, comma));
+        let value = trim(args.slice(comma + 1, args.len()));
+        "  " + dest + "_p = inttoptr i64 " + addr + " to ptr" + SEP() + "  " + dest + "_v = trunc i64 " + value + " to i32" + SEP() + "  store i32 " + dest + "_v, ptr " + dest + "_p, align 4" + SEP() + "  " + dest + " = add nsw i64 0, 0"
+    } else if fn_name == "@load_i32" {
+        // v0.96.46: Inline load i32 with sext to i64
+        let addr = trim_end(line.slice(paren_pos + 1, close_pos));
+        "  " + dest + "_p = inttoptr i64 " + addr + " to ptr" + SEP() + "  " + dest + "_i32 = load i32, ptr " + dest + "_p, align 4" + SEP() + "  " + dest + " = sext i32 " + dest + "_i32 to i64"
     } else if fn_name == "@ord" {
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = add nsw i64 0, " + arg
@@ -7046,7 +7094,10 @@ fn llvm_gen_branch(line: String, pos: i64) -> String =
     let then_label = line.slice(after1, comma2);
     let after2 = low_skip_ws(line, comma2 + 1);
     let else_label = trim_end(line.slice(after2, line.len()));
-    "  " + cond + "_i1 = trunc i64 " + cond + " to i1" + SEP() + "  br i1 " + cond + "_i1, label %" + trim_end(then_label) + ", label %" + else_label;
+    // v0.96.46: Add branch weights for loop conditions (2000:1 body:exit)
+    let is_loop_branch = has_pattern(then_label, "for_body", 0) or has_pattern(then_label, "while_body", 0) or has_pattern(then_label, "loop_body", 0);
+    let prof = if is_loop_branch { ", !prof !907" } else { "" };
+    "  " + cond + "_i1 = trunc i64 " + cond + " to i1" + SEP() + "  br i1 " + cond + "_i1, label %" + trim_end(then_label) + ", label %" + else_label + prof;
 
 fn llvm_gen_goto(line: String, pos: i64) -> String =
     let label_start = low_skip_ws(line, pos + 4);
@@ -12663,7 +12714,8 @@ fn llvm_gen_fn_header(line: String, pos: i64) -> String =
     // v0.95: i32 return type support
     let llvm_ret = if ret_type == "f64" { "double" } else if ret_type == "i32" { "i32" } else { "i64" };
     let emitted_name = if fn_name == "main" { "bmb_user_main" } else { fn_name };
-    let base_attrs = if fn_name == "main" { " mustprogress \"no-trapping-math\"=\"true\" uwtable" } else { " mustprogress nounwind willreturn nosync \"no-trapping-math\"=\"true\" uwtable" };
+    // v0.96.46: main gets nounwind norecurse; non-main gets full attrs
+    let base_attrs = if fn_name == "main" { " norecurse nounwind mustprogress \"no-trapping-math\"=\"true\" uwtable" } else { " mustprogress nounwind willreturn nosync \"no-trapping-math\"=\"true\" uwtable" };
     let pure_attrs = if ann == "pure" or ann == "const" { " memory(none) nofree" } else { "" };
     let inline_attrs = if ann == "inline" { " alwaysinline" } else { "" };
     let attrs = base_attrs + pure_attrs + inline_attrs;
@@ -13303,8 +13355,8 @@ fn gen_function_sb_structs_reuse(mir: String, strings: String, string_fns: Strin
     let pass6 = annotate_memory_none_ir(pass5);
     // v0.93.6: Annotate read-only functions with memory(read)
     let pass7 = annotate_memory_read_ir(pass6);
-    // v0.93.4: Add norecurse for non-recursive functions
-    let pass8 = if is_recursive { pass7 } else { add_norecurse_attr(pass7) };
+    // v0.93.4: Add norecurse for non-recursive functions (skip main — already has norecurse from base_attrs)
+    let pass8 = if is_recursive or fn_name == "main" { pass7 } else { add_norecurse_attr(pass7) };
     // v0.96.44: Add nofree for functions without free/realloc calls
     let pass9 = add_nofree_attr(pass8);
     // v0.96.44: Add speculatable for memory(none) leaf functions
@@ -15996,7 +16048,19 @@ fn compile_program(source: String, safe: i64) -> String =
             let with_globals = if string_globals == "" { base2 } else { base4 };
             let final1 = with_globals + DSEP();
             // v0.95: Append metadata for !invariant.load on string struct loads
-            let module_ir = final1 + code + DSEP() + "!0 = !{}";
+            // v0.96.46: Full TBAA metadata hierarchy + branch weights for loop optimization
+            let tbaa_meta = "!0 = !{}" + SEP() +
+                "; TBAA metadata" + SEP() +
+                "!900 = !{!\"BMB TBAA\"}" + SEP() +
+                "!901 = !{!\"omnipotent char\", !900, i64 0}" + SEP() +
+                "!902 = !{!\"long long\", !901, i64 0}" + SEP() +
+                "!903 = !{!902, !902, i64 0}" + SEP() +
+                "!904 = !{!\"double\", !901, i64 0}" + SEP() +
+                "!905 = !{!904, !904, i64 0}" + SEP() +
+                "!906 = !{!901, !901, i64 0}" + SEP() +
+                "; Branch weights: loop body likely (2000:1)" + SEP() +
+                "!907 = !{!\"branch_weights\", i32 2000, i32 1}";
+            let module_ir = final1 + code + DSEP() + tbaa_meta;
             // v0.96.25: String concat chain optimization (a+b+c -> sb_new/push/build)
             let concat_opt_ir = optimize_ir_string_concat(module_ir);
             // v0.96.26: Linear recurrence to loop (fibonacci O(2^n) -> O(n))
