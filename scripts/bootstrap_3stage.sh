@@ -124,7 +124,7 @@ fi
 BMB_RUNTIME="${BMB_RUNTIME_PATH:-bmb/runtime/libbmb_runtime.a}"
 if [ ! -f "$BMB_RUNTIME" ]; then
     echo "Building BMB runtime library..."
-    (cd bmb/runtime && clang -c bmb_runtime.c -o bmb_runtime.o -O2 && ar rcs libbmb_runtime.a bmb_runtime.o)
+    (cd bmb/runtime && clang -c bmb_runtime.c -o bmb_runtime.o -O2 -ffunction-sections -fdata-sections && clang -c bmb_event_loop.c -o bmb_event_loop.o -O2 -ffunction-sections -fdata-sections && ar rcs libbmb_runtime.a bmb_runtime.o bmb_event_loop.o)
     BMB_RUNTIME="bmb/runtime/libbmb_runtime.a"
 fi
 

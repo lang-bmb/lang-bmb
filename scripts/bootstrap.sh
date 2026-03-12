@@ -321,24 +321,25 @@ if command -v llc &> /dev/null; then
         exit 1
     fi
 
-    # Find BMB runtime library
-    BMB_RUNTIME="${BMB_RUNTIME_PATH:-${PROJECT_ROOT}/bmb/runtime/libbmb_runtime.a}"
-    if [ ! -f "$BMB_RUNTIME" ]; then
-        log_verbose "Building BMB runtime library..."
-        (cd "${PROJECT_ROOT}/bmb/runtime" && clang -c bmb_runtime.c -o bmb_runtime.o -O2 && ar rcs libbmb_runtime.a bmb_runtime.o)
-        BMB_RUNTIME="${PROJECT_ROOT}/bmb/runtime/libbmb_runtime.a"
+    # Find BMB runtime object files
+    # v0.96.46: Use .o files directly (not .a) so weak main() is always linked
+    RUNTIME_OBJ="${PROJECT_ROOT}/bmb/runtime/bmb_runtime.o"
+    RUNTIME_EVT="${PROJECT_ROOT}/bmb/runtime/bmb_event_loop.o"
+    if [ ! -f "$RUNTIME_OBJ" ]; then
+        log_verbose "Building BMB runtime object files..."
+        (cd "${PROJECT_ROOT}/bmb/runtime" && clang -c bmb_runtime.c -o bmb_runtime.o -O2 -ffunction-sections -fdata-sections && clang -c bmb_event_loop.c -o bmb_event_loop.o -O2 -ffunction-sections -fdata-sections)
     fi
 
-    if [ -f "$BMB_RUNTIME" ]; then
+    if [ -f "$RUNTIME_OBJ" ]; then
         # Link Stage 2 binary with runtime
         # v0.87: Add platform-specific libraries (ws2_32 for Windows sockets)
         log_verbose "Linking Stage 2 binary with runtime..."
         if [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ "$OSTYPE" == "win32" ]]; then
             # Windows: need winsock2 library for async socket functions
-            clang "$STAGE2_OBJ" "$BMB_RUNTIME" -o "$STAGE2_BIN" -lm -lws2_32 -no-pie
+            clang "$STAGE2_OBJ" "$RUNTIME_OBJ" "$RUNTIME_EVT" -o "$STAGE2_BIN" -lm -lws2_32 -no-pie
         else
             # Unix: pthread is typically needed
-            clang "$STAGE2_OBJ" "$BMB_RUNTIME" -o "$STAGE2_BIN" -lm -lpthread -no-pie
+            clang "$STAGE2_OBJ" "$RUNTIME_OBJ" "$RUNTIME_EVT" -o "$STAGE2_BIN" -lm -lpthread -no-pie
         fi
 
         if [ -f "$STAGE2_BIN" ]; then

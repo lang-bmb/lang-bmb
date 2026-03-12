@@ -137,8 +137,8 @@ build_runtime() {
         log_verbose "Building BMB runtime library..."
         local CC="${LINKER}"
         (cd "$RUNTIME_DIR" && \
-            $CC -c -O2 bmb_runtime.c -o bmb_runtime.o && \
-            $CC -c -O2 bmb_event_loop.c -o bmb_event_loop.o && \
+            $CC -c -O2 -ffunction-sections -fdata-sections bmb_runtime.c -o bmb_runtime.o && \
+            $CC -c -O2 -ffunction-sections -fdata-sections bmb_event_loop.c -o bmb_event_loop.o && \
             ar rcs libbmb_runtime.a bmb_runtime.o bmb_event_loop.o)
         log_verbose "Runtime library built"
     fi

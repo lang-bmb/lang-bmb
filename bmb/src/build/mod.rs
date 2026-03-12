@@ -769,8 +769,27 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
             CodeGenError::LlvmError(format!("Text codegen failed: {}", e)),
         ))?;
 
+        // v0.96.46: Append inline main() wrapper ONLY for emit-ir mode
+        // bmb_user_main has 'alwaysinline', so opt/clang inlines it into main() — zero call overhead
+        // This eliminates the 13-17% overhead from the C runtime's main() → bmb_user_main() boundary
+        // For full build pipeline, the runtime provides main() (with weak attribute)
+        let ir_output = if config.emit_ir {
+            format!("{}\n\
+                ; v0.96.46: Inline main with runtime init\n\
+                declare void @bmb_init_runtime(i32, ptr)\n\
+                declare void @bmb_arena_destroy()\n\
+                define i32 @main(i32 %argc, ptr %argv) {{\n\
+                  call void @bmb_init_runtime(i32 %argc, ptr %argv)\n\
+                  call void @bmb_user_main()\n\
+                  call void @bmb_arena_destroy()\n\
+                  ret i32 0\n\
+                }}\n", ir)
+        } else {
+            ir.clone()
+        };
+
         let ir_path = config.output.with_extension("ll");
-        std::fs::write(&ir_path, &ir)?;
+        std::fs::write(&ir_path, &ir_output)?;
 
         if config.verbose {
             println!("  Generated LLVM IR: {}", ir_path.display());

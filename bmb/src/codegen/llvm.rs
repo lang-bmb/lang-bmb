@@ -129,6 +129,10 @@ impl CodeGen {
             ctx.gen_function_body(func)?;
         }
 
+        // v0.96.46: Add inline main() wrapper that calls bmb_user_main
+        // bmb_user_main has alwaysinline, so LLVM inlines it — zero call overhead
+        ctx.add_inline_main(&context)?;
+
         // Write to object file
         self.write_object_file(&ctx.module, output)
     }
@@ -155,6 +159,9 @@ impl CodeGen {
         for func in &program.functions {
             ctx.gen_function_body(func)?;
         }
+
+        // v0.96.46: Add inline main() wrapper that calls bmb_user_main
+        ctx.add_inline_main(&context)?;
 
         Ok(ctx.module.print_to_string().to_string())
     }
@@ -567,6 +574,37 @@ impl<'ctx> LlvmContext<'ctx> {
             enum_variables: std::collections::HashSet::new(),
             add_components: HashMap::new(),
         }
+    }
+
+    /// v0.96.46: Add inline main() wrapper that calls bmb_user_main
+    /// bmb_user_main has alwaysinline, so LLVM inlines it into main() — zero call overhead
+    /// This eliminates the 13-17% overhead from the C runtime's main() → bmb_user_main() boundary
+    fn add_inline_main(&self, context: &'ctx Context) -> CodeGenResult<()> {
+        use inkwell::attributes::{Attribute, AttributeLoc};
+
+        let i32_type = context.i32_type();
+        let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+        let fn_type = i32_type.fn_type(&[i32_type.into(), ptr_type.into()], false);
+        let main_fn = self.module.add_function("main", fn_type, None);
+
+        // Add nounwind attribute
+        let nounwind_id = Attribute::get_named_enum_kind_id("nounwind");
+        main_fn.add_attribute(AttributeLoc::Function, context.create_enum_attribute(nounwind_id, 0));
+
+        let entry = context.append_basic_block(main_fn, "entry");
+        self.builder.position_at_end(entry);
+
+        // Call bmb_user_main
+        if let Some(user_main) = self.module.get_function("bmb_user_main") {
+            self.builder.build_call(user_main, &[], "")
+                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+        }
+
+        // Return 0
+        self.builder.build_return(Some(&i32_type.const_int(0, false)))
+            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+        Ok(())
     }
 
     /// Declare built-in runtime functions
@@ -5026,6 +5064,14 @@ impl<'ctx> LlvmContext<'ctx> {
     fn gen_terminator(&mut self, term: &Terminator) -> CodeGenResult<()> {
         match term {
             Terminator::Return(Some(op)) => {
+                // v0.96.46: If function returns void, ignore the return value
+                // This happens with main (bmb_user_main) which is void but MIR has Return(Some(0))
+                if self.current_ret_type.is_none() {
+                    self.builder.build_return(None)
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    return Ok(());
+                }
+
                 let value = self.gen_operand(op)?;
 
                 // v0.50.80: Coerce return value type if needed

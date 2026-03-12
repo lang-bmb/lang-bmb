@@ -122,9 +122,11 @@ impl TextCodeGen {
 
     /// Get default target triple based on platform
     fn default_target_triple() -> String {
+        // v0.96.46: Use MinGW triple to match our build toolchain (clang + MinGW ld/lld)
+        // Previously used msvc triple which caused target override warnings during LTO
         #[cfg(target_os = "windows")]
         {
-            "x86_64-pc-windows-msvc".to_string()
+            "x86_64-w64-windows-gnu".to_string()
         }
         #[cfg(target_os = "linux")]
         {
@@ -1967,7 +1969,9 @@ impl TextCodeGen {
         // uwtable enables correct stack unwinding on Windows x86_64
         let uwtable = if cfg!(target_os = "windows") { " uwtable" } else { "" };
         let attrs = if func.name == "main" {
-            format!(" nounwind{}{} \"no-trapping-math\"=\"true\"", norecurse_attr, uwtable)
+            // v0.96.46: alwaysinline on bmb_user_main enables the inline main() wrapper
+            // (in bench.sh and build pipeline) to eliminate call overhead without LTO
+            format!(" alwaysinline nounwind{}{} \"no-trapping-math\"=\"true\"", norecurse_attr, uwtable)
         } else if func.always_inline {
             format!(" alwaysinline nosync nounwind willreturn mustprogress{}{}{}{}{}", nofree_attr, norecurse_attr, memory_attr, no_trap, uwtable)
         } else if func.inline_hint {

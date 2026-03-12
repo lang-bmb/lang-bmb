@@ -29,7 +29,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BMB="${PROJECT_ROOT}/target/release/bmb"
-RUNTIME="${PROJECT_ROOT}/bmb/runtime/libbmb_runtime.a"
+# v0.96.46: Use .o files directly (not .a) so weak main() is always linked
+RUNTIME_OBJ="${PROJECT_ROOT}/bmb/runtime/bmb_runtime.o"
+RUNTIME_EVT="${PROJECT_ROOT}/bmb/runtime/bmb_event_loop.o"
 BENCH_DIR="${PROJECT_ROOT}/ecosystem/benchmark-bmb/benches/compute"
 BUILD_DIR="/tmp/bmb-bench"
 
@@ -107,8 +109,8 @@ if [ "$NO_RUST" = false ] && command -v rustc &>/dev/null; then
 fi
 
 # Check runtime
-if [ ! -f "$RUNTIME" ]; then
-    echo -e "${RED}Error: Runtime library not found at $RUNTIME${NC}"
+if [ ! -f "$RUNTIME_OBJ" ]; then
+    echo -e "${RED}Error: Runtime object not found at $RUNTIME_OBJ${NC}"
     exit 1
 fi
 
@@ -205,6 +207,8 @@ build_bmb() {
     local link_flags="-lm"
     [[ "$OSTYPE" == "msys"* || "$OSTYPE" == "mingw"* || "$OSTYPE" == "cygwin"* ]] && link_flags="$link_flags -lws2_32"
 
+    # v0.96.46: bmb build --emit-ir now includes inline main() wrapper
+    # bmb_user_main has 'alwaysinline', so clang inlines it into main() — zero call overhead
     # v0.96.44: Use lld if available for proper gc-sections on Windows COFF PE
     local lld_flag=""
     if command -v ld.lld &>/dev/null; then
@@ -212,7 +216,7 @@ build_bmb() {
     fi
     # v0.96.44: -ffunction-sections enables gc-sections dead code removal from runtime .a
     # Do NOT use -fdata-sections — it can affect data alignment and cause 5-10% regressions
-    if ! clang -w -O3 -fno-unroll-loops -march=native -ffunction-sections $lld_flag "$ir_opt" "$RUNTIME" -o "$out" $link_flags 2>/dev/null; then
+    if ! clang -w -O3 -fno-unroll-loops -march=native -ffunction-sections $lld_flag "$ir_opt" "$RUNTIME_OBJ" "$RUNTIME_EVT" -o "$out" $link_flags 2>/dev/null; then
         echo "FAIL:link"
         return 1
     fi

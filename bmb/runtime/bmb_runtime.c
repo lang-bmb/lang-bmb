@@ -40,7 +40,8 @@ typedef struct {
 
 // v0.88.2: Forward declarations for arena allocator
 static void* bmb_alloc(size_t size);
-static int g_arena_enabled;
+// v0.96.46: Non-static to allow BMB's inline main() to set arena flag directly
+int g_arena_enabled;
 
 // Helper to create a new BmbString from raw char*
 static BmbString* bmb_string_wrap(char* data) {
@@ -1763,12 +1764,11 @@ static inline void* bmb_arena_alloc(size_t size) {
 }
 
 // Enable/disable arena mode (1=enable, 0=disable)
+// v0.96.47: Lazy initialization — don't pre-allocate 8MB block.
+// First bmb_arena_alloc() call will allocate when needed.
+// This eliminates TLB/cache pollution for programs that never use strings.
 int64_t bmb_arena_mode(int64_t enable) {
     g_arena_enabled = (int)enable;
-    if (enable && !g_arena_head) {
-        g_arena_head = bmb_arena_new_block(BMB_ARENA_BLOCK_SIZE);
-        g_arena_current = g_arena_head;
-    }
     return 0;
 }
 
@@ -2638,6 +2638,14 @@ int64_t remove_dir(const BmbString* path) {
 // v0.46: Command-line argument support for CLI Independence
 static int g_argc = 0;
 static char** g_argv = NULL;
+
+// v0.96.46: Runtime initialization for inline main wrapper
+// Called from BMB-generated @main() to set up argc/argv and arena before bmb_user_main()
+void bmb_init_runtime(int argc, char** argv) {
+    g_argc = argc;
+    g_argv = argv;
+    bmb_arena_mode(1);
+}
 
 int64_t bmb_arg_count(void) {
     return (int64_t)g_argc;
@@ -5743,15 +5751,13 @@ void bmb_scope_wait(int64_t scope_handle) {
 // ============================================================================
 
 int64_t bmb_user_main(void);
+// v0.96.46: Weak main() allows BMB to provide its own main() in LLVM IR,
+// eliminating the function call overhead from main() → bmb_user_main().
+// When BMB doesn't provide main(), this default version is used.
+__attribute__((weak))
 int main(int argc, char** argv) {
     g_argc = argc;
     g_argv = argv;
-    // v0.88.4: Arena ENABLED by default.
-    // BMB has no GC or destructors - without arena, every string allocation
-    // leaks (malloc without free). Arena pools all allocations and frees
-    // everything at process exit via bmb_arena_destroy().
-    // Hard limit (default 4GB) prevents OOM/BSOD - process exits with error.
-    // Override limit via BMB_ARENA_MAX_SIZE env var (e.g. "8G", "512M").
     bmb_arena_mode(1);
     int result = (int)bmb_user_main();
     bmb_arena_destroy();

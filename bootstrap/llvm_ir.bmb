@@ -692,13 +692,13 @@ fn gen_closure_env_alloc(dest: String, num_captures: i64) -> String =
 
 // Generate capture store: store captured value into environment
 fn gen_capture_store(env: String, cap_var: String, idx: i64) -> String =
-    let gep = "%_cap_ptr_" + int_to_string(idx) + " = getelementptr i64, i64* " + env + ", i64 " + int_to_string(idx);
+    let gep = "%_cap_ptr_" + int_to_string(idx) + " = getelementptr inbounds nuw i64, i64* " + env + ", i64 " + int_to_string(idx);
     let store = "store i64 " + cap_var + ", i64* %_cap_ptr_" + int_to_string(idx);
     gep + SEP() + store;
 
 // Generate capture load: load captured value from environment
 fn gen_capture_load(dest: String, env: String, idx: i64) -> String =
-    let gep = "%_cap_ptr_" + int_to_string(idx) + " = getelementptr i64, i64* " + env + ", i64 " + int_to_string(idx);
+    let gep = "%_cap_ptr_" + int_to_string(idx) + " = getelementptr inbounds nuw i64, i64* " + env + ", i64 " + int_to_string(idx);
     let load = dest + " = load i64, i64* %_cap_ptr_" + int_to_string(idx);
     gep + SEP() + load;
 
@@ -773,12 +773,12 @@ fn gen_instr_call_closure(line: String) -> String =
     let args = parse_call_closure_args(line);
 
     // Extract function pointer from closure
-    let fn_gep = "%_cl_fn_ptr = getelementptr { i64, i64* }, { i64, i64* }* " + closure + ", i64 0, i32 0";
+    let fn_gep = "%_cl_fn_ptr = getelementptr inbounds nuw { i64, i64* }, { i64, i64* }* " + closure + ", i64 0, i32 0";
     let fn_load = "%_cl_fn = load i64, i64* %_cl_fn_ptr";
     let fn_cast = "%_cl_fn_p = inttoptr i64 %_cl_fn to i64 (i64*, ...)*";
 
     // Extract environment pointer from closure
-    let env_gep = "%_cl_env_ptr = getelementptr { i64, i64* }, { i64, i64* }* " + closure + ", i64 0, i32 1";
+    let env_gep = "%_cl_env_ptr = getelementptr inbounds nuw { i64, i64* }, { i64, i64* }* " + closure + ", i64 0, i32 1";
     let env_load = "%_cl_env = load i64*, i64** %_cl_env_ptr";
 
     // Build call with env as first argument
@@ -829,7 +829,7 @@ fn gen_array_stores(arr: String, elems: String, count: i64, idx: i64) -> String 
     if idx >= count { "" } else {
         let elem = extract_array_elem(elems, idx);
         let ptr = arr + "_ptr" + int_to_string(idx);
-        let gep = ptr + " = getelementptr [" + int_to_string(count) + " x i64], [" + int_to_string(count) + " x i64]* " + arr + ", i32 0, i32 " + int_to_string(idx);
+        let gep = ptr + " = getelementptr inbounds nuw [" + int_to_string(count) + " x i64], [" + int_to_string(count) + " x i64]* " + arr + ", i32 0, i32 " + int_to_string(idx);
         let store = "store i64 " + elem + ", i64* " + ptr;
         let rest = gen_array_stores(arr, elems, count, idx + 1);
         if rest.len() > 0 { gep + SEP() + store + SEP() + rest } else { gep + SEP() + store }
@@ -886,7 +886,7 @@ fn gen_instr_index_unchecked(dest: String, line: String, pos: i64) -> String =
     let idx = extract_index_expr(line, bracket_pos);
     // Direct GEP + load without bounds check (zero-cost)
     let ptr = dest + "_ptr";
-    let gep = ptr + " = getelementptr i64, i64* " + base + ", i64 " + idx;
+    let gep = ptr + " = getelementptr inbounds nuw i64, i64* " + base + ", i64 " + idx;
     let load = dest + " = load i64, i64* " + ptr;
     gep + SEP() + load;
 
@@ -1032,16 +1032,21 @@ fn gen_label_line(line: String) -> String =
 // ============================================================================
 
 // Generate function header
-// define i64 @add(i64 %a, i64 %b) nounwind mustprogress willreturn {
+// define private i64 @add(i64 %a, i64 %b) nosync nounwind mustprogress willreturn "no-trapping-math"="true" {
 // v0.31.19: Added nounwind attribute for non-main functions
 // v0.90.22: Added mustprogress + willreturn for LLVM loop optimization
+// v0.96.46: nounwind on main, nosync on all, private linkage for non-main, no-trapping-math
 // BMB has no exceptions, so nounwind is always safe and enables better codegen
+// nosync: BMB user functions have no synchronization primitives
 // mustprogress: all functions make forward progress (no infinite loops without side effects)
 // willreturn: all functions eventually return (enables dead code after call elimination)
+// private: enables LLVM to eliminate unused functions and optimize more aggressively
+// no-trapping-math: BMB has no FP trapping behavior
 fn gen_fn_header(name: String, ret_type: String, params: String) -> String =
-    let attrs = if name == "main" { "" } else { " nounwind mustprogress willreturn" };
+    let attrs = if name == "main" { " nosync nounwind \"no-trapping-math\"=\"true\"" } else { " nosync nounwind mustprogress willreturn \"no-trapping-math\"=\"true\"" };
     let ret_attrs = if ret_type == "String" { "noundef nonnull " } else if ret_type == "unit" { "" } else { "noundef " };
-    "define " + ret_attrs + llvm_type(ret_type) + " @" + name + "(" + params + ")" + attrs + " {";
+    let linkage = if name == "main" { "" } else { "private " };
+    linkage + "define " + ret_attrs + llvm_type(ret_type) + " @" + name + "(" + params + ")" + attrs + " {";
 
 // Generate function footer
 fn gen_fn_footer() -> String =
@@ -1353,7 +1358,7 @@ fn gen_method_dispatch(dest: String, recv: String, method: String, args: String)
 // v0.90.72: Inlined — was call @bmb_string_len, now direct struct field access
 fn gen_method_len(dest: String, recv: String) -> String =
     let lp = dest + "_lp";
-    lp + " = getelementptr {ptr, i64, i64}, ptr " + recv + ", i32 0, i32 1" +
+    lp + " = getelementptr inbounds nuw {ptr, i64, i64}, ptr " + recv + ", i32 0, i32 1" +
     SEP() + dest + " = load i64, ptr " + lp;
 
 // v0.30.75: String.byte_at(idx) -> GEP into BmbString struct + load + zext
@@ -1364,9 +1369,9 @@ fn gen_method_byte_at(dest: String, recv: String, args: String) -> String =
     let dp = dest + "_dp";
     let bp = dest + "_bp";
     let b = dest + "_b";
-    dpp + " = getelementptr {ptr, i64, i64}, ptr " + recv + ", i32 0, i32 0" +
+    dpp + " = getelementptr inbounds nuw {ptr, i64, i64}, ptr " + recv + ", i32 0, i32 0" +
     SEP() + dp + " = load ptr, ptr " + dpp +
-    SEP() + bp + " = getelementptr i8, ptr " + dp + ", i64 " + idx +
+    SEP() + bp + " = getelementptr inbounds nuw i8, ptr " + dp + ", i64 " + idx +
     SEP() + b + " = load i8, ptr " + bp +
     SEP() + dest + " = zext i8 " + b + " to i64";
 
@@ -2056,11 +2061,11 @@ fn test_line_detection() -> i64 =
 // v0.10.7 Function Generation Tests (v0.31.19: nounwind for non-main)
 fn test_fn_header() -> i64 =
     let h1 = gen_fn_header("add", "i64", "i64 %a, i64 %b");
-    let t1 = if h1 == "define i64 @add(i64 %a, i64 %b) nounwind {" { 1 } else { 0 };
+    let t1 = if has_pattern(h1, "private define", 0) and has_pattern(h1, "nosync nounwind", 0) and has_pattern(h1, "@add(i64 %a, i64 %b)", 0) { 1 } else { 0 };
     let h2 = gen_fn_header("main", "i64", "");
-    let t2 = if h2 == "define i64 @main() {" { 1 } else { 0 };  // main has no nounwind
+    let t2 = if has_pattern(h2, "define i64 @main()", 0) and has_pattern(h2, "nosync nounwind", 0) { 1 } else { 0 };
     let h3 = gen_fn_header("foo", "bool", "i1 %x");
-    let t3 = if h3 == "define i1 @foo(i1 %x) nounwind {" { 1 } else { 0 };
+    let t3 = if has_pattern(h3, "private define", 0) and has_pattern(h3, "nosync nounwind", 0) { 1 } else { 0 };
     t1 + t2 + t3;
 
 fn test_param_gen() -> i64 =
@@ -2690,11 +2695,11 @@ fn test_method_call_ir() -> i64 =
 
     // Test 6: gen_method_len generates struct GEP to field 1
     let len1 = gen_method_len("%_t1", "%_t0");
-    let t6 = if has_pattern(len1, "getelementptr {ptr, i64, i64}", 0) { 1 } else { 0 };
+    let t6 = if has_pattern(len1, "getelementptr inbounds nuw {ptr, i64, i64}", 0) { 1 } else { 0 };
 
     // Test 7: gen_method_byte_at generates struct GEP for {ptr, i64, i64}
     let ca1 = gen_method_byte_at("%_t2", "%_t0", "%_t1");
-    let t7 = if has_pattern(ca1, "getelementptr {ptr, i64, i64}", 0) { 1 } else { 0 };
+    let t7 = if has_pattern(ca1, "getelementptr inbounds nuw {ptr, i64, i64}", 0) { 1 } else { 0 };
 
     // Test 8: gen_method_byte_at generates zext (not sext)
     let t8 = if has_pattern(ca1, "zext i8", 0) { 1 } else { 0 };
@@ -2881,7 +2886,7 @@ fn test_method_dispatch_edge() -> i64 =
 
     // Test 3: Method dispatch with empty args for len (now inlined)
     let d1 = gen_method_dispatch("%_t2", "%str", "len", "");
-    let t3 = if has_pattern(d1, "getelementptr {ptr, i64, i64}", 0) { 1 } else { 0 };
+    let t3 = if has_pattern(d1, "getelementptr inbounds nuw {ptr, i64, i64}", 0) { 1 } else { 0 };
 
     // Test 4: Method dispatch with single arg for byte_at
     let d2 = gen_method_dispatch("%_t3", "%str", "byte_at", "%idx");

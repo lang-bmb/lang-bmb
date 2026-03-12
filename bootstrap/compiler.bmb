@@ -6081,7 +6081,7 @@ fn llvm_gen_gep(line: String, pos: i64, dest: String) -> String =
     let p2 = low_skip_ws(line, comma + 1);
     let idx = trim_end(line.slice(p2, line.len()));
     let conv = "  " + dest + "_gp = inttoptr i64 " + base + " to ptr";
-    let gep = "  " + dest + " = getelementptr i64, ptr " + dest + "_gp, i64 " + idx;
+    let gep = "  " + dest + " = getelementptr inbounds nuw i64, ptr " + dest + "_gp, i64 " + idx;
     conv + SEP() + gep;
 
 fn llvm_gen_store_ptr_sb(line: String, pos: i64, str_sb: i64) -> String =
@@ -6449,10 +6449,10 @@ fn llvm_gen_call(line: String, pos: i64, dest: String) -> String =
         let str_arg = trim_end(args.slice(0, comma));
         let idx_arg = trim(args.slice(comma + 1, args.len()));
         // v0.95: !invariant.load on string struct loads — BMB strings are immutable
-        "  " + dest + "_str = inttoptr i64 " + str_arg + " to ptr" + SEP() + "  " + dest + "_dpp = getelementptr {ptr, i64, i64}, ptr " + dest + "_str, i32 0, i32 0" + SEP() + "  " + dest + "_dp = load ptr, ptr " + dest + "_dpp, !invariant.load !0" + SEP() + "  " + dest + "_bp = getelementptr i8, ptr " + dest + "_dp, i64 " + idx_arg + SEP() + "  " + dest + "_b = load i8, ptr " + dest + "_bp" + SEP() + "  " + dest + " = zext i8 " + dest + "_b to i64"
+        "  " + dest + "_str = inttoptr i64 " + str_arg + " to ptr" + SEP() + "  " + dest + "_dpp = getelementptr inbounds nuw {ptr, i64, i64}, ptr " + dest + "_str, i32 0, i32 0" + SEP() + "  " + dest + "_dp = load ptr, ptr " + dest + "_dpp, !invariant.load !0" + SEP() + "  " + dest + "_bp = getelementptr inbounds nuw i8, ptr " + dest + "_dp, i64 " + idx_arg + SEP() + "  " + dest + "_b = load i8, ptr " + dest + "_bp" + SEP() + "  " + dest + " = zext i8 " + dest + "_b to i64"
     } else if fn_name == "@bmb_string_len" {
         let str_arg = trim_end(line.slice(paren_pos + 1, close_pos));
-        "  " + dest + "_str = inttoptr i64 " + str_arg + " to ptr" + SEP() + "  " + dest + "_lp = getelementptr {ptr, i64, i64}, ptr " + dest + "_str, i32 0, i32 1" + SEP() + "  " + dest + " = load i64, ptr " + dest + "_lp, !invariant.load !0"
+        "  " + dest + "_str = inttoptr i64 " + str_arg + " to ptr" + SEP() + "  " + dest + "_lp = getelementptr inbounds nuw {ptr, i64, i64}, ptr " + dest + "_str, i32 0, i32 1" + SEP() + "  " + dest + " = load i64, ptr " + dest + "_lp, !invariant.load !0"
     } else if fn_name == "@popcount" {
         // v0.96: LLVM intrinsic — single POPCNT instruction
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
@@ -6687,10 +6687,10 @@ fn llvm_gen_call_reg(line: String, pos: i64, dest: String, registry: String) -> 
         let str_arg = trim_end(args.slice(0, comma));
         let idx_arg = trim(args.slice(comma + 1, args.len()));
         // v0.95: !invariant.load on string struct loads — BMB strings are immutable
-        "  " + dest + "_str = inttoptr i64 " + str_arg + " to ptr" + SEP() + "  " + dest + "_dpp = getelementptr {ptr, i64, i64}, ptr " + dest + "_str, i32 0, i32 0" + SEP() + "  " + dest + "_dp = load ptr, ptr " + dest + "_dpp, !invariant.load !0" + SEP() + "  " + dest + "_bp = getelementptr i8, ptr " + dest + "_dp, i64 " + idx_arg + SEP() + "  " + dest + "_b = load i8, ptr " + dest + "_bp" + SEP() + "  " + dest + " = zext i8 " + dest + "_b to i64"
+        "  " + dest + "_str = inttoptr i64 " + str_arg + " to ptr" + SEP() + "  " + dest + "_dpp = getelementptr inbounds nuw {ptr, i64, i64}, ptr " + dest + "_str, i32 0, i32 0" + SEP() + "  " + dest + "_dp = load ptr, ptr " + dest + "_dpp, !invariant.load !0" + SEP() + "  " + dest + "_bp = getelementptr inbounds nuw i8, ptr " + dest + "_dp, i64 " + idx_arg + SEP() + "  " + dest + "_b = load i8, ptr " + dest + "_bp" + SEP() + "  " + dest + " = zext i8 " + dest + "_b to i64"
     } else if fn_name == "@bmb_string_len" {
         let str_arg = trim_end(line.slice(paren_pos + 1, close_pos));
-        "  " + dest + "_str = inttoptr i64 " + str_arg + " to ptr" + SEP() + "  " + dest + "_lp = getelementptr {ptr, i64, i64}, ptr " + dest + "_str, i32 0, i32 1" + SEP() + "  " + dest + " = load i64, ptr " + dest + "_lp, !invariant.load !0"
+        "  " + dest + "_str = inttoptr i64 " + str_arg + " to ptr" + SEP() + "  " + dest + "_lp = getelementptr inbounds nuw {ptr, i64, i64}, ptr " + dest + "_str, i32 0, i32 1" + SEP() + "  " + dest + " = load i64, ptr " + dest + "_lp, !invariant.load !0"
     } else if fn_name == "@popcount" {
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = call i64 @llvm.ctpop.i64(i64 " + arg + ")"
@@ -12714,8 +12714,8 @@ fn llvm_gen_fn_header(line: String, pos: i64) -> String =
     // v0.95: i32 return type support
     let llvm_ret = if ret_type == "f64" { "double" } else if ret_type == "i32" { "i32" } else { "i64" };
     let emitted_name = if fn_name == "main" { "bmb_user_main" } else { fn_name };
-    // v0.96.46: main gets nounwind norecurse; non-main gets full attrs
-    let base_attrs = if fn_name == "main" { " norecurse nounwind mustprogress \"no-trapping-math\"=\"true\" uwtable" } else { " mustprogress nounwind willreturn nosync \"no-trapping-math\"=\"true\" uwtable" };
+    // v0.96.46: main (bmb_user_main) gets alwaysinline so opt inlines it into the @main wrapper
+    let base_attrs = if fn_name == "main" { " alwaysinline norecurse nosync nounwind mustprogress \"no-trapping-math\"=\"true\" uwtable" } else { " mustprogress nounwind willreturn nosync \"no-trapping-math\"=\"true\" uwtable" };
     let pure_attrs = if ann == "pure" or ann == "const" { " memory(none) nofree" } else { "" };
     let inline_attrs = if ann == "inline" { " alwaysinline" } else { "" };
     let attrs = base_attrs + pure_attrs + inline_attrs;
@@ -12805,15 +12805,15 @@ fn gen_runtime_decls() -> String =
     "declare noalias ptr @bmb_array_slice(ptr nocapture readonly, i64, i64) nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @bmb_array_len(ptr nocapture readonly) nofree nosync nounwind willreturn memory(argmem: read) speculatable" + SEP() +
     // String operations
-    "declare noalias ptr @bmb_string_new(ptr nocapture readonly, i64) nofree nosync nounwind willreturn" + SEP() +
-    "declare noalias ptr @bmb_string_from_cstr(ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_string_new(ptr nocapture readonly, i64) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_string_from_cstr(ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @bmb_string_len(ptr nocapture readonly) nofree nosync nounwind willreturn memory(argmem: read) speculatable" + SEP() +
     "declare i64 @bmb_string_char_at(ptr nocapture readonly, i64) nofree nosync nounwind willreturn memory(argmem: read) speculatable" + SEP() +
-    "declare noalias ptr @bmb_string_slice(ptr nocapture readonly, i64, i64) nofree nosync nounwind willreturn" + SEP() +
-    "declare noalias ptr @bmb_string_concat(ptr nocapture readonly, ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
-    "declare noalias ptr @bmb_string_concat3(ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
-    "declare noalias ptr @bmb_string_concat5(ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
-    "declare noalias ptr @bmb_string_concat7(ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_string_slice(ptr nocapture readonly, i64, i64) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_string_concat(ptr nocapture readonly, ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_string_concat3(ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_string_concat5(ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_string_concat7(ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @bmb_string_eq(ptr nocapture readonly, ptr nocapture readonly) nofree nosync nounwind willreturn memory(argmem: read)" + SEP() +
     "declare i64 @bmb_string_cmp(ptr nocapture readonly, ptr nocapture readonly) nofree nosync nounwind willreturn memory(argmem: read)" + SEP() +
     "declare i64 @bmb_string_hash(ptr nocapture readonly) nofree nosync nounwind willreturn memory(argmem: read) speculatable" + SEP() +
@@ -12821,27 +12821,27 @@ fn gen_runtime_decls() -> String =
     "declare i64 @bmb_string_ends_with(ptr nocapture readonly, ptr nocapture readonly) nofree nosync nounwind willreturn memory(argmem: read) speculatable" + SEP() +
     "declare i64 @bmb_string_contains(ptr nocapture readonly, ptr nocapture readonly) nofree nosync nounwind willreturn memory(argmem: read) speculatable" + SEP() +
     "declare i64 @bmb_string_index_of(ptr nocapture readonly, ptr nocapture readonly) nofree nosync nounwind willreturn memory(argmem: read) speculatable" + SEP() +
-    "declare noalias ptr @bmb_string_trim(ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
-    "declare noalias ptr @bmb_string_replace(ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
-    "declare noalias ptr @bmb_string_to_upper(ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
-    "declare noalias ptr @bmb_string_to_lower(ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
-    "declare noalias ptr @bmb_string_repeat(ptr nocapture readonly, i64) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_string_trim(ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_string_replace(ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_string_to_upper(ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_string_to_lower(ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_string_repeat(ptr nocapture readonly, i64) nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @bmb_string_is_empty(ptr nocapture readonly) nofree nosync nounwind willreturn memory(argmem: read) speculatable" + SEP() +
     "declare i64 @bmb_string_count(ptr nocapture readonly, ptr nocapture readonly) nofree nosync nounwind willreturn memory(argmem: read)" + SEP() +
-    "declare noalias ptr @bmb_string_reverse(ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
-    "declare noalias ptr @bmb_string_pad_left(ptr nocapture readonly, i64, i64) nofree nosync nounwind willreturn" + SEP() +
-    "declare noalias ptr @bmb_string_pad_right(ptr nocapture readonly, i64, i64) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_string_reverse(ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_string_pad_left(ptr nocapture readonly, i64, i64) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_string_pad_right(ptr nocapture readonly, i64, i64) nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @bmb_string_last_index_of(ptr nocapture readonly, ptr nocapture readonly) nofree nosync nounwind willreturn memory(argmem: read)" + SEP() +
-    "declare noalias ptr @bmb_chr(i64) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_chr(i64) nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @bmb_ord(ptr nocapture readonly) nofree nosync nounwind willreturn memory(argmem: read)" + SEP() +
-    "declare noalias ptr @bmb_int_to_string(i64) nofree nosync nounwind willreturn" + SEP() +
-    "declare noalias ptr @bmb_f64_to_string(double) nofree nosync nounwind willreturn" + SEP() +
-    "declare noalias ptr @bmb_to_hex(i64) nofree nosync nounwind willreturn" + SEP() +
-    "declare noalias ptr @bmb_to_binary(i64) nofree nosync nounwind willreturn" + SEP() +
-    "declare noalias ptr @bmb_to_octal(i64) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_int_to_string(i64) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_f64_to_string(double) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_to_hex(i64) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_to_binary(i64) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_to_octal(i64) nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @bmb_parse_int(ptr nocapture readonly) nofree nosync nounwind willreturn memory(argmem: read)" + SEP() +
     "declare double @bmb_parse_f64(ptr nocapture readonly) nofree nosync nounwind willreturn memory(argmem: read)" + SEP() +
-    "declare noalias ptr @bmb_fast_i2s(i64) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_fast_i2s(i64) nofree nosync nounwind willreturn" + SEP() +
     // File I/O
     "declare i64 @bmb_file_exists(ptr nocapture readonly) nofree nounwind willreturn" + SEP() +
     "declare i64 @bmb_file_size(ptr nocapture readonly) nofree nounwind willreturn" + SEP() +
@@ -12851,7 +12851,7 @@ fn gen_runtime_decls() -> String =
     "declare i64 @llvm.sadd.sat.i64(i64, i64)" + SEP() +
     "declare i64 @llvm.ssub.sat.i64(i64, i64)" + SEP() +
     "declare {i64, i1} @llvm.smul.with.overflow.i64(i64, i64)" + SEP() +
-    "declare noalias ptr @bmb_read_file(ptr nocapture readonly) nofree nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_read_file(ptr nocapture readonly) nofree nounwind willreturn" + SEP() +
     "declare i64 @bmb_write_file(ptr nocapture readonly, ptr nocapture readonly) nofree nounwind willreturn" + SEP() +
     "declare i64 @bmb_append_file(ptr nocapture readonly, ptr nocapture readonly) nofree nounwind willreturn" + SEP() +
     "declare i64 @write_file_newlines(ptr nocapture readonly, ptr nocapture readonly) nofree nounwind willreturn" + SEP() +
@@ -12863,7 +12863,7 @@ fn gen_runtime_decls() -> String =
     "declare i64 @bmb_sb_push_char(i64, i64) nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @bmb_sb_push_escaped(i64, ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @bmb_sb_len(i64) nofree nosync nounwind willreturn memory(read)" + SEP() +
-    "declare noalias ptr @bmb_sb_build(i64) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_sb_build(i64) nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @bmb_sb_clear(i64) nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @bmb_sb_contains(i64, ptr nocapture readonly) nofree nosync nounwind willreturn memory(read)" + SEP() +
     "declare i64 @bmb_system(ptr nocapture readonly)" + SEP() +
@@ -12872,9 +12872,9 @@ fn gen_runtime_decls() -> String =
     "declare void @bmb_sleep_ms(i64) nofree nounwind willreturn" + SEP() +
     "declare i64 @bmb_random_i64() nofree nosync nounwind willreturn" + SEP() +
     "declare void @bmb_random_seed(i64) nofree nosync nounwind willreturn" + SEP() +
-    "declare noalias ptr @bmb_getenv(ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_getenv(ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
     "declare noalias ptr @bmb_system_capture(ptr nocapture readonly)" + SEP() +
-    "declare noalias ptr @bmb_read_line() nofree nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_read_line() nofree nounwind willreturn" + SEP() +
     "declare i64 @bmb_string_free(ptr) nosync nounwind willreturn" + SEP() +
     "declare i64 @bmb_sb_free(i64) nosync nounwind willreturn" + SEP() +
     "declare i64 @bmb_arena_mode(i64) nofree nosync nounwind willreturn" + SEP() +
@@ -12908,14 +12908,14 @@ fn gen_runtime_decls() -> String =
     "declare void @store_i64(ptr, i64, i64) nofree nosync nounwind willreturn memory(argmem: write)" + SEP() +
     "declare i64 @load_i64(ptr, i64) nofree nosync nounwind willreturn memory(argmem: read)" + SEP() +
     "declare i64 @char_at(ptr nocapture readonly, i64) nofree nosync nounwind willreturn memory(argmem: read)" + SEP() +
-    "declare noalias ptr @hashmap_new() nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @hashmap_new() nofree nosync nounwind willreturn" + SEP() +
     "declare void @hashmap_insert(ptr, ptr nocapture readonly, i64) nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @hashmap_get(ptr, ptr nocapture readonly) nofree nosync nounwind willreturn memory(argmem: read)" + SEP() +
     "declare void @hashmap_free(ptr) nosync nounwind willreturn" + SEP() +
     "declare i64 @hashmap_remove(ptr, ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @hashmap_contains(ptr, ptr nocapture readonly) nofree nosync nounwind willreturn memory(argmem: read)" + SEP() +
     "declare i64 @hashmap_len(ptr) nofree nosync nounwind willreturn memory(argmem: read)" + SEP() +
-    "declare noalias ptr @str_hashmap_new() nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @str_hashmap_new() nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @str_hashmap_insert(ptr, ptr nocapture readonly, i64) nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @str_hashmap_get(ptr, ptr nocapture readonly) nofree nosync nounwind willreturn memory(argmem: read)" + SEP() +
     "declare void @str_hashmap_free(ptr) nosync nounwind willreturn" + SEP() +
@@ -12925,7 +12925,7 @@ fn gen_runtime_decls() -> String =
     "declare i64 @str_hashmap_keys(ptr) nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @str_hashmap_values(ptr) nofree nosync nounwind willreturn" + SEP() +
     "declare noalias ptr @reg_cached_lookup(ptr, ptr nocapture readonly, i64) nofree nosync nounwind willreturn" + SEP() +
-    "declare noalias ptr @vec_new() nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @vec_new() nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @vec_push(ptr, i64) nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @vec_get(ptr, i64) nofree nosync nounwind willreturn memory(argmem: read)" + SEP() +
     "declare void @vec_set(ptr, i64, i64) nofree nosync nounwind willreturn memory(argmem: readwrite)" + SEP() +
@@ -12936,7 +12936,7 @@ fn gen_runtime_decls() -> String =
     "declare i64 @vec_index_of(ptr, i64) nofree nosync nounwind willreturn memory(argmem: read)" + SEP() +
     "declare void @vec_swap(ptr, i64, i64) nofree nosync nounwind willreturn memory(argmem: readwrite)" + SEP() +
     "declare void @vec_sort(ptr) nofree nosync nounwind willreturn memory(argmem: readwrite)" + SEP() +
-    "declare noalias ptr @vec_with_capacity(i64) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @vec_with_capacity(i64) nofree nosync nounwind willreturn" + SEP() +
     "declare void @vec_clear(ptr) nofree nosync nounwind willreturn memory(argmem: readwrite)" + SEP() +
     "declare i64 @sb_println(i64) nofree nounwind willreturn" + SEP() +
     "declare i64 @sb_with_capacity(i64) nofree nosync nounwind willreturn" + SEP() +
@@ -12950,13 +12950,13 @@ fn gen_runtime_decls() -> String =
     "declare i64 @bmb_f64_is_nan(double) nofree nosync nounwind willreturn memory(none) speculatable" + SEP() +
     "declare i64 @bmb_f64_to_int(double) nofree nosync nounwind willreturn memory(none) speculatable" + SEP() +
     "declare i64 @bmb_delete_file(ptr) nofree nounwind willreturn" + SEP() +
-    "declare noalias ptr @bmb_getcwd() nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_getcwd() nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @vec_pop(ptr) nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @vec_cap(ptr) nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @bmb_time_ns() nofree nounwind willreturn" + SEP() +
     "declare noalias ptr @bmb_exec_output(ptr, ptr) nofree nounwind willreturn" + SEP() +
     "declare i64 @bmb_string_split(ptr, ptr) nofree nosync nounwind willreturn" + SEP() +
-    "declare noalias ptr @bmb_string_join(i64, ptr) nofree nosync nounwind willreturn" + SEP() +
+    "declare noalias nonnull ptr @bmb_string_join(i64, ptr) nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @bmb_sb_push_f64(i64, double) nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @bmb_sb_push_hex(i64, i64) nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @bmb_sb_push_bool(i64, i64) nofree nosync nounwind willreturn" + SEP() +
@@ -13924,7 +13924,7 @@ fn llvm_gen_add_struct_aware(line: String, pos: i64, dest: String, mapping: Stri
         // Struct pointer arithmetic: emit GEP with struct type for proper scaling
         let struct_type = build_struct_gep_type(struct_reg, left_struct);
         let conv = "  " + left + "_p0 = inttoptr i64 " + left + " to ptr";
-        let gep = "  " + dest + "_gep = getelementptr " + struct_type + ", ptr " + left + "_p0, i64 " + right;
+        let gep = "  " + dest + "_gep = getelementptr inbounds nuw " + struct_type + ", ptr " + left + "_p0, i64 " + right;
         let to_int = "  " + dest + " = ptrtoint ptr " + dest + "_gep to i64";
         // Propagate struct pointer type to dest
         let _w = push_ptr_marker(ptr_sb, dest, left_struct);
@@ -14045,7 +14045,7 @@ fn llvm_gen_closure_new_sb(line: String, pos: i64, dest: String, mapping: String
     // 3. Store fn pointer at offset 0
     let w3 = sb_push(csb, SEP() + "  store i64 " + dest + "_fn, ptr " + dest + "_env");
     // 4. Store count at offset 1
-    let w4 = sb_push(csb, SEP() + "  " + dest + "_cnp = getelementptr i64, ptr " + dest + "_env, i32 1");
+    let w4 = sb_push(csb, SEP() + "  " + dest + "_cnp = getelementptr inbounds nuw i64, ptr " + dest + "_env, i32 1");
     let w5 = sb_push(csb, SEP() + "  store i64 " + int_to_string(cap_count) + ", ptr " + dest + "_cnp");
     // 5. Store each capture
     let caps_start = if comma2 >= line.len() { line.len() } else { comma2 + 1 };
@@ -14070,7 +14070,7 @@ fn gen_closure_cap_stores(line: String, pos: i64, dest: String, mapping: String,
             val_tmp
         } else { resolved };
         let offset = idx + 2;
-        let w1 = sb_push(csb, SEP() + "  " + dest + "_cp" + int_to_string(idx) + " = getelementptr i64, ptr " + dest + "_env, i32 " + int_to_string(offset));
+        let w1 = sb_push(csb, SEP() + "  " + dest + "_cp" + int_to_string(idx) + " = getelementptr inbounds nuw i64, ptr " + dest + "_env, i32 " + int_to_string(offset));
         let w2 = sb_push(csb, SEP() + "  store i64 " + cap_val + ", ptr " + dest + "_cp" + int_to_string(idx));
         let next_pos = if comma >= line.len() { line.len() } else { comma + 1 };
         gen_closure_cap_stores(line, next_pos, dest, mapping, csb, idx + 1, count)
@@ -14087,7 +14087,7 @@ fn llvm_gen_closure_load(line: String, pos: i64, dest: String) -> String =
     let offset = idx + 2;
     let ptr_tmp = dest + "_p";
     let gep_tmp = dest + "_g";
-    "  " + ptr_tmp + " = inttoptr i64 " + closure_var + " to ptr" + SEP() + "  " + gep_tmp + " = getelementptr i64, ptr " + ptr_tmp + ", i32 " + int_to_string(offset) + SEP() + "  " + dest + " = load i64, ptr " + gep_tmp;
+    "  " + ptr_tmp + " = inttoptr i64 " + closure_var + " to ptr" + SEP() + "  " + gep_tmp + " = getelementptr inbounds nuw i64, ptr " + ptr_tmp + ", i32 " + int_to_string(offset) + SEP() + "  " + dest + " = load i64, ptr " + gep_tmp;
 
 fn find_fn_name_end(line: String, pos: i64) -> i64 =
     if pos >= line.len() { pos }
@@ -14139,7 +14139,7 @@ fn llvm_gen_field_access(line: String, pos: i64, dest: String, struct_reg: Strin
     let _pm = if field_ptr != "" { push_ptr_marker(ptr_sb, dest, field_ptr) } else { 0 };
     let ptr_name = dest + "_ptr";
     let conv = "  " + base + "_p = inttoptr i64 " + base + " to ptr";
-    let gep_line = "  " + ptr_name + " = getelementptr i64, ptr " + base + "_p, i32 " + i2s(field_idx);
+    let gep_line = "  " + ptr_name + " = getelementptr inbounds nuw i64, ptr " + base + "_p, i32 " + i2s(field_idx);
     let load_line = "  " + dest + " = load " + load_type + ", ptr " + ptr_name;
     same_mapping(conv + SEP() + gep_line + SEP() + load_line);
 
@@ -14254,7 +14254,7 @@ fn llvm_gen_field_store(line: String, pos: i64, struct_reg: String, str_sb: i64)
     let field_idx = lookup_field_by_name(struct_reg, field);
     let prefix = base + "_fs" + i2s(field_idx);
     let conv = "  " + prefix + "_p = inttoptr i64 " + base + " to ptr";
-    let gep_line = "  " + prefix + "_ptr = getelementptr i64, ptr " + prefix + "_p, i32 " + i2s(field_idx);
+    let gep_line = "  " + prefix + "_ptr = getelementptr inbounds nuw i64, ptr " + prefix + "_p, i32 " + i2s(field_idx);
     let is_dbl_val = is_double_var_sb(value, str_sb);
     let is_dbl_field = is_field_f64(struct_reg, field);
     let is_dbl = if is_dbl_val { 1 } else { is_dbl_field };
@@ -16087,7 +16087,11 @@ fn compile_program(source: String, safe: i64) -> String =
             // v0.96.14: Tail call annotation for self-recursive functions
             let tail_ir = annotate_tailcalls(cont_ir);
             // v0.96.24: Prune unused runtime declarations
-            prune_unused_decls(tail_ir)
+            let pruned_ir = prune_unused_decls(tail_ir);
+            // v0.96.46: Append inline main() wrapper — eliminates call overhead
+            // Runtime's weak main() won't be extracted from .a archives on Windows
+            // This non-weak main() ensures proper linking with runtime .o files
+            pruned_ir + DSEP() + "; v0.96.46: Inline main wrapper with runtime init" + SEP() + "declare void @bmb_init_runtime(i32, i8**)" + SEP() + "declare void @bmb_arena_destroy()" + SEP() + "define i32 @main(i32 %argc, i8** %argv) nounwind {" + SEP() + "  call void @bmb_init_runtime(i32 %argc, i8** %argv)" + SEP() + "  %r = call i64 @bmb_user_main()" + SEP() + "  call void @bmb_arena_destroy()" + SEP() + "  %rv = trunc i64 %r to i32" + SEP() + "  ret i32 %rv" + SEP() + "}"
         }
     };
 

@@ -63,8 +63,8 @@ ensure_runtime() {
     if [ ! -f "$RUNTIME_DIR/libbmb_runtime.a" ]; then
         echo -e "${YELLOW}Building runtime library...${NC}"
         (cd "$RUNTIME_DIR" && \
-            $LINKER -c -O2 bmb_runtime.c -o bmb_runtime.o && \
-            $LINKER -c -O2 bmb_event_loop.c -o bmb_event_loop.o && \
+            $LINKER -c -O2 -ffunction-sections -fdata-sections bmb_runtime.c -o bmb_runtime.o && \
+            $LINKER -c -O2 -ffunction-sections -fdata-sections bmb_event_loop.c -o bmb_event_loop.o && \
             ar rcs libbmb_runtime.a bmb_runtime.o bmb_event_loop.o)
     fi
 }

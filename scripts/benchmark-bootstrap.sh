@@ -176,10 +176,10 @@ build_with_bootstrap() {
     local runtime_obj="${RUNTIME_PATH}/bmb_runtime.o"
     local event_loop_obj="${RUNTIME_PATH}/bmb_event_loop.o"
     if [ ! -f "$runtime_obj" ]; then
-        gcc -c -O2 -o "$runtime_obj" "${RUNTIME_PATH}/bmb_runtime.c" > /dev/null 2>&1 || true
+        gcc -c -O2 -ffunction-sections -fdata-sections -o "$runtime_obj" "${RUNTIME_PATH}/bmb_runtime.c" > /dev/null 2>&1 || true
     fi
     if [ ! -f "$event_loop_obj" ]; then
-        gcc -c -O2 -o "$event_loop_obj" "${RUNTIME_PATH}/bmb_event_loop.c" > /dev/null 2>&1 || true
+        gcc -c -O2 -ffunction-sections -fdata-sections -o "$event_loop_obj" "${RUNTIME_PATH}/bmb_event_loop.c" > /dev/null 2>&1 || true
     fi
 
     # Windows requires -lws2_32 for socket functions in event loop
