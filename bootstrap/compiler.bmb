@@ -16091,7 +16091,7 @@ fn compile_program(source: String, safe: i64) -> String =
             // v0.96.46: Append inline main() wrapper — eliminates call overhead
             // Runtime's weak main() won't be extracted from .a archives on Windows
             // This non-weak main() ensures proper linking with runtime .o files
-            pruned_ir + DSEP() + "; v0.96.46: Inline main wrapper with runtime init" + SEP() + "declare void @bmb_init_runtime(i32, i8**)" + SEP() + "declare void @bmb_arena_destroy()" + SEP() + "define i32 @main(i32 %argc, i8** %argv) nounwind {" + SEP() + "  call void @bmb_init_runtime(i32 %argc, i8** %argv)" + SEP() + "  %r = call i64 @bmb_user_main()" + SEP() + "  call void @bmb_arena_destroy()" + SEP() + "  %rv = trunc i64 %r to i32" + SEP() + "  ret i32 %rv" + SEP() + "}"
+            pruned_ir + DSEP() + "; v0.96.46: Inline main wrapper with runtime init" + SEP() + "declare void @bmb_init_runtime(i32, i8**)" + SEP() + "declare void @bmb_arena_destroy()" + SEP() + "define noundef i32 @main(i32 %argc, i8** %argv) nounwind uwtable \"no-trapping-math\"=\"true\" {" + SEP() + "  call void @bmb_init_runtime(i32 %argc, i8** %argv)" + SEP() + "  %r = call i64 @bmb_user_main()" + SEP() + "  call void @bmb_arena_destroy()" + SEP() + "  %rv = trunc i64 %r to i32" + SEP() + "  ret i32 %rv" + SEP() + "}"
         }
     };
 

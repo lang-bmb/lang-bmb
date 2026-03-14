@@ -778,7 +778,7 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
                 ; v0.96.46: Inline main with runtime init\n\
                 declare void @bmb_init_runtime(i32, ptr)\n\
                 declare void @bmb_arena_destroy()\n\
-                define i32 @main(i32 %argc, ptr %argv) {{\n\
+                define noundef i32 @main(i32 %argc, ptr %argv) nounwind uwtable \"no-trapping-math\"=\"true\" {{\n\
                   call void @bmb_init_runtime(i32 %argc, ptr %argv)\n\
                   call void @bmb_user_main()\n\
                   call void @bmb_arena_destroy()\n\

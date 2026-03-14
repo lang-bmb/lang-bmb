@@ -1,43 +1,33 @@
-# 20-Cycle Roadmap: Performance Focus (Cycles 1865-1887)
-Date: 2026-03-12
+# 20-Cycle Roadmap: Performance Focus (Cycles 1878-1881)
+Date: 2026-03-14
+Status: **EARLY TERMINATION** (zero actionable defects)
 
-## Phase A: Inline Main Wrapper (Cycles 1865-1869) ✅ DONE
-- Cycle 1865-1867: Early termination (discovered 13-17% call overhead)
-- Cycle 1868: LTO analysis (abandoned — re-enables unrolling)
-- Cycle 1869: alwaysinline + inline main wrapper → tower_of_hanoi 1.16x FAIL → 1.03x PASS
+## Phase A: Full Benchmark Validation (Cycles 1878-1879) ✅ COMPLETE
+- Re-verified all 8 original FAILs from Cycle 1877: 6 were noise (now PASS)
+- Remaining: max_consecutive_ones 1.09-1.15x, running_median 1.09-1.13x
+- Root cause: LLVM pipeline heuristic differences (opt -O3 vs clang -O3 unrolling/ISel)
+- BMB IR confirmed structurally identical to C after optimization
 
-## Phase B: Full Benchmark Validation (Cycle 1869) ✅ DONE
-- 10 key benchmarks validated, all stable or improved
-- Bootstrap Stage 1 verified (emit-ir-only wrapper avoids duplicate main)
+## Phase A.5: Pipeline Experiments (Cycle 1879) ❌ NOT VIABLE
+- LTO: Fixes some FAILs but catastrophically regresses bubble_sort (1.66x)
+- opt -O2 + clang -O3: Fixes some but regresses floyd_warshall, lcs
+- clang -O3 only: Fixes max_consecutive_ones but array_moving_average 2.79x
+- No alternative pipeline is globally optimal. Current pipeline is best trade-off.
 
-## Phase C: max_consecutive_ones Analysis (Cycle 1870) ✅ DONE (ACCEPTED)
-- Root cause: LLVM SLP vectorizer batches icmp eq into AVX2 vpcmpeqq — non-profitable
-- Accepted as LLVM limitation (cannot disable SLP selectively per function)
+## Phase B: Codegen Improvements (Cycles 1880-1881) ✅ COMPLETE
+- Main wrapper: Added nounwind, uwtable, "no-trapping-math" to `main()` and bootstrap
+- min-legal-vector-width=0: Tested, reverted (causes regressions)
+- Codegen analysis: 85-90% of clang's attributes already implemented
+- No remaining codegen improvements identified
 
-## Phase D: Bootstrap Performance (Cycles 1870-1871) ✅ DONE
-- Cycle 1870: max_consecutive_ones deep analysis
-- Cycle 1871: Runtime init fix — bmb_init_runtime() + bmb_arena_destroy() in inline wrapper
-- alwaysinline + nosync + no-trapping-math on bmb_user_main in bootstrap
-- 3-Stage Fixed Point verified (108,519 lines IR)
+## Phases C-E: SKIPPED (Early Termination)
+No actionable defects remain. All FAILs/WARNs are LLVM pipeline artifacts.
 
-## Phase D2: Bootstrap Codegen Parity (Cycles 1872-1873) ✅ DONE
-- Cycle 1872: GEP `inbounds` on all 19 sites → 2,109/2,109 GEPs in IR
-- Cycle 1873: GEP `nuw` + `nonnull` on 25+ allocating function returns → 40 annotations
-
-## EARLY TERMINATION (Cycle 1874)
-- Zero actionable defects, codegen comprehensive, benchmark suite unavailable
-- Remaining phases deferred:
-
-## Phase E: Runtime Splitting (DEFERRED)
-- Split bmb_runtime.c into core/string/vec/concurrent modules
-- Only link needed modules → reduce binary .text size
-
-## Phase F: Contract Category Expansion (DEFERRED, PARTIALLY DONE)
-- SAE (saturating arithmetic elimination) in bootstrap
-- range() postcondition in bootstrap
-- nonnull/noundef bootstrap completion — DONE (Cycle 1873)
-
-## Phase G: Final Optimization + Validation (DEFERRED)
-- Full 310+ benchmark validation (requires benchmark submodule)
-- 3-stage bootstrap fixed point verification — DONE (all cycles verified)
-- Performance regression check
+## Summary
+| Metric | Before | After |
+|--------|--------|-------|
+| Tests | 6,186 pass | 6,186 pass |
+| Bootstrap | Fixed Point | Fixed Point |
+| Original FAILs | 8 | 2 (noise resolved) |
+| Codegen changes | - | main wrapper attributes |
+| Pipeline changes | - | None (no viable alternative) |

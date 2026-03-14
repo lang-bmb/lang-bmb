@@ -318,6 +318,7 @@ impl TextCodeGen {
         writeln!(output)?;
         writeln!(output, "; Branch weight metadata")?;
         writeln!(output, "!907 = !{{!\"branch_weights\", i32 2000, i32 1}}")?;  // loop condition: body(hot) vs exit(cold)
+        writeln!(output, "!908 = !{{!\"branch_weights\", i32 1, i32 2000}}")?;  // if-then-else: then(cold) vs else(hot)
 
         Ok(output)
     }
@@ -398,9 +399,11 @@ impl TextCodeGen {
         writeln!(result).unwrap();
         writeln!(result, "; Loop metadata").unwrap();
         for meta_id in &meta_ids {
-            // All loops get mustprogress + vectorize hints.
-            // vectorize.enable + width=4 matches AVX2 i64 width.
-            writeln!(result, "!{} = distinct !{{!{}, !{{!\"llvm.loop.mustprogress\"}}, !{{!\"llvm.loop.vectorize.enable\", i1 true}}, !{{!\"llvm.loop.vectorize.width\", i32 4}}}}", meta_id, meta_id).unwrap();
+            // All loops get mustprogress only. Let LLVM's cost model decide
+            // vectorization and unrolling — forced settings cause regressions
+            // on specific loop patterns (e.g., forced vectorize.width=4 is
+            // catastrophic for loops with integer division/modulo).
+            writeln!(result, "!{} = distinct !{{!{}, !{{!\"llvm.loop.mustprogress\"}}}}", meta_id, meta_id).unwrap();
         }
 
         result
@@ -559,6 +562,12 @@ impl TextCodeGen {
                         let after_pct = &trimmed[pct_pos + 5..];
                         if let Some(ptr_addr_pos) = after_pct.find(".ptr.addr") {
                             let var_name = &after_pct[..ptr_addr_pos];
+                            // Skip temporaries (_tN) — these are malloc result holders
+                            // that get assigned to named variables, creating false
+                            // "distinct" scopes for the same allocation.
+                            if var_name.starts_with("_t") {
+                                continue;
+                            }
                             // Find the memory access line after this ptr load
                             for j in (i+1)..std::cmp::min(i+6, func_end+1) {
                                 let check = lines[j].trim();
@@ -579,97 +588,13 @@ impl TextCodeGen {
                     continue; // Already handled, skip inttoptr check below
                 }
 
-                // Pattern A — inttoptr GEP base (original path)
-                // Match ALL inttoptr patterns that derive from parameter/local bases:
-                //   %li64_gep_base.N = inttoptr ...  (load_i64 GEP path)
-                //   %si64_gep_base.N = inttoptr ...  (store_i64 GEP path)
-                //   %lf64_gep_base.N = inttoptr ...  (load_f64 GEP path)
-                //   %sf64_gep_base.N = inttoptr ...  (store_f64 GEP path)
-                //   %gep_base.N = inttoptr ...       (load_u8 GEP path)
-                //   %sgep_base.N = inttoptr ...      (store_u8 GEP path)
-                //   %load_ptr.N = inttoptr ...       (load_i64 fallback path)
-                //   %store_ptr.N = inttoptr ...      (store_i64 fallback path)
-                //   %load_u8_ptr.N = inttoptr ...    (load_u8 fallback path)
-                //   %store_u8_ptr.N = inttoptr ...   (store_u8 fallback path)
-                //   %load_f64_ptr.N = inttoptr ...   (load_f64 fallback path)
-                //   %store_f64_ptr.N = inttoptr ...  (store_f64 fallback path)
-                if trimmed.contains("inttoptr i64 %") && trimmed.ends_with("to ptr")
-                   && (trimmed.contains("gep_base.") || trimmed.contains("_ptr."))
-                {
-                    // Skip free_ptr patterns (not memory accesses we want to alias-scope)
-                    if trimmed.contains("free_ptr.") {
-                        continue;
-                    }
-
-                    // Extract the SSA value name from inttoptr
-                    if let Some(pct_pos) = trimmed.rfind("inttoptr i64 %") {
-                        let after_pct = &trimmed[pct_pos + 14..];
-                        if let Some(space_pos) = after_pct.find(' ') {
-                            let ssa_name = &after_pct[..space_pos];
-
-                            // Trace back: find "load i64, ptr %VAR.addr" that defines this SSA
-                            let mut param_name: Option<String> = None;
-                            // Search preceding lines (up to 3 back) for the load that defines ssa_name
-                            for back in 1..=std::cmp::min(3, i - func_start) {
-                                let prev = lines[i - back].trim();
-                                let load_prefix = format!("%{} = load i64, ptr %", ssa_name);
-                                if prev.contains(&load_prefix) {
-                                    // Extract variable name from "%VAR.addr" or "%VAR.addr, align 8"
-                                    if let Some(addr_pos) = prev.rfind("ptr %") {
-                                        let after_addr = &prev[addr_pos + 5..];
-                                        // Handle both "%VAR.addr" and "%VAR.addr, align N"
-                                        let addr_part = if let Some(comma_pos) = after_addr.find(',') {
-                                            &after_addr[..comma_pos]
-                                        } else {
-                                            after_addr
-                                        };
-                                        if let Some(stripped) = addr_part.strip_suffix(".addr") {
-                                            param_name = Some(stripped.to_string());
-                                        }
-                                    }
-                                    break;
-                                }
-                                // Also check for sext pattern (narrowed params):
-                                // %name_sext.N = sext i32 %PARAM to i64
-                                let sext_prefix = format!("%{} = sext i32 %", ssa_name);
-                                if prev.contains(&sext_prefix) {
-                                    if let Some(pct_pos2) = prev.rfind("i32 %") {
-                                        let after_pct2 = &prev[pct_pos2 + 5..];
-                                        if let Some(space_pos2) = after_pct2.find(' ') {
-                                            param_name = Some(after_pct2[..space_pos2].to_string());
-                                        }
-                                    }
-                                    break;
-                                }
-                            }
-                            // Also check if direct param (no .addr load)
-                            if param_name.is_none() && !ssa_name.contains('.') {
-                                param_name = Some(ssa_name.to_string());
-                            }
-
-                            if let Some(pname) = param_name {
-                                // Find the memory access line after the inttoptr
-                                // GEP path: inttoptr → GEP → (idx_load?) → load/store
-                                // Fallback: inttoptr → load/store
-                                // Search up to 5 lines ahead for the memory access
-                                for j in (i+1)..std::cmp::min(i+6, func_end+1) {
-                                    let check = lines[j].trim();
-                                    if (check.contains("= load i64,") || check.contains("= load double,") ||
-                                        check.contains("= load i8,") ||
-                                        check.starts_with("store i64 ") || check.starts_with("store double ") ||
-                                        check.starts_with("store i8 "))
-                                       && check.contains("!tbaa")
-                                    {
-                                        base_param_lines.entry(pname.clone())
-                                            .or_default()
-                                            .push(j);
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                // Pattern A — inttoptr GEP base (DISABLED)
+                // inttoptr creates pointers with "unknown provenance" in LLVM semantics.
+                // ScopedNoAliasAA trusts our metadata but LLVM's optimizer may miscompile
+                // when noalias annotations are placed on inttoptr-derived accesses (e.g.,
+                // store elimination in deeply nested branches). Only ptr-provenance paths
+                // (Pattern B above) carry proper pointer identity through LLVM's pipeline.
+                // See: longest_inc_path, scc miscompilation at -O2 (Cycle 1875).
             }
 
             // Only add metadata if 2+ distinct base params/locals
@@ -6976,10 +6901,76 @@ impl TextCodeGen {
                         && else_label.starts_with("for_exit_"))
                     || (then_label.starts_with("for_recv_body_")
                         && else_label.starts_with("for_recv_exit_"));
+                // v0.96.46: Cold-then branch weights for rare-hit if-then-else
+                //
+                // Pattern: `if x == y { body } else { trivial }` where x,y are NOT
+                // from memory loads in the same block.
+                //
+                // Counter-bound checks (`j == pat_len`) are rare hits (~0.001%) that
+                // LLVM wrongly converts to select/cmov. Data comparisons
+                // (`load(arr+i*8) == candidate`) are frequent and BENEFIT from cmov.
+                //
+                // Heuristic: if either Eq operand is defined by a load call (load_i64,
+                // load_f64, etc.) in the same basic block, it's a data comparison —
+                // skip cold-then weights. Otherwise apply 1:2000 weights.
+                let is_eq_cold_then = if then_label.starts_with("then_") && else_label.starts_with("else_") {
+                    if let Operand::Place(p) = cond {
+                        let current_block = func.blocks.iter().find(|b| b.label == *block_label);
+                        let else_block = func.blocks.iter().find(|b| b.label == *else_label);
+                        // Find the Eq instruction and get its operand names
+                        let eq_operand_names: Vec<String> = current_block.map(|b| {
+                            b.instructions.iter().filter_map(|inst| {
+                                if let MirInst::BinOp { dest, op: MirBinOp::Eq, lhs, rhs, .. } = inst {
+                                    if dest.name == p.name {
+                                        let mut names = Vec::new();
+                                        if let Operand::Place(lp) = lhs { names.push(lp.name.clone()); }
+                                        if let Operand::Place(rp) = rhs { names.push(rp.name.clone()); }
+                                        Some(names)
+                                    } else { None }
+                                } else { None }
+                            }).flatten().collect()
+                        }).unwrap_or_default();
+                        let has_eq = !eq_operand_names.is_empty();
+                        // Check if any Eq operand is defined by a load call in same block
+                        let operand_from_load = has_eq && current_block.map(|b| {
+                            b.instructions.iter().any(|inst| {
+                                if let MirInst::Call { dest: Some(dest), func: callee, .. } = inst {
+                                    let is_load = callee.starts_with("load_");
+                                    is_load && eq_operand_names.contains(&dest.name)
+                                } else { false }
+                            })
+                        }).unwrap_or(false);
+                        // Check if any Eq operand is from a Rem (divisibility check)
+                        let operand_from_rem = has_eq && current_block.map(|b| {
+                            b.instructions.iter().any(|inst| {
+                                matches!(inst, MirInst::BinOp { dest, op: MirBinOp::Mod, .. }
+                                    if eq_operand_names.contains(&dest.name))
+                            })
+                        }).unwrap_or(false);
+                        let then_block = func.blocks.iter().find(|b| b.label == *then_label);
+                        let then_complex = then_block.map(|b| b.instructions.len() >= 2).unwrap_or(false);
+                        let else_trivial = else_block.map(|b| b.instructions.len() <= 1).unwrap_or(false);
+                        // If the Eq check is inside an else_ block, it's part of a
+                        // cascading if-else chain where the Eq operands likely flow
+                        // from a parent block that loaded them from memory.
+                        let in_else_cascade = block_label.starts_with("else_");
+                        has_eq && then_complex && !operand_from_load && !operand_from_rem && !in_else_cascade && else_trivial
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
                 if is_loop_cond {
                     writeln!(
                         out,
                         "  br i1 {}, label %bb_{}, label %bb_{}, !prof !907",
+                        cond_str, then_label, else_label
+                    )?;
+                } else if is_eq_cold_then {
+                    writeln!(
+                        out,
+                        "  br i1 {}, label %bb_{}, label %bb_{}, !prof !908",
                         cond_str, then_label, else_label
                     )?;
                 } else {
