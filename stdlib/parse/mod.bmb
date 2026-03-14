@@ -11,9 +11,10 @@
 // - Comma: 44, Colon: 58, Pipe: 124
 // - Paren: 40/41, Bracket: 91/93, Brace: 123/125
 
-use string::char_is_whitespace;
-use string::char_is_digit;
-use string::char_to_string;
+// Inlined from string module (import triggers type-checker bug in starts_with postcondition)
+fn char_is_whitespace(c: i64) -> bool = c == 32 or c == 9 or c == 10 or c == 13;
+fn char_is_digit(c: i64) -> bool = c >= 48 and c <= 57;
+fn char_to_string(c: i64) -> String = chr(c);
 
 // ============================================
 // Whitespace Handling
@@ -24,13 +25,13 @@ use string::char_to_string;
 pub fn skip_ws(s: String, pos: i64) -> i64
   pre pos >= 0
   post ret >= pos and ret <= s.len()
-= if pos >= s.len() { pos } else if s.char_at(pos) == 32 { skip_ws(s, pos + 1) } else { pos };
+= if pos >= s.len() { pos } else if s.byte_at(pos) == 32 { skip_ws(s, pos + 1) } else { pos };
 
 // Skip all whitespace characters (space, tab, newline, CR)
 pub fn skip_all_ws(s: String, pos: i64) -> i64
   pre pos >= 0
   post ret >= pos and ret <= s.len()
-= if pos >= s.len() { pos } else if char_is_whitespace(s.char_at(pos)) { skip_all_ws(s, pos + 1) } else { pos };
+= if pos >= s.len() { pos } else if char_is_whitespace(s.byte_at(pos)) { skip_all_ws(s, pos + 1) } else { pos };
 
 // ============================================
 // Character Search
@@ -41,7 +42,7 @@ pub fn skip_all_ws(s: String, pos: i64) -> i64
 pub fn find_char(s: String, c: i64, pos: i64) -> i64
   pre pos >= 0
   post ret >= pos and ret <= s.len()
-= if pos >= s.len() { pos } else if s.char_at(pos) == c { pos } else { find_char(s, c, pos + 1) };
+= if pos >= s.len() { pos } else if s.byte_at(pos) == c { pos } else { find_char(s, c, pos + 1) };
 
 // Find pipe character (|) from position
 pub fn find_pipe(s: String, pos: i64) -> i64
@@ -85,7 +86,7 @@ pub fn starts_with_at(s: String, prefix: String, pos: i64) -> bool
 fn starts_with_at_impl(s: String, prefix: String, pos: i64, i: i64) -> bool =
     if i >= prefix.len() { true }
     else if pos + i >= s.len() { false }
-    else if s.char_at(pos + i) != prefix.char_at(i) { false }
+    else if s.byte_at(pos + i) != prefix.byte_at(i) { false }
     else { starts_with_at_impl(s, prefix, pos, i + 1) };
 
 // ============================================
@@ -101,7 +102,7 @@ pub fn read_until_ws(s: String, pos: i64) -> String
 fn read_until_ws_acc(s: String, pos: i64, acc: String) -> String =
     if pos >= s.len() { acc }
     else {
-        let c = s.char_at(pos);
+        let c = s.byte_at(pos);
         if c == 32 or c == 44 or c == 40 or c == 41 or c == 124 { acc }
         else { read_until_ws_acc(s, pos + 1, acc + char_to_string(c)) }
     };
@@ -113,8 +114,8 @@ pub fn read_until_char(s: String, pos: i64, c: i64) -> String
 
 fn read_until_char_acc(s: String, pos: i64, c: i64, acc: String) -> String =
     if pos >= s.len() { acc }
-    else if s.char_at(pos) == c { acc }
-    else { read_until_char_acc(s, pos + 1, c, acc + char_to_string(s.char_at(pos))) };
+    else if s.byte_at(pos) == c { acc }
+    else { read_until_char_acc(s, pos + 1, c, acc + char_to_string(s.byte_at(pos))) };
 
 // Read identifier (alphanumeric + underscore)
 pub fn read_ident(s: String, pos: i64) -> String
@@ -124,7 +125,7 @@ pub fn read_ident(s: String, pos: i64) -> String
 fn read_ident_acc(s: String, pos: i64, acc: String) -> String =
     if pos >= s.len() { acc }
     else {
-        let c = s.char_at(pos);
+        let c = s.byte_at(pos);
         if is_ident_char(c) { read_ident_acc(s, pos + 1, acc + char_to_string(c)) }
         else { acc }
     };
@@ -149,7 +150,7 @@ pub fn parse_int_at(s: String, pos: i64) -> i64
 fn parse_int_at_acc(s: String, pos: i64, acc: i64) -> i64 =
     if pos >= s.len() { acc }
     else {
-        let c = s.char_at(pos);
+        let c = s.byte_at(pos);
         if char_is_digit(c) { parse_int_at_acc(s, pos + 1, acc * 10 + (c - 48)) }
         else { acc }
     };
@@ -161,12 +162,12 @@ fn parse_int_at_acc(s: String, pos: i64, acc: i64) -> i64 =
 // Remove trailing colon from string
 pub fn strip_trailing_colon(s: String) -> String
 = if s.len() == 0 { "" }
-  else if s.char_at(s.len() - 1) == 58 { s.slice(0, s.len() - 1) }
+  else if s.byte_at(s.len() - 1) == 58 { s.slice(0, s.len() - 1) }
   else { s };
 
 // Check if string has trailing colon
 pub fn has_trailing_colon(s: String) -> bool
-= if s.len() == 0 { false } else { s.char_at(s.len() - 1) == 58 };
+= if s.len() == 0 { false } else { s.byte_at(s.len() - 1) == 58 };
 
 // Check if string contains equals sign
 pub fn has_equals(s: String) -> bool =
@@ -174,7 +175,7 @@ pub fn has_equals(s: String) -> bool =
 
 fn has_equals_from(s: String, pos: i64) -> bool =
     if pos >= s.len() { false }
-    else if s.char_at(pos) == 61 { true }
+    else if s.byte_at(pos) == 61 { true }
     else { has_equals_from(s, pos + 1) };
 
 // ============================================
@@ -191,12 +192,12 @@ fn extract_field_acc(s: String, pos: i64, target: i64, current: i64, acc: String
     if pos >= s.len() {
         if current == target { acc } else { "" }
     }
-    else if s.char_at(pos) == 124 {
+    else if s.byte_at(pos) == 124 {
         if current == target { acc }
         else { extract_field_acc(s, pos + 1, target, current + 1, "") }
     }
     else if current == target {
-        extract_field_acc(s, pos + 1, target, current, acc + char_to_string(s.char_at(pos)))
+        extract_field_acc(s, pos + 1, target, current, acc + char_to_string(s.byte_at(pos)))
     }
     else { extract_field_acc(s, pos + 1, target, current, acc) };
 
@@ -207,7 +208,7 @@ pub fn count_fields(s: String) -> i64
 
 fn count_fields_acc(s: String, pos: i64, count: i64) -> i64 =
     if pos >= s.len() { count }
-    else if s.char_at(pos) == 124 { count_fields_acc(s, pos + 1, count + 1) }
+    else if s.byte_at(pos) == 124 { count_fields_acc(s, pos + 1, count + 1) }
     else { count_fields_acc(s, pos + 1, count) };
 
 // ============================================
@@ -219,7 +220,7 @@ pub fn find_arrow(s: String, pos: i64) -> i64
   pre pos >= 0
   post ret >= pos and ret <= s.len()
 = if pos + 1 >= s.len() { s.len() }
-  else if s.char_at(pos) == 45 and s.char_at(pos + 1) == 62 { pos }
+  else if s.byte_at(pos) == 45 and s.byte_at(pos + 1) == 62 { pos }
   else { find_arrow(s, pos + 1) };
 
 // ============================================
@@ -231,7 +232,7 @@ pub fn find_double_pipe(s: String, pos: i64) -> i64
   pre pos >= 0
   post ret >= pos and ret <= s.len()
 = if pos + 1 >= s.len() { s.len() }
-  else if s.char_at(pos) == 124 and s.char_at(pos + 1) == 124 { pos }
+  else if s.byte_at(pos) == 124 and s.byte_at(pos + 1) == 124 { pos }
   else { find_double_pipe(s, pos + 1) };
 
 // ============================================

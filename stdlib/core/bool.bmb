@@ -39,7 +39,7 @@ pub fn from_int(x: i64) -> bool
 
 // Three-way conditional selection
 // Returns a if cond is true, b otherwise
-pub fn select(cond: bool, a: i64, b: i64) -> i64
+pub fn choose(cond: bool, a: i64, b: i64) -> i64
   post (cond and ret == a) or (not cond and ret == b)
 = if cond { a } else { b };
 

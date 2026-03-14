@@ -36,6 +36,8 @@ pub enum ExportedItem {
 pub struct Resolver {
     /// Base directory for module resolution
     base_dir: PathBuf,
+    /// Additional search paths for module resolution (e.g., stdlib root)
+    extra_paths: Vec<PathBuf>,
     /// Loaded modules by name
     modules: HashMap<String, Module>,
     /// Module load order (for dependency tracking)
@@ -45,8 +47,22 @@ pub struct Resolver {
 impl Resolver {
     /// Create a new resolver with the given base directory
     pub fn new<P: AsRef<Path>>(base_dir: P) -> Self {
+        let base = base_dir.as_ref().to_path_buf();
+        // v0.97: Auto-detect stdlib root — if base_dir is inside a stdlib/ tree,
+        // add the stdlib root as an additional search path so cross-module imports work.
+        let mut extra_paths = Vec::new();
+        if let Some(parent) = base.parent() {
+            if parent.file_name().map_or(false, |n| n == "stdlib") {
+                // base_dir is stdlib/X/ — add stdlib/ as search path
+                extra_paths.push(parent.to_path_buf());
+            } else if parent.parent().map_or(false, |pp| pp.file_name().map_or(false, |n| n == "stdlib")) {
+                // base_dir is stdlib/X/Y/ — add stdlib/ as search path
+                extra_paths.push(parent.parent().unwrap().to_path_buf());
+            }
+        }
         Self {
-            base_dir: base_dir.as_ref().to_path_buf(),
+            base_dir: base,
+            extra_paths,
             modules: HashMap::new(),
             load_order: Vec::new(),
         }
@@ -141,16 +157,16 @@ impl Resolver {
 
     /// Resolve a module name to a file path
     fn resolve_module_path(&self, module_name: &str) -> Result<PathBuf> {
-        // Try module_name.bmb in the base directory
-        let mut path = self.base_dir.join(format!("{}.bmb", module_name));
-        if path.exists() {
-            return Ok(path);
-        }
-
-        // Try module_name/mod.bmb
-        path = self.base_dir.join(module_name).join("mod.bmb");
-        if path.exists() {
-            return Ok(path);
+        // Try base directory first, then extra search paths
+        for dir in std::iter::once(&self.base_dir).chain(self.extra_paths.iter()) {
+            let path = dir.join(format!("{}.bmb", module_name));
+            if path.exists() {
+                return Ok(path);
+            }
+            let path = dir.join(module_name).join("mod.bmb");
+            if path.exists() {
+                return Ok(path);
+            }
         }
 
         // v0.68: Suggest similar module names
@@ -165,16 +181,16 @@ impl Resolver {
 
     /// v0.70: Resolve module path with span for error localization
     fn resolve_module_path_with_span(&self, module_name: &str, span: Span) -> Result<PathBuf> {
-        // Try module_name.bmb in the base directory
-        let mut path = self.base_dir.join(format!("{}.bmb", module_name));
-        if path.exists() {
-            return Ok(path);
-        }
-
-        // Try module_name/mod.bmb
-        path = self.base_dir.join(module_name).join("mod.bmb");
-        if path.exists() {
-            return Ok(path);
+        // Try base directory first, then extra search paths
+        for dir in std::iter::once(&self.base_dir).chain(self.extra_paths.iter()) {
+            let path = dir.join(format!("{}.bmb", module_name));
+            if path.exists() {
+                return Ok(path);
+            }
+            let path = dir.join(module_name).join("mod.bmb");
+            if path.exists() {
+                return Ok(path);
+            }
         }
 
         // v0.68: Suggest similar module names
