@@ -403,13 +403,14 @@ fn count_lines(src: String, pos: i64, target: i64, line: i64, col: i64) -> i64 =
 
 // Handle initialize request
 fn handle_initialize(id_str: String) -> i64 = {
-    let capabilities = json_obj5(
-        "textDocumentSync", json_num(1),
-        "hoverProvider", json_true(),
-        "completionProvider", json_obj1("triggerCharacters", json_arr1(json_str("."))),
-        "diagnosticProvider", json_obj1("interFileDependencies", json_false()),
-        "positionEncoding", json_str("utf-16")
-    );
+    let capabilities = "{" +
+        json_str("textDocumentSync") + ":" + json_num(1) + "," +
+        json_str("hoverProvider") + ":" + json_true() + "," +
+        json_str("completionProvider") + ":" + json_obj1("triggerCharacters", json_arr1(json_str("."))) + "," +
+        json_str("definitionProvider") + ":" + json_true() + "," +
+        json_str("diagnosticProvider") + ":" + json_obj1("interFileDependencies", json_false()) + "," +
+        json_str("positionEncoding") + ":" + json_str("utf-16") +
+    "}";
     let server_info = json_obj2("name", json_str("bmb-lsp"), "version", json_str("0.97.0"));
     let result = json_obj2("capabilities", capabilities, "serverInfo", server_info);
     lsp_send_message(jsonrpc_response(id_str, result));
@@ -550,6 +551,87 @@ fn publish_diagnostics(uri: String, content: String) -> i64 = {
 // Find the bmb binary path — checks BMB_PATH env var, then PATH
 fn find_bmb_binary() -> String = getenv("BMB_PATH");
 
+// Convert line/character to byte offset in source
+fn linecol_to_offset(src: String, target_line: i64, target_col: i64) -> i64 =
+    linecol_scan(src, 0, 0, 0, target_line, target_col);
+
+fn linecol_scan(src: String, pos: i64, line: i64, col: i64, tl: i64, tc: i64) -> i64 =
+    if pos >= src.len() { pos }
+    else if line == tl and col == tc { pos }
+    else if line > tl { pos }
+    else if src.byte_at(pos) == 10 { linecol_scan(src, pos + 1, line + 1, 0, tl, tc) }
+    else { linecol_scan(src, pos + 1, line, col + 1, tl, tc) };
+
+// Extract identifier word at byte offset
+fn extract_word_at(src: String, pos: i64) -> String = {
+    let start = word_start(src, pos);
+    let end_pos = word_end(src, pos);
+    if start >= end_pos { "" }
+    else { src.slice(start, end_pos) }
+};
+
+fn is_ident_char(c: i64) -> bool =
+    (c >= 97 and c <= 122) or (c >= 65 and c <= 90) or (c >= 48 and c <= 57) or c == 95;
+
+fn word_start(src: String, pos: i64) -> i64 =
+    if pos <= 0 { 0 }
+    else if is_ident_char(src.byte_at(pos - 1)) { word_start(src, pos - 1) }
+    else { pos };
+
+fn word_end(src: String, pos: i64) -> i64 =
+    if pos >= src.len() { pos }
+    else if is_ident_char(src.byte_at(pos)) { word_end(src, pos + 1) }
+    else { pos };
+
+// Find function signature matching word in index output
+// Index output format: "fn name(params) -> type\n  calls: ...\n"
+fn find_signature(index_out: String, word: String, pos: i64) -> String =
+    if pos >= index_out.len() { "" }
+    else {
+        // Look for "fn word(" pattern
+        let needle = "fn " + word + "(";
+        let found = str_find(index_out, needle, pos);
+        if found < 0 { "" }
+        else {
+            // Extract until newline
+            let eol = find_newline(index_out, found);
+            index_out.slice(found, eol)
+        }
+    };
+
+fn find_newline(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos }
+    else if s.byte_at(pos) == 10 { pos }
+    else { find_newline(s, pos + 1) };
+
+// Builtin function signatures for hover
+fn builtin_signature(name: String) -> String =
+    if name == "println" { "fn println(val: i64) -> ()" }
+    else if name == "print" { "fn print(val: i64) -> ()" }
+    else if name == "println_str" { "fn println_str(s: String) -> ()" }
+    else if name == "read_line" { "fn read_line() -> String" }
+    else if name == "read_int" { "fn read_int() -> i64" }
+    else if name == "malloc" { "fn malloc(size: i64) -> i64 // pointer" }
+    else if name == "free" { "fn free(ptr: i64) -> ()" }
+    else if name == "load_i64" { "fn load_i64(addr: i64) -> i64" }
+    else if name == "store_i64" { "fn store_i64(addr: i64, val: i64) -> i64" }
+    else if name == "vec_new" { "fn vec_new() -> i64 // vector handle" }
+    else if name == "vec_push" { "fn vec_push(v: i64, val: i64) -> i64" }
+    else if name == "vec_get" { "fn vec_get(v: i64, idx: i64) -> i64" }
+    else if name == "vec_set" { "fn vec_set(v: i64, idx: i64, val: i64) -> i64" }
+    else if name == "vec_len" { "fn vec_len(v: i64) -> i64" }
+    else if name == "abs" { "fn abs(x: i64) -> i64" }
+    else if name == "min" { "fn min(a: i64, b: i64) -> i64" }
+    else if name == "max" { "fn max(a: i64, b: i64) -> i64" }
+    else if name == "chr" { "fn chr(code: i64) -> String" }
+    else if name == "time_ns" { "fn time_ns() -> i64" }
+    else if name == "exec_output" { "fn exec_output(cmd: String, args: String) -> String" }
+    else if name == "read_file" { "fn read_file(path: String) -> String" }
+    else if name == "write_file" { "fn write_file(path: String, content: String) -> i64" }
+    else if name == "getenv" { "fn getenv(name: String) -> String" }
+    else if name == "int_to_string" { "fn int_to_string(n: i64) -> String" }
+    else { "" };
+
 // Parse bmb check output into LSP diagnostics array
 fn parse_check_output(output: String, content: String) -> String = {
     if output.len() == 0 { json_arr0() }
@@ -600,24 +682,159 @@ fn find_colon_skip(msg: String, pos: i64) -> String =
     }
     else { find_colon_skip(msg, pos + 1) };
 
-// Handle textDocument/hover
+// Handle textDocument/hover — extract word at position, lookup in index
 fn handle_hover(doc: i64, root: i64, src: String, id_str: String) -> i64 = 0;
 fn handle_hover_raw(msg: String, id_str: String) -> i64 = {
-    lsp_send_message(jsonrpc_response(id_str, json_null()));
+    let doc = jdoc_new();
+    let root = jparse(doc, msg);
+    let params = jobj_get(doc, root, "params", msg);
+    let td = if params >= 0 { jobj_get(doc, params, "textDocument", msg) } else { 0 - 1 };
+    let uri = if td >= 0 { jobj_str(doc, td, "uri", msg) } else { "" };
+    let pos_node = if params >= 0 { jobj_get(doc, params, "position", msg) } else { 0 - 1 };
+    let line = if pos_node >= 0 { jobj_num(doc, pos_node, "line", msg) } else { 0 };
+    let character = if pos_node >= 0 { jobj_num(doc, pos_node, "character", msg) } else { 0 };
+
+    if uri.len() == 0 {
+        lsp_send_message(jsonrpc_response(id_str, json_null()));
+        0
+    } else {
+        // Read source file content
+        let path = url_decode(uri_to_path(uri), 0, "");
+        let content = read_file(path);
+        // Find byte offset from line/character
+        let offset = linecol_to_offset(content, line, character);
+        // Extract word at offset
+        let word = extract_word_at(content, offset);
+
+        if word.len() == 0 {
+            lsp_send_message(jsonrpc_response(id_str, json_null()));
+            0
+        } else {
+            // Run index to get function signatures
+            let bmb_path = find_bmb_binary();
+            let index_out = exec_output(bmb_path, "index " + path);
+            // Search for the word in index output
+            let sig = find_signature(index_out, word, 0);
+            if sig.len() == 0 {
+                // Try builtin signatures
+                let builtin_sig = builtin_signature(word);
+                if builtin_sig.len() == 0 {
+                    lsp_send_message(jsonrpc_response(id_str, json_null()));
+                    0
+                } else {
+                    let hover_result = json_obj1("contents",
+                        json_obj2("kind", json_str("markdown"), "value", json_str("```bmb" + chr(10) + builtin_sig + chr(10) + "```")));
+                    lsp_send_message(jsonrpc_response(id_str, hover_result));
+                    0
+                }
+            } else {
+                let hover_result = json_obj1("contents",
+                    json_obj2("kind", json_str("markdown"), "value", json_str("```bmb" + chr(10) + sig + chr(10) + "```")));
+                lsp_send_message(jsonrpc_response(id_str, hover_result));
+                0
+            }
+        }
+    }
+};
+
+// Handle textDocument/completion — keywords + builtins + file functions
+fn handle_completion(doc: i64, root: i64, src: String, id_str: String) -> i64 = 0;
+fn handle_completion_raw(msg: String, id_str: String) -> i64 = {
+    let doc = jdoc_new();
+    let root = jparse(doc, msg);
+    let params = jobj_get(doc, root, "params", msg);
+    let td = if params >= 0 { jobj_get(doc, params, "textDocument", msg) } else { 0 - 1 };
+    let uri = if td >= 0 { jobj_str(doc, td, "uri", msg) } else { "" };
+
+    // Get static items
+    let static_items = build_completion_items();
+
+    // Get dynamic items from file index
+    let dynamic_items = if uri.len() > 0 {
+        let path = url_decode(uri_to_path(uri), 0, "");
+        let bmb_path = find_bmb_binary();
+        let index_out = exec_output(bmb_path, "index " + path);
+        extract_fn_completions(index_out, 0, "")
+    } else { "" };
+
+    // Combine
+    let all = if dynamic_items.len() > 0 {
+        "[" + static_items.slice(1, static_items.len() - 1) + "," + dynamic_items + "]"
+    } else { static_items };
+
+    lsp_send_message(jsonrpc_response(id_str, all));
     0
 };
 
-// Handle textDocument/completion
-fn handle_completion(doc: i64, root: i64, src: String, id_str: String) -> i64 = 0;
-fn handle_completion_raw(msg: String, id_str: String) -> i64 = {
-    let items = build_completion_items();
-    lsp_send_message(jsonrpc_response(id_str, items));
-    0
+// Handle textDocument/definition — find "fn name(" in source, return position
+fn handle_definition_raw(msg: String, id_str: String) -> i64 = {
+    let doc = jdoc_new();
+    let root = jparse(doc, msg);
+    let params = jobj_get(doc, root, "params", msg);
+    let td = if params >= 0 { jobj_get(doc, params, "textDocument", msg) } else { 0 - 1 };
+    let uri = if td >= 0 { jobj_str(doc, td, "uri", msg) } else { "" };
+    let pos_node = if params >= 0 { jobj_get(doc, params, "position", msg) } else { 0 - 1 };
+    let line = if pos_node >= 0 { jobj_num(doc, pos_node, "line", msg) } else { 0 };
+    let character = if pos_node >= 0 { jobj_num(doc, pos_node, "character", msg) } else { 0 };
+
+    if uri.len() == 0 {
+        lsp_send_message(jsonrpc_response(id_str, json_null()));
+        0
+    } else {
+        let path = url_decode(uri_to_path(uri), 0, "");
+        let content = read_file(path);
+        let offset = linecol_to_offset(content, line, character);
+        let word = extract_word_at(content, offset);
+
+        if word.len() == 0 {
+            lsp_send_message(jsonrpc_response(id_str, json_null()));
+            0
+        } else {
+            // Search for "fn word(" in the source
+            let needle = "fn " + word + "(";
+            let def_pos = str_find(content, needle, 0);
+            if def_pos < 0 {
+                lsp_send_message(jsonrpc_response(id_str, json_null()));
+                0
+            } else {
+                // Convert byte offset to line/col
+                let def_lc = offset_to_linecol(content, def_pos + 3);  // +3 to point at name, not "fn"
+                let def_line = def_lc / 1000000;
+                let def_col = def_lc % 1000000;
+                let location = json_obj2(
+                    "uri", json_str(uri),
+                    "range", lsp_range(def_line, def_col, def_line, def_col + word.len())
+                );
+                lsp_send_message(jsonrpc_response(id_str, location));
+                0
+            }
+        }
+    }
 };
 
 // Build a single completion item
 fn comp_item(label: String, kind: i64) -> String =
     json_obj2("label", json_str(label), "kind", json_num(kind));
+
+// Extract function names from index output as completion items
+// Index format: "fn name(...) -> type\n  calls: ...\n"
+fn extract_fn_completions(index_out: String, pos: i64, acc: String) -> String =
+    if pos >= index_out.len() { acc }
+    else {
+        let fn_pos = str_find(index_out, "fn ", pos);
+        if fn_pos < 0 { acc }
+        else {
+            let name_start = fn_pos + 3;
+            let paren = str_find_char(index_out, 40, name_start);  // '('
+            if paren < 0 { acc }
+            else {
+                let name = index_out.slice(name_start, paren);
+                let item = comp_item(name, 3);  // 3 = Function
+                let new_acc = if acc.len() == 0 { item } else { acc + "," + item };
+                extract_fn_completions(index_out, paren + 1, new_acc)
+            }
+        }
+    };
 
 // Build completion items for BMB keywords and builtins
 fn build_completion_items() -> String =
@@ -748,6 +965,7 @@ fn dispatch(msg: String) -> i64 = {
         else if method == "textDocument/didClose" { handle_did_close_raw(msg) }
         else if method == "textDocument/hover" { handle_hover_raw(msg, id_str) }
         else if method == "textDocument/completion" { handle_completion_raw(msg, id_str) }
+        else if method == "textDocument/definition" { handle_definition_raw(msg, id_str) }
         else {
             if id_str != "null" {
                 lsp_send_message(jsonrpc_error(id_str, 0 - 32601, "Method not found: " + method));
