@@ -410,6 +410,8 @@ fn handle_initialize(id_str: String) -> i64 = {
         json_str("definitionProvider") + ":" + json_true() + "," +
         json_str("documentSymbolProvider") + ":" + json_true() + "," +
         json_str("referencesProvider") + ":" + json_true() + "," +
+        json_str("renameProvider") + ":" + json_true() + "," +
+        json_str("documentFormattingProvider") + ":" + json_true() + "," +
         json_str("diagnosticProvider") + ":" + json_obj1("interFileDependencies", json_false()) + "," +
         json_str("positionEncoding") + ":" + json_str("utf-16") +
     "}";
@@ -925,6 +927,106 @@ fn find_all_occurrences(src: String, word: String, uri: String, pos: i64, acc: S
     };
 
 // Build a single completion item
+// Handle textDocument/rename — replace all word-boundary occurrences
+fn handle_rename_raw(msg: String, id_str: String) -> i64 = {
+    let doc = jdoc_new();
+    let root = jparse(doc, msg);
+    let params = jobj_get(doc, root, "params", msg);
+    let td = if params >= 0 { jobj_get(doc, params, "textDocument", msg) } else { 0 - 1 };
+    let uri = if td >= 0 { jobj_str(doc, td, "uri", msg) } else { "" };
+    let pos_node = if params >= 0 { jobj_get(doc, params, "position", msg) } else { 0 - 1 };
+    let line = if pos_node >= 0 { jobj_num(doc, pos_node, "line", msg) } else { 0 };
+    let character = if pos_node >= 0 { jobj_num(doc, pos_node, "character", msg) } else { 0 };
+    let new_name = if params >= 0 { jobj_str(doc, params, "newName", msg) } else { "" };
+
+    if uri.len() == 0 or new_name.len() == 0 {
+        lsp_send_message(jsonrpc_response(id_str, json_null()));
+        0
+    } else {
+        let path = url_decode(uri_to_path(uri), 0, "");
+        let content = read_file(path);
+        let offset = linecol_to_offset(content, line, character);
+        let word = extract_word_at(content, offset);
+
+        if word.len() == 0 {
+            lsp_send_message(jsonrpc_response(id_str, json_null()));
+            0
+        } else {
+            // Build TextEdit[] for all occurrences
+            let edits = build_rename_edits(content, word, new_name, uri, 0, "");
+            // WorkspaceEdit { changes: { uri: TextEdit[] } }
+            let workspace_edit = "{" + json_str("changes") + ":{" + json_str(uri) + ":[" + edits + "]}}";
+            lsp_send_message(jsonrpc_response(id_str, workspace_edit));
+            0
+        }
+    }
+};
+
+// Build TextEdit items for rename
+fn build_rename_edits(src: String, old_name: String, new_name: String, uri: String, pos: i64, acc: String) -> String =
+    if pos >= src.len() { acc }
+    else {
+        let found = str_find(src, old_name, pos);
+        if found < 0 { acc }
+        else {
+            let before_ok = if found == 0 { true } else { not is_ident_char(src.byte_at(found - 1)) };
+            let after_pos = found + old_name.len();
+            let after_ok = if after_pos >= src.len() { true } else { not is_ident_char(src.byte_at(after_pos)) };
+            if before_ok and after_ok {
+                let lc = offset_to_linecol(src, found);
+                let edit_line = lc / 1000000;
+                let edit_col = lc % 1000000;
+                let edit = json_obj2(
+                    "range", lsp_range(edit_line, edit_col, edit_line, edit_col + old_name.len()),
+                    "newText", json_str(new_name)
+                );
+                let new_acc = if acc.len() == 0 { edit } else { acc + "," + edit };
+                build_rename_edits(src, old_name, new_name, uri, found + old_name.len(), new_acc)
+            } else {
+                build_rename_edits(src, old_name, new_name, uri, found + 1, acc)
+            }
+        }
+    };
+
+// Handle textDocument/formatting — shell out to bmb fmt
+fn handle_formatting_raw(msg: String, id_str: String) -> i64 = {
+    let doc = jdoc_new();
+    let root = jparse(doc, msg);
+    let params = jobj_get(doc, root, "params", msg);
+    let td = if params >= 0 { jobj_get(doc, params, "textDocument", msg) } else { 0 - 1 };
+    let uri = if td >= 0 { jobj_str(doc, td, "uri", msg) } else { "" };
+
+    if uri.len() == 0 {
+        lsp_send_message(jsonrpc_response(id_str, json_null()));
+        0
+    } else {
+        let path = url_decode(uri_to_path(uri), 0, "");
+        let before = read_file(path);
+        // Run bmb fmt on the file
+        let bmb_path = find_bmb_binary();
+        let _fmt = exec_output(bmb_path, "fmt " + path);
+        let after = read_file(path);
+        // If content changed, return a single TextEdit replacing everything
+        if before == after {
+            lsp_send_message(jsonrpc_response(id_str, json_arr0()));
+            0
+        } else {
+            let last_line = count_total_lines(before, 0, 0);
+            let edit = json_obj2(
+                "range", lsp_range(0, 0, last_line + 1, 0),
+                "newText", json_str(after)
+            );
+            lsp_send_message(jsonrpc_response(id_str, json_arr1(edit)));
+            0
+        }
+    }
+};
+
+fn count_total_lines(src: String, pos: i64, count: i64) -> i64 =
+    if pos >= src.len() { count }
+    else if src.byte_at(pos) == 10 { count_total_lines(src, pos + 1, count + 1) }
+    else { count_total_lines(src, pos + 1, count) };
+
 fn comp_item(label: String, kind: i64) -> String =
     json_obj2("label", json_str(label), "kind", json_num(kind));
 
@@ -1080,6 +1182,8 @@ fn dispatch(msg: String) -> i64 = {
         else if method == "textDocument/definition" { handle_definition_raw(msg, id_str) }
         else if method == "textDocument/documentSymbol" { handle_document_symbol_raw(msg, id_str) }
         else if method == "textDocument/references" { handle_references_raw(msg, id_str) }
+        else if method == "textDocument/rename" { handle_rename_raw(msg, id_str) }
+        else if method == "textDocument/formatting" { handle_formatting_raw(msg, id_str) }
         else {
             if id_str != "null" {
                 lsp_send_message(jsonrpc_error(id_str, 0 - 32601, "Method not found: " + method));
