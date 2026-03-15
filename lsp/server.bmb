@@ -408,6 +408,8 @@ fn handle_initialize(id_str: String) -> i64 = {
         json_str("hoverProvider") + ":" + json_true() + "," +
         json_str("completionProvider") + ":" + json_obj1("triggerCharacters", json_arr1(json_str("."))) + "," +
         json_str("definitionProvider") + ":" + json_true() + "," +
+        json_str("documentSymbolProvider") + ":" + json_true() + "," +
+        json_str("referencesProvider") + ":" + json_true() + "," +
         json_str("diagnosticProvider") + ":" + json_obj1("interFileDependencies", json_false()) + "," +
         json_str("positionEncoding") + ":" + json_str("utf-16") +
     "}";
@@ -812,6 +814,116 @@ fn handle_definition_raw(msg: String, id_str: String) -> i64 = {
     }
 };
 
+// Handle textDocument/documentSymbol — list all functions in file
+fn handle_document_symbol_raw(msg: String, id_str: String) -> i64 = {
+    let doc = jdoc_new();
+    let root = jparse(doc, msg);
+    let params = jobj_get(doc, root, "params", msg);
+    let td = if params >= 0 { jobj_get(doc, params, "textDocument", msg) } else { 0 - 1 };
+    let uri = if td >= 0 { jobj_str(doc, td, "uri", msg) } else { "" };
+
+    if uri.len() == 0 {
+        lsp_send_message(jsonrpc_response(id_str, json_arr0()));
+        0
+    } else {
+        let path = url_decode(uri_to_path(uri), 0, "");
+        let content = read_file(path);
+        let bmb_path = find_bmb_binary();
+        let index_out = exec_output(bmb_path, "index " + path);
+        // Build SymbolInformation array from index output
+        let symbols = build_symbol_list(index_out, content, uri, 0, "");
+        lsp_send_message(jsonrpc_response(id_str, "[" + symbols + "]"));
+        0
+    }
+};
+
+// Build SymbolInformation items from index output
+fn build_symbol_list(index_out: String, content: String, uri: String, pos: i64, acc: String) -> String =
+    if pos >= index_out.len() { acc }
+    else {
+        let fn_pos = str_find(index_out, "fn ", pos);
+        if fn_pos < 0 { acc }
+        else {
+            let name_start = fn_pos + 3;
+            let paren = str_find_char(index_out, 40, name_start);  // '('
+            if paren < 0 { acc }
+            else {
+                let name = index_out.slice(name_start, paren);
+                // Find this function in source to get line number
+                let src_needle = "fn " + name + "(";
+                let src_pos = str_find(content, src_needle, 0);
+                let lc = if src_pos >= 0 { offset_to_linecol(content, src_pos + 3) } else { 0 };
+                let sym_line = lc / 1000000;
+                let sym_col = lc % 1000000;
+                // SymbolInformation: { name, kind: 12 (Function), location: { uri, range } }
+                let sym = json_obj3(
+                    "name", json_str(name),
+                    "kind", json_num(12),
+                    "location", json_obj2("uri", json_str(uri), "range", lsp_range(sym_line, sym_col, sym_line, sym_col + name.len()))
+                );
+                let eol = find_newline(index_out, paren);
+                let new_acc = if acc.len() == 0 { sym } else { acc + "," + sym };
+                build_symbol_list(index_out, content, uri, eol + 1, new_acc)
+            }
+        }
+    };
+
+// Handle textDocument/references — find all callers of symbol
+fn handle_references_raw(msg: String, id_str: String) -> i64 = {
+    let doc = jdoc_new();
+    let root = jparse(doc, msg);
+    let params = jobj_get(doc, root, "params", msg);
+    let td = if params >= 0 { jobj_get(doc, params, "textDocument", msg) } else { 0 - 1 };
+    let uri = if td >= 0 { jobj_str(doc, td, "uri", msg) } else { "" };
+    let pos_node = if params >= 0 { jobj_get(doc, params, "position", msg) } else { 0 - 1 };
+    let line = if pos_node >= 0 { jobj_num(doc, pos_node, "line", msg) } else { 0 };
+    let character = if pos_node >= 0 { jobj_num(doc, pos_node, "character", msg) } else { 0 };
+
+    if uri.len() == 0 {
+        lsp_send_message(jsonrpc_response(id_str, json_arr0()));
+        0
+    } else {
+        let path = url_decode(uri_to_path(uri), 0, "");
+        let content = read_file(path);
+        let offset = linecol_to_offset(content, line, character);
+        let word = extract_word_at(content, offset);
+
+        if word.len() == 0 {
+            lsp_send_message(jsonrpc_response(id_str, json_arr0()));
+            0
+        } else {
+            // Find all occurrences of word in source
+            let locations = find_all_occurrences(content, word, uri, 0, "");
+            lsp_send_message(jsonrpc_response(id_str, "[" + locations + "]"));
+            0
+        }
+    }
+};
+
+// Find all occurrences of a word in source, return as Location[]
+fn find_all_occurrences(src: String, word: String, uri: String, pos: i64, acc: String) -> String =
+    if pos >= src.len() { acc }
+    else {
+        let found = str_find(src, word, pos);
+        if found < 0 { acc }
+        else {
+            // Check word boundaries
+            let before_ok = if found == 0 { true } else { not is_ident_char(src.byte_at(found - 1)) };
+            let after_pos = found + word.len();
+            let after_ok = if after_pos >= src.len() { true } else { not is_ident_char(src.byte_at(after_pos)) };
+            if before_ok and after_ok {
+                let lc = offset_to_linecol(src, found);
+                let ref_line = lc / 1000000;
+                let ref_col = lc % 1000000;
+                let loc = json_obj2("uri", json_str(uri), "range", lsp_range(ref_line, ref_col, ref_line, ref_col + word.len()));
+                let new_acc = if acc.len() == 0 { loc } else { acc + "," + loc };
+                find_all_occurrences(src, word, uri, found + word.len(), new_acc)
+            } else {
+                find_all_occurrences(src, word, uri, found + 1, acc)
+            }
+        }
+    };
+
 // Build a single completion item
 fn comp_item(label: String, kind: i64) -> String =
     json_obj2("label", json_str(label), "kind", json_num(kind));
@@ -966,6 +1078,8 @@ fn dispatch(msg: String) -> i64 = {
         else if method == "textDocument/hover" { handle_hover_raw(msg, id_str) }
         else if method == "textDocument/completion" { handle_completion_raw(msg, id_str) }
         else if method == "textDocument/definition" { handle_definition_raw(msg, id_str) }
+        else if method == "textDocument/documentSymbol" { handle_document_symbol_raw(msg, id_str) }
+        else if method == "textDocument/references" { handle_references_raw(msg, id_str) }
         else {
             if id_str != "null" {
                 lsp_send_message(jsonrpc_error(id_str, 0 - 32601, "Method not found: " + method));
