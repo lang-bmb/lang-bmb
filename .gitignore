@@ -29,6 +29,7 @@ Cargo.lock
 *.exe
 *.ll
 *.obj
+*.bc
 
 # Exception: Golden binaries (for BMB-only bootstrap)
 !golden/**/*.exe
@@ -37,6 +38,13 @@ Cargo.lock
 # Auto-generated files
 *.mir
 *.ll.raw
+
+# Temp files from benchmark/test runs
+_bench_*
+_test_*
+__bmb_*
+__repl_*
+_err.txt
 stage2*.ll.raw
 stage2.ll.temp
 
