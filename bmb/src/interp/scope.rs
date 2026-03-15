@@ -571,6 +571,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_define_multiple_types_same_scope() {
         let mut stack = ScopeStack::new();
         stack.define("i".to_string(), Value::Int(42));

@@ -898,6 +898,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_expr_floatlit() {
         let e = Expr::FloatLit(3.14);
         assert!(matches!(e, Expr::FloatLit(v) if (v - 3.14).abs() < f64::EPSILON));
@@ -1463,6 +1464,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_literal_pattern_float() {
         let lp = LiteralPattern::Float(3.14);
         assert!(matches!(lp, LiteralPattern::Float(v) if (v - 3.14).abs() < f64::EPSILON));

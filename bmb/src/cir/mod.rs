@@ -1188,6 +1188,7 @@ mod tests {
     // === CirExpr Variant Tests ===
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_cir_expr_float_lit() {
         let bits = 3.14_f64.to_bits();
         let expr = CirExpr::FloatLit(bits);

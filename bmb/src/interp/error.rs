@@ -477,6 +477,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::unnecessary_literal_unwrap)]
     fn test_interp_result_unwrap_or_default() {
         let ok_result: InterpResult<i64> = Ok(42);
         assert_eq!(ok_result.unwrap_or(0), 42);

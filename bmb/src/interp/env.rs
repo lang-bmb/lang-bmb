@@ -231,6 +231,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_define_multiple_types() {
         let mut env = Environment::new();
         env.define("a".to_string(), Value::Int(42));
