@@ -3752,7 +3752,30 @@ impl IfElseToSwitch {
             return None;
         }
 
-        // Return the final else as default
+        // v0.97: When the chain breaks at a block that was already added to
+        // intermediate_blocks (because the next block's comparison wasn't Eq),
+        // we must remove it — that block is the actual default target, not dead code.
+        // Bug: previously, blocks with non-Eq comparisons (e.g., range checks like
+        // c == 45 or (c >= 48 and c <= 57)) were incorrectly marked as intermediate,
+        // causing their then-branches to become unreachable.
+        if intermediate_blocks.last() == Some(&current_block_idx) {
+            intermediate_blocks.pop();
+        }
+
+        // The default target is the current block (which we couldn't convert to a case)
+        let default_label = func.blocks[current_block_idx].label.clone();
+
+        // Return the chain with the current block as default
+        if cases.len() >= 1 {
+            return Some(IfElseChain {
+                discriminant: Operand::Place(Place::new(discriminant_var?)),
+                cases,
+                default: default_label,
+                intermediate_blocks,
+            });
+        }
+
+        // Fallback: Return the final else as default
         if let Terminator::Branch { else_label, .. } = &func.blocks[current_block_idx].terminator {
             Some(IfElseChain {
                 discriminant: Operand::Place(Place::new(discriminant_var?)),

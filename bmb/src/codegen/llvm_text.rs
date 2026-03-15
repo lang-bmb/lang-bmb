@@ -5018,6 +5018,7 @@ impl TextCodeGen {
                         "read_bytes" => "bmb_read_bytes",
                         "write_stdout" => "bmb_write_stdout",
                         "exec_output" => "bmb_exec_output",
+                        "getenv" => "bmb_getenv",
                         "file_exists" if all_string_args_are_literals => "file_exists_cstr",
                         "bmb_file_exists" if all_string_args_are_literals => "bmb_file_exists_cstr",
                         // v0.50.77: StringBuilder optimization - use cstr variant for string literals
@@ -7292,7 +7293,7 @@ impl TextCodeGen {
             "bmb_sb_build" | "sb_build" => "ptr",
 
             // ptr return - Process
-            "bmb_getenv" => "ptr",
+            "bmb_getenv" | "getenv" => "ptr",
             "bmb_system_capture" | "system_capture" => "ptr",
             "bmb_exec_output" | "exec_output" => "ptr",
 
