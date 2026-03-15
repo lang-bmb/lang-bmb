@@ -700,14 +700,13 @@ fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> O
                 });
             }
             // v0.96.37: x - x → 0 (self-subtraction)
-            if lhs == rhs {
-                if let Operand::Place(_) = lhs {
+            if lhs == rhs
+                && let Operand::Place(_) = lhs {
                     return Some(MirInst::Const {
                         dest: dest.clone(),
                         value: Constant::Int(0),
                     });
                 }
-            }
             None
         }
 
@@ -1099,14 +1098,13 @@ fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> O
                 });
             }
             // x & x → x
-            if lhs == rhs {
-                if let Operand::Place(_) = lhs {
+            if lhs == rhs
+                && let Operand::Place(_) = lhs {
                     return Some(MirInst::Copy {
                         dest: dest.clone(),
                         src: operand_to_place(lhs)?,
                     });
                 }
-            }
             None
         }
 
@@ -1133,14 +1131,13 @@ fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> O
                 });
             }
             // x | x → x
-            if lhs == rhs {
-                if let Operand::Place(_) = lhs {
+            if lhs == rhs
+                && let Operand::Place(_) = lhs {
                     return Some(MirInst::Copy {
                         dest: dest.clone(),
                         src: operand_to_place(lhs)?,
                     });
                 }
-            }
             None
         }
 
@@ -1159,14 +1156,13 @@ fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> O
                 });
             }
             // x ^ x → 0
-            if lhs == rhs {
-                if let Operand::Place(_) = lhs {
+            if lhs == rhs
+                && let Operand::Place(_) = lhs {
                     return Some(MirInst::Const {
                         dest: dest.clone(),
                         value: Constant::Int(0),
                     });
                 }
-            }
             None
         }
 
@@ -1184,49 +1180,45 @@ fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> O
         // v0.96.45: Self-comparison identities
         // x == x → true, x != x → false, x < x → false, x > x → false, x <= x → true, x >= x → true
         MirBinOp::Eq | MirBinOp::Le | MirBinOp::Ge => {
-            if lhs == rhs {
-                if let Operand::Place(_) = lhs {
+            if lhs == rhs
+                && let Operand::Place(_) = lhs {
                     return Some(MirInst::Const {
                         dest: dest.clone(),
                         value: Constant::Bool(true),
                     });
                 }
-            }
             None
         }
         MirBinOp::Ne | MirBinOp::Lt | MirBinOp::Gt => {
-            if lhs == rhs {
-                if let Operand::Place(_) = lhs {
+            if lhs == rhs
+                && let Operand::Place(_) = lhs {
                     return Some(MirInst::Const {
                         dest: dest.clone(),
                         value: Constant::Bool(false),
                     });
                 }
-            }
             None
         }
 
         // v0.96.45: Float self-comparison (NaN-safe: x ==. x is false for NaN, but BMB has no NaN)
         MirBinOp::FEq | MirBinOp::FLe | MirBinOp::FGe => {
-            if lhs == rhs {
-                if let Operand::Place(_) = lhs {
+            if lhs == rhs
+                && let Operand::Place(_) = lhs {
                     return Some(MirInst::Const {
                         dest: dest.clone(),
                         value: Constant::Bool(true),
                     });
                 }
-            }
             None
         }
         MirBinOp::FNe | MirBinOp::FLt | MirBinOp::FGt => {
-            if lhs == rhs {
-                if let Operand::Place(_) = lhs {
+            if lhs == rhs
+                && let Operand::Place(_) = lhs {
                     return Some(MirInst::Const {
                         dest: dest.clone(),
                         value: Constant::Bool(false),
                     });
                 }
-            }
             None
         }
 
@@ -4537,13 +4529,11 @@ fn compute_index_param_positions(program: &MirProgram) -> HashMap<String, HashSe
                             if !callee_indices.contains(&arg_idx) {
                                 continue;
                             }
-                            if let Operand::Place(p) = arg {
-                                if let Some(pi) = find_param_origin_standalone(func, &p.name) {
-                                    if result.entry(func.name.clone()).or_default().insert(pi) {
+                            if let Operand::Place(p) = arg
+                                && let Some(pi) = find_param_origin_standalone(func, &p.name)
+                                    && result.entry(func.name.clone()).or_default().insert(pi) {
                                         changed = true;
                                     }
-                                }
-                            }
                         }
                     }
                 }
@@ -4620,11 +4610,10 @@ fn find_param_origin_standalone(func: &MirFunction, var_name: &str) -> Option<us
         let mut found_src = None;
         for block in &func.blocks {
             for inst in &block.instructions {
-                if let MirInst::Copy { dest, src } = inst {
-                    if dest.name == current {
+                if let MirInst::Copy { dest, src } = inst
+                    && dest.name == current {
                         found_src = Some(src.name.clone());
                     }
-                }
             }
         }
         if let Some(src) = found_src {
@@ -4879,11 +4868,10 @@ impl ConstantPropagationNarrowing {
         }
 
         // v0.95.9: Don't narrow params used as array index operands (interprocedural).
-        if let Some(index_params) = self.index_param_positions.get(&func.name) {
-            if index_params.contains(&param_idx) {
+        if let Some(index_params) = self.index_param_positions.get(&func.name)
+            && index_params.contains(&param_idx) {
                 return false;
             }
-        }
 
         let func_name = &func.name;
         let Some(consts) = self.call_site_constants.get(func_name) else {
@@ -5340,11 +5328,10 @@ impl LoopBoundedNarrowing {
         // Uses pre-computed index_param_positions which follows call chains:
         // if swap_in_array(arr, i, j) calls array_get(arr, i) where i is an index param,
         // then swap_in_array's i is also an index param. Prevents shl+ashr patterns in LLVM.
-        if let Some(index_params) = self.index_param_positions.get(&func.name) {
-            if index_params.contains(&param_idx) {
+        if let Some(index_params) = self.index_param_positions.get(&func.name)
+            && index_params.contains(&param_idx) {
                 return false;
             }
-        }
 
         // Check if we have bounds for this parameter
         if let Some(bounds) = self.param_bounds.get(&func.name)
@@ -5474,14 +5461,12 @@ impl LoopBoundedNarrowing {
                             // AlgebraicSimplification converts Mul by power-of-2 to Shl
                             // before narrowing runs. Without this check, pack32(hi, lo)
                             // where body has `hi << 32` gets narrowed to i32, overflowing.
-                            if matches!(op, MirBinOp::Shl) && lhs_derived {
-                                if let Operand::Constant(Constant::Int(shift)) = rhs {
-                                    if *shift >= 0 && *shift < 63 {
+                            if matches!(op, MirBinOp::Shl) && lhs_derived
+                                && let Operand::Constant(Constant::Int(shift)) = rhs
+                                    && *shift >= 0 && *shift < 63 {
                                         let effective_mul = 1i64 << shift;
                                         max_constant = Some(max_constant.map_or(effective_mul, |m| m.max(effective_mul)));
                                     }
-                                }
-                            }
 
                             // Propagate derived status
                             if lhs_derived || rhs_derived {
@@ -6493,16 +6478,14 @@ impl LoopBoundedNarrowing {
         let mut loop_body_blocks: HashSet<String> = HashSet::new();
 
         for (i, block) in func.blocks.iter().enumerate() {
-            if let Terminator::Goto(target) = &block.terminator {
-                if let Some(target_idx) = block_labels.iter().position(|l| l == target) {
-                    if target_idx <= i {
+            if let Terminator::Goto(target) = &block.terminator
+                && let Some(target_idx) = block_labels.iter().position(|l| l == target)
+                    && target_idx <= i {
                         // All blocks between target_idx and i are loop body
-                        for j in target_idx..=i {
-                            loop_body_blocks.insert(block_labels[j].clone());
+                        for label in block_labels.iter().take(i + 1).skip(target_idx) {
+                            loop_body_blocks.insert(label.clone());
                         }
                     }
-                }
-            }
         }
 
         if loop_body_blocks.is_empty() {
@@ -6515,11 +6498,10 @@ impl LoopBoundedNarrowing {
         for _ in 0..3 {
             for block in &func.blocks {
                 for inst in &block.instructions {
-                    if let MirInst::Copy { dest, src } = inst {
-                        if param_derived.contains(&src.name) {
+                    if let MirInst::Copy { dest, src } = inst
+                        && param_derived.contains(&src.name) {
                             param_derived.insert(dest.name.clone());
                         }
-                    }
                 }
             }
         }

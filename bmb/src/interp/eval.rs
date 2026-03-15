@@ -7955,12 +7955,10 @@ fn builtin_list_dir(args: &[Value]) -> InterpResult<Value> {
             match fs::read_dir(&path) {
                 Ok(entries) => {
                     let mut names = Vec::new();
-                    for entry in entries {
-                        if let Ok(e) = entry {
-                            let name = e.file_name().to_string_lossy().to_string();
-                            if name != "." && name != ".." {
-                                names.push(name);
-                            }
+                    for e in entries.flatten() {
+                        let name = e.file_name().to_string_lossy().to_string();
+                        if name != "." && name != ".." {
+                            names.push(name);
                         }
                     }
                     names.sort();

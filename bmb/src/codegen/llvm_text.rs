@@ -355,8 +355,8 @@ impl TextCodeGen {
         for &(func_start, func_end) in &func_ranges {
             // Find while_cond labels within this function
             let mut label_def_lines: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-            for i in func_start..=func_end {
-                let trimmed = lines[i].trim();
+            for (i, line) in lines.iter().enumerate().take(func_end + 1).skip(func_start) {
+                let trimmed = line.trim();
                 if trimmed.starts_with("bb_while_cond_") && trimmed.ends_with(':') {
                     let label = trimmed.trim_end_matches(':').to_string();
                     label_def_lines.insert(label, i);
@@ -364,16 +364,15 @@ impl TextCodeGen {
             }
 
             // Find back-edges (unconditional branches to earlier labels)
-            for i in func_start..=func_end {
-                let trimmed = lines[i].trim();
+            for (i, line) in lines.iter().enumerate().take(func_end + 1).skip(func_start) {
+                let trimmed = line.trim();
                 if let Some(rest) = trimmed.strip_prefix("br label %") {
                     let target = rest.trim();
-                    if let Some(&def_line) = label_def_lines.get(target) {
-                        if i > def_line {
+                    if let Some(&def_line) = label_def_lines.get(target)
+                        && i > def_line {
                             backedge_lines.insert(i, loop_meta_id);
                             loop_meta_id += 1;
                         }
-                    }
                 }
             }
         }
@@ -465,14 +464,7 @@ impl TextCodeGen {
                 result.push('\n');
             }
             // Also handle ptr loads/stores to .addr (for string/struct variables)
-            else if trimmed.contains("load ptr, ptr %")
-                && trimmed.contains(".addr")
-                && !trimmed.contains("align")
-            {
-                result.push_str(line);
-                result.push_str(", align 8");
-                result.push('\n');
-            } else if trimmed.starts_with("store ptr ")
+            else if (trimmed.contains("load ptr, ptr %") || trimmed.starts_with("store ptr "))
                 && trimmed.contains(".addr")
                 && !trimmed.contains("align")
             {
@@ -512,8 +504,8 @@ impl TextCodeGen {
                 // Extract param names from the define line
                 let def_line = lines[func_start.unwrap()];
                 let mut params = Vec::new();
-                if let Some(paren_start) = def_line.find('(') {
-                    if let Some(paren_end) = def_line.rfind(')') {
+                if let Some(paren_start) = def_line.find('(')
+                    && let Some(paren_end) = def_line.rfind(')') {
                         let param_str = &def_line[paren_start+1..paren_end];
                         for param in param_str.split(',') {
                             let param = param.trim();
@@ -527,7 +519,6 @@ impl TextCodeGen {
                             }
                         }
                     }
-                }
                 func_ranges.push((func_start.unwrap(), i, params));
                 func_start = None;
             }
@@ -569,8 +560,8 @@ impl TextCodeGen {
                                 continue;
                             }
                             // Find the memory access line after this ptr load
-                            for j in (i+1)..std::cmp::min(i+6, func_end+1) {
-                                let check = lines[j].trim();
+                            for (j, check_line) in lines.iter().enumerate().take(std::cmp::min(i+6, func_end+1)).skip(i+1) {
+                                let check = check_line.trim();
                                 if (check.contains("= load i64,") || check.contains("= load double,") ||
                                     check.contains("= load i8,") ||
                                     check.starts_with("store i64 ") || check.starts_with("store double ") ||
@@ -1227,19 +1218,7 @@ impl TextCodeGen {
         Ok(())
     }
 
-    /// Emit a function definition (legacy - without string table)
-    #[allow(dead_code)]
-    fn emit_function(&self, out: &mut String, func: &MirFunction) -> TextCodeGenResult<()> {
-        let empty_str_table = HashMap::new();
-        let empty_fn_types = HashMap::new();
-        let empty_fn_param_types = HashMap::new();
-        let empty_sret_functions = HashMap::new();
-        let empty_small_struct_functions = HashMap::new();
-        let empty_tuple_functions = HashMap::new();
-        let empty_struct_defs = HashMap::new();
-        let empty_postconditions = HashMap::new();
-        self.emit_function_with_strings(out, func, &empty_str_table, &empty_fn_types, &empty_fn_param_types, &empty_sret_functions, &empty_small_struct_functions, &empty_tuple_functions, &empty_struct_defs, &empty_postconditions)
-    }
+
 
     /// v0.51.25: Check if a specific struct variable escapes the function
     /// A struct escapes if it's returned, passed to a call, or copied to something that escapes
@@ -1935,9 +1914,7 @@ impl TextCodeGen {
             } else {
                 "noundef ".to_string()
             }
-        } else if matches!(func.ret_ty, MirType::F64) && func.name != "main" {
-            "noundef ".to_string()
-        } else if matches!(func.ret_ty, MirType::Bool) && func.name != "main" {
+        } else if matches!(func.ret_ty, MirType::F64 | MirType::Bool) && func.name != "main" {
             "noundef ".to_string()
         } else {
             String::new()
@@ -2082,13 +2059,12 @@ impl TextCodeGen {
             let mut vars = std::collections::HashSet::new();
             for block in &func.blocks {
                 for inst in &block.instructions {
-                    if let MirInst::Call { dest: Some(d), func: fn_name, .. } = inst {
-                        if matches!(fn_name.as_str(), "malloc" | "realloc" | "calloc")
+                    if let MirInst::Call { dest: Some(d), func: fn_name, .. } = inst
+                        && matches!(fn_name.as_str(), "malloc" | "realloc" | "calloc")
                             && local_names.contains(&d.name)
                         {
                             vars.insert(d.name.clone());
                         }
-                    }
                 }
             }
             // Propagate through Copy instructions (iterate until stable)
@@ -2096,15 +2072,14 @@ impl TextCodeGen {
                 let mut changed = false;
                 for block in &func.blocks {
                     for inst in &block.instructions {
-                        if let MirInst::Copy { dest, src } = inst {
-                            if vars.contains(&src.name)
+                        if let MirInst::Copy { dest, src } = inst
+                            && vars.contains(&src.name)
                                 && local_names.contains(&dest.name)
                                 && !vars.contains(&dest.name)
                             {
                                 vars.insert(dest.name.clone());
                                 changed = true;
                             }
-                        }
                     }
                 }
                 if !changed { break; }
@@ -2171,15 +2146,14 @@ impl TextCodeGen {
                         }
                         ContractFact::VarVarCmp { lhs, op, rhs } => {
                             // Both sides must be function parameters
-                            if let Some((_, lty)) = func.params.iter().find(|(n, _)| n == lhs) {
-                                if func.params.iter().any(|(n, _)| n == rhs) {
+                            if let Some((_, lty)) = func.params.iter().find(|(n, _)| n == lhs)
+                                && func.params.iter().any(|(n, _)| n == rhs) {
                                     let llvm_ty = self.mir_type_to_llvm(lty);
                                     let pred = cmp_op_to_llvm_pred(op);
                                     writeln!(out, "  %_assume_{} = icmp {} {} %{}, %{}", assume_idx, pred, llvm_ty, lhs, rhs)?;
                                     writeln!(out, "  call void @llvm.assume(i1 %_assume_{})", assume_idx)?;
                                     assume_idx += 1;
                                 }
-                            }
                         }
                         ContractFact::NonNull { var } => {
                             if func.params.iter().any(|(n, _)| n == var) {
@@ -2213,33 +2187,7 @@ impl TextCodeGen {
         Ok(())
     }
 
-    /// Emit a basic block (legacy - without string table)
-    #[allow(dead_code)]
-    fn emit_block(
-        &self,
-        out: &mut String,
-        block: &BasicBlock,
-        func: &MirFunction,
-    ) -> TextCodeGenResult<()> {
-        let empty_str_table = HashMap::new();
-        let empty_fn_types = HashMap::new();
-        let empty_fn_param_types = HashMap::new();
-        let empty_sret_functions = HashMap::new();
-        let empty_place_types = HashMap::new();
-        let mut empty_name_counts = HashMap::new();
-        let empty_local_names = std::collections::HashSet::new();
-        let empty_phi_map = std::collections::HashMap::new();
-        let empty_phi_string_map = std::collections::HashMap::new();
-        let empty_phi_coerce_map = std::collections::HashMap::new();
-        let empty_narrowed = std::collections::HashSet::new();
-        let empty_small_struct_functions = HashMap::new();
-        let empty_tuple_functions = HashMap::new();
-        let empty_tuple_var_types = HashMap::new();
-        let empty_struct_defs = HashMap::new();
-        let empty_postconditions = HashMap::new();
-        let empty_ptr_provenance = std::collections::HashSet::new();
-        self.emit_block_with_strings(out, block, func, &empty_str_table, &empty_fn_types, &empty_fn_param_types, &empty_sret_functions, &empty_small_struct_functions, &empty_tuple_functions, &empty_tuple_var_types, &empty_place_types, &mut empty_name_counts, &empty_local_names, &empty_narrowed, &empty_phi_map, &empty_phi_string_map, &empty_phi_coerce_map, &empty_struct_defs, &empty_postconditions, &empty_ptr_provenance)
-    }
+
 
     /// Emit a basic block with string table support
     #[allow(clippy::too_many_arguments)]
@@ -2274,8 +2222,8 @@ impl TextCodeGen {
             self.emit_instruction_with_strings(out, inst, func, string_table, fn_return_types, fn_param_types, sret_functions, small_struct_functions, tuple_functions, tuple_var_types, place_types, name_counts, local_names, narrowed_param_names, phi_load_map, phi_string_map, phi_coerce_map, &block.label, struct_defs, ptr_provenance_vars)?;
 
             // v0.96.16: Emit llvm.assume for postcondition-derived facts after call sites
-            if let MirInst::Call { dest: Some(d), func: callee_name, .. } = inst {
-                if let Some(postconds) = fn_postconditions.get(callee_name.as_str()) {
+            if let MirInst::Call { dest: Some(d), func: callee_name, .. } = inst
+                && let Some(postconds) = fn_postconditions.get(callee_name.as_str()) {
                     for postcond in postconds {
                         if let ContractFact::ReturnCmp { op, value } = postcond {
                             // Load the call result if it's a local
@@ -2294,7 +2242,7 @@ impl TextCodeGen {
                                 }
                             };
                             let ty = place_types.get(&d.name).copied().unwrap_or("i64");
-                            let pred = cmp_op_to_llvm_pred(&op);
+                            let pred = cmp_op_to_llvm_pred(op);
                             let post_count = name_counts.entry("_postassume".to_string()).or_insert(0);
                             let assume_name = format!("_postassume_{}", *post_count);
                             *post_count += 1;
@@ -2303,7 +2251,6 @@ impl TextCodeGen {
                         }
                     }
                 }
-            }
         }
 
         // Emit loads for locals that will be used in phi nodes of successor blocks
@@ -3121,7 +3068,7 @@ impl TextCodeGen {
                             // Without this, `load i64` from an `alloca i32` reads
                             // garbage in the upper 4 bytes, causing heap corruption.
                             let load_name = format!("{}.malloc.size.{}", p.name, malloc_idx_pre);
-                            let is_i32 = place_types.get(&p.name).map_or(false, |t| *t == "i32");
+                            let is_i32 = place_types.get(&p.name).is_some_and(|t| *t == "i32");
                             if is_i32 {
                                 let load32_name = format!("{}.malloc.size32.{}", p.name, malloc_idx_pre);
                                 writeln!(out, "  %{} = load i32, ptr %{}.addr, align 4", load32_name, p.name)?;
@@ -3245,7 +3192,7 @@ impl TextCodeGen {
                     let size_val = match &args[1] {
                         Operand::Place(p) if local_names.contains(&p.name) => {
                             let load_name = format!("realloc.size.{}", realloc_idx);
-                            let is_i32 = place_types.get(&p.name).map_or(false, |t| *t == "i32");
+                            let is_i32 = place_types.get(&p.name).is_some_and(|t| *t == "i32");
                             if is_i32 {
                                 let load32_name = format!("realloc.size32.{}", realloc_idx);
                                 writeln!(out, "  %{} = load i32, ptr %{}.addr, align 4", load32_name, p.name)?;
@@ -3327,12 +3274,11 @@ impl TextCodeGen {
                         let mut add_parts: Option<(&Operand, &Operand)> = None;
                         'outer_si64: for blk in &func.blocks {
                             for inst2 in &blk.instructions {
-                                if let MirInst::BinOp { dest: d2, op: MirBinOp::Add, lhs: l2, rhs: r2 } = inst2 {
-                                    if d2.name == addr_place.name {
+                                if let MirInst::BinOp { dest: d2, op: MirBinOp::Add, lhs: l2, rhs: r2 } = inst2
+                                    && d2.name == addr_place.name {
                                         add_parts = Some((l2, r2));
                                         break 'outer_si64;
                                     }
-                                }
                             }
                         }
                         if let Some((add_lhs, add_rhs)) = add_parts {
@@ -3367,11 +3313,10 @@ impl TextCodeGen {
                                         }
                                     }
                                 }
-                            } else if let Operand::Constant(Constant::Int(n)) = offset_op {
-                                if *n != 0 && *n % 8 == 0 {
+                            } else if let Operand::Constant(Constant::Int(n)) = offset_op
+                                && *n != 0 && *n % 8 == 0 {
                                     const_elem_index = Some(*n / 8);
                                 }
-                            }
 
                             // v0.96.36: Use ptr provenance when available — skip inttoptr
                             let base_ptr = format!("si64_gep_base.{}", store_idx);
@@ -3497,12 +3442,11 @@ impl TextCodeGen {
                         let mut add_parts: Option<(&Operand, &Operand)> = None;
                         'outer_li64: for blk in &func.blocks {
                             for inst2 in &blk.instructions {
-                                if let MirInst::BinOp { dest: d2, op: MirBinOp::Add, lhs: l2, rhs: r2 } = inst2 {
-                                    if d2.name == addr_place.name {
+                                if let MirInst::BinOp { dest: d2, op: MirBinOp::Add, lhs: l2, rhs: r2 } = inst2
+                                    && d2.name == addr_place.name {
                                         add_parts = Some((l2, r2));
                                         break 'outer_li64;
                                     }
-                                }
                             }
                         }
                         if let Some((add_lhs, add_rhs)) = add_parts {
@@ -3687,12 +3631,11 @@ impl TextCodeGen {
                         let mut add_parts: Option<(&Operand, &Operand)> = None;
                         'outer_sf64: for blk in &func.blocks {
                             for inst2 in &blk.instructions {
-                                if let MirInst::BinOp { dest: d2, op: MirBinOp::Add, lhs: l2, rhs: r2 } = inst2 {
-                                    if d2.name == addr_place.name {
+                                if let MirInst::BinOp { dest: d2, op: MirBinOp::Add, lhs: l2, rhs: r2 } = inst2
+                                    && d2.name == addr_place.name {
                                         add_parts = Some((l2, r2));
                                         break 'outer_sf64;
                                     }
-                                }
                             }
                         }
                         if let Some((add_lhs, add_rhs)) = add_parts {
@@ -3726,11 +3669,10 @@ impl TextCodeGen {
                                         }
                                     }
                                 }
-                            } else if let Operand::Constant(Constant::Int(n)) = offset_op {
-                                if *n != 0 && *n % 8 == 0 {
+                            } else if let Operand::Constant(Constant::Int(n)) = offset_op
+                                && *n != 0 && *n % 8 == 0 {
                                     const_elem_index = Some(*n / 8);
                                 }
-                            }
 
                             // v0.96.36: Use ptr provenance when available — skip inttoptr
                             let base_ptr = format!("sf64_gep_base.{}", store_idx);
@@ -3825,12 +3767,11 @@ impl TextCodeGen {
                         let mut add_parts: Option<(&Operand, &Operand)> = None;
                         'outer_lf64: for blk in &func.blocks {
                             for inst2 in &blk.instructions {
-                                if let MirInst::BinOp { dest: d2, op: MirBinOp::Add, lhs: l2, rhs: r2 } = inst2 {
-                                    if d2.name == addr_place.name {
+                                if let MirInst::BinOp { dest: d2, op: MirBinOp::Add, lhs: l2, rhs: r2 } = inst2
+                                    && d2.name == addr_place.name {
                                         add_parts = Some((l2, r2));
                                         break 'outer_lf64;
                                     }
-                                }
                             }
                         }
                         if let Some((add_lhs, add_rhs)) = add_parts {
@@ -3864,11 +3805,10 @@ impl TextCodeGen {
                                         }
                                     }
                                 }
-                            } else if let Operand::Constant(Constant::Int(n)) = offset_op {
-                                if *n != 0 && *n % 8 == 0 {
+                            } else if let Operand::Constant(Constant::Int(n)) = offset_op
+                                && *n != 0 && *n % 8 == 0 {
                                     const_elem_index = Some(*n / 8);
                                 }
-                            }
 
                             // v0.96.36: Use ptr provenance when available — skip inttoptr
                             let base_ptr = format!("lf64_gep_base.{}", load_idx);
@@ -3988,12 +3928,11 @@ impl TextCodeGen {
                         let mut add_parts: Option<(&Operand, &Operand)> = None;
                         'outer: for blk in &func.blocks {
                             for inst2 in &blk.instructions {
-                                if let MirInst::BinOp { dest: d2, op: MirBinOp::Add, lhs: l2, rhs: r2 } = inst2 {
-                                    if d2.name == addr_place.name {
+                                if let MirInst::BinOp { dest: d2, op: MirBinOp::Add, lhs: l2, rhs: r2 } = inst2
+                                    && d2.name == addr_place.name {
                                         add_parts = Some((l2, r2));
                                         break 'outer;
                                     }
-                                }
                             }
                         }
                         if let Some((add_lhs, add_rhs)) = add_parts {
@@ -4112,12 +4051,11 @@ impl TextCodeGen {
                         let mut add_parts: Option<(&Operand, &Operand)> = None;
                         'outer_s: for blk in &func.blocks {
                             for inst2 in &blk.instructions {
-                                if let MirInst::BinOp { dest: d2, op: MirBinOp::Add, lhs: l2, rhs: r2 } = inst2 {
-                                    if d2.name == addr_place.name {
+                                if let MirInst::BinOp { dest: d2, op: MirBinOp::Add, lhs: l2, rhs: r2 } = inst2
+                                    && d2.name == addr_place.name {
                                         add_parts = Some((l2, r2));
                                         break 'outer_s;
                                     }
-                                }
                             }
                         }
                         if let Some((add_lhs, add_rhs)) = add_parts {

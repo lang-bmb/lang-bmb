@@ -275,11 +275,10 @@ impl DivisionCheckElimination {
                     return true;
                 }
                 // Check range bounds: if lower > 0 or upper < 0, zero is excluded
-                if let Some((lo, hi)) = facts.get_bounds(&place.name) {
-                    if lo > 0 || hi < 0 {
+                if let Some((lo, hi)) = facts.get_bounds(&place.name)
+                    && (lo > 0 || hi < 0) {
                         return true;
                     }
-                }
                 false
             }
             _ => false,
@@ -548,6 +547,12 @@ impl OptimizationPass for ProofUnreachableElimination {
 /// For `a *| b` → `a * b` when the product of bounds cannot overflow i64
 pub struct SaturatingArithmeticElimination {
     pub eliminated_count: usize,
+}
+
+impl Default for SaturatingArithmeticElimination {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SaturatingArithmeticElimination {
@@ -1061,8 +1066,8 @@ fn propagate_postconditions(program: &mut MirProgram, stats: &mut ProofOptimizat
 
         for block in &func.blocks {
             for inst in &block.instructions {
-                if let MirInst::Call { dest: Some(dest), func: callee_name, .. } = inst {
-                    if let Some(postconds) = postcondition_map.get(callee_name.as_str()) {
+                if let MirInst::Call { dest: Some(dest), func: callee_name, .. } = inst
+                    && let Some(postconds) = postcondition_map.get(callee_name.as_str()) {
                         for postcond in postconds {
                             match postcond {
                                 ContractFact::ReturnCmp { op, value } => {
@@ -1085,7 +1090,6 @@ fn propagate_postconditions(program: &mut MirProgram, stats: &mut ProofOptimizat
                             }
                         }
                     }
-                }
             }
         }
 

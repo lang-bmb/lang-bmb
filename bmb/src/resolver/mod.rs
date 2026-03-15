@@ -52,10 +52,10 @@ impl Resolver {
         // add the stdlib root as an additional search path so cross-module imports work.
         let mut extra_paths = Vec::new();
         if let Some(parent) = base.parent() {
-            if parent.file_name().map_or(false, |n| n == "stdlib") {
+            if parent.file_name().is_some_and(|n| n == "stdlib") {
                 // base_dir is stdlib/X/ — add stdlib/ as search path
                 extra_paths.push(parent.to_path_buf());
-            } else if parent.parent().map_or(false, |pp| pp.file_name().map_or(false, |n| n == "stdlib")) {
+            } else if parent.parent().is_some_and(|pp| pp.file_name().is_some_and(|n| n == "stdlib")) {
                 // base_dir is stdlib/X/Y/ — add stdlib/ as search path
                 extra_paths.push(parent.parent().unwrap().to_path_buf());
             }
