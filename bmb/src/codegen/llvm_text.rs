@@ -2322,7 +2322,12 @@ impl TextCodeGen {
                 } else {
                     std::borrow::Cow::Borrowed("ptr") // Default to ptr for unknown types
                 };
-                writeln!(out, "  %{} = load {}, ptr %{}.addr", load_temp, llvm_ty, local_name)?;
+                // v0.97: Skip void type loads — void values can't be loaded from memory
+                // This occurs when nested if-else returns () and the codegen tries to
+                // create phi nodes for the void result
+                if llvm_ty.as_ref() != "void" {
+                    writeln!(out, "  %{} = load {}, ptr %{}.addr", load_temp, llvm_ty, local_name)?;
+                }
             }
         }
 
@@ -5254,13 +5259,17 @@ impl TextCodeGen {
                     })
                     .collect();
 
-                writeln!(
-                    out,
-                    "  %{} = phi {} {}",
-                    dest_name,
-                    ty,
-                    phi_args.join(", ")
-                )?;
+                // v0.97: Skip void phi nodes — LLVM doesn't support phi of void type
+                // This occurs when nested if-else returns () (Unit type)
+                if ty.as_ref() != "void" {
+                    writeln!(
+                        out,
+                        "  %{} = phi {} {}",
+                        dest_name,
+                        ty,
+                        phi_args.join(", ")
+                    )?;
+                }
             }
 
             // v0.19.0: Struct operations
