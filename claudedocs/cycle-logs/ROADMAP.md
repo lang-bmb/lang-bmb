@@ -1,23 +1,21 @@
-# 30-Cycle Roadmap: v0.97 Phase 2+3+4 Execution (Cycles 1893-1922)
+# 30-Cycle Roadmap: Codegen Bug Fixes + Ecosystem (Cycles 1900-1929)
 Date: 2026-03-15
 
-## Phase 2: LSP BMB Server (Cycles 1893-1904)
-- 1893: Runtime `run_command_output` + `getenv` — C impl + codegen + type system
-- 1894-1895: LSP server core — JSON-RPC transport + init/shutdown handlers
-- 1896-1897: LSP diagnostics — `bmb check` shell-out + diagnostic parsing
-- 1898-1899: LSP document sync — didOpen/didChange/didClose
-- 1900-1901: LSP P1 features — hover + completion
-- 1902: VS Code integration + end-to-end testing
-- 1903-1904: Bug fixes + polish
+## Phase A: Codegen Bug Fixes (Cycles 1900-1910)
+- 1900-1903: TRL codegen bug — root cause investigation + fix
+- 1904-1905: Void type phi merge — fix `load void` for nested if-else returning ()
+- 1906-1907: LSP diagnostic positions — prelude offset calibration
 
-## Phase 3: Bootstrap SAE + nonnull (Cycles 1905-1914)
-- 1905-1906: Bootstrap nonnull attributes (String params/returns)
-- 1907-1910: Bootstrap SAE range analysis + Sat elimination
-- 1911-1912: Fixed Point verification
-- 1913-1914: Contract benchmark validation
+## Phase B: VS Code Integration (Cycles 1908-1912)
+- 1908-1909: Update vscode-bmb extension for new BMB LSP
+- 1910-1912: End-to-end testing + polish
 
-## Phase 4: Playground WASM (Cycles 1915-1922)
-- 1915-1916: WASM build setup (lib crate + wasm-pack)
-- 1917-1918: wasm-bindgen interface (compile + run + check)
-- 1919-1920: Playground frontend integration
-- 1921-1922: Deployment + examples
+## Phase C: Bootstrap SAE (Cycles 1913-1920)
+- 1913-1916: ProvenFactSet for range analysis in bootstrap
+- 1917-1919: Sat → regular operation replacement
+- 1920: Fixed Point verification
+
+## Phase D: Playground WASM (Cycles 1921-1929)
+- 1921-1923: WASM build setup
+- 1924-1926: wasm-bindgen interface
+- 1927-1929: Frontend integration + deployment

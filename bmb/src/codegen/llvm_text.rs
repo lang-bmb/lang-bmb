@@ -6,7 +6,7 @@
 //!
 //! The generated IR is compatible with the bootstrap compiler output.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use thiserror::Error;
 
@@ -282,9 +282,14 @@ impl TextCodeGen {
         // Runtime declarations
         self.emit_runtime_declarations(&mut output)?;
 
+        // v0.97: Build call graph and detect indirect recursion for norecurse attribute
+        // A function is recursive if it's part of a cycle in the call graph
+        // (e.g., pobj_ms → pval → pobj → pobj_ms)
+        let recursive_functions = Self::detect_recursive_functions(program);
+
         // Generate functions with string table and function type map
         for func in &program.functions {
-            self.emit_function_with_strings(&mut output, func, &string_table, &fn_return_types, &fn_param_types, &sret_functions, &small_struct_functions, &tuple_functions, &program.struct_defs, &fn_postconditions)?;
+            self.emit_function_with_strings(&mut output, func, &string_table, &fn_return_types, &fn_param_types, &sret_functions, &small_struct_functions, &tuple_functions, &program.struct_defs, &fn_postconditions, &recursive_functions)?;
         }
 
         // v0.96.34: Add !llvm.loop mustprogress metadata to while-loop back-edges
@@ -1662,6 +1667,58 @@ impl TextCodeGen {
 
     /// Emit a function definition with string table support
     #[allow(clippy::too_many_arguments)]
+    /// Detect all functions that are part of recursive cycles in the call graph.
+    /// Returns a set of function names that are directly or indirectly recursive.
+    fn detect_recursive_functions(program: &MirProgram) -> HashSet<String> {
+        // Build call graph: function name → set of called user functions
+        let user_fns: HashSet<String> = program.functions.iter().map(|f| f.name.clone()).collect();
+        let mut call_graph: HashMap<String, HashSet<String>> = HashMap::new();
+        for func in &program.functions {
+            let mut callees = HashSet::new();
+            for block in &func.blocks {
+                for inst in &block.instructions {
+                    if let MirInst::Call { func: callee, .. } = inst {
+                        if user_fns.contains(callee) {
+                            callees.insert(callee.clone());
+                        }
+                    }
+                }
+            }
+            call_graph.insert(func.name.clone(), callees);
+        }
+
+        // Detect cycles: a function is recursive if it can reach itself via the call graph
+        let mut recursive = HashSet::new();
+        for func_name in &user_fns {
+            if recursive.contains(func_name) {
+                continue; // Already known recursive
+            }
+            // BFS/DFS from func_name to see if we can reach func_name
+            let mut visited = HashSet::new();
+            let mut stack: Vec<&str> = vec![func_name];
+            while let Some(current) = stack.pop() {
+                if !visited.insert(current.to_string()) {
+                    continue;
+                }
+                if let Some(callees) = call_graph.get(current) {
+                    for callee in callees {
+                        if callee == func_name {
+                            // Found a cycle back to the original function
+                            // Mark ALL functions in the cycle as recursive
+                            for v in &visited {
+                                recursive.insert(v.clone());
+                            }
+                            recursive.insert(func_name.clone());
+                            break;
+                        }
+                        stack.push(callee);
+                    }
+                }
+            }
+        }
+        recursive
+    }
+
     fn emit_function_with_strings(
         &self,
         out: &mut String,
@@ -1674,6 +1731,7 @@ impl TextCodeGen {
         tuple_functions: &HashMap<String, String>,
         struct_defs: &HashMap<String, Vec<(String, MirType)>>,
         fn_postconditions: &HashMap<String, Vec<ContractFact>>,
+        recursive_functions: &HashSet<String>,
     ) -> TextCodeGenResult<()> {
         // Pre-scan to build place type map
         let place_types = self.build_place_type_map(func, fn_return_types, struct_defs);
@@ -1857,13 +1915,9 @@ impl TextCodeGen {
             ""
         };
         // v0.96.36: Detect norecurse and nofree for better interprocedural optimization
-        // norecurse: Function doesn't call itself — enables attribute derivation
-        // nofree: Function doesn't free memory — enables better alias analysis
-        let is_recursive = func.blocks.iter().any(|b| {
-            b.instructions.iter().any(|inst| {
-                matches!(inst, MirInst::Call { func: callee, .. } if callee == &func.name)
-            })
-        });
+        // v0.97: Use precomputed call graph analysis for indirect recursion detection
+        // (pobj_ms → pval → pobj → pobj_ms is indirect recursion that direct check misses)
+        let is_recursive = recursive_functions.contains(&func.name);
         let has_free = func.blocks.iter().any(|b| {
             b.instructions.iter().any(|inst| {
                 matches!(inst, MirInst::Call { func: callee, .. }
