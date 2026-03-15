@@ -465,10 +465,9 @@ fn parse_int_at(s: String, pos: i64, acc: i64) -> i64 =
 
 // Compute prelude size by expanding an empty file and measuring
 fn get_prelude_size() -> i64 = {
-    // Write empty file, check it, and see the span offset
-    // For now, use a heuristic: prelude is about 2300 bytes
-    // This will be calibrated on first diagnostic
-    2300
+    // Calibrated: prelude.bmb is 2175 bytes + ~139 bytes from preprocessor headers
+    // Verified: span for `42` at file pos 22 = 2336 → offset = 2314
+    2314
 };
 
 // Handle textDocument/didOpen — uses raw string extraction
@@ -551,23 +550,23 @@ fn publish_diagnostics(uri: String, content: String) -> i64 = {
     0
 };
 
-// Find the bmb binary path
-fn find_bmb_binary() -> String = "bmb";
+// Find the bmb binary path — checks BMB_PATH env var, then PATH
+fn find_bmb_binary() -> String = {
+    let env_path = getenv("BMB_PATH");
+    if env_path.len() > 0 { env_path }
+    else { "bmb" }
+};
 
 // Parse bmb check output into LSP diagnostics array
+// Uses string search instead of JSON parser (TRL codegen bug workaround)
 fn parse_check_output(output: String, content: String) -> String = {
-    // Output format: one JSON object per line
-    // Success: {"type":"success","file":"...","warnings":0}
-    // Error: {"type":"error","message":"..."}
-    // Warning: {"type":"warning","kind":"...","file":"...","start":N,"end":M,"message":"..."}
     if output.len() == 0 { json_arr0() }
     else {
-        let doc = jdoc_new();
-        let root = jparse(doc, output);
-        let typ = jobj_str(doc, root, "type", output);
+        // Check output type using string search
+        let typ = json_extract_str(output, "type");
         if typ == "success" { json_arr0() }
         else if typ == "error" {
-            let msg = jobj_str(doc, root, "message", output);
+            let msg = json_extract_str(output, "message");
             // Try to extract span from message
             let sp_start = parse_span_start(msg);
             let sp_end = parse_span_end(msg);
@@ -582,7 +581,7 @@ fn parse_check_output(output: String, content: String) -> String = {
             let start_col = start_lc % 1000000;
             let end_line = end_lc / 1000000;
             let end_col = end_lc % 1000000;
-            // Clean message (remove "Type error at Span { ... }: " prefix)
+            // Clean message (remove prefix up to first ": ")
             let clean_msg = clean_error_message(msg);
             let diag = json_obj3(
                 "range", lsp_range(start_line, start_col, end_line, end_col),
@@ -674,17 +673,29 @@ fn build_completion_items() -> String =
 // ============================================================================
 
 // Extract a JSON string value by key using direct string search
-// Searches for "key":"value" pattern and returns value
+// Handles escaped quotes within the value
 fn json_extract_str(msg: String, key: String) -> String = {
     let needle = chr(34) + key + chr(34) + ":" + chr(34);
     let pos = str_find(msg, needle, 0);
     if pos < 0 { "" }
     else {
         let start = pos + needle.len();
-        let end_pos = str_find_char(msg, 34, start);
+        // Find closing quote, skipping escaped quotes
+        let end_pos = find_unescaped_quote(msg, start);
         if end_pos < 0 { "" }
-        else { msg.slice(start, end_pos) }
+        else { unescape(msg.slice(start, end_pos), 0, "") }
     }
+};
+
+// Find the next unescaped " character
+fn find_unescaped_quote(s: String, pos: i64) -> i64 = {
+    let mut p: i64 = pos;
+    while p < s.len() {
+        if s.byte_at(p) == 92 { set p = p + 2 }
+        else if s.byte_at(p) == 34 { return p }
+        else { set p = p + 1 }
+    };
+    0 - 1
 };
 
 // Extract a JSON number value by key
