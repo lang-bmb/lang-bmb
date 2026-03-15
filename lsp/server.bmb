@@ -117,20 +117,15 @@ fn jobj_add(doc: i64, n: i64, ks: i64, ke: i64, val: i64) -> i64 = {
 fn jobj_get(doc: i64, n: i64, key: String, src: String) -> i64 =
     jobj_find(doc, n, key, src, 0, dget(doc, n + 1));
 
-// Iterative version — TRL bug workaround (Cycle 1893)
-fn jobj_find(doc: i64, n: i64, key: String, src: String, idx: i64, cnt: i64) -> i64 = {
-    let mut i: i64 = idx;
-    let mut result: i64 = 0 - 1;
-    let mut found: i64 = 0;
-    while i < cnt and found == 0 {
-        let ks = dget(doc, n + 2 + i * 3);
-        let ke = dget(doc, n + 2 + i * 3 + 1);
+fn jobj_find(doc: i64, n: i64, key: String, src: String, idx: i64, cnt: i64) -> i64 =
+    if idx >= cnt { 0 - 1 }
+    else {
+        let ks = dget(doc, n + 2 + idx * 3);
+        let ke = dget(doc, n + 2 + idx * 3 + 1);
         let k = src.slice(ks, ke);
-        if k == key { set result = dget(doc, n + 2 + i * 3 + 2); set found = 1 }
-        else { set i = i + 1 }
+        if k == key { dget(doc, n + 2 + idx * 3 + 2) }
+        else { jobj_find(doc, n, key, src, idx + 1, cnt) }
     };
-    result
-};
 
 fn jobj_str(doc: i64, n: i64, key: String, src: String) -> String = {
     let v = jobj_get(doc, n, key, src);
@@ -142,21 +137,16 @@ fn jobj_num(doc: i64, n: i64, key: String, src: String) -> i64 = {
     if v < 0 { 0 } else { jnum(doc, v) }
 };
 
-// Iterative version — TRL bug workaround (Cycle 1893)
-fn unescape(s: String, pos: i64, acc: String) -> String = {
-    let mut p: i64 = pos;
-    let mut out: String = acc;
-    while p < s.len() {
-        if s.byte_at(p) == 92 and p + 1 < s.len() {
-            let nx = s.byte_at(p + 1);
-            let ch = if nx == 110 { chr(10) } else if nx == 116 { chr(9) } else if nx == 114 { chr(13) } else if nx == 34 { chr(34) } else if nx == 92 { chr(92) } else { chr(nx) };
-            set out = out + ch;
-            set p = p + 2
-        }
-        else { set out = out + chr(s.byte_at(p)); set p = p + 1 }
-    };
-    out
-};
+fn unescape(s: String, pos: i64, acc: String) -> String =
+    if pos >= s.len() { acc }
+    else if s.byte_at(pos) == 92 and pos + 1 < s.len() {
+        let nx = s.byte_at(pos + 1);
+        let ch = if nx == 110 { chr(10) } else if nx == 116 { chr(9) }
+            else if nx == 114 { chr(13) } else if nx == 34 { chr(34) }
+            else if nx == 92 { chr(92) } else { chr(nx) };
+        unescape(s, pos + 2, acc + ch)
+    }
+    else { unescape(s, pos + 1, acc + chr(s.byte_at(pos))) };
 
 // JSON Parser
 fn pk(n: i64, p: i64) -> i64 = n * 1000000 + p;
@@ -224,16 +214,15 @@ fn parr(doc: i64, src: String, p: i64) -> i64 = {
     let arr = mk_arr(doc, 64);
     let p1 = wskip(src, p + 1);
     if p1 < src.len() and src.byte_at(p1) == 93 { pk(arr, p1 + 1) }
-    else { parr_elems(doc, src, p1, arr, 0) }
+    else { parr_elems(doc, src, p1, arr) }
 };
 
-// _cnt: TRL workaround (same as pobj_ms — see Cycle 1893)
-fn parr_elems(doc: i64, src: String, p: i64, arr: i64, _cnt: i64) -> i64 = {
+fn parr_elems(doc: i64, src: String, p: i64, arr: i64) -> i64 = {
     let r = pval(doc, src, p);
     let _ap = jarr_push(doc, arr, rn(r));
     let p1 = wskip(src, rp(r));
     if p1 >= src.len() { pk(arr, p1) }
-    else if src.byte_at(p1) == 44 { parr_elems(doc, src, wskip(src, p1 + 1), arr, _cnt + 1) }
+    else if src.byte_at(p1) == 44 { parr_elems(doc, src, wskip(src, p1 + 1), arr) }
     else { pk(arr, p1 + 1) }
 };
 
@@ -241,14 +230,10 @@ fn pobj(doc: i64, src: String, p: i64) -> i64 = {
     let obj = mk_obj(doc, 32);
     let p1 = wskip(src, p + 1);
     if p1 < src.len() and src.byte_at(p1) == 125 { pk(obj, p1 + 1) }
-    else { pobj_ms(doc, src, p1, obj, 0) }
+    else { pobj_ms(doc, src, p1, obj) }
 };
 
-// Note: _cnt parameter is a TRL workaround — without a changing parameter
-// beyond `p`, the TailRecursiveToLoop pass incorrectly terminates after 2 iterations.
-// This is a known codegen bug (Cycle 1893). The _cnt value is unused but must change
-// on each recursive call to prevent the optimization from breaking.
-fn pobj_ms(doc: i64, src: String, p: i64, obj: i64, _cnt: i64) -> i64 = {
+fn pobj_ms(doc: i64, src: String, p: i64, obj: i64) -> i64 = {
     let ks = p + 1;
     let ke = fq(src, ks);
     let p1 = wskip(src, ke + 1);
@@ -257,27 +242,22 @@ fn pobj_ms(doc: i64, src: String, p: i64, obj: i64, _cnt: i64) -> i64 = {
     let _oa = jobj_add(doc, obj, ks, ke, rn(vr));
     let p3 = wskip(src, rp(vr));
     if p3 >= src.len() { pk(obj, p3) }
-    else if src.byte_at(p3) == 44 { pobj_ms(doc, src, wskip(src, p3 + 1), obj, _cnt + 1) }
+    else if src.byte_at(p3) == 44 { pobj_ms(doc, src, wskip(src, p3 + 1), obj) }
     else { pk(obj, p3 + 1) }
 };
 
-// JSON Serializer — iterative version (TRL bug workaround, Cycle 1893)
-fn escape(s: String, p: i64, acc: String) -> String = {
-    let mut pos: i64 = p;
-    let mut out: String = acc;
-    while pos < s.len() {
-        let c = s.byte_at(pos);
+fn escape(s: String, p: i64, acc: String) -> String =
+    if p >= s.len() { acc }
+    else {
+        let c = s.byte_at(p);
         let e = if c == 34 { chr(92) + chr(34) }
             else if c == 92 { chr(92) + chr(92) }
             else if c == 10 { chr(92) + chr(110) }
             else if c == 13 { chr(92) + chr(114) }
             else if c == 9 { chr(92) + chr(116) }
             else { chr(c) };
-        set out = out + e;
-        set pos = pos + 1
+        escape(s, p + 1, acc + e)
     };
-    out
-};
 
 // ============================================================================
 // JSON Builder — construct JSON without a source string
@@ -475,8 +455,12 @@ fn get_prelude_size() -> i64 = {
 // Handle textDocument/didOpen — uses raw string extraction
 fn handle_did_open(doc: i64, root: i64, src: String) -> i64 = 0;
 fn handle_did_open_raw(msg: String) -> i64 = {
-    let uri = json_extract_str(msg, "uri");
-    let text = json_extract_str(msg, "text");
+    let doc = jdoc_new();
+    let root = jparse(doc, msg);
+    let params = jobj_get(doc, root, "params", msg);
+    let td = if params >= 0 { jobj_get(doc, params, "textDocument", msg) } else { 0 - 1 };
+    let uri = if td >= 0 { jobj_str(doc, td, "uri", msg) } else { "" };
+    let text = if td >= 0 { jobj_str(doc, td, "text", msg) } else { "" };
     if uri.len() > 0 and text.len() > 0 {
         publish_diagnostics(uri, text);
         0
@@ -486,8 +470,15 @@ fn handle_did_open_raw(msg: String) -> i64 = {
 // Handle textDocument/didChange — uses raw string extraction
 fn handle_did_change(doc: i64, root: i64, src: String) -> i64 = 0;
 fn handle_did_change_raw(msg: String) -> i64 = {
-    let uri = json_extract_str(msg, "uri");
-    let text = json_extract_str(msg, "text");
+    let doc = jdoc_new();
+    let root = jparse(doc, msg);
+    let params = jobj_get(doc, root, "params", msg);
+    let td = if params >= 0 { jobj_get(doc, params, "textDocument", msg) } else { 0 - 1 };
+    let uri = if td >= 0 { jobj_str(doc, td, "uri", msg) } else { "" };
+    // contentChanges[0].text
+    let changes = if params >= 0 { jobj_get(doc, params, "contentChanges", msg) } else { 0 - 1 };
+    let first_change = if changes >= 0 and dget(doc, changes + 1) > 0 { dget(doc, changes + 2) } else { 0 - 1 };
+    let text = if first_change >= 0 { jobj_str(doc, first_change, "text", msg) } else { "" };
     if uri.len() > 0 and text.len() > 0 {
         publish_diagnostics(uri, text);
         0
@@ -497,7 +488,11 @@ fn handle_did_change_raw(msg: String) -> i64 = {
 // Handle textDocument/didClose — uses raw string extraction
 fn handle_did_close(doc: i64, root: i64, src: String) -> i64 = 0;
 fn handle_did_close_raw(msg: String) -> i64 = {
-    let uri = json_extract_str(msg, "uri");
+    let doc = jdoc_new();
+    let root = jparse(doc, msg);
+    let params = jobj_get(doc, root, "params", msg);
+    let td = if params >= 0 { jobj_get(doc, params, "textDocument", msg) } else { 0 - 1 };
+    let uri = if td >= 0 { jobj_str(doc, td, "uri", msg) } else { "" };
     if uri.len() > 0 {
         let diag_params = json_obj2("uri", json_str(uri), "diagnostics", json_arr0());
         lsp_send_message(jsonrpc_notification("textDocument/publishDiagnostics", diag_params));
@@ -556,15 +551,15 @@ fn publish_diagnostics(uri: String, content: String) -> i64 = {
 fn find_bmb_binary() -> String = getenv("BMB_PATH");
 
 // Parse bmb check output into LSP diagnostics array
-// Uses string search instead of JSON parser (TRL codegen bug workaround)
 fn parse_check_output(output: String, content: String) -> String = {
     if output.len() == 0 { json_arr0() }
     else {
-        // Check output type using string search
-        let typ = json_extract_str(output, "type");
+        let doc = jdoc_new();
+        let root = jparse(doc, output);
+        let typ = jobj_str(doc, root, "type", output);
         if typ == "success" { json_arr0() }
         else if typ == "error" {
-            let msg = json_extract_str(output, "message");
+            let msg = jobj_str(doc, root, "message", output);
             // Try to extract span from message
             let sp_start = parse_span_start(msg);
             let sp_end = parse_span_end(msg);
@@ -738,11 +733,10 @@ fn str_find_char(s: String, ch: i64, pos: i64) -> i64 = {
 fn dispatch(msg: String) -> i64 = {
     if msg.len() == 0 { 0 }
     else {
-        // Use direct string search instead of JSON parser for method/id extraction
-        // This avoids a TRL codegen bug that breaks jparse when combined with
-        // response builder functions in the same compilation unit (Cycle 1893)
-        let method = json_extract_str(msg, "method");
-        let id_num = json_extract_num(msg, "id");
+        let doc = jdoc_new();
+        let root = jparse(doc, msg);
+        let method = jobj_str(doc, root, "method", msg);
+        let id_num = jobj_num(doc, root, "id", msg);
         let id_str = if id_num > 0 { json_num(id_num) } else { "null" };
 
         // Dispatch by method
