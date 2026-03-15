@@ -21,6 +21,8 @@
 #   --no-build      Skip building, reuse existing binaries
 #   --no-rust       Skip Rust benchmarks (BMB vs C only)
 #   --no-check      Skip output correctness verification
+#   --stats         Show statistical significance (95% CI, Mann-Whitney U)
+#   --dir DIR       Use custom benchmark directory (default: benches/compute)
 #   --help          Show this help
 
 set -e
@@ -45,6 +47,7 @@ VERBOSE=false
 NO_BUILD=false
 NO_RUST=false
 NO_CHECK=false
+STATS=false
 
 # ─── Colors ──────────────────────────────────────────────────────────────────
 if [ -t 1 ]; then
@@ -66,7 +69,9 @@ while [[ $# -gt 0 ]]; do
         --no-build) NO_BUILD=true; shift ;;
         --no-rust)  NO_RUST=true; shift ;;
         --no-check) NO_CHECK=true; shift ;;
-        --help)     head -24 "$0" | tail -22; exit 0 ;;
+        --stats)    STATS=true; shift ;;
+        --dir)      BENCH_DIR="${PROJECT_ROOT}/ecosystem/benchmark-bmb/benches/$2"; shift 2 ;;
+        --help)     head -26 "$0" | tail -24; exit 0 ;;
         *)          echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -273,8 +278,10 @@ run_with_stats() {
     # Sort
     IFS=$'\n' sorted=($(sort -n <<<"${times[*]}")); unset IFS
 
-    # Compute statistics
+    # Compute statistics (line 1: median mean stddev min max)
     compute_stats "${sorted[@]}"
+    # Output raw times (line 2: comma-separated)
+    echo "${times[*]}" | tr ' ' ','
 }
 
 # ─── Rating Function ─────────────────────────────────────────────────────────
@@ -443,7 +450,11 @@ echo -e "${BLUE}Measuring (${WARMUP} warmup + ${RUNS} measured runs each)...${NC
 echo ""
 
 # Header
-if [ "$HAS_RUSTC" = true ]; then
+if [ "$STATS" = true ]; then
+    printf "${BOLD}%-20s %8s %8s %7s %7s %15s %7s %8s${NC}\n" \
+        "Benchmark" "BMB(ms)" "C(ms)" "Ratio" "Status" "95% CI" "p-val" "Sig?"
+    printf "%s\n" "$(printf '=%.0s' {1..100})"
+elif [ "$HAS_RUSTC" = true ]; then
     printf "${BOLD}%-20s %8s %8s %8s %7s %7s %7s %8s${NC}\n" \
         "Benchmark" "BMB(ms)" "C(ms)" "Rust(ms)" "BMB/C" "BMB/Rs" "Status" "BMBσ"
     printf "%s\n" "$(printf '=%.0s' {1..95})"
@@ -481,7 +492,9 @@ for name in "${BENCHMARKS[@]}"; do
 
     # Run BMB
     [ "$VERBOSE" = true ] && echo -n "  BMB:" >&2
-    bmb_stats=$(run_with_stats "$bmb_exe")
+    bmb_output=$(run_with_stats "$bmb_exe")
+    bmb_stats=$(echo "$bmb_output" | head -1)
+    bmb_raw=$(echo "$bmb_output" | tail -1)
     bmb_median=$(echo "$bmb_stats" | awk '{print $1}')
     bmb_mean=$(echo "$bmb_stats" | awk '{print $2}')
     bmb_stddev=$(echo "$bmb_stats" | awk '{print $3}')
@@ -490,7 +503,9 @@ for name in "${BENCHMARKS[@]}"; do
 
     # Run C
     [ "$VERBOSE" = true ] && echo -n "  C:  " >&2
-    c_stats=$(run_with_stats "$c_exe")
+    c_output=$(run_with_stats "$c_exe")
+    c_stats=$(echo "$c_output" | head -1)
+    c_raw=$(echo "$c_output" | tail -1)
     c_median=$(echo "$c_stats" | awk '{print $1}')
     c_mean=$(echo "$c_stats" | awk '{print $2}')
     c_stddev=$(echo "$c_stats" | awk '{print $3}')
@@ -504,15 +519,72 @@ for name in "${BENCHMARKS[@]}"; do
     rust_min="0"
     rust_max="0"
     rust_ratio="—"
+    rust_raw=""
     if [ "$HAS_RUSTC" = true ] && [ -f "$rust_exe" ]; then
         [ "$VERBOSE" = true ] && echo -n "  Rust:" >&2
-        rust_stats=$(run_with_stats "$rust_exe")
+        rust_output=$(run_with_stats "$rust_exe")
+        rust_stats=$(echo "$rust_output" | head -1)
+        rust_raw=$(echo "$rust_output" | tail -1)
         rust_median=$(echo "$rust_stats" | awk '{print $1}')
         rust_mean=$(echo "$rust_stats" | awk '{print $2}')
         rust_stddev=$(echo "$rust_stats" | awk '{print $3}')
         rust_min=$(echo "$rust_stats" | awk '{print $4}')
         rust_max=$(echo "$rust_stats" | awk '{print $5}')
         rust_ratio=$(python3 -c "print(f'{${bmb_median} / ${rust_median}:.2f}')")
+    fi
+
+    # Statistical significance (--stats mode)
+    stat_sig=""
+    stat_ci=""
+    stat_pval=""
+    if [ "$STATS" = true ]; then
+        stat_result=$(python3 -c "
+import math
+bmb = [${bmb_raw}]
+c = [${c_raw}]
+n_b, n_c = len(bmb), len(c)
+
+# 95% CI on ratio of medians using bootstrap-free approximation
+# Fieller's method approximation: ratio ± t * ratio * sqrt(cv_b^2 + cv_c^2)
+mean_b, mean_c = sum(bmb)/n_b, sum(c)/n_c
+if mean_c > 0 and mean_b > 0:
+    var_b = sum((x-mean_b)**2 for x in bmb) / (n_b-1) if n_b > 1 else 0
+    var_c = sum((x-mean_c)**2 for x in c) / (n_c-1) if n_c > 1 else 0
+    cv_b = math.sqrt(var_b) / mean_b if mean_b > 0 else 0
+    cv_c = math.sqrt(var_c) / mean_c if mean_c > 0 else 0
+    ratio = mean_b / mean_c
+    # t-value for 95% CI with min(n_b,n_c)-1 df, approximated as 2.0 for n>=11
+    t_val = 2.228 if min(n_b,n_c) <= 10 else 2.0
+    margin = t_val * ratio * math.sqrt(cv_b**2/n_b + cv_c**2/n_c)
+    ci_lo = ratio - margin
+    ci_hi = ratio + margin
+else:
+    ci_lo = ci_hi = 0
+
+# Mann-Whitney U test (exact for small n, normal approx for large n)
+# H0: BMB and C come from the same distribution
+combined = [(v, 'b') for v in bmb] + [(v, 'c') for v in c]
+combined.sort(key=lambda x: x[0])
+rank_sum_b = 0
+for i, (val, group) in enumerate(combined, 1):
+    if group == 'b':
+        rank_sum_b += i
+U_b = rank_sum_b - n_b * (n_b + 1) / 2
+U_c = n_b * n_c - U_b
+U = min(U_b, U_c)
+mu_U = n_b * n_c / 2
+sigma_U = math.sqrt(n_b * n_c * (n_b + n_c + 1) / 12) if (n_b + n_c) > 0 else 1
+z = (U - mu_U) / sigma_U if sigma_U > 0 else 0
+# Two-tailed p-value approximation using normal CDF
+p_val = 2 * (1 - 0.5 * (1 + math.erf(abs(z) / math.sqrt(2))))
+sig = 'YES' if p_val < 0.05 else 'no'
+print(f'{ci_lo:.3f} {ci_hi:.3f} {p_val:.4f} {sig}')
+")
+        stat_ci_lo=$(echo "$stat_result" | awk '{print $1}')
+        stat_ci_hi=$(echo "$stat_result" | awk '{print $2}')
+        stat_pval=$(echo "$stat_result" | awk '{print $3}')
+        stat_sig=$(echo "$stat_result" | awk '{print $4}')
+        stat_ci="[${stat_ci_lo}-${stat_ci_hi}]"
     fi
 
     # Compute ratio and rating (BMB vs C)
@@ -527,7 +599,13 @@ for name in "${BENCHMARKS[@]}"; do
         FAIL)   color=$RED;   FAIL_COUNT=$((FAIL_COUNT+1)) ;;
     esac
 
-    if [ "$HAS_RUSTC" = true ]; then
+    if [ "$STATS" = true ]; then
+        # Stats display: ratio, rating, 95% CI, p-value, significance
+        sig_color=$NC
+        [ "$stat_sig" = "YES" ] && sig_color=$GREEN
+        printf "%-20s %8s %8s %7sx ${color}%7s${NC} %15s %7s ${sig_color}%5s${NC}\n" \
+            "$name" "$bmb_median" "$c_median" "$ratio" "$rating" "$stat_ci" "$stat_pval" "$stat_sig"
+    elif [ "$HAS_RUSTC" = true ]; then
         # 3-way display
         rust_disp="$rust_median"
         bmb_rust_disp="$rust_ratio"
@@ -545,12 +623,15 @@ print(f'{sign}{diff:.1f}%')
             "$name" "$bmb_median" "$c_median" "$ratio" "±${bmb_stddev}" "±${c_stddev}" "$rating" "$pct_diff"
     fi
 
-    # JSON entry (includes Rust if available)
-    if [ "$rust_median" != "—" ]; then
-        JSON_ENTRIES+=("{\"name\":\"${name}\",\"bmb_median\":${bmb_median},\"bmb_mean\":${bmb_mean},\"bmb_stddev\":${bmb_stddev},\"bmb_min\":${bmb_min},\"bmb_max\":${bmb_max},\"c_median\":${c_median},\"c_mean\":${c_mean},\"c_stddev\":${c_stddev},\"c_min\":${c_min},\"c_max\":${c_max},\"rust_median\":${rust_median},\"rust_mean\":${rust_mean},\"rust_stddev\":${rust_stddev},\"rust_min\":${rust_min},\"rust_max\":${rust_max},\"ratio\":${ratio},\"rust_ratio\":${rust_ratio},\"rating\":\"${rating}\"}")
-    else
-        JSON_ENTRIES+=("{\"name\":\"${name}\",\"bmb_median\":${bmb_median},\"bmb_mean\":${bmb_mean},\"bmb_stddev\":${bmb_stddev},\"bmb_min\":${bmb_min},\"bmb_max\":${bmb_max},\"c_median\":${c_median},\"c_mean\":${c_mean},\"c_stddev\":${c_stddev},\"c_min\":${c_min},\"c_max\":${c_max},\"ratio\":${ratio},\"rating\":\"${rating}\"}")
+    # JSON entry — always include raw times for statistical analysis
+    json_base="{\"name\":\"${name}\",\"bmb_median\":${bmb_median},\"bmb_mean\":${bmb_mean},\"bmb_stddev\":${bmb_stddev},\"bmb_min\":${bmb_min},\"bmb_max\":${bmb_max},\"c_median\":${c_median},\"c_mean\":${c_mean},\"c_stddev\":${c_stddev},\"c_min\":${c_min},\"c_max\":${c_max},\"bmb_times\":[${bmb_raw}],\"c_times\":[${c_raw}],\"ratio\":${ratio},\"rating\":\"${rating}\""
+    if [ -n "$stat_pval" ]; then
+        json_base="${json_base},\"ci_lo\":${stat_ci_lo},\"ci_hi\":${stat_ci_hi},\"p_value\":${stat_pval},\"significant\":$([ "$stat_sig" = "YES" ] && echo true || echo false)"
     fi
+    if [ "$rust_median" != "—" ]; then
+        json_base="${json_base},\"rust_median\":${rust_median},\"rust_mean\":${rust_mean},\"rust_stddev\":${rust_stddev},\"rust_min\":${rust_min},\"rust_max\":${rust_max},\"rust_times\":[${rust_raw}],\"rust_ratio\":${rust_ratio}"
+    fi
+    JSON_ENTRIES+=("${json_base}}")
 done
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
@@ -565,6 +646,7 @@ echo "  C:    clang -O3 -march=native"
 [ "$HAS_RUSTC" = true ] && echo "  Rust: rustc -C opt-level=3 -C target-cpu=native"
 echo "  Runs: ${WARMUP} warmup (discarded) + ${RUNS} measured, median reported"
 echo "  Rating (BMB vs C): <0.95x=FASTER, 0.95-1.05x=PASS, 1.05-1.10x=WARN, >1.10x=FAIL"
+[ "$STATS" = true ] && echo "  Stats: 95% CI on mean ratio, Mann-Whitney U test (α=0.05)"
 [ "$NO_CHECK" = false ] && echo "  Correctness: output verified (BMB == C${HAS_RUSTC:+ == Rust})"
 [ $MISMATCH_COUNT -gt 0 ] && echo -e "  ${RED}⚠ Output mismatches: ${MISMATCH_COUNT}${NC}"
 

@@ -1,0 +1,199 @@
+// BMB Standard Library: collections
+// Dynamic data structures using heap allocation
+//
+// Design: Uses vec_* runtime builtins for dynamic arrays.
+// All operations have contracts for bounds-check elimination.
+// Available vec builtins: vec_new, vec_push, vec_pop, vec_get, vec_set,
+//   vec_len, vec_free, vec_reverse, vec_contains, vec_index_of,
+//   vec_swap, vec_sort, vec_with_capacity, vec_clear, vec_cap,
+//   vec_slice, vec_extend
+
+// ============================================
+// Stack (LIFO) — backed by vec
+// ============================================
+
+// Create a new empty stack
+pub fn stack_new() -> i64 = vec_new();
+
+// Push value onto stack
+pub fn stack_push(stack: i64, val: i64) -> i64 = {
+    let _p = vec_push(stack, val);
+    stack
+};
+
+// Pop value from stack, returns the value
+pub fn stack_pop(stack: i64) -> i64
+  pre vec_len(stack) > 0
+= vec_pop(stack);
+
+// Peek at top of stack without removing
+pub fn stack_peek(stack: i64) -> i64
+  pre vec_len(stack) > 0
+= vec_get(stack, vec_len(stack) - 1);
+
+// Check if stack is empty
+pub fn stack_empty(stack: i64) -> bool = vec_len(stack) == 0;
+
+// Get stack size
+pub fn stack_size(stack: i64) -> i64
+  post ret >= 0
+= vec_len(stack);
+
+// Free stack memory
+pub fn stack_free(stack: i64) -> i64 = {
+    let _f = vec_free(stack);
+    0
+};
+
+// ============================================
+// Min-Heap (priority queue)
+// ============================================
+
+pub fn heap_new() -> i64 = vec_new();
+
+pub fn heap_size(h: i64) -> i64
+  post ret >= 0
+= vec_len(h);
+
+pub fn heap_empty(h: i64) -> bool = vec_len(h) == 0;
+
+// Insert value into min-heap
+pub fn heap_insert(h: i64, val: i64) -> i64 = {
+    let _p = vec_push(h, val);
+    let _s = heap_sift_up(h, vec_len(h) - 1);
+    h
+};
+
+// Extract minimum value
+pub fn heap_extract_min(h: i64) -> i64
+  pre vec_len(h) > 0
+= {
+    let min_val = vec_get(h, 0);
+    let last_idx = vec_len(h) - 1;
+    if last_idx == 0 {
+        let _pop = vec_pop(h);
+        min_val
+    } else {
+        let _sw = vec_set(h, 0, vec_get(h, last_idx));
+        let _pop = vec_pop(h);
+        let _sd = heap_sift_down(h, 0);
+        min_val
+    }
+};
+
+// Peek at minimum value
+pub fn heap_peek_min(h: i64) -> i64
+  pre vec_len(h) > 0
+= vec_get(h, 0);
+
+// Free heap memory
+pub fn heap_free(h: i64) -> i64 = {
+    let _f = vec_free(h);
+    0
+};
+
+// Sift up (after insertion)
+fn heap_sift_up(h: i64, idx: i64) -> i64 =
+    if idx == 0 { 0 }
+    else {
+        let parent = (idx - 1) / 2;
+        if vec_get(h, idx) < vec_get(h, parent) {
+            let tmp_a = vec_get(h, idx);
+            let tmp_b = vec_get(h, parent);
+            let _s1 = vec_set(h, idx, tmp_b);
+            let _s2 = vec_set(h, parent, tmp_a);
+            heap_sift_up(h, parent)
+        } else {
+            0
+        }
+    };
+
+// Sift down (after extraction)
+fn heap_sift_down(h: i64, idx: i64) -> i64 = {
+    let n = vec_len(h);
+    let left = 2 * idx + 1;
+    let right = 2 * idx + 2;
+    let smallest = if left < n and vec_get(h, left) < vec_get(h, idx) { left } else { idx };
+    let smallest2 = if right < n and vec_get(h, right) < vec_get(h, smallest) { right } else { smallest };
+    if smallest2 != idx {
+        let tmp_c = vec_get(h, idx);
+        let tmp_d = vec_get(h, smallest2);
+        let _s3 = vec_set(h, idx, tmp_d);
+        let _s4 = vec_set(h, smallest2, tmp_c);
+        heap_sift_down(h, smallest2)
+    } else {
+        0
+    }
+};
+
+// ============================================
+// Sorted Array (binary search)
+// ============================================
+
+// Binary search in a sorted vec, returns index or -1
+pub fn binary_search(v: i64, target: i64) -> i64
+  post ret >= -1 and ret < vec_len(v)
+= bsearch_iter(v, target, 0, vec_len(v) - 1);
+
+fn bsearch_iter(v: i64, target: i64, lo: i64, hi: i64) -> i64 =
+    if lo > hi { 0 - 1 }
+    else {
+        let mid = lo + (hi - lo) / 2;
+        let val = vec_get(v, mid);
+        if val == target { mid }
+        else if val < target { bsearch_iter(v, target, mid + 1, hi) }
+        else { bsearch_iter(v, target, lo, mid - 1) }
+    };
+
+// ============================================
+// Vec utilities
+// ============================================
+
+// Sum all elements
+pub fn vec_sum(v: i64) -> i64
+  post (vec_len(v) == 0) implies ret == 0
+= vec_sum_iter(v, 0, 0);
+
+fn vec_sum_iter(v: i64, i: i64, acc: i64) -> i64 =
+    if i >= vec_len(v) { acc }
+    else { vec_sum_iter(v, i + 1, acc + vec_get(v, i)) };
+
+// Find minimum element
+pub fn vec_min(v: i64) -> i64
+  pre vec_len(v) > 0
+= vec_min_iter(v, 1, vec_get(v, 0));
+
+fn vec_min_iter(v: i64, i: i64, best: i64) -> i64 =
+    if i >= vec_len(v) { best }
+    else {
+        let cur = vec_get(v, i);
+        vec_min_iter(v, i + 1, if cur < best { cur } else { best })
+    };
+
+// Find maximum element
+pub fn vec_max(v: i64) -> i64
+  pre vec_len(v) > 0
+= vec_max_iter(v, 1, vec_get(v, 0));
+
+fn vec_max_iter(v: i64, i: i64, best: i64) -> i64 =
+    if i >= vec_len(v) { best }
+    else {
+        let cur = vec_get(v, i);
+        vec_max_iter(v, i + 1, if cur > best { cur } else { best })
+    };
+
+// Map: apply function via callback index pattern
+// (Note: BMB doesn't have first-class closures for vec_map yet;
+//  use vec_get/vec_set loop pattern in user code)
+
+// Count elements matching a value
+pub fn vec_count(v: i64, target: i64) -> i64
+  post ret >= 0 and ret <= vec_len(v)
+= vec_count_iter(v, target, 0, 0);
+
+fn vec_count_iter(v: i64, target: i64, i: i64, acc: i64) -> i64 =
+    if i >= vec_len(v) { acc }
+    else {
+        let inc = if vec_get(v, i) == target { 1 } else { 0 };
+        vec_count_iter(v, target, i + 1, acc + inc)
+    };

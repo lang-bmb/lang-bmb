@@ -57,14 +57,18 @@ def load_results(path: str) -> list[BenchmarkResult]:
 
     results = []
     for item in data.get('results', []):
+        # Support both bench.sh v5 (bmb_median/c_median) and older benchmark.sh (bmb_ms/c_ms)
+        bmb_val = item.get('bmb_ms') or item.get('bmb_median')
+        c_val = item.get('c_ms') or item.get('c_median')
+        rust_val = item.get('rust_ms') or item.get('rust_median')
         results.append(BenchmarkResult(
             tier=item.get('tier', 0),
             name=item.get('name', ''),
-            bmb_ms=item.get('bmb_ms') if item.get('bmb_ms') != 'null' else None,
-            c_ms=item.get('c_ms') if item.get('c_ms') != 'null' else None,
-            rust_ms=item.get('rust_ms') if item.get('rust_ms') != 'null' else None,
-            ratio_c=item.get('ratio_c') if item.get('ratio_c') != 'null' else None,
-            ratio_rust=item.get('ratio_rust') if item.get('ratio_rust') != 'null' else None,
+            bmb_ms=bmb_val if bmb_val != 'null' else None,
+            c_ms=c_val if c_val != 'null' else None,
+            rust_ms=rust_val if rust_val != 'null' else None,
+            ratio_c=item.get('ratio_c') or item.get('ratio'),
+            ratio_rust=item.get('ratio_rust') or item.get('rust_ratio'),
         ))
 
     return results
