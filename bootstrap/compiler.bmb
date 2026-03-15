@@ -12756,6 +12756,8 @@ fn format_fn_params(params: String, pos: i64, acc: String) -> String =
         let name = param.slice(0, colon_pos);
         let param_type = trim(param.slice(colon_pos + 1, param.len()));
         // v0.95: i32 params declared as i32 with _i32 suffix (sext in prologue)
+        // Note: String params remain i64 (pointer-as-integer model) — nonnull on params
+        // requires full ptr-mode migration of the bootstrap codegen pipeline
         let llvm_type = if param_type == "f64" { "double" } else if param_type == "i32" { "i32" } else { "i64" };
         let param_name = if param_type == "i32" { "%" + name + "_i32" } else { "%" + name };
         let typed_param = llvm_type + " noundef " + param_name;

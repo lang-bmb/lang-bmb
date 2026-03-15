@@ -1088,7 +1088,7 @@ impl TextCodeGen {
         writeln!(out, "declare ptr @chr(i64) nocallback nounwind nosync willreturn")?;
         writeln!(out, "declare i64 @ord(ptr) nocallback nofree nosync memory(argmem: read) nounwind willreturn")?;
         writeln!(out, "declare ptr @char_to_string(i32) nocallback nounwind nosync")?;
-        writeln!(out, "declare ptr @int_to_string(i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare ptr @bmb_int_to_string(i64) nocallback nounwind nosync")?;
         writeln!(out, "declare void @print_str(ptr) nocallback nounwind nofree nosync")?;
         writeln!(out, "declare void @println_str(ptr) nocallback nounwind nofree nosync")?;
         writeln!(out)?;
@@ -4967,6 +4967,7 @@ impl TextCodeGen {
                         // v0.93.7: Integer/float math method calls → bmb_* runtime functions
                         // v0.96.35: abs/min/max/clamp replaced with LLVM intrinsics (above)
                         "pow" => "bmb_pow",
+                        "int_to_string" => "bmb_int_to_string",
                         // v0.93.7: String method calls → bmb_string_* runtime functions
                         "len" => "bmb_string_len",
                         "byte_at" => "bmb_string_char_at",
