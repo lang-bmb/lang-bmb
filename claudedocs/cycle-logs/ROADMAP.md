@@ -1,10 +1,20 @@
-# 30-Cycle Roadmap: Codegen Bug Fixes + Ecosystem (Cycles 1900-1929)
-Date: 2026-03-15
+# Roadmap: Triple 100% Push (Cycles 1908-1917)
+Date: 2026-03-16
 
-## Phase A: Codegen Bug Fixes (Cycles 1900-1910)
-- 1900-1903: TRL codegen bug — root cause investigation + fix
-- 1904-1905: Void type phi merge — fix `load void` for nested if-else returning ()
-- 1906-1907: LSP diagnostic positions — prelude offset calibration
+## Completed (Cycles 1900-1907)
+- IfElseToSwitch fix, void phi fix, norecurse fix
+- LSP 9 features (hover/completion/definition/documentSymbol/references/rename/formatting)
+- Benchmark IR proofs (3 WARN → LLVM-OK)
+- TRL workaround removal
+
+## Phase 1: Bootstrap IR Quality (Cycles 1908-1911)
+- `i8*` → `ptr` migration in bootstrap/llvm_ir.bmb
+- noundef expansion, attribute parity improvements
+- 3-Stage Fixed Point after each change
+
+## Phase 2: Self-Host + Quality (Cycles 1912-1917)
+- BMB test runner, LSP hardening
+- Final verification sweep
 
 ## Phase B: VS Code Integration (Cycles 1908-1912)
 - 1908-1909: Update vscode-bmb extension for new BMB LSP

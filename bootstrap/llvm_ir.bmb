@@ -88,9 +88,9 @@ fn char_lower(c: i64) -> String =
 // ============================================================================
 
 // Convert BMB type to LLVM IR type
-// i64 → i64, i32 → i32, bool → i1, unit → void, String → i8*
+// i64 → i64, i32 → i32, bool → i1, unit → void, String → ptr (LLVM 21 opaque)
 fn llvm_type(bmb_type: String) -> String =
-    if bmb_type == "i64" { "i64" } else if bmb_type == "i32" { "i32" } else if bmb_type == "bool" { "i1" } else if bmb_type == "unit" { "void" } else if bmb_type == "String" { "i8*" } else { "i64" };  // default to i64
+    if bmb_type == "i64" { "i64" } else if bmb_type == "i32" { "i32" } else if bmb_type == "bool" { "i1" } else if bmb_type == "unit" { "void" } else if bmb_type == "String" { "ptr" } else { "i64" };  // default to i64
 
 // ============================================================================
 // SECTION 4: LLVM IR Constant Generation
@@ -110,10 +110,10 @@ fn gen_const_bool(dest: String, value: i64) -> String =
 
 // v0.30.51: Generate LLVM IR for string constant
 // MIR: %_t0 = const S:hello
-// LLVM: String constants represented as i8* pointer (placeholder for runtime)
+// LLVM: String constants represented as ptr pointer (placeholder for runtime)
 // Full implementation would generate global @.str.N and getelementptr
 fn gen_const_string(dest: String, content: String) -> String =
-    "; string: " + content + SEP() + dest + " = inttoptr i64 0 to i8*";
+    "; string: " + content + SEP() + dest + " = inttoptr i64 0 to ptr";
 
 // v0.89.11: Generate LLVM IR for float constant
 // MIR: %_t0 = const F:3.14
@@ -607,9 +607,9 @@ fn gen_instr_continue(dest: String) -> String =
 // v0.30.52: CLOSURE - closure/lambda represented as function pointer
 // MIR: %_t0 = CLOSURE:42
 // LLVM: Closure is represented as i64 pointer (simplified for bootstrap)
-// Full implementation would generate struct { i8* fn_ptr, i8* env_ptr }
+// Full implementation would generate struct { ptr fn_ptr, ptr env_ptr }
 fn gen_instr_closure(dest: String, closure_id: String) -> String =
-    "; closure: " + closure_id + SEP() + dest + " = inttoptr i64 0 to i8*";
+    "; closure: " + closure_id + SEP() + dest + " = inttoptr i64 0 to ptr";
 
 // Parse closure ID from CLOSURE:42 format ("CLOSURE:" is 8 chars)
 fn parse_closure_id(op_arg: String) -> String =
@@ -626,7 +626,7 @@ fn is_closure_op(op: String) -> bool =
 // MIR Capture → LLVM IR for closure environment handling
 // ============================================================================
 
-// Closure captures use environment struct: { i8* fn_ptr, i64* env }
+// Closure captures use environment struct: { ptr fn_ptr, ptr env }
 // MIR format: Capture %closure, %var, idx
 //             LoadCapture %dest, %closure, idx
 
@@ -692,22 +692,22 @@ fn gen_closure_env_alloc(dest: String, num_captures: i64) -> String =
 
 // Generate capture store: store captured value into environment
 fn gen_capture_store(env: String, cap_var: String, idx: i64) -> String =
-    let gep = "%_cap_ptr_" + int_to_string(idx) + " = getelementptr inbounds nuw i64, i64* " + env + ", i64 " + int_to_string(idx);
-    let store = "store i64 " + cap_var + ", i64* %_cap_ptr_" + int_to_string(idx);
+    let gep = "%_cap_ptr_" + int_to_string(idx) + " = getelementptr inbounds nuw i64, ptr " + env + ", i64 " + int_to_string(idx);
+    let store = "store i64 " + cap_var + ", ptr %_cap_ptr_" + int_to_string(idx);
     gep + SEP() + store;
 
 // Generate capture load: load captured value from environment
 fn gen_capture_load(dest: String, env: String, idx: i64) -> String =
-    let gep = "%_cap_ptr_" + int_to_string(idx) + " = getelementptr inbounds nuw i64, i64* " + env + ", i64 " + int_to_string(idx);
-    let load = dest + " = load i64, i64* %_cap_ptr_" + int_to_string(idx);
+    let gep = "%_cap_ptr_" + int_to_string(idx) + " = getelementptr inbounds nuw i64, ptr " + env + ", i64 " + int_to_string(idx);
+    let load = dest + " = load i64, ptr %_cap_ptr_" + int_to_string(idx);
     gep + SEP() + load;
 
 // Generate full closure creation with captures
 fn gen_closure_with_captures(dest: String, fn_ptr: String, env: String) -> String =
     // Closure struct: { fn_ptr, env_ptr }
-    let alloc = dest + ".struct = alloca { i64, i64* }";
-    let fn_store = "store i64 " + fn_ptr + ", i64* " + dest + ".struct.fn";
-    let env_store = "store i64* " + env + ", i64** " + dest + ".struct.env";
+    let alloc = dest + ".struct = alloca { i64, ptr }";
+    let fn_store = "store i64 " + fn_ptr + ", ptr " + dest + ".struct.fn";
+    let env_store = "store ptr " + env + ", ptr* " + dest + ".struct.env";
     alloc + SEP() + fn_store + SEP() + env_store;
 
 // ============================================================================
@@ -766,20 +766,20 @@ fn parse_call_closure_args(line: String) -> String =
     };
 
 // Generate LLVM IR for closure invocation
-// Closure struct: { i64 fn_ptr, i64* env }
+// Closure struct: { i64 fn_ptr, ptr env }
 fn gen_instr_call_closure(line: String) -> String =
     let dest = parse_call_closure_dest(line);
     let closure = parse_call_closure_closure(line);
     let args = parse_call_closure_args(line);
 
     // Extract function pointer from closure
-    let fn_gep = "%_cl_fn_ptr = getelementptr inbounds nuw { i64, i64* }, { i64, i64* }* " + closure + ", i64 0, i32 0";
-    let fn_load = "%_cl_fn = load i64, i64* %_cl_fn_ptr";
-    let fn_cast = "%_cl_fn_p = inttoptr i64 %_cl_fn to i64 (i64*, ...)*";
+    let fn_gep = "%_cl_fn_ptr = getelementptr inbounds nuw { i64, ptr }, { i64, ptr }* " + closure + ", i64 0, i32 0";
+    let fn_load = "%_cl_fn = load i64, ptr %_cl_fn_ptr";
+    let fn_cast = "%_cl_fn_p = inttoptr i64 %_cl_fn to i64 (ptr, ...)*";
 
     // Extract environment pointer from closure
-    let env_gep = "%_cl_env_ptr = getelementptr inbounds nuw { i64, i64* }, { i64, i64* }* " + closure + ", i64 0, i32 1";
-    let env_load = "%_cl_env = load i64*, i64** %_cl_env_ptr";
+    let env_gep = "%_cl_env_ptr = getelementptr inbounds nuw { i64, ptr }, { i64, ptr }* " + closure + ", i64 0, i32 1";
+    let env_load = "%_cl_env = load ptr, ptr* %_cl_env_ptr";
 
     // Build call with env as first argument
     let call_args = if args.len() > 0 { "%_cl_env, " + args } else { "%_cl_env" };
@@ -789,7 +789,7 @@ fn gen_instr_call_closure(line: String) -> String =
 
 // Generate simpler closure call (for pure closures without env)
 fn gen_instr_call_closure_pure(dest: String, closure: String, args: String) -> String =
-    let fn_load = "%_cl_fn = load i64, i64* " + closure;
+    let fn_load = "%_cl_fn = load i64, ptr " + closure;
     let fn_cast = "%_cl_fn_p = inttoptr i64 %_cl_fn to i64 (...)*";
     let call_instr = if args.len() > 0 { dest + " = call i64 %_cl_fn_p(" + args + ")" } else { dest + " = call i64 %_cl_fn_p()" };
     fn_load + SEP() + fn_cast + SEP() + call_instr;
@@ -830,7 +830,7 @@ fn gen_array_stores(arr: String, elems: String, count: i64, idx: i64) -> String 
         let elem = extract_array_elem(elems, idx);
         let ptr = arr + "_ptr" + int_to_string(idx);
         let gep = ptr + " = getelementptr inbounds nuw [" + int_to_string(count) + " x i64], [" + int_to_string(count) + " x i64]* " + arr + ", i32 0, i32 " + int_to_string(idx);
-        let store = "store i64 " + elem + ", i64* " + ptr;
+        let store = "store i64 " + elem + ", ptr " + ptr;
         let rest = gen_array_stores(arr, elems, count, idx + 1);
         if rest.len() > 0 { gep + SEP() + store + SEP() + rest } else { gep + SEP() + store }
     };
@@ -875,7 +875,7 @@ fn gen_instr_index(dest: String, line: String, pos: i64) -> String =
 // Uses runtime function bmb_array_get which includes bounds checking
 fn gen_index_checked(dest: String, base: String, idx: String) -> String =
     // Call runtime function that does bounds checking internally
-    dest + " = call i64 @bmb_array_get(i8* " + base + ", i64 " + idx + ")";
+    dest + " = call i64 @bmb_array_get(ptr " + base + ", i64 " + idx + ")";
 
 // v0.48.0: IndexUnchecked - skips bounds check (used with Fin[N] types)
 // Format: %dest = IndexUnchecked %base[%idx]
@@ -886,8 +886,8 @@ fn gen_instr_index_unchecked(dest: String, line: String, pos: i64) -> String =
     let idx = extract_index_expr(line, bracket_pos);
     // Direct GEP + load without bounds check (zero-cost)
     let ptr = dest + "_ptr";
-    let gep = ptr + " = getelementptr inbounds nuw i64, i64* " + base + ", i64 " + idx;
-    let load = dest + " = load i64, i64* " + ptr;
+    let gep = ptr + " = getelementptr inbounds nuw i64, ptr " + base + ", i64 " + idx;
+    let load = dest + " = load i64, ptr " + ptr;
     gep + SEP() + load;
 
 fn read_until_bracket(s: String, pos: i64) -> String =
@@ -1053,11 +1053,11 @@ fn gen_fn_footer() -> String =
     "}";
 
 // Generate single parameter with type-appropriate attributes
-// String → i8* noundef nonnull noalias nocapture readonly dereferenceable(24) align 8 %a
+// String → ptr noundef nonnull noalias nocapture readonly %a
 // i64/i32/bool → type noundef %a
 fn gen_param(param_type: String, param_name: String) -> String =
     if param_type == "String" {
-        "i8* noundef nonnull noalias nocapture readonly dereferenceable(24) align 8 %" + param_name
+        "ptr noundef nonnull noalias nocapture readonly %" + param_name
     } else {
         llvm_type(param_type) + " noundef %" + param_name
     };
@@ -1379,7 +1379,7 @@ fn gen_method_byte_at(dest: String, recv: String, args: String) -> String =
 fn gen_method_slice(dest: String, recv: String, args: String) -> String =
     let start = extract_slice_arg(args, 0);
     let end = extract_slice_arg(args, 1);
-    dest + " = call i8* @bmb_string_slice(i8* " + recv + ", i64 " + start + ", i64 " + end + ")";
+    dest + " = call ptr @bmb_string_slice(ptr " + recv + ", i64 " + start + ", i64 " + end + ")";
 
 fn extract_slice_arg(args: String, idx: i64) -> String =
     if idx == 0 { extract_first_arg(args) } else { extract_second_arg(args) };
@@ -1396,42 +1396,42 @@ fn extract_second_arg(args: String) -> String =
 // concat: Concatenate two strings (returns new string)
 fn gen_method_concat(dest: String, recv: String, args: String) -> String =
     let other = trim_ws(args);
-    dest + " = call i8* @bmb_string_concat(i8* " + recv + ", i8* " + other + ")";
+    dest + " = call ptr @bmb_string_concat(ptr " + recv + ", ptr " + other + ")";
 
 // eq: String equality comparison (returns i1)
 fn gen_method_eq(dest: String, recv: String, args: String) -> String =
     let other = trim_ws(args);
-    dest + " = call i1 @bmb_string_eq(i8* " + recv + ", i8* " + other + ")";
+    dest + " = call i1 @bmb_string_eq(ptr " + recv + ", ptr " + other + ")";
 
 // v0.30.78: Array method IR generation
 // array_len: Get length from array struct
 fn gen_method_array_len(dest: String, recv: String) -> String =
-    dest + " = call i64 @bmb_array_len(i8* " + recv + ")";
+    dest + " = call i64 @bmb_array_len(ptr " + recv + ")";
 
 // array_get: Get element at index
 fn gen_method_array_get(dest: String, recv: String, args: String) -> String =
     let idx = trim_ws(args);
-    dest + " = call i64 @bmb_array_get(i8* " + recv + ", i64 " + idx + ")";
+    dest + " = call i64 @bmb_array_get(ptr " + recv + ", i64 " + idx + ")";
 
 // array_set: Set element at index (returns void, but MIR needs dest)
 fn gen_method_array_set(dest: String, recv: String, args: String) -> String =
     let idx = extract_first_arg(args);
     let val = extract_second_arg(args);
-    "call void @bmb_array_set(i8* " + recv + ", i64 " + idx + ", i64 " + val + ")" + SEP() + dest + " = add i64 0, 0";
+    "call void @bmb_array_set(ptr " + recv + ", i64 " + idx + ", i64 " + val + ")" + SEP() + dest + " = add i64 0, 0";
 
 // v0.30.80: Array push/pop methods
 // array_push: Append element to array (returns new length)
 fn gen_method_array_push(dest: String, recv: String, args: String) -> String =
     let val = trim_ws(args);
-    dest + " = call i64 @bmb_array_push(i8* " + recv + ", i64 " + val + ")";
+    dest + " = call i64 @bmb_array_push(ptr " + recv + ", i64 " + val + ")";
 
 // array_pop: Remove last element (returns removed value)
 fn gen_method_array_pop(dest: String, recv: String) -> String =
-    dest + " = call i64 @bmb_array_pop(i8* " + recv + ")";
+    dest + " = call i64 @bmb_array_pop(ptr " + recv + ")";
 
 // array_clear: Remove all elements (returns void)
 fn gen_method_array_clear(dest: String, recv: String) -> String =
-    "call void @bmb_array_clear(i8* " + recv + ")" + SEP() + dest + " = add i64 0, 0";
+    "call void @bmb_array_clear(ptr " + recv + ")" + SEP() + dest + " = add i64 0, 0";
 
 // ============================================================================
 // SECTION 11b: Trait Dispatch Infrastructure (v0.30.96)
@@ -1564,43 +1564,43 @@ fn gen_extern_max() -> String =
 
 // v0.30.73-76: String method runtime declarations
 fn gen_extern_string_len() -> String =
-    "declare i64 @bmb_string_len(i8*) nocallback nofree nosync nounwind willreturn memory(argmem: read) speculatable";
+    "declare i64 @bmb_string_len(ptr) nocallback nofree nosync nounwind willreturn memory(argmem: read) speculatable";
 
 fn gen_extern_string_slice() -> String =
-    "declare i8* @bmb_string_slice(i8*, i64, i64) nocallback nosync nounwind willreturn memory(argmem: read)";
+    "declare ptr @bmb_string_slice(ptr, i64, i64) nocallback nosync nounwind willreturn memory(argmem: read)";
 
 // v0.30.77: Array method runtime declarations
 fn gen_extern_array_len() -> String =
-    "declare i64 @bmb_array_len(i8*) nocallback nofree nosync nounwind willreturn";
+    "declare i64 @bmb_array_len(ptr) nocallback nofree nosync nounwind willreturn";
 
 fn gen_extern_array_get() -> String =
-    "declare i64 @bmb_array_get(i8*, i64) nocallback nofree nosync nounwind willreturn";
+    "declare i64 @bmb_array_get(ptr, i64) nocallback nofree nosync nounwind willreturn";
 
 fn gen_extern_array_set() -> String =
-    "declare void @bmb_array_set(i8*, i64, i64) nocallback nofree nosync nounwind";
+    "declare void @bmb_array_set(ptr, i64, i64) nocallback nofree nosync nounwind";
 
 // v0.30.80: Array mutation runtime declarations
 fn gen_extern_array_push() -> String =
-    "declare i64 @bmb_array_push(i8*, i64) nocallback nounwind nosync";
+    "declare i64 @bmb_array_push(ptr, i64) nocallback nounwind nosync";
 
 fn gen_extern_array_pop() -> String =
-    "declare i64 @bmb_array_pop(i8*) nocallback nounwind nosync";
+    "declare i64 @bmb_array_pop(ptr) nocallback nounwind nosync";
 
 fn gen_extern_array_clear() -> String =
-    "declare void @bmb_array_clear(i8*) nocallback nounwind nosync";
+    "declare void @bmb_array_clear(ptr) nocallback nounwind nosync";
 
 // v0.30.81: String and memory runtime declarations
 fn gen_extern_string_concat() -> String =
-    "declare i8* @bmb_string_concat(i8*, i8*) nocallback nounwind nosync";
+    "declare ptr @bmb_string_concat(ptr, ptr) nocallback nounwind nosync";
 
 fn gen_extern_string_eq() -> String =
-    "declare i1 @bmb_string_eq(i8*, i8*) nocallback nofree nosync nounwind willreturn memory(argmem: read)";
+    "declare i1 @bmb_string_eq(ptr, ptr) nocallback nofree nosync nounwind willreturn memory(argmem: read)";
 
 fn gen_extern_alloc() -> String =
-    "declare noalias i8* @bmb_alloc(i64) nounwind";
+    "declare noalias ptr @bmb_alloc(i64) nounwind";
 
 fn gen_extern_free() -> String =
-    "declare void @bmb_free(i8*) nounwind";
+    "declare void @bmb_free(ptr) nounwind";
 
 // v0.48.0: Bounds check panic (for array index out of bounds)
 fn gen_extern_panic_bounds() -> String =
@@ -1812,7 +1812,7 @@ fn test_type_mapping() -> i64 =
     let t2 = if llvm_type("i32") == "i32" { 1 } else { 0 };
     let t3 = if llvm_type("bool") == "i1" { 1 } else { 0 };
     let t4 = if llvm_type("unit") == "void" { 1 } else { 0 };
-    let t5 = if llvm_type("String") == "i8*" { 1 } else { 0 };
+    let t5 = if llvm_type("String") == "ptr" { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5;
 
 fn test_const_generation() -> i64 =
@@ -1937,7 +1937,7 @@ fn test_string_const() -> i64 =
     let t4 = if has_pattern(s1, "; string: hello", 0) { 1 } else { 0 };
 
     // Test 5: gen_const_string generates inttoptr instruction
-    let t5 = if has_pattern(s1, "inttoptr i64 0 to i8*", 0) { 1 } else { 0 };
+    let t5 = if has_pattern(s1, "inttoptr i64 0 to ptr", 0) { 1 } else { 0 };
 
     // Test 6: gen_instruction handles string constant
     let i1 = gen_instruction("  %_t0 = const S:test");
@@ -1964,7 +1964,7 @@ fn test_closure_ir() -> i64 =
     let t5 = if has_pattern(c1, "; closure: 42", 0) { 1 } else { 0 };
 
     // Test 6: gen_instr_closure generates inttoptr
-    let t6 = if has_pattern(c1, "inttoptr i64 0 to i8*", 0) { 1 } else { 0 };
+    let t6 = if has_pattern(c1, "inttoptr i64 0 to ptr", 0) { 1 } else { 0 };
 
     // Test 7: gen_instruction dispatches CLOSURE
     let i1 = gen_instruction("  %_t0 = CLOSURE:99");
@@ -2542,7 +2542,7 @@ fn test_closure_capture_ir() -> i64 =
 
     // Test 12: gen_closure_with_captures generates struct
     let cw1 = gen_closure_with_captures("%_closure", "%_fn", "%_env");
-    let t12 = if has_pattern(cw1, "alloca { i64, i64* }", 0) { 1 } else { 0 };
+    let t12 = if has_pattern(cw1, "alloca { i64, ptr }", 0) { 1 } else { 0 };
 
     // v0.30.105: Test gen_instr_capture
     // Test 13: gen_instr_capture generates IR for Capture instruction
@@ -2725,7 +2725,7 @@ fn test_method_call_ir() -> i64 =
     let t13 = if has_pattern(cc1, "@bmb_string_concat", 0) { 1 } else { 0 };
 
     // Test 14: gen_method_concat includes both operands
-    let t14 = if has_pattern(cc1, "i8* %s1", 0) and has_pattern(cc1, "i8* %s2", 0) { 1 } else { 0 };
+    let t14 = if has_pattern(cc1, "ptr %s1", 0) and has_pattern(cc1, "ptr %s2", 0) { 1 } else { 0 };
 
     // Test 15: gen_method_eq generates call to @bmb_string_eq
     let eq1 = gen_method_eq("%_t3", "%s1", "%s2");
@@ -2750,8 +2750,8 @@ fn test_array_method_ir() -> i64 =
     let al1 = gen_method_array_len("%_t1", "%arr");
     let t1 = if has_pattern(al1, "@bmb_array_len", 0) { 1 } else { 0 };
 
-    // Test 2: gen_method_array_len includes i8* type
-    let t2 = if has_pattern(al1, "i8* %arr", 0) { 1 } else { 0 };
+    // Test 2: gen_method_array_len includes ptr type
+    let t2 = if has_pattern(al1, "ptr %arr", 0) { 1 } else { 0 };
 
     // Test 3: gen_method_array_get generates call with index
     let ag1 = gen_method_array_get("%_t2", "%arr", "%_t1");
@@ -3018,7 +3018,7 @@ fn test_method_chaining() -> i64 =
     let t5 = if has_pattern(m4, "getelementptr", 0) { 1 } else { 0 };
 
     // Test 6: Method dispatch maintains type consistency
-    let t6 = if has_pattern(m1, "i8*", 0) and has_pattern(m2, "i64", 0) { 1 } else { 0 };
+    let t6 = if has_pattern(m1, "ptr", 0) and has_pattern(m2, "i64", 0) { 1 } else { 0 };
 
     t1 + t2 + t3 + t4 + t5 + t6;
 
@@ -3149,16 +3149,16 @@ fn test_cross_module_ir() -> i64 =
     let ext_call = gen_call("%_t0", "i64", "@core_math_abs", "i64 %x");
     let t5 = if has_pattern(ext_call, "@core_math_abs", 0) { 1 } else { 0 };
 
-    // Test 6: Extern with i8* return type (string functions)
+    // Test 6: Extern with ptr return type (string functions)
     let slice_decl = gen_extern_string_slice();
-    let t6 = if has_pattern(slice_decl, "i8*", 0) { 1 } else { 0 };
+    let t6 = if has_pattern(slice_decl, "ptr", 0) { 1 } else { 0 };
 
     t1 + t2 + t3 + t4 + t5 + t6;
 
 // v0.30.127: Type system edge case tests
 fn test_type_system_edges() -> i64 =
-    // Test 1: String type maps to i8*
-    let t1 = if llvm_type("String") == "i8*" { 1 } else { 0 };
+    // Test 1: String type maps to ptr
+    let t1 = if llvm_type("String") == "ptr" { 1 } else { 0 };
 
     // Test 2: Unknown type defaults to i64
     let t2 = if llvm_type("Unknown") == "i64" { 1 } else { 0 };
@@ -3292,7 +3292,7 @@ fn test_llvm_type_ext() -> i64 =
     let t2 = if llvm_type("i32") == "i32" { 1 } else { 0 };
     let t3 = if llvm_type("bool") == "i1" { 1 } else { 0 };
     let t4 = if llvm_type("unit") == "void" { 1 } else { 0 };
-    let t5 = if llvm_type("String") == "i8*" { 1 } else { 0 };
+    let t5 = if llvm_type("String") == "ptr" { 1 } else { 0 };
     let t6 = if llvm_type("unknown") == "i64" { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
