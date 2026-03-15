@@ -150,6 +150,9 @@ impl Interpreter {
         self.builtins.insert("print_f64".to_string(), builtin_print_f64);
         self.builtins.insert("assert".to_string(), builtin_assert);
         self.builtins.insert("read_int".to_string(), builtin_read_int);
+        // v0.97: read_bytes + write_stdout for LSP protocol
+        self.builtins.insert("read_bytes".to_string(), builtin_read_bytes);
+        self.builtins.insert("write_stdout".to_string(), builtin_write_stdout);
         self.builtins.insert("abs".to_string(), builtin_abs);
         self.builtins.insert("min".to_string(), builtin_min);
         self.builtins.insert("max".to_string(), builtin_max);
@@ -6715,6 +6718,37 @@ fn builtin_read_int(_args: &[Value]) -> InterpResult<Value> {
         .parse::<i64>()
         .map(Value::Int)
         .map_err(|_| RuntimeError::type_error("integer", "invalid input"))
+}
+
+// v0.97: Read exactly N bytes from stdin
+fn builtin_read_bytes(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("read_bytes", 1, args.len()));
+    }
+    let n = match &args[0] {
+        Value::Int(v) => *v as usize,
+        _ => return Err(RuntimeError::type_error("i64", "non-integer")),
+    };
+    let mut buf = vec![0u8; n];
+    use std::io::Read;
+    let _ = io::stdin().lock().read_exact(&mut buf);
+    Ok(Value::Str(std::rc::Rc::new(String::from_utf8_lossy(&buf).to_string())))
+}
+
+// v0.97: Write raw string to stdout without newline
+fn builtin_write_stdout(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("write_stdout", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Str(s) => {
+            use std::io::Write;
+            let _ = io::stdout().write_all(s.as_bytes());
+            let _ = io::stdout().flush();
+            Ok(Value::Unit)
+        }
+        _ => Err(RuntimeError::type_error("String", "non-string")),
+    }
 }
 
 fn builtin_abs(args: &[Value]) -> InterpResult<Value> {

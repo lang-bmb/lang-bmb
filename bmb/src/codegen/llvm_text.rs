@@ -858,6 +858,9 @@ impl TextCodeGen {
         writeln!(out, "declare void @print_f64(double) nocallback nounwind nofree nosync")?;
         writeln!(out, "declare i64 @read_int() nocallback nounwind nofree nosync")?;
         writeln!(out, "declare ptr @bmb_read_line() nocallback nounwind nofree nosync")?;
+        // v0.97: read_bytes + write_stdout for LSP protocol
+        writeln!(out, "declare ptr @bmb_read_bytes(i64) nocallback nounwind nofree nosync")?;
+        writeln!(out, "declare void @bmb_write_stdout(ptr) nocallback nounwind nofree nosync")?;
         writeln!(out, "declare void @assert(i1) nocallback nounwind nofree nosync")?;
         // v0.96.35: bmb_abs/bmb_min/bmb_max/bmb_clamp replaced with LLVM intrinsics
         writeln!(out, "declare i64 @bmb_pow(i64, i64) nocallback nounwind nofree nosync willreturn memory(none) speculatable")?;
@@ -1862,6 +1865,7 @@ impl TextCodeGen {
                     && callee != "malloc" && callee != "calloc" && callee != "realloc" && callee != "free"
                     && callee != "println" && callee != "print" && callee != "eprintln"
                     && callee != "print_f64" && callee != "read_int" && callee != "bmb_read_line"
+                    && callee != "read_bytes" && callee != "write_stdout" && callee != "read_line"
                     && callee != "abs" && callee != "min" && callee != "max" && callee != "clamp" && callee != "pow")
             })
         });
@@ -5013,6 +5017,8 @@ impl TextCodeGen {
                         "system" => "bmb_system",
                         "system_capture" => "bmb_system_capture",
                         "read_line" => "bmb_read_line",
+                        "read_bytes" => "bmb_read_bytes",
+                        "write_stdout" => "bmb_write_stdout",
                         "exec_output" => "bmb_exec_output",
                         "file_exists" if all_string_args_are_literals => "file_exists_cstr",
                         "bmb_file_exists" if all_string_args_are_literals => "bmb_file_exists_cstr",
@@ -7274,7 +7280,7 @@ impl TextCodeGen {
             // ptr return - File I/O (both full and wrapper names)
             "bmb_read_file" | "read_file" => "ptr",
             // ptr return - Stdin
-            "bmb_read_line" | "read_line" => "ptr",
+            "bmb_read_line" | "read_line" | "bmb_read_bytes" | "read_bytes" => "ptr",
 
             // ptr return - Directory operations
             "bmb_readdir" | "list_dir" => "ptr",

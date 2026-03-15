@@ -1063,6 +1063,31 @@ BmbString* bmb_read_line() {
     return bmb_string_new(buf, len);
 }
 
+// v0.97: Read exactly N bytes from stdin (for LSP Content-Length protocol)
+BmbString* bmb_read_bytes(int64_t n) {
+    if (n <= 0) return bmb_string_from_cstr("");
+    fflush(stdout);
+    char* buf = (char*)malloc(n + 1);
+    if (!buf) return bmb_string_from_cstr("");
+    size_t total = 0;
+    while (total < (size_t)n) {
+        size_t got = fread(buf + total, 1, (size_t)n - total, stdin);
+        if (got == 0) break;  // EOF
+        total += got;
+    }
+    buf[total] = '\0';
+    BmbString* result = bmb_string_new(buf, (int64_t)total);
+    free(buf);
+    return result;
+}
+
+// v0.97: Write raw string to stdout without newline (for LSP responses)
+void bmb_write_stdout(const BmbString* s) {
+    if (!s) return;
+    fwrite(s->data, 1, (size_t)s->len, stdout);
+    fflush(stdout);
+}
+
 // String length - parameter is BmbString*
 int64_t bmb_string_len(const BmbString* s) {
     if (!s) return 0;

@@ -262,6 +262,10 @@ impl TypeChecker {
         functions.insert("read_int".to_string(), (vec![], Type::I64));
         // v0.96.2: read_line() -> String (for REPL support)
         functions.insert("read_line".to_string(), (vec![], Type::String));
+        // v0.97: read_bytes(n: i64) -> String (for LSP Content-Length protocol)
+        functions.insert("read_bytes".to_string(), (vec![Type::I64], Type::String));
+        // v0.97: write_stdout(s: String) -> Unit (raw write without newline)
+        functions.insert("write_stdout".to_string(), (vec![Type::String], Type::Unit));
         // abs(n) -> i64
         functions.insert("abs".to_string(), (vec![Type::I64], Type::I64));
         // min(a, b) -> i64
