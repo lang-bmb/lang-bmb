@@ -499,7 +499,7 @@ mod tests {
     #[test]
     fn test_target_clone() {
         let t = Target::Wasm64;
-        let cloned = t.clone();
+        let cloned = t;
         assert_eq!(t, cloned);
     }
 

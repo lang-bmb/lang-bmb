@@ -16,6 +16,8 @@
 #include <winsock2.h>  // v0.88: Must be before windows.h
 #include <ws2tcpip.h>
 #include <windows.h>
+#include <io.h>       // v0.97: _setmode for binary stdio
+#include <fcntl.h>    // v0.97: _O_BINARY
 #else
 #include <pthread.h>
 #include <errno.h>   // v0.77: For ETIMEDOUT
@@ -831,6 +833,9 @@ BmbString* bmb_int_to_string(int64_t n) {
     return bmb_string_wrap(s);
 }
 
+// v0.97: Wrapper for non-prefixed name
+BmbString* int_to_string(int64_t n) { return bmb_int_to_string(n); }
+
 // v0.60.244: Fast integer-to-BmbString conversion for bootstrap compiler
 // Returns BmbString* which matches the bootstrap's String type
 // v0.88.2: Uses arena-aware allocation
@@ -1066,6 +1071,9 @@ BmbString* bmb_read_line() {
 // v0.97: Read exactly N bytes from stdin (for LSP Content-Length protocol)
 BmbString* bmb_read_bytes(int64_t n) {
     if (n <= 0) return bmb_string_from_cstr("");
+#ifdef _WIN32
+    int old_mode = _setmode(_fileno(stdin), _O_BINARY);
+#endif
     fflush(stdout);
     char* buf = (char*)malloc(n + 1);
     if (!buf) return bmb_string_from_cstr("");
@@ -1078,12 +1086,18 @@ BmbString* bmb_read_bytes(int64_t n) {
     buf[total] = '\0';
     BmbString* result = bmb_string_new(buf, (int64_t)total);
     free(buf);
+#ifdef _WIN32
+    _setmode(_fileno(stdin), old_mode);
+#endif
     return result;
 }
 
 // v0.97: Write raw string to stdout without newline (for LSP responses)
 void bmb_write_stdout(const BmbString* s) {
     if (!s) return;
+#ifdef _WIN32
+    _setmode(_fileno(stdout), _O_BINARY);
+#endif
     fwrite(s->data, 1, (size_t)s->len, stdout);
     fflush(stdout);
 }

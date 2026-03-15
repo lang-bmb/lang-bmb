@@ -1088,6 +1088,7 @@ impl TextCodeGen {
         writeln!(out, "declare ptr @chr(i64) nocallback nounwind nosync willreturn")?;
         writeln!(out, "declare i64 @ord(ptr) nocallback nofree nosync memory(argmem: read) nounwind willreturn")?;
         writeln!(out, "declare ptr @char_to_string(i32) nocallback nounwind nosync")?;
+        writeln!(out, "declare ptr @int_to_string(i64) nocallback nounwind nosync")?;
         writeln!(out, "declare void @print_str(ptr) nocallback nounwind nofree nosync")?;
         writeln!(out, "declare void @println_str(ptr) nocallback nounwind nofree nosync")?;
         writeln!(out)?;

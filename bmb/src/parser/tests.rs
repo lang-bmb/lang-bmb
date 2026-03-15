@@ -1904,11 +1904,10 @@ fn test_parse_or_pattern() {
         };
     "#;
     let prog = parse_ok(source);
-    if let Item::FnDef(f) = &prog.items[0] {
-        if let Expr::Match { arms, .. } = &f.body.node {
+    if let Item::FnDef(f) = &prog.items[0]
+        && let Expr::Match { arms, .. } = &f.body.node {
             assert_eq!(arms.len(), 2);
         }
-    }
 }
 
 // --- Struct Patterns ---
@@ -2254,9 +2253,8 @@ fn test_parse_complex_match_patterns() {
         };
     "#;
     let prog = parse_ok(source);
-    if let Item::FnDef(f) = &prog.items[0] {
-        if let Expr::Match { arms, .. } = &f.body.node {
+    if let Item::FnDef(f) = &prog.items[0]
+        && let Expr::Match { arms, .. } = &f.body.node {
             assert_eq!(arms.len(), 3);
         }
-    }
 }

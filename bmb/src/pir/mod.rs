@@ -1108,7 +1108,7 @@ mod tests {
 
     #[test]
     fn test_pir_unaryop_all_variants() {
-        let variants = vec![PirUnaryOp::Neg, PirUnaryOp::Not, PirUnaryOp::BitNot];
+        let variants = [PirUnaryOp::Neg, PirUnaryOp::Not, PirUnaryOp::BitNot];
         assert_eq!(variants.len(), 3);
         assert_eq!(PirUnaryOp::Neg, PirUnaryOp::Neg);
         assert_ne!(PirUnaryOp::Neg, PirUnaryOp::Not);

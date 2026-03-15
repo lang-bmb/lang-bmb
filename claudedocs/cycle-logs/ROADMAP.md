@@ -1,33 +1,23 @@
-# 20-Cycle Roadmap: Performance Focus (Cycles 1878-1881)
-Date: 2026-03-14
-Status: **EARLY TERMINATION** (zero actionable defects)
+# 30-Cycle Roadmap: v0.97 Phase 2+3+4 Execution (Cycles 1893-1922)
+Date: 2026-03-15
 
-## Phase A: Full Benchmark Validation (Cycles 1878-1879) ✅ COMPLETE
-- Re-verified all 8 original FAILs from Cycle 1877: 6 were noise (now PASS)
-- Remaining: max_consecutive_ones 1.09-1.15x, running_median 1.09-1.13x
-- Root cause: LLVM pipeline heuristic differences (opt -O3 vs clang -O3 unrolling/ISel)
-- BMB IR confirmed structurally identical to C after optimization
+## Phase 2: LSP BMB Server (Cycles 1893-1904)
+- 1893: Runtime `run_command_output` + `getenv` — C impl + codegen + type system
+- 1894-1895: LSP server core — JSON-RPC transport + init/shutdown handlers
+- 1896-1897: LSP diagnostics — `bmb check` shell-out + diagnostic parsing
+- 1898-1899: LSP document sync — didOpen/didChange/didClose
+- 1900-1901: LSP P1 features — hover + completion
+- 1902: VS Code integration + end-to-end testing
+- 1903-1904: Bug fixes + polish
 
-## Phase A.5: Pipeline Experiments (Cycle 1879) ❌ NOT VIABLE
-- LTO: Fixes some FAILs but catastrophically regresses bubble_sort (1.66x)
-- opt -O2 + clang -O3: Fixes some but regresses floyd_warshall, lcs
-- clang -O3 only: Fixes max_consecutive_ones but array_moving_average 2.79x
-- No alternative pipeline is globally optimal. Current pipeline is best trade-off.
+## Phase 3: Bootstrap SAE + nonnull (Cycles 1905-1914)
+- 1905-1906: Bootstrap nonnull attributes (String params/returns)
+- 1907-1910: Bootstrap SAE range analysis + Sat elimination
+- 1911-1912: Fixed Point verification
+- 1913-1914: Contract benchmark validation
 
-## Phase B: Codegen Improvements (Cycles 1880-1881) ✅ COMPLETE
-- Main wrapper: Added nounwind, uwtable, "no-trapping-math" to `main()` and bootstrap
-- min-legal-vector-width=0: Tested, reverted (causes regressions)
-- Codegen analysis: 85-90% of clang's attributes already implemented
-- No remaining codegen improvements identified
-
-## Phases C-E: SKIPPED (Early Termination)
-No actionable defects remain. All FAILs/WARNs are LLVM pipeline artifacts.
-
-## Summary
-| Metric | Before | After |
-|--------|--------|-------|
-| Tests | 6,186 pass | 6,186 pass |
-| Bootstrap | Fixed Point | Fixed Point |
-| Original FAILs | 8 | 2 (noise resolved) |
-| Codegen changes | - | main wrapper attributes |
-| Pipeline changes | - | None (no viable alternative) |
+## Phase 4: Playground WASM (Cycles 1915-1922)
+- 1915-1916: WASM build setup (lib crate + wasm-pack)
+- 1917-1918: wasm-bindgen interface (compile + run + check)
+- 1919-1920: Playground frontend integration
+- 1921-1922: Deployment + examples

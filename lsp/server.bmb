@@ -1,0 +1,769 @@
+// BMB Language Server Protocol (LSP) Server
+// Written in BMB itself — self-hosted LSP for the BMB language
+//
+// Architecture: Shell-out to `bmb check` for diagnostics
+// Transport: JSON-RPC 2.0 over stdin/stdout with Content-Length framing
+//
+// v0.97 — Phase 2: LSP BMB Transition
+
+// ============================================================================
+// JSON Codec (inlined from stdlib/json/mod.bmb)
+// ============================================================================
+
+fn J_NULL() -> i64 = 0;
+fn J_BOOL() -> i64 = 1;
+fn J_NUM() -> i64 = 2;
+fn J_STR() -> i64 = 3;
+fn J_ARR() -> i64 = 4;
+fn J_OBJ() -> i64 = 5;
+
+fn jdoc_new() -> i64 = vec_new();
+
+fn dput(doc: i64, off: i64, val: i64) -> i64 = {
+    let _s = vec_set(doc, off, val);
+    0
+};
+fn dget(doc: i64, off: i64) -> i64 = vec_get(doc, off);
+
+fn dalloc(doc: i64, n: i64) -> i64 = {
+    let off = vec_len(doc);
+    let mut i: i64 = 0;
+    while i < n {
+        let _p = vec_push(doc, 0);
+        set i = i + 1
+    };
+    off
+};
+
+fn mk_null(doc: i64) -> i64 = {
+    let o = dalloc(doc, 1);
+    dput(doc, o, J_NULL());
+    o
+};
+
+fn mk_bool(doc: i64, v: i64) -> i64 = {
+    let o = dalloc(doc, 2);
+    dput(doc, o, J_BOOL());
+    dput(doc, o + 1, v);
+    o
+};
+
+fn mk_num(doc: i64, v: i64) -> i64 = {
+    let o = dalloc(doc, 2);
+    dput(doc, o, J_NUM());
+    dput(doc, o + 1, v);
+    o
+};
+
+fn mk_str(doc: i64, s: i64, e: i64) -> i64 = {
+    let o = dalloc(doc, 3);
+    dput(doc, o, J_STR());
+    dput(doc, o + 1, s);
+    dput(doc, o + 2, e);
+    o
+};
+
+fn mk_arr(doc: i64, cap: i64) -> i64 = {
+    let o = dalloc(doc, 2 + cap);
+    dput(doc, o, J_ARR());
+    dput(doc, o + 1, 0);
+    o
+};
+
+fn mk_obj(doc: i64, cap: i64) -> i64 = {
+    let o = dalloc(doc, 2 + cap * 3);
+    dput(doc, o, J_OBJ());
+    dput(doc, o + 1, 0);
+    o
+};
+
+fn jtype(doc: i64, n: i64) -> i64 = dget(doc, n);
+fn jbool(doc: i64, n: i64) -> bool = dget(doc, n + 1) != 0;
+fn jnum(doc: i64, n: i64) -> i64 = dget(doc, n + 1);
+
+fn jstr(doc: i64, n: i64, src: String) -> String = {
+    let s = dget(doc, n + 1);
+    let e = dget(doc, n + 2);
+    unescape(src.slice(s, e), 0, "")
+};
+
+fn jstr_raw(doc: i64, n: i64, src: String) -> String = {
+    let s = dget(doc, n + 1);
+    let e = dget(doc, n + 2);
+    src.slice(s, e)
+};
+
+fn jarr_len(doc: i64, n: i64) -> i64 = dget(doc, n + 1);
+fn jarr_get(doc: i64, n: i64, idx: i64) -> i64 = dget(doc, n + 2 + idx);
+
+fn jarr_push(doc: i64, n: i64, val: i64) -> i64 = {
+    let c = dget(doc, n + 1);
+    let _a = dput(doc, n + 2 + c, val);
+    let _b = dput(doc, n + 1, c + 1);
+    0
+};
+
+fn jobj_len(doc: i64, n: i64) -> i64 = dget(doc, n + 1);
+
+fn jobj_add(doc: i64, n: i64, ks: i64, ke: i64, val: i64) -> i64 = {
+    let c = dget(doc, n + 1);
+    let _a = dput(doc, n + 2 + c * 3, ks);
+    let _b = dput(doc, n + 2 + c * 3 + 1, ke);
+    let _c = dput(doc, n + 2 + c * 3 + 2, val);
+    let _d = dput(doc, n + 1, c + 1);
+    0
+};
+
+fn jobj_get(doc: i64, n: i64, key: String, src: String) -> i64 =
+    jobj_find(doc, n, key, src, 0, dget(doc, n + 1));
+
+// Iterative version — TRL bug workaround (Cycle 1893)
+fn jobj_find(doc: i64, n: i64, key: String, src: String, idx: i64, cnt: i64) -> i64 = {
+    let mut i: i64 = idx;
+    let mut result: i64 = 0 - 1;
+    let mut found: i64 = 0;
+    while i < cnt and found == 0 {
+        let ks = dget(doc, n + 2 + i * 3);
+        let ke = dget(doc, n + 2 + i * 3 + 1);
+        let k = src.slice(ks, ke);
+        if k == key { set result = dget(doc, n + 2 + i * 3 + 2); set found = 1 }
+        else { set i = i + 1 }
+    };
+    result
+};
+
+fn jobj_str(doc: i64, n: i64, key: String, src: String) -> String = {
+    let v = jobj_get(doc, n, key, src);
+    if v < 0 { "" } else { jstr(doc, v, src) }
+};
+
+fn jobj_num(doc: i64, n: i64, key: String, src: String) -> i64 = {
+    let v = jobj_get(doc, n, key, src);
+    if v < 0 { 0 } else { jnum(doc, v) }
+};
+
+// Iterative version — TRL bug workaround (Cycle 1893)
+fn unescape(s: String, pos: i64, acc: String) -> String = {
+    let mut p: i64 = pos;
+    let mut out: String = acc;
+    while p < s.len() {
+        if s.byte_at(p) == 92 and p + 1 < s.len() {
+            let nx = s.byte_at(p + 1);
+            let ch = if nx == 110 { chr(10) } else if nx == 116 { chr(9) } else if nx == 114 { chr(13) } else if nx == 34 { chr(34) } else if nx == 92 { chr(92) } else { chr(nx) };
+            set out = out + ch;
+            set p = p + 2
+        }
+        else { set out = out + chr(s.byte_at(p)); set p = p + 1 }
+    };
+    out
+};
+
+// JSON Parser
+fn pk(n: i64, p: i64) -> i64 = n * 1000000 + p;
+fn rn(r: i64) -> i64 = r / 1000000;
+fn rp(r: i64) -> i64 = r % 1000000;
+
+fn jparse(doc: i64, src: String) -> i64 = {
+    let r = pval(doc, src, wskip(src, 0));
+    rn(r)
+};
+
+fn wskip(src: String, p: i64) -> i64 =
+    if p >= src.len() { p }
+    else {
+        let c = src.byte_at(p);
+        if c == 32 or c == 9 or c == 10 or c == 13 { wskip(src, p + 1) }
+        else { p }
+    };
+
+fn pval(doc: i64, src: String, p: i64) -> i64 =
+    if p >= src.len() { pk(mk_null(doc), p) }
+    else {
+        let c = src.byte_at(p);
+        if c == 34 { pstr(doc, src, p) }
+        else if c == 123 { pobj(doc, src, p) }
+        else if c == 91 { parr(doc, src, p) }
+        else if c == 116 { pk(mk_bool(doc, 1), p + 4) }
+        else if c == 102 { pk(mk_bool(doc, 0), p + 5) }
+        else if c == 110 { pk(mk_null(doc), p + 4) }
+        else if c == 45 or (c >= 48 and c <= 57) { pnum(doc, src, p) }
+        else { pk(mk_null(doc), p) }
+    };
+
+fn pnum(doc: i64, src: String, p: i64) -> i64 = {
+    let neg = src.byte_at(p) == 45;
+    let s = if neg { p + 1 } else { p };
+    let e = sdig(src, s);
+    let v = pint(src, s, e, 0);
+    let fv = if neg { 0 - v } else { v };
+    pk(mk_num(doc, fv), e)
+};
+
+fn sdig(src: String, p: i64) -> i64 =
+    if p >= src.len() { p }
+    else if src.byte_at(p) >= 48 and src.byte_at(p) <= 57 { sdig(src, p + 1) }
+    else { p };
+
+fn pint(src: String, p: i64, e: i64, acc: i64) -> i64 =
+    if p >= e { acc }
+    else { pint(src, p + 1, e, acc * 10 + src.byte_at(p) - 48) };
+
+fn pstr(doc: i64, src: String, p: i64) -> i64 = {
+    let s = p + 1;
+    let e = fq(src, s);
+    pk(mk_str(doc, s, e), e + 1)
+};
+
+fn fq(src: String, p: i64) -> i64 =
+    if p >= src.len() { p }
+    else if src.byte_at(p) == 92 { fq(src, p + 2) }
+    else if src.byte_at(p) == 34 { p }
+    else { fq(src, p + 1) };
+
+fn parr(doc: i64, src: String, p: i64) -> i64 = {
+    let arr = mk_arr(doc, 64);
+    let p1 = wskip(src, p + 1);
+    if p1 < src.len() and src.byte_at(p1) == 93 { pk(arr, p1 + 1) }
+    else { parr_elems(doc, src, p1, arr, 0) }
+};
+
+// _cnt: TRL workaround (same as pobj_ms — see Cycle 1893)
+fn parr_elems(doc: i64, src: String, p: i64, arr: i64, _cnt: i64) -> i64 = {
+    let r = pval(doc, src, p);
+    let _ap = jarr_push(doc, arr, rn(r));
+    let p1 = wskip(src, rp(r));
+    if p1 >= src.len() { pk(arr, p1) }
+    else if src.byte_at(p1) == 44 { parr_elems(doc, src, wskip(src, p1 + 1), arr, _cnt + 1) }
+    else { pk(arr, p1 + 1) }
+};
+
+fn pobj(doc: i64, src: String, p: i64) -> i64 = {
+    let obj = mk_obj(doc, 32);
+    let p1 = wskip(src, p + 1);
+    if p1 < src.len() and src.byte_at(p1) == 125 { pk(obj, p1 + 1) }
+    else { pobj_ms(doc, src, p1, obj, 0) }
+};
+
+// Note: _cnt parameter is a TRL workaround — without a changing parameter
+// beyond `p`, the TailRecursiveToLoop pass incorrectly terminates after 2 iterations.
+// This is a known codegen bug (Cycle 1893). The _cnt value is unused but must change
+// on each recursive call to prevent the optimization from breaking.
+fn pobj_ms(doc: i64, src: String, p: i64, obj: i64, _cnt: i64) -> i64 = {
+    let ks = p + 1;
+    let ke = fq(src, ks);
+    let p1 = wskip(src, ke + 1);
+    let p2 = wskip(src, p1 + 1);
+    let vr = pval(doc, src, p2);
+    let _oa = jobj_add(doc, obj, ks, ke, rn(vr));
+    let p3 = wskip(src, rp(vr));
+    if p3 >= src.len() { pk(obj, p3) }
+    else if src.byte_at(p3) == 44 { pobj_ms(doc, src, wskip(src, p3 + 1), obj, _cnt + 1) }
+    else { pk(obj, p3 + 1) }
+};
+
+// JSON Serializer — iterative version (TRL bug workaround, Cycle 1893)
+fn escape(s: String, p: i64, acc: String) -> String = {
+    let mut pos: i64 = p;
+    let mut out: String = acc;
+    while pos < s.len() {
+        let c = s.byte_at(pos);
+        let e = if c == 34 { chr(92) + chr(34) }
+            else if c == 92 { chr(92) + chr(92) }
+            else if c == 10 { chr(92) + chr(110) }
+            else if c == 13 { chr(92) + chr(114) }
+            else if c == 9 { chr(92) + chr(116) }
+            else { chr(c) };
+        set out = out + e;
+        set pos = pos + 1
+    };
+    out
+};
+
+// ============================================================================
+// JSON Builder — construct JSON without a source string
+// ============================================================================
+
+// Build a JSON string value (quoted + escaped)
+fn json_str(s: String) -> String = chr(34) + escape(s, 0, "") + chr(34);
+
+// Build a JSON number
+fn json_num(n: i64) -> String = int_to_string(n);
+
+// Build a JSON bool
+fn json_true() -> String = "true";
+fn json_false() -> String = "false";
+fn json_null() -> String = "null";
+
+// Build a JSON object from key-value pairs
+fn json_obj0() -> String = "{}";
+
+fn json_obj1(k1: String, v1: String) -> String =
+    "{" + json_str(k1) + ":" + v1 + "}";
+
+fn json_obj2(k1: String, v1: String, k2: String, v2: String) -> String =
+    "{" + json_str(k1) + ":" + v1 + "," + json_str(k2) + ":" + v2 + "}";
+
+fn json_obj3(k1: String, v1: String, k2: String, v2: String, k3: String, v3: String) -> String =
+    "{" + json_str(k1) + ":" + v1 + "," + json_str(k2) + ":" + v2 + "," + json_str(k3) + ":" + v3 + "}";
+
+fn json_obj4(k1: String, v1: String, k2: String, v2: String, k3: String, v3: String, k4: String, v4: String) -> String =
+    "{" + json_str(k1) + ":" + v1 + "," + json_str(k2) + ":" + v2 + "," + json_str(k3) + ":" + v3 + "," + json_str(k4) + ":" + v4 + "}";
+
+fn json_obj5(k1: String, v1: String, k2: String, v2: String, k3: String, v3: String, k4: String, v4: String, k5: String, v5: String) -> String =
+    "{" + json_str(k1) + ":" + v1 + "," + json_str(k2) + ":" + v2 + "," + json_str(k3) + ":" + v3 + "," + json_str(k4) + ":" + v4 + "," + json_str(k5) + ":" + v5 + "}";
+
+// Build a JSON array
+fn json_arr0() -> String = "[]";
+fn json_arr1(v1: String) -> String = "[" + v1 + "]";
+fn json_arr2(v1: String, v2: String) -> String = "[" + v1 + "," + v2 + "]";
+
+// ============================================================================
+// LSP Transport — Content-Length framing over stdin/stdout
+// ============================================================================
+
+// Read one LSP message from stdin
+// Format: "Content-Length: N\r\n\r\n{...json...}"
+fn lsp_read_message() -> String = {
+    // Read headers until empty line
+    let content_len = lsp_read_headers(0);
+    if content_len <= 0 { "" }
+    else { read_bytes(content_len) }
+};
+
+// Parse Content-Length from headers
+fn lsp_read_headers(content_len: i64) -> i64 = {
+    let line = read_line();
+    // Empty line or just \r\n signals end of headers
+    if line.len() == 0 { content_len }
+    else if line == chr(13) or line == chr(13) + chr(10) { content_len }
+    else {
+        // Check for "Content-Length: N"
+        let new_len = if line.len() > 16 and line.slice(0, 16) == "Content-Length: " {
+            parse_content_length(line, 16, 0)
+        } else { content_len };
+        lsp_read_headers(new_len)
+    }
+};
+
+// Parse integer from Content-Length header value
+fn parse_content_length(line: String, pos: i64, acc: i64) -> i64 =
+    if pos >= line.len() { acc }
+    else {
+        let c = line.byte_at(pos);
+        if c >= 48 and c <= 57 { parse_content_length(line, pos + 1, acc * 10 + c - 48) }
+        else { acc }
+    };
+
+// Send an LSP message to stdout
+fn lsp_send_message(json: String) -> i64 = {
+    let header = "Content-Length: " + int_to_string(json.len()) + chr(13) + chr(10) + chr(13) + chr(10);
+    write_stdout(header);
+    write_stdout(json);
+    0
+};
+
+// ============================================================================
+// LSP Response Builders
+// ============================================================================
+
+// Build a JSON-RPC response
+fn jsonrpc_response(id_str: String, result_json: String) -> String =
+    "{" + json_str("jsonrpc") + ":" + json_str("2.0") + "," +
+    json_str("id") + ":" + id_str + "," +
+    json_str("result") + ":" + result_json + "}";
+
+// Build a JSON-RPC notification (no id)
+fn jsonrpc_notification(method: String, params_json: String) -> String =
+    "{" + json_str("jsonrpc") + ":" + json_str("2.0") + "," +
+    json_str("method") + ":" + json_str(method) + "," +
+    json_str("params") + ":" + params_json + "}";
+
+// Build a JSON-RPC error response
+fn jsonrpc_error(id_str: String, code: i64, message: String) -> String =
+    "{" + json_str("jsonrpc") + ":" + json_str("2.0") + "," +
+    json_str("id") + ":" + id_str + "," +
+    json_str("error") + ":" + json_obj2("code", json_num(code), "message", json_str(message)) + "}";
+
+// ============================================================================
+// LSP Position/Range Helpers
+// ============================================================================
+
+// Build an LSP Position {line, character}
+fn lsp_pos(line: i64, character: i64) -> String =
+    json_obj2("line", json_num(line), "character", json_num(character));
+
+// Build an LSP Range {start, end}
+fn lsp_range(start_line: i64, start_char: i64, end_line: i64, end_char: i64) -> String =
+    json_obj2("start", lsp_pos(start_line, start_char), "end", lsp_pos(end_line, end_char));
+
+// Convert byte offset to (line, col) in source text
+// Returns packed: line * 1000000 + col
+fn offset_to_linecol(src: String, offset: i64) -> i64 =
+    count_lines(src, 0, offset, 0, 0);
+
+fn count_lines(src: String, pos: i64, target: i64, line: i64, col: i64) -> i64 =
+    if pos >= target or pos >= src.len() { line * 1000000 + col }
+    else if src.byte_at(pos) == 10 { count_lines(src, pos + 1, target, line + 1, 0) }
+    else { count_lines(src, pos + 1, target, line, col + 1) };
+
+// ============================================================================
+// Document Store — simple parallel vectors
+// ============================================================================
+
+// We store document URIs and contents in parallel vectors
+// doc_uris: vec of String (stored as i64 via string handle)
+// doc_contents: vec of String (stored as i64 via string handle)
+// For simplicity, use a global state approach with vec_new()
+
+// ============================================================================
+// LSP Handlers
+// ============================================================================
+
+// Handle initialize request
+fn handle_initialize(id_str: String) -> i64 = {
+    let capabilities = json_obj5(
+        "textDocumentSync", json_num(1),
+        "hoverProvider", json_true(),
+        "completionProvider", json_obj1("triggerCharacters", json_arr1(json_str("."))),
+        "diagnosticProvider", json_obj1("interFileDependencies", json_false()),
+        "positionEncoding", json_str("utf-16")
+    );
+    let server_info = json_obj2("name", json_str("bmb-lsp"), "version", json_str("0.97.0"));
+    let result = json_obj2("capabilities", capabilities, "serverInfo", server_info);
+    lsp_send_message(jsonrpc_response(id_str, result));
+    0
+};
+
+// Handle shutdown request
+fn handle_shutdown(id_str: String) -> i64 = {
+    lsp_send_message(jsonrpc_response(id_str, json_null()));
+    0
+};
+
+// Parse a span from bmb check error message
+// Looks for "Span { start: N, end: M }" pattern
+fn parse_span_start(msg: String) -> i64 =
+    find_span_field(msg, "start: ", 0);
+
+fn parse_span_end(msg: String) -> i64 =
+    find_span_field(msg, "end: ", 0);
+
+fn find_span_field(msg: String, prefix: String, pos: i64) -> i64 =
+    if pos + prefix.len() >= msg.len() { 0 }
+    else if msg.slice(pos, pos + prefix.len()) == prefix {
+        parse_int_at(msg, pos + prefix.len(), 0)
+    }
+    else { find_span_field(msg, prefix, pos + 1) };
+
+fn parse_int_at(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() { acc }
+    else {
+        let c = s.byte_at(pos);
+        if c >= 48 and c <= 57 { parse_int_at(s, pos + 1, acc * 10 + c - 48) }
+        else { acc }
+    };
+
+// Compute prelude size by expanding an empty file and measuring
+fn get_prelude_size() -> i64 = {
+    // Write empty file, check it, and see the span offset
+    // For now, use a heuristic: prelude is about 2300 bytes
+    // This will be calibrated on first diagnostic
+    2300
+};
+
+// Handle textDocument/didOpen — uses raw string extraction
+fn handle_did_open(doc: i64, root: i64, src: String) -> i64 = 0;
+fn handle_did_open_raw(msg: String) -> i64 = {
+    let uri = json_extract_str(msg, "uri");
+    let text = json_extract_str(msg, "text");
+    if uri.len() > 0 and text.len() > 0 {
+        publish_diagnostics(uri, text);
+        0
+    } else { 0 }
+};
+
+// Handle textDocument/didChange — uses raw string extraction
+fn handle_did_change(doc: i64, root: i64, src: String) -> i64 = 0;
+fn handle_did_change_raw(msg: String) -> i64 = {
+    let uri = json_extract_str(msg, "uri");
+    let text = json_extract_str(msg, "text");
+    if uri.len() > 0 and text.len() > 0 {
+        publish_diagnostics(uri, text);
+        0
+    } else { 0 }
+};
+
+// Handle textDocument/didClose — uses raw string extraction
+fn handle_did_close(doc: i64, root: i64, src: String) -> i64 = 0;
+fn handle_did_close_raw(msg: String) -> i64 = {
+    let uri = json_extract_str(msg, "uri");
+    if uri.len() > 0 {
+        let diag_params = json_obj2("uri", json_str(uri), "diagnostics", json_arr0());
+        lsp_send_message(jsonrpc_notification("textDocument/publishDiagnostics", diag_params));
+        0
+    } else { 0 }
+};
+
+// Convert file:// URI to filesystem path
+fn uri_to_path(uri: String) -> String =
+    if uri.len() > 8 and uri.slice(0, 8) == "file:///" {
+        // Windows: file:///D:/path → D:/path
+        uri.slice(8, uri.len())
+    }
+    else if uri.len() > 7 and uri.slice(0, 7) == "file://" {
+        // Unix: file:///path → /path
+        uri.slice(7, uri.len())
+    }
+    else { uri };
+
+// URL-decode a path (handle %20, %3A, etc.)
+fn url_decode(s: String, pos: i64, acc: String) -> String =
+    if pos >= s.len() { acc }
+    else if s.byte_at(pos) == 37 and pos + 2 < s.len() {
+        let hi = hex_digit(s.byte_at(pos + 1));
+        let lo = hex_digit(s.byte_at(pos + 2));
+        url_decode(s, pos + 3, acc + chr(hi * 16 + lo))
+    }
+    else { url_decode(s, pos + 1, acc + chr(s.byte_at(pos))) };
+
+fn hex_digit(c: i64) -> i64 =
+    if c >= 48 and c <= 57 { c - 48 }
+    else if c >= 65 and c <= 70 { c - 55 }
+    else if c >= 97 and c <= 102 { c - 87 }
+    else { 0 };
+
+// Run bmb check on file content and publish diagnostics
+fn publish_diagnostics(uri: String, content: String) -> i64 = {
+    // Write content to temp file
+    let tmp_path = "__bmb_lsp_check.bmb";
+    let _w = write_file(tmp_path, content);
+
+    // Run bmb check
+    let bmb_path = find_bmb_binary();
+    let check_output = exec_output(bmb_path, "check " + tmp_path);
+
+    // Parse diagnostics from output
+    let diagnostics = parse_check_output(check_output, content);
+
+    // Send publishDiagnostics notification
+    let params = json_obj2("uri", json_str(uri), "diagnostics", diagnostics);
+    lsp_send_message(jsonrpc_notification("textDocument/publishDiagnostics", params));
+    0
+};
+
+// Find the bmb binary path
+fn find_bmb_binary() -> String = "bmb";
+
+// Parse bmb check output into LSP diagnostics array
+fn parse_check_output(output: String, content: String) -> String = {
+    // Output format: one JSON object per line
+    // Success: {"type":"success","file":"...","warnings":0}
+    // Error: {"type":"error","message":"..."}
+    // Warning: {"type":"warning","kind":"...","file":"...","start":N,"end":M,"message":"..."}
+    if output.len() == 0 { json_arr0() }
+    else {
+        let doc = jdoc_new();
+        let root = jparse(doc, output);
+        let typ = jobj_str(doc, root, "type", output);
+        if typ == "success" { json_arr0() }
+        else if typ == "error" {
+            let msg = jobj_str(doc, root, "message", output);
+            // Try to extract span from message
+            let sp_start = parse_span_start(msg);
+            let sp_end = parse_span_end(msg);
+            // Adjust for prelude offset
+            let prelude = get_prelude_size();
+            let adj_start = if sp_start > prelude { sp_start - prelude } else { 0 };
+            let adj_end = if sp_end > prelude { sp_end - prelude } else { 0 };
+            // Convert to line/col
+            let start_lc = offset_to_linecol(content, adj_start);
+            let end_lc = offset_to_linecol(content, adj_end);
+            let start_line = start_lc / 1000000;
+            let start_col = start_lc % 1000000;
+            let end_line = end_lc / 1000000;
+            let end_col = end_lc % 1000000;
+            // Clean message (remove "Type error at Span { ... }: " prefix)
+            let clean_msg = clean_error_message(msg);
+            let diag = json_obj3(
+                "range", lsp_range(start_line, start_col, end_line, end_col),
+                "severity", json_num(1),
+                "message", json_str(clean_msg)
+            );
+            json_arr1(diag)
+        }
+        else { json_arr0() }
+    }
+};
+
+// Remove "Type error at Span { start: N, end: M }: " prefix from error message
+fn clean_error_message(msg: String) -> String =
+    find_colon_skip(msg, 0);
+
+fn find_colon_skip(msg: String, pos: i64) -> String =
+    if pos >= msg.len() { msg }
+    else if msg.byte_at(pos) == 58 and pos + 2 < msg.len() and msg.byte_at(pos + 1) == 32 {
+        // Found ": " — check if this is after "Span { ... }"
+        if pos > 5 { msg.slice(pos + 2, msg.len()) }
+        else { msg }
+    }
+    else { find_colon_skip(msg, pos + 1) };
+
+// Handle textDocument/hover
+fn handle_hover(doc: i64, root: i64, src: String, id_str: String) -> i64 = 0;
+fn handle_hover_raw(msg: String, id_str: String) -> i64 = {
+    lsp_send_message(jsonrpc_response(id_str, json_null()));
+    0
+};
+
+// Handle textDocument/completion
+fn handle_completion(doc: i64, root: i64, src: String, id_str: String) -> i64 = 0;
+fn handle_completion_raw(msg: String, id_str: String) -> i64 = {
+    let items = build_completion_items();
+    lsp_send_message(jsonrpc_response(id_str, items));
+    0
+};
+
+// Build a single completion item
+fn comp_item(label: String, kind: i64) -> String =
+    json_obj2("label", json_str(label), "kind", json_num(kind));
+
+// Build completion items for BMB keywords and builtins
+fn build_completion_items() -> String =
+    // kind: 14=Keyword, 3=Function
+    "[" +
+    comp_item("fn", 14) + "," +
+    comp_item("let", 14) + "," +
+    comp_item("if", 14) + "," +
+    comp_item("else", 14) + "," +
+    comp_item("while", 14) + "," +
+    comp_item("for", 14) + "," +
+    comp_item("in", 14) + "," +
+    comp_item("return", 14) + "," +
+    comp_item("loop", 14) + "," +
+    comp_item("break", 14) + "," +
+    comp_item("match", 14) + "," +
+    comp_item("struct", 14) + "," +
+    comp_item("enum", 14) + "," +
+    comp_item("pub", 14) + "," +
+    comp_item("use", 14) + "," +
+    comp_item("set", 14) + "," +
+    comp_item("mut", 14) + "," +
+    comp_item("true", 14) + "," +
+    comp_item("false", 14) + "," +
+    comp_item("pre", 14) + "," +
+    comp_item("post", 14) + "," +
+    comp_item("println", 3) + "," +
+    comp_item("print", 3) + "," +
+    comp_item("println_str", 3) + "," +
+    comp_item("read_line", 3) + "," +
+    comp_item("read_int", 3) + "," +
+    comp_item("vec_new", 3) + "," +
+    comp_item("vec_push", 3) + "," +
+    comp_item("vec_get", 3) + "," +
+    comp_item("vec_set", 3) + "," +
+    comp_item("vec_len", 3) + "," +
+    comp_item("malloc", 3) + "," +
+    comp_item("free", 3) + "," +
+    comp_item("abs", 3) + "," +
+    comp_item("min", 3) + "," +
+    comp_item("max", 3) +
+    "]";
+
+// ============================================================================
+// Main Loop — JSON-RPC message dispatcher
+// ============================================================================
+
+// Extract a JSON string value by key using direct string search
+// Searches for "key":"value" pattern and returns value
+fn json_extract_str(msg: String, key: String) -> String = {
+    let needle = chr(34) + key + chr(34) + ":" + chr(34);
+    let pos = str_find(msg, needle, 0);
+    if pos < 0 { "" }
+    else {
+        let start = pos + needle.len();
+        let end_pos = str_find_char(msg, 34, start);
+        if end_pos < 0 { "" }
+        else { msg.slice(start, end_pos) }
+    }
+};
+
+// Extract a JSON number value by key
+fn json_extract_num(msg: String, key: String) -> i64 = {
+    let needle = chr(34) + key + chr(34) + ":";
+    let pos = str_find(msg, needle, 0);
+    if pos < 0 { 0 }
+    else {
+        let start = pos + needle.len();
+        parse_int_from(msg, start, 0)
+    }
+};
+
+fn parse_int_from(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() { acc }
+    else {
+        let c = s.byte_at(pos);
+        if c >= 48 and c <= 57 { parse_int_from(s, pos + 1, acc * 10 + c - 48) }
+        else { acc }
+    };
+
+// Find substring in string starting at pos
+fn str_find(haystack: String, needle: String, pos: i64) -> i64 = {
+    let mut p: i64 = pos;
+    while p + needle.len() <= haystack.len() {
+        if haystack.slice(p, p + needle.len()) == needle { return p }
+        else { set p = p + 1 }
+    };
+    0 - 1
+};
+
+// Find single character in string
+fn str_find_char(s: String, ch: i64, pos: i64) -> i64 = {
+    let mut p: i64 = pos;
+    while p < s.len() {
+        if s.byte_at(p) == ch { return p }
+        else { set p = p + 1 }
+    };
+    0 - 1
+};
+
+fn dispatch(msg: String) -> i64 = {
+    if msg.len() == 0 { 0 }
+    else {
+        // Use direct string search instead of JSON parser for method/id extraction
+        // This avoids a TRL codegen bug that breaks jparse when combined with
+        // response builder functions in the same compilation unit (Cycle 1893)
+        let method = json_extract_str(msg, "method");
+        let id_num = json_extract_num(msg, "id");
+        let id_str = if id_num > 0 { json_num(id_num) } else { "null" };
+
+        // Dispatch by method
+        let _h = if method == "initialize" { handle_initialize(id_str) }
+        else if method == "initialized" { 0 }
+        else if method == "shutdown" { handle_shutdown(id_str) }
+        else if method == "textDocument/didOpen" { handle_did_open_raw(msg) }
+        else if method == "textDocument/didChange" { handle_did_change_raw(msg) }
+        else if method == "textDocument/didClose" { handle_did_close_raw(msg) }
+        else if method == "textDocument/hover" { handle_hover_raw(msg, id_str) }
+        else if method == "textDocument/completion" { handle_completion_raw(msg, id_str) }
+        else {
+            if id_str != "null" {
+                lsp_send_message(jsonrpc_error(id_str, 0 - 32601, "Method not found: " + method));
+                0
+            } else { 0 }
+        };
+        if method == "exit" { 0 } else { 1 }
+    }
+};
+
+// Main event loop
+fn lsp_loop() -> i64 = {
+    let msg = lsp_read_message();
+    let cont = dispatch(msg);
+    if cont == 0 { 0 }
+    else { lsp_loop() }
+};
+
+fn main() -> i64 = {
+    lsp_loop();
+    0
+};

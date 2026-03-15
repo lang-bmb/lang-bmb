@@ -407,7 +407,7 @@ mod tests {
     #[test]
     fn test_derive_trait_clone() {
         let t = DeriveTrait::Hash;
-        let cloned = t.clone();
+        let cloned = t;
         assert_eq!(t, cloned);
     }
 

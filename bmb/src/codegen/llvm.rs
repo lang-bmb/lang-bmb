@@ -733,6 +733,27 @@ impl<'ctx> LlvmContext<'ctx> {
         self.functions.insert("read_line".to_string(), read_line_fn);
         self.function_return_types.insert("read_line".to_string(), MirType::String);
 
+        // v0.97: read_bytes(i64) -> String for LSP Content-Length protocol
+        let read_bytes_type = ptr_type.fn_type(&[i64_type.into()], false);
+        let read_bytes_fn = self.module.add_function("bmb_read_bytes", read_bytes_type, None);
+        read_bytes_fn.add_attribute(AttributeLoc::Function, nounwind_attr);
+        self.functions.insert("read_bytes".to_string(), read_bytes_fn);
+        self.function_return_types.insert("read_bytes".to_string(), MirType::String);
+
+        // v0.97: write_stdout(String) -> void for LSP response writing
+        let write_stdout_type = self.context.void_type().fn_type(&[ptr_type.into()], false);
+        let write_stdout_fn = self.module.add_function("bmb_write_stdout", write_stdout_type, None);
+        write_stdout_fn.add_attribute(AttributeLoc::Function, nounwind_attr);
+        self.functions.insert("write_stdout".to_string(), write_stdout_fn);
+        self.function_return_types.insert("write_stdout".to_string(), MirType::Unit);
+
+        // v0.97: int_to_string(i64) -> String
+        let int_to_str_type = ptr_type.fn_type(&[i64_type.into()], false);
+        let int_to_str_fn = self.module.add_function("int_to_string", int_to_str_type, None);
+        int_to_str_fn.add_attribute(AttributeLoc::Function, nounwind_attr);
+        self.functions.insert("int_to_string".to_string(), int_to_str_fn);
+        self.function_return_types.insert("int_to_string".to_string(), MirType::String);
+
         // v0.46: chr(i64) -> ptr (returns single-char string)
         // Note: chr allocates memory, so it's not readonly
         let chr_type = ptr_type.fn_type(&[i64_type.into()], false);
@@ -1232,6 +1253,12 @@ impl<'ctx> LlvmContext<'ctx> {
         let system_capture_fn = self.module.add_function("bmb_system_capture", system_capture_type, None);
         self.functions.insert("system_capture".to_string(), system_capture_fn);
         self.function_return_types.insert("system_capture".to_string(), MirType::String);
+
+        // v0.97: exec_output(cmd: ptr, args: ptr) -> ptr
+        let exec_output_type = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
+        let exec_output_fn = self.module.add_function("exec_output", exec_output_type, None);
+        self.functions.insert("exec_output".to_string(), exec_output_fn);
+        self.function_return_types.insert("exec_output".to_string(), MirType::String);
 
         // v0.88.2: free_string(s: ptr) -> i64 (free a BmbString)
         let free_string_type = i64_type.fn_type(&[ptr_type.into()], false);

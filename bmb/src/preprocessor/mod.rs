@@ -494,7 +494,7 @@ fn main() -> i64 = 42;
 
     #[test]
     fn test_preprocessor_error_io_display() {
-        let io_err = std::io::Error::new(std::io::ErrorKind::Other, "custom error");
+        let io_err = std::io::Error::other("custom error");
         let pp_err = PreprocessorError::IoError(io_err);
         let msg = format!("{}", pp_err);
         assert!(msg.contains("IO error"));
