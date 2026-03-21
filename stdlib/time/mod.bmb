@@ -1,0 +1,90 @@
+// BMB Standard Library: time
+// Time measurement, monotonic clocks, and sleep utilities
+//
+// Design: Contract-first, zero-overhead time operations.
+// All timing functions use monotonic clocks (not wall-clock).
+// Runtime builtins: bmb_time_ns, bmb_time_ms, bmb_sleep_ms
+
+// ============================================================================
+// Monotonic Clock
+// ============================================================================
+
+// Get current monotonic time in nanoseconds
+// Uses CLOCK_MONOTONIC (Unix) or QueryPerformanceCounter (Windows)
+@trust
+pub fn now_ns() -> i64
+  post ret >= 0
+= 0;
+
+// Get current monotonic time in milliseconds
+@trust
+pub fn now_ms() -> i64
+  post ret >= 0
+= 0;
+
+// ============================================================================
+// Sleep
+// ============================================================================
+
+// Sleep for the given number of milliseconds
+// Actual sleep duration may be slightly longer due to OS scheduling
+@trust
+pub fn sleep_ms(ms: i64) -> i64
+  pre ms >= 0
+= 0;
+
+// ============================================================================
+// Duration Arithmetic
+// ============================================================================
+
+// Convert seconds to milliseconds
+pub fn secs_to_ms(s: i64) -> i64
+  pre s >= 0
+  post ret == s * 1000
+= s * 1000;
+
+// Convert seconds to nanoseconds
+pub fn secs_to_ns(s: i64) -> i64
+  pre s >= 0
+  post ret == s * 1000000000
+= s * 1000000000;
+
+// Convert milliseconds to nanoseconds
+pub fn ms_to_ns(ms: i64) -> i64
+  pre ms >= 0
+  post ret == ms * 1000000
+= ms * 1000000;
+
+// Convert nanoseconds to milliseconds (truncates)
+pub fn ns_to_ms(ns: i64) -> i64
+  pre ns >= 0
+  post ret == ns / 1000000
+= ns / 1000000;
+
+// Convert nanoseconds to seconds (truncates)
+pub fn ns_to_secs(ns: i64) -> i64
+  pre ns >= 0
+  post ret == ns / 1000000000
+= ns / 1000000000;
+
+// Convert milliseconds to seconds (truncates)
+pub fn ms_to_secs(ms: i64) -> i64
+  pre ms >= 0
+  post ret == ms / 1000
+= ms / 1000;
+
+// ============================================================================
+// Elapsed Time Helpers
+// ============================================================================
+
+// Calculate elapsed nanoseconds between two time points
+pub fn elapsed_ns(start: i64, end: i64) -> i64
+  pre start >= 0 and end >= start
+  post ret == end - start
+= end - start;
+
+// Calculate elapsed milliseconds between two time points
+pub fn elapsed_ms(start: i64, end: i64) -> i64
+  pre start >= 0 and end >= start
+  post ret == end - start
+= end - start;

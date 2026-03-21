@@ -6330,6 +6330,8 @@ fn map_runtime_fn_full(fn_name: String) -> String =
     else if fn_name == "@to_binary" { "@bmb_to_binary" }
     else if fn_name == "@to_octal" { "@bmb_to_octal" }
     else if fn_name == "@time_ns" { "@bmb_time_ns" }
+    else if fn_name == "@now_ns" { "@bmb_time_ns" }
+    else if fn_name == "@now_ms" { "@bmb_time_ms" }
     else if fn_name == "@run_command" { "@bmb_exec_output" }
     else if fn_name == "@string_split" { "@bmb_string_split" }
     else if fn_name == "@string_join" { "@bmb_string_join" }

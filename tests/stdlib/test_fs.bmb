@@ -1,0 +1,75 @@
+// Tests for stdlib/fs module
+// Verifies path utility pure functions
+
+use fs::is_valid_path;
+use fs::extension;
+use fs::filename;
+use fs::parent;
+use fs::join;
+use fs::has_extension;
+
+// Test is_valid_path
+fn test_valid_path_normal() -> bool
+  post ret == true
+= is_valid_path("hello.bmb");
+
+fn test_valid_path_empty() -> bool
+  post ret == false
+= is_valid_path("");
+
+// Test extension
+fn test_extension_bmb() -> bool
+  post ret == true
+= extension("hello.bmb") == "bmb";
+
+fn test_extension_nested() -> bool
+  post ret == true
+= extension("src/main.rs") == "rs";
+
+fn test_extension_double() -> bool
+  post ret == true
+= extension("archive.tar.gz") == "gz";
+
+// Test filename
+fn test_filename_simple() -> bool
+  post ret == true
+= filename("hello.bmb") == "hello.bmb";
+
+fn test_filename_with_dir() -> bool
+  post ret == true
+= filename("src/main.rs") == "main.rs";
+
+fn test_filename_deep() -> bool
+  post ret == true
+= filename("a/b/c/file.txt") == "file.txt";
+
+// Test parent
+fn test_parent_simple() -> bool
+  post ret == true
+= parent("src/main.rs") == "src";
+
+fn test_parent_deep() -> bool
+  post ret == true
+= parent("a/b/c/file.txt") == "a/b/c";
+
+// Test join
+fn test_join_basic() -> bool
+  post ret == true
+= join("src", "main.rs") == "src/main.rs";
+
+fn test_join_trailing_slash() -> bool
+  post ret == true
+= join("src/", "main.rs") == "src/main.rs";
+
+// Test has_extension
+fn test_has_extension_match() -> bool
+  post ret == true
+= has_extension("file.bmb", "bmb");
+
+fn test_has_extension_no_match() -> bool
+  post ret == false
+= has_extension("file.bmb", "rs");
+
+fn test_has_extension_no_dot() -> bool
+  post ret == false
+= has_extension("Makefile", "txt");

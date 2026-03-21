@@ -924,11 +924,29 @@ fn check_file_with_includes(path: &PathBuf, include_paths: &[PathBuf]) -> Result
         prelude_path.as_deref(),
     ).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
-    // Tokenize
-    let tokens = bmb::lexer::tokenize(&source)?;
+    // Tokenize (v0.97: machine-readable errors with line:col)
+    let tokens = match bmb::lexer::tokenize(&source) {
+        Ok(t) => t,
+        Err(e) => {
+            if !is_human_output() {
+                bmb::error::report_error_machine(&filename, &source, &e);
+                std::process::exit(1);
+            }
+            return Err(e.into());
+        }
+    };
 
-    // Parse
-    let ast = bmb::parser::parse(&filename, &source, tokens)?;
+    // Parse (v0.97: machine-readable errors with line:col)
+    let ast = match bmb::parser::parse(&filename, &source, tokens) {
+        Ok(a) => a,
+        Err(e) => {
+            if !is_human_output() {
+                bmb::error::report_error_machine(&filename, &source, &e);
+                std::process::exit(1);
+            }
+            return Err(e.into());
+        }
+    };
 
     // v0.17: Create type checker and register imported modules
     let mut checker = bmb::types::TypeChecker::new();
@@ -969,16 +987,31 @@ fn check_file_with_includes(path: &PathBuf, include_paths: &[PathBuf]) -> Result
     // Also resolve from the file's own directory
     // v0.68: Propagate resolver errors (includes module name suggestions)
     // v0.74: Make imports mutable for usage tracking
-    let mut imports = resolver.resolve_uses(&ast)?;
+    let mut imports = match resolver.resolve_uses(&ast) {
+        Ok(i) => i,
+        Err(e) => {
+            if !is_human_output() {
+                bmb::error::report_error_machine(&filename, &source, &e);
+                std::process::exit(1);
+            }
+            return Err(e.into());
+        }
+    };
     for (_, info) in imports.all_imports() {
         if let Some(module) = resolver.get_module(&info.module) {
             checker.register_module(module);
         }
     }
 
-    // Type check
+    // Type check (v0.97: machine-readable errors with line:col)
     // v0.74: Pass imports for usage tracking
-    checker.check_program_with_imports(&ast, &mut imports)?;
+    if let Err(e) = checker.check_program_with_imports(&ast, &mut imports) {
+        if !is_human_output() {
+            bmb::error::report_error_machine(&filename, &source, &e);
+            std::process::exit(1);
+        }
+        return Err(e.into());
+    }
 
     // v0.74: Collect unused import warnings
     let mut all_warnings: Vec<bmb::error::CompileWarning> = checker.warnings().to_vec();

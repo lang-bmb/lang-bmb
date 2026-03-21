@@ -965,6 +965,11 @@ impl TextCodeGen {
         writeln!(out, "; Runtime declarations - Timing (v0.63)")?;
         writeln!(out, "declare i64 @bmb_time_ns() nocallback nounwind nofree nosync willreturn")?;
         writeln!(out, "declare i64 @time_ns() nocallback nounwind nofree nosync willreturn")?;
+        // v0.97: stdlib time module aliases
+        writeln!(out, "declare i64 @now_ns() nocallback nounwind nofree nosync willreturn")?;
+        writeln!(out, "declare i64 @bmb_time_ms() nocallback nounwind nofree nosync willreturn")?;
+        writeln!(out, "declare i64 @now_ms() nocallback nounwind nofree nosync willreturn")?;
+        writeln!(out, "declare i64 @sleep_ms(i64) nounwind")?;
         writeln!(out)?;
 
         // v0.70: Threading runtime functions
@@ -1114,6 +1119,8 @@ impl TextCodeGen {
         writeln!(out, "declare ptr @list_dir(ptr) nocallback nounwind")?;
         writeln!(out, "declare i64 @remove_file(ptr) nocallback nounwind nofree")?;
         writeln!(out, "declare i64 @remove_dir(ptr) nocallback nounwind nofree")?;
+        writeln!(out, "declare ptr @bmb_getcwd() nocallback nounwind nofree")?;
+        writeln!(out, "declare ptr @current_dir() nocallback nounwind nofree")?;
         writeln!(out)?;
 
         // StringBuilder wrappers — v0.96.43: nocallback + nosync
@@ -1677,10 +1684,10 @@ impl TextCodeGen {
             let mut callees = HashSet::new();
             for block in &func.blocks {
                 for inst in &block.instructions {
-                    if let MirInst::Call { func: callee, .. } = inst {
-                        if user_fns.contains(callee) {
-                            callees.insert(callee.clone());
-                        }
+                    if let MirInst::Call { func: callee, .. } = inst
+                        && user_fns.contains(callee)
+                    {
+                        callees.insert(callee.clone());
                     }
                 }
             }
@@ -1719,6 +1726,7 @@ impl TextCodeGen {
         recursive
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn emit_function_with_strings(
         &self,
         out: &mut String,
@@ -7269,8 +7277,9 @@ impl TextCodeGen {
             | "bmb_arena_save" | "arena_save" | "bmb_arena_restore" | "arena_restore"
             | "bmb_arena_usage" | "arena_usage" => "i64",
 
-            // i64 return - Timing (v0.63)
-            "bmb_time_ns" | "time_ns" => "i64",
+            // i64 return - Timing (v0.63, v0.97: stdlib time module)
+            "bmb_time_ns" | "time_ns" | "now_ns"
+            | "bmb_time_ms" | "time_ms" | "now_ms" => "i64",
 
             // ptr return - String operations (both full and wrapper names)
             "bmb_string_new" | "bmb_string_from_cstr" | "bmb_string_slice"
@@ -7287,7 +7296,7 @@ impl TextCodeGen {
             "bmb_read_line" | "read_line" | "bmb_read_bytes" | "read_bytes" => "ptr",
 
             // ptr return - Directory operations
-            "bmb_readdir" | "list_dir" => "ptr",
+            "bmb_readdir" | "list_dir" | "current_dir" | "bmb_getcwd" => "ptr",
 
             // ptr return - StringBuilder (both full and wrapper names)
             "bmb_sb_build" | "sb_build" => "ptr",

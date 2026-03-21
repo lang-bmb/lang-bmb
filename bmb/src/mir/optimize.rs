@@ -3766,7 +3766,7 @@ impl IfElseToSwitch {
         let default_label = func.blocks[current_block_idx].label.clone();
 
         // Return the chain with the current block as default
-        if cases.len() >= 1 {
+        if !cases.is_empty() {
             return Some(IfElseChain {
                 discriminant: Operand::Place(Place::new(discriminant_var?)),
                 cases,

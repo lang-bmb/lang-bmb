@@ -1,0 +1,148 @@
+// Tests for stdlib/math module
+// Verifies mathematical functions with contracts
+
+use math::fabs;
+use math::fsign;
+use math::fmin;
+use math::fmax;
+use math::fclamp;
+use math::ipow;
+use math::gcd;
+use math::lcm;
+use math::factorial;
+use math::fibonacci;
+use math::isqrt;
+
+// Test fabs
+fn test_fabs_positive() -> bool
+  post ret == true
+= fabs(3.14) == 3.14;
+
+fn test_fabs_negative() -> bool
+  post ret == true
+= fabs(0.0 - 2.5) == 2.5;
+
+fn test_fabs_zero() -> bool
+  post ret == true
+= fabs(0.0) == 0.0;
+
+// Test fsign
+fn test_fsign_positive() -> bool
+  post ret == true
+= fsign(42.0) == 1.0;
+
+fn test_fsign_negative() -> bool
+  post ret == true
+= fsign(0.0 - 7.0) == (0.0 - 1.0);
+
+fn test_fsign_zero() -> bool
+  post ret == true
+= fsign(0.0) == 0.0;
+
+// Test fmin/fmax
+fn test_fmin() -> bool
+  post ret == true
+= fmin(3.0, 5.0) == 3.0;
+
+fn test_fmax() -> bool
+  post ret == true
+= fmax(3.0, 5.0) == 5.0;
+
+// Test fclamp
+fn test_fclamp_in_range() -> bool
+  post ret == true
+= fclamp(5.0, 1.0, 10.0) == 5.0;
+
+fn test_fclamp_below() -> bool
+  post ret == true
+= fclamp(0.0 - 1.0, 0.0, 10.0) == 0.0;
+
+fn test_fclamp_above() -> bool
+  post ret == true
+= fclamp(15.0, 0.0, 10.0) == 10.0;
+
+// Test ipow
+fn test_ipow_base_case() -> i64
+  post ret == 1
+= ipow(5, 0);
+
+fn test_ipow_square() -> i64
+  post ret == 9
+= ipow(3, 2);
+
+fn test_ipow_cube() -> i64
+  post ret == 8
+= ipow(2, 3);
+
+fn test_ipow_power_of_two() -> i64
+  post ret == 1024
+= ipow(2, 10);
+
+// Test gcd
+fn test_gcd_basic() -> i64
+  post ret == 6
+= gcd(12, 18);
+
+fn test_gcd_coprime() -> i64
+  post ret == 1
+= gcd(7, 13);
+
+fn test_gcd_same() -> i64
+  post ret == 5
+= gcd(5, 5);
+
+// Test lcm
+fn test_lcm_basic() -> i64
+  post ret == 12
+= lcm(4, 6);
+
+fn test_lcm_coprime() -> i64
+  post ret == 35
+= lcm(5, 7);
+
+// Test factorial
+fn test_factorial_zero() -> i64
+  post ret == 1
+= factorial(0);
+
+fn test_factorial_five() -> i64
+  post ret == 120
+= factorial(5);
+
+fn test_factorial_ten() -> i64
+  post ret == 3628800
+= factorial(10);
+
+// Test fibonacci
+fn test_fibonacci_zero() -> i64
+  post ret == 0
+= fibonacci(0);
+
+fn test_fibonacci_one() -> i64
+  post ret == 1
+= fibonacci(1);
+
+fn test_fibonacci_ten() -> i64
+  post ret == 55
+= fibonacci(10);
+
+// Test isqrt
+fn test_isqrt_perfect() -> i64
+  post ret == 4
+= isqrt(16);
+
+fn test_isqrt_non_perfect() -> i64
+  post ret == 3
+= isqrt(10);
+
+fn test_isqrt_zero() -> i64
+  post ret == 0
+= isqrt(0);
+
+fn test_isqrt_one() -> i64
+  post ret == 1
+= isqrt(1);
+
+fn test_isqrt_large() -> i64
+  post ret == 100
+= isqrt(10000);

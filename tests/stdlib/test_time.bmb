@@ -1,0 +1,83 @@
+// Tests for stdlib/time module
+// Verifies duration arithmetic and elapsed helpers
+
+use time::secs_to_ms;
+use time::secs_to_ns;
+use time::ms_to_ns;
+use time::ns_to_ms;
+use time::ns_to_secs;
+use time::ms_to_secs;
+use time::elapsed_ns;
+use time::elapsed_ms;
+
+// Test secs_to_ms
+fn test_secs_to_ms_zero() -> i64
+  post ret == 0
+= secs_to_ms(0);
+
+fn test_secs_to_ms_one() -> i64
+  post ret == 1000
+= secs_to_ms(1);
+
+fn test_secs_to_ms_five() -> i64
+  post ret == 5000
+= secs_to_ms(5);
+
+// Test secs_to_ns
+fn test_secs_to_ns_one() -> i64
+  post ret == 1000000000
+= secs_to_ns(1);
+
+// Test ms_to_ns
+fn test_ms_to_ns_one() -> i64
+  post ret == 1000000
+= ms_to_ns(1);
+
+fn test_ms_to_ns_hundred() -> i64
+  post ret == 100000000
+= ms_to_ns(100);
+
+// Test ns_to_ms
+fn test_ns_to_ms_million() -> i64
+  post ret == 1
+= ns_to_ms(1000000);
+
+fn test_ns_to_ms_truncates() -> i64
+  post ret == 0
+= ns_to_ms(999999);
+
+fn test_ns_to_ms_large() -> i64
+  post ret == 1500
+= ns_to_ms(1500000000);
+
+// Test ns_to_secs
+fn test_ns_to_secs_billion() -> i64
+  post ret == 1
+= ns_to_secs(1000000000);
+
+fn test_ns_to_secs_truncates() -> i64
+  post ret == 2
+= ns_to_secs(2500000000);
+
+// Test ms_to_secs
+fn test_ms_to_secs_thousand() -> i64
+  post ret == 1
+= ms_to_secs(1000);
+
+fn test_ms_to_secs_truncates() -> i64
+  post ret == 3
+= ms_to_secs(3999);
+
+// Test elapsed_ns
+fn test_elapsed_ns_basic() -> i64
+  post ret == 500
+= elapsed_ns(100, 600);
+
+fn test_elapsed_ns_zero() -> i64
+  post ret == 0
+= elapsed_ns(100, 100);
+
+// Test elapsed_ms
+fn test_elapsed_ms_basic() -> i64
+  post ret == 250
+= elapsed_ms(100, 350);

@@ -882,10 +882,29 @@ pub fn report_warnings(filename: &str, source: &str, warnings: &[CompileWarning]
 
 // ============================================================================
 // v0.71: Machine-readable output (AI-friendly)
+// v0.97: Added line:col fields for IDE/tool integration
 // ============================================================================
 
+/// Convert a byte offset to (line, column), both 1-based
+fn offset_to_line_col(source: &str, offset: usize) -> (usize, usize) {
+    let mut line = 1;
+    let mut col = 1;
+    for (i, c) in source.char_indices() {
+        if i >= offset {
+            break;
+        }
+        if c == '\n' {
+            line += 1;
+            col = 1;
+        } else {
+            col += 1;
+        }
+    }
+    (line, col)
+}
+
 /// Machine-readable error output (JSON format)
-pub fn report_error_machine(filename: &str, _source: &str, error: &CompileError) {
+pub fn report_error_machine(filename: &str, source: &str, error: &CompileError) {
     let kind = match error {
         CompileError::Lexer { .. } => "lexer",
         CompileError::Parser { .. } => "parser",
@@ -896,27 +915,33 @@ pub fn report_error_machine(filename: &str, _source: &str, error: &CompileError)
     };
 
     let (start, end) = error.span().map(|s| (s.start, s.end)).unwrap_or((0, 0));
+    let (line, col) = offset_to_line_col(source, start);
 
     println!(
-        r#"{{"type":"error","kind":"{}","file":"{}","start":{},"end":{},"message":"{}"}}"#,
+        r#"{{"type":"error","kind":"{}","file":"{}","start":{},"end":{},"line":{},"col":{},"message":"{}"}}"#,
         kind,
         filename.replace('\\', "\\\\").replace('"', "\\\""),
         start,
         end,
+        line,
+        col,
         error.message().replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n")
     );
 }
 
 /// Machine-readable warning output (JSON format)
-pub fn report_warning_machine(filename: &str, _source: &str, warning: &CompileWarning) {
+pub fn report_warning_machine(filename: &str, source: &str, warning: &CompileWarning) {
     let (start, end) = warning.span().map(|s| (s.start, s.end)).unwrap_or((0, 0));
+    let (line, col) = offset_to_line_col(source, start);
 
     println!(
-        r#"{{"type":"warning","kind":"{}","file":"{}","start":{},"end":{},"message":"{}"}}"#,
+        r#"{{"type":"warning","kind":"{}","file":"{}","start":{},"end":{},"line":{},"col":{},"message":"{}"}}"#,
         warning.kind(),
         filename.replace('\\', "\\\\").replace('"', "\\\""),
         start,
         end,
+        line,
+        col,
         warning.message().replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n")
     );
 }

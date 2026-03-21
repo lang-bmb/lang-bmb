@@ -168,6 +168,8 @@ impl Interpreter {
         self.builtins.insert("list_dir".to_string(), builtin_list_dir);
         self.builtins.insert("remove_file".to_string(), builtin_remove_file);
         self.builtins.insert("remove_dir".to_string(), builtin_remove_dir);
+        self.builtins.insert("getcwd".to_string(), builtin_getcwd);
+        self.builtins.insert("current_dir".to_string(), builtin_getcwd);
 
         // v0.31.11: Process execution builtins for Phase 32.0.2 Bootstrap Infrastructure
         self.builtins.insert("exec".to_string(), builtin_exec);
@@ -177,6 +179,10 @@ impl Interpreter {
 
         // v0.63: Timing builtin for bmb-bench
         self.builtins.insert("time_ns".to_string(), builtin_time_ns);
+        // v0.97: Time module builtins (aliases for stdlib/time)
+        self.builtins.insert("now_ns".to_string(), builtin_time_ns);
+        self.builtins.insert("now_ms".to_string(), builtin_time_ms);
+        self.builtins.insert("sleep_ms".to_string(), builtin_sleep_ms);
 
         // v0.31.22: Command-line argument builtins for Phase 32.3.D CLI Independence
         self.builtins.insert("arg_count".to_string(), builtin_arg_count);
@@ -8001,6 +8007,17 @@ fn builtin_remove_dir(args: &[Value]) -> InterpResult<Value> {
     }
 }
 
+// v0.97: getcwd() -> String
+fn builtin_getcwd(args: &[Value]) -> InterpResult<Value> {
+    if !args.is_empty() {
+        return Err(RuntimeError::arity_mismatch("getcwd", 0, args.len()));
+    }
+    let cwd = std::env::current_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+    Ok(Value::Str(Rc::new(cwd)))
+}
+
 // ============ v0.31.11: Process Execution Builtins for Phase 32.0.2 Bootstrap Infrastructure ============
 
 /// Helper: Parse command arguments string into Vec<String>
@@ -8138,6 +8155,34 @@ fn builtin_time_ns(args: &[Value]) -> InterpResult<Value> {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();
     Ok(Value::Int(now.as_nanos() as i64))
+}
+
+// v0.97: time_ms() -> i64
+fn builtin_time_ms(args: &[Value]) -> InterpResult<Value> {
+    if !args.is_empty() {
+        return Err(RuntimeError::arity_mismatch("now_ms", 0, args.len()));
+    }
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    Ok(Value::Int(now.as_millis() as i64))
+}
+
+// v0.97: sleep_ms(ms: i64) -> i64
+fn builtin_sleep_ms(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("sleep_ms", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(ms) => {
+            if *ms > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(*ms as u64));
+            }
+            Ok(Value::Int(0))
+        }
+        _ => Err(RuntimeError::type_error("int", args[0].type_name())),
+    }
 }
 
 // ============ v0.31.22: Command-line Argument Builtins for Phase 32.3.D ============

@@ -2418,6 +2418,9 @@ BmbString* bmb_getcwd(void) {
     return bmb_string_wrap(data);
 }
 
+// v0.97: stdlib fs aliases
+BmbString* current_dir(void) { return bmb_getcwd(); }
+
 // Wrapper for BMB code
 BmbString* system_capture(const BmbString* cmd) { return bmb_system_capture(cmd); }
 
@@ -4400,6 +4403,11 @@ int64_t bmb_time_ms(void) { return bmb_time_ns() / 1000000LL; }
 // Alias for compatibility
 int64_t time_ns(void) { return bmb_time_ns(); }
 
+// v0.97: stdlib time module aliases
+int64_t now_ns(void) { return bmb_time_ns(); }
+int64_t now_ms(void) { return bmb_time_ms(); }
+int64_t time_ms(void) { return bmb_time_ms(); }
+
 // v0.95: exit process
 void bmb_exit(int64_t code) { exit((int)code); }
 
@@ -4410,6 +4418,9 @@ void bmb_sleep_ms(int64_t ms) { Sleep((DWORD)ms); }
 #include <unistd.h>
 void bmb_sleep_ms(int64_t ms) { usleep((useconds_t)(ms * 1000)); }
 #endif
+
+// v0.97: stdlib sleep_ms wrapper (returns 0 for i64-based stdlib convention)
+int64_t sleep_ms(int64_t ms) { bmb_sleep_ms(ms); return 0; }
 
 // v0.95: random number generation (xorshift64)
 static uint64_t bmb_rng_state = 0;
