@@ -339,6 +339,129 @@ pub fn bmb_dijkstra(adj: i64, n: i64, source: i64, result: i64) -> i64
     0
 };
 
+// ============================================================================
+// Quicksort — In-place O(n log n) average
+// ============================================================================
+
+fn qs_swap(arr: i64, i: i64, j: i64) -> i64 = {
+    let tmp = load_i64(arr + i * 8);
+    let _s1 = store_i64(arr + i * 8, load_i64(arr + j * 8));
+    let _s2 = store_i64(arr + j * 8, tmp);
+    0
+};
+
+fn qs_partition(arr: i64, lo: i64, hi: i64) -> i64 = {
+    let pivot = load_i64(arr + hi * 8);
+    let mut i = lo - 1;
+    let mut j = lo;
+    while j < hi {
+        let _u = if load_i64(arr + j * 8) < pivot {
+            set i = i + 1;
+            let _sw = qs_swap(arr, i, j);
+            0
+        } else { 0 };
+        set j = j + 1
+    };
+    let _sw = qs_swap(arr, i + 1, hi);
+    i + 1
+};
+
+fn qs_rec(arr: i64, lo: i64, hi: i64) -> i64 = {
+    let _r = if lo < hi {
+        let p = qs_partition(arr, lo, hi);
+        let _l = qs_rec(arr, lo, p - 1);
+        let _h = qs_rec(arr, p + 1, hi);
+        0
+    } else { 0 };
+    0
+};
+
+// Sort an array in-place using quicksort
+// arr: pointer to i64 array, n: length
+@export
+pub fn bmb_quicksort(arr: i64, n: i64) -> i64
+  pre n >= 0
+= {
+    let _r = if n > 1 { qs_rec(arr, 0, n - 1) } else { 0 };
+    0
+};
+
+// ============================================================================
+// BFS — Breadth-First Search (returns visited count)
+// ============================================================================
+
+// Run BFS from source node, return number of reachable nodes
+// adj: flattened adjacency matrix (n*n), adj[i*n+j] = 1 if edge exists, 0 otherwise
+// n: number of nodes
+// source: starting node
+@export
+pub fn bmb_bfs_count(adj: i64, n: i64, source: i64) -> i64
+  pre n > 0 and source >= 0 and source < n
+  post ret >= 1
+= {
+    let bfs_vis = malloc(n * 8);
+    let bfs_q = malloc(n * 8);
+    let mut bi = 0;
+    while bi < n {
+        let _bs = store_i64(bfs_vis + bi * 8, 0);
+        set bi = bi + 1
+    };
+    let _bs0 = store_i64(bfs_vis + source * 8, 1);
+    let _bq0 = store_i64(bfs_q, source);
+    let mut bhead = 0;
+    let mut btail = 1;
+    let mut bcount = 1;
+    while bhead < btail {
+        let bu = load_i64(bfs_q + bhead * 8);
+        set bhead = bhead + 1;
+        let mut bj = 0;
+        while bj < n {
+            let bedge = load_i64(adj + (bu * n + bj) * 8);
+            let bv = load_i64(bfs_vis + bj * 8);
+            let _bx = if bedge != 0 and bv == 0 {
+                let _bsv = store_i64(bfs_vis + bj * 8, 1);
+                let _bsq = store_i64(bfs_q + btail * 8, bj);
+                set btail = btail + 1;
+                set bcount = bcount + 1;
+                0
+            } else { 0 };
+            set bj = bj + 1
+        };
+        0
+    };
+    let _bf1 = free(bfs_vis);
+    let _bf2 = free(bfs_q);
+    bcount
+};
+
+// ============================================================================
+// Matrix Multiply (square matrices)
+// ============================================================================
+
+// Multiply two n×n matrices: C = A × B
+// a, b: input matrices (flattened n*n), c: output matrix (caller-allocated n*n)
+@export
+pub fn bmb_matrix_multiply(a: i64, b: i64, c: i64, n: i64) -> i64
+  pre n > 0
+= {
+    let mut i = 0;
+    while i < n {
+        let mut j = 0;
+        while j < n {
+            let mut sum = 0;
+            let mut k = 0;
+            while k < n {
+                set sum = sum + load_i64(a + (i * n + k) * 8) * load_i64(b + (k * n + j) * 8);
+                set k = k + 1
+            };
+            let _s = store_i64(c + (i * n + j) * 8, sum);
+            set j = j + 1
+        };
+        set i = i + 1
+    };
+    0
+};
+
 // Entry point for standalone testing
 fn main() -> i64 = {
     // Test knapsack

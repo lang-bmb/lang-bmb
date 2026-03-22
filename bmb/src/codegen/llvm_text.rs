@@ -354,7 +354,8 @@ impl TextCodeGen {
         }
 
         // Phase 2: Per-function back-edge analysis
-        let mut loop_meta_id: u32 = 920;
+        // v0.97: Increased from 920 to 1100 to avoid collision with noalias scope metadata (950+)
+        let mut loop_meta_id: u32 = 1100;
         let mut backedge_lines: std::collections::HashMap<usize, u32> = std::collections::HashMap::new();
 
         for &(func_start, func_end) in &func_ranges {

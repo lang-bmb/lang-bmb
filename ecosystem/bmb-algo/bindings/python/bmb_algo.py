@@ -72,6 +72,15 @@ _lib.bmb_lis.restype = ctypes.c_int64
 _lib.bmb_dijkstra.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
 _lib.bmb_dijkstra.restype = ctypes.c_int64
 
+_lib.bmb_quicksort.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_quicksort.restype = ctypes.c_int64
+
+_lib.bmb_bfs_count.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_bfs_count.restype = ctypes.c_int64
+
+_lib.bmb_matrix_multiply.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_matrix_multiply.restype = ctypes.c_int64
+
 
 def knapsack(weights: list, values: list, capacity: int) -> int:
     """Solve 0/1 knapsack problem.
@@ -223,6 +232,51 @@ def floyd_warshall(matrix: list) -> list:
     return result
 
 
+def quicksort(arr: list) -> list:
+    """Sort array using quicksort. Returns sorted copy.
+
+    Example:
+        >>> quicksort([3, 1, 4, 1, 5])
+        [1, 1, 3, 4, 5]
+    """
+    n = len(arr)
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    _lib.bmb_quicksort(ctypes.addressof(c_arr), n)
+    return list(c_arr)
+
+
+def bfs_count(adj_matrix: list, source: int) -> int:
+    """Count reachable nodes from source via BFS.
+
+    Example:
+        >>> bfs_count([[0,1,0],[0,0,1],[0,0,0]], 0)
+        3
+    """
+    n = len(adj_matrix)
+    flat = []
+    for row in adj_matrix:
+        flat.extend(row)
+    arr = (ctypes.c_int64 * (n * n))(*flat)
+    return _lib.bmb_bfs_count(ctypes.addressof(arr), n, source)
+
+
+def matrix_multiply(a: list, b: list) -> list:
+    """Multiply two square matrices.
+
+    Example:
+        >>> matrix_multiply([[1,2],[3,4]], [[5,6],[7,8]])
+        [[19, 22], [43, 50]]
+    """
+    n = len(a)
+    flat_a = [v for row in a for v in row]
+    flat_b = [v for row in b for v in row]
+    ca = (ctypes.c_int64 * (n * n))(*flat_a)
+    cb = (ctypes.c_int64 * (n * n))(*flat_b)
+    cc = (ctypes.c_int64 * (n * n))()
+    _lib.bmb_matrix_multiply(ctypes.addressof(ca), ctypes.addressof(cb), ctypes.addressof(cc), n)
+    return [[cc[i * n + j] for j in range(n)] for i in range(n)]
+
+
 if __name__ == '__main__':
     print("bmb-algo test suite -- Powered by BMB")
     print()
@@ -245,5 +299,16 @@ if __name__ == '__main__':
     adj = [[0, 4, -1], [-1, 0, 2], [-1, -1, 0]]
     print(f"  dijkstra(source=0) = {dijkstra(adj, 0)}")
 
+    # Sort
+    print(f"  quicksort([3,1,4,1,5]) = {quicksort([3,1,4,1,5])}")
+
+    # Graph (BFS)
+    adj = [[0,1,0],[0,0,1],[0,0,0]]
+    print(f"  bfs_count(3-node chain, 0) = {bfs_count(adj, 0)}")
+
+    # Matrix
+    result = matrix_multiply([[1,2],[3,4]], [[5,6],[7,8]])
+    print(f"  matrix_multiply 2x2 = {result}")
+
     print()
-    print("All 8 algorithms working! https://github.com/iyulab/lang-bmb")
+    print("All 11 algorithms working! https://github.com/iyulab/lang-bmb")
