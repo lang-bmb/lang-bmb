@@ -450,14 +450,41 @@ fn parse_more_params(s: String, pos: i64) -> i64 =
 // ============================================================
 
 // Parse a program: sequence of fn definitions
+// v0.97: Also accepts @export and pub before fn
 fn parse_program(s: String, pos: i64) -> i64 =
     let tok = next_token(s, pos);
     let kind = tok_kind(tok);
     let end = tok_end(tok);
-    if kind == TK_EOF() { pack_result(PR_OK(), end) } else if kind == TK_FN() {
+    if kind == TK_EOF() { pack_result(PR_OK(), end) }
+    else if kind == TK_FN() {
         let r = parse_fn(s, end);
         if not is_ok(r) { r } else { parse_program(s, result_pos(r)) }
-    } else { pack_result(PR_ERR_UNEXPECTED(), pos) };
+    }
+    // v0.97: Skip @export before fn (also handles @export pub fn)
+    else if kind == TK_AT() {
+        let t_attr = next_token(s, end);
+        let t_next = next_token(s, tok_end(t_attr));
+        let fn_end = if tok_kind(t_next) == 121 {
+            // pub keyword (121), expect fn after
+            let t_fn = next_token(s, tok_end(t_next));
+            if tok_kind(t_fn) == TK_FN() { tok_end(t_fn) } else { 0 - 1 }
+        } else if tok_kind(t_next) == TK_FN() { tok_end(t_next) }
+        else { 0 - 1 };
+        if fn_end < 0 { pack_result(PR_ERR_UNEXPECTED(), pos) }
+        else {
+            let r = parse_fn(s, fn_end);
+            if not is_ok(r) { r } else { parse_program(s, result_pos(r)) }
+        }
+    }
+    // v0.97: Skip pub before fn
+    else if kind == 121 {
+        let t_fn = next_token(s, end);
+        if tok_kind(t_fn) == TK_FN() {
+            let r = parse_fn(s, tok_end(t_fn));
+            if not is_ok(r) { r } else { parse_program(s, result_pos(r)) }
+        } else { pack_result(PR_ERR_UNEXPECTED(), pos) }
+    }
+    else { pack_result(PR_ERR_UNEXPECTED(), pos) };
 
 // ============================================================
 // Tests (v0.30.142)

@@ -335,7 +335,77 @@ fn parse_program(src: String, pos: i64, fns: String) -> String =
     else if kind == TK_FN() {
         let rf = parse_fn(src, tok_end(tok));
         if is_error(unpack_ast(rf)) { unpack_ast(rf) } else { parse_program(src, unpack_pos(rf), fns + " " + unpack_ast(rf)) }
-    } else { make_error("program") };
+    }
+    // v0.97: Support @export before fn — skip @export, optional pub, then parse fn
+    // Annotates return type with @export so codegen emits dllexport linkage
+    else if kind == TK_AT() {
+        // Expect "export" identifier after @
+        let t_attr = next_token_raw(src, tok_end(tok));
+        let attr_start = skip_all(src, tok_end(tok));
+        let attr_name = src.slice(attr_start, tok_end(t_attr));
+        let is_export = attr_name == "export";
+        // Skip optional "pub" keyword (token 121)
+        let t_next = next_token_raw(src, tok_end(t_attr));
+        let fn_pos = if tok_kind(t_next) == 121 {
+            // Skip pub, expect fn
+            let t_fn = next_token_raw(src, tok_end(t_next));
+            if tok_kind(t_fn) != TK_FN() { 0 - 1 } else { tok_end(t_fn) }
+        } else if tok_kind(t_next) == TK_FN() {
+            tok_end(t_next)
+        } else { 0 - 1 };
+        if fn_pos < 0 { make_error("export-fn") }
+        else {
+            let rf = parse_fn(src, fn_pos);
+            if is_error(unpack_ast(rf)) { unpack_ast(rf) }
+            else {
+                let fn_ast = unpack_ast(rf);
+                // If @export, inject @export annotation into function AST
+                // The AST is "(fn <name> (params) ret_type body)"
+                // We need to replace "ret_type" with "ret_type @export"
+                let annotated = if is_export { annotate_fn_export(fn_ast) } else { fn_ast };
+                parse_program(src, unpack_pos(rf), fns + " " + annotated)
+            }
+        }
+    }
+    // v0.97: Skip standalone "pub" before fn
+    else if kind == 121 {
+        let t_fn = next_token_raw(src, tok_end(tok));
+        if tok_kind(t_fn) == TK_FN() {
+            let rf = parse_fn(src, tok_end(t_fn));
+            if is_error(unpack_ast(rf)) { unpack_ast(rf) } else { parse_program(src, unpack_pos(rf), fns + " " + unpack_ast(rf)) }
+        } else { make_error("pub-fn") }
+    }
+    else { make_error("program") };
+
+// v0.97: Annotate function AST with @export on its return type
+// Input:  "(fn <name> (params ...) i64 (body))"
+// Output: "(fn <name> (params ...) i64 @export (body))"
+fn annotate_fn_export(fn_ast: String) -> String =
+    // Find the return type position: after params ")" and before body "("
+    // The AST format is: (fn <name> (params ...) ret_type body)
+    // We need to find ret_type and append " @export"
+    let params_end = find_params_end(fn_ast, 0, 0);
+    let ret_start = skip_all(fn_ast, params_end);
+    let ret_end = find_ret_end(fn_ast, ret_start);
+    let before = fn_ast.slice(0, ret_end);
+    let after = fn_ast.slice(ret_end, fn_ast.len());
+    before + " @export" + after;
+
+fn find_params_end(s: String, pos: i64, depth: i64) -> i64 =
+    if pos >= s.len() { pos }
+    else if s.byte_at(pos) == 40 { find_params_end(s, pos + 1, depth + 1) }  // (
+    else if s.byte_at(pos) == 41 {  // )
+        if depth <= 2 { pos + 1 }  // After the params closing paren (depth: program=1, fn=2)
+        else { find_params_end(s, pos + 1, depth - 1) }
+    }
+    else { find_params_end(s, pos + 1, depth) };
+
+fn find_ret_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos }
+    else if s.byte_at(pos) == 32 or s.byte_at(pos) == 40 { pos }  // space or ( = body start
+    else { find_ret_end(s, pos + 1) };
+
+// skip_all is defined at line 87
 
 fn parse_source(src: String) -> String = parse_program(src, 0, "");
 

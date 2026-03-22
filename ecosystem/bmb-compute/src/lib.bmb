@@ -273,6 +273,76 @@ pub fn bmb_dist_squared(a: i64, b: i64, n: i64) -> i64
     sum
 };
 
+// ============================================================================
+// Weighted Sum
+// ============================================================================
+
+@export
+pub fn bmb_weighted_sum(values: i64, weights: i64, n: i64) -> i64
+  pre n >= 0
+= {
+    let mut sum = 0;
+    let mut i = 0;
+    while i < n {
+        set sum = sum + load_i64(values + i * 8) * load_i64(weights + i * 8);
+        set i = i + 1
+    };
+    sum
+};
+
+// ============================================================================
+// Array Copy
+// ============================================================================
+
+@export
+pub fn bmb_array_copy(src: i64, dst: i64, n: i64) -> i64
+  pre n >= 0
+= {
+    let mut i = 0;
+    while i < n {
+        let _s = store_i64(dst + i * 8, load_i64(src + i * 8));
+        set i = i + 1
+    };
+    0
+};
+
+// ============================================================================
+// Linear Interpolation (scaled): lerp(a, b, t) where t is 0-1000
+// ============================================================================
+
+@export
+pub fn bmb_lerp_scaled(a: i64, b: i64, t: i64) -> i64
+  pre t >= 0 and t <= 1000
+= a + (b - a) * t / 1000;
+
+// ============================================================================
+// Is Power of Two
+// ============================================================================
+
+@export
+pub fn bmb_is_power_of_two(n: i64) -> i64 =
+    if n <= 0 { 0 }
+    else if (n band (n - 1)) == 0 { 1 }
+    else { 0 };
+
+// ============================================================================
+// Next Power of Two
+// ============================================================================
+
+@export
+pub fn bmb_next_power_of_two(n: i64) -> i64
+  pre n > 0
+= {
+    let mut v = n - 1;
+    set v = v bor (v >> 1);
+    set v = v bor (v >> 2);
+    set v = v bor (v >> 4);
+    set v = v bor (v >> 8);
+    set v = v bor (v >> 16);
+    set v = v bor (v >> 32);
+    v + 1
+};
+
 fn main() -> i64 = {
     println(bmb_c_abs(0 - 42));      // 42
     println(bmb_sqrt(144));         // 12

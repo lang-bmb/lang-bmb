@@ -2368,14 +2368,16 @@ fn parse_program_sb(src: String, pos: i64, sb: i64) -> String =
     if ann.len() > 0 {
         let after_ann = pos_after_annotation(src, pos);
         let tok2 = next_token_raw(src, after_ann);
-        if tok_kind(tok2) == TK_FN() {
-            let rf = parse_fn_with_annotation(src, tok_end(tok2), ann);
+        // v0.97: Skip optional "pub" between @annotation and fn
+        let fn_tok = if tok_kind(tok2) == 121 { next_token_raw(src, tok_end(tok2)) } else { tok2 };
+        if tok_kind(fn_tok) == TK_FN() {
+            let rf = parse_fn_with_annotation(src, tok_end(fn_tok), ann);
             if is_error(rf) { rf } else {
                 let w1 = sb_push(sb, " ");
                 let w2 = sb_push(sb, unpack_ast(rf));
                 parse_program_sb(src, unpack_pos(rf), sb)
             }
-        } else { make_error_at("expected 'fn' after @" + ann + ", got " + tok_kind_name(tok_kind(tok2)), src, after_ann) }
+        } else { make_error_at("expected 'fn' after @" + ann + ", got " + tok_kind_name(tok_kind(fn_tok)), src, after_ann) }
     } else {
         let tok = next_token_raw(src, pos);
         let kind = tok_kind(tok);

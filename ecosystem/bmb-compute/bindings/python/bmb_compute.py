@@ -53,6 +53,16 @@ _lib.bmb_dot_product.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
 _lib.bmb_dot_product.restype = ctypes.c_int64
 _lib.bmb_dist_squared.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
 _lib.bmb_dist_squared.restype = ctypes.c_int64
+_lib.bmb_weighted_sum.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_weighted_sum.restype = ctypes.c_int64
+_lib.bmb_array_copy.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_array_copy.restype = ctypes.c_int64
+_lib.bmb_lerp_scaled.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_lerp_scaled.restype = ctypes.c_int64
+_lib.bmb_is_power_of_two.argtypes = [ctypes.c_int64]
+_lib.bmb_is_power_of_two.restype = ctypes.c_int64
+_lib.bmb_next_power_of_two.argtypes = [ctypes.c_int64]
+_lib.bmb_next_power_of_two.restype = ctypes.c_int64
 
 
 def _arr(lst):
@@ -116,6 +126,22 @@ def dist_squared(a, b):
     pb, nb, _cb = _arr(b)
     return _lib.bmb_dist_squared(pa, pb, na)
 
+def weighted_sum(values, weights):
+    assert len(values) == len(weights)
+    pv, nv, _cv = _arr(values)
+    pw, nw, _cw = _arr(weights)
+    return _lib.bmb_weighted_sum(pv, pw, nv)
+
+def lerp_scaled(a, b, t):
+    """Linear interpolation: a + (b-a)*t/1000 where t is 0-1000."""
+    return _lib.bmb_lerp_scaled(a, b, t)
+
+def is_power_of_two(n):
+    return bool(_lib.bmb_is_power_of_two(n))
+
+def next_power_of_two(n):
+    return _lib.bmb_next_power_of_two(n)
+
 
 if __name__ == '__main__':
     passed = 0
@@ -173,6 +199,16 @@ if __name__ == '__main__':
     print("[Vector]")
     check("dot_product", dot_product([1,2,3], [4,5,6]), 32)
     check("dist_squared", dist_squared([0,0], [3,4]), 25)
+
+    print("[New Functions]")
+    check("weighted_sum", weighted_sum([1,2,3], [4,5,6]), 32)
+    check("lerp_scaled(0,100,500)", lerp_scaled(0, 100, 500), 50)
+    check("lerp_scaled(0,100,0)", lerp_scaled(0, 100, 0), 0)
+    check("lerp_scaled(0,100,1000)", lerp_scaled(0, 100, 1000), 100)
+    check("is_power_of_two(8)", is_power_of_two(8), True)
+    check("is_power_of_two(7)", is_power_of_two(7), False)
+    check("next_power_of_two(5)", next_power_of_two(5), 8)
+    check("next_power_of_two(8)", next_power_of_two(8), 8)
 
     print()
     total = passed + failed

@@ -28,15 +28,15 @@ Ecosystem   ██████████████░░░░░░ 70%   g
 | **문서** | 4 튜토리얼 (Ownership, Concurrency, Modules, ErrorHandling), API 14 모듈 |
 | **@export + SharedLib** | `@export` 어트리뷰트 + `--shared` (.dll/.so) 빌드 ✅ |
 | **bmb-algo** | 41 algorithms — Python ctypes 바인딩 E2E ✅ (Cycle 2051) |
-| **bmb-compute** | 20 functions (Math, Statistics, Random, Vector) — Python E2E ✅ (Cycle 2009) |
+| **bmb-compute** | 25 functions (Math, Statistics, Random, Vector, Utility) — Python E2E ✅ (Cycle 2073) |
 | **bmb-crypto** | 11 functions (SHA256, MD5, CRC32, HMAC, Base64/32, Adler32, Fletcher16) — Python E2E ✅ (Cycle 1993) |
 | **bmb-text** | 20 functions (KMP, find, replace, case, trim, repeat, palindrome) — Python E2E ✅ (Cycle 2033) |
 | **bmb-json** | 8 functions (validate, stringify, get, array) — Python E2E ✅ (Cycle 1985) |
-| **Bootstrap** | @export codegen: dllexport 지원 추가 (Cycle 2025), parser는 미완 |
+| **Bootstrap** | @export 완전 구현: parser + lowering + codegen (Cycles 2025-2065) |
 | **벤치마크** | knapsack 90.7x, nqueens 181.6x, prime_count 25.6x vs Pure Python (Cycle 2005) |
 | **컴파일러 수정** | @export i32 sext + non-param filter + loop metadata fix (Cycles 1964-1989) |
 | **문서** | README.md × 5 libraries (Cycle 2045) |
-| **최종 검증** | Cycle 2064: cargo test 6,186 ✅, 5 libraries × 111 Python tests, 100 @export ✅ |
+| **최종 검증** | Cycle 2084: cargo test 6,186 ✅, 5 libraries × 115 Python tests, 105 @export ✅ |
 
 ---
 

@@ -174,6 +174,11 @@ def test_bmb_compute():
     check(S, "dist_squared", bmb_compute.dist_squared([0,0], [3,4]), 25)
     check(S, "clamp", bmb_compute.clamp(15, 1, 10), 10)
     check(S, "sign(-5)", bmb_compute.sign(-5), -1)
+    # Cycle 2073 functions
+    check(S, "weighted_sum", bmb_compute.weighted_sum([1,2,3], [4,5,6]), 32)
+    check(S, "lerp_scaled", bmb_compute.lerp_scaled(0, 100, 500), 50)
+    check(S, "is_power_of_two", bmb_compute.is_power_of_two(8), True)
+    check(S, "next_power_of_two", bmb_compute.next_power_of_two(5), 8)
 
 
 def test_bmb_json():
@@ -211,7 +216,7 @@ if __name__ == '__main__':
         ("bmb-crypto", "11 functions", test_bmb_crypto),
         ("bmb-text", "20 functions", test_bmb_text),
         ("bmb-json", "8 functions", test_bmb_json),
-        ("bmb-compute", "20 functions", test_bmb_compute),
+        ("bmb-compute", "25 functions", test_bmb_compute),
     ]
     for name, desc, test_fn in libs:
         prev = passed
@@ -235,9 +240,9 @@ if __name__ == '__main__':
         print()
         print("ALL TESTS PASSED!")
         print()
-        print("Libraries (100 @export functions):")
+        print("Libraries (105 @export functions):")
         print("  bmb-algo    -- 41 algorithms (DP, Graph, Sort, Search, Number Theory, Bit, Array)")
-        print("  bmb-compute -- 20 functions (Math, Statistics, Random, Vector)")
+        print("  bmb-compute -- 25 functions (Math, Statistics, Random, Vector, Utility)")
         print("  bmb-crypto  -- 11 functions (SHA-256, MD5, CRC32, HMAC, Base64/32, Adler32)")
         print("  bmb-text    -- 20 functions (KMP, find, replace, case, trim, repeat)")
         print("  bmb-json    -- 8 functions (parse, stringify, get, array)")
