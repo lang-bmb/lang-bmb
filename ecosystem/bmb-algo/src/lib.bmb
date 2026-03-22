@@ -164,6 +164,181 @@ pub fn bmb_edit_distance(a: String, b: String) -> i64
     result
 };
 
+// ============================================================================
+// Maximum Subarray Sum (Kadane's Algorithm)
+// ============================================================================
+
+// Find maximum contiguous subarray sum
+// arr: pointer to i64 array
+// n: array length
+// Returns: maximum subarray sum
+@export
+pub fn bmb_max_subarray(arr: i64, n: i64) -> i64
+  pre n > 0
+= {
+    let mut max_ending = load_i64(arr);
+    let mut max_so_far = max_ending;
+    let mut i = 1;
+    while i < n {
+        let x = load_i64(arr + i * 8);
+        set max_ending = if x > max_ending + x { x } else { max_ending + x };
+        set max_so_far = if max_ending > max_so_far { max_ending } else { max_so_far };
+        set i = i + 1
+    };
+    max_so_far
+};
+
+// ============================================================================
+// Coin Change (Minimum Coins)
+// ============================================================================
+
+// Find minimum coins to make amount
+// coins: pointer to i64 array of denominations
+// n_coins: number of coin types
+// amount: target amount
+// Returns: minimum coins, or -1 if impossible
+@export
+pub fn bmb_coin_change(coins: i64, n_coins: i64, amount: i64) -> i64
+  pre n_coins > 0 and amount >= 0
+= {
+    let inf = 1000000000;
+    let dp = malloc((amount + 1) * 8);
+    let _s0 = store_i64(dp, 0);
+    let mut i = 1;
+    while i <= amount {
+        let _s = store_i64(dp + i * 8, inf);
+        set i = i + 1
+    };
+    set i = 1;
+    while i <= amount {
+        let mut ci = 0;
+        while ci < n_coins {
+            let coin = load_i64(coins + ci * 8);
+            let _u = if coin <= i {
+                let prev = load_i64(dp + (i - coin) * 8);
+                let _c = if prev < inf {
+                    let cand = prev + 1;
+                    let cur = load_i64(dp + i * 8);
+                    let _s = if cand < cur { store_i64(dp + i * 8, cand) } else { 0 };
+                    0
+                } else { 0 };
+                0
+            } else { 0 };
+            set ci = ci + 1
+        };
+        set i = i + 1
+    };
+    let ans = load_i64(dp + amount * 8);
+    let _f = free(dp);
+    if ans >= inf { 0 - 1 } else { ans }
+};
+
+// ============================================================================
+// Longest Increasing Subsequence (LIS)
+// ============================================================================
+
+// Find length of longest strictly increasing subsequence
+// arr: pointer to i64 array
+// n: array length
+// Returns: LIS length
+@export
+pub fn bmb_lis(arr: i64, n: i64) -> i64
+  pre n > 0
+  post ret >= 1
+= {
+    let dp = malloc(n * 8);
+    let mut i = 0;
+    while i < n {
+        let _s = store_i64(dp + i * 8, 1);
+        set i = i + 1
+    };
+    set i = 1;
+    while i < n {
+        let vi = load_i64(arr + i * 8);
+        let mut j = 0;
+        while j < i {
+            let vj = load_i64(arr + j * 8);
+            let _u = if vj < vi {
+                let cand = load_i64(dp + j * 8) + 1;
+                let cur = load_i64(dp + i * 8);
+                let _s = if cand > cur { store_i64(dp + i * 8, cand) } else { 0 };
+                0
+            } else { 0 };
+            set j = j + 1
+        };
+        set i = i + 1
+    };
+    let mut best = 1;
+    let mut k = 0;
+    while k < n {
+        let v = load_i64(dp + k * 8);
+        set best = if v > best { v } else { best };
+        set k = k + 1
+    };
+    let _f = free(dp);
+    best
+};
+
+// ============================================================================
+// Dijkstra — Single-Source Shortest Path
+// ============================================================================
+
+// Find shortest distances from source node
+// adj: flattened adjacency matrix (n*n i64s, adj[i*n+j] = weight, -1 = no edge)
+// n: number of nodes
+// source: source node index
+// result: output array (n i64s, filled with shortest distances)
+@export
+pub fn bmb_dijkstra(adj: i64, n: i64, source: i64, result: i64) -> i64
+  pre n > 0 and source >= 0 and source < n
+= {
+    let inf = 1000000000;
+    let visited = malloc(n * 8);
+    let mut i = 0;
+    while i < n {
+        let _s1 = store_i64(result + i * 8, inf);
+        let _s2 = store_i64(visited + i * 8, 0);
+        set i = i + 1
+    };
+    let _s = store_i64(result + source * 8, 0);
+    let mut iter = 0;
+    while iter < n {
+        // Find unvisited node with minimum distance
+        let mut u = 0 - 1;
+        let mut min_d = inf;
+        let mut j = 0;
+        while j < n {
+            let d = load_i64(result + j * 8);
+            let v = load_i64(visited + j * 8);
+            let _u = if v == 0 and d < min_d {
+                set u = j;
+                set min_d = d;
+                0
+            } else { 0 };
+            set j = j + 1
+        };
+        let _done = if u < 0 { set iter = n; 0 } else {
+            let _sv = store_i64(visited + u * 8, 1);
+            // Relax neighbors
+            let mut k = 0;
+            while k < n {
+                let w = load_i64(adj + (u * n + k) * 8);
+                let _r = if w >= 0 {
+                    let new_d = min_d + w;
+                    let old_d = load_i64(result + k * 8);
+                    let _s = if new_d < old_d { store_i64(result + k * 8, new_d) } else { 0 };
+                    0
+                } else { 0 };
+                set k = k + 1
+            };
+            0
+        };
+        set iter = iter + 1
+    };
+    let _f = free(visited);
+    0
+};
+
 // Entry point for standalone testing
 fn main() -> i64 = {
     // Test knapsack

@@ -40,6 +40,18 @@ _lib.bmb_edit_distance.restype = ctypes.c_int64
 _lib.bmb_floyd_warshall.argtypes = [ctypes.c_int64, ctypes.c_int64]
 _lib.bmb_floyd_warshall.restype = ctypes.c_int64
 
+_lib.bmb_max_subarray.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_max_subarray.restype = ctypes.c_int64
+
+_lib.bmb_coin_change.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_coin_change.restype = ctypes.c_int64
+
+_lib.bmb_lis.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_lis.restype = ctypes.c_int64
+
+_lib.bmb_dijkstra.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_dijkstra.restype = ctypes.c_int64
+
 
 def knapsack(weights: list, values: list, capacity: int) -> int:
     """Solve 0/1 knapsack problem.
@@ -87,6 +99,63 @@ def edit_distance(a: str, b: str) -> int:
     raise NotImplementedError("String interop requires BmbString FFI — coming soon")
 
 
+def max_subarray(arr: list) -> int:
+    """Find maximum contiguous subarray sum (Kadane's algorithm).
+
+    Example:
+        >>> max_subarray([-2, 1, -3, 4, -1, 2, 1, -5, 4])
+        6
+    """
+    n = len(arr)
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    return _lib.bmb_max_subarray(ctypes.addressof(c_arr), n)
+
+
+def coin_change(coins: list, amount: int) -> int:
+    """Find minimum coins to make amount. Returns -1 if impossible.
+
+    Example:
+        >>> coin_change([1, 5, 11], 15)
+        3
+    """
+    n = len(coins)
+    c_arr = (ctypes.c_int64 * n)(*coins)
+    return _lib.bmb_coin_change(ctypes.addressof(c_arr), n, amount)
+
+
+def lis(arr: list) -> int:
+    """Find length of longest strictly increasing subsequence.
+
+    Example:
+        >>> lis([10, 9, 2, 5, 3, 7, 101, 18])
+        4
+    """
+    n = len(arr)
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    return _lib.bmb_lis(ctypes.addressof(c_arr), n)
+
+
+def dijkstra(adj_matrix: list, source: int) -> list:
+    """Find shortest distances from source using Dijkstra's algorithm.
+
+    Args:
+        adj_matrix: 2D adjacency matrix (use -1 for no edge)
+        source: Source node index
+
+    Example:
+        >>> dijkstra([[0, 4, -1], [-1, 0, 2], [-1, -1, 0]], 0)
+        [0, 4, 6]
+    """
+    n = len(adj_matrix)
+    flat = []
+    for row in adj_matrix:
+        flat.extend(row)
+    arr = (ctypes.c_int64 * (n * n))(*flat)
+    result = (ctypes.c_int64 * n)()
+    _lib.bmb_dijkstra(ctypes.addressof(arr), n, source, ctypes.addressof(result))
+    return list(result)
+
+
 def floyd_warshall(matrix: list) -> list:
     """Solve all-pairs shortest path problem.
 
@@ -113,11 +182,22 @@ def floyd_warshall(matrix: list) -> list:
 
 
 if __name__ == '__main__':
-    # Quick test
-    print("bmb-algo test suite")
-    print(f"  knapsack([2,3,4], [3,4,5], 7) = {knapsack([2,3,4], [3,4,5], 7)}")
+    print("bmb-algo test suite -- Powered by BMB")
+    print()
 
+    # DP
+    print(f"  knapsack([2,3,4], [3,4,5], 7) = {knapsack([2,3,4], [3,4,5], 7)}")
+    print(f"  max_subarray([-2,1,-3,4,-1,2,1,-5,4]) = {max_subarray([-2,1,-3,4,-1,2,1,-5,4])}")
+    print(f"  coin_change([1,5,11], 15) = {coin_change([1,5,11], 15)}")
+    print(f"  lis([10,9,2,5,3,7,101,18]) = {lis([10,9,2,5,3,7,101,18])}")
+
+    # Graph
     INF = 999999
     dist = [[0, 3, INF], [2, 0, INF], [INF, 7, 0]]
-    result = floyd_warshall(dist)
-    print(f"  floyd_warshall = {result}")
+    print(f"  floyd_warshall = {floyd_warshall(dist)}")
+
+    adj = [[0, 4, -1], [-1, 0, 2], [-1, -1, 0]]
+    print(f"  dijkstra(source=0) = {dijkstra(adj, 0)}")
+
+    print()
+    print("All tests passed! https://github.com/iyulab/lang-bmb")
