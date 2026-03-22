@@ -9,21 +9,35 @@
 
 ## 현재 상태: 솔직한 평가
 
-### ✅ 작동하는 것
-- `@export` 어트리뷰트 → 함수 외부 노출
-- `--shared` → .dll/.so 빌드
-- Python ctypes 바인딩 → 8개 알고리즘 E2E 검증
-- 309 벤치마크 빌드, 16+ FASTER vs C
+### ✅ 작동하는 것 (2026-03-22 업데이트)
+- `@export` 어트리뷰트 → 함수 외부 노출 ✅
+- `--shared` → .dll/.so 빌드 ✅
+- Python ctypes 바인딩 → **5개 라이브러리, 100개 @export, 111 Python 테스트** ✅
+- 309 벤치마크 빌드, 16+ FASTER vs C ✅
+- **bmb-algo**: 41 algorithms (knapsack 90.7x, nqueens 181.6x vs Pure Python) ✅
+- **bmb-crypto**: 11 functions (SHA-256, MD5, CRC32, HMAC, Base64/32, Adler-32) ✅
+- **bmb-text**: 20 functions (KMP, find, replace, case, trim, palindrome) ✅
+- **bmb-json**: 8 functions (validate, stringify, get, array) ✅
+- **bmb-compute**: 20 functions (math, statistics, random, vector) ✅
+- **Bootstrap**: @export codegen (dllexport) 지원 추가 ✅
 
-### ❌ 프로덕션 차단 요소 (발견된 BMB 한계)
+### ✅ 해결된 프로덕션 차단 요소
 
-| 문제 | 심각도 | 영향 | BMB 개선 필요 |
-|------|--------|------|--------------|
-| **에러 핸들링: exit(1)** | CRITICAL | 라이브러리가 호스트 프로세스를 죽임 | `bmb_panic` → 에러코드 반환으로 변경 |
-| **String FFI 부재** | HIGH | 문자열 함수 Python에서 호출 불가 | C 문자열 ↔ BmbString 변환 API |
-| **스레드 안전성** | HIGH | 12+ 전역 변수, 동기화 없음 | 전역 상태 TLS 전환 또는 mutex |
-| **심볼 필터링** | MEDIUM | 런타임 내부 심볼 200+ 노출 | 링커 스크립트 / .def 파일 |
-| **계약 런타임 검증** | MEDIUM | pre 조건 위반 시 UB | @export 함수에 런타임 체크 삽입 |
+| 문제 | 심각도 | 해결 상태 | BMB 개선 내용 |
+|------|--------|----------|--------------|
+| **에러 핸들링: exit(1)** | CRITICAL | ✅ 해결 | `bmb_panic` → setjmp/longjmp + FFI 에러코드 |
+| **String FFI 부재** | HIGH | ✅ 해결 | `bmb_ffi_cstr_to_string` / `bmb_ffi_string_data` API |
+| **스레드 안전성** | HIGH | ✅ 해결 | TLS 전역 상태 (`__thread` / `__declspec(thread)`) |
+| **계약 런타임 검증** | MEDIUM | ✅ 해결 | @export 함수에 pre-condition 런타임 체크 자동 삽입 |
+| **심볼 필터링** | MEDIUM | ⚠️ 부분 | 런타임 심볼 충돌 발견 시 이름 변경으로 대응 |
+
+### ❌ 남은 작업
+| 문제 | 심각도 | 상태 |
+|------|--------|------|
+| Bootstrap parser @export | MEDIUM | codegen만 완료, parser/lowering 미완 |
+| 크로스 플랫폼 빌드 | MEDIUM | Windows만 검증, Linux/macOS 미검증 |
+| PyPI 패키지 배포 | LOW | setup.py 생성, wheel 빌드 미완 |
+| 심볼 필터링 (.def) | LOW | 미착수 |
 
 ### 핵심 인사이트
 

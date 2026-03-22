@@ -1137,6 +1137,83 @@ pub fn bmb_array_max(arr: i64, n: i64) -> i64
     max
 };
 
+// ============================================================================
+// Bit Operations (from bmb-bitset)
+// ============================================================================
+
+@export
+pub fn bmb_bit_set(value: i64, pos: i64) -> i64
+  pre pos >= 0 and pos < 64
+= value bor (1 << pos);
+
+@export
+pub fn bmb_bit_clear(value: i64, pos: i64) -> i64
+  pre pos >= 0 and pos < 64
+= value band ((1 << pos) bxor (0 - 1));
+
+@export
+pub fn bmb_bit_test(value: i64, pos: i64) -> i64
+  pre pos >= 0 and pos < 64
+= if (value >> pos) band 1 == 1 { 1 } else { 0 };
+
+@export
+pub fn bmb_bit_toggle(value: i64, pos: i64) -> i64
+  pre pos >= 0 and pos < 64
+= value bxor (1 << pos);
+
+// ============================================================================
+// Array Fill — Fill array with a constant value
+// ============================================================================
+
+@export
+pub fn bmb_array_fill(arr: i64, n: i64, value: i64) -> i64
+  pre n >= 0
+= {
+    let mut i = 0;
+    while i < n {
+        let _s = store_i64(arr + i * 8, value);
+        set i = i + 1
+    };
+    0
+};
+
+// ============================================================================
+// Array Contains — Check if value exists in array
+// ============================================================================
+
+@export
+pub fn bmb_array_contains(arr: i64, n: i64, target: i64) -> i64
+  pre n >= 0
+= {
+    let mut found = 0;
+    let mut i = 0;
+    while i < n {
+        let _u = if load_i64(arr + i * 8) == target { found = 1; 0 } else { 0 };
+        set i = i + 1
+    };
+    found
+};
+
+// ============================================================================
+// Array Index Of — Find first index of value (-1 if not found)
+// ============================================================================
+
+@export
+pub fn bmb_array_index_of(arr: i64, n: i64, target: i64) -> i64
+  pre n >= 0
+= {
+    let mut result = 0 - 1;
+    let mut i = 0;
+    let mut done = false;
+    while not done {
+        let _r = if i >= n { done = true; 0 }
+        else if load_i64(arr + i * 8) == target { result = i; done = true; 0 }
+        else { i = i + 1; 0 };
+        0
+    };
+    result
+};
+
 // Entry point for standalone testing
 fn main() -> i64 = {
     // Test knapsack

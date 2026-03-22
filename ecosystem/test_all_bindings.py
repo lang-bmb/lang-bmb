@@ -77,6 +77,12 @@ def test_bmb_algo():
     check(S, "array_sum", bmb_algo.array_sum([1,2,3,4,5]), 15)
     check(S, "array_min", bmb_algo.array_min([5,3,8,1,7]), 1)
     check(S, "array_max", bmb_algo.array_max([5,3,8,1,7]), 8)
+    # Cycle 2051 algorithms
+    check(S, "bit_set", bmb_algo.bit_set(0, 3), 8)
+    check(S, "bit_test", bmb_algo.bit_test(8, 3), True)
+    check(S, "bit_clear", bmb_algo.bit_clear(8, 3), 0)
+    check(S, "array_contains", bmb_algo.array_contains([1,2,3], 2), True)
+    check(S, "array_index_of", bmb_algo.array_index_of([10,20,30], 20), 1)
 
 
 def test_bmb_crypto():
@@ -201,7 +207,7 @@ if __name__ == '__main__':
     t0 = time.perf_counter()
 
     libs = [
-        ("bmb-algo", "34 algorithms", test_bmb_algo),
+        ("bmb-algo", "41 algorithms", test_bmb_algo),
         ("bmb-crypto", "11 functions", test_bmb_crypto),
         ("bmb-text", "20 functions", test_bmb_text),
         ("bmb-json", "8 functions", test_bmb_json),
@@ -229,8 +235,8 @@ if __name__ == '__main__':
         print()
         print("ALL TESTS PASSED!")
         print()
-        print("Libraries (93 @export functions):")
-        print("  bmb-algo    -- 34 algorithms (DP, Graph, Sort, Search, Number Theory, Bit, Array)")
+        print("Libraries (100 @export functions):")
+        print("  bmb-algo    -- 41 algorithms (DP, Graph, Sort, Search, Number Theory, Bit, Array)")
         print("  bmb-compute -- 20 functions (Math, Statistics, Random, Vector)")
         print("  bmb-crypto  -- 11 functions (SHA-256, MD5, CRC32, HMAC, Base64/32, Adler32)")
         print("  bmb-text    -- 20 functions (KMP, find, replace, case, trim, repeat)")

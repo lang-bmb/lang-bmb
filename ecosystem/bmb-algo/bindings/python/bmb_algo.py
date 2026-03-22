@@ -150,6 +150,21 @@ _lib.bmb_array_min.restype = ctypes.c_int64
 _lib.bmb_array_max.argtypes = [ctypes.c_int64, ctypes.c_int64]
 _lib.bmb_array_max.restype = ctypes.c_int64
 
+_lib.bmb_bit_set.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_bit_set.restype = ctypes.c_int64
+_lib.bmb_bit_clear.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_bit_clear.restype = ctypes.c_int64
+_lib.bmb_bit_test.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_bit_test.restype = ctypes.c_int64
+_lib.bmb_bit_toggle.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_bit_toggle.restype = ctypes.c_int64
+_lib.bmb_array_fill.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_array_fill.restype = ctypes.c_int64
+_lib.bmb_array_contains.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_array_contains.restype = ctypes.c_int64
+_lib.bmb_array_index_of.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_array_index_of.restype = ctypes.c_int64
+
 
 def knapsack(weights: list, values: list, capacity: int) -> int:
     """Solve 0/1 knapsack problem.
@@ -505,6 +520,47 @@ def array_reverse(arr: list) -> list:
     return list(c_arr)
 
 
+def bit_set(value: int, pos: int) -> int:
+    """Set bit at position."""
+    return _lib.bmb_bit_set(value, pos)
+
+
+def bit_clear(value: int, pos: int) -> int:
+    """Clear bit at position."""
+    return _lib.bmb_bit_clear(value, pos)
+
+
+def bit_test(value: int, pos: int) -> bool:
+    """Test if bit is set."""
+    return bool(_lib.bmb_bit_test(value, pos))
+
+
+def bit_toggle(value: int, pos: int) -> int:
+    """Toggle bit at position."""
+    return _lib.bmb_bit_toggle(value, pos)
+
+
+def array_fill(n: int, value: int) -> list:
+    """Create array of n elements all set to value."""
+    c_arr = (ctypes.c_int64 * n)()
+    _lib.bmb_array_fill(ctypes.addressof(c_arr), n, value)
+    return list(c_arr)
+
+
+def array_contains(arr: list, target: int) -> bool:
+    """Check if target exists in array."""
+    n = len(arr)
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    return bool(_lib.bmb_array_contains(ctypes.addressof(c_arr), n, target))
+
+
+def array_index_of(arr: list, target: int) -> int:
+    """Find first index of target. -1 if not found."""
+    n = len(arr)
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    return _lib.bmb_array_index_of(ctypes.addressof(c_arr), n, target)
+
+
 if __name__ == '__main__':
     print("bmb-algo test suite -- Powered by BMB")
     print()
@@ -577,5 +633,13 @@ if __name__ == '__main__':
     print(f"  array_min([5,3,8,1,7]) = {array_min([5,3,8,1,7])}")
     print(f"  array_max([5,3,8,1,7]) = {array_max([5,3,8,1,7])}")
 
+    # Cycle 2051 additions
+    print(f"  bit_set(0, 3) = {bit_set(0, 3)}")
+    print(f"  bit_test(8, 3) = {bit_test(8, 3)}")
+    print(f"  bit_clear(8, 3) = {bit_clear(8, 3)}")
+    print(f"  array_fill(5, 42) = {array_fill(5, 42)}")
+    print(f"  array_contains([1,2,3], 2) = {array_contains([1,2,3], 2)}")
+    print(f"  array_index_of([10,20,30], 20) = {array_index_of([10,20,30], 20)}")
+
     print()
-    print("All 34 algorithms working! https://github.com/iyulab/lang-bmb")
+    print("All 41 algorithms working! https://github.com/iyulab/lang-bmb")
