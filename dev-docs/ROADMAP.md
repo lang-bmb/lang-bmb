@@ -8,19 +8,20 @@
 
 ---
 
-## 현재 상태 (2026-03-21)
+## 현재 상태 (2026-03-22)
 
 | 항목 | 상태 |
 |------|------|
-| **버전** | v0.96 (Cycle 1928) |
+| **버전** | v0.97 (Cycle 1955) |
 | **Bootstrap** | 3-Stage Fixed Point (S2 == S3), i8*→ptr 완전 마이그레이션 |
-| **Benchmarks** | 14+ FASTER, 48+ PASS, 3 LLVM-OK, 0 FAIL, 0 WARN (70 benchmarks) |
+| **Benchmarks** | 309 빌드 ✅, 16+ FASTER, 0 FAIL — BMB > C AND Rust |
 | **Golden Tests** | 701 BMB + 6,186 Rust regression = 전체 통과 |
 | **Self-Hosting** | CLI 41개, LSP 9기능, Test Runner, MIR 옵티마이저 15/15 이식 |
 | **compiler.bmb** | 19,814 LOC (전체 bootstrap/*.bmb: 55,654 LOC) |
-| **Rust 컴파일러** | 132,537 LOC (동결, 회귀 방지만) |
-| **Ecosystem** | 14 서브프로젝트, 102+ gotgan 패키지, stdlib 12/12 |
+| **Ecosystem** | stdlib 15/15, gotgan E2E, 4 tutorials, 14 API docs |
+| **Binding** | @export + --shared + bmb-algo Python E2E (8 algorithms) |
 | **EXISTENTIAL** | 7/7 완료 — 계약→성능 파이프라인 증명됨 |
+| **Next Focus** | Dogfooding: FFI 안전성 → bmb-algo PyPI → bmb-crypto |
 
 ### Graduation 진행도
 
