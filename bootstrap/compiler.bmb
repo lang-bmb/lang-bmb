@@ -12721,9 +12721,9 @@ fn llvm_gen_fn_header(line: String, pos: i64) -> String =
     let pure_attrs = if ann == "pure" or ann == "const" { " memory(none) nofree" } else { "" };
     let inline_attrs = if ann == "inline" { " alwaysinline" } else { "" };
     let attrs = base_attrs + pure_attrs + inline_attrs;
-    // Prevents symbol collision and enables better optimization for inlined functions
-    // v0.96.13: All non-main functions get private linkage for better LLVM optimization
-    let linkage = if fn_name == "main" { "define " } else { "define private " };
+    // v0.97: @export annotation → dllexport linkage (Windows) or global visibility (Unix/Linux)
+    // Without @export: private linkage (better LLVM optimization)
+    let linkage = if fn_name == "main" { "define " } else if ann == "export" { "define dllexport " } else { "define private " };
     // v0.96.44: Add noundef on return values — all BMB functions return initialized values
     let ret_attrs = if fn_name == "main" { "" } else { "noundef " };
     let header = linkage + ret_attrs + llvm_ret + " @" + emitted_name + "(" + formatted_params + ")" + attrs + " {";

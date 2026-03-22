@@ -408,7 +408,91 @@ fn str_word_count(s: String) -> i64 = {
 };
 
 // ============================================================================
-// String Length (for FFI — just wrapper around .len())
+// Case Conversion
+// ============================================================================
+
+fn str_to_upper(s: String) -> String = {
+    let len = s.len();
+    let sb = sb_new();
+    let mut i = 0;
+    while i < len {
+        let c = s.byte_at(i);
+        let _p = sb_push(sb, chr(if c >= 97 and c <= 122 { c - 32 } else { c }));
+        i = i + 1;
+        0
+    };
+    sb_build(sb)
+};
+
+fn str_to_lower(s: String) -> String = {
+    let len = s.len();
+    let sb = sb_new();
+    let mut i = 0;
+    while i < len {
+        let c = s.byte_at(i);
+        let _p = sb_push(sb, chr(if c >= 65 and c <= 90 { c + 32 } else { c }));
+        i = i + 1;
+        0
+    };
+    sb_build(sb)
+};
+
+// ============================================================================
+// Trim (remove leading/trailing whitespace)
+// ============================================================================
+
+fn str_trim(s: String) -> String = {
+    let len = s.len();
+    if len == 0 { "" }
+    else {
+        // Find first non-whitespace
+        let mut start = 0;
+        let mut done1 = false;
+        while not done1 {
+            let _r = if start >= len { done1 = true; 0 }
+            else {
+                let c = s.byte_at(start);
+                if c == 32 or c == 9 or c == 10 or c == 13 { start = start + 1; 0 }
+                else { done1 = true; 0 }
+            };
+            0
+        };
+        // Find last non-whitespace
+        let mut end = len;
+        let mut done2 = false;
+        while not done2 {
+            let _r = if end <= start { done2 = true; 0 }
+            else {
+                let c = s.byte_at(end - 1);
+                if c == 32 or c == 9 or c == 10 or c == 13 { end = end - 1; 0 }
+                else { done2 = true; 0 }
+            };
+            0
+        };
+        if start >= end { "" } else { s.slice(start, end) }
+    }
+};
+
+// ============================================================================
+// Repeat
+// ============================================================================
+
+fn str_repeat(s: String, n: i64) -> String = {
+    if n <= 0 { "" }
+    else {
+        let sb = sb_new();
+        let mut i = 0;
+        while i < n {
+            let _p = sb_push(sb, s);
+            i = i + 1;
+            0
+        };
+        sb_build(sb)
+    }
+};
+
+// ============================================================================
+// String Length (export)
 // ============================================================================
 
 // ============================================================================
@@ -494,6 +578,26 @@ pub fn bmb_str_hamming(a: String, b: String) -> i64 =
 @export
 pub fn bmb_word_count(s: String) -> i64 =
     str_word_count(s);
+
+// To uppercase
+@export
+pub fn bmb_str_to_upper(s: String) -> String =
+    str_to_upper(s);
+
+// To lowercase
+@export
+pub fn bmb_str_to_lower(s: String) -> String =
+    str_to_lower(s);
+
+// Trim whitespace
+@export
+pub fn bmb_str_trim(s: String) -> String =
+    str_trim(s);
+
+// Repeat string n times
+@export
+pub fn bmb_str_repeat(s: String, n: i64) -> String =
+    str_repeat(s, n);
 
 fn main() -> i64 = {
     // KMP search

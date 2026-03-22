@@ -63,6 +63,14 @@ _lib.bmb_str_replace.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void
 _lib.bmb_str_replace.restype = ctypes.c_void_p
 _lib.bmb_str_replace_all.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
 _lib.bmb_str_replace_all.restype = ctypes.c_void_p
+_lib.bmb_str_to_upper.argtypes = [ctypes.c_void_p]
+_lib.bmb_str_to_upper.restype = ctypes.c_void_p
+_lib.bmb_str_to_lower.argtypes = [ctypes.c_void_p]
+_lib.bmb_str_to_lower.restype = ctypes.c_void_p
+_lib.bmb_str_trim.argtypes = [ctypes.c_void_p]
+_lib.bmb_str_trim.restype = ctypes.c_void_p
+_lib.bmb_str_repeat.argtypes = [ctypes.c_void_p, ctypes.c_int64]
+_lib.bmb_str_repeat.restype = ctypes.c_void_p
 
 
 def _call_ss(fn, a, b):
@@ -217,6 +225,58 @@ def word_count(s: str) -> int:
     return _call_s(_lib.bmb_word_count, s)
 
 
+def to_upper(s: str) -> str:
+    """Convert to uppercase."""
+    ss = _lib.bmb_ffi_cstr_to_string(s.encode('utf-8'))
+    if _lib.bmb_ffi_begin() != 0:
+        _lib.bmb_ffi_end(); _lib.bmb_ffi_free_string(ss)
+        raise RuntimeError("BMB error")
+    out = _lib.bmb_str_to_upper(ss)
+    _lib.bmb_ffi_end()
+    result = _lib.bmb_ffi_string_data(out).decode('utf-8')
+    _lib.bmb_ffi_free_string(ss)
+    return result
+
+
+def to_lower(s: str) -> str:
+    """Convert to lowercase."""
+    ss = _lib.bmb_ffi_cstr_to_string(s.encode('utf-8'))
+    if _lib.bmb_ffi_begin() != 0:
+        _lib.bmb_ffi_end(); _lib.bmb_ffi_free_string(ss)
+        raise RuntimeError("BMB error")
+    out = _lib.bmb_str_to_lower(ss)
+    _lib.bmb_ffi_end()
+    result = _lib.bmb_ffi_string_data(out).decode('utf-8')
+    _lib.bmb_ffi_free_string(ss)
+    return result
+
+
+def trim(s: str) -> str:
+    """Trim leading/trailing whitespace."""
+    ss = _lib.bmb_ffi_cstr_to_string(s.encode('utf-8'))
+    if _lib.bmb_ffi_begin() != 0:
+        _lib.bmb_ffi_end(); _lib.bmb_ffi_free_string(ss)
+        raise RuntimeError("BMB error")
+    out = _lib.bmb_str_trim(ss)
+    _lib.bmb_ffi_end()
+    result = _lib.bmb_ffi_string_data(out).decode('utf-8')
+    _lib.bmb_ffi_free_string(ss)
+    return result
+
+
+def repeat(s: str, n: int) -> str:
+    """Repeat string n times."""
+    ss = _lib.bmb_ffi_cstr_to_string(s.encode('utf-8'))
+    if _lib.bmb_ffi_begin() != 0:
+        _lib.bmb_ffi_end(); _lib.bmb_ffi_free_string(ss)
+        raise RuntimeError("BMB error")
+    out = _lib.bmb_str_repeat(ss, n)
+    _lib.bmb_ffi_end()
+    result = _lib.bmb_ffi_string_data(out).decode('utf-8')
+    _lib.bmb_ffi_free_string(ss)
+    return result
+
+
 if __name__ == '__main__':
     passed = 0
     failed = 0
@@ -298,6 +358,20 @@ if __name__ == '__main__':
     check("word_count(' hello  world ')", word_count(" hello  world "), 2)
     check("word_count('')", word_count(""), 0)
     check("word_count('one')", word_count("one"), 1)
+
+    print("[Case Conversion]")
+    check("to_upper('hello')", to_upper("hello"), "HELLO")
+    check("to_lower('HELLO')", to_lower("HELLO"), "hello")
+    check("to_upper('Hello123')", to_upper("Hello123"), "HELLO123")
+
+    print("[Trim]")
+    check("trim('  hello  ')", trim("  hello  "), "hello")
+    check("trim('hello')", trim("hello"), "hello")
+    check("trim('  ')", trim("  "), "")
+
+    print("[Repeat]")
+    check("repeat('ab', 3)", repeat("ab", 3), "ababab")
+    check("repeat('x', 0)", repeat("x", 0), "")
 
     print()
     total = passed + failed

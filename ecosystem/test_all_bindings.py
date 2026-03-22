@@ -143,6 +143,11 @@ def test_bmb_text():
     check(S, "replace_all", bmb_text.str_replace_all("abcabc", "abc", "X"), "XX")
     check(S, "hamming", bmb_text.hamming_distance("karolin", "kathrin"), 3)
     check(S, "word_count", bmb_text.word_count("hello world"), 2)
+    # Cycle 2033 functions
+    check(S, "to_upper", bmb_text.to_upper("hello"), "HELLO")
+    check(S, "to_lower", bmb_text.to_lower("HELLO"), "hello")
+    check(S, "trim", bmb_text.trim("  hello  "), "hello")
+    check(S, "repeat", bmb_text.repeat("ab", 3), "ababab")
 
 
 def test_bmb_compute():
@@ -198,7 +203,7 @@ if __name__ == '__main__':
     libs = [
         ("bmb-algo", "34 algorithms", test_bmb_algo),
         ("bmb-crypto", "11 functions", test_bmb_crypto),
-        ("bmb-text", "16 functions", test_bmb_text),
+        ("bmb-text", "20 functions", test_bmb_text),
         ("bmb-json", "8 functions", test_bmb_json),
         ("bmb-compute", "20 functions", test_bmb_compute),
     ]
@@ -224,11 +229,11 @@ if __name__ == '__main__':
         print()
         print("ALL TESTS PASSED!")
         print()
-        print("Libraries (89 @export functions):")
+        print("Libraries (93 @export functions):")
         print("  bmb-algo    -- 34 algorithms (DP, Graph, Sort, Search, Number Theory, Bit, Array)")
         print("  bmb-compute -- 20 functions (Math, Statistics, Random, Vector)")
         print("  bmb-crypto  -- 11 functions (SHA-256, MD5, CRC32, HMAC, Base64/32, Adler32)")
-        print("  bmb-text    -- 16 functions (KMP, find, replace, palindrome, tokenize)")
+        print("  bmb-text    -- 20 functions (KMP, find, replace, case, trim, repeat)")
         print("  bmb-json    -- 8 functions (parse, stringify, get, array)")
         print()
         print("Powered by BMB — https://github.com/iyulab/lang-bmb")

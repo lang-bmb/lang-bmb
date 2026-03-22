@@ -1042,6 +1042,8 @@ fn gen_label_line(line: String) -> String =
 // willreturn: all functions eventually return (enables dead code after call elimination)
 // private: enables LLVM to eliminate unused functions and optimize more aggressively
 // no-trapping-math: BMB has no FP trapping behavior
+// v0.97: Added is_export parameter for @export annotation support
+// When is_export is true, function gets dllexport (Windows) or global visibility (Unix)
 fn gen_fn_header(name: String, ret_type: String, params: String) -> String =
     let attrs = if name == "main" { " nosync nounwind \"no-trapping-math\"=\"true\"" } else { " nosync nounwind mustprogress willreturn \"no-trapping-math\"=\"true\"" };
     let ret_attrs = if ret_type == "String" { "noundef nonnull " } else if ret_type == "unit" { "" } else { "noundef " };
