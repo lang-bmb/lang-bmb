@@ -15,6 +15,11 @@ This directory contains auto-generated API documentation for BMB standard librar
 | [bmb-json](./bmb-json.md) | JSON parser and serializer | [View](./bmb-json.md) |
 | [bmb-http](./bmb-http.md) | HTTP client using curl backend | [View](./bmb-http.md) |
 | [bmb-regex](./bmb-regex.md) | Simple regex engine for pattern matching | [View](./bmb-regex.md) |
+| [bmb-time](./bmb-time.md) | Monotonic clock, sleep, duration utilities | [View](./bmb-time.md) |
+| [bmb-fs](./bmb-fs.md) | Filesystem operations and path utilities | [View](./bmb-fs.md) |
+| [bmb-math](./bmb-math.md) | Mathematical functions (trig, power, gcd) | [View](./bmb-math.md) |
+| [bmb-collections](./bmb-collections.md) | Data structures (Stack, Heap, Queue) | [View](./bmb-collections.md) |
+| [bmb-parse](./bmb-parse.md) | Position-based text parsing | [View](./bmb-parse.md) |
 
 ## Generation
 
@@ -39,4 +44,4 @@ The `post ret >= 0` contract is verified at compile-time and documents that the 
 
 ## Updates
 
-This documentation was last generated on 2026-02-05 using `bmb-doc` v0.64.
+This documentation was last updated on 2026-03-22. New modules (time, fs) added manually.

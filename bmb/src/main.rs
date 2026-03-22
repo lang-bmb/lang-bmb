@@ -955,6 +955,11 @@ fn check_file_with_includes(path: &PathBuf, include_paths: &[PathBuf]) -> Result
     let base_dir = path.parent().unwrap_or(std::path::Path::new("."));
     let mut resolver = bmb::resolver::Resolver::new(base_dir);
 
+    // v0.97: Add include paths to resolver for module resolution
+    for include_path in include_paths {
+        resolver.add_search_path(include_path);
+    }
+
     // Also try include paths for module resolution
     for include_path in include_paths {
         // Try loading modules from include paths

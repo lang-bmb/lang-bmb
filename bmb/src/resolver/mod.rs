@@ -73,6 +73,11 @@ impl Resolver {
         &self.base_dir
     }
 
+    /// v0.97: Add an extra search path for module resolution (e.g., dependency include path)
+    pub fn add_search_path<P: AsRef<Path>>(&mut self, path: P) {
+        self.extra_paths.push(path.as_ref().to_path_buf());
+    }
+
     /// Load a module by name, parsing the corresponding .bmb file
     pub fn load_module(&mut self, module_name: &str) -> Result<&Module> {
         // Check if already loaded
@@ -157,15 +162,32 @@ impl Resolver {
 
     /// Resolve a module name to a file path
     fn resolve_module_path(&self, module_name: &str) -> Result<PathBuf> {
+        // v0.97: Also try underscore→hyphen conversion for gotgan package names
+        let hyphenated = module_name.replace('_', "-");
+
         // Try base directory first, then extra search paths
         for dir in std::iter::once(&self.base_dir).chain(self.extra_paths.iter()) {
+            // Standard: name.bmb
             let path = dir.join(format!("{}.bmb", module_name));
             if path.exists() {
                 return Ok(path);
             }
+            // stdlib style: name/mod.bmb
             let path = dir.join(module_name).join("mod.bmb");
             if path.exists() {
                 return Ok(path);
+            }
+            // v0.97: gotgan package style: name/src/lib.bmb
+            let path = dir.join(module_name).join("src").join("lib.bmb");
+            if path.exists() {
+                return Ok(path);
+            }
+            // v0.97: gotgan with hyphen: pkg-name/src/lib.bmb
+            if hyphenated != module_name {
+                let path = dir.join(&hyphenated).join("src").join("lib.bmb");
+                if path.exists() {
+                    return Ok(path);
+                }
             }
         }
 
@@ -181,6 +203,9 @@ impl Resolver {
 
     /// v0.70: Resolve module path with span for error localization
     fn resolve_module_path_with_span(&self, module_name: &str, span: Span) -> Result<PathBuf> {
+        // v0.97: Also try underscore→hyphen conversion for gotgan package names
+        let hyphenated = module_name.replace('_', "-");
+
         // Try base directory first, then extra search paths
         for dir in std::iter::once(&self.base_dir).chain(self.extra_paths.iter()) {
             let path = dir.join(format!("{}.bmb", module_name));
@@ -190,6 +215,18 @@ impl Resolver {
             let path = dir.join(module_name).join("mod.bmb");
             if path.exists() {
                 return Ok(path);
+            }
+            // v0.97: gotgan package style: name/src/lib.bmb
+            let path = dir.join(module_name).join("src").join("lib.bmb");
+            if path.exists() {
+                return Ok(path);
+            }
+            // v0.97: gotgan with hyphen: pkg-name/src/lib.bmb
+            if hyphenated != module_name {
+                let path = dir.join(&hyphenated).join("src").join("lib.bmb");
+                if path.exists() {
+                    return Ok(path);
+                }
             }
         }
 
