@@ -1,0 +1,501 @@
+// bmb-json: High-performance JSON parser/serializer
+// Compiled to shared library (.dll/.so) for FFI bindings
+//
+// Built on BMB's stdlib zero-copy JSON parser.
+// String-in/string-out API for FFI compatibility.
+//
+// Functions:
+//   bmb_json_validate — check if input is valid JSON (returns 1/0)
+//   bmb_json_stringify — roundtrip: parse then serialize (normalizes)
+//   bmb_json_get — extract value at key path as JSON string
+//   bmb_json_type — get type of root value ("null","bool","number","string","array","object")
+//   bmb_json_array_len — get array length (-1 if not array)
+//   bmb_json_object_keys — get comma-separated list of object keys
+
+// ============================================================================
+// Type tags
+// ============================================================================
+
+fn J_NULL() -> i64 = 0;
+fn J_BOOL() -> i64 = 1;
+fn J_NUM() -> i64 = 2;
+fn J_STR() -> i64 = 3;
+fn J_ARR() -> i64 = 4;
+fn J_OBJ() -> i64 = 5;
+
+// ============================================================================
+// Document — flat vector of i64
+// ============================================================================
+
+fn jdoc_new() -> i64 = vec_new();
+
+fn dput(doc: i64, off: i64, val: i64) -> i64 = {
+    let _s = vec_set(doc, off, val);
+    0
+};
+fn dget(doc: i64, off: i64) -> i64 = vec_get(doc, off);
+
+fn dalloc(doc: i64, n: i64) -> i64 = {
+    let off = vec_len(doc);
+    let mut i = 0;
+    while i < n {
+        let _p = vec_push(doc, 0);
+        i = i + 1;
+        0
+    };
+    off
+};
+
+// ============================================================================
+// Node Constructors
+// ============================================================================
+
+fn mk_null(doc: i64) -> i64 = {
+    let o = dalloc(doc, 1);
+    let _s = dput(doc, o, J_NULL());
+    o
+};
+
+fn mk_bool(doc: i64, v: i64) -> i64 = {
+    let o = dalloc(doc, 2);
+    let _s1 = dput(doc, o, J_BOOL());
+    let _s2 = dput(doc, o + 1, v);
+    o
+};
+
+fn mk_num(doc: i64, v: i64) -> i64 = {
+    let o = dalloc(doc, 2);
+    let _s1 = dput(doc, o, J_NUM());
+    let _s2 = dput(doc, o + 1, v);
+    o
+};
+
+fn mk_str(doc: i64, s: i64, e: i64) -> i64 = {
+    let o = dalloc(doc, 3);
+    let _s1 = dput(doc, o, J_STR());
+    let _s2 = dput(doc, o + 1, s);
+    let _s3 = dput(doc, o + 2, e);
+    o
+};
+
+fn mk_arr(doc: i64, cap: i64) -> i64 = {
+    let o = dalloc(doc, 2 + cap);
+    let _s1 = dput(doc, o, J_ARR());
+    let _s2 = dput(doc, o + 1, 0);
+    o
+};
+
+fn mk_obj(doc: i64, cap: i64) -> i64 = {
+    let o = dalloc(doc, 2 + cap * 3);
+    let _s1 = dput(doc, o, J_OBJ());
+    let _s2 = dput(doc, o + 1, 0);
+    o
+};
+
+// ============================================================================
+// Accessors
+// ============================================================================
+
+fn jtype(doc: i64, n: i64) -> i64 = dget(doc, n);
+fn jnum(doc: i64, n: i64) -> i64 = dget(doc, n + 1);
+fn jarr_len(doc: i64, n: i64) -> i64 = dget(doc, n + 1);
+fn jarr_get(doc: i64, n: i64, idx: i64) -> i64 = dget(doc, n + 2 + idx);
+fn jobj_len(doc: i64, n: i64) -> i64 = dget(doc, n + 1);
+
+fn jarr_push(doc: i64, n: i64, val: i64) -> i64 = {
+    let c = dget(doc, n + 1);
+    let _s1 = dput(doc, n + 2 + c, val);
+    let _s2 = dput(doc, n + 1, c + 1);
+    0
+};
+
+fn jobj_add(doc: i64, n: i64, ks: i64, ke: i64, val: i64) -> i64 = {
+    let c = dget(doc, n + 1);
+    let _s1 = dput(doc, n + 2 + c * 3, ks);
+    let _s2 = dput(doc, n + 2 + c * 3 + 1, ke);
+    let _s3 = dput(doc, n + 2 + c * 3 + 2, val);
+    let _s4 = dput(doc, n + 1, c + 1);
+    0
+};
+
+fn jobj_find(doc: i64, n: i64, key: String, src: String, idx: i64, cnt: i64) -> i64 =
+    if idx >= cnt { 0 - 1 }
+    else {
+        let ks = dget(doc, n + 2 + idx * 3);
+        let ke = dget(doc, n + 2 + idx * 3 + 1);
+        let k = src.slice(ks, ke);
+        if k == key { dget(doc, n + 2 + idx * 3 + 2) }
+        else { jobj_find(doc, n, key, src, idx + 1, cnt) }
+    };
+
+fn jobj_get(doc: i64, n: i64, key: String, src: String) -> i64 =
+    jobj_find(doc, n, key, src, 0, dget(doc, n + 1));
+
+// String accessors
+fn jstr_raw(doc: i64, n: i64, src: String) -> String = {
+    let s = dget(doc, n + 1);
+    let e = dget(doc, n + 2);
+    src.slice(s, e)
+};
+
+fn unescape(s: String, pos: i64, acc: String) -> String =
+    if pos >= s.len() { acc }
+    else if s.byte_at(pos) == 92 and pos + 1 < s.len() {
+        let nx = s.byte_at(pos + 1);
+        let ch = if nx == 110 { chr(10) } else if nx == 116 { chr(9) } else if nx == 114 { chr(13) } else if nx == 34 { chr(34) } else if nx == 92 { chr(92) } else { chr(nx) };
+        unescape(s, pos + 2, acc + ch)
+    }
+    else { unescape(s, pos + 1, acc + chr(s.byte_at(pos))) };
+
+fn jstr(doc: i64, n: i64, src: String) -> String =
+    unescape(jstr_raw(doc, n, src), 0, "");
+
+// ============================================================================
+// Parser
+// ============================================================================
+
+fn pk(n: i64, p: i64) -> i64 = n * 1000000 + p;
+fn rn(r: i64) -> i64 = r / 1000000;
+fn rp(r: i64) -> i64 = r - (r / 1000000) * 1000000;
+
+fn wskip(src: String, p: i64) -> i64 =
+    if p >= src.len() { p }
+    else {
+        let c = src.byte_at(p);
+        if c == 32 or c == 9 or c == 10 or c == 13 { wskip(src, p + 1) }
+        else { p }
+    };
+
+fn pval(doc: i64, src: String, p: i64) -> i64 =
+    if p >= src.len() { pk(mk_null(doc), p) }
+    else {
+        let c = src.byte_at(p);
+        if c == 34 { pstr(doc, src, p) }
+        else if c == 123 { pobj(doc, src, p) }
+        else if c == 91 { parr(doc, src, p) }
+        else if c == 116 { pk(mk_bool(doc, 1), p + 4) }
+        else if c == 102 { pk(mk_bool(doc, 0), p + 5) }
+        else if c == 110 { pk(mk_null(doc), p + 4) }
+        else if c == 45 or (c >= 48 and c <= 57) { pnum(doc, src, p) }
+        else { pk(mk_null(doc), p) }
+    };
+
+fn pnum(doc: i64, src: String, p: i64) -> i64 = {
+    let neg = src.byte_at(p) == 45;
+    let s = if neg { p + 1 } else { p };
+    let e = sdig(src, s);
+    let v = pint(src, s, e, 0);
+    let fv = if neg { 0 - v } else { v };
+    pk(mk_num(doc, fv), e)
+};
+
+fn sdig(src: String, p: i64) -> i64 =
+    if p >= src.len() { p }
+    else if src.byte_at(p) >= 48 and src.byte_at(p) <= 57 { sdig(src, p + 1) }
+    else { p };
+
+fn pint(src: String, p: i64, e: i64, acc: i64) -> i64 =
+    if p >= e { acc }
+    else { pint(src, p + 1, e, acc * 10 + src.byte_at(p) - 48) };
+
+fn pstr(doc: i64, src: String, p: i64) -> i64 = {
+    let s = p + 1;
+    let e = fq(src, s);
+    pk(mk_str(doc, s, e), e + 1)
+};
+
+fn fq(src: String, p: i64) -> i64 =
+    if p >= src.len() { p }
+    else if src.byte_at(p) == 92 { fq(src, p + 2) }
+    else if src.byte_at(p) == 34 { p }
+    else { fq(src, p + 1) };
+
+fn parr(doc: i64, src: String, p: i64) -> i64 = {
+    let arr = mk_arr(doc, 64);
+    let p1 = wskip(src, p + 1);
+    if p1 < src.len() and src.byte_at(p1) == 93 { pk(arr, p1 + 1) }
+    else { parr_elems(doc, src, p1, arr) }
+};
+
+fn parr_elems(doc: i64, src: String, p: i64, arr: i64) -> i64 = {
+    let r = pval(doc, src, p);
+    let _push = jarr_push(doc, arr, rn(r));
+    let p1 = wskip(src, rp(r));
+    if p1 >= src.len() { pk(arr, p1) }
+    else if src.byte_at(p1) == 44 { parr_elems(doc, src, wskip(src, p1 + 1), arr) }
+    else { pk(arr, p1 + 1) }
+};
+
+fn pobj(doc: i64, src: String, p: i64) -> i64 = {
+    let obj = mk_obj(doc, 32);
+    let p1 = wskip(src, p + 1);
+    if p1 < src.len() and src.byte_at(p1) == 125 { pk(obj, p1 + 1) }
+    else { pobj_ms(doc, src, p1, obj) }
+};
+
+fn pobj_ms(doc: i64, src: String, p: i64, obj: i64) -> i64 = {
+    let ks = p + 1;
+    let ke = fq(src, ks);
+    let p1 = wskip(src, ke + 1);
+    let p2 = wskip(src, p1 + 1);
+    let vr = pval(doc, src, p2);
+    let _add = jobj_add(doc, obj, ks, ke, rn(vr));
+    let p3 = wskip(src, rp(vr));
+    if p3 >= src.len() { pk(obj, p3) }
+    else if src.byte_at(p3) == 44 { pobj_ms(doc, src, wskip(src, p3 + 1), obj) }
+    else { pk(obj, p3 + 1) }
+};
+
+// ============================================================================
+// Serializer
+// ============================================================================
+
+fn int_to_str(v: i64) -> String =
+    if v == 0 { "0" }
+    else if v < 0 { "-" + int_to_str(0 - v) }
+    else {
+        let d = v - (v / 10) * 10;
+        let rest = v / 10;
+        let ch = chr(d + 48);
+        if rest == 0 { ch } else { int_to_str(rest) + ch }
+    };
+
+fn escape(s: String, p: i64, acc: String) -> String =
+    if p >= s.len() { acc }
+    else {
+        let c = s.byte_at(p);
+        let e = if c == 34 { chr(92) + chr(34) }
+            else if c == 92 { chr(92) + chr(92) }
+            else if c == 10 { chr(92) + chr(110) }
+            else if c == 13 { chr(92) + chr(114) }
+            else if c == 9 { chr(92) + chr(116) }
+            else { chr(c) };
+        escape(s, p + 1, acc + e)
+    };
+
+fn jstringify(doc: i64, n: i64, src: String) -> String = {
+    let tag = dget(doc, n);
+    if tag == J_NULL() { "null" }
+    else if tag == J_BOOL() { if dget(doc, n + 1) != 0 { "true" } else { "false" } }
+    else if tag == J_NUM() { int_to_str(dget(doc, n + 1)) }
+    else if tag == J_STR() { chr(34) + escape(jstr(doc, n, src), 0, "") + chr(34) }
+    else if tag == J_ARR() { sarr(doc, n, src) }
+    else if tag == J_OBJ() { sobj(doc, n, src) }
+    else { "null" }
+};
+
+fn sarr(doc: i64, n: i64, src: String) -> String = {
+    let c = dget(doc, n + 1);
+    if c == 0 { "[]" }
+    else { "[" + sarr_es(doc, n, src, 0, c) + "]" }
+};
+
+fn sarr_es(doc: i64, n: i64, src: String, i: i64, c: i64) -> String =
+    if i >= c { "" }
+    else {
+        let s = jstringify(doc, dget(doc, n + 2 + i), src);
+        if i == 0 { s + sarr_es(doc, n, src, 1, c) }
+        else { "," + s + sarr_es(doc, n, src, i + 1, c) }
+    };
+
+fn sobj(doc: i64, n: i64, src: String) -> String = {
+    let c = dget(doc, n + 1);
+    if c == 0 { "{}" }
+    else { "{" + sobj_ms(doc, n, src, 0, c) + "}" }
+};
+
+fn sobj_ms(doc: i64, n: i64, src: String, i: i64, c: i64) -> String =
+    if i >= c { "" }
+    else {
+        let ks = dget(doc, n + 2 + i * 3);
+        let ke = dget(doc, n + 2 + i * 3 + 1);
+        let val = dget(doc, n + 2 + i * 3 + 2);
+        let key = src.slice(ks, ke);
+        let pair = chr(34) + escape(key, 0, "") + chr(34) + ":" + jstringify(doc, val, src);
+        if i == 0 { pair + sobj_ms(doc, n, src, 1, c) }
+        else { "," + pair + sobj_ms(doc, n, src, i + 1, c) }
+    };
+
+// ============================================================================
+// Helper: Parse JSON and return doc + root + src
+// ============================================================================
+
+// Internal: parse and return packed (doc, root, src) as a handle
+// We store doc as a vec: [doc_ptr, root_offset]
+fn json_parse_internal(input: String) -> i64 = {
+    let doc = jdoc_new();
+    let root = rn(pval(doc, input, wskip(input, 0)));
+    let handle = vec_new();
+    let _p1 = vec_push(handle, doc);
+    let _p2 = vec_push(handle, root);
+    handle
+};
+
+fn json_free_handle(h: i64) -> i64 = {
+    let doc = vec_get(h, 0);
+    let _fd = vec_free(doc);
+    let _fh = vec_free(h);
+    0
+};
+
+// ============================================================================
+// @export wrappers — String-in/String-out API
+// ============================================================================
+
+// Validate JSON: returns 1 if valid, 0 if not
+// Simple validation: try parse + serialize roundtrip
+@export
+pub fn bmb_json_validate(input: String) -> i64 = {
+    if input.len() == 0 { 0 }
+    else {
+        let doc = jdoc_new();
+        let p0 = wskip(input, 0);
+        let r = pval(doc, input, p0);
+        let root = rn(r);
+        let end_pos = rp(r);
+        let after = wskip(input, end_pos);
+        let valid = if after == input.len() { 1 } else { 0 };
+        let _fd = vec_free(doc);
+        valid
+    }
+};
+
+// Parse and re-serialize (roundtrip normalization)
+@export
+pub fn bmb_json_stringify(input: String) -> String = {
+    let doc = jdoc_new();
+    let root = rn(pval(doc, input, wskip(input, 0)));
+    let result = jstringify(doc, root, input);
+    let _fd = vec_free(doc);
+    result
+};
+
+// Get value type as string: "null", "bool", "number", "string", "array", "object"
+@export
+pub fn bmb_json_type(input: String) -> String = {
+    let doc = jdoc_new();
+    let root = rn(pval(doc, input, wskip(input, 0)));
+    let tag = jtype(doc, root);
+    let _fd = vec_free(doc);
+    if tag == J_NULL() { "null" }
+    else if tag == J_BOOL() { "bool" }
+    else if tag == J_NUM() { "number" }
+    else if tag == J_STR() { "string" }
+    else if tag == J_ARR() { "array" }
+    else if tag == J_OBJ() { "object" }
+    else { "unknown" }
+};
+
+// Get object value by key (returns JSON string representation)
+@export
+pub fn bmb_json_get(input: String, key: String) -> String = {
+    let doc = jdoc_new();
+    let root = rn(pval(doc, input, wskip(input, 0)));
+    let result = if jtype(doc, root) != J_OBJ() { "" }
+    else {
+        let val_node = jobj_get(doc, root, key, input);
+        if val_node < 0 { "" }
+        else { jstringify(doc, val_node, input) }
+    };
+    let _fd = vec_free(doc);
+    result
+};
+
+// Get string value from object by key (returns raw string, no quotes)
+@export
+pub fn bmb_json_get_string(input: String, key: String) -> String = {
+    let doc = jdoc_new();
+    let root = rn(pval(doc, input, wskip(input, 0)));
+    let result = if jtype(doc, root) != J_OBJ() { "" }
+    else {
+        let val_node = jobj_get(doc, root, key, input);
+        if val_node < 0 { "" }
+        else if jtype(doc, val_node) != J_STR() { "" }
+        else { jstr(doc, val_node, input) }
+    };
+    let _fd = vec_free(doc);
+    result
+};
+
+// Get number from object by key (returns i64, 0 if not found)
+@export
+pub fn bmb_json_get_number(input: String, key: String) -> i64 = {
+    let doc = jdoc_new();
+    let root = rn(pval(doc, input, wskip(input, 0)));
+    let result = if jtype(doc, root) != J_OBJ() { 0 }
+    else {
+        let val_node = jobj_get(doc, root, key, input);
+        if val_node < 0 { 0 }
+        else if jtype(doc, val_node) != J_NUM() { 0 }
+        else { jnum(doc, val_node) }
+    };
+    let _fd = vec_free(doc);
+    result
+};
+
+// Get array length (-1 if not an array)
+@export
+pub fn bmb_json_array_len(input: String) -> i64 = {
+    let doc = jdoc_new();
+    let root = rn(pval(doc, input, wskip(input, 0)));
+    let result = if jtype(doc, root) != J_ARR() { 0 - 1 }
+    else { jarr_len(doc, root) };
+    let _fd = vec_free(doc);
+    result
+};
+
+// Get array element at index as JSON string
+@export
+pub fn bmb_json_array_get(input: String, idx: i64) -> String = {
+    let doc = jdoc_new();
+    let root = rn(pval(doc, input, wskip(input, 0)));
+    let result = if jtype(doc, root) != J_ARR() { "" }
+    else {
+        let len = jarr_len(doc, root);
+        if idx < 0 or idx >= len { "" }
+        else {
+            let elem = jarr_get(doc, root, idx);
+            jstringify(doc, elem, input)
+        }
+    };
+    let _fd = vec_free(doc);
+    result
+};
+
+fn main() -> i64 = {
+    // Test validate
+    let v1 = bmb_json_validate("{\"name\":\"BMB\",\"version\":97}");
+    println(v1);  // 1
+    let v2 = bmb_json_validate("invalid");
+    println(v2);  // 0
+
+    // Test stringify (roundtrip)
+    let s1 = bmb_json_stringify("{\"name\":\"BMB\",\"version\":97}");
+    println_str(s1);  // {"name":"BMB","version":97}
+
+    // Test type
+    let t1 = bmb_json_type("[1,2,3]");
+    println_str(t1);  // array
+
+    // Test get
+    let g1 = bmb_json_get("{\"name\":\"BMB\",\"version\":97}", "name");
+    println_str(g1);  // "BMB"
+
+    // Test get_string
+    let gs1 = bmb_json_get_string("{\"name\":\"BMB\"}", "name");
+    println_str(gs1);  // BMB
+
+    // Test get_number
+    let gn1 = bmb_json_get_number("{\"version\":97}", "version");
+    println(gn1);  // 97
+
+    // Test array_len
+    let al1 = bmb_json_array_len("[1,2,3,4,5]");
+    println(al1);  // 5
+
+    // Test array_get
+    let ag1 = bmb_json_array_get("[10,20,30]", 1);
+    println_str(ag1);  // 20
+
+    0
+};

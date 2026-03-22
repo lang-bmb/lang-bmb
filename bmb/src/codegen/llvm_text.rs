@@ -2010,8 +2010,16 @@ impl TextCodeGen {
         if func.is_export && !func.preconditions.is_empty() {
             writeln!(out, "_pre_entry:")?;
             let mut check_idx = 0;
+            let param_names: std::collections::HashSet<&str> = func.params.iter()
+                .map(|(name, _)| name.as_str())
+                .collect();
             for pre in &func.preconditions {
                 if let crate::mir::ContractFact::VarCmp { var, op, value } = pre {
+                    // v0.97.2: Only emit checks for actual function parameters,
+                    // skip derived facts that reference internal temporaries
+                    if !param_names.contains(var.as_str()) {
+                        continue;
+                    }
                     let llvm_op = match op {
                         crate::mir::CmpOp::Ge => "slt",
                         crate::mir::CmpOp::Gt => "sle",

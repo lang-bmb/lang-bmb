@@ -800,6 +800,196 @@ pub fn bmb_prime_count(n: i64) -> i64
     }
 };
 
+// ============================================================================
+// Modular Exponentiation — O(log exp)
+// ============================================================================
+
+// Compute (base^exp) mod modulus via fast exponentiation
+@export
+pub fn bmb_modpow(base: i64, exp: i64, modulus: i64) -> i64
+  pre exp >= 0 and modulus > 0
+  post ret >= 0
+= {
+    if modulus == 1 { 0 }
+    else {
+        let mut result = 1;
+        let mut b = base - (base / modulus) * modulus;
+        let mut e = exp;
+        while e > 0 {
+            let _u = if e - (e / 2) * 2 == 1 {
+                set result = (result * b) - ((result * b) / modulus) * modulus;
+                0
+            } else { 0 };
+            set e = e / 2;
+            set b = (b * b) - ((b * b) / modulus) * modulus
+        };
+        result
+    }
+};
+
+// ============================================================================
+// N-Queens — Count solutions
+// ============================================================================
+
+// Helper: check if placing queen at (row, col) is safe
+fn nq_safe(cols: i64, row: i64, col: i64) -> bool = {
+    let mut safe = true;
+    let mut r = 0;
+    while r < row {
+        let c = load_i64(cols + r * 8);
+        let _u = if c == col or c - col == row - r or col - c == row - r {
+            set safe = false;
+            0
+        } else { 0 };
+        set r = r + 1
+    };
+    safe
+};
+
+fn nq_solve(cols: i64, n: i64, row: i64) -> i64 = {
+    if row == n { 1 }
+    else {
+        let mut count = 0;
+        let mut c = 0;
+        while c < n {
+            let _u = if nq_safe(cols, row, c) {
+                let _s = store_i64(cols + row * 8, c);
+                set count = count + nq_solve(cols, n, row + 1);
+                0
+            } else { 0 };
+            set c = c + 1
+        };
+        count
+    }
+};
+
+// Count N-Queens solutions for n×n board
+@export
+pub fn bmb_nqueens(n: i64) -> i64
+  pre n >= 0
+  post ret >= 0
+= {
+    if n == 0 { 1 }
+    else {
+        let cols = malloc(n * 8);
+        let result = nq_solve(cols, n, 0);
+        let _f = free(cols);
+        result
+    }
+};
+
+// ============================================================================
+// String Hash — DJB2
+// ============================================================================
+
+// DJB2 hash function for strings
+@export
+pub fn bmb_djb2_hash(s: String) -> i64
+  post ret >= 0
+= {
+    let mut hash = 5381;
+    let len = s.len();
+    let mut i = 0;
+    while i < len {
+        set hash = ((hash << 5) + hash) + s.byte_at(i);
+        set i = i + 1
+    };
+    // Ensure positive by masking to 53 bits (safe for JS interop too)
+    hash band 9007199254740991
+};
+
+// ============================================================================
+// LCM — Least Common Multiple
+// ============================================================================
+
+@export
+pub fn bmb_lcm(a: i64, b: i64) -> i64
+  pre a >= 0 and b >= 0
+  post ret >= 0
+= {
+    if a == 0 or b == 0 { 0 }
+    else {
+        let g = bmb_gcd(a, b);
+        (a / g) * b
+    }
+};
+
+// ============================================================================
+// Power Set Size — 2^n via bit shift
+// ============================================================================
+
+@export
+pub fn bmb_power_set_size(n: i64) -> i64
+  pre n >= 0 and n < 63
+  post ret >= 1
+= 1 << n;
+
+// ============================================================================
+// Matrix Transpose
+// ============================================================================
+
+// Transpose n×n matrix in-place
+@export
+pub fn bmb_matrix_transpose(mat: i64, n: i64) -> i64
+  pre n > 0
+= {
+    let mut i = 0;
+    while i < n {
+        let mut j = i + 1;
+        while j < n {
+            let tmp = load_i64(mat + (i * n + j) * 8);
+            let _s1 = store_i64(mat + (i * n + j) * 8, load_i64(mat + (j * n + i) * 8));
+            let _s2 = store_i64(mat + (j * n + i) * 8, tmp);
+            set j = j + 1
+        };
+        set i = i + 1
+    };
+    0
+};
+
+// ============================================================================
+// Is Sorted — Check if array is sorted in non-decreasing order
+// ============================================================================
+
+@export
+pub fn bmb_is_sorted(arr: i64, n: i64) -> i64
+  pre n >= 0
+= {
+    if n <= 1 { 1 }
+    else {
+        let mut ok = 1;
+        let mut i = 1;
+        while i < n {
+            let _u = if load_i64(arr + (i - 1) * 8) > load_i64(arr + i * 8) {
+                set ok = 0;
+                0
+            } else { 0 };
+            set i = i + 1
+        };
+        ok
+    }
+};
+
+// ============================================================================
+// Array Reverse — In-place
+// ============================================================================
+
+@export
+pub fn bmb_array_reverse(arr: i64, n: i64) -> i64
+  pre n >= 0
+= {
+    let mut lo = 0;
+    let mut hi = n - 1;
+    while lo < hi {
+        let tmp = load_i64(arr + lo * 8);
+        let _s1 = store_i64(arr + lo * 8, load_i64(arr + hi * 8));
+        let _s2 = store_i64(arr + hi * 8, tmp);
+        set lo = lo + 1;
+        set hi = hi - 1
+    };
+    0
+};
+
 // Entry point for standalone testing
 fn main() -> i64 = {
     // Test knapsack

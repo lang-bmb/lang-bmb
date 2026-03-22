@@ -111,6 +111,30 @@ _lib.bmb_fibonacci.restype = ctypes.c_int64
 _lib.bmb_prime_count.argtypes = [ctypes.c_int64]
 _lib.bmb_prime_count.restype = ctypes.c_int64
 
+_lib.bmb_modpow.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_modpow.restype = ctypes.c_int64
+
+_lib.bmb_nqueens.argtypes = [ctypes.c_int64]
+_lib.bmb_nqueens.restype = ctypes.c_int64
+
+_lib.bmb_djb2_hash.argtypes = [ctypes.c_void_p]
+_lib.bmb_djb2_hash.restype = ctypes.c_int64
+
+_lib.bmb_lcm.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_lcm.restype = ctypes.c_int64
+
+_lib.bmb_power_set_size.argtypes = [ctypes.c_int64]
+_lib.bmb_power_set_size.restype = ctypes.c_int64
+
+_lib.bmb_matrix_transpose.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_matrix_transpose.restype = ctypes.c_int64
+
+_lib.bmb_is_sorted.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_is_sorted.restype = ctypes.c_int64
+
+_lib.bmb_array_reverse.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_array_reverse.restype = ctypes.c_int64
+
 
 def knapsack(weights: list, values: list, capacity: int) -> int:
     """Solve 0/1 knapsack problem.
@@ -365,6 +389,58 @@ def prime_count(n: int) -> int:
     return _lib.bmb_prime_count(n)
 
 
+def modpow(base: int, exp: int, modulus: int) -> int:
+    """Modular exponentiation: (base^exp) mod modulus."""
+    return _lib.bmb_modpow(base, exp, modulus)
+
+
+def nqueens(n: int) -> int:
+    """Count N-Queens solutions for n×n board."""
+    return _lib.bmb_nqueens(n)
+
+
+def djb2_hash(s: str) -> int:
+    """DJB2 string hash function."""
+    ss = _lib.bmb_ffi_cstr_to_string(s.encode('utf-8'))
+    result = _safe_call(_lib.bmb_djb2_hash, ss)
+    _lib.bmb_ffi_free_string(ss)
+    return result
+
+
+def lcm(a: int, b: int) -> int:
+    """Least common multiple."""
+    return _lib.bmb_lcm(a, b)
+
+
+def power_set_size(n: int) -> int:
+    """Size of power set (2^n)."""
+    return _lib.bmb_power_set_size(n)
+
+
+def matrix_transpose(matrix: list) -> list:
+    """Transpose a square matrix in-place. Returns transposed copy."""
+    n = len(matrix)
+    flat = [v for row in matrix for v in row]
+    arr = (ctypes.c_int64 * (n * n))(*flat)
+    _lib.bmb_matrix_transpose(ctypes.addressof(arr), n)
+    return [[arr[i * n + j] for j in range(n)] for i in range(n)]
+
+
+def is_sorted(arr: list) -> bool:
+    """Check if array is sorted in non-decreasing order."""
+    n = len(arr)
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    return bool(_lib.bmb_is_sorted(ctypes.addressof(c_arr), n))
+
+
+def array_reverse(arr: list) -> list:
+    """Reverse an array. Returns reversed copy."""
+    n = len(arr)
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    _lib.bmb_array_reverse(ctypes.addressof(c_arr), n)
+    return list(c_arr)
+
+
 if __name__ == '__main__':
     print("bmb-algo test suite -- Powered by BMB")
     print()
@@ -416,5 +492,16 @@ if __name__ == '__main__':
     print(f"  prime_count(100) = {prime_count(100)}")
     print(f"  prime_count(1000) = {prime_count(1000)}")
 
+    # New cycle 1989 algorithms
+    print(f"  modpow(2, 10, 1000) = {modpow(2, 10, 1000)}")
+    print(f"  nqueens(8) = {nqueens(8)}")
+    print(f"  djb2_hash('hello') = {djb2_hash('hello')}")
+    print(f"  lcm(12, 8) = {lcm(12, 8)}")
+    print(f"  power_set_size(10) = {power_set_size(10)}")
+    print(f"  matrix_transpose([[1,2],[3,4]]) = {matrix_transpose([[1,2],[3,4]])}")
+    print(f"  is_sorted([1,2,3]) = {is_sorted([1,2,3])}")
+    print(f"  is_sorted([3,1,2]) = {is_sorted([3,1,2])}")
+    print(f"  array_reverse([1,2,3,4,5]) = {array_reverse([1,2,3,4,5])}")
+
     print()
-    print("All 19 algorithms working! https://github.com/iyulab/lang-bmb")
+    print("All 27 algorithms working! https://github.com/iyulab/lang-bmb")

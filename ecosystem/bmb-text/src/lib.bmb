@@ -299,6 +299,119 @@ fn str_token_count(s: String, delim: i64) -> i64 = {
 };
 
 // ============================================================================
+// String Reverse
+// ============================================================================
+
+fn str_reverse(s: String) -> String = {
+    let len = s.len();
+    if len == 0 { "" }
+    else {
+        let sb = sb_new();
+        let mut i = len - 1;
+        let mut done = false;
+        while not done {
+            let _p = sb_push(sb, chr(s.byte_at(i)));
+            let _u = if i == 0 { done = true; 0 } else { i = i - 1; 0 };
+            0
+        };
+        sb_build(sb)
+    }
+};
+
+// ============================================================================
+// String Replace (first occurrence)
+// ============================================================================
+
+fn str_replace(s: String, old_pat: String, new_pat: String) -> String = {
+    let pos = str_find(s, old_pat);
+    if pos < 0 { s }
+    else {
+        let before = s.slice(0, pos);
+        let after = s.slice(pos + old_pat.len(), s.len());
+        before + new_pat + after
+    }
+};
+
+// ============================================================================
+// String Replace All
+// ============================================================================
+
+fn str_replace_all(s: String, old_pat: String, new_pat: String) -> String = {
+    let o_len = old_pat.len();
+    if o_len == 0 { s }
+    else {
+        let sb = sb_new();
+        let s_len = s.len();
+        let mut i = 0;
+        while i < s_len {
+            let _u = if i + o_len <= s_len and str_match_at(s, old_pat, i) {
+                let _p = sb_push(sb, new_pat);
+                i = i + o_len;
+                0
+            } else {
+                let _p = sb_push(sb, chr(s.byte_at(i)));
+                i = i + 1;
+                0
+            };
+            0
+        };
+        sb_build(sb)
+    }
+};
+
+// ============================================================================
+// Hamming Distance (equal-length strings)
+// ============================================================================
+
+fn str_hamming(a: String, b: String) -> i64 = {
+    let len = a.len();
+    if len != b.len() { 0 - 1 }
+    else {
+        let mut dist = 0;
+        let mut i = 0;
+        while i < len {
+            let _u = if a.byte_at(i) != b.byte_at(i) { dist = dist + 1; 0 } else { 0 };
+            i = i + 1;
+            0
+        };
+        dist
+    }
+};
+
+// ============================================================================
+// Word Count (split by spaces)
+// ============================================================================
+
+fn str_word_count(s: String) -> i64 = {
+    let len = s.len();
+    if len == 0 { 0 }
+    else {
+        let mut count = 0;
+        let mut in_word = false;
+        let mut i = 0;
+        while i < len {
+            let c = s.byte_at(i);
+            let is_space = c == 32 or c == 9 or c == 10 or c == 13;
+            let _u = if is_space {
+                in_word = false;
+                0
+            } else {
+                let _w = if not in_word { count = count + 1; 0 } else { 0 };
+                in_word = true;
+                0
+            };
+            i = i + 1;
+            0
+        };
+        count
+    }
+};
+
+// ============================================================================
+// String Length (for FFI — just wrapper around .len())
+// ============================================================================
+
+// ============================================================================
 // @export wrappers
 // ============================================================================
 
@@ -356,6 +469,31 @@ pub fn bmb_is_palindrome(s: String) -> i64 =
 @export
 pub fn bmb_token_count(s: String, delim: i64) -> i64 =
     str_token_count(s, delim);
+
+// String reverse
+@export
+pub fn bmb_str_reverse(s: String) -> String =
+    str_reverse(s);
+
+// String replace (first occurrence)
+@export
+pub fn bmb_str_replace(s: String, old_pat: String, new_pat: String) -> String =
+    str_replace(s, old_pat, new_pat);
+
+// String replace all
+@export
+pub fn bmb_str_replace_all(s: String, old_pat: String, new_pat: String) -> String =
+    str_replace_all(s, old_pat, new_pat);
+
+// Hamming distance (-1 if different lengths)
+@export
+pub fn bmb_str_hamming(a: String, b: String) -> i64 =
+    str_hamming(a, b);
+
+// Word count (space-separated)
+@export
+pub fn bmb_word_count(s: String) -> i64 =
+    str_word_count(s);
 
 fn main() -> i64 = {
     // KMP search

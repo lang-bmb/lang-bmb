@@ -1155,6 +1155,67 @@ fn b32_decode_string(input: String) -> String = {
 };
 
 // ============================================================================
+// Adler-32 — RFC 1950
+// ============================================================================
+
+fn ADLER_MOD() -> i64 = 65521;
+
+fn adler32_string(inp: String) -> String = {
+    let len = inp.len();
+    let mut a = 1;
+    let mut b = 0;
+    let mut i = 0;
+    while i < len {
+        let byte = inp.byte_at(i) band 255;
+        a = (a + byte) - ((a + byte) / ADLER_MOD()) * ADLER_MOD();
+        b = (b + a) - ((b + a) / ADLER_MOD()) * ADLER_MOD();
+        i = i + 1;
+        0
+    };
+    let result = (b * 65536) bor a;
+    h32(result)
+};
+
+// ============================================================================
+// Fletcher-16
+// ============================================================================
+
+fn FLETCHER_MOD() -> i64 = 255;
+
+fn fletcher16_string(inp: String) -> String = {
+    let len = inp.len();
+    let mut s1 = 0;
+    let mut s2 = 0;
+    let mut i = 0;
+    while i < len {
+        let byte = inp.byte_at(i) band 255;
+        s1 = (s1 + byte) - ((s1 + byte) / FLETCHER_MOD()) * FLETCHER_MOD();
+        s2 = (s2 + s1) - ((s2 + s1) / FLETCHER_MOD()) * FLETCHER_MOD();
+        i = i + 1;
+        0
+    };
+    let result = ((s2 band 255) * 256) bor (s1 band 255);
+    // 4-char hex for 16-bit value
+    hb((result >> 8) band 255) + hb(result band 255)
+};
+
+// ============================================================================
+// XOR Checksum
+// ============================================================================
+
+fn xor_checksum_string(inp: String) -> String = {
+    let len = inp.len();
+    let mut acc = 0;
+    let mut i = 0;
+    while i < len {
+        acc = acc bxor (inp.byte_at(i) band 255);
+        i = i + 1;
+        0
+    };
+    hb(acc band 255)
+};
+
+// ============================================================================
 // @export wrappers
 // ============================================================================
 
@@ -1181,6 +1242,15 @@ pub fn bmb_base32_decode(input: String) -> String = b32_decode_string(input);
 
 @export
 pub fn bmb_hmac_sha256(key: String, msg: String) -> String = hmac_sha256_string(key, msg);
+
+@export
+pub fn bmb_adler32(input: String) -> String = adler32_string(input);
+
+@export
+pub fn bmb_fletcher16(input: String) -> String = fletcher16_string(input);
+
+@export
+pub fn bmb_xor_checksum(input: String) -> String = xor_checksum_string(input);
 
 fn main() -> i64 = {
     // SHA-256

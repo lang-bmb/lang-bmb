@@ -54,6 +54,13 @@ _lib.bmb_base32_decode.restype = ctypes.c_void_p
 # HMAC-SHA256
 _lib.bmb_hmac_sha256.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
 _lib.bmb_hmac_sha256.restype = ctypes.c_void_p
+# Checksums
+_lib.bmb_adler32.argtypes = [ctypes.c_void_p]
+_lib.bmb_adler32.restype = ctypes.c_void_p
+_lib.bmb_fletcher16.argtypes = [ctypes.c_void_p]
+_lib.bmb_fletcher16.restype = ctypes.c_void_p
+_lib.bmb_xor_checksum.argtypes = [ctypes.c_void_p]
+_lib.bmb_xor_checksum.restype = ctypes.c_void_p
 
 
 def _call_string_fn(fn, data):
@@ -103,6 +110,21 @@ def base32_encode(data: str) -> str:
 def base32_decode(data: str) -> str:
     """RFC 4648 Base32 decode."""
     return _call_string_fn(_lib.bmb_base32_decode, data)
+
+
+def adler32(data: str) -> str:
+    """Adler-32 checksum (RFC 1950). Returns 8-char hex string."""
+    return _call_string_fn(_lib.bmb_adler32, data)
+
+
+def fletcher16(data: str) -> str:
+    """Fletcher-16 checksum. Returns 4-char hex string."""
+    return _call_string_fn(_lib.bmb_fletcher16, data)
+
+
+def xor_checksum(data: str) -> str:
+    """XOR checksum. Returns 2-char hex string."""
+    return _call_string_fn(_lib.bmb_xor_checksum, data)
 
 
 def hmac_sha256(key: str, msg: str) -> str:
@@ -194,6 +216,18 @@ if __name__ == '__main__':
         expected = hmac_mod.new(key.encode(), msg.encode(), hashlib.sha256).hexdigest()
         result = hmac_sha256(key, msg)
         check(f"hmac_sha256({repr(key)[:10]}, {repr(msg)[:20]})", result, expected)
+
+    # Checksums
+    print("[Checksums]")
+    # Adler-32: known value for "Wikipedia" = 0x11E60398
+    check("adler32('Wikipedia')", adler32("Wikipedia"), "11e60398")
+    check("adler32('')", adler32(""), "00000001")  # Initial A=1, B=0
+    # Fletcher-16 and XOR: verify determinism
+    f1 = fletcher16("hello")
+    f2 = fletcher16("hello")
+    check("fletcher16 deterministic", f1, f2)
+    x1 = xor_checksum("ABC")
+    check("xor_checksum not empty", len(x1), 2)
 
     # Benchmark
     print()

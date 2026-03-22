@@ -61,6 +61,14 @@ def test_bmb_algo():
     check(S, "prime_count", bmb_algo.prime_count(100), 25)
     # Matrix
     check(S, "matrix_multiply", bmb_algo.matrix_multiply([[1,2],[3,4]], [[5,6],[7,8]]), [[19,22],[43,50]])
+    # New algorithms (cycle 1989)
+    check(S, "modpow", bmb_algo.modpow(2, 10, 1000), 24)
+    check(S, "nqueens(8)", bmb_algo.nqueens(8), 92)
+    check(S, "lcm(12,8)", bmb_algo.lcm(12, 8), 24)
+    check(S, "power_set_size(10)", bmb_algo.power_set_size(10), 1024)
+    check(S, "is_sorted", bmb_algo.is_sorted([1,2,3]), True)
+    check(S, "array_reverse", bmb_algo.array_reverse([1,2,3]), [3,2,1])
+    check(S, "matrix_transpose", bmb_algo.matrix_transpose([[1,2],[3,4]]), [[1,3],[2,4]])
 
 
 def test_bmb_crypto():
@@ -92,6 +100,8 @@ def test_bmb_crypto():
     for inp, enc in [("f", "MY======"), ("foo", "MZXW6==="), ("fooba", "MZXW6YTB")]:
         check(S, f"b32_encode({repr(inp)})", bmb_crypto.base32_encode(inp), enc)
         check(S, f"b32_decode({repr(enc)})", bmb_crypto.base32_decode(enc), inp)
+    # Checksums (cycle 1993)
+    check(S, "adler32('Wikipedia')", bmb_crypto.adler32("Wikipedia"), "11e60398")
 
 
 def test_bmb_text():
@@ -119,6 +129,34 @@ def test_bmb_text():
     check(S, "count_byte", bmb_text.count_byte("hello", ord('l')), 2)
     # Token
     check(S, "token_count", bmb_text.token_count("a,b,c,d", ","), 4)
+    # New functions (cycle 1997)
+    check(S, "reverse", bmb_text.str_reverse("hello"), "olleh")
+    check(S, "replace", bmb_text.str_replace("hello world", "world", "BMB"), "hello BMB")
+    check(S, "replace_all", bmb_text.str_replace_all("abcabc", "abc", "X"), "XX")
+    check(S, "hamming", bmb_text.hamming_distance("karolin", "kathrin"), 3)
+    check(S, "word_count", bmb_text.word_count("hello world"), 2)
+
+
+def test_bmb_json():
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'bmb-json', 'bindings', 'python'))
+    import bmb_json
+    import json
+
+    S = "bmb-json"
+    check(S, "validate", bmb_json.validate('{"a":1}'), True)
+    check(S, "validate_invalid", bmb_json.validate(''), False)
+    check(S, "stringify", bmb_json.stringify('{"a":1}'), '{"a":1}')
+    check(S, "type_object", bmb_json.get_type('{"a":1}'), 'object')
+    check(S, "type_array", bmb_json.get_type('[1,2]'), 'array')
+    check(S, "get", bmb_json.get('{"name":"BMB"}', "name"), '"BMB"')
+    check(S, "get_string", bmb_json.get_string('{"name":"BMB"}', "name"), "BMB")
+    check(S, "get_number", bmb_json.get_number('{"v":97}', "v"), 97)
+    check(S, "array_len", bmb_json.array_len('[1,2,3]'), 3)
+    check(S, "array_get", bmb_json.array_get('[10,20,30]', 1), '20')
+    # Cross-validation
+    for tc in ['{"key":"value"}', '[1,2,3]', '{"nested":{"a":1}}']:
+        py_result = json.dumps(json.loads(tc), separators=(',', ':'))
+        check(S, f"roundtrip {tc[:20]}", bmb_json.stringify(tc), py_result)
 
 
 if __name__ == '__main__':
@@ -129,24 +167,20 @@ if __name__ == '__main__':
 
     t0 = time.perf_counter()
 
-    print("[bmb-algo: 19 algorithms]")
-    test_bmb_algo()
-    print(f"  {passed} passed")
-
-    algo_passed = passed
-    print()
-    print("[bmb-crypto: 8 functions]")
-    test_bmb_crypto()
-    print(f"  {passed - algo_passed} passed")
-
-    crypto_passed = passed
-    print()
-    print("[bmb-text: 11 functions]")
-    test_bmb_text()
-    print(f"  {passed - crypto_passed} passed")
+    libs = [
+        ("bmb-algo", "27 algorithms", test_bmb_algo),
+        ("bmb-crypto", "11 functions", test_bmb_crypto),
+        ("bmb-text", "16 functions", test_bmb_text),
+        ("bmb-json", "8 functions", test_bmb_json),
+    ]
+    for name, desc, test_fn in libs:
+        prev = passed
+        print(f"[{name}: {desc}]")
+        test_fn()
+        print(f"  {passed - prev} passed")
+        print()
 
     elapsed = time.perf_counter() - t0
-    print()
     print("=" * 60)
     total = passed + failed
     print(f"Total: {passed}/{total} passed ({elapsed:.2f}s)")
@@ -161,9 +195,10 @@ if __name__ == '__main__':
         print()
         print("ALL TESTS PASSED!")
         print()
-        print("Libraries:")
-        print("  bmb-algo  — 19 algorithms (DP, Graph, Sort, Search, Number Theory)")
-        print("  bmb-crypto — 8 functions (SHA-256, MD5, CRC32, HMAC, Base64, Base32)")
-        print("  bmb-text  — 11 functions (KMP, find, contains, palindrome, tokenize)")
+        print("Libraries (62 @export functions):")
+        print("  bmb-algo   — 27 algorithms (DP, Graph, Sort, Search, Number Theory)")
+        print("  bmb-crypto — 11 functions (SHA-256, MD5, CRC32, HMAC, Base64/32, Adler32)")
+        print("  bmb-text   — 16 functions (KMP, find, replace, palindrome, tokenize)")
+        print("  bmb-json   — 8 functions (parse, stringify, get, array)")
         print()
         print("Powered by BMB — https://github.com/iyulab/lang-bmb")

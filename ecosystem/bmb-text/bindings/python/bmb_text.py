@@ -30,6 +30,8 @@ _lib.bmb_ffi_end.restype = None
 _lib.bmb_ffi_error_message.restype = ctypes.c_char_p
 _lib.bmb_ffi_cstr_to_string.argtypes = [ctypes.c_char_p]
 _lib.bmb_ffi_cstr_to_string.restype = ctypes.c_void_p
+_lib.bmb_ffi_string_data.argtypes = [ctypes.c_void_p]
+_lib.bmb_ffi_string_data.restype = ctypes.c_char_p
 _lib.bmb_ffi_free_string.argtypes = [ctypes.c_void_p]
 _lib.bmb_ffi_free_string.restype = None
 
@@ -49,6 +51,18 @@ for fn_name in ['bmb_str_find_byte', 'bmb_str_count_byte', 'bmb_token_count']:
 # String→i64 functions
 _lib.bmb_is_palindrome.argtypes = [ctypes.c_void_p]
 _lib.bmb_is_palindrome.restype = ctypes.c_int64
+_lib.bmb_word_count.argtypes = [ctypes.c_void_p]
+_lib.bmb_word_count.restype = ctypes.c_int64
+_lib.bmb_str_hamming.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+_lib.bmb_str_hamming.restype = ctypes.c_int64
+
+# String→String functions (new)
+_lib.bmb_str_reverse.argtypes = [ctypes.c_void_p]
+_lib.bmb_str_reverse.restype = ctypes.c_void_p
+_lib.bmb_str_replace.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+_lib.bmb_str_replace.restype = ctypes.c_void_p
+_lib.bmb_str_replace_all.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+_lib.bmb_str_replace_all.restype = ctypes.c_void_p
 
 
 def _call_ss(fn, a, b):
@@ -148,6 +162,61 @@ def token_count(s: str, delimiter: str) -> int:
     return _call_si(_lib.bmb_token_count, s, ord(delimiter[0]))
 
 
+def str_reverse(s: str) -> str:
+    """Reverse a string."""
+    ss = _lib.bmb_ffi_cstr_to_string(s.encode('utf-8'))
+    if _lib.bmb_ffi_begin() != 0:
+        _lib.bmb_ffi_end(); _lib.bmb_ffi_free_string(ss)
+        raise RuntimeError("BMB error")
+    out = _lib.bmb_str_reverse(ss)
+    _lib.bmb_ffi_end()
+    result = _lib.bmb_ffi_string_data(out).decode('utf-8')
+    _lib.bmb_ffi_free_string(ss)
+    return result
+
+
+def str_replace(s: str, old: str, new: str) -> str:
+    """Replace first occurrence of old with new."""
+    a = _lib.bmb_ffi_cstr_to_string(s.encode('utf-8'))
+    b = _lib.bmb_ffi_cstr_to_string(old.encode('utf-8'))
+    c = _lib.bmb_ffi_cstr_to_string(new.encode('utf-8'))
+    if _lib.bmb_ffi_begin() != 0:
+        _lib.bmb_ffi_end()
+        _lib.bmb_ffi_free_string(a); _lib.bmb_ffi_free_string(b); _lib.bmb_ffi_free_string(c)
+        raise RuntimeError("BMB error")
+    out = _lib.bmb_str_replace(a, b, c)
+    _lib.bmb_ffi_end()
+    result = _lib.bmb_ffi_string_data(out).decode('utf-8')
+    _lib.bmb_ffi_free_string(a); _lib.bmb_ffi_free_string(b); _lib.bmb_ffi_free_string(c)
+    return result
+
+
+def str_replace_all(s: str, old: str, new: str) -> str:
+    """Replace all occurrences of old with new."""
+    a = _lib.bmb_ffi_cstr_to_string(s.encode('utf-8'))
+    b = _lib.bmb_ffi_cstr_to_string(old.encode('utf-8'))
+    c = _lib.bmb_ffi_cstr_to_string(new.encode('utf-8'))
+    if _lib.bmb_ffi_begin() != 0:
+        _lib.bmb_ffi_end()
+        _lib.bmb_ffi_free_string(a); _lib.bmb_ffi_free_string(b); _lib.bmb_ffi_free_string(c)
+        raise RuntimeError("BMB error")
+    out = _lib.bmb_str_replace_all(a, b, c)
+    _lib.bmb_ffi_end()
+    result = _lib.bmb_ffi_string_data(out).decode('utf-8')
+    _lib.bmb_ffi_free_string(a); _lib.bmb_ffi_free_string(b); _lib.bmb_ffi_free_string(c)
+    return result
+
+
+def hamming_distance(a: str, b: str) -> int:
+    """Hamming distance between equal-length strings. -1 if different lengths."""
+    return _call_ss(_lib.bmb_str_hamming, a, b)
+
+
+def word_count(s: str) -> int:
+    """Count words (space-separated)."""
+    return _call_s(_lib.bmb_word_count, s)
+
+
 if __name__ == '__main__':
     passed = 0
     failed = 0
@@ -206,6 +275,29 @@ if __name__ == '__main__':
     check("token_count('a,b,c,d', ',')", token_count("a,b,c,d", ","), 4)
     check("token_count('hello', ',')", token_count("hello", ","), 1)
     check("token_count('a::b::c', ':')", token_count("a::b::c", ":"), 5)  # a, '', b, '', c
+
+    # New functions
+    print("[String Reverse]")
+    check("reverse('hello')", str_reverse("hello"), "olleh")
+    check("reverse('')", str_reverse(""), "")
+    check("reverse('a')", str_reverse("a"), "a")
+
+    print("[String Replace]")
+    check("replace first", str_replace("hello world", "world", "BMB"), "hello BMB")
+    check("replace miss", str_replace("hello world", "xyz", "BMB"), "hello world")
+    check("replace all", str_replace_all("abcabc", "abc", "X"), "XX")
+    check("replace all none", str_replace_all("hello", "xyz", "!"), "hello")
+
+    print("[Hamming Distance]")
+    check("hamming('karolin','kathrin')", hamming_distance("karolin", "kathrin"), 3)
+    check("hamming same", hamming_distance("hello", "hello"), 0)
+    check("hamming diff len", hamming_distance("ab", "abc"), -1)
+
+    print("[Word Count]")
+    check("word_count('hello world')", word_count("hello world"), 2)
+    check("word_count(' hello  world ')", word_count(" hello  world "), 2)
+    check("word_count('')", word_count(""), 0)
+    check("word_count('one')", word_count("one"), 1)
 
     print()
     total = passed + failed
