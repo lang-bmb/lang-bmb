@@ -27,8 +27,11 @@ Ecosystem   ██████████████░░░░░░ 70%   g
 | **gotgan E2E** | 3-tier dep chain (pkg-top→pkg-mid→pkg-base) + circular detection ✅ |
 | **문서** | 4 튜토리얼 (Ownership, Concurrency, Modules, ErrorHandling), API 14 모듈 |
 | **@export + SharedLib** | `@export` 어트리뷰트 + `--shared` (.dll/.so) 빌드 ✅ |
-| **bmb-algo** | knapsack/lcs/floyd/edit_distance — Python ctypes 바인딩 E2E ✅ |
-| **최종 검증** | Cycle 1954: cargo test 6,186 ✅, clippy 0 ✅, Python E2E ✅ |
+| **bmb-algo** | 19 algorithms — Python ctypes 바인딩 E2E ✅ (Cycle 1969) |
+| **bmb-crypto** | 8 functions (SHA256, MD5, CRC32, HMAC, Base64, Base32) — Python E2E ✅ (Cycle 1965-1967) |
+| **bmb-text** | 11 functions (KMP, find, contains, palindrome, tokenize) — Python E2E ✅ (Cycle 1973) |
+| **컴파일러 수정** | @export pre-condition i32 sext fix (Cycle 1969), loop metadata collision fix (Cycle 1964) |
+| **최종 검증** | Cycle 1984: cargo test 6,186 ✅, 3 libraries × 56 Python tests ✅ |
 
 ---
 

@@ -25,6 +25,12 @@ _lib_path = os.path.join(_lib_dir, '..', '..', _lib_name)
 if not os.path.exists(_lib_path):
     _lib_path = os.path.join(_lib_dir, _lib_name)
 
+# On Windows, add MSYS2/MinGW runtime directory for GCC runtime dependencies
+if sys.platform == 'win32' and hasattr(os, 'add_dll_directory'):
+    for p in [r'C:\msys64\ucrt64\bin', r'C:\msys64\mingw64\bin']:
+        if os.path.isdir(p):
+            os.add_dll_directory(p)
+
 _lib = ctypes.CDLL(_lib_path)
 
 # FFI safety API
@@ -80,6 +86,30 @@ _lib.bmb_bfs_count.restype = ctypes.c_int64
 
 _lib.bmb_matrix_multiply.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
 _lib.bmb_matrix_multiply.restype = ctypes.c_int64
+
+_lib.bmb_merge_sort.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_merge_sort.restype = ctypes.c_int64
+
+_lib.bmb_heap_sort.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_heap_sort.restype = ctypes.c_int64
+
+_lib.bmb_counting_sort.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_counting_sort.restype = ctypes.c_int64
+
+_lib.bmb_binary_search.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_binary_search.restype = ctypes.c_int64
+
+_lib.bmb_topological_sort.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_topological_sort.restype = ctypes.c_int64
+
+_lib.bmb_gcd.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_gcd.restype = ctypes.c_int64
+
+_lib.bmb_fibonacci.argtypes = [ctypes.c_int64]
+_lib.bmb_fibonacci.restype = ctypes.c_int64
+
+_lib.bmb_prime_count.argtypes = [ctypes.c_int64]
+_lib.bmb_prime_count.restype = ctypes.c_int64
 
 
 def knapsack(weights: list, values: list, capacity: int) -> int:
@@ -277,6 +307,64 @@ def matrix_multiply(a: list, b: list) -> list:
     return [[cc[i * n + j] for j in range(n)] for i in range(n)]
 
 
+def merge_sort(arr: list) -> list:
+    """Stable merge sort. Returns sorted copy."""
+    n = len(arr)
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    _lib.bmb_merge_sort(ctypes.addressof(c_arr), n)
+    return list(c_arr)
+
+
+def heap_sort(arr: list) -> list:
+    """In-place heap sort. Returns sorted copy."""
+    n = len(arr)
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    _lib.bmb_heap_sort(ctypes.addressof(c_arr), n)
+    return list(c_arr)
+
+
+def counting_sort(arr: list, max_val: int = None) -> list:
+    """Counting sort for non-negative integers. Returns sorted copy."""
+    n = len(arr)
+    if max_val is None:
+        max_val = max(arr) if arr else 0
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    _lib.bmb_counting_sort(ctypes.addressof(c_arr), n, max_val)
+    return list(c_arr)
+
+
+def binary_search(arr: list, target: int) -> int:
+    """Binary search in sorted array. Returns index or -1."""
+    n = len(arr)
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    return _lib.bmb_binary_search(ctypes.addressof(c_arr), n, target)
+
+
+def topological_sort(adj_matrix: list) -> list:
+    """Topological sort of DAG. Returns ordered node indices."""
+    n = len(adj_matrix)
+    flat = [v for row in adj_matrix for v in row]
+    arr = (ctypes.c_int64 * (n * n))(*flat)
+    result = (ctypes.c_int64 * n)()
+    count = _lib.bmb_topological_sort(ctypes.addressof(arr), n, ctypes.addressof(result))
+    return list(result[:count])
+
+
+def gcd(a: int, b: int) -> int:
+    """Greatest common divisor (Euclidean algorithm)."""
+    return _lib.bmb_gcd(a, b)
+
+
+def fibonacci(n: int) -> int:
+    """Compute n-th Fibonacci number. F(0)=0, F(1)=1."""
+    return _lib.bmb_fibonacci(n)
+
+
+def prime_count(n: int) -> int:
+    """Count primes up to n (inclusive) using Sieve of Eratosthenes."""
+    return _lib.bmb_prime_count(n)
+
+
 if __name__ == '__main__':
     print("bmb-algo test suite -- Powered by BMB")
     print()
@@ -310,5 +398,23 @@ if __name__ == '__main__':
     result = matrix_multiply([[1,2],[3,4]], [[5,6],[7,8]])
     print(f"  matrix_multiply 2x2 = {result}")
 
+    # New algorithms
+    print(f"  merge_sort([5,3,1,4,2]) = {merge_sort([5,3,1,4,2])}")
+    print(f"  heap_sort([5,3,1,4,2]) = {heap_sort([5,3,1,4,2])}")
+    print(f"  counting_sort([3,1,4,1,5,9,2,6]) = {counting_sort([3,1,4,1,5,9,2,6])}")
+    print(f"  binary_search([10,20,30,40,50], 30) = {binary_search([10,20,30,40,50], 30)}")
+    print(f"  binary_search([10,20,30,40,50], 35) = {binary_search([10,20,30,40,50], 35)}")
+
+    # DAG: 0→1, 0→2, 1→3, 2→3
+    topo_adj = [[0,1,1,0],[0,0,0,1],[0,0,0,1],[0,0,0,0]]
+    print(f"  topological_sort(4-node DAG) = {topological_sort(topo_adj)}")
+
+    print(f"  gcd(12, 8) = {gcd(12, 8)}")
+    print(f"  gcd(100, 75) = {gcd(100, 75)}")
+    print(f"  fibonacci(10) = {fibonacci(10)}")
+    print(f"  fibonacci(20) = {fibonacci(20)}")
+    print(f"  prime_count(100) = {prime_count(100)}")
+    print(f"  prime_count(1000) = {prime_count(1000)}")
+
     print()
-    print("All 11 algorithms working! https://github.com/iyulab/lang-bmb")
+    print("All 19 algorithms working! https://github.com/iyulab/lang-bmb")

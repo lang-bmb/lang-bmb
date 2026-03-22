@@ -1,0 +1,390 @@
+// bmb-text: High-performance string processing library
+// Compiled to shared library (.dll/.so) for FFI bindings
+//
+// Features:
+//   - KMP substring search (O(n+m))
+//   - Substring find/rfind/count
+//   - String contains/starts_with/ends_with
+//   - Palindrome check
+//   - Character counting
+//   - Byte-level search
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+fn NOT_FOUND() -> i64 = 0 - 1;
+
+// ============================================================================
+// KMP Substring Search — O(n+m)
+// ============================================================================
+
+// Build KMP failure function table from string
+fn build_kmp_table_str(pattern: String) -> i64
+  post ret != 0
+= {
+    let p_len = pattern.len();
+    let table = vec_new();
+    let mut fi = 0;
+    while fi < p_len {
+        let _p = vec_push(table, 0);
+        fi = fi + 1;
+        0
+    };
+    if p_len <= 1 { table }
+    else {
+        let mut len = 0;
+        let mut i = 1;
+        let mut done = false;
+        while not done {
+            let _r = if i >= p_len {
+                { done = true; 0 }
+            } else {
+                {
+                    let pi = pattern.byte_at(i);
+                    let pl = pattern.byte_at(len);
+                    let _c = if pi == pl {
+                        { len = len + 1; let _s = vec_set(table, i, len); i = i + 1; 0 }
+                    } else if len != 0 {
+                        { len = vec_get(table, len - 1); 0 }
+                    } else {
+                        { let _s = vec_set(table, i, 0); i = i + 1; 0 }
+                    };
+                    0
+                }
+            };
+            0
+        };
+        table
+    }
+};
+
+// KMP search: find first occurrence of pattern in text
+// Returns index of first match, or -1 if not found
+fn kmp_search_str(text: String, pattern: String) -> i64 = {
+    let t_len = text.len();
+    let p_len = pattern.len();
+    if p_len == 0 { 0 }
+    else if p_len > t_len { NOT_FOUND() }
+    else {
+        let table = build_kmp_table_str(pattern);
+        let mut i = 0;
+        let mut j = 0;
+        let mut found = NOT_FOUND();
+        let mut done = false;
+        while not done {
+            let _r = if i >= t_len or found >= 0 {
+                { done = true; 0 }
+            } else {
+                {
+                    let ti = text.byte_at(i);
+                    let pj = pattern.byte_at(j);
+                    let _c = if ti == pj {
+                        {
+                            i = i + 1;
+                            j = j + 1;
+                            let _m = if j == p_len {
+                                { found = i - j; done = true; 0 }
+                            } else { 0 };
+                            0
+                        }
+                    } else if j != 0 {
+                        { j = vec_get(table, j - 1); 0 }
+                    } else {
+                        { i = i + 1; 0 }
+                    };
+                    0
+                }
+            };
+            0
+        };
+        let _f = vec_free(table);
+        found
+    }
+};
+
+// ============================================================================
+// Substring Search (simple O(n*m) — for short patterns; KMP for long)
+// ============================================================================
+
+// Check if needle matches at position in haystack
+fn str_match_at(haystack: String, needle: String, h_pos: i64) -> bool = {
+    let n_len = needle.len();
+    let mut n_pos = 0;
+    let mut matched = true;
+    let mut done = false;
+    while not done {
+        let _r = if n_pos >= n_len {
+            { done = true; 0 }
+        } else if haystack.byte_at(h_pos + n_pos) != needle.byte_at(n_pos) {
+            { matched = false; done = true; 0 }
+        } else {
+            { n_pos = n_pos + 1; 0 }
+        };
+        0
+    };
+    matched
+};
+
+// Find first occurrence of substring
+fn str_find(haystack: String, needle: String) -> i64 = {
+    let n_len = needle.len();
+    if n_len == 0 { 0 }
+    else if n_len > haystack.len() { NOT_FOUND() }
+    else {
+        let h_len = haystack.len();
+        let mut pos = 0;
+        let mut result = NOT_FOUND();
+        let mut done = false;
+        while not done {
+            let _r = if pos + n_len > h_len {
+                { done = true; 0 }
+            } else if str_match_at(haystack, needle, pos) {
+                { result = pos; done = true; 0 }
+            } else {
+                { pos = pos + 1; 0 }
+            };
+            0
+        };
+        result
+    }
+};
+
+// Find last occurrence of substring
+fn str_rfind(haystack: String, needle: String) -> i64 = {
+    let n_len = needle.len();
+    if n_len == 0 { haystack.len() }
+    else if n_len > haystack.len() { NOT_FOUND() }
+    else {
+        let mut pos = haystack.len() - n_len;
+        let mut result = NOT_FOUND();
+        let mut done = false;
+        while not done {
+            let _r = if str_match_at(haystack, needle, pos) {
+                { result = pos; done = true; 0 }
+            } else if pos <= 0 {
+                { done = true; 0 }
+            } else {
+                { pos = pos - 1; 0 }
+            };
+            0
+        };
+        result
+    }
+};
+
+// Count non-overlapping occurrences of substring
+fn str_count(haystack: String, needle: String) -> i64 = {
+    let n_len = needle.len();
+    if n_len == 0 { haystack.len() + 1 }
+    else {
+        let h_len = haystack.len();
+        let mut pos = 0;
+        let mut count = 0;
+        while pos + n_len <= h_len {
+            let _r = if str_match_at(haystack, needle, pos) {
+                { count = count + 1; pos = pos + n_len; 0 }
+            } else {
+                { pos = pos + 1; 0 }
+            };
+            0
+        };
+        count
+    }
+};
+
+// String contains substring
+fn str_contains(haystack: String, needle: String) -> bool =
+    str_find(haystack, needle) >= 0;
+
+// String starts with prefix
+fn str_starts_with(s: String, prefix: String) -> bool =
+    if prefix.len() > s.len() { false }
+    else { str_match_at(s, prefix, 0) };
+
+// String ends with suffix
+fn str_ends_with(s: String, suffix: String) -> bool =
+    if suffix.len() > s.len() { false }
+    else { str_match_at(s, suffix, s.len() - suffix.len()) };
+
+// ============================================================================
+// Single Byte Search
+// ============================================================================
+
+// Find first occurrence of byte in string
+fn str_find_byte(s: String, needle: i64) -> i64 = {
+    let len = s.len();
+    let mut pos = 0;
+    let mut result = NOT_FOUND();
+    let mut done = false;
+    while not done {
+        let _r = if pos >= len {
+            { done = true; 0 }
+        } else if s.byte_at(pos) == needle {
+            { result = pos; done = true; 0 }
+        } else {
+            { pos = pos + 1; 0 }
+        };
+        0
+    };
+    result
+};
+
+// Find last occurrence of byte
+fn str_rfind_byte(s: String, needle: i64) -> i64 =
+    if s.len() == 0 { NOT_FOUND() }
+    else {
+        let mut pos = s.len() - 1;
+        let mut result = NOT_FOUND();
+        let mut done = false;
+        while not done {
+            let _r = if s.byte_at(pos) == needle {
+                { result = pos; done = true; 0 }
+            } else if pos <= 0 {
+                { done = true; 0 }
+            } else {
+                { pos = pos - 1; 0 }
+            };
+            0
+        };
+        result
+    };
+
+// Count byte occurrences
+fn str_count_byte(s: String, needle: i64) -> i64 = {
+    let len = s.len();
+    let mut pos = 0;
+    let mut count = 0;
+    while pos < len {
+        let _r = if s.byte_at(pos) == needle { count = count + 1; 0 } else { 0 };
+        pos = pos + 1;
+        0
+    };
+    count
+};
+
+// ============================================================================
+// String Utilities
+// ============================================================================
+
+// Check if string is a palindrome
+fn str_is_palindrome(s: String) -> bool = {
+    let len = s.len();
+    let mut ok = true;
+    let mut i = 0;
+    while i < len / 2 {
+        let _c = if s.byte_at(i) != s.byte_at(len - 1 - i) {
+            { ok = false; 0 }
+        } else { 0 };
+        i = i + 1;
+        0
+    };
+    ok
+};
+
+// Count tokens split by delimiter byte
+fn str_token_count(s: String, delim: i64) -> i64 = {
+    let len = s.len();
+    if len == 0 { 0 }
+    else {
+        let mut count = 1;
+        let mut i = 0;
+        while i < len {
+            let _c = if s.byte_at(i) == delim { count = count + 1; 0 } else { 0 };
+            i = i + 1;
+            0
+        };
+        count
+    }
+};
+
+// ============================================================================
+// @export wrappers
+// ============================================================================
+
+// KMP search (returns first match index, or -1)
+@export
+pub fn bmb_kmp_search(text: String, pattern: String) -> i64 =
+    kmp_search_str(text, pattern);
+
+// Substring find (returns first index, or -1)
+@export
+pub fn bmb_str_find(haystack: String, needle: String) -> i64 =
+    str_find(haystack, needle);
+
+// Substring reverse find (returns last index, or -1)
+@export
+pub fn bmb_str_rfind(haystack: String, needle: String) -> i64 =
+    str_rfind(haystack, needle);
+
+// Count non-overlapping occurrences
+@export
+pub fn bmb_str_count(haystack: String, needle: String) -> i64 =
+    str_count(haystack, needle);
+
+// Contains check (returns 1 or 0)
+@export
+pub fn bmb_str_contains(haystack: String, needle: String) -> i64 =
+    if str_contains(haystack, needle) { 1 } else { 0 };
+
+// Starts with check (returns 1 or 0)
+@export
+pub fn bmb_str_starts_with(s: String, prefix: String) -> i64 =
+    if str_starts_with(s, prefix) { 1 } else { 0 };
+
+// Ends with check (returns 1 or 0)
+@export
+pub fn bmb_str_ends_with(s: String, suffix: String) -> i64 =
+    if str_ends_with(s, suffix) { 1 } else { 0 };
+
+// Byte find (returns index or -1)
+@export
+pub fn bmb_str_find_byte(s: String, needle: i64) -> i64 =
+    str_find_byte(s, needle);
+
+// Byte count
+@export
+pub fn bmb_str_count_byte(s: String, needle: i64) -> i64 =
+    str_count_byte(s, needle);
+
+// Palindrome check (returns 1 or 0)
+@export
+pub fn bmb_is_palindrome(s: String) -> i64 =
+    if str_is_palindrome(s) { 1 } else { 0 };
+
+// Token count by delimiter byte
+@export
+pub fn bmb_token_count(s: String, delim: i64) -> i64 =
+    str_token_count(s, delim);
+
+fn main() -> i64 = {
+    // KMP search
+    let r1 = bmb_kmp_search("hello world", "world");
+    println(r1);  // 6
+    let r2 = bmb_kmp_search("hello world", "xyz");
+    println(r2);  // -1
+
+    // String find/count
+    let r3 = bmb_str_find("abcabc", "bc");
+    println(r3);  // 1
+    let r4 = bmb_str_count("abcabcabc", "abc");
+    println(r4);  // 3
+
+    // Contains/starts/ends
+    println(bmb_str_contains("hello world", "world"));   // 1
+    println(bmb_str_starts_with("hello", "hel"));        // 1
+    println(bmb_str_ends_with("hello", "llo"));          // 1
+
+    // Palindrome
+    println(bmb_is_palindrome("racecar"));  // 1
+    println(bmb_is_palindrome("hello"));    // 0
+
+    // Byte operations
+    println(bmb_str_find_byte("hello", 108));    // 2 ('l')
+    println(bmb_str_count_byte("hello", 108));   // 2
+
+    // Token count
+    println(bmb_token_count("a,b,c,d", 44));  // 4 (',' = 44)
+
+    0
+};

@@ -2020,7 +2020,20 @@ impl TextCodeGen {
                         crate::mir::CmpOp::Eq => "ne",
                         crate::mir::CmpOp::Ne => "eq",
                     };
-                    writeln!(out, "  %_pre_chk_{} = icmp {} i64 %{}, {}", check_idx, llvm_op, var, value)?;
+                    // v0.97.1: Handle narrowed parameters (i32 vs i64) in pre-condition checks
+                    // If parameter was narrowed to i32 by ConstantPropagationNarrowing,
+                    // sext it to i64 before the comparison
+                    let param_ty = func.params.iter()
+                        .find(|(name, _)| name == var)
+                        .map(|(_, ty)| self.mir_type_to_llvm(ty))
+                        .unwrap_or("i64");
+                    let check_var = if param_ty == "i32" {
+                        writeln!(out, "  %_pre_ext_{} = sext i32 %{} to i64", check_idx, var)?;
+                        format!("_pre_ext_{}", check_idx)
+                    } else {
+                        format!("{}", var)
+                    };
+                    writeln!(out, "  %_pre_chk_{} = icmp {} i64 %{}, {}", check_idx, llvm_op, check_var, value)?;
                     writeln!(out, "  br i1 %_pre_chk_{}, label %_pre_fail_{}, label %_pre_ok_{}", check_idx, check_idx, check_idx)?;
                     writeln!(out, "_pre_fail_{}:", check_idx)?;
                     writeln!(out, "  call void @bmb_panic_bounds(i64 {}, i64 {})", value, value)?;

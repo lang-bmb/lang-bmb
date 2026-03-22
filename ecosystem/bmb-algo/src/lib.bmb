@@ -462,6 +462,344 @@ pub fn bmb_matrix_multiply(a: i64, b: i64, c: i64, n: i64) -> i64
     0
 };
 
+// ============================================================================
+// Merge Sort — Stable O(n log n)
+// ============================================================================
+
+fn ms_merge(arr: i64, tmp: i64, lo: i64, mid: i64, hi: i64) -> i64 = {
+    let mut i = lo;
+    let mut j = mid;
+    let mut k = lo;
+    while i < mid and j < hi {
+        let ai = load_i64(arr + i * 8);
+        let aj = load_i64(arr + j * 8);
+        let _s = if ai <= aj {
+            let _w = store_i64(tmp + k * 8, ai);
+            set i = i + 1;
+            0
+        } else {
+            let _w = store_i64(tmp + k * 8, aj);
+            set j = j + 1;
+            0
+        };
+        set k = k + 1
+    };
+    while i < mid {
+        let _s = store_i64(tmp + k * 8, load_i64(arr + i * 8));
+        set i = i + 1;
+        set k = k + 1
+    };
+    while j < hi {
+        let _s = store_i64(tmp + k * 8, load_i64(arr + j * 8));
+        set j = j + 1;
+        set k = k + 1
+    };
+    // Copy back
+    let mut ci = lo;
+    while ci < hi {
+        let _s = store_i64(arr + ci * 8, load_i64(tmp + ci * 8));
+        set ci = ci + 1
+    };
+    0
+};
+
+fn ms_rec(arr: i64, tmp: i64, lo: i64, hi: i64) -> i64 = {
+    let _r = if hi - lo > 1 {
+        let mid = lo + (hi - lo) / 2;
+        let _l = ms_rec(arr, tmp, lo, mid);
+        let _h = ms_rec(arr, tmp, mid, hi);
+        let _m = ms_merge(arr, tmp, lo, mid, hi);
+        0
+    } else { 0 };
+    0
+};
+
+// Stable merge sort
+// arr: pointer to i64 array, n: length
+@export
+pub fn bmb_merge_sort(arr: i64, n: i64) -> i64
+  pre n >= 0
+= {
+    let _r = if n > 1 {
+        let tmp = malloc(n * 8);
+        let _s = ms_rec(arr, tmp, 0, n);
+        let _f = free(tmp);
+        0
+    } else { 0 };
+    0
+};
+
+// ============================================================================
+// Heap Sort — In-place O(n log n)
+// ============================================================================
+
+fn hs_heapify(arr: i64, n: i64, root: i64) -> i64 = {
+    let mut largest = root;
+    let left = 2 * root + 1;
+    let right = 2 * root + 2;
+    set largest = if left < n and load_i64(arr + left * 8) > load_i64(arr + largest * 8) { left } else { largest };
+    set largest = if right < n and load_i64(arr + right * 8) > load_i64(arr + largest * 8) { right } else { largest };
+    let _r = if largest != root {
+        let _sw = qs_swap(arr, root, largest);
+        let _rec = hs_heapify(arr, n, largest);
+        0
+    } else { 0 };
+    0
+};
+
+// In-place heap sort
+// arr: pointer to i64 array, n: length
+@export
+pub fn bmb_heap_sort(arr: i64, n: i64) -> i64
+  pre n >= 0
+= {
+    // Build max heap
+    let mut i = n / 2 - 1;
+    while i >= 0 {
+        let _h = hs_heapify(arr, n, i);
+        set i = i - 1
+    };
+    // Extract elements
+    let mut j = n - 1;
+    while j > 0 {
+        let _sw = qs_swap(arr, 0, j);
+        let _h = hs_heapify(arr, j, 0);
+        set j = j - 1
+    };
+    0
+};
+
+// ============================================================================
+// Counting Sort — O(n + k) where k = max value
+// ============================================================================
+
+// Sort non-negative integers. max_val: maximum value in array.
+// arr: pointer to i64 array, n: length
+@export
+pub fn bmb_counting_sort(arr: i64, n: i64, max_val: i64) -> i64
+  pre n >= 0 and max_val >= 0
+= {
+    let _r = if n > 0 {
+        let count = malloc((max_val + 1) * 8);
+        let mut ci = 0;
+        while ci <= max_val {
+            let _s = store_i64(count + ci * 8, 0);
+            set ci = ci + 1
+        };
+        // Count occurrences
+        let mut i = 0;
+        while i < n {
+            let v = load_i64(arr + i * 8);
+            let _s = store_i64(count + v * 8, load_i64(count + v * 8) + 1);
+            set i = i + 1
+        };
+        // Rebuild array
+        set i = 0;
+        let mut vi = 0;
+        while vi <= max_val {
+            let c = load_i64(count + vi * 8);
+            let mut j = 0;
+            while j < c {
+                let _s = store_i64(arr + i * 8, vi);
+                set i = i + 1;
+                set j = j + 1
+            };
+            set vi = vi + 1
+        };
+        let _fc = free(count);
+        0
+    } else { 0 };
+    0
+};
+
+// ============================================================================
+// Binary Search — O(log n)
+// ============================================================================
+
+// Search sorted array for target. Returns index or -1.
+// arr: pointer to sorted i64 array, n: length, target: search value
+@export
+pub fn bmb_binary_search(arr: i64, n: i64, target: i64) -> i64
+  pre n >= 0
+= {
+    let mut lo = 0;
+    let mut hi = n - 1;
+    let mut result = 0 - 1;
+    while lo <= hi and result < 0 {
+        let mid = lo + (hi - lo) / 2;
+        let v = load_i64(arr + mid * 8);
+        let _u = if v == target {
+            set result = mid;
+            0
+        } else if v < target {
+            set lo = mid + 1;
+            0
+        } else {
+            set hi = mid - 1;
+            0
+        };
+        0
+    };
+    result
+};
+
+// ============================================================================
+// Topological Sort — Kahn's Algorithm (BFS-based)
+// ============================================================================
+
+// Topological sort of DAG. Returns number of sorted nodes (< n means cycle).
+// adj: flattened adjacency matrix n*n (adj[i*n+j] = 1 if edge i→j)
+// n: number of nodes
+// result: output array of n i64s (filled with topological order)
+@export
+pub fn bmb_topological_sort(adj: i64, n: i64, result: i64) -> i64
+  pre n > 0
+= {
+    let in_deg = malloc(n * 8);
+    let queue = malloc(n * 8);
+    // Compute in-degrees
+    let mut j = 0;
+    while j < n {
+        let mut deg = 0;
+        let mut i = 0;
+        while i < n {
+            let e = load_i64(adj + (i * n + j) * 8);
+            set deg = if e != 0 { deg + 1 } else { deg };
+            set i = i + 1
+        };
+        let _s = store_i64(in_deg + j * 8, deg);
+        set j = j + 1
+    };
+    // Enqueue nodes with in-degree 0
+    let mut qhead = 0;
+    let mut qtail = 0;
+    let mut qi = 0;
+    while qi < n {
+        let _u = if load_i64(in_deg + qi * 8) == 0 {
+            let _s = store_i64(queue + qtail * 8, qi);
+            set qtail = qtail + 1;
+            0
+        } else { 0 };
+        set qi = qi + 1
+    };
+    // Process
+    let mut count = 0;
+    while qhead < qtail {
+        let u = load_i64(queue + qhead * 8);
+        set qhead = qhead + 1;
+        let _s = store_i64(result + count * 8, u);
+        set count = count + 1;
+        // Reduce in-degree of neighbors
+        let mut k = 0;
+        while k < n {
+            let _u = if load_i64(adj + (u * n + k) * 8) != 0 {
+                let new_deg = load_i64(in_deg + k * 8) - 1;
+                let _sd = store_i64(in_deg + k * 8, new_deg);
+                let _eq = if new_deg == 0 {
+                    let _sq = store_i64(queue + qtail * 8, k);
+                    set qtail = qtail + 1;
+                    0
+                } else { 0 };
+                0
+            } else { 0 };
+            set k = k + 1
+        };
+        0
+    };
+    let _fi = free(in_deg);
+    let _fq = free(queue);
+    count
+};
+
+// ============================================================================
+// GCD — Euclidean Algorithm
+// ============================================================================
+
+// Greatest common divisor
+@export
+pub fn bmb_gcd(a: i64, b: i64) -> i64
+  pre a >= 0 and b >= 0
+  post ret >= 0
+= {
+    let mut x = a;
+    let mut y = b;
+    while y > 0 {
+        let temp = y;
+        set y = x - (x / y) * y;
+        set x = temp
+    };
+    x
+};
+
+// ============================================================================
+// Fibonacci — O(n) iterative
+// ============================================================================
+
+// Compute n-th Fibonacci number (F(0)=0, F(1)=1)
+@export
+pub fn bmb_fibonacci(n: i64) -> i64
+  pre n >= 0
+  post ret >= 0
+= {
+    if n <= 1 { n }
+    else {
+        let mut a = 0;
+        let mut b = 1;
+        let mut i = 2;
+        while i <= n {
+            let temp = a + b;
+            set a = b;
+            set b = temp;
+            set i = i + 1
+        };
+        b
+    }
+};
+
+// ============================================================================
+// Prime Count — Sieve of Eratosthenes
+// ============================================================================
+
+// Count primes up to n (inclusive)
+@export
+pub fn bmb_prime_count(n: i64) -> i64
+  pre n >= 0
+  post ret >= 0
+= {
+    if n < 2 { 0 }
+    else {
+        let sieve = malloc((n + 1) * 8);
+        // Initialize: 0=composite, 1=prime
+        let mut i = 0;
+        while i <= n {
+            let _s = store_i64(sieve + i * 8, 1);
+            set i = i + 1
+        };
+        let _s0 = store_i64(sieve, 0);
+        let _s1 = store_i64(sieve + 8, 0);
+        let mut p = 2;
+        while p * p <= n {
+            let _u = if load_i64(sieve + p * 8) != 0 {
+                let mut j = p * p;
+                while j <= n {
+                    let _s = store_i64(sieve + j * 8, 0);
+                    set j = j + p
+                };
+                0
+            } else { 0 };
+            set p = p + 1
+        };
+        let mut count = 0;
+        let mut k = 2;
+        while k <= n {
+            set count = if load_i64(sieve + k * 8) != 0 { count + 1 } else { count };
+            set k = k + 1
+        };
+        let _f = free(sieve);
+        count
+    }
+};
+
 // Entry point for standalone testing
 fn main() -> i64 = {
     // Test knapsack
@@ -486,5 +824,35 @@ fn main() -> i64 = {
 
     let _f1 = free(w);
     let _f2 = free(v);
+
+    // Test merge sort
+    let ms = malloc(5 * 8);
+    let _s1 = store_i64(ms, 5);
+    let _s2 = store_i64(ms + 8, 3);
+    let _s3 = store_i64(ms + 16, 1);
+    let _s4 = store_i64(ms + 24, 4);
+    let _s5 = store_i64(ms + 32, 2);
+    let _ms = bmb_merge_sort(ms, 5);
+    // Should be 1,2,3,4,5
+    println(load_i64(ms));
+    println(load_i64(ms + 32));
+    let _fms = free(ms);
+
+    // Test GCD
+    println(bmb_gcd(12, 8));    // 4
+    println(bmb_fibonacci(10)); // 55
+    println(bmb_prime_count(100)); // 25
+
+    // Test binary search
+    let bs = malloc(5 * 8);
+    let _bs1 = store_i64(bs, 10);
+    let _bs2 = store_i64(bs + 8, 20);
+    let _bs3 = store_i64(bs + 16, 30);
+    let _bs4 = store_i64(bs + 24, 40);
+    let _bs5 = store_i64(bs + 32, 50);
+    println(bmb_binary_search(bs, 5, 30));  // 2
+    println(bmb_binary_search(bs, 5, 35));  // -1
+    let _fbs = free(bs);
+
     0
 };

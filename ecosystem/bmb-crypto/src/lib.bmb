@@ -302,6 +302,176 @@ fn sha256_string(inp: String) -> String = {
     r
 };
 
+// ============================================================================
+// Buffer-based SHA-256 (for HMAC — handles raw byte buffers with potential nulls)
+// ============================================================================
+
+// Copy bytes from raw buffer to block
+fn cpybuf(blk: i64, src: i64, src_off: i64, dst_off: i64, n: i64) -> i64 = {
+    let mut j = 0;
+    while j < n {
+        let _s = bput(blk, dst_off + j, load_i64(src + (src_off + j) * 8));
+        j = j + 1;
+        0
+    };
+    0
+};
+
+// SHA-256 hash of a raw byte buffer (one byte per i64 slot), return state ptr
+fn sha256_buf_raw(buf: i64, mlen: i64) -> i64 = {
+    let blen = mlen * 8;
+    let s = malloc(8 * 8);
+    let w = malloc(64 * 8);
+    let wv = malloc(8 * 8);
+    let blk = malloc(64 * 8);
+    let _si = sinit(s);
+    // Process full 64-byte blocks
+    let nfull = mlen / 64;
+    let mut idx = 0;
+    while idx < nfull {
+        let off = idx * 64;
+        let _z = zblk(blk, 0, 64);
+        let _c = cpybuf(blk, buf, off, 0, 64);
+        let _p = pblock(s, w, wv, blk);
+        idx = idx + 1;
+        0
+    };
+    let rem = mlen - nfull * 64;
+    let bstart = nfull * 64;
+    let _z = zblk(blk, 0, 64);
+    let _cp = cpybuf(blk, buf, bstart, 0, rem);
+    let _pad = bput(blk, rem, 128);
+    if rem < 56 {
+        let _wl = wlen(blk, blen);
+        let _pb = pblock(s, w, wv, blk);
+        let _dw = drop(w); let _dwv = drop(wv); let _db = drop(blk);
+        s
+    } else {
+        let _p1 = pblock(s, w, wv, blk);
+        let _z2 = zblk(blk, 0, 64);
+        let _wl = wlen(blk, blen);
+        let _p2 = pblock(s, w, wv, blk);
+        let _dw = drop(w); let _dwv = drop(wv); let _db = drop(blk);
+        s
+    }
+};
+
+// SHA-256 hash of byte buffer, return hex string
+fn sha256_buf_hex(buf: i64, len: i64) -> String = {
+    let s = sha256_buf_raw(buf, len);
+    let r = state_hex(s);
+    let _d = drop(s);
+    r
+};
+
+// ============================================================================
+// HMAC-SHA256 — RFC 2104
+// ============================================================================
+
+// HMAC(K, m) = H((K' ⊕ opad) || H((K' ⊕ ipad) || m))
+// ipad = 0x36 repeated, opad = 0x5c repeated
+// K' = key padded/hashed to 64 bytes
+
+fn hmac_sha256_string(key: String, msg: String) -> String = {
+    let key_len = key.len();
+    let msg_len = msg.len();
+    // Step 1: Derive K' (64 bytes)
+    let kprime = malloc(64 * 8);
+    let mut ki = 0;
+    while ki < 64 {
+        let _s = st(kprime + ki * 8, 0);
+        ki = ki + 1;
+        0
+    };
+    let _kfill = if key_len > 64 {
+        // Key too long: hash it
+        let ks = sha256_buf_raw(kprime, 0);  // dummy — need to hash key first
+        // Actually, hash the key string
+        let key_buf = malloc(key_len * 8);
+        let mut kj = 0;
+        while kj < key_len {
+            let _sb = st(key_buf + kj * 8, key.byte_at(kj));
+            kj = kj + 1;
+            0
+        };
+        let ks2 = sha256_buf_raw(key_buf, key_len);
+        let _fk = free(key_buf);
+        // Copy 32-byte hash to kprime (big-endian expansion of state)
+        let mut hi = 0;
+        while hi < 8 {
+            let v = aget(ks2, hi);
+            let _b0 = st(kprime + (hi * 4) * 8, (v >> 24) band 255);
+            let _b1 = st(kprime + (hi * 4 + 1) * 8, (v >> 16) band 255);
+            let _b2 = st(kprime + (hi * 4 + 2) * 8, (v >> 8) band 255);
+            let _b3 = st(kprime + (hi * 4 + 3) * 8, v band 255);
+            hi = hi + 1;
+            0
+        };
+        let _ds = drop(ks);
+        let _ds2 = drop(ks2);
+        0
+    } else {
+        // Copy key bytes
+        let mut kj = 0;
+        while kj < key_len {
+            let _sb = st(kprime + kj * 8, key.byte_at(kj));
+            kj = kj + 1;
+            0
+        };
+        0
+    };
+
+    // Step 2: Build inner = (K' ⊕ ipad) || message
+    let inner_len = 64 + msg_len;
+    let inner_buf = malloc(inner_len * 8);
+    let mut ii = 0;
+    while ii < 64 {
+        let kb = load_i64(kprime + ii * 8);
+        let _s = st(inner_buf + ii * 8, (kb bxor 54) band 255);  // 0x36
+        ii = ii + 1;
+        0
+    };
+    let mut mi = 0;
+    while mi < msg_len {
+        let _s = st(inner_buf + (64 + mi) * 8, msg.byte_at(mi));
+        mi = mi + 1;
+        0
+    };
+
+    // Step 3: Inner hash
+    let inner_state = sha256_buf_raw(inner_buf, inner_len);
+    let _fi = free(inner_buf);
+
+    // Step 4: Build outer = (K' ⊕ opad) || inner_hash (32 bytes)
+    let outer_len = 64 + 32;
+    let outer_buf = malloc(outer_len * 8);
+    let mut oi = 0;
+    while oi < 64 {
+        let kb = load_i64(kprime + oi * 8);
+        let _s = st(outer_buf + oi * 8, (kb bxor 92) band 255);  // 0x5c
+        oi = oi + 1;
+        0
+    };
+    // Expand inner hash state (8 × u32) to 32 bytes
+    let mut hi = 0;
+    while hi < 8 {
+        let v = aget(inner_state, hi);
+        let _b0 = st(outer_buf + (64 + hi * 4) * 8, (v >> 24) band 255);
+        let _b1 = st(outer_buf + (64 + hi * 4 + 1) * 8, (v >> 16) band 255);
+        let _b2 = st(outer_buf + (64 + hi * 4 + 2) * 8, (v >> 8) band 255);
+        let _b3 = st(outer_buf + (64 + hi * 4 + 3) * 8, v band 255);
+        hi = hi + 1;
+        0
+    };
+    let _dis = drop(inner_state);
+
+    // Step 5: Outer hash
+    let result = sha256_buf_hex(outer_buf, outer_len);
+    let _fo = free(outer_buf);
+    let _fk = free(kprime);
+    result
+};
+
 // ============================================================
 // Tests
 // ============================================================
@@ -607,7 +777,387 @@ fn report(name: String, result: i64) -> i64 = {
 };
 
 
+// ============================================================================
+// MD5 — RFC 1321 compliant hash
+// ============================================================================
+
+// Left rotate 32-bit value by n bits
+fn md5_rotl32(x: i64, n: i64) -> i64 = {
+    let m = x band MASK32();
+    ((m << n) bor (m >> (32 - n))) band MASK32()
+};
+
+// MD5 auxiliary functions
+fn md5_F(b: i64, c: i64, d: i64) -> i64 =
+    ((b band c) bor ((b bxor MASK32()) band d)) band MASK32();
+
+fn md5_G(b: i64, c: i64, d: i64) -> i64 =
+    ((b band d) bor (c band (d bxor MASK32()))) band MASK32();
+
+fn md5_H(b: i64, c: i64, d: i64) -> i64 =
+    (b bxor c bxor d) band MASK32();
+
+fn md5_I(b: i64, c: i64, d: i64) -> i64 =
+    (c bxor (b bor (d bxor MASK32()))) band MASK32();
+
+// MD5 per-round constants T[i] = floor(2^32 * abs(sin(i+1)))
+fn md5_T(i: i64) -> i64 =
+    if i == 0  { 3614090360 } else if i == 1  { 3905402710 } else if i == 2  { 606105819  }
+    else if i == 3  { 3250441966 } else if i == 4  { 4118548399 } else if i == 5  { 1200080426 }
+    else if i == 6  { 2821735955 } else if i == 7  { 4249261313 } else if i == 8  { 1770035416 }
+    else if i == 9  { 2336552879 } else if i == 10 { 4294925233 } else if i == 11 { 2304563134 }
+    else if i == 12 { 1804603682 } else if i == 13 { 4254626195 } else if i == 14 { 2792965006 }
+    else if i == 15 { 1236535329 } else if i == 16 { 4129170786 } else if i == 17 { 3225465664 }
+    else if i == 18 { 643717713  } else if i == 19 { 3921069994 } else if i == 20 { 3593408605 }
+    else if i == 21 { 38016083   } else if i == 22 { 3634488961 } else if i == 23 { 3889429448 }
+    else if i == 24 { 568446438  } else if i == 25 { 3275163606 } else if i == 26 { 4107603335 }
+    else if i == 27 { 1163531501 } else if i == 28 { 2850285829 } else if i == 29 { 4243563512 }
+    else if i == 30 { 1735328473 } else if i == 31 { 2368359562 } else if i == 32 { 4294588738 }
+    else if i == 33 { 2272392833 } else if i == 34 { 1839030562 } else if i == 35 { 4259657740 }
+    else if i == 36 { 2763975236 } else if i == 37 { 1272893353 } else if i == 38 { 4139469664 }
+    else if i == 39 { 3200236656 } else if i == 40 { 681279174  } else if i == 41 { 3936430074 }
+    else if i == 42 { 3572445317 } else if i == 43 { 76029189   } else if i == 44 { 3654602809 }
+    else if i == 45 { 3873151461 } else if i == 46 { 530742520  } else if i == 47 { 3299628645 }
+    else if i == 48 { 4096336452 } else if i == 49 { 1126891415 } else if i == 50 { 2878612391 }
+    else if i == 51 { 4237533241 } else if i == 52 { 1700485571 } else if i == 53 { 2399980690 }
+    else if i == 54 { 4293915773 } else if i == 55 { 2240044497 } else if i == 56 { 1873313359 }
+    else if i == 57 { 4264355552 } else if i == 58 { 2734768916 } else if i == 59 { 1309151649 }
+    else if i == 60 { 4149444226 } else if i == 61 { 3174756917 } else if i == 62 { 718787259  }
+    else { 3951481745 };
+
+// Round shift amounts
+fn md5_S(i: i64) -> i64 =
+    if i == 0  { 7  } else if i == 1  { 12 } else if i == 2  { 17 } else if i == 3  { 22 }
+    else if i == 4  { 7  } else if i == 5  { 12 } else if i == 6  { 17 } else if i == 7  { 22 }
+    else if i == 8  { 7  } else if i == 9  { 12 } else if i == 10 { 17 } else if i == 11 { 22 }
+    else if i == 12 { 7  } else if i == 13 { 12 } else if i == 14 { 17 } else if i == 15 { 22 }
+    else if i == 16 { 5  } else if i == 17 { 9  } else if i == 18 { 14 } else if i == 19 { 20 }
+    else if i == 20 { 5  } else if i == 21 { 9  } else if i == 22 { 14 } else if i == 23 { 20 }
+    else if i == 24 { 5  } else if i == 25 { 9  } else if i == 26 { 14 } else if i == 27 { 20 }
+    else if i == 28 { 5  } else if i == 29 { 9  } else if i == 30 { 14 } else if i == 31 { 20 }
+    else if i == 32 { 4  } else if i == 33 { 11 } else if i == 34 { 16 } else if i == 35 { 23 }
+    else if i == 36 { 4  } else if i == 37 { 11 } else if i == 38 { 16 } else if i == 39 { 23 }
+    else if i == 40 { 4  } else if i == 41 { 11 } else if i == 42 { 16 } else if i == 43 { 23 }
+    else if i == 44 { 4  } else if i == 45 { 11 } else if i == 46 { 16 } else if i == 47 { 23 }
+    else if i == 48 { 6  } else if i == 49 { 10 } else if i == 50 { 15 } else if i == 51 { 21 }
+    else if i == 52 { 6  } else if i == 53 { 10 } else if i == 54 { 15 } else if i == 55 { 21 }
+    else if i == 56 { 6  } else if i == 57 { 10 } else if i == 58 { 15 } else if i == 59 { 21 }
+    else if i == 60 { 6  } else if i == 61 { 10 } else if i == 62 { 15 }
+    else { 21 };
+
+// Message schedule index for round i
+fn md5_M(i: i64) -> i64 =
+    if i < 16 { i }
+    else if i < 32 { (5 * i + 1) - ((5 * i + 1) / 16) * 16 }
+    else if i < 48 { (3 * i + 5) - ((3 * i + 5) / 16) * 16 }
+    else { (7 * i) - (7 * i / 16) * 16 };
+
+// Block buffer helpers (one byte per i64 slot)
+fn md5_blk_get(blk: i64, idx: i64) -> i64 = load_i64(blk + idx * 8);
+fn md5_blk_set(blk: i64, idx: i64, v: i64) -> i64 = store_i64(blk + idx * 8, v band 255);
+
+// Read 4 bytes at byte offset off as little-endian u32
+fn md5_blk_read_le32(blk: i64, off: i64) -> i64 = {
+    let b0 = md5_blk_get(blk, off);
+    let b1 = md5_blk_get(blk, off + 1);
+    let b2 = md5_blk_get(blk, off + 2);
+    let b3 = md5_blk_get(blk, off + 3);
+    (b0 bor (b1 << 8) bor (b2 << 16) bor (b3 << 24)) band MASK32()
+};
+
+// Core: compress one 64-byte block
+fn md5_compress(state: i64, blk: i64) -> i64 = {
+    let mut a = aget(state, 0);
+    let mut b = aget(state, 1);
+    let mut c = aget(state, 2);
+    let mut d = aget(state, 3);
+    let mut i = 0;
+    while i < 64 {
+        let f = if i < 16 { md5_F(b, c, d) }
+                else if i < 32 { md5_G(b, c, d) }
+                else if i < 48 { md5_H(b, c, d) }
+                else { md5_I(b, c, d) };
+        let m_idx = md5_M(i);
+        let m_val = md5_blk_read_le32(blk, m_idx * 4);
+        let temp = add32(add32(add32(a, f), m_val), md5_T(i));
+        let new_b = add32(b, md5_rotl32(temp, md5_S(i)));
+        a = d;
+        d = c;
+        c = b;
+        b = new_b;
+        i = i + 1;
+        0
+    };
+    let _sa = aput(state, 0, add32(aget(state, 0), a));
+    let _sb = aput(state, 1, add32(aget(state, 1), b));
+    let _sc = aput(state, 2, add32(aget(state, 2), c));
+    let _sd = aput(state, 3, add32(aget(state, 3), d));
+    0
+};
+
+// Little-endian hex output for MD5 (each register output byte-reversed)
+fn h32_le(v: i64) -> String =
+    hb(v band 255) + hb((v >> 8) band 255) + hb((v >> 16) band 255) + hb((v >> 24) band 255);
+
+// MD5 hash a string, return 32-char hex digest
+fn md5_string(inp: String) -> String = {
+    let mlen = inp.len();
+    let state = malloc(4 * 8);
+    let blk = malloc(64 * 8);
+    // Init registers
+    let _s0 = aput(state, 0, 1732584193);   // 0x67452301
+    let _s1 = aput(state, 1, 4023233417);   // 0xEFCDAB89
+    let _s2 = aput(state, 2, 2562383102);   // 0x98BADCFE
+    let _s3 = aput(state, 3, 271733878);    // 0x10325476
+    // Process full 64-byte blocks
+    let nfull = mlen / 64;
+    let mut bi = 0;
+    while bi < nfull {
+        let off = bi * 64;
+        let mut j = 0;
+        while j < 64 {
+            let _sb = md5_blk_set(blk, j, inp.byte_at(off + j));
+            j = j + 1;
+            0
+        };
+        let _comp = md5_compress(state, blk);
+        bi = bi + 1;
+        0
+    };
+    // Remaining bytes
+    let rem = mlen - nfull * 64;
+    let bstart = nfull * 64;
+    let mut ri = 0;
+    while ri < 64 {
+        let _zb = md5_blk_set(blk, ri, 0);
+        ri = ri + 1;
+        0
+    };
+    let mut ci = 0;
+    while ci < rem {
+        let _cb = md5_blk_set(blk, ci, inp.byte_at(bstart + ci));
+        ci = ci + 1;
+        0
+    };
+    // Append 0x80
+    let _pad = md5_blk_set(blk, rem, 128);
+    let pos1 = rem + 1;
+    let _final = if pos1 > 56 {
+        // Need extra block
+        let _comp1 = md5_compress(state, blk);
+        let mut zi = 0;
+        while zi < 64 {
+            let _zb = md5_blk_set(blk, zi, 0);
+            zi = zi + 1;
+            0
+        };
+        0
+    } else { 0 };
+    // Write message length in bits as little-endian 64-bit at offset 56
+    let bits = mlen * 8;
+    let bits_lo = bits band MASK32();
+    let bits_hi = (bits >> 32) band MASK32();
+    let _lb0 = md5_blk_set(blk, 56, bits_lo band 255);
+    let _lb1 = md5_blk_set(blk, 57, (bits_lo >> 8) band 255);
+    let _lb2 = md5_blk_set(blk, 58, (bits_lo >> 16) band 255);
+    let _lb3 = md5_blk_set(blk, 59, (bits_lo >> 24) band 255);
+    let _lb4 = md5_blk_set(blk, 60, bits_hi band 255);
+    let _lb5 = md5_blk_set(blk, 61, (bits_hi >> 8) band 255);
+    let _lb6 = md5_blk_set(blk, 62, (bits_hi >> 16) band 255);
+    let _lb7 = md5_blk_set(blk, 63, (bits_hi >> 24) band 255);
+    let _comp2 = md5_compress(state, blk);
+    // Build hex digest (little-endian register order)
+    let sb = sb_new();
+    let _h0 = sb_push(sb, h32_le(aget(state, 0)));
+    let _h1 = sb_push(sb, h32_le(aget(state, 1)));
+    let _h2 = sb_push(sb, h32_le(aget(state, 2)));
+    let _h3 = sb_push(sb, h32_le(aget(state, 3)));
+    let result = sb_build(sb);
+    let _fs = free(state);
+    let _fb = free(blk);
+    result
+};
+
+// ============================================================================
+// CRC32 — ISO 3309 / ITU-T V.42
+// ============================================================================
+
+// CRC-32 polynomial (reflected): 0xEDB88320
+fn crc32_poly() -> i64 = 3988292384;
+
+// Compute CRC for a single byte, updating running crc
+fn crc32_byte(crc: i64, byte: i64) -> i64 = {
+    let mut c = (crc bxor (byte band 255)) band MASK32();
+    let mut i = 0;
+    while i < 8 {
+        let low_bit = c band 1;
+        c = (c >> 1) band MASK32();
+        if low_bit == 1 {
+            c = (c bxor crc32_poly()) band MASK32();
+            0
+        } else { 0 };
+        i = i + 1;
+        0
+    };
+    c
+};
+
+// CRC32 of a string, return 8-char hex string
+fn crc32_string(inp: String) -> String = {
+    let len = inp.len();
+    let mut crc = MASK32();
+    let mut i = 0;
+    while i < len {
+        crc = crc32_byte(crc, inp.byte_at(i));
+        i = i + 1;
+        0
+    };
+    let final_crc = (crc bxor MASK32()) band MASK32();
+    h32(final_crc)
+};
+
+// ============================================================================
+// Base32 — RFC 4648
+// ============================================================================
+
+fn B32_PAD() -> i64 = 61;  // '='
+
+fn b32_encode_char(val: i64) -> i64
+  pre val >= 0 and val <= 31
+= if val < 26 { val + 65 }    // A-Z
+  else { val - 26 + 50 };      // 2-7
+
+fn b32_decode_char(c: i64) -> i64
+  post ret >= -1 and ret <= 31
+= if c >= 65 and c <= 90 { c - 65 }           // A-Z
+  else if c >= 97 and c <= 122 { c - 97 }     // a-z (case-insensitive)
+  else if c >= 50 and c <= 55 { c - 50 + 26 } // 2-7
+  else { 0 - 1 };
+
+// Encode string to Base32 string
+fn b32_encode_string(input: String) -> String = {
+    let len = input.len();
+    if len == 0 { "" }
+    else {
+        let sb = sb_new();
+        let mut i = 0;
+        while i < len {
+            let remaining = len - i;
+            let b0 = input.byte_at(i);
+            let b1 = if remaining >= 2 { input.byte_at(i + 1) } else { 0 };
+            let b2 = if remaining >= 3 { input.byte_at(i + 2) } else { 0 };
+            let b3 = if remaining >= 4 { input.byte_at(i + 3) } else { 0 };
+            let b4 = if remaining >= 5 { input.byte_at(i + 4) } else { 0 };
+            // 5 bytes = 40 bits -> 8 groups of 5 bits
+            let c0 = (b0 >> 3) band 31;
+            let c1 = ((b0 band 7) << 2) bor ((b1 >> 6) band 3);
+            let c2 = (b1 >> 1) band 31;
+            let c3 = ((b1 band 1) << 4) bor ((b2 >> 4) band 15);
+            let c4 = ((b2 band 15) << 1) bor ((b3 >> 7) band 1);
+            let c5 = (b3 >> 2) band 31;
+            let c6 = ((b3 band 3) << 3) bor ((b4 >> 5) band 7);
+            let c7 = b4 band 31;
+            // RFC 4648 padding rules:
+            // 1 byte  → 2 chars + 6 pad    (remaining=1: c0,c1)
+            // 2 bytes → 4 chars + 4 pad    (remaining=2: c0-c3)
+            // 3 bytes → 5 chars + 3 pad    (remaining=3: c0-c4)
+            // 4 bytes → 7 chars + 1 pad    (remaining=4: c0-c6)
+            // 5 bytes → 8 chars + 0 pad    (remaining=5: c0-c7)
+            let _p0 = sb_push(sb, b64_chr(b32_encode_char(c0)));
+            let _p1 = sb_push(sb, b64_chr(b32_encode_char(c1)));
+            let _p2 = sb_push(sb, if remaining >= 2 { b64_chr(b32_encode_char(c2)) } else { "=" });
+            let _p3 = sb_push(sb, if remaining >= 2 { b64_chr(b32_encode_char(c3)) } else { "=" });
+            let _p4 = sb_push(sb, if remaining >= 3 { b64_chr(b32_encode_char(c4)) } else { "=" });
+            let _p5 = sb_push(sb, if remaining >= 4 { b64_chr(b32_encode_char(c5)) } else { "=" });
+            let _p6 = sb_push(sb, if remaining >= 4 { b64_chr(b32_encode_char(c6)) } else { "=" });
+            let _p7 = sb_push(sb, if remaining >= 5 { b64_chr(b32_encode_char(c7)) } else { "=" });
+            i = i + 5;
+            0
+        };
+        sb_build(sb)
+    }
+};
+
+// Decode Base32 string to string
+fn b32_decode_string(input: String) -> String = {
+    let len = input.len();
+    if len == 0 { "" }
+    else if len - (len / 8) * 8 != 0 { "" }  // Must be multiple of 8
+    else {
+        let sb = sb_new();
+        let mut i = 0;
+        let mut ok = true;
+        while i < len {
+            let r0 = input.byte_at(i);
+            let r1 = input.byte_at(i + 1);
+            let r2 = input.byte_at(i + 2);
+            let r3 = input.byte_at(i + 3);
+            let r4 = input.byte_at(i + 4);
+            let r5 = input.byte_at(i + 5);
+            let r6 = input.byte_at(i + 6);
+            let r7 = input.byte_at(i + 7);
+            let v0 = b32_decode_char(r0);
+            let v1 = b32_decode_char(r1);
+            let _dec = if v0 < 0 or v1 < 0 {
+                ok = false;
+                i = len;
+                0
+            } else {
+                // byte 0
+                let byte0 = ((v0 << 3) bor ((v1 >> 2) band 7)) band 255;
+                let _pb0 = sb_push(sb, b64_chr(byte0));
+                let _r2 = if r2 != B32_PAD() {
+                    let v2 = b32_decode_char(r2);
+                    let v3 = b32_decode_char(r3);
+                    let _check = if v2 < 0 or r3 == B32_PAD() { 0 }
+                    else {
+                        let byte1 = (((v1 band 3) << 6) bor (v2 << 1) bor ((v3 >> 4) band 1)) band 255;
+                        let _pb1 = sb_push(sb, b64_chr(byte1));
+                        let _r4 = if r4 != B32_PAD() {
+                            let v4 = b32_decode_char(r4);
+                            let _c4 = if v4 >= 0 {
+                                let byte2 = (((v3 band 15) << 4) bor ((v4 >> 1) band 15)) band 255;
+                                let _pb2 = sb_push(sb, b64_chr(byte2));
+                                let _r5 = if r5 != B32_PAD() {
+                                    let v5 = b32_decode_char(r5);
+                                    let v6 = b32_decode_char(r6);
+                                    let _c56 = if v5 >= 0 and r6 != B32_PAD() {
+                                        let byte3 = (((v4 band 1) << 7) bor (v5 << 2) bor ((v6 >> 3) band 3)) band 255;
+                                        let _pb3 = sb_push(sb, b64_chr(byte3));
+                                        let _r7 = if r7 != B32_PAD() {
+                                            let v7 = b32_decode_char(r7);
+                                            let _c7 = if v7 >= 0 {
+                                                let byte4 = (((v6 band 7) << 5) bor v7) band 255;
+                                                let _pb4 = sb_push(sb, b64_chr(byte4));
+                                                0
+                                            } else { 0 };
+                                            0
+                                        } else { 0 };
+                                        0
+                                    } else { 0 };
+                                    0
+                                } else { 0 };
+                                0
+                            } else { 0 };
+                            0
+                        } else { 0 };
+                        0
+                    };
+                    0
+                } else { 0 };
+                0
+            };
+            i = i + 8;
+            0
+        };
+        if not ok { "" } else { sb_build(sb) }
+    }
+};
+
+// ============================================================================
 // @export wrappers
+// ============================================================================
+
 @export
 pub fn bmb_sha256(input: String) -> String = sha256_string(input);
 
@@ -617,12 +1167,43 @@ pub fn bmb_base64_encode(input: String) -> String = b64_encode_string(input);
 @export
 pub fn bmb_base64_decode(input: String) -> String = b64_decode_string(input);
 
+@export
+pub fn bmb_md5(input: String) -> String = md5_string(input);
+
+@export
+pub fn bmb_crc32(input: String) -> String = crc32_string(input);
+
+@export
+pub fn bmb_base32_encode(input: String) -> String = b32_encode_string(input);
+
+@export
+pub fn bmb_base32_decode(input: String) -> String = b32_decode_string(input);
+
+@export
+pub fn bmb_hmac_sha256(key: String, msg: String) -> String = hmac_sha256_string(key, msg);
+
 fn main() -> i64 = {
+    // SHA-256
     let h = bmb_sha256("hello");
     println_str(h);
+    // Base64
     let e = bmb_base64_encode("hello");
     println_str(e);
     let d = bmb_base64_decode(e);
     println_str(d);
+    // MD5
+    let m = bmb_md5("hello");
+    println_str(m);
+    // CRC32
+    let c = bmb_crc32("hello");
+    println_str(c);
+    // Base32
+    let b32 = bmb_base32_encode("hello");
+    println_str(b32);
+    let b32d = bmb_base32_decode(b32);
+    println_str(b32d);
+    // HMAC-SHA256
+    let hm = bmb_hmac_sha256("key", "The quick brown fox jumps over the lazy dog");
+    println_str(hm);
     0
 };
