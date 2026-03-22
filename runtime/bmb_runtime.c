@@ -1832,8 +1832,14 @@ int64_t sb_free(int64_t handle) { return bmb_sb_free(handle); }
 //   When limit exceeded: EXIT with error (not BSOD from OOM).
 #define BMB_ARENA_BLOCK_SIZE (8 * 1024 * 1024)  // 8MB blocks
 #define BMB_ARENA_DEFAULT_MAX_SIZE ((size_t)4 * 1024 * 1024 * 1024)  // 4GB default
-static size_t g_arena_max_size = 0;  // 0 = not yet initialized
-static int g_arena_limit_warned = 0;
+// v0.97: Thread-local arena state for FFI safety
+#if defined(_MSC_VER)
+static __declspec(thread) size_t g_arena_max_size = 0;
+static __declspec(thread) int g_arena_limit_warned = 0;
+#else
+static __thread size_t g_arena_max_size = 0;
+static __thread int g_arena_limit_warned = 0;
+#endif
 
 typedef struct BmbArenaBlock {
     char* data;
@@ -1842,10 +1848,16 @@ typedef struct BmbArenaBlock {
     struct BmbArenaBlock* next;
 } BmbArenaBlock;
 
-static BmbArenaBlock* g_arena_head = NULL;
-static BmbArenaBlock* g_arena_current = NULL;
+#if defined(_MSC_VER)
+static __declspec(thread) BmbArenaBlock* g_arena_head = NULL;
+static __declspec(thread) BmbArenaBlock* g_arena_current = NULL;
+static __declspec(thread) size_t g_arena_total_allocated = 0;
+#else
+static __thread BmbArenaBlock* g_arena_head = NULL;
+static __thread BmbArenaBlock* g_arena_current = NULL;
 // g_arena_enabled is forward-declared near top of file
-static size_t g_arena_total_allocated = 0;
+static __thread size_t g_arena_total_allocated = 0;
+#endif
 
 static BmbArenaBlock* bmb_arena_new_block(size_t min_size) {
     size_t cap = min_size > BMB_ARENA_BLOCK_SIZE ? min_size + 64 : BMB_ARENA_BLOCK_SIZE;
@@ -1950,9 +1962,16 @@ int64_t bmb_arena_reset(void) {
 }
 
 // v0.88.6: Arena save/restore for per-function memory reclamation
-static BmbArenaBlock* g_arena_save_block = NULL;
-static size_t g_arena_save_used = 0;
-static size_t g_arena_save_total = 0;
+// v0.97: Thread-local for FFI safety
+#if defined(_MSC_VER)
+static __declspec(thread) BmbArenaBlock* g_arena_save_block = NULL;
+static __declspec(thread) size_t g_arena_save_used = 0;
+static __declspec(thread) size_t g_arena_save_total = 0;
+#else
+static __thread BmbArenaBlock* g_arena_save_block = NULL;
+static __thread size_t g_arena_save_used = 0;
+static __thread size_t g_arena_save_total = 0;
+#endif
 
 int64_t bmb_arena_save(void) {
     g_arena_save_block = g_arena_current;
@@ -2795,8 +2814,14 @@ int64_t remove_dir(const BmbString* path) {
 }
 
 // v0.46: Command-line argument support for CLI Independence
-static int g_argc = 0;
-static char** g_argv = NULL;
+// v0.97: Thread-local for FFI safety
+#if defined(_MSC_VER)
+static __declspec(thread) int g_argc = 0;
+static __declspec(thread) char** g_argv = NULL;
+#else
+static __thread int g_argc = 0;
+static __thread char** g_argv = NULL;
+#endif
 
 // v0.96.46: Runtime initialization for inline main wrapper
 // Called from BMB-generated @main() to set up argc/argv and arena before bmb_user_main()
@@ -4540,7 +4565,12 @@ void bmb_sleep_ms(int64_t ms) { usleep((useconds_t)(ms * 1000)); }
 int64_t sleep_ms(int64_t ms) { bmb_sleep_ms(ms); return 0; }
 
 // v0.95: random number generation (xorshift64)
-static uint64_t bmb_rng_state = 0;
+// v0.97: Thread-local for FFI safety
+#if defined(_MSC_VER)
+static __declspec(thread) uint64_t bmb_rng_state = 0;
+#else
+static __thread uint64_t bmb_rng_state = 0;
+#endif
 int64_t bmb_random_i64(void) {
     if (bmb_rng_state == 0) {
         bmb_rng_state = (uint64_t)bmb_time_ns() ^ 0x5DEECE66DLL;

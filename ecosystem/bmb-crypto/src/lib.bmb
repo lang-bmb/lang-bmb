@@ -1,0 +1,315 @@
+// bmb-sha256: Pure BMB SHA-256 implementation
+// v0.1.0
+//
+// FIPS 180-4 compliant SHA-256 hash function.
+// All arithmetic is mod 2^32, emulated via band with MASK32.
+//
+// Usage:
+//   let hash = sha256_string("hello");
+//   // hash == "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+
+// v0.89.4: free/store_i64 now return i64(0) directly - wrappers kept for readability
+fn drop(ptr: i64) -> i64 = free(ptr);
+fn st(addr: i64, val: i64) -> i64 = store_i64(addr, val);
+
+// 32-bit mask
+fn MASK32() -> i64 = 4294967295;
+
+// Mod 2^32 addition
+fn add32(a: i64, b: i64) -> i64 = (a + b) band MASK32();
+
+// Right rotate 32-bit value
+fn rotr32(x: i64, n: i64) -> i64 = {
+    let m = x band MASK32();
+    ((m >> n) bor (m << (32 - n))) band MASK32()
+};
+
+// Right shift 32-bit value
+fn shr32(x: i64, n: i64) -> i64 = (x band MASK32()) >> n;
+
+// SHA-256 functions
+fn ch(e: i64, f: i64, g: i64) -> i64 =
+    ((e band f) bxor ((e bxor MASK32()) band g)) band MASK32();
+
+fn maj(a: i64, b: i64, c: i64) -> i64 =
+    ((a band b) bxor (a band c) bxor (b band c)) band MASK32();
+
+fn bsig0(a: i64) -> i64 =
+    (rotr32(a, 2) bxor rotr32(a, 13) bxor rotr32(a, 22)) band MASK32();
+
+fn bsig1(e: i64) -> i64 =
+    (rotr32(e, 6) bxor rotr32(e, 11) bxor rotr32(e, 25)) band MASK32();
+
+fn ssig0(x: i64) -> i64 =
+    (rotr32(x, 7) bxor rotr32(x, 18) bxor shr32(x, 3)) band MASK32();
+
+fn ssig1(x: i64) -> i64 =
+    (rotr32(x, 17) bxor rotr32(x, 19) bxor shr32(x, 10)) band MASK32();
+
+// Initial hash values
+fn H0() -> i64 = 1779033703;
+fn H1() -> i64 = 3144134277;
+fn H2() -> i64 = 1013904242;
+fn H3() -> i64 = 2773480762;
+fn H4() -> i64 = 1359893119;
+fn H5() -> i64 = 2600822924;
+fn H6() -> i64 = 528734635;
+fn H7() -> i64 = 1541459225;
+
+// Round constants K[0..63]
+fn K(i: i64) -> i64 =
+    if i == 0 { 1116352408 } else if i == 1 { 1899447441 } else if i == 2 { 3049323471 }
+    else if i == 3 { 3921009573 } else if i == 4 { 961987163 } else if i == 5 { 1508970993 }
+    else if i == 6 { 2453635748 } else if i == 7 { 2870763221 } else if i == 8 { 3624381080 }
+    else if i == 9 { 310598401 } else if i == 10 { 607225278 } else if i == 11 { 1426881987 }
+    else if i == 12 { 1925078388 } else if i == 13 { 2162078206 } else if i == 14 { 2614888103 }
+    else if i == 15 { 3248222580 } else if i == 16 { 3835390401 } else if i == 17 { 4022224774 }
+    else if i == 18 { 264347078 } else if i == 19 { 604807628 } else if i == 20 { 770255983 }
+    else if i == 21 { 1249150122 } else if i == 22 { 1555081692 } else if i == 23 { 1996064986 }
+    else if i == 24 { 2554220882 } else if i == 25 { 2821834349 } else if i == 26 { 2952996808 }
+    else if i == 27 { 3210313671 } else if i == 28 { 3336571891 } else if i == 29 { 3584528711 }
+    else if i == 30 { 113926993 } else if i == 31 { 338241895 } else if i == 32 { 666307205 }
+    else if i == 33 { 773529912 } else if i == 34 { 1294757372 } else if i == 35 { 1396182291 }
+    else if i == 36 { 1695183700 } else if i == 37 { 1986661051 } else if i == 38 { 2177026350 }
+    else if i == 39 { 2456956037 } else if i == 40 { 2730485921 } else if i == 41 { 2820302411 }
+    else if i == 42 { 3259730800 } else if i == 43 { 3345764771 } else if i == 44 { 3516065817 }
+    else if i == 45 { 3600352804 } else if i == 46 { 4094571909 } else if i == 47 { 275423344 }
+    else if i == 48 { 430227734 } else if i == 49 { 506948616 } else if i == 50 { 659060556 }
+    else if i == 51 { 883997877 } else if i == 52 { 958139571 } else if i == 53 { 1322822218 }
+    else if i == 54 { 1537002063 } else if i == 55 { 1747873779 } else if i == 56 { 1955562222 }
+    else if i == 57 { 2024104815 } else if i == 58 { 2227730452 } else if i == 59 { 2361852424 }
+    else if i == 60 { 2428436474 } else if i == 61 { 2756734187 } else if i == 62 { 3204031479 }
+    else { 3329325298 };
+
+// Buffer: one byte per i64 slot
+fn bput(buf: i64, idx: i64, val: i64) -> i64 = st(buf + idx * 8, val band 255);
+fn bget(buf: i64, idx: i64) -> i64 = load_i64(buf + idx * 8);
+
+// Read 4 bytes as big-endian u32
+fn read_be32(buf: i64, off: i64) -> i64 = {
+    let b0 = bget(buf, off);
+    let b1 = bget(buf, off + 1);
+    let b2 = bget(buf, off + 2);
+    let b3 = bget(buf, off + 3);
+    ((b0 << 24) bor (b1 << 16) bor (b2 << 8) bor b3) band MASK32()
+};
+
+// i64 array helpers
+fn aput(arr: i64, idx: i64, val: i64) -> i64 = st(arr + idx * 8, val);
+fn aget(arr: i64, idx: i64) -> i64 = load_i64(arr + idx * 8);
+
+// v0.89.4: Converted from recursive to while-loop with let-in-while (Cycle 44)
+// Fill W[0..15] from block
+fn w_fill(w: i64, block: i64) -> i64 = {
+    let mut i = 0;
+    while i < 16 {
+        let _s = aput(w, i, read_be32(block, i * 4));
+        i = i + 1;
+        0
+    };
+    0
+};
+
+// Extend W[16..63]
+fn w_extend(w: i64) -> i64 = {
+    let mut i = 16;
+    while i < 64 {
+        let s0 = ssig0(aget(w, i - 15));
+        let s1 = ssig1(aget(w, i - 2));
+        let val = add32(add32(add32(aget(w, i - 16), s0), aget(w, i - 7)), s1);
+        let _s = aput(w, i, val);
+        i = i + 1;
+        0
+    };
+    0
+};
+
+// State init
+fn sinit(s: i64) -> i64 = {
+    let _0 = aput(s, 0, H0()); let _1 = aput(s, 1, H1());
+    let _2 = aput(s, 2, H2()); let _3 = aput(s, 3, H3());
+    let _4 = aput(s, 4, H4()); let _5 = aput(s, 5, H5());
+    let _6 = aput(s, 6, H6()); let _7 = aput(s, 7, H7());
+    0
+};
+
+// Copy state to working vars
+fn wv_init(wv: i64, s: i64) -> i64 = {
+    let _0 = aput(wv, 0, aget(s, 0)); let _1 = aput(wv, 1, aget(s, 1));
+    let _2 = aput(wv, 2, aget(s, 2)); let _3 = aput(wv, 3, aget(s, 3));
+    let _4 = aput(wv, 4, aget(s, 4)); let _5 = aput(wv, 5, aget(s, 5));
+    let _6 = aput(wv, 6, aget(s, 6)); let _7 = aput(wv, 7, aget(s, 7));
+    0
+};
+
+// One compression round
+fn cround(wv: i64, w: i64, r: i64) -> i64 = {
+    let a = aget(wv, 0); let b = aget(wv, 1);
+    let c = aget(wv, 2); let d = aget(wv, 3);
+    let e = aget(wv, 4); let f = aget(wv, 5);
+    let g = aget(wv, 6); let h = aget(wv, 7);
+    let t1 = add32(add32(add32(add32(h, bsig1(e)), ch(e, f, g)), K(r)), aget(w, r));
+    let t2 = add32(bsig0(a), maj(a, b, c));
+    let _7 = aput(wv, 7, g); let _6 = aput(wv, 6, f);
+    let _5 = aput(wv, 5, e); let _4 = aput(wv, 4, add32(d, t1));
+    let _3 = aput(wv, 3, c); let _2 = aput(wv, 2, b);
+    let _1 = aput(wv, 1, a); let _0 = aput(wv, 0, add32(t1, t2));
+    0
+};
+
+// Run 64 rounds
+fn crounds(wv: i64, w: i64) -> i64 = {
+    let mut r = 0;
+    while r < 64 {
+        let _c = cround(wv, w, r);
+        r = r + 1;
+        0
+    };
+    0
+};
+
+// Add working vars back to state
+fn sadd(s: i64, wv: i64) -> i64 = {
+    let mut i = 0;
+    while i < 8 {
+        let _a = aput(s, i, add32(aget(s, i), aget(wv, i)));
+        i = i + 1;
+        0
+    };
+    0
+};
+
+// Process one 512-bit block
+fn pblock(s: i64, w: i64, wv: i64, blk: i64) -> i64 = {
+    let _f = w_fill(w, blk);
+    let _e = w_extend(w);
+    let _i = wv_init(wv, s);
+    let _c = crounds(wv, w);
+    let _a = sadd(s, wv);
+    0
+};
+
+// Copy string bytes to block buffer
+fn cpybytes(blk: i64, inp: String, src: i64, dst: i64, n: i64) -> i64 = {
+    let mut j = 0;
+    while j < n {
+        let _s = bput(blk, dst + j, inp.byte_at(src + j));
+        j = j + 1;
+        0
+    };
+    0
+};
+
+// Zero block
+fn zblk(blk: i64, start: i64, end: i64) -> i64 = {
+    let mut i = start;
+    while i < end {
+        let _s = bput(blk, i, 0);
+        i = i + 1;
+        0
+    };
+    0
+};
+
+// Write bit length as big-endian 64-bit at offset 56
+fn wlen(blk: i64, bits: i64) -> i64 = {
+    let _0 = bput(blk, 56, (bits >> 56) band 255);
+    let _1 = bput(blk, 57, (bits >> 48) band 255);
+    let _2 = bput(blk, 58, (bits >> 40) band 255);
+    let _3 = bput(blk, 59, (bits >> 32) band 255);
+    let _4 = bput(blk, 60, (bits >> 24) band 255);
+    let _5 = bput(blk, 61, (bits >> 16) band 255);
+    let _6 = bput(blk, 62, (bits >> 8) band 255);
+    let _7 = bput(blk, 63, bits band 255);
+    0
+};
+
+// Process full blocks
+fn pfull(s: i64, w: i64, wv: i64, blk: i64, inp: String, cnt: i64) -> i64 = {
+    let mut idx = 0;
+    while idx < cnt {
+        let off = idx * 64;
+        let _z = zblk(blk, 0, 64);
+        let _c = cpybytes(blk, inp, off, 0, 64);
+        let _p = pblock(s, w, wv, blk);
+        idx = idx + 1;
+        0
+    };
+    0
+};
+
+// Hash a string, return state ptr (caller frees)
+fn sha256_raw(inp: String) -> i64 = {
+    let mlen = inp.len();
+    let blen = mlen * 8;
+    let s = malloc(8 * 8);
+    let w = malloc(64 * 8);
+    let wv = malloc(8 * 8);
+    let blk = malloc(64 * 8);
+    let _si = sinit(s);
+    let nfull = mlen / 64;
+    let _fb = pfull(s, w, wv, blk, inp, nfull);
+    let rem = mlen - nfull * 64;
+    let bstart = nfull * 64;
+    let _z = zblk(blk, 0, 64);
+    let _cp = cpybytes(blk, inp, bstart, 0, rem);
+    let _pad = bput(blk, rem, 128);
+    if rem < 56 {
+        let _wl = wlen(blk, blen);
+        let _pb = pblock(s, w, wv, blk);
+        let _dw = drop(w); let _dwv = drop(wv); let _db = drop(blk);
+        s
+    } else {
+        let _p1 = pblock(s, w, wv, blk);
+        let _z2 = zblk(blk, 0, 64);
+        let _wl = wlen(blk, blen);
+        let _p2 = pblock(s, w, wv, blk);
+        let _dw = drop(w); let _dwv = drop(wv); let _db = drop(blk);
+        s
+    }
+};
+
+// Hex output
+fn hd(n: i64) -> String =
+    if n == 0 { "0" } else if n == 1 { "1" } else if n == 2 { "2" }
+    else if n == 3 { "3" } else if n == 4 { "4" } else if n == 5 { "5" }
+    else if n == 6 { "6" } else if n == 7 { "7" } else if n == 8 { "8" }
+    else if n == 9 { "9" } else if n == 10 { "a" } else if n == 11 { "b" }
+    else if n == 12 { "c" } else if n == 13 { "d" } else if n == 14 { "e" }
+    else { "f" };
+
+fn hb(b: i64) -> String = hd((b >> 4) band 15) + hd(b band 15);
+
+fn h32(v: i64) -> String =
+    hb((v >> 24) band 255) + hb((v >> 16) band 255) + hb((v >> 8) band 255) + hb(v band 255);
+
+fn state_hex(s: i64) -> String = {
+    let sb = sb_new();
+    let _0 = sb_push(sb, h32(aget(s, 0))); let _1 = sb_push(sb, h32(aget(s, 1)));
+    let _2 = sb_push(sb, h32(aget(s, 2))); let _3 = sb_push(sb, h32(aget(s, 3)));
+    let _4 = sb_push(sb, h32(aget(s, 4))); let _5 = sb_push(sb, h32(aget(s, 5)));
+    let _6 = sb_push(sb, h32(aget(s, 6))); let _7 = sb_push(sb, h32(aget(s, 7)));
+    sb_build(sb)
+};
+
+// Public API
+fn sha256_string(inp: String) -> String = {
+    let s = sha256_raw(inp);
+    let r = state_hex(s);
+    let _d = drop(s);
+    r
+};
+
+// ============================================================
+// Tests
+// ============================================================
+
+
+@export
+pub fn bmb_sha256(input: String) -> String = sha256_string(input);
+
+fn main() -> i64 = {
+    let h = bmb_sha256("hello");
+    println_str(h);
+    0
+};

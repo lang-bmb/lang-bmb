@@ -787,7 +787,18 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
                   ret i32 0\n\
                 }}\n", ir)
         } else {
-            ir.clone()
+            // v0.97: Always include inline main wrapper for reliable linking
+            // MinGW's weak symbols don't always work, so include main() in the IR
+            format!("{}\n\
+                ; v0.97: Inline main for reliable linking\n\
+                declare void @bmb_init_runtime(i32, ptr)\n\
+                declare void @bmb_arena_destroy()\n\
+                define noundef i32 @main(i32 %argc, ptr %argv) nounwind uwtable \"no-trapping-math\"=\"true\" {{\n\
+                  call void @bmb_init_runtime(i32 %argc, ptr %argv)\n\
+                  call void @bmb_user_main()\n\
+                  call void @bmb_arena_destroy()\n\
+                  ret i32 0\n\
+                }}\n", ir)
         };
 
         let ir_path = config.output.with_extension("ll");
