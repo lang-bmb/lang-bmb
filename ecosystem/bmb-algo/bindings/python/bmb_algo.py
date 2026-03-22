@@ -27,7 +27,27 @@ if not os.path.exists(_lib_path):
 
 _lib = ctypes.CDLL(_lib_path)
 
-# Configure function signatures
+# FFI safety API
+_lib.bmb_ffi_begin.argtypes = []
+_lib.bmb_ffi_begin.restype = ctypes.c_int
+_lib.bmb_ffi_end.argtypes = []
+_lib.bmb_ffi_end.restype = None
+_lib.bmb_ffi_has_error.argtypes = []
+_lib.bmb_ffi_has_error.restype = ctypes.c_int
+_lib.bmb_ffi_error_message.argtypes = []
+_lib.bmb_ffi_error_message.restype = ctypes.c_char_p
+
+# String FFI
+_lib.bmb_ffi_cstr_to_string.argtypes = [ctypes.c_char_p]
+_lib.bmb_ffi_cstr_to_string.restype = ctypes.c_void_p
+_lib.bmb_ffi_string_data.argtypes = [ctypes.c_void_p]
+_lib.bmb_ffi_string_data.restype = ctypes.c_char_p
+_lib.bmb_ffi_string_len.argtypes = [ctypes.c_void_p]
+_lib.bmb_ffi_string_len.restype = ctypes.c_int64
+_lib.bmb_ffi_free_string.argtypes = [ctypes.c_void_p]
+_lib.bmb_ffi_free_string.restype = None
+
+# Algorithm signatures
 _lib.bmb_knapsack.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
 _lib.bmb_knapsack.restype = ctypes.c_int64
 
@@ -80,23 +100,45 @@ def knapsack(weights: list, values: list, capacity: int) -> int:
     )
 
 
+def _safe_call(fn, *args):
+    """Call a BMB function with FFI error handling."""
+    if _lib.bmb_ffi_begin() != 0:
+        msg = _lib.bmb_ffi_error_message()
+        _lib.bmb_ffi_end()
+        raise RuntimeError(f"BMB error: {msg.decode() if msg else 'unknown'}")
+    result = fn(*args)
+    _lib.bmb_ffi_end()
+    return result
+
+
 def edit_distance(a: str, b: str) -> int:
     """Compute Levenshtein edit distance between two strings.
-
-    Args:
-        a: First string
-        b: Second string
-
-    Returns:
-        Minimum number of single-character edits
 
     Example:
         >>> edit_distance("kitten", "sitting")
         3
     """
-    # BMB strings are BmbString structs — for now use the standalone test
-    # TODO: implement BmbString interop
-    raise NotImplementedError("String interop requires BmbString FFI — coming soon")
+    sa = _lib.bmb_ffi_cstr_to_string(a.encode('utf-8'))
+    sb = _lib.bmb_ffi_cstr_to_string(b.encode('utf-8'))
+    result = _safe_call(_lib.bmb_edit_distance, sa, sb)
+    _lib.bmb_ffi_free_string(sa)
+    _lib.bmb_ffi_free_string(sb)
+    return result
+
+
+def lcs(a: str, b: str) -> int:
+    """Find length of longest common subsequence.
+
+    Example:
+        >>> lcs("ABCBDAB", "BDCAB")
+        4
+    """
+    sa = _lib.bmb_ffi_cstr_to_string(a.encode('utf-8'))
+    sb = _lib.bmb_ffi_cstr_to_string(b.encode('utf-8'))
+    result = _safe_call(_lib.bmb_lcs, sa, sb)
+    _lib.bmb_ffi_free_string(sa)
+    _lib.bmb_ffi_free_string(sb)
+    return result
 
 
 def max_subarray(arr: list) -> int:
@@ -185,11 +227,15 @@ if __name__ == '__main__':
     print("bmb-algo test suite -- Powered by BMB")
     print()
 
-    # DP
+    # DP (pointer-based)
     print(f"  knapsack([2,3,4], [3,4,5], 7) = {knapsack([2,3,4], [3,4,5], 7)}")
     print(f"  max_subarray([-2,1,-3,4,-1,2,1,-5,4]) = {max_subarray([-2,1,-3,4,-1,2,1,-5,4])}")
     print(f"  coin_change([1,5,11], 15) = {coin_change([1,5,11], 15)}")
     print(f"  lis([10,9,2,5,3,7,101,18]) = {lis([10,9,2,5,3,7,101,18])}")
+
+    # DP (string-based via FFI)
+    print(f"  edit_distance('kitten', 'sitting') = {edit_distance('kitten', 'sitting')}")
+    print(f"  lcs('ABCBDAB', 'BDCAB') = {lcs('ABCBDAB', 'BDCAB')}")
 
     # Graph
     INF = 999999
@@ -200,4 +246,4 @@ if __name__ == '__main__':
     print(f"  dijkstra(source=0) = {dijkstra(adj, 0)}")
 
     print()
-    print("All tests passed! https://github.com/iyulab/lang-bmb")
+    print("All 8 algorithms working! https://github.com/iyulab/lang-bmb")

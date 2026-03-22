@@ -10,6 +10,7 @@
 #include <inttypes.h>
 #include <string.h>  // v0.90.90: memcpy/memset/strlen for optimized string operations
 #include <math.h>    // v0.90.95: Float math functions (floor, ceil, round, sqrt, fabs, isnan)
+#include <setjmp.h>  // v0.97: FFI error handling (longjmp instead of exit)
 
 // v0.70: Threading support
 #ifdef _WIN32
@@ -45,6 +46,75 @@ static void* bmb_alloc(size_t size);
 // v0.96.46: Non-static to allow BMB's inline main() to set arena flag directly
 int g_arena_enabled;
 
+// ============================================================================
+// v0.97: FFI Error Handling — longjmp instead of exit(1)
+//
+// When BMB is used as a shared library, exit(1) kills the host process.
+// Instead, bmb_panic sets an error flag and longjmps to the FFI boundary.
+//
+// Usage from C/Python:
+//   if (bmb_ffi_begin() != 0) {
+//       // error occurred — get message with bmb_ffi_error_message()
+//       return -1;
+//   }
+//   int64_t result = bmb_knapsack(...);
+//   // success
+// ============================================================================
+
+// Thread-local error state for FFI safety
+// Use __thread for GCC/Clang on all platforms (including MinGW)
+#if defined(_MSC_VER)
+static __declspec(thread) jmp_buf g_ffi_jmp_buf;
+static __declspec(thread) int g_ffi_active = 0;
+static __declspec(thread) char g_ffi_error_msg[512];
+static __declspec(thread) int g_ffi_has_error = 0;
+#else
+static __thread jmp_buf g_ffi_jmp_buf;
+static __thread int g_ffi_active = 0;
+static __thread char g_ffi_error_msg[512];
+static __thread int g_ffi_has_error = 0;
+#endif
+
+// v0.97: BMB_EXPORT ensures functions survive --gc-sections in shared libs
+#ifdef _WIN32
+#define BMB_EXPORT __declspec(dllexport)
+#else
+#define BMB_EXPORT __attribute__((visibility("default"), used))
+#endif
+
+// Set FFI error boundary. Returns 0 on first call, non-zero on error (longjmp).
+BMB_EXPORT int bmb_ffi_begin(void) {
+    g_ffi_has_error = 0;
+    g_ffi_error_msg[0] = '\0';
+    g_ffi_active = 1;
+    return setjmp(g_ffi_jmp_buf);
+}
+
+// End FFI boundary.
+BMB_EXPORT void bmb_ffi_end(void) {
+    g_ffi_active = 0;
+}
+
+// Check if an error occurred during the last FFI call.
+BMB_EXPORT int bmb_ffi_has_error(void) {
+    return g_ffi_has_error;
+}
+
+// Get the error message from the last FFI error.
+BMB_EXPORT const char* bmb_ffi_error_message(void) {
+    return g_ffi_error_msg;
+}
+
+// Internal: trigger FFI error (called by bmb_panic etc.)
+static void bmb_ffi_trigger(const char* msg) {
+    g_ffi_has_error = 1;
+    if (msg) {
+        strncpy(g_ffi_error_msg, msg, sizeof(g_ffi_error_msg) - 1);
+        g_ffi_error_msg[sizeof(g_ffi_error_msg) - 1] = '\0';
+    }
+    longjmp(g_ffi_jmp_buf, 1);
+}
+
 // Helper to create a new BmbString from raw char*
 static BmbString* bmb_string_wrap(char* data) {
     if (!data) {
@@ -65,10 +135,17 @@ void bmb_print_i64(int64_t n) { printf("%" PRId64, n); }
 void bmb_println_f64(double f) { printf("%.9f\n", f); }
 void bmb_print_f64(double f) { printf("%.9f", f); }
 int64_t bmb_read_int() { int64_t n; scanf("%" SCNd64, &n); return n; }
-void bmb_assert(int cond) { if (!cond) { fprintf(stderr, "Assertion failed!\n"); exit(1); } }
+void bmb_assert(int cond) {
+    if (!cond) {
+        if (g_ffi_active) bmb_ffi_trigger("assertion failed");
+        fprintf(stderr, "Assertion failed!\n");
+        exit(1);
+    }
+}
 void bmb_panic(const BmbString* s) {
-    if (s && s->data) fprintf(stderr, "panic: %s\n", s->data);
-    else fprintf(stderr, "panic\n");
+    const char* msg = (s && s->data) ? s->data : "panic";
+    if (g_ffi_active) bmb_ffi_trigger(msg);
+    fprintf(stderr, "panic: %s\n", msg);
     exit(1);
 }
 int64_t bmb_abs(int64_t n) { return n < 0 ? -n : n; }
@@ -713,12 +790,17 @@ int64_t bmb_array_len(int64_t* arr) {
 }
 
 // v0.96.20: Bounds-checked array access (--safe mode)
+// v0.97: FFI-safe — longjmp instead of exit when in FFI context
 void bmb_panic_bounds(int64_t idx, int64_t len) {
-    fprintf(stderr, "panic: array index %" PRId64 " out of bounds [0, %" PRId64 ")\n", idx, len);
+    char buf[128];
+    snprintf(buf, sizeof(buf), "array index %" PRId64 " out of bounds [0, %" PRId64 ")", idx, len);
+    if (g_ffi_active) bmb_ffi_trigger(buf);
+    fprintf(stderr, "panic: %s\n", buf);
     exit(1);
 }
 
 void bmb_panic_divzero(void) {
+    if (g_ffi_active) bmb_ffi_trigger("division by zero");
     fprintf(stderr, "panic: division by zero\n");
     exit(1);
 }
@@ -1039,6 +1121,41 @@ BmbString* bmb_string_from_cstr(const char* s) {
     str->len = len;
     str->cap = len;
     return str;
+}
+
+// ============================================================================
+// v0.97: FFI String Conversion API
+// These use malloc (not arena) so external callers can manage lifetime
+// ============================================================================
+
+// Create BmbString from C string (external-safe, uses malloc)
+BMB_EXPORT BmbString* bmb_ffi_cstr_to_string(const char* s) {
+    if (!s) s = "";
+    int64_t len = (int64_t)strlen(s);
+    char* copy = (char*)malloc(len + 1);
+    memcpy(copy, s, (size_t)(len + 1));
+    BmbString* str = (BmbString*)malloc(sizeof(BmbString));
+    str->data = copy;
+    str->len = len;
+    str->cap = len;
+    return str;
+}
+
+// Get null-terminated C string from BmbString (returns pointer into BmbString data, do NOT free)
+BMB_EXPORT const char* bmb_ffi_string_data(const BmbString* s) {
+    return (s && s->data) ? s->data : "";
+}
+
+// Get string length
+BMB_EXPORT int64_t bmb_ffi_string_len(const BmbString* s) {
+    return s ? s->len : 0;
+}
+
+// Free a BmbString created by bmb_ffi_cstr_to_string
+BMB_EXPORT void bmb_ffi_free_string(BmbString* s) {
+    if (!s) return;
+    if (s->data) free(s->data);
+    free(s);
 }
 
 // Create new string with given length (allocates copy)

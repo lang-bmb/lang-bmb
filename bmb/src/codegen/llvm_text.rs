@@ -1958,9 +1958,13 @@ impl TextCodeGen {
         // v0.60.252: Use private linkage for all non-main user functions
         // Private linkage enables LLVM to eliminate unused functions and optimize more aggressively
         // v0.96.30: Extended from alwaysinline-only to all user functions (matches bootstrap compiler)
-        // v0.97: @export functions get global visibility for shared library exports
+        // v0.97: @export functions get dllexport (Windows) for shared library export table
         let linkage = if func.is_export {
-            "" // Global visibility — callable from external code
+            if cfg!(target_os = "windows") {
+                "dllexport " // Windows: ensures function appears in DLL export table
+            } else {
+                "" // Unix: global visibility is sufficient
+            }
         } else if func.name != "main" && func.name != "bmb_user_main" {
             "private "
         } else {

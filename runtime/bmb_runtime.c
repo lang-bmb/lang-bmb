@@ -10,12 +10,15 @@
 #include <inttypes.h>
 #include <string.h>  // v0.90.90: memcpy/memset/strlen for optimized string operations
 #include <math.h>    // v0.90.95: Float math functions (floor, ceil, round, sqrt, fabs, isnan)
+#include <setjmp.h>  // v0.97: FFI error handling (longjmp instead of exit)
 
 // v0.70: Threading support
 #ifdef _WIN32
 #include <winsock2.h>  // v0.88: Must be before windows.h
 #include <ws2tcpip.h>
 #include <windows.h>
+#include <io.h>       // v0.97: _setmode for binary stdio
+#include <fcntl.h>    // v0.97: _O_BINARY
 #else
 #include <pthread.h>
 #include <errno.h>   // v0.77: For ETIMEDOUT
@@ -40,7 +43,77 @@ typedef struct {
 
 // v0.88.2: Forward declarations for arena allocator
 static void* bmb_alloc(size_t size);
-static int g_arena_enabled;
+// v0.96.46: Non-static to allow BMB's inline main() to set arena flag directly
+int g_arena_enabled;
+
+// ============================================================================
+// v0.97: FFI Error Handling — longjmp instead of exit(1)
+//
+// When BMB is used as a shared library, exit(1) kills the host process.
+// Instead, bmb_panic sets an error flag and longjmps to the FFI boundary.
+//
+// Usage from C/Python:
+//   if (bmb_ffi_begin() != 0) {
+//       // error occurred — get message with bmb_ffi_error_message()
+//       return -1;
+//   }
+//   int64_t result = bmb_knapsack(...);
+//   // success
+// ============================================================================
+
+// Thread-local error state for FFI safety
+// Use __thread for GCC/Clang on all platforms (including MinGW)
+#if defined(_MSC_VER)
+static __declspec(thread) jmp_buf g_ffi_jmp_buf;
+static __declspec(thread) int g_ffi_active = 0;
+static __declspec(thread) char g_ffi_error_msg[512];
+static __declspec(thread) int g_ffi_has_error = 0;
+#else
+static __thread jmp_buf g_ffi_jmp_buf;
+static __thread int g_ffi_active = 0;
+static __thread char g_ffi_error_msg[512];
+static __thread int g_ffi_has_error = 0;
+#endif
+
+// v0.97: BMB_EXPORT ensures functions survive --gc-sections in shared libs
+#ifdef _WIN32
+#define BMB_EXPORT __declspec(dllexport)
+#else
+#define BMB_EXPORT __attribute__((visibility("default"), used))
+#endif
+
+// Set FFI error boundary. Returns 0 on first call, non-zero on error (longjmp).
+BMB_EXPORT int bmb_ffi_begin(void) {
+    g_ffi_has_error = 0;
+    g_ffi_error_msg[0] = '\0';
+    g_ffi_active = 1;
+    return setjmp(g_ffi_jmp_buf);
+}
+
+// End FFI boundary.
+BMB_EXPORT void bmb_ffi_end(void) {
+    g_ffi_active = 0;
+}
+
+// Check if an error occurred during the last FFI call.
+BMB_EXPORT int bmb_ffi_has_error(void) {
+    return g_ffi_has_error;
+}
+
+// Get the error message from the last FFI error.
+BMB_EXPORT const char* bmb_ffi_error_message(void) {
+    return g_ffi_error_msg;
+}
+
+// Internal: trigger FFI error (called by bmb_panic etc.)
+static void bmb_ffi_trigger(const char* msg) {
+    g_ffi_has_error = 1;
+    if (msg) {
+        strncpy(g_ffi_error_msg, msg, sizeof(g_ffi_error_msg) - 1);
+        g_ffi_error_msg[sizeof(g_ffi_error_msg) - 1] = '\0';
+    }
+    longjmp(g_ffi_jmp_buf, 1);
+}
 
 // Helper to create a new BmbString from raw char*
 static BmbString* bmb_string_wrap(char* data) {
@@ -62,10 +135,17 @@ void bmb_print_i64(int64_t n) { printf("%" PRId64, n); }
 void bmb_println_f64(double f) { printf("%.9f\n", f); }
 void bmb_print_f64(double f) { printf("%.9f", f); }
 int64_t bmb_read_int() { int64_t n; scanf("%" SCNd64, &n); return n; }
-void bmb_assert(int cond) { if (!cond) { fprintf(stderr, "Assertion failed!\n"); exit(1); } }
+void bmb_assert(int cond) {
+    if (!cond) {
+        if (g_ffi_active) bmb_ffi_trigger("assertion failed");
+        fprintf(stderr, "Assertion failed!\n");
+        exit(1);
+    }
+}
 void bmb_panic(const BmbString* s) {
-    if (s && s->data) fprintf(stderr, "panic: %s\n", s->data);
-    else fprintf(stderr, "panic\n");
+    const char* msg = (s && s->data) ? s->data : "panic";
+    if (g_ffi_active) bmb_ffi_trigger(msg);
+    fprintf(stderr, "panic: %s\n", msg);
     exit(1);
 }
 int64_t bmb_abs(int64_t n) { return n < 0 ? -n : n; }
@@ -709,6 +789,34 @@ int64_t bmb_array_len(int64_t* arr) {
     return arr[1];
 }
 
+// v0.96.20: Bounds-checked array access (--safe mode)
+// v0.97: FFI-safe — longjmp instead of exit when in FFI context
+void bmb_panic_bounds(int64_t idx, int64_t len) {
+    char buf[128];
+    snprintf(buf, sizeof(buf), "array index %" PRId64 " out of bounds [0, %" PRId64 ")", idx, len);
+    if (g_ffi_active) bmb_ffi_trigger(buf);
+    fprintf(stderr, "panic: %s\n", buf);
+    exit(1);
+}
+
+void bmb_panic_divzero(void) {
+    if (g_ffi_active) bmb_ffi_trigger("division by zero");
+    fprintf(stderr, "panic: division by zero\n");
+    exit(1);
+}
+
+int64_t bmb_array_get_safe(int64_t* arr, int64_t idx) {
+    int64_t len = arr[1];
+    if (idx < 0 || idx >= len) bmb_panic_bounds(idx, len);
+    return arr[2 + idx];
+}
+
+void bmb_array_set_safe(int64_t* arr, int64_t idx, int64_t val) {
+    int64_t len = arr[1];
+    if (idx < 0 || idx >= len) bmb_panic_bounds(idx, len);
+    arr[2 + idx] = val;
+}
+
 // v0.90.97: Integer methods — clamp, pow
 int64_t bmb_clamp(int64_t n, int64_t lo, int64_t hi) {
     if (n < lo) return lo;
@@ -806,6 +914,9 @@ BmbString* bmb_int_to_string(int64_t n) {
     snprintf(s, 21, "%" PRId64, n);
     return bmb_string_wrap(s);
 }
+
+// v0.97: Wrapper for non-prefixed name
+BmbString* int_to_string(int64_t n) { return bmb_int_to_string(n); }
 
 // v0.60.244: Fast integer-to-BmbString conversion for bootstrap compiler
 // Returns BmbString* which matches the bootstrap's String type
@@ -1012,6 +1123,41 @@ BmbString* bmb_string_from_cstr(const char* s) {
     return str;
 }
 
+// ============================================================================
+// v0.97: FFI String Conversion API
+// These use malloc (not arena) so external callers can manage lifetime
+// ============================================================================
+
+// Create BmbString from C string (external-safe, uses malloc)
+BMB_EXPORT BmbString* bmb_ffi_cstr_to_string(const char* s) {
+    if (!s) s = "";
+    int64_t len = (int64_t)strlen(s);
+    char* copy = (char*)malloc(len + 1);
+    memcpy(copy, s, (size_t)(len + 1));
+    BmbString* str = (BmbString*)malloc(sizeof(BmbString));
+    str->data = copy;
+    str->len = len;
+    str->cap = len;
+    return str;
+}
+
+// Get null-terminated C string from BmbString (returns pointer into BmbString data, do NOT free)
+BMB_EXPORT const char* bmb_ffi_string_data(const BmbString* s) {
+    return (s && s->data) ? s->data : "";
+}
+
+// Get string length
+BMB_EXPORT int64_t bmb_ffi_string_len(const BmbString* s) {
+    return s ? s->len : 0;
+}
+
+// Free a BmbString created by bmb_ffi_cstr_to_string
+BMB_EXPORT void bmb_ffi_free_string(BmbString* s) {
+    if (!s) return;
+    if (s->data) free(s->data);
+    free(s);
+}
+
 // Create new string with given length (allocates copy)
 // v0.88.2: Uses arena-aware allocation
 BmbString* bmb_string_new(const char* s, int64_t len) {
@@ -1037,6 +1183,40 @@ BmbString* bmb_read_line() {
         buf[--len] = '\0';
     }
     return bmb_string_new(buf, len);
+}
+
+// v0.97: Read exactly N bytes from stdin (for LSP Content-Length protocol)
+BmbString* bmb_read_bytes(int64_t n) {
+    if (n <= 0) return bmb_string_from_cstr("");
+#ifdef _WIN32
+    int old_mode = _setmode(_fileno(stdin), _O_BINARY);
+#endif
+    fflush(stdout);
+    char* buf = (char*)malloc(n + 1);
+    if (!buf) return bmb_string_from_cstr("");
+    size_t total = 0;
+    while (total < (size_t)n) {
+        size_t got = fread(buf + total, 1, (size_t)n - total, stdin);
+        if (got == 0) break;  // EOF
+        total += got;
+    }
+    buf[total] = '\0';
+    BmbString* result = bmb_string_new(buf, (int64_t)total);
+    free(buf);
+#ifdef _WIN32
+    _setmode(_fileno(stdin), old_mode);
+#endif
+    return result;
+}
+
+// v0.97: Write raw string to stdout without newline (for LSP responses)
+void bmb_write_stdout(const BmbString* s) {
+    if (!s) return;
+#ifdef _WIN32
+    _setmode(_fileno(stdout), _O_BINARY);
+#endif
+    fwrite(s->data, 1, (size_t)s->len, stdout);
+    fflush(stdout);
 }
 
 // String length - parameter is BmbString*
@@ -1740,12 +1920,11 @@ static inline void* bmb_arena_alloc(size_t size) {
 }
 
 // Enable/disable arena mode (1=enable, 0=disable)
+// v0.96.47: Lazy initialization — don't pre-allocate 8MB block.
+// First bmb_arena_alloc() call will allocate when needed.
+// This eliminates TLB/cache pollution for programs that never use strings.
 int64_t bmb_arena_mode(int64_t enable) {
     g_arena_enabled = (int)enable;
-    if (enable && !g_arena_head) {
-        g_arena_head = bmb_arena_new_block(BMB_ARENA_BLOCK_SIZE);
-        g_arena_current = g_arena_head;
-    }
     return 0;
 }
 
@@ -2356,6 +2535,9 @@ BmbString* bmb_getcwd(void) {
     return bmb_string_wrap(data);
 }
 
+// v0.97: stdlib fs aliases
+BmbString* current_dir(void) { return bmb_getcwd(); }
+
 // Wrapper for BMB code
 BmbString* system_capture(const BmbString* cmd) { return bmb_system_capture(cmd); }
 
@@ -2615,6 +2797,14 @@ int64_t remove_dir(const BmbString* path) {
 // v0.46: Command-line argument support for CLI Independence
 static int g_argc = 0;
 static char** g_argv = NULL;
+
+// v0.96.46: Runtime initialization for inline main wrapper
+// Called from BMB-generated @main() to set up argc/argv and arena before bmb_user_main()
+void bmb_init_runtime(int argc, char** argv) {
+    g_argc = argc;
+    g_argv = argv;
+    bmb_arena_mode(1);
+}
 
 int64_t bmb_arg_count(void) {
     return (int64_t)g_argc;
@@ -4330,6 +4520,11 @@ int64_t bmb_time_ms(void) { return bmb_time_ns() / 1000000LL; }
 // Alias for compatibility
 int64_t time_ns(void) { return bmb_time_ns(); }
 
+// v0.97: stdlib time module aliases
+int64_t now_ns(void) { return bmb_time_ns(); }
+int64_t now_ms(void) { return bmb_time_ms(); }
+int64_t time_ms(void) { return bmb_time_ms(); }
+
 // v0.95: exit process
 void bmb_exit(int64_t code) { exit((int)code); }
 
@@ -4340,6 +4535,9 @@ void bmb_sleep_ms(int64_t ms) { Sleep((DWORD)ms); }
 #include <unistd.h>
 void bmb_sleep_ms(int64_t ms) { usleep((useconds_t)(ms * 1000)); }
 #endif
+
+// v0.97: stdlib sleep_ms wrapper (returns 0 for i64-based stdlib convention)
+int64_t sleep_ms(int64_t ms) { bmb_sleep_ms(ms); return 0; }
 
 // v0.95: random number generation (xorshift64)
 static uint64_t bmb_rng_state = 0;
@@ -5720,15 +5918,13 @@ void bmb_scope_wait(int64_t scope_handle) {
 // ============================================================================
 
 int64_t bmb_user_main(void);
+// v0.96.46: Weak main() allows BMB to provide its own main() in LLVM IR,
+// eliminating the function call overhead from main() → bmb_user_main().
+// When BMB doesn't provide main(), this default version is used.
+__attribute__((weak))
 int main(int argc, char** argv) {
     g_argc = argc;
     g_argv = argv;
-    // v0.88.4: Arena ENABLED by default.
-    // BMB has no GC or destructors - without arena, every string allocation
-    // leaks (malloc without free). Arena pools all allocations and frees
-    // everything at process exit via bmb_arena_destroy().
-    // Hard limit (default 4GB) prevents OOM/BSOD - process exits with error.
-    // Override limit via BMB_ARENA_MAX_SIZE env var (e.g. "8G", "512M").
     bmb_arena_mode(1);
     int result = (int)bmb_user_main();
     bmb_arena_destroy();

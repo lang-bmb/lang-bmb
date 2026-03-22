@@ -905,7 +905,10 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
             }
 
             // v0.96.37: Remove unreferenced functions
-            cmd.arg("-Wl,--gc-sections");
+            // v0.97: Skip gc-sections for shared libraries (FFI functions would be stripped)
+            if !matches!(config.output_type, OutputType::SharedLib) {
+                cmd.arg("-Wl,--gc-sections");
+            }
 
             // v0.83.1: Link ws2_32 for AsyncSocket (WinSock) support on Windows
             #[cfg(target_os = "windows")]
