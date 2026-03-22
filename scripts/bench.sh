@@ -27,6 +27,12 @@
 
 set -e
 
+# v0.97: Ensure TEMP is set for clang on Windows (MSYS2 subshells may lose it)
+if [ -z "${TEMP:-}" ]; then
+    export TEMP="${TMPDIR:-/tmp}"
+    export TMP="$TEMP"
+fi
+
 # ─── Configuration ───────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -35,7 +41,8 @@ BMB="${PROJECT_ROOT}/target/release/bmb"
 RUNTIME_OBJ="${PROJECT_ROOT}/bmb/runtime/bmb_runtime.o"
 RUNTIME_EVT="${PROJECT_ROOT}/bmb/runtime/bmb_event_loop.o"
 BENCH_DIR="${PROJECT_ROOT}/ecosystem/benchmark-bmb/benches/compute"
-BUILD_DIR="/tmp/bmb-bench"
+# v0.97: Use project-local dir to avoid Windows /tmp path issues
+BUILD_DIR="${PROJECT_ROOT}/target/bench"
 
 # ─── Defaults ────────────────────────────────────────────────────────────────
 RUNS=11
@@ -190,7 +197,9 @@ build_bmb() {
     local obj="${BUILD_DIR}/${name}.o"
 
     # Step 1: Generate text LLVM IR
-    if ! "$BMB_ACTUAL" build "$src" --emit-ir -o "$ir" > /dev/null 2>&1; then
+    # Note: bmb adds .ll extension automatically, so pass base name without extension
+    local ir_base="${BUILD_DIR}/${name}"
+    if ! "$BMB_ACTUAL" build "$src" --emit-ir -o "$ir_base" > /dev/null 2>&1; then
         echo "FAIL:emit-ir"
         return 1
     fi

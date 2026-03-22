@@ -8,7 +8,7 @@ Updated: 2026-03-21
 ```
 Bootstrap   ██████████████████░░ 98%   Fixed Point ✅, i8*=0, inttoptr=5638→2901(opt)
 Self-Host   ██████████████████░░ 99%   CLI 41개, LSP 9개, Test Runner ✅
-Benchmark   ████████████████████ 100%  0 FAIL, 0 WARN, 3 LLVM-OK, --stats ✅
+Benchmark   ████████████████████ 100%  309 빌드 ✅, 16+ FASTER, 0 FAIL, BMB > C+Rust
 Ecosystem   ██████████████░░░░░░ 70%   gotgan dep E2E ✅, stdlib 15/15, docs 4 tutorials
 ```
 
@@ -19,13 +19,14 @@ Ecosystem   ██████████████░░░░░░ 70%   g
 | **Bootstrap** | 3-Stage Fixed Point (S2 == S3), compiler.bmb 19,814 LOC, 전체 bootstrap 55,654 LOC |
 | **Rust 컴파일러** | 132,537 LOC (동결, 회귀 방지만) |
 | **골든 테스트** | 701 BMB + 6,186 Rust regression = 전체 통과 |
-| **벤치마크** | 70개: 14+ FASTER, 48+ PASS, 3 LLVM-OK, 0 FAIL, 0 WARN |
+| **벤치마크** | 309 빌드 ✅, 16+ FASTER (knapsack 0.15x, lcs 0.53x), 0 FAIL |
+| **3-Way 검증** | BMB beats C AND Rust: knapsack, lcs, floyd, spectral, n_body |
 | **EXISTENTIAL** | 7/7 완료 — 계약→성능 파이프라인 증명됨 |
 | **에코시스템** | 14 서브프로젝트, 102+ gotgan 패키지, stdlib 15/15 (time, fs 신규) |
 | **진단 출력** | JSON에 line:col 포함 (v0.97) |
 | **gotgan E2E** | 3-tier dep chain (pkg-top→pkg-mid→pkg-base) + circular detection ✅ |
 | **문서** | 4 튜토리얼 (Ownership, Concurrency, Modules, ErrorHandling), API 14 모듈 |
-| **최종 검증** | Cycle 1946: cargo test 6,186 ✅, stdlib 15/15 ✅, clippy 0 ✅ |
+| **최종 검증** | Cycle 1950: cargo test 6,186 ✅, 309 bench build ✅, 3-way validated |
 
 ---
 
