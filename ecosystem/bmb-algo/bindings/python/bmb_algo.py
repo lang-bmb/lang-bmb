@@ -135,6 +135,21 @@ _lib.bmb_is_sorted.restype = ctypes.c_int64
 _lib.bmb_array_reverse.argtypes = [ctypes.c_int64, ctypes.c_int64]
 _lib.bmb_array_reverse.restype = ctypes.c_int64
 
+_lib.bmb_bit_popcount.argtypes = [ctypes.c_int64]
+_lib.bmb_bit_popcount.restype = ctypes.c_int64
+_lib.bmb_array_rotate.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_array_rotate.restype = ctypes.c_int64
+_lib.bmb_unique_count.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_unique_count.restype = ctypes.c_int64
+_lib.bmb_prefix_sum.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_prefix_sum.restype = ctypes.c_int64
+_lib.bmb_array_sum.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_array_sum.restype = ctypes.c_int64
+_lib.bmb_array_min.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_array_min.restype = ctypes.c_int64
+_lib.bmb_array_max.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_array_max.restype = ctypes.c_int64
+
 
 def knapsack(weights: list, values: list, capacity: int) -> int:
     """Solve 0/1 knapsack problem.
@@ -433,6 +448,55 @@ def is_sorted(arr: list) -> bool:
     return bool(_lib.bmb_is_sorted(ctypes.addressof(c_arr), n))
 
 
+def bit_popcount(x: int) -> int:
+    """Count set bits in integer."""
+    return _lib.bmb_bit_popcount(x)
+
+
+def array_rotate(arr: list, k: int) -> list:
+    """Rotate array left by k positions. Returns rotated copy."""
+    n = len(arr)
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    _lib.bmb_array_rotate(ctypes.addressof(c_arr), n, k)
+    return list(c_arr)
+
+
+def unique_count(sorted_arr: list) -> int:
+    """Count distinct values in sorted array."""
+    n = len(sorted_arr)
+    c_arr = (ctypes.c_int64 * n)(*sorted_arr)
+    return _lib.bmb_unique_count(ctypes.addressof(c_arr), n)
+
+
+def prefix_sum(arr: list) -> list:
+    """Compute prefix sum in-place. Returns result."""
+    n = len(arr)
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    _lib.bmb_prefix_sum(ctypes.addressof(c_arr), n)
+    return list(c_arr)
+
+
+def array_sum(arr: list) -> int:
+    """Sum of array elements."""
+    n = len(arr)
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    return _lib.bmb_array_sum(ctypes.addressof(c_arr), n)
+
+
+def array_min(arr: list) -> int:
+    """Minimum value in array."""
+    n = len(arr)
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    return _lib.bmb_array_min(ctypes.addressof(c_arr), n)
+
+
+def array_max(arr: list) -> int:
+    """Maximum value in array."""
+    n = len(arr)
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    return _lib.bmb_array_max(ctypes.addressof(c_arr), n)
+
+
 def array_reverse(arr: list) -> list:
     """Reverse an array. Returns reversed copy."""
     n = len(arr)
@@ -503,5 +567,15 @@ if __name__ == '__main__':
     print(f"  is_sorted([3,1,2]) = {is_sorted([3,1,2])}")
     print(f"  array_reverse([1,2,3,4,5]) = {array_reverse([1,2,3,4,5])}")
 
+    # Cycle 2013 algorithms
+    print(f"  bit_popcount(255) = {bit_popcount(255)}")
+    print(f"  bit_popcount(0) = {bit_popcount(0)}")
+    print(f"  array_rotate([1,2,3,4,5], 2) = {array_rotate([1,2,3,4,5], 2)}")
+    print(f"  unique_count([1,1,2,3,3,3,4]) = {unique_count([1,1,2,3,3,3,4])}")
+    print(f"  prefix_sum([1,2,3,4,5]) = {prefix_sum([1,2,3,4,5])}")
+    print(f"  array_sum([1,2,3,4,5]) = {array_sum([1,2,3,4,5])}")
+    print(f"  array_min([5,3,8,1,7]) = {array_min([5,3,8,1,7])}")
+    print(f"  array_max([5,3,8,1,7]) = {array_max([5,3,8,1,7])}")
+
     print()
-    print("All 27 algorithms working! https://github.com/iyulab/lang-bmb")
+    print("All 34 algorithms working! https://github.com/iyulab/lang-bmb")

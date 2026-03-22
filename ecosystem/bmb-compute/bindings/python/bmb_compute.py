@@ -1,0 +1,183 @@
+"""
+bmb-compute: Numeric computation powered by BMB
+https://github.com/iyulab/lang-bmb
+
+Functions: abs, min, max, clamp, sign, ipow, sqrt, factorial,
+           sum, mean, min_val, max_val, range_val, variance,
+           rand_seed, rand_next, rand_pos, rand_range,
+           dot_product, dist_squared
+"""
+
+import ctypes
+import os
+import sys
+
+_lib_dir = os.path.dirname(os.path.abspath(__file__))
+_lib_name = {'win32': 'bmb_compute.dll', 'linux': 'libbmb_compute.so', 'darwin': 'libbmb_compute.dylib'}.get(sys.platform, 'libbmb_compute.so')
+_lib_path = os.path.join(_lib_dir, _lib_name)
+if not os.path.exists(_lib_path):
+    _lib_path = os.path.join(_lib_dir, '..', '..', _lib_name)
+
+if sys.platform == 'win32' and hasattr(os, 'add_dll_directory'):
+    for p in [r'C:\msys64\ucrt64\bin', r'C:\msys64\mingw64\bin']:
+        if os.path.isdir(p):
+            os.add_dll_directory(p)
+
+_lib = ctypes.CDLL(_lib_path)
+
+# FFI
+_lib.bmb_ffi_begin.restype = ctypes.c_int
+_lib.bmb_ffi_end.restype = None
+
+# Math (i64 -> i64)
+for fn in ['bmb_c_abs', 'bmb_sign', 'bmb_sqrt', 'bmb_factorial',
+           'bmb_rand_seed', 'bmb_rand_next', 'bmb_rand_pos']:
+    getattr(_lib, fn).argtypes = [ctypes.c_int64]
+    getattr(_lib, fn).restype = ctypes.c_int64
+
+for fn in ['bmb_c_min', 'bmb_c_max', 'bmb_ipow', 'bmb_rand_range']:
+    getattr(_lib, fn).argtypes = [ctypes.c_int64, ctypes.c_int64]
+    getattr(_lib, fn).restype = ctypes.c_int64
+
+_lib.bmb_c_clamp.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_c_clamp.restype = ctypes.c_int64
+
+# Stats (pointer + n)
+for fn in ['bmb_sum', 'bmb_mean_scaled', 'bmb_c_min_val', 'bmb_c_max_val',
+           'bmb_range_val', 'bmb_variance_scaled']:
+    getattr(_lib, fn).argtypes = [ctypes.c_int64, ctypes.c_int64]
+    getattr(_lib, fn).restype = ctypes.c_int64
+
+# Vector ops
+_lib.bmb_dot_product.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_dot_product.restype = ctypes.c_int64
+_lib.bmb_dist_squared.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_dist_squared.restype = ctypes.c_int64
+
+
+def _arr(lst):
+    n = len(lst)
+    c = (ctypes.c_int64 * n)(*lst)
+    return ctypes.addressof(c), n, c  # keep c alive
+
+# Math functions
+def abs(x): return _lib.bmb_c_abs(x)
+def min(a, b): return _lib.bmb_c_min(a, b)
+def max(a, b): return _lib.bmb_c_max(a, b)
+def clamp(x, lo, hi): return _lib.bmb_c_clamp(x, lo, hi)
+def sign(x): return _lib.bmb_sign(x)
+def ipow(base, exp): return _lib.bmb_ipow(base, exp)
+def sqrt(n): return _lib.bmb_sqrt(n)
+def factorial(n): return _lib.bmb_factorial(n)
+
+# Statistics
+def sum(arr):
+    p, n, _c = _arr(arr)
+    return _lib.bmb_sum(p, n)
+
+def mean_scaled(arr):
+    """Mean × 1000 (3 decimal places)."""
+    p, n, _c = _arr(arr)
+    return _lib.bmb_mean_scaled(p, n)
+
+def min_val(arr):
+    p, n, _c = _arr(arr)
+    return _lib.bmb_c_min_val(p, n)
+
+def max_val(arr):
+    p, n, _c = _arr(arr)
+    return _lib.bmb_c_max_val(p, n)
+
+def range_val(arr):
+    p, n, _c = _arr(arr)
+    return _lib.bmb_range_val(p, n)
+
+def variance_scaled(arr):
+    """Variance × 1000000 (6 decimal places)."""
+    p, n, _c = _arr(arr)
+    return _lib.bmb_variance_scaled(p, n)
+
+# Random
+def rand_seed(seed): return _lib.bmb_rand_seed(seed)
+def rand_next(state): return _lib.bmb_rand_next(state)
+def rand_pos(state): return _lib.bmb_rand_pos(state)
+def rand_range(state, max_val): return _lib.bmb_rand_range(state, max_val)
+
+# Vector operations
+def dot_product(a, b):
+    assert len(a) == len(b)
+    pa, na, _ca = _arr(a)
+    pb, nb, _cb = _arr(b)
+    return _lib.bmb_dot_product(pa, pb, na)
+
+def dist_squared(a, b):
+    assert len(a) == len(b)
+    pa, na, _ca = _arr(a)
+    pb, nb, _cb = _arr(b)
+    return _lib.bmb_dist_squared(pa, pb, na)
+
+
+if __name__ == '__main__':
+    passed = 0
+    failed = 0
+
+    def check(name, got, expected):
+        global passed, failed
+        if got == expected:
+            print(f"  PASS: {name}")
+            passed += 1
+        else:
+            print(f"  FAIL: {name} (got {got}, expected {expected})")
+            failed += 1
+
+    print("bmb-compute test suite -- Powered by BMB")
+    print()
+
+    print("[Math]")
+    check("abs(-42)", abs(-42), 42)
+    check("abs(0)", abs(0), 0)
+    check("min(3,7)", min(3, 7), 3)
+    check("max(3,7)", max(3, 7), 7)
+    check("clamp(5,1,10)", clamp(5, 1, 10), 5)
+    check("clamp(-5,1,10)", clamp(-5, 1, 10), 1)
+    check("clamp(15,1,10)", clamp(15, 1, 10), 10)
+    check("sign(-5)", sign(-5), -1)
+    check("sign(0)", sign(0), 0)
+    check("sign(5)", sign(5), 1)
+    check("ipow(2,10)", ipow(2, 10), 1024)
+    check("ipow(3,5)", ipow(3, 5), 243)
+    check("sqrt(144)", sqrt(144), 12)
+    check("sqrt(0)", sqrt(0), 0)
+    check("sqrt(1)", sqrt(1), 1)
+    check("factorial(10)", factorial(10), 3628800)
+    check("factorial(0)", factorial(0), 1)
+
+    print("[Statistics]")
+    data = [10, 20, 30, 40, 50]
+    check("sum", sum(data), 150)
+    check("mean_scaled", mean_scaled(data), 30000)
+    check("min_val", min_val(data), 10)
+    check("max_val", max_val(data), 50)
+    check("range_val", range_val(data), 40)
+    v = variance_scaled(data)
+    check("variance_scaled", v, 200000000)  # variance = 200, × 1000000 = 200000000
+
+    print("[Random]")
+    s = rand_seed(42)
+    check("seed nonzero", s != 0, True)
+    r1 = rand_pos(s)
+    check("rand_pos >= 0", r1 >= 0, True)
+    r2 = rand_range(s, 100)
+    check("rand_range [0,100)", r2 >= 0 and r2 < 100, True)
+
+    print("[Vector]")
+    check("dot_product", dot_product([1,2,3], [4,5,6]), 32)
+    check("dist_squared", dist_squared([0,0], [3,4]), 25)
+
+    print()
+    total = passed + failed
+    print(f"Results: {passed}/{total} passed")
+    if failed:
+        sys.exit(1)
+    else:
+        print("All tests passed!")

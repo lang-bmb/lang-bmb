@@ -69,6 +69,14 @@ def test_bmb_algo():
     check(S, "is_sorted", bmb_algo.is_sorted([1,2,3]), True)
     check(S, "array_reverse", bmb_algo.array_reverse([1,2,3]), [3,2,1])
     check(S, "matrix_transpose", bmb_algo.matrix_transpose([[1,2],[3,4]]), [[1,3],[2,4]])
+    # Cycle 2013 algorithms
+    check(S, "bit_popcount(255)", bmb_algo.bit_popcount(255), 8)
+    check(S, "array_rotate", bmb_algo.array_rotate([1,2,3,4,5], 2), [3,4,5,1,2])
+    check(S, "unique_count", bmb_algo.unique_count([1,1,2,3,3,3,4]), 4)
+    check(S, "prefix_sum", bmb_algo.prefix_sum([1,2,3,4,5]), [1,3,6,10,15])
+    check(S, "array_sum", bmb_algo.array_sum([1,2,3,4,5]), 15)
+    check(S, "array_min", bmb_algo.array_min([5,3,8,1,7]), 1)
+    check(S, "array_max", bmb_algo.array_max([5,3,8,1,7]), 8)
 
 
 def test_bmb_crypto():
@@ -137,6 +145,26 @@ def test_bmb_text():
     check(S, "word_count", bmb_text.word_count("hello world"), 2)
 
 
+def test_bmb_compute():
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'bmb-compute', 'bindings', 'python'))
+    import bmb_compute
+
+    S = "bmb-compute"
+    check(S, "abs(-42)", bmb_compute.abs(-42), 42)
+    check(S, "sqrt(144)", bmb_compute.sqrt(144), 12)
+    check(S, "factorial(10)", bmb_compute.factorial(10), 3628800)
+    check(S, "ipow(2,10)", bmb_compute.ipow(2, 10), 1024)
+    check(S, "sum", bmb_compute.sum([10,20,30,40,50]), 150)
+    check(S, "mean_scaled", bmb_compute.mean_scaled([10,20,30,40,50]), 30000)
+    check(S, "min_val", bmb_compute.min_val([10,20,30,40,50]), 10)
+    check(S, "max_val", bmb_compute.max_val([10,20,30,40,50]), 50)
+    check(S, "range_val", bmb_compute.range_val([10,20,30,40,50]), 40)
+    check(S, "dot_product", bmb_compute.dot_product([1,2,3], [4,5,6]), 32)
+    check(S, "dist_squared", bmb_compute.dist_squared([0,0], [3,4]), 25)
+    check(S, "clamp", bmb_compute.clamp(15, 1, 10), 10)
+    check(S, "sign(-5)", bmb_compute.sign(-5), -1)
+
+
 def test_bmb_json():
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'bmb-json', 'bindings', 'python'))
     import bmb_json
@@ -168,10 +196,11 @@ if __name__ == '__main__':
     t0 = time.perf_counter()
 
     libs = [
-        ("bmb-algo", "27 algorithms", test_bmb_algo),
+        ("bmb-algo", "34 algorithms", test_bmb_algo),
         ("bmb-crypto", "11 functions", test_bmb_crypto),
         ("bmb-text", "16 functions", test_bmb_text),
         ("bmb-json", "8 functions", test_bmb_json),
+        ("bmb-compute", "20 functions", test_bmb_compute),
     ]
     for name, desc, test_fn in libs:
         prev = passed
@@ -195,10 +224,11 @@ if __name__ == '__main__':
         print()
         print("ALL TESTS PASSED!")
         print()
-        print("Libraries (62 @export functions):")
-        print("  bmb-algo   — 27 algorithms (DP, Graph, Sort, Search, Number Theory)")
-        print("  bmb-crypto — 11 functions (SHA-256, MD5, CRC32, HMAC, Base64/32, Adler32)")
-        print("  bmb-text   — 16 functions (KMP, find, replace, palindrome, tokenize)")
-        print("  bmb-json   — 8 functions (parse, stringify, get, array)")
+        print("Libraries (89 @export functions):")
+        print("  bmb-algo    -- 34 algorithms (DP, Graph, Sort, Search, Number Theory, Bit, Array)")
+        print("  bmb-compute -- 20 functions (Math, Statistics, Random, Vector)")
+        print("  bmb-crypto  -- 11 functions (SHA-256, MD5, CRC32, HMAC, Base64/32, Adler32)")
+        print("  bmb-text    -- 16 functions (KMP, find, replace, palindrome, tokenize)")
+        print("  bmb-json    -- 8 functions (parse, stringify, get, array)")
         print()
         print("Powered by BMB — https://github.com/iyulab/lang-bmb")
