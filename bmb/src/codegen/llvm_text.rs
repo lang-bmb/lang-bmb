@@ -858,6 +858,9 @@ impl TextCodeGen {
         writeln!(out, "declare ptr @bmb_read_bytes(i64) nocallback nounwind nofree nosync")?;
         writeln!(out, "declare void @bmb_write_stdout(ptr) nocallback nounwind nofree nosync")?;
         writeln!(out, "declare void @assert(i1) nocallback nounwind nofree nosync")?;
+        // v0.97: Panic functions for @export pre runtime checks (FFI-safe)
+        writeln!(out, "declare void @bmb_panic_bounds(i64, i64) nounwind")?;
+        writeln!(out, "declare void @bmb_panic_divzero() nounwind")?;
         // v0.96.35: bmb_abs/bmb_min/bmb_max/bmb_clamp replaced with LLVM intrinsics
         writeln!(out, "declare i64 @bmb_pow(i64, i64) nocallback nounwind nofree nosync willreturn memory(none) speculatable")?;
         writeln!(out)?;
@@ -2000,6 +2003,37 @@ impl TextCodeGen {
             params.join(", "),
             attrs
         )?;
+
+        // v0.97: For @export functions with preconditions, emit runtime checks
+        // If any pre condition fails, call bmb_panic_bounds (FFI-safe) and return default
+        if func.is_export && !func.preconditions.is_empty() {
+            writeln!(out, "_pre_entry:")?;
+            let mut check_idx = 0;
+            for pre in &func.preconditions {
+                if let crate::mir::ContractFact::VarCmp { var, op, value } = pre {
+                    let llvm_op = match op {
+                        crate::mir::CmpOp::Ge => "slt",
+                        crate::mir::CmpOp::Gt => "sle",
+                        crate::mir::CmpOp::Le => "sgt",
+                        crate::mir::CmpOp::Lt => "sge",
+                        crate::mir::CmpOp::Eq => "ne",
+                        crate::mir::CmpOp::Ne => "eq",
+                    };
+                    writeln!(out, "  %_pre_chk_{} = icmp {} i64 %{}, {}", check_idx, llvm_op, var, value)?;
+                    writeln!(out, "  br i1 %_pre_chk_{}, label %_pre_fail_{}, label %_pre_ok_{}", check_idx, check_idx, check_idx)?;
+                    writeln!(out, "_pre_fail_{}:", check_idx)?;
+                    writeln!(out, "  call void @bmb_panic_bounds(i64 {}, i64 {})", value, value)?;
+                    match &func.ret_ty {
+                        crate::mir::MirType::Unit => { writeln!(out, "  ret void")?; }
+                        crate::mir::MirType::F64 => { writeln!(out, "  ret double 0.0")?; }
+                        _ => { writeln!(out, "  ret i64 0")?; }
+                    }
+                    writeln!(out, "_pre_ok_{}:", check_idx)?;
+                    check_idx += 1;
+                }
+            }
+            writeln!(out, "  br label %alloca_entry")?;
+        }
 
         // Collect phi destination names first - these are SSA values, not memory locations
         // They should NOT have allocas or be loaded from memory

@@ -1,3 +1,5 @@
+// bmb-crypto: SHA-256 + Base64 library
+
 // bmb-sha256: Pure BMB SHA-256 implementation
 // v0.1.0
 //
@@ -305,11 +307,322 @@ fn sha256_string(inp: String) -> String = {
 // ============================================================
 
 
+// ================================================
+// Base64 Encoding/Decoding
+// ================================================
+
+// bmb-base64: RFC 4648 Base64 encoding and decoding
+// v0.1.0
+//
+// Pure BMB implementation with contract-verified correctness.
+// Supports standard Base64 and URL-safe Base64 alphabets.
+//
+// All buffer operations use raw i64 pointers with load_i64/store_i64.
+// Each element is 8 bytes (i64), storing one byte value (0-255).
+//
+// Usage:
+//   let encoded = b64_encode_string("Hello");
+//   let decoded = b64_decode_string(encoded);
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+fn B64_PAD() -> i64 = 61;  // '='
+
+// ============================================================================
+// Encoding/Decoding Tables
+// ============================================================================
+
+// Map 6-bit value (0-63) to Base64 character
+fn b64_encode_char(val: i64) -> i64
+  pre val >= 0 and val <= 63
+= if val < 26 { val + 65 }          // A-Z
+  else if val < 52 { val - 26 + 97 } // a-z
+  else if val < 62 { val - 52 + 48 } // 0-9
+  else if val == 62 { 43 }           // +
+  else { 47 };                        // /
+
+// Map Base64 character to 6-bit value (-1 = invalid)
+fn b64_decode_char(c: i64) -> i64
+  post ret >= -1 and ret <= 63
+= if c >= 65 and c <= 90 { c - 65 }       // A-Z -> 0-25
+  else if c >= 97 and c <= 122 { c - 97 + 26 } // a-z -> 26-51
+  else if c >= 48 and c <= 57 { c - 48 + 52 }   // 0-9 -> 52-61
+  else if c == 43 or c == 45 { 62 }              // + or -
+  else if c == 47 or c == 95 { 63 }              // / or _
+  else { 0 - 1 };
+
+// ============================================================================
+// Buffer helpers (i64 pointer, 8 bytes per element)
+// ============================================================================
+
+fn buf_get(buf: i64, idx: i64) -> i64 = load_i64(buf + idx * 8);
+fn buf_set(buf: i64, idx: i64, val: i64) -> i64 = { store_i64(buf + idx * 8, val); 0 };
+
+// ============================================================================
+// Encode length
+// ============================================================================
+
+fn b64_encode_len(input_len: i64) -> i64
+  pre input_len >= 0
+  post ret >= 0
+= ((input_len + 2) / 3) * 4;
+
+fn b64_decode_len(input_len: i64) -> i64
+  pre input_len >= 0
+  post ret >= 0
+= (input_len / 4) * 3;
+
+// ============================================================================
+// Encode: byte buffer -> Base64 buffer
+// ============================================================================
+
+fn b64_encode_triplet(src: i64, src_idx: i64, dst: i64, dst_idx: i64, remaining: i64) -> i64 = {
+    let b0 = buf_get(src, src_idx);
+    let b1 = if remaining >= 2 { buf_get(src, src_idx + 1) } else { 0 };
+    let b2 = if remaining >= 3 { buf_get(src, src_idx + 2) } else { 0 };
+
+    let combined = b0 * 65536 + b1 * 256 + b2;
+
+    let c0 = (combined / 262144) band 63;
+    let c1 = (combined / 4096) band 63;
+    let c2 = (combined / 64) band 63;
+    let c3 = combined band 63;
+
+    let _s0 = buf_set(dst, dst_idx, b64_encode_char(c0));
+    let _s1 = buf_set(dst, dst_idx + 1, b64_encode_char(c1));
+    let _s2 = buf_set(dst, dst_idx + 2, if remaining >= 2 { b64_encode_char(c2) } else { B64_PAD() });
+    let _s3 = buf_set(dst, dst_idx + 3, if remaining >= 3 { b64_encode_char(c3) } else { B64_PAD() });
+    0
+};
+
+fn b64_encode(src: i64, src_len: i64, dst: i64) -> i64
+  pre src_len >= 0
+= if src_len == 0 { 0 }
+  else {
+      {
+          let mut si = 0;
+          let mut di = 0;
+          while si < src_len {
+              let remaining = src_len - si;
+              let chunk = if remaining >= 3 { 3 } else { remaining };
+              let _w = b64_encode_triplet(src, si, dst, di, chunk);
+              si = si + 3;
+              di = di + 4;
+              0
+          };
+          di
+      }
+  };
+
+// ============================================================================
+// Decode: Base64 buffer -> byte buffer
+// ============================================================================
+
+fn b64_decode_quartet(src: i64, src_idx: i64, dst: i64, dst_idx: i64) -> i64 = {
+    let c0 = b64_decode_char(buf_get(src, src_idx));
+    let c1 = b64_decode_char(buf_get(src, src_idx + 1));
+    let c2_raw = buf_get(src, src_idx + 2);
+    let c3_raw = buf_get(src, src_idx + 3);
+
+    let c2 = if c2_raw == B64_PAD() { 0 } else { b64_decode_char(c2_raw) };
+    let c3 = if c3_raw == B64_PAD() { 0 } else { b64_decode_char(c3_raw) };
+
+    if c0 < 0 or c1 < 0 { 0 - 1 }
+    else if c2_raw != B64_PAD() and c2 < 0 { 0 - 1 }
+    else if c3_raw != B64_PAD() and c3 < 0 { 0 - 1 }
+    else {
+        let combined = c0 * 262144 + c1 * 4096 + c2 * 64 + c3;
+
+        let _s0 = buf_set(dst, dst_idx, (combined / 65536) band 255);
+
+        if c2_raw == B64_PAD() { 1 }
+        else {
+            let _s1 = buf_set(dst, dst_idx + 1, (combined / 256) band 255);
+            if c3_raw == B64_PAD() { 2 }
+            else {
+                let _s2 = buf_set(dst, dst_idx + 2, combined band 255);
+                3
+            }
+        }
+    }
+};
+
+fn b64_decode(src: i64, src_len: i64, dst: i64) -> i64
+  pre src_len >= 0
+  post ret >= -1
+= if src_len == 0 { 0 }
+  else if src_len band 3 != 0 { 0 - 1 }
+  else {
+      {
+          let mut si = 0;
+          let mut di = 0;
+          let mut error = false;
+          let mut done = false;
+          while not done {
+              let _r = if si >= src_len {
+                  { done = true; 0 }
+              } else if si + 4 > src_len {
+                  { error = true; done = true; 0 }
+              } else {
+                  {
+                      let bytes = b64_decode_quartet(src, si, dst, di);
+                      let _r2 = if bytes < 0 {
+                          { error = true; done = true; 0 }
+                      } else {
+                          { si = si + 4; di = di + bytes; 0 }
+                      };
+                      0
+                  }
+              };
+              0
+          };
+          if error { 0 - 1 } else { di }
+      }
+  };
+
+// ============================================================================
+// ASCII code to single character string
+// ============================================================================
+
+// Convert byte value to single-character string (full printable ASCII)
+fn b64_chr(c: i64) -> String =
+    if c == 32 { " " } else if c == 33 { "!" } else if c == 34 { "\"" }
+    else if c == 35 { "#" } else if c == 36 { "$" } else if c == 37 { "%" }
+    else if c == 38 { "&" } else if c == 39 { "'" } else if c == 40 { "(" }
+    else if c == 41 { ")" } else if c == 42 { "*" } else if c == 43 { "+" }
+    else if c == 44 { "," } else if c == 45 { "-" } else if c == 46 { "." }
+    else if c == 47 { "/" }
+    else if c == 48 { "0" } else if c == 49 { "1" } else if c == 50 { "2" }
+    else if c == 51 { "3" } else if c == 52 { "4" } else if c == 53 { "5" }
+    else if c == 54 { "6" } else if c == 55 { "7" } else if c == 56 { "8" }
+    else if c == 57 { "9" }
+    else if c == 58 { ":" } else if c == 59 { ";" } else if c == 60 { "<" }
+    else if c == 61 { "=" } else if c == 62 { ">" } else if c == 63 { "?" }
+    else if c == 64 { "@" }
+    else if c == 65 { "A" } else if c == 66 { "B" } else if c == 67 { "C" }
+    else if c == 68 { "D" } else if c == 69 { "E" } else if c == 70 { "F" }
+    else if c == 71 { "G" } else if c == 72 { "H" } else if c == 73 { "I" }
+    else if c == 74 { "J" } else if c == 75 { "K" } else if c == 76 { "L" }
+    else if c == 77 { "M" } else if c == 78 { "N" } else if c == 79 { "O" }
+    else if c == 80 { "P" } else if c == 81 { "Q" } else if c == 82 { "R" }
+    else if c == 83 { "S" } else if c == 84 { "T" } else if c == 85 { "U" }
+    else if c == 86 { "V" } else if c == 87 { "W" } else if c == 88 { "X" }
+    else if c == 89 { "Y" } else if c == 90 { "Z" }
+    else if c == 91 { "[" } else if c == 92 { "\\" } else if c == 93 { "]" }
+    else if c == 94 { "^" } else if c == 95 { "_" } else if c == 96 { "`" }
+    else if c == 97 { "a" } else if c == 98 { "b" } else if c == 99 { "c" }
+    else if c == 100 { "d" } else if c == 101 { "e" } else if c == 102 { "f" }
+    else if c == 103 { "g" } else if c == 104 { "h" } else if c == 105 { "i" }
+    else if c == 106 { "j" } else if c == 107 { "k" } else if c == 108 { "l" }
+    else if c == 109 { "m" } else if c == 110 { "n" } else if c == 111 { "o" }
+    else if c == 112 { "p" } else if c == 113 { "q" } else if c == 114 { "r" }
+    else if c == 115 { "s" } else if c == 116 { "t" } else if c == 117 { "u" }
+    else if c == 118 { "v" } else if c == 119 { "w" } else if c == 120 { "x" }
+    else if c == 121 { "y" } else if c == 122 { "z" }
+    else if c == 123 { "{" } else if c == 124 { "|" } else if c == 125 { "}" }
+    else if c == 126 { "~" }
+    else { "?" };
+
+// ============================================================================
+// String-based convenience API
+// ============================================================================
+
+// Convert buffer of ASCII codes to string using StringBuilder
+fn buf_to_string(buf: i64, len: i64) -> String = {
+    let sb = sb_new();
+    let _build = buf_to_string_loop(sb, buf, len);
+    sb_build(sb)
+};
+
+fn buf_to_string_loop(sb: i64, buf: i64, len: i64) -> i64 = {
+    let mut idx = 0;
+    while idx < len {
+        let _p = sb_push(sb, b64_chr(buf_get(buf, idx)));
+        idx = idx + 1;
+        0
+    };
+    0
+};
+
+// Copy string bytes into buffer
+fn str_to_buf(s: String, buf: i64, len: i64) -> i64 = {
+    let mut idx = 0;
+    while idx < len {
+        let _s = buf_set(buf, idx, s.byte_at(idx));
+        idx = idx + 1;
+        0
+    };
+    0
+};
+
+// Encode string to Base64 string
+fn b64_encode_string(input: String) -> String = {
+    let len = input.len();
+    if len == 0 { "" }
+    else {
+        let src = malloc(len * 8);
+        let _fill = str_to_buf(input, src, len);
+        let out_len = b64_encode_len(len);
+        let dst = malloc(out_len * 8);
+        let _enc = b64_encode(src, len, dst);
+        let result = buf_to_string(dst, out_len);
+        let _f1 = free(src);
+        let _f2 = free(dst);
+        result
+    }
+};
+
+// Decode Base64 string to string
+fn b64_decode_string(input: String) -> String = {
+    let len = input.len();
+    if len == 0 { "" }
+    else if len band 3 != 0 { "" }
+    else {
+        let src = malloc(len * 8);
+        let _fill = str_to_buf(input, src, len);
+        let max_out = b64_decode_len(len);
+        let dst = malloc(max_out * 8);
+        let decoded_len = b64_decode(src, len, dst);
+        let result = if decoded_len < 0 { "" }
+                     else { buf_to_string(dst, decoded_len) };
+        let _f1 = free(src);
+        let _f2 = free(dst);
+        result
+    }
+};
+
+// ============================================================================
+// Tests (RFC 4648 Section 10 Test Vectors)
+// ============================================================================
+
+fn report(name: String, result: i64) -> i64 = {
+    if result == 0 {
+        let _a = print_str("  FAIL: ");
+        let _b = print_str(name);
+        let _c = print_str("\n");
+        0
+    } else { result }
+};
+
+
+// @export wrappers
 @export
 pub fn bmb_sha256(input: String) -> String = sha256_string(input);
+
+@export
+pub fn bmb_base64_encode(input: String) -> String = b64_encode_string(input);
+
+@export
+pub fn bmb_base64_decode(input: String) -> String = b64_decode_string(input);
 
 fn main() -> i64 = {
     let h = bmb_sha256("hello");
     println_str(h);
+    let e = bmb_base64_encode("hello");
+    println_str(e);
+    let d = bmb_base64_decode(e);
+    println_str(d);
     0
 };
