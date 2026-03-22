@@ -1958,7 +1958,10 @@ impl TextCodeGen {
         // v0.60.252: Use private linkage for all non-main user functions
         // Private linkage enables LLVM to eliminate unused functions and optimize more aggressively
         // v0.96.30: Extended from alwaysinline-only to all user functions (matches bootstrap compiler)
-        let linkage = if func.name != "main" && func.name != "bmb_user_main" {
+        // v0.97: @export functions get global visibility for shared library exports
+        let linkage = if func.is_export {
+            "" // Global visibility — callable from external code
+        } else if func.name != "main" && func.name != "bmb_user_main" {
             "private "
         } else {
             ""
@@ -7436,6 +7439,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -8047,6 +8051,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -8258,6 +8263,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         // Void returns
         assert_eq!(cg.infer_call_return_type("println", &dummy_func), "void");
@@ -8299,6 +8305,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -8338,6 +8345,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: true,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -8386,6 +8394,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -8657,6 +8666,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -8692,6 +8702,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -8727,6 +8738,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -8763,6 +8775,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -8793,6 +8806,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -8825,6 +8839,7 @@ mod tests {
                 inline_hint: true,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -8866,6 +8881,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -8905,6 +8921,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -8948,6 +8965,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -8976,6 +8994,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         // String constant should be detected
         assert!(TextCodeGen::is_string_operand(
@@ -9004,6 +9023,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         // String param should be detected
         assert!(TextCodeGen::is_string_operand(
@@ -9032,6 +9052,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         assert!(TextCodeGen::is_string_operand(
             &Operand::Place(Place::new("msg")), &func));
@@ -9107,6 +9128,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -9191,6 +9213,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -9229,6 +9252,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -9266,6 +9290,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -9302,6 +9327,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -9338,6 +9364,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -9373,6 +9400,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -9409,6 +9437,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -9444,6 +9473,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -9482,6 +9512,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -9522,6 +9553,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -9556,6 +9588,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -9609,6 +9642,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -9651,6 +9685,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -9706,6 +9741,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: std::collections::HashMap::new(),
@@ -10068,6 +10104,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         assert_eq!(codegen.infer_place_type(&Place::new("x"), &func), "double");
     }
@@ -10089,6 +10126,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         assert_eq!(codegen.infer_place_type(&Place::new("tmp"), &func), "i1");
     }
@@ -10110,6 +10148,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         assert_eq!(codegen.infer_place_type(&Place::new("unknown"), &func), "i64");
     }
@@ -10135,6 +10174,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         assert_eq!(codegen.infer_operand_type(&Operand::Constant(Constant::Float(1.0)), &func), "double");
     }
@@ -10156,6 +10196,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         assert_eq!(codegen.infer_operand_type(&Operand::Place(Place::new("y")), &func), "ptr");
     }
@@ -10181,6 +10222,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         assert_eq!(codegen.infer_call_return_type("println", &func), "void");
         assert_eq!(codegen.infer_call_return_type("print", &func), "void");
@@ -10204,6 +10246,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         assert_eq!(codegen.infer_call_return_type("read_int", &func), "i64");
         assert_eq!(codegen.infer_call_return_type("bmb_abs", &func), "i64");
@@ -10227,6 +10270,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         assert_eq!(codegen.infer_call_return_type("sqrt", &func), "double");
         assert_eq!(codegen.infer_call_return_type("i64_to_f64", &func), "double");
@@ -10249,6 +10293,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         assert_eq!(codegen.infer_call_return_type("bmb_string_concat", &func), "ptr");
     }

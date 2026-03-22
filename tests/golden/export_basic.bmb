@@ -1,0 +1,20 @@
+// Test: @export attribute makes function visible (not private linkage)
+
+@export
+pub fn add(a: i64, b: i64) -> i64
+  post ret == a + b
+= a + b;
+
+@export
+pub fn multiply(a: i64, b: i64) -> i64
+  post ret == a * b
+= a * b;
+
+fn helper(x: i64) -> i64 = x + 1;
+
+fn main() -> i64 = {
+    println(add(3, 4));
+    println(multiply(5, 6));
+    println(helper(10));
+    0
+};

@@ -50,6 +50,9 @@ enum Command {
         /// Emit LLVM IR instead of executable
         #[arg(long)]
         emit_ir: bool,
+        /// v0.97: Build as shared library (.dll/.so) for FFI bindings
+        #[arg(long)]
+        shared: bool,
         /// Emit MIR (Mid-level IR) - v0.21.2
         #[arg(long)]
         emit_mir: bool,
@@ -418,6 +421,7 @@ fn main() {
                     aggressive,
                     fast_compile,
                     emit_ir,
+                    shared,
                     emit_mir,
                     emit_cir,
                     emit_wasm,
@@ -432,7 +436,7 @@ fn main() {
                     include_paths,
                     prelude_path,
                     no_prelude,
-                } => build_file(&file, output, debug, release, aggressive, fast_compile, emit_ir, emit_mir, emit_cir, emit_wasm, &wasm_target, all_targets, target.as_deref(), verbose, verify.as_deref(), trust_contracts, verification_timeout, fast_math, &include_paths, prelude_path.as_ref(), no_prelude),
+                } => build_file(&file, output, debug, release, aggressive, fast_compile, emit_ir, shared, emit_mir, emit_cir, emit_wasm, &wasm_target, all_targets, target.as_deref(), verbose, verify.as_deref(), trust_contracts, verification_timeout, fast_math, &include_paths, prelude_path.as_ref(), no_prelude),
                 Command::Run { file, args, human: _ } => run_file(&file, &args),
                 Command::Repl => start_repl(),
                 Command::Check { file, include_paths } => check_file_with_includes(&file, &include_paths),
@@ -475,6 +479,7 @@ fn build_file(
     aggressive: bool,
     fast_compile: bool,
     emit_ir: bool,
+    shared: bool,
     emit_mir: bool,
     emit_cir: bool,
     emit_wasm: bool,
@@ -510,7 +515,7 @@ fn build_file(
         if verbose {
             println!("\n=== Native Build ===");
         }
-        build_native(path, output.clone(), debug, release, aggressive, fast_compile, emit_ir, target, verbose, verify_mode, trust_contracts, verification_timeout, fast_math, include_paths, prelude_path, no_prelude)?;
+        build_native(path, output.clone(), debug, release, aggressive, fast_compile, emit_ir, shared, target, verbose, verify_mode, trust_contracts, verification_timeout, fast_math, include_paths, prelude_path, no_prelude)?;
 
         // Then build WASM
         if verbose {
@@ -530,7 +535,7 @@ fn build_file(
     }
 
     // Default: build native
-    build_native(path, output, debug, release, aggressive, fast_compile, emit_ir, target, verbose, verify_mode, trust_contracts, verification_timeout, fast_math, include_paths, prelude_path, no_prelude)
+    build_native(path, output, debug, release, aggressive, fast_compile, emit_ir, shared, target, verbose, verify_mode, trust_contracts, verification_timeout, fast_math, include_paths, prelude_path, no_prelude)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -542,6 +547,7 @@ fn build_native(
     aggressive: bool,
     fast_compile: bool,
     emit_ir: bool,
+    shared: bool,
     target: Option<&str>,
     verbose: bool,
     verify_mode: Option<&str>,
@@ -552,7 +558,7 @@ fn build_native(
     prelude_path: Option<&PathBuf>,
     no_prelude: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use bmb::build::{BuildConfig, OptLevel, VerificationMode};
+    use bmb::build::{BuildConfig, OptLevel, OutputType, VerificationMode};
 
     let mut config = BuildConfig::new(path.to_path_buf())
         .emit_ir(emit_ir)
@@ -608,6 +614,20 @@ fn build_native(
     // v0.87: Fast compile mode - skip opt pass for faster builds
     if fast_compile {
         config = config.fast_compile(true);
+    }
+
+    // v0.97: Shared library mode
+    if shared {
+        config.output_type = OutputType::SharedLib;
+        // Adjust output extension
+        if config.output.extension().is_none() {
+            #[cfg(target_os = "windows")]
+            { config.output.set_extension("dll"); }
+            #[cfg(target_os = "macos")]
+            { config.output.set_extension("dylib"); }
+            #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+            { config.output.set_extension("so"); }
+        }
     }
 
     bmb::build::build(&config)?;

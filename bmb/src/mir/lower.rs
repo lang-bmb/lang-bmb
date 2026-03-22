@@ -285,6 +285,7 @@ fn lower_function(
         inline_hint: false, // v0.51.52: Set by AggressiveInlining pass for medium-sized functions
         is_memory_free: is_pure, // v0.69: @pure implies memory(none) for LLVM optimization
         is_read_only: false,
+        is_export: has_attribute(&fn_def.attributes, "export"), // v0.97: @export for shared lib visibility
     }
 }
 

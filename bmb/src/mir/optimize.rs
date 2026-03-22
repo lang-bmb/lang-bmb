@@ -8591,6 +8591,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         }
     }
 
@@ -8636,6 +8637,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = DeadCodeElimination;
@@ -8695,6 +8697,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ContractBasedOptimization;
@@ -8743,6 +8746,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ContractBasedOptimization;
@@ -8811,6 +8815,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ContractUnreachableElimination;
@@ -8875,6 +8880,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ContractUnreachableElimination;
@@ -8927,6 +8933,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ContractUnreachableElimination;
@@ -8982,6 +8989,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         // Create a pure function set containing "square"
@@ -9038,6 +9046,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let mut pure_functions = HashSet::new();
@@ -9082,6 +9091,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         // Empty pure function set - no functions are pure
@@ -9115,6 +9125,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let mut caller_fn = MirFunction {
@@ -9148,6 +9159,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         // Create program with both functions
@@ -9201,6 +9213,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let mut caller_fn = MirFunction {
@@ -9226,6 +9239,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let program = MirProgram {
@@ -9273,6 +9287,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -9313,6 +9328,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -9353,6 +9369,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -9392,6 +9409,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -9431,6 +9449,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -9470,6 +9489,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -9509,6 +9529,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -9583,6 +9604,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         // Create main function that calls fibonacci(35)
@@ -9609,6 +9631,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         // Create program
@@ -9715,6 +9738,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = TailCallOptimization::new();
@@ -9826,6 +9850,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = TailCallOptimization::new();
@@ -9932,6 +9957,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = TailRecursiveToLoop::new();
@@ -10009,6 +10035,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = MemoryLoadCSE;
@@ -10081,6 +10108,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = MemoryLoadCSE;
@@ -10143,6 +10171,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = CopyPropagation;
@@ -10191,6 +10220,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = CopyPropagation;
@@ -10241,6 +10271,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = CopyPropagation;
@@ -10295,6 +10326,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = CommonSubexpressionElimination;
@@ -10345,6 +10377,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = CommonSubexpressionElimination;
@@ -10396,6 +10429,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = CommonSubexpressionElimination;
@@ -10445,6 +10479,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = SimplifyBranches;
@@ -10496,6 +10531,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = SimplifyBranches;
@@ -10547,6 +10583,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = SimplifyBranches;
@@ -10598,6 +10635,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = UnreachableBlockElimination;
@@ -10650,6 +10688,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = UnreachableBlockElimination;
@@ -10690,6 +10729,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = PhiSimplification;
@@ -10733,6 +10773,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = PhiSimplification;
@@ -10777,6 +10818,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = PhiSimplification;
@@ -10821,6 +10863,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = PhiSimplification;
@@ -10874,6 +10917,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = BlockMerging;
@@ -10926,6 +10970,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = BlockMerging;
@@ -10983,6 +11028,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = GlobalFieldAccessCSE;
@@ -11039,6 +11085,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = GlobalFieldAccessCSE;
@@ -11136,6 +11183,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = IfElseToSwitch;
@@ -11194,6 +11242,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = IfElseToSwitch;
@@ -11249,6 +11298,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = StringConcatOptimization;
@@ -11287,6 +11337,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = StringConcatOptimization;
@@ -11374,6 +11425,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = LoopInvariantCodeMotion::new();
@@ -11450,6 +11502,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = LoopInvariantCodeMotion::new();
@@ -11537,6 +11590,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = LinearRecurrenceToLoop;
@@ -11615,6 +11669,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = LinearRecurrenceToLoop;
@@ -11687,6 +11742,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ConditionalIncrementToSelect;
@@ -11757,6 +11813,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ConditionalIncrementToSelect;
@@ -11882,6 +11939,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ConstantFolding;
@@ -11919,6 +11977,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ConstantFolding;
@@ -11954,6 +12013,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ConstantFolding;
@@ -11989,6 +12049,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ConstantFolding;
@@ -12026,6 +12087,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ConstantFolding;
@@ -12063,6 +12125,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ConstantFolding;
@@ -12099,6 +12162,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ConstantFolding;
@@ -12136,6 +12200,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ConstantFolding;
@@ -12173,6 +12238,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ConstantFolding;
@@ -12214,6 +12280,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: HashMap::new(),
@@ -12247,6 +12314,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: HashMap::new(),
@@ -12285,6 +12353,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: HashMap::new(),
@@ -12333,6 +12402,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: HashMap::new(),
@@ -12373,6 +12443,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: HashMap::new(),
@@ -12416,6 +12487,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: HashMap::new(),
@@ -12454,6 +12526,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: HashMap::new(),
@@ -12488,6 +12561,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: HashMap::new(),
@@ -12604,6 +12678,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         assert!(LoopBoundedNarrowing::has_direct_multiplication(&func_with_mul));
 
@@ -12632,6 +12707,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         assert!(!LoopBoundedNarrowing::has_direct_multiplication(&func_no_mul));
     }
@@ -12667,6 +12743,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -12701,6 +12778,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -12735,6 +12813,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -12772,6 +12851,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -12809,6 +12889,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -12844,6 +12925,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -12879,6 +12961,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -12913,6 +12996,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -12948,6 +13032,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -12983,6 +13068,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -13032,6 +13118,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = DeadCodeElimination;
@@ -13071,6 +13158,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = DeadCodeElimination;
@@ -13150,6 +13238,7 @@ mod tests {
                     inline_hint: false,
                     is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
                 },
                 MirFunction {
                     name: "f2".to_string(),
@@ -13178,6 +13267,7 @@ mod tests {
                     inline_hint: false,
                     is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
                 },
             ],
             extern_fns: vec![],
@@ -13284,6 +13374,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ContractBasedOptimization;
@@ -13342,6 +13433,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ContractUnreachableElimination;
@@ -13386,6 +13478,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = CopyPropagation;
@@ -13455,6 +13548,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = PhiSimplification;
@@ -13508,6 +13602,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = BlockMerging;
@@ -13557,6 +13652,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = CommonSubexpressionElimination;
@@ -13590,6 +13686,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = DeadCodeElimination;
@@ -13636,6 +13733,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ConstantFolding;
@@ -13676,6 +13774,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ConstantFolding;
@@ -13742,6 +13841,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = MemoryLoadCSE;
@@ -13792,6 +13892,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = SimplifyBranches;
@@ -13843,6 +13944,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let changed = cse.run_on_function(&mut func);
@@ -13890,6 +13992,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = UnreachableBlockElimination;
@@ -13927,6 +14030,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         assert!(LoopBoundedNarrowing::has_direct_multiplication(&func));
@@ -13960,6 +14064,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         assert!(!LoopBoundedNarrowing::has_direct_multiplication(&func));
@@ -14004,6 +14109,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = GlobalFieldAccessCSE;
@@ -14060,6 +14166,7 @@ mod tests {
                     inline_hint: false,
                     is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
                 },
                 MirFunction {
                     name: "compute".to_string(),
@@ -14086,6 +14193,7 @@ mod tests {
                     inline_hint: false,
                     is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
                 },
             ],
             extern_fns: vec![],
@@ -14131,6 +14239,7 @@ mod tests {
                     inline_hint: false,
                     is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
                 },
                 MirFunction {
                     name: "digit_sum".to_string(),
@@ -14165,6 +14274,7 @@ mod tests {
                     inline_hint: false,
                     is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
                 },
             ],
             extern_fns: vec![],
@@ -14216,6 +14326,7 @@ mod tests {
                     inline_hint: false,
                     is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
                 },
                 MirFunction {
                     name: "sum_loop".to_string(),
@@ -14296,6 +14407,7 @@ mod tests {
                     inline_hint: false,
                     is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
                 },
             ],
             extern_fns: vec![],
@@ -14354,6 +14466,7 @@ mod tests {
                     inline_hint: false,
                     is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
                 },
                 MirFunction {
                     name: "count_loop".to_string(),
@@ -14425,6 +14538,7 @@ mod tests {
                     inline_hint: false,
                     is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
                 },
             ],
             extern_fns: vec![],
@@ -14475,6 +14589,7 @@ mod tests {
                     inline_hint: false,
                     is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
                 },
                 MirFunction {
                     name: "process".to_string(),
@@ -14543,6 +14658,7 @@ mod tests {
                     inline_hint: false,
                     is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
                 },
             ],
             extern_fns: vec![],
@@ -14639,6 +14755,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = SimplifyBranches;
@@ -14671,6 +14788,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = SimplifyBranches;
@@ -14699,6 +14817,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = SimplifyBranches;
@@ -14801,6 +14920,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = IfElseToSwitch;
@@ -14895,6 +15015,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = IfElseToSwitch;
@@ -14982,6 +15103,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = IfElseToSwitch;
@@ -15017,6 +15139,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ConditionalIncrementToSelect;
@@ -15055,6 +15178,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ConditionalIncrementToSelect;
@@ -15080,6 +15204,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = UnreachableBlockElimination;
@@ -15107,6 +15232,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = UnreachableBlockElimination;
@@ -15156,6 +15282,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = UnreachableBlockElimination;
@@ -15187,6 +15314,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = BlockMerging;
@@ -15231,6 +15359,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = BlockMerging;
@@ -15263,6 +15392,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = PhiSimplification;
@@ -15298,6 +15428,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = PhiSimplification;
@@ -15334,6 +15465,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = CopyPropagation;
@@ -15372,6 +15504,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ConstantFolding;
@@ -15410,6 +15543,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ConstantFolding;
@@ -15448,6 +15582,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ConstantFolding;
@@ -15536,6 +15671,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         }
     }
 
@@ -15642,6 +15778,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = IfElseToSelect;
@@ -15682,6 +15819,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = IfElseToSelect;
@@ -15779,6 +15917,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = IfElseToSelect;
@@ -15857,6 +15996,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = IfElseToSelect;
@@ -15955,6 +16095,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = IfElseToSelect;
@@ -16062,6 +16203,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = IfElseToSelect;
@@ -16154,6 +16296,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = IfElseToSelect;
@@ -16288,6 +16431,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = IfElseToSelect;
@@ -16341,6 +16485,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = DeadCodeElimination;
@@ -16390,6 +16535,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = DeadCodeElimination;
@@ -16435,6 +16581,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = DeadCodeElimination;
@@ -16494,6 +16641,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = DeadCodeElimination;
@@ -16539,6 +16687,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let mut caller_fn = MirFunction {
@@ -16566,6 +16715,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let program = MirProgram {
@@ -16608,6 +16758,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let mut caller_fn = MirFunction {
@@ -16635,6 +16786,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let program = MirProgram {
@@ -16679,6 +16831,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let mut caller_fn = MirFunction {
@@ -16706,6 +16859,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let program = MirProgram {
@@ -16759,6 +16913,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = TailCallOptimization::new();
@@ -16805,6 +16960,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = TailCallOptimization::new();
@@ -16844,6 +17000,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = TailCallOptimization::new();
@@ -16920,6 +17077,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = TailRecursiveToLoop::new();
@@ -16972,6 +17130,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = TailRecursiveToLoop::new();
@@ -17031,6 +17190,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = TailRecursiveToLoop::new();
@@ -17067,6 +17227,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = LinearRecurrenceToLoop;
@@ -17095,6 +17256,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = LinearRecurrenceToLoop;
@@ -17177,6 +17339,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = LinearRecurrenceToLoop;
@@ -17275,6 +17438,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = LinearRecurrenceToLoop;
@@ -17314,6 +17478,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ContractBasedOptimization;
@@ -17357,6 +17522,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ContractBasedOptimization;
@@ -17416,6 +17582,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ContractBasedOptimization;
@@ -17464,6 +17631,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = ContractBasedOptimization;
@@ -17507,6 +17675,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = LoopInvariantCodeMotion::new();
@@ -17590,6 +17759,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = LoopInvariantCodeMotion::new();
@@ -17676,6 +17846,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let pass = LoopInvariantCodeMotion::new();
@@ -17729,6 +17900,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let main_fn = MirFunction {
@@ -17756,6 +17928,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let mut program = MirProgram {
@@ -17802,6 +17975,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let main_fn = MirFunction {
@@ -17829,6 +18003,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let mut program = MirProgram {
@@ -17865,6 +18040,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
 
         let mut program = MirProgram {
@@ -18162,6 +18338,7 @@ mod tests {
                 inline_hint: false,
                 is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
             }],
             extern_fns: vec![],
             struct_defs: HashMap::new(),
@@ -18427,6 +18604,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         let licm = LoopInvariantCodeMotion::new();
         let changed = licm.run_on_function(&mut func);
@@ -18480,6 +18658,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         let licm = LoopInvariantCodeMotion::new();
         let changed = licm.run_on_function(&mut func);
@@ -18533,6 +18712,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         let licm = LoopInvariantCodeMotion::new();
         let changed = licm.run_on_function(&mut func);
@@ -18586,6 +18766,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         let licm = LoopInvariantCodeMotion::new();
         let changed = licm.run_on_function(&mut func);
@@ -19252,6 +19433,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         assert_eq!(AggressiveInlining::count_instructions(&func), 2);
     }
@@ -19276,6 +19458,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         assert!(AggressiveInlining::is_simple_control_flow(&func));
     }
@@ -19321,6 +19504,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         assert!(!AggressiveInlining::is_simple_control_flow(&func), "Loop detected via back edge");
     }
@@ -19350,6 +19534,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         assert!(AggressiveInlining::is_recursive(&func));
     }
@@ -19379,6 +19564,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         assert!(!AggressiveInlining::is_recursive(&func));
     }
@@ -19409,6 +19595,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         assert!(pass.should_inline(&func), "Small non-recursive function should be inlined");
     }
@@ -19434,6 +19621,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         assert!(!pass.should_inline(&func), "main should never be inlined");
     }
@@ -19463,6 +19651,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: false,
                 is_read_only: false,
+                is_export: false,
         };
         // 3 instructions > max_instructions(2) but <= max_pure_instructions(20)
         assert!(pass.should_inline(&func), "Pure function uses higher threshold");

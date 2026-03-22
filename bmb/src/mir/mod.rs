@@ -98,6 +98,9 @@ pub struct MirFunction {
     /// Set by MemoryEffectAnalysis pass. Used for LLVM memory(read) attribute.
     /// Only meaningful when is_memory_free is false.
     pub is_read_only: bool,
+    /// v0.97: Function is marked @export — visible to external callers (no private linkage)
+    /// Used for shared library (.dll/.so) exports with C ABI
+    pub is_export: bool,
 }
 
 /// v0.38: A proven fact from a contract condition
@@ -2056,6 +2059,7 @@ mod tests {
             inline_hint: true,
             is_memory_free: true,
                 is_read_only: false,
+                is_export: false,
         };
         assert_eq!(func.name, "square");
         assert_eq!(func.params.len(), 1);
@@ -2538,6 +2542,7 @@ mod tests {
             inline_hint: false,
             is_memory_free: true,
                 is_read_only: false,
+                is_export: false,
         };
         let prog = MirProgram {
             functions: vec![func],

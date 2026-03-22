@@ -364,6 +364,12 @@ impl Attribute {
     pub fn is_trust(&self) -> bool {
         self.name() == "trust"
     }
+
+    /// v0.97: Check if this is an @export attribute
+    /// @export or @export "C" marks a function for external visibility (no private linkage)
+    pub fn is_export(&self) -> bool {
+        self.name() == "export"
+    }
 }
 
 // --- Cycle 64: Tests ---

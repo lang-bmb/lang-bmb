@@ -294,6 +294,8 @@ pub enum OutputType {
     Object,
     /// LLVM IR
     LlvmIr,
+    /// v0.97: Shared library (.dll/.so/.dylib) for FFI bindings
+    SharedLib,
 }
 
 /// Build error
@@ -888,6 +890,11 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
                 cmd.arg(path_str(&event_loop_obj)?);
             }
             cmd.args(["-o", path_str(&config.output)?]);
+
+            // v0.97: Shared library mode — emit .dll/.so/.dylib
+            if matches!(config.output_type, OutputType::SharedLib) {
+                cmd.arg("-shared");
+            }
 
             // v0.96.44: Use lld if available (proper gc-sections on Windows COFF PE)
             #[cfg(target_os = "windows")]

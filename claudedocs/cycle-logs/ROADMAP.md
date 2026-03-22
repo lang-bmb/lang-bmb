@@ -26,7 +26,9 @@ Ecosystem   ██████████████░░░░░░ 70%   g
 | **진단 출력** | JSON에 line:col 포함 (v0.97) |
 | **gotgan E2E** | 3-tier dep chain (pkg-top→pkg-mid→pkg-base) + circular detection ✅ |
 | **문서** | 4 튜토리얼 (Ownership, Concurrency, Modules, ErrorHandling), API 14 모듈 |
-| **최종 검증** | Cycle 1950: cargo test 6,186 ✅, 309 bench build ✅, 3-way validated |
+| **@export + SharedLib** | `@export` 어트리뷰트 + `--shared` (.dll/.so) 빌드 ✅ |
+| **bmb-algo** | knapsack/lcs/floyd/edit_distance — Python ctypes 바인딩 E2E ✅ |
+| **최종 검증** | Cycle 1954: cargo test 6,186 ✅, clippy 0 ✅, Python E2E ✅ |
 
 ---
 
