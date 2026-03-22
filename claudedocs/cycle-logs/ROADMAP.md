@@ -36,7 +36,9 @@ Ecosystem   ██████████████░░░░░░ 70%   g
 | **벤치마크** | knapsack 90.7x, nqueens 181.6x, prime_count 25.6x vs Pure Python (Cycle 2005) |
 | **컴파일러 수정** | @export i32 sext + non-param filter + loop metadata fix (Cycles 1964-1989) |
 | **문서** | README.md × 5 libraries (Cycle 2045) |
-| **최종 검증** | Cycle 2084: cargo test 6,186 ✅, 5 libraries × 115 Python tests, 105 @export ✅ |
+| **Stage 1 부트스트랩** | 검증 완료: 골든 테스트 6/6 통과 (Cycle 2085) |
+| **Edge Case 테스트** | 81 edge case tests (경계 조건, 빈 입력, 대규모 값) ✅ (Cycle 2091) |
+| **최종 검증** | Cycle 2104: cargo 6,186 ✅, 5 libs × 115 tests ✅, 81 edge cases ✅, 105 @export |
 
 ---
 
