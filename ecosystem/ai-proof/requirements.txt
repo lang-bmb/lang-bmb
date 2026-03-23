@@ -1,0 +1,4 @@
+anthropic>=0.40.0
+scipy>=1.11.0
+matplotlib>=3.8.0
+pytest>=8.0.0
