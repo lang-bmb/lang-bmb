@@ -57,7 +57,7 @@ bmb_algo.gcd(12, 8)                                   # 4
 bmb_algo.modpow(2, 10, 1000)                          # 24
 ```
 
-## Full API (49 algorithms)
+## Full API (55 algorithms)
 
 ### Dynamic Programming
 | Function | Description |

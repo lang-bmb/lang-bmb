@@ -239,8 +239,8 @@ if __name__ == '__main__':
     t0 = time.perf_counter()
 
     libs = [
-        ("bmb-algo", "49 algorithms", test_bmb_algo),
-        ("bmb-crypto", "11 functions", test_bmb_crypto),
+        ("bmb-algo", "55 algorithms", test_bmb_algo),
+        ("bmb-crypto", "14 functions", test_bmb_crypto),
         ("bmb-text", "23 functions", test_bmb_text),
         ("bmb-json", "12 functions", test_bmb_json),
         ("bmb-compute", "33 functions", test_bmb_compute),
@@ -267,10 +267,10 @@ if __name__ == '__main__':
         print()
         print("ALL TESTS PASSED!")
         print()
-        print("Libraries (128 @export functions):")
-        print("  bmb-algo    -- 49 algorithms (DP, Graph, Sort, Search, Number Theory, Bit, Array)")
+        print("Libraries (137 @export functions):")
+        print("  bmb-algo    -- 55 algorithms (DP, Graph, Sort, Search, Number Theory, Bit, Array)")
         print("  bmb-compute -- 33 functions (Math, Statistics, Random, Vector, Utility)")
-        print("  bmb-crypto  -- 11 functions (SHA-256, MD5, CRC32, HMAC, Base64/32, Adler32)")
+        print("  bmb-crypto  -- 14 functions (SHA-256, MD5, CRC32, HMAC, Base64/32, ROT13, Hex)")
         print("  bmb-text    -- 23 functions (KMP, find, replace, case, trim, compare)")
         print("  bmb-json    -- 12 functions (parse, stringify, get, array, object)")
         print()

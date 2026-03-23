@@ -30,7 +30,7 @@ const char* bmb_ffi_string_data(void* s);
 int64_t bmb_ffi_string_len(void* s);
 void bmb_ffi_free_string(void* s);
 
-/* Cryptographic functions — 11 functions */
+/* Cryptographic functions — 14 functions */
 
 void* bmb_sha256(void* input);
 
@@ -53,6 +53,13 @@ void* bmb_adler32(void* input);
 void* bmb_fletcher16(void* input);
 
 void* bmb_xor_checksum(void* input);
+
+void* bmb_rot13(void* input);
+
+/** Hex Encode — Convert each byte to 2-char hex */
+void* bmb_hex_encode(void* input);
+
+void* bmb_hex_decode(void* input);
 
 #ifdef __cplusplus
 }

@@ -8,9 +8,9 @@ BMB provides 5 Python libraries compiled from BMB source code. Each library is a
 
 | Library | Functions | Description |
 |---------|-----------|-------------|
-| **bmb-algo** | 49 | Algorithms: DP, graph, sort, search, number theory |
+| **bmb-algo** | 55 | Algorithms: DP, graph, sort, search, number theory |
 | **bmb-compute** | 33 | Math, statistics, random, vector operations |
-| **bmb-crypto** | 11 | SHA-256, MD5, CRC32, HMAC, Base64/32, checksums |
+| **bmb-crypto** | 14 | SHA-256, MD5, CRC32, HMAC, Base64/32, ROT13, Hex |
 | **bmb-text** | 23 | String search (KMP), find/replace, case, analysis |
 | **bmb-json** | 12 | JSON validate, parse, stringify, access, object |
 
@@ -255,3 +255,14 @@ To add a new BMB binding library:
 4. Add type stubs: `bindings/python/bmb_<name>.pyi`
 5. Add tests: `tests/test_bmb_<name>.py`
 6. Add to `ecosystem/build_all.py`
+
+## Known Limitations
+
+| Limitation | Details |
+|-----------|---------|
+| **FFI overhead** | Each ctypes call has ~1us overhead. For micro-operations (abs, min), Python builtins are faster. BMB shines on compute-heavy functions (sort, knapsack, SHA-256). |
+| **Array size** | Sorting algorithms may hit memory limits at ~800+ elements for heap_sort. quicksort and merge_sort handle 1000+ elements fine. |
+| **Control characters** | hex_decode and rot13 only handle printable ASCII (32-126). Bytes 0-31 are replaced with '?'. |
+| **Integer-only** | All BMB functions operate on i64. Floating-point values must be scaled (e.g., mean_scaled returns value x 1000). |
+| **Windows primary** | Tested primarily on Windows with MSYS2/UCRT64. Linux/macOS builds are supported but not CI-tested. |
+| **String memory** | Output strings from BMB functions are managed by the BMB runtime. Do not call bmb_ffi_free_string on output strings. |

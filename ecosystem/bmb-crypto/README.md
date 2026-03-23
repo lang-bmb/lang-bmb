@@ -29,7 +29,7 @@ bmb_crypto.crc32("hello")           # '3610a686'
 bmb_crypto.adler32("Wikipedia")     # '11e60398'
 ```
 
-## Full API (11 functions)
+## Full API (14 functions)
 
 | Function | Standard | Output |
 |----------|----------|--------|
@@ -44,6 +44,9 @@ bmb_crypto.adler32("Wikipedia")     # '11e60398'
 | `adler32(data)` | RFC 1950 | 8-char hex |
 | `fletcher16(data)` | Fletcher-16 | 4-char hex |
 | `xor_checksum(data)` | XOR | 2-char hex |
+| `rot13(data)` | ROT13 | Transformed string |
+| `hex_encode(data)` | Hex | Hex string |
+| `hex_decode(data)` | Hex | Original string |
 
 All outputs cross-validated against Python's `hashlib`, `binascii`, `hmac`, and `base64`.
 

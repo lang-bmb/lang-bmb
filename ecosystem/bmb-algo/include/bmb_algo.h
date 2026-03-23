@@ -30,7 +30,7 @@ const char* bmb_ffi_string_data(void* s);
 int64_t bmb_ffi_string_len(void* s);
 void bmb_ffi_free_string(void* s);
 
-/* High-performance algorithms — 49 functions */
+/* High-performance algorithms — 55 functions */
 
 /** Returns: maximum total value */
 int64_t bmb_knapsack(int64_t weights, int64_t values, int64_t n, int64_t capacity);
@@ -151,6 +151,24 @@ int64_t bmb_selection_sort(int64_t arr, int64_t n);
 int64_t bmb_bubble_sort(int64_t arr, int64_t n);
 
 int64_t bmb_array_product(int64_t arr, int64_t n);
+
+/** Is Palindrome Number — Check if integer reads same forwards and backwards */
+int64_t bmb_is_palindrome_num(int64_t n);
+
+/** Digit Sum — Sum of all digits */
+int64_t bmb_digit_sum(int64_t n);
+
+/** Returns the kth smallest element in unsorted array */
+int64_t bmb_kth_smallest(int64_t arr, int64_t n, int64_t k);
+
+/** Requires sorted input */
+int64_t bmb_array_mode(int64_t arr, int64_t n);
+
+/** Array Intersection Count — Count common elements between two sorted arrays */
+int64_t bmb_sorted_intersect_count(int64_t a, int64_t na, int64_t b, int64_t nb);
+
+/** Returns encoded pair: i * 10000 + j (-1 if not found) */
+int64_t bmb_two_sum(int64_t arr, int64_t n, int64_t target);
 
 #ifdef __cplusplus
 }

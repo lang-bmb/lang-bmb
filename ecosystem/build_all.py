@@ -29,7 +29,7 @@ LIBRARIES = {
     "bmb-algo": {
         "src": "bmb-algo/src/lib.bmb",
         "output": "bmb_algo",
-        "description": "49 algorithms (DP, Graph, Sort, Search, NumberTheory, Bit, Array)",
+        "description": "55 algorithms (DP, Graph, Sort, Search, NumberTheory, Bit, Array)",
     },
     "bmb-compute": {
         "src": "bmb-compute/src/lib.bmb",
@@ -39,7 +39,7 @@ LIBRARIES = {
     "bmb-crypto": {
         "src": "bmb-crypto/src/lib.bmb",
         "output": "bmb_crypto",
-        "description": "11 functions (SHA-256, MD5, CRC32, HMAC, Base64/32, Adler32)",
+        "description": "14 functions (SHA-256, MD5, CRC32, HMAC, Base64/32, Adler32, ROT13, Hex)",
     },
     "bmb-text": {
         "src": "bmb-text/src/lib.bmb",
@@ -140,8 +140,17 @@ def main():
     parser.add_argument("--release", action="store_true", default=True, help="Build with optimization (default)")
     parser.add_argument("--test", action="store_true", help="Run tests after building")
     parser.add_argument("--headers", action="store_true", help="Generate C headers")
+    parser.add_argument("--clean", action="store_true", help="Remove build artifacts before building")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     args = parser.parse_args()
+
+    if args.clean:
+        import glob
+        for pattern in ["bmb-*/bmb_*.dll", "bmb-*/bmb_*.so", "bmb-*/bmb_*.dylib",
+                        "bmb-*/bindings/python/bmb_*.dll", "bmb-*/bindings/python/bmb_*.so"]:
+            for f in glob.glob(os.path.join(SCRIPT_DIR, pattern)):
+                os.remove(f)
+                print(f"  Removed: {os.path.basename(f)}")
 
     if not os.path.exists(BMB_COMPILER):
         print(f"ERROR: BMB compiler not found at {BMB_COMPILER}")

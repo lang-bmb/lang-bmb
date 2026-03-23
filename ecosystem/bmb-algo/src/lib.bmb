@@ -534,16 +534,21 @@ pub fn bmb_merge_sort(arr: i64, n: i64) -> i64
 // ============================================================================
 
 fn hs_heapify(arr: i64, n: i64, root: i64) -> i64 = {
-    let mut largest = root;
-    let left = 2 * root + 1;
-    let right = 2 * root + 2;
-    set largest = if left < n and load_i64(arr + left * 8) > load_i64(arr + largest * 8) { left } else { largest };
-    set largest = if right < n and load_i64(arr + right * 8) > load_i64(arr + largest * 8) { right } else { largest };
-    let _r = if largest != root {
-        let _sw = qs_swap(arr, root, largest);
-        let _rec = hs_heapify(arr, n, largest);
+    let mut cur = root;
+    let mut cont = true;
+    while cont {
+        let mut largest = cur;
+        let left = 2 * cur + 1;
+        let right = 2 * cur + 2;
+        set largest = if left < n and load_i64(arr + left * 8) > load_i64(arr + largest * 8) { left } else { largest };
+        set largest = if right < n and load_i64(arr + right * 8) > load_i64(arr + largest * 8) { right } else { largest };
+        let _r = if largest != cur {
+            let _sw = qs_swap(arr, cur, largest);
+            cur = largest;
+            0
+        } else { cont = false; 0 };
         0
-    } else { 0 };
+    };
     0
 };
 
