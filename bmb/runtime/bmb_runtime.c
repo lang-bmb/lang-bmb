@@ -135,6 +135,7 @@ void bmb_print_i64(int64_t n) { printf("%" PRId64, n); }
 void bmb_println_f64(double f) { printf("%.9f\n", f); }
 void bmb_print_f64(double f) { printf("%.9f", f); }
 int64_t bmb_read_int() { int64_t n; scanf("%" SCNd64, &n); return n; }
+int64_t read_int(void) { return bmb_read_int(); }
 void bmb_assert(int cond) {
     if (!cond) {
         if (g_ffi_active) bmb_ffi_trigger("assertion failed");
