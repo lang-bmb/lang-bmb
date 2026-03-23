@@ -31,13 +31,26 @@
 | **계약 런타임 검증** | MEDIUM | ✅ 해결 | @export 함수에 pre-condition 런타임 체크 자동 삽입 |
 | **심볼 필터링** | MEDIUM | ⚠️ 부분 | 런타임 심볼 충돌 발견 시 이름 변경으로 대응 |
 
+### ✅ 패키징 인프라 (2026-03-23 업데이트)
+- pyproject.toml (PEP 621) + setup.py: 5개 라이브러리 모두 완료
+- pytest 테스트 스위트: 957 tests (189+270+212+127+159)
+- 벤치마크 스크립트: 5개 라이브러리 모두 완료
+- 타입 스텁 (.pyi): 5개 라이브러리 모두 완료
+- 통합 빌드 스크립트: ecosystem/build_all.py
+- README + LICENSE + CHANGELOG: 5개 라이브러리 모두 완료
+- 예제 스크립트: 6개 (examples/)
+- CI 워크플로: .github/workflows/bindings-ci.yml
+- MANIFEST.in: 5개 라이브러리 모두 완료
+- E2E 검증: pip install -e → import → function call 성공
+
 ### ❌ 남은 작업
 | 문제 | 심각도 | 상태 |
 |------|--------|------|
 | Bootstrap parser @export | MEDIUM | codegen만 완료, parser/lowering 미완 |
 | 크로스 플랫폼 빌드 | MEDIUM | Windows만 검증, Linux/macOS 미검증 |
-| PyPI 패키지 배포 | LOW | setup.py 생성, wheel 빌드 미완 |
-| 심볼 필터링 (.def) | LOW | 미착수 |
+| PyPI 배포 (wheel) | MEDIUM | 패키징 완료, wheel 빌드 + PyPI 업로드 미완 |
+| 심볼 필터링 (.def) | LOW | 분석 완료 (~540 런타임 심볼), 컴파일러 수준 변경 필요 |
+| Node.js WASM 바인딩 | LOW | 미착수 |
 
 ### 핵심 인사이트
 

@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# IDE
+.pytest_cache/
+
+# Build artifacts (DLLs are tracked for convenience but can be rebuilt)
+# *.dll
+# *.so
+# *.dylib

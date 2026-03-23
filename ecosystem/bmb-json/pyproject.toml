@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bmb-json"
+version = "0.1.0"
+description = "High-performance JSON parsing and generation powered by BMB"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.8"
+authors = [
+    {name = "iyulab", email = "iyulab@example.com"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+"Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Internet :: WWW/HTTP",
+]
+keywords = ["json", "parser", "serializer", "performance", "bmb"]
+
+[project.urls]
+Homepage = "https://github.com/iyulab/lang-bmb"
+Repository = "https://github.com/iyulab/lang-bmb"
+Documentation = "https://github.com/iyulab/lang-bmb/tree/main/ecosystem/bmb-json"
+
+[tool.setuptools]
+packages = ["bmb_json"]
+
+[tool.setuptools.package-dir]
+bmb_json = "bindings/python"
+
+[tool.setuptools.package-data]
+bmb_json = ["*.dll", "*.so", "*.dylib"]

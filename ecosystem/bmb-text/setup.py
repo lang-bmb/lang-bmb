@@ -17,7 +17,6 @@ setup(
     author='iyulab',
     author_email='iyulab@example.com',
     url='https://github.com/iyulab/lang-bmb',
-    license='MIT',
     packages=['bmb_text'],
     package_dir={'bmb_text': 'bindings/python'},
     package_data={'bmb_text': ['*.dll', '*.so', '*.dylib']},
@@ -25,7 +24,6 @@ setup(
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',
-        'License :: OSI Approved :: MIT License',
         'Programming Language :: Python :: 3',
         'Topic :: Text Processing',
     ],

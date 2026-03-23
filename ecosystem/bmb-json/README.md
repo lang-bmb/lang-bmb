@@ -2,31 +2,45 @@
 
 Zero-copy JSON parser and serializer compiled from [BMB](https://github.com/iyulab/lang-bmb).
 
-## Functions (8)
+## Installation
 
-| Function | Description | Return |
-|----------|------------|--------|
-| `validate(json_str)` | Check valid JSON | bool |
-| `stringify(json_str)` | Roundtrip normalization | str |
-| `get_type(json_str)` | Root value type | "null"/"bool"/"number"/"string"/"array"/"object" |
-| `get(json_str, key)` | Get value as JSON string | str |
-| `get_string(json_str, key)` | Get string value (unquoted) | str |
-| `get_number(json_str, key)` | Get number value | int |
-| `array_len(json_str)` | Array length | int |
-| `array_get(json_str, idx)` | Array element as JSON | str |
+```bash
+pip install bmb-json
+```
 
 ## Quick Start
 
 ```python
 import bmb_json
 
-bmb_json.validate('{"name":"BMB"}')        # True
-bmb_json.get_string('{"name":"BMB"}', "name")  # "BMB"
-bmb_json.get_number('{"v":97}', "v")       # 97
-bmb_json.array_len('[1,2,3]')              # 3
-bmb_json.stringify('{"a":1,"b":[2,3]}')    # '{"a":1,"b":[2,3]}'
+bmb_json.validate('{"name": "BMB"}')                  # True
+bmb_json.get_string('{"name": "BMB"}', "name")        # "BMB"
+bmb_json.get_number('{"version": 97}', "version")     # 97
+bmb_json.array_len('[1, 2, 3]')                        # 3
+bmb_json.array_get('[10, 20, 30]', 1)                  # '20'
+bmb_json.stringify('{ "a" : 1 , "b" : [2,3] }')       # '{"a":1,"b":[2,3]}'
+bmb_json.get_type('{"a":1}')                           # 'object'
 ```
 
-Cross-validated against Python `json.loads`/`json.dumps`.
+## Full API (8 functions)
 
-Powered by [BMB](https://github.com/iyulab/lang-bmb) — *Performance > Everything*.
+| Function | Description | Return |
+|----------|-------------|--------|
+| `validate(json_str)` | Check valid JSON | `bool` |
+| `stringify(json_str)` | Roundtrip normalization (minified) | `str` |
+| `get_type(json_str)` | Root value type | `"null"` / `"bool"` / `"number"` / `"string"` / `"array"` / `"object"` |
+| `get(json_str, key)` | Get value as raw JSON | `str` (empty if missing) |
+| `get_string(json_str, key)` | Get string value (unquoted) | `str` |
+| `get_number(json_str, key)` | Get number value | `int` (0 if missing) |
+| `array_len(json_str)` | Array length | `int` |
+| `array_get(json_str, idx)` | Array element as JSON | `str` (empty if out of bounds) |
+
+All outputs cross-validated against Python's `json.loads` / `json.dumps`.
+
+## How?
+
+Written in [BMB](https://github.com/iyulab/lang-bmb) — compile-time contracts prove correctness, then generate code faster than hand-tuned C.
+
+## License
+
+MIT

@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bmb-compute"
+version = "0.1.0"
+description = "High-performance numeric computation powered by BMB — math, statistics, random, vector ops"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.8"
+authors = [
+    {name = "iyulab", email = "iyulab@example.com"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+"Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Software Development :: Libraries",
+]
+keywords = ["math", "statistics", "random", "vector", "numeric", "computation", "bmb", "performance"]
+
+[project.urls]
+Homepage = "https://github.com/iyulab/lang-bmb"
+Repository = "https://github.com/iyulab/lang-bmb"
+Documentation = "https://github.com/iyulab/lang-bmb/tree/main/ecosystem/bmb-compute"
+
+[tool.setuptools]
+packages = ["bmb_compute"]
+
+[tool.setuptools.package-dir]
+bmb_compute = "bindings/python"
+
+[tool.setuptools.package-data]
+bmb_compute = ["*.dll", "*.so", "*.dylib"]

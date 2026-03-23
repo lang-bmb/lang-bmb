@@ -1,0 +1,8 @@
+include README.md
+include LICENSE
+include CHANGELOG.md
+include pyproject.toml
+recursive-include bindings/python *.py *.pyi *.dll *.so *.dylib
+recursive-include tests *.py
+recursive-include examples *.py
+recursive-include src *.bmb

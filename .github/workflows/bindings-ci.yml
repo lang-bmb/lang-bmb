@@ -1,0 +1,79 @@
+name: Bindings CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ecosystem/bmb-*/**.py'
+      - 'ecosystem/bmb-*/**.bmb'
+      - 'ecosystem/build_all.py'
+      - 'ecosystem/test_*.py'
+      - '.github/workflows/bindings-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ecosystem/bmb-*/**.py'
+      - 'ecosystem/bmb-*/**.bmb'
+      - 'ecosystem/build_all.py'
+      - 'ecosystem/test_*.py'
+
+jobs:
+  test-bindings:
+    name: Test Bindings (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest]
+        # TODO: Add ubuntu-latest and macos-latest when cross-platform builds are verified
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: pip install pytest setuptools wheel
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-bindings-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Setup LLVM (Windows)
+        if: runner.os == 'Windows'
+        uses: egor-tensin/setup-mingw@v2
+        with:
+          platform: x64
+
+      - name: Build BMB compiler
+        run: cargo build --release --features llvm --target x86_64-pc-windows-gnu
+        if: runner.os == 'Windows'
+
+      - name: Build all binding libraries
+        run: python ecosystem/build_all.py
+
+      - name: Run per-library pytest suites
+        run: python ecosystem/build_all.py --test
+
+      - name: Run monolithic test suite
+        run: python ecosystem/test_all_bindings.py
+
+      - name: Run edge case tests
+        run: python ecosystem/test_edge_cases.py
+
+      - name: Run benchmarks (smoke test)
+        run: python ecosystem/bmb-algo/benchmarks/bench_algo.py

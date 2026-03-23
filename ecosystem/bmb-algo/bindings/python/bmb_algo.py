@@ -11,7 +11,6 @@ BMB beats C AND Rust:
 import ctypes
 import os
 import sys
-import array
 
 # Find the shared library
 _lib_dir = os.path.dirname(os.path.abspath(__file__))
@@ -21,9 +20,9 @@ _lib_name = {
     'darwin': 'libbmb_algo.dylib',
 }.get(sys.platform, 'libbmb_algo.so')
 
-_lib_path = os.path.join(_lib_dir, '..', '..', _lib_name)
+_lib_path = os.path.join(_lib_dir, _lib_name)
 if not os.path.exists(_lib_path):
-    _lib_path = os.path.join(_lib_dir, _lib_name)
+    _lib_path = os.path.join(_lib_dir, '..', '..', _lib_name)
 
 # On Windows, add MSYS2/MinGW runtime directory for GCC runtime dependencies
 if sys.platform == 'win32' and hasattr(os, 'add_dll_directory'):
