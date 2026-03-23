@@ -2,6 +2,17 @@
 
 All notable changes to bmb-json will be documented in this file.
 
+## [0.2.0] - 2026-03-23
+
+### Added
+- 4 new functions: has_key, object_len, get_bool, count
+- C header file generation (include/bmb_json.h)
+- WASM output support (104 KB WAT) with experimental bindings/wasm/
+- `__all__` for clean import * behavior
+
+### Changed
+- Total functions: 8 -> 12
+
 ## [0.1.0] - 2026-03-23
 
 ### Added

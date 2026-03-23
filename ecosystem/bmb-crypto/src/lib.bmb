@@ -1277,3 +1277,76 @@ fn main() -> i64 = {
     println_str(hm);
     0
 };
+
+// ============================================================================
+// Cycle 2151: Additional encoding functions
+// ============================================================================
+
+// ROT13 — Caesar cipher with shift 13
+fn rot13_char(ch: i64) -> i64 = {
+    if ch >= 65 and ch <= 90 { 65 + (ch - 65 + 13) % 26 }
+    else if ch >= 97 and ch <= 122 { 97 + (ch - 97 + 13) % 26 }
+    else { ch }
+};
+
+fn hex_chr(b: i64) -> String = {
+    let hex = "0123456789abcdef";
+    let sb = sb_new();
+    let hi = b / 16;
+    let lo = b % 16;
+    let _h = sb_push(sb, b64_chr(hex.byte_at(hi)));
+    let _l = sb_push(sb, b64_chr(hex.byte_at(lo)));
+    sb_build(sb)
+};
+
+@export
+pub fn bmb_rot13(input: String) -> String = {
+    let len = input.len();
+    let sb = sb_new();
+    let mut i = 0;
+    while i < len {
+        let ch = input.byte_at(i);
+        let new_ch = rot13_char(ch);
+        let _p = sb_push(sb, b64_chr(new_ch));
+        set i = i + 1
+    };
+    sb_build(sb)
+};
+
+// Hex Encode — Convert each byte to 2-char hex
+@export
+pub fn bmb_hex_encode(input: String) -> String = {
+    let len = input.len();
+    let sb = sb_new();
+    let mut i = 0;
+    while i < len {
+        let byte = input.byte_at(i);
+        let _p = sb_push(sb, hex_chr(byte));
+        set i = i + 1
+    };
+    sb_build(sb)
+};
+
+// Hex Decode — Convert hex string to bytes
+fn hex_val(ch: i64) -> i64 = {
+    if ch >= 48 and ch <= 57 { ch - 48 }
+    else if ch >= 97 and ch <= 102 { ch - 87 }
+    else if ch >= 65 and ch <= 70 { ch - 55 }
+    else { 0 }
+};
+
+@export
+pub fn bmb_hex_decode(input: String) -> String = {
+    let len = input.len();
+    let out_len = len / 2;
+    let sb = sb_new();
+    let mut i = 0;
+    while i < out_len {
+        let hi = hex_val(input.byte_at(i * 2));
+        let lo = hex_val(input.byte_at(i * 2 + 1));
+        let byte_val = hi * 16 + lo;
+        let _p = sb_push(sb, b64_chr(byte_val));
+        set i = i + 1
+    };
+    sb_build(sb)
+};

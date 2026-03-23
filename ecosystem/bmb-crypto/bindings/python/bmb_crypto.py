@@ -23,6 +23,7 @@ __all__ = [
     'sha256', 'md5', 'crc32', 'hmac_sha256',
     'base64_encode', 'base64_decode', 'base32_encode', 'base32_decode',
     'adler32', 'fletcher16', 'xor_checksum',
+    'rot13', 'hex_encode', 'hex_decode',
 ]
 
 _lib = ctypes.CDLL(_lib_path)
@@ -67,6 +68,13 @@ _lib.bmb_fletcher16.argtypes = [ctypes.c_void_p]
 _lib.bmb_fletcher16.restype = ctypes.c_void_p
 _lib.bmb_xor_checksum.argtypes = [ctypes.c_void_p]
 _lib.bmb_xor_checksum.restype = ctypes.c_void_p
+# Cycle 2151
+_lib.bmb_rot13.argtypes = [ctypes.c_void_p]
+_lib.bmb_rot13.restype = ctypes.c_void_p
+_lib.bmb_hex_encode.argtypes = [ctypes.c_void_p]
+_lib.bmb_hex_encode.restype = ctypes.c_void_p
+_lib.bmb_hex_decode.argtypes = [ctypes.c_void_p]
+_lib.bmb_hex_decode.restype = ctypes.c_void_p
 
 
 def _call_string_fn(fn, data):
@@ -149,6 +157,21 @@ def hmac_sha256(key: str, msg: str) -> str:
     _lib.bmb_ffi_free_string(s_key)
     _lib.bmb_ffi_free_string(s_msg)
     return result
+
+
+def rot13(data: str) -> str:
+    """ROT13 Caesar cipher (shift 13). Self-inverse: rot13(rot13(x)) == x."""
+    return _call_string_fn(_lib.bmb_rot13, data)
+
+
+def hex_encode(data: str) -> str:
+    """Encode string as hex (each byte -> 2 hex chars)."""
+    return _call_string_fn(_lib.bmb_hex_encode, data)
+
+
+def hex_decode(data: str) -> str:
+    """Decode hex string back to original bytes."""
+    return _call_string_fn(_lib.bmb_hex_decode, data)
 
 
 if __name__ == '__main__':

@@ -14,13 +14,15 @@
 - `--shared` → .dll/.so 빌드 ✅
 - Python ctypes 바인딩 → **5개 라이브러리, 128개 @export, 1,017 pytest + 137 통합 테스트** ✅
 - 309 벤치마크 빌드, 16+ FASTER vs C ✅
-- **bmb-algo**: 49 algorithms (knapsack 90.7x, nqueens 181.6x vs Pure Python) ✅
-- **bmb-crypto**: 11 functions (SHA-256, MD5, CRC32, HMAC, Base64/32, Adler-32) ✅
-- **bmb-text**: 23 functions (KMP, find, replace, case, trim, compare, len) ✅
-- **bmb-json**: 12 functions (validate, stringify, get, array, has_key, object_len) ✅
-- **bmb-compute**: 33 functions (math, statistics, random, vector, cumsum, vec ops) ✅
+- **bmb-algo**: 55 algorithms (v0.3.0 — knapsack 90.7x, nqueens 181.6x vs Pure Python) ✅
+- **bmb-crypto**: 14 functions (v0.3.0 — SHA-256, MD5, CRC32, HMAC, Base64/32, Adler-32, ROT13, Hex) ✅
+- **bmb-text**: 23 functions (v0.2.0 — KMP, find, replace, case, trim, compare, len) ✅
+- **bmb-json**: 12 functions (v0.2.0 — validate, stringify, get, array, has_key, object_len) ✅
+- **bmb-compute**: 33 functions (v0.2.0 — math, statistics, random, vector, cumsum, vec ops) ✅
 - **Bootstrap**: @export codegen (dllexport) 지원 추가 ✅
 - **패키징**: pyproject.toml + setup.py + .pyi + __all__ + MANIFEST.in + CI ✅
+- **C 헤더**: include/ 디렉토리에 5개 라이브러리 .h 파일 자동 생성 ✅
+- **WASM**: 5개 라이브러리 모두 --emit-wasm 빌드 성공 (62-289 KB) ✅
 
 ### ✅ 해결된 프로덕션 차단 요소
 

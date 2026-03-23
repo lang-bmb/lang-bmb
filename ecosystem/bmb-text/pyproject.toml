@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bmb-text"
-version = "0.1.0"
+version = "0.2.0"
 description = "Fast string search, matching, and analysis powered by BMB — KMP, find, replace, case conversion"
 readme = "README.md"
 license = "MIT"

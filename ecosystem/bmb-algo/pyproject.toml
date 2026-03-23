@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bmb-algo"
-version = "0.2.0"
+version = "0.3.0"
 description = "Blazing fast algorithms powered by BMB — 90x faster than Python on knapsack"
 readme = "README.md"
 license = "MIT"

@@ -157,9 +157,27 @@ python ecosystem/build_all.py bmb-algo
 # Build + run tests
 python ecosystem/build_all.py --test
 
+# Build + generate C headers
+python ecosystem/build_all.py --headers
+
+# Generate C headers only
+python ecosystem/gen_headers.py
+
 # Debug build (no optimization)
 python ecosystem/build_all.py --debug
 ```
+
+### C/C++ Integration
+
+Each library includes a C header in `include/`:
+```c
+#include "bmb_algo.h"  // 49 function declarations
+
+int64_t result = bmb_knapsack(weights_ptr, values_ptr, n, capacity);
+int64_t fib = bmb_fibonacci(10);  // 55
+```
+
+Compile: `gcc example.c -I<lib>/include -L<lib> -l<module> -o example`
 
 ### Running Tests
 

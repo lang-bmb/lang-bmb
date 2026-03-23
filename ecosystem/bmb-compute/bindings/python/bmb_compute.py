@@ -104,75 +104,115 @@ def _arr(lst):
     return ctypes.addressof(c), n, c  # keep c alive
 
 # Math functions
-def abs(x): return _lib.bmb_c_abs(x)
-def min(a, b): return _lib.bmb_c_min(a, b)
-def max(a, b): return _lib.bmb_c_max(a, b)
-def clamp(x, lo, hi): return _lib.bmb_c_clamp(x, lo, hi)
-def sign(x): return _lib.bmb_sign(x)
-def ipow(base, exp): return _lib.bmb_ipow(base, exp)
-def sqrt(n): return _lib.bmb_sqrt(n)
-def factorial(n): return _lib.bmb_factorial(n)
+def abs(x):
+    """Absolute value of x."""
+    return _lib.bmb_c_abs(x)
+
+def min(a, b):
+    """Minimum of a and b."""
+    return _lib.bmb_c_min(a, b)
+
+def max(a, b):
+    """Maximum of a and b."""
+    return _lib.bmb_c_max(a, b)
+
+def clamp(x, lo, hi):
+    """Clamp x to range [lo, hi]."""
+    return _lib.bmb_c_clamp(x, lo, hi)
+
+def sign(x):
+    """Sign of x: -1, 0, or 1."""
+    return _lib.bmb_sign(x)
+
+def ipow(base, exp):
+    """Integer power: base^exp."""
+    return _lib.bmb_ipow(base, exp)
+
+def sqrt(n):
+    """Integer square root (floor)."""
+    return _lib.bmb_sqrt(n)
+
+def factorial(n):
+    """Factorial of n (up to 20!)."""
+    return _lib.bmb_factorial(n)
 
 # Statistics
 def sum(arr):
+    """Sum of all elements."""
     p, n, _c = _arr(arr)
     return _lib.bmb_sum(p, n)
 
 def mean_scaled(arr):
-    """Mean × 1000 (3 decimal places)."""
+    """Mean x 1000 (e.g. 20000 = 20.000)."""
     p, n, _c = _arr(arr)
     return _lib.bmb_mean_scaled(p, n)
 
 def min_val(arr):
+    """Minimum value in array."""
     p, n, _c = _arr(arr)
     return _lib.bmb_c_min_val(p, n)
 
 def max_val(arr):
+    """Maximum value in array."""
     p, n, _c = _arr(arr)
     return _lib.bmb_c_max_val(p, n)
 
 def range_val(arr):
+    """Range: max - min."""
     p, n, _c = _arr(arr)
     return _lib.bmb_range_val(p, n)
 
 def variance_scaled(arr):
-    """Variance × 1000000 (6 decimal places)."""
+    """Variance x 1000000 (e.g. 2500000 = 2.5)."""
     p, n, _c = _arr(arr)
     return _lib.bmb_variance_scaled(p, n)
 
-# Random
-def rand_seed(seed): return _lib.bmb_rand_seed(seed)
-def rand_next(state): return _lib.bmb_rand_next(state)
-def rand_pos(state): return _lib.bmb_rand_pos(state)
-def rand_range(state, max_val): return _lib.bmb_rand_range(state, max_val)
+# Random (XorShift64*)
+def rand_seed(seed):
+    """Initialize PRNG state from seed."""
+    return _lib.bmb_rand_seed(seed)
+
+def rand_next(state):
+    """Next PRNG state."""
+    return _lib.bmb_rand_next(state)
+
+def rand_pos(state):
+    """Positive random value from state."""
+    return _lib.bmb_rand_pos(state)
+
+def rand_range(state, max_val):
+    """Random value in [0, max_val) from state."""
+    return _lib.bmb_rand_range(state, max_val)
 
 # Vector operations
 def dot_product(a, b):
-    assert len(a) == len(b)
+    """Dot product of two vectors."""
     pa, na, _ca = _arr(a)
     pb, nb, _cb = _arr(b)
     return _lib.bmb_dot_product(pa, pb, na)
 
 def dist_squared(a, b):
-    assert len(a) == len(b)
+    """Squared Euclidean distance between two vectors."""
     pa, na, _ca = _arr(a)
     pb, nb, _cb = _arr(b)
     return _lib.bmb_dist_squared(pa, pb, na)
 
 def weighted_sum(values, weights):
-    assert len(values) == len(weights)
+    """Weighted sum: sum(values[i] * weights[i])."""
     pv, nv, _cv = _arr(values)
     pw, nw, _cw = _arr(weights)
     return _lib.bmb_weighted_sum(pv, pw, nv)
 
 def lerp_scaled(a, b, t):
-    """Linear interpolation: a + (b-a)*t/1000 where t is 0-1000."""
+    """Linear interpolation: a + (b-a)*t/1000. t=0 returns a, t=1000 returns b."""
     return _lib.bmb_lerp_scaled(a, b, t)
 
 def is_power_of_two(n):
+    """Check if n is a power of two."""
     return bool(_lib.bmb_is_power_of_two(n))
 
 def next_power_of_two(n):
+    """Smallest power of two >= n."""
     return _lib.bmb_next_power_of_two(n)
 
 

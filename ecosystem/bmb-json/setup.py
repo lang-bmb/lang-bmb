@@ -10,7 +10,7 @@ here = os.path.dirname(os.path.abspath(__file__))
 
 setup(
     name='bmb-json',
-    version='0.1.0',
+    version='0.2.0',
     description='High-performance JSON parsing and generation powered by BMB',
     long_description=open(os.path.join(here, 'README.md')).read() if os.path.exists(os.path.join(here, 'README.md')) else '',
     long_description_content_type='text/markdown',

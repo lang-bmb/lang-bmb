@@ -2,6 +2,17 @@
 
 All notable changes to bmb-crypto will be documented in this file.
 
+## [0.3.0] - 2026-03-23
+
+### Added
+- 3 new functions: rot13, hex_encode, hex_decode
+- C header file generation (include/bmb_crypto.h)
+- WASM output support (289 KB WAT)
+- `__all__` for clean import * behavior
+
+### Changed
+- Total functions: 11 -> 14
+
 ## [0.2.0] - 2026-03-23
 
 ### Added

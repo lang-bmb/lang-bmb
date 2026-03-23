@@ -139,6 +139,7 @@ def main():
     parser.add_argument("--debug", action="store_true", help="Build without optimization")
     parser.add_argument("--release", action="store_true", default=True, help="Build with optimization (default)")
     parser.add_argument("--test", action="store_true", help="Run tests after building")
+    parser.add_argument("--headers", action="store_true", help="Generate C headers")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     args = parser.parse_args()
 
@@ -174,6 +175,15 @@ def main():
         if ok and args.test:
             test_ok = run_tests(name, verbose=args.verbose)
             results[name] = test_ok
+
+    # Generate C headers if requested
+    if args.headers:
+        print("\n--- C Header Generation ---")
+        gen_script = os.path.join(SCRIPT_DIR, "gen_headers.py")
+        if os.path.exists(gen_script):
+            subprocess.run([sys.executable, gen_script] + list(targets), check=False)
+        else:
+            print("  gen_headers.py not found")
 
     elapsed = time.perf_counter() - t_total
     print("\n" + "=" * 60)

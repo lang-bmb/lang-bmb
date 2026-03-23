@@ -184,6 +184,81 @@ check("lerp_scaled mid", bmb_compute.lerp_scaled(10, 20, 500), 15)
 
 print(f"  {passed - json_passed} passed")
 
+# ============================================================================
+# Cycle 2149: bmb-algo new functions edge cases
+# ============================================================================
+print("[bmb-algo new edge cases]")
+prev = passed
+
+check("is_palindrome_num(0)", bmb_algo.is_palindrome_num(0), True)
+check("is_palindrome_num(121)", bmb_algo.is_palindrome_num(121), True)
+check("is_palindrome_num(-121)", bmb_algo.is_palindrome_num(-121), False)
+check("digit_sum(0)", bmb_algo.digit_sum(0), 0)
+check("digit_sum(12345)", bmb_algo.digit_sum(12345), 15)
+check("kth_smallest(1st)", bmb_algo.kth_smallest([5,3,1], 1), 1)
+check("kth_smallest(3rd)", bmb_algo.kth_smallest([5,3,1], 3), 5)
+check("two_sum found", bmb_algo.two_sum([2,7,11,15], 9), (0, 1))
+check("two_sum not found", bmb_algo.two_sum([1,2,3], 100), None)
+check("shell_sort empty", bmb_algo.shell_sort([]), [])
+check("bubble_sort single", bmb_algo.bubble_sort([42]), [42])
+
+print(f"  {passed - prev} passed")
+
+# ============================================================================
+# Cycle 2127: bmb-compute new edge cases
+# ============================================================================
+print("[bmb-compute new edge cases]")
+prev = passed
+
+check("cumsum empty", bmb_compute.cumsum([]), [])
+check("cumsum single", bmb_compute.cumsum([42]), [42])
+check("vec_add zeros", bmb_compute.vec_add([0,0], [0,0]), [0, 0])
+check("vec_scale zero", bmb_compute.vec_scale([1,2,3], 0), [0, 0, 0])
+check("magnitude_squared unit", bmb_compute.magnitude_squared([1, 0, 0]), 1)
+check("map_square zeros", bmb_compute.map_square([0,0,0]), [0, 0, 0])
+check("median_scaled single", bmb_compute.median_scaled([5]), 5000)
+
+print(f"  {passed - prev} passed")
+
+# ============================================================================
+# Cycle 2151: bmb-crypto new edge cases
+# ============================================================================
+print("[bmb-crypto new edge cases]")
+prev = passed
+
+check("rot13 self-inverse", bmb_crypto.rot13(bmb_crypto.rot13("test")), "test")
+check("rot13 empty", bmb_crypto.rot13(""), "")
+check("hex roundtrip", bmb_crypto.hex_decode(bmb_crypto.hex_encode("hello")), "hello")
+check("hex_encode empty", bmb_crypto.hex_encode(""), "")
+check("hex_decode empty", bmb_crypto.hex_decode(""), "")
+
+print(f"  {passed - prev} passed")
+
+# ============================================================================
+# Cycle 2131: bmb-json new edge cases
+# ============================================================================
+print("[bmb-json new edge cases]")
+prev = passed
+
+check("has_key empty obj", bmb_json.has_key("{}", "a"), False)
+check("object_len empty", bmb_json.object_len("{}"), 0)
+check("get_bool not bool", bmb_json.get_bool('{"a":1}', "a"), -1)
+check("count scalar", bmb_json.count("42"), 1)
+
+print(f"  {passed - prev} passed")
+
+# ============================================================================
+# Cycle 2129: bmb-text new edge cases
+# ============================================================================
+print("[bmb-text new edge cases]")
+prev = passed
+
+check("str_len empty", bmb_text.str_len(""), 0)
+check("str_char_at oob", bmb_text.str_char_at("hi", 5), -1)
+check("str_compare empty", bmb_text.str_compare("", ""), 0)
+
+print(f"  {passed - prev} passed")
+
 print()
 print("=" * 60)
 total = passed + failed

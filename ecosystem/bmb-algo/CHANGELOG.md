@@ -2,6 +2,19 @@
 
 All notable changes to bmb-algo will be documented in this file.
 
+## [0.3.0] - 2026-03-23
+
+### Added
+- 6 new algorithms: is_palindrome_num, digit_sum, kth_smallest, array_mode, sorted_intersect_count, two_sum
+- 4 more sorting algorithms: shell_sort, insertion_sort, selection_sort, bubble_sort
+- is_prime primality test, array_product, subset_sum, matrix_det
+- C header file generation (include/bmb_algo.h)
+- WASM output support (229 KB WAT)
+- `__all__` for clean import * behavior
+
+### Changed
+- Total algorithms: 41 -> 55
+
 ## [0.2.0] - 2026-03-23
 
 ### Added

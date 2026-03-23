@@ -31,6 +31,9 @@ __all__ = [
     'unique_count', 'prefix_sum', 'array_sum', 'array_min', 'array_max',
     'array_product', 'bit_popcount', 'bit_set', 'bit_clear', 'bit_test',
     'bit_toggle', 'array_fill', 'array_contains', 'array_index_of', 'subset_sum',
+    # Cycle 2149
+    'is_palindrome_num', 'digit_sum', 'kth_smallest', 'array_mode',
+    'sorted_intersect_count', 'two_sum',
 ]
 
 # Find the shared library
@@ -202,6 +205,19 @@ _lib.bmb_bubble_sort.argtypes = [ctypes.c_int64, ctypes.c_int64]
 _lib.bmb_bubble_sort.restype = ctypes.c_int64
 _lib.bmb_array_product.argtypes = [ctypes.c_int64, ctypes.c_int64]
 _lib.bmb_array_product.restype = ctypes.c_int64
+# Cycle 2149
+_lib.bmb_is_palindrome_num.argtypes = [ctypes.c_int64]
+_lib.bmb_is_palindrome_num.restype = ctypes.c_int64
+_lib.bmb_digit_sum.argtypes = [ctypes.c_int64]
+_lib.bmb_digit_sum.restype = ctypes.c_int64
+_lib.bmb_kth_smallest.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_kth_smallest.restype = ctypes.c_int64
+_lib.bmb_array_mode.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_array_mode.restype = ctypes.c_int64
+_lib.bmb_sorted_intersect_count.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_sorted_intersect_count.restype = ctypes.c_int64
+_lib.bmb_two_sum.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_two_sum.restype = ctypes.c_int64
 
 
 def knapsack(weights: list, values: list, capacity: int) -> int:
@@ -670,6 +686,49 @@ def array_product(arr: list) -> int:
         return 1
     c_arr = (ctypes.c_int64 * n)(*arr)
     return _lib.bmb_array_product(ctypes.addressof(c_arr), n)
+
+
+def is_palindrome_num(n: int) -> bool:
+    """Check if integer is a palindrome (reads same forwards and backwards)."""
+    return bool(_lib.bmb_is_palindrome_num(n))
+
+
+def digit_sum(n: int) -> int:
+    """Sum of all digits of n."""
+    return _lib.bmb_digit_sum(n)
+
+
+def kth_smallest(arr: list, k: int) -> int:
+    """Find kth smallest element (1-indexed)."""
+    n = len(arr)
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    return _lib.bmb_kth_smallest(ctypes.addressof(c_arr), n, k)
+
+
+def array_mode(sorted_arr: list) -> int:
+    """Most frequent element in sorted array."""
+    n = len(sorted_arr)
+    c_arr = (ctypes.c_int64 * n)(*sorted_arr)
+    return _lib.bmb_array_mode(ctypes.addressof(c_arr), n)
+
+
+def sorted_intersect_count(a: list, b: list) -> int:
+    """Count common elements between two sorted arrays."""
+    na = len(a)
+    nb = len(b)
+    c_a = (ctypes.c_int64 * na)(*a)
+    c_b = (ctypes.c_int64 * nb)(*b)
+    return _lib.bmb_sorted_intersect_count(ctypes.addressof(c_a), na, ctypes.addressof(c_b), nb)
+
+
+def two_sum(arr: list, target: int):
+    """Find indices of two elements summing to target. Returns (i, j) or None."""
+    n = len(arr)
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    result = _lib.bmb_two_sum(ctypes.addressof(c_arr), n, target)
+    if result < 0:
+        return None
+    return (result // 10000, result % 10000)
 
 
 if __name__ == '__main__':
