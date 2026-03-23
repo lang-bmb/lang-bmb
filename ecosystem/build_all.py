@@ -29,12 +29,12 @@ LIBRARIES = {
     "bmb-algo": {
         "src": "bmb-algo/src/lib.bmb",
         "output": "bmb_algo",
-        "description": "41 algorithms (DP, Graph, Sort, Search, NumberTheory, Bit, Array)",
+        "description": "49 algorithms (DP, Graph, Sort, Search, NumberTheory, Bit, Array)",
     },
     "bmb-compute": {
         "src": "bmb-compute/src/lib.bmb",
         "output": "bmb_compute",
-        "description": "25 functions (Math, Statistics, Random, Vector, Utility)",
+        "description": "33 functions (Math, Statistics, Random, Vector, Utility)",
     },
     "bmb-crypto": {
         "src": "bmb-crypto/src/lib.bmb",
@@ -44,12 +44,12 @@ LIBRARIES = {
     "bmb-text": {
         "src": "bmb-text/src/lib.bmb",
         "output": "bmb_text",
-        "description": "20 functions (KMP, find, replace, case, trim, repeat)",
+        "description": "23 functions (KMP, find, replace, case, trim, compare)",
     },
     "bmb-json": {
         "src": "bmb-json/src/lib.bmb",
         "output": "bmb_json",
-        "description": "8 functions (validate, stringify, get, array)",
+        "description": "12 functions (validate, stringify, get, array, object)",
     },
 }
 

@@ -380,3 +380,132 @@ fn main() -> i64 = {
     let _f2 = free(b);
     0
 };
+
+// ============================================================================
+// Cycle 2127: Additional compute functions
+// ============================================================================
+
+// Median of sorted array (scaled x 1000 for precision)
+// Caller must pass a sorted array
+@export
+pub fn bmb_median_scaled(arr: i64, n: i64) -> i64
+  pre n > 0
+= {
+    if n % 2 == 1 {
+        load_i64(arr + (n / 2) * 8) * 1000
+    } else {
+        let a = load_i64(arr + (n / 2 - 1) * 8);
+        let b = load_i64(arr + (n / 2) * 8);
+        (a + b) * 500
+    }
+};
+
+// Cumulative sum — writes prefix sums to output array
+@export
+pub fn bmb_cumsum(arr: i64, out: i64, n: i64) -> i64
+  pre n > 0
+= {
+    let mut running = 0;
+    let mut i = 0;
+    while i < n {
+        running = running + load_i64(arr + i * 8);
+        let _s = store_i64(out + i * 8, running);
+        set i = i + 1
+    };
+    running
+};
+
+// Moving average (scaled x 1000) with window size k
+@export
+pub fn bmb_moving_avg_scaled(arr: i64, out: i64, n: i64, k: i64) -> i64
+  pre n > 0 and k > 0
+= {
+    let mut window_sum = 0;
+    let mut i = 0;
+    // Fill first window
+    while i < k {
+        let _u = if i < n {
+            window_sum = window_sum + load_i64(arr + i * 8);
+            0
+        } else { 0 };
+        set i = i + 1
+    };
+    // Compute averages
+    let effective_k = if k < n { k } else { n };
+    let _s = store_i64(out, window_sum * 1000 / effective_k);
+    set i = 1;
+    while i <= n - k {
+        window_sum = window_sum - load_i64(arr + (i - 1) * 8) + load_i64(arr + (i + k - 1) * 8);
+        let _s = store_i64(out + i * 8, window_sum * 1000 / k);
+        set i = i + 1
+    };
+    n - k + 1  // number of output elements
+};
+
+// Vector magnitude squared (sum of squares)
+@export
+pub fn bmb_magnitude_squared(arr: i64, n: i64) -> i64
+  pre n > 0
+= {
+    let mut result = 0;
+    let mut i = 0;
+    while i < n {
+        let v = load_i64(arr + i * 8);
+        result = result + v * v;
+        set i = i + 1
+    };
+    result
+};
+
+// Element-wise addition: out[i] = a[i] + b[i]
+@export
+pub fn bmb_vec_add(a: i64, b: i64, out: i64, n: i64) -> i64
+  pre n > 0
+= {
+    let mut i = 0;
+    while i < n {
+        let _s = store_i64(out + i * 8, load_i64(a + i * 8) + load_i64(b + i * 8));
+        set i = i + 1
+    };
+    0
+};
+
+// Element-wise subtraction: out[i] = a[i] - b[i]
+@export
+pub fn bmb_vec_sub(a: i64, b: i64, out: i64, n: i64) -> i64
+  pre n > 0
+= {
+    let mut i = 0;
+    while i < n {
+        let _s = store_i64(out + i * 8, load_i64(a + i * 8) - load_i64(b + i * 8));
+        set i = i + 1
+    };
+    0
+};
+
+// Scalar multiplication: out[i] = arr[i] * scalar
+@export
+pub fn bmb_vec_scale(arr: i64, scalar: i64, out: i64, n: i64) -> i64
+  pre n > 0
+= {
+    let mut i = 0;
+    while i < n {
+        let _s = store_i64(out + i * 8, load_i64(arr + i * 8) * scalar);
+        set i = i + 1
+    };
+    0
+};
+
+// Map (square): out[i] = arr[i]^2
+@export
+pub fn bmb_map_square(arr: i64, out: i64, n: i64) -> i64
+  pre n > 0
+= {
+    let mut i = 0;
+    while i < n {
+        let v = load_i64(arr + i * 8);
+        let _s = store_i64(out + i * 8, v * v);
+        set i = i + 1
+    };
+    0
+};

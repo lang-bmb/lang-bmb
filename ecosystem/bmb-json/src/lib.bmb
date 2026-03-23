@@ -462,6 +462,68 @@ pub fn bmb_json_array_get(input: String, idx: i64) -> String = {
     result
 };
 
+// ============================================================================
+// Cycle 2131: Additional JSON functions
+// ============================================================================
+
+// Check if object has a key (returns 1 if found, 0 otherwise)
+@export
+pub fn bmb_json_has_key(input: String, key: String) -> i64 = {
+    let doc = jdoc_new();
+    let root = rn(pval(doc, input, wskip(input, 0)));
+    let result = if jtype(doc, root) != J_OBJ() { 0 }
+    else {
+        let val_node = jobj_get(doc, root, key, input);
+        if val_node < 0 { 0 } else { 1 }
+    };
+    let _fd = vec_free(doc);
+    result
+};
+
+// Get number of keys in a JSON object (returns -1 for non-objects)
+@export
+pub fn bmb_json_object_len(input: String) -> i64 = {
+    let doc = jdoc_new();
+    let root = rn(pval(doc, input, wskip(input, 0)));
+    let result = if jtype(doc, root) != J_OBJ() { 0 - 1 }
+    else { jobj_len(doc, root) };
+    let _fd = vec_free(doc);
+    result
+};
+
+// Get boolean value by key (returns 1=true, 0=false, -1=missing)
+@export
+pub fn bmb_json_get_bool(input: String, key: String) -> i64 = {
+    let doc = jdoc_new();
+    let root = rn(pval(doc, input, wskip(input, 0)));
+    let result = if jtype(doc, root) != J_OBJ() { 0 - 1 }
+    else {
+        let val_node = jobj_get(doc, root, key, input);
+        if val_node < 0 { 0 - 1 }
+        else if jtype(doc, val_node) != J_BOOL() { 0 - 1 }
+        else { dget(doc, val_node + 1) }
+    };
+    let _fd = vec_free(doc);
+    result
+};
+
+// Count total number of elements in a JSON structure (recursive)
+@export
+pub fn bmb_json_count(input: String) -> i64 = {
+    let doc = jdoc_new();
+    let root = rn(pval(doc, input, wskip(input, 0)));
+    let tag = jtype(doc, root);
+    let result = if tag == J_ARR() {
+        let len = jarr_len(doc, root);
+        1 + len  // array + its elements (shallow)
+    } else if tag == J_OBJ() {
+        let len = jobj_len(doc, root);
+        1 + len * 2  // object + key-value pairs (shallow)
+    } else { 1 };
+    let _fd = vec_free(doc);
+    result
+};
+
 fn main() -> i64 = {
     // Test validate
     let v1 = bmb_json_validate("{\"name\":\"BMB\",\"version\":97}");

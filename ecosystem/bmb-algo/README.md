@@ -57,7 +57,7 @@ bmb_algo.gcd(12, 8)                                   # 4
 bmb_algo.modpow(2, 10, 1000)                          # 24
 ```
 
-## Full API (41 algorithms)
+## Full API (49 algorithms)
 
 ### Dynamic Programming
 | Function | Description |
@@ -84,6 +84,10 @@ bmb_algo.modpow(2, 10, 1000)                          # 24
 | `merge_sort(arr)` | Merge sort (returns new list) |
 | `heap_sort(arr)` | Heap sort (returns new list) |
 | `counting_sort(arr)` | Counting sort (non-negative ints) |
+| `shell_sort(arr)` | Shell sort |
+| `insertion_sort(arr)` | Insertion sort |
+| `selection_sort(arr)` | Selection sort |
+| `bubble_sort(arr)` | Bubble sort (with early termination) |
 
 ### Search
 | Function | Description |
@@ -99,12 +103,14 @@ bmb_algo.modpow(2, 10, 1000)                          # 24
 | `prime_count(n)` | Count primes up to n |
 | `nqueens(n)` | N-Queens solution count |
 | `modpow(base, exp, mod)` | Modular exponentiation |
+| `is_prime(n)` | Primality test |
 
 ### Matrix
 | Function | Description |
 |----------|-------------|
 | `matrix_multiply(a, b)` | Matrix multiplication |
 | `matrix_transpose(m)` | Transpose matrix |
+| `matrix_det(m)` | Determinant (Gaussian elimination) |
 
 ### Utility
 | Function | Description |
@@ -122,6 +128,8 @@ bmb_algo.modpow(2, 10, 1000)                          # 24
 | `bit_set(v, pos)` / `bit_clear(v, pos)` / `bit_test(v, pos)` | Bit operations |
 | `array_contains(arr, target)` | Membership test |
 | `array_index_of(arr, target)` | Find index (-1 if missing) |
+| `array_product(arr)` | Product of all elements |
+| `subset_sum(arr, target)` | Subset sum check (DP) |
 
 ## How?
 

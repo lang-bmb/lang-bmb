@@ -727,3 +727,52 @@ class TestIntegration:
         s = bmb_compute.sqrt(1000)
         assert s == 31
         assert bmb_compute.next_power_of_two(s) == 32
+
+
+class TestNewComputeFunctions:
+    """Tests for Cycle 2127-2128 functions."""
+
+    def test_median_scaled_odd(self):
+        assert bmb_compute.median_scaled([1, 2, 3, 4, 5]) == 3000
+
+    def test_median_scaled_even(self):
+        assert bmb_compute.median_scaled([1, 2, 3, 4]) == 2500
+
+    def test_median_scaled_single(self):
+        assert bmb_compute.median_scaled([42]) == 42000
+
+    def test_cumsum_basic(self):
+        assert bmb_compute.cumsum([1, 2, 3, 4, 5]) == [1, 3, 6, 10, 15]
+
+    def test_cumsum_single(self):
+        assert bmb_compute.cumsum([10]) == [10]
+
+    def test_cumsum_empty(self):
+        assert bmb_compute.cumsum([]) == []
+
+    def test_magnitude_squared_basic(self):
+        assert bmb_compute.magnitude_squared([3, 4]) == 25
+
+    def test_magnitude_squared_unit(self):
+        assert bmb_compute.magnitude_squared([1, 0, 0]) == 1
+
+    def test_vec_add_basic(self):
+        assert bmb_compute.vec_add([1, 2, 3], [4, 5, 6]) == [5, 7, 9]
+
+    def test_vec_sub_basic(self):
+        assert bmb_compute.vec_sub([10, 20], [3, 7]) == [7, 13]
+
+    def test_vec_scale_basic(self):
+        assert bmb_compute.vec_scale([1, 2, 3], 5) == [5, 10, 15]
+
+    def test_vec_scale_zero(self):
+        assert bmb_compute.vec_scale([1, 2, 3], 0) == [0, 0, 0]
+
+    def test_map_square_basic(self):
+        assert bmb_compute.map_square([1, 2, 3, 4]) == [1, 4, 9, 16]
+
+    def test_moving_avg_scaled_basic(self):
+        assert bmb_compute.moving_avg_scaled([10, 20, 30, 40, 50], 3) == [20000, 30000, 40000]
+
+    def test_moving_avg_scaled_k1(self):
+        assert bmb_compute.moving_avg_scaled([10, 20, 30], 1) == [10000, 20000, 30000]

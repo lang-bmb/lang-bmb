@@ -455,3 +455,37 @@ class TestWordCount:
 
     def test_leading_trailing_spaces(self):
         assert bt.word_count("  word  ") == 1
+
+
+class TestNewTextFunctions:
+    """Tests for Cycle 2129-2130 functions."""
+
+    def test_str_len_basic(self):
+        assert bt.str_len("hello") == 5
+
+    def test_str_len_empty(self):
+        assert bt.str_len("") == 0
+
+    def test_str_char_at_basic(self):
+        assert bt.str_char_at("hello", 0) == ord('h')
+        assert bt.str_char_at("hello", 1) == ord('e')
+
+    def test_str_char_at_out_of_bounds(self):
+        assert bt.str_char_at("hello", 10) == -1
+        assert bt.str_char_at("hello", -1) == -1
+
+    def test_str_compare_equal(self):
+        assert bt.str_compare("abc", "abc") == 0
+
+    def test_str_compare_less(self):
+        assert bt.str_compare("abc", "abd") < 0
+
+    def test_str_compare_greater(self):
+        assert bt.str_compare("b", "a") > 0
+
+    def test_str_compare_prefix(self):
+        assert bt.str_compare("abc", "abcd") < 0
+
+    def test_str_compare_empty(self):
+        assert bt.str_compare("", "") == 0
+        assert bt.str_compare("a", "") > 0

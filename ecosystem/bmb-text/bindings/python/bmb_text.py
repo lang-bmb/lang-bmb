@@ -22,6 +22,19 @@ if sys.platform == 'win32' and hasattr(os, 'add_dll_directory'):
         if os.path.isdir(p):
             os.add_dll_directory(p)
 
+__all__ = [
+    # Search
+    'kmp_search', 'str_find', 'str_rfind', 'str_count',
+    'str_contains', 'str_starts_with', 'str_ends_with',
+    'find_byte', 'count_byte',
+    # Transform
+    'str_reverse', 'str_replace', 'str_replace_all',
+    'to_upper', 'to_lower', 'trim', 'repeat',
+    # Analysis
+    'is_palindrome', 'hamming_distance', 'word_count', 'token_count',
+    'str_len', 'str_char_at', 'str_compare',
+]
+
 _lib = ctypes.CDLL(_lib_path)
 
 # FFI
@@ -70,6 +83,13 @@ _lib.bmb_str_to_lower.restype = ctypes.c_void_p
 _lib.bmb_str_trim.argtypes = [ctypes.c_void_p]
 _lib.bmb_str_trim.restype = ctypes.c_void_p
 _lib.bmb_str_repeat.argtypes = [ctypes.c_void_p, ctypes.c_int64]
+# Cycle 2129: New functions
+_lib.bmb_text_len.argtypes = [ctypes.c_void_p]
+_lib.bmb_text_len.restype = ctypes.c_int64
+_lib.bmb_str_char_at.argtypes = [ctypes.c_void_p, ctypes.c_int64]
+_lib.bmb_str_char_at.restype = ctypes.c_int64
+_lib.bmb_str_compare.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+_lib.bmb_str_compare.restype = ctypes.c_int64
 _lib.bmb_str_repeat.restype = ctypes.c_void_p
 
 
@@ -275,6 +295,21 @@ def repeat(s: str, n: int) -> str:
     result = _lib.bmb_ffi_string_data(out).decode('utf-8')
     _lib.bmb_ffi_free_string(ss)
     return result
+
+
+def str_len(s: str) -> int:
+    """Get string length (byte count)."""
+    return _call_s(_lib.bmb_text_len, s)
+
+
+def str_char_at(s: str, idx: int) -> int:
+    """Get ASCII value of character at index (-1 if out of bounds)."""
+    return _call_si(_lib.bmb_str_char_at, s, idx)
+
+
+def str_compare(a: str, b: str) -> int:
+    """Compare two strings (0=equal, <0 if a<b, >0 if a>b)."""
+    return _call_ss(_lib.bmb_str_compare, a, b)
 
 
 if __name__ == '__main__':

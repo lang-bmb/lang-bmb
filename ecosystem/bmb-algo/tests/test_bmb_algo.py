@@ -834,3 +834,78 @@ class TestUtilityFunctions:
 
     def test_djb2_hash_case_sensitive(self):
         assert bmb_algo.djb2_hash("Hello") != bmb_algo.djb2_hash("hello")
+
+
+class TestNewAlgorithms:
+    """Tests for Cycle 2125-2126 algorithms."""
+
+    def test_shell_sort_basic(self):
+        assert bmb_algo.shell_sort([5, 3, 1, 4, 2]) == [1, 2, 3, 4, 5]
+
+    def test_shell_sort_empty(self):
+        assert bmb_algo.shell_sort([]) == []
+
+    def test_shell_sort_sorted(self):
+        assert bmb_algo.shell_sort([1, 2, 3]) == [1, 2, 3]
+
+    def test_shell_sort_duplicates(self):
+        assert bmb_algo.shell_sort([3, 1, 3, 1]) == [1, 1, 3, 3]
+
+    def test_insertion_sort_basic(self):
+        assert bmb_algo.insertion_sort([5, 3, 1, 4, 2]) == [1, 2, 3, 4, 5]
+
+    def test_insertion_sort_empty(self):
+        assert bmb_algo.insertion_sort([]) == []
+
+    def test_selection_sort_basic(self):
+        assert bmb_algo.selection_sort([5, 3, 1, 4, 2]) == [1, 2, 3, 4, 5]
+
+    def test_selection_sort_empty(self):
+        assert bmb_algo.selection_sort([]) == []
+
+    def test_bubble_sort_basic(self):
+        assert bmb_algo.bubble_sort([5, 3, 1, 4, 2]) == [1, 2, 3, 4, 5]
+
+    def test_bubble_sort_empty(self):
+        assert bmb_algo.bubble_sort([]) == []
+
+    def test_bubble_sort_already_sorted(self):
+        assert bmb_algo.bubble_sort([1, 2, 3]) == [1, 2, 3]
+
+    def test_subset_sum_true(self):
+        assert bmb_algo.subset_sum([3, 34, 4, 12, 5, 2], 9) is True
+
+    def test_subset_sum_false(self):
+        assert bmb_algo.subset_sum([3, 34, 4, 12, 5, 2], 30) is False
+
+    def test_subset_sum_zero(self):
+        assert bmb_algo.subset_sum([1, 2, 3], 0) is True
+
+    def test_subset_sum_single(self):
+        assert bmb_algo.subset_sum([5], 5) is True
+
+    def test_matrix_det_2x2(self):
+        assert bmb_algo.matrix_det([[1, 2], [3, 4]]) == -2
+
+    def test_matrix_det_identity(self):
+        assert bmb_algo.matrix_det([[1, 0], [0, 1]]) == 1
+
+    def test_matrix_det_zero(self):
+        assert bmb_algo.matrix_det([[1, 2], [2, 4]]) == 0
+
+    def test_is_prime_small_primes(self):
+        for p in [2, 3, 5, 7, 11, 13, 97]:
+            assert bmb_algo.is_prime(p) is True
+
+    def test_is_prime_not_prime(self):
+        for n in [0, 1, 4, 6, 8, 9, 10, 100]:
+            assert bmb_algo.is_prime(n) is False
+
+    def test_array_product_basic(self):
+        assert bmb_algo.array_product([1, 2, 3, 4, 5]) == 120
+
+    def test_array_product_with_zero(self):
+        assert bmb_algo.array_product([1, 2, 0, 4]) == 0
+
+    def test_array_product_single(self):
+        assert bmb_algo.array_product([42]) == 42

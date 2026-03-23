@@ -8,11 +8,11 @@ BMB provides 5 Python libraries compiled from BMB source code. Each library is a
 
 | Library | Functions | Description |
 |---------|-----------|-------------|
-| **bmb-algo** | 41 | Algorithms: DP, graph, sort, search, number theory |
-| **bmb-compute** | 25 | Math, statistics, random, vector operations |
+| **bmb-algo** | 49 | Algorithms: DP, graph, sort, search, number theory |
+| **bmb-compute** | 33 | Math, statistics, random, vector operations |
 | **bmb-crypto** | 11 | SHA-256, MD5, CRC32, HMAC, Base64/32, checksums |
-| **bmb-text** | 20 | String search (KMP), find/replace, case, analysis |
-| **bmb-json** | 8 | JSON validate, parse, stringify, access |
+| **bmb-text** | 23 | String search (KMP), find/replace, case, analysis |
+| **bmb-json** | 12 | JSON validate, parse, stringify, access, object |
 
 ## Installation
 

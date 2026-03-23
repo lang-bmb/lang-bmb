@@ -12,6 +12,27 @@ import ctypes
 import os
 import sys
 
+__all__ = [
+    # DP
+    'knapsack', 'edit_distance', 'lcs', 'max_subarray', 'coin_change', 'lis',
+    # Graph
+    'dijkstra', 'floyd_warshall', 'bfs_count', 'topological_sort',
+    # Sort
+    'quicksort', 'merge_sort', 'heap_sort', 'counting_sort', 'shell_sort',
+    'insertion_sort', 'selection_sort', 'bubble_sort',
+    # Search
+    'binary_search',
+    # Number Theory
+    'gcd', 'lcm', 'fibonacci', 'prime_count', 'nqueens', 'modpow', 'is_prime',
+    # Matrix
+    'matrix_multiply', 'matrix_transpose', 'matrix_det',
+    # Utility
+    'djb2_hash', 'power_set_size', 'is_sorted', 'array_reverse', 'array_rotate',
+    'unique_count', 'prefix_sum', 'array_sum', 'array_min', 'array_max',
+    'array_product', 'bit_popcount', 'bit_set', 'bit_clear', 'bit_test',
+    'bit_toggle', 'array_fill', 'array_contains', 'array_index_of', 'subset_sum',
+]
+
 # Find the shared library
 _lib_dir = os.path.dirname(os.path.abspath(__file__))
 _lib_name = {
@@ -163,6 +184,24 @@ _lib.bmb_array_contains.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int
 _lib.bmb_array_contains.restype = ctypes.c_int64
 _lib.bmb_array_index_of.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
 _lib.bmb_array_index_of.restype = ctypes.c_int64
+
+# Cycle 2125: New algorithms
+_lib.bmb_shell_sort.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_shell_sort.restype = ctypes.c_int64
+_lib.bmb_subset_sum.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_subset_sum.restype = ctypes.c_int64
+_lib.bmb_matrix_det.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_matrix_det.restype = ctypes.c_int64
+_lib.bmb_insertion_sort.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_insertion_sort.restype = ctypes.c_int64
+_lib.bmb_is_prime.argtypes = [ctypes.c_int64]
+_lib.bmb_is_prime.restype = ctypes.c_int64
+_lib.bmb_selection_sort.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_selection_sort.restype = ctypes.c_int64
+_lib.bmb_bubble_sort.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_bubble_sort.restype = ctypes.c_int64
+_lib.bmb_array_product.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_array_product.restype = ctypes.c_int64
 
 
 def knapsack(weights: list, values: list, capacity: int) -> int:
@@ -558,6 +597,79 @@ def array_index_of(arr: list, target: int) -> int:
     n = len(arr)
     c_arr = (ctypes.c_int64 * n)(*arr)
     return _lib.bmb_array_index_of(ctypes.addressof(c_arr), n, target)
+
+
+def shell_sort(arr: list) -> list:
+    """Shell sort (returns new sorted list)."""
+    n = len(arr)
+    if n == 0:
+        return []
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    _lib.bmb_shell_sort(ctypes.addressof(c_arr), n)
+    return list(c_arr)
+
+
+def subset_sum(arr: list, target: int) -> bool:
+    """Check if any subset of arr sums to target."""
+    n = len(arr)
+    if n == 0:
+        return target == 0
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    return bool(_lib.bmb_subset_sum(ctypes.addressof(c_arr), n, target))
+
+
+def matrix_det(matrix: list) -> int:
+    """Compute determinant of N x N matrix (integer approximation)."""
+    n = len(matrix)
+    flat = []
+    for row in matrix:
+        flat.extend(row)
+    c_arr = (ctypes.c_int64 * len(flat))(*flat)
+    return _lib.bmb_matrix_det(ctypes.addressof(c_arr), n)
+
+
+def insertion_sort(arr: list) -> list:
+    """Insertion sort (returns new sorted list)."""
+    n = len(arr)
+    if n == 0:
+        return []
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    _lib.bmb_insertion_sort(ctypes.addressof(c_arr), n)
+    return list(c_arr)
+
+
+def is_prime(n: int) -> bool:
+    """Check if n is a prime number."""
+    return bool(_lib.bmb_is_prime(n))
+
+
+def selection_sort(arr: list) -> list:
+    """Selection sort (returns new sorted list)."""
+    n = len(arr)
+    if n == 0:
+        return []
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    _lib.bmb_selection_sort(ctypes.addressof(c_arr), n)
+    return list(c_arr)
+
+
+def bubble_sort(arr: list) -> list:
+    """Bubble sort (returns new sorted list)."""
+    n = len(arr)
+    if n == 0:
+        return []
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    _lib.bmb_bubble_sort(ctypes.addressof(c_arr), n)
+    return list(c_arr)
+
+
+def array_product(arr: list) -> int:
+    """Product of all elements."""
+    n = len(arr)
+    if n == 0:
+        return 1
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    return _lib.bmb_array_product(ctypes.addressof(c_arr), n)
 
 
 if __name__ == '__main__':

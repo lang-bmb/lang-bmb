@@ -23,6 +23,21 @@ if sys.platform == 'win32' and hasattr(os, 'add_dll_directory'):
         if os.path.isdir(p):
             os.add_dll_directory(p)
 
+__all__ = [
+    # Math
+    'abs', 'min', 'max', 'clamp', 'sign', 'ipow', 'sqrt', 'factorial',
+    # Statistics
+    'sum', 'mean_scaled', 'min_val', 'max_val', 'range_val', 'variance_scaled',
+    'median_scaled', 'cumsum', 'moving_avg_scaled',
+    # Random
+    'rand_seed', 'rand_next', 'rand_pos', 'rand_range',
+    # Vector
+    'dot_product', 'dist_squared', 'weighted_sum', 'lerp_scaled',
+    'magnitude_squared', 'vec_add', 'vec_sub', 'vec_scale', 'map_square',
+    # Utility
+    'is_power_of_two', 'next_power_of_two',
+]
+
 _lib = ctypes.CDLL(_lib_path)
 
 # FFI
@@ -63,6 +78,24 @@ _lib.bmb_is_power_of_two.argtypes = [ctypes.c_int64]
 _lib.bmb_is_power_of_two.restype = ctypes.c_int64
 _lib.bmb_next_power_of_two.argtypes = [ctypes.c_int64]
 _lib.bmb_next_power_of_two.restype = ctypes.c_int64
+
+# Cycle 2127: New functions
+_lib.bmb_median_scaled.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_median_scaled.restype = ctypes.c_int64
+_lib.bmb_cumsum.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_cumsum.restype = ctypes.c_int64
+_lib.bmb_moving_avg_scaled.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_moving_avg_scaled.restype = ctypes.c_int64
+_lib.bmb_magnitude_squared.argtypes = [ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_magnitude_squared.restype = ctypes.c_int64
+_lib.bmb_vec_add.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_vec_add.restype = ctypes.c_int64
+_lib.bmb_vec_sub.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_vec_sub.restype = ctypes.c_int64
+_lib.bmb_vec_scale.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_vec_scale.restype = ctypes.c_int64
+_lib.bmb_map_square.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.bmb_map_square.restype = ctypes.c_int64
 
 
 def _arr(lst):
@@ -141,6 +174,81 @@ def is_power_of_two(n):
 
 def next_power_of_two(n):
     return _lib.bmb_next_power_of_two(n)
+
+
+def median_scaled(arr):
+    """Median of sorted array, scaled x1000. Caller must pass sorted array."""
+    ptr, n, c = _arr(arr)
+    return _lib.bmb_median_scaled(ptr, n)
+
+
+def cumsum(arr):
+    """Cumulative sum (prefix sums)."""
+    n = len(arr)
+    if n == 0:
+        return []
+    c_in = (ctypes.c_int64 * n)(*arr)
+    c_out = (ctypes.c_int64 * n)()
+    _lib.bmb_cumsum(ctypes.addressof(c_in), ctypes.addressof(c_out), n)
+    return list(c_out)
+
+
+def moving_avg_scaled(arr, k):
+    """Moving average with window k, scaled x1000."""
+    n = len(arr)
+    if n == 0 or k <= 0:
+        return []
+    c_in = (ctypes.c_int64 * n)(*arr)
+    out_n = n - k + 1
+    if out_n <= 0:
+        return []
+    c_out = (ctypes.c_int64 * out_n)()
+    _lib.bmb_moving_avg_scaled(ctypes.addressof(c_in), ctypes.addressof(c_out), n, k)
+    return list(c_out)
+
+
+def magnitude_squared(arr):
+    """Sum of squares of elements."""
+    ptr, n, c = _arr(arr)
+    return _lib.bmb_magnitude_squared(ptr, n)
+
+
+def vec_add(a, b):
+    """Element-wise addition."""
+    n = len(a)
+    c_a = (ctypes.c_int64 * n)(*a)
+    c_b = (ctypes.c_int64 * n)(*b)
+    c_out = (ctypes.c_int64 * n)()
+    _lib.bmb_vec_add(ctypes.addressof(c_a), ctypes.addressof(c_b), ctypes.addressof(c_out), n)
+    return list(c_out)
+
+
+def vec_sub(a, b):
+    """Element-wise subtraction."""
+    n = len(a)
+    c_a = (ctypes.c_int64 * n)(*a)
+    c_b = (ctypes.c_int64 * n)(*b)
+    c_out = (ctypes.c_int64 * n)()
+    _lib.bmb_vec_sub(ctypes.addressof(c_a), ctypes.addressof(c_b), ctypes.addressof(c_out), n)
+    return list(c_out)
+
+
+def vec_scale(arr, scalar):
+    """Scalar multiplication."""
+    n = len(arr)
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    c_out = (ctypes.c_int64 * n)()
+    _lib.bmb_vec_scale(ctypes.addressof(c_arr), scalar, ctypes.addressof(c_out), n)
+    return list(c_out)
+
+
+def map_square(arr):
+    """Square each element."""
+    n = len(arr)
+    c_arr = (ctypes.c_int64 * n)(*arr)
+    c_out = (ctypes.c_int64 * n)()
+    _lib.bmb_map_square(ctypes.addressof(c_arr), ctypes.addressof(c_out), n)
+    return list(c_out)
 
 
 if __name__ == '__main__':

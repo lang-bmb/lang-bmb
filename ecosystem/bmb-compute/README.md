@@ -34,7 +34,7 @@ bmb_compute.is_power_of_two(8)      # True
 bmb_compute.next_power_of_two(5)    # 8
 ```
 
-## Full API (25 functions)
+## Full API (33 functions)
 
 ### Math
 | Function | Description |
@@ -55,6 +55,9 @@ bmb_compute.next_power_of_two(5)    # 8
 | `min_val(arr)` / `max_val(arr)` | Min/max of array |
 | `range_val(arr)` | Range (max - min) |
 | `variance_scaled(arr)` | Variance x 1000000 |
+| `median_scaled(arr)` | Median x 1000 (sorted input) |
+| `cumsum(arr)` | Cumulative sum |
+| `moving_avg_scaled(arr, k)` | Moving average x 1000 |
 
 ### Random (XorShift64*)
 | Function | Description |
@@ -71,6 +74,11 @@ bmb_compute.next_power_of_two(5)    # 8
 | `dist_squared(a, b)` | Euclidean distance squared |
 | `weighted_sum(values, weights)` | Weighted sum |
 | `lerp_scaled(a, b, t)` | Linear interpolation (t: 0-1000) |
+| `magnitude_squared(arr)` | Sum of squares |
+| `vec_add(a, b)` | Element-wise addition |
+| `vec_sub(a, b)` | Element-wise subtraction |
+| `vec_scale(arr, scalar)` | Scalar multiplication |
+| `map_square(arr)` | Square each element |
 
 ### Utility
 | Function | Description |

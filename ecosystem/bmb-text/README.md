@@ -23,7 +23,7 @@ bmb_text.repeat("ab", 3)                              # "ababab"
 bmb_text.hamming_distance("karolin", "kathrin")       # 3
 ```
 
-## Full API (20 functions)
+## Full API (23 functions)
 
 ### Search
 | Function | Description |
@@ -56,6 +56,9 @@ bmb_text.hamming_distance("karolin", "kathrin")       # 3
 | `hamming_distance(a, b)` | Hamming distance between equal-length strings |
 | `word_count(s)` | Count whitespace-separated words |
 | `token_count(s, delimiter)` | Count delimiter-separated tokens |
+| `str_len(s)` | String length in bytes |
+| `str_char_at(s, idx)` | Byte value at index (-1 if OOB) |
+| `str_compare(a, b)` | Lexicographic comparison |
 
 ## How?
 

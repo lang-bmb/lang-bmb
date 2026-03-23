@@ -40,6 +40,7 @@ Ecosystem   ██████████████░░░░░░ 70%   g
 | **Edge Case 테스트** | 81 edge case tests (경계 조건, 빈 입력, 대규모 값) ✅ (Cycle 2091) |
 | **최종 검증** | Cycle 2104: cargo 6,186 ✅, 5 libs × 115 tests ✅, 81 edge cases ✅, 105 @export |
 | **패키징 인프라** | Cycles 2105-2124: pyproject.toml + pytest(957) + benchmarks + .pyi + build_all.py + CI + E2E ✅ |
+| **라이브러리 확장** | Cycles 2125-2144: 105→128 @export, 957→1,017 tests, __all__ + stubs + batch APIs ✅ |
 
 ---
 

@@ -83,6 +83,15 @@ def test_bmb_algo():
     check(S, "bit_clear", bmb_algo.bit_clear(8, 3), 0)
     check(S, "array_contains", bmb_algo.array_contains([1,2,3], 2), True)
     check(S, "array_index_of", bmb_algo.array_index_of([10,20,30], 20), 1)
+    # Cycle 2125-2126
+    check(S, "shell_sort", bmb_algo.shell_sort([5,3,1,4,2]), [1,2,3,4,5])
+    check(S, "insertion_sort", bmb_algo.insertion_sort([5,3,1,4,2]), [1,2,3,4,5])
+    check(S, "selection_sort", bmb_algo.selection_sort([5,3,1,4,2]), [1,2,3,4,5])
+    check(S, "bubble_sort", bmb_algo.bubble_sort([5,3,1,4,2]), [1,2,3,4,5])
+    check(S, "subset_sum(9)", bmb_algo.subset_sum([3,34,4,12,5,2], 9), True)
+    check(S, "is_prime(97)", bmb_algo.is_prime(97), True)
+    check(S, "is_prime(10)", bmb_algo.is_prime(10), False)
+    check(S, "array_product", bmb_algo.array_product([1,2,3,4,5]), 120)
 
 
 def test_bmb_crypto():
@@ -154,6 +163,10 @@ def test_bmb_text():
     check(S, "to_lower", bmb_text.to_lower("HELLO"), "hello")
     check(S, "trim", bmb_text.trim("  hello  "), "hello")
     check(S, "repeat", bmb_text.repeat("ab", 3), "ababab")
+    # Cycle 2129-2130
+    check(S, "str_len", bmb_text.str_len("hello"), 5)
+    check(S, "str_char_at", bmb_text.str_char_at("hello", 0), 104)
+    check(S, "str_compare", bmb_text.str_compare("abc", "abc"), 0)
 
 
 def test_bmb_compute():
@@ -179,6 +192,14 @@ def test_bmb_compute():
     check(S, "lerp_scaled", bmb_compute.lerp_scaled(0, 100, 500), 50)
     check(S, "is_power_of_two", bmb_compute.is_power_of_two(8), True)
     check(S, "next_power_of_two", bmb_compute.next_power_of_two(5), 8)
+    # Cycle 2127-2128
+    check(S, "median_scaled", bmb_compute.median_scaled([1,2,3,4,5]), 3000)
+    check(S, "cumsum", bmb_compute.cumsum([1,2,3]), [1,3,6])
+    check(S, "magnitude_squared", bmb_compute.magnitude_squared([3,4]), 25)
+    check(S, "vec_add", bmb_compute.vec_add([1,2],[3,4]), [4,6])
+    check(S, "vec_sub", bmb_compute.vec_sub([10,20],[3,7]), [7,13])
+    check(S, "vec_scale", bmb_compute.vec_scale([1,2,3], 5), [5,10,15])
+    check(S, "map_square", bmb_compute.map_square([1,2,3]), [1,4,9])
 
 
 def test_bmb_json():
@@ -198,6 +219,12 @@ def test_bmb_json():
     check(S, "array_len", bmb_json.array_len('[1,2,3]'), 3)
     check(S, "array_get", bmb_json.array_get('[10,20,30]', 1), '20')
     # Cross-validation
+    # Cycle 2131-2132
+    check(S, "has_key", bmb_json.has_key('{"a":1}', "a"), True)
+    check(S, "has_key_miss", bmb_json.has_key('{"a":1}', "b"), False)
+    check(S, "object_len", bmb_json.object_len('{"a":1,"b":2}'), 2)
+    check(S, "get_bool", bmb_json.get_bool('{"ok":true}', "ok"), 1)
+    # Cross-validation
     for tc in ['{"key":"value"}', '[1,2,3]', '{"nested":{"a":1}}']:
         py_result = json.dumps(json.loads(tc), separators=(',', ':'))
         check(S, f"roundtrip {tc[:20]}", bmb_json.stringify(tc), py_result)
@@ -212,11 +239,11 @@ if __name__ == '__main__':
     t0 = time.perf_counter()
 
     libs = [
-        ("bmb-algo", "41 algorithms", test_bmb_algo),
+        ("bmb-algo", "49 algorithms", test_bmb_algo),
         ("bmb-crypto", "11 functions", test_bmb_crypto),
-        ("bmb-text", "20 functions", test_bmb_text),
-        ("bmb-json", "8 functions", test_bmb_json),
-        ("bmb-compute", "25 functions", test_bmb_compute),
+        ("bmb-text", "23 functions", test_bmb_text),
+        ("bmb-json", "12 functions", test_bmb_json),
+        ("bmb-compute", "33 functions", test_bmb_compute),
     ]
     for name, desc, test_fn in libs:
         prev = passed
@@ -240,11 +267,11 @@ if __name__ == '__main__':
         print()
         print("ALL TESTS PASSED!")
         print()
-        print("Libraries (105 @export functions):")
-        print("  bmb-algo    -- 41 algorithms (DP, Graph, Sort, Search, Number Theory, Bit, Array)")
-        print("  bmb-compute -- 25 functions (Math, Statistics, Random, Vector, Utility)")
+        print("Libraries (128 @export functions):")
+        print("  bmb-algo    -- 49 algorithms (DP, Graph, Sort, Search, Number Theory, Bit, Array)")
+        print("  bmb-compute -- 33 functions (Math, Statistics, Random, Vector, Utility)")
         print("  bmb-crypto  -- 11 functions (SHA-256, MD5, CRC32, HMAC, Base64/32, Adler32)")
-        print("  bmb-text    -- 20 functions (KMP, find, replace, case, trim, repeat)")
-        print("  bmb-json    -- 8 functions (parse, stringify, get, array)")
+        print("  bmb-text    -- 23 functions (KMP, find, replace, case, trim, compare)")
+        print("  bmb-json    -- 12 functions (parse, stringify, get, array, object)")
         print()
         print("Powered by BMB — https://github.com/iyulab/lang-bmb")

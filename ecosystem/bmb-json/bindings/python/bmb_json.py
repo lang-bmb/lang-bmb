@@ -21,6 +21,13 @@ if sys.platform == 'win32' and hasattr(os, 'add_dll_directory'):
         if os.path.isdir(p):
             os.add_dll_directory(p)
 
+__all__ = [
+    'validate', 'stringify', 'get_type',
+    'get', 'get_string', 'get_number', 'get_bool',
+    'array_len', 'array_get',
+    'has_key', 'object_len', 'count',
+]
+
 _lib = ctypes.CDLL(_lib_path)
 
 # FFI
@@ -40,6 +47,15 @@ _lib.bmb_json_array_len.argtypes = [ctypes.c_void_p]
 _lib.bmb_json_array_len.restype = ctypes.c_int64
 _lib.bmb_json_get_number.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
 _lib.bmb_json_get_number.restype = ctypes.c_int64
+# Cycle 2131
+_lib.bmb_json_has_key.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+_lib.bmb_json_has_key.restype = ctypes.c_int64
+_lib.bmb_json_object_len.argtypes = [ctypes.c_void_p]
+_lib.bmb_json_object_len.restype = ctypes.c_int64
+_lib.bmb_json_get_bool.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+_lib.bmb_json_get_bool.restype = ctypes.c_int64
+_lib.bmb_json_count.argtypes = [ctypes.c_void_p]
+_lib.bmb_json_count.restype = ctypes.c_int64
 
 # String→String functions
 _lib.bmb_json_stringify.argtypes = [ctypes.c_void_p]
@@ -149,6 +165,26 @@ def array_get(json_str: str, idx: int) -> str:
     result = _read_str(out)
     _lib.bmb_ffi_free_string(ss)
     return result
+
+
+def has_key(json_str: str, key: str) -> bool:
+    """Check if JSON object has a key."""
+    return bool(_call_ss_to_i(_lib.bmb_json_has_key, json_str, key))
+
+
+def object_len(json_str: str) -> int:
+    """Get number of keys in a JSON object (-1 for non-objects)."""
+    return _call_s_to_i(_lib.bmb_json_object_len, json_str)
+
+
+def get_bool(json_str: str, key: str) -> int:
+    """Get boolean value by key (1=true, 0=false, -1=missing or not bool)."""
+    return _call_ss_to_i(_lib.bmb_json_get_bool, json_str, key)
+
+
+def count(json_str: str) -> int:
+    """Count elements in JSON structure (shallow)."""
+    return _call_s_to_i(_lib.bmb_json_count, json_str)
 
 
 if __name__ == '__main__':

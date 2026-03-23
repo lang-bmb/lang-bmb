@@ -614,3 +614,46 @@ class TestIntegration:
         assert bmb_json.array_len(users_raw) == 2
         first_user_raw = bmb_json.array_get(users_raw, 0)
         assert bmb_json.get_string(first_user_raw, 'name') == 'Alice'
+
+
+class TestNewJsonFunctions:
+    """Tests for Cycle 2131-2132 functions."""
+
+    def test_has_key_present(self):
+        assert bmb_json.has_key('{"a":1,"b":2}', "a") is True
+
+    def test_has_key_missing(self):
+        assert bmb_json.has_key('{"a":1}', "b") is False
+
+    def test_has_key_non_object(self):
+        assert bmb_json.has_key('[1,2]', "a") is False
+
+    def test_object_len_basic(self):
+        assert bmb_json.object_len('{"a":1,"b":2,"c":3}') == 3
+
+    def test_object_len_empty(self):
+        assert bmb_json.object_len('{}') == 0
+
+    def test_object_len_non_object(self):
+        assert bmb_json.object_len('[1,2]') == -1
+
+    def test_get_bool_true(self):
+        assert bmb_json.get_bool('{"ok":true}', "ok") == 1
+
+    def test_get_bool_false(self):
+        assert bmb_json.get_bool('{"ok":false}', "ok") == 0
+
+    def test_get_bool_missing(self):
+        assert bmb_json.get_bool('{"a":1}', "ok") == -1
+
+    def test_get_bool_not_bool(self):
+        assert bmb_json.get_bool('{"a":1}', "a") == -1
+
+    def test_count_object(self):
+        assert bmb_json.count('{"a":1,"b":2}') == 5
+
+    def test_count_array(self):
+        assert bmb_json.count('[1,2,3]') == 4
+
+    def test_count_scalar(self):
+        assert bmb_json.count('42') == 1

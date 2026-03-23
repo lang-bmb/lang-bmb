@@ -1214,6 +1214,295 @@ pub fn bmb_array_index_of(arr: i64, n: i64, target: i64) -> i64
     result
 };
 
+// ============================================================================
+// Shell Sort — Diminishing increment sort
+// ============================================================================
+
+@export
+pub fn bmb_shell_sort(arr: i64, n: i64) -> i64
+  pre n >= 0
+= {
+    let mut gap = n / 2;
+    while gap > 0 {
+        let mut i = gap;
+        while i < n {
+            let temp = load_i64(arr + i * 8);
+            let mut j = i;
+            let mut cont = true;
+            while cont {
+                let _r = if j >= gap {
+                    let prev = load_i64(arr + (j - gap) * 8);
+                    if prev > temp {
+                        let _s = store_i64(arr + j * 8, prev);
+                        j = j - gap;
+                        0
+                    } else { cont = false; 0 }
+                } else { cont = false; 0 };
+                0
+            };
+            let _s = store_i64(arr + j * 8, temp);
+            set i = i + 1
+        };
+        set gap = gap / 2
+    };
+    0
+};
+
+// ============================================================================
+// Subset Sum — Does a subset of arr sum to target?
+// ============================================================================
+
+@export
+pub fn bmb_subset_sum(arr: i64, n: i64, target: i64) -> i64
+  pre n >= 0 and target >= 0
+= {
+    // dp[j] = 1 if sum j is achievable
+    let dp = malloc((target + 1) * 8);
+    let mut j = 0;
+    while j <= target {
+        let _s = store_i64(dp + j * 8, 0);
+        set j = j + 1
+    };
+    let _s0 = store_i64(dp, 1);  // sum 0 is always achievable
+    let mut i = 0;
+    while i < n {
+        let val = load_i64(arr + i * 8);
+        set j = target;
+        while j >= val {
+            let prev = load_i64(dp + (j - val) * 8);
+            let _u = if prev == 1 { store_i64(dp + j * 8, 1) } else { 0 };
+            set j = j - 1
+        };
+        set i = i + 1
+    };
+    let result = load_i64(dp + target * 8);
+    let _f = free(dp);
+    result
+};
+
+// ============================================================================
+// Matrix Determinant (N x N, row-major) — Gaussian elimination
+// ============================================================================
+
+@export
+pub fn bmb_matrix_det(mat: i64, n: i64) -> i64
+  pre n > 0
+= {
+    // Work on a copy (scaled by 1000 for integer precision)
+    let sz = n * n;
+    let det_buf = malloc(sz * 8);
+    let mut i = 0;
+    while i < sz {
+        let _s = store_i64(det_buf + i * 8, load_i64(mat + i * 8) * 1000);
+        set i = i + 1
+    };
+
+    let mut det_sign = 1;
+    let mut col = 0;
+    let mut zero_det = false;
+    while col < n {
+        // Find pivot
+        let mut pivot_row = 0 - 1;
+        let mut r = col;
+        while r < n {
+            let val = load_i64(det_buf + (r * n + col) * 8);
+            let _u = if val != 0 {
+                if pivot_row < 0 { pivot_row = r; 0 } else { 0 }
+            } else { 0 };
+            set r = r + 1
+        };
+        let _check = if pivot_row < 0 {
+            zero_det = true;
+            0
+        } else { 0 };
+        // Swap rows if needed
+        let _swap = if not zero_det {
+            if pivot_row != col {
+                let mut k = 0;
+                while k < n {
+                    let a = load_i64(det_buf + (col * n + k) * 8);
+                    let b = load_i64(det_buf + (pivot_row * n + k) * 8);
+                    let _s1 = store_i64(det_buf + (col * n + k) * 8, b);
+                    let _s2 = store_i64(det_buf + (pivot_row * n + k) * 8, a);
+                    set k = k + 1
+                };
+                det_sign = 0 - det_sign;
+                0
+            } else { 0 }
+        } else { 0 };
+        // Eliminate below
+        let _elim = if not zero_det {
+            let pivot_val = load_i64(det_buf + (col * n + col) * 8);
+            set r = col + 1;
+            while r < n {
+                let factor = load_i64(det_buf + (r * n + col) * 8);
+                let mut k = col;
+                while k < n {
+                    let cur = load_i64(det_buf + (r * n + k) * 8);
+                    let piv = load_i64(det_buf + (col * n + k) * 8);
+                    let new_val = (cur * pivot_val - piv * factor) / pivot_val;
+                    let _s = store_i64(det_buf + (r * n + k) * 8, new_val);
+                    set k = k + 1
+                };
+                set r = r + 1
+            };
+            0
+        } else { 0 };
+        set col = col + 1
+    };
+    let result = if zero_det { 0 } else {
+        // Product of diagonal (scaled)
+        let mut prod = det_sign;
+        set i = 0;
+        while i < n {
+            prod = prod * load_i64(det_buf + (i * n + i) * 8);
+            set i = i + 1
+        };
+        // Unscale: divide by 1000^n
+        let mut scale = 1;
+        set i = 0;
+        while i < n {
+            scale = scale * 1000;
+            set i = i + 1
+        };
+        prod / scale
+    };
+    let _f = free(det_buf);
+    result
+};
+
+// ============================================================================
+// Insertion Sort
+// ============================================================================
+
+@export
+pub fn bmb_insertion_sort(arr: i64, n: i64) -> i64
+  pre n >= 0
+= {
+    let mut i = 1;
+    while i < n {
+        let key = load_i64(arr + i * 8);
+        let mut j = i - 1;
+        let mut cont = true;
+        while cont {
+            let _r = if j >= 0 {
+                let cur = load_i64(arr + j * 8);
+                if cur > key {
+                    let _s = store_i64(arr + (j + 1) * 8, cur);
+                    j = j - 1;
+                    0
+                } else { cont = false; 0 }
+            } else { cont = false; 0 };
+            0
+        };
+        let _s = store_i64(arr + (j + 1) * 8, key);
+        set i = i + 1
+    };
+    0
+};
+
+// ============================================================================
+// Is Prime — Miller test for small primes, trial division
+// ============================================================================
+
+@export
+pub fn bmb_is_prime(n: i64) -> i64
+= {
+    if n < 2 { 0 }
+    else if n < 4 { 1 }
+    else if n % 2 == 0 { 0 }
+    else if n % 3 == 0 { 0 }
+    else {
+        let mut i = 5;
+        let mut result = 1;
+        let mut cont = true;
+        while cont {
+            let _r = if i * i > n { cont = false; 0 }
+            else if n % i == 0 { result = 0; cont = false; 0 }
+            else if n % (i + 2) == 0 { result = 0; cont = false; 0 }
+            else { i = i + 6; 0 };
+            0
+        };
+        result
+    }
+};
+
+// ============================================================================
+// Selection Sort
+// ============================================================================
+
+@export
+pub fn bmb_selection_sort(arr: i64, n: i64) -> i64
+  pre n >= 0
+= {
+    let mut i = 0;
+    while i < n - 1 {
+        let mut min_idx = i;
+        let mut j = i + 1;
+        while j < n {
+            let _u = if load_i64(arr + j * 8) < load_i64(arr + min_idx * 8) {
+                min_idx = j; 0
+            } else { 0 };
+            set j = j + 1
+        };
+        let _swap = if min_idx != i {
+            let a = load_i64(arr + i * 8);
+            let b = load_i64(arr + min_idx * 8);
+            let _s1 = store_i64(arr + i * 8, b);
+            let _s2 = store_i64(arr + min_idx * 8, a);
+            0
+        } else { 0 };
+        set i = i + 1
+    };
+    0
+};
+
+// ============================================================================
+// Bubble Sort
+// ============================================================================
+
+@export
+pub fn bmb_bubble_sort(arr: i64, n: i64) -> i64
+  pre n >= 0
+= {
+    let mut i = 0;
+    while i < n - 1 {
+        let mut swapped = false;
+        let mut j = 0;
+        while j < n - 1 - i {
+            let a = load_i64(arr + j * 8);
+            let b = load_i64(arr + (j + 1) * 8);
+            let _u = if a > b {
+                let _s1 = store_i64(arr + j * 8, b);
+                let _s2 = store_i64(arr + (j + 1) * 8, a);
+                swapped = true;
+                0
+            } else { 0 };
+            set j = j + 1
+        };
+        let _brk = if not swapped { i = n; 0 } else { 0 };
+        set i = i + 1
+    };
+    0
+};
+
+// ============================================================================
+// Array Product — Multiply all elements
+// ============================================================================
+
+@export
+pub fn bmb_array_product(arr: i64, n: i64) -> i64
+  pre n > 0
+= {
+    let mut result = 1;
+    let mut i = 0;
+    while i < n {
+        result = result * load_i64(arr + i * 8);
+        set i = i + 1
+    };
+    result
+};
+
 // Entry point for standalone testing
 fn main() -> i64 = {
     // Test knapsack

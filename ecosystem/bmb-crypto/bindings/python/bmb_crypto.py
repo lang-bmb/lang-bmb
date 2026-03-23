@@ -19,6 +19,12 @@ if sys.platform == 'win32' and hasattr(os, 'add_dll_directory'):
     for p in [r'C:\msys64\ucrt64\bin', r'C:\msys64\mingw64\bin']:
         if os.path.isdir(p):
             os.add_dll_directory(p)
+__all__ = [
+    'sha256', 'md5', 'crc32', 'hmac_sha256',
+    'base64_encode', 'base64_decode', 'base32_encode', 'base32_decode',
+    'adler32', 'fletcher16', 'xor_checksum',
+]
+
 _lib = ctypes.CDLL(_lib_path)
 
 # FFI

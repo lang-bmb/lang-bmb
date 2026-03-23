@@ -22,7 +22,7 @@ bmb_json.stringify('{ "a" : 1 , "b" : [2,3] }')       # '{"a":1,"b":[2,3]}'
 bmb_json.get_type('{"a":1}')                           # 'object'
 ```
 
-## Full API (8 functions)
+## Full API (12 functions)
 
 | Function | Description | Return |
 |----------|-------------|--------|
@@ -34,6 +34,10 @@ bmb_json.get_type('{"a":1}')                           # 'object'
 | `get_number(json_str, key)` | Get number value | `int` (0 if missing) |
 | `array_len(json_str)` | Array length | `int` |
 | `array_get(json_str, idx)` | Array element as JSON | `str` (empty if out of bounds) |
+| `has_key(json_str, key)` | Check if object has key | `bool` |
+| `object_len(json_str)` | Number of keys in object | `int` (-1 for non-objects) |
+| `get_bool(json_str, key)` | Get boolean value | `int` (1/0/-1) |
+| `count(json_str)` | Count elements (shallow) | `int` |
 
 All outputs cross-validated against Python's `json.loads` / `json.dumps`.
 
