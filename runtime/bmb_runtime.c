@@ -1479,6 +1479,11 @@ void print_f64(double f) {
     bmb_print_f64(f);
 }
 
+// v0.90.3: read_int unprefixed alias for text backend compatibility
+int64_t read_int(void) {
+    return bmb_read_int();
+}
+
 // v0.51.51: println_str takes BmbString*
 void println_str(const BmbString* s) {
     if (s && s->data) printf("%s\n", s->data);

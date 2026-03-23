@@ -1,0 +1,38 @@
+// Binary Search — reads target, n, then n sorted integers from stdin.
+// Prints the 0-based index of target, or -1 if not found.
+
+fn binary_search(v: i64, target: i64) -> i64 = {
+    let n = vec_len(v);
+    let mut lo = 0;
+    let mut hi = n - 1;
+    let mut result = 0 - 1;
+    while lo <= hi {
+        let mid = lo + (hi - lo) / 2;
+        let val = vec_get(v, mid);
+        if val == target {
+            set result = mid;
+            set lo = hi + 1
+        } else if val < target {
+            set lo = mid + 1
+        } else {
+            set hi = mid - 1
+        }
+    };
+    result
+};
+
+fn main() -> i64 = {
+    let target = read_int();
+    let n = read_int();
+    let v = vec_new();
+    let mut i = 0;
+    while i < n {
+        let val = read_int();
+        let _p = vec_push(v, val);
+        set i = i + 1
+    };
+    let result = binary_search(v, target);
+    let _p = println(result);
+    let _f = vec_free(v);
+    0
+};
