@@ -39,6 +39,7 @@ pub mod cfg;
 pub mod cir;
 pub mod codegen;
 pub mod derive;
+pub mod diagnostics;
 pub mod error;
 pub mod index;
 pub mod interp;
