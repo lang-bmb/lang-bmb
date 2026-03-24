@@ -2039,7 +2039,7 @@ impl TextCodeGen {
                         writeln!(out, "  %_pre_ext_{} = sext i32 %{} to i64", check_idx, var)?;
                         format!("_pre_ext_{}", check_idx)
                     } else {
-                        format!("{}", var)
+                        var.to_string()
                     };
                     writeln!(out, "  %_pre_chk_{} = icmp {} i64 %{}, {}", check_idx, llvm_op, check_var, value)?;
                     writeln!(out, "  br i1 %_pre_chk_{}, label %_pre_fail_{}, label %_pre_ok_{}", check_idx, check_idx, check_idx)?;

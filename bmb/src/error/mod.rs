@@ -914,19 +914,31 @@ pub fn report_error_machine(filename: &str, source: &str, error: &CompileError) 
         CompileError::Resolve { .. } => "resolve",
     };
 
+    let message = error.message();
+    let escaped_msg = message.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n");
+    let escaped_file = filename.replace('\\', "\\\\").replace('"', "\\\"");
+
     let (start, end) = error.span().map(|s| (s.start, s.end)).unwrap_or((0, 0));
     let (line, col) = offset_to_line_col(source, start);
 
-    println!(
-        r#"{{"type":"error","kind":"{}","file":"{}","start":{},"end":{},"line":{},"col":{},"message":"{}"}}"#,
-        kind,
-        filename.replace('\\', "\\\\").replace('"', "\\\""),
-        start,
-        end,
-        line,
-        col,
-        error.message().replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n")
+    // Build base JSON (existing fields, same format)
+    let mut json = format!(
+        r#"{{"type":"error","kind":"{}","file":"{}","start":{},"end":{},"line":{},"col":{},"message":"{}""#,
+        kind, escaped_file, start, end, line, col, escaped_msg
     );
+
+    // AI diagnostic enrichment — append only when pattern matches
+    let patterns = crate::diagnostics::find_patterns(kind, message);
+    if let Some(p) = patterns.first() {
+        let esc = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n");
+        json.push_str(&format!(
+            r#","suggestion":"{}","example_wrong":"{}","example_correct":"{}","pattern":"{}""#,
+            esc(p.suggestion), esc(p.example_wrong), esc(p.example_correct), p.id
+        ));
+    }
+
+    json.push('}');
+    println!("{}", json);
 }
 
 /// Machine-readable warning output (JSON format)
