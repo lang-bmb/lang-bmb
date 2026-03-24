@@ -41,10 +41,13 @@ def main() -> int:
                         help="Run H2 conditions only (bmb_contract vs rust vs python)")
     parser.add_argument("--dry-run", action="store_true",
                         help="Validate setup without calling LLM")
-    parser.add_argument("--model", type=str, default="claude-opus-4-6",
-                        help="LLM model name (default: claude-opus-4-6)")
+    parser.add_argument("--model", type=str, default="claude-code",
+                        help="LLM model name (default: claude-code)")
     parser.add_argument("--temperature", type=float, default=0.0,
                         help="LLM temperature (default: 0.0)")
+    parser.add_argument("--base-url", type=str,
+                        default="http://172.30.1.62:6190/v1",
+                        help="OpenAI-compatible API base URL")
     args = parser.parse_args()
 
     problems_dir = _BASE / "problems"
@@ -109,7 +112,8 @@ def main() -> int:
         "python": PythonRunner(),
     }
 
-    llm = LlmClient(model=args.model, temperature=args.temperature)
+    llm = LlmClient(model=args.model, temperature=args.temperature,
+                     base_url=args.base_url)
     exp = ExperimentRunner(
         llm=llm,
         runners=runners,

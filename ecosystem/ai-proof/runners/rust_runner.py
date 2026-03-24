@@ -121,10 +121,11 @@ class RustRunner(RunnerBase):
     # Perf
     # ------------------------------------------------------------------
 
-    def measure_perf(self, work_dir: Path, iterations: int = 10) -> int | None:
+    def measure_perf(self, work_dir: Path, iterations: int = 10,
+                     stdin: str = "") -> int | None:
         bin_name = "solution.exe" if sys.platform == "win32" else "solution"
         binary = work_dir / bin_name
         if not binary.exists():
             return None
-        result = measure_binary(binary, iterations=iterations)
+        result = measure_binary(binary, stdin=stdin, iterations=iterations)
         return result["median_ns"]

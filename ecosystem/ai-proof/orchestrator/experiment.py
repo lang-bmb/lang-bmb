@@ -217,17 +217,22 @@ class ExperimentRunner:
         if not problem.baseline_c:
             return None
 
-        c_ns = self._measure_c_baseline(problem, work_dir)
+        # Use first test case's stdin for performance measurement
+        perf_stdin = ""
+        if problem.tests:
+            perf_stdin = problem.tests[0].get("stdin", "")
+
+        c_ns = self._measure_c_baseline(problem, work_dir, perf_stdin)
         if c_ns is None:
             return None
 
-        bmb_ns = runner.measure_perf(work_dir)
+        bmb_ns = runner.measure_perf(work_dir, stdin=perf_stdin)
         if bmb_ns is None:
             return None
 
         return bmb_ns / c_ns
 
-    def _measure_c_baseline(self, problem, work_dir) -> int | None:
+    def _measure_c_baseline(self, problem, work_dir, stdin: str = "") -> int | None:
         """Compile baseline.c with clang -O2 and measure. Returns median_ns or None."""
         if not problem.baseline_c:
             return None
@@ -246,7 +251,7 @@ class ExperimentRunner:
             )
             if result.returncode != 0:
                 return None
-            stats = measure_binary(c_bin)
+            stats = measure_binary(c_bin, stdin=stdin)
             return stats["median_ns"]
         except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
             return None
