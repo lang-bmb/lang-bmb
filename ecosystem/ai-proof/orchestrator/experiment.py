@@ -141,6 +141,9 @@ class ExperimentRunner:
                     error["normalized"],
                     error["location"],
                     error["raw"],
+                    suggestion=error.get("suggestion", ""),
+                    example_wrong=error.get("example_wrong", ""),
+                    example_correct=error.get("example_correct", ""),
                 )
                 messages.append({"role": "assistant", "content": response})
                 messages.append({"role": "user", "content": feedback})
@@ -170,6 +173,9 @@ class ExperimentRunner:
                     error["normalized"],
                     error["location"],
                     error["raw"],
+                    suggestion=error.get("suggestion", ""),
+                    example_wrong=error.get("example_wrong", ""),
+                    example_correct=error.get("example_correct", ""),
                 )
                 messages.append({"role": "assistant", "content": response})
                 messages.append({"role": "user", "content": feedback})

@@ -1,5 +1,6 @@
 """Normalizes compiler/test error output into a standard format."""
 
+import json as _json
 import re
 
 LOCATION_PATTERNS = {
@@ -53,9 +54,41 @@ def normalize_error(
             if m:
                 normalized = m.group(1).strip()
 
-    return {
+    result = {
         "type": error_type,
         "normalized": normalized,
         "location": location,
         "raw": raw,
     }
+
+    # Enrich with BMB JSONL suggestion fields
+    if lang == "bmb" and not is_test_failure:
+        enrichment = _try_parse_bmb_jsonl(raw)
+        if enrichment:
+            result.update(enrichment)
+    # Ensure new fields exist even if not enriched
+    result.setdefault("suggestion", "")
+    result.setdefault("example_wrong", "")
+    result.setdefault("example_correct", "")
+    return result
+
+
+def _try_parse_bmb_jsonl(raw: str) -> dict:
+    """Try to extract suggestion/example fields from BMB JSONL output."""
+    for line in raw.strip().split("\n"):
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            data = _json.loads(line)
+            if data.get("type") == "error":
+                return {
+                    "normalized": data.get("message", ""),
+                    "location": f"{data.get('file', '')}:{data.get('line', '')}:{data.get('col', '')}",
+                    "suggestion": data.get("suggestion", ""),
+                    "example_wrong": data.get("example_wrong", ""),
+                    "example_correct": data.get("example_correct", ""),
+                }
+        except (_json.JSONDecodeError, KeyError):
+            continue
+    return {}
