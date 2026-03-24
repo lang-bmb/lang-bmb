@@ -1,0 +1,36 @@
+{
+  "run_id": 1,
+  "condition": "bmb_nocontract",
+  "loop_count": 2,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 1,
+    "D": 0
+  },
+  "final_correct": true,
+  "perf_ratio": 1.3039338270654997,
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "The current directory is empty. I'm not familiar with \"bmb\" as a programming language. It's possible that:\n\n1. **\"bmb\" is a typo** - Did you mean \"Bm\" (the language I found documentation for), or perhaps another language like \"asm\" (assembly), \"c\", \"nim\", etc.?\n\n2. **\"bmb\" is a custom/esoteric language** - If this is a custom language you're working with, I would need access to its specification or documentation.\n\n3. **\"bmb\" is a very niche language** - Could you provide more context or a link to its documentation?\n\nIf you meant the **Bm language** (from bm-lang.github.io), I can write a binary search implementation, though I noticed the documentation doesn't show how to read from stdin. Here's what a Bm implementation might look like based on the syntax I found:\n\n```bm\nfunction main() {\n    // Read input - exact syntax unclear from docs\n    let input = readLine().split(\" \");\n    let target = parseInt(input[0]);\n    let n = parseInt(input[1]);\n    \n    var arr = Array<Int>.new(n);\n    for i = 0 while i < n step i++ {\n        arr[i] = parseInt(input[i + 2]);\n    }\n    \n    // Binary search\n    var left = 0;\n    var right = n - 1;\n    \n    while left <= right {\n        let mid = left + (right - left) / 2;\n        if arr[mid] == target {\n            println(mid);\n            return;\n        }\n        else if arr[mid] < target {\n            left = mid + 1;\n        }\n        else {\n            right = mid - 1;\n        }\n    }\n    \n    println(-1);\n}\n```\n\n**Could you please clarify which language \"bmb\" refers to?** If you can provide documentation or examples, I can write the correct implementation for you.",
+      "compiled": false,
+      "test_passed": false,
+      "error": {
+        "type": "compile_error",
+        "normalized": "unexpected character: \\\"'\\\"\"}",
+        "location": "",
+        "raw": "{\"type\":\"error\",\"message\":\"Parse error: unexpected character: \\\"'\\\"\"}"
+      },
+      "loop_type": "C"
+    },
+    {
+      "attempt": 2,
+      "code": "// Binary Search — reads target, n, then n sorted integers from stdin.\n// Prints the 0-based index of target, or -1 if not found.\n\nfn binary_search(v: i64, target: i64) -> i64 = {\n    let n = vec_len(v);\n    let mut lo = 0;\n    let mut hi = n - 1;\n    let mut result = 0 - 1;\n    while lo <= hi {\n        let mid = lo + (hi - lo) / 2;\n        let val = vec_get(v, mid);\n        if val == target {\n            set result = mid;\n            set lo = hi + 1\n        } else if val < target {\n            set lo = mid + 1\n        } else {\n            set hi = mid - 1\n        }\n    };\n    result\n};\n\nfn main() -> i64 = {\n    let target = read_int();\n    let n = read_int();\n    let v = vec_new();\n    let mut i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(v, val);\n        set i = i + 1\n    };\n    let result = binary_search(v, target);\n    let _p = println(result);\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error": null,
+      "loop_type": null
+    }
+  ]
+}

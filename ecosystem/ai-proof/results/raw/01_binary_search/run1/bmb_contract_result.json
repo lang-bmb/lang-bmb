@@ -1,0 +1,23 @@
+{
+  "run_id": 1,
+  "condition": "bmb_contract",
+  "loop_count": 1,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "final_correct": true,
+  "perf_ratio": 1.081688521448712,
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "// Binary Search — reads target, n, then n sorted integers from stdin.\n// Prints the 0-based index of target, or -1 if not found.\n\nfn binary_search(v: i64, target: i64) -> i64 = {\n    let n = vec_len(v);\n    let mut lo = 0;\n    let mut hi = n - 1;\n    let mut result = 0 - 1;\n    while lo <= hi {\n        let mid = lo + (hi - lo) / 2;\n        let val = vec_get(v, mid);\n        if val == target {\n            set result = mid;\n            set lo = hi + 1\n        } else if val < target {\n            set lo = mid + 1\n        } else {\n            set hi = mid - 1\n        }\n    };\n    result\n};\n\nfn main() -> i64 = {\n    let target = read_int();\n    let n = read_int();\n    let v = vec_new();\n    let mut i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(v, val);\n        set i = i + 1\n    };\n    let result = binary_search(v, target);\n    let _p = println(result);\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error": null,
+      "loop_type": null
+    }
+  ]
+}

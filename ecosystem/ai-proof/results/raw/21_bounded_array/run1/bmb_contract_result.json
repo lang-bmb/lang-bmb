@@ -1,0 +1,23 @@
+{
+  "run_id": 1,
+  "condition": "bmb_contract",
+  "loop_count": 1,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "final_correct": true,
+  "perf_ratio": 1.2243266750644832,
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "// Bounded Array Access — contract-verified safe indexing.\n// Reads n, then n integers, then an index. Prints the element at that index.\n// The contract `pre idx >= 0 and idx < n` eliminates runtime bounds checks.\n\nfn bounded_get(v: i64, n: i64, idx: i64) -> i64\n    pre idx >= 0 and idx < n\n= {\n    vec_get(v, idx)\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    let mut i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(v, val);\n        set i = i + 1\n    };\n    let idx = read_int();\n    let result = bounded_get(v, n, idx);\n    let _p = println(result);\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error": null,
+      "loop_type": null
+    }
+  ]
+}

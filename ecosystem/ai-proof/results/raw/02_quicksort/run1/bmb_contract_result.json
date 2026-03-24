@@ -1,0 +1,101 @@
+{
+  "run_id": 1,
+  "condition": "bmb_contract",
+  "loop_count": 7,
+  "loop_types": {
+    "A": 0,
+    "B": 1,
+    "C": 5,
+    "D": 0
+  },
+  "final_correct": true,
+  "perf_ratio": 1.2930792114812515,
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "I cannot find any information about a programming language called \"bmb\" either on the web or in the local codebase. This appears to be either:\n\n1. A very obscure/niche programming language\n2. A custom/internal language specific to your environment\n3. A typo or abbreviation for another language\n\nCould you please provide more information about the \"bmb\" programming language? Specifically:\n\n1. **Is there documentation or a specification** for this language you can share or point me to?\n2. **Is it a custom language** specific to your project/organization?\n3. **Could it be an abbreviation** for another language (e.g., \"bm\", \"b\", or something else)?\n4. **Is there a compiler/interpreter** I should look for?\n\nIf you have example bmb code or documentation files, please share them and I'll be happy to implement the quicksort solution in that language.",
+      "compiled": false,
+      "test_passed": false,
+      "error": {
+        "type": "compile_error",
+        "normalized": "unexpected character: \\\"'\\\"\"}",
+        "location": "",
+        "raw": "{\"type\":\"error\",\"message\":\"Parse error: unexpected character: \\\"'\\\"\"}"
+      },
+      "loop_type": "C"
+    },
+    {
+      "attempt": 2,
+      "code": "fn swap(v: i64, i: i64, j: i64) -> i64 = {\n    let tmp = vec_get(v, i);\n    let _s1 = vec_set(v, i, vec_get(v, j));\n    let _s2 = vec_set(v, j, tmp);\n    0\n};\n\nfn partition(v: i64, lo: i64, hi: i64) -> i64 = {\n    let pivot = vec_get(v, hi);\n    let mut i = lo - 1;\n    let mut j = lo;\n    while j < hi {\n        if vec_get(v, j) <= pivot {\n            set i = i + 1;\n            let _s = swap(v, i, j)\n        };\n        set j = j + 1\n    };\n    let _s = swap(v, i + 1, hi);\n    i + 1\n};\n\nfn quicksort(v: i64, lo: i64, hi: i64) -> i64 = {\n    if lo < hi {\n        let p = partition(v, lo, hi);\n        let _l = quicksort(v, lo, p - 1);\n        let _r = quicksort(v, p + 1, hi)\n    };\n    0\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    let mut i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(v, val);\n        set i = i + 1\n    };\n    if n > 0 {\n        let _q = quicksort(v, 0, n - 1)\n    };\n    set i = 0;\n    while i < n {\n        if i > 0 {\n            let _s = print_char(32)\n        };\n        let _p = print_int(vec_get(v, i));\n        set i = i + 1\n    };\n    let _n = print_char(10);\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error": {
+        "type": "compile_error",
+        "normalized": "Unrecognized token `;` found at 2728:2729\\nExpected one of \\\"else\\\"\"}",
+        "location": "",
+        "raw": "{\"type\":\"error\",\"message\":\"Parse error: Unrecognized token `;` found at 2728:2729\\nExpected one of \\\"else\\\"\"}"
+      },
+      "loop_type": "B"
+    },
+    {
+      "attempt": 3,
+      "code": "fn swap(v: i64, i: i64, j: i64) -> i64 = {\n    let tmp = vec_get(v, i);\n    let _s1 = vec_set(v, i, vec_get(v, j));\n    let _s2 = vec_set(v, j, tmp);\n    0\n};\n\nfn partition(v: i64, lo: i64, hi: i64) -> i64 = {\n    let pivot = vec_get(v, hi);\n    let mut i = lo - 1;\n    let mut j = lo;\n    while j < hi {\n        if vec_get(v, j) <= pivot {\n            set i = i + 1;\n            let _s = swap(v, i, j)\n        } else {\n            0\n        };\n        set j = j + 1\n    };\n    let _s = swap(v, i + 1, hi);\n    i + 1\n};\n\nfn quicksort(v: i64, lo: i64, hi: i64) -> i64 = {\n    if lo < hi {\n        let p = partition(v, lo, hi);\n        let _l = quicksort(v, lo, p - 1);\n        let _r = quicksort(v, p + 1, hi)\n    } else {\n        0\n    };\n    0\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    let mut i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(v, val);\n        set i = i + 1\n    };\n    if n > 0 {\n        let _q = quicksort(v, 0, n - 1)\n    } else {\n        0\n    };\n    set i = 0;\n    while i < n {\n        if i > 0 {\n            let _s = print_char(32)\n        } else {\n            0\n        };\n        let _p = print_int(vec_get(v, i));\n        set i = i + 1\n    };\n    let _n = print_char(10);\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error": {
+        "type": "compile_error",
+        "normalized": "Type error at Span { start: 2734, end: 2759 }: expected (), got i64\"}",
+        "location": "",
+        "raw": "{\"type\":\"error\",\"message\":\"Type error: Type error at Span { start: 2734, end: 2759 }: expected (), got i64\"}"
+      },
+      "loop_type": "C"
+    },
+    {
+      "attempt": 4,
+      "code": "fn swap(v: i64, i: i64, j: i64) -> () = {\n    let tmp = vec_get(v, i);\n    let _s1 = vec_set(v, i, vec_get(v, j));\n    let _s2 = vec_set(v, j, tmp)\n};\n\nfn partition(v: i64, lo: i64, hi: i64) -> i64 = {\n    let pivot = vec_get(v, hi);\n    let mut i = lo - 1;\n    let mut j = lo;\n    while j < hi {\n        if vec_get(v, j) <= pivot {\n            set i = i + 1;\n            swap(v, i, j)\n        } else {\n        };\n        set j = j + 1\n    };\n    swap(v, i + 1, hi);\n    i + 1\n};\n\nfn quicksort(v: i64, lo: i64, hi: i64) -> () = {\n    if lo < hi {\n        let p = partition(v, lo, hi);\n        quicksort(v, lo, p - 1);\n        quicksort(v, p + 1, hi)\n    } else {\n    }\n};\n\nfn main() -> () = {\n    let n = read_int();\n    let v = vec_new();\n    let mut i = 0;\n    while i < n {\n        let val = read_int();\n        vec_push(v, val);\n        set i = i + 1\n    };\n    if n > 0 {\n        quicksort(v, 0, n - 1)\n    } else {\n    };\n    set i = 0;\n    while i < n {\n        if i > 0 {\n            print_char(32)\n        } else {\n        };\n        print_int(vec_get(v, i));\n        set i = i + 1\n    };\n    print_char(10);\n    vec_free(v)\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error": {
+        "type": "compile_error",
+        "normalized": "Type error at Span { start: 3308, end: 3322 }: undefined function: `print_char`\"}",
+        "location": "",
+        "raw": "{\"type\":\"error\",\"message\":\"Type error: Type error at Span { start: 3308, end: 3322 }: undefined function: `print_char`\"}"
+      },
+      "loop_type": "C"
+    },
+    {
+      "attempt": 5,
+      "code": "fn swap(v: i64, i: i64, j: i64) -> () = {\n    let tmp = vec_get(v, i);\n    let _s1 = vec_set(v, i, vec_get(v, j));\n    let _s2 = vec_set(v, j, tmp)\n};\n\nfn partition(v: i64, lo: i64, hi: i64) -> i64 = {\n    let pivot = vec_get(v, hi);\n    let mut i = lo - 1;\n    let mut j = lo;\n    while j < hi {\n        if vec_get(v, j) <= pivot {\n            set i = i + 1;\n            swap(v, i, j)\n        } else {\n        };\n        set j = j + 1\n    };\n    swap(v, i + 1, hi);\n    i + 1\n};\n\nfn quicksort(v: i64, lo: i64, hi: i64) -> () = {\n    if lo < hi {\n        let p = partition(v, lo, hi);\n        quicksort(v, lo, p - 1);\n        quicksort(v, p + 1, hi)\n    } else {\n    }\n};\n\nfn main() -> () = {\n    let n = read_int();\n    let v = vec_new();\n    let mut i = 0;\n    while i < n {\n        let val = read_int();\n        vec_push(v, val);\n        set i = i + 1\n    };\n    if n > 0 {\n        quicksort(v, 0, n - 1)\n    } else {\n    };\n    set i = 0;\n    while i < n {\n        if i > 0 {\n            putchar(32)\n        } else {\n        };\n        print(vec_get(v, i));\n        set i = i + 1\n    };\n    putchar(10);\n    vec_free(v)\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error": {
+        "type": "compile_error",
+        "normalized": "Type error at Span { start: 3308, end: 3319 }: undefined function: `putchar`\"}",
+        "location": "",
+        "raw": "{\"type\":\"error\",\"message\":\"Type error: Type error at Span { start: 3308, end: 3319 }: undefined function: `putchar`\"}"
+      },
+      "loop_type": "C"
+    },
+    {
+      "attempt": 6,
+      "code": "fn swap(v: i64, i: i64, j: i64) -> () = {\n    let tmp = vec_get(v, i);\n    let _s1 = vec_set(v, i, vec_get(v, j));\n    let _s2 = vec_set(v, j, tmp)\n};\n\nfn partition(v: i64, lo: i64, hi: i64) -> i64 = {\n    let pivot = vec_get(v, hi);\n    let mut i = lo - 1;\n    let mut j = lo;\n    while j < hi {\n        if vec_get(v, j) <= pivot {\n            set i = i + 1;\n            swap(v, i, j)\n        } else {\n        };\n        set j = j + 1\n    };\n    swap(v, i + 1, hi);\n    i + 1\n};\n\nfn quicksort(v: i64, lo: i64, hi: i64) -> () = {\n    if lo < hi {\n        let p = partition(v, lo, hi);\n        quicksort(v, lo, p - 1);\n        quicksort(v, p + 1, hi)\n    } else {\n    }\n};\n\nfn main() -> () = {\n    let n = read_int();\n    let v = vec_new();\n    let mut i = 0;\n    while i < n {\n        let val = read_int();\n        vec_push(v, val);\n        set i = i + 1\n    };\n    if n > 0 {\n        quicksort(v, 0, n - 1)\n    } else {\n    };\n    set i = 0;\n    while i < n {\n        if i > 0 {\n            write_char(32)\n        } else {\n        };\n        write_int(vec_get(v, i));\n        set i = i + 1\n    };\n    write_char(10);\n    vec_free(v)\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error": {
+        "type": "compile_error",
+        "normalized": "Type error at Span { start: 3308, end: 3322 }: undefined function: `write_char`\"}",
+        "location": "",
+        "raw": "{\"type\":\"error\",\"message\":\"Type error: Type error at Span { start: 3308, end: 3322 }: undefined function: `write_char`\"}"
+      },
+      "loop_type": "C"
+    },
+    {
+      "attempt": 7,
+      "code": "fn swap(v: i64, i: i64, j: i64) -> i64 = {\n    let tmp = vec_get(v, i);\n    let _s1 = vec_set(v, i, vec_get(v, j));\n    let _s2 = vec_set(v, j, tmp);\n    0\n};\n\nfn partition(v: i64, lo: i64, hi: i64) -> i64 = {\n    let pivot = vec_get(v, hi);\n    let mut i = lo - 1;\n    let mut j = lo;\n    while j < hi {\n        if vec_get(v, j) <= pivot {\n            set i = i + 1;\n            let _s = swap(v, i, j);\n            ()\n        } else { () };\n        set j = j + 1\n    };\n    let _s = swap(v, i + 1, hi);\n    i + 1\n};\n\nfn quicksort(v: i64, lo: i64, hi: i64) -> i64 = {\n    if lo < hi {\n        let p = partition(v, lo, hi);\n        let _l = quicksort(v, lo, p - 1);\n        let _r = quicksort(v, p + 1, hi);\n        0\n    } else {\n        0\n    }\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    let mut i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(v, val);\n        set i = i + 1\n    };\n    if n > 0 {\n        let _s = quicksort(v, 0, n - 1);\n        ()\n    } else { () };\n    set i = 0;\n    while i < n {\n        if i > 0 {\n            let _s = print_str(\" \");\n            ()\n        } else { () };\n        let _p = print(vec_get(v, i));\n        set i = i + 1\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error": null,
+      "loop_type": null
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "experiment": "ai-native-proof-phase1",
+  "date": "2026-03-24",
+  "llm": {
+    "model": "claude-code",
+    "temperature": 0.0
+  },
+  "runs_per_condition": 1,
+  "total_problems": 3,
+  "conditions": [
+    "bmb_contract",
+    "bmb_nocontract"
+  ]
+}
