@@ -90,10 +90,11 @@ class ExperimentRunner:
         attempts: list[AttemptRecord] = []
         messages: list[dict] = []
 
-        # Build test preview string for prompt
+        # Build test preview string for prompt (limit to 5 examples)
+        preview_tests = problem.tests[:5]
         test_preview = "\n".join(
-            f"Input: {t.get('args', [])}  Expected: {t.get('expected', '')}"
-            for t in problem.tests
+            f"stdin: {t.get('stdin', '')}  → stdout: {t.get('expected_stdout', t.get('expected', ''))}"
+            for t in preview_tests
         )
 
         system_prompt = build_initial_prompt(
@@ -101,9 +102,15 @@ class ExperimentRunner:
         )
         messages.append({"role": "user", "content": system_prompt})
 
+        # System instruction: code only, minimal explanation
+        sys_instruction = (
+            f"You are a {lang} programmer. Output ONLY the complete source code "
+            f"inside a ```{lang} code block. No explanation, no comments outside code."
+        )
+
         for attempt_num in range(1, MAX_LOOPS + 1):
             # --- Generate code ---
-            response = self.llm.generate("", messages)
+            response = self.llm.generate(sys_instruction, messages)
             code = LlmClient.extract_code(response, lang)
 
             # --- Strip contracts for nocontract condition ---
