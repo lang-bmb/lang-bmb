@@ -845,6 +845,22 @@ pub fn report_error(filename: &str, source: &str, error: &CompileError) {
             .print((filename, Source::from(source)))
             .unwrap();
     }
+
+    // AI-friendly hint: show suggestion from diagnostic patterns
+    let kind_lower = match error {
+        CompileError::Lexer { .. } => "lexer",
+        CompileError::Parser { .. } => "parser",
+        CompileError::Type { .. } => "type",
+        CompileError::Io { .. } => "io",
+        CompileError::Parse { .. } => "parse",
+        CompileError::Resolve { .. } => "resolve",
+    };
+    let patterns = crate::diagnostics::find_patterns(kind_lower, error.message());
+    if let Some(p) = patterns.first() {
+        eprintln!("  hint: {}", p.suggestion);
+        eprintln!("  wrong:   {}", p.example_wrong.lines().next().unwrap_or(""));
+        eprintln!("  correct: {}", p.example_correct.lines().next().unwrap_or(""));
+    }
 }
 
 /// Report warning with ariadne (v0.47)

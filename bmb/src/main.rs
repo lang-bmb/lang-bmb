@@ -952,6 +952,7 @@ fn check_file_with_includes(path: &PathBuf, include_paths: &[PathBuf]) -> Result
                 bmb::error::report_error_machine(&filename, &source, &e);
                 std::process::exit(1);
             }
+            bmb::error::report_error(&filename, &source, &e);
             return Err(e.into());
         }
     };
@@ -964,6 +965,7 @@ fn check_file_with_includes(path: &PathBuf, include_paths: &[PathBuf]) -> Result
                 bmb::error::report_error_machine(&filename, &source, &e);
                 std::process::exit(1);
             }
+            bmb::error::report_error(&filename, &source, &e);
             return Err(e.into());
         }
     };
@@ -1019,6 +1021,7 @@ fn check_file_with_includes(path: &PathBuf, include_paths: &[PathBuf]) -> Result
                 bmb::error::report_error_machine(&filename, &source, &e);
                 std::process::exit(1);
             }
+            bmb::error::report_error(&filename, &source, &e);
             return Err(e.into());
         }
     };
@@ -1035,6 +1038,7 @@ fn check_file_with_includes(path: &PathBuf, include_paths: &[PathBuf]) -> Result
             bmb::error::report_error_machine(&filename, &source, &e);
             std::process::exit(1);
         }
+        bmb::error::report_error(&filename, &source, &e);
         return Err(e.into());
     }
 
