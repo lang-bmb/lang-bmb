@@ -1,19 +1,35 @@
 {
   "run_id": 1,
   "condition": "bmb_nocontract",
-  "loop_count": 1,
+  "loop_count": 2,
   "loop_types": {
     "A": 0,
     "B": 0,
-    "C": 0,
+    "C": 1,
     "D": 0
   },
   "final_correct": true,
-  "perf_ratio": 1.1994408876271039,
+  "perf_ratio": 1.225394417475728,
   "attempts": [
     {
       "attempt": 1,
-      "code": "// Quicksort — reads n, then n integers from stdin.\n// Prints sorted integers separated by spaces.\n\nfn swap(v: i64, i: i64, j: i64) -> i64 = {\n    let tmp = vec_get(v, i);\n    let _s1 = vec_set(v, i, vec_get(v, j));\n    let _s2 = vec_set(v, j, tmp);\n    0\n};\n\nfn partition(v: i64, lo: i64, hi: i64) -> i64 = {\n    let pivot = vec_get(v, hi);\n    let mut i = lo - 1;\n    let mut j = lo;\n    while j < hi {\n        if vec_get(v, j) <= pivot {\n            set i = i + 1;\n            let _s = swap(v, i, j);\n            ()\n        } else { () };\n        set j = j + 1\n    };\n    let _s = swap(v, i + 1, hi);\n    i + 1\n};\n\nfn quicksort(v: i64, lo: i64, hi: i64) -> i64 = {\n    if lo < hi {\n        let p = partition(v, lo, hi);\n        let _l = quicksort(v, lo, p - 1);\n        let _r = quicksort(v, p + 1, hi);\n        0\n    } else {\n        0\n    }\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    let mut i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(v, val);\n        set i = i + 1\n    };\n    if n > 0 {\n        let _s = quicksort(v, 0, n - 1);\n        ()\n    } else { () };\n    // Print space-separated\n    set i = 0;\n    while i < n {\n        if i > 0 {\n            let _s = print_str(\" \");\n            ()\n        } else { () };\n        let _p = print(vec_get(v, i));\n        set i = i + 1\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(v);\n    0\n};",
+      "code": "fn swap(arr: i64, i: i64, j: i64) -> i64 = {\n    let tmp: i64 = vec_get(arr, i);\n    vec_set(arr, i, vec_get(arr, j));\n    vec_set(arr, j, tmp);\n    0\n};\n\nfn partition(arr: i64, low: i64, high: i64) -> i64 = {\n    let pivot: i64 = vec_get(arr, high);\n    let mut i: i64 = low - 1;\n    let mut j: i64 = low;\n    while j < high {\n        if vec_get(arr, j) <= pivot {\n            set i = i + 1;\n            let _s: i64 = swap(arr, i, j);\n            0\n        } else {\n            0\n        };\n        set j = j + 1;\n    };\n    let _s: i64 = swap(arr, i + 1, high);\n    i + 1\n};\n\nfn quicksort(arr: i64, low: i64, high: i64) -> i64 = {\n    if low < high {\n        let pi: i64 = partition(arr, low, high);\n        let _l: i64 = quicksort(arr, low, pi - 1);\n        let _r: i64 = quicksort(arr, pi + 1, high);\n        0\n    } else {\n        0\n    }\n};\n\nfn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    let mut i: i64 = 0;\n    while i < n {\n        vec_push(arr, read_int());\n        set i = i + 1;\n    };\n    arr\n};\n\nfn print_array(arr: i64, n: i64) -> i64 = {\n    let mut i: i64 = 0;\n    while i < n {\n        if i > 0 {\n            let _s: i64 = print_str(\" \");\n            0\n        } else {\n            0\n        };\n        let _p: i64 = print(vec_get(arr, i));\n        set i = i + 1;\n    };\n    let _nl: i64 = println_str(\"\");\n    0\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    if n > 0 {\n        let _qs: i64 = quicksort(arr, 0, n - 1);\n        0\n    } else {\n        0\n    };\n    let _pa: i64 = print_array(arr, n);\n    vec_free(arr);\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error": {
+        "type": "compile_error",
+        "normalized": "expected i64, got ()",
+        "location": "C:\\Users\\iyulab\\AppData\\Local\\Temp\\tmph7oa50bs\\solution.bmb:149:23",
+        "raw": "{\"type\":\"error\",\"kind\":\"type\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmph7oa50bs\\\\solution.bmb\",\"start\":3571,\"end\":3593,\"line\":149,\"col\":23,\"message\":\"expected i64, got ()\",\"suggestion\":\"println/print/vec_push/vec_set/vec_free return () not i64. Wrap in a block: let _r: i64 = { println(x); 0 };\",\"example_wrong\":\"fn main() -> i64 = println(42);\",\"example_correct\":\"fn main() -> i64 = { let _r: i64 = println(42); 0 };\",\"pattern\":\"void_return_used\"}",
+        "suggestion": "println/print/vec_push/vec_set/vec_free return () not i64. Wrap in a block: let _r: i64 = { println(x); 0 };",
+        "example_wrong": "fn main() -> i64 = println(42);",
+        "example_correct": "fn main() -> i64 = { let _r: i64 = println(42); 0 };"
+      },
+      "loop_type": "C"
+    },
+    {
+      "attempt": 2,
+      "code": "fn swap(arr: i64, i: i64, j: i64) -> i64 = {\n    let tmp: i64 = vec_get(arr, i);\n    let _s1: i64 = { vec_set(arr, i, vec_get(arr, j)); 0 };\n    let _s2: i64 = { vec_set(arr, j, tmp); 0 };\n    0\n};\n\nfn partition(arr: i64, low: i64, high: i64) -> i64 = {\n    let pivot: i64 = vec_get(arr, high);\n    let mut i: i64 = low - 1;\n    let mut j: i64 = low;\n    while j < high {\n        if vec_get(arr, j) <= pivot {\n            set i = i + 1;\n            let _s: i64 = swap(arr, i, j);\n            0\n        } else {\n            0\n        };\n        set j = j + 1;\n    };\n    let _s: i64 = swap(arr, i + 1, high);\n    i + 1\n};\n\nfn quicksort(arr: i64, low: i64, high: i64) -> i64 = {\n    if low < high {\n        let pi: i64 = partition(arr, low, high);\n        let _l: i64 = quicksort(arr, low, pi - 1);\n        let _r: i64 = quicksort(arr, pi + 1, high);\n        0\n    } else {\n        0\n    }\n};\n\nfn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    let mut i: i64 = 0;\n    while i < n {\n        let _p: i64 = { vec_push(arr, read_int()); 0 };\n        set i = i + 1;\n    };\n    arr\n};\n\nfn print_array(arr: i64, n: i64) -> i64 = {\n    let mut i: i64 = 0;\n    while i < n {\n        if i > 0 {\n            let _s: i64 = { print_str(\" \"); 0 };\n            0\n        } else {\n            0\n        };\n        let _p: i64 = { print(vec_get(arr, i)); 0 };\n        set i = i + 1;\n    };\n    let _nl: i64 = { println_str(\"\"); 0 };\n    0\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    if n > 0 {\n        let _qs: i64 = quicksort(arr, 0, n - 1);\n        0\n    } else {\n        0\n    };\n    let _pa: i64 = print_array(arr, n);\n    let _f: i64 = { vec_free(arr); 0 };\n    0\n};",
       "compiled": true,
       "test_passed": true,
       "error": null,

@@ -1,19 +1,35 @@
 {
   "run_id": 1,
   "condition": "bmb_nocontract",
-  "loop_count": 1,
+  "loop_count": 2,
   "loop_types": {
     "A": 0,
     "B": 0,
-    "C": 0,
+    "C": 1,
     "D": 0
   },
   "final_correct": true,
-  "perf_ratio": 1.2325552938297286,
+  "perf_ratio": 1.2592230599770393,
   "attempts": [
     {
       "attempt": 1,
-      "code": "// Bounded Array Access — contract-verified safe indexing.\n// Reads n, then n integers, then an index. Prints the element at that index.\n// The contract `pre idx >= 0 and idx < n` eliminates runtime bounds checks.\n\nfn bounded_get(v: i64, n: i64, idx: i64) -> i64\n    pre idx >= 0 and idx < n\n= {\n    vec_get(v, idx)\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    let mut i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(v, val);\n        set i = i + 1\n    };\n    let idx = read_int();\n    let result = bounded_get(v, n, idx);\n    let _p = println(result);\n    let _f = vec_free(v);\n    0\n};",
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    let mut i: i64 = 0;\n    while i < n {\n        vec_push(arr, read_int());\n        set i = i + 1;\n    };\n    arr\n};\n\nfn safe_get(arr: i64, idx: i64, n: i64) -> i64\n    pre idx >= 0 and idx < n\n= vec_get(arr, idx);\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    let idx: i64 = read_int();\n    let result: i64 = safe_get(arr, idx, n);\n    let _r: i64 = println(result);\n    vec_free(arr);\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error": {
+        "type": "compile_error",
+        "normalized": "expected i64, got ()",
+        "location": "C:\\Users\\iyulab\\AppData\\Local\\Temp\\tmpe8k3igcm\\solution.bmb:112:19",
+        "raw": "{\"type\":\"error\",\"kind\":\"type\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpe8k3igcm\\\\solution.bmb\",\"start\":2745,\"end\":2760,\"line\":112,\"col\":19,\"message\":\"expected i64, got ()\",\"suggestion\":\"println/print/vec_push/vec_set/vec_free return () not i64. Wrap in a block: let _r: i64 = { println(x); 0 };\",\"example_wrong\":\"fn main() -> i64 = println(42);\",\"example_correct\":\"fn main() -> i64 = { let _r: i64 = println(42); 0 };\",\"pattern\":\"void_return_used\"}",
+        "suggestion": "println/print/vec_push/vec_set/vec_free return () not i64. Wrap in a block: let _r: i64 = { println(x); 0 };",
+        "example_wrong": "fn main() -> i64 = println(42);",
+        "example_correct": "fn main() -> i64 = { let _r: i64 = println(42); 0 };"
+      },
+      "loop_type": "C"
+    },
+    {
+      "attempt": 2,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    let mut i: i64 = 0;\n    while i < n {\n        vec_push(arr, read_int());\n        set i = i + 1;\n    };\n    arr\n};\n\nfn safe_get(arr: i64, idx: i64, n: i64) -> i64\n    pre idx >= 0 and idx < n\n= vec_get(arr, idx);\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    let idx: i64 = read_int();\n    let result: i64 = safe_get(arr, idx, n);\n    println(result);\n    vec_free(arr);\n    0\n};",
       "compiled": true,
       "test_passed": true,
       "error": null,
