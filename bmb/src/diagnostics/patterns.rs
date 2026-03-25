@@ -1,4 +1,8 @@
 //! Pattern definitions — AI mistake patterns derived from pilot data + CLAUDE.md.
+//!
+//! IMPORTANT: Patterns must be verified against current BMB compiler behavior.
+//! BMB evolves — features that were unsupported may now work.
+//! Last verified: 2026-03-25
 
 use super::DiagPattern;
 
@@ -44,34 +48,18 @@ pub static PATTERNS: &[DiagPattern] = &[
         example_correct: "let s: &str = \"hello\";",
     },
     DiagPattern {
-        id: "for_loop",
-        kind: "parser",
-        triggers: &["`for`", "for loop", "for("],
-        suggestion: "BMB has no for loops or range syntax. Use while loops.",
-        example_wrong: "for i in 0..n { body; }",
-        example_correct: "let mut i: i64 = 0;\nwhile i < n {\n    // body\n    set i = i + 1;\n};",
-    },
-    DiagPattern {
-        id: "reassign_set",
-        kind: "",
-        triggers: &["cannot assign", "immutable", "assign to"],
-        suggestion: "BMB uses 'set x = value;' to reassign mutable variables, not 'x = value;'.",
-        example_wrong: "let mut x: i64 = 0;\nx = 5;",
-        example_correct: "let mut x: i64 = 0;\nset x = 5;",
-    },
-    DiagPattern {
         id: "type_annotation",
         kind: "type",
-        triggers: &["type annotation", "cannot infer", "type mismatch"],
-        suggestion: "BMB requires explicit type annotations on all let bindings.",
-        example_wrong: "let x = 42;",
-        example_correct: "let x: i64 = 42;",
+        triggers: &["cannot infer", "type mismatch"],
+        suggestion: "BMB supports type inference but some complex expressions may need explicit annotations. Add ': Type' to the let binding.",
+        example_wrong: "let x = complex_expr();  // type ambiguous",
+        example_correct: "let x: i64 = complex_expr();",
     },
     DiagPattern {
         id: "fn_return_expr",
         kind: "parser",
         triggers: &["expected `=`", "expected `{`", "function body"],
-        suggestion: "BMB functions use '= expr;' for expression bodies or '{ ... }' for block bodies.",
+        suggestion: "BMB functions use '= expr;' for expression bodies or '= { ... };' for block bodies.",
         example_wrong: "fn add(a: i64, b: i64) -> i64 { a + b }",
         example_correct: "fn add(a: i64, b: i64) -> i64 = a + b;",
     },
@@ -188,39 +176,7 @@ pub static PATTERNS: &[DiagPattern] = &[
         example_wrong: "let x: i64 = if cond { 1 };",
         example_correct: "let x: i64 = if cond { 1 } else { 0 };",
     },
-    // --- Phase 2 patterns (anticipated from expanded problem set) ---
-    DiagPattern {
-        id: "return_keyword",
-        kind: "parser",
-        triggers: &["`return`", "return "],
-        suggestion: "BMB has no return keyword. Functions use expression bodies (= expr;). The last expression is the return value.",
-        example_wrong: "fn max(a: i64, b: i64) -> i64 = { if a > b { return a; } return b; };",
-        example_correct: "fn max(a: i64, b: i64) -> i64 = if a > b { a } else { b };",
-    },
-    DiagPattern {
-        id: "break_continue",
-        kind: "parser",
-        triggers: &["`break`", "`continue`", "break;", "continue;"],
-        suggestion: "BMB has no break/continue. Use a flag variable to control loop exit.",
-        example_wrong: "while true { if done { break; } }",
-        example_correct: "let mut running: i64 = 1;\nwhile running == 1 {\n    if done { set running = 0 } else { () };\n};",
-    },
-    DiagPattern {
-        id: "bool_literal",
-        kind: "",
-        triggers: &["unknown identifier `true`", "unknown identifier `false`"],
-        suggestion: "BMB uses 1/0 for boolean values in i64 context. For bool type, use true/false.",
-        example_wrong: "let done: i64 = false;",
-        example_correct: "let done: i64 = 0;\n// or: let done: bool = false;",
-    },
-    DiagPattern {
-        id: "negative_literal",
-        kind: "",
-        triggers: &["unexpected `-`", "unary minus"],
-        suggestion: "BMB negative literals: use (0 - value) or subtraction.",
-        example_wrong: "let x: i64 = -1;",
-        example_correct: "let x: i64 = 0 - 1;",
-    },
+    // --- Phase 2 patterns (verified against current compiler) ---
     DiagPattern {
         id: "closure_lambda",
         kind: "parser",
@@ -257,9 +213,9 @@ pub static PATTERNS: &[DiagPattern] = &[
         id: "iterator_methods",
         kind: "",
         triggers: &[".iter()", ".map(", ".filter(", ".collect(", ".enumerate(", ".zip("],
-        suggestion: "BMB has no iterators or functional methods. Use while loops with vec_get/vec_len.",
+        suggestion: "BMB has no iterators or functional methods. Use while/for loops with vec_get/vec_len.",
         example_wrong: "let sum: i64 = arr.iter().sum();",
-        example_correct: "let mut sum: i64 = 0;\nlet mut i: i64 = 0;\nwhile i < vec_len(arr) {\n    set sum = sum + vec_get(arr, i);\n    set i = i + 1;\n};",
+        example_correct: "let mut sum: i64 = 0;\nfor i in 0..vec_len(arr) {\n    sum = sum + vec_get(arr, i);\n};",
     },
     DiagPattern {
         id: "type_cast",
@@ -268,13 +224,5 @@ pub static PATTERNS: &[DiagPattern] = &[
         suggestion: "BMB has no type casting with 'as'. All integers are i64.",
         example_wrong: "let idx = n as usize;",
         example_correct: "let idx: i64 = n;  // All integers are i64",
-    },
-    DiagPattern {
-        id: "range_syntax",
-        kind: "parser",
-        triggers: &["..", "..=", "range"],
-        suggestion: "BMB has no range syntax (0..n). Use while loops.",
-        example_wrong: "for i in 0..n { body; }",
-        example_correct: "let mut i: i64 = 0;\nwhile i < n { /* body */ set i = i + 1; };",
     },
 ];

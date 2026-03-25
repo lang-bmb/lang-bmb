@@ -1,7 +1,7 @@
-// Range Clamp — clamp values to [lo, hi] with contract guarantees.
+// Range Clamp — clamp_val values to [lo, hi] with contract guarantees.
 // Contract proves output is always within range.
 
-fn clamp(val: i64, lo: i64, hi: i64) -> i64
+fn clamp_val(val: i64, lo: i64, hi: i64) -> i64
     pre lo <= hi
     post ret >= lo and ret <= hi
 = {
@@ -17,7 +17,7 @@ fn main() -> i64 = {
     let mut i: i64 = 0;
     while i < n {
         let val = read_int();
-        let result = clamp(val, lo, hi);
+        let result = clamp_val(val, lo, hi);
         if i > 0 {
             let _s = print_str(" ");
             ()

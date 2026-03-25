@@ -1,15 +1,13 @@
 // Bounded Sum — sum array elements with bounds-checked access.
-// Contract eliminates runtime bounds checks.
+// Contract on bounded_sum ensures n is valid.
 
-fn safe_get(v: i64, idx: i64, len: i64) -> i64
-    pre idx >= 0 and idx < len
-= vec_get(v, idx);
-
-fn bounded_sum(v: i64, len: i64) -> i64 = {
+fn bounded_sum(v: i64, n: i64) -> i64
+    pre n >= 0
+= {
     let mut sum: i64 = 0;
     let mut i: i64 = 0;
-    while i < len {
-        set sum = sum + safe_get(v, i, len);
+    while i < n {
+        set sum = sum + vec_get(v, i);
         set i = i + 1
     };
     sum

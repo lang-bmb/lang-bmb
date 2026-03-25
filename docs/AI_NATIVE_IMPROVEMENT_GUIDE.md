@@ -364,9 +364,12 @@ Loop Count가 높은 문제를 성능 최적화로 해결하려 하지 마라.
 
 ---
 
-## 부록: 현재 PatternBank 목록 (34 패턴)
+## 부록: 현재 PatternBank 목록 (27 패턴)
 
-### Phase 1 패턴 (23개, Pilot에서 검증됨)
+> **2026-03-25 검증 완료**: BMB 컴파일러 현재 상태 기준으로 모든 패턴 검증.
+> 7개 패턴 제거됨 — BMB가 이제 for/break/continue/return/-1/x=5/type inference 지원.
+
+### 활성 패턴 (27개)
 
 | ID | Kind | 대상 | Trigger 예시 |
 |----|------|------|-------------|
@@ -375,9 +378,7 @@ Loop Count가 높은 문제를 성능 최적화로 해결하려 하지 마라.
 | method_call | any | .method() → func() | `.len()`, `.push(` |
 | println_macro | any | println! → println | `println!` |
 | string_type | any | String → &str | `String::from` |
-| for_loop | parser | for → while | `` `for` `` |
-| reassign_set | any | x = → set x = | `cannot assign` |
-| type_annotation | type | let x = → let x: T = | `cannot infer` |
+| type_annotation | type | 타입 추론 실패 시 | `cannot infer` |
 | fn_return_expr | parser | { expr } → = expr; | `expected \`=\`` |
 | bitwise_ops | any | & → band | `bitwise` |
 | impl_block | parser | impl → free fn | `` `impl` `` |
@@ -393,19 +394,21 @@ Loop Count가 높은 문제를 성능 최적화로 해결하려 하지 마라.
 | underscore_pattern | parser | _ → named var | `` `_` `` |
 | missing_semicolon | parser | } → }; | `expected \`}\`` |
 | missing_else | parser | if without else | `Expected one of "else"` |
-
-### Phase 2 패턴 (11개, 확장된 문제 세트에서 예상)
-
-| ID | Kind | 대상 | Trigger 예시 |
-|----|------|------|-------------|
-| return_keyword | parser | return → expr body | `` `return` `` |
-| break_continue | parser | break/continue → flag | `` `break` ``, `` `continue` `` |
-| bool_literal | any | true/false → 1/0 | `unknown identifier \`true\`` |
-| negative_literal | any | -1 → 0 - 1 | `unexpected \`-\`` |
 | closure_lambda | parser | \|x\| → fn | `` `\|` `` |
 | mutable_param | any | &mut → local copy | `&mut` |
 | print_string_fn | type | println(str) → println_str | `expected &str, got i64` |
 | if_without_else_unit | type | if {} → if {} else {()} | `branch types do not match` |
-| iterator_methods | any | .iter()/.map() → while | `.iter()`, `.map(` |
+| iterator_methods | any | .iter()/.map() → for loop | `.iter()`, `.map(` |
 | type_cast | any | as usize → i64 | `as usize`, `as i64` |
-| range_syntax | parser | 0..n → while | `..`, `..=` |
+
+### 제거된 패턴 (7개 — BMB가 이제 지원)
+
+| 제거된 ID | 이유 |
+|-----------|------|
+| for_loop | BMB가 `for i in 0..n { }` 지원 |
+| break_continue | BMB가 `break`, `continue` 지원 |
+| return_keyword | BMB가 `return expr` 지원 |
+| reassign_set | BMB가 `x = 5` (set 없이) 지원 |
+| negative_literal | BMB가 `-1` 지원 |
+| range_syntax | BMB가 `0..n` 범위 지원 |
+| bool_literal | BMB가 `true`/`false` 지원 |

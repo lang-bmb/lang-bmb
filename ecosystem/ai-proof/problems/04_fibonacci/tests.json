@@ -11,7 +11,7 @@
   {"stdin": "50", "expected_stdout": "12586269025\n"},
   {"stdin": "60", "expected_stdout": "1548008755920\n"},
   {"stdin": "70", "expected_stdout": "190392490709135\n"},
-  {"stdin": "80", "expected_stdout": "23416728348467684\n"},
+  {"stdin": "80", "expected_stdout": "23416728348467685\n"},
   {"stdin": "90", "expected_stdout": "2880067194370816120\n"},
   {"stdin": "4", "expected_stdout": "3\n"}
 ]

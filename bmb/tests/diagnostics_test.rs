@@ -12,60 +12,21 @@ fn test_option_pattern_matches() {
 fn test_vec_method_call_matches() {
     let matches = find_patterns("type", "cannot call .push( on type i64");
     assert!(!matches.is_empty());
-    // Should match method_call pattern
     let ids: Vec<&str> = matches.iter().map(|m| m.id).collect();
     assert!(ids.contains(&"method_call"));
 }
 
 #[test]
-fn test_for_loop_parser_error() {
-    let matches = find_patterns("parser", "unexpected token `for`");
-    assert!(!matches.is_empty());
-    assert_eq!(matches[0].id, "for_loop");
-}
-
-#[test]
-fn test_reassign_error() {
-    let matches = find_patterns("type", "cannot assign to immutable variable `x`");
-    assert!(!matches.is_empty());
-    assert_eq!(matches[0].id, "reassign_set");
-}
-
-#[test]
 fn test_no_false_positive() {
-    // "integer overflow" should not match any Rust-ism pattern
+    // "integer overflow" should not match any pattern
     let matches = find_patterns("type", "integer overflow in constant expression");
     assert!(matches.is_empty());
-}
-
-#[test]
-fn test_kind_filter() {
-    // for_loop has kind="parser" — should NOT match with kind="type"
-    let matches = find_patterns("type", "unexpected token `for`");
-    let for_matches: Vec<_> = matches.iter().filter(|m| m.id == "for_loop").collect();
-    assert!(for_matches.is_empty());
 }
 
 #[test]
 fn test_case_insensitive() {
     let matches = find_patterns("", "Unknown type `Vec<i64>`");
     assert!(!matches.is_empty());
-}
-
-// --- Phase 2 pattern tests ---
-
-#[test]
-fn test_return_keyword() {
-    let matches = find_patterns("parser", "unexpected token `return`");
-    assert!(!matches.is_empty());
-    assert_eq!(matches[0].id, "return_keyword");
-}
-
-#[test]
-fn test_break_continue() {
-    let matches = find_patterns("parser", "unexpected token `break`");
-    assert!(!matches.is_empty());
-    assert_eq!(matches[0].id, "break_continue");
 }
 
 #[test]
@@ -108,7 +69,34 @@ fn test_void_return_regression() {
 
 #[test]
 fn test_total_pattern_count() {
-    // Phase 1: 23 patterns, Phase 2: +11 = 34 total
+    // After removing 7 incorrect patterns: 34 - 7 = 27
     use bmb::diagnostics::PATTERNS;
-    assert!(PATTERNS.len() >= 34, "Expected at least 34 patterns, got {}", PATTERNS.len());
+    assert!(
+        PATTERNS.len() >= 27,
+        "Expected at least 27 patterns, got {}",
+        PATTERNS.len()
+    );
+}
+
+// Verify removed patterns don't exist (BMB now supports these features)
+#[test]
+fn test_no_for_loop_pattern() {
+    // for loops are now supported in BMB — no pattern should trigger
+    let matches = find_patterns("parser", "unexpected token `for`");
+    let for_matches: Vec<_> = matches.iter().filter(|m| m.id == "for_loop").collect();
+    assert!(for_matches.is_empty(), "for_loop pattern should be removed — BMB supports for loops");
+}
+
+#[test]
+fn test_no_break_continue_pattern() {
+    let matches = find_patterns("parser", "unexpected token `break`");
+    let bc_matches: Vec<_> = matches.iter().filter(|m| m.id == "break_continue").collect();
+    assert!(bc_matches.is_empty(), "break_continue pattern should be removed — BMB supports break/continue");
+}
+
+#[test]
+fn test_no_return_keyword_pattern() {
+    let matches = find_patterns("parser", "unexpected token `return`");
+    let ret_matches: Vec<_> = matches.iter().filter(|m| m.id == "return_keyword").collect();
+    assert!(ret_matches.is_empty(), "return_keyword pattern should be removed — BMB supports return");
 }
