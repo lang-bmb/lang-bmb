@@ -34,8 +34,32 @@ class BmbRunner(RunnerBase):
         out_name = "solution.exe" if sys.platform == "win32" else "solution"
         out_path = work_dir / out_name
 
+        # Step 1: Run 'check' first — produces enriched JSONL with suggestions
         try:
-            proc = subprocess.run(
+            check_proc = subprocess.run(
+                [str(self._bmb), "check", str(src)],
+                capture_output=True,
+                text=True,
+                timeout=_BUILD_TIMEOUT,
+                cwd=str(work_dir),
+            )
+        except subprocess.TimeoutExpired:
+            return RunResult(
+                compiled=False, test_passed=False,
+                error_msg="BMB check timed out",
+            )
+
+        if check_proc.returncode != 0:
+            # Use check output (enriched JSONL with suggestions)
+            err = (check_proc.stdout + check_proc.stderr).strip()
+            return RunResult(
+                compiled=False, test_passed=False,
+                error_msg=err, raw_output=err,
+            )
+
+        # Step 2: Check passed — now build to get the binary
+        try:
+            build_proc = subprocess.run(
                 [str(self._bmb), "build", str(src), "-o", str(out_path), "--release"],
                 capture_output=True,
                 text=True,
@@ -44,18 +68,15 @@ class BmbRunner(RunnerBase):
             )
         except subprocess.TimeoutExpired:
             return RunResult(
-                compiled=False,
-                test_passed=False,
+                compiled=False, test_passed=False,
                 error_msg="BMB build timed out",
             )
 
-        if proc.returncode != 0:
-            err = (proc.stderr + proc.stdout).strip()
+        if build_proc.returncode != 0:
+            err = (build_proc.stderr + build_proc.stdout).strip()
             return RunResult(
-                compiled=False,
-                test_passed=False,
-                error_msg=err,
-                raw_output=err,
+                compiled=False, test_passed=False,
+                error_msg=err, raw_output=err,
             )
 
         return RunResult(compiled=True, test_passed=False, error_msg="")

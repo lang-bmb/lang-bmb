@@ -460,11 +460,29 @@ fn main() {
 
     if let Err(e) = result {
         // v0.71: Default machine output, --human for human-readable
+        let escaped = e.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n");
         if is_human_output() {
             eprintln!("Error: {e}");
+            // AI hint for human output
+            let patterns = bmb::diagnostics::find_patterns("", &e);
+            if let Some(p) = patterns.first() {
+                eprintln!("  hint: {}", p.suggestion);
+                eprintln!("  wrong:   {}", p.example_wrong.lines().next().unwrap_or(""));
+                eprintln!("  correct: {}", p.example_correct.lines().next().unwrap_or(""));
+            }
         } else {
-            println!(r#"{{"type":"error","message":"{}"}}"#,
-                e.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n"));
+            // AI-enriched JSON output
+            let mut json = format!(r#"{{"type":"error","message":"{}""#, escaped);
+            let patterns = bmb::diagnostics::find_patterns("", &e);
+            if let Some(p) = patterns.first() {
+                let esc = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n");
+                json.push_str(&format!(
+                    r#","suggestion":"{}","example_wrong":"{}","example_correct":"{}","pattern":"{}""#,
+                    esc(p.suggestion), esc(p.example_wrong), esc(p.example_correct), p.id
+                ));
+            }
+            json.push('}');
+            println!("{}", json);
         }
         std::process::exit(1);
     }
@@ -905,10 +923,25 @@ fn run_file(path: &Path, extra_args: &[String]) -> Result<(), Box<dyn std::error
     match handle.join() {
         Ok(Ok(_)) => Ok(()),
         Ok(Err(e)) => {
+            let escaped = e.to_string().replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n");
             if is_human_output() {
                 eprintln!("{}", e);
+                let patterns = bmb::diagnostics::find_patterns("", &e);
+                if let Some(p) = patterns.first() {
+                    eprintln!("  hint: {}", p.suggestion);
+                }
             } else {
-                println!(r#"{{"type":"error","message":"{}"}}"#, e.to_string().replace('"', "\\\""));
+                let mut json = format!(r#"{{"type":"error","message":"{}""#, escaped);
+                let patterns = bmb::diagnostics::find_patterns("", &e);
+                if let Some(p) = patterns.first() {
+                    let esc = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n");
+                    json.push_str(&format!(
+                        r#","suggestion":"{}","example_wrong":"{}","example_correct":"{}","pattern":"{}""#,
+                        esc(p.suggestion), esc(p.example_wrong), esc(p.example_correct), p.id
+                    ));
+                }
+                json.push('}');
+                println!("{}", json);
             }
             std::process::exit(1);
         }
