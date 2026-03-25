@@ -238,22 +238,32 @@ Q: 실시간 문맥이 필요한가? (stdlib 탐색, 코드 분석 등)
 
 ## 6. 실험 확장 로드맵
 
-### Phase 1 (현재): 파일럿 완료 ✅
+### Phase 1: 파일럿 완료 ✅
 
 ```
 3 문제 × 2 조건 × 1 회 = 6 실험
 결과: 100% 성공, 2.0 loops, Type C 82% 감소
 ```
 
-### Phase 2: 전체 문제 세트
+### Phase 2: 전체 문제 세트 — 인프라 준비 완료 ✅
 
 ```
 30 문제 × 4 조건 × 3 회 = 360 실험
-목표:
-  - 27개 문제 추가 (알고리즘 10 + 시스템 10 + 계약 10)
-  - H1 + H2 모두 실행
-  - 통계적 유의성 검증 (Wilcoxon signed-rank)
+현재 상태:
+  ✅ 27개 문제 추가 완료 (알고리즘 10 + 시스템 10 + 계약 10)
+  ✅ 모든 BMB 솔루션 bmb check 통과 (30/30)
+  ✅ PatternBank 23→34 패턴 확장
+  ✅ bmb_reference.md 강화 (81→122줄)
+  ✅ 문제 레지스트리 검증 (30 문제, 388 테스트)
+  ⬜ 실험 실행 (LLM API 필요)
+  ⬜ H1 + H2 실행
+  ⬜ 통계적 유의성 검증 (Wilcoxon signed-rank)
 ```
+
+**문제 카테고리**:
+- 알고리즘 (01-10): binary_search, quicksort, merge_sort, fibonacci, gcd, matrix_multiply, max_subarray, two_sum, insertion_sort, reverse_array
+- 시스템 (11-20): stack, queue, linked_list_sum, count_frequency, min_max, digit_sum, histogram, running_average, prefix_sum, matrix_transpose
+- 계약 (21-30): bounded_array, safe_divide, bounded_sum, sorted_insert, range_clamp, safe_sqrt, matrix_safe_access, positive_factorial, bounded_stack, contract_chain
 
 **예상 발견**: 새 문제에서 새로운 Type C 에러 패턴 발견 → PatternBank 확장
 
@@ -291,13 +301,16 @@ Q: 실시간 문맥이 필요한가? (stdlib 탐색, 코드 분석 등)
 
 ### 7.2 대시보드 지표
 
-| 지표 | 현재 | 목표 |
-|------|------|------|
+| 지표 | Pilot 결과 | Phase 2 목표 |
+|------|-----------|-------------|
 | 평균 Loop Count | 2.0 | ≤ 2.0 |
-| 성공률 | 100% | ≥ 95% |
+| 성공률 | 100% (3/3) | ≥ 95% (30 문제) |
 | Type C 비율 | 100% (1/1) | ≤ 50% |
+| PatternBank 패턴 수 | 34 | 유지 + 실험 후 추가 |
 | PatternBank 적중률 | 100% (6/6) | ≥ 80% |
 | Type A (contract) | 0% | 측정 (줄이지 않음) |
+| 문제 세트 | 3 | 30 (10+10+10) ✅ |
+| 테스트 케이스 | 45 | 388 ✅ |
 
 ### 7.3 회귀 감지
 
@@ -351,7 +364,9 @@ Loop Count가 높은 문제를 성능 최적화로 해결하려 하지 마라.
 
 ---
 
-## 부록: 현재 PatternBank 목록
+## 부록: 현재 PatternBank 목록 (34 패턴)
+
+### Phase 1 패턴 (23개, Pilot에서 검증됨)
 
 | ID | Kind | 대상 | Trigger 예시 |
 |----|------|------|-------------|
@@ -378,3 +393,19 @@ Loop Count가 높은 문제를 성능 최적화로 해결하려 하지 마라.
 | underscore_pattern | parser | _ → named var | `` `_` `` |
 | missing_semicolon | parser | } → }; | `expected \`}\`` |
 | missing_else | parser | if without else | `Expected one of "else"` |
+
+### Phase 2 패턴 (11개, 확장된 문제 세트에서 예상)
+
+| ID | Kind | 대상 | Trigger 예시 |
+|----|------|------|-------------|
+| return_keyword | parser | return → expr body | `` `return` `` |
+| break_continue | parser | break/continue → flag | `` `break` ``, `` `continue` `` |
+| bool_literal | any | true/false → 1/0 | `unknown identifier \`true\`` |
+| negative_literal | any | -1 → 0 - 1 | `unexpected \`-\`` |
+| closure_lambda | parser | \|x\| → fn | `` `\|` `` |
+| mutable_param | any | &mut → local copy | `&mut` |
+| print_string_fn | type | println(str) → println_str | `expected &str, got i64` |
+| if_without_else_unit | type | if {} → if {} else {()} | `branch types do not match` |
+| iterator_methods | any | .iter()/.map() → while | `.iter()`, `.map(` |
+| type_cast | any | as usize → i64 | `as usize`, `as i64` |
+| range_syntax | parser | 0..n → while | `..`, `..=` |

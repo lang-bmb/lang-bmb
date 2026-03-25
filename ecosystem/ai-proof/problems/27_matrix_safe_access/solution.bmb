@@ -1,0 +1,30 @@
+// Matrix Safe Access — 2D matrix access with row/col bounds contracts.
+// Contract eliminates runtime bounds checks for both dimensions.
+
+fn mat_get(m: i64, rows: i64, cols: i64, r: i64, c: i64) -> i64
+    pre r >= 0 and r < rows and c >= 0 and c < cols
+= vec_get(m, r * cols + c);
+
+fn main() -> i64 = {
+    let rows = read_int();
+    let cols = read_int();
+    let m = vec_new();
+    let total = rows * cols;
+    let mut i: i64 = 0;
+    while i < total {
+        let val = read_int();
+        let _p = vec_push(m, val);
+        set i = i + 1
+    };
+    let q = read_int();
+    set i = 0;
+    while i < q {
+        let r = read_int();
+        let c = read_int();
+        let result = mat_get(m, rows, cols, r, c);
+        let _p = println(result);
+        set i = i + 1
+    };
+    let _f = vec_free(m);
+    0
+};

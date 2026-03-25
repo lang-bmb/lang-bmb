@@ -1,0 +1,54 @@
+// Sorted Insert — insert value into sorted array maintaining order.
+// Contract verifies insertion point validity.
+
+fn find_insert_pos(v: i64, n: i64, val: i64) -> i64
+    post ret >= 0 and ret <= n
+= {
+    let mut pos: i64 = n;
+    let mut i: i64 = 0;
+    let mut found: i64 = 0;
+    while i < n {
+        if found == 0 {
+            if vec_get(v, i) > val {
+                set pos = i;
+                set found = 1
+            } else { () }
+        } else { () };
+        set i = i + 1
+    };
+    pos
+};
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    let mut i: i64 = 0;
+    while i < n {
+        let x = read_int();
+        let _p = vec_push(v, x);
+        set i = i + 1
+    };
+    let val = read_int();
+    let pos = find_insert_pos(v, n, val);
+    // Shift elements right from end
+    let _p = vec_push(v, 0);
+    set i = n;
+    while i > pos {
+        let _s = vec_set(v, i, vec_get(v, i - 1));
+        set i = i - 1
+    };
+    let _s = vec_set(v, pos, val);
+    // Print result
+    set i = 0;
+    while i <= n {
+        if i > 0 {
+            let _s = print_str(" ");
+            ()
+        } else { () };
+        let _p2 = print(vec_get(v, i));
+        set i = i + 1
+    };
+    let _nl = println_str("");
+    let _f = vec_free(v);
+    0
+};

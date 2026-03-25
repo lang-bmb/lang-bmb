@@ -1,0 +1,32 @@
+// Two Sum — reads target, n, then n integers. Prints indices of pair summing to target.
+
+fn main() -> i64 = {
+    let target = read_int();
+    let n = read_int();
+    let v = vec_new();
+    let mut idx: i64 = 0;
+    while idx < n {
+        let val = read_int();
+        let _p = vec_push(v, val);
+        set idx = idx + 1
+    };
+    let mut i: i64 = 0;
+    let mut found: i64 = 0;
+    while i < n {
+        let mut j = i + 1;
+        while j < n {
+            if vec_get(v, i) + vec_get(v, j) == target {
+                if found == 0 {
+                    let _a = print(i);
+                    let _s = print_str(" ");
+                    let _b = println(j);
+                    set found = 1
+                } else { () }
+            } else { () };
+            set j = j + 1
+        };
+        set i = i + 1
+    };
+    let _f = vec_free(v);
+    0
+};

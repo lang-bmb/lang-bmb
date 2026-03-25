@@ -1,0 +1,38 @@
+// Stack Operations — simulate stack with push/pop/top operations.
+
+fn main() -> i64 = {
+    let q = read_int();
+    let stack = vec_new();
+    let mut i: i64 = 0;
+    while i < q {
+        let op = read_int();
+        if op == 1 {
+            let x = read_int();
+            let _p = vec_push(stack, x);
+            ()
+        } else if op == 2 {
+            let len = vec_len(stack);
+            if len > 0 {
+                let top = vec_get(stack, len - 1);
+                let _p = println(top);
+                let _r = vec_pop(stack);
+                ()
+            } else {
+                let _p = println(0 - 1);
+                ()
+            }
+        } else {
+            let len = vec_len(stack);
+            if len > 0 {
+                let _p = println(vec_get(stack, len - 1));
+                ()
+            } else {
+                let _p = println(0 - 1);
+                ()
+            }
+        };
+        set i = i + 1
+    };
+    let _f = vec_free(stack);
+    0
+};

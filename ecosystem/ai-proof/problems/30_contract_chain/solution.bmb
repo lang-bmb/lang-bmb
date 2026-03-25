@@ -1,0 +1,39 @@
+// Contract Chain — multi-function pipeline with contract propagation.
+// normalize → scale → bound, each postcondition feeds next precondition.
+
+fn normalize(x: i64, min: i64, max: i64) -> i64
+    pre min < max
+    post ret >= 0 and ret <= 100
+= (x - min) * 100 / (max - min);
+
+fn scale(x: i64, factor: i64) -> i64
+    pre x >= 0 and factor > 0
+    post ret >= 0
+= x * factor;
+
+fn bound(x: i64, limit: i64) -> i64
+    pre limit >= 0
+    post ret >= 0 and ret <= limit
+= if x > limit { limit } else { x };
+
+fn pipeline(x: i64, min: i64, max: i64, factor: i64, limit: i64) -> i64 = {
+    let normed = normalize(x, min, max);
+    let scaled = scale(normed, factor);
+    bound(scaled, limit)
+};
+
+fn main() -> i64 = {
+    let min = read_int();
+    let max = read_int();
+    let factor = read_int();
+    let limit = read_int();
+    let n = read_int();
+    let mut i: i64 = 0;
+    while i < n {
+        let x = read_int();
+        let result = pipeline(x, min, max, factor, limit);
+        let _p = println(result);
+        set i = i + 1
+    };
+    0
+};

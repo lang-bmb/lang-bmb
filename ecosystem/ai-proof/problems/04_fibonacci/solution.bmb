@@ -1,0 +1,26 @@
+// Fibonacci — reads n from stdin, prints F(n).
+// Iterative approach for O(n) time, O(1) space.
+
+fn fibonacci(n: i64) -> i64 = {
+    if n == 0 { 0 }
+    else if n == 1 { 1 }
+    else {
+        let mut a: i64 = 0;
+        let mut b: i64 = 1;
+        let mut i: i64 = 2;
+        while i <= n {
+            let c = a + b;
+            set a = b;
+            set b = c;
+            set i = i + 1
+        };
+        b
+    }
+};
+
+fn main() -> i64 = {
+    let n = read_int();
+    let result = fibonacci(n);
+    let _p = println(result);
+    0
+};

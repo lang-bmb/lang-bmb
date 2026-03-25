@@ -1,0 +1,40 @@
+// Linked List Sum — simulate linked list using two parallel vecs (values + next pointers).
+// Build list, then traverse to compute sum.
+
+fn main() -> i64 = {
+    let n = read_int();
+    let values = vec_new();
+    let next = vec_new();
+    let mut i: i64 = 0;
+    while i < n {
+        let val = read_int();
+        let _pv = vec_push(values, val);
+        if i < n - 1 {
+            let _pn = vec_push(next, i + 1);
+            ()
+        } else {
+            let _pn = vec_push(next, 0 - 1);
+            ()
+        };
+        set i = i + 1
+    };
+    let mut sum: i64 = 0;
+    if n > 0 {
+        let mut cur: i64 = 0;
+        let mut running: i64 = 1;
+        while running == 1 {
+            set sum = sum + vec_get(values, cur);
+            let nx = vec_get(next, cur);
+            if nx == 0 - 1 {
+                set running = 0
+            } else {
+                set cur = nx
+            }
+        };
+        ()
+    } else { () };
+    let _p = println(sum);
+    let _fv = vec_free(values);
+    let _fn = vec_free(next);
+    0
+};

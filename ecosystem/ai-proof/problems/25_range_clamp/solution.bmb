@@ -1,0 +1,30 @@
+// Range Clamp — clamp values to [lo, hi] with contract guarantees.
+// Contract proves output is always within range.
+
+fn clamp(val: i64, lo: i64, hi: i64) -> i64
+    pre lo <= hi
+    post ret >= lo and ret <= hi
+= {
+    if val < lo { lo }
+    else if val > hi { hi }
+    else { val }
+};
+
+fn main() -> i64 = {
+    let lo = read_int();
+    let hi = read_int();
+    let n = read_int();
+    let mut i: i64 = 0;
+    while i < n {
+        let val = read_int();
+        let result = clamp(val, lo, hi);
+        if i > 0 {
+            let _s = print_str(" ");
+            ()
+        } else { () };
+        let _p = print(result);
+        set i = i + 1
+    };
+    let _nl = println_str("");
+    0
+};
