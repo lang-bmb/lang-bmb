@@ -4,28 +4,22 @@ fn main() -> i64 = {
     let target = read_int();
     let n = read_int();
     let v = vec_new();
-    let mut idx: i64 = 0;
-    while idx < n {
+    for _idx in 0..n {
         let val = read_int();
-        let _p = vec_push(v, val);
-        set idx = idx + 1
+        let _p = vec_push(v, val)
     };
-    let mut i: i64 = 0;
-    let mut found: i64 = 0;
-    while i < n {
-        let mut j = i + 1;
-        while j < n {
+    let mut found = 0;
+    for i in 0..n {
+        for j in (i + 1)..n {
             if vec_get(v, i) + vec_get(v, j) == target {
                 if found == 0 {
                     let _a = print(i);
                     let _s = print_str(" ");
                     let _b = println(j);
-                    set found = 1
+                    found = 1
                 } else { () }
-            } else { () };
-            set j = j + 1
-        };
-        set i = i + 1
+            } else { () }
+        }
     };
     let _f = vec_free(v);
     0

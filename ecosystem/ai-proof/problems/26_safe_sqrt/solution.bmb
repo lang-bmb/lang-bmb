@@ -7,15 +7,15 @@ fn isqrt(x: i64) -> i64
 = {
     if x <= 1 { x }
     else {
-        let mut lo: i64 = 1;
-        let mut hi: i64 = 1000000000;
-        if hi > x { set hi = x } else { () };
+        let mut lo = 1;
+        let mut hi = 1000000000;
+        if hi > x { hi = x } else { () };
         while lo <= hi {
             let mid = lo + (hi - lo) / 2;
             if mid <= x / mid {
-                set lo = mid + 1
+                lo = mid + 1
             } else {
-                set hi = mid - 1
+                hi = mid - 1
             }
         };
         hi
@@ -24,12 +24,10 @@ fn isqrt(x: i64) -> i64
 
 fn main() -> i64 = {
     let n = read_int();
-    let mut i: i64 = 0;
-    while i < n {
+    for i in 0..n {
         let x = read_int();
         let result = isqrt(x);
-        let _p = println(result);
-        set i = i + 1
+        let _p = println(result)
     };
     0
 };

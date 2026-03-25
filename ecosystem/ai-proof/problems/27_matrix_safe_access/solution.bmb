@@ -10,20 +10,16 @@ fn main() -> i64 = {
     let cols = read_int();
     let m = vec_new();
     let total = rows * cols;
-    let mut i: i64 = 0;
-    while i < total {
+    for i in 0..total {
         let val = read_int();
-        let _p = vec_push(m, val);
-        set i = i + 1
+        let _p = vec_push(m, val)
     };
     let q = read_int();
-    set i = 0;
-    while i < q {
+    for i in 0..q {
         let r = read_int();
         let c = read_int();
         let result = mat_get(m, rows, cols, r, c);
-        let _p = println(result);
-        set i = i + 1
+        let _p = println(result)
     };
     let _f = vec_free(m);
     0

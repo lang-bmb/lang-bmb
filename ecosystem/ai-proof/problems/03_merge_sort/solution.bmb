@@ -9,26 +9,26 @@ fn merge(arr: i64, tmp: i64, lo: i64, mid: i64, hi: i64) -> i64 = {
         if j <= hi {
             if vec_get(arr, i) <= vec_get(arr, j) {
                 let _s = vec_set(tmp, k, vec_get(arr, i));
-                set i = i + 1
+                i = i + 1
             } else {
                 let _s = vec_set(tmp, k, vec_get(arr, j));
-                set j = j + 1
+                j = j + 1
             }
         } else {
             let _s = vec_set(tmp, k, vec_get(arr, i));
-            set i = i + 1
+            i = i + 1
         };
-        set k = k + 1
+        k = k + 1
     };
     while j <= hi {
         let _s = vec_set(tmp, k, vec_get(arr, j));
-        set j = j + 1;
-        set k = k + 1
+        j = j + 1;
+        k = k + 1
     };
     let mut x = lo;
     while x <= hi {
         let _s = vec_set(arr, x, vec_get(tmp, x));
-        set x = x + 1
+        x = x + 1
     };
     0
 };
@@ -49,25 +49,21 @@ fn main() -> i64 = {
     let n = read_int();
     let arr = vec_new();
     let tmp = vec_new();
-    let mut i = 0;
-    while i < n {
+    for _i in 0..n {
         let val = read_int();
         let _p = vec_push(arr, val);
-        let _t = vec_push(tmp, 0);
-        set i = i + 1
+        let _t = vec_push(tmp, 0)
     };
     if n > 0 {
         let _s = merge_sort(arr, tmp, 0, n - 1);
         ()
     } else { () };
-    set i = 0;
-    while i < n {
+    for i in 0..n {
         if i > 0 {
             let _s = print_str(" ");
             ()
         } else { () };
-        let _p = print(vec_get(arr, i));
-        set i = i + 1
+        let _p = print(vec_get(arr, i))
     };
     let _nl = println_str("");
     let _fa = vec_free(arr);

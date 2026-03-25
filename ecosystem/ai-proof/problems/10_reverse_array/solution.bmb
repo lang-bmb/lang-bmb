@@ -10,25 +10,19 @@ fn swap(v: i64, i: i64, j: i64) -> i64 = {
 fn main() -> i64 = {
     let n = read_int();
     let v = vec_new();
-    let mut i: i64 = 0;
-    while i < n {
+    for _i in 0..n {
         let val = read_int();
-        let _p = vec_push(v, val);
-        set i = i + 1
+        let _p = vec_push(v, val)
     };
-    set i = 0;
-    while i < n / 2 {
-        let _s = swap(v, i, n - 1 - i);
-        set i = i + 1
+    for i in 0..(n / 2) {
+        let _s = swap(v, i, n - 1 - i)
     };
-    set i = 0;
-    while i < n {
+    for i in 0..n {
         if i > 0 {
             let _s = print_str(" ");
             ()
         } else { () };
-        let _p = print(vec_get(v, i));
-        set i = i + 1
+        let _p = print(vec_get(v, i))
     };
     let _nl = println_str("");
     let _f = vec_free(v);

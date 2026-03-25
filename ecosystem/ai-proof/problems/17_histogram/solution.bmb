@@ -4,24 +4,18 @@ fn main() -> i64 = {
     let k = read_int();
     let n = read_int();
     let counts = vec_new();
-    let mut i: i64 = 0;
-    while i < k {
+    for _i in 0..k {
         let _p = vec_push(counts, 0);
-        set i = i + 1
     };
-    set i = 0;
-    while i < n {
+    for _i in 0..n {
         let val = read_int();
         let cur = vec_get(counts, val);
         let _s = vec_set(counts, val, cur + 1);
-        set i = i + 1
     };
-    set i = 0;
-    while i < k {
+    for i in 0..k {
         let _a = print(i);
         let _s = print_str(" ");
         let _b = println(vec_get(counts, i));
-        set i = i + 1
     };
     let _f = vec_free(counts);
     0

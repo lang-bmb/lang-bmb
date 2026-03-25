@@ -6,8 +6,7 @@ fn main() -> i64 = {
     let n = read_int();
     let values = vec_new();
     let next = vec_new();
-    let mut i: i64 = 0;
-    while i < n {
+    for i in 0..n {
         let val = read_int();
         let _pv = vec_push(values, val);
         if i < n - 1 {
@@ -17,14 +16,13 @@ fn main() -> i64 = {
             let _pn = vec_push(next, n);
             ()
         };
-        set i = i + 1
     };
-    let mut sum: i64 = 0;
+    let mut sum = 0;
     if n > 0 {
-        let mut cur: i64 = 0;
+        let mut cur = 0;
         while cur < n {
-            set sum = sum + vec_get(values, cur);
-            set cur = vec_get(next, cur)
+            sum = sum + vec_get(values, cur);
+            cur = vec_get(next, cur)
         };
         ()
     } else { () };

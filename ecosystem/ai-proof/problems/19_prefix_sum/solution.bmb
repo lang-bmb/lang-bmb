@@ -4,21 +4,17 @@ fn main() -> i64 = {
     let n = read_int();
     let prefix = vec_new();
     let _p0 = vec_push(prefix, 0);
-    let mut i: i64 = 0;
-    while i < n {
+    for i in 0..n {
         let val = read_int();
         let prev = vec_get(prefix, i);
         let _p = vec_push(prefix, prev + val);
-        set i = i + 1
     };
     let q = read_int();
-    set i = 0;
-    while i < q {
+    for _i in 0..q {
         let l = read_int();
         let r = read_int();
         let sum = vec_get(prefix, r + 1) - vec_get(prefix, l);
         let _p = println(sum);
-        set i = i + 1
     };
     let _f = vec_free(prefix);
     0

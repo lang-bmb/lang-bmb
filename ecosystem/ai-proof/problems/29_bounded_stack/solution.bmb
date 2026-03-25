@@ -18,19 +18,16 @@ fn main() -> i64 = {
     let cap = read_int();
     let q = read_int();
     let stack = vec_new();
-    let mut k: i64 = 0;
-    while k < cap {
-        let _p = vec_push(stack, 0);
-        set k = k + 1
+    for k in 0..cap {
+        let _p = vec_push(stack, 0)
     };
-    let mut size: i64 = 0;
-    let mut i: i64 = 0;
-    while i < q {
+    let mut size = 0;
+    for i in 0..q {
         let op = read_int();
         if op == 1 {
             let x = read_int();
             if size < cap {
-                set size = stack_push(stack, size, x)
+                size = stack_push(stack, size, x)
             } else {
                 let _p = println_str("FULL");
                 ()
@@ -39,7 +36,7 @@ fn main() -> i64 = {
             if size > 0 {
                 let val = stack_top(stack, size);
                 let _p = println(val);
-                set size = stack_pop(size)
+                size = stack_pop(size)
             } else {
                 let _p = println_str("EMPTY");
                 ()
@@ -47,8 +44,7 @@ fn main() -> i64 = {
         } else {
             let _p = println(size);
             ()
-        };
-        set i = i + 1
+        }
     };
     let _f = vec_free(stack);
     0

@@ -1,11 +1,11 @@
 // Digit Sum — reads a non-negative integer, prints sum of its digits.
 
 fn digit_sum(n: i64) -> i64 = {
-    let mut num: i64 = n;
-    let mut sum: i64 = 0;
+    let mut num = n;
+    let mut sum = 0;
     while num > 0 {
-        set sum = sum + num % 10;
-        set num = num / 10
+        sum = sum + num % 10;
+        num = num / 10
     };
     sum
 };

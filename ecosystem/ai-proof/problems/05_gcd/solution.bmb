@@ -2,12 +2,12 @@
 // Uses iterative Euclidean algorithm.
 
 fn gcd(a: i64, b: i64) -> i64 = {
-    let mut x: i64 = a;
-    let mut y: i64 = b;
+    let mut x = a;
+    let mut y = b;
     while y != 0 {
         let t = y;
-        set y = x % y;
-        set x = t
+        y = x % y;
+        x = t
     };
     x
 };

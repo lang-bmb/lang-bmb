@@ -3,8 +3,7 @@
 fn main() -> i64 = {
     let q = read_int();
     let stack = vec_new();
-    let mut i: i64 = 0;
-    while i < q {
+    for _i in 0..q {
         let op = read_int();
         if op == 1 {
             let x = read_int();
@@ -18,7 +17,7 @@ fn main() -> i64 = {
                 let _r = vec_pop(stack);
                 ()
             } else {
-                let _p = println(0 - 1);
+                let _p = println(-1);
                 ()
             }
         } else {
@@ -27,11 +26,10 @@ fn main() -> i64 = {
                 let _p = println(vec_get(stack, len - 1));
                 ()
             } else {
-                let _p = println(0 - 1);
+                let _p = println(-1);
                 ()
             }
         };
-        set i = i + 1
     };
     let _f = vec_free(stack);
     0

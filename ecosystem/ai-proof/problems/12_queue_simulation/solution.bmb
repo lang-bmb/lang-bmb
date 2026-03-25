@@ -4,9 +4,8 @@
 fn main() -> i64 = {
     let q = read_int();
     let queue = vec_new();
-    let mut head: i64 = 0;
-    let mut i: i64 = 0;
-    while i < q {
+    let mut head = 0;
+    for _i in 0..q {
         let op = read_int();
         if op == 1 {
             let x = read_int();
@@ -15,13 +14,12 @@ fn main() -> i64 = {
         } else {
             if head < vec_len(queue) {
                 let _p = println(vec_get(queue, head));
-                set head = head + 1
+                head = head + 1
             } else {
-                let _p = println(0 - 1);
+                let _p = println(-1);
                 ()
             }
         };
-        set i = i + 1
     };
     let _f = vec_free(queue);
     0
