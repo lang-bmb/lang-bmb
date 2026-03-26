@@ -1,0 +1,12 @@
+{
+  "problem_id": "59_calendar_day",
+  "lang": "python",
+  "run_id": 1,
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "compile": 7,
+    "test": 3
+  },
+  "error_sample": "Test 0 error: Traceback (most recent call last):\n  File \"C:\\Users\\iyulab\\AppData\\Local\\Temp\\tmpuyix31qb\\solution.py\", line 24, in <module>\n    day = numbers[i+2]\n          ~~~~~~~^^^^^\nIndexError: lis"
+}

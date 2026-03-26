@@ -1,0 +1,12 @@
+{
+  "problem_id": "06_matrix_multiply",
+  "lang": "bmb",
+  "run_id": 1,
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "compile": 1,
+    "test": 0
+  },
+  "error_sample": ""
+}

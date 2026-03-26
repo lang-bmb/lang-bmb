@@ -1,0 +1,12 @@
+{
+  "problem_id": "89_topological_sort",
+  "lang": "c",
+  "run_id": 3,
+  "loop_count": 5,
+  "final_correct": true,
+  "loop_types": {
+    "compile": 0,
+    "test": 4
+  },
+  "error_sample": ""
+}

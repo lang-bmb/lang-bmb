@@ -1,0 +1,12 @@
+{
+  "problem_id": "71_single_element",
+  "lang": "c",
+  "run_id": 1,
+  "loop_count": 3,
+  "final_correct": true,
+  "loop_types": {
+    "compile": 1,
+    "test": 1
+  },
+  "error_sample": ""
+}

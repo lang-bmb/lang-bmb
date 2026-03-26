@@ -1,0 +1,12 @@
+{
+  "problem_id": "75_longest_plateau",
+  "lang": "python",
+  "run_id": 1,
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "compile": 0,
+    "test": 10
+  },
+  "error_sample": "Test 5: expected '2\\n4\\n', got '1\\n4\\n'"
+}

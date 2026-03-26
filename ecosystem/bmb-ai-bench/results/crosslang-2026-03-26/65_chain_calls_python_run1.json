@@ -1,0 +1,12 @@
+{
+  "problem_id": "65_chain_calls",
+  "lang": "python",
+  "run_id": 1,
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "compile": 3,
+    "test": 7
+  },
+  "error_sample": "Test 0 error: Traceback (most recent call last):\n  File \"C:\\Users\\iyulab\\AppData\\Local\\Temp\\tmpce3ac9h_\\solution.py\", line 12, in <module>\n    num_cases = int(lines[0].strip())\n                ^^^^^^^"
+}

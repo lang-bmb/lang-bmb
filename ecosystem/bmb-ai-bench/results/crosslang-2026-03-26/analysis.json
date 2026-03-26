@@ -1,0 +1,194 @@
+{
+  "lang_stats": {
+    "bmb": {
+      "total": 246,
+      "passed": 231,
+      "success_rate": 0.9390243902439024,
+      "median_loops": 1,
+      "avg_loops": 1.7835497835497836,
+      "one_shot": 146,
+      "one_shot_rate": 0.5934959349593496
+    },
+    "c": {
+      "total": 233,
+      "passed": 208,
+      "success_rate": 0.8927038626609443,
+      "median_loops": 1,
+      "avg_loops": 1.4663461538461537,
+      "one_shot": 167,
+      "one_shot_rate": 0.7167381974248928
+    },
+    "python": {
+      "total": 220,
+      "passed": 201,
+      "success_rate": 0.9136363636363637,
+      "median_loops": 1,
+      "avg_loops": 1.373134328358209,
+      "one_shot": 168,
+      "one_shot_rate": 0.7636363636363637
+    }
+  },
+  "cat_lang_stats": {
+    "bmb:algorithm": {
+      "total": 45,
+      "passed": 45,
+      "success_rate": 1.0,
+      "median_loops": 1,
+      "avg_loops": 1.2444444444444445
+    },
+    "c:algorithm": {
+      "total": 45,
+      "passed": 45,
+      "success_rate": 1.0,
+      "median_loops": 1,
+      "avg_loops": 1.2222222222222223
+    },
+    "python:algorithm": {
+      "total": 45,
+      "passed": 45,
+      "success_rate": 1.0,
+      "median_loops": 1,
+      "avg_loops": 1.2444444444444445
+    },
+    "bmb:contract": {
+      "total": 45,
+      "passed": 45,
+      "success_rate": 1.0,
+      "median_loops": 1,
+      "avg_loops": 1.5333333333333334
+    },
+    "c:contract": {
+      "total": 45,
+      "passed": 44,
+      "success_rate": 0.9777777777777777,
+      "median_loops": 1,
+      "avg_loops": 1.6136363636363635
+    },
+    "python:contract": {
+      "total": 45,
+      "passed": 45,
+      "success_rate": 1.0,
+      "median_loops": 1,
+      "avg_loops": 1.2222222222222223
+    },
+    "bmb:system": {
+      "total": 45,
+      "passed": 45,
+      "success_rate": 1.0,
+      "median_loops": 1,
+      "avg_loops": 1.5555555555555556
+    },
+    "c:system": {
+      "total": 45,
+      "passed": 43,
+      "success_rate": 0.9555555555555556,
+      "median_loops": 1,
+      "avg_loops": 1.4186046511627908
+    },
+    "python:system": {
+      "total": 45,
+      "passed": 42,
+      "success_rate": 0.9333333333333333,
+      "median_loops": 1,
+      "avg_loops": 1.2857142857142858
+    },
+    "bmb:performance": {
+      "total": 45,
+      "passed": 45,
+      "success_rate": 1.0,
+      "median_loops": 1,
+      "avg_loops": 1.5333333333333334
+    },
+    "c:performance": {
+      "total": 45,
+      "passed": 45,
+      "success_rate": 1.0,
+      "median_loops": 1,
+      "avg_loops": 1.4222222222222223
+    },
+    "python:performance": {
+      "total": 45,
+      "passed": 45,
+      "success_rate": 1.0,
+      "median_loops": 1,
+      "avg_loops": 1.4444444444444444
+    },
+    "bmb:practical": {
+      "total": 30,
+      "passed": 26,
+      "success_rate": 0.8666666666666667,
+      "median_loops": 1,
+      "avg_loops": 2.3076923076923075
+    },
+    "c:practical": {
+      "total": 28,
+      "passed": 16,
+      "success_rate": 0.5714285714285714,
+      "median_loops": 1,
+      "avg_loops": 1.125
+    },
+    "python:practical": {
+      "total": 15,
+      "passed": 9,
+      "success_rate": 0.6,
+      "median_loops": 1,
+      "avg_loops": 1.1111111111111112
+    },
+    "bmb:edge": {
+      "total": 21,
+      "passed": 16,
+      "success_rate": 0.7619047619047619,
+      "median_loops": 2,
+      "avg_loops": 3.9375
+    },
+    "c:edge": {
+      "total": 15,
+      "passed": 8,
+      "success_rate": 0.5333333333333333,
+      "median_loops": 2,
+      "avg_loops": 2.25
+    },
+    "python:edge": {
+      "total": 15,
+      "passed": 8,
+      "success_rate": 0.5333333333333333,
+      "median_loops": 2,
+      "avg_loops": 2.75
+    },
+    "bmb:integration": {
+      "total": 15,
+      "passed": 9,
+      "success_rate": 0.6,
+      "median_loops": 2,
+      "avg_loops": 2.7777777777777777
+    },
+    "c:integration": {
+      "total": 10,
+      "passed": 7,
+      "success_rate": 0.7,
+      "median_loops": 1,
+      "avg_loops": 2.5714285714285716
+    },
+    "python:integration": {
+      "total": 10,
+      "passed": 7,
+      "success_rate": 0.7,
+      "median_loops": 1,
+      "avg_loops": 2.0
+    }
+  },
+  "paired": {
+    "bmb_vs_c": {
+      "bmb_wins": 14,
+      "c_wins": 2,
+      "tie": 84
+    },
+    "bmb_vs_python": {
+      "bmb_wins": 12,
+      "python_wins": 3,
+      "tie": 85
+    }
+  },
+  "total_runs": 699,
+  "unique_problems": 100
+}

@@ -1,0 +1,12 @@
+{
+  "problem_id": "29_bounded_stack",
+  "lang": "c",
+  "run_id": 3,
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "compile": 0,
+    "test": 0
+  },
+  "error_sample": ""
+}

@@ -1,0 +1,12 @@
+{
+  "problem_id": "59_calendar_day",
+  "lang": "c",
+  "run_id": 1,
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "compile": 1,
+    "test": 9
+  },
+  "error_sample": "Test 4: expected '1\\n166\\n359\\n', got '1\\n104852417\\n'"
+}

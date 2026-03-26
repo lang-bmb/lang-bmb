@@ -1,0 +1,12 @@
+{
+  "problem_id": "01_binary_search",
+  "lang": "bmb",
+  "run_id": 3,
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "compile": 0,
+    "test": 0
+  },
+  "error_sample": ""
+}

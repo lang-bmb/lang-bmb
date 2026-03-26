@@ -1,0 +1,12 @@
+{
+  "problem_id": "76_multi_function",
+  "lang": "c",
+  "run_id": 1,
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "compile": 0,
+    "test": 10
+  },
+  "error_sample": "Test 2: expected '60\\n10\\n30\\n10\\n1\\n', got '60\\n10\\n30\\n30\\n1\\n'"
+}

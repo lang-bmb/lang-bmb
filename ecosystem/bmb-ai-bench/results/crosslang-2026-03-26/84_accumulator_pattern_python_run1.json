@@ -1,0 +1,12 @@
+{
+  "problem_id": "84_accumulator_pattern",
+  "lang": "python",
+  "run_id": 1,
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "compile": 9,
+    "test": 1
+  },
+  "error_sample": "Test 0 error: Traceback (most recent call last):\n  File \"C:\\Users\\iyulab\\AppData\\Local\\Temp\\tmp2czy1tlt\\solution.py\", line 22, in <module>\n    indices.append(nums[i + 3 + n + j])\n                   ~~"
+}

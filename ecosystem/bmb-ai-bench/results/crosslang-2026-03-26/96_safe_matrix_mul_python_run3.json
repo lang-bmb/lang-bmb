@@ -1,0 +1,12 @@
+{
+  "problem_id": "96_safe_matrix_mul",
+  "lang": "python",
+  "run_id": 3,
+  "loop_count": 5,
+  "final_correct": true,
+  "loop_types": {
+    "compile": 0,
+    "test": 4
+  },
+  "error_sample": ""
+}
