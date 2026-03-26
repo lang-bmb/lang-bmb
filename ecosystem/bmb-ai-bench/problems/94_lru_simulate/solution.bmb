@@ -1,0 +1,41 @@
+// LRU Simulate — process page accesses, count page faults with LRU of capacity k.
+fn main() -> i64 = {
+    let k = read_int();
+    let n = read_int();
+    let cache = vec_new();
+    let mut faults = 0;
+    for _i in 0..n {
+        let page = read_int();
+        let len = vec_len(cache);
+        let mut found = -1;
+        for j in 0..len {
+            if vec_get(cache, j) == page {
+                found = j;
+                break
+            } else { () }
+        };
+        if found >= 0 {
+            let mut j = found;
+            while j < len - 1 {
+                let _s = vec_set(cache, j, vec_get(cache, j + 1));
+                j = j + 1
+            };
+            let _s = vec_set(cache, len - 1, page)
+        } else {
+            faults = faults + 1;
+            if len >= k {
+                let mut j = 0;
+                while j < len - 1 {
+                    let _s = vec_set(cache, j, vec_get(cache, j + 1));
+                    j = j + 1
+                };
+                let _s = vec_set(cache, len - 1, page)
+            } else {
+                let _p = vec_push(cache, page)
+            }
+        }
+    };
+    let _p = println(faults);
+    let _f = vec_free(cache);
+    0
+};

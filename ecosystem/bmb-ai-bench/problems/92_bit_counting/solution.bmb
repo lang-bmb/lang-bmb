@@ -1,0 +1,20 @@
+// Bit Counting — count number of 1-bits using division.
+fn popcount(n: i64) -> i64 = {
+    let mut x = n;
+    let mut count = 0;
+    while x > 0 {
+        if x % 2 == 1 {
+            count = count + 1
+        } else { () };
+        x = x / 2
+    };
+    count
+};
+fn main() -> i64 = {
+    let t = read_int();
+    for _i in 0..t {
+        let n = read_int();
+        let _p = println(popcount(n))
+    };
+    0
+};

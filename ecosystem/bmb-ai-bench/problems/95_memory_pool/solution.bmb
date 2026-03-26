@@ -1,0 +1,37 @@
+// Memory Pool — simulate alloc(size)/free(id). Track allocations, print stats.
+// Op 1=alloc(size), op 2=free(id), op 3=stats(total_allocated, num_blocks).
+fn main() -> i64 = {
+    let sizes = vec_new();
+    let active = vec_new();
+    let n = read_int();
+    let mut next_id = 0;
+    for _i in 0..n {
+        let op = read_int();
+        if op == 1 {
+            let sz = read_int();
+            let _ps = vec_push(sizes, sz);
+            let _pa = vec_push(active, 1);
+            let _p = println(next_id);
+            next_id = next_id + 1
+        } else if op == 2 {
+            let id = read_int();
+            let _s = vec_set(active, id, 0)
+        } else {
+            let mut total = 0;
+            let mut blocks = 0;
+            let len = vec_len(sizes);
+            for j in 0..len {
+                if vec_get(active, j) == 1 {
+                    total = total + vec_get(sizes, j);
+                    blocks = blocks + 1
+                } else { () }
+            };
+            let _pt = print(total);
+            let _sp = print_str(" ");
+            let _pb = println(blocks)
+        }
+    };
+    let _fs = vec_free(sizes);
+    let _fa = vec_free(active);
+    0
+};

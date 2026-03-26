@@ -1,0 +1,32 @@
+// Ring Buffer — fixed-size circular buffer. Op 1=write(val), op 2=read, op 3=count.
+fn main() -> i64 = {
+    let cap = read_int();
+    let buf = vec_new();
+    for _i in 0..cap { let _p = vec_push(buf, 0) };
+    let mut head = 0;
+    let mut tail = 0;
+    let mut size = 0;
+    let n = read_int();
+    for _i in 0..n {
+        let op = read_int();
+        if op == 1 {
+            let val = read_int();
+            let _s = vec_set(buf, tail, val);
+            tail = (tail + 1) % cap;
+            if size < cap { size = size + 1 }
+            else { head = (head + 1) % cap }
+        } else if op == 2 {
+            if size > 0 {
+                let _p = println(vec_get(buf, head));
+                head = (head + 1) % cap;
+                size = size - 1
+            } else {
+                let _p = println(-1)
+            }
+        } else {
+            let _p = println(size)
+        }
+    };
+    let _f = vec_free(buf);
+    0
+};

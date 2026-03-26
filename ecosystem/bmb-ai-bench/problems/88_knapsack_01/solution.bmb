@@ -1,0 +1,36 @@
+// 0/1 Knapsack — reads n items (weight, value) and capacity W. Prints max value.
+fn main() -> i64 = {
+    let n = read_int();
+    let cap = read_int();
+    let weights = vec_new();
+    let values = vec_new();
+    for _i in 0..n {
+        let w = read_int();
+        let v = read_int();
+        let _pw = vec_push(weights, w);
+        let _pv = vec_push(values, v)
+    };
+    let dp = vec_new();
+    let mut k = 0;
+    while k <= cap {
+        let _p = vec_push(dp, 0);
+        k = k + 1
+    };
+    for i in 0..n {
+        let wi = vec_get(weights, i);
+        let vi = vec_get(values, i);
+        let mut w = cap;
+        while w >= wi {
+            let with_item = vec_get(dp, w - wi) + vi;
+            if with_item > vec_get(dp, w) {
+                let _s = vec_set(dp, w, with_item)
+            } else { () };
+            w = w - 1
+        }
+    };
+    let _p = println(vec_get(dp, cap));
+    let _fw = vec_free(weights);
+    let _fv = vec_free(values);
+    let _fd = vec_free(dp);
+    0
+};

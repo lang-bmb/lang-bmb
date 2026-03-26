@@ -1,0 +1,44 @@
+// Safe Matrix Mul — matrix multiply with bounds-checked access via contract.
+fn safe_get(v: i64, idx: i64, len: i64) -> i64
+    pre idx >= 0 and idx < len
+= vec_get(v, idx);
+
+fn main() -> i64 = {
+    let n = read_int();
+    let a = vec_new();
+    let b = vec_new();
+    let c = vec_new();
+    let total = n * n;
+    for _i in 0..total {
+        let val = read_int();
+        let _p = vec_push(a, val)
+    };
+    for _i in 0..total {
+        let val = read_int();
+        let _p = vec_push(b, val)
+    };
+    for _i in 0..total {
+        let _p = vec_push(c, 0)
+    };
+    for i in 0..n {
+        for k in 0..n {
+            for j in 0..n {
+                let idx = i * n + j;
+                let cur = safe_get(c, idx, total);
+                let val = safe_get(a, i * n + k, total) * safe_get(b, k * n + j, total);
+                let _s = vec_set(c, idx, cur + val)
+            }
+        }
+    };
+    for i in 0..n {
+        for j in 0..n {
+            if j > 0 { let _s = print_str(" "); () } else { () };
+            let _p = print(safe_get(c, i * n + j, total))
+        };
+        let _nl = println_str("")
+    };
+    let _fa = vec_free(a);
+    let _fb = vec_free(b);
+    let _fc = vec_free(c);
+    0
+};

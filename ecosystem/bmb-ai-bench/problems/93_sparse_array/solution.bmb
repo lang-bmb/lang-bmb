@@ -1,0 +1,44 @@
+// Sparse Array — set(idx,val) and get(idx) on sparse array (default 0).
+fn main() -> i64 = {
+    let keys = vec_new();
+    let vals = vec_new();
+    let n = read_int();
+    for _i in 0..n {
+        let op = read_int();
+        if op == 1 {
+            let idx = read_int();
+            let val = read_int();
+            let len = vec_len(keys);
+            let mut found = 0;
+            for j in 0..len {
+                if vec_get(keys, j) == idx {
+                    let _s = vec_set(vals, j, val);
+                    found = 1;
+                    break
+                } else { () }
+            };
+            if found == 0 {
+                let _pk = vec_push(keys, idx);
+                let _pv = vec_push(vals, val);
+                ()
+            } else { () }
+        } else {
+            let idx = read_int();
+            let len = vec_len(keys);
+            let mut found = 0;
+            for j in 0..len {
+                if vec_get(keys, j) == idx {
+                    let _p = println(vec_get(vals, j));
+                    found = 1;
+                    break
+                } else { () }
+            };
+            if found == 0 {
+                let _p = println(0)
+            } else { () }
+        }
+    };
+    let _fk = vec_free(keys);
+    let _fv = vec_free(vals);
+    0
+};

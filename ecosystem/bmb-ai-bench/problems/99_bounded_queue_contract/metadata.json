@@ -1,0 +1,19 @@
+{
+  "id": "99_bounded_queue_contract",
+  "category": "contract",
+  "difficulty": "medium",
+  "tags": [
+    "contract",
+    "queue",
+    "bounded"
+  ],
+  "bmb_features_tested": [],
+  "expected_tools": [
+    "check",
+    "build",
+    "run"
+  ],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v2.0"
+}

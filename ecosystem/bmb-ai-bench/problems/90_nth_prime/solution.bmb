@@ -1,0 +1,39 @@
+// Nth Prime — reads t queries, each n. Prints nth prime (1-indexed).
+fn main() -> i64 = {
+    let limit = 8000;
+    let sieve = vec_new();
+    let mut k = 0;
+    while k <= limit {
+        let _p = vec_push(sieve, 1);
+        k = k + 1
+    };
+    let _s0 = vec_set(sieve, 0, 0);
+    let _s1 = vec_set(sieve, 1, 0);
+    let mut i = 2;
+    while i * i <= limit {
+        if vec_get(sieve, i) == 1 {
+            let mut j = i * i;
+            while j <= limit {
+                let _s = vec_set(sieve, j, 0);
+                j = j + i
+            }
+        } else { () };
+        i = i + 1
+    };
+    let primes = vec_new();
+    let mut m = 2;
+    while m <= limit {
+        if vec_get(sieve, m) == 1 {
+            let _p = vec_push(primes, m)
+        } else { () };
+        m = m + 1
+    };
+    let t = read_int();
+    for _i in 0..t {
+        let n = read_int();
+        let _p = println(vec_get(primes, n - 1))
+    };
+    let _fs = vec_free(sieve);
+    let _fp = vec_free(primes);
+    0
+};

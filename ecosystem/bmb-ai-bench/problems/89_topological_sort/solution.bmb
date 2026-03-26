@@ -1,0 +1,52 @@
+// Topological Sort (Kahn) — reads n nodes, m edges. Prints one valid ordering.
+fn main() -> i64 = {
+    let n = read_int();
+    let m = read_int();
+    let indeg = vec_new();
+    for _i in 0..n {
+        let _p = vec_push(indeg, 0)
+    };
+    let edge_from = vec_new();
+    let edge_to = vec_new();
+    for _i in 0..m {
+        let u = read_int();
+        let v = read_int();
+        let _pf = vec_push(edge_from, u);
+        let _pt = vec_push(edge_to, v);
+        let _s = vec_set(indeg, v, vec_get(indeg, v) + 1)
+    };
+    let queue = vec_new();
+    for i in 0..n {
+        if vec_get(indeg, i) == 0 {
+            let _p = vec_push(queue, i)
+        } else { () }
+    };
+    let result = vec_new();
+    let mut front = 0;
+    while front < vec_len(queue) {
+        let u = vec_get(queue, front);
+        front = front + 1;
+        let _p = vec_push(result, u);
+        for e in 0..m {
+            if vec_get(edge_from, e) == u {
+                let v = vec_get(edge_to, e);
+                let _s = vec_set(indeg, v, vec_get(indeg, v) - 1);
+                if vec_get(indeg, v) == 0 {
+                    let _pq = vec_push(queue, v)
+                } else { () }
+            } else { () }
+        }
+    };
+    let rlen = vec_len(result);
+    for i in 0..rlen {
+        if i > 0 { let _s = print_str(" "); () } else { () };
+        let _p = print(vec_get(result, i))
+    };
+    let _nl = println_str("");
+    let _fi = vec_free(indeg);
+    let _fef = vec_free(edge_from);
+    let _fet = vec_free(edge_to);
+    let _fq = vec_free(queue);
+    let _fr = vec_free(result);
+    0
+};

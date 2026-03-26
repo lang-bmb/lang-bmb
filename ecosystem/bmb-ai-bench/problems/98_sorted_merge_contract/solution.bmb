@@ -1,0 +1,46 @@
+// Sorted Merge with Contract — merge two sorted arrays.
+fn merge_sorted(a: i64, na: i64, b: i64, nb: i64) -> i64
+    pre na >= 0 and nb >= 0
+= {
+    let result = vec_new();
+    let mut i = 0;
+    let mut j = 0;
+    while i < na {
+        if j < nb {
+            if vec_get(a, i) <= vec_get(b, j) {
+                let _p = vec_push(result, vec_get(a, i));
+                i = i + 1
+            } else {
+                let _p = vec_push(result, vec_get(b, j));
+                j = j + 1
+            }
+        } else {
+            let _p = vec_push(result, vec_get(a, i));
+            i = i + 1
+        }
+    };
+    while j < nb {
+        let _p = vec_push(result, vec_get(b, j));
+        j = j + 1
+    };
+    result
+};
+fn main() -> i64 = {
+    let na = read_int();
+    let a = vec_new();
+    for _i in 0..na { let val = read_int(); let _p = vec_push(a, val) };
+    let nb = read_int();
+    let b = vec_new();
+    for _i in 0..nb { let val = read_int(); let _p = vec_push(b, val) };
+    let result = merge_sorted(a, na, b, nb);
+    let rlen = vec_len(result);
+    for i in 0..rlen {
+        if i > 0 { let _s = print_str(" "); () } else { () };
+        let _p = print(vec_get(result, i))
+    };
+    let _nl = println_str("");
+    let _fa = vec_free(a);
+    let _fb = vec_free(b);
+    let _fr = vec_free(result);
+    0
+};
