@@ -1,0 +1,40 @@
+// Bracket Match — reads n, then n values (40=( 41=) 91=[ 93=] 123={ 125=}).
+// Prints 1 if balanced, 0 otherwise.
+
+fn main() -> i64 = {
+    let t = read_int();
+    for _ti in 0..t {
+        let n = read_int();
+        let stack = vec_new();
+        let mut valid = 1;
+        for _i in 0..n {
+            let ch = read_int();
+            if ch == 40 {
+                let _p = vec_push(stack, ch)
+            } else if ch == 91 {
+                let _p = vec_push(stack, ch)
+            } else if ch == 123 {
+                let _p = vec_push(stack, ch)
+            } else {
+                let len = vec_len(stack);
+                if len == 0 {
+                    valid = 0
+                } else {
+                    let top = vec_get(stack, len - 1);
+                    let _pop = vec_pop(stack);
+                    if ch == 41 {
+                        if top != 40 { valid = 0 } else { () }
+                    } else if ch == 93 {
+                        if top != 91 { valid = 0 } else { () }
+                    } else if ch == 125 {
+                        if top != 123 { valid = 0 } else { () }
+                    } else { () }
+                }
+            }
+        };
+        if vec_len(stack) != 0 { valid = 0 } else { () };
+        let _p = println(valid);
+        let _f = vec_free(stack)
+    };
+    0
+};

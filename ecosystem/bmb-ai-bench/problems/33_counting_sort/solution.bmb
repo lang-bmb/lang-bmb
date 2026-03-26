@@ -1,0 +1,41 @@
+// Counting Sort — reads n, max_val, then n integers in [0, max_val]. Prints sorted.
+
+fn main() -> i64 = {
+    let n = read_int();
+    let max_val = read_int();
+    let v = vec_new();
+    for _i in 0..n {
+        let val = read_int();
+        let _p = vec_push(v, val)
+    };
+    let count = vec_new();
+    let mut k = 0;
+    while k <= max_val {
+        let _p = vec_push(count, 0);
+        k = k + 1
+    };
+    for i in 0..n {
+        let val = vec_get(v, i);
+        let _s = vec_set(count, val, vec_get(count, val) + 1)
+    };
+    let mut idx = 0;
+    let mut val = 0;
+    while val <= max_val {
+        let c = vec_get(count, val);
+        let mut j = 0;
+        while j < c {
+            let _s = vec_set(v, idx, val);
+            idx = idx + 1;
+            j = j + 1
+        };
+        val = val + 1
+    };
+    for i in 0..n {
+        if i > 0 { let _s = print_str(" "); () } else { () };
+        let _p = print(vec_get(v, i))
+    };
+    let _nl = println_str("");
+    let _fc = vec_free(count);
+    let _fv = vec_free(v);
+    0
+};

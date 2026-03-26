@@ -1,0 +1,36 @@
+// Char Frequency — reads n integers (0-255). Prints value:count for non-zero counts, sorted by value.
+
+fn main() -> i64 = {
+    let n = read_int();
+    let freq = vec_new();
+    let mut k = 0;
+    while k < 256 {
+        let _p = vec_push(freq, 0);
+        k = k + 1
+    };
+    for _i in 0..n {
+        let val = read_int();
+        let _s = vec_set(freq, val, vec_get(freq, val) + 1)
+    };
+    let mut count = 0;
+    let mut i = 0;
+    while i < 256 {
+        if vec_get(freq, i) > 0 {
+            count = count + 1
+        } else { () };
+        i = i + 1
+    };
+    let _p = println(count);
+    let mut j = 0;
+    while j < 256 {
+        let c = vec_get(freq, j);
+        if c > 0 {
+            let _pv = print(j);
+            let _sp = print_str(" ");
+            let _pc = println(c)
+        } else { () };
+        j = j + 1
+    };
+    let _f = vec_free(freq);
+    0
+};

@@ -1,0 +1,30 @@
+// Integer Sqrt — reads t queries, each n. Prints floor(sqrt(n)).
+
+fn isqrt(n: i64) -> i64 = {
+    if n <= 0 { 0 }
+    else {
+        let mut lo = 1;
+        let mut hi = n;
+        if hi > 3037000499 { hi = 3037000499 } else { () };
+        let mut result = 0;
+        while lo <= hi {
+            let mid = lo + (hi - lo) / 2;
+            if mid <= n / mid {
+                result = mid;
+                lo = mid + 1
+            } else {
+                hi = mid - 1
+            }
+        };
+        result
+    }
+};
+
+fn main() -> i64 = {
+    let t = read_int();
+    for _i in 0..t {
+        let n = read_int();
+        let _p = println(isqrt(n))
+    };
+    0
+};

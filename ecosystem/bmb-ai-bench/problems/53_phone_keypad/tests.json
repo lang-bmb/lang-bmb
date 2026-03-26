@@ -1,0 +1,50 @@
+[
+  {
+    "stdin": "3 2 3 4",
+    "expected_stdout": "9\n"
+  },
+  {
+    "stdin": "1 7",
+    "expected_stdout": "4\n"
+  },
+  {
+    "stdin": "1 9",
+    "expected_stdout": "4\n"
+  },
+  {
+    "stdin": "2 2 9",
+    "expected_stdout": "7\n"
+  },
+  {
+    "stdin": "4 7 7 9 9",
+    "expected_stdout": "16\n"
+  },
+  {
+    "stdin": "1 5",
+    "expected_stdout": "3\n"
+  },
+  {
+    "stdin": "5 2 3 4 5 6",
+    "expected_stdout": "15\n"
+  },
+  {
+    "stdin": "3 7 8 9",
+    "expected_stdout": "11\n"
+  },
+  {
+    "stdin": "8 2 3 4 5 6 7 8 9",
+    "expected_stdout": "26\n"
+  },
+  {
+    "stdin": "1 2",
+    "expected_stdout": "3\n"
+  },
+  {
+    "stdin": "2 7 9",
+    "expected_stdout": "8\n"
+  },
+  {
+    "stdin": "6 2 2 2 2 2 2",
+    "expected_stdout": "18\n"
+  }
+]

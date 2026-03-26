@@ -1,0 +1,23 @@
+// Dot Product — reads n, then two vectors of n integers, prints their dot product.
+
+fn main() -> i64 = {
+    let n = read_int();
+    let a = vec_new();
+    let b = vec_new();
+    for _i in 0..n {
+        let val = read_int();
+        let _p = vec_push(a, val)
+    };
+    for _i in 0..n {
+        let val = read_int();
+        let _p = vec_push(b, val)
+    };
+    let mut sum = 0;
+    for i in 0..n {
+        sum = sum + vec_get(a, i) * vec_get(b, i)
+    };
+    let _p = println(sum);
+    let _fa = vec_free(a);
+    let _fb = vec_free(b);
+    0
+};

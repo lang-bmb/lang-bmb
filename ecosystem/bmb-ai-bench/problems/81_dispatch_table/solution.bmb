@@ -1,0 +1,15 @@
+// Dispatch Table — reads op(1-4) and two args. 1=add, 2=sub, 3=mul, 4=max.
+fn main() -> i64 = {
+    let t = read_int();
+    for _i in 0..t {
+        let op = read_int();
+        let a = read_int();
+        let b = read_int();
+        let result = if op == 1 { a + b }
+            else if op == 2 { a - b }
+            else if op == 3 { a * b }
+            else { if a > b { a } else { b } };
+        let _p = println(result)
+    };
+    0
+};

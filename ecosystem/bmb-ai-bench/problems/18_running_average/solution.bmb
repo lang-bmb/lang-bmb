@@ -1,0 +1,13 @@
+// Running Average — prints truncated average after each element.
+
+fn main() -> i64 = {
+    let n = read_int();
+    let mut sum = 0;
+    for i in 0..n {
+        let val = read_int();
+        sum = sum + val;
+        let avg = sum / (i + 1);
+        let _p = println(avg);
+    };
+    0
+};

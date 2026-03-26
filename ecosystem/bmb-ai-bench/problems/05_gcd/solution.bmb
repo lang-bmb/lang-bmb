@@ -1,0 +1,21 @@
+// GCD — reads two integers, prints their greatest common divisor.
+// Uses iterative Euclidean algorithm.
+
+fn gcd(a: i64, b: i64) -> i64 = {
+    let mut x = a;
+    let mut y = b;
+    while y != 0 {
+        let t = y;
+        y = x % y;
+        x = t
+    };
+    x
+};
+
+fn main() -> i64 = {
+    let a = read_int();
+    let b = read_int();
+    let result = gcd(a, b);
+    let _p = println(result);
+    0
+};

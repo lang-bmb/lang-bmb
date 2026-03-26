@@ -1,0 +1,51 @@
+// Bounded Stack — fixed-capacity stack with overflow/underflow contracts.
+// Contracts ensure pop/top only when not empty.
+
+fn stack_push(stack: i64, size: i64, val: i64) -> i64 = {
+    let _s = vec_set(stack, size, val);
+    size + 1
+};
+
+fn stack_pop(size: i64) -> i64
+    pre size > 0
+= size - 1;
+
+fn stack_top(stack: i64, size: i64) -> i64
+    pre size > 0
+= vec_get(stack, size - 1);
+
+fn main() -> i64 = {
+    let cap = read_int();
+    let q = read_int();
+    let stack = vec_new();
+    for k in 0..cap {
+        let _p = vec_push(stack, 0)
+    };
+    let mut size = 0;
+    for i in 0..q {
+        let op = read_int();
+        if op == 1 {
+            let x = read_int();
+            if size < cap {
+                size = stack_push(stack, size, x)
+            } else {
+                let _p = println_str("FULL");
+                ()
+            }
+        } else if op == 2 {
+            if size > 0 {
+                let val = stack_top(stack, size);
+                let _p = println(val);
+                size = stack_pop(size)
+            } else {
+                let _p = println_str("EMPTY");
+                ()
+            }
+        } else {
+            let _p = println(size);
+            ()
+        }
+    };
+    let _f = vec_free(stack);
+    0
+};

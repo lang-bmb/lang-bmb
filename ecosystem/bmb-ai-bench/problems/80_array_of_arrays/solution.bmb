@@ -1,0 +1,21 @@
+// Array of Arrays — reads r rows, c cols. Reads values, prints column sums.
+fn main() -> i64 = {
+    let r = read_int();
+    let c = read_int();
+    let v = vec_new();
+    for _i in 0..(r * c) {
+        let val = read_int();
+        let _p = vec_push(v, val)
+    };
+    for j in 0..c {
+        let mut sum = 0;
+        for i in 0..r {
+            sum = sum + vec_get(v, i * c + j)
+        };
+        if j > 0 { let _s = print_str(" "); () } else { () };
+        let _p = print(sum)
+    };
+    let _nl = println_str("");
+    let _f = vec_free(v);
+    0
+};

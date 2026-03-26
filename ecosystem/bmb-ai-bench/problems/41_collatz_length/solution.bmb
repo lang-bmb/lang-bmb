@@ -1,0 +1,24 @@
+// Collatz Length — reads t queries, each n. Prints Collatz sequence length.
+
+fn collatz_len(n: i64) -> i64 = {
+    let mut x = n;
+    let mut count = 1;
+    while x != 1 {
+        if x % 2 == 0 {
+            x = x / 2
+        } else {
+            x = 3 * x + 1
+        };
+        count = count + 1
+    };
+    count
+};
+
+fn main() -> i64 = {
+    let t = read_int();
+    for _i in 0..t {
+        let n = read_int();
+        let _p = println(collatz_len(n))
+    };
+    0
+};

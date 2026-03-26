@@ -1,0 +1,26 @@
+// Power Mod — reads n queries. Each: a b m. Prints a^b mod m.
+
+fn power_mod(a: i64, b: i64, m: i64) -> i64 = {
+    let mut result = 1;
+    let mut base = a % m;
+    let mut exp = b;
+    while exp > 0 {
+        if exp % 2 == 1 {
+            result = result * base % m
+        } else { () };
+        exp = exp / 2;
+        base = base * base % m
+    };
+    result
+};
+
+fn main() -> i64 = {
+    let n = read_int();
+    for _i in 0..n {
+        let a = read_int();
+        let b = read_int();
+        let m = read_int();
+        let _p = println(power_mod(a, b, m))
+    };
+    0
+};

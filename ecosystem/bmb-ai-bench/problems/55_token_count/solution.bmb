@@ -1,0 +1,27 @@
+// Token Count — reads n integers. Prints count of distinct values.
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    for _i in 0..n {
+        let val = read_int();
+        let _p = vec_push(v, val)
+    };
+    let mut count = 0;
+    for i in 0..n {
+        let val = vec_get(v, i);
+        let mut found = 0;
+        for j in 0..i {
+            if vec_get(v, j) == val {
+                found = 1;
+                break
+            } else { () }
+        };
+        if found == 0 {
+            count = count + 1
+        } else { () }
+    };
+    let _p = println(count);
+    let _f = vec_free(v);
+    0
+};

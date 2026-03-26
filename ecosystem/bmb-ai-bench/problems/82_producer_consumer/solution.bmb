@@ -1,0 +1,19 @@
+// Producer-Consumer — process produce(val) and consume() operations.
+// Op 1=produce(val), op 2=consume (print front, remove).
+fn main() -> i64 = {
+    let n = read_int();
+    let queue = vec_new();
+    let mut front = 0;
+    for _i in 0..n {
+        let op = read_int();
+        if op == 1 {
+            let val = read_int();
+            let _p = vec_push(queue, val)
+        } else {
+            let _p = println(vec_get(queue, front));
+            front = front + 1
+        }
+    };
+    let _f = vec_free(queue);
+    0
+};

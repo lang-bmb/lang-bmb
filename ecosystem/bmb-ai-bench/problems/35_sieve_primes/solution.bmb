@@ -1,0 +1,38 @@
+// Sieve of Eratosthenes — reads n, prints count of primes <= n.
+
+fn main() -> i64 = {
+    let n = read_int();
+    let mut count = 0;
+    if n >= 2 {
+        let sieve = vec_new();
+        let mut k = 0;
+        while k <= n {
+            let _p = vec_push(sieve, 1);
+            k = k + 1
+        };
+        let _s0 = vec_set(sieve, 0, 0);
+        let _s1 = vec_set(sieve, 1, 0);
+        let mut i = 2;
+        while i * i <= n {
+            if vec_get(sieve, i) == 1 {
+                let mut j = i * i;
+                while j <= n {
+                    let _s = vec_set(sieve, j, 0);
+                    j = j + i
+                }
+            } else { () };
+            i = i + 1
+        };
+        let mut m = 2;
+        while m <= n {
+            if vec_get(sieve, m) == 1 {
+                count = count + 1
+            } else { () };
+            m = m + 1
+        };
+        let _f = vec_free(sieve);
+        ()
+    } else { () };
+    let _p = println(count);
+    0
+};

@@ -1,0 +1,12 @@
+// Event Loop — reads n events (time, value). Prints cumulative value at each step.
+fn main() -> i64 = {
+    let n = read_int();
+    let mut total = 0;
+    for _i in 0..n {
+        let _time = read_int();
+        let value = read_int();
+        total = total + value;
+        let _p = println(total)
+    };
+    0
+};

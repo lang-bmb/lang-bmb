@@ -1,0 +1,14 @@
+[
+  {"stdin": "2 1 2 3 4 5 6 7 8", "expected_stdout": "19 22\n43 50\n"},
+  {"stdin": "1 3 4", "expected_stdout": "12\n"},
+  {"stdin": "2 1 0 0 1 1 0 0 1", "expected_stdout": "1 0\n0 1\n"},
+  {"stdin": "2 0 0 0 0 5 6 7 8", "expected_stdout": "0 0\n0 0\n"},
+  {"stdin": "3 1 0 0 0 1 0 0 0 1 2 3 4 5 6 7 8 9 10", "expected_stdout": "2 3 4\n5 6 7\n8 9 10\n"},
+  {"stdin": "2 2 0 0 2 2 0 0 2", "expected_stdout": "4 0\n0 4\n"},
+  {"stdin": "2 1 1 1 1 1 1 1 1", "expected_stdout": "2 2\n2 2\n"},
+  {"stdin": "3 1 2 3 4 5 6 7 8 9 9 8 7 6 5 4 3 2 1", "expected_stdout": "30 24 18\n84 69 54\n138 114 90\n"},
+  {"stdin": "1 -5 -3", "expected_stdout": "15\n"},
+  {"stdin": "2 -1 2 3 -4 5 -6 -7 8", "expected_stdout": "-19 22\n43 -50\n"},
+  {"stdin": "2 1000 0 0 1000 1000 0 0 1000", "expected_stdout": "1000000 0\n0 1000000\n"},
+  {"stdin": "3 0 0 0 0 0 0 0 0 0 1 2 3 4 5 6 7 8 9", "expected_stdout": "0 0 0\n0 0 0\n0 0 0\n"}
+]

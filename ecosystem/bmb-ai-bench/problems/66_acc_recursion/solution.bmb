@@ -1,0 +1,13 @@
+// Accumulator Recursion — sum 1..n using tail-recursive accumulator.
+fn sum_acc(n: i64, acc: i64) -> i64 = {
+    if n <= 0 { acc }
+    else { sum_acc(n - 1, acc + n) }
+};
+fn main() -> i64 = {
+    let t = read_int();
+    for _i in 0..t {
+        let n = read_int();
+        let _p = println(sum_acc(n, 0))
+    };
+    0
+};

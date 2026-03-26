@@ -1,0 +1,26 @@
+// Accumulator Pattern — fold operations: 1=sum, 2=product, 3=min, 4=max.
+fn main() -> i64 = {
+    let t = read_int();
+    for _ti in 0..t {
+        let op = read_int();
+        let n = read_int();
+        let v = vec_new();
+        for _i in 0..n {
+            let val = read_int();
+            let _p = vec_push(v, val)
+        };
+        let mut acc = vec_get(v, 0);
+        let mut i = 1;
+        while i < n {
+            let val = vec_get(v, i);
+            if op == 1 { acc = acc + val }
+            else if op == 2 { acc = acc * val }
+            else if op == 3 { if val < acc { acc = val } else { () } }
+            else { if val > acc { acc = val } else { () } };
+            i = i + 1
+        };
+        let _p = println(acc);
+        let _f = vec_free(v)
+    };
+    0
+};

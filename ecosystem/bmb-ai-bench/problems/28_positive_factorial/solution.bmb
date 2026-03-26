@@ -1,0 +1,25 @@
+// Positive Factorial — factorial with range contract.
+// Contract guarantees no overflow and positive result.
+
+fn factorial(n: i64) -> i64
+    pre n >= 0 and n <= 20
+    post ret >= 1
+= {
+    let mut result = 1;
+    let mut i = 2;
+    while i <= n {
+        result = result * i;
+        i = i + 1
+    };
+    result
+};
+
+fn main() -> i64 = {
+    let q = read_int();
+    for i in 0..q {
+        let x = read_int();
+        let result = factorial(x);
+        let _p = println(result)
+    };
+    0
+};

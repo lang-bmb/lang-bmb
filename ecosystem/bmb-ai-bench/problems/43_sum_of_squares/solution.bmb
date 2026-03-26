@@ -1,0 +1,14 @@
+// Sum of Squares — reads t queries, each n. Prints 1^2+2^2+...+n^2.
+
+fn main() -> i64 = {
+    let t = read_int();
+    for _i in 0..t {
+        let n = read_int();
+        let mut sum = 0;
+        for i in 1..(n + 1) {
+            sum = sum + i * i
+        };
+        let _p = println(sum)
+    };
+    0
+};

@@ -1,0 +1,18 @@
+// CSV Field Counter — reads n rows. Each row: field_count followed by that many integers.
+// Validates and prints field count per row.
+
+fn main() -> i64 = {
+    let n = read_int();
+    for _i in 0..n {
+        let fields = read_int();
+        let mut sum = 0;
+        for _j in 0..fields {
+            let val = read_int();
+            sum = sum + val
+        };
+        let _pf = print(fields);
+        let _sp = print_str(" ");
+        let _ps = println(sum)
+    };
+    0
+};

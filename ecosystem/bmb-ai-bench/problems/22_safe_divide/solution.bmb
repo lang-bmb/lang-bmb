@@ -1,0 +1,17 @@
+// Safe Division — division with non-zero divisor contract.
+// Contract eliminates need for runtime zero-check.
+
+fn safe_div(a: i64, b: i64) -> i64
+    pre b != 0
+= a / b;
+
+fn main() -> i64 = {
+    let n = read_int();
+    for i in 0..n {
+        let a = read_int();
+        let b = read_int();
+        let result = safe_div(a, b);
+        let _p = println(result)
+    };
+    0
+};

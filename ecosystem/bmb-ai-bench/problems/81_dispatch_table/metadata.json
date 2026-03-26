@@ -1,0 +1,19 @@
+{
+  "id": "81_dispatch_table",
+  "category": "integration",
+  "difficulty": "easy",
+  "tags": [
+    "dispatch",
+    "function",
+    "lookup"
+  ],
+  "bmb_features_tested": [],
+  "expected_tools": [
+    "check",
+    "build",
+    "run"
+  ],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v2.0"
+}

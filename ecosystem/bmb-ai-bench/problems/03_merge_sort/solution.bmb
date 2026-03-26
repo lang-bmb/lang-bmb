@@ -1,0 +1,72 @@
+// Merge Sort — reads n, then n integers from stdin.
+// Prints sorted integers separated by spaces.
+
+fn merge(arr: i64, tmp: i64, lo: i64, mid: i64, hi: i64) -> i64 = {
+    let mut i = lo;
+    let mut j = mid + 1;
+    let mut k = lo;
+    while i <= mid {
+        if j <= hi {
+            if vec_get(arr, i) <= vec_get(arr, j) {
+                let _s = vec_set(tmp, k, vec_get(arr, i));
+                i = i + 1
+            } else {
+                let _s = vec_set(tmp, k, vec_get(arr, j));
+                j = j + 1
+            }
+        } else {
+            let _s = vec_set(tmp, k, vec_get(arr, i));
+            i = i + 1
+        };
+        k = k + 1
+    };
+    while j <= hi {
+        let _s = vec_set(tmp, k, vec_get(arr, j));
+        j = j + 1;
+        k = k + 1
+    };
+    let mut x = lo;
+    while x <= hi {
+        let _s = vec_set(arr, x, vec_get(tmp, x));
+        x = x + 1
+    };
+    0
+};
+
+fn merge_sort(arr: i64, tmp: i64, lo: i64, hi: i64) -> i64 = {
+    if lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        let _l = merge_sort(arr, tmp, lo, mid);
+        let _r = merge_sort(arr, tmp, mid + 1, hi);
+        let _m = merge(arr, tmp, lo, mid, hi);
+        0
+    } else {
+        0
+    }
+};
+
+fn main() -> i64 = {
+    let n = read_int();
+    let arr = vec_new();
+    let tmp = vec_new();
+    for _i in 0..n {
+        let val = read_int();
+        let _p = vec_push(arr, val);
+        let _t = vec_push(tmp, 0)
+    };
+    if n > 0 {
+        let _s = merge_sort(arr, tmp, 0, n - 1);
+        ()
+    } else { () };
+    for i in 0..n {
+        if i > 0 {
+            let _s = print_str(" ");
+            ()
+        } else { () };
+        let _p = print(vec_get(arr, i))
+    };
+    let _nl = println_str("");
+    let _fa = vec_free(arr);
+    let _ft = vec_free(tmp);
+    0
+};

@@ -1,0 +1,33 @@
+// Safe Integer Square Root — floor(sqrt(x)) with non-negative contract.
+// Uses binary search for O(log x) computation.
+
+fn isqrt(x: i64) -> i64
+    pre x >= 0
+    post ret >= 0
+= {
+    if x <= 1 { x }
+    else {
+        let mut lo = 1;
+        let mut hi = 1000000000;
+        if hi > x { hi = x } else { () };
+        while lo <= hi {
+            let mid = lo + (hi - lo) / 2;
+            if mid <= x / mid {
+                lo = mid + 1
+            } else {
+                hi = mid - 1
+            }
+        };
+        hi
+    }
+};
+
+fn main() -> i64 = {
+    let n = read_int();
+    for i in 0..n {
+        let x = read_int();
+        let result = isqrt(x);
+        let _p = println(result)
+    };
+    0
+};

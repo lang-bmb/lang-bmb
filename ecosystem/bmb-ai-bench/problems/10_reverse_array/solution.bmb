@@ -1,0 +1,30 @@
+// Reverse Array — reads n, then n integers. Prints reversed array.
+
+fn swap(v: i64, i: i64, j: i64) -> i64 = {
+    let tmp = vec_get(v, i);
+    let _s1 = vec_set(v, i, vec_get(v, j));
+    let _s2 = vec_set(v, j, tmp);
+    0
+};
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    for _i in 0..n {
+        let val = read_int();
+        let _p = vec_push(v, val)
+    };
+    for i in 0..(n / 2) {
+        let _s = swap(v, i, n - 1 - i)
+    };
+    for i in 0..n {
+        if i > 0 {
+            let _s = print_str(" ");
+            ()
+        } else { () };
+        let _p = print(vec_get(v, i))
+    };
+    let _nl = println_str("");
+    let _f = vec_free(v);
+    0
+};

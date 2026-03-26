@@ -1,0 +1,31 @@
+// Base Convert — reads n queries. Each: number base. Prints number in given base.
+
+fn main() -> i64 = {
+    let t = read_int();
+    for _ti in 0..t {
+        let num = read_int();
+        let b = read_int();
+        if num == 0 {
+            let _p = println(0)
+        } else {
+            let digits = vec_new();
+            let mut n = num;
+            let mut neg = 0;
+            if n < 0 { neg = 1; n = 0 - n } else { () };
+            while n > 0 {
+                let _p = vec_push(digits, n % b);
+                n = n / b
+            };
+            if neg == 1 { let _s = print_str("-"); () } else { () };
+            let len = vec_len(digits);
+            let mut i = len - 1;
+            while i >= 0 {
+                let _p = print(vec_get(digits, i));
+                i = i - 1
+            };
+            let _nl = println_str("");
+            let _f = vec_free(digits)
+        }
+    };
+    0
+};

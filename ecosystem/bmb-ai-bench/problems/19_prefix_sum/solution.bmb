@@ -1,0 +1,21 @@
+// Prefix Sum Queries — builds prefix sum array, answers range queries.
+
+fn main() -> i64 = {
+    let n = read_int();
+    let prefix = vec_new();
+    let _p0 = vec_push(prefix, 0);
+    for i in 0..n {
+        let val = read_int();
+        let prev = vec_get(prefix, i);
+        let _p = vec_push(prefix, prev + val);
+    };
+    let q = read_int();
+    for _i in 0..q {
+        let l = read_int();
+        let r = read_int();
+        let sum = vec_get(prefix, r + 1) - vec_get(prefix, l);
+        let _p = println(sum);
+    };
+    let _f = vec_free(prefix);
+    0
+};

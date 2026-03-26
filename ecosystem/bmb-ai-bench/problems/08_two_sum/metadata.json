@@ -1,0 +1,19 @@
+{
+  "id": "08_two_sum",
+  "category": "algorithm",
+  "difficulty": "easy",
+  "tags": [
+    "array",
+    "search",
+    "brute_force"
+  ],
+  "bmb_features_tested": [],
+  "expected_tools": [
+    "check",
+    "build",
+    "run"
+  ],
+  "c_baseline_flags": "-O2 -march=native",
+  "perf_target_ratio": 1.1,
+  "version_added": "v1.0"
+}

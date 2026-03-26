@@ -1,0 +1,25 @@
+{
+  "id": "41_collatz_length",
+  "category": "performance",
+  "difficulty": "easy",
+  "tags": [
+    "math",
+    "loop",
+    "sequence"
+  ],
+  "bmb_features_tested": [
+    "for",
+    "vec_new",
+    "vec_push",
+    "vec_get",
+    "vec_set"
+  ],
+  "expected_tools": [
+    "check",
+    "build",
+    "run"
+  ],
+  "c_baseline_flags": "-O2 -march=native",
+  "perf_target_ratio": 1.05,
+  "version_added": "v2.0"
+}

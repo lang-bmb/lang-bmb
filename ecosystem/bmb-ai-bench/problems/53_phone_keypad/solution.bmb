@@ -1,0 +1,19 @@
+// Phone Keypad — reads n digits (2-9). Prints total keypress count.
+// 2=abc(3), 3=def(3), 4=ghi(3), 5=jkl(3), 6=mno(3), 7=pqrs(4), 8=tuv(3), 9=wxyz(4)
+
+fn presses(d: i64) -> i64 = {
+    if d == 7 { 4 }
+    else if d == 9 { 4 }
+    else { 3 }
+};
+
+fn main() -> i64 = {
+    let n = read_int();
+    let mut total = 0;
+    for _i in 0..n {
+        let d = read_int();
+        total = total + presses(d)
+    };
+    let _p = println(total);
+    0
+};

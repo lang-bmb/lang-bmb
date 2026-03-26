@@ -1,0 +1,21 @@
+// Nested Loops — count triplets (i,j,k) where i+j+k = target, 0<=i,j,k<n.
+fn main() -> i64 = {
+    let t = read_int();
+    for _ti in 0..t {
+        let n = read_int();
+        let target = read_int();
+        let mut count = 0;
+        for i in 0..n {
+            for j in 0..n {
+                let k = target - i - j;
+                if k >= 0 {
+                    if k < n {
+                        count = count + 1
+                    } else { () }
+                } else { () }
+            }
+        };
+        let _p = println(count)
+    };
+    0
+};

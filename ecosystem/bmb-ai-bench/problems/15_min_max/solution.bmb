@@ -1,0 +1,21 @@
+// Min and Max — reads n, then n integers. Prints min and max.
+
+fn main() -> i64 = {
+    let n = read_int();
+    let first = read_int();
+    let mut mn = first;
+    let mut mx = first;
+    for _i in 1..n {
+        let val = read_int();
+        if val < mn {
+            mn = val
+        } else { () };
+        if val > mx {
+            mx = val
+        } else { () };
+    };
+    let _a = print(mn);
+    let _s = print_str(" ");
+    let _b = println(mx);
+    0
+};

@@ -1,0 +1,24 @@
+// Euclidean Distance Squared — reads n, two vectors. Prints squared distance.
+
+fn main() -> i64 = {
+    let n = read_int();
+    let a = vec_new();
+    let b = vec_new();
+    for _i in 0..n {
+        let val = read_int();
+        let _p = vec_push(a, val)
+    };
+    for _i in 0..n {
+        let val = read_int();
+        let _p = vec_push(b, val)
+    };
+    let mut dist = 0;
+    for i in 0..n {
+        let d = vec_get(a, i) - vec_get(b, i);
+        dist = dist + d * d
+    };
+    let _p = println(dist);
+    let _fa = vec_free(a);
+    let _fb = vec_free(b);
+    0
+};

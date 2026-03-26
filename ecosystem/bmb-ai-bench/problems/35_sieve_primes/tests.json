@@ -1,0 +1,50 @@
+[
+  {
+    "stdin": "10",
+    "expected_stdout": "4\n"
+  },
+  {
+    "stdin": "1",
+    "expected_stdout": "0\n"
+  },
+  {
+    "stdin": "2",
+    "expected_stdout": "1\n"
+  },
+  {
+    "stdin": "100",
+    "expected_stdout": "25\n"
+  },
+  {
+    "stdin": "1000",
+    "expected_stdout": "168\n"
+  },
+  {
+    "stdin": "0",
+    "expected_stdout": "0\n"
+  },
+  {
+    "stdin": "3",
+    "expected_stdout": "2\n"
+  },
+  {
+    "stdin": "30",
+    "expected_stdout": "10\n"
+  },
+  {
+    "stdin": "50",
+    "expected_stdout": "15\n"
+  },
+  {
+    "stdin": "200",
+    "expected_stdout": "46\n"
+  },
+  {
+    "stdin": "500",
+    "expected_stdout": "95\n"
+  },
+  {
+    "stdin": "7919",
+    "expected_stdout": "1000\n"
+  }
+]

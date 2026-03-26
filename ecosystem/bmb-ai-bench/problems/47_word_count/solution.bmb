@@ -1,0 +1,25 @@
+// Max Consecutive Equal — reads n integers. Prints length of longest consecutive run.
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    for _i in 0..n {
+        let val = read_int();
+        let _p = vec_push(v, val)
+    };
+    let mut max_run = 1;
+    let mut cur_run = 1;
+    let mut i = 1;
+    while i < n {
+        if vec_get(v, i) == vec_get(v, i - 1) {
+            cur_run = cur_run + 1;
+            if cur_run > max_run { max_run = cur_run } else { () }
+        } else {
+            cur_run = 1
+        };
+        i = i + 1
+    };
+    let _p = println(max_run);
+    let _f = vec_free(v);
+    0
+};

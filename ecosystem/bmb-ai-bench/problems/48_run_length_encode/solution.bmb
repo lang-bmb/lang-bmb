@@ -1,0 +1,47 @@
+// Run-Length Encode — reads a line of characters. Prints RLE: char count pairs.
+// Input: a line of single-digit numbers. Output: digit count pairs.
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    for _i in 0..n {
+        let val = read_int();
+        let _p = vec_push(v, val)
+    };
+    if n == 0 {
+        let _p = println(0);
+        let _f = vec_free(v);
+        0
+    } else {
+        let mut cur = vec_get(v, 0);
+        let mut count = 1;
+        let result = vec_new();
+        let mut i = 1;
+        while i < n {
+            let val = vec_get(v, i);
+            if val == cur {
+                count = count + 1
+            } else {
+                let _p1 = vec_push(result, cur);
+                let _p2 = vec_push(result, count);
+                cur = val;
+                count = 1
+            };
+            i = i + 1
+        };
+        let _p1 = vec_push(result, cur);
+        let _p2 = vec_push(result, count);
+        let rlen = vec_len(result);
+        let _p = println(rlen / 2);
+        let mut j = 0;
+        while j < rlen {
+            let _pa = print(vec_get(result, j));
+            let _sp = print_str(" ");
+            let _pb = println(vec_get(result, j + 1));
+            j = j + 2
+        };
+        let _fv = vec_free(v);
+        let _fr = vec_free(result);
+        0
+    }
+};

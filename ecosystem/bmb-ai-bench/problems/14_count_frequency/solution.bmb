@@ -1,0 +1,15 @@
+// Count Frequency — counts occurrences of target in array.
+
+fn main() -> i64 = {
+    let target = read_int();
+    let n = read_int();
+    let mut count = 0;
+    for _i in 0..n {
+        let val = read_int();
+        if val == target {
+            count = count + 1
+        } else { () };
+    };
+    let _p = println(count);
+    0
+};

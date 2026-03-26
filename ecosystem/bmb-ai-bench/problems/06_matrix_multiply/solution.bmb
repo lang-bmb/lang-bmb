@@ -1,0 +1,52 @@
+// Matrix Multiplication — reads n, then two n×n matrices, prints A×B.
+// Matrices stored as flat vec in row-major order.
+
+fn read_matrix(n: i64) -> i64 = {
+    let m = vec_new();
+    let total = n * n;
+    for _i in 0..total {
+        let val = read_int();
+        let _p = vec_push(m, val)
+    };
+    m
+};
+
+fn mat_mul(a: i64, b: i64, n: i64) -> i64 = {
+    let c = vec_new();
+    let total = n * n;
+    for _i in 0..total {
+        let _p = vec_push(c, 0)
+    };
+    for i in 0..n {
+        for k in 0..n {
+            for j in 0..n {
+                let idx = i * n + j;
+                let cur = vec_get(c, idx);
+                let val = vec_get(a, i * n + k) * vec_get(b, k * n + j);
+                let _s = vec_set(c, idx, cur + val)
+            }
+        }
+    };
+    c
+};
+
+fn main() -> i64 = {
+    let n = read_int();
+    let a = read_matrix(n);
+    let b = read_matrix(n);
+    let c = mat_mul(a, b, n);
+    for i in 0..n {
+        for j in 0..n {
+            if j > 0 {
+                let _s = print_str(" ");
+                ()
+            } else { () };
+            let _p = print(vec_get(c, i * n + j))
+        };
+        let _nl = println_str("")
+    };
+    let _fa = vec_free(a);
+    let _fb = vec_free(b);
+    let _fc = vec_free(c);
+    0
+};

@@ -1,0 +1,19 @@
+{
+  "id": "75_longest_plateau",
+  "category": "edge",
+  "difficulty": "medium",
+  "tags": [
+    "array",
+    "plateau",
+    "loop"
+  ],
+  "bmb_features_tested": [],
+  "expected_tools": [
+    "check",
+    "build",
+    "run"
+  ],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v2.0"
+}

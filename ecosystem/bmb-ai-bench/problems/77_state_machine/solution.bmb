@@ -1,0 +1,17 @@
+// State Machine — process commands: state starts at 0.
+// Commands: 1=increment, 2=decrement, 3=double, 4=reset, 5=negate.
+fn main() -> i64 = {
+    let n = read_int();
+    let mut state = 0;
+    for _i in 0..n {
+        let cmd = read_int();
+        if cmd == 1 { state = state + 1 }
+        else if cmd == 2 { state = state - 1 }
+        else if cmd == 3 { state = state * 2 }
+        else if cmd == 4 { state = 0 }
+        else if cmd == 5 { state = 0 - state }
+        else { () }
+    };
+    let _p = println(state);
+    0
+};

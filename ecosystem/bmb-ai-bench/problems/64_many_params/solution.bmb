@@ -1,0 +1,23 @@
+// Many Parameters — weighted sum with 6 weights.
+fn weighted(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, w1: i64, w2: i64, w3: i64, w4: i64, w5: i64, w6: i64) -> i64 = {
+    a*w1 + b*w2 + c*w3 + d*w4 + e*w5 + f*w6
+};
+fn main() -> i64 = {
+    let t = read_int();
+    for _i in 0..t {
+        let a = read_int();
+        let b = read_int();
+        let c = read_int();
+        let d = read_int();
+        let e = read_int();
+        let f = read_int();
+        let w1 = read_int();
+        let w2 = read_int();
+        let w3 = read_int();
+        let w4 = read_int();
+        let w5 = read_int();
+        let w6 = read_int();
+        let _p = println(weighted(a,b,c,d,e,f,w1,w2,w3,w4,w5,w6))
+    };
+    0
+};

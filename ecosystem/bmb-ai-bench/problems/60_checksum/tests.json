@@ -1,0 +1,14 @@
+[
+  {"stdin": "3 1 2 3", "expected_stdout": "6\n"},
+  {"stdin": "1 42", "expected_stdout": "42\n"},
+  {"stdin": "2 128 128", "expected_stdout": "0\n"},
+  {"stdin": "4 64 64 64 64", "expected_stdout": "0\n"},
+  {"stdin": "5 50 50 50 50 50", "expected_stdout": "250\n"},
+  {"stdin": "3 100 100 100", "expected_stdout": "44\n"},
+  {"stdin": "1 0", "expected_stdout": "0\n"},
+  {"stdin": "6 1 1 1 1 1 1", "expected_stdout": "6\n"},
+  {"stdin": "2 255 1", "expected_stdout": "0\n"},
+  {"stdin": "4 10 20 30 40", "expected_stdout": "100\n"},
+  {"stdin": "3 200 200 200", "expected_stdout": "88\n"},
+  {"stdin": "5 51 51 51 51 51", "expected_stdout": "255\n"}
+]

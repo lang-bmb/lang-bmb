@@ -1,0 +1,13 @@
+// Checksum — reads n integers. Prints additive checksum (sum mod 256).
+
+fn main() -> i64 = {
+    let n = read_int();
+    let mut sum = 0;
+    for _i in 0..n {
+        let val = read_int();
+        sum = sum + val
+    };
+    let result = sum % 256;
+    let _p = println(if result < 0 { result + 256 } else { result });
+    0
+};

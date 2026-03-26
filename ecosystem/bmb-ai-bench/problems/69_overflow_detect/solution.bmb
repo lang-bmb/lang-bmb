@@ -1,0 +1,19 @@
+// Overflow Detect — multiply a*b, detect if result overflows i32 range.
+fn safe_mul(a: i64, b: i64) -> i64 = {
+    let result = a * b;
+    if result > 2147483647 { 1 }
+    else if result < -2147483648 { 1 }
+    else { 0 }
+};
+fn main() -> i64 = {
+    let t = read_int();
+    for _i in 0..t {
+        let a = read_int();
+        let b = read_int();
+        let overflow = safe_mul(a, b);
+        let _po = print(overflow);
+        let _sp = print_str(" ");
+        let _pv = println(a * b)
+    };
+    0
+};

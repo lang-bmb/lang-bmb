@@ -1,0 +1,35 @@
+// Insertion Sort — reads n, then n integers. Prints sorted array.
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    for _idx in 0..n {
+        let _p = vec_push(v, read_int());
+        ()
+    };
+    for i in 1..n {
+        let key = vec_get(v, i);
+        let mut j = i - 1;
+        while j >= 0 {
+            if vec_get(v, j) > key {
+                let _s = vec_set(v, j + 1, vec_get(v, j));
+                j = j - 1
+            } else {
+                break
+            }
+        };
+        let _s = vec_set(v, j + 1, key);
+        ()
+    };
+    for idx in 0..n {
+        if idx > 0 {
+            let _s = print_str(" ");
+            ()
+        } else { () };
+        let _p = print(vec_get(v, idx));
+        ()
+    };
+    let _nl = println_str("");
+    vec_free(v);
+    0
+};

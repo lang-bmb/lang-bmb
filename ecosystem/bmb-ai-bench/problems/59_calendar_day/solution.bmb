@@ -1,0 +1,30 @@
+// Calendar Day — reads t queries. Each: month day (non-leap year). Prints day of year.
+
+fn main() -> i64 = {
+    let days = vec_new();
+    let _p1 = vec_push(days, 31);
+    let _p2 = vec_push(days, 28);
+    let _p3 = vec_push(days, 31);
+    let _p4 = vec_push(days, 30);
+    let _p5 = vec_push(days, 31);
+    let _p6 = vec_push(days, 30);
+    let _p7 = vec_push(days, 31);
+    let _p8 = vec_push(days, 31);
+    let _p9 = vec_push(days, 30);
+    let _p10 = vec_push(days, 31);
+    let _p11 = vec_push(days, 30);
+    let _p12 = vec_push(days, 31);
+    let t = read_int();
+    for _i in 0..t {
+        let month = read_int();
+        let day = read_int();
+        let mut total = 0;
+        for m in 0..(month - 1) {
+            total = total + vec_get(days, m)
+        };
+        total = total + day;
+        let _p = println(total)
+    };
+    let _f = vec_free(days);
+    0
+};

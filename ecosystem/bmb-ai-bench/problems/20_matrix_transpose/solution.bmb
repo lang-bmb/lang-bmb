@@ -1,0 +1,24 @@
+// Matrix Transpose — reads rows, cols, then rows*cols elements. Prints transposed matrix.
+
+fn main() -> i64 = {
+    let rows = read_int();
+    let cols = read_int();
+    let m = vec_new();
+    let total = rows * cols;
+    for _i in 0..total {
+        let val = read_int();
+        let _p = vec_push(m, val);
+    };
+    for j in 0..cols {
+        for i in 0..rows {
+            if i > 0 {
+                let _s = print_str(" ");
+                ()
+            } else { () };
+            let _p = print(vec_get(m, i * cols + j));
+        };
+        let _nl = println_str("");
+    };
+    let _f = vec_free(m);
+    0
+};

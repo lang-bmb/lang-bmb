@@ -1,0 +1,27 @@
+// Array Compact — reads n, then n integers. Removes zeros, prints count + remaining.
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    for _i in 0..n {
+        let val = read_int();
+        let _p = vec_push(v, val)
+    };
+    let result = vec_new();
+    for i in 0..n {
+        let val = vec_get(v, i);
+        if val != 0 {
+            let _p = vec_push(result, val)
+        } else { () }
+    };
+    let len = vec_len(result);
+    let _p = println(len);
+    for i in 0..len {
+        if i > 0 { let _s = print_str(" "); () } else { () };
+        let _p = print(vec_get(result, i))
+    };
+    if len > 0 { let _nl = println_str(""); () } else { () };
+    let _fv = vec_free(v);
+    let _fr = vec_free(result);
+    0
+};

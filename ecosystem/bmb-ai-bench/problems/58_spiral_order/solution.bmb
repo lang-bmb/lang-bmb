@@ -1,0 +1,54 @@
+// Spiral Order — reads n, then n*n matrix. Prints elements in spiral order.
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    for _i in 0..(n * n) {
+        let val = read_int();
+        let _p = vec_push(v, val)
+    };
+    let mut top = 0;
+    let mut bottom = n - 1;
+    let mut left = 0;
+    let mut right = n - 1;
+    let mut first = 1;
+    while top <= bottom {
+        if left > right { break } else { () };
+        let mut col = left;
+        while col <= right {
+            if first == 0 { let _s = print_str(" "); () } else { () };
+            let _p = print(vec_get(v, top * n + col));
+            first = 0;
+            col = col + 1
+        };
+        top = top + 1;
+        let mut row = top;
+        while row <= bottom {
+            let _s = print_str(" ");
+            let _p = print(vec_get(v, row * n + right));
+            row = row + 1
+        };
+        right = right - 1;
+        if top <= bottom {
+            let mut col2 = right;
+            while col2 >= left {
+                let _s = print_str(" ");
+                let _p = print(vec_get(v, bottom * n + col2));
+                col2 = col2 - 1
+            };
+            bottom = bottom - 1
+        } else { () };
+        if left <= right {
+            let mut row2 = bottom;
+            while row2 >= top {
+                let _s = print_str(" ");
+                let _p = print(vec_get(v, row2 * n + left));
+                row2 = row2 - 1
+            };
+            left = left + 1
+        } else { () }
+    };
+    let _nl = println_str("");
+    let _f = vec_free(v);
+    0
+};

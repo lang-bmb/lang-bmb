@@ -1,0 +1,39 @@
+// Zigzag Print — reads n, w. Prints array in rows of w, alternating direction.
+
+fn main() -> i64 = {
+    let n = read_int();
+    let w = read_int();
+    let v = vec_new();
+    for _i in 0..n {
+        let val = read_int();
+        let _p = vec_push(v, val)
+    };
+    let mut row = 0;
+    let mut i = 0;
+    while i < n {
+        let end = i + w;
+        let actual_end = if end > n { n } else { end };
+        if row % 2 == 0 {
+            let mut j = i;
+            while j < actual_end {
+                if j > i { let _s = print_str(" "); () } else { () };
+                let _p = print(vec_get(v, j));
+                j = j + 1
+            }
+        } else {
+            let mut j = actual_end - 1;
+            let mut first = 1;
+            while j >= i {
+                if first == 0 { let _s = print_str(" "); () } else { () };
+                let _p = print(vec_get(v, j));
+                first = 0;
+                j = j - 1
+            }
+        };
+        let _nl = println_str("");
+        row = row + 1;
+        i = actual_end
+    };
+    let _f = vec_free(v);
+    0
+};

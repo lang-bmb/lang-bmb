@@ -1,0 +1,19 @@
+{
+  "id": "60_checksum",
+  "category": "practical",
+  "difficulty": "easy",
+  "tags": [
+    "math",
+    "bitwise",
+    "loop"
+  ],
+  "bmb_features_tested": [],
+  "expected_tools": [
+    "check",
+    "build",
+    "run"
+  ],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v2.0"
+}

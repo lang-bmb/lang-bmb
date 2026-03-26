@@ -1,0 +1,38 @@
+// Mini Interpreter — bytecodes: 1=PUSH(x), 2=ADD, 3=SUB, 4=MUL, 5=DUP, 6=PRINT.
+fn main() -> i64 = {
+    let n = read_int();
+    let stack = vec_new();
+    for _i in 0..n {
+        let op = read_int();
+        let len = vec_len(stack);
+        if op == 1 {
+            let x = read_int();
+            let _p = vec_push(stack, x)
+        } else if op == 2 {
+            let b = vec_get(stack, len - 1);
+            let _pop1 = vec_pop(stack);
+            let a = vec_get(stack, len - 2);
+            let _pop2 = vec_pop(stack);
+            let _p = vec_push(stack, a + b)
+        } else if op == 3 {
+            let b = vec_get(stack, len - 1);
+            let _pop1 = vec_pop(stack);
+            let a = vec_get(stack, len - 2);
+            let _pop2 = vec_pop(stack);
+            let _p = vec_push(stack, a - b)
+        } else if op == 4 {
+            let b = vec_get(stack, len - 1);
+            let _pop1 = vec_pop(stack);
+            let a = vec_get(stack, len - 2);
+            let _pop2 = vec_pop(stack);
+            let _p = vec_push(stack, a * b)
+        } else if op == 5 {
+            let top = vec_get(stack, len - 1);
+            let _p = vec_push(stack, top)
+        } else if op == 6 {
+            let _p = println(vec_get(stack, vec_len(stack) - 1))
+        } else { () }
+    };
+    let _f = vec_free(stack);
+    0
+};

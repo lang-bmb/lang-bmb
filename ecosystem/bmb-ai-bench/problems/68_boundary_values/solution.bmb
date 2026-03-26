@@ -1,0 +1,16 @@
+// Boundary Values — clamp_val n to range [lo, hi].
+fn clamp_val(n: i64, lo: i64, hi: i64) -> i64 = {
+    if n < lo { lo }
+    else if n > hi { hi }
+    else { n }
+};
+fn main() -> i64 = {
+    let t = read_int();
+    for _i in 0..t {
+        let n = read_int();
+        let lo = read_int();
+        let hi = read_int();
+        let _p = println(clamp_val(n, lo, hi))
+    };
+    0
+};

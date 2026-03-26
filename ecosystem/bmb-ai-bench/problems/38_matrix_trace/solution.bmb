@@ -1,0 +1,17 @@
+// Matrix Trace — reads n, then n*n matrix. Prints sum of diagonal.
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    for _i in 0..(n * n) {
+        let val = read_int();
+        let _p = vec_push(v, val)
+    };
+    let mut trace = 0;
+    for i in 0..n {
+        trace = trace + vec_get(v, i * n + i)
+    };
+    let _p = println(trace);
+    let _f = vec_free(v);
+    0
+};

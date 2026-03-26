@@ -1,0 +1,25 @@
+// Bounded Sum — sum array elements with bounds-checked access.
+// Contract on bounded_sum ensures n is valid.
+
+fn bounded_sum(v: i64, n: i64) -> i64
+    pre n >= 0
+= {
+    let mut sum = 0;
+    for i in 0..n {
+        sum = sum + vec_get(v, i)
+    };
+    sum
+};
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    for i in 0..n {
+        let val = read_int();
+        let _p = vec_push(v, val)
+    };
+    let result = bounded_sum(v, n);
+    let _p = println(result);
+    let _f = vec_free(v);
+    0
+};

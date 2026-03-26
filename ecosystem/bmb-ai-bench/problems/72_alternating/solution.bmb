@@ -1,0 +1,15 @@
+// Alternating — generate alternating sequence: 1 -1 1 -1... sum of n terms.
+fn main() -> i64 = {
+    let t = read_int();
+    for _i in 0..t {
+        let n = read_int();
+        let mut sum = 0;
+        let mut sign = 1;
+        for _j in 0..n {
+            sum = sum + sign;
+            sign = 0 - sign
+        };
+        let _p = println(sum)
+    };
+    0
+};

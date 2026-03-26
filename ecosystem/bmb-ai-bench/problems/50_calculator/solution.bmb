@@ -1,0 +1,29 @@
+// Calculator — reads n operations. Each: "push X" (op=0 val=X) or "op OP" (op=1..4, +,-,*,/).
+// After all ops, prints top of stack.
+
+fn main() -> i64 = {
+    let n = read_int();
+    let stack = vec_new();
+    for _i in 0..n {
+        let op = read_int();
+        if op == 0 {
+            let val = read_int();
+            let _p = vec_push(stack, val)
+        } else {
+            let len = vec_len(stack);
+            let b = vec_get(stack, len - 1);
+            let a = vec_get(stack, len - 2);
+            let _pop1 = vec_pop(stack);
+            let _pop2 = vec_pop(stack);
+            let result = if op == 1 { a + b }
+                else if op == 2 { a - b }
+                else if op == 3 { a * b }
+                else { a / b };
+            let _p = vec_push(stack, result)
+        }
+    };
+    let len = vec_len(stack);
+    let _p = println(vec_get(stack, len - 1));
+    let _f = vec_free(stack);
+    0
+};

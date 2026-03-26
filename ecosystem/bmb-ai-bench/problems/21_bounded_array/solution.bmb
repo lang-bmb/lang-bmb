@@ -1,0 +1,23 @@
+// Bounded Array Access — contract-verified safe indexing.
+// Reads n, then n integers, then an index. Prints the element at that index.
+// The contract `pre idx >= 0 and idx < n` eliminates runtime bounds checks.
+
+fn bounded_get(v: i64, n: i64, idx: i64) -> i64
+    pre idx >= 0 and idx < n
+= {
+    vec_get(v, idx)
+};
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    for i in 0..n {
+        let val = read_int();
+        let _p = vec_push(v, val)
+    };
+    let idx = read_int();
+    let result = bounded_get(v, n, idx);
+    let _p = println(result);
+    let _f = vec_free(v);
+    0
+};

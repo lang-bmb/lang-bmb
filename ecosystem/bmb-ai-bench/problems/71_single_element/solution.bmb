@@ -1,0 +1,14 @@
+// Single Element — operations on single-element array.
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    for _i in 0..n {
+        let val = read_int();
+        let _p = vec_push(v, val)
+    };
+    let _p1 = println(vec_get(v, 0));
+    let _p2 = println(vec_get(v, n - 1));
+    let _p3 = println(n);
+    let _f = vec_free(v);
+    0
+};
