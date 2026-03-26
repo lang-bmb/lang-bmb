@@ -1,0 +1,32 @@
+{
+  "problem_id": "41_collatz_length",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn collatz_length(n: i64) -> i64 = {\n    let mut count: i64 = 1;\n    let mut current: i64 = n;\n    while current > 1 {\n        if current % 2 == 0 {\n            current = current / 2;\n            ()\n        } else {\n            current = 3 * current + 1;\n            ()\n        };\n        count = count + 1;\n        ()\n    };\n    count\n};\n\nfn main() -> i64 = {\n    let k: i64 = read_int();\n    let n: i64 = read_int();\n    let result: i64 = collatz_length(n);\n    println(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 7: expected '1\\n2\\n8\\n', got '1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn collatz_length(n: i64) -> i64 = {\n    let mut count: i64 = 1;\n    let mut current: i64 = n;\n    while current > 1 {\n        if current % 2 == 0 {\n            current = current / 2;\n            ()\n        } else {\n            current = 3 * current + 1;\n            ()\n        };\n        count = count + 1;\n        ()\n    };\n    count\n};\n\nfn main() -> i64 = {\n    let k: i64 = read_int();\n    for i in 0..k {\n        let n: i64 = read_int();\n        let result: i64 = collatz_length(n);\n        println(result);\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

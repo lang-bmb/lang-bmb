@@ -1,0 +1,32 @@
+{
+  "problem_id": "36_array_rotation",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 1,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let k: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    let effective_k: i64 = if n > 0 { k % n } else { 0 };\n    \n    for i in 0..n {\n        if i > 0 { print_str(\" \"); () } else { () };\n        let idx: i64 = (i + effective_k) % n;\n        print(vec_get(arr, idx));\n        ()\n    };\n    println_str(\"\");\n    \n    vec_free(arr);\n    0\n}",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmptoz0148p\\\\solution.bmb\",\"start\":2868,\"end\":2869,\"line\":120,\"col\":2,\"message\":\"Unrecognized EOF found at 2868\\nExpected one of \\\";\\\"\",\"suggestion\":\"BMB top-level definitions (fn, struct) must end with ';'. Block expressions end with '};'.\",\"example_wrong\":\"fn main() -> i64 = { 0 }\",\"example_correct\":\"fn main() -> i64 = { 0 };\",\"pattern\":\"missing_semicolon_eof\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 2,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let k: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    let effective_k: i64 = if n > 0 { k % n } else { 0 };\n    \n    for i in 0..n {\n        if i > 0 { print_str(\" \"); () } else { () };\n        let idx: i64 = (i + effective_k) % n;\n        print(vec_get(arr, idx));\n        ()\n    };\n    println_str(\"\");\n    \n    vec_free(arr);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

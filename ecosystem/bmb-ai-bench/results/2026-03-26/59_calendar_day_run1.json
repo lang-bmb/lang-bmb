@@ -1,0 +1,96 @@
+{
+  "problem_id": "59_calendar_day",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 10
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn is_leap_year(year: i64) -> bool = {\n    if year % 400 == 0 {\n        true\n    } else {\n        if year % 100 == 0 {\n            false\n        } else {\n            if year % 4 == 0 {\n                true\n            } else {\n                false\n            }\n        }\n    }\n};\n\nfn days_in_month(month: i64, year: i64) -> i64 = {\n    if month == 1 { 31 }\n    else { if month == 2 {\n        if is_leap_year(year) { 29 } else { 28 }\n    }\n    else { if month == 3 { 31 }\n    else { if month == 4 { 30 }\n    else { if month == 5 { 31 }\n    else { if month == 6 { 30 }\n    else { if month == 7 { 31 }\n    else { if month == 8 { 31 }\n    else { if month == 9 { 30 }\n    else { if month == 10 { 31 }\n    else { if month == 11 { 30 }\n    else { 31 }\n    }}}}}}}}}}\n};\n\nfn day_of_year(year: i64, month: i64, day: i64) -> i64 = {\n    let mut total: i64 = 0;\n    let mut m: i64 = 1;\n    while m < month {\n        total = total + days_in_month(m, year);\n        m = m + 1;\n        ()\n    };\n    total + day\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    for i in 0..n {\n        let year: i64 = read_int();\n        let month: i64 = read_int();\n        let day: i64 = read_int();\n        let result: i64 = day_of_year(year, month, day);\n        println(result);\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1: expected '365\\n', got '955\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn is_leap_year(year: i64) -> bool = {\n    if year % 400 == 0 {\n        true\n    } else {\n        if year % 100 == 0 {\n            false\n        } else {\n            if year % 4 == 0 {\n                true\n            } else {\n                false\n            }\n        }\n    }\n};\n\nfn days_in_month(month: i64, year: i64) -> i64 = {\n    if month == 1 { 31 }\n    else { if month == 2 {\n        if is_leap_year(year) { 29 } else { 28 }\n    }\n    else { if month == 3 { 31 }\n    else { if month == 4 { 30 }\n    else { if month == 5 { 31 }\n    else { if month == 6 { 30 }\n    else { if month == 7 { 31 }\n    else { if month == 8 { 31 }\n    else { if month == 9 { 30 }\n    else { if month == 10 { 31 }\n    else { if month == 11 { 30 }\n    else { 31 }\n    }}}}}}}}}}\n};\n\nfn day_of_year(year: i64, month: i64, day: i64) -> i64 = {\n    let mut total: i64 = 0;\n    let mut m: i64 = 1;\n    while m < month {\n        total = total + days_in_month(m, year);\n        m = m + 1;\n        ()\n    };\n    total + day\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    for i in 0..n {\n        let year: i64 = read_int();\n        let month: i64 = read_int();\n        let day: i64 = read_int();\n        let result: i64 = day_of_year(year, month, day);\n        println(result);\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1: expected '365\\n', got '955\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn is_leap_year(year: i64) -> bool = {\n    if year % 400 == 0 {\n        true\n    } else {\n        if year % 100 == 0 {\n            false\n        } else {\n            if year % 4 == 0 {\n                true\n            } else {\n                false\n            }\n        }\n    }\n};\n\nfn days_in_month(month: i64, year: i64) -> i64 = {\n    if month == 1 { 31 }\n    else { if month == 2 {\n        if is_leap_year(year) { 29 } else { 28 }\n    }\n    else { if month == 3 { 31 }\n    else { if month == 4 { 30 }\n    else { if month == 5 { 31 }\n    else { if month == 6 { 30 }\n    else { if month == 7 { 31 }\n    else { if month == 8 { 31 }\n    else { if month == 9 { 30 }\n    else { if month == 10 { 31 }\n    else { if month == 11 { 30 }\n    else { 31 }\n    }}}}}}}}}}\n};\n\nfn day_of_year(year: i64, month: i64, day: i64) -> i64 = {\n    let mut total: i64 = 0;\n    let mut m: i64 = 1;\n    while m < month {\n        total = total + days_in_month(m, year);\n        m = m + 1;\n        ()\n    };\n    total + day\n};\n\nfn main() -> i64 = {\n    let year: i64 = read_int();\n    let month: i64 = read_int();\n    let day: i64 = read_int();\n    let result: i64 = day_of_year(year, month, day);\n    println(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '1\\n166\\n359\\n', got '1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn is_leap_year(year: i64) -> bool = {\n    if year % 400 == 0 {\n        true\n    } else {\n        if year % 100 == 0 {\n            false\n        } else {\n            if year % 4 == 0 {\n                true\n            } else {\n                false\n            }\n        }\n    }\n};\n\nfn days_in_month(month: i64, year: i64) -> i64 = {\n    if month == 1 { 31 }\n    else { if month == 2 {\n        if is_leap_year(year) { 29 } else { 28 }\n    }\n    else { if month == 3 { 31 }\n    else { if month == 4 { 30 }\n    else { if month == 5 { 31 }\n    else { if month == 6 { 30 }\n    else { if month == 7 { 31 }\n    else { if month == 8 { 31 }\n    else { if month == 9 { 30 }\n    else { if month == 10 { 31 }\n    else { if month == 11 { 30 }\n    else { 31 }\n    }}}}}}}}}}\n};\n\nfn day_of_year(year: i64, month: i64, day: i64) -> i64 = {\n    let mut total: i64 = 0;\n    let mut m: i64 = 1;\n    while m < month {\n        total = total + days_in_month(m, year);\n        m = m + 1;\n        ()\n    };\n    total + day\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    for i in 0..n {\n        let year: i64 = read_int();\n        let month: i64 = read_int();\n        let day: i64 = read_int();\n        let result: i64 = day_of_year(year, month, day);\n        println(result);\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1: expected '365\\n', got '955\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 5,
+      "code": "fn is_leap_year(year: i64) -> bool = {\n    if year % 400 == 0 {\n        true\n    } else {\n        if year % 100 == 0 {\n            false\n        } else {\n            if year % 4 == 0 {\n                true\n            } else {\n                false\n            }\n        }\n    }\n};\n\nfn days_in_month(month: i64, year: i64) -> i64 = {\n    if month == 1 { 31 }\n    else { if month == 2 {\n        if is_leap_year(year) { 29 } else { 28 }\n    }\n    else { if month == 3 { 31 }\n    else { if month == 4 { 30 }\n    else { if month == 5 { 31 }\n    else { if month == 6 { 30 }\n    else { if month == 7 { 31 }\n    else { if month == 8 { 31 }\n    else { if month == 9 { 30 }\n    else { if month == 10 { 31 }\n    else { if month == 11 { 30 }\n    else { 31 }\n    }}}}}}}}}}\n};\n\nfn day_of_year(year: i64, month: i64, day: i64) -> i64 = {\n    let mut total: i64 = 0;\n    let mut m: i64 = 1;\n    while m < month {\n        total = total + days_in_month(m, year);\n        m = m + 1;\n        ()\n    };\n    total + day\n};\n\nfn main() -> i64 = {\n    let first: i64 = read_int();\n    let second: i64 = read_int();\n    let third: i64 = read_int();\n    \n    if second > 12 {\n        let n: i64 = first;\n        let mut i: i64 = 0;\n        let year1: i64 = second;\n        let month1: i64 = third;\n        let day1: i64 = read_int();\n        println(day_of_year(year1, month1, day1));\n        i = 1;\n        while i < n {\n            let year: i64 = read_int();\n            let month: i64 = read_int();\n            let day: i64 = read_int();\n            println(day_of_year(year, month, day));\n            i = i + 1;\n            ()\n        };\n        0\n    } else {\n        let result: i64 = day_of_year(first, second, third);\n        println(result);\n        0\n    }\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '1\\n166\\n359\\n', got '1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 6,
+      "code": "fn is_leap_year(year: i64) -> bool = {\n    if year % 400 == 0 {\n        true\n    } else {\n        if year % 100 == 0 {\n            false\n        } else {\n            if year % 4 == 0 {\n                true\n            } else {\n                false\n            }\n        }\n    }\n};\n\nfn days_in_month(month: i64, year: i64) -> i64 = {\n    if month == 1 { 31 }\n    else { if month == 2 {\n        if is_leap_year(year) { 29 } else { 28 }\n    }\n    else { if month == 3 { 31 }\n    else { if month == 4 { 30 }\n    else { if month == 5 { 31 }\n    else { if month == 6 { 30 }\n    else { if month == 7 { 31 }\n    else { if month == 8 { 31 }\n    else { if month == 9 { 30 }\n    else { if month == 10 { 31 }\n    else { if month == 11 { 30 }\n    else { 31 }\n    }}}}}}}}}}\n};\n\nfn day_of_year(year: i64, month: i64, day: i64) -> i64 = {\n    let mut total: i64 = 0;\n    let mut m: i64 = 1;\n    while m < month {\n        total = total + days_in_month(m, year);\n        m = m + 1;\n        ()\n    };\n    total + day\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let mut i: i64 = 0;\n    while i < n {\n        let year: i64 = read_int();\n        let month: i64 = read_int();\n        let day: i64 = read_int();\n        let result: i64 = day_of_year(year, month, day);\n        println(result);\n        i = i + 1;\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1: expected '365\\n', got '955\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 7,
+      "code": "fn is_leap_year(year: i64) -> bool = {\n    if year % 400 == 0 {\n        true\n    } else {\n        if year % 100 == 0 {\n            false\n        } else {\n            if year % 4 == 0 {\n                true\n            } else {\n                false\n            }\n        }\n    }\n};\n\nfn days_in_month(month: i64, year: i64) -> i64 = {\n    if month == 1 { 31 }\n    else { if month == 2 {\n        if is_leap_year(year) { 29 } else { 28 }\n    }\n    else { if month == 3 { 31 }\n    else { if month == 4 { 30 }\n    else { if month == 5 { 31 }\n    else { if month == 6 { 30 }\n    else { if month == 7 { 31 }\n    else { if month == 8 { 31 }\n    else { if month == 9 { 30 }\n    else { if month == 10 { 31 }\n    else { if month == 11 { 30 }\n    else { 31 }\n    }}}}}}}}}}\n};\n\nfn day_of_year(year: i64, month: i64, day: i64) -> i64 = {\n    let mut total: i64 = 0;\n    let mut m: i64 = 1;\n    while m < month {\n        total = total + days_in_month(m, year);\n        m = m + 1;\n        ()\n    };\n    total + day\n};\n\nfn main() -> i64 = {\n    let first: i64 = read_int();\n    let second: i64 = read_int();\n    let third: i64 = read_int();\n    \n    if first >= 1 and first <= 31 and second >= 1 and second <= 12 and third >= 1 and third <= 31 {\n        let result: i64 = day_of_year(first, second, third);\n        println(result);\n        0\n    } else {\n        let n: i64 = first;\n        let year1: i64 = second;\n        let month1: i64 = third;\n        let day1: i64 = read_int();\n        println(day_of_year(year1, month1, day1));\n        let mut i: i64 = 1;\n        while i < n {\n            let year: i64 = read_int();\n            let month: i64 = read_int();\n            let day: i64 = read_int();\n            println(day_of_year(year, month, day));\n            i = i + 1;\n            ()\n        };\n        0\n    }\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '1\\n166\\n359\\n', got '1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 8,
+      "code": "fn is_leap_year(year: i64) -> bool = {\n    if year % 400 == 0 {\n        true\n    } else {\n        if year % 100 == 0 {\n            false\n        } else {\n            if year % 4 == 0 {\n                true\n            } else {\n                false\n            }\n        }\n    }\n};\n\nfn days_in_month(month: i64, year: i64) -> i64 = {\n    if month == 1 { 31 }\n    else { if month == 2 {\n        if is_leap_year(year) { 29 } else { 28 }\n    }\n    else { if month == 3 { 31 }\n    else { if month == 4 { 30 }\n    else { if month == 5 { 31 }\n    else { if month == 6 { 30 }\n    else { if month == 7 { 31 }\n    else { if month == 8 { 31 }\n    else { if month == 9 { 30 }\n    else { if month == 10 { 31 }\n    else { if month == 11 { 30 }\n    else { 31 }\n    }}}}}}}}}}\n};\n\nfn day_of_year(year: i64, month: i64, day: i64) -> i64 = {\n    let mut total: i64 = 0;\n    let mut m: i64 = 1;\n    while m < month {\n        total = total + days_in_month(m, year);\n        m = m + 1;\n        ()\n    };\n    total + day\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    if n > 100 {\n        let month: i64 = read_int();\n        let day: i64 = read_int();\n        let result: i64 = day_of_year(n, month, day);\n        println(result);\n        0\n    } else {\n        let mut i: i64 = 0;\n        while i < n {\n            let year: i64 = read_int();\n            let month: i64 = read_int();\n            let day: i64 = read_int();\n            let result: i64 = day_of_year(year, month, day);\n            println(result);\n            i = i + 1;\n            ()\n        };\n        0\n    }\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1: expected '365\\n', got '955\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 9,
+      "code": "fn is_leap_year(year: i64) -> bool = {\n    if year % 400 == 0 {\n        true\n    } else {\n        if year % 100 == 0 {\n            false\n        } else {\n            if year % 4 == 0 {\n                true\n            } else {\n                false\n            }\n        }\n    }\n};\n\nfn days_in_month(month: i64, year: i64) -> i64 = {\n    if month == 1 { 31 }\n    else { if month == 2 {\n        if is_leap_year(year) { 29 } else { 28 }\n    }\n    else { if month == 3 { 31 }\n    else { if month == 4 { 30 }\n    else { if month == 5 { 31 }\n    else { if month == 6 { 30 }\n    else { if month == 7 { 31 }\n    else { if month == 8 { 31 }\n    else { if month == 9 { 30 }\n    else { if month == 10 { 31 }\n    else { if month == 11 { 30 }\n    else { 31 }\n    }}}}}}}}}}\n};\n\nfn day_of_year(year: i64, month: i64, day: i64) -> i64 = {\n    let mut total: i64 = 0;\n    let mut m: i64 = 1;\n    while m < month {\n        total = total + days_in_month(m, year);\n        m = m + 1;\n        ()\n    };\n    total + day\n};\n\nfn main() -> i64 = {\n    let first: i64 = read_int();\n    let second: i64 = read_int();\n    let third: i64 = read_int();\n    \n    if first == 1 and second >= 1 and second <= 12 and third >= 1 and third <= 31 {\n        let result: i64 = day_of_year(first, second, third);\n        println(result);\n        0\n    } else {\n        let n: i64 = first;\n        let result1: i64 = day_of_year(second, third, read_int());\n        println(result1);\n        let mut i: i64 = 1;\n        while i < n {\n            let year: i64 = read_int();\n            let month: i64 = read_int();\n            let day: i64 = read_int();\n            println(day_of_year(year, month, day));\n            i = i + 1;\n            ()\n        };\n        0\n    }\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '1\\n166\\n359\\n', got '6\\n359\\n762\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 10,
+      "code": "fn is_leap_year(year: i64) -> bool = {\n    if year % 400 == 0 {\n        true\n    } else {\n        if year % 100 == 0 {\n            false\n        } else {\n            if year % 4 == 0 {\n                true\n            } else {\n                false\n            }\n        }\n    }\n};\n\nfn days_in_month(month: i64, year: i64) -> i64 = {\n    if month == 1 { 31 }\n    else { if month == 2 {\n        if is_leap_year(year) { 29 } else { 28 }\n    }\n    else { if month == 3 { 31 }\n    else { if month == 4 { 30 }\n    else { if month == 5 { 31 }\n    else { if month == 6 { 30 }\n    else { if month == 7 { 31 }\n    else { if month == 8 { 31 }\n    else { if month == 9 { 30 }\n    else { if month == 10 { 31 }\n    else { if month == 11 { 30 }\n    else { 31 }\n    }}}}}}}}}}\n};\n\nfn day_of_year(year: i64, month: i64, day: i64) -> i64 = {\n    let mut total: i64 = 0;\n    let mut m: i64 = 1;\n    while m < month {\n        total = total + days_in_month(m, year);\n        m = m + 1;\n        ()\n    };\n    total + day\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let mut i: i64 = 0;\n    while i < n {\n        let year: i64 = read_int();\n        let month: i64 = read_int();\n        let day: i64 = read_int();\n        let result: i64 = day_of_year(year, month, day);\n        println(result);\n        i = i + 1;\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1: expected '365\\n', got '955\\n'",
+      "loop_type": "D"
+    }
+  ],
+  "run_id": 1
+}

@@ -1,0 +1,24 @@
+{
+  "problem_id": "48_run_length_encode",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    let values: i64 = vec_new();\n    let counts: i64 = vec_new();\n    \n    if n > 0 {\n        let mut current: i64 = vec_get(arr, 0);\n        let mut count: i64 = 1;\n        \n        for i in 1..n {\n            let val: i64 = vec_get(arr, i);\n            if val == current {\n                count = count + 1;\n                ()\n            } else {\n                vec_push(values, current);\n                vec_push(counts, count);\n                current = val;\n                count = 1;\n                ()\n            };\n            ()\n        };\n        \n        vec_push(values, current);\n        vec_push(counts, count);\n        ()\n    } else { () };\n    \n    let num_runs: i64 = vec_len(values);\n    println(num_runs);\n    \n    for i in 0..num_runs {\n        print(vec_get(values, i));\n        print_str(\" \");\n        println(vec_get(counts, i));\n        ()\n    };\n    \n    vec_free(arr);\n    vec_free(values);\n    vec_free(counts);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

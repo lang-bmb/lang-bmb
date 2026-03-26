@@ -1,0 +1,96 @@
+{
+  "problem_id": "81_dispatch_table",
+  "category": "integration",
+  "difficulty": "easy",
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 10
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn op1(a: i64, b: i64) -> i64 = a + b;\n\nfn op2(a: i64, b: i64) -> i64 = a * b;\n\nfn op3(a: i64, b: i64) -> i64 = a - b;\n\nfn op4(a: i64, b: i64) -> i64 = if a > b { a } else { b };\n\nfn dispatch(op: i64, a: i64, b: i64) -> i64 = {\n    if op == 1 {\n        op1(a, b)\n    } else {\n        if op == 2 {\n            op2(a, b)\n        } else {\n            if op == 3 {\n                op3(a, b)\n            } else {\n                if op == 4 {\n                    op4(a, b)\n                } else {\n                    0\n                }\n            }\n        }\n    }\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    for i in 0..n {\n        let op: i64 = read_int();\n        let a: i64 = read_int();\n        let b: i64 = read_int();\n        let result: i64 = dispatch(op, a, b);\n        println(result);\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1: expected '7\\n', got '30\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn op1(a: i64, b: i64) -> i64 = a + b;\n\nfn op2(a: i64, b: i64) -> i64 = a * b;\n\nfn op3(a: i64, b: i64) -> i64 = a - b;\n\nfn op4(a: i64, b: i64) -> i64 = if a > b { a } else { b };\n\nfn dispatch(op: i64, a: i64, b: i64) -> i64 = {\n    if op == 1 {\n        op1(a, b)\n    } else {\n        if op == 2 {\n            op2(a, b)\n        } else {\n            if op == 3 {\n                op3(a, b)\n            } else {\n                if op == 4 {\n                    op4(a, b)\n                } else {\n                    0\n                }\n            }\n        }\n    }\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    for i in 0..n {\n        let op: i64 = read_int();\n        let a: i64 = read_int();\n        let b: i64 = read_int();\n        let result: i64 = dispatch(op, a, b);\n        println(result);\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1: expected '7\\n', got '30\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn op1(a: i64, b: i64) -> i64 = a + b;\n\nfn op2(a: i64, b: i64) -> i64 = a * b;\n\nfn op3(a: i64, b: i64) -> i64 = a - b;\n\nfn op4(a: i64, b: i64) -> i64 = if a > b { a } else { b };\n\nfn dispatch(op: i64, a: i64, b: i64) -> i64 = {\n    if op == 1 {\n        op1(a, b)\n    } else {\n        if op == 2 {\n            op2(a, b)\n        } else {\n            if op == 3 {\n                op3(a, b)\n            } else {\n                if op == 4 {\n                    op4(a, b)\n                } else {\n                    0\n                }\n            }\n        }\n    }\n};\n\nfn main() -> i64 = {\n    let op: i64 = read_int();\n    let a: i64 = read_int();\n    let b: i64 = read_int();\n    let c: i64 = read_int();\n    let result: i64 = dispatch(op, a + b, c);\n    println(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '7\\n', got '8\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn op1(a: i64, b: i64) -> i64 = a + b;\n\nfn op2(a: i64, b: i64) -> i64 = a * b;\n\nfn op3(a: i64, b: i64) -> i64 = a - b;\n\nfn op4(a: i64, b: i64) -> i64 = if a > b { a } else { b };\n\nfn dispatch(op: i64, a: i64, b: i64) -> i64 = {\n    if op == 1 {\n        op1(a, b)\n    } else {\n        if op == 2 {\n            op2(a, b)\n        } else {\n            if op == 3 {\n                op3(a, b)\n            } else {\n                if op == 4 {\n                    op4(a, b)\n                } else {\n                    0\n                }\n            }\n        }\n    }\n};\n\nfn main() -> i64 = {\n    let first: i64 = read_int();\n    let second: i64 = read_int();\n    let third: i64 = read_int();\n    let fourth: i64 = read_int();\n    \n    if first == 1 {\n        let result: i64 = dispatch(second, third, fourth);\n        println(result);\n        ()\n    } else {\n        for i in 0..first {\n            let op: i64 = read_int();\n            let a: i64 = read_int();\n            let b: i64 = read_int();\n            let result: i64 = dispatch(op, a, b);\n            println(result);\n            ()\n        };\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1: expected '7\\n', got '30\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 5,
+      "code": "fn op1(a: i64, b: i64) -> i64 = a + b;\n\nfn op2(a: i64, b: i64) -> i64 = a * b;\n\nfn op3(a: i64, b: i64) -> i64 = a - b;\n\nfn op4(a: i64, b: i64) -> i64 = if a > b { a } else { b };\n\nfn dispatch(op: i64, a: i64, b: i64) -> i64 = {\n    if op == 1 {\n        op1(a, b)\n    } else {\n        if op == 2 {\n            op2(a, b)\n        } else {\n            if op == 3 {\n                op3(a, b)\n            } else {\n                if op == 4 {\n                    op4(a, b)\n                } else {\n                    0\n                }\n            }\n        }\n    }\n};\n\nfn main() -> i64 = {\n    let first: i64 = read_int();\n    let second: i64 = read_int();\n    let third: i64 = read_int();\n    let fourth: i64 = read_int();\n    \n    if first >= 1 and first <= 4 {\n        let result: i64 = dispatch(first, second, third) + fourth;\n        println(result);\n        ()\n    } else {\n        let result1: i64 = dispatch(second, third, fourth);\n        println(result1);\n        for i in 1..first {\n            let op: i64 = read_int();\n            let a: i64 = read_int();\n            let b: i64 = read_int();\n            let result: i64 = dispatch(op, a, b);\n            println(result);\n            ()\n        };\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '7\\n', got '8\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 6,
+      "code": "fn op1(a: i64, b: i64) -> i64 = a + b;\n\nfn op2(a: i64, b: i64) -> i64 = a * b;\n\nfn op3(a: i64, b: i64) -> i64 = a - b;\n\nfn op4(a: i64, b: i64) -> i64 = if a > b { a } else { b };\n\nfn dispatch(op: i64, a: i64, b: i64) -> i64 = {\n    if op == 1 {\n        op1(a, b)\n    } else {\n        if op == 2 {\n            op2(a, b)\n        } else {\n            if op == 3 {\n                op3(a, b)\n            } else {\n                if op == 4 {\n                    op4(a, b)\n                } else {\n                    0\n                }\n            }\n        }\n    }\n};\n\nfn main() -> i64 = {\n    let first: i64 = read_int();\n    let second: i64 = read_int();\n    let third: i64 = read_int();\n    let fourth: i64 = read_int();\n    \n    if first >= 1 and first <= 4 {\n        let result: i64 = dispatch(first, third, fourth);\n        println(result);\n        ()\n    } else {\n        let result1: i64 = dispatch(second, third, fourth);\n        println(result1);\n        for i in 1..first {\n            let op: i64 = read_int();\n            let a: i64 = read_int();\n            let b: i64 = read_int();\n            let result: i64 = dispatch(op, a, b);\n            println(result);\n            ()\n        };\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1: expected '7\\n', got '13\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 7,
+      "code": "fn op1(a: i64, b: i64) -> i64 = a + b;\n\nfn op2(a: i64, b: i64) -> i64 = a * b;\n\nfn op3(a: i64, b: i64) -> i64 = a - b;\n\nfn op4(a: i64, b: i64) -> i64 = if a > b { a } else { b };\n\nfn dispatch(op: i64, a: i64, b: i64) -> i64 = {\n    if op == 1 {\n        op1(a, b)\n    } else {\n        if op == 2 {\n            op2(a, b)\n        } else {\n            if op == 3 {\n                op3(a, b)\n            } else {\n                if op == 4 {\n                    op4(a, b)\n                } else {\n                    0\n                }\n            }\n        }\n    }\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    \n    for i in 0..n {\n        let op: i64 = read_int();\n        let a: i64 = read_int();\n        let b: i64 = read_int();\n        let result: i64 = dispatch(op, a, b);\n        println(result);\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1: expected '7\\n', got '30\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 8,
+      "code": "fn op1(a: i64, b: i64) -> i64 = a + b;\n\nfn op2(a: i64, b: i64) -> i64 = a * b;\n\nfn op3(a: i64, b: i64) -> i64 = a - b;\n\nfn op4(a: i64, b: i64) -> i64 = if a > b { a } else { b };\n\nfn dispatch(op: i64, a: i64, b: i64) -> i64 = {\n    if op == 1 {\n        op1(a, b)\n    } else {\n        if op == 2 {\n            op2(a, b)\n        } else {\n            if op == 3 {\n                op3(a, b)\n            } else {\n                if op == 4 {\n                    op4(a, b)\n                } else {\n                    0\n                }\n            }\n        }\n    }\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    \n    for i in 0..n {\n        let op: i64 = read_int();\n        let a: i64 = read_int();\n        let b: i64 = read_int();\n        let result: i64 = dispatch(op, a, b);\n        println(result);\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1: expected '7\\n', got '30\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 9,
+      "code": "fn op1(a: i64, b: i64) -> i64 = a + b;\n\nfn op2(a: i64, b: i64) -> i64 = a * b;\n\nfn op3(a: i64, b: i64) -> i64 = a - b;\n\nfn op4(a: i64, b: i64) -> i64 = if a > b { a } else { b };\n\nfn dispatch(op: i64, a: i64, b: i64) -> i64 = {\n    if op == 1 {\n        op1(a, b)\n    } else {\n        if op == 2 {\n            op2(a, b)\n        } else {\n            if op == 3 {\n                op3(a, b)\n            } else {\n                if op == 4 {\n                    op4(a, b)\n                } else {\n                    0\n                }\n            }\n        }\n    }\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    \n    for i in 0..n {\n        let op: i64 = read_int();\n        let a: i64 = read_int();\n        let b: i64 = read_int();\n        let result: i64 = dispatch(op, a, b);\n        println(result);\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1: expected '7\\n', got '30\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 10,
+      "code": "fn op1(a: i64, b: i64) -> i64 = a + b;\n\nfn op2(a: i64, b: i64) -> i64 = a * b;\n\nfn op3(a: i64, b: i64) -> i64 = a - b;\n\nfn op4(a: i64, b: i64) -> i64 = if a > b { a } else { b };\n\nfn dispatch(op: i64, a: i64, b: i64) -> i64 = {\n    if op == 1 {\n        op1(a, b)\n    } else {\n        if op == 2 {\n            op2(a, b)\n        } else {\n            if op == 3 {\n                op3(a, b)\n            } else {\n                if op == 4 {\n                    op4(a, b)\n                } else {\n                    0\n                }\n            }\n        }\n    }\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let op: i64 = read_int();\n    let a: i64 = read_int();\n    let b: i64 = read_int();\n    \n    if n == 1 {\n        let result: i64 = dispatch(op, a, b);\n        println(result);\n        ()\n    } else {\n        let result1: i64 = dispatch(n, op, a);\n        println(result1);\n        for i in 1..n {\n            let op2: i64 = read_int();\n            let a2: i64 = read_int();\n            let b2: i64 = read_int();\n            let result: i64 = dispatch(op2, a2, b2);\n            println(result);\n            ()\n        };\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1: expected '7\\n', got '30\\n'",
+      "loop_type": "D"
+    }
+  ],
+  "run_id": 1
+}

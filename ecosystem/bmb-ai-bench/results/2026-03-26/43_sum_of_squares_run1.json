@@ -1,0 +1,32 @@
+{
+  "problem_id": "43_sum_of_squares",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn sum_of_squares(n: i64) -> i64 = {\n    let mut sum: i64 = 0;\n    for i in 1..(n + 1) {\n        sum = sum + i * i;\n        ()\n    };\n    sum\n};\n\nfn main() -> i64 = {\n    let _param: i64 = read_int();\n    let n: i64 = read_int();\n    let result: i64 = sum_of_squares(n);\n    println(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 6: expected '1\\n5\\n14\\n', got '1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn sum_of_squares(n: i64) -> i64 = {\n    let mut sum: i64 = 0;\n    for i in 1..(n + 1) {\n        sum = sum + i * i;\n        ()\n    };\n    sum\n};\n\nfn main() -> i64 = {\n    let t: i64 = read_int();\n    for _case in 0..t {\n        let n: i64 = read_int();\n        let result: i64 = sum_of_squares(n);\n        println(result);\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

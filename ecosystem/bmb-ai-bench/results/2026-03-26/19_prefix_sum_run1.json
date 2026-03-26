@@ -1,0 +1,24 @@
+{
+  "problem_id": "19_prefix_sum",
+  "category": "system",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn build_prefix_sum(arr: i64, n: i64) -> i64 = {\n    let prefix: i64 = vec_new();\n    vec_push(prefix, 0);\n    for i in 0..n {\n        let prev: i64 = vec_get(prefix, i);\n        let curr: i64 = vec_get(arr, i);\n        vec_push(prefix, prev + curr);\n        ()\n    };\n    prefix\n};\n\nfn range_sum(prefix: i64, l: i64, r: i64) -> i64 = {\n    let right_sum: i64 = vec_get(prefix, r + 1);\n    let left_sum: i64 = vec_get(prefix, l);\n    right_sum - left_sum\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    let q: i64 = read_int();\n    let prefix: i64 = build_prefix_sum(arr, n);\n    for i in 0..q {\n        let l: i64 = read_int();\n        let r: i64 = read_int();\n        let result: i64 = range_sum(prefix, l, r);\n        println(result);\n        ()\n    };\n    vec_free(arr);\n    vec_free(prefix);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

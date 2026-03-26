@@ -1,0 +1,24 @@
+{
+  "problem_id": "18_running_average",
+  "category": "system",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let mut sum: i64 = 0;\n    for i in 0..n {\n        let x: i64 = read_int();\n        sum = sum + x;\n        let avg: i64 = sum / (i + 1);\n        println(avg);\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

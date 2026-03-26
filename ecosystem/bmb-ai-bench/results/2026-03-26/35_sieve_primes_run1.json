@@ -1,0 +1,24 @@
+{
+  "problem_id": "35_sieve_primes",
+  "category": "performance",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    \n    if n < 2 {\n        println(0);\n        0\n    } else {\n        let is_prime: i64 = vec_new();\n        \n        for i in 0..(n + 1) {\n            vec_push(is_prime, 1);\n            ()\n        };\n        \n        vec_set(is_prime, 0, 0);\n        vec_set(is_prime, 1, 0);\n        \n        let i: i64 = 2;\n        while i * i <= n {\n            if vec_get(is_prime, i) == 1 {\n                let j: i64 = i * i;\n                while j <= n {\n                    vec_set(is_prime, j, 0);\n                    j = j + i;\n                    ()\n                };\n                ()\n            } else { () };\n            i = i + 1;\n            ()\n        };\n        \n        let mut count: i64 = 0;\n        for k in 2..(n + 1) {\n            if vec_get(is_prime, k) == 1 {\n                count = count + 1;\n                ()\n            } else { () };\n            ()\n        };\n        \n        println(count);\n        vec_free(is_prime);\n        0\n    }\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

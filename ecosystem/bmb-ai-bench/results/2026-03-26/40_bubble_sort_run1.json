@@ -1,0 +1,24 @@
+{
+  "problem_id": "40_bubble_sort",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn bubble_sort(arr: i64, n: i64) -> i64 = {\n    for i in 0..n {\n        for j in 0..(n - 1 - i) {\n            let a: i64 = vec_get(arr, j);\n            let b: i64 = vec_get(arr, j + 1);\n            if a > b {\n                vec_set(arr, j, b);\n                vec_set(arr, j + 1, a);\n                ()\n            } else { () };\n            ()\n        };\n        ()\n    };\n    0\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    let _s: i64 = bubble_sort(arr, n);\n    for i in 0..n {\n        if i > 0 { print_str(\" \"); () } else { () };\n        print(vec_get(arr, i));\n        ()\n    };\n    println_str(\"\");\n    vec_free(arr);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

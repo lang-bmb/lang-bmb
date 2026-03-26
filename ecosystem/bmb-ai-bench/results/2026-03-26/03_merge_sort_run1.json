@@ -1,0 +1,24 @@
+{
+  "problem_id": "03_merge_sort",
+  "category": "algorithm",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn merge(arr: i64, left: i64, mid: i64, right: i64) -> i64 = {\n    let left_size: i64 = mid - left + 1;\n    let right_size: i64 = right - mid;\n    \n    let left_arr: i64 = vec_new();\n    let right_arr: i64 = vec_new();\n    \n    for i in 0..left_size {\n        vec_push(left_arr, vec_get(arr, left + i));\n        ()\n    };\n    \n    for j in 0..right_size {\n        vec_push(right_arr, vec_get(arr, mid + 1 + j));\n        ()\n    };\n    \n    let mut i: i64 = 0;\n    let mut j: i64 = 0;\n    let mut k: i64 = left;\n    \n    while i < left_size {\n        if j < right_size {\n            if vec_get(left_arr, i) <= vec_get(right_arr, j) {\n                vec_set(arr, k, vec_get(left_arr, i));\n                i = i + 1;\n                ()\n            } else {\n                vec_set(arr, k, vec_get(right_arr, j));\n                j = j + 1;\n                ()\n            }\n        } else {\n            vec_set(arr, k, vec_get(left_arr, i));\n            i = i + 1;\n            ()\n        };\n        k = k + 1;\n        ()\n    };\n    \n    while j < right_size {\n        vec_set(arr, k, vec_get(right_arr, j));\n        j = j + 1;\n        k = k + 1;\n        ()\n    };\n    \n    vec_free(left_arr);\n    vec_free(right_arr);\n    0\n};\n\nfn merge_sort(arr: i64, left: i64, right: i64) -> i64 = {\n    if left < right {\n        let mid: i64 = left + (right - left) / 2;\n        let _l: i64 = merge_sort(arr, left, mid);\n        let _r: i64 = merge_sort(arr, mid + 1, right);\n        let _m: i64 = merge(arr, left, mid, right);\n        0\n    } else {\n        0\n    }\n};\n\nfn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    \n    if n == 0 {\n        println_str(\"\");\n        0\n    } else {\n        let arr: i64 = read_array(n);\n        let _s: i64 = merge_sort(arr, 0, n - 1);\n        \n        for i in 0..n {\n            if i > 0 {\n                print_str(\" \");\n                ()\n            } else {\n                ()\n            };\n            print(vec_get(arr, i));\n            ()\n        };\n        println_str(\"\");\n        \n        vec_free(arr);\n        0\n    }\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

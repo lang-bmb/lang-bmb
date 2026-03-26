@@ -1,0 +1,32 @@
+{
+  "problem_id": "06_matrix_multiply",
+  "category": "algorithm",
+  "difficulty": "medium",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 1,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let size: i64 = n * n;\n    let a: i64 = read_array(size);\n    let b: i64 = read_array(size);\n    let c: i64 = vec_new();\n    \n    for i in 0..n {\n        for j in 0..n {\n            let mut sum: i64 = 0;\n            for k in 0..n {\n                let a_val: i64 = vec_get(a, i * n + k);\n                let b_val: i64 = vec_get(b, k * n + j);\n                sum = sum + a_val * b_val;\n                ()\n            };\n            vec_push(c, sum);\n            ()\n        };\n        ()\n    };\n    \n    for i in 0..n {\n        for j in 0..n {\n            if j > 0 { print_str(\" \"); () } else { () };\n            print(vec_get(c, i * n + j));\n            ()\n        };\n        println_str(\"\");\n        ()\n    };\n    \n    vec_free(a);\n    vec_free(b);\n    vec_free(c);\n    0\n}",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpp_d27g05\\\\solution.bmb\",\"start\":3293,\"end\":3294,\"line\":139,\"col\":2,\"message\":\"Unrecognized EOF found at 3293\\nExpected one of \\\";\\\"\",\"suggestion\":\"BMB top-level definitions (fn, struct) must end with ';'. Block expressions end with '};'.\",\"example_wrong\":\"fn main() -> i64 = { 0 }\",\"example_correct\":\"fn main() -> i64 = { 0 };\",\"pattern\":\"missing_semicolon_eof\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 2,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let size: i64 = n * n;\n    let a: i64 = read_array(size);\n    let b: i64 = read_array(size);\n    let c: i64 = vec_new();\n    \n    for i in 0..n {\n        for j in 0..n {\n            let mut sum: i64 = 0;\n            for k in 0..n {\n                let a_val: i64 = vec_get(a, i * n + k);\n                let b_val: i64 = vec_get(b, k * n + j);\n                sum = sum + a_val * b_val;\n                ()\n            };\n            vec_push(c, sum);\n            ()\n        };\n        ()\n    };\n    \n    for i in 0..n {\n        for j in 0..n {\n            if j > 0 { print_str(\" \"); () } else { () };\n            print(vec_get(c, i * n + j));\n            ()\n        };\n        println_str(\"\");\n        ()\n    };\n    \n    vec_free(a);\n    vec_free(b);\n    vec_free(c);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

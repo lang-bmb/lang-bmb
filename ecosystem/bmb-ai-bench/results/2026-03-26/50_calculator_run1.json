@@ -1,0 +1,96 @@
+{
+  "problem_id": "50_calculator",
+  "category": "practical",
+  "difficulty": "medium",
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 10
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let stack: i64 = vec_new();\n    \n    for i in 0..n {\n        let op: i64 = read_int();\n        let val: i64 = read_int();\n        \n        if op == 0 {\n            vec_push(stack, val);\n            ()\n        } else {\n            let len: i64 = vec_len(stack);\n            if len >= 2 {\n                let b: i64 = vec_get(stack, len - 1);\n                let a: i64 = vec_get(stack, len - 2);\n                vec_pop(stack);\n                vec_pop(stack);\n                \n                let result: i64 = if val == 1 {\n                    a + b\n                } else {\n                    if val == 2 {\n                        a - b\n                    } else {\n                        if val == 3 {\n                            a * b\n                        } else {\n                            if val == 4 {\n                                a / b\n                            } else {\n                                0\n                            }\n                        }\n                    }\n                };\n                \n                vec_push(stack, result);\n                ()\n            } else {\n                ()\n            }\n        };\n        ()\n    };\n    \n    let final_len: i64 = vec_len(stack);\n    let answer: i64 = if final_len > 0 {\n        vec_get(stack, final_len - 1)\n    } else {\n        0\n    };\n    \n    println(answer);\n    vec_free(stack);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '20\\n', got '0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let stack: i64 = vec_new();\n    \n    let mut i: i64 = 0;\n    while i < n {\n        let op: i64 = read_int();\n        let val: i64 = read_int();\n        \n        if op == 0 {\n            vec_push(stack, val);\n            ()\n        } else {\n            let len: i64 = vec_len(stack);\n            if len >= 2 {\n                let b: i64 = vec_get(stack, len - 1);\n                let a: i64 = vec_get(stack, len - 2);\n                vec_pop(stack);\n                vec_pop(stack);\n                \n                let result: i64 = if val == 1 {\n                    a + b\n                } else {\n                    if val == 2 {\n                        a - b\n                    } else {\n                        if val == 3 {\n                            a * b\n                        } else {\n                            if val == 4 {\n                                a / b\n                            } else {\n                                0\n                            }\n                        }\n                    }\n                };\n                \n                vec_push(stack, result);\n                ()\n            } else {\n                ()\n            }\n        };\n        i = i + 1;\n        ()\n    };\n    \n    let final_len: i64 = vec_len(stack);\n    let answer: i64 = if final_len > 0 {\n        vec_get(stack, final_len - 1)\n    } else {\n        0\n    };\n    \n    println(answer);\n    vec_free(stack);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '20\\n', got '0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let stack: i64 = vec_new();\n    \n    let n: i64 = read_int();\n    \n    let mut i: i64 = 0;\n    while i < n {\n        let op: i64 = read_int();\n        let val: i64 = read_int();\n        \n        if op == 0 {\n            vec_push(stack, val);\n            ()\n        } else {\n            let len: i64 = vec_len(stack);\n            let b: i64 = vec_get(stack, len - 1);\n            let a: i64 = vec_get(stack, len - 2);\n            vec_pop(stack);\n            vec_pop(stack);\n            \n            let result: i64 = if val == 1 {\n                a + b\n            } else {\n                if val == 2 {\n                    a - b\n                } else {\n                    if val == 3 {\n                        a * b\n                    } else {\n                        a / b\n                    }\n                }\n            };\n            \n            vec_push(stack, result);\n            ()\n        };\n        i = i + 1;\n        ()\n    };\n    \n    let final_len: i64 = vec_len(stack);\n    let answer: i64 = vec_get(stack, final_len - 1);\n    \n    println(answer);\n    vec_free(stack);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '20\\n', got ''",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn main() -> i64 = {\n    let stack: i64 = vec_new();\n    \n    let n: i64 = read_int();\n    \n    let mut i: i64 = 0;\n    while i < n {\n        let op: i64 = read_int();\n        \n        if op == 0 {\n            let val: i64 = read_int();\n            vec_push(stack, val);\n            ()\n        } else {\n            let opcode: i64 = read_int();\n            let len: i64 = vec_len(stack);\n            let b: i64 = vec_get(stack, len - 1);\n            let a: i64 = vec_get(stack, len - 2);\n            vec_pop(stack);\n            vec_pop(stack);\n            \n            let result: i64 = if opcode == 1 {\n                a + b\n            } else {\n                if opcode == 2 {\n                    a - b\n                } else {\n                    if opcode == 3 {\n                        a * b\n                    } else {\n                        a / b\n                    }\n                }\n            };\n            \n            vec_push(stack, result);\n            ()\n        };\n        i = i + 1;\n        ()\n    };\n    \n    let final_len: i64 = vec_len(stack);\n    let answer: i64 = vec_get(stack, final_len - 1);\n    \n    println(answer);\n    vec_free(stack);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '20\\n', got ''",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 5,
+      "code": "fn main() -> i64 = {\n    let stack: i64 = vec_new();\n    \n    let n: i64 = read_int();\n    \n    let mut i: i64 = 0;\n    while i < n {\n        let op: i64 = read_int();\n        let val: i64 = read_int();\n        \n        if op == 0 {\n            vec_push(stack, val);\n            ()\n        } else {\n            let len: i64 = vec_len(stack);\n            let b: i64 = vec_get(stack, len - 1);\n            let a: i64 = vec_get(stack, len - 2);\n            vec_pop(stack);\n            vec_pop(stack);\n            \n            let result: i64 = if op == 1 {\n                a + b\n            } else {\n                if op == 2 {\n                    a - b\n                } else {\n                    if op == 3 {\n                        a * b\n                    } else {\n                        a / b\n                    }\n                }\n            };\n            \n            vec_push(stack, result);\n            ()\n        };\n        i = i + 1;\n        ()\n    };\n    \n    let final_len: i64 = vec_len(stack);\n    let answer: i64 = vec_get(stack, final_len - 1);\n    \n    println(answer);\n    vec_free(stack);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '20\\n', got ''",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 6,
+      "code": "fn main() -> i64 = {\n    let stack: i64 = vec_new();\n    \n    let n: i64 = read_int();\n    \n    let mut i: i64 = 0;\n    while i < n {\n        let first: i64 = read_int();\n        let second: i64 = read_int();\n        \n        if first == 0 {\n            vec_push(stack, second);\n            ()\n        } else {\n            let len: i64 = vec_len(stack);\n            let b: i64 = vec_get(stack, len - 1);\n            let a: i64 = vec_get(stack, len - 2);\n            vec_pop(stack);\n            vec_pop(stack);\n            \n            let result: i64 = if second == 1 {\n                a + b\n            } else {\n                if second == 2 {\n                    a - b\n                } else {\n                    if second == 3 {\n                        a * b\n                    } else {\n                        a / b\n                    }\n                }\n            };\n            \n            vec_push(stack, result);\n            ()\n        };\n        i = i + 1;\n        ()\n    };\n    \n    let final_len: i64 = vec_len(stack);\n    let answer: i64 = vec_get(stack, final_len - 1);\n    \n    println(answer);\n    vec_free(stack);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '20\\n', got ''",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 7,
+      "code": "fn main() -> i64 = {\n    let stack: i64 = vec_new();\n    \n    let n: i64 = read_int();\n    \n    let mut i: i64 = 0;\n    while i < n {\n        let first: i64 = read_int();\n        let second: i64 = read_int();\n        \n        if first == 0 {\n            vec_push(stack, second);\n            ()\n        } else {\n            let len: i64 = vec_len(stack);\n            let b: i64 = vec_get(stack, len - 1);\n            let a: i64 = vec_get(stack, len - 2);\n            vec_pop(stack);\n            vec_pop(stack);\n            \n            let mut result: i64 = 0;\n            if second == 1 {\n                result = a + b;\n                ()\n            } else {\n                if second == 2 {\n                    result = a - b;\n                    ()\n                } else {\n                    if second == 3 {\n                        result = a * b;\n                        ()\n                    } else {\n                        result = a / b;\n                        ()\n                    }\n                }\n            };\n            \n            vec_push(stack, result);\n            ()\n        };\n        i = i + 1;\n        ()\n    };\n    \n    let final_len: i64 = vec_len(stack);\n    let answer: i64 = vec_get(stack, final_len - 1);\n    \n    println(answer);\n    vec_free(stack);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '20\\n', got ''",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 8,
+      "code": "fn main() -> i64 = {\n    let stack: i64 = vec_new();\n    \n    let n: i64 = read_int();\n    \n    let first0: i64 = read_int();\n    let second0: i64 = read_int();\n    vec_push(stack, second0);\n    \n    let first1: i64 = read_int();\n    let second1: i64 = read_int();\n    vec_push(stack, second1);\n    \n    if n > 2 {\n        let first2: i64 = read_int();\n        let second2: i64 = read_int();\n        \n        if first2 == 0 {\n            vec_push(stack, second2);\n            ()\n        } else {\n            let len: i64 = vec_len(stack);\n            let b: i64 = vec_get(stack, len - 1);\n            let a: i64 = vec_get(stack, len - 2);\n            vec_pop(stack);\n            vec_pop(stack);\n            \n            let mut result: i64 = 0;\n            if second2 == 1 {\n                result = a + b;\n                ()\n            } else {\n                if second2 == 2 {\n                    result = a - b;\n                    ()\n                } else {\n                    if second2 == 3 {\n                        result = a * b;\n                        ()\n                    } else {\n                        result = a / b;\n                        ()\n                    }\n                }\n            };\n            vec_push(stack, result);\n            ()\n        };\n        \n        if n > 3 {\n            let first3: i64 = read_int();\n            let second3: i64 = read_int();\n            \n            if first3 == 0 {\n                vec_push(stack, second3);\n                ()\n            } else {\n                let len3: i64 = vec_len(stack);\n                let b3: i64 = vec_get(stack, len3 - 1);\n                let a3: i64 = vec_get(stack, len3 - 2);\n                vec_pop(stack);\n                vec_pop(stack);\n                \n                let mut result3: i64 = 0;\n                if second3 == 1 {\n                    result3 = a3 + b3;\n                    ()\n                } else {\n                    if second3 == 2 {\n                        result3 = a3 - b3;\n                        ()\n                    } else {\n                        if second3 == 3 {\n                            result3 = a3 * b3;\n                            ()\n                        } else {\n                            result3 = a3 / b3;\n                            ()\n                        }\n                    }\n                };\n                vec_push(stack, result3);\n                ()\n            };\n            \n            if n > 4 {\n                let first4: i64 = read_int();\n                let second4: i64 = read_int();\n                \n                if first4 == 0 {\n                    vec_push(stack, second4);\n                    ()\n                } else {\n                    let len4: i64 = vec_len(stack);\n                    let b4: i64 = vec_get(stack, len4 - 1);\n                    let a4: i64 = vec_get(stack, len4 - 2);\n                    vec_pop(stack);\n                    vec_pop(stack);\n                    \n                    let mut result4: i64 = 0;\n                    if second4 == 1 {\n                        result4 = a4 + b4;\n                        ()\n                    } else {\n                        if second4 == 2 {\n                            result4 = a4 - b4;\n                            ()\n                        } else {\n                            if second4 == 3 {\n                                result4 = a4 * b4;\n                                ()\n                            } else {\n                                result4 = a4 / b4;\n                                ()\n                            }\n                        }\n                    };\n                    vec_push(stack, result4);\n                    ()\n                };\n                ()\n            } else { () }\n        } else { () }\n    } else { () };\n    \n    let final_len: i64 = vec_len(stack);\n    let answer: i64 = vec_get(stack, final_len - 1);\n    \n    println(answer);\n    vec_free(stack);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '20\\n', got ''",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 9,
+      "code": "fn process(stack: i64, op: i64, val: i64) -> i64 = {\n    if op == 0 {\n        vec_push(stack, val);\n        ()\n    } else {\n        let len: i64 = vec_len(stack);\n        let b: i64 = vec_get(stack, len - 1);\n        let a: i64 = vec_get(stack, len - 2);\n        vec_pop(stack);\n        vec_pop(stack);\n        \n        let result: i64 = if val == 1 {\n            a + b\n        } else {\n            if val == 2 {\n                a - b\n            } else {\n                if val == 3 {\n                    a * b\n                } else {\n                    a / b\n                }\n            }\n        };\n        vec_push(stack, result);\n        ()\n    };\n    0\n};\n\nfn main() -> i64 = {\n    let stack: i64 = vec_new();\n    \n    let n: i64 = read_int();\n    \n    for i in 0..n {\n        let op: i64 = read_int();\n        let val: i64 = read_int();\n        let tmp: i64 = process(stack, op, val);\n        ()\n    };\n    \n    let final_len: i64 = vec_len(stack);\n    let answer: i64 = vec_get(stack, final_len - 1);\n    \n    println(answer);\n    vec_free(stack);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '20\\n', got ''",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 10,
+      "code": "fn main() -> i64 = {\n    let stack: i64 = vec_new();\n    \n    let n: i64 = read_int();\n    \n    let ops: i64 = vec_new();\n    let vals: i64 = vec_new();\n    \n    for i in 0..n {\n        let op: i64 = read_int();\n        let val: i64 = read_int();\n        vec_push(ops, op);\n        vec_push(vals, val);\n        ()\n    };\n    \n    for i in 0..n {\n        let op: i64 = vec_get(ops, i);\n        let val: i64 = vec_get(vals, i);\n        \n        if op == 0 {\n            vec_push(stack, val);\n            ()\n        } else {\n            let len: i64 = vec_len(stack);\n            let b: i64 = vec_get(stack, len - 1);\n            let a: i64 = vec_get(stack, len - 2);\n            vec_pop(stack);\n            vec_pop(stack);\n            \n            let result: i64 = if val == 1 {\n                a + b\n            } else {\n                if val == 2 {\n                    a - b\n                } else {\n                    if val == 3 {\n                        a * b\n                    } else {\n                        a / b\n                    }\n                }\n            };\n            vec_push(stack, result);\n            ()\n        };\n        ()\n    };\n    \n    let final_len: i64 = vec_len(stack);\n    let answer: i64 = vec_get(stack, final_len - 1);\n    \n    println(answer);\n    vec_free(ops);\n    vec_free(vals);\n    vec_free(stack);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '20\\n', got ''",
+      "loop_type": "D"
+    }
+  ],
+  "run_id": 1
+}

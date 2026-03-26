@@ -1,0 +1,24 @@
+{
+  "problem_id": "46_csv_parser",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let num_rows: i64 = read_int();\n    \n    for row in 0..num_rows {\n        let num_cols: i64 = read_int();\n        let arr: i64 = read_array(num_cols);\n        \n        let sum: i64 = 0;\n        let mut sum: i64 = 0;\n        for i in 0..num_cols {\n            sum = sum + vec_get(arr, i);\n            ()\n        };\n        \n        print(num_cols);\n        print_str(\" \");\n        println(sum);\n        \n        vec_free(arr);\n        ()\n    };\n    \n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

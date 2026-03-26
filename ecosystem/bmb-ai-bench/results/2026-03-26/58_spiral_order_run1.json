@@ -1,0 +1,24 @@
+{
+  "problem_id": "58_spiral_order",
+  "category": "practical",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn read_matrix(n: i64) -> i64 = {\n    let mat: i64 = vec_new();\n    let total: i64 = n * n;\n    for i in 0..total {\n        vec_push(mat, read_int());\n        ()\n    };\n    mat\n};\n\nfn get_elem(mat: i64, n: i64, row: i64, col: i64) -> i64 = {\n    vec_get(mat, row * n + col)\n};\n\nfn spiral_order(mat: i64, n: i64) -> i64 = {\n    let result: i64 = vec_new();\n    let mut top: i64 = 0;\n    let mut bottom: i64 = n - 1;\n    let mut left: i64 = 0;\n    let mut right: i64 = n - 1;\n    \n    while top <= bottom and left <= right {\n        for i in left..(right + 1) {\n            vec_push(result, get_elem(mat, n, top, i));\n            ()\n        };\n        top = top + 1;\n        \n        if top <= bottom {\n            for i in top..(bottom + 1) {\n                vec_push(result, get_elem(mat, n, i, right));\n                ()\n            };\n            right = right - 1;\n            ()\n        } else { () };\n        \n        if top <= bottom and left <= right {\n            let mut i: i64 = right;\n            while i >= left {\n                vec_push(result, get_elem(mat, n, bottom, i));\n                i = i - 1;\n                ()\n            };\n            bottom = bottom - 1;\n            ()\n        } else { () };\n        \n        if top <= bottom and left <= right {\n            let mut i: i64 = bottom;\n            while i >= top {\n                vec_push(result, get_elem(mat, n, i, left));\n                i = i - 1;\n                ()\n            };\n            left = left + 1;\n            ()\n        } else { () };\n        ()\n    };\n    result\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let mat: i64 = read_matrix(n);\n    let result: i64 = spiral_order(mat, n);\n    let len: i64 = vec_len(result);\n    \n    for i in 0..len {\n        if i > 0 { print_str(\" \"); () } else { () };\n        print(vec_get(result, i));\n        ()\n    };\n    println_str(\"\");\n    \n    vec_free(mat);\n    vec_free(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

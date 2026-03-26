@@ -1,0 +1,24 @@
+{
+  "problem_id": "29_bounded_stack",
+  "category": "contract",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn push_stack(stack: i64, size: i64, capacity: i64, x: i64) -> i64\n    pre size < capacity\n    post ret == size + 1\n= {\n    vec_push(stack, x);\n    size + 1\n};\n\nfn pop_stack(stack: i64, size: i64) -> i64\n    pre size > 0\n    post ret == size - 1\n= {\n    let top: i64 = vec_get(stack, size - 1);\n    vec_pop(stack);\n    println(top);\n    size - 1\n};\n\nfn main() -> i64 = {\n    let capacity: i64 = read_int();\n    let q: i64 = read_int();\n    let stack: i64 = vec_new();\n    let mut size: i64 = 0;\n    \n    for i in 0..q {\n        let op: i64 = read_int();\n        if op == 1 {\n            let x: i64 = read_int();\n            if size < capacity {\n                size = push_stack(stack, size, capacity, x);\n                ()\n            } else {\n                println_str(\"FULL\");\n                ()\n            }\n        } else {\n            if op == 2 {\n                if size > 0 {\n                    size = pop_stack(stack, size);\n                    ()\n                } else {\n                    println_str(\"EMPTY\");\n                    ()\n                }\n            } else {\n                println(size);\n                ()\n            }\n        };\n        ()\n    };\n    \n    vec_free(stack);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

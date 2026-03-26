@@ -1,0 +1,24 @@
+{
+  "problem_id": "21_bounded_array",
+  "category": "contract",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn safe_get(arr: i64, idx: i64, n: i64) -> i64\n    pre idx >= 0 and idx < n\n= vec_get(arr, idx);\n\nfn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    let idx: i64 = read_int();\n    let result: i64 = safe_get(arr, idx, n);\n    println(result);\n    vec_free(arr);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

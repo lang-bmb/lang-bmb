@@ -1,0 +1,24 @@
+{
+  "problem_id": "08_two_sum",
+  "category": "algorithm",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let target: i64 = read_int();\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    let mut found: bool = false;\n    let mut idx1: i64 = 0;\n    let mut idx2: i64 = 0;\n    \n    for i in 0..n {\n        if not found {\n            for j in (i + 1)..n {\n                if not found {\n                    let sum: i64 = vec_get(arr, i) + vec_get(arr, j);\n                    if sum == target {\n                        idx1 = i;\n                        idx2 = j;\n                        found = true;\n                        ()\n                    } else { () };\n                    ()\n                } else { () };\n                ()\n            };\n            ()\n        } else { () };\n        ()\n    };\n    \n    print(idx1);\n    print_str(\" \");\n    println(idx2);\n    \n    vec_free(arr);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

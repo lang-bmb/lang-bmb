@@ -1,0 +1,24 @@
+{
+  "problem_id": "01_binary_search",
+  "category": "algorithm",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn binary_search(arr: i64, n: i64, target: i64) -> i64 = {\n    let mut left: i64 = 0;\n    let mut right: i64 = n - 1;\n    let mut result: i64 = -1;\n    while left <= right {\n        let mid: i64 = left + (right - left) / 2;\n        let mid_val: i64 = vec_get(arr, mid);\n        if mid_val == target {\n            result = mid;\n            left = right + 1;\n            ()\n        } else {\n            if mid_val < target {\n                left = mid + 1;\n                ()\n            } else {\n                right = mid - 1;\n                ()\n            };\n            ()\n        };\n        ()\n    };\n    result\n};\n\nfn main() -> i64 = {\n    let target: i64 = read_int();\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    let result: i64 = binary_search(arr, n, target);\n    println(result);\n    vec_free(arr);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

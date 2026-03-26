@@ -1,0 +1,24 @@
+{
+  "problem_id": "73_palindrome_check",
+  "category": "edge",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn is_palindrome(arr: i64, n: i64) -> i64 = {\n    let result: i64 = 1;\n    let mut i: i64 = 0;\n    while i < n / 2 {\n        let left: i64 = vec_get(arr, i);\n        let right: i64 = vec_get(arr, n - 1 - i);\n        if left != right {\n            set result = 0;\n            ()\n        } else { () };\n        set i = i + 1;\n        ()\n    };\n    result\n};\n\nfn main() -> i64 = {\n    let t: i64 = read_int();\n    for case in 0..t {\n        let n: i64 = read_int();\n        let arr: i64 = read_array(n);\n        let result: i64 = is_palindrome(arr, n);\n        println(result);\n        vec_free(arr);\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

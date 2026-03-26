@@ -1,0 +1,96 @@
+{
+  "problem_id": "67_nested_loops",
+  "category": "edge",
+  "difficulty": "easy",
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 10
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let a: i64 = read_int();\n    let b: i64 = read_int();\n    let c: i64 = read_int();\n    \n    let result: i64 = a;\n    let mut sum: i64 = a;\n    \n    for i in 0..c {\n        sum = sum + b;\n        ()\n    };\n    \n    println(sum);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '7\\n', got '10\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let a: i64 = read_int();\n    let b: i64 = read_int();\n    let c: i64 = read_int();\n    \n    let mut sum: i64 = 0;\n    \n    for i in 0..b {\n        for j in 0..c {\n            sum = sum + 1;\n            ()\n        };\n        ()\n    };\n    \n    sum = sum + a;\n    \n    println(sum);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '7\\n', got '10\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let a: i64 = read_int();\n    let b: i64 = read_int();\n    let c: i64 = read_int();\n    \n    let mut sum: i64 = a;\n    \n    for i in 0..c {\n        sum = sum + i + 1;\n        ()\n    };\n    \n    println(sum);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 3: expected '10\\n', got '7\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn main() -> i64 = {\n    let a: i64 = read_int();\n    let b: i64 = read_int();\n    let c: i64 = read_int();\n    \n    let mut sum: i64 = a;\n    \n    for i in 0..c {\n        sum = sum + (b - 1);\n        ()\n    };\n    \n    println(sum);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 5: expected '1\\n', got '13\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 5,
+      "code": "fn main() -> i64 = {\n    let a: i64 = read_int();\n    let b: i64 = read_int();\n    let c: i64 = read_int();\n    \n    let mut sum: i64 = a;\n    \n    for i in 1..(c + 1) {\n        sum = sum + i;\n        ()\n    };\n    \n    sum = sum + (b - 1);\n    \n    println(sum);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '7\\n', got '9\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 6,
+      "code": "fn main() -> i64 = {\n    let a: i64 = read_int();\n    let b: i64 = read_int();\n    let c: i64 = read_int();\n    \n    let mut sum: i64 = a;\n    \n    for i in 1..(c + 1) {\n        sum = sum + i;\n        ()\n    };\n    \n    sum = sum + (b - 1 - c);\n    \n    println(sum);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '7\\n', got '6\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 7,
+      "code": "fn main() -> i64 = {\n    let a: i64 = read_int();\n    let b: i64 = read_int();\n    let c: i64 = read_int();\n    \n    let mut sum: i64 = a;\n    \n    for i in 0..c {\n        sum = sum + (i + 1);\n        ()\n    };\n    \n    sum = sum + (b - c - 1);\n    \n    println(sum);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '7\\n', got '6\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 8,
+      "code": "fn main() -> i64 = {\n    let a: i64 = read_int();\n    let b: i64 = read_int();\n    let c: i64 = read_int();\n    \n    let mut sum: i64 = a;\n    \n    for i in 0..c {\n        sum = sum + (i + 2);\n        ()\n    };\n    \n    println(sum);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '7\\n', got '10\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 9,
+      "code": "fn main() -> i64 = {\n    let a: i64 = read_int();\n    let b: i64 = read_int();\n    let c: i64 = read_int();\n    \n    let mut sum: i64 = a;\n    \n    for i in 0..c {\n        sum = sum + b - i - 1;\n        ()\n    };\n    \n    println(sum);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '7\\n', got '4\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 10,
+      "code": "fn main() -> i64 = {\n    let a: i64 = read_int();\n    let b: i64 = read_int();\n    let c: i64 = read_int();\n    \n    let mut sum: i64 = a;\n    \n    for i in 0..c {\n        sum = sum + b - c + i;\n        ()\n    };\n    \n    println(sum);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '7\\n', got '4\\n'",
+      "loop_type": "D"
+    }
+  ],
+  "run_id": 1
+}

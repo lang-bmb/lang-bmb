@@ -1,0 +1,32 @@
+{
+  "problem_id": "57_zigzag_print",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 1,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let k: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    let row: i64 = 0;\n    let idx: i64 = 0;\n    \n    while idx < n {\n        let left_to_right: i64 = if row % 2 == 0 { 1 } else { 0 };\n        \n        let count: i64 = if idx + k <= n { k } else { n - idx };\n        \n        if left_to_right == 1 {\n            for j in 0..count {\n                if j > 0 { print_str(\" \"); () } else { () };\n                print(vec_get(arr, idx + j));\n                ()\n            };\n            ()\n        } else {\n            for j in 0..count {\n                if j > 0 { print_str(\" \"); () } else { () };\n                print(vec_get(arr, idx + count - 1 - j));\n                ()\n            };\n            ()\n        };\n        \n        println_str(\"\");\n        \n        set idx = idx + count;\n        set row = row + 1;\n        ()\n    };\n    \n    vec_free(arr);\n    0\n}",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmp7a227x__\\\\solution.bmb\",\"start\":3399,\"end\":3400,\"line\":141,\"col\":2,\"message\":\"Unrecognized EOF found at 3399\\nExpected one of \\\";\\\"\",\"suggestion\":\"BMB top-level definitions (fn, struct) must end with ';'. Block expressions end with '};'.\",\"example_wrong\":\"fn main() -> i64 = { 0 }\",\"example_correct\":\"fn main() -> i64 = { 0 };\",\"pattern\":\"missing_semicolon_eof\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 2,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let k: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    let mut row: i64 = 0;\n    let mut idx: i64 = 0;\n    \n    while idx < n {\n        let left_to_right: i64 = if row % 2 == 0 { 1 } else { 0 };\n        \n        let count: i64 = if idx + k <= n { k } else { n - idx };\n        \n        if left_to_right == 1 {\n            for j in 0..count {\n                if j > 0 { print_str(\" \"); () } else { () };\n                print(vec_get(arr, idx + j));\n                ()\n            };\n            ()\n        } else {\n            for j in 0..count {\n                if j > 0 { print_str(\" \"); () } else { () };\n                print(vec_get(arr, idx + count - 1 - j));\n                ()\n            };\n            ()\n        };\n        \n        println_str(\"\");\n        \n        idx = idx + count;\n        row = row + 1;\n        ()\n    };\n    \n    vec_free(arr);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

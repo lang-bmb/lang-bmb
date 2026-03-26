@@ -1,0 +1,88 @@
+{
+  "problem_id": "47_word_count",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 9,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 8
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    if n == 0 {\n        println(0);\n        vec_free(arr);\n        0\n    } else {\n        // Count occurrences of each element\n        let counts: i64 = vec_new();\n        let values: i64 = vec_new();\n        \n        for i in 0..n {\n            let val: i64 = vec_get(arr, i);\n            let found: i64 = 0;\n            let mut found_idx: i64 = 0;\n            let num_values: i64 = vec_len(values);\n            \n            for j in 0..num_values {\n                if vec_get(values, j) == val {\n                    found_idx = j;\n                    vec_set(counts, j, vec_get(counts, j) + 1);\n                    ()\n                } else { () };\n                ()\n            };\n            \n            // Check if we found it by seeing if count changed\n            let mut was_found: i64 = 0;\n            for j in 0..num_values {\n                if vec_get(values, j) == val {\n                    was_found = 1;\n                    ()\n                } else { () };\n                ()\n            };\n            \n            if was_found == 0 {\n                vec_push(values, val);\n                vec_push(counts, 1);\n                ()\n            } else { () };\n            ()\n        };\n        \n        // Find maximum count\n        let mut max_count: i64 = 0;\n        let num_counts: i64 = vec_len(counts);\n        for i in 0..num_counts {\n            let c: i64 = vec_get(counts, i);\n            if c > max_count {\n                max_count = c;\n                ()\n            } else { () };\n            ()\n        };\n        \n        println(max_count);\n        \n        vec_free(arr);\n        vec_free(counts);\n        vec_free(values);\n        0\n    }\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 6: expected '3\\n', got '4\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    if n == 0 {\n        println(0);\n        vec_free(arr);\n        0\n    } else {\n        // Count occurrences of each element\n        let counts: i64 = vec_new();\n        let values: i64 = vec_new();\n        \n        for i in 0..n {\n            let val: i64 = vec_get(arr, i);\n            \n            // Check if value already exists\n            let num_values: i64 = vec_len(values);\n            let mut found_idx: i64 = 0 - 1;\n            \n            for j in 0..num_values {\n                if vec_get(values, j) == val {\n                    found_idx = j;\n                    ()\n                } else { () };\n                ()\n            };\n            \n            if found_idx >= 0 {\n                vec_set(counts, found_idx, vec_get(counts, found_idx) + 1);\n                ()\n            } else {\n                vec_push(values, val);\n                vec_push(counts, 1);\n                ()\n            };\n            ()\n        };\n        \n        // Find maximum count\n        let mut max_count: i64 = 0;\n        let num_counts: i64 = vec_len(counts);\n        for i in 0..num_counts {\n            let c: i64 = vec_get(counts, i);\n            if c > max_count {\n                max_count = c;\n                ()\n            } else { () };\n            ()\n        };\n        \n        println(max_count);\n        \n        vec_free(arr);\n        vec_free(counts);\n        vec_free(values);\n        0\n    }\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 6: expected '3\\n', got '4\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    if n == 0 {\n        println(0);\n        vec_free(arr);\n        0\n    } else {\n        // Count distinct values\n        let values: i64 = vec_new();\n        \n        for i in 0..n {\n            let val: i64 = vec_get(arr, i);\n            \n            // Check if value already exists\n            let num_values: i64 = vec_len(values);\n            let mut found: i64 = 0;\n            \n            for j in 0..num_values {\n                if vec_get(values, j) == val {\n                    found = 1;\n                    ()\n                } else { () };\n                ()\n            };\n            \n            if found == 0 {\n                vec_push(values, val);\n                ()\n            } else { () };\n            ()\n        };\n        \n        // Count distinct values\n        let num_distinct: i64 = vec_len(values);\n        \n        println(num_distinct);\n        \n        vec_free(arr);\n        vec_free(values);\n        0\n    }\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '3\\n', got '2\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    if n == 0 {\n        println(0);\n        vec_free(arr);\n        0\n    } else {\n        // Count occurrences of each element\n        let counts: i64 = vec_new();\n        let values: i64 = vec_new();\n        \n        for i in 0..n {\n            let val: i64 = vec_get(arr, i);\n            \n            // Check if value already exists\n            let num_values: i64 = vec_len(values);\n            let mut found_idx: i64 = 0 - 1;\n            \n            for j in 0..num_values {\n                if vec_get(values, j) == val {\n                    found_idx = j;\n                    ()\n                } else { () };\n                ()\n            };\n            \n            if found_idx >= 0 {\n                vec_set(counts, found_idx, vec_get(counts, found_idx) + 1);\n                ()\n            } else {\n                vec_push(values, val);\n                vec_push(counts, 1);\n                ()\n            };\n            ()\n        };\n        \n        // Find maximum count\n        let mut max_count: i64 = 0;\n        let num_counts: i64 = vec_len(counts);\n        for i in 0..num_counts {\n            let c: i64 = vec_get(counts, i);\n            if c > max_count {\n                max_count = c;\n                ()\n            } else { () };\n            ()\n        };\n        \n        // Count how many values have the maximum count\n        let mut count_of_max: i64 = 0;\n        for i in 0..num_counts {\n            if vec_get(counts, i) == max_count {\n                count_of_max = count_of_max + max_count;\n                ()\n            } else { () };\n            ()\n        };\n        \n        println(count_of_max);\n        \n        vec_free(arr);\n        vec_free(counts);\n        vec_free(values);\n        0\n    }\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 3: expected '1\\n', got '5\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 5,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    if n == 0 {\n        println(0);\n        vec_free(arr);\n        0\n    } else {\n        // Count occurrences of each element\n        let counts: i64 = vec_new();\n        let values: i64 = vec_new();\n        \n        for i in 0..n {\n            let val: i64 = vec_get(arr, i);\n            \n            // Check if value already exists\n            let num_values: i64 = vec_len(values);\n            let mut found_idx: i64 = 0 - 1;\n            \n            for j in 0..num_values {\n                if vec_get(values, j) == val {\n                    found_idx = j;\n                    ()\n                } else { () };\n                ()\n            };\n            \n            if found_idx >= 0 {\n                vec_set(counts, found_idx, vec_get(counts, found_idx) + 1);\n                ()\n            } else {\n                vec_push(values, val);\n                vec_push(counts, 1);\n                ()\n            };\n            ()\n        };\n        \n        // Find maximum count\n        let mut max_count: i64 = 0;\n        let num_counts: i64 = vec_len(counts);\n        for i in 0..num_counts {\n            let c: i64 = vec_get(counts, i);\n            if c > max_count {\n                max_count = c;\n                ()\n            } else { () };\n            ()\n        };\n        \n        println(max_count);\n        \n        vec_free(arr);\n        vec_free(counts);\n        vec_free(values);\n        0\n    }\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 6: expected '3\\n', got '4\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 6,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn find_idx(values: i64, val: i64) -> i64 = {\n    let num_values: i64 = vec_len(values);\n    let mut result: i64 = 0 - 1;\n    for j in 0..num_values {\n        if vec_get(values, j) == val {\n            result = j;\n            ()\n        } else { () };\n        ()\n    };\n    result\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    if n == 0 {\n        println(0);\n        vec_free(arr);\n        0\n    } else {\n        // Count occurrences of each element\n        let counts: i64 = vec_new();\n        let values: i64 = vec_new();\n        \n        for i in 0..n {\n            let val: i64 = vec_get(arr, i);\n            let found_idx: i64 = find_idx(values, val);\n            \n            if found_idx >= 0 {\n                vec_set(counts, found_idx, vec_get(counts, found_idx) + 1);\n                ()\n            } else {\n                vec_push(values, val);\n                vec_push(counts, 1);\n                ()\n            };\n            ()\n        };\n        \n        // Find maximum count\n        let mut max_count: i64 = 0;\n        let num_counts: i64 = vec_len(counts);\n        for i in 0..num_counts {\n            let c: i64 = vec_get(counts, i);\n            if c > max_count {\n                max_count = c;\n                ()\n            } else { () };\n            ()\n        };\n        \n        println(max_count);\n        \n        vec_free(arr);\n        vec_free(counts);\n        vec_free(values);\n        0\n    }\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 6: expected '3\\n', got '4\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 7,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    if n == 0 {\n        println(0);\n        vec_free(arr);\n        0\n    } else {\n        // Count occurrences of each element\n        let counts: i64 = vec_new();\n        let values: i64 = vec_new();\n        \n        for i in 0..n {\n            let val: i64 = vec_get(arr, i);\n            \n            // Find if value exists and get its index\n            let num_values: i64 = vec_len(values);\n            let mut found: i64 = 0;\n            \n            for j in 0..num_values {\n                if vec_get(values, j) == val {\n                    if found == 0 {\n                        vec_set(counts, j, vec_get(counts, j) + 1);\n                        found = 1;\n                        ()\n                    } else { () };\n                    ()\n                } else { () };\n                ()\n            };\n            \n            if found == 0 {\n                vec_push(values, val);\n                vec_push(counts, 1);\n                ()\n            } else { () };\n            ()\n        };\n        \n        // Find maximum count\n        let mut max_count: i64 = 0;\n        let num_counts: i64 = vec_len(counts);\n        for i in 0..num_counts {\n            let c: i64 = vec_get(counts, i);\n            if c > max_count {\n                max_count = c;\n                ()\n            } else { () };\n            ()\n        };\n        \n        println(max_count);\n        \n        vec_free(arr);\n        vec_free(counts);\n        vec_free(values);\n        0\n    }\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 6: expected '3\\n', got '4\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 8,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn sort_array(arr: i64, n: i64) -> i64 = {\n    for i in 0..n {\n        for j in 0..(n - 1 - i) {\n            if vec_get(arr, j) > vec_get(arr, j + 1) {\n                let tmp: i64 = vec_get(arr, j);\n                vec_set(arr, j, vec_get(arr, j + 1));\n                vec_set(arr, j + 1, tmp);\n                ()\n            } else { () };\n            ()\n        };\n        ()\n    };\n    0\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    if n == 0 {\n        println(0);\n        vec_free(arr);\n        0\n    } else {\n        let dummy: i64 = sort_array(arr, n);\n        \n        let mut max_count: i64 = 1;\n        let mut current_count: i64 = 1;\n        \n        for i in 1..n {\n            if vec_get(arr, i) == vec_get(arr, i - 1) {\n                current_count = current_count + 1;\n                ()\n            } else {\n                if current_count > max_count {\n                    max_count = current_count;\n                    ()\n                } else { () };\n                current_count = 1;\n                ()\n            };\n            ()\n        };\n        \n        if current_count > max_count {\n            max_count = current_count;\n            ()\n        } else { () };\n        \n        println(max_count);\n        \n        vec_free(arr);\n        0\n    }\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 6: expected '3\\n', got '4\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 9,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    if n == 0 {\n        println(0);\n        vec_free(arr);\n        0\n    } else {\n        let mut max_run: i64 = 1;\n        let mut current_run: i64 = 1;\n        \n        for i in 1..n {\n            if vec_get(arr, i) == vec_get(arr, i - 1) {\n                current_run = current_run + 1;\n                if current_run > max_run {\n                    max_run = current_run;\n                    ()\n                } else { () };\n                ()\n            } else {\n                current_run = 1;\n                ()\n            };\n            ()\n        };\n        \n        println(max_run);\n        \n        vec_free(arr);\n        0\n    }\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

@@ -1,0 +1,32 @@
+{
+  "problem_id": "42_integer_sqrt",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn isqrt(n: i64) -> i64 = {\n    if n <= 0 {\n        0\n    } else {\n        let mut low: i64 = 1;\n        let mut high: i64 = n;\n        let mut result: i64 = 0;\n        while low <= high {\n            let mid: i64 = low + (high - low) / 2;\n            if mid <= n / mid {\n                result = mid;\n                low = mid + 1;\n                ()\n            } else {\n                high = mid - 1;\n                ()\n            };\n            ()\n        };\n        result\n    }\n};\n\nfn main() -> i64 = {\n    let t: i64 = read_int();\n    let n: i64 = read_int();\n    println(isqrt(n));\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 7: expected '0\\n1\\n2\\n', got '0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn isqrt(n: i64) -> i64 = {\n    if n <= 0 {\n        0\n    } else {\n        let mut low: i64 = 1;\n        let mut high: i64 = n;\n        let mut result: i64 = 0;\n        while low <= high {\n            let mid: i64 = low + (high - low) / 2;\n            if mid <= n / mid {\n                result = mid;\n                low = mid + 1;\n                ()\n            } else {\n                high = mid - 1;\n                ()\n            };\n            ()\n        };\n        result\n    }\n};\n\nfn main() -> i64 = {\n    let t: i64 = read_int();\n    for i in 0..t {\n        let n: i64 = read_int();\n        println(isqrt(n));\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

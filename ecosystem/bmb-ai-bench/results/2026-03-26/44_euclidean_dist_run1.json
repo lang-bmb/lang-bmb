@@ -1,0 +1,24 @@
+{
+  "problem_id": "44_euclidean_dist",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let v1: i64 = vec_new();\n    let v2: i64 = vec_new();\n    \n    for i in 0..n {\n        vec_push(v1, read_int());\n        ()\n    };\n    \n    for i in 0..n {\n        vec_push(v2, read_int());\n        ()\n    };\n    \n    let result: i64 = 0;\n    let mut sum: i64 = 0;\n    \n    for i in 0..n {\n        let diff: i64 = vec_get(v1, i) - vec_get(v2, i);\n        sum = sum + diff * diff;\n        ()\n    };\n    \n    println(sum);\n    \n    vec_free(v1);\n    vec_free(v2);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

@@ -1,0 +1,24 @@
+{
+  "problem_id": "99_bounded_queue_contract",
+  "category": "contract",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let capacity: i64 = read_int();\n    let num_ops: i64 = read_int();\n    \n    let queue: i64 = vec_new();\n    let mut size: i64 = 0;\n    \n    for op_idx in 0..num_ops {\n        let op: i64 = read_int();\n        \n        if op == 1 {\n            let val: i64 = read_int();\n            if size < capacity {\n                vec_push(queue, val);\n                size = size + 1;\n                ()\n            } else {\n                println(-1);\n                ()\n            };\n            ()\n        } else {\n            if op == 2 {\n                if size > 0 {\n                    let front: i64 = vec_get(queue, 0);\n                    println(front);\n                    let new_queue: i64 = vec_new();\n                    for i in 1..size {\n                        vec_push(new_queue, vec_get(queue, i));\n                        ()\n                    };\n                    vec_free(queue);\n                    queue = new_queue;\n                    size = size - 1;\n                    ()\n                } else {\n                    println(-1);\n                    ()\n                };\n                ()\n            } else {\n                if op == 3 {\n                    println(size);\n                    ()\n                } else {\n                    ()\n                };\n                ()\n            };\n            ()\n        };\n        ()\n    };\n    \n    vec_free(queue);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

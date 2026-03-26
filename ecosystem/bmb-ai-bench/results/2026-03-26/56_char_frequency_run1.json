@@ -1,0 +1,24 @@
+{
+  "problem_id": "56_char_frequency",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn find_index(keys: i64, key: i64, len: i64) -> i64 = {\n    let result: i64 = 0 - 1;\n    for i in 0..len {\n        if vec_get(keys, i) == key {\n            result = i;\n            ()\n        } else { () };\n        ()\n    };\n    result\n};\n\nfn sort_keys(keys: i64, counts: i64, n: i64) -> i64 = {\n    for i in 0..n {\n        for j in 0..(n - i - 1) {\n            if vec_get(keys, j) > vec_get(keys, j + 1) {\n                let tmp_key: i64 = vec_get(keys, j);\n                vec_set(keys, j, vec_get(keys, j + 1));\n                vec_set(keys, j + 1, tmp_key);\n                let tmp_count: i64 = vec_get(counts, j);\n                vec_set(counts, j, vec_get(counts, j + 1));\n                vec_set(counts, j + 1, tmp_count);\n                ()\n            } else { () };\n            ()\n        };\n        ()\n    };\n    0\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    let keys: i64 = vec_new();\n    let counts: i64 = vec_new();\n    let num_unique: i64 = 0;\n    \n    for i in 0..n {\n        let val: i64 = vec_get(arr, i);\n        let idx: i64 = find_index(keys, val, num_unique);\n        if idx < 0 {\n            vec_push(keys, val);\n            vec_push(counts, 1);\n            num_unique = num_unique + 1;\n            ()\n        } else {\n            vec_set(counts, idx, vec_get(counts, idx) + 1);\n            ()\n        };\n        ()\n    };\n    \n    let dummy: i64 = sort_keys(keys, counts, num_unique);\n    \n    println(num_unique);\n    \n    for i in 0..num_unique {\n        print(vec_get(keys, i));\n        print_str(\" \");\n        println(vec_get(counts, i));\n        ()\n    };\n    \n    vec_free(arr);\n    vec_free(keys);\n    vec_free(counts);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

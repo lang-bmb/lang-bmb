@@ -1,0 +1,24 @@
+{
+  "problem_id": "74_majority_element",
+  "category": "edge",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let t: i64 = read_int();\n    for tc in 0..t {\n        let n: i64 = read_int();\n        let arr: i64 = read_array(n);\n        \n        // Boyer-Moore Majority Vote Algorithm\n        let mut candidate: i64 = 0;\n        let mut count: i64 = 0;\n        \n        for i in 0..n {\n            let val: i64 = vec_get(arr, i);\n            if count == 0 {\n                candidate = val;\n                count = 1;\n                ()\n            } else {\n                if val == candidate {\n                    count = count + 1;\n                    ()\n                } else {\n                    count = count - 1;\n                    ()\n                };\n                ()\n            };\n            ()\n        };\n        \n        // Verify the candidate is actually a majority\n        let mut freq: i64 = 0;\n        for i in 0..n {\n            if vec_get(arr, i) == candidate {\n                freq = freq + 1;\n                ()\n            } else { () };\n            ()\n        };\n        \n        let threshold: i64 = n / 2;\n        if freq > threshold {\n            println(candidate);\n            ()\n        } else {\n            println(0 - 1);\n            ()\n        };\n        \n        vec_free(arr);\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

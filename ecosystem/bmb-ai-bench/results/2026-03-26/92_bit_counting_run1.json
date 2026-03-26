@@ -1,0 +1,24 @@
+{
+  "problem_id": "92_bit_counting",
+  "category": "system",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn count_bits(n: i64) -> i64 = {\n    let mut count: i64 = 0;\n    let mut num: i64 = n;\n    while num > 0 {\n        if num - (num / 2) * 2 == 1 {\n            count = count + 1;\n            ()\n        } else { () };\n        num = num / 2;\n        ()\n    };\n    count\n};\n\nfn main() -> i64 = {\n    let t: i64 = read_int();\n    for i in 0..t {\n        let n: i64 = read_int();\n        println(count_bits(n));\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

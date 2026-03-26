@@ -1,0 +1,32 @@
+{
+  "problem_id": "75_longest_plateau",
+  "category": "edge",
+  "difficulty": "medium",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let t: i64 = read_int();\n    for tc in 0..t {\n        let n: i64 = read_int();\n        let arr: i64 = read_array(n);\n        \n        let mut max_len: i64 = 0;\n        let mut i: i64 = 0;\n        \n        while i < n {\n            let current_val: i64 = vec_get(arr, i);\n            let mut j: i64 = i;\n            \n            while j < n {\n                if vec_get(arr, j) == current_val {\n                    j = j + 1;\n                    ()\n                } else {\n                    break;\n                    ()\n                };\n                ()\n            };\n            \n            let plateau_len: i64 = j - i;\n            \n            let left_ok: bool = if i == 0 { true } else { vec_get(arr, i - 1) < current_val };\n            let right_ok: bool = if j == n { true } else { vec_get(arr, j) < current_val };\n            \n            if left_ok and right_ok {\n                if plateau_len > max_len {\n                    max_len = plateau_len;\n                    ()\n                } else { () };\n                ()\n            } else { () };\n            \n            i = j;\n            ()\n        };\n        \n        println(max_len);\n        vec_free(arr);\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 5: expected '2\\n4\\n', got '1\\n4\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let t: i64 = read_int();\n    for tc in 0..t {\n        let n: i64 = read_int();\n        let arr: i64 = read_array(n);\n        \n        let mut max_len: i64 = 0;\n        let mut i: i64 = 0;\n        \n        while i < n {\n            let current_val: i64 = vec_get(arr, i);\n            let mut j: i64 = i;\n            \n            while j < n {\n                if vec_get(arr, j) == current_val {\n                    j = j + 1;\n                    ()\n                } else {\n                    break;\n                    ()\n                };\n                ()\n            };\n            \n            let plateau_len: i64 = j - i;\n            \n            let left_ok: bool = if i == 0 { true } else { vec_get(arr, i - 1) < current_val };\n            let right_ok: bool = if j == n { true } else { vec_get(arr, j) < current_val };\n            \n            if left_ok and right_ok {\n                if plateau_len > max_len {\n                    max_len = plateau_len;\n                    ()\n                } else { () };\n                ()\n            } else {\n                if left_ok or right_ok {\n                    if plateau_len > max_len {\n                        max_len = plateau_len;\n                        ()\n                    } else { () };\n                    ()\n                } else { () };\n                ()\n            };\n            \n            i = j;\n            ()\n        };\n        \n        println(max_len);\n        vec_free(arr);\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

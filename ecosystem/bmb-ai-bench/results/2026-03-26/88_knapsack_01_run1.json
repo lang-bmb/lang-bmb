@@ -1,0 +1,24 @@
+{
+  "problem_id": "88_knapsack_01",
+  "category": "algorithm",
+  "difficulty": "hard",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn max(a: i64, b: i64) -> i64 = if a > b { a } else { b };\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let W: i64 = read_int();\n    \n    let weights: i64 = vec_new();\n    let values: i64 = vec_new();\n    \n    for i in 0..n {\n        let w: i64 = read_int();\n        let v: i64 = read_int();\n        vec_push(weights, w);\n        vec_push(values, v);\n        ()\n    };\n    \n    // dp[j] = max value achievable with capacity j\n    let dp: i64 = vec_new();\n    for j in 0..(W + 1) {\n        vec_push(dp, 0);\n        ()\n    };\n    \n    // Process each item\n    for i in 0..n {\n        let wi: i64 = vec_get(weights, i);\n        let vi: i64 = vec_get(values, i);\n        \n        // Go backwards to avoid using same item twice\n        let j: i64 = W;\n        while j >= wi {\n            let without: i64 = vec_get(dp, j);\n            let with: i64 = vec_get(dp, j - wi) + vi;\n            vec_set(dp, j, max(without, with));\n            j = j - 1;\n            ()\n        };\n        ()\n    };\n    \n    let result: i64 = vec_get(dp, W);\n    println(result);\n    \n    vec_free(weights);\n    vec_free(values);\n    vec_free(dp);\n    \n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

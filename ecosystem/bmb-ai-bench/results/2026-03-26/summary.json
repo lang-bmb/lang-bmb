@@ -1,0 +1,11 @@
+{
+  "date": "2026-03-26",
+  "model": "claude-text",
+  "api_base": "http://172.30.1.62:6190/v1",
+  "total_problems": 10,
+  "runs": 1,
+  "total_runs": 10,
+  "passed": 6,
+  "success_rate": "60.0%",
+  "median_loops": 2
+}

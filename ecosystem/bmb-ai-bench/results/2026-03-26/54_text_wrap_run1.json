@@ -1,0 +1,96 @@
+{
+  "problem_id": "54_text_wrap",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 10
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let width: i64 = read_int();\n    \n    let words: i64 = vec_new();\n    for i in 0..n {\n        vec_push(words, read_int());\n        ()\n    };\n    \n    let mut i: i64 = 0;\n    while i < n {\n        let mut line_len: i64 = 0;\n        let mut first: i64 = 1;\n        \n        while i < n {\n            let word_len: i64 = vec_get(words, i);\n            let needed: i64 = if first == 1 { word_len } else { 1 + word_len };\n            \n            if line_len + needed <= width {\n                if first == 1 {\n                    line_len = word_len;\n                    first = 0;\n                    ()\n                } else {\n                    line_len = line_len + 1 + word_len;\n                    ()\n                };\n                i = i + 1;\n                ()\n            } else {\n                break;\n                ()\n            };\n            ()\n        };\n        \n        println(line_len);\n        ()\n    };\n    \n    vec_free(words);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: timeout",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let width: i64 = read_int();\n    \n    let words: i64 = vec_new();\n    for i in 0..n {\n        vec_push(words, read_int());\n        ()\n    };\n    \n    let mut i: i64 = 0;\n    while i < n {\n        let mut line_len: i64 = 0;\n        let mut first: i64 = 1;\n        \n        while i < n {\n            let word_len: i64 = vec_get(words, i);\n            \n            if first == 1 {\n                line_len = word_len;\n                first = 0;\n                i = i + 1;\n                ()\n            } else {\n                if line_len + 1 + word_len <= width {\n                    line_len = line_len + 1 + word_len;\n                    i = i + 1;\n                    ()\n                } else {\n                    break;\n                    ()\n                };\n                ()\n            };\n            ()\n        };\n        \n        println(line_len);\n        ()\n    };\n    \n    vec_free(words);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '6\\n15\\n', got '1\\n2\\n3\\n4\\n5\\n6\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let width: i64 = read_int();\n    \n    let words: i64 = vec_new();\n    for i in 0..n {\n        vec_push(words, read_int());\n        ()\n    };\n    \n    let mut i: i64 = 0;\n    while i < n {\n        let mut line_len: i64 = vec_get(words, i);\n        i = i + 1;\n        \n        while i < n {\n            let word_len: i64 = vec_get(words, i);\n            if line_len + 1 + word_len <= width {\n                line_len = line_len + 1 + word_len;\n                i = i + 1;\n                ()\n            } else {\n                break;\n                ()\n            };\n            ()\n        };\n        \n        println(line_len);\n        ()\n    };\n    \n    vec_free(words);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '6\\n15\\n', got '1\\n2\\n3\\n4\\n5\\n6\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let width: i64 = read_int();\n    \n    let words: i64 = vec_new();\n    for i in 0..n {\n        vec_push(words, read_int());\n        ()\n    };\n    \n    let mut i: i64 = 0;\n    while i < n {\n        let first_word: i64 = vec_get(words, i);\n        let mut line_len: i64 = first_word;\n        let mut word_count: i64 = 1;\n        i = i + 1;\n        \n        while i < n {\n            let word_len: i64 = vec_get(words, i);\n            let new_len: i64 = line_len + 1 + word_len;\n            if new_len <= width {\n                line_len = new_len;\n                word_count = word_count + 1;\n                i = i + 1;\n                ()\n            } else {\n                break;\n                ()\n            };\n            ()\n        };\n        \n        let total: i64 = line_len + word_count - 1;\n        println(total);\n        ()\n    };\n    \n    vec_free(words);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '6\\n15\\n', got '1\\n2\\n3\\n4\\n5\\n6\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 5,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let width: i64 = read_int();\n    \n    let words: i64 = vec_new();\n    for i in 0..n {\n        vec_push(words, read_int());\n        ()\n    };\n    \n    let mut i: i64 = 0;\n    while i < n {\n        let first_word: i64 = vec_get(words, i);\n        let mut line_sum: i64 = first_word;\n        let mut word_count: i64 = 1;\n        i = i + 1;\n        \n        let mut done: i64 = 0;\n        while done == 0 {\n            if i < n {\n                let word_len: i64 = vec_get(words, i);\n                let new_total: i64 = line_sum + word_count + word_len;\n                if new_total <= width {\n                    line_sum = line_sum + word_len;\n                    word_count = word_count + 1;\n                    i = i + 1;\n                    ()\n                } else {\n                    done = 1;\n                    ()\n                };\n                ()\n            } else {\n                done = 1;\n                ()\n            };\n            ()\n        };\n        \n        let total: i64 = line_sum + word_count - 1;\n        println(total);\n        ()\n    };\n    \n    vec_free(words);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '6\\n15\\n', got '1\\n2\\n3\\n4\\n5\\n6\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 6,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let width: i64 = read_int();\n    \n    let words: i64 = vec_new();\n    for j in 0..n {\n        let w: i64 = read_int();\n        vec_push(words, w);\n        ()\n    };\n    \n    let mut i: i64 = 0;\n    while i < n {\n        let first_word: i64 = vec_get(words, i);\n        let mut line_sum: i64 = first_word;\n        let mut word_count: i64 = 1;\n        let mut k: i64 = i + 1;\n        \n        let mut cont: i64 = 1;\n        while cont == 1 {\n            if k < n {\n                let word_len: i64 = vec_get(words, k);\n                let new_total: i64 = line_sum + word_count + word_len;\n                if new_total <= width {\n                    line_sum = line_sum + word_len;\n                    word_count = word_count + 1;\n                    k = k + 1;\n                    ()\n                } else {\n                    cont = 0;\n                    ()\n                };\n                ()\n            } else {\n                cont = 0;\n                ()\n            };\n            ()\n        };\n        \n        let total: i64 = line_sum + word_count - 1;\n        println(total);\n        i = k;\n        ()\n    };\n    \n    vec_free(words);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '6\\n15\\n', got '1\\n2\\n3\\n4\\n5\\n6\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 7,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let width: i64 = read_int();\n    \n    let words: i64 = vec_new();\n    let mut j: i64 = 0;\n    while j < n {\n        let w: i64 = read_int();\n        vec_push(words, w);\n        j = j + 1;\n        ()\n    };\n    \n    let mut i: i64 = 0;\n    while i < n {\n        let first_word: i64 = vec_get(words, i);\n        let mut line_sum: i64 = first_word;\n        let mut word_count: i64 = 1;\n        let mut k: i64 = i + 1;\n        \n        let mut cont: i64 = 1;\n        while cont == 1 {\n            if k < n {\n                let word_len: i64 = vec_get(words, k);\n                let new_total: i64 = line_sum + word_count + word_len;\n                if new_total <= width {\n                    line_sum = line_sum + word_len;\n                    word_count = word_count + 1;\n                    k = k + 1;\n                    ()\n                } else {\n                    cont = 0;\n                    ()\n                };\n                ()\n            } else {\n                cont = 0;\n                ()\n            };\n            ()\n        };\n        \n        let total: i64 = line_sum + word_count - 1;\n        println(total);\n        i = k;\n        ()\n    };\n    \n    vec_free(words);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '6\\n15\\n', got '1\\n2\\n3\\n4\\n5\\n6\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 8,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let width: i64 = read_int();\n    \n    let words: i64 = vec_new();\n    let mut j: i64 = 0;\n    while j < n {\n        let w: i64 = read_int();\n        vec_push(words, w);\n        j = j + 1;\n        ()\n    };\n    \n    let mut i: i64 = 0;\n    while i < n {\n        let first_word: i64 = vec_get(words, i);\n        let mut line_len: i64 = first_word;\n        let mut k: i64 = i + 1;\n        \n        let mut cont: i64 = 1;\n        while cont == 1 {\n            if k < n {\n                let word_len: i64 = vec_get(words, k);\n                let new_len: i64 = line_len + 1 + word_len;\n                if new_len <= width {\n                    line_len = new_len;\n                    k = k + 1;\n                    ()\n                } else {\n                    cont = 0;\n                    ()\n                };\n                ()\n            } else {\n                cont = 0;\n                ()\n            };\n            ()\n        };\n        \n        println(line_len);\n        i = k;\n        ()\n    };\n    \n    vec_free(words);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '6\\n15\\n', got '1\\n2\\n3\\n4\\n5\\n6\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 9,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let width: i64 = read_int();\n    \n    let words: i64 = vec_new();\n    let mut j: i64 = 0;\n    while j < n {\n        let w: i64 = read_int();\n        vec_push(words, w);\n        j = j + 1;\n        ()\n    };\n    \n    let mut i: i64 = 0;\n    while i < n {\n        let first_word: i64 = vec_get(words, i);\n        let mut line_len: i64 = first_word;\n        i = i + 1;\n        \n        let mut cont: i64 = 1;\n        while cont == 1 {\n            if i < n {\n                let word_len: i64 = vec_get(words, i);\n                let new_len: i64 = line_len + 1 + word_len;\n                if new_len <= width {\n                    line_len = new_len;\n                    i = i + 1;\n                    ()\n                } else {\n                    cont = 0;\n                    ()\n                };\n                ()\n            } else {\n                cont = 0;\n                ()\n            };\n            ()\n        };\n        \n        println(line_len);\n        ()\n    };\n    \n    vec_free(words);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '6\\n15\\n', got '1\\n2\\n3\\n4\\n5\\n6\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 10,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let width: i64 = read_int();\n    \n    let words: i64 = vec_new();\n    let mut j: i64 = 0;\n    while j < n {\n        let w: i64 = read_int();\n        vec_push(words, w);\n        j = j + 1;\n        ()\n    };\n    \n    let len: i64 = vec_len(words);\n    \n    let mut i: i64 = 0;\n    while i < len {\n        let first_word: i64 = vec_get(words, i);\n        let mut line_len: i64 = first_word;\n        i = i + 1;\n        \n        let mut cont: i64 = 1;\n        while cont == 1 {\n            if i < len {\n                let word_len: i64 = vec_get(words, i);\n                let new_len: i64 = line_len + 1 + word_len;\n                if new_len <= width {\n                    line_len = new_len;\n                    i = i + 1;\n                    ()\n                } else {\n                    cont = 0;\n                    ()\n                };\n                ()\n            } else {\n                cont = 0;\n                ()\n            };\n            ()\n        };\n        \n        println(line_len);\n        ()\n    };\n    \n    vec_free(words);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '6\\n15\\n', got '1\\n2\\n3\\n4\\n5\\n6\\n'",
+      "loop_type": "D"
+    }
+  ],
+  "run_id": 1
+}

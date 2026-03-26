@@ -1,0 +1,24 @@
+{
+  "problem_id": "51_bracket_match",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let t: i64 = read_int();\n    for case in 0..t {\n        let n: i64 = read_int();\n        let arr: i64 = vec_new();\n        for i in 0..n {\n            vec_push(arr, read_int());\n            ()\n        };\n        \n        let stack: i64 = vec_new();\n        let valid: i64 = 1;\n        let mut idx: i64 = 0;\n        \n        while idx < n {\n            if valid == 0 {\n                idx = n;\n                ()\n            } else {\n                let c: i64 = vec_get(arr, idx);\n                if c == 40 {\n                    vec_push(stack, 40);\n                    ()\n                } else {\n                    if c == 91 {\n                        vec_push(stack, 91);\n                        ()\n                    } else {\n                        if c == 41 {\n                            let slen: i64 = vec_len(stack);\n                            if slen == 0 {\n                                set valid = 0;\n                                ()\n                            } else {\n                                let top: i64 = vec_get(stack, slen - 1);\n                                if top == 40 {\n                                    vec_pop(stack);\n                                    ()\n                                } else {\n                                    set valid = 0;\n                                    ()\n                                }\n                            }\n                        } else {\n                            if c == 93 {\n                                let slen: i64 = vec_len(stack);\n                                if slen == 0 {\n                                    set valid = 0;\n                                    ()\n                                } else {\n                                    let top: i64 = vec_get(stack, slen - 1);\n                                    if top == 91 {\n                                        vec_pop(stack);\n                                        ()\n                                    } else {\n                                        set valid = 0;\n                                        ()\n                                    }\n                                }\n                            } else {\n                                ()\n                            }\n                        }\n                    }\n                };\n                set idx = idx + 1;\n                ()\n            }\n        };\n        \n        let final_len: i64 = vec_len(stack);\n        if final_len > 0 {\n            set valid = 0;\n            ()\n        } else {\n            ()\n        };\n        \n        println(valid);\n        vec_free(stack);\n        vec_free(arr);\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

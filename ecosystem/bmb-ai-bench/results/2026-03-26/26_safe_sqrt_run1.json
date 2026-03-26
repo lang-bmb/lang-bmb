@@ -1,0 +1,24 @@
+{
+  "problem_id": "26_safe_sqrt",
+  "category": "contract",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn isqrt(x: i64) -> i64\n    pre x >= 0\n    post ret >= 0\n= {\n    if x == 0 {\n        0\n    } else {\n        let mut lo: i64 = 0;\n        let mut hi: i64 = 3037000500;\n        if x < hi {\n            hi = x;\n            ()\n        } else { () };\n        while lo < hi {\n            let mid: i64 = (lo + hi + 1) / 2;\n            if mid * mid <= x {\n                lo = mid;\n                ()\n            } else {\n                hi = mid - 1;\n                ()\n            };\n            ()\n        };\n        lo\n    }\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    for i in 0..n {\n        let x: i64 = read_int();\n        let r: i64 = isqrt(x);\n        println(r);\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

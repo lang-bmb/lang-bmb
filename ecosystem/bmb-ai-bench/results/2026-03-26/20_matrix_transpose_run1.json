@@ -1,0 +1,32 @@
+{
+  "problem_id": "20_matrix_transpose",
+  "category": "system",
+  "difficulty": "easy",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 1,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let rows: i64 = read_int();\n    let cols: i64 = read_int();\n    let total: i64 = rows * cols;\n    let matrix: i64 = read_array(total);\n    \n    for j in 0..cols {\n        for i in 0..rows {\n            if i > 0 { print_str(\" \"); () } else { () };\n            let idx: i64 = i * cols + j;\n            print(vec_get(matrix, idx));\n            ()\n        };\n        println_str(\"\");\n        ()\n    };\n    \n    vec_free(matrix);\n    0\n}",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpuxc8se_y\\\\solution.bmb\",\"start\":2921,\"end\":2922,\"line\":122,\"col\":2,\"message\":\"Unrecognized EOF found at 2921\\nExpected one of \\\";\\\"\",\"suggestion\":\"BMB top-level definitions (fn, struct) must end with ';'. Block expressions end with '};'.\",\"example_wrong\":\"fn main() -> i64 = { 0 }\",\"example_correct\":\"fn main() -> i64 = { 0 };\",\"pattern\":\"missing_semicolon_eof\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 2,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let rows: i64 = read_int();\n    let cols: i64 = read_int();\n    let total: i64 = rows * cols;\n    let matrix: i64 = read_array(total);\n    \n    for j in 0..cols {\n        for i in 0..rows {\n            if i > 0 { print_str(\" \"); () } else { () };\n            let idx: i64 = i * cols + j;\n            print(vec_get(matrix, idx));\n            ()\n        };\n        println_str(\"\");\n        ()\n    };\n    \n    vec_free(matrix);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

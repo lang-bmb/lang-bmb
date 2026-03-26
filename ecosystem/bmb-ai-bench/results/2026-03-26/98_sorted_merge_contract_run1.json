@@ -1,0 +1,24 @@
+{
+  "problem_id": "98_sorted_merge_contract",
+  "category": "contract",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn merge_sorted(arr1: i64, len1: i64, arr2: i64, len2: i64) -> i64 = {\n    let result: i64 = vec_new();\n    let mut i: i64 = 0;\n    let mut j: i64 = 0;\n    \n    while i < len1 {\n        if j < len2 {\n            let v1: i64 = vec_get(arr1, i);\n            let v2: i64 = vec_get(arr2, j);\n            if v1 <= v2 {\n                vec_push(result, v1);\n                i = i + 1;\n                ()\n            } else {\n                vec_push(result, v2);\n                j = j + 1;\n                ()\n            }\n        } else {\n            vec_push(result, vec_get(arr1, i));\n            i = i + 1;\n            ()\n        };\n        ()\n    };\n    \n    while j < len2 {\n        vec_push(result, vec_get(arr2, j));\n        j = j + 1;\n        ()\n    };\n    \n    result\n};\n\nfn main() -> i64 = {\n    let n1: i64 = read_int();\n    let arr1: i64 = read_array(n1);\n    let n2: i64 = read_int();\n    let arr2: i64 = read_array(n2);\n    \n    let merged: i64 = merge_sorted(arr1, n1, arr2, n2);\n    let total: i64 = n1 + n2;\n    \n    for i in 0..total {\n        if i > 0 { print_str(\" \"); () } else { () };\n        print(vec_get(merged, i));\n        ()\n    };\n    println_str(\"\");\n    \n    vec_free(arr1);\n    vec_free(arr2);\n    vec_free(merged);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

@@ -1,6 +1,6 @@
 # Matrix Trace
 
-Compute trace of n×n matrix.
+Compute trace of nxn matrix.
 
 ## Input
 First line: parameters. Remaining lines: data.

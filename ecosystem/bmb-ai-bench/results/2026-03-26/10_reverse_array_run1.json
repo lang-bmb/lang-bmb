@@ -1,0 +1,24 @@
+{
+  "problem_id": "10_reverse_array",
+  "category": "algorithm",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn reverse_array(arr: i64, n: i64) -> i64 = {\n    let mut left: i64 = 0;\n    let mut right: i64 = n - 1;\n    while left < right {\n        let temp: i64 = vec_get(arr, left);\n        vec_set(arr, left, vec_get(arr, right));\n        vec_set(arr, right, temp);\n        left = left + 1;\n        right = right - 1;\n    };\n    0\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    let _r: i64 = reverse_array(arr, n);\n    for i in 0..n {\n        if i > 0 { print_str(\" \"); () } else { () };\n        print(vec_get(arr, i));\n        ()\n    };\n    println_str(\"\");\n    vec_free(arr);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

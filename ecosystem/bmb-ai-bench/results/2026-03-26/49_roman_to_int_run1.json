@@ -1,0 +1,32 @@
+{
+  "problem_id": "49_roman_to_int",
+  "category": "practical",
+  "difficulty": "medium",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let count: i64 = read_int();\n    let values: i64 = vec_new();\n    \n    for i in 0..count {\n        vec_push(values, read_int());\n        ()\n    };\n    \n    let result: i64 = 0;\n    let mut i: i64 = 0;\n    \n    while i < count {\n        let current: i64 = vec_get(values, i);\n        if i + 1 < count {\n            let next: i64 = vec_get(values, i + 1);\n            if current < next {\n                set result = result + next - current;\n                set i = i + 2;\n                ()\n            } else {\n                set result = result + current;\n                set i = i + 1;\n                ()\n            }\n        } else {\n            set result = result + current;\n            set i = i + 1;\n            ()\n        };\n        ()\n    };\n    \n    println(result);\n    vec_free(values);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 6: expected '1\\n20\\n', got '1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let t: i64 = read_int();\n    \n    for test in 0..t {\n        let count: i64 = read_int();\n        let values: i64 = vec_new();\n        \n        for i in 0..count {\n            vec_push(values, read_int());\n            ()\n        };\n        \n        let mut result: i64 = 0;\n        let mut i: i64 = 0;\n        \n        while i < count {\n            let current: i64 = vec_get(values, i);\n            if i + 1 < count {\n                let next: i64 = vec_get(values, i + 1);\n                if current < next {\n                    set result = result + next - current;\n                    set i = i + 2;\n                    ()\n                } else {\n                    set result = result + current;\n                    set i = i + 1;\n                    ()\n                }\n            } else {\n                set result = result + current;\n                set i = i + 1;\n                ()\n            };\n            ()\n        };\n        \n        println(result);\n        vec_free(values);\n        ()\n    };\n    \n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

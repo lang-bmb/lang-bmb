@@ -1,0 +1,24 @@
+{
+  "problem_id": "05_gcd",
+  "category": "algorithm",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn gcd(a: i64, b: i64) -> i64 =\n    if b == 0 { a } else { gcd(b, a % b) };\n\nfn main() -> i64 = {\n    let a: i64 = read_int();\n    let b: i64 = read_int();\n    println(gcd(a, b));\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

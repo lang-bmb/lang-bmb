@@ -1,0 +1,24 @@
+{
+  "problem_id": "82_producer_consumer",
+  "category": "integration",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let queue: i64 = vec_new();\n    let front: i64 = 0;\n    let mut front_idx: i64 = 0;\n    \n    for i in 0..n {\n        let op: i64 = read_int();\n        if op == 1 {\n            let val: i64 = read_int();\n            vec_push(queue, val);\n            ()\n        } else {\n            if front_idx < vec_len(queue) {\n                println(vec_get(queue, front_idx));\n                front_idx = front_idx + 1;\n                ()\n            } else {\n                ()\n            }\n        };\n        ()\n    };\n    \n    vec_free(queue);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

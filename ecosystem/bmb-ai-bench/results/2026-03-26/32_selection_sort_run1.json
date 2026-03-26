@@ -1,0 +1,24 @@
+{
+  "problem_id": "32_selection_sort",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn selection_sort(arr: i64, n: i64) -> i64 = {\n    for i in 0..n {\n        let mut min_idx: i64 = i;\n        for j in (i + 1)..n {\n            if vec_get(arr, j) < vec_get(arr, min_idx) {\n                min_idx = j;\n                ()\n            } else { () };\n            ()\n        };\n        if min_idx != i {\n            let temp: i64 = vec_get(arr, i);\n            vec_set(arr, i, vec_get(arr, min_idx));\n            vec_set(arr, min_idx, temp);\n            ()\n        } else { () };\n        ()\n    };\n    0\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    let _s: i64 = selection_sort(arr, n);\n    for i in 0..n {\n        if i > 0 { print_str(\" \"); () } else { () };\n        print(vec_get(arr, i));\n        ()\n    };\n    println_str(\"\");\n    vec_free(arr);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

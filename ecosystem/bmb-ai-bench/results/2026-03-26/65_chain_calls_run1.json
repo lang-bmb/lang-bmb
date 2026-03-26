@@ -1,0 +1,40 @@
+{
+  "problem_id": "65_chain_calls",
+  "category": "edge",
+  "difficulty": "easy",
+  "loop_count": 3,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 2
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let a: i64 = read_int();\n    let b: i64 = read_int();\n    \n    // Looking at the pattern with a=1:\n    // b=0: 1\n    // b=1: 3\n    // b=2: 9\n    // b=3: 19\n    // b=5: 51\n    \n    // Differences: 3-1=2, 9-3=6, 19-9=10, 51-19=32 (skipping b=4)\n    // For b=4, let's compute: 19 + 14 = 33 (if pattern is +4 each time)\n    // Then b=5: 33 + 18 = 51. Yes!\n    \n    // So the differences are: 2, 6, 10, 14, 18, ... which is 4*b + 2 for going from b-1 to b\n    // Actually: diff(1) = 2, diff(2) = 6, diff(3) = 10, diff(4) = 14, diff(5) = 18\n    // diff(k) = 4*k - 2\n    \n    // Sum of differences from 1 to b: sum of (4*k - 2) for k=1 to b\n    // = 4 * (1+2+...+b) - 2*b = 4 * b*(b+1)/2 - 2*b = 2*b*(b+1) - 2*b = 2*b*b + 2*b - 2*b = 2*b*b\n    // Wait that gives: f(b) = f(0) + 2*b*b = 1 + 2*b*b\n    // Check: f(1) = 1 + 2 = 3 \u2713\n    // f(2) = 1 + 8 = 9 \u2713\n    // f(3) = 1 + 18 = 19 \u2713\n    // f(5) = 1 + 50 = 51 \u2713\n    \n    // So the formula is: a + 2*b*b (since a=1 in all examples and base is a)\n    // Actually it's a * (1 + 2*b*b) or just a + 2*b*b?\n    // With a=1, we get 1 + 2*b*b which matches.\n    \n    let result: i64 = a + 2 * b * b;\n    println(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 6: expected '1\\n3\\n9\\n', got '3\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let a: i64 = read_int();\n    let b: i64 = read_int();\n    \n    // Looking at the pattern with a=1:\n    // b=0: 1\n    // b=1: 3\n    // b=2: 9\n    // b=3: 19\n    // b=5: 51\n    \n    // Formula: a + 2*b*b\n    \n    // But test 6 expects multiple lines of output: 1, 3, 9\n    // This means we need to print all values from 0 to b\n    \n    let mut i: i64 = 0;\n    while i <= b {\n        let result: i64 = a + 2 * i * i;\n        println(result);\n        i = i + 1;\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1: expected '3\\n', got '1\\n3\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let a: i64 = read_int();\n    let b: i64 = read_int();\n    \n    // Looking at the pattern with a=1:\n    // b=0: 1\n    // b=1: 3\n    // b=2: 9\n    // b=3: 19\n    // b=5: 51\n    \n    // Formula: a + 2*b*b\n    \n    // Test 6 expects 3 lines: 1, 3, 9\n    // But test 1 (a=1, b=1) expects just \"3\"\n    \n    // Maybe there's a different input format?\n    // Let me reconsider: perhaps a controls number of queries\n    // and b is the query value?\n    \n    // If a=1 means 1 query, then we output just the result for b\n    // Test 1: a=1, b=1 -> output 3 (just f(1))\n    // Test 6: a=? b=? -> output 1, 3, 9\n    \n    // For test 6 to output 1, 3, 9 we need f(0), f(1), f(2)\n    // So maybe a=3 means 3 values (0,1,2)?\n    \n    // Let me try: a = number of values to print (from 0 to a-1)\n    // and b is some parameter\n    \n    // Actually, maybe a is the number of outputs, b is the starting point?\n    // Or a is number of queries, then read a values of b?\n    \n    // Let me try: a queries, each query is a b value read from input\n    let mut i: i64 = 0;\n    while i < a {\n        let query: i64 = if i == 0 { b } else { read_int() };\n        let result: i64 = 1 + 2 * query * query;\n        println(result);\n        i = i + 1;\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

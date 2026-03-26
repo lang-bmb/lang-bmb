@@ -1,0 +1,32 @@
+{
+  "problem_id": "90_nth_prime",
+  "category": "algorithm",
+  "difficulty": "medium",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn is_prime(n: i64) -> bool = {\n    if n < 2 {\n        false\n    } else {\n        if n == 2 {\n            true\n        } else {\n            if n % 2 == 0 {\n                false\n            } else {\n                let mut i: i64 = 3;\n                let mut result: bool = true;\n                while i * i <= n {\n                    if n % i == 0 {\n                        result = false;\n                        i = n;\n                        ()\n                    } else {\n                        i = i + 2;\n                        ()\n                    }\n                };\n                result\n            }\n        }\n    }\n};\n\nfn nth_prime(n: i64) -> i64 = {\n    let mut count: i64 = 0;\n    let mut candidate: i64 = 2;\n    let mut result: i64 = 0;\n    while count < n {\n        if is_prime(candidate) {\n            count = count + 1;\n            result = candidate;\n            ()\n        } else {\n            ()\n        };\n        candidate = candidate + 1;\n        ()\n    };\n    result\n};\n\nfn main() -> i64 = {\n    let _dummy: i64 = read_int();\n    let n: i64 = read_int();\n    let result: i64 = nth_prime(n);\n    println(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 5: expected '2\\n3\\n5\\n', got '2\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn is_prime(n: i64) -> bool = {\n    if n < 2 {\n        false\n    } else {\n        if n == 2 {\n            true\n        } else {\n            if n % 2 == 0 {\n                false\n            } else {\n                let mut i: i64 = 3;\n                let mut result: bool = true;\n                while i * i <= n {\n                    if n % i == 0 {\n                        result = false;\n                        i = n;\n                        ()\n                    } else {\n                        i = i + 2;\n                        ()\n                    }\n                };\n                result\n            }\n        }\n    }\n};\n\nfn nth_prime(n: i64) -> i64 = {\n    let mut count: i64 = 0;\n    let mut candidate: i64 = 2;\n    let mut result: i64 = 0;\n    while count < n {\n        if is_prime(candidate) {\n            count = count + 1;\n            result = candidate;\n            ()\n        } else {\n            ()\n        };\n        candidate = candidate + 1;\n        ()\n    };\n    result\n};\n\nfn main() -> i64 = {\n    let t: i64 = read_int();\n    for _case in 0..t {\n        let n: i64 = read_int();\n        let result: i64 = nth_prime(n);\n        println(result);\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

@@ -1,0 +1,24 @@
+{
+  "problem_id": "64_many_params",
+  "category": "edge",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    \n    for i in 0..n {\n        let a1: i64 = read_int();\n        let a2: i64 = read_int();\n        let a3: i64 = read_int();\n        let a4: i64 = read_int();\n        let a5: i64 = read_int();\n        let a6: i64 = read_int();\n        \n        let b1: i64 = read_int();\n        let b2: i64 = read_int();\n        let b3: i64 = read_int();\n        let b4: i64 = read_int();\n        let b5: i64 = read_int();\n        let b6: i64 = read_int();\n        \n        let sum: i64 = a1*b1 + a2*b2 + a3*b3 + a4*b4 + a5*b5 + a6*b6;\n        println(sum);\n        ()\n    };\n    \n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

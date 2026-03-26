@@ -1,0 +1,32 @@
+{
+  "problem_id": "27_matrix_safe_access",
+  "category": "contract",
+  "difficulty": "medium",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 1,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn safe_get(matrix: i64, r: i64, c: i64, rows: i64, cols: i64) -> i64\n    pre r >= 0 and r < rows and c >= 0 and c < cols\n= {\n    let idx: i64 = r * cols + c;\n    vec_get(matrix, idx)\n};\n\nfn main() -> i64 = {\n    let rows: i64 = read_int();\n    let cols: i64 = read_int();\n    let n: i64 = rows * cols;\n    let matrix: i64 = read_array(n);\n    let q: i64 = read_int();\n    for i in 0..q {\n        let r: i64 = read_int();\n        let c: i64 = read_int();\n        let val: i64 = safe_get(matrix, r, c, rows, cols);\n        println(val);\n        ()\n    };\n    vec_free(matrix);\n    0\n}",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpbtep4jp1\\\\solution.bmb\",\"start\":3047,\"end\":3048,\"line\":125,\"col\":2,\"message\":\"Unrecognized EOF found at 3047\\nExpected one of \\\";\\\"\",\"suggestion\":\"BMB top-level definitions (fn, struct) must end with ';'. Block expressions end with '};'.\",\"example_wrong\":\"fn main() -> i64 = { 0 }\",\"example_correct\":\"fn main() -> i64 = { 0 };\",\"pattern\":\"missing_semicolon_eof\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 2,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn safe_get(matrix: i64, r: i64, c: i64, rows: i64, cols: i64) -> i64\n    pre r >= 0 and r < rows and c >= 0 and c < cols\n= {\n    let idx: i64 = r * cols + c;\n    vec_get(matrix, idx)\n};\n\nfn main() -> i64 = {\n    let rows: i64 = read_int();\n    let cols: i64 = read_int();\n    let n: i64 = rows * cols;\n    let matrix: i64 = read_array(n);\n    let q: i64 = read_int();\n    for i in 0..q {\n        let r: i64 = read_int();\n        let c: i64 = read_int();\n        let val: i64 = safe_get(matrix, r, c, rows, cols);\n        println(val);\n        ()\n    };\n    vec_free(matrix);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

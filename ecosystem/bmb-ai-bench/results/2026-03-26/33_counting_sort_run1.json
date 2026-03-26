@@ -1,0 +1,24 @@
+{
+  "problem_id": "33_counting_sort",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let max_val: i64 = read_int();\n    \n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    \n    let count: i64 = vec_new();\n    for i in 0..(max_val + 1) {\n        vec_push(count, 0);\n        ()\n    };\n    \n    for i in 0..n {\n        let val: i64 = vec_get(arr, i);\n        let cur: i64 = vec_get(count, val);\n        vec_set(count, val, cur + 1);\n        ()\n    };\n    \n    let result: i64 = vec_new();\n    for i in 0..(max_val + 1) {\n        let c: i64 = vec_get(count, i);\n        for j in 0..c {\n            vec_push(result, i);\n            ()\n        };\n        ()\n    };\n    \n    let len: i64 = vec_len(result);\n    for i in 0..len {\n        if i > 0 { print_str(\" \"); () } else { () };\n        print(vec_get(result, i));\n        ()\n    };\n    println_str(\"\");\n    \n    vec_free(arr);\n    vec_free(count);\n    vec_free(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

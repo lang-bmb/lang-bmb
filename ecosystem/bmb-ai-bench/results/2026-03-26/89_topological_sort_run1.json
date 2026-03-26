@@ -1,0 +1,24 @@
+{
+  "problem_id": "89_topological_sort",
+  "category": "algorithm",
+  "difficulty": "hard",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let m: i64 = read_int();\n    \n    // Create adjacency list (vector of vectors)\n    let adj: i64 = vec_new();\n    for i in 0..n {\n        vec_push(adj, vec_new());\n        ()\n    };\n    \n    // In-degree array\n    let indegree: i64 = vec_new();\n    for i in 0..n {\n        vec_push(indegree, 0);\n        ()\n    };\n    \n    // Read edges\n    for i in 0..m {\n        let u: i64 = read_int();\n        let v: i64 = read_int();\n        let adj_u: i64 = vec_get(adj, u);\n        vec_push(adj_u, v);\n        let old_deg: i64 = vec_get(indegree, v);\n        vec_set(indegree, v, old_deg + 1);\n        ()\n    };\n    \n    // Queue for BFS (Kahn's algorithm)\n    let queue: i64 = vec_new();\n    \n    // Add all nodes with indegree 0\n    for i in 0..n {\n        if vec_get(indegree, i) == 0 {\n            vec_push(queue, i);\n            ()\n        } else { () };\n        ()\n    };\n    \n    // Result array\n    let result: i64 = vec_new();\n    \n    // Process queue\n    let mut front: i64 = 0;\n    while front < vec_len(queue) {\n        let u: i64 = vec_get(queue, front);\n        front = front + 1;\n        vec_push(result, u);\n        \n        let adj_u: i64 = vec_get(adj, u);\n        let num_neighbors: i64 = vec_len(adj_u);\n        for j in 0..num_neighbors {\n            let v: i64 = vec_get(adj_u, j);\n            let new_deg: i64 = vec_get(indegree, v) - 1;\n            vec_set(indegree, v, new_deg);\n            if new_deg == 0 {\n                vec_push(queue, v);\n                ()\n            } else { () };\n            ()\n        };\n        ()\n    };\n    \n    // Print result\n    let result_len: i64 = vec_len(result);\n    for i in 0..result_len {\n        if i > 0 {\n            print_str(\" \");\n            ()\n        } else { () };\n        print(vec_get(result, i));\n        ()\n    };\n    println_str(\"\");\n    \n    // Free memory\n    for i in 0..n {\n        vec_free(vec_get(adj, i));\n        ()\n    };\n    vec_free(adj);\n    vec_free(indegree);\n    vec_free(queue);\n    vec_free(result);\n    \n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

@@ -1,0 +1,32 @@
+{
+  "problem_id": "86_heap_sort",
+  "category": "algorithm",
+  "difficulty": "medium",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 1,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn swap(arr: i64, i: i64, j: i64) -> i64 = {\n    let tmp: i64 = vec_get(arr, i);\n    vec_set(arr, i, vec_get(arr, j));\n    vec_set(arr, j, tmp);\n    0\n};\n\nfn heapify(arr: i64, n: i64, i: i64) -> i64 = {\n    let mut largest: i64 = i;\n    let left: i64 = 2 * i + 1;\n    let right: i64 = 2 * i + 2;\n    \n    if left < n {\n        if vec_get(arr, left) > vec_get(arr, largest) {\n            largest = left;\n            ()\n        } else { () };\n        ()\n    } else { () };\n    \n    if right < n {\n        if vec_get(arr, right) > vec_get(arr, largest) {\n            largest = right;\n            ()\n        } else { () };\n        ()\n    } else { () };\n    \n    if largest != i {\n        let _s: i64 = swap(arr, i, largest);\n        let _h: i64 = heapify(arr, n, largest);\n        ()\n    } else { () };\n    \n    0\n};\n\nfn build_heap(arr: i64, n: i64) -> i64 = {\n    let mut i: i64 = n / 2 - 1;\n    while i >= 0 {\n        let _h: i64 = heapify(arr, n, i);\n        i = i - 1;\n    };\n    0\n};\n\nfn heap_sort(arr: i64, n: i64) -> i64 = {\n    let _b: i64 = build_heap(arr, n);\n    let mut i: i64 = n - 1;\n    while i > 0 {\n        let _s: i64 = swap(arr, 0, i);\n        let _h: i64 = heapify(arr, i, 0);\n        i = i - 1;\n    };\n    0\n};\n\nfn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    let _hs: i64 = heap_sort(arr, n);\n    \n    for i in 0..n {\n        if i > 0 { print_str(\" \"); () } else { () };\n        print(vec_get(arr, i));\n        ()\n    };\n    println_str(\"\");\n    \n    vec_free(arr);\n    0\n}",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpcgziqe1n\\\\solution.bmb\",\"start\":4000,\"end\":4001,\"line\":175,\"col\":2,\"message\":\"Unrecognized EOF found at 4000\\nExpected one of \\\";\\\"\",\"suggestion\":\"BMB top-level definitions (fn, struct) must end with ';'. Block expressions end with '};'.\",\"example_wrong\":\"fn main() -> i64 = { 0 }\",\"example_correct\":\"fn main() -> i64 = { 0 };\",\"pattern\":\"missing_semicolon_eof\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 2,
+      "code": "fn swap(arr: i64, i: i64, j: i64) -> i64 = {\n    let tmp: i64 = vec_get(arr, i);\n    vec_set(arr, i, vec_get(arr, j));\n    vec_set(arr, j, tmp);\n    0\n};\n\nfn heapify(arr: i64, n: i64, i: i64) -> i64 = {\n    let mut largest: i64 = i;\n    let left: i64 = 2 * i + 1;\n    let right: i64 = 2 * i + 2;\n    \n    if left < n {\n        if vec_get(arr, left) > vec_get(arr, largest) {\n            largest = left;\n            ()\n        } else { () };\n        ()\n    } else { () };\n    \n    if right < n {\n        if vec_get(arr, right) > vec_get(arr, largest) {\n            largest = right;\n            ()\n        } else { () };\n        ()\n    } else { () };\n    \n    if largest != i {\n        let _s: i64 = swap(arr, i, largest);\n        let _h: i64 = heapify(arr, n, largest);\n        ()\n    } else { () };\n    \n    0\n};\n\nfn build_heap(arr: i64, n: i64) -> i64 = {\n    let mut i: i64 = n / 2 - 1;\n    while i >= 0 {\n        let _h: i64 = heapify(arr, n, i);\n        i = i - 1;\n    };\n    0\n};\n\nfn heap_sort(arr: i64, n: i64) -> i64 = {\n    let _b: i64 = build_heap(arr, n);\n    let mut i: i64 = n - 1;\n    while i > 0 {\n        let _s: i64 = swap(arr, 0, i);\n        let _h: i64 = heapify(arr, i, 0);\n        i = i - 1;\n    };\n    0\n};\n\nfn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    let _hs: i64 = heap_sort(arr, n);\n    \n    for i in 0..n {\n        if i > 0 { print_str(\" \"); () } else { () };\n        print(vec_get(arr, i));\n        ()\n    };\n    println_str(\"\");\n    \n    vec_free(arr);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

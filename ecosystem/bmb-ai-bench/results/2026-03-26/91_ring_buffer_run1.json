@@ -1,0 +1,32 @@
+{
+  "problem_id": "91_ring_buffer",
+  "category": "system",
+  "difficulty": "medium",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let capacity: i64 = read_int();\n    let num_ops: i64 = read_int();\n    \n    let buffer: i64 = vec_new();\n    for i in 0..capacity {\n        vec_push(buffer, 0);\n        ()\n    };\n    \n    let mut head: i64 = 0;\n    let mut tail: i64 = 0;\n    let mut size: i64 = 0;\n    \n    for op_idx in 0..num_ops {\n        let op: i64 = read_int();\n        \n        if op == 1 {\n            let val: i64 = read_int();\n            if size < capacity {\n                vec_set(buffer, tail, val);\n                tail = (tail + 1) % capacity;\n                size = size + 1;\n                ()\n            } else {\n                ()\n            };\n            ()\n        } else {\n            if op == 2 {\n                if size > 0 {\n                    let val: i64 = vec_get(buffer, head);\n                    println(val);\n                    head = (head + 1) % capacity;\n                    size = size - 1;\n                    ()\n                } else {\n                    println(0 - 1);\n                    ()\n                };\n                ()\n            } else {\n                if op == 3 {\n                    println(size);\n                    ()\n                } else {\n                    ()\n                };\n                ()\n            };\n            ()\n        };\n        ()\n    };\n    \n    vec_free(buffer);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 3: expected '20\\n', got '10\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let capacity: i64 = read_int();\n    let num_ops: i64 = read_int();\n    \n    let buffer: i64 = vec_new();\n    for i in 0..capacity {\n        vec_push(buffer, 0);\n        ()\n    };\n    \n    let mut head: i64 = 0;\n    let mut tail: i64 = 0;\n    let mut size: i64 = 0;\n    \n    for op_idx in 0..num_ops {\n        let op: i64 = read_int();\n        \n        if op == 1 {\n            let val: i64 = read_int();\n            if size < capacity {\n                vec_set(buffer, tail, val);\n                tail = (tail + 1) % capacity;\n                size = size + 1;\n                ()\n            } else {\n                vec_set(buffer, tail, val);\n                tail = (tail + 1) % capacity;\n                head = (head + 1) % capacity;\n                ()\n            };\n            ()\n        } else {\n            if op == 2 {\n                if size > 0 {\n                    let val: i64 = vec_get(buffer, head);\n                    println(val);\n                    head = (head + 1) % capacity;\n                    size = size - 1;\n                    ()\n                } else {\n                    println(0 - 1);\n                    ()\n                };\n                ()\n            } else {\n                if op == 3 {\n                    println(size);\n                    ()\n                } else {\n                    ()\n                };\n                ()\n            };\n            ()\n        };\n        ()\n    };\n    \n    vec_free(buffer);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

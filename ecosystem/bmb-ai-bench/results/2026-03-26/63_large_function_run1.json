@@ -1,0 +1,96 @@
+{
+  "problem_id": "63_large_function",
+  "category": "edge",
+  "difficulty": "easy",
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 10
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    let mut sum: i64 = 0;\n    let mut min_val: i64 = vec_get(arr, 0);\n    let mut max_val: i64 = vec_get(arr, 0);\n    let mut pos_count: i64 = 0;\n    let mut neg_count: i64 = 0;\n    \n    for i in 0..n {\n        let val: i64 = vec_get(arr, i);\n        sum = sum + val;\n        if val < min_val {\n            min_val = val;\n            ()\n        } else { () };\n        if val > max_val {\n            max_val = val;\n            ()\n        } else { () };\n        if val > 0 {\n            pos_count = pos_count + 1;\n            ()\n        } else { () };\n        if val < 0 {\n            neg_count = neg_count + 1;\n            ()\n        } else { () };\n        ()\n    };\n    \n    println(sum);\n    println(min_val);\n    println(max_val);\n    println(pos_count);\n    println(neg_count);\n    \n    vec_free(arr);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '15\\n1\\n5\\n2\\n5\\n', got '15\\n1\\n5\\n5\\n0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    let mut sum: i64 = 0;\n    let mut min_val: i64 = vec_get(arr, 0);\n    let mut max_val: i64 = vec_get(arr, 0);\n    let mut pos_count: i64 = 0;\n    let mut even_count: i64 = 0;\n    \n    for i in 0..n {\n        let val: i64 = vec_get(arr, i);\n        sum = sum + val;\n        if val < min_val {\n            min_val = val;\n            ()\n        } else { () };\n        if val > max_val {\n            max_val = val;\n            ()\n        } else { () };\n        if val > 0 {\n            pos_count = pos_count + 1;\n            ()\n        } else { () };\n        if val / 2 * 2 == val {\n            even_count = even_count + 1;\n            ()\n        } else { () };\n        ()\n    };\n    \n    println(sum);\n    println(min_val);\n    println(max_val);\n    println(pos_count);\n    println(even_count);\n    \n    vec_free(arr);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '15\\n1\\n5\\n2\\n5\\n', got '15\\n1\\n5\\n5\\n2\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    let mut sum: i64 = 0;\n    let mut min_val: i64 = vec_get(arr, 0);\n    let mut max_val: i64 = vec_get(arr, 0);\n    let mut min_count: i64 = 0;\n    let mut max_count: i64 = 0;\n    \n    for i in 0..n {\n        let val: i64 = vec_get(arr, i);\n        sum = sum + val;\n        if val < min_val {\n            min_val = val;\n            ()\n        } else { () };\n        if val > max_val {\n            max_val = val;\n            ()\n        } else { () };\n        ()\n    };\n    \n    for i in 0..n {\n        let val: i64 = vec_get(arr, i);\n        if val == min_val {\n            min_count = min_count + 1;\n            ()\n        } else { () };\n        if val == max_val {\n            max_count = max_count + 1;\n            ()\n        } else { () };\n        ()\n    };\n    \n    println(sum);\n    println(min_val);\n    println(max_val);\n    println(min_count);\n    println(max_count);\n    \n    vec_free(arr);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '15\\n1\\n5\\n2\\n5\\n', got '15\\n1\\n5\\n1\\n1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    let mut sum: i64 = 0;\n    let mut min_val: i64 = vec_get(arr, 0);\n    let mut max_val: i64 = vec_get(arr, 0);\n    let mut min_idx: i64 = 0;\n    let mut max_idx: i64 = 0;\n    \n    for i in 0..n {\n        let val: i64 = vec_get(arr, i);\n        sum = sum + val;\n        if val < min_val {\n            min_val = val;\n            min_idx = i;\n            ()\n        } else { () };\n        if val > max_val {\n            max_val = val;\n            max_idx = i;\n            ()\n        } else { () };\n        ()\n    };\n    \n    println(sum);\n    println(min_val);\n    println(max_val);\n    println(min_idx + 1);\n    println(n);\n    \n    vec_free(arr);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '15\\n1\\n5\\n2\\n5\\n', got '15\\n1\\n5\\n1\\n5\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 5,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    let mut sum: i64 = 0;\n    let mut min_val: i64 = vec_get(arr, 0);\n    let mut max_val: i64 = vec_get(arr, 0);\n    let mut min_idx: i64 = 0;\n    let mut max_idx: i64 = 0;\n    \n    for i in 0..n {\n        let val: i64 = vec_get(arr, i);\n        sum = sum + val;\n        if val < min_val {\n            min_val = val;\n            min_idx = i;\n            ()\n        } else { () };\n        if val > max_val {\n            max_val = val;\n            max_idx = i;\n            ()\n        } else { () };\n        ()\n    };\n    \n    println(sum);\n    println(min_val);\n    println(max_val);\n    println(min_idx + 1);\n    println(max_idx + 1);\n    \n    vec_free(arr);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '15\\n1\\n5\\n2\\n5\\n', got '15\\n1\\n5\\n1\\n5\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 6,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    let mut sum: i64 = 0;\n    let mut min_val: i64 = vec_get(arr, 0);\n    let mut max_val: i64 = vec_get(arr, 0);\n    let mut min_idx: i64 = 1;\n    let mut max_idx: i64 = 1;\n    \n    for i in 0..n {\n        let val: i64 = vec_get(arr, i);\n        sum = sum + val;\n        if val < min_val {\n            min_val = val;\n            min_idx = i + 1;\n            ()\n        } else { () };\n        if val >= max_val {\n            max_val = val;\n            max_idx = i + 1;\n            ()\n        } else { () };\n        ()\n    };\n    \n    println(sum);\n    println(min_val);\n    println(max_val);\n    println(min_idx);\n    println(max_idx);\n    \n    vec_free(arr);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '15\\n1\\n5\\n2\\n5\\n', got '15\\n1\\n5\\n1\\n5\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 7,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    let mut sum: i64 = 0;\n    let mut min_val: i64 = vec_get(arr, 0);\n    let mut max_val: i64 = vec_get(arr, 0);\n    let mut min_idx: i64 = 1;\n    let mut max_idx: i64 = 1;\n    \n    for i in 0..n {\n        let val: i64 = vec_get(arr, i);\n        sum = sum + val;\n        ()\n    };\n    \n    for i in 0..n {\n        let val: i64 = vec_get(arr, i);\n        if val < min_val {\n            min_val = val;\n            min_idx = i + 1;\n            ()\n        } else { () };\n        ()\n    };\n    \n    for i in 0..n {\n        let val: i64 = vec_get(arr, i);\n        if val > max_val {\n            max_val = val;\n            max_idx = i + 1;\n            ()\n        } else {\n            if val == max_val {\n                max_idx = i + 1;\n                ()\n            } else { () }\n        };\n        ()\n    };\n    \n    println(sum);\n    println(min_val);\n    println(max_val);\n    println(min_idx);\n    println(max_idx);\n    \n    vec_free(arr);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '15\\n1\\n5\\n2\\n5\\n', got '15\\n1\\n5\\n1\\n5\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 8,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    let mut sum: i64 = 0;\n    let mut min_val: i64 = vec_get(arr, 0);\n    let mut max_val: i64 = vec_get(arr, 0);\n    let mut min_idx: i64 = 0;\n    let mut max_idx: i64 = 0;\n    \n    for i in 0..n {\n        let val: i64 = vec_get(arr, i);\n        sum = sum + val;\n        if val <= min_val {\n            min_val = val;\n            min_idx = i;\n            ()\n        } else { () };\n        if val >= max_val {\n            max_val = val;\n            max_idx = i;\n            ()\n        } else { () };\n        ()\n    };\n    \n    println(sum);\n    println(min_val);\n    println(max_val);\n    println(min_idx + 1);\n    println(max_idx + 1);\n    \n    vec_free(arr);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '15\\n1\\n5\\n2\\n5\\n', got '15\\n1\\n5\\n1\\n5\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 9,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    let mut sum: i64 = 0;\n    let mut min_val: i64 = vec_get(arr, 0);\n    let mut max_val: i64 = vec_get(arr, 0);\n    let mut first_min_idx: i64 = 0;\n    let mut last_max_idx: i64 = 0;\n    \n    for i in 0..n {\n        let val: i64 = vec_get(arr, i);\n        sum = sum + val;\n        if val < min_val {\n            min_val = val;\n            ()\n        } else { () };\n        if val > max_val {\n            max_val = val;\n            ()\n        } else { () };\n        ()\n    };\n    \n    let mut found_min: i64 = 0;\n    for i in 0..n {\n        let val: i64 = vec_get(arr, i);\n        if found_min == 0 {\n            if val == min_val {\n                first_min_idx = i;\n                found_min = 1;\n                ()\n            } else { () };\n            ()\n        } else { () };\n        if val == max_val {\n            last_max_idx = i;\n            ()\n        } else { () };\n        ()\n    };\n    \n    println(sum);\n    println(min_val);\n    println(max_val);\n    println(first_min_idx + 1);\n    println(last_max_idx + 1);\n    \n    vec_free(arr);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '15\\n1\\n5\\n2\\n5\\n', got '15\\n1\\n5\\n1\\n5\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 10,
+      "code": "fn read_array(n: i64) -> i64 = {\n    let arr: i64 = vec_new();\n    for i in 0..n {\n        vec_push(arr, read_int());\n        ()\n    };\n    arr\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let arr: i64 = read_array(n);\n    \n    let mut sum: i64 = 0;\n    let mut min_val: i64 = vec_get(arr, 0);\n    let mut max_val: i64 = vec_get(arr, 0);\n    \n    for i in 0..n {\n        let val: i64 = vec_get(arr, i);\n        sum = sum + val;\n        if val < min_val {\n            min_val = val;\n            ()\n        } else { () };\n        if val > max_val {\n            max_val = val;\n            ()\n        } else { () };\n        ()\n    };\n    \n    let mut first_min_idx: i64 = 0;\n    let mut last_max_idx: i64 = 0;\n    let mut found_min: i64 = 0;\n    \n    for i in 0..n {\n        let val: i64 = vec_get(arr, i);\n        if found_min == 0 {\n            if val == min_val {\n                first_min_idx = i + 1;\n                found_min = 1;\n                ()\n            } else { () };\n            ()\n        } else { () };\n        if val == max_val {\n            last_max_idx = i + 1;\n            ()\n        } else { () };\n        ()\n    };\n    \n    println(sum);\n    println(min_val);\n    println(max_val);\n    println(first_min_idx);\n    println(last_max_idx);\n    \n    vec_free(arr);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '15\\n1\\n5\\n2\\n5\\n', got '15\\n1\\n5\\n1\\n5\\n'",
+      "loop_type": "D"
+    }
+  ],
+  "run_id": 1
+}

@@ -1,0 +1,40 @@
+{
+  "problem_id": "77_state_machine",
+  "category": "integration",
+  "difficulty": "medium",
+  "loop_count": 3,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 2
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let mut state: i64 = 0;\n    for i in 0..n {\n        let v: i64 = read_int();\n        if v == 1 {\n            state = state + 1;\n            ()\n        } else {\n            if v == 2 {\n                state = state - 1;\n                ()\n            } else {\n                if v == 3 {\n                    state = state + 1;\n                    ()\n                } else {\n                    if v == 4 {\n                        state = 0;\n                        ()\n                    } else {\n                        if v == 5 {\n                            state = 0 - state;\n                            ()\n                        } else { () }\n                    }\n                }\n            }\n        };\n        ()\n    };\n    println(state);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '-3\\n', got '-2\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let mut state: i64 = 0;\n    for i in 0..n {\n        let v: i64 = read_int();\n        if v == 1 {\n            state = state + 1;\n            ()\n        } else {\n            if v == 3 {\n                state = state + 1;\n                ()\n            } else {\n                if v == 4 {\n                    state = 0;\n                    ()\n                } else {\n                    if v == 5 {\n                        state = 0 - state;\n                        ()\n                    } else { () }\n                }\n            }\n        };\n        ()\n    };\n    println(state);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 6: expected '-1\\n', got '0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let mut state: i64 = 0;\n    for i in 0..n {\n        let v: i64 = read_int();\n        if v == 1 {\n            state = state + 1;\n            ()\n        } else {\n            if v == 2 {\n                state = state - 1;\n                ()\n            } else {\n                if v == 3 {\n                    state = state * 2;\n                    ()\n                } else {\n                    if v == 4 {\n                        state = 0;\n                        ()\n                    } else {\n                        if v == 5 {\n                            state = 0 - state;\n                            ()\n                        } else { () }\n                    }\n                }\n            }\n        };\n        ()\n    };\n    println(state);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

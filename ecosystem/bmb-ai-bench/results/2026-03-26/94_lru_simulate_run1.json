@@ -1,0 +1,32 @@
+{
+  "problem_id": "94_lru_simulate",
+  "category": "system",
+  "difficulty": "medium",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn find_in_cache(cache: i64, size: i64, val: i64) -> i64 = {\n    let found: i64 = 0 - 1;\n    for i in 0..size {\n        if vec_get(cache, i) == val {\n            found = i;\n            ()\n        } else { () };\n        ()\n    };\n    found\n};\n\nfn remove_at(cache: i64, idx: i64, size: i64) -> i64 = {\n    for i in idx..(size - 1) {\n        vec_set(cache, i, vec_get(cache, i + 1));\n        ()\n    };\n    size - 1\n};\n\nfn main() -> i64 = {\n    let capacity: i64 = read_int();\n    let n: i64 = read_int();\n    \n    let cache: i64 = vec_new();\n    let mut cache_size: i64 = 0;\n    let mut misses: i64 = 0;\n    \n    for i in 0..n {\n        let page: i64 = read_int();\n        let idx: i64 = find_in_cache(cache, cache_size, page);\n        \n        if idx >= 0 {\n            cache_size = remove_at(cache, idx, cache_size);\n            vec_pop(cache);\n            vec_push(cache, page);\n            cache_size = cache_size + 1;\n            ()\n        } else {\n            misses = misses + 1;\n            if cache_size == capacity {\n                cache_size = remove_at(cache, 0, cache_size);\n                vec_pop(cache);\n                vec_push(cache, page);\n                ()\n            } else {\n                vec_push(cache, page);\n                cache_size = cache_size + 1;\n                ()\n            };\n            ()\n        };\n        ()\n    };\n    \n    println(misses);\n    vec_free(cache);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '7\\n', got '6\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn find_in_cache(cache: i64, size: i64, val: i64) -> i64 = {\n    let found: i64 = 0 - 1;\n    for i in 0..size {\n        if vec_get(cache, i) == val {\n            found = i;\n            ()\n        } else { () };\n        ()\n    };\n    found\n};\n\nfn main() -> i64 = {\n    let capacity: i64 = read_int();\n    let n: i64 = read_int();\n    \n    let cache: i64 = vec_new();\n    let mut cache_size: i64 = 0;\n    let mut misses: i64 = 0;\n    \n    for i in 0..n {\n        let page: i64 = read_int();\n        let idx: i64 = find_in_cache(cache, cache_size, page);\n        \n        if idx >= 0 {\n            let val: i64 = vec_get(cache, idx);\n            let mut j: i64 = idx;\n            while j < cache_size - 1 {\n                vec_set(cache, j, vec_get(cache, j + 1));\n                j = j + 1;\n                ()\n            };\n            vec_set(cache, cache_size - 1, val);\n            ()\n        } else {\n            misses = misses + 1;\n            if cache_size < capacity {\n                vec_push(cache, page);\n                cache_size = cache_size + 1;\n                ()\n            } else {\n                let mut j: i64 = 0;\n                while j < cache_size - 1 {\n                    vec_set(cache, j, vec_get(cache, j + 1));\n                    j = j + 1;\n                    ()\n                };\n                vec_set(cache, cache_size - 1, page);\n                ()\n            };\n            ()\n        };\n        ()\n    };\n    \n    println(misses);\n    vec_free(cache);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

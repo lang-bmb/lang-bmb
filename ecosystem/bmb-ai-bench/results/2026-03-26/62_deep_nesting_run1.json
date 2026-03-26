@@ -1,0 +1,32 @@
+{
+  "problem_id": "62_deep_nesting",
+  "category": "edge",
+  "difficulty": "easy",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    for i in 0..n {\n        let x: i64 = read_int();\n        if x < 0 {\n            println(x);\n            ()\n        } else {\n            let count: i64 = 0;\n            let mut val: i64 = x;\n            while val >= 10 {\n                val = val / 10;\n                count = count + 1;\n                ()\n            };\n            println(count);\n            ()\n        };\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 9: expected '-1\\n0\\n3\\n', got '-100\\n0\\n3\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    for i in 0..n {\n        let x: i64 = read_int();\n        if x < 0 {\n            println(0 - 1);\n            ()\n        } else {\n            let mut count: i64 = 0;\n            let mut val: i64 = x;\n            while val >= 10 {\n                val = val / 10;\n                count = count + 1;\n                ()\n            };\n            println(count);\n            ()\n        };\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

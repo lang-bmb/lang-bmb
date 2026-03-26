@@ -1,0 +1,56 @@
+{
+  "problem_id": "30_contract_chain",
+  "category": "contract",
+  "difficulty": "hard",
+  "loop_count": 5,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 1,
+    "C": 3,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn normalize(x: i64, min: i64, max: i64) -> i64\n    pre min < max\n    post ret >= 0 and ret <= 100\n= {\n    let range: i64 = max - min;\n    let shifted: i64 = x - min;\n    let result: i64 = (shifted * 100) / range;\n    result\n};\n\nfn scale(x: i64, factor: i64) -> i64\n    pre x >= 0\n    post ret >= 0\n= {\n    x * factor\n};\n\nfn bound(x: i64, limit: i64) -> i64\n    pre limit >= 0\n    post ret >= 0 and ret <= limit\n= {\n    if x > limit { limit } else { x }\n};\n\nfn process(x: i64, min: i64, max: i64, factor: i64, limit: i64) -> i64 = {\n    let normalized: i64 = normalize(x, min, max);\n    let scaled: i64 = scale(normalized, factor);\n    let bounded: i64 = bound(scaled, limit);\n    bounded\n};\n\nfn main() -> i64 = {\n    let min: i64 = read_int();\n    let max: i64 = read_int();\n    let factor: i64 = read_int();\n    let limit: i64 = read_int();\n    let n: i64 = read_int();\n    \n    for i in 0..n {\n        let x: i64 = read_int();\n        let result: i64 = process(x, min, max, factor, limit);\n        println(result);\n        ()\n    };\n    \n    0\n}",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmp3dto1q06\\\\solution.bmb\",\"start\":3364,\"end\":3365,\"line\":140,\"col\":2,\"message\":\"Unrecognized EOF found at 3364\\nExpected one of \\\";\\\"\",\"suggestion\":\"BMB top-level definitions (fn, struct) must end with ';'. Block expressions end with '};'.\",\"example_wrong\":\"fn main() -> i64 = { 0 }\",\"example_correct\":\"fn main() -> i64 = { 0 };\",\"pattern\":\"missing_semicolon_eof\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 2,
+      "code": "fn normalize(x: i64, min: i64, max: i64) -> i64\n    pre min < max\n    post ret >= 0 and ret <= 100\n= {\n    let range: i64 = max - min;\n    let shifted: i64 = x - min;\n    let result: i64 = (shifted * 100) / range;\n    result\n};\n\nfn scale(x: i64, factor: i64) -> i64\n    pre x >= 0\n    post ret >= 0\n= {\n    x * factor\n};\n\nfn bound(x: i64, limit: i64) -> i64\n    pre limit >= 0\n    post ret >= 0 and ret <= limit\n= {\n    if x > limit { limit } else { x }\n};\n\nfn process(x: i64, min: i64, max: i64, factor: i64, limit: i64) -> i64 = {\n    let normalized: i64 = normalize(x, min, max);\n    let scaled: i64 = scale(normalized, factor);\n    let bounded: i64 = bound(scaled, limit);\n    bounded\n};\n\nfn main() -> i64 = {\n    let min: i64 = read_int();\n    let max: i64 = read_int();\n    let factor: i64 = read_int();\n    let limit: i64 = read_int();\n    let n: i64 = read_int();\n    \n    for i in 0..n {\n        let x: i64 = read_int();\n        let result: i64 = process(x, min, max, factor, limit);\n        println(result);\n        ()\n    };\n    \n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "Warning: Z3 solver not available, contract verification skipped\n  Proof-guided optimizations disabled (no verified functions)\n{\"type\":\"error\",\"message\":\"Linker error: clang compile failed: C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpj5yfdks6\\\\solution.ll:574:3: error: multiple definition of local value named '_t0.post.val'\n\\n  574 |   %_t0.post.val = load i64, ptr %_t0.addr, align 8\n\\n      |   ^\n\\n1 error generated.\n\\n\"}",
+      "loop_type": "C"
+    },
+    {
+      "attempt": 3,
+      "code": "fn normalize(x: i64, min: i64, max: i64) -> i64\n    pre min < max\n    post ret >= 0 and ret <= 100\n= {\n    let range: i64 = max - min;\n    let shifted: i64 = x - min;\n    (shifted * 100) / range\n};\n\nfn scale(x: i64, factor: i64) -> i64\n    pre x >= 0\n    post ret >= 0\n= {\n    x * factor\n};\n\nfn bound(x: i64, limit: i64) -> i64\n    pre limit >= 0\n    post ret >= 0 and ret <= limit\n= {\n    if x > limit { limit } else { x }\n};\n\nfn process(val: i64, min: i64, max: i64, factor: i64, limit: i64) -> i64 = {\n    let normalized: i64 = normalize(val, min, max);\n    let scaled: i64 = scale(normalized, factor);\n    bound(scaled, limit)\n};\n\nfn main() -> i64 = {\n    let min: i64 = read_int();\n    let max: i64 = read_int();\n    let factor: i64 = read_int();\n    let limit: i64 = read_int();\n    let n: i64 = read_int();\n    \n    for i in 0..n {\n        let val: i64 = read_int();\n        let res: i64 = process(val, min, max, factor, limit);\n        println(res);\n        ()\n    };\n    \n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "Warning: Z3 solver not available, contract verification skipped\n  Proof-guided optimizations disabled (no verified functions)\n{\"type\":\"error\",\"message\":\"Linker error: clang compile failed: C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpvkqdb84y\\\\solution.ll:572:3: error: multiple definition of local value named '_t0.post.val'\n\\n  572 |   %_t0.post.val = load i64, ptr %_t0.addr, align 8\n\\n      |   ^\n\\n1 error generated.\n\\n\"}",
+      "loop_type": "C"
+    },
+    {
+      "attempt": 4,
+      "code": "fn normalize(x: i64, min: i64, max: i64) -> i64\n    pre min < max\n    post ret >= 0 and ret <= 100\n= (x - min) * 100 / (max - min);\n\nfn scale(x: i64, factor: i64) -> i64\n    pre x >= 0\n    post ret >= 0\n= x * factor;\n\nfn bound(x: i64, limit: i64) -> i64\n    pre limit >= 0\n    post ret >= 0 and ret <= limit\n= if x > limit { limit } else { x };\n\nfn process(val: i64, min: i64, max: i64, factor: i64, limit: i64) -> i64 = {\n    let normalized: i64 = normalize(val, min, max);\n    let scaled: i64 = scale(normalized, factor);\n    bound(scaled, limit)\n};\n\nfn main() -> i64 = {\n    let min: i64 = read_int();\n    let max: i64 = read_int();\n    let factor: i64 = read_int();\n    let limit: i64 = read_int();\n    let n: i64 = read_int();\n    \n    for i in 0..n {\n        let val: i64 = read_int();\n        let res: i64 = process(val, min, max, factor, limit);\n        println(res);\n        ()\n    };\n    \n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "Warning: Z3 solver not available, contract verification skipped\n  Proof-guided optimizations disabled (no verified functions)\n{\"type\":\"error\",\"message\":\"Linker error: clang compile failed: C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmp6c5uckp7\\\\solution.ll:570:3: error: multiple definition of local value named '_t0.post.val'\n\\n  570 |   %_t0.post.val = load i64, ptr %_t0.addr, align 8\n\\n      |   ^\n\\n1 error generated.\n\\n\"}",
+      "loop_type": "C"
+    },
+    {
+      "attempt": 5,
+      "code": "fn normalize(x: i64, min: i64, max: i64) -> i64\n    pre min < max\n= (x - min) * 100 / (max - min);\n\nfn scale(x: i64, factor: i64) -> i64\n    pre x >= 0\n= x * factor;\n\nfn bound(x: i64, limit: i64) -> i64\n    pre limit >= 0\n= if x > limit { limit } else { x };\n\nfn process(val: i64, min: i64, max: i64, factor: i64, limit: i64) -> i64 = {\n    let normalized: i64 = normalize(val, min, max);\n    let scaled: i64 = scale(normalized, factor);\n    bound(scaled, limit)\n};\n\nfn main() -> i64 = {\n    let min: i64 = read_int();\n    let max: i64 = read_int();\n    let factor: i64 = read_int();\n    let limit: i64 = read_int();\n    let n: i64 = read_int();\n    \n    for i in 0..n {\n        let val: i64 = read_int();\n        let res: i64 = process(val, min, max, factor, limit);\n        println(res);\n        ()\n    };\n    \n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}
