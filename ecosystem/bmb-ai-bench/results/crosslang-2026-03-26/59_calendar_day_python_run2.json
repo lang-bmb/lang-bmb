@@ -1,0 +1,12 @@
+{
+  "problem_id": "59_calendar_day",
+  "lang": "python",
+  "run_id": 2,
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "compile": 4,
+    "test": 6
+  },
+  "error_sample": "Test 4 error: Traceback (most recent call last):\n  File \"C:\\Users\\iyulab\\AppData\\Local\\Temp\\tmput63gbis\\solution.py\", line 49, in <module>\n    main()\n  File \"C:\\Users\\iyulab\\AppData\\Local\\Temp\\tmput63"
+}

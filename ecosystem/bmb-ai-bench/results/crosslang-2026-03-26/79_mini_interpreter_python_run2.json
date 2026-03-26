@@ -1,0 +1,12 @@
+{
+  "problem_id": "79_mini_interpreter",
+  "lang": "python",
+  "run_id": 2,
+  "loop_count": 10,
+  "final_correct": true,
+  "loop_types": {
+    "compile": 4,
+    "test": 5
+  },
+  "error_sample": ""
+}

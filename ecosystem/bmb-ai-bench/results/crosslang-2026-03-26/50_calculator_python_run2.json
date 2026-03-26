@@ -1,0 +1,12 @@
+{
+  "problem_id": "50_calculator",
+  "lang": "python",
+  "run_id": 2,
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "compile": 4,
+    "test": 6
+  },
+  "error_sample": "Test 0: expected '7\\n', got '0\\n'"
+}

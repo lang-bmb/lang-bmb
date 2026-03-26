@@ -1,0 +1,12 @@
+{
+  "problem_id": "77_state_machine",
+  "lang": "c",
+  "run_id": 2,
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "compile": 0,
+    "test": 10
+  },
+  "error_sample": "Test 4: expected '-3\\n', got '-4\\n'"
+}

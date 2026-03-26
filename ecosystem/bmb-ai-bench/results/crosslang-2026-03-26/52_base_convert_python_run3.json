@@ -1,0 +1,12 @@
+{
+  "problem_id": "52_base_convert",
+  "lang": "python",
+  "run_id": 3,
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "compile": 3,
+    "test": 7
+  },
+  "error_sample": "Test 6 error: Traceback (most recent call last):\n  File \"C:\\Users\\iyulab\\AppData\\Local\\Temp\\tmppvc52ntq\\solution.py\", line 52, in <module>\n    main()\n  File \"C:\\Users\\iyulab\\AppData\\Local\\Temp\\tmppvc5"
+}

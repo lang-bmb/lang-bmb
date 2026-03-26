@@ -1,0 +1,12 @@
+{
+  "problem_id": "69_overflow_detect",
+  "lang": "bmb",
+  "run_id": 3,
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "compile": 0,
+    "test": 10
+  },
+  "error_sample": "Test 1: expected '1 10000000000\\n', got '0 0\\n'"
+}

@@ -1,0 +1,12 @@
+{
+  "problem_id": "66_acc_recursion",
+  "lang": "bmb",
+  "run_id": 3,
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "compile": 1,
+    "test": 9
+  },
+  "error_sample": "Test 8: expected '28\\n36\\n', got '7\\n15\\n'"
+}

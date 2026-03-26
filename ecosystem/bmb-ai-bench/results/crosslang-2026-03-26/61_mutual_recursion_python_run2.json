@@ -1,0 +1,12 @@
+{
+  "problem_id": "61_mutual_recursion",
+  "lang": "python",
+  "run_id": 2,
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "compile": 2,
+    "test": 8
+  },
+  "error_sample": "Test 0 error: Traceback (most recent call last):\n  File \"C:\\Users\\iyulab\\AppData\\Local\\Temp\\tmpandifi44\\solution.py\", line 22, in <module>\n    n = int(tokens[idx + 1])\n            ~~~~~~^^^^^^^^^\nInde"
+}

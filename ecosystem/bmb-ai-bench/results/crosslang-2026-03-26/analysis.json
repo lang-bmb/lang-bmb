@@ -1,31 +1,31 @@
 {
   "lang_stats": {
     "bmb": {
-      "total": 246,
-      "passed": 231,
-      "success_rate": 0.9390243902439024,
+      "total": 300,
+      "passed": 270,
+      "success_rate": 0.9,
       "median_loops": 1,
-      "avg_loops": 1.7835497835497836,
-      "one_shot": 146,
-      "one_shot_rate": 0.5934959349593496
+      "avg_loops": 1.8555555555555556,
+      "one_shot": 169,
+      "one_shot_rate": 0.5633333333333334
     },
     "c": {
-      "total": 233,
-      "passed": 208,
-      "success_rate": 0.8927038626609443,
+      "total": 300,
+      "passed": 246,
+      "success_rate": 0.82,
       "median_loops": 1,
-      "avg_loops": 1.4663461538461537,
-      "one_shot": 167,
-      "one_shot_rate": 0.7167381974248928
+      "avg_loops": 1.5040650406504066,
+      "one_shot": 194,
+      "one_shot_rate": 0.6466666666666666
     },
     "python": {
-      "total": 220,
-      "passed": 201,
-      "success_rate": 0.9136363636363637,
+      "total": 299,
+      "passed": 252,
+      "success_rate": 0.842809364548495,
       "median_loops": 1,
-      "avg_loops": 1.373134328358209,
-      "one_shot": 168,
-      "one_shot_rate": 0.7636363636363637
+      "avg_loops": 1.5833333333333333,
+      "one_shot": 201,
+      "one_shot_rate": 0.6722408026755853
     }
   },
   "cat_lang_stats": {
@@ -114,81 +114,81 @@
       "avg_loops": 1.4444444444444444
     },
     "bmb:practical": {
-      "total": 30,
-      "passed": 26,
-      "success_rate": 0.8666666666666667,
+      "total": 45,
+      "passed": 38,
+      "success_rate": 0.8444444444444444,
       "median_loops": 1,
-      "avg_loops": 2.3076923076923075
+      "avg_loops": 2.1842105263157894
     },
     "c:practical": {
-      "total": 28,
-      "passed": 16,
-      "success_rate": 0.5714285714285714,
+      "total": 45,
+      "passed": 26,
+      "success_rate": 0.5777777777777777,
       "median_loops": 1,
-      "avg_loops": 1.125
+      "avg_loops": 1.0769230769230769
     },
     "python:practical": {
-      "total": 15,
-      "passed": 9,
-      "success_rate": 0.6,
+      "total": 45,
+      "passed": 29,
+      "success_rate": 0.6444444444444445,
       "median_loops": 1,
-      "avg_loops": 1.1111111111111112
+      "avg_loops": 1.6551724137931034
     },
     "bmb:edge": {
-      "total": 21,
-      "passed": 16,
-      "success_rate": 0.7619047619047619,
+      "total": 45,
+      "passed": 33,
+      "success_rate": 0.7333333333333333,
       "median_loops": 2,
-      "avg_loops": 3.9375
+      "avg_loops": 3.212121212121212
     },
     "c:edge": {
-      "total": 15,
-      "passed": 8,
-      "success_rate": 0.5333333333333333,
-      "median_loops": 2,
-      "avg_loops": 2.25
+      "total": 45,
+      "passed": 23,
+      "success_rate": 0.5111111111111111,
+      "median_loops": 1,
+      "avg_loops": 2.217391304347826
     },
     "python:edge": {
-      "total": 15,
-      "passed": 8,
+      "total": 45,
+      "passed": 24,
       "success_rate": 0.5333333333333333,
       "median_loops": 2,
-      "avg_loops": 2.75
+      "avg_loops": 2.625
     },
     "bmb:integration": {
-      "total": 15,
-      "passed": 9,
-      "success_rate": 0.6,
-      "median_loops": 2,
-      "avg_loops": 2.7777777777777777
+      "total": 30,
+      "passed": 19,
+      "success_rate": 0.6333333333333333,
+      "median_loops": 1,
+      "avg_loops": 2.526315789473684
     },
     "c:integration": {
-      "total": 10,
-      "passed": 7,
-      "success_rate": 0.7,
-      "median_loops": 1,
-      "avg_loops": 2.5714285714285716
-    },
-    "python:integration": {
-      "total": 10,
-      "passed": 7,
-      "success_rate": 0.7,
+      "total": 30,
+      "passed": 20,
+      "success_rate": 0.6666666666666666,
       "median_loops": 1,
       "avg_loops": 2.0
+    },
+    "python:integration": {
+      "total": 29,
+      "passed": 22,
+      "success_rate": 0.7586206896551724,
+      "median_loops": 1,
+      "avg_loops": 2.6363636363636362
     }
   },
   "paired": {
     "bmb_vs_c": {
-      "bmb_wins": 14,
-      "c_wins": 2,
-      "tie": 84
+      "bmb_wins": 16,
+      "c_wins": 6,
+      "tie": 78
     },
     "bmb_vs_python": {
-      "bmb_wins": 12,
-      "python_wins": 3,
-      "tie": 85
+      "bmb_wins": 13,
+      "python_wins": 8,
+      "tie": 79
     }
   },
-  "total_runs": 699,
+  "total_runs": 899,
   "unique_problems": 100
 }

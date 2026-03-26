@@ -1,0 +1,12 @@
+{
+  "problem_id": "62_deep_nesting",
+  "lang": "python",
+  "run_id": 2,
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "compile": 0,
+    "test": 10
+  },
+  "error_sample": "Test 9: expected '-1\\n0\\n3\\n', got '-100\\n'"
+}

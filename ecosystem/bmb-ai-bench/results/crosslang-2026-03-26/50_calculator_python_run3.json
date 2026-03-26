@@ -1,0 +1,12 @@
+{
+  "problem_id": "50_calculator",
+  "lang": "python",
+  "run_id": 3,
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "compile": 9,
+    "test": 1
+  },
+  "error_sample": "Test 0 error: Traceback (most recent call last):\n  File \"C:\\Users\\iyulab\\AppData\\Local\\Temp\\tmpb8a5069t\\solution.py\", line 12, in <module>\n    denom_idx = data[idx + 1]\n                ~~~~^^^^^^^^^\nI"
+}
