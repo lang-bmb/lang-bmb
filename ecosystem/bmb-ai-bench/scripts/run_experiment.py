@@ -213,7 +213,9 @@ def main() -> int:
     api_key = args.api_key or os.environ.get("OPENAI_COMPATIBLE_API_KEY", "no-key")
 
     problems_dir = _BASE / "problems"
-    ref_path = _BASE.parent / "ai-proof" / "protocol" / "bmb_reference.md"
+    ref_path = _BASE / "protocol" / "bmb_reference.md"
+    if not ref_path.exists():
+        ref_path = _BASE.parent / "ai-proof" / "protocol" / "bmb_reference.md"
     reference = ref_path.read_text(encoding="utf-8") if ref_path.exists() else ""
 
     # Load problems

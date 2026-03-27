@@ -1,0 +1,12 @@
+{
+  "problem_id": "84_accumulator_pattern",
+  "lang": "bmb",
+  "run_id": 2,
+  "loop_count": 5,
+  "final_correct": true,
+  "loop_types": {
+    "compile": 2,
+    "test": 2
+  },
+  "error_sample": ""
+}

@@ -114,30 +114,49 @@ def _run_python(code: str, tests: list[dict], tmpdir: Path) -> tuple[bool, bool,
     src = tmpdir / "solution.py"
     src.write_text(code, encoding="utf-8")
 
+    failures = []
     for i, tc in enumerate(tests):
         try:
             r = subprocess.run([sys.executable, str(src)],
                               input=tc.get("stdin", ""), capture_output=True,
                               text=True, timeout=10, cwd=str(tmpdir))
         except subprocess.TimeoutExpired:
-            return True, False, f"Test {i}: timeout"
+            failures.append(f"Test {i}: timeout (input: {tc.get('stdin', '')[:50]})")
+            if len(failures) >= 3:
+                break
+            continue
         if r.returncode != 0:
             return False, False, f"Test {i} error: {(r.stderr+r.stdout).strip()[:200]}"
         if r.stdout != tc.get("expected_stdout", ""):
-            return True, False, f"Test {i}: expected {tc['expected_stdout']!r}, got {r.stdout!r}"
-
+            failures.append(
+                f"Test {i}: input={tc.get('stdin', '')[:50]!r} expected={tc['expected_stdout']!r} got={r.stdout!r}"
+            )
+            if len(failures) >= 3:
+                break
+    if failures:
+        return True, False, "\n".join(failures)
     return True, True, ""
 
 
 def _run_tests(binary: str, tests: list[dict], tmpdir: Path) -> tuple[bool, bool, str]:
+    failures = []
     for i, tc in enumerate(tests):
         try:
             r = subprocess.run([binary], input=tc.get("stdin", ""),
                               capture_output=True, text=True, timeout=10, cwd=str(tmpdir))
         except subprocess.TimeoutExpired:
-            return True, False, f"Test {i}: timeout"
+            failures.append(f"Test {i}: timeout (input: {tc.get('stdin', '')[:50]})")
+            if len(failures) >= 3:
+                break
+            continue
         if r.stdout != tc.get("expected_stdout", ""):
-            return True, False, f"Test {i}: expected {tc['expected_stdout']!r}, got {r.stdout!r}"
+            failures.append(
+                f"Test {i}: input={tc.get('stdin', '')[:50]!r} expected={tc['expected_stdout']!r} got={r.stdout!r}"
+            )
+            if len(failures) >= 3:
+                break
+    if failures:
+        return True, False, "\n".join(failures)
     return True, True, ""
 
 
@@ -177,6 +196,10 @@ def run_problem_lang(problem_dir: Path, lang: str, llm, reference: str) -> RunRe
         messages.append({"role": "assistant", "content": response})
         messages.append({"role": "user", "content": feedback})
 
+        # Context truncation: keep initial prompt + last 2 assistant/user pairs
+        if len(messages) > 5:
+            messages = [messages[0]] + messages[-4:]
+
     return RunResult(loop_count=MAX_LOOPS + 1, final_correct=False,
                      loop_types=loop_types, error_sample=err[:200] if err else "")
 
@@ -204,7 +227,9 @@ def main() -> int:
     langs = [l.strip() for l in args.langs.split(",")]
 
     problems_dir = _BASE / "problems"
-    ref_path = _BASE.parent / "ai-proof" / "protocol" / "bmb_reference.md"
+    ref_path = _BASE / "protocol" / "bmb_reference.md"
+    if not ref_path.exists():
+        ref_path = _BASE.parent / "ai-proof" / "protocol" / "bmb_reference.md"
     reference = ref_path.read_text(encoding="utf-8") if ref_path.exists() else ""
 
     dirs = sorted(d for d in problems_dir.iterdir() if d.is_dir() and d.name[0].isdigit())
