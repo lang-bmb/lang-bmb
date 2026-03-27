@@ -8,20 +8,20 @@
 
 ---
 
-## 현재 상태 (2026-03-22)
+## 현재 상태 (2026-03-24)
 
 | 항목 | 상태 |
 |------|------|
-| **버전** | v0.97 (Cycle 1955) |
+| **버전** | v0.97 (Cycle 2185 — Dogfooding 완료) |
 | **Bootstrap** | 3-Stage Fixed Point (S2 == S3), i8*→ptr 완전 마이그레이션 |
 | **Benchmarks** | 309 빌드 ✅, 16+ FASTER, 0 FAIL — BMB > C AND Rust |
-| **Golden Tests** | 701 BMB + 6,186 Rust regression = 전체 통과 |
+| **Golden Tests** | 3,660 BMB + 6,186 Rust regression = 전체 통과 |
 | **Self-Hosting** | CLI 41개, LSP 9기능, Test Runner, MIR 옵티마이저 15/15 이식 |
-| **compiler.bmb** | 19,814 LOC (전체 bootstrap/*.bmb: 55,654 LOC) |
+| **compiler.bmb** | 19,818 LOC (전체 bootstrap/*.bmb: 59,046 LOC) |
 | **Ecosystem** | stdlib 15/15, gotgan E2E, 4 tutorials, 14 API docs |
-| **Binding** | @export + --shared + bmb-algo Python E2E (8 algorithms) |
+| **Binding** | 5 libs, 140 @export, 1,017 pytest, C headers ×5, WASM ×5 |
 | **EXISTENTIAL** | 7/7 완료 — 계약→성능 파이프라인 증명됨 |
-| **Next Focus** | Dogfooding: FFI 안전성 → bmb-algo PyPI → bmb-crypto |
+| **Next Focus** | 배포 (PyPI wheel + 크로스플랫폼) + Native Ptr (v0.98) |
 
 ### Graduation 진행도
 
@@ -29,7 +29,7 @@
 G-1 부트스트랩    [██████████] 100%  3-Stage Fixed Point (S2 == S3)
 G-2 셀프호스팅    [██████████]  99%  CLI 41개, LSP 9기능, Test Runner ✅
 G-3 벤치마크      [██████████] 100%  0 FAIL, 0 WARN, 3 LLVM-OK, --stats ✅
-G-4 에코시스템    [██████░░░░]  60%  VSCode LSP ✅, stdlib 12/12, gotgan resolver ✅
+G-4 에코시스템    [████████░░]  82%  5 libs 140 @export, C headers, WASM, pytest 1,017+
 G-5 100+ 패키지   [██████████] 100%  102/100+ 패키지
 ```
 

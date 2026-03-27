@@ -10,6 +10,7 @@ CLAUDE.md
 .bmb/
 dev-docs/
 nul
+.env.local
 
 # Claude Code temp files (known bug: github.com/anthropics/claude-code/issues/8856)
 tmpclaude-*-cwd
