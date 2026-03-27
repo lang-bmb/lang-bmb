@@ -20,10 +20,26 @@ import argparse
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(SCRIPT_DIR)
 
-# BMB compiler path
-BMB_COMPILER = os.path.join(ROOT_DIR, "target", "release", "bmb.exe")
-if not os.path.exists(BMB_COMPILER):
-    BMB_COMPILER = os.path.join(ROOT_DIR, "target", "release", "bmb")
+# BMB compiler path — check target-specific dirs first (cross-compilation),
+# then default release dir
+def _find_bmb_compiler():
+    candidates = []
+    # Cross-compiled target directories
+    for target_dir in ["x86_64-pc-windows-gnu", "x86_64-pc-windows-msvc",
+                       "x86_64-unknown-linux-gnu", "x86_64-apple-darwin",
+                       "aarch64-apple-darwin"]:
+        candidates.append(os.path.join(ROOT_DIR, "target", target_dir, "release", "bmb.exe"))
+        candidates.append(os.path.join(ROOT_DIR, "target", target_dir, "release", "bmb"))
+    # Default release directory
+    candidates.append(os.path.join(ROOT_DIR, "target", "release", "bmb.exe"))
+    candidates.append(os.path.join(ROOT_DIR, "target", "release", "bmb"))
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    # Fallback: return default path (will fail with helpful error later)
+    return os.path.join(ROOT_DIR, "target", "release", "bmb")
+
+BMB_COMPILER = _find_bmb_compiler()
 
 LIBRARIES = {
     "bmb-algo": {
@@ -154,7 +170,7 @@ def main():
 
     if not os.path.exists(BMB_COMPILER):
         print(f"ERROR: BMB compiler not found at {BMB_COMPILER}")
-        print("Run: cargo build --release --features llvm --target x86_64-pc-windows-gnu")
+        print("Run: cargo build --release --features llvm")
         sys.exit(1)
 
     targets = args.libraries if args.libraries else list(LIBRARIES.keys())

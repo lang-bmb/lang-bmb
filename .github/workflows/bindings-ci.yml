@@ -24,8 +24,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest]
-        # TODO: Add ubuntu-latest and macos-latest when cross-platform builds are verified
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-gnu
+            llvm_setup: mingw
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            llvm_setup: apt
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            llvm_setup: brew
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,6 +41,8 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-action@stable
+        with:
+          targets: ${{ matrix.target }}
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -53,15 +63,38 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-bindings-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Setup LLVM (Windows)
-        if: runner.os == 'Windows'
+      # --- Platform-specific LLVM/toolchain setup ---
+
+      - name: Setup MinGW + LLVM (Windows)
+        if: matrix.llvm_setup == 'mingw'
         uses: egor-tensin/setup-mingw@v2
         with:
           platform: x64
 
+      - name: Setup LLVM (Ubuntu)
+        if: matrix.llvm_setup == 'apt'
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          sudo add-apt-repository "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-21 main" || true
+          sudo apt-get update
+          sudo apt-get install -y llvm-21 llvm-21-dev lld-21 || sudo apt-get install -y llvm llvm-dev lld
+          echo "/usr/lib/llvm-21/bin" >> $GITHUB_PATH
+
+      - name: Setup LLVM (macOS)
+        if: matrix.llvm_setup == 'brew'
+        run: |
+          brew install llvm
+          echo "$(brew --prefix llvm)/bin" >> $GITHUB_PATH
+          echo "LLVM_SYS_211_PREFIX=$(brew --prefix llvm)" >> $GITHUB_ENV
+
+      # --- Build & Test ---
+
       - name: Build BMB compiler
-        run: cargo build --release --features llvm --target x86_64-pc-windows-gnu
-        if: runner.os == 'Windows'
+        run: cargo build --release --features llvm --target ${{ matrix.target }}
+
+      - name: Set BMB_RUNTIME_PATH
+        run: echo "BMB_RUNTIME_PATH=${{ github.workspace }}/bmb/runtime" >> $GITHUB_ENV
+        shell: bash
 
       - name: Build all binding libraries
         run: python ecosystem/build_all.py
@@ -77,3 +110,10 @@ jobs:
 
       - name: Run benchmarks (smoke test)
         run: python ecosystem/bmb-algo/benchmarks/bench_algo.py
+
+      # --- Wheel build verification ---
+
+      - name: Build wheels (smoke test)
+        run: |
+          cd ecosystem/bmb-algo && pip wheel . --no-deps -w dist/
+          ls -la dist/
