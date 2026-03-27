@@ -2273,10 +2273,33 @@ impl TextCodeGen {
                         ContractFact::VarVarCmp { lhs, op, rhs } => {
                             // Both sides must be function parameters
                             if let Some((_, lty)) = func.params.iter().find(|(n, _)| n == lhs)
-                                && func.params.iter().any(|(n, _)| n == rhs) {
-                                    let llvm_ty = self.mir_type_to_llvm(lty);
+                                && let Some((_, rty)) = func.params.iter().find(|(n, _)| n == rhs) {
+                                    let lhs_llvm = self.mir_type_to_llvm(lty);
+                                    let rhs_llvm = self.mir_type_to_llvm(rty);
                                     let pred = cmp_op_to_llvm_pred(op);
-                                    writeln!(out, "  %_assume_{} = icmp {} {} %{}, %{}", assume_idx, pred, llvm_ty, lhs, rhs)?;
+                                    // v0.97: Handle type mismatch (e.g., i32 vs i64 from narrowing).
+                                    // Sign-extend the smaller operand to the larger type for icmp.
+                                    if lhs_llvm != rhs_llvm {
+                                        let (wide_ty, narrow_var, narrow_ty, wide_var) = if lhs_llvm == "i32" && rhs_llvm == "i64" {
+                                            ("i64", lhs.as_str(), "i32", rhs.as_str())
+                                        } else if lhs_llvm == "i64" && rhs_llvm == "i32" {
+                                            ("i64", rhs.as_str(), "i32", lhs.as_str())
+                                        } else {
+                                            // Fallback: use lhs type (old behavior)
+                                            writeln!(out, "  %_assume_{} = icmp {} {} %{}, %{}", assume_idx, pred, lhs_llvm, lhs, rhs)?;
+                                            writeln!(out, "  call void @llvm.assume(i1 %_assume_{})", assume_idx)?;
+                                            assume_idx += 1;
+                                            continue;
+                                        };
+                                        writeln!(out, "  %_assume_{}_sext = sext {} %{} to {}", assume_idx, narrow_ty, narrow_var, wide_ty)?;
+                                        if narrow_var == lhs.as_str() {
+                                            writeln!(out, "  %_assume_{} = icmp {} {} %_assume_{}_sext, %{}", assume_idx, pred, wide_ty, assume_idx, wide_var)?;
+                                        } else {
+                                            writeln!(out, "  %_assume_{} = icmp {} {} %{}, %_assume_{}_sext", assume_idx, pred, wide_ty, wide_var, assume_idx)?;
+                                        }
+                                    } else {
+                                        writeln!(out, "  %_assume_{} = icmp {} {} %{}, %{}", assume_idx, pred, lhs_llvm, lhs, rhs)?;
+                                    }
                                     writeln!(out, "  call void @llvm.assume(i1 %_assume_{})", assume_idx)?;
                                     assume_idx += 1;
                                 }
@@ -4585,18 +4608,32 @@ impl TextCodeGen {
                         }
                         _ => self.format_operand_with_strings(&args[0], string_table),
                     };
+                    // v0.97: Check actual type of val argument (may be i32 from narrowing)
+                    let val_ty = match &args[1] {
+                        Operand::Constant(c) => self.constant_type(c),
+                        Operand::Place(p) => place_types.get(&p.name).copied()
+                            .unwrap_or_else(|| self.infer_place_type(p, func)),
+                    };
                     let val_val = match &args[1] {
                         Operand::Place(p) if local_names.contains(&p.name) => {
                             let load_name = format!("vp.val.{}", vec_idx);
-                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, val_ty, p.name)?;
                             format!("%{}", load_name)
                         }
                         _ => self.format_operand_with_strings(&args[1], string_table),
                     };
+                    // v0.97: sext i32 to i64 if val was narrowed
+                    let val_i64 = if val_ty == "i32" {
+                        let sext_name = format!("vp.val.{}.sext", vec_idx);
+                        writeln!(out, "  %{} = sext i32 {} to i64", sext_name, val_val)?;
+                        format!("%{}", sext_name)
+                    } else {
+                        val_val
+                    };
 
                     // Call runtime function instead of inline code (avoids PHI predecessor bug)
                     // v0.95.5: vec_push returns i64 (new pointer after potential realloc)
-                    writeln!(out, "  %_vp_{} = call i64 @bmb_vec_push(i64 {}, i64 {})", name_counts.entry("vec_push_discard".to_string()).or_insert(0), vec_val, val_val)?;
+                    writeln!(out, "  %_vp_{} = call i64 @bmb_vec_push(i64 {}, i64 {})", name_counts.entry("vec_push_discard".to_string()).or_insert(0), vec_val, val_i64)?;
                     *name_counts.get_mut("vec_push_discard").unwrap() += 1;
                     return Ok(());
                 }
@@ -4962,6 +4999,20 @@ impl TextCodeGen {
                         ("bmb_sb_push_int", 0) | ("bmb_sb_push_int", 1) => Some("i64"),
                         ("sb_push_range", 0) | ("sb_push_range", 2) | ("sb_push_range", 3) => Some("i64"),
                         ("bmb_sb_push_range", 0) | ("bmb_sb_push_range", 2) | ("bmb_sb_push_range", 3) => Some("i64"),
+                        // v0.97: Vec runtime functions — all parameters are i64
+                        ("vec_push", 0) | ("vec_push", 1) | ("bmb_vec_push", 0) | ("bmb_vec_push", 1) => Some("i64"),
+                        ("vec_get", 0) | ("vec_get", 1) | ("bmb_vec_get", 0) | ("bmb_vec_get", 1) => Some("i64"),
+                        ("vec_set", 0) | ("vec_set", 1) | ("vec_set", 2)
+                        | ("bmb_vec_set", 0) | ("bmb_vec_set", 1) | ("bmb_vec_set", 2) => Some("i64"),
+                        ("vec_len", 0) | ("bmb_vec_len", 0) => Some("i64"),
+                        ("vec_pop", 0) | ("bmb_vec_pop", 0) => Some("i64"),
+                        ("vec_free", 0) | ("bmb_vec_free", 0) => Some("i64"),
+                        ("vec_new", _) | ("bmb_vec_new", _) => Some("i64"),
+                        ("vec_swap", 0) | ("vec_swap", 1) | ("vec_swap", 2)
+                        | ("bmb_vec_swap", 0) | ("bmb_vec_swap", 1) | ("bmb_vec_swap", 2) => Some("i64"),
+                        // v0.97: Other common runtime functions
+                        ("read_int", _) | ("bmb_read_int", _) => None,
+                        ("println_str", 0) | ("print_str", 0) => Some("ptr"),
                         _ => None,
                     }
                 };

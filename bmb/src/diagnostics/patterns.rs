@@ -1,27 +1,32 @@
 //! Pattern definitions — AI mistake patterns derived from pilot data + CLAUDE.md.
 //!
-//! IMPORTANT: Patterns must be verified against current BMB compiler behavior.
-//! BMB evolves — features that were unsupported may now work.
-//! Last verified: 2026-03-25
+//! IMPORTANT: Triggers must match ACTUAL compiler error messages, not source code.
+//! lalrpop errors use: "Unrecognized token `X`", "Expected one of ..."
+//! Type errors use: "expected T, got U", "unknown function `f`"
+//! Last verified: 2026-03-26
 
 use super::DiagPattern;
 
 pub static PATTERNS: &[DiagPattern] = &[
+    // ===== Parser errors (lalrpop format) =====
+
     DiagPattern {
         id: "option_type",
         kind: "",
-        triggers: &["Option<", "Option::", "Some(", "None"],
-        suggestion: "BMB uses T? for nullable types, not Option<T>",
+        // Matches both source-level (Option<) and error messages (unknown type `option`, token `Some`)
+        triggers: &["Option<", "Option::", "Some(", "None", "token `some`", "token `none`", "unknown type `option`"],
+        suggestion: "BMB uses T? for nullable types, not Option<T>.",
         example_wrong: "let x: Option<i64> = Some(42);",
         example_correct: "let x: i64? = 42;",
     },
     DiagPattern {
         id: "vec_generic",
         kind: "",
-        triggers: &["Vec<", "Vec::new", "vec!"],
-        suggestion: "BMB vectors use free functions: vec_new(), vec_push(v, val), vec_get(v, idx), vec_len(v), vec_set(v, idx, val), vec_free(v). Handle type is i64.",
-        example_wrong: "let v: Vec<i64> = Vec::new();\nv.push(42);\nlet n = v.len();",
-        example_correct: "let v: i64 = vec_new();\nvec_push(v, 42);\nlet n: i64 = vec_len(v);",
+        // lalrpop tokenizes Vec::new() as identifier Vec, then :: then token `new`
+        triggers: &["Vec<", "Vec::new", "vec!", "token `new`", "unknown type `vec`"],
+        suggestion: "BMB vectors use free functions: vec_new(), vec_push(v, val), vec_get(v, idx), vec_len(v), vec_free(v). Handle type is i64.",
+        example_wrong: "let v: Vec<i64> = Vec::new();\nv.push(42);",
+        example_correct: "let v: i64 = vec_new();\nvec_push(v, 42);",
     },
     DiagPattern {
         id: "method_call",
@@ -34,10 +39,11 @@ pub static PATTERNS: &[DiagPattern] = &[
     DiagPattern {
         id: "println_macro",
         kind: "",
+        // lalrpop sees `!` after println and produces "Unrecognized token `!`"
         triggers: &["println!", "print!", "eprintln!", "format!"],
-        suggestion: "BMB uses println(value) function, not Rust macros.",
-        example_wrong: "println!(\"{}\", x);",
-        example_correct: "println(x);",
+        suggestion: "BMB uses println(num) or println_str(\"text\"), not Rust macros.",
+        example_wrong: "println!(\"value: {}\", x);",
+        example_correct: "println(x);\nprintln_str(\"text\");",
     },
     DiagPattern {
         id: "string_type",
@@ -74,7 +80,8 @@ pub static PATTERNS: &[DiagPattern] = &[
     DiagPattern {
         id: "impl_block",
         kind: "parser",
-        triggers: &["`impl`", "impl block"],
+        // lalrpop produces "Unrecognized token `impl`" when encountering impl
+        triggers: &["`impl`", "impl block", "token `impl`"],
         suggestion: "BMB has no impl blocks. Define free functions instead.",
         example_wrong: "impl Foo {\n    fn bar(&self) -> i64 { ... }\n}",
         example_correct: "fn foo_bar(self: &Foo) -> i64 = ...;",
@@ -82,7 +89,7 @@ pub static PATTERNS: &[DiagPattern] = &[
     DiagPattern {
         id: "trait_def",
         kind: "parser",
-        triggers: &["`trait`", "trait definition"],
+        triggers: &["`trait`", "trait definition", "token `trait`"],
         suggestion: "BMB traits use 'trait Name { fn method(self: &Self) -> Type; }' syntax.",
         example_wrong: "trait Foo {\n    fn bar(&self) -> i64;\n}",
         example_correct: "trait Foo {\n    fn bar(self: &Self) -> i64;\n}",
@@ -106,6 +113,7 @@ pub static PATTERNS: &[DiagPattern] = &[
     DiagPattern {
         id: "static_method",
         kind: "",
+        // lalrpop tokenizes Type::method() — "new", "from", etc. appear as unrecognized tokens
         triggers: &["::new(", "::from(", "::default(", "::with_capacity("],
         suggestion: "BMB has no static methods or associated functions. Use free functions.",
         example_wrong: "let v = Vec::new();",
@@ -130,19 +138,21 @@ pub static PATTERNS: &[DiagPattern] = &[
     DiagPattern {
         id: "use_import",
         kind: "parser",
-        triggers: &["`use`", "use std", "use crate"],
+        triggers: &["`use`", "use std", "use crate", "token `use`"],
         suggestion: "BMB uses 'import' instead of Rust's 'use'. Standard functions are built-in.",
         example_wrong: "use std::collections::HashMap;",
         example_correct: "// No import needed - vec_new(), println(), read_int() are built-in",
     },
-    // --- Pilot-derived patterns (Type C most frequent errors) ---
+
+    // ===== Type errors =====
+
     DiagPattern {
         id: "void_return_used",
         kind: "type",
         triggers: &["expected i64, got ()", "expected f64, got ()", "expected bool, got ()"],
-        suggestion: "println/print/vec_push/vec_set/vec_free return () not i64. Wrap in a block: let _r: i64 = { println(x); 0 };",
+        suggestion: "println/print/vec_push/vec_set/vec_free return () not i64. Wrap in a block: { println(x); 0 }",
         example_wrong: "fn main() -> i64 = println(42);",
-        example_correct: "fn main() -> i64 = { let _r: i64 = println(42); 0 };",
+        example_correct: "fn main() -> i64 = { println(42); 0 };",
     },
     DiagPattern {
         id: "unit_to_value",
@@ -153,18 +163,36 @@ pub static PATTERNS: &[DiagPattern] = &[
         example_correct: "fn foo() -> i64 = 42;",
     },
     DiagPattern {
+        id: "nullable_type_mismatch",
+        kind: "type",
+        // NEW: matches "expected i64, got i64?" — AI creates nullable but context needs concrete type
+        triggers: &["got i64?", "got f64?", "got bool?", "expected i64, got i64?", "expected f64, got f64?"],
+        suggestion: "Cannot use T? where T is expected. Use plain T if value is always present, or match to extract the value.",
+        example_wrong: "let x: i64? = 42;\nprintln(x);  // error: expected i64, got i64?",
+        example_correct: "let x: i64 = 42;\nprintln(x);  // or: match x { some(v) => println(v), none => () };",
+    },
+    DiagPattern {
         id: "underscore_pattern",
         kind: "parser",
-        triggers: &["`_`", "Unrecognized token `_`"],
+        triggers: &["`_`", "Unrecognized token `_`", "token `_`"],
         suggestion: "BMB does not support underscore _ patterns. Use a named variable or else clause.",
         example_wrong: "let _ = foo();",
         example_correct: "let _unused: i64 = foo();",
     },
     DiagPattern {
-        id: "missing_semicolon",
+        id: "missing_semicolon_eof",
         kind: "parser",
-        triggers: &["expected `}`", "expected `;`", "Unrecognized token `;`"],
-        suggestion: "BMB blocks must end with a semicolon after while/if. Use: while cond { body; };",
+        // NEW: matches the actual lalrpop EOF error format
+        triggers: &["Unrecognized EOF", "Expected one of \";\""],
+        suggestion: "BMB top-level definitions (fn, struct) must end with ';'. Block expressions end with '};'.",
+        example_wrong: "fn main() -> i64 = { 0 }",
+        example_correct: "fn main() -> i64 = { 0 };",
+    },
+    DiagPattern {
+        id: "missing_semicolon_block",
+        kind: "parser",
+        triggers: &["expected `}`", "expected `;`"],
+        suggestion: "BMB blocks must end with a semicolon after while/if/for. Use: while cond { body; };",
         example_wrong: "while i < n { set i = i + 1; }",
         example_correct: "while i < n { set i = i + 1; };",
     },
@@ -176,11 +204,10 @@ pub static PATTERNS: &[DiagPattern] = &[
         example_wrong: "let x: i64 = if cond { 1 };",
         example_correct: "let x: i64 = if cond { 1 } else { 0 };",
     },
-    // --- Phase 2 patterns (verified against current compiler) ---
     DiagPattern {
         id: "closure_lambda",
         kind: "parser",
-        triggers: &["`|`", "closure", "lambda"],
+        triggers: &["`|`", "closure", "lambda", "token `|`"],
         suggestion: "BMB has no closures or lambdas. Use named functions instead.",
         example_wrong: "let f = |x| x + 1;",
         example_correct: "fn add_one(x: i64) -> i64 = x + 1;",
@@ -207,7 +234,7 @@ pub static PATTERNS: &[DiagPattern] = &[
         triggers: &["if expression without else", "branch types do not match"],
         suggestion: "BMB if without else returns (). Both branches must match types. Add else { () } for unit if-statements.",
         example_wrong: "if x > 0 { set count = count + 1 };",
-        example_correct: "if x > 0 { set count = count + 1 } else { () };",
+        example_correct: "if x > 0 { set count = count + 1; () } else { () };",
     },
     DiagPattern {
         id: "iterator_methods",
@@ -224,5 +251,34 @@ pub static PATTERNS: &[DiagPattern] = &[
         suggestion: "BMB has no type casting with 'as'. All integers are i64.",
         example_wrong: "let idx = n as usize;",
         example_correct: "let idx: i64 = n;  // All integers are i64",
+    },
+    // ===== Patterns from Cycle 1+2 testing =====
+    DiagPattern {
+        id: "missing_return_type",
+        kind: "parser",
+        // AI tries void function: fn foo() = { ... } — BMB requires explicit return type
+        triggers: &["Expected one of \"->\"", "expected `->`"],
+        suggestion: "BMB requires explicit return type for all functions. For void-like functions, return i64 and return 0.",
+        example_wrong: "fn do_stuff(x: i64) = { println(x); };",
+        example_correct: "fn do_stuff(x: i64) -> i64 = { println(x); 0 };",
+    },
+    // =====
+    DiagPattern {
+        id: "unknown_function",
+        kind: "type",
+        // Matches common AI hallucinated function names
+        triggers: &["unknown function"],
+        suggestion: "Check function name. BMB built-ins: println, println_str, print, print_str, read_int, vec_new, vec_push, vec_get, vec_set, vec_len, vec_pop, vec_free.",
+        example_wrong: "let x: i64 = input();",
+        example_correct: "let x: i64 = read_int();",
+    },
+    DiagPattern {
+        id: "unwrap_bang",
+        kind: "parser",
+        // NEW: AI tries Rust-style ! for unwrap or macros
+        triggers: &["Unrecognized token `!`"],
+        suggestion: "BMB has no ! operator (no macros, no unwrap). For nullable T?, use match or change type to T.",
+        example_wrong: "let val: i64 = maybe_val!;",
+        example_correct: "let val: i64 = 42;  // use plain type if always present",
     },
 ];

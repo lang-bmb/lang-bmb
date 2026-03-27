@@ -149,6 +149,13 @@ pub struct BuildConfig {
 
     /// Disable prelude auto-include (for bootstrap or special cases)
     pub no_prelude: bool,
+
+    // === v0.97: Safe Mode ===
+
+    /// Enable safe mode: insert runtime bounds checks and divzero guards.
+    /// With contracts (pre/post), LLVM can eliminate these checks via llvm.assume,
+    /// proving that contracts make safe code as fast as unsafe code.
+    pub safe: bool,
 }
 
 impl BuildConfig {
@@ -183,6 +190,8 @@ impl BuildConfig {
             // v0.60.252: Prelude
             prelude_path: None,
             no_prelude: false,
+            // v0.97: Safe mode
+            safe: false,
         }
     }
 
@@ -266,6 +275,12 @@ impl BuildConfig {
     /// Disable prelude auto-include (v0.60.252)
     pub fn no_prelude(mut self, disable: bool) -> Self {
         self.no_prelude = disable;
+        self
+    }
+
+    /// v0.97: Enable safe mode (bounds checks + divzero guards)
+    pub fn safe(mut self, enable: bool) -> Self {
+        self.safe = enable;
         self
     }
 }

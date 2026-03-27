@@ -4896,6 +4896,13 @@ impl ConstantPropagationNarrowing {
                 return false;
             }
 
+        // v0.97: Don't narrow params referenced in preconditions or postconditions.
+        // Contract codegen emits `icmp` using the param's declared type;
+        // narrowing would create i32-vs-i64 type mismatches in llvm.assume.
+        if Self::param_in_contracts(func, param_name) {
+            return false;
+        }
+
         let func_name = &func.name;
         let Some(consts) = self.call_site_constants.get(func_name) else {
             return false;
@@ -4936,6 +4943,24 @@ impl ConstantPropagationNarrowing {
             }
         }
         false
+    }
+
+    /// v0.97: Check if a parameter name appears in any precondition or postcondition.
+    /// Parameters referenced in contracts must keep their declared type (i64)
+    /// because contract codegen emits typed comparisons (icmp) using them.
+    fn param_in_contracts(func: &MirFunction, param_name: &str) -> bool {
+        use crate::mir::ContractFact;
+        let check = |facts: &[ContractFact]| -> bool {
+            facts.iter().any(|f| match f {
+                ContractFact::VarCmp { var, .. } => var == param_name,
+                ContractFact::VarVarCmp { lhs, rhs, .. } => lhs == param_name || rhs == param_name,
+                ContractFact::ArrayBounds { index, array } => index == param_name || array == param_name,
+                ContractFact::NonNull { var } => var == param_name,
+                ContractFact::ReturnVarCmp { var, .. } => var == param_name,
+                ContractFact::ReturnCmp { .. } => false,
+            })
+        };
+        check(&func.preconditions) || check(&func.postconditions)
     }
 
     /// Check if the parameter decreases (or stays same) in all recursive calls
@@ -5355,6 +5380,26 @@ impl LoopBoundedNarrowing {
             && index_params.contains(&param_idx) {
                 return false;
             }
+
+        // v0.97: Don't narrow params referenced in preconditions or postconditions.
+        // Contract codegen emits `icmp` using the param's declared type;
+        // narrowing would create i32-vs-i64 type mismatches in llvm.assume.
+        {
+            use crate::mir::ContractFact;
+            let check_contract = |facts: &[ContractFact]| -> bool {
+                facts.iter().any(|f| match f {
+                    ContractFact::VarCmp { var, .. } => var == param_name,
+                    ContractFact::VarVarCmp { lhs, rhs, .. } => lhs == param_name || rhs == param_name,
+                    ContractFact::ArrayBounds { index, array } => index == param_name || array == param_name,
+                    ContractFact::NonNull { var } => var == param_name,
+                    ContractFact::ReturnVarCmp { var, .. } => var == param_name,
+                    ContractFact::ReturnCmp { .. } => false,
+                })
+            };
+            if check_contract(&func.preconditions) || check_contract(&func.postconditions) {
+                return false;
+            }
+        }
 
         // Check if we have bounds for this parameter
         if let Some(bounds) = self.param_bounds.get(&func.name)

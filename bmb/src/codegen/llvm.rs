@@ -1955,13 +1955,12 @@ impl<'ctx> LlvmContext<'ctx> {
                         }
                     }
                     ContractFact::VarVarCmp { lhs, op, rhs } => {
-                        if let Some((_, lty)) = func.params.iter().find(|(n, _)| n == lhs) {
+                        if let Some((_, _lty)) = func.params.iter().find(|(n, _)| n == lhs) {
                             if func.params.iter().any(|(n, _)| n == rhs) {
                                 if let (Some(lhs_val), Some(rhs_val)) = (
                                     self.ssa_values.get(lhs).cloned(),
                                     self.ssa_values.get(rhs).cloned(),
                                 ) {
-                                    let _ = lty; // type used for documentation
                                     let pred = match op {
                                         CmpOp::Lt => inkwell::IntPredicate::SLT,
                                         CmpOp::Le => inkwell::IntPredicate::SLE,
@@ -1970,7 +1969,23 @@ impl<'ctx> LlvmContext<'ctx> {
                                         CmpOp::Eq => inkwell::IntPredicate::EQ,
                                         CmpOp::Ne => inkwell::IntPredicate::NE,
                                     };
-                                    if let Ok(cmp) = self.builder.build_int_compare(pred, lhs_val.into_int_value(), rhs_val.into_int_value(), "_assume_cmp") {
+                                    // v0.97: Ensure both operands have the same type for icmp.
+                                    // If narrowing changed one param to i32 and the other is i64,
+                                    // sign-extend the smaller one to match the larger.
+                                    let mut lhs_int = lhs_val.into_int_value();
+                                    let mut rhs_int = rhs_val.into_int_value();
+                                    let lhs_bits = lhs_int.get_type().get_bit_width();
+                                    let rhs_bits = rhs_int.get_type().get_bit_width();
+                                    if lhs_bits < rhs_bits {
+                                        if let Ok(ext) = self.builder.build_int_s_extend(lhs_int, rhs_int.get_type(), "_assume_sext") {
+                                            lhs_int = ext;
+                                        }
+                                    } else if rhs_bits < lhs_bits {
+                                        if let Ok(ext) = self.builder.build_int_s_extend(rhs_int, lhs_int.get_type(), "_assume_sext") {
+                                            rhs_int = ext;
+                                        }
+                                    }
+                                    if let Ok(cmp) = self.builder.build_int_compare(pred, lhs_int, rhs_int, "_assume_cmp") {
                                         let _ = self.builder.build_call(*assume_fn, &[cmp.into()], "");
                                     }
                                 }

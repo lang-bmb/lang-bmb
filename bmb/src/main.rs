@@ -93,6 +93,14 @@ enum Command {
         #[arg(long, default_value = "30")]
         verification_timeout: u32,
 
+        // === v0.97: Safe Mode Options ===
+
+        /// Enable safe mode (v0.97): insert runtime bounds checks and divzero guards.
+        /// With contracts (pre/post), LLVM can eliminate these checks via llvm.assume.
+        /// This proves that contracts make safe code as fast as unsafe code.
+        #[arg(long)]
+        safe: bool,
+
         // === v0.60.56: Fast Math Options ===
 
         /// Enable fast-math optimizations for floating-point operations (v0.60.56)
@@ -435,8 +443,9 @@ fn main() {
                     fast_math,
                     include_paths,
                     prelude_path,
+                    safe,
                     no_prelude,
-                } => build_file(&file, output, debug, release, aggressive, fast_compile, emit_ir, shared, emit_mir, emit_cir, emit_wasm, &wasm_target, all_targets, target.as_deref(), verbose, verify.as_deref(), trust_contracts, verification_timeout, fast_math, &include_paths, prelude_path.as_ref(), no_prelude),
+                } => build_file(&file, output, debug, release, aggressive, fast_compile, emit_ir, shared, emit_mir, emit_cir, emit_wasm, &wasm_target, all_targets, target.as_deref(), verbose, verify.as_deref(), trust_contracts, verification_timeout, fast_math, safe, &include_paths, prelude_path.as_ref(), no_prelude),
                 Command::Run { file, args, human: _ } => run_file(&file, &args),
                 Command::Repl => start_repl(),
                 Command::Check { file, include_paths } => check_file_with_includes(&file, &include_paths),
@@ -509,6 +518,7 @@ fn build_file(
     trust_contracts: bool,
     verification_timeout: u32,
     fast_math: bool,
+    safe: bool,
     include_paths: &[PathBuf],
     prelude_path: Option<&PathBuf>,
     no_prelude: bool,
@@ -533,7 +543,7 @@ fn build_file(
         if verbose {
             println!("\n=== Native Build ===");
         }
-        build_native(path, output.clone(), debug, release, aggressive, fast_compile, emit_ir, shared, target, verbose, verify_mode, trust_contracts, verification_timeout, fast_math, include_paths, prelude_path, no_prelude)?;
+        build_native(path, output.clone(), debug, release, aggressive, fast_compile, emit_ir, shared, target, verbose, verify_mode, trust_contracts, verification_timeout, fast_math, safe, include_paths, prelude_path, no_prelude)?;
 
         // Then build WASM
         if verbose {
@@ -553,7 +563,7 @@ fn build_file(
     }
 
     // Default: build native
-    build_native(path, output, debug, release, aggressive, fast_compile, emit_ir, shared, target, verbose, verify_mode, trust_contracts, verification_timeout, fast_math, include_paths, prelude_path, no_prelude)
+    build_native(path, output, debug, release, aggressive, fast_compile, emit_ir, shared, target, verbose, verify_mode, trust_contracts, verification_timeout, fast_math, safe, include_paths, prelude_path, no_prelude)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -572,6 +582,7 @@ fn build_native(
     trust_contracts: bool,
     verification_timeout: u32,
     fast_math: bool,
+    safe: bool,
     include_paths: &[PathBuf],
     prelude_path: Option<&PathBuf>,
     no_prelude: bool,
@@ -632,6 +643,11 @@ fn build_native(
     // v0.87: Fast compile mode - skip opt pass for faster builds
     if fast_compile {
         config = config.fast_compile(true);
+    }
+
+    // v0.97: Safe mode — insert runtime bounds/divzero checks
+    if safe {
+        config.safe = true;
     }
 
     // v0.97: Shared library mode
@@ -996,6 +1012,8 @@ fn check_file_with_includes(path: &PathBuf, include_paths: &[PathBuf]) -> Result
         Err(e) => {
             if !is_human_output() {
                 bmb::error::report_error_machine(&filename, &source, &e);
+                // v0.97: Hint that fixing this error may reveal more errors
+                println!(r#"{{"type":"hint","message":"Fix this error and re-run check — more errors may be found after parsing succeeds."}}"#);
                 std::process::exit(1);
             }
             bmb::error::report_error(&filename, &source, &e);
@@ -1375,7 +1393,7 @@ fn verify_file(path: &PathBuf, z3_path: &str, timeout: u32) -> Result<(), Box<dy
             eprintln!("Warning: Z3 solver not found at '{}'. Install Z3 or specify --z3-path.", z3_path);
             eprintln!("Skipping contract verification.");
         } else {
-            println!(r#"{{"type":"verify_skip","reason":"z3_not_found"}}"#);
+            println!(r#"{{"type":"verify_skip","reason":"z3_not_found","hint":"Install Z3 SMT solver: https://github.com/Z3Prover/z3/releases or use --z3-path to specify location."}}"#);
         }
         return Ok(());
     }
@@ -1722,8 +1740,26 @@ fn fmt_file(path: &PathBuf, check: bool) -> Result<(), Box<dyn std::error::Error
                 needs_formatting = true;
                 if is_human_output() {
                     println!("❌ {} needs formatting", filename);
+                    // v0.97: Show simple diff for human mode
+                    for (i, (orig, fmt)) in source.lines().zip(formatted.lines()).enumerate() {
+                        if orig != fmt {
+                            println!("  line {}: - {}", i + 1, orig.trim());
+                            println!("  line {}: + {}", i + 1, fmt.trim());
+                        }
+                    }
                 } else {
-                    println!(r#"{{"type":"fmt_needed","file":"{}"}}"#, filename);
+                    // v0.97: Include first diff line in JSON for AI consumption
+                    let first_diff = source.lines().zip(formatted.lines())
+                        .enumerate()
+                        .find(|(_, (a, b))| a != b)
+                        .map(|(i, (orig, fmt))| {
+                            format!(r#","first_diff_line":{},"original":"{}","formatted":"{}""#,
+                                i + 1,
+                                orig.trim().replace('\\', "\\\\").replace('"', "\\\""),
+                                fmt.trim().replace('\\', "\\\\").replace('"', "\\\""))
+                        })
+                        .unwrap_or_default();
+                    println!(r#"{{"type":"fmt_needed","file":"{}"{}}}"#, filename, first_diff);
                 }
             } else if is_human_output() {
                 println!("✓ {} is formatted", filename);
