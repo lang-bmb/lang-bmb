@@ -327,13 +327,23 @@ impl Resolver {
             return Err(CompileError::resolve_error_at("Empty use path", use_stmt.span));
         }
 
-        // The first segment is the module name
-        let module_name = &use_stmt.path[0].node;
-        let module_span = use_stmt.path[0].span;
+        // v0.98: Support nested module paths (e.g., `use core::num::abs`)
+        // For paths with 3+ segments, join all but the last as the module path.
+        // Example: `use core::num::abs` → module = "core/num" (file: core/num.bmb), item = "abs"
+        let (module_name, module_span) = if use_stmt.path.len() >= 3 {
+            // Join all segments except the last with "/" to form the nested module name
+            let parts: Vec<&str> = use_stmt.path[..use_stmt.path.len() - 1]
+                .iter().map(|s| s.node.as_str()).collect();
+            let nested_name = parts.join("/");
+            let span = use_stmt.path[0].span;
+            (nested_name, span)
+        } else {
+            (use_stmt.path[0].node.clone(), use_stmt.path[0].span)
+        };
 
         // Load the module (v0.70: pass span for error localization)
-        self.load_module_with_span(module_name, module_span)?;
-        let module = self.modules.get(module_name).unwrap();
+        self.load_module_with_span(&module_name, module_span)?;
+        let module = self.modules.get(&module_name).unwrap();
 
         // If there's only one segment, import everything (not supported yet)
         if use_stmt.path.len() == 1 {
@@ -343,7 +353,7 @@ impl Resolver {
                 imports.add_import(name.clone(), module_name.clone(), item.clone(), use_stmt.span);
             }
         } else {
-            // Import specific items (e.g., use lexer::Token)
+            // Import specific items (e.g., use lexer::Token or use core::num::abs)
             // The last segment is the item name
             let item_segment = use_stmt.path.last().unwrap();
             let item_name = &item_segment.node;
