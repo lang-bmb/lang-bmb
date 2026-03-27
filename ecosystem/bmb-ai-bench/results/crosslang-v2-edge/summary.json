@@ -1,0 +1,18 @@
+{
+  "date": "2026-03-27",
+  "model": "claude-text",
+  "problems": 15,
+  "runs": 3,
+  "languages": [
+    "bmb"
+  ],
+  "results": {
+    "bmb": {
+      "total": 45,
+      "passed": 39,
+      "success_rate": 0.8666666666666667,
+      "median_loops": 1,
+      "avg_loops": 2.4871794871794872
+    }
+  }
+}

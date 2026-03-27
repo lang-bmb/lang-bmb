@@ -1,0 +1,12 @@
+{
+  "problem_id": "59_calendar_day",
+  "lang": "bmb",
+  "run_id": 1,
+  "loop_count": 5,
+  "final_correct": true,
+  "loop_types": {
+    "compile": 1,
+    "test": 3
+  },
+  "error_sample": ""
+}

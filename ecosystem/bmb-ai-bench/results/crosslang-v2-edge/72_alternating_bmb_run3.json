@@ -1,0 +1,12 @@
+{
+  "problem_id": "72_alternating",
+  "lang": "bmb",
+  "run_id": 3,
+  "loop_count": 4,
+  "final_correct": true,
+  "loop_types": {
+    "compile": 0,
+    "test": 3
+  },
+  "error_sample": ""
+}

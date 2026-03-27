@@ -1,0 +1,12 @@
+{
+  "problem_id": "66_acc_recursion",
+  "lang": "bmb",
+  "run_id": 1,
+  "loop_count": 8,
+  "final_correct": true,
+  "loop_types": {
+    "compile": 0,
+    "test": 7
+  },
+  "error_sample": ""
+}
