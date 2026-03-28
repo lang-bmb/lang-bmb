@@ -139,6 +139,9 @@ enum Command {
         /// v0.71: Human-readable output (colors, formatting). Default: machine/JSON
         #[arg(long)]
         human: bool,
+        /// v0.98: Additional include paths for module resolution
+        #[arg(short = 'I', long = "include", value_name = "PATH")]
+        include_paths: Vec<PathBuf>,
     },
     /// Start interactive REPL
     Repl,
@@ -446,7 +449,7 @@ fn main() {
                     safe,
                     no_prelude,
                 } => build_file(&file, output, debug, release, aggressive, fast_compile, emit_ir, shared, emit_mir, emit_cir, emit_wasm, &wasm_target, all_targets, target.as_deref(), verbose, verify.as_deref(), trust_contracts, verification_timeout, fast_math, safe, &include_paths, prelude_path.as_ref(), no_prelude),
-                Command::Run { file, args, human: _ } => run_file(&file, &args),
+                Command::Run { file, args, human: _, include_paths } => run_file(&file, &args, &include_paths),
                 Command::Repl => start_repl(),
                 Command::Check { file, include_paths } => check_file_with_includes(&file, &include_paths),
                 Command::Verify { file, z3_path, timeout } => verify_file(&file, &z3_path, timeout),
@@ -892,11 +895,12 @@ const INTERPRETER_STACK_SIZE: usize = 64 * 1024 * 1024;
 /// cause stack overflow on the default 1-2MB Windows thread stack.
 const COMPILER_STACK_SIZE: usize = 64 * 1024 * 1024;
 
-fn run_file(path: &Path, extra_args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+fn run_file(path: &Path, extra_args: &[String], include_paths: &[PathBuf]) -> Result<(), Box<dyn std::error::Error>> {
     // v0.30.241: Run entire pipeline in a thread with larger stack to prevent overflow
     // Bootstrap files have deep recursion that exceeds default 1MB Windows stack
     // We run everything in the thread because Value uses Rc<RefCell<>> (not Send)
     let path = path.to_path_buf();
+    let include_paths = include_paths.to_vec();
 
     // v0.46: Prepare program arguments for the BMB program
     // Format: [program_name, arg1, arg2, ...]
@@ -922,13 +926,29 @@ fn run_file(path: &Path, extra_args: &[String]) -> Result<(), Box<dyn std::error
             let ast = bmb::parser::parse(&filename, &source, tokens)
                 .map_err(|e| format!("Parser error: {}", e))?;
 
+            // v0.98: Resolve imports from include paths and load module ASTs
+            let base_dir = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+            let mut resolver = bmb::resolver::Resolver::new(base_dir);
+            for ip in &include_paths {
+                resolver.add_search_path(ip);
+            }
+            let _imports = resolver.resolve_uses(&ast)
+                .map_err(|e| format!("Resolve error: {}", e))?;
+
             // Type check first
             let mut checker = bmb::types::TypeChecker::new();
+            // Type-check imported modules first
+            for module in resolver.modules_in_order() {
+                let _ = checker.check_program(&module.program);
+            }
             checker.check_program(&ast)
                 .map_err(|e| format!("Type error: {}", e))?;
 
-            // Run with interpreter
+            // Run with interpreter — load imported modules, then main program
             let mut interpreter = bmb::interp::Interpreter::new();
+            for module in resolver.modules_in_order() {
+                interpreter.load(&module.program);
+            }
             interpreter.load(&ast);
             interpreter.run(&ast)
                 .map_err(|e| format!("Runtime error: {}", e.message))?;

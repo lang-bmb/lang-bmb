@@ -1,11 +1,12 @@
 #!/bin/bash
 # BMB stdlib E2E Test Runner
-# Runs type-check verification on all stdlib test files
+# Runs type-check and/or interpreter verification on all stdlib test files
 #
 # Usage:
-#   ./scripts/test-stdlib.sh           # Run all stdlib tests
-#   ./scripts/test-stdlib.sh --verbose # Show details
-#   ./scripts/test-stdlib.sh --json    # JSON output for CI
+#   ./scripts/test-stdlib.sh               # Type-check all stdlib tests
+#   ./scripts/test-stdlib.sh --run         # Also run in interpreter mode
+#   ./scripts/test-stdlib.sh --verbose     # Show details
+#   ./scripts/test-stdlib.sh --json        # JSON output for CI
 
 set -e
 
@@ -19,17 +20,18 @@ STDLIB_DIR="${PROJECT_ROOT}/stdlib"
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
 NC='\033[0m'
 
 # Options
 VERBOSE=false
 JSON_OUTPUT=false
+RUN_MODE=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --verbose|-v) VERBOSE=true; shift ;;
         --json) JSON_OUTPUT=true; shift ;;
+        --run|-r) RUN_MODE=true; shift ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -44,18 +46,18 @@ else
     exit 1
 fi
 
-# Known failures (empty — all resolved with nested module support in v0.98)
-KNOWN_FAIL=""
+MODE="check"
+$RUN_MODE && MODE="check+run"
 
 echo "=== BMB stdlib E2E Test Runner ==="
 echo "Compiler: $BMB"
-echo "Tests:    $TESTS_DIR"
-echo "stdlib:   $STDLIB_DIR"
+echo "Mode:     $MODE"
 echo ""
 
-PASS=0
-FAIL=0
-SKIP=0
+CHECK_PASS=0
+CHECK_FAIL=0
+RUN_PASS=0
+RUN_FAIL=0
 TOTAL=0
 FAILURES=""
 
@@ -63,62 +65,62 @@ for test_file in "${TESTS_DIR}"/test_*.bmb; do
     basename=$(basename "$test_file")
     TOTAL=$((TOTAL + 1))
 
-    # Check if known failure
-    if echo "$KNOWN_FAIL" | grep -q "$basename"; then
-        if $VERBOSE; then
-            echo -e "  ${YELLOW}SKIP${NC} $basename (known: core:: module resolution)"
-        fi
-        SKIP=$((SKIP + 1))
-        continue
-    fi
-
-    # Run type-check with include path
+    # Phase 1: Type-check
     output=$("$BMB" check "$test_file" --include "$STDLIB_DIR" 2>&1)
 
     if echo "$output" | grep -q '"type":"error"'; then
-        FAIL=$((FAIL + 1))
-        FAILURES="${FAILURES}\n  ${basename}"
+        CHECK_FAIL=$((CHECK_FAIL + 1))
+        FAILURES="${FAILURES}\n  ${basename} (check)"
         if $VERBOSE; then
-            echo -e "  ${RED}FAIL${NC} $basename"
-            echo "$output" | grep '"type":"error"' | head -3 | while read -r line; do
-                msg=$(echo "$line" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('message',''))" 2>/dev/null || echo "$line")
-                echo "       $msg"
-            done
+            echo -e "  ${RED}FAIL${NC} $basename [check]"
         else
             echo -e "  ${RED}FAIL${NC} $basename"
         fi
-    else
-        PASS=$((PASS + 1))
-        if $VERBOSE; then
-            # Count warnings
-            warn_count=$(echo "$output" | grep -c '"type":"warning"' || true)
-            echo -e "  ${GREEN}PASS${NC} $basename ($warn_count warnings)"
+        continue
+    fi
+
+    CHECK_PASS=$((CHECK_PASS + 1))
+
+    # Phase 2: Interpreter run (if --run)
+    if $RUN_MODE; then
+        run_output=$("$BMB" run "$test_file" --include "$STDLIB_DIR" 2>&1)
+        if echo "$run_output" | grep -qi "error"; then
+            RUN_FAIL=$((RUN_FAIL + 1))
+            FAILURES="${FAILURES}\n  ${basename} (run)"
+            if $VERBOSE; then
+                echo -e "  ${GREEN}check${NC} ${RED}FAIL${NC} $basename [run]"
+                echo "$run_output" | head -2 | while read -r line; do echo "       $line"; done
+            else
+                echo -e "  ${RED}FAIL${NC} $basename [run]"
+            fi
+        else
+            RUN_PASS=$((RUN_PASS + 1))
+            $VERBOSE && echo -e "  ${GREEN}PASS${NC} $basename [check+run]"
         fi
+    else
+        $VERBOSE && echo -e "  ${GREEN}PASS${NC} $basename [check]"
     fi
 done
 
 echo ""
 echo "=== Results ==="
-echo -e "  ${GREEN}PASS${NC}: $PASS"
-if [[ $FAIL -gt 0 ]]; then
-    echo -e "  ${RED}FAIL${NC}: $FAIL"
+echo -e "  check: ${GREEN}${CHECK_PASS}${NC} pass, ${CHECK_FAIL} fail"
+if $RUN_MODE; then
+    echo -e "  run:   ${GREEN}${RUN_PASS}${NC} pass, ${RUN_FAIL} fail"
 fi
-if [[ $SKIP -gt 0 ]]; then
-    echo -e "  ${YELLOW}SKIP${NC}: $SKIP (known issues)"
-fi
-echo "  Total: $TOTAL"
+echo "  total: $TOTAL"
 
 if [[ -n "$FAILURES" ]]; then
-    echo -e "\nFailed tests:${FAILURES}"
+    echo -e "\nFailed:${FAILURES}"
 fi
 
 if $JSON_OUTPUT; then
     echo ""
-    echo "{\"pass\":$PASS,\"fail\":$FAIL,\"skip\":$SKIP,\"total\":$TOTAL}"
+    echo "{\"check_pass\":$CHECK_PASS,\"check_fail\":$CHECK_FAIL,\"run_pass\":$RUN_PASS,\"run_fail\":$RUN_FAIL,\"total\":$TOTAL}"
 fi
 
-# Exit with failure if any unexpected failures
-if [[ $FAIL -gt 0 ]]; then
+TOTAL_FAIL=$((CHECK_FAIL + RUN_FAIL))
+if [[ $TOTAL_FAIL -gt 0 ]]; then
     exit 1
 fi
 
