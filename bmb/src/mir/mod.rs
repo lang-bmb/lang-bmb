@@ -98,6 +98,8 @@ pub struct MirFunction {
     /// Set by MemoryEffectAnalysis pass. Used for LLVM memory(read) attribute.
     /// Only meaningful when is_memory_free is false.
     pub is_read_only: bool,
+    /// v0.97.2: @noinline — prevent inlining for contract-based cross-module optimization
+    pub no_inline: bool,
     /// v0.97: Function is marked @export — visible to external callers (no private linkage)
     /// Used for shared library (.dll/.so) exports with C ABI
     pub is_export: bool,
@@ -1237,6 +1239,7 @@ fn format_mir_function(func: &MirFunction) -> String {
     if func.is_const { attrs.push("const"); }
     if func.always_inline { attrs.push("alwaysinline"); }
     if func.inline_hint { attrs.push("inlinehint"); }
+    if func.no_inline { attrs.push("noinline"); }
     if func.is_memory_free { attrs.push("memory(none)"); }
 
     // Function header with optional attributes
@@ -2057,6 +2060,7 @@ mod tests {
             is_const: false,
             always_inline: false,
             inline_hint: true,
+            no_inline: false,
             is_memory_free: true,
                 is_read_only: false,
                 is_export: false,
@@ -2540,6 +2544,7 @@ mod tests {
             is_const: true,
             always_inline: false,
             inline_hint: false,
+            no_inline: false,
             is_memory_free: true,
                 is_read_only: false,
                 is_export: false,

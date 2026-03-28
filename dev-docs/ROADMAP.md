@@ -12,7 +12,7 @@
 
 | 항목 | 상태 |
 |------|------|
-| **버전** | v0.97.1 (Cycle 2345+, Cycles 121-140) |
+| **버전** | v0.97.2 (Cycles 121-160) |
 | **Bootstrap** | 3-Stage Fixed Point (S2 == S3), i8*→ptr 완전 마이그레이션 |
 | **Benchmarks** | 309 빌드 ✅, 16+ FASTER, 0 FAIL — BMB > C AND Rust |
 | **Tests** | 6,199 Rust regression + 9/9 stdlib E2E (check+run) = 전체 통과 |
@@ -21,8 +21,10 @@
 | **Ecosystem** | stdlib 15/15, gotgan E2E, 5 libs, bindings CI 3-platform |
 | **Module System** | `use` import: check + run + build 전체 파이프라인 동작 |
 | **EXISTENTIAL** | 7/7 완료 — 계약→성능 파이프라인 증명됨 |
-| **Contract→Perf** | purity_opt **2.88x FASTER** vs Clang (@pure → memory(none) → CSE) |
+| **Contract→Perf** | purity_opt **2.88x FASTER** vs Clang (Phase Ordering: MIR CSE → LLVM inline) |
+| **Language Spec** | @noinline 추가 — noinline + memory(none) → 별도 컴파일 단위 시뮬레이션 |
 | **f64 Math** | sin, cos, floor, ceil, fabs, pow_f64 — LLVM 인트린식 직접 호출 |
+| **Codegen** | calloc ptr 반환 수정, @noinline LLVM 속성 방출 |
 | **Codegen** | calloc 타입 불일치 수정 (inttoptr 제거) |
 | **Next Focus** | v0.98: LSP 실전 검증 + build 모듈 시스템 성숙 + 배포 |
 
@@ -498,6 +500,14 @@ v0.97.1      ⚡ 계약→성능 실전화 + f64 Math + Codegen 품질 (Cycles 1
           │  ├── calloc codegen 수정: inttoptr 제거 (spectral_norm 0 inttoptr)
           │  ├── IR 분석: spectral_norm (-12% LLVM 스케줄링), floyd_warshall (-14% 벡터화)
           │  └── 벤치마크 공정성: C int64_t 타입 수정, invariant_hoist @pure 추가
+          │
+v0.97.2      ⚡ 언어스펙 변경 + 성능 메커니즘 규명 (Cycles 141-160)
+          │  ├── @noinline 언어 스펙 추가: parser→MIR→codegen 전체 파이프라인
+          │  ├── @pure + @noinline = noinline + memory(none) → LLVM GVN CSE 증명
+          │  ├── 성능 메커니즘 규명: Phase Ordering (MIR CSE → LLVM inline)
+          │  ├── 발견: 현대 C 컴파일러도 noinline 순수성 분석 가능 (단순 함수)
+          │  ├── BMB 고유 우위: 재귀 순수함수 CSE (C는 인라인 후 CSE 실패)
+          │  └── pure_cse 벤치마크 추가 (contract_opt/pure_cse)
 
 ═══════════════════ 다음 ═════════════════════════════════════
 

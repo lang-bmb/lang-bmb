@@ -6346,6 +6346,7 @@ mod tests {
             is_const: false,
             always_inline: false,
             inline_hint: false,
+            no_inline: false,
             is_memory_free: false,
             is_read_only: false,
         }
@@ -6364,6 +6365,7 @@ mod tests {
             is_const: false,
             always_inline: false,
             inline_hint: false,
+            no_inline: false,
             is_memory_free: false,
             is_read_only: false,
         }
@@ -6382,6 +6384,7 @@ mod tests {
             is_const: false,
             always_inline: false,
             inline_hint: false,
+            no_inline: false,
             is_memory_free: false,
             is_read_only: false,
         }

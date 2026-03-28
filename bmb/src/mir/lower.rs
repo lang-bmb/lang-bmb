@@ -270,6 +270,8 @@ fn lower_function(
     let explicit_always_inline = has_attribute(&fn_def.attributes, "alwaysinline");
     // v0.59: Support @inline attribute as an alias for @alwaysinline
     let explicit_inline = has_attribute(&fn_def.attributes, "inline");
+    // v0.97.2: @noinline prevents inlining — enables cross-module contract optimization
+    let explicit_noinline = has_attribute(&fn_def.attributes, "noinline");
 
     MirFunction {
         name: fn_def.name.node.clone(),
@@ -281,8 +283,9 @@ fn lower_function(
         postconditions,
         is_pure,
         is_const,
-        always_inline: explicit_always_inline || explicit_inline, // v0.59: Can be set by source attribute OR AggressiveInlining pass
+        always_inline: if explicit_noinline { false } else { explicit_always_inline || explicit_inline },
         inline_hint: false, // v0.51.52: Set by AggressiveInlining pass for medium-sized functions
+        no_inline: explicit_noinline, // v0.97.2: @noinline
         is_memory_free: is_pure, // v0.69: @pure implies memory(none) for LLVM optimization
         is_read_only: false,
         is_export: has_attribute(&fn_def.attributes, "export"), // v0.97: @export for shared lib visibility
