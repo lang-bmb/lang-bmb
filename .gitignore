@@ -68,10 +68,10 @@ bs_s1_*
 # Assembly output
 *.s
 
-# Build directories & artifacts
-build/
-build_test/
-build_wsl/
+# Build directories & artifacts (root-level only, not bmb/src/build/)
+/build/
+/build_test/
+/build_wsl/
 benchmark_run/
 bench_results/
 benchmark_results*/

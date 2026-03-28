@@ -195,40 +195,95 @@ fn mk_completion_item(label: String, kind: i64, detail: String) -> String =
     ",\"detail\":\"" + detail + "\"}";
 
 // ============================================
-// Diagnostics
+// Diagnostics — invokes `bmb check` for real parsing
 // ============================================
 
-// Simple syntax check: count unmatched braces/parens
+// Run `bmb check` on the file and publish diagnostics from JSON output
 fn publish_diagnostics(uri: String, text: String) -> () = {
-    let diags = check_syntax(text, 0, 0, 0, 0, 0, "[]");
-    send_notification("textDocument/publishDiagnostics",
-        "{\"uri\":\"" + escape_json_str(uri) + "\",\"diagnostics\":" + diags + "}")
+    let file_path = uri_to_path(uri);
+    if file_path == "" {
+        // Can't resolve path — publish empty diagnostics
+        send_notification("textDocument/publishDiagnostics",
+            "{\"uri\":\"" + escape_json_str(uri) + "\",\"diagnostics\":[]}")
+    } else {
+        // Write text to temp file to ensure latest content is checked
+        let tmp = file_path + ".bmb-lsp-tmp";
+        let _w = write_file(tmp, text);
+        // Call bmb check on the temp file
+        let cmd = "bmb check \"" + tmp + "\" 2>&1";
+        let output = system_capture(cmd);
+        // Parse output: each line is a JSON object from bmb check
+        let diags = parse_bmb_check_output(output, 0, "[");
+        let diags_final = if diags == "[" { "[]" } else { diags + "]" };
+        send_notification("textDocument/publishDiagnostics",
+            "{\"uri\":\"" + escape_json_str(uri) + "\",\"diagnostics\":" + diags_final + "}")
+    }
 };
 
-// Scan for basic syntax issues
-// Returns JSON array of diagnostics
-fn check_syntax(text: String, pos: i64, line: i64, col: i64,
-                braces: i64, parens: i64, acc: String) -> String =
-    if pos >= text.len() {
-        // At end, check for unmatched delimiters
-        if braces > 0 {
-            mk_diag_arr(line, col, "Unmatched opening brace '{'", 1)
-        } else if braces < 0 {
-            mk_diag_arr(line, col, "Unmatched closing brace '}'", 1)
-        } else if parens > 0 {
-            mk_diag_arr(line, col, "Unmatched opening parenthesis '('", 1)
-        } else if parens < 0 {
-            mk_diag_arr(line, col, "Unmatched closing parenthesis ')'", 1)
-        } else { "[]" }
+// Convert file:///path URI to local filesystem path
+fn uri_to_path(uri: String) -> String = {
+    let prefix = "file:///";
+    if uri.len() > prefix.len() {
+        if uri.slice(0, prefix.len()) == prefix {
+            uri.slice(prefix.len(), uri.len())
+        } else { "" }
+    } else { "" }
+};
+
+// Parse bmb check output: each line is a JSON diagnostic
+// Returns partial JSON array string (without closing ']')
+fn parse_bmb_check_output(output: String, pos: i64, acc: String) -> String = {
+    let nl = find_newline(output, pos);
+    if nl < 0 {
+        // Last line
+        let line = output.slice(pos, output.len());
+        parse_one_check_line(line, acc)
     } else {
-        let c = text.byte_at(pos);
-        if c == 10 { check_syntax(text, pos + 1, line + 1, 0, braces, parens, acc) }
-        else if c == 123 { check_syntax(text, pos + 1, line, col + 1, braces + 1, parens, acc) }
-        else if c == 125 { check_syntax(text, pos + 1, line, col + 1, braces - 1, parens, acc) }
-        else if c == 40 { check_syntax(text, pos + 1, line, col + 1, braces, parens + 1, acc) }
-        else if c == 41 { check_syntax(text, pos + 1, line, col + 1, braces, parens - 1, acc) }
-        else { check_syntax(text, pos + 1, line, col + 1, braces, parens, acc) }
-    };
+        let line = output.slice(pos, nl);
+        let new_acc = parse_one_check_line(line, acc);
+        parse_bmb_check_output(output, nl + 1, new_acc)
+    }
+};
+
+fn find_newline(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { 0 - 1 }
+    else if s.byte_at(pos) == 10 { pos }
+    else { find_newline(s, pos + 1) };
+
+// Parse one line of bmb check output (JSON object)
+fn parse_one_check_line(line: String, acc: String) -> String = {
+    if line.len() < 2 { acc }
+    else if line.byte_at(0) != 123 { acc }  // Not a JSON object ('{' = 123)
+    else {
+        // Parse the JSON line
+        let doc = jdoc_new();
+        let root = jparse(doc, line);
+        if root < 0 { acc }
+        else {
+            let kind = jobj_str(doc, root, "type", line);
+            if kind == "error" {
+                let msg = jobj_str(doc, root, "message", line);
+                let ln = jobj_num(doc, root, "line", line);
+                let col = jobj_num(doc, root, "col", line);
+                // LSP lines/cols are 0-based, bmb check gives 1-based
+                let lsp_line = if ln > 0 { ln - 1 } else { 0 };
+                let lsp_col = if col > 0 { col - 1 } else { 0 };
+                let diag = mk_diagnostic(lsp_line, lsp_col, msg, 1);
+                let sep = if acc == "[" { "" } else { "," };
+                acc + sep + diag
+            } else if kind == "warning" {
+                let msg = jobj_str(doc, root, "message", line);
+                let ln = jobj_num(doc, root, "line", line);
+                let col = jobj_num(doc, root, "col", line);
+                let lsp_line = if ln > 0 { ln - 1 } else { 0 };
+                let lsp_col = if col > 0 { col - 1 } else { 0 };
+                let diag = mk_diagnostic(lsp_line, lsp_col, msg, 2);
+                let sep = if acc == "[" { "" } else { "," };
+                acc + sep + diag
+            } else { acc }
+        }
+    }
+};
 
 fn mk_diag_arr(line: i64, col: i64, msg: String, severity: i64) -> String =
     "[" + mk_diagnostic(line, col, msg, severity) + "]";
