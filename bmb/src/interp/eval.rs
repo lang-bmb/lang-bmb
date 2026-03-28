@@ -217,6 +217,13 @@ impl Interpreter {
 
         // v0.34: Math intrinsics for Phase 34.4 Benchmark Gate (n_body, mandelbrot_fp)
         self.builtins.insert("sqrt".to_string(), builtin_sqrt);
+        // v0.97.1: Additional f64 math intrinsics
+        self.builtins.insert("sin".to_string(), builtin_sin);
+        self.builtins.insert("cos".to_string(), builtin_cos);
+        self.builtins.insert("floor".to_string(), builtin_floor);
+        self.builtins.insert("ceil".to_string(), builtin_ceil);
+        self.builtins.insert("fabs".to_string(), builtin_fabs);
+        self.builtins.insert("pow_f64".to_string(), builtin_pow_f64);
         self.builtins.insert("i64_to_f64".to_string(), builtin_i64_to_f64);
         self.builtins.insert("f64_to_i64".to_string(), builtin_f64_to_i64);
         // v0.51.47: i32 conversion functions for performance-critical code
@@ -6822,6 +6829,68 @@ fn builtin_sqrt(args: &[Value]) -> InterpResult<Value> {
         Value::Int(n) => Ok(Value::Float((*n as f64).sqrt())),
         _ => Err(RuntimeError::type_error("f64", args[0].type_name())),
     }
+}
+
+// v0.97.1: Additional f64 math intrinsics
+
+fn builtin_sin(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 { return Err(RuntimeError::arity_mismatch("sin", 1, args.len())); }
+    match &args[0] {
+        Value::Float(f) => Ok(Value::Float(f.sin())),
+        Value::Int(n) => Ok(Value::Float((*n as f64).sin())),
+        _ => Err(RuntimeError::type_error("f64", args[0].type_name())),
+    }
+}
+
+fn builtin_cos(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 { return Err(RuntimeError::arity_mismatch("cos", 1, args.len())); }
+    match &args[0] {
+        Value::Float(f) => Ok(Value::Float(f.cos())),
+        Value::Int(n) => Ok(Value::Float((*n as f64).cos())),
+        _ => Err(RuntimeError::type_error("f64", args[0].type_name())),
+    }
+}
+
+fn builtin_floor(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 { return Err(RuntimeError::arity_mismatch("floor", 1, args.len())); }
+    match &args[0] {
+        Value::Float(f) => Ok(Value::Float(f.floor())),
+        Value::Int(n) => Ok(Value::Float(*n as f64)),
+        _ => Err(RuntimeError::type_error("f64", args[0].type_name())),
+    }
+}
+
+fn builtin_ceil(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 { return Err(RuntimeError::arity_mismatch("ceil", 1, args.len())); }
+    match &args[0] {
+        Value::Float(f) => Ok(Value::Float(f.ceil())),
+        Value::Int(n) => Ok(Value::Float(*n as f64)),
+        _ => Err(RuntimeError::type_error("f64", args[0].type_name())),
+    }
+}
+
+fn builtin_fabs(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 { return Err(RuntimeError::arity_mismatch("fabs", 1, args.len())); }
+    match &args[0] {
+        Value::Float(f) => Ok(Value::Float(f.abs())),
+        Value::Int(n) => Ok(Value::Float((*n as f64).abs())),
+        _ => Err(RuntimeError::type_error("f64", args[0].type_name())),
+    }
+}
+
+fn builtin_pow_f64(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 { return Err(RuntimeError::arity_mismatch("pow_f64", 2, args.len())); }
+    let base = match &args[0] {
+        Value::Float(f) => *f,
+        Value::Int(n) => *n as f64,
+        _ => return Err(RuntimeError::type_error("f64", args[0].type_name())),
+    };
+    let exp = match &args[1] {
+        Value::Float(f) => *f,
+        Value::Int(n) => *n as f64,
+        _ => return Err(RuntimeError::type_error("f64", args[1].type_name())),
+    };
+    Ok(Value::Float(base.powf(exp)))
 }
 
 /// i64_to_f64(x: i64) -> f64

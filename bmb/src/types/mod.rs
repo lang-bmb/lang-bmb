@@ -403,6 +403,13 @@ impl TypeChecker {
         // v0.34: Math intrinsics for Phase 34.4 Benchmark Gate (n_body, mandelbrot_fp)
         // sqrt(x: f64) -> f64 (square root)
         functions.insert("sqrt".to_string(), (vec![Type::F64], Type::F64));
+        // v0.97.1: Additional f64 math intrinsics via LLVM
+        functions.insert("sin".to_string(), (vec![Type::F64], Type::F64));
+        functions.insert("cos".to_string(), (vec![Type::F64], Type::F64));
+        functions.insert("floor".to_string(), (vec![Type::F64], Type::F64));
+        functions.insert("ceil".to_string(), (vec![Type::F64], Type::F64));
+        functions.insert("fabs".to_string(), (vec![Type::F64], Type::F64));
+        functions.insert("pow_f64".to_string(), (vec![Type::F64, Type::F64], Type::F64));
         // i64_to_f64(x: i64) -> f64 (type conversion)
         functions.insert("i64_to_f64".to_string(), (vec![Type::I64], Type::F64));
         // f64_to_i64(x: f64) -> i64 (type conversion, truncates toward zero)

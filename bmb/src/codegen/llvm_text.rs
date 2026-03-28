@@ -3031,6 +3031,101 @@ impl TextCodeGen {
                     return Ok(());
                 }
 
+                // v0.97.1: f64 math intrinsics — sin, cos, floor, ceil, fabs
+                // Same pattern as sqrt: load arg, convert if needed, call llvm intrinsic
+                if matches!(fn_name.as_str(), "sin" | "cos" | "floor" | "ceil" | "fabs") && args.len() == 1 {
+                    let intrinsic = match fn_name.as_str() {
+                        "sin" => "llvm.sin.f64",
+                        "cos" => "llvm.cos.f64",
+                        "floor" => "llvm.floor.f64",
+                        "ceil" => "llvm.ceil.f64",
+                        "fabs" => "llvm.fabs.f64",
+                        _ => unreachable!(),
+                    };
+                    let arg_ty = match &args[0] {
+                        Operand::Constant(c) => self.constant_type(c),
+                        Operand::Place(p) => place_types.get(&p.name).copied()
+                            .unwrap_or_else(|| self.infer_place_type(p, func)),
+                    };
+                    let arg_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("{}.{}.arg", p.name, fn_name);
+                            writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, arg_ty, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    let f64_val = if arg_ty == "i64" {
+                        let conv_name = format!("{}.{}.conv", dest.as_ref().map(|d| d.name.as_str()).unwrap_or("tmp"), fn_name);
+                        writeln!(out, "  %{} = sitofp i64 {} to double", conv_name, arg_val)?;
+                        format!("%{}", conv_name)
+                    } else {
+                        arg_val
+                    };
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let temp_name = format!("{}.{}", d.name, fn_name);
+                            writeln!(out, "  %{} = call double @{}(double {})", temp_name, intrinsic, f64_val)?;
+                            writeln!(out, "  store double %{}, ptr %{}.addr", temp_name, d.name)?;
+                        } else {
+                            let dest_name = self.unique_name(&d.name, name_counts);
+                            writeln!(out, "  %{} = call double @{}(double {})", dest_name, intrinsic, f64_val)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
+                // v0.97.1: pow_f64(base, exp) -> f64 via LLVM intrinsic
+                if fn_name == "pow_f64" && args.len() == 2 {
+                    let arg0_ty = match &args[0] {
+                        Operand::Constant(c) => self.constant_type(c),
+                        Operand::Place(p) => place_types.get(&p.name).copied()
+                            .unwrap_or_else(|| self.infer_place_type(p, func)),
+                    };
+                    let arg0_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("{}.pow.arg0", p.name);
+                            writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, arg0_ty, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    let arg1_ty = match &args[1] {
+                        Operand::Constant(c) => self.constant_type(c),
+                        Operand::Place(p) => place_types.get(&p.name).copied()
+                            .unwrap_or_else(|| self.infer_place_type(p, func)),
+                    };
+                    let arg1_val = match &args[1] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("{}.pow.arg1", p.name);
+                            writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, arg1_ty, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[1], string_table),
+                    };
+                    let f64_val0 = if arg0_ty == "i64" {
+                        let conv = format!("{}.pow.conv0", dest.as_ref().map(|d| d.name.as_str()).unwrap_or("tmp"));
+                        writeln!(out, "  %{} = sitofp i64 {} to double", conv, arg0_val)?;
+                        format!("%{}", conv)
+                    } else { arg0_val };
+                    let f64_val1 = if arg1_ty == "i64" {
+                        let conv = format!("{}.pow.conv1", dest.as_ref().map(|d| d.name.as_str()).unwrap_or("tmp"));
+                        writeln!(out, "  %{} = sitofp i64 {} to double", conv, arg1_val)?;
+                        format!("%{}", conv)
+                    } else { arg1_val };
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let temp_name = format!("{}.pow", d.name);
+                            writeln!(out, "  %{} = call double @llvm.pow.f64(double {}, double {})", temp_name, f64_val0, f64_val1)?;
+                            writeln!(out, "  store double %{}, ptr %{}.addr", temp_name, d.name)?;
+                        } else {
+                            let dest_name = self.unique_name(&d.name, name_counts);
+                            writeln!(out, "  %{} = call double @llvm.pow.f64(double {}, double {})", dest_name, f64_val0, f64_val1)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
                 if fn_name == "i64_to_f64" && args.len() == 1 {
                     // i64_to_f64(x: i64) -> f64 via sitofp
                     // v0.60.24: Handle type-narrowed i32 arguments - need sext before sitofp
@@ -3253,6 +3348,35 @@ impl TextCodeGen {
                             writeln!(out, "  %{} = ptrtoint ptr %{} to i64", conv_name, ptr_name)?;
                             writeln!(out, "  store i64 %{}, ptr %{}.addr", conv_name, d.name)?;
                             // v0.96.36: Also store native ptr for provenance tracking
+                            if ptr_provenance_vars.contains(&d.name) {
+                                writeln!(out, "  store ptr %{}, ptr %{}.ptr.addr", ptr_name, d.name)?;
+                            }
+                        } else {
+                            let dest_name = self.unique_name(&d.name, name_counts);
+                            writeln!(out, "  %{} = ptrtoint ptr %{} to i64", dest_name, ptr_name)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
+                // v0.97.1: calloc(count, size) -> ptr - allocates zeroed memory
+                // Same pattern as malloc but with 2 arguments.
+                // Previously went through general call path which emitted
+                // `call i64 @calloc(...)` — type mismatch with `ptr @calloc()` declaration.
+                // This caused inttoptr instructions that poison LLVM alias analysis.
+                if fn_name == "calloc" && args.len() == 2 {
+                    let calloc_idx = *name_counts.entry("calloc_op".to_string()).or_insert(0);
+                    *name_counts.get_mut("calloc_op").unwrap() += 1;
+                    let count_val = self.format_operand_with_strings(&args[0], string_table);
+                    let size_val = self.format_operand_with_strings(&args[1], string_table);
+                    let ptr_name = format!("calloc.ptr.{}", calloc_idx);
+                    writeln!(out, "  %{} = call noalias ptr @calloc(i64 {}, i64 {})", ptr_name, count_val, size_val)?;
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let conv_name = format!("calloc.conv.{}", calloc_idx);
+                            writeln!(out, "  %{} = ptrtoint ptr %{} to i64", conv_name, ptr_name)?;
+                            writeln!(out, "  store i64 %{}, ptr %{}.addr", conv_name, d.name)?;
+                            // v0.97.1: Also store native ptr for provenance tracking
                             if ptr_provenance_vars.contains(&d.name) {
                                 writeln!(out, "  store ptr %{}, ptr %{}.ptr.addr", ptr_name, d.name)?;
                             }
@@ -7365,7 +7489,7 @@ impl TextCodeGen {
 
             // f64 return - Math intrinsics (v0.34)
             // v0.51.48: Added i32_to_f64 for i32 conversion support
-            "sqrt" | "i64_to_f64" | "i32_to_f64" => "double",
+            "sqrt" | "sin" | "cos" | "floor" | "ceil" | "fabs" | "pow_f64" | "i64_to_f64" | "i32_to_f64" => "double",
 
             // i64 return - String operations (both full and wrapper names)
             // v0.46: byte_at added as preferred name (same as interpreter)

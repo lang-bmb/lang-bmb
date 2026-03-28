@@ -12,7 +12,7 @@
 
 | 항목 | 상태 |
 |------|------|
-| **버전** | v0.97 (Cycle 2345) |
+| **버전** | v0.97.1 (Cycle 2345+, Cycles 121-140) |
 | **Bootstrap** | 3-Stage Fixed Point (S2 == S3), i8*→ptr 완전 마이그레이션 |
 | **Benchmarks** | 309 빌드 ✅, 16+ FASTER, 0 FAIL — BMB > C AND Rust |
 | **Tests** | 6,199 Rust regression + 9/9 stdlib E2E (check+run) = 전체 통과 |
@@ -21,6 +21,9 @@
 | **Ecosystem** | stdlib 15/15, gotgan E2E, 5 libs, bindings CI 3-platform |
 | **Module System** | `use` import: check + run + build 전체 파이프라인 동작 |
 | **EXISTENTIAL** | 7/7 완료 — 계약→성능 파이프라인 증명됨 |
+| **Contract→Perf** | purity_opt **2.88x FASTER** vs Clang (@pure → memory(none) → CSE) |
+| **f64 Math** | sin, cos, floor, ceil, fabs, pow_f64 — LLVM 인트린식 직접 호출 |
+| **Codegen** | calloc 타입 불일치 수정 (inttoptr 제거) |
 | **Next Focus** | v0.98: LSP 실전 검증 + build 모듈 시스템 성숙 + 배포 |
 
 ### Graduation 진행도
@@ -489,6 +492,13 @@ v0.97        ⚡ 컴파일러 인프라 성숙 (Cycles 2326-2345)
           │  ├── 크로스플랫폼 bindings CI (Win+Ubuntu+macOS)
           │  └── 인터프리터: read_line, int_to_string, delete_file, StringRope fix
 
+v0.97.1      ⚡ 계약→성능 실전화 + f64 Math + Codegen 품질 (Cycles 121-140)
+          │  ├── purity_opt @pure 추가 → BMB 2.88x FASTER vs Clang (CSE/LICM)
+          │  ├── f64 Math 인트린식 6개: sin, cos, floor, ceil, fabs, pow_f64
+          │  ├── calloc codegen 수정: inttoptr 제거 (spectral_norm 0 inttoptr)
+          │  ├── IR 분석: spectral_norm (-12% LLVM 스케줄링), floyd_warshall (-14% 벡터화)
+          │  └── 벤치마크 공정성: C int64_t 타입 수정, invariant_hoist @pure 추가
+
 ═══════════════════ 다음 ═════════════════════════════════════
 
 v0.98        모듈 시스템 + LSP 실전화
@@ -577,11 +587,21 @@ v1.0         Production Release
 > Phase 3 (Cycles 1783-1786): Full suite re-measurement + WARN 개별 검증 (전부 PASS 확인).
 > 모든 BMB 벤치마크는 raw memory (malloc/load_i64/store_i64) 사용으로 C와 공정 비교.
 
-**주의**: 위 결과에서 **계약이 성능에 기여한 벤치마크는 0개**. 모든 성능 차이는 MIR 최적화 품질과 LLVM 백엔드 동등성에 기인.
+**계약→성능 기여 벤치마크**:
+- **purity_opt**: `@pure` → `memory(none)` → LLVM CSE/LICM 활성화 → **BMB 2.88x FASTER vs Clang** (Cycle 121)
+  - C 컴파일러는 동일 LLVM 백엔드에서도 함수 순수성 증명 불가 → 중복 호출 제거 실패
+  - MIR PureFunctionCSE: 3회 호출 → 1회로 축소 (IR 검증 완료)
+  - BMB 119ms vs Clang 343ms vs GCC 586ms (100K iterations, int64_t, 출력 동일)
+- **bounds_check/divzero_check**: EXISTENTIAL E-3/E-4에서 noinline 시뮬레이션으로 증명 (43%/32%)
 
-**IR 분석 (FASTER 원인)**: BMB의 GEP 기반 주소지정이 포인터 출처(provenance) 보존 → LLVM 루프 최적화 강화.
+**기타 FASTER 원인 (계약 무관)**: BMB의 GEP 기반 주소지정이 포인터 출처(provenance) 보존 → LLVM 루프 최적화 강화.
+- knapsack: BMB 0.13x vs Clang (GEP + alias analysis 우위)
 - floyd_warshall: BMB IR 436줄 vs C IR 498줄 (0 inttoptr)
 - lcs: BMB IR 321줄 vs C IR 391줄 (0 inttoptr)
+
+**성능 개선 필요 (Cycle 123-124 분석)**:
+- spectral_norm: inttoptr 6개 잔존 → f64 포인터 provenance 추적 미비 → 12% 성능 저하
+- floyd_warshall: LLVM 벡터화 83/165 (50%) → 재귀→루프 변환 패턴 개선 필요
 - 공통 패턴: 2D 배열 접근 + 계산된 인덱스에서 GEP가 더 나은 alias analysis 제공.
 
 ---
