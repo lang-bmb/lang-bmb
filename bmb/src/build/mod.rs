@@ -33,6 +33,7 @@ use crate::mir::lower_program;
 use crate::parser::parse;
 use crate::lexer::tokenize;
 use crate::preprocessor;
+use crate::resolver::Resolver;
 use crate::types::TypeChecker;
 
 // v0.55: CIR/PIR pipeline imports
@@ -426,6 +427,31 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         println!("  Parsed {} items", program.items.len());
     }
 
+    // v0.98: Resolve `use` imports via Resolver before type checking
+    let base_dir = config.input.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let mut resolver = Resolver::new(base_dir);
+    for ip in &config.include_paths {
+        resolver.add_search_path(ip);
+    }
+    let _imports = resolver.resolve_uses(&program)
+        .map_err(|e| BuildError::Parse(format!("Resolve error: {}", e)))?;
+
+    // Type-check imported modules first, then main program
+    let mut type_checker = TypeChecker::new();
+    for module in resolver.modules_in_order() {
+        type_checker
+            .check_program(&module.program)
+            .map_err(|e| BuildError::Type(format!("{}", e)))?;
+    }
+
+    if config.verbose {
+        let module_count = resolver.modules_in_order().count();
+        if module_count > 0 {
+            println!("  Resolved {} imported modules", module_count);
+        }
+        println!("  Parsed {} items", program.items.len());
+    }
+
     // v0.12.3: Filter items by @cfg attributes
     let cfg_eval = CfgEvaluator::new(config.target);
     let program = cfg_eval.filter_program(&program);
@@ -435,8 +461,7 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
                  program.items.len(), config.target.as_str());
     }
 
-    // Type check
-    let mut type_checker = TypeChecker::new();
+    // Type check main program
     type_checker
         .check_program(&program)
         .map_err(|e| BuildError::Type(format!("{}", e)))?;
@@ -444,6 +469,17 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
     if config.verbose {
         println!("  Type check passed");
     }
+
+    // v0.98: Merge imported module items into main program for MIR lowering
+    let program = {
+        let mut merged = program.clone();
+        for module in resolver.modules_in_order() {
+            for item in &module.program.items {
+                merged.items.push(item.clone());
+            }
+        }
+        merged
+    };
 
     // Lower to MIR
     let mut mir = lower_program(&program);
