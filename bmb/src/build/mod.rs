@@ -471,6 +471,7 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
     }
 
     // v0.98: Merge imported module items into main program for MIR lowering
+    // Module items must be in same program for shared string table and global state
     let program = {
         let mut merged = program.clone();
         for module in resolver.modules_in_order() {

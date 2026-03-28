@@ -161,9 +161,103 @@ fn handle_did_change(doc: i64, root: i64, src: String) -> () = {
 
 // Handle "textDocument/hover"
 fn handle_hover(id: String, doc: i64, root: i64, src: String) -> () = {
-    // Return empty hover for now
-    send_response(id, "null")
+    let params_n = jobj_get(doc, root, "params", src);
+    if params_n < 0 { send_response(id, "null") }
+    else {
+        let td = jobj_get(doc, params_n, "textDocument", src);
+        let pos = jobj_get(doc, params_n, "position", src);
+        if td < 0 { send_response(id, "null") }
+        else if pos < 0 { send_response(id, "null") }
+        else {
+            let uri = jobj_str(doc, td, "uri", src);
+            let line = jobj_num(doc, pos, "line", src);
+            let character = jobj_num(doc, pos, "character", src);
+            // Read file to get word at position
+            let file_path = uri_to_path(uri);
+            let content = if file_path == "" { "" } else { read_file(file_path) };
+            let word = word_at_position(content, line, character);
+            let info = lookup_hover_info(word);
+            if info == "" { send_response(id, "null") }
+            else {
+                let result = "{\"contents\":{\"kind\":\"markdown\",\"value\":\"" + escape_json_str(info) + "\"}}";
+                send_response(id, result)
+            }
+        }
+    }
 };
+
+// Get the word at a given line/character position
+fn word_at_position(content: String, line: i64, col: i64) -> String = {
+    let offset = line_col_to_offset(content, line, 0, 0);
+    let pos = offset + col;
+    if pos >= content.len() { "" }
+    else {
+        let start = find_word_start(content, pos);
+        let end_pos = find_word_end(content, start);
+        if start >= end_pos { "" }
+        else { content.slice(start, end_pos) }
+    }
+};
+
+fn line_col_to_offset(s: String, target_line: i64, current_line: i64, pos: i64) -> i64 =
+    if current_line >= target_line { pos }
+    else if pos >= s.len() { pos }
+    else if s.byte_at(pos) == 10 { line_col_to_offset(s, target_line, current_line + 1, pos + 1) }
+    else { line_col_to_offset(s, target_line, current_line, pos + 1) };
+
+fn find_word_start(s: String, pos: i64) -> i64 =
+    if pos <= 0 { 0 }
+    else {
+        let c = s.byte_at(pos - 1);
+        if is_ident_char(c) { find_word_start(s, pos - 1) }
+        else { pos }
+    };
+
+fn find_word_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos }
+    else {
+        let c = s.byte_at(pos);
+        if is_ident_char(c) { find_word_end(s, pos + 1) }
+        else { pos }
+    };
+
+fn is_ident_char(c: i64) -> bool =
+    (c >= 97) and (c <= 122) or   // a-z
+    (c >= 65) and (c <= 90) or    // A-Z
+    (c >= 48) and (c <= 57) or    // 0-9
+    c == 95;                       // _
+
+// Lookup hover information for a word
+fn lookup_hover_info(word: String) -> String =
+    if word == "fn" { "**fn** — Function declaration\\n\\n```bmb\\nfn name(params) -> ReturnType = body;\\n```" }
+    else if word == "let" { "**let** — Variable binding\\n\\n```bmb\\nlet x: i64 = 42;\\nlet mut y: i64 = 0;\\n```" }
+    else if word == "pre" { "**pre** — Precondition contract\\n\\nCompile-time assertion on function inputs. Enables `llvm.assume` for optimization." }
+    else if word == "post" { "**post** — Postcondition contract\\n\\nCompile-time assertion on function return value. Propagated to call sites." }
+    else if word == "pure" { "**pure** — Pure function modifier\\n\\nNo side effects. Enables CSE, vectorization, and memoization." }
+    else if word == "invariant" { "**invariant** — Loop invariant\\n\\nMaintained across all loop iterations." }
+    else if word == "struct" { "**struct** — Record type definition\\n\\n```bmb\\nstruct Point { x: i64, y: i64 }\\n```" }
+    else if word == "enum" { "**enum** — Tagged union\\n\\n```bmb\\nenum Color { Red, Green, Blue }\\n```" }
+    else if word == "match" { "**match** — Pattern matching expression\\n\\n```bmb\\nmatch x { 0 => \"zero\", _ => \"other\" }\\n```" }
+    else if word == "while" { "**while** — While loop\\n\\n```bmb\\nwhile cond { body }\\n```" }
+    else if word == "own" { "**own** — Ownership transfer\\n\\nTransfers ownership of a value (Rust-inspired move semantics)." }
+    // Builtin functions
+    else if word == "println" { "```bmb\\nprintln(n: i64) -> ()\\n```\\nPrint integer with newline." }
+    else if word == "println_str" { "```bmb\\nprintln_str(s: String) -> ()\\n```\\nPrint string with newline." }
+    else if word == "print_str" { "```bmb\\nprint_str(s: String) -> ()\\n```\\nPrint string without newline." }
+    else if word == "vec_new" { "```bmb\\nvec_new() -> i64\\n```\\nCreate empty vector. Returns handle." }
+    else if word == "vec_push" { "```bmb\\nvec_push(v: i64, val: i64) -> i64\\n```\\nAppend element to vector." }
+    else if word == "vec_get" { "```bmb\\nvec_get(v: i64, idx: i64) -> i64\\n```\\nGet element at index." }
+    else if word == "vec_len" { "```bmb\\nvec_len(v: i64) -> i64\\n```\\nGet vector length." }
+    else if word == "vec_set" { "```bmb\\nvec_set(v: i64, idx: i64, val: i64) -> ()\\n```\\nSet element at index." }
+    else if word == "read_file" { "```bmb\\nread_file(path: String) -> String\\n```\\nRead entire file contents." }
+    else if word == "write_file" { "```bmb\\nwrite_file(path: String, content: String) -> i64\\n```\\nWrite string to file. Returns 0 on success." }
+    else if word == "read_line" { "```bmb\\nread_line() -> String\\n```\\nRead line from stdin." }
+    else if word == "read_bytes" { "```bmb\\nread_bytes(n: i64) -> String\\n```\\nRead exactly n bytes from stdin." }
+    else if word == "write_stdout" { "```bmb\\nwrite_stdout(s: String) -> ()\\n```\\nWrite string to stdout (no newline, binary-safe)." }
+    else if word == "int_to_string" { "```bmb\\nint_to_string(n: i64) -> String\\n```\\nConvert integer to string." }
+    else if word == "chr" { "```bmb\\nchr(code: i64) -> String\\n```\\nConvert Unicode codepoint to single-character string." }
+    else if word == "system_capture" { "```bmb\\nsystem_capture(cmd: String) -> String\\n```\\nExecute command and capture stdout." }
+    else { "" };
 
 // Handle "textDocument/completion"
 fn handle_completion(id: String, doc: i64, root: i64, src: String) -> () = {
@@ -185,7 +279,28 @@ fn handle_completion(id: String, doc: i64, root: i64, src: String) -> () = {
         mk_completion_item("pure", 14, "Pure function modifier") + "," +
         mk_completion_item("own", 14, "Ownership transfer") + "," +
         mk_completion_item("true", 14, "Boolean true") + "," +
-        mk_completion_item("false", 14, "Boolean false") +
+        mk_completion_item("false", 14, "Boolean false") + "," +
+        // Builtin functions (kind 3 = Function)
+        mk_completion_item("println", 3, "println(n: i64) -> ()") + "," +
+        mk_completion_item("println_str", 3, "println_str(s: String) -> ()") + "," +
+        mk_completion_item("print_str", 3, "print_str(s: String) -> ()") + "," +
+        mk_completion_item("vec_new", 3, "vec_new() -> i64") + "," +
+        mk_completion_item("vec_push", 3, "vec_push(v, val) -> i64") + "," +
+        mk_completion_item("vec_get", 3, "vec_get(v, idx) -> i64") + "," +
+        mk_completion_item("vec_len", 3, "vec_len(v) -> i64") + "," +
+        mk_completion_item("vec_set", 3, "vec_set(v, idx, val) -> ()") + "," +
+        mk_completion_item("vec_free", 3, "vec_free(v) -> ()") + "," +
+        mk_completion_item("read_file", 3, "read_file(path) -> String") + "," +
+        mk_completion_item("write_file", 3, "write_file(path, content) -> i64") + "," +
+        mk_completion_item("read_line", 3, "read_line() -> String") + "," +
+        mk_completion_item("read_bytes", 3, "read_bytes(n) -> String") + "," +
+        mk_completion_item("write_stdout", 3, "write_stdout(s) -> ()") + "," +
+        mk_completion_item("int_to_string", 3, "int_to_string(n) -> String") + "," +
+        mk_completion_item("chr", 3, "chr(code) -> String") + "," +
+        mk_completion_item("system_capture", 3, "system_capture(cmd) -> String") + "," +
+        mk_completion_item("hashmap_new", 3, "hashmap_new() -> i64") + "," +
+        mk_completion_item("hashmap_insert", 3, "hashmap_insert(h, k, v) -> i64") + "," +
+        mk_completion_item("hashmap_get", 3, "hashmap_get(h, k) -> i64") +
     "]";
     send_response(id, "{\"isIncomplete\":false,\"items\":" + items + "}")
 };
@@ -212,6 +327,7 @@ fn publish_diagnostics(uri: String, text: String) -> () = {
         // Call bmb check on the temp file
         let cmd = "bmb check \"" + tmp + "\" 2>&1";
         let output = system_capture(cmd);
+        let _d = delete_file(tmp);
         // Parse output: each line is a JSON object from bmb check
         let diags = parse_bmb_check_output(output, 0, "[");
         let diags_final = if diags == "[" { "[]" } else { diags + "]" };

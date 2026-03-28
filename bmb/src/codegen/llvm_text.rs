@@ -939,6 +939,7 @@ impl TextCodeGen {
         // Phase 32.3: Process execution runtime functions
         // v0.96.43: nocallback (process exec doesn't call back into BMB code)
         writeln!(out, "; Runtime declarations - Process execution")?;
+        writeln!(out, "declare i64 @bmb_delete_file(ptr) nocallback nounwind nofree")?;
         writeln!(out, "declare i64 @bmb_system(ptr) nocallback nounwind")?;
         writeln!(out, "declare ptr @bmb_system_capture(ptr) nocallback nounwind")?;
         writeln!(out, "declare ptr @bmb_exec_output(ptr, ptr) nocallback nounwind")?;
@@ -5136,6 +5137,7 @@ impl TextCodeGen {
                     match fn_name.as_str() {
                         "system" => "bmb_system",
                         "system_capture" => "bmb_system_capture",
+                        "delete_file" => "bmb_delete_file",
                         "read_line" => "bmb_read_line",
                         "read_bytes" => "bmb_read_bytes",
                         "write_stdout" => "bmb_write_stdout",

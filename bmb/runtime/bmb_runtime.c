@@ -2700,6 +2700,16 @@ int64_t file_size(const BmbString* path) {
     return (int64_t)size;
 }
 
+// v0.98: delete_file(path) -> i64: deletes a file, returns 0 on success, -1 on error
+int64_t bmb_delete_file(const BmbString* path) {
+    if (!path || !path->data) return -1;
+    return (remove(path->data) == 0) ? 0 : -1;
+}
+
+int64_t delete_file(const BmbString* path) {
+    return bmb_delete_file(path);
+}
+
 // v0.96: Directory operations for gotgan-bmb and file system programs
 #include <dirent.h>
 #ifdef _WIN32

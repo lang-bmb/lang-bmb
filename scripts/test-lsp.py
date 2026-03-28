@@ -55,10 +55,22 @@ def parse_responses(raw):
         pos = body_start + length
     return responses
 
+# Create a test BMB file for hover/completion
+import tempfile
+test_bmb = os.path.join(tempfile.gettempdir(), "lsp_test.bmb")
+with open(test_bmb, "w") as f:
+    f.write("fn main() -> i64 = {\n    let x: i64 = 42;\n    println(x);\n    0\n};\n")
+test_uri = "file:///" + test_bmb.replace("\\", "/")
+
 # Test sequence
 messages = [
     {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"capabilities": {}}},
     {"jsonrpc": "2.0", "method": "initialized", "params": {}},
+    # Completion request
+    {"jsonrpc": "2.0", "id": 3, "method": "textDocument/completion", "params": {
+        "textDocument": {"uri": test_uri},
+        "position": {"line": 0, "character": 0}
+    }},
     {"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
     {"jsonrpc": "2.0", "method": "exit"},
 ]
@@ -109,9 +121,28 @@ else:
     print("  FAIL initialize — no response")
     failed += 1
 
-# Check shutdown response
+# Check completion response
 if len(responses) >= 2:
     r = responses[1]
+    if r.get("id") == 3 and "result" in r:
+        items = r["result"].get("items", [])
+        labels = [it.get("label") for it in items]
+        if "fn" in labels and "let" in labels and "pre" in labels:
+            print(f"  PASS completion — {len(items)} items (fn, let, pre, ...)")
+            passed += 1
+        else:
+            print(f"  FAIL completion — missing keywords: {labels[:5]}")
+            failed += 1
+    else:
+        print(f"  FAIL completion — unexpected: {r}")
+        failed += 1
+else:
+    print("  FAIL completion — no response")
+    failed += 1
+
+# Check shutdown response
+if len(responses) >= 3:
+    r = responses[2]
     if r.get("id") == 2 and r.get("result") is None:
         print("  PASS shutdown — null result")
         passed += 1
@@ -119,7 +150,7 @@ if len(responses) >= 2:
         print(f"  FAIL shutdown — unexpected: {r}")
         failed += 1
 else:
-    print("  FAIL shutdown — no response")
+    print(f"  FAIL shutdown — only {len(responses)} responses")
     failed += 1
 
 print()

@@ -296,6 +296,8 @@ impl TypeChecker {
         functions.insert("list_dir".to_string(), (vec![Type::String], Type::String));
         // remove_file(path: String) -> i64 (0 = success, -1 = error)
         functions.insert("remove_file".to_string(), (vec![Type::String], Type::I64));
+        // v0.98: delete_file(path: String) -> i64 (alias for remove_file)
+        functions.insert("delete_file".to_string(), (vec![Type::String], Type::I64));
         // remove_dir(path: String) -> i64 (0 = success, removes empty dir)
         functions.insert("remove_dir".to_string(), (vec![Type::String], Type::I64));
 

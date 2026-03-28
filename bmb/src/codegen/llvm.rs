@@ -1232,6 +1232,11 @@ impl<'ctx> LlvmContext<'ctx> {
         let append_file_fn = self.module.add_function("bmb_append_file", append_file_type, None);
         self.functions.insert("append_file".to_string(), append_file_fn);
 
+        // v0.98: delete_file(path: ptr) -> i64 (returns 0 on success, -1 on error)
+        let delete_file_type = i64_type.fn_type(&[ptr_type.into()], false);
+        let delete_file_fn = self.module.add_function("bmb_delete_file", delete_file_type, None);
+        self.functions.insert("delete_file".to_string(), delete_file_fn);
+
         // system(cmd: ptr) -> i64
         let system_type = i64_type.fn_type(&[ptr_type.into()], false);
         let system_fn = self.module.add_function("bmb_system", system_type, None);

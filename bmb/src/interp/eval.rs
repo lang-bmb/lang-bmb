@@ -168,6 +168,7 @@ impl Interpreter {
         self.builtins.insert("make_dir".to_string(), builtin_make_dir);
         self.builtins.insert("list_dir".to_string(), builtin_list_dir);
         self.builtins.insert("remove_file".to_string(), builtin_remove_file);
+        self.builtins.insert("delete_file".to_string(), builtin_remove_file);
         self.builtins.insert("remove_dir".to_string(), builtin_remove_dir);
         self.builtins.insert("getcwd".to_string(), builtin_getcwd);
         self.builtins.insert("current_dir".to_string(), builtin_getcwd);
