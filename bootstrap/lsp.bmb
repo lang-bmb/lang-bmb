@@ -1,0 +1,325 @@
+// BMB Language Server Protocol — stdio JSON-RPC 2.0
+// Minimal LSP: initialize, textDocument/didOpen, textDocument/didChange, diagnostics
+//
+// Protocol: Content-Length header + JSON body over stdin/stdout
+// Reference: https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/
+
+use json::jdoc_new;
+use json::jparse;
+use json::jobj_get;
+use json::jobj_str;
+use json::jobj_num;
+use json::jtype;
+use json::jstr;
+use json::jarr_len;
+use json::jarr_get;
+
+// ============================================
+// JSON-RPC Message Framing
+// ============================================
+
+// Read one LSP message from stdin
+// Returns the JSON body string, or "" on EOF
+fn read_message() -> String = {
+    // Read headers until empty line
+    let content_length = read_headers(0);
+    if content_length <= 0 { "" }
+    else {
+        // Read exactly content_length bytes
+        read_bytes(content_length)
+    }
+};
+
+// Parse Content-Length from headers
+// Returns content length, or -1 on EOF
+fn read_headers(cl: i64) -> i64 = {
+    let line = read_line();
+    if line == "__EOF__" { 0 - 1 }
+    else if line == "" { cl }  // Empty line = end of headers
+    else if line == "\r" { cl }
+    else {
+        // Check for "Content-Length: <number>"
+        let new_cl = parse_content_length(line, cl);
+        read_headers(new_cl)
+    }
+};
+
+// Extract number from "Content-Length: 123" header
+fn parse_content_length(header: String, default: i64) -> i64 = {
+    let prefix = "Content-Length: ";
+    if header.len() >= prefix.len() {
+        let head = header.slice(0, prefix.len());
+        if head == prefix {
+            let num_str = header.slice(prefix.len(), header.len());
+            // Trim trailing \r if present
+            let trimmed = trim_cr(num_str);
+            parse_int_simple(trimmed, 0, 0)
+        } else { default }
+    } else { default }
+};
+
+// Remove trailing \r from string
+fn trim_cr(s: String) -> String =
+    if s.len() > 0 {
+        if s.byte_at(s.len() - 1) == 13 { s.slice(0, s.len() - 1) }
+        else { s }
+    } else { s };
+
+// Parse integer from string
+fn parse_int_simple(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() { acc }
+    else {
+        let c = s.byte_at(pos);
+        if c >= 48 {
+            if c <= 57 { parse_int_simple(s, pos + 1, acc * 10 + (c - 48)) }
+            else { acc }
+        } else { acc }
+    };
+
+// ============================================
+// JSON-RPC Response Builder
+// ============================================
+
+// Send a JSON-RPC response
+fn send_response(id: String, result_json: String) -> () = {
+    let body = "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":" + result_json + "}";
+    send_message(body)
+};
+
+// Send a JSON-RPC notification (no id)
+fn send_notification(method: String, params_json: String) -> () = {
+    let body = "{\"jsonrpc\":\"2.0\",\"method\":\"" + method + "\",\"params\":" + params_json + "}";
+    send_message(body)
+};
+
+// Send raw message with Content-Length header
+fn send_message(body: String) -> () = {
+    let header = "Content-Length: " + int_to_string(body.len()) + "\r\n\r\n";
+    write_stdout(header + body);
+    ()
+};
+
+// ============================================
+// LSP Method Handlers
+// ============================================
+
+// Handle "initialize" request
+fn handle_initialize(id: String) -> () = {
+    let result = "{" +
+        "\"capabilities\":{" +
+            "\"textDocumentSync\":1," +
+            "\"hoverProvider\":true," +
+            "\"completionProvider\":{\"triggerCharacters\":[\".\",\":\"]}," +
+            "\"diagnosticProvider\":{\"interFileDependencies\":false,\"workspaceDiagnostics\":false}" +
+        "}," +
+        "\"serverInfo\":{\"name\":\"bmb-lsp\",\"version\":\"0.98.0\"}" +
+    "}";
+    send_response(id, result)
+};
+
+// Handle "initialized" notification
+fn handle_initialized() -> () = ();
+
+// Handle "shutdown" request
+fn handle_shutdown(id: String) -> () =
+    send_response(id, "null");
+
+// Handle "textDocument/didOpen"
+fn handle_did_open(doc: i64, root: i64, src: String) -> () = {
+    let params_n = jobj_get(doc, root, "params", src);
+    if params_n >= 0 {
+        let td = jobj_get(doc, params_n, "textDocument", src);
+        if td >= 0 {
+            let uri = jobj_str(doc, td, "uri", src);
+            let text = jobj_str(doc, td, "text", src);
+            // Publish diagnostics for the opened document
+            publish_diagnostics(uri, text)
+        } else { () }
+    } else { () }
+};
+
+// Handle "textDocument/didChange"
+fn handle_did_change(doc: i64, root: i64, src: String) -> () = {
+    let params_n = jobj_get(doc, root, "params", src);
+    if params_n >= 0 {
+        let td = jobj_get(doc, params_n, "textDocument", src);
+        let changes = jobj_get(doc, params_n, "contentChanges", src);
+        if td >= 0 {
+            let uri = jobj_str(doc, td, "uri", src);
+            if changes >= 0 {
+                let count = jarr_len(doc, changes);
+                if count > 0 {
+                    // Full sync: use last change's text
+                    let last = jarr_get(doc, changes, count - 1);
+                    let text = jobj_str(doc, last, "text", src);
+                    publish_diagnostics(uri, text)
+                } else { () }
+            } else { () }
+        } else { () }
+    } else { () }
+};
+
+// Handle "textDocument/hover"
+fn handle_hover(id: String, doc: i64, root: i64, src: String) -> () = {
+    // Return empty hover for now
+    send_response(id, "null")
+};
+
+// Handle "textDocument/completion"
+fn handle_completion(id: String, doc: i64, root: i64, src: String) -> () = {
+    // Return BMB keyword completions
+    let items = "[" +
+        mk_completion_item("fn", 14, "Function declaration") + "," +
+        mk_completion_item("let", 14, "Variable binding") + "," +
+        mk_completion_item("if", 14, "Conditional expression") + "," +
+        mk_completion_item("else", 14, "Else branch") + "," +
+        mk_completion_item("while", 14, "While loop") + "," +
+        mk_completion_item("match", 14, "Pattern matching") + "," +
+        mk_completion_item("struct", 22, "Struct definition") + "," +
+        mk_completion_item("enum", 13, "Enum definition") + "," +
+        mk_completion_item("pub", 14, "Public visibility") + "," +
+        mk_completion_item("use", 14, "Import declaration") + "," +
+        mk_completion_item("pre", 14, "Precondition contract") + "," +
+        mk_completion_item("post", 14, "Postcondition contract") + "," +
+        mk_completion_item("invariant", 14, "Loop invariant") + "," +
+        mk_completion_item("pure", 14, "Pure function modifier") + "," +
+        mk_completion_item("own", 14, "Ownership transfer") + "," +
+        mk_completion_item("true", 14, "Boolean true") + "," +
+        mk_completion_item("false", 14, "Boolean false") +
+    "]";
+    send_response(id, "{\"isIncomplete\":false,\"items\":" + items + "}")
+};
+
+fn mk_completion_item(label: String, kind: i64, detail: String) -> String =
+    "{\"label\":\"" + label + "\",\"kind\":" + int_to_string(kind) +
+    ",\"detail\":\"" + detail + "\"}";
+
+// ============================================
+// Diagnostics
+// ============================================
+
+// Simple syntax check: count unmatched braces/parens
+fn publish_diagnostics(uri: String, text: String) -> () = {
+    let diags = check_syntax(text, 0, 0, 0, 0, 0, "[]");
+    send_notification("textDocument/publishDiagnostics",
+        "{\"uri\":\"" + escape_json_str(uri) + "\",\"diagnostics\":" + diags + "}")
+};
+
+// Scan for basic syntax issues
+// Returns JSON array of diagnostics
+fn check_syntax(text: String, pos: i64, line: i64, col: i64,
+                braces: i64, parens: i64, acc: String) -> String =
+    if pos >= text.len() {
+        // At end, check for unmatched delimiters
+        if braces > 0 {
+            mk_diag_arr(line, col, "Unmatched opening brace '{'", 1)
+        } else if braces < 0 {
+            mk_diag_arr(line, col, "Unmatched closing brace '}'", 1)
+        } else if parens > 0 {
+            mk_diag_arr(line, col, "Unmatched opening parenthesis '('", 1)
+        } else if parens < 0 {
+            mk_diag_arr(line, col, "Unmatched closing parenthesis ')'", 1)
+        } else { "[]" }
+    } else {
+        let c = text.byte_at(pos);
+        if c == 10 { check_syntax(text, pos + 1, line + 1, 0, braces, parens, acc) }
+        else if c == 123 { check_syntax(text, pos + 1, line, col + 1, braces + 1, parens, acc) }
+        else if c == 125 { check_syntax(text, pos + 1, line, col + 1, braces - 1, parens, acc) }
+        else if c == 40 { check_syntax(text, pos + 1, line, col + 1, braces, parens + 1, acc) }
+        else if c == 41 { check_syntax(text, pos + 1, line, col + 1, braces, parens - 1, acc) }
+        else { check_syntax(text, pos + 1, line, col + 1, braces, parens, acc) }
+    };
+
+fn mk_diag_arr(line: i64, col: i64, msg: String, severity: i64) -> String =
+    "[" + mk_diagnostic(line, col, msg, severity) + "]";
+
+fn mk_diagnostic(line: i64, col: i64, msg: String, severity: i64) -> String =
+    "{\"range\":{\"start\":{\"line\":" + int_to_string(line) +
+    ",\"character\":" + int_to_string(col) +
+    "},\"end\":{\"line\":" + int_to_string(line) +
+    ",\"character\":" + int_to_string(col + 1) +
+    "}},\"severity\":" + int_to_string(severity) +
+    ",\"source\":\"bmb\"" +
+    ",\"message\":\"" + escape_json_str(msg) + "\"}";
+
+// Escape string for JSON
+fn escape_json_str(s: String) -> String =
+    escape_json_loop(s, 0, "");
+
+fn escape_json_loop(s: String, pos: i64, acc: String) -> String =
+    if pos >= s.len() { acc }
+    else {
+        let c = s.byte_at(pos);
+        if c == 34 { escape_json_loop(s, pos + 1, acc + "\\\"") }
+        else if c == 92 { escape_json_loop(s, pos + 1, acc + "\\\\") }
+        else if c == 10 { escape_json_loop(s, pos + 1, acc + "\\n") }
+        else if c == 13 { escape_json_loop(s, pos + 1, acc + "\\r") }
+        else if c == 9 { escape_json_loop(s, pos + 1, acc + "\\t") }
+        else { escape_json_loop(s, pos + 1, acc + chr(c)) }
+    };
+
+// ============================================
+// Main Message Loop
+// ============================================
+
+fn main() -> i64 = {
+    // Log to stderr for debugging
+    lsp_loop(false)
+};
+
+fn lsp_loop(shutdown: bool) -> i64 = {
+    let msg = read_message();
+    if msg == "" { 0 }
+    else if shutdown { 0 }  // After shutdown, exit on next message (should be "exit")
+    else {
+        let should_stop = dispatch(msg);
+        lsp_loop(should_stop)
+    }
+};
+
+// Dispatch a JSON-RPC message
+// Returns true if server should stop
+fn dispatch(msg: String) -> bool = {
+    let doc = jdoc_new();
+    let root = jparse(doc, msg);
+    if root < 0 { false }
+    else {
+        let method = jobj_str(doc, root, "method", msg);
+        let id_node = jobj_get(doc, root, "id", msg);
+        let id_str = if id_node < 0 { "" }
+            else {
+                let t = jtype(doc, id_node);
+                if t == 2 { int_to_string(jobj_num(doc, root, "id", msg)) }
+                else if t == 3 { "\"" + jstr(doc, id_node, msg) + "\"" }
+                else { "null" }
+            };
+
+        dispatch_method(method, id_str, doc, root, msg)
+    }
+};
+
+fn dispatch_method(method: String, id: String, doc: i64, root: i64, src: String) -> bool = {
+    if method == "initialize" {
+        handle_initialize(id); false
+    } else if method == "initialized" {
+        handle_initialized(); false
+    } else if method == "shutdown" {
+        handle_shutdown(id); true
+    } else if method == "exit" {
+        true
+    } else if method == "textDocument/didOpen" {
+        handle_did_open(doc, root, src); false
+    } else if method == "textDocument/didChange" {
+        handle_did_change(doc, root, src); false
+    } else if method == "textDocument/hover" {
+        handle_hover(id, doc, root, src); false
+    } else if method == "textDocument/completion" {
+        handle_completion(id, doc, root, src); false
+    } else {
+        // Unknown method — respond with method not found for requests
+        if id != "" {
+            send_response(id, "null")
+        } else { () };
+        false
+    }
+};

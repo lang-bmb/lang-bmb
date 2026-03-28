@@ -151,6 +151,7 @@ impl Interpreter {
         self.builtins.insert("assert".to_string(), builtin_assert);
         self.builtins.insert("read_int".to_string(), builtin_read_int);
         // v0.97: read_bytes + write_stdout for LSP protocol
+        self.builtins.insert("read_line".to_string(), builtin_read_line);
         self.builtins.insert("read_bytes".to_string(), builtin_read_bytes);
         self.builtins.insert("write_stdout".to_string(), builtin_write_stdout);
         self.builtins.insert("abs".to_string(), builtin_abs);
@@ -203,6 +204,7 @@ impl Interpreter {
 
         // v0.31.21: Character conversion builtins for gotgan string handling
         self.builtins.insert("chr".to_string(), builtin_chr);
+        self.builtins.insert("int_to_string".to_string(), builtin_int_to_string);
         self.builtins.insert("ord".to_string(), builtin_ord);
 
         // v0.66: String-char interop utilities
@@ -6726,6 +6728,24 @@ fn builtin_read_int(_args: &[Value]) -> InterpResult<Value> {
         .map_err(|_| RuntimeError::type_error("integer", "invalid input"))
 }
 
+// v0.98: Read a line from stdin, strip trailing newlines
+fn builtin_read_line(args: &[Value]) -> InterpResult<Value> {
+    if !args.is_empty() {
+        return Err(RuntimeError::arity_mismatch("read_line", 0, args.len()));
+    }
+    let mut line = String::new();
+    match io::stdin().read_line(&mut line) {
+        Ok(0) => Ok(Value::Str(std::rc::Rc::new("__EOF__".to_string()))),
+        Ok(_) => {
+            // Strip trailing \r\n or \n
+            if line.ends_with('\n') { line.pop(); }
+            if line.ends_with('\r') { line.pop(); }
+            Ok(Value::Str(std::rc::Rc::new(line)))
+        }
+        Err(_) => Ok(Value::Str(std::rc::Rc::new("__EOF__".to_string()))),
+    }
+}
+
 // v0.97: Read exactly N bytes from stdin
 fn builtin_read_bytes(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 1 {
@@ -6746,15 +6766,12 @@ fn builtin_write_stdout(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 1 {
         return Err(RuntimeError::arity_mismatch("write_stdout", 1, args.len()));
     }
-    match &args[0] {
-        Value::Str(s) => {
-            use std::io::Write;
-            let _ = io::stdout().write_all(s.as_bytes());
-            let _ = io::stdout().flush();
-            Ok(Value::Unit)
-        }
-        _ => Err(RuntimeError::type_error("String", "non-string")),
-    }
+    let s = args[0].materialize_string()
+        .ok_or_else(|| RuntimeError::type_error("String", args[0].type_name()))?;
+    use std::io::Write;
+    let _ = io::stdout().write_all(s.as_bytes());
+    let _ = io::stdout().flush();
+    Ok(Value::Unit)
 }
 
 fn builtin_abs(args: &[Value]) -> InterpResult<Value> {
@@ -8489,6 +8506,18 @@ fn builtin_chr(args: &[Value]) -> InterpResult<Value> {
                 Err(RuntimeError::io_error(&format!("chr: invalid Unicode codepoint {}", code)))
             }
         }
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+/// int_to_string(n: i64) -> String
+/// v0.98: Convert integer to string representation
+fn builtin_int_to_string(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("int_to_string", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(n) => Ok(Value::Str(std::rc::Rc::new(n.to_string()))),
         _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
     }
 }
