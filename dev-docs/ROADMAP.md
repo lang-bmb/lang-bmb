@@ -8,28 +8,28 @@
 
 ---
 
-## 현재 상태 (2026-03-24)
+## 현재 상태 (2026-03-28)
 
 | 항목 | 상태 |
 |------|------|
-| **버전** | v0.97 (Cycle 2185 — Dogfooding 완료) |
+| **버전** | v0.97 (Cycle 2345) |
 | **Bootstrap** | 3-Stage Fixed Point (S2 == S3), i8*→ptr 완전 마이그레이션 |
 | **Benchmarks** | 309 빌드 ✅, 16+ FASTER, 0 FAIL — BMB > C AND Rust |
-| **Golden Tests** | 3,660 BMB + 6,186 Rust regression = 전체 통과 |
-| **Self-Hosting** | CLI 41개, LSP 9기능, Test Runner, MIR 옵티마이저 15/15 이식 |
-| **compiler.bmb** | 19,818 LOC (전체 bootstrap/*.bmb: 59,046 LOC) |
-| **Ecosystem** | stdlib 15/15, gotgan E2E, 4 tutorials, 14 API docs |
-| **Binding** | 5 libs, 140 @export, 1,017 pytest, C headers ×5, WASM ×5 |
+| **Tests** | 6,199 Rust regression + 9/9 stdlib E2E (check+run) = 전체 통과 |
+| **Self-Hosting** | CLI 41개, **BMB LSP 서버** (480 LOC, 네이티브 빌드), Test Runner |
+| **compiler.bmb** | 19,818 LOC (전체 bootstrap/*.bmb: 59,526 LOC, lsp.bmb 포함) |
+| **Ecosystem** | stdlib 15/15, gotgan E2E, 5 libs, bindings CI 3-platform |
+| **Module System** | `use` import: check + run + build 전체 파이프라인 동작 |
 | **EXISTENTIAL** | 7/7 완료 — 계약→성능 파이프라인 증명됨 |
-| **Next Focus** | 배포 (PyPI wheel + 크로스플랫폼) + Native Ptr (v0.98) |
+| **Next Focus** | v0.98: LSP 실전 검증 + build 모듈 시스템 성숙 + 배포 |
 
 ### Graduation 진행도
 
 ```
 G-1 부트스트랩    [██████████] 100%  3-Stage Fixed Point (S2 == S3)
-G-2 셀프호스팅    [██████████]  99%  CLI 41개, LSP 9기능, Test Runner ✅
+G-2 셀프호스팅    [██████████] 100%  CLI 41개, BMB LSP 서버, Test Runner ✅
 G-3 벤치마크      [██████████] 100%  0 FAIL, 0 WARN, 3 LLVM-OK, --stats ✅
-G-4 에코시스템    [████████░░]  82%  5 libs 140 @export, C headers, WASM, pytest 1,017+
+G-4 에코시스템    [█████████░]  88%  5 libs, BMB LSP, stdlib E2E, bindings CI 3-platform
 G-5 100+ 패키지   [██████████] 100%  102/100+ 패키지
 ```
 
@@ -352,11 +352,12 @@ hyperfine ./safe_contract ./safe_only ./unsafe ./c_baseline
 
 ### P1-2. 에러 진단 고도화
 
-| 작업 | 중요도 |
-|------|--------|
-| line:col:span 위치 추적 | 높음 |
-| 런타임 스택 트레이스 | 중간 |
-| 타입 에러 메시지 확대 | 중간 |
+| 작업 | 상태 | 중요도 |
+|------|------|--------|
+| line:col:span 위치 추적 | ✅ JSON 출력 (check/build) | 완료 |
+| AI 진단 패턴 (165+) | ✅ lalrpop 에러 매칭 | 완료 |
+| 런타임 스택 트레이스 | ❌ | 중간 |
+| 타입 에러 메시지 확대 | ❌ | 중간 |
 
 ### P1-3. 벤치마크 자동화 + 리얼 월드
 
@@ -371,14 +372,27 @@ hyperfine ./safe_contract ./safe_only ./unsafe ./c_baseline
 
 ## P2: 에코시스템 성숙 — EXISTENTIAL 완료 후
 
-### P2-1. LSP 서버 BMB 전환 (G-4 블로커)
+### P2-1. LSP 서버 BMB 전환 ✅ COMPLETE (Cycles 2326-2345)
 
-**현재**: Rust 2,603 LOC
-**대안**: stdio 기반 LSP (TCP/JSON 의존성 회피)
+**완료**: `bootstrap/lsp.bmb` — 480 LOC, 네이티브 바이너리로 컴파일
+- **프로토콜**: JSON-RPC 2.0 over stdio (Content-Length 프레이밍)
+- **기능**: initialize, shutdown, exit, textDocument/didOpen, didChange, hover, completion
+- **진단**: `bmb check` 호출 → JSON 파싱 → LSP diagnostics (error + warning)
+- **Hover**: 키워드 (11) + builtin 함수 (21) 문서
+- **Completion**: 37 항목 (17 키워드 + 20 builtin)
+- **VS Code**: `bmb.lspServerPath` 설정으로 즉시 연동 가능
 
-### P2-2. stdlib 14개 패키지 실동작 검증
+**남은 작업**: 타입 정보 기반 hover (bmb check --hover 필요), 정의 이동
 
-**현재**: `bmb check` (타입체크) 수준 → 컴파일+실행+테스트 필요
+### P2-2. stdlib 실동작 검증 ✅ COMPLETE (Cycles 2326-2345)
+
+**완료**: 9/9 모듈 check + run 통과 (`scripts/test-stdlib.sh --run`)
+- array, fs, math, num, option, parse, result, string, time
+- 중첩 모듈 해결 구현 (`use core::num::abs` → `stdlib/core/num.bmb`)
+- `bmb run --include` 인터프리터 모듈 로드 지원
+- `bmb build --include` Resolver→타입체크→MIR→코드젠 전체 파이프라인
+
+**남은 작업**: stdlib 네이티브 빌드 + 실행 검증 (현재 인터프리터 수준)
 
 ### P2-3. gotgan 의존성 빌드 파이프라인
 
@@ -467,32 +481,30 @@ v0.96.33     ⚡ 벤치마크 확장 38→70 + 성능 분석 (20-cycle run 1000-
           │  ├── Cycles 1014-1019: 6 새 벤치마크 (64→70)
           │  └── 최종: 70 벤치마크, 14 FASTER 48 PASS 3 WARN 5 FAIL
 
-═══════════════════ 대기 ═════════════════════════════════════
+v0.97        ⚡ 컴파일러 인프라 성숙 (Cycles 2326-2345)
+          │  ├── BMB LSP 서버: lsp.bmb 480 LOC, 네이티브 빌드
+          │  ├── 모듈 시스템: 중첩 use, build/run/check 전체 동작
+          │  ├── stdlib E2E: 9/9 check+run 통과
+          │  ├── --safe CLI, contract-param narrowing fix
+          │  ├── 크로스플랫폼 bindings CI (Win+Ubuntu+macOS)
+          │  └── 인터프리터: read_line, int_to_string, delete_file, StringRope fix
 
-          │  ★★ P0: 부트스트랩 완성
-          │  ├── Fixed Point 0 diff
-          │  └── Rust 회귀 테스트 유지
+═══════════════════ 다음 ═════════════════════════════════════
+
+v0.98        모듈 시스템 + LSP 실전화
+          │  ├── bmb build 다중 파일 프로젝트 (모듈 간 의존성)
+          │  ├── LSP 타입 정보 hover (bmb check --hover)
+          │  ├── LSP 정의 이동 (go-to-definition)
+          │  ├── stdlib 네이티브 빌드+실행 검증
+          │  └── VS Code extension 통합 테스트
           │
-          │  ★ P1: 컴파일러 품질
-          │  ├── MIR 옵티마이저 BMB 이식
-          │  ├── 에러 진단 고도화
-          │  └── 벤치마크 자동화 + 리얼 월드
-          ▼
-v0.96-ext    P2: 에코시스템 성숙
-          │  ├── LSP BMB 전환 → G-4 완료
-          │  ├── stdlib 실동작 검증
-          │  └── Playground, MCP, Test
-          │
-          │  P3: 공개 준비
+v0.99        공개 준비
           │  ├── 커뮤니티 + AI 검증
-          │  ├── 크로스 플랫폼
-          │  └── 문서 완성
-          │
-          │  Go/No-Go 게이트
+          │  ├── 크로스 플랫폼 릴리스
+          │  ├── 문서 완성
+          │  └── Go/No-Go 게이트
           ▼
-v0.97        플랫폼 안정화 + 문서 최종판
-          ▼
-v0.98-99     Release Candidate → v1.0
+v1.0         Production Release
 ```
 
 ---
