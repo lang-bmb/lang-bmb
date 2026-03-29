@@ -1,0 +1,45 @@
+// Golden test: Generic enum native compilation (Option<T>, Result<T,E>)
+// v0.97.4: Fixed enum codegen — place_types ptr, switch discriminant load, i64 GEP
+// Expected output: 42 99 77 5 -1
+
+enum Option<T> {
+    Some(T),
+    None
+}
+
+enum Result<T, E> {
+    Ok(T),
+    Err(E)
+}
+
+fn get_or<T>(opt: Option<T>, default: T) -> T =
+    match opt {
+        Option::Some(v) => v,
+        Option::None => default
+    };
+
+fn result_ok<T>(r: Result<T, i64>, default: T) -> T =
+    match r {
+        Result::Ok(v) => v,
+        Result::Err(e) => default
+    };
+
+fn safe_div(a: i64, b: i64) -> Result<i64, i64> =
+    if b == 0 { Result::Err(0 - 1) } else { Result::Ok(a / b) };
+
+fn main() -> i64 = {
+    let _u1 = println(get_or(Option::Some(42), 0));
+    let _u2 = println(get_or(Option::None, 99));
+
+    let opt: Option<i64> = Option::Some(77);
+    let v = match opt {
+        Option::Some(x) => x,
+        Option::None => 0
+    };
+    let _u3 = println(v);
+
+    let _u4 = println(result_ok(safe_div(10, 2), 0));
+    let _u5 = println(result_ok(safe_div(10, 0), 0 - 1));
+
+    0
+};

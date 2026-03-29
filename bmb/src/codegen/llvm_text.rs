@@ -1550,6 +1550,10 @@ impl TextCodeGen {
                     MirInst::StructInit { dest, .. } => {
                         place_types.insert(dest.name.clone(), "ptr");
                     }
+                    // v0.97.4: EnumVariant produces ptr type (alloca for tagged union)
+                    MirInst::EnumVariant { dest, .. } => {
+                        place_types.insert(dest.name.clone(), "ptr");
+                    }
                     // v0.50.50: IndexLoad produces element type
                     // v0.51.35: Use actual element type for struct arrays
                     MirInst::IndexLoad { dest, element_type, .. } => {
@@ -2144,8 +2148,13 @@ impl TextCodeGen {
                             Operand::Place(p) => place_types.get(&p.name).copied().unwrap_or("i64"),
                         };
 
-                        // Check if this value needs coercion (narrower than phi type)
-                        let needs_coerce = matches!((val_ty, phi_ty), ("i32", "i64") | ("i1", "i64") | ("i1", "i32"));
+                        // Check if this value needs coercion (type mismatch)
+                        // v0.97.4: Also handle enum match bindings in monomorphized generics:
+                        // i64→double (f64 type param), i64→i1 (bool type param)
+                        let needs_coerce = val_ty != phi_ty && matches!((val_ty, phi_ty),
+                            ("i32", "i64") | ("i1", "i64") | ("i1", "i32") |
+                            ("i64", "double") | ("double", "i64") |
+                            ("i64", "i1") | ("i64", "i32"));
 
                         if needs_coerce
                             && let Operand::Place(p) = val {
@@ -2461,8 +2470,8 @@ impl TextCodeGen {
                 // Emit the appropriate coercion instruction
                 let instr = match (*from_ty, *to_ty) {
                     ("i32", "i64") | ("i1", "i64") | ("i1", "i32") => "sext",
-                    ("i64", "i32") => "trunc",
-                    _ => "bitcast", // Fallback
+                    ("i64", "i32") | ("i64", "i1") => "trunc",
+                    _ => "bitcast", // Fallback (i64↔double)
                 };
                 writeln!(out, "  %{} = {} {} {} to {}", coerce_temp, instr, from_ty, source_name, to_ty)?;
             }
@@ -5563,6 +5572,10 @@ impl TextCodeGen {
                     // The struct will be packed into an aggregate at return
                     writeln!(out, "  ; struct {} init with {} fields (stack - small struct return)", struct_name, fields.len())?;
                     writeln!(out, "  %{} = alloca {}, align 8", dest.name, struct_ty)?;
+                    // v0.97.4: Store struct pointer to .addr so return code can load it
+                    if local_names.contains(&dest.name) {
+                        writeln!(out, "  store ptr %{}, ptr %{}.addr", dest.name, dest.name)?;
+                    }
                 } else if escapes {
                     // Escaped struct: must use heap allocation
                     let size = num_fields * 8;
@@ -5607,7 +5620,11 @@ impl TextCodeGen {
                 // v0.51.31: Use struct_defs to look up correct field type for load instruction
                 // v0.51.32: Use struct type GEPs for better LLVM alias analysis
                 // v0.51.36: Handle temps from struct array IndexLoad (direct ptrs, not in locals)
+                // v0.97.4: Handle enum variant field access (empty struct_name) with i64 GEP
                 writeln!(out, "  ; field access .{}[{}] from %{} ({})", field, field_index, base.name, struct_name)?;
+
+                // v0.97.4: Check if this is an enum variant field access (struct_name is empty)
+                let is_enum_field = struct_name.is_empty() || !struct_defs.contains_key(struct_name);
 
                 // Look up the field type from struct_defs
                 let field_llvm_ty = struct_defs.get(struct_name)
@@ -5615,21 +5632,37 @@ impl TextCodeGen {
                     .map(|(_, ty)| self.mir_type_to_llvm(ty))
                     .unwrap_or("i64"); // Default to i64 if not found
 
-                // v0.51.32: Use proper struct type for GEP
-                let struct_ty = format!("%struct.{}", struct_name);
-
                 let is_param = func.params.iter().any(|(name, _)| name == &base.name);
                 let is_local = local_names.contains(&base.name);
-                // v0.51.36: Temps (not params, not locals) are direct pointers from IndexLoad
-                if is_param || !is_local {
-                    // Parameters and temps are already ptr values - use directly
-                    writeln!(out, "  %{}_ptr = getelementptr inbounds {}, ptr %{}, i32 0, i32 {}",
-                             dest.name, struct_ty, base.name, field_index)?;
+
+                if is_enum_field {
+                    // v0.97.4: Enum variant field extraction
+                    // Enum layout: [discriminant: i64, field0: i64, field1: i64, ...]
+                    // field_index 0 → offset 1 (skip discriminant)
+                    let enum_offset = field_index + 1;
+                    if is_param || !is_local {
+                        writeln!(out, "  %{}_ptr = getelementptr inbounds i64, ptr %{}, i32 {}",
+                                 dest.name, base.name, enum_offset)?;
+                    } else {
+                        writeln!(out, "  %{}_base_ptr = load ptr, ptr %{}.addr", dest.name, base.name)?;
+                        writeln!(out, "  %{}_ptr = getelementptr inbounds i64, ptr %{}_base_ptr, i32 {}",
+                                 dest.name, dest.name, enum_offset)?;
+                    }
                 } else {
-                    // Locals: load struct pointer from variable address
-                    writeln!(out, "  %{}_base_ptr = load ptr, ptr %{}.addr", dest.name, base.name)?;
-                    writeln!(out, "  %{}_ptr = getelementptr inbounds {}, ptr %{}_base_ptr, i32 0, i32 {}",
-                             dest.name, struct_ty, dest.name, field_index)?;
+                    // v0.51.32: Use proper struct type for GEP
+                    let struct_ty = format!("%struct.{}", struct_name);
+
+                    // v0.51.36: Temps (not params, not locals) are direct pointers from IndexLoad
+                    if is_param || !is_local {
+                        // Parameters and temps are already ptr values - use directly
+                        writeln!(out, "  %{}_ptr = getelementptr inbounds {}, ptr %{}, i32 0, i32 {}",
+                                 dest.name, struct_ty, base.name, field_index)?;
+                    } else {
+                        // Locals: load struct pointer from variable address
+                        writeln!(out, "  %{}_base_ptr = load ptr, ptr %{}.addr", dest.name, base.name)?;
+                        writeln!(out, "  %{}_ptr = getelementptr inbounds {}, ptr %{}_base_ptr, i32 0, i32 {}",
+                                 dest.name, struct_ty, dest.name, field_index)?;
+                    }
                 }
                 // v0.60.7: Store to .addr if dest is a local, otherwise create SSA value
                 let dest_is_local = local_names.contains(&dest.name);
@@ -5712,7 +5745,15 @@ impl TextCodeGen {
                 writeln!(out, "  ; enum {}::{} with {} args", enum_name, variant, args.len())?;
                 // Allocate space for enum (discriminant + max variant size)
                 let size = 1 + args.len().max(1);
-                writeln!(out, "  %{} = alloca i64, i32 {}", dest.name, size)?;
+                let byte_size = size * 8;
+                // v0.97.4: Check if enum might escape (be returned or passed to a call)
+                // If so, use heap allocation to avoid returning dangling stack pointer
+                let escapes = self.check_struct_escapes(func, &dest.name);
+                if escapes {
+                    writeln!(out, "  %{} = call ptr @malloc(i64 {})", dest.name, byte_size)?;
+                } else {
+                    writeln!(out, "  %{} = alloca i64, i32 {}", dest.name, size)?;
+                }
                 // Store discriminant - must match variant_to_discriminant in mir/lower.rs
                 let discriminant: i64 = variant.chars()
                     .enumerate()
@@ -5720,12 +5761,40 @@ impl TextCodeGen {
                 writeln!(out, "  %{}_disc = getelementptr inbounds i64, ptr %{}, i32 0", dest.name, dest.name)?;
                 writeln!(out, "  store i64 {}, ptr %{}_disc", discriminant, dest.name)?;
                 // Store variant arguments
+                // v0.97.4: Properly load local variables from .addr before storing to enum
                 for (i, arg) in args.iter().enumerate() {
-                    let arg_str = self.format_operand(arg);
                     let ty = self.infer_operand_type(arg, func);
+                    let arg_str = if let Operand::Place(p) = arg {
+                        if local_names.contains(&p.name) {
+                            // Load from alloca
+                            let load_name = format!("{}_a{}_load", dest.name, i);
+                            writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, ty, p.name)?;
+                            format!("%{}", load_name)
+                        } else {
+                            self.format_operand(arg)
+                        }
+                    } else {
+                        self.format_operand(arg)
+                    };
                     writeln!(out, "  %{}_a{} = getelementptr inbounds i64, ptr %{}, i32 {}",
                              dest.name, i, dest.name, i + 1)?;
-                    writeln!(out, "  store {} {}, ptr %{}_a{}", ty, arg_str, dest.name, i)?;
+                    // v0.97.4: Store as i64 (enum slots are always i64-sized)
+                    if ty == "i32" {
+                        let sext_name = format!("{}_a{}_sext", dest.name, i);
+                        writeln!(out, "  %{} = sext i32 {} to i64", sext_name, arg_str)?;
+                        writeln!(out, "  store i64 %{}, ptr %{}_a{}", sext_name, dest.name, i)?;
+                    } else if ty == "i1" {
+                        let zext_name = format!("{}_a{}_zext", dest.name, i);
+                        writeln!(out, "  %{} = zext i1 {} to i64", zext_name, arg_str)?;
+                        writeln!(out, "  store i64 %{}, ptr %{}_a{}", zext_name, dest.name, i)?;
+                    } else if ty == "double" {
+                        // v0.97.3: Store f64 via bitcast to i64 (enum slots are i64)
+                        let bc_name = format!("{}_a{}_bc", dest.name, i);
+                        writeln!(out, "  %{} = bitcast double {} to i64", bc_name, arg_str)?;
+                        writeln!(out, "  store i64 %{}, ptr %{}_a{}", bc_name, dest.name, i)?;
+                    } else {
+                        writeln!(out, "  store {} {}, ptr %{}_a{}", ty, arg_str, dest.name, i)?;
+                    }
                 }
             }
 
@@ -7118,11 +7187,19 @@ impl TextCodeGen {
                                 writeln!(out, "  ret i64 %{}", sext_name)?;
                             } else if val_ty == "i64" && ty == "ptr" {
                                 // v0.60.31: Convert i64 to ptr for String-returning functions
-                                // This happens when TailRecursiveToLoop creates early returns
-                                // that bypass the normal inttoptr conversion
                                 let inttoptr_name = format!("_ret_inttoptr.{}.{}", block_label, p.name);
                                 writeln!(out, "  %{} = inttoptr i64 %{} to ptr", inttoptr_name, p.name)?;
                                 writeln!(out, "  ret ptr %{}", inttoptr_name)?;
+                            } else if val_ty == "i64" && ty == "double" {
+                                // v0.97.4: Bitcast i64 to double for monomorphized f64 generics
+                                let bc_name = format!("_ret_bc.{}.{}", block_label, p.name);
+                                writeln!(out, "  %{} = bitcast i64 %{} to double", bc_name, p.name)?;
+                                writeln!(out, "  ret double %{}", bc_name)?;
+                            } else if val_ty == "i64" && ty == "i1" {
+                                // v0.97.4: Trunc i64 to i1 for monomorphized bool generics
+                                let trunc_name = format!("_ret_trunc.{}.{}", block_label, p.name);
+                                writeln!(out, "  %{} = trunc i64 %{} to i1", trunc_name, p.name)?;
+                                writeln!(out, "  ret i1 %{}", trunc_name)?;
                             } else {
                                 // v0.51.17: Use narrowing-aware formatting
                                 writeln!(out, "  ret {} {}", ty, self.format_operand_with_strings_and_narrowing(val, string_table, narrowed_param_names))?;
@@ -7251,10 +7328,16 @@ impl TextCodeGen {
             Terminator::Switch { discriminant, cases, default } => {
                 // Check if discriminant is a local that needs loading from alloca
                 // v0.51.17: Use narrowing-aware formatting
+                // v0.97.4: Also handle enum ptr types (from EnumVariant alloca or function params)
                 let disc_str = if let Operand::Place(p) = discriminant {
                     if local_names.contains(&p.name) {
                         // Use default label to make name unique
                         writeln!(out, "  %{}.disc_{} = load i64, ptr %{}.addr", p.name, default, p.name)?;
+                        format!("%{}.disc_{}", p.name, default)
+                    } else if place_types.get(&p.name).copied() == Some("ptr") {
+                        // v0.97.4: Enum variable (ptr from EnumVariant alloca or ptr parameter)
+                        // Load discriminant (first i64) from the enum pointer
+                        writeln!(out, "  %{}.disc_{} = load i64, ptr %{}", p.name, default, p.name)?;
                         format!("%{}.disc_{}", p.name, default)
                     } else {
                         self.format_operand_with_narrowing(discriminant, narrowed_param_names)

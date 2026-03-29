@@ -1,0 +1,61 @@
+// Golden test: Generic types composed with contracted functions + data structures
+// v0.97.4: Tests generics + contracts + heap allocation patterns
+// Expected output: 3 -1 6 0
+
+enum Option<T> {
+    Some(T),
+    None
+}
+
+fn get_or<T>(opt: Option<T>, default: T) -> T =
+    match opt {
+        Option::Some(v) => v,
+        Option::None => default
+    };
+
+fn safe_index(len: i64, idx: i64) -> i64
+    pre len > 0 and idx >= 0 and idx < len
+    post ret >= 0 and ret < len
+= idx;
+
+fn node_new(v: i64, next: i64) -> i64 = {
+    let p = malloc(16);
+    store_i64(p, v);
+    store_i64(p + 8, next);
+    p
+};
+
+fn list_sum(head: i64) -> i64 = {
+    let mut sum = 0;
+    let mut cur = head;
+    while cur != 0 {
+        sum = sum + load_i64(cur);
+        cur = load_i64(cur + 8);
+    };
+    sum
+};
+
+fn main() -> i64 = {
+    // Generic Option + contracted function
+    let opt_idx = Option::Some(3);
+    let idx = safe_index(10, get_or(opt_idx, 0));
+    let _u1 = println(idx);
+
+    let none_idx = get_or(Option::None, 0 - 1);
+    let _u2 = println(none_idx);
+
+    // Generic Option + heap linked list
+    let n3 = node_new(3, 0);
+    let n2 = node_new(2, n3);
+    let n1 = node_new(1, n2);
+    let head = get_or(Option::Some(n1), 0);
+    let _u3 = println(list_sum(head));
+
+    let empty = get_or(Option::None, 0);
+    let _u4 = println(list_sum(empty));
+
+    free(n1);
+    free(n2);
+    free(n3);
+    0
+};

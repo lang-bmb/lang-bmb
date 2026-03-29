@@ -1,0 +1,57 @@
+// Golden test: Generic Option/Result combinators and cross-type conversions
+// v0.97.4: Tests advanced generic patterns including or/and/map/compose
+// Expected output: 10 20 -1 20 -1 42 -1 77
+
+enum Option<T> {
+    Some(T),
+    None
+}
+
+enum Result<T, E> {
+    Ok(T),
+    Err(E)
+}
+
+fn get_or<T>(opt: Option<T>, default: T) -> T =
+    match opt {
+        Option::Some(v) => v,
+        Option::None => default
+    };
+
+fn option_or<T>(a: Option<T>, b: Option<T>) -> Option<T> =
+    match a {
+        Option::Some(v) => Option::Some(v),
+        Option::None => b
+    };
+
+fn option_and<T>(a: Option<T>, b: Option<T>) -> Option<T> =
+    match a {
+        Option::Some(v) => b,
+        Option::None => Option::None
+    };
+
+fn option_to_result<T>(opt: Option<T>, err: i64) -> Result<T, i64> =
+    match opt {
+        Option::Some(v) => Result::Ok(v),
+        Option::None => Result::Err(err)
+    };
+
+fn result_unwrap<T>(r: Result<T, i64>, default: T) -> T =
+    match r {
+        Result::Ok(v) => v,
+        Result::Err(e) => default
+    };
+
+fn main() -> i64 = {
+    let _u1 = println(get_or(option_or(Option::Some(10), Option::None), 0));
+    let _u2 = println(get_or(option_or(Option::None, Option::Some(20)), 0));
+    let _u3 = println(get_or(option_or(Option::None, Option::None), 0 - 1));
+    let _u4 = println(get_or(option_and(Option::Some(10), Option::Some(20)), 0));
+    let _u5 = println(get_or(option_and(Option::None, Option::Some(20)), 0 - 1));
+    let res = option_to_result(Option::Some(42), 0 - 1);
+    let _u6 = println(result_unwrap(res, 0));
+    let res2 = option_to_result(Option::None, 0 - 1);
+    let _u7 = println(result_unwrap(res2, 0 - 1));
+    let _u8 = println(result_unwrap(Result::Err(0 - 1), 77));
+    0
+};

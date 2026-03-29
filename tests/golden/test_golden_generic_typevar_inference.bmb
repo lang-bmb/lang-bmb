@@ -1,0 +1,43 @@
+// Golden test: TypeVar inference fix — nullary variants (Option::None) don't block inference
+// v0.97.4: TypeVar from nullary variants yields to concrete types from other arguments
+// Expected output: 42 99 10 0
+
+enum Option<T> {
+    Some(T),
+    None
+}
+
+fn unwrap_or<T>(opt: Option<T>, default: T) -> T =
+    match opt {
+        Option::Some(v) => v,
+        Option::None => default
+    };
+
+fn or_else<T>(a: Option<T>, b: Option<T>) -> T =
+    match a {
+        Option::Some(v) => v,
+        Option::None => match b {
+            Option::Some(v2) => v2,
+            Option::None => 0
+        }
+    };
+
+fn main() -> i64 = {
+    // Inline None — T inferred from second arg
+    let r1 = unwrap_or(Option::None, 42);
+    let _u1 = println(r1);
+
+    // Inline None with different default
+    let r2 = unwrap_or(Option::None, 99);
+    let _u2 = println(r2);
+
+    // Some overrides None
+    let r3 = unwrap_or(Option::Some(10), 0);
+    let _u3 = println(r3);
+
+    // Both None — falls through to 0
+    let r4 = or_else(Option::None, Option::None);
+    let _u4 = println(r4);
+
+    0
+};

@@ -1,0 +1,46 @@
+// Golden test: Full generic native compilation — fn<T>, struct<T>, enum (Option/Result)
+// v0.97.4: Comprehensive test of monomorphization through LLVM native codegen
+// Expected output: 42 10 77 99 314 300 55
+
+enum Option<T> {
+    Some(T),
+    None
+}
+
+enum Result<T, E> {
+    Ok(T),
+    Err(E)
+}
+
+struct Pair<A, B> {
+    first: A,
+    second: B
+}
+
+fn identity<T>(x: T) -> T = x;
+fn choose<T>(cond: bool, a: T, b: T) -> T = if cond { a } else { b };
+
+fn get_or<T>(opt: Option<T>, default: T) -> T =
+    match opt {
+        Option::Some(v) => v,
+        Option::None => default
+    };
+
+fn make_pair<A, B>(a: A, b: B) -> Pair<A, B> = new Pair { first: a, second: b };
+
+fn main() -> i64 = {
+    let _u1 = println(identity(42));
+    let _u2 = println(choose(true, 10, 20));
+    let _u3 = println(get_or(Option::Some(77), 0));
+    let _u4 = println(get_or(Option::None, 99));
+    let _u5 = println(f64_to_i64(identity(3.14) * 100.0));
+    let p = make_pair(100, 200);
+    let _u6 = println(p.first + p.second);
+    let r: Result<i64, i64> = Result::Ok(55);
+    let v = match r {
+        Result::Ok(x) => x,
+        Result::Err(e) => e
+    };
+    let _u7 = println(v);
+    0
+};

@@ -8774,14 +8774,26 @@ impl TypeChecker {
                 // Found a type variable - infer its concrete type from the argument
                 if let Some(existing) = type_subst.get(name) {
                     // Already inferred - check consistency
+                    // v0.97.4: If existing is a TypeVar (from nullary variants like Option::None),
+                    // allow concrete type to override it. If arg_ty is a TypeVar, keep existing.
                     if existing != arg_ty {
-                        return Err(CompileError::type_error(
-                            format!(
-                                "conflicting type inference for {}: {} vs {}",
-                                name, existing, arg_ty
-                            ),
-                            span,
-                        ));
+                        let existing_is_typevar = matches!(existing, Type::TypeVar(_));
+                        let arg_is_typevar = matches!(arg_ty, Type::TypeVar(_));
+                        if existing_is_typevar && !arg_is_typevar {
+                            // Concrete type overrides unresolved TypeVar
+                            type_subst.insert(name.clone(), arg_ty.clone());
+                        } else if !existing_is_typevar && arg_is_typevar {
+                            // Keep existing concrete type, skip unresolved arg
+                        } else if !existing_is_typevar && !arg_is_typevar {
+                            return Err(CompileError::type_error(
+                                format!(
+                                    "conflicting type inference for {}: {} vs {}",
+                                    name, existing, arg_ty
+                                ),
+                                span,
+                            ));
+                        }
+                        // Both TypeVar: skip (no useful info)
                     }
                 } else {
                     type_subst.insert(name.clone(), arg_ty.clone());

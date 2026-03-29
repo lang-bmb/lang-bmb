@@ -1,0 +1,27 @@
+// Golden test: Generic Option with f64 and bool payloads
+// v0.97.4: Tests phi coercion (i64→double bitcast, i64→i1 trunc) in native codegen
+// Expected output: 314 272 1
+
+enum Option<T> {
+    Some(T),
+    None
+}
+
+fn get_or<T>(opt: Option<T>, default: T) -> T =
+    match opt { Option::Some(v) => v, Option::None => default };
+
+fn main() -> i64 = {
+    let opt_f = Option::Some(3.14);
+    let v = get_or(opt_f, 0.0);
+    let _u1 = println(f64_to_i64(v * 100.0));
+
+    let none_f: Option<f64> = Option::None;
+    let v2 = get_or(none_f, 2.72);
+    let _u2 = println(f64_to_i64(v2 * 100.0));
+
+    let opt_b = Option::Some(true);
+    let b = get_or(opt_b, false);
+    let _u3 = println(if b { 1 } else { 0 });
+
+    0
+};
