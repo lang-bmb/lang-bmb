@@ -3878,6 +3878,15 @@ impl<'ctx> LlvmContext<'ctx> {
                             .build_ptr_to_int(arg_val.into_pointer_value(), i64_type, "arg_ptrtoint")
                             .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
                             .into()
+                    } else if arg_val.is_float_value() {
+                        // v0.97.3: Store f64 directly to enum slot (reinterpret as i64 bits)
+                        // We store the double directly and skip the i64 conversion —
+                        // just write the 8 bytes of double to the i64 slot
+                        let f64_val = arg_val.into_float_value();
+                        self.builder
+                            .build_store(arg_ptr, f64_val)
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                        continue; // Already stored, skip the generic store below
                     } else {
                         arg_val
                     };

@@ -1,0 +1,44 @@
+// Golden test: Generic enum (Option<T>, Result<T,E>) with pattern matching
+// v0.97.3: Generic enums work for i64 types via type erasure
+// Expected output: 42 5 -1
+
+enum Option<T> {
+    Some(T),
+    None
+}
+
+enum Result<T, E> {
+    Ok(T),
+    Err(E)
+}
+
+fn divide(a: i64, b: i64) -> Result<i64, i64> =
+    if b == 0 { Result::Err(0 - 1) } else { Result::Ok(a / b) };
+
+fn main() -> i64 = {
+    // Option::Some with pattern match
+    let x = Option::Some(42);
+    let v1 = match x {
+        Option::Some(v) => v,
+        Option::None => 0
+    };
+    let _u1 = println(v1);
+
+    // Result::Ok
+    let r1 = divide(10, 2);
+    let v2 = match r1 {
+        Result::Ok(v) => v,
+        Result::Err(e) => e
+    };
+    let _u2 = println(v2);
+
+    // Result::Err
+    let r2 = divide(10, 0);
+    let v3 = match r2 {
+        Result::Ok(v) => v,
+        Result::Err(e) => e
+    };
+    let _u3 = println(v3);
+
+    0
+};
