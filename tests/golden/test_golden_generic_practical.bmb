@@ -1,0 +1,31 @@
+// Golden test: Practical generic functions (v0.97.3)
+// Tests monomorphization produces zero-overhead code
+// Expected output: 20 10 42 5
+
+fn identity<T>(x: T) -> T = x;
+
+// Generic conditional
+fn choose<T>(cond: bool, a: T, b: T) -> T = if cond { a } else { b };
+
+// Generic apply-twice
+fn apply_twice<T>(x: T) -> T = identity(identity(x));
+
+fn main() -> i64 = {
+    // choose: true → first arg
+    let a = choose(true, 20, 30);
+    let _u1 = println(a);
+
+    // choose: false → second arg
+    let b = choose(false, 20, 10);
+    let _u2 = println(b);
+
+    // apply_twice
+    let c = apply_twice(42);
+    let _u3 = println(c);
+
+    // choose with computed args
+    let e = choose(3 > 2, 5, 10);
+    let _u4 = println(e);
+
+    0
+};

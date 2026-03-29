@@ -1,0 +1,27 @@
+// Golden test: Generic function monomorphization (v0.97.3)
+// Tests: fn<T> monomorphization to specialized versions
+// Expected output: 42 314 42 100
+
+fn identity<T>(x: T) -> T = x;
+
+fn second<A, B>(a: A, b: B) -> B = b;
+
+fn main() -> i64 = {
+    // identity<i64>
+    let a = identity(42);
+    let _u1 = println(a);
+
+    // identity<f64>
+    let b = identity(3.14);
+    let _u2 = println(f64_to_i64(b * 100.0));
+
+    // second<i64, i64>
+    let d = second(99, 42);
+    let _u3 = println(d);
+
+    // nested: identity<i64>(identity<i64>(100))
+    let e = identity(identity(100));
+    let _u4 = println(e);
+
+    0
+};
