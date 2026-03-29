@@ -128,6 +128,18 @@ enum Command {
         /// Use for bootstrap compilation or when manual control is needed
         #[arg(long)]
         no_prelude: bool,
+
+        // === v0.97.3: Separate Compilation Options ===
+
+        /// Emit object file (.o) instead of linking to executable (v0.97.3)
+        /// Use for separate compilation: bmb build lib.bmb --emit-obj -o lib.o
+        #[arg(long)]
+        emit_obj: bool,
+
+        /// Link additional object files (v0.97.3)
+        /// Use for separate compilation: bmb build main.bmb --link-obj lib.o -o main
+        #[arg(long = "link-obj", value_name = "OBJ_FILE")]
+        link_objs: Vec<PathBuf>,
     },
     /// Run a BMB program (interpreter)
     Run {
@@ -448,7 +460,9 @@ fn main() {
                     prelude_path,
                     safe,
                     no_prelude,
-                } => build_file(&file, output, debug, release, aggressive, fast_compile, emit_ir, shared, emit_mir, emit_cir, emit_wasm, &wasm_target, all_targets, target.as_deref(), verbose, verify.as_deref(), trust_contracts, verification_timeout, fast_math, safe, &include_paths, prelude_path.as_ref(), no_prelude),
+                    emit_obj,
+                    link_objs,
+                } => build_file(&file, output, debug, release, aggressive, fast_compile, emit_ir, shared, emit_mir, emit_cir, emit_wasm, &wasm_target, all_targets, target.as_deref(), verbose, verify.as_deref(), trust_contracts, verification_timeout, fast_math, safe, &include_paths, prelude_path.as_ref(), no_prelude, emit_obj, &link_objs),
                 Command::Run { file, args, human: _, include_paths } => run_file(&file, &args, &include_paths),
                 Command::Repl => start_repl(),
                 Command::Check { file, include_paths } => check_file_with_includes(&file, &include_paths),
@@ -525,6 +539,8 @@ fn build_file(
     include_paths: &[PathBuf],
     prelude_path: Option<&PathBuf>,
     no_prelude: bool,
+    emit_obj: bool,
+    link_objs: &[PathBuf],
 ) -> Result<(), Box<dyn std::error::Error>> {
     // v0.52: If emitting CIR, output Contract IR and return
     if emit_cir {
@@ -546,7 +562,7 @@ fn build_file(
         if verbose {
             println!("\n=== Native Build ===");
         }
-        build_native(path, output.clone(), debug, release, aggressive, fast_compile, emit_ir, shared, target, verbose, verify_mode, trust_contracts, verification_timeout, fast_math, safe, include_paths, prelude_path, no_prelude)?;
+        build_native(path, output.clone(), debug, release, aggressive, fast_compile, emit_ir, shared, target, verbose, verify_mode, trust_contracts, verification_timeout, fast_math, safe, include_paths, prelude_path, no_prelude, emit_obj, link_objs)?;
 
         // Then build WASM
         if verbose {
@@ -566,7 +582,7 @@ fn build_file(
     }
 
     // Default: build native
-    build_native(path, output, debug, release, aggressive, fast_compile, emit_ir, shared, target, verbose, verify_mode, trust_contracts, verification_timeout, fast_math, safe, include_paths, prelude_path, no_prelude)
+    build_native(path, output, debug, release, aggressive, fast_compile, emit_ir, shared, target, verbose, verify_mode, trust_contracts, verification_timeout, fast_math, safe, include_paths, prelude_path, no_prelude, emit_obj, link_objs)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -589,6 +605,8 @@ fn build_native(
     include_paths: &[PathBuf],
     prelude_path: Option<&PathBuf>,
     no_prelude: bool,
+    emit_obj: bool,
+    link_objs: &[PathBuf],
 ) -> Result<(), Box<dyn std::error::Error>> {
     use bmb::build::{BuildConfig, OptLevel, OutputType, VerificationMode};
 
@@ -665,6 +683,19 @@ fn build_native(
             #[cfg(not(any(target_os = "windows", target_os = "macos")))]
             { config.output.set_extension("so"); }
         }
+    }
+
+    // v0.97.3: Object file mode — emit .o without linking
+    if emit_obj {
+        config.output_type = OutputType::Object;
+        if config.output.extension().is_none() {
+            config.output.set_extension(if cfg!(windows) { "obj" } else { "o" });
+        }
+    }
+
+    // v0.97.3: Extra object files to link
+    if !link_objs.is_empty() {
+        config.extra_objects = link_objs.to_vec();
     }
 
     bmb::build::build(&config)?;

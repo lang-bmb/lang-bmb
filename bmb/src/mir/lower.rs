@@ -21,6 +21,14 @@ struct TypeDefs {
     struct_type_params: std::collections::HashMap<String, Vec<String>>,
 }
 
+/// v0.97.3: Monomorphization info from type checker
+pub struct MonoInfo {
+    /// Generic function definitions: name -> (type_params, param_types, return_type)
+    pub generic_fns: std::collections::HashMap<String, (Vec<crate::ast::TypeParam>, Vec<Type>, Type)>,
+    /// Monomorphization requests: (fn_name, type_substitutions)
+    pub requests: Vec<(String, std::collections::HashMap<String, Type>)>,
+}
+
 /// Lower an entire program to MIR
 pub fn lower_program(program: &Program) -> MirProgram {
     // v0.51.24: Collect struct type definitions FIRST (full type info, not just field names)

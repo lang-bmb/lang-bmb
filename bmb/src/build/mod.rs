@@ -157,6 +157,11 @@ pub struct BuildConfig {
     /// With contracts (pre/post), LLVM can eliminate these checks via llvm.assume,
     /// proving that contracts make safe code as fast as unsafe code.
     pub safe: bool,
+
+    // === v0.97.3: Separate Compilation ===
+
+    /// Extra object files to link (for separate compilation)
+    pub extra_objects: Vec<PathBuf>,
 }
 
 impl BuildConfig {
@@ -193,6 +198,8 @@ impl BuildConfig {
             no_prelude: false,
             // v0.97: Safe mode
             safe: false,
+            // v0.97.3: Separate compilation
+            extra_objects: Vec::new(),
         }
     }
 
@@ -944,6 +951,20 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         // v0.96.44: Use lld linker on Windows for proper --gc-sections support on COFF PE
         //   MinGW ld (GNU ld) doesn't support --gc-sections on COFF PE, resulting in
         //   all runtime functions being linked even when unused (90KB .text bloat)
+        // v0.97.3: Object file mode — emit .o without linking
+        if matches!(config.output_type, OutputType::Object) {
+            // Copy/rename the compiled object to the output path
+            std::fs::copy(&obj_path, &config.output)?;
+            let _ = std::fs::remove_file(&ir_path);
+            let _ = std::fs::remove_file(&obj_path);
+            let _ = std::fs::remove_file(&runtime_obj);
+            let _ = std::fs::remove_file(&event_loop_obj);
+            if config.verbose {
+                println!("  Created object file: {}", config.output.display());
+            }
+            return Ok(());
+        }
+
         //   lld properly eliminates unreferenced functions from -ffunction-sections objects
         {
             let mut cmd = Command::new(&clang);
@@ -951,6 +972,10 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
             cmd.arg(path_str(&runtime_obj)?);
             if has_event_loop {
                 cmd.arg(path_str(&event_loop_obj)?);
+            }
+            // v0.97.3: Link extra object files (separate compilation)
+            for extra_obj in &config.extra_objects {
+                cmd.arg(path_str(extra_obj)?);
             }
             cmd.args(["-o", path_str(&config.output)?]);
 

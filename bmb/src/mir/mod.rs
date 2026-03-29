@@ -17,7 +17,7 @@ mod lower;
 mod optimize;
 pub mod proof_guided;
 
-pub use lower::lower_program;
+pub use lower::{lower_program, MonoInfo};
 pub use optimize::{
     OptimizationPass, OptimizationPipeline, OptimizationStats, OptLevel,
     ConstantFolding, DeadCodeElimination, SimplifyBranches, IfElseToSwitch,

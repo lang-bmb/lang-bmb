@@ -238,6 +238,11 @@ pub struct TypeChecker {
     /// v0.50.11: Function definition spans for duplicate detection
     /// name -> span of first definition
     function_spans: HashMap<String, Span>,
+
+    /// v0.97.3: Monomorphization requests collected during type checking
+    /// Each entry: (generic_fn_name, type_substitutions)
+    /// Used by MIR lowering to generate specialized function instances
+    mono_requests: Vec<(String, HashMap<String, Type>)>,
 }
 
 impl TypeChecker {
@@ -604,7 +609,19 @@ impl TypeChecker {
             contract_signatures: HashMap::new(), // v0.84: Contract signature tracking
             type_aliases: HashMap::new(), // v0.50.6: Type alias definitions
             function_spans: HashMap::new(), // v0.50.11: Function span tracking for duplicate detection
+            mono_requests: Vec::new(), // v0.97.3: Monomorphization requests
         }
+    }
+
+    /// v0.97.3: Get collected monomorphization requests
+    /// Returns (generic_fn_name, type_substitutions) pairs
+    pub fn mono_requests(&self) -> &[(String, HashMap<String, Type>)] {
+        &self.mono_requests
+    }
+
+    /// v0.97.3: Get generic function definitions (for MIR lowering)
+    pub fn generic_function_defs(&self) -> &HashMap<String, (Vec<TypeParam>, Vec<Type>, Type)> {
+        &self.generic_functions
     }
 
     /// v0.17: Register public items from an imported module
@@ -2125,6 +2142,8 @@ impl TypeChecker {
                             if uninferred.is_empty() {
                                 // All type params inferred - use generic version
                                 let instantiated_ret_ty = self.substitute_type(&ret_ty, &type_subst);
+                                // v0.97.3: Record monomorphization request
+                                self.mono_requests.push((func.clone(), type_subst));
                                 return Ok(instantiated_ret_ty);
                             }
                         }
@@ -2204,6 +2223,8 @@ impl TypeChecker {
 
                     // Substitute type parameters in return type
                     let instantiated_ret_ty = self.substitute_type(&ret_ty, &type_subst);
+                    // v0.97.3: Record monomorphization request
+                    self.mono_requests.push((func.clone(), type_subst));
                     return Ok(instantiated_ret_ty);
                 }
 
