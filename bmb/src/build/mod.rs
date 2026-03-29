@@ -489,8 +489,23 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         merged
     };
 
-    // Lower to MIR
-    let mut mir = lower_program(&program);
+    // v0.97.3: Collect monomorphization info from type checker
+    let mono_info = {
+        let requests = type_checker.mono_requests().to_vec();
+        let generic_fns = type_checker.generic_function_defs().clone();
+        if requests.is_empty() {
+            None
+        } else {
+            Some(crate::mir::MonoInfo { generic_fns, requests })
+        }
+    };
+
+    // Lower to MIR (with monomorphization if applicable)
+    let mut mir = if let Some(ref info) = mono_info {
+        crate::mir::lower_program_with_mono(&program, Some(info))
+    } else {
+        lower_program(&program)
+    };
 
     if config.verbose {
         println!("  Generated MIR for {} functions", mir.functions.len());

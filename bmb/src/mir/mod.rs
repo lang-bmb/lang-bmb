@@ -17,7 +17,7 @@ mod lower;
 mod optimize;
 pub mod proof_guided;
 
-pub use lower::{lower_program, MonoInfo};
+pub use lower::{lower_program, lower_program_with_mono, MonoInfo};
 pub use optimize::{
     OptimizationPass, OptimizationPipeline, OptimizationStats, OptLevel,
     ConstantFolding, DeadCodeElimination, SimplifyBranches, IfElseToSwitch,
@@ -1060,6 +1060,10 @@ pub struct LoweringContext {
     /// v0.89.4: Tracks last let binding for Block scope extension
     /// (original_name, unique_name) - set by Let, consumed by Block
     pub last_let_binding: Option<(String, String)>,
+    /// v0.97.3: Generic function call redirects for monomorphization
+    /// Maps generic function name → list of (specialized_name, return_type)
+    /// Used by call lowering to redirect generic calls to specialized versions
+    pub mono_redirects: HashMap<String, Vec<(String, MirType)>>,
 }
 
 impl LoweringContext {
@@ -1099,6 +1103,7 @@ impl LoweringContext {
             spawn_counter: 0,
             var_name_map: HashMap::new(),
             last_let_binding: None,
+            mono_redirects: HashMap::new(),
         }
     }
 

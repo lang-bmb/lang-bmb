@@ -31,6 +31,11 @@ pub struct MonoInfo {
 
 /// Lower an entire program to MIR
 pub fn lower_program(program: &Program) -> MirProgram {
+    lower_program_with_mono(program, None)
+}
+
+/// v0.97.3: Lower program with optional monomorphization info
+pub fn lower_program_with_mono(program: &Program, mono_info: Option<&MonoInfo>) -> MirProgram {
     // v0.51.24: Collect struct type definitions FIRST (full type info, not just field names)
     // This is needed to properly convert Type::Named to MirType::Struct
     // v0.60.261: Also collect type parameters for generic struct monomorphization
@@ -66,7 +71,7 @@ pub fn lower_program(program: &Program) -> MirProgram {
         }
     }
 
-    let type_defs = TypeDefs {
+    let mut type_defs = TypeDefs {
         structs: struct_type_defs.clone(),
         enums: enum_type_defs,
         struct_type_params,
@@ -95,16 +100,123 @@ pub fn lower_program(program: &Program) -> MirProgram {
         }
     }
 
-    let functions = program
+    // v0.97.3: Collect generic function AST definitions for monomorphization
+    let mut generic_fn_defs: std::collections::HashMap<String, &FnDef> = std::collections::HashMap::new();
+    if mono_info.is_some() {
+        for item in &program.items {
+            if let Item::FnDef(fn_def) = item {
+                if !fn_def.type_params.is_empty() {
+                    generic_fn_defs.insert(fn_def.name.node.clone(), fn_def);
+                }
+            }
+        }
+    }
+
+    // v0.97.3: Pre-register monomorphized struct definitions BEFORE function lowering
+    // This ensures struct_defs has Pair_i64_i64 etc. when main function is lowered
+    if let Some(info) = mono_info {
+        for (fn_name, type_subst) in &info.requests {
+            if let Some((_, param_tys, ret_ty)) = info.generic_fns.get(fn_name) {
+                let all_types: Vec<&Type> = param_tys.iter().chain(std::iter::once(ret_ty)).collect();
+                for ty in &all_types {
+                    if let Type::Generic { name: struct_name, type_args } = ty {
+                        if let Some(tp_names) = type_defs.struct_type_params.get(struct_name) {
+                            let mut struct_subst: std::collections::HashMap<String, Type> = std::collections::HashMap::new();
+                            for (tp_name, type_arg) in tp_names.iter().zip(type_args.iter()) {
+                                let concrete = substitute_ast_type(type_arg, type_subst);
+                                struct_subst.insert(tp_name.clone(), concrete);
+                            }
+                            let suffix = tp_names.iter().map(|tp| {
+                                struct_subst.get(tp).map(|t| type_to_name_suffix(t)).unwrap_or_else(|| "i64".to_string())
+                            }).collect::<Vec<_>>().join("_");
+                            let mono_struct_name = format!("{}_{}", struct_name, suffix);
+
+                            if !struct_defs.contains_key(&mono_struct_name) {
+                                if let Some(fields) = type_defs.structs.get(struct_name) {
+                                    // Register field names for field_index lookup
+                                    let field_names: Vec<String> = fields.iter().map(|(name, _)| name.clone()).collect();
+                                    struct_defs.insert(mono_struct_name.clone(), field_names);
+                                    // Also add substituted fields to type_defs.structs
+                                    let subst_fields: Vec<(String, Type)> = fields.iter().map(|(fname, fty)| {
+                                        (fname.clone(), substitute_ast_type(fty, &struct_subst))
+                                    }).collect();
+                                    type_defs.structs.insert(mono_struct_name, subst_fields);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // v0.97.3: Build set of generic function names that have monomorphization requests
+    let mono_generic_names: std::collections::HashSet<String> = if let Some(info) = mono_info {
+        info.requests.iter().map(|(name, _)| name.clone()).collect()
+    } else {
+        std::collections::HashSet::new()
+    };
+
+    // v0.97.3: Build call redirect map and func_return_types for monomorphized functions
+    let mut mono_redirects: std::collections::HashMap<String, Vec<(String, MirType)>> = std::collections::HashMap::new();
+    let mut all_func_return_types = func_return_types.clone();
+
+    if let Some(info) = mono_info {
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for (fn_name, type_subst) in &info.requests {
+            if let Some(fn_def) = generic_fn_defs.get(fn_name) {
+                let suffix = mono_type_suffix(type_subst, &fn_def.type_params);
+                let mono_name = format!("{}_{}", fn_name, suffix);
+                if seen.contains(&mono_name) { continue; }
+                seen.insert(mono_name.clone());
+
+                let mono_fn_def = monomorphize_fn_def(fn_def, &mono_name, type_subst);
+                let ret_ty = ast_type_to_mir_with_type_defs(&mono_fn_def.ret_ty.node, &type_defs);
+                all_func_return_types.insert(mono_name.clone(), ret_ty.clone());
+
+                // Register redirect: generic_name → (mono_name, return_type)
+                mono_redirects.entry(fn_name.clone())
+                    .or_default()
+                    .push((mono_name.clone(), ret_ty));
+            }
+        }
+    }
+
+    // Lower non-generic functions (with call redirects for generic callers)
+    let redirect_ref = if mono_redirects.is_empty() { None } else { Some(&mono_redirects) };
+    let mut functions: Vec<MirFunction> = program
         .items
         .iter()
         .filter_map(|item| match item {
-            Item::FnDef(fn_def) => Some(lower_function(fn_def, &func_return_types, &struct_defs, &type_defs)),
-            // Type definitions, use statements, extern fns, traits, impl blocks, and type aliases don't produce MIR functions
+            Item::FnDef(fn_def) => {
+                // v0.97.3: Skip generic functions that have monomorphization requests
+                if !fn_def.type_params.is_empty() && mono_generic_names.contains(&fn_def.name.node) {
+                    None
+                } else {
+                    Some(lower_function_with_redirects(fn_def, &all_func_return_types, &struct_defs, &type_defs, redirect_ref))
+                }
+            },
             Item::StructDef(_) | Item::EnumDef(_) | Item::Use(_) | Item::ExternFn(_) |
             Item::TraitDef(_) | Item::ImplBlock(_) | Item::TypeAlias(_) => None,
         })
         .collect();
+
+    // v0.97.3: Generate monomorphized function instances
+    if let Some(info) = mono_info {
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for (fn_name, type_subst) in &info.requests {
+            if let Some(fn_def) = generic_fn_defs.get(fn_name) {
+                let suffix = mono_type_suffix(type_subst, &fn_def.type_params);
+                let mono_name = format!("{}_{}", fn_name, suffix);
+                if seen.contains(&mono_name) { continue; }
+                seen.insert(mono_name.clone());
+
+                let mono_fn_def = monomorphize_fn_def(fn_def, &mono_name, type_subst);
+                let mir_fn = lower_function_with_redirects(&mono_fn_def, &all_func_return_types, &struct_defs, &type_defs, redirect_ref);
+                functions.push(mir_fn);
+            }
+        }
+    }
 
     // Collect extern function declarations (v0.13.0)
     let extern_fns = program
@@ -118,7 +230,7 @@ pub fn lower_program(program: &Program) -> MirProgram {
 
     // v0.51.31: Convert struct_type_defs to MirType format for codegen
     // v0.60.254: Now uses type_defs for proper enum resolution
-    let mir_struct_defs: std::collections::HashMap<String, Vec<(String, MirType)>> = type_defs.structs
+    let mut mir_struct_defs: std::collections::HashMap<String, Vec<(String, MirType)>> = type_defs.structs
         .iter()
         .map(|(name, fields)| {
             let mir_fields: Vec<(String, MirType)> = fields
@@ -130,6 +242,51 @@ pub fn lower_program(program: &Program) -> MirProgram {
             (name.clone(), mir_fields)
         })
         .collect();
+
+    // v0.97.3: Generate monomorphized struct definitions for generic structs
+    if let Some(info) = mono_info {
+        let mut seen_structs: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for (fn_name, type_subst) in &info.requests {
+            // Check if any generic struct is referenced via return type or parameter types
+            if let Some((type_params, param_tys, ret_ty)) = info.generic_fns.get(fn_name) {
+                // Look for Generic { name, type_args } types in params and return
+                let all_types: Vec<&Type> = param_tys.iter().chain(std::iter::once(ret_ty)).collect();
+                for ty in all_types {
+                    if let Type::Generic { name: struct_name, type_args } = ty {
+                        if let Some(tp_names) = type_defs.struct_type_params.get(struct_name) {
+                            // Build struct-specific substitution from type_args
+                            let mut struct_subst: std::collections::HashMap<String, Type> = std::collections::HashMap::new();
+                            for (tp_name, type_arg) in tp_names.iter().zip(type_args.iter()) {
+                                let concrete = substitute_ast_type(type_arg, type_subst);
+                                struct_subst.insert(tp_name.clone(), concrete);
+                            }
+
+                            let suffix = tp_names.iter().map(|tp| {
+                                struct_subst.get(tp).map(|t| type_to_name_suffix(t)).unwrap_or_else(|| "i64".to_string())
+                            }).collect::<Vec<_>>().join("_");
+                            let mono_struct_name = format!("{}_{}", struct_name, suffix);
+
+                            if seen_structs.contains(&mono_struct_name) { continue; }
+                            seen_structs.insert(mono_struct_name.clone());
+
+                            // Generate monomorphized field types
+                            if let Some(fields) = type_defs.structs.get(struct_name) {
+                                let mir_fields: Vec<(String, MirType)> = fields.iter().map(|(field_name, field_ty)| {
+                                    let substituted_ty = substitute_ast_type(field_ty, &struct_subst);
+                                    (field_name.clone(), ast_type_to_mir_with_type_defs(&substituted_ty, &type_defs))
+                                }).collect();
+                                mir_struct_defs.insert(mono_struct_name.clone(), mir_fields);
+
+                                // v0.97.3: Also register field names in struct_defs for field_index lookup
+                                let field_names: Vec<String> = fields.iter().map(|(name, _)| name.clone()).collect();
+                                struct_defs.insert(mono_struct_name, field_names);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     MirProgram {
         functions,
@@ -183,7 +340,23 @@ fn lower_function(
     struct_defs: &std::collections::HashMap<String, Vec<String>>,
     type_defs: &TypeDefs,
 ) -> MirFunction {
+    lower_function_with_redirects(fn_def, func_return_types, struct_defs, type_defs, None)
+}
+
+/// v0.97.3: Lower function with optional monomorphization call redirects
+fn lower_function_with_redirects(
+    fn_def: &FnDef,
+    func_return_types: &std::collections::HashMap<String, MirType>,
+    struct_defs: &std::collections::HashMap<String, Vec<String>>,
+    type_defs: &TypeDefs,
+    mono_redirects: Option<&std::collections::HashMap<String, Vec<(String, MirType)>>>,
+) -> MirFunction {
     let mut ctx = LoweringContext::new();
+
+    // v0.97.3: Set monomorphization call redirects
+    if let Some(redirects) = mono_redirects {
+        ctx.mono_redirects = redirects.clone();
+    }
 
     // v0.35.4: Add user-defined function return types to context
     for (name, ty) in func_return_types {
@@ -1195,10 +1368,40 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             // Check if this is a void function (runtime functions that return void)
             let is_void_func = matches!(func.as_str(), "println" | "print" | "assert");
 
+            // v0.97.3: Resolve generic function calls to monomorphized versions
+            let resolved_func = if let Some(redirects) = ctx.mono_redirects.get(func) {
+                if redirects.len() == 1 {
+                    // Single specialization — use it directly
+                    redirects[0].0.clone()
+                } else {
+                    // Multiple specializations — pick based on first argument type
+                    // Heuristic: match f64 args to f64 specialization, else use first
+                    let has_f64_arg = arg_ops.iter().any(|op| {
+                        match op {
+                            Operand::Constant(Constant::Float(_)) => true,
+                            Operand::Place(p) => {
+                                ctx.locals.get(&p.name).map_or(false, |t| matches!(t, MirType::F64))
+                                    || ctx.params.get(&p.name).map_or(false, |t| matches!(t, MirType::F64))
+                            },
+                            _ => false,
+                        }
+                    });
+                    if has_f64_arg {
+                        redirects.iter().find(|(name, _)| name.contains("f64")).map(|(name, _)| name.clone())
+                            .unwrap_or_else(|| redirects[0].0.clone())
+                    } else {
+                        redirects.iter().find(|(name, _)| name.contains("i64")).map(|(name, _)| name.clone())
+                            .unwrap_or_else(|| redirects[0].0.clone())
+                    }
+                }
+            } else {
+                func.clone()
+            };
+
             if is_void_func {
                 ctx.push_inst(MirInst::Call {
                     dest: None,
-                    func: func.clone(),
+                    func: resolved_func,
                     args: arg_ops,
                     is_tail: false, // v0.50.65: void functions are not tail calls
                 });
@@ -1208,7 +1411,7 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
                 // v0.35.4: Store return type for Call result
                 // v0.46: Also handle runtime functions with known return types
-                let ret_ty = if let Some(ty) = ctx.func_return_types.get(func) {
+                let ret_ty = if let Some(ty) = ctx.func_return_types.get(&resolved_func) {
                     ty.clone()
                 } else {
                     // Runtime functions with known return types
@@ -1241,7 +1444,7 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
                 ctx.push_inst(MirInst::Call {
                     dest: Some(dest.clone()),
-                    func: func.clone(),
+                    func: resolved_func,
                     args: arg_ops,
                     is_tail: false, // v0.50.65: will be marked true by tail_call_optimization pass
                 });
@@ -6213,5 +6416,116 @@ mod tests {
         );
         let func = &mir.functions[0];
         assert_eq!(func.ret_ty, MirType::String, "Function should return String");
+    }
+}
+
+// =============================================================================
+// v0.97.3: Generic function monomorphization helpers
+// =============================================================================
+
+/// Generate type suffix for mangled name: "i64", "f64", "i64_f64", etc.
+fn mono_type_suffix(
+    type_subst: &std::collections::HashMap<String, Type>,
+    type_params: &[crate::ast::TypeParam],
+) -> String {
+    type_params
+        .iter()
+        .map(|tp| {
+            if let Some(concrete_ty) = type_subst.get(&tp.name) {
+                type_to_name_suffix(concrete_ty)
+            } else {
+                "i64".to_string() // fallback
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("_")
+}
+
+/// Convert a Type to a name suffix for mangling
+fn type_to_name_suffix(ty: &Type) -> String {
+    match ty {
+        Type::I64 => "i64".to_string(),
+        Type::F64 => "f64".to_string(),
+        Type::Bool => "bool".to_string(),
+        Type::String => "String".to_string(),
+        Type::Unit => "unit".to_string(),
+        Type::Named(name) => name.clone(),
+        Type::Ptr(inner) => format!("ptr_{}", type_to_name_suffix(inner)),
+        Type::Ref(inner) => format!("ref_{}", type_to_name_suffix(inner)),
+        Type::RefMut(inner) => format!("refmut_{}", type_to_name_suffix(inner)),
+        Type::Array(elem, size) => format!("arr_{}_{}", type_to_name_suffix(elem), size),
+        _ => "unknown".to_string(),
+    }
+}
+
+/// Create a monomorphized copy of a FnDef with substituted types and a new name
+fn monomorphize_fn_def(
+    fn_def: &FnDef,
+    mono_name: &str,
+    type_subst: &std::collections::HashMap<String, Type>,
+) -> FnDef {
+    use crate::ast::Spanned;
+
+    let mut mono = fn_def.clone();
+
+    // Replace name
+    mono.name = Spanned {
+        node: mono_name.to_string(),
+        span: fn_def.name.span,
+    };
+
+    // Clear type params (this is now a concrete function)
+    mono.type_params = vec![];
+
+    // Substitute types in parameters
+    for param in &mut mono.params {
+        param.ty = Spanned {
+            node: substitute_ast_type(&param.ty.node, type_subst),
+            span: param.ty.span,
+        };
+    }
+
+    // Substitute return type
+    mono.ret_ty = Spanned {
+        node: substitute_ast_type(&fn_def.ret_ty.node, type_subst),
+        span: fn_def.ret_ty.span,
+    };
+
+    mono
+}
+
+/// Recursively substitute TypeVar references in AST types
+fn substitute_ast_type(
+    ty: &Type,
+    type_subst: &std::collections::HashMap<String, Type>,
+) -> Type {
+    match ty {
+        // TypeVar("T") → look up in substitution map
+        Type::TypeVar(name) => {
+            if let Some(concrete) = type_subst.get(name) {
+                concrete.clone()
+            } else {
+                ty.clone()
+            }
+        }
+        // Named type might be a type parameter too
+        Type::Named(name) => {
+            if let Some(concrete) = type_subst.get(name) {
+                concrete.clone()
+            } else {
+                ty.clone()
+            }
+        }
+        // Recursive cases
+        Type::Ptr(inner) => Type::Ptr(Box::new(substitute_ast_type(inner, type_subst))),
+        Type::Ref(inner) => Type::Ref(Box::new(substitute_ast_type(inner, type_subst))),
+        Type::RefMut(inner) => Type::RefMut(Box::new(substitute_ast_type(inner, type_subst))),
+        Type::Array(elem, size) => Type::Array(Box::new(substitute_ast_type(elem, type_subst)), *size),
+        Type::Generic { name, type_args } => Type::Generic {
+            name: name.clone(),
+            type_args: type_args.iter().map(|arg| Box::new(substitute_ast_type(arg, type_subst))).collect(),
+        },
+        // Concrete types pass through
+        _ => ty.clone(),
     }
 }
