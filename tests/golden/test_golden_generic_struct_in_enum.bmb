@@ -1,0 +1,38 @@
+// Golden test: Struct inside generic enum (Option<Struct>)
+// v0.97.4: Fixed phi coercion for struct values extracted from enum (i64→ptr inttoptr)
+// Expected output: 7 200 5 42 0 0
+
+enum Option<T> { Some(T), None }
+
+struct Entry<T> {
+    priority: i64,
+    value: T
+}
+
+fn make_entry<T>(p: i64, v: T) -> Entry<T> = new Entry { priority: p, value: v };
+
+fn get_or<T>(o: Option<T>, d: T) -> T =
+    match o { Option::Some(v) => v, Option::None => d };
+
+fn higher_priority<T>(a: Entry<T>, b: Entry<T>) -> Entry<T> =
+    if a.priority >= b.priority { a } else { b };
+
+fn main() -> i64 = {
+    let e1 = make_entry(3, 100);
+    let e2 = make_entry(7, 200);
+    let e3 = make_entry(1, 300);
+    let best = higher_priority(higher_priority(e1, e2), e3);
+    let _u1 = println(best.priority);
+    let _u2 = println(best.value);
+
+    let opt_entry = Option::Some(make_entry(5, 42));
+    let entry = get_or(opt_entry, make_entry(0, 0));
+    let _u3 = println(entry.priority);
+    let _u4 = println(entry.value);
+
+    let none_entry = get_or(Option::None, make_entry(0, 0));
+    let _u5 = println(none_entry.priority);
+    let _u6 = println(none_entry.value);
+
+    0
+};

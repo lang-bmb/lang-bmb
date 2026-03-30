@@ -1374,22 +1374,32 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                     // Single specialization — use it directly
                     redirects[0].0.clone()
                 } else {
-                    // Multiple specializations — pick based on first argument type
-                    // Heuristic: match f64 args to f64 specialization, else use first
-                    let has_f64_arg = arg_ops.iter().any(|op| {
+                    // Multiple specializations — match argument types against available specializations
+                    // v0.97.4: Improved dispatch — check ALL arg types for struct/enum/f64/bool
+                    let first_arg_type_suffix = arg_ops.iter().find_map(|op| {
                         match op {
-                            Operand::Constant(Constant::Float(_)) => true,
+                            Operand::Constant(Constant::Float(_)) => Some("f64".to_string()),
+                            Operand::Constant(Constant::Bool(_)) => Some("bool".to_string()),
                             Operand::Place(p) => {
-                                ctx.locals.get(&p.name).map_or(false, |t| matches!(t, MirType::F64))
-                                    || ctx.params.get(&p.name).map_or(false, |t| matches!(t, MirType::F64))
+                                let ty = ctx.locals.get(&p.name)
+                                    .or_else(|| ctx.params.get(&p.name))
+                                    .or_else(|| ctx.temp_types.get(&p.name));
+                                match ty {
+                                    Some(MirType::F64) => Some("f64".to_string()),
+                                    Some(MirType::Bool) => Some("bool".to_string()),
+                                    Some(MirType::Struct { name, .. }) => Some(name.clone()),
+                                    // Skip Enum — it wraps the actual type param
+                                    _ => None,
+                                }
                             },
-                            _ => false,
+                            _ => None,
                         }
                     });
-                    if has_f64_arg {
-                        redirects.iter().find(|(name, _)| name.contains("f64")).map(|(name, _)| name.clone())
+                    if let Some(ref suffix) = first_arg_type_suffix {
+                        redirects.iter().find(|(name, _)| name.contains(suffix.as_str())).map(|(name, _)| name.clone())
                             .unwrap_or_else(|| redirects[0].0.clone())
                     } else {
+                        // Default: prefer i64 specialization
                         redirects.iter().find(|(name, _)| name.contains("i64")).map(|(name, _)| name.clone())
                             .unwrap_or_else(|| redirects[0].0.clone())
                     }

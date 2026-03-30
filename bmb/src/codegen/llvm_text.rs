@@ -2154,7 +2154,8 @@ impl TextCodeGen {
                         let needs_coerce = val_ty != phi_ty && matches!((val_ty, phi_ty),
                             ("i32", "i64") | ("i1", "i64") | ("i1", "i32") |
                             ("i64", "double") | ("double", "i64") |
-                            ("i64", "i1") | ("i64", "i32"));
+                            ("i64", "i1") | ("i64", "i32") |
+                            ("i64", "ptr") | ("ptr", "i64"));
 
                         if needs_coerce
                             && let Operand::Place(p) = val {
@@ -2471,6 +2472,8 @@ impl TextCodeGen {
                 let instr = match (*from_ty, *to_ty) {
                     ("i32", "i64") | ("i1", "i64") | ("i1", "i32") => "sext",
                     ("i64", "i32") | ("i64", "i1") => "trunc",
+                    ("i64", "ptr") => "inttoptr",
+                    ("ptr", "i64") => "ptrtoint",
                     _ => "bitcast", // Fallback (i64↔double)
                 };
                 writeln!(out, "  %{} = {} {} {} to {}", coerce_temp, instr, from_ty, source_name, to_ty)?;
@@ -5581,10 +5584,18 @@ impl TextCodeGen {
                     let size = num_fields * 8;
                     writeln!(out, "  ; struct {} init with {} fields (heap - escapes)", struct_name, fields.len())?;
                     writeln!(out, "  %{} = call ptr @malloc(i64 {})", dest.name, size)?;
+                    // v0.97.4: Store struct pointer to .addr for Copy instructions
+                    if local_names.contains(&dest.name) {
+                        writeln!(out, "  store ptr %{}, ptr %{}.addr", dest.name, dest.name)?;
+                    }
                 } else {
                     // Local struct: can use stack allocation (faster)
                     writeln!(out, "  ; struct {} init with {} fields (stack - local only)", struct_name, fields.len())?;
                     writeln!(out, "  %{} = alloca {}, align 8", dest.name, struct_ty)?;
+                    // v0.97.4: Store struct pointer to .addr for Copy instructions
+                    if local_names.contains(&dest.name) {
+                        writeln!(out, "  store ptr %{}, ptr %{}.addr", dest.name, dest.name)?;
+                    }
                 }
                 for (i, (field_name, value)) in fields.iter().enumerate() {
                     let ty = self.infer_operand_type(value, func);
@@ -5763,7 +5774,14 @@ impl TextCodeGen {
                 // Store variant arguments
                 // v0.97.4: Properly load local variables from .addr before storing to enum
                 for (i, arg) in args.iter().enumerate() {
-                    let ty = self.infer_operand_type(arg, func);
+                    // v0.97.4: Use place_types first (knows about EnumVariant ptrs),
+                    // fall back to infer_operand_type for constants/params
+                    let ty = if let Operand::Place(p) = arg {
+                        place_types.get(&p.name).copied()
+                            .unwrap_or_else(|| self.infer_operand_type(arg, func))
+                    } else {
+                        self.infer_operand_type(arg, func)
+                    };
                     let arg_str = if let Operand::Place(p) = arg {
                         if local_names.contains(&p.name) {
                             // Load from alloca
@@ -5792,6 +5810,11 @@ impl TextCodeGen {
                         let bc_name = format!("{}_a{}_bc", dest.name, i);
                         writeln!(out, "  %{} = bitcast double {} to i64", bc_name, arg_str)?;
                         writeln!(out, "  store i64 %{}, ptr %{}_a{}", bc_name, dest.name, i)?;
+                    } else if ty == "ptr" {
+                        // v0.97.4: Store ptr via ptrtoint to i64 (nested enums, structs in enums)
+                        let pti_name = format!("{}_a{}_pti", dest.name, i);
+                        writeln!(out, "  %{} = ptrtoint ptr {} to i64", pti_name, arg_str)?;
+                        writeln!(out, "  store i64 %{}, ptr %{}_a{}", pti_name, dest.name, i)?;
                     } else {
                         writeln!(out, "  store {} {}, ptr %{}_a{}", ty, arg_str, dest.name, i)?;
                     }
@@ -5868,9 +5891,18 @@ impl TextCodeGen {
                             // Check if element is a local that needs loading from alloca
                             let elem_str = if let Operand::Place(p) = elem {
                                 if local_names.contains(&p.name) {
-                                    // Load from alloca first
-                                    writeln!(out, "  %{}_arr_elem{} = load {}, ptr %{}.addr",
-                                             dest.name, i, elem_ty, p.name)?;
+                                    // v0.97.4: Check if local is narrowed (i32/i1) — must load
+                                    // as narrowed type then sext to array element type
+                                    let local_ty = place_types.get(&p.name).copied().unwrap_or("i64");
+                                    if local_ty != elem_ty && (local_ty == "i32" || local_ty == "i1") {
+                                        writeln!(out, "  %{}_arr_raw{} = load {}, ptr %{}.addr",
+                                                 dest.name, i, local_ty, p.name)?;
+                                        writeln!(out, "  %{}_arr_elem{} = sext {} %{}_arr_raw{} to {}",
+                                                 dest.name, i, local_ty, dest.name, i, elem_ty)?;
+                                    } else {
+                                        writeln!(out, "  %{}_arr_elem{} = load {}, ptr %{}.addr",
+                                                 dest.name, i, elem_ty, p.name)?;
+                                    }
                                     format!("%{}_arr_elem{}", dest.name, i)
                                 } else {
                                     self.format_operand(elem)

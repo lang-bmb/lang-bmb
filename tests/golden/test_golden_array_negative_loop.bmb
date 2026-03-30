@@ -1,0 +1,34 @@
+// Golden test: Array with negative values in while loop (native codegen)
+// v0.97.4: Fixed i32→i64 sext when loading narrowed locals into i64 arrays
+// Expected output: 54 60 3
+
+fn main() -> i64 = {
+    let data: [i64; 8] = [10, 0 - 5, 20, 0, 30, 0 - 1, 0, 0];
+
+    // Sum all elements
+    let mut sum = 0;
+    let mut i = 0;
+    while i < 6 {
+        sum = sum + data[i];
+        i = i + 1;
+    };
+    let _u1 = println(sum);
+
+    // Sum positive only
+    let mut pos_sum = 0;
+    let mut pos_count = 0;
+    let mut j = 0;
+    while j < 6 {
+        if data[j] > 0 {
+            pos_sum = pos_sum + data[j];
+            pos_count = pos_count + 1;
+        } else {
+            pos_count = pos_count;
+        };
+        j = j + 1;
+    };
+    let _u2 = println(pos_sum);
+    let _u3 = println(pos_count);
+
+    0
+};
