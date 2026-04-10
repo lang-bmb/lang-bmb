@@ -9,6 +9,11 @@ use crate::error::{CompileError, Result};
 use logos::Logos;
 
 /// Tokenize source code
+///
+/// v0.97.4: After raw tokenization, a targeted pass scans each `>>`
+/// token backward to decide whether it closes two nested generic
+/// type-arg lists (in which case we split it into two `>` tokens)
+/// or is a shift-right operator (left alone).
 pub fn tokenize(source: &str) -> Result<Vec<(Token, Span)>> {
     let mut tokens = Vec::new();
     let mut lexer = Token::lexer(source);
@@ -26,7 +31,122 @@ pub fn tokenize(source: &str) -> Result<Vec<(Token, Span)>> {
         }
     }
 
+    split_gtgt_in_nested_generics(&mut tokens);
+
     Ok(tokens)
+}
+
+/// For every `>>` token, decide whether it closes two generic type
+/// argument lists (e.g. `Option<Box<T>>`) or is a shift-right
+/// operator. If it's the former, split into two `>` tokens.
+///
+/// The decision is made by scanning the tokens preceding `>>`:
+///   * If we encounter an unmatched `<` at depth 2 before any clearly
+///     non-type token (arithmetic operator, `=`, `{`, `;`, literal
+///     integer, etc.), the `>>` is treated as a nested generic close.
+///   * Otherwise it's treated as shift-right.
+///
+/// This is a local, deterministic rewrite — it never makes shift-right
+/// parse as a type close (which would break existing programs), but it
+/// does enable nested generic syntax where the context is unambiguous.
+fn split_gtgt_in_nested_generics(tokens: &mut Vec<(Token, Span)>) {
+    let mut i = 0;
+    while i < tokens.len() {
+        if matches!(tokens[i].0, Token::GtGt) && is_nested_generic_close(tokens, i) {
+            let span = tokens[i].1;
+            let mid = span.start + 1;
+            tokens[i] = (Token::Gt, Span::new(span.start, mid));
+            tokens.insert(i + 1, (Token::Gt, Span::new(mid, span.end)));
+            i += 2;
+            continue;
+        }
+        i += 1;
+    }
+}
+
+/// Scan backward from position `idx` (a `>>` token) looking for a
+/// pattern that indicates we are at the close of two nested generic
+/// type-arg lists. We need to find two unmatched `<` that are both
+/// preceded by identifier-like tokens (i.e. type constructors).
+fn is_nested_generic_close(tokens: &[(Token, Span)], idx: usize) -> bool {
+    // Walk backward, tracking balance of `<`/`>`. We require two
+    // unmatched `<` at identifier positions without crossing a
+    // definitive "not-a-type" token.
+    let mut depth: i32 = 0;
+    let mut needed_opens = 2usize;
+    // Start from the token just before `>>`.
+    let mut j = idx;
+    while j > 0 {
+        j -= 1;
+        match &tokens[j].0 {
+            Token::Gt => depth += 1,
+            Token::GtGt => depth += 2,
+            Token::Lt => {
+                if depth > 0 {
+                    depth -= 1;
+                } else {
+                    // Unmatched `<` — check if it's preceded by an
+                    // identifier-like token, which would make this a
+                    // generic-open.
+                    if j == 0 || !is_potential_generic_head(&tokens[j - 1].0) {
+                        return false;
+                    }
+                    needed_opens -= 1;
+                    if needed_opens == 0 {
+                        return true;
+                    }
+                }
+            }
+            // Tokens that can validly appear inside a type argument
+            // list: identifiers, primitive type keywords, punctuation
+            // like `,`, `&`, `*`, `[`, `]`, `(`, `)`, `?`, `;`
+            // (array length). Anything else is a clear signal that
+            // we are NOT inside a type argument list.
+            Token::Ident(_)
+            | Token::Comma
+            | Token::Ampersand
+            | Token::Star
+            | Token::LBracket
+            | Token::RBracket
+            | Token::LParen
+            | Token::RParen
+            | Token::Question
+            | Token::TyI32
+            | Token::TyI64
+            | Token::TyU32
+            | Token::TyU64
+            | Token::TyF64
+            | Token::TyBool
+            | Token::TyString
+            | Token::TyChar
+            | Token::IntLit(_)
+            | Token::Mut => {
+                // OK, still in a plausible type context
+            }
+            _ => {
+                // Any other token (arithmetic ops, `=`, `{`, `;`
+                // not as array length, keywords) rules out a type
+                // context.
+                return false;
+            }
+        }
+    }
+    false
+}
+
+/// Return true if a token can precede a `<` that opens a generic type
+/// argument list.
+fn is_potential_generic_head(tok: &Token) -> bool {
+    matches!(
+        tok,
+        Token::Ident(_)
+            | Token::MutexType
+            | Token::AtomicType
+            | Token::SenderType
+            | Token::ReceiverType
+            | Token::RwLockType
+            | Token::FutureType
+    )
 }
 
 #[cfg(test)]

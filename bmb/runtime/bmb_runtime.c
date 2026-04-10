@@ -2536,12 +2536,6 @@ BmbString* bmb_system_capture(const BmbString* cmd) {
     return s;
 }
 
-// v0.95: Delete a file
-int64_t bmb_delete_file(const BmbString* path) {
-    if (!path || !path->data) return 0;
-    return (remove(path->data) == 0) ? 1 : 0;
-}
-
 // v0.95: Get current working directory
 BmbString* bmb_getcwd(void) {
     char buf[4096];

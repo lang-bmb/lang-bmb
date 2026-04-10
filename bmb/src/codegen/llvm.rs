@@ -6358,6 +6358,7 @@ mod tests {
             no_inline: false,
             is_memory_free: false,
             is_read_only: false,
+            is_export: false,
         }
     }
 
@@ -6377,6 +6378,7 @@ mod tests {
             no_inline: false,
             is_memory_free: false,
             is_read_only: false,
+            is_export: false,
         }
     }
 
@@ -6396,6 +6398,7 @@ mod tests {
             no_inline: false,
             is_memory_free: false,
             is_read_only: false,
+            is_export: false,
         }
     }
 

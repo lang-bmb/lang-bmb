@@ -1,0 +1,36 @@
+// Golden test (Cycle 311): generic OptionG<T> works for multiple T.
+//
+// Expected output:
+// 42
+// 99
+// 1
+// 0
+// 1
+// 0
+enum OptionG<T> { Some(T), None }
+
+fn unwrap_or_g<T>(o: OptionG<T>, default: T) -> T =
+    match o { OptionG::Some(v) => v, OptionG::None => default };
+
+fn is_some_g<T>(o: OptionG<T>) -> bool =
+    match o { OptionG::Some(_) => true, OptionG::None => false };
+
+fn main() -> i64 = {
+    // i64 specialization
+    let a: OptionG<i64> = OptionG::Some(42);
+    let b: OptionG<i64> = OptionG::None;
+    let _u1 = println(unwrap_or_g(a, 0));    // 42
+    let _u2 = println(unwrap_or_g(b, 99));   // 99
+
+    // bool specialization
+    let p: OptionG<bool> = OptionG::Some(true);
+    let q: OptionG<bool> = OptionG::None;
+    let _u3 = println(if unwrap_or_g(p, false) { 1 } else { 0 });   // 1
+    let _u4 = println(if unwrap_or_g(q, false) { 1 } else { 0 });   // 0
+
+    // is_some_g specialization for both T
+    let _u5 = println(if is_some_g(a) { 1 } else { 0 });            // 1
+    let _u6 = println(if is_some_g(q) { 1 } else { 0 });            // 0
+
+    0
+};

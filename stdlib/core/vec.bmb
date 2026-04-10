@@ -1,0 +1,60 @@
+// BMB Standard Library: core::vec
+//
+// Cycle 316 (v0.97.4): generic Vec<T> backed by raw heap memory.
+//
+// Current limitations:
+//   * Element type T must be 8 bytes (i64, f64, *X, bool stored
+//     in i64 slots). 32-bit and smaller types need future
+//     `load_i32`/`store_i32` overloads.
+//   * No automatic growth — pass `cap` to `vec_with_capacity` and
+//     do not push past `cap`. A future cycle will add `vec_grow`
+//     using `realloc`.
+//   * No `vec_drop` / explicit free — relies on process exit or
+//     arena cleanup.
+//   * Inference: type-inference can't currently figure out T from
+//     a `let` binding alone, so we take a `seed: T` argument.
+//     Future improvement: bidirectional inference for generic
+//     constructors with no value parameters.
+//
+// Despite limitations, this is the first heap-backed dynamic
+// container in BMB stdlib that monomorphizes per element type.
+
+struct VecG<T> {
+    data: *T,
+    len: i64,
+    cap: i64
+}
+
+// Construct an empty Vec with capacity 8. The `seed` argument
+// is unused at runtime — it exists solely to seed type
+// inference for T.
+pub fn vec_new<T>(seed: T) -> VecG<T> = vec_with_capacity(seed, 8);
+
+// Construct an empty Vec with the given capacity.
+pub fn vec_with_capacity<T>(seed: T, cap: i64) -> VecG<T> = {
+    let raw = malloc(cap * sizeof<T>());
+    new VecG { data: raw as *T, len: 0, cap: cap }
+};
+
+// Length accessor — generic.
+pub fn vec_len<T>(v: VecG<T>) -> i64 = v.len;
+
+// Capacity accessor.
+pub fn vec_cap<T>(v: VecG<T>) -> i64 = v.cap;
+
+// Push i64 (T must be i64-shaped).
+pub fn vec_push_i64(v: VecG<i64>, x: i64) -> VecG<i64> = {
+    let _s = store_i64(v.data as i64 + v.len * 8, x);
+    set v.len = v.len + 1;
+    v
+};
+
+// Read i64 (T must be i64-shaped).
+pub fn vec_get_i64(v: VecG<i64>, i: i64) -> i64 =
+    load_i64(v.data as i64 + i * 8);
+
+// Set i64 at index (T must be i64-shaped).
+pub fn vec_set_i64(v: VecG<i64>, i: i64, x: i64) -> VecG<i64> = {
+    let _s = store_i64(v.data as i64 + i * 8, x);
+    v
+};

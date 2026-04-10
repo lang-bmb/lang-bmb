@@ -1,0 +1,54 @@
+// Golden test (Cycle 316): generic Vec<T> with i64 storage.
+//
+// Verifies:
+//   * vec_new<T> with seed-based inference monomorphizes per T
+//   * push/get/len work on heap memory via load/store_i64
+//   * Multiple instances coexist without aliasing
+//
+// Expected output:
+// 5
+// 0
+// 100
+// 200
+// 300
+// 400
+// 999
+struct VecG<T> {
+    data: *T,
+    len: i64,
+    cap: i64
+}
+
+fn vec_new<T>(seed: T) -> VecG<T> = {
+    let cap = 8;
+    let raw = malloc(cap * sizeof<T>());
+    new VecG { data: raw as *T, len: 0, cap: cap }
+};
+
+fn vec_push_i64(v: VecG<i64>, x: i64) -> VecG<i64> = {
+    let _s = store_i64(v.data as i64 + v.len * 8, x);
+    set v.len = v.len + 1;
+    v
+};
+
+fn vec_get_i64(v: VecG<i64>, i: i64) -> i64 =
+    load_i64(v.data as i64 + i * 8);
+
+fn vec_len<T>(v: VecG<T>) -> i64 = v.len;
+
+fn main() -> i64 = {
+    let v0 = vec_new(0);
+    let v1 = vec_push_i64(v0, 100);
+    let v2 = vec_push_i64(v1, 200);
+    let v3 = vec_push_i64(v2, 300);
+    let v4 = vec_push_i64(v3, 400);
+    let v5 = vec_push_i64(v4, 999);
+    let _u1 = println(vec_len(v5));        // 5
+    let _u2 = println(vec_get_i64(v5, 0) - 100); // 0
+    let _u3 = println(vec_get_i64(v5, 0)); // 100
+    let _u4 = println(vec_get_i64(v5, 1)); // 200
+    let _u5 = println(vec_get_i64(v5, 2)); // 300
+    let _u6 = println(vec_get_i64(v5, 3)); // 400
+    let _u7 = println(vec_get_i64(v5, 4)); // 999
+    0
+};

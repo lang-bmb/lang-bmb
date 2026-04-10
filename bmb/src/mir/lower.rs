@@ -113,38 +113,16 @@ pub fn lower_program_with_mono(program: &Program, mono_info: Option<&MonoInfo>) 
     }
 
     // v0.97.3: Pre-register monomorphized struct definitions BEFORE function lowering
-    // This ensures struct_defs has Pair_i64_i64 etc. when main function is lowered
+    // This ensures struct_defs has Pair_i64_i64 etc. when main function is lowered.
+    // v0.97.4 (Cycle 311): Walk types recursively so nested generics like
+    // `Option<Box<i64>>` register both `Option_Box_i64` and `Box_i64`.
     if let Some(info) = mono_info {
         for (fn_name, type_subst) in &info.requests {
             if let Some((_, param_tys, ret_ty)) = info.generic_fns.get(fn_name) {
                 let all_types: Vec<&Type> = param_tys.iter().chain(std::iter::once(ret_ty)).collect();
                 for ty in &all_types {
-                    if let Type::Generic { name: struct_name, type_args } = ty {
-                        if let Some(tp_names) = type_defs.struct_type_params.get(struct_name) {
-                            let mut struct_subst: std::collections::HashMap<String, Type> = std::collections::HashMap::new();
-                            for (tp_name, type_arg) in tp_names.iter().zip(type_args.iter()) {
-                                let concrete = substitute_ast_type(type_arg, type_subst);
-                                struct_subst.insert(tp_name.clone(), concrete);
-                            }
-                            let suffix = tp_names.iter().map(|tp| {
-                                struct_subst.get(tp).map(|t| type_to_name_suffix(t)).unwrap_or_else(|| "i64".to_string())
-                            }).collect::<Vec<_>>().join("_");
-                            let mono_struct_name = format!("{}_{}", struct_name, suffix);
-
-                            if !struct_defs.contains_key(&mono_struct_name) {
-                                if let Some(fields) = type_defs.structs.get(struct_name) {
-                                    // Register field names for field_index lookup
-                                    let field_names: Vec<String> = fields.iter().map(|(name, _)| name.clone()).collect();
-                                    struct_defs.insert(mono_struct_name.clone(), field_names);
-                                    // Also add substituted fields to type_defs.structs
-                                    let subst_fields: Vec<(String, Type)> = fields.iter().map(|(fname, fty)| {
-                                        (fname.clone(), substitute_ast_type(fty, &struct_subst))
-                                    }).collect();
-                                    type_defs.structs.insert(mono_struct_name, subst_fields);
-                                }
-                            }
-                        }
-                    }
+                    let substituted = substitute_ast_type(ty, type_subst);
+                    pre_register_mono_struct_recursive(&substituted, &mut type_defs, &mut struct_defs);
                 }
             }
         }
@@ -244,45 +222,23 @@ pub fn lower_program_with_mono(program: &Program, mono_info: Option<&MonoInfo>) 
         .collect();
 
     // v0.97.3: Generate monomorphized struct definitions for generic structs
+    // v0.97.4 (Cycle 311): Recursively register nested generic structs.
+    // For example, `unwrap<T = Box<i64>>` over `Option<T>` requires us to
+    // register both `Option_Box_i64` AND the nested `Box_i64`.
     if let Some(info) = mono_info {
         let mut seen_structs: std::collections::HashSet<String> = std::collections::HashSet::new();
         for (fn_name, type_subst) in &info.requests {
-            // Check if any generic struct is referenced via return type or parameter types
-            if let Some((type_params, param_tys, ret_ty)) = info.generic_fns.get(fn_name) {
-                // Look for Generic { name, type_args } types in params and return
+            if let Some((_type_params, param_tys, ret_ty)) = info.generic_fns.get(fn_name) {
                 let all_types: Vec<&Type> = param_tys.iter().chain(std::iter::once(ret_ty)).collect();
                 for ty in all_types {
-                    if let Type::Generic { name: struct_name, type_args } = ty {
-                        if let Some(tp_names) = type_defs.struct_type_params.get(struct_name) {
-                            // Build struct-specific substitution from type_args
-                            let mut struct_subst: std::collections::HashMap<String, Type> = std::collections::HashMap::new();
-                            for (tp_name, type_arg) in tp_names.iter().zip(type_args.iter()) {
-                                let concrete = substitute_ast_type(type_arg, type_subst);
-                                struct_subst.insert(tp_name.clone(), concrete);
-                            }
-
-                            let suffix = tp_names.iter().map(|tp| {
-                                struct_subst.get(tp).map(|t| type_to_name_suffix(t)).unwrap_or_else(|| "i64".to_string())
-                            }).collect::<Vec<_>>().join("_");
-                            let mono_struct_name = format!("{}_{}", struct_name, suffix);
-
-                            if seen_structs.contains(&mono_struct_name) { continue; }
-                            seen_structs.insert(mono_struct_name.clone());
-
-                            // Generate monomorphized field types
-                            if let Some(fields) = type_defs.structs.get(struct_name) {
-                                let mir_fields: Vec<(String, MirType)> = fields.iter().map(|(field_name, field_ty)| {
-                                    let substituted_ty = substitute_ast_type(field_ty, &struct_subst);
-                                    (field_name.clone(), ast_type_to_mir_with_type_defs(&substituted_ty, &type_defs))
-                                }).collect();
-                                mir_struct_defs.insert(mono_struct_name.clone(), mir_fields);
-
-                                // v0.97.3: Also register field names in struct_defs for field_index lookup
-                                let field_names: Vec<String> = fields.iter().map(|(name, _)| name.clone()).collect();
-                                struct_defs.insert(mono_struct_name, field_names);
-                            }
-                        }
-                    }
+                    let substituted = substitute_ast_type(ty, type_subst);
+                    register_mono_struct_recursive(
+                        &substituted,
+                        &type_defs,
+                        &mut mir_struct_defs,
+                        &mut struct_defs,
+                        &mut seen_structs,
+                    );
                 }
             }
         }
@@ -2982,6 +2938,207 @@ fn ast_type_to_mir(ty: &Type) -> MirType {
         Type::ThreadPool => MirType::I64,
         // v0.85: Scope type - represented as i64 handle
         Type::Scope => MirType::I64,
+    }
+}
+
+/// v0.97.4 (Cycle 311): Recursively register monomorphized struct
+/// definitions for every nested `Generic` type encountered.
+///
+/// `unwrap<T = Box<i64>>` over `Option<T>` requires both
+/// `Option_Box_i64` and the nested `Box_i64` to be registered with
+/// substituted field types. The previous loop only handled the
+/// outermost generic; nested generics caused codegen to error with
+/// "Unknown struct: Box_i64".
+fn register_mono_struct_recursive(
+    ty: &Type,
+    type_defs: &TypeDefs,
+    mir_struct_defs: &mut std::collections::HashMap<String, Vec<(String, MirType)>>,
+    struct_defs: &mut std::collections::HashMap<String, Vec<String>>,
+    seen_structs: &mut std::collections::HashSet<String>,
+) {
+    // Walk into compound types so nested generics are discovered.
+    match ty {
+        Type::Generic { name: struct_name, type_args } => {
+            // Recurse into each type argument first so the deepest
+            // structs are registered before their containers.
+            for arg in type_args {
+                register_mono_struct_recursive(
+                    arg,
+                    type_defs,
+                    mir_struct_defs,
+                    struct_defs,
+                    seen_structs,
+                );
+            }
+
+            // Only proceed if this is a known generic struct definition.
+            let Some(tp_names) = type_defs.struct_type_params.get(struct_name) else {
+                return;
+            };
+            let Some(fields) = type_defs.structs.get(struct_name) else {
+                return;
+            };
+
+            let mut struct_subst: std::collections::HashMap<String, Type> =
+                std::collections::HashMap::new();
+            for (tp_name, type_arg) in tp_names.iter().zip(type_args.iter()) {
+                struct_subst.insert(tp_name.clone(), (**type_arg).clone());
+            }
+
+            let suffix = tp_names
+                .iter()
+                .map(|tp| {
+                    struct_subst
+                        .get(tp)
+                        .map(|t| type_to_name_suffix(t))
+                        .unwrap_or_else(|| "i64".to_string())
+                })
+                .collect::<Vec<_>>()
+                .join("_");
+            let mono_struct_name = format!("{}_{}", struct_name, suffix);
+
+            if !seen_structs.insert(mono_struct_name.clone()) {
+                return;
+            }
+
+            let mir_fields: Vec<(String, MirType)> = fields
+                .iter()
+                .map(|(field_name, field_ty)| {
+                    let substituted_ty = substitute_ast_type(field_ty, &struct_subst);
+                    // Recurse into substituted field types so any
+                    // generic structs they reference are also registered.
+                    register_mono_struct_recursive(
+                        &substituted_ty,
+                        type_defs,
+                        mir_struct_defs,
+                        struct_defs,
+                        seen_structs,
+                    );
+                    (
+                        field_name.clone(),
+                        ast_type_to_mir_with_type_defs(&substituted_ty, type_defs),
+                    )
+                })
+                .collect();
+            mir_struct_defs.insert(mono_struct_name.clone(), mir_fields);
+
+            // Field-name registration for field_index lookup. Use the
+            // base struct's field name list — it's the same after
+            // substitution.
+            let field_names: Vec<String> =
+                fields.iter().map(|(name, _)| name.clone()).collect();
+            struct_defs.insert(mono_struct_name, field_names);
+        }
+        Type::Ptr(inner)
+        | Type::Ref(inner)
+        | Type::RefMut(inner)
+        | Type::Nullable(inner) => {
+            register_mono_struct_recursive(
+                inner,
+                type_defs,
+                mir_struct_defs,
+                struct_defs,
+                seen_structs,
+            );
+        }
+        Type::Array(elem, _) => {
+            register_mono_struct_recursive(
+                elem,
+                type_defs,
+                mir_struct_defs,
+                struct_defs,
+                seen_structs,
+            );
+        }
+        Type::Tuple(elems) => {
+            for e in elems {
+                register_mono_struct_recursive(
+                    e,
+                    type_defs,
+                    mir_struct_defs,
+                    struct_defs,
+                    seen_structs,
+                );
+            }
+        }
+        _ => {}
+    }
+}
+
+/// v0.97.4 (Cycle 311): Pre-registration counterpart that mutates
+/// `type_defs.structs` so that subsequent function lowering can find
+/// nested generic structs by their monomorphized name.
+fn pre_register_mono_struct_recursive(
+    ty: &Type,
+    type_defs: &mut TypeDefs,
+    struct_defs: &mut std::collections::HashMap<String, Vec<String>>,
+) {
+    match ty {
+        Type::Generic { name: struct_name, type_args } => {
+            for arg in type_args {
+                pre_register_mono_struct_recursive(arg, type_defs, struct_defs);
+            }
+
+            let tp_names = match type_defs.struct_type_params.get(struct_name) {
+                Some(v) => v.clone(),
+                None => return,
+            };
+            let fields = match type_defs.structs.get(struct_name) {
+                Some(v) => v.clone(),
+                None => return,
+            };
+
+            let mut struct_subst: std::collections::HashMap<String, Type> =
+                std::collections::HashMap::new();
+            for (tp_name, type_arg) in tp_names.iter().zip(type_args.iter()) {
+                struct_subst.insert(tp_name.clone(), (**type_arg).clone());
+            }
+
+            let suffix = tp_names
+                .iter()
+                .map(|tp| {
+                    struct_subst
+                        .get(tp)
+                        .map(|t| type_to_name_suffix(t))
+                        .unwrap_or_else(|| "i64".to_string())
+                })
+                .collect::<Vec<_>>()
+                .join("_");
+            let mono_struct_name = format!("{}_{}", struct_name, suffix);
+
+            if struct_defs.contains_key(&mono_struct_name) {
+                return;
+            }
+
+            let field_names: Vec<String> =
+                fields.iter().map(|(name, _)| name.clone()).collect();
+            struct_defs.insert(mono_struct_name.clone(), field_names);
+
+            let subst_fields: Vec<(String, Type)> = fields
+                .iter()
+                .map(|(fname, fty)| {
+                    let new_ty = substitute_ast_type(fty, &struct_subst);
+                    pre_register_mono_struct_recursive(&new_ty, type_defs, struct_defs);
+                    (fname.clone(), new_ty)
+                })
+                .collect();
+            type_defs.structs.insert(mono_struct_name, subst_fields);
+        }
+        Type::Ptr(inner)
+        | Type::Ref(inner)
+        | Type::RefMut(inner)
+        | Type::Nullable(inner) => {
+            pre_register_mono_struct_recursive(inner, type_defs, struct_defs);
+        }
+        Type::Array(elem, _) => {
+            pre_register_mono_struct_recursive(elem, type_defs, struct_defs);
+        }
+        Type::Tuple(elems) => {
+            for e in elems {
+                pre_register_mono_struct_recursive(e, type_defs, struct_defs);
+            }
+        }
+        _ => {}
     }
 }
 

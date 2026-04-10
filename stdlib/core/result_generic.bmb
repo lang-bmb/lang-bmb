@@ -1,0 +1,42 @@
+// BMB Standard Library: core::result_generic
+//
+// Generic Result<T, E> — value-or-error sum type. Sits alongside the
+// monomorphic `core::result` (which is i64-only) until callers
+// migrate.
+//
+// Cycle 311 (v0.97.4): introduced after generic enum monomorphization
+// became reliable.
+//
+// Design notes:
+//   * No higher-order combinators (`map`, `and_then`) — those need
+//     closure-as-argument support.
+//   * Constructors `ok_g` / `err_g` are useful when type inference
+//     can determine T or E from context. Otherwise use the
+//     `ResultG::Ok(v)` / `ResultG::Err(e)` literal forms.
+
+pub enum ResultG<T, E> {
+    Ok(T),
+    Err(E)
+}
+
+pub fn ok_g<T, E>(v: T) -> ResultG<T, E> = ResultG::Ok(v);
+pub fn err_g<T, E>(e: E) -> ResultG<T, E> = ResultG::Err(e);
+
+pub fn is_ok_g<T, E>(r: ResultG<T, E>) -> bool =
+    match r {
+        ResultG::Ok(_) => true,
+        ResultG::Err(_) => false
+    };
+
+pub fn is_err_g<T, E>(r: ResultG<T, E>) -> bool =
+    match r {
+        ResultG::Ok(_) => false,
+        ResultG::Err(_) => true
+    };
+
+// Returns the contained Ok value or `default` if Err.
+pub fn unwrap_or_g<T, E>(r: ResultG<T, E>, default: T) -> T =
+    match r {
+        ResultG::Ok(v) => v,
+        ResultG::Err(_) => default
+    };

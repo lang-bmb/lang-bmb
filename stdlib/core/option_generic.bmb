@@ -1,0 +1,51 @@
+// BMB Standard Library: core::option_generic
+//
+// Generic Option<T> — replaces the monomorphic core::option for new
+// code. The legacy `core::option` continues to provide an i64-only
+// `Option` for backwards compatibility with programs that predate
+// generic enum monomorphization (Cycles 241-300).
+//
+// Cycle 311 (v0.97.4): introduced after recursive monomorphization
+// landed, which let `Option<Box<T>>` and other nested generics
+// reach native codegen.
+//
+// Design notes:
+//   * Functions that depend on T being numeric (e.g. `unwrap` with
+//     arithmetic post-conditions) live in the legacy file. The
+//     generic API here is **structurally-pure** — it does nothing
+//     to T except move it through Some / None.
+//   * Higher-order combinators (`map`, `and_then`, `filter`) await
+//     closure-as-argument support and are intentionally omitted.
+
+pub enum OptionG<T> {
+    Some(T),
+    None
+}
+
+// Construct Some
+pub fn some_g<T>(v: T) -> OptionG<T> = OptionG::Some(v);
+
+// Construct None — concrete T must be inferable from the call site.
+pub fn none_g<T>() -> OptionG<T> = OptionG::None;
+
+// Returns true iff the option holds a value.
+pub fn is_some_g<T>(o: OptionG<T>) -> bool =
+    match o {
+        OptionG::Some(_) => true,
+        OptionG::None => false
+    };
+
+// Returns true iff the option is empty.
+pub fn is_none_g<T>(o: OptionG<T>) -> bool =
+    match o {
+        OptionG::Some(_) => false,
+        OptionG::None => true
+    };
+
+// Returns the contained value or `default`. The default is
+// **always** evaluated (no laziness — that needs closures).
+pub fn unwrap_or_g<T>(o: OptionG<T>, default: T) -> T =
+    match o {
+        OptionG::Some(v) => v,
+        OptionG::None => default
+    };

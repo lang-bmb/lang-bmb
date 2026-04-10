@@ -1,0 +1,30 @@
+// Golden test (Cycle 306): nested generics with `>>` close token must
+// parse the same as `>` `>`. Also verifies shift-right still works in
+// expression context.
+//
+// Expected output:
+// 42
+// 256
+// 8
+enum Option<T> { Some(T), None }
+struct Box<T> { value: T }
+
+fn shift_check(x: i64) -> i64 = x >> 2;
+
+fn unwrap<T>(o: Option<T>, d: T) -> T =
+    match o { Option::Some(v) => v, Option::None => d };
+
+fn main() -> i64 = {
+    // Nested generic — `>>` closes Box<i64> and Option<...> together.
+    let x: Option<Box<i64>> = Option::Some(new Box { value: 42 });
+    let y: Option<Box<i64>> = Option::None;
+    let bx = unwrap(x, new Box { value: 0 });
+    let by = unwrap(y, new Box { value: 0 });
+    let _u1 = println(bx.value);
+
+    // Shift-right in expression context.
+    let _u2 = println(shift_check(1024));
+    let _u3 = println(shift_check(32));
+
+    by.value
+};
