@@ -1,0 +1,71 @@
+// Tests for core::hashmap module (Cycle 326).
+// Verifies i64/i64 wrapper over the legacy hashmap runtime.
+
+use core::hashmap::hmap_i64_new;
+use core::hashmap::hmap_i64_put;
+use core::hashmap::hmap_i64_get;
+use core::hashmap::hmap_i64_contains;
+use core::hashmap::hmap_i64_remove;
+use core::hashmap::hmap_i64_len;
+
+fn test_put_get_roundtrip() -> bool
+  post ret == true
+= {
+    let m = hmap_i64_new();
+    let _p = hmap_i64_put(m, 42, 9000);
+    hmap_i64_get(m, 42) == 9000
+};
+
+fn test_len_tracks_inserts() -> bool
+  post ret == true
+= {
+    let m = hmap_i64_new();
+    let _p1 = hmap_i64_put(m, 1, 10);
+    let _p2 = hmap_i64_put(m, 2, 20);
+    let _p3 = hmap_i64_put(m, 3, 30);
+    hmap_i64_len(m) == 3
+};
+
+fn test_contains_present_key() -> bool
+  post ret == true
+= {
+    let m = hmap_i64_new();
+    let _p = hmap_i64_put(m, 7, 77);
+    hmap_i64_contains(m, 7)
+};
+
+fn test_contains_missing_key_is_false() -> bool
+  post ret == true
+= {
+    let m = hmap_i64_new();
+    let _p = hmap_i64_put(m, 7, 77);
+    hmap_i64_contains(m, 99) == false
+};
+
+fn test_remove_drops_key() -> bool
+  post ret == true
+= {
+    let m = hmap_i64_new();
+    let _p = hmap_i64_put(m, 5, 50);
+    let _r = hmap_i64_remove(m, 5);
+    hmap_i64_contains(m, 5) == false
+};
+
+fn test_update_overwrites() -> bool
+  post ret == true
+= {
+    let m = hmap_i64_new();
+    let _p1 = hmap_i64_put(m, 1, 100);
+    let _p2 = hmap_i64_put(m, 1, 200);
+    hmap_i64_get(m, 1) == 200
+};
+
+fn main() -> i64 = {
+    let _u1 = println(if test_put_get_roundtrip() { 1 } else { 0 });
+    let _u2 = println(if test_len_tracks_inserts() { 1 } else { 0 });
+    let _u3 = println(if test_contains_present_key() { 1 } else { 0 });
+    let _u4 = println(if test_contains_missing_key_is_false() { 1 } else { 0 });
+    let _u5 = println(if test_remove_drops_key() { 1 } else { 0 });
+    let _u6 = println(if test_update_overwrites() { 1 } else { 0 });
+    0
+};

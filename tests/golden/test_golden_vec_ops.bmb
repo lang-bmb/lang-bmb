@@ -1,0 +1,58 @@
+// Golden test (Cycle 322): Vec<i64> non-push operations.
+//
+// Verifies:
+//   * vec_pop_i64 decreases len without touching memory
+//   * vecg_clear resets len to 0 without freeing
+//   * vec_swap_i64 swaps two slots
+//   * vec_index_of_i64 linear search returns index / -1
+//   * vec_contains_i64 is a boolean wrapper over index_of
+//
+// Expected output:
+// 4
+// 40
+// 3
+// 30
+// 30
+// 10
+// 2
+// -1
+// 1
+// 0
+use core::vec::vecg_with_capacity;
+use core::vec::vec_push_i64;
+use core::vec::vec_get_i64;
+use core::vec::vec_pop_i64;
+use core::vec::vec_last_i64;
+use core::vec::vec_swap_i64;
+use core::vec::vec_index_of_i64;
+use core::vec::vec_contains_i64;
+use core::vec::vecg_clear;
+use core::vec::vecg_len;
+
+fn main() -> i64 = {
+    let mut v = vecg_with_capacity(0, 8);
+    v = vec_push_i64(v, 10);
+    v = vec_push_i64(v, 20);
+    v = vec_push_i64(v, 30);
+    v = vec_push_i64(v, 40);
+    let _u1 = println(vecg_len(v));        // 4
+    let _u2 = println(vec_last_i64(v));    // 40
+    v = vec_pop_i64(v);
+    let _u3 = println(vecg_len(v));        // 3
+    let _u4 = println(vec_last_i64(v));    // 30
+    v = vec_swap_i64(v, 0, 2);
+    // After pop: [10, 20, 30]
+    // After swap(0, 2): [30, 20, 10]
+    let _u5 = println(vec_get_i64(v, 0));  // 30
+    let _u6 = println(vec_get_i64(v, 2));  // 10
+    let _u7 = println(vec_index_of_i64(v, 10));  // 2 (after swap, 10 is at idx 2)
+    let _u8 = println(vec_index_of_i64(v, 999)); // -1
+
+    // contains_i64 returns bool — print 1 if true, 0 if false
+    let found = vec_contains_i64(v, 20);
+    let _u9 = println(if found { 1 } else { 0 });  // 1
+
+    v = vecg_clear(v);
+    let _u10 = println(vecg_len(v));       // 0
+    0
+};

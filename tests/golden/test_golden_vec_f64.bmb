@@ -1,0 +1,35 @@
+// Golden test (Cycle 325): VecG<f64> basic operations.
+//
+// Verifies:
+//   * vec_push_f64 auto-grows via vecg_reserve<f64>
+//   * vec_get_f64 reads correct values after multiple grows
+//   * vec_last_f64 peeks the last element
+//
+// Expected output:
+// 6
+// 8
+// 3.140000000
+// 2.718000000
+// 1.414000000
+use core::vec::vecg_with_capacity;
+use core::vec::vec_push_f64;
+use core::vec::vec_get_f64;
+use core::vec::vec_last_f64;
+use core::vec::vecg_len;
+use core::vec::vecg_cap;
+
+fn main() -> i64 = {
+    let mut v = vecg_with_capacity(0.0, 2);  // cap 2
+    v = vec_push_f64(v, 3.14);
+    v = vec_push_f64(v, 2.718);
+    v = vec_push_f64(v, 1.414);    // grow to 4
+    v = vec_push_f64(v, 1.618);
+    v = vec_push_f64(v, 0.577);    // grow to 8
+    v = vec_push_f64(v, 2.236);
+    let _u1 = println(vecg_len(v));   // 6
+    let _u2 = println(vecg_cap(v));   // 8
+    let _u3 = println_f64(vec_get_f64(v, 0));  // 3.140000000
+    let _u4 = println_f64(vec_get_f64(v, 1));  // 2.718000000
+    let _u5 = println_f64(vec_get_f64(v, 2));  // 1.414000000
+    0
+};

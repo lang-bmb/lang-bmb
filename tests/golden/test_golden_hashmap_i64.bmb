@@ -1,0 +1,40 @@
+// Golden test (Cycle 327): core::hashmap i64/i64 wrapper.
+//
+// Verifies:
+//   * put/get roundtrip for several keys
+//   * contains returns true for present keys, false for absent
+//   * remove drops a key (subsequent get -> -1 sentinel)
+//   * len tracks insert/remove counts
+//
+// Expected output:
+// 100
+// 200
+// 300
+// 3
+// 1
+// 0
+// 2
+// 0
+use core::hashmap::hmap_i64_new;
+use core::hashmap::hmap_i64_put;
+use core::hashmap::hmap_i64_get;
+use core::hashmap::hmap_i64_contains;
+use core::hashmap::hmap_i64_remove;
+use core::hashmap::hmap_i64_len;
+
+fn main() -> i64 = {
+    let m = hmap_i64_new();
+    let _p1 = hmap_i64_put(m, 1, 100);
+    let _p2 = hmap_i64_put(m, 2, 200);
+    let _p3 = hmap_i64_put(m, 3, 300);
+    let _u1 = println(hmap_i64_get(m, 1));  // 100
+    let _u2 = println(hmap_i64_get(m, 2));  // 200
+    let _u3 = println(hmap_i64_get(m, 3));  // 300
+    let _u4 = println(hmap_i64_len(m));     // 3
+    let _u5 = println(if hmap_i64_contains(m, 2) { 1 } else { 0 });  // 1
+    let _u6 = println(if hmap_i64_contains(m, 99) { 1 } else { 0 }); // 0
+    let _r = hmap_i64_remove(m, 1);
+    let _u7 = println(hmap_i64_len(m));     // 2
+    let _u8 = println(if hmap_i64_contains(m, 1) { 1 } else { 0 });  // 0
+    0
+};

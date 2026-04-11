@@ -1,0 +1,46 @@
+// BMB Standard Library: core::hashmap
+//
+// Cycle 326 (v0.97.4): thin typed wrapper over the legacy i64/i64
+// HashMap runtime (bmb_runtime.c: hashmap_* intrinsics).
+//
+// This is the first pass — it exposes the existing C runtime
+// behind stdlib-namespaced names (`hmap_i64_*`) so that BMB
+// programs can consume it without touching unprefixed global
+// intrinsic names.  A later cycle will replace this with a
+// generic `HashMapG<K, V>` implemented on top of `VecG<T>` plus
+// a dispatched `hash_<T>` function.
+//
+// Limitations:
+//   * Keys are i64. Values are i64.
+//   * Load factor / growth policy is fixed by the runtime.
+//   * Returns i64(-1) as the "missing" sentinel — callers that
+//     legitimately store -1 must track absence separately.
+
+// Create an empty map. Returns an opaque handle (i64 pointer).
+pub fn hmap_i64_new() -> i64 = hashmap_new();
+
+// Insert `key -> value`. Returns 0 on success, -1 on allocation
+// failure (matches the runtime contract).
+pub fn hmap_i64_put(map: i64, key: i64, value: i64) -> i64 =
+    hashmap_insert(map, key, value);
+
+// Retrieve the value for `key`, or -1 if absent.
+pub fn hmap_i64_get(map: i64, key: i64) -> i64 =
+    hashmap_get(map, key);
+
+// Check membership without unwrapping a sentinel value.
+pub fn hmap_i64_contains(map: i64, key: i64) -> bool =
+    hashmap_contains(map, key) != 0;
+
+// Remove a key, no-op if absent. Returns 0.
+pub fn hmap_i64_remove(map: i64, key: i64) -> i64 =
+    hashmap_remove(map, key);
+
+// Current number of entries.
+pub fn hmap_i64_len(map: i64) -> i64 = hashmap_len(map);
+
+// Release all memory held by the map.
+pub fn hmap_i64_free(map: i64) -> i64 = {
+    let _f = hashmap_free(map);
+    0
+};

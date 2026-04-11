@@ -1,0 +1,36 @@
+// Golden test (Cycle 321): auto-growing VecG<i64>.
+//
+// Verifies:
+//   * `vecg_with_capacity(0, 2)` starts with cap 2
+//   * `vec_push_i64` doubles capacity when len == cap
+//   * Growth from 2 -> 4 -> 8 -> 16 survives through reassignment
+//   * Element reads remain correct after multiple reallocs
+//   * Cycle 321 codegen fix: narrowed struct field stores sign-extend
+//     to the declared field type (fixes garbage `cap` reads).
+//
+// Expected output:
+// 10
+// 16
+// 0
+// 25
+// 81
+use core::vec::vecg_with_capacity;
+use core::vec::vec_push_i64;
+use core::vec::vec_get_i64;
+use core::vec::vecg_len;
+use core::vec::vecg_cap;
+
+fn main() -> i64 = {
+    let mut v = vecg_with_capacity(0, 2);
+    let mut i: i64 = 0;
+    while i < 10 {
+        v = vec_push_i64(v, i * i);
+        i = i + 1;
+    };
+    let _u1 = println(vecg_len(v));
+    let _u2 = println(vecg_cap(v));
+    let _u3 = println(vec_get_i64(v, 0));
+    let _u4 = println(vec_get_i64(v, 5));
+    let _u5 = println(vec_get_i64(v, 9));
+    0
+};

@@ -1,23 +1,19 @@
 // BMB Standard Library: core::vec
 //
-// Cycle 316 (v0.97.4): generic Vec<T> backed by raw heap memory.
+// Cycle 316 (v0.97.4): generic VecG<T> backed by raw heap memory.
+// Cycle 321 (v0.97.4): added realloc-based auto-growth for i64 Vecs.
+// Cycle 322 (v0.97.4): vec_pop_i64, vec_clear, vec_reserve_i64, vec_free.
 //
 // Current limitations:
 //   * Element type T must be 8 bytes (i64, f64, *X, bool stored
 //     in i64 slots). 32-bit and smaller types need future
 //     `load_i32`/`store_i32` overloads.
-//   * No automatic growth — pass `cap` to `vec_with_capacity` and
-//     do not push past `cap`. A future cycle will add `vec_grow`
-//     using `realloc`.
-//   * No `vec_drop` / explicit free — relies on process exit or
-//     arena cleanup.
+//   * No `vec_drop` helper that recursively frees T's payload.
+//     `vec_free` releases the data buffer only.
 //   * Inference: type-inference can't currently figure out T from
 //     a `let` binding alone, so we take a `seed: T` argument.
 //     Future improvement: bidirectional inference for generic
 //     constructors with no value parameters.
-//
-// Despite limitations, this is the first heap-backed dynamic
-// container in BMB stdlib that monomorphizes per element type.
 
 struct VecG<T> {
     data: *T,
@@ -28,25 +24,76 @@ struct VecG<T> {
 // Construct an empty Vec with capacity 8. The `seed` argument
 // is unused at runtime — it exists solely to seed type
 // inference for T.
-pub fn vec_new<T>(seed: T) -> VecG<T> = vec_with_capacity(seed, 8);
+//
+// NOTE: Generic stdlib Vec functions use the `vecg_` prefix to
+// avoid symbol collisions with the legacy monomorphic `vec_*`
+// runtime intrinsics (declared unconditionally by the text
+// codegen). Once the codegen learns to skip declarations
+// shadowed by user functions, these can be renamed.
+pub fn vecg_new<T>(seed: T) -> VecG<T> = vecg_with_capacity(seed, 8);
 
 // Construct an empty Vec with the given capacity.
-pub fn vec_with_capacity<T>(seed: T, cap: i64) -> VecG<T> = {
+pub fn vecg_with_capacity<T>(seed: T, cap: i64) -> VecG<T> = {
     let raw = malloc(cap * sizeof<T>());
     new VecG { data: raw as *T, len: 0, cap: cap }
 };
 
 // Length accessor — generic.
-pub fn vec_len<T>(v: VecG<T>) -> i64 = v.len;
+pub fn vecg_len<T>(v: VecG<T>) -> i64 = v.len;
 
 // Capacity accessor.
-pub fn vec_cap<T>(v: VecG<T>) -> i64 = v.cap;
+pub fn vecg_cap<T>(v: VecG<T>) -> i64 = v.cap;
 
-// Push i64 (T must be i64-shaped).
+// Release the backing buffer. The VecG handle itself is still
+// live but `data` is dangling after this call — callers must not
+// touch it again.
+pub fn vecg_free<T>(v: VecG<T>) -> i64 = {
+    let _f = free(v.data as i64);
+    0
+};
+
+// Cycle 321: grow a Vec's backing store to `new_cap` slots via
+// libc::realloc. Generic over T so `v.data: *T` unifies with the
+// monomorphized pointer type.
+//
+// Shape note: we mutate `v` in place with `set` rather than
+// constructing a `new VecG { ... }` in the then-branch, because
+// the text codegen's merge-phi path loaded an uninitialized local
+// and clobbered the newly-written sret with garbage (cycle 321
+// discovered the bug while building the first auto-grow test).
+pub fn vecg_reserve<T>(v: VecG<T>, new_cap: i64) -> VecG<T> = {
+    if new_cap > v.cap {
+        let new_ptr = realloc(v.data as i64, new_cap * sizeof<T>());
+        set v.data = new_ptr as *T;
+        set v.cap = new_cap;
+        v
+    } else {
+        v
+    }
+};
+
+// Cycle 321: auto-growing push. Doubles capacity (at minimum) when
+// len == cap. Callers MUST reassign the result:
+//   `v = vec_push_i64(v, x);`
+//
+// Semantic note: BMB has a calling-convention divergence between
+// the tree-walking interpreter (structs pass by value, no visible
+// caller mutation) and the native codegen (structs pass by
+// pointer, mutations propagate to callers). This function is
+// written so that *both* code paths produce correct results
+// under the assume-reassignment API.
 pub fn vec_push_i64(v: VecG<i64>, x: i64) -> VecG<i64> = {
-    let _s = store_i64(v.data as i64 + v.len * 8, x);
-    set v.len = v.len + 1;
-    v
+    if v.len >= v.cap {
+        let next_cap = if v.cap < 1 { 8 } else { v.cap * 2 };
+        let grown = vecg_reserve(v, next_cap);
+        let _s = store_i64(grown.data as i64 + grown.len * 8, x);
+        set grown.len = grown.len + 1;
+        grown
+    } else {
+        let _s = store_i64(v.data as i64 + v.len * 8, x);
+        set v.len = v.len + 1;
+        v
+    }
 };
 
 // Read i64 (T must be i64-shaped).
@@ -58,3 +105,94 @@ pub fn vec_set_i64(v: VecG<i64>, i: i64, x: i64) -> VecG<i64> = {
     let _s = store_i64(v.data as i64 + i * 8, x);
     v
 };
+
+// Cycle 322: remove and return the last element. Caller guarantees
+// len > 0 via precondition.
+pub fn vec_pop_i64(v: VecG<i64>) -> VecG<i64>
+    pre v.len > 0
+= {
+    set v.len = v.len - 1;
+    v
+};
+
+// Peek at the last element without popping.
+pub fn vec_last_i64(v: VecG<i64>) -> i64
+    pre v.len > 0
+= load_i64(v.data as i64 + (v.len - 1) * 8);
+
+// Cycle 322: reset length to zero without freeing the buffer.
+pub fn vecg_clear<T>(v: VecG<T>) -> VecG<T> = {
+    set v.len = 0;
+    v
+};
+
+// Cycle 322: swap two elements in place (i64 slots).
+pub fn vec_swap_i64(v: VecG<i64>, i: i64, j: i64) -> VecG<i64> = {
+    let a = load_i64(v.data as i64 + i * 8);
+    let b = load_i64(v.data as i64 + j * 8);
+    let _s1 = store_i64(v.data as i64 + i * 8, b);
+    let _s2 = store_i64(v.data as i64 + j * 8, a);
+    v
+};
+
+// Cycle 322: linear search returning the index, or -1 if missing.
+pub fn vec_index_of_i64(v: VecG<i64>, needle: i64) -> i64 = {
+    let n = v.len;
+    let mut i: i64 = 0;
+    let mut found: i64 = -1;
+    while i < n {
+        let x = load_i64(v.data as i64 + i * 8);
+        if found == -1 and x == needle {
+            found = i;
+        } else {
+            // no-op
+        };
+        i = i + 1;
+    };
+    found
+};
+
+// Cycle 322: does the vec contain this value?
+pub fn vec_contains_i64(v: VecG<i64>, needle: i64) -> bool =
+    vec_index_of_i64(v, needle) >= 0;
+
+// ============================================================
+// Cycle 325: Vec<f64> specialization
+// ============================================================
+//
+// f64 slots are also 8 bytes, so they share the layout with i64
+// vecs. The runtime provides `store_f64`/`load_f64` intrinsics.
+// Auto-growth reuses `vecg_reserve<T>` from the generic path.
+
+pub fn vec_push_f64(v: VecG<f64>, x: f64) -> VecG<f64> = {
+    if v.len >= v.cap {
+        let next_cap = if v.cap < 1 { 8 } else { v.cap * 2 };
+        let grown = vecg_reserve(v, next_cap);
+        let _s = store_f64(grown.data as i64 + grown.len * 8, x);
+        set grown.len = grown.len + 1;
+        grown
+    } else {
+        let _s = store_f64(v.data as i64 + v.len * 8, x);
+        set v.len = v.len + 1;
+        v
+    }
+};
+
+pub fn vec_get_f64(v: VecG<f64>, i: i64) -> f64 =
+    load_f64(v.data as i64 + i * 8);
+
+pub fn vec_set_f64(v: VecG<f64>, i: i64, x: f64) -> VecG<f64> = {
+    let _s = store_f64(v.data as i64 + i * 8, x);
+    v
+};
+
+pub fn vec_pop_f64(v: VecG<f64>) -> VecG<f64>
+    pre v.len > 0
+= {
+    set v.len = v.len - 1;
+    v
+};
+
+pub fn vec_last_f64(v: VecG<f64>) -> f64
+    pre v.len > 0
+= load_f64(v.data as i64 + (v.len - 1) * 8);

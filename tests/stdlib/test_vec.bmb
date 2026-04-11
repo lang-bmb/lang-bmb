@@ -1,0 +1,151 @@
+// Tests for core::vec module (Cycles 311-325).
+// Verifies generic Vec<T> foundation + auto-growing i64 specialization.
+
+use core::vec::vecg_with_capacity;
+use core::vec::vec_push_i64;
+use core::vec::vec_get_i64;
+use core::vec::vec_set_i64;
+use core::vec::vec_pop_i64;
+use core::vec::vec_last_i64;
+use core::vec::vec_swap_i64;
+use core::vec::vec_index_of_i64;
+use core::vec::vec_contains_i64;
+use core::vec::vecg_len;
+use core::vec::vecg_cap;
+use core::vec::vecg_clear;
+
+// Smoke test: push grows past initial capacity.
+fn test_vec_auto_grow_len() -> bool
+  post ret == true
+= {
+    let mut v = vecg_with_capacity(0, 2);
+    let mut i: i64 = 0;
+    while i < 5 {
+        v = vec_push_i64(v, i);
+        i = i + 1;
+    };
+    vecg_len(v) == 5
+};
+
+fn test_vec_auto_grow_cap() -> bool
+  post ret == true
+= {
+    let mut v = vecg_with_capacity(0, 2);
+    let mut i: i64 = 0;
+    while i < 5 {
+        v = vec_push_i64(v, i);
+        i = i + 1;
+    };
+    // 2 -> 4 -> 8 after pushes at len 2 and 4.
+    vecg_cap(v) == 8
+};
+
+fn test_vec_get_after_grow() -> bool
+  post ret == true
+= {
+    let mut v = vecg_with_capacity(0, 2);
+    let mut i: i64 = 0;
+    while i < 5 {
+        v = vec_push_i64(v, i * 10);
+        i = i + 1;
+    };
+    vec_get_i64(v, 3) == 30
+};
+
+fn test_vec_pop_decrements_len() -> bool
+  post ret == true
+= {
+    let mut v = vecg_with_capacity(0, 4);
+    v = vec_push_i64(v, 1);
+    v = vec_push_i64(v, 2);
+    v = vec_push_i64(v, 3);
+    v = vec_pop_i64(v);
+    vecg_len(v) == 2
+};
+
+fn test_vec_last_after_pop() -> bool
+  post ret == true
+= {
+    let mut v = vecg_with_capacity(0, 4);
+    v = vec_push_i64(v, 10);
+    v = vec_push_i64(v, 20);
+    v = vec_push_i64(v, 30);
+    v = vec_pop_i64(v);
+    vec_last_i64(v) == 20
+};
+
+fn test_vec_set_overwrites() -> bool
+  post ret == true
+= {
+    let mut v = vecg_with_capacity(0, 4);
+    v = vec_push_i64(v, 1);
+    v = vec_push_i64(v, 2);
+    v = vec_push_i64(v, 3);
+    v = vec_set_i64(v, 1, 99);
+    vec_get_i64(v, 1) == 99
+};
+
+fn test_vec_swap_transposes() -> bool
+  post ret == true
+= {
+    let mut v = vecg_with_capacity(0, 4);
+    v = vec_push_i64(v, 10);
+    v = vec_push_i64(v, 20);
+    v = vec_push_i64(v, 30);
+    v = vec_swap_i64(v, 0, 2);
+    vec_get_i64(v, 0) == 30 and vec_get_i64(v, 2) == 10
+};
+
+fn test_vec_index_of_present() -> bool
+  post ret == true
+= {
+    let mut v = vecg_with_capacity(0, 4);
+    v = vec_push_i64(v, 5);
+    v = vec_push_i64(v, 15);
+    v = vec_push_i64(v, 25);
+    vec_index_of_i64(v, 15) == 1
+};
+
+fn test_vec_index_of_missing() -> bool
+  post ret == true
+= {
+    let mut v = vecg_with_capacity(0, 4);
+    v = vec_push_i64(v, 5);
+    v = vec_push_i64(v, 15);
+    vec_index_of_i64(v, 999) == -1
+};
+
+fn test_vec_contains() -> bool
+  post ret == true
+= {
+    let mut v = vecg_with_capacity(0, 4);
+    v = vec_push_i64(v, 7);
+    v = vec_push_i64(v, 14);
+    v = vec_push_i64(v, 21);
+    vec_contains_i64(v, 14)
+};
+
+fn test_vec_clear_zeros_len() -> bool
+  post ret == true
+= {
+    let mut v = vecg_with_capacity(0, 4);
+    v = vec_push_i64(v, 1);
+    v = vec_push_i64(v, 2);
+    v = vecg_clear(v);
+    vecg_len(v) == 0
+};
+
+fn main() -> i64 = {
+    let _u01 = println(if test_vec_auto_grow_len() { 1 } else { 0 });
+    let _u02 = println(if test_vec_auto_grow_cap() { 1 } else { 0 });
+    let _u03 = println(if test_vec_get_after_grow() { 1 } else { 0 });
+    let _u04 = println(if test_vec_pop_decrements_len() { 1 } else { 0 });
+    let _u05 = println(if test_vec_last_after_pop() { 1 } else { 0 });
+    let _u06 = println(if test_vec_set_overwrites() { 1 } else { 0 });
+    let _u07 = println(if test_vec_swap_transposes() { 1 } else { 0 });
+    let _u08 = println(if test_vec_index_of_present() { 1 } else { 0 });
+    let _u09 = println(if test_vec_index_of_missing() { 1 } else { 0 });
+    let _u10 = println(if test_vec_contains() { 1 } else { 0 });
+    let _u11 = println(if test_vec_clear_zeros_len() { 1 } else { 0 });
+    0
+};

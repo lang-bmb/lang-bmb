@@ -1,0 +1,52 @@
+// Golden test (Cycle 328): Vec + HashMap integration — histogram.
+//
+// Counts occurrences of each value in a Vec<i64> using HashMap<i64, i64>.
+// Demonstrates that the Cycle 321-326 stdlib containers compose cleanly.
+//
+// Expected output:
+// 4
+// 2
+// 1
+// 7
+use core::vec::vecg_with_capacity;
+use core::vec::vec_push_i64;
+use core::vec::vec_get_i64;
+use core::vec::vecg_len;
+use core::hashmap::hmap_i64_new;
+use core::hashmap::hmap_i64_put;
+use core::hashmap::hmap_i64_get;
+use core::hashmap::hmap_i64_contains;
+
+fn main() -> i64 = {
+    // Build a vector: [10, 20, 10, 30, 10, 20, 10]  (10x4, 20x2, 30x1)
+    let mut v = vecg_with_capacity(0, 4);
+    v = vec_push_i64(v, 10);
+    v = vec_push_i64(v, 20);
+    v = vec_push_i64(v, 10);
+    v = vec_push_i64(v, 30);
+    v = vec_push_i64(v, 10);
+    v = vec_push_i64(v, 20);
+    v = vec_push_i64(v, 10);
+
+    // Build histogram: scan the vector, update map counts
+    let hist = hmap_i64_new();
+    let mut i: i64 = 0;
+    let n = vecg_len(v);
+    while i < n {
+        let key = vec_get_i64(v, i);
+        let count = if hmap_i64_contains(hist, key) {
+            hmap_i64_get(hist, key) + 1
+        } else {
+            1
+        };
+        let _p = hmap_i64_put(hist, key, count);
+        i = i + 1;
+    };
+
+    // Print counts in a fixed order
+    let _u1 = println(hmap_i64_get(hist, 10));  // 4
+    let _u2 = println(hmap_i64_get(hist, 20));  // 2
+    let _u3 = println(hmap_i64_get(hist, 30));  // 1
+    let _u4 = println(vecg_len(v));              // 7
+    0
+};

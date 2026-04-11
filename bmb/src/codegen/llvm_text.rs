@@ -5597,8 +5597,28 @@ impl TextCodeGen {
                         writeln!(out, "  store ptr %{}, ptr %{}.addr", dest.name, dest.name)?;
                     }
                 }
+                // Cycle 321: Look up the declared field types from struct_defs
+                // so a narrowed operand (e.g. i32 from the small-int narrowing
+                // optimization) gets sign-extended to the declared field type
+                // (e.g. i64) before the store. Earlier revisions emitted
+                // `store i32 %cap, ptr %..._f2` into a 64-bit field, leaving
+                // the high 32 bits undefined and producing garbage on reads.
+                let declared_field_types: Vec<Option<&'static str>> = {
+                    if let Some(struct_fields) = struct_defs.get(struct_name) {
+                        (0..fields.len())
+                            .map(|i| struct_fields.get(i).map(|(_, ty)| self.mir_type_to_llvm(ty)))
+                            .collect()
+                    } else {
+                        vec![None; fields.len()]
+                    }
+                };
+
                 for (i, (field_name, value)) in fields.iter().enumerate() {
-                    let ty = self.infer_operand_type(value, func);
+                    let src_ty = self.infer_operand_type(value, func);
+                    let dst_ty = declared_field_types
+                        .get(i)
+                        .and_then(|o| *o)
+                        .unwrap_or(src_ty);
                     // v0.51.32: Properly load operand values from .addr if they're locals
                     // v0.51.42: Also check local_names - temps from FieldAccess don't have .addr
                     let val_str = match value {
@@ -5608,7 +5628,7 @@ impl TextCodeGen {
                             if !is_param && is_local {
                                 // Local: load from .addr
                                 let load_name = format!("{}_f{}_val", dest.name, i);
-                                writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, ty, p.name)?;
+                                writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, src_ty, p.name)?;
                                 format!("%{}", load_name)
                             } else {
                                 // Param or temp: use directly
@@ -5617,11 +5637,32 @@ impl TextCodeGen {
                         }
                         Operand::Constant(c) => self.format_constant(c),
                     };
-                    writeln!(out, "  ; field {} = {}", field_name, val_str)?;
+                    // Promote narrower integer source to wider declared field type.
+                    let (store_ty, store_val) = if src_ty != dst_ty
+                        && matches!(src_ty, "i32" | "i16" | "i8" | "i1")
+                        && dst_ty == "i64"
+                    {
+                        let ext_name = format!("{}_f{}_ext", dest.name, i);
+                        writeln!(out, "  %{} = sext {} {} to i64", ext_name, src_ty, val_str)?;
+                        ("i64", format!("%{}", ext_name))
+                    } else if src_ty != dst_ty
+                        && src_ty == "i32"
+                        && dst_ty == "ptr"
+                    {
+                        // pointer-from-narrow-int (rare path; treat as sext then inttoptr)
+                        let ext_name = format!("{}_f{}_ext64", dest.name, i);
+                        let ptr_name = format!("{}_f{}_ptr", dest.name, i);
+                        writeln!(out, "  %{} = sext i32 {} to i64", ext_name, val_str)?;
+                        writeln!(out, "  %{} = inttoptr i64 %{} to ptr", ptr_name, ext_name)?;
+                        ("ptr", format!("%{}", ptr_name))
+                    } else {
+                        (dst_ty, val_str)
+                    };
+                    writeln!(out, "  ; field {} = {}", field_name, store_val)?;
                     // v0.51.32: Use struct type GEP for better LLVM optimization
                     writeln!(out, "  %{}_f{} = getelementptr inbounds {}, ptr %{}, i32 0, i32 {}",
                              dest.name, i, struct_ty, dest.name, i)?;
-                    writeln!(out, "  store {} {}, ptr %{}_f{}", ty, val_str, dest.name, i)?;
+                    writeln!(out, "  store {} {}, ptr %{}_f{}", store_ty, store_val, dest.name, i)?;
                 }
             }
 
@@ -7607,7 +7648,14 @@ impl TextCodeGen {
 
             // f64 return - Math intrinsics (v0.34)
             // v0.51.48: Added i32_to_f64 for i32 conversion support
-            "sqrt" | "sin" | "cos" | "floor" | "ceil" | "fabs" | "pow_f64" | "i64_to_f64" | "i32_to_f64" => "double",
+            // Cycle 325: Added load_f64 so `_t = load_f64(...)` sees the
+            // correct return type when emitting the temp alloca. Previously
+            // place_types defaulted to i64 and the temp was allocated as
+            // `alloca i64`, causing `ret double %_t` type mismatch in
+            // functions like vec_get_f64.
+            "sqrt" | "sin" | "cos" | "floor" | "ceil" | "fabs" | "pow_f64"
+            | "i64_to_f64" | "i32_to_f64"
+            | "load_f64" => "double",
 
             // i64 return - String operations (both full and wrapper names)
             // v0.46: byte_at added as preferred name (same as interpreter)

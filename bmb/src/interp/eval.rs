@@ -6957,10 +6957,23 @@ fn builtin_i64_to_i32(args: &[Value]) -> InterpResult<Value> {
 }
 
 // ============ v0.34.2: Memory Allocation Builtins for Phase 34.2 Dynamic Collections ============
+//
+// Cycle 321: Switched from std::alloc to libc FFI so that all four
+// (malloc/realloc/free/calloc) share a single allocator. Previously
+// `realloc` could not copy the old data because std::alloc requires the
+// original Layout, which we don't track. Using libc keeps malloc+realloc
+// on the same heap and makes auto-growing Vec<T> work in the interpreter
+// (previously vec_grow silently returned uninitialized memory).
+
+unsafe extern "C" {
+    fn malloc(size: usize) -> *mut u8;
+    fn realloc(ptr: *mut u8, new_size: usize) -> *mut u8;
+    fn free(ptr: *mut u8);
+    fn calloc(count: usize, size: usize) -> *mut u8;
+}
 
 /// malloc(size: i64) -> i64 (pointer as integer)
-/// Allocates `size` bytes and returns the pointer as an i64.
-/// In the interpreter, we use Rust's allocator.
+/// Allocates `size` bytes via libc::malloc and returns the pointer as an i64.
 fn builtin_malloc(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 1 {
         return Err(RuntimeError::arity_mismatch("malloc", 1, args.len()));
@@ -6970,9 +6983,7 @@ fn builtin_malloc(args: &[Value]) -> InterpResult<Value> {
             if *size <= 0 {
                 return Ok(Value::Int(0)); // NULL for invalid size
             }
-            let layout = std::alloc::Layout::from_size_align(*size as usize, 8)
-                .map_err(|_| RuntimeError::io_error("malloc: invalid allocation size"))?;
-            let ptr = unsafe { std::alloc::alloc(layout) };
+            let ptr = unsafe { malloc(*size as usize) };
             if ptr.is_null() {
                 Ok(Value::Int(0)) // NULL
             } else {
@@ -6986,16 +6997,17 @@ fn builtin_malloc(args: &[Value]) -> InterpResult<Value> {
 /// free(ptr: i64) -> i64
 /// Frees memory allocated by malloc. Returns 0.
 /// v0.89.4: Changed from Unit to i64(0) so free() can be used as expression
-/// Note: In the interpreter, we intentionally leak memory for safety.
-/// Native compilation uses real libc free.
+/// Cycle 321: Now actually calls libc::free (no longer leaks). Pointers
+/// returned from malloc/realloc/calloc here all share the libc heap.
 fn builtin_free(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 1 {
         return Err(RuntimeError::arity_mismatch("free", 1, args.len()));
     }
     match &args[0] {
-        Value::Int(_ptr) => {
-            // Intentionally do nothing in interpreter for memory safety
-            // Real free happens in native compiled code via libc
+        Value::Int(ptr) => {
+            if *ptr != 0 {
+                unsafe { free(*ptr as *mut u8) };
+            }
             Ok(Value::Int(0))
         }
         _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
@@ -7003,23 +7015,23 @@ fn builtin_free(args: &[Value]) -> InterpResult<Value> {
 }
 
 /// realloc(ptr: i64, new_size: i64) -> i64
-/// Reallocates memory to new_size. In interpreter, allocates new and leaks old.
+/// Reallocates memory to new_size. Delegates to libc::realloc, which
+/// preserves the old contents up to min(old_size, new_size).
 fn builtin_realloc(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 2 {
         return Err(RuntimeError::arity_mismatch("realloc", 2, args.len()));
     }
     match (&args[0], &args[1]) {
-        (Value::Int(_old_ptr), Value::Int(new_size)) => {
-            // For interpreter simplicity, just allocate new memory
-            // Native compilation uses real libc realloc
+        (Value::Int(old_ptr), Value::Int(new_size)) => {
             if *new_size <= 0 {
-                return Ok(Value::Int(0)); // NULL
+                if *old_ptr != 0 {
+                    unsafe { free(*old_ptr as *mut u8) };
+                }
+                return Ok(Value::Int(0));
             }
-            let layout = std::alloc::Layout::from_size_align(*new_size as usize, 8)
-                .map_err(|_| RuntimeError::io_error("realloc: invalid allocation size"))?;
-            let ptr = unsafe { std::alloc::alloc(layout) };
+            let ptr = unsafe { realloc(*old_ptr as *mut u8, *new_size as usize) };
             if ptr.is_null() {
-                Ok(Value::Int(0)) // NULL
+                Ok(Value::Int(0))
             } else {
                 Ok(Value::Int(ptr as i64))
             }
@@ -7036,15 +7048,12 @@ fn builtin_calloc(args: &[Value]) -> InterpResult<Value> {
     }
     match (&args[0], &args[1]) {
         (Value::Int(count), Value::Int(size)) => {
-            let total = (*count as usize).saturating_mul(*size as usize);
-            if total == 0 {
-                return Ok(Value::Int(0)); // NULL for zero size
+            if *count <= 0 || *size <= 0 {
+                return Ok(Value::Int(0));
             }
-            let layout = std::alloc::Layout::from_size_align(total, 8)
-                .map_err(|_| RuntimeError::io_error("calloc: invalid allocation size"))?;
-            let ptr = unsafe { std::alloc::alloc_zeroed(layout) };
+            let ptr = unsafe { calloc(*count as usize, *size as usize) };
             if ptr.is_null() {
-                Ok(Value::Int(0)) // NULL
+                Ok(Value::Int(0))
             } else {
                 Ok(Value::Int(ptr as i64))
             }

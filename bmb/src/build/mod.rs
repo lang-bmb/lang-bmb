@@ -1132,7 +1132,33 @@ fn find_runtime_c() -> Result<std::path::PathBuf, String> {
         }
     }
 
-    Err("runtime.c not found. Set BMB_RUNTIME_PATH environment variable.".to_string())
+    // Cycle 338: Surface the search paths we actually checked so that
+    // the error message points users at a fix instead of leaving them
+    // to grep the source.
+    let mut tried: Vec<String> = Vec::new();
+    if let Ok(path) = std::env::var("BMB_RUNTIME_PATH") {
+        tried.push(format!("$BMB_RUNTIME_PATH ({path})"));
+    }
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(parent) = exe.parent()
+        && let Some(grandparent) = parent.parent()
+        && let Some(project_root) = grandparent.parent()
+    {
+        tried.push(format!(
+            "{} (relative to bmb executable)",
+            project_root.join("bmb").join("runtime").display()
+        ));
+        tried.push(format!(
+            "{} (relative to bmb executable)",
+            project_root.join("runtime").display()
+        ));
+    }
+    tried.push("./runtime, ./bmb/runtime, ../runtime, ../../runtime (cwd patterns)".to_string());
+
+    Err(format!(
+        "bmb_runtime.c not found. Searched:\n  - {}\nSet BMB_RUNTIME_PATH to the directory containing bmb_runtime.c.",
+        tried.join("\n  - ")
+    ))
 }
 
 /// Link object file to executable
