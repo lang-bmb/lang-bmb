@@ -2122,8 +2122,16 @@ SpannedPostfixExpr: Spanned<Expr> = {
 CallExpr: Expr = {
     // v0.51.41: Sizeof operator: sizeof<Type>()
     "sizeof" "<" <ty:SpannedType> ">" "(" ")" => Expr::Sizeof { ty },
+    // Cycle 351: Turbofish call: func::<T1, T2>(args)
+    // Must come before the enum-variant alternatives so that after `::`
+    // the grammar can disambiguate on the following `<` token.
+    <f:RawIdent> "::" "<" <tys:TypeArgList> ">" "(" <args:Args> ")" => Expr::Call {
+        func: f,
+        args,
+        type_args: tys.into_iter().map(|b| *b).collect(),
+    },
     // Function call: func(args)
-    <f:RawIdent> "(" <args:Args> ")" => Expr::Call { func: f, args },
+    <f:RawIdent> "(" <args:Args> ")" => Expr::Call { func: f, args, type_args: vec![] },
     // Enum variant with args: EnumName::Variant(args)
     <enum_name:RawIdent> "::" <variant:RawIdent> "(" <args:Args> ")" => Expr::EnumVariant {
         enum_name,

@@ -608,7 +608,7 @@ impl IndexGenerator {
                 };
                 format!("{}{}", op_str, self.format_expr(&expr.node))
             }
-            Expr::Call { func, args } => {
+            Expr::Call { func, args, .. } => {
                 let args_str: Vec<String> = args.iter().map(|a| self.format_expr(&a.node)).collect();
                 format!("{}({})", func, args_str.join(", "))
             }
@@ -696,7 +696,7 @@ impl IndexGenerator {
 
     fn collect_calls(&self, expr: &Expr, calls: &mut Vec<String>) {
         match expr {
-            Expr::Call { func, args } => {
+            Expr::Call { func, args, .. } => {
                 if !calls.contains(func) {
                     calls.push(func.clone());
                 }
@@ -1299,6 +1299,7 @@ mod tests {
         let expr = Expr::Call {
             func: "abs".to_string(),
             args: vec![sp(Expr::IntLit(5))],
+            type_args: vec![],
         };
         assert_eq!(ig.format_expr(&expr), "abs(5)");
     }
@@ -1343,10 +1344,12 @@ mod tests {
             left: Box::new(sp(Expr::Call {
                 func: "f".to_string(),
                 args: vec![sp(Expr::IntLit(1))],
+                type_args: vec![],
             })),
             right: Box::new(sp(Expr::Call {
                 func: "f".to_string(),
                 args: vec![sp(Expr::IntLit(2))],
+                type_args: vec![],
             })),
         };
         let mut calls = Vec::new();
@@ -1364,6 +1367,7 @@ mod tests {
             value: Box::new(sp(Expr::Call {
                 func: "compute".to_string(),
                 args: vec![],
+                type_args: vec![],
             })),
             body: Box::new(sp(Expr::Var("x".to_string()))),
         };

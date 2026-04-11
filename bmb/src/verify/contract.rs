@@ -314,7 +314,7 @@ impl ContractVerifier {
         report: &mut FunctionReport,
     ) {
         match expr {
-            Expr::Call { func: callee_name, args } => {
+            Expr::Call { func: callee_name, args, .. } => {
                 // Check each argument for conflicts with callee's precondition
                 self.check_call_for_conflicts(callee_name, args, function_index, report);
 

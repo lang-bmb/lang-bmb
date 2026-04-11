@@ -2263,7 +2263,7 @@ fn format_expr(expr: &bmb::ast::Expr) -> String {
             )
         }
 
-        Expr::Call { func, args } => {
+        Expr::Call { func, args, .. } => {
             let args_str: Vec<_> = args.iter().map(|a| format_expr(&a.node)).collect();
             format!("{}({})", func, args_str.join(", "))
         }

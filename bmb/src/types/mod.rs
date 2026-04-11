@@ -2085,13 +2085,60 @@ impl TypeChecker {
                 Ok(Type::Unit)
             }
 
-            Expr::Call { func, args } => {
+            Expr::Call { func, args, type_args } => {
                 // v0.50: Mark function variable as used for binding detection
                 self.binding_tracker.mark_used(func);
                 // v0.74: Mark imported function as used
                 self.mark_name_used(func);
                 // v0.76: Track function calls for unused function detection
                 self.called_functions.insert(func.clone());
+
+                // Cycle 351: Turbofish explicit type args — `func::<T1, T2>(args)`.
+                // When the caller provided type_args, skip argument-driven
+                // inference and use them directly as the monomorphization
+                // substitution. This is the only path that can resolve a
+                // generic constructor with no value parameters (e.g.
+                // `vecg_new::<i64>()`).
+                if !type_args.is_empty()
+                    && let Some((type_params, param_tys, ret_ty)) =
+                        self.generic_functions.get(func).cloned()
+                {
+                    if type_args.len() != type_params.len() {
+                        return Err(CompileError::type_error(
+                            format!(
+                                "'{}' expects {} type argument(s), got {}",
+                                func, type_params.len(), type_args.len()
+                            ),
+                            span,
+                        ));
+                    }
+                    if args.len() != param_tys.len() {
+                        let sig: Vec<String> = param_tys.iter().map(|t| format!("{}", t)).collect();
+                        return Err(CompileError::type_error(
+                            format!(
+                                "'{}' expects {} arguments ({}), got {}",
+                                func, param_tys.len(), sig.join(", "), args.len()
+                            ),
+                            span,
+                        ));
+                    }
+                    // Build the type substitution directly from the turbofish
+                    // arguments — positional binding to declared type params.
+                    let mut type_subst: HashMap<String, Type> = HashMap::new();
+                    for (tp, tyarg) in type_params.iter().zip(type_args.iter()) {
+                        type_subst.insert(tp.name.clone(), tyarg.clone());
+                    }
+                    // Unify value arguments against the substituted parameter
+                    // types so we still catch mismatched args at the call site.
+                    for (arg, param_ty) in args.iter().zip(param_tys.iter()) {
+                        let expected = self.substitute_type(param_ty, &type_subst);
+                        let got = self.infer(&arg.node, arg.span)?;
+                        self.unify(&expected, &got, arg.span)?;
+                    }
+                    let instantiated_ret_ty = self.substitute_type(&ret_ty, &type_subst);
+                    self.mono_requests.push((func.clone(), type_subst));
+                    return Ok(instantiated_ret_ty);
+                }
 
                 // v0.20.0: First try closure/function variable
                 if let Some(var_ty) = self.env.get(func).cloned()

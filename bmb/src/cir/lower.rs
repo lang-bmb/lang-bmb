@@ -267,7 +267,7 @@ impl CirLowerer {
             }
 
             // Function calls (predicates)
-            Expr::Call { func, args } => {
+            Expr::Call { func, args, .. } => {
                 let cir_args: Vec<CirExpr> = args
                     .iter()
                     .map(|a| self.lower_expr(&a.node))
@@ -474,7 +474,7 @@ impl CirLowerer {
                 }
             }
 
-            Expr::Call { func, args } => {
+            Expr::Call { func, args, .. } => {
                 let cir_args: Vec<CirExpr> = args
                     .iter()
                     .map(|a| self.lower_expr(&a.node))

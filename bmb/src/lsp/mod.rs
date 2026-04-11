@@ -1473,7 +1473,7 @@ fn format_expr(expr: &Expr) -> String {
             )
         }
 
-        Expr::Call { func, args } => {
+        Expr::Call { func, args, .. } => {
             let args_str: Vec<_> = args.iter().map(|a| format_expr(&a.node)).collect();
             format!("{}({})", func, args_str.join(", "))
         }
@@ -1951,6 +1951,7 @@ mod tests {
         let expr = Expr::Call {
             func: "add".to_string(),
             args: vec![sp(Expr::IntLit(1)), sp(Expr::IntLit(2))],
+            type_args: vec![],
         };
         assert_eq!(format_expr(&expr), "add(1, 2)");
     }

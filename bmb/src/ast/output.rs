@@ -510,16 +510,22 @@ pub fn format_expr(expr: &Expr) -> String {
             )
         }
 
-        Expr::Call { func, args } => {
+        Expr::Call { func, args, type_args } => {
+            let turbofish = if type_args.is_empty() {
+                String::new()
+            } else {
+                let parts: Vec<String> = type_args.iter().map(|t| format!("{}", t)).collect();
+                format!("::<{}>", parts.join(", "))
+            };
             if args.is_empty() {
-                format!("({})", func)
+                format!("({}{})", func, turbofish)
             } else {
                 let args_str = args
                     .iter()
                     .map(|a| format_expr(&a.node))
                     .collect::<Vec<_>>()
                     .join(" ");
-                format!("({} {})", func, args_str)
+                format!("({}{} {})", func, turbofish, args_str)
             }
         }
 

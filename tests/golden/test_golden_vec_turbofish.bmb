@@ -1,0 +1,38 @@
+// Golden test (Cycle 351): turbofish + VecG<T>.
+//
+// Verifies:
+//   * `vecg_with_capacity::<i64>(0, 8)` parses as turbofish.
+//   * The seed argument is still needed by the existing stdlib (it
+//     exists to seed type inference), so we pass 0 as a value-level
+//     placeholder — but the TYPE is now pinned by `::<i64>`, which
+//     is what future seedless constructors will rely on.
+//   * `vec_push_i64` continues to auto-grow, matching the non-turbofish
+//     call site used in test_golden_vec_grow.bmb.
+//
+// Expected output:
+// 10
+// 45
+use core::vec::vecg_with_capacity;
+use core::vec::vec_push_i64;
+use core::vec::vec_get_i64;
+use core::vec::vecg_len;
+
+fn main() -> i64 = {
+    // Explicit turbofish on a generic constructor.
+    let mut v = vecg_with_capacity::<i64>(0, 8);
+    let mut i: i64 = 0;
+    while i < 10 {
+        v = vec_push_i64(v, i);
+        i = i + 1;
+    };
+    let _p1 = println(vecg_len(v));
+    // Sum of 0..9 via loop — exercises vec_get_i64.
+    let mut sum: i64 = 0;
+    let mut j: i64 = 0;
+    while j < 10 {
+        sum = sum + vec_get_i64(v, j);
+        j = j + 1;
+    };
+    let _p2 = println(sum);
+    0
+};

@@ -117,9 +117,18 @@ pub enum Expr {
     },
 
     /// Function call
+    ///
+    /// Cycle 351: `type_args` carries explicit turbofish type arguments
+    /// (`func::<T1, T2>(args)`). An empty vec means "infer from args".
+    /// When present, the type checker uses these directly as the
+    /// monomorphization substitution instead of running unification over
+    /// the argument types. This lets callers disambiguate generic
+    /// constructors with no value parameters (e.g. `vecg_new::<i64>()`).
     Call {
         func: String,
         args: Vec<Spanned<Expr>>,
+        #[serde(default)]
+        type_args: Vec<Type>,
     },
 
     /// Block: { expr1; expr2; ...; result }
@@ -1031,8 +1040,9 @@ mod tests {
         let e = Expr::Call {
             func: "add".to_string(),
             args: vec![spanned(Expr::IntLit(1)), spanned(Expr::IntLit(2))],
+            type_args: vec![],
         };
-        assert!(matches!(e, Expr::Call { ref func, ref args } if func == "add" && args.len() == 2));
+        assert!(matches!(e, Expr::Call { ref func, ref args, .. } if func == "add" && args.len() == 2));
     }
 
     #[test]

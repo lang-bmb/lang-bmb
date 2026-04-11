@@ -643,7 +643,7 @@ impl Interpreter {
                 }
             }
 
-            Expr::Call { func, args } => {
+            Expr::Call { func, args, type_args: _ } => {
                 let arg_vals: Vec<Value> = args
                     .iter()
                     .map(|a| self.eval(a, env))
@@ -6195,7 +6195,7 @@ impl Interpreter {
                 self.eval_fast(body)
             }
 
-            Expr::Call { func, args } => {
+            Expr::Call { func, args, type_args: _ } => {
                 let arg_vals: Vec<Value> = args
                     .iter()
                     .map(|a| self.eval_fast(a))

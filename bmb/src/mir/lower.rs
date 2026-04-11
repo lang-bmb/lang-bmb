@@ -162,13 +162,23 @@ pub fn lower_program_with_mono(program: &Program, mono_info: Option<&MonoInfo>) 
 
     // Lower non-generic functions (with call redirects for generic callers)
     let redirect_ref = if mono_redirects.is_empty() { None } else { Some(&mono_redirects) };
+    let _ = mono_generic_names; // retained above for docs; superseded by the blanket-skip below
     let mut functions: Vec<MirFunction> = program
         .items
         .iter()
         .filter_map(|item| match item {
             Item::FnDef(fn_def) => {
-                // v0.97.3: Skip generic functions that have monomorphization requests
-                if !fn_def.type_params.is_empty() && mono_generic_names.contains(&fn_def.name.node) {
+                // Cycle 346: Skip ALL generic function definitions — not just
+                // ones with active monomorphization requests. Only
+                // monomorphized copies (generated in the loop below) should
+                // be emitted. Previously, a generic body with no mono request
+                // (e.g. `vec_new<T>` imported from stdlib but never called
+                // with a concrete T) was lowered and emitted with the raw
+                // generic name, causing symbol collisions with runtime
+                // intrinsics (`@vec_new()`) and requiring the `vecg_` prefix
+                // workaround. With this fix, generic bodies never reach the
+                // text codegen, so the workaround is no longer needed.
+                if !fn_def.type_params.is_empty() {
                     None
                 } else {
                     Some(lower_function_with_redirects(fn_def, &all_func_return_types, &struct_defs, &type_defs, redirect_ref))
@@ -289,17 +299,9 @@ fn extract_module_from_attrs(attrs: &[Attribute]) -> String {
     "env".to_string()
 }
 
-/// Lower a function definition to MIR
-fn lower_function(
-    fn_def: &FnDef,
-    func_return_types: &std::collections::HashMap<String, MirType>,
-    struct_defs: &std::collections::HashMap<String, Vec<String>>,
-    type_defs: &TypeDefs,
-) -> MirFunction {
-    lower_function_with_redirects(fn_def, func_return_types, struct_defs, type_defs, None)
-}
-
 /// v0.97.3: Lower function with optional monomorphization call redirects
+/// (The non-redirect wrapper was removed in Cycle 360 — all call sites
+/// pass an explicit redirect map, even when the map is empty.)
 fn lower_function_with_redirects(
     fn_def: &FnDef,
     func_return_types: &std::collections::HashMap<String, MirType>,
@@ -622,10 +624,10 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             fn extract_call(expr: &Spanned<Expr>) -> Option<(&String, &Vec<Spanned<Expr>>)> {
                 match &expr.node {
                     // Direct call: spawn func(args)
-                    Expr::Call { func, args } => Some((func, args)),
+                    Expr::Call { func, args, .. } => Some((func, args)),
                     // Block with single expression: spawn { func(args) }
                     Expr::Block(stmts) if stmts.len() == 1 => {
-                        if let Expr::Call { func, args } = &stmts[0].node {
+                        if let Expr::Call { func, args, .. } = &stmts[0].node {
                             Some((func, args))
                         } else {
                             None
@@ -1263,9 +1265,23 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             Operand::Constant(Constant::Unit)
         }
 
-        Expr::Call { func, args } => {
+        Expr::Call { func, args, type_args } => {
             // Lower arguments
             let arg_ops: Vec<Operand> = args.iter().map(|arg| lower_expr(arg, ctx)).collect();
+
+            // Cycle 351: Turbofish short-circuit. If the caller wrote
+            // `func::<T1, T2>(args)`, build the monomorphized name directly
+            // from the provided type args and dispatch to it. This skips the
+            // argument-type heuristic below, which cannot resolve generics
+            // for constructors with no value parameters.
+            let turbofish_resolved: Option<String> = if !type_args.is_empty() {
+                let suffix_parts: Vec<String> =
+                    type_args.iter().map(type_to_name_suffix).collect();
+                let suffix = suffix_parts.join("_");
+                Some(format!("{}_{}", func, suffix))
+            } else {
+                None
+            };
 
             // v0.78: block_on(future) - runs executor until future completes
             if func == "block_on" && arg_ops.len() == 1 {
@@ -1325,7 +1341,9 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             let is_void_func = matches!(func.as_str(), "println" | "print" | "assert");
 
             // v0.97.3: Resolve generic function calls to monomorphized versions
-            let resolved_func = if let Some(redirects) = ctx.mono_redirects.get(func) {
+            let resolved_func = if let Some(turbofish_name) = turbofish_resolved {
+                turbofish_name
+            } else if let Some(redirects) = ctx.mono_redirects.get(func) {
                 if redirects.len() == 1 {
                     // Single specialization — use it directly
                     redirects[0].0.clone()
