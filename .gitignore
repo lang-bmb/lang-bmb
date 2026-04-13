@@ -98,3 +98,11 @@ experiments/.env.local
 *.tmp
 *.proofcache
 VERSION
+
+# Native binding build artifacts
+ecosystem/bmb-*/*.dll
+ecosystem/bmb-*/*.so
+ecosystem/bmb-*/*.dylib
+ecosystem/bmb-*/bindings/python/*.dll
+ecosystem/bmb-*/bindings/python/*.so
+ecosystem/bmb-*/bindings/python/*.dylib
