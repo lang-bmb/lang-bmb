@@ -8,35 +8,51 @@
 
 ---
 
-## 현재 상태 (2026-03-28)
+## 현재 상태 (2026-04-13)
+
+> **⚠️ 실측 재조사 결과 반영** — 이전 기록("0 FAIL", "Fixed Point 달성")과 실제 측정 간 불일치 발견.
+> 상세: [`claudedocs/HANDOFF.md`](../claudedocs/HANDOFF.md)
 
 | 항목 | 상태 |
 |------|------|
-| **버전** | v0.97.2 (Cycles 121-160) |
-| **Bootstrap** | 3-Stage Fixed Point (S2 == S3), i8*→ptr 완전 마이그레이션 |
-| **Benchmarks** | 309 빌드 ✅, 16+ FASTER, 0 FAIL — BMB > C AND Rust |
-| **Tests** | 6,199 Rust regression + 9/9 stdlib E2E (check+run) = 전체 통과 |
+| **버전** | v0.97.2 (Cycles 341-360: turbofish + generic monomorphization) |
+| **Bootstrap** | ✅ 3-Stage Fixed Point (S2 == S3, 108574 lines identical) — Cycle 363 해결 |
+| **Benchmarks** (v0.51.22, Jan 25) | ❌ 15개 중 **4 FAST**, **3 OK**, **8 FAIL** (brainfuck/hash_table/sorting/lexer/fasta/binary_trees/n_body/mandelbrot) |
+| **Tests** | 6,199 Rust regression + 2,826 골든 테스트 (100% 통과) + 9/9 stdlib E2E |
 | **Self-Hosting** | CLI 41개, **BMB LSP 서버** (480 LOC, 네이티브 빌드), Test Runner |
-| **compiler.bmb** | 19,818 LOC (전체 bootstrap/*.bmb: 59,526 LOC, lsp.bmb 포함) |
-| **Ecosystem** | stdlib 15/15, gotgan E2E, 5 libs, bindings CI 3-platform |
+| **compiler.bmb** | 19,818 LOC (전체 bootstrap/*.bmb: 56,253 LOC) |
+| **Ecosystem** | stdlib 15/15, gotgan(70%), vscode-bmb(85%), tree-sitter(90%), playground(65%, WASM 미통합), 5 네이티브 libs |
+| **Package Registry** | gotgan-packages: **102개** |
 | **Module System** | `use` import: check + run + build 전체 파이프라인 동작 |
-| **EXISTENTIAL** | 7/7 완료 — 계약→성능 파이프라인 증명됨 |
-| **Contract→Perf** | purity_opt **2.88x FASTER** vs Clang (Phase Ordering: MIR CSE → LLVM inline) |
-| **Language Spec** | @noinline 추가 — noinline + memory(none) → 별도 컴파일 단위 시뮬레이션 |
-| **f64 Math** | sin, cos, floor, ceil, fabs, pow_f64 — LLVM 인트린식 직접 호출 |
-| **Codegen** | calloc ptr 반환 수정, @noinline LLVM 속성 방출 |
-| **Codegen** | calloc 타입 불일치 수정 (inttoptr 제거) |
-| **Next Focus** | v0.98: LSP 실전 검증 + build 모듈 시스템 성숙 + 배포 |
+| **EXISTENTIAL** | 7/7 완료 — 계약→성능 파이프라인 증명됨 (llvm.assume 기반) |
+| **Contract→Perf** | purity_opt **2.88x FASTER** vs Clang |
+| **SMT/Z3** | ⚠️ 2,449 LOC 구현, **파이프라인 미통합** (llvm.assume으로 93% 대체) |
+| **Async** | ⚠️ 테스트 존재, codegen stub |
+| **Next Focus** | **벤치마크 FAIL 8개 해소** (P0-3 Bootstrap Fixed Point는 Cycle 363 완료) |
 
-### Graduation 진행도
+### Graduation 진행도 (실측 반영)
 
 ```
-G-1 부트스트랩    [██████████] 100%  3-Stage Fixed Point (S2 == S3)
+G-1 부트스트랩    [██████████] 100%  3-Stage Fixed Point 달성 (Cycle 363, S2 == S3)
 G-2 셀프호스팅    [██████████] 100%  CLI 41개, BMB LSP 서버, Test Runner ✅
-G-3 벤치마크      [██████████] 100%  0 FAIL, 0 WARN, 3 LLVM-OK, --stats ✅
+G-3 벤치마크      [██████░░░░]  60%  4 FAST, 3 OK, 8 FAIL (Performance > Everything 위반)
 G-4 에코시스템    [█████████░]  88%  5 libs, BMB LSP, stdlib E2E, bindings CI 3-platform
-G-5 100+ 패키지   [██████████] 100%  102/100+ 패키지
+G-5 100+ 패키지   [██████████] 100%  102 패키지
 ```
+
+### 성능 판정 상세 (CLAUDE.md 기준)
+
+**✅ PASS (BMB > C, 4개)**: json_serialize(56%), http_parse(61%), csv_parse(77%), fannkuch(89%)
+**✅ OK (≤103%, 3개)**: json_parse, fibonacci, spectral_norm
+**❌ FAIL (>103%, 8개)**:
+- brainfuck 111% → match→jump table 부재
+- hash_table 111% → HashMap 해시 함수
+- sorting 110% → 비교 함수 인라인
+- lexer 109% → char_at + if-else 체인
+- fasta 108% → StringBuilder 할당
+- binary_trees 106% → malloc 오버헤드
+- n_body 106% → SIMD 부재
+- mandelbrot 105% → LLVM 최적화 한계
 
 ### 핵심 가치 제안 달성도
 

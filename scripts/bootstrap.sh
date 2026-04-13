@@ -194,6 +194,41 @@ if ! command -v llc &> /dev/null; then
     log "Native compilation will use fallback mode"
 fi
 
+# Ensure runtime .a is fresh (rebuild if any source .c is newer than .a)
+# Fix for: stale runtime/libbmb_runtime.a with non-weak main() caused multiple-definition
+# linker errors when compiler.bmb (which defines its own main) was linked.
+RUNTIME_SRC_DIR="${PROJECT_ROOT}/bmb/runtime"
+RUNTIME_LIB_ROOT="${PROJECT_ROOT}/runtime/libbmb_runtime.a"
+RUNTIME_LIB_LOCAL="${RUNTIME_SRC_DIR}/libbmb_runtime.a"
+needs_rebuild=false
+if [ ! -f "$RUNTIME_LIB_ROOT" ] || [ ! -f "$RUNTIME_LIB_LOCAL" ]; then
+    needs_rebuild=true
+else
+    # Rebuild if any .c in the runtime is newer than the .a
+    for src in "${RUNTIME_SRC_DIR}"/*.c; do
+        if [ -f "$src" ] && [ "$src" -nt "$RUNTIME_LIB_ROOT" ]; then
+            needs_rebuild=true
+            break
+        fi
+    done
+fi
+if [ "$needs_rebuild" = true ]; then
+    log_verbose "Rebuilding BMB runtime library (stale or missing)..."
+    (cd "$RUNTIME_SRC_DIR" \
+        && clang -c bmb_runtime.c -o bmb_runtime.o -O2 -ffunction-sections -fdata-sections \
+        && clang -c bmb_event_loop.c -o bmb_event_loop.o -O2 -ffunction-sections -fdata-sections \
+        && ar rcs libbmb_runtime.a bmb_runtime.o bmb_event_loop.o \
+        && mkdir -p "${PROJECT_ROOT}/runtime" \
+        && cp libbmb_runtime.a "${PROJECT_ROOT}/runtime/libbmb_runtime.a") || {
+        log "${RED}Error: Failed to rebuild runtime library${NC}"
+        if [ "$JSON_OUTPUT" = true ]; then
+            output_json
+        fi
+        exit 1
+    }
+    log_verbose "${GREEN}Runtime library rebuilt${NC}"
+fi
+
 log "${GREEN}Prerequisites OK${NC}"
 log ""
 

@@ -583,6 +583,7 @@ impl<'ctx> LlvmContext<'ctx> {
         use inkwell::attributes::{Attribute, AttributeLoc};
 
         let i32_type = context.i32_type();
+        let void_type = context.void_type();
         let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
         let fn_type = i32_type.fn_type(&[i32_type.into(), ptr_type.into()], false);
         let main_fn = self.module.add_function("main", fn_type, None);
@@ -594,11 +595,31 @@ impl<'ctx> LlvmContext<'ctx> {
         let entry = context.append_basic_block(main_fn, "entry");
         self.builder.position_at_end(entry);
 
+        // Declare/get bmb_init_runtime(i32, ptr) and bmb_arena_destroy() from the runtime
+        let init_rt_fn = self.module.get_function("bmb_init_runtime").unwrap_or_else(|| {
+            let init_ty = void_type.fn_type(&[i32_type.into(), ptr_type.into()], false);
+            self.module.add_function("bmb_init_runtime", init_ty, None)
+        });
+        let arena_destroy_fn = self.module.get_function("bmb_arena_destroy").unwrap_or_else(|| {
+            let ad_ty = void_type.fn_type(&[], false);
+            self.module.add_function("bmb_arena_destroy", ad_ty, None)
+        });
+
+        // Call bmb_init_runtime(argc, argv) to populate g_argc/g_argv before user main
+        let argc = main_fn.get_nth_param(0).unwrap().into_int_value();
+        let argv = main_fn.get_nth_param(1).unwrap().into_pointer_value();
+        self.builder.build_call(init_rt_fn, &[argc.into(), argv.into()], "")
+            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
         // Call bmb_user_main
         if let Some(user_main) = self.module.get_function("bmb_user_main") {
             self.builder.build_call(user_main, &[], "")
                 .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
         }
+
+        // Arena teardown (matches text-backend wrapper)
+        self.builder.build_call(arena_destroy_fn, &[], "")
+            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
 
         // Return 0
         self.builder.build_return(Some(&i32_type.const_int(0, false)))
