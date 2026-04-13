@@ -546,10 +546,6 @@ struct LlvmContext<'ctx> {
 }
 
 impl<'ctx> LlvmContext<'ctx> {
-    fn new(context: &'ctx Context) -> Self {
-        Self::with_fast_math(context, false)
-    }
-
     fn with_fast_math(context: &'ctx Context, fast_math: bool) -> Self {
         let module = context.create_module("bmb_program");
         let builder = context.create_builder();
@@ -4132,7 +4128,7 @@ impl<'ctx> LlvmContext<'ctx> {
             // v0.72: Atomic operations - using LLVM atomic instructions
             MirInst::AtomicNew { dest, value } => {
                 let i64_type = self.context.i64_type();
-                let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                let _ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
 
                 // Allocate 8 bytes for the atomic value
                 let malloc_fn = self.functions.get("malloc")
@@ -4215,7 +4211,7 @@ impl<'ctx> LlvmContext<'ctx> {
             }
 
             MirInst::AtomicFetchAdd { dest, ptr, delta } => {
-                let i64_type = self.context.i64_type();
+                let _i64_type = self.context.i64_type();
                 let ptr_val = self.gen_operand(ptr)?;
                 let ptr_i64 = ptr_val.into_int_value();
                 let delta_val = self.gen_operand(delta)?;
@@ -4241,7 +4237,7 @@ impl<'ctx> LlvmContext<'ctx> {
             }
 
             MirInst::AtomicFetchSub { dest, ptr, delta } => {
-                let i64_type = self.context.i64_type();
+                let _i64_type = self.context.i64_type();
                 let ptr_val = self.gen_operand(ptr)?;
                 let ptr_i64 = ptr_val.into_int_value();
                 let delta_val = self.gen_operand(delta)?;
@@ -4267,7 +4263,7 @@ impl<'ctx> LlvmContext<'ctx> {
             }
 
             MirInst::AtomicSwap { dest, ptr, new_value } => {
-                let i64_type = self.context.i64_type();
+                let _i64_type = self.context.i64_type();
                 let ptr_val = self.gen_operand(ptr)?;
                 let ptr_i64 = ptr_val.into_int_value();
                 let new_val = self.gen_operand(new_value)?;
@@ -4293,7 +4289,7 @@ impl<'ctx> LlvmContext<'ctx> {
             }
 
             MirInst::AtomicCompareExchange { dest, ptr, expected, new_value } => {
-                let i64_type = self.context.i64_type();
+                let _i64_type = self.context.i64_type();
                 let ptr_val = self.gen_operand(ptr)?;
                 let ptr_i64 = ptr_val.into_int_value();
                 let expected_val = self.gen_operand(expected)?;
@@ -4501,7 +4497,7 @@ impl<'ctx> LlvmContext<'ctx> {
                     .ok_or_else(|| CodeGenError::LlvmError("bmb_channel_try_recv not declared".to_string()))?;
 
                 let i64_type = self.context.i64_type();
-                let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                let _ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
 
                 // Allocate stack space for the output value
                 let value_alloc = self.builder
@@ -5757,17 +5753,6 @@ impl<'ctx> LlvmContext<'ctx> {
                 .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
             Ok(extended.into())
         }
-    }
-
-    /// Generate a binary operation
-    /// v0.50.80: Added type coercion for mixed i32/i64 operations
-    fn gen_binop(
-        &self,
-        op: MirBinOp,
-        lhs: BasicValueEnum<'ctx>,
-        rhs: BasicValueEnum<'ctx>,
-    ) -> CodeGenResult<BasicValueEnum<'ctx>> {
-        self.gen_binop_with_string_hint(op, lhs, rhs, false)
     }
 
     /// Generate a binary operation with string comparison hint

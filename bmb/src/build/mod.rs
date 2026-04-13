@@ -1048,6 +1048,7 @@ fn path_str(p: &std::path::Path) -> BuildResult<&str> {
 }
 
 /// Find clang compiler
+#[cfg(not(feature = "llvm"))]
 fn find_clang() -> Result<String, String> {
     use std::process::Command;
 
@@ -1073,6 +1074,7 @@ fn find_clang() -> Result<String, String> {
 }
 
 /// Find runtime.c source file
+#[cfg(not(feature = "llvm"))]
 fn find_runtime_c() -> Result<std::path::PathBuf, String> {
     use std::path::PathBuf;
 

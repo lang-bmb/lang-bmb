@@ -104,10 +104,10 @@ pub fn lower_program_with_mono(program: &Program, mono_info: Option<&MonoInfo>) 
     let mut generic_fn_defs: std::collections::HashMap<String, &FnDef> = std::collections::HashMap::new();
     if mono_info.is_some() {
         for item in &program.items {
-            if let Item::FnDef(fn_def) = item {
-                if !fn_def.type_params.is_empty() {
-                    generic_fn_defs.insert(fn_def.name.node.clone(), fn_def);
-                }
+            if let Item::FnDef(fn_def) = item
+                && !fn_def.type_params.is_empty()
+            {
+                generic_fn_defs.insert(fn_def.name.node.clone(), fn_def);
             }
         }
     }
@@ -3008,7 +3008,7 @@ fn register_mono_struct_recursive(
                 .map(|tp| {
                     struct_subst
                         .get(tp)
-                        .map(|t| type_to_name_suffix(t))
+                        .map(type_to_name_suffix)
                         .unwrap_or_else(|| "i64".to_string())
                 })
                 .collect::<Vec<_>>()
@@ -3117,7 +3117,7 @@ fn pre_register_mono_struct_recursive(
                 .map(|tp| {
                     struct_subst
                         .get(tp)
-                        .map(|t| type_to_name_suffix(t))
+                        .map(type_to_name_suffix)
                         .unwrap_or_else(|| "i64".to_string())
                 })
                 .collect::<Vec<_>>()
@@ -3794,6 +3794,7 @@ fn bind_pattern_variables(pattern: &Pattern, match_place: &Place, ctx: &mut Lowe
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]  // helpers defined below the (very large) test module
 mod tests {
     use super::*;
     use crate::ast::{Param, Span, Spanned, Visibility};
