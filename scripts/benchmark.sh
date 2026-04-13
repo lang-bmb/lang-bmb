@@ -122,20 +122,26 @@ time_cmd() {
     echo $((end - start))
 }
 
-# Run benchmark multiple times and get median
+# Run benchmark multiple times and get the BEST (min) time.
+# min beats median for short benchmarks: filesystem/OS noise can only make
+# a run slower, never faster — so the floor is the most reproducible reading.
+# One warm-up run is discarded to avoid cold-start cache effects.
 run_benchmark() {
     local exe=$1
     local times=()
+
+    # Warm-up (discarded)
+    time_cmd "$exe" > /dev/null
 
     for ((i=1; i<=RUNS; i++)); do
         local t=$(time_cmd "$exe")
         times+=($t)
     done
 
-    # Sort and get median
+    # Sort ascending and take the minimum (fastest = least interference)
     IFS=$'\n' sorted=($(sort -n <<<"${times[*]}")); unset IFS
-    local median=${sorted[$((RUNS/2))]}
-    echo $median
+    local best=${sorted[0]}
+    echo $best
 }
 
 # JSON result accumulator

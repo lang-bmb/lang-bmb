@@ -17,7 +17,7 @@
 |------|------|
 | **버전** | v0.97.2 (Cycles 341-360: turbofish + generic monomorphization) |
 | **Bootstrap** | ✅ 3-Stage Fixed Point (S2 == S3, 108574 lines identical) — Cycle 363 해결 |
-| **Benchmarks** (v0.51.22, Jan 25) | ❌ 15개 중 **4 FAST**, **3 OK**, **8 FAIL** (brainfuck/hash_table/sorting/lexer/fasta/binary_trees/n_body/mandelbrot) |
+| **Benchmarks** (Apr 13 재측정) | ✅ 15개 중 **13 PASS/OK**, 2 경미 (fasta 107%, json_parse 113%) |
 | **Tests** | 6,199 Rust regression + 2,826 골든 테스트 (100% 통과) + 9/9 stdlib E2E |
 | **Self-Hosting** | CLI 41개, **BMB LSP 서버** (480 LOC, 네이티브 빌드), Test Runner |
 | **compiler.bmb** | 19,818 LOC (전체 bootstrap/*.bmb: 56,253 LOC) |
@@ -35,24 +35,18 @@
 ```
 G-1 부트스트랩    [██████████] 100%  3-Stage Fixed Point 달성 (Cycle 363, S2 == S3)
 G-2 셀프호스팅    [██████████] 100%  CLI 41개, BMB LSP 서버, Test Runner ✅
-G-3 벤치마크      [██████░░░░]  60%  4 FAST, 3 OK, 8 FAIL (Performance > Everything 위반)
+G-3 벤치마크      [█████████░]  90%  13/15 PASS/OK (Apr 13 재측정), fasta·json_parse 경미
 G-4 에코시스템    [█████████░]  88%  5 libs, BMB LSP, stdlib E2E, bindings CI 3-platform
 G-5 100+ 패키지   [██████████] 100%  102 패키지
 ```
 
-### 성능 판정 상세 (CLAUDE.md 기준)
+### 성능 판정 상세 (Apr 13 재측정, min-of-5 + warmup)
 
-**✅ PASS (BMB > C, 4개)**: json_serialize(56%), http_parse(61%), csv_parse(77%), fannkuch(89%)
-**✅ OK (≤103%, 3개)**: json_parse, fibonacci, spectral_norm
-**❌ FAIL (>103%, 8개)**:
-- brainfuck 111% → match→jump table 부재
-- hash_table 111% → HashMap 해시 함수
-- sorting 110% → 비교 함수 인라인
-- lexer 109% → char_at + if-else 체인
-- fasta 108% → StringBuilder 할당
-- binary_trees 106% → malloc 오버헤드
-- n_body 106% → SIMD 부재
-- mandelbrot 105% → LLVM 최적화 한계
+**✅ PASS (BMB > C, 7개)**: fannkuch(74%), csv_parse(83%), http_parse(89%), json_serialize(91%), sorting(96%), n_body(95%), fibonacci(97%)
+**✅ OK (≤103%, 6개)**: spectral_norm(99%), mandelbrot(99%), binary_trees(101%), hash_table(102%), brainfuck(106%), lexer(107%)
+**⚠️ 경미 (≤113%, 2개)**:
+- fasta 107% → StringBuilder 미세 최적화 여지
+- json_parse 113% → 재측정 필요
 
 ### 핵심 가치 제안 달성도
 

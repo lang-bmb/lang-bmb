@@ -7062,6 +7062,10 @@ impl TextCodeGen {
                         writeln!(out, "  %{}_sel_true.i32 = load i32, ptr %{}.addr", dest.name, p.name)?;
                         writeln!(out, "  %{}_sel_true = sext i32 %{}_sel_true.i32 to i64", dest.name, dest.name)?;
                         format!("%{}_sel_true", dest.name)
+                    } else if local_names.contains(&p.name) {
+                        // Local stack slot: load with the operand's actual type (e.g. i32 or i64)
+                        writeln!(out, "  %{}_sel_true = load {}, ptr %{}.addr", dest.name, op_ty, p.name)?;
+                        format!("%{}_sel_true", dest.name)
                     } else { true_val_str.clone() }
                 } else { true_val_str.clone() };
                 let false_val_final = if let Operand::Place(p) = false_val {
@@ -7073,6 +7077,10 @@ impl TextCodeGen {
                         // Narrowed i32 operand needs load + sext to i64
                         writeln!(out, "  %{}_sel_false.i32 = load i32, ptr %{}.addr", dest.name, p.name)?;
                         writeln!(out, "  %{}_sel_false = sext i32 %{}_sel_false.i32 to i64", dest.name, dest.name)?;
+                        format!("%{}_sel_false", dest.name)
+                    } else if local_names.contains(&p.name) {
+                        // Local stack slot: load with the operand's actual type (e.g. i32 or i64)
+                        writeln!(out, "  %{}_sel_false = load {}, ptr %{}.addr", dest.name, op_ty, p.name)?;
                         format!("%{}_sel_false", dest.name)
                     } else { false_val_str.clone() }
                 } else { false_val_str.clone() };
