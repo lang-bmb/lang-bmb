@@ -15,7 +15,7 @@
 
 | 항목 | 상태 |
 |------|------|
-| **버전** | v0.97.2 (Cycles 341-360: turbofish + generic monomorphization) |
+| **버전** | v0.97.2 (최근: Cycles 361-381 — Bootstrap Fixed Point, Select codegen fix, clippy CI) |
 | **Bootstrap** | ✅ 3-Stage Fixed Point (S2 == S3, 108574 lines identical) — Cycle 363 해결 |
 | **Benchmarks** (Apr 13 재측정) | ✅ 15개 중 **13 PASS/OK**, 2 경미 (fasta 107%, json_parse 113%) |
 | **Tests** | 6,199 Rust regression + 2,826 골든 테스트 (100% 통과) + 9/9 stdlib E2E |
@@ -28,7 +28,7 @@
 | **Contract→Perf** | purity_opt **2.88x FASTER** vs Clang |
 | **SMT/Z3** | ⚠️ 2,449 LOC 구현, **파이프라인 미통합** (llvm.assume으로 93% 대체) |
 | **Async** | ⚠️ 테스트 존재, codegen stub |
-| **Next Focus** | **벤치마크 FAIL 8개 해소** (P0-3 Bootstrap Fixed Point는 Cycle 363 완료) |
+| **Next Focus** | P1: SIMD 인트린식 / StringBuilder / compare-inline (인간 스코프 결정 필요) · P2: SMT 파이프라인 / Playground WASM / Linter |
 
 ### Graduation 진행도 (실측 반영)
 
