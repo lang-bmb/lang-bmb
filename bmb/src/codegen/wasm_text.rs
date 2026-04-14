@@ -1376,6 +1376,8 @@ impl WasmCodeGen {
             MirType::Ptr(_) => "ptr",
             // v0.55: Tuple type
             MirType::Tuple(_) => "tuple",
+            // v0.97 (Cycle 2227): SIMD vector — WASM SIMD (v128) out-of-scope for now.
+            MirType::Vector { .. } => "simd",
         }
     }
 
@@ -1542,6 +1544,8 @@ impl WasmCodeGen {
             MirType::Ptr(_) => "i32",
             // v0.55: Tuple types are pointers (i32 in WASM)
             MirType::Tuple(_) => "i32",
+            // v0.97 (Cycle 2227): WASM v128 SIMD not wired — placeholder i32 (pointer).
+            MirType::Vector { .. } => "v128",
         }
     }
 
@@ -1578,6 +1582,8 @@ impl WasmCodeGen {
             MirType::Ptr(_) => "i32.const 0",
             // v0.55: Tuple pointers default to null (0)
             MirType::Tuple(_) => "i32.const 0",
+            // v0.97 (Cycle 2227): WASM v128 default (zero vector).
+            MirType::Vector { .. } => "v128.const i32x4 0 0 0 0",
         }
     }
 

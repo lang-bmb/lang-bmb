@@ -1155,5 +1155,26 @@ This creates a virtuous cycle where AI-generated code with rich contracts outper
 
 ---
 
-*Last updated: 2026-01-24*
-*Specification version: v0.32.1*
+## Appendix D: v0.33–v0.97 Addendum
+
+> Since v0.32.1 baseline, the following features entered the language. Full specification rewrite is planned for v1.0 — this addendum is authoritative until then.
+
+### D.1 SIMD First-Class Types (v0.97)
+
+Fixed-width SIMD vectors as primitive types (`f64x4`, `i32x8`, etc.). Element-wise arithmetic `+`, `-`, `*`, `/` with same-type / same-lane operands. Lowered to LLVM `<lanes x elem>` IR.
+
+Rationale: Performance > Everything — SIMD is the primary lever to beat C/Rust on numeric kernels. First-class type lets the type system guarantee lane uniformity without runtime checks.
+
+### D.2 `@test` / `@bench` Attributes (v0.97)
+
+- `bmb test <file>` discovers `@test` OR `test_` prefix.
+- `bmb bench <file>` discovers `@bench` OR `bench_` prefix. Supports `@bench(samples, warmup)` + CLI `--samples`/`--warmup`.
+
+### D.3 `@export` + `--shared` (v0.97)
+
+FFI-safe shared library export. 140 `@export` functions shipped across 5 official BMB libraries. WASM output via `--emit-wasm`.
+
+---
+
+*Last updated: 2026-04-15*
+*Specification baseline: v0.32.1 + v0.97 Addendum (Appendix D)*

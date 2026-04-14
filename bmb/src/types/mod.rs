@@ -1196,6 +1196,11 @@ impl TypeChecker {
             Type::I64 | Type::I32 | Type::U32 | Type::U64 | Type::F64
             | Type::Bool | Type::String | Type::Char | Type::Unit
             | Type::Never | Type::TypeVar(_) => {}
+            // v0.97 (Cycle 2215+): SIMD vector — recurse into the element so any
+            // named element type (future user-defined SIMD aliases) is tracked.
+            Type::Vector { elem, .. } => {
+                self.mark_type_names_used(elem);
+            }
         }
     }
 
@@ -8501,6 +8506,29 @@ impl TypeChecker {
         let left_base = left_resolved.base_type();
         let right_base = right_resolved.base_type();
 
+        // v0.97 (Cycle 2228): SIMD Vector element-wise arithmetic.
+        // Same-typed vectors only (no scalar broadcast in first wave — explicit
+        // `simd::splat(scalar)` is the preferred Type-Driven approach).
+        if let (
+            Type::Vector { elem: l_elem, lanes: l_lanes },
+            Type::Vector { elem: r_elem, lanes: r_lanes },
+        ) = (left_base, right_base)
+            && matches!(op, BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div)
+        {
+            if l_lanes != r_lanes || l_elem != r_elem {
+                return Err(CompileError::type_error(
+                    format!(
+                        "SIMD vector operands must match in element type and lane count: {left} vs {right}"
+                    ),
+                    span,
+                ));
+            }
+            return Ok(Type::Vector {
+                elem: l_elem.clone(),
+                lanes: *l_lanes,
+            });
+        }
+
         match op {
             BinOp::Add => {
                 // v0.60.19: Support pointer arithmetic: ptr + i64 or i64 + ptr
@@ -9135,6 +9163,8 @@ impl TypeChecker {
             Type::ThreadPool => "ThreadPool".to_string(),
             // v0.85: Scope type
             Type::Scope => "Scope".to_string(),
+            // v0.97 (Cycle 2215+): SIMD vector type
+            Type::Vector { elem, lanes } => format!("{}x{}", self.type_to_string(elem), lanes),
         }
     }
 

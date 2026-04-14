@@ -174,6 +174,9 @@ impl SmtTranslator {
             Type::ThreadPool => SmtSort::Int,
             // v0.85: Scope - use Int for handle
             Type::Scope => SmtSort::Int,
+            // v0.97 (Cycle 2215+): SIMD vector — SMT 통합은 Deferred (Cycle 2206).
+            // Approximate as Int so contract verification stays callable.
+            Type::Vector { .. } => SmtSort::Int,
         }
     }
 

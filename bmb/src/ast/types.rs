@@ -193,6 +193,16 @@ pub enum Type {
     /// Scope type: represents a scoped thread context for structured concurrency
     /// All threads spawned in a scope are joined when the scope exits
     Scope,
+
+    // v0.97 (Cycle 2215+): SIMD 1급 타입
+    /// Fixed-width SIMD vector: f64x4, i32x8, etc.
+    /// Element type must be a numeric primitive (I32/I64/U32/U64/F32/F64).
+    /// Lanes typically 2/4/8/16 — backed by LLVM `<lanes x elem>` vector type.
+    /// Element-wise arithmetic via overloaded `+`, `-`, `*`, `/`.
+    Vector {
+        elem: Box<Type>,
+        lanes: u32,
+    },
 }
 
 /// Manual PartialEq implementation for Type
@@ -278,6 +288,11 @@ impl PartialEq for Type {
             (Type::ThreadPool, Type::ThreadPool) => true,
             // v0.85: Scope type equality
             (Type::Scope, Type::Scope) => true,
+            // v0.97 (Cycle 2215+): Vector type equality - elem and lanes must match
+            (
+                Type::Vector { elem: e1, lanes: l1 },
+                Type::Vector { elem: e2, lanes: l2 },
+            ) => e1 == e2 && l1 == l2,
             _ => false,
         }
     }
@@ -409,8 +424,33 @@ impl std::fmt::Display for Type {
             Type::ThreadPool => write!(f, "ThreadPool"),
             // v0.85: Scope type display
             Type::Scope => write!(f, "Scope"),
+            // v0.97 (Cycle 2215+): SIMD vector type display - e.g. f64x4, i32x8
+            Type::Vector { elem, lanes } => write!(f, "{elem}x{lanes}"),
         }
     }
+}
+
+/// v0.97 (Cycle 2219): Decode a SIMD lexer token like `f64x4` into `Type::Vector`.
+/// The lexer regex `(i32|i64|u32|u64|f64)x[0-9]+` guarantees the format, so this
+/// helper is total. Falls back to a defensive `Type::Named(s)` if the unexpected
+/// shape ever leaks through (defense in depth — should be unreachable).
+pub fn parse_simd_type(s: &str) -> Type {
+    if let Some((elem_str, lanes_str)) = s.split_once('x') {
+        let elem = match elem_str {
+            "i32" => Type::I32,
+            "i64" => Type::I64,
+            "u32" => Type::U32,
+            "u64" => Type::U64,
+            "f64" => Type::F64,
+            _ => return Type::Named(s.to_string()),
+        };
+        if let Ok(lanes) = lanes_str.parse::<u32>()
+            && lanes >= 2
+        {
+            return Type::Vector { elem: Box::new(elem), lanes };
+        }
+    }
+    Type::Named(s.to_string())
 }
 
 #[cfg(test)]

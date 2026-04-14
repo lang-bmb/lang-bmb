@@ -1355,6 +1355,8 @@ fn format_type(ty: &crate::ast::Type) -> String {
         Type::ThreadPool => "ThreadPool".to_string(),
         // v0.85: Scope type
         Type::Scope => "Scope".to_string(),
+        // v0.97 (Cycle 2215+): SIMD vector type display
+        Type::Vector { elem, lanes } => format!("{}x{}", format_type(elem), lanes),
     }
 }
 

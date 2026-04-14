@@ -1857,6 +1857,9 @@ impl TextCodeGen {
                 .map(|e| self.mir_type_to_llvm(e))
                 .collect();
             format!("{{ {} }}", elem_types.join(", "))
+        } else if matches!(func.ret_ty, MirType::Vector { .. }) {
+            // v0.97 (Cycle 2229): Vector return type → `<N x T>` passed by value.
+            self.mir_type_to_llvm_owned(&func.ret_ty)
         } else {
             self.mir_type_to_llvm(&func.ret_ty).to_string()
         };
@@ -1868,6 +1871,12 @@ impl TextCodeGen {
             .params
             .iter()
             .map(|(name, ty)| {
+                if matches!(ty, MirType::Vector { .. }) {
+                    // v0.97 (Cycle 2229): Vector params passed by value as `<N x T>`.
+                    // `noundef` still applies; no nonnull/dereferenceable (not a pointer).
+                    let vec_ty = self.mir_type_to_llvm_owned(ty);
+                    return format!("{} noundef %{}", vec_ty, name);
+                }
                 let llvm_ty = self.mir_type_to_llvm(ty);
                 if matches!(ty, MirType::String) {
                     // String parameters are read-only and non-aliasing (immutable in BMB)
@@ -2235,6 +2244,14 @@ impl TextCodeGen {
             writeln!(out, "alloca_entry:")?;
             for (name, ty) in &func.locals {
                 if local_names.contains(name) {
+                    // v0.97 (Cycle 2229): Vector locals need `<N x T>` typed alloca
+                    // with proper alignment (f64x4 → align 32, f64x8 → align 64, etc.).
+                    if let crate::mir::MirType::Vector { elem: _, lanes } = ty {
+                        let vec_ty = self.mir_type_to_llvm_owned(ty);
+                        let align_bytes = Self::vector_alloca_align(ty, *lanes);
+                        writeln!(out, "  %{}.addr = alloca {}, align {}", name, vec_ty, align_bytes)?;
+                        continue;
+                    }
                     // v0.55: Check if this is a tuple variable first
                     let llvm_ty = if let Some(tuple_type) = tuple_var_types.get(name) {
                         tuple_type.as_str()
@@ -2690,6 +2707,61 @@ impl TextCodeGen {
 
             MirInst::BinOp { dest, op, lhs, rhs } => {
                 let dest_name = self.unique_name(&dest.name, name_counts);
+
+                // v0.97 (Cycle 2229): SIMD Vector BinOp fast path.
+                // Vectors bypass the str-based inference (which collapses to "ptr")
+                // and emit `fadd fast <N x T>` / `add <N x T>` directly.
+                let lhs_vec = self.operand_vector_type(lhs, func);
+                let rhs_vec = self.operand_vector_type(rhs, func);
+                let vec_handled = if lhs_vec.is_some() || rhs_vec.is_some() {
+                    let vec_ty_mir = lhs_vec.clone().or(rhs_vec.clone()).unwrap();
+                    let vec_ty = self.mir_type_to_llvm_owned(&vec_ty_mir);
+                    let align = match &vec_ty_mir {
+                        MirType::Vector { lanes, .. } => Self::vector_alloca_align(&vec_ty_mir, *lanes),
+                        _ => 8,
+                    };
+                    let emit_load = |opd: &Operand, suffix: &str, out: &mut String| -> TextCodeGenResult<String> {
+                        match opd {
+                            Operand::Place(p) if local_names.contains(&p.name) => {
+                                let load_name = format!("{}.{}.{}", dest_name, p.name, suffix);
+                                writeln!(out, "  %{} = load {}, ptr %{}.addr, align {}", load_name, vec_ty, p.name, align)?;
+                                Ok(format!("%{}", load_name))
+                            }
+                            Operand::Place(p) => Ok(format!("%{}", p.name)),
+                            _ => Ok(self.format_operand_with_strings_and_narrowing(opd, string_table, narrowed_param_names)),
+                        }
+                    };
+                    let lhs_str_v = emit_load(lhs, "lhs", out)?;
+                    let rhs_str_v = emit_load(rhs, "rhs", out)?;
+                    let elem_is_float = matches!(
+                        &vec_ty_mir,
+                        MirType::Vector { elem, .. } if matches!(elem.as_ref(), MirType::F64)
+                    );
+                    let op_str = match (op, elem_is_float) {
+                        (MirBinOp::Add | MirBinOp::FAdd, true) => "fadd fast",
+                        (MirBinOp::Sub | MirBinOp::FSub, true) => "fsub fast",
+                        (MirBinOp::Mul | MirBinOp::FMul, true) => "fmul fast",
+                        (MirBinOp::Div | MirBinOp::FDiv, true) => "fdiv fast",
+                        (MirBinOp::Add | MirBinOp::FAdd, false) => "add",
+                        (MirBinOp::Sub | MirBinOp::FSub, false) => "sub",
+                        (MirBinOp::Mul | MirBinOp::FMul, false) => "mul",
+                        (MirBinOp::Div | MirBinOp::FDiv, false) => "sdiv",
+                        _ => return Err(TextCodeGenError::UnknownFunction(format!(
+                            "SIMD BinOp {op:?} unsupported on vector {vec_ty}"
+                        ))),
+                    };
+                    writeln!(out, "  %{} = {} {} {}, {}", dest_name, op_str, vec_ty, lhs_str_v, rhs_str_v)?;
+                    if local_names.contains(&dest.name) {
+                        writeln!(out, "  store {} %{}, ptr %{}.addr, align {}", vec_ty, dest_name, dest.name, align)?;
+                    }
+                    true
+                } else {
+                    false
+                };
+                if vec_handled {
+                    // Already emitted above; skip scalar path
+                } else {
+
                 // Use place_types for accurate type inference
                 let lhs_ty = match lhs {
                     Operand::Constant(c) => self.constant_type(c),
@@ -2966,6 +3038,7 @@ impl TextCodeGen {
                     }
                     }
                 }
+                } // end else (vec_handled fallback)
             }
 
             MirInst::UnaryOp { dest, op, src } => {
@@ -7225,6 +7298,24 @@ impl TextCodeGen {
                         writeln!(out, "  ; sret return - value already in %_sret")?;
                     }
                     writeln!(out, "  ret void")?;
+                } else if matches!(func.ret_ty, MirType::Vector { .. }) {
+                    // v0.97 (Cycle 2229): SIMD Vector return — load from alloca as `<N x T>`
+                    // then ret directly. No coercion / narrowing paths apply.
+                    let vec_ty = self.mir_type_to_llvm_owned(&func.ret_ty);
+                    let align = match &func.ret_ty {
+                        MirType::Vector { lanes, .. } => Self::vector_alloca_align(&func.ret_ty, *lanes),
+                        _ => 8,
+                    };
+                    if let Operand::Place(p) = val {
+                        if local_names.contains(&p.name) {
+                            writeln!(out, "  %_vret.{}.{} = load {}, ptr %{}.addr, align {}", block_label, p.name, vec_ty, p.name, align)?;
+                            writeln!(out, "  ret {} %_vret.{}.{}", vec_ty, block_label, p.name)?;
+                        } else {
+                            writeln!(out, "  ret {} %{}", vec_ty, p.name)?;
+                        }
+                    } else {
+                        writeln!(out, "  ret {} zeroinitializer", vec_ty)?;
+                    }
                 } else {
                     let ty = self.mir_type_to_llvm(&func.ret_ty);
                     // v0.51.22: String constant returns use pre-initialized global BmbString
@@ -7462,7 +7553,42 @@ impl TextCodeGen {
             MirType::Ptr(_) => "ptr",
             // v0.55: Tuple types - use ptr as placeholder (actual struct type handled inline)
             MirType::Tuple(_) => "ptr",
+            // v0.97 (Cycle 2227): SIMD vector — use Self::mir_type_to_llvm_vector
+            // for `<lanes x elem>`. Callers that need a generic-typed form (load/store,
+            // binop operand) must dispatch on `ty.is_vector()` BEFORE invoking this
+            // helper; this arm returns "ptr" as an opaque fallback so pre-codegen
+            // passes (formatting, dbg types) keep compiling.
+            MirType::Vector { .. } => "ptr",
         }
+    }
+
+    /// v0.97 (Cycle 2227): Owned LLVM type string for vector and scalar MIR types.
+    ///
+    /// Returns `<lanes x elem>` for SIMD vectors, delegating to `mir_type_to_llvm`
+    /// otherwise. Use this in codegen sites that emit vector arithmetic / memory
+    /// ops where the operand type must reflect lane width.
+    fn mir_type_to_llvm_owned(&self, ty: &MirType) -> String {
+        match ty {
+            MirType::Vector { elem, lanes } => {
+                format!("<{} x {}>", lanes, self.mir_type_to_llvm_owned(elem))
+            }
+            _ => self.mir_type_to_llvm(ty).to_string(),
+        }
+    }
+
+    /// v0.97 (Cycle 2229): SIMD vector natural alignment (bytes).
+    /// Equals the full vector width; `f64x4` → 32, `f64x8` → 64, `i32x4` → 16, etc.
+    /// Matches LLVM's default vector alignment on x86-64 (AVX2/AVX-512).
+    fn vector_alloca_align(ty: &MirType, lanes: u32) -> u32 {
+        let elem_bytes = match ty {
+            MirType::Vector { elem, .. } => match elem.as_ref() {
+                MirType::I32 | MirType::U32 => 4,
+                MirType::I64 | MirType::U64 | MirType::F64 => 8,
+                _ => 8,
+            },
+            _ => 8,
+        };
+        elem_bytes * lanes
     }
 
     /// v0.50.80: Get LLVM cast instruction name for type conversion
@@ -7628,6 +7754,36 @@ impl TextCodeGen {
         }
         // Default to i64 for temporaries
         "i64"
+    }
+
+    /// v0.97 (Cycle 2229): Resolve the full `MirType` of a Place (param or local).
+    /// Returns `None` for unknown temporaries. Used by SIMD codegen paths where
+    /// lane/element info is required (the `&'static str` variant collapses
+    /// vectors to "ptr").
+    fn infer_place_mir_type(&self, place: &Place, func: &MirFunction) -> Option<MirType> {
+        for (name, ty) in &func.params {
+            if name == &place.name {
+                return Some(ty.clone());
+            }
+        }
+        for (name, ty) in &func.locals {
+            if name == &place.name {
+                return Some(ty.clone());
+            }
+        }
+        None
+    }
+
+    /// v0.97 (Cycle 2229): If a MIR operand resolves to a SIMD vector type,
+    /// return its `MirType::Vector`. Otherwise `None`.
+    fn operand_vector_type(&self, op: &Operand, func: &MirFunction) -> Option<MirType> {
+        match op {
+            Operand::Place(p) => {
+                let ty = self.infer_place_mir_type(p, func)?;
+                if matches!(ty, MirType::Vector { .. }) { Some(ty) } else { None }
+            }
+            _ => None,
+        }
     }
 
     /// Infer type of an operand
@@ -8530,6 +8686,40 @@ mod tests {
             name: "Point".to_string(),
             fields: vec![],
         }), "ptr");
+    }
+
+    #[test]
+    fn test_simd_vector_type_mapping() {
+        let cg = TextCodeGen::new();
+        // Scalar fallback: Vector without owned helper returns "ptr" (documented placeholder)
+        let f64x4 = MirType::Vector { elem: Box::new(MirType::F64), lanes: 4 };
+        assert_eq!(cg.mir_type_to_llvm(&f64x4), "ptr", "scalar path placeholder");
+        // Owned path emits `<lanes x elem>`
+        assert_eq!(cg.mir_type_to_llvm_owned(&f64x4), "<4 x double>");
+        assert_eq!(
+            cg.mir_type_to_llvm_owned(&MirType::Vector { elem: Box::new(MirType::I32), lanes: 8 }),
+            "<8 x i32>"
+        );
+        assert_eq!(
+            cg.mir_type_to_llvm_owned(&MirType::Vector { elem: Box::new(MirType::U64), lanes: 2 }),
+            "<2 x i64>"
+        );
+    }
+
+    #[test]
+    fn test_simd_vector_alignment() {
+        // f64x4 → 32 bytes (AVX2-aligned)
+        let f64x4 = MirType::Vector { elem: Box::new(MirType::F64), lanes: 4 };
+        assert_eq!(TextCodeGen::vector_alloca_align(&f64x4, 4), 32);
+        // f64x8 → 64 bytes (AVX-512-aligned)
+        let f64x8 = MirType::Vector { elem: Box::new(MirType::F64), lanes: 8 };
+        assert_eq!(TextCodeGen::vector_alloca_align(&f64x8, 8), 64);
+        // i32x4 → 16 bytes (SSE2-aligned)
+        let i32x4 = MirType::Vector { elem: Box::new(MirType::I32), lanes: 4 };
+        assert_eq!(TextCodeGen::vector_alloca_align(&i32x4, 4), 16);
+        // i32x16 → 64 bytes (AVX-512)
+        let i32x16 = MirType::Vector { elem: Box::new(MirType::I32), lanes: 16 };
+        assert_eq!(TextCodeGen::vector_alloca_align(&i32x16, 16), 64);
     }
 
     #[test]

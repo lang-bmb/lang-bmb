@@ -1,15 +1,17 @@
 # BMB Development Roadmap
-Updated: 2026-03-24
+Updated: 2026-04-15
 
 ---
 
 ## 진척도 게이지
 
 ```
-Bootstrap   ██████████████████░░ 98%   Fixed Point ✅, compiler.bmb 19,818 LOC, 59K LOC total
-Self-Host   ████████████████████ 99%   CLI 41개, LSP 9개, Test Runner, REPL, fmt, lint ✅
+Bootstrap   ██████████████████░░ 98%   Fixed Point ✅ (S2==S3, 2m total), compiler.bmb 19,818 LOC
+Self-Host   ████████████████████ 99%   CLI 41개 (+ bmb bench), LSP 9개, Test Runner, REPL
 Benchmark   ████████████████████ 100%  309 빌드 ✅, 16+ FASTER, 0 FAIL, BMB > C+Rust
 Ecosystem   ████████████████░░░░ 82%   5 libs 140 @export, C headers, WASM, pytest 1,017+
+SIMD        ██████████████░░░░░░ 70%   v0.97 1급 타입 ✅ (f64xN, i{32,64}xN, u{32,64}xN)
+                                       Codegen: text backend ✅ / inkwell 타입만 / 라이브러리 pending
 ```
 
 ### 핵심 수치
@@ -148,6 +150,10 @@ v0.97        @export + --shared + FFI 안전성 (setjmp/longjmp, TLS)
              5 바인딩 라이브러리 (140 @export, 1,017 pytest)
              C headers ×5, WASM ×5, 패키징 인프라 완성
              Dogfooding 완료 (Cycle 2185)
+             SIMD 1급 타입 f64xN/i32xN/i64xN/u32xN/u64xN (Cycles 2215-2237)
+             `@bench` microbenchmark attribute + `bmb bench` CLI
+             `@test` attribute-driven discovery 통일
+             3-Stage Fixed Point 유지 (Cycle 2237 검증)
 
 ═══════════════════ 현재 위치: 배포/품질 단계 ═════════════════════════
 

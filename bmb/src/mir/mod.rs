@@ -902,8 +902,15 @@ impl MirBinOp {
             MirBinOp::AddSat | MirBinOp::SubSat | MirBinOp::MulSat => {
                 operand_ty.clone()
             }
-            // Float arithmetic returns f64
-            MirBinOp::FAdd | MirBinOp::FSub | MirBinOp::FMul | MirBinOp::FDiv => MirType::F64,
+            // Float arithmetic returns f64 (scalar) or same Vector type (SIMD).
+            // v0.97 (Cycle 2229): SIMD preservation.
+            MirBinOp::FAdd | MirBinOp::FSub | MirBinOp::FMul | MirBinOp::FDiv => {
+                if matches!(operand_ty, MirType::Vector { .. }) {
+                    operand_ty.clone()
+                } else {
+                    MirType::F64
+                }
+            }
             // All comparisons return bool
             MirBinOp::Eq | MirBinOp::Ne | MirBinOp::Lt | MirBinOp::Gt | MirBinOp::Le | MirBinOp::Ge |
             MirBinOp::FEq | MirBinOp::FNe | MirBinOp::FLt | MirBinOp::FGt | MirBinOp::FLe | MirBinOp::FGe => {
@@ -984,6 +991,12 @@ pub enum MirType {
     /// v0.55: Tuple type with heterogeneous element types
     /// Used for native tuple returns and multiple return values
     Tuple(Vec<Box<MirType>>),
+    /// v0.97 (Cycle 2227): SIMD vector type backed by LLVM `<lanes x elem>`.
+    /// Element type restricted to primitive numerics (I32/I64/U32/U64/F64).
+    Vector {
+        elem: Box<MirType>,
+        lanes: u32,
+    },
 }
 
 impl MirType {
@@ -993,6 +1006,12 @@ impl MirType {
 
     pub fn is_float(&self) -> bool {
         matches!(self, MirType::F64)
+    }
+
+    /// v0.97 (Cycle 2227): SIMD vector predicate. Enables type-driven
+    /// binary-op dispatch without a separate MirBinOp::VectorAdd family.
+    pub fn is_vector(&self) -> bool {
+        matches!(self, MirType::Vector { .. })
     }
 
     /// v0.60.1: Check if this is a pointer type (Ptr, StructPtr, or String)
@@ -1708,6 +1727,8 @@ fn format_mir_type(ty: &MirType) -> String {
             let elems_str: Vec<_> = elems.iter().map(|e| format_mir_type(e)).collect();
             format!("({})", elems_str.join(", "))
         }
+        // v0.97 (Cycle 2227): SIMD vector type — `<lanes x elem>` style.
+        MirType::Vector { elem, lanes } => format!("{}x{}", format_mir_type(elem), lanes),
     }
 }
 

@@ -201,6 +201,10 @@ pub enum Token {
     HeaderSep,
 
     // Type keywords
+    // v0.97 (Cycle 2219): SIMD 1급 타입 — `f64x4`, `i32x8` 등. Higher priority so it
+    // beats `i32` / `f64` followed by an identifier when present as a single token.
+    #[regex(r"(i32|i64|u32|u64|f64)x[0-9]+", |lex| lex.slice().to_string(), priority = 5)]
+    TySimd(String),
     #[token("i32")]
     TyI32,
     #[token("i64")]
@@ -576,6 +580,8 @@ impl std::fmt::Display for Token {
             // v0.37: Quantifiers
             Token::Forall => write!(f, "forall"),
             Token::Exists => write!(f, "exists"),
+            // v0.97 (Cycle 2219): SIMD vector type token (e.g. f64x4)
+            Token::TySimd(s) => write!(f, "{s}"),
         }
     }
 }

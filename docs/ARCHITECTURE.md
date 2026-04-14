@@ -427,6 +427,14 @@ Backend code generation.
 - Uses `inkwell` for LLVM bindings
 - Supports optimization levels: O0, O1, O2, O3
 
+**SIMD codegen path (v0.97):**
+- `Type::Vector { elem, lanes }` → `MirType::Vector { elem, lanes }` via `ast_type_to_mir*`
+- `llvm_text::mir_type_to_llvm_owned` emits `<lanes x elem>`; text backend is bootstrap-critical.
+- `infer_place_mir_type` / `operand_vector_type` bypass the `&'static str` inference when operands are vectors — emit `fadd fast <N x T>` / `add <N x T>` / `sdiv <N x T>` directly.
+- Vector locals: `alloca <N x T>, align (N*elem_size)` — natural alignment (`f64x4` → 32).
+- Vector params/returns: `<N x T> noundef` by value (no nonnull/deref).
+- `codegen/llvm.rs` (inkwell) has type mapping parity but BinOp emission pending full parity (Rule 7 follow-up).
+
 ### LSP (`bmb/src/lsp/`)
 
 Language Server Protocol implementation.

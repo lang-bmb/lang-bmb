@@ -1364,6 +1364,12 @@ impl CirLowerer {
                 // For now, strip the refinement
                 self.lower_type(base)
             }
+            // v0.97 (Cycle 2215+): SIMD vector — not yet plumbed through CIR.
+            // Lower to a generic placeholder; full lowering arrives with Cycle 2219+.
+            Type::Vector { elem, lanes } => CirType::Generic(
+                format!("Vector_x{}", lanes),
+                vec![self.lower_type(elem)],
+            ),
         }
     }
 }

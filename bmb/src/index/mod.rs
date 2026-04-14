@@ -542,6 +542,8 @@ impl IndexGenerator {
             Type::ThreadPool => "ThreadPool".to_string(),
             // v0.85: Scope
             Type::Scope => "Scope".to_string(),
+            // v0.97 (Cycle 2215+): SIMD vector type
+            Type::Vector { elem, lanes } => format!("{}x{}", self.format_type(elem), lanes),
         }
     }
 

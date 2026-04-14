@@ -26,9 +26,10 @@
 | **Module System** | `use` import: check + run + build 전체 파이프라인 동작 |
 | **EXISTENTIAL** | 7/7 완료 — 계약→성능 파이프라인 증명됨 (llvm.assume 기반) |
 | **Contract→Perf** | purity_opt **2.88x FASTER** vs Clang |
-| **SMT/Z3** | ⚠️ 2,449 LOC 구현, **파이프라인 미통합** (llvm.assume으로 93% 대체) |
+| **SMT/Z3** | 🔒 **Deferred** (Cycle 2206, Apr 13) — llvm.assume 93% 커버 · 재개는 실수요 발생 시 |
 | **Async** | ⚠️ 테스트 존재, codegen stub |
-| **Next Focus** | P1: SIMD 인트린식 / StringBuilder / compare-inline (인간 스코프 결정 필요) · P2: SMT 파이프라인 / Playground WASM / Linter |
+| **Next Focus** | **P0 (in progress)**: SIMD 1급 타입 codegen (Cycle 2220+, type system 스캐폴딩 완료) · `@bench` 부트스트랩 통합 · P2: Playground WASM / Linter |
+| **Cycles 2206-2225 (2026-04-13)** | ✅ SMT defer · ✅ `@bench` end-to-end (interp) · ✅ SIMD 타입 시스템 스캐폴딩 · ⏳ SIMD codegen은 ISSUE-20260413-simd-codegen 분리 |
 
 ### Graduation 진행도 (실측 반영)
 

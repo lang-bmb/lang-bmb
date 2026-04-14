@@ -200,6 +200,20 @@ enum Command {
         #[arg(short, long)]
         verbose: bool,
     },
+    /// Run benchmarks (functions with @bench attribute or `bench_` prefix)
+    Bench {
+        /// Source file or directory to benchmark
+        file: PathBuf,
+        /// Filter benchmarks by pattern
+        #[arg(long, short)]
+        filter: Option<String>,
+        /// Number of measurement samples (default: 100)
+        #[arg(long, default_value_t = 100)]
+        samples: u64,
+        /// Number of warmup iterations before measurement (default: 10)
+        #[arg(long, default_value_t = 10)]
+        warmup: u64,
+    },
     /// Format a BMB source file
     Fmt {
         /// Source file or directory to format
@@ -470,6 +484,7 @@ fn main() {
                 Command::Parse { file, format } => parse_file(&file, &format),
                 Command::Tokens { file } => tokenize_file(&file),
                 Command::Test { file, filter, verbose } => test_file(&file, filter.as_deref(), verbose),
+                Command::Bench { file, filter, samples, warmup } => bench_file(&file, filter.as_deref(), samples, warmup),
                 Command::Fmt { file, check } => fmt_file(&file, check),
                 Command::Lint { file, strict, include_paths } => lint_file(&file, strict, &include_paths),
                 Command::Lsp => start_lsp(),
@@ -1707,6 +1722,149 @@ fn test_file(path: &PathBuf, filter: Option<&str>, verbose: bool) -> Result<(), 
     Ok(())
 }
 
+fn bench_file(
+    path: &PathBuf,
+    filter: Option<&str>,
+    cli_samples: u64,
+    cli_warmup: u64,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use std::time::Instant;
+
+    let bench_files = if path.is_dir() {
+        collect_test_files(path)?
+    } else {
+        vec![path.clone()]
+    };
+
+    if bench_files.is_empty() {
+        if is_human_output() {
+            println!("No benchmark files found");
+        } else {
+            println!(r#"{{"type":"bench_result","benches":0}}"#);
+        }
+        return Ok(());
+    }
+
+    let mut total_benches = 0;
+
+    for bench_file in &bench_files {
+        let source = std::fs::read_to_string(bench_file)?;
+        let filename = bench_file.display().to_string();
+
+        let tokens = bmb::lexer::tokenize(&source)?;
+        let ast = bmb::parser::parse(&filename, &source, tokens)?;
+
+        let mut checker = bmb::types::TypeChecker::new();
+        checker.check_program(&ast)?;
+
+        let mut interpreter = bmb::interp::Interpreter::new();
+        interpreter.load(&ast);
+
+        let bench_names = interpreter.get_bench_functions();
+        let filtered: Vec<_> = bench_names
+            .iter()
+            .filter(|name| filter.is_none_or(|f| name.contains(f)))
+            .collect();
+
+        if filtered.is_empty() {
+            continue;
+        }
+
+        if is_human_output() && bench_files.len() > 1 {
+            println!("\n📂 {}", filename);
+        }
+
+        if is_human_output() {
+            println!(
+                "\n{:<40} {:>12} {:>12} {:>12} {:>12}",
+                "name", "min", "median", "p99", "stddev"
+            );
+            println!("{}", "-".repeat(92));
+        }
+
+        for bench_name in filtered {
+            total_benches += 1;
+            let opts = interpreter.get_bench_options(bench_name).unwrap_or_default();
+            let samples = opts.samples.unwrap_or(cli_samples).max(1);
+            let warmup = opts.warmup.unwrap_or(cli_warmup);
+
+            // Warmup
+            for _ in 0..warmup {
+                let _ = interpreter.run_function(bench_name);
+            }
+
+            // Measurement (collect ns per sample)
+            let mut ns_samples: Vec<u64> = Vec::with_capacity(samples as usize);
+            let mut last_err: Option<String> = None;
+            for _ in 0..samples {
+                let start = Instant::now();
+                match interpreter.run_function(bench_name) {
+                    Ok(_) => {
+                        ns_samples.push(start.elapsed().as_nanos() as u64);
+                    }
+                    Err(e) => {
+                        last_err = Some(e.message);
+                        break;
+                    }
+                }
+            }
+
+            if let Some(msg) = last_err {
+                if is_human_output() {
+                    println!("  ❌ {} - {}", bench_name, msg);
+                } else {
+                    println!(r#"{{"type":"bench_fail","name":"{}","reason":"{}"}}"#,
+                        bench_name, msg.replace('"', "\\\""));
+                }
+                continue;
+            }
+
+            ns_samples.sort_unstable();
+            let n = ns_samples.len() as u64;
+            let min = ns_samples[0];
+            let median = ns_samples[ns_samples.len() / 2];
+            let p99_idx = (((ns_samples.len() as f64) * 0.99) as usize)
+                .min(ns_samples.len() - 1);
+            let p99 = ns_samples[p99_idx];
+            let mean = ns_samples.iter().sum::<u64>() as f64 / n as f64;
+            let variance = ns_samples
+                .iter()
+                .map(|&x| {
+                    let d = x as f64 - mean;
+                    d * d
+                })
+                .sum::<f64>()
+                / n as f64;
+            let stddev = variance.sqrt() as u64;
+
+            if is_human_output() {
+                println!(
+                    "{:<40} {:>10}ns {:>10}ns {:>10}ns {:>10}ns",
+                    bench_name, min, median, p99, stddev
+                );
+            } else {
+                println!(
+                    r#"{{"type":"bench","name":"{}","file":"{}","samples":{},"warmup":{},"min_ns":{},"median_ns":{},"p99_ns":{},"mean_ns":{:.2},"stddev_ns":{}}}"#,
+                    bench_name, filename, samples, warmup, min, median, p99, mean, stddev
+                );
+            }
+        }
+    }
+
+    if is_human_output() {
+        println!();
+        if total_benches == 0 {
+            println!("No benchmarks found");
+        } else {
+            println!("Ran {} benchmark(s)", total_benches);
+        }
+    } else {
+        println!(r#"{{"type":"bench_result","benches":{}}}"#, total_benches);
+    }
+
+    Ok(())
+}
+
 fn collect_test_files(dir: &PathBuf) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
     let mut files = Vec::new();
 
@@ -2128,6 +2286,8 @@ fn format_type(ty: &bmb::ast::Type) -> String {
         Type::ThreadPool => "ThreadPool".to_string(),
         // v0.85: Scope type
         Type::Scope => "Scope".to_string(),
+        // v0.97 (Cycle 2215+): SIMD vector type
+        Type::Vector { elem, lanes } => format!("{}x{}", format_type(elem), lanes),
     }
 }
 

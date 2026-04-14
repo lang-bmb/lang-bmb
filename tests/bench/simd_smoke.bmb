@@ -1,0 +1,28 @@
+// SIMD 1급 타입 스모크 테스트 (Cycles 2219, 2228, 2229).
+// 검증: lexer/parser/타입체커 + element-wise arithmetic 타입추론 + LLVM IR 방출.
+// `bmb check` 통과 + `bmb build --emit-ir`로 `<4 x double>` / `<8 x i32>` 생성 확인.
+
+fn vec_param_smoke(v: f64x4) -> i64
+= 0;
+
+fn returns_i32x8() -> i32x8
+= todo;
+
+// v0.97 (Cycle 2228): Vector element-wise arithmetic — 동일 타입·차선폭만 허용.
+fn vec_add_smoke(a: f64x4, b: f64x4) -> f64x4
+= a + b;
+
+fn vec_mul_smoke(a: f64x4, b: f64x4) -> f64x4
+= a * b;
+
+// v0.97 (Cycle 2229): FMA-style chain — LLVM은 `fadd fast(fmul fast, c)` 자동 인식.
+fn vec_fma(a: f64x4, b: f64x4, c: f64x4) -> f64x4
+= a * b + c;
+
+fn vec_i32x8_add(a: i32x8, b: i32x8) -> i32x8
+= a + b;
+
+fn vec_i64x2_sub(a: i64x2, b: i64x2) -> i64x2
+= a - b;
+
+fn main() -> i64 = 0;

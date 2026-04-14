@@ -2956,6 +2956,11 @@ fn ast_type_to_mir(ty: &Type) -> MirType {
         Type::ThreadPool => MirType::I64,
         // v0.85: Scope type - represented as i64 handle
         Type::Scope => MirType::I64,
+        // v0.97 (Cycle 2227): SIMD vector — native MirType::Vector.
+        Type::Vector { elem, lanes } => MirType::Vector {
+            elem: Box::new(ast_type_to_mir(elem)),
+            lanes: *lanes,
+        },
     }
 }
 
@@ -3414,6 +3419,11 @@ fn ast_type_to_mir_with_type_defs(
         Type::ThreadPool => MirType::I64,
         // v0.85: Scope type - represented as i64 handle
         Type::Scope => MirType::I64,
+        // v0.97 (Cycle 2227): SIMD vector — native MirType::Vector.
+        Type::Vector { elem, lanes } => MirType::Vector {
+            elem: Box::new(ast_type_to_mir_with_type_defs(elem, type_defs)),
+            lanes: *lanes,
+        },
     }
 }
 
@@ -3524,12 +3534,23 @@ fn ast_type_to_mir_with_structs(
         Type::ThreadPool => MirType::I64,
         // v0.85: Scope type - represented as i64 handle
         Type::Scope => MirType::I64,
+        // v0.97 (Cycle 2227): SIMD vector — native MirType::Vector.
+        Type::Vector { elem, lanes } => MirType::Vector {
+            elem: Box::new(ast_type_to_mir_with_structs(elem, struct_type_defs)),
+            lanes: *lanes,
+        },
     }
 }
 
 /// Convert AST binary operator to MIR operator
 fn ast_binop_to_mir(op: BinOp, ty: &MirType) -> MirBinOp {
-    match (op, ty.is_float()) {
+    // v0.97 (Cycle 2228): For SIMD vectors, the element type determines the
+    // MIR op family (FAdd vs Add). LLVM resolves lane-width from operand type.
+    let is_float_like = match ty {
+        MirType::Vector { elem, .. } => matches!(**elem, MirType::F64),
+        _ => ty.is_float(),
+    };
+    match (op, is_float_like) {
         (BinOp::Add, false) => MirBinOp::Add,
         (BinOp::Add, true) => MirBinOp::FAdd,
         (BinOp::Sub, false) => MirBinOp::Sub,

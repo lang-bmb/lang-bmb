@@ -1668,6 +1668,17 @@ impl<'ctx> LlvmContext<'ctx> {
                     .collect();
                 self.context.struct_type(&elem_types, false).into()
             }
+            // v0.97 (Cycle 2230): SIMD vector — inkwell `VectorType::into()`.
+            // Mirrors text backend (`<N x T>`) for byte-exact IR parity (Rule 7).
+            MirType::Vector { elem, lanes } => {
+                use inkwell::types::BasicType;
+                let elem_ty = self.mir_type_to_llvm(elem);
+                match elem_ty {
+                    BasicTypeEnum::IntType(it) => it.vec_type(*lanes).into(),
+                    BasicTypeEnum::FloatType(ft) => ft.vec_type(*lanes).into(),
+                    _ => elem_ty.vec_type(*lanes).into(),
+                }
+            }
         }
     }
 

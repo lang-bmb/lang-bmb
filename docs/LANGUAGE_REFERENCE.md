@@ -237,6 +237,35 @@ type NonZero = i64 where self != 0;
 type Positive = i64 where self > 0;
 ```
 
+### 2.7 SIMD Vector Types (v0.97)
+
+First-class fixed-width SIMD vectors with natural LLVM codegen (`<lanes x elem>`).
+Element-wise arithmetic; same-type/same-lane operands only.
+
+| Syntax | Element | Lanes | Natural Target |
+|--------|---------|-------|----------------|
+| `f64x2` / `f64x4` / `f64x8` | `f64` | 2 / 4 / 8 | SSE2 / AVX2 / AVX-512 |
+| `i32x4` / `i32x8` / `i32x16` | `i32` | 4 / 8 / 16 | SSE2 / AVX2 / AVX-512 |
+| `i64x2` / `i64x4` / `i64x8` | `i64` | 2 / 4 / 8 | SSE2 / AVX2 / AVX-512 |
+| `u32x4` / `u32x8` / `u32x16` | `u32` | same as `i32xN` | |
+| `u64x2` / `u64x4` / `u64x8` | `u64` | same as `i64xN` | |
+
+```bmb
+-- Element-wise arithmetic
+fn vec_fma(a: f64x4, b: f64x4, c: f64x4) -> f64x4 = a * b + c;
+
+-- Broadcast is NOT implicit — use explicit splat:
+--   vec_fma(v, splat(2.0), v)  -- error: scalar not coercible
+```
+
+**Codegen**: Parameters/returns passed by value (`<4 x double> noundef`). Locals get
+natural alignment (`alloca <4 x double>, align 32`). Arithmetic emits `fadd fast <4 x double>`.
+
+**Constraints**:
+- No scalar→vector broadcast in arithmetic — use explicit constructor functions.
+- All operands must match in both element type and lane count (compile error otherwise).
+- `f32` element not yet supported (f64-only first wave).
+
 ---
 
 ## 3. Expressions
@@ -987,6 +1016,10 @@ fn optimized_sort(arr: &mut [i64]) -> ()
 | `@link("name")` | Link to external library |
 | `@decreases(expr)` | Termination measure for recursion |
 | `@invariant(expr)` | Loop/type invariant |
+| `@test` | Mark function as test — discovered by `bmb test` (v0.97) |
+| `@bench` | Mark function as microbenchmark — discovered by `bmb bench` (v0.97) |
+| `@bench(samples, warmup)` | Override default sample/warmup counts (v0.97) |
+| `@export` | Expose function via `--shared` (DLL/SO) + `--emit-wasm` |
 
 ### 11.3 Examples
 
@@ -1000,6 +1033,15 @@ fn factorial(n: i64{it >= 0}) -> i64{it >= 1}
 
 @link("math")
 extern "C" fn sin(x: f64) -> f64;
+
+@test
+fn check_square() -> i64 {
+  assert square(3) == 9;
+  0
+}
+
+@bench(1000, 100)
+fn bench_hot_path(x: f64x4) -> f64x4 = x * x;
 ```
 
 ---

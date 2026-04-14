@@ -1,0 +1,40 @@
+// Smoke test for the @bench microbenchmark harness (Cycle 2208).
+//
+// Run: bmb bench tests/bench/bench_smoke.bmb
+//
+// Both `@bench` attribute and `bench_` prefix recognition are exercised here.
+
+@bench
+fn bench_attribute_recognition() -> i64
+= {
+  let mut total: i64 = 0;
+  let mut i: i64 = 0;
+  while i < 100 {
+    set total = total + i;
+    set i = i + 1;
+  };
+  total
+};
+
+@bench(50, 5)
+fn bench_with_overrides() -> i64
+= {
+  let mut x: i64 = 1;
+  let mut i: i64 = 0;
+  while i < 50 {
+    set x = (x * 3 + 1) % 1000000;
+    set i = i + 1;
+  };
+  x
+};
+
+fn bench_prefix_recognition() -> i64
+= {
+  let mut sum: i64 = 0;
+  let mut i: i64 = 0;
+  while i < 200 {
+    set sum = sum + i * 2;
+    set i = i + 1;
+  };
+  sum
+};

@@ -4,7 +4,7 @@ use super::env::{child_env, EnvRef, Environment};
 use super::error::{ErrorKind, InterpResult, RuntimeError};
 use super::scope::ScopeStack;
 use super::value::Value;
-use crate::ast::{BinOp, EnumDef, Expr, FnDef, LiteralPattern, Pattern, Program, Spanned, StructDef, Type, UnOp};
+use crate::ast::{Attribute, BinOp, EnumDef, Expr, FnDef, LiteralPattern, Pattern, Program, Spanned, StructDef, Type, UnOp};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
@@ -51,6 +51,55 @@ const STACK_GROW_SIZE: usize = 4 * 1024 * 1024; // Grow by 4MB each time
 
 /// Builtin function type
 pub type BuiltinFn = fn(&[Value]) -> InterpResult<Value>;
+
+/// Per-function `@bench` options parsed from attribute args.
+/// Currently supports overriding `samples` and `warmup` counts.
+#[derive(Debug, Clone, Default)]
+pub struct BenchOptions {
+    pub samples: Option<u64>,
+    pub warmup: Option<u64>,
+}
+
+/// Returns true if the attribute list contains the given simple attribute name.
+/// Used for `@bench`, `@test`, etc. Checks Simple, WithArgs, and WithReason variants.
+fn has_attribute(attrs: &[Attribute], target: &str) -> bool {
+    attrs.iter().any(|attr| match attr {
+        Attribute::Simple { name, .. }
+        | Attribute::WithArgs { name, .. }
+        | Attribute::WithReason { name, .. } => name.node == target,
+    })
+}
+
+/// v0.97 (Cycle 2231): Returns true if the attribute list contains `@bench`.
+fn has_bench_attribute(attrs: &[Attribute]) -> bool {
+    has_attribute(attrs, "bench")
+}
+
+/// Extract `samples`/`warmup` overrides from `@bench(samples)` or `@bench(samples, warmup)`.
+/// Positional integer literals: 1st = samples, 2nd = warmup. Other shapes ignored.
+fn extract_bench_options(attrs: &[Attribute]) -> BenchOptions {
+    let mut opts = BenchOptions::default();
+    for attr in attrs {
+        if let Attribute::WithArgs { name, args, .. } = attr {
+            if name.node != "bench" {
+                continue;
+            }
+            if let Some(arg) = args.first()
+                && let Expr::IntLit(n) = arg.node
+                && n > 0
+            {
+                opts.samples = Some(n as u64);
+            }
+            if let Some(arg) = args.get(1)
+                && let Expr::IntLit(n) = arg.node
+                && n >= 0
+            {
+                opts.warmup = Some(n as u64);
+            }
+        }
+    }
+    opts
+}
 
 /// The interpreter
 pub struct Interpreter {
@@ -382,13 +431,39 @@ impl Interpreter {
         self.eval(expr, &self.global_env.clone())
     }
 
-    /// Get list of test function names (functions starting with "test_")
+    /// Get list of test function names.
+    /// v0.97 (Cycle 2231): Attribute-driven — matches `@test` OR `test_` prefix.
+    /// Mirrors `get_bench_functions` design for consistency.
     pub fn get_test_functions(&self) -> Vec<String> {
         self.functions
-            .keys()
-            .filter(|name| name.starts_with("test_"))
-            .cloned()
+            .iter()
+            .filter(|(name, fn_def)| {
+                name.starts_with("test_") || has_attribute(&fn_def.attributes, "test")
+            })
+            .map(|(name, _)| name.clone())
             .collect()
+    }
+
+    /// Get list of benchmark function names (v2.0: @bench attribute or "bench_" prefix).
+    /// Functions are recognized as benchmarks if either:
+    ///   1. They carry the `@bench` attribute (preferred), or
+    ///   2. Their name starts with `bench_` (legacy/convention)
+    pub fn get_bench_functions(&self) -> Vec<String> {
+        self.functions
+            .iter()
+            .filter(|(name, fn_def)| {
+                name.starts_with("bench_") || has_bench_attribute(&fn_def.attributes)
+            })
+            .map(|(name, _)| name.clone())
+            .collect()
+    }
+
+    /// Get the `@bench` attribute args for a function, if any.
+    /// Returns `Some(samples, warmup)` overrides when specified, else `None`.
+    pub fn get_bench_options(&self, name: &str) -> Option<BenchOptions> {
+        self.functions
+            .get(name)
+            .map(|fn_def| extract_bench_options(&fn_def.attributes))
     }
 
     /// Run a single function by name (for testing)
