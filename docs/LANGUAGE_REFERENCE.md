@@ -266,6 +266,63 @@ natural alignment (`alloca <4 x double>, align 32`). Arithmetic emits `fadd fast
 - All operands must match in both element type and lane count (compile error otherwise).
 - `f32` element not yet supported (f64-only first wave).
 
+#### 2.7.1 stdlib/simd Intrinsics (v0.97, Cycles 2246-2256)
+
+Declared in `stdlib/simd/mod.bmb`. Recognized by the compiler by name; each lowers to one LLVM vector intrinsic. Two ways to use from a caller:
+
+```bmb
+// Option 1: @include the stdlib module
+@include "stdlib/simd/mod.bmb"   -- use with `-I <bmb-repo-root>`
+
+// Option 2: inline the prototypes you need
+pub fn hsum_f64x4(v: f64x4) -> f64 = todo;
+pub fn load_f64x4(base: i64, idx: i64) -> f64x4 = todo;
+```
+
+The compiler recognizes the function names at codegen and rewrites each call to the matching LLVM intrinsic; the `= todo` body is dead code after lowering.
+
+| Family | Functions | LLVM lowering |
+|--------|-----------|---------------|
+| Horizontal sum | `hsum_f64x{4,8}`, `hsum_i32x{4,8}`, `hsum_i64x{2,4}` | `llvm.vector.reduce.fadd.v*f64` / `llvm.vector.reduce.add.v*iN` |
+| Broadcast | `splat_f64x{4,8}`, `splat_i32x{4,8}`, `splat_i64x{2,4}` | `insertelement` + `shufflevector zeroinitializer` |
+| Load | `load_f64x{4,8}(base, idx)` etc. (6 variants) | `getelementptr inbounds T, ptr, i64 idx` + `load <N x T>` |
+| Store | `store_f64x{4,8}(base, idx, v) -> ()` etc. | symmetric |
+| Dot (composition) | `dot_f64x{4,8}`, `dot_i32x{4,8}`, `dot_i64x{2,4}` | `fmul <N x T>` + reduce |
+| Fused multiply-add | `fma_f64x{4,8}` | `llvm.fma.v*f64` |
+| Min/Max | `min_*` / `max_*` for all widths | `llvm.minnum.v*f64` / `llvm.s{min,max}.v*iN` |
+
+Example:
+```bmb
+pub fn hsum_f64x4(v: f64x4) -> f64 = todo;
+pub fn load_f64x4(base: i64, idx: i64) -> f64x4 = todo;
+
+fn sum_array(a: i64, n: i64) -> f64 = {
+    let mut acc: f64x4 = load_f64x4(a, 0);
+    let mut i: i64 = 4;
+    while i < n {
+        set acc = acc + load_f64x4(a, i);
+        set i = i + 4;
+    };
+    hsum_f64x4(acc)
+};
+```
+
+#### 2.7.2 Performance Caveat — Instruction-Level Parallelism
+
+A single vector accumulator chains fadd/FMA at ~4-cycle latency, bottlenecking at 1 vector per 4 cycles. To match a well-tuned scalar loop (which LLVM auto-vectorizes **with 2 accumulators**), manually unroll with **multiple independent accumulators**:
+
+```bmb
+-- 4-wide SIMD × 4 accumulators = 16 doubles/iter, ILP = 4
+let mut acc0 = load_f64x4(a, 0) * load_f64x4(b, 0);
+let mut acc1 = load_f64x4(a, 4) * load_f64x4(b, 4);
+let mut acc2 = load_f64x4(a, 8) * load_f64x4(b, 8);
+let mut acc3 = load_f64x4(a, 12) * load_f64x4(b, 12);
+...
+hsum_f64x4(acc0) + hsum_f64x4(acc1) + hsum_f64x4(acc2) + hsum_f64x4(acc3)
+```
+
+Native build sets `-march=native` automatically in Release (Cycle 2250).
+
 ---
 
 ## 3. Expressions

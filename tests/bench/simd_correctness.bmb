@@ -1,0 +1,179 @@
+// SIMD runtime correctness test (Cycle 2255).
+// Computes known values via each stdlib/simd intrinsic family and
+// asserts a non-zero exit code on mismatch. Serves as a runtime
+// check that codegen correctly routes the LLVM intrinsics.
+
+extern fn malloc(n: i64) -> i64;
+extern fn free(p: i64) -> i64;
+extern fn store_f64(ptr: i64, v: f64) -> i64;
+extern fn f64_to_i64(x: f64) -> i64;
+extern fn println(n: i64) -> i64;
+
+// stdlib/simd declarations (compiler-recognized)
+pub fn hsum_f64x4(v: f64x4) -> f64 = todo;
+pub fn splat_f64x4(x: f64) -> f64x4 = todo;
+pub fn load_f64x4(base: i64, idx: i64) -> f64x4 = todo;
+pub fn store_f64x4(base: i64, idx: i64, v: f64x4) -> () = ();
+pub fn fma_f64x4(a: f64x4, b: f64x4, c: f64x4) -> f64x4 = todo;
+pub fn min_f64x4(a: f64x4, b: f64x4) -> f64x4 = todo;
+pub fn max_f64x4(a: f64x4, b: f64x4) -> f64x4 = todo;
+
+// Prepare an array [1.0, 2.0, 3.0, 4.0]
+fn init4(ptr: i64) -> i64 = {
+    let _s0 = store_f64(ptr + 0, 1.0);
+    let _s1 = store_f64(ptr + 8, 2.0);
+    let _s2 = store_f64(ptr + 16, 3.0);
+    let _s3 = store_f64(ptr + 24, 4.0);
+    0
+};
+
+fn check_hsum(ptr: i64) -> i64 = {
+    // hsum([1,2,3,4]) = 10
+    let v = load_f64x4(ptr, 0);
+    let result = hsum_f64x4(v);
+    if f64_to_i64(result) == 10 { 0 } else { 1 }
+};
+
+fn check_splat(ptr: i64) -> i64 = {
+    // splat(5.0) * [1,2,3,4] → sum = 5 + 10 + 15 + 20 = 50
+    let v = load_f64x4(ptr, 0);
+    let s = splat_f64x4(5.0);
+    let result = hsum_f64x4(v * s);
+    if f64_to_i64(result) == 50 { 0 } else { 1 }
+};
+
+fn check_fma(ptr: i64) -> i64 = {
+    // fma([1,2,3,4], [1,2,3,4], [10,10,10,10]) → [11,14,19,26], sum=70
+    let v = load_f64x4(ptr, 0);
+    let ten = splat_f64x4(10.0);
+    let r = fma_f64x4(v, v, ten);
+    let result = hsum_f64x4(r);
+    if f64_to_i64(result) == 70 { 0 } else { 1 }
+};
+
+fn check_min_max(ptr: i64) -> i64 = {
+    // min([1,2,3,4], splat(2.5)) = [1,2,2.5,2.5], sum=8.0
+    let v = load_f64x4(ptr, 0);
+    let s = splat_f64x4(2.5);
+    let mn = min_f64x4(v, s);
+    let mx = max_f64x4(v, s);
+    // min sum = 1+2+2.5+2.5 = 8; max sum = 2.5+2.5+3+4 = 12; total = 20
+    let result = hsum_f64x4(mn) + hsum_f64x4(mx);
+    if f64_to_i64(result) == 20 { 0 } else { 1 }
+};
+
+fn check_store(ptr: i64, dst: i64) -> i64 = {
+    // store v * splat(2) into dst, then hsum dst → expect (1+2+3+4)*2 = 20
+    let v = load_f64x4(ptr, 0);
+    let two = splat_f64x4(2.0);
+    store_f64x4(dst, 0, v * two);
+    let loaded = load_f64x4(dst, 0);
+    let result = hsum_f64x4(loaded);
+    if f64_to_i64(result) == 20 { 0 } else { 1 }
+};
+
+// Integer variants (Cycle 2260)
+extern fn store_i64(ptr: i64, v: i64) -> i64;
+pub fn hsum_i64x2(v: i64x2) -> i64 = todo;
+pub fn splat_i64x2(x: i64) -> i64x2 = todo;
+pub fn load_i64x2(base: i64, idx: i64) -> i64x2 = todo;
+pub fn max_i64x2(a: i64x2, b: i64x2) -> i64x2 = todo;
+pub fn min_i64x2(a: i64x2, b: i64x2) -> i64x2 = todo;
+
+// Wider variants (Cycle 2262)
+pub fn hsum_f64x8(v: f64x8) -> f64 = todo;
+pub fn splat_f64x8(x: f64) -> f64x8 = todo;
+pub fn load_f64x8(base: i64, idx: i64) -> f64x8 = todo;
+pub fn hsum_i64x4(v: i64x4) -> i64 = todo;
+pub fn splat_i64x4(x: i64) -> i64x4 = todo;
+
+fn init_i64_pair(ptr: i64) -> i64 = {
+    let _s0 = store_i64(ptr + 0, 7);
+    let _s1 = store_i64(ptr + 8, 11);
+    0
+};
+
+fn check_hsum_i64(ptr: i64) -> i64 = {
+    // hsum([7, 11]) = 18
+    let v = load_i64x2(ptr, 0);
+    if hsum_i64x2(v) == 18 { 0 } else { 1 }
+};
+
+fn check_splat_i64(ptr: i64) -> i64 = {
+    // splat(3) + [7,11] → hsum([10, 14]) = 24
+    let v = load_i64x2(ptr, 0);
+    let s = splat_i64x2(3);
+    if hsum_i64x2(v + s) == 24 { 0 } else { 1 }
+};
+
+fn check_min_max_i64(ptr: i64) -> i64 = {
+    // min([7,11], splat(9)) = [7, 9], max = [9, 11]
+    // hsum(min) + hsum(max) = 16 + 20 = 36
+    let v = load_i64x2(ptr, 0);
+    let s = splat_i64x2(9);
+    let mn = min_i64x2(v, s);
+    let mx = max_i64x2(v, s);
+    if hsum_i64x2(mn) + hsum_i64x2(mx) == 36 { 0 } else { 1 }
+};
+
+// Initialise [1.0, 2.0, ..., 8.0] for f64x8.
+fn init8(ptr: i64) -> i64 = {
+    let _s0 = store_f64(ptr +  0, 1.0);
+    let _s1 = store_f64(ptr +  8, 2.0);
+    let _s2 = store_f64(ptr + 16, 3.0);
+    let _s3 = store_f64(ptr + 24, 4.0);
+    let _s4 = store_f64(ptr + 32, 5.0);
+    let _s5 = store_f64(ptr + 40, 6.0);
+    let _s6 = store_f64(ptr + 48, 7.0);
+    let _s7 = store_f64(ptr + 56, 8.0);
+    0
+};
+
+fn check_f64x8(ptr: i64) -> i64 = {
+    // hsum([1..8]) = 36; +splat(10) → hsum=116
+    let v = load_f64x8(ptr, 0);
+    let s = splat_f64x8(10.0);
+    let both = hsum_f64x8(v) + hsum_f64x8(v + s);
+    // 36 + 116 = 152
+    if f64_to_i64(both) == 152 { 0 } else { 1 }
+};
+
+fn check_i64x4() -> i64 = {
+    // splat(5) hsum = 20; splat(1) + splat(2) hsum = 12; total 32
+    let a = splat_i64x4(5);
+    let b = splat_i64x4(1);
+    let c = splat_i64x4(2);
+    if hsum_i64x4(a) + hsum_i64x4(b + c) == 32 { 0 } else { 1 }
+};
+
+fn main() -> i64 = {
+    let a = malloc(64);
+    let a8 = malloc(64);
+    let dst = malloc(64);
+    let ia = malloc(64);
+    let _i4 = init4(a);
+    let _i8 = init8(a8);
+    let _ii = init_i64_pair(ia);
+
+    let mut fails: i64 = 0;
+    // f64x4 checks
+    set fails = fails + check_hsum(a);
+    set fails = fails + check_splat(a);
+    set fails = fails + check_fma(a);
+    set fails = fails + check_min_max(a);
+    set fails = fails + check_store(a, dst);
+    // i64x2 checks
+    set fails = fails + check_hsum_i64(ia);
+    set fails = fails + check_splat_i64(ia);
+    set fails = fails + check_min_max_i64(ia);
+    // Wider-width checks
+    set fails = fails + check_f64x8(a8);
+    set fails = fails + check_i64x4();
+
+    let _p = println(fails);
+    let _fa = free(a);
+    let _f8 = free(a8);
+    let _fd = free(dst);
+    let _fia = free(ia);
+    fails
+};

@@ -1,5 +1,5 @@
 # BMB Development Roadmap
-Updated: 2026-04-15
+Updated: 2026-04-18
 
 ---
 
@@ -10,8 +10,8 @@ Bootstrap   ██████████████████░░ 98%   F
 Self-Host   ████████████████████ 99%   CLI 41개 (+ bmb bench), LSP 9개, Test Runner, REPL
 Benchmark   ████████████████████ 100%  309 빌드 ✅, 16+ FASTER, 0 FAIL, BMB > C+Rust
 Ecosystem   ████████████████░░░░ 82%   5 libs 140 @export, C headers, WASM, pytest 1,017+
-SIMD        ██████████████░░░░░░ 70%   v0.97 1급 타입 ✅ (f64xN, i{32,64}xN, u{32,64}xN)
-                                       Codegen: text backend ✅ / inkwell 타입만 / 라이브러리 pending
+SIMD        ████████████████░░░░ 82%   1급 타입 ✅ + text codegen ✅ + stdlib/simd 30 fns ✅ (Cycles 2246-2251)
+                                       perf bench infrastructure ✅ / inkwell BinOp pending
 ```
 
 ### 핵심 수치
@@ -154,6 +154,9 @@ v0.97        @export + --shared + FFI 안전성 (setjmp/longjmp, TLS)
              `@bench` microbenchmark attribute + `bmb bench` CLI
              `@test` attribute-driven discovery 통일
              3-Stage Fixed Point 유지 (Cycle 2237 검증)
+             stdlib/simd 모듈: hsum/splat/load/store/dot 30 fns (Cycles 2246-2251)
+             Copy+Call Vector codegen 수정 + -march=native 반영
+             SIMD dot-product 성능 실측: ILP=4 unroll로 scalar 대비 +7%
 
 ═══════════════════ 현재 위치: 배포/품질 단계 ═════════════════════════
 

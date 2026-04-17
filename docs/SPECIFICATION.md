@@ -1165,6 +1165,22 @@ Fixed-width SIMD vectors as primitive types (`f64x4`, `i32x8`, etc.). Element-wi
 
 Rationale: Performance > Everything — SIMD is the primary lever to beat C/Rust on numeric kernels. First-class type lets the type system guarantee lane uniformity without runtime checks.
 
+### D.1.1 stdlib/simd Intrinsics (v0.97, Cycles 2246-2256)
+
+Name-recognized intrinsic families, each lowering to a single LLVM `llvm.vector.*` or insertelement/GEP+load sequence:
+
+| Family | Count | Lowering |
+|--------|------:|----------|
+| `hsum_*` | 6 | `llvm.vector.reduce.{fadd,add}.v*` |
+| `splat_*` | 6 | `insertelement` + `shufflevector zeroinitializer` |
+| `load_*` | 6 | `getelementptr inbounds T, ptr` + `load <N x T>` |
+| `store_*` | 6 | `getelementptr inbounds T, ptr` + `store <N x T>` |
+| `dot_*` | 6 | pure-BMB composition `hsum(a * b)` |
+| `fma_*` | 2 | `llvm.fma.v*f64` |
+| `min_*` / `max_*` | 12 | `llvm.{minnum,maxnum,smin,smax}.v*` |
+
+Also in this wave: `Copy`/`Call`/`Return` codegen became Vector-aware, `Expr::Todo` lowering now emits type-correct zero for scalar numeric returns, text backend defaults to `-march=native` in Release.
+
 ### D.2 `@test` / `@bench` Attributes (v0.97)
 
 - `bmb test <file>` discovers `@test` OR `test_` prefix.

@@ -913,6 +913,11 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
 
         // v0.96.43: Add -ffunction-sections/-fdata-sections to enable linker dead code elimination
         cmd.args([opt_flag, "-ffunction-sections", "-fdata-sections", "-c", path_str(&ir_path)?, "-o", path_str(&obj_path)?]);
+        // v0.97 (Cycle 2250): -march=native parity with the inkwell path — required for
+        // AVX2 ymm/FMA lowering on SIMD intrinsics; otherwise clang targets baseline x86-64.
+        if matches!(config.opt_level, OptLevel::Release | OptLevel::Aggressive) {
+            cmd.arg("-march=native");
+        }
         // v0.96.40: Use MinGW target on Windows to avoid MSVC header conflicts
         #[cfg(target_os = "windows")]
         cmd.arg("--target=x86_64-pc-windows-gnu");
@@ -933,6 +938,9 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         let runtime_obj = config.output.with_file_name("runtime").with_extension(if cfg!(windows) { "obj" } else { "o" });
         let mut cmd = Command::new(&clang);
         cmd.args([opt_flag, "-ffunction-sections", "-fdata-sections", "-c", path_str(&runtime_path)?, "-o", path_str(&runtime_obj)?]);
+        if matches!(config.opt_level, OptLevel::Release | OptLevel::Aggressive) {
+            cmd.arg("-march=native");
+        }
         // v0.96.40: Use MinGW target on Windows to avoid MSVC header conflicts
         #[cfg(target_os = "windows")]
         cmd.arg("--target=x86_64-pc-windows-gnu");

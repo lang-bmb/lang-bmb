@@ -1,0 +1,106 @@
+// BMB Standard Library: simd
+// Hardware SIMD primitives mapped to LLVM vector intrinsics.
+//
+// Design (Cycle 2246+):
+//   Each function is recognized by name in codegen/llvm_text.rs and lowered
+//   to its matching `llvm.vector.reduce.*` or insert/shufflevector sequence.
+//   Bodies emit a harmless constant because the intrinsic-replacement happens
+//   at the call site and the declared body is dead code after codegen.
+//   (Native backend only — interpreter does not yet vectorize.)
+//
+// Naming:
+//   hsum_{T}{W}xN — horizontal sum reduction, vector → scalar T
+//   splat_{T}{W}xN — broadcast scalar T to every lane
+//   load_{T}{W}xN(base, idx) — typed vector load (`base` is an i64 pointer)
+//   store_{T}{W}xN(base, idx, v) — typed vector store
+
+// ============================================
+// Load / Store (typed, element-index addressing)
+// ============================================
+
+pub fn load_f64x4(base: i64, idx: i64) -> f64x4 = todo;
+pub fn load_f64x8(base: i64, idx: i64) -> f64x8 = todo;
+pub fn load_i32x4(base: i64, idx: i64) -> i32x4 = todo;
+pub fn load_i32x8(base: i64, idx: i64) -> i32x8 = todo;
+pub fn load_i64x2(base: i64, idx: i64) -> i64x2 = todo;
+pub fn load_i64x4(base: i64, idx: i64) -> i64x4 = todo;
+
+pub fn store_f64x4(base: i64, idx: i64, v: f64x4) -> () = ();
+pub fn store_f64x8(base: i64, idx: i64, v: f64x8) -> () = ();
+pub fn store_i32x4(base: i64, idx: i64, v: i32x4) -> () = ();
+pub fn store_i32x8(base: i64, idx: i64, v: i32x8) -> () = ();
+pub fn store_i64x2(base: i64, idx: i64, v: i64x2) -> () = ();
+pub fn store_i64x4(base: i64, idx: i64, v: i64x4) -> () = ();
+
+// ============================================
+// Splat (broadcast scalar → vector)
+// ============================================
+
+pub fn splat_f64x4(x: f64) -> f64x4 = todo;
+pub fn splat_f64x8(x: f64) -> f64x8 = todo;
+pub fn splat_i32x4(x: i32) -> i32x4 = todo;
+pub fn splat_i32x8(x: i32) -> i32x8 = todo;
+pub fn splat_i64x2(x: i64) -> i64x2 = todo;
+pub fn splat_i64x4(x: i64) -> i64x4 = todo;
+
+// ============================================
+// Horizontal sum (float)
+// ============================================
+
+pub fn hsum_f64x4(v: f64x4) -> f64 = todo;
+pub fn hsum_f64x8(v: f64x8) -> f64 = todo;
+
+// ============================================
+// Horizontal sum (signed integer)
+// ============================================
+
+pub fn hsum_i32x4(v: i32x4) -> i32 = todo;
+pub fn hsum_i32x8(v: i32x8) -> i32 = todo;
+pub fn hsum_i64x2(v: i64x2) -> i64 = todo;
+pub fn hsum_i64x4(v: i64x4) -> i64 = todo;
+
+// ============================================
+// Dot product (pure BMB composition — no codegen hook)
+//
+// Lowers to `fmul fast <N x T>` + `llvm.vector.reduce.fadd.*` — at `-O2`
+// LLVM recognizes the pattern and emits `vfmadd*` on AVX2/AVX-512 hosts.
+// ============================================
+
+pub fn dot_f64x4(a: f64x4, b: f64x4) -> f64 = hsum_f64x4(a * b);
+pub fn dot_f64x8(a: f64x8, b: f64x8) -> f64 = hsum_f64x8(a * b);
+pub fn dot_i32x4(a: i32x4, b: i32x4) -> i32 = hsum_i32x4(a * b);
+pub fn dot_i32x8(a: i32x8, b: i32x8) -> i32 = hsum_i32x8(a * b);
+pub fn dot_i64x2(a: i64x2, b: i64x2) -> i64 = hsum_i64x2(a * b);
+pub fn dot_i64x4(a: i64x4, b: i64x4) -> i64 = hsum_i64x4(a * b);
+
+// ============================================
+// Fused multiply-add: a * b + c (Cycle 2253)
+//
+// Single AVX2 `vfmadd213pd` — avoids the `a * b + c` fast-math contract
+// requirement that plain BMB `*` + `+` needs to fuse.
+// ============================================
+
+pub fn fma_f64x4(a: f64x4, b: f64x4, c: f64x4) -> f64x4 = todo;
+pub fn fma_f64x8(a: f64x8, b: f64x8, c: f64x8) -> f64x8 = todo;
+
+// ============================================
+// Min / Max (elementwise, Cycle 2254)
+//
+// Float ops use IEEE 754 `minNum`/`maxNum` (NaN-quiet).
+// Integer ops are signed; unsigned variants can be added later.
+// ============================================
+
+pub fn min_f64x4(a: f64x4, b: f64x4) -> f64x4 = todo;
+pub fn max_f64x4(a: f64x4, b: f64x4) -> f64x4 = todo;
+pub fn min_f64x8(a: f64x8, b: f64x8) -> f64x8 = todo;
+pub fn max_f64x8(a: f64x8, b: f64x8) -> f64x8 = todo;
+
+pub fn min_i32x4(a: i32x4, b: i32x4) -> i32x4 = todo;
+pub fn max_i32x4(a: i32x4, b: i32x4) -> i32x4 = todo;
+pub fn min_i32x8(a: i32x8, b: i32x8) -> i32x8 = todo;
+pub fn max_i32x8(a: i32x8, b: i32x8) -> i32x8 = todo;
+
+pub fn min_i64x2(a: i64x2, b: i64x2) -> i64x2 = todo;
+pub fn max_i64x2(a: i64x2, b: i64x2) -> i64x2 = todo;
+pub fn min_i64x4(a: i64x4, b: i64x4) -> i64x4 = todo;
+pub fn max_i64x4(a: i64x4, b: i64x4) -> i64x4 = todo;

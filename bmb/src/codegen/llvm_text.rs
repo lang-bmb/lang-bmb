@@ -1179,6 +1179,30 @@ impl TextCodeGen {
         // v0.96.16: llvm.assume for contract-driven optimization
         // Communicates pre-condition facts to LLVM optimizer (vectorization, LICM, GVN)
         writeln!(out, "declare void @llvm.assume(i1 noundef)")?;
+        // v0.97 (Cycle 2246): SIMD horizontal reduction intrinsics for stdlib/simd
+        // Float reductions take a scalar start value (use 0.0 for plain sum).
+        writeln!(out, "declare double @llvm.vector.reduce.fadd.v4f64(double, <4 x double>)")?;
+        writeln!(out, "declare double @llvm.vector.reduce.fadd.v8f64(double, <8 x double>)")?;
+        writeln!(out, "declare i32 @llvm.vector.reduce.add.v4i32(<4 x i32>)")?;
+        writeln!(out, "declare i32 @llvm.vector.reduce.add.v8i32(<8 x i32>)")?;
+        writeln!(out, "declare i64 @llvm.vector.reduce.add.v2i64(<2 x i64>)")?;
+        writeln!(out, "declare i64 @llvm.vector.reduce.add.v4i64(<4 x i64>)")?;
+        // v0.97 (Cycle 2253): SIMD fused multiply-add.
+        writeln!(out, "declare <4 x double> @llvm.fma.v4f64(<4 x double>, <4 x double>, <4 x double>)")?;
+        writeln!(out, "declare <8 x double> @llvm.fma.v8f64(<8 x double>, <8 x double>, <8 x double>)")?;
+        // v0.97 (Cycle 2254): SIMD min/max (elementwise).
+        writeln!(out, "declare <4 x double> @llvm.minnum.v4f64(<4 x double>, <4 x double>)")?;
+        writeln!(out, "declare <4 x double> @llvm.maxnum.v4f64(<4 x double>, <4 x double>)")?;
+        writeln!(out, "declare <8 x double> @llvm.minnum.v8f64(<8 x double>, <8 x double>)")?;
+        writeln!(out, "declare <8 x double> @llvm.maxnum.v8f64(<8 x double>, <8 x double>)")?;
+        writeln!(out, "declare <4 x i32> @llvm.smin.v4i32(<4 x i32>, <4 x i32>)")?;
+        writeln!(out, "declare <4 x i32> @llvm.smax.v4i32(<4 x i32>, <4 x i32>)")?;
+        writeln!(out, "declare <8 x i32> @llvm.smin.v8i32(<8 x i32>, <8 x i32>)")?;
+        writeln!(out, "declare <8 x i32> @llvm.smax.v8i32(<8 x i32>, <8 x i32>)")?;
+        writeln!(out, "declare <2 x i64> @llvm.smin.v2i64(<2 x i64>, <2 x i64>)")?;
+        writeln!(out, "declare <2 x i64> @llvm.smax.v2i64(<2 x i64>, <2 x i64>)")?;
+        writeln!(out, "declare <4 x i64> @llvm.smin.v4i64(<4 x i64>, <4 x i64>)")?;
+        writeln!(out, "declare <4 x i64> @llvm.smax.v4i64(<4 x i64>, <4 x i64>)")?;
         writeln!(out)?;
 
         // v0.34.2: Memory allocation for Phase 34.2 Dynamic Collections
@@ -2558,14 +2582,7 @@ impl TextCodeGen {
                             writeln!(out, "  store {} {}, ptr %{}.addr", dest_ty, v, dest.name)?;
                         }
                         Constant::Float(f) => {
-                            // Format float in LLVM-compatible way (scientific notation)
-                            let f_str = if f.is_nan() {
-                                "0x7FF8000000000000".to_string()
-                            } else if f.is_infinite() {
-                                if f.is_sign_positive() { "0x7FF0000000000000".to_string() } else { "0xFFF0000000000000".to_string() }
-                            } else {
-                                format!("{:.6e}", f)
-                            };
+                            let f_str = self.fmt_f64_lit(*f);
                             writeln!(out, "  store {} {}, ptr %{}.addr", dest_ty, f_str, dest.name)?;
                         }
                         Constant::Unit => {
@@ -2602,14 +2619,7 @@ impl TextCodeGen {
                             writeln!(out, "  %{} = add {} 0, {}", dest_name, const_ty, v)?;
                         }
                         Constant::Float(f) => {
-                            // Format float in LLVM-compatible way (scientific notation)
-                            let f_str = if f.is_nan() {
-                                "0x7FF8000000000000".to_string()
-                            } else if f.is_infinite() {
-                                if f.is_sign_positive() { "0x7FF0000000000000".to_string() } else { "0xFFF0000000000000".to_string() }
-                            } else {
-                                format!("{:.6e}", f)
-                            };
+                            let f_str = self.fmt_f64_lit(*f);
                             writeln!(out, "  %{} = fadd fast {} 0.0, {}", dest_name, const_ty, f_str)?;
                         }
                         Constant::Unit => {
@@ -2636,6 +2646,30 @@ impl TextCodeGen {
             }
 
             MirInst::Copy { dest, src } => {
+                // v0.97 (Cycle 2250): SIMD Vector Copy — place_types collapses Vector
+                // to "ptr" which would emit a bogus `load/store ptr` for vector locals.
+                // Short-circuit when either side is Vector-typed.
+                if let Some(vec_mir_ty) = self.infer_place_mir_type(src, func)
+                    && matches!(vec_mir_ty, MirType::Vector { .. })
+                {
+                    let vec_ty = self.mir_type_to_llvm_owned(&vec_mir_ty);
+                    let align = match &vec_mir_ty {
+                        MirType::Vector { lanes, .. } => Self::vector_alloca_align(&vec_mir_ty, *lanes),
+                        _ => 8,
+                    };
+                    let src_val = if local_names.contains(&src.name) {
+                        let load_name = self.unique_name(&format!("{}.vload", src.name), name_counts);
+                        writeln!(out, "  %{} = load {}, ptr %{}.addr, align {}", load_name, vec_ty, src.name, align)?;
+                        format!("%{}", load_name)
+                    } else {
+                        format!("%{}", src.name)
+                    };
+                    if local_names.contains(&dest.name) {
+                        writeln!(out, "  store {} {}, ptr %{}.addr, align {}", vec_ty, src_val, dest.name, align)?;
+                    }
+                    return Ok(());
+                }
+
                 // v0.55: Check if source is a tuple variable - use actual tuple type
                 let (ty, is_tuple) = if let Some(tuple_type) = tuple_var_types.get(&src.name) {
                     (tuple_type.as_str(), true)
@@ -3158,6 +3192,298 @@ impl TextCodeGen {
                         } else {
                             let dest_name = self.unique_name(&d.name, name_counts);
                             writeln!(out, "  %{} = call double @{}(double {})", dest_name, intrinsic, f64_val)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
+                // v0.97 (Cycle 2253): SIMD fused multiply-add.
+                //   fma_f64x4(a, b, c) → llvm.fma.v4f64(a, b, c)  == a * b + c
+                // Uses `Vector`-aware arg loading via the pattern established in 2246.
+                if args.len() == 3
+                    && let Some((vec_ty, intrinsic, align)) = match fn_name.as_str() {
+                        "fma_f64x4" => Some(("<4 x double>", "llvm.fma.v4f64", 32u32)),
+                        "fma_f64x8" => Some(("<8 x double>", "llvm.fma.v8f64", 64)),
+                        _ => None,
+                    }
+                {
+                    let d = dest.as_ref().expect("fma_* has a return value");
+                    let load_vec = |opd: &Operand, suffix: &str, out: &mut String| -> TextCodeGenResult<String> {
+                        match opd {
+                            Operand::Place(p) if local_names.contains(&p.name) => {
+                                let n = format!("{}.{}.{}.fma", d.name, p.name, suffix);
+                                writeln!(out, "  %{} = load {}, ptr %{}.addr, align {}", n, vec_ty, p.name, align)?;
+                                Ok(format!("%{}", n))
+                            }
+                            Operand::Place(p) => Ok(format!("%{}", p.name)),
+                            _ => Ok(self.format_operand_with_strings(opd, string_table)),
+                        }
+                    };
+                    let a = load_vec(&args[0], "a", out)?;
+                    let b = load_vec(&args[1], "b", out)?;
+                    let c = load_vec(&args[2], "c", out)?;
+                    let temp = format!("{}.fma", d.name);
+                    writeln!(out, "  %{} = call {} @{}({} {}, {} {}, {} {})", temp, vec_ty, intrinsic, vec_ty, a, vec_ty, b, vec_ty, c)?;
+                    if local_names.contains(&d.name) {
+                        writeln!(out, "  store {} %{}, ptr %{}.addr, align {}", vec_ty, temp, d.name, align)?;
+                    }
+                    return Ok(());
+                }
+
+                // v0.97 (Cycle 2254): SIMD min/max — elementwise.
+                //   min_f64x4(a, b) → llvm.minnum.v4f64(a, b)  (IEEE 754 minNum)
+                //   min_i32x8(a, b) → llvm.smin.v8i32(a, b)    (signed integer min)
+                if args.len() == 2
+                    && let Some((vec_ty, intrinsic, align)) = match fn_name.as_str() {
+                        "min_f64x4" => Some(("<4 x double>", "llvm.minnum.v4f64", 32u32)),
+                        "max_f64x4" => Some(("<4 x double>", "llvm.maxnum.v4f64", 32)),
+                        "min_f64x8" => Some(("<8 x double>", "llvm.minnum.v8f64", 64)),
+                        "max_f64x8" => Some(("<8 x double>", "llvm.maxnum.v8f64", 64)),
+                        "min_i32x4" => Some(("<4 x i32>", "llvm.smin.v4i32", 16)),
+                        "max_i32x4" => Some(("<4 x i32>", "llvm.smax.v4i32", 16)),
+                        "min_i32x8" => Some(("<8 x i32>", "llvm.smin.v8i32", 32)),
+                        "max_i32x8" => Some(("<8 x i32>", "llvm.smax.v8i32", 32)),
+                        "min_i64x2" => Some(("<2 x i64>", "llvm.smin.v2i64", 16)),
+                        "max_i64x2" => Some(("<2 x i64>", "llvm.smax.v2i64", 16)),
+                        "min_i64x4" => Some(("<4 x i64>", "llvm.smin.v4i64", 32)),
+                        "max_i64x4" => Some(("<4 x i64>", "llvm.smax.v4i64", 32)),
+                        _ => None,
+                    }
+                {
+                    let d = dest.as_ref().expect("min/max_* has a return value");
+                    let load_vec = |opd: &Operand, suffix: &str, out: &mut String| -> TextCodeGenResult<String> {
+                        match opd {
+                            Operand::Place(p) if local_names.contains(&p.name) => {
+                                let n = format!("{}.{}.{}.mm", d.name, p.name, suffix);
+                                writeln!(out, "  %{} = load {}, ptr %{}.addr, align {}", n, vec_ty, p.name, align)?;
+                                Ok(format!("%{}", n))
+                            }
+                            Operand::Place(p) => Ok(format!("%{}", p.name)),
+                            _ => Ok(self.format_operand_with_strings(opd, string_table)),
+                        }
+                    };
+                    let a = load_vec(&args[0], "a", out)?;
+                    let b = load_vec(&args[1], "b", out)?;
+                    let temp = format!("{}.mm", d.name);
+                    writeln!(out, "  %{} = call {} @{}({} {}, {} {})", temp, vec_ty, intrinsic, vec_ty, a, vec_ty, b)?;
+                    if local_names.contains(&d.name) {
+                        writeln!(out, "  store {} %{}, ptr %{}.addr, align {}", vec_ty, temp, d.name, align)?;
+                    }
+                    return Ok(());
+                }
+
+                // v0.97 (Cycle 2248): SIMD load/store intrinsics for stdlib/simd.
+                // `load_{T}xN(base: i64, idx: i64) -> {T}xN`
+                //   %ptr = inttoptr i64 %base to ptr
+                //   %gep = getelementptr inbounds T, ptr %ptr, i64 %idx
+                //   %v   = load <N x T>, ptr %gep, align elem_align
+                // `store_{T}xN(base: i64, idx: i64, v: {T}xN) -> ()`
+                //   (mirror but store instead of load)
+                if args.len() == 2
+                    && let Some((vec_ty, elem_ty, elem_align)) = match fn_name.as_str() {
+                        "load_f64x4" => Some(("<4 x double>", "double", 8u32)),
+                        "load_f64x8" => Some(("<8 x double>", "double", 8)),
+                        "load_i32x4" => Some(("<4 x i32>", "i32", 4)),
+                        "load_i32x8" => Some(("<8 x i32>", "i32", 4)),
+                        "load_i64x2" => Some(("<2 x i64>", "i64", 8)),
+                        "load_i64x4" => Some(("<4 x i64>", "i64", 8)),
+                        _ => None,
+                    }
+                {
+                    // Per-instruction counter: `i` might be passed to several load_*
+                    // calls in the same block; the helper load name must be unique.
+                    let ctr = name_counts.entry("vload_op".to_string()).or_insert(0);
+                    let uniq = *ctr;
+                    *ctr += 1;
+                    let load_i64 = |opd: &Operand, suffix: &str, out: &mut String| -> TextCodeGenResult<String> {
+                        match opd {
+                            Operand::Place(p) if local_names.contains(&p.name) => {
+                                let n = format!("{}.{}.{}.load", p.name, suffix, uniq);
+                                writeln!(out, "  %{} = load i64, ptr %{}.addr", n, p.name)?;
+                                Ok(format!("%{}", n))
+                            }
+                            Operand::Place(p) if narrowed_param_names.contains(&p.name) => {
+                                let n = format!("{}.{}.{}.sext", p.name, suffix, uniq);
+                                writeln!(out, "  %{} = sext i32 %{} to i64", n, p.name)?;
+                                Ok(format!("%{}", n))
+                            }
+                            _ => Ok(self.format_operand_with_strings(opd, string_table)),
+                        }
+                    };
+                    let base_val = load_i64(&args[0], "vload.base", out)?;
+                    let idx_val = load_i64(&args[1], "vload.idx", out)?;
+                    let d = dest.as_ref().expect("load_* intrinsic has a return value");
+                    let base_ptr = format!("{}.vload.{}.ptr", d.name, uniq);
+                    let elem_ptr = format!("{}.vload.{}.gep", d.name, uniq);
+                    let result_name = format!("{}.vload.{}", d.name, uniq);
+                    writeln!(out, "  %{} = inttoptr i64 {} to ptr", base_ptr, base_val)?;
+                    writeln!(out, "  %{} = getelementptr inbounds {}, ptr %{}, i64 {}", elem_ptr, elem_ty, base_ptr, idx_val)?;
+                    writeln!(out, "  %{} = load {}, ptr %{}, align {}", result_name, vec_ty, elem_ptr, elem_align)?;
+                    if local_names.contains(&d.name) {
+                        let align_v = match vec_ty {
+                            "<4 x double>" | "<8 x i32>" | "<4 x i64>" => 32u32,
+                            "<8 x double>" => 64,
+                            "<4 x i32>" | "<2 x i64>" => 16,
+                            _ => 8,
+                        };
+                        writeln!(out, "  store {} %{}, ptr %{}.addr, align {}", vec_ty, result_name, d.name, align_v)?;
+                    }
+                    return Ok(());
+                }
+                if args.len() == 3
+                    && let Some((vec_ty, elem_ty, elem_align, vec_align)) = match fn_name.as_str() {
+                        "store_f64x4" => Some(("<4 x double>", "double", 8u32, 32u32)),
+                        "store_f64x8" => Some(("<8 x double>", "double", 8, 64)),
+                        "store_i32x4" => Some(("<4 x i32>", "i32", 4, 16)),
+                        "store_i32x8" => Some(("<8 x i32>", "i32", 4, 32)),
+                        "store_i64x2" => Some(("<2 x i64>", "i64", 8, 16)),
+                        "store_i64x4" => Some(("<4 x i64>", "i64", 8, 32)),
+                        _ => None,
+                    }
+                {
+                    let load_i64 = |opd: &Operand, suffix: &str, out: &mut String| -> TextCodeGenResult<String> {
+                        match opd {
+                            Operand::Place(p) if local_names.contains(&p.name) => {
+                                let n = format!("{}.{}.load", p.name, suffix);
+                                writeln!(out, "  %{} = load i64, ptr %{}.addr", n, p.name)?;
+                                Ok(format!("%{}", n))
+                            }
+                            Operand::Place(p) if narrowed_param_names.contains(&p.name) => {
+                                let n = format!("{}.{}.sext", p.name, suffix);
+                                writeln!(out, "  %{} = sext i32 %{} to i64", n, p.name)?;
+                                Ok(format!("%{}", n))
+                            }
+                            _ => Ok(self.format_operand_with_strings(opd, string_table)),
+                        }
+                    };
+                    // Unique prefix — store has no dest, so use an instruction-local counter.
+                    let ctr = name_counts.entry("vstore_op".to_string()).or_insert(0);
+                    let idx_tag = *ctr;
+                    *ctr += 1;
+                    let base_val = load_i64(&args[0], &format!("vstore{}.base", idx_tag), out)?;
+                    let idx_val = load_i64(&args[1], &format!("vstore{}.idx", idx_tag), out)?;
+                    let v_val = match &args[2] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let n = format!("vstore{}.v.load", idx_tag);
+                            writeln!(out, "  %{} = load {}, ptr %{}.addr, align {}", n, vec_ty, p.name, vec_align)?;
+                            format!("%{}", n)
+                        }
+                        Operand::Place(p) => format!("%{}", p.name),
+                        _ => self.format_operand_with_strings(&args[2], string_table),
+                    };
+                    let base_ptr = format!("vstore{}.ptr", idx_tag);
+                    let elem_ptr = format!("vstore{}.gep", idx_tag);
+                    writeln!(out, "  %{} = inttoptr i64 {} to ptr", base_ptr, base_val)?;
+                    writeln!(out, "  %{} = getelementptr inbounds {}, ptr %{}, i64 {}", elem_ptr, elem_ty, base_ptr, idx_val)?;
+                    writeln!(out, "  store {} {}, ptr %{}, align {}", vec_ty, v_val, elem_ptr, elem_align)?;
+                    return Ok(());
+                }
+
+                // v0.97 (Cycle 2247): SIMD splat intrinsics for stdlib/simd.
+                // Broadcasts a scalar to every lane of a vector via
+                //   insertelement <N x T> poison, T %x, i64 0
+                //   shufflevector <N x T> %v0, <N x T> poison, <N x i32> zeroinitializer
+                // Dest must be a Vector-typed local whose alloca is `<N x T>`.
+                if args.len() == 1
+                    && let Some((vec_ty, scalar_ty, lanes, align)) = match fn_name.as_str() {
+                        "splat_f64x4" => Some(("<4 x double>", "double", 4usize, 32u32)),
+                        "splat_f64x8" => Some(("<8 x double>", "double", 8, 64)),
+                        "splat_i32x4" => Some(("<4 x i32>", "i32", 4, 16)),
+                        "splat_i32x8" => Some(("<8 x i32>", "i32", 8, 32)),
+                        "splat_i64x2" => Some(("<2 x i64>", "i64", 2, 16)),
+                        "splat_i64x4" => Some(("<4 x i64>", "i64", 4, 32)),
+                        _ => None,
+                    }
+                {
+                    let dest_tag = dest.as_ref().map(|d| d.name.clone()).unwrap_or_else(|| "splat".to_string());
+                    let arg_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("{}.{}.splat.arg", dest_tag, p.name);
+                            let load_ty = place_types.get(&p.name).copied().unwrap_or(scalar_ty);
+                            writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, load_ty, p.name)?;
+                            // Convert if element type differs from load type
+                            if load_ty != scalar_ty {
+                                let conv = format!("{}.{}.splat.conv", dest_tag, p.name);
+                                match (load_ty, scalar_ty) {
+                                    ("i64", "i32") => writeln!(out, "  %{} = trunc i64 %{} to i32", conv, load_name)?,
+                                    ("i32", "i64") => writeln!(out, "  %{} = sext i32 %{} to i64", conv, load_name)?,
+                                    ("i64", "double") => writeln!(out, "  %{} = sitofp i64 %{} to double", conv, load_name)?,
+                                    _ => writeln!(out, "  %{} = bitcast {} %{} to {}", conv, load_ty, load_name, scalar_ty)?,
+                                }
+                                format!("%{}", conv)
+                            } else {
+                                format!("%{}", load_name)
+                            }
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    if let Some(d) = dest {
+                        // Emit insertelement at lane 0 + shufflevector broadcast
+                        let ie_name = format!("{}.splat.ie", d.name);
+                        let sv_name = format!("{}.splat", d.name);
+                        writeln!(out, "  %{} = insertelement {} poison, {} {}, i64 0", ie_name, vec_ty, scalar_ty, arg_val)?;
+                        writeln!(out, "  %{} = shufflevector {} %{}, {} poison, <{} x i32> zeroinitializer", sv_name, vec_ty, ie_name, vec_ty, lanes)?;
+                        if local_names.contains(&d.name) {
+                            writeln!(out, "  store {} %{}, ptr %{}.addr, align {}", vec_ty, sv_name, d.name, align)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
+                // v0.97 (Cycle 2246): SIMD horizontal sum intrinsics for stdlib/simd.
+                // Maps hsum_f64x4/hsum_f64x8 → llvm.vector.reduce.fadd (float),
+                // hsum_i{32,64}x{2,4,8} → llvm.vector.reduce.add (integer).
+                // Vector arg is loaded from its alloca (Vector locals/params stored there).
+                if args.len() == 1
+                    && let Some((vec_ty, scalar_ty, intrinsic, align)) = match fn_name.as_str() {
+                        "hsum_f64x4" => Some(("<4 x double>", "double", "llvm.vector.reduce.fadd.v4f64", 32u32)),
+                        "hsum_f64x8" => Some(("<8 x double>", "double", "llvm.vector.reduce.fadd.v8f64", 64)),
+                        "hsum_i32x4" => Some(("<4 x i32>", "i32", "llvm.vector.reduce.add.v4i32", 16)),
+                        "hsum_i32x8" => Some(("<8 x i32>", "i32", "llvm.vector.reduce.add.v8i32", 32)),
+                        "hsum_i64x2" => Some(("<2 x i64>", "i64", "llvm.vector.reduce.add.v2i64", 16)),
+                        "hsum_i64x4" => Some(("<4 x i64>", "i64", "llvm.vector.reduce.add.v4i64", 32)),
+                        _ => None,
+                    }
+                {
+                    let dest_tag = dest.as_ref().map(|d| d.name.clone()).unwrap_or_else(|| {
+                        let c = name_counts.entry("hsum_op".to_string()).or_insert(0);
+                        let t = format!("hsum{}", *c);
+                        *c += 1;
+                        t
+                    });
+                    let arg_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("{}.{}.hsum.arg", dest_tag, p.name);
+                            writeln!(out, "  %{} = load {}, ptr %{}.addr, align {}", load_name, vec_ty, p.name, align)?;
+                            format!("%{}", load_name)
+                        }
+                        Operand::Place(p) => format!("%{}", p.name),
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    let is_float = scalar_ty == "double";
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let temp_name = format!("{}.hsum", d.name);
+                            if is_float {
+                                writeln!(out, "  %{} = call {} @{}({} 0.0, {} {})", temp_name, scalar_ty, intrinsic, scalar_ty, vec_ty, arg_val)?;
+                            } else {
+                                writeln!(out, "  %{} = call {} @{}({} {})", temp_name, scalar_ty, intrinsic, vec_ty, arg_val)?;
+                            }
+                            let dest_store_ty = place_types.get(&d.name).copied().unwrap_or(scalar_ty);
+                            if dest_store_ty == "i64" && scalar_ty == "i32" {
+                                let sext = format!("{}.hsum.sext", d.name);
+                                writeln!(out, "  %{} = sext i32 %{} to i64", sext, temp_name)?;
+                                writeln!(out, "  store i64 %{}, ptr %{}.addr", sext, d.name)?;
+                            } else {
+                                writeln!(out, "  store {} %{}, ptr %{}.addr", scalar_ty, temp_name, d.name)?;
+                            }
+                        } else {
+                            let dest_name = self.unique_name(&d.name, name_counts);
+                            if is_float {
+                                writeln!(out, "  %{} = call {} @{}({} 0.0, {} {})", dest_name, scalar_ty, intrinsic, scalar_ty, vec_ty, arg_val)?;
+                            } else {
+                                writeln!(out, "  %{} = call {} @{}({} {})", dest_name, scalar_ty, intrinsic, vec_ty, arg_val)?;
+                            }
                         }
                     }
                     return Ok(());
@@ -3988,7 +4314,7 @@ impl TextCodeGen {
                             writeln!(out, "  %{} = load double, ptr %{}.addr", load_name, p.name)?;
                             format!("%{}", load_name)
                         }
-                        Operand::Constant(crate::mir::Constant::Float(f)) => format!("{:e}", f),
+                        Operand::Constant(crate::mir::Constant::Float(f)) => self.fmt_f64_lit(*f),
                         _ => self.format_operand_with_strings(&args[1], string_table),
                     };
 
@@ -5144,6 +5470,28 @@ impl TextCodeGen {
                 // v0.51.2: Track (type, value, is_string_literal) for cstr optimization
                 let mut arg_vals: Vec<(String, String, bool)> = Vec::new();
                 for (i, arg) in args.iter().enumerate() {
+                    // v0.97 (Cycle 2249): SIMD Vector args pass by value as `<N x T>`.
+                    // The scalar `place_types` path collapses Vector to "ptr" which
+                    // produces invalid `ptr %a` in the call — detect and handle first.
+                    if let Some(vec_mir_ty) = self.operand_vector_type(arg, func) {
+                        let vec_ty_str = self.mir_type_to_llvm_owned(&vec_mir_ty);
+                        let align = match &vec_mir_ty {
+                            MirType::Vector { lanes, .. } => Self::vector_alloca_align(&vec_mir_ty, *lanes),
+                            _ => 8,
+                        };
+                        let val = match arg {
+                            Operand::Place(p) if local_names.contains(&p.name) => {
+                                let load_name = format!("{}.{}.arg{}", call_base, p.name, i);
+                                writeln!(out, "  %{} = load {}, ptr %{}.addr, align {}", load_name, vec_ty_str, p.name, align)?;
+                                format!("%{}", load_name)
+                            }
+                            Operand::Place(p) => format!("%{}", p.name),
+                            _ => self.format_operand_with_strings(arg, string_table),
+                        };
+                        arg_vals.push((vec_ty_str, val, false));
+                        continue;
+                    }
+
                     let ty = match arg {
                         Operand::Constant(c) => self.constant_type(c),
                         Operand::Place(p) => place_types.get(&p.name).copied()
@@ -7378,7 +7726,25 @@ impl TextCodeGen {
                             }
                         }
                     } else {
-                        writeln!(out, "  ret {} {}", ty, self.format_operand_with_strings_and_narrowing(val, string_table, narrowed_param_names))?;
+                        // v0.97 (Cycle 2254): Unit constant in a typed return slot would
+                        // emit `ret double 0` (invalid LLVM). Substitute a type-appropriate
+                        // literal. This happens when `= todo` lowers to `Constant::Unit`.
+                        let formatted = if matches!(val, Operand::Constant(Constant::Unit)) {
+                            match ty {
+                                "double" => "0.0".to_string(),
+                                "float" => "0.0".to_string(),
+                                "ptr" => "null".to_string(),
+                                "void" => String::new(),
+                                _ => self.format_operand_with_strings_and_narrowing(val, string_table, narrowed_param_names),
+                            }
+                        } else {
+                            self.format_operand_with_strings_and_narrowing(val, string_table, narrowed_param_names)
+                        };
+                        if ty == "void" {
+                            writeln!(out, "  ret void")?;
+                        } else {
+                            writeln!(out, "  ret {} {}", ty, formatted)?;
+                        }
                     }
                 }
             }
@@ -7634,6 +8000,24 @@ impl TextCodeGen {
         }
     }
 
+    /// v0.97 (Cycle 2256): Canonical LLVM literal for an f64 constant.
+    /// Uses hex-bit encoding for NaN/Inf (exact) and `{:.6e}` decimal form
+    /// for finite values (LLVM rejects `{:e}` e.g. `1e0` in TBAA-annotated
+    /// stores). Centralized so a single fix covers all emit paths.
+    fn fmt_f64_lit(&self, f: f64) -> String {
+        if f.is_nan() {
+            "0x7FF8000000000000".to_string()
+        } else if f.is_infinite() {
+            if f.is_sign_positive() {
+                "0x7FF0000000000000".to_string()
+            } else {
+                "0xFFF0000000000000".to_string()
+            }
+        } else {
+            format!("{:.6e}", f)
+        }
+    }
+
     /// Get LLVM type for a constant
     fn constant_type(&self, c: &Constant) -> &'static str {
         match c {
@@ -7651,21 +8035,9 @@ impl TextCodeGen {
     fn format_constant(&self, c: &Constant) -> String {
         match c {
             Constant::Int(n) => n.to_string(),
-            // v0.34: LLVM requires specific float format (e.g., 4.000000e+00 not 4e0)
-            Constant::Float(f) => {
-                // Use LLVM-compatible scientific notation format
-                if f.is_nan() {
-                    "0x7FF8000000000000".to_string() // NaN bit pattern
-                } else if f.is_infinite() {
-                    if f.is_sign_positive() {
-                        "0x7FF0000000000000".to_string() // +Inf
-                    } else {
-                        "0xFFF0000000000000".to_string() // -Inf
-                    }
-                } else {
-                    format!("{:.6e}", f)
-                }
-            }
+            // v0.34: LLVM requires specific float format (e.g., 4.000000e+00 not 4e0).
+            // v0.97 (Cycle 2256): Delegated to `fmt_f64_lit` helper.
+            Constant::Float(f) => self.fmt_f64_lit(*f),
             Constant::Bool(b) => if *b { "1" } else { "0" }.to_string(),
             Constant::String(s) => format!("\"{}\"", s),
             // v0.64: Character constant (Unicode codepoint)
@@ -7820,6 +8192,11 @@ impl TextCodeGen {
             "sqrt" | "sin" | "cos" | "floor" | "ceil" | "fabs" | "pow_f64"
             | "i64_to_f64" | "i32_to_f64"
             | "load_f64" => "double",
+
+            // v0.97 (Cycle 2246): SIMD horizontal sum — returns vector element scalar.
+            "hsum_f64x4" | "hsum_f64x8" => "double",
+            "hsum_i32x4" | "hsum_i32x8" => "i32",
+            "hsum_i64x2" | "hsum_i64x4" => "i64",
 
             // i64 return - String operations (both full and wrapper names)
             // v0.46: byte_at added as preferred name (same as interpreter)

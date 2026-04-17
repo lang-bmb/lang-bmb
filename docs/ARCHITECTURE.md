@@ -435,6 +435,13 @@ Backend code generation.
 - Vector params/returns: `<N x T> noundef` by value (no nonnull/deref).
 - `codegen/llvm.rs` (inkwell) has type mapping parity but BinOp emission pending full parity (Rule 7 follow-up).
 
+**SIMD intrinsic dispatch (Cycles 2246-2256):**
+- Name-based recognition in the `MirInst::Call` handler (like `sqrt` / `pow_f64`).
+- Families: `hsum_*`, `splat_*`, `load_*`, `store_*`, `fma_*`, `min_*`, `max_*` — each emits a single LLVM vector intrinsic call or lowered insertelement/shufflevector sequence.
+- `Copy`-for-Vector, Call-arg Vector passing, and Return `Constant::Unit` all use Vector-aware paths to preserve `<N x T>` type instead of collapsing to `"ptr"`.
+- `fmt_f64_lit` helper centralizes NaN/Inf/finite LLVM-literal formatting — prevents `{:e}` → invalid `1e0` regression.
+- Native build passes `-march=native` in Release for AVX2/FMA codegen parity with the inkwell path.
+
 ### LSP (`bmb/src/lsp/`)
 
 Language Server Protocol implementation.
