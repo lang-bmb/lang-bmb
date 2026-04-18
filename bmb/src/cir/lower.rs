@@ -1370,6 +1370,8 @@ impl CirLowerer {
                 format!("Vector_x{}", lanes),
                 vec![self.lower_type(elem)],
             ),
+            // v0.97 (Cycle 2283): SIMD mask — placeholder, paralleling Vector.
+            Type::Mask { lanes } => CirType::Generic(format!("Mask_x{}", lanes), vec![]),
         }
     }
 }

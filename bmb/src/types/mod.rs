@@ -1201,6 +1201,8 @@ impl TypeChecker {
             Type::Vector { elem, .. } => {
                 self.mark_type_names_used(elem);
             }
+            // v0.97 (Cycle 2283): SIMD mask — primitive, no names to track.
+            Type::Mask { .. } => {}
         }
     }
 
@@ -9165,6 +9167,8 @@ impl TypeChecker {
             Type::Scope => "Scope".to_string(),
             // v0.97 (Cycle 2215+): SIMD vector type
             Type::Vector { elem, lanes } => format!("{}x{}", self.type_to_string(elem), lanes),
+            // v0.97 (Cycle 2283): SIMD mask type
+            Type::Mask { lanes } => format!("mask{lanes}"),
         }
     }
 

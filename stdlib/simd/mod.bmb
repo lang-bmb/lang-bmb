@@ -104,3 +104,87 @@ pub fn min_i64x2(a: i64x2, b: i64x2) -> i64x2 = todo;
 pub fn max_i64x2(a: i64x2, b: i64x2) -> i64x2 = todo;
 pub fn min_i64x4(a: i64x4, b: i64x4) -> i64x4 = todo;
 pub fn max_i64x4(a: i64x4, b: i64x4) -> i64x4 = todo;
+
+// ============================================
+// Comparison (Cycle 2284): VxN cmp -> maskN
+//
+// Float ops use ordered IEEE 754 (`fcmp o*`); integer ops are signed
+// (`icmp s{lt,gt,le,ge}` / `icmp eq`/`ne`). Unsigned integer cmps
+// can be added later when needed.
+// ============================================
+
+// f64x4 -> mask4
+pub fn cmp_eq_f64x4(a: f64x4, b: f64x4) -> mask4 = todo;
+pub fn cmp_ne_f64x4(a: f64x4, b: f64x4) -> mask4 = todo;
+pub fn cmp_lt_f64x4(a: f64x4, b: f64x4) -> mask4 = todo;
+pub fn cmp_le_f64x4(a: f64x4, b: f64x4) -> mask4 = todo;
+pub fn cmp_gt_f64x4(a: f64x4, b: f64x4) -> mask4 = todo;
+pub fn cmp_ge_f64x4(a: f64x4, b: f64x4) -> mask4 = todo;
+
+// f64x8 -> mask8
+pub fn cmp_eq_f64x8(a: f64x8, b: f64x8) -> mask8 = todo;
+pub fn cmp_ne_f64x8(a: f64x8, b: f64x8) -> mask8 = todo;
+pub fn cmp_lt_f64x8(a: f64x8, b: f64x8) -> mask8 = todo;
+pub fn cmp_le_f64x8(a: f64x8, b: f64x8) -> mask8 = todo;
+pub fn cmp_gt_f64x8(a: f64x8, b: f64x8) -> mask8 = todo;
+pub fn cmp_ge_f64x8(a: f64x8, b: f64x8) -> mask8 = todo;
+
+// i32x4 -> mask4 (signed)
+pub fn cmp_eq_i32x4(a: i32x4, b: i32x4) -> mask4 = todo;
+pub fn cmp_ne_i32x4(a: i32x4, b: i32x4) -> mask4 = todo;
+pub fn cmp_lt_i32x4(a: i32x4, b: i32x4) -> mask4 = todo;
+pub fn cmp_le_i32x4(a: i32x4, b: i32x4) -> mask4 = todo;
+pub fn cmp_gt_i32x4(a: i32x4, b: i32x4) -> mask4 = todo;
+pub fn cmp_ge_i32x4(a: i32x4, b: i32x4) -> mask4 = todo;
+
+// i32x8 -> mask8 (signed)
+pub fn cmp_eq_i32x8(a: i32x8, b: i32x8) -> mask8 = todo;
+pub fn cmp_ne_i32x8(a: i32x8, b: i32x8) -> mask8 = todo;
+pub fn cmp_lt_i32x8(a: i32x8, b: i32x8) -> mask8 = todo;
+pub fn cmp_le_i32x8(a: i32x8, b: i32x8) -> mask8 = todo;
+pub fn cmp_gt_i32x8(a: i32x8, b: i32x8) -> mask8 = todo;
+pub fn cmp_ge_i32x8(a: i32x8, b: i32x8) -> mask8 = todo;
+
+// i64x2 -> mask2 (signed)
+pub fn cmp_eq_i64x2(a: i64x2, b: i64x2) -> mask2 = todo;
+pub fn cmp_ne_i64x2(a: i64x2, b: i64x2) -> mask2 = todo;
+pub fn cmp_lt_i64x2(a: i64x2, b: i64x2) -> mask2 = todo;
+pub fn cmp_le_i64x2(a: i64x2, b: i64x2) -> mask2 = todo;
+pub fn cmp_gt_i64x2(a: i64x2, b: i64x2) -> mask2 = todo;
+pub fn cmp_ge_i64x2(a: i64x2, b: i64x2) -> mask2 = todo;
+
+// i64x4 -> mask4 (signed)
+pub fn cmp_eq_i64x4(a: i64x4, b: i64x4) -> mask4 = todo;
+pub fn cmp_ne_i64x4(a: i64x4, b: i64x4) -> mask4 = todo;
+pub fn cmp_lt_i64x4(a: i64x4, b: i64x4) -> mask4 = todo;
+pub fn cmp_le_i64x4(a: i64x4, b: i64x4) -> mask4 = todo;
+pub fn cmp_gt_i64x4(a: i64x4, b: i64x4) -> mask4 = todo;
+pub fn cmp_ge_i64x4(a: i64x4, b: i64x4) -> mask4 = todo;
+
+// ============================================
+// Blend (Cycle 2284): maskN, VxN, VxN -> VxN
+//
+// Per-lane select: `blend(m, a, b)[i] = if m[i] then a[i] else b[i]`.
+// Lowers to LLVM `select <N x i1> %m, <N x T> %a, <N x T> %b`.
+// ============================================
+
+pub fn blend_f64x4(m: mask4, a: f64x4, b: f64x4) -> f64x4 = todo;
+pub fn blend_f64x8(m: mask8, a: f64x8, b: f64x8) -> f64x8 = todo;
+pub fn blend_i32x4(m: mask4, a: i32x4, b: i32x4) -> i32x4 = todo;
+pub fn blend_i32x8(m: mask8, a: i32x8, b: i32x8) -> i32x8 = todo;
+pub fn blend_i64x2(m: mask2, a: i64x2, b: i64x2) -> i64x2 = todo;
+pub fn blend_i64x4(m: mask4, a: i64x4, b: i64x4) -> i64x4 = todo;
+
+// ============================================
+// Mask reductions (Cycle 2284): maskN -> bool
+//
+// `mask_any_N(m)` true iff any lane is set; `mask_all_N(m)` true iff every
+// lane is set. Lowers to llvm.vector.reduce.or / .and on `<N x i1>`.
+// ============================================
+
+pub fn mask_any_2(m: mask2) -> bool = todo;
+pub fn mask_all_2(m: mask2) -> bool = todo;
+pub fn mask_any_4(m: mask4) -> bool = todo;
+pub fn mask_all_4(m: mask4) -> bool = todo;
+pub fn mask_any_8(m: mask8) -> bool = todo;
+pub fn mask_all_8(m: mask8) -> bool = todo;

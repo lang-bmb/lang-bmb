@@ -205,6 +205,10 @@ pub enum Token {
     // beats `i32` / `f64` followed by an identifier when present as a single token.
     #[regex(r"(i32|i64|u32|u64|f64)x[0-9]+", |lex| lex.slice().to_string(), priority = 5)]
     TySimd(String),
+    // v0.97 (Cycle 2283): SIMD mask 타입 — `mask4`, `mask8`, etc.
+    // Higher priority than `Ident` so a bare `mask4` is recognized as a type token.
+    #[regex(r"mask[0-9]+", |lex| lex.slice().to_string(), priority = 5)]
+    TyMask(String),
     #[token("i32")]
     TyI32,
     #[token("i64")]
@@ -582,6 +586,8 @@ impl std::fmt::Display for Token {
             Token::Exists => write!(f, "exists"),
             // v0.97 (Cycle 2219): SIMD vector type token (e.g. f64x4)
             Token::TySimd(s) => write!(f, "{s}"),
+            // v0.97 (Cycle 2283): SIMD mask type token (e.g. mask4)
+            Token::TyMask(s) => write!(f, "{s}"),
         }
     }
 }

@@ -544,6 +544,8 @@ impl IndexGenerator {
             Type::Scope => "Scope".to_string(),
             // v0.97 (Cycle 2215+): SIMD vector type
             Type::Vector { elem, lanes } => format!("{}x{}", self.format_type(elem), lanes),
+            // v0.97 (Cycle 2283): SIMD mask type
+            Type::Mask { lanes } => format!("mask{lanes}"),
         }
     }
 

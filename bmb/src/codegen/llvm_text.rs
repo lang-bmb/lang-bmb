@@ -1203,6 +1203,13 @@ impl TextCodeGen {
         writeln!(out, "declare <2 x i64> @llvm.smax.v2i64(<2 x i64>, <2 x i64>)")?;
         writeln!(out, "declare <4 x i64> @llvm.smin.v4i64(<4 x i64>, <4 x i64>)")?;
         writeln!(out, "declare <4 x i64> @llvm.smax.v4i64(<4 x i64>, <4 x i64>)")?;
+        // v0.97 (Cycle 2285): SIMD mask reductions (any/all → llvm.vector.reduce.or/and on `<N x i1>`).
+        writeln!(out, "declare i1 @llvm.vector.reduce.or.v2i1(<2 x i1>)")?;
+        writeln!(out, "declare i1 @llvm.vector.reduce.or.v4i1(<4 x i1>)")?;
+        writeln!(out, "declare i1 @llvm.vector.reduce.or.v8i1(<8 x i1>)")?;
+        writeln!(out, "declare i1 @llvm.vector.reduce.and.v2i1(<2 x i1>)")?;
+        writeln!(out, "declare i1 @llvm.vector.reduce.and.v4i1(<4 x i1>)")?;
+        writeln!(out, "declare i1 @llvm.vector.reduce.and.v8i1(<8 x i1>)")?;
         writeln!(out)?;
 
         // v0.34.2: Memory allocation for Phase 34.2 Dynamic Collections
@@ -1881,8 +1888,9 @@ impl TextCodeGen {
                 .map(|e| self.mir_type_to_llvm(e))
                 .collect();
             format!("{{ {} }}", elem_types.join(", "))
-        } else if matches!(func.ret_ty, MirType::Vector { .. }) {
+        } else if matches!(func.ret_ty, MirType::Vector { .. } | MirType::Mask { .. }) {
             // v0.97 (Cycle 2229): Vector return type → `<N x T>` passed by value.
+            // v0.97 (Cycle 2285): Mask return type → `<N x i1>` passed by value.
             self.mir_type_to_llvm_owned(&func.ret_ty)
         } else {
             self.mir_type_to_llvm(&func.ret_ty).to_string()
@@ -1895,8 +1903,9 @@ impl TextCodeGen {
             .params
             .iter()
             .map(|(name, ty)| {
-                if matches!(ty, MirType::Vector { .. }) {
+                if matches!(ty, MirType::Vector { .. } | MirType::Mask { .. }) {
                     // v0.97 (Cycle 2229): Vector params passed by value as `<N x T>`.
+                    // v0.97 (Cycle 2285): Mask params passed by value as `<N x i1>`.
                     // `noundef` still applies; no nonnull/dereferenceable (not a pointer).
                     let vec_ty = self.mir_type_to_llvm_owned(ty);
                     return format!("{} noundef %{}", vec_ty, name);
@@ -2276,6 +2285,12 @@ impl TextCodeGen {
                         writeln!(out, "  %{}.addr = alloca {}, align {}", name, vec_ty, align_bytes)?;
                         continue;
                     }
+                    // v0.97 (Cycle 2285): Mask locals — `<N x i1>` align 1.
+                    if matches!(ty, crate::mir::MirType::Mask { .. }) {
+                        let mask_ty = self.mir_type_to_llvm_owned(ty);
+                        writeln!(out, "  %{}.addr = alloca {}, align 1", name, mask_ty)?;
+                        continue;
+                    }
                     // v0.55: Check if this is a tuple variable first
                     let llvm_ty = if let Some(tuple_type) = tuple_var_types.get(name) {
                         tuple_type.as_str()
@@ -2649,12 +2664,14 @@ impl TextCodeGen {
                 // v0.97 (Cycle 2250): SIMD Vector Copy — place_types collapses Vector
                 // to "ptr" which would emit a bogus `load/store ptr` for vector locals.
                 // Short-circuit when either side is Vector-typed.
+                // v0.97 (Cycle 2285): same treatment for Mask types.
                 if let Some(vec_mir_ty) = self.infer_place_mir_type(src, func)
-                    && matches!(vec_mir_ty, MirType::Vector { .. })
+                    && matches!(vec_mir_ty, MirType::Vector { .. } | MirType::Mask { .. })
                 {
                     let vec_ty = self.mir_type_to_llvm_owned(&vec_mir_ty);
                     let align = match &vec_mir_ty {
                         MirType::Vector { lanes, .. } => Self::vector_alloca_align(&vec_mir_ty, *lanes),
+                        MirType::Mask { .. } => 1,
                         _ => 8,
                     };
                     let src_val = if local_names.contains(&src.name) {
@@ -3268,6 +3285,163 @@ impl TextCodeGen {
                     writeln!(out, "  %{} = call {} @{}({} {}, {} {})", temp, vec_ty, intrinsic, vec_ty, a, vec_ty, b)?;
                     if local_names.contains(&d.name) {
                         writeln!(out, "  store {} %{}, ptr %{}.addr, align {}", vec_ty, temp, d.name, align)?;
+                    }
+                    return Ok(());
+                }
+
+                // v0.97 (Cycle 2285): SIMD comparison — VxN cmp -> maskN (`<N x i1>`).
+                //   cmp_eq_f64x4(a, b) → fcmp oeq <4 x double> %a, %b
+                //   cmp_lt_i32x8(a, b) → icmp slt <8 x i32>    %a, %b
+                if args.len() == 2
+                    && let Some((vec_ty, lanes, op_kind, predicate, vec_align)) = match fn_name.as_str() {
+                        // f64x4 / mask4
+                        "cmp_eq_f64x4" => Some(("<4 x double>", 4u32, "fcmp", "oeq", 32u32)),
+                        "cmp_ne_f64x4" => Some(("<4 x double>", 4, "fcmp", "one", 32)),
+                        "cmp_lt_f64x4" => Some(("<4 x double>", 4, "fcmp", "olt", 32)),
+                        "cmp_le_f64x4" => Some(("<4 x double>", 4, "fcmp", "ole", 32)),
+                        "cmp_gt_f64x4" => Some(("<4 x double>", 4, "fcmp", "ogt", 32)),
+                        "cmp_ge_f64x4" => Some(("<4 x double>", 4, "fcmp", "oge", 32)),
+                        // f64x8 / mask8
+                        "cmp_eq_f64x8" => Some(("<8 x double>", 8, "fcmp", "oeq", 64)),
+                        "cmp_ne_f64x8" => Some(("<8 x double>", 8, "fcmp", "one", 64)),
+                        "cmp_lt_f64x8" => Some(("<8 x double>", 8, "fcmp", "olt", 64)),
+                        "cmp_le_f64x8" => Some(("<8 x double>", 8, "fcmp", "ole", 64)),
+                        "cmp_gt_f64x8" => Some(("<8 x double>", 8, "fcmp", "ogt", 64)),
+                        "cmp_ge_f64x8" => Some(("<8 x double>", 8, "fcmp", "oge", 64)),
+                        // i32x4 / mask4
+                        "cmp_eq_i32x4" => Some(("<4 x i32>", 4, "icmp", "eq",  16)),
+                        "cmp_ne_i32x4" => Some(("<4 x i32>", 4, "icmp", "ne",  16)),
+                        "cmp_lt_i32x4" => Some(("<4 x i32>", 4, "icmp", "slt", 16)),
+                        "cmp_le_i32x4" => Some(("<4 x i32>", 4, "icmp", "sle", 16)),
+                        "cmp_gt_i32x4" => Some(("<4 x i32>", 4, "icmp", "sgt", 16)),
+                        "cmp_ge_i32x4" => Some(("<4 x i32>", 4, "icmp", "sge", 16)),
+                        // i32x8 / mask8
+                        "cmp_eq_i32x8" => Some(("<8 x i32>", 8, "icmp", "eq",  32)),
+                        "cmp_ne_i32x8" => Some(("<8 x i32>", 8, "icmp", "ne",  32)),
+                        "cmp_lt_i32x8" => Some(("<8 x i32>", 8, "icmp", "slt", 32)),
+                        "cmp_le_i32x8" => Some(("<8 x i32>", 8, "icmp", "sle", 32)),
+                        "cmp_gt_i32x8" => Some(("<8 x i32>", 8, "icmp", "sgt", 32)),
+                        "cmp_ge_i32x8" => Some(("<8 x i32>", 8, "icmp", "sge", 32)),
+                        // i64x2 / mask2
+                        "cmp_eq_i64x2" => Some(("<2 x i64>", 2, "icmp", "eq",  16)),
+                        "cmp_ne_i64x2" => Some(("<2 x i64>", 2, "icmp", "ne",  16)),
+                        "cmp_lt_i64x2" => Some(("<2 x i64>", 2, "icmp", "slt", 16)),
+                        "cmp_le_i64x2" => Some(("<2 x i64>", 2, "icmp", "sle", 16)),
+                        "cmp_gt_i64x2" => Some(("<2 x i64>", 2, "icmp", "sgt", 16)),
+                        "cmp_ge_i64x2" => Some(("<2 x i64>", 2, "icmp", "sge", 16)),
+                        // i64x4 / mask4
+                        "cmp_eq_i64x4" => Some(("<4 x i64>", 4, "icmp", "eq",  32)),
+                        "cmp_ne_i64x4" => Some(("<4 x i64>", 4, "icmp", "ne",  32)),
+                        "cmp_lt_i64x4" => Some(("<4 x i64>", 4, "icmp", "slt", 32)),
+                        "cmp_le_i64x4" => Some(("<4 x i64>", 4, "icmp", "sle", 32)),
+                        "cmp_gt_i64x4" => Some(("<4 x i64>", 4, "icmp", "sgt", 32)),
+                        "cmp_ge_i64x4" => Some(("<4 x i64>", 4, "icmp", "sge", 32)),
+                        _ => None,
+                    }
+                {
+                    let d = dest.as_ref().expect("cmp_* has a return value");
+                    let mask_ty = format!("<{} x i1>", lanes);
+                    let load_vec = |opd: &Operand, suffix: &str, out: &mut String| -> TextCodeGenResult<String> {
+                        match opd {
+                            Operand::Place(p) if local_names.contains(&p.name) => {
+                                let n = format!("{}.{}.{}.cmp", d.name, p.name, suffix);
+                                writeln!(out, "  %{} = load {}, ptr %{}.addr, align {}", n, vec_ty, p.name, vec_align)?;
+                                Ok(format!("%{}", n))
+                            }
+                            Operand::Place(p) => Ok(format!("%{}", p.name)),
+                            _ => Ok(self.format_operand_with_strings(opd, string_table)),
+                        }
+                    };
+                    let a = load_vec(&args[0], "a", out)?;
+                    let b = load_vec(&args[1], "b", out)?;
+                    let temp = format!("{}.cmp", d.name);
+                    writeln!(out, "  %{} = {} {} {} {}, {}", temp, op_kind, predicate, vec_ty, a, b)?;
+                    if local_names.contains(&d.name) {
+                        // `<N x i1>` is byte-aligned in memory; align 1 is correct.
+                        writeln!(out, "  store {} %{}, ptr %{}.addr, align 1", mask_ty, temp, d.name)?;
+                    }
+                    return Ok(());
+                }
+
+                // v0.97 (Cycle 2285): SIMD blend — select per-lane.
+                //   blend_VxN(m, a, b) → select <N x i1> %m, <N x T> %a, <N x T> %b
+                if args.len() == 3
+                    && let Some((vec_ty, lanes, vec_align)) = match fn_name.as_str() {
+                        "blend_f64x4" => Some(("<4 x double>", 4u32, 32u32)),
+                        "blend_f64x8" => Some(("<8 x double>", 8, 64)),
+                        "blend_i32x4" => Some(("<4 x i32>",    4, 16)),
+                        "blend_i32x8" => Some(("<8 x i32>",    8, 32)),
+                        "blend_i64x2" => Some(("<2 x i64>",    2, 16)),
+                        "blend_i64x4" => Some(("<4 x i64>",    4, 32)),
+                        _ => None,
+                    }
+                {
+                    let d = dest.as_ref().expect("blend_* has a return value");
+                    let mask_ty = format!("<{} x i1>", lanes);
+                    let load_mask = |opd: &Operand, suffix: &str, out: &mut String| -> TextCodeGenResult<String> {
+                        match opd {
+                            Operand::Place(p) if local_names.contains(&p.name) => {
+                                let n = format!("{}.{}.{}.bld", d.name, p.name, suffix);
+                                writeln!(out, "  %{} = load {}, ptr %{}.addr, align 1", n, mask_ty, p.name)?;
+                                Ok(format!("%{}", n))
+                            }
+                            Operand::Place(p) => Ok(format!("%{}", p.name)),
+                            _ => Ok(self.format_operand_with_strings(opd, string_table)),
+                        }
+                    };
+                    let load_vec = |opd: &Operand, suffix: &str, out: &mut String| -> TextCodeGenResult<String> {
+                        match opd {
+                            Operand::Place(p) if local_names.contains(&p.name) => {
+                                let n = format!("{}.{}.{}.bld", d.name, p.name, suffix);
+                                writeln!(out, "  %{} = load {}, ptr %{}.addr, align {}", n, vec_ty, p.name, vec_align)?;
+                                Ok(format!("%{}", n))
+                            }
+                            Operand::Place(p) => Ok(format!("%{}", p.name)),
+                            _ => Ok(self.format_operand_with_strings(opd, string_table)),
+                        }
+                    };
+                    let m = load_mask(&args[0], "m", out)?;
+                    let a = load_vec(&args[1], "a", out)?;
+                    let b = load_vec(&args[2], "b", out)?;
+                    let temp = format!("{}.bld", d.name);
+                    writeln!(out, "  %{} = select {} {}, {} {}, {} {}", temp, mask_ty, m, vec_ty, a, vec_ty, b)?;
+                    if local_names.contains(&d.name) {
+                        writeln!(out, "  store {} %{}, ptr %{}.addr, align {}", vec_ty, temp, d.name, vec_align)?;
+                    }
+                    return Ok(());
+                }
+
+                // v0.97 (Cycle 2285): SIMD mask reductions — any/all → llvm.vector.reduce.or/and.
+                if args.len() == 1
+                    && let Some((mask_ty, lanes, intrinsic)) = match fn_name.as_str() {
+                        "mask_any_2" => Some(("<2 x i1>", 2u32, "llvm.vector.reduce.or.v2i1")),
+                        "mask_any_4" => Some(("<4 x i1>", 4, "llvm.vector.reduce.or.v4i1")),
+                        "mask_any_8" => Some(("<8 x i1>", 8, "llvm.vector.reduce.or.v8i1")),
+                        "mask_all_2" => Some(("<2 x i1>", 2, "llvm.vector.reduce.and.v2i1")),
+                        "mask_all_4" => Some(("<4 x i1>", 4, "llvm.vector.reduce.and.v4i1")),
+                        "mask_all_8" => Some(("<8 x i1>", 8, "llvm.vector.reduce.and.v8i1")),
+                        _ => None,
+                    }
+                {
+                    let _ = lanes; // currently encoded in mask_ty/intrinsic
+                    let d = dest.as_ref().expect("mask_any/all_* has a return value");
+                    let load_mask = |opd: &Operand, out: &mut String| -> TextCodeGenResult<String> {
+                        match opd {
+                            Operand::Place(p) if local_names.contains(&p.name) => {
+                                let n = format!("{}.{}.mr", d.name, p.name);
+                                writeln!(out, "  %{} = load {}, ptr %{}.addr, align 1", n, mask_ty, p.name)?;
+                                Ok(format!("%{}", n))
+                            }
+                            Operand::Place(p) => Ok(format!("%{}", p.name)),
+                            _ => Ok(self.format_operand_with_strings(opd, string_table)),
+                        }
+                    };
+                    let m = load_mask(&args[0], out)?;
+                    let temp = format!("{}.mr", d.name);
+                    writeln!(out, "  %{} = call i1 @{}({} {})", temp, intrinsic, mask_ty, m)?;
+                    if local_names.contains(&d.name) {
+                        // Bool locals are stored as i1 with align 1.
+                        writeln!(out, "  store i1 %{}, ptr %{}.addr, align 1", temp, d.name)?;
                     }
                     return Ok(());
                 }
@@ -7646,12 +7820,14 @@ impl TextCodeGen {
                         writeln!(out, "  ; sret return - value already in %_sret")?;
                     }
                     writeln!(out, "  ret void")?;
-                } else if matches!(func.ret_ty, MirType::Vector { .. }) {
+                } else if matches!(func.ret_ty, MirType::Vector { .. } | MirType::Mask { .. }) {
                     // v0.97 (Cycle 2229): SIMD Vector return — load from alloca as `<N x T>`
                     // then ret directly. No coercion / narrowing paths apply.
+                    // v0.97 (Cycle 2285): Mask return — load `<N x i1>` align 1.
                     let vec_ty = self.mir_type_to_llvm_owned(&func.ret_ty);
                     let align = match &func.ret_ty {
                         MirType::Vector { lanes, .. } => Self::vector_alloca_align(&func.ret_ty, *lanes),
+                        MirType::Mask { .. } => 1,
                         _ => 8,
                     };
                     if let Operand::Place(p) = val {
@@ -7925,6 +8101,9 @@ impl TextCodeGen {
             // helper; this arm returns "ptr" as an opaque fallback so pre-codegen
             // passes (formatting, dbg types) keep compiling.
             MirType::Vector { .. } => "ptr",
+            // v0.97 (Cycle 2283): SIMD mask `<lanes x i1>` — owned-form callers
+            // dispatch on `ty.is_mask()`. This static arm acts as a fallback.
+            MirType::Mask { .. } => "ptr",
         }
     }
 
@@ -7938,6 +8117,8 @@ impl TextCodeGen {
             MirType::Vector { elem, lanes } => {
                 format!("<{} x {}>", lanes, self.mir_type_to_llvm_owned(elem))
             }
+            // v0.97 (Cycle 2283): SIMD mask emits `<N x i1>`.
+            MirType::Mask { lanes } => format!("<{} x i1>", lanes),
             _ => self.mir_type_to_llvm(ty).to_string(),
         }
     }

@@ -10,8 +10,12 @@ Bootstrap   ██████████████████░░ 98%   F
 Self-Host   ████████████████████ 99%   CLI 41개 (+ bmb bench), LSP 9개, Test Runner, REPL
 Benchmark   ████████████████████ 100%  309 빌드 ✅, 16+ FASTER, 0 FAIL, BMB > C+Rust
 Ecosystem   ████████████████░░░░ 82%   5 libs 140 @export, C headers, WASM, pytest 1,017+
-SIMD        ████████████████░░░░ 82%   1급 타입 ✅ + text codegen ✅ + stdlib/simd 30 fns ✅ (Cycles 2246-2251)
-                                       perf bench infrastructure ✅ / inkwell BinOp pending
+SIMD        ███████████████████░ 95%   1급 타입 ✅ + text/inkwell codegen ✅ + stdlib/simd **98 fns** ✅
+                                       Rule 7 parity ✅ (text/inkwell 둘 다 runtime + perf match)
+                                       `@include "stdlib/simd"` 자동 로딩 ✅ (build + check)
+                                       10 런타임 correctness + SAXPY/matvec + mask correctness 벤치 ✅
+                                       mask 타입 ✅ (cmp_*_VxN/blend_VxN/mask_any|all_N, Cycles 2283-2287)
+                                       Pending: f32 primitive (A-1, dedicated 20-cycle session 권장)
 ```
 
 ### 핵심 수치
@@ -41,7 +45,17 @@ SIMD        ████████████████░░░░ 82%   1
 ## 현재 단계 — 남은 작업
 
 > Dogfooding 완료 (Cycle 2185). 바인딩 에코시스템 안정화됨.
-> 남은 작업은 모두 **인프라/플랫폼 수준** — 인간 의사결정 필요.
+> stdlib/simd 완성 (Cycle 2265). 남은 작업은 **인프라/플랫폼 수준** 중심.
+
+### Phase B-cont: SIMD 마무리 (v0.97.x)
+
+| 작업 ID | 작업 | 상태 | 세션 |
+|---------|------|------|------|
+| **B-4** | Inkwell BinOp Vector emission (Rule 7 parity) | ✅ 완료 | Cycles 2266-2272 |
+| **B-7** | stdlib 모듈 auto-import | ✅ 완료 | Cycles 2275-2276 |
+| **B-9** | SIMD 실증 워크로드 (SAXPY + matvec) | ✅ 완료 | Cycles 2273-2274 |
+| **B-8** | Comparison + mask 타입 | ✅ 완료 | Cycles 2283-2287 |
+| **A-1** | f32 primitive + f32x{4,8,16} | 대기 | 8-10 cycles 예상 |
 
 ### Phase C: Bootstrap 코드젠 품질 (v0.98)
 
@@ -115,11 +129,15 @@ Bootstrap IR의 근본적 한계 해소. inttoptr을 native ptr로 전환.
 
 ---
 
-## 다음 단계 우선순위
+## 다음 단계 우선순위 (2026-04-18 업데이트)
 
-> Dogfooding 단계 완료. 남은 작업은 크게 3축:
+> Dogfooding + SIMD stdlib 완료. 남은 작업은 4축:
 
 ```
+0. ★★★★ SIMD 마무리 (Phase B-cont, 즉시 후속)
+   B-4 Inkwell BinOp parity → B-9 실증 워크로드 → B-8 mask 타입
+   → 성능 claim "2-4x vs C" 실증 데이터 확보
+
 1. ★★★ 배포 + 크로스플랫폼
    PyPI wheel 빌드 → Linux/macOS 빌드 → pip install bmb-algo 가능하게
    → BMB 존재가치 증명: "pip install → C보다 90x 빠르다"
@@ -153,10 +171,17 @@ v0.97        @export + --shared + FFI 안전성 (setjmp/longjmp, TLS)
              SIMD 1급 타입 f64xN/i32xN/i64xN/u32xN/u64xN (Cycles 2215-2237)
              `@bench` microbenchmark attribute + `bmb bench` CLI
              `@test` attribute-driven discovery 통일
-             3-Stage Fixed Point 유지 (Cycle 2237 검증)
-             stdlib/simd 모듈: hsum/splat/load/store/dot 30 fns (Cycles 2246-2251)
-             Copy+Call Vector codegen 수정 + -march=native 반영
-             SIMD dot-product 성능 실측: ILP=4 unroll로 scalar 대비 +7%
+             3-Stage Fixed Point 유지 (Cycle 2237, 2258 재검증)
+             stdlib/simd 모듈: hsum/splat/load/store/dot/fma/min/max **44 fns** (Cycles 2246-2253)
+             Vector-aware codegen: Copy/Call/Return 전부 `<N x T>` 유지 (2249-2250)
+             -march=native 파리티 + Expr::Todo f64 수정 + fmt_f64_lit 통합 (2250-2256)
+             SIMD dot-product 성능 실측: ILP=4 unroll로 scalar 대비 +7% (2250-2251)
+             Runtime correctness: 10 checks (f64x4/f64x8/i64x2/i64x4) 전부 통과 (2255-2262)
+             세션 커밋: `6cfdcb8b` (Cycles 2246-2265, 978 insertions)
+             Inkwell BinOp Vector 파리티 ✅ — float/int BinOp + Copy/Call/Return + 44 intrinsic dispatch (Cycles 2266-2272)
+             SAXPY + matvec 실증 벤치 — SIMD ≈ scalar (auto-vec가 이미 강함, 10% ILP 이득) (Cycles 2273-2274)
+             MIR optimizer `memory(none)` 오분류 수정 — store_* intrinsic 메모리 효과 명시 (Cycle 2273)
+             stdlib 자동 로딩: `@include "stdlib/simd/mod.bmb"` (Cycles 2275-2276)
 
 ═══════════════════ 현재 위치: 배포/품질 단계 ═════════════════════════
 

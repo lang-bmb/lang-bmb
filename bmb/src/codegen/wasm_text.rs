@@ -1378,6 +1378,8 @@ impl WasmCodeGen {
             MirType::Tuple(_) => "tuple",
             // v0.97 (Cycle 2227): SIMD vector — WASM SIMD (v128) out-of-scope for now.
             MirType::Vector { .. } => "simd",
+            // v0.97 (Cycle 2283): SIMD mask — WASM SIMD (v128) out-of-scope for now.
+            MirType::Mask { .. } => "mask",
         }
     }
 
@@ -1546,6 +1548,8 @@ impl WasmCodeGen {
             MirType::Tuple(_) => "i32",
             // v0.97 (Cycle 2227): WASM v128 SIMD not wired — placeholder i32 (pointer).
             MirType::Vector { .. } => "v128",
+            // v0.97 (Cycle 2283): SIMD mask — WASM not wired.
+            MirType::Mask { .. } => "v128",
         }
     }
 
@@ -1584,6 +1588,8 @@ impl WasmCodeGen {
             MirType::Tuple(_) => "i32.const 0",
             // v0.97 (Cycle 2227): WASM v128 default (zero vector).
             MirType::Vector { .. } => "v128.const i32x4 0 0 0 0",
+            // v0.97 (Cycle 2283): SIMD mask zero default — WASM not wired.
+            MirType::Mask { .. } => "v128.const i32x4 0 0 0 0",
         }
     }
 

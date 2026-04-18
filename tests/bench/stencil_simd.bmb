@@ -1,0 +1,85 @@
+// 1D 5-point stencil — SIMD version using f64x4 (Cycle 2288).
+// Processes 4 output points per iteration via unaligned vector loads at
+// stride-1 offsets `i-2, i-1, i, i+1, i+2`. Multiplies by `splat_f64x4(0.2)`.
+// Same numerical answer as the scalar baseline (Jacobi on linear ramp converges
+// to identity), so the runtime check matches scalar's 8378370 sum.
+
+@include "stdlib/simd/mod.bmb"
+
+extern fn malloc(n: i64) -> i64;
+extern fn free(p: i64) -> i64;
+extern fn store_f64(ptr: i64, v: f64) -> i64;
+extern fn load_f64(ptr: i64) -> f64;
+extern fn f64_to_i64(x: f64) -> i64;
+extern fn i64_to_f64(x: i64) -> f64;
+extern fn println(n: i64) -> i64;
+
+fn init_linear(buf: i64, n: i64) -> i64 = {
+    let mut i: i64 = 0;
+    while i < n {
+        let _s = store_f64(buf + i * 8, i64_to_f64(i));
+        i = i + 1;
+    };
+    0
+};
+
+// One Jacobi sweep using f64x4 — processes 4 outputs per iteration.
+// Block size = 4; falls back to scalar for the tail (assumed N is a multiple of 4 here).
+fn stencil_sweep_simd(curr: i64, next: i64, n: i64) -> i64 = {
+    let scale = splat_f64x4(0.2);
+    let mut i: i64 = 2;
+    let bound: i64 = n - 5;  // last starting index for a 4-wide block writing i..i+3
+    while i <= bound {
+        // Vector loads at offsets relative to current `i`.
+        // Each load reads 4 contiguous doubles starting at `i + delta`.
+        let v_2 = load_f64x4(curr, i - 2);
+        let v_1 = load_f64x4(curr, i - 1);
+        let v0  = load_f64x4(curr, i);
+        let v1  = load_f64x4(curr, i + 1);
+        let v2  = load_f64x4(curr, i + 2);
+        let summed = v_2 + v_1 + v0 + v1 + v2;
+        let scaled = summed * scale;
+        let _st = store_f64x4(next, i, scaled);
+        i = i + 4;
+    };
+    // Scalar tail.
+    while i < n - 2 {
+        let s_2 = load_f64(curr + (i - 2) * 8);
+        let s_1 = load_f64(curr + (i - 1) * 8);
+        let s0  = load_f64(curr + i * 8);
+        let s1  = load_f64(curr + (i + 1) * 8);
+        let s2  = load_f64(curr + (i + 2) * 8);
+        let s = (s_2 + s_1 + s0 + s1 + s2) * 0.2;
+        let _st = store_f64(next + i * 8, s);
+        i = i + 1;
+    };
+    0
+};
+
+fn main() -> i64 = {
+    let n: i64 = 4096;
+    let reps: i64 = 5000;
+    let bytes: i64 = n * 8;
+    let mut a = malloc(bytes);
+    let mut b = malloc(bytes);
+    let _i1 = init_linear(a, n);
+    let _i2 = init_linear(b, n);
+    let mut r: i64 = 0;
+    while r < reps {
+        let _s1 = stencil_sweep_simd(a, b, n);
+        let _s2 = stencil_sweep_simd(b, a, n);
+        r = r + 1;
+    };
+    let mut acc: f64 = 0.0;
+    let mut i: i64 = 2;
+    let bnd: i64 = n - 2;
+    while i < bnd {
+        acc = acc + load_f64(a + i * 8);
+        i = i + 1;
+    };
+    let _f1 = free(a);
+    let _f2 = free(b);
+    let result = f64_to_i64(acc);
+    let _p = println(result);
+    0
+};

@@ -1046,16 +1046,25 @@ fn start_repl() -> Result<(), Box<dyn std::error::Error>> {
 
 /// v0.17: Check file with additional include paths for module resolution
 /// v0.60.260: Add prelude auto-detection for consistency with build command
+/// Cycle 2284: Add stdlib root auto-detection so `@include "stdlib/..."` works
+/// without `-I`, matching the `build` command's ergonomics.
 fn check_file_with_includes(path: &PathBuf, include_paths: &[PathBuf]) -> Result<(), Box<dyn std::error::Error>> {
     let source = std::fs::read_to_string(path)?;
     let filename = path.display().to_string();
 
     // v0.60.260: Apply prelude auto-detection (same as build command)
     let prelude_path = bmb::build::auto_detect_prelude_path();
+    // Cycle 2284: stdlib root auto-detection (parallel to build/mod.rs).
+    let mut effective_include_paths = include_paths.to_vec();
+    if let Some(root) = bmb::build::auto_detect_stdlib_root()
+        && !effective_include_paths.iter().any(|p| p == &root)
+    {
+        effective_include_paths.push(root);
+    }
     let source = bmb::preprocessor::expand_with_prelude(
         &source,
         path,
-        include_paths,
+        &effective_include_paths,
         prelude_path.as_deref(),
     ).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
@@ -2288,6 +2297,8 @@ fn format_type(ty: &bmb::ast::Type) -> String {
         Type::Scope => "Scope".to_string(),
         // v0.97 (Cycle 2215+): SIMD vector type
         Type::Vector { elem, lanes } => format!("{}x{}", format_type(elem), lanes),
+        // v0.97 (Cycle 2283): SIMD mask type
+        Type::Mask { lanes } => format!("mask{lanes}"),
     }
 }
 

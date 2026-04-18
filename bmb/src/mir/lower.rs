@@ -2961,6 +2961,8 @@ fn ast_type_to_mir(ty: &Type) -> MirType {
             elem: Box::new(ast_type_to_mir(elem)),
             lanes: *lanes,
         },
+        // v0.97 (Cycle 2283): SIMD mask — native MirType::Mask (<N x i1>).
+        Type::Mask { lanes } => MirType::Mask { lanes: *lanes },
     }
 }
 
@@ -3424,6 +3426,8 @@ fn ast_type_to_mir_with_type_defs(
             elem: Box::new(ast_type_to_mir_with_type_defs(elem, type_defs)),
             lanes: *lanes,
         },
+        // v0.97 (Cycle 2283): SIMD mask — native MirType::Mask.
+        Type::Mask { lanes } => MirType::Mask { lanes: *lanes },
     }
 }
 
@@ -3539,6 +3543,8 @@ fn ast_type_to_mir_with_structs(
             elem: Box::new(ast_type_to_mir_with_structs(elem, struct_type_defs)),
             lanes: *lanes,
         },
+        // v0.97 (Cycle 2283): SIMD mask — native MirType::Mask.
+        Type::Mask { lanes } => MirType::Mask { lanes: *lanes },
     }
 }
 

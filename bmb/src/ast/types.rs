@@ -203,6 +203,14 @@ pub enum Type {
         elem: Box<Type>,
         lanes: u32,
     },
+
+    /// v0.97 (Cycle 2283): SIMD mask type — boolean per-lane.
+    /// `mask4`, `mask8`, `mask16`, etc. Produced by `cmp_*_VxN(a, b)` and
+    /// consumed by `blend_VxN(m, a, b)`. Backed by LLVM `<lanes x i1>`.
+    /// Distinct from `Vector { elem: Bool, .. }` to forbid arithmetic on masks.
+    Mask {
+        lanes: u32,
+    },
 }
 
 /// Manual PartialEq implementation for Type
@@ -293,6 +301,8 @@ impl PartialEq for Type {
                 Type::Vector { elem: e1, lanes: l1 },
                 Type::Vector { elem: e2, lanes: l2 },
             ) => e1 == e2 && l1 == l2,
+            // v0.97 (Cycle 2283): Mask type equality
+            (Type::Mask { lanes: l1 }, Type::Mask { lanes: l2 }) => l1 == l2,
             _ => false,
         }
     }
@@ -426,6 +436,8 @@ impl std::fmt::Display for Type {
             Type::Scope => write!(f, "Scope"),
             // v0.97 (Cycle 2215+): SIMD vector type display - e.g. f64x4, i32x8
             Type::Vector { elem, lanes } => write!(f, "{elem}x{lanes}"),
+            // v0.97 (Cycle 2283): SIMD mask type display - e.g. mask4, mask8
+            Type::Mask { lanes } => write!(f, "mask{lanes}"),
         }
     }
 }
@@ -449,6 +461,19 @@ pub fn parse_simd_type(s: &str) -> Type {
         {
             return Type::Vector { elem: Box::new(elem), lanes };
         }
+    }
+    Type::Named(s.to_string())
+}
+
+/// v0.97 (Cycle 2283): Decode a mask lexer token like `mask4` into `Type::Mask`.
+/// The lexer regex `mask[0-9]+` guarantees the format. Falls back to
+/// `Type::Named(s)` defensively if the unexpected shape ever leaks through.
+pub fn parse_mask_type(s: &str) -> Type {
+    if let Some(lanes_str) = s.strip_prefix("mask")
+        && let Ok(lanes) = lanes_str.parse::<u32>()
+        && lanes >= 2
+    {
+        return Type::Mask { lanes };
     }
     Type::Named(s.to_string())
 }

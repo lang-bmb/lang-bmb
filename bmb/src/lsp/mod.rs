@@ -1357,6 +1357,8 @@ fn format_type(ty: &crate::ast::Type) -> String {
         Type::Scope => "Scope".to_string(),
         // v0.97 (Cycle 2215+): SIMD vector type display
         Type::Vector { elem, lanes } => format!("{}x{}", format_type(elem), lanes),
+        // v0.97 (Cycle 2283): SIMD mask type display
+        Type::Mask { lanes } => format!("mask{lanes}"),
     }
 }
 

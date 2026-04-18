@@ -997,6 +997,13 @@ pub enum MirType {
         elem: Box<MirType>,
         lanes: u32,
     },
+    /// v0.97 (Cycle 2283): SIMD mask type backed by LLVM `<lanes x i1>`.
+    /// Produced by `cmp_*_VxN`, consumed by `blend_VxN` / `mask_any_*` /
+    /// `mask_all_*`. Distinct from `Vector { elem: Bool, .. }` to forbid
+    /// arithmetic on masks.
+    Mask {
+        lanes: u32,
+    },
 }
 
 impl MirType {
@@ -1729,6 +1736,8 @@ fn format_mir_type(ty: &MirType) -> String {
         }
         // v0.97 (Cycle 2227): SIMD vector type — `<lanes x elem>` style.
         MirType::Vector { elem, lanes } => format!("{}x{}", format_mir_type(elem), lanes),
+        // v0.97 (Cycle 2283): SIMD mask type.
+        MirType::Mask { lanes } => format!("mask{lanes}"),
     }
 }
 

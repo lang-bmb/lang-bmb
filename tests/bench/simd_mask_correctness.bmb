@@ -1,0 +1,134 @@
+// SIMD mask correctness test (Cycle 2287).
+// Exercises cmp_*_VxN → maskN, blend_VxN, mask_any/all_N across the
+// supported element types and lane widths that have runtime store helpers
+// (f64, i64). The codegen dispatch is uniform across element kinds, so
+// f64+i64 coverage validates the entire path.
+//
+// Two-backend coverage: build with text backend AND inkwell backend
+// (`--features llvm --target x86_64-pc-windows-gnu`) and confirm
+// both produce exit 0.
+
+@include "stdlib/simd/mod.bmb"
+
+extern fn malloc(n: i64) -> i64;
+extern fn free(p: i64) -> i64;
+extern fn store_f64(ptr: i64, v: f64) -> i64;
+extern fn store_i64(ptr: i64, v: i64) -> i64;
+extern fn f64_to_i64(x: f64) -> i64;
+
+// ---- f64x4 ----------------------------------------------------------
+
+fn check_f64x4_cmp(buf: i64) -> i64 = {
+    // a = [1, 2, 3, 4], b = [4, 3, 2, 1]
+    let _v0 = store_f64(buf + 0,  1.0);
+    let _v1 = store_f64(buf + 8,  2.0);
+    let _v2 = store_f64(buf + 16, 3.0);
+    let _v3 = store_f64(buf + 24, 4.0);
+    let _v4 = store_f64(buf + 32, 4.0);
+    let _v5 = store_f64(buf + 40, 3.0);
+    let _v6 = store_f64(buf + 48, 2.0);
+    let _v7 = store_f64(buf + 56, 1.0);
+    let a = load_f64x4(buf, 0);
+    let b = load_f64x4(buf + 32, 0);
+    // a < b at lanes 0,1 (1<4 T, 2<3 T, 3<2 F, 4<1 F)
+    let m_lt = cmp_lt_f64x4(a, b);
+    let blended = blend_f64x4(m_lt, a, b);  // [1, 2, 2, 1] sum = 6
+    if f64_to_i64(hsum_f64x4(blended)) == 6 { 0 } else { 11 }
+};
+
+fn check_f64x4_any_all(buf: i64) -> i64 = {
+    let _v0 = store_f64(buf + 0,  5.0);
+    let _v1 = store_f64(buf + 8,  5.0);
+    let _v2 = store_f64(buf + 16, 5.0);
+    let _v3 = store_f64(buf + 24, 5.0);
+    let _v4 = store_f64(buf + 32, 5.0);
+    let _v5 = store_f64(buf + 40, 5.0);
+    let _v6 = store_f64(buf + 48, 5.0);
+    let _v7 = store_f64(buf + 56, 5.0);
+    let a = load_f64x4(buf, 0);
+    let b = load_f64x4(buf + 32, 0);
+    let m_eq = cmp_eq_f64x4(a, b);
+    if mask_all_4(m_eq) {
+        if mask_any_4(m_eq) { 0 } else { 12 }
+    } else { 13 }
+};
+
+// ---- f64x8 ----------------------------------------------------------
+
+fn check_f64x8_cmp(buf: i64) -> i64 = {
+    let _av0 = store_f64(buf + 0,  1.0);
+    let _av1 = store_f64(buf + 8,  2.0);
+    let _av2 = store_f64(buf + 16, 3.0);
+    let _av3 = store_f64(buf + 24, 4.0);
+    let _av4 = store_f64(buf + 32, 5.0);
+    let _av5 = store_f64(buf + 40, 6.0);
+    let _av6 = store_f64(buf + 48, 7.0);
+    let _av7 = store_f64(buf + 56, 8.0);
+    let _bv0 = store_f64(buf + 64, 8.0);
+    let _bv1 = store_f64(buf + 72, 7.0);
+    let _bv2 = store_f64(buf + 80, 6.0);
+    let _bv3 = store_f64(buf + 88, 5.0);
+    let _bv4 = store_f64(buf + 96, 4.0);
+    let _bv5 = store_f64(buf + 104, 3.0);
+    let _bv6 = store_f64(buf + 112, 2.0);
+    let _bv7 = store_f64(buf + 120, 1.0);
+    let a = load_f64x8(buf, 0);
+    let b = load_f64x8(buf + 64, 0);
+    // a < b at lanes 0..3 → blend picks a (1+2+3+4) + b (4+3+2+1) = 10+10 = 20
+    let m_lt = cmp_lt_f64x8(a, b);
+    let blended = blend_f64x8(m_lt, a, b);
+    if f64_to_i64(hsum_f64x8(blended)) == 20 { 0 } else { 21 }
+};
+
+// ---- i64x2 ----------------------------------------------------------
+
+fn check_i64x2_cmp(buf: i64) -> i64 = {
+    let _v0 = store_i64(buf + 0,  100);
+    let _v1 = store_i64(buf + 8,  200);
+    let _v2 = store_i64(buf + 16, 150);
+    let _v3 = store_i64(buf + 24, 150);
+    let a = load_i64x2(buf, 0);
+    let b = load_i64x2(buf + 16, 0);
+    let m_eq = cmp_eq_i64x2(a, b);
+    if mask_any_2(m_eq) { 51 }
+    else {
+        let m_lt = cmp_lt_i64x2(a, b);
+        let blended = blend_i64x2(m_lt, a, b);  // a[0]=100, b[1]=150
+        if hsum_i64x2(blended) == 250 { 0 } else { 52 }
+    }
+};
+
+// ---- i64x4 ----------------------------------------------------------
+
+fn check_i64x4_cmp(buf: i64) -> i64 = {
+    let _v0 = store_i64(buf + 0,  10);
+    let _v1 = store_i64(buf + 8,  20);
+    let _v2 = store_i64(buf + 16, 30);
+    let _v3 = store_i64(buf + 24, 40);
+    let _v4 = store_i64(buf + 32, 50);
+    let _v5 = store_i64(buf + 40, 50);
+    let _v6 = store_i64(buf + 48, 50);
+    let _v7 = store_i64(buf + 56, 50);
+    let a = load_i64x4(buf, 0);
+    let b = load_i64x4(buf + 32, 0);
+    let m_le = cmp_le_i64x4(a, b);
+    let blended = blend_i64x4(m_le, a, b);  // a everywhere → 10+20+30+40 = 100
+    if hsum_i64x4(blended) == 100 {
+        if mask_all_4(m_le) { 0 } else { 61 }
+    } else { 62 }
+};
+
+fn main() -> i64 = {
+    let buf = malloc(256);
+    let r1 = check_f64x4_cmp(buf);
+    let r2 = check_f64x4_any_all(buf);
+    let r3 = check_f64x8_cmp(buf);
+    let r6 = check_i64x2_cmp(buf);
+    let r7 = check_i64x4_cmp(buf);
+    let _f = free(buf);
+    if r1 != 0 { r1 }
+    else { if r2 != 0 { r2 }
+    else { if r3 != 0 { r3 }
+    else { if r6 != 0 { r6 }
+    else { r7 } } } }
+};

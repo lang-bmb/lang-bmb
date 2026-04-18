@@ -177,6 +177,8 @@ impl SmtTranslator {
             // v0.97 (Cycle 2215+): SIMD vector — SMT 통합은 Deferred (Cycle 2206).
             // Approximate as Int so contract verification stays callable.
             Type::Vector { .. } => SmtSort::Int,
+            // v0.97 (Cycle 2283): SIMD mask — same approximation as Vector.
+            Type::Mask { .. } => SmtSort::Int,
         }
     }
 

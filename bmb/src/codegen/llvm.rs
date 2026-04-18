@@ -769,6 +769,22 @@ impl<'ctx> LlvmContext<'ctx> {
             self.functions.insert(name.to_string(), self.module.add_function(name, t, None));
         }
 
+        // v0.97 (Cycle 2286): SIMD mask reductions — `<N x i1> -> i1`.
+        // Parallels text backend Cycle 2285 declarations.
+        let i1_ty = self.context.bool_type();
+        for (name, lanes) in [
+            ("llvm.vector.reduce.or.v2i1", 2u32),
+            ("llvm.vector.reduce.or.v4i1", 4),
+            ("llvm.vector.reduce.or.v8i1", 8),
+            ("llvm.vector.reduce.and.v2i1", 2),
+            ("llvm.vector.reduce.and.v4i1", 4),
+            ("llvm.vector.reduce.and.v8i1", 8),
+        ] {
+            let mask_ty = i1_ty.vec_type(lanes);
+            let t = i1_ty.fn_type(&[mask_ty.into()], false);
+            self.functions.insert(name.to_string(), self.module.add_function(name, t, None));
+        }
+
         // v0.96: Saturating arithmetic intrinsics
         let sadd_sat_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
         let sadd_sat_fn = self.module.add_function("llvm.sadd.sat.i64", sadd_sat_type, None);
@@ -1769,6 +1785,8 @@ impl<'ctx> LlvmContext<'ctx> {
                     ),
                 }
             }
+            // v0.97 (Cycle 2286): SIMD mask — `<lanes x i1>`.
+            MirType::Mask { lanes } => self.context.bool_type().vec_type(*lanes).into(),
         }
     }
 
@@ -2855,6 +2873,108 @@ impl<'ctx> LlvmContext<'ctx> {
                         .build_store(elem_ptr, v_val)
                         .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
                     let _ = store_inst.set_alignment(elem_align);
+                    return Ok(());
+                }
+
+                // v0.97 (Cycle 2286): SIMD comparison — VxN cmp -> maskN.
+                // Lowers to inkwell `build_float_compare` (FCMP) / `build_int_compare` (ICMP).
+                if args.len() == 2
+                    && let Some((op_kind, predicate)) = match func.as_str() {
+                        "cmp_eq_f64x4" | "cmp_eq_f64x8" => Some(("fcmp", "oeq")),
+                        "cmp_ne_f64x4" | "cmp_ne_f64x8" => Some(("fcmp", "one")),
+                        "cmp_lt_f64x4" | "cmp_lt_f64x8" => Some(("fcmp", "olt")),
+                        "cmp_le_f64x4" | "cmp_le_f64x8" => Some(("fcmp", "ole")),
+                        "cmp_gt_f64x4" | "cmp_gt_f64x8" => Some(("fcmp", "ogt")),
+                        "cmp_ge_f64x4" | "cmp_ge_f64x8" => Some(("fcmp", "oge")),
+                        "cmp_eq_i32x4" | "cmp_eq_i32x8" | "cmp_eq_i64x2" | "cmp_eq_i64x4" => Some(("icmp", "eq")),
+                        "cmp_ne_i32x4" | "cmp_ne_i32x8" | "cmp_ne_i64x2" | "cmp_ne_i64x4" => Some(("icmp", "ne")),
+                        "cmp_lt_i32x4" | "cmp_lt_i32x8" | "cmp_lt_i64x2" | "cmp_lt_i64x4" => Some(("icmp", "slt")),
+                        "cmp_le_i32x4" | "cmp_le_i32x8" | "cmp_le_i64x2" | "cmp_le_i64x4" => Some(("icmp", "sle")),
+                        "cmp_gt_i32x4" | "cmp_gt_i32x8" | "cmp_gt_i64x2" | "cmp_gt_i64x4" => Some(("icmp", "sgt")),
+                        "cmp_ge_i32x4" | "cmp_ge_i32x8" | "cmp_ge_i64x2" | "cmp_ge_i64x4" => Some(("icmp", "sge")),
+                        _ => None,
+                    }
+                {
+                    use inkwell::{FloatPredicate, IntPredicate};
+                    let a = self.gen_operand(&args[0])?;
+                    let b = self.gen_operand(&args[1])?;
+                    let result: inkwell::values::BasicValueEnum = if op_kind == "fcmp" {
+                        let p = match predicate {
+                            "oeq" => FloatPredicate::OEQ,
+                            "one" => FloatPredicate::ONE,
+                            "olt" => FloatPredicate::OLT,
+                            "ole" => FloatPredicate::OLE,
+                            "ogt" => FloatPredicate::OGT,
+                            "oge" => FloatPredicate::OGE,
+                            _ => unreachable!(),
+                        };
+                        self.builder
+                            .build_float_compare(p, a.into_vector_value(), b.into_vector_value(), "vcmp")
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                            .into()
+                    } else {
+                        let p = match predicate {
+                            "eq" => IntPredicate::EQ,
+                            "ne" => IntPredicate::NE,
+                            "slt" => IntPredicate::SLT,
+                            "sle" => IntPredicate::SLE,
+                            "sgt" => IntPredicate::SGT,
+                            "sge" => IntPredicate::SGE,
+                            _ => unreachable!(),
+                        };
+                        self.builder
+                            .build_int_compare(p, a.into_vector_value(), b.into_vector_value(), "vcmp")
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                            .into()
+                    };
+                    if let Some(dest_place) = dest {
+                        self.store_to_place(dest_place, result)?;
+                    }
+                    return Ok(());
+                }
+
+                // v0.97 (Cycle 2286): SIMD blend — `select <N x i1>, <N x T>, <N x T>`.
+                if args.len() == 3
+                    && matches!(func.as_str(),
+                        "blend_f64x4" | "blend_f64x8" |
+                        "blend_i32x4" | "blend_i32x8" |
+                        "blend_i64x2" | "blend_i64x4")
+                {
+                    let m = self.gen_operand(&args[0])?;
+                    let a = self.gen_operand(&args[1])?;
+                    let b = self.gen_operand(&args[2])?;
+                    let result = self.builder
+                        .build_select(m.into_vector_value(), a, b, "vblend")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    if let Some(dest_place) = dest {
+                        self.store_to_place(dest_place, result)?;
+                    }
+                    return Ok(());
+                }
+
+                // v0.97 (Cycle 2286): SIMD mask reductions — call llvm.vector.reduce.{or,and}.vNi1.
+                if args.len() == 1
+                    && let Some(intrinsic_name) = match func.as_str() {
+                        "mask_any_2" => Some("llvm.vector.reduce.or.v2i1"),
+                        "mask_any_4" => Some("llvm.vector.reduce.or.v4i1"),
+                        "mask_any_8" => Some("llvm.vector.reduce.or.v8i1"),
+                        "mask_all_2" => Some("llvm.vector.reduce.and.v2i1"),
+                        "mask_all_4" => Some("llvm.vector.reduce.and.v4i1"),
+                        "mask_all_8" => Some("llvm.vector.reduce.and.v8i1"),
+                        _ => None,
+                    }
+                {
+                    let intrinsic_fn = *self.functions.get(intrinsic_name)
+                        .ok_or_else(|| CodeGenError::UnknownFunction(intrinsic_name.to_string()))?;
+                    let m = self.gen_operand(&args[0])?;
+                    let call_result = self.builder
+                        .build_call(intrinsic_fn, &[m.into()], "mr")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    if let Some(dest_place) = dest
+                        && let Some(ret_val) = call_result.try_as_basic_value().basic()
+                    {
+                        self.store_to_place(dest_place, ret_val)?;
+                    }
                     return Ok(());
                 }
 
@@ -6735,7 +6855,9 @@ mod tests {
     // === Helper: create minimal LlvmContext for testing ===
 
     fn make_test_context(context: &Context) -> LlvmContext<'_> {
-        LlvmContext::new(context)
+        // Cycle 2286: was `LlvmContext::new(context)` which doesn't exist;
+        // delegate to the actual constructor so `--all-targets` clippy passes.
+        LlvmContext::with_fast_math(context, false)
     }
 
     fn make_place(name: &str) -> Place {

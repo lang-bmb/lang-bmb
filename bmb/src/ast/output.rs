@@ -353,6 +353,8 @@ pub fn format_type(ty: &Type) -> String {
         Type::Scope => "Scope".to_string(),
         // v0.97 (Cycle 2215+): SIMD vector type
         Type::Vector { elem, lanes } => format!("{}x{}", format_type(elem), lanes),
+        // v0.97 (Cycle 2283): SIMD mask type
+        Type::Mask { lanes } => format!("mask{lanes}"),
     }
 }
 

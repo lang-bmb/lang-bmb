@@ -127,6 +127,8 @@ extern {
         "char" => Token::TyChar,
         // v0.97 (Cycle 2219): SIMD vector type tokens (e.g., f64x4, i32x8)
         "simd" => Token::TySimd(<String>),
+        // v0.97 (Cycle 2283): SIMD mask type tokens (e.g., mask4, mask8)
+        "mask" => Token::TyMask(<String>),
 
         "int" => Token::IntLit(<i64>),
         "float" => Token::FloatLit(<f64>),
@@ -1149,6 +1151,8 @@ PlainType: Type = {
     // v0.97 (Cycle 2219): SIMD 1급 타입 — `f64x4`, `i32x8`, `u64x2`, etc.
     // Lexer regex matches the whole token; helper decodes elem + lanes.
     <s:"simd"> => parse_simd_type(&s),
+    // v0.97 (Cycle 2283): SIMD mask 타입 — `mask4`, `mask8`, etc.
+    <s:"mask"> => parse_mask_type(&s),
     // v0.13.1: Generic type: Container<T>, Result<T, E>
     <name:RawIdent> "<" <args:TypeArgList> ">" => Type::Generic { name, type_args: args },
     // v0.37: Nullable type suffix: T? (per spec, this is the only nullable syntax)
