@@ -1,22 +1,8 @@
-// SIMD horizontal sum + splat smoke test (Cycles 2246-2247).
+// SIMD horizontal sum + splat smoke test (Cycles 2246-2247, refactored 2276).
 // Verifies stdlib/simd hsum_* → `llvm.vector.reduce.*`
 //                  and splat_* → `insertelement + shufflevector`.
 
-pub fn hsum_f64x4(v: f64x4) -> f64 = todo;
-pub fn hsum_f64x8(v: f64x8) -> f64 = todo;
-pub fn hsum_i32x4(v: i32x4) -> i32 = todo;
-pub fn hsum_i32x8(v: i32x8) -> i32 = todo;
-pub fn hsum_i64x2(v: i64x2) -> i64 = todo;
-pub fn hsum_i64x4(v: i64x4) -> i64 = todo;
-
-pub fn splat_f64x4(x: f64) -> f64x4 = todo;
-pub fn splat_f64x8(x: f64) -> f64x8 = todo;
-pub fn splat_i64x2(x: i64) -> i64x2 = todo;
-pub fn splat_i64x4(x: i64) -> i64x4 = todo;
-
-pub fn load_f64x4(base: i64, idx: i64) -> f64x4 = todo;
-pub fn load_i64x2(base: i64, idx: i64) -> i64x2 = todo;
-pub fn store_f64x4(base: i64, idx: i64, v: f64x4) -> () = ();
+@include "stdlib/simd/mod.bmb"
 
 fn add_at(base: i64, idx: i64, k: f64) -> f64x4 =
     load_f64x4(base, idx) + splat_f64x4(k);
@@ -26,22 +12,13 @@ fn write_scaled(base: i64, idx: i64, v: f64x4, k: f64) -> i64 = {
     0
 };
 
-// Cycle 2249: dot_f64x4 composition — hsum(a * b).
-// Verifies that pure-BMB composition of intrinsics emits the expected
-// fmul+reduce chain that LLVM recognizes for FMA.
-pub fn dot_f64x4(a: f64x4, b: f64x4) -> f64 = hsum_f64x4(a * b);
-
+// Cycle 2249: dot_f64x4 composition is exercised via `vdot` → `dot_f64x4` from stdlib.
 fn vdot(a: f64x4, b: f64x4) -> f64 = dot_f64x4(a, b);
 
-// Cycle 2253: FMA intrinsic smoke.
-pub fn fma_f64x4(a: f64x4, b: f64x4, c: f64x4) -> f64x4 = todo;
-
+// Cycle 2253: FMA smoke.
 fn fma_smoke(a: f64x4, b: f64x4, c: f64x4) -> f64 = hsum_f64x4(fma_f64x4(a, b, c));
 
 // Cycle 2254: min/max smoke.
-pub fn min_f64x4(a: f64x4, b: f64x4) -> f64x4 = todo;
-pub fn max_i32x8(a: i32x8, b: i32x8) -> i32x8 = todo;
-
 fn clamp_f64x4(v: f64x4, lo: f64x4) -> f64 = hsum_f64x4(min_f64x4(v, lo));
 fn max_sum_i32x8(a: i32x8, b: i32x8) -> i32 = hsum_i32x8(max_i32x8(a, b));
 

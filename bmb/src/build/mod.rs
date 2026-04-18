@@ -396,6 +396,41 @@ pub fn auto_detect_prelude_path() -> Option<PathBuf> {
     None
 }
 
+/// v0.97 (Cycle 2275): Auto-detect the BMB repo root so users can
+/// `@include "stdlib/simd/mod.bmb"` without an explicit `-I` flag.
+/// Search order matches `auto_detect_prelude_path`: env var, exe-relative, cwd.
+/// Returns the directory that CONTAINS `stdlib/`, to preserve the conventional
+/// `stdlib/{module}/mod.bmb` prefix in user code.
+pub fn auto_detect_stdlib_root() -> Option<PathBuf> {
+    if let Ok(path) = std::env::var("BMB_STDLIB_PATH") {
+        let root = PathBuf::from(&path);
+        if root.join("stdlib").is_dir() {
+            return Some(root);
+        }
+    }
+    if let Ok(exe_path) = std::env::current_exe()
+        && let Some(exe_dir) = exe_path.parent()
+    {
+        for cand in [exe_dir.to_path_buf(), exe_dir.join("packages"), exe_dir.parent().map(|p| p.to_path_buf()).unwrap_or(exe_dir.to_path_buf())] {
+            if cand.join("stdlib").is_dir() {
+                return Some(cand);
+            }
+        }
+        if let Some(parent) = exe_dir.parent()
+            && let Some(grandparent) = parent.parent()
+            && grandparent.join("stdlib").is_dir()
+        {
+            return Some(grandparent.to_path_buf());
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir()
+        && cwd.join("stdlib").is_dir()
+    {
+        return Some(cwd);
+    }
+    None
+}
+
 /// Build a BMB program
 pub fn build(config: &BuildConfig) -> BuildResult<()> {
     // Read source
@@ -416,10 +451,18 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         auto_detect_prelude_path()
     };
     let prelude = auto_detected_prelude.as_deref();
+    // v0.97 (Cycle 2275): Auto-add stdlib root to include paths so
+    // `@include "stdlib/..."` works without `-I`. Explicit user paths retain priority.
+    let mut effective_include_paths = config.include_paths.clone();
+    if let Some(root) = auto_detect_stdlib_root()
+        && !effective_include_paths.iter().any(|p| p == &root)
+    {
+        effective_include_paths.push(root);
+    }
     let source = preprocessor::expand_with_prelude(
         &source,
         &config.input,
-        &config.include_paths,
+        &effective_include_paths,
         prelude,
     ).map_err(|e| BuildError::Parse(e.to_string()))?;
 
@@ -437,7 +480,7 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
     // v0.98: Resolve `use` imports via Resolver before type checking
     let base_dir = config.input.parent().unwrap_or_else(|| std::path::Path::new("."));
     let mut resolver = Resolver::new(base_dir);
-    for ip in &config.include_paths {
+    for ip in &effective_include_paths {
         resolver.add_search_path(ip);
     }
     let _imports = resolver.resolve_uses(&program)
@@ -1275,14 +1318,13 @@ fn find_runtime() -> BuildResult<PathBuf> {
                     return Ok(runtime);
                 }
                 // Check ../../../runtime/ (for target/x86_64-pc-windows-gnu/debug/)
-                if let Some(ggp) = grandparent.parent() {
-                    if let Some(gggp) = ggp.parent() {
+                if let Some(ggp) = grandparent.parent()
+                    && let Some(gggp) = ggp.parent() {
                         let runtime = gggp.join("runtime").join("libbmb_runtime.a");
                         if runtime.exists() {
                             return Ok(runtime);
                         }
                     }
-                }
             }
         }
     }

@@ -684,6 +684,91 @@ impl<'ctx> LlvmContext<'ctx> {
         let sqrt_fn = self.module.add_function("llvm.sqrt.f64", sqrt_type, None);
         self.functions.insert("sqrt".to_string(), sqrt_fn);
 
+        // v0.97 (Cycle 2270): SIMD vector reduction/broadcast/FMA/min-max intrinsics.
+        // Parallels the text-backend `declare` block added in Cycles 2246/2253/2254.
+        // Function-table key matches the BMB stdlib/simd name; LLVM symbol is the
+        // intrinsic. The Call dispatch in `gen_call` synthesizes any extra args
+        // (e.g. the scalar start value for `reduce.fadd`).
+        let f64x4 = f64_type.vec_type(4);
+        let f64x8 = f64_type.vec_type(8);
+        let i32_type_ = self.context.i32_type();
+        let i32x4 = i32_type_.vec_type(4);
+        let i32x8 = i32_type_.vec_type(8);
+        let i64x2 = i64_type.vec_type(2);
+        let i64x4 = i64_type.vec_type(4);
+
+        // vector.reduce.fadd — scalar start + vector
+        let red_fadd_v4f64 = f64_type.fn_type(&[f64_type.into(), f64x4.into()], false);
+        self.functions.insert(
+            "llvm.vector.reduce.fadd.v4f64".to_string(),
+            self.module.add_function("llvm.vector.reduce.fadd.v4f64", red_fadd_v4f64, None),
+        );
+        let red_fadd_v8f64 = f64_type.fn_type(&[f64_type.into(), f64x8.into()], false);
+        self.functions.insert(
+            "llvm.vector.reduce.fadd.v8f64".to_string(),
+            self.module.add_function("llvm.vector.reduce.fadd.v8f64", red_fadd_v8f64, None),
+        );
+        // vector.reduce.add — integer, vector only
+        let red_add_v4i32 = i32_type_.fn_type(&[i32x4.into()], false);
+        self.functions.insert(
+            "llvm.vector.reduce.add.v4i32".to_string(),
+            self.module.add_function("llvm.vector.reduce.add.v4i32", red_add_v4i32, None),
+        );
+        let red_add_v8i32 = i32_type_.fn_type(&[i32x8.into()], false);
+        self.functions.insert(
+            "llvm.vector.reduce.add.v8i32".to_string(),
+            self.module.add_function("llvm.vector.reduce.add.v8i32", red_add_v8i32, None),
+        );
+        let red_add_v2i64 = i64_type.fn_type(&[i64x2.into()], false);
+        self.functions.insert(
+            "llvm.vector.reduce.add.v2i64".to_string(),
+            self.module.add_function("llvm.vector.reduce.add.v2i64", red_add_v2i64, None),
+        );
+        let red_add_v4i64 = i64_type.fn_type(&[i64x4.into()], false);
+        self.functions.insert(
+            "llvm.vector.reduce.add.v4i64".to_string(),
+            self.module.add_function("llvm.vector.reduce.add.v4i64", red_add_v4i64, None),
+        );
+        // fma — 3-operand fused multiply-add
+        let fma_v4f64 = f64x4.fn_type(&[f64x4.into(), f64x4.into(), f64x4.into()], false);
+        self.functions.insert(
+            "llvm.fma.v4f64".to_string(),
+            self.module.add_function("llvm.fma.v4f64", fma_v4f64, None),
+        );
+        let fma_v8f64 = f64x8.fn_type(&[f64x8.into(), f64x8.into(), f64x8.into()], false);
+        self.functions.insert(
+            "llvm.fma.v8f64".to_string(),
+            self.module.add_function("llvm.fma.v8f64", fma_v8f64, None),
+        );
+        // minnum / maxnum (float), smin / smax (int)
+        for (name, vec_ty) in [
+            ("llvm.minnum.v4f64", f64x4),
+            ("llvm.maxnum.v4f64", f64x4),
+            ("llvm.minnum.v8f64", f64x8),
+            ("llvm.maxnum.v8f64", f64x8),
+        ] {
+            let t = vec_ty.fn_type(&[vec_ty.into(), vec_ty.into()], false);
+            self.functions.insert(name.to_string(), self.module.add_function(name, t, None));
+        }
+        for (name, vec_ty) in [
+            ("llvm.smin.v4i32", i32x4),
+            ("llvm.smax.v4i32", i32x4),
+            ("llvm.smin.v8i32", i32x8),
+            ("llvm.smax.v8i32", i32x8),
+        ] {
+            let t = vec_ty.fn_type(&[vec_ty.into(), vec_ty.into()], false);
+            self.functions.insert(name.to_string(), self.module.add_function(name, t, None));
+        }
+        for (name, vec_ty) in [
+            ("llvm.smin.v2i64", i64x2),
+            ("llvm.smax.v2i64", i64x2),
+            ("llvm.smin.v4i64", i64x4),
+            ("llvm.smax.v4i64", i64x4),
+        ] {
+            let t = vec_ty.fn_type(&[vec_ty.into(), vec_ty.into()], false);
+            self.functions.insert(name.to_string(), self.module.add_function(name, t, None));
+        }
+
         // v0.96: Saturating arithmetic intrinsics
         let sadd_sat_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
         let sadd_sat_fn = self.module.add_function("llvm.sadd.sat.i64", sadd_sat_type, None);
@@ -1670,13 +1755,18 @@ impl<'ctx> LlvmContext<'ctx> {
             }
             // v0.97 (Cycle 2230): SIMD vector — inkwell `VectorType::into()`.
             // Mirrors text backend (`<N x T>`) for byte-exact IR parity (Rule 7).
+            // v0.97 (Cycle 2266): `vec_type` only exists on int/float LLVM types,
+            // not on the `BasicTypeEnum` wrapper — the previous `_ => elem_ty.vec_type(...)`
+            // fallback was a compile error. Vector elements are constrained to scalar
+            // int/float in the BMB lexer; other enum variants are unreachable here.
             MirType::Vector { elem, lanes } => {
-                use inkwell::types::BasicType;
                 let elem_ty = self.mir_type_to_llvm(elem);
                 match elem_ty {
                     BasicTypeEnum::IntType(it) => it.vec_type(*lanes).into(),
                     BasicTypeEnum::FloatType(ft) => ft.vec_type(*lanes).into(),
-                    _ => elem_ty.vec_type(*lanes).into(),
+                    other => unreachable!(
+                        "SIMD vector element type must be int/float; got {:?}", other
+                    ),
                 }
             }
         }
@@ -1870,13 +1960,11 @@ impl<'ctx> LlvmContext<'ctx> {
         // This fixes string comparison when comparing sliced strings (e.g., s.slice(0,3) == "fn ")
         for block in &func.blocks {
             for inst in &block.instructions {
-                if let MirInst::Call { dest: Some(dest), func: callee, .. } = inst {
-                    if let Some(ret_ty) = self.function_return_types.get(callee) {
-                        if *ret_ty == MirType::String {
+                if let MirInst::Call { dest: Some(dest), func: callee, .. } = inst
+                    && let Some(ret_ty) = self.function_return_types.get(callee)
+                        && *ret_ty == MirType::String {
                             self.string_variables.insert(dest.name.clone());
                         }
-                    }
-                }
             }
         }
 
@@ -1943,8 +2031,8 @@ impl<'ctx> LlvmContext<'ctx> {
         // This enables LLVM to use the pre-extended value instead of sign-extending
         // inside loops. The original i32 value is kept for i32-only operations.
         for (name, ty) in func.params.iter() {
-            if *ty == MirType::I32 && !written_places.contains(name) {
-                if let Some(param_val) = self.ssa_values.get(name).cloned() {
+            if *ty == MirType::I32 && !written_places.contains(name)
+                && let Some(param_val) = self.ssa_values.get(name).cloned() {
                     let i32_val = param_val.into_int_value();
                     let i64_val = self.builder
                         .build_int_s_extend(i32_val, self.context.i64_type(), &format!("{}_sext", name))
@@ -1952,7 +2040,6 @@ impl<'ctx> LlvmContext<'ctx> {
                     // Store under a special name that coercion can look up
                     self.ssa_values.insert(format!("{}_i64", name), i64_val.into());
                 }
-            }
         }
 
         // v0.96.16: Emit llvm.assume for precondition contract facts
@@ -1964,10 +2051,10 @@ impl<'ctx> LlvmContext<'ctx> {
                 match fact {
                     ContractFact::VarCmp { var, op, value } => {
                         // Only emit for function parameters (available at entry)
-                        if let Some((_, ty)) = func.params.iter().find(|(n, _)| n == var) {
-                            if let Some(param_val) = self.ssa_values.get(var).cloned()
+                        if let Some((_, ty)) = func.params.iter().find(|(n, _)| n == var)
+                            && let Some(param_val) = self.ssa_values.get(var).cloned()
                                 .or_else(|| self.variables.get(var).and_then(|(alloca, llvm_ty)| {
-                                    self.builder.build_load(*llvm_ty, *alloca, &format!("{}_load", var)).ok().map(|v| v.into())
+                                    self.builder.build_load(*llvm_ty, *alloca, &format!("{}_load", var)).ok()
                                 }))
                             {
                                 let llvm_ty = self.mir_type_to_llvm(ty);
@@ -1985,12 +2072,11 @@ impl<'ctx> LlvmContext<'ctx> {
                                     let _ = self.builder.build_call(*assume_fn, &[cmp.into()], "");
                                 }
                             }
-                        }
                     }
                     ContractFact::VarVarCmp { lhs, op, rhs } => {
-                        if let Some((_, _lty)) = func.params.iter().find(|(n, _)| n == lhs) {
-                            if func.params.iter().any(|(n, _)| n == rhs) {
-                                if let (Some(lhs_val), Some(rhs_val)) = (
+                        if let Some((_, _lty)) = func.params.iter().find(|(n, _)| n == lhs)
+                            && func.params.iter().any(|(n, _)| n == rhs)
+                                && let (Some(lhs_val), Some(rhs_val)) = (
                                     self.ssa_values.get(lhs).cloned(),
                                     self.ssa_values.get(rhs).cloned(),
                                 ) {
@@ -2013,28 +2099,24 @@ impl<'ctx> LlvmContext<'ctx> {
                                         if let Ok(ext) = self.builder.build_int_s_extend(lhs_int, rhs_int.get_type(), "_assume_sext") {
                                             lhs_int = ext;
                                         }
-                                    } else if rhs_bits < lhs_bits {
-                                        if let Ok(ext) = self.builder.build_int_s_extend(rhs_int, lhs_int.get_type(), "_assume_sext") {
+                                    } else if rhs_bits < lhs_bits
+                                        && let Ok(ext) = self.builder.build_int_s_extend(rhs_int, lhs_int.get_type(), "_assume_sext") {
                                             rhs_int = ext;
                                         }
-                                    }
                                     if let Ok(cmp) = self.builder.build_int_compare(pred, lhs_int, rhs_int, "_assume_cmp") {
                                         let _ = self.builder.build_call(*assume_fn, &[cmp.into()], "");
                                     }
                                 }
-                            }
-                        }
                     }
                     ContractFact::NonNull { var } => {
-                        if func.params.iter().any(|(n, _)| n == var) {
-                            if let Some(param_val) = self.ssa_values.get(var).cloned() {
+                        if func.params.iter().any(|(n, _)| n == var)
+                            && let Some(param_val) = self.ssa_values.get(var).cloned() {
                                 let ptr_val = param_val.into_pointer_value();
                                 let null_ptr = ptr_val.get_type().const_null();
                                 if let Ok(cmp) = self.builder.build_int_compare(inkwell::IntPredicate::NE, ptr_val, null_ptr, "_assume_nonnull") {
                                     let _ = self.builder.build_call(*assume_fn, &[cmp.into()], "");
                                 }
                             }
-                        }
                     }
                     // Skip postcondition facts and array bounds
                     ContractFact::ReturnCmp { .. }
@@ -2132,10 +2214,10 @@ impl<'ctx> LlvmContext<'ctx> {
                                     self.builder.position_before(&terminator);
 
                                     let load_name = format!("{}.phi.{}", p.name, source_label);
-                                    let loaded = self.builder
+                                    
+                                    self.builder
                                         .build_load(*pointee_type, *ptr, &load_name)
-                                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
-                                    loaded
+                                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
                                 } else {
                                     return Err(CodeGenError::UnknownVariable(p.name.clone()));
                                 }
@@ -2384,11 +2466,10 @@ impl<'ctx> LlvmContext<'ctx> {
                     }
                     // FieldAccess: use field type from struct
                     MirInst::FieldAccess { dest, struct_name, field_index, .. } if dest.name == place_name => {
-                        if let Some(fields) = self.struct_defs.get(struct_name) {
-                            if let Some((_, field_ty)) = fields.get(*field_index) {
+                        if let Some(fields) = self.struct_defs.get(struct_name)
+                            && let Some((_, field_ty)) = fields.get(*field_index) {
                                 return Some(field_ty.clone());
                             }
-                        }
                     }
                     // BinOp: typically returns i64
                     MirInst::BinOp { dest, .. } if dest.name == place_name => {
@@ -2603,6 +2684,211 @@ impl<'ctx> LlvmContext<'ctx> {
             }
 
             MirInst::Call { dest, func, args, is_tail } => {
+                // v0.97 (Cycle 2270): SIMD stdlib/simd intrinsic dispatch (text-backend parity).
+                // Maps BMB function names to their LLVM vector intrinsics. Must come before
+                // the generic `self.functions.get(func)` lookup — otherwise the (empty)
+                // stub bodies would be called and return zero at runtime.
+                if let Some((intrinsic_name, needs_start_value)) = match func.as_str() {
+                    "hsum_f64x4" if args.len() == 1 => Some(("llvm.vector.reduce.fadd.v4f64", true)),
+                    "hsum_f64x8" if args.len() == 1 => Some(("llvm.vector.reduce.fadd.v8f64", true)),
+                    "hsum_i32x4" if args.len() == 1 => Some(("llvm.vector.reduce.add.v4i32", false)),
+                    "hsum_i32x8" if args.len() == 1 => Some(("llvm.vector.reduce.add.v8i32", false)),
+                    "hsum_i64x2" if args.len() == 1 => Some(("llvm.vector.reduce.add.v2i64", false)),
+                    "hsum_i64x4" if args.len() == 1 => Some(("llvm.vector.reduce.add.v4i64", false)),
+                    _ => None,
+                } {
+                    let intrinsic_fn = *self.functions.get(intrinsic_name)
+                        .ok_or_else(|| CodeGenError::UnknownFunction(intrinsic_name.to_string()))?;
+                    let vec_val = self.gen_operand(&args[0])?;
+                    let call_args: Vec<BasicMetadataValueEnum> = if needs_start_value {
+                        let zero = self.context.f64_type().const_zero();
+                        vec![zero.into(), vec_val.into()]
+                    } else {
+                        vec![vec_val.into()]
+                    };
+                    let call_result = self.builder
+                        .build_call(intrinsic_fn, &call_args, "hsum")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    if let Some(dest_place) = dest
+                        && let Some(ret_val) = call_result.try_as_basic_value().basic()
+                    {
+                        self.store_to_place(dest_place, ret_val)?;
+                    }
+                    return Ok(());
+                }
+
+                // v0.97 (Cycle 2270): FMA — 3-operand fused multiply-add.
+                if let Some(intrinsic_name) = match func.as_str() {
+                    "fma_f64x4" if args.len() == 3 => Some("llvm.fma.v4f64"),
+                    "fma_f64x8" if args.len() == 3 => Some("llvm.fma.v8f64"),
+                    _ => None,
+                } {
+                    let intrinsic_fn = *self.functions.get(intrinsic_name)
+                        .ok_or_else(|| CodeGenError::UnknownFunction(intrinsic_name.to_string()))?;
+                    let a = self.gen_operand(&args[0])?;
+                    let b = self.gen_operand(&args[1])?;
+                    let c = self.gen_operand(&args[2])?;
+                    let call_result = self.builder
+                        .build_call(intrinsic_fn, &[a.into(), b.into(), c.into()], "fma")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    if let Some(dest_place) = dest
+                        && let Some(ret_val) = call_result.try_as_basic_value().basic()
+                    {
+                        self.store_to_place(dest_place, ret_val)?;
+                    }
+                    return Ok(());
+                }
+
+                // v0.97 (Cycle 2271): SIMD splat — scalar broadcast via insertelement + shufflevector.
+                if let Some((vec_ty_kind, lanes)) = match func.as_str() {
+                    "splat_f64x4" if args.len() == 1 => Some(("f64", 4u32)),
+                    "splat_f64x8" if args.len() == 1 => Some(("f64", 8)),
+                    "splat_i32x4" if args.len() == 1 => Some(("i32", 4)),
+                    "splat_i32x8" if args.len() == 1 => Some(("i32", 8)),
+                    "splat_i64x2" if args.len() == 1 => Some(("i64", 2)),
+                    "splat_i64x4" if args.len() == 1 => Some(("i64", 4)),
+                    _ => None,
+                } {
+                    let vec_ty: inkwell::types::VectorType = match vec_ty_kind {
+                        "f64" => self.context.f64_type().vec_type(lanes),
+                        "i32" => self.context.i32_type().vec_type(lanes),
+                        "i64" => self.context.i64_type().vec_type(lanes),
+                        _ => unreachable!(),
+                    };
+                    let scalar_val = self.gen_operand(&args[0])?;
+                    // Coerce scalar to element type (i64 → trunc i32, f64 → sitofp i64, etc.)
+                    let elem_val: BasicValueEnum = match vec_ty_kind {
+                        "f64" if scalar_val.is_int_value() => self.builder
+                            .build_signed_int_to_float(scalar_val.into_int_value(), self.context.f64_type(), "splat_sitofp")
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                            .into(),
+                        "i32" if scalar_val.is_int_value() && scalar_val.into_int_value().get_type().get_bit_width() == 64 => self.builder
+                            .build_int_truncate(scalar_val.into_int_value(), self.context.i32_type(), "splat_trunc")
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                            .into(),
+                        _ => scalar_val,
+                    };
+                    let poison = vec_ty.get_poison();
+                    let zero_i64 = self.context.i64_type().const_zero();
+                    let inserted = self.builder
+                        .build_insert_element(poison, elem_val, zero_i64, "splat.ie")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    let mask_ty = self.context.i32_type().vec_type(lanes);
+                    let mask = mask_ty.const_zero();
+                    let broadcasted = self.builder
+                        .build_shuffle_vector(inserted, poison, mask, "splat")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    if let Some(dest_place) = dest {
+                        self.store_to_place(dest_place, broadcasted.into())?;
+                    }
+                    return Ok(());
+                }
+
+                // v0.97 (Cycle 2271): SIMD typed load — `load_{T}xN(base: i64, idx: i64) -> {T}xN`.
+                if let Some((vec_ty_kind, lanes, elem_align)) = match func.as_str() {
+                    "load_f64x4" if args.len() == 2 => Some(("f64", 4u32, 8u32)),
+                    "load_f64x8" if args.len() == 2 => Some(("f64", 8, 8)),
+                    "load_i32x4" if args.len() == 2 => Some(("i32", 4, 4)),
+                    "load_i32x8" if args.len() == 2 => Some(("i32", 8, 4)),
+                    "load_i64x2" if args.len() == 2 => Some(("i64", 2, 8)),
+                    "load_i64x4" if args.len() == 2 => Some(("i64", 4, 8)),
+                    _ => None,
+                } {
+                    let (elem_ty, vec_ty): (BasicTypeEnum, inkwell::types::VectorType) = match vec_ty_kind {
+                        "f64" => (self.context.f64_type().into(), self.context.f64_type().vec_type(lanes)),
+                        "i32" => (self.context.i32_type().into(), self.context.i32_type().vec_type(lanes)),
+                        "i64" => (self.context.i64_type().into(), self.context.i64_type().vec_type(lanes)),
+                        _ => unreachable!(),
+                    };
+                    let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                    let base_val = self.gen_operand(&args[0])?;
+                    let idx_val = self.gen_operand(&args[1])?;
+                    let base_ptr = self.builder
+                        .build_int_to_ptr(base_val.into_int_value(), ptr_type, "vload.ptr")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    let elem_ptr = unsafe {
+                        self.builder
+                            .build_in_bounds_gep(elem_ty, base_ptr, &[idx_val.into_int_value()], "vload.gep")
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    };
+                    let loaded = self.builder
+                        .build_load(vec_ty, elem_ptr, "vload")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    if let Some(inst) = loaded.as_instruction_value() {
+                        let _ = inst.set_alignment(elem_align);
+                    }
+                    if let Some(dest_place) = dest {
+                        self.store_to_place(dest_place, loaded)?;
+                    }
+                    return Ok(());
+                }
+
+                // v0.97 (Cycle 2271): SIMD typed store — `store_{T}xN(base: i64, idx: i64, v)`.
+                if let Some((vec_ty_kind, _lanes, elem_align)) = match func.as_str() {
+                    "store_f64x4" if args.len() == 3 => Some(("f64", 4u32, 8u32)),
+                    "store_f64x8" if args.len() == 3 => Some(("f64", 8, 8)),
+                    "store_i32x4" if args.len() == 3 => Some(("i32", 4, 4)),
+                    "store_i32x8" if args.len() == 3 => Some(("i32", 8, 4)),
+                    "store_i64x2" if args.len() == 3 => Some(("i64", 2, 8)),
+                    "store_i64x4" if args.len() == 3 => Some(("i64", 4, 8)),
+                    _ => None,
+                } {
+                    let elem_ty: BasicTypeEnum = match vec_ty_kind {
+                        "f64" => self.context.f64_type().into(),
+                        "i32" => self.context.i32_type().into(),
+                        "i64" => self.context.i64_type().into(),
+                        _ => unreachable!(),
+                    };
+                    let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                    let base_val = self.gen_operand(&args[0])?;
+                    let idx_val = self.gen_operand(&args[1])?;
+                    let v_val = self.gen_operand(&args[2])?;
+                    let base_ptr = self.builder
+                        .build_int_to_ptr(base_val.into_int_value(), ptr_type, "vstore.ptr")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    let elem_ptr = unsafe {
+                        self.builder
+                            .build_in_bounds_gep(elem_ty, base_ptr, &[idx_val.into_int_value()], "vstore.gep")
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    };
+                    let store_inst = self.builder
+                        .build_store(elem_ptr, v_val)
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    let _ = store_inst.set_alignment(elem_align);
+                    return Ok(());
+                }
+
+                // v0.97 (Cycle 2270): Elementwise min/max.
+                if let Some(intrinsic_name) = match func.as_str() {
+                    "min_f64x4" if args.len() == 2 => Some("llvm.minnum.v4f64"),
+                    "max_f64x4" if args.len() == 2 => Some("llvm.maxnum.v4f64"),
+                    "min_f64x8" if args.len() == 2 => Some("llvm.minnum.v8f64"),
+                    "max_f64x8" if args.len() == 2 => Some("llvm.maxnum.v8f64"),
+                    "min_i32x4" if args.len() == 2 => Some("llvm.smin.v4i32"),
+                    "max_i32x4" if args.len() == 2 => Some("llvm.smax.v4i32"),
+                    "min_i32x8" if args.len() == 2 => Some("llvm.smin.v8i32"),
+                    "max_i32x8" if args.len() == 2 => Some("llvm.smax.v8i32"),
+                    "min_i64x2" if args.len() == 2 => Some("llvm.smin.v2i64"),
+                    "max_i64x2" if args.len() == 2 => Some("llvm.smax.v2i64"),
+                    "min_i64x4" if args.len() == 2 => Some("llvm.smin.v4i64"),
+                    "max_i64x4" if args.len() == 2 => Some("llvm.smax.v4i64"),
+                    _ => None,
+                } {
+                    let intrinsic_fn = *self.functions.get(intrinsic_name)
+                        .ok_or_else(|| CodeGenError::UnknownFunction(intrinsic_name.to_string()))?;
+                    let a = self.gen_operand(&args[0])?;
+                    let b = self.gen_operand(&args[1])?;
+                    let call_result = self.builder
+                        .build_call(intrinsic_fn, &[a.into(), b.into()], "mm")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    if let Some(dest_place) = dest
+                        && let Some(ret_val) = call_result.try_as_basic_value().basic()
+                    {
+                        self.store_to_place(dest_place, ret_val)?;
+                    }
+                    return Ok(());
+                }
+
                 // v0.35.4: Handle type conversion intrinsics specially
                 // v0.50.66: Tail call optimization support via inkwell API
                 if func == "i64_to_f64" && args.len() == 1 {
@@ -2640,11 +2926,10 @@ impl<'ctx> LlvmContext<'ctx> {
                         let call_result = self.builder
                             .build_call(function, &[arg.into()], "call")
                             .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
-                        if let Some(dest_place) = dest {
-                            if let Some(ret_val) = call_result.try_as_basic_value().basic() {
+                        if let Some(dest_place) = dest
+                            && let Some(ret_val) = call_result.try_as_basic_value().basic() {
                                 self.store_to_place(dest_place, ret_val)?;
                             }
-                        }
                     }
                 } else if func == "free" && args.len() == 1 {
                     // v0.89.4: free() is void in C but returns i64(0) in BMB
@@ -5118,7 +5403,7 @@ impl<'ctx> LlvmContext<'ctx> {
                     _ => false,
                 };
                 let is_string = lhs_is_string || rhs_is_string;
-                let cmp_result = self.gen_binop_with_string_hint(cond_op.clone(), lhs_val, rhs_val, is_string)?;
+                let cmp_result = self.gen_binop_with_string_hint(*cond_op, lhs_val, rhs_val, is_string)?;
 
                 // The comparison result is i1 (bool) for comparisons
                 let cond = cmp_result.into_int_value();
@@ -5154,6 +5439,27 @@ impl<'ctx> LlvmContext<'ctx> {
                     self.builder.build_return(None)
                         .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
                     return Ok(());
+                }
+
+                // v0.97 (Cycle 2269): `= todo` lowers to `Constant::Unit` which `gen_operand`
+                // materializes as `i8 0`. When the function's actual return type is a Vector
+                // or Float, produce a type-matching zero instead — parallels the text backend
+                // fix from Cycle 2254.
+                if matches!(op, Operand::Constant(Constant::Unit))
+                    && let Some(ret_type) = self.current_ret_type
+                {
+                    if let BasicTypeEnum::VectorType(vt) = ret_type {
+                        let zero = vt.const_zero();
+                        self.builder.build_return(Some(&zero))
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                        return Ok(());
+                    }
+                    if let BasicTypeEnum::FloatType(ft) = ret_type {
+                        let zero = ft.const_zero();
+                        self.builder.build_return(Some(&zero))
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                        return Ok(());
+                    }
                 }
 
                 let value = self.gen_operand(op)?;
@@ -5639,15 +5945,14 @@ impl<'ctx> LlvmContext<'ctx> {
         } else if lhs_bits < rhs_bits {
             // lhs is smaller (e.g., i32), rhs is larger (e.g., i64)
             // Check if rhs is a small constant that can be truncated
-            if let Some(const_val) = rhs_int.get_sign_extended_constant() {
-                if const_val >= i32::MIN as i64 && const_val <= i32::MAX as i64 {
+            if let Some(const_val) = rhs_int.get_sign_extended_constant()
+                && const_val >= i32::MIN as i64 && const_val <= i32::MAX as i64 {
                     // Safe to truncate the constant
                     let truncated = self.builder
                         .build_int_truncate(rhs_int, lhs_int.get_type(), "trunc_const")
                         .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
                     return Ok((lhs_int.into(), truncated.into()));
                 }
-            }
             // rhs is not a small constant, extend lhs to match rhs
             let extended = self.builder
                 .build_int_s_extend(lhs_int, rhs_int.get_type(), "sext_lhs")
@@ -5656,15 +5961,14 @@ impl<'ctx> LlvmContext<'ctx> {
         } else {
             // lhs is larger (e.g., i64), rhs is smaller (e.g., i32)
             // Check if lhs is a small constant that can be truncated
-            if let Some(const_val) = lhs_int.get_sign_extended_constant() {
-                if const_val >= i32::MIN as i64 && const_val <= i32::MAX as i64 {
+            if let Some(const_val) = lhs_int.get_sign_extended_constant()
+                && const_val >= i32::MIN as i64 && const_val <= i32::MAX as i64 {
                     // Safe to truncate the constant
                     let truncated = self.builder
                         .build_int_truncate(lhs_int, rhs_int.get_type(), "trunc_const")
                         .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
                     return Ok((truncated.into(), rhs_int.into()));
                 }
-            }
             // lhs is not a small constant, extend rhs to match lhs
             let extended = self.builder
                 .build_int_s_extend(rhs_int, lhs_int.get_type(), "sext_rhs")
@@ -5766,6 +6070,25 @@ impl<'ctx> LlvmContext<'ctx> {
         }
     }
 
+    /// v0.97 (Cycle 2267): Apply fast-math flags to a Vector-valued arithmetic result
+    /// when `self.fast_math` is enabled. Parallels the scalar-path flag set around
+    /// every FAdd/FSub/FMul/FDiv arm. Silent no-op when the value has no underlying
+    /// instruction (shouldn't happen for arithmetic, but defensive).
+    fn apply_fast_math_vec(&self, value: inkwell::values::VectorValue<'ctx>) {
+        if !self.fast_math {
+            return;
+        }
+        if let Some(inst) = value.as_instruction() {
+            let flags = FastMathFlags::AllowContract
+                | FastMathFlags::NoNaNs
+                | FastMathFlags::NoInfs
+                | FastMathFlags::NoSignedZeros
+                | FastMathFlags::AllowReciprocal
+                | FastMathFlags::ApproxFunc;
+            let _ = inst.set_fast_math_flags(flags);
+        }
+    }
+
     /// Generate a binary operation with string comparison hint
     /// v0.60.33: Added is_string_comparison to distinguish String from typed pointers
     fn gen_binop_with_string_hint(
@@ -5784,6 +6107,13 @@ impl<'ctx> LlvmContext<'ctx> {
             // Integer arithmetic with nsw (no signed wrap) for better optimization
             // nsw enables more aggressive LLVM transformations
             MirBinOp::Add => {
+                // v0.97 (Cycle 2268): SIMD Vector add — no nsw flag (parity with text backend).
+                if lhs.is_vector_value() {
+                    let result = self.builder
+                        .build_int_add(lhs.into_vector_value(), rhs.into_vector_value(), "add")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    return Ok(result.into());
+                }
                 // v0.100: Check if operands are pointers (strings) - use string_concat
                 if lhs.is_pointer_value() && rhs.is_pointer_value() {
                     let string_concat_fn = self.functions.get("string_concat")
@@ -5820,6 +6150,12 @@ impl<'ctx> LlvmContext<'ctx> {
                 }
             }
             MirBinOp::Sub => {
+                if lhs.is_vector_value() {
+                    let result = self.builder
+                        .build_int_sub(lhs.into_vector_value(), rhs.into_vector_value(), "sub")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    return Ok(result.into());
+                }
                 // v0.46: Handle pointer arithmetic for subtraction
                 let lhs_int = if lhs.is_pointer_value() {
                     self.builder.build_ptr_to_int(lhs.into_pointer_value(), self.context.i64_type(), "ptr_to_int")
@@ -5839,18 +6175,36 @@ impl<'ctx> LlvmContext<'ctx> {
                 Ok(result.into())
             }
             MirBinOp::Mul => {
+                if lhs.is_vector_value() {
+                    let result = self.builder
+                        .build_int_mul(lhs.into_vector_value(), rhs.into_vector_value(), "mul")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    return Ok(result.into());
+                }
                 let result = self.builder
                     .build_int_nsw_mul(lhs.into_int_value(), rhs.into_int_value(), "mul")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
                 Ok(result.into())
             }
             MirBinOp::Div => {
+                if lhs.is_vector_value() {
+                    let result = self.builder
+                        .build_int_signed_div(lhs.into_vector_value(), rhs.into_vector_value(), "sdiv")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    return Ok(result.into());
+                }
                 let result = self.builder
                     .build_int_signed_div(lhs.into_int_value(), rhs.into_int_value(), "div")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
                 Ok(result.into())
             }
             MirBinOp::Mod => {
+                if lhs.is_vector_value() {
+                    let result = self.builder
+                        .build_int_signed_rem(lhs.into_vector_value(), rhs.into_vector_value(), "srem")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    return Ok(result.into());
+                }
                 let result = self.builder
                     .build_int_signed_rem(lhs.into_int_value(), rhs.into_int_value(), "mod")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
@@ -5863,6 +6217,14 @@ impl<'ctx> LlvmContext<'ctx> {
             // because the division must wait for the load of y. Without reassociation, LLVM keeps
             // the 1.0/x separate, allowing the load of y to happen in parallel with the division.
             MirBinOp::FAdd => {
+                // v0.97 (Cycle 2267): SIMD Vector FAdd parity with text backend.
+                if lhs.is_vector_value() {
+                    let result = self.builder
+                        .build_float_add(lhs.into_vector_value(), rhs.into_vector_value(), "fadd")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    self.apply_fast_math_vec(result);
+                    return Ok(result.into());
+                }
                 let result = self.builder
                     .build_float_add(lhs.into_float_value(), rhs.into_float_value(), "fadd")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
@@ -5881,6 +6243,13 @@ impl<'ctx> LlvmContext<'ctx> {
                 Ok(result.into())
             }
             MirBinOp::FSub => {
+                if lhs.is_vector_value() {
+                    let result = self.builder
+                        .build_float_sub(lhs.into_vector_value(), rhs.into_vector_value(), "fsub")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    self.apply_fast_math_vec(result);
+                    return Ok(result.into());
+                }
                 let result = self.builder
                     .build_float_sub(lhs.into_float_value(), rhs.into_float_value(), "fsub")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
@@ -5898,6 +6267,13 @@ impl<'ctx> LlvmContext<'ctx> {
                 Ok(result.into())
             }
             MirBinOp::FMul => {
+                if lhs.is_vector_value() {
+                    let result = self.builder
+                        .build_float_mul(lhs.into_vector_value(), rhs.into_vector_value(), "fmul")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    self.apply_fast_math_vec(result);
+                    return Ok(result.into());
+                }
                 let result = self.builder
                     .build_float_mul(lhs.into_float_value(), rhs.into_float_value(), "fmul")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
@@ -5915,6 +6291,13 @@ impl<'ctx> LlvmContext<'ctx> {
                 Ok(result.into())
             }
             MirBinOp::FDiv => {
+                if lhs.is_vector_value() {
+                    let result = self.builder
+                        .build_float_div(lhs.into_vector_value(), rhs.into_vector_value(), "fdiv")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    self.apply_fast_math_vec(result);
+                    return Ok(result.into());
+                }
                 let result = self.builder
                     .build_float_div(lhs.into_float_value(), rhs.into_float_value(), "fdiv")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
@@ -6200,7 +6583,7 @@ impl<'ctx> LlvmContext<'ctx> {
                 let int_max: BasicValueEnum = i64_type.const_int(i64::MAX as u64, false).into();
                 let sat_val = self.builder.build_select(neg, int_min, int_max, "mulsat.sat")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
-                let result = self.builder.build_select(ovf.into_int_value(), sat_val, val.into(), "mulsat")
+                let result = self.builder.build_select(ovf.into_int_value(), sat_val, val, "mulsat")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
                 Ok(result)
             }

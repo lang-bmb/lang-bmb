@@ -1,22 +1,16 @@
-// SIMD runtime correctness test (Cycle 2255).
+// SIMD runtime correctness test (Cycle 2255 / refactored Cycle 2276).
 // Computes known values via each stdlib/simd intrinsic family and
 // asserts a non-zero exit code on mismatch. Serves as a runtime
 // check that codegen correctly routes the LLVM intrinsics.
+
+// Cycle 2276: dogfood the auto-include path — no inline prototypes.
+@include "stdlib/simd/mod.bmb"
 
 extern fn malloc(n: i64) -> i64;
 extern fn free(p: i64) -> i64;
 extern fn store_f64(ptr: i64, v: f64) -> i64;
 extern fn f64_to_i64(x: f64) -> i64;
 extern fn println(n: i64) -> i64;
-
-// stdlib/simd declarations (compiler-recognized)
-pub fn hsum_f64x4(v: f64x4) -> f64 = todo;
-pub fn splat_f64x4(x: f64) -> f64x4 = todo;
-pub fn load_f64x4(base: i64, idx: i64) -> f64x4 = todo;
-pub fn store_f64x4(base: i64, idx: i64, v: f64x4) -> () = ();
-pub fn fma_f64x4(a: f64x4, b: f64x4, c: f64x4) -> f64x4 = todo;
-pub fn min_f64x4(a: f64x4, b: f64x4) -> f64x4 = todo;
-pub fn max_f64x4(a: f64x4, b: f64x4) -> f64x4 = todo;
 
 // Prepare an array [1.0, 2.0, 3.0, 4.0]
 fn init4(ptr: i64) -> i64 = {
@@ -72,20 +66,8 @@ fn check_store(ptr: i64, dst: i64) -> i64 = {
     if f64_to_i64(result) == 20 { 0 } else { 1 }
 };
 
-// Integer variants (Cycle 2260)
+// Integer/wider-width helpers now come from `@include "stdlib/simd/mod.bmb"` above.
 extern fn store_i64(ptr: i64, v: i64) -> i64;
-pub fn hsum_i64x2(v: i64x2) -> i64 = todo;
-pub fn splat_i64x2(x: i64) -> i64x2 = todo;
-pub fn load_i64x2(base: i64, idx: i64) -> i64x2 = todo;
-pub fn max_i64x2(a: i64x2, b: i64x2) -> i64x2 = todo;
-pub fn min_i64x2(a: i64x2, b: i64x2) -> i64x2 = todo;
-
-// Wider variants (Cycle 2262)
-pub fn hsum_f64x8(v: f64x8) -> f64 = todo;
-pub fn splat_f64x8(x: f64) -> f64x8 = todo;
-pub fn load_f64x8(base: i64, idx: i64) -> f64x8 = todo;
-pub fn hsum_i64x4(v: i64x4) -> i64 = todo;
-pub fn splat_i64x4(x: i64) -> i64x4 = todo;
 
 fn init_i64_pair(ptr: i64) -> i64 = {
     let _s0 = store_i64(ptr + 0, 7);
@@ -146,6 +128,26 @@ fn check_i64x4() -> i64 = {
     if hsum_i64x4(a) + hsum_i64x4(b + c) == 32 { 0 } else { 1 }
 };
 
+// i32 variants (Cycle 2281) — exercises smin/smax.v{4,8}i32 + reduce.add.v{4,8}i32.
+extern fn i64_to_i32(n: i64) -> i32;
+
+fn check_i32x4() -> i64 = {
+    let a = splat_i32x4(i64_to_i32(4));
+    let b = splat_i32x4(i64_to_i32(3));
+    // hsum(a) = 16; hsum(max(a,b)) = 16; total 32
+    let both: i32 = hsum_i32x4(a) + hsum_i32x4(max_i32x4(a, b));
+    let wide: i64 = i32_to_i64(both);
+    if wide == 32 { 0 } else { 1 }
+};
+
+fn check_i32x8_min() -> i64 = {
+    let a = splat_i32x8(i64_to_i32(10));
+    let b = splat_i32x8(i64_to_i32(3));
+    // min(10, 3) splat × 8 lanes = 24
+    let res: i32 = hsum_i32x8(min_i32x8(a, b));
+    if i32_to_i64(res) == 24 { 0 } else { 1 }
+};
+
 fn main() -> i64 = {
     let a = malloc(64);
     let a8 = malloc(64);
@@ -169,6 +171,9 @@ fn main() -> i64 = {
     // Wider-width checks
     set fails = fails + check_f64x8(a8);
     set fails = fails + check_i64x4();
+    // i32 checks (Cycle 2281)
+    set fails = fails + check_i32x4();
+    set fails = fails + check_i32x8_min();
 
     let _p = println(fails);
     let _fa = free(a);

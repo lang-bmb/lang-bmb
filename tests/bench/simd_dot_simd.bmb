@@ -1,16 +1,14 @@
 // SIMD dot product (Cycle 2250 — Task-B6 perf bench).
 // Identical input shape to `simd_dot_scalar.bmb`; inner loop processes 4 f64 per step.
 
+@include "stdlib/simd/mod.bmb"
+
 extern fn malloc(n: i64) -> i64;
 extern fn free(p: i64) -> i64;
 extern fn store_f64(ptr: i64, v: f64) -> i64;
 extern fn i64_to_f64(n: i64) -> f64;
 extern fn f64_to_i64(x: f64) -> i64;
 extern fn println(n: i64) -> i64;
-
-// stdlib/simd prototypes (compiler-recognized intrinsics)
-pub fn hsum_f64x4(v: f64x4) -> f64 = 0.0;
-pub fn load_f64x4(base: i64, idx: i64) -> f64x4 = todo;
 
 fn init_array(ptr: i64, n: i64, offset: f64) -> i64 = {
     let mut i: i64 = 0;

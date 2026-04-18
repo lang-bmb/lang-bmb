@@ -1,0 +1,68 @@
+// SAXPY scalar baseline (Cycle 2273, Task-B9).
+// y[i] = a * x[i] + y[i]  for i in 0..N, repeated REPS times.
+// Streaming workload — memory bandwidth dominant but FMA exposes lane independence.
+
+extern fn malloc(n: i64) -> i64;
+extern fn free(p: i64) -> i64;
+extern fn store_f64(ptr: i64, v: f64) -> i64;
+extern fn load_f64(ptr: i64) -> f64;
+extern fn i64_to_f64(n: i64) -> f64;
+extern fn f64_to_i64(x: f64) -> i64;
+extern fn println(n: i64) -> i64;
+
+fn init_array(ptr: i64, n: i64, offset: f64) -> i64 = {
+    let mut i: i64 = 0;
+    while i < n {
+        let x = i64_to_f64(i) * 0.25 + offset;
+        let _s = store_f64(ptr + i * 8, x);
+        set i = i + 1;
+    };
+    0
+};
+
+fn saxpy_scalar(a: f64, x: i64, y: i64, n: i64) -> i64 = {
+    let mut i: i64 = 0;
+    while i < n {
+        let xi = load_f64(x + i * 8);
+        let yi = load_f64(y + i * 8);
+        let new_y = a * xi + yi;
+        let _s = store_f64(y + i * 8, new_y);
+        set i = i + 1;
+    };
+    0
+};
+
+fn checksum(ptr: i64, n: i64) -> f64 = {
+    let mut sum: f64 = 0.0;
+    let mut i: i64 = 0;
+    while i < n {
+        set sum = sum + load_f64(ptr + i * 8);
+        set i = i + 1;
+    };
+    sum
+};
+
+fn main() -> i64 = {
+    let n: i64 = 4096;
+    let reps: i64 = 5000;
+    let a: f64 = 1.5;
+
+    let x = malloc(n * 8);
+    let y = malloc(n * 8);
+    let _ix = init_array(x, n, 1.0);
+    let _iy = init_array(y, n, 2.0);
+
+    let mut r: i64 = 0;
+    while r < reps {
+        let _s = saxpy_scalar(a, x, y, n);
+        set r = r + 1;
+    };
+
+    // Print low 16 bits of checksum — verifiable but bounded.
+    let tail = f64_to_i64(checksum(y, n)) % 65536;
+    let _p = println(tail);
+
+    let _fx = free(x);
+    let _fy = free(y);
+    0
+};

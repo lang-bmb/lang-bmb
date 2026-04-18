@@ -268,18 +268,20 @@ natural alignment (`alloca <4 x double>, align 32`). Arithmetic emits `fadd fast
 
 #### 2.7.1 stdlib/simd Intrinsics (v0.97, Cycles 2246-2256)
 
-Declared in `stdlib/simd/mod.bmb`. Recognized by the compiler by name; each lowers to one LLVM vector intrinsic. Two ways to use from a caller:
+Declared in `stdlib/simd/mod.bmb`. Recognized by the compiler by name; each lowers to one LLVM vector intrinsic.
 
+**Usage** (auto-import from stdlib — added Cycle 2275):
 ```bmb
-// Option 1: @include the stdlib module
-@include "stdlib/simd/mod.bmb"   -- use with `-I <bmb-repo-root>`
+@include "stdlib/simd/mod.bmb"
+```
+The compiler auto-detects the stdlib root via `BMB_STDLIB_PATH` → compiler-exe-relative → cwd (same search order as the prelude). No explicit `-I` flag needed in normal deployments.
 
-// Option 2: inline the prototypes you need
+Alternative for pinned builds — inline prototype:
+```bmb
 pub fn hsum_f64x4(v: f64x4) -> f64 = todo;
-pub fn load_f64x4(base: i64, idx: i64) -> f64x4 = todo;
 ```
 
-The compiler recognizes the function names at codegen and rewrites each call to the matching LLVM intrinsic; the `= todo` body is dead code after lowering.
+The compiler recognizes the function names at codegen and rewrites each call to the matching LLVM intrinsic; the `= todo` body is dead code after lowering. Both the text backend (default) and the `inkwell` backend (`--features llvm`) emit identical intrinsic calls — runtime + IR parity (Cycle 2272).
 
 | Family | Functions | LLVM lowering |
 |--------|-----------|---------------|

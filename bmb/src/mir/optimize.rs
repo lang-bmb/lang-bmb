@@ -6815,7 +6815,18 @@ impl MemoryEffectAnalysis {
 
     /// Check if an instruction accesses memory or calls functions
     /// v0.96.19: Interprocedural version checks callee's known memory effects
-    fn inst_accesses_memory_ip(inst: &MirInst, memory_free_fns: &HashSet<String>) -> bool {
+    fn inst_accesses_memory_ip(inst_: &MirInst, memory_free_fns_: &HashSet<String>) -> bool {
+        // v0.97 (Cycle 2273): Short-circuit codegen-intercepted SIMD load/store — these
+        // always access memory regardless of their BMB-level body.
+        if let MirInst::Call { func, .. } = inst_
+            && Self::is_simd_memory_intrinsic(func)
+        {
+            return true;
+        }
+        Self::inst_accesses_memory_ip_impl(inst_, memory_free_fns_)
+    }
+
+    fn inst_accesses_memory_ip_impl(inst: &MirInst, memory_free_fns: &HashSet<String>) -> bool {
         match inst {
             // v0.96.19: If callee is known memory-free, this call doesn't access memory
             MirInst::Call { func, .. } => !memory_free_fns.contains(func),
@@ -6824,6 +6835,22 @@ impl MemoryEffectAnalysis {
     }
 
     /// Check if an instruction accesses memory or calls functions
+    /// v0.97 (Cycle 2273): SIMD load/store intrinsics are codegen-recognized names
+    /// with pure-looking MIR bodies (`= ()` / `= todo`). The MIR optimizer would otherwise
+    /// classify `store_*` as memory-free (empty `()` body) and propagate that to callers,
+    /// which then get `memory(none)` in LLVM IR — and the LLVM optimizer DCEs the whole
+    /// SIMD loop. Explicit blocklist ensures these names are treated as memory-effecting
+    /// in the interprocedural analysis.
+    fn is_simd_memory_intrinsic(name: &str) -> bool {
+        matches!(
+            name,
+            "load_f64x4" | "load_f64x8" | "load_i32x4" | "load_i32x8"
+            | "load_i64x2" | "load_i64x4"
+            | "store_f64x4" | "store_f64x8" | "store_i32x4" | "store_i32x8"
+            | "store_i64x2" | "store_i64x4"
+        )
+    }
+
     fn inst_accesses_memory(inst: &MirInst) -> bool {
         match inst {
             // Function calls might access memory
@@ -6963,6 +6990,11 @@ impl MemoryEffectAnalysis {
     /// A call to a memory-free or read-only function does not write memory.
     fn inst_writes_memory_ip(inst: &MirInst, non_writing_fns: &HashSet<String>) -> bool {
         match inst {
+            // v0.97 (Cycle 2273): `store_*` SIMD intrinsics always write memory —
+            // the MIR `= ()` body is deceptive. Reads (`load_*`) are handled separately
+            // via the accesses_memory path and don't appear here.
+            MirInst::Call { func, .. } if Self::is_simd_memory_intrinsic(func)
+                && func.starts_with("store_") => true,
             MirInst::Call { func, .. } => !non_writing_fns.contains(func),
             _ => Self::inst_writes_memory(inst),
         }

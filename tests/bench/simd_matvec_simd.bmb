@@ -1,0 +1,86 @@
+// Matrix-vector multiply SIMD (Cycle 2274, Task-B9).
+// Uses 4 independent f64x4 accumulators on each row's dot product.
+
+@include "stdlib/simd/mod.bmb"
+
+extern fn malloc(n: i64) -> i64;
+extern fn free(p: i64) -> i64;
+extern fn store_f64(ptr: i64, v: f64) -> i64;
+extern fn load_f64(ptr: i64) -> f64;
+extern fn i64_to_f64(n: i64) -> f64;
+extern fn f64_to_i64(x: f64) -> i64;
+extern fn println(n: i64) -> i64;
+
+fn init_dense(ptr: i64, n: i64, offset: f64) -> i64 = {
+    let mut i: i64 = 0;
+    while i < n {
+        let x = i64_to_f64(i) * 0.125 + offset;
+        let _s = store_f64(ptr + i * 8, x);
+        set i = i + 1;
+    };
+    0
+};
+
+fn dot_row_simd(row_base: i64, x: i64, n: i64) -> f64 = {
+    // 4 independent accumulators × 4 lanes = 16 doubles/iter.
+    let mut acc0: f64x4 = load_f64x4(row_base, 0) * load_f64x4(x, 0);
+    let mut acc1: f64x4 = load_f64x4(row_base, 4) * load_f64x4(x, 4);
+    let mut acc2: f64x4 = load_f64x4(row_base, 8) * load_f64x4(x, 8);
+    let mut acc3: f64x4 = load_f64x4(row_base, 12) * load_f64x4(x, 12);
+    let mut i: i64 = 16;
+    while i < n {
+        set acc0 = acc0 + load_f64x4(row_base, i) * load_f64x4(x, i);
+        set acc1 = acc1 + load_f64x4(row_base, i + 4) * load_f64x4(x, i + 4);
+        set acc2 = acc2 + load_f64x4(row_base, i + 8) * load_f64x4(x, i + 8);
+        set acc3 = acc3 + load_f64x4(row_base, i + 12) * load_f64x4(x, i + 12);
+        set i = i + 16;
+    };
+    hsum_f64x4(acc0) + hsum_f64x4(acc1) + hsum_f64x4(acc2) + hsum_f64x4(acc3)
+};
+
+fn matvec_simd(a: i64, x: i64, y: i64, m: i64, n: i64) -> i64 = {
+    let mut row: i64 = 0;
+    while row < m {
+        let row_base = a + row * n * 8;
+        let dot = dot_row_simd(row_base, x, n);
+        let _s = store_f64(y + row * 8, dot);
+        set row = row + 1;
+    };
+    0
+};
+
+fn checksum(ptr: i64, n: i64) -> f64 = {
+    let mut sum: f64 = 0.0;
+    let mut i: i64 = 0;
+    while i < n {
+        set sum = sum + load_f64(ptr + i * 8);
+        set i = i + 1;
+    };
+    sum
+};
+
+fn main() -> i64 = {
+    let m: i64 = 128;
+    let n: i64 = 256;
+    let reps: i64 = 2000;
+
+    let mat = malloc(m * n * 8);
+    let x = malloc(n * 8);
+    let y = malloc(m * 8);
+    let _im = init_dense(mat, m * n, 0.5);
+    let _ix = init_dense(x, n, 1.5);
+
+    let mut r: i64 = 0;
+    while r < reps {
+        let _s = matvec_simd(mat, x, y, m, n);
+        set r = r + 1;
+    };
+
+    let tail = f64_to_i64(checksum(y, m)) % 65536;
+    let _p = println(tail);
+
+    let _fm = free(mat);
+    let _fx = free(x);
+    let _fy = free(y);
+    0
+};
