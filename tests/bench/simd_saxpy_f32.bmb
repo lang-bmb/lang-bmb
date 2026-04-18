@@ -1,0 +1,80 @@
+// Cycle 2297 (Task A-1): f32 SAXPY SIMD microbenchmark.
+// Uniform-splat initialization (no scalar store_f32 helper yet).
+// Uses f32x8 path — 8 FMAs per vector iteration, 32 bytes/register.
+//
+// Algorithm: y[i] = a * x[i] + y[i], iterated REPS times over N elements.
+// All elements initialized uniformly; the point is to measure SIMD throughput.
+
+@include "stdlib/simd/mod.bmb"
+
+extern fn malloc(n: i64) -> i64;
+extern fn free(p: i64) -> i64;
+extern fn f64_to_i64(x: f64) -> i64;
+extern fn println(n: i64) -> i64;
+
+fn init_uniform_f32x8(ptr: i64, n: i64, value: f32) -> i64 = {
+    // Store `splat(value)` in 8-element chunks.
+    let v = splat_f32x8(value);
+    let chunks: i64 = n / 8;
+    let mut i: i64 = 0;
+    while i < chunks {
+        store_f32x8(ptr, i * 8, v);
+        set i = i + 1;
+    };
+    0
+};
+
+fn saxpy_f32x8(a: f32, x: i64, y: i64, n: i64) -> i64 = {
+    let av = splat_f32x8(a);
+    let chunks: i64 = n / 8;
+    let mut i: i64 = 0;
+    while i < chunks {
+        let xv = load_f32x8(x, i * 8);
+        let yv = load_f32x8(y, i * 8);
+        // Manual FMA via stdlib intrinsic.
+        let new_y = fma_f32x8(av, xv, yv);
+        store_f32x8(y, i * 8, new_y);
+        set i = i + 1;
+    };
+    0
+};
+
+fn checksum_f32x8(ptr: i64, n: i64) -> f32 = {
+    // Sum the vector chunks via splat+hsum chain.
+    let chunks: i64 = n / 8;
+    let mut acc: f32 = 0.0 as f32;
+    let mut i: i64 = 0;
+    while i < chunks {
+        let v = load_f32x8(ptr, i * 8);
+        set acc = acc + hsum_f32x8(v);
+        set i = i + 1;
+    };
+    acc
+};
+
+fn main() -> i64 = {
+    let n: i64 = 4096;
+    let reps: i64 = 5000;
+    // a = 0.01 keeps f32 accumulation bounded; precision stays meaningful
+    // across REPS × N = 20M FMAs.
+    let a: f32 = 0.01 as f32;
+
+    let x = malloc(n * 4);
+    let y = malloc(n * 4);
+    let _ix = init_uniform_f32x8(x, n, 1.0 as f32);
+    let _iy = init_uniform_f32x8(y, n, 2.0 as f32);
+
+    let mut r: i64 = 0;
+    while r < reps {
+        let _s = saxpy_f32x8(a, x, y, n);
+        set r = r + 1;
+    };
+
+    // After REPS iterations: y[i] = (1.5 * 1 + y_prev) — checksum modulo 65536.
+    let tail = f64_to_i64(checksum_f32x8(y, n) as f64) % 65536;
+    let _p = println(tail);
+
+    let _fx = free(x);
+    let _fy = free(y);
+    0
+};

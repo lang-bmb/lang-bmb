@@ -2221,6 +2221,7 @@ fn format_type(ty: &bmb::ast::Type) -> String {
         // v0.38: Unsigned types
         Type::U32 => "u32".to_string(),
         Type::U64 => "u64".to_string(),
+        Type::F32 => "f32".to_string(),
         Type::F64 => "f64".to_string(),
         Type::Bool => "bool".to_string(),
         Type::String => "String".to_string(),

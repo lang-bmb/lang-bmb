@@ -122,7 +122,7 @@ impl SmtTranslator {
     pub fn type_to_sort(ty: &Type) -> SmtSort {
         match ty {
             // v0.38: Include unsigned types, v0.64: Include char
-            Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 | Type::Char => SmtSort::Int,
+            Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F32 | Type::F64 | Type::Char => SmtSort::Int,
             Type::Bool => SmtSort::Bool,
             Type::Unit => SmtSort::Bool, // Unit maps to true
             Type::String => SmtSort::Int, // String as Int (simplified) v0.5

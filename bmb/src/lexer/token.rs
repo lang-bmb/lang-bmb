@@ -203,7 +203,8 @@ pub enum Token {
     // Type keywords
     // v0.97 (Cycle 2219): SIMD 1급 타입 — `f64x4`, `i32x8` 등. Higher priority so it
     // beats `i32` / `f64` followed by an identifier when present as a single token.
-    #[regex(r"(i32|i64|u32|u64|f64)x[0-9]+", |lex| lex.slice().to_string(), priority = 5)]
+    // Cycle 2292 (A-1): added f32 element type.
+    #[regex(r"(i32|i64|u32|u64|f32|f64)x[0-9]+", |lex| lex.slice().to_string(), priority = 5)]
     TySimd(String),
     // v0.97 (Cycle 2283): SIMD mask 타입 — `mask4`, `mask8`, etc.
     // Higher priority than `Ident` so a bare `mask4` is recognized as a type token.
@@ -218,6 +219,8 @@ pub enum Token {
     TyU32,
     #[token("u64")]
     TyU64,
+    #[token("f32")]
+    TyF32,
     #[token("f64")]
     TyF64,
     #[token("bool")]
@@ -465,6 +468,7 @@ impl std::fmt::Display for Token {
             // v0.38: Unsigned types
             Token::TyU32 => write!(f, "u32"),
             Token::TyU64 => write!(f, "u64"),
+            Token::TyF32 => write!(f, "f32"),
             Token::TyF64 => write!(f, "f64"),
             Token::TyBool => write!(f, "bool"),
             Token::TyString => write!(f, "String"),

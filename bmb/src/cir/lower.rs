@@ -1279,6 +1279,7 @@ impl CirLowerer {
             Type::I64 => CirType::I64,
             Type::U32 => CirType::U32,
             Type::U64 => CirType::U64,
+            Type::F32 => CirType::F32,
             Type::F64 => CirType::F64,
             Type::Char => CirType::Char,
             Type::String => CirType::String,

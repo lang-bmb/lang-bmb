@@ -1183,6 +1183,10 @@ impl TextCodeGen {
         // Float reductions take a scalar start value (use 0.0 for plain sum).
         writeln!(out, "declare double @llvm.vector.reduce.fadd.v4f64(double, <4 x double>)")?;
         writeln!(out, "declare double @llvm.vector.reduce.fadd.v8f64(double, <8 x double>)")?;
+        // Cycle 2294 (A-1): f32 reductions.
+        writeln!(out, "declare float @llvm.vector.reduce.fadd.v4f32(float, <4 x float>)")?;
+        writeln!(out, "declare float @llvm.vector.reduce.fadd.v8f32(float, <8 x float>)")?;
+        writeln!(out, "declare float @llvm.vector.reduce.fadd.v16f32(float, <16 x float>)")?;
         writeln!(out, "declare i32 @llvm.vector.reduce.add.v4i32(<4 x i32>)")?;
         writeln!(out, "declare i32 @llvm.vector.reduce.add.v8i32(<8 x i32>)")?;
         writeln!(out, "declare i64 @llvm.vector.reduce.add.v2i64(<2 x i64>)")?;
@@ -1190,11 +1194,22 @@ impl TextCodeGen {
         // v0.97 (Cycle 2253): SIMD fused multiply-add.
         writeln!(out, "declare <4 x double> @llvm.fma.v4f64(<4 x double>, <4 x double>, <4 x double>)")?;
         writeln!(out, "declare <8 x double> @llvm.fma.v8f64(<8 x double>, <8 x double>, <8 x double>)")?;
+        // Cycle 2294 (A-1): f32 FMA.
+        writeln!(out, "declare <4 x float> @llvm.fma.v4f32(<4 x float>, <4 x float>, <4 x float>)")?;
+        writeln!(out, "declare <8 x float> @llvm.fma.v8f32(<8 x float>, <8 x float>, <8 x float>)")?;
+        writeln!(out, "declare <16 x float> @llvm.fma.v16f32(<16 x float>, <16 x float>, <16 x float>)")?;
         // v0.97 (Cycle 2254): SIMD min/max (elementwise).
         writeln!(out, "declare <4 x double> @llvm.minnum.v4f64(<4 x double>, <4 x double>)")?;
         writeln!(out, "declare <4 x double> @llvm.maxnum.v4f64(<4 x double>, <4 x double>)")?;
         writeln!(out, "declare <8 x double> @llvm.minnum.v8f64(<8 x double>, <8 x double>)")?;
         writeln!(out, "declare <8 x double> @llvm.maxnum.v8f64(<8 x double>, <8 x double>)")?;
+        // Cycle 2294 (A-1): f32 min/max.
+        writeln!(out, "declare <4 x float> @llvm.minnum.v4f32(<4 x float>, <4 x float>)")?;
+        writeln!(out, "declare <4 x float> @llvm.maxnum.v4f32(<4 x float>, <4 x float>)")?;
+        writeln!(out, "declare <8 x float> @llvm.minnum.v8f32(<8 x float>, <8 x float>)")?;
+        writeln!(out, "declare <8 x float> @llvm.maxnum.v8f32(<8 x float>, <8 x float>)")?;
+        writeln!(out, "declare <16 x float> @llvm.minnum.v16f32(<16 x float>, <16 x float>)")?;
+        writeln!(out, "declare <16 x float> @llvm.maxnum.v16f32(<16 x float>, <16 x float>)")?;
         writeln!(out, "declare <4 x i32> @llvm.smin.v4i32(<4 x i32>, <4 x i32>)")?;
         writeln!(out, "declare <4 x i32> @llvm.smax.v4i32(<4 x i32>, <4 x i32>)")?;
         writeln!(out, "declare <8 x i32> @llvm.smin.v8i32(<8 x i32>, <8 x i32>)")?;
@@ -1207,9 +1222,11 @@ impl TextCodeGen {
         writeln!(out, "declare i1 @llvm.vector.reduce.or.v2i1(<2 x i1>)")?;
         writeln!(out, "declare i1 @llvm.vector.reduce.or.v4i1(<4 x i1>)")?;
         writeln!(out, "declare i1 @llvm.vector.reduce.or.v8i1(<8 x i1>)")?;
+        writeln!(out, "declare i1 @llvm.vector.reduce.or.v16i1(<16 x i1>)")?;
         writeln!(out, "declare i1 @llvm.vector.reduce.and.v2i1(<2 x i1>)")?;
         writeln!(out, "declare i1 @llvm.vector.reduce.and.v4i1(<4 x i1>)")?;
         writeln!(out, "declare i1 @llvm.vector.reduce.and.v8i1(<8 x i1>)")?;
+        writeln!(out, "declare i1 @llvm.vector.reduce.and.v16i1(<16 x i1>)")?;
         writeln!(out)?;
 
         // v0.34.2: Memory allocation for Phase 34.2 Dynamic Collections
@@ -2786,7 +2803,7 @@ impl TextCodeGen {
                     let rhs_str_v = emit_load(rhs, "rhs", out)?;
                     let elem_is_float = matches!(
                         &vec_ty_mir,
-                        MirType::Vector { elem, .. } if matches!(elem.as_ref(), MirType::F64)
+                        MirType::Vector { elem, .. } if matches!(elem.as_ref(), MirType::F64 | MirType::F32)
                     );
                     let op_str = match (op, elem_is_float) {
                         (MirBinOp::Add | MirBinOp::FAdd, true) => "fadd fast",
@@ -2957,7 +2974,7 @@ impl TextCodeGen {
                     // v0.60.8: Add 'fast' math flags to enable LLVM vectorization
                     // Without fast flags, LLVM cannot reorder FP operations, preventing vectorization
                     // The 'fast' flag enables: nnan ninf nsz arcp contract afn reassoc
-                    let op_str = if lhs_ty == "double" || lhs_ty == "f64" {
+                    let op_str = if lhs_ty == "double" || lhs_ty == "f64" || lhs_ty == "float" || lhs_ty == "f32" {
                         match op {
                             MirBinOp::Add | MirBinOp::FAdd => "fadd fast",
                             MirBinOp::Sub | MirBinOp::FSub => "fsub fast",
@@ -3221,6 +3238,10 @@ impl TextCodeGen {
                     && let Some((vec_ty, intrinsic, align)) = match fn_name.as_str() {
                         "fma_f64x4" => Some(("<4 x double>", "llvm.fma.v4f64", 32u32)),
                         "fma_f64x8" => Some(("<8 x double>", "llvm.fma.v8f64", 64)),
+                        // Cycle 2294 (A-1): f32 FMA variants.
+                        "fma_f32x4" => Some(("<4 x float>", "llvm.fma.v4f32", 16)),
+                        "fma_f32x8" => Some(("<8 x float>", "llvm.fma.v8f32", 32)),
+                        "fma_f32x16" => Some(("<16 x float>", "llvm.fma.v16f32", 64)),
                         _ => None,
                     }
                 {
@@ -3256,6 +3277,13 @@ impl TextCodeGen {
                         "max_f64x4" => Some(("<4 x double>", "llvm.maxnum.v4f64", 32)),
                         "min_f64x8" => Some(("<8 x double>", "llvm.minnum.v8f64", 64)),
                         "max_f64x8" => Some(("<8 x double>", "llvm.maxnum.v8f64", 64)),
+                        // Cycle 2294 (A-1): f32 min/max.
+                        "min_f32x4" => Some(("<4 x float>", "llvm.minnum.v4f32", 16)),
+                        "max_f32x4" => Some(("<4 x float>", "llvm.maxnum.v4f32", 16)),
+                        "min_f32x8" => Some(("<8 x float>", "llvm.minnum.v8f32", 32)),
+                        "max_f32x8" => Some(("<8 x float>", "llvm.maxnum.v8f32", 32)),
+                        "min_f32x16" => Some(("<16 x float>", "llvm.minnum.v16f32", 64)),
+                        "max_f32x16" => Some(("<16 x float>", "llvm.maxnum.v16f32", 64)),
                         "min_i32x4" => Some(("<4 x i32>", "llvm.smin.v4i32", 16)),
                         "max_i32x4" => Some(("<4 x i32>", "llvm.smax.v4i32", 16)),
                         "min_i32x8" => Some(("<8 x i32>", "llvm.smin.v8i32", 32)),
@@ -3308,6 +3336,27 @@ impl TextCodeGen {
                         "cmp_le_f64x8" => Some(("<8 x double>", 8, "fcmp", "ole", 64)),
                         "cmp_gt_f64x8" => Some(("<8 x double>", 8, "fcmp", "ogt", 64)),
                         "cmp_ge_f64x8" => Some(("<8 x double>", 8, "fcmp", "oge", 64)),
+                        // Cycle 2294 (A-1): f32x4 / mask4
+                        "cmp_eq_f32x4" => Some(("<4 x float>", 4, "fcmp", "oeq", 16)),
+                        "cmp_ne_f32x4" => Some(("<4 x float>", 4, "fcmp", "one", 16)),
+                        "cmp_lt_f32x4" => Some(("<4 x float>", 4, "fcmp", "olt", 16)),
+                        "cmp_le_f32x4" => Some(("<4 x float>", 4, "fcmp", "ole", 16)),
+                        "cmp_gt_f32x4" => Some(("<4 x float>", 4, "fcmp", "ogt", 16)),
+                        "cmp_ge_f32x4" => Some(("<4 x float>", 4, "fcmp", "oge", 16)),
+                        // f32x8 / mask8
+                        "cmp_eq_f32x8" => Some(("<8 x float>", 8, "fcmp", "oeq", 32)),
+                        "cmp_ne_f32x8" => Some(("<8 x float>", 8, "fcmp", "one", 32)),
+                        "cmp_lt_f32x8" => Some(("<8 x float>", 8, "fcmp", "olt", 32)),
+                        "cmp_le_f32x8" => Some(("<8 x float>", 8, "fcmp", "ole", 32)),
+                        "cmp_gt_f32x8" => Some(("<8 x float>", 8, "fcmp", "ogt", 32)),
+                        "cmp_ge_f32x8" => Some(("<8 x float>", 8, "fcmp", "oge", 32)),
+                        // f32x16 / mask16
+                        "cmp_eq_f32x16" => Some(("<16 x float>", 16, "fcmp", "oeq", 64)),
+                        "cmp_ne_f32x16" => Some(("<16 x float>", 16, "fcmp", "one", 64)),
+                        "cmp_lt_f32x16" => Some(("<16 x float>", 16, "fcmp", "olt", 64)),
+                        "cmp_le_f32x16" => Some(("<16 x float>", 16, "fcmp", "ole", 64)),
+                        "cmp_gt_f32x16" => Some(("<16 x float>", 16, "fcmp", "ogt", 64)),
+                        "cmp_ge_f32x16" => Some(("<16 x float>", 16, "fcmp", "oge", 64)),
                         // i32x4 / mask4
                         "cmp_eq_i32x4" => Some(("<4 x i32>", 4, "icmp", "eq",  16)),
                         "cmp_ne_i32x4" => Some(("<4 x i32>", 4, "icmp", "ne",  16)),
@@ -3373,6 +3422,10 @@ impl TextCodeGen {
                         "blend_i32x8" => Some(("<8 x i32>",    8, 32)),
                         "blend_i64x2" => Some(("<2 x i64>",    2, 16)),
                         "blend_i64x4" => Some(("<4 x i64>",    4, 32)),
+                        // Cycle 2294 (A-1): f32 blend.
+                        "blend_f32x4"  => Some(("<4 x float>",  4, 16)),
+                        "blend_f32x8"  => Some(("<8 x float>",  8, 32)),
+                        "blend_f32x16" => Some(("<16 x float>", 16, 64)),
                         _ => None,
                     }
                 {
@@ -3417,9 +3470,12 @@ impl TextCodeGen {
                         "mask_any_2" => Some(("<2 x i1>", 2u32, "llvm.vector.reduce.or.v2i1")),
                         "mask_any_4" => Some(("<4 x i1>", 4, "llvm.vector.reduce.or.v4i1")),
                         "mask_any_8" => Some(("<8 x i1>", 8, "llvm.vector.reduce.or.v8i1")),
+                        // Cycle 2294 (A-1): mask16 for f32x16 comparisons.
+                        "mask_any_16" => Some(("<16 x i1>", 16, "llvm.vector.reduce.or.v16i1")),
                         "mask_all_2" => Some(("<2 x i1>", 2, "llvm.vector.reduce.and.v2i1")),
                         "mask_all_4" => Some(("<4 x i1>", 4, "llvm.vector.reduce.and.v4i1")),
                         "mask_all_8" => Some(("<8 x i1>", 8, "llvm.vector.reduce.and.v8i1")),
+                        "mask_all_16" => Some(("<16 x i1>", 16, "llvm.vector.reduce.and.v16i1")),
                         _ => None,
                     }
                 {
@@ -3461,6 +3517,10 @@ impl TextCodeGen {
                         "load_i32x8" => Some(("<8 x i32>", "i32", 4)),
                         "load_i64x2" => Some(("<2 x i64>", "i64", 8)),
                         "load_i64x4" => Some(("<4 x i64>", "i64", 8)),
+                        // Cycle 2294 (A-1): f32 loads.
+                        "load_f32x4"  => Some(("<4 x float>",  "float", 4)),
+                        "load_f32x8"  => Some(("<8 x float>",  "float", 4)),
+                        "load_f32x16" => Some(("<16 x float>", "float", 4)),
                         _ => None,
                     }
                 {
@@ -3495,9 +3555,9 @@ impl TextCodeGen {
                     writeln!(out, "  %{} = load {}, ptr %{}, align {}", result_name, vec_ty, elem_ptr, elem_align)?;
                     if local_names.contains(&d.name) {
                         let align_v = match vec_ty {
-                            "<4 x double>" | "<8 x i32>" | "<4 x i64>" => 32u32,
-                            "<8 x double>" => 64,
-                            "<4 x i32>" | "<2 x i64>" => 16,
+                            "<4 x double>" | "<8 x i32>" | "<4 x i64>" | "<8 x float>" => 32u32,
+                            "<8 x double>" | "<16 x float>" => 64,
+                            "<4 x i32>" | "<2 x i64>" | "<4 x float>" => 16,
                             _ => 8,
                         };
                         writeln!(out, "  store {} %{}, ptr %{}.addr, align {}", vec_ty, result_name, d.name, align_v)?;
@@ -3512,6 +3572,10 @@ impl TextCodeGen {
                         "store_i32x8" => Some(("<8 x i32>", "i32", 4, 32)),
                         "store_i64x2" => Some(("<2 x i64>", "i64", 8, 16)),
                         "store_i64x4" => Some(("<4 x i64>", "i64", 8, 32)),
+                        // Cycle 2294 (A-1): f32 stores.
+                        "store_f32x4"  => Some(("<4 x float>",  "float", 4, 16)),
+                        "store_f32x8"  => Some(("<8 x float>",  "float", 4, 32)),
+                        "store_f32x16" => Some(("<16 x float>", "float", 4, 64)),
                         _ => None,
                     }
                 {
@@ -3566,6 +3630,10 @@ impl TextCodeGen {
                         "splat_i32x8" => Some(("<8 x i32>", "i32", 8, 32)),
                         "splat_i64x2" => Some(("<2 x i64>", "i64", 2, 16)),
                         "splat_i64x4" => Some(("<4 x i64>", "i64", 4, 32)),
+                        // Cycle 2294 (A-1): f32 splat.
+                        "splat_f32x4"  => Some(("<4 x float>",  "float", 4, 16)),
+                        "splat_f32x8"  => Some(("<8 x float>",  "float", 8, 32)),
+                        "splat_f32x16" => Some(("<16 x float>", "float", 16, 64)),
                         _ => None,
                     }
                 {
@@ -3616,6 +3684,10 @@ impl TextCodeGen {
                         "hsum_i32x8" => Some(("<8 x i32>", "i32", "llvm.vector.reduce.add.v8i32", 32)),
                         "hsum_i64x2" => Some(("<2 x i64>", "i64", "llvm.vector.reduce.add.v2i64", 16)),
                         "hsum_i64x4" => Some(("<4 x i64>", "i64", "llvm.vector.reduce.add.v4i64", 32)),
+                        // Cycle 2294 (A-1): f32 horizontal sums.
+                        "hsum_f32x4"  => Some(("<4 x float>",  "float", "llvm.vector.reduce.fadd.v4f32",  16)),
+                        "hsum_f32x8"  => Some(("<8 x float>",  "float", "llvm.vector.reduce.fadd.v8f32",  32)),
+                        "hsum_f32x16" => Some(("<16 x float>", "float", "llvm.vector.reduce.fadd.v16f32", 64)),
                         _ => None,
                     }
                 {
@@ -3634,7 +3706,8 @@ impl TextCodeGen {
                         Operand::Place(p) => format!("%{}", p.name),
                         _ => self.format_operand_with_strings(&args[0], string_table),
                     };
-                    let is_float = scalar_ty == "double";
+                    // Cycle 2295 (A-1): float reductions (both f64 and f32) need scalar start value.
+                    let is_float = scalar_ty == "double" || scalar_ty == "float";
                     if let Some(d) = dest {
                         if local_names.contains(&d.name) {
                             let temp_name = format!("{}.hsum", d.name);
@@ -8078,6 +8151,7 @@ impl TextCodeGen {
             // v0.38: Unsigned types map to same LLVM types
             MirType::U32 => "i32",
             MirType::U64 => "i64",
+            MirType::F32 => "float",
             MirType::F64 => "double",
             MirType::Bool => "i1",
             MirType::String => "ptr",
@@ -8154,10 +8228,20 @@ impl TextCodeGen {
             // Integer to float
             (I32, F64) | (I64, F64) | (Char, F64) => "sitofp",
             (U32, F64) | (U64, F64) => "uitofp",
+            // Cycle 2295 (A-1): integer to f32.
+            (I32, F32) | (I64, F32) | (Char, F32) => "sitofp",
+            (U32, F32) | (U64, F32) => "uitofp",
 
             // Float to integer
             (F64, I32) | (F64, I64) | (F64, Char) => "fptosi",
             (F64, U32) | (F64, U64) => "fptoui",
+            // Cycle 2295 (A-1): f32 to integer.
+            (F32, I32) | (F32, I64) | (F32, Char) => "fptosi",
+            (F32, U32) | (F32, U64) => "fptoui",
+
+            // Cycle 2295 (A-1): float width conversion.
+            (F32, F64) => "fpext",
+            (F64, F32) => "fptrunc",
 
             // Same size, different signedness - bitcast
             (I32, U32) | (U32, I32) | (I64, U64) | (U64, I64) => "bitcast",
@@ -8376,6 +8460,8 @@ impl TextCodeGen {
 
             // v0.97 (Cycle 2246): SIMD horizontal sum — returns vector element scalar.
             "hsum_f64x4" | "hsum_f64x8" => "double",
+            // Cycle 2294 (A-1): f32 horizontal sum returns `float`.
+            "hsum_f32x4" | "hsum_f32x8" | "hsum_f32x16" => "float",
             "hsum_i32x4" | "hsum_i32x8" => "i32",
             "hsum_i64x2" | "hsum_i64x4" => "i64",
 

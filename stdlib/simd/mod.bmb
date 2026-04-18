@@ -188,3 +188,79 @@ pub fn mask_any_4(m: mask4) -> bool = todo;
 pub fn mask_all_4(m: mask4) -> bool = todo;
 pub fn mask_any_8(m: mask8) -> bool = todo;
 pub fn mask_all_8(m: mask8) -> bool = todo;
+// Cycle 2294 (Task A-1): mask16 for f32x16 / AVX-512 path.
+pub fn mask_any_16(m: mask16) -> bool = todo;
+pub fn mask_all_16(m: mask16) -> bool = todo;
+
+// ============================================
+// v0.97 (Task A-1, Cycles 2291-2294): f32 SIMD — f32x4/f32x8/f32x16
+//
+// Enables AVX-512 hot paths (`vfmadd132ps zmm0, zmm1, zmmword ptr [...]`).
+// f32x16 maps to <16 x float> = 64-byte vector register.
+// ============================================
+
+// --- Load / Store ---
+pub fn load_f32x4(base: i64, idx: i64) -> f32x4 = todo;
+pub fn load_f32x8(base: i64, idx: i64) -> f32x8 = todo;
+pub fn load_f32x16(base: i64, idx: i64) -> f32x16 = todo;
+pub fn store_f32x4(base: i64, idx: i64, v: f32x4) -> () = ();
+pub fn store_f32x8(base: i64, idx: i64, v: f32x8) -> () = ();
+pub fn store_f32x16(base: i64, idx: i64, v: f32x16) -> () = ();
+
+// --- Splat ---
+pub fn splat_f32x4(x: f32) -> f32x4 = todo;
+pub fn splat_f32x8(x: f32) -> f32x8 = todo;
+pub fn splat_f32x16(x: f32) -> f32x16 = todo;
+
+// --- Horizontal sum ---
+pub fn hsum_f32x4(v: f32x4) -> f32 = todo;
+pub fn hsum_f32x8(v: f32x8) -> f32 = todo;
+pub fn hsum_f32x16(v: f32x16) -> f32 = todo;
+
+// --- Dot product ---
+pub fn dot_f32x4(a: f32x4, b: f32x4) -> f32 = hsum_f32x4(a * b);
+pub fn dot_f32x8(a: f32x8, b: f32x8) -> f32 = hsum_f32x8(a * b);
+pub fn dot_f32x16(a: f32x16, b: f32x16) -> f32 = hsum_f32x16(a * b);
+
+// --- Fused multiply-add ---
+pub fn fma_f32x4(a: f32x4, b: f32x4, c: f32x4) -> f32x4 = todo;
+pub fn fma_f32x8(a: f32x8, b: f32x8, c: f32x8) -> f32x8 = todo;
+pub fn fma_f32x16(a: f32x16, b: f32x16, c: f32x16) -> f32x16 = todo;
+
+// --- Min / Max (IEEE 754 minNum/maxNum) ---
+pub fn min_f32x4(a: f32x4, b: f32x4) -> f32x4 = todo;
+pub fn max_f32x4(a: f32x4, b: f32x4) -> f32x4 = todo;
+pub fn min_f32x8(a: f32x8, b: f32x8) -> f32x8 = todo;
+pub fn max_f32x8(a: f32x8, b: f32x8) -> f32x8 = todo;
+pub fn min_f32x16(a: f32x16, b: f32x16) -> f32x16 = todo;
+pub fn max_f32x16(a: f32x16, b: f32x16) -> f32x16 = todo;
+
+// --- Comparison (ordered IEEE 754 fcmp o*) ---
+// f32x4 -> mask4
+pub fn cmp_eq_f32x4(a: f32x4, b: f32x4) -> mask4 = todo;
+pub fn cmp_ne_f32x4(a: f32x4, b: f32x4) -> mask4 = todo;
+pub fn cmp_lt_f32x4(a: f32x4, b: f32x4) -> mask4 = todo;
+pub fn cmp_le_f32x4(a: f32x4, b: f32x4) -> mask4 = todo;
+pub fn cmp_gt_f32x4(a: f32x4, b: f32x4) -> mask4 = todo;
+pub fn cmp_ge_f32x4(a: f32x4, b: f32x4) -> mask4 = todo;
+
+// f32x8 -> mask8
+pub fn cmp_eq_f32x8(a: f32x8, b: f32x8) -> mask8 = todo;
+pub fn cmp_ne_f32x8(a: f32x8, b: f32x8) -> mask8 = todo;
+pub fn cmp_lt_f32x8(a: f32x8, b: f32x8) -> mask8 = todo;
+pub fn cmp_le_f32x8(a: f32x8, b: f32x8) -> mask8 = todo;
+pub fn cmp_gt_f32x8(a: f32x8, b: f32x8) -> mask8 = todo;
+pub fn cmp_ge_f32x8(a: f32x8, b: f32x8) -> mask8 = todo;
+
+// f32x16 -> mask16
+pub fn cmp_eq_f32x16(a: f32x16, b: f32x16) -> mask16 = todo;
+pub fn cmp_ne_f32x16(a: f32x16, b: f32x16) -> mask16 = todo;
+pub fn cmp_lt_f32x16(a: f32x16, b: f32x16) -> mask16 = todo;
+pub fn cmp_le_f32x16(a: f32x16, b: f32x16) -> mask16 = todo;
+pub fn cmp_gt_f32x16(a: f32x16, b: f32x16) -> mask16 = todo;
+pub fn cmp_ge_f32x16(a: f32x16, b: f32x16) -> mask16 = todo;
+
+// --- Blend (per-lane select) ---
+pub fn blend_f32x4(m: mask4, a: f32x4, b: f32x4) -> f32x4 = todo;
+pub fn blend_f32x8(m: mask8, a: f32x8, b: f32x8) -> f32x8 = todo;
+pub fn blend_f32x16(m: mask16, a: f32x16, b: f32x16) -> f32x16 = todo;

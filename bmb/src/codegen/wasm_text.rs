@@ -1364,6 +1364,7 @@ impl WasmCodeGen {
             MirType::I64 => "i64",
             MirType::U32 => "u32",
             MirType::U64 => "u64",
+            MirType::F32 => "f32",
             MirType::F64 => "f64",
             MirType::Bool => "bool",
             MirType::String => "string",
@@ -1529,6 +1530,7 @@ impl WasmCodeGen {
             // v0.38: Unsigned types map to same WASM types
             MirType::U32 => "i32",
             MirType::U64 => "i64",
+            MirType::F32 => "f32",
             MirType::F64 => "f64",
             MirType::Bool => "i32",  // WASM has no boolean, use i32
             MirType::String => "i32", // Pointer (memory offset)
@@ -1569,6 +1571,7 @@ impl WasmCodeGen {
             // v0.38: Unsigned types default to 0
             MirType::U32 => "i32.const 0",
             MirType::U64 => "i64.const 0",
+            MirType::F32 => "f32.const 0.0",
             MirType::F64 => "f64.const 0.0",
             MirType::Bool => "i32.const 0",
             MirType::String => "i32.const 0",

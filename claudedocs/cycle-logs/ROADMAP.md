@@ -1,21 +1,24 @@
 # BMB Development Roadmap
-Updated: 2026-04-19
+Updated: 2026-04-19 (post-Cycles 2291-2297: Task A-1 ✅ f32 primitive)
 
 ---
 
 ## 진척도 게이지
 
 ```
-Bootstrap   ██████████████████░░ 98%   Fixed Point ✅ (S2==S3, 2m total), compiler.bmb 19,818 LOC
+Bootstrap   ██████████████████░░ 98%   Fixed Point ✅ (S2==S3, 65s, Cycle 2296), compiler.bmb 19,818 LOC
 Self-Host   ████████████████████ 99%   CLI 41개 (+ bmb bench), LSP 9개, Test Runner, REPL
 Benchmark   ████████████████████ 100%  309 빌드 ✅, 16+ FASTER, 0 FAIL, BMB > C+Rust
 Ecosystem   ████████████████░░░░ 82%   5 libs 140 @export, C headers, WASM, pytest 1,017+
-SIMD        ███████████████████░ 95%   1급 타입 ✅ + text/inkwell codegen ✅ + stdlib/simd **98 fns** ✅
-                                       Rule 7 parity ✅ (text/inkwell 둘 다 runtime + perf match)
+SIMD        ████████████████████ 98%   1급 타입 ✅ (f64xN, **f32xN**, i32xN, i64xN, maskN)
+                                       text/inkwell codegen Rule 7 parity ✅
+                                       stdlib/simd **147 fns** (98 + 49 f32 variants)
                                        `@include "stdlib/simd"` 자동 로딩 ✅ (build + check)
-                                       10 런타임 correctness + SAXPY/matvec + mask correctness 벤치 ✅
-                                       mask 타입 ✅ (cmp_*_VxN/blend_VxN/mask_any|all_N, Cycles 2283-2287)
-                                       Pending: f32 primitive (A-1, dedicated 20-cycle session 권장)
+                                       런타임 correctness: f64 10 + mask 5 + **f32 12** = 27 checks ✅
+                                       SAXPY/matvec/stencil 벤치 + SAXPY f32 ✅
+                                       mask{2,4,8,**16**} + cmp/blend/any/all ✅
+                                       f32 ↔ f64 fpext/fptrunc + full int↔f32 casts ✅
+                                       Pending: shuffle (B-11), store_i32/f32 helpers (B-12/13)
 ```
 
 ### 핵심 수치
@@ -58,7 +61,8 @@ SIMD        ███████████████████░ 95%   1
 | **B-10** | SIMD perf user guide (`SIMD_PERF_NOTES.md`) | ✅ 완료 | Cycle 2289 |
 | **B-11** | Shuffle/permute intrinsics (`shuffle_VxN`, `slide_*`) | 대기 | 6-8 cycles 예상 — stencil 등 auto-vec 패배 영역 회복 |
 | **B-12** | `store_i32`/`load_i32` 런타임 헬퍼 + i32 SIMD 벤치 | 대기 | 1-2 cycles, 작은 ergonomic 보강 |
-| **A-1** | f32 primitive + f32x{4,8,16} | 대기 | 8-10 cycles, dedicated 20-cycle session 권장 |
+| **A-1** | f32 primitive + f32x{4,8,16} | ✅ 완료 | Cycles 2291-2297 (8 cycles, under 20-budget) |
+| **B-13** | `store_f32`/`load_f32` 스칼라 runtime 헬퍼 | 대기 | 1-2 cycles, f32 SAXPY varied-init용 |
 
 ### Phase C: Bootstrap 코드젠 품질 (v0.98)
 
@@ -134,30 +138,26 @@ Bootstrap IR의 근본적 한계 해소. inttoptr을 native ptr로 전환.
 
 ## 다음 단계 우선순위 (2026-04-19 업데이트)
 
-> SIMD B-4/B-7/B-8/B-9/B-10 완료. SAXPY/matvec/stencil 실증 결과: 선형 접근에서 LLVM auto-vec이 manual SIMD를 동률/추월. SIMD 진정한 승리는 데이터 의존 분기(B-8 mask)·shuffle(B-11 미구현)·forced FMA에서만 발생함을 `SIMD_PERF_NOTES.md`로 정리.
+> SIMD B-4/B-7/B-8/B-9/B-10 완료. **A-1 완료** (Cycles 2291-2297) — f32 1급 타입 + f32x{4,8,16} + cast + stdlib/simd 147 fns. SAXPY/matvec/stencil 실증 결과: 선형 접근에서 LLVM auto-vec이 manual SIMD를 동률/추월. SIMD 진정한 승리는 데이터 의존 분기(B-8 mask)·shuffle(B-11 미구현)·forced FMA에서만 발생함을 `SIMD_PERF_NOTES.md`로 정리.
 
 ```
-0. ★★★★ Task A-1: f32 primitive + f32x{4,8,16}  (dedicated 20-cycle session)
-   AVX-512 hot path 확장. 영향: lexer/parser/types/MIR/text+inkwell codegen.
-   → "BMB는 f32 SIMD까지 1급" 주장 가능
-
-1. ★★★ Task B-11: shuffle/permute 인트린식 (6-8 cycles)
+0. ★★★ Task B-11: shuffle/permute 인트린식 (6-8 cycles)
    stencil 같은 auto-vec 패배 영역 회복. 단일 인트린식 패밀리.
    → 매뉴얼 SIMD가 의미 있는 워크로드 폭 확장
 
-2. ★★★ 배포 + 크로스플랫폼
+1. ★★★ 배포 + 크로스플랫폼
    PyPI wheel 빌드 → Linux/macOS 빌드 → pip install bmb-algo 가능
    → "pip install → C보다 90x 빠르다" 증명
 
-3. ★★  컴파일러 품질 (v0.98)
+2. ★★  컴파일러 품질 (v0.98)
    Native Ptr 타입 시스템 → inttoptr 제거 → IR 품질 향상
    → Bootstrap 코드젠이 handwritten IR 수준에 도달
 
-4. ★   Task B-12: store_i32/load_i32 헬퍼 (1-2 cycles, low-hanging)
-   현재 i32 SIMD 워크로드는 load_i32x4 가능하나 데이터 초기화에 store_i32 부재.
-   → mask 벤치에서 i32x4/i32x8 경로 추가 검증 가능
+3. ★   Task B-12/B-13: store_{i32,f32}/load_{i32,f32} 헬퍼 (2-4 cycles, low-hanging)
+   현재 SIMD 워크로드 varied-init에 스칼라 store 부재. 병목 없지만 ergonomic 보강.
+   → f32 SAXPY 등에서 non-uniform 초기화 가능
 
-5. ★   공개 준비 (v0.99 → v1.0)
+4. ★   공개 준비 (v0.99 → v1.0)
    언어 스펙 최종판 → AI-Native 실증 → HN/Reddit
    → 커뮤니티 형성
 ```
@@ -199,6 +199,14 @@ v0.97        @export + --shared + FFI 안전성 (setjmp/longjmp, TLS)
              `SIMD_PERF_NOTES.md` 사용자 가이드 ✅ — when manual SIMD WINS/TIES/LOSES (Cycle 2289)
              Latent fix: `bmb check` stdlib auto-include + `make_test_context` 생성자 (Cycles 2284, 2286)
              세션 커밋: `97184f4d` (Cycles 2283-2290, 20 files / 797 insertions)
+             **Task A-1 ✅** — f32 primitive + f32x{4,8,16} + mask16 (Cycles 2291-2297, 7 cycles)
+             → lexer/grammar/AST Type::F32/MirType::F32 + Rule 5 14 sites 일괄 업데이트
+             → BinOp/cmp/Cast 전체 f32 경로 + F64↔F32 fpext/fptrunc + int↔f32 전환
+             → stdlib/simd 49 fns 추가 (98 → 147): load/store/splat/hsum/dot/fma/min/max/cmp/blend, mask16
+             → text + inkwell 양 백엔드 코드젠 parity (`llvm.fma.v{4,8,16}f32` 확인)
+             → `simd_f32_correctness.bmb` 12 checks (f32x4/f32x8/f32x16) exit 0 양 백엔드
+             → `simd_saxpy_f32.bmb` SIMD FMA 경로 validated (141-155ms, REPS=5000 N=4096)
+             → 3-Stage Fixed Point ✅ (65.5s, Cycle 2296)
 
 ═══════════════════ 현재 위치: 배포/품질 단계 ═════════════════════════
 

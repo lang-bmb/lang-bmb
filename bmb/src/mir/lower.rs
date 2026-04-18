@@ -2863,6 +2863,7 @@ fn ast_type_to_mir(ty: &Type) -> MirType {
         // v0.38: Unsigned types
         Type::U32 => MirType::U32,
         Type::U64 => MirType::U64,
+        Type::F32 => MirType::F32,
         Type::F64 => MirType::F64,
         Type::Bool => MirType::Bool,
         Type::String => MirType::String,
@@ -3243,6 +3244,7 @@ fn ast_type_to_mir_with_type_defs(
         Type::I64 => MirType::I64,
         Type::U32 => MirType::U32,
         Type::U64 => MirType::U64,
+        Type::F32 => MirType::F32,
         Type::F64 => MirType::F64,
         Type::Bool => MirType::Bool,
         Type::String => MirType::String,
@@ -3443,6 +3445,7 @@ fn ast_type_to_mir_with_structs(
         Type::I64 => MirType::I64,
         Type::U32 => MirType::U32,
         Type::U64 => MirType::U64,
+        Type::F32 => MirType::F32,
         Type::F64 => MirType::F64,
         Type::Bool => MirType::Bool,
         Type::String => MirType::String,

@@ -691,6 +691,11 @@ impl<'ctx> LlvmContext<'ctx> {
         // (e.g. the scalar start value for `reduce.fadd`).
         let f64x4 = f64_type.vec_type(4);
         let f64x8 = f64_type.vec_type(8);
+        // Cycle 2294 (A-1): f32 vector types for stdlib/simd parity.
+        let f32_type_ = self.context.f32_type();
+        let f32x4 = f32_type_.vec_type(4);
+        let f32x8 = f32_type_.vec_type(8);
+        let f32x16 = f32_type_.vec_type(16);
         let i32_type_ = self.context.i32_type();
         let i32x4 = i32_type_.vec_type(4);
         let i32x8 = i32_type_.vec_type(8);
@@ -708,6 +713,15 @@ impl<'ctx> LlvmContext<'ctx> {
             "llvm.vector.reduce.fadd.v8f64".to_string(),
             self.module.add_function("llvm.vector.reduce.fadd.v8f64", red_fadd_v8f64, None),
         );
+        // Cycle 2294 (A-1): f32 horizontal sums.
+        for (name, vec_ty) in [
+            ("llvm.vector.reduce.fadd.v4f32", f32x4),
+            ("llvm.vector.reduce.fadd.v8f32", f32x8),
+            ("llvm.vector.reduce.fadd.v16f32", f32x16),
+        ] {
+            let t = f32_type_.fn_type(&[f32_type_.into(), vec_ty.into()], false);
+            self.functions.insert(name.to_string(), self.module.add_function(name, t, None));
+        }
         // vector.reduce.add — integer, vector only
         let red_add_v4i32 = i32_type_.fn_type(&[i32x4.into()], false);
         self.functions.insert(
@@ -740,12 +754,28 @@ impl<'ctx> LlvmContext<'ctx> {
             "llvm.fma.v8f64".to_string(),
             self.module.add_function("llvm.fma.v8f64", fma_v8f64, None),
         );
+        // Cycle 2294 (A-1): f32 FMA.
+        for (name, vec_ty) in [
+            ("llvm.fma.v4f32", f32x4),
+            ("llvm.fma.v8f32", f32x8),
+            ("llvm.fma.v16f32", f32x16),
+        ] {
+            let t = vec_ty.fn_type(&[vec_ty.into(), vec_ty.into(), vec_ty.into()], false);
+            self.functions.insert(name.to_string(), self.module.add_function(name, t, None));
+        }
         // minnum / maxnum (float), smin / smax (int)
         for (name, vec_ty) in [
             ("llvm.minnum.v4f64", f64x4),
             ("llvm.maxnum.v4f64", f64x4),
             ("llvm.minnum.v8f64", f64x8),
             ("llvm.maxnum.v8f64", f64x8),
+            // Cycle 2294 (A-1): f32 min/max.
+            ("llvm.minnum.v4f32", f32x4),
+            ("llvm.maxnum.v4f32", f32x4),
+            ("llvm.minnum.v8f32", f32x8),
+            ("llvm.maxnum.v8f32", f32x8),
+            ("llvm.minnum.v16f32", f32x16),
+            ("llvm.maxnum.v16f32", f32x16),
         ] {
             let t = vec_ty.fn_type(&[vec_ty.into(), vec_ty.into()], false);
             self.functions.insert(name.to_string(), self.module.add_function(name, t, None));
@@ -776,9 +806,12 @@ impl<'ctx> LlvmContext<'ctx> {
             ("llvm.vector.reduce.or.v2i1", 2u32),
             ("llvm.vector.reduce.or.v4i1", 4),
             ("llvm.vector.reduce.or.v8i1", 8),
+            // Cycle 2294 (A-1): mask16 for f32x16 reductions.
+            ("llvm.vector.reduce.or.v16i1", 16),
             ("llvm.vector.reduce.and.v2i1", 2),
             ("llvm.vector.reduce.and.v4i1", 4),
             ("llvm.vector.reduce.and.v8i1", 8),
+            ("llvm.vector.reduce.and.v16i1", 16),
         ] {
             let mask_ty = i1_ty.vec_type(lanes);
             let t = i1_ty.fn_type(&[mask_ty.into()], false);
@@ -1742,6 +1775,7 @@ impl<'ctx> LlvmContext<'ctx> {
             // v0.95: Added unsigned integer types
             MirType::U32 => self.context.i32_type().into(),
             MirType::U64 => self.context.i64_type().into(),
+            MirType::F32 => self.context.f32_type().into(),
             MirType::F64 => self.context.f64_type().into(),
             MirType::Bool => self.context.bool_type().into(),
             // v0.95: Char represented as i32 (Unicode code point)
@@ -2709,6 +2743,10 @@ impl<'ctx> LlvmContext<'ctx> {
                 if let Some((intrinsic_name, needs_start_value)) = match func.as_str() {
                     "hsum_f64x4" if args.len() == 1 => Some(("llvm.vector.reduce.fadd.v4f64", true)),
                     "hsum_f64x8" if args.len() == 1 => Some(("llvm.vector.reduce.fadd.v8f64", true)),
+                    // Cycle 2294 (A-1): f32 horizontal sums (start value = f32 zero).
+                    "hsum_f32x4"  if args.len() == 1 => Some(("llvm.vector.reduce.fadd.v4f32", true)),
+                    "hsum_f32x8"  if args.len() == 1 => Some(("llvm.vector.reduce.fadd.v8f32", true)),
+                    "hsum_f32x16" if args.len() == 1 => Some(("llvm.vector.reduce.fadd.v16f32", true)),
                     "hsum_i32x4" if args.len() == 1 => Some(("llvm.vector.reduce.add.v4i32", false)),
                     "hsum_i32x8" if args.len() == 1 => Some(("llvm.vector.reduce.add.v8i32", false)),
                     "hsum_i64x2" if args.len() == 1 => Some(("llvm.vector.reduce.add.v2i64", false)),
@@ -2718,9 +2756,14 @@ impl<'ctx> LlvmContext<'ctx> {
                     let intrinsic_fn = *self.functions.get(intrinsic_name)
                         .ok_or_else(|| CodeGenError::UnknownFunction(intrinsic_name.to_string()))?;
                     let vec_val = self.gen_operand(&args[0])?;
+                    // Cycle 2294: zero start value must match intrinsic element type.
                     let call_args: Vec<BasicMetadataValueEnum> = if needs_start_value {
-                        let zero = self.context.f64_type().const_zero();
-                        vec![zero.into(), vec_val.into()]
+                        let zero: BasicMetadataValueEnum = if intrinsic_name.ends_with("f32") {
+                            self.context.f32_type().const_zero().into()
+                        } else {
+                            self.context.f64_type().const_zero().into()
+                        };
+                        vec![zero, vec_val.into()]
                     } else {
                         vec![vec_val.into()]
                     };
@@ -2739,6 +2782,10 @@ impl<'ctx> LlvmContext<'ctx> {
                 if let Some(intrinsic_name) = match func.as_str() {
                     "fma_f64x4" if args.len() == 3 => Some("llvm.fma.v4f64"),
                     "fma_f64x8" if args.len() == 3 => Some("llvm.fma.v8f64"),
+                    // Cycle 2294 (A-1): f32 FMA.
+                    "fma_f32x4"  if args.len() == 3 => Some("llvm.fma.v4f32"),
+                    "fma_f32x8"  if args.len() == 3 => Some("llvm.fma.v8f32"),
+                    "fma_f32x16" if args.len() == 3 => Some("llvm.fma.v16f32"),
                     _ => None,
                 } {
                     let intrinsic_fn = *self.functions.get(intrinsic_name)
@@ -2761,6 +2808,10 @@ impl<'ctx> LlvmContext<'ctx> {
                 if let Some((vec_ty_kind, lanes)) = match func.as_str() {
                     "splat_f64x4" if args.len() == 1 => Some(("f64", 4u32)),
                     "splat_f64x8" if args.len() == 1 => Some(("f64", 8)),
+                    // Cycle 2294 (A-1): f32 splat.
+                    "splat_f32x4"  if args.len() == 1 => Some(("f32", 4)),
+                    "splat_f32x8"  if args.len() == 1 => Some(("f32", 8)),
+                    "splat_f32x16" if args.len() == 1 => Some(("f32", 16)),
                     "splat_i32x4" if args.len() == 1 => Some(("i32", 4)),
                     "splat_i32x8" if args.len() == 1 => Some(("i32", 8)),
                     "splat_i64x2" if args.len() == 1 => Some(("i64", 2)),
@@ -2769,6 +2820,7 @@ impl<'ctx> LlvmContext<'ctx> {
                 } {
                     let vec_ty: inkwell::types::VectorType = match vec_ty_kind {
                         "f64" => self.context.f64_type().vec_type(lanes),
+                        "f32" => self.context.f32_type().vec_type(lanes),
                         "i32" => self.context.i32_type().vec_type(lanes),
                         "i64" => self.context.i64_type().vec_type(lanes),
                         _ => unreachable!(),
@@ -2778,6 +2830,11 @@ impl<'ctx> LlvmContext<'ctx> {
                     let elem_val: BasicValueEnum = match vec_ty_kind {
                         "f64" if scalar_val.is_int_value() => self.builder
                             .build_signed_int_to_float(scalar_val.into_int_value(), self.context.f64_type(), "splat_sitofp")
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                            .into(),
+                        // Cycle 2294: f32 scalar argument may arrive as f32; if it's i64, convert.
+                        "f32" if scalar_val.is_int_value() => self.builder
+                            .build_signed_int_to_float(scalar_val.into_int_value(), self.context.f32_type(), "splat_sitofp_f32")
                             .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
                             .into(),
                         "i32" if scalar_val.is_int_value() && scalar_val.into_int_value().get_type().get_bit_width() == 64 => self.builder
@@ -2806,6 +2863,10 @@ impl<'ctx> LlvmContext<'ctx> {
                 if let Some((vec_ty_kind, lanes, elem_align)) = match func.as_str() {
                     "load_f64x4" if args.len() == 2 => Some(("f64", 4u32, 8u32)),
                     "load_f64x8" if args.len() == 2 => Some(("f64", 8, 8)),
+                    // Cycle 2294 (A-1): f32 loads.
+                    "load_f32x4"  if args.len() == 2 => Some(("f32", 4, 4)),
+                    "load_f32x8"  if args.len() == 2 => Some(("f32", 8, 4)),
+                    "load_f32x16" if args.len() == 2 => Some(("f32", 16, 4)),
                     "load_i32x4" if args.len() == 2 => Some(("i32", 4, 4)),
                     "load_i32x8" if args.len() == 2 => Some(("i32", 8, 4)),
                     "load_i64x2" if args.len() == 2 => Some(("i64", 2, 8)),
@@ -2814,6 +2875,7 @@ impl<'ctx> LlvmContext<'ctx> {
                 } {
                     let (elem_ty, vec_ty): (BasicTypeEnum, inkwell::types::VectorType) = match vec_ty_kind {
                         "f64" => (self.context.f64_type().into(), self.context.f64_type().vec_type(lanes)),
+                        "f32" => (self.context.f32_type().into(), self.context.f32_type().vec_type(lanes)),
                         "i32" => (self.context.i32_type().into(), self.context.i32_type().vec_type(lanes)),
                         "i64" => (self.context.i64_type().into(), self.context.i64_type().vec_type(lanes)),
                         _ => unreachable!(),
@@ -2845,6 +2907,10 @@ impl<'ctx> LlvmContext<'ctx> {
                 if let Some((vec_ty_kind, _lanes, elem_align)) = match func.as_str() {
                     "store_f64x4" if args.len() == 3 => Some(("f64", 4u32, 8u32)),
                     "store_f64x8" if args.len() == 3 => Some(("f64", 8, 8)),
+                    // Cycle 2294 (A-1): f32 stores.
+                    "store_f32x4"  if args.len() == 3 => Some(("f32", 4, 4)),
+                    "store_f32x8"  if args.len() == 3 => Some(("f32", 8, 4)),
+                    "store_f32x16" if args.len() == 3 => Some(("f32", 16, 4)),
                     "store_i32x4" if args.len() == 3 => Some(("i32", 4, 4)),
                     "store_i32x8" if args.len() == 3 => Some(("i32", 8, 4)),
                     "store_i64x2" if args.len() == 3 => Some(("i64", 2, 8)),
@@ -2853,6 +2919,7 @@ impl<'ctx> LlvmContext<'ctx> {
                 } {
                     let elem_ty: BasicTypeEnum = match vec_ty_kind {
                         "f64" => self.context.f64_type().into(),
+                        "f32" => self.context.f32_type().into(),
                         "i32" => self.context.i32_type().into(),
                         "i64" => self.context.i64_type().into(),
                         _ => unreachable!(),
@@ -2880,12 +2947,18 @@ impl<'ctx> LlvmContext<'ctx> {
                 // Lowers to inkwell `build_float_compare` (FCMP) / `build_int_compare` (ICMP).
                 if args.len() == 2
                     && let Some((op_kind, predicate)) = match func.as_str() {
-                        "cmp_eq_f64x4" | "cmp_eq_f64x8" => Some(("fcmp", "oeq")),
-                        "cmp_ne_f64x4" | "cmp_ne_f64x8" => Some(("fcmp", "one")),
-                        "cmp_lt_f64x4" | "cmp_lt_f64x8" => Some(("fcmp", "olt")),
-                        "cmp_le_f64x4" | "cmp_le_f64x8" => Some(("fcmp", "ole")),
-                        "cmp_gt_f64x4" | "cmp_gt_f64x8" => Some(("fcmp", "ogt")),
-                        "cmp_ge_f64x4" | "cmp_ge_f64x8" => Some(("fcmp", "oge")),
+                        "cmp_eq_f64x4" | "cmp_eq_f64x8"
+                        | "cmp_eq_f32x4" | "cmp_eq_f32x8" | "cmp_eq_f32x16" => Some(("fcmp", "oeq")),
+                        "cmp_ne_f64x4" | "cmp_ne_f64x8"
+                        | "cmp_ne_f32x4" | "cmp_ne_f32x8" | "cmp_ne_f32x16" => Some(("fcmp", "one")),
+                        "cmp_lt_f64x4" | "cmp_lt_f64x8"
+                        | "cmp_lt_f32x4" | "cmp_lt_f32x8" | "cmp_lt_f32x16" => Some(("fcmp", "olt")),
+                        "cmp_le_f64x4" | "cmp_le_f64x8"
+                        | "cmp_le_f32x4" | "cmp_le_f32x8" | "cmp_le_f32x16" => Some(("fcmp", "ole")),
+                        "cmp_gt_f64x4" | "cmp_gt_f64x8"
+                        | "cmp_gt_f32x4" | "cmp_gt_f32x8" | "cmp_gt_f32x16" => Some(("fcmp", "ogt")),
+                        "cmp_ge_f64x4" | "cmp_ge_f64x8"
+                        | "cmp_ge_f32x4" | "cmp_ge_f32x8" | "cmp_ge_f32x16" => Some(("fcmp", "oge")),
                         "cmp_eq_i32x4" | "cmp_eq_i32x8" | "cmp_eq_i64x2" | "cmp_eq_i64x4" => Some(("icmp", "eq")),
                         "cmp_ne_i32x4" | "cmp_ne_i32x8" | "cmp_ne_i64x2" | "cmp_ne_i64x4" => Some(("icmp", "ne")),
                         "cmp_lt_i32x4" | "cmp_lt_i32x8" | "cmp_lt_i64x2" | "cmp_lt_i64x4" => Some(("icmp", "slt")),
@@ -2937,6 +3010,7 @@ impl<'ctx> LlvmContext<'ctx> {
                 if args.len() == 3
                     && matches!(func.as_str(),
                         "blend_f64x4" | "blend_f64x8" |
+                        "blend_f32x4" | "blend_f32x8" | "blend_f32x16" |
                         "blend_i32x4" | "blend_i32x8" |
                         "blend_i64x2" | "blend_i64x4")
                 {
@@ -2958,9 +3032,11 @@ impl<'ctx> LlvmContext<'ctx> {
                         "mask_any_2" => Some("llvm.vector.reduce.or.v2i1"),
                         "mask_any_4" => Some("llvm.vector.reduce.or.v4i1"),
                         "mask_any_8" => Some("llvm.vector.reduce.or.v8i1"),
+                        "mask_any_16" => Some("llvm.vector.reduce.or.v16i1"),
                         "mask_all_2" => Some("llvm.vector.reduce.and.v2i1"),
                         "mask_all_4" => Some("llvm.vector.reduce.and.v4i1"),
                         "mask_all_8" => Some("llvm.vector.reduce.and.v8i1"),
+                        "mask_all_16" => Some("llvm.vector.reduce.and.v16i1"),
                         _ => None,
                     }
                 {
@@ -2984,6 +3060,13 @@ impl<'ctx> LlvmContext<'ctx> {
                     "max_f64x4" if args.len() == 2 => Some("llvm.maxnum.v4f64"),
                     "min_f64x8" if args.len() == 2 => Some("llvm.minnum.v8f64"),
                     "max_f64x8" if args.len() == 2 => Some("llvm.maxnum.v8f64"),
+                    // Cycle 2294 (A-1): f32 min/max.
+                    "min_f32x4"  if args.len() == 2 => Some("llvm.minnum.v4f32"),
+                    "max_f32x4"  if args.len() == 2 => Some("llvm.maxnum.v4f32"),
+                    "min_f32x8"  if args.len() == 2 => Some("llvm.minnum.v8f32"),
+                    "max_f32x8"  if args.len() == 2 => Some("llvm.maxnum.v8f32"),
+                    "min_f32x16" if args.len() == 2 => Some("llvm.minnum.v16f32"),
+                    "max_f32x16" if args.len() == 2 => Some("llvm.maxnum.v16f32"),
                     "min_i32x4" if args.len() == 2 => Some("llvm.smin.v4i32"),
                     "max_i32x4" if args.len() == 2 => Some("llvm.smax.v4i32"),
                     "min_i32x8" if args.len() == 2 => Some("llvm.smin.v8i32"),
@@ -3023,6 +3106,32 @@ impl<'ctx> LlvmContext<'ctx> {
                     let arg = self.gen_operand(&args[0])?;
                     let result = self.builder
                         .build_float_to_signed_int(arg.into_float_value(), self.context.i64_type(), "fptosi")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    if let Some(dest_place) = dest {
+                        self.store_to_place(dest_place, result.into())?;
+                    }
+                // Cycle 2299 (Task A-1 regression sweep latent fix):
+                // Text backend has these type-conversion intrinsics inline; parallel here.
+                } else if func == "i64_to_i32" && args.len() == 1 {
+                    let arg = self.gen_operand(&args[0])?;
+                    let result = self.builder
+                        .build_int_truncate(arg.into_int_value(), self.context.i32_type(), "trunc")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    if let Some(dest_place) = dest {
+                        self.store_to_place(dest_place, result.into())?;
+                    }
+                } else if func == "i32_to_i64" && args.len() == 1 {
+                    let arg = self.gen_operand(&args[0])?;
+                    let result = self.builder
+                        .build_int_s_extend(arg.into_int_value(), self.context.i64_type(), "sext")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    if let Some(dest_place) = dest {
+                        self.store_to_place(dest_place, result.into())?;
+                    }
+                } else if func == "i32_to_f64" && args.len() == 1 {
+                    let arg = self.gen_operand(&args[0])?;
+                    let result = self.builder
+                        .build_signed_int_to_float(arg.into_int_value(), self.context.f64_type(), "sitofp")
                         .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
                     if let Some(dest_place) = dest {
                         self.store_to_place(dest_place, result.into())?;
@@ -5909,6 +6018,21 @@ impl<'ctx> LlvmContext<'ctx> {
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
                 Ok(result.into())
             }
+            // Cycle 2295 (A-1): integer to f32.
+            (I32, F32) | (I64, F32) => {
+                let int_val = src_val.into_int_value();
+                let result = self.builder
+                    .build_signed_int_to_float(int_val, self.context.f32_type(), "sitofp")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                Ok(result.into())
+            }
+            (U32, F32) | (U64, F32) => {
+                let int_val = src_val.into_int_value();
+                let result = self.builder
+                    .build_unsigned_int_to_float(int_val, self.context.f32_type(), "uitofp")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                Ok(result.into())
+            }
 
             // Float to integer
             (F64, I32) | (F64, I64) => {
@@ -5932,6 +6056,46 @@ impl<'ctx> LlvmContext<'ctx> {
                 };
                 let result = self.builder
                     .build_float_to_unsigned_int(float_val, target_ty, "fptoui")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                Ok(result.into())
+            }
+            // Cycle 2295 (A-1): f32 to integer.
+            (F32, I32) | (F32, I64) => {
+                let float_val = src_val.into_float_value();
+                let target_ty = if matches!(to_ty, I32) {
+                    self.context.i32_type()
+                } else {
+                    self.context.i64_type()
+                };
+                let result = self.builder
+                    .build_float_to_signed_int(float_val, target_ty, "fptosi")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                Ok(result.into())
+            }
+            (F32, U32) | (F32, U64) => {
+                let float_val = src_val.into_float_value();
+                let target_ty = if matches!(to_ty, U32) {
+                    self.context.i32_type()
+                } else {
+                    self.context.i64_type()
+                };
+                let result = self.builder
+                    .build_float_to_unsigned_int(float_val, target_ty, "fptoui")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                Ok(result.into())
+            }
+            // Cycle 2295 (A-1): float width conversion.
+            (F32, F64) => {
+                let float_val = src_val.into_float_value();
+                let result = self.builder
+                    .build_float_ext(float_val, self.context.f64_type(), "fpext")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                Ok(result.into())
+            }
+            (F64, F32) => {
+                let float_val = src_val.into_float_value();
+                let result = self.builder
+                    .build_float_trunc(float_val, self.context.f32_type(), "fptrunc")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
                 Ok(result.into())
             }
@@ -7622,7 +7786,7 @@ mod tests {
         let mut func = make_func("const_float", vec![], vec![BasicBlock {
             label: "entry".to_string(),
             instructions: vec![
-                MirInst::Const { dest: make_place("_t0"), value: Constant::Float(3.14) },
+                MirInst::Const { dest: make_place("_t0"), value: Constant::Float(2.5) },
             ],
             terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
         }]);
@@ -9969,7 +10133,7 @@ mod tests {
         let mut func = make_func("float_const", vec![], vec![BasicBlock {
             label: "entry".to_string(),
             instructions: vec![
-                MirInst::Const { dest: make_place("_t0"), value: Constant::Float(3.14) },
+                MirInst::Const { dest: make_place("_t0"), value: Constant::Float(std::f64::consts::PI) },
             ],
             terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
         }]);
@@ -10001,7 +10165,7 @@ mod tests {
         let mut func = make_func("pi", vec![], vec![BasicBlock {
             label: "entry".to_string(),
             instructions: vec![],
-            terminator: Terminator::Return(Some(Operand::Constant(Constant::Float(3.14159)))),
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Float(std::f64::consts::PI)))),
         }]);
         func.ret_ty = MirType::F64;
         let ir = cg.generate_ir(&make_program(vec![func])).unwrap();

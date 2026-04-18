@@ -120,6 +120,7 @@ extern {
         // v0.38: Unsigned integer types
         "u32" => Token::TyU32,
         "u64" => Token::TyU64,
+        "f32" => Token::TyF32,
         "f64" => Token::TyF64,
         "bool" => Token::TyBool,
         "String" => Token::TyString,
@@ -277,6 +278,7 @@ ImportIdent: Spanned<String> = {
     // v0.38: Unsigned types
     <l:@L> "u32" <r:@R> => Spanned::new("u32".to_string(), Span::new(l, r)),
     <l:@L> "u64" <r:@R> => Spanned::new("u64".to_string(), Span::new(l, r)),
+    <l:@L> "f32" <r:@R> => Spanned::new("f32".to_string(), Span::new(l, r)),
     <l:@L> "f64" <r:@R> => Spanned::new("f64".to_string(), Span::new(l, r)),
     <l:@L> "bool" <r:@R> => Spanned::new("bool".to_string(), Span::new(l, r)),
     <l:@L> "String" <r:@R> => Spanned::new("String".to_string(), Span::new(l, r)),
@@ -1088,6 +1090,10 @@ Type: Type = {
         base: Box::new(Type::U64),
         constraints,
     },
+    "f32" "{" <constraints:RefinementConstraints> "}" => Type::Refined {
+        base: Box::new(Type::F32),
+        constraints,
+    },
     "f64" "{" <constraints:RefinementConstraints> "}" => Type::Refined {
         base: Box::new(Type::F64),
         constraints,
@@ -1107,6 +1113,7 @@ PlainType: Type = {
     // v0.38: Unsigned integer types
     "u32" => Type::U32,
     "u64" => Type::U64,
+    "f32" => Type::F32,
     "f64" => Type::F64,
     "bool" => Type::Bool,
     "String" => Type::String,
@@ -1162,6 +1169,7 @@ PlainType: Type = {
     // v0.38: Unsigned nullable
     "u32" "?" => Type::Nullable(Box::new(Type::U32)),
     "u64" "?" => Type::Nullable(Box::new(Type::U64)),
+    "f32" "?" => Type::Nullable(Box::new(Type::F32)),
     "f64" "?" => Type::Nullable(Box::new(Type::F64)),
     "bool" "?" => Type::Nullable(Box::new(Type::Bool)),
     "String" "?" => Type::Nullable(Box::new(Type::String)),
@@ -1189,6 +1197,7 @@ CastType: Type = {
     "i64" => Type::I64,
     "u32" => Type::U32,
     "u64" => Type::U64,
+    "f32" => Type::F32,
     "f64" => Type::F64,
     "bool" => Type::Bool,
     // v0.60.19: Primitive pointer types for casts
@@ -1196,6 +1205,7 @@ CastType: Type = {
     "*" "i64" => Type::Ptr(Box::new(Type::I64)),
     "*" "u32" => Type::Ptr(Box::new(Type::U32)),
     "*" "u64" => Type::Ptr(Box::new(Type::U64)),
+    "*" "f32" => Type::Ptr(Box::new(Type::F32)),
     "*" "f64" => Type::Ptr(Box::new(Type::F64)),
     "*" "bool" => Type::Ptr(Box::new(Type::Bool)),
     "*" <name:Ident> => Type::Ptr(Box::new(Type::Named(name.node))),

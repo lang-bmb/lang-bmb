@@ -1193,7 +1193,7 @@ impl TypeChecker {
                 }
             }
             // Primitive types don't have names to track
-            Type::I64 | Type::I32 | Type::U32 | Type::U64 | Type::F64
+            Type::I64 | Type::I32 | Type::U32 | Type::U64 | Type::F32 | Type::F64
             | Type::Bool | Type::String | Type::Char | Type::Unit
             | Type::Never | Type::TypeVar(_) => {}
             // v0.97 (Cycle 2215+): SIMD vector — recurse into the element so any
@@ -3200,8 +3200,9 @@ impl TypeChecker {
                 }
 
                 // Validate cast is allowed
-                let src_numeric = matches!(&src_ty, Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 | Type::Bool);
-                let tgt_numeric = matches!(&target_ty, Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 | Type::Bool);
+                // Cycle 2293 (A-1): include F32 in numeric cast set.
+                let src_numeric = matches!(&src_ty, Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F32 | Type::F64 | Type::Bool);
+                let tgt_numeric = matches!(&target_ty, Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F32 | Type::F64 | Type::Bool);
 
                 // v0.51.32: Allow struct <-> i64 casts for pointer operations
                 // v0.51.37: Extended to support typed pointer types (*T)
@@ -8548,7 +8549,7 @@ impl TypeChecker {
                         self.unify(left_base, right_base, span)?;
                         match left_base {
                             // v0.38: Include unsigned types
-                            Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 => Ok(left_base.clone()),
+                            Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F32 | Type::F64 => Ok(left_base.clone()),
                             Type::String => Ok(Type::String), // String concatenation
                             _ => Err(CompileError::type_error(
                                 format!("+ operator requires numeric, String, or pointer type, got {left}"),
@@ -8571,7 +8572,7 @@ impl TypeChecker {
                         self.unify(left_base, right_base, span)?;
                         match left_base {
                             // v0.38: Include unsigned types
-                            Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 => Ok(left_base.clone()),
+                            Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F32 | Type::F64 => Ok(left_base.clone()),
                             _ => Err(CompileError::type_error(
                                 format!("- operator requires numeric or pointer type, got {left}"),
                                 span,
@@ -8641,7 +8642,7 @@ impl TypeChecker {
                 match left_base {
                     // v0.38: Include unsigned types, v0.64: Include Char type
                     // v0.51.37: Include pointer types for null checks
-                    Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 | Type::Bool | Type::String | Type::Char | Type::Ptr(_) => Ok(Type::Bool),
+                    Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F32 | Type::F64 | Type::Bool | Type::String | Type::Char | Type::Ptr(_) => Ok(Type::Bool),
                     _ => Err(CompileError::type_error(
                         format!("equality operator requires comparable type, got {left}"),
                         span,
@@ -8653,7 +8654,7 @@ impl TypeChecker {
                 self.unify(left_base, right_base, span)?;
                 match left_base {
                     // v0.38: Include unsigned types, v0.64: Include Char type (ordinal comparison)
-                    Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 | Type::Char => Ok(Type::Bool),
+                    Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F32 | Type::F64 | Type::Char => Ok(Type::Bool),
                     _ => Err(CompileError::type_error(
                         format!("comparison operator requires numeric type, got {left}"),
                         span,
@@ -8714,7 +8715,7 @@ impl TypeChecker {
 
         match op {
             UnOp::Neg => match ty_base {
-                Type::I32 | Type::I64 | Type::F64 => Ok(ty_base.clone()),
+                Type::I32 | Type::I64 | Type::F32 | Type::F64 => Ok(ty_base.clone()),
                 _ => Err(CompileError::type_error(
                     format!("negation requires numeric type, got {ty}"),
                     span,
@@ -8826,7 +8827,14 @@ impl TypeChecker {
                 (Type::U32, Type::I64) | (Type::U64, Type::I64)
                 | (Type::I32, Type::I64) | (Type::U32, Type::I32)
             );
-            if is_integer_coercion {
+            // Cycle 2293 (A-1): Allow float literal coercion F64 → F32.
+            // Float literals default to F64; this enables `let x: f32 = 3.14;`.
+            // Mirrors integer coercion precedent. Precision-lossy, same as i64→u32.
+            let is_float_coercion = matches!(
+                (&expected, &actual),
+                (Type::F32, Type::F64)
+            );
+            if is_integer_coercion || is_float_coercion {
                 Ok(())
             } else {
                 Err(CompileError::type_error(
@@ -9103,6 +9111,7 @@ impl TypeChecker {
             // v0.38: Unsigned types
             Type::U32 => "u32".to_string(),
             Type::U64 => "u64".to_string(),
+            Type::F32 => "f32".to_string(),
             Type::F64 => "f64".to_string(),
             Type::Bool => "bool".to_string(),
             Type::String => "String".to_string(),

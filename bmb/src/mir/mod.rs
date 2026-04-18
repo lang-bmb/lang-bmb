@@ -962,6 +962,8 @@ pub enum MirType {
     // v0.38: Unsigned integer types
     U32,
     U64,
+    /// Cycle 2292, Task A-1: 32-bit floating point for SIMD f32x{4,8,16} and AVX-512 paths.
+    F32,
     F64,
     Bool,
     String,
@@ -1012,7 +1014,7 @@ impl MirType {
     }
 
     pub fn is_float(&self) -> bool {
-        matches!(self, MirType::F64)
+        matches!(self, MirType::F32 | MirType::F64)
     }
 
     /// v0.97 (Cycle 2227): SIMD vector predicate. Enables type-driven
@@ -1711,6 +1713,7 @@ fn format_mir_type(ty: &MirType) -> String {
         // v0.38: Unsigned types
         MirType::U32 => "u32".to_string(),
         MirType::U64 => "u64".to_string(),
+        MirType::F32 => "f32".to_string(),
         MirType::F64 => "f64".to_string(),
         MirType::Bool => "bool".to_string(),
         MirType::String => "String".to_string(),

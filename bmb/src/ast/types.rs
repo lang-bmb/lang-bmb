@@ -43,6 +43,8 @@ pub enum Type {
     U32,
     /// 64-bit unsigned integer
     U64,
+    /// 32-bit floating point (Cycle 2292, Task A-1)
+    F32,
     /// 64-bit floating point
     F64,
     /// Boolean
@@ -223,6 +225,7 @@ impl PartialEq for Type {
             // v0.38: Unsigned types
             (Type::U32, Type::U32) => true,
             (Type::U64, Type::U64) => true,
+            (Type::F32, Type::F32) => true,
             (Type::F64, Type::F64) => true,
             (Type::Bool, Type::Bool) => true,
             (Type::Unit, Type::Unit) => true,
@@ -321,19 +324,20 @@ impl Type {
         }
     }
 
-    /// Check if this type is numeric (i32, i64, u32, u64, f64) including refined numeric types
+    /// Check if this type is numeric (i32, i64, u32, u64, f32, f64) including refined numeric types
     pub fn is_numeric(&self) -> bool {
-        // v0.38: Include unsigned types
-        matches!(self.base_type(), Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64)
+        // v0.38: Include unsigned types. Cycle 2292: Include F32.
+        matches!(self.base_type(), Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F32 | Type::F64)
     }
 
     /// Check if this type is comparable (numeric, bool, string) including refined types
     pub fn is_comparable(&self) -> bool {
         // v0.38: Include unsigned types
         // v0.64: Include Char type
+        // Cycle 2292: Include F32.
         matches!(
             self.base_type(),
-            Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 | Type::Bool | Type::String | Type::Char
+            Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F32 | Type::F64 | Type::Bool | Type::String | Type::Char
         )
     }
 }
@@ -346,6 +350,7 @@ impl std::fmt::Display for Type {
             // v0.38: Unsigned types
             Type::U32 => write!(f, "u32"),
             Type::U64 => write!(f, "u64"),
+            Type::F32 => write!(f, "f32"),
             Type::F64 => write!(f, "f64"),
             Type::Bool => write!(f, "bool"),
             Type::Unit => write!(f, "()"),
@@ -453,6 +458,7 @@ pub fn parse_simd_type(s: &str) -> Type {
             "i64" => Type::I64,
             "u32" => Type::U32,
             "u64" => Type::U64,
+            "f32" => Type::F32,
             "f64" => Type::F64,
             _ => return Type::Named(s.to_string()),
         };
