@@ -1,5 +1,5 @@
 # BMB Development Roadmap
-Updated: 2026-04-18
+Updated: 2026-04-19
 
 ---
 
@@ -52,10 +52,13 @@ SIMD        ███████████████████░ 95%   1
 | 작업 ID | 작업 | 상태 | 세션 |
 |---------|------|------|------|
 | **B-4** | Inkwell BinOp Vector emission (Rule 7 parity) | ✅ 완료 | Cycles 2266-2272 |
-| **B-7** | stdlib 모듈 auto-import | ✅ 완료 | Cycles 2275-2276 |
-| **B-9** | SIMD 실증 워크로드 (SAXPY + matvec) | ✅ 완료 | Cycles 2273-2274 |
-| **B-8** | Comparison + mask 타입 | ✅ 완료 | Cycles 2283-2287 |
-| **A-1** | f32 primitive + f32x{4,8,16} | 대기 | 8-10 cycles 예상 |
+| **B-7** | stdlib 모듈 auto-import (build + check) | ✅ 완료 | Cycles 2275-2276, 2284 |
+| **B-9** | SIMD 실증 워크로드 (SAXPY + matvec + stencil) | ✅ 완료 | Cycles 2273-2274, 2288 |
+| **B-8** | Comparison + mask 타입 (cmp/blend/any/all) | ✅ 완료 | Cycles 2283-2287 |
+| **B-10** | SIMD perf user guide (`SIMD_PERF_NOTES.md`) | ✅ 완료 | Cycle 2289 |
+| **B-11** | Shuffle/permute intrinsics (`shuffle_VxN`, `slide_*`) | 대기 | 6-8 cycles 예상 — stencil 등 auto-vec 패배 영역 회복 |
+| **B-12** | `store_i32`/`load_i32` 런타임 헬퍼 + i32 SIMD 벤치 | 대기 | 1-2 cycles, 작은 ergonomic 보강 |
+| **A-1** | f32 primitive + f32x{4,8,16} | 대기 | 8-10 cycles, dedicated 20-cycle session 권장 |
 
 ### Phase C: Bootstrap 코드젠 품질 (v0.98)
 
@@ -129,24 +132,32 @@ Bootstrap IR의 근본적 한계 해소. inttoptr을 native ptr로 전환.
 
 ---
 
-## 다음 단계 우선순위 (2026-04-18 업데이트)
+## 다음 단계 우선순위 (2026-04-19 업데이트)
 
-> Dogfooding + SIMD stdlib 완료. 남은 작업은 4축:
+> SIMD B-4/B-7/B-8/B-9/B-10 완료. SAXPY/matvec/stencil 실증 결과: 선형 접근에서 LLVM auto-vec이 manual SIMD를 동률/추월. SIMD 진정한 승리는 데이터 의존 분기(B-8 mask)·shuffle(B-11 미구현)·forced FMA에서만 발생함을 `SIMD_PERF_NOTES.md`로 정리.
 
 ```
-0. ★★★★ SIMD 마무리 (Phase B-cont, 즉시 후속)
-   B-4 Inkwell BinOp parity → B-9 실증 워크로드 → B-8 mask 타입
-   → 성능 claim "2-4x vs C" 실증 데이터 확보
+0. ★★★★ Task A-1: f32 primitive + f32x{4,8,16}  (dedicated 20-cycle session)
+   AVX-512 hot path 확장. 영향: lexer/parser/types/MIR/text+inkwell codegen.
+   → "BMB는 f32 SIMD까지 1급" 주장 가능
 
-1. ★★★ 배포 + 크로스플랫폼
-   PyPI wheel 빌드 → Linux/macOS 빌드 → pip install bmb-algo 가능하게
-   → BMB 존재가치 증명: "pip install → C보다 90x 빠르다"
+1. ★★★ Task B-11: shuffle/permute 인트린식 (6-8 cycles)
+   stencil 같은 auto-vec 패배 영역 회복. 단일 인트린식 패밀리.
+   → 매뉴얼 SIMD가 의미 있는 워크로드 폭 확장
 
-2. ★★  컴파일러 품질 (v0.98)
+2. ★★★ 배포 + 크로스플랫폼
+   PyPI wheel 빌드 → Linux/macOS 빌드 → pip install bmb-algo 가능
+   → "pip install → C보다 90x 빠르다" 증명
+
+3. ★★  컴파일러 품질 (v0.98)
    Native Ptr 타입 시스템 → inttoptr 제거 → IR 품질 향상
    → Bootstrap 코드젠이 handwritten IR 수준에 도달
 
-3. ★   공개 준비 (v0.99 → v1.0)
+4. ★   Task B-12: store_i32/load_i32 헬퍼 (1-2 cycles, low-hanging)
+   현재 i32 SIMD 워크로드는 load_i32x4 가능하나 데이터 초기화에 store_i32 부재.
+   → mask 벤치에서 i32x4/i32x8 경로 추가 검증 가능
+
+5. ★   공개 준비 (v0.99 → v1.0)
    언어 스펙 최종판 → AI-Native 실증 → HN/Reddit
    → 커뮤니티 형성
 ```
@@ -181,7 +192,13 @@ v0.97        @export + --shared + FFI 안전성 (setjmp/longjmp, TLS)
              Inkwell BinOp Vector 파리티 ✅ — float/int BinOp + Copy/Call/Return + 44 intrinsic dispatch (Cycles 2266-2272)
              SAXPY + matvec 실증 벤치 — SIMD ≈ scalar (auto-vec가 이미 강함, 10% ILP 이득) (Cycles 2273-2274)
              MIR optimizer `memory(none)` 오분류 수정 — store_* intrinsic 메모리 효과 명시 (Cycle 2273)
-             stdlib 자동 로딩: `@include "stdlib/simd/mod.bmb"` (Cycles 2275-2276)
+             stdlib 자동 로딩: `@include "stdlib/simd/mod.bmb"` (Cycles 2275-2276, 2284 check 파리티)
+             세션 커밋: `5f92583f` (Cycles 2266-2282, 11 files / 846 insertions)
+             SIMD mask 1급 타입 ✅ — `mask{2,4,8}` + 36 cmp + 6 blend + 6 mask reductions, text/inkwell 양 백엔드 (Cycles 2283-2287)
+             1D 5-point stencil 벤치 — scalar 21ms vs SIMD 23ms, auto-vec 동률/추월 정직 측정 (Cycle 2288)
+             `SIMD_PERF_NOTES.md` 사용자 가이드 ✅ — when manual SIMD WINS/TIES/LOSES (Cycle 2289)
+             Latent fix: `bmb check` stdlib auto-include + `make_test_context` 생성자 (Cycles 2284, 2286)
+             세션 커밋: `97184f4d` (Cycles 2283-2290, 20 files / 797 insertions)
 
 ═══════════════════ 현재 위치: 배포/품질 단계 ═════════════════════════
 
