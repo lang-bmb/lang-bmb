@@ -1,0 +1,18 @@
+// Minimal repro: multiple store_f64(ptr, f64_expr(base)) with same i64 param `base`
+// causes "multiple definition of local value named 'base_sext'" linker error.
+
+extern fn malloc(n: i64) -> i64;
+extern fn store_f64(ptr: i64, v: f64) -> i64;
+extern fn i64_to_f64(x: i64) -> f64;
+
+fn init(ptr: i64, base: i64) -> i64 = {
+    let _s0 = store_f64(ptr + 0, 1.0 + i64_to_f64(base));
+    let _s1 = store_f64(ptr + 8, 2.0 + i64_to_f64(base));
+    0
+};
+
+fn main() -> i64 = {
+    let buf = malloc(16);
+    let _i = init(buf, 5);
+    0
+};

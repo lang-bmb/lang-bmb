@@ -1,5 +1,5 @@
 # BMB Development Roadmap
-Updated: 2026-04-19 (post-Cycles 2311-2318: Tasks B-11.5 ✅ + f32 inference fix)
+Updated: 2026-04-19 (post-Cycles 2319-2324: base_sext codegen fix + stencil recovery verified)
 
 ---
 
@@ -20,9 +20,10 @@ SIMD        ████████████████████ 100% 1�
                                        f32 ↔ f64 fpext/fptrunc + full int↔f32 casts ✅
                                        shuffle Phase 1 ✅ — reverse/broadcast_lane/slide_left/slide_right
                                        scalar store/load 32-bit ✅ — store_i32/load_i32/store_f32/load_f32
-                                       **shuffle Phase 2 (B-11.5) ✅** — slide_left2/slide_right2/concat_{lo_hi,hi_lo}
-                                       **f32 inference fix ✅** — `let r = load_f32(p)` no longer requires `: f32` annotation
-                                       Pending: stencil_simd_v2 algorithm-level debug (P1)
+                                       shuffle Phase 2 (B-11.5) ✅ — slide_left2/slide_right2/concat_{lo_hi,hi_lo}
+                                       f32 inference fix ✅
+                                       **base_sext codegen fix ✅** — i64_to_f64 now emits unique sext names per call site
+                                       **stencil recovery verified ✅** — stencil_simd_v2 ~27ms vs scalar ~25ms (competitive)
 ```
 
 ### 핵심 수치

@@ -1,0 +1,112 @@
+// 1D 5-point stencil — B-11.5 shuffle-based SIMD version (Cycle 2316).
+// One aligned load per iteration + slide_left2/slide_right2 for neighbors.
+// Processes 4 output points per iteration via f64x4.
+//
+// Baseline comparison: tests/bench/stencil_simd.bmb (5 unaligned loads).
+// Hypothesis: shuffle-based version reduces memory traffic; effect TBD.
+
+@include "stdlib/simd/mod.bmb"
+
+extern fn malloc(n: i64) -> i64;
+extern fn free(p: i64) -> i64;
+extern fn store_f64(ptr: i64, v: f64) -> i64;
+extern fn load_f64(ptr: i64) -> f64;
+extern fn f64_to_i64(x: f64) -> i64;
+extern fn i64_to_f64(x: i64) -> f64;
+extern fn println(n: i64) -> i64;
+
+fn init_linear(buf: i64, n: i64) -> i64 = {
+    let mut i: i64 = 0;
+    while i < n {
+        let _s = store_f64(buf + i * 8, i64_to_f64(i));
+        i = i + 1;
+    };
+    0
+};
+
+// Jacobi sweep using f64x4 + slide2:
+//
+// For output index i (multiple of 4), we need inputs at i-2, i-1, i, i+1, i+2.
+// Load two aligned 4-wide blocks:
+//   vL = load(curr, i-4)   // [v[i-4], v[i-3], v[i-2], v[i-1]]
+//   vM = load(curr, i)     // [v[i],   v[i+1], v[i+2], v[i+3]]
+//   vR = load(curr, i+4)   // [v[i+4], v[i+5], v[i+6], v[i+7]]
+//
+// Then the 5 neighbor views (each is 4 output lanes):
+//   v_2 = [v[i-2..i+1]] = slide_left2(vL, vM, 2)
+//   v_1 = [v[i-1..i+2]] = slide_left2(vL, vM, 3)
+//   v_0 = [v[i..i+3]]   = vM
+//   v_1p= [v[i+1..i+4]] = slide_left2(vM, vR, 1)
+//   v_2p= [v[i+2..i+5]] = slide_left2(vM, vR, 2)
+//
+// sum = v_2 + v_1 + v_0 + v_1p + v_2p; out[i..i+3] = sum * 0.2
+fn stencil_sweep_simd_v2(curr: i64, next: i64, n: i64) -> i64 = {
+    let scale = splat_f64x4(0.2);
+    let mut i: i64 = 4;  // start at 4 so i-4 >= 0
+    let bound: i64 = n - 7;  // need i+4 <= n-4 -> i <= n-8, so bound = n - 7
+    while i <= bound {
+        let vL = load_f64x4(curr, i - 4);
+        let vM = load_f64x4(curr, i);
+        let vR = load_f64x4(curr, i + 4);
+        let v_2  = slide_left2_f64x4(vL, vM, 2);
+        let v_1  = slide_left2_f64x4(vL, vM, 3);
+        let v_0  = vM;
+        let v_1p = slide_left2_f64x4(vM, vR, 1);
+        let v_2p = slide_left2_f64x4(vM, vR, 2);
+        let summed = v_2 + v_1 + v_0 + v_1p + v_2p;
+        let scaled = summed * scale;
+        let _st = store_f64x4(next, i, scaled);
+        i = i + 4;
+    };
+    // Scalar tail + head for boundary (i=2..3, i = last partial block)
+    let mut j: i64 = 2;
+    while j < 4 {
+        let s_2 = load_f64(curr + (j - 2) * 8);
+        let s_1 = load_f64(curr + (j - 1) * 8);
+        let s0  = load_f64(curr + j * 8);
+        let s1  = load_f64(curr + (j + 1) * 8);
+        let s2  = load_f64(curr + (j + 2) * 8);
+        let s = (s_2 + s_1 + s0 + s1 + s2) * 0.2;
+        let _st = store_f64(next + j * 8, s);
+        j = j + 1;
+    };
+    while i < n - 2 {
+        let s_2 = load_f64(curr + (i - 2) * 8);
+        let s_1 = load_f64(curr + (i - 1) * 8);
+        let s0  = load_f64(curr + i * 8);
+        let s1  = load_f64(curr + (i + 1) * 8);
+        let s2  = load_f64(curr + (i + 2) * 8);
+        let s = (s_2 + s_1 + s0 + s1 + s2) * 0.2;
+        let _st = store_f64(next + i * 8, s);
+        i = i + 1;
+    };
+    0
+};
+
+fn main() -> i64 = {
+    let n: i64 = 4096;
+    let reps: i64 = 5000;
+    let bytes: i64 = n * 8;
+    let a = malloc(bytes);
+    let b = malloc(bytes);
+    let _i1 = init_linear(a, n);
+    let _i2 = init_linear(b, n);
+    let mut r: i64 = 0;
+    while r < reps {
+        let _s1 = stencil_sweep_simd_v2(a, b, n);
+        let _s2 = stencil_sweep_simd_v2(b, a, n);
+        r = r + 1;
+    };
+    let mut acc: f64 = 0.0;
+    let mut i: i64 = 2;
+    let bnd: i64 = n - 2;
+    while i < bnd {
+        acc = acc + load_f64(a + i * 8);
+        i = i + 1;
+    };
+    let _f1 = free(a);
+    let _f2 = free(b);
+    let result = f64_to_i64(acc);
+    let _p = println(result);
+    0
+};

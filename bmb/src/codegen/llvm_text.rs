@@ -4069,6 +4069,11 @@ impl TextCodeGen {
                 if fn_name == "i64_to_f64" && args.len() == 1 {
                     // i64_to_f64(x: i64) -> f64 via sitofp
                     // v0.60.24: Handle type-narrowed i32 arguments - need sext before sitofp
+                    // Cycle 2319: per-call-site counter so multiple calls with the same i32 arg
+                    // (e.g. `i64_to_f64(base)` twice in the same block) don't collide on the
+                    // `_sext` local name.
+                    let i64_f64_idx = *name_counts.entry("i64_to_f64_op".to_string()).or_insert(0);
+                    *name_counts.get_mut("i64_to_f64_op").unwrap() += 1;
                     let arg_ty = match &args[0] {
                         Operand::Constant(c) => self.constant_type(c),
                         Operand::Place(p) => place_types.get(&p.name).copied()
@@ -4076,7 +4081,7 @@ impl TextCodeGen {
                     };
                     let arg_val = match &args[0] {
                         Operand::Place(p) if local_names.contains(&p.name) => {
-                            let load_name = format!("{}.i64_to_f64.arg", p.name);
+                            let load_name = format!("{}.i64_to_f64.arg.{}", p.name, i64_f64_idx);
                             writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, arg_ty, p.name)?;
                             format!("%{}", load_name)
                         }
@@ -4084,7 +4089,7 @@ impl TextCodeGen {
                     };
                     // v0.60.24: If argument is i32 (narrowed), sign-extend to i64 first
                     let (final_arg, final_ty) = if arg_ty == "i32" {
-                        let sext_name = format!("{}_sext", arg_val.trim_start_matches('%'));
+                        let sext_name = format!("{}_sext.{}", arg_val.trim_start_matches('%'), i64_f64_idx);
                         writeln!(out, "  %{} = sext i32 {} to i64", sext_name, arg_val)?;
                         (format!("%{}", sext_name), "i64")
                     } else {
