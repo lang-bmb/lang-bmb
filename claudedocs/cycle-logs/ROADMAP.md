@@ -1,5 +1,5 @@
 # BMB Development Roadmap
-Updated: 2026-04-19 (post-Cycles 2291-2297: Task A-1 ✅ f32 primitive)
+Updated: 2026-04-19 (post-Cycles 2301-2309: Tasks B-11 Phase 1 ✅, B-12 ✅, B-13 ✅)
 
 ---
 
@@ -10,15 +10,17 @@ Bootstrap   ██████████████████░░ 98%   F
 Self-Host   ████████████████████ 99%   CLI 41개 (+ bmb bench), LSP 9개, Test Runner, REPL
 Benchmark   ████████████████████ 100%  309 빌드 ✅, 16+ FASTER, 0 FAIL, BMB > C+Rust
 Ecosystem   ████████████████░░░░ 82%   5 libs 140 @export, C headers, WASM, pytest 1,017+
-SIMD        ████████████████████ 98%   1급 타입 ✅ (f64xN, **f32xN**, i32xN, i64xN, maskN)
+SIMD        ████████████████████ 99%   1급 타입 ✅ (f64xN, **f32xN**, i32xN, i64xN, maskN)
                                        text/inkwell codegen Rule 7 parity ✅
-                                       stdlib/simd **147 fns** (98 + 49 f32 variants)
+                                       stdlib/simd **183 fns** (147 + **36 shuffle** variants)
                                        `@include "stdlib/simd"` 자동 로딩 ✅ (build + check)
-                                       런타임 correctness: f64 10 + mask 5 + **f32 12** = 27 checks ✅
+                                       런타임 correctness: f64 10 + mask 5 + f32 12 + **shuffle 13** = 40 checks ✅
                                        SAXPY/matvec/stencil 벤치 + SAXPY f32 ✅
-                                       mask{2,4,8,**16**} + cmp/blend/any/all ✅
+                                       mask{2,4,8,16} + cmp/blend/any/all ✅
                                        f32 ↔ f64 fpext/fptrunc + full int↔f32 casts ✅
-                                       Pending: shuffle (B-11), store_i32/f32 helpers (B-12/13)
+                                       **shuffle Phase 1 ✅** — reverse/broadcast_lane/slide_left/slide_right (single-vector)
+                                       **scalar store/load 32-bit ✅** — store_i32/load_i32/store_f32/load_f32 (B-12/B-13)
+                                       Pending: 2-source shuffle (B-11.5, stencil 회복용)
 ```
 
 ### 핵심 수치
@@ -59,10 +61,11 @@ SIMD        ████████████████████ 98%   1
 | **B-9** | SIMD 실증 워크로드 (SAXPY + matvec + stencil) | ✅ 완료 | Cycles 2273-2274, 2288 |
 | **B-8** | Comparison + mask 타입 (cmp/blend/any/all) | ✅ 완료 | Cycles 2283-2287 |
 | **B-10** | SIMD perf user guide (`SIMD_PERF_NOTES.md`) | ✅ 완료 | Cycle 2289 |
-| **B-11** | Shuffle/permute intrinsics (`shuffle_VxN`, `slide_*`) | 대기 | 6-8 cycles 예상 — stencil 등 auto-vec 패배 영역 회복 |
-| **B-12** | `store_i32`/`load_i32` 런타임 헬퍼 + i32 SIMD 벤치 | 대기 | 1-2 cycles, 작은 ergonomic 보강 |
+| **B-11** | Shuffle/permute Phase 1 (`reverse`/`broadcast_lane`/`slide_{left,right}`, single-vector) | ✅ 완료 | Cycles 2301-2305 (36 fns, 13 runtime checks, Rule 7 parity) |
+| **B-11.5** | 2-source shuffle (`shuffle_VxN(a, b, mask)`) — stencil 회복용 | 대기 | Phase 1 후속. cross-block slide 필요. 3-5 cycles 예상 |
+| **B-12** | `store_i32`/`load_i32` 런타임 헬퍼 + i32 SIMD 벤치 | ✅ 완료 | Cycles 2307-2308 (text backend dispatch, inkwell 기존) |
 | **A-1** | f32 primitive + f32x{4,8,16} | ✅ 완료 | Cycles 2291-2297 (8 cycles, under 20-budget) |
-| **B-13** | `store_f32`/`load_f32` 스칼라 runtime 헬퍼 | 대기 | 1-2 cycles, f32 SAXPY varied-init용 |
+| **B-13** | `store_f32`/`load_f32` 스칼라 runtime 헬퍼 | ✅ 완료 | Cycles 2307-2308 (양 백엔드 dispatch) |
 
 ### Phase C: Bootstrap 코드젠 품질 (v0.98)
 

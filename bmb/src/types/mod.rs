@@ -453,6 +453,11 @@ impl TypeChecker {
         // load_i32(ptr: i64) -> i64 (read 32-bit signed integer, sign-extended to i64)
         functions.insert("load_i32".to_string(), (vec![Type::I64], Type::I64));
         functions.insert("store_i32".to_string(), (vec![Type::I64, Type::I64], Type::I64));
+        // Cycle 2307-2308 (Task B-13): 32-bit float scalar intrinsics for f32 SIMD array init.
+        // load_f32(ptr: i64) -> f32 — read a single 32-bit float
+        // store_f32(ptr: i64, v: f32) -> i64 — write a single 32-bit float
+        functions.insert("load_f32".to_string(), (vec![Type::I64], Type::F32));
+        functions.insert("store_f32".to_string(), (vec![Type::I64, Type::F32], Type::I64));
         // str_data(s: String) -> i64 (get raw pointer to string data)
         functions.insert("str_data".to_string(), (vec![Type::String], Type::I64));
         // Box convenience functions

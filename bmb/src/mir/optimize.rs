@@ -2363,7 +2363,7 @@ impl OptimizationPass for MemoryLoadCSE {
                     }
                     MirInst::Call { dest, func: fn_name, args, .. } => {
                         // Check if this is a memory load function with a destination
-                        if (fn_name == "load_f64" || fn_name == "load_i64" || fn_name == "load_u8" || fn_name == "load_i32")
+                        if (fn_name == "load_f64" || fn_name == "load_i64" || fn_name == "load_u8" || fn_name == "load_i32" || fn_name == "load_f32")
                             && args.len() == 1
                             && dest.is_some()
                         {
@@ -2383,7 +2383,7 @@ impl OptimizationPass for MemoryLoadCSE {
                         }
                         // v0.96.45: Store-Load Forwarding for store_i64/store_f64
                         // store_i64(ptr, val) → subsequent load_i64(ptr) → forward val
-                        else if (fn_name == "store_f64" || fn_name == "store_i64" || fn_name == "store_u8" || fn_name == "store_i32")
+                        else if (fn_name == "store_f64" || fn_name == "store_i64" || fn_name == "store_u8" || fn_name == "store_i32" || fn_name == "store_f32")
                             && args.len() == 2
                         {
                             // Conservative: invalidate ALL loads since we don't track aliasing
@@ -2395,6 +2395,7 @@ impl OptimizationPass for MemoryLoadCSE {
                                 "store_f64" => "load_f64",
                                 "store_u8" => "load_u8",
                                 "store_i32" => "load_i32",
+                                "store_f32" => "load_f32",
                                 _ => "load_i64",
                             };
                             let ptr_key = format!("{:?}", args[0]);
@@ -2440,7 +2441,7 @@ fn might_write_memory(fn_name: &str) -> bool {
         // String queries (don't modify)
         "len" | "byte_at" | "char_at" | "str_eq" | "str_cmp" |
         // Memory reads (don't write)
-        "load_i64" | "load_f64" | "load_u8" | "load_i32" |
+        "load_i64" | "load_f64" | "load_u8" | "load_i32" | "load_f32" |
         // Hash functions
         "hash_i64" | "hash_str" |
         // Print functions (write to stdout, not memory we care about)
@@ -5304,7 +5305,9 @@ impl LoopBoundedNarrowing {
             "sqrt" | "abs" | "min" | "max" |
             "i64_to_f64" | "f64_to_i64" |
             "load_f64" | "store_f64" | "load_i64" | "store_i64" |
-            "load_u8" | "store_u8" | "byte_at" | "len"
+            "load_u8" | "store_u8" | "byte_at" | "len" |
+            // Cycle 2307-2308 (Task B-12/B-13): scalar int/float memory helpers.
+            "load_i32" | "store_i32" | "load_f32" | "store_f32"
         )
     }
 

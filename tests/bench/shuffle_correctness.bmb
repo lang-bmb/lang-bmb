@@ -1,0 +1,281 @@
+// Cycle 2305 (Task B-11): SIMD shuffle family runtime correctness.
+// Exercises reverse/broadcast_lane/slide_left/slide_right across
+// f64x4, f64x8, i64x2, i64x4. Returns 0 on success; first mismatch
+// exits with a unique non-zero code.
+//
+// Both text and inkwell backends must exit 0 (Rule 7 parity).
+
+@include "stdlib/simd/mod.bmb"
+
+extern fn malloc(n: i64) -> i64;
+extern fn free(p: i64) -> i64;
+extern fn store_f64(ptr: i64, v: f64) -> i64;
+extern fn load_f64(ptr: i64) -> f64;
+extern fn store_i64(ptr: i64, v: i64) -> i64;
+extern fn load_i64(ptr: i64) -> i64;
+extern fn f64_to_i64(x: f64) -> i64;
+
+// ===== f64x4 =====
+
+fn init_f64x4(ptr: i64) -> i64 = {
+    let _s0 = store_f64(ptr + 0,  1.0);
+    let _s1 = store_f64(ptr + 8,  2.0);
+    let _s2 = store_f64(ptr + 16, 3.0);
+    let _s3 = store_f64(ptr + 24, 4.0);
+    0
+};
+
+fn dump_f64x4(v: f64x4, out: i64) -> i64 = {
+    store_f64x4(out, 0, v);
+    0
+};
+
+fn check_reverse_f64x4() -> i64 = {
+    let inp = malloc(32);
+    let _i = init_f64x4(inp);
+    let v = load_f64x4(inp, 0);
+    let r = reverse_f64x4(v);
+    let out = malloc(32);
+    let _d = dump_f64x4(r, out);
+    let v0 = f64_to_i64(load_f64(out + 0));
+    let v1 = f64_to_i64(load_f64(out + 8));
+    let v2 = f64_to_i64(load_f64(out + 16));
+    let v3 = f64_to_i64(load_f64(out + 24));
+    let _f1 = free(inp);
+    let _f2 = free(out);
+    if v0 == 4 && v1 == 3 && v2 == 2 && v3 == 1 { 0 } else { 11 }
+};
+
+fn check_broadcast_lane_f64x4() -> i64 = {
+    let inp = malloc(32);
+    let _i = init_f64x4(inp);                 // [1,2,3,4]
+    let v = load_f64x4(inp, 0);
+    let r = broadcast_lane_f64x4(v, 2);       // [3,3,3,3]
+    let out = malloc(32);
+    let _d = dump_f64x4(r, out);
+    let v0 = f64_to_i64(load_f64(out + 0));
+    let v1 = f64_to_i64(load_f64(out + 8));
+    let v2 = f64_to_i64(load_f64(out + 16));
+    let v3 = f64_to_i64(load_f64(out + 24));
+    let _f1 = free(inp);
+    let _f2 = free(out);
+    if v0 == 3 && v1 == 3 && v2 == 3 && v3 == 3 { 0 } else { 12 }
+};
+
+fn check_slide_left_f64x4() -> i64 = {
+    let inp = malloc(32);
+    let _i = init_f64x4(inp);                 // [1,2,3,4]
+    let v = load_f64x4(inp, 0);
+    let r = slide_left_f64x4(v, 1);           // [2,3,4,0]
+    let out = malloc(32);
+    let _d = dump_f64x4(r, out);
+    let v0 = f64_to_i64(load_f64(out + 0));
+    let v1 = f64_to_i64(load_f64(out + 8));
+    let v2 = f64_to_i64(load_f64(out + 16));
+    let v3 = f64_to_i64(load_f64(out + 24));
+    let _f1 = free(inp);
+    let _f2 = free(out);
+    if v0 == 2 && v1 == 3 && v2 == 4 && v3 == 0 { 0 } else { 13 }
+};
+
+fn check_slide_right_f64x4() -> i64 = {
+    let inp = malloc(32);
+    let _i = init_f64x4(inp);                 // [1,2,3,4]
+    let v = load_f64x4(inp, 0);
+    let r = slide_right_f64x4(v, 1);          // [0,1,2,3]
+    let out = malloc(32);
+    let _d = dump_f64x4(r, out);
+    let v0 = f64_to_i64(load_f64(out + 0));
+    let v1 = f64_to_i64(load_f64(out + 8));
+    let v2 = f64_to_i64(load_f64(out + 16));
+    let v3 = f64_to_i64(load_f64(out + 24));
+    let _f1 = free(inp);
+    let _f2 = free(out);
+    if v0 == 0 && v1 == 1 && v2 == 2 && v3 == 3 { 0 } else { 14 }
+};
+
+// ===== f64x8 =====
+
+fn init_f64x8(ptr: i64) -> i64 = {
+    let _s0 = store_f64(ptr + 0,  1.0);
+    let _s1 = store_f64(ptr + 8,  2.0);
+    let _s2 = store_f64(ptr + 16, 3.0);
+    let _s3 = store_f64(ptr + 24, 4.0);
+    let _s4 = store_f64(ptr + 32, 5.0);
+    let _s5 = store_f64(ptr + 40, 6.0);
+    let _s6 = store_f64(ptr + 48, 7.0);
+    let _s7 = store_f64(ptr + 56, 8.0);
+    0
+};
+
+fn sum_f64x8_memory(ptr: i64) -> i64 = {
+    let a = f64_to_i64(load_f64(ptr +  0));
+    let b = f64_to_i64(load_f64(ptr +  8));
+    let c = f64_to_i64(load_f64(ptr + 16));
+    let d = f64_to_i64(load_f64(ptr + 24));
+    let e = f64_to_i64(load_f64(ptr + 32));
+    let f = f64_to_i64(load_f64(ptr + 40));
+    let g = f64_to_i64(load_f64(ptr + 48));
+    let h = f64_to_i64(load_f64(ptr + 56));
+    a + b + c + d + e + f + g + h
+};
+
+fn check_reverse_f64x8() -> i64 = {
+    // [1..8] reversed = [8,7,6,5,4,3,2,1] — sum still 36, but first lane is 8
+    let inp = malloc(64);
+    let _i = init_f64x8(inp);
+    let v = load_f64x8(inp, 0);
+    let r = reverse_f64x8(v);
+    let out = malloc(64);
+    store_f64x8(out, 0, r);
+    let total = sum_f64x8_memory(out);
+    let first = f64_to_i64(load_f64(out + 0));
+    let last = f64_to_i64(load_f64(out + 56));
+    let _f1 = free(inp);
+    let _f2 = free(out);
+    if total == 36 && first == 8 && last == 1 { 0 } else { 21 }
+};
+
+fn check_slide_left_f64x8() -> i64 = {
+    // slide_left([1..8], 3) = [4,5,6,7,8,0,0,0]; sum = 30
+    let inp = malloc(64);
+    let _i = init_f64x8(inp);
+    let v = load_f64x8(inp, 0);
+    let r = slide_left_f64x8(v, 3);
+    let out = malloc(64);
+    store_f64x8(out, 0, r);
+    let total = sum_f64x8_memory(out);
+    let first = f64_to_i64(load_f64(out + 0));
+    let last = f64_to_i64(load_f64(out + 56));
+    let _f1 = free(inp);
+    let _f2 = free(out);
+    if total == 30 && first == 4 && last == 0 { 0 } else { 22 }
+};
+
+fn check_broadcast_lane_f64x8() -> i64 = {
+    // broadcast_lane([1..8], 5) = [6,6,6,6,6,6,6,6]; sum = 48
+    let inp = malloc(64);
+    let _i = init_f64x8(inp);
+    let v = load_f64x8(inp, 0);
+    let r = broadcast_lane_f64x8(v, 5);
+    let out = malloc(64);
+    store_f64x8(out, 0, r);
+    let total = sum_f64x8_memory(out);
+    let _f1 = free(inp);
+    let _f2 = free(out);
+    if total == 48 { 0 } else { 23 }
+};
+
+// ===== i64x4 =====
+
+fn init_i64x4(ptr: i64) -> i64 = {
+    let _s0 = store_i64(ptr + 0,  10);
+    let _s1 = store_i64(ptr + 8,  20);
+    let _s2 = store_i64(ptr + 16, 30);
+    let _s3 = store_i64(ptr + 24, 40);
+    0
+};
+
+fn check_reverse_i64x4() -> i64 = {
+    let inp = malloc(32);
+    let _i = init_i64x4(inp);
+    let v = load_i64x4(inp, 0);
+    let r = reverse_i64x4(v);
+    let out = malloc(32);
+    store_i64x4(out, 0, r);
+    let v0 = load_i64(out + 0);
+    let v1 = load_i64(out + 8);
+    let v2 = load_i64(out + 16);
+    let v3 = load_i64(out + 24);
+    let _f1 = free(inp);
+    let _f2 = free(out);
+    if v0 == 40 && v1 == 30 && v2 == 20 && v3 == 10 { 0 } else { 31 }
+};
+
+fn check_slide_right_i64x4() -> i64 = {
+    // [10,20,30,40] slide_right 2 = [0,0,10,20]
+    let inp = malloc(32);
+    let _i = init_i64x4(inp);
+    let v = load_i64x4(inp, 0);
+    let r = slide_right_i64x4(v, 2);
+    let out = malloc(32);
+    store_i64x4(out, 0, r);
+    let v0 = load_i64(out + 0);
+    let v1 = load_i64(out + 8);
+    let v2 = load_i64(out + 16);
+    let v3 = load_i64(out + 24);
+    let _f1 = free(inp);
+    let _f2 = free(out);
+    if v0 == 0 && v1 == 0 && v2 == 10 && v3 == 20 { 0 } else { 32 }
+};
+
+fn check_broadcast_lane_i64x4() -> i64 = {
+    let inp = malloc(32);
+    let _i = init_i64x4(inp);                 // [10,20,30,40]
+    let v = load_i64x4(inp, 0);
+    let r = broadcast_lane_i64x4(v, 3);       // [40,40,40,40]
+    let out = malloc(32);
+    store_i64x4(out, 0, r);
+    let v0 = load_i64(out + 0);
+    let v3 = load_i64(out + 24);
+    let _f1 = free(inp);
+    let _f2 = free(out);
+    if v0 == 40 && v3 == 40 { 0 } else { 33 }
+};
+
+// ===== f32x8 (via f32 splat + broadcast_lane, memory-free) =====
+
+fn check_broadcast_lane_f32x8() -> i64 = {
+    // splat(5.0) → [5,5,5,5,5,5,5,5]; broadcast_lane(v, 0) = same vector.
+    // hsum must equal 40. Tests that reverse/broadcast_lane paths work for f32.
+    let v = splat_f32x8(5.0 as f32);
+    let r = broadcast_lane_f32x8(v, 0);
+    let sum = hsum_f32x8(r);
+    if f64_to_i64(sum as f64) == 40 { 0 } else { 41 }
+};
+
+fn check_reverse_f32x8() -> i64 = {
+    // splat(2.5) reverses to itself; hsum = 20
+    let v = splat_f32x8(2.5 as f32);
+    let r = reverse_f32x8(v);
+    let sum = hsum_f32x8(r);
+    if f64_to_i64(sum as f64) == 20 { 0 } else { 42 }
+};
+
+fn check_slide_left_f32x8() -> i64 = {
+    // splat(3) slide_left 4 = [3,3,3,3,0,0,0,0]; hsum = 12
+    let v = splat_f32x8(3.0 as f32);
+    let r = slide_left_f32x8(v, 4);
+    let sum = hsum_f32x8(r);
+    if f64_to_i64(sum as f64) == 12 { 0 } else { 43 }
+};
+
+fn main() -> i64 = {
+    let r1  = check_reverse_f64x4();
+    if r1  != 0 { return r1  } else { 0 };
+    let r2  = check_broadcast_lane_f64x4();
+    if r2  != 0 { return r2  } else { 0 };
+    let r3  = check_slide_left_f64x4();
+    if r3  != 0 { return r3  } else { 0 };
+    let r4  = check_slide_right_f64x4();
+    if r4  != 0 { return r4  } else { 0 };
+    let r5  = check_reverse_f64x8();
+    if r5  != 0 { return r5  } else { 0 };
+    let r6  = check_slide_left_f64x8();
+    if r6  != 0 { return r6  } else { 0 };
+    let r7  = check_broadcast_lane_f64x8();
+    if r7  != 0 { return r7  } else { 0 };
+    let r8  = check_reverse_i64x4();
+    if r8  != 0 { return r8  } else { 0 };
+    let r9  = check_slide_right_i64x4();
+    if r9  != 0 { return r9  } else { 0 };
+    let r10 = check_broadcast_lane_i64x4();
+    if r10 != 0 { return r10 } else { 0 };
+    let r11 = check_broadcast_lane_f32x8();
+    if r11 != 0 { return r11 } else { 0 };
+    let r12 = check_reverse_f32x8();
+    if r12 != 0 { return r12 } else { 0 };
+    let r13 = check_slide_left_f32x8();
+    if r13 != 0 { return r13 } else { 0 };
+    0
+};

@@ -264,3 +264,61 @@ pub fn cmp_ge_f32x16(a: f32x16, b: f32x16) -> mask16 = todo;
 pub fn blend_f32x4(m: mask4, a: f32x4, b: f32x4) -> f32x4 = todo;
 pub fn blend_f32x8(m: mask8, a: f32x8, b: f32x8) -> f32x8 = todo;
 pub fn blend_f32x16(m: mask16, a: f32x16, b: f32x16) -> f32x16 = todo;
+
+// ============================================
+// Shuffle / permute family (Cycle 2301+, Task B-11)
+//
+// LLVM `shufflevector` requires a compile-time constant mask. The `lane`
+// and `shift` arguments MUST be integer literals; passing a runtime variable
+// is a codegen error.
+//
+// Convention:
+//   reverse_TxN(v)                 — lanes reversed (v[N-1..0])
+//   broadcast_lane_TxN(v, lane)    — splat one lane across all lanes
+//   slide_left_TxN(v, shift)       — shift toward lower index, 0-fill high
+//   slide_right_TxN(v, shift)      — shift toward higher index, 0-fill low
+// ============================================
+
+// --- reverse (single-vector permute) ---
+pub fn reverse_f64x4(v: f64x4) -> f64x4 = todo;
+pub fn reverse_f64x8(v: f64x8) -> f64x8 = todo;
+pub fn reverse_f32x4(v: f32x4) -> f32x4 = todo;
+pub fn reverse_f32x8(v: f32x8) -> f32x8 = todo;
+pub fn reverse_f32x16(v: f32x16) -> f32x16 = todo;
+pub fn reverse_i32x4(v: i32x4) -> i32x4 = todo;
+pub fn reverse_i32x8(v: i32x8) -> i32x8 = todo;
+pub fn reverse_i64x2(v: i64x2) -> i64x2 = todo;
+pub fn reverse_i64x4(v: i64x4) -> i64x4 = todo;
+
+// --- broadcast_lane (splat one lane) ---
+pub fn broadcast_lane_f64x4(v: f64x4, lane: i32) -> f64x4 = todo;
+pub fn broadcast_lane_f64x8(v: f64x8, lane: i32) -> f64x8 = todo;
+pub fn broadcast_lane_f32x4(v: f32x4, lane: i32) -> f32x4 = todo;
+pub fn broadcast_lane_f32x8(v: f32x8, lane: i32) -> f32x8 = todo;
+pub fn broadcast_lane_f32x16(v: f32x16, lane: i32) -> f32x16 = todo;
+pub fn broadcast_lane_i32x4(v: i32x4, lane: i32) -> i32x4 = todo;
+pub fn broadcast_lane_i32x8(v: i32x8, lane: i32) -> i32x8 = todo;
+pub fn broadcast_lane_i64x2(v: i64x2, lane: i32) -> i64x2 = todo;
+pub fn broadcast_lane_i64x4(v: i64x4, lane: i32) -> i64x4 = todo;
+
+// --- slide_left (toward lower index, 0-fill high lanes) ---
+pub fn slide_left_f64x4(v: f64x4, shift: i32) -> f64x4 = todo;
+pub fn slide_left_f64x8(v: f64x8, shift: i32) -> f64x8 = todo;
+pub fn slide_left_f32x4(v: f32x4, shift: i32) -> f32x4 = todo;
+pub fn slide_left_f32x8(v: f32x8, shift: i32) -> f32x8 = todo;
+pub fn slide_left_f32x16(v: f32x16, shift: i32) -> f32x16 = todo;
+pub fn slide_left_i32x4(v: i32x4, shift: i32) -> i32x4 = todo;
+pub fn slide_left_i32x8(v: i32x8, shift: i32) -> i32x8 = todo;
+pub fn slide_left_i64x2(v: i64x2, shift: i32) -> i64x2 = todo;
+pub fn slide_left_i64x4(v: i64x4, shift: i32) -> i64x4 = todo;
+
+// --- slide_right (toward higher index, 0-fill low lanes) ---
+pub fn slide_right_f64x4(v: f64x4, shift: i32) -> f64x4 = todo;
+pub fn slide_right_f64x8(v: f64x8, shift: i32) -> f64x8 = todo;
+pub fn slide_right_f32x4(v: f32x4, shift: i32) -> f32x4 = todo;
+pub fn slide_right_f32x8(v: f32x8, shift: i32) -> f32x8 = todo;
+pub fn slide_right_f32x16(v: f32x16, shift: i32) -> f32x16 = todo;
+pub fn slide_right_i32x4(v: i32x4, shift: i32) -> i32x4 = todo;
+pub fn slide_right_i32x8(v: i32x8, shift: i32) -> i32x8 = todo;
+pub fn slide_right_i64x2(v: i64x2, shift: i32) -> i64x2 = todo;
+pub fn slide_right_i64x4(v: i64x4, shift: i32) -> i64x4 = todo;

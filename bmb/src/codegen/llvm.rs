@@ -46,6 +46,9 @@ pub enum CodeGenError {
 
     #[error("Object file generation failed: {0}")]
     ObjectFileError(String),
+
+    #[error("{0}")]
+    Message(String),
 }
 
 /// Result type for code generation
@@ -3026,6 +3029,141 @@ impl<'ctx> LlvmContext<'ctx> {
                     return Ok(());
                 }
 
+                // v0.97 (Cycle 2302+, B-11): SIMD shuffle family — reverse/broadcast_lane/slide_{left,right}.
+                //   All lower to `build_shuffle_vector(v, <poison|zeroinitializer>, <constant i32 mask>)`.
+                //   `lane`/`shift` MUST be compile-time integer constants.
+                {
+                    let shuffle_info: Option<(&'static str, u32, &'static str)> = match func.as_str() {
+                        // reverse (args.len() == 1)
+                        "reverse_f64x4"  if args.len() == 1 => Some(("f64",  4, "reverse")),
+                        "reverse_f64x8"  if args.len() == 1 => Some(("f64",  8, "reverse")),
+                        "reverse_f32x4"  if args.len() == 1 => Some(("f32",  4, "reverse")),
+                        "reverse_f32x8"  if args.len() == 1 => Some(("f32",  8, "reverse")),
+                        "reverse_f32x16" if args.len() == 1 => Some(("f32", 16, "reverse")),
+                        "reverse_i32x4"  if args.len() == 1 => Some(("i32",  4, "reverse")),
+                        "reverse_i32x8"  if args.len() == 1 => Some(("i32",  8, "reverse")),
+                        "reverse_i64x2"  if args.len() == 1 => Some(("i64",  2, "reverse")),
+                        "reverse_i64x4"  if args.len() == 1 => Some(("i64",  4, "reverse")),
+                        // broadcast_lane (args.len() == 2)
+                        "broadcast_lane_f64x4"  if args.len() == 2 => Some(("f64",  4, "broadcast_lane")),
+                        "broadcast_lane_f64x8"  if args.len() == 2 => Some(("f64",  8, "broadcast_lane")),
+                        "broadcast_lane_f32x4"  if args.len() == 2 => Some(("f32",  4, "broadcast_lane")),
+                        "broadcast_lane_f32x8"  if args.len() == 2 => Some(("f32",  8, "broadcast_lane")),
+                        "broadcast_lane_f32x16" if args.len() == 2 => Some(("f32", 16, "broadcast_lane")),
+                        "broadcast_lane_i32x4"  if args.len() == 2 => Some(("i32",  4, "broadcast_lane")),
+                        "broadcast_lane_i32x8"  if args.len() == 2 => Some(("i32",  8, "broadcast_lane")),
+                        "broadcast_lane_i64x2"  if args.len() == 2 => Some(("i64",  2, "broadcast_lane")),
+                        "broadcast_lane_i64x4"  if args.len() == 2 => Some(("i64",  4, "broadcast_lane")),
+                        // slide_left (args.len() == 2)
+                        "slide_left_f64x4"  if args.len() == 2 => Some(("f64",  4, "slide_left")),
+                        "slide_left_f64x8"  if args.len() == 2 => Some(("f64",  8, "slide_left")),
+                        "slide_left_f32x4"  if args.len() == 2 => Some(("f32",  4, "slide_left")),
+                        "slide_left_f32x8"  if args.len() == 2 => Some(("f32",  8, "slide_left")),
+                        "slide_left_f32x16" if args.len() == 2 => Some(("f32", 16, "slide_left")),
+                        "slide_left_i32x4"  if args.len() == 2 => Some(("i32",  4, "slide_left")),
+                        "slide_left_i32x8"  if args.len() == 2 => Some(("i32",  8, "slide_left")),
+                        "slide_left_i64x2"  if args.len() == 2 => Some(("i64",  2, "slide_left")),
+                        "slide_left_i64x4"  if args.len() == 2 => Some(("i64",  4, "slide_left")),
+                        // slide_right (args.len() == 2)
+                        "slide_right_f64x4"  if args.len() == 2 => Some(("f64",  4, "slide_right")),
+                        "slide_right_f64x8"  if args.len() == 2 => Some(("f64",  8, "slide_right")),
+                        "slide_right_f32x4"  if args.len() == 2 => Some(("f32",  4, "slide_right")),
+                        "slide_right_f32x8"  if args.len() == 2 => Some(("f32",  8, "slide_right")),
+                        "slide_right_f32x16" if args.len() == 2 => Some(("f32", 16, "slide_right")),
+                        "slide_right_i32x4"  if args.len() == 2 => Some(("i32",  4, "slide_right")),
+                        "slide_right_i32x8"  if args.len() == 2 => Some(("i32",  8, "slide_right")),
+                        "slide_right_i64x2"  if args.len() == 2 => Some(("i64",  2, "slide_right")),
+                        "slide_right_i64x4"  if args.len() == 2 => Some(("i64",  4, "slide_right")),
+                        _ => None,
+                    };
+                    if let Some((vec_ty_kind, lanes, op_tag)) = shuffle_info {
+                        let vec_ty: inkwell::types::VectorType = match vec_ty_kind {
+                            "f64" => self.context.f64_type().vec_type(lanes),
+                            "f32" => self.context.f32_type().vec_type(lanes),
+                            "i32" => self.context.i32_type().vec_type(lanes),
+                            "i64" => self.context.i64_type().vec_type(lanes),
+                            _ => unreachable!(),
+                        };
+                        let n = lanes as i64;
+                        let const_k: i64 = if op_tag == "reverse" {
+                            0
+                        } else {
+                            match &args[1] {
+                                Operand::Constant(Constant::Int(v)) => *v,
+                                _ => {
+                                    return Err(CodeGenError::Message(format!(
+                                        "{}(…) requires a compile-time integer literal argument",
+                                        func
+                                    )));
+                                }
+                            }
+                        };
+                        // Build i32 mask vector.
+                        let i32_ty = self.context.i32_type();
+                        let mask_values: Vec<inkwell::values::IntValue> = match op_tag {
+                            "reverse" => (0..n).rev().map(|i| i32_ty.const_int(i as u64, false)).collect(),
+                            "broadcast_lane" => {
+                                if const_k < 0 || const_k >= n {
+                                    return Err(CodeGenError::Message(format!(
+                                        "{}: lane {} out of range [0, {})",
+                                        func, const_k, n
+                                    )));
+                                }
+                                (0..n).map(|_| i32_ty.const_int(const_k as u64, false)).collect()
+                            }
+                            "slide_left" => {
+                                if const_k < 0 {
+                                    return Err(CodeGenError::Message(format!(
+                                        "{}: shift must be non-negative (got {})",
+                                        func, const_k
+                                    )));
+                                }
+                                (0..n)
+                                    .map(|i| {
+                                        let j = i + const_k;
+                                        let idx = if j < n { j } else { n };
+                                        i32_ty.const_int(idx as u64, false)
+                                    })
+                                    .collect()
+                            }
+                            "slide_right" => {
+                                if const_k < 0 {
+                                    return Err(CodeGenError::Message(format!(
+                                        "{}: shift must be non-negative (got {})",
+                                        func, const_k
+                                    )));
+                                }
+                                (0..n)
+                                    .map(|i| {
+                                        let idx = if i < const_k { n } else { i - const_k };
+                                        i32_ty.const_int(idx as u64, false)
+                                    })
+                                    .collect()
+                            }
+                            _ => unreachable!(),
+                        };
+                        let mask_vec = inkwell::types::VectorType::const_vector(&mask_values);
+                        let a = self.gen_operand(&args[0])?;
+                        let second_operand: BasicValueEnum = if op_tag == "reverse" || op_tag == "broadcast_lane" {
+                            vec_ty.get_poison().into()
+                        } else {
+                            vec_ty.const_zero().into()
+                        };
+                        let result = self.builder
+                            .build_shuffle_vector(
+                                a.into_vector_value(),
+                                second_operand.into_vector_value(),
+                                mask_vec,
+                                "vshuf",
+                            )
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                        if let Some(dest_place) = dest {
+                            self.store_to_place(dest_place, result.into())?;
+                        }
+                        return Ok(());
+                    }
+                }
+
                 // v0.97 (Cycle 2286): SIMD mask reductions — call llvm.vector.reduce.{or,and}.vNi1.
                 if args.len() == 1
                     && let Some(intrinsic_name) = match func.as_str() {
@@ -3558,6 +3696,35 @@ impl<'ctx> LlvmContext<'ctx> {
                         .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
 
                     // store_i32 returns void, but MIR may expect a value
+                    if let Some(dest_place) = dest {
+                        let unit_value = self.context.i64_type().const_int(0, false);
+                        self.store_to_place(dest_place, unit_value.into())?;
+                    }
+                } else if func == "load_f32" && args.len() == 1 {
+                    // Cycle 2307-2308 (Task B-13): Inline load_f32 — inttoptr + load float.
+                    let addr = self.gen_operand(&args[0])?;
+                    let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                    let f32_type = self.context.f32_type();
+                    let ptr = self.builder
+                        .build_int_to_ptr(addr.into_int_value(), ptr_type, "addr_ptr")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    let f32_val = self.builder
+                        .build_load(f32_type, ptr, "f32v")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    if let Some(dest_place) = dest {
+                        self.store_to_place(dest_place, f32_val)?;
+                    }
+                } else if func == "store_f32" && args.len() == 2 {
+                    // Cycle 2307-2308 (Task B-13): Inline store_f32.
+                    let addr = self.gen_operand(&args[0])?;
+                    let val = self.gen_operand(&args[1])?;
+                    let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                    let ptr = self.builder
+                        .build_int_to_ptr(addr.into_int_value(), ptr_type, "addr_ptr")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    self.builder
+                        .build_store(ptr, val)
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
                     if let Some(dest_place) = dest {
                         let unit_value = self.context.i64_type().const_int(0, false);
                         self.store_to_place(dest_place, unit_value.into())?;

@@ -1,0 +1,48 @@
+// Cycle 2307-2308 (Task B-12/B-13): scalar store_i32 / load_i32 / store_f32 / load_f32 smoke test.
+// Returns 0 on success; non-zero triage code on mismatch.
+// Both backends must exit 0 (Rule 7 parity).
+
+extern fn malloc(n: i64) -> i64;
+extern fn free(p: i64) -> i64;
+extern fn f64_to_i64(x: f64) -> i64;
+
+// i32 round-trip
+fn check_i32_roundtrip() -> i64 = {
+    let buf = malloc(16);
+    let _s0 = store_i32(buf + 0, 42);
+    let _s1 = store_i32(buf + 4, 0 - 7);  // -7
+    let _s2 = store_i32(buf + 8, 1000000);
+    let v0 = load_i32(buf + 0);
+    let v1 = load_i32(buf + 4);
+    let v2 = load_i32(buf + 8);
+    let _f = free(buf);
+    if v0 == 42 && v1 == 0 - 7 && v2 == 1000000 { 0 } else { 11 }
+};
+
+// f32 round-trip via cast from f64 literal
+fn check_f32_roundtrip() -> i64 = {
+    let buf = malloc(16);
+    let v_a: f32 = 1.5 as f32;
+    let v_b: f32 = 2.25 as f32;
+    let v_c: f32 = 100.0 as f32;
+    let _s0 = store_f32(buf + 0, v_a);
+    let _s1 = store_f32(buf + 4, v_b);
+    let _s2 = store_f32(buf + 8, v_c);
+    let r0: f32 = load_f32(buf + 0);
+    let r1: f32 = load_f32(buf + 4);
+    let r2: f32 = load_f32(buf + 8);
+    // Compare exactly — these f32 values are representable without loss.
+    let ok = f64_to_i64(r0 as f64 * 2.0) == 3         // 1.5*2 = 3
+          && f64_to_i64(r1 as f64 * 4.0) == 9         // 2.25*4 = 9
+          && f64_to_i64(r2 as f64) == 100;
+    let _f = free(buf);
+    if ok { 0 } else { 21 }
+};
+
+fn main() -> i64 = {
+    let r1 = check_i32_roundtrip();
+    if r1 != 0 { return r1 } else { 0 };
+    let r2 = check_f32_roundtrip();
+    if r2 != 0 { return r2 } else { 0 };
+    0
+};

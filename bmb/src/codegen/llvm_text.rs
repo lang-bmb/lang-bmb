@@ -26,6 +26,9 @@ pub enum TextCodeGenError {
 
     #[error("Formatting error: {0}")]
     FormatError(#[from] std::fmt::Error),
+
+    #[error("{0}")]
+    Message(String),
 }
 
 /// Result type for text code generation
@@ -3502,6 +3505,156 @@ impl TextCodeGen {
                     return Ok(());
                 }
 
+                // v0.97 (Cycle 2301+, B-11): SIMD shuffle family — reverse/broadcast_lane/slide_{left,right}.
+                //   All lower to `shufflevector <N x T> v, <poison|zeroinitializer>, <N x i32> <constant mask>`.
+                //   The `lane`/`shift` argument MUST be a compile-time integer constant; runtime values are rejected.
+                //
+                // reverse_TxN(v):             shufflevector v, poison, <N-1, N-2, ..., 0>
+                // broadcast_lane_TxN(v, k):   shufflevector v, poison, <k, k, ..., k>              (k in [0, N))
+                // slide_left_TxN(v, k):       shufflevector v, zeroinitializer, <i+k if i+k<N else N>
+                // slide_right_TxN(v, k):      shufflevector v, zeroinitializer, <N if i<k else i-k>
+                {
+                    // Classify + lookup: returns (vec_ty, lanes, elem_align_for_store, op_tag).
+                    let shuffle_info: Option<(&'static str, u32, u32, &'static str)> = match fn_name.as_str() {
+                        // reverse (args.len() == 1)
+                        "reverse_f64x4"  if args.len() == 1 => Some(("<4 x double>",  4,  32, "reverse")),
+                        "reverse_f64x8"  if args.len() == 1 => Some(("<8 x double>",  8,  64, "reverse")),
+                        "reverse_f32x4"  if args.len() == 1 => Some(("<4 x float>",   4,  16, "reverse")),
+                        "reverse_f32x8"  if args.len() == 1 => Some(("<8 x float>",   8,  32, "reverse")),
+                        "reverse_f32x16" if args.len() == 1 => Some(("<16 x float>", 16,  64, "reverse")),
+                        "reverse_i32x4"  if args.len() == 1 => Some(("<4 x i32>",     4,  16, "reverse")),
+                        "reverse_i32x8"  if args.len() == 1 => Some(("<8 x i32>",     8,  32, "reverse")),
+                        "reverse_i64x2"  if args.len() == 1 => Some(("<2 x i64>",     2,  16, "reverse")),
+                        "reverse_i64x4"  if args.len() == 1 => Some(("<4 x i64>",     4,  32, "reverse")),
+                        // broadcast_lane (args.len() == 2: v + lane literal)
+                        "broadcast_lane_f64x4"  if args.len() == 2 => Some(("<4 x double>",  4,  32, "broadcast_lane")),
+                        "broadcast_lane_f64x8"  if args.len() == 2 => Some(("<8 x double>",  8,  64, "broadcast_lane")),
+                        "broadcast_lane_f32x4"  if args.len() == 2 => Some(("<4 x float>",   4,  16, "broadcast_lane")),
+                        "broadcast_lane_f32x8"  if args.len() == 2 => Some(("<8 x float>",   8,  32, "broadcast_lane")),
+                        "broadcast_lane_f32x16" if args.len() == 2 => Some(("<16 x float>", 16,  64, "broadcast_lane")),
+                        "broadcast_lane_i32x4"  if args.len() == 2 => Some(("<4 x i32>",     4,  16, "broadcast_lane")),
+                        "broadcast_lane_i32x8"  if args.len() == 2 => Some(("<8 x i32>",     8,  32, "broadcast_lane")),
+                        "broadcast_lane_i64x2"  if args.len() == 2 => Some(("<2 x i64>",     2,  16, "broadcast_lane")),
+                        "broadcast_lane_i64x4"  if args.len() == 2 => Some(("<4 x i64>",     4,  32, "broadcast_lane")),
+                        // slide_left (args.len() == 2: v + shift literal)
+                        "slide_left_f64x4"  if args.len() == 2 => Some(("<4 x double>",  4,  32, "slide_left")),
+                        "slide_left_f64x8"  if args.len() == 2 => Some(("<8 x double>",  8,  64, "slide_left")),
+                        "slide_left_f32x4"  if args.len() == 2 => Some(("<4 x float>",   4,  16, "slide_left")),
+                        "slide_left_f32x8"  if args.len() == 2 => Some(("<8 x float>",   8,  32, "slide_left")),
+                        "slide_left_f32x16" if args.len() == 2 => Some(("<16 x float>", 16,  64, "slide_left")),
+                        "slide_left_i32x4"  if args.len() == 2 => Some(("<4 x i32>",     4,  16, "slide_left")),
+                        "slide_left_i32x8"  if args.len() == 2 => Some(("<8 x i32>",     8,  32, "slide_left")),
+                        "slide_left_i64x2"  if args.len() == 2 => Some(("<2 x i64>",     2,  16, "slide_left")),
+                        "slide_left_i64x4"  if args.len() == 2 => Some(("<4 x i64>",     4,  32, "slide_left")),
+                        // slide_right (args.len() == 2: v + shift literal)
+                        "slide_right_f64x4"  if args.len() == 2 => Some(("<4 x double>",  4,  32, "slide_right")),
+                        "slide_right_f64x8"  if args.len() == 2 => Some(("<8 x double>",  8,  64, "slide_right")),
+                        "slide_right_f32x4"  if args.len() == 2 => Some(("<4 x float>",   4,  16, "slide_right")),
+                        "slide_right_f32x8"  if args.len() == 2 => Some(("<8 x float>",   8,  32, "slide_right")),
+                        "slide_right_f32x16" if args.len() == 2 => Some(("<16 x float>", 16,  64, "slide_right")),
+                        "slide_right_i32x4"  if args.len() == 2 => Some(("<4 x i32>",     4,  16, "slide_right")),
+                        "slide_right_i32x8"  if args.len() == 2 => Some(("<8 x i32>",     8,  32, "slide_right")),
+                        "slide_right_i64x2"  if args.len() == 2 => Some(("<2 x i64>",     2,  16, "slide_right")),
+                        "slide_right_i64x4"  if args.len() == 2 => Some(("<4 x i64>",     4,  32, "slide_right")),
+                        _ => None,
+                    };
+                    if let Some((vec_ty, lanes, vec_align, op_tag)) = shuffle_info {
+                        let d = dest.as_ref().expect("shuffle intrinsic has a return value");
+                        let n = lanes as i64;
+                        // Extract compile-time constant for ops that need one.
+                        let const_k: i64 = if op_tag == "reverse" {
+                            0 // unused
+                        } else {
+                            match &args[1] {
+                                Operand::Constant(Constant::Int(v)) => *v,
+                                _ => {
+                                    return Err(TextCodeGenError::Message(format!(
+                                        "{}(…) requires a compile-time integer literal argument",
+                                        fn_name
+                                    )));
+                                }
+                            }
+                        };
+                        // Validate + build mask.
+                        let mask_indices: Vec<String> = match op_tag {
+                            "reverse" => (0..n).rev().map(|i| format!("i32 {}", i)).collect(),
+                            "broadcast_lane" => {
+                                if const_k < 0 || const_k >= n {
+                                    return Err(TextCodeGenError::Message(format!(
+                                        "{}: lane {} out of range [0, {})",
+                                        fn_name, const_k, n
+                                    )));
+                                }
+                                (0..n).map(|_| format!("i32 {}", const_k)).collect()
+                            }
+                            "slide_left" => {
+                                if const_k < 0 {
+                                    return Err(TextCodeGenError::Message(format!(
+                                        "{}: shift must be non-negative (got {})",
+                                        fn_name, const_k
+                                    )));
+                                }
+                                // Mask[i] = i+k if i+k<N else N (the first zero lane).
+                                (0..n)
+                                    .map(|i| {
+                                        let j = i + const_k;
+                                        if j < n {
+                                            format!("i32 {}", j)
+                                        } else {
+                                            format!("i32 {}", n) // zero-lane sentinel
+                                        }
+                                    })
+                                    .collect()
+                            }
+                            "slide_right" => {
+                                if const_k < 0 {
+                                    return Err(TextCodeGenError::Message(format!(
+                                        "{}: shift must be non-negative (got {})",
+                                        fn_name, const_k
+                                    )));
+                                }
+                                // Mask[i] = N if i<k else i-k.
+                                (0..n)
+                                    .map(|i| {
+                                        if i < const_k {
+                                            format!("i32 {}", n)
+                                        } else {
+                                            format!("i32 {}", i - const_k)
+                                        }
+                                    })
+                                    .collect()
+                            }
+                            _ => unreachable!(),
+                        };
+                        let mask_str = format!("<{} x i32> <{}>", n, mask_indices.join(", "));
+                        // Second shufflevector operand: poison for reverse/broadcast_lane, zeroinitializer for slides.
+                        let second_operand = if op_tag == "reverse" || op_tag == "broadcast_lane" {
+                            format!("{} poison", vec_ty)
+                        } else {
+                            format!("{} zeroinitializer", vec_ty)
+                        };
+                        // Load the input vector operand.
+                        let load_vec = |opd: &Operand, out: &mut String| -> TextCodeGenResult<String> {
+                            match opd {
+                                Operand::Place(p) if local_names.contains(&p.name) => {
+                                    let ln = format!("{}.{}.shf", d.name, p.name);
+                                    writeln!(out, "  %{} = load {}, ptr %{}.addr, align {}", ln, vec_ty, p.name, vec_align)?;
+                                    Ok(format!("%{}", ln))
+                                }
+                                Operand::Place(p) => Ok(format!("%{}", p.name)),
+                                _ => Ok(self.format_operand_with_strings(opd, string_table)),
+                            }
+                        };
+                        let a = load_vec(&args[0], out)?;
+                        let result_name = format!("{}.shf", d.name);
+                        writeln!(out, "  %{} = shufflevector {} {}, {}, {}", result_name, vec_ty, a, second_operand, mask_str)?;
+                        if local_names.contains(&d.name) {
+                            writeln!(out, "  store {} %{}, ptr %{}.addr, align {}", vec_ty, result_name, d.name, vec_align)?;
+                        }
+                        return Ok(());
+                    }
+                }
+
                 // v0.97 (Cycle 2248): SIMD load/store intrinsics for stdlib/simd.
                 // `load_{T}xN(base: i64, idx: i64) -> {T}xN`
                 //   %ptr = inttoptr i64 %base to ptr
@@ -4844,6 +4997,117 @@ impl TextCodeGen {
                         } else {
                             let dest_name = self.unique_name(&d.name, name_counts);
                             writeln!(out, "  %{} = load double, ptr %{}, align 8, !tbaa !905", dest_name, ptr_conv)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
+                // Cycle 2307-2308 (Task B-12/B-13): scalar 32-bit load/store — minimal inttoptr form.
+                //   store_i32(ptr, v: i64) -> i64  — trunc i64 → i32 → store i32, align 4
+                //   load_i32(ptr) -> i64           — load i32, align 4 → sext i32 → i64
+                //   store_f32(ptr, v: f32) -> i64  — store float, align 4
+                //   load_f32(ptr) -> f32           — load float, align 4
+                // No GEP fast path (B-11/B-12/B-13 scope — optimize later).
+                if fn_name == "store_i32" && args.len() == 2 {
+                    let idx = *name_counts.entry("store_i32_op".to_string()).or_insert(0);
+                    *name_counts.get_mut("store_i32_op").unwrap() += 1;
+                    let ptr_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let n = format!("{}.store_i32.ptr.{}", p.name, idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", n, p.name)?;
+                            format!("%{}", n)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    let val_i64 = match &args[1] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let n = format!("{}.store_i32.val.{}", p.name, idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", n, p.name)?;
+                            format!("%{}", n)
+                        }
+                        _ => self.format_operand_with_strings(&args[1], string_table),
+                    };
+                    let pc = format!("store_i32_ptr.{}", idx);
+                    let tr = format!("store_i32_trunc.{}", idx);
+                    writeln!(out, "  %{} = inttoptr i64 {} to ptr", pc, ptr_val)?;
+                    writeln!(out, "  %{} = trunc i64 {} to i32", tr, val_i64)?;
+                    writeln!(out, "  store i32 %{}, ptr %{}, align 4", tr, pc)?;
+                    if let Some(d) = dest
+                        && local_names.contains(&d.name) {
+                        writeln!(out, "  store i64 0, ptr %{}.addr", d.name)?;
+                    }
+                    return Ok(());
+                }
+                if fn_name == "load_i32" && args.len() == 1 {
+                    let idx = *name_counts.entry("load_i32_op".to_string()).or_insert(0);
+                    *name_counts.get_mut("load_i32_op").unwrap() += 1;
+                    let ptr_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let n = format!("{}.load_i32.ptr.{}", p.name, idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", n, p.name)?;
+                            format!("%{}", n)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    let pc = format!("load_i32_ptr.{}", idx);
+                    writeln!(out, "  %{} = inttoptr i64 {} to ptr", pc, ptr_val)?;
+                    if let Some(d) = dest {
+                        let tn = format!("{}.load_i32.{}", d.name, idx);
+                        let sn = format!("{}.load_i32.sext.{}", d.name, idx);
+                        writeln!(out, "  %{} = load i32, ptr %{}, align 4", tn, pc)?;
+                        writeln!(out, "  %{} = sext i32 %{} to i64", sn, tn)?;
+                        if local_names.contains(&d.name) {
+                            writeln!(out, "  store i64 %{}, ptr %{}.addr", sn, d.name)?;
+                        }
+                    }
+                    return Ok(());
+                }
+                if fn_name == "store_f32" && args.len() == 2 {
+                    let idx = *name_counts.entry("store_f32_op".to_string()).or_insert(0);
+                    *name_counts.get_mut("store_f32_op").unwrap() += 1;
+                    let val_val = match &args[1] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let n = format!("{}.store_f32.val.{}", p.name, idx);
+                            writeln!(out, "  %{} = load float, ptr %{}.addr", n, p.name)?;
+                            format!("%{}", n)
+                        }
+                        _ => self.format_operand_with_strings(&args[1], string_table),
+                    };
+                    let ptr_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let n = format!("{}.store_f32.ptr.{}", p.name, idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", n, p.name)?;
+                            format!("%{}", n)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    let pc = format!("store_f32_ptr.{}", idx);
+                    writeln!(out, "  %{} = inttoptr i64 {} to ptr", pc, ptr_val)?;
+                    writeln!(out, "  store float {}, ptr %{}, align 4", val_val, pc)?;
+                    if let Some(d) = dest
+                        && local_names.contains(&d.name) {
+                        writeln!(out, "  store i64 0, ptr %{}.addr", d.name)?;
+                    }
+                    return Ok(());
+                }
+                if fn_name == "load_f32" && args.len() == 1 {
+                    let idx = *name_counts.entry("load_f32_op".to_string()).or_insert(0);
+                    *name_counts.get_mut("load_f32_op").unwrap() += 1;
+                    let ptr_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let n = format!("{}.load_f32.ptr.{}", p.name, idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", n, p.name)?;
+                            format!("%{}", n)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    let pc = format!("load_f32_ptr.{}", idx);
+                    writeln!(out, "  %{} = inttoptr i64 {} to ptr", pc, ptr_val)?;
+                    if let Some(d) = dest {
+                        let tn = format!("{}.load_f32.{}", d.name, idx);
+                        writeln!(out, "  %{} = load float, ptr %{}, align 4", tn, pc)?;
+                        if local_names.contains(&d.name) {
+                            writeln!(out, "  store float %{}, ptr %{}.addr", tn, d.name)?;
                         }
                     }
                     return Ok(());
@@ -8457,6 +8721,9 @@ impl TextCodeGen {
             "sqrt" | "sin" | "cos" | "floor" | "ceil" | "fabs" | "pow_f64"
             | "i64_to_f64" | "i32_to_f64"
             | "load_f64" => "double",
+
+            // Cycle 2307-2308 (Task B-13): 32-bit float load returns `float`.
+            "load_f32" => "float",
 
             // v0.97 (Cycle 2246): SIMD horizontal sum — returns vector element scalar.
             "hsum_f64x4" | "hsum_f64x8" => "double",
