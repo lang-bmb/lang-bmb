@@ -3164,6 +3164,117 @@ impl<'ctx> LlvmContext<'ctx> {
                     }
                 }
 
+                // v0.97 (Cycle 2311+, B-11.5): 2-source shuffle family — slide_{left,right}2, concat_{lo_hi,hi_lo}.
+                {
+                    let shuffle2_info: Option<(&'static str, u32, &'static str)> = match func.as_str() {
+                        "slide_left2_f64x4"  if args.len() == 3 => Some(("f64",  4, "slide_left2")),
+                        "slide_left2_f64x8"  if args.len() == 3 => Some(("f64",  8, "slide_left2")),
+                        "slide_left2_f32x4"  if args.len() == 3 => Some(("f32",  4, "slide_left2")),
+                        "slide_left2_f32x8"  if args.len() == 3 => Some(("f32",  8, "slide_left2")),
+                        "slide_left2_f32x16" if args.len() == 3 => Some(("f32", 16, "slide_left2")),
+                        "slide_left2_i32x4"  if args.len() == 3 => Some(("i32",  4, "slide_left2")),
+                        "slide_left2_i32x8"  if args.len() == 3 => Some(("i32",  8, "slide_left2")),
+                        "slide_left2_i64x2"  if args.len() == 3 => Some(("i64",  2, "slide_left2")),
+                        "slide_left2_i64x4"  if args.len() == 3 => Some(("i64",  4, "slide_left2")),
+                        "slide_right2_f64x4"  if args.len() == 3 => Some(("f64",  4, "slide_right2")),
+                        "slide_right2_f64x8"  if args.len() == 3 => Some(("f64",  8, "slide_right2")),
+                        "slide_right2_f32x4"  if args.len() == 3 => Some(("f32",  4, "slide_right2")),
+                        "slide_right2_f32x8"  if args.len() == 3 => Some(("f32",  8, "slide_right2")),
+                        "slide_right2_f32x16" if args.len() == 3 => Some(("f32", 16, "slide_right2")),
+                        "slide_right2_i32x4"  if args.len() == 3 => Some(("i32",  4, "slide_right2")),
+                        "slide_right2_i32x8"  if args.len() == 3 => Some(("i32",  8, "slide_right2")),
+                        "slide_right2_i64x2"  if args.len() == 3 => Some(("i64",  2, "slide_right2")),
+                        "slide_right2_i64x4"  if args.len() == 3 => Some(("i64",  4, "slide_right2")),
+                        "concat_lo_hi_f64x4"  if args.len() == 2 => Some(("f64",  4, "concat_lo_hi")),
+                        "concat_lo_hi_f64x8"  if args.len() == 2 => Some(("f64",  8, "concat_lo_hi")),
+                        "concat_lo_hi_f32x4"  if args.len() == 2 => Some(("f32",  4, "concat_lo_hi")),
+                        "concat_lo_hi_f32x8"  if args.len() == 2 => Some(("f32",  8, "concat_lo_hi")),
+                        "concat_lo_hi_f32x16" if args.len() == 2 => Some(("f32", 16, "concat_lo_hi")),
+                        "concat_lo_hi_i32x4"  if args.len() == 2 => Some(("i32",  4, "concat_lo_hi")),
+                        "concat_lo_hi_i32x8"  if args.len() == 2 => Some(("i32",  8, "concat_lo_hi")),
+                        "concat_lo_hi_i64x2"  if args.len() == 2 => Some(("i64",  2, "concat_lo_hi")),
+                        "concat_lo_hi_i64x4"  if args.len() == 2 => Some(("i64",  4, "concat_lo_hi")),
+                        "concat_hi_lo_f64x4"  if args.len() == 2 => Some(("f64",  4, "concat_hi_lo")),
+                        "concat_hi_lo_f64x8"  if args.len() == 2 => Some(("f64",  8, "concat_hi_lo")),
+                        "concat_hi_lo_f32x4"  if args.len() == 2 => Some(("f32",  4, "concat_hi_lo")),
+                        "concat_hi_lo_f32x8"  if args.len() == 2 => Some(("f32",  8, "concat_hi_lo")),
+                        "concat_hi_lo_f32x16" if args.len() == 2 => Some(("f32", 16, "concat_hi_lo")),
+                        "concat_hi_lo_i32x4"  if args.len() == 2 => Some(("i32",  4, "concat_hi_lo")),
+                        "concat_hi_lo_i32x8"  if args.len() == 2 => Some(("i32",  8, "concat_hi_lo")),
+                        "concat_hi_lo_i64x2"  if args.len() == 2 => Some(("i64",  2, "concat_hi_lo")),
+                        "concat_hi_lo_i64x4"  if args.len() == 2 => Some(("i64",  4, "concat_hi_lo")),
+                        _ => None,
+                    };
+                    if let Some((vec_ty_kind, lanes, op_tag)) = shuffle2_info {
+                        let n = lanes as i64;
+                        let const_k: i64 = if op_tag == "slide_left2" || op_tag == "slide_right2" {
+                            match &args[2] {
+                                Operand::Constant(Constant::Int(v)) => *v,
+                                _ => {
+                                    return Err(CodeGenError::Message(format!(
+                                        "{}(…) requires a compile-time integer literal shift argument",
+                                        func
+                                    )));
+                                }
+                            }
+                        } else {
+                            0
+                        };
+                        let i32_ty = self.context.i32_type();
+                        let mask_values: Vec<inkwell::values::IntValue> = match op_tag {
+                            "slide_left2" => {
+                                if const_k < 0 || const_k > n {
+                                    return Err(CodeGenError::Message(format!(
+                                        "{}: shift {} out of range [0, {}]",
+                                        func, const_k, n
+                                    )));
+                                }
+                                (0..n).map(|i| i32_ty.const_int((i + const_k) as u64, false)).collect()
+                            }
+                            "slide_right2" => {
+                                if const_k < 0 || const_k > n {
+                                    return Err(CodeGenError::Message(format!(
+                                        "{}: shift {} out of range [0, {}]",
+                                        func, const_k, n
+                                    )));
+                                }
+                                (0..n).map(|i| i32_ty.const_int((n - const_k + i) as u64, false)).collect()
+                            }
+                            "concat_lo_hi" => {
+                                let half = n / 2;
+                                let mut v: Vec<inkwell::values::IntValue> =
+                                    (0..half).map(|i| i32_ty.const_int(i as u64, false)).collect();
+                                v.extend((0..half).map(|i| i32_ty.const_int((n + i) as u64, false)));
+                                v
+                            }
+                            "concat_hi_lo" => {
+                                let half = n / 2;
+                                let mut v: Vec<inkwell::values::IntValue> =
+                                    (half..n).map(|i| i32_ty.const_int(i as u64, false)).collect();
+                                v.extend((half..n).map(|i| i32_ty.const_int((n + i) as u64, false)));
+                                v
+                            }
+                            _ => unreachable!(),
+                        };
+                        let mask_vec = inkwell::types::VectorType::const_vector(&mask_values);
+                        let _vec_ty_kind = vec_ty_kind; // lanes encoded in mask already
+                        let a = self.gen_operand(&args[0])?;
+                        let b = self.gen_operand(&args[1])?;
+                        let result = self.builder
+                            .build_shuffle_vector(
+                                a.into_vector_value(),
+                                b.into_vector_value(),
+                                mask_vec,
+                                "vshuf2",
+                            )
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                        if let Some(dest_place) = dest {
+                            self.store_to_place(dest_place, result.into())?;
+                        }
+                        return Ok(());
+                    }
+                }
+
                 // v0.97 (Cycle 2286): SIMD mask reductions — call llvm.vector.reduce.{or,and}.vNi1.
                 if args.len() == 1
                     && let Some(intrinsic_name) = match func.as_str() {

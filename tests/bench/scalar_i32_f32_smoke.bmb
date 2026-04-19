@@ -28,9 +28,10 @@ fn check_f32_roundtrip() -> i64 = {
     let _s0 = store_f32(buf + 0, v_a);
     let _s1 = store_f32(buf + 4, v_b);
     let _s2 = store_f32(buf + 8, v_c);
-    let r0: f32 = load_f32(buf + 0);
-    let r1: f32 = load_f32(buf + 4);
-    let r2: f32 = load_f32(buf + 8);
+    // Cycle 2312: inference fix removes the need for `: f32` annotation.
+    let r0 = load_f32(buf + 0);
+    let r1 = load_f32(buf + 4);
+    let r2 = load_f32(buf + 8);
     // Compare exactly — these f32 values are representable without loss.
     let ok = f64_to_i64(r0 as f64 * 2.0) == 3         // 1.5*2 = 3
           && f64_to_i64(r1 as f64 * 4.0) == 9         // 2.25*4 = 9

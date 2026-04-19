@@ -3655,6 +3655,132 @@ impl TextCodeGen {
                     }
                 }
 
+                // v0.97 (Cycle 2311+, B-11.5): 2-source shuffle family.
+                //   slide_left2_TxN(a, b, shift):  shufflevector a, b, <i+shift | i = 0..N-1>
+                //   slide_right2_TxN(a, b, shift): shufflevector a, b, <N-shift+i | i = 0..N-1>
+                //   concat_lo_hi_TxN(a, b):        shufflevector a, b, <0..N/2-1, N..N+N/2-1>
+                //   concat_hi_lo_TxN(a, b):        shufflevector a, b, <N/2..N-1, N+N/2..2N-1>
+                //
+                // `shift` MUST be a compile-time integer literal in [0, N].
+                {
+                    let shuffle2_info: Option<(&'static str, u32, u32, &'static str)> = match fn_name.as_str() {
+                        // slide_left2 (args.len() == 3: a + b + shift)
+                        "slide_left2_f64x4"  if args.len() == 3 => Some(("<4 x double>",  4,  32, "slide_left2")),
+                        "slide_left2_f64x8"  if args.len() == 3 => Some(("<8 x double>",  8,  64, "slide_left2")),
+                        "slide_left2_f32x4"  if args.len() == 3 => Some(("<4 x float>",   4,  16, "slide_left2")),
+                        "slide_left2_f32x8"  if args.len() == 3 => Some(("<8 x float>",   8,  32, "slide_left2")),
+                        "slide_left2_f32x16" if args.len() == 3 => Some(("<16 x float>", 16,  64, "slide_left2")),
+                        "slide_left2_i32x4"  if args.len() == 3 => Some(("<4 x i32>",     4,  16, "slide_left2")),
+                        "slide_left2_i32x8"  if args.len() == 3 => Some(("<8 x i32>",     8,  32, "slide_left2")),
+                        "slide_left2_i64x2"  if args.len() == 3 => Some(("<2 x i64>",     2,  16, "slide_left2")),
+                        "slide_left2_i64x4"  if args.len() == 3 => Some(("<4 x i64>",     4,  32, "slide_left2")),
+                        // slide_right2
+                        "slide_right2_f64x4"  if args.len() == 3 => Some(("<4 x double>",  4,  32, "slide_right2")),
+                        "slide_right2_f64x8"  if args.len() == 3 => Some(("<8 x double>",  8,  64, "slide_right2")),
+                        "slide_right2_f32x4"  if args.len() == 3 => Some(("<4 x float>",   4,  16, "slide_right2")),
+                        "slide_right2_f32x8"  if args.len() == 3 => Some(("<8 x float>",   8,  32, "slide_right2")),
+                        "slide_right2_f32x16" if args.len() == 3 => Some(("<16 x float>", 16,  64, "slide_right2")),
+                        "slide_right2_i32x4"  if args.len() == 3 => Some(("<4 x i32>",     4,  16, "slide_right2")),
+                        "slide_right2_i32x8"  if args.len() == 3 => Some(("<8 x i32>",     8,  32, "slide_right2")),
+                        "slide_right2_i64x2"  if args.len() == 3 => Some(("<2 x i64>",     2,  16, "slide_right2")),
+                        "slide_right2_i64x4"  if args.len() == 3 => Some(("<4 x i64>",     4,  32, "slide_right2")),
+                        // concat_lo_hi / concat_hi_lo (args.len() == 2)
+                        "concat_lo_hi_f64x4"  if args.len() == 2 => Some(("<4 x double>",  4,  32, "concat_lo_hi")),
+                        "concat_lo_hi_f64x8"  if args.len() == 2 => Some(("<8 x double>",  8,  64, "concat_lo_hi")),
+                        "concat_lo_hi_f32x4"  if args.len() == 2 => Some(("<4 x float>",   4,  16, "concat_lo_hi")),
+                        "concat_lo_hi_f32x8"  if args.len() == 2 => Some(("<8 x float>",   8,  32, "concat_lo_hi")),
+                        "concat_lo_hi_f32x16" if args.len() == 2 => Some(("<16 x float>", 16,  64, "concat_lo_hi")),
+                        "concat_lo_hi_i32x4"  if args.len() == 2 => Some(("<4 x i32>",     4,  16, "concat_lo_hi")),
+                        "concat_lo_hi_i32x8"  if args.len() == 2 => Some(("<8 x i32>",     8,  32, "concat_lo_hi")),
+                        "concat_lo_hi_i64x2"  if args.len() == 2 => Some(("<2 x i64>",     2,  16, "concat_lo_hi")),
+                        "concat_lo_hi_i64x4"  if args.len() == 2 => Some(("<4 x i64>",     4,  32, "concat_lo_hi")),
+                        "concat_hi_lo_f64x4"  if args.len() == 2 => Some(("<4 x double>",  4,  32, "concat_hi_lo")),
+                        "concat_hi_lo_f64x8"  if args.len() == 2 => Some(("<8 x double>",  8,  64, "concat_hi_lo")),
+                        "concat_hi_lo_f32x4"  if args.len() == 2 => Some(("<4 x float>",   4,  16, "concat_hi_lo")),
+                        "concat_hi_lo_f32x8"  if args.len() == 2 => Some(("<8 x float>",   8,  32, "concat_hi_lo")),
+                        "concat_hi_lo_f32x16" if args.len() == 2 => Some(("<16 x float>", 16,  64, "concat_hi_lo")),
+                        "concat_hi_lo_i32x4"  if args.len() == 2 => Some(("<4 x i32>",     4,  16, "concat_hi_lo")),
+                        "concat_hi_lo_i32x8"  if args.len() == 2 => Some(("<8 x i32>",     8,  32, "concat_hi_lo")),
+                        "concat_hi_lo_i64x2"  if args.len() == 2 => Some(("<2 x i64>",     2,  16, "concat_hi_lo")),
+                        "concat_hi_lo_i64x4"  if args.len() == 2 => Some(("<4 x i64>",     4,  32, "concat_hi_lo")),
+                        _ => None,
+                    };
+                    if let Some((vec_ty, lanes, vec_align, op_tag)) = shuffle2_info {
+                        let d = dest.as_ref().expect("shuffle2 intrinsic has a return value");
+                        let n = lanes as i64;
+                        let const_k: i64 = if op_tag == "slide_left2" || op_tag == "slide_right2" {
+                            match &args[2] {
+                                Operand::Constant(Constant::Int(v)) => *v,
+                                _ => {
+                                    return Err(TextCodeGenError::Message(format!(
+                                        "{}(…) requires a compile-time integer literal shift argument",
+                                        fn_name
+                                    )));
+                                }
+                            }
+                        } else {
+                            0
+                        };
+                        let mask_indices: Vec<String> = match op_tag {
+                            "slide_left2" => {
+                                if const_k < 0 || const_k > n {
+                                    return Err(TextCodeGenError::Message(format!(
+                                        "{}: shift {} out of range [0, {}]",
+                                        fn_name, const_k, n
+                                    )));
+                                }
+                                // mask[i] = i + shift (in [0, 2N))
+                                (0..n).map(|i| format!("i32 {}", i + const_k)).collect()
+                            }
+                            "slide_right2" => {
+                                if const_k < 0 || const_k > n {
+                                    return Err(TextCodeGenError::Message(format!(
+                                        "{}: shift {} out of range [0, {}]",
+                                        fn_name, const_k, n
+                                    )));
+                                }
+                                // mask[i] = N - shift + i (in [0, 2N))
+                                (0..n).map(|i| format!("i32 {}", n - const_k + i)).collect()
+                            }
+                            "concat_lo_hi" => {
+                                // Low half of a (0..N/2-1) + low half of b (N..N+N/2-1)
+                                let half = n / 2;
+                                let mut v: Vec<String> = (0..half).map(|i| format!("i32 {}", i)).collect();
+                                v.extend((0..half).map(|i| format!("i32 {}", n + i)));
+                                v
+                            }
+                            "concat_hi_lo" => {
+                                // High half of a (N/2..N-1) + high half of b (N+N/2..2N-1)
+                                let half = n / 2;
+                                let mut v: Vec<String> = (half..n).map(|i| format!("i32 {}", i)).collect();
+                                v.extend((half..n).map(|i| format!("i32 {}", n + i)));
+                                v
+                            }
+                            _ => unreachable!(),
+                        };
+                        let mask_str = format!("<{} x i32> <{}>", n, mask_indices.join(", "));
+                        let load_vec = |opd: &Operand, suffix: &str, out: &mut String| -> TextCodeGenResult<String> {
+                            match opd {
+                                Operand::Place(p) if local_names.contains(&p.name) => {
+                                    let ln = format!("{}.{}.{}.shf2", d.name, p.name, suffix);
+                                    writeln!(out, "  %{} = load {}, ptr %{}.addr, align {}", ln, vec_ty, p.name, vec_align)?;
+                                    Ok(format!("%{}", ln))
+                                }
+                                Operand::Place(p) => Ok(format!("%{}", p.name)),
+                                _ => Ok(self.format_operand_with_strings(opd, string_table)),
+                            }
+                        };
+                        let a = load_vec(&args[0], "a", out)?;
+                        let b = load_vec(&args[1], "b", out)?;
+                        let result_name = format!("{}.shf2", d.name);
+                        writeln!(out, "  %{} = shufflevector {} {}, {} {}, {}", result_name, vec_ty, a, vec_ty, b, mask_str)?;
+                        if local_names.contains(&d.name) {
+                            writeln!(out, "  store {} %{}, ptr %{}.addr, align {}", vec_ty, result_name, d.name, vec_align)?;
+                        }
+                        return Ok(());
+                    }
+                }
+
                 // v0.97 (Cycle 2248): SIMD load/store intrinsics for stdlib/simd.
                 // `load_{T}xN(base: i64, idx: i64) -> {T}xN`
                 //   %ptr = inttoptr i64 %base to ptr

@@ -322,3 +322,57 @@ pub fn slide_right_i32x4(v: i32x4, shift: i32) -> i32x4 = todo;
 pub fn slide_right_i32x8(v: i32x8, shift: i32) -> i32x8 = todo;
 pub fn slide_right_i64x2(v: i64x2, shift: i32) -> i64x2 = todo;
 pub fn slide_right_i64x4(v: i64x4, shift: i32) -> i64x4 = todo;
+
+// ============================================
+// 2-source shuffle family (Cycle 2311+, Task B-11.5)
+//
+// Cross-block cross-lane shuffles — stencil recovery and window-sliding.
+//   slide_left2_TxN(a, b, shift)  — result[i] = (i+shift<N ? a[i+shift] : b[i+shift-N])
+//   slide_right2_TxN(a, b, shift) — result[i] = (i<shift ? a[N-shift+i] : b[i-shift])
+//   concat_lo_hi_TxN(a, b)        — [a[0..N/2-1], b[0..N/2-1]]
+//   concat_hi_lo_TxN(a, b)        — [a[N/2..N-1], b[N/2..N-1]]
+// ============================================
+
+// --- slide_left2 (cross-block toward lower index) ---
+pub fn slide_left2_f64x4(a: f64x4, b: f64x4, shift: i32) -> f64x4 = todo;
+pub fn slide_left2_f64x8(a: f64x8, b: f64x8, shift: i32) -> f64x8 = todo;
+pub fn slide_left2_f32x4(a: f32x4, b: f32x4, shift: i32) -> f32x4 = todo;
+pub fn slide_left2_f32x8(a: f32x8, b: f32x8, shift: i32) -> f32x8 = todo;
+pub fn slide_left2_f32x16(a: f32x16, b: f32x16, shift: i32) -> f32x16 = todo;
+pub fn slide_left2_i32x4(a: i32x4, b: i32x4, shift: i32) -> i32x4 = todo;
+pub fn slide_left2_i32x8(a: i32x8, b: i32x8, shift: i32) -> i32x8 = todo;
+pub fn slide_left2_i64x2(a: i64x2, b: i64x2, shift: i32) -> i64x2 = todo;
+pub fn slide_left2_i64x4(a: i64x4, b: i64x4, shift: i32) -> i64x4 = todo;
+
+// --- slide_right2 (cross-block toward higher index) ---
+pub fn slide_right2_f64x4(a: f64x4, b: f64x4, shift: i32) -> f64x4 = todo;
+pub fn slide_right2_f64x8(a: f64x8, b: f64x8, shift: i32) -> f64x8 = todo;
+pub fn slide_right2_f32x4(a: f32x4, b: f32x4, shift: i32) -> f32x4 = todo;
+pub fn slide_right2_f32x8(a: f32x8, b: f32x8, shift: i32) -> f32x8 = todo;
+pub fn slide_right2_f32x16(a: f32x16, b: f32x16, shift: i32) -> f32x16 = todo;
+pub fn slide_right2_i32x4(a: i32x4, b: i32x4, shift: i32) -> i32x4 = todo;
+pub fn slide_right2_i32x8(a: i32x8, b: i32x8, shift: i32) -> i32x8 = todo;
+pub fn slide_right2_i64x2(a: i64x2, b: i64x2, shift: i32) -> i64x2 = todo;
+pub fn slide_right2_i64x4(a: i64x4, b: i64x4, shift: i32) -> i64x4 = todo;
+
+// --- concat_lo_hi (low half of a + low half of b) ---
+pub fn concat_lo_hi_f64x4(a: f64x4, b: f64x4) -> f64x4 = todo;
+pub fn concat_lo_hi_f64x8(a: f64x8, b: f64x8) -> f64x8 = todo;
+pub fn concat_lo_hi_f32x4(a: f32x4, b: f32x4) -> f32x4 = todo;
+pub fn concat_lo_hi_f32x8(a: f32x8, b: f32x8) -> f32x8 = todo;
+pub fn concat_lo_hi_f32x16(a: f32x16, b: f32x16) -> f32x16 = todo;
+pub fn concat_lo_hi_i32x4(a: i32x4, b: i32x4) -> i32x4 = todo;
+pub fn concat_lo_hi_i32x8(a: i32x8, b: i32x8) -> i32x8 = todo;
+pub fn concat_lo_hi_i64x2(a: i64x2, b: i64x2) -> i64x2 = todo;
+pub fn concat_lo_hi_i64x4(a: i64x4, b: i64x4) -> i64x4 = todo;
+
+// --- concat_hi_lo (high half of a + high half of b) ---
+pub fn concat_hi_lo_f64x4(a: f64x4, b: f64x4) -> f64x4 = todo;
+pub fn concat_hi_lo_f64x8(a: f64x8, b: f64x8) -> f64x8 = todo;
+pub fn concat_hi_lo_f32x4(a: f32x4, b: f32x4) -> f32x4 = todo;
+pub fn concat_hi_lo_f32x8(a: f32x8, b: f32x8) -> f32x8 = todo;
+pub fn concat_hi_lo_f32x16(a: f32x16, b: f32x16) -> f32x16 = todo;
+pub fn concat_hi_lo_i32x4(a: i32x4, b: i32x4) -> i32x4 = todo;
+pub fn concat_hi_lo_i32x8(a: i32x8, b: i32x8) -> i32x8 = todo;
+pub fn concat_hi_lo_i64x2(a: i64x2, b: i64x2) -> i64x2 = todo;
+pub fn concat_hi_lo_i64x4(a: i64x4, b: i64x4) -> i64x4 = todo;

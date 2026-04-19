@@ -1112,6 +1112,20 @@ impl LoweringContext {
         func_return_types.insert("println".to_string(), MirType::Unit);
         func_return_types.insert("print".to_string(), MirType::Unit);
         func_return_types.insert("assert".to_string(), MirType::Unit);
+        // Cycle 2312 (B-13 inference fix): scalar memory intrinsics must propagate
+        // their return types so the let-binding alloca picks the right slot.
+        // Without this, `let r = load_f32(buf)` defaults the alloca to i64,
+        // and the inkwell backend panics on the float store.
+        func_return_types.insert("load_i64".to_string(), MirType::I64);
+        func_return_types.insert("load_f64".to_string(), MirType::F64);
+        func_return_types.insert("load_i32".to_string(), MirType::I64);  // sign-extended to i64
+        func_return_types.insert("load_f32".to_string(), MirType::F32);
+        func_return_types.insert("load_u8".to_string(), MirType::I64);
+        func_return_types.insert("store_i64".to_string(), MirType::I64);
+        func_return_types.insert("store_f64".to_string(), MirType::I64);
+        func_return_types.insert("store_i32".to_string(), MirType::I64);
+        func_return_types.insert("store_f32".to_string(), MirType::I64);
+        func_return_types.insert("store_u8".to_string(), MirType::I64);
 
         Self {
             temp_counter: 0,
