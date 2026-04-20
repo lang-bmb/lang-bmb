@@ -2,10 +2,10 @@
 
 A contract-verified systems programming language that compiles to native code via LLVM.
 
-[![Version](https://img.shields.io/badge/version-0.93.32-blue.svg)](docs/ROADMAP.md)
+[![Version](https://img.shields.io/badge/version-0.98-blue.svg)](docs/ROADMAP.md)
 [![Bootstrap](https://img.shields.io/badge/bootstrap-3--stage%20fixed%20point-green.svg)](docs/BOOTSTRAP_BENCHMARK.md)
-[![Tests](https://img.shields.io/badge/tests-5234%20passed-brightgreen.svg)](bmb/src)
-[![Golden Tests](https://img.shields.io/badge/golden%20tests-69%2F69-brightgreen.svg)](tests/bootstrap)
+[![Tests](https://img.shields.io/badge/tests-6201%20passed-brightgreen.svg)](bmb/src)
+[![Golden Tests](https://img.shields.io/badge/golden%20tests-2814%2F2815-brightgreen.svg)](tests/bootstrap)
 
 ---
 
@@ -241,7 +241,7 @@ BMB was designed with AI code generation in mind. The verbose, explicit syntax t
 
 ## Status
 
-BMB is an **experimental language** in active development (v0.93). The compiler works, benchmarks are competitive with C, and the bootstrap is self-verifying. However, the ecosystem is young and the community is small.
+BMB is an **experimental language** in active development (v0.98). The compiler self-hosts via a 3-Stage Fixed Point bootstrap, benchmarks beat C/Rust in 16 workloads, and SIMD is a first-class type system. The ecosystem is young and the community is small.
 
 If you're interested in contract-verified systems programming, formal methods, or AI-assisted code generation — we'd love your feedback.
 
