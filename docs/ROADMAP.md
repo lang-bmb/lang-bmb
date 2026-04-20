@@ -4,7 +4,7 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 
 ---
 
-## Current Status — v0.98 (2026-04-21)
+## Current Status — v0.98 (2026-04-21, post-Cycles 2353-2358)
 
 ### Progress
 
@@ -32,7 +32,17 @@ Tooling     ████████████████░░░░ 80%   @
 
 ## Recently completed
 
-### Cycles 2341-2351 (this session)
+### Cycles 2353-2358 (this session)
+
+**CI smoke gate for `bmb bench --compare`.** Added `bench-compare-smoke` job to `.github/workflows/ci.yml` that runs `scripts/test-bench-compare.sh` (10/10 CLI scenarios) on every PR. Closes the "2% regression threshold CI Requirement" basic gate. Full nightly baseline-diff remains a follow-up.
+
+**XOR `^` operator.** Added `TK_CARET` lexer token and taught `parse_bitxor_rest` to accept `^` as a synonym of the existing `bxor` keyword. Bootstrap-only per Rule 6 — the Rust compiler stays frozen. Completed in 1 cycle (budgeted 3-5). 3-Stage Fixed Point preserved (S2 == S3).
+
+**`stdlib/net` TCP primitive landing.** Added `tcp_listen` + `tcp_accept` to `bmb/runtime/bmb_runtime.c` (Win32 + POSIX). Wired them into the bootstrap compiler (types, dispatch, extern declare). New `stdlib/net/mod.bmb` provides `tcp_connect / listen / accept / read / write / close` wrappers. Smoke test `tests/bench/net_listen_smoke.bmb` passes (listen on ephemeral port 0 + close, exit 0 via Stage 1). Echo server E2E (needs external client) deferred.
+
+**Latent bug: `gen_runtime_decls()` missing async_socket declares.** Discovered while running the net smoke test: the compiler's runtime declaration emitter never emitted `declare` lines for `bmb_async_socket_*`, so user code calling those would fail `opt -O2` verification. No prior user code exercised this path, hiding the bug. Added all six (`connect / read / write / close / listen / accept`) — fix verified end-to-end.
+
+### Cycles 2341-2351 (previous session)
 
 **`bmb bench --compare` regression-gate CLI.** Diffs two NDJSON bench outputs by name, classifies each bench into OK / REGRESSION / IMPROVEMENT / MISSING / NEW against a `--threshold` (default 2%), and exits 1 on any regression — CI-ready. Human and machine output modes. `scripts/test-bench-compare.sh` covers 10 scenarios (status categories + error paths). See [BENCHMARK.md](BENCHMARK.md#regression-detection-via---compare).
 
@@ -72,7 +82,10 @@ Tooling     ████████████████░░░░ 80%   @
 | Windows dev environment doctor | ✅ |
 | Runtime source auto-sync (`runtime/` ↔ `bmb/runtime/`) | ✅ Cycle 2348 |
 | Cross-platform SIMD verification (Linux/macOS) | Pending (needs Linux/macOS env) |
-| `bench --compare` CI workflow integration | Pending (CLI ready) |
+| `bench --compare` CI smoke gate | ✅ Cycle 2353 (scripts/test-bench-compare.sh 10/10 on every PR) |
+| `bench --compare` nightly baseline diff | Pending (needs baseline-storage strategy) |
+| XOR `^` operator (bootstrap) | ✅ Cycle 2354 |
+| `stdlib/net` TCP primitive (listen/accept/connect/read/write/close) | ✅ Cycles 2355-2357 (wrappers + Stage 1 smoke; E2E echo server pending) |
 | PyPI wheel build + publish | Packaging ✅, publish pending |
 | Node.js WASM bindings | Not started |
 | ~~Native Ptr type system (inttoptr removal)~~ | Deferred (evidence: auto-handled by `opt -O2`) |
@@ -94,12 +107,13 @@ Tooling     ████████████████░░░░ 80%   @
 
 | Option | Effort | Risk | Notes |
 |--------|--------|------|-------|
-| `bench --compare` CI workflow integration | 1–2 cycles | LOW | Wire `test-bench-compare.sh` + baseline-artifact strategy into `.github/workflows/ci.yml`; closes the "2% regression gate" CI goal |
-| Cross-platform SIMD verification (Linux/macOS) | 2–3 cycles | LOW-MEDIUM | Needs Linux/macOS shell or GH Actions runner |
-| `^` (XOR) operator in language spec | 3–5 cycles | MEDIUM | Bootstrap only (Rule 6 — Rust compiler frozen); touches parser / AST / types / MIR / codegen |
-| Runtime stack trace support (DWARF) | 4–6 cycles | MEDIUM | Debugging ergonomics |
-| `stdlib/net` module (TCP/UDP) | 10+ cycles | MEDIUM-HIGH | Brand new external surface |
-| CHANGELOG.md reconstruction (v0.67 → v0.98) | 3–5 cycles | LOW | Retroactive; could be partial |
+| `stdlib/net` echo-server E2E smoke | 2-4 cycles | MEDIUM | Needs external client (Python) or multi-threaded server; exercises `accept` + read/write round-trip |
+| `bench --compare` nightly baseline diff | 2-3 cycles | MEDIUM | Decide baseline storage (repo-commit vs CI artifact); wire into `nightly-bench.yml` |
+| Cross-platform SIMD + net verification (Linux/macOS) | 3-5 cycles | LOW-MEDIUM | Needs Linux/macOS shell or GH Actions runner; v0.97 SIMD + v0.98 net never run outside Windows |
+| Runtime stack trace support (DWARF) | 4-6 cycles | MEDIUM | MIR currently lacks span info — gains limited to function-level unless MIR refactored; reconsider vs ROI |
+| UDP + TLS in `stdlib/net` | 6-10 cycles | MEDIUM-HIGH | Extends skeleton; TLS needs OpenSSL binding |
+| CHANGELOG.md reconstruction (v0.67 → v0.98) | 3-5 cycles | LOW | Retroactive; could be partial |
+| PyPI wheel publish pipeline | 2-4 cycles | MEDIUM | Packaging ready, needs CI job + secret management |
 
 ---
 
