@@ -125,7 +125,7 @@ Bootstrap IR의 근본적 한계 해소. inttoptr을 native ptr로 전환.
 | ~~MIR 옵티마이저 BMB 이식 15/15~~ | ✅ |
 | ~~에러 진단: JSON line:col~~ | ✅ |
 | 런타임 스택 트레이스 | 미착수 |
-| 벤치마크 CI 자동화 (2% 임계값) | 미착수 |
+| 벤치마크 CI 자동화 (2% 임계값) | 🟡 **기반 완료** — `bmb bench --compare` CLI (Cycles 2344-2347). CI workflow 통합 미완. |
 
 ---
 

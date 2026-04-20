@@ -234,6 +234,43 @@ executed as a normal process. Stdout is parsed into per-bench statistics
 - **Cross-platform status:** Verified on Windows (MinGW + MSYS2 LLVM 21).
   Linux/macOS not yet validated.
 
+### Regression detection via `--compare`
+
+`bmb bench --compare <baseline.json> <current.json>` diffs two bench JSON
+runs by bench name. The primary metric is `median_ns`; per-bench delta% is
+computed and classified against a threshold (default: 2%).
+
+```bash
+# Record a baseline
+bmb bench tests/bench/suite.bmb --samples 100 > baseline.json
+
+# After changes, record current
+bmb bench tests/bench/suite.bmb --samples 100 > current.json
+
+# Compare (exits 1 if any bench regresses > 2%)
+bmb bench --compare baseline.json current.json
+
+# Tighter gate (exit 1 for any >0.5% regression)
+bmb bench --compare baseline.json current.json --threshold 0.5
+
+# Human-readable output
+bmb --human bench --compare baseline.json current.json
+```
+
+Each bench lands in one status:
+
+| status | meaning |
+|--------|---------|
+| `OK` | `|delta%| <= threshold` |
+| `REGRESSION` | `delta% > threshold` (exit 1) |
+| `IMPROVEMENT` | `delta% < -threshold` |
+| `MISSING` | present in baseline, not in current |
+| `NEW` | present in current, not in baseline |
+
+Machine (NDJSON) output emits one `{"type":"compare",...}` line per bench
+plus a `{"type":"compare_result",...}` summary. Exit code 1 when any
+`REGRESSION` is detected — suitable for CI gates.
+
 ## Adding New Benchmarks
 
 1. Create directory: `ecosystem/benchmark-bmb/benches/compute/<name>/`

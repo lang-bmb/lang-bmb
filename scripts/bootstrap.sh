@@ -219,14 +219,17 @@ if [ "$needs_rebuild" = true ]; then
         && clang -c bmb_event_loop.c -o bmb_event_loop.o -O2 -ffunction-sections -fdata-sections \
         && ar rcs libbmb_runtime.a bmb_runtime.o bmb_event_loop.o \
         && mkdir -p "${PROJECT_ROOT}/runtime" \
-        && cp libbmb_runtime.a "${PROJECT_ROOT}/runtime/libbmb_runtime.a") || {
+        && cp libbmb_runtime.a "${PROJECT_ROOT}/runtime/libbmb_runtime.a" \
+        && cp bmb_runtime.c "${PROJECT_ROOT}/runtime/bmb_runtime.c" \
+        && cp bmb_event_loop.c "${PROJECT_ROOT}/runtime/bmb_event_loop.c" \
+        && cp bmb_event_loop.h "${PROJECT_ROOT}/runtime/bmb_event_loop.h") || {
         log "${RED}Error: Failed to rebuild runtime library${NC}"
         if [ "$JSON_OUTPUT" = true ]; then
             output_json
         fi
         exit 1
     }
-    log_verbose "${GREEN}Runtime library rebuilt${NC}"
+    log_verbose "${GREEN}Runtime library rebuilt (sources synced to runtime/)${NC}"
 fi
 
 log "${GREEN}Prerequisites OK${NC}"

@@ -135,6 +135,7 @@ void bmb_print_i64(int64_t n) { printf("%" PRId64, n); }
 void bmb_println_f64(double f) { printf("%.9f\n", f); }
 void bmb_print_f64(double f) { printf("%.9f", f); }
 int64_t bmb_read_int() { int64_t n; scanf("%" SCNd64, &n); return n; }
+int64_t read_int(void) { return bmb_read_int(); }
 void bmb_assert(int cond) {
     if (!cond) {
         if (g_ffi_active) bmb_ffi_trigger("assertion failed");
@@ -1479,11 +1480,6 @@ void print_f64(double f) {
     bmb_print_f64(f);
 }
 
-// v0.90.3: read_int unprefixed alias for text backend compatibility
-int64_t read_int(void) {
-    return bmb_read_int();
-}
-
 // v0.51.51: println_str takes BmbString*
 void println_str(const BmbString* s) {
     if (s && s->data) printf("%s\n", s->data);
@@ -2540,12 +2536,6 @@ BmbString* bmb_system_capture(const BmbString* cmd) {
     return s;
 }
 
-// v0.95: Delete a file
-int64_t bmb_delete_file(const BmbString* path) {
-    if (!path || !path->data) return 0;
-    return (remove(path->data) == 0) ? 1 : 0;
-}
-
 // v0.95: Get current working directory
 BmbString* bmb_getcwd(void) {
     char buf[4096];
@@ -2702,6 +2692,16 @@ int64_t file_size(const BmbString* path) {
     long size = ftell(f);
     fclose(f);
     return (int64_t)size;
+}
+
+// v0.98: delete_file(path) -> i64: deletes a file, returns 0 on success, -1 on error
+int64_t bmb_delete_file(const BmbString* path) {
+    if (!path || !path->data) return -1;
+    return (remove(path->data) == 0) ? 0 : -1;
+}
+
+int64_t delete_file(const BmbString* path) {
+    return bmb_delete_file(path);
 }
 
 // v0.96: Directory operations for gotgan-bmb and file system programs

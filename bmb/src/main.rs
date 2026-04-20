@@ -202,8 +202,8 @@ enum Command {
     },
     /// Run benchmarks (functions with @bench attribute or `bench_` prefix)
     Bench {
-        /// Source file or directory to benchmark
-        file: PathBuf,
+        /// Source file or directory to benchmark (omit when using --compare)
+        file: Option<PathBuf>,
         /// Filter benchmarks by pattern
         #[arg(long, short)]
         filter: Option<String>,
@@ -216,6 +216,12 @@ enum Command {
         /// Compile and execute benches as native binary (default: interpreter)
         #[arg(long)]
         native: bool,
+        /// Compare two bench JSON outputs: --compare <baseline> <current>
+        #[arg(long, num_args = 2, value_names = ["BASELINE", "CURRENT"])]
+        compare: Option<Vec<PathBuf>>,
+        /// Regression threshold in percent for --compare (default: 2.0)
+        #[arg(long, default_value_t = 2.0)]
+        threshold: f64,
     },
     /// Format a BMB source file
     Fmt {
@@ -487,11 +493,19 @@ fn main() {
                 Command::Parse { file, format } => parse_file(&file, &format),
                 Command::Tokens { file } => tokenize_file(&file),
                 Command::Test { file, filter, verbose } => test_file(&file, filter.as_deref(), verbose),
-                Command::Bench { file, filter, samples, warmup, native } => {
-                    if native {
-                        bench_native(&file, filter.as_deref(), samples, warmup)
+                Command::Bench { file, filter, samples, warmup, native, compare, threshold } => {
+                    if let Some(paths) = compare {
+                        bench_compare(&paths[0], &paths[1], threshold)
+                    } else if let Some(f) = file {
+                        if native {
+                            bench_native(&f, filter.as_deref(), samples, warmup)
+                        } else {
+                            bench_file(&f, filter.as_deref(), samples, warmup)
+                        }
                     } else {
-                        bench_file(&file, filter.as_deref(), samples, warmup)
+                        Err::<(), Box<dyn std::error::Error>>(
+                            "bench requires <file> or --compare <baseline> <current>".into(),
+                        )
                     }
                 },
                 Command::Fmt { file, check } => fmt_file(&file, check),
@@ -2105,6 +2119,137 @@ fn bench_native(
     }
 
     Ok(())
+}
+
+/// v0.98 (Cycle 2345): Compare two `bmb bench` JSON outputs.
+///
+/// Reads NDJSON bench lines from baseline and current files, matches
+/// entries by name, and reports per-bench `median_ns` delta. Returns
+/// Err (exit 1) if any regression exceeds `threshold_pct`.
+fn bench_compare(baseline: &std::path::Path, current: &std::path::Path, threshold_pct: f64) -> Result<(), Box<dyn std::error::Error>> {
+    let base_map = parse_bench_json_file(baseline)?;
+    let curr_map = parse_bench_json_file(current)?;
+
+    let mut names: Vec<&String> = base_map.keys().chain(curr_map.keys()).collect();
+    names.sort();
+    names.dedup();
+
+    if is_human_output() {
+        println!("Benchmark comparison (threshold: {:.2}%)", threshold_pct);
+        println!(
+            "{:<40} {:>14} {:>14} {:>10}  status",
+            "name", "baseline (ns)", "current (ns)", "delta%"
+        );
+        println!("{}", "-".repeat(90));
+    }
+
+    let mut regressions = 0u64;
+    let mut improvements = 0u64;
+    let mut ok_count = 0u64;
+    let mut missing = 0u64;
+    let mut new_benches = 0u64;
+
+    for name in names {
+        let base = base_map.get(name);
+        let curr = curr_map.get(name);
+
+        let (status, base_med, curr_med, delta_pct) = match (base, curr) {
+            (Some(b), Some(c)) => {
+                let bm = b.median_ns as f64;
+                let cm = c.median_ns as f64;
+                let delta = if bm > 0.0 { (cm - bm) / bm * 100.0 } else { 0.0 };
+                let st = if delta > threshold_pct {
+                    regressions += 1;
+                    "REGRESSION"
+                } else if delta < -threshold_pct {
+                    improvements += 1;
+                    "IMPROVEMENT"
+                } else {
+                    ok_count += 1;
+                    "OK"
+                };
+                (st, Some(b.median_ns), Some(c.median_ns), Some(delta))
+            }
+            (Some(b), None) => {
+                missing += 1;
+                ("MISSING", Some(b.median_ns), None, None)
+            }
+            (None, Some(c)) => {
+                new_benches += 1;
+                ("NEW", None, Some(c.median_ns), None)
+            }
+            (None, None) => continue,
+        };
+
+        if is_human_output() {
+            let base_s = base_med.map(|n| n.to_string()).unwrap_or_else(|| "-".to_string());
+            let curr_s = curr_med.map(|n| n.to_string()).unwrap_or_else(|| "-".to_string());
+            let delta_s = delta_pct.map(|p| format!("{:+.2}%", p)).unwrap_or_else(|| "-".to_string());
+            println!("{:<40} {:>14} {:>14} {:>10}  {}", name, base_s, curr_s, delta_s, status);
+        } else {
+            let base_json = base_med.map(|n| n.to_string()).unwrap_or_else(|| "null".to_string());
+            let curr_json = curr_med.map(|n| n.to_string()).unwrap_or_else(|| "null".to_string());
+            let delta_json = delta_pct.map(|p| format!("{:.4}", p)).unwrap_or_else(|| "null".to_string());
+            println!(
+                r#"{{"type":"compare","name":"{}","baseline_median_ns":{},"current_median_ns":{},"delta_pct":{},"status":"{}"}}"#,
+                name, base_json, curr_json, delta_json, status
+            );
+        }
+    }
+
+    if is_human_output() {
+        println!();
+        println!(
+            "Summary: {} OK, {} regression(s), {} improvement(s), {} missing, {} new",
+            ok_count, regressions, improvements, missing, new_benches
+        );
+    } else {
+        println!(
+            r#"{{"type":"compare_result","ok":{},"regressions":{},"improvements":{},"missing":{},"new":{},"threshold_pct":{:.4}}}"#,
+            ok_count, regressions, improvements, missing, new_benches, threshold_pct
+        );
+    }
+
+    if regressions > 0 {
+        Err(format!("{} regression(s) exceed threshold {:.2}%", regressions, threshold_pct).into())
+    } else {
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+struct BenchEntry {
+    #[allow(dead_code)]
+    min_ns: u64,
+    median_ns: u64,
+    #[allow(dead_code)]
+    mean_ns: f64,
+}
+
+fn parse_bench_json_file(path: &std::path::Path) -> Result<std::collections::HashMap<String, BenchEntry>, Box<dyn std::error::Error>> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+    let mut map = std::collections::HashMap::new();
+    for (lineno, line) in content.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let v: serde_json::Value = serde_json::from_str(trimmed)
+            .map_err(|e| format!("{}:{}: invalid JSON: {}", path.display(), lineno + 1, e))?;
+        let ty = v.get("type").and_then(|x| x.as_str()).unwrap_or("");
+        if ty != "bench" {
+            continue;
+        }
+        let name = v.get("name").and_then(|x| x.as_str())
+            .ok_or_else(|| format!("{}:{}: missing 'name'", path.display(), lineno + 1))?
+            .to_string();
+        let min_ns = v.get("min_ns").and_then(|x| x.as_u64()).unwrap_or(0);
+        let median_ns = v.get("median_ns").and_then(|x| x.as_u64()).unwrap_or(0);
+        let mean_ns = v.get("mean_ns").and_then(|x| x.as_f64()).unwrap_or(0.0);
+        map.insert(name, BenchEntry { min_ns, median_ns, mean_ns });
+    }
+    Ok(map)
 }
 
 /// Return true if the source defines a `fn main(` at the top level.
