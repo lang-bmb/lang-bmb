@@ -1,0 +1,16 @@
+@include "stdlib/simd/mod.bmb"
+
+// Cycle 2293: f32 literal coercion + cast.
+fn takes_f32(x: f32) -> f32 = x;
+
+fn scalar_demo() -> i64 = {
+    let a: f32 = 3.14;             // F64 literal coerces to F32
+    let b: f32 = (1.0 as f32);     // explicit cast
+    let sum: f32 = a + b;          // same-type arithmetic
+    let _wide: f64 = (sum as f64); // explicit widening
+    0
+};
+
+fn takes_f32x4(v: f32x4) -> f32x4 = v;
+
+fn main() -> i64 = scalar_demo();

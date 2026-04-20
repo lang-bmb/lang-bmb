@@ -1407,6 +1407,12 @@ impl<'ctx> LlvmContext<'ctx> {
         let time_ns_fn = self.module.add_function("bmb_time_ns", time_ns_type, None);
         self.functions.insert("time_ns".to_string(), time_ns_fn);
 
+        // v0.98 (Cycle 2334): bmb_black_box(v: i64) -> i64 — defeats DCE/folding
+        // in `bmb bench --native` harness. Runtime stores v to a volatile sink.
+        let black_box_type = i64_type.fn_type(&[i64_type.into()], false);
+        let black_box_fn = self.module.add_function("bmb_black_box", black_box_type, None);
+        self.functions.insert("bmb_black_box".to_string(), black_box_fn);
+
         // v0.88.2: system_capture(cmd: ptr) -> ptr (executes command and captures stdout)
         let system_capture_type = ptr_type.fn_type(&[ptr_type.into()], false);
         let system_capture_fn = self.module.add_function("bmb_system_capture", system_capture_type, None);

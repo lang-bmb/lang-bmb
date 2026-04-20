@@ -340,6 +340,10 @@ impl TypeChecker {
         // time_ns() -> i64 (nanoseconds since epoch)
         functions.insert("time_ns".to_string(), (vec![], Type::I64));
 
+        // v0.98 (Cycle 2334): Opaque identity used by `bmb bench --native`
+        // harness to defeat LLVM DCE/constant folding on pure bench functions.
+        functions.insert("bmb_black_box".to_string(), (vec![Type::I64], Type::I64));
+
         // v0.31.22: Command-line argument builtins for Phase 32.3.D CLI Independence
         // arg_count() -> i64 (number of arguments including program name)
         functions.insert("arg_count".to_string(), (vec![], Type::I64));

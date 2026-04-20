@@ -1,0 +1,44 @@
+// Cycle 2338: `bmb bench --native` validation test.
+// Uses time_ns() as opaque input to defeat LLVM constant folding.
+//
+// Both a real-work bench (PCG-like LCG hash loop seeded from time_ns) and
+// a constant-fold demo are included so we can see the contrast.
+
+extern fn malloc(n: i64) -> i64;
+extern fn free(p: i64) -> i64;
+extern fn store_i64(p: i64, v: i64) -> i64;
+extern fn load_i64(p: i64) -> i64;
+
+// Real workload: seed from time_ns so LLVM can't precompute the output.
+@bench
+fn bench_lcg_hash_1k() -> i64 = {
+    let seed: i64 = time_ns();
+    let mut x: i64 = seed;
+    let mut i: i64 = 0;
+    while i < 1000 {
+        set x = x * 6364136223846793005 + 1442695040888963407;
+        set x = x + (x / 1024);
+        set i = i + 1;
+    };
+    x
+};
+
+// Constant-foldable demo: LLVM will reduce this to a compile-time constant.
+// Expected median: 0 ns (timer resolution floor).
+@bench
+fn bench_foldable_sum() -> i64 = {
+    let mut acc: i64 = 0;
+    let mut i: i64 = 0;
+    while i < 100 {
+        set acc = acc + i;
+        set i = i + 1;
+    };
+    acc
+};
+
+fn main() -> i64 = {
+    // User-facing single-run mode via `bmb run`.
+    let r1 = bench_lcg_hash_1k();
+    let r2 = bench_foldable_sum();
+    r1 + r2
+};

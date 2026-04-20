@@ -4555,6 +4555,16 @@ int64_t now_ns(void) { return bmb_time_ns(); }
 int64_t now_ms(void) { return bmb_time_ms(); }
 int64_t time_ms(void) { return bmb_time_ms(); }
 
+// v0.98 (Cycle 2334): Opaque identity that defeats LLVM DCE / constant folding.
+// Used by `bmb bench --native` harness to force bench results to be observed,
+// mirroring `std::hint::black_box` semantics. The `volatile` sink prevents the
+// optimizer from proving the call is pure, so the input value must be computed.
+static volatile int64_t bmb_black_box_sink;
+int64_t bmb_black_box(int64_t v) {
+    bmb_black_box_sink = v;
+    return bmb_black_box_sink;
+}
+
 // v0.95: exit process
 void bmb_exit(int64_t code) { exit((int)code); }
 

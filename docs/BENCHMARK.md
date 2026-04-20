@@ -181,6 +181,59 @@ clang -O3 -march=native bench.c -o bench_c -lm
 hyperfine --warmup 2 --runs 5 './bench_bmb' './bench_c'
 ```
 
+## Microbenchmarks via `@bench`
+
+For measuring small functions in isolation, use the `@bench` attribute.
+
+```bmb
+@bench
+fn bench_hot_loop() -> i64 = {
+    // body to measure
+    ...
+    0
+}
+
+@bench(200, 20)  // samples=200, warmup=20
+fn bench_custom_runs() -> i64 = { ... }
+```
+
+Run via either:
+
+```bash
+# Interpreter mode (default) — suitable for correctness-oriented benches
+bmb bench tests/bench/file.bmb
+
+# Native mode (v0.98) — compiles each bench with a timing harness, runs native
+bmb bench tests/bench/file.bmb --native
+```
+
+### Native mode semantics
+
+`--native` synthesizes a per-file harness that:
+
+1. Warms each `@bench` function `warmup` iterations.
+2. Runs `samples` measurements with `bmb_time_ns()` sampling (monotonic clock).
+3. Feeds the bench result through `bmb_black_box` (a volatile-sink opaque
+   identity) so LLVM cannot eliminate the call entirely via DCE.
+
+The harness is compiled via the standard build pipeline (`bmb build`) and
+executed as a normal process. Stdout is parsed into per-bench statistics
+(min / median / p99 / mean / stddev).
+
+### Caveats for `--native`
+
+- **Pure toy benches fold to constants.** `black_box` prevents DCE but not
+  constant folding — LLVM can still precompute a pure function at compile
+  time. A bench like `sum 0..100` will measure 0 ns. Use workloads with
+  non-predictable inputs (external allocation, I/O, runtime args) to
+  measure meaningfully.
+- **`fn main()` is auto-renamed.** If the bench file defines its own
+  `fn main()` (common for `bmb run` convenience), the harness rewrites it
+  to `fn _bmb_user_main(` in a temporary shim file — so the file works in
+  both interpreter and native bench mode without changes.
+- **Cross-platform status:** Verified on Windows (MinGW + MSYS2 LLVM 21).
+  Linux/macOS not yet validated.
+
 ## Adding New Benchmarks
 
 1. Create directory: `ecosystem/benchmark-bmb/benches/compute/<name>/`

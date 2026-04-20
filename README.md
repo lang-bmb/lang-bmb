@@ -232,6 +232,7 @@ BMB was designed with AI code generation in mind. The verbose, explicit syntax t
 | [Architecture](docs/ARCHITECTURE.md) | Compiler internals |
 | [Build from Source](docs/BUILD_FROM_SOURCE.md) | Build instructions |
 | [Benchmark](docs/BENCHMARK.md) | Performance methodology and results |
+| [SIMD Performance Guide](docs/SIMD_PERF.md) | When to write manual SIMD vs trust auto-vec |
 | [Contributing](docs/CONTRIBUTING.md) | How to contribute |
 | [Target Users](docs/TARGET_USERS.md) | Who BMB is for |
 | [Roadmap](docs/ROADMAP.md) | Development roadmap |

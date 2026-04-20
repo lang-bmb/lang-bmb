@@ -213,12 +213,20 @@ v0.97        @export + --shared + FFI 안전성 (setjmp/longjmp, TLS)
              → `simd_f32_correctness.bmb` 12 checks (f32x4/f32x8/f32x16) exit 0 양 백엔드
              → `simd_saxpy_f32.bmb` SIMD FMA 경로 validated (141-155ms, REPS=5000 N=4096)
              → 3-Stage Fixed Point ✅ (65.5s, Cycle 2296)
+             **@bench native mode ✅** — `bmb bench --native` (Cycles 2330-2335)
+             → 합성 harness (text template) + build pipeline reuse + stdout parsing
+             → `bmb_black_box` runtime helper (DCE 방지; constant folding은 LLVM 본질 한계)
+             → main() 충돌 자동 처리 (shim 파일 생성/정리)
+             → docs/BENCHMARK.md 업데이트 + docs/SIMD_PERF.md 승격
+             → **Phase C 보류** (Cycle 2329 evidence) — opt -O2 후 inttoptr 100% 제거 확인
+             → cargo test 6201 pass, clippy clean, Stage 1 bootstrap ✅ (21s)
 
 ═══════════════════ 현재 위치: 배포/품질 단계 ═════════════════════════
 
 v0.98        PyPI wheel 빌드 + 크로스플랫폼 (Linux/macOS)
-             Native Ptr 타입 시스템 (inttoptr 제거)
+             @bench native mode ✅ (Cycles 2330-2335)
              Node.js WASM 바인딩
+             ~~Native Ptr 타입 시스템~~ — 증거상 보류 (opt -O2 자동 제거 확인)
           ▼
 v0.99        제네릭 타입 시스템 (Vec<T>, HashMap<K,V>)
              크로스 플랫폼 CI + Playground 배포

@@ -213,6 +213,9 @@ enum Command {
         /// Number of warmup iterations before measurement (default: 10)
         #[arg(long, default_value_t = 10)]
         warmup: u64,
+        /// Compile and execute benches as native binary (default: interpreter)
+        #[arg(long)]
+        native: bool,
     },
     /// Format a BMB source file
     Fmt {
@@ -484,7 +487,13 @@ fn main() {
                 Command::Parse { file, format } => parse_file(&file, &format),
                 Command::Tokens { file } => tokenize_file(&file),
                 Command::Test { file, filter, verbose } => test_file(&file, filter.as_deref(), verbose),
-                Command::Bench { file, filter, samples, warmup } => bench_file(&file, filter.as_deref(), samples, warmup),
+                Command::Bench { file, filter, samples, warmup, native } => {
+                    if native {
+                        bench_native(&file, filter.as_deref(), samples, warmup)
+                    } else {
+                        bench_file(&file, filter.as_deref(), samples, warmup)
+                    }
+                },
                 Command::Fmt { file, check } => fmt_file(&file, check),
                 Command::Lint { file, strict, include_paths } => lint_file(&file, strict, &include_paths),
                 Command::Lsp => start_lsp(),
@@ -1872,6 +1881,379 @@ fn bench_file(
     }
 
     Ok(())
+}
+
+/// v0.98 (Cycle 2332): Native @bench mode.
+///
+/// Compiles each bench file with a synthesized harness that calls every
+/// `@bench` function in a warmup + sample loop, then runs the produced
+/// binary and aggregates per-bench statistics from stdout.
+///
+/// The harness emits:
+///   `M:<bench_name>` (start of bench)
+///   `<ns>` per sample (newline-delimited i64 values)
+///
+/// Constant-returning toy benches will be folded by LLVM and report 0ns —
+/// real benches that touch memory are unaffected.
+fn bench_native(
+    path: &PathBuf,
+    filter: Option<&str>,
+    cli_samples: u64,
+    cli_warmup: u64,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let bench_files = if path.is_dir() {
+        collect_test_files(path)?
+    } else {
+        vec![path.clone()]
+    };
+
+    if bench_files.is_empty() {
+        if is_human_output() {
+            println!("No benchmark files found");
+        } else {
+            println!(r#"{{"type":"bench_result","benches":0}}"#);
+        }
+        return Ok(());
+    }
+
+    let mut total_benches: u64 = 0;
+
+    for bench_file_path in &bench_files {
+        let source = std::fs::read_to_string(bench_file_path)?;
+        let filename = bench_file_path.display().to_string();
+
+        let tokens = bmb::lexer::tokenize(&source)?;
+        let ast = bmb::parser::parse(&filename, &source, tokens)?;
+
+        let mut checker = bmb::types::TypeChecker::new();
+        checker.check_program(&ast)?;
+
+        let mut interpreter = bmb::interp::Interpreter::new();
+        interpreter.load(&ast);
+
+        let bench_names: Vec<String> = interpreter
+            .get_bench_functions()
+            .into_iter()
+            .filter(|name| filter.is_none_or(|f| name.contains(f)))
+            .collect();
+
+        if bench_names.is_empty() {
+            continue;
+        }
+
+        // Per-bench overrides (samples/warmup), pulled from @bench(args).
+        let per_bench_opts: Vec<(String, u64, u64)> = bench_names
+            .iter()
+            .map(|name| {
+                let opts = interpreter.get_bench_options(name).unwrap_or_default();
+                let s = opts.samples.unwrap_or(cli_samples).max(1);
+                let w = opts.warmup.unwrap_or(cli_warmup);
+                (name.clone(), s, w)
+            })
+            .collect();
+
+        // If the bench file defines its own main(), rename it so the harness's
+        // main() doesn't clash. We write the rewritten source to a sibling
+        // `_bmb_bench_shim.bmb` in the same directory so any relative `@include`
+        // directives still resolve (preprocessor walks from source_dir).
+        let stem = bench_file_path.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("bench");
+        let bench_dir = bench_file_path.parent().unwrap_or(std::path::Path::new("."));
+        let (include_target_abs, shim_path_opt) = if source_has_main(&source) {
+            let shim_path = bench_dir.join(format!("_bmb_bench_{}_shim.bmb", stem));
+            let rewritten = rewrite_main_to_user_main(&source);
+            std::fs::write(&shim_path, &rewritten)?;
+            let abs = shim_path.canonicalize().unwrap_or(shim_path.clone());
+            (abs.display().to_string().replace('\\', "/"), Some(shim_path))
+        } else {
+            let abs = bench_file_path.canonicalize().unwrap_or_else(|_| bench_file_path.clone());
+            (abs.display().to_string().replace('\\', "/"), None)
+        };
+        let harness = build_bench_harness(&include_target_abs, &per_bench_opts);
+
+        // Write harness to a temp file.
+        let temp_dir = std::env::temp_dir();
+        let harness_path = temp_dir.join(format!("bmb_bench_{}_harness.bmb", stem));
+        let exe_path = temp_dir.join(format!("bmb_bench_{}_harness{}", stem, std::env::consts::EXE_SUFFIX));
+        std::fs::write(&harness_path, &harness)?;
+        // Cleanup shim file on function exit via scope guard? Defer to temp-dir-style:
+        // just leave it; next run overwrites. Noted as follow-up (Cycle 8+).
+        let _shim_guard = shim_path_opt; // keep alive for the cycle
+
+        // Build via existing pipeline. Spawn the bmb compiler (us) with
+        // `build` subcommand to keep the codepath identical to user-driven
+        // builds — avoids reaching into the compile() internals.
+        let bmb_self = std::env::current_exe()?;
+        let build_status = std::process::Command::new(&bmb_self)
+            .arg("build")
+            .arg(&harness_path)
+            .arg("-o")
+            .arg(&exe_path)
+            .output()?;
+        if !build_status.status.success() {
+            let stderr = String::from_utf8_lossy(&build_status.stderr);
+            let stdout = String::from_utf8_lossy(&build_status.stdout);
+            if is_human_output() {
+                println!("❌ Failed to build harness for {}: {}{}", filename, stdout, stderr);
+            } else {
+                println!(
+                    r#"{{"type":"bench_native_build_fail","file":"{}","stdout":"{}","stderr":"{}"}}"#,
+                    filename,
+                    stdout.replace('"', "\\\""),
+                    stderr.replace('"', "\\\""),
+                );
+            }
+            continue;
+        }
+
+        // Run the built executable.
+        let run_output = std::process::Command::new(&exe_path).output()?;
+        if !run_output.status.success() {
+            let stderr = String::from_utf8_lossy(&run_output.stderr);
+            if is_human_output() {
+                println!("❌ Harness exec failed for {}: {}", filename, stderr);
+            } else {
+                println!(
+                    r#"{{"type":"bench_native_exec_fail","file":"{}","stderr":"{}"}}"#,
+                    filename,
+                    stderr.replace('"', "\\\""),
+                );
+            }
+            continue;
+        }
+
+        let stdout = String::from_utf8_lossy(&run_output.stdout);
+        let parsed = parse_bench_harness_output(&stdout, &per_bench_opts);
+
+        if is_human_output() && bench_files.len() > 1 {
+            println!("\n📂 {}", filename);
+        }
+        if is_human_output() {
+            println!(
+                "\n{:<40} {:>12} {:>12} {:>12} {:>12}",
+                "name", "min", "median", "p99", "stddev"
+            );
+            println!("{}", "-".repeat(92));
+        }
+
+        for (name, ns_samples) in parsed {
+            total_benches += 1;
+            if ns_samples.is_empty() {
+                if is_human_output() {
+                    println!("  ⚠️  {} - no samples captured", name);
+                } else {
+                    println!(
+                        r#"{{"type":"bench_fail","name":"{}","reason":"no samples captured"}}"#,
+                        name
+                    );
+                }
+                continue;
+            }
+            let mut samples = ns_samples;
+            samples.sort_unstable();
+            let n = samples.len() as u64;
+            let min = samples[0];
+            let median = samples[samples.len() / 2];
+            let p99_idx = (((samples.len() as f64) * 0.99) as usize).min(samples.len() - 1);
+            let p99 = samples[p99_idx];
+            let mean = samples.iter().sum::<u64>() as f64 / n as f64;
+            let variance = samples
+                .iter()
+                .map(|&x| {
+                    let d = x as f64 - mean;
+                    d * d
+                })
+                .sum::<f64>()
+                / n as f64;
+            let stddev = variance.sqrt() as u64;
+
+            if is_human_output() {
+                println!(
+                    "{:<40} {:>10}ns {:>10}ns {:>10}ns {:>10}ns",
+                    name, min, median, p99, stddev
+                );
+            } else {
+                let (_, samples_count, warmup) = per_bench_opts
+                    .iter()
+                    .find(|(n, _, _)| n == &name)
+                    .cloned()
+                    .unwrap_or((name.clone(), cli_samples, cli_warmup));
+                println!(
+                    r#"{{"type":"bench","mode":"native","name":"{}","file":"{}","samples":{},"warmup":{},"min_ns":{},"median_ns":{},"p99_ns":{},"mean_ns":{:.2},"stddev_ns":{}}}"#,
+                    name, filename, samples_count, warmup, min, median, p99, mean, stddev
+                );
+            }
+        }
+
+        // Clean up generated shim file (if any) so it doesn't pollute the
+        // user's source tree between runs.
+        if let Some(shim) = &_shim_guard {
+            let _ = std::fs::remove_file(shim);
+        }
+    }
+
+    if is_human_output() {
+        println!();
+        if total_benches == 0 {
+            println!("No benchmarks found");
+        } else {
+            println!("Ran {} benchmark(s) (native mode)", total_benches);
+        }
+    } else {
+        println!(r#"{{"type":"bench_result","mode":"native","benches":{}}}"#, total_benches);
+    }
+
+    Ok(())
+}
+
+/// Return true if the source defines a `fn main(` at the top level.
+/// Cheap textual check — tolerates whitespace/tabs before the keyword.
+fn source_has_main(source: &str) -> bool {
+    for line in source.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("fn main(") || trimmed.starts_with("pub fn main(") {
+            return true;
+        }
+    }
+    false
+}
+
+/// Rename `fn main(` (and `pub fn main(`) to `fn _bmb_user_main(` so the
+/// bench-native harness can define its own `main` without collision.
+/// Textual rewrite mirrors `source_has_main` — good enough for the gated path.
+fn rewrite_main_to_user_main(source: &str) -> String {
+    let mut out = String::with_capacity(source.len() + 32);
+    for line in source.lines() {
+        let trimmed = line.trim_start();
+        let lead_len = line.len() - trimmed.len();
+        if let Some(rest) = trimmed.strip_prefix("pub fn main(") {
+            out.push_str(&line[..lead_len]);
+            out.push_str("pub fn _bmb_user_main(");
+            out.push_str(rest);
+            out.push('\n');
+        } else if let Some(rest) = trimmed.strip_prefix("fn main(") {
+            out.push_str(&line[..lead_len]);
+            out.push_str("fn _bmb_user_main(");
+            out.push_str(rest);
+            out.push('\n');
+        } else {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out
+}
+
+/// Generate a BMB harness source that runs each bench function in a
+/// warmup + sample loop and emits `M:<name>\n<ns>\n<ns>...` to stdout.
+///
+/// The harness `@include`s the original bench file by absolute path; the
+/// bench file must NOT define its own `main()` (pre-existing constraint of
+/// the @bench convention — interp mode requires the same).
+fn build_bench_harness(bench_abs_path: &str, opts: &[(String, u64, u64)]) -> String {
+    let mut s = String::new();
+    s.push_str("// Auto-generated by `bmb bench --native` (do not edit).\n");
+    s.push_str(&format!("@include \"{}\"\n\n", bench_abs_path));
+    s.push_str("extern fn time_ns() -> i64;\n");
+    s.push_str("extern fn println(n: i64) -> i64;\n");
+    s.push_str("extern fn print_str(s: String) -> i64;\n");
+    s.push_str("extern fn bmb_black_box(v: i64) -> i64;\n\n");
+
+    // One harness function per bench, then a main() that calls all of them.
+    for (i, (name, samples, warmup)) in opts.iter().enumerate() {
+        use std::fmt::Write;
+        writeln!(s, "fn _bmb_bench_runner_{}() -> i64 = {{", i).unwrap();
+        s.push_str("    let mut _bw: i64 = 0;\n");
+        writeln!(s, "    while _bw < {} {{", warmup).unwrap();
+        writeln!(s, "        let _bwx = {}();", name).unwrap();
+        s.push_str("        set _bw = _bw + 1;\n");
+        s.push_str("    };\n");
+        // Sentinel marker — start of bench, keyed by fn name.
+        writeln!(s, "    let _bm = print_str(\"M:{}\\n\");", name).unwrap();
+        s.push_str("    let mut _bs: i64 = 0;\n");
+        s.push_str("    let mut _bacc: i64 = 0;\n");
+        writeln!(s, "    while _bs < {} {{", samples).unwrap();
+        s.push_str("        let _bt0 = time_ns();\n");
+        writeln!(s, "        let _br = {}();", name).unwrap();
+        s.push_str("        let _bdt = time_ns() - _bt0;\n");
+        // black_box forces _br to be observed so LLVM can't prove the call pure
+        // and thereby fold the bench body to a constant.
+        s.push_str("        let _bbb = bmb_black_box(_br);\n");
+        s.push_str("        set _bacc = _bacc + _bbb;\n");
+        s.push_str("        let _bp = println(_bdt);\n");
+        s.push_str("        set _bs = _bs + 1;\n");
+        s.push_str("    };\n");
+        // Force the accumulator to be observed so optimizer can't eliminate.
+        s.push_str("    let _bx = print_str(\"X:\\n\");\n");
+        s.push_str("    let _bxv = println(_bacc);\n");
+        s.push_str("    0\n};\n\n");
+    }
+
+    s.push_str("fn main() -> i64 = {\n");
+    for i in 0..opts.len() {
+        use std::fmt::Write;
+        writeln!(s, "    let _bmr_{} = _bmb_bench_runner_{}();", i, i).unwrap();
+    }
+    s.push_str("    0\n};\n");
+
+    s
+}
+
+/// Parse harness stdout into per-bench sample vectors.
+///
+/// Format:
+///   M:<name>\n
+///   <ns>\n × samples
+///   X:\n
+///   <accumulator>\n  (ignored — anti-DCE only)
+///   ... repeated for next bench
+fn parse_bench_harness_output(
+    stdout: &str,
+    expected_opts: &[(String, u64, u64)],
+) -> Vec<(String, Vec<u64>)> {
+    let mut result: Vec<(String, Vec<u64>)> = Vec::new();
+    let mut current_name: Option<String> = None;
+    let mut current_samples: Vec<u64> = Vec::new();
+    let mut in_x_section = false;
+
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Some(name) = line.strip_prefix("M:") {
+            // Flush previous.
+            if let Some(prev_name) = current_name.take() {
+                result.push((prev_name, std::mem::take(&mut current_samples)));
+            }
+            current_name = Some(name.to_string());
+            current_samples.clear();
+            in_x_section = false;
+        } else if line == "X:" {
+            in_x_section = true;
+        } else if in_x_section {
+            // Accumulator line — discard.
+            in_x_section = false;
+        } else if let Ok(ns) = line.parse::<u64>() {
+            current_samples.push(ns);
+        }
+        // Ignore unknown lines (defensive).
+    }
+    if let Some(name) = current_name.take() {
+        result.push((name, current_samples));
+    }
+
+    // Order results to match expected_opts (so output matches user expectations).
+    let mut ordered: Vec<(String, Vec<u64>)> = Vec::new();
+    for (name, _, _) in expected_opts {
+        if let Some(pos) = result.iter().position(|(n, _)| n == name) {
+            ordered.push(result.remove(pos));
+        }
+    }
+    // Append any unmatched (shouldn't happen but defensive).
+    ordered.extend(result);
+    ordered
 }
 
 fn collect_test_files(dir: &PathBuf) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {

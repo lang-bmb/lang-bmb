@@ -1,0 +1,81 @@
+// Minimal stencil_simd_v2 repro: n=16, reps=1. Compare to scalar.
+
+@include "stdlib/simd/mod.bmb"
+
+extern fn malloc(n: i64) -> i64;
+extern fn free(p: i64) -> i64;
+extern fn store_f64(ptr: i64, v: f64) -> i64;
+extern fn load_f64(ptr: i64) -> f64;
+extern fn f64_to_i64(x: f64) -> i64;
+extern fn i64_to_f64(x: i64) -> f64;
+extern fn println(n: i64) -> i64;
+
+fn init_linear(buf: i64, n: i64) -> i64 = {
+    let mut i: i64 = 0;
+    while i < n {
+        let _s = store_f64(buf + i * 8, i64_to_f64(i));
+        i = i + 1;
+    };
+    0
+};
+
+fn sweep_v2(curr: i64, next: i64, n: i64) -> i64 = {
+    let scale = splat_f64x4(0.2);
+    let mut i: i64 = 4;
+    let bound: i64 = n - 7;
+    while i <= bound {
+        let vL = load_f64x4(curr, i - 4);
+        let vM = load_f64x4(curr, i);
+        let vR = load_f64x4(curr, i + 4);
+        let v_2  = slide_left2_f64x4(vL, vM, 2);
+        let v_1  = slide_left2_f64x4(vL, vM, 3);
+        let v_0  = vM;
+        let v_1p = slide_left2_f64x4(vM, vR, 1);
+        let v_2p = slide_left2_f64x4(vM, vR, 2);
+        let summed = v_2 + v_1 + v_0 + v_1p + v_2p;
+        let scaled = summed * scale;
+        let _st = store_f64x4(next, i, scaled);
+        i = i + 4;
+    };
+    let mut j: i64 = 2;
+    while j < 4 {
+        let s_2 = load_f64(curr + (j - 2) * 8);
+        let s_1 = load_f64(curr + (j - 1) * 8);
+        let s0  = load_f64(curr + j * 8);
+        let s1  = load_f64(curr + (j + 1) * 8);
+        let s2  = load_f64(curr + (j + 2) * 8);
+        let s = (s_2 + s_1 + s0 + s1 + s2) * 0.2;
+        let _st = store_f64(next + j * 8, s);
+        j = j + 1;
+    };
+    while i < n - 2 {
+        let s_2 = load_f64(curr + (i - 2) * 8);
+        let s_1 = load_f64(curr + (i - 1) * 8);
+        let s0  = load_f64(curr + i * 8);
+        let s1  = load_f64(curr + (i + 1) * 8);
+        let s2  = load_f64(curr + (i + 2) * 8);
+        let s = (s_2 + s_1 + s0 + s1 + s2) * 0.2;
+        let _st = store_f64(next + i * 8, s);
+        i = i + 1;
+    };
+    0
+};
+
+fn main() -> i64 = {
+    let n: i64 = 16;
+    let bytes: i64 = n * 8;
+    let a = malloc(bytes);
+    let b = malloc(bytes);
+    let _i1 = init_linear(a, n);
+    let _s = sweep_v2(a, b, n);
+    // Print each b[i] (i=0..n-1) to see the output pattern.
+    let mut i: i64 = 0;
+    while i < n {
+        let v = load_f64(b + i * 8);
+        let _p = println(f64_to_i64(v));
+        i = i + 1;
+    };
+    let _f1 = free(a);
+    let _f2 = free(b);
+    0
+};

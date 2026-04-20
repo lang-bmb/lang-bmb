@@ -978,6 +978,10 @@ impl TextCodeGen {
         writeln!(out, "declare i64 @bmb_time_ms() nocallback nounwind nofree nosync willreturn")?;
         writeln!(out, "declare i64 @now_ms() nocallback nounwind nofree nosync willreturn")?;
         writeln!(out, "declare i64 @sleep_ms(i64) nounwind")?;
+        // v0.98 (Cycle 2334): Opaque identity — defeats constant folding / DCE
+        // for `bmb bench --native` harness. No attributes that would allow the
+        // optimizer to eliminate the call (no readnone / willreturn / etc).
+        writeln!(out, "declare i64 @bmb_black_box(i64) nounwind")?;
         writeln!(out)?;
 
         // v0.70: Threading runtime functions
@@ -8892,6 +8896,9 @@ impl TextCodeGen {
             // i64 return - Timing (v0.63, v0.97: stdlib time module)
             "bmb_time_ns" | "time_ns" | "now_ns"
             | "bmb_time_ms" | "time_ms" | "now_ms" => "i64",
+
+            // i64 return - v0.98 black-box for --native bench harness
+            "bmb_black_box" => "i64",
 
             // ptr return - String operations (both full and wrapper names)
             "bmb_string_new" | "bmb_string_from_cstr" | "bmb_string_slice"
