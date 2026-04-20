@@ -1,0 +1,11 @@
+// Cycle 2354: smoke test for ^ XOR operator (synonym of bxor).
+// Expected: exit = 0 if ^ and bxor produce same result
+// 5 ^ 3 = 6, 5 bxor 3 = 6, so result == 0 means both agree.
+
+fn main() -> i64 = {
+    let a: i64 = 5;
+    let b: i64 = 3;
+    let via_caret: i64 = a ^ b;
+    let via_keyword: i64 = a bxor b;
+    if via_caret == via_keyword { 0 } else { 1 }
+};

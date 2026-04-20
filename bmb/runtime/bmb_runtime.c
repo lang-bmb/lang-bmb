@@ -4926,6 +4926,75 @@ void bmb_async_socket_close(int64_t socket_handle) {
     free(sock);
 }
 
+// v0.98: Listen on TCP port (server-side). Returns listener socket handle or 0 on error.
+int64_t bmb_async_socket_listen(int64_t port) {
+    ensure_winsock_init();
+
+    BmbAsyncSocket* sock = (BmbAsyncSocket*)malloc(sizeof(BmbAsyncSocket));
+    if (!sock) return 0;
+
+    sock->sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (sock->sock == INVALID_SOCKET) {
+        free(sock);
+        return 0;
+    }
+
+    int reuse = 1;
+    setsockopt(sock->sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse));
+
+    struct sockaddr_in addr = {0};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons((unsigned short)port);
+    addr.sin_addr.s_addr = INADDR_ANY;
+
+    if (bind(sock->sock, (struct sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR) {
+        closesocket(sock->sock);
+        free(sock);
+        return 0;
+    }
+
+    if (listen(sock->sock, SOMAXCONN) == SOCKET_ERROR) {
+        closesocket(sock->sock);
+        free(sock);
+        return 0;
+    }
+
+    sock->host = strdup("0.0.0.0");
+    sock->port = (int)port;
+    sock->is_connected = 1;
+
+    return (int64_t)sock;
+}
+
+// v0.98: Accept incoming connection. Blocks until a client connects.
+// Returns client socket handle or 0 on error.
+int64_t bmb_async_socket_accept(int64_t listener_handle) {
+    if (listener_handle == 0) return 0;
+
+    BmbAsyncSocket* listener = (BmbAsyncSocket*)listener_handle;
+    if (!listener->is_connected) return 0;
+
+    struct sockaddr_in client_addr;
+    int client_len = sizeof(client_addr);
+    SOCKET client_sock = accept(listener->sock, (struct sockaddr*)&client_addr, &client_len);
+    if (client_sock == INVALID_SOCKET) return 0;
+
+    BmbAsyncSocket* client = (BmbAsyncSocket*)malloc(sizeof(BmbAsyncSocket));
+    if (!client) {
+        closesocket(client_sock);
+        return 0;
+    }
+
+    client->sock = client_sock;
+    char ipbuf[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &client_addr.sin_addr, ipbuf, sizeof(ipbuf));
+    client->host = strdup(ipbuf);
+    client->port = ntohs(client_addr.sin_port);
+    client->is_connected = 1;
+
+    return (int64_t)client;
+}
+
 #else
 // POSIX (Linux/macOS) uses Berkeley sockets
 #include <sys/socket.h>
@@ -5041,6 +5110,72 @@ void bmb_async_socket_close(int64_t socket_handle) {
 
     sock->is_connected = 0;
     free(sock);
+}
+
+// v0.98: Listen on TCP port (server-side). Returns listener socket handle or 0 on error.
+int64_t bmb_async_socket_listen(int64_t port) {
+    BmbAsyncSocket* sock = (BmbAsyncSocket*)malloc(sizeof(BmbAsyncSocket));
+    if (!sock) return 0;
+
+    sock->sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock->sock < 0) {
+        free(sock);
+        return 0;
+    }
+
+    int reuse = 1;
+    setsockopt(sock->sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+    struct sockaddr_in addr = {0};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons((unsigned short)port);
+    addr.sin_addr.s_addr = INADDR_ANY;
+
+    if (bind(sock->sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        close(sock->sock);
+        free(sock);
+        return 0;
+    }
+
+    if (listen(sock->sock, SOMAXCONN) < 0) {
+        close(sock->sock);
+        free(sock);
+        return 0;
+    }
+
+    sock->host = strdup("0.0.0.0");
+    sock->port = (int)port;
+    sock->is_connected = 1;
+
+    return (int64_t)sock;
+}
+
+// v0.98: Accept incoming connection. Blocks until a client connects.
+int64_t bmb_async_socket_accept(int64_t listener_handle) {
+    if (listener_handle == 0) return 0;
+
+    BmbAsyncSocket* listener = (BmbAsyncSocket*)listener_handle;
+    if (!listener->is_connected) return 0;
+
+    struct sockaddr_in client_addr;
+    socklen_t client_len = sizeof(client_addr);
+    int client_sock = accept(listener->sock, (struct sockaddr*)&client_addr, &client_len);
+    if (client_sock < 0) return 0;
+
+    BmbAsyncSocket* client = (BmbAsyncSocket*)malloc(sizeof(BmbAsyncSocket));
+    if (!client) {
+        close(client_sock);
+        return 0;
+    }
+
+    client->sock = client_sock;
+    char ipbuf[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &client_addr.sin_addr, ipbuf, sizeof(ipbuf));
+    client->host = strdup(ipbuf);
+    client->port = ntohs(client_addr.sin_port);
+    client->is_connected = 1;
+
+    return (int64_t)client;
 }
 
 #endif

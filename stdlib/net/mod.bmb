@@ -1,0 +1,32 @@
+// BMB Standard Library: net Module
+// Version: v0.98 (Cycle 2357)
+// Purpose: TCP networking primitives (client + server).
+//
+// Underlying runtime: bmb_async_socket_* (bmb/runtime/bmb_runtime.c).
+// Current implementation: synchronous blocking sockets.
+
+pub fn tcp_connect(host: String, port: i64) -> i64
+= async_socket_connect(host as i64, port);
+
+pub fn tcp_listen(port: i64) -> i64
+= async_socket_listen(port);
+
+pub fn tcp_accept(listener: i64) -> i64
+= async_socket_accept(listener);
+
+pub fn tcp_read(socket: i64) -> i64
+= async_socket_read(socket);
+
+pub fn tcp_write(socket: i64, content: String) -> i64
+= {
+    async_socket_write(socket, content as i64);
+    0
+};
+
+pub fn tcp_close(socket: i64) -> i64
+= {
+    if socket != 0 {
+        async_socket_close(socket);
+    };
+    0
+};

@@ -1,0 +1,13 @@
+// Cycle 2357: smoke test for TCP listen/close runtime bindings.
+// Verifies bmb_async_socket_listen on port 0 (OS-assigned) succeeds.
+// Exit 0 = success, 1 = listen failed.
+
+fn main() -> i64 = {
+    let listener: i64 = async_socket_listen(0);
+    if listener == 0 {
+        1
+    } else {
+        async_socket_close(listener);
+        0
+    }
+};

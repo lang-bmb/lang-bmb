@@ -1833,6 +1833,8 @@ fn builtin_async_socket_connect_sig() -> i64 = 2 * 100 + 2;
 fn builtin_async_socket_read_sig() -> i64 = 2 * 100 + 1;
 fn builtin_async_socket_write_sig() -> i64 = 6 * 100 + 2;
 fn builtin_async_socket_close_sig() -> i64 = 6 * 100 + 1;
+fn builtin_async_socket_listen_sig() -> i64 = 2 * 100 + 1;   // v0.98: TCP server listen
+fn builtin_async_socket_accept_sig() -> i64 = 2 * 100 + 1;   // v0.98: TCP server accept
 
 // Lookup builtin function by name, return signature or 0 if not found
 fn lookup_builtin(name: String) -> i64 =
@@ -1899,6 +1901,8 @@ fn lookup_builtin(name: String) -> i64 =
     else if name == "async_socket_read" { builtin_async_socket_read_sig() }
     else if name == "async_socket_write" { builtin_async_socket_write_sig() }
     else if name == "async_socket_close" { builtin_async_socket_close_sig() }
+    else if name == "async_socket_listen" { builtin_async_socket_listen_sig() }
+    else if name == "async_socket_accept" { builtin_async_socket_accept_sig() }
     else { 0 };
 
 // Get return type from signature
@@ -1970,6 +1974,8 @@ fn builtin_param_type(name: String, idx: i64) -> i64 =
     else if name == "async_socket_read" and idx == 0 { type_i64() }
     else if name == "async_socket_write" and idx < 2 { type_i64() }
     else if name == "async_socket_close" and idx == 0 { type_i64() }
+    else if name == "async_socket_listen" and idx == 0 { type_i64() }
+    else if name == "async_socket_accept" and idx == 0 { type_i64() }
     else { type_error() };
 
 // ============================================================================

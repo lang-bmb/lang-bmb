@@ -195,6 +195,7 @@ fn TK_PLUSWRAP() -> i64 = 2000000000 + 453;    // v0.96: +% (wrapping add)
 fn TK_MINUSWRAP() -> i64 = 2000000000 + 454;   // v0.96: -% (wrapping sub)
 fn TK_STARWRAP() -> i64 = 2000000000 + 455;    // v0.96: *% (wrapping mul)
 fn TK_LSHR() -> i64 = 2000000000 + 456;       // v0.96: >>> (logical shift right)
+fn TK_CARET() -> i64 = 2000000000 + 457;      // v0.98: ^ (bitwise xor, synonym of bxor)
 fn TK_EXTERN() -> i64 = 2000000000 + 167;
 
 fn TK_EOF() -> i64 = 2000000000 + 900;
@@ -229,6 +230,7 @@ fn tok_kind_name(kind: i64) -> String =
     else if kind == TK_EQEQ() { "'=='" }
     else if kind == TK_NEQ() { "'!='" }
     else if kind == TK_PIPE() { "'|'" }
+    else if kind == TK_CARET() { "'^'" }
     else if kind == TK_DCOLON() { "'::'" }
     else if kind == TK_EOF() { "end of file" }
     else { "integer literal" };
@@ -490,7 +492,7 @@ fn next_token_raw(s: String, pos: i64) -> i64 =
             // Char literal: 'x' or '\n' etc.
             let ch_end = scan_char_end(s, p + 1);
             make_tok(TK_CHAR_LIT(), ch_end)
-        } else if c == 58 { if p + 1 < s.len() and s.byte_at(p + 1) == 58 { make_tok(TK_DCOLON(), p + 2) } else { make_tok(TK_COLON(), p + 1) } } else if c == 61 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_EQEQ(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_FAT_ARROW(), p + 2) } else { make_tok(TK_EQ(), p + 1) } } else if c == 59 { make_tok(TK_SEMI(), p + 1) } else if c == 44 { make_tok(TK_COMMA(), p + 1) } else if c == 40 { make_tok(TK_LPAREN(), p + 1) } else if c == 41 { make_tok(TK_RPAREN(), p + 1) } else if c == 43 { if p + 1 < s.len() and s.byte_at(p + 1) == 124 { make_tok(TK_PLUSSAT(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 37 { make_tok(TK_PLUSWRAP(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_PLUSEQ(), p + 2) } else { make_tok(TK_PLUS(), p + 1) } } else if c == 45 { if p + 1 < s.len() and s.byte_at(p + 1) == 124 { make_tok(TK_MINUSSAT(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 37 { make_tok(TK_MINUSWRAP(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_ARROW(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_MINUSEQ(), p + 2) } else { make_tok(TK_MINUS(), p + 1) } } else if c == 42 { if p + 1 < s.len() and s.byte_at(p + 1) == 124 { make_tok(TK_STARSAT(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 37 { make_tok(TK_STARWRAP(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_STAREQ(), p + 2) } else { make_tok(TK_STAR(), p + 1) } } else if c == 47 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_SLASHEQ(), p + 2) } else { make_tok(TK_SLASH(), p + 1) } } else if c == 37 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_PERCENTEQ(), p + 2) } else { make_tok(TK_PERCENT(), p + 1) } } else if c == 60 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_LTEQ(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 60 { if p + 2 < s.len() and s.byte_at(p + 2) == 61 { make_tok(TK_SHLEQ(), p + 3) } else { make_tok(TK_SHL(), p + 2) } } else { make_tok(TK_LT(), p + 1) } } else if c == 62 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_GTEQ(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 62 { if p + 2 < s.len() and s.byte_at(p + 2) == 62 { make_tok(TK_LSHR(), p + 3) } else if p + 2 < s.len() and s.byte_at(p + 2) == 61 { make_tok(TK_SHREQ(), p + 3) } else { make_tok(TK_SHR(), p + 2) } } else { make_tok(TK_GT(), p + 1) } } else if c == 33 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_NEQ(), p + 2) } else { make_tok(TK_EOF(), p) } } else if c == 46 { if p + 1 < s.len() and s.byte_at(p + 1) == 46 { if p + 2 < s.len() and s.byte_at(p + 2) == 61 { make_tok(TK_DOTDOTEQ(), p + 3) } else { make_tok(TK_DOTDOT(), p + 2) } } else { make_tok(TK_DOT(), p + 1) } } else if c == 91 { make_tok(TK_LBRACKET(), p + 1) } else if c == 93 { make_tok(TK_RBRACKET(), p + 1) } else if c == 123 { make_tok(TK_LBRACE(), p + 1) } else if c == 125 { make_tok(TK_RBRACE(), p + 1) } else if c == 38 { make_tok(TK_AMP(), p + 1) } else if c == 63 { make_tok(TK_QUESTION(), p + 1) } else if c == 124 { make_tok(TK_PIPE(), p + 1) } else { make_tok(TK_EOF(), p) }
+        } else if c == 58 { if p + 1 < s.len() and s.byte_at(p + 1) == 58 { make_tok(TK_DCOLON(), p + 2) } else { make_tok(TK_COLON(), p + 1) } } else if c == 61 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_EQEQ(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_FAT_ARROW(), p + 2) } else { make_tok(TK_EQ(), p + 1) } } else if c == 59 { make_tok(TK_SEMI(), p + 1) } else if c == 44 { make_tok(TK_COMMA(), p + 1) } else if c == 40 { make_tok(TK_LPAREN(), p + 1) } else if c == 41 { make_tok(TK_RPAREN(), p + 1) } else if c == 43 { if p + 1 < s.len() and s.byte_at(p + 1) == 124 { make_tok(TK_PLUSSAT(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 37 { make_tok(TK_PLUSWRAP(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_PLUSEQ(), p + 2) } else { make_tok(TK_PLUS(), p + 1) } } else if c == 45 { if p + 1 < s.len() and s.byte_at(p + 1) == 124 { make_tok(TK_MINUSSAT(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 37 { make_tok(TK_MINUSWRAP(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_ARROW(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_MINUSEQ(), p + 2) } else { make_tok(TK_MINUS(), p + 1) } } else if c == 42 { if p + 1 < s.len() and s.byte_at(p + 1) == 124 { make_tok(TK_STARSAT(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 37 { make_tok(TK_STARWRAP(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_STAREQ(), p + 2) } else { make_tok(TK_STAR(), p + 1) } } else if c == 47 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_SLASHEQ(), p + 2) } else { make_tok(TK_SLASH(), p + 1) } } else if c == 37 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_PERCENTEQ(), p + 2) } else { make_tok(TK_PERCENT(), p + 1) } } else if c == 60 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_LTEQ(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 60 { if p + 2 < s.len() and s.byte_at(p + 2) == 61 { make_tok(TK_SHLEQ(), p + 3) } else { make_tok(TK_SHL(), p + 2) } } else { make_tok(TK_LT(), p + 1) } } else if c == 62 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_GTEQ(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 62 { if p + 2 < s.len() and s.byte_at(p + 2) == 62 { make_tok(TK_LSHR(), p + 3) } else if p + 2 < s.len() and s.byte_at(p + 2) == 61 { make_tok(TK_SHREQ(), p + 3) } else { make_tok(TK_SHR(), p + 2) } } else { make_tok(TK_GT(), p + 1) } } else if c == 33 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_NEQ(), p + 2) } else { make_tok(TK_EOF(), p) } } else if c == 46 { if p + 1 < s.len() and s.byte_at(p + 1) == 46 { if p + 2 < s.len() and s.byte_at(p + 2) == 61 { make_tok(TK_DOTDOTEQ(), p + 3) } else { make_tok(TK_DOTDOT(), p + 2) } } else { make_tok(TK_DOT(), p + 1) } } else if c == 91 { make_tok(TK_LBRACKET(), p + 1) } else if c == 93 { make_tok(TK_RBRACKET(), p + 1) } else if c == 123 { make_tok(TK_LBRACE(), p + 1) } else if c == 125 { make_tok(TK_RBRACE(), p + 1) } else if c == 38 { make_tok(TK_AMP(), p + 1) } else if c == 63 { make_tok(TK_QUESTION(), p + 1) } else if c == 94 { make_tok(TK_CARET(), p + 1) } else if c == 124 { make_tok(TK_PIPE(), p + 1) } else { make_tok(TK_EOF(), p) }
     };
 
 fn get_ident_text(s: String, pos: i64, tok: i64) -> String =
@@ -1411,7 +1413,7 @@ fn parse_bitxor(src: String, pos: i64) -> String =
 
 fn parse_bitxor_rest(src: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(src, pos);
-    if tok_kind(tok) == TK_BXOR() {
+    if tok_kind(tok) == TK_BXOR() or tok_kind(tok) == TK_CARET() {
         let rr = parse_bitand(src, tok_end(tok));
         if is_error(rr) { rr } else { parse_bitxor_rest(src, unpack_pos(rr), "(binop bxor " + left + " " + unpack_ast(rr) + ")") }
     } else { pack_result(pos, left) };
@@ -6301,6 +6303,8 @@ fn map_runtime_fn_full(fn_name: String) -> String =
     else if fn_name == "@async_socket_read" { "@bmb_async_socket_read" }
     else if fn_name == "@async_socket_write" { "@bmb_async_socket_write" }
     else if fn_name == "@async_socket_close" { "@bmb_async_socket_close" }
+    else if fn_name == "@async_socket_listen" { "@bmb_async_socket_listen" }
+    else if fn_name == "@async_socket_accept" { "@bmb_async_socket_accept" }
     else if fn_name == "@thread_pool_new" { "@bmb_thread_pool_new" }
     else if fn_name == "@thread_pool_execute" { "@bmb_thread_pool_execute" }
     else if fn_name == "@thread_pool_join" { "@bmb_thread_pool_join" }
@@ -13001,7 +13005,14 @@ fn gen_runtime_decls() -> String =
     "declare void @bmb_panic_bounds(i64, i64) noreturn nounwind" + SEP() +
     "declare void @bmb_panic_divzero() noreturn nounwind" + SEP() +
     // v0.96.24: Contract-based llvm.assume for performance optimization
-    "declare void @llvm.assume(i1 noundef)";
+    "declare void @llvm.assume(i1 noundef)" + SEP() +
+    // v0.98: Async TCP socket runtime (bmb/runtime/bmb_runtime.c)
+    "declare i64 @bmb_async_socket_connect(i64, i64) nocallback nounwind" + SEP() +
+    "declare i64 @bmb_async_socket_read(i64) nocallback nounwind" + SEP() +
+    "declare void @bmb_async_socket_write(i64, i64) nocallback nounwind" + SEP() +
+    "declare void @bmb_async_socket_close(i64) nocallback nounwind" + SEP() +
+    "declare i64 @bmb_async_socket_listen(i64) nocallback nounwind" + SEP() +
+    "declare i64 @bmb_async_socket_accept(i64) nocallback nounwind";
 
 // ============================================================================
 // SECTION 12b: String Literal Handling (v0.60.109)

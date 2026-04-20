@@ -183,6 +183,35 @@ jobs:
             echo "::notice::Performance OK: ${PR_TIME}s within ${THRESHOLD}% of baseline ${BASELINE}s"
           fi
 
+  bench-compare-smoke:
+    name: bmb bench --compare smoke test
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build BMB compiler (release)
+        run: cargo build --release
+
+      - name: Run bench --compare smoke test
+        run: |
+          chmod +x scripts/test-bench-compare.sh
+          ./scripts/test-bench-compare.sh
+
   gate-verification:
     name: Gate #4.1 Verification
     runs-on: ubuntu-latest
