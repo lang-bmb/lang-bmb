@@ -1,0 +1,13 @@
+// Cycle 2372: TCP loopback smoke via stdlib/net tcp_connect. Validates
+// HANDOFF §4 "host: String as i64 cast 경로" — String literal host now
+// works via string_as_cstr in wrapper.
+@include "stdlib/net/mod.bmb"
+
+fn main() -> i64 = {
+    let sock: i64 = tcp_connect("127.0.0.1", 18771);
+    if sock == 0 { 1 } else {
+        tcp_write(sock, "hello-tcp-cstr-probe");
+        tcp_close(sock);
+        0
+    }
+};

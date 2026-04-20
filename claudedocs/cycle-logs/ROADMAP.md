@@ -1,5 +1,5 @@
 # BMB Development Roadmap
-Updated: 2026-04-21 (post-Cycles 2353-2358: CI smoke gate + XOR `^` + stdlib/net TCP primitive)
+Updated: 2026-04-21 (post-Cycles 2359-2373: stdlib/net E2E/CI/docs, `@include` in bootstrap, nightly @bench baseline infra, UDP primitive full E2E, String-as-host cast fix, Fixed Point re-verified twice)
 
 ---
 
@@ -108,7 +108,7 @@ Bootstrap IR의 근본적 한계 해소. inttoptr을 native ptr로 전환.
 | ~~C 헤더 생성~~ | ✅ 5개 .h |
 | ~~WASM 빌드~~ | ✅ 5개 (62-289 KB) |
 | ~~패키징 인프라~~ | ✅ pyproject.toml, .pyi, CI |
-| stdlib net 모듈 | 🟢 **primitive 완성** — tcp_connect/listen/accept/read/write/close + 6 wrapper (Cycles 2355-2357). 미완: echo server E2E smoke, `@include` bootstrap 지원 |
+| stdlib net 모듈 | ✅ **완료 (TCP + UDP)** — TCP: tcp_connect/listen/accept/read/write/close + loopback-verified via `string_as_cstr` (Cycles 2355-2357, 2371-2372). UDP: udp_bind/sendto/recv/close + full echo round-trip (Cycles 2367-2372). E2E CI `net-echo-smoke` ubuntu-latest (Cycle 2360). API docs (Cycle 2361). `@include` 경로 지원 (Cycles 2362-2364). |
 | 디버거 지원 (DWARF) | 미착수 |
 | Playground WASM 배포 | 미착수 (Phase D) |
 | lang-bmb-site 문서화 | 미착수 |
@@ -125,7 +125,7 @@ Bootstrap IR의 근본적 한계 해소. inttoptr을 native ptr로 전환.
 | ~~MIR 옵티마이저 BMB 이식 15/15~~ | ✅ |
 | ~~에러 진단: JSON line:col~~ | ✅ |
 | 런타임 스택 트레이스 | 미착수 |
-| 벤치마크 CI 자동화 (2% 임계값) | 🟢 **CLI + CI smoke** — `bmb bench --compare` (Cycles 2344-2347) + `.github/workflows/ci.yml bench-compare-smoke` job (Cycle 2353). nightly baseline 통합은 후속. |
+| 벤치마크 CI 자동화 (2% 임계값) | ✅ **완료** — `bmb bench --compare` CLI (Cycles 2344-2347) + PR `bench-compare-smoke` job (Cycle 2353) + nightly `@bench --native` baseline gate (Cycle 2365, `.bench-native-baseline.ndjson` committed on main, threshold 10%). |
 
 ---
 

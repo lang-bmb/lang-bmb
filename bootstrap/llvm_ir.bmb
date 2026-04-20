@@ -1719,6 +1719,18 @@ fn gen_extern_async_socket_listen() -> String =
     "declare i64 @bmb_async_socket_listen(i64) nocallback nounwind";
 fn gen_extern_async_socket_accept() -> String =
     "declare i64 @bmb_async_socket_accept(i64) nocallback nounwind";
+// v0.98 (Cycle 2371): String -> char* extraction (for host args)
+fn gen_extern_string_as_cstr() -> String =
+    "declare i64 @bmb_string_as_cstr(ptr nocapture readonly) nofree nosync nounwind willreturn";
+// v0.98 (Cycle 2367): UDP socket runtime
+fn gen_extern_async_udp_bind() -> String =
+    "declare i64 @bmb_async_udp_bind(i64) nocallback nounwind";
+fn gen_extern_async_udp_sendto() -> String =
+    "declare i64 @bmb_async_udp_sendto(i64, i64, i64, i64) nocallback nounwind";
+fn gen_extern_async_udp_recv() -> String =
+    "declare i64 @bmb_async_udp_recv(i64) nocallback nounwind";
+fn gen_extern_async_udp_close() -> String =
+    "declare void @bmb_async_udp_close(i64) nocallback nounwind";
 fn gen_extern_future_await() -> String =
     "declare i64 @__future_await(i64) nocallback nounwind";
 fn gen_extern_scope_new() -> String =
@@ -1756,7 +1768,7 @@ fn gen_runtime_decls() -> String =
     let concur_atomic = gen_extern_atomic_new() + SEP() + gen_extern_atomic_load() + SEP() + gen_extern_atomic_store();
     let concur_rwlock = gen_extern_rwlock_new() + SEP() + gen_extern_rwlock_read() + SEP() + gen_extern_rwlock_read_unlock() + SEP() + gen_extern_rwlock_write() + SEP() + gen_extern_rwlock_write_unlock() + SEP() + gen_extern_rwlock_free();
     let concur_sync = gen_extern_barrier_new() + SEP() + gen_extern_barrier_wait() + SEP() + gen_extern_barrier_free() + SEP() + gen_extern_condvar_new() + SEP() + gen_extern_condvar_wait() + SEP() + gen_extern_condvar_notify_one() + SEP() + gen_extern_condvar_notify_all() + SEP() + gen_extern_condvar_free();
-    let concur_async = gen_extern_async_file_open() + SEP() + gen_extern_async_file_read() + SEP() + gen_extern_async_file_write() + SEP() + gen_extern_async_file_close() + SEP() + gen_extern_async_socket_connect() + SEP() + gen_extern_async_socket_read() + SEP() + gen_extern_async_socket_write() + SEP() + gen_extern_async_socket_close() + SEP() + gen_extern_async_socket_listen() + SEP() + gen_extern_async_socket_accept();
+    let concur_async = gen_extern_async_file_open() + SEP() + gen_extern_async_file_read() + SEP() + gen_extern_async_file_write() + SEP() + gen_extern_async_file_close() + SEP() + gen_extern_async_socket_connect() + SEP() + gen_extern_async_socket_read() + SEP() + gen_extern_async_socket_write() + SEP() + gen_extern_async_socket_close() + SEP() + gen_extern_async_socket_listen() + SEP() + gen_extern_async_socket_accept() + SEP() + gen_extern_async_udp_bind() + SEP() + gen_extern_async_udp_sendto() + SEP() + gen_extern_async_udp_recv() + SEP() + gen_extern_async_udp_close() + SEP() + gen_extern_string_as_cstr();
     let concur_exec = gen_extern_future_await() + SEP() + gen_extern_scope_new() + SEP() + gen_extern_scope_spawn() + SEP() + gen_extern_scope_wait() + SEP() + gen_extern_pool_new() + SEP() + gen_extern_pool_execute() + SEP() + gen_extern_pool_join() + SEP() + gen_extern_pool_shutdown() + SEP() + gen_extern_block_on();
     basic + SEP() + string + SEP() + array + SEP() + array_mut + SEP() + memory + SEP() + safety + SEP() + intrinsics + SEP() + concur_thread + SEP() + concur_mutex + SEP() + concur_chan1 + SEP() + concur_chan2 + SEP() + concur_arc + SEP() + concur_atomic + SEP() + concur_rwlock + SEP() + concur_sync + SEP() + concur_async + SEP() + concur_exec;
 

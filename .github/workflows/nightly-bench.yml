@@ -95,6 +95,46 @@ jobs:
             --output nightly_comparison.txt \
             --json > nightly_comparison.json
 
+      # ============================================================
+      # Cycle 2365: @bench native microbenchmark regression gate
+      # ============================================================
+      # Runs every @bench-annotated test file through `bmb bench --native`
+      # and compares median_ns against `.bench-native-baseline.ndjson`
+      # committed on main. Threshold 10% — micro-benches are noisier than
+      # macros. Missing baseline → informational (no failure).
+      - name: Get @bench native baseline
+        id: bench_native_baseline
+        run: |
+          if git show origin/main:.bench-native-baseline.ndjson > bench_native_baseline.ndjson 2>/dev/null; then
+            echo "found=true" >> $GITHUB_OUTPUT
+          else
+            echo "found=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run @bench native suite
+        run: |
+          > bench_native_current.ndjson
+          for f in tests/bench/bench_smoke.bmb; do
+            if [ -f "$f" ]; then
+              echo "Benching: $f"
+              ./target/release/bmb bench --native "$f" >> bench_native_current.ndjson || true
+            fi
+          done
+          wc -l bench_native_current.ndjson
+
+      - name: Compare @bench native with baseline
+        if: steps.bench_native_baseline.outputs.found == 'true'
+        run: |
+          ./target/release/bmb bench --compare \
+            bench_native_baseline.ndjson \
+            bench_native_current.ndjson \
+            --threshold 10
+
+      - name: Report missing @bench native baseline
+        if: steps.bench_native_baseline.outputs.found == 'false'
+        run: |
+          echo "::notice::No .bench-native-baseline.ndjson on main — skipping @bench native comparison. To enable, commit current run as baseline."
+
       - name: Memory Profiling
         if: ${{ github.event.inputs.include_memory != 'false' }}
         run: |
@@ -140,6 +180,7 @@ jobs:
             nightly_comparison.txt
             nightly_comparison.json
             nightly_report.md
+            bench_native_current.ndjson
             memory_results/
 
       - name: Post Summary

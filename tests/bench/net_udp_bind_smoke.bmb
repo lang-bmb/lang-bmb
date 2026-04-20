@@ -1,0 +1,8 @@
+// Cycle 2368: UDP bind + close smoke. Exit 0 iff bind(0) + close succeed.
+fn main() -> i64 = {
+    let sock: i64 = async_udp_bind(0);
+    if sock == 0 { 1 } else {
+        async_udp_close(sock);
+        0
+    }
+};

@@ -1,0 +1,23 @@
+// Cycle 2371-2372: Full UDP echo server via stdlib/net wrappers.
+// After Cycle 2371's `string_as_cstr` fix, String-host now reaches the
+// runtime as a raw C string. Full round-trip with sendto back to client
+// at 127.0.0.1:18767.
+// Exit 0: recv + sendto succeeded. 1: bind failed. 2: recv failed. 3: sendto failed.
+@include "stdlib/net/mod.bmb"
+
+fn main() -> i64 = {
+    let sock: i64 = udp_bind(18766);
+    if sock == 0 { return 1; };
+    let msg: i64 = udp_recv(sock);
+    if msg == 0 {
+        udp_close(sock);
+        return 2;
+    };
+    // msg is a raw char* handle from runtime (not a BmbString). Pass it
+    // directly as data_handle to the primitive — skipping the String
+    // wrapper because the wrapper would re-extract ->data from the raw
+    // pointer and corrupt the send.
+    let sent: i64 = async_udp_sendto(sock, string_as_cstr("127.0.0.1"), 18767, msg);
+    udp_close(sock);
+    if sent < 0 { 3 } else { 0 }
+};

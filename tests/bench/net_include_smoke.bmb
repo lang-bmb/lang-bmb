@@ -1,0 +1,12 @@
+// Cycle 2362: smoke test for @include directive in bootstrap compiler.
+// Uses stdlib/net wrapper via @include, rather than raw async_socket_*.
+// Exit 0 if listen on ephemeral port succeeds and close works.
+@include "stdlib/net/mod.bmb"
+
+fn main() -> i64 = {
+    let listener: i64 = tcp_listen(0);
+    if listener == 0 { 1 } else {
+        tcp_close(listener);
+        0
+    }
+};

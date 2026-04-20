@@ -212,6 +212,40 @@ jobs:
           chmod +x scripts/test-bench-compare.sh
           ./scripts/test-bench-compare.sh
 
+  net-echo-smoke:
+    name: stdlib/net TCP echo E2E smoke test
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build BMB compiler (release)
+        run: cargo build --release
+
+      - name: Build Stage 1 bootstrap binary
+        run: |
+          chmod +x scripts/bootstrap.sh
+          ./scripts/bootstrap.sh --stage1-only
+
+      - name: Run net echo E2E smoke
+        run: |
+          chmod +x scripts/test-net-echo.sh
+          ./scripts/test-net-echo.sh
+
   gate-verification:
     name: Gate #4.1 Verification
     runs-on: ubuntu-latest

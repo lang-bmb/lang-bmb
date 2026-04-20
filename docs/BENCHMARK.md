@@ -271,6 +271,29 @@ Machine (NDJSON) output emits one `{"type":"compare",...}` line per bench
 plus a `{"type":"compare_result",...}` summary. Exit code 1 when any
 `REGRESSION` is detected — suitable for CI gates.
 
+### CI integration (Cycle 2365)
+
+Two gates are active in CI:
+
+- **PR smoke gate** (`.github/workflows/ci.yml` `bench-compare-smoke`): runs
+  `scripts/test-bench-compare.sh` to verify the `--compare` CLI surface
+  (10 scenarios covering OK/REGRESSION/IMPROVEMENT/MISSING/NEW and error
+  paths). Blocks merge on CLI regression.
+
+- **Nightly performance gate** (`.github/workflows/nightly-bench.yml`): runs
+  `bmb bench --native tests/bench/bench_smoke.bmb` against a baseline
+  committed at `.bench-native-baseline.ndjson` on `main`. Threshold 10%
+  (micro-benches are noisier than macros). First run when baseline is
+  absent emits a GitHub Actions notice rather than failing.
+
+To prime or refresh the nightly baseline:
+
+```bash
+./target/release/bmb bench --native tests/bench/bench_smoke.bmb > .bench-native-baseline.ndjson
+git add .bench-native-baseline.ndjson
+git commit -m "bench: refresh @bench native baseline"
+```
+
 ## Adding New Benchmarks
 
 1. Create directory: `ecosystem/benchmark-bmb/benches/compute/<name>/`

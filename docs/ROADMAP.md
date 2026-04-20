@@ -4,7 +4,7 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 
 ---
 
-## Current Status — v0.98 (2026-04-21, post-Cycles 2353-2358)
+## Current Status — v0.98 (2026-04-21, post-Cycles 2359-2373)
 
 ### Progress
 
@@ -32,7 +32,17 @@ Tooling     ████████████████░░░░ 80%   @
 
 ## Recently completed
 
-### Cycles 2353-2358 (this session)
+### Cycles 2359-2373 (this session)
+
+**`stdlib/net` full E2E + UDP primitive.** Extended TCP with a Python-backed echo server round-trip (`scripts/test-net-echo.sh`, 2000-byte payload, CI gate on ubuntu-latest via `net-echo-smoke` job). Added UDP primitive (`udp_bind/sendto/recv/close`) with runtime (Win32 + POSIX), bootstrap wiring (types/dispatch/extern), and stdlib wrappers. Full bidirectional UDP echo validated. TCP loopback via `tcp_connect("127.0.0.1", ...)` also working — closes HANDOFF §4 "host: String as i64 cast 경로 미완".
+
+**`@include` directive in bootstrap.** Users can now write `@include "stdlib/net/mod.bmb"` in BMB source and have the bootstrap compiler (Stage 1+) expand it before parsing. Line-based preprocessor with source-dir-relative + CWD-fallback resolution, max-depth-16 recursion safeguard. Wired into all compile pipeline entry points (build, check, run, test, emit-ir, compile-file-to). Introspection tools (fmt, lint, index, query) intentionally unchanged — they should see raw source. 3-Stage Fixed Point (S2 == S3) re-verified.
+
+**Nightly `@bench --native` regression gate.** Added `@bench native baseline diff` step to `.github/workflows/nightly-bench.yml`: fetches `.bench-native-baseline.ndjson` from main, runs `bmb bench --native tests/bench/bench_smoke.bmb`, compares with `--threshold 10`. Baseline-storage strategy chosen (Option A: repo-committed NDJSON) for git-history auditability consistent with existing `.baseline.json` pattern. First-run tolerant — missing baseline emits notice without failing.
+
+**`string_as_cstr` builtin (new v0.98 conversion).** Runtime `bmb_string_as_cstr(const BmbString* s) -> i64` returns `s->data`. Wired into bootstrap as `string_as_cstr`. Unblocks passing BMB string literals to runtime functions that expect `const char*` — previously broken because `String as i64` cast gave BmbString struct pointer, not the underlying `data` field. stdlib/net wrappers (`tcp_connect`, `tcp_write`, `udp_sendto`) updated to route through it. 3-Stage Fixed Point re-verified after bootstrap changes.
+
+### Cycles 2353-2358 (previous session)
 
 **CI smoke gate for `bmb bench --compare`.** Added `bench-compare-smoke` job to `.github/workflows/ci.yml` that runs `scripts/test-bench-compare.sh` (10/10 CLI scenarios) on every PR. Closes the "2% regression threshold CI Requirement" basic gate. Full nightly baseline-diff remains a follow-up.
 
@@ -83,7 +93,11 @@ Tooling     ████████████████░░░░ 80%   @
 | Runtime source auto-sync (`runtime/` ↔ `bmb/runtime/`) | ✅ Cycle 2348 |
 | Cross-platform SIMD verification (Linux/macOS) | Pending (needs Linux/macOS env) |
 | `bench --compare` CI smoke gate | ✅ Cycle 2353 (scripts/test-bench-compare.sh 10/10 on every PR) |
-| `bench --compare` nightly baseline diff | Pending (needs baseline-storage strategy) |
+| `bench --compare` nightly baseline diff | ✅ Cycle 2365 (`.bench-native-baseline.ndjson` + nightly-bench.yml step, threshold 10%) |
+| `@include` in bootstrap | ✅ Cycles 2362-2364 (build/check/run/test/emit-ir entries, Fixed Point preserved) |
+| stdlib/net UDP primitive | ✅ Cycles 2367-2372 (udp_bind/sendto/recv/close, full echo E2E) |
+| `string_as_cstr` builtin (String → char*) | ✅ Cycle 2371 (unblocks host: String in stdlib/net wrappers) |
+| TCP loopback via stdlib/net | ✅ Cycle 2372 (HANDOFF §4 closed) |
 | XOR `^` operator (bootstrap) | ✅ Cycle 2354 |
 | `stdlib/net` TCP primitive (listen/accept/connect/read/write/close) | ✅ Cycles 2355-2357 (wrappers + Stage 1 smoke; E2E echo server pending) |
 | PyPI wheel build + publish | Packaging ✅, publish pending |
@@ -107,13 +121,14 @@ Tooling     ████████████████░░░░ 80%   @
 
 | Option | Effort | Risk | Notes |
 |--------|--------|------|-------|
-| `stdlib/net` echo-server E2E smoke | 2-4 cycles | MEDIUM | Needs external client (Python) or multi-threaded server; exercises `accept` + read/write round-trip |
-| `bench --compare` nightly baseline diff | 2-3 cycles | MEDIUM | Decide baseline storage (repo-commit vs CI artifact); wire into `nightly-bench.yml` |
-| Cross-platform SIMD + net verification (Linux/macOS) | 3-5 cycles | LOW-MEDIUM | Needs Linux/macOS shell or GH Actions runner; v0.97 SIMD + v0.98 net never run outside Windows |
+| Cross-platform SIMD + net verification (Linux/macOS) | 3-5 cycles | LOW-MEDIUM | Needs Linux/macOS shell or GH Actions runner; v0.97 SIMD + v0.98 net + UDP primitive exercised only on Windows locally (CI's `net-echo-smoke` is ubuntu-latest — first observation on merge) |
+| `stdlib/net` TLS extension (`tcp_tls_connect`, `accept_tls`) | 6-10 cycles | MEDIUM-HIGH | Needs OpenSSL binding — new external dependency |
 | Runtime stack trace support (DWARF) | 4-6 cycles | MEDIUM | MIR currently lacks span info — gains limited to function-level unless MIR refactored; reconsider vs ROI |
-| UDP + TLS in `stdlib/net` | 6-10 cycles | MEDIUM-HIGH | Extends skeleton; TLS needs OpenSSL binding |
+| Bootstrap SIMD codegen parity | 4-8 cycles | MEDIUM | `@include "stdlib/simd/mod.bmb"` via bootstrap emits `ret double %todo` (Cycle 2366 finding); Rust compiler handles it. Gap in bootstrap's handling of certain SIMD function lowerings |
+| `getenv` typing in bootstrap (String-return inference) | 1-2 cycles | LOW | Latent from Cycle 2362 — would restore `BMB_STDLIB_PATH` override path for `@include` resolution |
 | CHANGELOG.md reconstruction (v0.67 → v0.98) | 3-5 cycles | LOW | Retroactive; could be partial |
 | PyPI wheel publish pipeline | 2-4 cycles | MEDIUM | Packaging ready, needs CI job + secret management |
+| Orphan `runtime/bmb_runtime.c` removal | 1-2 cycles | LOW | Auto-sync handles drift (Cycle 2348); true removal needs install.sh audit |
 
 ---
 

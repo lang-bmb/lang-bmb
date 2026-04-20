@@ -1835,6 +1835,11 @@ fn builtin_async_socket_write_sig() -> i64 = 6 * 100 + 2;
 fn builtin_async_socket_close_sig() -> i64 = 6 * 100 + 1;
 fn builtin_async_socket_listen_sig() -> i64 = 2 * 100 + 1;   // v0.98: TCP server listen
 fn builtin_async_socket_accept_sig() -> i64 = 2 * 100 + 1;   // v0.98: TCP server accept
+fn builtin_string_as_cstr_sig() -> i64 = 2 * 100 + 1;        // v0.98 (Cycle 2371): String -> char* ptr (i64)
+fn builtin_async_udp_bind_sig() -> i64 = 2 * 100 + 1;        // v0.98 (Cycle 2367): UDP bind
+fn builtin_async_udp_sendto_sig() -> i64 = 2 * 100 + 4;      // v0.98: UDP sendto (sock,host,port,data)
+fn builtin_async_udp_recv_sig() -> i64 = 2 * 100 + 1;        // v0.98: UDP recv (blocking)
+fn builtin_async_udp_close_sig() -> i64 = 6 * 100 + 1;       // v0.98: UDP close
 
 // Lookup builtin function by name, return signature or 0 if not found
 fn lookup_builtin(name: String) -> i64 =
@@ -1903,6 +1908,11 @@ fn lookup_builtin(name: String) -> i64 =
     else if name == "async_socket_close" { builtin_async_socket_close_sig() }
     else if name == "async_socket_listen" { builtin_async_socket_listen_sig() }
     else if name == "async_socket_accept" { builtin_async_socket_accept_sig() }
+    else if name == "string_as_cstr" { builtin_string_as_cstr_sig() }
+    else if name == "async_udp_bind" { builtin_async_udp_bind_sig() }
+    else if name == "async_udp_sendto" { builtin_async_udp_sendto_sig() }
+    else if name == "async_udp_recv" { builtin_async_udp_recv_sig() }
+    else if name == "async_udp_close" { builtin_async_udp_close_sig() }
     else { 0 };
 
 // Get return type from signature
@@ -1976,6 +1986,11 @@ fn builtin_param_type(name: String, idx: i64) -> i64 =
     else if name == "async_socket_close" and idx == 0 { type_i64() }
     else if name == "async_socket_listen" and idx == 0 { type_i64() }
     else if name == "async_socket_accept" and idx == 0 { type_i64() }
+    else if name == "string_as_cstr" and idx == 0 { type_string() }
+    else if name == "async_udp_bind" and idx == 0 { type_i64() }
+    else if name == "async_udp_sendto" and idx < 4 { type_i64() }
+    else if name == "async_udp_recv" and idx == 0 { type_i64() }
+    else if name == "async_udp_close" and idx == 0 { type_i64() }
     else { type_error() };
 
 // ============================================================================

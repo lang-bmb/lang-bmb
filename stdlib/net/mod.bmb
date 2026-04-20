@@ -1,32 +1,106 @@
 // BMB Standard Library: net Module
-// Version: v0.98 (Cycle 2357)
+// Version: v0.98 (Cycles 2355-2361)
 // Purpose: TCP networking primitives (client + server).
 //
 // Underlying runtime: bmb_async_socket_* (bmb/runtime/bmb_runtime.c).
-// Current implementation: synchronous blocking sockets.
+// Current implementation: synchronous blocking sockets on top of Win32 + POSIX.
+//
+// Design Principles:
+// - Minimal surface: 6 primitive wrappers, no abstraction yet.
+// - Handle-as-i64: every socket is an opaque `i64` — 0 denotes error.
+// - No exceptions: failures surface as return value 0 (handle) or -1 sentinel.
+//
+// Runtime Contract (important, read before using):
+// - tcp_read returns a handle to a null-terminated buffer, max 4095 bytes per
+//   call. Multiple reads are required to drain larger streams.
+// - tcp_write uses `strlen` on the content handle. Payloads containing embedded
+//   NUL bytes are truncated — send ASCII/UTF-8 text or encode binary data.
+// - tcp_accept blocks the calling thread until a client connects. No timeout.
+// - tcp_listen binds to 0.0.0.0 (INADDR_ANY); SO_REUSEADDR is set.
+//
+// Platform Coverage:
+// - Windows: verified round-trip (tests/bench/net_echo_server.bmb, Cycle 2359).
+// - Linux/macOS: CI `net-echo-smoke` job on ubuntu-latest (Cycle 2360).
+//
+// Example (echo server):
+//   let listener: i64 = tcp_listen(18765);
+//   let client: i64   = tcp_accept(listener);
+//   let msg: i64      = tcp_read(client);
+//   tcp_write(client, msg);
+//   tcp_close(client);
+//   tcp_close(listener);
 
+// Connect to a TCP server. Host accepts IPv4 dotted-quad or DNS name.
+// Returns: socket handle (non-zero) on success, 0 on failure.
 pub fn tcp_connect(host: String, port: i64) -> i64
-= async_socket_connect(host as i64, port);
+= async_socket_connect(string_as_cstr(host), port);
 
+// Bind and listen on `port`. Use 0 for OS-assigned ephemeral port.
+// Returns: listener handle (non-zero) on success, 0 on failure (bind/listen error).
 pub fn tcp_listen(port: i64) -> i64
 = async_socket_listen(port);
 
+// Accept one incoming connection. Blocks until a client connects.
+// Returns: client socket handle (non-zero) on success, 0 on error.
 pub fn tcp_accept(listener: i64) -> i64
 = async_socket_accept(listener);
 
+// Read from `socket`. Returns handle to null-terminated buffer (max 4095 bytes).
+// Returns: buffer handle (non-zero) on success, 0 on disconnect/error.
+// Caller can treat the handle as `String` via `as String` cast where supported.
 pub fn tcp_read(socket: i64) -> i64
 = async_socket_read(socket);
 
+// Write `content` to `socket`. Uses `strlen(content)` — no embedded NULs.
+// Returns: 0 (no error code distinction from runtime today).
 pub fn tcp_write(socket: i64, content: String) -> i64
 = {
-    async_socket_write(socket, content as i64);
+    async_socket_write(socket, string_as_cstr(content));
     0
 };
 
+// Close `socket`. No-op when socket is 0. Always safe to call.
+// Returns: 0.
 pub fn tcp_close(socket: i64) -> i64
 = {
     if socket != 0 {
         async_socket_close(socket);
+    };
+    0
+};
+
+// ============================================================================
+// UDP primitives (Cycle 2367-2369)
+// ============================================================================
+//
+// UDP is connectionless: each packet is addressed independently. v1 omits
+// the peer address on recv — `udp_recv` returns payload only; callers that
+// need reply-to addressing should encode it in-band.
+//
+// Runtime contract:
+// - udp_recv returns a handle to a null-terminated buffer, max 4095 bytes
+//   per call. Longer datagrams are truncated.
+// - udp_sendto uses `strlen` on the content handle. No embedded NULs.
+// - udp_bind with port=0 asks the OS for an ephemeral port (not discoverable
+//   from BMB in v1 — pass a known port instead for test/server code).
+
+// Create + bind a UDP socket to local `port`. Returns handle or 0 on error.
+pub fn udp_bind(port: i64) -> i64
+= async_udp_bind(port);
+
+// Send `data` to `host:port`. Returns bytes sent, or -1 on error.
+pub fn udp_sendto(socket: i64, host: String, port: i64, data: String) -> i64
+= async_udp_sendto(socket, string_as_cstr(host), port, string_as_cstr(data));
+
+// Blocking recv (up to 4095 bytes). Returns buffer handle or 0 on error.
+pub fn udp_recv(socket: i64) -> i64
+= async_udp_recv(socket);
+
+// Close UDP socket. Safe when socket is 0.
+pub fn udp_close(socket: i64) -> i64
+= {
+    if socket != 0 {
+        async_udp_close(socket);
     };
     0
 };

@@ -1,0 +1,28 @@
+// Cycle 2359: E2E echo server for stdlib/net round-trip smoke.
+// Listens on 127.0.0.1:18765, accepts ONE client, echoes its payload, exits.
+// Exit codes:
+//   0 = full round-trip (listen -> accept -> read -> write -> close) succeeded
+//   1 = listen failed (port busy?)
+//   2 = accept failed
+//   3 = read returned 0 (client closed before sending)
+fn main() -> i64 = {
+    let listener: i64 = async_socket_listen(18765);
+    if listener == 0 {
+        return 1;
+    };
+    let client: i64 = async_socket_accept(listener);
+    if client == 0 {
+        async_socket_close(listener);
+        return 2;
+    };
+    let msg: i64 = async_socket_read(client);
+    if msg == 0 {
+        async_socket_close(client);
+        async_socket_close(listener);
+        return 3;
+    };
+    async_socket_write(client, msg);
+    async_socket_close(client);
+    async_socket_close(listener);
+    0
+};

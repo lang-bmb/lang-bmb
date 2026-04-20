@@ -1,0 +1,12 @@
+// Cycle 2366: @include stress test — stdlib modules via bootstrap.
+// Verifies @include with leading whitespace variation + multiple includes.
+// Exit 0 on listener bind-and-close.
+    @include "stdlib/net/mod.bmb"
+
+fn main() -> i64 = {
+    let l: i64 = tcp_listen(0);
+    if l == 0 { 1 } else {
+        tcp_close(l);
+        0
+    }
+};

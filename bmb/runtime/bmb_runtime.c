@@ -1226,6 +1226,15 @@ int64_t bmb_string_len(const BmbString* s) {
     return s->len;
 }
 
+// v0.98 (Cycle 2371): Extract the raw C-string pointer from a BmbString.
+// Enables passing BMB string literals to runtime functions that expect
+// `const char*` (e.g., bmb_async_socket_connect, bmb_async_udp_sendto).
+// Returns 0 for a NULL input.
+int64_t bmb_string_as_cstr(const BmbString* s) {
+    if (!s) return 0;
+    return (int64_t)s->data;
+}
+
 // Get byte at index - parameter is BmbString*
 int64_t bmb_string_char_at(const BmbString* s, int64_t index) {
     if (!s || !s->data || index < 0 || index >= s->len) return 0;
@@ -4995,6 +5004,96 @@ int64_t bmb_async_socket_accept(int64_t listener_handle) {
     return (int64_t)client;
 }
 
+// v0.98 (Cycle 2367): UDP socket bound to local `port` (0 = ephemeral).
+// Returns socket handle or 0 on error.
+int64_t bmb_async_udp_bind(int64_t port) {
+    ensure_winsock_init();
+
+    BmbAsyncSocket* sock = (BmbAsyncSocket*)malloc(sizeof(BmbAsyncSocket));
+    if (!sock) return 0;
+
+    sock->sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (sock->sock == INVALID_SOCKET) {
+        free(sock);
+        return 0;
+    }
+
+    int reuse = 1;
+    setsockopt(sock->sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse));
+
+    struct sockaddr_in addr = {0};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons((unsigned short)port);
+    addr.sin_addr.s_addr = INADDR_ANY;
+
+    if (bind(sock->sock, (struct sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR) {
+        closesocket(sock->sock);
+        free(sock);
+        return 0;
+    }
+
+    sock->host = strdup("0.0.0.0");
+    sock->port = (int)port;
+    sock->is_connected = 1;
+    return (int64_t)sock;
+}
+
+// v0.98 (Cycle 2367): Send `data` (null-terminated) to `host:port`.
+// Returns bytes sent, or -1 on error.
+int64_t bmb_async_udp_sendto(int64_t sock_handle, int64_t host_handle, int64_t port, int64_t data_handle) {
+    if (sock_handle == 0 || host_handle == 0 || data_handle == 0) return -1;
+
+    BmbAsyncSocket* sock = (BmbAsyncSocket*)sock_handle;
+    const char* host = (const char*)host_handle;
+    const char* data = (const char*)data_handle;
+    if (!sock->is_connected) return -1;
+
+    struct sockaddr_in dst = {0};
+    dst.sin_family = AF_INET;
+    dst.sin_port = htons((unsigned short)port);
+    if (inet_pton(AF_INET, host, &dst.sin_addr) != 1) {
+        struct addrinfo hints = {0};
+        struct addrinfo* result = NULL;
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_DGRAM;
+        if (getaddrinfo(host, NULL, &hints, &result) != 0 || !result) return -1;
+        struct sockaddr_in* addr = (struct sockaddr_in*)result->ai_addr;
+        dst.sin_addr = addr->sin_addr;
+        freeaddrinfo(result);
+    }
+
+    int sent = sendto(sock->sock, data, (int)strlen(data), 0,
+                      (struct sockaddr*)&dst, sizeof(dst));
+    return (sent == SOCKET_ERROR) ? -1 : (int64_t)sent;
+}
+
+// v0.98 (Cycle 2367): Blocking receive up to 4KB. Returns null-terminated
+// buffer handle on success, 0 on error.
+int64_t bmb_async_udp_recv(int64_t sock_handle) {
+    if (sock_handle == 0) return 0;
+    BmbAsyncSocket* sock = (BmbAsyncSocket*)sock_handle;
+    if (!sock->is_connected) return 0;
+
+    char* buffer = (char*)malloc(4096);
+    if (!buffer) return 0;
+
+    struct sockaddr_in src = {0};
+    int src_len = sizeof(src);
+    int received = recvfrom(sock->sock, buffer, 4095, 0,
+                            (struct sockaddr*)&src, &src_len);
+    if (received <= 0) {
+        free(buffer);
+        return 0;
+    }
+    buffer[received] = '\0';
+    return (int64_t)buffer;
+}
+
+// v0.98 (Cycle 2367): Close UDP socket. Shares struct with TCP.
+void bmb_async_udp_close(int64_t sock_handle) {
+    bmb_async_socket_close(sock_handle);
+}
+
 #else
 // POSIX (Linux/macOS) uses Berkeley sockets
 #include <sys/socket.h>
@@ -5176,6 +5275,88 @@ int64_t bmb_async_socket_accept(int64_t listener_handle) {
     client->is_connected = 1;
 
     return (int64_t)client;
+}
+
+// v0.98 (Cycle 2367): UDP socket bound to local `port`. POSIX variant.
+int64_t bmb_async_udp_bind(int64_t port) {
+    BmbAsyncSocket* sock = (BmbAsyncSocket*)malloc(sizeof(BmbAsyncSocket));
+    if (!sock) return 0;
+
+    sock->sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock->sock < 0) {
+        free(sock);
+        return 0;
+    }
+
+    int reuse = 1;
+    setsockopt(sock->sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+    struct sockaddr_in addr = {0};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons((unsigned short)port);
+    addr.sin_addr.s_addr = INADDR_ANY;
+
+    if (bind(sock->sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        close(sock->sock);
+        free(sock);
+        return 0;
+    }
+
+    sock->host = strdup("0.0.0.0");
+    sock->port = (int)port;
+    sock->is_connected = 1;
+    return (int64_t)sock;
+}
+
+int64_t bmb_async_udp_sendto(int64_t sock_handle, int64_t host_handle, int64_t port, int64_t data_handle) {
+    if (sock_handle == 0 || host_handle == 0 || data_handle == 0) return -1;
+
+    BmbAsyncSocket* sock = (BmbAsyncSocket*)sock_handle;
+    const char* host = (const char*)host_handle;
+    const char* data = (const char*)data_handle;
+    if (!sock->is_connected) return -1;
+
+    struct sockaddr_in dst = {0};
+    dst.sin_family = AF_INET;
+    dst.sin_port = htons((unsigned short)port);
+    if (inet_pton(AF_INET, host, &dst.sin_addr) != 1) {
+        struct addrinfo hints = {0};
+        struct addrinfo* result = NULL;
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_DGRAM;
+        if (getaddrinfo(host, NULL, &hints, &result) != 0 || !result) return -1;
+        struct sockaddr_in* addr = (struct sockaddr_in*)result->ai_addr;
+        dst.sin_addr = addr->sin_addr;
+        freeaddrinfo(result);
+    }
+
+    ssize_t sent = sendto(sock->sock, data, strlen(data), 0,
+                          (struct sockaddr*)&dst, sizeof(dst));
+    return (sent < 0) ? -1 : (int64_t)sent;
+}
+
+int64_t bmb_async_udp_recv(int64_t sock_handle) {
+    if (sock_handle == 0) return 0;
+    BmbAsyncSocket* sock = (BmbAsyncSocket*)sock_handle;
+    if (!sock->is_connected) return 0;
+
+    char* buffer = (char*)malloc(4096);
+    if (!buffer) return 0;
+
+    struct sockaddr_in src = {0};
+    socklen_t src_len = sizeof(src);
+    ssize_t received = recvfrom(sock->sock, buffer, 4095, 0,
+                                (struct sockaddr*)&src, &src_len);
+    if (received <= 0) {
+        free(buffer);
+        return 0;
+    }
+    buffer[received] = '\0';
+    return (int64_t)buffer;
+}
+
+void bmb_async_udp_close(int64_t sock_handle) {
+    bmb_async_socket_close(sock_handle);
 }
 
 #endif

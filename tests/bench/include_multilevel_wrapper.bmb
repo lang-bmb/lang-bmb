@@ -1,0 +1,10 @@
+// Cycle 2366: wrapper that transitively includes stdlib/net.
+@include "stdlib/net/mod.bmb"
+
+pub fn ephemeral_bind_smoke() -> i64 = {
+    let l: i64 = tcp_listen(0);
+    if l == 0 { 1 } else {
+        tcp_close(l);
+        0
+    }
+};

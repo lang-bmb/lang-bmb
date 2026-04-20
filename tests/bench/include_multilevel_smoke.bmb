@@ -1,0 +1,5 @@
+// Cycle 2366: multi-level @include — this file includes wrapper, which in
+// turn includes stdlib/net/mod.bmb. Validates depth-2 recursion.
+@include "tests/bench/include_multilevel_wrapper.bmb"
+
+fn main() -> i64 = ephemeral_bind_smoke();
