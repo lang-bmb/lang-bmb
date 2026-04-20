@@ -1,5 +1,5 @@
 # BMB Development Roadmap
-Updated: 2026-04-19 (post-Cycles 2319-2324: base_sext codegen fix + stencil recovery verified)
+Updated: 2026-04-21 (post-Cycles 2341-2351: bmb bench --compare + runtime source auto-sync + golden test 2,815/2,815)
 
 ---
 
@@ -142,26 +142,26 @@ Bootstrap IR의 근본적 한계 해소. inttoptr을 native ptr로 전환.
 
 ---
 
-## 다음 단계 우선순위 (2026-04-19 업데이트)
+## 다음 단계 우선순위 (2026-04-21 업데이트)
 
-> SIMD B-4/B-7/B-8/B-9/B-10 완료. **A-1 완료** (Cycles 2291-2297) — f32 1급 타입 + f32x{4,8,16} + cast + stdlib/simd 147 fns. SAXPY/matvec/stencil 실증 결과: 선형 접근에서 LLVM auto-vec이 manual SIMD를 동률/추월. SIMD 진정한 승리는 데이터 의존 분기(B-8 mask)·shuffle(B-11 미구현)·forced FMA에서만 발생함을 `SIMD_PERF_NOTES.md`로 정리.
+> **v0.98 tooling 확장 단계**: `@bench --native` + `@bench --compare` 완성 → 성능 회귀 게이트 기반 마련. Runtime source auto-sync로 v0.95/v0.98 drift 영구 차단. 다음은 CI workflow 통합 → Cross-platform 확장.
 
 ```
-0. ★★★ Task B-11: shuffle/permute 인트린식 (6-8 cycles)
-   stencil 같은 auto-vec 패배 영역 회복. 단일 인트린식 패밀리.
-   → 매뉴얼 SIMD가 의미 있는 워크로드 폭 확장
+0. ★★★ bench --compare CI workflow 통합 (1-2 cycles, LOW)
+   scripts/test-bench-compare.sh + baseline artifact → .github/workflows
+   → CLAUDE.md "2% regression threshold" CI Requirement 완결
 
 1. ★★★ 배포 + 크로스플랫폼
    PyPI wheel 빌드 → Linux/macOS 빌드 → pip install bmb-algo 가능
    → "pip install → C보다 90x 빠르다" 증명
+   → 현재 Windows만 검증, Linux/macOS 파리티 필요
 
-2. ★★  컴파일러 품질 (v0.98)
-   Native Ptr 타입 시스템 → inttoptr 제거 → IR 품질 향상
-   → Bootstrap 코드젠이 handwritten IR 수준에 도달
+2. ★★  XOR (`^`) 연산자 추가 (3-5 cycles, MEDIUM)
+   Cycle 2338 관찰. bootstrap/compiler.bmb 파서/AST/MIR/codegen (Rule 5 전수)
+   → Rust 컴파일러는 Rule 6 따라 미지원 유지
 
-3. ★   Task B-12/B-13: store_{i32,f32}/load_{i32,f32} 헬퍼 (2-4 cycles, low-hanging)
-   현재 SIMD 워크로드 varied-init에 스칼라 store 부재. 병목 없지만 ergonomic 보강.
-   → f32 SAXPY 등에서 non-uniform 초기화 가능
+3. ★★  Runtime stack trace (DWARF, 4-6 cycles, MEDIUM)
+   디버깅 ergonomics — ROADMAP P1 미착수 항목
 
 4. ★   공개 준비 (v0.99 → v1.0)
    언어 스펙 최종판 → AI-Native 실증 → HN/Reddit
@@ -220,11 +220,27 @@ v0.97        @export + --shared + FFI 안전성 (setjmp/longjmp, TLS)
              → docs/BENCHMARK.md 업데이트 + docs/SIMD_PERF.md 승격
              → **Phase C 보류** (Cycle 2329 evidence) — opt -O2 후 inttoptr 100% 제거 확인
              → cargo test 6201 pass, clippy clean, Stage 1 bootstrap ✅ (21s)
+             **bmb bench --compare ✅** — CI 회귀 게이트 CLI (Cycles 2341-2351)
+             → NDJSON 파싱 + name 매칭 + 5-way 분류 (OK/REG/IMP/MISSING/NEW)
+             → --threshold (기본 2%, CLAUDE.md CI req 일치), exit 1 on regression
+             → scripts/test-bench-compare.sh smoke test 10/10 PASS
+             → docs/BENCHMARK.md "Regression detection" 섹션
+             **Runtime source divergence 영구 차단** (Cycle 2348)
+             → runtime/bmb_runtime.c ↔ bmb/runtime/bmb_runtime.c v0.95↔v0.98 sync
+             → scripts/bootstrap.sh에 .c/.h 자동 복사 step 추가
+             **test_golden_file_io_extras ✅** (Cycle 2342)
+             → 원인은 getcwd가 아닌 bmb_delete_file API v0.98 변경 (1/0 → 0/-1)
+             → Golden test 2815/2815 pass
+             **3-Stage Fixed Point 재검증 ✅** (Cycles 2341, 2349)
+             → bmb_black_box 추가 이후 S2==S3 line-exact 확인 (108,574 lines)
+             → 세션 커밋: `ad3deb21` (Cycles 2341-2351, 311 insertions)
 
 ═══════════════════ 현재 위치: 배포/품질 단계 ═════════════════════════
 
 v0.98        PyPI wheel 빌드 + 크로스플랫폼 (Linux/macOS)
              @bench native mode ✅ (Cycles 2330-2335)
+             @bench --compare CLI ✅ (Cycles 2341-2351)
+             Runtime source auto-sync ✅ (Cycle 2348)
              Node.js WASM 바인딩
              ~~Native Ptr 타입 시스템~~ — 증거상 보류 (opt -O2 자동 제거 확인)
           ▼
