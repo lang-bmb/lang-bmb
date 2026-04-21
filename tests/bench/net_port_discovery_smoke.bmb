@@ -1,0 +1,47 @@
+// Cycle 2391-2392: ephemeral port + host-pointer discovery.
+// Pass port=0 to listen/bind; runtime calls getsockname() so the actual
+// OS-assigned port is recoverable via async_socket_port. async_socket_host
+// returns an i64 pointer to the sock->host C-string ("0.0.0.0" for
+// listeners/bound sockets; peer IP for accepted clients). Both accessors
+// share the same BmbAsyncSocket->{host,port} backing field.
+//
+// Exit codes:
+//   0 = OK (TCP+UDP port non-zero, both host pointers non-zero)
+//   1 = TCP listen() failed
+//   2 = TCP port accessor returned 0
+//   3 = TCP host accessor returned 0 (pointer to sock->host)
+//   4 = UDP bind() failed
+//   5 = UDP port accessor returned 0
+//   6 = UDP host accessor returned 0
+
+fn main() -> i64 = {
+    let listener: i64 = async_socket_listen(0);
+    if listener == 0 {
+        1
+    } else {
+        let tcp_port: i64 = async_socket_port(listener);
+        let tcp_host: i64 = async_socket_host(listener);
+        async_socket_close(listener);
+        if tcp_port == 0 {
+            2
+        } else if tcp_host == 0 {
+            3
+        } else {
+            let udp_sock: i64 = async_udp_bind(0);
+            if udp_sock == 0 {
+                4
+            } else {
+                let udp_port: i64 = async_socket_port(udp_sock);
+                let udp_host: i64 = async_socket_host(udp_sock);
+                async_udp_close(udp_sock);
+                if udp_port == 0 {
+                    5
+                } else if udp_host == 0 {
+                    6
+                } else {
+                    0
+                }
+            }
+        }
+    }
+};

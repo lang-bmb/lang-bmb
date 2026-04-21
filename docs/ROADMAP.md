@@ -4,7 +4,7 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 
 ---
 
-## Current Status — v0.98 (2026-04-21, post-Cycles 2375-2381)
+## Current Status — v0.98 (2026-04-21, post-Cycles 2391-2396)
 
 ### Progress
 
@@ -32,7 +32,41 @@ Tooling     ████████████████░░░░ 80%   @
 
 ## Recently completed
 
-### Cycles 2375-2381 (this session)
+### Cycles 2391-2396 (this session)
+
+**Ephemeral-port discovery for stdlib/net** (Cycles 2391-2392). Runtime
+now captures the OS-assigned port via `getsockname()` after
+`tcp_listen(0)` / `udp_bind(0)` (previously `sock->port` stored the
+user-supplied 0). New `bmb_async_socket_port` + `bmb_async_socket_host`
+runtime accessors exposed through stdlib/net as `tcp_listen_port`,
+`udp_bind_port`, `tcp_peer_port`, `tcp_peer_host`. Round-trip validated
+via `tests/bench/net_port_discovery_smoke.bmb` +
+`net_stdlib_port_smoke.bmb`. 3-Stage Fixed Point re-verified.
+
+**Bootstrap `@annotation pub fn` silent parse failure fixed** (Cycle
+2394). A hardcoded `121` at `bootstrap/compiler.bmb:2502` (where
+`TK_PUB()` is actually `2_000_000_170`) caused every
+`@<anything> pub fn ...` combination to silently fail with the
+`"expected 'fn' after @X, got integer literal"` fallback. Fix: literal
+→ `TK_PUB()`; plus `"fn-trust"` added to `is_fn_node` so the resulting
+`(fn-trust ...)` AST reaches MIR lowering. Impact: `@include "stdlib/
+time/mod.bmb"` / `stdlib/fs` / `stdlib/io` / `stdlib/process` (27
+public functions) now compile via bootstrap. 3-Stage Fixed Point
+re-verified after the fix.
+
+**New latent bug identified — Defect 3** (Cycles 2394-2395). Under
+narrow conditions, adding a helper fn to `bootstrap/compiler.bmb`
+corrupts Stage 2 self-compilation (misplaced parse errors or 16 GB
+arena exhaustion). Minimal repro in Cycle 2395: a 5-line
+`skip_contract_body_tokens` helper with `or`-chained `tok_kind`
+comparisons. Multi-line comments containing `{...}` also trigger a
+similar failure class. Blocks a tolerant `skip_contracts` fix that
+would otherwise unblock stdlib/string / stdlib/array `@include` via
+bootstrap (contracts use `implies`, unsupported by bootstrap parser).
+Dedicated investigation deferred. **Workaround**: keep bootstrap
+helper fns minimal; prefer inlining over extracting.
+
+### Cycles 2375-2381 (earlier session)
 
 **Bootstrap SIMD stub-compile-safe.** `@include "stdlib/simd/mod.bmb"` via bootstrap previously emitted `ret double %todo` (placeholder `= todo` body in a typed return slot → undefined reference). Two-layer fix: parser now recognises bare `todo` as `(unit)` matching the Rust compiler's `Expr::Todo → Constant::Unit` path; a new post-IR pass `fix_typed_ret_placeholders_ir` rewrites residual `ret double 0` / `ret float 0` / `ret ptr 0` (artifacts of unit-constant propagation through the identity-copy eliminator) to type-appropriate literals. 3-Stage Fixed Point re-verified. SIMD intrinsic CALL-site dispatch (vector types, splat/hsum intrinsic emission from bootstrap) remains a separate, larger work item.
 
@@ -44,7 +78,7 @@ Tooling     ████████████████░░░░ 80%   @
 
 **stdlib/net raw-buffer helpers.** `tcp_write_raw(socket, buf)` and `udp_sendto_raw(socket, host_buf, port, data_buf)` wrappers for callers who already hold extracted pointers (from `string_as_cstr` or manual allocation) — skip the String wrapping round-trip.
 
-### Cycles 2359-2373 (previous session)
+### Cycles 2359-2373 (earlier session)
 
 **`stdlib/net` full E2E + UDP primitive.** Extended TCP with a Python-backed echo server round-trip (`scripts/test-net-echo.sh`, 2000-byte payload, CI gate on ubuntu-latest via `net-echo-smoke` job). Added UDP primitive (`udp_bind/sendto/recv/close`) with runtime (Win32 + POSIX), bootstrap wiring (types/dispatch/extern), and stdlib wrappers. Full bidirectional UDP echo validated. TCP loopback via `tcp_connect("127.0.0.1", ...)` also working — closes HANDOFF §4 "host: String as i64 cast 경로 미완".
 
@@ -133,7 +167,9 @@ Tooling     ████████████████░░░░ 80%   @
 
 | Option | Effort | Risk | Notes |
 |--------|--------|------|-------|
-| Cross-platform SIMD + net verification (Linux/macOS) | 3-5 cycles | LOW-MEDIUM | Needs push to trigger CI; 142 local commits ahead of origin as of 2026-04-21. First observation on merge covers `net-echo-smoke` (ubuntu-latest), UDP echo + SIMD still Windows-only |
+| Cross-platform SIMD + net verification (Linux/macOS) | 3-5 cycles | LOW-MEDIUM | Needs push to trigger CI; 144+ local commits ahead of origin. First observation on merge covers `net-echo-smoke` (ubuntu-latest), UDP echo + SIMD still Windows-only |
+| **Bootstrap self-parse fragility (Defect 3)** | 2-3 cycles | HIGH | Discovered Cycle 2394-2395. Adding certain new helper fns (esp. with `or`-chained `tok_kind` comparisons) or multi-line comments with `{...}` corrupts Stage 2 self-compilation. Blocks tolerant `skip_contracts` (needed for stdlib/string / array @include) and any non-trivial bootstrap refactor. Root-cause: unknown — hex/token-dump investigation needed. |
+| stdlib/string, stdlib/array bootstrap `@include` | 1-2 cycles | LOW | Blocked on Defect 3. Requires `implies` operator support in bootstrap parser OR a tolerant `skip_contracts` recovery path. Rust driver already handles these. |
 | Bootstrap SIMD intrinsic CALL-site dispatch | 10+ cycles | HIGH | Stub compile safe (Cycle 2375); Cycle 2387 reconnaissance showed full dispatch requires vector-type awareness in the bootstrap type checker (211 intrinsics × vec-type alloca + call replacement). Silent-correctness limitation documented in `stdlib/simd/mod.bmb` header — bootstrap calls return 0. Workaround: use Rust driver for SIMD. Not a v0.98 blocker. |
 | `stdlib/net` TLS extension (`tcp_tls_connect`, `accept_tls`) | 6-10 cycles | MEDIUM-HIGH | Needs OpenSSL binding — new external dependency |
 | ~~`stdlib/net` `udp_recvfrom` (peer address exposure)~~ | ~~2-4 cycles~~ | ✅ **완료 (Cycles 2385-2386)** | Runtime `BmbUdpPacket` + 5 accessor 심볼 추가, bootstrap extern 매핑 + stdlib wrapper + smoke 테스트. Multi-client UDP server 가능. |

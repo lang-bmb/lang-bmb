@@ -10,6 +10,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Work on `v0.98.x` — see cycle logs under `claudedocs/cycle-logs/cycle-2383.md`
 and later for per-cycle detail.
 
+### Added (Cycles 2391-2394)
+- **Ephemeral-port discovery for stdlib/net** (Cycle 2391): runtime now
+  calls `getsockname()` after `tcp_listen(0)` / `udp_bind(0)` so the
+  OS-assigned port is recoverable. New `bmb_async_socket_port(handle)`
+  accessor exposed as `tcp_listen_port` / `udp_bind_port` in stdlib/net.
+- **TCP peer host/port accessors** (Cycle 2392): `bmb_async_socket_host`
+  runtime fn + `tcp_peer_port` / `tcp_peer_host` stdlib wrappers. Reuse
+  `BmbAsyncSocket->{host,port}` fields already populated by `tcp_accept`
+  from the remote sockaddr.
+- **stdlib wrapper smoke coverage** (Cycle 2393):
+  `tests/bench/net_stdlib_port_smoke.bmb` validates the full
+  `@include → tcp_listen → tcp_listen_port` path at the user API layer.
+
+### Fixed (Cycle 2394)
+- **Bootstrap `@annotation pub fn` silently broken** — a hardcoded
+  literal `121` at `bootstrap/compiler.bmb:2502` was being compared
+  against `tok_kind(tok2)` where `TK_PUB()` is actually `2_000_000_170`.
+  Consequence: every `@<anything> pub fn ...` combination fell through
+  to the fallback error *"expected 'fn' after @X, got integer literal"*.
+  Fix: literal → `TK_PUB()`. Paired fix: added `"fn-trust"` to
+  `is_fn_node` so the AST produced by `@trust pub fn ...` is accepted by
+  MIR lowering (was silently dropped, yielding *"lowering produced empty
+  MIR"*).
+  - **Impact**: `@include "stdlib/time/mod.bmb"` / `stdlib/fs` /
+    `stdlib/io` / `stdlib/process` now compile via bootstrap. Previously
+    27 public stdlib functions could only be reached through the Rust
+    driver.
+  - **3-Stage Fixed Point** re-verified (S2 == S3) after both fixes.
+
+### Known limitations (Cycle 2394-2395 discovery)
+- **Bootstrap self-parse fragility (Defect 3)**: under narrow, not-yet-
+  characterised conditions, adding a new helper fn to
+  `bootstrap/compiler.bmb` can corrupt Stage 2 self-compilation — either
+  producing a misplaced parse error (e.g. the parser decides the file
+  header is inside an `if` clause) or exhausting a 16 GB arena allocation.
+  Minimal reproduction during Cycle 2395: a 5-line
+  `skip_contract_body_tokens` helper with `or`-chained `tok_kind`
+  comparisons broke the bootstrap even though the same code was syntactic-
+  ally valid, the Rust-built Stage 1 binary compiled cleanly, and a
+  trivial arithmetic `fn` at the same location was harmless. Multi-line
+  comments containing `{...}` have also triggered the same class of
+  failure. Root-cause analysis deferred to a dedicated investigation
+  session. **Workaround**: keep bootstrap helper fns minimal and
+  single-purpose; prefer inlining over extracting.
+- **stdlib/string / stdlib/array via bootstrap `@include`**: blocked on
+  the absence of an `implies` operator in the bootstrap parser — contracts
+  like `post (len == 0) implies not ret` currently fail `parse_expr`
+  inside `skip_contracts`. A token-scan recovery was attempted in Cycle
+  2395 but blocked by the fragility above.
+
 ---
 
 ## [v0.98.0] — 2026-04 (Cycles 2300-2388, stdlib/net + tooling)

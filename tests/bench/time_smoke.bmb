@@ -1,0 +1,17 @@
+// Cycle 2394: Verify @include "stdlib/time/mod.bmb" now works via bootstrap
+// after the TK_PUB + fn-trust parser/lowering fix. The wrappers `now_ms()`
+// / `now_ns()` have placeholder `= 0` bodies and are routed to the runtime
+// only under the Rust compiler's @trust handling — the bootstrap sees them
+// as literal-0 returns. This test exercises the *arithmetic helpers* which
+// have real bodies, proving the @include path works end-to-end.
+//
+// Exit 0 = OK.
+@include "stdlib/time/mod.bmb"
+
+fn main() -> i64 = {
+    let m = secs_to_ms(5);         // 5000
+    let n = ms_to_ns(2);           // 2_000_000
+    let s = ns_to_secs(3000000000); // 3
+    let e = elapsed_ms(10, 30);    // 20
+    if m == 5000 and n == 2000000 and s == 3 and e == 20 { 0 } else { 1 }
+};

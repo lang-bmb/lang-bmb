@@ -2498,8 +2498,9 @@ fn parse_program_sb(src: String, pos: i64, sb: i64) -> String =
     if ann.len() > 0 {
         let after_ann = pos_after_annotation(src, pos);
         let tok2 = next_token_raw(src, after_ann);
-        // v0.97: Skip optional "pub" between @annotation and fn
-        let fn_tok = if tok_kind(tok2) == 121 { next_token_raw(src, tok_end(tok2)) } else { tok2 };
+        // v0.97: Skip optional "pub" between @annotation and fn.
+        // Cycle 2394: 121 was a stale literal; TK_PUB() is the canonical value.
+        let fn_tok = if tok_kind(tok2) == TK_PUB() { next_token_raw(src, tok_end(tok2)) } else { tok2 };
         if tok_kind(fn_tok) == TK_FN() {
             let rf = parse_fn_with_annotation(src, tok_end(fn_tok), ann);
             if is_error(rf) { rf } else {
@@ -3071,9 +3072,10 @@ fn extract_float_value_text(ast: String) -> String =
     let val_start = low_skip_ws(content, end1);
     content.slice(val_start, content.len());
 
+// Cycle 2394: fn-trust added so stdlib/time, stdlib/fs, stdlib/io, stdlib/process @include via bootstrap succeeds.
 fn is_fn_node(ast: String) -> bool =
     let nt = get_node_type(ast);
-    nt == "fn" or nt == "fn-pure" or nt == "fn-const" or nt == "fn-inline";
+    nt == "fn" or nt == "fn-pure" or nt == "fn-const" or nt == "fn-inline" or nt == "fn-trust";
 
 // ============================================================================
 // SECTION 8: MIR Result Packing
@@ -6457,6 +6459,8 @@ fn map_runtime_fn_full(fn_name: String) -> String =
     else if fn_name == "@async_udp_packet_port" { "@bmb_udp_packet_port" }
     else if fn_name == "@async_udp_packet_len" { "@bmb_udp_packet_len" }
     else if fn_name == "@async_udp_packet_free" { "@bmb_udp_packet_free" }
+    else if fn_name == "@async_socket_port" { "@bmb_async_socket_port" }
+    else if fn_name == "@async_socket_host" { "@bmb_async_socket_host" }
     else if fn_name == "@thread_pool_new" { "@bmb_thread_pool_new" }
     else if fn_name == "@thread_pool_execute" { "@bmb_thread_pool_execute" }
     else if fn_name == "@thread_pool_join" { "@bmb_thread_pool_join" }
@@ -13295,7 +13299,11 @@ fn gen_runtime_decls() -> String =
     "declare i64 @bmb_udp_packet_host(i64) nocallback nounwind" + SEP() +
     "declare i64 @bmb_udp_packet_port(i64) nocallback nounwind" + SEP() +
     "declare i64 @bmb_udp_packet_len(i64) nocallback nounwind" + SEP() +
-    "declare void @bmb_udp_packet_free(i64) nocallback nounwind";
+    "declare void @bmb_udp_packet_free(i64) nocallback nounwind" + SEP() +
+    // v0.98 (Cycle 2391): ephemeral local-port discovery after tcp_listen(0)/udp_bind(0)
+    "declare i64 @bmb_async_socket_port(i64) nocallback nounwind" + SEP() +
+    // v0.98 (Cycle 2392): peer/local host string accessor (char*, not copied)
+    "declare i64 @bmb_async_socket_host(i64) nocallback nounwind";
 
 // ============================================================================
 // SECTION 12b: String Literal Handling (v0.60.109)

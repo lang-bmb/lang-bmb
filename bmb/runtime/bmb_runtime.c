@@ -5009,7 +5009,13 @@ int64_t bmb_async_socket_listen(int64_t port) {
     }
 
     sock->host = strdup("0.0.0.0");
-    sock->port = (int)port;
+    struct sockaddr_in bound_addr = {0};
+    int bound_len = sizeof(bound_addr);
+    if (getsockname(sock->sock, (struct sockaddr*)&bound_addr, &bound_len) == 0) {
+        sock->port = (int)ntohs(bound_addr.sin_port);
+    } else {
+        sock->port = (int)port;
+    }
     sock->is_connected = 1;
 
     return (int64_t)sock;
@@ -5073,7 +5079,13 @@ int64_t bmb_async_udp_bind(int64_t port) {
     }
 
     sock->host = strdup("0.0.0.0");
-    sock->port = (int)port;
+    struct sockaddr_in bound_addr = {0};
+    int bound_len = sizeof(bound_addr);
+    if (getsockname(sock->sock, (struct sockaddr*)&bound_addr, &bound_len) == 0) {
+        sock->port = (int)ntohs(bound_addr.sin_port);
+    } else {
+        sock->port = (int)port;
+    }
     sock->is_connected = 1;
     return (int64_t)sock;
 }
@@ -5316,7 +5328,13 @@ int64_t bmb_async_socket_listen(int64_t port) {
     }
 
     sock->host = strdup("0.0.0.0");
-    sock->port = (int)port;
+    struct sockaddr_in bound_addr = {0};
+    socklen_t bound_len = sizeof(bound_addr);
+    if (getsockname(sock->sock, (struct sockaddr*)&bound_addr, &bound_len) == 0) {
+        sock->port = (int)ntohs(bound_addr.sin_port);
+    } else {
+        sock->port = (int)port;
+    }
     sock->is_connected = 1;
 
     return (int64_t)sock;
@@ -5376,7 +5394,13 @@ int64_t bmb_async_udp_bind(int64_t port) {
     }
 
     sock->host = strdup("0.0.0.0");
-    sock->port = (int)port;
+    struct sockaddr_in bound_addr = {0};
+    socklen_t bound_len = sizeof(bound_addr);
+    if (getsockname(sock->sock, (struct sockaddr*)&bound_addr, &bound_len) == 0) {
+        sock->port = (int)ntohs(bound_addr.sin_port);
+    } else {
+        sock->port = (int)port;
+    }
     sock->is_connected = 1;
     return (int64_t)sock;
 }
@@ -5500,6 +5524,31 @@ void bmb_udp_packet_free(int64_t pkt_handle) {
     if (pkt->payload) free(pkt->payload);
     if (pkt->host) free(pkt->host);
     free(pkt);
+}
+
+// v0.98 (Cycle 2391): Read the local port bound to a TCP listener or UDP
+// socket. After tcp_listen(0) or udp_bind(0) the OS assigns an ephemeral
+// port; this accessor exposes that assignment to BMB code. Returns 0 on a
+// NULL handle. Safe to call on any BmbAsyncSocket created by this runtime.
+//
+// For a socket returned by tcp_accept, this returns the *peer* port (the
+// accept path populates host/port from the remote sockaddr). For listener
+// and bound sockets, it returns the *local* port.
+int64_t bmb_async_socket_port(int64_t sock_handle) {
+    if (sock_handle == 0) return 0;
+    BmbAsyncSocket* sock = (BmbAsyncSocket*)sock_handle;
+    return (int64_t)sock->port;
+}
+
+// v0.98 (Cycle 2392): Pointer to the null-terminated host string associated
+// with a socket. For accepted client sockets, this is the peer's dotted-quad
+// IPv4 address. For listener / bound sockets, "0.0.0.0". The pointer is
+// owned by the BmbAsyncSocket and invalidated by bmb_async_socket_close.
+// Returns 0 on a NULL handle.
+int64_t bmb_async_socket_host(int64_t sock_handle) {
+    if (sock_handle == 0) return 0;
+    BmbAsyncSocket* sock = (BmbAsyncSocket*)sock_handle;
+    return (int64_t)sock->host;
 }
 
 // ============================================================================

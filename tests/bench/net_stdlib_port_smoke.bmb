@@ -1,0 +1,38 @@
+// Cycle 2393: stdlib/net wrapper smoke — validates that the public API
+// (tcp_listen_port, udp_bind_port) routes correctly through @include +
+// wrapper + async_socket_port runtime. Separate from net_port_discovery
+// which calls the low-level runtime directly.
+//
+// Exit codes:
+//   0 = OK (both wrappers returned a non-zero ephemeral port)
+//   1 = tcp_listen() failed
+//   2 = tcp_listen_port returned 0 (wrapper broken)
+//   3 = udp_bind() failed
+//   4 = udp_bind_port returned 0 (wrapper broken)
+@include "stdlib/net/mod.bmb"
+
+fn main() -> i64 = {
+    let listener: i64 = tcp_listen(0);
+    if listener == 0 {
+        1
+    } else {
+        let t_port: i64 = tcp_listen_port(listener);
+        tcp_close(listener);
+        if t_port == 0 {
+            2
+        } else {
+            let udp_sock: i64 = udp_bind(0);
+            if udp_sock == 0 {
+                3
+            } else {
+                let u_port: i64 = udp_bind_port(udp_sock);
+                udp_close(udp_sock);
+                if u_port == 0 {
+                    4
+                } else {
+                    0
+                }
+            }
+        }
+    }
+};

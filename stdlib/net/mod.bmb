@@ -59,6 +59,27 @@ pub fn tcp_write(socket: i64, content: String) -> i64
     0
 };
 
+// Cycle 2391: Read the local port bound to `listener`. Useful when the caller
+// passed port=0 to `tcp_listen` for an OS-assigned ephemeral port — after the
+// bind, the real port is recoverable via this accessor. Returns 0 on a 0 handle.
+pub fn tcp_listen_port(listener: i64) -> i64
+= async_socket_port(listener);
+
+// Cycle 2392: Read the peer port of a client socket returned by `tcp_accept`.
+// Equivalent to `tcp_listen_port` at the API level — both route to
+// `bmb_async_socket_port` — but named separately to document intent at the
+// call site. Returns 0 on a 0 handle.
+pub fn tcp_peer_port(client: i64) -> i64
+= async_socket_port(client);
+
+// Cycle 2392: Pointer (i64) to the peer's null-terminated host string (IPv4
+// dotted-quad) for a client socket returned by `tcp_accept`. The pointer is
+// owned by the socket and invalidated when the socket is closed — copy the
+// bytes out if you need the string to outlive the connection. Returns 0 on a
+// 0 handle.
+pub fn tcp_peer_host(client: i64) -> i64
+= async_socket_host(client);
+
 // Close `socket`. No-op when socket is 0. Always safe to call.
 // Returns: 0.
 pub fn tcp_close(socket: i64) -> i64
@@ -147,6 +168,12 @@ pub fn udp_packet_free(packet: i64) -> i64
     };
     0
 };
+
+// Cycle 2391: Read the local port bound to `socket` (UDP). After udp_bind(0)
+// the OS assigns an ephemeral port; use this to recover it. Returns 0 on a 0
+// handle. Shares the underlying BmbAsyncSocket->port accessor with TCP listeners.
+pub fn udp_bind_port(socket: i64) -> i64
+= async_socket_port(socket);
 
 // Close UDP socket. Safe when socket is 0.
 pub fn udp_close(socket: i64) -> i64
