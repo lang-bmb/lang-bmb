@@ -2029,8 +2029,8 @@ impl TextCodeGen {
             format!(" nosync nounwind willreturn mustprogress{}{}{}{}{}", nofree_attr, norecurse_attr, memory_attr, no_trap, uwtable)
         };
 
-        // v0.31.23: Rename BMB main to bmb_user_main so C runtime can provide real main()
-        // This enables argv support through bmb_init_argv called from real main()
+        // v0.31.23: Rename BMB main to bmb_user_main so the inline main() wrapper
+        // emitted in build::mod can call it after bmb_init_runtime populates argv state.
         let emitted_name = if func.name == "main" { "bmb_user_main" } else { &func.name };
 
         // v0.60.252: Use private linkage for all non-main user functions

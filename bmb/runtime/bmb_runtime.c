@@ -836,6 +836,36 @@ int64_t bmb_pow(int64_t base, int64_t exp) {
     return result;
 }
 
+// Cycle 2388: bit / number predicates used by i64 method calls.
+// Bootstrap routes `x.is_power_of_two()` etc. through `method_to_runtime_fn`
+// into `@bmb_<method>`, so these runtime helpers close the codegen gap that
+// Cycle 2384 fixed for single-instruction bit-ops.
+int64_t bmb_is_power_of_two(int64_t n) {
+    return (n > 0 && (n & (n - 1)) == 0) ? 1 : 0;
+}
+
+int64_t bmb_next_power_of_two(int64_t n) {
+    if (n <= 1) return 1;
+    uint64_t v = (uint64_t)(n - 1);
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    v |= v >> 32;
+    return (int64_t)(v + 1);
+}
+
+int64_t bmb_is_prime(int64_t n) {
+    if (n < 2) return 0;
+    if (n < 4) return 1;
+    if ((n & 1) == 0 || n % 3 == 0) return 0;
+    for (int64_t i = 5; i * i <= n; i += 6) {
+        if (n % i == 0 || n % (i + 2) == 0) return 0;
+    }
+    return 1;
+}
+
 // v0.95: Bitwise utilities
 int64_t bmb_popcount(int64_t n) {
     uint64_t x = (uint64_t)n;
@@ -4810,6 +4840,16 @@ void bmb_nb_file_write(int64_t file_handle, int64_t content_handle) {
 // Current implementation: synchronous blocking sockets.
 // Future: Platform-specific async I/O (IOCP on Windows, io_uring on Linux)
 
+// v0.98 (Cycle 2385): UDP packet with peer address captured at recvfrom time.
+// Ownership: both payload and host are heap-allocated; bmb_udp_packet_free
+// releases them. payload_len counts bytes excluding the terminating NUL.
+typedef struct {
+    char* payload;
+    char* host;
+    int port;
+    int payload_len;
+} BmbUdpPacket;
+
 #ifdef _WIN32
 // Windows uses WinSock (included at top before windows.h)
 #pragma comment(lib, "ws2_32.lib")
@@ -5089,6 +5129,39 @@ int64_t bmb_async_udp_recv(int64_t sock_handle) {
     return (int64_t)buffer;
 }
 
+// v0.98 (Cycle 2385): recvfrom variant that exposes peer host/port via a
+// BmbUdpPacket handle. Returns 0 on error; caller must bmb_udp_packet_free.
+int64_t bmb_async_udp_recvfrom(int64_t sock_handle) {
+    if (sock_handle == 0) return 0;
+    BmbAsyncSocket* sock = (BmbAsyncSocket*)sock_handle;
+    if (!sock->is_connected) return 0;
+
+    char* buffer = (char*)malloc(4096);
+    if (!buffer) return 0;
+
+    struct sockaddr_in src = {0};
+    int src_len = sizeof(src);
+    int received = recvfrom(sock->sock, buffer, 4095, 0,
+                            (struct sockaddr*)&src, &src_len);
+    if (received <= 0) {
+        free(buffer);
+        return 0;
+    }
+    buffer[received] = '\0';
+
+    BmbUdpPacket* pkt = (BmbUdpPacket*)malloc(sizeof(BmbUdpPacket));
+    if (!pkt) { free(buffer); return 0; }
+
+    char ipbuf[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &src.sin_addr, ipbuf, sizeof(ipbuf));
+
+    pkt->payload = buffer;
+    pkt->host = strdup(ipbuf);
+    pkt->port = ntohs(src.sin_port);
+    pkt->payload_len = received;
+    return (int64_t)pkt;
+}
+
 // v0.98 (Cycle 2367): Close UDP socket. Shares struct with TCP.
 void bmb_async_udp_close(int64_t sock_handle) {
     bmb_async_socket_close(sock_handle);
@@ -5355,11 +5428,79 @@ int64_t bmb_async_udp_recv(int64_t sock_handle) {
     return (int64_t)buffer;
 }
 
+// v0.98 (Cycle 2385): POSIX recvfrom variant exposing peer host/port.
+int64_t bmb_async_udp_recvfrom(int64_t sock_handle) {
+    if (sock_handle == 0) return 0;
+    BmbAsyncSocket* sock = (BmbAsyncSocket*)sock_handle;
+    if (!sock->is_connected) return 0;
+
+    char* buffer = (char*)malloc(4096);
+    if (!buffer) return 0;
+
+    struct sockaddr_in src = {0};
+    socklen_t src_len = sizeof(src);
+    ssize_t received = recvfrom(sock->sock, buffer, 4095, 0,
+                                (struct sockaddr*)&src, &src_len);
+    if (received <= 0) {
+        free(buffer);
+        return 0;
+    }
+    buffer[received] = '\0';
+
+    BmbUdpPacket* pkt = (BmbUdpPacket*)malloc(sizeof(BmbUdpPacket));
+    if (!pkt) { free(buffer); return 0; }
+
+    char ipbuf[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &src.sin_addr, ipbuf, sizeof(ipbuf));
+
+    pkt->payload = buffer;
+    pkt->host = strdup(ipbuf);
+    pkt->port = ntohs(src.sin_port);
+    pkt->payload_len = (int)received;
+    return (int64_t)pkt;
+}
+
 void bmb_async_udp_close(int64_t sock_handle) {
     bmb_async_socket_close(sock_handle);
 }
 
 #endif
+
+// v0.98 (Cycle 2385): Cross-platform accessors for BmbUdpPacket returned by
+// bmb_async_udp_recvfrom. Callers must pair each recvfrom with exactly one
+// bmb_udp_packet_free.
+
+int64_t bmb_udp_packet_payload(int64_t pkt_handle) {
+    if (pkt_handle == 0) return 0;
+    BmbUdpPacket* pkt = (BmbUdpPacket*)pkt_handle;
+    return (int64_t)pkt->payload;
+}
+
+int64_t bmb_udp_packet_host(int64_t pkt_handle) {
+    if (pkt_handle == 0) return 0;
+    BmbUdpPacket* pkt = (BmbUdpPacket*)pkt_handle;
+    return (int64_t)pkt->host;
+}
+
+int64_t bmb_udp_packet_port(int64_t pkt_handle) {
+    if (pkt_handle == 0) return 0;
+    BmbUdpPacket* pkt = (BmbUdpPacket*)pkt_handle;
+    return (int64_t)pkt->port;
+}
+
+int64_t bmb_udp_packet_len(int64_t pkt_handle) {
+    if (pkt_handle == 0) return 0;
+    BmbUdpPacket* pkt = (BmbUdpPacket*)pkt_handle;
+    return (int64_t)pkt->payload_len;
+}
+
+void bmb_udp_packet_free(int64_t pkt_handle) {
+    if (pkt_handle == 0) return;
+    BmbUdpPacket* pkt = (BmbUdpPacket*)pkt_handle;
+    if (pkt->payload) free(pkt->payload);
+    if (pkt->host) free(pkt->host);
+    free(pkt);
+}
 
 // ============================================================================
 // v0.99: Non-Blocking Socket I/O (Event Loop-based)

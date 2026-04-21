@@ -134,14 +134,14 @@ Tooling     ████████████████░░░░ 80%   @
 | Option | Effort | Risk | Notes |
 |--------|--------|------|-------|
 | Cross-platform SIMD + net verification (Linux/macOS) | 3-5 cycles | LOW-MEDIUM | Needs push to trigger CI; 142 local commits ahead of origin as of 2026-04-21. First observation on merge covers `net-echo-smoke` (ubuntu-latest), UDP echo + SIMD still Windows-only |
-| Bootstrap SIMD intrinsic CALL-site dispatch | 4-8 cycles | MEDIUM-HIGH | Stub compile now safe (Cycle 2375); still need vector-type awareness + per-intrinsic codegen (splat/hsum/load/store/fma) to let `@include "stdlib/simd/mod.bmb"` via bootstrap actually call SIMD functions |
+| Bootstrap SIMD intrinsic CALL-site dispatch | 10+ cycles | HIGH | Stub compile safe (Cycle 2375); Cycle 2387 reconnaissance showed full dispatch requires vector-type awareness in the bootstrap type checker (211 intrinsics × vec-type alloca + call replacement). Silent-correctness limitation documented in `stdlib/simd/mod.bmb` header — bootstrap calls return 0. Workaround: use Rust driver for SIMD. Not a v0.98 blocker. |
 | `stdlib/net` TLS extension (`tcp_tls_connect`, `accept_tls`) | 6-10 cycles | MEDIUM-HIGH | Needs OpenSSL binding — new external dependency |
-| `stdlib/net` `udp_recvfrom` (peer address exposure) | 2-4 cycles | MEDIUM | v1 `udp_recv` drops source address; needed for multi-client UDP servers |
+| ~~`stdlib/net` `udp_recvfrom` (peer address exposure)~~ | ~~2-4 cycles~~ | ✅ **완료 (Cycles 2385-2386)** | Runtime `BmbUdpPacket` + 5 accessor 심볼 추가, bootstrap extern 매핑 + stdlib wrapper + smoke 테스트. Multi-client UDP server 가능. |
 | Runtime stack trace support (DWARF) | 4-6 cycles | MEDIUM | MIR currently lacks span info — gains limited to function-level unless MIR refactored; reconsider vs ROI |
-| `.bit_count()` / `.leading_zeros()` codegen (bootstrap) | 1-2 cycles | LOW | Type-check accepts, codegen emits undefined `@bit_count`; fixable in bootstrap per Rule 6 (Rust frozen) |
-| CHANGELOG.md reconstruction (v0.67 → v0.98) | 3-5 cycles | LOW | Retroactive; could be partial |
+| ~~`.bit_count()` / `.leading_zeros()` codegen (bootstrap)~~ | ~~1-2 cycles~~ | ✅ **완료 (Cycle 2384)** | `method_to_runtime_fn` + `llvm_gen_call` dispatch에 popcount/clz/ctz/bit_reverse/bswap/bit_not/bit_and/bit_or/bit_xor/bit_shift_left/bit_shift_right 전체 추가. Latent 6건 동시 해소 (bit_and/or/xor/shift_*/bit_not). Fixed Point ✅. |
+| ~~CHANGELOG.md reconstruction (v0.67 → v0.98)~~ | ~~3-5 cycles~~ | ✅ **완료 (Cycle 2389)** | Summary blocks added for v0.96.20-v0.96.46, v0.97.0-v0.97.5, v0.98.0; v0.96.1-v0.96.19 per-cycle detail preserved under group header. |
 | PyPI wheel publish pipeline | 2-4 cycles | MEDIUM | Packaging ready, needs CI job + secret management |
-| Legacy `runtime/runtime.c` removal | 1 cycle | LOW | Separate 1088-LOC file distinct from canonical 6293-LOC `bmb/runtime/bmb_runtime.c`; still referenced by non-LLVM `find_runtime_c` fallback |
+| ~~Legacy `runtime/runtime.c` removal~~ | ~~1 cycle~~ | ✅ **완료 (Cycle 2383)** | 1088-LOC dead C + 2 orphan scripts (`build_test.ps1`, `validate_llvm_ir.sh`) removed. `find_runtime_c` fallback simplified to `bmb_runtime.c`-only (legacy `bmb_init_argv` API was already incompatible with codegen-emitted `bmb_init_runtime`). |
 
 ---
 

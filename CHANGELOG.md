@@ -7,6 +7,161 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Work on `v0.98.x` — see cycle logs under `claudedocs/cycle-logs/cycle-2383.md`
+and later for per-cycle detail.
+
+---
+
+## [v0.98.0] — 2026-04 (Cycles 2300-2388, stdlib/net + tooling)
+
+### Added
+- **`stdlib/net` module** (Cycles 2353-2374): TCP + UDP primitives on top of
+  `bmb_async_socket_*` + `bmb_async_udp_*` runtime. E2E loopback-verified
+  via `scripts/test-net-echo.sh` / `scripts/test-net-udp-echo.sh`.
+  Cross-platform smoke via `.github/workflows/ci.yml::net-echo-smoke` on
+  ubuntu-latest.
+- **`@bench --native` mode** (Cycles 2326-2339): synthesises a bench
+  harness, compiles via the standard pipeline, parses stdout NDJSON.
+  `bmb_black_box` helper defeats DCE for micro-workloads.
+- **`bmb bench --compare`** (Cycles 2341-2351): CI regression gate with
+  5-way classification (OK/REG/IMP/MISSING/NEW), threshold default 2%.
+  Nightly `@bench` baseline (`.bench-native-baseline.ndjson`) committed on
+  `main`; `.github/workflows/nightly-bench.yml` runs the gate on live
+  benches at threshold 10%.
+- **`@include "path"` via bootstrap** (Cycles 2362-2364): multi-tier
+  resolver (source-dir → `BMB_STDLIB_PATH` env → cwd). `string_as_cstr`
+  builtin fills the `String → char*` gap for runtime calls taking
+  `const char*`.
+- **XOR (`^`) operator** (Cycle 2338) via bootstrap parser/AST/MIR/codegen
+  (Rule 5 full sweep). Rust compiler frozen per Rule 6.
+- **Runtime source auto-sync** (Cycle 2348): `scripts/bootstrap.sh` copies
+  `bmb/runtime/bmb_runtime.c` / `.h` into `runtime/` alongside the `.a`,
+  preventing the v0.95/v0.98 divergence that had silently broken golden
+  tests.
+- **i64 bit-op method dispatch in bootstrap** (Cycles 2384-2388):
+  `bit_count`, `leading_zeros`, `trailing_zeros`, `reverse_bits`, `bswap`,
+  `bit_not`, `bit_and`, `bit_or`, `bit_xor`, `bit_shift_left`,
+  `bit_shift_right`, `is_power_of_two`, `next_power_of_two`, `is_prime`
+  routed to LLVM intrinsics / native instructions / runtime helpers.
+  Previously emitted undefined `@bmb_bit_count` etc.
+- **`BmbUdpPacket` API** (Cycles 2385-2386): `udp_recvfrom(sock)` + 5
+  accessor wrappers (`udp_packet_payload`/`host`/`port`/`len`/`free`)
+  expose peer address for multi-client UDP servers.
+- **Bootstrap `todo` / unit-body correctness fix** (Cycle 2375): parser
+  routes bare `todo` to `(unit)` + new `fix_typed_ret_placeholders_ir`
+  pass rewrites `ret double 0` → `ret double 0.0` etc. after
+  identity-copy propagation. Was silent-LINK-FAIL on f64/float/ptr-returning
+  stubs.
+
+### Fixed
+- `test_golden_file_io_extras` (Cycle 2342): `bmb_delete_file` return
+  convention flipped from 1/0 to 0/-1 in v0.98; golden tests realigned.
+- Runtime v0.95 ↔ v0.98 divergence (Cycle 2348): see Added above.
+
+### Removed
+- Legacy `runtime/runtime.c` + `runtime/build_test.ps1` +
+  `runtime/validate_llvm_ir.sh` (Cycle 2383): 1088-LOC dead C referenced
+  via a `find_runtime_c` fallback that could never produce a working
+  binary — the legacy `bmb_init_argv` API was incompatible with the
+  codegen-emitted `bmb_init_runtime`. Fallback search simplified to
+  `bmb_runtime.c`-only.
+
+### Verification
+- 3-Stage Fixed Point (S2 == S3): 108,609 lines identical, re-verified
+  after each bootstrap change (Cycles 2376, 2377, 2382, 2386, 2388).
+- `cargo test --release --lib`: 3,764 pass / 0 fail.
+- Nightly `@bench --compare` gate: 5/5 OK at threshold 10%.
+
+### Known limitations
+- Bootstrap SIMD call-site dispatch is not implemented (Cycle 2387
+  reconnaissance). `@include "stdlib/simd/mod.bmb"` compiles but calling
+  a SIMD intrinsic through the bootstrap silently returns 0 because the
+  bootstrap treats vector types as `i64`. Full parity requires vector-type
+  awareness throughout the bootstrap type checker and codegen (tracked in
+  `docs/ROADMAP.md`). Workaround: use the Rust driver
+  (`cargo build --release --features llvm`) for SIMD code.
+
+---
+
+## [v0.97.0] through [v0.97.5] — 2026-02 to 2026-04 (Cycles ~1900-2300)
+
+### Added — SIMD 1st-class types (Cycles 2215-2330)
+- Vector type tokens in the grammar: `f64x{4,8}`, `i32x{4,8}`,
+  `i64x{2,4}`, `u32xN`, `u64xN`, `f32x{4,8,16}`, `maskN`.
+- Text + inkwell codegen parity (Rule 7) for BinOp / Copy / Call / Return
+  on vector types (Cycles 2266-2272).
+- `stdlib/simd` module with 211 intrinsic wrappers: splat/hsum/load/store/
+  dot/fma/min/max/cmp/blend/shuffle/broadcast_lane (Cycles 2246-2316).
+- 2-source shuffle (`slide_left2`/`slide_right2`/`concat_{lo_hi,hi_lo}`)
+  — 36 new fns × 11 runtime checks (Cycles 2313-2316).
+- `@bench`-attribute driven microbenchmarks + `bmb bench` CLI; `@test`
+  attribute-driven discovery unified (Cycle 2237).
+- `SIMD_PERF_NOTES.md` user guide (Cycle 2289) — when manual SIMD WINS /
+  TIES / LOSES vs auto-vectorization.
+
+### Added — Bindings ecosystem (Cycles 1951-2185)
+- `@export` attribute + `--shared` builds producing `.dll` / `.so`, with
+  FFI safety via `setjmp` / `longjmp` + TLS.
+- 5 binding libraries totalling 140 `@export` functions:
+  `bmb-algo` (55), `bmb-compute` (33), `bmb-text` (24), `bmb-crypto` (15),
+  `bmb-json` (13). 1,017 pytest + 137 integration + 127 stress + 81 edge.
+- C headers × 5 + WASM × 5 (62-289 KB each).
+- Packaging infra: `pyproject.toml`, `.pyi` stubs, `__all__`,
+  `MANIFEST.in`, CI.
+
+### Added — Generic monomorphization (Cycles 241-360, v0.97.3)
+- `fn<T>` / `struct<T>` monomorphization — end-to-end golden tests.
+- Nested generics, generic stdlib, `Vec<T>` + `HashMap<K,V>` with
+  auto-grow.
+- Turbofish call syntax; skip-codegen for unmonomorphized bodies.
+- Native generic enum codegen (8 correctness fixes in Cycles 261-280).
+
+### Added — LSP + ecosystem (Cycles ~1700-2100)
+- LSP 9 features: diagnostics, hover, completion, definition, document
+  symbol, references, rename, formatting, workspace symbol.
+- tree-sitter-bmb v0.3.0 (16 new grammar features).
+- `gotgan` package manager: dependency resolver, topological build order,
+  circular-dep detection; 102+ packages.
+
+---
+
+## [v0.96.20] through [v0.96.46] — 2026-01 to 2026-02 (Cycles 1629-1874)
+
+### Added — Performance sprint (Cycles 1809-1874)
+- **v0.96.36-37** (Cycles 1809-1823): for-loop branch weights,
+  `gc-sections` dead code elimination, MIR algebraic simplification
+  (bitwise / float / shift identities + `PartialEq`).
+- **v0.96.38-39** (Cycles 1824-1830): ptr-provenance `noalias` metadata,
+  narrowing GEP flow fix.
+- **v0.96.40** (Cycles 1831-1834): bootstrap restoration — stack overflow
+  fix + build pipeline.
+- **v0.96.41** (Cycles 1838-1842): TRL false positive + `speculatable`
+  on recursive functions — golden tests 39 → 18 failures.
+- **v0.96.42** (Cycles 1843-1844): lambda string-builder encoding fix —
+  golden tests 100% (2815/2815).
+- **v0.96.43** (Cycles 1846-1849): LLVM attribute enhancement + CSE in
+  release + `CopyPropagation` fix.
+- **v0.96.44** (Cycles 1854-1859): `CopyPropagation` invalidation +
+  malloc narrowing + pipeline fix + `lld gc-sections`.
+- **v0.96.45** (Cycles 1860-1864): MIR pattern expansion + bootstrap
+  `noundef` + Store-Load Forwarding.
+- **v0.96.46** (Cycles 1865-1874): TBAA metadata + inline load/store +
+  LLVM 21 `nocapture` fix + bootstrap GEP `inbounds nuw` + `nonnull`
+  + inline `main` wrapper. 13-17% ThinLTO overhead removed.
+
+### Verification
+- 6,186 Rust tests pass + 2,815/2,815 golden tests.
+
+---
+
+## [v0.96.1] through [v0.96.19] — 2025-12 to 2026-01 (Cycles 1449-1628)
+
+These earlier v0.96.x releases are recorded at per-cycle granularity below.
+Topically they cover gotgan + CLI improvements, 72 golden-test additions
+for algorithmic coverage, LLVM attribute hardening (`nonnull`, `noalias`,
+`dereferenceable(24)`, `nosync`, `memory(read)`, `range()`), and
+interprocedural analysis that propagates memory effects across call chains.
+
 ### Added (Cycles 1609-1628: v0.96.19)
 
 #### v0.96.19: Interprocedural Analysis + memory(read) + 72 Golden Tests (Cycles 1609-1628)

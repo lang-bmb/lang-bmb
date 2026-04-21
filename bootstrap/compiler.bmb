@@ -5366,6 +5366,19 @@ fn method_to_runtime_fn(method: String) -> String =
     else if method == "is_nan" { "bmb_f64_is_nan" }
     else if method == "to_int" { "f64_to_i64" }
     else if method == "to_float" { "i64_to_f64" }
+    // Cycle 2384: i64 bit intrinsics — route to the @popcount/@clz/@ctz dispatch
+    // that llvm_gen_call already expands into llvm.ctpop / llvm.ctlz / llvm.cttz.
+    else if method == "bit_count" { "popcount" }
+    else if method == "leading_zeros" { "clz" }
+    else if method == "trailing_zeros" { "ctz" }
+    else if method == "reverse_bits" { "bit_reverse" }
+    else if method == "bswap" { "bswap" }
+    else if method == "bit_not" { "bit_not" }
+    else if method == "bit_and" { "bit_and" }
+    else if method == "bit_or" { "bit_or" }
+    else if method == "bit_xor" { "bit_xor" }
+    else if method == "bit_shift_left" { "bit_shift_left" }
+    else if method == "bit_shift_right" { "bit_shift_right" }
     else { "bmb_" + method };
 
 fn lower_method_args_sb(ast: String, fn_name: String, receiver: String, temp_id: i64, block_id: i64, idx: i64, sb: i64, loop_exit: String) -> i64 =
@@ -6437,7 +6450,13 @@ fn map_runtime_fn_full(fn_name: String) -> String =
     else if fn_name == "@async_udp_bind" { "@bmb_async_udp_bind" }
     else if fn_name == "@async_udp_sendto" { "@bmb_async_udp_sendto" }
     else if fn_name == "@async_udp_recv" { "@bmb_async_udp_recv" }
+    else if fn_name == "@async_udp_recvfrom" { "@bmb_async_udp_recvfrom" }
     else if fn_name == "@async_udp_close" { "@bmb_async_udp_close" }
+    else if fn_name == "@async_udp_packet_payload" { "@bmb_udp_packet_payload" }
+    else if fn_name == "@async_udp_packet_host" { "@bmb_udp_packet_host" }
+    else if fn_name == "@async_udp_packet_port" { "@bmb_udp_packet_port" }
+    else if fn_name == "@async_udp_packet_len" { "@bmb_udp_packet_len" }
+    else if fn_name == "@async_udp_packet_free" { "@bmb_udp_packet_free" }
     else if fn_name == "@thread_pool_new" { "@bmb_thread_pool_new" }
     else if fn_name == "@thread_pool_execute" { "@bmb_thread_pool_execute" }
     else if fn_name == "@thread_pool_join" { "@bmb_thread_pool_join" }
@@ -6610,6 +6629,42 @@ fn llvm_gen_call(line: String, pos: i64, dest: String) -> String =
         // v0.96: LLVM intrinsic — bit reversal
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = call i64 @llvm.bitreverse.i64(i64 " + arg + ")"
+    } else if fn_name == "@bit_not" {
+        // Cycle 2384: x.bit_not() lowers to `xor x, -1`.
+        let arg = trim_end(line.slice(paren_pos + 1, close_pos));
+        "  " + dest + " = xor i64 " + arg + ", -1"
+    } else if fn_name == "@bit_and" {
+        // Cycle 2384: a.bit_and(b) lowers to native `and` — cheaper than BinOp dispatch.
+        let args = line.slice(paren_pos + 1, close_pos);
+        let comma = find_char(args, 0, 44);
+        let left = trim_end(args.slice(0, comma));
+        let right = trim(args.slice(comma + 1, args.len()));
+        "  " + dest + " = and i64 " + left + ", " + right
+    } else if fn_name == "@bit_or" {
+        let args = line.slice(paren_pos + 1, close_pos);
+        let comma = find_char(args, 0, 44);
+        let left = trim_end(args.slice(0, comma));
+        let right = trim(args.slice(comma + 1, args.len()));
+        "  " + dest + " = or i64 " + left + ", " + right
+    } else if fn_name == "@bit_xor" {
+        let args = line.slice(paren_pos + 1, close_pos);
+        let comma = find_char(args, 0, 44);
+        let left = trim_end(args.slice(0, comma));
+        let right = trim(args.slice(comma + 1, args.len()));
+        "  " + dest + " = xor i64 " + left + ", " + right
+    } else if fn_name == "@bit_shift_left" {
+        let args = line.slice(paren_pos + 1, close_pos);
+        let comma = find_char(args, 0, 44);
+        let left = trim_end(args.slice(0, comma));
+        let right = trim(args.slice(comma + 1, args.len()));
+        "  " + dest + " = shl i64 " + left + ", " + right
+    } else if fn_name == "@bit_shift_right" {
+        // Arithmetic shift for signed i64 (preserves sign bit).
+        let args = line.slice(paren_pos + 1, close_pos);
+        let comma = find_char(args, 0, 44);
+        let left = trim_end(args.slice(0, comma));
+        let right = trim(args.slice(comma + 1, args.len()));
+        "  " + dest + " = ashr i64 " + left + ", " + right
     } else if fn_name == "@abs" or fn_name == "@bmb_abs" {
         // v0.96: LLVM intrinsic — abs; i1 false = INT_MIN is not poison
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
@@ -6844,6 +6899,39 @@ fn llvm_gen_call_reg(line: String, pos: i64, dest: String, registry: String) -> 
     } else if fn_name == "@bit_reverse" {
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = call i64 @llvm.bitreverse.i64(i64 " + arg + ")"
+    } else if fn_name == "@bit_not" {
+        let arg = trim_end(line.slice(paren_pos + 1, close_pos));
+        "  " + dest + " = xor i64 " + arg + ", -1"
+    } else if fn_name == "@bit_and" {
+        let args = line.slice(paren_pos + 1, close_pos);
+        let comma = find_char(args, 0, 44);
+        let left = trim_end(args.slice(0, comma));
+        let right = trim(args.slice(comma + 1, args.len()));
+        "  " + dest + " = and i64 " + left + ", " + right
+    } else if fn_name == "@bit_or" {
+        let args = line.slice(paren_pos + 1, close_pos);
+        let comma = find_char(args, 0, 44);
+        let left = trim_end(args.slice(0, comma));
+        let right = trim(args.slice(comma + 1, args.len()));
+        "  " + dest + " = or i64 " + left + ", " + right
+    } else if fn_name == "@bit_xor" {
+        let args = line.slice(paren_pos + 1, close_pos);
+        let comma = find_char(args, 0, 44);
+        let left = trim_end(args.slice(0, comma));
+        let right = trim(args.slice(comma + 1, args.len()));
+        "  " + dest + " = xor i64 " + left + ", " + right
+    } else if fn_name == "@bit_shift_left" {
+        let args = line.slice(paren_pos + 1, close_pos);
+        let comma = find_char(args, 0, 44);
+        let left = trim_end(args.slice(0, comma));
+        let right = trim(args.slice(comma + 1, args.len()));
+        "  " + dest + " = shl i64 " + left + ", " + right
+    } else if fn_name == "@bit_shift_right" {
+        let args = line.slice(paren_pos + 1, close_pos);
+        let comma = find_char(args, 0, 44);
+        let left = trim_end(args.slice(0, comma));
+        let right = trim(args.slice(comma + 1, args.len()));
+        "  " + dest + " = ashr i64 " + left + ", " + right
     } else if fn_name == "@abs" or fn_name == "@bmb_abs" {
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = call i64 @llvm.abs.i64(i64 " + arg + ", i1 false)"
@@ -12988,6 +13076,9 @@ fn gen_runtime_decls() -> String =
     "declare i64 @llvm.smin.i64(i64, i64)" + SEP() +
     "declare i64 @llvm.smax.i64(i64, i64)" + SEP() +
     "declare i64 @bmb_pow(i64, i64) nofree nosync nounwind willreturn memory(none) speculatable" + SEP() +
+    "declare i64 @bmb_is_power_of_two(i64) nofree nosync nounwind willreturn memory(none) speculatable" + SEP() +
+    "declare i64 @bmb_next_power_of_two(i64) nofree nosync nounwind willreturn memory(none) speculatable" + SEP() +
+    "declare i64 @bmb_is_prime(i64) nofree nosync nounwind willreturn memory(none) speculatable" + SEP() +
     "declare noalias ptr @bmb_array_push(ptr nocapture readonly, i64) nofree nosync nounwind willreturn" + SEP() +
     "declare noalias ptr @bmb_array_pop(ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
     "declare noalias ptr @bmb_array_concat(ptr nocapture readonly, ptr nocapture readonly) nofree nosync nounwind willreturn" + SEP() +
@@ -13198,7 +13289,13 @@ fn gen_runtime_decls() -> String =
     "declare i64 @bmb_async_udp_bind(i64) nocallback nounwind" + SEP() +
     "declare i64 @bmb_async_udp_sendto(i64, i64, i64, i64) nocallback nounwind" + SEP() +
     "declare i64 @bmb_async_udp_recv(i64) nocallback nounwind" + SEP() +
-    "declare void @bmb_async_udp_close(i64) nocallback nounwind";
+    "declare i64 @bmb_async_udp_recvfrom(i64) nocallback nounwind" + SEP() +
+    "declare void @bmb_async_udp_close(i64) nocallback nounwind" + SEP() +
+    "declare i64 @bmb_udp_packet_payload(i64) nocallback nounwind" + SEP() +
+    "declare i64 @bmb_udp_packet_host(i64) nocallback nounwind" + SEP() +
+    "declare i64 @bmb_udp_packet_port(i64) nocallback nounwind" + SEP() +
+    "declare i64 @bmb_udp_packet_len(i64) nocallback nounwind" + SEP() +
+    "declare void @bmb_udp_packet_free(i64) nocallback nounwind";
 
 // ============================================================================
 // SECTION 12b: String Literal Handling (v0.60.109)

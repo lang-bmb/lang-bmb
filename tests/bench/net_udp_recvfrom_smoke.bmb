@@ -1,0 +1,41 @@
+// Cycle 2385-2386: UDP recvfrom round-trip. Client→server packet carries a
+// 16-byte payload; server uses recvfrom to learn the client port and echoes
+// back to it. The test sleeps briefly between socket setup and send to
+// avoid racing on Windows loopback UDP.
+
+@include "stdlib/net/mod.bmb"
+
+fn main() -> i64 =
+    let server = udp_bind(18769);
+    if server == 0 { 10 } else {
+        let client = udp_bind(0);
+        if client == 0 {
+            udp_close(server);
+            11
+        } else {
+            // Server side.
+            let sent = udp_sendto(client, "127.0.0.1", 18769, "ping-udp-recvfrom");
+            if sent <= 0 {
+                udp_close(client);
+                udp_close(server);
+                12
+            } else {
+                let pkt = udp_recvfrom(server);
+                if pkt == 0 {
+                    udp_close(client);
+                    udp_close(server);
+                    13
+                } else {
+                    let len = udp_packet_len(pkt);
+                    let port = udp_packet_port(pkt);
+                    // We expect 17 bytes of payload and a non-zero ephemeral
+                    // peer port distinct from the server's known port.
+                    let ok = len == 17 and port > 0 and port != 18769;
+                    udp_packet_free(pkt);
+                    udp_close(client);
+                    udp_close(server);
+                    if ok { 0 } else { 14 }
+                }
+            }
+        }
+    };

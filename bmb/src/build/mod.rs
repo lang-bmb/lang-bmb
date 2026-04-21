@@ -1132,23 +1132,20 @@ fn find_runtime_c() -> Result<std::path::PathBuf, String> {
     // Check BMB_RUNTIME_PATH environment variable
     if let Ok(path) = std::env::var("BMB_RUNTIME_PATH") {
         let p = PathBuf::from(&path);
-        // v0.96.40: If path is a directory, look for bmb_runtime.c (preferred) or runtime.c
         if p.is_dir() {
             let bmb_rt = p.join("bmb_runtime.c");
             if bmb_rt.exists() {
                 return Ok(bmb_rt);
-            }
-            let rt = p.join("runtime.c");
-            if rt.exists() {
-                return Ok(rt);
             }
         } else if p.exists() {
             return Ok(p);
         }
     }
 
-    // v0.96.40: Prefer bmb_runtime.c (full runtime) over runtime.c (legacy)
-    let runtime_names = ["bmb_runtime.c", "runtime.c"];
+    // v0.98 (Cycle 2383): legacy runtime/runtime.c removed — `bmb_init_argv` is
+    // incompatible with `bmb_init_runtime` emitted by current codegen, so the
+    // fallback could never actually link a working binary.
+    let runtime_names = ["bmb_runtime.c"];
 
     // Check relative to executable
     if let Ok(exe) = std::env::current_exe()

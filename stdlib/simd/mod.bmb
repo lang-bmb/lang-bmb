@@ -8,6 +8,17 @@
 //   at the call site and the declared body is dead code after codegen.
 //   (Native backend only — interpreter does not yet vectorize.)
 //
+// ⚠ COMPILER SUPPORT (Cycle 2387):
+//   These intrinsics are ONLY dispatched by the Rust compiler (cargo build
+//   --release --features llvm). The bootstrap compiler
+//   (target/bootstrap/bmb-stage1) parses the declarations and can link
+//   programs that @include this module, but it does NOT dispatch SIMD
+//   call sites — it compiles the `= todo` body, which returns 0. Calling
+//   a SIMD function through the bootstrap therefore produces silently
+//   incorrect results. If you need SIMD, use the Rust driver. Full
+//   bootstrap dispatch requires vector-type awareness in the bootstrap
+//   type checker + codegen (tracked in docs/ROADMAP.md).
+//
 // Naming:
 //   hsum_{T}{W}xN — horizontal sum reduction, vector → scalar T
 //   splat_{T}{W}xN — broadcast scalar T to every lane

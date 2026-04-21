@@ -900,57 +900,14 @@ Tests equivalence between Rust compiler output and Bootstrap compiler patterns.
 999 (end marker)
 ```
 
-## Integration Testing (v0.10.10)
+## Integration Testing
 
-The `runtime/` directory contains integration testing infrastructure for validating generated LLVM IR.
-
-### Files
-
-| File | Purpose |
-|------|---------|
-| `runtime.c` | C runtime library with println, abs, min, max functions |
-| `test_add.ll` | Simple LLVM IR test (add function) |
-| `test_max.ll` | Complex LLVM IR test (if-then-else with PHI nodes) |
-| `validate_llvm_ir.sh` | Shell script for IR validation |
-| `build_test.ps1` | PowerShell script for full Windows build |
-
-### Runtime Functions
-
-```c
-// Bootstrap runtime functions (matches llvm_ir.bmb declarations)
-void println(int64_t x);     // Print i64 with newline
-int64_t abs(int64_t x);      // Absolute value
-int64_t min(int64_t a, int64_t b);  // Minimum
-int64_t max(int64_t a, int64_t b);  // Maximum
-```
-
-### Validation Process
-
-```bash
-# Validate LLVM IR syntax and compile to object file
-cd runtime
-bash validate_llvm_ir.sh
-
-# Output:
-# [1/3] Validating LLVM IR syntax...
-#   ✓ LLVM IR syntax valid
-# [2/3] Compiling to object file...
-#   ✓ Object file created (724 bytes)
-# [3/3] Verifying symbols...
-#   ✓ Symbol 'add' found (defined)
-#   ✓ Symbol 'main' found (defined)
-#   ✓ Symbol 'println' found (external reference)
-```
-
-### Full Build (Windows with Visual Studio)
-
-```powershell
-# From Developer PowerShell for VS 2022
-cd runtime
-.\build_test.ps1 -Run
-
-# Creates test_add.exe and runs it
-```
+The canonical runtime lives in `bmb/runtime/bmb_runtime.c` and is linked into every
+BMB executable via `bmb build`. Integration testing is now handled by the top-level
+`scripts/bootstrap.sh` 3-stage pipeline and `cargo test --release`; the old
+`runtime/runtime.c` + `test_add.ll` + `validate_llvm_ir.sh` scaffolding from
+v0.10.10 was removed in v0.98 (Cycle 2383) — `bmb_init_argv` in legacy `runtime.c`
+was incompatible with the `bmb_init_runtime` contract emitted by current codegen.
 
 ## End-to-End Validation (v0.10.11)
 

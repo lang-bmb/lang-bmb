@@ -115,6 +115,39 @@ pub fn udp_sendto_raw(socket: i64, host_buf: i64, port: i64, data_buf: i64) -> i
 pub fn udp_recv(socket: i64) -> i64
 = async_udp_recv(socket);
 
+// Cycle 2385: Blocking recv that captures the peer address in a BmbUdpPacket.
+// Returns a packet handle (non-zero) on success, 0 on error. Caller owns the
+// packet and must free it with `udp_packet_free` to release the payload +
+// host buffers. Accessors below are safe to call on a 0 handle.
+pub fn udp_recvfrom(socket: i64) -> i64
+= async_udp_recvfrom(socket);
+
+// Pointer to the null-terminated payload buffer owned by `packet`.
+// The pointer is valid until `udp_packet_free(packet)`.
+pub fn udp_packet_payload(packet: i64) -> i64
+= async_udp_packet_payload(packet);
+
+// Pointer to the null-terminated peer host string (dotted-quad IPv4).
+pub fn udp_packet_host(packet: i64) -> i64
+= async_udp_packet_host(packet);
+
+// Peer source port in host byte order.
+pub fn udp_packet_port(packet: i64) -> i64
+= async_udp_packet_port(packet);
+
+// Payload length in bytes (excludes the terminating NUL).
+pub fn udp_packet_len(packet: i64) -> i64
+= async_udp_packet_len(packet);
+
+// Release the packet, its payload buffer, and its host string. Safe on 0.
+pub fn udp_packet_free(packet: i64) -> i64
+= {
+    if packet != 0 {
+        async_udp_packet_free(packet);
+    };
+    0
+};
+
 // Close UDP socket. Safe when socket is 0.
 pub fn udp_close(socket: i64) -> i64
 = {
