@@ -146,6 +146,8 @@ helper fns minimal; prefer inlining over extracting.
 | TCP loopback via stdlib/net | ✅ Cycle 2372 (HANDOFF §4 closed) |
 | XOR `^` operator (bootstrap) | ✅ Cycle 2354 |
 | `stdlib/net` TCP primitive (listen/accept/connect/read/write/close) | ✅ Cycles 2355-2357 (wrappers + Stage 1 smoke; E2E echo server pending) |
+| `stdlib/net` ephemeral-port + peer-address accessors | ✅ Cycles 2391-2392 (`tcp_listen_port`, `udp_bind_port`, `tcp_peer_port`, `tcp_peer_host` — getsockname() capture + BmbAsyncSocket accessors) |
+| Bootstrap `@annotation pub fn` parse (stdlib/time/fs/io/process @include path) | ✅ Cycle 2394 (hardcoded `121` → `TK_PUB()`, `fn-trust` added to `is_fn_node` — 27 public stdlib fns restored) |
 | PyPI wheel build + publish | Packaging ✅, publish pending |
 | Node.js WASM bindings | Not started |
 | ~~Native Ptr type system (inttoptr removal)~~ | Deferred (evidence: auto-handled by `opt -O2`) |
