@@ -1,0 +1,7 @@
+// Cycle 2402: Verifies `implies` keyword is lexer-tolerant in bootstrap
+// (treated as TK_OR). Parse-only (check) validates; build has an unrelated
+// contract-codegen bug in stdlib/string.
+@include "stdlib/string/mod.bmb"
+@include "stdlib/array/mod.bmb"
+
+fn main() -> i64 = 0

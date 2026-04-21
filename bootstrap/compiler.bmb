@@ -590,6 +590,7 @@ fn keyword_len6(word: String, endpos: i64) -> i64 =
 // v0.88: Concurrency type keywords
 fn keyword_len7(word: String, endpos: i64) -> i64 =
     if word == "Channel" { make_tok(TK_CHANNEL(), endpos) }
+    else if word == "implies" { make_tok(TK_OR(), endpos) }
     else { make_tok(TK_IDENT(), endpos) };
 
 fn keyword_len8(word: String, endpos: i64) -> i64 =

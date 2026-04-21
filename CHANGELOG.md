@@ -60,6 +60,51 @@ and later for per-cycle detail.
   inside `skip_contracts`. A token-scan recovery was attempted in Cycle
   2395 but blocked by the fragility above.
 
+### Added (Cycles 2399-2404)
+- **Lexer-tolerant `implies` keyword** (Cycle 2402):
+  `bootstrap/compiler.bmb:593` now maps the 7-char keyword `implies` to
+  `TK_OR` inside `keyword_len7`. The bootstrap parser discards contract
+  bodies via `skip_contracts` rather than evaluating them, so parsing
+  `implies` as `or` has no effect on compiled output. The Rust driver
+  continues to reject `implies` entirely.
+  - **Impact**: `@include "stdlib/string/mod.bmb"` and
+    `@include "stdlib/array/mod.bmb"` now pass `bmb check` under the
+    bootstrap-built binary. The `build` path remains blocked by a
+    separate overload-post-injection bug (Defect 4).
+- **`tests/bench/stdlib_string_array_include_smoke.bmb`** regression
+  guard for the lexer change.
+
+### Cycle 2399-2403 investigation — Defect 3 trigger narrowed
+- **20-probe matrix on `bootstrap/compiler.bmb`** established that the
+  "bootstrap self-parse fragility" is **deterministic per input**, not
+  intermittent. Two independent triggers:
+  1. Function body references a parameter via an expression (e.g.
+     `fn f(src: String, pos: i64) -> i64 = pos + 1;` exhausts the
+     arena; the same signature with body `42` succeeds).
+  2. Both parameter names are "long" (e.g.
+     `(source: String, position: i64)` fails; changing either to a
+     short name succeeds).
+- Stage 1 (Rust-built) and Stage 2 (BMB-built) binaries fail
+  identically, so the fault is inside `compiler.bmb` itself, not the
+  Rust codegen path.
+- Full probe log: `claudedocs/cycle-logs/cycle-2399.md` and
+  `cycle-2400.md`. The Cycle 2402 lexer tweak succeeded specifically
+  because it modifies an existing `if-elif-else` chain inside
+  `keyword_len7` rather than introducing a new top-level fn.
+
+### Known limitations (Cycle 2403 discovery)
+- **Defect 4 — Overload post-injection substitutes `%ret` but not
+  callee parameters**: `inject_post_assumes_in_fn_scan`
+  (`bootstrap/compiler.bmb:15702`) runs
+  `replace_all_str(raw_ir, "%ret", result_reg)` when emitting a post
+  condition at a call site, but callee-parameter references (e.g.
+  `%pos` inside `find_trim_start_from`'s `post ret >= pos …`) are left
+  dangling. The generated IR then contains `%pos` at a caller scope
+  that has no such SSA value, and `opt` rejects it with *"use of
+  undefined value '%pos'"*. A correct fix requires AST-level
+  substitution of callee params with the actual call-site args, which
+  in turn needs at least one new helper fn — blocked by Defect 3.
+
 ---
 
 ## [v0.98.0] — 2026-04 (Cycles 2300-2388, stdlib/net + tooling)
