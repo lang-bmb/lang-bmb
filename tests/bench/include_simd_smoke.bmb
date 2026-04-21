@@ -1,0 +1,7 @@
+// Cycle 2375: Confirm `@include "stdlib/simd/mod.bmb"` compiles via bootstrap.
+// The SIMD placeholder bodies (`= todo`) previously caused `ret double %todo`
+// codegen errors. Bootstrap-level SIMD intrinsic dispatch is out of scope; this
+// test only verifies the include compiles cleanly without exercising SIMD calls.
+@include "stdlib/simd/mod.bmb"
+
+fn main() -> i64 = 0;

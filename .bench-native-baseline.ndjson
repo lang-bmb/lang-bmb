@@ -1,0 +1,7 @@
+{"type":"bench","mode":"native","name":"bench_attribute_recognition","file":"tests/bench/bench_smoke.bmb","samples":100,"warmup":10,"min_ns":0,"median_ns":0,"p99_ns":100,"mean_ns":26.00,"stddev_ns":43}
+{"type":"bench","mode":"native","name":"bench_with_overrides","file":"tests/bench/bench_smoke.bmb","samples":50,"warmup":5,"min_ns":0,"median_ns":0,"p99_ns":100,"mean_ns":32.00,"stddev_ns":46}
+{"type":"bench","mode":"native","name":"bench_prefix_recognition","file":"tests/bench/bench_smoke.bmb","samples":100,"warmup":10,"min_ns":0,"median_ns":0,"p99_ns":100,"mean_ns":34.00,"stddev_ns":47}
+{"type":"bench_result","mode":"native","benches":3}
+{"type":"bench","mode":"native","name":"bench_fnv1a_hash","file":"tests/bench/bench_memory.bmb","samples":100,"warmup":10,"min_ns":48600,"median_ns":50600,"p99_ns":58000,"mean_ns":51232.00,"stddev_ns":2526}
+{"type":"bench","mode":"native","name":"bench_mixed_int_ops","file":"tests/bench/bench_memory.bmb","samples":100,"warmup":10,"min_ns":228600,"median_ns":228700,"p99_ns":268800,"mean_ns":229945.00,"stddev_ns":5465}
+{"type":"bench_result","mode":"native","benches":2}

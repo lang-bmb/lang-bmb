@@ -114,7 +114,7 @@ jobs:
       - name: Run @bench native suite
         run: |
           > bench_native_current.ndjson
-          for f in tests/bench/bench_smoke.bmb; do
+          for f in tests/bench/bench_smoke.bmb tests/bench/bench_memory.bmb; do
             if [ -f "$f" ]; then
               echo "Benching: $f"
               ./target/release/bmb bench --native "$f" >> bench_native_current.ndjson || true

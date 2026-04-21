@@ -1,0 +1,26 @@
+// Cycle 2381: tcp_write_raw smoke. Verifies the raw-buffer wrapper compiles
+// and wires through to async_socket_write. Does not exercise a live peer —
+// we only need to confirm the pipe end-to-end compiles + links + runs.
+@include "stdlib/net/mod.bmb"
+
+// Reference tcp_write_raw/udp_sendto_raw so the symbols are actually linked —
+// otherwise DCE eliminates them and this test degenerates to net_listen_smoke.
+fn check_raw_api(msg: String) -> i64 = {
+    let buf: i64 = string_as_cstr(msg);
+    // socket=0 is a safe sentinel that runtime no-ops on close.
+    // tcp_write_raw/udp_sendto_raw with a bogus socket would misbehave, so
+    // we only *reference* them via a branch that never fires.
+    if buf == 1 {
+        let _w: i64 = tcp_write_raw(0, buf);
+        let _s: i64 = udp_sendto_raw(0, buf, 0, buf);
+        1
+    } else { 0 }
+};
+
+fn main() -> i64 = {
+    let l: i64 = tcp_listen(0);
+    if l == 0 { 1 } else {
+        tcp_close(l);
+        check_raw_api("probe")
+    }
+};

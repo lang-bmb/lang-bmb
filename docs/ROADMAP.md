@@ -4,7 +4,7 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 
 ---
 
-## Current Status — v0.98 (2026-04-21, post-Cycles 2359-2373)
+## Current Status — v0.98 (2026-04-21, post-Cycles 2375-2381)
 
 ### Progress
 
@@ -32,7 +32,19 @@ Tooling     ████████████████░░░░ 80%   @
 
 ## Recently completed
 
-### Cycles 2359-2373 (this session)
+### Cycles 2375-2381 (this session)
+
+**Bootstrap SIMD stub-compile-safe.** `@include "stdlib/simd/mod.bmb"` via bootstrap previously emitted `ret double %todo` (placeholder `= todo` body in a typed return slot → undefined reference). Two-layer fix: parser now recognises bare `todo` as `(unit)` matching the Rust compiler's `Expr::Todo → Constant::Unit` path; a new post-IR pass `fix_typed_ret_placeholders_ir` rewrites residual `ret double 0` / `ret float 0` / `ret ptr 0` (artifacts of unit-constant propagation through the identity-copy eliminator) to type-appropriate literals. 3-Stage Fixed Point re-verified. SIMD intrinsic CALL-site dispatch (vector types, splat/hsum intrinsic emission from bootstrap) remains a separate, larger work item.
+
+**`BMB_STDLIB_PATH` env-var override restored.** The `@include` preprocessor's 3-tier resolution now includes `$BMB_STDLIB_PATH/<rel_path>` between the source-dir and CWD-fallback lookups. A stale Cycle 2362 comment claimed `getenv` was not String-typed in bootstrap; verification showed it already is. The only wrinkle: an unrelated Rust-compiler triple-concat codegen bug (`env + "/" + rel`) bites at the Rust-build stage — sidestepped with a 2-step helper function.
+
+**`@bench native` corpus made trustworthy.** Added three memory-touching / runtime-seeded benchmarks (`bench_fnv1a_hash`, `bench_mixed_int_ops`, with `bench_lcg_prng` and heap variants evaluated and dropped for noise). Initial baseline had sub-μs benchmarks with 40-100% run-to-run variance; scaled workloads to ≥ 50 μs now produce 0-4% natural variance against the 10% nightly threshold. Committed `.bench-native-baseline.ndjson` and extended the nightly workflow to consume both `bench_smoke.bmb` and `bench_memory.bmb`.
+
+**Orphan `runtime/*.c` / `*.h` removal.** `runtime/bmb_runtime.c`, `runtime/bmb_event_loop.c`, `runtime/bmb_event_loop.h` were sync'd copies of `bmb/runtime/*` that nobody actually read — the Rust compiler's linker lookup only consumes `runtime/libbmb_runtime.a`. Dropped the sync step from `scripts/bootstrap.sh` and removed the files.
+
+**stdlib/net raw-buffer helpers.** `tcp_write_raw(socket, buf)` and `udp_sendto_raw(socket, host_buf, port, data_buf)` wrappers for callers who already hold extracted pointers (from `string_as_cstr` or manual allocation) — skip the String wrapping round-trip.
+
+### Cycles 2359-2373 (previous session)
 
 **`stdlib/net` full E2E + UDP primitive.** Extended TCP with a Python-backed echo server round-trip (`scripts/test-net-echo.sh`, 2000-byte payload, CI gate on ubuntu-latest via `net-echo-smoke` job). Added UDP primitive (`udp_bind/sendto/recv/close`) with runtime (Win32 + POSIX), bootstrap wiring (types/dispatch/extern), and stdlib wrappers. Full bidirectional UDP echo validated. TCP loopback via `tcp_connect("127.0.0.1", ...)` also working — closes HANDOFF §4 "host: String as i64 cast 경로 미완".
 
@@ -121,14 +133,15 @@ Tooling     ████████████████░░░░ 80%   @
 
 | Option | Effort | Risk | Notes |
 |--------|--------|------|-------|
-| Cross-platform SIMD + net verification (Linux/macOS) | 3-5 cycles | LOW-MEDIUM | Needs Linux/macOS shell or GH Actions runner; v0.97 SIMD + v0.98 net + UDP primitive exercised only on Windows locally (CI's `net-echo-smoke` is ubuntu-latest — first observation on merge) |
+| Cross-platform SIMD + net verification (Linux/macOS) | 3-5 cycles | LOW-MEDIUM | Needs push to trigger CI; 142 local commits ahead of origin as of 2026-04-21. First observation on merge covers `net-echo-smoke` (ubuntu-latest), UDP echo + SIMD still Windows-only |
+| Bootstrap SIMD intrinsic CALL-site dispatch | 4-8 cycles | MEDIUM-HIGH | Stub compile now safe (Cycle 2375); still need vector-type awareness + per-intrinsic codegen (splat/hsum/load/store/fma) to let `@include "stdlib/simd/mod.bmb"` via bootstrap actually call SIMD functions |
 | `stdlib/net` TLS extension (`tcp_tls_connect`, `accept_tls`) | 6-10 cycles | MEDIUM-HIGH | Needs OpenSSL binding — new external dependency |
+| `stdlib/net` `udp_recvfrom` (peer address exposure) | 2-4 cycles | MEDIUM | v1 `udp_recv` drops source address; needed for multi-client UDP servers |
 | Runtime stack trace support (DWARF) | 4-6 cycles | MEDIUM | MIR currently lacks span info — gains limited to function-level unless MIR refactored; reconsider vs ROI |
-| Bootstrap SIMD codegen parity | 4-8 cycles | MEDIUM | `@include "stdlib/simd/mod.bmb"` via bootstrap emits `ret double %todo` (Cycle 2366 finding); Rust compiler handles it. Gap in bootstrap's handling of certain SIMD function lowerings |
-| `getenv` typing in bootstrap (String-return inference) | 1-2 cycles | LOW | Latent from Cycle 2362 — would restore `BMB_STDLIB_PATH` override path for `@include` resolution |
+| `.bit_count()` / `.leading_zeros()` codegen (bootstrap) | 1-2 cycles | LOW | Type-check accepts, codegen emits undefined `@bit_count`; fixable in bootstrap per Rule 6 (Rust frozen) |
 | CHANGELOG.md reconstruction (v0.67 → v0.98) | 3-5 cycles | LOW | Retroactive; could be partial |
 | PyPI wheel publish pipeline | 2-4 cycles | MEDIUM | Packaging ready, needs CI job + secret management |
-| Orphan `runtime/bmb_runtime.c` removal | 1-2 cycles | LOW | Auto-sync handles drift (Cycle 2348); true removal needs install.sh audit |
+| Legacy `runtime/runtime.c` removal | 1 cycle | LOW | Separate 1088-LOC file distinct from canonical 6293-LOC `bmb/runtime/bmb_runtime.c`; still referenced by non-LLVM `find_runtime_c` fallback |
 
 ---
 

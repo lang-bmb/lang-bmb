@@ -1,0 +1,7 @@
+// Cycle 2375: Minimal reproduction of function body with placeholder.
+pub fn placeholder() -> f64 = todo;
+
+fn main() -> i64 = {
+    let x: f64 = placeholder();
+    if x == 0.0 { 0 } else { 1 }
+};

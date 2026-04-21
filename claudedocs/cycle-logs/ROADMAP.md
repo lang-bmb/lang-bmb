@@ -1,5 +1,5 @@
 # BMB Development Roadmap
-Updated: 2026-04-21 (post-Cycles 2359-2373: stdlib/net E2E/CI/docs, `@include` in bootstrap, nightly @bench baseline infra, UDP primitive full E2E, String-as-host cast fix, Fixed Point re-verified twice)
+Updated: 2026-04-21 (post-Cycles 2375-2381: bootstrap SIMD `= todo` body fix, `BMB_STDLIB_PATH` env override, @bench native corpus trustworthy, orphan runtime/*.c purge, tcp_write_raw/udp_sendto_raw helpers)
 
 ---
 

@@ -1,0 +1,9 @@
+// Simulate @include env-var override:
+fn try_env_path(rel: String) -> String =
+    let env = getenv("BMB_STDLIB_PATH");
+    if env.len() > 0 { env + "/" + rel } else { "" };
+
+fn main() -> i64 = {
+    let p = try_env_path("stdlib/net/mod.bmb");
+    if p.len() > 0 { 0 } else { 1 }
+};

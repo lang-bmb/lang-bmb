@@ -122,18 +122,26 @@ fn include_parse_path(line: String) -> String =
         else { line.slice(start, endq) }
     };
 
-// Try two locations; return first that exists, or "".
+// Try three locations; return first that exists, or "".
 // 1. Relative to source file's directory (`src_dir`)
-// 2. Relative to current working directory (supports `stdlib/...` when
+// 2. `$BMB_STDLIB_PATH/<rel_path>` when env-var is set (Cycle 2377: restored
+//    after verifying getenv is correctly String-typed in bootstrap)
+// 3. Relative to current working directory (supports `stdlib/...` when
 //    invoked from the project root).
-// Note: env-var override (BMB_STDLIB_PATH) skipped — `getenv` is not
-// String-typed in bootstrap type inference (Cycle 2362). Users run bmb
-// from the repo root so CWD fallback covers the stdlib case.
+fn include_join_env(env: String, rel: String) -> String =
+    let prefix = env + "/";
+    prefix + rel;
+
 fn include_resolve(rel_path: String, src_dir: String) -> String =
     let a = if src_dir == "" { rel_path } else { src_dir + "/" + rel_path };
     if file_exists(a) == 1 { a }
-    else if file_exists(rel_path) == 1 { rel_path }
-    else { "" };
+    else {
+        let env = getenv("BMB_STDLIB_PATH");
+        let b = if env.len() > 0 { include_join_env(env, rel_path) } else { "" };
+        if b.len() > 0 and file_exists(b) == 1 { b }
+        else if file_exists(rel_path) == 1 { rel_path }
+        else { "" }
+    };
 
 // Walk src from pos, emit into sb. Expand @include lines (max depth 16).
 // Returns 0 (side-effects via sb).
@@ -735,6 +743,11 @@ fn parse_ident_or_call(src: String, pos: i64, tok: i64) -> String =
         parse_assert_call(src, tok_end(next))
     } else if name == "todo" and tok_kind(next) == TK_LPAREN() {
         parse_panic_call(src, tok_end(next), "not yet implemented")
+    } else if name == "todo" {
+        // Cycle 2375: Bare `todo` placeholder parses as unit (matching Rust
+        // compiler's Expr::Todo → Constant::Unit lowering). The ret emission
+        // path substitutes a type-appropriate literal per return type.
+        pack_result(tok_end(tok), "(unit)")
     } else if name == "unreachable" and tok_kind(next) == TK_LPAREN() {
         parse_panic_call(src, tok_end(next), "entered unreachable code")
     } else if name == "dbg" and tok_kind(next) == TK_LPAREN() {
@@ -7203,14 +7216,27 @@ fn trim(s: String) -> String =
 
 fn llvm_gen_return_typed(line: String, pos: i64, ret_type: String) -> String =
     let val_start = low_skip_ws(line, pos + 6);
-    let val = trim_end(line.slice(val_start, line.len()));
+    let val_raw = line.slice(val_start, line.len());
+    let val = trim(val_raw);
+    // Cycle 2375: `= todo` and `= ()` function bodies produce raw integer 0
+    // (from unit lowering) in a typed return slot. Substitute a type-
+    // appropriate literal so the emitted IR type-checks.
+    let vlen = val.len();
+    let is_zero = if vlen == 1 { val.byte_at(0) == 48 } else { false };
+    let is_todo = if vlen == 5 { val.byte_at(0) == 37 and val.byte_at(1) == 116 and val.byte_at(2) == 111 and val.byte_at(3) == 100 and val.byte_at(4) == 111 } else { false };
+    let needs_fix = is_zero or is_todo;
     if ret_type == "f64" {
-        "  ret double " + val
+        if needs_fix { "  ret double 0.0" } else { "  ret double " + val }
+    } else if ret_type == "ptr" {
+        if needs_fix { "  ret ptr null" } else { "  ret ptr " + val }
     } else if ret_type == "i32" {
-        // v0.95: trunc i64 to i32 before returning
-        "  " + val + "_i32r = trunc i64 " + val + " to i32" + SEP() + "  ret i32 " + val + "_i32r"
+        if is_todo {
+            "  ret i32 0"
+        } else {
+            "  " + val + "_i32r = trunc i64 " + val + " to i32" + SEP() + "  ret i32 " + val + "_i32r"
+        }
     } else {
-        "  ret i64 " + val
+        if is_todo { "  ret i64 0" } else { "  ret i64 " + val }
     };
 
 fn llvm_gen_branch(line: String, pos: i64) -> String =
@@ -7301,6 +7327,39 @@ fn eliminate_identity_copies_ir(ir: String) -> String = {
         sb_build(sb)
     }
 };
+
+// Cycle 2375: Walk lines, replace `  ret double 0` with `  ret double 0.0`,
+// `  ret float 0` with `  ret float 0.0`, `  ret ptr 0` with `  ret ptr null`.
+// Arises when `= todo` or `= ()` body's unit constant `0` propagates through
+// eliminate_identity_copies_ir into a typed ret slot.
+fn fix_typed_ret_placeholders_ir(ir: String) -> String = {
+    let sb = sb_new();
+    let w = fix_ret_scan(ir, 0, sb);
+    let result = sb_build(sb);
+    let _f = sb_free(sb);
+    result
+};
+
+fn fix_ret_scan(ir: String, pos: i64, sb: i64) -> i64 =
+    if pos >= ir.len() { 0 }
+    else {
+        let pipe_pos = find_pipe_skip_quotes(ir, pos);
+        let line = ir.slice(pos, pipe_pos);
+        let fixed = fix_ret_line(line);
+        let len = sb_len(sb);
+        let w1 = if len > 0 { sb_push(sb, SEP()) } else { 0 };
+        let w2 = sb_push(sb, fixed);
+        if pipe_pos >= ir.len() { 0 }
+        else { fix_ret_scan(ir, pipe_pos + 1, sb) }
+    };
+
+fn fix_ret_line(line: String) -> String =
+    let p = low_skip_ws(line, 0);
+    if p >= line.len() { line }
+    else if low_starts_with_at(line, p, "ret double 0") and p + 12 == line.len() { "  ret double 0.0" }
+    else if low_starts_with_at(line, p, "ret float 0") and p + 11 == line.len() { "  ret float 0.0" }
+    else if low_starts_with_at(line, p, "ret ptr 0") and p + 9 == line.len() { "  ret ptr null" }
+    else { line };
 
 // Pass 1: Scan LLVM IR lines for identity copy patterns, build alias table
 // Alias table format: ",dest=src,dest2=src2" (comma-prefixed for safe lookup)
@@ -13504,7 +13563,11 @@ fn gen_function_sb_structs_reuse(mir: String, strings: String, string_fns: Strin
     // v0.96.44: Add nofree for functions without free/realloc calls
     let pass9 = add_nofree_attr(pass8);
     // v0.96.44: Add speculatable for memory(none) leaf functions
-    add_speculatable_attr(pass9);
+    let pass10 = add_speculatable_attr(pass9);
+    // Cycle 2375: After identity-copy elimination, `%_t0 = add nsw i64 0, 0`
+    // aliases can propagate `0` into typed ret slots (`ret double 0`).
+    // Substitute type-appropriate literals so the IR type-checks.
+    fix_typed_ret_placeholders_ir(pass10);
 
 fn init_string_params_sb(mir: String, str_sb: i64) -> i64 =
     let fn_start = find_pattern_at(mir, "fn ", 0);

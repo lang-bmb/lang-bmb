@@ -214,22 +214,23 @@ else
 fi
 if [ "$needs_rebuild" = true ]; then
     log_verbose "Rebuilding BMB runtime library (stale or missing)..."
+    # Cycle 2380: only sync the compiled .a to runtime/ (consumed by the Rust
+    # compiler's linker lookup in bmb/src/build/mod.rs). The .c/.h sources
+    # live canonically in bmb/runtime/; copying them to runtime/ was legacy
+    # drift-mitigation pre-dating the rebuild gate above.
     (cd "$RUNTIME_SRC_DIR" \
         && clang -c bmb_runtime.c -o bmb_runtime.o -O2 -ffunction-sections -fdata-sections \
         && clang -c bmb_event_loop.c -o bmb_event_loop.o -O2 -ffunction-sections -fdata-sections \
         && ar rcs libbmb_runtime.a bmb_runtime.o bmb_event_loop.o \
         && mkdir -p "${PROJECT_ROOT}/runtime" \
-        && cp libbmb_runtime.a "${PROJECT_ROOT}/runtime/libbmb_runtime.a" \
-        && cp bmb_runtime.c "${PROJECT_ROOT}/runtime/bmb_runtime.c" \
-        && cp bmb_event_loop.c "${PROJECT_ROOT}/runtime/bmb_event_loop.c" \
-        && cp bmb_event_loop.h "${PROJECT_ROOT}/runtime/bmb_event_loop.h") || {
+        && cp libbmb_runtime.a "${PROJECT_ROOT}/runtime/libbmb_runtime.a") || {
         log "${RED}Error: Failed to rebuild runtime library${NC}"
         if [ "$JSON_OUTPUT" = true ]; then
             output_json
         fi
         exit 1
     }
-    log_verbose "${GREEN}Runtime library rebuilt (sources synced to runtime/)${NC}"
+    log_verbose "${GREEN}Runtime library rebuilt${NC}"
 fi
 
 log "${GREEN}Prerequisites OK${NC}"

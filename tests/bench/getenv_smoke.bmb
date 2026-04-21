@@ -1,0 +1,4 @@
+fn main() -> i64 = {
+    let x = getenv("PATH");
+    if x.len() > 0 { 0 } else { 1 }
+};

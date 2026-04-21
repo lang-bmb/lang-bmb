@@ -1,0 +1,43 @@
+// Cycle 2378-2379: @bench corpus with memory-touching / runtime-seeded
+// workloads that LLVM cannot constant-fold.
+//
+// Workload sizing: chosen so each bench runs ≥ 50 μs, keeping measurement
+// well above `time_ns` granularity (100 ns on Windows) so noise stays below
+// ~2% of the median even with background jitter.
+
+// ---- FNV-1a hash over a runtime-seeded byte stream ----
+@bench
+fn bench_fnv1a_hash() -> i64 = {
+    let mut hash: i64 = 2166136261;
+    let prime: i64 = 16777619;
+    let seed = time_ns();
+    let mut i: i64 = 0;
+    while i < 65536 {
+        let b = (seed + i * 31) band 255;
+        set hash = (hash bxor b) * prime;
+        set i = i + 1;
+    };
+    hash
+};
+
+// (Cycle 2379: dropped bench_lcg_prng — pure linear recurrence that LLVM
+// could reduce to closed form, producing huge run-to-run variance.)
+
+// ---- Integer sum with runtime-varied inner operations ----
+@bench
+fn bench_mixed_int_ops() -> i64 = {
+    let mut acc: i64 = time_ns();
+    let mut i: i64 = 0;
+    while i < 131072 {
+        set acc = acc + i * 2654435761;
+        set acc = acc bxor (acc / 17);
+        set i = i + 1;
+    };
+    acc
+};
+
+// (Cycle 2379 evaluation notes: malloc-backed array benches and pointer-chase
+// variants all produced 40-100% run-to-run median variance — cache state plus
+// sub-microsecond durations amplify noise. Dropped from the nightly corpus in
+// favour of the two CPU-bound benches above, which measure ≥ 50 μs and show
+// 0-4% variance across repeated runs.)

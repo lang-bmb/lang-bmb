@@ -69,6 +69,19 @@ pub fn tcp_close(socket: i64) -> i64
     0
 };
 
+// Cycle 2381: Raw-buffer write. Caller passes an already-extracted i64
+// pointer to a null-terminated byte buffer (e.g., from
+// `string_as_cstr(some_string)`, or a manually-allocated `malloc` region
+// with a sentinel NUL). The runtime still uses `strlen` on the pointer,
+// so embedded NULs truncate. Use when you need to avoid an extra String
+// wrapping round-trip — e.g., when replying with a slice of a larger
+// receive buffer that's already in byte form.
+pub fn tcp_write_raw(socket: i64, buf: i64) -> i64
+= {
+    async_socket_write(socket, buf);
+    0
+};
+
 // ============================================================================
 // UDP primitives (Cycle 2367-2369)
 // ============================================================================
@@ -91,6 +104,12 @@ pub fn udp_bind(port: i64) -> i64
 // Send `data` to `host:port`. Returns bytes sent, or -1 on error.
 pub fn udp_sendto(socket: i64, host: String, port: i64, data: String) -> i64
 = async_udp_sendto(socket, string_as_cstr(host), port, string_as_cstr(data));
+
+// Cycle 2381: Raw-buffer variant of udp_sendto. `host_buf` / `data_buf` are
+// already-extracted i64 pointers to null-terminated byte buffers. Skips the
+// String wrapping sugar when the caller already has the raw form.
+pub fn udp_sendto_raw(socket: i64, host_buf: i64, port: i64, data_buf: i64) -> i64
+= async_udp_sendto(socket, host_buf, port, data_buf);
 
 // Blocking recv (up to 4095 bytes). Returns buffer handle or 0 on error.
 pub fn udp_recv(socket: i64) -> i64
