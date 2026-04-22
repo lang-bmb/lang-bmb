@@ -114,9 +114,19 @@ jobs:
       - name: Build BMB compiler
         run: cargo build --release --features llvm --target ${{ matrix.target }}
 
-      - name: Set BMB_RUNTIME_PATH
-        run: echo "BMB_RUNTIME_PATH=${{ github.workspace }}/bmb/runtime" >> $GITHUB_ENV
+      - name: Build BMB Runtime
+        # Mirrors scripts/bootstrap.sh: archive bmb_runtime.o + bmb_event_loop.o
+        # together so any binding library that references event-loop symbols
+        # still links. Other workflows (bootstrap-benchmark, benchmark-*) only
+        # archive bmb_runtime.o and would break the moment a consumer needs
+        # event-loop support — parity is cheap insurance.
         shell: bash
+        run: |
+          cd bmb/runtime
+          clang -c bmb_runtime.c -o bmb_runtime.o -O3
+          clang -c bmb_event_loop.c -o bmb_event_loop.o -O3
+          ar rcs libbmb_runtime.a bmb_runtime.o bmb_event_loop.o
+          echo "BMB_RUNTIME_PATH=$(pwd)/libbmb_runtime.a" >> $GITHUB_ENV
 
       - name: Build all binding libraries
         run: python ecosystem/build_all.py
