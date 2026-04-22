@@ -7,12 +7,11 @@
 > publication side: how the wheels are built, why they're tagged the way they
 > are, and how to run a full publish.
 
-> **🔴 Current blocker (Cycle 2418, 2026-04-22)**: `bmb build --shared` does
-> not produce fresh `.dll` files on any compiler backend — see Defect 5 in
-> `CHANGELOG.md`. The infrastructure described below is correct and tested
-> locally against stale pre-built binaries, but the first CI dispatch will
-> fail at `ecosystem/build_all.py`. **Do not trigger `pypi-publish.yml`
-> until Defect 5 is resolved.**
+> **Status (2026-04-22, post-Cycle 2420)**: Defect 5 resolved —
+> `bmb build --shared` now produces correct platform shared libraries on
+> both inkwell (`--features llvm`) and text backends. End-to-end wheel
+> build verified locally on Windows. First `workflow_dispatch` of
+> `pypi-publish.yml` will also validate Linux and macOS.
 
 ---
 
@@ -283,7 +282,9 @@ workflow uploads raw `linux_x86_64` as an interim; wheel repair with
 | 2415 | This document |
 | 2416 | CI matrix: split macOS into `macos-13` (x86_64) + `macos-latest` (arm64) to avoid `--features llvm` cross-compile breakage |
 | 2417 | `bindings-ci.yml` wheel gate — tag + `twine check` on every PR |
-| 2418 | **🔴 Defect 5 discovered** — `bmb build --shared` broken in all backends; prior wheel builds relied on stale pre-built `.dll` files from previous sessions. Cycle log `claudedocs/cycle-logs/cycle-2418.md` and CHANGELOG have the full trace. Defect fix deferred to next session. |
+| 2418 | 🔴 Defect 5 discovered — `bmb build --shared` broken in all backends; prior wheel builds relied on stale pre-built `.dll` files from previous sessions. Cycle log `claudedocs/cycle-logs/cycle-2418.md`. |
+| 2419 | ✅ Defect 5 fix pt.1 — user-side `@export` rename to avoid runtime symbol collision (`bmb_is_power_of_two` → `bmb_c_is_power_of_two`, `bmb_next_power_of_two` → `bmb_c_next_power_of_two`, `bmb_is_prime` → `bmb_algo_is_prime`). |
+| 2420 | ✅ Defect 5 fix pt.2 — inkwell SharedLib link path, `@export` dllexport storage class, linkage priority (`@export` beats `always_inline` → `Private`). `bmb build --shared` works end-to-end. |
 
 Subsequent cycle logs under `claudedocs/cycle-logs/` for rationale and
 verification detail.

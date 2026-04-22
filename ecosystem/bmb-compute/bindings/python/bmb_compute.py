@@ -74,10 +74,10 @@ _lib.bmb_array_copy.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
 _lib.bmb_array_copy.restype = ctypes.c_int64
 _lib.bmb_lerp_scaled.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
 _lib.bmb_lerp_scaled.restype = ctypes.c_int64
-_lib.bmb_is_power_of_two.argtypes = [ctypes.c_int64]
-_lib.bmb_is_power_of_two.restype = ctypes.c_int64
-_lib.bmb_next_power_of_two.argtypes = [ctypes.c_int64]
-_lib.bmb_next_power_of_two.restype = ctypes.c_int64
+_lib.bmb_c_is_power_of_two.argtypes = [ctypes.c_int64]
+_lib.bmb_c_is_power_of_two.restype = ctypes.c_int64
+_lib.bmb_c_next_power_of_two.argtypes = [ctypes.c_int64]
+_lib.bmb_c_next_power_of_two.restype = ctypes.c_int64
 
 # Cycle 2127: New functions
 _lib.bmb_median_scaled.argtypes = [ctypes.c_int64, ctypes.c_int64]
@@ -209,11 +209,11 @@ def lerp_scaled(a, b, t):
 
 def is_power_of_two(n):
     """Check if n is a power of two."""
-    return bool(_lib.bmb_is_power_of_two(n))
+    return bool(_lib.bmb_c_is_power_of_two(n))
 
 def next_power_of_two(n):
     """Smallest power of two >= n."""
-    return _lib.bmb_next_power_of_two(n)
+    return _lib.bmb_c_next_power_of_two(n)
 
 
 def median_scaled(arr):

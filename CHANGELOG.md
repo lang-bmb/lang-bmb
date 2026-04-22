@@ -10,6 +10,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Work on `v0.98.x` — see cycle logs under `claudedocs/cycle-logs/cycle-2383.md`
 and later for per-cycle detail.
 
+### Fixed (Cycles 2419-2420) — Defect 5 resolved: `bmb build --shared` now works
+
+Three concrete fixes, all landed together in `0d088dab`+next commit:
+
+1. **Runtime ↔ `@export` symbol collision** (Cycle 2419). `bmb_runtime.c`
+   defines `bmb_is_power_of_two` / `bmb_next_power_of_two` /
+   `bmb_is_prime`; `ecosystem/bmb-compute/src/lib.bmb` and
+   `ecosystem/bmb-algo/src/lib.bmb` previously exported the same C
+   symbols via `@export pub fn bmb_is_power_of_two`, etc. Linking the
+   runtime object into the shared library produced "multiple definition"
+   errors in the text backend. Fixed by renaming the user-side exports:
+   - `bmb_is_power_of_two` → `bmb_c_is_power_of_two`
+     (consistent with existing `bmb_c_abs` / `bmb_c_min` convention)
+   - `bmb_next_power_of_two` → `bmb_c_next_power_of_two`
+   - `bmb_is_prime` → `bmb_algo_is_prime`
+
+   Python public APIs (`is_power_of_two()`, `next_power_of_two()`,
+   `is_prime()`) unchanged — only the internal C-symbol dispatch in the
+   ctypes wrappers changed. No compiler or runtime modification.
+
+2. **Inkwell backend had no SharedLib link path** (Cycle 2420).
+   `bmb/src/build/mod.rs:868` only called `link_executable` when
+   `output_type == Executable`. For `SharedLib`, the `.o` file was
+   emitted and then the function returned `Ok(())` without linking.
+   `bmb build --shared` under `--features llvm` printed
+   `build_success` JSON and silently produced nothing.
+
+   Fix: refactored `link_executable` → `link_native(obj, output,
+   verbose, is_shared)`. The new function adds `-shared` when
+   `is_shared`, skips `-no-pie` on Linux for shared libs (PIC conflict),
+   and is called for both `Executable` and `SharedLib` cases.
+
+3. **`@export` missing `dllexport` + linkage-priority bug** (Cycle
+   2420). The inkwell backend did not apply
+   `DLLStorageClass::Export` to `@export`-annotated functions, so even
+   when link dispatch existed, MinGW's linker didn't emit the symbol
+   into the DLL's export table. Fixed by setting the storage class on
+   the function's underlying global value.
+
+   Additional gap found during verification: a small `@export pub fn`
+   that the inliner marked `always_inline` was being given
+   `Linkage::Private`, which wins over `dllexport` in LLVM IR. Symptom:
+   bmb-text's 23 `@export` functions produced only 2 DLL exports
+   (kmp_search etc. missing because they were inlined). Fixed by making
+   `is_export` override the private-linkage branch —
+   `codegen/llvm.rs:1877`.
+
+**End-to-end verification**: fresh `rm -f ecosystem/bmb-*/*.dll` + full
+`python ecosystem/build_all.py` now produces all 5 libraries (1.5s);
+`./scripts/build-wheel.sh --skip-compiler --skip-libs --verify` builds
+5/5 wheels, installs into a throwaway venv, imports all 5 modules,
+reports public func counts matching pyproject declarations
+(56/33/15/13/24 for algo/compute/crypto/json/text).
+
+**Rule 6 exception rationale**: `bmb/src/{build/mod.rs,codegen/llvm.rs}`
+edits total ~50 LOC across 3 changes. Characterised as bug fixes
+(missing SharedLib dispatch, missing dllexport application, wrong
+linkage precedence) rather than new features — the intent that
+`bmb build --shared` produces working shared libraries was always there;
+it just wasn't wired up in the inkwell backend. Wheel distribution is
+release-critical infrastructure, which meets the "bootstrapping
+blocked" criterion at the distribution layer.
+
+**Historical note (Cycle 2418 discovery)**: see the original Cycle 2418
+cycle log for how the defect was found — every wheel build from Cycles
+2411-2417 used a stale `.dll` from 2026-03-23 left over in the working
+tree; `build_all.py`'s `shutil.copy2` silently preserved it when
+`bmb build --shared` exited without producing output.
+
 ### Discovered (Cycle 2418) — Defect 5: `bmb build --shared` fundamentally broken
 
 During an audit of `ecosystem/build_all.py` the wheel pipeline's foundation

@@ -319,8 +319,12 @@ pub fn bmb_lerp_scaled(a: i64, b: i64, t: i64) -> i64
 // Is Power of Two
 // ============================================================================
 
+// Renamed from `bmb_is_power_of_two` (Cycle 2419, Defect 5 fix) to avoid
+// C-symbol collision with runtime `bmb_is_power_of_two` in bmb_runtime.c
+// when linking shared libraries. Python public API `is_power_of_two()`
+// stays the same; only the exported C symbol changes.
 @export
-pub fn bmb_is_power_of_two(n: i64) -> i64 =
+pub fn bmb_c_is_power_of_two(n: i64) -> i64 =
     if n <= 0 { 0 }
     else if (n band (n - 1)) == 0 { 1 }
     else { 0 };
@@ -329,8 +333,10 @@ pub fn bmb_is_power_of_two(n: i64) -> i64 =
 // Next Power of Two
 // ============================================================================
 
+// Renamed from `bmb_next_power_of_two` (Cycle 2419, Defect 5 fix) to avoid
+// C-symbol collision with runtime `bmb_next_power_of_two` in bmb_runtime.c.
 @export
-pub fn bmb_next_power_of_two(n: i64) -> i64
+pub fn bmb_c_next_power_of_two(n: i64) -> i64
   pre n > 0
 = {
     let mut v = n - 1;

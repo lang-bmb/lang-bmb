@@ -1873,13 +1873,37 @@ impl<'ctx> LlvmContext<'ctx> {
         // v0.60.252: Use private linkage for @inline functions to avoid symbol collision
         // NOTE: Extending to all functions causes stack overflow in inkwell's module serialization
         // for large programs (compiler.bmb ~17K lines). Keep alwaysinline-only for now.
+        // Cycle 2420 (Defect 5 fix): `@export` overrides private linkage. Without
+        // this, a small `@export pub fn` that the inliner marks always_inline
+        // gets `define private dllexport` in IR — and `private` linkage wins
+        // over the `dllexport` storage class, so the function never appears in
+        // the shared library's export table. Parity with
+        // `codegen/llvm_text.rs:2040` which branches on `is_export` first.
         use inkwell::module::Linkage;
-        let linkage = if func.always_inline && func.name != "main" && func.name != "bmb_user_main" {
+        let linkage = if func.is_export {
+            None
+        } else if func.always_inline && func.name != "main" && func.name != "bmb_user_main" {
             Some(Linkage::Private)
         } else {
             None
         };
         let function = self.module.add_function(emitted_name, fn_type, linkage);
+
+        // Cycle 2420 (Defect 5 fix): mark `@export` functions as dllexport on
+        // Windows so they appear in the shared library's export table.
+        // Without this, `@export pub fn foo` ends up with only internal
+        // linkage in the emitted DLL and Python ctypes loads fail with
+        // `AttributeError: function 'foo' not found`. Parity with
+        // `codegen/llvm_text.rs:2039`.
+        if func.is_export {
+            #[cfg(target_os = "windows")]
+            {
+                use inkwell::DLLStorageClass;
+                function
+                    .as_global_value()
+                    .set_dll_storage_class(DLLStorageClass::Export);
+            }
+        }
 
         // v0.50.76: Add function attributes for better LLVM optimization
         // - nounwind: BMB has no exceptions, so no unwinding

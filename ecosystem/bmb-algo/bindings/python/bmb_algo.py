@@ -197,8 +197,8 @@ _lib.bmb_matrix_det.argtypes = [ctypes.c_int64, ctypes.c_int64]
 _lib.bmb_matrix_det.restype = ctypes.c_int64
 _lib.bmb_insertion_sort.argtypes = [ctypes.c_int64, ctypes.c_int64]
 _lib.bmb_insertion_sort.restype = ctypes.c_int64
-_lib.bmb_is_prime.argtypes = [ctypes.c_int64]
-_lib.bmb_is_prime.restype = ctypes.c_int64
+_lib.bmb_algo_is_prime.argtypes = [ctypes.c_int64]
+_lib.bmb_algo_is_prime.restype = ctypes.c_int64
 _lib.bmb_selection_sort.argtypes = [ctypes.c_int64, ctypes.c_int64]
 _lib.bmb_selection_sort.restype = ctypes.c_int64
 _lib.bmb_bubble_sort.argtypes = [ctypes.c_int64, ctypes.c_int64]
@@ -656,7 +656,7 @@ def insertion_sort(arr: list) -> list:
 
 def is_prime(n: int) -> bool:
     """Check if n is a prime number."""
-    return bool(_lib.bmb_is_prime(n))
+    return bool(_lib.bmb_algo_is_prime(n))
 
 
 def selection_sort(arr: list) -> list:

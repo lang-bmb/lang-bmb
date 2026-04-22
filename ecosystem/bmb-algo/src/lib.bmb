@@ -1410,8 +1410,11 @@ pub fn bmb_insertion_sort(arr: i64, n: i64) -> i64
 // Is Prime — Miller test for small primes, trial division
 // ============================================================================
 
+// Renamed from `bmb_is_prime` (Cycle 2419, Defect 5 fix) to avoid C-symbol
+// collision with runtime `bmb_is_prime` in bmb_runtime.c when linking shared
+// libraries. Python public API `is_prime()` stays the same.
 @export
-pub fn bmb_is_prime(n: i64) -> i64
+pub fn bmb_algo_is_prime(n: i64) -> i64
 = {
     if n < 2 { 0 }
     else if n < 4 { 1 }

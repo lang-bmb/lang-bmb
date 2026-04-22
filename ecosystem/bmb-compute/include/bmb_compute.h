@@ -91,9 +91,9 @@ int64_t bmb_array_copy(int64_t src, int64_t dst, int64_t n);
 
 int64_t bmb_lerp_scaled(int64_t a, int64_t b, int64_t t);
 
-int64_t bmb_is_power_of_two(int64_t n);
+int64_t bmb_c_is_power_of_two(int64_t n);
 
-int64_t bmb_next_power_of_two(int64_t n);
+int64_t bmb_c_next_power_of_two(int64_t n);
 
 /** Caller must pass a sorted array */
 int64_t bmb_median_scaled(int64_t arr, int64_t n);

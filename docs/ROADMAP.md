@@ -32,7 +32,41 @@ Tooling     ████████████████░░░░ 80%   @
 
 ## Recently completed
 
-### Cycle 2418 (this session) — 🔴 Defect 5 discovered: `bmb build --shared` broken
+### Cycles 2419-2420 (this session) — ✅ Defect 5 resolved
+
+Three fixes landed together; `bmb build --shared` now produces correct
+platform shared libraries under `--features llvm` (inkwell backend) and
+without (text backend).
+
+1. **Runtime ↔ `@export` symbol rename** (Cycle 2419, user-side only).
+   `bmb-compute` `bmb_is_power_of_two` / `bmb_next_power_of_two` → `bmb_c_*`
+   (consistent with existing `bmb_c_abs/min/max/clamp` prefix);
+   `bmb-algo` `bmb_is_prime` → `bmb_algo_is_prime`. No compiler or
+   runtime change. Python public APIs unchanged.
+2. **Inkwell SharedLib link path** (Cycle 2420). `bmb/src/build/mod.rs`:
+   `link_executable` parameterised to `link_native(obj, output, verbose,
+   is_shared)`, now called for both `Executable` and `SharedLib` output
+   types. Adds `-shared` and skips `-no-pie` on Linux for shared libs.
+3. **`@export` dllexport + linkage-priority** (Cycle 2420).
+   `bmb/src/codegen/llvm.rs`: `@export` functions now get
+   `DLLStorageClass::Export` and override the `always_inline` →
+   `Linkage::Private` decision. Without this second fix, inlined
+   `@export` functions got `define private dllexport` in IR — private
+   wins over dllexport and the symbol never appears in the DLL.
+
+End-to-end verification (Cycle 2420): fresh rebuild of all five binding
+libraries succeeds in 1.5s; `./scripts/build-wheel.sh --verify` installs
+and imports 5/5 wheels with correct public-function counts
+(algo=56, compute=33, crypto=15, json=13, text=24). `cargo test
+--release --lib` → 3,764 pass / 0 fail maintained. 3-Stage Fixed Point
+unaffected (the inkwell codepath changes only fire on
+`@export`/`SharedLib`, neither of which appears in bootstrap build).
+
+**P0-inf now unblocked**: `pypi-publish.yml` and the `bindings-ci.yml`
+wheel gate will produce correct wheels on their first CI run. Cross-
+platform push remains gated on user approval.
+
+### Cycle 2418 — 🔴 Defect 5 discovered: `bmb build --shared` broken
 
 Audit of the wheel pipeline's foundation revealed a systemic bug. The
 infrastructure built in Cycles 2411-2417 is structurally correct but the
@@ -283,25 +317,28 @@ helper fns minimal; prefer inlining over extracting.
 
 ---
 
-## Next-session recommended priority (2026-04-22, post-Cycle 2418)
+## Next-session recommended priority (2026-04-22, post-Cycles 2419-2420)
 
-> **Update**: Cycle 2418 discovered **Defect 5** — `bmb build --shared` does
-> not produce working `.dll` files on any compiler path. The infrastructure
-> built in Cycles 2411-2417 is correct but blocked from running end-to-end
-> until Defect 5 is fixed. Revised priorities below.
+> **Update**: Defect 5 resolved in Cycles 2419-2420. The wheel CI pipeline
+> is now fully unblocked — first CI dispatch will produce correct wheels.
+> Remaining priorities below.
 
 | # | Option | Effort | Risk | ROI | Rationale |
 |---|--------|--------|------|-----|-----------|
-| **P0-new** | **Defect 5: `bmb build --shared` backend fix** | 3-6 cycles | HIGH | HIGH | Blocks all wheel/CI/distribution work. Three possible approaches, none obvious: (a) add SharedLib link path to inkwell backend; (b) resolve runtime ↔ `@export` symbol collision (likely rename runtime internals); (c) refactor so shared libs don't bundle runtime at all (link runtime as separate .so). Approach (b) most tractable. Touches `bmb_runtime.c`, `build/mod.rs`, possibly `@export` name handling. |
-| **P0-inf** | ~~PyPI wheel CI pipeline~~ | ~~2-4 cycles~~ | ~~MEDIUM~~ | ~~HIGH~~ | ✅ **Cycles 2411-2417** (infrastructure). Blocked on P0-new — don't dispatch CI until Defect 5 fixed, or the first run will fail at `ecosystem/build_all.py` with FileNotFoundError from `shutil.copy2`. |
-| **P1** | **Defect 3 dedicated — HARD 2-cycle limit, new methods only** | ≤ 2 cycles | HIGH | UNCERTAIN | 12 cycles of probe-matrix work failed to find root cause. Session **must use different methods**: `gdb` / `DrMemory` on Stage 1 binary, IR diff between probe/no-probe builds, debug-build panic backtrace. If no new-cause signal after 2 cycles, **stop immediately**. No third-cycle extension — sunk-cost-trap guard. Lower priority than P0-new because Defect 3 impedes bootstrap refactor, Defect 5 impedes user distribution. |
-| **P2** | Cross-platform push + CI observation | 0 cycle + external | LOW | MEDIUM | User-approval gate. 150+ commits ahead → push then `gh run list`. **Hold until Defect 5 fixed** — pushing now and triggering wheel CI will produce a failed run that misrepresents the state of the bindings infrastructure. Existing `net-echo-smoke` + nightly-bench are safe to observe pre-push. |
+| ~~**P0-new**~~ | ~~Defect 5 fix~~ | ~~3-6 cycles~~ | ~~HIGH~~ | ~~HIGH~~ | ✅ **Cycles 2419-2420** — user-side symbol rename + inkwell SharedLib link path + `@export` dllexport + linkage-priority fix. End-to-end wheel build verified locally. |
+| ~~**P0-inf**~~ | ~~PyPI wheel CI pipeline~~ | ~~2-4 cycles~~ | ~~MEDIUM~~ | ~~HIGH~~ | ✅ **Cycles 2411-2417** (infrastructure) + **Cycles 2419-2420** (unblocked). Ready for first dispatch. |
+| **P1-new** | **Cross-platform push + CI observation** | 0 cycle + external | LOW | HIGH | User-approval gate. 150+ commits ahead → push then `gh run list`. First dispatch of `pypi-publish.yml` validates Defect 5 fix on Linux/macOS. Defect 5 fix covered Windows end-to-end locally but cross-platform still needs CI verification. |
+| **P2** | **Defect 3 dedicated — HARD 2-cycle limit, new methods only** | ≤ 2 cycles | HIGH | UNCERTAIN | 12 cycles of probe-matrix work failed to find root cause. Session **must use different methods**: `gdb` / `DrMemory` on Stage 1 binary, IR diff between probe/no-probe builds, debug-build panic backtrace. If no new-cause signal after 2 cycles, **stop immediately**. No third-cycle extension. |
+| P3 | `stdlib/net` TLS (`tcp_tls_connect`, `accept_tls`) | 6-10 cycles | MEDIUM-HIGH | MEDIUM | OpenSSL external dependency. Post-v1.0 advanced-users target. |
+| P4 | Bootstrap SIMD intrinsic dispatch | 10+ cycles | HIGH | MEDIUM | Defect 3-adjacent risk. |
+| P5 | DWARF stack trace | 4-6 cycles | MEDIUM | LOW | MIR lacks span info; gains limited. |
+| P6 | stdlib/parse post weakening | 1-2 cycles | LOW | LOW | Zero current consumers. Defer. |
 | P3 | `stdlib/net` TLS (`tcp_tls_connect`, `accept_tls`) | 6-10 cycles | MEDIUM-HIGH | MEDIUM | OpenSSL external dependency. Post-v1.0 advanced-users target. |
 | P4 | Bootstrap SIMD intrinsic CALL-site dispatch | 10+ cycles | HIGH | MEDIUM | 211 intrinsics × vec-type alloca/call rewrite. **Likely re-triggers Defect 3** given scope — gate on P1 outcome. |
 | P5 | DWARF stack trace | 4-6 cycles | MEDIUM | LOW | MIR lacks span info; gains limited to function granularity. ROI-capped. |
 | P6 | stdlib/parse post weakening | 1-2 cycles | LOW | LOW | Currently zero `@include "stdlib/parse"` consumers. Defer until a real user appears. |
 
-**Decision tree**: P0-new (Defect 5) FIRST — without it, all wheel work is shelfware. Then P1 (Defect 3, hard-limited). Then P2 (push + CI observation) only after wheel CI can actually pass. Then P3/P4/P5 on remaining budget.
+**Decision tree**: Defect 5 now resolved. Next session → P1-new (push + CI observation) for cross-platform validation; then P2 (Defect 3, hard-limited) if budget allows; then P3/P4/P5.
 
 ---
 

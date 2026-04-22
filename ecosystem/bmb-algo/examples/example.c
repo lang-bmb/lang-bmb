@@ -32,7 +32,7 @@ int main(void) {
     printf("prime_count(100) = %lld\n", (long long)bmb_prime_count(100));
 
     /* Is prime */
-    printf("is_prime(97) = %lld\n", (long long)bmb_is_prime(97));
+    printf("is_prime(97) = %lld\n", (long long)bmb_algo_is_prime(97));
 
     /* Sort */
     int64_t arr[] = {5, 3, 1, 4, 2};

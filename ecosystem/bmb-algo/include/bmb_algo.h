@@ -144,7 +144,7 @@ int64_t bmb_matrix_det(int64_t mat, int64_t n);
 
 int64_t bmb_insertion_sort(int64_t arr, int64_t n);
 
-int64_t bmb_is_prime(int64_t n);
+int64_t bmb_algo_is_prime(int64_t n);
 
 int64_t bmb_selection_sort(int64_t arr, int64_t n);
 

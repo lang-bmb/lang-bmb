@@ -864,10 +864,13 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
             println!("  Generated object file: {}", obj_path.display());
         }
 
-        // Link if building executable
-        if matches!(config.output_type, OutputType::Executable) {
-            link_executable(&obj_path, &config.output, config.verbose)?;
-        }
+        // Link — executable or shared library (Object already returned early).
+        // Cycle 2420 (Defect 5 fix): added SharedLib dispatch. Previously
+        // this block only linked OutputType::Executable, so `bmb build
+        // --shared` under --features llvm silently emitted only the .o
+        // file and never produced a .dll/.so/.dylib.
+        let is_shared = matches!(config.output_type, OutputType::SharedLib);
+        link_native(&obj_path, &config.output, config.verbose, is_shared)?;
 
         Ok(())
     }
@@ -1213,12 +1216,21 @@ fn find_runtime_c() -> Result<std::path::PathBuf, String> {
 
 /// Link object file to executable
 #[cfg(feature = "llvm")]
-fn link_executable(obj_path: &Path, output: &Path, verbose: bool) -> BuildResult<()> {
+fn link_native(
+    obj_path: &Path,
+    output: &Path,
+    verbose: bool,
+    is_shared: bool,
+) -> BuildResult<()> {
     // Find the appropriate linker
     let linker = find_linker()?;
 
     if verbose {
-        println!("  Linking with: {}", linker);
+        println!(
+            "  Linking {} with: {}",
+            if is_shared { "shared library" } else { "executable" },
+            linker
+        );
     }
 
     // Find runtime library
@@ -1240,6 +1252,11 @@ fn link_executable(obj_path: &Path, output: &Path, verbose: bool) -> BuildResult
     // Output file
     cmd.args(["-o", path_str(output)?]);
 
+    // Shared library mode — emit .dll/.so/.dylib
+    if is_shared {
+        cmd.arg("-shared");
+    }
+
     // Platform-specific linker flags
     #[cfg(target_os = "windows")]
     {
@@ -1249,8 +1266,11 @@ fn link_executable(obj_path: &Path, output: &Path, verbose: bool) -> BuildResult
 
     #[cfg(target_os = "linux")]
     {
-        // v0.100: Disable PIE to avoid PIC relocation issues
-        cmd.arg("-no-pie");
+        // v0.100: Disable PIE to avoid PIC relocation issues — but only for
+        // executables. Shared libraries require position-independent code.
+        if !is_shared {
+            cmd.arg("-no-pie");
+        }
         cmd.arg("-lc");
         // v0.70: Link pthread for threading support
         cmd.arg("-lpthread");
@@ -1270,7 +1290,11 @@ fn link_executable(obj_path: &Path, output: &Path, verbose: bool) -> BuildResult
     }
 
     if verbose {
-        println!("  Created executable: {}", output.display());
+        println!(
+            "  Created {}: {}",
+            if is_shared { "shared library" } else { "executable" },
+            output.display()
+        );
     }
 
     Ok(())
