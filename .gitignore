@@ -78,6 +78,11 @@ benchmark_results*/
 output/
 tmp/
 
+# Python wheel build output (scripts/build-wheel.sh)
+/dist/
+**/*.egg-info/
+**/bmb_*.egg-info/
+
 # Temporary scripts
 convert_mir.py
 find_func.py

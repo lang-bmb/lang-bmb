@@ -10,6 +10,103 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Work on `v0.98.x` — see cycle logs under `claudedocs/cycle-logs/cycle-2383.md`
 and later for per-cycle detail.
 
+### Discovered (Cycle 2418) — Defect 5: `bmb build --shared` fundamentally broken
+
+During an audit of `ecosystem/build_all.py` the wheel pipeline's foundation
+turned out to be non-functional for fresh builds. Multiple compiler paths
+all fail to produce a working `.dll`:
+
+1. **Inkwell backend** (`cargo build --release --features llvm`):
+   `bmb/src/build/mod.rs` line 868 only calls `link_executable` when
+   `output_type == Executable`. For `OutputType::SharedLib` the code emits
+   the `.o` file, prints `build_success` JSON, and returns — **no link
+   step executes**, so no `.dll` is written. bmb.exe's exit code is non-
+   zero (2) but the JSON successfully says success — ambiguous reporting
+   that let the bug hide.
+2. **Text backend** (`cargo build --release` without `--features llvm`):
+   has a shared-library link path (`cmd.arg("-shared")`, etc.) but the
+   link fails with `multiple definition of 'bmb_is_power_of_two'`.
+   The runtime C file `bmb/runtime/bmb_runtime.c` defines
+   `bmb_is_power_of_two` / `bmb_next_power_of_two`, and
+   `ecosystem/bmb-compute/src/lib.bmb` exports functions with the same
+   names via `@export pub fn bmb_is_power_of_two`. When the runtime object
+   and the library object are linked into a single `.dll`, the symbols
+   collide.
+3. **Bootstrap** (`target/bootstrap/bmb-stage1.exe`): fails with
+   `lowering produced empty MIR` on `ecosystem/bmb-compute/src/lib.bmb` —
+   presumably an `@export`-pipeline incompatibility in the bootstrap
+   compiler.
+
+**How this bug stayed hidden**: the five `bmb_*.dll` files in
+`ecosystem/bmb-*/` were built months ago (bmb_algo.dll is dated
+2026-03-23) and have persisted in the working tree across sessions.
+Every wheel build this session (Cycles 2411-2417) copied these **stale**
+binaries into the wheels. `pip install` + `import` smoke tests all
+passed because the stale `.dll` is still functionally correct — just not
+built from current source.
+
+**Impact on wheel CI**: a fresh CI runner has no pre-built `.dll`.
+`ecosystem/build_all.py` calls `bmb build --shared`, which silently
+produces nothing, and then `shutil.copy2` fails with `FileNotFoundError`.
+Consequently the `pypi-publish.yml` workflow introduced in Cycle 2412 and
+the wheel gate in `bindings-ci.yml` introduced in Cycle 2417 **will both
+fail on the first CI run** until Defect 5 is fixed.
+
+**Scope on current session**: not fixable within remaining budget — a
+single-cycle fix attempt in Cycle 2418 (`-static-libgcc` for MinGW
+runtime) made the inkwell path regress further and was reverted. The
+correct fix likely requires either adding a `SharedLib` link path to
+the inkwell backend, resolving the runtime ↔ `@export` symbol collision,
+or a combined approach. Planned investigation: dedicated session.
+
+**Related finding**: even when the shared `.dll` builds, it depends on
+`libgcc_s_seh-1.dll` (MinGW runtime), which end-user machines without
+MSYS2 installed do not have. Either `-static-libgcc` (not yet working
+with lld), static linking of libstdc++ (not currently needed, not yet
+tested), or bundling the MinGW runtime DLLs in the wheel's
+`package_data` would be required for reliable `pip install` on
+unmodified Windows.
+
+### Added (Cycles 2411-2412) — PyPI wheel CI pipeline
+
+- **`scripts/build-wheel.sh`** — cross-platform wheel build orchestrator.
+  Locates or rebuilds the BMB compiler, runs `ecosystem/build_all.py` to
+  produce `.dll` / `.so` / `.dylib`, then `pip wheel . --no-deps` for
+  each of the five binding libraries into `dist/wheels/`. Options:
+  `--dry-run`, `--lib <name>`, `--skip-compiler`, `--skip-libs`. Exits
+  non-zero if any wheel gets tagged `py3-none-any` (would break
+  cross-platform install).
+- **`.github/workflows/pypi-publish.yml`** — manual-dispatch workflow
+  (`workflow_dispatch` only). Matrix Windows + Ubuntu + macOS, each
+  builds its own BMB compiler, invokes `build-wheel.sh`, validates wheel
+  tags, uploads per-platform artifacts (`wheels-win_amd64`,
+  `wheels-linux_x86_64`, `wheels-macosx_10_9_x86_64`). Separate `publish`
+  job gated on `inputs.publish=true` + repository choice
+  (testpypi/pypi); supports trusted-publishing OIDC + token fallback.
+
+### Fixed (Cycles 2411-2412) — Python packaging correctness
+
+- **Wheel mis-tagging** (Cycle 2411). All five binding libraries
+  (`bmb-algo`, `bmb-compute`, `bmb-crypto`, `bmb-text`, `bmb-json`)
+  previously produced `py3-none-any` pure-Python wheels despite
+  bundling native `.dll` / `.so` / `.dylib` binaries in `package_data`.
+  A Linux user pip-installing would have received a Windows DLL.
+  Fix: each `setup.py` is now a 30-line shim with:
+  - `BinaryDistribution(has_ext_modules=True)` — marks the wheel as
+    platform-specific.
+  - Custom `bdist_wheel.get_tag()` returning `("py3", "none", plat)` —
+    overrides the default `cp3XX-cp3XX-<plat>` tag so any Python 3.x on
+    the matching OS can install (the binary is loaded via `ctypes`,
+    not CPython ABI).
+  Resulting tag per runner: `py3-none-win_amd64`, `py3-none-linux_x86_64`,
+  `py3-none-macosx_10_9_x86_64`.
+- **`setup.py` / `pyproject.toml` version drift** (Cycle 2411). All five
+  `setup.py` files hardcoded `version='0.2.0'` while `pyproject.toml`
+  already moved `bmb-algo` and `bmb-crypto` to `0.3.0`. Collapsed to a
+  single source of truth: metadata (version, description, classifiers,
+  URLs, keywords) now lives entirely in `pyproject.toml`; `setup.py` is
+  a minimal shim that only sets the distclass/cmdclass hooks above.
+
 ### Added (Cycles 2391-2394)
 - **Ephemeral-port discovery for stdlib/net** (Cycle 2391): runtime now
   calls `getsockname()` after `tcp_listen(0)` / `udp_bind(0)` so the

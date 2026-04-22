@@ -1,32 +1,36 @@
 """
-bmb-json: High-performance JSON parsing powered by BMB
-https://github.com/iyulab/lang-bmb
+bmb-json setup shim.
+
+See bmb-algo/setup.py for the rationale — we tag wheels as
+`py3-none-<platform>` so any Python 3.x on the matching OS can install
+the prebuilt native library.
 """
 
 from setuptools import setup
-import os
+from setuptools.dist import Distribution
 
-here = os.path.dirname(os.path.abspath(__file__))
+try:
+    from setuptools.command.bdist_wheel import bdist_wheel as _bdist_wheel
+except ImportError:
+    from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
+
+
+class BinaryDistribution(Distribution):
+    def has_ext_modules(self):
+        return True
+
+
+class bdist_wheel_platform(_bdist_wheel):
+    def finalize_options(self):
+        super().finalize_options()
+        self.root_is_pure = False
+
+    def get_tag(self):
+        _, _, plat = super().get_tag()
+        return "py3", "none", plat
+
 
 setup(
-    name='bmb-json',
-    version='0.2.0',
-    description='High-performance JSON parsing and generation powered by BMB',
-    long_description=open(os.path.join(here, 'README.md')).read() if os.path.exists(os.path.join(here, 'README.md')) else '',
-    long_description_content_type='text/markdown',
-    author='iyulab',
-    author_email='iyulab@example.com',
-    url='https://github.com/iyulab/lang-bmb',
-    packages=['bmb_json'],
-    package_dir={'bmb_json': 'bindings/python'},
-    package_data={'bmb_json': ['*.dll', '*.so', '*.dylib']},
-    python_requires='>=3.8',
-    classifiers=[
-        'Development Status :: 4 - Beta',
-        'Intended Audience :: Developers',
-        'Programming Language :: Python :: 3',
-        'Topic :: Software Development :: Libraries',
-        'Topic :: Internet :: WWW/HTTP',
-    ],
-    keywords='json parser serializer performance bmb',
+    distclass=BinaryDistribution,
+    cmdclass={"bdist_wheel": bdist_wheel_platform},
 )

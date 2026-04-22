@@ -1,31 +1,47 @@
 """
-bmb-algo: High-performance algorithms powered by BMB
-https://github.com/iyulab/lang-bmb
+bmb-algo setup shim.
+
+Metadata lives in pyproject.toml. This file exists to produce a wheel
+tagged `py3-none-<platform>` (e.g., py3-none-win_amd64) because we ship
+prebuilt native shared libraries that are loaded via ctypes, not as CPython
+extensions.
+
+Without this:
+  - Plain pyproject.toml build → `py3-none-any` pure-python wheel; a Linux
+    user would pip-install a Windows .dll.
+  - `has_ext_modules=True` alone → `cp3XX-cp3XX-<platform>`; Python 3.13
+    user on the correct OS still wouldn't get the 3.12-built wheel.
+
+The correct tag is `py3-none-<platform>`: platform-specific, Python-version
+independent, ABI independent — matching what the binary actually requires.
 """
 
-from setuptools import setup, find_packages
-import os
+from setuptools import setup
+from setuptools.dist import Distribution
 
-here = os.path.dirname(os.path.abspath(__file__))
+try:
+    from setuptools.command.bdist_wheel import bdist_wheel as _bdist_wheel
+except ImportError:  # older setuptools / standalone wheel package
+    from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
+
+
+class BinaryDistribution(Distribution):
+    def has_ext_modules(self):
+        return True
+
+
+class bdist_wheel_platform(_bdist_wheel):
+    def finalize_options(self):
+        super().finalize_options()
+        # Not pure Python; must tag with platform.
+        self.root_is_pure = False
+
+    def get_tag(self):
+        _, _, plat = super().get_tag()
+        return "py3", "none", plat
+
 
 setup(
-    name='bmb-algo',
-    version='0.2.0',
-    description='Blazing fast algorithms powered by BMB — 6.8x faster than C on knapsack',
-    long_description=open(os.path.join(here, 'README.md')).read() if os.path.exists(os.path.join(here, 'README.md')) else '',
-    long_description_content_type='text/markdown',
-    author='iyulab',
-    author_email='iyulab@example.com',
-    url='https://github.com/iyulab/lang-bmb',
-    packages=['bmb_algo'],
-    package_dir={'bmb_algo': 'bindings/python'},
-    package_data={'bmb_algo': ['*.dll', '*.so', '*.dylib']},
-    python_requires='>=3.8',
-    classifiers=[
-        'Development Status :: 4 - Beta',
-        'Intended Audience :: Developers',
-        'Programming Language :: Python :: 3',
-        'Topic :: Scientific/Engineering :: Mathematics',
-    ],
-    keywords='algorithm knapsack lcs dijkstra floyd sort search bmb',
+    distclass=BinaryDistribution,
+    cmdclass={"bdist_wheel": bdist_wheel_platform},
 )

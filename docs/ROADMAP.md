@@ -4,7 +4,7 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 
 ---
 
-## Current Status — v0.98 (2026-04-22, post-Cycles 2406-2410)
+## Current Status — v0.98 (2026-04-22, post-Cycles 2411-2412)
 
 ### Progress
 
@@ -32,7 +32,83 @@ Tooling     ████████████████░░░░ 80%   @
 
 ## Recently completed
 
-### Cycles 2406-2410 (this session) — Defect 4 user-side workaround
+### Cycle 2418 (this session) — 🔴 Defect 5 discovered: `bmb build --shared` broken
+
+Audit of the wheel pipeline's foundation revealed a systemic bug. The
+infrastructure built in Cycles 2411-2417 is structurally correct but the
+underlying `bmb build --shared` command does not produce working `.dll`
+files from fresh builds. Three compiler paths all fail:
+
+- **Inkwell backend** skips linking entirely for `OutputType::SharedLib`
+  (emits `.o`, prints `build_success`, never calls linker).
+- **Text backend** links but hits runtime ↔ `@export` symbol collisions
+  (`bmb_is_power_of_two` defined by both `bmb_runtime.c` and
+  `ecosystem/bmb-compute/src/lib.bmb`).
+- **Bootstrap Stage 1** fails with "lowering produced empty MIR" on the
+  same binding source.
+
+Every successful wheel build this session copied a **stale `.dll`** from
+prior sessions (`bmb_algo.dll` dated 2026-03-23). Functionally the wheels
+install and import correctly, but the `.dll` is frozen months behind
+current source. **Fresh CI runners will fail**: no pre-built `.dll` →
+`ecosystem/build_all.py` silent no-op → `shutil.copy2` FileNotFoundError
+→ job aborts.
+
+**Scope**: not fixable within this session's remaining budget. See
+CHANGELOG.md "Discovered (Cycle 2418)" for full detail. Next session
+should treat Defect 5 as a blocker above P1 (Defect 3) — Defect 3 is an
+improvement path, Defect 5 is a prerequisite for the P0 work to reach
+users.
+
+### Cycles 2411-2412 (this session) — PyPI wheel CI pipeline
+
+**P0 from previous handoff — Defect 3 safe zone (`compiler.bmb` untouched).**
+Two-cycle scope: unblock PyPI publication of the five binding libraries.
+
+**Cycle 2411 — Platform wheel tagging fix.** Survey uncovered two defects:
+
+1. `pip wheel .` produced `py3-none-any` pure-Python wheels despite each
+   package bundling a platform-specific `.dll` / `.so` / `.dylib` in
+   `package_data`. A Linux user pip-installing would receive a Windows
+   DLL. Fix: `setup.py` shim with `BinaryDistribution(has_ext_modules=
+   True)` **and** a custom `bdist_wheel.get_tag()` returning
+   `("py3", "none", plat)` — platform-specific, Python-version-independent,
+   ABI-independent. Resulting tag: `py3-none-win_amd64` (and the
+   corresponding Linux / macOS tags when built on those runners).
+2. Version drift — all five `setup.py` files hardcoded `version='0.2.0'`
+   while `pyproject.toml` had bmb-algo and bmb-crypto at `0.3.0`.
+   Dual source-of-truth collapsed: `setup.py` is now a 30-line shim,
+   every metadata field lives in `pyproject.toml`.
+
+Install + import smoke test passed in a clean venv for bmb-algo (56
+public functions exposed). All five libraries build wheels with the
+correct tag.
+
+**Cycle 2412 — `scripts/build-wheel.sh` + `pypi-publish.yml`.**
+
+- `scripts/build-wheel.sh` (150 LOC) — locates or rebuilds the BMB
+  compiler, runs `ecosystem/build_all.py`, then `pip wheel . --no-deps`
+  for each library into `dist/wheels/`. Options `--dry-run`, `--lib`,
+  `--skip-compiler`, `--skip-libs`. Validation gate exits non-zero if
+  any `py3-none-any` wheel slips through.
+- `.github/workflows/pypi-publish.yml` — manual-dispatch only
+  (`workflow_dispatch`). Matrix Windows + Ubuntu + macOS, each builds
+  its own BMB compiler, runs `build-wheel.sh`, validates wheel tags,
+  uploads per-platform artifacts. Separate `publish` job (opt-in via
+  `inputs.publish=true`, `inputs.repository=testpypi|pypi`) with
+  trusted-publishing OIDC + token fallback.
+- `.gitignore` extended with `/dist/`, `**/*.egg-info/`, `**/bmb_*.egg-info/`.
+
+Pending human actions (gated):
+- Configure `PYPI_API_TOKEN` / `TEST_PYPI_API_TOKEN` repo secrets.
+- Create `testpypi` + `pypi` deployment environments.
+- Trigger `workflow_dispatch` with `publish=false` once to validate
+  cross-platform builds on GitHub-hosted runners.
+
+Full per-cycle detail: `claudedocs/cycle-logs/cycle-2411.md`,
+`cycle-2412.md`.
+
+### Cycles 2406-2410 — Defect 4 user-side workaround
 
 **Compiler-side Defect 4 fix blocked by Defect 3 re-trigger.** Two
 in-place modifications to `inject_post_assumes_in_fn_scan`
@@ -190,7 +266,7 @@ helper fns minimal; prefer inlining over extracting.
 | `stdlib/net` ephemeral-port + peer-address accessors | ✅ Cycles 2391-2392 (`tcp_listen_port`, `udp_bind_port`, `tcp_peer_port`, `tcp_peer_host` — getsockname() capture + BmbAsyncSocket accessors) |
 | Bootstrap `@annotation pub fn` parse (stdlib/time/fs/io/process @include path) | ✅ Cycle 2394 (hardcoded `121` → `TK_PUB()`, `fn-trust` added to `is_fn_node` — 27 public stdlib fns restored) |
 | Lexer-tolerant `implies` keyword (stdlib/string/array `@include` check) | ✅ Cycle 2402 (`keyword_len7` maps `implies` → `TK_OR`; contract bodies discarded by `skip_contracts` so semantics unchanged. Build still blocked by Defect 4). |
-| PyPI wheel build + publish | Packaging ✅, publish pending |
+| PyPI wheel build + publish | Packaging + CI pipeline ✅ (Cycles 2411-2412), publish gated on repo-secret setup |
 | Node.js WASM bindings | Not started |
 | ~~Native Ptr type system (inttoptr removal)~~ | Deferred (evidence: auto-handled by `opt -O2`) |
 
@@ -207,21 +283,25 @@ helper fns minimal; prefer inlining over extracting.
 
 ---
 
-## Next-session recommended priority (2026-04-22, post-Cycles 2406-2410)
+## Next-session recommended priority (2026-04-22, post-Cycle 2418)
 
-> **Rationale**: Cycles 2399-2405 (7) + 2406-2410 (5) = **12 cycles consecutively invested in Defect 3 with zero root-cause progress**. Further naive-probe investment is a sunk-cost trap. 149 commits are ahead of origin — the real v1.0 blocker is **release infrastructure**, not compiler perfection. Pivot to Track C (`compiler.bmb`-unchanged work) for guaranteed forward motion.
+> **Update**: Cycle 2418 discovered **Defect 5** — `bmb build --shared` does
+> not produce working `.dll` files on any compiler path. The infrastructure
+> built in Cycles 2411-2417 is correct but blocked from running end-to-end
+> until Defect 5 is fixed. Revised priorities below.
 
 | # | Option | Effort | Risk | ROI | Rationale |
 |---|--------|--------|------|-----|-----------|
-| **P0** | **PyPI wheel CI pipeline** | 2-4 cycles | MEDIUM | HIGH | Defect 3 safe zone (`compiler.bmb` untouched). Largest v1.0 blocker. Packaging already ready (`pyproject.toml` / `.pyi` / `MANIFEST.in` done Cycle ~1951); only CI workflow + wheel-build script missing. Secret management gated on user approval. |
-| **P1** | **Defect 3 dedicated — HARD 2-cycle limit, new methods only** | ≤ 2 cycles | HIGH | UNCERTAIN | 12 cycles of probe-matrix work failed to find root cause. Session **must use different methods**: `gdb` / `DrMemory` on Stage 1 binary, IR diff between probe/no-probe builds, debug-build panic backtrace. If no new-cause signal after 2 cycles, **stop immediately and return to P0**. No third-cycle extension — sunk-cost-trap guard. |
-| **P2** | Cross-platform push + CI observation | 0 cycle + external | LOW | MEDIUM | User-approval gate. 149 commits ahead → push then `gh run list`. Validates Linux/macOS via existing `net-echo-smoke` + nightly-bench. No new code — pure observation cycle. |
+| **P0-new** | **Defect 5: `bmb build --shared` backend fix** | 3-6 cycles | HIGH | HIGH | Blocks all wheel/CI/distribution work. Three possible approaches, none obvious: (a) add SharedLib link path to inkwell backend; (b) resolve runtime ↔ `@export` symbol collision (likely rename runtime internals); (c) refactor so shared libs don't bundle runtime at all (link runtime as separate .so). Approach (b) most tractable. Touches `bmb_runtime.c`, `build/mod.rs`, possibly `@export` name handling. |
+| **P0-inf** | ~~PyPI wheel CI pipeline~~ | ~~2-4 cycles~~ | ~~MEDIUM~~ | ~~HIGH~~ | ✅ **Cycles 2411-2417** (infrastructure). Blocked on P0-new — don't dispatch CI until Defect 5 fixed, or the first run will fail at `ecosystem/build_all.py` with FileNotFoundError from `shutil.copy2`. |
+| **P1** | **Defect 3 dedicated — HARD 2-cycle limit, new methods only** | ≤ 2 cycles | HIGH | UNCERTAIN | 12 cycles of probe-matrix work failed to find root cause. Session **must use different methods**: `gdb` / `DrMemory` on Stage 1 binary, IR diff between probe/no-probe builds, debug-build panic backtrace. If no new-cause signal after 2 cycles, **stop immediately**. No third-cycle extension — sunk-cost-trap guard. Lower priority than P0-new because Defect 3 impedes bootstrap refactor, Defect 5 impedes user distribution. |
+| **P2** | Cross-platform push + CI observation | 0 cycle + external | LOW | MEDIUM | User-approval gate. 150+ commits ahead → push then `gh run list`. **Hold until Defect 5 fixed** — pushing now and triggering wheel CI will produce a failed run that misrepresents the state of the bindings infrastructure. Existing `net-echo-smoke` + nightly-bench are safe to observe pre-push. |
 | P3 | `stdlib/net` TLS (`tcp_tls_connect`, `accept_tls`) | 6-10 cycles | MEDIUM-HIGH | MEDIUM | OpenSSL external dependency. Post-v1.0 advanced-users target. |
 | P4 | Bootstrap SIMD intrinsic CALL-site dispatch | 10+ cycles | HIGH | MEDIUM | 211 intrinsics × vec-type alloca/call rewrite. **Likely re-triggers Defect 3** given scope — gate on P1 outcome. |
 | P5 | DWARF stack trace | 4-6 cycles | MEDIUM | LOW | MIR lacks span info; gains limited to function granularity. ROI-capped. |
 | P6 | stdlib/parse post weakening | 1-2 cycles | LOW | LOW | Currently zero `@include "stdlib/parse"` consumers. Defer until a real user appears. |
 
-**Decision tree**: start P0 → on completion run P1 (hard-limited) → on user approval run P2 → remaining budget to P3/P4/P5.
+**Decision tree**: P0-new (Defect 5) FIRST — without it, all wheel work is shelfware. Then P1 (Defect 3, hard-limited). Then P2 (push + CI observation) only after wheel CI can actually pass. Then P3/P4/P5 on remaining budget.
 
 ---
 
@@ -239,7 +319,7 @@ helper fns minimal; prefer inlining over extracting.
 | Runtime stack trace support (DWARF) | 4-6 cycles | MEDIUM | MIR currently lacks span info — gains limited to function-level unless MIR refactored; reconsider vs ROI |
 | ~~`.bit_count()` / `.leading_zeros()` codegen (bootstrap)~~ | ~~1-2 cycles~~ | ✅ **완료 (Cycle 2384)** | `method_to_runtime_fn` + `llvm_gen_call` dispatch에 popcount/clz/ctz/bit_reverse/bswap/bit_not/bit_and/bit_or/bit_xor/bit_shift_left/bit_shift_right 전체 추가. Latent 6건 동시 해소 (bit_and/or/xor/shift_*/bit_not). Fixed Point ✅. |
 | ~~CHANGELOG.md reconstruction (v0.67 → v0.98)~~ | ~~3-5 cycles~~ | ✅ **완료 (Cycle 2389)** | Summary blocks added for v0.96.20-v0.96.46, v0.97.0-v0.97.5, v0.98.0; v0.96.1-v0.96.19 per-cycle detail preserved under group header. |
-| PyPI wheel publish pipeline | 2-4 cycles | MEDIUM | Packaging ready, needs CI job + secret management |
+| ~~PyPI wheel publish pipeline~~ | ~~2-4 cycles~~ | ✅ **pipeline wired (Cycles 2411-2412)** | `scripts/build-wheel.sh` + `.github/workflows/pypi-publish.yml` (manual-dispatch, 3-OS matrix); platform-wheel tagging fixed via `setup.py` shim (py3-none-&lt;platform&gt;). Verification hardened Cycle 2414 (`twine check` + install-import). Maintainer guide: [`docs/PACKAGING.md`](PACKAGING.md). Publish itself gated on `PYPI_API_TOKEN` secret registration (user action). |
 | ~~Legacy `runtime/runtime.c` removal~~ | ~~1 cycle~~ | ✅ **완료 (Cycle 2383)** | 1088-LOC dead C + 2 orphan scripts (`build_test.ps1`, `validate_llvm_ir.sh`) removed. `find_runtime_c` fallback simplified to `bmb_runtime.c`-only (legacy `bmb_init_argv` API was already incompatible with codegen-emitted `bmb_init_runtime`). |
 
 ---

@@ -6,16 +6,22 @@ on:
     paths:
       - 'ecosystem/bmb-*/**.py'
       - 'ecosystem/bmb-*/**.bmb'
+      - 'ecosystem/bmb-*/pyproject.toml'
+      - 'ecosystem/bmb-*/MANIFEST.in'
       - 'ecosystem/build_all.py'
       - 'ecosystem/test_*.py'
+      - 'scripts/build-wheel.sh'
       - '.github/workflows/bindings-ci.yml'
   pull_request:
     branches: [main]
     paths:
       - 'ecosystem/bmb-*/**.py'
       - 'ecosystem/bmb-*/**.bmb'
+      - 'ecosystem/bmb-*/pyproject.toml'
+      - 'ecosystem/bmb-*/MANIFEST.in'
       - 'ecosystem/build_all.py'
       - 'ecosystem/test_*.py'
+      - 'scripts/build-wheel.sh'
 
 jobs:
   test-bindings:
@@ -50,7 +56,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install Python dependencies
-        run: pip install pytest setuptools wheel
+        run: pip install pytest setuptools wheel twine
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -113,7 +119,22 @@ jobs:
 
       # --- Wheel build verification ---
 
-      - name: Build wheels (smoke test)
+      - name: Build wheels for all 5 libraries (smoke test)
+        shell: bash
         run: |
-          cd ecosystem/bmb-algo && pip wheel . --no-deps -w dist/
-          ls -la dist/
+          chmod +x scripts/build-wheel.sh
+          ./scripts/build-wheel.sh --skip-compiler --skip-libs
+
+      - name: Verify no py3-none-any slipped through
+        shell: bash
+        run: |
+          if ls dist/wheels/*-py3-none-any.whl >/dev/null 2>&1; then
+            echo "::error::Pure-Python wheel detected — setup.py shim regressed."
+            ls dist/wheels/*-py3-none-any.whl
+            exit 1
+          fi
+          ls -la dist/wheels/
+
+      - name: twine check metadata
+        shell: bash
+        run: twine check dist/wheels/*.whl

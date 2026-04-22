@@ -1,31 +1,36 @@
 """
-bmb-text: High-performance string processing powered by BMB
-https://github.com/iyulab/lang-bmb
+bmb-text setup shim.
+
+See bmb-algo/setup.py for the rationale — we tag wheels as
+`py3-none-<platform>` so any Python 3.x on the matching OS can install
+the prebuilt native library.
 """
 
-from setuptools import setup, find_packages
-import os
+from setuptools import setup
+from setuptools.dist import Distribution
 
-here = os.path.dirname(os.path.abspath(__file__))
+try:
+    from setuptools.command.bdist_wheel import bdist_wheel as _bdist_wheel
+except ImportError:
+    from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
+
+
+class BinaryDistribution(Distribution):
+    def has_ext_modules(self):
+        return True
+
+
+class bdist_wheel_platform(_bdist_wheel):
+    def finalize_options(self):
+        super().finalize_options()
+        self.root_is_pure = False
+
+    def get_tag(self):
+        _, _, plat = super().get_tag()
+        return "py3", "none", plat
+
 
 setup(
-    name='bmb-text',
-    version='0.2.0',
-    description='Fast string search, matching, and analysis powered by BMB',
-    long_description=open(os.path.join(here, 'README.md')).read() if os.path.exists(os.path.join(here, 'README.md')) else '',
-    long_description_content_type='text/markdown',
-    author='iyulab',
-    author_email='iyulab@example.com',
-    url='https://github.com/iyulab/lang-bmb',
-    packages=['bmb_text'],
-    package_dir={'bmb_text': 'bindings/python'},
-    package_data={'bmb_text': ['*.dll', '*.so', '*.dylib']},
-    python_requires='>=3.8',
-    classifiers=[
-        'Development Status :: 3 - Alpha',
-        'Intended Audience :: Developers',
-        'Programming Language :: Python :: 3',
-        'Topic :: Text Processing',
-    ],
-    keywords='string search kmp palindrome tokenizer bmb',
+    distclass=BinaryDistribution,
+    cmdclass={"bdist_wheel": bdist_wheel_platform},
 )

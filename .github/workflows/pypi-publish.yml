@@ -1,0 +1,221 @@
+name: PyPI wheel build and publish
+
+# Manual dispatch only. Automated publish on tag push is intentionally NOT wired yet —
+# until the maintainer approves PYPI_API_TOKEN as a repository secret and validates
+# artifacts from a full cross-platform run, this workflow only builds and uploads
+# wheels as artifacts for download.
+on:
+  workflow_dispatch:
+    inputs:
+      libraries:
+        description: 'Space-separated library names, or "all"'
+        required: false
+        default: 'all'
+      publish:
+        description: 'Actually publish to PyPI (requires PYPI_API_TOKEN secret)'
+        type: boolean
+        required: false
+        default: false
+      repository:
+        description: 'PyPI repository (pypi or testpypi)'
+        type: choice
+        required: false
+        default: testpypi
+        options:
+          - testpypi
+          - pypi
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-wheels:
+    name: Build wheels (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-gnu
+            llvm_setup: mingw
+            plat_tag: win_amd64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            llvm_setup: apt
+            plat_tag: linux_x86_64
+          # macos-13 is the last Intel-native runner; macos-latest / macos-14
+          # is Apple Silicon. Pinning runner per arch avoids cross-compile with
+          # the arch-specific brew LLVM, which breaks --features llvm linking.
+          - os: macos-13
+            target: x86_64-apple-darwin
+            llvm_setup: brew
+            plat_tag: macosx_10_9_x86_64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            llvm_setup: brew
+            plat_tag: macosx_11_0_arm64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python build tooling
+        run: pip install --upgrade pip setuptools wheel build twine
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-pypi-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Setup MinGW + LLVM (Windows)
+        if: matrix.llvm_setup == 'mingw'
+        uses: egor-tensin/setup-mingw@v2
+        with:
+          platform: x64
+
+      - name: Setup LLVM (Ubuntu)
+        if: matrix.llvm_setup == 'apt'
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          sudo add-apt-repository "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-21 main" || true
+          sudo apt-get update
+          sudo apt-get install -y llvm-21 llvm-21-dev lld-21 || sudo apt-get install -y llvm llvm-dev lld
+          echo "/usr/lib/llvm-21/bin" >> $GITHUB_PATH
+
+      - name: Setup LLVM (macOS)
+        if: matrix.llvm_setup == 'brew'
+        run: |
+          brew install llvm
+          echo "$(brew --prefix llvm)/bin" >> $GITHUB_PATH
+          echo "LLVM_SYS_211_PREFIX=$(brew --prefix llvm)" >> $GITHUB_ENV
+
+      - name: Build BMB compiler
+        run: cargo build --release --features llvm --target ${{ matrix.target }}
+
+      - name: Set BMB_RUNTIME_PATH
+        run: echo "BMB_RUNTIME_PATH=${{ github.workspace }}/bmb/runtime" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Build wheels
+        shell: bash
+        run: |
+          chmod +x scripts/build-wheel.sh
+          if [ "${{ inputs.libraries }}" = "all" ] || [ -z "${{ inputs.libraries }}" ]; then
+            ./scripts/build-wheel.sh --skip-compiler
+          else
+            for lib in ${{ inputs.libraries }}; do
+              ./scripts/build-wheel.sh --skip-compiler --lib "$lib"
+            done
+          fi
+
+      - name: List built wheels
+        shell: bash
+        run: ls -la dist/wheels/
+
+      - name: Verify wheel tags (fail if any py3-none-any)
+        shell: bash
+        run: |
+          if ls dist/wheels/*-py3-none-any.whl >/dev/null 2>&1; then
+            echo "::error::Found pure-Python wheel(s) — setup.py shim is not producing platform tag."
+            ls dist/wheels/*-py3-none-any.whl
+            exit 1
+          fi
+          echo "All wheels are platform-tagged (no py3-none-any detected)."
+
+      - name: twine check wheel metadata
+        shell: bash
+        run: twine check dist/wheels/*.whl
+
+      - name: Install + import smoke test (all wheels in isolated venv)
+        shell: bash
+        run: |
+          python -m venv /tmp/verify-venv
+          if [ -f /tmp/verify-venv/Scripts/python.exe ]; then
+            VENV_PY="/tmp/verify-venv/Scripts/python.exe"
+          else
+            VENV_PY="/tmp/verify-venv/bin/python"
+          fi
+          fail=0
+          for whl in dist/wheels/*.whl; do
+            lib=$(basename "$whl" | cut -d- -f1)
+            echo "--- install+import: $lib ---"
+            "$VENV_PY" -m pip install -q --force-reinstall "$whl" || { echo "::error::install failed for $lib"; fail=1; continue; }
+            "$VENV_PY" -c "import $lib; funcs = [x for x in dir($lib) if not x.startswith('_')]; print(f'  {len(funcs)} public funcs')" || { echo "::error::import failed for $lib"; fail=1; }
+          done
+          exit $fail
+
+      - name: Upload wheel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.plat_tag }}
+          path: dist/wheels/*.whl
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish to ${{ inputs.repository }}
+    needs: build-wheels
+    runs-on: ubuntu-latest
+    # Only run when the maintainer explicitly flips the `publish` input to true.
+    if: ${{ inputs.publish == true }}
+    environment:
+      name: ${{ inputs.repository }}
+    permissions:
+      # Trusted publishing (OIDC) — alternative to token auth.
+      # Either this OR PYPI_API_TOKEN must be configured on the environment.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-download
+          pattern: wheels-*
+          merge-multiple: true
+
+      - name: Collect wheels into dist/
+        run: |
+          mkdir -p dist
+          find dist-download -name '*.whl' -exec cp {} dist/ \;
+          ls -la dist/
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install twine
+        run: pip install --upgrade twine
+
+      - name: Publish to TestPyPI
+        if: inputs.repository == 'testpypi'
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          TWINE_REPOSITORY_URL: https://test.pypi.org/legacy/
+        run: twine upload --skip-existing dist/*.whl
+
+      - name: Publish to PyPI
+        if: inputs.repository == 'pypi'
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: twine upload --skip-existing dist/*.whl
