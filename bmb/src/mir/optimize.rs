@@ -2069,6 +2069,9 @@ impl OptimizationPass for CopyPropagation {
     }
 }
 
+// `propagate_operand` needs `&mut Operand`, but match guards force their bindings
+// immutable (E0596). Clippy's collapsible_match false-positives on all arms here.
+#[allow(clippy::collapsible_match)]
 fn propagate_copies_in_inst(inst: &mut MirInst, copies: &HashMap<String, Place>) -> bool {
     let mut changed = false;
 
@@ -5249,13 +5252,13 @@ impl LoopBoundedNarrowing {
         for block in &func.blocks {
             for inst in &block.instructions {
                 match inst {
-                    MirInst::Const { dest, value: Constant::Int(v) } => {
-                        if *v >= 0 && *v <= i32::MAX as i64 {
-                            var_bounds.insert(dest.name.clone(), *v);
-                        }
+                    MirInst::Const { dest, value: Constant::Int(v) }
+                        if *v >= 0 && *v <= i32::MAX as i64 =>
+                    {
+                        var_bounds.insert(dest.name.clone(), *v);
                     }
+                    // Propagate constant through copy
                     MirInst::Copy { dest, src } => {
-                        // Propagate constant through copy
                         if let Some(&bound) = var_bounds.get(&src.name) {
                             var_bounds.insert(dest.name.clone(), bound);
                         }
@@ -5469,12 +5472,13 @@ impl LoopBoundedNarrowing {
                         }
                         // v0.60.250: Check store_i64/bmb_store_i64 function calls
                         // store_i64(ptr, value) - value is the second argument (index 1)
-                        MirInst::Call { func: callee, args, .. } => {
-                            if (callee == "store_i64" || callee == "bmb_store_i64") && args.len() >= 2 {
-                                let value_derived = matches!(&args[1], Operand::Place(p) if derived.contains(&p.name));
-                                if value_derived {
-                                    return true;
-                                }
+                        MirInst::Call { func: callee, args, .. }
+                            if (callee == "store_i64" || callee == "bmb_store_i64")
+                                && args.len() >= 2 =>
+                        {
+                            let value_derived = matches!(&args[1], Operand::Place(p) if derived.contains(&p.name));
+                            if value_derived {
+                                return true;
                             }
                         }
                         // Propagate derived status through copy

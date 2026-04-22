@@ -1317,10 +1317,8 @@ impl TextCodeGen {
                         }
                     }
                     // Copied to another variable (conservative: treat as escape)
-                    MirInst::Copy { src, .. } => {
-                        if src.name == struct_name {
-                            return true;
-                        }
+                    MirInst::Copy { src, .. } if src.name == struct_name => {
+                        return true;
                     }
                     // Used in phi node (may be returned through phi)
                     MirInst::Phi { values, .. } => {

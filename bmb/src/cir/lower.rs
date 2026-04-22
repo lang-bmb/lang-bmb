@@ -362,11 +362,8 @@ impl CirLowerer {
                         _ => {}
                     }
                 }
-                ast::Attribute::WithArgs { name, .. } => {
-                    // Handle @inline(always) etc.
-                    if name.node == "pure" {
-                        effects.is_pure = true;
-                    }
+                ast::Attribute::WithArgs { name, .. } if name.node == "pure" => {
+                    effects.is_pure = true;
                 }
                 _ => {}
             }

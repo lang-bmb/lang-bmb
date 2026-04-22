@@ -980,47 +980,41 @@ impl LanguageServer for Backend {
             if let Some(ast) = &doc.ast {
                 for item in &ast.items {
                     match item {
-                        crate::ast::Item::FnDef(f) => {
-                            if added_names.insert(f.name.node.clone()) {
-                                let params_snippet: Vec<String> = f.params.iter()
-                                    .enumerate()
-                                    .map(|(i, p)| format!("${{{}:{}}}", i + 1, p.name.node))
-                                    .collect();
-                                let params_display: Vec<String> = f.params.iter()
-                                    .map(|p| format!("{}: {}", p.name.node, format_type(&p.ty.node)))
-                                    .collect();
-                                items.push(CompletionItem {
-                                    label: f.name.node.clone(),
-                                    kind: Some(CompletionItemKind::FUNCTION),
-                                    detail: Some(format!("fn({}) -> {}", params_display.join(", "), format_type(&f.ret_ty.node))),
-                                    insert_text: Some(format!("{}({})", f.name.node, params_snippet.join(", "))),
-                                    insert_text_format: Some(InsertTextFormat::SNIPPET),
-                                    sort_text: Some(format!("!1{}", f.name.node)),
-                                    ..Default::default()
-                                });
-                            }
+                        crate::ast::Item::FnDef(f) if added_names.insert(f.name.node.clone()) => {
+                            let params_snippet: Vec<String> = f.params.iter()
+                                .enumerate()
+                                .map(|(i, p)| format!("${{{}:{}}}", i + 1, p.name.node))
+                                .collect();
+                            let params_display: Vec<String> = f.params.iter()
+                                .map(|p| format!("{}: {}", p.name.node, format_type(&p.ty.node)))
+                                .collect();
+                            items.push(CompletionItem {
+                                label: f.name.node.clone(),
+                                kind: Some(CompletionItemKind::FUNCTION),
+                                detail: Some(format!("fn({}) -> {}", params_display.join(", "), format_type(&f.ret_ty.node))),
+                                insert_text: Some(format!("{}({})", f.name.node, params_snippet.join(", "))),
+                                insert_text_format: Some(InsertTextFormat::SNIPPET),
+                                sort_text: Some(format!("!1{}", f.name.node)),
+                                ..Default::default()
+                            });
                         }
-                        crate::ast::Item::StructDef(s) => {
-                            if added_names.insert(s.name.node.clone()) {
-                                items.push(CompletionItem {
-                                    label: s.name.node.clone(),
-                                    kind: Some(CompletionItemKind::STRUCT),
-                                    detail: Some("struct".to_string()),
-                                    sort_text: Some(format!("!2{}", s.name.node)),
-                                    ..Default::default()
-                                });
-                            }
+                        crate::ast::Item::StructDef(s) if added_names.insert(s.name.node.clone()) => {
+                            items.push(CompletionItem {
+                                label: s.name.node.clone(),
+                                kind: Some(CompletionItemKind::STRUCT),
+                                detail: Some("struct".to_string()),
+                                sort_text: Some(format!("!2{}", s.name.node)),
+                                ..Default::default()
+                            });
                         }
-                        crate::ast::Item::EnumDef(e) => {
-                            if added_names.insert(e.name.node.clone()) {
-                                items.push(CompletionItem {
-                                    label: e.name.node.clone(),
-                                    kind: Some(CompletionItemKind::ENUM),
-                                    detail: Some("enum".to_string()),
-                                    sort_text: Some(format!("!2{}", e.name.node)),
-                                    ..Default::default()
-                                });
-                            }
+                        crate::ast::Item::EnumDef(e) if added_names.insert(e.name.node.clone()) => {
+                            items.push(CompletionItem {
+                                label: e.name.node.clone(),
+                                kind: Some(CompletionItemKind::ENUM),
+                                detail: Some("enum".to_string()),
+                                sort_text: Some(format!("!2{}", e.name.node)),
+                                ..Default::default()
+                            });
                         }
                         _ => {}
                     }

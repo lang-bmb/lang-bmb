@@ -5819,7 +5819,7 @@ impl Interpreter {
         let closure_env = child_env(captured_env);
 
         // Bind parameters
-        for (param, arg) in params.iter().zip(args.into_iter()) {
+        for (param, arg) in params.iter().zip(args) {
             closure_env.borrow_mut().define(param.clone(), arg);
         }
 

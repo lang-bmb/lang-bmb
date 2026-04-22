@@ -206,17 +206,12 @@ impl OptimizationPass for NullCheckElimination {
         for block in &mut func.blocks {
             for inst in &mut block.instructions {
                 match inst {
-                    MirInst::FieldAccess { base, .. } => {
-                        if self.is_proven_non_null(&base.name, &facts) {
-                            // Null check can be eliminated
-                            changed = true;
-                        }
-                    }
-                    MirInst::FieldStore { base, .. } => {
-                        if self.is_proven_non_null(&base.name, &facts) {
-                            // Null check can be eliminated
-                            changed = true;
-                        }
+                    // Null check can be eliminated if base is proven non-null.
+                    MirInst::FieldAccess { base, .. }
+                    | MirInst::FieldStore { base, .. }
+                        if self.is_proven_non_null(&base.name, &facts) =>
+                    {
+                        changed = true;
                     }
                     _ => {}
                 }
