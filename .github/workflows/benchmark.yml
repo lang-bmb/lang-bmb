@@ -42,6 +42,7 @@ jobs:
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh 21
+          sudo apt-get install -y libpolly-21-dev
           echo "LLVM_SYS_211_PREFIX=/usr/lib/llvm-21" >> $GITHUB_ENV
           echo "/usr/lib/llvm-21/bin" >> $GITHUB_PATH
 

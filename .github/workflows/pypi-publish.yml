@@ -102,7 +102,7 @@ jobs:
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
           sudo add-apt-repository "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-21 main" || true
           sudo apt-get update
-          sudo apt-get install -y llvm-21 llvm-21-dev lld-21 || sudo apt-get install -y llvm llvm-dev lld
+          sudo apt-get install -y llvm-21 llvm-21-dev lld-21 libpolly-21-dev || sudo apt-get install -y llvm llvm-dev lld libpolly-dev
           echo "/usr/lib/llvm-21/bin" >> $GITHUB_PATH
           echo "LLVM_SYS_211_PREFIX=/usr/lib/llvm-21" >> $GITHUB_ENV
 

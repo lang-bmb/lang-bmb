@@ -76,17 +76,18 @@ install_llvm_linux() {
         wget https://apt.llvm.org/llvm.sh
         chmod +x llvm.sh
         sudo ./llvm.sh 21
+        sudo apt-get install -y libpolly-21-dev
         rm llvm.sh
 
         export LLVM_SYS_211_PREFIX=/usr/lib/llvm-21
         export PATH="/usr/lib/llvm-21/bin:$PATH"
     elif command -v dnf &> /dev/null; then
         # Fedora
-        sudo dnf install -y llvm21 clang21 lld21
+        sudo dnf install -y llvm21 clang21 lld21 polly-devel
         export LLVM_SYS_211_PREFIX=/usr
     elif command -v pacman &> /dev/null; then
         # Arch
-        sudo pacman -S --noconfirm llvm clang lld
+        sudo pacman -S --noconfirm llvm clang lld polly
         export LLVM_SYS_211_PREFIX=/usr
     else
         echo "Error: Unsupported Linux distribution"
