@@ -37,8 +37,14 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             llvm_setup: apt
-          - os: macos-latest
+          # macos-13 = Intel native; macos-latest = Apple Silicon. Pinning
+          # runner per arch avoids cross-compile with arch-specific brew LLVM
+          # breaking --features llvm linking. Mirrors pypi-publish.yml layout.
+          - os: macos-13
             target: x86_64-apple-darwin
+            llvm_setup: brew
+          - os: macos-latest
+            target: aarch64-apple-darwin
             llvm_setup: brew
     steps:
       - uses: actions/checkout@v4
@@ -76,6 +82,12 @@ jobs:
         uses: egor-tensin/setup-mingw@v2
         with:
           platform: x64
+          # Disable action-side static-workaround. It tries to relocate
+          # libpthread.dll.a (missing from current chocolatey MinGW pkg)
+          # and fails. Our -static -static-libgcc linker flags (Cycle 2423
+          # fix in bmb/src/build/mod.rs) already eliminate MinGW runtime
+          # deps at link time, so the action workaround is redundant.
+          static: 0
 
       - name: Setup LLVM (Ubuntu)
         if: matrix.llvm_setup == 'apt'
@@ -85,6 +97,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y llvm-21 llvm-21-dev lld-21 || sudo apt-get install -y llvm llvm-dev lld
           echo "/usr/lib/llvm-21/bin" >> $GITHUB_PATH
+          echo "LLVM_SYS_211_PREFIX=/usr/lib/llvm-21" >> $GITHUB_ENV
 
       - name: Setup LLVM (macOS)
         if: matrix.llvm_setup == 'brew'
