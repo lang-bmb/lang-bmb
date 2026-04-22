@@ -22,6 +22,9 @@ on:
       - 'ecosystem/build_all.py'
       - 'ecosystem/test_*.py'
       - 'scripts/build-wheel.sh'
+  # Allow manual trigger — useful when path filter doesn't match (e.g.
+  # submodule pointer changes, compiler-side fixes that affect bindings).
+  workflow_dispatch:
 
 jobs:
   test-bindings:
