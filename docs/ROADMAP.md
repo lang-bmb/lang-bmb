@@ -4,7 +4,7 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 
 ---
 
-## Current Status — v0.98 (2026-04-22, post-Cycles 2411-2412)
+## Current Status — v0.98 (2026-04-22, post-Cycles 2427-2459)
 
 ### Progress
 
@@ -32,7 +32,93 @@ Tooling     ████████████████░░░░ 80%   @
 
 ## Recently completed
 
-### Cycle 2426 (this session) — ✅ CI action reference fixed
+### Cycles 2441-2459 (this session) — ✅ CI 3-platform Build+Clippy empirical validation
+
+Second session after PyPI wheel infrastructure landing. Previous session
+(Cycles 2427-2440) surfaced "3 platform blocker" (submodule + Ubuntu +
+macOS + Windows). This session empirically validated all four via actual
+CI runs, then found and resolved two more blockers (4th and 5th).
+
+**(1) 4th blocker — gotgan Clippy extra-unused-lifetime (Cycles 2441-2442).**
+After submodule + platform fixes unblocked CI checkout/build, `Clippy`
+step failed on all 3 platforms with `clippy::extra-unused-lifetimes` on
+`ecosystem/gotgan/src/resolver.rs:223` (`fn topo_visit<'a>`). User had
+the 1-line fix locally but unstaged; previous session incorrectly treated
+gotgan dirty as "untouched local work". Committed `15ab20c` upstream,
+parent pointer bumped `dff30558`.
+
+**(2) `bindings-ci.yml` workflow_dispatch (Cycle 2443).** Submodule
+pointer bumps don't match bindings-ci path filter → auto-trigger fails.
+Added `workflow_dispatch:` trigger for manual re-run flexibility.
+
+**(3) 3-platform Build empirical validation (Cycles 2444-2452).** CI
+`dff30558` BMB CI step-level observation confirmed all 3 platforms pass
+`Build (release)`:
+- Ubuntu `LLVM_SYS_211_PREFIX` (Cycle 2434) — validated
+- macOS matrix split `macos-13`/`macos-latest aarch64` (Cycle 2434) — validated
+- Windows `egor-tensin/setup-mingw@v2 static: 0` (Cycle 2435) — validated
+
+**(4) 5th blocker — Rust 1.95 lint drift (Cycles 2453-2456).** Ubuntu
+Clippy still failed post-Build with 16 errors in `bmb` lib. Root cause:
+`dtolnay/rust-toolchain@stable` gave CI Rust 1.95.0 (2026-04-14) while
+local was 1.94.0 (2026-03-02). Rust 1.95 strengthens
+`clippy::collapsible_match` and `clippy::useless_conversion` lints.
+Resolution: local `rustup update`, case-by-case fix of 16 sites — 10
+proper guard-collapse, 6 narrow `#[allow(clippy::collapsible_match)]` on
+`propagate_copies_in_inst` (pattern-guard bindings are immutable but
+`propagate_operand` requires `&mut Operand`, language-level constraint),
+1 `.into_iter()` removal. Commit `50f1c607`. Rule 6 judgment:
+distribution blocker, semantic-preserving, 3,764 tests pass.
+
+**(5) Empirical CI final — `50f1c607` BMB CI Build+Test result.**
+- Build & Test (ubuntu-latest) — ✅ **success** (all 10 steps)
+- Build & Test (macos-latest) — ✅ **success**
+- Build & Test (windows-latest) — ✅ **success**
+
+Clippy **passes** on all three platforms after the 16-site fix. The
+session's core objective — unblock cross-platform CI — is achieved.
+
+**(6) Remaining downstream failures (6th blocker — defer).** Build
+success revealed three downstream jobs still fail because their own
+`actions/checkout@v4` steps lack `submodules: recursive`:
+- `Code Quality (fmt + lint)` — `failed to load manifest for workspace
+  member 'ecosystem/gotgan'`
+- `bmb bench --compare smoke test` — same
+- `stdlib/net TCP echo E2E smoke test` — same
+
+Previously masked by Clippy step failure. Now visible because
+`build` passes. Simple fix (6 checkout sites + 1 line each) deferred to
+next session.
+
+Session commits: 4 (`15ab20c`, `dff30558`, `9bed6089`, `50f1c607`).
+Local verification: `cargo test --release --lib` 3,764 pass / 0 fail,
+`cargo clippy --all-targets -- -D warnings` clean on Rust 1.95.
+
+### Cycles 2427-2440 (prev session) — ✅ Submodule blocker + 3-platform CI fix
+
+Resolved the CI checkout blocker discovered in previous-previous session.
+Previous HANDOFF had identified a single submodule (`benchmark-bmb`) as
+problematic; Rule 5 full audit found **4 submodules** with fast-forward
+ahead commits never pushed upstream (`benchmark-bmb`, `gotgan`,
+`tree-sitter-bmb`, `vscode-bmb`). All four pushed to upstream
+(Cycles 2427-2428). Added `scripts/verify-submodules.sh` as pre-push
+regression check (Cycle 2433).
+
+After submodule checkout succeeded, first full CI run surfaced 3 real
+platform blockers in `bindings-ci.yml`:
+- Ubuntu: `LLVM_SYS_211_PREFIX` env missing (macOS had it) — added
+- macOS: arch mismatch (`macos-latest` is ARM, target was x86_64) —
+  matrix split into `macos-13` + `macos-latest aarch64` mirroring
+  pypi-publish.yml's Cycle 2416 layout
+- Windows: `egor-tensin/setup-mingw@v2` default `static: 1` fails on
+  missing `libpthread.dll.a` — set `static: 0` (our Cycle 2423 linker
+  flags already remove MinGW runtime)
+
+Both `bindings-ci.yml` and `pypi-publish.yml` received the fixes.
+Commit `d059dbc7`. Empirical validation landed in the next session
+(Cycles 2444-2452 above).
+
+### Cycle 2426 (prev session) — ✅ CI action reference fixed
 
 Pre-existing bug surfaced by Cycle 2425's push. All 15 occurrences of
 `dtolnay/rust-action@stable` (non-existent action) renamed to
@@ -350,26 +436,38 @@ helper fns minimal; prefer inlining over extracting.
 
 ---
 
-## Next-session recommended priority (2026-04-22, post-Cycle 2426)
+## Next-session recommended priority (2026-04-22, post-Cycle 2459)
 
-> **Update**: Defect 5 resolved (Cycles 2419-2420), MinGW runtime
-> dependency eliminated (Cycle 2423), 154 commits pushed to origin
-> (Cycle 2425), CI action-name bug fixed (Cycle 2426). Cross-platform
-> CI is now self-executing. First post-fix runs validate Defect 5 fix
-> + static-link across Linux/macOS. Organization has 4 publish
-> secrets pre-configured (`PYPI_API_TOKEN`, `CARGO_REGISTRY_TOKEN`,
-> `NPM_TOKEN`, `NUGET_API_KEY`); `TEST_PYPI_API_TOKEN` is NOT
-> configured — TestPyPI rehearsal requires either adding that secret
-> or using `publish=false` mode (artifacts only).
+> **Update**: Cross-platform CI `Build & Test` is empirically validated
+> ✅ — Ubuntu, macOS, Windows all pass setup → checkout → build → tests
+> → Clippy after the session's 6-cycle accumulation (4 submodule pushes,
+> 3 platform-specific fixes, Clippy 4th+5th blocker resolution). Next
+> session starts from that validated baseline.
+>
+> The **6th blocker** (CI downstream jobs missing `submodules:
+> recursive`) is a trivial 1-line-per-site fix discovered at the end of
+> this session and recorded below as `P1-ci-sub`.
+>
+> Organization has 4 publish secrets pre-configured (`PYPI_API_TOKEN`,
+> `CARGO_REGISTRY_TOKEN`, `NPM_TOKEN`, `NUGET_API_KEY`);
+> `TEST_PYPI_API_TOKEN` is NOT configured — TestPyPI rehearsal requires
+> either adding that secret or using `publish=false` mode.
 
 | # | Option | Effort | Risk | ROI | Rationale |
 |---|--------|--------|------|-----|-----------|
 | ~~**P0-new**~~ | ~~Defect 5 fix~~ | ~~3-6 cycles~~ | ~~HIGH~~ | ~~HIGH~~ | ✅ **Cycles 2419-2420**. |
 | ~~**P0-inf**~~ | ~~PyPI wheel CI pipeline~~ | ~~2-4 cycles~~ | ~~MEDIUM~~ | ~~HIGH~~ | ✅ **Cycles 2411-2417** + unblocked by **2419-2420**. |
 | ~~**P3-T3a**~~ | ~~MinGW runtime static-link~~ | ~~2-4 cycles~~ | ~~LOW-MEDIUM~~ | ~~HIGH~~ | ✅ **Cycle 2423**. |
-| ~~**P1-new-push**~~ | ~~Push 154 commits to origin~~ | ~~0 + external~~ | ~~LOW~~ | ~~HIGH~~ | ✅ **Cycle 2425**. |
+| ~~**P1-new-push**~~ | ~~Push 154 commits~~ | ~~0 + external~~ | ~~LOW~~ | ~~HIGH~~ | ✅ **Cycle 2425**. |
 | ~~**P1-new-ci**~~ | ~~Fix CI action reference~~ | ~~1 cycle~~ | ~~LOW~~ | ~~HIGH~~ | ✅ **Cycle 2426**. |
-| **P1-obs** | **CI observation + pypi-publish dispatch** | 0-1 cycle + external | LOW | HIGH | Monitor initial cross-platform runs. Dispatch `pypi-publish.yml` with `publish=false` to produce wheel artifacts across Windows/Linux/macOS × 3 Python versions. No TestPyPI token needed for artifact-only rehearsal. |
+| ~~**P1-new-sub**~~ | ~~Submodule upstream sync (4 repos)~~ | ~~1-2 cycles~~ | ~~LOW~~ | ~~HIGH~~ | ✅ **Cycles 2427-2428**. |
+| ~~**P1-new-3plat**~~ | ~~CI 3-platform setup fixes~~ | ~~2 cycles~~ | ~~LOW-MEDIUM~~ | ~~HIGH~~ | ✅ **Cycles 2434-2435** + empirically validated **2444-2452**. |
+| ~~**P1-new-clippy1**~~ | ~~gotgan clippy unused-lifetime~~ | ~~1 cycle~~ | ~~LOW~~ | ~~HIGH~~ | ✅ **Cycle 2442**. |
+| ~~**P1-new-clippy2**~~ | ~~Rust 1.95 lint drift (16 sites)~~ | ~~2 cycles~~ | ~~LOW-MEDIUM~~ | ~~HIGH~~ | ✅ **Cycles 2453-2456**. |
+| **P1-ci-sub** | **CI downstream `submodules: recursive` (6 sites)** | 1 cycle | LOW | HIGH | `ci.yml` jobs `code-quality`, `bootstrap-check`, `performance-regression`, `bench-compare-smoke`, `net-echo-smoke`, `gate-verification` each have own `actions/checkout@v4` without `submodules: recursive`. Build success in `50f1c607` BMB CI exposed `failed to load manifest for workspace member 'ecosystem/gotgan'`. 6 line adds, trivial. |
+| **P1-pin** | **`rust-toolchain.toml` pin to 1.95.0** | 1 cycle | LOW | MEDIUM | Prevents future `@stable` drift surprise (the root cause of Cycle 2453's 5th blocker). Aligns local dev with CI. Optionally pin clippy rules list for full reproducibility. |
+| **P1-wheel** | **pypi-publish.yml rehearsal (`publish=false`)** | 0-1 cycle + external | LOW | HIGH | Re-dispatch (previous Cycle 2437 dispatch was cancelled due to being outdated). Download 4-platform wheel artifacts, verify `bmb_*.pyd/so` binding ext + platform tag. |
+| **P1-bind** | **Bindings CI final validation** | 0-1 cycle + external | LOW | HIGH | Manual `gh workflow run bindings-ci.yml` to see all 3 platforms Build BMB compiler + build_all.py + pytest. Validates Cycles 2434-2435 fixes end-to-end. |
 | **P2** | **Defect 3 dedicated — HARD 2-cycle limit, new methods only** | ≤ 2 cycles | HIGH | UNCERTAIN | 12 cycles of probe-matrix work failed to find root cause. Session **must use different methods**: `gdb` / `DrMemory` on Stage 1 binary, IR diff between probe/no-probe builds, debug-build panic backtrace. If no new-cause signal after 2 cycles, **stop immediately**. No third-cycle extension. |
 | P4 | `stdlib/net` TLS (`tcp_tls_connect`, `accept_tls`) | 6-10 cycles | MEDIUM-HIGH | MEDIUM | OpenSSL external dependency. Post-v1.0 advanced-users target. |
 | P5 | Bootstrap SIMD intrinsic dispatch | 10+ cycles | HIGH | MEDIUM | Defect 3-adjacent risk. |
@@ -380,7 +478,11 @@ helper fns minimal; prefer inlining over extracting.
 | P5 | DWARF stack trace | 4-6 cycles | MEDIUM | LOW | MIR lacks span info; gains limited to function granularity. ROI-capped. |
 | P6 | stdlib/parse post weakening | 1-2 cycles | LOW | LOW | Currently zero `@include "stdlib/parse"` consumers. Defer until a real user appears. |
 
-**Decision tree**: Defect 5 now resolved. Next session → P1-new (push + CI observation) for cross-platform validation; then P2 (Defect 3, hard-limited) if budget allows; then P3/P4/P5.
+**Decision tree (post-Cycle 2459)**: Cross-platform CI Build+Test
+empirically validated ✅. Next session → **P1-ci-sub** (1 cycle, trivial)
+immediately to unblock downstream jobs → **P1-pin** (drift prevention) →
+**P1-wheel** + **P1-bind** (external, parallel) for wheel rehearsal +
+bindings final check → **P2** (Defect 3, hard-limited) if budget allows.
 
 ---
 
