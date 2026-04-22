@@ -10,6 +10,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Work on `v0.98.x` — see cycle logs under `claudedocs/cycle-logs/cycle-2383.md`
 and later for per-cycle detail.
 
+### Fixed (Cycle 2423) — MinGW runtime DLLs statically linked (Defect 5 follow-up P3-T3a)
+
+Addresses the last remaining obstacle to `pip install bmb-*` on Windows
+machines without MSYS2 installed. Previously every `bmb build --shared`
+output depended on two MinGW runtime DLLs:
+
+- `libgcc_s_seh-1.dll` — GCC's SEH (Structured Exception Handling) unwinder
+- `libwinpthread-1.dll` — MinGW POSIX threads wrapper (pulled transitively by msvcrt)
+
+Both are part of MSYS2's UCRT64 runtime and are not distributed with
+Windows. End users running `import bmb_algo` on a stock Windows machine
+would see "DLL load failed: The specified module could not be found".
+
+**Fix**: add `-static -static-libgcc` to both link paths in
+`bmb/src/build/mod.rs`:
+
+- `link_native()` (inkwell backend, line ~1265) — gcc-driven link
+- Text-backend clang block (line ~1079) — clang + lld-driven link
+
+After the fix, `objdump -p bmb_algo.dll` shows only Windows 10+
+system-provided DLLs: `kernel32`, `ws2_32`, and the `api-ms-win-crt-*`
+UCRT forwarder family. Binary size delta: +30–60 KB per .dll (305 → 341 KB
+for bmb-algo; +12%), acceptable for zero MinGW dependency.
+
+**Cycle 2418's retry failure** explained: Cycle 2418 tried
+`-static-libgcc` alone and saw the link step silently produce no output.
+Root cause was Defect 5's SharedLib dispatch bug (fixed in Cycles 2419-2420)
+masking the real test outcome. With Defect 5 repaired, the flag retry
+succeeded cleanly on first attempt — `-static-libgcc` alone removes
+libgcc; adding `-static` also removes libwinpthread, eliminating both
+MinGW deps in one pass.
+
+**Verification**: 5/5 bindings rebuilt clean + isolated-venv functional
+test (`bmb_algo.is_prime(17)`, `bmb_algo.knapsack(...)`,
+`bmb_compute.factorial(5)`, `bmb_crypto.crc32("hello")`,
+`bmb_text.kmp_search(...)`, `bmb_json.validate(...)` all return
+correct values). `cargo test --release --lib` 3,764 pass / 0 fail.
+3-Stage Fixed Point S2 == S3 (69s, -45% vs Cycle 2422's 123s baseline
+run). Rule 6 judgment: direct continuation of Defect 5 distribution-
+blocker work; ~10 LOC linker-flag change in one file.
+
+Files changed:
+- `bmb/src/build/mod.rs` — add `-static -static-libgcc` to both
+  Windows link paths (inkwell + text backend)
+
 ### Fixed (Cycles 2419-2420) — Defect 5 resolved: `bmb build --shared` now works
 
 Three concrete fixes, all landed together in `0d088dab`+next commit:

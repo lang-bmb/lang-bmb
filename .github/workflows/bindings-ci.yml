@@ -105,6 +105,13 @@ jobs:
       - name: Build all binding libraries
         run: python ecosystem/build_all.py
 
+      - name: Verify Windows DLLs have no MinGW runtime deps (Cycle 2423 regression check)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          chmod +x scripts/verify-dll-deps.sh
+          ./scripts/verify-dll-deps.sh
+
       - name: Run per-library pytest suites
         run: python ecosystem/build_all.py --test
 

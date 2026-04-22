@@ -7,11 +7,14 @@
 > publication side: how the wheels are built, why they're tagged the way they
 > are, and how to run a full publish.
 
-> **Status (2026-04-22, post-Cycle 2420)**: Defect 5 resolved —
-> `bmb build --shared` now produces correct platform shared libraries on
-> both inkwell (`--features llvm`) and text backends. End-to-end wheel
-> build verified locally on Windows. First `workflow_dispatch` of
-> `pypi-publish.yml` will also validate Linux and macOS.
+> **Status (2026-04-22, post-Cycle 2423)**: Defect 5 resolved and MinGW
+> runtime dependency eliminated. `bmb build --shared` produces platform
+> shared libraries on both backends (inkwell + text), and Windows output
+> is now free of `libgcc_s_seh-1.dll` / `libwinpthread-1.dll` — only
+> Windows 10+ system DLLs (`kernel32`, `ws2_32`, UCRT forwarders) are
+> required. End-to-end wheel build + isolated-venv import verified
+> locally on Windows. First `workflow_dispatch` of `pypi-publish.yml`
+> will also validate Linux and macOS.
 
 ---
 
@@ -261,6 +264,29 @@ script runs `python ecosystem/build_all.py` first, but if you used
 > As of 2026-04-22 only Windows has been exercised end-to-end locally; the
 > Linux and both macOS runs will first occur via the CI matrix on
 > `workflow_dispatch`.
+
+### Windows runtime dependencies (resolved 2026-04-22, Cycle 2423)
+
+Fresh `bmb build --shared` output on Windows previously depended on
+MinGW runtime DLLs that ship only with MSYS2:
+
+- `libgcc_s_seh-1.dll` — SEH exception unwinder
+- `libwinpthread-1.dll` — POSIX threads shim (pulled transitively by msvcrt)
+
+Cycle 2423 added `-static -static-libgcc` to both link paths
+(`bmb/src/build/mod.rs` inkwell `link_native` + text-backend clang
+block). After this change `objdump -p <lib>.dll` shows only Windows
+system DLLs:
+
+```
+KERNEL32.dll
+WS2_32.dll
+api-ms-win-crt-*.dll   (UCRT forwarders, Windows 10+)
+```
+
+End-user `pip install bmb-*` on a stock Windows 10+ machine now works
+without needing MSYS2 / MinGW pre-installed. Binary size delta:
++30-60 KB per .dll. No wheel bundling of MinGW DLLs required.
 
 ### Linux manylinux compatibility
 

@@ -32,7 +32,25 @@ Tooling     ████████████████░░░░ 80%   @
 
 ## Recently completed
 
-### Cycles 2419-2420 (this session) — ✅ Defect 5 resolved
+### Cycle 2423 (this session) — ✅ P3-T3a: MinGW runtime statically linked
+
+Adding `-static -static-libgcc` to both link paths in
+`bmb/src/build/mod.rs` eliminates `libgcc_s_seh-1.dll` and
+`libwinpthread-1.dll` from every `bmb build` output. Remaining DLL deps
+are Windows-system UCRT forwarders (`api-ms-win-crt-*`), KERNEL32, and
+WS2_32 — all guaranteed on Windows 10+. This was the last distribution
+gap after Cycles 2419-2420 fixed Defect 5; the P3 track (T3b wheel
+bundling, T3c MSVC toolchain switch) is now fully obviated.
+
+Binary size delta: +30-60 KB per .dll (bmb-algo 305 → 341 KB, +12%).
+Acceptable for removing all MinGW runtime dependencies.
+
+Verification: isolated-venv install + functional calls across all 5
+bindings; `cargo test --release --lib` 3,764 pass; `cargo clippy` clean;
+3-Stage Fixed Point S2 == S3 (69s). Rule 6 judgment: direct continuation
+of Cycle 2420's distribution-blocker work, ~10 LOC linker-flag change.
+
+### Cycles 2419-2420 (prev session) — ✅ Defect 5 resolved
 
 Three fixes landed together; `bmb build --shared` now produces correct
 platform shared libraries under `--features llvm` (inkwell backend) and
@@ -317,22 +335,26 @@ helper fns minimal; prefer inlining over extracting.
 
 ---
 
-## Next-session recommended priority (2026-04-22, post-Cycles 2419-2420)
+## Next-session recommended priority (2026-04-22, post-Cycle 2423)
 
-> **Update**: Defect 5 resolved in Cycles 2419-2420. The wheel CI pipeline
-> is now fully unblocked — first CI dispatch will produce correct wheels.
-> Remaining priorities below.
+> **Update**: Defect 5 resolved in Cycles 2419-2420, and the last
+> MinGW runtime dependency (`libgcc_s_seh-1.dll` / `libwinpthread-1.dll`)
+> eliminated in Cycle 2423 via `-static -static-libgcc`. The wheel CI
+> pipeline is now end-to-end ready: Windows wheels from fresh CI runners
+> will install cleanly on Windows 10+ without any MinGW/MSYS2 runtime.
+> Only open distribution gate is user approval for `git push`.
 
 | # | Option | Effort | Risk | ROI | Rationale |
 |---|--------|--------|------|-----|-----------|
-| ~~**P0-new**~~ | ~~Defect 5 fix~~ | ~~3-6 cycles~~ | ~~HIGH~~ | ~~HIGH~~ | ✅ **Cycles 2419-2420** — user-side symbol rename + inkwell SharedLib link path + `@export` dllexport + linkage-priority fix. End-to-end wheel build verified locally. |
-| ~~**P0-inf**~~ | ~~PyPI wheel CI pipeline~~ | ~~2-4 cycles~~ | ~~MEDIUM~~ | ~~HIGH~~ | ✅ **Cycles 2411-2417** (infrastructure) + **Cycles 2419-2420** (unblocked). Ready for first dispatch. |
-| **P1-new** | **Cross-platform push + CI observation** | 0 cycle + external | LOW | HIGH | User-approval gate. 150+ commits ahead → push then `gh run list`. First dispatch of `pypi-publish.yml` validates Defect 5 fix on Linux/macOS. Defect 5 fix covered Windows end-to-end locally but cross-platform still needs CI verification. |
+| ~~**P0-new**~~ | ~~Defect 5 fix~~ | ~~3-6 cycles~~ | ~~HIGH~~ | ~~HIGH~~ | ✅ **Cycles 2419-2420**. |
+| ~~**P0-inf**~~ | ~~PyPI wheel CI pipeline~~ | ~~2-4 cycles~~ | ~~MEDIUM~~ | ~~HIGH~~ | ✅ **Cycles 2411-2417** + unblocked by **2419-2420**. |
+| ~~**P3-T3a**~~ | ~~MinGW runtime static-link~~ | ~~2-4 cycles~~ | ~~LOW-MEDIUM~~ | ~~HIGH~~ | ✅ **Cycle 2423** — `-static -static-libgcc` on both Windows link paths; libgcc + libwinpthread both eliminated; 5/5 fresh build + functional venv-isolated smoke passes. |
+| **P1-new** | **Cross-platform push + CI observation** | 0 cycle + external | LOW | HIGH | User-approval gate. 153 commits ahead → push then `gh run list`. First dispatch of `pypi-publish.yml` validates Defect 5 fix + static-link on Linux/macOS. |
 | **P2** | **Defect 3 dedicated — HARD 2-cycle limit, new methods only** | ≤ 2 cycles | HIGH | UNCERTAIN | 12 cycles of probe-matrix work failed to find root cause. Session **must use different methods**: `gdb` / `DrMemory` on Stage 1 binary, IR diff between probe/no-probe builds, debug-build panic backtrace. If no new-cause signal after 2 cycles, **stop immediately**. No third-cycle extension. |
-| P3 | `stdlib/net` TLS (`tcp_tls_connect`, `accept_tls`) | 6-10 cycles | MEDIUM-HIGH | MEDIUM | OpenSSL external dependency. Post-v1.0 advanced-users target. |
-| P4 | Bootstrap SIMD intrinsic dispatch | 10+ cycles | HIGH | MEDIUM | Defect 3-adjacent risk. |
-| P5 | DWARF stack trace | 4-6 cycles | MEDIUM | LOW | MIR lacks span info; gains limited. |
-| P6 | stdlib/parse post weakening | 1-2 cycles | LOW | LOW | Zero current consumers. Defer. |
+| P4 | `stdlib/net` TLS (`tcp_tls_connect`, `accept_tls`) | 6-10 cycles | MEDIUM-HIGH | MEDIUM | OpenSSL external dependency. Post-v1.0 advanced-users target. |
+| P5 | Bootstrap SIMD intrinsic dispatch | 10+ cycles | HIGH | MEDIUM | Defect 3-adjacent risk. |
+| P6 | DWARF stack trace | 4-6 cycles | MEDIUM | LOW | MIR lacks span info; gains limited. |
+| P7 | stdlib/parse post weakening | 1-2 cycles | LOW | LOW | Zero current consumers. Defer. |
 | P3 | `stdlib/net` TLS (`tcp_tls_connect`, `accept_tls`) | 6-10 cycles | MEDIUM-HIGH | MEDIUM | OpenSSL external dependency. Post-v1.0 advanced-users target. |
 | P4 | Bootstrap SIMD intrinsic CALL-site dispatch | 10+ cycles | HIGH | MEDIUM | 211 intrinsics × vec-type alloca/call rewrite. **Likely re-triggers Defect 3** given scope — gate on P1 outcome. |
 | P5 | DWARF stack trace | 4-6 cycles | MEDIUM | LOW | MIR lacks span info; gains limited to function granularity. ROI-capped. |

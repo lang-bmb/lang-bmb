@@ -1071,6 +1071,15 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
             #[cfg(target_os = "windows")]
             cmd.arg("-lws2_32");
 
+            // v0.98 (Cycle 2423, Defect 5 follow-up P3-T3a): statically link
+            // MinGW runtime so produced .exe/.dll has no libgcc_s_seh-1.dll /
+            // libwinpthread-1.dll dependency. Essential for `pip install` on
+            // Windows machines without MSYS2. Adds ~60 KB per binary;
+            // remaining DLL deps (kernel32, ws2_32, api-ms-win-crt-*) are
+            // Windows 10+ system-provided UCRT forwarders.
+            #[cfg(target_os = "windows")]
+            cmd.args(["-static", "-static-libgcc"]);
+
             if config.verbose {
                 println!("  Linking with {}...", clang);
             }
@@ -1262,6 +1271,13 @@ fn link_native(
     {
         // v0.83.1: Added ws2_32 for AsyncSocket (WinSock) support
         cmd.args(["-lkernel32", "-lmsvcrt", "-lws2_32"]);
+        // v0.98 (Cycle 2423, Defect 5 follow-up P3-T3a): statically link MinGW
+        // runtime so produced .exe/.dll has no libgcc_s_seh-1.dll /
+        // libwinpthread-1.dll dependency. Essential for `pip install` on
+        // Windows machines without MSYS2. Adds ~60 KB per binary;
+        // remaining DLL deps (kernel32, ws2_32, api-ms-win-crt-*) are
+        // Windows 10+ system-provided UCRT forwarders.
+        cmd.args(["-static", "-static-libgcc"]);
     }
 
     #[cfg(target_os = "linux")]
