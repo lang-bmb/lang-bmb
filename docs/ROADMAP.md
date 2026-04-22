@@ -4,7 +4,7 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 
 ---
 
-## Current Status — v0.98 (2026-04-22, post-Cycles 2427-2459)
+## Current Status — v0.98 (2026-04-22, post-Cycles 2460-2464)
 
 ### Progress
 
@@ -32,7 +32,82 @@ Tooling     ████████████████░░░░ 80%   @
 
 ## Recently completed
 
-### Cycles 2441-2459 (this session) — ✅ CI 3-platform Build+Clippy empirical validation
+### Cycles 2460-2464 (this session) — ✅ CI downstream jobs unblocked (8/9)
+
+Follow-up session after Cycles 2441-2459 confirmed Build & Test
+green but exposed the 6th blocker (downstream jobs missing
+`submodules: recursive`) and a family of smaller CI-infra defects. All
+seven commits this session are CI/infra only — no Rust compiler
+behavior changes.
+
+**Commits (chronological)**:
+
+1. `0f6f1c28` **P1-ci-sub**: `ci.yml` 6 downstream checkout sites get
+   `submodules: recursive`. Unblocks `code-quality`, `bootstrap-check`,
+   `performance-regression`, `bench-compare-smoke`, `net-echo-smoke`,
+   `gate-verification` (all had `cargo build` failing at workspace
+   manifest load because `ecosystem/gotgan/Cargo.toml` was not checked
+   out).
+
+2. `e843a373` **P1-pin**: `rust-toolchain.toml` pins toolchain to
+   1.95.0. Prevents `@stable` drift — Cycle 2453's 5th blocker (16
+   clippy errors surfaced on CI-only 1.95) was caused by this drift.
+   Both rustup (local) and `dtolnay/rust-toolchain` action read the
+   pinned channel, so local and CI agree automatically.
+
+3. `f443011e` **Docs**: `docs/ROADMAP.md` updated for prior session
+   (Cycles 2427-2459).
+
+4. `a7cd1a00` **Runtime `<unistd.h>` include**: strict clang on
+   ubuntu-latest rejects implicit `getcwd`/`rmdir` declarations. POSIX
+   branch of `bmb/runtime/bmb_runtime.c` include block gets
+   `<unistd.h>` (1 line).
+
+5. `80736235` **Rule 5 workflow sweep**: 5 additional workflow files
+   (bootstrap-benchmark, golden-release, nightly-bench, pypi-publish,
+   release) had 7 more `actions/checkout@v4` sites without
+   `submodules: recursive`. Direct failure observed: `3-Stage
+   Bootstrap` in bootstrap-benchmark.yml failed at cargo manifest load.
+   Post-fix audit: 27/27 checkout sites across all 10 workflows now
+   have submodules: recursive.
+
+6. `57b061d5` **Bootstrap self-compile check rewrite**: `ci.yml`
+   `Measure bootstrap compile time` previously looped `for f in
+   bootstrap/*.bmb; do bmb build "$f"; done`. Per-file compilation
+   reports spurious undefined-symbol errors because bootstrap modules
+   reference symbols defined in siblings (e.g. `lowering.bmb` uses
+   `unpack_place` from `mir.bmb`). Fix: build `bootstrap/compiler.bmb`
+   only — the entry point resolves the full graph. Local verify:
+   `bmb check compiler.bmb` → success (3148 warnings, 0 errors);
+   `bmb build --emit-mir` runs in 0.56s vs 60s Gate #4.1 threshold.
+
+7. `6fa06e9e` **LLVM_SYS env var correction**: 4 workflow files +
+   `scripts/ci/setup-env.sh` (19 refs) had `LLVM_SYS_210_PREFIX`
+   (LLVM 21.0), but `bmb/Cargo.toml` uses `inkwell` with feature
+   `llvm21-1` → llvm-sys-211 (LLVM 21.1). Mass rename
+   `210 → 211`. Fixes the "No suitable version of LLVM" error in
+   `bootstrap-benchmark.yml` `3-Stage Bootstrap`.
+
+**Empirical CI (6fa06e9e)**:
+
+BMB CI 8/9 jobs pass — `Build & Test (3 OS)`, `Code Quality`,
+`bmb bench --compare smoke test`, `Bootstrap Self-Compile Check`,
+`Gate #4.1 Verification` all ✅. Remaining:
+- `stdlib/net TCP echo E2E smoke test` — BMB LLVM IR generator emits
+  invalid attribute ordering (`define private noundef range(i64 ...)
+  i64 @sign`). Compiler internal bug, deferred to next session.
+
+Bootstrap+Benchmark 4/7 jobs pass — `Build & Test (3 OS)` + `CI
+Summary` ✅. Remaining:
+- `3-Stage Bootstrap` — `could not find native static library
+  'Polly'`. LLVM installation via `llvm.sh 21` does not include
+  `llvm-21-polly-dev`. Separate apt install needed.
+
+Golden Binary CI failure across 3 runners: `golden/linux-x86_64/bmb`
+and `golden/darwin-universal/bmb` missing from repo — pre-existing
+Windows-only golden-binary setup. Documented as P1-golden.
+
+### Cycles 2441-2459 (prev session) — ✅ CI 3-platform Build+Clippy empirical validation
 
 Second session after PyPI wheel infrastructure landing. Previous session
 (Cycles 2427-2440) surfaced "3 platform blocker" (submodule + Ubuntu +
@@ -436,39 +511,83 @@ helper fns minimal; prefer inlining over extracting.
 
 ---
 
-## Next-session recommended priority (2026-04-22, post-Cycle 2459)
+## Next-session recommended priority (2026-04-22, post-Cycle 2464)
 
-> **Update**: Cross-platform CI `Build & Test` is empirically validated
-> ✅ — Ubuntu, macOS, Windows all pass setup → checkout → build → tests
-> → Clippy after the session's 6-cycle accumulation (4 submodule pushes,
-> 3 platform-specific fixes, Clippy 4th+5th blocker resolution). Next
-> session starts from that validated baseline.
->
-> The **6th blocker** (CI downstream jobs missing `submodules:
-> recursive`) is a trivial 1-line-per-site fix discovered at the end of
-> this session and recorded below as `P1-ci-sub`.
->
-> Organization has 4 publish secrets pre-configured (`PYPI_API_TOKEN`,
-> `CARGO_REGISTRY_TOKEN`, `NPM_TOKEN`, `NUGET_API_KEY`);
-> `TEST_PYPI_API_TOKEN` is NOT configured — TestPyPI rehearsal requires
-> either adding that secret or using `publish=false` mode.
+> **Update**: CI infrastructure is broadly green (BMB CI 8/9 jobs
+> pass). Remaining work organized into **4 Tracks** with merged scope
+> instead of many small tickets. Each Track has a single recommended
+> path chosen for alignment with project philosophy:
+> **Performance > Everything**, **No Workaround**, **Rule 5 전수
+> 검색**, and **Rule 7 백엔드 parity**.
 
-| # | Option | Effort | Risk | ROI | Rationale |
-|---|--------|--------|------|-----|-----------|
-| ~~**P0-new**~~ | ~~Defect 5 fix~~ | ~~3-6 cycles~~ | ~~HIGH~~ | ~~HIGH~~ | ✅ **Cycles 2419-2420**. |
-| ~~**P0-inf**~~ | ~~PyPI wheel CI pipeline~~ | ~~2-4 cycles~~ | ~~MEDIUM~~ | ~~HIGH~~ | ✅ **Cycles 2411-2417** + unblocked by **2419-2420**. |
-| ~~**P3-T3a**~~ | ~~MinGW runtime static-link~~ | ~~2-4 cycles~~ | ~~LOW-MEDIUM~~ | ~~HIGH~~ | ✅ **Cycle 2423**. |
-| ~~**P1-new-push**~~ | ~~Push 154 commits~~ | ~~0 + external~~ | ~~LOW~~ | ~~HIGH~~ | ✅ **Cycle 2425**. |
-| ~~**P1-new-ci**~~ | ~~Fix CI action reference~~ | ~~1 cycle~~ | ~~LOW~~ | ~~HIGH~~ | ✅ **Cycle 2426**. |
-| ~~**P1-new-sub**~~ | ~~Submodule upstream sync (4 repos)~~ | ~~1-2 cycles~~ | ~~LOW~~ | ~~HIGH~~ | ✅ **Cycles 2427-2428**. |
-| ~~**P1-new-3plat**~~ | ~~CI 3-platform setup fixes~~ | ~~2 cycles~~ | ~~LOW-MEDIUM~~ | ~~HIGH~~ | ✅ **Cycles 2434-2435** + empirically validated **2444-2452**. |
-| ~~**P1-new-clippy1**~~ | ~~gotgan clippy unused-lifetime~~ | ~~1 cycle~~ | ~~LOW~~ | ~~HIGH~~ | ✅ **Cycle 2442**. |
-| ~~**P1-new-clippy2**~~ | ~~Rust 1.95 lint drift (16 sites)~~ | ~~2 cycles~~ | ~~LOW-MEDIUM~~ | ~~HIGH~~ | ✅ **Cycles 2453-2456**. |
-| **P1-ci-sub** | **CI downstream `submodules: recursive` (6 sites)** | 1 cycle | LOW | HIGH | `ci.yml` jobs `code-quality`, `bootstrap-check`, `performance-regression`, `bench-compare-smoke`, `net-echo-smoke`, `gate-verification` each have own `actions/checkout@v4` without `submodules: recursive`. Build success in `50f1c607` BMB CI exposed `failed to load manifest for workspace member 'ecosystem/gotgan'`. 6 line adds, trivial. |
-| **P1-pin** | **`rust-toolchain.toml` pin to 1.95.0** | 1 cycle | LOW | MEDIUM | Prevents future `@stable` drift surprise (the root cause of Cycle 2453's 5th blocker). Aligns local dev with CI. Optionally pin clippy rules list for full reproducibility. |
-| **P1-wheel** | **pypi-publish.yml rehearsal (`publish=false`)** | 0-1 cycle + external | LOW | HIGH | Re-dispatch (previous Cycle 2437 dispatch was cancelled due to being outdated). Download 4-platform wheel artifacts, verify `bmb_*.pyd/so` binding ext + platform tag. |
-| **P1-bind** | **Bindings CI final validation** | 0-1 cycle + external | LOW | HIGH | Manual `gh workflow run bindings-ci.yml` to see all 3 platforms Build BMB compiler + build_all.py + pytest. Validates Cycles 2434-2435 fixes end-to-end. |
-| **P2** | **Defect 3 dedicated — HARD 2-cycle limit, new methods only** | ≤ 2 cycles | HIGH | UNCERTAIN | 12 cycles of probe-matrix work failed to find root cause. Session **must use different methods**: `gdb` / `DrMemory` on Stage 1 binary, IR diff between probe/no-probe builds, debug-build panic backtrace. If no new-cause signal after 2 cycles, **stop immediately**. No third-cycle extension. |
+### Track A — CI Green Baseline Completion (AUTONOMOUS, 4-6 cycles + external)
+
+**Goal**: every CI job green, so future regressions are caught
+immediately. Merges P1-polly + P1-net-ir + P1-wheel + P1-bind into a
+single coherent track.
+
+| Step | Scope | Effort |
+|------|-------|--------|
+| A.1 | **LLVM Polly dev install (전수)** — add `llvm-21-polly-dev` in `bootstrap-benchmark.yml`'s `llvm.sh 21` block, then Rule 5 audit all other LLVM install scripts (bindings-ci, pypi-publish, benchmark-baseline, nightly-bench, benchmark) for the same omission. Trivial. | 1 cycle |
+| A.2 | **BMB LLVM IR `range(...)` attribute position (근본)** — `bmb-stage1.ll` emits `define private noundef range(i64 ...) i64 @sign` which LLVM 21 rejects. Locate emitter in `bmb/src/codegen/llvm.rs` + `llvm_text.rs` + bootstrap `llvm_ir.bmb`, fix emission order, add golden test exercising `range` on function return. **Rule 6 exception** (distribution blocker) + **Rule 7 parity** across both backends. | 2-4 cycles |
+| A.3 | **Distribution dispatch + validation (external)** — `gh workflow run pypi-publish.yml -f publish=false` for 4-platform wheel artifacts + `gh workflow run bindings-ci.yml` for end-to-end bindings pytest. Wait 20-40m. Local cycle only for triggering + result inspection. | 1-2 cycles + external |
+
+**Total**: 4-7 cycles + 1× external wait. Track A fully unblocks
+distribution pipeline.
+
+### Track B — Distribution Validation (HUMAN DECISION REQUIRED)
+
+**Goal**: real-world `pip install` rehearsal, not just artifact-only.
+
+| Decision | Options | **Recommended** |
+|----------|---------|-----------------|
+| TestPyPI rehearsal | (a) Register `TEST_PYPI_API_TOKEN` org secret + full publish to TestPyPI + clean-VM `pip install` test. (b) Skip TestPyPI, go straight to prod PyPI once Track A lands. | **(a) — TestPyPI first**. Philosophy: distribution is a user-facing contract; the only faithful validation is real upload → real `pip install` on a clean machine. Artifact-only (`publish=false`) rehearsal cannot detect upload-time issues (wheel metadata conflicts, filename collisions, size limits). Register the token once, reuse forever. |
+
+**Action required**: maintainer creates TestPyPI token at
+https://test.pypi.org/manage/account/token/ and registers as
+`TEST_PYPI_API_TOKEN` org secret. After that Track A.3 becomes `gh
+workflow run pypi-publish.yml -f publish=true -f repository=testpypi`.
+
+### Track C — Compiler Quality — Defect 3/4 (HUMAN DECISION REQUIRED)
+
+**Goal**: root-cause Defect 3 → unblock Defect 4 fix → unblock P5
+bootstrap SIMD intrinsic dispatch.
+
+| Decision | Options | **Recommended** |
+|----------|---------|-----------------|
+| Debug environment for Defect 3 | (a) Install DrMemory on Windows. (b) WSL + gdb on Linux-built Stage 1. (c) Remote Linux VM + gdb. (d) IR diff (probe vs no-probe) — debugger-free. | **(b) WSL + gdb**. Philosophy: match production (Linux is primary distribution target), use native debugger (stronger than DrMemory heuristics), Stage 1 is deterministic on both OSes so findings transfer. WSL is zero-cost on existing Windows dev box. Fallback (d) IR diff in parallel if gdb inconclusive. |
+
+**Action required**: maintainer installs WSL + Ubuntu + `apt install
+gdb build-essential`. After that Cycle runs `P2 Defect 3 dedicated`
+with 2-cycle HARD limit per roadmap rule.
+
+### Track D — Infrastructure Cleanup (AUTONOMOUS, 1-2 cycles)
+
+**Goal**: remove or right-size duplicated / obsolete CI paths.
+
+| Decision | Options | **Recommended** |
+|----------|---------|-----------------|
+| Golden Binary CI (Linux/macOS binaries missing) | (a) Conditional matrix skip on missing-binary OS. (b) Generate + commit 10-50 MB binaries (git-lfs?). (c) **Deprecate golden-ci.yml + golden-release.yml**. | **(c) Deprecate**. Philosophy — **No Workaround**: option (a) is a workaround (mask failure with `if:`), (b) adds dependency (LFS or binary bloat) and still tracks three moving targets. **Rule 5 audit rationale**: `pypi-publish.yml` and `bindings-ci.yml` already build fresh on 3 platforms every dispatch — golden CI's "pre-built binary consistency" check is redundant to "CI rebuilds + tests pass". Windows-only golden is scope-inconsistent with cross-platform distribution. Removal is the cleanest path: delete 2 workflow files + `golden/` directory; distribution verification is fully covered by Track A.3. |
+
+### Track E — Later (v0.99+, post-v1.0)
+
+Unchanged from previous handoff. Not next-session scope:
+
+| Item | Effort | Risk | Notes |
+|------|--------|------|-------|
+| P4 `stdlib/net` TLS (OpenSSL) | 6-10 cycles | MEDIUM-HIGH | Post-v1.0 advanced-users. |
+| P5 Bootstrap SIMD intrinsic CALL dispatch | 10+ cycles | HIGH | Defect 3 의존. |
+| P6 DWARF stack trace | 4-6 cycles | MEDIUM | ROI-capped. |
+| P7 `stdlib/parse` post weakening | 1-2 cycles | LOW | Zero consumers, defer. |
+
+### Completed in prior/current sessions (no action)
+
+| # | Item | Status |
+|---|------|--------|
+| P0-new / P0-inf | Defect 5 + PyPI CI pipeline | ✅ Cycles 2419-2420 / 2411-2417 |
+| P3-T3a | MinGW runtime static-link | ✅ Cycle 2423 |
+| P1-new-push / -ci / -sub / -3plat / -clippy1/2 | Various CI unblocks | ✅ Cycles 2425-2456 |
+| P1-ci-sub / -pin / -bootstrap-check / -llvm-sys | This session's cleanups | ✅ Cycles 2460-2464 |
 | P4 | `stdlib/net` TLS (`tcp_tls_connect`, `accept_tls`) | 6-10 cycles | MEDIUM-HIGH | MEDIUM | OpenSSL external dependency. Post-v1.0 advanced-users target. |
 | P5 | Bootstrap SIMD intrinsic dispatch | 10+ cycles | HIGH | MEDIUM | Defect 3-adjacent risk. |
 | P6 | DWARF stack trace | 4-6 cycles | MEDIUM | LOW | MIR lacks span info; gains limited. |
@@ -478,11 +597,12 @@ helper fns minimal; prefer inlining over extracting.
 | P5 | DWARF stack trace | 4-6 cycles | MEDIUM | LOW | MIR lacks span info; gains limited to function granularity. ROI-capped. |
 | P6 | stdlib/parse post weakening | 1-2 cycles | LOW | LOW | Currently zero `@include "stdlib/parse"` consumers. Defer until a real user appears. |
 
-**Decision tree (post-Cycle 2459)**: Cross-platform CI Build+Test
-empirically validated ✅. Next session → **P1-ci-sub** (1 cycle, trivial)
-immediately to unblock downstream jobs → **P1-pin** (drift prevention) →
-**P1-wheel** + **P1-bind** (external, parallel) for wheel rehearsal +
-bindings final check → **P2** (Defect 3, hard-limited) if budget allows.
+**Decision tree (post-Cycle 2464)**: CI downstream unblocked (8/9).
+Next session pursues **Track A** (4-7 cycles autonomous, fully green
+CI + wheel rehearsal) in parallel with maintainer-side **Track B**
+(TestPyPI token) and **Track C** (WSL environment). **Track D**
+(deprecate golden CI) autonomous fill-in (1-2 cycles) if budget
+remains. Track A complete → distribution pipeline production-ready.
 
 ---
 
