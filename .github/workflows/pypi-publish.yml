@@ -92,7 +92,7 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-pypi-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Setup MinGW + LLVM (Windows)
+      - name: Setup MinGW (Windows)
         if: matrix.llvm_setup == 'mingw'
         uses: egor-tensin/setup-mingw@v2
         with:
@@ -103,6 +103,20 @@ jobs:
           # fix in bmb/src/build/mod.rs) already eliminate MinGW runtime
           # deps at link time, so the action workaround is redundant.
           static: 0
+
+      - name: Setup LLVM (Windows)
+        if: matrix.llvm_setup == 'mingw'
+        # Cycle 2477: see bindings-ci.yml for rationale.
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "21.1.8"
+          directory: ${{ runner.temp }}/llvm21
+      - name: Export LLVM_SYS_211_PREFIX (Windows)
+        if: matrix.llvm_setup == 'mingw'
+        shell: bash
+        run: |
+          echo "LLVM_SYS_211_PREFIX=${{ runner.temp }}/llvm21" >> $GITHUB_ENV
+          echo "${{ runner.temp }}/llvm21/bin" >> $GITHUB_PATH
 
       - name: Setup LLVM (Ubuntu)
         if: matrix.llvm_setup == 'apt'

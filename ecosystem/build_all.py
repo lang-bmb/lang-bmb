@@ -95,7 +95,15 @@ def build_library(name, config, release=True, verbose=False):
     lib_dir = os.path.join(SCRIPT_DIR, name)
     output_path = os.path.join(lib_dir, output_name)
 
-    cmd = [BMB_COMPILER, "build", src_path, "--shared", "-o", output_path]
+    # Cycle 2477: `--trust-contracts` skips Z3 re-verification of imported
+    # stdlib contracts. Binding libraries consume a stdlib that was already
+    # verified in its own test suite; re-verifying on every binding build
+    # makes Z3 a hard CI dependency and surfaces latent verifier bugs that
+    # are orthogonal to binding correctness. Added because macOS brew-llvm
+    # pulls in z3 as a dependency, inadvertently activating verification
+    # on CI where Linux (apt llvm-21 without z3) correctly skipped it.
+    cmd = [BMB_COMPILER, "build", src_path, "--shared", "--trust-contracts",
+           "-o", output_path]
     if release:
         cmd.append("--release")
 
