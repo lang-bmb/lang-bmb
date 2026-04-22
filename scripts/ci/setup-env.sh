@@ -78,16 +78,16 @@ install_llvm_linux() {
         sudo ./llvm.sh 21
         rm llvm.sh
 
-        export LLVM_SYS_210_PREFIX=/usr/lib/llvm-21
+        export LLVM_SYS_211_PREFIX=/usr/lib/llvm-21
         export PATH="/usr/lib/llvm-21/bin:$PATH"
     elif command -v dnf &> /dev/null; then
         # Fedora
         sudo dnf install -y llvm21 clang21 lld21
-        export LLVM_SYS_210_PREFIX=/usr
+        export LLVM_SYS_211_PREFIX=/usr
     elif command -v pacman &> /dev/null; then
         # Arch
         sudo pacman -S --noconfirm llvm clang lld
-        export LLVM_SYS_210_PREFIX=/usr
+        export LLVM_SYS_211_PREFIX=/usr
     else
         echo "Error: Unsupported Linux distribution"
         exit 1
@@ -99,8 +99,8 @@ install_llvm_macos() {
 
     if command -v brew &> /dev/null; then
         brew install llvm@21
-        export LLVM_SYS_210_PREFIX="$(brew --prefix llvm@21)"
-        export PATH="$LLVM_SYS_210_PREFIX/bin:$PATH"
+        export LLVM_SYS_211_PREFIX="$(brew --prefix llvm@21)"
+        export PATH="$LLVM_SYS_211_PREFIX/bin:$PATH"
     else
         echo "Error: Homebrew not found. Install it first."
         exit 1
@@ -112,7 +112,7 @@ install_llvm_windows() {
 
     if command -v pacman &> /dev/null; then
         pacman -S --noconfirm mingw-w64-ucrt-x86_64-llvm mingw-w64-ucrt-x86_64-clang
-        export LLVM_SYS_210_PREFIX=/ucrt64
+        export LLVM_SYS_211_PREFIX=/ucrt64
         export PATH="/ucrt64/bin:$PATH"
     else
         echo "Error: MSYS2 pacman not found"
@@ -181,36 +181,36 @@ setup_env() {
     fi
 
     # LLVM Path (auto-detect if not set)
-    if [ -z "$LLVM_SYS_210_PREFIX" ]; then
+    if [ -z "$LLVM_SYS_211_PREFIX" ]; then
         case $OS in
             linux)
                 if [ -d "/usr/lib/llvm-21" ]; then
-                    export LLVM_SYS_210_PREFIX="/usr/lib/llvm-21"
+                    export LLVM_SYS_211_PREFIX="/usr/lib/llvm-21"
                 elif [ -d "/usr/lib/llvm-20" ]; then
-                    export LLVM_SYS_210_PREFIX="/usr/lib/llvm-20"
+                    export LLVM_SYS_211_PREFIX="/usr/lib/llvm-20"
                 fi
                 ;;
             macos)
                 if command -v brew &> /dev/null; then
                     LLVM_PATH="$(brew --prefix llvm@21 2>/dev/null || brew --prefix llvm 2>/dev/null)"
                     if [ -n "$LLVM_PATH" ]; then
-                        export LLVM_SYS_210_PREFIX="$LLVM_PATH"
+                        export LLVM_SYS_211_PREFIX="$LLVM_PATH"
                     fi
                 fi
                 ;;
             windows)
                 if [ -d "/ucrt64" ]; then
-                    export LLVM_SYS_210_PREFIX="/ucrt64"
+                    export LLVM_SYS_211_PREFIX="/ucrt64"
                 elif [ -d "/mingw64" ]; then
-                    export LLVM_SYS_210_PREFIX="/mingw64"
+                    export LLVM_SYS_211_PREFIX="/mingw64"
                 fi
                 ;;
         esac
     fi
 
     # Add LLVM to PATH if needed
-    if [ -n "$LLVM_SYS_210_PREFIX" ] && [ -d "$LLVM_SYS_210_PREFIX/bin" ]; then
-        export PATH="$LLVM_SYS_210_PREFIX/bin:$PATH"
+    if [ -n "$LLVM_SYS_211_PREFIX" ] && [ -d "$LLVM_SYS_211_PREFIX/bin" ]; then
+        export PATH="$LLVM_SYS_211_PREFIX/bin:$PATH"
     fi
 }
 
@@ -289,7 +289,7 @@ if [ "$VERIFY" = true ]; then
 
     echo ""
     echo "=== Environment Variables ==="
-    echo "LLVM_SYS_210_PREFIX: ${LLVM_SYS_210_PREFIX:-NOT SET}"
+    echo "LLVM_SYS_211_PREFIX: ${LLVM_SYS_211_PREFIX:-NOT SET}"
     echo "BMB_RUNTIME_PATH: ${BMB_RUNTIME_PATH:-NOT SET}"
     echo ""
 
@@ -307,15 +307,15 @@ fi
 if [ "$EXPORT" = true ]; then
     echo ""
     echo "# Add to GITHUB_ENV or shell profile:"
-    echo "export LLVM_SYS_210_PREFIX=\"$LLVM_SYS_210_PREFIX\""
+    echo "export LLVM_SYS_211_PREFIX=\"$LLVM_SYS_211_PREFIX\""
     echo "export BMB_RUNTIME_PATH=\"$BMB_RUNTIME_PATH\""
-    echo "export PATH=\"$LLVM_SYS_210_PREFIX/bin:\$PATH\""
+    echo "export PATH=\"$LLVM_SYS_211_PREFIX/bin:\$PATH\""
 
     # GitHub Actions format
     if [ -n "$GITHUB_ENV" ]; then
-        echo "LLVM_SYS_210_PREFIX=$LLVM_SYS_210_PREFIX" >> $GITHUB_ENV
+        echo "LLVM_SYS_211_PREFIX=$LLVM_SYS_211_PREFIX" >> $GITHUB_ENV
         echo "BMB_RUNTIME_PATH=$BMB_RUNTIME_PATH" >> $GITHUB_ENV
-        echo "$LLVM_SYS_210_PREFIX/bin" >> $GITHUB_PATH
+        echo "$LLVM_SYS_211_PREFIX/bin" >> $GITHUB_PATH
     fi
 fi
 
