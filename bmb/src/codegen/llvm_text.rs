@@ -4582,10 +4582,10 @@ impl TextCodeGen {
                                     }
                                     _ => self.format_operand_with_strings(idx_op, string_table),
                                 };
-                                writeln!(out, "  %{} = getelementptr inbounds nuw i64, ptr %{}, i64 {}", elem_ptr, base_ptr, index_val)?;
+                                writeln!(out, "  %{} = getelementptr inbounds i64, ptr %{}, i64 {}", elem_ptr, base_ptr, index_val)?;
                             } else if let Some(elem_idx) = const_elem_index {
                                 // v0.96.35: Constant element-type GEP for offsets divisible by 8
-                                writeln!(out, "  %{} = getelementptr inbounds nuw i64, ptr %{}, i64 {}", elem_ptr, base_ptr, elem_idx)?;
+                                writeln!(out, "  %{} = getelementptr inbounds i64, ptr %{}, i64 {}", elem_ptr, base_ptr, elem_idx)?;
                             } else {
                                 // Byte-offset GEP fallback
                                 let offset_val = match offset_op {
@@ -4601,7 +4601,7 @@ impl TextCodeGen {
                                     }
                                     _ => self.format_operand_with_strings(offset_op, string_table),
                                 };
-                                writeln!(out, "  %{} = getelementptr inbounds nuw i8, ptr %{}, i64 {}", elem_ptr, base_ptr, offset_val)?;
+                                writeln!(out, "  %{} = getelementptr inbounds i8, ptr %{}, i64 {}", elem_ptr, base_ptr, offset_val)?;
                             }
                             writeln!(out, "  store i64 {}, ptr %{}, align 8, !tbaa !903", val_val, elem_ptr)?;
                             used_gep = true;
@@ -4758,10 +4758,10 @@ impl TextCodeGen {
                                     }
                                     _ => self.format_operand_with_strings(idx_op, string_table),
                                 };
-                                writeln!(out, "  %{} = getelementptr inbounds nuw i64, ptr %{}, i64 {}", elem_ptr, base_ptr, index_val)?;
+                                writeln!(out, "  %{} = getelementptr inbounds i64, ptr %{}, i64 {}", elem_ptr, base_ptr, index_val)?;
                             } else if let Some(elem_idx) = const_elem_index {
                                 // v0.96.35: Constant element-type GEP
-                                writeln!(out, "  %{} = getelementptr inbounds nuw i64, ptr %{}, i64 {}", elem_ptr, base_ptr, elem_idx)?;
+                                writeln!(out, "  %{} = getelementptr inbounds i64, ptr %{}, i64 {}", elem_ptr, base_ptr, elem_idx)?;
                             } else {
                                 // Byte-offset GEP (original path)
                                 let offset_val = match offset_op {
@@ -4777,7 +4777,7 @@ impl TextCodeGen {
                                     }
                                     _ => self.format_operand_with_strings(offset_op, string_table),
                                 };
-                                writeln!(out, "  %{} = getelementptr inbounds nuw i8, ptr %{}, i64 {}", elem_ptr, base_ptr, offset_val)?;
+                                writeln!(out, "  %{} = getelementptr inbounds i8, ptr %{}, i64 {}", elem_ptr, base_ptr, offset_val)?;
                             }
                             if let Some(d) = dest {
                                 if local_names.contains(&d.name) {
@@ -4937,9 +4937,9 @@ impl TextCodeGen {
                                     }
                                     _ => self.format_operand_with_strings(idx_op, string_table),
                                 };
-                                writeln!(out, "  %{} = getelementptr inbounds nuw double, ptr %{}, i64 {}", elem_ptr, base_ptr, index_val)?;
+                                writeln!(out, "  %{} = getelementptr inbounds double, ptr %{}, i64 {}", elem_ptr, base_ptr, index_val)?;
                             } else if let Some(elem_idx) = const_elem_index {
-                                writeln!(out, "  %{} = getelementptr inbounds nuw double, ptr %{}, i64 {}", elem_ptr, base_ptr, elem_idx)?;
+                                writeln!(out, "  %{} = getelementptr inbounds double, ptr %{}, i64 {}", elem_ptr, base_ptr, elem_idx)?;
                             } else {
                                 let offset_val = match offset_op {
                                     Operand::Place(p) if local_names.contains(&p.name) => {
@@ -4954,7 +4954,7 @@ impl TextCodeGen {
                                     }
                                     _ => self.format_operand_with_strings(offset_op, string_table),
                                 };
-                                writeln!(out, "  %{} = getelementptr inbounds nuw i8, ptr %{}, i64 {}", elem_ptr, base_ptr, offset_val)?;
+                                writeln!(out, "  %{} = getelementptr inbounds i8, ptr %{}, i64 {}", elem_ptr, base_ptr, offset_val)?;
                             }
                             writeln!(out, "  store double {}, ptr %{}, align 8, !tbaa !905", val_val, elem_ptr)?;
                             used_gep = true;
@@ -5073,9 +5073,9 @@ impl TextCodeGen {
                                     }
                                     _ => self.format_operand_with_strings(idx_op, string_table),
                                 };
-                                writeln!(out, "  %{} = getelementptr inbounds nuw double, ptr %{}, i64 {}", elem_ptr, base_ptr, index_val)?;
+                                writeln!(out, "  %{} = getelementptr inbounds double, ptr %{}, i64 {}", elem_ptr, base_ptr, index_val)?;
                             } else if let Some(elem_idx) = const_elem_index {
-                                writeln!(out, "  %{} = getelementptr inbounds nuw double, ptr %{}, i64 {}", elem_ptr, base_ptr, elem_idx)?;
+                                writeln!(out, "  %{} = getelementptr inbounds double, ptr %{}, i64 {}", elem_ptr, base_ptr, elem_idx)?;
                             } else {
                                 let offset_val = match offset_op {
                                     Operand::Place(p) if local_names.contains(&p.name) => {
@@ -5090,7 +5090,7 @@ impl TextCodeGen {
                                     }
                                     _ => self.format_operand_with_strings(offset_op, string_table),
                                 };
-                                writeln!(out, "  %{} = getelementptr inbounds nuw i8, ptr %{}, i64 {}", elem_ptr, base_ptr, offset_val)?;
+                                writeln!(out, "  %{} = getelementptr inbounds i8, ptr %{}, i64 {}", elem_ptr, base_ptr, offset_val)?;
                             }
                             if let Some(d) = dest {
                                 if local_names.contains(&d.name) {
@@ -5318,7 +5318,7 @@ impl TextCodeGen {
                             } else {
                                 writeln!(out, "  %{} = inttoptr i64 {} to ptr", base_ptr, base_val)?;
                             }
-                            writeln!(out, "  %{} = getelementptr inbounds nuw i8, ptr %{}, i64 {}", elem_ptr, base_ptr, offset_val)?;
+                            writeln!(out, "  %{} = getelementptr inbounds i8, ptr %{}, i64 {}", elem_ptr, base_ptr, offset_val)?;
                             // Load byte and zext
                             if let Some(d) = dest {
                                 if local_names.contains(&d.name) {
@@ -5456,7 +5456,7 @@ impl TextCodeGen {
                             } else {
                                 writeln!(out, "  %{} = inttoptr i64 {} to ptr", base_ptr, base_val)?;
                             }
-                            writeln!(out, "  %{} = getelementptr inbounds nuw i8, ptr %{}, i64 {}", elem_ptr, base_ptr, offset_val)?;
+                            writeln!(out, "  %{} = getelementptr inbounds i8, ptr %{}, i64 {}", elem_ptr, base_ptr, offset_val)?;
                             writeln!(out, "  %{} = trunc i64 {} to i8", trunc_val, val_val)?;
                             writeln!(out, "  store i8 %{}, ptr %{}, !tbaa !906", trunc_val, elem_ptr)?;
                             used_gep = true;
@@ -5714,7 +5714,7 @@ impl TextCodeGen {
                     let data_ptr = format!("vec.get.dptr.{}", vec_idx);
                     writeln!(out, "  %{} = inttoptr i64 %{} to ptr", data_ptr, data_i64)?;
                     let elem_ptr = format!("vec.get.elem.{}", vec_idx);
-                    writeln!(out, "  %{} = getelementptr inbounds nuw i64, ptr %{}, i64 {}", elem_ptr, data_ptr, idx_val)?;
+                    writeln!(out, "  %{} = getelementptr inbounds i64, ptr %{}, i64 {}", elem_ptr, data_ptr, idx_val)?;
                     if let Some(d) = dest {
                         if local_names.contains(&d.name) {
                             let elem_val = format!("vec.get.val.{}", vec_idx);
@@ -5771,7 +5771,7 @@ impl TextCodeGen {
                     let data_ptr = format!("vec.set.dptr.{}", vec_idx);
                     writeln!(out, "  %{} = inttoptr i64 %{} to ptr", data_ptr, data_i64)?;
                     let elem_ptr = format!("vec.set.elem.{}", vec_idx);
-                    writeln!(out, "  %{} = getelementptr inbounds nuw i64, ptr %{}, i64 {}", elem_ptr, data_ptr, idx_val)?;
+                    writeln!(out, "  %{} = getelementptr inbounds i64, ptr %{}, i64 {}", elem_ptr, data_ptr, idx_val)?;
                     writeln!(out, "  store i64 {}, ptr %{}", val_val, elem_ptr)?;
                     return Ok(());
                 }
@@ -5849,7 +5849,7 @@ impl TextCodeGen {
                     let last_idx = format!("vpop.last_idx.{}", vec_idx);
                     writeln!(out, "  %{} = sub i64 %{}, 1", last_idx, len_val)?;
                     let elem_ptr = format!("vpop.elem.{}", vec_idx);
-                    writeln!(out, "  %{} = getelementptr inbounds nuw i64, ptr %{}, i64 %{}", elem_ptr, data_ptr, last_idx)?;
+                    writeln!(out, "  %{} = getelementptr inbounds i64, ptr %{}, i64 %{}", elem_ptr, data_ptr, last_idx)?;
                     // New length = len - 1
                     let new_len = format!("vpop.newlen.{}", vec_idx);
                     writeln!(out, "  %{} = sub i64 %{}, 1", new_len, len_val)?;
@@ -7374,7 +7374,7 @@ impl TextCodeGen {
                 };
 
                 // Emit GEP instruction
-                writeln!(out, "  %{} = getelementptr inbounds nuw {}, ptr {}, i64 {}", dest_name, elem_ty_str, ptr_val, offset_val)?;
+                writeln!(out, "  %{} = getelementptr inbounds {}, ptr {}, i64 {}", dest_name, elem_ty_str, ptr_val, offset_val)?;
 
                 // Store to alloca if dest is a local
                 if local_names.contains(&dest.name) {
@@ -11235,7 +11235,7 @@ mod tests {
         };
         let cg = TextCodeGen::new();
         let ir = cg.generate(&program).unwrap();
-        assert!(ir.contains("getelementptr inbounds nuw i64"), "PtrOffset should emit GEP inbounds nuw");
+        assert!(ir.contains("getelementptr inbounds i64"), "PtrOffset should emit GEP inbounds nuw");
     }
 
     #[test]
