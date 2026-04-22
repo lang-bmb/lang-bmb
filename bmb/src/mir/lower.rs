@@ -446,6 +446,25 @@ fn extract_contract_facts(expr: Option<&Spanned<Expr>>) -> Vec<ContractFact> {
     facts
 }
 
+/// Try to interpret an expression as an integer constant.
+/// Handles both `IntLit(v)` and negated literals `Unary(Neg, IntLit(v))`.
+/// Cycle 2469: previously only `IntLit(v)` matched, so contracts like
+/// `ret >= -1` parsed as `Unary(Neg, IntLit(1))` were silently dropped from
+/// fact extraction — costing `range(i64 -1, ...)` optimization hints.
+fn try_as_int_const(expr: &Expr) -> Option<i64> {
+    match expr {
+        Expr::IntLit(v) => Some(*v),
+        Expr::Unary { op: UnOp::Neg, expr: inner } => {
+            if let Expr::IntLit(v) = &inner.node {
+                Some(v.wrapping_neg())
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
 /// Recursively extract facts from an expression
 fn extract_facts_from_expr(expr: &Expr, facts: &mut Vec<ContractFact>) {
     match expr {
@@ -457,20 +476,22 @@ fn extract_facts_from_expr(expr: &Expr, facts: &mut Vec<ContractFact>) {
         // Handle comparison operators: x >= 0, x < len, etc.
         Expr::Binary { op, left, right } => {
             if let Some(cmp_op) = binop_to_cmp_op(op) {
+                let left_const = try_as_int_const(&left.node);
+                let right_const = try_as_int_const(&right.node);
                 // Pattern: var op constant
-                if let (Expr::Var(var), Expr::IntLit(val)) = (&left.node, &right.node) {
+                if let (Expr::Var(var), Some(val)) = (&left.node, right_const) {
                     facts.push(ContractFact::VarCmp {
                         var: var.clone(),
                         op: cmp_op,
-                        value: *val,
+                        value: val,
                     });
                 }
                 // Pattern: constant op var (flip the comparison)
-                else if let (Expr::IntLit(val), Expr::Var(var)) = (&left.node, &right.node) {
+                else if let (Some(val), Expr::Var(var)) = (left_const, &right.node) {
                     facts.push(ContractFact::VarCmp {
                         var: var.clone(),
                         op: flip_cmp_op(cmp_op),
-                        value: *val,
+                        value: val,
                     });
                 }
                 // Pattern: var op var
@@ -482,17 +503,17 @@ fn extract_facts_from_expr(expr: &Expr, facts: &mut Vec<ContractFact>) {
                     });
                 }
                 // v0.89: Pattern: ret op constant (postcondition return value)
-                else if let (Expr::Ret, Expr::IntLit(val)) = (&left.node, &right.node) {
+                else if let (Expr::Ret, Some(val)) = (&left.node, right_const) {
                     facts.push(ContractFact::ReturnCmp {
                         op: cmp_op,
-                        value: *val,
+                        value: val,
                     });
                 }
                 // v0.89: Pattern: constant op ret (flip comparison)
-                else if let (Expr::IntLit(val), Expr::Ret) = (&left.node, &right.node) {
+                else if let (Some(val), Expr::Ret) = (left_const, &right.node) {
                     facts.push(ContractFact::ReturnCmp {
                         op: flip_cmp_op(cmp_op),
-                        value: *val,
+                        value: val,
                     });
                 }
                 // v0.89: Pattern: ret op var
@@ -6632,6 +6653,53 @@ mod tests {
         );
         let func = &mir.functions[0];
         assert_eq!(func.ret_ty, MirType::String, "Function should return String");
+    }
+
+    #[test]
+    fn test_try_as_int_const_positive() {
+        assert_eq!(try_as_int_const(&Expr::IntLit(5)), Some(5));
+        assert_eq!(try_as_int_const(&Expr::IntLit(0)), Some(0));
+    }
+
+    #[test]
+    fn test_try_as_int_const_negative() {
+        // Cycle 2469: -1 parses as Unary(Neg, IntLit(1)), must still
+        // resolve to Some(-1) for contract fact extraction
+        let neg_one = Expr::Unary {
+            op: UnOp::Neg,
+            expr: Box::new(spanned(Expr::IntLit(1))),
+        };
+        assert_eq!(try_as_int_const(&neg_one), Some(-1));
+    }
+
+    #[test]
+    fn test_try_as_int_const_rejects_non_const() {
+        assert_eq!(try_as_int_const(&Expr::Var("x".to_string())), None);
+        assert_eq!(try_as_int_const(&Expr::Ret), None);
+    }
+
+    #[test]
+    fn test_extract_negative_return_bound() {
+        // Cycle 2469: `ret >= -1` must produce ReturnCmp { op: Ge, value: -1 }.
+        // Previously dropped because `-1` is Unary(Neg, IntLit(1)), not IntLit(-1).
+        let expr = Expr::Binary {
+            op: BinOp::Ge,
+            left: Box::new(spanned(Expr::Ret)),
+            right: Box::new(spanned(Expr::Unary {
+                op: UnOp::Neg,
+                expr: Box::new(spanned(Expr::IntLit(1))),
+            })),
+        };
+        let mut facts = Vec::new();
+        extract_facts_from_expr(&expr, &mut facts);
+        assert_eq!(facts.len(), 1);
+        match &facts[0] {
+            ContractFact::ReturnCmp { op, value } => {
+                assert_eq!(*op, CmpOp::Ge);
+                assert_eq!(*value, -1);
+            }
+            other => panic!("expected ReturnCmp, got {:?}", other),
+        }
     }
 }
 
