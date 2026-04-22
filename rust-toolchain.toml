@@ -1,0 +1,13 @@
+# Pin Rust toolchain to prevent `@stable` drift between local dev and CI.
+#
+# Rationale (Cycle 2453): CI's `dtolnay/rust-toolchain@stable` auto-upgrades
+# on every stable release. Local devs using `rustup default stable` without
+# `rustup update` see a different toolchain, causing clippy lint differences
+# (e.g. Rust 1.95 strengthened `collapsible_match` + `useless_conversion`
+# lints, breaking CI while local 1.94 passed).
+#
+# Bump deliberately: `rustup override set <ver>` locally, then update this
+# file, so a single commit represents the intentional upgrade.
+[toolchain]
+channel = "1.95.0"
+components = ["rustfmt", "clippy"]
