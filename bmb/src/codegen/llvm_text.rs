@@ -88,18 +88,16 @@ fn compute_return_range(postconditions: &[ContractFact]) -> Option<(i64, i64)> {
         }
     }
 
-    if !has_bound || lo == i64::MIN && hi_inclusive == i64::MAX {
+    // Cycle 2466: LLVM 22.x tightened range() attribute parsing and rejects
+    // degenerate forms where one bound is the type's min/max (e.g.
+    // `range(i64 -9223372036854775808, 2)`). Only emit when BOTH bounds are
+    // meaningfully tightened against the i64 range — otherwise skip.
+    if !has_bound || lo == i64::MIN || hi_inclusive == i64::MAX {
         return None;
     }
 
     // LLVM range is [lo, hi) exclusive upper bound
-    // hi = hi_inclusive + 1, but watch for overflow
-    if hi_inclusive == i64::MAX {
-        // [lo, MAX] → range(i64 lo, MIN) in LLVM wrapping semantics
-        Some((lo, i64::MIN))
-    } else {
-        Some((lo, hi_inclusive + 1))
-    }
+    Some((lo, hi_inclusive + 1))
 }
 
 /// Text-based LLVM IR Generator
