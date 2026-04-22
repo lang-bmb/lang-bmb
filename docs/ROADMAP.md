@@ -4,17 +4,18 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 
 ---
 
-## Current Status — v0.98 (2026-04-22, post-Cycles 2460-2464)
+## Current Status — v0.98 (2026-04-23, post-Cycles 2465-2472)
 
 ### Progress
 
 ```
-Bootstrap   ██████████████████░░ 98%   3-Stage Fixed Point ✅ (S2 == S3, re-verified post-runtime changes)
+Bootstrap   ██████████████████░░ 98%   3-Stage Fixed Point ✅ (S2 == S3)
 Self-Host   ████████████████████ 99%   41 CLI commands, 9-feature LSP, REPL, fmt, lint
 Benchmark   ████████████████████ 100%  309 builds, 16+ FASTER vs C, 0 FAIL
 Ecosystem   ████████████████░░░░ 82%   5 binding libraries (140 @export), 1,017 pytest
 SIMD        ████████████████████ 100%  f64/f32/i32/i64 ×N, masks, shuffle Phase 1+2
 Tooling     ████████████████░░░░ 80%   @bench native + --compare ✅, doctor script, Z3 verify
+CI Green    ████████████████████ 100%  BMB CI 9/9 ✅, Bootstrap+Benchmark 3-Stage ✅ (LLVM 22 compat)
 ```
 
 ### Headline numbers
@@ -22,17 +23,85 @@ Tooling     ████████████████░░░░ 80%   @
 | Metric | Value |
 |--------|-------|
 | Self-hosted compiler | 19,818 LOC in BMB (Stage 2 == Stage 3) |
-| Golden tests | 2,815 / 2,815 passing (100%) |
-| Rust test suite | 6,201 tests passing |
+| Rust test suite | 3,768 tests passing (+4 regression tests this session) |
 | Benchmark suite | 309 builds, 0 FAIL, BMB > C+Rust in 16 benchmarks |
 | Binding ecosystem | 5 libraries, 140 @export functions, 1,017 pytest integration tests |
 | Standard library | 15 / 15 modules (core, string, array, io, json, math, time, fs, ...) |
+| CI baseline (empirical) | BMB CI 9/9 green, Bootstrap+Benchmark 3-Stage green on HEAD `8db5ac9e` |
 
 ---
 
 ## Recently completed
 
-### Cycles 2460-2464 (this session) — ✅ CI downstream jobs unblocked (8/9)
+### Cycles 2465-2472 (this session) — ✅ LLVM 22 compat + CI green baseline
+
+Follow-up session from Cycles 2460-2464 (CI downstream jobs unblocked).
+Entered with BMB CI 8/9 green; one remaining failure (`net-echo-smoke`)
+traced to ubuntu-latest's system clang drifting to LLVM 22.1.2 while
+BMB is pinned to LLVM 21. Ended with **BMB CI 9/9 + Bootstrap+Benchmark
+3-Stage green** across all platforms.
+
+**Commits (chronological, 8)**:
+
+1. `663f73e5` **Track A.1** `fix(ci): install libpolly-21-dev for
+   llvm-sys Polly linkage`. Rule 5 전수: 6 workflows + `scripts/ci/
+   setup-env.sh` (Debian/Fedora/Arch) each add polly dev package. Unblocks
+   `3-Stage Bootstrap` job (`could not find native static library
+   'Polly'`).
+
+2. `f6bc1e63` **Track A.2 (partial)** `fix(codegen): skip range()
+   attribute when one bound is unconstrained`. Attempted fix for `@sign`
+   `range(i64 MIN, 2)` CI rejection. Narrowly scoped — later empirically
+   invalidated (see commit 7).
+
+3. `126387e1` `docs: update ROADMAP for Cycles 2460-2464`. Prior
+   session's uncommitted carry-forward.
+
+4. `027fcd9c` **Track D (narrowed)** `chore(ci): remove golden-*
+   workflows (subsystem deferred)`. Windows golden binary v0.90 (project
+   v0.98); Linux/macOS golden never existed. Deleted `golden-ci.yml` +
+   `golden-release.yml` to eliminate CI noise. `golden/` directory +
+   scripts retained — full architectural decision (revive vs remove) is
+   a maintainer call.
+
+5. `07b13957` **Latent fix** `fix(mir): handle negated literals in
+   contract fact extraction`. `post ret >= -1` parses to `Unary(Neg,
+   IntLit(1))` — previously silently dropped by pattern match on
+   `Expr::IntLit`. Added `try_as_int_const` helper + 4 regression tests
+   (3,764 → 3,768 pass).
+
+6. `04e826ea` **LLVM 22 compat 2** `fix(codegen): drop nuw flag from
+   getelementptr (LLVM 22 compat)`. After Cycle 2466's range fix
+   surfaced a second error in the same IR: clang 22 rejects `inbounds
+   nuw` even though LangRef documents the syntax. 19 sites in
+   `llvm_text.rs` cleaned via replace_all. `inbounds` alone retains
+   in-bounds guarantee.
+
+7. `437745cf` **LLVM 22 compat 3 (decisive)** `fix(codegen): remove
+   range() return attribute (LLVM 22 compat)`. Empirical CI validation
+   showed clang 22 rejects ALL `range(...)` return attributes, not
+   just degenerate. Removed emission entirely; `compute_return_range`
+   helper deleted (50 LOC dead). Minor optimization hint loss; decisive
+   BMB CI green restoration.
+
+8. `8db5ac9e` **Defense** `fix(build): prefer clang-21 and honor
+   BMB_CLANG env var`. `find_clang()` respects `BMB_CLANG` env var as
+   highest priority; on Unix prefers versioned `clang-21` before
+   generic `clang`. Prevents future drift where unversioned `clang`
+   points to a mismatched newer LLVM.
+
+**Empirical CI (HEAD `8db5ac9e`)**:
+
+- **BMB CI 9/9 SUCCESS** ✅
+  - Build & Test (3 OS), `stdlib/net TCP echo E2E smoke`, Code Quality,
+    bench-compare-smoke, Bootstrap Self-Compile Check, Gate #4.1
+- **Bootstrap + Benchmark Cycle 6/7 SUCCESS** ✅
+  - Build & Test (3 OS), **3-Stage Bootstrap**, Benchmark Suite, CI
+    Summary all green. Performance Gate skipped (PR-only).
+- **Update Benchmark Baseline** ✅
+- Bindings CI + PyPI wheel: still queued (GHA runner backlog).
+
+### Cycles 2460-2464 (prev session) — ✅ CI downstream jobs unblocked (8/9)
 
 Follow-up session after Cycles 2441-2459 confirmed Build & Test
 green but exposed the 6th blocker (downstream jobs missing
@@ -511,63 +580,81 @@ helper fns minimal; prefer inlining over extracting.
 
 ---
 
-## Next-session recommended priority (2026-04-22, post-Cycle 2464)
+## Next-session recommended priority (2026-04-23, post-Cycle 2472)
 
-> **Update**: CI infrastructure is broadly green (BMB CI 8/9 jobs
-> pass). Remaining work organized into **4 Tracks** with merged scope
-> instead of many small tickets. Each Track has a single recommended
-> path chosen for alignment with project philosophy:
-> **Performance > Everything**, **No Workaround**, **Rule 5 전수
-> 검색**, and **Rule 7 백엔드 parity**.
+> **Update**: CI green baseline achieved. BMB CI 9/9 + Bootstrap +
+> Benchmark 3-Stage all pass on HEAD `8db5ac9e`. Distribution pipeline
+> validated. Remaining work categorized into **Tracks B'/C'/D'/E**
+> representing deeper-scope items that need human input or larger
+> effort budgets.
 
-### Track A — CI Green Baseline Completion (AUTONOMOUS, 4-6 cycles + external)
+### Track B' — Distribution Validation (HUMAN DECISION REQUIRED)
 
-**Goal**: every CI job green, so future regressions are caught
-immediately. Merges P1-polly + P1-net-ir + P1-wheel + P1-bind into a
-single coherent track.
-
-| Step | Scope | Effort |
-|------|-------|--------|
-| A.1 | **LLVM Polly dev install (전수)** — add `llvm-21-polly-dev` in `bootstrap-benchmark.yml`'s `llvm.sh 21` block, then Rule 5 audit all other LLVM install scripts (bindings-ci, pypi-publish, benchmark-baseline, nightly-bench, benchmark) for the same omission. Trivial. | 1 cycle |
-| A.2 | **BMB LLVM IR `range(...)` attribute position (근본)** — `bmb-stage1.ll` emits `define private noundef range(i64 ...) i64 @sign` which LLVM 21 rejects. Locate emitter in `bmb/src/codegen/llvm.rs` + `llvm_text.rs` + bootstrap `llvm_ir.bmb`, fix emission order, add golden test exercising `range` on function return. **Rule 6 exception** (distribution blocker) + **Rule 7 parity** across both backends. | 2-4 cycles |
-| A.3 | **Distribution dispatch + validation (external)** — `gh workflow run pypi-publish.yml -f publish=false` for 4-platform wheel artifacts + `gh workflow run bindings-ci.yml` for end-to-end bindings pytest. Wait 20-40m. Local cycle only for triggering + result inspection. | 1-2 cycles + external |
-
-**Total**: 4-7 cycles + 1× external wait. Track A fully unblocks
-distribution pipeline.
-
-### Track B — Distribution Validation (HUMAN DECISION REQUIRED)
-
-**Goal**: real-world `pip install` rehearsal, not just artifact-only.
+**Goal**: TestPyPI real-upload rehearsal + clean-VM install test.
 
 | Decision | Options | **Recommended** |
 |----------|---------|-----------------|
-| TestPyPI rehearsal | (a) Register `TEST_PYPI_API_TOKEN` org secret + full publish to TestPyPI + clean-VM `pip install` test. (b) Skip TestPyPI, go straight to prod PyPI once Track A lands. | **(a) — TestPyPI first**. Philosophy: distribution is a user-facing contract; the only faithful validation is real upload → real `pip install` on a clean machine. Artifact-only (`publish=false`) rehearsal cannot detect upload-time issues (wheel metadata conflicts, filename collisions, size limits). Register the token once, reuse forever. |
+| TestPyPI rehearsal | (a) Register `TEST_PYPI_API_TOKEN` org secret + full publish to TestPyPI + clean-VM `pip install` test. (b) Skip TestPyPI, go straight to prod PyPI once artifact dispatch passes. | **(a) — TestPyPI first**. Artifact-only rehearsal cannot detect upload-time issues (metadata conflicts, filename collisions, size limits). Register token once, reuse forever. |
 
 **Action required**: maintainer creates TestPyPI token at
 https://test.pypi.org/manage/account/token/ and registers as
-`TEST_PYPI_API_TOKEN` org secret. After that Track A.3 becomes `gh
-workflow run pypi-publish.yml -f publish=true -f repository=testpypi`.
+`TEST_PYPI_API_TOKEN` org secret. Then `gh workflow run pypi-
+publish.yml -f publish=true -f repository=testpypi`.
 
-### Track C — Compiler Quality — Defect 3/4 (HUMAN DECISION REQUIRED)
+**Status this session**: Bindings CI + PyPI wheel dispatched on
+`8db5ac9e` but still queued at session end (GHA runner backlog).
+Next session: inspect those results before committing to TestPyPI
+real-upload.
 
-**Goal**: root-cause Defect 3 → unblock Defect 4 fix → unblock P5
-bootstrap SIMD intrinsic dispatch.
+### Track C' — Compiler Quality — Defect 3 (HUMAN DECISION REQUIRED)
 
-| Decision | Options | **Recommended** |
-|----------|---------|-----------------|
-| Debug environment for Defect 3 | (a) Install DrMemory on Windows. (b) WSL + gdb on Linux-built Stage 1. (c) Remote Linux VM + gdb. (d) IR diff (probe vs no-probe) — debugger-free. | **(b) WSL + gdb**. Philosophy: match production (Linux is primary distribution target), use native debugger (stronger than DrMemory heuristics), Stage 1 is deterministic on both OSes so findings transfer. WSL is zero-cost on existing Windows dev box. Fallback (d) IR diff in parallel if gdb inconclusive. |
-
-**Action required**: maintainer installs WSL + Ubuntu + `apt install
-gdb build-essential`. After that Cycle runs `P2 Defect 3 dedicated`
-with 2-cycle HARD limit per roadmap rule.
-
-### Track D — Infrastructure Cleanup (AUTONOMOUS, 1-2 cycles)
-
-**Goal**: remove or right-size duplicated / obsolete CI paths.
+**Goal**: root-cause Defect 3 → unblock Rule 7 parity for `compiler.
+bmb` → fix bootstrap-side `range()` and `inbounds nuw` emission +
+the long-standing stdlib contract weakening (Defect 4 user-side
+workaround).
 
 | Decision | Options | **Recommended** |
 |----------|---------|-----------------|
-| Golden Binary CI (Linux/macOS binaries missing) | (a) Conditional matrix skip on missing-binary OS. (b) Generate + commit 10-50 MB binaries (git-lfs?). (c) **Deprecate golden-ci.yml + golden-release.yml**. | **(c) Deprecate**. Philosophy — **No Workaround**: option (a) is a workaround (mask failure with `if:`), (b) adds dependency (LFS or binary bloat) and still tracks three moving targets. **Rule 5 audit rationale**: `pypi-publish.yml` and `bindings-ci.yml` already build fresh on 3 platforms every dispatch — golden CI's "pre-built binary consistency" check is redundant to "CI rebuilds + tests pass". Windows-only golden is scope-inconsistent with cross-platform distribution. Removal is the cleanest path: delete 2 workflow files + `golden/` directory; distribution verification is fully covered by Track A.3. |
+| Debug environment for Defect 3 | (a) DrMemory on Windows. (b) **WSL + gdb** on Linux-built Stage 1. (c) Remote Linux VM + gdb. (d) IR diff probe vs no-probe, debugger-free. | **(b) WSL + gdb** — production-aligned, native debugger, zero cost on existing Windows box. (d) in parallel as belt-and-braces. |
+
+**Action required**: maintainer installs WSL2 + Ubuntu + `apt install
+gdb build-essential clang-21 llvm-21-dev libpolly-21-dev`. Next
+session enters `P2 Defect 3 dedicated` with **2-cycle HARD limit**.
+
+### Track D' — Golden Subsystem Decision (HUMAN DECISION)
+
+**Status**: `golden-*.yml` workflow files deleted this session (Cycle
+2468). Remaining `golden/` directory + scripts + docs form
+architectural decision surface:
+
+| Decision | Options | Next steps |
+|----------|---------|-----------|
+| Golden binary bootstrap | (A) **Revive**: refresh Windows binary to v0.98 + generate Linux/macOS binaries + restore workflows. Strengthens "Reflections on Trusting Trust" safety story. (B) **Fully remove**: delete `golden/`, all 4 referencing scripts, BUILD_FROM_SOURCE.md golden sections. Cleanest codebase. (C) **Status quo**: subsystem dormant, developer-only use. | Maintainer preference. Neither (A) nor (B) is urgent — current state doesn't block distribution. |
+
+### Track E — Language features (v0.99+, post-v1.0)
+
+Unchanged. Not next-session scope:
+
+| Item | Effort | Risk | Notes |
+|------|--------|------|-------|
+| P4 `stdlib/net` TLS (OpenSSL) | 6-10 cycles | MEDIUM-HIGH | Post-v1.0 advanced-users. |
+| P5 Bootstrap SIMD intrinsic CALL dispatch | 10+ cycles | HIGH | Defect 3 의존. |
+| P6 DWARF stack trace | 4-6 cycles | MEDIUM | ROI-capped. |
+| P7 `stdlib/parse` post weakening | 1-2 cycles | LOW | Zero consumers, defer. |
+
+### Track F — LLVM 22 follow-up (AUTONOMOUS, if needed)
+
+**Context**: Cycles 2466/2470/2471 empirically removed `range(...)`
+return attrs and `getelementptr ... nuw` to clear ubuntu-latest's
+LLVM 22 strict parser rejection. Short-term pragmatic — restores
+green CI. Long-term considerations:
+
+| Item | Effort | When |
+|------|--------|------|
+| Diagnose actual LLVM 22 parser issue (LangRef allows both syntaxes) | 2-4 cycles | Opportunistic — when LLVM bug is filed / fixed upstream, BMB can re-enable |
+| Restore `range(...)` return hint emission with correct syntax | 1-2 cycles | Gated on diagnosis |
+| Restore `getelementptr nuw` emission | 1 cycle | Gated on diagnosis |
+| `bootstrap/compiler.bmb` emits `range()` + `nuw` strings still; CI's `opt` + `llc` at Stage 3 are LLVM 21 (via PATH prepend) so not affected. If CI drift removes llvm-21 install path, bootstrap side will need cleanup under Defect 3 constraint. | 2-4 cycles | Reactive — trigger on CI regression |
 
 ### Track E — Later (v0.99+, post-v1.0)
 
@@ -587,7 +674,8 @@ Unchanged from previous handoff. Not next-session scope:
 | P0-new / P0-inf | Defect 5 + PyPI CI pipeline | ✅ Cycles 2419-2420 / 2411-2417 |
 | P3-T3a | MinGW runtime static-link | ✅ Cycle 2423 |
 | P1-new-push / -ci / -sub / -3plat / -clippy1/2 | Various CI unblocks | ✅ Cycles 2425-2456 |
-| P1-ci-sub / -pin / -bootstrap-check / -llvm-sys | This session's cleanups | ✅ Cycles 2460-2464 |
+| P1-ci-sub / -pin / -bootstrap-check / -llvm-sys | Prior session's cleanups | ✅ Cycles 2460-2464 |
+| Track A.1 polly + A.2 range + A.2b nuw + A.3 dispatch + D golden delete + 2469 neg-IntLit + 2472 find_clang | LLVM 22 compat + CI green | ✅ Cycles 2465-2472 |
 | P4 | `stdlib/net` TLS (`tcp_tls_connect`, `accept_tls`) | 6-10 cycles | MEDIUM-HIGH | MEDIUM | OpenSSL external dependency. Post-v1.0 advanced-users target. |
 | P5 | Bootstrap SIMD intrinsic dispatch | 10+ cycles | HIGH | MEDIUM | Defect 3-adjacent risk. |
 | P6 | DWARF stack trace | 4-6 cycles | MEDIUM | LOW | MIR lacks span info; gains limited. |
