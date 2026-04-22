@@ -1115,7 +1115,22 @@ fn path_str(p: &std::path::Path) -> BuildResult<&str> {
 fn find_clang() -> Result<String, String> {
     use std::process::Command;
 
-    // Check common locations
+    // Cycle 2472: BMB_CLANG env var takes precedence when set — lets CI
+    // force a specific clang version (e.g. clang-21) when the project
+    // requires LLVM 21 but the system default is newer and strict.
+    if let Ok(path) = std::env::var("BMB_CLANG")
+        && !path.is_empty()
+        && Command::new(&path).arg("--version").output().is_ok()
+    {
+        return Ok(path);
+    }
+
+    // Check common locations. On Unix, prefer clang-21 first since BMB is
+    // pinned to LLVM 21 (CLAUDE.md); fall back to clang (whatever the
+    // system default is) and older versions. Cycle 2472 reorder: system
+    // drift to LLVM 22.x introduced strict-parser regressions that reject
+    // IR forms BMB emits, so pinning to clang-21 when available keeps the
+    // build path stable.
     let candidates = if cfg!(target_os = "windows") {
         vec![
             "clang",
@@ -1124,7 +1139,17 @@ fn find_clang() -> Result<String, String> {
             "C:\\Program Files\\LLVM\\bin\\clang.exe",
         ]
     } else {
-        vec!["clang", "clang-18", "clang-17", "clang-16", "clang-15"]
+        vec![
+            "clang-21",
+            "clang-22",
+            "clang-20",
+            "clang-19",
+            "clang",
+            "clang-18",
+            "clang-17",
+            "clang-16",
+            "clang-15",
+        ]
     };
 
     for candidate in candidates {
