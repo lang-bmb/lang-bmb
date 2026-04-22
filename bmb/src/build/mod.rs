@@ -843,7 +843,12 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
 
         // v0.60.56: Pass fast_math flag to codegen
         // v0.87: Pass fast_compile flag for faster bootstrap builds
-        let codegen = CodeGen::with_options(codegen_opt, config.fast_math, config.fast_compile);
+        // Cycle 2476: Pass is_shared so the target machine picks RelocMode::PIC
+        // when building a .so/.dylib/.dll. Without this, clang/ld rejects the
+        // resulting .o on Linux with R_X86_64_32S / R_X86_64_TPOFF32 errors.
+        let is_shared = matches!(config.output_type, OutputType::SharedLib);
+        let codegen = CodeGen::with_options(codegen_opt, config.fast_math, config.fast_compile)
+            .with_shared(is_shared);
 
         if config.emit_ir {
             // Emit LLVM IR
@@ -869,7 +874,7 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         // this block only linked OutputType::Executable, so `bmb build
         // --shared` under --features llvm silently emitted only the .o
         // file and never produced a .dll/.so/.dylib.
-        let is_shared = matches!(config.output_type, OutputType::SharedLib);
+        // Cycle 2476: `is_shared` already computed above for codegen PIC selection.
         link_native(&obj_path, &config.output, config.verbose, is_shared)?;
 
         Ok(())

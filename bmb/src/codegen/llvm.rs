@@ -82,6 +82,13 @@ pub struct CodeGen {
     fast_math: bool,
     /// v0.87: Skip expensive opt pass for faster compilation
     fast_compile: bool,
+    /// Cycle 2476: Emit position-independent code for shared library output.
+    /// When true, the target machine uses RelocMode::PIC so TLS accesses
+    /// and `.rodata` references use GOT-indirect relocations compatible with
+    /// `ld -shared`. Default (RelocMode::Default ≈ Static on Linux) generates
+    /// R_X86_64_32S / R_X86_64_TPOFF32 relocations that the linker rejects
+    /// for shared objects.
+    is_shared: bool,
 }
 
 impl CodeGen {
@@ -91,22 +98,29 @@ impl CodeGen {
             opt_level: OptLevel::default(),
             fast_math: false,
             fast_compile: false,
+            is_shared: false,
         }
     }
 
     /// Create a new code generator with optimization level
     pub fn with_opt_level(opt_level: OptLevel) -> Self {
-        Self { opt_level, fast_math: false, fast_compile: false }
+        Self { opt_level, fast_math: false, fast_compile: false, is_shared: false }
     }
 
     /// Create a new code generator with optimization level and fast-math enabled
     pub fn with_fast_math(opt_level: OptLevel, fast_math: bool) -> Self {
-        Self { opt_level, fast_math, fast_compile: false }
+        Self { opt_level, fast_math, fast_compile: false, is_shared: false }
     }
 
     /// Create a new code generator with all options (v0.87)
     pub fn with_options(opt_level: OptLevel, fast_math: bool, fast_compile: bool) -> Self {
-        Self { opt_level, fast_math, fast_compile }
+        Self { opt_level, fast_math, fast_compile, is_shared: false }
+    }
+
+    /// Cycle 2476: builder-style setter for shared-library PIC mode.
+    pub fn with_shared(mut self, is_shared: bool) -> Self {
+        self.is_shared = is_shared;
+        self
     }
 
     /// Compile MIR to object file
@@ -182,13 +196,18 @@ impl CodeGen {
         let cpu = TargetMachine::get_host_cpu_name();
         let features = TargetMachine::get_host_cpu_features();
 
+        let reloc_mode = if self.is_shared {
+            RelocMode::PIC
+        } else {
+            RelocMode::Default
+        };
         let target_machine = target
             .create_target_machine(
                 &target_triple,
                 cpu.to_str().unwrap_or("x86-64"),
                 features.to_str().unwrap_or(""),
                 self.opt_level.into(),
-                RelocMode::Default,
+                reloc_mode,
                 CodeModel::Default,
             )
             .ok_or(CodeGenError::TargetMachineError)?;
@@ -383,7 +402,7 @@ impl CodeGen {
                                         cpu.to_str().unwrap_or("generic"),
                                         features.to_str().unwrap_or(""),
                                         self.opt_level.into(),
-                                        RelocMode::Default,
+                                        reloc_mode,
                                         CodeModel::Default,
                                     )
                                     .ok_or(CodeGenError::TargetMachineError)?;

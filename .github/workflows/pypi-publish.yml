@@ -125,13 +125,13 @@ jobs:
         run: cargo build --release --features llvm --target ${{ matrix.target }}
 
       - name: Build BMB Runtime
-        # Mirrors scripts/bootstrap.sh: archive bmb_runtime.o + bmb_event_loop.o
-        # together. See bindings-ci.yml for rationale.
+        # Mirrors scripts/bootstrap.sh + Cycle 2476 -fPIC for shared libs.
+        # See bindings-ci.yml for detailed rationale.
         shell: bash
         run: |
           cd bmb/runtime
-          clang -c bmb_runtime.c -o bmb_runtime.o -O3
-          clang -c bmb_event_loop.c -o bmb_event_loop.o -O3
+          clang -c bmb_runtime.c -o bmb_runtime.o -O3 -fPIC
+          clang -c bmb_event_loop.c -o bmb_event_loop.o -O3 -fPIC
           ar rcs libbmb_runtime.a bmb_runtime.o bmb_event_loop.o
           echo "BMB_RUNTIME_PATH=$(pwd)/libbmb_runtime.a" >> $GITHUB_ENV
 
