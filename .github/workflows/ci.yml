@@ -103,22 +103,23 @@ jobs:
       - name: Build BMB compiler
         run: cargo build --release
 
-      - name: Type check all bootstrap files
+      - name: Type check bootstrap entry point
         run: |
-          echo "=== Bootstrap Type Check ==="
-          for f in bootstrap/*.bmb; do
-            echo "Checking $f..."
-            ./target/release/bmb check "$f" 2>&1 | tail -1
-          done
+          echo "=== Bootstrap Type Check (compiler.bmb) ==="
+          # Check the entry point only. Individual bootstrap/*.bmb files
+          # reference symbols defined in sibling files (e.g. lowering.bmb
+          # uses unpack_place from mir.bmb) and stdlib modules (json), so
+          # per-file `bmb check` reports spurious undefined-symbol errors.
+          # Checking compiler.bmb resolves the full dependency graph.
+          ./target/release/bmb check bootstrap/compiler.bmb
 
       - name: Measure bootstrap compile time
         id: timing
         run: |
           echo "=== Bootstrap Self-Compile Timing ==="
+          # Build the entry point only (see Type Check step rationale).
           START=$(date +%s.%N)
-          for f in bootstrap/*.bmb; do
-            ./target/release/bmb build "$f" --emit-mir -o /dev/null 2>&1 > /dev/null
-          done
+          ./target/release/bmb build bootstrap/compiler.bmb --emit-mir -o /dev/null 2>&1 > /dev/null
           END=$(date +%s.%N)
           ELAPSED=$(echo "$END - $START" | bc)
           echo "Total MIR generation time: ${ELAPSED}s"
