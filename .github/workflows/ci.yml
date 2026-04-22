@@ -24,7 +24,7 @@ jobs:
           submodules: recursive
 
       - name: Setup Rust
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -54,7 +54,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Rust
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Build BMB compiler
         run: cargo build --release
@@ -94,7 +94,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Rust
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Build BMB compiler
         run: cargo build --release
@@ -144,7 +144,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Rust
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Build BMB compiler
         run: cargo build --release
@@ -191,7 +191,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Rust
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -220,7 +220,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Rust
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo
         uses: actions/cache@v4
