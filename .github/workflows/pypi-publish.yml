@@ -65,6 +65,14 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Install cross-compile target for pinned toolchain
+        # See bindings-ci.yml for rationale — rust-toolchain.toml pins
+        # to 1.95.0, which needs target rust-std explicitly added.
+        shell: bash
+        run: |
+          rustup show active-toolchain
+          rustup target add ${{ matrix.target }}
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:

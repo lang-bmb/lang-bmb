@@ -59,6 +59,18 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Install cross-compile target for pinned toolchain
+        # dtolnay/rust-toolchain@stable adds ${matrix.target}'s rust-std to
+        # the `stable` toolchain, but rust-toolchain.toml pins us to 1.95.0.
+        # When cargo runs inside the repo, the override activates 1.95.0
+        # and the target rust-std is missing → E0463 "can't find crate
+        # for `core`" on cross-compile (windows-latest: host=msvc,
+        # target=gnu). Re-add the target under the active toolchain.
+        shell: bash
+        run: |
+          rustup show active-toolchain
+          rustup target add ${{ matrix.target }}
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
