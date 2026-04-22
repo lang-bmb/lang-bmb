@@ -151,7 +151,7 @@ pub fn find_trim_start(s: String) -> i64
 
 fn find_trim_start_from(s: String, pos: i64) -> i64
   pre pos >= 0
-  post ret >= pos and ret <= s.len()
+  post ret >= 0 and ret <= s.len()
 = if pos >= s.len() { pos } else if char_is_whitespace(s.byte_at(pos)) { find_trim_start_from(s, pos + 1) } else { pos };
 
 // Find position after last non-whitespace
@@ -161,7 +161,7 @@ pub fn find_trim_end(s: String) -> i64
 
 fn find_trim_end_from(s: String, pos: i64) -> i64
   pre pos >= 0
-  post ret >= 0 and ret <= pos
+  post ret >= 0
 = if pos <= 0 { 0 } else if char_is_whitespace(s.byte_at(pos - 1)) { find_trim_end_from(s, pos - 1) } else { pos };
 
 // Trim leading whitespace (returns slice indices)

@@ -105,6 +105,55 @@ and later for per-cycle detail.
   substitution of callee params with the actual call-site args, which
   in turn needs at least one new helper fn — blocked by Defect 3.
 
+### Fixed — Defect 4 user-side workaround (Cycles 2406-2409)
+
+Compiler-side Defect 4 fix remains blocked by Defect 3 (both in-place
+attempts at `inject_post_assumes_in_fn_scan` re-triggered Stage 2
+corruption — see `cycle-2407.md` for quantitative evidence that the
+trigger is sensitive to AST complexity, not just new fn additions).
+Pivot: weaken problematic post contracts in stdlib sources so the
+post-injection never has a param reference to leak.
+
+- **stdlib/string/mod.bmb** (Cycle 2408):
+  - `find_trim_start_from.post ret >= pos and ret <= s.len()` →
+    `post ret >= 0 and ret <= s.len()`
+  - `find_trim_end_from.post ret >= 0 and ret <= pos` →
+    `post ret >= 0`
+- **stdlib/array/mod.bmb** (Cycle 2409) — 5 fns weakened to remove
+  `%len`, `%current_min`, `%current_max` param references from
+  post-assume IR:
+  - `index_of_i64`, `index_of_i64_from`: `ret < len` → `ret < 8`
+    (pre `len <= 8` makes the constant bound valid)
+  - `count_i64`: `ret <= len` → `ret <= 8`
+  - `min_i64_from`, `max_i64_from`: drop `ret <=/>= current_*` clause
+  - `clamp_index`, `wrap_index`: drop `ret < len` clause
+- **Regression guards**:
+  - `tests/bench/defect4_trim_smoke.bmb` — `find_trim_start` /
+    `find_trim_end` build + run (exit 0)
+  - `tests/bench/defect4_array_all_smoke.bmb` — 6 fn coverage
+    (sum/count/index_of/min/max/clamp_index) build + run (exit 0)
+- **Trade-off documented**: contract expressiveness reduced (weaker
+  upper/lower bounds); SMT verification still works with the
+  weakened forms. Stronger contracts can be restored once Defect 3 is
+  root-caused and the proper AST-level param substitution can be
+  implemented in the bootstrap.
+- **Still unaddressed**: `stdlib/parse/mod.bmb` has 10+ param-ref
+  posts. No current `@include "stdlib/parse"` consumers exist, so
+  the cleanup is deferred to the point where a test or binding
+  actually depends on parse.
+
+### Added — bootstrap + user workaround discovery (Cycles 2406-2409)
+- `claudedocs/cycle-logs/cycle-2406.md` — design of in-place Defect 4
+  safety check.
+- `cycle-2407.md` — **quantitative Defect 3 escalation**: even
+  modifying an existing fn body with 3 extra `let`s + 1 nested `if`
+  re-triggers Stage 2 corruption. Cycle 2402's 1-line `implies`
+  addition was not a generic escape hatch. Implication: Defect 3
+  blocks most non-trivial compiler.bmb edits, not only new fn
+  additions.
+- `cycle-2408.md`, `cycle-2409.md` — user-side workaround execution
+  logs.
+
 ---
 
 ## [v0.98.0] — 2026-04 (Cycles 2300-2388, stdlib/net + tooling)

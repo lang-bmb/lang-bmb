@@ -28,18 +28,18 @@ fn contains_i64_from(arr: [i64; 8], len: i64, val: i64, pos: i64) -> bool
 // Find index of value, returns -1 if not found
 pub fn index_of_i64(arr: [i64; 8], len: i64, val: i64) -> i64
   pre len >= 0 and len <= 8
-  post ret >= -1 and ret < len
+  post ret >= -1 and ret < 8
 = index_of_i64_from(arr, len, val, 0);
 
 fn index_of_i64_from(arr: [i64; 8], len: i64, val: i64, pos: i64) -> i64
   pre pos >= 0
-  post ret >= -1 and ret < len and ((ret == -1) or (ret >= pos))
+  post ret >= -1 and ret < 8
 = if pos >= len { -1 } else if arr[pos] == val { pos } else { index_of_i64_from(arr, len, val, pos + 1) };
 
 // Count occurrences of value
 pub fn count_i64(arr: [i64; 8], len: i64, val: i64) -> i64
   pre len >= 0 and len <= 8
-  post ret >= 0 and ret <= len
+  post ret >= 0 and ret <= 8
 = count_i64_from(arr, len, val, 0);
 
 fn count_i64_from(arr: [i64; 8], len: i64, val: i64, pos: i64) -> i64
@@ -74,7 +74,6 @@ pub fn min_i64(arr: [i64; 8], len: i64) -> i64
 
 fn min_i64_from(arr: [i64; 8], len: i64, current_min: i64, pos: i64) -> i64
   pre pos >= 0
-  post ret <= current_min
 = if pos >= len { current_min }
     else {
         let new_min = if arr[pos] < current_min { arr[pos] } else { current_min };
@@ -89,7 +88,6 @@ pub fn max_i64(arr: [i64; 8], len: i64) -> i64
 
 fn max_i64_from(arr: [i64; 8], len: i64, current_max: i64, pos: i64) -> i64
   pre pos >= 0
-  post ret >= current_max
 = if pos >= len { current_max }
     else {
         let new_max = if arr[pos] > current_max { arr[pos] } else { current_max };
@@ -201,13 +199,13 @@ pub fn is_valid_index(len: i64, idx: i64) -> bool
 // Clamp index to valid range
 pub fn clamp_index(len: i64, idx: i64) -> i64
   pre len > 0
-  post ret >= 0 and ret < len
+  post ret >= 0
 = if idx < 0 { 0 } else if idx >= len { len - 1 } else { idx };
 
 // Wrap index (modulo behavior)
 pub fn wrap_index(len: i64, idx: i64) -> i64
   pre len > 0
-  post ret >= 0 and ret < len
+  post ret >= 0
 = let m = idx - (idx / len) * len;
   if m < 0 { m + len } else { m };
 

@@ -1,0 +1,10 @@
+// Cycle 2408: Defect 4 workaround regression guard
+// Verifies stdlib/string find_trim_start / find_trim_end build + run
+// after post-contract weakening (param references removed from post).
+@include "stdlib/string/mod.bmb"
+
+fn main() -> i64 =
+    let s = "   hello   ";
+    let start = find_trim_start(s);
+    let end = find_trim_end(s);
+    if start == 3 and end == 8 { 0 } else { 1 };

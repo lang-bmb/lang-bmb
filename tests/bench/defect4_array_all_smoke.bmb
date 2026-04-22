@@ -1,0 +1,13 @@
+// Cycle 2409: stdlib/array Defect 4 workaround regression guard
+// Verifies main index/count/min/max operations build + run.
+@include "stdlib/array/mod.bmb"
+
+fn main() -> i64 =
+    let arr = [3, 1, 4, 1, 5, 9, 2, 6];
+    let s = sum_i64(arr, 8);
+    let c = count_i64(arr, 8, 1);
+    let i = index_of_i64(arr, 8, 5);
+    let mn = min_i64(arr, 8);
+    let mx = max_i64(arr, 8);
+    let ci = clamp_index(8, 10);
+    if s == 31 and c == 2 and i == 4 and mn == 1 and mx == 9 and ci == 7 { 0 } else { 1 };
