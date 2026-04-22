@@ -23,6 +23,7 @@
 #include <pthread.h>
 #include <errno.h>   // v0.77: For ETIMEDOUT
 #include <time.h>    // v0.77: For clock_gettime
+#include <unistd.h>  // getcwd (bmb_getcwd), rmdir (bmb_rmdir) on POSIX
 #endif
 
 // v0.98: Event loop for async I/O
