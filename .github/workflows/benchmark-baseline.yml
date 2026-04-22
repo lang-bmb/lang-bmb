@@ -50,10 +50,12 @@ jobs:
         run: cargo build --release --features llvm
 
       - name: Build BMB Runtime
+        # See bootstrap-benchmark.yml for rationale (event_loop parity).
         run: |
           cd bmb/runtime
           clang -c bmb_runtime.c -o bmb_runtime.o -O3
-          ar rcs libbmb_runtime.a bmb_runtime.o
+          clang -c bmb_event_loop.c -o bmb_event_loop.o -O3
+          ar rcs libbmb_runtime.a bmb_runtime.o bmb_event_loop.o
           echo "BMB_RUNTIME_PATH=$(pwd)/libbmb_runtime.a" >> $GITHUB_ENV
 
       - name: Run Benchmarks

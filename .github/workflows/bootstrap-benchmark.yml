@@ -91,10 +91,15 @@ jobs:
         run: cargo build --release --features llvm
 
       - name: Build BMB Runtime
+        # Mirror scripts/bootstrap.sh: archive bmb_runtime.o +
+        # bmb_event_loop.o together. Locally bootstrap.sh already does
+        # this; CI workflows lagged, so any consumer pulling in
+        # event-loop symbols would fail at link time here. Parity fix.
         run: |
           cd bmb/runtime
           clang -c bmb_runtime.c -o bmb_runtime.o -O3
-          ar rcs libbmb_runtime.a bmb_runtime.o
+          clang -c bmb_event_loop.c -o bmb_event_loop.o -O3
+          ar rcs libbmb_runtime.a bmb_runtime.o bmb_event_loop.o
           echo "BMB_RUNTIME_PATH=$(pwd)/libbmb_runtime.a" >> $GITHUB_ENV
 
       - name: Run 3-Stage Bootstrap
@@ -177,10 +182,15 @@ jobs:
         run: cargo build --release --features llvm
 
       - name: Build BMB Runtime
+        # Mirror scripts/bootstrap.sh: archive bmb_runtime.o +
+        # bmb_event_loop.o together. Locally bootstrap.sh already does
+        # this; CI workflows lagged, so any consumer pulling in
+        # event-loop symbols would fail at link time here. Parity fix.
         run: |
           cd bmb/runtime
           clang -c bmb_runtime.c -o bmb_runtime.o -O3
-          ar rcs libbmb_runtime.a bmb_runtime.o
+          clang -c bmb_event_loop.c -o bmb_event_loop.o -O3
+          ar rcs libbmb_runtime.a bmb_runtime.o bmb_event_loop.o
           echo "BMB_RUNTIME_PATH=$(pwd)/libbmb_runtime.a" >> $GITHUB_ENV
 
       - name: Run Current Benchmarks
