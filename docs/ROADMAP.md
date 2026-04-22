@@ -4,7 +4,7 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 
 ---
 
-## Current Status — v0.98 (2026-04-21, post-Cycles 2391-2396)
+## Current Status — v0.98 (2026-04-22, post-Cycles 2406-2410)
 
 ### Progress
 
@@ -32,7 +32,48 @@ Tooling     ████████████████░░░░ 80%   @
 
 ## Recently completed
 
-### Cycles 2391-2396 (this session)
+### Cycles 2406-2410 (this session) — Defect 4 user-side workaround
+
+**Compiler-side Defect 4 fix blocked by Defect 3 re-trigger.** Two
+in-place modifications to `inject_post_assumes_in_fn_scan`
+(`bootstrap/compiler.bmb:15702`) — one adding 6 lines of safety
+check, the minimal second attempt adding only 3 lines — **both
+re-triggered Stage 2 corruption** (parse error at line 1:1 and arena
+16 GB exhaustion respectively). Cycle 2402's 1-line `implies` tweak
+was therefore not a generic "existing fn body edits are safe"
+escape hatch — Defect 3 is sensitive to AST complexity inside
+existing fn bodies too. Full quantitative trace:
+`claudedocs/cycle-logs/cycle-2407.md`.
+
+**Pivot: user-side stdlib contract weakening** (Cycles 2408-2409).
+Instead of fixing the compiler's post-injection substitution, weaken
+stdlib posts so the post-assume IR never contains a callee-param
+reference to leak. Eight functions now build + run via bootstrap:
+
+- `stdlib/string/mod.bmb`: `find_trim_start_from`,
+  `find_trim_end_from` — `ret >= pos` / `ret <= pos` clauses removed
+  or replaced with constants.
+- `stdlib/array/mod.bmb`: `index_of_i64`, `index_of_i64_from`,
+  `count_i64`, `min_i64_from`, `max_i64_from`, `clamp_index`,
+  `wrap_index` — `ret < len` / `ret <=/>= current_*` clauses
+  dropped or replaced with array-size constants.
+
+Regression guards committed: `tests/bench/defect4_trim_smoke.bmb`
+(trim build+run), `tests/bench/defect4_array_all_smoke.bmb` (6-fn
+coverage). Both exit 0 via bootstrap. 3-Stage Fixed Point
+unchanged (compiler.bmb untouched). `cargo test`: 3,764 pass.
+
+**Deferred**: `stdlib/parse/mod.bmb` has 10+ `ret >= pos` posts but
+**zero** current `@include "stdlib/parse"` consumers in the repo —
+cleanup postponed until a real user appears.
+
+**Trade-off documented in CHANGELOG**: contracts are strictly
+weaker (tighter bounds dropped or replaced with constants); the
+stronger forms can be restored once Defect 3 is root-caused and a
+proper AST-level param substitution becomes possible in the
+bootstrap.
+
+### Cycles 2391-2396 (earlier session)
 
 **Ephemeral-port discovery for stdlib/net** (Cycles 2391-2392). Runtime
 now captures the OS-assigned port via `getsockname()` after
