@@ -46,60 +46,6 @@ fn cmp_op_to_llvm_pred(op: &CmpOp) -> &'static str {
     }
 }
 
-/// v0.96.18: Compute range bounds [lo, hi) from ReturnCmp postconditions
-/// Returns None if no range can be derived, Some((lo, hi)) otherwise.
-/// LLVM range attribute: `range(i64 lo, hi)` means value is in [lo, hi)
-fn compute_return_range(postconditions: &[ContractFact]) -> Option<(i64, i64)> {
-    let mut lo = i64::MIN;
-    let mut hi_inclusive = i64::MAX;
-
-    let mut has_bound = false;
-    for fact in postconditions {
-        if let ContractFact::ReturnCmp { op, value } = fact {
-            has_bound = true;
-            match op {
-                CmpOp::Ge => {
-                    // ret >= value → lo = max(lo, value)
-                    if *value > lo { lo = *value; }
-                }
-                CmpOp::Gt => {
-                    // ret > value → lo = max(lo, value + 1)
-                    let bound = value.saturating_add(1);
-                    if bound > lo { lo = bound; }
-                }
-                CmpOp::Le => {
-                    // ret <= value → hi_inclusive = min(hi_inclusive, value)
-                    if *value < hi_inclusive { hi_inclusive = *value; }
-                }
-                CmpOp::Lt => {
-                    // ret < value → hi_inclusive = min(hi_inclusive, value - 1)
-                    let bound = value.saturating_sub(1);
-                    if bound < hi_inclusive { hi_inclusive = bound; }
-                }
-                CmpOp::Eq => {
-                    // ret == value → [value, value]
-                    if *value > lo { lo = *value; }
-                    if *value < hi_inclusive { hi_inclusive = *value; }
-                }
-                CmpOp::Ne => {
-                    // ret != value doesn't give a contiguous range, skip
-                }
-            }
-        }
-    }
-
-    // Cycle 2466: LLVM 22.x tightened range() attribute parsing and rejects
-    // degenerate forms where one bound is the type's min/max (e.g.
-    // `range(i64 -9223372036854775808, 2)`). Only emit when BOTH bounds are
-    // meaningfully tightened against the i64 range — otherwise skip.
-    if !has_bound || lo == i64::MIN || hi_inclusive == i64::MAX {
-        return None;
-    }
-
-    // LLVM range is [lo, hi) exclusive upper bound
-    Some((lo, hi_inclusive + 1))
-}
-
 /// Text-based LLVM IR Generator
 pub struct TextCodeGen {
     /// Target triple (default: x86_64-pc-windows-msvc for Windows)
@@ -2048,17 +1994,18 @@ impl TextCodeGen {
         // v0.96.17: Add nonnull return attribute for String-returning functions
         // BMB string functions always return valid (non-null) string pointers
         // v0.96.18: Add dereferenceable(24) on return — BmbString = { ptr, i64, i64 }
-        // v0.96.18: Add range() attribute on i64 returns when postconditions provide bounds
+        // Cycle 2471: range() return attribute removed. ubuntu-latest's clang
+        // 22.1.2 rejects `noundef range(i64 ...) i64` in the return-attribute
+        // position with "expected type" even for well-formed bounds like
+        // range(i64 -1, 2). Root cause not diagnosed (LangRef documents the
+        // syntax as valid), but preserving `range` here breaks every CI job
+        // whose clang resolves to LLVM 22. Fallback to `noundef` alone —
+        // minor optimization hint loss, universal compatibility.
         let ret_attrs = if matches!(func.ret_ty, MirType::String) && func.name != "main" {
             "noundef nonnull dereferenceable(24) ".to_string()
-        } else if matches!(func.ret_ty, MirType::I64) && func.name != "main" {
-            // Compute range from postconditions
-            if let Some((lo, hi)) = compute_return_range(&func.postconditions) {
-                format!("noundef range(i64 {}, {}) ", lo, hi)
-            } else {
-                "noundef ".to_string()
-            }
-        } else if matches!(func.ret_ty, MirType::F64 | MirType::Bool) && func.name != "main" {
+        } else if matches!(func.ret_ty, MirType::I64 | MirType::F64 | MirType::Bool)
+            && func.name != "main"
+        {
             "noundef ".to_string()
         } else {
             String::new()
