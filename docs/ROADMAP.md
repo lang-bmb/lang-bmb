@@ -207,7 +207,25 @@ helper fns minimal; prefer inlining over extracting.
 
 ---
 
-## Next-session options
+## Next-session recommended priority (2026-04-22, post-Cycles 2406-2410)
+
+> **Rationale**: Cycles 2399-2405 (7) + 2406-2410 (5) = **12 cycles consecutively invested in Defect 3 with zero root-cause progress**. Further naive-probe investment is a sunk-cost trap. 149 commits are ahead of origin — the real v1.0 blocker is **release infrastructure**, not compiler perfection. Pivot to Track C (`compiler.bmb`-unchanged work) for guaranteed forward motion.
+
+| # | Option | Effort | Risk | ROI | Rationale |
+|---|--------|--------|------|-----|-----------|
+| **P0** | **PyPI wheel CI pipeline** | 2-4 cycles | MEDIUM | HIGH | Defect 3 safe zone (`compiler.bmb` untouched). Largest v1.0 blocker. Packaging already ready (`pyproject.toml` / `.pyi` / `MANIFEST.in` done Cycle ~1951); only CI workflow + wheel-build script missing. Secret management gated on user approval. |
+| **P1** | **Defect 3 dedicated — HARD 2-cycle limit, new methods only** | ≤ 2 cycles | HIGH | UNCERTAIN | 12 cycles of probe-matrix work failed to find root cause. Session **must use different methods**: `gdb` / `DrMemory` on Stage 1 binary, IR diff between probe/no-probe builds, debug-build panic backtrace. If no new-cause signal after 2 cycles, **stop immediately and return to P0**. No third-cycle extension — sunk-cost-trap guard. |
+| **P2** | Cross-platform push + CI observation | 0 cycle + external | LOW | MEDIUM | User-approval gate. 149 commits ahead → push then `gh run list`. Validates Linux/macOS via existing `net-echo-smoke` + nightly-bench. No new code — pure observation cycle. |
+| P3 | `stdlib/net` TLS (`tcp_tls_connect`, `accept_tls`) | 6-10 cycles | MEDIUM-HIGH | MEDIUM | OpenSSL external dependency. Post-v1.0 advanced-users target. |
+| P4 | Bootstrap SIMD intrinsic CALL-site dispatch | 10+ cycles | HIGH | MEDIUM | 211 intrinsics × vec-type alloca/call rewrite. **Likely re-triggers Defect 3** given scope — gate on P1 outcome. |
+| P5 | DWARF stack trace | 4-6 cycles | MEDIUM | LOW | MIR lacks span info; gains limited to function granularity. ROI-capped. |
+| P6 | stdlib/parse post weakening | 1-2 cycles | LOW | LOW | Currently zero `@include "stdlib/parse"` consumers. Defer until a real user appears. |
+
+**Decision tree**: start P0 → on completion run P1 (hard-limited) → on user approval run P2 → remaining budget to P3/P4/P5.
+
+---
+
+## Next-session options (full menu)
 
 | Option | Effort | Risk | Notes |
 |--------|--------|------|-------|
