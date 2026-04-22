@@ -32,6 +32,21 @@ Tooling     ████████████████░░░░ 80%   @
 
 ## Recently completed
 
+### Cycle 2426 (this session) — ✅ CI action reference fixed
+
+Pre-existing bug surfaced by Cycle 2425's push. All 15 occurrences of
+`dtolnay/rust-action@stable` (non-existent action) renamed to
+`dtolnay/rust-toolchain@stable` across 8 workflow files. Unblocks CI
+observation that Cycle 2425 enabled. New push-triggered runs now
+reach build/test phase instead of failing at "Set up job" in 5s.
+
+### Cycle 2425 (this session) — ✅ 154 commits pushed to origin/main
+
+Maintainer approval obtained. Cross-platform CI now receives changes
+from Cycles 2411-2425 inclusive. First normal push-triggered runs
+surfaced the Cycle 2426 action-name bug (see above); subsequent runs
+exercise actual build/test.
+
 ### Cycle 2423 (this session) — ✅ P3-T3a: MinGW runtime statically linked
 
 Adding `-static -static-libgcc` to both link paths in
@@ -335,21 +350,26 @@ helper fns minimal; prefer inlining over extracting.
 
 ---
 
-## Next-session recommended priority (2026-04-22, post-Cycle 2423)
+## Next-session recommended priority (2026-04-22, post-Cycle 2426)
 
-> **Update**: Defect 5 resolved in Cycles 2419-2420, and the last
-> MinGW runtime dependency (`libgcc_s_seh-1.dll` / `libwinpthread-1.dll`)
-> eliminated in Cycle 2423 via `-static -static-libgcc`. The wheel CI
-> pipeline is now end-to-end ready: Windows wheels from fresh CI runners
-> will install cleanly on Windows 10+ without any MinGW/MSYS2 runtime.
-> Only open distribution gate is user approval for `git push`.
+> **Update**: Defect 5 resolved (Cycles 2419-2420), MinGW runtime
+> dependency eliminated (Cycle 2423), 154 commits pushed to origin
+> (Cycle 2425), CI action-name bug fixed (Cycle 2426). Cross-platform
+> CI is now self-executing. First post-fix runs validate Defect 5 fix
+> + static-link across Linux/macOS. Organization has 4 publish
+> secrets pre-configured (`PYPI_API_TOKEN`, `CARGO_REGISTRY_TOKEN`,
+> `NPM_TOKEN`, `NUGET_API_KEY`); `TEST_PYPI_API_TOKEN` is NOT
+> configured — TestPyPI rehearsal requires either adding that secret
+> or using `publish=false` mode (artifacts only).
 
 | # | Option | Effort | Risk | ROI | Rationale |
 |---|--------|--------|------|-----|-----------|
 | ~~**P0-new**~~ | ~~Defect 5 fix~~ | ~~3-6 cycles~~ | ~~HIGH~~ | ~~HIGH~~ | ✅ **Cycles 2419-2420**. |
 | ~~**P0-inf**~~ | ~~PyPI wheel CI pipeline~~ | ~~2-4 cycles~~ | ~~MEDIUM~~ | ~~HIGH~~ | ✅ **Cycles 2411-2417** + unblocked by **2419-2420**. |
-| ~~**P3-T3a**~~ | ~~MinGW runtime static-link~~ | ~~2-4 cycles~~ | ~~LOW-MEDIUM~~ | ~~HIGH~~ | ✅ **Cycle 2423** — `-static -static-libgcc` on both Windows link paths; libgcc + libwinpthread both eliminated; 5/5 fresh build + functional venv-isolated smoke passes. |
-| **P1-new** | **Cross-platform push + CI observation** | 0 cycle + external | LOW | HIGH | User-approval gate. 153 commits ahead → push then `gh run list`. First dispatch of `pypi-publish.yml` validates Defect 5 fix + static-link on Linux/macOS. |
+| ~~**P3-T3a**~~ | ~~MinGW runtime static-link~~ | ~~2-4 cycles~~ | ~~LOW-MEDIUM~~ | ~~HIGH~~ | ✅ **Cycle 2423**. |
+| ~~**P1-new-push**~~ | ~~Push 154 commits to origin~~ | ~~0 + external~~ | ~~LOW~~ | ~~HIGH~~ | ✅ **Cycle 2425**. |
+| ~~**P1-new-ci**~~ | ~~Fix CI action reference~~ | ~~1 cycle~~ | ~~LOW~~ | ~~HIGH~~ | ✅ **Cycle 2426**. |
+| **P1-obs** | **CI observation + pypi-publish dispatch** | 0-1 cycle + external | LOW | HIGH | Monitor initial cross-platform runs. Dispatch `pypi-publish.yml` with `publish=false` to produce wheel artifacts across Windows/Linux/macOS × 3 Python versions. No TestPyPI token needed for artifact-only rehearsal. |
 | **P2** | **Defect 3 dedicated — HARD 2-cycle limit, new methods only** | ≤ 2 cycles | HIGH | UNCERTAIN | 12 cycles of probe-matrix work failed to find root cause. Session **must use different methods**: `gdb` / `DrMemory` on Stage 1 binary, IR diff between probe/no-probe builds, debug-build panic backtrace. If no new-cause signal after 2 cycles, **stop immediately**. No third-cycle extension. |
 | P4 | `stdlib/net` TLS (`tcp_tls_connect`, `accept_tls`) | 6-10 cycles | MEDIUM-HIGH | MEDIUM | OpenSSL external dependency. Post-v1.0 advanced-users target. |
 | P5 | Bootstrap SIMD intrinsic dispatch | 10+ cycles | HIGH | MEDIUM | Defect 3-adjacent risk. |
