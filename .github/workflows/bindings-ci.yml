@@ -35,7 +35,13 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            target: x86_64-pc-windows-gnu
+            # Cycle 2478: Rust crate target is MSVC because the LLVM 21
+            # binary distribution we install (KyleMayes action / official
+            # llvm-project release) is MSVC-built. Mixing MinGW Rust target
+            # with MSVC LLVM libs makes llvm-sys fail to resolve LLVM. The
+            # binding DLLs themselves are still emitted with MinGW ABI by
+            # bmb.exe via find_linker() preferring `gcc` (MinGW) on Windows.
+            target: x86_64-pc-windows-msvc
             llvm_setup: mingw
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu

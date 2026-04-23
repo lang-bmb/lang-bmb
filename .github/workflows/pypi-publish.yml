@@ -37,7 +37,9 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            target: x86_64-pc-windows-gnu
+            # Cycle 2478: see bindings-ci.yml. MSVC Rust target with
+            # MSVC LLVM avoids ABI mismatch in llvm-sys.
+            target: x86_64-pc-windows-msvc
             llvm_setup: mingw
             plat_tag: win_amd64
           - os: ubuntu-latest
