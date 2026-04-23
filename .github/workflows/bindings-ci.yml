@@ -35,26 +35,32 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            # Cycle 2478: Rust crate target is MSVC because the LLVM 21
-            # binary distribution we install (KyleMayes action / official
-            # llvm-project release) is MSVC-built. Mixing MinGW Rust target
-            # with MSVC LLVM libs makes llvm-sys fail to resolve LLVM. The
-            # binding DLLs themselves are still emitted with MinGW ABI by
-            # bmb.exe via find_linker() preferring `gcc` (MinGW) on Windows.
+            # Cycle 2478: MSVC Rust target matches MSVC-built LLVM 21
+            # from KyleMayes action.
+            # Cycle 2479: Use the text codegen backend (no `--features llvm`)
+            # because the official LLVM Windows installer is runtime-only
+            # — it ships clang/opt/llc but not the static libs llvm-sys
+            # needs. The text backend produces LLVM IR strings and shells
+            # out to clang for codegen, so it requires only the runtime
+            # tools we already install via KyleMayes.
             target: x86_64-pc-windows-msvc
             llvm_setup: mingw
+            cargo_features: ""
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             llvm_setup: apt
+            cargo_features: "--features llvm"
           # macos-13 = Intel native; macos-latest = Apple Silicon. Pinning
           # runner per arch avoids cross-compile with arch-specific brew LLVM
           # breaking --features llvm linking. Mirrors pypi-publish.yml layout.
           - os: macos-13
             target: x86_64-apple-darwin
             llvm_setup: brew
+            cargo_features: "--features llvm"
           - os: macos-latest
             target: aarch64-apple-darwin
             llvm_setup: brew
+            cargo_features: "--features llvm"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -147,20 +153,21 @@ jobs:
       # --- Build & Test ---
 
       - name: Build BMB compiler
-        run: cargo build --release --features llvm --target ${{ matrix.target }}
+        # Cycle 2479: matrix.cargo_features differs per OS — Windows uses
+        # the text codegen backend (no `--features llvm`) because the
+        # MSVC LLVM 21 distribution lacks llvm-sys's static lib needs.
+        run: cargo build --release ${{ matrix.cargo_features }} --target ${{ matrix.target }}
 
-      - name: Build BMB Runtime
-        # Mirrors scripts/bootstrap.sh: archive bmb_runtime.o + bmb_event_loop.o
-        # together so any binding library that references event-loop symbols
-        # still links. Other workflows (bootstrap-benchmark, benchmark-*) only
-        # archive bmb_runtime.o and would break the moment a consumer needs
-        # event-loop support — parity is cheap insurance.
-        #
+      - name: Build BMB Runtime (inkwell .a archive — Linux/macOS)
+        # Inkwell backend's find_runtime() needs libbmb_runtime.a. Archive
+        # bmb_runtime.o + bmb_event_loop.o together (parity with
+        # scripts/bootstrap.sh — other workflows omit event_loop and would
+        # break on net/async consumers).
         # Cycle 2476: `-fPIC` is required because binding libraries are built
         # with `bmb build --shared`; without PIC, TLS vars (g_ffi_has_error,
         # arena state, bmb_rng_state ...) yield R_X86_64_TPOFF32 relocations
-        # that `ld -shared` rejects. `-fPIC` is safe for executable linkage
-        # too, so no conditional is needed.
+        # that `ld -shared` rejects.
+        if: matrix.llvm_setup != 'mingw'
         shell: bash
         run: |
           cd bmb/runtime
@@ -168,6 +175,16 @@ jobs:
           clang -c bmb_event_loop.c -o bmb_event_loop.o -O3 -fPIC
           ar rcs libbmb_runtime.a bmb_runtime.o bmb_event_loop.o
           echo "BMB_RUNTIME_PATH=$(pwd)/libbmb_runtime.a" >> $GITHUB_ENV
+
+      - name: Set BMB_RUNTIME_PATH (text backend — Windows)
+        # Cycle 2479: text backend's find_runtime_c() expects the .c source
+        # directly (it shells out to clang to compile on demand). No PIC
+        # concern on Windows because DLLs use a different relocation model
+        # than ELF shared objects.
+        if: matrix.llvm_setup == 'mingw'
+        shell: bash
+        run: |
+          echo "BMB_RUNTIME_PATH=${{ github.workspace }}/bmb/runtime" >> $GITHUB_ENV
 
       - name: Build all binding libraries
         run: python ecosystem/build_all.py

@@ -37,15 +37,18 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            # Cycle 2478: see bindings-ci.yml. MSVC Rust target with
-            # MSVC LLVM avoids ABI mismatch in llvm-sys.
+            # Cycle 2478/2479: MSVC Rust target + text backend (no inkwell)
+            # avoids the LLVM-Windows-installer dev-libs gap. See
+            # bindings-ci.yml for full rationale.
             target: x86_64-pc-windows-msvc
             llvm_setup: mingw
             plat_tag: win_amd64
+            cargo_features: ""
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             llvm_setup: apt
             plat_tag: linux_x86_64
+            cargo_features: "--features llvm"
           # macos-13 is the last Intel-native runner; macos-latest / macos-14
           # is Apple Silicon. Pinning runner per arch avoids cross-compile with
           # the arch-specific brew LLVM, which breaks --features llvm linking.
@@ -53,10 +56,12 @@ jobs:
             target: x86_64-apple-darwin
             llvm_setup: brew
             plat_tag: macosx_10_9_x86_64
+            cargo_features: "--features llvm"
           - os: macos-latest
             target: aarch64-apple-darwin
             llvm_setup: brew
             plat_tag: macosx_11_0_arm64
+            cargo_features: "--features llvm"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -138,11 +143,12 @@ jobs:
           echo "LLVM_SYS_211_PREFIX=$(brew --prefix llvm)" >> $GITHUB_ENV
 
       - name: Build BMB compiler
-        run: cargo build --release --features llvm --target ${{ matrix.target }}
+        # Cycle 2479: matrix.cargo_features differs per OS — see bindings-ci.yml.
+        run: cargo build --release ${{ matrix.cargo_features }} --target ${{ matrix.target }}
 
-      - name: Build BMB Runtime
-        # Mirrors scripts/bootstrap.sh + Cycle 2476 -fPIC for shared libs.
-        # See bindings-ci.yml for detailed rationale.
+      - name: Build BMB Runtime (inkwell .a archive — Linux/macOS)
+        # See bindings-ci.yml for full rationale (event_loop parity, -fPIC).
+        if: matrix.llvm_setup != 'mingw'
         shell: bash
         run: |
           cd bmb/runtime
@@ -150,6 +156,13 @@ jobs:
           clang -c bmb_event_loop.c -o bmb_event_loop.o -O3 -fPIC
           ar rcs libbmb_runtime.a bmb_runtime.o bmb_event_loop.o
           echo "BMB_RUNTIME_PATH=$(pwd)/libbmb_runtime.a" >> $GITHUB_ENV
+
+      - name: Set BMB_RUNTIME_PATH (text backend — Windows)
+        # Cycle 2479: text backend's find_runtime_c() expects the .c source.
+        if: matrix.llvm_setup == 'mingw'
+        shell: bash
+        run: |
+          echo "BMB_RUNTIME_PATH=${{ github.workspace }}/bmb/runtime" >> $GITHUB_ENV
 
       - name: Build wheels
         shell: bash
