@@ -3,8 +3,36 @@ name: BMB CI
 on:
   push:
     branches: [main]
+    # Cycle 2480: skip when only docs / unrelated workflow yamls change.
+    # This workflow still runs when ci.yml itself is edited (self-check).
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'claudedocs/**'
+      - '.github/workflows/benchmark.yml'
+      - '.github/workflows/benchmark-baseline.yml'
+      - '.github/workflows/nightly-bench.yml'
+      - '.github/workflows/pypi-publish.yml'
+      - '.github/workflows/release.yml'
+      - '.github/workflows/bindings-ci.yml'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'claudedocs/**'
+      - '.github/workflows/benchmark.yml'
+      - '.github/workflows/benchmark-baseline.yml'
+      - '.github/workflows/nightly-bench.yml'
+      - '.github/workflows/pypi-publish.yml'
+      - '.github/workflows/release.yml'
+      - '.github/workflows/bindings-ci.yml'
+
+# Cycle 2480: auto-cancel superseded runs on same ref. Keeps cost
+# bounded when pushing fix-up commits in rapid succession.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always

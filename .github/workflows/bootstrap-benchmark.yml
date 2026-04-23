@@ -1,10 +1,43 @@
 name: Bootstrap + Benchmark Cycle
 
 on:
+  # Cycle 2480: run only when compiler/runtime/stdlib/bootstrap or the
+  # benchmark suite itself changes. Doc-only and CI-yaml-only pushes
+  # (which don't affect bootstrap or benchmark output) skip the 2-hour
+  # run. Keep this workflow's own yaml in the allowlist so edits
+  # self-verify.
   pull_request:
     branches: [main]
+    paths:
+      - 'bmb/**'
+      - 'bootstrap/**'
+      - 'stdlib/**'
+      - 'scripts/bootstrap.sh'
+      - 'scripts/benchmark.sh'
+      - 'scripts/quick-check.sh'
+      - 'scripts/full-cycle.sh'
+      - 'scripts/compare.py'
+      - 'ecosystem/benchmark-bmb/**'
+      - '.github/workflows/bootstrap-benchmark.yml'
   push:
     branches: [main]
+    paths:
+      - 'bmb/**'
+      - 'bootstrap/**'
+      - 'stdlib/**'
+      - 'scripts/bootstrap.sh'
+      - 'scripts/benchmark.sh'
+      - 'scripts/quick-check.sh'
+      - 'scripts/full-cycle.sh'
+      - 'scripts/compare.py'
+      - 'ecosystem/benchmark-bmb/**'
+      - '.github/workflows/bootstrap-benchmark.yml'
+  # Manual trigger when path-filter misses an intended case.
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always

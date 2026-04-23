@@ -26,6 +26,13 @@ on:
   # submodule pointer changes, compiler-side fixes that affect bindings).
   workflow_dispatch:
 
+# Cycle 2480: during CI work we often dispatch + push on the same HEAD,
+# creating duplicate runs. Cancel the older one so we only burn runner
+# minutes on the newest.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test-bindings:
     name: Test Bindings (${{ matrix.os }})

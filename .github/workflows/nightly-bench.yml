@@ -15,6 +15,12 @@ on:
         required: false
         default: 'true'
 
+# Cycle 2480: guard against overlapping dispatches (daily cron +
+# manual) — only the newest run continues.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 

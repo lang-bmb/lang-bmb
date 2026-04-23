@@ -22,6 +22,12 @@ on:
       - 'bmb/src/mir/**'
       - 'ecosystem/benchmark-bmb/**'
 
+# Cycle 2480: cron + PR duplicates cancel cleanly; manual dispatch
+# also respects cancel semantics because each run_id is unique.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 

@@ -10,6 +10,13 @@ on:
         description: 'Version to release (e.g., v1.0.0-beta)'
         required: true
 
+# Cycle 2480: releases must never be cancelled mid-way. cancel-in-progress
+# is explicitly FALSE. Concurrency group still serializes to prevent two
+# simultaneous releases of the same tag.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   CARGO_TERM_COLOR: always
 

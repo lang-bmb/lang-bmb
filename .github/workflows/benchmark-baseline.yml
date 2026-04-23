@@ -4,9 +4,23 @@ on:
   push:
     branches: [main]
     paths:
-      - 'bmb/src/**'
+      # Cycle 2480: narrow from 'bmb/src/**' to only perf-affecting
+      # modules. Parser / LSP / test harness changes don't shift
+      # benchmark numbers and don't need a fresh baseline.
+      - 'bmb/src/codegen/**'
+      - 'bmb/src/mir/**'
+      - 'bmb/src/build/**'
+      - 'bmb/runtime/**'
+      - 'stdlib/**'
       - 'ecosystem/benchmark-bmb/**'
+      - '.github/workflows/benchmark-baseline.yml'
   workflow_dispatch:
+
+# Cycle 2480: baseline updates are idempotent per commit; safe to cancel
+# a queued older run when a newer commit lands.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always

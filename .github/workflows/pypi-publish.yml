@@ -25,6 +25,14 @@ on:
           - testpypi
           - pypi
 
+# Cycle 2480: cancel-in-progress is FALSE here by design — a publish
+# run that's partway through uploading wheels must not be killed by a
+# newer dispatch. The concurrency group still serializes dispatches
+# so two uploads for the same ref don't collide.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   CARGO_TERM_COLOR: always
 
