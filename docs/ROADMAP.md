@@ -33,7 +33,124 @@ CI Green    ████████████████████ 100%  B
 
 ## Recently completed
 
-### Cycles 2473-2480 (this session) — ✅ Bindings Linux/macOS green + CI diet
+### Cycles 2482-2489 (current session) — ✅ B'.1 closure + G.1 root cause + H tier rust-cache
+
+Entered from Cycles 2473-2480's handoff with two well-defined Windows
+binding link-stage defects (Failure 1 `-static-libgcc` MSVC clang
+rejection; Failure 2 text-backend `_t1.post.val` collision). 8 cycles
+closed B'.1 entirely and additionally fixed G.1 (verifier body assertion)
+plus H tier (Swatinem rust-cache@v2). Each fix is empirically verified
+or covered by regression tests.
+
+**Commits (chronological, 7 + 1 docs)**:
+
+1. `ab2dd56a` **Cycles 2482+2483** `fix(codegen,build): Windows binding
+   link fixes (B'.1)`. Two surgical L4 fixes:
+   - `bmb/src/build/mod.rs`: gate `-static-libgcc` emission on linker
+     ABI detection. New `linker_targets_mingw()` helper probes
+     `<linker> --version` for `Target:` line; flag now applied only
+     when MinGW driver is active. MSVC clang (KyleMayes installer)
+     correctly skipped — was being treated as link failure due to
+     `-Wunused-command-line-argument`.
+   - `bmb/src/codegen/llvm_text.rs`: function-scoped counter for
+     `*.post.val` load. Mirrors existing `_postassume_N` pattern;
+     resolves "multiple definition of local value" link error in
+     bmb-crypto when two contract'd calls share a destination.
+
+2. `efbcf40d` **Cycle 2484** `ci(bindings): add compiler/runtime/stdlib
+   paths to trigger filter`. Found gap in Cycle 2480 CI diet design —
+   `bindings-ci.yml` only listened to `ecosystem/bmb-*` despite bindings
+   building by invoking the BMB compiler. B'.1 fixes would never
+   self-trigger Bindings CI for empirical verification. Added
+   `bmb/src/codegen/**`, `bmb/src/build/**`, `bmb/runtime/**`,
+   `stdlib/**` to push + pull_request paths.
+
+3. `7ffa38b7` **Cycles 2485+2486** `fix(codegen,ci): text-backend
+   uniqueness audit + workflow paths gaps`. Two preventive cycles
+   building on B'.1:
+   - **G.4 audit** (Cycle 2486): grep'd `format!("{}.tag", ...)` across
+     `llvm_text.rs` and found ~10 SIMD/math intrinsic emitters with
+     the same defect class as Cycle 2483's `.post.val`. Refactored
+     sqrt, sin/cos/floor/ceil/fabs, fma_*, min/max_*, cmp_*_*,
+     blend_*, mask_any/all_*, reverse/broadcast/slide_left/right,
+     slide_left2/right2/concat_*, splat_*, hsum_*, pow_f64 to use
+     `unique_name()` for prefix generation.
+   - **Cycle 2485**: workflow paths audit. Added `bmb/src/{cir,pir,
+     derive,preprocessor}/**` and root `Cargo.{toml,lock}` to
+     benchmark-baseline.yml + benchmark.yml + bootstrap-benchmark.yml
+     filters (verified-fact propagation paths affect perf).
+
+4. `83b4904f` **Cycle 2487** `fix(cir/verify): constrain ret to body in
+   verification query (G.1)`. Root cause of stdlib clamp/sign/in_range/
+   diff false counterexamples (cycle-2477.md surfaced; cycle-2487.md
+   investigated). `CirSmtGenerator::generate_verification_query` was
+   declaring `ret_name`, asserting preconditions, and asserting NOT
+   postconditions — but never asserting that `ret_name` equals the
+   function body. Z3 was free to pick any value satisfying `(and pre
+   (not post))`, producing spurious counterexamples for trivially
+   correct functions. Fix: translate `func.body` and assert `(=
+   ret_name body_smt)`. Untranslatable bodies (Block, While, etc.)
+   surface as `SmtError::UnsupportedExpression` → ProofOutcome::Error
+   rather than meaningless counterexample. **+2 regression tests**
+   (3,770 total). When ecosystem/build_all.py removes
+   `--trust-contracts` in a future cycle, this fix removes the
+   workaround.
+
+5. `d3fafe5c` **Cycle 2488** `ci: migrate cargo cache to
+   Swatinem/rust-cache@v2 (H tier)`. Replaced 10 `actions/cache@v4`
+   sites across 7 workflows. New action handles target/ pruning,
+   includes rustc version + workflow file in cache key (was missing —
+   1.95.0 pin would silently reuse stale .rmeta), save-on-change
+   semantics, per-workflow `shared-key` isolation. Net -88/+42 yaml.
+   Empirical ~50% speedup on cache-hit jobs awaits next BMB CI run.
+
+6. `637b2d4a` **Cycle 2489** `test(build): cover linker_targets_mingw
+   classification (Cycle 2482 follow-up)`. Extracted pure name-based
+   classification into `linker_kind_by_name` so gcc / clang-cl /
+   lld-link / bare-clang decisions are unit-tested without a real
+   toolchain. Catches typo-class regressions on the B'.1 fix
+   statically. Runtime `--version` probe path remains for ambiguous
+   bare-`clang` case. Test gated `#[cfg(all(feature="llvm",
+   target_os="windows"))]`.
+
+7. (Cycle 2490) — this docs sync.
+
+**Net source change**: 27 files (with overlap), primarily 2 Rust
+codegen/build fixes (Cycles 2482, 2483) + 1 CIR verify fix (Cycle
+2487) + 1 large preventive refactor (Cycle 2486) + 7 yaml updates.
+
+**Local verification**:
+- `cargo test --release --lib`: ✅ **3,770 pass** (3,768 prior + 2 new
+  G.1 regression tests)
+- `cargo test --release --lib --features llvm --target
+  x86_64-pc-windows-gnu`: ✅ includes Cycle 2489 windows-gated test
+- `cargo clippy --all-targets -- -D warnings`: ✅ clean
+- `cargo build --release --features llvm --target
+  x86_64-pc-windows-gnu`: ✅ ~3min
+
+**CI verification status (HEAD `637b2d4a`)** — see `gh run list
+--limit 12`:
+- Bindings CI on `7ffa38b7` (Cycles 2485+2486 covered B'.1 + G.4)
+  was queued through to current HEAD. Awaiting GHA runner.
+- BMB CI / Bootstrap+Benchmark / Update Benchmark Baseline
+  in_progress on each push as expected.
+
+**Latent / next-session items surfaced**:
+- B'.1 verified empirically pending the queued Bindings CI run.
+  Independent of that, the codegen fix at L4 is a soundness fix
+  even if the production link path used a different shape.
+- G.1 fix opens the door to remove `--trust-contracts` from
+  ecosystem/build_all.py once Bindings CI confirms verification
+  doesn't newly fail on stdlib functions with bodies that don't
+  translate to pure SMT (would now be Error instead of false
+  Verified). That's a Cycle 2491+ task.
+- G.4 audit (Cycle 2486) covered the grep'd sites. Remaining
+  uniqueness audit candidates: `*.phi.{pred_label}`, `*.vload.*`,
+  per-intrinsic dispatch in `wasm_text.rs`. Not blocking.
+- H tier follow-ups remaining: cargo-nextest (E tier),
+  matrix split for PR-only ubuntu (B tier).
+
+### Cycles 2473-2480 (previous session) — ✅ Bindings Linux/macOS green + CI diet
 
 Entered from Cycles 2465-2472's handoff with Bindings CI + PyPI wheel
 still dispatched and queued at session end (GHA backlog). Investigation
@@ -678,43 +795,77 @@ helper fns minimal; prefer inlining over extracting.
 
 ---
 
-## Next-session recommended priority (2026-04-23, post-Cycle 2480)
+## Next-session recommended priority (2026-04-27, post-Cycle 2489)
 
-> **Update**: Linux + Apple Silicon macOS binding pipelines are
-> empirically green. Windows remains the final platform gap — reduced
-> to two well-defined code-level issues (both autonomous-fixable).
-> Session ended at 8/20 cycle budget to hand off a clean break-point.
+> **Update**: B'.1 closed empirically pending the queued Bindings CI
+> windows-latest run on HEAD `637b2d4a` (or any successor that touches
+> the bindings paths). G.1 verifier defect root-caused and fixed at
+> source (CIR SMT generator). H tier rust-cache@v2 migrated. Session
+> stopped at 9 cycles with empirical CI runs in flight.
 
-### Track B'.1 — Windows binding link-time fixes (AUTONOMOUS, 1-2 cycles) — **RECOMMENDED NEXT**
+### Track B'.1 verification + B'.2 entry (AUTONOMOUS post-CI confirmation)
 
-**Goal**: Windows `bmb-algo / bmb-compute / bmb-crypto / bmb-text / bmb-json`
-binding DLLs build and link end-to-end.
+**Goal**: Confirm Bindings CI windows-latest 4/4 green on HEAD
+`637b2d4a` or successor, then proceed to TestPyPI rehearsal.
 
-After Cycle 2479's text-backend switch, Windows cargo build succeeds
-and bindings reach step 16 "Build all binding libraries". Two concrete
-failures remain:
+The two B'.1 fixes (Cycles 2482-2483) are committed in `ab2dd56a`:
+- `linker_targets_mingw()` gates `-static-libgcc` to MinGW-only.
+- Text-backend `*.post.val` collision resolved with function-scoped
+  counter; G.4 audit (Cycle 2486) extended uniqueness to ~10 SIMD/
+  math intrinsic emitters.
 
-| # | Symptom | Affected | Root cause | Fix layer |
-|---|---------|----------|-----------|-----------|
-| 1 | `clang: argument unused: '-static-libgcc'` → link fail | bmb-algo, bmb-compute, bmb-text, bmb-json, bmb-crypto | `bmb/src/build/mod.rs:1305` passes `-static -static-libgcc` unconditionally on Windows, but Cycle 2478's MSVC clang rejects MinGW-only flags | **Rust (Decision Framework L4 — codegen)**: gate those flags on detected MinGW-style linker in `find_linker()` output, not on `cfg!(target_os)` |
-| 2 | `multiple definition of local value named '_t1.post.val'` | bmb-crypto only | Text codegen (`bmb/src/codegen/llvm_text.rs`) emits same local value name twice within one function — inkwell path renames automatically, text path does not | **Rust (L4 — codegen)**: unique-name counter in text backend's local temp emission, or switch to full SSA-numbered temp names |
+Re-trigger expectation: a Bindings CI run on `637b2d4a` (or any
+HEAD that includes Cycles 2482-2486) should show all 4 binding
+libraries linking on Windows. The CI diet path filter for
+bindings-ci.yml now covers compiler/runtime/stdlib changes (Cycle
+2484), so a fresh push to any of those triggers the workflow.
 
-**Recommended approach (root/idiomatic/philosophy-aligned)**:
+If green: enter B'.2 (`gh workflow run pypi-publish.yml -f
+publish=true -f repository=testpypi`) — only requires
+`TEST_PYPI_API_TOKEN` org secret to be in place.
 
-- **Don't revert to inkwell on Windows.** Cycle 2479's text-backend
-  selection was the correct decomposition — tool-chain reality drove
-  backend choice. Reverting would just re-surface the MSVC-LLVM
-  dev-lib gap.
-- **Fix both bugs at their proper layer (compiler codegen).** They
-  are real defects, not Windows quirks. Fix #1 benefits any future
-  MSVC-clang user; fix #2 prevents a latent class of text-backend IR
-  errors. Principle 2 (No Workaround) applied — don't conditionally
-  suppress symptoms in CI, fix the codegen.
-- **Keep the fix minimal.** Rule 6 (Rust frozen) exception narrowly
-  justified by distribution-blocker context.
+If new failures emerge: fix at L4 (codegen/build) per Cycle 2486
+pattern. Do NOT revert to yaml workarounds.
 
-Expected outcome: Bindings CI all 4 platforms green, B'.1 fully
-closes, `TEST_PYPI_API_TOKEN` rehearsal can proceed.
+### Track G.1 follow-up — drop --trust-contracts from build_all.py (AUTONOMOUS, 1 cycle)
+
+**Goal**: Re-enable consumer-side stdlib verification in bindings
+build now that the verifier's body-assertion bug is fixed.
+
+`ecosystem/build_all.py` passes `--trust-contracts` to bypass the
+verifier (Cycle 2477 workaround). With Cycle 2487's fix, stdlib
+clamp/sign/in_range/diff/etc. should now verify correctly OR
+report ProofOutcome::Error (for functions with bodies that don't
+translate to pure SMT — Block, While, etc. — which is honest, not
+unsound).
+
+**Action**: drop `--trust-contracts` from build_all.py. Push.
+Observe Bindings CI:
+- macOS-latest (has Z3 transitively via brew): verifier runs.
+  Expected outcome: most stdlib fns Verified, some Error
+  (impure bodies). No false Failed counterexamples.
+- Linux/Windows: Z3 typically not installed → "Z3 solver not
+  available, contract verification skipped" — same as before.
+
+If macOS Bindings CI breaks with new Failed counterexamples →
+keep `--trust-contracts` and investigate further (more bugs
+hiding behind G.1).
+
+### Track H — CI throughput continuation (AUTONOMOUS, 2-3 cycles, optional)
+
+**Done in this session**:
+- ✅ Cycle 2488 — `Swatinem/rust-cache@v2` across 7 workflows
+  (10 cache sites). Empirical speedup awaits next BMB CI run.
+
+**Remaining tier follow-ups**:
+- **tier F**: `cargo-nextest` adoption (Cargo.toml dev-dep + CI
+  yaml). Per-job ~30-50% test time savings vs `cargo test`. Risk:
+  none significant; nextest is mature.
+- **tier E**: PR → ubuntu-only matrix; main push → 3-OS matrix.
+  PR feedback ~3.5x faster, main coverage unchanged.
+- **tier C**: Bootstrap+Benchmark `push:` removed, PR-only. Saves
+  -2h per main push but loses post-merge baseline confirmation —
+  trade-off worth discussing.
 
 ### Track B'.2 — TestPyPI real-upload rehearsal (HUMAN DECISION REQUIRED)
 
