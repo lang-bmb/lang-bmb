@@ -1439,6 +1439,35 @@ fn find_linker() -> BuildResult<String> {
     Ok("cc".to_string())
 }
 
+/// Classify a Windows linker driver by its file name alone.
+///
+/// Returns `Some(true)` if the name unambiguously indicates a MinGW driver
+/// (`gcc`, `gcc.exe`); `Some(false)` if the name unambiguously indicates a
+/// MSVC-side driver (`clang-cl`, `lld-link`, anything not containing
+/// `clang`); `None` for plain `clang` / `clang.exe`, where the ABI
+/// depends on the binary's default target and must be probed at runtime.
+///
+/// Pure (no I/O) — directly unit-testable without a real toolchain.
+#[cfg(all(feature = "llvm", target_os = "windows"))]
+fn linker_kind_by_name(linker: &str) -> Option<bool> {
+    let lower = linker.to_ascii_lowercase();
+    if lower == "gcc"
+        || lower.ends_with("\\gcc")
+        || lower.ends_with("/gcc")
+        || lower.ends_with("gcc.exe")
+    {
+        return Some(true);
+    }
+    if lower.ends_with("clang-cl") || lower.ends_with("clang-cl.exe") {
+        return Some(false);
+    }
+    if !lower.contains("clang") {
+        // lld, lld-link, link.exe, ld.bfd, etc. — MSVC-side or non-driver.
+        return Some(false);
+    }
+    None
+}
+
 /// Detect whether a Windows linker driver targets the MinGW (windows-gnu) ABI.
 ///
 /// Returns `true` for `gcc` and clang configured with a `*-windows-gnu` /
@@ -1447,27 +1476,20 @@ fn find_linker() -> BuildResult<String> {
 /// `-static-libgcc`, which MSVC clang flags as `-Wunused-command-line-argument`.
 #[cfg(all(feature = "llvm", target_os = "windows"))]
 fn linker_targets_mingw(linker: &str) -> bool {
-    let lower = linker.to_ascii_lowercase();
-    // gcc on Windows is always a MinGW build (MSVC has no `gcc` driver).
-    if lower == "gcc" || lower.ends_with("\\gcc") || lower.ends_with("/gcc")
-        || lower.ends_with("gcc.exe")
-    {
-        return true;
+    if let Some(kind) = linker_kind_by_name(linker) {
+        return kind;
     }
-    // clang: probe `clang --version` for the default `Target:` line.
-    if lower.contains("clang") && !lower.ends_with("clang-cl") && !lower.ends_with("clang-cl.exe") {
-        if let Ok(output) = Command::new(linker).arg("--version").output() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                if let Some(target) = line.trim_start().strip_prefix("Target:") {
-                    let t = target.trim();
-                    return t.contains("mingw") || t.ends_with("-windows-gnu");
-                }
+    // Plain `clang` — must probe `clang --version` for the default
+    // `Target:` line to distinguish MinGW clang from MSVC clang.
+    if let Ok(output) = Command::new(linker).arg("--version").output() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines() {
+            if let Some(target) = line.trim_start().strip_prefix("Target:") {
+                let t = target.trim();
+                return t.contains("mingw") || t.ends_with("-windows-gnu");
             }
         }
-        return false;
     }
-    // lld, lld-link, link.exe, clang-cl etc. — never MinGW runtime.
     false
 }
 
@@ -2059,5 +2081,39 @@ mod tests {
     fn test_target_debug_format() {
         assert_eq!(format!("{:?}", Target::Native), "Native");
         assert_eq!(format!("{:?}", Target::Wasm32), "Wasm32");
+    }
+
+    /// Cycle 2489 (B'.1 follow-up): pure name-based linker classification.
+    /// Pull MinGW gcc out of the heuristic path so a regression on
+    /// `linker_targets_mingw` (which gates `-static-libgcc` emission) is
+    /// caught without needing a real compiler in the test environment.
+    #[cfg(all(feature = "llvm", target_os = "windows"))]
+    #[test]
+    fn test_linker_kind_by_name_classifies_known_drivers() {
+        // gcc — definitely MinGW (Windows has no MSVC `gcc` driver)
+        assert_eq!(linker_kind_by_name("gcc"), Some(true));
+        assert_eq!(linker_kind_by_name("GCC"), Some(true));
+        assert_eq!(linker_kind_by_name("gcc.exe"), Some(true));
+        assert_eq!(linker_kind_by_name("/usr/bin/gcc"), Some(true));
+        assert_eq!(linker_kind_by_name(r"C:\msys64\ucrt64\bin\gcc.exe"), Some(true));
+
+        // clang-cl — MSVC driver
+        assert_eq!(linker_kind_by_name("clang-cl"), Some(false));
+        assert_eq!(linker_kind_by_name("clang-cl.exe"), Some(false));
+        assert_eq!(
+            linker_kind_by_name(r"C:\Program Files\LLVM\bin\clang-cl.exe"),
+            Some(false)
+        );
+
+        // lld-link, link.exe, ld.bfd — MSVC linkers / non-driver
+        assert_eq!(linker_kind_by_name("lld-link"), Some(false));
+        assert_eq!(linker_kind_by_name("link.exe"), Some(false));
+        assert_eq!(linker_kind_by_name("lld"), Some(false));
+        assert_eq!(linker_kind_by_name("ld.bfd"), Some(false));
+
+        // Plain `clang` — must be probed at runtime (None)
+        assert_eq!(linker_kind_by_name("clang"), None);
+        assert_eq!(linker_kind_by_name("clang.exe"), None);
+        assert_eq!(linker_kind_by_name(r"C:\Program Files\LLVM\bin\clang.exe"), None);
     }
 }
