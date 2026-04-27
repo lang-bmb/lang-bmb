@@ -1301,13 +1301,17 @@ fn link_native(
     {
         // v0.83.1: Added ws2_32 for AsyncSocket (WinSock) support
         cmd.args(["-lkernel32", "-lmsvcrt", "-lws2_32"]);
-        // v0.98 (Cycle 2423, Defect 5 follow-up P3-T3a): statically link MinGW
-        // runtime so produced .exe/.dll has no libgcc_s_seh-1.dll /
-        // libwinpthread-1.dll dependency. Essential for `pip install` on
-        // Windows machines without MSYS2. Adds ~60 KB per binary;
-        // remaining DLL deps (kernel32, ws2_32, api-ms-win-crt-*) are
-        // Windows 10+ system-provided UCRT forwarders.
-        cmd.args(["-static", "-static-libgcc"]);
+        // v0.98 (Cycle 2423): statically link MinGW runtime so produced
+        // .exe/.dll has no libgcc_s_seh-1.dll / libwinpthread-1.dll
+        // dependency. Essential for `pip install` on Windows machines
+        // without MSYS2. Cycle 2482: gate on detected linker ABI —
+        // MSVC clang (KyleMayes LLVM action installer) does not use
+        // libgcc and rejects the flag with a warning that BMB treats
+        // as a link failure. Apply only when the active linker is a
+        // MinGW driver (gcc or clang with windows-gnu target).
+        if linker_targets_mingw(&linker) {
+            cmd.args(["-static", "-static-libgcc"]);
+        }
     }
 
     #[cfg(target_os = "linux")]
@@ -1433,6 +1437,38 @@ fn find_linker() -> BuildResult<String> {
 
     // Default to cc
     Ok("cc".to_string())
+}
+
+/// Detect whether a Windows linker driver targets the MinGW (windows-gnu) ABI.
+///
+/// Returns `true` for `gcc` and clang configured with a `*-windows-gnu` /
+/// `*-mingw*` default target; `false` for MSVC clang, `lld-link`, MSVC
+/// `link.exe`, etc. Used to gate emission of MinGW-only flags such as
+/// `-static-libgcc`, which MSVC clang flags as `-Wunused-command-line-argument`.
+#[cfg(all(feature = "llvm", target_os = "windows"))]
+fn linker_targets_mingw(linker: &str) -> bool {
+    let lower = linker.to_ascii_lowercase();
+    // gcc on Windows is always a MinGW build (MSVC has no `gcc` driver).
+    if lower == "gcc" || lower.ends_with("\\gcc") || lower.ends_with("/gcc")
+        || lower.ends_with("gcc.exe")
+    {
+        return true;
+    }
+    // clang: probe `clang --version` for the default `Target:` line.
+    if lower.contains("clang") && !lower.ends_with("clang-cl") && !lower.ends_with("clang-cl.exe") {
+        if let Ok(output) = Command::new(linker).arg("--version").output() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if let Some(target) = line.trim_start().strip_prefix("Target:") {
+                    let t = target.trim();
+                    return t.contains("mingw") || t.ends_with("-windows-gnu");
+                }
+            }
+        }
+        return false;
+    }
+    // lld, lld-link, link.exe, clang-cl etc. — never MinGW runtime.
+    false
 }
 
 /// Find Windows SDK and MSVC include paths

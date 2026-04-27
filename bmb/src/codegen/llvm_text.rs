@@ -2414,7 +2414,17 @@ impl TextCodeGen {
                         if let ContractFact::ReturnCmp { op, value } = postcond {
                             // Load the call result if it's a local
                             let result_val = if local_names.contains(&d.name) {
-                                let load_name = format!("{}.post.val", d.name);
+                                // Cycle 2483: function-scoped counter so repeated postcond
+                                // emissions for the same destination produce unique LLVM
+                                // local names (e.g. `_t1.post.val.0`, `_t1.post.val.1`).
+                                // Without this, two calls writing to the same destination
+                                // emit two `%_t1.post.val` loads → "multiple definition of
+                                // local value" link failure (text backend lacks inkwell's
+                                // automatic name renaming).
+                                let counter_key = format!("__post_val_{}", d.name);
+                                let cnt = name_counts.entry(counter_key).or_insert(0);
+                                let load_name = format!("{}.post.val.{}", d.name, *cnt);
+                                *cnt += 1;
                                 let ty = place_types.get(&d.name).copied().unwrap_or("i64");
                                 writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, ty, d.name)?;
                                 format!("%{}", load_name)
