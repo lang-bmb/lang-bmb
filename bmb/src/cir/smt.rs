@@ -178,8 +178,36 @@ impl CirSmtGenerator {
             format!("(and {})", post_props.join(" "))
         };
 
+        // Cycle 2487 (G.1): constrain `ret_name` to the value computed by the
+        // function body. Without this assertion, `ret_name` is a free variable,
+        // which lets Z3 satisfy `(and precond (not postcond))` by picking any
+        // value for `ret_name` that violates the post — even when the body
+        // itself would always uphold it. That is the root cause of the
+        // `clamp(x=0, lo=1, hi=0) ret=0` false counterexample observed on the
+        // stdlib verification path: `lo=1, hi=0` violates `pre lo <= hi`, but
+        // the precondition was being asserted INSIDE `(and ... (not ...))` and
+        // the model surfaced unconstrained values from the freely-chosen ret.
+        // (Even without body, lo=1/hi=0 should not satisfy precond — but with
+        // ret unconstrained the solver is free to pick any model that makes
+        // the negated post true, and the model report includes ALL declared
+        // variables; the pre/post tension has nothing to bind it to a body.)
+        //
+        // If the body cannot be translated to pure SMT (Block, While, Match,
+        // etc.), surface that as an error so the caller marks the function as
+        // Unknown rather than producing a meaningless counterexample.
+        let body_smt = self.translate_expr(&func.body).map_err(|e| {
+            SmtError::UnsupportedExpression(format!(
+                "function body not representable in SMT (verification cannot \
+                 proceed without a body constraint — falsely reporting \
+                 verified or refuted is unsound): {}",
+                e
+            ))
+        })?;
+        let ret_var = sanitize_name(&func.ret_name);
+        self.assert(&format!("(= {} {})", ret_var, body_smt));
+
         // Assert: precondition AND NOT postcondition (to find counterexample)
-        // If unsat, the postcondition is valid given precondition
+        // If unsat, the postcondition is valid given precondition + body.
         self.assert(&format!("(and {} (not {}))", precond, postcond));
 
         Ok(self.generate())
@@ -748,6 +776,109 @@ mod tests {
         let generator = CirSmtGenerator::new();
         assert_eq!(generator.translate_proposition(&Proposition::True).unwrap(), "true");
         assert_eq!(generator.translate_proposition(&Proposition::False).unwrap(), "false");
+    }
+
+    /// Cycle 2487 (G.1) regression: verification query MUST constrain
+    /// `ret_name` to the function body. Without this, `ret_name` is a
+    /// free variable and Z3 can satisfy `(and pre (not post))` by picking
+    /// any model — producing false counterexamples (e.g. the stdlib
+    /// `clamp(x=0, lo=1, hi=0) ret=0` issue documented in cycle-2477.md).
+    #[test]
+    fn test_verification_query_includes_body_constraint() {
+        use crate::cir::*;
+        let mut g = CirSmtGenerator::new();
+        // f(x) -> r where pre x > 0, post r > 0, body = x + 1.
+        // Without the body assertion the ret variable `r` is unbound and
+        // Z3 would find a counterexample r = 0 satisfying (and (> x 0)
+        // (not (> r 0))). With the body assertion `(= r (+ x 1))`, no
+        // counterexample exists.
+        let func = CirFunction {
+            name: "test_g1".to_string(),
+            type_params: vec![],
+            params: vec![CirParam {
+                name: "x".to_string(),
+                ty: CirType::I64,
+                constraints: vec![],
+            }],
+            ret_ty: CirType::I64,
+            ret_name: "r".to_string(),
+            preconditions: vec![NamedProposition {
+                name: None,
+                proposition: Proposition::Compare {
+                    lhs: Box::new(CirExpr::Var("x".to_string())),
+                    op: CompareOp::Gt,
+                    rhs: Box::new(CirExpr::IntLit(0)),
+                },
+            }],
+            postconditions: vec![NamedProposition {
+                name: None,
+                proposition: Proposition::Compare {
+                    lhs: Box::new(CirExpr::Var("r".to_string())),
+                    op: CompareOp::Gt,
+                    rhs: Box::new(CirExpr::IntLit(0)),
+                },
+            }],
+            loop_invariants: vec![],
+            effects: EffectSet::pure(),
+            body: CirExpr::BinOp {
+                op: BinOp::Add,
+                lhs: Box::new(CirExpr::Var("x".to_string())),
+                rhs: Box::new(CirExpr::IntLit(1)),
+            },
+        };
+        let script = g.generate_verification_query(&func).unwrap();
+        // The body assertion must be present and bind r to the body.
+        assert!(
+            script.contains("(assert (= r (+ x 1)))"),
+            "expected body constraint for ret_name `r` in script:\n{}",
+            script
+        );
+        // The pre/(not post) assertion must remain.
+        assert!(
+            script.contains("(assert (and (> x 0) (not (> r 0))))"),
+            "expected pre/not-post assertion in script:\n{}",
+            script
+        );
+    }
+
+    /// Cycle 2487 (G.1) regression: a body that cannot be translated to
+    /// pure SMT (e.g. contains a Block or while-loop) MUST yield an error
+    /// — silently skipping the body assertion previously produced false
+    /// counterexamples. Better to mark the function Unknown than verify
+    /// or refute unsoundly.
+    #[test]
+    fn test_verification_query_errors_on_unsupported_body() {
+        use crate::cir::*;
+        let mut g = CirSmtGenerator::new();
+        let func = CirFunction {
+            name: "test_g1_block".to_string(),
+            type_params: vec![],
+            params: vec![CirParam {
+                name: "x".to_string(),
+                ty: CirType::I64,
+                constraints: vec![],
+            }],
+            ret_ty: CirType::I64,
+            ret_name: "r".to_string(),
+            preconditions: vec![],
+            postconditions: vec![NamedProposition {
+                name: None,
+                proposition: Proposition::Compare {
+                    lhs: Box::new(CirExpr::Var("r".to_string())),
+                    op: CompareOp::Ge,
+                    rhs: Box::new(CirExpr::IntLit(0)),
+                },
+            }],
+            loop_invariants: vec![],
+            effects: EffectSet::pure(),
+            body: CirExpr::Block(vec![]), // Block is unsupported in pure SMT
+        };
+        let result = g.generate_verification_query(&func);
+        assert!(
+            result.is_err(),
+            "expected error for untranslatable body, got Ok({:?})",
+            result.ok()
+        );
     }
 
     #[test]
