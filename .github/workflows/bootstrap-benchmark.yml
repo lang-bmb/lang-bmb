@@ -66,16 +66,11 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # Cycle 2488: Swatinem/rust-cache@v2 — see ci.yml for rationale.
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          shared-key: "bootstrap-benchmark"
 
       - name: Build (release)
         run: cargo build --release
@@ -113,16 +108,11 @@ jobs:
           echo "LLVM_SYS_211_PREFIX=/usr/lib/llvm-21" >> $GITHUB_ENV
           echo "/usr/lib/llvm-21/bin" >> $GITHUB_PATH
 
+      # Cycle 2488: Swatinem/rust-cache@v2 — see ci.yml for rationale.
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ubuntu-cargo-llvm-${{ hashFiles('**/Cargo.lock') }}
+          shared-key: "bootstrap-benchmark-llvm"
 
       - name: Build BMB with LLVM
         run: cargo build --release --features llvm
@@ -204,16 +194,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bc
 
+      # Cycle 2488: Swatinem/rust-cache@v2 — see ci.yml for rationale.
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ubuntu-cargo-llvm-${{ hashFiles('**/Cargo.lock') }}
+          shared-key: "bootstrap-benchmark-llvm"
 
       - name: Build BMB with LLVM
         run: cargo build --release --features llvm

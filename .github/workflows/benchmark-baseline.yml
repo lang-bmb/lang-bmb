@@ -59,16 +59,11 @@ jobs:
       - name: Install dependencies
         run: sudo apt-get install -y bc
 
+      # Cycle 2488: Swatinem/rust-cache@v2 — see ci.yml for rationale.
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ubuntu-cargo-llvm-${{ hashFiles('**/Cargo.lock') }}
+          shared-key: "benchmark-baseline-llvm"
 
       - name: Build BMB with LLVM
         run: cargo build --release --features llvm

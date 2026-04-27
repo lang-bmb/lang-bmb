@@ -96,16 +96,11 @@ jobs:
       - name: Install Python build tooling
         run: pip install --upgrade pip setuptools wheel build twine
 
+      # Cycle 2488: Swatinem/rust-cache@v2 — see ci.yml for rationale.
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-pypi-${{ hashFiles('**/Cargo.lock') }}
+          shared-key: "pypi-publish"
 
       - name: Setup MinGW (Windows)
         if: matrix.llvm_setup == 'mingw'

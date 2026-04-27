@@ -54,16 +54,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bc valgrind linux-tools-common linux-tools-generic
 
+      # Cycle 2488: Swatinem/rust-cache@v2 — see ci.yml for rationale.
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ubuntu-cargo-llvm-${{ hashFiles('**/Cargo.lock') }}
+          shared-key: "nightly-bench-llvm"
 
       - name: Build BMB with LLVM
         run: cargo build --release --features llvm
