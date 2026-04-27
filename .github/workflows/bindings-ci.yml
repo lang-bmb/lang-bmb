@@ -12,6 +12,15 @@ on:
       - 'ecosystem/test_*.py'
       - 'scripts/build-wheel.sh'
       - '.github/workflows/bindings-ci.yml'
+      # Cycle 2484: bindings build by invoking the BMB compiler on .bmb
+      # sources, then linking against the runtime archive. Compiler-side
+      # codegen/build/runtime/stdlib changes therefore can break bindings
+      # without touching ecosystem/. Without these entries, B'.1-style
+      # codegen fixes never trigger Bindings CI for empirical verification.
+      - 'bmb/src/codegen/**'
+      - 'bmb/src/build/**'
+      - 'bmb/runtime/**'
+      - 'stdlib/**'
   pull_request:
     branches: [main]
     paths:
@@ -22,6 +31,10 @@ on:
       - 'ecosystem/build_all.py'
       - 'ecosystem/test_*.py'
       - 'scripts/build-wheel.sh'
+      - 'bmb/src/codegen/**'
+      - 'bmb/src/build/**'
+      - 'bmb/runtime/**'
+      - 'stdlib/**'
   # Allow manual trigger — useful when path filter doesn't match (e.g.
   # submodule pointer changes, compiler-side fixes that affect bindings).
   workflow_dispatch:
