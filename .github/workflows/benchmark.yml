@@ -16,11 +16,24 @@ on:
         required: false
         default: 'all'
   # Run on PRs that touch performance-critical files
+  # Cycle 2485 audit: align with benchmark-baseline.yml — cir/pir feed
+  # verified facts into MIR optimizer; build/runtime/stdlib changes shift
+  # measured numbers; derive/preprocessor change emitted code shape.
   pull_request:
     paths:
       - 'bmb/src/codegen/**'
       - 'bmb/src/mir/**'
+      - 'bmb/src/build/**'
+      - 'bmb/src/cir/**'
+      - 'bmb/src/pir/**'
+      - 'bmb/src/derive/**'
+      - 'bmb/src/preprocessor/**'
+      - 'bmb/runtime/**'
+      - 'stdlib/**'
       - 'ecosystem/benchmark-bmb/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'bmb/Cargo.toml'
 
 # Cycle 2480: cron + PR duplicates cancel cleanly; manual dispatch
 # also respects cancel semantics because each run_id is unique.

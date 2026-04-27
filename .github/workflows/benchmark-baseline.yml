@@ -7,12 +7,22 @@ on:
       # Cycle 2480: narrow from 'bmb/src/**' to only perf-affecting
       # modules. Parser / LSP / test harness changes don't shift
       # benchmark numbers and don't need a fresh baseline.
+      # Cycle 2485 audit: cir/pir feed verified facts into MIR, derive
+      # generates code, preprocessor expands macros — all perf-affecting.
+      # Cargo manifests touch dep versions which can shift baselines.
       - 'bmb/src/codegen/**'
       - 'bmb/src/mir/**'
       - 'bmb/src/build/**'
+      - 'bmb/src/cir/**'
+      - 'bmb/src/pir/**'
+      - 'bmb/src/derive/**'
+      - 'bmb/src/preprocessor/**'
       - 'bmb/runtime/**'
       - 'stdlib/**'
       - 'ecosystem/benchmark-bmb/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'bmb/Cargo.toml'
       - '.github/workflows/benchmark-baseline.yml'
   workflow_dispatch:
 

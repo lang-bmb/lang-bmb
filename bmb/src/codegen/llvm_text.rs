@@ -3120,7 +3120,9 @@ impl TextCodeGen {
                     };
                     let arg_val = match &args[0] {
                         Operand::Place(p) if local_names.contains(&p.name) => {
-                            let load_name = format!("{}.sqrt.arg", p.name);
+                            // Cycle 2486: uniquify so repeated sqrt loads from the same
+                            // raw MIR local don't collide on `%X.sqrt.arg`.
+                            let load_name = self.unique_name(&format!("{}.sqrt.arg", p.name), name_counts);
                             writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, arg_ty, p.name)?;
                             format!("%{}", load_name)
                         }
@@ -3128,7 +3130,8 @@ impl TextCodeGen {
                     };
                     // Convert i64 to f64 if needed
                     let f64_val = if arg_ty == "i64" {
-                        let conv_name = format!("{}.sqrt.conv", dest.as_ref().map(|d| d.name.as_str()).unwrap_or("tmp"));
+                        let conv_base = dest.as_ref().map(|d| d.name.as_str()).unwrap_or("tmp");
+                        let conv_name = self.unique_name(&format!("{}.sqrt.conv", conv_base), name_counts);
                         writeln!(out, "  %{} = sitofp i64 {} to double", conv_name, arg_val)?;
                         format!("%{}", conv_name)
                     } else {
@@ -3136,7 +3139,7 @@ impl TextCodeGen {
                     };
                     if let Some(d) = dest {
                         if local_names.contains(&d.name) {
-                            let temp_name = format!("{}.sqrt", d.name);
+                            let temp_name = self.unique_name(&format!("{}.sqrt", d.name), name_counts);
                             writeln!(out, "  %{} = call double @llvm.sqrt.f64(double {})", temp_name, f64_val)?;
                             writeln!(out, "  store double %{}, ptr %{}.addr", temp_name, d.name)?;
                         } else {
@@ -3165,14 +3168,16 @@ impl TextCodeGen {
                     };
                     let arg_val = match &args[0] {
                         Operand::Place(p) if local_names.contains(&p.name) => {
-                            let load_name = format!("{}.{}.arg", p.name, fn_name);
+                            // Cycle 2486: uniquify (see sqrt fix above for rationale).
+                            let load_name = self.unique_name(&format!("{}.{}.arg", p.name, fn_name), name_counts);
                             writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, arg_ty, p.name)?;
                             format!("%{}", load_name)
                         }
                         _ => self.format_operand_with_strings(&args[0], string_table),
                     };
                     let f64_val = if arg_ty == "i64" {
-                        let conv_name = format!("{}.{}.conv", dest.as_ref().map(|d| d.name.as_str()).unwrap_or("tmp"), fn_name);
+                        let conv_base = dest.as_ref().map(|d| d.name.as_str()).unwrap_or("tmp");
+                        let conv_name = self.unique_name(&format!("{}.{}.conv", conv_base, fn_name), name_counts);
                         writeln!(out, "  %{} = sitofp i64 {} to double", conv_name, arg_val)?;
                         format!("%{}", conv_name)
                     } else {
@@ -3180,7 +3185,7 @@ impl TextCodeGen {
                     };
                     if let Some(d) = dest {
                         if local_names.contains(&d.name) {
-                            let temp_name = format!("{}.{}", d.name, fn_name);
+                            let temp_name = self.unique_name(&format!("{}.{}", d.name, fn_name), name_counts);
                             writeln!(out, "  %{} = call double @{}(double {})", temp_name, intrinsic, f64_val)?;
                             writeln!(out, "  store double %{}, ptr %{}.addr", temp_name, d.name)?;
                         } else {
@@ -3206,10 +3211,12 @@ impl TextCodeGen {
                     }
                 {
                     let d = dest.as_ref().expect("fma_* has a return value");
+                    // Cycle 2486: uniquify temp once; derive arg load names from it.
+                    let temp = self.unique_name(&format!("{}.fma", d.name), name_counts);
                     let load_vec = |opd: &Operand, suffix: &str, out: &mut String| -> TextCodeGenResult<String> {
                         match opd {
                             Operand::Place(p) if local_names.contains(&p.name) => {
-                                let n = format!("{}.{}.{}.fma", d.name, p.name, suffix);
+                                let n = format!("{}.{}.{}", temp, p.name, suffix);
                                 writeln!(out, "  %{} = load {}, ptr %{}.addr, align {}", n, vec_ty, p.name, align)?;
                                 Ok(format!("%{}", n))
                             }
@@ -3220,7 +3227,6 @@ impl TextCodeGen {
                     let a = load_vec(&args[0], "a", out)?;
                     let b = load_vec(&args[1], "b", out)?;
                     let c = load_vec(&args[2], "c", out)?;
-                    let temp = format!("{}.fma", d.name);
                     writeln!(out, "  %{} = call {} @{}({} {}, {} {}, {} {})", temp, vec_ty, intrinsic, vec_ty, a, vec_ty, b, vec_ty, c)?;
                     if local_names.contains(&d.name) {
                         writeln!(out, "  store {} %{}, ptr %{}.addr, align {}", vec_ty, temp, d.name, align)?;
@@ -3256,10 +3262,12 @@ impl TextCodeGen {
                     }
                 {
                     let d = dest.as_ref().expect("min/max_* has a return value");
+                    // Cycle 2486: uniquify temp once; derive arg load names from it.
+                    let temp = self.unique_name(&format!("{}.mm", d.name), name_counts);
                     let load_vec = |opd: &Operand, suffix: &str, out: &mut String| -> TextCodeGenResult<String> {
                         match opd {
                             Operand::Place(p) if local_names.contains(&p.name) => {
-                                let n = format!("{}.{}.{}.mm", d.name, p.name, suffix);
+                                let n = format!("{}.{}.{}", temp, p.name, suffix);
                                 writeln!(out, "  %{} = load {}, ptr %{}.addr, align {}", n, vec_ty, p.name, align)?;
                                 Ok(format!("%{}", n))
                             }
@@ -3269,7 +3277,6 @@ impl TextCodeGen {
                     };
                     let a = load_vec(&args[0], "a", out)?;
                     let b = load_vec(&args[1], "b", out)?;
-                    let temp = format!("{}.mm", d.name);
                     writeln!(out, "  %{} = call {} @{}({} {}, {} {})", temp, vec_ty, intrinsic, vec_ty, a, vec_ty, b)?;
                     if local_names.contains(&d.name) {
                         writeln!(out, "  store {} %{}, ptr %{}.addr, align {}", vec_ty, temp, d.name, align)?;
@@ -3350,10 +3357,12 @@ impl TextCodeGen {
                 {
                     let d = dest.as_ref().expect("cmp_* has a return value");
                     let mask_ty = format!("<{} x i1>", lanes);
+                    // Cycle 2486: uniquify temp once; derive arg load names from it.
+                    let temp = self.unique_name(&format!("{}.cmp", d.name), name_counts);
                     let load_vec = |opd: &Operand, suffix: &str, out: &mut String| -> TextCodeGenResult<String> {
                         match opd {
                             Operand::Place(p) if local_names.contains(&p.name) => {
-                                let n = format!("{}.{}.{}.cmp", d.name, p.name, suffix);
+                                let n = format!("{}.{}.{}", temp, p.name, suffix);
                                 writeln!(out, "  %{} = load {}, ptr %{}.addr, align {}", n, vec_ty, p.name, vec_align)?;
                                 Ok(format!("%{}", n))
                             }
@@ -3363,7 +3372,6 @@ impl TextCodeGen {
                     };
                     let a = load_vec(&args[0], "a", out)?;
                     let b = load_vec(&args[1], "b", out)?;
-                    let temp = format!("{}.cmp", d.name);
                     writeln!(out, "  %{} = {} {} {} {}, {}", temp, op_kind, predicate, vec_ty, a, b)?;
                     if local_names.contains(&d.name) {
                         // `<N x i1>` is byte-aligned in memory; align 1 is correct.
@@ -3391,10 +3399,12 @@ impl TextCodeGen {
                 {
                     let d = dest.as_ref().expect("blend_* has a return value");
                     let mask_ty = format!("<{} x i1>", lanes);
+                    // Cycle 2486: uniquify temp once; derive arg load names from it.
+                    let temp = self.unique_name(&format!("{}.bld", d.name), name_counts);
                     let load_mask = |opd: &Operand, suffix: &str, out: &mut String| -> TextCodeGenResult<String> {
                         match opd {
                             Operand::Place(p) if local_names.contains(&p.name) => {
-                                let n = format!("{}.{}.{}.bld", d.name, p.name, suffix);
+                                let n = format!("{}.{}.{}", temp, p.name, suffix);
                                 writeln!(out, "  %{} = load {}, ptr %{}.addr, align 1", n, mask_ty, p.name)?;
                                 Ok(format!("%{}", n))
                             }
@@ -3405,7 +3415,7 @@ impl TextCodeGen {
                     let load_vec = |opd: &Operand, suffix: &str, out: &mut String| -> TextCodeGenResult<String> {
                         match opd {
                             Operand::Place(p) if local_names.contains(&p.name) => {
-                                let n = format!("{}.{}.{}.bld", d.name, p.name, suffix);
+                                let n = format!("{}.{}.{}", temp, p.name, suffix);
                                 writeln!(out, "  %{} = load {}, ptr %{}.addr, align {}", n, vec_ty, p.name, vec_align)?;
                                 Ok(format!("%{}", n))
                             }
@@ -3416,7 +3426,6 @@ impl TextCodeGen {
                     let m = load_mask(&args[0], "m", out)?;
                     let a = load_vec(&args[1], "a", out)?;
                     let b = load_vec(&args[2], "b", out)?;
-                    let temp = format!("{}.bld", d.name);
                     writeln!(out, "  %{} = select {} {}, {} {}, {} {}", temp, mask_ty, m, vec_ty, a, vec_ty, b)?;
                     if local_names.contains(&d.name) {
                         writeln!(out, "  store {} %{}, ptr %{}.addr, align {}", vec_ty, temp, d.name, vec_align)?;
@@ -3441,10 +3450,12 @@ impl TextCodeGen {
                 {
                     let _ = lanes; // currently encoded in mask_ty/intrinsic
                     let d = dest.as_ref().expect("mask_any/all_* has a return value");
+                    // Cycle 2486: uniquify temp once; derive arg load name from it.
+                    let temp = self.unique_name(&format!("{}.mr", d.name), name_counts);
                     let load_mask = |opd: &Operand, out: &mut String| -> TextCodeGenResult<String> {
                         match opd {
                             Operand::Place(p) if local_names.contains(&p.name) => {
-                                let n = format!("{}.{}.mr", d.name, p.name);
+                                let n = format!("{}.{}", temp, p.name);
                                 writeln!(out, "  %{} = load {}, ptr %{}.addr, align 1", n, mask_ty, p.name)?;
                                 Ok(format!("%{}", n))
                             }
@@ -3453,7 +3464,6 @@ impl TextCodeGen {
                         }
                     };
                     let m = load_mask(&args[0], out)?;
-                    let temp = format!("{}.mr", d.name);
                     writeln!(out, "  %{} = call i1 @{}({} {})", temp, intrinsic, mask_ty, m)?;
                     if local_names.contains(&d.name) {
                         // Bool locals are stored as i1 with align 1.
@@ -3590,11 +3600,12 @@ impl TextCodeGen {
                         } else {
                             format!("{} zeroinitializer", vec_ty)
                         };
-                        // Load the input vector operand.
+                        // Cycle 2486: uniquify result_name once; derive arg load names from it.
+                        let result_name = self.unique_name(&format!("{}.shf", d.name), name_counts);
                         let load_vec = |opd: &Operand, out: &mut String| -> TextCodeGenResult<String> {
                             match opd {
                                 Operand::Place(p) if local_names.contains(&p.name) => {
-                                    let ln = format!("{}.{}.shf", d.name, p.name);
+                                    let ln = format!("{}.{}", result_name, p.name);
                                     writeln!(out, "  %{} = load {}, ptr %{}.addr, align {}", ln, vec_ty, p.name, vec_align)?;
                                     Ok(format!("%{}", ln))
                                 }
@@ -3603,7 +3614,6 @@ impl TextCodeGen {
                             }
                         };
                         let a = load_vec(&args[0], out)?;
-                        let result_name = format!("{}.shf", d.name);
                         writeln!(out, "  %{} = shufflevector {} {}, {}, {}", result_name, vec_ty, a, second_operand, mask_str)?;
                         if local_names.contains(&d.name) {
                             writeln!(out, "  store {} %{}, ptr %{}.addr, align {}", vec_ty, result_name, d.name, vec_align)?;
@@ -3716,10 +3726,12 @@ impl TextCodeGen {
                             _ => unreachable!(),
                         };
                         let mask_str = format!("<{} x i32> <{}>", n, mask_indices.join(", "));
+                        // Cycle 2486: uniquify result_name once; derive arg load names from it.
+                        let result_name = self.unique_name(&format!("{}.shf2", d.name), name_counts);
                         let load_vec = |opd: &Operand, suffix: &str, out: &mut String| -> TextCodeGenResult<String> {
                             match opd {
                                 Operand::Place(p) if local_names.contains(&p.name) => {
-                                    let ln = format!("{}.{}.{}.shf2", d.name, p.name, suffix);
+                                    let ln = format!("{}.{}.{}", result_name, p.name, suffix);
                                     writeln!(out, "  %{} = load {}, ptr %{}.addr, align {}", ln, vec_ty, p.name, vec_align)?;
                                     Ok(format!("%{}", ln))
                                 }
@@ -3729,7 +3741,6 @@ impl TextCodeGen {
                         };
                         let a = load_vec(&args[0], "a", out)?;
                         let b = load_vec(&args[1], "b", out)?;
-                        let result_name = format!("{}.shf2", d.name);
                         writeln!(out, "  %{} = shufflevector {} {}, {} {}, {}", result_name, vec_ty, a, vec_ty, b, mask_str)?;
                         if local_names.contains(&d.name) {
                             writeln!(out, "  store {} %{}, ptr %{}.addr, align {}", vec_ty, result_name, d.name, vec_align)?;
@@ -3874,14 +3885,16 @@ impl TextCodeGen {
                     }
                 {
                     let dest_tag = dest.as_ref().map(|d| d.name.clone()).unwrap_or_else(|| "splat".to_string());
+                    // Cycle 2486: uniquify the splat-scoped prefix so repeated splat calls
+                    // sharing arg/dest locals don't collide on `%X.Y.splat.arg|conv`.
+                    let splat_prefix = self.unique_name(&format!("{}.splat", dest_tag), name_counts);
                     let arg_val = match &args[0] {
                         Operand::Place(p) if local_names.contains(&p.name) => {
-                            let load_name = format!("{}.{}.splat.arg", dest_tag, p.name);
+                            let load_name = format!("{}.{}.arg", splat_prefix, p.name);
                             let load_ty = place_types.get(&p.name).copied().unwrap_or(scalar_ty);
                             writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, load_ty, p.name)?;
-                            // Convert if element type differs from load type
                             if load_ty != scalar_ty {
-                                let conv = format!("{}.{}.splat.conv", dest_tag, p.name);
+                                let conv = format!("{}.{}.conv", splat_prefix, p.name);
                                 match (load_ty, scalar_ty) {
                                     ("i64", "i32") => writeln!(out, "  %{} = trunc i64 %{} to i32", conv, load_name)?,
                                     ("i32", "i64") => writeln!(out, "  %{} = sext i32 %{} to i64", conv, load_name)?,
@@ -3897,8 +3910,8 @@ impl TextCodeGen {
                     };
                     if let Some(d) = dest {
                         // Emit insertelement at lane 0 + shufflevector broadcast
-                        let ie_name = format!("{}.splat.ie", d.name);
-                        let sv_name = format!("{}.splat", d.name);
+                        let ie_name = format!("{}.ie", splat_prefix);
+                        let sv_name = splat_prefix.clone();
                         writeln!(out, "  %{} = insertelement {} poison, {} {}, i64 0", ie_name, vec_ty, scalar_ty, arg_val)?;
                         writeln!(out, "  %{} = shufflevector {} %{}, {} poison, <{} x i32> zeroinitializer", sv_name, vec_ty, ie_name, vec_ty, lanes)?;
                         if local_names.contains(&d.name) {
@@ -3933,9 +3946,12 @@ impl TextCodeGen {
                         *c += 1;
                         t
                     });
+                    // Cycle 2486: uniquify the hsum-scoped prefix so repeated hsum calls
+                    // sharing arg/dest locals don't collide.
+                    let hsum_prefix = self.unique_name(&format!("{}.hsum", dest_tag), name_counts);
                     let arg_val = match &args[0] {
                         Operand::Place(p) if local_names.contains(&p.name) => {
-                            let load_name = format!("{}.{}.hsum.arg", dest_tag, p.name);
+                            let load_name = format!("{}.{}.arg", hsum_prefix, p.name);
                             writeln!(out, "  %{} = load {}, ptr %{}.addr, align {}", load_name, vec_ty, p.name, align)?;
                             format!("%{}", load_name)
                         }
@@ -3946,7 +3962,7 @@ impl TextCodeGen {
                     let is_float = scalar_ty == "double" || scalar_ty == "float";
                     if let Some(d) = dest {
                         if local_names.contains(&d.name) {
-                            let temp_name = format!("{}.hsum", d.name);
+                            let temp_name = hsum_prefix.clone();
                             if is_float {
                                 writeln!(out, "  %{} = call {} @{}({} 0.0, {} {})", temp_name, scalar_ty, intrinsic, scalar_ty, vec_ty, arg_val)?;
                             } else {
@@ -3954,7 +3970,7 @@ impl TextCodeGen {
                             }
                             let dest_store_ty = place_types.get(&d.name).copied().unwrap_or(scalar_ty);
                             if dest_store_ty == "i64" && scalar_ty == "i32" {
-                                let sext = format!("{}.hsum.sext", d.name);
+                                let sext = format!("{}.sext", hsum_prefix);
                                 writeln!(out, "  %{} = sext i32 %{} to i64", sext, temp_name)?;
                                 writeln!(out, "  store i64 %{}, ptr %{}.addr", sext, d.name)?;
                             } else {
@@ -3974,6 +3990,10 @@ impl TextCodeGen {
 
                 // v0.97.1: pow_f64(base, exp) -> f64 via LLVM intrinsic
                 if fn_name == "pow_f64" && args.len() == 2 {
+                    // Cycle 2486: uniquify the pow-scoped prefix so repeated pow calls
+                    // sharing arg/dest locals don't collide on derived names.
+                    let pow_dest = dest.as_ref().map(|d| d.name.as_str()).unwrap_or("tmp");
+                    let pow_prefix = self.unique_name(&format!("{}.pow", pow_dest), name_counts);
                     let arg0_ty = match &args[0] {
                         Operand::Constant(c) => self.constant_type(c),
                         Operand::Place(p) => place_types.get(&p.name).copied()
@@ -3981,7 +4001,7 @@ impl TextCodeGen {
                     };
                     let arg0_val = match &args[0] {
                         Operand::Place(p) if local_names.contains(&p.name) => {
-                            let load_name = format!("{}.pow.arg0", p.name);
+                            let load_name = format!("{}.{}.arg0", pow_prefix, p.name);
                             writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, arg0_ty, p.name)?;
                             format!("%{}", load_name)
                         }
@@ -3994,25 +4014,25 @@ impl TextCodeGen {
                     };
                     let arg1_val = match &args[1] {
                         Operand::Place(p) if local_names.contains(&p.name) => {
-                            let load_name = format!("{}.pow.arg1", p.name);
+                            let load_name = format!("{}.{}.arg1", pow_prefix, p.name);
                             writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, arg1_ty, p.name)?;
                             format!("%{}", load_name)
                         }
                         _ => self.format_operand_with_strings(&args[1], string_table),
                     };
                     let f64_val0 = if arg0_ty == "i64" {
-                        let conv = format!("{}.pow.conv0", dest.as_ref().map(|d| d.name.as_str()).unwrap_or("tmp"));
+                        let conv = format!("{}.conv0", pow_prefix);
                         writeln!(out, "  %{} = sitofp i64 {} to double", conv, arg0_val)?;
                         format!("%{}", conv)
                     } else { arg0_val };
                     let f64_val1 = if arg1_ty == "i64" {
-                        let conv = format!("{}.pow.conv1", dest.as_ref().map(|d| d.name.as_str()).unwrap_or("tmp"));
+                        let conv = format!("{}.conv1", pow_prefix);
                         writeln!(out, "  %{} = sitofp i64 {} to double", conv, arg1_val)?;
                         format!("%{}", conv)
                     } else { arg1_val };
                     if let Some(d) = dest {
                         if local_names.contains(&d.name) {
-                            let temp_name = format!("{}.pow", d.name);
+                            let temp_name = pow_prefix.clone();
                             writeln!(out, "  %{} = call double @llvm.pow.f64(double {}, double {})", temp_name, f64_val0, f64_val1)?;
                             writeln!(out, "  store double %{}, ptr %{}.addr", temp_name, d.name)?;
                         } else {

@@ -18,6 +18,8 @@ on:
       - 'scripts/full-cycle.sh'
       - 'scripts/compare.py'
       - 'ecosystem/benchmark-bmb/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
       - '.github/workflows/bootstrap-benchmark.yml'
   push:
     branches: [main]
@@ -31,6 +33,8 @@ on:
       - 'scripts/full-cycle.sh'
       - 'scripts/compare.py'
       - 'ecosystem/benchmark-bmb/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
       - '.github/workflows/bootstrap-benchmark.yml'
   # Manual trigger when path-filter misses an intended case.
   workflow_dispatch:
