@@ -18,7 +18,9 @@ use std::path::PathBuf;
 
 #[cfg(feature = "llvm")]
 use std::path::Path;
-#[cfg(feature = "llvm")]
+// Cycle 2492: dropped `feature = "llvm"` from Command import — text backend
+// also calls `linker_targets_mingw`, which probes via `clang --version`.
+#[cfg(any(feature = "llvm", target_os = "windows"))]
 use std::process::Command;
 
 use std::collections::HashSet;
@@ -943,6 +945,15 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         // Find runtime
         let runtime_path = find_runtime_c().map_err(BuildError::Linker)?;
 
+        // Cycle 2492: probe clang's default ABI once. KyleMayes LLVM 21 on
+        // `windows-latest` is MSVC clang; MSYS2/UCRT64 clang is MinGW.
+        // MinGW-only flags (`--target=x86_64-pc-windows-gnu`,
+        // `-static-libgcc`) must be skipped on MSVC clang to avoid
+        // unused-arg warnings + COFF ABI mismatch (LNK4217 between
+        // MinGW-target obj and libucrt.lib).
+        #[cfg(target_os = "windows")]
+        let clang_is_mingw = linker_targets_mingw(&clang);
+
         if config.verbose {
             println!("  Using clang: {}", clang);
             println!("  Using runtime: {}", runtime_path.display());
@@ -969,9 +980,15 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         if matches!(config.opt_level, OptLevel::Release | OptLevel::Aggressive) {
             cmd.arg("-march=native");
         }
-        // v0.96.40: Use MinGW target on Windows to avoid MSVC header conflicts
+        // v0.96.40: Use MinGW target on Windows to avoid MSVC header conflicts.
+        // Cycle 2492: only when the active clang IS a MinGW driver — MSVC
+        // clang on `windows-latest` has no MinGW headers/libs, and forcing
+        // a windows-gnu target produces COFF objs that mismatch libucrt.lib
+        // at link time (LNK4217).
         #[cfg(target_os = "windows")]
-        cmd.arg("--target=x86_64-pc-windows-gnu");
+        if clang_is_mingw {
+            cmd.arg("--target=x86_64-pc-windows-gnu");
+        }
 
         let output_result = cmd.output()?;
         if !output_result.status.success() {
@@ -992,9 +1009,12 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         if matches!(config.opt_level, OptLevel::Release | OptLevel::Aggressive) {
             cmd.arg("-march=native");
         }
-        // v0.96.40: Use MinGW target on Windows to avoid MSVC header conflicts
+        // v0.96.40: Use MinGW target on Windows to avoid MSVC header conflicts.
+        // Cycle 2492: gate on actual clang ABI — see analogous comment above.
         #[cfg(target_os = "windows")]
-        cmd.arg("--target=x86_64-pc-windows-gnu");
+        if clang_is_mingw {
+            cmd.arg("--target=x86_64-pc-windows-gnu");
+        }
 
         let output_result = cmd.output()?;
         if !output_result.status.success() {
@@ -1009,8 +1029,11 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
             let mut cmd = Command::new(&clang);
             cmd.args([opt_flag, "-ffunction-sections", "-fdata-sections", "-c",
                        path_str(&event_loop_src)?, "-o", path_str(&event_loop_obj)?]);
+            // Cycle 2492: gate on actual clang ABI.
             #[cfg(target_os = "windows")]
-            cmd.arg("--target=x86_64-pc-windows-gnu");
+            if clang_is_mingw {
+                cmd.arg("--target=x86_64-pc-windows-gnu");
+            }
             let output_result = cmd.output()?;
             if !output_result.status.success() {
                 let stderr = String::from_utf8_lossy(&output_result.stderr);
@@ -1082,8 +1105,15 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
             // Windows machines without MSYS2. Adds ~60 KB per binary;
             // remaining DLL deps (kernel32, ws2_32, api-ms-win-crt-*) are
             // Windows 10+ system-provided UCRT forwarders.
+            // Cycle 2492: gate on actual clang ABI — MSVC clang on
+            // `windows-latest` flags `-static-libgcc` as
+            // `-Wunused-command-line-argument` and `-static` is irrelevant
+            // when linking against libucrt.lib. Mirrors the gate Cycle 2482
+            // applied to the LLVM (`link_native`) path.
             #[cfg(target_os = "windows")]
-            cmd.args(["-static", "-static-libgcc"]);
+            if clang_is_mingw {
+                cmd.args(["-static", "-static-libgcc"]);
+            }
 
             if config.verbose {
                 println!("  Linking with {}...", clang);
@@ -1448,7 +1478,11 @@ fn find_linker() -> BuildResult<String> {
 /// depends on the binary's default target and must be probed at runtime.
 ///
 /// Pure (no I/O) — directly unit-testable without a real toolchain.
-#[cfg(all(feature = "llvm", target_os = "windows"))]
+//
+// Cycle 2492: dropped `feature = "llvm"` — the text backend (no llvm
+// feature) needs the same gate to avoid passing MinGW-only flags to MSVC
+// clang on `windows-latest` runners. Helper has no LLVM crate dependency.
+#[cfg(target_os = "windows")]
 fn linker_kind_by_name(linker: &str) -> Option<bool> {
     let lower = linker.to_ascii_lowercase();
     if lower == "gcc"
@@ -1474,7 +1508,9 @@ fn linker_kind_by_name(linker: &str) -> Option<bool> {
 /// `*-mingw*` default target; `false` for MSVC clang, `lld-link`, MSVC
 /// `link.exe`, etc. Used to gate emission of MinGW-only flags such as
 /// `-static-libgcc`, which MSVC clang flags as `-Wunused-command-line-argument`.
-#[cfg(all(feature = "llvm", target_os = "windows"))]
+//
+// Cycle 2492: dropped `feature = "llvm"` — also called from text backend.
+#[cfg(target_os = "windows")]
 fn linker_targets_mingw(linker: &str) -> bool {
     if let Some(kind) = linker_kind_by_name(linker) {
         return kind;
@@ -2087,7 +2123,11 @@ mod tests {
     /// Pull MinGW gcc out of the heuristic path so a regression on
     /// `linker_targets_mingw` (which gates `-static-libgcc` emission) is
     /// caught without needing a real compiler in the test environment.
-    #[cfg(all(feature = "llvm", target_os = "windows"))]
+    //
+    // Cycle 2492: dropped `feature = "llvm"` from the cfg — text backend
+    // build (no llvm feature) now uses the same gate, so the test must
+    // run there too.
+    #[cfg(target_os = "windows")]
     #[test]
     fn test_linker_kind_by_name_classifies_known_drivers() {
         // gcc — definitely MinGW (Windows has no MSVC `gcc` driver)
