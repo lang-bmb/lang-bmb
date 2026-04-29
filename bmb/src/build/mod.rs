@@ -588,8 +588,18 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
             }
             VerificationMode::Check => {
                 // Strict mode: verify and fail on any verification failure
+                // Cycle 2498: BMB_VERIFY_DEBUG=1 dumps the generated SMT
+                // script for each verified function to stderr — used to
+                // isolate counterexample mismatches where the CIR-level
+                // generator looks correct in isolation but the live
+                // pipeline produces different SMT (e.g., the macOS
+                // Bindings clamp(lo=2, hi=0) report from Cycle 2493).
+                let verify_debug = std::env::var("BMB_VERIFY_DEBUG")
+                    .map(|v| !v.is_empty() && v != "0")
+                    .unwrap_or(false);
                 let verifier = CirVerifier::new()
-                    .with_timeout(config.verification_timeout);
+                    .with_timeout(config.verification_timeout)
+                    .with_verbose(verify_debug);
 
                 if !verifier.is_solver_available() {
                     // v0.90.45: Sound fallback — no proof-guided optimizations without solver
@@ -629,8 +639,13 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
             }
             VerificationMode::Warn => {
                 // Warning mode: verify but continue on failure
+                // Cycle 2498: BMB_VERIFY_DEBUG=1 — see Check arm above.
+                let verify_debug = std::env::var("BMB_VERIFY_DEBUG")
+                    .map(|v| !v.is_empty() && v != "0")
+                    .unwrap_or(false);
                 let verifier = CirVerifier::new()
-                    .with_timeout(config.verification_timeout);
+                    .with_timeout(config.verification_timeout)
+                    .with_verbose(verify_debug);
 
                 if !verifier.is_solver_available() {
                     if config.verbose {
