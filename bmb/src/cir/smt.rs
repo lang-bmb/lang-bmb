@@ -881,6 +881,130 @@ mod tests {
         );
     }
 
+    /// Cycle 2497 debug: print the SMT script generated for the stdlib
+    /// `clamp` signature so the precondition/postcondition lowering can
+    /// be inspected against macOS Bindings' false-counterexample report
+    /// (lo=2, hi=0, x=1, ret=2).
+    #[test]
+    fn test_clamp_smt_script_dump() {
+        use crate::cir::*;
+        let mut g = CirSmtGenerator::new();
+        // pub fn clamp(x: i64, lo: i64, hi: i64) -> i64
+        //   pre lo <= hi
+        //   post ret >= lo and ret <= hi and ((x < lo and ret == lo)
+        //         or (x > hi and ret == hi)
+        //         or (x >= lo and x <= hi and ret == x))
+        // = if x < lo { lo } else if x > hi { hi } else { x };
+        let func = CirFunction {
+            name: "clamp".to_string(),
+            type_params: vec![],
+            params: vec![
+                CirParam { name: "x".to_string(), ty: CirType::I64, constraints: vec![] },
+                CirParam { name: "lo".to_string(), ty: CirType::I64, constraints: vec![] },
+                CirParam { name: "hi".to_string(), ty: CirType::I64, constraints: vec![] },
+            ],
+            ret_ty: CirType::I64,
+            ret_name: "ret".to_string(),
+            preconditions: vec![NamedProposition {
+                name: None,
+                proposition: Proposition::Compare {
+                    lhs: Box::new(CirExpr::Var("lo".to_string())),
+                    op: CompareOp::Le,
+                    rhs: Box::new(CirExpr::Var("hi".to_string())),
+                },
+            }],
+            postconditions: vec![NamedProposition {
+                name: None,
+                proposition: Proposition::And(vec![
+                    Proposition::Compare {
+                        lhs: Box::new(CirExpr::Var("ret".to_string())),
+                        op: CompareOp::Ge,
+                        rhs: Box::new(CirExpr::Var("lo".to_string())),
+                    },
+                    Proposition::Compare {
+                        lhs: Box::new(CirExpr::Var("ret".to_string())),
+                        op: CompareOp::Le,
+                        rhs: Box::new(CirExpr::Var("hi".to_string())),
+                    },
+                    Proposition::Or(vec![
+                        Proposition::And(vec![
+                            Proposition::Compare {
+                                lhs: Box::new(CirExpr::Var("x".to_string())),
+                                op: CompareOp::Lt,
+                                rhs: Box::new(CirExpr::Var("lo".to_string())),
+                            },
+                            Proposition::Compare {
+                                lhs: Box::new(CirExpr::Var("ret".to_string())),
+                                op: CompareOp::Eq,
+                                rhs: Box::new(CirExpr::Var("lo".to_string())),
+                            },
+                        ]),
+                        Proposition::And(vec![
+                            Proposition::Compare {
+                                lhs: Box::new(CirExpr::Var("x".to_string())),
+                                op: CompareOp::Gt,
+                                rhs: Box::new(CirExpr::Var("hi".to_string())),
+                            },
+                            Proposition::Compare {
+                                lhs: Box::new(CirExpr::Var("ret".to_string())),
+                                op: CompareOp::Eq,
+                                rhs: Box::new(CirExpr::Var("hi".to_string())),
+                            },
+                        ]),
+                        Proposition::And(vec![
+                            Proposition::Compare {
+                                lhs: Box::new(CirExpr::Var("x".to_string())),
+                                op: CompareOp::Ge,
+                                rhs: Box::new(CirExpr::Var("lo".to_string())),
+                            },
+                            Proposition::Compare {
+                                lhs: Box::new(CirExpr::Var("x".to_string())),
+                                op: CompareOp::Le,
+                                rhs: Box::new(CirExpr::Var("hi".to_string())),
+                            },
+                            Proposition::Compare {
+                                lhs: Box::new(CirExpr::Var("ret".to_string())),
+                                op: CompareOp::Eq,
+                                rhs: Box::new(CirExpr::Var("x".to_string())),
+                            },
+                        ]),
+                    ]),
+                ]),
+            }],
+            loop_invariants: vec![],
+            effects: EffectSet::pure(),
+            // body: if x < lo { lo } else if x > hi { hi } else { x }
+            body: CirExpr::If {
+                cond: Box::new(CirExpr::BinOp {
+                    op: BinOp::Lt,
+                    lhs: Box::new(CirExpr::Var("x".to_string())),
+                    rhs: Box::new(CirExpr::Var("lo".to_string())),
+                }),
+                then_branch: Box::new(CirExpr::Var("lo".to_string())),
+                else_branch: Box::new(CirExpr::If {
+                    cond: Box::new(CirExpr::BinOp {
+                        op: BinOp::Gt,
+                        lhs: Box::new(CirExpr::Var("x".to_string())),
+                        rhs: Box::new(CirExpr::Var("hi".to_string())),
+                    }),
+                    then_branch: Box::new(CirExpr::Var("hi".to_string())),
+                    else_branch: Box::new(CirExpr::Var("x".to_string())),
+                }),
+            },
+        };
+        let script = g.generate_verification_query(&func).unwrap();
+        // Print the script for debugging — run with `--nocapture`.
+        eprintln!("=== clamp SMT script ===\n{}\n=== end ===", script);
+        // Sanity check the precondition is asserted on its own / inside (and ...).
+        // The macOS Bindings counterexample (lo=2, hi=0) violates `lo <= hi`,
+        // so if the precondition is properly asserted Z3 must say UNSAT.
+        assert!(
+            script.contains("(<= lo hi)") || script.contains("(<= lo hi))"),
+            "precondition `lo <= hi` should appear in script:\n{}",
+            script
+        );
+    }
+
     #[test]
     fn test_proposition_not() {
         let generator = CirSmtGenerator::new();

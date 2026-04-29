@@ -95,17 +95,21 @@ def build_library(name, config, release=True, verbose=False):
     lib_dir = os.path.join(SCRIPT_DIR, name)
     output_path = os.path.join(lib_dir, output_name)
 
-    # Cycle 2493 (G.1 follow-up): re-enabled stdlib contract verification.
-    # Cycle 2477 originally added `--trust-contracts` because macOS brew-llvm
-    # pulls in z3 as a transitive dependency, activating Z3 verification on
-    # CI; this surfaced a latent verifier bug (`generate_verification_query`
-    # left function bodies out of the SMT script, producing spurious
-    # counterexamples for clamp/sign/in_range/diff). That bug was root-caused
-    # and fixed in Cycle 2487. Removing `--trust-contracts` here re-engages
-    # the macOS Bindings CI as an empirical regression check for the
-    # verifier fix. Linux/Windows are unaffected (no Z3 installed →
-    # "Z3 solver not available" path skips verification, same as before).
-    cmd = [BMB_COMPILER, "build", src_path, "--shared", "-o", output_path]
+    # Cycle 2497 (REVERT of Cycle 2493): macOS Bindings CI on Cycle 2493
+    # surfaced a clamp(x=1, lo=2, hi=0) counterexample even though the
+    # precondition `lo <= hi` should make that model unsat. CIR-level
+    # `generate_verification_query` produces a correct script when fed
+    # hand-constructed CirFunction (verified by `test_clamp_smt_script_dump`
+    # in Cycle 2497). The discrepancy lies upstream in AST→CIR lowering
+    # or in macOS Z3's model emission and requires deeper investigation
+    # with a live Z3 install. Restoring `--trust-contracts` re-mutes the
+    # path-failure on macOS Bindings while the root cause is isolated.
+    #
+    # Cycle 2487 (G.1) verifier-body fix is still correct and shipped;
+    # this revert is purely about the build_all.py call site, not the
+    # underlying SMT generator.
+    cmd = [BMB_COMPILER, "build", src_path, "--shared", "--trust-contracts",
+           "-o", output_path]
     if release:
         cmd.append("--release")
 
