@@ -33,7 +33,69 @@ CI Green    ████████████████████ 100%  B
 
 ## Recently completed
 
-### Cycles 2482-2489 (current session) — ✅ B'.1 closure + G.1 root cause + H tier rust-cache
+### Cycles 2492-2499 (current session) — ✅ B'.1 windows-latest fix + H tier nextest/matrix + G.1 follow-up reverted
+
+Entered from Cycles 2482-2491's handoff with B'.1 verification pending CI
+result. Bindings CI on `637b2d4a` was red on **windows-latest** at "Build
+all binding libraries" — root cause: text backend (`#[cfg(not(feature =
+"llvm"))]` path in `bmb/src/build/mod.rs::build`) unconditionally passed
+MinGW-only flags (`--target=x86_64-pc-windows-gnu` × 3 sites,
+`-static -static-libgcc` × 1 site) to MSVC clang from the KyleMayes
+LLVM 21 installer (Cycle 2479's matrix entry).
+
+**Commits (chronological, 6)**:
+
+1. `ce7d7798` **Cycle 2492** `fix(build): gate MinGW-only flags by clang
+   ABI in text backend`. Hoisted Cycle 2482's `linker_kind_by_name` /
+   `linker_targets_mingw` helpers out of `feature = "llvm"` cfg. Probe
+   `clang --version` once per build into `clang_is_mingw`, gate all 4
+   text-backend sites. `cargo test --release --lib` 3,770 → 3,771 (the
+   existing helper test now runs in default-feature builds too). Local
+   MSYS2 UCRT64 binding build still produces a working .dll (2.5s,
+   365 KB) — MinGW path unchanged.
+
+2. `2dbeadc4` **Cycle 2493** `fix(ecosystem): drop --trust-contracts from
+   build_all.py (G.1 follow-up)`. Removed Cycle 2477's yaml-level
+   workaround so macOS Bindings CI exercises real Z3 verification,
+   validating Cycle 2487's verifier-body fix. **REVERTED in Cycle 2497**
+   after the push surfaced a clamp(lo=2, hi=0) counterexample.
+
+3. `d80e9e4a` **Cycles 2495+2496** `ci: cargo-nextest + PR ubuntu-only
+   matrix split`. H tier F + E:
+   - **F**: `cargo test --release` → `cargo nextest run --release` in
+     ci.yml + bootstrap-benchmark.yml + release.yml. Install via
+     `taiki-e/install-action@v2` (~100ms binary download). 0 doc-tests
+     verified, so nextest is a drop-in replacement. Local install +
+     test run: 6,208 tests in 18.6s.
+   - **E**: PR runs `[ubuntu-latest]` only; main push runs full
+     `[ubuntu, windows, macos]` matrix. `bindings-ci.yml` matrix
+     unchanged (it's the platform safety net that caught Cycle 2492).
+
+4. `af250613` **Cycle 2497** `revert(ecosystem): restore --trust-contracts
+   + add SMT debug test`. macOS Bindings on Cycle 2493's push reported a
+   clamp counterexample (lo=2, hi=0, x=1, ret=2) which violates the
+   precondition `lo <= hi` and should be unsat. Added
+   `test_clamp_smt_script_dump` in `bmb/src/cir/smt.rs` that
+   constructs `clamp` as a `CirFunction` and prints the SMT script —
+   output is correct (`(<= lo hi)` is the first conjunct of
+   `(and pre (not post))`), so CIR-level SMT generation is not the bug.
+   The discrepancy lives upstream in AST→CIR lowering for the actual
+   stdlib def, or in macOS Z3 model handling. Reverted to unblock CI;
+   investigation deferred.
+
+5. `25998ad6` **Cycle 2498** `feat(verify): BMB_VERIFY_DEBUG env dumps
+   SMT scripts`. Wires the existing `CirVerifier::with_verbose(true)`
+   path through `bmb build`'s `VerificationMode::Check` and `::Warn`
+   arms via the `BMB_VERIFY_DEBUG` env. Provides the infrastructure to
+   diff live-pipeline SMT against the hand-built test in a future
+   Z3-enabled session. Default behavior unchanged.
+
+**Cycle 2494** was a G.4 sweep audit on `*.phi.{pred_label}` (latent
+double-emit theoretical risk; no current trigger) and `wasm_text.rs`
+(no equivalent name-collision pattern — different IR model). No code
+change; recorded as audit-complete.
+
+### Cycles 2482-2489 (prior session) — ✅ B'.1 closure + G.1 root cause + H tier rust-cache
 
 Entered from Cycles 2473-2480's handoff with two well-defined Windows
 binding link-stage defects (Failure 1 `-static-libgcc` MSVC clang
