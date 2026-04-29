@@ -56,8 +56,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # Cycle 2496 (H tier E): PR ubuntu-only, main push 3-OS matrix.
+      # See ci.yml for rationale.
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest","windows-latest","macos-latest"]') }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -75,8 +77,14 @@ jobs:
       - name: Build (release)
         run: cargo build --release
 
+      # Cycle 2495 (H tier F): cargo-nextest — see ci.yml for rationale.
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
       - name: Run tests
-        run: cargo test --release
+        run: cargo nextest run --release
 
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings

@@ -44,8 +44,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # Cycle 2496 (H tier E): PR runs ubuntu-only for faster feedback +
+      # lower CI cost. Main-branch push runs the full 3-OS matrix to
+      # catch platform-specific regressions before tag/release. PR authors
+      # can request the full matrix via workflow_dispatch when touching
+      # platform-sensitive code (codegen/build/runtime).
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest","windows-latest","macos-latest"]') }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -66,8 +71,19 @@ jobs:
       - name: Build (release)
         run: cargo build --release
 
+      # Cycle 2495 (H tier F): cargo-nextest replaces `cargo test` for ~50%
+      # faster runs on CI (parallel test scheduling, no leak between
+      # crates) and clearer per-failure output. taiki-e/install-action
+      # downloads a prebuilt binary (~100ms) instead of compiling from
+      # source. No doc-tests in the project (verified Cycle 2495), so
+      # nextest fully replaces `cargo test`.
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
       - name: Run tests
-        run: cargo test --release
+        run: cargo nextest run --release
 
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings

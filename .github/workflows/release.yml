@@ -54,8 +54,14 @@ jobs:
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }}
 
+      # Cycle 2495 (H tier F): cargo-nextest — see ci.yml for rationale.
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
       - name: Run tests
-        run: cargo test --release --target ${{ matrix.target }}
+        run: cargo nextest run --release --target ${{ matrix.target }}
 
       - name: Package (Unix)
         if: matrix.archive == 'tar.gz'
