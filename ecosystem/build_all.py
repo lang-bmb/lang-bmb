@@ -95,15 +95,17 @@ def build_library(name, config, release=True, verbose=False):
     lib_dir = os.path.join(SCRIPT_DIR, name)
     output_path = os.path.join(lib_dir, output_name)
 
-    # Cycle 2477: `--trust-contracts` skips Z3 re-verification of imported
-    # stdlib contracts. Binding libraries consume a stdlib that was already
-    # verified in its own test suite; re-verifying on every binding build
-    # makes Z3 a hard CI dependency and surfaces latent verifier bugs that
-    # are orthogonal to binding correctness. Added because macOS brew-llvm
-    # pulls in z3 as a dependency, inadvertently activating verification
-    # on CI where Linux (apt llvm-21 without z3) correctly skipped it.
-    cmd = [BMB_COMPILER, "build", src_path, "--shared", "--trust-contracts",
-           "-o", output_path]
+    # Cycle 2493 (G.1 follow-up): re-enabled stdlib contract verification.
+    # Cycle 2477 originally added `--trust-contracts` because macOS brew-llvm
+    # pulls in z3 as a transitive dependency, activating Z3 verification on
+    # CI; this surfaced a latent verifier bug (`generate_verification_query`
+    # left function bodies out of the SMT script, producing spurious
+    # counterexamples for clamp/sign/in_range/diff). That bug was root-caused
+    # and fixed in Cycle 2487. Removing `--trust-contracts` here re-engages
+    # the macOS Bindings CI as an empirical regression check for the
+    # verifier fix. Linux/Windows are unaffected (no Z3 installed →
+    # "Z3 solver not available" path skips verification, same as before).
+    cmd = [BMB_COMPILER, "build", src_path, "--shared", "-o", output_path]
     if release:
         cmd.append("--release")
 
