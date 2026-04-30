@@ -1,11 +1,12 @@
-# BMB Session Handoff — 2026-04-30 (Cycles 2500-2503, `/iyu:run-cycle 20`)
+# BMB Session Handoff — 2026-04-30 (Cycles 2500-2504, `/iyu:run-cycle 20` ×2)
 
 > **이전 HEAD**: `1c6dee79` (Cycles 2492-2499 docs sync)
-> **새 HEAD**: `1734a41b` (Cycle 2502 — phi_load_map dedup)
-> **원격 상태**: `origin/main == HEAD` (2 new commits)
+> **새 HEAD**: `e36c2dd2` (Cycle 2503 docs commit)
+> **원격 상태**: `origin/main == HEAD` (3 new commits)
 > **세션 요약**: B'.1 windows-latest empirical 검증 완료 (runtime POSIX→Win32
-> 보충 후 CI green) + G.4 latent phi_load_map fix + H tier C 거부.
-> **4/20 cycle 사용** (Rule 9 early termination — 나머지 모두 HUMAN-gated).
+> 보충 후 CI green) + G.4 latent phi_load_map fix + H tier C 거부 +
+> Cycle 2504 re-entry로 inkwell parity 추가 audit (no fix needed).
+> **5/20 cycle 사용** (Rule 9 early termination — 나머지 모두 HUMAN-gated).
 
 ---
 
@@ -16,7 +17,8 @@
 | 2500 | windows-latest Bindings 결함 진단 + runtime POSIX→Win32 fix | `68efe7e6` | ✅ |
 | 2501 | Cycle 2500 push 및 Z3 가용성 체크 (Z3 미설치 → G.1 보류) | (no commit) | ✅ |
 | 2502 | G.4 phi_load_map key dedup (latent fix) | `1734a41b` | ✅ |
-| 2503 | H tier C 평가 거부 + CI 모니터링 + ROADMAP/HANDOFF 갱신 | (uncommitted) | ✅ |
+| 2503 | H tier C 평가 거부 + CI 모니터링 + ROADMAP/HANDOFF 갱신 | `e36c2dd2` | ✅ |
+| 2504 | Re-entry: inkwell parity audit (no fix) + early-terminate | (this commit) | ✅ |
 
 ## 2. 세션 핵심 성과
 
