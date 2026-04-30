@@ -146,20 +146,37 @@ jobs:
           # we can still upload bootstrap_results.json for debugging, then
           # surface the failure as a real CI error.
           set +e
-          ./scripts/bootstrap.sh --json > bootstrap_results.json 2>&1
+          ./scripts/bootstrap.sh --json > bootstrap_log.txt 2>&1
           BOOTSTRAP_EXIT=$?
           set -e
 
+          # Cycle 2505 follow-up: bootstrap.sh's `--json` output stream is
+          # polluted by subprocess stderr (the BMB compiler prints
+          # "Warning: Z3 solver not available", "Note: Fast compile mode",
+          # `{"type":"build_success",...}` lines, etc.) because internal
+          # invocations use `2>&1`. The file therefore is NOT valid JSON
+          # as-a-whole. Extract the final multi-line bootstrap object
+          # (the only block that begins with a single `{` on its own line
+          # and ends with a single `}` on its own line) before parsing.
+          awk '/^\{$/,/^\}$/' bootstrap_log.txt > bootstrap_results.json
+
           # Parse results (best-effort even on failure)
-          if [ -f bootstrap_results.json ]; then
+          if [ -s bootstrap_results.json ]; then
             STAGE1_TIME=$(python3 -c "import json; print(json.load(open('bootstrap_results.json'))['bootstrap']['stage1']['time_ms'])" 2>/dev/null || echo "0")
             FIXED_POINT=$(python3 -c "import json; print(json.load(open('bootstrap_results.json'))['bootstrap']['fixed_point'])" 2>/dev/null || echo "false")
 
             echo "stage1_time=$STAGE1_TIME" >> $GITHUB_OUTPUT
             echo "fixed_point=$FIXED_POINT" >> $GITHUB_OUTPUT
 
+            echo "--- bootstrap_results.json (extracted) ---"
             cat bootstrap_results.json
+          else
+            echo "::warning::bootstrap_results.json empty after extraction — full log follows"
+            echo "fixed_point=false" >> $GITHUB_OUTPUT
           fi
+
+          echo "--- bootstrap_log.txt (full, last 200 lines) ---"
+          tail -200 bootstrap_log.txt || true
 
           # Cycle 2505: prior to this, `|| true` swallowed bootstrap.sh's
           # exit 1, which itself is the only signal that fixed point was
@@ -167,7 +184,7 @@ jobs:
           # actually failed bootstrap silently. Fail the step honestly so
           # the workflow status reflects reality.
           if [ "$BOOTSTRAP_EXIT" -ne 0 ]; then
-            echo "::error::3-Stage Bootstrap failed (exit $BOOTSTRAP_EXIT) — see bootstrap_results.json artifact"
+            echo "::error::3-Stage Bootstrap failed (exit $BOOTSTRAP_EXIT) — see bootstrap_log.txt / bootstrap_results.json artifact"
             exit "$BOOTSTRAP_EXIT"
           fi
 
@@ -178,17 +195,19 @@ jobs:
             # not reached, so the previous step would have failed. This is
             # belt-and-suspenders for any future divergence between the
             # JSON `fixed_point` field and the script's exit code.
-            echo "::error::Bootstrap fixed point not reached - Stage 2 and Stage 3 differ"
+            echo "::error::Bootstrap fixed point not reached - Stage 2 and Stage 3 differ (output was '${{ steps.bootstrap.outputs.fixed_point }}')"
             exit 1
           fi
           echo "::notice::Bootstrap verified - fixed point reached"
 
       - name: Upload Bootstrap Artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: bootstrap-results
           path: |
             bootstrap_results.json
+            bootstrap_log.txt
             target/bootstrap/
 
   # ==========================================================================

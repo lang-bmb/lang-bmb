@@ -2532,6 +2532,41 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_stdlib_clamp_smt_complete() {
+        // Cycle 2505 follow-up regression: the live `bmb build` pipeline on
+        // stdlib/core/num.bmb's `clamp` was emitting a stripped SMT script
+        // (precondition reduced to `true`, postcondition lost its
+        // case-analysis disjunct). Going through the standard
+        // parse → typecheck → lower_to_cir → CirSmtGenerator path with the
+        // exact stdlib clamp signature must produce the FULL SMT — pre
+        // `(<= lo hi)` and post containing the 3-way `or` disjunction. Any
+        // future regression that drops parts of this contract will break
+        // this test.
+        let cir = source_to_cir(
+            "fn clamp(x: i64, lo: i64, hi: i64) -> i64
+               pre lo <= hi
+               post ret >= lo and ret <= hi and ((x < lo and ret == lo) or (x > hi and ret == hi) or (x >= lo and x <= hi and ret == x))
+             = if x < lo { lo } else if x > hi { hi } else { x };"
+        );
+        let func = cir.functions.iter().find(|f| f.name == "clamp").expect("clamp");
+        assert_eq!(func.preconditions.len(), 1, "precondition lost");
+        assert_eq!(func.postconditions.len(), 1, "postcondition lost");
+
+        let mut g = crate::cir::smt::CirSmtGenerator::new();
+        let smt = g.generate_verification_query(func).expect("smt");
+        assert!(smt.contains("(<= lo hi)"), "precondition `lo <= hi` missing from SMT:\n{}", smt);
+        assert!(smt.contains("(>= ret lo)"), "post `ret >= lo` missing");
+        assert!(smt.contains("(<= ret hi)"), "post `ret <= hi` missing");
+        assert!(smt.contains("(or"), "post case-analysis disjunction missing — Cycle 2505 regression");
+        assert!(smt.contains("(< x lo)") && smt.contains("(= ret lo)"),
+            "post case `x < lo => ret = lo` missing from SMT");
+        assert!(smt.contains("(> x hi)") && smt.contains("(= ret hi)"),
+            "post case `x > hi => ret = hi` missing from SMT");
+        assert!(smt.contains("(= ret x)"),
+            "post case `x in range => ret = x` missing from SMT");
+    }
+
     // ---- Method call lowering ----
 
     #[test]
