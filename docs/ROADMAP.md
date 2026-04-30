@@ -4,6 +4,97 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 
 ---
 
+## Current Status — v0.98 (2026-05-01, post-Cycles 2505-2506)
+
+### Cycles 2505-2506 (this session) — Linux `-lm` link fix + workflow honest-fail + G.1 root cause identified
+
+**Cycle 2505 (`be2e8526`)**: Linux had been silently failing 3-Stage
+Bootstrap on every CI run for over a year. Two linkage issues compounded
+the masking:
+
+1. `bmb/src/build/mod.rs` (both `link_native` for the LLVM inkwell backend
+   AND `link_with_runtime` for the text backend) omits `-lm` on Linux.
+   Windows MinGW pulls libm via the import lib and macOS bundles math
+   helpers into libSystem, so the gap only manifests on Linux. Symptom:
+   `undefined reference to floor / ceil / round / sqrt / pow` from
+   `bmb_runtime.c::bmb_f64_*` helpers — visible in any pre-Cycle 2505
+   `bootstrap-results` artifact.
+2. `bootstrap-benchmark.yml` ran `./scripts/bootstrap.sh --json > ... || true`
+   which swallowed bootstrap.sh's exit-1 (the canonical "fixed point not
+   reached" signal). The follow-up "Verify Bootstrap Success" step only
+   raised `::warning::` when JSON `fixed_point` was false, so workflow
+   status stayed green. Prior HANDOFF docs interpreted that green
+   workflow as "Fixed Point preserved on CI" — it was not; Linux had not
+   produced Stage 2 IR at all.
+
+Fix: `cmd.arg("-lm")` under `target_os = "linux"` in both link paths;
+workflow captures bootstrap.sh exit code via `set +e`/`$?`/`set -e`,
+surfaces failures as `::error::` + explicit `exit`, and the verify step's
+`::warning::` is upgraded to `::error::` + `exit 1`. Local 3,772 pass /
+clippy clean / Stage 1 22s / 3-Stage Fixed Point S2 == S3 119s. Rule 6
+(Rust frozen) exception: bootstrap blocked, which CLAUDE.md lists as the
+sole valid trigger for Rust compiler edits.
+
+**Cycle 2505b (`a3193b55`)**: The Cycle 2505 push exposed a second latent
+defect — the workflow piped both stdout and stderr into
+`bootstrap_results.json`, but the BMB compiler emits stderr chatter
+("Warning: Z3 solver not available", "Note: Fast compile mode") and
+single-line `{"type":"build_success",...}` events. The resulting file is
+multi-document and not valid JSON, so `python3 -c "json.load(open(...))"`
+fell back to `echo "false"` — even when the embedded bootstrap object
+correctly reported `"fixed_point": true`. Run 25172403371 was the proof:
+`"stage1.success": true`, every stage success, `"fixed_point": true` in
+the file, but verify step received `false` and erred out.
+
+Fix: redirect bootstrap.sh output to `bootstrap_log.txt`, then
+`awk '/^\{$/,/^\}$/' bootstrap_log.txt > bootstrap_results.json` to
+extract the multi-line JSON object. Adds `if: always()` upload so the
+artifact survives a failed run. Adds `test_stdlib_clamp_smt_complete`
+regression — locks down the discovery from G.1 investigation that the
+CIR lowering + SMT pipeline is correct in isolation; future drift that
+drops contract conjuncts will trip this test.
+
+**Cycle 2506 (no commit)** — G.1 verifier root cause identified:
+`packages/bmb-core/src/prelude.bmb` defines a weakened `pub fn clamp`
+(post `ret >= lo and ret <= hi`, no precondition, no case-analysis) that
+the preprocessor automatically prepends to every BMB build, including
+stdlib's own `bmb build stdlib/core/num.bmb`. The verifier sees BOTH
+clamp definitions; the prelude's post is unprovable when `lo > hi`
+because the body returns `lo > hi` from the `if x < lo` branch. **This
+is the actual cause of the Cycle 2493 macOS Bindings clamp(x=0, lo=1,
+hi=0) counterexample** — the verifier was reporting a false counterexample
+on the *prelude* clamp, not the stdlib clamp. `--trust-contracts` muted
+it by skipping verification entirely.
+
+Immediate fix is blocked by two follow-up defects that surfaced when
+attempting the obvious paths:
+- L.2: `bmb build --shared --no-prelude` errors with `@bmb_user_main`
+  undefined — the codegen still injects a `main` reference for shared
+  libraries.
+- L.4: adding `pre lo <= hi` to the prelude clamp triggers an LLVM
+  `invalid redefinition of function 'clamp'` link error because both
+  prelude and stdlib clamps survive into the IR.
+
+Documented as the next-session **P1-P3 sequence**: P1 fix L.2 (skip main
+injection in SharedLib mode), P2 remove duplicates from prelude (let
+prelude `use` stdlib instead of redeclaring), P3 drop `--trust-contracts`
+from `ecosystem/build_all.py` and verify Bindings CI 3-OS green without
+it. Track G expanded with L.1-L.4 entries.
+
+**Cycle 2506 — D' Golden recommendation**: autonomous recommendation is
+**(B) Fully remove**. v0.99 stabilization is wrapping up (Tracks
+A/B/F/E/H all closed); Trusting Trust attestation is better served by a
+future reproducible-build chain (SLSA, Sigstore) than by single-pinned
+golden binaries that BMB's source-distributed model never ships. Final
+choice belongs to the maintainer; (A) and (C) remain valid, but (C)
+"status quo" is structurally a workaround per BMB's No-Workaround rule.
+
+**3 cycles used / 20** — autonomous progress fully pushed; remaining
+items are next-session P1-P4 or HUMAN-decision (TestPyPI org secret,
+WSL2 admin install, Golden policy confirmation).
+
+---
+
 ## Current Status — v0.98 (2026-04-30, post-Cycles 2500-2503)
 
 ### Progress
