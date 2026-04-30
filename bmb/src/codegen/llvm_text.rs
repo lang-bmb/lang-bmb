@@ -2087,11 +2087,16 @@ impl TextCodeGen {
             })
             .collect();
 
-        // Build map of (phi_dest_block, local_name, pred_block) -> load_temp_name
+        // Build map of (local_name, pred_block) -> load_temp_name
         // This is needed because phi nodes must reference SSA values, not memory locations
         // So we emit loads before terminators in predecessor blocks
         // IMPORTANT: Exclude phi destinations - they're already SSA values
-        let mut phi_load_map: std::collections::HashMap<(String, String, String), String> =
+        //
+        // Cycle 2502: Key intentionally omits dest_block. The load_temp
+        // (`{name}.phi.{pred}`) is determined by (name, pred) only, so when two
+        // dest blocks reference the same (name, pred), they share one load
+        // emission instead of colliding on the same temp name.
+        let mut phi_load_map: std::collections::HashMap<(String, String), String> =
             std::collections::HashMap::new();
 
         for block in &func.blocks {
@@ -2103,7 +2108,7 @@ impl TextCodeGen {
                             // Phi destinations are SSA values, not memory locations
                             if func.locals.iter().any(|(n, _)| n == &p.name)
                                && !phi_dests.contains(&p.name) {
-                                let key = (block.label.clone(), p.name.clone(), pred_label.clone());
+                                let key = (p.name.clone(), pred_label.clone());
                                 let load_temp = format!("{}.phi.{}", p.name, pred_label);
                                 phi_load_map.insert(key, load_temp);
                             }
@@ -2393,7 +2398,7 @@ impl TextCodeGen {
         name_counts: &mut HashMap<String, u32>,
         local_names: &std::collections::HashSet<String>,
         narrowed_param_names: &std::collections::HashSet<String>,
-        phi_load_map: &std::collections::HashMap<(String, String, String), String>,
+        phi_load_map: &std::collections::HashMap<(String, String), String>,
         phi_string_map: &std::collections::HashMap<(String, String, String), String>,
         phi_coerce_map: &std::collections::HashMap<(String, String, String), (String, &'static str, &'static str)>,
         struct_defs: &HashMap<String, Vec<(String, MirType)>>,
@@ -2451,7 +2456,7 @@ impl TextCodeGen {
 
         // Emit loads for locals that will be used in phi nodes of successor blocks
         // This must happen BEFORE the terminator
-        for ((_dest_block, local_name, pred_block), load_temp) in phi_load_map {
+        for ((local_name, pred_block), load_temp) in phi_load_map {
             if pred_block == &block.label {
                 // v0.55: Check tuple_var_types first for tuple locals
                 let llvm_ty: std::borrow::Cow<'static, str> = if let Some(tuple_type) = tuple_var_types.get(local_name) {
@@ -2491,7 +2496,7 @@ impl TextCodeGen {
                 // Check if the value was loaded via phi_load_map (local variable)
                 // or is a direct parameter/SSA value
                 let source_name = if let Some(load_temp) = phi_load_map.iter()
-                    .find(|((_, ln, pb), _)| ln == val_name && pb == pred_block)
+                    .find(|((ln, pb), _)| ln == val_name && pb == pred_block)
                     .map(|(_, lt)| lt.clone())
                 {
                     // Use the loaded value
@@ -2548,7 +2553,7 @@ impl TextCodeGen {
         name_counts: &mut HashMap<String, u32>,
         local_names: &std::collections::HashSet<String>,
         narrowed_param_names: &std::collections::HashSet<String>,
-        _phi_load_map: &std::collections::HashMap<(String, String, String), String>,
+        _phi_load_map: &std::collections::HashMap<(String, String), String>,
         phi_string_map: &std::collections::HashMap<(String, String, String), String>,
         phi_coerce_map: &std::collections::HashMap<(String, String, String), (String, &'static str, &'static str)>,
         current_block_label: &str,
