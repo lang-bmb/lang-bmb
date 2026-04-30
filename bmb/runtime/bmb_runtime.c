@@ -2745,9 +2745,17 @@ int64_t delete_file(const BmbString* path) {
 }
 
 // v0.96: Directory operations for gotgan-bmb and file system programs
-#include <dirent.h>
+// Cycle 2500: dirent.h is POSIX (MinGW provides; MSVC does not). Use Win32
+// FindFirstFile/FindNextFile on Windows so the runtime compiles under both
+// MinGW and MSVC clang ABIs.
 #ifdef _WIN32
 #include <direct.h>  // _mkdir on Windows/MinGW
+// MSVC's <sys/stat.h> defines _S_IFDIR but not S_ISDIR.
+#ifndef S_ISDIR
+#define S_ISDIR(m) (((m) & _S_IFMT) == _S_IFDIR)
+#endif
+#else
+#include <dirent.h>
 #endif
 
 // is_dir(path) -> i64: returns 1 if path is a directory, 0 otherwise
@@ -2775,7 +2783,7 @@ int64_t bmb_mkdir(const BmbString* path) {
             char saved = buf[i];
             buf[i] = '\0';
 #ifdef _WIN32
-            mkdir(buf);
+            _mkdir(buf);  // Cycle 2500: explicit _mkdir for MSVC clang ABI
 #else
             mkdir(buf, 0755);
 #endif
@@ -2796,10 +2804,49 @@ int64_t make_dir(const BmbString* path) {
 // readdir(path) -> BmbString*: returns newline-separated list of entries
 BmbString* bmb_readdir(const BmbString* path) {
     if (!path || !path->data) return bmb_string_from_cstr("");
+#ifdef _WIN32
+    // Build search pattern: "<path>\\*"
+    size_t plen = (size_t)path->len;
+    char* pattern = (char*)malloc(plen + 3);
+    if (!pattern) return bmb_string_from_cstr("");
+    memcpy(pattern, path->data, plen);
+    pattern[plen] = '\\';
+    pattern[plen + 1] = '*';
+    pattern[plen + 2] = '\0';
+
+    WIN32_FIND_DATAA find_data;
+    HANDLE h = FindFirstFileA(pattern, &find_data);
+    free(pattern);
+    if (h == INVALID_HANDLE_VALUE) return bmb_string_from_cstr("");
+
+    size_t cap = 1024;
+    size_t len = 0;
+    char* buf = (char*)malloc(cap);
+    if (!buf) { FindClose(h); return bmb_string_from_cstr(""); }
+
+    do {
+        const char* name = find_data.cFileName;
+        if (name[0] == '.' && (name[1] == '\0' ||
+            (name[1] == '.' && name[2] == '\0'))) {
+            continue;
+        }
+        size_t name_len = strlen(name);
+        while (len + name_len + 1 >= cap) {
+            cap *= 2;
+            char* nb = (char*)realloc(buf, cap);
+            if (!nb) { free(buf); FindClose(h); return bmb_string_from_cstr(""); }
+            buf = nb;
+        }
+        memcpy(buf + len, name, name_len);
+        len += name_len;
+        buf[len++] = '\n';
+    } while (FindNextFileA(h, &find_data));
+
+    FindClose(h);
+#else
     DIR* dir = opendir(path->data);
     if (!dir) return bmb_string_from_cstr("");
 
-    // Build result using dynamic buffer
     size_t cap = 1024;
     size_t len = 0;
     char* buf = (char*)malloc(cap);
@@ -2807,23 +2854,23 @@ BmbString* bmb_readdir(const BmbString* path) {
 
     struct dirent* entry;
     while ((entry = readdir(dir)) != NULL) {
-        // Skip . and ..
         if (entry->d_name[0] == '.' && (entry->d_name[1] == '\0' ||
             (entry->d_name[1] == '.' && entry->d_name[2] == '\0'))) {
             continue;
         }
         size_t name_len = strlen(entry->d_name);
-        // Ensure capacity for name + newline
         while (len + name_len + 1 >= cap) {
             cap *= 2;
-            buf = (char*)realloc(buf, cap);
-            if (!buf) { closedir(dir); return bmb_string_from_cstr(""); }
+            char* nb = (char*)realloc(buf, cap);
+            if (!nb) { free(buf); closedir(dir); return bmb_string_from_cstr(""); }
+            buf = nb;
         }
         memcpy(buf + len, entry->d_name, name_len);
         len += name_len;
         buf[len++] = '\n';
     }
     closedir(dir);
+#endif
 
     // Remove trailing newline
     if (len > 0 && buf[len - 1] == '\n') len--;
@@ -2851,7 +2898,11 @@ int64_t remove_file(const BmbString* path) {
 // remove_dir(path) -> i64: removes an empty directory, returns 0 on success
 int64_t bmb_rmdir(const BmbString* path) {
     if (!path || !path->data) return -1;
+#ifdef _WIN32
+    return _rmdir(path->data) == 0 ? 0 : -1;  // Cycle 2500: explicit _rmdir for MSVC
+#else
     return rmdir(path->data) == 0 ? 0 : -1;
+#endif
 }
 
 int64_t remove_dir(const BmbString* path) {
