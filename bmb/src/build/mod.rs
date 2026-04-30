@@ -1114,6 +1114,15 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
             #[cfg(target_os = "windows")]
             cmd.arg("-lws2_32");
 
+            // Cycle 2505: explicitly link libm on Linux so bmb_runtime.c's
+            // floor/ceil/round/sqrt/pow resolve. See parallel comment in
+            // link_native — glibc factors these out of libc, MinGW doesn't,
+            // macOS bundles them into libSystem. Missing -lm broke every
+            // Linux CI run silently because bootstrap-benchmark.yml's
+            // `|| true` swallowed bootstrap.sh's exit 1.
+            #[cfg(target_os = "linux")]
+            cmd.arg("-lm");
+
             // v0.98 (Cycle 2423, Defect 5 follow-up P3-T3a): statically link
             // MinGW runtime so produced .exe/.dll has no libgcc_s_seh-1.dll /
             // libwinpthread-1.dll dependency. Essential for `pip install` on
@@ -1369,6 +1378,14 @@ fn link_native(
         cmd.arg("-lc");
         // v0.70: Link pthread for threading support
         cmd.arg("-lpthread");
+        // Cycle 2505: explicitly link libm for floor/ceil/round/sqrt/pow used
+        // in bmb_runtime.c. glibc keeps these in libm, so the implicit libc
+        // link is not enough on Linux. (MinGW folds libm into the import lib
+        // so Windows is unaffected; macOS bundles math into libSystem.) The
+        // omission silently broke `bmb build` on every Linux CI runner —
+        // bootstrap.sh masked it via `|| true` in the workflow, which is
+        // also fixed in this cycle.
+        cmd.arg("-lm");
     }
 
     #[cfg(target_os = "macos")]

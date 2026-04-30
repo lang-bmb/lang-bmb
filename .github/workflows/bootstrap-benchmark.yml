@@ -141,9 +141,16 @@ jobs:
         id: bootstrap
         run: |
           chmod +x scripts/bootstrap.sh
-          ./scripts/bootstrap.sh --json > bootstrap_results.json 2>&1 || true
 
-          # Parse results
+          # Cycle 2505: do NOT mask bootstrap failures. Capture exit code so
+          # we can still upload bootstrap_results.json for debugging, then
+          # surface the failure as a real CI error.
+          set +e
+          ./scripts/bootstrap.sh --json > bootstrap_results.json 2>&1
+          BOOTSTRAP_EXIT=$?
+          set -e
+
+          # Parse results (best-effort even on failure)
           if [ -f bootstrap_results.json ]; then
             STAGE1_TIME=$(python3 -c "import json; print(json.load(open('bootstrap_results.json'))['bootstrap']['stage1']['time_ms'])" 2>/dev/null || echo "0")
             FIXED_POINT=$(python3 -c "import json; print(json.load(open('bootstrap_results.json'))['bootstrap']['fixed_point'])" 2>/dev/null || echo "false")
@@ -154,13 +161,27 @@ jobs:
             cat bootstrap_results.json
           fi
 
+          # Cycle 2505: prior to this, `|| true` swallowed bootstrap.sh's
+          # exit 1, which itself is the only signal that fixed point was
+          # reached. The result was 1+ year of green CI runs that had
+          # actually failed bootstrap silently. Fail the step honestly so
+          # the workflow status reflects reality.
+          if [ "$BOOTSTRAP_EXIT" -ne 0 ]; then
+            echo "::error::3-Stage Bootstrap failed (exit $BOOTSTRAP_EXIT) — see bootstrap_results.json artifact"
+            exit "$BOOTSTRAP_EXIT"
+          fi
+
       - name: Verify Bootstrap Success
         run: |
           if [ "${{ steps.bootstrap.outputs.fixed_point }}" != "true" ] && [ "${{ steps.bootstrap.outputs.fixed_point }}" != "True" ]; then
-            echo "::warning::Bootstrap fixed point not reached - Stage 2 and Stage 3 differ"
-          else
-            echo "::notice::Bootstrap verified - fixed point reached"
+            # Defensive: bootstrap.sh already exits 1 when fixed point is
+            # not reached, so the previous step would have failed. This is
+            # belt-and-suspenders for any future divergence between the
+            # JSON `fixed_point` field and the script's exit code.
+            echo "::error::Bootstrap fixed point not reached - Stage 2 and Stage 3 differ"
+            exit 1
           fi
+          echo "::notice::Bootstrap verified - fixed point reached"
 
       - name: Upload Bootstrap Artifacts
         uses: actions/upload-artifact@v4
