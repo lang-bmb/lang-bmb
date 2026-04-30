@@ -4,7 +4,7 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 
 ---
 
-## Current Status — v0.98 (2026-04-23, post-Cycles 2473-2480)
+## Current Status — v0.98 (2026-04-30, post-Cycles 2500-2503)
 
 ### Progress
 
@@ -27,13 +27,84 @@ CI Green    ████████████████████ 100%  B
 | Benchmark suite | 309 builds, 0 FAIL, BMB > C+Rust in 16 benchmarks |
 | Binding ecosystem | 5 libraries, 140 @export functions, 1,017 pytest integration tests |
 | Standard library | 15 / 15 modules (core, string, array, io, json, math, time, fs, ...) |
-| CI baseline (empirical) | BMB CI 9/9 green, Bootstrap+Benchmark 3-Stage green on HEAD `8db5ac9e` |
+| CI baseline (empirical) | BMB CI 9/9 green, Bootstrap+Benchmark 3-Stage green, Bindings CI 3-OS green on HEAD `1734a41b` |
 
 ---
 
 ## Recently completed
 
-### Cycles 2492-2499 (current session) — ✅ B'.1 windows-latest fix + H tier nextest/matrix + G.1 follow-up reverted
+### Cycles 2500-2503 (current session, 2026-04-30) — ✅ B'.1 verified empirically + G.4 phi_load_map dedup + H tier C rejected
+
+Entered from Cycles 2492-2499's handoff with B'.1 windows-latest CI not yet
+empirically verified (Bindings CI run 25117281125 cancelled by Cycle 2498
+push concurrency cancel). Re-checked: ubuntu/macOS Bindings ✅, but
+windows-latest **failed** at step 16 "Build all binding libraries" with:
+```
+fatal error: 'dirent.h' file not found
+ 2748 | #include <dirent.h>
+```
+
+**Root cause** — Cycle 2492 made `--target=x86_64-pc-windows-gnu`
+correctly conditional on detected MinGW ABI. With MSVC clang (KyleMayes
+LLVM 21 in CI), the flag is now correctly absent — exposing a latent
+POSIX dependency in `bmb_runtime.c` that was previously masked by always
+forcing the MinGW target. clang-cl locally reproduces the same error.
+
+**Commits (chronological, 2)**:
+
+1. `68efe7e6` **Cycle 2500** `fix(runtime): MSVC clang ABI POSIX gap`.
+   Made `<dirent.h>` POSIX-only; rewrote `bmb_readdir` with Win32
+   `FindFirstFileA`/`FindNextFileA`/`FindClose` for `_WIN32`; explicit
+   `_mkdir`/`_rmdir` on Windows (instead of deprecated wrappers); added
+   `S_ISDIR` macro fallback for MSVC's `<sys/stat.h>`. Rule 5 sweep
+   confirmed no other unguarded POSIX includes. Local MinGW UCRT
+   bindings: 5/5 OK in 4.3s; lib tests 3,772 pass; LLVM tests 3,953
+   pass. **CI windows-latest validated** at run 25166048458 step 16-20
+   ✅ — bindings build + pytest + monolithic + edge case all green.
+
+2. `1734a41b` **Cycle 2502** `fix(codegen): drop dest_block from
+   phi_load_map key`. Latent risk from Cycle 2494 audit: when two phi
+   destinations referenced the same `(local, pred)`, the iteration at
+   `llvm_text.rs:2454` would emit two `%X.phi.Y = load ...` instructions
+   in the same block (LLVM IR redefinition error). Root-cause fix:
+   dropped `dest_block` from key (it was never used by any consumer);
+   insert now deduplicates naturally. 5 sites updated. nextest 6,209
+   pass; Stage 1 bootstrap 22.5s ✅. **CI 3-Stage Bootstrap on
+   `1734a41b` ✅** confirms Fixed Point preserved.
+
+**Cycle 2503 — H tier C evaluation**: Considered removing `push:`
+trigger from Bootstrap+Benchmark workflow to reduce cost. **REJECTED**:
+project workflow is direct main push (zero PRs in last 10 commits) —
+removing push: would convert the regression gate from passive to manual
+dispatch. Path filter (Cycle 2480) already achieves the cost reduction
+goal. H tier is now closed: F (nextest) ✅, E (PR matrix split) ✅, H
+(rust-cache@v2) ✅, **C ❌ rejected**.
+
+**Empirical CI on `1734a41b`** (Cycle 2502 head):
+- BMB CI 9/9 ✅ (Build & Test 3 OS, Code Quality, bench-compare-smoke,
+  net-echo-smoke, Bootstrap Self-Compile Check, Gate, Performance Check
+  skipped on push as expected)
+- Bootstrap + Benchmark Cycle ✅ (Build & Test 3 OS + 3-Stage Bootstrap,
+  Benchmark Suite finishing)
+- Bindings CI 3 OS ✅ (ubuntu, macOS, windows-latest all green;
+  macos-13 still queued at session-end — runner availability)
+- Update Benchmark Baseline ✅
+
+**Session impact**: B'.1 (Track B' first checkpoint) **EMPIRICALLY
+COMPLETE**. windows-latest binding build + pytest pipeline validated end
+to end on MSVC clang ABI. Cycle 2492 + Cycle 2500 together close the
+"either ABI works" requirement: MinGW UCRT (local + workflow_dispatch
+runs) and MSVC clang (CI windows-latest with KyleMayes LLVM) both
+produce working DLLs that pass the full pytest suite + Cycle 2423 MinGW
+runtime regression check.
+
+**4 cycles used of 20-cycle budget** (Rule 9 early termination — all
+remaining items are HUMAN-gated: B'.2 TestPyPI token, G.1 Z3 install,
+C' WSL+gdb, D' golden policy).
+
+---
+
+### Cycles 2492-2499 (previous session) — B'.1 windows-latest fix attempt + H tier nextest/matrix + G.1 follow-up reverted
 
 Entered from Cycles 2482-2491's handoff with B'.1 verification pending CI
 result. Bindings CI on `637b2d4a` was red on **windows-latest** at "Build
