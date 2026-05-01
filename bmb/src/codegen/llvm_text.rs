@@ -8493,6 +8493,13 @@ impl TextCodeGen {
                 // Check if discriminant is a local that needs loading from alloca
                 // v0.51.17: Use narrowing-aware formatting
                 // v0.97.4: Also handle enum ptr types (from EnumVariant alloca or function params)
+                // v0.99 (Cycle 2534): Detect narrowed-parameter discriminants and emit
+                // `switch i32` + `i32 N, label ...` to keep IR type-consistent. Without this,
+                // `LoopBoundedNarrowing` narrows a parameter from i64 to i32 in the function
+                // signature, but `IfElseToSwitch`-derived terminators still emit `switch i64 %d`,
+                // and clang fails the IR with `'%d' defined with type 'i32' but expected 'i64'`
+                // (see http_parse `digit_char` regression first reported in Cycle 2531).
+                let mut disc_ty = "i64";
                 let disc_str = if let Operand::Place(p) = discriminant {
                     if local_names.contains(&p.name) {
                         // Use default label to make name unique
@@ -8504,14 +8511,17 @@ impl TextCodeGen {
                         writeln!(out, "  %{}.disc_{} = load i64, ptr %{}", p.name, default, p.name)?;
                         format!("%{}.disc_{}", p.name, default)
                     } else {
+                        if narrowed_param_names.contains(&p.name) {
+                            disc_ty = "i32";
+                        }
                         self.format_operand_with_narrowing(discriminant, narrowed_param_names)
                     }
                 } else {
                     self.format_operand_with_narrowing(discriminant, narrowed_param_names)
                 };
-                writeln!(out, "  switch i64 {}, label %bb_{} [", disc_str, default)?;
+                writeln!(out, "  switch {} {}, label %bb_{} [", disc_ty, disc_str, default)?;
                 for (val, label) in cases {
-                    writeln!(out, "    i64 {}, label %bb_{}", val, label)?;
+                    writeln!(out, "    {} {}, label %bb_{}", disc_ty, val, label)?;
                 }
                 writeln!(out, "  ]")?;
             }

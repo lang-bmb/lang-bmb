@@ -6789,6 +6789,124 @@ impl AggressiveInlining {
         inst_count <= max_hint_instructions && block_count <= max_hint_blocks
     }
 
+    /// v0.99 (Cycle 2532): Collect names of functions that are called
+    /// from within a loop in any other function. A "loop" here is detected
+    /// by a back edge in the caller's CFG (target appears earlier in the
+    /// block list than its predecessor). Blocks with index in
+    /// `[back_edge_target..=back_edge_source]` are treated as loop body.
+    fn collect_in_loop_callees(program: &MirProgram) -> HashSet<String> {
+        let mut callees = HashSet::new();
+
+        for caller in &program.functions {
+            if caller.blocks.is_empty() {
+                continue;
+            }
+
+            let label_indices: HashMap<&str, usize> = caller
+                .blocks
+                .iter()
+                .enumerate()
+                .map(|(i, b)| (b.label.as_str(), i))
+                .collect();
+
+            // Mark blocks that lie inside a loop (between back-edge target and source).
+            let mut in_loop = vec![false; caller.blocks.len()];
+            for (idx, block) in caller.blocks.iter().enumerate() {
+                let targets: Vec<&str> = match &block.terminator {
+                    Terminator::Goto(t) => vec![t.as_str()],
+                    Terminator::Branch { then_label, else_label, .. } => {
+                        vec![then_label.as_str(), else_label.as_str()]
+                    }
+                    Terminator::Switch { cases, default, .. } => {
+                        let mut ts: Vec<&str> = cases.iter().map(|(_, l)| l.as_str()).collect();
+                        ts.push(default.as_str());
+                        ts
+                    }
+                    _ => vec![],
+                };
+                for target in targets {
+                    if let Some(&target_idx) = label_indices.get(target)
+                        && target_idx <= idx
+                    {
+                        // Back edge: blocks [target_idx..=idx] are part of the loop body.
+                        for slot in in_loop.iter_mut().take(idx + 1).skip(target_idx) {
+                            *slot = true;
+                        }
+                    }
+                }
+            }
+
+            for (idx, block) in caller.blocks.iter().enumerate() {
+                if !in_loop[idx] {
+                    continue;
+                }
+                for inst in &block.instructions {
+                    if let MirInst::Call { func: callee, .. } = inst {
+                        callees.insert(callee.clone());
+                    }
+                }
+            }
+        }
+
+        callees
+    }
+
+    /// v0.99 (Cycle 2532): Should this function be marked `noinline` so
+    /// that `memory(read)` on the call site enables LICM?
+    ///
+    /// Conservative criteria:
+    /// - read-only (so callers can hoist the call when arguments are loop-invariant)
+    /// - NOT memory-free (those already get `memory(none) speculatable` and
+    ///   profit from inlining if small)
+    /// - NOT already alwaysinline (size+simple — inlining is the right call)
+    /// - NOT recursive (LLVM has its own recursion handling)
+    /// - At least `MIN_NOINLINE_INSTRUCTIONS` instructions (tiny helpers
+    ///   benefit from inlining; substantial functions benefit from LICM)
+    /// - Called from a loop in some other function (the only place where
+    ///   not-inlining can pay off — no point keeping the call when it's
+    ///   on a cold path)
+    ///
+    /// Surfaced by Cycle 2531 measurement: clang -O3 still auto-inlines
+    /// medium-sized read-only functions like `validate_json`/`count_array`
+    /// even when they have `memory(read)`, then LICM has to analyze the
+    /// inlined nested loops and fails. Marking these `noinline` keeps the
+    /// call boundary visible so LICM can hoist the entire call.
+    fn should_no_inline_for_licm(
+        &self,
+        func: &MirFunction,
+        in_loop_callees: &HashSet<String>,
+    ) -> bool {
+        // Tunable. Conservative-ish: tiny read-only helpers (≤10 MIR
+        // instructions) typically benefit from inlining the call away,
+        // and the path that would mark them `alwaysinline` already covers
+        // the smallest cases. Anything beyond that is a candidate for
+        // call-site LICM via `noinline + memory(read)`.
+        //
+        // Cycle 2532 measurement: json_parse `count_array` is ~12 MIR
+        // instructions, `validate_json` ~30+. Both should be eligible.
+        const MIN_NOINLINE_INSTRUCTIONS: usize = 10;
+
+        if func.name == "main" || func.name == "bmb_user_main" {
+            return false;
+        }
+        if !func.is_read_only {
+            return false;
+        }
+        if func.is_memory_free {
+            return false;
+        }
+        if func.always_inline {
+            return false;
+        }
+        if Self::is_recursive(func) {
+            return false;
+        }
+        if Self::count_instructions(func) < MIN_NOINLINE_INSTRUCTIONS {
+            return false;
+        }
+        in_loop_callees.contains(&func.name)
+    }
+
     /// Run on the entire program (interprocedural pass)
     pub fn run_on_program(&self, program: &mut MirProgram) -> bool {
         let mut changed = false;
@@ -6803,6 +6921,21 @@ impl AggressiveInlining {
             // Only if not already marked for always_inline
             else if !func.always_inline && !func.inline_hint && self.should_hint_inline(func) {
                 func.inline_hint = true;
+                changed = true;
+            }
+        }
+
+        // v0.99 (Cycle 2532): noinline pass to enable LICM on read-only
+        // functions called from loops. Runs after the alwaysinline/inlinehint
+        // decisions so it can override an inlinehint when applicable —
+        // alwaysinline functions are excluded by `should_no_inline_for_licm`.
+        let in_loop_callees = Self::collect_in_loop_callees(program);
+        for func in &mut program.functions {
+            if !func.no_inline && self.should_no_inline_for_licm(func, &in_loop_callees) {
+                func.no_inline = true;
+                if func.inline_hint {
+                    func.inline_hint = false;
+                }
                 changed = true;
             }
         }

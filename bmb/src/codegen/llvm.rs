@@ -1957,16 +1957,52 @@ impl<'ctx> LlvmContext<'ctx> {
             function.add_attribute(AttributeLoc::Function, self.context.create_enum_attribute(alwaysinline_id, 0));
         }
 
+        // v0.99 (Cycle 2533): Rule 7 parity — text backend has emitted
+        // `noinline` since v0.97.2, but inkwell never did. The
+        // MemoryEffectAnalysis-driven `noinline` from Cycle 2532 had no
+        // effect on inkwell builds, leaving json_parse stuck at 1.12x.
+        // Adding it here closes the gap.
+        //
+        // Note: `inlinehint` emission is intentionally NOT mirrored here.
+        // Cycle 2533 measurement shows that emitting inlinehint on inkwell
+        // (which previously ignored it) regresses mandelbrot 1.00 → 1.07
+        // because LLVM aggressively inlines mid-sized iterate-style
+        // functions into tight nested loops. The text backend has been
+        // emitting inlinehint for a while and apparently the trade-off
+        // there is fine, but inkwell's IR shape differs enough that the
+        // hint hurts. Leave `func.inline_hint` as a no-op here until a
+        // dedicated inkwell tuning cycle measures the trade space.
+        if func.no_inline {
+            let noinline_id = Attribute::get_named_enum_kind_id("noinline");
+            function.add_attribute(AttributeLoc::Function, self.context.create_enum_attribute(noinline_id, 0));
+        }
+
         // v0.69: Add memory(none) for memory-free functions to enable LICM and constant folding
-        // Functions marked @pure or detected as memory-free can be hoisted out of loops
-        // and constant-folded by LLVM when called with constant arguments
         // v0.96.19: Add memory(read) for read-only functions
+        // v0.99 (Cycle 2533): Replaced `create_string_attribute("memory", "read")`
+        // (which LLVM 16+ treats as opaque metadata) with the `readonly`
+        // enum attribute. LLVM parses `readonly` as a compatibility shim
+        // for `memory(read)`. Without this, the LLVM-feature build emits
+        // `"memory"="read"` in IR, opt -O2 ignores it, and LICM cannot
+        // hoist read-only calls — json_parse stayed at 1.12x in inkwell
+        // even after Cycle 2532's MIR-level noinline pass.
+        //
+        // NOTE: We intentionally keep the legacy `"memory"="none"` string
+        // attribute for memory-free functions instead of switching to
+        // `readnone`. Cycle 2533 measurement revealed that `readnone`
+        // regresses mandelbrot 1.01 → 1.06 in the inkwell pipeline (text
+        // backend stays at 1.01) — promoting math helpers to `readnone`
+        // changes opt -O2's speculation/scheduling decisions inside the
+        // 4M-iter mandelbrot loop in a way that hurts overall throughput.
+        // The legacy string attribute was effectively a no-op, so leaving
+        // it preserves prior mandelbrot performance until a dedicated
+        // tuning cycle measures the speculatable trade-off.
         if func.is_memory_free {
             let memory_none_attr = self.context.create_string_attribute("memory", "none");
             function.add_attribute(AttributeLoc::Function, memory_none_attr);
         } else if func.is_read_only {
-            let memory_read_attr = self.context.create_string_attribute("memory", "read");
-            function.add_attribute(AttributeLoc::Function, memory_read_attr);
+            let readonly_id = Attribute::get_named_enum_kind_id("readonly");
+            function.add_attribute(AttributeLoc::Function, self.context.create_enum_attribute(readonly_id, 0));
         }
 
         // v0.60.56: Add fast-math attributes for FP-heavy workloads
