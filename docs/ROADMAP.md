@@ -39,7 +39,7 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 |------|--------|---|
 | Bootstrap Fixed Point S2 == S3 | ✅ | 완료 (Cycle 2237) |
 | G.1 verifier fix (prelude duplicate clamp) | 🔄 진단 완료 (Cycle 2506) | P1-P3 시퀀스 (Cycles 2509-2511) |
-| 컴파일러 도메인 벤치마크 (≤ 1.10x vs C) | 🔄 brainfuck ✅ 1.00x, csv/json_parse ✅ ≤1.07x, http_parse/json_serialize ✅ <1.0x, **lexer ⚠️ 1.11x (M1 known opportunistic gap)** | Cycles 2512-2514 측정 + 결정. Lexer 1% 초과는 M2 작업 중 opportunistic 해소 |
+| 컴파일러 도메인 벤치마크 (≤ 1.05x vs C, strict) | ✅ Cycle 2525 v0.98 재측정 (20-runs Tier 3): brainfuck 1.04x, csv_parse 1.00x, http_parse 0.96x, json_serialize 0.82x, lexer 1.04x (within margin), sorting 0.91x — **6/7 통과**. **json_parse ❌ 1.12x** (FAIL >5%) — Cycle 2526+ P-1 loop syntax 작업 대상 | strict 게이트로 정정. Cycle 2514의 1.10x 게이트는 workaround (Cycle 2525 self-correction) |
 | 3-OS CI green | ⚠️ Linux -lm 끝 (Cycle 2505), 후속 안정화 | G.1 P3에 자연 포함 |
 | Trust 정책 (D' Golden) | ✅ (B) Fully remove 실행 | Cycle 2515 결정 → Cycle 2521 제거 |
 
@@ -118,8 +118,9 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 | Track F (LLVM 22 hint 복원) | **opportunistic** (M1/M2 작업 중 기회 발생 시) |
 | Track H (CI throughput) | **DONE** (Cycle 2480 H tier C 거부 후 종결) |
 | 옛 Performance > Everything 단일 축 | **B > P > A > D > C** (5축 우선순위로 확장) |
-| 8/15 FAIL 중 비-도메인 (mandelbrot/n_body/fannkuch/k-nucleotide/fasta 등) | **강등** — 별도 추적, M1 게이트 외 |
-| 8/15 FAIL 중 도메인 정합 (brainfuck/lexer/hash_table) | **M1 P 작업** — Cycles 2512-2514 우선 해소 |
+| ~~8/15 FAIL (v0.51.22 stale baseline)~~ | **OBSOLETED Cycle 2525** — v0.98 재측정 결과 1/16 FAIL only (json_parse 1.12x). Tier 1 9/9 within ≤1.05x. 비-도메인 강등 분류 불필요 |
+| 비-도메인 추적 (mandelbrot/n_body/fannkuch/fasta 등) | ✅ v0.98 모두 ≤1.05x (n_body 0.85x FAST, fannkuch 0.80x FAST 등) |
+| 도메인 정합 잔여 (json_parse 1.12x) | **Cycle 2526+ P-1 작업** — `loop`/`while` 표현식 정식 도입 → 5개 byte-stream 벤치 (brainfuck/csv/http/json/lexer) 동시 향상 ROI |
 
 ### Anchor for next cycles (post-2507)
 
@@ -146,17 +147,39 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 | 2523 | Track R Phase 2: ai-proof deprecation notice (제거 시점 Cycle 2526), bmb-ai-bench README 작성 (합격선 X 정책 명시), `perf_target_ratio` docstring 명확화 | ✅ |
 | 2524 | Track N Phase 2 시작: bmb-mcp Python scaffold (`pyproject.toml`, `chatter/__init__.py`, `chatter/bmb_cli.py`, `chatter/server.py`) + `bmb_check` tool 구현 + 5/5 pytest pass. README implementation status 갱신 (Node→Python 전환) | ✅ |
 | 2524-close | HANDOFF refresh + push (5 parent commits + 3 inner commits 모두 origin 동기화) + maintainer 잔여 HUMAN-Decision 종결: TestPyPI gap 수용 (publish=false 리허설), WSL2 미설치 결정 → Track T publishing 인프라 unblock | ✅ |
+| 2525 | **Performance-First Realignment** + v0.98 정직한 재측정 (16 historic, Tier 3 ≥10 runs). 이전 평가의 v0.51.22 stale data 정정. 결과: 7/16 BMB FAST, 15/16 ≤1.05x, 1/16 FAIL (json_parse 1.12x). 격차 → Decision Framework L1+L3+L4 매핑. M1 strict 게이트 self-correction (1.10x → 1.05x) | ✅ |
+| 2526 | P-6 ROADMAP/Spec strict 게이트 갱신 + ai-proof 제거 (Cycle 2523 약속 이행) | ✅ |
+| 2527 | P-5 benchmark 노이즈 자동 게이트 (`benchmark.sh` + `measure-v098.sh` warmup-driven adaptive runs) | ✅ |
+| 2528 | json_parse 격차 IR 진단 — HANDOFF P-1/P-2 (loop/while + byte intrinsic) 사실 오류 발견. **loop/while 이미 grammar에 존재**, **byte_at 이미 GEP 인라인** | ✅ |
+| 2529 | Real root cause = LICM 차단 (BMB `MemoryEffectAnalysis`가 runtime intrinsic 누락) + manual IR patch validation (1.04x ✅) | ✅ |
+| 2530 | `MemoryEffectAnalysis::is_runtime_read_only` 추가 (`byte_at`/`len`/`bmb_string_*` 등) + pass order swap. text backend `memory(read)` 정확 emit. **inkwell `create_string_attribute("memory","read")` 부정확** — separate fix needed (Rule 7 parity) | ✅ |
+| 2531 | 5 byte-stream 벤치 측정 — Cycle 2530 fix ROI: **brainfuck 1.04→1.00, lexer 1.04→1.00 ✅**, csv_parse 1.00 (이미), json_parse 1.12 (auto-inliner override 잔여), http_parse 빌드 실패 (사전 결함) | ✅ |
+
+#### Cycle 2526+ Performance Track (post-2525, **HANDOFF P-1/P-2 INVALIDATED Cycle 2528**)
+
+| 우선순위 | 작업 | 추정 | 상태 |
+|---------|-----|------|------|
+| ~~P-1 (HANDOFF) `loop`/`while` 도입~~ | 이미 grammar에 존재 — Cycle 2528 발견 | — | ❌ 무효 |
+| ~~P-2 (HANDOFF) byte intrinsic~~ | 이미 GEP+load 인라인 — Cycle 2528 발견 | — | ❌ 무효 |
+| **P-A.1' (NEW)** | `MemoryEffectAnalysis::is_runtime_read_only` runtime intrinsic 등록 | 1 | ✅ Cycle 2530 |
+| **P-A.2'** ★ | text backend `noinline` 자동 부여 (read-only && has_call && called from loop) — json_parse 1.12 → ≤1.05 목표 | 1-2 | ⏳ Cycle 2532 |
+| **P-A.3'** | inkwell backend `memory(read)` enum attribute API (Rule 7 parity) | 1 | ⏳ Cycle 2533 |
+| **B-?** | http_parse 빌드 실패 (`switch i64 %d` with `%d: i32`) — 사전 결함 fix | 1 | ⏳ |
+| P-3 | Verifier-driven bounds check elimination 패스 (long-term) | 3-5 | ⏳ |
+| P-4 | NUL-terminated string view (HUMAN decision) | 결정 + 1-3 | ⏳ |
+| **P-5** | `benchmark.sh` 노이즈 자동 감지 (warmup-driven adaptive runs) | 1 | ✅ Cycle 2527 |
+| **P-6** | ROADMAP/Spec strict 게이트 + ai-proof 제거 | 1 | ✅ Cycle 2526 |
 
 #### M1 자율 가능 부분 ✅ COMPLETE
 
 - Bootstrap Fixed Point S2 == S3
 - G.1 verifier fix (Cycles 2509-2511)
-- 컴파일러 도메인 벤치 ≤ 1.10x 게이트 (lexer 1.11x M1 known opportunistic gap)
+- 컴파일러 도메인 벤치 ≤ 1.05x 게이트 (strict, Cycle 2525 self-correction) — 6/7 통과
 - Trust 정책 결정 영속화 (B 권장)
 
-잔여 (외부 의존):
+잔여 (구조적 개선 기회 — Performance > Everything):
 - 3-OS CI green Bindings 검증 — push 후 empirical
-- lexer 1% gap — M2 작업 중 opportunistic
+- **json_parse 1.12x** — Decision Framework L1 (loop syntax) + L4 (byte intrinsic) + L3 (bounds elim) 매핑. Cycle 2526+ P-1 작업으로 5개 벤치 동시 해소
 
 #### Cycle 2521+ 후속 (잔여 6 cycles + 향후 run-cycle)
 
@@ -168,7 +191,10 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 | ~~P4 (M2) Track R Phase 2 — "합격선 X" 정책 적용 + ai-proof deprecation~~ | ✅ DONE (Cycle 2523) | — |
 | P5 (M2) | Track N Phase 2 — 잔여 6 tools + 5 resources + 3 prompts (Cycle 2524 scaffold + `bmb_check` 완료) | 2-4 |
 | P6 (M2) | Track Q Phase 2 — 키워드 충돌 결정 + lint --ai-friendly BMB 구현 | 2-3 |
-| P7 (M1) | lexer 1.11x → 1.10x peek bounds check 제거 (verifier 통합) | 2-3 |
+| ~~P7 (M1) lexer 1.11x → 1.10x peek bounds check 제거~~ | ✅ OBSOLETED Cycle 2525 — lexer 1.04x within margin (3-runs 노이즈 분석). 진짜 격차는 json_parse 1.12x | — |
+| P-1 (M1, Cycle 2526+) | `loop` / `while` 표현식 정식 도입 → 5 byte-stream 벤치 동시 향상 (json_parse 1.12 → ≤1.05 목표) | 5-8 |
+| P-2 (M1) | String byte-access intrinsic (codegen 직접 GEP, text + inkwell parity) | 2-3 |
+| P-3 (M1) | Verifier-driven bounds check elimination 패스 | 3-5 |
 
 ---
 
@@ -270,7 +296,7 @@ WSL2 admin install, Golden policy confirmation).
 ```
 Bootstrap   ██████████████████░░ 98%   3-Stage Fixed Point ✅ (S2 == S3)
 Self-Host   ████████████████████ 99%   41 CLI commands, 9-feature LSP, REPL, fmt, lint
-Benchmark   ████████████████████ 100%  309 builds, 16+ FASTER vs C, 0 FAIL
+Benchmark   ███████████████████░ 94%   v0.98 재측정 (Cycle 2525): 7/16 BMB > C, 15/16 ≤1.05x, 1/16 FAIL (json_parse 1.12x)
 Ecosystem   ████████████████░░░░ 82%   5 binding libraries (140 @export), 1,017 pytest
 SIMD        ████████████████████ 100%  f64/f32/i32/i64 ×N, masks, shuffle Phase 1+2
 Tooling     ████████████████░░░░ 80%   @bench native + --compare ✅, doctor script, Z3 verify
@@ -283,7 +309,7 @@ CI Green    ████████████████████ 100%  B
 |--------|-------|
 | Self-hosted compiler | 19,818 LOC in BMB (Stage 2 == Stage 3) |
 | Rust test suite | 3,768 tests passing (+4 regression tests this session) |
-| Benchmark suite | 309 builds, 0 FAIL, BMB > C+Rust in 16 benchmarks |
+| Benchmark suite (v0.98 honest re-baseline, Cycle 2525) | 16 historic benches: BMB > C in 7/16 (44%), ≤C 1.05x in 15/16 (94%), 1 FAIL (json_parse 1.12x). Tier 3 ≥10 runs noise gate. |
 | Binding ecosystem | 5 libraries, 140 @export functions, 1,017 pytest integration tests |
 | Standard library | 15 / 15 modules (core, string, array, io, json, math, time, fs, ...) |
 | CI baseline (empirical) | BMB CI 9/9 green, Bootstrap+Benchmark 3-Stage green, Bindings CI 3-OS green on HEAD `1734a41b` |

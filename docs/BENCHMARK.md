@@ -175,6 +175,11 @@ When BMB and Clang generate equivalent IR, performance is identical. Remaining g
 ./scripts/benchmark.sh --tier all     # All tiers
 ./scripts/benchmark.sh --list         # List available benchmarks
 
+# Noise gate (P-5, Cycle 2527): small benches (warmup < 100ms) get
+# adaptive ≥10 runs. Disable with --no-noise-gate; tune with
+# --noise-threshold MS / --noise-min-runs N.
+./scripts/benchmark.sh --tier 3 --verbose   # see when gate triggers
+
 # Manual (single benchmark)
 bmb build bench.bmb -o bench_bmb
 clang -O3 -march=native bench.c -o bench_c -lm

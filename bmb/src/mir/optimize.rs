@@ -183,19 +183,21 @@ impl OptimizationPipeline {
             stats.record_pass(loop_narrowing.name());
         }
 
-        // v0.51.8: Run aggressive inlining LAST (after all optimizations)
-        // This marks small, simple functions for LLVM's alwaysinline attribute
-        // to eliminate function call overhead in tight loops
-        let inlining = AggressiveInlining::new();
-        if inlining.run_on_program(program) {
-            stats.record_pass(inlining.name());
-        }
-
-        // v0.51.11: Run memory effect analysis to detect memory-free functions
-        // This enables LLVM memory(none) attribute for better LICM
+        // v0.99 (Cycle 2530): Run memory effect analysis BEFORE aggressive
+        // inlining so `should_hint_inline` can skip read-only substantial
+        // functions (which benefit more from LICM than inlining when called
+        // from loops). See `should_hint_inline` for the heuristic.
         let memory_analysis = MemoryEffectAnalysis::new();
         if memory_analysis.run_on_program(program) {
             stats.record_pass(memory_analysis.name());
+        }
+
+        // v0.51.8: Aggressive inlining marks small, simple functions for
+        // LLVM's alwaysinline attribute to eliminate call overhead in tight
+        // loops. Now consults memory-effect results.
+        let inlining = AggressiveInlining::new();
+        if inlining.run_on_program(program) {
+            stats.record_pass(inlining.name());
         }
 
         stats
@@ -6766,6 +6768,14 @@ impl AggressiveInlining {
             return false;
         }
 
+        // v0.99 (Cycle 2530, conservative): the should_hint_inline heuristic
+        // alone does not stop clang's auto-inliner from inlining medium
+        // read-only functions back into hot loops, so adding memory effect
+        // checks here yielded no measured benefit on json_parse without
+        // also adding `noinline`. Until the noinline path is wired, we keep
+        // the original size-based heuristic. Future Cycle 2531+ to revisit
+        // (carry-forward — see cycle-2530.md).
+
         let inst_count = Self::count_instructions(func);
         let block_count = func.blocks.len();
 
@@ -6993,6 +7003,43 @@ impl MemoryEffectAnalysis {
         true
     }
 
+    /// v0.99 (Cycle 2530): Hardcoded set of runtime/builtin functions that
+    /// read memory but never write. Without this, calls to e.g. `byte_at`
+    /// (string char access) block `is_read_only` propagation in the
+    /// interprocedural analysis because the runtime symbol is never defined
+    /// in user MIR (so it's absent from `non_writing_fns`).
+    ///
+    /// Surfaced by Cycles 2528-2529 json_parse 1.12x diagnosis: BMB's
+    /// `validate_json`/`count_array` couldn't earn `memory(read)` LLVM
+    /// attribute because they call `byte_at` → LLVM's downstream LICM
+    /// then can't hoist 100K identical-input invocations out of the main
+    /// loop, while clang's C version does. Manual IR patch validated
+    /// fix → 1.04x ≤1.05 strict gate.
+    ///
+    /// Conservative inclusion criteria: function must be guaranteed
+    /// pure-read against its inputs — no allocation, no FS/IO, no
+    /// time-varying external state. New entries require explicit audit.
+    fn is_runtime_read_only(name: &str) -> bool {
+        matches!(
+            name,
+            // String length (BMB high-level + runtime symbol)
+            "len" | "bmb_string_len"
+            // String byte access
+            | "byte_at" | "char_at" | "bmb_string_char_at"
+            // String predicates / equality
+            | "bmb_string_eq"
+            | "starts_with" | "bmb_string_starts_with"
+            | "ends_with" | "bmb_string_ends_with"
+            | "contains" | "bmb_string_contains"
+            | "index_of" | "bmb_string_index_of"
+            | "is_empty" | "bmb_string_is_empty"
+            // Character / ord
+            | "ord" | "bmb_ord"
+            // CStr length / byte access
+            | "cstr_byte_at" | "strlen"
+        )
+    }
+
     /// v0.96.19: Interprocedural version checks callee's known memory effects
     /// A call to a memory-free or read-only function does not write memory.
     fn inst_writes_memory_ip(inst: &MirInst, non_writing_fns: &HashSet<String>) -> bool {
@@ -7002,6 +7049,9 @@ impl MemoryEffectAnalysis {
             // via the accesses_memory path and don't appear here.
             MirInst::Call { func, .. } if Self::is_simd_memory_intrinsic(func)
                 && func.starts_with("store_") => true,
+            // v0.99 (Cycle 2530): Known read-only runtime intrinsics.
+            // See is_runtime_read_only docstring for rationale.
+            MirInst::Call { func, .. } if Self::is_runtime_read_only(func) => false,
             MirInst::Call { func, .. } => !non_writing_fns.contains(func),
             _ => Self::inst_writes_memory(inst),
         }

@@ -6,12 +6,21 @@
 #   ./scripts/benchmark.sh [options]
 #
 # Options:
-#   --json          Output results in JSON format only
-#   --tier TIER     Run specific tier (0, 1, 2, 3, or all)
-#   --runs N        Number of runs per benchmark (default: 5)
-#   --output FILE   Write JSON results to file
-#   --verbose       Show detailed output
-#   --list          List available benchmarks and exit
+#   --json                Output results in JSON format only
+#   --tier TIER           Run specific tier (0, 1, 2, 3, or all)
+#   --runs N              Number of runs per benchmark (default: 5)
+#   --output FILE         Write JSON results to file
+#   --verbose             Show detailed output
+#   --list                List available benchmarks and exit
+#   --no-noise-gate       Disable adaptive run-count for small benches
+#   --noise-threshold MS  Warmup-time threshold below which gate triggers (default: 100)
+#   --noise-min-runs N    Minimum runs when gate triggers (default: 10)
+#
+# Noise gate (P-5, Cycle 2527):
+#   Benches with warmup time < threshold get bumped to noise-min-runs.
+#   Rationale: 3-runs measurement of a 30ms bench reported false 1.13x
+#   gap (Cycle 2525); 20-runs reduced it to 1.04x. The min-of-N estimator
+#   is stable only when N is large enough relative to per-run noise.
 #
 # Tiers:
 #   0 - Bootstrap compile times (lexer, parser, types)
@@ -44,6 +53,9 @@ RUNS=5
 OUTPUT_FILE=""
 VERBOSE=false
 LIST_ONLY=false
+NOISE_GATE=true
+NOISE_THRESHOLD=100
+NOISE_MIN_RUNS=10
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -70,6 +82,18 @@ while [[ $# -gt 0 ]]; do
         --list)
             LIST_ONLY=true
             shift
+            ;;
+        --no-noise-gate)
+            NOISE_GATE=false
+            shift
+            ;;
+        --noise-threshold)
+            NOISE_THRESHOLD="$2"
+            shift 2
+            ;;
+        --noise-min-runs)
+            NOISE_MIN_RUNS="$2"
+            shift 2
             ;;
         *)
             echo "Unknown option: $1"
@@ -125,15 +149,28 @@ time_cmd() {
 # Run benchmark multiple times and get the BEST (min) time.
 # min beats median for short benchmarks: filesystem/OS noise can only make
 # a run slower, never faster — so the floor is the most reproducible reading.
-# One warm-up run is discarded to avoid cold-start cache effects.
+# One warm-up run is discarded to avoid cold-start cache effects, but its
+# duration probes the noise-gate threshold (P-5).
 run_benchmark() {
     local exe=$1
     local times=()
 
-    # Warm-up (discarded)
-    time_cmd "$exe" > /dev/null
+    # Warm-up — discarded as a sample, but used as noise probe
+    local warmup=$(time_cmd "$exe")
 
-    for ((i=1; i<=RUNS; i++)); do
+    # Adaptive runs: small benches need more samples for stable min-estimator.
+    # 3-runs of a 30ms bench reported false 1.13x gap (Cycle 2525);
+    # 20-runs reduced it to 1.04x.
+    local effective_runs=$RUNS
+    if [ "$NOISE_GATE" = true ] && [ "$warmup" -lt "$NOISE_THRESHOLD" ] && [ "$effective_runs" -lt "$NOISE_MIN_RUNS" ]; then
+        # NOTE: stderr only — stdout is captured as the function's return value.
+        if [ "$VERBOSE" = true ] && [ "$JSON_OUTPUT" = false ]; then
+            echo -e "  ${YELLOW}[noise-gate] $(basename "$exe") warmup=${warmup}ms < ${NOISE_THRESHOLD}ms → ${effective_runs} → ${NOISE_MIN_RUNS} runs${NC}" >&2
+        fi
+        effective_runs=$NOISE_MIN_RUNS
+    fi
+
+    for ((i=1; i<=effective_runs; i++)); do
         local t=$(time_cmd "$exe")
         times+=($t)
     done

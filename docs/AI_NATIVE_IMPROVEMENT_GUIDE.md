@@ -122,19 +122,23 @@ quicksort:      2 loops (Type C ×1)    → suggestion으로 1회 수정
 
 ### 4.1 새 패턴 발견
 
-실험 결과에서 **suggestion=NO**인 에러를 추출:
+실험 결과에서 **컴파일 실패 attempt**의 에러 메시지를 추출 (PatternBank 후보):
 
 ```bash
-cd ecosystem/ai-proof
+cd ecosystem/bmb-ai-bench
 python -c "
 import json, glob
-for f in sorted(glob.glob('results/raw/*/*/*.json')):
+for f in sorted(glob.glob('results/*/*.json')):
     d = json.loads(open(f).read())
     for a in d.get('attempts', []):
-        if a.get('error') and not a['error'].get('suggestion'):
-            print(f'{a[\"loop_type\"]} | {a[\"error\"][\"normalized\"][:80]}')
+        if not a.get('compiled', True) and a.get('error_msg'):
+            print(f'{a.get(\"loop_type\", \"?\"):>2} | {a[\"error_msg\"][:80]}')
 "
 ```
+
+> **Note**: bmb-ai-bench 결과 스키마는 `attempts[].error_msg` (flat string).
+> 이전 ai-proof는 `attempts[].error.{normalized,suggestion}` 중첩 객체.
+> Cycle 2526 ai-proof 제거 시 본 스니펫을 새 스키마에 맞춰 정정.
 
 ### 4.2 패턴 작성
 
@@ -170,7 +174,7 @@ cargo test --test diagnostics_test --release
 cargo test --release
 
 # 4. 실험 재실행
-cd ecosystem/ai-proof && python scripts/run_experiment.py --pilot --runs 1
+cd ecosystem/bmb-ai-bench && python scripts/run_experiment.py --pilot --runs 1
 ```
 
 ### 4.4 효과 측정
@@ -292,10 +296,10 @@ Q: 실시간 문맥이 필요한가? (stdlib 탐색, 코드 분석 등)
 # .github/workflows/ai-native.yml
 - name: AI Loop Regression Check
   run: |
-    python ecosystem/ai-proof/scripts/run_experiment.py --pilot --runs 1
+    python ecosystem/bmb-ai-bench/scripts/run_experiment.py --pilot --runs 1
     python -c "
     import json
-    data = json.load(open('ecosystem/ai-proof/results/summary.json'))
+    data = json.load(open('ecosystem/bmb-ai-bench/results/summary.json'))
     # Check no regression from baseline
     "
 ```
@@ -342,7 +346,7 @@ bmb_reference.md                        bmb_spec_lookup tool
   문법 치트시트               →        "BMB의 while 문법은?"
                                          자연어 쿼리 → 관련 스펙 반환
 
-ai-proof orchestrator                   MCP 클라이언트 레퍼런스
+bmb-ai-bench orchestrator               MCP 클라이언트 레퍼런스
   check → build → test loop    →        다른 AI 도구가 참조할 구현
 ```
 

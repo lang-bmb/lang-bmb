@@ -51,9 +51,10 @@ individual thresholds.
 
 C baseline flags: `-O2 -march=native` unless overridden per-problem.
 
-## Relationship to ai-proof
+## Relationship to ai-proof (historical)
 
 `ecosystem/ai-proof/` was the earlier (smaller) experiment harness.
-It is **deprecated** as of 2026-05-01 (Cycle 2523); new work
-happens here. See `ecosystem/ai-proof/README.md` for the
-deprecation notice.
+It was **removed in Cycle 2526** (2026-05-01) after the 3-cycle
+deprecation window from Cycle 2523. The package is preserved in git
+history (commit before Cycle 2526 removal) for any historical
+reference; new work happens here.
