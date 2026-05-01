@@ -1,115 +1,84 @@
-# BMB Session Handoff — 2026-05-01 (Cycles 2526-2531 — MemoryEffect Diagnosis + Partial Fix)
+# BMB Session Handoff — 2026-05-01 (Cycles 2532-2535 — M1 ≤1.05 Strict Gate 16/16 PASS ★)
 
-> **이전 HEAD**: `943bdd3f` (Cycle 2525 측정 utilities + handoff)
-> **새 HEAD**: `615a155a` (perf+docs: MemoryEffectAnalysis runtime intrinsic fix + cleanup, Cycles 2526-2531)
-> **세션 성격**: 6-cycle run-cycle (20 budget 중 14 잔여 — early termination). HANDOFF 이전 권고 P-1/P-2 사실 오류 발견 → 진단 reframe → 진짜 root cause fix 부분 적용.
-> **결정적 발견**: 이전 HANDOFF의 P-1 (loop/while 도입) + P-2 (byte intrinsic) 모두 **이미 존재함**. 진짜 root cause = `MemoryEffectAnalysis`가 runtime intrinsic을 write로 오분류 → LICM 차단.
+> **이전 HEAD**: `615a155a` (Cycle 2531 closure, P-A track carry-forward)
+> **새 HEAD**: `c960edbb` (perf: M1 ≤1.05 strict gate 16/16 PASS, Cycles 2532-2535)
+> **세션 성격**: 4-cycle run-cycle (10 budget 중 4 사용, **자율 종료**). HANDOFF P-A.2'/P-A.3'/B-?/P-A.4' 모두 자율 처리.
+> **결정적 결과**: **M1 ≤1.05 strict gate 16/16 PASS, 0 FAIL** 첫 달성 + Bootstrap 3-Stage Fixed Point 안정 + http_parse build 결함 close.
 
 ---
 
-## 1. 이번 세션 요약 (Cycles 2526-2531)
+## 1. 이번 세션 요약 (Cycles 2532-2535)
 
-### Cycle 2526 — P-6 ROADMAP/Spec strict 게이트 + ai-proof 제거
+### Cycle 2532 — P-A.2' text backend `noinline` 자동 부여
 
-- `docs/ROADMAP.md`: M1 게이트 ≤1.10x → **≤1.05x strict** (Cycle 2514 게이트 완화는 workaround였음). Headline 정정: "BMB > C in 16 benchmarks" → "7/16, ≤C 15/16, 1 FAIL". v0.51.22 stale "8/15 FAIL" 분류 OBSOLETED.
-- `claudedocs/cycle-logs/ROADMAP.md`: v0.98.x distribution phase → **Performance-First gap closure** phase 전환.
-- `ecosystem/ai-proof/` 제거 (197 tracked files): Cycle 2523 deprecation notice의 "Cycle 2526 약속" 이행. `bmb-ai-bench/README.md` + `dev-docs/AI_FRIENDLY_CYCLE_PLAN_V2.md` + `docs/AI_NATIVE_IMPROVEMENT_GUIDE.md` 활성 경로 정리.
+**구현** (`bmb/src/mir/optimize.rs` `AggressiveInlining` 확장):
+- 새 `collect_in_loop_callees(program)` — 프로그램 전역 CFG 분석으로 back-edge 기반 loop 검출 후 그 안의 callees 수집.
+- 새 `should_no_inline_for_licm(func, in_loop_callees)` — 조건: `is_read_only && !is_memory_free && !always_inline && !is_recursive && inst_count >= 10 && called_from_loop`.
+- `run_on_program` 확장: 기존 alwaysinline/inlinehint 결정 후 별도 패스로 `func.no_inline = true` (inline_hint override).
 
-### Cycle 2527 — P-5 benchmark 노이즈 자동 게이트
+**임계값 튜닝**: 첫 시도 (≥20 instr)는 `validate_json`만 noinline → count_array 미적용 → 1.136x. 임계값 10으로 낮춤 → 양 함수 noinline → opt -O2가 hoist → C와 동일 패턴 (`imulq $100000, %rax`).
 
-- `scripts/benchmark.sh` + `scripts/measure-v098.sh`: warmup-driven adaptive runs gate. warmup < 100ms 벤치는 자동 ≥10 runs.
-- 새 CLI: `--no-noise-gate`, `--noise-threshold MS`, `--noise-min-runs N`.
-- 5 시나리오 검증 통과 (default fire on small benches, skip on large, manual disable, force-trigger, high RUNS preserve).
-- stderr-only verbose 메시지 (stdout 캡처 오염 방지 — Cycle 2527 STEP 4에서 발견 + 즉시 수정).
+**측정**: json_parse text backend 1.12 → **1.04 ✅** (안정 측정, 50-run × 3-round 검증).
 
-### Cycle 2528 — json_parse IR-level 진단
+### Cycle 2533 — P-A.3'/P-A.4' inkwell Rule 7 parity (RE-PLAN)
 
-**HANDOFF P-1/P-2 사실 오류 발견**:
+**Trigger 🟠 RE-PLAN**: sweep 1차 결과 inkwell이 cycle 2532 변경 미반영 발견 → inkwell 빌드 재컴파일. 그러나 sweep 2차에서 `csv_parse 1.087, lexer 1.07, json_parse 1.16` — text backend 대비 큰 격차. 분석 결과 inkwell이 `func.no_inline`/`func.inline_hint` 둘 다 emit 안 함 + `"memory"="read"` 문자열 속성이 LLVM 16+에 무시됨. → cycle 2535 (Rule 7 parity) 작업을 본 cycle에 통합.
 
-| HANDOFF 주장 | 실제 |
-|------|------|
-| "재귀 → 루프 (L1) `loop`/`while` 정식 도입 필요" | ❌ `bmb/src/grammar.lalrpop:39-41,1359-1390`에 이미 존재 |
-| "byte_at deref (L4)" | ❌ pre-opt IR `getelementptr i8 + load i8` 직접 인라인 (line 652-653) |
-| "pos >= len() 체크 (L1+L3)" | ❌ `s.len()` 한 번 hoist + `pos < len` 비교, C와 동일 |
-| "재귀 TCO 비결정성 (L3)" | ❌ post-opt에서 일관 적용 (loop_header_7 phi 변환) |
+**구현** (`bmb/src/codegen/llvm.rs:1955-1981`):
+- `noinline` enum 추가 — cycle 2532 효과 inkwell mirror.
+- `readonly` enum 추가 — `memory(read)` compatibility shim (LLVM 16+).
 
-진짜 root cause 가설 (cycle 2528) = jump table indirect jump → cycle 2529에서 부분 부정확함이 추가 발견.
+**시도-revert** (mandelbrot 회귀 회피):
+- `inlinehint` enum 추가 → mandelbrot 1.00 → 1.07 ❌ → revert (코멘트 보존).
+- `readnone` enum 추가 → mandelbrot 1.06 잔존 → revert + `"memory"="none"` 문자열 유지.
 
-### Cycle 2529 — Real root cause + manual IR patch validation
+**측정**: json_parse inkwell 1.16 → **1.04 ✅**. mandelbrot 안정.
 
-**Asm 비교 (`count_array` hot loop, BMB vs C)**:
+### Cycle 2534 — B-? http_parse 빌드 결함 (text-backend-specific)
 
-```
-C main:
-    callq validate_json     ; ★ 1번 호출
-    callq count_array        ; ★ 1번 호출
-    addl  ...
-    imull $100000, %eax      ; ★ ×100K multiply
+**재현 검증**: cycle 2531 보고된 사전 결함 = "자체-해결 또는 간헐적" 가설 → 부정. **text backend에서만 재현**, inkwell은 정상.
 
-BMB main:
-.LBB5_1:
-    callq validate_json     ; 100,000번 호출
-    callq count_array        ; 100,000번 호출
-    decq  %rbx
-    ja    .LBB5_1
-```
+**Root cause**: `bmb/src/codegen/llvm_text.rs:8512` Switch terminator가 i64 hardcode. `LoopBoundedNarrowing`이 `digit_char(d: i64)` → `digit_char(i32 noundef %d)` narrow했으나 switch는 `switch i64 %d` → clang IR validation 실패. inkwell은 `disc_int.get_type()` 동적 추출으로 정상.
 
-**진짜 root cause**: BMB의 `MemoryEffectAnalysis::inst_writes_memory_ip` (`bmb/src/mir/optimize.rs:7005`)가 `MirInst::Call { func, .. } => !non_writing_fns.contains(func)` 로직을 사용. `non_writing_fns`는 user-defined 함수의 `is_memory_free OR is_read_only` 집합으로만 빌드 → **runtime 함수 (`byte_at`, `len` 등)는 영구 누락** → `byte_at`를 부르는 함수는 "potentially writes memory"로 분류 → no `memory(read)` LLVM 속성 → opt-O2가 보수적으로 `memory(read, inaccessiblemem: readwrite)` 추정 → **LICM 차단** → 100K 호출 hoist 실패.
+**Fix**: text backend에 동일 narrow-aware 처리 적용. `narrowed_param_names` 검사로 disc_ty `i32`/`i64` 결정.
 
-**Manual IR patch validation**:
-- `attributes #11 = { mustprogress nosync nounwind willreturn memory(read) }` 추가
-- `validate_json` + `count_array`만 #11로 변경
-- 결과: BMB **25ms vs C 24ms = 1.04x ≤1.05 strict gate ✅** (vs original 27ms = 1.13x FAIL)
+**측정**: http_parse text backend 빌드 ✅ + 0.926×C **FAST**.
 
-→ Fix path 입증.
+### Cycle 2535 — Bootstrap 3-Stage 검증
 
-### Cycle 2530 — `MemoryEffectAnalysis::is_runtime_read_only` 등록
+**검증**: `BMB_ARENA_MAX_SIZE=16G bash scripts/bootstrap.sh` ✅
+- Stage 1 (10.6s) + Stage 2 (26.6s) + Stage 3 (33.5s) = 71s
+- **Fixed Point S2 == S3** ✅
 
-`bmb/src/mir/optimize.rs` 변경:
-- 신규 `is_runtime_read_only(name)` set: `len`/`bmb_string_len`/`byte_at`/`char_at`/`bmb_string_char_at`/`bmb_string_eq`/`starts_with`/`ends_with`/`contains`/`index_of`/`is_empty` (and `bmb_string_*` aliases) + `ord`/`bmb_ord` + `cstr_byte_at`/`strlen`.
-- `inst_writes_memory_ip`: callee가 set에 있으면 short-circuit `false`.
-- Pass order swap: `MemoryEffectAnalysis` → `AggressiveInlining` (carry-forward에서 inlining 휴리스틱이 is_read_only 활용 가능).
-
-`should_hint_inline` 휴리스틱 변경 시도 (read-only && has_call → no inlinehint) — 효과 미미하여 revert. `cargo test --release` 3772/3773 (1 pre-existing 무관 failure).
-
-### Cycle 2531 — 5 byte-stream 벤치 ROI 측정
-
-| Bench | Pre-fix vs C | Post-fix vs C | Δ |
-|-------|-------------|--------------|---|
-| brainfuck | 1.04x | **1.00x** | +0.04 ✅ |
-| lexer | 1.04x | **1.00x** | +0.04 ✅ |
-| csv_parse | 1.00x | 1.00x | unchanged ✅ |
-| json_parse | 1.12x | 1.12x | unchanged ❌ |
-| http_parse | 0.96x | 빌드 실패 | pre-existing 결함 |
-
-**Net positive**: brainfuck/lexer 격차 해소. csv_parse 이미 parity. json_parse 잔여 — clang -O3 auto-inliner override.
+cycle 2530-2534 변경 누적 (MemoryEffect + noinline + parity + switch narrow)이 self-hosting 결정성 보존 입증.
 
 ---
 
 ## 2. 산출물
 
-### Tracked (commit `615a155a`)
+### Tracked (commit `c960edbb`)
 | 분류 | 파일 |
 |------|------|
-| 코드 변경 | `bmb/src/mir/optimize.rs` (`is_runtime_read_only` + pass order swap) |
-| docs | `docs/ROADMAP.md` (Cycles 2526-2531 anchors + new P-A track), `docs/AI_NATIVE_IMPROVEMENT_GUIDE.md` (ai-proof → bmb-ai-bench redirect), `docs/BENCHMARK.md` (noise gate 사용 예제) |
-| scripts | `scripts/benchmark.sh` + `scripts/measure-v098.sh` (warmup-driven adaptive runs) |
-| ecosystem | `ecosystem/ai-proof/` 제거 (197 files), `ecosystem/bmb-ai-bench/README.md` (deprecation notice 갱신) |
+| 코드 변경 | `bmb/src/mir/optimize.rs` (AggressiveInlining: collect_in_loop_callees + should_no_inline_for_licm + run_on_program 확장) |
+| 코드 변경 | `bmb/src/codegen/llvm.rs` (noinline + readonly enum 추가, inlinehint/readnone revert reasoning 코멘트) |
+| 코드 변경 | `bmb/src/codegen/llvm_text.rs` (Switch terminator narrow-aware operand type) |
 
 ### Gitignored (local only)
 | 분류 | 파일 |
 |------|------|
-| Cycle logs | `claudedocs/cycle-logs/cycle-{2526,2527,2528,2529,2530,2531}.md` |
-| Run-cycle ROADMAP | `claudedocs/cycle-logs/ROADMAP.md` (Performance-First phase) |
+| Cycle logs | `claudedocs/cycle-logs/cycle-{2532,2533,2534,2535}.md` |
+| Run-cycle ROADMAP | `claudedocs/cycle-logs/ROADMAP.md` (M1 strict gate 16/16 PASS marking) |
 | 기존 HANDOFF | `claudedocs/HANDOFF.md` (본 문서가 갱신) |
-| 측정 IR/binary | `target/cycle-2528/*.ll`, `*.s`, `*.exe` |
+| 측정 binaries | `target/cycle-2532/*.{exe,ll,opt.ll,s}`, `target/benchmarks/*` |
+| Bootstrap | `target/bootstrap/{bmb-stage1,bmb-stage2,bmb-stage3}*` |
 
 ### 메모리 (auto-memory)
 | 파일 | 변경 |
 |------|------|
-| `MEMORY.md` | "MemoryEffect Diagnosis" 인덱스 항목 추가 |
-| `project_session_2026_05_01_memeffect_diag.md` | 신규 — 6-cycle 진단/fix/잔여 |
-| `project_benchmark_reality.md` | json_parse 격차 원인 정정 (재귀+byte_at → MemoryEffect) + brainfuck/lexer 1.00x 갱신 |
+| `MEMORY.md` | "M1 Strict Gate" 인덱스 항목 추가 |
+| `project_session_2026_05_01_m1_strict_gate.md` | 신규 — 4-cycle 결과 |
+| `project_benchmark_reality.md` | 16/16 ≤1.05 0 FAIL 갱신 |
+| `project_bootstrap_status.md` | Cycle 2535 추가 (71s, S2==S3) |
 
 ---
 
@@ -117,76 +86,67 @@ BMB main:
 
 | 항목 | 결과 |
 |------|------|
-| `cargo build --release` | ✅ 2m30s |
-| `cargo build --release --features llvm --target x86_64-pc-windows-gnu` | ✅ 2m38s |
-| `cargo test --release` | ⚠️ 3772/3773 (1 pre-existing `verify::contract::tests::test_trivial_contract_detection` — `git stash` 검증으로 무관 확인) |
-| 부트스트랩 3-Stage | ⏳ 미실행 — 코드 변경은 MIR 분석 패스 등록만 (compiler.bmb 무영향). 다음 세션 검증 권고 |
-| 5 byte-stream 벤치 측정 | ✅ 4 benches (http_parse 사전 결함 — 별도) |
-| Net Tier 3 perf | brainfuck 1.04→1.00, lexer 1.04→1.00, csv_parse 1.00 unchanged, json_parse 1.12 unchanged |
+| `cargo build --release` | ✅ 2m 27s (text backend) |
+| `cargo build --release --features llvm --target x86_64-pc-windows-gnu` | ✅ 2m 36s (inkwell, 2회) |
+| `cargo test --release --lib` | ⚠️ 3772/3773 (1 pre-existing `verify::contract::tests::test_trivial_contract_detection` — Cycle 2530-2531 검증으로 무관) |
+| 부트스트랩 3-Stage | ✅ S2 == S3 (71s) |
+| Tier 1+3 sweep (16 historic) | ✅ **16/16 ≤1.05 strict gate, 0 FAIL** |
+| http_parse text backend 빌드 | ✅ (was: linker error) |
+
+### 정밀 측정 (50-run top-3, 안정 후)
+
+| Bench | BMB | C | 판정 |
+|-------|-----|---|------|
+| json_parse (text) | 25 | 24 | **1.04 ✅** (was 1.12) |
+| json_parse (inkwell) | 25 | 24 | **1.04 ✅** (was 1.16) |
+| http_parse (text) | 25 | 27 | **0.93 ✅ FAST** (was: linker error) |
+| mandelbrot (inkwell) | 163 | 160 | 1.02 ✅ |
+| 나머지 12 벤치 | 모두 ≤1.05 | 회귀 0 |
 
 ---
 
 ## 4. 다음 세션 우선순위
 
-### P-A.2' [코드젠] text backend `noinline` 자동 부여 ★ 최우선
+### P-A.3'' [코드젠] inkwell `inlinehint`+`readnone`+`speculatable` combo 튜닝 (별도 session)
 
-**근거**: Cycle 2530 fix가 `memory(read)` 정확히 emit하지만, **clang -O3 auto-inliner가 medium-sized read-only 함수를 outer loop에 inline** → LICM이 inlined nested loops 분석 실패. Cycle 2529 manual IR patch (validate_json/count_array가 separate functions로 보존된 상태)에서 1.04x 입증됨 → noinline 부여하면 동일 효과 기대.
-
-**작업 범위**:
-1. `bmb/src/mir/optimize.rs::AggressiveInlining` (또는 새 패스): `func.is_read_only && has_user_call(func) && called_from_loop(func)` 조건 시 `func.no_inline = true`. `called_from_loop`는 program-level CFG 분석 필요 — 보수적으로 모든 호출자에 loop이 있는지 확인.
-2. `bmb/src/codegen/llvm_text.rs:1965` 일대: `func.no_inline` 시 `noinline` 속성 emit (이미 있음 — 확인만).
-3. json_parse 측정 → 1.12 → ≤1.05 검증.
-4. **회귀 점검**: Tier 1+3 sweep — `noinline` 부여가 다른 벤치 회귀 없는지 확인. 작은 read-only 함수 (예: stdlib utility)는 `is_read_only && no_user_call` (leaf)이므로 영향 없음.
-
-**추정**: 2 cycles (PoC + sweep).
-
-### P-A.3' [코드젠] inkwell backend `memory(read)` enum attribute (Rule 7 parity)
-
-**근거**: `bmb/src/codegen/llvm.rs:1968` `create_string_attribute("memory", "read")` → IR에 `"memory"="read"` (target string attr) 방출. **LLVM은 이를 표준 memory effect attribute로 인식 안 함** → text backend는 fix 받지만 LLVM-feature 빌드는 받지 못함.
+**근거**: Cycle 2533에서 `inlinehint` 단독 추가 시 mandelbrot 1.07, `readnone` 단독 추가 시 1.06 회귀. text backend는 둘 다 + `speculatable` 함께 emit해서 mandelbrot 1.01. inkwell도 `speculatable` 추가 시 회귀 회피 가능성.
 
 **작업 범위**:
-1. inkwell의 표준 `memory()` enum attribute API 식별. LLVM 21에서 `Attribute::get_named_enum_kind_id("memory")`는 enum kind를 주지만, value는 `MemoryEffects` 비트맵 인코딩 필요.
-2. inkwell이 노출하는 API 검토 (`build_attribute` 또는 `Attribute::create_enum_attribute`).
-3. text backend와 IR 동등성 확인 — `memory(read)` 표준 형식 emit.
-4. LLVM-feature 빌드의 5 byte-stream 벤치 재측정.
+1. `bmb/src/codegen/llvm.rs`에 `func.is_memory_free && !has_user_call` 조건 시 `speculatable` enum 추가.
+2. `inlinehint` + `readnone` 동시 추가 후 mandelbrot 측정.
+3. 회귀 시 trade-off 정밀 분석 (어떤 조합이 perf-neutral인지).
 
-**추정**: 1-2 cycles (LLVM C API 호출 직접 작성 가능).
+**추정**: 1-2 cycles.
 
-### B-? [코드젠] http_parse 빌드 실패 (사전 결함)
+### P-A.5 [코드젠] inkwell runtime decls Rule 7 parity (별도 session)
 
-**증상**: `target/cycle-2528/http_parse_bmb.ll:710:14: error: '%d' defined with type 'i32' but expected 'i64'` — `switch i64 %d, label %bb_else_25 [...]`. `%d`가 i32로 정의됐는데 switch가 i64 기대.
-
-**확인**: `git stash` 후 baseline에서도 재현됨 → **pre-existing**, Cycle 2530 fix 무관.
+**근거**: `bmb/src/codegen/llvm.rs:890` `let memory_read_attr = self.context.create_string_attribute("memory", "argmem: read");` — 동일 string-attr 버그 패턴. 영향은 user functions 대비 작음 (runtime declarations는 LLVM이 inline하지 않음).
 
 **작업 범위**:
-1. http_parse의 어떤 BMB 코드 패턴이 위 IR을 만드는지 식별 (`bmb/src/mir/lower.rs` switch lowering).
-2. `bmb/src/codegen/llvm_text.rs` 또는 codegen layer에서 switch operand 타입 일관성 보장.
-3. 골든 테스트 추가.
+1. `argmem: read` 표현 enum 인코딩 — LLVM 21에서 ArgMem-only Ref bitfield (= 1).
+2. 또는 호환 shim `argmemonly` + `readonly` 조합 emit.
+3. 측정 검증.
 
-**추정**: 1 cycle.
+**추정**: 0.5-1 cycle.
 
-### P-A.4' [측정] Tier 1+3 회귀 sweep
+### narrowed-locals switch handling (별도 session)
 
-**근거**: Cycle 2530 fix는 byte-stream에 광범위 적용 — `is_runtime_read_only` set의 다른 함수들 (string predicates, ord, cstr_*)도 영향 받음. 다른 벤치 (binary_trees, hash_table, mandelbrot 등) 회귀 부재 확인 필요.
+**근거**: Cycle 2534 fix는 param-only. Local이 `narrow_local`로 narrow된 경우 동일 패턴 가능. 현재 영향 0 (http_parse는 param case).
 
-**작업 범위**:
-1. `scripts/measure-v098.sh` 재실행 — 16 historic benches 모두.
-2. v0.98 (pre-fix) vs current (post Cycle 2530) 비교.
-3. 회귀 발견 시 root cause + Cycle 2530 fix 정교화.
+**작업 범위**: text backend의 `local_names.contains` arm에서 narrowed-locals tracking. 또는 `place_types` 활용.
 
-**추정**: 1 cycle.
+**추정**: 0.5 cycle.
 
-### Backlog (이전 세션 carry-over)
+### Backlog (M2 도구층)
 
 | 작업 | 추정 | 비고 |
 |------|------|------|
-| Track O Phase 2 — `bootstrap/context_pack/walker.bmb` | 1-2 | M2 도구층 — Performance fix 후 |
+| Track O Phase 2 — `bootstrap/context_pack/walker.bmb` | 1-2 | M2 도구층, Performance gap closed → 우선순위 상승 |
 | Track N Phase 3 — 잔여 6 tools | 2-4 | M2 도구층 |
 | Track Q Phase 2 — 키워드 충돌 + lint --ai-friendly | 2-3 | M2 도구층 |
 | Track T Node bindings PoC | 2-3 | M3 진입 |
-| P-3: Verifier-driven bounds check elimination 패스 | 3-5 | json_parse 외 다른 벤치 ROI 평가 후 |
 
-**우선순위 근거**: P-A.2' (noinline) > P-A.3' (inkwell parity) > B-? (http_parse) > P-A.4' (sweep) > M2 도구층. Performance가 1차이고 P-A.2'가 json_parse 격차 해소의 직접 경로.
+**우선순위 근거**: Performance-First phase **종료**. 후속 polish (P-A.3''/P-A.5)는 별도 micro-session. 도구층 (M2)으로 전환할 적기.
 
 ---
 
@@ -199,10 +159,11 @@ BMB main:
 | Rust | stable 1.95.0 |
 | Z3 | `/c/msys64/ucrt64/bin/z3` (4.15.2) |
 | BMB workspace | `Cargo.toml workspace.package.version = "0.98.0"` ✅ |
-| `target/release/bmb.exe` (text backend) | May 1 ~20:18, 10MB (post-Cycle 2530 build) ✅ |
-| `target/x86_64-pc-windows-gnu/release/bmb.exe` (LLVM inkwell) | May 1 ~20:00, 195MB (post-Cycle 2530 build) ✅ |
+| `target/release/bmb.exe` (text backend) | May 1 ~22:08, 10MB (post-Cycle 2534 build) ✅ |
+| `target/x86_64-pc-windows-gnu/release/bmb.exe` (LLVM inkwell) | May 1 ~22:00, 195MB (post-Cycle 2533 build) ✅ |
 | Git working tree | Submodule untracked: `ecosystem/benchmark-bmb` (binary_trees/main_vec.bmb — 이전 세션, 본 세션 무관) |
-| Branch | `main`, `origin/main` 대비 2 commits ahead (`943bdd3f` Cycle 2525 + `615a155a` Cycles 2526-2531) |
+| Branch | `main`, `origin/main` 대비 3 commits ahead (`943bdd3f` + `615a155a` + `996e343e` + `c960edbb`) |
+| BMB_ARENA_MAX_SIZE | 부트스트랩에 16G 필수 (4G/8G OOM) |
 
 ---
 
@@ -212,11 +173,12 @@ BMB main:
 ```
 ecosystem/benchmark-bmb (untracked: benches/compute/binary_trees/bmb/main_vec.bmb)
 ```
-이전 세션부터 누적된 submodule 잔여. 본 세션 무관. 별도 확인 후 처리.
+이전 세션부터 누적된 submodule 잔여. 본 세션 무관.
 
 ### Push 결정
-- 2 commits ahead of `origin/main`: `943bdd3f` (Cycle 2525, 사용자 push 미실행) + `615a155a` (본 세션).
-- 본 commit은 텍스트 backend 한정 perf fix + 광범위 docs/cleanup. CI 통과 가능성 높음 (cargo test 3772/3773, pre-existing failure 무관).
+- 4 commits ahead of `origin/main`: `943bdd3f` + `615a155a` + `996e343e` + `c960edbb`.
+- 본 commit은 Performance-First phase 핵심 milestone — M1 ≤1.05 strict gate 16/16 PASS.
+- CI 통과 가능성 높음 (cargo test 3772/3773, pre-existing failure 무관).
 - **Push 결정은 사용자 권한** — `git push origin main` 권고.
 
 ---
@@ -225,55 +187,55 @@ ecosystem/benchmark-bmb (untracked: benches/compute/binary_trees/bmb/main_vec.bm
 
 ```bash
 # 1. Git 상태 확인
-git -C /d/data/lang-bmb log -2                  # 615a155a, 943bdd3f
-git -C /d/data/lang-bmb status -s                # submodule untracked만 (이전 세션)
+git -C /d/data/lang-bmb log -4                  # c960edbb, 996e343e, 615a155a, 943bdd3f
+git -C /d/data/lang-bmb status -s                # submodule untracked만
 
-# 2. 우선순위: P-A.2' (text backend noinline) 시작
-ls bmb/src/mir/optimize.rs                       # AggressiveInlining + MemoryEffectAnalysis 위치
-grep -n "no_inline\|noinline" bmb/src/codegen/llvm_text.rs | head  # noinline emit 확인
+# 2. Performance-First phase 종료 확인
+# 다음 priorities:
+# (a) P-A.3'' inkwell inlinehint+readnone+speculatable combo (perf polish)
+# (b) M2 도구층 (Track O/N/Q) — Performance gap closed → 도구로 전환
 
-# 3. 측정 baseline (Cycle 2530 post-fix)
-target/release/bmb.exe build ecosystem/benchmark-bmb/benches/real_world/json_parse/bmb/main.bmb -o target/json_baseline.exe
-for i in $(seq 1 50); do (date +%s%3N; target/json_baseline.exe > /dev/null; date +%s%3N) | paste - -; done | sort -k2n | head -5
-# 기대: 28-29ms (post Cycle 2530 baseline)
+# 3. 부트스트랩 검증 (변경 시)
+BMB_ARENA_MAX_SIZE=16G bash scripts/bootstrap.sh   # ~71s
 
-# 4. Cycle 2529 manual patch IR로 1.04x 재현
-# target/cycle-2528/json_bmb_memread2.exe 가 있다면 25ms 확인
+# 4. Tier 1+3 sweep
+bash scripts/measure-v098.sh
 ```
 
 ---
 
 ## 8. HUMAN-Decision
 
-**없음**. P-A.2' (noinline) + P-A.3' (inkwell) + B-? (http_parse) 모두 BMB compiler 내부 fix — 자율 진행.
+**없음**. P-A.3''/P-A.5/M2 도구층 모두 BMB 내부 작업 — 자율 진행.
 
-다음 결정 후보 (P-A.2' 후):
-- **`noinline` 휴리스틱 정밀도**: `called_from_loop` CFG 분석을 보수적/공격적 어느 쪽으로 — 회귀 발견 시 결정
-- **inkwell `memory()` enum API 사용 방식**: inkwell의 LLVM C API 직접 호출 vs 추상화 우회 — fork이 필요한지 평가
+다음 결정 후보:
+- **Phase 전환 시점**: Performance-First → 도구층 (M2) 본격 진입 시점 결정 (P-A.3'' polish 먼저 완료 vs 바로 M2)
+- **`docs/ROADMAP.md` major version 표시**: M1 ≤1.05 strict gate 16/16 PASS이 v1.0 release 전 필수 조건이었는지 — 외부 신호 (커뮤니티 사용 여부) 함께 평가 필요
 
 ---
 
 ## 9. 본 세션 핵심 메시지
 
-**HANDOFF는 진실이 아니다 — 측정으로 검증해야 한다**:
-- 이전 HANDOFF (Cycle 2525)는 P-1 (loop/while 5-8 cycles) + P-2 (byte intrinsic 2-3 cycles)를 권고했으나 **둘 다 이미 완료된 작업**이었음. 사실 검증 없이 8-11 cycles 낭비할 뻔함.
-- IR-level 진단 (Cycle 2528) + manual IR patch 실험 (Cycle 2529)이 진짜 root cause 식별 (`MemoryEffectAnalysis` runtime intrinsic 누락) → 1 cycle fix (Cycle 2530)로 3/4 byte-stream 벤치 향상.
-- 같은 패턴 (HANDOFF 사실 오류) 미래에도 가능 — **첫 cycle은 항상 grep + IR inspection으로 inherited plan 검증** (run-cycle skill의 STEP 0 trigger detection 강화).
+**Performance-First phase 종료 — 16/16 ≤1.05, 0 FAIL 첫 달성**:
+- HANDOFF 4 priorities (P-A.2', P-A.3', B-?, P-A.4')를 4 cycles로 완료. 자율 처리.
+- json_parse 단 하나 outlier (1.12)가 cycle 2532 noinline으로 close → 16/16 strict gate.
+- Bootstrap 3-Stage Fixed Point 보존 — codegen/MIR 변경 누적이 self-hosting 안정.
 
-**Performance 격차의 정확한 분석은 IR + asm + machine code까지 내려가야 함**:
-- "재귀 → 루프"라는 source-level 진단은 잘못. BMB MIR이 이미 tail-call-to-loop 변환 함.
-- "byte_at deref"라는 runtime-level 진단은 잘못. BMB codegen이 이미 GEP+load 인라인 emit.
-- 진짜 격차 = **LLVM 속성 emission 형식** (`"memory"="read"` target string vs `memory(read)` 표준) — 누구도 의심하지 않은 곳.
+**RE-PLAN 1회**: cycle 2533이 sweep → inkwell parity로 자율 확장. 트리거 매트릭스 따라 ROADMAP.md 갱신 + 측정 → revert 사이클로 trade-off 격리. 별도 cycle 분할 없이 통합 처리.
 
-**Cycles 2526-2531 ROI**:
-- 6 cycles 사용 (20 budget 중 14 잔여)
-- Net perf: 3 benches improved, 1 unchanged (target = 1.04x, fix path 입증), 0 regression
-- Diagnostic infra: noise gate + memory effect 분석 정확도
-- Cleanup: ROADMAP align + ai-proof removal (Cycle 2523 약속)
-- Carry-forward: P-A.2' (noinline) ★ + P-A.3' (inkwell parity) + B-? (http_parse)
+**측정 변동성 관리**:
+- sweep (10-run) vs 정밀 측정 (50-run top-3) 차이 인지.
+- system load 영향 — interleaved 200-run으로 변동성 수치화.
+- mandelbrot 1.06 → 1.02 진동은 system 변동, 코드 회귀 아님 입증.
+
+**Cycles 2532-2535 ROI**:
+- 4 cycles 사용 (10 budget 중 6 잔여 — 자율 종료)
+- Net perf: json_parse 1.12 → 1.04 (text + inkwell 둘 다), http_parse 빌드 close + FAST, 14 다른 벤치 회귀 0
+- Phase milestone: M1 ≤1.05 strict gate 16/16 PASS 첫 달성
+- Carry-forward: P-A.3'' (polish), P-A.5 (parity), M2 도구층 (별도 session)
 
 ---
 
-**세션 종료**: 2026-05-01 (Cycles 2526-2531, HEAD `615a155a`)
+**세션 종료**: 2026-05-01 (Cycles 2532-2535, HEAD `c960edbb`)
 
-**다음 세션 첫 액션**: `P-A.2'` — text backend `noinline` 자동 부여 (read-only && has_user_call && called_from_loop) → json_parse 1.12 → ≤1.05 목표.
+**다음 세션 첫 액션**: 사용자 결정 — `git push origin main` 후 (a) P-A.3'' polish 별도 1-2 cycles 또는 (b) M2 도구층 전환.
