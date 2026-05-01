@@ -21,6 +21,8 @@ class Problem:
     solution_bmb: str
     solution_rs: str
     bmb_features_tested: list[str] = field(default_factory=list)
+    # Informational target only — no pass/fail gate. Reported and scored in
+    # tiered analysis/report.py: <=1.05x = 15pts, <=1.10x = 10pts, <=1.20x = 5pts.
     perf_target_ratio: float = 1.10
     c_baseline_flags: str = "-O2 -march=native"
 
