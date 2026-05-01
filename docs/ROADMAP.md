@@ -41,7 +41,7 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 | G.1 verifier fix (prelude duplicate clamp) | 🔄 진단 완료 (Cycle 2506) | P1-P3 시퀀스 (Cycles 2509-2511) |
 | 컴파일러 도메인 벤치마크 (≤ 1.10x vs C) | 🔄 brainfuck ✅ 1.00x, csv/json_parse ✅ ≤1.07x, http_parse/json_serialize ✅ <1.0x, **lexer ⚠️ 1.11x (M1 known opportunistic gap)** | Cycles 2512-2514 측정 + 결정. Lexer 1% 초과는 M2 작업 중 opportunistic 해소 |
 | 3-OS CI green | ⚠️ Linux -lm 끝 (Cycle 2505), 후속 안정화 | G.1 P3에 자연 포함 |
-| Trust 정책 (D' Golden) | ⏳ (B) 권장됨 | Cycle 2515 |
+| Trust 정책 (D' Golden) | ✅ (B) Fully remove 실행 | Cycle 2515 결정 → Cycle 2521 제거 |
 
 #### M2 AI-Ready Infrastructure (5 트랙)
 
@@ -110,7 +110,7 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 |---------|---------|
 | Track G.1-G.4 (verifier counterexamples) | **M1 P1-P3** — G.1 root cause = prelude duplicate clamp (Cycle 2506) |
 | Track Phase C (105 inttoptr 사이트) | **M2 후보 (P 작업)** — M1 blocker 아님 |
-| Track D' (Golden binary) | **M1 Trust 정책 결정** — 자율 권장: **(B) Fully remove** (Cycle 2506 분석, Cycle 2515 영속화). 근거: v0.60.251 단일 Windows binary는 v0.98 base 대비 38 minor 뒤짐, Linux/macOS 단 한 번도 게시 안 됨, distribution 모델은 source + bindings (golden binary 외부 사용자 미수령), Trusting Trust attestation는 향후 SLSA/Sigstore가 더 강력. **메인테이너 최종 승인 후 제거 시점**: Cycle 2516+ (별도 cycle), 또는 메인테이너 다른 결정 시 ROADMAP 갱신만. |
+| Track D' (Golden binary) | ✅ **DONE** (Cycle 2521) — (B) Fully remove 실행. `golden/` 디렉토리, `scripts/golden-bootstrap.sh`, `scripts/bmb-dev.sh`, install/doctor/version 스크립트의 golden 경로 제거 + docs 정리. Trusting Trust attestation은 향후 SLSA/Sigstore로 대체. |
 | Track B'.2 (TestPyPI real upload) | **M3 T (External Bindings)** 인프라 — HUMAN-gated (org secret) |
 | Track C' (Defect 3 — bootstrap fragility) | **별개 추적** (자율 작업 외, WSL2 admin 의존) |
 | Track E (Language features) | **M2/M3 도메인 정합 평가 후** 우선순위 |
@@ -122,7 +122,7 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 
 ### Anchor for next cycles (post-2507)
 
-#### Cycles 2507-2520 (이번 run-cycle 20-cycle budget 중 14 cycles 사용)
+#### Cycles 2507-2521 (run-cycle 20-cycle budget 중 15 cycles 사용)
 
 | Cycle | 작업 | 결과 |
 |-------|------|------|
@@ -139,7 +139,8 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 | 2517 | M2 Track O Phase 1 — Context Pack 설계 | ✅ |
 | 2518 | M2 Track Q Phase 1 — Ambiguity Audit 운영 정의 | ✅ |
 | 2519 | Track N + R 통합 인벤토리 (진척 정정) | ✅ |
-| 2520 | ROADMAP cleanup + run-cycle 종합 (본 cycle) | ✅ |
+| 2520 | ROADMAP cleanup + run-cycle 종합 | ✅ |
+| 2521 | M1 closeout: D' Golden (B) Fully remove — `golden/` + `golden-bootstrap.sh` + `bmb-dev.sh` 삭제, install/doctor/version 스크립트 정리, docs 갱신 | ✅ |
 
 #### M1 자율 가능 부분 ✅ COMPLETE
 
@@ -150,7 +151,6 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 
 잔여 (외부 의존):
 - 3-OS CI green Bindings 검증 — push 후 empirical
-- D' Golden 실제 제거 — maintainer 1-line 승인
 - lexer 1% gap — M2 작업 중 opportunistic
 
 #### Cycle 2521+ 후속 (잔여 6 cycles + 향후 run-cycle)
@@ -158,7 +158,7 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 | 우선순위 | 작업 | 추정 사이클 |
 |--------|------|---------|
 | P1 (M1 closeout) | Bindings CI empirical 검증 (push 후) | 0 (자동) |
-| P2 (M1 closeout) | D' Golden 실제 제거 (maintainer 승인 후) | 1 |
+| ~~P2 (M1 closeout) D' Golden 실제 제거~~ | ✅ DONE (Cycle 2521) | — |
 | P3 (M2) | Track O Phase 2 — `bootstrap/context_pack/walker.bmb` 시작 | 1-2 |
 | P4 (M2) | Track R Phase 2 — "합격선 X" 정책 적용 + ai-proof deprecation | 1-2 |
 | P5 (M2) | Track N Phase 2 — Chatter 실제 구현 시작 (Python 단기) | 3-5 |

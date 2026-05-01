@@ -141,8 +141,6 @@ BMB₂ compiles bootstrap → Stage 3 (BMB₃)
 Verified: Stage 2 IR == Stage 3 IR ✅
 ```
 
-A [golden binary](golden/) enables building BMB without Rust.
-
 ---
 
 ## Quick Start
@@ -156,20 +154,11 @@ bmb build examples/hello.bmb -o hello  # compile native (requires LLVM)
 
 ## Building BMB
 
-### Option 1: Golden Binary (No Rust Required)
-
 ```bash
 git clone https://github.com/iyulab/lang-bmb.git
 cd lang-bmb
-./scripts/golden-bootstrap.sh        # builds bmb-stage1
-```
-
-**Requirements**: LLVM 21+ only (`opt`, `clang` or `llc` + `gcc`)
-
-### Option 2: From Source with Rust
-
-```bash
-cargo build --release --features llvm --target x86_64-pc-windows-gnu
+cargo build --release --features llvm --target x86_64-pc-windows-gnu  # Windows
+cargo build --release --features llvm                                 # Linux/macOS
 ```
 
 **Requirements**: Rust 1.75+, LLVM 21+
@@ -193,7 +182,7 @@ See [Building from Source](docs/BUILD_FROM_SOURCE.md) for details.
 - **Ecosystem**: ~14 packages. No large standard library yet.
 - **Community**: Early stage. Contributions welcome.
 - **Tooling**: VS Code extension available. LSP basic.
-- **Platforms**: Windows x64 primary. Linux/macOS golden binaries planned.
+- **Platforms**: Windows x64 primary. Linux/macOS via Bindings CI.
 
 ---
 

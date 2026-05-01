@@ -29,9 +29,6 @@ if ($Prefix -eq "") {
 # Detect script directory
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Split-Path -Parent $ScriptDir
-if (-not (Test-Path "$ProjectRoot\golden")) {
-    $ProjectRoot = $ScriptDir
-}
 
 function Write-Status($msg) {
     Write-Host $msg -ForegroundColor Yellow
@@ -49,9 +46,9 @@ function Write-Error($msg) {
 # Find BMB binary
 function Find-BmbBinary {
     $paths = @(
-        "$ProjectRoot\golden\windows-x64\bmb.exe",
-        "$ProjectRoot\bmb.exe",
-        "$ProjectRoot\target\golden-bootstrap\bmb-stage1.exe"
+        "$ProjectRoot\target\release\bmb.exe",
+        "$ProjectRoot\target\x86_64-pc-windows-gnu\release\bmb.exe",
+        "$ProjectRoot\bmb.exe"
     )
 
     foreach ($p in $paths) {
@@ -60,7 +57,7 @@ function Find-BmbBinary {
         }
     }
 
-    Write-Error "BMB binary not found. Run .\scripts\golden-bootstrap.sh first."
+    Write-Error "BMB binary not found. Build first: cargo build --release"
 }
 
 # Uninstall

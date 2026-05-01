@@ -691,17 +691,6 @@ if (Test-Path $runtimeLib) {
     }
 }
 
-# Golden binary
-Write-Check "golden binary"
-$goldenBin = "$ProjectRoot\golden\windows-x64\bmb.exe"
-if (Test-Path $goldenBin) {
-    $size = (Get-Item $goldenBin).Length / 1KB
-    Write-OK ("{0:N0} KB" -f $size)
-} else {
-    Write-Warn "not found (optional, for golden bootstrap)"
-    Add-Warning "Golden binary not found at golden/windows-x64/bmb.exe"
-}
-
 # ─────────────────────────────────────────────────────────────────────────────
 # 8. Build Verification
 # ─────────────────────────────────────────────────────────────────────────────

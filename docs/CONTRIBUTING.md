@@ -48,19 +48,10 @@ BMB is an experimental language — contributions of all kinds are valuable, fro
 
 ### Build the Compiler
 
-**Option A: Golden Binary Bootstrap (recommended, no Rust needed)**
-
 ```bash
 git clone https://github.com/iyulab/lang-bmb.git
 cd lang-bmb
-./scripts/golden-bootstrap.sh
-```
 
-This produces `target/golden-bootstrap/bmb-stage1.exe` in about 8 seconds.
-
-**Option B: Rust Compiler Build**
-
-```bash
 # Windows (MSYS2/MinGW)
 cargo build --release --features llvm --target x86_64-pc-windows-gnu
 
@@ -74,8 +65,8 @@ cargo build --release --features llvm
 # Run all tests (~5,200 tests)
 cargo test --release
 
-# Run golden tests (69 end-to-end tests)
-./scripts/golden-bootstrap.sh --verify
+# Run golden tests
+./scripts/run-golden-tests.sh
 
 # Quick validation (~2 minutes)
 ./scripts/quick-check.sh
@@ -104,10 +95,13 @@ bmb/src/*.rs              ← Frozen (maintenance only, no new code)
 # 1. Edit the bootstrap compiler
 #    (editor) bootstrap/compiler.bmb
 
-# 2. Build and test
-./scripts/bmb-dev.sh full
+# 2. Build and verify (Stage 1 + golden tests)
+./scripts/quick-check.sh
 
-# 3. If tests pass, commit
+# 3. Full 3-stage Fixed Point verification
+./scripts/bootstrap.sh
+
+# 4. If tests pass, commit
 ```
 
 **For documentation, tests, or ecosystem changes:**
@@ -119,7 +113,7 @@ Standard git workflow — edit, test, commit.
 | Script | Purpose | Time |
 |--------|---------|------|
 | `./scripts/quick-check.sh` | Tests + Stage 1 bootstrap + Tier 0 benchmarks | ~2 min |
-| `./scripts/bmb-dev.sh full` | Build, test, verify, compile | ~5 min |
+| `./scripts/bootstrap.sh` | 3-stage Fixed Point verification | ~70s |
 | `./scripts/full-cycle.sh` | Full 3-stage bootstrap + all benchmarks | ~15 min |
 | `./scripts/benchmark.sh --tier 1` | Run Tier 1 performance benchmarks | ~5 min |
 
@@ -161,7 +155,7 @@ For Rust code (maintenance only): follow existing patterns, pass `cargo clippy -
 | Type | Location | How to Run |
 |------|----------|-----------|
 | Rust unit/integration tests | `bmb/src/` | `cargo test --release` |
-| Golden tests | `tests/bootstrap/*.bmb` | `./scripts/golden-bootstrap.sh --verify` |
+| Golden tests | `tests/bootstrap/*.bmb` | `./scripts/run-golden-tests.sh` |
 | Benchmarks | `ecosystem/benchmark-bmb/` | `./scripts/benchmark.sh --tier 1` |
 
 ### Adding a Golden Test
@@ -174,7 +168,7 @@ Golden tests verify the full compilation pipeline: BMB source → Stage 1 → LL
    ```
    test_golden_<name>.bmb|<expected_output>
    ```
-4. Run `./scripts/golden-bootstrap.sh --verify` to confirm it passes
+4. Run `./scripts/run-golden-tests.sh` to confirm it passes
 
 **Example:**
 

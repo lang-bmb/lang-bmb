@@ -81,18 +81,20 @@ detect_platform() {
 
 # Find BMB binary
 find_bmb_binary() {
-    # Try golden directory first
-    if [ -f "$PROJECT_ROOT/golden/$PLATFORM/bmb" ]; then
-        BMB_BINARY="$PROJECT_ROOT/golden/$PLATFORM/bmb"
-    elif [ -f "$PROJECT_ROOT/golden/$PLATFORM/bmb.exe" ]; then
-        BMB_BINARY="$PROJECT_ROOT/golden/$PLATFORM/bmb.exe"
-    elif [ -f "$PROJECT_ROOT/bmb" ]; then
-        BMB_BINARY="$PROJECT_ROOT/bmb"
-    elif [ -f "$PROJECT_ROOT/bmb.exe" ]; then
-        BMB_BINARY="$PROJECT_ROOT/bmb.exe"
-    else
-        error "BMB binary not found. Run ./scripts/golden-bootstrap.sh first."
-    fi
+    local candidates=(
+        "$PROJECT_ROOT/target/release/bmb"
+        "$PROJECT_ROOT/target/release/bmb.exe"
+        "$PROJECT_ROOT/target/x86_64-pc-windows-gnu/release/bmb.exe"
+        "$PROJECT_ROOT/bmb"
+        "$PROJECT_ROOT/bmb.exe"
+    )
+    for c in "${candidates[@]}"; do
+        if [ -f "$c" ]; then
+            BMB_BINARY="$c"
+            return
+        fi
+    done
+    error "BMB binary not found. Build first: cargo build --release"
 }
 
 # Uninstall

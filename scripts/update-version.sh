@@ -8,7 +8,6 @@
 #
 # Files updated:
 #   - VERSION
-#   - golden/VERSION
 #   - bootstrap/version.bmb
 #   - Cargo.toml (if exists)
 
@@ -42,13 +41,6 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Update VERSION file
 echo "$NEW_VERSION" > "$PROJECT_ROOT/VERSION"
 echo "Updated VERSION"
-
-# Update golden/VERSION
-if [ -d "$PROJECT_ROOT/golden" ]; then
-    echo "v$NEW_VERSION" > "$PROJECT_ROOT/golden/VERSION"
-    echo "$DATE" >> "$PROJECT_ROOT/golden/VERSION"
-    echo "Updated golden/VERSION"
-fi
 
 # Update bootstrap/version.bmb
 cat > "$PROJECT_ROOT/bootstrap/version.bmb" << EOF
