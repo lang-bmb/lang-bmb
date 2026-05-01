@@ -187,15 +187,28 @@ CLI 인자 우선.
 
 | Phase | 내용 | 추정 사이클 |
 |-------|------|---------|
-| Phase 1 (본 cycle) | 본 설계 문서 | 1 ✅ |
-| Phase 2 | BMB로 모듈 트리 walker (`bootstrap/context_pack/walker.bmb`) | 1 |
+| Phase 1 (Cycle 2517) | 본 설계 문서 | 1 ✅ |
+| **Phase 2a (NEW)** | **`read_dir` 런타임 builtin (C + 인터프리터 + codegen + bootstrap)** | **1-2** |
+| **Phase 2b (NEW)** | **`stdlib/io/mod.bmb` 확장 (`read_dir`, `is_directory`)** | **0.5** |
+| Phase 2c (was Phase 2) | BMB로 모듈 트리 walker (`bootstrap/context_pack/walker.bmb`) | 1 |
 | Phase 3 | export extractor (`bootstrap/context_pack/extractor.bmb`) — BMB AST 파싱 후 public 항목 추출 | 1-2 |
 | Phase 4 | JSON serializer (`bootstrap/context_pack/json.bmb`) | 1 |
 | Phase 5 | CLI integration (`bootstrap/bmb_cli.bmb`에 `context-pack` 추가) | 1 |
 | Phase 6 | 토큰 예산 + 절단 로직 | 1 |
 | Phase 7 | 검증 (LLM 정답률, R 트랙 연계) | 1 (optional) |
 
-**총 5-7 cycles** (Phase 1 본 cycle 포함).
+**총 7-9.5 cycles** (Phase 1 본 cycle 포함). 원래 추정 5-7에서 +2-2.5
+cycle 증가. Phase 2 분할 근거 (Cycle 2540 recon 결과):
+
+> **Phase 2 분할 사유**: Cycle 2540 인벤토리 결과 BMB 런타임에 `read_dir`
+> 빌트인이 부재하고 `stdlib/io/mod.bmb`는 read_file/write_file 등 단일
+> 파일 작업만 노출 중. walker가 디렉토리를 enumerate 하려면 런타임
+> 확장 필요 → Phase 2a (런타임) + Phase 2b (stdlib) + Phase 2c (walker)
+> 3-step.
+>
+> Phase 2a는 *interpretive* + *codegen 양쪽 백엔드* + *bootstrap mirror*
+> 모두 업데이트 필요 → 가장 큰 작업. WSAPoll 등 OS API 직접 접근
+> (Cycle 2229 socket 빌트인 패턴 참고).
 
 ---
 

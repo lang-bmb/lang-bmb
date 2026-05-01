@@ -8502,8 +8502,18 @@ impl TextCodeGen {
                 let mut disc_ty = "i64";
                 let disc_str = if let Operand::Place(p) = discriminant {
                     if local_names.contains(&p.name) {
-                        // Use default label to make name unique
-                        writeln!(out, "  %{}.disc_{} = load i64, ptr %{}.addr", p.name, default, p.name)?;
+                        // v0.99 (Cycle 2537): Honor narrowed-local discriminants.
+                        // LoopBoundedNarrowing can lower a local's MirType from I64
+                        // to I32, and `place_types` reflects this. Emitting a
+                        // hard-coded `load i64, ptr %x.addr` against an i32 alloca
+                        // produces a clang IR validation error — same failure mode
+                        // Cycle 2534 fixed for narrowed parameters, but for locals.
+                        // Currently latent (no real bench has triggered it yet),
+                        // but keeping the param- and local-paths consistent prevents
+                        // a regression as the narrowing pass evolves.
+                        let local_ty = place_types.get(&p.name).copied().unwrap_or("i64");
+                        if local_ty == "i32" { disc_ty = "i32"; }
+                        writeln!(out, "  %{}.disc_{} = load {}, ptr %{}.addr", p.name, default, local_ty, p.name)?;
                         format!("%{}.disc_{}", p.name, default)
                     } else if place_types.get(&p.name).copied() == Some("ptr") {
                         // v0.97.4: Enum variable (ptr from EnumVariant alloca or ptr parameter)

@@ -886,8 +886,52 @@ impl<'ctx> LlvmContext<'ctx> {
         // This is more precise than "read" which means "may read any memory"
         // CRITICAL: This enables LLVM to hoist s.len() calls out of loops because
         // it can prove that other calls in the loop don't affect the argument memory
-        use inkwell::attributes::AttributeLoc;
-        let memory_read_attr = self.context.create_string_attribute("memory", "argmem: read");
+        use inkwell::attributes::{Attribute, AttributeLoc};
+        // v0.99 (Cycle 2536, P-A.5): Rule 7 parity — runtime decls were using
+        // `create_string_attribute("memory", "argmem: read")`, which LLVM 16+
+        // treats as opaque metadata (no LICM benefit). The text backend always
+        // emitted `memory(argmem: read)` directly. We mirror that by emitting
+        // the `argmemonly` + `readonly` enum-attribute shim. LLVM 21 normalizes
+        // this combo to `memory(argmem: read)` (verified via llvm-as/llvm-dis).
+        // Both attrs are looked up by name to remain robust across LLVM versions:
+        // if either is removed in the future, get_named_enum_kind_id returns 0
+        // and we silently skip — at worst we degrade to inferring memory effects
+        // at the call site, never a correctness issue.
+        // LLVM 21 retains parsing of the `argmemonly` keyword for backward
+        // compatibility, but its enum AttributeKind has been removed —
+        // `Attribute::get_named_enum_kind_id("argmemonly")` returns 0.
+        // The `memory` attribute kind takes a packed `MemoryEffects` value:
+        // 4 locations (ArgMem=0, InaccessibleMem=1, ErrnoMem=2, Other=3),
+        // 2 bits each (NoModRef=0, Ref=1, Mod=2, ModRef=3). So
+        // `memory(argmem: read)` = ArgMem(Ref) at bits 0-1 = 0b01 = 1.
+        // We try `memory` first; if it's removed in a future LLVM, fall
+        // back to `readonly` (compatibility shim → `memory(read)`).
+        let memory_kind_id = Attribute::get_named_enum_kind_id("memory");
+        let readonly_kind_id = Attribute::get_named_enum_kind_id("readonly");
+        let memory_read_attrs: Vec<inkwell::attributes::Attribute> = if memory_kind_id != 0 {
+            // memory(argmem: read) — value 1 (ArgMem=Ref, others=NoModRef)
+            vec![self.context.create_enum_attribute(memory_kind_id, 1)]
+        } else if readonly_kind_id != 0 {
+            // Compatibility shim: readonly → memory(read)
+            vec![self.context.create_enum_attribute(readonly_kind_id, 0)]
+        } else {
+            vec![]
+        };
+        // CYCLE 2536 NOTE — these remain string attributes intentionally.
+        // LLVM 16+ treats `"nounwind"` (with quotes) as opaque metadata, not the
+        // enum-form `nounwind`, so they have no effect on optimization. It is
+        // tempting to convert them all to enum form via Attribute::get_named_enum_kind_id,
+        // and the build does succeed. However, doing so triggers the same trade-off
+        // observed in Cycle 2533 with `inlinehint`/`readnone` on user functions:
+        // promoting these attrs to enum form on the byte_at/char_at/len/etc.
+        // runtime decls causes opt -O2 to take a different inlining/CSE path
+        // through the byte-stream parser hot loops, which empirically REGRESSES
+        // 7/16 historic benches (csv_parse 1.27, lexer 1.35, fasta 1.15, etc.).
+        // The minimal `memory(argmem: read)` enum fix above is the safe wedge:
+        // it gives opt the precise memory effects info needed for LICM hoisting,
+        // without the side-effect of changing inlining heuristics.
+        // Re-evaluating the broader trade-space belongs in P-A.3'' (the dedicated
+        // inkwell perf-attribute tuning cycle).
         let nounwind_attr = self.context.create_string_attribute("nounwind", "");
         let willreturn_attr = self.context.create_string_attribute("willreturn", "");
         // v0.51.13: Add nocapture and speculatable for better LICM
@@ -947,7 +991,7 @@ impl<'ctx> LlvmContext<'ctx> {
         // v0.46: ord(ptr) -> i64 (takes string, returns first char code)
         let ord_type = i64_type.fn_type(&[ptr_type.into()], false);
         let ord_fn = self.module.add_function("bmb_ord", ord_type, None);
-        ord_fn.add_attribute(AttributeLoc::Function, memory_read_attr);
+        for &attr in &memory_read_attrs { ord_fn.add_attribute(AttributeLoc::Function, attr); }
         ord_fn.add_attribute(AttributeLoc::Function, nounwind_attr);
         ord_fn.add_attribute(AttributeLoc::Function, willreturn_attr);
         ord_fn.add_attribute(AttributeLoc::Function, nosync_attr);
@@ -976,7 +1020,7 @@ impl<'ctx> LlvmContext<'ctx> {
         // - memory(read): only reads memory, no writes
         // - nocapture on param: pointer not stored (better alias analysis)
         // - speculatable: safe to execute speculatively (enables hoisting)
-        len_fn.add_attribute(AttributeLoc::Function, memory_read_attr);
+        for &attr in &memory_read_attrs { len_fn.add_attribute(AttributeLoc::Function, attr); }
         len_fn.add_attribute(AttributeLoc::Function, nounwind_attr);
         len_fn.add_attribute(AttributeLoc::Function, willreturn_attr);
         len_fn.add_attribute(AttributeLoc::Function, speculatable_attr);
@@ -990,7 +1034,7 @@ impl<'ctx> LlvmContext<'ctx> {
         let byte_at_type = i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false);
         let byte_at_fn = self.module.add_function("byte_at", byte_at_type, None);
         // v0.51.13: Enhanced attributes for LICM optimization
-        byte_at_fn.add_attribute(AttributeLoc::Function, memory_read_attr);
+        for &attr in &memory_read_attrs { byte_at_fn.add_attribute(AttributeLoc::Function, attr); }
         byte_at_fn.add_attribute(AttributeLoc::Function, nounwind_attr);
         byte_at_fn.add_attribute(AttributeLoc::Function, willreturn_attr);
         byte_at_fn.add_attribute(AttributeLoc::Function, speculatable_attr);
@@ -1003,7 +1047,7 @@ impl<'ctx> LlvmContext<'ctx> {
         let char_at_type = i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false);
         let char_at_fn = self.module.add_function("char_at", char_at_type, None);
         // v0.51.13: Enhanced attributes for LICM optimization
-        char_at_fn.add_attribute(AttributeLoc::Function, memory_read_attr);
+        for &attr in &memory_read_attrs { char_at_fn.add_attribute(AttributeLoc::Function, attr); }
         char_at_fn.add_attribute(AttributeLoc::Function, nounwind_attr);
         char_at_fn.add_attribute(AttributeLoc::Function, willreturn_attr);
         char_at_fn.add_attribute(AttributeLoc::Function, speculatable_attr);
@@ -1016,7 +1060,7 @@ impl<'ctx> LlvmContext<'ctx> {
         // Used for byte-level memory access in brainfuck interpreter, etc.
         let load_u8_type = i64_type.fn_type(&[i64_type.into()], false);
         let load_u8_fn = self.module.add_function("load_u8", load_u8_type, None);
-        load_u8_fn.add_attribute(AttributeLoc::Function, memory_read_attr);
+        for &attr in &memory_read_attrs { load_u8_fn.add_attribute(AttributeLoc::Function, attr); }
         load_u8_fn.add_attribute(AttributeLoc::Function, nounwind_attr);
         load_u8_fn.add_attribute(AttributeLoc::Function, willreturn_attr);
         load_u8_fn.add_attribute(AttributeLoc::Function, speculatable_attr);
@@ -1033,7 +1077,7 @@ impl<'ctx> LlvmContext<'ctx> {
         // v0.60.58: load_i32(addr: i64) -> i64 - read 32-bit signed integer, sign-extended
         let load_i32_type = i64_type.fn_type(&[i64_type.into()], false);
         let load_i32_fn = self.module.add_function("load_i32", load_i32_type, None);
-        load_i32_fn.add_attribute(AttributeLoc::Function, memory_read_attr);
+        for &attr in &memory_read_attrs { load_i32_fn.add_attribute(AttributeLoc::Function, attr); }
         load_i32_fn.add_attribute(AttributeLoc::Function, nounwind_attr);
         load_i32_fn.add_attribute(AttributeLoc::Function, willreturn_attr);
         load_i32_fn.add_attribute(AttributeLoc::Function, speculatable_attr);
@@ -1051,7 +1095,7 @@ impl<'ctx> LlvmContext<'ctx> {
         // Note: slice allocates memory, so don't mark as speculatable
         let slice_type = ptr_type.fn_type(&[ptr_type.into(), i64_type.into(), i64_type.into()], false);
         let slice_fn = self.module.add_function("slice", slice_type, None);
-        slice_fn.add_attribute(AttributeLoc::Function, memory_read_attr);
+        for &attr in &memory_read_attrs { slice_fn.add_attribute(AttributeLoc::Function, attr); }
         slice_fn.add_attribute(AttributeLoc::Function, nounwind_attr);
         slice_fn.add_attribute(AttributeLoc::Function, willreturn_attr);
         slice_fn.add_attribute(AttributeLoc::Function, nosync_attr);
@@ -1076,7 +1120,7 @@ impl<'ctx> LlvmContext<'ctx> {
         // v0.46: string_eq(ptr, ptr) -> i64 (for BmbString* comparison)
         let string_eq_type = i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
         let string_eq_fn = self.module.add_function("bmb_string_eq", string_eq_type, None);
-        string_eq_fn.add_attribute(AttributeLoc::Function, memory_read_attr);
+        for &attr in &memory_read_attrs { string_eq_fn.add_attribute(AttributeLoc::Function, attr); }
         string_eq_fn.add_attribute(AttributeLoc::Function, nounwind_attr);
         string_eq_fn.add_attribute(AttributeLoc::Function, willreturn_attr);
         string_eq_fn.add_attribute(AttributeLoc::Function, nosync_attr);
@@ -1997,12 +2041,62 @@ impl<'ctx> LlvmContext<'ctx> {
         // The legacy string attribute was effectively a no-op, so leaving
         // it preserves prior mandelbrot performance until a dedicated
         // tuning cycle measures the speculatable trade-off.
+        // v0.99 (Cycle 2538-2539, P-A.3''): readnone + speculatable combo.
+        // Text backend emits `memory(none) speculatable` for memory-free leaves
+        // and gets mandelbrot 1.01 vs C. Cycle 2533 tried `readnone` solo and
+        // saw mandelbrot 1.06 regression. Cycle 2538 (this run) tried
+        // `speculatable` solo (with the legacy `"memory"="none"` opaque string
+        // still present) and saw mandelbrot 1.06 regression too — confirming
+        // the diagnosis: speculatable without a proper memory-effects enum
+        // leaves LLVM with mismatched info. Solution: emit BOTH enums so
+        // inkwell's IR matches text backend's `memory(none) speculatable`
+        // (LLVM 21 normalizes `readnone` → `memory(none)` so they're equivalent).
         if func.is_memory_free {
-            let memory_none_attr = self.context.create_string_attribute("memory", "none");
-            function.add_attribute(AttributeLoc::Function, memory_none_attr);
+            let readnone_id = Attribute::get_named_enum_kind_id("readnone");
+            if readnone_id != 0 {
+                function.add_attribute(AttributeLoc::Function, self.context.create_enum_attribute(readnone_id, 0));
+            } else {
+                let memory_none_attr = self.context.create_string_attribute("memory", "none");
+                function.add_attribute(AttributeLoc::Function, memory_none_attr);
+            }
         } else if func.is_read_only {
             let readonly_id = Attribute::get_named_enum_kind_id("readonly");
             function.add_attribute(AttributeLoc::Function, self.context.create_enum_attribute(readonly_id, 0));
+        }
+
+        // v0.99 (Cycle 2538, P-A.3''): `speculatable` for memory-free LEAF functions only.
+        // Mirrors text backend (`llvm_text.rs:1923-1936` v0.96.41) which restricts
+        // speculatable to functions that don't call any user/non-runtime code:
+        // "Don't add speculatable to non-leaf functions (LLVM may speculate calls
+        // past base case)". Cycle 2533 measured `inlinehint`/`readnone` solo as
+        // mandelbrot 1.07/1.06 regressions; the `speculatable`-on-leaf hypothesis
+        // is that LLVM gets enough info to hoist math helpers out of branches
+        // without triggering aggressive inlining of mid-sized helpers.
+        if func.is_memory_free {
+            use crate::mir::MirInst;
+            let has_user_call = func.blocks.iter().any(|b| {
+                b.instructions.iter().any(|inst| {
+                    if let MirInst::Call { func: callee, .. } = inst {
+                        !callee.starts_with("llvm.")
+                            && !callee.starts_with("bmb_")
+                            && !matches!(callee.as_str(),
+                                "malloc" | "calloc" | "realloc" | "free"
+                                | "println" | "print" | "eprintln" | "print_f64"
+                                | "read_int" | "bmb_read_line" | "read_bytes"
+                                | "write_stdout" | "read_line"
+                                | "abs" | "min" | "max" | "clamp" | "pow")
+                    } else { false }
+                })
+            });
+            if !has_user_call {
+                let speculatable_id = Attribute::get_named_enum_kind_id("speculatable");
+                if speculatable_id != 0 {
+                    function.add_attribute(
+                        AttributeLoc::Function,
+                        self.context.create_enum_attribute(speculatable_id, 0),
+                    );
+                }
+            }
         }
 
         // v0.60.56: Add fast-math attributes for FP-heavy workloads
