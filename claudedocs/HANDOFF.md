@@ -1,212 +1,158 @@
-# BMB Session Handoff — 2026-05-01 (Vision v1.0 Realignment Session)
+# BMB Session Handoff — 2026-05-01 (Cycles 2521-2524 Recommended-Path Run)
 
-> **이전 HEAD**: `b275166f` (Cycles 2505-2506 docs commit)
-> **새 HEAD**: `2839f003` (vision realignment spec)
-> **원격 상태**: `origin/main` 1 commit 앞 — push 필요 시 사용자 확인
-> **세션 성격**: **코드 변경 0, 비전 정렬 세션**. 9-라운드 브레인스토밍으로
-> BMB의 정체성·도메인·우선순위·마일스톤·트랙·버전 정책을 합의·영속화.
-> 다음 세션은 메타 정렬 사이클(2507) — 합의된 비전을 ROADMAP/CLAUDE.md에 반영.
+> **이전 HEAD (이전 세션 close)**: `8c7c2686`
+> **새 HEAD (parent)**: `1d89230c` (M1 closeout + M2 Phase 2 시작 + submodule pin bump)
+> **새 HEAD (inner bmb-mcp)**: `a7862ded` (Python scaffold + `bmb_check` tool)
+> **원격 상태**: 양 repo `origin/main`과 동기화 ✅
+> **세션 성격**: 4-cycle run — HUMAN-Decision 6개 중 4개 자율 종결 (D1-D4), 2개는 admin 권한 의존으로 보류.
 
 ---
 
 ## 1. 이번 세션 요약
 
-| 단계 | 작업 | 산출물 |
-|------|------|--------|
-| Q1-Q9 | 9-라운드 브레인스토밍 (1차 사용자, 도메인, AI-readiness, 우선순위, 마일스톤, v1.5 정의, 다음 액션, 마일스톤 매핑, 버전 정책) | 9개 결정 합의 |
-| Q10 | 명료화 종료 결정 — 추가 영역(Trust 정책 등)은 메타 정렬에서 자연 처리 | 종료 |
-| Spec 작성 | `docs/superpowers/specs/2026-05-01-vision-v1.0-realignment.md` (219줄) | 영속화 |
-| Spec self-review | 정확도 정정 1건 (8/15 FAIL "절반" → "다수, 정확 카운팅은 메타 정렬에서") | inline fix |
-| 사용자 승인 | spec 리뷰 후 commit + 다음 단계 진행 승인 | 합의 |
-| Commit | `2839f003` (spec only, 219+ lines) | git |
+| Cycle | Commit (parent) | 작업 | 비고 |
+|-------|-----------------|------|------|
+| 2521 | `5b0797ed` | **D1**: D' Golden 제거 — `golden/`, `scripts/golden-bootstrap.sh`, `scripts/bmb-dev.sh` 삭제 + install/doctor/version 스크립트 정리 + docs (`README.md`, `BUILD_FROM_SOURCE.md`, `CONTRIBUTING.md`) 갱신 | M1 P2 종결. Trusting Trust attestation은 향후 SLSA/Sigstore로 대체 |
+| 2522 | `794780de` | **D2**: 버전 명명 통일 — `Cargo.toml` 0.1.0→0.98.0, `bootstrap/version.bmb` 0.60.251→0.98.0 + `scripts/check-version-sync.sh` 가드 + `quick-check.sh` Step 0 통합 | 단일 진실의 출처 회복 |
+| 2523 | `c4ebf8be` | **D3**: ai-proof deprecation notice (제거 시점 Cycle 2526) + `bmb-ai-bench/README.md` 신규 작성 (합격선 X 정책 명시) + `perf_target_ratio` docstring | Track R 60% → 75% |
+| 2524 | `444beb54` (parent docs) + `1d89230c` (submodule pin) | **D4**: bmb-mcp Python scaffold (`pyproject.toml`, `chatter/__init__.py`, `chatter/bmb_cli.py`, `chatter/server.py`) + `bmb_check` tool 구현 + 5/5 pytest pass | inner 3 commits: `802511e`, `e55a77d`, `a7862de`. Track N 10% → 25% |
+
+전 commits push 완료. 양 repo origin과 동기화.
 
 ---
 
-## 2. 9개 핵심 결정 (Quick Reference)
+## 2. HUMAN-Decision 진척
 
-| Q | 결정 | 기존 상태와의 차이 |
-|---|------|----------------|
-| Q1 | 1차 사용자 = **인간+AI 협업** | 명시 X → 명시 |
-| Q2 | 1차 도메인 = **컴파일러·언어 도구·DSL·검증기** | 명시 X → 명시 (8/15 FAIL의 비-도메인 강등 근거) |
-| Q3 | AI-readiness = **언어 자체 속성** (외부 도구 X) | 모호 → 명확 (별도 AI 채널/합성기 금지) |
-| Q4 | 우선순위 **B > P > A > D > C** | "Performance > Everything" 단일 → 5축 우선순위 |
-| Q5 | 단계별 마일스톤 **M1 → M2 → M3 → M4** | v1.0 단독 정의 → 4단계 binary |
-| Q6 | M2 = AI 친화 인프라 5축 (Track M/N/O/Q/R) | 트랙 명명 신규 |
-| Q7 | 다음 사이클 = 메타 정렬 | 신규 |
-| Q8 | 마일스톤 매핑 + 직교 트랙 **S(에코시스템)** + **T(바인딩)** | 트랙 신규 |
-| Q9 | **마일스톤(자율) ↔ 버전(외부 신호 게이트) 분리** | 통합 → 분리 (메이저 버전 비자율 결정) |
+| 항목 | 진척 | 비고 |
+|------|------|------|
+| **D' Golden 제거** | ✅ DONE (Cycle 2521) | maintainer 승인 → 즉시 실행 |
+| **Cargo.toml 버전 정책** | ✅ DONE (Cycle 2522) | 0.98.0 통일 + 동기화 가드 |
+| **ai-proof deprecation** | ✅ DONE (Cycle 2523) | bmb-ai-bench로 통합, 3 cycles 후 제거 |
+| **Track N 구현 옵션** | ✅ DONE (Cycle 2524) | 단기 Python (옵션 B), 장기 BMB (옵션 C) M3+ |
+| **TestPyPI org secret 등록** | ⏳ HUMAN-blocked | 사용자 admin 권한 |
+| **WSL2 admin 설치** | ⏳ HUMAN-blocked (권장: 미설치) | GitHub Actions Linux로 충분 |
 
 ---
 
-## 3. 마일스톤 정의 (M1~M4)
+## 3. 트랙 진척 (M2 갱신)
 
-### M1 Self-Validated (내부 자기검증 완성)
-
-| 조건 | 현 상태 | Cycle |
-|------|--------|-------|
-| Bootstrap Fixed Point | ✅ S2 == S3 (Cycle 2237) | 완료 |
-| G.1 verifier 결함 fix | 🔄 진단 완료 (Cycle 2506), P1-P3 시퀀스 대기 | 2508+ |
-| 컴파일러 도메인 벤치마크 | ⚠️ brainfuck/lexer/hash_table FAIL — 분류·해소 필요 | 2509+ |
-| 3-OS CI green | ⚠️ Linux `-lm` 후속, Windows MinGW 안정화 | 진행 |
-| Trust 정책 (D' Golden) | ⏳ (B) 권장됨, 메인테이너 결정 대기 | M1 종료 시 |
-
-### M2 AI-Ready Infrastructure (5 트랙)
-
-| 트랙 | 내용 | 현 상태 |
-|------|------|--------|
-| **M (Machine-First Output)** | 모든 출력 기본 JSON, `--human` 옵션 | **부분 구현** — `--human` 플래그 이미 존재 (`docs/superpowers/specs/2026-03-25-ai-friendly-tooling-design.md`). 잔여: 모든 명령에 일관 적용 + 스키마 안정화 |
-| **N (MCP Server)** | `bmb mcp` 명령 | 신규 |
-| **O (Context Pack)** | `bmb context-pack <project>` | 신규 |
-| **Q (Ambiguity Audit)** | grammar 정적 분석 + `bmb lint --ai-friendly` | 신규 |
-| **R (LLM Bench Tracking)** | `bmb llm-bench` + 50개 task suite (합격선 X) | 신규 |
-
-### M3 External Bindings PoC
-
-- BMB 라이브러리 (BMB 특징을 드러내는) 1개
-- C ABI 노출
-- Python + Node 바인딩 (AI 코딩 사용 빈도 1, 2위)
-- 트랙 S 90%
-
-### M4 Adopted
-
-- 추가 바인딩: C#, Java, C
-- 트랙 S 100% (gotgan, tree-sitter 포함)
-- 외부 채택 신호 충족 (§v1.0 외부 게이트)
+| 트랙 | 진척 | 잔여 |
+|------|------|------|
+| **M (Machine-First Output)** | ~85% | Phase 2: dump-ast `--format` (Track S BMB rewrite와 함께) |
+| **N (MCP Server)** | ~25% | 잔여 6 tools + 5 resources + 3 prompts (2-4 cycles) |
+| **O (Context Pack)** | ~15% | Phase 2: `bootstrap/context_pack/walker.bmb` (1-2 cycles) |
+| **Q (Ambiguity Audit)** | ~15% | Phase 2: 키워드 충돌 결정 + `bootstrap/lint/ai_friendly.bmb` (2-3 cycles) |
+| **R (LLM Bench)** | ~75% | ai-proof 실제 제거 (Cycle 2526), tracking dashboard 공식화 |
 
 ---
 
-## 4. 직교 트랙 진척표
+## 4. 검증 상태 (HEAD `1d89230c`)
 
-| 트랙 | M1 진척 | M2 진척 | M3 진척 | M4 진척 |
-|------|---------|---------|---------|---------|
-| **S (Ecosystem BMB-rewrite)** | 부트스트랩만 ✅ | + LSP, fmt, lint | + verify, bench, mcp | 100% |
-| **T (External Bindings)** | 0 | C ABI 설계 | Python + Node PoC | C#, Java, C 추가 |
+| 항목 | 결과 |
+|------|------|
+| `bash scripts/check-version-sync.sh` | ✅ `version sync OK: 0.98.0` |
+| `cargo metadata --no-deps` | ✅ bmb 0.98.0, gotgan 0.98.0 |
+| `cargo check --release` | ✅ (Cycle 2522 후 1m10s) |
+| inner repo `pytest tests/` | ✅ 5/5 (test_bmb_cli.py) |
+| Cargo.toml 0.98.0 ↔ bootstrap/version.bmb 0.98.0 | ✅ 동기화 |
+| `bmb_check` end-to-end | ✅ 유효/무효 BMB snippet 모두 정상 분기 |
 
----
-
-## 5. 버전 정책 (마일스톤 ≠ 메이저 버전)
-
-| 마일스톤 도달 | 권장 버전 |
-|--------------|---------|
-| M1 도달 | v0.99 |
-| M2 도달 | v0.100 / v0.110 |
-| M3 도달 | v0.150 / v0.200 — **v1.0 후보, 외부 신호 평가 시작** |
-| M4 도달 | **v1.0 선언** (외부 신호 충족 시) |
-
-### v1.0 외부 신호 (가-합의, M3 진입 시 정식 확정)
-
-- GitHub stars ≥ 1,000
-- 외부 PR merged ≥ 10 (각각 다른 contributor)
-- 외부 이슈 (월) ≥ 10
-- 부정 평가 비율 < 30% (HN/Reddit 등 노출 후)
-- 외부 BMB 프로젝트 ≥ 5
-- 결정자: 메인테이너 + 외부 contributor 협의
+CI 상태 (시간 의존 — 다음 세션 시작 시 확인):
+- `Bindings CI` (push `8c7c2686`): 21+분 queued (runner 부족, 이전 push의 ubuntu/windows/macos-latest는 ✓ pass 이력)
+- `Bootstrap + Benchmark Cycle` (push `8c7c2686`): 21+분 in_progress
+- `Bindings CI` + `Bootstrap + Benchmark` for `1d89230c`: 새 push가 trigger했을 것 — 시작 시 확인
 
 ---
 
-## 6. 다음 세션 — 분석 → 반영 → 실행 (3단계 분리)
+## 5. 다음 세션 우선순위 (Cycle 2525+)
 
-> **재구조화 (사용자 요청)**: 메타 정렬을 단순 "ROADMAP 재작성"으로 처리하면
-> spec과 실제 코드 사이의 간극이 가시화되지 않아 후속 작업이 표면적이 된다.
-> **분석 단계(일관성 평가 + 갭 분석)를 먼저** 수행하여 진짜 격차를 드러낸 후
-> ROADMAP을 재작성한다.
+| 우선순위 | 작업 | 추정 사이클 | 트리거 |
+|--------|------|---------|------|
+| **P1** | `1d89230c` push 후 CI 결과 점검 (Bindings + Bootstrap) | 0 (자동) | 세션 시작 시 GitHub Actions |
+| **P2** | Track O Phase 2 — `bootstrap/context_pack/walker.bmb` 시작 | 1-2 | 자율 |
+| **P3** | Track N Phase 3 — 2nd tool (`bmb_verify` 또는 `bmb_compile`) + 추가 unit tests | 1 | 자율 (inner repo) |
+| **P4** | Track Q Phase 2 — 키워드 충돌 결정 + `bootstrap/lint/ai_friendly.bmb` | 2-3 | 자율 |
+| **P5** | ai-proof 실제 제거 (Cycle 2526 약속) | 1 | 자율 |
+| **P6** | lexer 1.11x → 1.10x — peek bounds check 제거 (verifier 통합) | 2-3 | 자율, 효과 불확실 |
+| **P7** | Track R tracking dashboard 공식화 | 1-2 | 자율 |
 
-### 6.1 Cycle 2507 — Vision Alignment Assessment (분석 단계, 구현 0)
-
-> **세션 성격**: 분석·진단만, 코드/ROADMAP 변경 없음. 산출물은 두 분석 문서.
-> 결론은 Cycle 2508의 입력이 됨.
-
-#### Phase A — 일관성 평가 (Consistency Audit)
-
-spec의 9개 결정 각각에 대해 **현재 코드/문서/CI/벤치마크가 어디에 어떻게 반영되어 있고, 어디에 모순되는가**를 점검.
-
-체크리스트 (각 결정마다):
-- [ ] Q1 (인간+AI 협업): 현재 LSP/에러 메시지/도구가 이 가정과 일치? (예: 친절한 인간 에러 우선 vs 구조화 출력 디폴트)
-- [ ] Q2 (컴파일러 도메인): 현재 벤치마크/예제/stdlib가 도메인 정합? (8/15 FAIL 도메인 분류표)
-- [ ] Q3 (AI-readiness = 언어 속성): 현재 컴파일러에 외부 LLM 통합/AI 채널이 있는가? (없어야 정합)
-- [ ] Q4 (B>P>A>D>C 우선순위): 현재 사이클 작업이 이 순서를 따랐는가? (Phase C 등 P 작업 위주 검증)
-- [ ] Q5 (M1~M4 단계): 현재 ROADMAP에 마일스톤 정의가 있는가? 어디에?
-- [ ] Q6 (M2 = 5 트랙): Track M(`--human` 이미 존재), N/O/Q/R 어디까지 진척?
-- [ ] Q8 (트랙 S/T): 에코시스템 도구 BMB 재작성 진척? 외부 바인딩 PoC?
-- [ ] Q9 (마일스톤 vs 버전 분리): 현재 v0.98 명명 정책이 이 분리 원칙과 일치?
-
-산출물: `claudedocs/vision-consistency-audit-2026-05-XX.md`
-
-#### Phase B — 갭 분석 (Gap Analysis)
-
-합의된 비전과 현재 상태의 격차를 정량/정성 측정.
-
-| 트랙 | 현재 진척 | 목표 (마일스톤별) | 격차 |
-|------|---------|---------------|------|
-| M (Output) | `--human` 존재, 기본 JSONL | M2: 모든 명령 일관 + 스키마 안정화 | ? |
-| N (MCP Server) | 0 | M2: `bmb mcp` 가동 | 100% |
-| O (Context Pack) | 0 | M2: `bmb context-pack` | 100% |
-| Q (Ambiguity Audit) | 0 | M2: 0 모호 파스 | grammar 분석 필요 |
-| R (LLM Bench) | 0 | M2: 50 task suite + 추적 | 100% |
-| S (Ecosystem) | 부트스트랩 ✅ | M3: LSP/fmt/lint/verify/bench 90% | LSP·fmt·lint 등 BMB 재작성률 측정 |
-| T (Bindings) | gotgan 등 별도 | M3: Python+Node PoC | 100% |
-
-마일스톤별 잔여 작업:
-- **M1**: G.1 fix(시퀀스 알려짐), 컴파일러 도메인 벤치 분류·해소(brainfuck/lexer/hash_table 우선), 3-OS CI green(부분 진행), Trust 정책(권장 (B), 사용자 결정 대기)
-- **M2~M4**: 신규 트랙 작업, Phase A 결과 위에서 산출
-
-산출물: `claudedocs/vision-gap-analysis-2026-05-XX.md`
-
-#### Phase C — 우선순위 매핑
-
-Phase A·B 결과를 트랙·마일스톤에 매핑하여 Cycle 2508+의 작업 순서를 도출.
-
-산출물: 위 두 문서의 결론 섹션 + Cycle 2508 입력으로 사용
-
-### 6.2 Cycle 2508 — Meta Alignment Implementation (반영 단계)
-
-Phase A·B·C 결과 위에서 진행:
-
-- [ ] **`docs/ROADMAP.md` 재작성** — M1~M4 마일스톤, 트랙 재분류표 (옛 A-L → 새 M/N/O/Q/R/S/T), 버전 정책 명시, **갭 분석 결과 반영**
-- [ ] **`CLAUDE.md` 업데이트** — Workflow Rule 8 신규 ("출력 디폴트 = AI 친화 구조화"), Decision Framework에 마일스톤·버전 분리 추가
-- [ ] **트랙 재분류 commit**:
-  - 옛 G.1-G.4 → 새 M1 P1
-  - 옛 Phase C (105 inttoptr) → 새 M2 후보 (M1 blocker 아님)
-  - 옛 8/15 FAIL 비-도메인 → 강등 (별도 추적)
-  - D' Golden binary 결정 → M1 정책 결정으로 명시
-- [ ] **신규 issue 생성 (7건)** — `claudedocs/issues/ISSUE-2026MMDD-{m,n,o,q,r,s,t}.md` (갭 분석에서 도출된 구체 작업 항목 포함)
-- [ ] **G.1 P1-P3 명시 연기** — Cycle 2509+로 재배치
-
-### 6.3 Cycle 2509+ — M1 P1 (G.1 fix 실행)
-
-Cycle 2506에서 도출된 G.1 P1-P3 시퀀스:
-- **P1**: L.2 fix (`bmb build --shared --no-prelude` @bmb_user_main undefined → SharedLib mode에서 main injection skip)
-- **P2**: prelude duplicate 제거 (clamp/in_range 등 prelude → use stdlib redirect)
-- **P3**: `--trust-contracts` 플래그를 `ecosystem/build_all.py`에서 제거, Bindings CI 3-OS green 검증
-
-### 6.4 Cycle 2507 즉시 다음 액션
-
-분석 단계는 brainstorming의 자연스러운 후속이 아니므로 `writing-plans` skill 보다는:
-1. spec § 1·2 + vision 메모리 재로드
-2. Phase A·B 체크리스트를 TodoList로 등록
-3. Phase A 시작 (각 Q마다 grep + 코드 점검)
-
-또는 분석 자체를 plan으로 구조화하려면 `superpowers:writing-plans` skill로 Cycle 2507 (분석)의 단계별 plan 작성 — 권장.
+**다음 세션 첫 액션 (즉시)**: `gh run list --workflow "Bindings CI" --branch main --limit 2` — `1d89230c` 결과 점검 → P2 또는 P3 시작.
 
 ---
 
-## 7. 참고 자료
+## 6. 환경 노트 (다음 세션 시 확인)
 
-- **Spec**: `docs/superpowers/specs/2026-05-01-vision-v1.0-realignment.md` (219줄)
-- **이전 세션 핸드오프**: 이 파일 이전 버전 (commit `b275166f`) — Cycles 2505-2506
-- **이전 비전 메모리**: `~/.claude/projects/D--data-lang-bmb/memory/project_vision_v1_realignment.md` (자동 로드)
+| 환경 | 상태 |
+|------|------|
+| Z3 in PATH | `/c/msys64/ucrt64/bin/z3` (4.15.2) |
+| LLVM | 21.1.8 MSYS2 UCRT64 |
+| GCC | MinGW-w64 |
+| Rust | stable |
+| BMB workspace 버전 | `Cargo.toml workspace.package.version = "0.98.0"` ✅ ROADMAP 정렬 |
+| `target/release/bmb.exe` | Cycle 2522 cargo check 후 fresh |
+| inner bmb-mcp Python 환경 | mcp>=1.2 미설치 (현재는 `bmb_cli` 단독으로 5/5 pytest pass; FastMCP server 실행 시 `pip install -e .` 필요) |
 
 ---
 
-## 8. HUMAN-decision 미결 (이번 세션과 별개)
+## 7. 변경된 도구 인터페이스 (다음 세션 주의)
 
-이전 세션(Cycles 2505-2506)에서 미결된 HUMAN-only 항목들. 새 비전과 무관하게 보류:
+### 새 스크립트
+- `scripts/check-version-sync.sh` — Cargo.toml ↔ bootstrap/version.bmb 일치 검증. `quick-check.sh` Step 0에 자동 실행.
 
-- **TestPyPI org secret 등록** — 사용자 admin 권한 필요
-- **WSL2 admin 설치** — 사용자 admin 권한 필요
-- **D' Golden binary 정책 최종 확정** — (B) 권장됨, M1 종료 시 결정으로 본 세션에서 일정화
+### 삭제된 스크립트 (D' Golden)
+- ~~`scripts/golden-bootstrap.sh`~~
+- ~~`scripts/bmb-dev.sh`~~
+- ~~`golden/`~~ 전체 디렉토리
+
+대체 경로:
+- 빌드: `cargo build --release [--features llvm]`
+- 3-stage 검증: `scripts/bootstrap.sh`
+- Stage 1만: `scripts/bootstrap.sh --stage1-only`
+- Golden tests: `scripts/run-golden-tests.sh` (별개 개념, 보존됨)
+- 단일 BMB 파일 컴파일: `bmb build <file>`
+
+### 새 디렉토리 (inner repo)
+- `ecosystem/bmb-mcp/chatter/` — Python MCP server 구현
+- `ecosystem/bmb-mcp/tests/` — pytest 테스트
+- `ecosystem/bmb-mcp/pyproject.toml` — `bmb-chatter` 패키지 설정
+
+---
+
+## 8. 잔여 HUMAN-Decision (외부 의존)
+
+| 항목 | 차단 원인 |
+|------|---------|
+| **TestPyPI org secret 등록** | 사용자 admin 권한 (B'.2 unblock) |
+| **WSL2 admin 설치** | 권장: 미설치 (GitHub Actions로 충분) |
+
+이전 미결 4건 (D' Golden, Cargo 버전, ai-proof, Track N 옵션)은 본 세션에서 모두 해결됨.
+
+---
+
+## 9. 참고 문서 (gitignored — 로컬에만 존재)
+
+`claudedocs/`:
+- `HANDOFF.md` (본 문서)
+- `vision-consistency-audit-2026-05-01.md`, `vision-gap-analysis-2026-05-01.md`
+- `benchmark-domain-classification-2026-05-01.md`, `m1-perf-diagnosis-2026-05-01.md`
+- `track-n-r-inventory-2026-05-01.md`
+- `cycle-logs/cycle-2507.md` ~ `cycle-2520.md` (이전 세션 14 cycles)
+- `cycle-logs/cycle-2521.md` ~ `cycle-2524.md` 미작성 (필요 시 다음 세션 시 추가)
+
+`CLAUDE.md` (gitignored): Rule 1-8 (출력 디폴트 = AI 친화 구조화 포함) — 로컬 working document. ROADMAP § Vision v1.0 Framework가 영속 baseline.
+
+---
+
+## 10. 다음 세션 시작 액션
+
+```
+1. git -C /d/data/lang-bmb log -1                           # HEAD = 1d89230c 확인
+2. git -C /d/data/lang-bmb/ecosystem/bmb-mcp log -1         # inner HEAD = a7862ded 확인
+3. gh run list --workflow "Bindings CI" --branch main -L 2  # CI 결과 점검
+4. cycle 2525 시작 — § 5 우선순위표 따라 (P2 Track O 추천)
+```
 
 ---
 
 **세션 종료**: 2026-05-01
-**다음 세션 시작 시**: 이 HANDOFF 1-2장 + spec § 1·9 + 자동 로드된 vision 메모리 참조하여 Cycle 2507 메타 정렬 즉시 시작 가능.
+**다음 세션 시작 시**: 본 HANDOFF § 5 우선순위표 + § 4 검증 상태 참조하여 즉시 시작 가능. M1 자율 부분 + 4 HUMAN-Decision (D1-D4) 모두 종결됨. **다음 세션은 CI 점검 후 M2 Phase 2 본격 진입** (Track O/N/Q 병행 가능).
