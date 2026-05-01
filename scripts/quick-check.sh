@@ -92,6 +92,14 @@ log "${BLUE}BMB Quick Check${NC}"
 log "======================================"
 log ""
 
+# Step 0: Version sync (fast — fails immediately if Cargo.toml and version.bmb disagree)
+if ! bash "$SCRIPT_DIR/check-version-sync.sh" > /dev/null 2>&1; then
+    log "${RED}Version mismatch between Cargo.toml and bootstrap/version.bmb${NC}"
+    bash "$SCRIPT_DIR/check-version-sync.sh" || true
+    RESULTS[total_time_ms]=$(($(get_time_ms) - TOTAL_START))
+    exit 1
+fi
+
 # Step 1: Cargo Test
 if [ "$SKIP_TESTS" = false ]; then
     log "${YELLOW}[1/3] Running cargo test...${NC}"

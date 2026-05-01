@@ -100,9 +100,10 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 - 결정자: 메인테이너 + 외부 contributor 협의
 
 **현재 명명 정합성 노트**:
-- `Cargo.toml` workspace.version = `"0.1.0"` — Rust crate 발행 시 사용. Crates.io 발행 정책 별도 결정 필요.
-- 본 ROADMAP "v0.98" 등 명명 = 외부 표기 (changelog/release tag).
-- Cargo.toml 버전 정책 결정은 별도 (gotgan/M3 진입 전).
+- `Cargo.toml` workspace.version = `"0.98.0"` — ROADMAP 외부 명명과 일치 (Cycle 2522 통일).
+- `bootstrap/version.bmb` `bmb_version()` = `"0.98.0"` — 동일.
+- 동기화 가드: `scripts/check-version-sync.sh` (quick-check.sh Step 0에서 실행).
+- Crates.io 발행 정책은 v1.0 외부 신호 충족 시 결정.
 
 ### Track migration (옛 → 새)
 
@@ -122,7 +123,7 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 
 ### Anchor for next cycles (post-2507)
 
-#### Cycles 2507-2521 (run-cycle 20-cycle budget 중 15 cycles 사용)
+#### Cycles 2507-2522 (run-cycle 20-cycle budget 중 16 cycles 사용)
 
 | Cycle | 작업 | 결과 |
 |-------|------|------|
@@ -141,6 +142,7 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 | 2519 | Track N + R 통합 인벤토리 (진척 정정) | ✅ |
 | 2520 | ROADMAP cleanup + run-cycle 종합 | ✅ |
 | 2521 | M1 closeout: D' Golden (B) Fully remove — `golden/` + `golden-bootstrap.sh` + `bmb-dev.sh` 삭제, install/doctor/version 스크립트 정리, docs 갱신 | ✅ |
+| 2522 | 버전 명명 통일: `Cargo.toml` 0.1.0 → 0.98.0, `bootstrap/version.bmb` 0.60.251 → 0.98.0, `scripts/check-version-sync.sh` 가드 추가 + quick-check.sh Step 0 통합 | ✅ |
 
 #### M1 자율 가능 부분 ✅ COMPLETE
 
