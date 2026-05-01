@@ -112,8 +112,8 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 | Track G.1-G.4 (verifier counterexamples) | **M1 P1-P3** — G.1 root cause = prelude duplicate clamp (Cycle 2506) |
 | Track Phase C (105 inttoptr 사이트) | **M2 후보 (P 작업)** — M1 blocker 아님 |
 | Track D' (Golden binary) | ✅ **DONE** (Cycle 2521) — (B) Fully remove 실행. `golden/` 디렉토리, `scripts/golden-bootstrap.sh`, `scripts/bmb-dev.sh`, install/doctor/version 스크립트의 golden 경로 제거 + docs 정리. Trusting Trust attestation은 향후 SLSA/Sigstore로 대체. |
-| Track B'.2 (TestPyPI real upload) | **M3 T (External Bindings)** 인프라 — HUMAN-gated (org secret) |
-| Track C' (Defect 3 — bootstrap fragility) | **별개 추적** (자율 작업 외, WSL2 admin 의존) |
+| Track B'.2 (TestPyPI real upload) | **재정의** (2026-05-01 maintainer 결정) — `TEST_PYPI_API_TOKEN` 추가 안 함. 리허설은 `pypi-publish.yml` `publish=false` workflow_dispatch로 wheel 검증, 또는 prod 직접 publish (one-shot 위험 수용). org-level `PYPI_API_TOKEN`/`CARGO_REGISTRY_TOKEN`/`NPM_TOKEN`/`NUGET_API_KEY` 확보됨 → Track T unblock. |
+| Track C' (Defect 3 — bootstrap fragility) | **재정의** (2026-05-01 maintainer 결정) — WSL2 미설치 결정. Linux 검증은 GitHub Actions 단독. |
 | Track E (Language features) | **M2/M3 도메인 정합 평가 후** 우선순위 |
 | Track F (LLVM 22 hint 복원) | **opportunistic** (M1/M2 작업 중 기회 발생 시) |
 | Track H (CI throughput) | **DONE** (Cycle 2480 H tier C 거부 후 종결) |
@@ -145,6 +145,7 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 | 2522 | 버전 명명 통일: `Cargo.toml` 0.1.0 → 0.98.0, `bootstrap/version.bmb` 0.60.251 → 0.98.0, `scripts/check-version-sync.sh` 가드 추가 + quick-check.sh Step 0 통합 | ✅ |
 | 2523 | Track R Phase 2: ai-proof deprecation notice (제거 시점 Cycle 2526), bmb-ai-bench README 작성 (합격선 X 정책 명시), `perf_target_ratio` docstring 명확화 | ✅ |
 | 2524 | Track N Phase 2 시작: bmb-mcp Python scaffold (`pyproject.toml`, `chatter/__init__.py`, `chatter/bmb_cli.py`, `chatter/server.py`) + `bmb_check` tool 구현 + 5/5 pytest pass. README implementation status 갱신 (Node→Python 전환) | ✅ |
+| 2524-close | HANDOFF refresh + push (5 parent commits + 3 inner commits 모두 origin 동기화) + maintainer 잔여 HUMAN-Decision 종결: TestPyPI gap 수용 (publish=false 리허설), WSL2 미설치 결정 → Track T publishing 인프라 unblock | ✅ |
 
 #### M1 자율 가능 부분 ✅ COMPLETE
 

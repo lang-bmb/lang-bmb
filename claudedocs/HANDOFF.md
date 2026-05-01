@@ -1,10 +1,10 @@
-# BMB Session Handoff — 2026-05-01 (Cycles 2521-2524 Recommended-Path Run)
+# BMB Session Handoff — 2026-05-01 (Cycles 2521-2524 Recommended-Path Run + HUMAN-Decision 종결)
 
 > **이전 HEAD (이전 세션 close)**: `8c7c2686`
-> **새 HEAD (parent)**: `1d89230c` (M1 closeout + M2 Phase 2 시작 + submodule pin bump)
+> **새 HEAD (parent)**: `2814a7af` (D1-D4 + submodule pin + HANDOFF refresh)
 > **새 HEAD (inner bmb-mcp)**: `a7862ded` (Python scaffold + `bmb_check` tool)
 > **원격 상태**: 양 repo `origin/main`과 동기화 ✅
-> **세션 성격**: 4-cycle run — HUMAN-Decision 6개 중 4개 자율 종결 (D1-D4), 2개는 admin 권한 의존으로 보류.
+> **세션 성격**: 4-cycle run — **6개 HUMAN-Decision 전부 종결** (D1-D4 자율 실행, D5/D6 maintainer 결정 = "no action" 채택).
 
 ---
 
@@ -21,16 +21,28 @@
 
 ---
 
-## 2. HUMAN-Decision 진척
+## 2. HUMAN-Decision 진척 — 전부 종결
 
-| 항목 | 진척 | 비고 |
-|------|------|------|
-| **D' Golden 제거** | ✅ DONE (Cycle 2521) | maintainer 승인 → 즉시 실행 |
-| **Cargo.toml 버전 정책** | ✅ DONE (Cycle 2522) | 0.98.0 통일 + 동기화 가드 |
-| **ai-proof deprecation** | ✅ DONE (Cycle 2523) | bmb-ai-bench로 통합, 3 cycles 후 제거 |
-| **Track N 구현 옵션** | ✅ DONE (Cycle 2524) | 단기 Python (옵션 B), 장기 BMB (옵션 C) M3+ |
-| **TestPyPI org secret 등록** | ⏳ HUMAN-blocked | 사용자 admin 권한 |
-| **WSL2 admin 설치** | ⏳ HUMAN-blocked (권장: 미설치) | GitHub Actions Linux로 충분 |
+| 항목 | 진척 | 결정 내용 |
+|------|------|---------|
+| **D' Golden 제거** | ✅ DONE (Cycle 2521) | maintainer 승인 → (B) Fully remove 즉시 실행 |
+| **Cargo.toml 버전 정책** | ✅ DONE (Cycle 2522) | 0.98.0 통일 + `check-version-sync.sh` 가드 |
+| **ai-proof deprecation** | ✅ DONE (Cycle 2523) | bmb-ai-bench로 통합, Cycle 2526 제거 예정 |
+| **Track N 구현 옵션** | ✅ DONE (Cycle 2524) | 단기 Python (옵션 B), 장기 BMB rewrite (옵션 C) M3+ |
+| **TestPyPI org secret 등록** | ✅ 결정됨 — **추가 안 함** (2026-05-01 maintainer 승인) | Production publish 리허설은 `publish=false` workflow_dispatch로 (artifacts만 생성, upload 없음). 또는 직접 prod publish하고 one-shot 위험 수용 |
+| **WSL2 admin 설치** | ✅ 결정됨 — **미설치** (2026-05-01 maintainer 승인) | Linux 검증은 GitHub Actions로만 |
+
+### Org-level publish 자산 (확인됨)
+
+| Secret | Registry | 상태 |
+|--------|----------|------|
+| `PYPI_API_TOKEN` | PyPI prod | ✅ org level |
+| `CARGO_REGISTRY_TOKEN` | crates.io | ✅ org level |
+| `NPM_TOKEN` | npmjs.com | ✅ org level |
+| `NUGET_API_KEY` | NuGet | ✅ org level |
+| `TEST_PYPI_API_TOKEN` | TestPyPI | ❌ 등록 안 함 (위 결정) |
+
+→ **Track T (External Bindings) 발행 파이프라인 unblock**.
 
 ---
 
@@ -68,15 +80,17 @@ CI 상태 (시간 의존 — 다음 세션 시작 시 확인):
 
 | 우선순위 | 작업 | 추정 사이클 | 트리거 |
 |--------|------|---------|------|
-| **P1** | `1d89230c` push 후 CI 결과 점검 (Bindings + Bootstrap) | 0 (자동) | 세션 시작 시 GitHub Actions |
-| **P2** | Track O Phase 2 — `bootstrap/context_pack/walker.bmb` 시작 | 1-2 | 자율 |
-| **P3** | Track N Phase 3 — 2nd tool (`bmb_verify` 또는 `bmb_compile`) + 추가 unit tests | 1 | 자율 (inner repo) |
-| **P4** | Track Q Phase 2 — 키워드 충돌 결정 + `bootstrap/lint/ai_friendly.bmb` | 2-3 | 자율 |
-| **P5** | ai-proof 실제 제거 (Cycle 2526 약속) | 1 | 자율 |
-| **P6** | lexer 1.11x → 1.10x — peek bounds check 제거 (verifier 통합) | 2-3 | 자율, 효과 불확실 |
-| **P7** | Track R tracking dashboard 공식화 | 1-2 | 자율 |
+| **P1** | `2814a7af` push 후 CI 결과 점검 (Bindings + Bootstrap + PyPI workflow if any) | 0 (자동) | 세션 시작 시 GitHub Actions |
+| **P2** | Track T 리허설 — `pypi-publish.yml`을 `publish=false` workflow_dispatch로 실행 → wheel artifacts 검증 | 1 | 자율, org secrets 사용 |
+| **P3** | Track O Phase 2 — `bootstrap/context_pack/walker.bmb` 시작 | 1-2 | 자율 |
+| **P4** | Track N Phase 3 — 2nd tool (`bmb_verify` 또는 `bmb_compile`) + 추가 unit tests | 1 | 자율 (inner repo) |
+| **P5** | Track Q Phase 2 — 키워드 충돌 결정 + `bootstrap/lint/ai_friendly.bmb` | 2-3 | 자율 |
+| **P6** | ai-proof 실제 제거 (Cycle 2526 약속) | 1 | 자율 |
+| **P7** | Track T Node bindings PoC (NPM_TOKEN 활용) | 2-3 | 자율 (M3 진입 신호) |
+| **P8** | lexer 1.11x → 1.10x — peek bounds check 제거 (verifier 통합) | 2-3 | 자율, 효과 불확실 |
+| **P9** | Track R tracking dashboard 공식화 | 1-2 | 자율 |
 
-**다음 세션 첫 액션 (즉시)**: `gh run list --workflow "Bindings CI" --branch main --limit 2` — `1d89230c` 결과 점검 → P2 또는 P3 시작.
+**다음 세션 첫 액션 (즉시)**: `gh run list --workflow "Bindings CI" --branch main --limit 2` + `gh run list --workflow "PyPI wheel build and publish" --branch main --limit 2` — CI 결과 점검 → P2 (publishing 리허설) 권장. 리허설 성공 시 P3-P6 병행 가능.
 
 ---
 
@@ -118,14 +132,18 @@ CI 상태 (시간 의존 — 다음 세션 시작 시 확인):
 
 ---
 
-## 8. 잔여 HUMAN-Decision (외부 의존)
+## 8. 잔여 HUMAN-Decision
 
-| 항목 | 차단 원인 |
-|------|---------|
-| **TestPyPI org secret 등록** | 사용자 admin 권한 (B'.2 unblock) |
-| **WSL2 admin 설치** | 권장: 미설치 (GitHub Actions로 충분) |
+**없음**. 이전 6건 모두 본 세션에서 종결:
+- D1-D4: 자율 실행 완료
+- D5 (TestPyPI): "추가 안 함" 결정 (publish=false 리허설 + prod 직접 publish)
+- D6 (WSL2): "미설치" 결정 (GitHub Actions로 충분)
 
-이전 미결 4건 (D' Golden, Cargo 버전, ai-proof, Track N 옵션)은 본 세션에서 모두 해결됨.
+다음 세션은 외부 의존 없이 P1-P9 우선순위로 자율 진행 가능.
+
+새 HUMAN-Decision이 필요한 미래 시점:
+- **v1.0 외부 신호 충족 평가** (별도 결정, ROADMAP § Vision v1.0 Framework)
+- Track T 실제 prod publish 시점 (one-shot 위험 수용 또는 publish=false 충분 검증 후)
 
 ---
 
@@ -146,13 +164,25 @@ CI 상태 (시간 의존 — 다음 세션 시작 시 확인):
 ## 10. 다음 세션 시작 액션
 
 ```
-1. git -C /d/data/lang-bmb log -1                           # HEAD = 1d89230c 확인
+1. git -C /d/data/lang-bmb log -1                           # HEAD = 2814a7af 확인
 2. git -C /d/data/lang-bmb/ecosystem/bmb-mcp log -1         # inner HEAD = a7862ded 확인
-3. gh run list --workflow "Bindings CI" --branch main -L 2  # CI 결과 점검
-4. cycle 2525 시작 — § 5 우선순위표 따라 (P2 Track O 추천)
+3. gh run list --workflow "Bindings CI" --branch main -L 2
+4. gh run list --workflow "PyPI wheel build and publish" --branch main -L 2
+5. cycle 2525 시작 — § 5 우선순위표 따라 (P2 publishing 리허설 추천)
 ```
+
+### P2 publishing 리허설 빠른 명령어
+
+```
+gh workflow run "PyPI wheel build and publish" -f publish=false
+gh run watch <run-id>
+# 성공 시: artifacts 다운로드해서 wheel 구조 검사
+# 실패 시: 원인 분석 후 fix → P2 재실행
+```
+
+(workflow input 이름은 실제 `pypi-publish.yml`을 확인하고 조정 — `publish` / `dry_run` / `skip_upload` 중 하나)
 
 ---
 
 **세션 종료**: 2026-05-01
-**다음 세션 시작 시**: 본 HANDOFF § 5 우선순위표 + § 4 검증 상태 참조하여 즉시 시작 가능. M1 자율 부분 + 4 HUMAN-Decision (D1-D4) 모두 종결됨. **다음 세션은 CI 점검 후 M2 Phase 2 본격 진입** (Track O/N/Q 병행 가능).
+**다음 세션 시작 시**: 본 HANDOFF § 5 우선순위표 + § 4 검증 상태 참조하여 즉시 시작 가능. **모든 HUMAN-Decision 종결**, Track T publishing 자산 확보, 외부 의존 없이 자율 P1-P9 진행 가능. **다음 세션은 publishing 리허설 + M2 Phase 2 본격 진입** (Track O/N/Q 병행 가능).
