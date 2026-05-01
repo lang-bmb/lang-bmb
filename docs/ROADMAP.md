@@ -48,7 +48,7 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 | 트랙 | 내용 | 현 상태 | 잔여 issue |
 |------|------|---------|-----------|
 | **M (Machine-First Output)** | 모든 출력 디폴트 JSON, `--human` 옵션 | ~85% (스키마 명세 ✅ Cycle 2516, dump-ast --format deferred) | `docs/AI_OUTPUT_SCHEMA.md` (v1) + `claudedocs/issues/ISSUE-20260501-track-m-machine-output.md` |
-| **N (MCP Server)** | `bmb mcp` 또는 `bmb-mcp` (Chatter) | ~10% (정정 — 설계만, 구현 0; Cycle 2519 인벤토리) | `claudedocs/track-n-r-inventory-2026-05-01.md`, `ISSUE-20260501-track-n-mcp-server.md` |
+| **N (MCP Server)** | `bmb mcp` 또는 `bmb-mcp` (Chatter) | ~25% (Cycle 2524: Python scaffold + `bmb_check` tool 구현 + 5/5 unit tests pass; 6 tools + 5 resources + 3 prompts 잔여) | `claudedocs/track-n-r-inventory-2026-05-01.md`, `ISSUE-20260501-track-n-mcp-server.md` |
 | **O (Context Pack)** | `bmb context-pack <project>` | ~15% (설계 ✅ Cycle 2517) | `docs/superpowers/specs/2026-05-01-context-pack-design.md`, `ISSUE-20260501-track-o-context-pack.md` |
 | **Q (Ambiguity Audit)** | grammar 정적 분석 + `bmb lint --ai-friendly` | ~15% (운영 정의 ✅ Cycle 2518) | `docs/superpowers/specs/2026-05-01-ambiguity-audit-spec.md`, `ISSUE-20260501-track-q-ambiguity-audit.md` |
 | **R (LLM Bench Tracking)** | `bmb-ai-bench` 50-task suite (합격선 X) | ~75% (Cycle 2523: ai-proof deprecation notice + bmb-ai-bench README + perf_target_ratio 정책 docstring 명시) | `claudedocs/track-n-r-inventory-2026-05-01.md`, `ISSUE-20260501-track-r-llm-bench.md` |
@@ -123,7 +123,7 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 
 ### Anchor for next cycles (post-2507)
 
-#### Cycles 2507-2523 (run-cycle 20-cycle budget 중 17 cycles 사용)
+#### Cycles 2507-2524 (run-cycle 20-cycle budget 중 18 cycles 사용)
 
 | Cycle | 작업 | 결과 |
 |-------|------|------|
@@ -144,6 +144,7 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 | 2521 | M1 closeout: D' Golden (B) Fully remove — `golden/` + `golden-bootstrap.sh` + `bmb-dev.sh` 삭제, install/doctor/version 스크립트 정리, docs 갱신 | ✅ |
 | 2522 | 버전 명명 통일: `Cargo.toml` 0.1.0 → 0.98.0, `bootstrap/version.bmb` 0.60.251 → 0.98.0, `scripts/check-version-sync.sh` 가드 추가 + quick-check.sh Step 0 통합 | ✅ |
 | 2523 | Track R Phase 2: ai-proof deprecation notice (제거 시점 Cycle 2526), bmb-ai-bench README 작성 (합격선 X 정책 명시), `perf_target_ratio` docstring 명확화 | ✅ |
+| 2524 | Track N Phase 2 시작: bmb-mcp Python scaffold (`pyproject.toml`, `chatter/__init__.py`, `chatter/bmb_cli.py`, `chatter/server.py`) + `bmb_check` tool 구현 + 5/5 pytest pass. README implementation status 갱신 (Node→Python 전환) | ✅ |
 
 #### M1 자율 가능 부분 ✅ COMPLETE
 
@@ -164,7 +165,7 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 | ~~P2 (M1 closeout) D' Golden 실제 제거~~ | ✅ DONE (Cycle 2521) | — |
 | P3 (M2) | Track O Phase 2 — `bootstrap/context_pack/walker.bmb` 시작 | 1-2 |
 | ~~P4 (M2) Track R Phase 2 — "합격선 X" 정책 적용 + ai-proof deprecation~~ | ✅ DONE (Cycle 2523) | — |
-| P5 (M2) | Track N Phase 2 — Chatter 실제 구현 시작 (Python 단기) | 3-5 |
+| P5 (M2) | Track N Phase 2 — 잔여 6 tools + 5 resources + 3 prompts (Cycle 2524 scaffold + `bmb_check` 완료) | 2-4 |
 | P6 (M2) | Track Q Phase 2 — 키워드 충돌 결정 + lint --ai-friendly BMB 구현 | 2-3 |
 | P7 (M1) | lexer 1.11x → 1.10x peek bounds check 제거 (verifier 통합) | 2-3 |
 
