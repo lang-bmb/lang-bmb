@@ -104,33 +104,89 @@
 
 ---
 
-## 6. 다음 세션 — Cycle 2507 메타 정렬 (코드 변경 0)
+## 6. 다음 세션 — 분석 → 반영 → 실행 (3단계 분리)
 
-이 비전이 ROADMAP·CLAUDE.md에 반영되지 않으면 다음 세션이 옛 비전 답습. **메타 정렬은 후속 모든 사이클의 정합성 보장 작업.**
+> **재구조화 (사용자 요청)**: 메타 정렬을 단순 "ROADMAP 재작성"으로 처리하면
+> spec과 실제 코드 사이의 간극이 가시화되지 않아 후속 작업이 표면적이 된다.
+> **분석 단계(일관성 평가 + 갭 분석)를 먼저** 수행하여 진짜 격차를 드러낸 후
+> ROADMAP을 재작성한다.
 
-### 산출물 (Cycle 2507 종료 조건)
+### 6.1 Cycle 2507 — Vision Alignment Assessment (분석 단계, 구현 0)
 
-- [x] vision spec commit + push (이 세션 완료, push는 사용자 확인)
-- [ ] **`docs/ROADMAP.md` 재작성** — M1~M4 마일스톤, 트랙 재분류표 (옛 A-L → 새 M/N/O/Q/R/S/T), 버전 정책 명시
+> **세션 성격**: 분석·진단만, 코드/ROADMAP 변경 없음. 산출물은 두 분석 문서.
+> 결론은 Cycle 2508의 입력이 됨.
+
+#### Phase A — 일관성 평가 (Consistency Audit)
+
+spec의 9개 결정 각각에 대해 **현재 코드/문서/CI/벤치마크가 어디에 어떻게 반영되어 있고, 어디에 모순되는가**를 점검.
+
+체크리스트 (각 결정마다):
+- [ ] Q1 (인간+AI 협업): 현재 LSP/에러 메시지/도구가 이 가정과 일치? (예: 친절한 인간 에러 우선 vs 구조화 출력 디폴트)
+- [ ] Q2 (컴파일러 도메인): 현재 벤치마크/예제/stdlib가 도메인 정합? (8/15 FAIL 도메인 분류표)
+- [ ] Q3 (AI-readiness = 언어 속성): 현재 컴파일러에 외부 LLM 통합/AI 채널이 있는가? (없어야 정합)
+- [ ] Q4 (B>P>A>D>C 우선순위): 현재 사이클 작업이 이 순서를 따랐는가? (Phase C 등 P 작업 위주 검증)
+- [ ] Q5 (M1~M4 단계): 현재 ROADMAP에 마일스톤 정의가 있는가? 어디에?
+- [ ] Q6 (M2 = 5 트랙): Track M(`--human` 이미 존재), N/O/Q/R 어디까지 진척?
+- [ ] Q8 (트랙 S/T): 에코시스템 도구 BMB 재작성 진척? 외부 바인딩 PoC?
+- [ ] Q9 (마일스톤 vs 버전 분리): 현재 v0.98 명명 정책이 이 분리 원칙과 일치?
+
+산출물: `claudedocs/vision-consistency-audit-2026-05-XX.md`
+
+#### Phase B — 갭 분석 (Gap Analysis)
+
+합의된 비전과 현재 상태의 격차를 정량/정성 측정.
+
+| 트랙 | 현재 진척 | 목표 (마일스톤별) | 격차 |
+|------|---------|---------------|------|
+| M (Output) | `--human` 존재, 기본 JSONL | M2: 모든 명령 일관 + 스키마 안정화 | ? |
+| N (MCP Server) | 0 | M2: `bmb mcp` 가동 | 100% |
+| O (Context Pack) | 0 | M2: `bmb context-pack` | 100% |
+| Q (Ambiguity Audit) | 0 | M2: 0 모호 파스 | grammar 분석 필요 |
+| R (LLM Bench) | 0 | M2: 50 task suite + 추적 | 100% |
+| S (Ecosystem) | 부트스트랩 ✅ | M3: LSP/fmt/lint/verify/bench 90% | LSP·fmt·lint 등 BMB 재작성률 측정 |
+| T (Bindings) | gotgan 등 별도 | M3: Python+Node PoC | 100% |
+
+마일스톤별 잔여 작업:
+- **M1**: G.1 fix(시퀀스 알려짐), 컴파일러 도메인 벤치 분류·해소(brainfuck/lexer/hash_table 우선), 3-OS CI green(부분 진행), Trust 정책(권장 (B), 사용자 결정 대기)
+- **M2~M4**: 신규 트랙 작업, Phase A 결과 위에서 산출
+
+산출물: `claudedocs/vision-gap-analysis-2026-05-XX.md`
+
+#### Phase C — 우선순위 매핑
+
+Phase A·B 결과를 트랙·마일스톤에 매핑하여 Cycle 2508+의 작업 순서를 도출.
+
+산출물: 위 두 문서의 결론 섹션 + Cycle 2508 입력으로 사용
+
+### 6.2 Cycle 2508 — Meta Alignment Implementation (반영 단계)
+
+Phase A·B·C 결과 위에서 진행:
+
+- [ ] **`docs/ROADMAP.md` 재작성** — M1~M4 마일스톤, 트랙 재분류표 (옛 A-L → 새 M/N/O/Q/R/S/T), 버전 정책 명시, **갭 분석 결과 반영**
 - [ ] **`CLAUDE.md` 업데이트** — Workflow Rule 8 신규 ("출력 디폴트 = AI 친화 구조화"), Decision Framework에 마일스톤·버전 분리 추가
-- [ ] **트랙 재분류표 ROADMAP 반영**:
+- [ ] **트랙 재분류 commit**:
   - 옛 G.1-G.4 → 새 M1 P1
   - 옛 Phase C (105 inttoptr) → 새 M2 후보 (M1 blocker 아님)
-  - 옛 8/15 FAIL 비-도메인(mandelbrot, n-body 등) → 강등 (별도 추적)
+  - 옛 8/15 FAIL 비-도메인 → 강등 (별도 추적)
   - D' Golden binary 결정 → M1 정책 결정으로 명시
-- [ ] **신규 issue 생성 (7건)** — `claudedocs/issues/ISSUE-2026MMDD-{m,n,o,q,r,s,t}.md`
-- [ ] **G.1 P1-P3 명시 연기** — Cycle 2508+로 재배치
+- [ ] **신규 issue 생성 (7건)** — `claudedocs/issues/ISSUE-2026MMDD-{m,n,o,q,r,s,t}.md` (갭 분석에서 도출된 구체 작업 항목 포함)
+- [ ] **G.1 P1-P3 명시 연기** — Cycle 2509+로 재배치
 
-### 메타 정렬 후 = Cycle 2508+ (M1 P1 G.1 fix)
+### 6.3 Cycle 2509+ — M1 P1 (G.1 fix 실행)
 
 Cycle 2506에서 도출된 G.1 P1-P3 시퀀스:
 - **P1**: L.2 fix (`bmb build --shared --no-prelude` @bmb_user_main undefined → SharedLib mode에서 main injection skip)
 - **P2**: prelude duplicate 제거 (clamp/in_range 등 prelude → use stdlib redirect)
 - **P3**: `--trust-contracts` 플래그를 `ecosystem/build_all.py`에서 제거, Bindings CI 3-OS green 검증
 
-### Cycle 2507 즉시 다음 액션 (writing-plans skill로 전환)
+### 6.4 Cycle 2507 즉시 다음 액션
 
-브레인스토밍 종료 후 자연스러운 흐름은 `superpowers:writing-plans` skill 호출 — Cycle 2507 메타 정렬 작업의 단계별 구현 계획 수립. 본 세션에서 도구 시간 제약 시 다음 세션 시작 시 호출.
+분석 단계는 brainstorming의 자연스러운 후속이 아니므로 `writing-plans` skill 보다는:
+1. spec § 1·2 + vision 메모리 재로드
+2. Phase A·B 체크리스트를 TodoList로 등록
+3. Phase A 시작 (각 Q마다 grep + 코드 점검)
+
+또는 분석 자체를 plan으로 구조화하려면 `superpowers:writing-plans` skill로 Cycle 2507 (분석)의 단계별 plan 작성 — 권장.
 
 ---
 
