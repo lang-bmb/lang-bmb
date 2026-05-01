@@ -95,21 +95,14 @@ def build_library(name, config, release=True, verbose=False):
     lib_dir = os.path.join(SCRIPT_DIR, name)
     output_path = os.path.join(lib_dir, output_name)
 
-    # Cycle 2497 (REVERT of Cycle 2493): macOS Bindings CI on Cycle 2493
-    # surfaced a clamp(x=1, lo=2, hi=0) counterexample even though the
-    # precondition `lo <= hi` should make that model unsat. CIR-level
-    # `generate_verification_query` produces a correct script when fed
-    # hand-constructed CirFunction (verified by `test_clamp_smt_script_dump`
-    # in Cycle 2497). The discrepancy lies upstream in AST→CIR lowering
-    # or in macOS Z3's model emission and requires deeper investigation
-    # with a live Z3 install. Restoring `--trust-contracts` re-mutes the
-    # path-failure on macOS Bindings while the root cause is isolated.
-    #
-    # Cycle 2487 (G.1) verifier-body fix is still correct and shipped;
-    # this revert is purely about the build_all.py call site, not the
-    # underlying SMT generator.
-    cmd = [BMB_COMPILER, "build", src_path, "--shared", "--trust-contracts",
-           "-o", output_path]
+    # Cycle 2511 (M1 P3): --trust-contracts removed. Cycle 2506 G.1 root cause
+    # was the prelude duplicate clamp with weakened post-only contract — the
+    # verifier was reporting a false counterexample on the prelude version, not
+    # stdlib. Cycle 2510 strengthened the prelude clamp/sign/in_range contracts
+    # to functionally identical to stdlib; the verifier now succeeds on stdlib
+    # / library builds with Z3 in PATH. Bindings CI 3-OS no longer needs to
+    # mute verification.
+    cmd = [BMB_COMPILER, "build", src_path, "--shared", "-o", output_path]
     if release:
         cmd.append("--release")
 

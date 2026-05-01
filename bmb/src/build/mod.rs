@@ -917,7 +917,13 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         // bmb_user_main has 'alwaysinline', so opt/clang inlines it into main() — zero call overhead
         // This eliminates the 13-17% overhead from the C runtime's main() → bmb_user_main() boundary
         // For full build pipeline, the runtime provides main() (with weak attribute)
-        let ir_output = if config.emit_ir {
+        // Cycle 2509 (M1 P1): SharedLib mode skips the wrapper — shared libraries have no entry
+        // point and may not define a user `fn main` (e.g., `bmb build stdlib/core/num.bmb --shared`).
+        // Injecting `define i32 @main { call void @bmb_user_main() }` against a missing
+        // `@bmb_user_main` produces `error: use of undefined value '@bmb_user_main'` at link time.
+        let ir_output = if matches!(config.output_type, OutputType::SharedLib) {
+            ir
+        } else if config.emit_ir {
             format!("{}\n\
                 ; v0.96.46: Inline main with runtime init\n\
                 declare void @bmb_init_runtime(i32, ptr)\n\

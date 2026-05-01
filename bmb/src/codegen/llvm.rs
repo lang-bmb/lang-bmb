@@ -148,7 +148,11 @@ impl CodeGen {
 
         // v0.96.46: Add inline main() wrapper that calls bmb_user_main
         // bmb_user_main has alwaysinline, so LLVM inlines it — zero call overhead
-        ctx.add_inline_main(&context)?;
+        // Cycle 2509 (M1 P1): SharedLib mode skips the wrapper — shared libs have no entry
+        // point and may lack `fn main`. Mirrors the text backend gating in build/mod.rs.
+        if !self.is_shared {
+            ctx.add_inline_main(&context)?;
+        }
 
         // Write to object file
         self.write_object_file(&ctx.module, output)
@@ -178,7 +182,10 @@ impl CodeGen {
         }
 
         // v0.96.46: Add inline main() wrapper that calls bmb_user_main
-        ctx.add_inline_main(&context)?;
+        // Cycle 2509 (M1 P1): SharedLib mode skips the wrapper.
+        if !self.is_shared {
+            ctx.add_inline_main(&context)?;
+        }
 
         Ok(ctx.module.print_to_string().to_string())
     }

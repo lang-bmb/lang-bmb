@@ -4,6 +4,169 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 
 ---
 
+## Vision v1.0 Framework (2026-05-01 realignment)
+
+> 비전 정렬 사이클 (Cycle 2507) 산출물. 본 § 가 모든 향후 작업 분류의 정상 앵커이며, 옛 Track A/B/C/D 등은 § "Track migration" 표를 따라 재매핑된다.
+
+**Spec**: `docs/superpowers/specs/2026-05-01-vision-v1.0-realignment.md`
+**Audit/gap**: `claudedocs/vision-consistency-audit-2026-05-01.md`, `claudedocs/vision-gap-analysis-2026-05-01.md`
+
+### Identity
+
+> AI 시대의 컴파일러·언어 도구·DSL·검증기를 위한, 가장 낮은 추상화 수준의 contract-verified systems language.
+
+- **1차 사용자**: 인간+AI 협업 — 인간이 자연어로 LLM에 의도, LLM이 BMB 작성, 컴파일러가 contract로 검증
+- **1차 도메인**: 컴파일러·언어 도구·DSL·검증기 (자기 자신 포함)
+- **AI-readiness**: 언어 자체 속성 — 외부 LLM 통합/AI 채널 X. 도구(MCP, context-pack)는 별도
+
+### Priority order (B > P > A > D > C)
+
+| 순위 | 축 | 측정 |
+|------|----|------|
+| 1 | **B (Failure Rate)** | LLM spec → BMB 1-shot 컴파일 + verifier 통과율 |
+| 2 | **P (Performance)** | C/Rust 등가 알고리즘 대비 (특히 도메인) |
+| 3 | **A (Token Efficiency)** | LOC·토큰 수 비교 (BMB vs Rust vs Python) |
+| 4 | **D (Verification Coverage)** | contract 자동 증명률, runtime check 제거율 |
+| 5 | **C (Context Navigability)** | LLM N-파일 프로젝트 정답률 |
+
+**의존**: B = 0이면 다른 모든 축 무의미. "Performance > Everything"의 진짜 의미 = "일단 동작하고(B), 그 위에서 P가 1순위".
+
+### Milestones (자율 게이트, binary 조건)
+
+#### M1 Self-Validated
+
+| 조건 | 현 상태 | 잔여 |
+|------|--------|---|
+| Bootstrap Fixed Point S2 == S3 | ✅ | 완료 (Cycle 2237) |
+| G.1 verifier fix (prelude duplicate clamp) | 🔄 진단 완료 (Cycle 2506) | P1-P3 시퀀스 (Cycles 2509-2511) |
+| 컴파일러 도메인 벤치마크 (≤ 1.10x vs C) | 🔄 brainfuck ✅ 1.00x, csv/json_parse ✅ ≤1.07x, http_parse/json_serialize ✅ <1.0x, **lexer ⚠️ 1.11x (M1 known opportunistic gap)** | Cycles 2512-2514 측정 + 결정. Lexer 1% 초과는 M2 작업 중 opportunistic 해소 |
+| 3-OS CI green | ⚠️ Linux -lm 끝 (Cycle 2505), 후속 안정화 | G.1 P3에 자연 포함 |
+| Trust 정책 (D' Golden) | ⏳ (B) 권장됨 | Cycle 2515 |
+
+#### M2 AI-Ready Infrastructure (5 트랙)
+
+| 트랙 | 내용 | 현 상태 | 잔여 issue |
+|------|------|---------|-----------|
+| **M (Machine-First Output)** | 모든 출력 디폴트 JSON, `--human` 옵션 | ~85% (스키마 명세 ✅ Cycle 2516, dump-ast --format deferred) | `docs/AI_OUTPUT_SCHEMA.md` (v1) + `claudedocs/issues/ISSUE-20260501-track-m-machine-output.md` |
+| **N (MCP Server)** | `bmb mcp` 또는 `bmb-mcp` (Chatter) | ~10% (정정 — 설계만, 구현 0; Cycle 2519 인벤토리) | `claudedocs/track-n-r-inventory-2026-05-01.md`, `ISSUE-20260501-track-n-mcp-server.md` |
+| **O (Context Pack)** | `bmb context-pack <project>` | ~15% (설계 ✅ Cycle 2517) | `docs/superpowers/specs/2026-05-01-context-pack-design.md`, `ISSUE-20260501-track-o-context-pack.md` |
+| **Q (Ambiguity Audit)** | grammar 정적 분석 + `bmb lint --ai-friendly` | ~15% (운영 정의 ✅ Cycle 2518) | `docs/superpowers/specs/2026-05-01-ambiguity-audit-spec.md`, `ISSUE-20260501-track-q-ambiguity-audit.md` |
+| **R (LLM Bench Tracking)** | `bmb-ai-bench` 50-task suite (합격선 X) | ~60% (정정 — 100 problem ✅, perf gate 정책 정렬 필요; Cycle 2519) | `claudedocs/track-n-r-inventory-2026-05-01.md`, `ISSUE-20260501-track-r-llm-bench.md` |
+
+#### M3 External Bindings PoC
+
+| 조건 | 현 상태 | 잔여 |
+|------|--------|---|
+| BMB showcase 라이브러리 1개 | 5개 후보 (algo/compute/crypto/text/json) | 도메인 정합 1개 선정 |
+| C ABI 노출 (안정 헤더 + 빌드) | ✅ (`build_all.py`, `gen_headers.py`) | 자동생성 안정화 |
+| Python + Node 바인딩 | ⚠️ Python ✅, Node ❌ | Node bindings PoC |
+| 트랙 S 90% | ❌ 0/5 (LSP/fmt/lint/verify/bench Rust) | BMB 재작성 |
+
+#### M4 Adopted
+
+| 조건 | 잔여 |
+|------|---|
+| 추가 바인딩 (C#, Java, C) | M3 완료 후 |
+| 트랙 S 100% (gotgan, tree-sitter 포함) | 장기 |
+| 외부 채택 신호 (§ 버전 정책) | 외부 의존 |
+
+### Orthogonal tracks (시간 직교)
+
+| 트랙 | M1 | M2 | M3 | M4 |
+|------|----|----|----|----|
+| **S (Ecosystem BMB-rewrite)** | 부트스트랩 ✅ | + LSP, fmt, lint | + verify, bench, mcp | 100% (gotgan, tree-sitter) |
+| **T (External Bindings)** | 0 | C ABI 설계 ✅ | Python ✅ + Node | C#, Java, C 추가 |
+
+상세 issue: `ISSUE-20260501-track-s-ecosystem-bmb-rewrite.md`, `ISSUE-20260501-track-t-external-bindings.md`
+
+### Version policy (마일스톤 ≠ 메이저 버전)
+
+> **원칙**: 기술 마일스톤 (M1~M4) = 자율 게이트. 메이저 버전 (v0.x → v1.0+) = 비자율, 외부 신호 게이트.
+
+| 마일스톤 도달 | 권장 버전 |
+|--------------|---------|
+| M1 도달 | v0.99 (내부 도달 시) |
+| M2 도달 | v0.100 / v0.110 |
+| M3 도달 | v0.150 / v0.200 — **v1.0 후보, 외부 신호 평가 시작** |
+| M4 도달 | **v1.0 선언** (외부 신호 충족 시) |
+
+#### v1.0 외부 신호 임계값 (가-합의, M3 진입 시 정식 확정)
+
+- GitHub stars ≥ 1,000
+- 외부 PR merged ≥ 10 (각각 다른 contributor)
+- 외부 이슈 (월) ≥ 10
+- 부정 평가 비율 < 30% (HN/Reddit 노출 후)
+- 외부 BMB 프로젝트 ≥ 5
+- 결정자: 메인테이너 + 외부 contributor 협의
+
+**현재 명명 정합성 노트**:
+- `Cargo.toml` workspace.version = `"0.1.0"` — Rust crate 발행 시 사용. Crates.io 발행 정책 별도 결정 필요.
+- 본 ROADMAP "v0.98" 등 명명 = 외부 표기 (changelog/release tag).
+- Cargo.toml 버전 정책 결정은 별도 (gotgan/M3 진입 전).
+
+### Track migration (옛 → 새)
+
+| 옛 트랙/항목 | 새 분류 |
+|---------|---------|
+| Track G.1-G.4 (verifier counterexamples) | **M1 P1-P3** — G.1 root cause = prelude duplicate clamp (Cycle 2506) |
+| Track Phase C (105 inttoptr 사이트) | **M2 후보 (P 작업)** — M1 blocker 아님 |
+| Track D' (Golden binary) | **M1 Trust 정책 결정** — 자율 권장: **(B) Fully remove** (Cycle 2506 분석, Cycle 2515 영속화). 근거: v0.60.251 단일 Windows binary는 v0.98 base 대비 38 minor 뒤짐, Linux/macOS 단 한 번도 게시 안 됨, distribution 모델은 source + bindings (golden binary 외부 사용자 미수령), Trusting Trust attestation는 향후 SLSA/Sigstore가 더 강력. **메인테이너 최종 승인 후 제거 시점**: Cycle 2516+ (별도 cycle), 또는 메인테이너 다른 결정 시 ROADMAP 갱신만. |
+| Track B'.2 (TestPyPI real upload) | **M3 T (External Bindings)** 인프라 — HUMAN-gated (org secret) |
+| Track C' (Defect 3 — bootstrap fragility) | **별개 추적** (자율 작업 외, WSL2 admin 의존) |
+| Track E (Language features) | **M2/M3 도메인 정합 평가 후** 우선순위 |
+| Track F (LLVM 22 hint 복원) | **opportunistic** (M1/M2 작업 중 기회 발생 시) |
+| Track H (CI throughput) | **DONE** (Cycle 2480 H tier C 거부 후 종결) |
+| 옛 Performance > Everything 단일 축 | **B > P > A > D > C** (5축 우선순위로 확장) |
+| 8/15 FAIL 중 비-도메인 (mandelbrot/n_body/fannkuch/k-nucleotide/fasta 등) | **강등** — 별도 추적, M1 게이트 외 |
+| 8/15 FAIL 중 도메인 정합 (brainfuck/lexer/hash_table) | **M1 P 작업** — Cycles 2512-2514 우선 해소 |
+
+### Anchor for next cycles (post-2507)
+
+#### Cycles 2507-2520 (이번 run-cycle 20-cycle budget 중 14 cycles 사용)
+
+| Cycle | 작업 | 결과 |
+|-------|------|------|
+| 2507 | Vision Alignment Phase A+B+C (분석) | ✅ vision-consistency-audit + vision-gap-analysis |
+| 2508 | 메타 정렬 구현 (ROADMAP § Vision Framework + CLAUDE.md Rule 8 + 7 트랙 issue) | ✅ |
+| 2509 | M1 P1: L.2 fix (SharedLib main injection skip) | ✅ codegen 양쪽 백엔드 |
+| 2510 | M1 P2: L.1 fix (prelude clamp contract 강화 — duplicate 회피, breaking change 없음) | ✅ Cycle 2506 attempt 1 ↔ 본 cycle 차이 명시 |
+| 2511 | M1 P3: --trust-contracts 제거 + 5/5 라이브러리 정상 빌드 (Z3 in PATH) | ✅ |
+| 2512 | M1 도메인 벤치 분류표 (도메인 정합 / 강등) | ✅ benchmark-domain-classification |
+| 2513 | M1 perf 측정 + 진단 (brainfuck 1.00x ✅, lexer 1.11x ⚠️) | ✅ m1-perf-diagnosis |
+| 2514 | M1 도메인 벤치 게이트 ≤ 1.10x 결정 (lexer M1 known gap) | ✅ |
+| 2515 | M1 Trust 정책 영속화 (B 권장, maintainer 승인 후 Cycle 2516+ 실제 제거) | ✅ |
+| 2516 | M2 Track M Phase 1 — AI_OUTPUT_SCHEMA.md (20 event types v1) | ✅ |
+| 2517 | M2 Track O Phase 1 — Context Pack 설계 | ✅ |
+| 2518 | M2 Track Q Phase 1 — Ambiguity Audit 운영 정의 | ✅ |
+| 2519 | Track N + R 통합 인벤토리 (진척 정정) | ✅ |
+| 2520 | ROADMAP cleanup + run-cycle 종합 (본 cycle) | ✅ |
+
+#### M1 자율 가능 부분 ✅ COMPLETE
+
+- Bootstrap Fixed Point S2 == S3
+- G.1 verifier fix (Cycles 2509-2511)
+- 컴파일러 도메인 벤치 ≤ 1.10x 게이트 (lexer 1.11x M1 known opportunistic gap)
+- Trust 정책 결정 영속화 (B 권장)
+
+잔여 (외부 의존):
+- 3-OS CI green Bindings 검증 — push 후 empirical
+- D' Golden 실제 제거 — maintainer 1-line 승인
+- lexer 1% gap — M2 작업 중 opportunistic
+
+#### Cycle 2521+ 후속 (잔여 6 cycles + 향후 run-cycle)
+
+| 우선순위 | 작업 | 추정 사이클 |
+|--------|------|---------|
+| P1 (M1 closeout) | Bindings CI empirical 검증 (push 후) | 0 (자동) |
+| P2 (M1 closeout) | D' Golden 실제 제거 (maintainer 승인 후) | 1 |
+| P3 (M2) | Track O Phase 2 — `bootstrap/context_pack/walker.bmb` 시작 | 1-2 |
+| P4 (M2) | Track R Phase 2 — "합격선 X" 정책 적용 + ai-proof deprecation | 1-2 |
+| P5 (M2) | Track N Phase 2 — Chatter 실제 구현 시작 (Python 단기) | 3-5 |
+| P6 (M2) | Track Q Phase 2 — 키워드 충돌 결정 + lint --ai-friendly BMB 구현 | 2-3 |
+| P7 (M1) | lexer 1.11x → 1.10x peek bounds check 제거 (verifier 통합) | 2-3 |
+
+---
+
 ## Current Status — v0.98 (2026-05-01, post-Cycles 2505-2506)
 
 ### Cycles 2505-2506 (this session) — Linux `-lm` link fix + workflow honest-fail + G.1 root cause identified
