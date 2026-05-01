@@ -1,306 +1,156 @@
-# BMB Session Handoff — 2026-05-01 (Cycles 2505-2506, all-gates approved autonomous)
+# BMB Session Handoff — 2026-05-01 (Vision v1.0 Realignment Session)
 
-> **이전 HEAD**: `25fa41a1` (Cycle 2504 docs commit)
-> **새 HEAD**: `a3193b55` (Cycle 2505b — workflow JSON fix + clamp regression)
-> **원격 상태**: `origin/main == HEAD` (2 new commits)
-> **세션 요약**: 사용자가 "human gate 모두 자율 승인" 부여. 환경 의존 admin
-> 필요한 항목(TestPyPI token, WSL2)은 진척 불가, 코드/CI 자율 작업 가능
-> 항목은 모두 진행:
->
-> 1. **Cycle 2505 (`be2e8526`)**: Linux `-lm` link 누락 fix + workflow `||
->    true` 마스킹 제거. 1년+ silent CI failure 노출 + 진짜 fail 강제.
-> 2. **Cycle 2505b (`a3193b55`)**: Cycle 2505 push가 노출한 second 잠복
->    결함 fix — workflow JSON parsing이 stderr 오염으로 fixed_point=true
->    인 경우조차 false 반환. awk 추출 + 명시적 fallback. clamp regression
->    test 추가.
-> 3. **Cycle 2506 (no commit)**: G.1 verifier 진단 — 근본 원인 = prelude
->    duplicate clamp definition. 즉시 fix는 후속 결함(L.2 @bmb_user_main
->    undefined)에 path 차단. 다음 세션 P1-P4 시퀀스 도출. + D' Golden
->    정책 자율 권장 (B) Fully remove.
->
-> **3/20 cycle 사용** — 잔여 항목 모두 다음 세션 P1-P4 또는 HUMAN-decision.
+> **이전 HEAD**: `b275166f` (Cycles 2505-2506 docs commit)
+> **새 HEAD**: `2839f003` (vision realignment spec)
+> **원격 상태**: `origin/main` 1 commit 앞 — push 필요 시 사용자 확인
+> **세션 성격**: **코드 변경 0, 비전 정렬 세션**. 9-라운드 브레인스토밍으로
+> BMB의 정체성·도메인·우선순위·마일스톤·트랙·버전 정책을 합의·영속화.
+> 다음 세션은 메타 정렬 사이클(2507) — 합의된 비전을 ROADMAP/CLAUDE.md에 반영.
 
 ---
 
-## 1. 이번 세션 타임라인
+## 1. 이번 세션 요약
 
-| Cycle | 작업 | 커밋 | 상태 |
-|-------|------|------|------|
-| 2505 | -lm link + workflow `\|\| true` 제거 | `be2e8526` | ✅ 부분 (JSON parsing 결함 노출) |
-| 2505b | awk JSON 추출 + clamp regression test | `a3193b55` | ✅ |
-| 2506 | G.1 진단 + D' 권장 (no fix commit) | (this log) | ✅ 진단 완료 |
-
-## 2. 세션 핵심 성과
-
-### (1) Cycle 2505 — `-lm` 누락 + workflow 마스킹 fix
-
-**증상** (CI run 25117281142, Cycle 2498 artifact):
-```
-{"type":"error","message":"Linker error: ... undefined reference to `floor'
-... `ceil', `round', `sqrt', `pow' ..."}
-{"bootstrap": {"stage1": {"success": false, "time_ms": 0}, ...,
-  "fixed_point": false, ...}}
-```
-
-**원인**:
-- `bmb_runtime.c`가 libm 함수 사용 (`bmb_f64_floor`, `bmb_f64_ceil` 등).
-- `bmb/src/build/mod.rs`의 두 link path가 Linux에서 `-lm` 미추가:
-  - `link_with_runtime` (text backend): line ~1115 — Windows에 `-lws2_32`만.
-  - `link_native` (LLVM inkwell): line ~1370 — Linux에 `-lc -lpthread`만.
-- Windows MinGW은 libm 자동, macOS는 libSystem 포함 → Linux만 결함.
-- CI workflow `bootstrap-benchmark.yml` line 144의 `|| true`가 bootstrap.sh
-  exit 1 (fixed point fail) 마스킹. 워크플로 status는 success로 위장.
-- **HANDOFF "CI Fixed Point preserved" 1년+ 부정확** — workflow status만
-  보고 단언, JSON `fixed_point` 직접 검증 안 함.
-
-**Fix**:
-- 두 link path Linux 분기에 `cmd.arg("-lm")` 추가 (cfg gate).
-- workflow: `set +e ... $? ... set -e` 패턴으로 exit code 보존, fail이면
-  `::error::` + explicit exit. Verify step도 `::warning::` → `::error::`.
-
-**검증 (Cycle 2505 push CI run 25172403371)**:
-- `"fixed_point": true` empirical (Linux ubuntu-latest).
-- Stage 1 41,410ms, Stage 2/3 success.
-- 그러나 verify step이 `false` 받아 fail (다음 결함).
-
-### (2) Cycle 2505b — Workflow JSON 오염 fix
-
-**증상** (Cycle 2505 push의 verify step):
-```
-##[group]Run if [ "false" != "true" ] && [ "false" != "True" ]; then
-##[error]Bootstrap fixed point not reached - Stage 2 and Stage 3 differ
-```
-JSON에는 `"fixed_point": true`인데 step output은 `false`.
-
-**원인**:
-- `./scripts/bootstrap.sh --json > bootstrap_results.json 2>&1`이 stderr까지
-  redirect. BMB compiler가 stderr로 "Warning: Z3 solver not available",
-  "Note: Fast compile mode" 등 출력. `{"type":"build_success",...}` 같은
-  one-line JSON event도 출력. 결과 파일은 multi-document, non-pure JSON.
-- `python3 -c "json.load(open(...))"` parse 실패 → `|| echo "false"` fallback.
-
-**Fix**:
-- `bootstrap_log.txt` (full)와 `bootstrap_results.json` (extracted) 분리.
-- `awk '/^\{$/,/^\}$/'`로 multi-line JSON 객체만 추출 (output_json은
-  `{`/`}`을 자체 줄에 출력하는 heredoc 형식).
-- 추출 empty fallback `fixed_point=false`.
-- `if: always()` upload artifact (fail 시도 디버그 가능).
-- `test_stdlib_clamp_smt_complete` 회귀 테스트 추가 (CIR lowering + SMT
-  생성 잠금).
-
-**검증**:
-- 로컬 cargo test --release --lib: 3,773 pass / 0 fail.
-- 로컬 3-Stage Bootstrap: Fixed Point S2 == S3, 119s.
-- CI: `25174269783` (in_progress at session-close).
-
-### (3) Cycle 2506 — G.1 진단 (no commit)
-
-**진단 path**:
-
-Tier 1: Z3 4.15.2 설치 (MSYS2 UCRT, winget 부재로 winget 경로 무효).
-
-Tier 2: synthetic vs live SMT 비교
-- `test_clamp_smt_script_dump` + 신규 `test_stdlib_clamp_smt_complete`:
-  hand-built CIR + 실제 stdlib clamp 통과 모두 **정상 SMT** 생성
-  (precondition `(<= lo hi)` + 3-conjunct postcondition).
-- `bmb build stdlib/core/num.bmb --shared` (BMB_VERIFY_DEBUG=1) live dump:
-  ```
-  (assert (and true (not (and (>= ret lo) (<= ret hi)))))
-  ```
-  precondition 손실 + postcondition disjunction 손실. 단언 모순.
-
-Tier 3: duplicate definition 발견
-- `packages/bmb-core/src/prelude.bmb` line 19:
-  ```
-  @inline pub fn clamp(x: i64, lo: i64, hi: i64) -> i64
-    post ret >= lo and ret <= hi
-  = ...;
-  ```
-  precondition 없음, case-analysis 없음. **stdlib와 다름**.
-- `bmb build`는 `expand_with_prelude`로 prelude 자동 prepend → AST에 두
-  clamp 존재. verifier는 prelude 버전을 먼저 처리, verbose가 그 SMT 출력.
-- **이것이 Cycle 2493 macOS Bindings clamp(x=1, lo=2, hi=0) counterexample
-  진짜 원인**: prelude clamp는 `lo > hi` 입력에 대해 post 위반 가능.
-
-**Fix attempt 차단**:
-- prelude clamp에 `pre lo <= hi` 추가 → LLVM 'invalid redefinition' 오류.
-- `--no-prelude` 사용 → `@bmb_user_main` undefined (shared lib codegen 결함).
-
-**G.1 fix는 후속 cycle로 분리** — 진단/회귀 잠금/문서화로 종결.
-
-### (4) Cycle 2506 — D' Golden 권장: (B) Fully remove
-
-ROADMAP Track D' 옵션 (A) Revive / (B) Fully remove / (C) Status quo
-검토. 자율 권장: **(B)**.
-
-| 옵션 | 비용 | 가치 | 정렬 |
-|------|------|------|------|
-| (A) | High (binary refresh + 복원) | Trusting Trust | source distribution과 약함 |
-| (B) | Low (1 cycle cleanup) | 단순화 + Honest cost | v0.99 안정화와 정렬 |
-| (C) | 0 | 옵션 보존 | Workaround (결정 회피) |
-
-**최종 결정은 maintainer 권한**. 자율 권장이 (B)이지만 maintainer가 (A)/(C)
-선택해도 합리적.
+| 단계 | 작업 | 산출물 |
+|------|------|--------|
+| Q1-Q9 | 9-라운드 브레인스토밍 (1차 사용자, 도메인, AI-readiness, 우선순위, 마일스톤, v1.5 정의, 다음 액션, 마일스톤 매핑, 버전 정책) | 9개 결정 합의 |
+| Q10 | 명료화 종료 결정 — 추가 영역(Trust 정책 등)은 메타 정렬에서 자연 처리 | 종료 |
+| Spec 작성 | `docs/superpowers/specs/2026-05-01-vision-v1.0-realignment.md` (219줄) | 영속화 |
+| Spec self-review | 정확도 정정 1건 (8/15 FAIL "절반" → "다수, 정확 카운팅은 메타 정렬에서") | inline fix |
+| 사용자 승인 | spec 리뷰 후 commit + 다음 단계 진행 승인 | 합의 |
+| Commit | `2839f003` (spec only, 219+ lines) | git |
 
 ---
 
-## 3. 발견된 잠복 결함 (Track G 확장)
+## 2. 9개 핵심 결정 (Quick Reference)
 
-| # | 결함 | 심각도 | 노트 |
-|---|------|--------|------|
-| L.1 | prelude clamp/in_range가 stdlib과 의미론 다름 (precondition 부재) | Med | G.1 진짜 원인. 다음 cycle P2에서 fix |
-| L.2 | `bmb build --shared --no-prelude` 시 `@bmb_user_main` undefined | Med | shared lib codegen이 main 참조 강제. P1로 fix |
-| L.3 | `verify::contract::tests::test_trivial_contract_detection` Z3 환경에서만 fail | Low | trivial 검출기가 `ret == ret` 미감지. 별개 cycle |
-| L.4 | 두 clamp 정의 시 LLVM 'invalid redefinition' 오류 | Med | L.1 fix path에 영향. P2에서 다룸 |
-
----
-
-## 4. CI 검증 (HEAD `a3193b55`)
-
-| Workflow | Run ID | 결과 |
-|----------|--------|------|
-| BMB CI | 25174269818 | 🟡 in_progress |
-| Bootstrap + Benchmark Cycle | 25174269783 | 🟡 in_progress (fixed point empirical 검증 첫 시도) |
-| Update Benchmark Baseline | 25174269832 | 🟡 in_progress |
-| Bindings CI (Cycle 2505 from earlier push) | 25172403390 | 🟡 queued (40m+) |
-
-### 로컬 (HEAD `a3193b55`)
-
-| 항목 | 결과 |
-|------|------|
-| `cargo test --release --lib` (no Z3) | ✅ 3,773 pass / 0 fail |
-| `cargo test --release --lib` (with Z3) | ⚠️ 3,772 pass / 1 fail (L.3 — 별개) |
-| `cargo clippy --all-targets -- -D warnings` | ✅ clean |
-| `bash scripts/bootstrap.sh --stage1-only` | ✅ ~22s |
-| `bash scripts/bootstrap.sh` (full 3-Stage) | ✅ Fixed Point S2 == S3, 119s |
+| Q | 결정 | 기존 상태와의 차이 |
+|---|------|----------------|
+| Q1 | 1차 사용자 = **인간+AI 협업** | 명시 X → 명시 |
+| Q2 | 1차 도메인 = **컴파일러·언어 도구·DSL·검증기** | 명시 X → 명시 (8/15 FAIL의 비-도메인 강등 근거) |
+| Q3 | AI-readiness = **언어 자체 속성** (외부 도구 X) | 모호 → 명확 (별도 AI 채널/합성기 금지) |
+| Q4 | 우선순위 **B > P > A > D > C** | "Performance > Everything" 단일 → 5축 우선순위 |
+| Q5 | 단계별 마일스톤 **M1 → M2 → M3 → M4** | v1.0 단독 정의 → 4단계 binary |
+| Q6 | M2 = AI 친화 인프라 5축 (Track M/N/O/Q/R) | 트랙 명명 신규 |
+| Q7 | 다음 사이클 = 메타 정렬 | 신규 |
+| Q8 | 마일스톤 매핑 + 직교 트랙 **S(에코시스템)** + **T(바인딩)** | 트랙 신규 |
+| Q9 | **마일스톤(자율) ↔ 버전(외부 신호 게이트) 분리** | 통합 → 분리 (메이저 버전 비자율 결정) |
 
 ---
 
-## 5. 다음 세션 작업 범위 — 권장 순서
+## 3. 마일스톤 정의 (M1~M4)
 
-### 🟢 P1 — L.2 fix (`@bmb_user_main` undefined for shared lib)
+### M1 Self-Validated (내부 자기검증 완성)
 
-`bmb/src/codegen/llvm.rs`와 `llvm_text.rs`의 inline main 주입 함수가
-`OutputType::SharedLib` 케이스를 무시하고 main 참조를 emit하는지 확인.
+| 조건 | 현 상태 | Cycle |
+|------|--------|-------|
+| Bootstrap Fixed Point | ✅ S2 == S3 (Cycle 2237) | 완료 |
+| G.1 verifier 결함 fix | 🔄 진단 완료 (Cycle 2506), P1-P3 시퀀스 대기 | 2508+ |
+| 컴파일러 도메인 벤치마크 | ⚠️ brainfuck/lexer/hash_table FAIL — 분류·해소 필요 | 2509+ |
+| 3-OS CI green | ⚠️ Linux `-lm` 후속, Windows MinGW 안정화 | 진행 |
+| Trust 정책 (D' Golden) | ⏳ (B) 권장됨, 메인테이너 결정 대기 | M1 종료 시 |
 
-```bash
-grep -n "add_inline_main\|bmb_user_main\|OutputType::SharedLib" \
-  bmb/src/codegen/llvm.rs bmb/src/codegen/llvm_text.rs
-# Likely fix: `if matches!(config.output_type, OutputType::SharedLib) { return Ok(()); }` early-exit.
-```
+### M2 AI-Ready Infrastructure (5 트랙)
 
-검증: `bmb build stdlib/core/num.bmb -o /tmp/num.so --shared --no-prelude`가
-link error 없이 통과.
+| 트랙 | 내용 | 현 상태 |
+|------|------|--------|
+| **M (Machine-First Output)** | 모든 출력 기본 JSON, `--human` 옵션 | **부분 구현** — `--human` 플래그 이미 존재 (`docs/superpowers/specs/2026-03-25-ai-friendly-tooling-design.md`). 잔여: 모든 명령에 일관 적용 + 스키마 안정화 |
+| **N (MCP Server)** | `bmb mcp` 명령 | 신규 |
+| **O (Context Pack)** | `bmb context-pack <project>` | 신규 |
+| **Q (Ambiguity Audit)** | grammar 정적 분석 + `bmb lint --ai-friendly` | 신규 |
+| **R (LLM Bench Tracking)** | `bmb llm-bench` + 50개 task suite (합격선 X) | 신규 |
 
-### 🟢 P2 — L.1 fix (prelude/stdlib clamp 정렬)
+### M3 External Bindings PoC
 
-옵션 (A): prelude의 clamp/in_range/diff/sign 등 stdlib와 중복인 정의들
-삭제. prelude는 `use stdlib::core::num` 같은 import만 보유.
+- BMB 라이브러리 (BMB 특징을 드러내는) 1개
+- C ABI 노출
+- Python + Node 바인딩 (AI 코딩 사용 빈도 1, 2위)
+- 트랙 S 90%
 
-옵션 (B): prelude는 minimal core (boolean ops + extern declarations)만
-유지하고 numeric ops는 모두 제거. 사용자 코드에서 `use core/num`로 명시.
+### M4 Adopted
 
-검증: `bmb build stdlib/core/num.bmb -o /tmp/num.so --shared` (--no-prelude
-**없이**, --trust-contracts **없이**)가 verification 통과.
-
-### 🟢 P3 — G.1 재검증
-
-P2 후 ecosystem/build_all.py에서 `--trust-contracts` 제거. macOS Bindings
-CI에서 false counterexample 발생 안 하는지 확인.
-
-### 🟢 P4 — (B) Golden 정책 적용 (maintainer 승인 시)
-
-```bash
-git rm -r golden/
-git rm scripts/bootstrap-from-golden.sh  # if exists
-# Update BUILD_FROM_SOURCE.md to remove golden sections
-# Update ROADMAP.md Track D' status as "Decided: B (removed)"
-```
-
-### 🔵 HUMAN-gated (변동 없음)
-
-- B'.2 TestPyPI: org admin이 `TEST_PYPI_API_TOKEN` 등록 필요.
-- C' Defect 3: WSL2 + Ubuntu + gdb 환경 (admin install 필요).
-- D' 최종 결정 (자율 권장 (B), maintainer confirmation 대기).
+- 추가 바인딩: C#, Java, C
+- 트랙 S 100% (gotgan, tree-sitter 포함)
+- 외부 채택 신호 충족 (§v1.0 외부 게이트)
 
 ---
 
-## 6. 철학 정렬
+## 4. 직교 트랙 진척표
 
-| 원칙 | 이번 세션 |
-|------|----------|
-| Performance > Everything | 무관 (build infra + verifier diagnosis) |
-| No Workaround | ✅ Cycle 2505/2505b는 정직 fix. G.1은 path 차단 시 회피보다 진단/문서화 선택 |
-| Rule 5 (전수 검색) | ✅ Cycle 2505에 link path 양쪽(link_native + link_with_runtime) 모두 fix |
-| Rule 6 (Rust frozen) | ⚠️ Cycle 2505는 build/mod.rs 수정 (부트스트래핑 차단으로 정당). Cycle 2505b는 lower.rs에 회귀 테스트만 추가 (정당) |
-| Rule 7 (백엔드 parity) | ✅ Cycle 2505 fix가 inkwell + text 양쪽 link path 적용 |
-| Rule 9 (early terminate) | ✅ 3/20 cycle. G.1 fix 차단 시 다음 cycle로 깨끗 분리 |
-| 정직 측정 | ✅ HANDOFF "CI Fixed Point preserved" 부정확 → empirical 검증 후 재기록. workflow 마스킹 모두 제거 |
+| 트랙 | M1 진척 | M2 진척 | M3 진척 | M4 진척 |
+|------|---------|---------|---------|---------|
+| **S (Ecosystem BMB-rewrite)** | 부트스트랩만 ✅ | + LSP, fmt, lint | + verify, bench, mcp | 100% |
+| **T (External Bindings)** | 0 | C ABI 설계 | Python + Node PoC | C#, Java, C 추가 |
 
 ---
 
-## 7. 파일 참조
+## 5. 버전 정책 (마일스톤 ≠ 메이저 버전)
 
-### 이번 세션 변경
+| 마일스톤 도달 | 권장 버전 |
+|--------------|---------|
+| M1 도달 | v0.99 |
+| M2 도달 | v0.100 / v0.110 |
+| M3 도달 | v0.150 / v0.200 — **v1.0 후보, 외부 신호 평가 시작** |
+| M4 도달 | **v1.0 선언** (외부 신호 충족 시) |
 
-- `bmb/src/build/mod.rs` (Cycle 2505 — Linux `-lm` 양쪽 link path)
-- `.github/workflows/bootstrap-benchmark.yml` (Cycle 2505 + 2505b — 마스킹
-  제거 + JSON 추출)
-- `bmb/src/cir/lower.rs` (Cycle 2505b — `test_stdlib_clamp_smt_complete`)
-- `claudedocs/cycle-logs/cycle-{2505,2506}.md` + `claudedocs/HANDOFF.md`
+### v1.0 외부 신호 (가-합의, M3 진입 시 정식 확정)
 
-### 다음 세션 필수 읽기 순서
-
-1. `claudedocs/HANDOFF.md` (this) — 가장 먼저
-2. `claudedocs/cycle-logs/cycle-2506.md` — G.1 진단 상세
-3. `claudedocs/cycle-logs/cycle-2505.md` — link + masking 상세
-4. `gh run list --limit 8` — `a3193b55` CI 결과 (이번 세션 종료 시점에는
-   아직 in_progress)
-5. `packages/bmb-core/src/prelude.bmb` lines 18-31 — duplicate clamp/in_range
-6. `bmb/src/codegen/llvm{,_text}.rs` — L.2 (`@bmb_user_main`) 수사 시작점
+- GitHub stars ≥ 1,000
+- 외부 PR merged ≥ 10 (각각 다른 contributor)
+- 외부 이슈 (월) ≥ 10
+- 부정 평가 비율 < 30% (HN/Reddit 등 노출 후)
+- 외부 BMB 프로젝트 ≥ 5
+- 결정자: 메인테이너 + 외부 contributor 협의
 
 ---
 
-## 8. 도출된 태스크 체크리스트
+## 6. 다음 세션 — Cycle 2507 메타 정렬 (코드 변경 0)
 
-### Cycle 2505 (DONE ✅)
-- [x] Linux -lm link 양쪽 path
-- [x] Workflow `\|\| true` 제거 + exit code 보존
+이 비전이 ROADMAP·CLAUDE.md에 반영되지 않으면 다음 세션이 옛 비전 답습. **메타 정렬은 후속 모든 사이클의 정합성 보장 작업.**
 
-### Cycle 2505b (DONE ✅)
-- [x] awk JSON 추출 + fallback
-- [x] artifact upload `if: always()`
-- [x] `test_stdlib_clamp_smt_complete` 회귀 추가
+### 산출물 (Cycle 2507 종료 조건)
 
-### Cycle 2506 (PARTIAL — 진단만 완료)
-- [x] G.1 root cause 식별 (prelude duplicate clamp)
-- [x] D' (B) 권장안 작성
-- [ ] G.1 fix (P1-P3로 분리)
+- [x] vision spec commit + push (이 세션 완료, push는 사용자 확인)
+- [ ] **`docs/ROADMAP.md` 재작성** — M1~M4 마일스톤, 트랙 재분류표 (옛 A-L → 새 M/N/O/Q/R/S/T), 버전 정책 명시
+- [ ] **`CLAUDE.md` 업데이트** — Workflow Rule 8 신규 ("출력 디폴트 = AI 친화 구조화"), Decision Framework에 마일스톤·버전 분리 추가
+- [ ] **트랙 재분류표 ROADMAP 반영**:
+  - 옛 G.1-G.4 → 새 M1 P1
+  - 옛 Phase C (105 inttoptr) → 새 M2 후보 (M1 blocker 아님)
+  - 옛 8/15 FAIL 비-도메인(mandelbrot, n-body 등) → 강등 (별도 추적)
+  - D' Golden binary 결정 → M1 정책 결정으로 명시
+- [ ] **신규 issue 생성 (7건)** — `claudedocs/issues/ISSUE-2026MMDD-{m,n,o,q,r,s,t}.md`
+- [ ] **G.1 P1-P3 명시 연기** — Cycle 2508+로 재배치
 
-### 다음 세션 (P1-P4)
-- [ ] **P1**: L.2 fix (`bmb build --shared --no-prelude`)
-- [ ] **P2**: L.1 fix (prelude clamp/in_range 제거 또는 stdlib import)
-- [ ] **P3**: ecosystem/build_all.py에서 `--trust-contracts` 제거 + 3-OS
-  Bindings 검증
-- [ ] **P4**: (maintainer 승인 시) Golden subsystem fully remove
+### 메타 정렬 후 = Cycle 2508+ (M1 P1 G.1 fix)
 
-### HUMAN-gated (변동 없음)
-- [ ] TestPyPI token (B'.2)
-- [ ] WSL2 + gdb 환경 (C')
-- [ ] D' 최종 결정 (자율 권장 B)
+Cycle 2506에서 도출된 G.1 P1-P3 시퀀스:
+- **P1**: L.2 fix (`bmb build --shared --no-prelude` @bmb_user_main undefined → SharedLib mode에서 main injection skip)
+- **P2**: prelude duplicate 제거 (clamp/in_range 등 prelude → use stdlib redirect)
+- **P3**: `--trust-contracts` 플래그를 `ecosystem/build_all.py`에서 제거, Bindings CI 3-OS green 검증
+
+### Cycle 2507 즉시 다음 액션 (writing-plans skill로 전환)
+
+브레인스토밍 종료 후 자연스러운 흐름은 `superpowers:writing-plans` skill 호출 — Cycle 2507 메타 정렬 작업의 단계별 구현 계획 수립. 본 세션에서 도구 시간 제약 시 다음 세션 시작 시 호출.
 
 ---
 
-**세션 종료** — HEAD `a3193b55`, origin 동기화 완료. CI 검증 in_progress.
-3/20 cycle 사용 (자율 진척 모두 push 완료, 잔여는 후속 cycle scope).
+## 7. 참고 자료
 
-**핵심 empirical 성과**:
-- Cycle 2505: Linux Bootstrap이 1년+ silently fail하던 결함 발견 + fix.
-  Workflow `\|\| true` 마스킹 정직화. 다음 push에서 진짜 fixed point empirical.
-- Cycle 2505b: Workflow JSON parsing 결함 fix. CI `"fixed_point": true`가
-  실제로 `fixed_point=true` GITHUB_OUTPUT에 도달하도록 보장.
-- Cycle 2506: G.1 root cause = prelude duplicate definition. Cycle 2493
-  macOS clamp counterexample 1년+ misdirected investigation 종결.
+- **Spec**: `docs/superpowers/specs/2026-05-01-vision-v1.0-realignment.md` (219줄)
+- **이전 세션 핸드오프**: 이 파일 이전 버전 (commit `b275166f`) — Cycles 2505-2506
+- **이전 비전 메모리**: `~/.claude/projects/D--data-lang-bmb/memory/project_vision_v1_realignment.md` (자동 로드)
 
-**다음 세션 진입점**: `gh run list` → `a3193b55` CI 결과 확인 → P1-P4 진행.
-maintainer 결정 대기 항목 (D' Golden 정책, B'.2 token, C' WSL2)은 차치.
+---
+
+## 8. HUMAN-decision 미결 (이번 세션과 별개)
+
+이전 세션(Cycles 2505-2506)에서 미결된 HUMAN-only 항목들. 새 비전과 무관하게 보류:
+
+- **TestPyPI org secret 등록** — 사용자 admin 권한 필요
+- **WSL2 admin 설치** — 사용자 admin 권한 필요
+- **D' Golden binary 정책 최종 확정** — (B) 권장됨, M1 종료 시 결정으로 본 세션에서 일정화
+
+---
+
+**세션 종료**: 2026-05-01
+**다음 세션 시작 시**: 이 HANDOFF 1-2장 + spec § 1·9 + 자동 로드된 vision 메모리 참조하여 Cycle 2507 메타 정렬 즉시 시작 가능.
