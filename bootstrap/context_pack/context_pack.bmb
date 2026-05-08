@@ -1,0 +1,508 @@
+// context_pack.bmb - BMB context-pack CLI tool
+// Part of bootstrap/context_pack/ (Track O Phase 4+5)
+// Cycle 2543: full pipeline — walker + extractor + JSON assembler + CLI
+//
+// Walks a BMB project directory, extracts pub declarations from each .bmb
+// file, and assembles a JSON summary per context-pack v1 schema.
+//
+// Usage:
+//   bmb run bootstrap/context_pack/context_pack.bmb <project_dir>
+//   bmb run bootstrap/context_pack/context_pack.bmb <project_dir> --depth 3
+//   bmb run bootstrap/context_pack/context_pack.bmb <project_dir> --format md
+
+// ============================================================================
+// SECTION 1: Common string/path helpers (from walker + extractor, deduplicated)
+// ============================================================================
+
+fn find_nl(s: String, pos: i64) -> i64 = {
+    let mut p = pos;
+    while p < s.len() {
+        if s.byte_at(p) == 10 { break } else { p = p + 1 }
+    };
+    p
+};
+
+fn skip_ws(s: String, pos: i64, end: i64) -> i64 = {
+    let mut p = pos;
+    while p < end {
+        let c = s.byte_at(p);
+        if c == 32 or c == 9 { p = p + 1 } else { break }
+    };
+    p
+};
+
+fn line_starts(s: String, pos: i64, prefix: String) -> bool = {
+    let plen = prefix.len();
+    if pos + plen > s.len() { false }
+    else {
+        let mut i = 0;
+        let mut ok = 1;
+        while i < plen and ok == 1 {
+            if s.byte_at(pos + i) != prefix.byte_at(i) { ok = 0 } else { () };
+            i = i + 1
+        };
+        ok == 1
+    }
+};
+
+fn is_ident_char(c: i64) -> bool =
+    (c >= 97 and c <= 122) or (c >= 65 and c <= 90) or
+    (c >= 48 and c <= 57) or c == 95;
+
+fn trim_end_ws(s: String, end: i64) -> i64 = {
+    let mut p = end;
+    while p > 0 {
+        let c = s.byte_at(p - 1);
+        if c == 32 or c == 9 or c == 13 { p = p - 1 } else { break }
+    };
+    p
+};
+
+fn path_join(base: String, name: String) -> String = {
+    let last = base.byte_at(base.len() - 1);
+    if last == 47 or last == 92 { base + name }
+    else { base + "/" + name }
+};
+
+fn count_lines_in(s: String) -> i64 = {
+    if s.len() == 0 { 0 }
+    else {
+        let mut n = 1;
+        let mut i = 0;
+        while i < s.len() {
+            if s.byte_at(i) == 10 { n = n + 1 } else { () };
+            i = i + 1
+        };
+        n
+    }
+};
+
+// Count occurrences of pattern in s
+fn count_substr(s: String, pattern: String) -> i64 = {
+    if pattern.len() == 0 or s.len() < pattern.len() { 0 }
+    else {
+        let mut count = 0;
+        let mut i = 0;
+        let limit = s.len() - pattern.len() + 1;
+        while i < limit {
+            if s.slice(i, i + pattern.len()) == pattern {
+                count = count + 1;
+                i = i + pattern.len()
+            } else { i = i + 1 }
+        };
+        count
+    }
+};
+
+// Get basename from path (part after last / or \)
+fn basename(path: String) -> String = {
+    let mut i = path.len() - 1;
+    let mut sep = 0 - 1;
+    while i >= 0 {
+        let c = path.byte_at(i);
+        if c == 47 or c == 92 { sep = i; break } else { i = i - 1 }
+    };
+    if sep < 0 { path } else { path.slice(sep + 1, path.len()) }
+};
+
+fn i2s(n: i64) -> String =
+    if n < 0 { "-" + i2s(0 - n) }
+    else if n < 10 { chr(n + 48) }
+    else { i2s(n / 10) + chr(n - (n / 10) * 10 + 48) };
+
+fn s2i(s: String) -> i64 = {
+    if s.len() == 0 { 0 }
+    else {
+        let neg = s.byte_at(0) == 45;
+        let start = if neg { 1 } else { 0 };
+        let mut i = start;
+        let mut result = 0;
+        while i < s.len() {
+            let c = s.byte_at(i);
+            let _r = if c >= 48 and c <= 57 {
+                result = result * 10 + (c - 48);
+                i = i + 1;
+                0
+            } else {
+                i = s.len();
+                0
+            };
+            0
+        };
+        if neg { 0 - result } else { result }
+    }
+};
+
+// ============================================================================
+// SECTION 2: Walker (from walker.bmb)
+// ============================================================================
+
+fn is_bmb_ext(name: String) -> bool =
+    name.len() > 4 and name.slice(name.len() - 4, name.len()) == ".bmb";
+
+fn is_excluded(name: String) -> bool =
+    name == "target" or name == ".git" or name == "node_modules"
+    or (name.len() > 1 and name.byte_at(0) == 46);
+
+fn walk_dir(dir: String, root_len: i64, acc: String) -> String = {
+    let entries = list_dir(dir);
+    if entries.len() == 0 { acc }
+    else {
+        let mut result = acc;
+        let mut pos = 0;
+        while pos < entries.len() {
+            let nl = find_nl(entries, pos);
+            let name = entries.slice(pos, nl);
+            pos = if nl >= entries.len() { entries.len() } else { nl + 1 };
+            let _r = if name.len() == 0 { 0 }
+            else {
+                let full = path_join(dir, name);
+                if is_dir(full) == 1 and not(is_excluded(name)) {
+                    result = walk_dir(full, root_len, result);
+                    0
+                } else if is_bmb_ext(name) {
+                    let rel = full.slice(root_len, full.len());
+                    result = if result.len() == 0 { rel }
+                             else { result + "\n" + rel };
+                    0
+                } else { 0 }
+            };
+            0
+        };
+        result
+    }
+};
+
+fn walk_bmb(root: String) -> String = {
+    if root.len() == 0 { "" }
+    else {
+        let last = root.byte_at(root.len() - 1);
+        let root_len = if last == 47 or last == 92 { root.len() }
+                       else { root.len() + 1 };
+        walk_dir(root, root_len, "")
+    }
+};
+
+// ============================================================================
+// SECTION 3: Extractor (from extractor.bmb)
+// ============================================================================
+
+fn json_escape(s: String) -> String = {
+    let mut i = 0;
+    let mut out = "";
+    while i < s.len() {
+        let c = s.byte_at(i);
+        let piece = if c == 34 { "\\\"" }
+                    else if c == 92 { "\\\\" }
+                    else if c == 10 { "\\n" }
+                    else if c == 13 { "\\r" }
+                    else { s.slice(i, i + 1) };
+        out = out + piece;
+        i = i + 1
+    };
+    out
+};
+
+fn jkv(key: String, val: String) -> String =
+    "\"" + key + "\":\"" + json_escape(val) + "\"";
+
+fn extract_ident(s: String, pos: i64, end: i64) -> String = {
+    let mut p = pos;
+    while p < end and is_ident_char(s.byte_at(p)) {
+        p = p + 1
+    };
+    if p == pos { "" } else { s.slice(pos, p) }
+};
+
+fn extract_sig_line(src: String, start: i64, nl: i64) -> String = {
+    let mut p = start;
+    while p < nl {
+        let c = src.byte_at(p);
+        if c == 61 or c == 123 { break } else { p = p + 1 }
+    };
+    let te = trim_end_ws(src, p);
+    if te > start { src.slice(start, te) } else { "" }
+};
+
+fn build_fn_obj(name: String, sig: String, pre_c: String, post_c: String) -> String = {
+    let base = "{" + jkv("kind", "fn") + "," + jkv("name", name) + "," + jkv("signature", sig);
+    if pre_c.len() == 0 and post_c.len() == 0 { base + "}" }
+    else if pre_c.len() > 0 and post_c.len() > 0 {
+        base + ",\"contract\":{" + jkv("pre", pre_c) + "," + jkv("post", post_c) + "}}"
+    } else if pre_c.len() > 0 {
+        base + ",\"contract\":{" + jkv("pre", pre_c) + "}}"
+    } else {
+        base + ",\"contract\":{" + jkv("post", post_c) + "}}"
+    }
+};
+
+fn build_type_obj(name: String, sig: String) -> String =
+    "{" + jkv("kind", "type") + "," + jkv("name", name) + "," + jkv("definition", sig) + "}";
+
+fn build_const_obj(name: String, sig: String) -> String =
+    "{" + jkv("kind", "const") + "," + jkv("name", name) + "," + jkv("signature", sig) + "}";
+
+fn append_obj(acc: String, obj: String) -> String =
+    if acc.len() == 0 { obj } else { acc + "," + obj };
+
+fn extract_decls_from(source: String) -> String = {
+    let mut acc_json = "";
+    let mut pos = 0;
+    let mut in_fn = 0;
+    let mut cur_name = "";
+    let mut cur_sig = "";
+    let mut cur_pre = "";
+    let mut cur_post = "";
+
+    while pos < source.len() {
+        let nl = find_nl(source, pos);
+        let ls = skip_ws(source, pos, nl);
+        let is_blank = ls >= nl;
+        let is_annot = not(is_blank) and source.byte_at(ls) == 64;
+        let is_contract = not(is_blank) and (line_starts(source, ls, "pre ") or line_starts(source, ls, "post ") or line_starts(source, ls, "inv "));
+
+        let _cv = if in_fn == 1 and is_contract {
+            if line_starts(source, ls, "pre ") {
+                cur_pre = source.slice(ls + 4, trim_end_ws(source, nl));
+                0
+            } else if line_starts(source, ls, "post ") {
+                cur_post = source.slice(ls + 5, trim_end_ws(source, nl));
+                0
+            } else { 0 }
+        } else { 0 };
+
+        let is_cont = in_fn == 1 and (is_blank or is_annot or is_contract);
+
+        let _flush = if in_fn == 1 and not(is_cont) {
+            acc_json = append_obj(acc_json, build_fn_obj(cur_name, cur_sig, cur_pre, cur_post));
+            in_fn = 0;
+            cur_name = "";
+            cur_sig = "";
+            cur_pre = "";
+            cur_post = "";
+            0
+        } else { 0 };
+
+        let _proc = if is_blank or is_annot { 0 }
+        else if line_starts(source, ls, "pub fn ") {
+            cur_name = extract_ident(source, ls + 7, nl);
+            cur_sig = extract_sig_line(source, ls + 4, nl);
+            cur_pre = "";
+            cur_post = "";
+            in_fn = 1;
+            0
+        } else if line_starts(source, ls, "pub type ") {
+            let nm = extract_ident(source, ls + 9, nl);
+            let sg = extract_sig_line(source, ls + 4, nl);
+            acc_json = append_obj(acc_json, build_type_obj(nm, sg));
+            0
+        } else if line_starts(source, ls, "pub const ") {
+            let nm = extract_ident(source, ls + 10, nl);
+            let sg = extract_sig_line(source, ls + 4, nl);
+            acc_json = append_obj(acc_json, build_const_obj(nm, sg));
+            0
+        } else if line_starts(source, ls, "pub struct ") {
+            let nm = extract_ident(source, ls + 11, nl);
+            let sg = extract_sig_line(source, ls + 4, nl);
+            acc_json = append_obj(acc_json, build_type_obj(nm, sg));
+            0
+        } else { 0 };
+
+        pos = if nl >= source.len() { source.len() } else { nl + 1 };
+        0
+    };
+
+    let _fin = if in_fn == 1 {
+        acc_json = append_obj(acc_json, build_fn_obj(cur_name, cur_sig, cur_pre, cur_post));
+        0
+    } else { 0 };
+
+    "[" + acc_json + "]"
+};
+
+// ============================================================================
+// SECTION 4: Module JSON builder
+// ============================================================================
+
+fn module_kind(rel_path: String) -> String =
+    if line_starts(rel_path, 0, "stdlib/") { "stdlib" }
+    else { "source" };
+
+fn build_module_obj(rel_path: String, export_json: String, lines: i64) -> String =
+    "{" + jkv("path", rel_path) + "," +
+    jkv("kind", module_kind(rel_path)) + "," +
+    "\"exports\":" + export_json + "," +
+    "\"uses\":[]," +
+    "\"lines\":" + i2s(lines) + "}";
+
+// ============================================================================
+// SECTION 5: Full pipeline — walk + extract + assemble
+// ============================================================================
+
+fn process_files(file_list: String, root: String, root_len: i64) -> String = {
+    let mut modules_json = "";
+    let mut total_fns = 0;
+    let mut total_types = 0;
+    let mut pos = 0;
+    while pos < file_list.len() {
+        let nl = find_nl(file_list, pos);
+        let rel = file_list.slice(pos, nl);
+        pos = if nl >= file_list.len() { file_list.len() } else { nl + 1 };
+        let _r = if rel.len() == 0 { 0 }
+        else {
+            let full_path = path_join(root, rel);
+            let source = read_file(full_path);
+            let exp_json = extract_decls_from(source);
+            let lines = count_lines_in(source);
+            let mod_obj = build_module_obj(rel, exp_json, lines);
+            modules_json = if modules_json.len() == 0 { mod_obj }
+                           else { modules_json + "," + mod_obj };
+            total_fns = total_fns + count_substr(exp_json, "\"kind\":\"fn\"");
+            total_types = total_types + count_substr(exp_json, "\"kind\":\"type\"");
+            0
+        };
+        0
+    };
+    modules_json
+};
+
+fn count_items(list: String) -> i64 = {
+    if list.len() == 0 { 0 }
+    else {
+        let mut n = 1;
+        let mut i = 0;
+        while i < list.len() {
+            if list.byte_at(i) == 10 { n = n + 1 } else { () };
+            i = i + 1
+        };
+        n
+    }
+};
+
+pub fn run_context_pack(root: String) -> String = {
+    let file_list = walk_bmb(root);
+    if file_list.len() == 0 {
+        "{\"_schema\":\"bmb.context-pack.v1\",\"error\":\"No .bmb files found\"}"
+    } else {
+        let proj_name = basename(root);
+        let total_mods = count_items(file_list);
+        let last = root.byte_at(root.len() - 1);
+        let root_len = if last == 47 or last == 92 { root.len() }
+                       else { root.len() + 1 };
+        let modules_json = process_files(file_list, root, root_len);
+        let full_json = "[" + modules_json + "]";
+        let total_exp = count_substr(full_json, "\"kind\":\"fn\"") +
+                        count_substr(full_json, "\"kind\":\"type\"") +
+                        count_substr(full_json, "\"kind\":\"const\"");
+        let token_est = full_json.len() / 4;
+        let stats = "{\"total_modules\":" + i2s(total_mods) +
+                    ",\"total_exports\":" + i2s(total_exp) +
+                    ",\"estimated_tokens\":" + i2s(token_est) + "}";
+        "{\"_schema\":\"bmb.context-pack.v1\"," +
+        "\"project\":{" + jkv("name", proj_name) + "," + jkv("root", root) + "}," +
+        "\"modules\":" + full_json + "," +
+        "\"stats\":" + stats + "}"
+    }
+};
+
+// Budget filter: strip "contract" fields from fn exports when token estimate
+// exceeds the requested budget. Contract values are simple boolean expressions
+// (e.g. "n > 0") that never contain '}', so scanning for '}' is unambiguous.
+fn find_contract_end(s: String, pos: i64) -> i64 = {
+    let mut p = pos;
+    while p < s.len() and s.byte_at(p) != 125 { p = p + 1 };
+    p
+};
+
+fn strip_contracts(modules_json: String) -> String = {
+    let target = ",\"contract\":{";
+    let tlen = target.len();
+    let mut out = "";
+    let mut i = 0;
+    let mut chunk_start = 0;
+    while i < modules_json.len() {
+        let _r = if line_starts(modules_json, i, target) {
+            out = out + modules_json.slice(chunk_start, i);
+            let end = find_contract_end(modules_json, i + tlen);
+            i = end + 1;
+            chunk_start = i;
+            0
+        } else {
+            i = i + 1;
+            0
+        };
+        0
+    };
+    out + modules_json.slice(chunk_start, modules_json.len())
+};
+
+pub fn run_context_pack_budget(root: String, max_tokens: i64) -> String = {
+    let file_list = walk_bmb(root);
+    if file_list.len() == 0 {
+        "{\"_schema\":\"bmb.context-pack.v1\",\"error\":\"No .bmb files found\"}"
+    } else {
+        let proj_name = basename(root);
+        let total_mods = count_items(file_list);
+        let last = root.byte_at(root.len() - 1);
+        let root_len = if last == 47 or last == 92 { root.len() }
+                       else { root.len() + 1 };
+        let modules_json = process_files(file_list, root, root_len);
+        let full_modules = "[" + modules_json + "]";
+        let token_est = full_modules.len() / 4;
+        let budget_exceeded = token_est > max_tokens;
+        let final_modules = if budget_exceeded {
+            "[" + strip_contracts(modules_json) + "]"
+        } else {
+            full_modules
+        };
+        let total_exp = count_substr(final_modules, "\"kind\":\"fn\"") +
+                        count_substr(final_modules, "\"kind\":\"type\"") +
+                        count_substr(final_modules, "\"kind\":\"const\"");
+        let final_tok = final_modules.len() / 4;
+        let budget_field = if budget_exceeded {
+            ",\"budget_mode\":\"signature_only\",\"budget_tokens\":" + i2s(max_tokens)
+        } else { "" };
+        let stats = "{\"total_modules\":" + i2s(total_mods) +
+                    ",\"total_exports\":" + i2s(total_exp) +
+                    ",\"estimated_tokens\":" + i2s(final_tok) +
+                    budget_field + "}";
+        "{\"_schema\":\"bmb.context-pack.v1\"," +
+        "\"project\":{" + jkv("name", proj_name) + "," + jkv("root", root) + "}," +
+        "\"modules\":" + final_modules + "," +
+        "\"stats\":" + stats + "}"
+    }
+};
+
+// ============================================================================
+// SECTION 6: CLI entry point
+// ============================================================================
+
+fn main() -> i64 = {
+    let argc = arg_count();
+    if argc < 2 {
+        let _u = print_str("Usage: context_pack <project_dir> [--max-tokens N]\n");
+        let _v = print_str("Produces context-pack v1 JSON for AI-assisted BMB development.\n");
+        1
+    } else {
+        let root = get_arg(1);
+        let mut max_tok = 0;
+        let mut i = 2;
+        while i < argc {
+            let flag = get_arg(i);
+            let _f = if flag == "--max-tokens" and i + 1 < argc {
+                max_tok = s2i(get_arg(i + 1));
+                i = i + 1;
+                0
+            } else { 0 };
+            i = i + 1
+        };
+        let result = if max_tok > 0 {
+            run_context_pack_budget(root, max_tok)
+        } else {
+            run_context_pack(root)
+        };
+        let _o = print_str(result);
+        let _n = print_str("\n");
+        0
+    }
+};

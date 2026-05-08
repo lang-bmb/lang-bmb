@@ -1,0 +1,112 @@
+// walker.bmb - BMB source file tree walker
+// Part of bootstrap/context_pack/ (Track O Phase 2c)
+// Cycle 2541: implements recursive .bmb file enumeration
+//
+// Recursively walks a directory tree and collects .bmb source file paths.
+// Returns: newline-separated relative paths from the root directory.
+//
+// Standalone usage (test/verify):
+//   bmb run bootstrap/context_pack/walker.bmb <directory>
+//   bmb build bootstrap/context_pack/walker.bmb -o walker
+
+// ============================================================================
+// Helpers: extension and exclusion checks
+// ============================================================================
+
+fn is_bmb_ext(name: String) -> bool =
+    name.len() > 4 and name.slice(name.len() - 4, name.len()) == ".bmb";
+
+// Skip target/, .git/, node_modules/, and hidden directories (dot-prefixed)
+fn is_excluded(name: String) -> bool =
+    name == "target" or name == ".git" or name == "node_modules"
+    or (name.len() > 1 and name.byte_at(0) == 46);
+
+// ============================================================================
+// Path utilities
+// ============================================================================
+
+// Join path components, inserting "/" when needed (47 = '/', 92 = '\')
+fn path_join(base: String, name: String) -> String = {
+    let last = base.byte_at(base.len() - 1);
+    if last == 47 or last == 92 { base + name }
+    else { base + "/" + name }
+};
+
+// Find next newline in s starting at pos; returns s.len() if none found
+fn find_nl(s: String, pos: i64) -> i64 = {
+    let mut p = pos;
+    while p < s.len() {
+        if s.byte_at(p) == 10 { break } else { p = p + 1 }
+    };
+    p
+};
+
+// ============================================================================
+// Directory walking (mutual recursion: walk_dir <-> process entries loop)
+// ============================================================================
+
+// Recursively walk dir, accumulating .bmb file paths into result.
+// root_len: length of root prefix (+ separator) to strip for relative paths.
+fn walk_dir(dir: String, root_len: i64, acc: String) -> String = {
+    let entries = list_dir(dir);
+    if entries.len() == 0 { acc }
+    else {
+        let mut result = acc;
+        let mut pos = 0;
+        while pos < entries.len() {
+            let nl = find_nl(entries, pos);
+            let name = entries.slice(pos, nl);
+            pos = if nl >= entries.len() { entries.len() } else { nl + 1 };
+            let _r = if name.len() == 0 { 0 }
+            else {
+                let full = path_join(dir, name);
+                if is_dir(full) == 1 and not(is_excluded(name)) {
+                    result = walk_dir(full, root_len, result);
+                    0
+                } else if is_bmb_ext(name) {
+                    let rel = full.slice(root_len, full.len());
+                    result = if result.len() == 0 { rel }
+                             else { result + "\n" + rel };
+                    0
+                } else { 0 }
+            };
+            0
+        };
+        result
+    }
+};
+
+// ============================================================================
+// Public API
+// ============================================================================
+
+// Walk root recursively, returning newline-separated .bmb paths (relative).
+// Trailing slash in root is handled; root itself is stripped from all paths.
+pub fn walk_bmb(root: String) -> String = {
+    if root.len() == 0 { "" }
+    else {
+        let last = root.byte_at(root.len() - 1);
+        let root_len = if last == 47 or last == 92 { root.len() }
+                       else { root.len() + 1 };
+        walk_dir(root, root_len, "")
+    }
+};
+
+// ============================================================================
+// Standalone entry point
+// ============================================================================
+
+fn main() -> i64 = {
+    let argc = arg_count();
+    if argc < 2 {
+        let _u = print_str("Usage: walker <directory>\n");
+        let _v = print_str("Recursively lists .bmb files under <directory>.\n");
+        1
+    } else {
+        let dir = get_arg(1);
+        let files = walk_bmb(dir);
+        let _o = print_str(files);
+        let _n = print_str(if files.len() > 0 { "\n" } else { "" });
+        0
+    }
+};

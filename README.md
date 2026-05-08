@@ -49,30 +49,32 @@ The `pre` conditions are verified at compile time by an SMT solver (Z3). At runt
 
 ## Performance
 
-BMB targets C/Rust-level performance. All claims are measured, not assumed.
+BMB targets parity with C and Rust. All claims are measured, not assumed.
 
-**Tier 1 benchmarks vs Clang -O3** (67 benchmarks, v0.93):
+**Tier 1 benchmarks vs Clang -O3** (16 workloads, v0.98 strict gate):
 
 | Category | Result |
 |----------|--------|
-| FASTER than C | 5 benchmarks |
-| PASS (within 2%) | 5 benchmarks |
-| All within 10% | 67/67 benchmarks |
+| Within 5% of Clang -O3 | 16/16 |
+| Within measurement noise (≤2%) | 10/16 |
+| All within 10% | 16/16 |
 
-Representative results:
+Representative results (BMB / Clang -O3 ratio, lower is faster):
 
-| Benchmark | BMB/Clang | Notes |
-|-----------|-----------|-------|
-| fasta | 0.94x | BMB faster |
-| gcd | 0.97x | BMB faster |
-| binary_trees | 0.99x | BMB faster |
-| spectral_norm | 1.00x | Parity |
-| mandelbrot | 1.01x | Identical IR |
-| sieve | 1.07x | Residual gap (under investigation) |
+| Benchmark | Ratio | Reading |
+|-----------|-------|---------|
+| fasta | 0.94x | Within run-to-run noise of Clang |
+| gcd | 0.97x | Within run-to-run noise of Clang |
+| binary_trees | 0.99x | Equivalent to Clang |
+| spectral_norm | 1.00x | Equivalent to Clang |
+| mandelbrot | 1.01x | Equivalent to Clang (identical IR) |
+| sieve | 1.04x | Within 5% gate |
 
-BMB and Clang both use the LLVM backend. When BMB generates equivalent IR, the performance is identical. Remaining gaps are in BMB's IR generation, not in LLVM.
+These are not claims of "beating C" — typical run-to-run variance is 1–3%, so a 0.94x ratio is statistically equivalent to parity. The honest claim is: **BMB matches Clang -O3 because both target the same LLVM backend, and BMB generates IR of comparable quality.**
 
-See [Benchmark Details](docs/BENCHMARK.md) for full results with methodology.
+Where BMB still trails (sieve, json_parse) we report it and investigate. Where the gap is LLVM-inherent (e.g., GCC outperforms both Clang and BMB on a workload), we document it as a backend limit, not a BMB limit.
+
+See [Benchmark Details](docs/BENCHMARK.md) for full methodology, raw numbers, and noise analysis.
 
 ---
 
@@ -127,6 +129,62 @@ let ch = channel_new();
 ```
 
 Thread, Mutex, Channel, RwLock, Barrier, async/await, ThreadPool, Scoped Threads — all built-in.
+
+---
+
+## Memory Model
+
+BMB has **no garbage collector and no reference counting**. Memory is managed at compile time via Rust-style ownership, with raw pointers available for systems work.
+
+| Mechanism | Syntax | Use |
+|-----------|--------|-----|
+| Owned value | `T`, `own T` | Single owner; freed at scope exit |
+| Immutable borrow | `&T` | Multiple readers, no writers |
+| Mutable borrow | `&mut T` | Single writer, no readers (XOR rule) |
+| Raw pointer | `*const T`, `*mut T` | FFI, intrusive data structures, manual memory |
+| Nullable | `T?` | Compile-time tracked; no null deref at runtime |
+
+Key properties:
+
+- **Drop semantics**: When an owned value goes out of scope, its destructor (if any) runs deterministically. No finalizer threads, no GC pauses.
+- **No hidden allocations**: `let x = expr;` never allocates on the heap. Heap allocation requires explicit `Box`, `Vec`, etc.
+- **Borrow checker enforces XOR**: Either many `&T` or one `&mut T`, never both. Same rule as Rust; same compile-time guarantees against data races and aliasing bugs.
+- **Raw pointers are unchecked**: `*T` exists for FFI and low-level work. They do not participate in borrow checking — the programmer is responsible.
+
+See [OWNERSHIP](docs/tutorials/OWNERSHIP.md) for the full tutorial and [SPECIFICATION §3](docs/SPECIFICATION.md) for the formal rules.
+
+---
+
+## Verification Model
+
+Contracts are checked by an SMT solver (Z3) at compile time. The honest part of "compile-time proofs" is what happens when the solver cannot decide:
+
+| SMT outcome | Compiler behavior |
+|-------------|-------------------|
+| `proved` | Compiles; runtime check elided |
+| `disproved` (counterexample) | Compile error with witness |
+| `unknown` / `timeout` | **Compile error** (default) |
+
+There is **no runtime fallback**. If the prover times out, the build fails — silently passing unchecked contracts would defeat the entire model.
+
+Two escape hatches exist for genuinely undecidable conditions:
+
+```bmb
+// Skip verification, document the proof obligation in prose
+@trust "monotonicity follows from sorted invariant; see lemma 4.2"
+fn binary_search(arr: &[i64], target: i64) -> i64? = { ... };
+```
+
+```toml
+# bmb.toml — relax timeout policy globally (not recommended)
+[smt]
+timeout_ms = 5000
+timeout_action = "error"  # error | trust_with_warning
+```
+
+`@trust` requires a written reason — it shifts the proof obligation from the solver to a reviewer, but does not hide it. `trust_with_warning` exists for incremental verification of legacy code.
+
+See [VERIFICATION](docs/VERIFICATION.md) for the full policy, decidable fragment boundaries, and comparison with Dafny / F* / SPARK / Kani.
 
 ---
 
@@ -219,6 +277,9 @@ BMB was designed with AI code generation in mind. The verbose, explicit syntax t
 | [Language Reference](docs/LANGUAGE_REFERENCE.md) | Complete feature guide |
 | [Specification](docs/SPECIFICATION.md) | Formal language definition |
 | [Architecture](docs/ARCHITECTURE.md) | Compiler internals |
+| [Verification Model](docs/VERIFICATION.md) | SMT policy, timeout handling, escape hatches |
+| [Comparison](docs/COMPARISON.md) | BMB vs Rust+Kani / Dafny / F* / SPARK / Vale |
+| [Ownership](docs/tutorials/OWNERSHIP.md) | Memory model tutorial |
 | [Build from Source](docs/BUILD_FROM_SOURCE.md) | Build instructions |
 | [Benchmark](docs/BENCHMARK.md) | Performance methodology and results |
 | [SIMD Performance Guide](docs/SIMD_PERF.md) | When to write manual SIMD vs trust auto-vec |
@@ -230,9 +291,9 @@ BMB was designed with AI code generation in mind. The verbose, explicit syntax t
 
 ## Status
 
-BMB is an **experimental language** in active development (v0.98). The compiler self-hosts via a 3-Stage Fixed Point bootstrap, benchmarks beat C/Rust in 16 workloads, and SIMD is a first-class type system. The ecosystem is young and the community is small.
+BMB is an **experimental language** in active development (v0.98). The compiler self-hosts via a 3-Stage Fixed Point bootstrap, all 16 Tier 1 benchmarks reach parity with Clang -O3 (within 5%), and SIMD is a first-class type system. The ecosystem is young and the community is small.
 
-If you're interested in contract-verified systems programming, formal methods, or AI-assisted code generation — we'd love your feedback.
+If you're interested in contract-verified systems programming, formal methods, or AI-assisted code generation — we'd love your feedback. See [VERIFICATION](docs/VERIFICATION.md) for the verification model and [COMPARISON](docs/COMPARISON.md) for how BMB relates to Dafny, F*, SPARK, and Rust+Kani.
 
 ---
 
@@ -244,5 +305,6 @@ MIT
 
 <p align="center">
   <b>Performance > Everything</b><br>
-  <sub>Safety is not a goal — it's a consequence of pursuing maximum performance through compile-time proofs.</sub>
+  <sub>The verbose contracts and explicit syntax that make BMB tedious for humans are tractable for AI.<br>
+  Everything BMB asks the programmer to write enables a runtime check to be erased at compile time.</sub>
 </p>

@@ -1,0 +1,246 @@
+// extractor.bmb - BMB export extractor for context-pack
+// Part of bootstrap/context_pack/ (Track O Phase 3)
+// Cycle 2542: parse pub declarations from .bmb source, emit JSON exports array
+//
+// Extracts: pub fn, pub type, pub const, pub struct declarations + pre/post.
+// Output format: JSON array of export objects per context-pack v1 schema.
+//
+// Usage (standalone):
+//   bmb run bootstrap/context_pack/extractor.bmb <file.bmb>
+
+// ============================================================================
+// Line iteration helpers
+// ============================================================================
+
+fn find_nl(s: String, pos: i64) -> i64 = {
+    let mut p = pos;
+    while p < s.len() {
+        if s.byte_at(p) == 10 { break } else { p = p + 1 }
+    };
+    p
+};
+
+fn skip_ws(s: String, pos: i64, end: i64) -> i64 = {
+    let mut p = pos;
+    while p < end {
+        let c = s.byte_at(p);
+        if c == 32 or c == 9 { p = p + 1 } else { break }
+    };
+    p
+};
+
+fn line_starts(s: String, pos: i64, prefix: String) -> bool = {
+    let plen = prefix.len();
+    if pos + plen > s.len() { false }
+    else {
+        let mut i = 0;
+        let mut ok = 1;
+        while i < plen and ok == 1 {
+            if s.byte_at(pos + i) != prefix.byte_at(i) { ok = 0 } else { () };
+            i = i + 1
+        };
+        ok == 1
+    }
+};
+
+// ============================================================================
+// Identifier and string helpers
+// ============================================================================
+
+fn is_ident_char(c: i64) -> bool =
+    (c >= 97 and c <= 122) or (c >= 65 and c <= 90) or
+    (c >= 48 and c <= 57) or c == 95;
+
+fn extract_ident(s: String, pos: i64, end: i64) -> String = {
+    let mut p = pos;
+    while p < end and is_ident_char(s.byte_at(p)) {
+        p = p + 1
+    };
+    if p == pos { "" } else { s.slice(pos, p) }
+};
+
+fn trim_end(s: String, end: i64) -> i64 = {
+    let mut p = end;
+    while p > 0 {
+        let c = s.byte_at(p - 1);
+        if c == 32 or c == 9 or c == 13 { p = p - 1 } else { break }
+    };
+    p
+};
+
+// ============================================================================
+// JSON helpers
+// ============================================================================
+
+fn json_escape(s: String) -> String = {
+    let mut i = 0;
+    let mut out = "";
+    while i < s.len() {
+        let c = s.byte_at(i);
+        let piece = if c == 34 { "\\\"" }
+                    else if c == 92 { "\\\\" }
+                    else if c == 10 { "\\n" }
+                    else if c == 13 { "\\r" }
+                    else { s.slice(i, i + 1) };
+        out = out + piece;
+        i = i + 1
+    };
+    out
+};
+
+fn jkv(key: String, val: String) -> String =
+    "\"" + key + "\":\"" + json_escape(val) + "\"";
+
+// ============================================================================
+// Extract signature: pub fn ... up to (not including) = { pre post
+// ============================================================================
+
+fn extract_sig_from_line(line: String, start: i64, nl: i64) -> String = {
+    let mut p = start;
+    while p < nl {
+        let c = line.byte_at(p);
+        if c == 61 or c == 123 { break } else { p = p + 1 }
+    };
+    let te = trim_end(line, p);
+    if te > start { line.slice(start, te) } else { "" }
+};
+
+// ============================================================================
+// Export JSON object builders
+// ============================================================================
+
+fn build_fn_obj(name: String, sig: String, pre_c: String, post_c: String) -> String = {
+    let base = "{" + jkv("kind", "fn") + "," + jkv("name", name) + "," + jkv("signature", sig);
+    if pre_c.len() == 0 and post_c.len() == 0 { base + "}" }
+    else if pre_c.len() > 0 and post_c.len() > 0 {
+        base + ",\"contract\":{" + jkv("pre", pre_c) + "," + jkv("post", post_c) + "}}"
+    } else if pre_c.len() > 0 {
+        base + ",\"contract\":{" + jkv("pre", pre_c) + "}}"
+    } else {
+        base + ",\"contract\":{" + jkv("post", post_c) + "}}"
+    }
+};
+
+fn build_type_obj(name: String, sig: String) -> String =
+    "{" + jkv("kind", "type") + "," + jkv("name", name) + "," + jkv("definition", sig) + "}";
+
+fn build_const_obj(name: String, sig: String) -> String =
+    "{" + jkv("kind", "const") + "," + jkv("name", name) + "," + jkv("signature", sig) + "}";
+
+// ============================================================================
+// Append JSON object to accumulator (handles comma separation)
+// ============================================================================
+
+fn append_obj(acc: String, obj: String) -> String =
+    if acc.len() == 0 { obj } else { acc + "," + obj };
+
+// ============================================================================
+// Main extraction state machine
+// ============================================================================
+// State: in_fn=0 scanning, in_fn=1 collecting pre/post for last pub fn
+
+fn extract_from_source(source: String) -> String = {
+    let mut acc_json = "";
+    let mut pos = 0;
+    let mut in_fn = 0;
+    let mut cur_name = "";
+    let mut cur_sig = "";
+    let mut cur_pre = "";
+    let mut cur_post = "";
+
+    while pos < source.len() {
+        let nl = find_nl(source, pos);
+        let ls = skip_ws(source, pos, nl);
+        let is_blank = ls >= nl;
+        let is_annot = not(is_blank) and source.byte_at(ls) == 64;
+
+        // While in_fn, check for contract continuation lines
+        let _c = if in_fn == 1 and not(is_blank) and not(is_annot) {
+            if line_starts(source, ls, "pre ") {
+                cur_pre = source.slice(ls + 4, trim_end(source, nl));
+                0
+            } else if line_starts(source, ls, "post ") {
+                cur_post = source.slice(ls + 5, trim_end(source, nl));
+                0
+            } else { 0 }
+        } else { 0 };
+
+        // Determine if this line is a continuation of the current pub fn
+        let is_contract = not(is_blank) and (line_starts(source, ls, "pre ") or line_starts(source, ls, "post ") or line_starts(source, ls, "inv "));
+        let is_cont = in_fn == 1 and (is_blank or is_annot or is_contract);
+
+        // If we were in_fn and hit a non-continuation line, flush the fn
+        let _flush = if in_fn == 1 and not(is_cont) {
+            acc_json = append_obj(acc_json, build_fn_obj(cur_name, cur_sig, cur_pre, cur_post));
+            in_fn = 0;
+            cur_name = "";
+            cur_sig = "";
+            cur_pre = "";
+            cur_post = "";
+            0
+        } else { 0 };
+
+        // Now process this line for pub declarations
+        let _p = if is_blank or is_annot { 0 }
+        else if line_starts(source, ls, "pub fn ") {
+            let name = extract_ident(source, ls + 7, nl);
+            let sig = extract_sig_from_line(source, ls + 4, nl);  // "fn ..."
+            cur_name = name;
+            cur_sig = sig;
+            cur_pre = "";
+            cur_post = "";
+            in_fn = 1;
+            0
+        } else if line_starts(source, ls, "pub type ") {
+            let name = extract_ident(source, ls + 9, nl);
+            let sig = extract_sig_from_line(source, ls + 4, nl);
+            acc_json = append_obj(acc_json, build_type_obj(name, sig));
+            0
+        } else if line_starts(source, ls, "pub const ") {
+            let name = extract_ident(source, ls + 10, nl);
+            let sig = extract_sig_from_line(source, ls + 4, nl);
+            acc_json = append_obj(acc_json, build_const_obj(name, sig));
+            0
+        } else if line_starts(source, ls, "pub struct ") {
+            let name = extract_ident(source, ls + 11, nl);
+            let sig = extract_sig_from_line(source, ls + 4, nl);
+            acc_json = append_obj(acc_json, build_type_obj(name, sig));
+            0
+        } else { 0 };
+
+        pos = if nl >= source.len() { source.len() } else { nl + 1 };
+        0
+    };
+
+    // Flush final pending fn
+    let _fin = if in_fn == 1 {
+        acc_json = append_obj(acc_json, build_fn_obj(cur_name, cur_sig, cur_pre, cur_post));
+        0
+    } else { 0 };
+
+    "[" + acc_json + "]"
+};
+
+// Public API
+pub fn extract_decls(source: String) -> String =
+    extract_from_source(source);
+
+// ============================================================================
+// Standalone entry point
+// ============================================================================
+
+fn main() -> i64 = {
+    let argc = arg_count();
+    if argc < 2 {
+        let _u = print_str("Usage: extractor <file.bmb>\n");
+        let _v = print_str("Extracts pub declarations as JSON array.\n");
+        1
+    } else {
+        let path = get_arg(1);
+        let source = read_file(path);
+        let decls = extract_decls(source);
+        let _o = print_str(decls);
+        let _n = print_str("\n");
+        0
+    }
+};
