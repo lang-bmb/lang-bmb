@@ -324,6 +324,52 @@ def test_definition():
         os.unlink(tmp_path)
 
 
+def test_references():
+    print("\n--- Test: textDocument/references ---")
+    content = (
+        "fn main() -> i64 = helper();\n"
+        "fn helper() -> i64 = 42;\n"
+        "fn other() -> i64 = helper() + helper();\n"
+    )
+    with tempfile.NamedTemporaryFile(suffix=".bmb", mode="w", delete=False) as f:
+        f.write(content)
+        tmp_path = f.name
+    try:
+        uri = "file:///" + tmp_path.replace("\\", "/")
+        msgs = (
+            make_msg({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"capabilities": {}}})
+            + make_msg({"jsonrpc": "2.0", "method": "initialized", "params": {}})
+            # Find all references to 'helper' (appears 4 times: 1 decl + 3 usages)
+            + make_msg({"jsonrpc": "2.0", "id": 2, "method": "textDocument/references",
+                        "params": {"textDocument": {"uri": uri},
+                                   "position": {"line": 1, "character": 3},
+                                   "context": {"includeDeclaration": True}}})
+            # Find all references to 'main' (appears 1 time: decl only)
+            + make_msg({"jsonrpc": "2.0", "id": 3, "method": "textDocument/references",
+                        "params": {"textDocument": {"uri": uri},
+                                   "position": {"line": 0, "character": 3},
+                                   "context": {"includeDeclaration": True}}})
+            + make_msg({"jsonrpc": "2.0", "id": 4, "method": "shutdown", "params": {}})
+            + make_msg({"jsonrpc": "2.0", "method": "exit"})
+        )
+        responses = run_lsp(msgs)
+        refs_helper = next((r for r in responses if r.get("id") == 2), None)
+        refs_main = next((r for r in responses if r.get("id") == 3), None)
+        test("references response received", refs_helper is not None)
+        if refs_helper:
+            result = refs_helper.get("result", [])
+            test("helper references count >= 4", len(result) >= 4,
+                 f"got {len(result)}")
+            if result:
+                test("all references in same uri", all(r.get("uri") == uri for r in result),
+                     str([r.get("uri") for r in result[:3]]))
+        if refs_main:
+            result = refs_main.get("result", [])
+            test("main references count = 1", len(result) == 1, f"got {len(result)}")
+    finally:
+        os.unlink(tmp_path)
+
+
 # ============================================================
 # Main
 # ============================================================
@@ -346,6 +392,7 @@ if __name__ == "__main__":
     test_unknown_method()
     test_document_symbols()
     test_definition()
+    test_references()
 
     print()
     print(f"Results: {tests_passed} passed, {tests_failed} failed")
