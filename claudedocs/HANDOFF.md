@@ -1,7 +1,7 @@
 # BMB Session Handoff — 2026-05-09 (Cycles 2577-2583 — M2 COMPLETE ★)
 
 > **이전 HEAD**: `07a7eb06` (Track T ~95%, npm-publish.yml ready)
-> **새 HEAD**: (이번 세션 최종 커밋 예정)
+> **새 HEAD**: `c41d2241` (M2 COMPLETE — Track R list/dashboard + Track Q 9 checks + contract fix)
 > **세션 성격**: 10-cycle run-cycle continuation — M2 완성 선언
 > **핵심 성과**: M2 AI-Ready Infrastructure ✅ COMPLETE (Track R 75%→82%, Track Q 85%→88%)
 
