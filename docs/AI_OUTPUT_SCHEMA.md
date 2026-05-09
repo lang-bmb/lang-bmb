@@ -232,6 +232,63 @@ Outputs the full AST as JSON. Unlike other commands, this is **not** wrapped in 
 
 **Note**: The `type` discriminator wrapper (`{"type":"ast_dump","ast":...}`) is deferred — direct AST JSON is more token-efficient for downstream tooling.
 
+### `bmb context-pack <dir>` — ✅ implemented (Cycles 2543-2566)
+
+Outputs a project summary as a single JSON object (not JSONL). Direct JSON, not wrapped in an event envelope.
+
+**CLI flags**:
+```
+bmb context-pack <project_dir> [--max-tokens N]
+```
+
+**Output schema** (`_schema: "bmb.context-pack.v1"`):
+
+```json
+{
+  "_schema": "bmb.context-pack.v1",
+  "project": {
+    "name": "string — basename of project_dir",
+    "root": "string — path passed on CLI"
+  },
+  "modules": [
+    {
+      "path": "string — relative path from project root",
+      "kind": "string — 'source' | 'stdlib'",
+      "exports": [
+        {
+          "kind": "string — 'fn' | 'type' | 'const'",
+          "name": "string",
+          "signature": "string — declaration text (fn only)",
+          "definition": "string — (type/const only)",
+          "contract": {
+            "pre": "string — (optional)",
+            "post": "string — (optional)"
+          }
+        }
+      ],
+      "uses": ["string — module names imported via 'use mod::fn;'"],
+      "lines": "integer — line count"
+    }
+  ],
+  "stats": {
+    "total_modules": "integer",
+    "total_exports": "integer",
+    "estimated_tokens": "integer — len/4 heuristic",
+    "budget_mode": "string — 'signature_only' (only if --max-tokens triggered)",
+    "budget_tokens": "integer — (only if --max-tokens triggered)"
+  }
+}
+```
+
+**`uses` field** (Phase 7, Cycle 2566): Each module lists the unique module names it imports. Populated by scanning `use module::fn;` declarations. Empty array `[]` if no imports.
+
+**Budget mode**: When `--max-tokens N` is specified and the estimate exceeds N, `contract` fields are stripped from `fn` exports and `budget_mode`/`budget_tokens` are added to `stats`.
+
+**Error output** (no files found):
+```json
+{"_schema":"bmb.context-pack.v1","error":"No .bmb files found"}
+```
+
 ---
 
 ## 4. Stability guarantees

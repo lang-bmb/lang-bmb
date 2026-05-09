@@ -324,15 +324,71 @@ fn extract_decls_from(source: String) -> String = {
 // SECTION 4: Module JSON builder
 // ============================================================================
 
+// Extract unique module names from "use module::fn;" declarations.
+// Returns a JSON array string like ["json","core"].
+fn str_contains_word(list: String, word: String) -> bool = {
+    if list.len() == 0 or word.len() == 0 { false }
+    else {
+        let mut i = 0;
+        let mut found = false;
+        while i < list.len() and not(found) {
+            let nl = find_nl(list, i);
+            let entry = list.slice(i, nl);
+            if entry == word { found = true } else { () };
+            i = if nl >= list.len() { list.len() } else { nl + 1 }
+        };
+        found
+    }
+};
+
+fn uses_list_to_json(list: String) -> String = {
+    if list.len() == 0 { "[]" }
+    else {
+        let mut out = "";
+        let mut i = 0;
+        while i < list.len() {
+            let nl = find_nl(list, i);
+            let entry = list.slice(i, nl);
+            let _r = if entry.len() > 0 {
+                out = if out.len() == 0 { "\"" + entry + "\"" }
+                      else { out + ",\"" + entry + "\"" };
+                0
+            } else { 0 };
+            i = if nl >= list.len() { list.len() } else { nl + 1 }
+        };
+        "[" + out + "]"
+    }
+};
+
+fn extract_uses_from(source: String) -> String = {
+    let mut uses_list = "";
+    let mut pos = 0;
+    while pos < source.len() {
+        let nl = find_nl(source, pos);
+        let ls = skip_ws(source, pos, nl);
+        let _r = if line_starts(source, ls, "use ") {
+            let mod_name = extract_ident(source, ls + 4, nl);
+            let _d = if mod_name.len() > 0 and not(str_contains_word(uses_list, mod_name)) {
+                uses_list = if uses_list.len() == 0 { mod_name }
+                            else { uses_list + "\n" + mod_name };
+                0
+            } else { 0 };
+            0
+        } else { 0 };
+        pos = if nl >= source.len() { source.len() } else { nl + 1 }
+    };
+    uses_list_to_json(uses_list)
+};
+
 fn module_kind(rel_path: String) -> String =
     if line_starts(rel_path, 0, "stdlib/") { "stdlib" }
     else { "source" };
 
-fn build_module_obj(rel_path: String, export_json: String, lines: i64) -> String =
+fn build_module_obj(rel_path: String, export_json: String, uses_json: String, lines: i64) -> String =
     "{" + jkv("path", rel_path) + "," +
     jkv("kind", module_kind(rel_path)) + "," +
     "\"exports\":" + export_json + "," +
-    "\"uses\":[]," +
+    "\"uses\":" + uses_json + "," +
     "\"lines\":" + i2s(lines) + "}";
 
 // ============================================================================
@@ -353,8 +409,9 @@ fn process_files(file_list: String, root: String, root_len: i64) -> String = {
             let full_path = path_join(root, rel);
             let source = read_file(full_path);
             let exp_json = extract_decls_from(source);
+            let uses_json = extract_uses_from(source);
             let lines = count_lines_in(source);
-            let mod_obj = build_module_obj(rel, exp_json, lines);
+            let mod_obj = build_module_obj(rel, exp_json, uses_json, lines);
             modules_json = if modules_json.len() == 0 { mod_obj }
                            else { modules_json + "," + mod_obj };
             total_fns = total_fns + count_substr(exp_json, "\"kind\":\"fn\"");

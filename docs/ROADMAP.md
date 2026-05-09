@@ -48,9 +48,9 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 | 트랙 | 내용 | 현 상태 | 잔여 issue |
 |------|------|---------|-----------|
 | **M (Machine-First Output)** | 모든 출력 디폴트 JSON, `--human` 옵션 | **~100% ✅** (Cycles 2516+2558-2559: 스키마 명세 ✅, dump-ast --format compact/pretty ✅, AI_OUTPUT_SCHEMA.md v1 갱신 ✅) | CI gate optional (deferred) |
-| **N (MCP Server)** | `bmb mcp` 또는 `bmb-mcp` (Chatter) | **~99% ✅** (Cycles 2524-2557: 12 tools ✅, 4 resources ✅, 3 prompts ✅, 74/74 pytest) | Remaining: bmb_examples resource, bmb://stdlib/{module} per-module docs (optional) |
-| **O (Context Pack)** | `bmb context-pack <project>` | **~90%** (Cycles 2517-2554: walker/extractor/context_pack.bmb ✅, token budget ✅, native binary ✅, MCP tool+resource ✅) | Remaining: Phase 7 schema validation (optional) |
-| **Q (Ambiguity Audit)** | grammar 정적 분석 + `bmb lint --ai-friendly` | **~60%** (Cycle 2548: MCP-layer `bmb_lint_explain` ✅, 12 warning kinds with explanation+fix) | Remaining: BMB-native lint module (2-3 cycles, deferred) |
+| **N (MCP Server)** | `bmb mcp` 또는 `bmb-mcp` (Chatter) | **~99% ✅** (Cycles 2524-2568: 13 tools ✅ (+bmb_lint_native), 4 resources ✅, 3 prompts ✅, 82/82 pytest) | Remaining: bmb_examples resource, bmb://stdlib/{module} per-module docs (optional) |
+| **O (Context Pack)** | `bmb context-pack <project>` | **~95%** (Cycles 2517-2566: walker/extractor/context_pack.bmb ✅, token budget ✅, native binary ✅, MCP tool+resource ✅, `uses` dependency graph ✅) | CI gate optional (deferred) |
+| **Q (Ambiguity Audit)** | grammar 정적 분석 + `bmb lint --ai-friendly` | **~75%** (Cycles 2548+2567-2568: MCP-layer `bmb_lint_explain` ✅, 12 warning kinds; BMB-native `bootstrap/lint/lint.bmb` ✅ 5 checks, `bmb_lint_native` MCP tool ✅, 82/82 pytest) | Remaining: CI gate, additional checks (optional) |
 | **R (LLM Bench Tracking)** | `bmb-ai-bench` 50-task suite (합격선 X) | ~75% (Cycle 2523: ai-proof deprecation notice + bmb-ai-bench README + perf_target_ratio 정책 docstring 명시) | `claudedocs/track-n-r-inventory-2026-05-01.md`, `ISSUE-20260501-track-r-llm-bench.md` |
 
 #### M3 External Bindings PoC
@@ -168,6 +168,11 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 | 2562 | Track T: bmb-compute Node.js bindings (27 fn, 10/10 tests) | ✅ |
 | 2563 | Track T: bmb-text + bmb-crypto Node.js bindings (21 fn 9/9 + 14 fn 8/8) | ✅ |
 | 2564 | **Track T complete**: bmb-json Node.js bindings (12 fn, 16/16 tests) — output-ownership fix (`_from` no-free) | ✅ |
+| 2565 | M2 gate assessment + ROADMAP update | ✅ |
+| 2566 | **Track O Phase 7**: `uses` dependency graph in context_pack (extract_uses_from) — O ~95% | ✅ |
+| 2567 | **Track Q Phase 2**: `bootstrap/lint/lint.bmb` scaffold — 5 pattern checks, lint.exe build | ✅ |
+| 2568 | **Track Q Phase 2**: string-skip + `bmb_lint_native` MCP tool — 82/82 pytest | ✅ |
+| 2569 | Track Q Phase 2 close + ROADMAP update | ✅ |
 
 #### Cycle 2526+ Performance Track (post-2525, **HANDOFF P-1/P-2 INVALIDATED Cycle 2528**)
 

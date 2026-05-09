@@ -1,0 +1,310 @@
+// lint.bmb -BMB-native AI-friendly lint tool (Track Q Phase 2)
+// Cycle 2567. Pattern-based lint checks without a full parse step.
+//
+// Implements 5 checks detectable by source text analysis:
+//   1. non_snake_case       -CamelCase function name
+//   2. missing_postcondition -pub fn without post clause
+//   3. negated_if_condition  -if not( ... )
+//   4. redundant_bool_compare -== true / == false
+//   5. chained_comparison    -c == X or c == Y or c == Z (3+ arms)
+//
+// Output: one JSON line per warning + trailing lint summary line.
+// Format matches `bmb lint` machine output for drop-in compatibility.
+//
+// Usage:
+//   bmb run bootstrap/lint/lint.bmb <file.bmb>
+
+// ============================================================================
+// SECTION 1: String helpers
+// ============================================================================
+
+fn find_nl(s: String, pos: i64) -> i64 = {
+    let mut p = pos;
+    while p < s.len() {
+        if s.byte_at(p) == 10 { break } else { p = p + 1 }
+    };
+    p
+};
+
+fn skip_ws(s: String, pos: i64, end: i64) -> i64 = {
+    let mut p = pos;
+    while p < end {
+        let c = s.byte_at(p);
+        if c == 32 or c == 9 { p = p + 1 } else { break }
+    };
+    p
+};
+
+fn line_starts(s: String, pos: i64, prefix: String) -> bool = {
+    let plen = prefix.len();
+    if pos + plen > s.len() { false }
+    else {
+        let mut i = 0;
+        let mut ok = 1;
+        while i < plen and ok == 1 {
+            if s.byte_at(pos + i) != prefix.byte_at(i) { ok = 0 } else { () };
+            i = i + 1
+        };
+        ok == 1
+    }
+};
+
+// line_contains_outside_str: checks for pattern outside double-quoted string literals.
+// Skips content inside "..." to avoid false positives from message strings.
+fn line_contains_outside_str(s: String, pos: i64, end: i64, pattern: String) -> bool = {
+    let plen = pattern.len();
+    if plen == 0 or end - pos < plen { false }
+    else {
+        let limit = end - plen;
+        let mut i = pos;
+        let mut in_str = false;
+        let mut found = false;
+        while i <= limit and not(found) {
+            let c = s.byte_at(i);
+            let _r = if in_str {
+                // Inside string: skip escaped chars, detect close quote
+                if c == 92 { i = i + 1 }  // backslash: skip next char
+                else if c == 34 { in_str = false }  // close quote
+                else { () };
+                0
+            } else if c == 34 {
+                in_str = true;
+                0
+            } else if s.slice(i, i + plen) == pattern {
+                found = true;
+                0
+            } else { 0 };
+            i = i + 1
+        };
+        found
+    }
+};
+
+fn line_contains(s: String, pos: i64, end: i64, pattern: String) -> bool =
+    line_contains_outside_str(s, pos, end, pattern);
+
+fn is_upper(c: i64) -> bool = c >= 65 and c <= 90;
+fn is_lower(c: i64) -> bool = c >= 97 and c <= 122;
+fn is_digit(c: i64) -> bool = c >= 48 and c <= 57;
+fn is_ident_char(c: i64) -> bool = is_lower(c) or is_upper(c) or is_digit(c) or c == 95;
+
+fn extract_ident(s: String, pos: i64, end: i64) -> String = {
+    let mut p = pos;
+    while p < end and is_ident_char(s.byte_at(p)) { p = p + 1 };
+    if p == pos { "" } else { s.slice(pos, p) }
+};
+
+fn is_snake_case(name: String) -> bool = {
+    if name.len() == 0 { true }
+    else {
+        let mut i = 0;
+        let mut ok = true;
+        // Starts with _ or lower, then lower/digit/underscore only.
+        // Any uppercase = not snake_case.
+        while i < name.len() and ok {
+            if is_upper(name.byte_at(i)) { ok = false } else { i = i + 1 }
+        };
+        ok
+    }
+};
+
+fn i2s(n: i64) -> String =
+    if n < 0 { "-" + i2s(0 - n) }
+    else if n < 10 { chr(n + 48) }
+    else { i2s(n / 10) + chr(n - (n / 10) * 10 + 48) };
+
+// Count occurrences of pattern in range [pos, end)
+fn count_pattern_in(s: String, pos: i64, end: i64, pattern: String) -> i64 = {
+    let plen = pattern.len();
+    if plen == 0 or end - pos < plen { 0 }
+    else {
+        let mut count = 0;
+        let mut i = pos;
+        let limit = end - plen;
+        while i <= limit {
+            if s.slice(i, i + plen) == pattern {
+                count = count + 1;
+                i = i + plen
+            } else { i = i + 1 }
+        };
+        count
+    }
+};
+
+fn json_escape(s: String) -> String = {
+    let mut i = 0;
+    let mut out = "";
+    while i < s.len() {
+        let c = s.byte_at(i);
+        let piece = if c == 34 { "\\\"" }
+                    else if c == 92 { "\\\\" }
+                    else if c == 10 { "\\n" }
+                    else if c == 13 { "\\r" }
+                    else { s.slice(i, i + 1) };
+        out = out + piece;
+        i = i + 1
+    };
+    out
+};
+
+// ============================================================================
+// SECTION 2: Warning emitter
+// ============================================================================
+
+// Emits one JSON warning line: {"type":"warning","kind":"...","file":"...","line":N,"col":1,"start":offset,"end":offset,"message":"..."}
+fn emit_warning(filename: String, kind: String, line_num: i64, offset: i64, msg: String) -> i64 = {
+    let w = "{\"type\":\"warning\"," +
+            "\"kind\":\"" + kind + "\"," +
+            "\"file\":\"" + json_escape(filename) + "\"," +
+            "\"start\":" + i2s(offset) + "," +
+            "\"end\":" + i2s(offset) + "," +
+            "\"line\":" + i2s(line_num) + "," +
+            "\"col\":1," +
+            "\"message\":\"" + json_escape(msg) + "\"}";
+    let _o = print_str(w);
+    let _n = print_str("\n");
+    1
+};
+
+// ============================================================================
+// SECTION 3: Lint checks (per line or multi-line context)
+// ============================================================================
+
+// Check 1: non_snake_case -pub fn or fn with CamelCase name
+fn check_snake_case(source: String, ls: i64, nl: i64, filename: String, line_num: i64, offset: i64) -> i64 = {
+    let is_fn = line_starts(source, ls, "pub fn ") or line_starts(source, ls, "fn ");
+    if not(is_fn) { 0 }
+    else {
+        let name_start = if line_starts(source, ls, "pub fn ") { ls + 7 } else { ls + 3 };
+        let name = extract_ident(source, name_start, nl);
+        if name.len() == 0 or is_snake_case(name) { 0 }
+        else {
+            emit_warning(filename, "non_snake_case", line_num, offset,
+                "Function name `" + name + "` should be snake_case")
+        }
+    }
+};
+
+// Check 2: missing_postcondition -pub fn with no post clause in following lines
+// This is approximate: look ahead up to 5 lines for "post " after a "pub fn"
+fn check_missing_post(source: String, ls: i64, nl: i64, filename: String, line_num: i64, offset: i64) -> i64 = {
+    if not(line_starts(source, ls, "pub fn ")) { 0 }
+    else {
+        let name_start = ls + 7;
+        let name = extract_ident(source, name_start, nl);
+        if name.len() == 0 { 0 }
+        else {
+            // Single-line function: contains " = " on same line as declaration.
+            // Pattern " = " after param list means body is on same line, no room for post.
+            let has_body_on_line = line_contains_outside_str(source, ls, nl, " = ");
+            if has_body_on_line {
+                emit_warning(filename, "missing_postcondition", line_num, offset,
+                    "pub fn `" + name + "` has no postcondition -add `post <condition>` to enable caller optimization")
+            } else {
+                // Multi-line: look ahead up to 8 non-blank lines for "post" or body start
+                let mut pos = if nl >= source.len() { source.len() } else { nl + 1 };
+                let mut found_post = false;
+                let mut found_body = false;
+                let mut steps = 0;
+                while pos < source.len() and not(found_post) and not(found_body) and steps < 8 {
+                    let next_nl = find_nl(source, pos);
+                    let next_ls = skip_ws(source, pos, next_nl);
+                    let is_blank = next_ls >= next_nl;
+                    let _r = if not(is_blank) {
+                        if line_starts(source, next_ls, "post ") { found_post = true }
+                        else if line_starts(source, next_ls, "pre ") { () }
+                        else { found_body = true };
+                        steps = steps + 1;
+                        0
+                    } else { 0 };
+                    pos = if next_nl >= source.len() { source.len() } else { next_nl + 1 }
+                };
+                if found_post or not(found_body) { 0 }
+                else {
+                    emit_warning(filename, "missing_postcondition", line_num, offset,
+                        "pub fn `" + name + "` has no postcondition -add `post <condition>` to enable caller optimization")
+                }
+            }
+        }
+    }
+};
+
+// Check 3: negated_if_condition -if not(
+fn check_negated_if(source: String, ls: i64, nl: i64, filename: String, line_num: i64, offset: i64) -> i64 = {
+    if line_contains(source, ls, nl, "if not(") {
+        emit_warning(filename, "negated_if_condition", line_num, offset,
+            "Negated condition `if not(...)` -consider swapping if/else branches to use positive condition")
+    } else { 0 }
+};
+
+// Check 4: redundant_bool_comparison -== true or == false
+fn check_redundant_bool(source: String, ls: i64, nl: i64, filename: String, line_num: i64, offset: i64) -> i64 = {
+    let has_eq_true = line_contains(source, ls, nl, "== true");
+    let has_eq_false = line_contains(source, ls, nl, "== false");
+    if has_eq_true {
+        emit_warning(filename, "redundant_bool_comparison", line_num, offset,
+            "`== true` is redundant -use the expression directly")
+    } else if has_eq_false {
+        emit_warning(filename, "redundant_bool_comparison", line_num, offset,
+            "`== false` is redundant -use `not expr` instead")
+    } else { 0 }
+};
+
+// Check 5: chained_comparison -c == X or c == Y or c == Z (3+ or-linked comparisons)
+// Heuristic: count " == " and " or " on the same line; if or-count >= 2 and eq-count >= 3 → likely chained
+fn check_chained_comparison(source: String, ls: i64, nl: i64, filename: String, line_num: i64, offset: i64) -> i64 = {
+    let or_count = count_pattern_in(source, ls, nl, " or ");
+    let eq_count = count_pattern_in(source, ls, nl, " == ");
+    if or_count >= 2 and eq_count >= 3 {
+        emit_warning(filename, "chained_comparison", line_num, offset,
+            "3+ chained equality comparisons -consider a match expression for clarity and performance")
+    } else { 0 }
+};
+
+// ============================================================================
+// SECTION 4: Main lint loop
+// ============================================================================
+
+fn lint_source(source: String, filename: String) -> i64 = {
+    let mut warnings = 0;
+    let mut pos = 0;
+    let mut line_num = 1;
+    while pos < source.len() {
+        let nl = find_nl(source, pos);
+        let ls = skip_ws(source, pos, nl);
+        let is_comment = not(ls >= nl) and source.byte_at(ls) == 47 and
+                         ls + 1 < nl and source.byte_at(ls + 1) == 47;
+        let _r = if not(is_comment) {
+            warnings = warnings + check_snake_case(source, ls, nl, filename, line_num, pos);
+            warnings = warnings + check_missing_post(source, ls, nl, filename, line_num, pos);
+            warnings = warnings + check_negated_if(source, ls, nl, filename, line_num, pos);
+            warnings = warnings + check_redundant_bool(source, ls, nl, filename, line_num, pos);
+            warnings = warnings + check_chained_comparison(source, ls, nl, filename, line_num, pos);
+            0
+        } else { 0 };
+        pos = if nl >= source.len() { source.len() } else { nl + 1 };
+        line_num = line_num + 1
+    };
+    warnings
+};
+
+// ============================================================================
+// SECTION 5: CLI
+// ============================================================================
+
+fn main() -> i64 = {
+    let argc = arg_count();
+    if argc < 2 {
+        let _u = print_str("Usage: lint <file.bmb>\n");
+        let _v = print_str("Performs AI-friendly lint checks and emits JSON warnings.\n");
+        1
+    } else {
+        let path = get_arg(1);
+        let source = read_file(path);
+        let warnings = lint_source(source, path);
+        let lint_line = "{\"type\":\"lint\",\"file\":\"" + json_escape(path) + "\",\"warnings\":" + i2s(warnings) + "}";
+        let _o = print_str(lint_line);
+        let _n = print_str("\n");
+        0
+    }
+};

@@ -4,14 +4,28 @@
   "description": "High-performance algorithms powered by BMB — Node.js bindings",
   "main": "index.js",
   "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md"
+  ],
   "scripts": {
     "test": "node --test test/test.js"
   },
   "dependencies": {
     "koffi": "^2.16.2"
   },
-  "keywords": ["bmb", "algorithms", "ffi", "performance"],
+  "keywords": ["bmb", "algorithms", "ffi", "performance", "native"],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/iyulab/lang-bmb",
+    "directory": "ecosystem/bmb-algo/bindings/node"
+  },
+  "bugs": {
+    "url": "https://github.com/iyulab/lang-bmb/issues"
+  },
+  "homepage": "https://github.com/iyulab/lang-bmb/tree/main/ecosystem/bmb-algo",
   "engines": {
     "node": ">=18.0.0"
   }
