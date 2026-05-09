@@ -145,7 +145,21 @@ GitHub Actions workflow_dispatch로 dry_run=false 실행:
 
 **세션 종료**: 2026-05-09 (Cycles 2577-2583)
 
+## 7. Push 대기 중 (미완료)
+
+두 repo 모두 origin push 필요:
+
+```bash
+# bmb-mcp 서브모듈 먼저
+cd ecosystem/bmb-mcp && git push origin main && cd ../..
+
+# 부모 repo
+git push origin main
+```
+
+push 완료 후 `Origin/main`을 HEAD `3f198697`로 갱신 확인.
+
 **다음 세션 첫 액션**:
-1. HANDOFF.md HEAD 확인 후 git pull origin main
-2. GitHub Actions → "Publish npm packages" → `workflow_dispatch` (dry_run: false) 실행 여부 확인
-3. Track R Phase 3 또는 다른 M3 준비 작업 시작
+1. 위 push 실행 (미완료 시)
+2. GitHub Actions → "Publish npm packages" → `workflow_dispatch` (dry_run: false)
+3. Track R Phase 3 또는 M3 준비 시작
