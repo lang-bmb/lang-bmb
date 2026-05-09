@@ -132,7 +132,7 @@ jobs:
 
       - name: Run AI-friendly lint (bootstrap/lint/lint.bmb)
         run: |
-          echo "=== AI-Friendly Lint (Track Q — 7 checks) ==="
+          echo "=== AI-Friendly Lint (Track Q — 9 checks) ==="
           TOTAL_WARNINGS=0
           for f in bootstrap/*.bmb stdlib/**/*.bmb stdlib/*.bmb; do
             if [ -f "$f" ]; then

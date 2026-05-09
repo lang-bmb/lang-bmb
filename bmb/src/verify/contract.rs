@@ -1187,9 +1187,9 @@ mod tests {
             ret_ty: spanned(Type::I64),
             pre: None,
             post: Some(spanned(Expr::Binary {
-                left: Box::new(spanned(Expr::Var("ret".to_string()))),
+                left: Box::new(spanned(Expr::Ret)),
                 op: crate::ast::BinOp::Eq,
-                right: Box::new(spanned(Expr::Var("ret".to_string()))),
+                right: Box::new(spanned(Expr::Ret)),
             })),
             contracts: vec![],
             body: spanned(Expr::Var("x".to_string())),

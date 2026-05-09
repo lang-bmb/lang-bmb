@@ -50,8 +50,12 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 | **M (Machine-First Output)** | 모든 출력 디폴트 JSON, `--human` 옵션 | **~100% ✅** (Cycles 2516+2558-2559: 스키마 명세 ✅, dump-ast --format compact/pretty ✅, AI_OUTPUT_SCHEMA.md v1 갱신 ✅) | CI gate optional (deferred) |
 | **N (MCP Server)** | `bmb mcp` 또는 `bmb-mcp` (Chatter) | **~99% ✅** (Cycles 2524-2573: 13 tools ✅ (+bmb_lint_native), 4 resources ✅, 3 prompts ✅, 81/81 pytest) | Remaining: bmb_examples resource, bmb://stdlib/{module} per-module docs (optional) |
 | **O (Context Pack)** | `bmb context-pack <project>` | **~95%** (Cycles 2517-2566: walker/extractor/context_pack.bmb ✅, token budget ✅, native binary ✅, MCP tool+resource ✅, `uses` dependency graph ✅) | CI gate optional (deferred) |
-| **Q (Ambiguity Audit)** | grammar 정적 분석 + `bmb lint --ai-friendly` | **~85%** (Cycles 2548+2567-2573: MCP-layer `bmb_lint_explain` ✅, 12 warning kinds; BMB-native `bootstrap/lint/lint.bmb` ✅ 7 checks, `bmb_lint_native` MCP tool ✅, 81/81 pytest; CI gate ✅) | Remaining: additional checks (optional) |
-| **R (LLM Bench Tracking)** | `bmb-ai-bench` 50-task suite (합격선 X) | ~75% (Cycle 2523: ai-proof deprecation notice + bmb-ai-bench README + perf_target_ratio 정책 docstring 명시) | `claudedocs/track-n-r-inventory-2026-05-01.md`, `ISSUE-20260501-track-r-llm-bench.md` |
+| **Q (Ambiguity Audit)** | grammar 정적 분석 + `bmb lint --ai-friendly` | **~88%** (Cycles 2548+2567-2573+2579: MCP-layer `bmb_lint_explain` ✅, 14 warning kinds; BMB-native `bootstrap/lint/lint.bmb` ✅ 9 checks (+redundant_if_expression, +empty_block), `bmb_lint_native` MCP tool ✅, 89/89 pytest; CI gate ✅) | Remaining: additional checks (optional) |
+| **R (LLM Bench Tracking)** | `bmb-ai-bench` 50-task suite (합격선 X) | **~82% ✅** (Cycles 2523+2577: ai-proof deprecation ✅, "합격선 X" 정책 정렬 ✅, `list`/`dashboard` 커맨드 ✅, 15 pytest ✅. 100 problems ✅) | Remaining: `run` (LLM API, M3 이후), `analyze` (저장된 결과 처리) |
+
+> **M2 AI-Ready Infrastructure: ✅ COMPLETE (Cycle 2578, 2026-05-09)**
+> M ≥ 95% ✅ | N ≥ 95% ✅ | O ≥ 95% ✅ | Q ≥ 80% ✅ | R ≥ 80% ✅ | T ≥ 90% ✅
+> → 권장 버전: v0.100 (메인테이너 결정 시)
 
 #### M3 External Bindings PoC
 
@@ -180,6 +184,10 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 | 2574 | Track Q CI gate + ROADMAP update | ✅ |
 | 2575 | HANDOFF Cycles 2566-2575 closure | ✅ |
 | 2576 | **Track T publish infra**: release.yml DLL build job (3 OS) + npm-publish.yml + README install guides — T ~95% | ✅ |
+| 2577 | **Track R Phase 2**: `list`/`dashboard` 커맨드 + 15 pytest — R ~75% → ~82% | ✅ |
+| 2578 | **M2 자율 게이트 완성 선언** — R ≥ 80% 달성, M2 ✅ COMPLETE | ✅ |
+| 2579 | **Track Q Phase 4**: checks 8+9 (redundant_if_expression + empty_block) — Q ~88%, 14 lint kinds | ✅ |
+| 2580 | **Track Q polish**: lint.exe rebuild + 89 tests + ROADMAP Q 상태 갱신 | ✅ |
 
 #### Cycle 2526+ Performance Track (post-2525, **HANDOFF P-1/P-2 INVALIDATED Cycle 2528**)
 

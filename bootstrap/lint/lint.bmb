@@ -1,14 +1,16 @@
-// lint.bmb -BMB-native AI-friendly lint tool (Track Q Phase 2+3)
-// Cycles 2567-2573. Pattern-based lint checks without a full parse step.
+// lint.bmb -BMB-native AI-friendly lint tool (Track Q Phase 2+3+4)
+// Cycles 2567-2573+2579. Pattern-based lint checks without a full parse step.
 //
-// Implements 7 checks detectable by source text analysis:
-//   1. non_snake_case        -CamelCase function name
-//   2. missing_postcondition -pub fn without post clause
-//   3. negated_if_condition  -if not( ... )
-//   4. redundant_bool_compare -== true / == false
-//   5. chained_comparison    -c == X or c == Y or c == Z (3+ arms)
-//   6. todo_comment          -// TODO or // FIXME (incomplete implementation)
-//   7. missing_pre_index     -pub fn with idx/index param but no pre clause
+// Implements 9 checks detectable by source text analysis:
+//   1. non_snake_case          -CamelCase function name
+//   2. missing_postcondition   -pub fn without post clause
+//   3. negated_if_condition    -if not( ... )
+//   4. redundant_bool_compare  -== true / == false
+//   5. chained_comparison      -c == X or c == Y or c == Z (3+ arms)
+//   6. todo_comment            -// TODO or // FIXME (incomplete implementation)
+//   7. missing_pre_index       -pub fn with idx/index param but no pre clause
+//   8. redundant_if_expression -if cond { true } else { false } (single-line)
+//   9. empty_block             -{ } or { () } placeholder body
 //
 // Output: one JSON line per warning + trailing lint summary line.
 // Format matches `bmb lint` machine output for drop-in compatibility.
@@ -312,6 +314,27 @@ fn check_missing_pre_index(source: String, ls: i64, nl: i64, filename: String, l
     }
 };
 
+// Check 8: redundant_if_expression -if cond { true } else { false } on one line
+fn check_redundant_if_expr(source: String, ls: i64, nl: i64, filename: String, line_num: i64, offset: i64) -> i64 = {
+    let has_true_false = line_contains(source, ls, nl, "{ true } else { false }");
+    let has_false_true = line_contains(source, ls, nl, "{ false } else { true }");
+    if has_true_false {
+        emit_warning(filename, "redundant_if_expression", line_num, offset,
+            "`if cond { true } else { false }` is redundant -use `cond` directly")
+    } else if has_false_true {
+        emit_warning(filename, "redundant_if_expression", line_num, offset,
+            "`if cond { false } else { true }` is redundant -use `not cond` instead")
+    } else { 0 }
+};
+
+// Check 9: empty_block -{ } or { () } as a function body placeholder
+fn check_empty_block(source: String, ls: i64, nl: i64, filename: String, line_num: i64, offset: i64) -> i64 = {
+    if line_contains(source, ls, nl, "{ }") or line_contains(source, ls, nl, "{ () }") {
+        emit_warning(filename, "empty_block", line_num, offset,
+            "Empty block `{ }` or `{ () }` -may be an unfinished implementation placeholder")
+    } else { 0 }
+};
+
 // ============================================================================
 // SECTION 4: Main lint loop
 // ============================================================================
@@ -332,6 +355,8 @@ fn lint_source(source: String, filename: String) -> i64 = {
             warnings = warnings + check_redundant_bool(source, ls, nl, filename, line_num, pos);
             warnings = warnings + check_chained_comparison(source, ls, nl, filename, line_num, pos);
             warnings = warnings + check_missing_pre_index(source, ls, nl, filename, line_num, pos);
+            warnings = warnings + check_redundant_if_expr(source, ls, nl, filename, line_num, pos);
+            warnings = warnings + check_empty_block(source, ls, nl, filename, line_num, pos);
             0
         } else { 0 };
         warnings = warnings + check_todo_comment(source, ls, nl, filename, line_num, pos);

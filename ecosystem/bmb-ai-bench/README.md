@@ -6,9 +6,20 @@
 
 ```bash
 pip install -e .
-bmb-ai-bench list                    # list all problems
-bmb-ai-bench run --problem 01        # run a single problem
-bmb-ai-bench run --category contract # run a category
+bmb-ai-bench doctor                          # check environment prerequisites
+bmb-ai-bench list                            # list all 100 problems
+bmb-ai-bench list --category algorithm      # filter by category
+bmb-ai-bench list --json                     # machine-readable output
+bmb-ai-bench dashboard                       # stats by category
+bmb-ai-bench validate                        # build + test all solutions (requires BMB)
+bmb-ai-bench validate --category contract   # validate a category only
+```
+
+LLM experiment commands require an API key and are not yet implemented in this release:
+
+```bash
+# Future: bmb-ai-bench run --model claude-opus-4-7 --category algorithm
+# Future: bmb-ai-bench analyze --results-dir results/
 ```
 
 ## Problem Layout
