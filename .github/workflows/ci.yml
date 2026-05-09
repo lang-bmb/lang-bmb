@@ -130,6 +130,23 @@ jobs:
             fi
           done
 
+      - name: Run AI-friendly lint (bootstrap/lint/lint.bmb)
+        run: |
+          echo "=== AI-Friendly Lint (Track Q — 7 checks) ==="
+          TOTAL_WARNINGS=0
+          for f in bootstrap/*.bmb stdlib/**/*.bmb stdlib/*.bmb; do
+            if [ -f "$f" ]; then
+              output=$(./target/release/bmb run bootstrap/lint/lint.bmb "$f" 2>/dev/null) || true
+              warnings=$(echo "$output" | grep '"type":"lint"' | grep -o '"warnings":[0-9]*' | grep -o '[0-9]*' || echo 0)
+              if [ -n "$warnings" ] && [ "$warnings" -gt 0 ]; then
+                echo "::warning file=$f::$warnings AI-lint warning(s)"
+                echo "$output" | grep '"type":"warning"' || true
+              fi
+              TOTAL_WARNINGS=$((TOTAL_WARNINGS + ${warnings:-0}))
+            fi
+          done
+          echo "Total AI-lint warnings: $TOTAL_WARNINGS (non-blocking)"
+
   bootstrap-check:
     name: Bootstrap Self-Compile Check
     runs-on: ubuntu-latest
