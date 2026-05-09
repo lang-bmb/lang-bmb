@@ -172,6 +172,21 @@ jobs:
           # Checking compiler.bmb resolves the full dependency graph.
           ./target/release/bmb check bootstrap/compiler.bmb
 
+      - name: Type check bootstrap/lsp.bmb (Track S)
+        run: |
+          echo "=== LSP Type Check (Track S — bootstrap/lsp.bmb) ==="
+          # bootstrap/lsp.bmb is a self-contained BMB LSP server (inlined JSON).
+          # Type checking validates the source without requiring LLVM native build.
+          ./target/release/bmb check bootstrap/lsp.bmb
+          echo "LSP type check: OK"
+
+      - name: Type check bootstrap/verify_host.bmb (Track S)
+        run: |
+          echo "=== verify_host Type Check (Track S — bootstrap/verify_host.bmb) ==="
+          # verify_host.bmb wraps bmb check + bmb verify into structured JSON output.
+          ./target/release/bmb check bootstrap/verify_host.bmb
+          echo "verify_host type check: OK"
+
       - name: Measure bootstrap compile time
         id: timing
         run: |

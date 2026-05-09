@@ -1,71 +1,287 @@
 // BMB Language Server Protocol — stdio JSON-RPC 2.0
-// Minimal LSP: initialize, textDocument/didOpen, textDocument/didChange, diagnostics
+// Minimal LSP: initialize, textDocument/didOpen, textDocument/didChange,
+//              textDocument/hover, textDocument/completion, diagnostics
 //
 // Protocol: Content-Length header + JSON body over stdin/stdout
 // Reference: https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/
+//
+// Bootstrap version: all dependencies inlined (no `use` imports).
+// JSON parser inlined from stdlib/json/mod.bmb.
 
-use json::jdoc_new;
-use json::jparse;
-use json::jobj_get;
-use json::jobj_str;
-use json::jobj_num;
-use json::jtype;
-use json::jstr;
-use json::jarr_len;
-use json::jarr_get;
+// ============================================
+// Inlined JSON Support (from stdlib/json/mod.bmb)
+// ============================================
+
+// Type tags
+fn J_NULL() -> i64 = 0;
+fn J_BOOL() -> i64 = 1;
+fn J_NUM()  -> i64 = 2;
+fn J_STR()  -> i64 = 3;
+fn J_ARR()  -> i64 = 4;
+fn J_OBJ()  -> i64 = 5;
+
+fn jdoc_new() -> i64 = vec_new();
+
+fn dput(doc: i64, off: i64, val: i64) -> () = {
+    let _s = vec_set(doc, off, val);
+    ()
+};
+fn dget(doc: i64, off: i64) -> i64 = vec_get(doc, off);
+
+fn dalloc(doc: i64, n: i64) -> i64 = {
+    let off = vec_len(doc);
+    let mut i: i64 = 0;
+    while i < n {
+        let _p = vec_push(doc, 0);
+        set i = i + 1
+    };
+    off
+};
+
+fn mk_null(doc: i64) -> i64 = {
+    let o = dalloc(doc, 1);
+    dput(doc, o, J_NULL());
+    o
+};
+
+fn mk_bool(doc: i64, v: i64) -> i64 = {
+    let o = dalloc(doc, 2);
+    dput(doc, o, J_BOOL());
+    dput(doc, o + 1, v);
+    o
+};
+
+fn mk_num(doc: i64, v: i64) -> i64 = {
+    let o = dalloc(doc, 2);
+    dput(doc, o, J_NUM());
+    dput(doc, o + 1, v);
+    o
+};
+
+fn mk_str(doc: i64, s: i64, e: i64) -> i64 = {
+    let o = dalloc(doc, 3);
+    dput(doc, o, J_STR());
+    dput(doc, o + 1, s);
+    dput(doc, o + 2, e);
+    o
+};
+
+fn mk_arr(doc: i64, cap: i64) -> i64 = {
+    let o = dalloc(doc, 2 + cap);
+    dput(doc, o, J_ARR());
+    dput(doc, o + 1, 0);
+    o
+};
+
+fn mk_obj(doc: i64, cap: i64) -> i64 = {
+    let o = dalloc(doc, 2 + cap * 3);
+    dput(doc, o, J_OBJ());
+    dput(doc, o + 1, 0);
+    o
+};
+
+fn jtype(doc: i64, n: i64) -> i64 = dget(doc, n);
+fn jnum(doc: i64, n: i64) -> i64 = dget(doc, n + 1);
+
+fn unescape(s: String, pos: i64, acc: String) -> String =
+    if pos >= s.len() { acc }
+    else if s.byte_at(pos) == 92 and pos + 1 < s.len() {
+        let nx = s.byte_at(pos + 1);
+        let ch = if nx == 110 { chr(10) }
+            else if nx == 116 { chr(9) }
+            else if nx == 114 { chr(13) }
+            else if nx == 34  { chr(34) }
+            else if nx == 92  { chr(92) }
+            else { chr(nx) };
+        unescape(s, pos + 2, acc + ch)
+    }
+    else { unescape(s, pos + 1, acc + chr(s.byte_at(pos))) };
+
+fn jstr(doc: i64, n: i64, src: String) -> String = {
+    let s = dget(doc, n + 1);
+    let e = dget(doc, n + 2);
+    unescape(src.slice(s, e), 0, "")
+};
+
+fn jarr_len(doc: i64, n: i64) -> i64 = dget(doc, n + 1);
+fn jarr_get(doc: i64, n: i64, idx: i64) -> i64 = dget(doc, n + 2 + idx);
+
+fn jarr_push(doc: i64, n: i64, val: i64) -> () = {
+    let c = dget(doc, n + 1);
+    dput(doc, n + 2 + c, val);
+    dput(doc, n + 1, c + 1);
+    ()
+};
+
+fn jobj_add(doc: i64, n: i64, ks: i64, ke: i64, val: i64) -> () = {
+    let c = dget(doc, n + 1);
+    dput(doc, n + 2 + c * 3, ks);
+    dput(doc, n + 2 + c * 3 + 1, ke);
+    dput(doc, n + 2 + c * 3 + 2, val);
+    dput(doc, n + 1, c + 1);
+    ()
+};
+
+fn jobj_find(doc: i64, n: i64, key: String, src: String, idx: i64, cnt: i64) -> i64 =
+    if idx >= cnt { 0 - 1 }
+    else {
+        let ks = dget(doc, n + 2 + idx * 3);
+        let ke = dget(doc, n + 2 + idx * 3 + 1);
+        let k = src.slice(ks, ke);
+        if k == key { dget(doc, n + 2 + idx * 3 + 2) }
+        else { jobj_find(doc, n, key, src, idx + 1, cnt) }
+    };
+
+fn jobj_get(doc: i64, n: i64, key: String, src: String) -> i64 =
+    jobj_find(doc, n, key, src, 0, dget(doc, n + 1));
+
+fn jobj_str(doc: i64, n: i64, key: String, src: String) -> String = {
+    let v = jobj_get(doc, n, key, src);
+    if v < 0 { "" } else { jstr(doc, v, src) }
+};
+
+fn jobj_num(doc: i64, n: i64, key: String, src: String) -> i64 = {
+    let v = jobj_get(doc, n, key, src);
+    if v < 0 { 0 } else { jnum(doc, v) }
+};
+
+// Parser internals
+fn jpk(n: i64, p: i64) -> i64 = n * 1000000 + p;
+fn jrn(r: i64) -> i64 = r / 1000000;
+fn jrp(r: i64) -> i64 = r % 1000000;
+
+fn wskip(src: String, p: i64) -> i64 =
+    if p >= src.len() { p }
+    else {
+        let c = src.byte_at(p);
+        if c == 32 or c == 9 or c == 10 or c == 13 { wskip(src, p + 1) }
+        else { p }
+    };
+
+fn sdig(src: String, p: i64) -> i64 =
+    if p >= src.len() { p }
+    else if src.byte_at(p) >= 48 and src.byte_at(p) <= 57 { sdig(src, p + 1) }
+    else { p };
+
+fn pint(src: String, p: i64, e: i64, acc: i64) -> i64 =
+    if p >= e { acc }
+    else { pint(src, p + 1, e, acc * 10 + src.byte_at(p) - 48) };
+
+fn pnum(doc: i64, src: String, p: i64) -> i64 = {
+    let neg = src.byte_at(p) == 45;
+    let s = if neg { p + 1 } else { p };
+    let e = sdig(src, s);
+    let v = pint(src, s, e, 0);
+    let fv = if neg { 0 - v } else { v };
+    jpk(mk_num(doc, fv), e)
+};
+
+fn fq(src: String, p: i64) -> i64 =
+    if p >= src.len() { p }
+    else if src.byte_at(p) == 92 { fq(src, p + 2) }
+    else if src.byte_at(p) == 34 { p }
+    else { fq(src, p + 1) };
+
+fn pstr(doc: i64, src: String, p: i64) -> i64 = {
+    let s = p + 1;
+    let e = fq(src, s);
+    jpk(mk_str(doc, s, e), e + 1)
+};
+
+fn pval(doc: i64, src: String, p: i64) -> i64 =
+    if p >= src.len() { jpk(mk_null(doc), p) }
+    else {
+        let c = src.byte_at(p);
+        if c == 34  { pstr(doc, src, p) }
+        else if c == 123 { pobj(doc, src, p) }
+        else if c == 91  { parr(doc, src, p) }
+        else if c == 116 { jpk(mk_bool(doc, 1), p + 4) }
+        else if c == 102 { jpk(mk_bool(doc, 0), p + 5) }
+        else if c == 110 { jpk(mk_null(doc), p + 4) }
+        else if c == 45 or (c >= 48 and c <= 57) { pnum(doc, src, p) }
+        else { jpk(mk_null(doc), p) }
+    };
+
+fn parr_elems(doc: i64, src: String, p: i64, arr: i64) -> i64 = {
+    let r = pval(doc, src, p);
+    jarr_push(doc, arr, jrn(r));
+    let p1 = wskip(src, jrp(r));
+    if p1 >= src.len() { jpk(arr, p1) }
+    else if src.byte_at(p1) == 44 { parr_elems(doc, src, wskip(src, p1 + 1), arr) }
+    else { jpk(arr, p1 + 1) }
+};
+
+fn parr(doc: i64, src: String, p: i64) -> i64 = {
+    let arr = mk_arr(doc, 64);
+    let p1 = wskip(src, p + 1);
+    if p1 < src.len() and src.byte_at(p1) == 93 { jpk(arr, p1 + 1) }
+    else { parr_elems(doc, src, p1, arr) }
+};
+
+fn pobj_ms(doc: i64, src: String, p: i64, obj: i64) -> i64 = {
+    let ks = p + 1;
+    let ke = fq(src, ks);
+    let p1 = wskip(src, ke + 1);
+    let p2 = wskip(src, p1 + 1);
+    let vr = pval(doc, src, p2);
+    jobj_add(doc, obj, ks, ke, jrn(vr));
+    let p3 = wskip(src, jrp(vr));
+    if p3 >= src.len() { jpk(obj, p3) }
+    else if src.byte_at(p3) == 44 { pobj_ms(doc, src, wskip(src, p3 + 1), obj) }
+    else { jpk(obj, p3 + 1) }
+};
+
+fn pobj(doc: i64, src: String, p: i64) -> i64 = {
+    let obj = mk_obj(doc, 32);
+    let p1 = wskip(src, p + 1);
+    if p1 < src.len() and src.byte_at(p1) == 125 { jpk(obj, p1 + 1) }
+    else { pobj_ms(doc, src, p1, obj) }
+};
+
+fn jparse(doc: i64, src: String) -> i64 = {
+    let r = pval(doc, src, wskip(src, 0));
+    jrn(r)
+};
 
 // ============================================
 // JSON-RPC Message Framing
 // ============================================
 
-// Read one LSP message from stdin
-// Returns the JSON body string, or "" on EOF
 fn read_message() -> String = {
-    // Read headers until empty line
     let content_length = read_headers(0);
     if content_length <= 0 { "" }
-    else {
-        // Read exactly content_length bytes
-        read_bytes(content_length)
-    }
+    else { read_bytes(content_length) }
 };
 
-// Parse Content-Length from headers
-// Returns content length, or -1 on EOF
 fn read_headers(cl: i64) -> i64 = {
     let line = read_line();
     if line == "__EOF__" { 0 - 1 }
-    else if line == "" { cl }  // Empty line = end of headers
+    else if line == "" { cl }
     else if line == "\r" { cl }
     else {
-        // Check for "Content-Length: <number>"
         let new_cl = parse_content_length(line, cl);
         read_headers(new_cl)
     }
 };
 
-// Extract number from "Content-Length: 123" header
 fn parse_content_length(header: String, default: i64) -> i64 = {
     let prefix = "Content-Length: ";
     if header.len() >= prefix.len() {
         let head = header.slice(0, prefix.len());
         if head == prefix {
             let num_str = header.slice(prefix.len(), header.len());
-            // Trim trailing \r if present
             let trimmed = trim_cr(num_str);
             parse_int_simple(trimmed, 0, 0)
         } else { default }
     } else { default }
 };
 
-// Remove trailing \r from string
 fn trim_cr(s: String) -> String =
     if s.len() > 0 {
         if s.byte_at(s.len() - 1) == 13 { s.slice(0, s.len() - 1) }
         else { s }
     } else { s };
 
-// Parse integer from string
 fn parse_int_simple(s: String, pos: i64, acc: i64) -> i64 =
     if pos >= s.len() { acc }
     else {
@@ -80,19 +296,16 @@ fn parse_int_simple(s: String, pos: i64, acc: i64) -> i64 =
 // JSON-RPC Response Builder
 // ============================================
 
-// Send a JSON-RPC response
 fn send_response(id: String, result_json: String) -> () = {
     let body = "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":" + result_json + "}";
     send_message(body)
 };
 
-// Send a JSON-RPC notification (no id)
 fn send_notification(method: String, params_json: String) -> () = {
     let body = "{\"jsonrpc\":\"2.0\",\"method\":\"" + method + "\",\"params\":" + params_json + "}";
     send_message(body)
 };
 
-// Send raw message with Content-Length header
 fn send_message(body: String) -> () = {
     let header = "Content-Length: " + int_to_string(body.len()) + "\r\n\r\n";
     write_stdout(header + body);
@@ -103,28 +316,26 @@ fn send_message(body: String) -> () = {
 // LSP Method Handlers
 // ============================================
 
-// Handle "initialize" request
 fn handle_initialize(id: String) -> () = {
     let result = "{" +
         "\"capabilities\":{" +
             "\"textDocumentSync\":1," +
             "\"hoverProvider\":true," +
             "\"completionProvider\":{\"triggerCharacters\":[\".\",\":\"]}," +
-            "\"diagnosticProvider\":{\"interFileDependencies\":false,\"workspaceDiagnostics\":false}" +
+            "\"diagnosticProvider\":{\"interFileDependencies\":false,\"workspaceDiagnostics\":false}," +
+            "\"documentSymbolProvider\":true," +
+            "\"definitionProvider\":true" +
         "}," +
         "\"serverInfo\":{\"name\":\"bmb-lsp\",\"version\":\"0.98.0\"}" +
     "}";
     send_response(id, result)
 };
 
-// Handle "initialized" notification
 fn handle_initialized() -> () = ();
 
-// Handle "shutdown" request
 fn handle_shutdown(id: String) -> () =
     send_response(id, "null");
 
-// Handle "textDocument/didOpen"
 fn handle_did_open(doc: i64, root: i64, src: String) -> () = {
     let params_n = jobj_get(doc, root, "params", src);
     if params_n >= 0 {
@@ -132,13 +343,11 @@ fn handle_did_open(doc: i64, root: i64, src: String) -> () = {
         if td >= 0 {
             let uri = jobj_str(doc, td, "uri", src);
             let text = jobj_str(doc, td, "text", src);
-            // Publish diagnostics for the opened document
             publish_diagnostics(uri, text)
         } else { () }
     } else { () }
 };
 
-// Handle "textDocument/didChange"
 fn handle_did_change(doc: i64, root: i64, src: String) -> () = {
     let params_n = jobj_get(doc, root, "params", src);
     if params_n >= 0 {
@@ -149,7 +358,6 @@ fn handle_did_change(doc: i64, root: i64, src: String) -> () = {
             if changes >= 0 {
                 let count = jarr_len(doc, changes);
                 if count > 0 {
-                    // Full sync: use last change's text
                     let last = jarr_get(doc, changes, count - 1);
                     let text = jobj_str(doc, last, "text", src);
                     publish_diagnostics(uri, text)
@@ -159,7 +367,6 @@ fn handle_did_change(doc: i64, root: i64, src: String) -> () = {
     } else { () }
 };
 
-// Handle "textDocument/hover"
 fn handle_hover(id: String, doc: i64, root: i64, src: String) -> () = {
     let params_n = jobj_get(doc, root, "params", src);
     if params_n < 0 { send_response(id, "null") }
@@ -172,7 +379,6 @@ fn handle_hover(id: String, doc: i64, root: i64, src: String) -> () = {
             let uri = jobj_str(doc, td, "uri", src);
             let line = jobj_num(doc, pos, "line", src);
             let character = jobj_num(doc, pos, "character", src);
-            // Read file to get word at position
             let file_path = uri_to_path(uri);
             let content = if file_path == "" { "" } else { read_file(file_path) };
             let word = word_at_position(content, line, character);
@@ -186,7 +392,6 @@ fn handle_hover(id: String, doc: i64, root: i64, src: String) -> () = {
     }
 };
 
-// Get the word at a given line/character position
 fn word_at_position(content: String, line: i64, col: i64) -> String = {
     let offset = line_col_to_offset(content, line, 0, 0);
     let pos = offset + col;
@@ -222,46 +427,42 @@ fn find_word_end(s: String, pos: i64) -> i64 =
     };
 
 fn is_ident_char(c: i64) -> bool =
-    (c >= 97) and (c <= 122) or   // a-z
-    (c >= 65) and (c <= 90) or    // A-Z
-    (c >= 48) and (c <= 57) or    // 0-9
-    c == 95;                       // _
+    (c >= 97 and c <= 122) or
+    (c >= 65 and c <= 90) or
+    (c >= 48 and c <= 57) or
+    c == 95;
 
-// Lookup hover information for a word
 fn lookup_hover_info(word: String) -> String =
-    if word == "fn" { "**fn** — Function declaration\\n\\n```bmb\\nfn name(params) -> ReturnType = body;\\n```" }
-    else if word == "let" { "**let** — Variable binding\\n\\n```bmb\\nlet x: i64 = 42;\\nlet mut y: i64 = 0;\\n```" }
-    else if word == "pre" { "**pre** — Precondition contract\\n\\nCompile-time assertion on function inputs. Enables `llvm.assume` for optimization." }
+    if word == "fn"        { "**fn** — Function declaration\\n\\n```bmb\\nfn name(params) -> ReturnType = body;\\n```" }
+    else if word == "let"  { "**let** — Variable binding\\n\\n```bmb\\nlet x: i64 = 42;\\nlet mut y: i64 = 0;\\n```" }
+    else if word == "pre"  { "**pre** — Precondition contract\\n\\nCompile-time assertion on function inputs. Enables `llvm.assume` for optimization." }
     else if word == "post" { "**post** — Postcondition contract\\n\\nCompile-time assertion on function return value. Propagated to call sites." }
     else if word == "pure" { "**pure** — Pure function modifier\\n\\nNo side effects. Enables CSE, vectorization, and memoization." }
     else if word == "invariant" { "**invariant** — Loop invariant\\n\\nMaintained across all loop iterations." }
     else if word == "struct" { "**struct** — Record type definition\\n\\n```bmb\\nstruct Point { x: i64, y: i64 }\\n```" }
-    else if word == "enum" { "**enum** — Tagged union\\n\\n```bmb\\nenum Color { Red, Green, Blue }\\n```" }
+    else if word == "enum"  { "**enum** — Tagged union\\n\\n```bmb\\nenum Color { Red, Green, Blue }\\n```" }
     else if word == "match" { "**match** — Pattern matching expression\\n\\n```bmb\\nmatch x { 0 => \"zero\", _ => \"other\" }\\n```" }
     else if word == "while" { "**while** — While loop\\n\\n```bmb\\nwhile cond { body }\\n```" }
-    else if word == "own" { "**own** — Ownership transfer\\n\\nTransfers ownership of a value (Rust-inspired move semantics)." }
-    // Builtin functions
-    else if word == "println" { "```bmb\\nprintln(n: i64) -> ()\\n```\\nPrint integer with newline." }
-    else if word == "println_str" { "```bmb\\nprintln_str(s: String) -> ()\\n```\\nPrint string with newline." }
-    else if word == "print_str" { "```bmb\\nprint_str(s: String) -> ()\\n```\\nPrint string without newline." }
-    else if word == "vec_new" { "```bmb\\nvec_new() -> i64\\n```\\nCreate empty vector. Returns handle." }
-    else if word == "vec_push" { "```bmb\\nvec_push(v: i64, val: i64) -> i64\\n```\\nAppend element to vector." }
-    else if word == "vec_get" { "```bmb\\nvec_get(v: i64, idx: i64) -> i64\\n```\\nGet element at index." }
-    else if word == "vec_len" { "```bmb\\nvec_len(v: i64) -> i64\\n```\\nGet vector length." }
-    else if word == "vec_set" { "```bmb\\nvec_set(v: i64, idx: i64, val: i64) -> ()\\n```\\nSet element at index." }
-    else if word == "read_file" { "```bmb\\nread_file(path: String) -> String\\n```\\nRead entire file contents." }
-    else if word == "write_file" { "```bmb\\nwrite_file(path: String, content: String) -> i64\\n```\\nWrite string to file. Returns 0 on success." }
-    else if word == "read_line" { "```bmb\\nread_line() -> String\\n```\\nRead line from stdin." }
-    else if word == "read_bytes" { "```bmb\\nread_bytes(n: i64) -> String\\n```\\nRead exactly n bytes from stdin." }
-    else if word == "write_stdout" { "```bmb\\nwrite_stdout(s: String) -> ()\\n```\\nWrite string to stdout (no newline, binary-safe)." }
+    else if word == "own"   { "**own** — Ownership transfer\\n\\nTransfers ownership of a value (Rust-inspired move semantics)." }
+    else if word == "println"       { "```bmb\\nprintln(n: i64) -> ()\\n```\\nPrint integer with newline." }
+    else if word == "println_str"   { "```bmb\\nprintln_str(s: String) -> ()\\n```\\nPrint string with newline." }
+    else if word == "print_str"     { "```bmb\\nprint_str(s: String) -> ()\\n```\\nPrint string without newline." }
+    else if word == "vec_new"       { "```bmb\\nvec_new() -> i64\\n```\\nCreate empty vector. Returns handle." }
+    else if word == "vec_push"      { "```bmb\\nvec_push(v: i64, val: i64) -> i64\\n```\\nAppend element to vector." }
+    else if word == "vec_get"       { "```bmb\\nvec_get(v: i64, idx: i64) -> i64\\n```\\nGet element at index." }
+    else if word == "vec_len"       { "```bmb\\nvec_len(v: i64) -> i64\\n```\\nGet vector length." }
+    else if word == "vec_set"       { "```bmb\\nvec_set(v: i64, idx: i64, val: i64) -> ()\\n```\\nSet element at index." }
+    else if word == "read_file"     { "```bmb\\nread_file(path: String) -> String\\n```\\nRead entire file contents." }
+    else if word == "write_file"    { "```bmb\\nwrite_file(path: String, content: String) -> i64\\n```\\nWrite string to file. Returns 0 on success." }
+    else if word == "read_line"     { "```bmb\\nread_line() -> String\\n```\\nRead line from stdin." }
+    else if word == "read_bytes"    { "```bmb\\nread_bytes(n: i64) -> String\\n```\\nRead exactly n bytes from stdin." }
+    else if word == "write_stdout"  { "```bmb\\nwrite_stdout(s: String) -> ()\\n```\\nWrite string to stdout (no newline, binary-safe)." }
     else if word == "int_to_string" { "```bmb\\nint_to_string(n: i64) -> String\\n```\\nConvert integer to string." }
-    else if word == "chr" { "```bmb\\nchr(code: i64) -> String\\n```\\nConvert Unicode codepoint to single-character string." }
+    else if word == "chr"           { "```bmb\\nchr(code: i64) -> String\\n```\\nConvert Unicode codepoint to single-character string." }
     else if word == "system_capture" { "```bmb\\nsystem_capture(cmd: String) -> String\\n```\\nExecute command and capture stdout." }
     else { "" };
 
-// Handle "textDocument/completion"
 fn handle_completion(id: String, doc: i64, root: i64, src: String) -> () = {
-    // Return BMB keyword completions
     let items = "[" +
         mk_completion_item("fn", 14, "Function declaration") + "," +
         mk_completion_item("let", 14, "Variable binding") + "," +
@@ -280,7 +481,6 @@ fn handle_completion(id: String, doc: i64, root: i64, src: String) -> () = {
         mk_completion_item("own", 14, "Ownership transfer") + "," +
         mk_completion_item("true", 14, "Boolean true") + "," +
         mk_completion_item("false", 14, "Boolean false") + "," +
-        // Builtin functions (kind 3 = Function)
         mk_completion_item("println", 3, "println(n: i64) -> ()") + "," +
         mk_completion_item("println_str", 3, "println_str(s: String) -> ()") + "," +
         mk_completion_item("print_str", 3, "print_str(s: String) -> ()") + "," +
@@ -313,22 +513,24 @@ fn mk_completion_item(label: String, kind: i64, detail: String) -> String =
 // Diagnostics — invokes `bmb check` for real parsing
 // ============================================
 
-// Run `bmb check` on the file and publish diagnostics from JSON output
+// Resolve bmb binary path: $BMB_PATH env > "bmb" (assume in PATH)
+fn bmb_binary() -> String = {
+    let env_path = getenv("BMB_PATH");
+    if env_path == "" { "bmb" } else { env_path }
+};
+
 fn publish_diagnostics(uri: String, text: String) -> () = {
     let file_path = uri_to_path(uri);
     if file_path == "" {
-        // Can't resolve path — publish empty diagnostics
         send_notification("textDocument/publishDiagnostics",
             "{\"uri\":\"" + escape_json_str(uri) + "\",\"diagnostics\":[]}")
     } else {
-        // Write text to temp file to ensure latest content is checked
         let tmp = file_path + ".bmb-lsp-tmp";
         let _w = write_file(tmp, text);
-        // Call bmb check on the temp file
-        let cmd = "bmb check \"" + tmp + "\" 2>&1";
+        let bmb = bmb_binary();
+        let cmd = bmb + " check \"" + tmp + "\" 2>&1";
         let output = system_capture(cmd);
         let _d = delete_file(tmp);
-        // Parse output: each line is a JSON object from bmb check
         let diags = parse_bmb_check_output(output, 0, "[");
         let diags_final = if diags == "[" { "[]" } else { diags + "]" };
         send_notification("textDocument/publishDiagnostics",
@@ -336,7 +538,6 @@ fn publish_diagnostics(uri: String, text: String) -> () = {
     }
 };
 
-// Convert file:///path URI to local filesystem path
 fn uri_to_path(uri: String) -> String = {
     let prefix = "file:///";
     if uri.len() > prefix.len() {
@@ -346,12 +547,9 @@ fn uri_to_path(uri: String) -> String = {
     } else { "" }
 };
 
-// Parse bmb check output: each line is a JSON diagnostic
-// Returns partial JSON array string (without closing ']')
 fn parse_bmb_check_output(output: String, pos: i64, acc: String) -> String = {
     let nl = find_newline(output, pos);
     if nl < 0 {
-        // Last line
         let line = output.slice(pos, output.len());
         parse_one_check_line(line, acc)
     } else {
@@ -366,12 +564,10 @@ fn find_newline(s: String, pos: i64) -> i64 =
     else if s.byte_at(pos) == 10 { pos }
     else { find_newline(s, pos + 1) };
 
-// Parse one line of bmb check output (JSON object)
 fn parse_one_check_line(line: String, acc: String) -> String = {
     if line.len() < 2 { acc }
-    else if line.byte_at(0) != 123 { acc }  // Not a JSON object ('{' = 123)
+    else if line.byte_at(0) != 123 { acc }
     else {
-        // Parse the JSON line
         let doc = jdoc_new();
         let root = jparse(doc, line);
         if root < 0 { acc }
@@ -381,7 +577,6 @@ fn parse_one_check_line(line: String, acc: String) -> String = {
                 let msg = jobj_str(doc, root, "message", line);
                 let ln = jobj_num(doc, root, "line", line);
                 let col = jobj_num(doc, root, "col", line);
-                // LSP lines/cols are 0-based, bmb check gives 1-based
                 let lsp_line = if ln > 0 { ln - 1 } else { 0 };
                 let lsp_col = if col > 0 { col - 1 } else { 0 };
                 let diag = mk_diagnostic(lsp_line, lsp_col, msg, 1);
@@ -401,9 +596,6 @@ fn parse_one_check_line(line: String, acc: String) -> String = {
     }
 };
 
-fn mk_diag_arr(line: i64, col: i64, msg: String, severity: i64) -> String =
-    "[" + mk_diagnostic(line, col, msg, severity) + "]";
-
 fn mk_diagnostic(line: i64, col: i64, msg: String, severity: i64) -> String =
     "{\"range\":{\"start\":{\"line\":" + int_to_string(line) +
     ",\"character\":" + int_to_string(col) +
@@ -413,7 +605,6 @@ fn mk_diagnostic(line: i64, col: i64, msg: String, severity: i64) -> String =
     ",\"source\":\"bmb\"" +
     ",\"message\":\"" + escape_json_str(msg) + "\"}";
 
-// Escape string for JSON
 fn escape_json_str(s: String) -> String =
     escape_json_loop(s, 0, "");
 
@@ -425,31 +616,245 @@ fn escape_json_loop(s: String, pos: i64, acc: String) -> String =
         else if c == 92 { escape_json_loop(s, pos + 1, acc + "\\\\") }
         else if c == 10 { escape_json_loop(s, pos + 1, acc + "\\n") }
         else if c == 13 { escape_json_loop(s, pos + 1, acc + "\\r") }
-        else if c == 9 { escape_json_loop(s, pos + 1, acc + "\\t") }
+        else if c == 9  { escape_json_loop(s, pos + 1, acc + "\\t") }
         else { escape_json_loop(s, pos + 1, acc + chr(c)) }
     };
+
+// ============================================
+// Document Symbols — text-scan for fn/struct/enum/pub fn
+// ============================================
+
+// LSP SymbolKind values
+fn SK_FUNCTION() -> i64 = 12;
+fn SK_STRUCT()   -> i64 = 23;
+fn SK_ENUM()     -> i64 = 10;
+
+// Handle textDocument/documentSymbol request
+fn handle_document_symbols(id: String, doc: i64, root: i64, src: String) -> () = {
+    let params_n = jobj_get(doc, root, "params", src);
+    if params_n < 0 { send_response(id, "[]") }
+    else {
+        let td = jobj_get(doc, params_n, "textDocument", src);
+        if td < 0 { send_response(id, "[]") }
+        else {
+            let uri = jobj_str(doc, td, "uri", src);
+            let file_path = uri_to_path(uri);
+            let content = if file_path == "" { "" } else { read_file(file_path) };
+            if content == "" { send_response(id, "[]") }
+            else {
+                let syms = collect_symbols(content, 0, 0, "");
+                send_response(id, syms)
+            }
+        }
+    }
+};
+
+// Scan source for top-level fn/struct/enum symbols.
+// Returns JSON array string.
+// Encoding: try_parse_symbol returns sym_end*1e9 + name_start*1e6 + kind.
+fn collect_symbols(src: String, pos: i64, line: i64, items: String) -> String = {
+    if pos >= src.len() {
+        if items == "" { "[]" } else { "[" + items + "]" }
+    }
+    else if src.byte_at(pos) == 10 {
+        collect_symbols(src, pos + 1, line + 1, items)
+    }
+    else {
+        let r = try_parse_symbol(src, pos, line);
+        let sym_end = r / 1000000000;
+        let sym_name_start = (r % 1000000000) / 1000000;
+        let sym_kind = r % 1000000;
+        if sym_end > pos {
+            let name_end = find_ident_end(src, sym_name_start);
+            let name = src.slice(sym_name_start, name_end);
+            let nl_delta = count_nl_loop(src, pos, sym_end, 0);
+            let sym_json = mk_symbol(name, sym_kind, line);
+            let new_items = if items == "" { sym_json } else { items + "," + sym_json };
+            collect_symbols(src, sym_end, line + nl_delta, new_items)
+        } else {
+            collect_symbols(src, pos + 1, line, items)
+        }
+    }
+};
+
+// Returns: sym_end*1_000_000_000 + name_start*1_000_000 + kind, or 0 if no match
+fn try_parse_symbol(src: String, pos: i64, line: i64) -> i64 = {
+    let p = skip_ws_inline(src, pos);
+    if p >= src.len() { 0 }
+    else {
+        let r_fn = try_kw_fn(src, p);
+        if r_fn > 0 { r_fn }
+        else {
+            let r_st = try_kw_struct(src, p);
+            if r_st > 0 { r_st }
+            else { try_kw_enum(src, p) }
+        }
+    }
+};
+
+fn skip_ws_inline(src: String, pos: i64) -> i64 =
+    if pos >= src.len() { pos }
+    else {
+        let c = src.byte_at(pos);
+        if c == 32 or c == 9 { skip_ws_inline(src, pos + 1) }
+        else { pos }
+    };
+
+fn starts_with_at(src: String, pos: i64, prefix: String) -> bool =
+    if pos + prefix.len() > src.len() { false }
+    else { src.slice(pos, pos + prefix.len()) == prefix };
+
+fn try_kw_fn(src: String, pos: i64) -> i64 = {
+    let has_pub = starts_with_at(src, pos, "pub ");
+    let fn_pos = if has_pub { pos + 4 } else { pos };
+    if starts_with_at(src, fn_pos, "fn ") {
+        let name_start = fn_pos + 3;
+        let name_end = find_ident_end(src, name_start);
+        if name_end > name_start {
+            name_end * 1000000000 + name_start * 1000000 + SK_FUNCTION()
+        } else { 0 }
+    } else { 0 }
+};
+
+fn try_kw_struct(src: String, pos: i64) -> i64 = {
+    let has_pub = starts_with_at(src, pos, "pub ");
+    let kw_pos = if has_pub { pos + 4 } else { pos };
+    if starts_with_at(src, kw_pos, "struct ") {
+        let name_start = kw_pos + 7;
+        let name_end = find_ident_end(src, name_start);
+        if name_end > name_start {
+            name_end * 1000000000 + name_start * 1000000 + SK_STRUCT()
+        } else { 0 }
+    } else { 0 }
+};
+
+fn try_kw_enum(src: String, pos: i64) -> i64 = {
+    let has_pub = starts_with_at(src, pos, "pub ");
+    let kw_pos = if has_pub { pos + 4 } else { pos };
+    if starts_with_at(src, kw_pos, "enum ") {
+        let name_start = kw_pos + 5;
+        let name_end = find_ident_end(src, name_start);
+        if name_end > name_start {
+            name_end * 1000000000 + name_start * 1000000 + SK_ENUM()
+        } else { 0 }
+    } else { 0 }
+};
+
+fn find_ident_end(src: String, pos: i64) -> i64 =
+    if pos >= src.len() { pos }
+    else {
+        let c = src.byte_at(pos);
+        if is_ident_char(c) { find_ident_end(src, pos + 1) }
+        else { pos }
+    };
+
+fn count_nl_loop(src: String, pos: i64, end: i64, acc: i64) -> i64 =
+    if pos >= end { acc }
+    else if src.byte_at(pos) == 10 { count_nl_loop(src, pos + 1, end, acc + 1) }
+    else { count_nl_loop(src, pos + 1, end, acc) };
+
+fn mk_symbol(name: String, kind: i64, line: i64) -> String =
+    "{\"name\":\"" + escape_json_str(name) + "\"" +
+    ",\"kind\":" + int_to_string(kind) +
+    ",\"location\":{\"range\":{\"start\":{\"line\":" + int_to_string(line) +
+    ",\"character\":0},\"end\":{\"line\":" + int_to_string(line) +
+    ",\"character\":0}}}}";
+
+
+// ============================================
+// textDocument/definition handler
+// ============================================
+
+fn handle_definition(id: String, doc: i64, root: i64, src: String) -> () = {
+    let params_n = jobj_get(doc, root, "params", src);
+    if params_n < 0 { send_response(id, "null") }
+    else {
+        let td = jobj_get(doc, params_n, "textDocument", src);
+        let pos_n = jobj_get(doc, params_n, "position", src);
+        if td < 0 { send_response(id, "null") }
+        else if pos_n < 0 { send_response(id, "null") }
+        else {
+            let uri = jobj_str(doc, td, "uri", src);
+            let req_line = jobj_num(doc, pos_n, "line", src);
+            let req_char = jobj_num(doc, pos_n, "character", src);
+            let file_path = uri_to_path(uri);
+            let content = if file_path == "" { "" } else { read_file(file_path) };
+            let word = word_at_position(content, req_line, req_char);
+            if word == "" { send_response(id, "null") }
+            else {
+                let result = find_decl_in_src(content, word, 0, 0, 0);
+                if result < 0 { send_response(id, "null") }
+                else {
+                    let def_line = result / 1000000;
+                    let def_col = result % 1000000;
+                    let loc = mk_location(uri, def_line, def_col);
+                    send_response(id, loc)
+                }
+            }
+        }
+    }
+};
+
+fn find_decl_in_src(src: String, target: String, pos: i64, line: i64, line_start: i64) -> i64 =
+    if pos >= src.len() { 0 - 1 }
+    else if src.byte_at(pos) == 10 {
+        find_decl_in_src(src, target, pos + 1, line + 1, pos + 1)
+    }
+    else if pos == line_start {
+        let name_col = try_match_decl_name(src, pos, target);
+        if name_col >= 0 {
+            line * 1000000 + name_col
+        } else {
+            find_decl_in_src(src, target, pos + 1, line, line_start)
+        }
+    }
+    else {
+        find_decl_in_src(src, target, pos + 1, line, line_start)
+    };
+
+fn try_match_decl_name(src: String, pos: i64, target: String) -> i64 = {
+    let p = skip_ws_inline(src, pos);
+    let has_pub = starts_with_at(src, p, "pub ");
+    let p2 = if has_pub { p + 4 } else { p };
+    let name_start =
+        if starts_with_at(src, p2, "fn ") { p2 + 3 }
+        else if starts_with_at(src, p2, "struct ") { p2 + 7 }
+        else if starts_with_at(src, p2, "enum ") { p2 + 5 }
+        else { 0 - 1 };
+    if name_start < 0 { 0 - 1 }
+    else {
+        let name_end = find_ident_end(src, name_start);
+        if name_end <= name_start { 0 - 1 }
+        else {
+            let name = src.slice(name_start, name_end);
+            if name == target { name_start - pos }
+            else { 0 - 1 }
+        }
+    }
+};
+
+fn mk_location(uri: String, line: i64, character: i64) -> String =
+    "{\"uri\":\"" + escape_json_str(uri) + "\"," +
+    "\"range\":{\"start\":{\"line\":" + int_to_string(line) + ",\"character\":" + int_to_string(character) + "}," +
+    "\"end\":{\"line\":" + int_to_string(line) + ",\"character\":" + int_to_string(character) + "}}}";
 
 // ============================================
 // Main Message Loop
 // ============================================
 
-fn main() -> i64 = {
-    // Log to stderr for debugging
-    lsp_loop(false)
-};
+fn main() -> i64 =
+    lsp_loop(false);
 
 fn lsp_loop(shutdown: bool) -> i64 = {
     let msg = read_message();
     if msg == "" { 0 }
-    else if shutdown { 0 }  // After shutdown, exit on next message (should be "exit")
+    else if shutdown { 0 }
     else {
         let should_stop = dispatch(msg);
         lsp_loop(should_stop)
     }
 };
 
-// Dispatch a JSON-RPC message
-// Returns true if server should stop
 fn dispatch(msg: String) -> bool = {
     let doc = jdoc_new();
     let root = jparse(doc, msg);
@@ -464,7 +869,6 @@ fn dispatch(msg: String) -> bool = {
                 else if t == 3 { "\"" + jstr(doc, id_node, msg) + "\"" }
                 else { "null" }
             };
-
         dispatch_method(method, id_str, doc, root, msg)
     }
 };
@@ -486,11 +890,12 @@ fn dispatch_method(method: String, id: String, doc: i64, root: i64, src: String)
         handle_hover(id, doc, root, src); false
     } else if method == "textDocument/completion" {
         handle_completion(id, doc, root, src); false
+    } else if method == "textDocument/documentSymbol" {
+        handle_document_symbols(id, doc, root, src); false
+    } else if method == "textDocument/definition" {
+        handle_definition(id, doc, root, src); false
     } else {
-        // Unknown method — respond with method not found for requests
-        if id != "" {
-            send_response(id, "null")
-        } else { () };
+        if id != "" { send_response(id, "null") } else { () };
         false
     }
 };

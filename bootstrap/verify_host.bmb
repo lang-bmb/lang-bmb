@@ -1,0 +1,183 @@
+// bootstrap/verify_host.bmb -- BMB contract verification host script
+// Cycle 2598, Track S
+//
+// Usage:
+//   BMB_FILE=<file.bmb> ./bootstrap/verify_host.exe
+//   BMB_FILE=<file.bmb> BMB_PATH=/path/to/bmb ./bootstrap/verify_host.exe
+//
+// Output (stdout): single-line JSON
+//   { "status": "ok"|"type_error"|"verify_error"|"error",
+//     "file": "...",
+//     "type_check": { "status": "ok"|"error", "error_count": N, "diagnostics": [...] },
+//     "contracts": { "status": "verified"|"failed"|"skipped"|"error",
+//                    "total": N, "verified": N, "failed": N } }
+//
+// Environment:
+//   BMB_FILE   -- path to the .bmb file to verify (required)
+//   BMB_PATH   -- path to the bmb binary (default: "bmb")
+
+fn bmb_binary() -> String = {
+    let env = getenv("BMB_PATH");
+    if env == "" { "bmb" } else { env }
+};
+
+// ============================================================
+// String utilities
+// ============================================================
+
+fn vh_find_nl(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { 0 - 1 }
+    else if s.byte_at(pos) == 10 { pos }
+    else { vh_find_nl(s, pos + 1) };
+
+fn vh_contains(s: String, sub: String) -> bool =
+    vh_contains_loop(s, sub, 0);
+
+fn vh_contains_loop(s: String, sub: String, pos: i64) -> bool =
+    if pos + sub.len() > s.len() { false }
+    else if s.slice(pos, pos + sub.len()) == sub { true }
+    else { vh_contains_loop(s, sub, pos + 1) };
+
+fn vh_escape(s: String) -> String =
+    vh_escape_loop(s, 0, "");
+
+fn vh_escape_loop(s: String, i: i64, acc: String) -> String =
+    if i >= s.len() { acc }
+    else {
+        let c = s.byte_at(i);
+        let esc = if c == 34 { "\\\"" }
+                  else if c == 92 { "\\\\" }
+                  else if c == 10 { "\\n" }
+                  else if c == 13 { "\\r" }
+                  else { chr(c) };
+        vh_escape_loop(s, i + 1, acc + esc)
+    };
+
+// ============================================================
+// BMB check output parser
+// ============================================================
+
+// Returns JSON array of diagnostics from bmb check output
+fn collect_diags(output: String, pos: i64, acc: String) -> String =
+    if pos >= output.len() {
+        if acc == "" { "[]" } else { "[" + acc + "]" }
+    }
+    else {
+        let nl = vh_find_nl(output, pos);
+        let end = if nl < 0 { output.len() } else { nl };
+        let line = output.slice(pos, end);
+        let is_diag = line.len() > 1 and
+                      line.byte_at(0) == 123 and
+                      (vh_contains(line, "\"type\":\"error\"") or
+                       vh_contains(line, "\"type\":\"warning\""));
+        let new_acc = if is_diag {
+            if acc == "" { line } else { acc + "," + line }
+        } else { acc };
+        let next = if nl < 0 { output.len() } else { nl + 1 };
+        collect_diags(output, next, new_acc)
+    };
+
+fn count_errors(output: String, pos: i64, count: i64) -> i64 =
+    if pos >= output.len() { count }
+    else {
+        let nl = vh_find_nl(output, pos);
+        let end = if nl < 0 { output.len() } else { nl };
+        let line = output.slice(pos, end);
+        let is_error = vh_contains(line, "\"type\":\"error\"");
+        let new_count = if is_error { count + 1 } else { count };
+        let next = if nl < 0 { output.len() } else { nl + 1 };
+        count_errors(output, next, new_count)
+    };
+
+fn run_type_check(file_path: String) -> String = {
+    let bmb = bmb_binary();
+    let output = system_capture(bmb + " check \"" + file_path + "\" 2>&1");
+    let diags = collect_diags(output, 0, "");
+    let n_errors = count_errors(output, 0, 0);
+    let status = if n_errors == 0 { "ok" } else { "error" };
+    "{\"status\":\"" + status + "\"," +
+    "\"error_count\":" + int_to_string(n_errors) + "," +
+    "\"diagnostics\":" + diags + "}"
+};
+
+// ============================================================
+// BMB verify output parser
+// ============================================================
+
+fn parse_num_field(s: String, field: String) -> i64 =
+    parse_num_field_loop(s, field, 0);
+
+fn parse_num_field_loop(s: String, field: String, pos: i64) -> i64 =
+    if pos + field.len() >= s.len() { 0 }
+    else if s.slice(pos, pos + field.len()) == field {
+        parse_digits(s, pos + field.len(), 0)
+    }
+    else { parse_num_field_loop(s, field, pos + 1) };
+
+fn parse_digits(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() { acc }
+    else {
+        let c = s.byte_at(pos);
+        if c >= 48 and c <= 57 { parse_digits(s, pos + 1, acc * 10 + c - 48) }
+        else { acc }
+    };
+
+fn run_verify_contracts(file_path: String) -> String = {
+    let bmb = bmb_binary();
+    let output = system_capture(bmb + " verify \"" + file_path + "\" 2>&1");
+    if output == "" {
+        "{\"status\":\"skipped\",\"message\":\"no output -- Z3 may not be installed\",\"total\":0,\"verified\":0,\"failed\":0}"
+    } else if vh_contains(output, "\"type\":\"verify_result\"") {
+        let total = parse_num_field(output, "\"total\":");
+        let verified = parse_num_field(output, "\"verified\":");
+        let failed = parse_num_field(output, "\"failed\":");
+        let st = if failed == 0 { "verified" } else { "failed" };
+        "{\"status\":\"" + st + "\"," +
+        "\"total\":" + int_to_string(total) + "," +
+        "\"verified\":" + int_to_string(verified) + "," +
+        "\"failed\":" + int_to_string(failed) + "}"
+    } else if vh_contains(output, "z3") and vh_contains(output, "not found") {
+        "{\"status\":\"skipped\",\"message\":\"Z3 not found\",\"total\":0,\"verified\":0,\"failed\":0}"
+    } else if vh_contains(output, "\"type\":\"error\"") {
+        let snip = if output.len() > 300 { output.slice(0, 300) } else { output };
+        "{\"status\":\"error\",\"message\":\"" + vh_escape(snip) + "\",\"total\":0,\"verified\":0,\"failed\":0}"
+    } else {
+        let snip = if output.len() > 200 { output.slice(0, 200) } else { output };
+        "{\"status\":\"skipped\",\"message\":\"" + vh_escape(snip) + "\",\"total\":0,\"verified\":0,\"failed\":0}"
+    }
+};
+
+// ============================================================
+// Main
+// ============================================================
+
+fn strip_cr(s: String) -> String =
+    if s.len() > 0 and s.byte_at(s.len() - 1) == 13 { s.slice(0, s.len() - 1) }
+    else { s };
+
+fn main() -> i64 = {
+    let env_file = getenv("BMB_FILE");
+    let file_path = if env_file != "" { env_file }
+                    else { strip_cr(read_line()) };
+    if file_path == "" {
+        write_stdout("{\"status\":\"error\",\"message\":\"no file specified (set BMB_FILE or provide path via stdin)\"}\n");
+        1
+    } else {
+        let check = run_type_check(file_path);
+        let verify = run_verify_contracts(file_path);
+        let check_ok = vh_contains(check, "\"status\":\"ok\"");
+        let verify_ok = vh_contains(verify, "\"status\":\"verified\"") or
+                        vh_contains(verify, "\"status\":\"skipped\"");
+        let overall = if check_ok and verify_ok { "ok" }
+                      else if check_ok == false { "type_error" }
+                      else { "verify_error" };
+        let result = "{" +
+            "\"status\":\"" + overall + "\"," +
+            "\"file\":\"" + vh_escape(file_path) + "\"," +
+            "\"type_check\":" + check + "," +
+            "\"contracts\":" + verify +
+            "}";
+        write_stdout(result + "\n");
+        if overall == "ok" { 0 } else { 1 }
+    }
+};
