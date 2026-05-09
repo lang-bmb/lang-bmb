@@ -1,9 +1,9 @@
 # BMB Session Handoff — 2026-05-09 (Cycles 2550-2557 — Track N Complete ★)
 
 > **이전 HEAD**: `e75a20dc` (docs(handoff): Cycles 2541-2549 closure)
-> **새 HEAD**: `b12da01d` (feat(m2): Track N complete — 12 tools, 4 resources, 3 prompts)
-> **Origin/main 대비**: 누적 commits ahead — push 미수행, 사용자 결정 영역.
-> **세션 성격**: 10-cycle run-cycle (8 cycles 사용, 2 cycles 잔여 — 조기 종료 조건 충족 시 종료). Track N Phase 2d 전체 + Track O native binary + 추가 tools — **M2 Track N 완성**.
+> **새 HEAD**: `9e7132d1` (docs(handoff): Cycles 2550-2557 closure — Track N complete, M2 ~95%)
+> **Origin/main 대비**: 5 commits ahead (`bb95e4f6` → `9e7132d1`) — push 미수행, 사용자 결정 영역.
+> **세션 성격**: 10-cycle run-cycle (8 cycles 사용, 자율 조기 종료). Track N Phase 2d 전체 + Track O native binary + 추가 tools — **M2 Track N 완성**.
 > **결정적 결과**: Track N MCP server ~99% (12 tools ✅ + 4 resources ✅ + 3 prompts ✅, 74/74 pytest).
 
 ---
@@ -299,8 +299,42 @@ git commit -m "docs(handoff): Cycles 2550-2557 closure — Track N complete, M2 
 
 ---
 
-## 10. 메모리 업데이트 (2026-05-09)
+## 10. 정리 태스크 (세션 종료)
 
-본 세션 학습 메모리 영속화:
+### 즉시 수행 (사용자 액션)
+
+| 태스크 | 명령 | 상태 |
+|--------|------|------|
+| **git push** | `git push origin main` | ⏳ 사용자 결정 |
+| **bmb-mcp submodule push** | `cd ecosystem/bmb-mcp && git push origin main` | ⏳ git push 이후 |
+
+### 확인 불필요 (이미 완료)
+
+| 항목 | 상태 |
+|------|------|
+| Cycle logs 작성 (2550-2557) | ✅ |
+| submodule inner commits (4126ab4, d0b6d46, 6321cda) | ✅ |
+| parent repo commits (bb95e4f6, 4a012941, b12da01d, 9e7132d1) | ✅ |
+| docs/ROADMAP.md M2 Track N/O/Q 상태 업데이트 | ✅ |
+| claudedocs/cycle-logs/ROADMAP.md 업데이트 | ✅ |
+| memory/MEMORY.md 인덱스 추가 | ✅ |
+| memory/project_session_2026_05_09_track_n_complete.md | ✅ |
+| pytest 74/74 최종 확인 | ✅ |
+
+### 잔여 untracked (결정 불필요 — 기존 상태 유지)
+
+| 파일 | 설명 |
+|------|------|
+| `ecosystem/benchmark-bmb` | 이전 세션부터 누적. `main_vec.bmb` 포함. 사용자 의도 확인 후 결정. |
+| `ecosystem/bmb-mcp` (working tree) | 내부 `.bmb/` 디렉토리 untracked — 빌드 캐시. gitignore 대상. 무시 가능. |
+| `bootstrap/context_pack/context_pack.exe` | 빌드 산출물. gitignore 대상. 무시 가능. |
+
+---
+
+## 11. 메모리 업데이트 (2026-05-09)
+
+본 세션 학습 메모리 영속화 ✅:
 - `MEMORY.md` 인덱스에 "Track N Complete Session" 추가.
-- `project_session_2026_05_09_track_n_complete.md` 신규.
+- `project_session_2026_05_09_track_n_complete.md` 신규 작성.
+
+**세션 종료**: 2026-05-09 (Cycles 2550-2557, HEAD `9e7132d1`, 자율 조기 종료)
