@@ -1,7 +1,8 @@
 # BMB Session Handoff — 2026-05-09 (Cycles 2558-2565 — Track T Complete ★)
 
 > **이전 HEAD**: `9e7132d1` (docs(handoff): Cycles 2550-2557 closure — Track N complete, M2 ~95%)
-> **현재 세션**: Cycles 2558-2565 (uncommitted)
+> **새 HEAD**: `de2ba9e7` (feat(track-m+t): Track M 100% + Track T Node.js bindings 5/5 complete)
+> **Origin/main 대비**: 16 commits ahead — push 미수행, 사용자 결정 영역.
 > **세션 성격**: 10-cycle run-cycle. Track M closeout + Track T Node.js bindings 전체 완성 (5/5 libraries).
 > **결정적 결과**: Track T Node 5/5 ✅ (algo/compute/text/crypto/json) + Track M 100% ✅.
 
@@ -85,34 +86,32 @@
 
 ## 2. 산출물 (미커밋)
 
-### Modified / Created files
+### Committed (HEAD `de2ba9e7`)
 
-| 분류 | 파일 | 상태 |
-|------|------|------|
-| Track M | `bmb/src/main.rs` | modified |
-| Track M | `docs/AI_OUTPUT_SCHEMA.md` | modified |
-| Track T | `ecosystem/bmb-algo/bindings/node/index.js` | new |
-| Track T | `ecosystem/bmb-algo/bindings/node/package.json` | new |
-| Track T | `ecosystem/bmb-algo/bindings/node/test/test.js` | new |
-| Track T | `ecosystem/bmb-algo/bindings/node/node_modules/` | new (gitignored) |
-| Track T | `ecosystem/bmb-algo/bindings/node/README.md` | new |
-| Track T | `ecosystem/bmb-algo/README.md` | modified |
-| Track T | `ecosystem/bmb-compute/bindings/node/index.js` | new |
-| Track T | `ecosystem/bmb-compute/bindings/node/package.json` | new |
-| Track T | `ecosystem/bmb-compute/bindings/node/test/test.js` | new |
-| Track T | `ecosystem/bmb-text/bindings/node/index.js` | new |
-| Track T | `ecosystem/bmb-text/bindings/node/package.json` | new |
-| Track T | `ecosystem/bmb-text/bindings/node/test/test.js` | new |
-| Track T | `ecosystem/bmb-crypto/bindings/node/index.js` | new |
-| Track T | `ecosystem/bmb-crypto/bindings/node/package.json` | new |
-| Track T | `ecosystem/bmb-crypto/bindings/node/test/test.js` | new |
-| Track T | `ecosystem/bmb-json/bindings/node/index.js` | new |
-| Track T | `ecosystem/bmb-json/bindings/node/package.json` | new |
-| Track T | `ecosystem/bmb-json/bindings/node/test/test.js` | new |
-| Gitignore | `ecosystem/.gitignore` | modified |
-| ROADMAP | `docs/ROADMAP.md` | modified |
-| Cycle logs | `claudedocs/cycle-logs/cycle-{2558..2565}.md` | new |
-| HANDOFF | `claudedocs/HANDOFF.md` | this file |
+| 분류 | 파일 |
+|------|------|
+| Track M | `bmb/src/main.rs`, `docs/AI_OUTPUT_SCHEMA.md` |
+| Track T | `ecosystem/bmb-{algo,compute,text,crypto,json}/bindings/node/index.js` |
+| Track T | `ecosystem/bmb-{algo,compute,text,crypto,json}/bindings/node/package.json` |
+| Track T | `ecosystem/bmb-{algo,compute,text,crypto,json}/bindings/node/test/test.js` |
+| Track T | `ecosystem/bmb-algo/bindings/node/README.md`, `ecosystem/bmb-algo/README.md` |
+| ROADMAP | `docs/ROADMAP.md` |
+| Gitignore | root `.gitignore` (Node.js 항목) |
+| HANDOFF | `claudedocs/HANDOFF.md` |
+
+### Gitignored (local only)
+
+| 분류 | 파일 |
+|------|------|
+| Cycle logs | `claudedocs/cycle-logs/cycle-{2558..2565}.md` |
+| node_modules | `ecosystem/bmb-*/bindings/node/node_modules/` |
+
+### 잔여 untracked
+
+| 파일 | 설명 |
+|------|------|
+| `ecosystem/benchmark-bmb` | 이전 세션부터 누적. 사용자 의도 확인 후 결정. |
+| `ecosystem/bmb-mcp` (working tree) | 내부 `.bmb/` 디렉토리 — 빌드 캐시. gitignore 대상. |
 
 ---
 
@@ -219,10 +218,9 @@
 
 ---
 
-**세션 종료**: 2026-05-09 (Cycles 2558-2565, 미커밋)
+**세션 종료**: 2026-05-09 (Cycles 2558-2565, HEAD `de2ba9e7`)
 
 **다음 세션 첫 액션**:
 1. `cargo build --release` — main.rs 수정 반영
-2. `git add` 및 커밋
-3. `git push origin main` (선택)
-4. Track O Phase 7 또는 Track Q Phase 2 선택
+2. `git push origin main` (선택)
+3. Track O Phase 7 또는 Track Q Phase 2 선택

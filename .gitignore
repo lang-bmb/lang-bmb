@@ -107,3 +107,7 @@ ecosystem/bmb-*/*.dylib
 ecosystem/bmb-*/bindings/python/*.dll
 ecosystem/bmb-*/bindings/python/*.so
 ecosystem/bmb-*/bindings/python/*.dylib
+
+# Node.js
+**/node_modules/
+**/package-lock.json
