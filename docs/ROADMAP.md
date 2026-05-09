@@ -177,6 +177,9 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 | 2571 | **Track T npm prep Phase 2**: bmb-text + bmb-crypto + bmb-json TypeScript declarations + README | ✅ |
 | 2572 | M2 gate assessment: M~100%, N~99%, O~95%, Q~75%, R~75% + commit Cycles 2566-2571 | ✅ |
 | 2573 | **Track Q Phase 3**: `todo_comment` + `missing_pre_index` checks (7 total), CI gate in ci.yml — Q ~85%, 81/81 pytest | ✅ |
+| 2574 | Track Q CI gate + ROADMAP update | ✅ |
+| 2575 | HANDOFF Cycles 2566-2575 closure | ✅ |
+| 2576 | **Track T publish infra**: release.yml DLL build job (3 OS) + npm-publish.yml + README install guides — T ~95% | ✅ |
 
 #### Cycle 2526+ Performance Track (post-2525, **HANDOFF P-1/P-2 INVALIDATED Cycle 2528**)
 
