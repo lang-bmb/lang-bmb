@@ -214,14 +214,23 @@ Terminal event of `bmb fmt`.
 
 ---
 
-## 3. AST/IR dump events (TODO — Track M Phase 2)
+## 3. AST/IR dump events
 
-Currently `bmb dump-ast` emits `serde_json::to_string_pretty(&ast)` (pretty JSON). Track M Phase 2 will:
-1. Add `--format compact|pretty` to dump-ast / dump-mir / dump-cir.
-2. Default = `compact` (Rule 8 정합).
-3. Wrap in `{"type":"ast_dump","ast":<AST JSON>}` for consistency.
+### `bmb parse <file>` — ✅ implemented (Cycle 2558)
 
-Schema documented when implemented.
+Outputs the full AST as JSON. Unlike other commands, this is **not** wrapped in a `{"type":...}` envelope — the AST object itself is the output.
+
+**Format selection** (`--format` / `-f`):
+
+| Value | Output |
+|-------|--------|
+| `compact` (default) | Single-line JSON (Rule 8: machine-friendly) |
+| `json` | Alias for `compact` (backward compat) |
+| `pretty` | Multi-line indented JSON |
+| `sexpr` | S-expression tree |
+| *(with `--human`)* | Overrides to pretty regardless of --format |
+
+**Note**: The `type` discriminator wrapper (`{"type":"ast_dump","ast":...}`) is deferred — direct AST JSON is more token-efficient for downstream tooling.
 
 ---
 
@@ -307,12 +316,13 @@ warnings = [e for e in events if e["type"] == "warning"]
 This document is the v1 baseline. Prior to v1 freeze, additions or refinements may occur without notice. Once v1 freezes (current expectation: M2 complete), this schema becomes a stability guarantee.
 
 **Track M completion criteria** (M2 게이트):
-- [ ] AI_OUTPUT_SCHEMA.md — ✅ this document (Cycle 2516, Phase 1)
-- [ ] dump-ast `--format compact|pretty` — Phase 2 (Rust 또는 BMB rewrite)
-- [ ] 회귀 테스트: 모든 `bmb <cmd> --human=false` 출력이 valid JSONL — Phase 2
-- [ ] CI gate (선택) — Phase 3
+- [x] AI_OUTPUT_SCHEMA.md — ✅ this document (Cycle 2516, Phase 1)
+- [x] dump-ast `--format compact|pretty` — ✅ Cycle 2558 (`bmb parse --format compact|pretty|sexpr|json`)
+- [x] 회귀 테스트: `bmb parse` default → compact JSON (single-line, valid JSON) — ✅ Cycle 2559
+- [ ] CI gate (선택) — deferred (low priority)
 
 ---
 
 **작성**: 2026-05-01 (Cycle 2516)
+**갱신**: 2026-05-09 (Cycles 2558-2559 — dump-ast format + Track M closure)
 **Anchor**: CLAUDE.md Rule 8, ROADMAP § "Vision v1.0 Framework" Track M

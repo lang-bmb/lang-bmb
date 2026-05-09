@@ -1,0 +1,15 @@
+{
+  "name": "bmb-compute",
+  "version": "0.1.0",
+  "description": "Numeric computation powered by BMB — Node.js bindings",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "scripts": {
+    "test": "node --test test/test.js"
+  },
+  "dependencies": {
+    "koffi": "^2.16.2"
+  },
+  "license": "MIT",
+  "engines": { "node": ">=18.0.0" }
+}

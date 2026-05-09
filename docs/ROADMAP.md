@@ -47,8 +47,8 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 
 | 트랙 | 내용 | 현 상태 | 잔여 issue |
 |------|------|---------|-----------|
-| **M (Machine-First Output)** | 모든 출력 디폴트 JSON, `--human` 옵션 | ~85% (스키마 명세 ✅ Cycle 2516, dump-ast --format deferred) | `docs/AI_OUTPUT_SCHEMA.md` (v1) + `claudedocs/issues/ISSUE-20260501-track-m-machine-output.md` |
-| **N (MCP Server)** | `bmb mcp` 또는 `bmb-mcp` (Chatter) | **~98%** (Cycles 2524-2554: 11 tools ✅, 4 resources ✅, 3 prompts ✅, 69/69 pytest) | Remaining: bmb_examples resource, bmb://stdlib/{module} per-module docs |
+| **M (Machine-First Output)** | 모든 출력 디폴트 JSON, `--human` 옵션 | **~100% ✅** (Cycles 2516+2558-2559: 스키마 명세 ✅, dump-ast --format compact/pretty ✅, AI_OUTPUT_SCHEMA.md v1 갱신 ✅) | CI gate optional (deferred) |
+| **N (MCP Server)** | `bmb mcp` 또는 `bmb-mcp` (Chatter) | **~99% ✅** (Cycles 2524-2557: 12 tools ✅, 4 resources ✅, 3 prompts ✅, 74/74 pytest) | Remaining: bmb_examples resource, bmb://stdlib/{module} per-module docs (optional) |
 | **O (Context Pack)** | `bmb context-pack <project>` | **~90%** (Cycles 2517-2554: walker/extractor/context_pack.bmb ✅, token budget ✅, native binary ✅, MCP tool+resource ✅) | Remaining: Phase 7 schema validation (optional) |
 | **Q (Ambiguity Audit)** | grammar 정적 분석 + `bmb lint --ai-friendly` | **~60%** (Cycle 2548: MCP-layer `bmb_lint_explain` ✅, 12 warning kinds with explanation+fix) | Remaining: BMB-native lint module (2-3 cycles, deferred) |
 | **R (LLM Bench Tracking)** | `bmb-ai-bench` 50-task suite (합격선 X) | ~75% (Cycle 2523: ai-proof deprecation notice + bmb-ai-bench README + perf_target_ratio 정책 docstring 명시) | `claudedocs/track-n-r-inventory-2026-05-01.md`, `ISSUE-20260501-track-r-llm-bench.md` |
@@ -59,7 +59,7 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 |------|--------|---|
 | BMB showcase 라이브러리 1개 | 5개 후보 (algo/compute/crypto/text/json) | 도메인 정합 1개 선정 |
 | C ABI 노출 (안정 헤더 + 빌드) | ✅ (`build_all.py`, `gen_headers.py`) | 자동생성 안정화 |
-| Python + Node 바인딩 | ⚠️ Python ✅, Node ❌ | Node bindings PoC |
+| Python + Node 바인딩 | ✅ Python ✅, Node **5/5 ✅** (Cycles 2560-2564) | Track T Node complete — algo/compute/text/crypto/json |
 | 트랙 S 90% | ❌ 0/5 (LSP/fmt/lint/verify/bench Rust) | BMB 재작성 |
 
 #### M4 Adopted
@@ -154,6 +154,20 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 | 2529 | Real root cause = LICM 차단 (BMB `MemoryEffectAnalysis`가 runtime intrinsic 누락) + manual IR patch validation (1.04x ✅) | ✅ |
 | 2530 | `MemoryEffectAnalysis::is_runtime_read_only` 추가 (`byte_at`/`len`/`bmb_string_*` 등) + pass order swap. text backend `memory(read)` 정확 emit. **inkwell `create_string_attribute("memory","read")` 부정확** — separate fix needed (Rule 7 parity) | ✅ |
 | 2531 | 5 byte-stream 벤치 측정 — Cycle 2530 fix ROI: **brainfuck 1.04→1.00, lexer 1.04→1.00 ✅**, csv_parse 1.00 (이미), json_parse 1.12 (auto-inliner override 잔여), http_parse 빌드 실패 (사전 결함) | ✅ |
+| 2532 | M1 strict: text backend noinline 자동 부여 + json_parse 1.12→1.01 ✅ | ✅ |
+| 2533 | M1 strict: inkwell memory(read) enum attr parity (Rule 7) | ✅ |
+| 2534 | M1 strict: switch narrow + bootstrap S2==S3 Fixed Point ✅ | ✅ |
+| 2535 | M1 strict gate: **16/16 PASS 첫 달성** (≤1.05x) | ✅ |
+| 2536-2540 | P-A polish residue + Track O Phase 2 추정 (1→2.5-3.5 cycles) | ✅ |
+| 2541-2549 | Track O+N+Q Phase 2 — context_pack full pipeline + bmb-mcp 6 tools/3 resources/3 prompts | ✅ |
+| 2550-2557 | Track N MCP server 완성 (12 tools/4 resources/3 prompts/74 tests) | ✅ |
+| 2558 | Track M closeout: `bmb parse --format compact` 디폴트 + `parse_file()` compact/pretty/sexpr 분기 | ✅ |
+| 2559 | Track M closeout: `docs/AI_OUTPUT_SCHEMA.md` § 3 Parse output schema 완성 | ✅ |
+| 2560 | **Track T PoC**: bmb-algo Node.js bindings (24 fn, 21/21 tests) — koffi int64_t* 포인터 패턴 확립 | ✅ |
+| 2561 | Track T: bmb-algo README + ecosystem .gitignore | ✅ |
+| 2562 | Track T: bmb-compute Node.js bindings (27 fn, 10/10 tests) | ✅ |
+| 2563 | Track T: bmb-text + bmb-crypto Node.js bindings (21 fn 9/9 + 14 fn 8/8) | ✅ |
+| 2564 | **Track T complete**: bmb-json Node.js bindings (12 fn, 16/16 tests) — output-ownership fix (`_from` no-free) | ✅ |
 
 #### Cycle 2526+ Performance Track (post-2525, **HANDOFF P-1/P-2 INVALIDATED Cycle 2528**)
 

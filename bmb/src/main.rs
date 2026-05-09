@@ -180,8 +180,8 @@ enum Command {
     Parse {
         /// Source file to parse
         file: PathBuf,
-        /// Output format: json or sexpr (S-expression)
-        #[arg(long, short, default_value = "json")]
+        /// Output format: compact (default, machine-friendly), pretty, sexpr, json (alias for compact)
+        #[arg(long, short, default_value = "compact")]
         format: String,
     },
     /// Tokenize and dump tokens (debug)
@@ -1600,7 +1600,16 @@ fn parse_file(path: &PathBuf, format: &str) -> Result<(), Box<dyn std::error::Er
 
     match format {
         "sexpr" | "s-expression" => println!("{}", bmb::ast::output::to_sexpr(&ast)),
-        _ => println!("{}", serde_json::to_string_pretty(&ast)?),
+        "pretty" => println!("{}", serde_json::to_string_pretty(&ast)?),
+        _ => {
+            // "compact" | "json" (json is alias for compact, Rule 8: default=machine)
+            // --human flag overrides to pretty
+            if is_human_output() {
+                println!("{}", serde_json::to_string_pretty(&ast)?);
+            } else {
+                println!("{}", serde_json::to_string(&ast)?);
+            }
+        }
     }
     Ok(())
 }

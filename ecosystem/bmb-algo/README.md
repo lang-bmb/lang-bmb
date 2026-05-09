@@ -6,9 +6,16 @@ High-performance algorithms compiled from [BMB](https://github.com/iyulab/lang-b
 
 ## Installation
 
+**Python:**
 ```bash
 pip install bmb-algo
 ```
+
+**Node.js** (via koffi FFI — no native build required):
+```bash
+cd ecosystem/bmb-algo/bindings/node && npm install
+```
+See [`bindings/node/README.md`](bindings/node/README.md) for full Node.js API documentation.
 
 ## Benchmarks (vs Pure Python)
 

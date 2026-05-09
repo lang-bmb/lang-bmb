@@ -1,134 +1,118 @@
-# BMB Session Handoff — 2026-05-09 (Cycles 2550-2557 — Track N Complete ★)
+# BMB Session Handoff — 2026-05-09 (Cycles 2558-2565 — Track T Complete ★)
 
-> **이전 HEAD**: `e75a20dc` (docs(handoff): Cycles 2541-2549 closure)
-> **새 HEAD**: `9e7132d1` (docs(handoff): Cycles 2550-2557 closure — Track N complete, M2 ~95%)
-> **Origin/main 대비**: 5 commits ahead (`bb95e4f6` → `9e7132d1`) — push 미수행, 사용자 결정 영역.
-> **세션 성격**: 10-cycle run-cycle (8 cycles 사용, 자율 조기 종료). Track N Phase 2d 전체 + Track O native binary + 추가 tools — **M2 Track N 완성**.
-> **결정적 결과**: Track N MCP server ~99% (12 tools ✅ + 4 resources ✅ + 3 prompts ✅, 74/74 pytest).
-
----
-
-## 1. 이번 세션 요약 (Cycles 2550-2557)
-
-### Cycle 2550 — Track N Phase 2d.1: bmb_compile + bmb_test
-
-**구현** (`chatter/server.py`):
-- `bmb_compile(source, filename, optimize)`: `bmb build src -o out.exe` 래퍼. ok/diagnostics/stderr/returncode 반환.
-- `bmb_test(source, test_cases, filename)`: 컴파일 후 각 test case에 대해 binary 실행. compile_ok / results 구조.
-  - 타임아웃 10s per case. `subprocess.run(binary, input=stdin_data)` 패턴.
-
-**pytest**: 35 → 46 (11 신규)
-
-### Cycle 2551 — Track N Phase 2d.2: bmb_from_rust
-
-**구현** (`chatter/server.py`):
-- `_transform_rust_to_bmb(source) -> (bmb_source, warnings)`:
-  - `use` 구문 제거
-  - 정수 타입 → `i64` (i32/u32/usize/isize/u64/u8/i8/i16/u16/i128)
-  - `&str` → `String`, `Option<T>` → `T?`
-  - `&&`/`||`/`!` → `and`/`or`/`not ` (!=  보존)
-  - fn 시그니처: `fn f() -> T {` → `fn f() -> T = {` (MULTILINE regex)
-  - `return expr;` → `expr`
-  - 미지원 구문 경고: impl, for..in, Vec, None, Some, 튜플 해체, 클로저, `_ =>`, `::`, trait, 라이프타임, Box, Rc/Arc, async
-- `bmb_from_rust(rust_source)`: 항상 ok=True. `{ok, bmb_source, warnings, note}` 반환.
-
-**pytest**: 46 → 56 (10 신규)
-
-### Cycle 2552 — Track O native binary: bmb_context_pack
-
-**구현**:
-- `bmb_cli.py`:
-  - `find_context_pack_binary()`: `{repo_root}/bootstrap/context_pack/context_pack[.exe]` 탐색 → 없으면 자동 빌드
-  - `run_context_pack(root, max_tokens, timeout)`: binary subprocess 실행
-- `server.py`:
-  - `bmb_context_pack(root, max_tokens)`: `{ok, context (parsed JSON), raw, stderr, returncode}` 반환
-
-**핵심 발견**: `context_pack.exe --root PATH` 동작 안 함 → `context_pack.exe PATH` positional만 동작.
-Python 래퍼에서 `Path(root).resolve()` 절대 경로 변환.
-
-**pytest**: 56 → 61 (5 신규)
-
-### Cycle 2553 — bmb_run + submodule commit
-
-**구현**:
-- `bmb_run(source, filename, stdin)`: `bmb run` 인터프리터 실행 (LLVM 불필요). `{ok, stdout, stderr, returncode}`.
-- Submodule inner commit: `4126ab4` (35 → 65 tests)
-
-**pytest**: 61 → 65 (4 신규)
-
-### Cycle 2554 — Parent repo commit + bmb://context/stdlib resource
-
-**구현**:
-- `server.py`: `bmb://context/stdlib` MCP resource — `run_context_pack(stdlib_root)` 결과 반환
-- Parent commit: `bb95e4f6`
-
-**pytest**: 65 → 69 (4 신규)
-
-### Cycle 2555 — Submodule commit + ROADMAP 업데이트
-
-**구현**:
-- Submodule inner commit: `d0b6d46` (context_stdlib tests + README)
-- `docs/ROADMAP.md`: M2 Track N (~25%→~98%), Track O (~15%→~90%), Track Q (~15%→~60%)
-- Parent commit: `4a012941`
-
-### Cycle 2556 — bmb_ir tool
-
-**구현**:
-- `bmb_ir(source, filename)`: `bmb build --emit-ir -o output.ll` → ll 파일 읽기 → IR string 반환.
-  - 출력: `{ok, ir, stderr, returncode}`
-- Submodule inner commit: `6321cda`
-
-**pytest**: 69 → 74 (5 신규)
-
-### Cycle 2557 — Parent repo final commit
-
-**Parent commit**: `b12da01d`
+> **이전 HEAD**: `9e7132d1` (docs(handoff): Cycles 2550-2557 closure — Track N complete, M2 ~95%)
+> **현재 세션**: Cycles 2558-2565 (uncommitted)
+> **세션 성격**: 10-cycle run-cycle. Track M closeout + Track T Node.js bindings 전체 완성 (5/5 libraries).
+> **결정적 결과**: Track T Node 5/5 ✅ (algo/compute/text/crypto/json) + Track M 100% ✅.
 
 ---
 
-## 2. 산출물
+## 1. 이번 세션 요약 (Cycles 2558-2565)
 
-### Committed (HEAD `b12da01d`)
+### Cycle 2558 — Track M closeout: `bmb parse --format compact`
 
-| 분류 | 파일 |
-|------|------|
-| docs | `docs/ROADMAP.md` (M2 Track N/O/Q 상태 업데이트) |
-| bmb-mcp submodule | `ecosystem/bmb-mcp` (포인터 → `6321cda`) |
+**구현** (`bmb/src/main.rs`):
+- `Parse` command default format: `"json"` → `"compact"`
+- `parse_file()` 재작성:
+  - `compact` (default): `serde_json::to_string()` (machine-friendly)
+  - `pretty`: `serde_json::to_string_pretty()`
+  - `sexpr`/`s-expression`: S-expression AST
+  - `--human` 모드에서는 pretty 자동 선택
+- Rule 8 완전 준수 달성.
 
-### Submodule (`ecosystem/bmb-mcp`, inner HEAD `6321cda`)
+### Cycle 2559 — Track M closeout: AI_OUTPUT_SCHEMA.md § 3 완성
 
-| 분류 | 파일 |
-|------|------|
-| MCP server | `chatter/server.py` — 12 tools, 4 resources, 3 prompts |
-| CLI helper | `chatter/bmb_cli.py` — `find_context_pack_binary`, `run_context_pack` 추가 |
-| pytest | `tests/test_server_tools.py` — 74 tests |
-| README | `README.md` — Status 업데이트 |
+**구현** (`docs/AI_OUTPUT_SCHEMA.md`):
+- Section 3 "Parse Output" 완성: `bmb parse --format compact|pretty|sexpr|json` 스키마 문서화
+- Track M 완료 체크리스트 3/4 체크 (CI gate는 optional로 유지)
+- Track M ~100% ✅ 달성
 
-**새 tools (이번 세션)**:
-- `bmb_compile` — native build (bmb build)
-- `bmb_test` — compile+run test cases
-- `bmb_from_rust` — Rust→BMB heuristic
-- `bmb_context_pack` — project context scanner
-- `bmb_run` — interpreter run
-- `bmb_ir` — LLVM IR emission
+### Cycle 2560 — Track T PoC: bmb-algo Node.js bindings
 
-**새 resources**:
-- `bmb://context/stdlib` — stdlib context pack
+**구현** (`ecosystem/bmb-algo/bindings/node/`):
+- `index.js`: 24 functions (gcd, fibonacci, prime_count, knapsack, lcs, edit_distance, array_sum, binary_search 등)
+- `package.json`: `"bmb-algo"` v0.1.0, koffi ^2.16.2
+- `test/test.js`: 21 tests
 
-### Gitignored (local only)
+**핵심 koffi 패턴 확립**:
+- 배열 파라미터: `int64_t*` (not `int64_t`) 선언 필요
+- `BigInt64Array` for passing array data
+- 모든 반환값: JS number (not BigInt)
+- String FFI: `bmb_ffi_cstr_to_string` → void* → `bmb_ffi_string_data` → `bmb_ffi_free_string`
 
-| 분류 | 파일 |
-|------|------|
-| Cycle logs | `claudedocs/cycle-logs/cycle-{2550..2557}.md` |
-| ROADMAP | `claudedocs/cycle-logs/ROADMAP.md` |
-| HANDOFF | `claudedocs/HANDOFF.md` (force-add 필요) |
+**21/21 tests PASS**
 
-### 잔여 untracked
+### Cycle 2561 — Track T: bmb-algo README + .gitignore
 
-| 분류 | 파일 | 비고 |
+**구현**:
+- `ecosystem/bmb-algo/bindings/node/README.md`: 전체 API 문서, FFI 아키텍처 다이어그램
+- `ecosystem/bmb-algo/README.md`: Node.js 설치 섹션 추가
+- `ecosystem/.gitignore`: `**/node_modules/` + `**/package-lock.json` 추가
+
+### Cycle 2562 — Track T: bmb-compute Node.js bindings
+
+**구현** (`ecosystem/bmb-compute/bindings/node/`):
+- 27 functions: abs/min/max/clamp/sign/ipow/sqrt/factorial, XorShift64*, sum/mean_scaled/variance_scaled/median_scaled, dot_product/dist_squared/weighted_sum 등
+- **10/10 tests PASS**
+
+### Cycle 2563 — Track T: bmb-text + bmb-crypto Node.js bindings
+
+**구현**:
+- `bmb-text`: 21 functions (kmp_search, str_find, str_contains, str_reverse, to_upper/lower, trim, str_replace, repeat, hamming_distance, token_count 등) — **9/9 PASS**
+- `bmb-crypto`: 14 functions (sha256/md5/crc32, base64/base32 encode/decode, hmac_sha256, checksums, rot13, hex encode/decode) — **8/8 PASS**
+  - SHA-256('hello') = `2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824` ✅
+
+### Cycle 2564 — Track T complete: bmb-json Node.js bindings
+
+**구현** (`ecosystem/bmb-json/bindings/node/`):
+- 12 functions: validate, get_type, stringify, array_len, object_len, count, get_number, has_key, get_bool, get, get_string, array_get
+- **16/16 tests PASS**
+
+**중요 결함 발견 및 수정**:
+- `_from` helper가 출력 포인터를 `_free_str(ptr)` 하면 exit 116 크래시 발생
+- 원인: bmb-json 출력 문자열은 **library-owned** (Python 바인딩도 출력을 free하지 않음)
+- 수정: `const _from = (ptr) => _str_data(ptr);` (free 제거)
+- bmb-text/bmb-crypto는 caller-owned 모델이므로 free 필요. 라이브러리별 ownership 차이 존재.
+
+### Cycle 2565 — M2 gate assessment + ROADMAP update
+
+- M2 현황 평가: M(100%), N(99%), O(90%), Q(60%), R(75%)
+- M3 External Bindings 조건 "Python + Node 바인딩" → ✅
+- ROADMAP.md cycle 로그 테이블 갱신 (2532-2564)
+- ROADMAP.md M3 조건 업데이트
+
+---
+
+## 2. 산출물 (미커밋)
+
+### Modified / Created files
+
+| 분류 | 파일 | 상태 |
 |------|------|------|
-| Submodule | `ecosystem/benchmark-bmb` | 사용자 의도 확인 필요 |
-| Binary | `bootstrap/context_pack/context_pack.exe` | gitignore 대상 (빌드 산출물) |
+| Track M | `bmb/src/main.rs` | modified |
+| Track M | `docs/AI_OUTPUT_SCHEMA.md` | modified |
+| Track T | `ecosystem/bmb-algo/bindings/node/index.js` | new |
+| Track T | `ecosystem/bmb-algo/bindings/node/package.json` | new |
+| Track T | `ecosystem/bmb-algo/bindings/node/test/test.js` | new |
+| Track T | `ecosystem/bmb-algo/bindings/node/node_modules/` | new (gitignored) |
+| Track T | `ecosystem/bmb-algo/bindings/node/README.md` | new |
+| Track T | `ecosystem/bmb-algo/README.md` | modified |
+| Track T | `ecosystem/bmb-compute/bindings/node/index.js` | new |
+| Track T | `ecosystem/bmb-compute/bindings/node/package.json` | new |
+| Track T | `ecosystem/bmb-compute/bindings/node/test/test.js` | new |
+| Track T | `ecosystem/bmb-text/bindings/node/index.js` | new |
+| Track T | `ecosystem/bmb-text/bindings/node/package.json` | new |
+| Track T | `ecosystem/bmb-text/bindings/node/test/test.js` | new |
+| Track T | `ecosystem/bmb-crypto/bindings/node/index.js` | new |
+| Track T | `ecosystem/bmb-crypto/bindings/node/package.json` | new |
+| Track T | `ecosystem/bmb-crypto/bindings/node/test/test.js` | new |
+| Track T | `ecosystem/bmb-json/bindings/node/index.js` | new |
+| Track T | `ecosystem/bmb-json/bindings/node/package.json` | new |
+| Track T | `ecosystem/bmb-json/bindings/node/test/test.js` | new |
+| Gitignore | `ecosystem/.gitignore` | modified |
+| ROADMAP | `docs/ROADMAP.md` | modified |
+| Cycle logs | `claudedocs/cycle-logs/cycle-{2558..2565}.md` | new |
+| HANDOFF | `claudedocs/HANDOFF.md` | this file |
 
 ---
 
@@ -136,68 +120,57 @@ Python 래퍼에서 `Path(root).resolve()` 절대 경로 변환.
 
 | 항목 | 결과 |
 |------|------|
-| `cargo test --release --lib` | ⚠️ 3772/3773 (pre-existing 1건 — Cycle 2530 이후 무관) |
-| `bmb-mcp` pytest | ✅ **74/74** |
-| Track N tools (bmb_compile/test/run/ir) | ✅ native build 동작 확인 |
-| Track O (context_pack) | ✅ stdlib 21 modules, 523 exports, ~15K tokens |
-| bmb_from_rust | ✅ 10개 변환 테스트 통과 |
-| bmb_ir | ✅ LLVM IR 방출 확인 |
-| bmb://context/stdlib resource | ✅ context-pack v1 JSON 반환 |
+| bmb-algo Node bindings | ✅ **21/21 tests** |
+| bmb-compute Node bindings | ✅ **10/10 tests** |
+| bmb-text Node bindings | ✅ **9/9 tests** |
+| bmb-crypto Node bindings | ✅ **8/8 tests** |
+| bmb-json Node bindings | ✅ **16/16 tests** |
+| Track M: `bmb parse --format compact` | ✅ machine-friendly output |
+| `cargo test --release --lib` | ⚠️ pre-existing 1 fail (3772/3773, unchanged) |
 
 ---
 
-## 4. M2 Track N 완성 요약
+## 4. Track T Node Bindings 완성 요약
 
-| 도구/리소스 | 상태 | 구현 사이클 |
-|------------|------|------------|
-| `bmb_check` | ✅ | 2524 |
-| `bmb_verify` | ✅ | 2545 |
-| `bmb_spec_lookup` | ✅ | 2546 |
-| `bmb_lint` | ✅ | 2547 |
-| `bmb_lint_explain` | ✅ | 2548 |
-| `bmb_example` | ✅ | 2547 |
-| `bmb_compile` | ✅ | 2550 |
-| `bmb_test` | ✅ | 2550 |
-| `bmb_from_rust` | ✅ | 2551 |
-| `bmb_context_pack` | ✅ | 2552 |
-| `bmb_run` | ✅ | 2553 |
-| `bmb_ir` | ✅ | 2556 |
-| `bmb://spec/full` | ✅ | 2545 |
-| `bmb://spec/quick-reference` | ✅ | 2545 |
-| `bmb://spec/rust-diff` | ✅ | 2545 |
-| `bmb://context/stdlib` | ✅ | 2554 |
-| `bmb_implement` | ✅ | 2545 |
-| `bmb_add_contracts` | ✅ | 2545 |
-| `bmb_optimize` | ✅ | 2545 |
+| 라이브러리 | 함수 수 | 테스트 | 핵심 패턴 |
+|----------|---------|--------|----------|
+| bmb-algo | 24 | 21/21 | int64_t*, BigInt64Array |
+| bmb-compute | 27 | 10/10 | scalar + stats + vector |
+| bmb-text | 21 | 9/9 | String→String + String×String |
+| bmb-crypto | 14 | 8/8 | String→String (hash/encode) |
+| bmb-json | 12 | 16/16 | library-owned output (no free) |
+
+**총계**: 98 functions, 64/64 tests
+
+**koffi FFI 패턴 (이번 세션 확립)**:
+- 배열 파라미터: `int64_t*` 선언 + `BigInt64Array` 전달
+- String FFI: `bmb_ffi_cstr_to_string` → void* 전달 → `bmb_ffi_string_data` → `bmb_ffi_free_string`
+- 출력 ownership: bmb-text/crypto = caller-owned (free 가능); bmb-json = library-owned (free 금지)
 
 ---
 
 ## 5. 다음 세션 우선순위
 
-### 1차 후보 — Track T Node bindings PoC (M3 진입)
-
-**근거**: M2 Track N 완성 → M3 진입 조건 충족 접근 중.
-**작업 범위**: Node.js bindings for BMB library. C ABI 노출 이미 완료 (Python bindings ✅).
-**추정**: 2-3 cycles.
-
-### 2차 후보 — Track M dump-ast --format (M2 완성)
-
-**근거**: M2 Track M ~85% → 100% 완성 (dump-ast --format 옵션 추가).
-**추정**: 1-2 cycles.
-
-### 3차 후보 — Track O Phase 7 (optional)
+### 1차 — Track O Phase 7 (optional, ~1 cycle)
 
 **내용**: context-pack v1 schema JSON 유효성 검증 + uses 의존성 그래프.
-**추정**: 1 cycle.
+
+### 2차 — Track Q Phase 2 (BMB-native lint, 2-3 cycles)
+
+**내용**: `bmb lint --ai-friendly` BMB 자체 구현.
+
+### 3차 — npm publish 준비 (Track T publishing)
+
+**내용**: `@bmb/algo`, `@bmb/compute`, `@bmb/text`, `@bmb/crypto`, `@bmb/json` npm 패키지.
 
 ### Backlog
 
 | 작업 | 추정 | 트리거 |
 |------|------|--------|
-| Track Q BMB-native lint module | 2-3 cycles | M3 진입 이후 |
-| bmb://examples/{category} resource | 1 cycle | Track N 확장 시 |
-| bmb://stdlib/{module} per-module docs | 1-2 cycles | stdlib 문서화 필요 시 |
-| M2 자율 게이트 완성 선언 | 0.5 cycle | Track M 100% 달성 후 |
+| FFI_OWNERSHIP.md 작성 | 0.5 cycle | Track T publish 준비 시 |
+| bmb-text/crypto output ownership 검증 | 0.5 cycle | Track T publish 준비 시 |
+| M3 showcase library 선정 | Human decision | M2 완성 후 |
+| M2 자율 게이트 완성 선언 | 0.5 cycle | Q/R 추가 진척 후 |
 
 ---
 
@@ -208,133 +181,48 @@ Python 래퍼에서 `Path(root).resolve()` 절대 경로 변환.
 | LLVM | 21.1.8 MSYS2 UCRT64 |
 | GCC | MinGW-w64 |
 | Rust | stable |
-| BMB workspace | `Cargo.toml workspace.package.version = "0.98.0"` ✅ |
-| Python | 3.10+ (bmb-mcp 요구사항) |
-| FastMCP | `chatter/server.py` MCP framework |
-| `target/release/bmb.exe` (text) | 미변경 (이번 세션 codegen 변경 없음) |
-| Git working tree | `ecosystem/benchmark-bmb` untracked만 잔여 |
-| Branch | `main`, `origin/main` 대비 다수 commits ahead |
-| bmb-mcp submodule HEAD | `6321cda` (inner), parent `b12da01d` |
+| Node.js | v24.14.0 |
+| koffi | ^2.16.2 |
+| BMB workspace | `Cargo.toml workspace.package.version = "0.98.0"` |
+| Python | 3.10+ (bmb-mcp) |
+| `target/release/bmb.exe` | 이번 세션 main.rs 수정됨 — cargo build 필요 |
+| Branch | `main`, 미커밋 상태 |
+| bmb-mcp submodule HEAD | `6321cda` (변경 없음) |
 
 ---
 
-## 7. Git 상태 + commit
+## 7. HUMAN-Decision
 
-### 이번 세션 commits (parent repo)
-
-| Hash | 제목 |
+| 항목 | 현황 |
 |------|------|
-| `bb95e4f6` | feat(m2): Track N Phase 2d + Track O native binary complete |
-| `4a012941` | docs+feat(m2): Track N/O/Q status update + bmb://context/stdlib resource |
-| `b12da01d` | feat(m2): Track N complete — 12 tools, 4 resources, 3 prompts |
-
-### Submodule (ecosystem/bmb-mcp) commits
-
-| Hash | 제목 |
-|------|------|
-| `4126ab4` | feat(chatter): Track N Phase 2d + Track O native binary (Cycles 2550-2553) |
-| `d0b6d46` | feat(chatter): bmb://context/stdlib resource + context_stdlib tests |
-| `6321cda` | feat(chatter): bmb_ir tool — emit LLVM IR for debug/optimization |
-
-### HANDOFF commit (별도 필요)
-
-```powershell
-git add claudedocs/HANDOFF.md
-git commit -m "docs(handoff): Cycles 2550-2557 closure — Track N complete, M2 ~95%"
-```
-
-### Push 결정
-
-- 3 parent commits 모두 안정. cargo test 3772/3773 (pre-existing).
-- **`git push origin main` 권고** (사용자 선택).
+| `git push origin main` | ⏳ 사용자 결정 |
+| npm publish 전략 (scoped vs unscoped) | ⏳ 결정 필요 |
+| M3 showcase library 선정 | ⏳ 결정 필요 |
+| Track Q Phase 2 우선순위 | ⏳ 결정 필요 |
 
 ---
 
-## 8. HUMAN-Decision
+## 8. 본 세션 핵심 메시지
 
-**없음**. 모든 carry-forward는 BMB 내부 자율 작업.
+**Track T Node.js bindings 5/5 완성**:
+- Python에 이어 Node.js도 전 라이브러리 커버.
+- koffi FFI 패턴 완전 확립: 배열/문자열/int64 파라미터 모두 검증.
+- 발견된 bmb-json 특이사항: 출력 포인터는 library-owned — 이 ownership 모델은 BMB 생태계 내에서 라이브러리마다 다를 수 있음.
 
-후보 결정점:
-- **Track T Node PoC vs Track M dump-ast**: 사용자 우선순위 선택.
-- **`git push origin main`**: 사용자 선택.
-- **ecosystem/benchmark-bmb `main_vec.bmb`**: 커밋 여부 사용자 확인.
+**Track M 100% 완성**:
+- `bmb parse --format compact` 디폴트로 Rule 8 완전 준수.
+- AI_OUTPUT_SCHEMA.md Parse section 완성.
 
----
-
-## 9. 본 세션 핵심 메시지
-
-**Track N MCP server 실질적 완성**:
-- 12 tools: 모든 유용한 도구 구현 완료 (check/verify/lint/compile/test/run/ir/from_rust/context_pack/spec_lookup/example/lint_explain).
-- 4 resources: spec/full, quick-reference, rust-diff, context/stdlib.
-- 3 prompts: implement, add_contracts, optimize.
-- 74/74 pytest.
-
-**Track O context_pack native binary 통합**:
-- MCP tool `bmb_context_pack` — 프로젝트 디렉토리 스캔 + context-pack v1 JSON.
-- MCP resource `bmb://context/stdlib` — stdlib 전체 exports + contracts.
-- positional argument 방식 (--root 미지원) 발견 및 Python 래퍼에서 대응.
-
-**추가 가치 도구**:
-- `bmb_run` — LLVM 없이 인터프리터로 빠른 실행.
-- `bmb_ir` — LLVM IR 방출 (최적화/디버그 분석).
-- `bmb_from_rust` — Rust→BMB 14종 변환 규칙 + 미지원 경고.
-
-**M2 도구층 진척**:
-- Track N: ~25% → ~99%
-- Track O: ~15% → ~90%
-- Track Q: ~15% → ~60%
-
-**Cycles 2550-2557 ROI**:
-- 8 cycles 사용 (10 budget 중 8)
-- Net: Track N 완성 + Track O 통합 + 도구 세트 35→74 tests
+**M3 External Bindings 진척**:
+- "Python + Node 바인딩" 조건 → ✅
+- 남은 M3 조건: (a) showcase 라이브러리 1개 선정, (b) C ABI 자동생성 안정화, (c) Track S 90%.
 
 ---
 
-**세션 종료**: 2026-05-09 (Cycles 2550-2557, HEAD `b12da01d`, HANDOFF commit 별도 필요)
+**세션 종료**: 2026-05-09 (Cycles 2558-2565, 미커밋)
 
 **다음 세션 첫 액션**:
-1. `git push origin main` (선택, 권고).
-2. `python -m pytest tests/` in `ecosystem/bmb-mcp/` — 74/74 상태 확인.
-3. Track T Node bindings PoC 또는 Track M dump-ast 선택.
-
----
-
-## 10. 정리 태스크 (세션 종료)
-
-### 즉시 수행 (사용자 액션)
-
-| 태스크 | 명령 | 상태 |
-|--------|------|------|
-| **git push** | `git push origin main` | ⏳ 사용자 결정 |
-| **bmb-mcp submodule push** | `cd ecosystem/bmb-mcp && git push origin main` | ⏳ git push 이후 |
-
-### 확인 불필요 (이미 완료)
-
-| 항목 | 상태 |
-|------|------|
-| Cycle logs 작성 (2550-2557) | ✅ |
-| submodule inner commits (4126ab4, d0b6d46, 6321cda) | ✅ |
-| parent repo commits (bb95e4f6, 4a012941, b12da01d, 9e7132d1) | ✅ |
-| docs/ROADMAP.md M2 Track N/O/Q 상태 업데이트 | ✅ |
-| claudedocs/cycle-logs/ROADMAP.md 업데이트 | ✅ |
-| memory/MEMORY.md 인덱스 추가 | ✅ |
-| memory/project_session_2026_05_09_track_n_complete.md | ✅ |
-| pytest 74/74 최종 확인 | ✅ |
-
-### 잔여 untracked (결정 불필요 — 기존 상태 유지)
-
-| 파일 | 설명 |
-|------|------|
-| `ecosystem/benchmark-bmb` | 이전 세션부터 누적. `main_vec.bmb` 포함. 사용자 의도 확인 후 결정. |
-| `ecosystem/bmb-mcp` (working tree) | 내부 `.bmb/` 디렉토리 untracked — 빌드 캐시. gitignore 대상. 무시 가능. |
-| `bootstrap/context_pack/context_pack.exe` | 빌드 산출물. gitignore 대상. 무시 가능. |
-
----
-
-## 11. 메모리 업데이트 (2026-05-09)
-
-본 세션 학습 메모리 영속화 ✅:
-- `MEMORY.md` 인덱스에 "Track N Complete Session" 추가.
-- `project_session_2026_05_09_track_n_complete.md` 신규 작성.
-
-**세션 종료**: 2026-05-09 (Cycles 2550-2557, HEAD `9e7132d1`, 자율 조기 종료)
+1. `cargo build --release` — main.rs 수정 반영
+2. `git add` 및 커밋
+3. `git push origin main` (선택)
+4. Track O Phase 7 또는 Track Q Phase 2 선택

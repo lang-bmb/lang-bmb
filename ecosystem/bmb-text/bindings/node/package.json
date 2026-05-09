@@ -1,0 +1,10 @@
+{
+  "name": "bmb-text",
+  "version": "0.1.0",
+  "description": "High-performance string processing powered by BMB — Node.js bindings",
+  "main": "index.js",
+  "scripts": { "test": "node --test test/test.js" },
+  "dependencies": { "koffi": "^2.16.2" },
+  "license": "MIT",
+  "engines": { "node": ">=18.0.0" }
+}
