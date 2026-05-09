@@ -1,12 +1,14 @@
-// lint.bmb -BMB-native AI-friendly lint tool (Track Q Phase 2)
-// Cycle 2567. Pattern-based lint checks without a full parse step.
+// lint.bmb -BMB-native AI-friendly lint tool (Track Q Phase 2+3)
+// Cycles 2567-2573. Pattern-based lint checks without a full parse step.
 //
-// Implements 5 checks detectable by source text analysis:
-//   1. non_snake_case       -CamelCase function name
+// Implements 7 checks detectable by source text analysis:
+//   1. non_snake_case        -CamelCase function name
 //   2. missing_postcondition -pub fn without post clause
 //   3. negated_if_condition  -if not( ... )
 //   4. redundant_bool_compare -== true / == false
 //   5. chained_comparison    -c == X or c == Y or c == Z (3+ arms)
+//   6. todo_comment          -// TODO or // FIXME (incomplete implementation)
+//   7. missing_pre_index     -pub fn with idx/index param but no pre clause
 //
 // Output: one JSON line per warning + trailing lint summary line.
 // Format matches `bmb lint` machine output for drop-in compatibility.
@@ -261,6 +263,55 @@ fn check_chained_comparison(source: String, ls: i64, nl: i64, filename: String, 
     } else { 0 }
 };
 
+// Check 6: todo_comment -// TODO or // FIXME signals incomplete implementation
+fn check_todo_comment(source: String, ls: i64, nl: i64, filename: String, line_num: i64, offset: i64) -> i64 = {
+    if line_contains(source, ls, nl, "// TODO") or line_contains(source, ls, nl, "// FIXME") {
+        emit_warning(filename, "todo_comment", line_num, offset,
+            "TODO/FIXME comment found -incomplete implementation or known issue")
+    } else { 0 }
+};
+
+// Check 7: missing_pre_index -pub fn with idx/index parameter but no pre bounds clause.
+// LLMs frequently omit pre-conditions on index parameters; BMB needs them to eliminate bounds checks.
+fn check_missing_pre_index(source: String, ls: i64, nl: i64, filename: String, line_num: i64, offset: i64) -> i64 = {
+    if not(line_starts(source, ls, "pub fn ")) { 0 }
+    else {
+        let has_idx = line_contains(source, ls, nl, "idx:") or
+                      line_contains(source, ls, nl, "index:");
+        if not(has_idx) { 0 }
+        else {
+            let has_body_on_line = line_contains_outside_str(source, ls, nl, " = ");
+            if has_body_on_line { 0 }
+            else {
+                let name_start = ls + 7;
+                let name = extract_ident(source, name_start, nl);
+                let mut scan = if nl >= source.len() { source.len() } else { nl + 1 };
+                let mut found_pre = false;
+                let mut found_body = false;
+                let mut steps = 0;
+                while scan < source.len() and not(found_pre) and not(found_body) and steps < 8 {
+                    let next_nl = find_nl(source, scan);
+                    let next_ls = skip_ws(source, scan, next_nl);
+                    let is_blank = next_ls >= next_nl;
+                    let _r = if not(is_blank) {
+                        if line_starts(source, next_ls, "pre ") { found_pre = true }
+                        else if line_starts(source, next_ls, "post ") { () }
+                        else { found_body = true };
+                        steps = steps + 1;
+                        0
+                    } else { 0 };
+                    scan = if next_nl >= source.len() { source.len() } else { next_nl + 1 }
+                };
+                if found_pre or not(found_body) { 0 }
+                else {
+                    emit_warning(filename, "missing_pre_index", line_num, offset,
+                        "pub fn `" + name + "` has index parameter but no pre bounds clause -add `pre idx >= 0 and idx < len` to enable bounds check elimination")
+                }
+            }
+        }
+    }
+};
+
 // ============================================================================
 // SECTION 4: Main lint loop
 // ============================================================================
@@ -280,8 +331,10 @@ fn lint_source(source: String, filename: String) -> i64 = {
             warnings = warnings + check_negated_if(source, ls, nl, filename, line_num, pos);
             warnings = warnings + check_redundant_bool(source, ls, nl, filename, line_num, pos);
             warnings = warnings + check_chained_comparison(source, ls, nl, filename, line_num, pos);
+            warnings = warnings + check_missing_pre_index(source, ls, nl, filename, line_num, pos);
             0
         } else { 0 };
+        warnings = warnings + check_todo_comment(source, ls, nl, filename, line_num, pos);
         pos = if nl >= source.len() { source.len() } else { nl + 1 };
         line_num = line_num + 1
     };
