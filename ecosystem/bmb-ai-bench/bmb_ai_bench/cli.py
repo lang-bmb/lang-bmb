@@ -37,14 +37,19 @@ def main(argv: list[str] | None = None) -> int:
     dash_p = sub.add_parser("dashboard", help="Show problem pool dashboard (stats by category)")
     dash_p.add_argument("--json", action="store_true", help="Output JSON")
 
-    # run (placeholder — requires LLM API key)
+    # run — LLM experiment loop (requires API key)
     run_p = sub.add_parser("run", help="Run LLM experiment (requires API key)")
-    run_p.add_argument("--model", required=True)
-    run_p.add_argument("--api-base", default="https://api.anthropic.com/v1")
-    run_p.add_argument("--api-key", default=None)
-    run_p.add_argument("--category", default="all")
-    run_p.add_argument("--runs", type=int, default=5)
-    run_p.add_argument("--output", default="results/")
+    run_p.add_argument("--model", default=None, help="LLM model name (or BMB_BENCH_MODEL env)")
+    run_p.add_argument("--api-base", default=None, help="API base URL (or BMB_BENCH_API_BASE env)")
+    run_p.add_argument("--api-key", default=None, help="API key (or BMB_BENCH_API_KEY env)")
+    run_p.add_argument("--category", default="all", help="Category filter")
+    run_p.add_argument("--problems", default=None, help="Comma-separated problem numbers")
+    run_p.add_argument("--pilot", action="store_true", help="3 pilot problems only (1, 21, 50)")
+    run_p.add_argument("--runs", type=int, default=1, help="Runs per problem")
+    run_p.add_argument("--max-loops", type=int, default=10, help="Max generate→fix loops per problem")
+    run_p.add_argument("--output", default="results/", help="Output directory")
+    run_p.add_argument("--dry-run", action="store_true", help="Show plan without calling LLM")
+    run_p.add_argument("--json", action="store_true", help="Output JSON (machine-friendly)")
 
     # analyze (placeholder — processes saved run results)
     analyze_p = sub.add_parser("analyze", help="Analyze saved run results")
@@ -66,8 +71,20 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "dashboard":
         return run_dashboard(json_output=args.json)
     elif args.command == "run":
-        print("ERROR: 'run' command requires LLM API endpoint (not yet implemented in this release)")
-        return 1
+        from bmb_ai_bench.run_cmd import run_run
+        return run_run(
+            model=args.model or "",
+            api_base=args.api_base or "",
+            api_key=args.api_key or "",
+            category=args.category,
+            runs=args.runs,
+            output_dir=args.output,
+            pilot=args.pilot,
+            problem_nums=args.problems,
+            max_loops=args.max_loops,
+            dry_run=args.dry_run,
+            json_output=args.json,
+        )
     elif args.command == "analyze":
         from bmb_ai_bench.analysis.report import generate_report
         from pathlib import Path

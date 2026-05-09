@@ -50,8 +50,8 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 | **M (Machine-First Output)** | 모든 출력 디폴트 JSON, `--human` 옵션 | **~100% ✅** (Cycles 2516+2558-2559: 스키마 명세 ✅, dump-ast --format compact/pretty ✅, AI_OUTPUT_SCHEMA.md v1 갱신 ✅) | CI gate optional (deferred) |
 | **N (MCP Server)** | `bmb mcp` 또는 `bmb-mcp` (Chatter) | **~99% ✅** (Cycles 2524-2573: 13 tools ✅ (+bmb_lint_native), 4 resources ✅, 3 prompts ✅, 81/81 pytest) | Remaining: bmb_examples resource, bmb://stdlib/{module} per-module docs (optional) |
 | **O (Context Pack)** | `bmb context-pack <project>` | **~95%** (Cycles 2517-2566: walker/extractor/context_pack.bmb ✅, token budget ✅, native binary ✅, MCP tool+resource ✅, `uses` dependency graph ✅) | CI gate optional (deferred) |
-| **Q (Ambiguity Audit)** | grammar 정적 분석 + `bmb lint --ai-friendly` | **~88%** (Cycles 2548+2567-2573+2579: MCP-layer `bmb_lint_explain` ✅, 14 warning kinds; BMB-native `bootstrap/lint/lint.bmb` ✅ 9 checks (+redundant_if_expression, +empty_block), `bmb_lint_native` MCP tool ✅, 89/89 pytest; CI gate ✅) | Remaining: additional checks (optional) |
-| **R (LLM Bench Tracking)** | `bmb-ai-bench` 50-task suite (합격선 X) | **~82% ✅** (Cycles 2523+2577: ai-proof deprecation ✅, "합격선 X" 정책 정렬 ✅, `list`/`dashboard` 커맨드 ✅, 15 pytest ✅. 100 problems ✅) | Remaining: `run` (LLM API, M3 이후), `analyze` (저장된 결과 처리) |
+| **Q (Ambiguity Audit)** | grammar 정적 분석 + `bmb lint --ai-friendly` | **~92%** (Cycles 2548+2567-2573+2579+2587: MCP-layer `bmb_lint_explain` ✅, 15 warning kinds; BMB-native `bootstrap/lint/lint.bmb` ✅ **10 checks** (+double_negation Cycle 2587), `bmb_lint_native` MCP tool ✅, 90/90 pytest; CI gate ✅) | Remaining: additional checks (optional) |
+| **R (LLM Bench Tracking)** | `bmb-ai-bench` 50-task suite (합격선 X) | **~95% ✅** (Cycles 2523+2577+2585-2586: `run` LLM 서브커맨드 ✅, `analyze` 서브커맨드 ✅, results.json 집계 ✅, run→analyze 파이프라인 end-to-end, 30 pytest ✅) | Remaining: perf_ratio 측정 연동 (optional) |
 
 > **M2 AI-Ready Infrastructure: ✅ COMPLETE (Cycle 2578, 2026-05-09)**
 > M ≥ 95% ✅ | N ≥ 95% ✅ | O ≥ 95% ✅ | Q ≥ 80% ✅ | R ≥ 80% ✅ | T ≥ 90% ✅
@@ -64,7 +64,7 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 | BMB showcase 라이브러리 1개 | 5개 후보 (algo/compute/crypto/text/json) | 도메인 정합 1개 선정 |
 | C ABI 노출 (안정 헤더 + 빌드) | ✅ (`build_all.py`, `gen_headers.py`) | 자동생성 안정화 |
 | Python + Node 바인딩 | ✅ Python ✅, Node **5/5 ✅** (Cycles 2560-2564) | Track T Node complete — algo/compute/text/crypto/json |
-| 트랙 S 90% | ❌ 0/5 (LSP/fmt/lint/verify/bench Rust) | BMB 재작성 |
+| 트랙 S 90% | ⚠️ ~60% | fmt/lint/bench/check/test ✅ BMB (tools/ + CI). LSP 시작(bootstrap/lsp.bmb). verify/gotgan 미착수. |
 
 #### M4 Adopted
 

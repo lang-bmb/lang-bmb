@@ -335,6 +335,14 @@ fn check_empty_block(source: String, ls: i64, nl: i64, filename: String, line_nu
     } else { 0 }
 };
 
+// Check 10: double_negation -not(not(...)) is redundant, simplify to the inner expression
+fn check_double_negation(source: String, ls: i64, nl: i64, filename: String, line_num: i64, offset: i64) -> i64 = {
+    if line_contains(source, ls, nl, "not(not(") {
+        emit_warning(filename, "double_negation", line_num, offset,
+            "`not(not(expr))` is redundant -simplify to `expr` directly")
+    } else { 0 }
+};
+
 // ============================================================================
 // SECTION 4: Main lint loop
 // ============================================================================
@@ -357,6 +365,7 @@ fn lint_source(source: String, filename: String) -> i64 = {
             warnings = warnings + check_missing_pre_index(source, ls, nl, filename, line_num, pos);
             warnings = warnings + check_redundant_if_expr(source, ls, nl, filename, line_num, pos);
             warnings = warnings + check_empty_block(source, ls, nl, filename, line_num, pos);
+            warnings = warnings + check_double_negation(source, ls, nl, filename, line_num, pos);
             0
         } else { 0 };
         warnings = warnings + check_todo_comment(source, ls, nl, filename, line_num, pos);

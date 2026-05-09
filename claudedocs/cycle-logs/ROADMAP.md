@@ -5,9 +5,9 @@
 > [`docs/ROADMAP.md`](../../docs/ROADMAP.md); this file is intentionally
 > thin and revisable per cycle.
 >
-> Updated: 2026-05-09 (Cycle 2578 — **M2 AI-Ready Infrastructure ✅ COMPLETE**.
-> M~100%, N~99%, O~95%, Q~85%, R~82%, T~95%.
-> Next: Track Q additional checks, Track O CI gate, or M3 planning.)
+> Updated: 2026-05-09 (Cycle 2587 — Track R ~95% (run+analyze pipeline), Track Q ~92% (10 checks).
+> M~100%, N~99%, O~95%, Q~92%, R~95%, T~95%.
+> Next: Cargo test verification, M3 planning, Track T npm publish coordination.)
 
 ---
 
