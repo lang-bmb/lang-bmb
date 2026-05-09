@@ -48,9 +48,9 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 | 트랙 | 내용 | 현 상태 | 잔여 issue |
 |------|------|---------|-----------|
 | **M (Machine-First Output)** | 모든 출력 디폴트 JSON, `--human` 옵션 | ~85% (스키마 명세 ✅ Cycle 2516, dump-ast --format deferred) | `docs/AI_OUTPUT_SCHEMA.md` (v1) + `claudedocs/issues/ISSUE-20260501-track-m-machine-output.md` |
-| **N (MCP Server)** | `bmb mcp` 또는 `bmb-mcp` (Chatter) | ~25% (Cycle 2524: Python scaffold + `bmb_check` tool 구현 + 5/5 unit tests pass; 6 tools + 5 resources + 3 prompts 잔여) | `claudedocs/track-n-r-inventory-2026-05-01.md`, `ISSUE-20260501-track-n-mcp-server.md` |
-| **O (Context Pack)** | `bmb context-pack <project>` | ~15% (설계 ✅ Cycle 2517) | `docs/superpowers/specs/2026-05-01-context-pack-design.md`, `ISSUE-20260501-track-o-context-pack.md` |
-| **Q (Ambiguity Audit)** | grammar 정적 분석 + `bmb lint --ai-friendly` | ~15% (운영 정의 ✅ Cycle 2518) | `docs/superpowers/specs/2026-05-01-ambiguity-audit-spec.md`, `ISSUE-20260501-track-q-ambiguity-audit.md` |
+| **N (MCP Server)** | `bmb mcp` 또는 `bmb-mcp` (Chatter) | **~98%** (Cycles 2524-2554: 11 tools ✅, 4 resources ✅, 3 prompts ✅, 69/69 pytest) | Remaining: bmb_examples resource, bmb://stdlib/{module} per-module docs |
+| **O (Context Pack)** | `bmb context-pack <project>` | **~90%** (Cycles 2517-2554: walker/extractor/context_pack.bmb ✅, token budget ✅, native binary ✅, MCP tool+resource ✅) | Remaining: Phase 7 schema validation (optional) |
+| **Q (Ambiguity Audit)** | grammar 정적 분석 + `bmb lint --ai-friendly` | **~60%** (Cycle 2548: MCP-layer `bmb_lint_explain` ✅, 12 warning kinds with explanation+fix) | Remaining: BMB-native lint module (2-3 cycles, deferred) |
 | **R (LLM Bench Tracking)** | `bmb-ai-bench` 50-task suite (합격선 X) | ~75% (Cycle 2523: ai-proof deprecation notice + bmb-ai-bench README + perf_target_ratio 정책 docstring 명시) | `claudedocs/track-n-r-inventory-2026-05-01.md`, `ISSUE-20260501-track-r-llm-bench.md` |
 
 #### M3 External Bindings PoC
