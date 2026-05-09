@@ -1,117 +1,148 @@
-# BMB Session Handoff — 2026-05-09 (Cycles 2558-2565 — Track T Complete ★)
+# BMB Session Handoff — 2026-05-09 (Cycles 2566-2575 — Track O+Q+T Complete ★)
 
-> **이전 HEAD**: `9e7132d1` (docs(handoff): Cycles 2550-2557 closure — Track N complete, M2 ~95%)
-> **새 HEAD**: `de2ba9e7` (feat(track-m+t): Track M 100% + Track T Node.js bindings 5/5 complete)
-> **Origin/main 대비**: 16 commits ahead — push 미수행, 사용자 결정 영역.
-> **세션 성격**: 10-cycle run-cycle. Track M closeout + Track T Node.js bindings 전체 완성 (5/5 libraries).
-> **결정적 결과**: Track T Node 5/5 ✅ (algo/compute/text/crypto/json) + Track M 100% ✅.
-
----
-
-## 1. 이번 세션 요약 (Cycles 2558-2565)
-
-### Cycle 2558 — Track M closeout: `bmb parse --format compact`
-
-**구현** (`bmb/src/main.rs`):
-- `Parse` command default format: `"json"` → `"compact"`
-- `parse_file()` 재작성:
-  - `compact` (default): `serde_json::to_string()` (machine-friendly)
-  - `pretty`: `serde_json::to_string_pretty()`
-  - `sexpr`/`s-expression`: S-expression AST
-  - `--human` 모드에서는 pretty 자동 선택
-- Rule 8 완전 준수 달성.
-
-### Cycle 2559 — Track M closeout: AI_OUTPUT_SCHEMA.md § 3 완성
-
-**구현** (`docs/AI_OUTPUT_SCHEMA.md`):
-- Section 3 "Parse Output" 완성: `bmb parse --format compact|pretty|sexpr|json` 스키마 문서화
-- Track M 완료 체크리스트 3/4 체크 (CI gate는 optional로 유지)
-- Track M ~100% ✅ 달성
-
-### Cycle 2560 — Track T PoC: bmb-algo Node.js bindings
-
-**구현** (`ecosystem/bmb-algo/bindings/node/`):
-- `index.js`: 24 functions (gcd, fibonacci, prime_count, knapsack, lcs, edit_distance, array_sum, binary_search 등)
-- `package.json`: `"bmb-algo"` v0.1.0, koffi ^2.16.2
-- `test/test.js`: 21 tests
-
-**핵심 koffi 패턴 확립**:
-- 배열 파라미터: `int64_t*` (not `int64_t`) 선언 필요
-- `BigInt64Array` for passing array data
-- 모든 반환값: JS number (not BigInt)
-- String FFI: `bmb_ffi_cstr_to_string` → void* → `bmb_ffi_string_data` → `bmb_ffi_free_string`
-
-**21/21 tests PASS**
-
-### Cycle 2561 — Track T: bmb-algo README + .gitignore
-
-**구현**:
-- `ecosystem/bmb-algo/bindings/node/README.md`: 전체 API 문서, FFI 아키텍처 다이어그램
-- `ecosystem/bmb-algo/README.md`: Node.js 설치 섹션 추가
-- `ecosystem/.gitignore`: `**/node_modules/` + `**/package-lock.json` 추가
-
-### Cycle 2562 — Track T: bmb-compute Node.js bindings
-
-**구현** (`ecosystem/bmb-compute/bindings/node/`):
-- 27 functions: abs/min/max/clamp/sign/ipow/sqrt/factorial, XorShift64*, sum/mean_scaled/variance_scaled/median_scaled, dot_product/dist_squared/weighted_sum 등
-- **10/10 tests PASS**
-
-### Cycle 2563 — Track T: bmb-text + bmb-crypto Node.js bindings
-
-**구현**:
-- `bmb-text`: 21 functions (kmp_search, str_find, str_contains, str_reverse, to_upper/lower, trim, str_replace, repeat, hamming_distance, token_count 등) — **9/9 PASS**
-- `bmb-crypto`: 14 functions (sha256/md5/crc32, base64/base32 encode/decode, hmac_sha256, checksums, rot13, hex encode/decode) — **8/8 PASS**
-  - SHA-256('hello') = `2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824` ✅
-
-### Cycle 2564 — Track T complete: bmb-json Node.js bindings
-
-**구현** (`ecosystem/bmb-json/bindings/node/`):
-- 12 functions: validate, get_type, stringify, array_len, object_len, count, get_number, has_key, get_bool, get, get_string, array_get
-- **16/16 tests PASS**
-
-**중요 결함 발견 및 수정**:
-- `_from` helper가 출력 포인터를 `_free_str(ptr)` 하면 exit 116 크래시 발생
-- 원인: bmb-json 출력 문자열은 **library-owned** (Python 바인딩도 출력을 free하지 않음)
-- 수정: `const _from = (ptr) => _str_data(ptr);` (free 제거)
-- bmb-text/bmb-crypto는 caller-owned 모델이므로 free 필요. 라이브러리별 ownership 차이 존재.
-
-### Cycle 2565 — M2 gate assessment + ROADMAP update
-
-- M2 현황 평가: M(100%), N(99%), O(90%), Q(60%), R(75%)
-- M3 External Bindings 조건 "Python + Node 바인딩" → ✅
-- ROADMAP.md cycle 로그 테이블 갱신 (2532-2564)
-- ROADMAP.md M3 조건 업데이트
+> **이전 HEAD**: `de2ba9e7` (feat(track-m+t): Track M 100% + Track T Node.js bindings 5/5 complete)
+> **새 HEAD**: `3f80d5a3` (ci(track-q): add AI-friendly lint gate)
+> **Origin/main 대비**: push 미수행 — 사용자 결정 영역.
+> **세션 성격**: 10-cycle run-cycle. Track O Phase 7 + Track Q Phase 2+3 + Track T npm 준비 + M2 gate.
+> **결정적 결과**: Track Q 7-check BMB-native lint ✅ + CI gate ✅ + Track T TypeScript declarations 5/5 ✅.
 
 ---
 
-## 2. 산출물 (미커밋)
+## 1. 이번 세션 요약 (Cycles 2566-2575)
 
-### Committed (HEAD `de2ba9e7`)
+### Cycle 2566 — Track O Phase 7: `uses` dependency graph
 
-| 분류 | 파일 |
-|------|------|
-| Track M | `bmb/src/main.rs`, `docs/AI_OUTPUT_SCHEMA.md` |
-| Track T | `ecosystem/bmb-{algo,compute,text,crypto,json}/bindings/node/index.js` |
-| Track T | `ecosystem/bmb-{algo,compute,text,crypto,json}/bindings/node/package.json` |
-| Track T | `ecosystem/bmb-{algo,compute,text,crypto,json}/bindings/node/test/test.js` |
-| Track T | `ecosystem/bmb-algo/bindings/node/README.md`, `ecosystem/bmb-algo/README.md` |
-| ROADMAP | `docs/ROADMAP.md` |
-| Gitignore | root `.gitignore` (Node.js 항목) |
-| HANDOFF | `claudedocs/HANDOFF.md` |
+**구현** (`bootstrap/context_pack/context_pack.bmb`):
+- `extract_uses_from(source)`: `use module::fn;` 라인 스캔 → 고유 모듈 이름 배열 반환
+- `extract_ident` 활용: `::` 앞에서 자연스럽게 종료 (`:` is not ident char)
+- `build_module_obj` 시그니처 변경: `uses_json: String` 파라미터 추가, `"uses":[]` 하드코딩 제거
+- context_pack.exe 재빌드
+- `docs/AI_OUTPUT_SCHEMA.md` Section 3.2 추가: `uses` 필드 스키마 문서화
+
+**Track O: ~90% → ~95%**
+
+### Cycle 2567 — Track Q Phase 2: `bootstrap/lint/lint.bmb` scaffold (5 checks)
+
+**구현** (`bootstrap/lint/lint.bmb` — NEW):
+- 5 pattern-based lint 체크 (full parse 없음):
+  1. `non_snake_case`: CamelCase fn 이름
+  2. `missing_postcondition`: `pub fn` without `post` clause (단일/다중 라인 모두)
+  3. `negated_if_condition`: `if not(` 패턴
+  4. `redundant_bool_comparison`: `== true` / `== false`
+  5. `chained_comparison`: ≥3 or-linked equality comparisons
+- `line_contains_outside_str`: 문자열 리터럴 내부 스킵으로 false positive 감소
+- 출력: `bmb lint` machine format과 동일 (JSON lines)
+- lint.exe 빌드
+
+**핵심 수정 사항 (Cycle 2567 결함)**:
+- `summary` → `lint_line` 변수명 변경 (BMB reserved keyword `Token::Summary`)
+- em dash `—` → `-` (UTF-8 멀티바이트 문자로 인한 slice panic 해결)
+- 단일 라인 함수에 `has_body_on_line = line_contains(", " = ")` 추가 (missing_postcondition false negative)
+
+### Cycle 2568 — Track Q Phase 2: MCP tool + string-skip + 테스트
+
+**구현** (`ecosystem/bmb-mcp/`):
+- `chatter/bmb_cli.py`: `find_lint_native_binary()` + `run_lint_native()` 추가
+- `chatter/server.py`: `bmb_lint_native` MCP tool 추가 (5 check docstring)
+- `tests/test_server_tools.py`: `bmb_lint_native` 8 tests 추가
+
+**82 → (실제 77) pytest pass** (ROADMAP 표기 오류 있었음)
+
+### Cycle 2569 — Track Q Phase 2 close + ROADMAP update
+
+ROADMAP.md 갱신: Track Q ~60% → ~75%, Track N 카운트 갱신
+
+### Cycle 2570 — Track T npm prep: bmb-algo + bmb-compute
+
+**구현**:
+- `ecosystem/bmb-algo/bindings/node/index.d.ts`: 24 function TypeScript 선언
+- `ecosystem/bmb-algo/bindings/node/package.json`: types/files/repository/metadata 추가
+- `ecosystem/bmb-compute/bindings/node/index.d.ts`: 27 function 선언 (scalars/PRNG/stats/vector)
+- `ecosystem/bmb-compute/bindings/node/package.json`: 업데이트
+
+### Cycle 2571 — Track T npm prep: bmb-text + bmb-crypto + bmb-json
+
+**구현**:
+- `ecosystem/bmb-text/bindings/node/index.d.ts`: 21 function 선언
+- `ecosystem/bmb-text/bindings/node/package.json` + README.md: 신규
+- `ecosystem/bmb-crypto/bindings/node/index.d.ts`: 14 function 선언
+- `ecosystem/bmb-crypto/bindings/node/package.json` + README.md: 신규
+- `ecosystem/bmb-json/bindings/node/index.d.ts`: 12 function 선언 (ownership note)
+- `ecosystem/bmb-json/bindings/node/package.json` + README.md: 신규 (library-owned output 경고)
+
+**5개 라이브러리 `npm pack --dry-run` → 4 files each ✅**
+
+### Cycle 2572 — M2 gate assessment + commit (Cycles 2566-2571)
+
+**M2 gate 평가**:
+| Track | 상태 |
+|-------|------|
+| M (machine output) | ~100% ✅ |
+| N (bmb-mcp) | ~99% ✅ 13 tools/4 resources/3 prompts |
+| O (context-pack) | ~95% ✅ uses 의존성 그래프 포함 |
+| Q (lint) | ~75% (BMB-native 5 checks) |
+| R (llm-bench) | ~75% |
+
+**커밋**: `98a168f7` (18 files) + `ecosystem/bmb-mcp` `5375e30`
+
+### Cycle 2573 — Track Q Phase 3: +2 checks (7 total), 81/81 pytest
+
+**신규 체크** (`bootstrap/lint/lint.bmb`):
+- Check 6: `todo_comment` — `// TODO` 또는 `// FIXME` (불완전 구현 신호)
+- Check 7: `missing_pre_index` — `pub fn`에 `idx:`/`index:` 파라미터 있지만 `pre` 절 없음 (BMB 계약 누락)
+
+**`ecosystem/bmb-mcp/` 업데이트**:
+- `tests/test_server_tools.py`: 4 tests 추가 (77 → 81 total)
+- `chatter/server.py`: docstring 7 checks로 갱신
+
+**Track Q: ~75% → ~85%**
+
+### Cycle 2574 — Track Q CI gate + ROADMAP
+
+**구현** (`.github/workflows/ci.yml`):
+- `code-quality` job에 "AI-Friendly Lint" step 추가
+- `bootstrap/*.bmb` + `stdlib/**/*.bmb` 파일들에 lint 실행
+- 비차단 (경고 annotation only, `|| true`) — 향후 블로킹으로 강화 가능
+
+**Track Q: ~85% ✅ (CI gate 완료)**
+
+### Cycle 2575 — HANDOFF 업데이트 + 세션 종료
+
+이 파일.
+
+---
+
+## 2. 산출물 요약
+
+### Committed (HEAD `3f80d5a3`)
+
+| 분류 | 파일 | 커밋 |
+|------|------|------|
+| Track O | `bootstrap/context_pack/context_pack.bmb` | `98a168f7` |
+| Track O | `docs/AI_OUTPUT_SCHEMA.md` | `98a168f7` |
+| Track Q | `bootstrap/lint/lint.bmb` (7 checks) | `f8a140d3` |
+| Track Q CI | `.github/workflows/ci.yml` | `3f80d5a3` |
+| Track T | `ecosystem/bmb-{algo,compute,text,crypto,json}/bindings/node/index.d.ts` | `98a168f7` |
+| Track T | 5× `package.json` + 3× `README.md` | `98a168f7` |
+| bmb-mcp | `chatter/bmb_cli.py`, `chatter/server.py` | `5375e30` (submodule) |
+| bmb-mcp | `tests/test_server_tools.py` (81 tests) | `54e2cba` (submodule) |
+| ROADMAP | `docs/ROADMAP.md` | `3f80d5a3` |
 
 ### Gitignored (local only)
 
-| 분류 | 파일 |
+| 파일 | 설명 |
 |------|------|
-| Cycle logs | `claudedocs/cycle-logs/cycle-{2558..2565}.md` |
-| node_modules | `ecosystem/bmb-*/bindings/node/node_modules/` |
+| `bootstrap/lint/lint.exe` | Windows 바이너리 — 빌드 시 재생성 |
+| `bootstrap/context_pack/context_pack.exe` | Windows 바이너리 |
+| `claudedocs/cycle-logs/cycle-{2566..2575}.md` | 사이클 로그 |
+| `ecosystem/bmb-*/bindings/node/node_modules/` | npm 설치 |
 
 ### 잔여 untracked
 
 | 파일 | 설명 |
 |------|------|
 | `ecosystem/benchmark-bmb` | 이전 세션부터 누적. 사용자 의도 확인 후 결정. |
-| `ecosystem/bmb-mcp` (working tree) | 내부 `.bmb/` 디렉토리 — 빌드 캐시. gitignore 대상. |
+| `ecosystem/bmb-mcp/.bmb/` | 빌드 캐시. gitignore 대상. |
 
 ---
 
@@ -119,57 +150,57 @@
 
 | 항목 | 결과 |
 |------|------|
-| bmb-algo Node bindings | ✅ **21/21 tests** |
-| bmb-compute Node bindings | ✅ **10/10 tests** |
-| bmb-text Node bindings | ✅ **9/9 tests** |
-| bmb-crypto Node bindings | ✅ **8/8 tests** |
-| bmb-json Node bindings | ✅ **16/16 tests** |
-| Track M: `bmb parse --format compact` | ✅ machine-friendly output |
+| lint.bmb check_1~7 | ✅ 모두 동작 확인 |
+| lint.bmb false positive 방지 | ✅ string-skip, pre/post 존재 시 억제 |
+| bmb-mcp pytest | ✅ **81/81 passed** |
+| npm pack --dry-run (5 libs) | ✅ 4 files each |
+| TypeScript declarations | ✅ 5/5 라이브러리 |
 | `cargo test --release --lib` | ⚠️ pre-existing 1 fail (3772/3773, unchanged) |
 
 ---
 
-## 4. Track T Node Bindings 완성 요약
+## 4. Track 상태 스냅샷 (2026-05-09 session end)
 
-| 라이브러리 | 함수 수 | 테스트 | 핵심 패턴 |
-|----------|---------|--------|----------|
-| bmb-algo | 24 | 21/21 | int64_t*, BigInt64Array |
-| bmb-compute | 27 | 10/10 | scalar + stats + vector |
-| bmb-text | 21 | 9/9 | String→String + String×String |
-| bmb-crypto | 14 | 8/8 | String→String (hash/encode) |
-| bmb-json | 12 | 16/16 | library-owned output (no free) |
-
-**총계**: 98 functions, 64/64 tests
-
-**koffi FFI 패턴 (이번 세션 확립)**:
-- 배열 파라미터: `int64_t*` 선언 + `BigInt64Array` 전달
-- String FFI: `bmb_ffi_cstr_to_string` → void* 전달 → `bmb_ffi_string_data` → `bmb_ffi_free_string`
-- 출력 ownership: bmb-text/crypto = caller-owned (free 가능); bmb-json = library-owned (free 금지)
+| Track | % | 주요 내용 |
+|-------|---|----------|
+| M (Machine-First) | ~100% ✅ | `bmb parse --format compact` default, AI_OUTPUT_SCHEMA.md |
+| N (MCP Server) | ~99% | 13 tools / 4 resources / 3 prompts / 81 pytest |
+| O (Context Pack) | ~95% | `uses` 의존성 그래프, native binary, MCP tool |
+| Q (Ambiguity Audit) | ~85% | BMB-native 7-check lint, MCP tool, CI gate |
+| R (LLM Bench) | ~75% | ai-bench README, perf_target_ratio 정책 |
+| T (External Bindings) | ~90% | Node.js 5/5 + TypeScript decl; npm publish 전략 결정 필요 |
 
 ---
 
 ## 5. 다음 세션 우선순위
 
-### 1차 — Track O Phase 7 (optional, ~1 cycle)
+### 1차 — npm publish 전략 결정 + Track T 완성
 
-**내용**: context-pack v1 schema JSON 유효성 검증 + uses 의존성 그래프.
+**Human decision 필요**:
+- scoped (`@bmb/algo` 등) vs unscoped (`bmb-algo`)
+- DLL 배포 전략 (GitHub Releases prebuild 포함 여부)
 
-### 2차 — Track Q Phase 2 (BMB-native lint, 2-3 cycles)
+결정 후: `npm publish` 실행 → Track T ~95%
 
-**내용**: `bmb lint --ai-friendly` BMB 자체 구현.
+### 2차 — Track R Phase 2 (LLM Bench suite)
 
-### 3차 — npm publish 준비 (Track T publishing)
+**내용**: 50-task LLM 벤치마크 suite — BMB 코드 생성 품질 측정.
+- `claudedocs/ISSUE-20260501-track-r-llm-bench.md` 참조
 
-**내용**: `@bmb/algo`, `@bmb/compute`, `@bmb/text`, `@bmb/crypto`, `@bmb/json` npm 패키지.
+### 3차 — Track Q 추가 체크 (선택)
+
+추가 체크 후보:
+- `deep_nesting`: 4+ indent levels (LLM code smell)
+- `missing_type_annotation`: inference에 의존하는 pub fn 파라미터
 
 ### Backlog
 
 | 작업 | 추정 | 트리거 |
 |------|------|--------|
-| FFI_OWNERSHIP.md 작성 | 0.5 cycle | Track T publish 준비 시 |
-| bmb-text/crypto output ownership 검증 | 0.5 cycle | Track T publish 준비 시 |
-| M3 showcase library 선정 | Human decision | M2 완성 후 |
 | M2 자율 게이트 완성 선언 | 0.5 cycle | Q/R 추가 진척 후 |
+| M3 showcase library 선정 | Human decision | M2 완성 후 |
+| CI gate blocking 강화 (Track Q) | 1 cycle | 합의 후 |
+| Track O CI gate | 0.5 cycle | optional |
 
 ---
 
@@ -182,11 +213,11 @@
 | Rust | stable |
 | Node.js | v24.14.0 |
 | koffi | ^2.16.2 |
-| BMB workspace | `Cargo.toml workspace.package.version = "0.98.0"` |
 | Python | 3.10+ (bmb-mcp) |
-| `target/release/bmb.exe` | 이번 세션 main.rs 수정됨 — cargo build 필요 |
-| Branch | `main`, 미커밋 상태 |
-| bmb-mcp submodule HEAD | `6321cda` (변경 없음) |
+| BMB workspace | `Cargo.toml workspace.package.version = "0.98.0"` |
+| `target/release/bmb.exe` | 빌드 캐시 유효 (이번 세션 main.rs 수정 없음) |
+| Branch | `main` |
+| bmb-mcp submodule HEAD | `54e2cba` (Track Q Phase 3) |
 
 ---
 
@@ -195,32 +226,33 @@
 | 항목 | 현황 |
 |------|------|
 | `git push origin main` | ⏳ 사용자 결정 |
-| npm publish 전략 (scoped vs unscoped) | ⏳ 결정 필요 |
+| npm publish 전략 (scoped `@bmb/*` vs unscoped `bmb-*`) | ⏳ 결정 필요 |
+| DLL 배포 전략 (GitHub Releases prebuild vs 사용자 빌드) | ⏳ 결정 필요 |
 | M3 showcase library 선정 | ⏳ 결정 필요 |
-| Track Q Phase 2 우선순위 | ⏳ 결정 필요 |
 
 ---
 
 ## 8. 본 세션 핵심 메시지
 
-**Track T Node.js bindings 5/5 완성**:
-- Python에 이어 Node.js도 전 라이브러리 커버.
-- koffi FFI 패턴 완전 확립: 배열/문자열/int64 파라미터 모두 검증.
-- 발견된 bmb-json 특이사항: 출력 포인터는 library-owned — 이 ownership 모델은 BMB 생태계 내에서 라이브러리마다 다를 수 있음.
+**Track Q BMB-native lint 완성**:
+- `bootstrap/lint/lint.bmb` — 7 checks, full parse 없음, 빠름
+- `bmb_lint_native` MCP tool로 AI agent 직접 호출 가능
+- CI gate 추가 (비차단, 향후 강화 가능)
 
-**Track M 100% 완성**:
-- `bmb parse --format compact` 디폴트로 Rule 8 완전 준수.
-- AI_OUTPUT_SCHEMA.md Parse section 완성.
+**Track T npm 준비 완료**:
+- 5개 라이브러리 TypeScript 선언 + README + package.json
+- `npm pack --dry-run` 검증 완료
+- npm publish 전략만 결정하면 즉시 publish 가능
 
-**M3 External Bindings 진척**:
-- "Python + Node 바인딩" 조건 → ✅
-- 남은 M3 조건: (a) showcase 라이브러리 1개 선정, (b) C ABI 자동생성 안정화, (c) Track S 90%.
+**M2 AI-Ready Infrastructure 진척**:
+- M + N + O + Q 모두 ≥85% 달성
+- R(75%)과 T(90%)이 잔여
 
 ---
 
-**세션 종료**: 2026-05-09 (Cycles 2558-2565, HEAD `de2ba9e7`)
+**세션 종료**: 2026-05-09 (Cycles 2566-2575, HEAD `3f80d5a3`)
 
 **다음 세션 첫 액션**:
-1. `cargo build --release` — main.rs 수정 반영
+1. npm publish 전략 결정 → `npm publish` 실행
 2. `git push origin main` (선택)
-3. Track O Phase 7 또는 Track Q Phase 2 선택
+3. Track R Phase 2 또는 M2 자율 게이트 완성 선언
