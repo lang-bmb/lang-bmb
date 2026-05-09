@@ -8,7 +8,21 @@ Cryptographic functions powered by [BMB](https://github.com/iyulab/lang-bmb) —
 npm install bmb-crypto koffi
 ```
 
-Requires the `bmb_crypto` native shared library. See the [main README](../../README.md) for build instructions.
+Requires the `bmb_crypto` native shared library.
+
+## Getting the native library
+
+**Option A — Download from GitHub Releases (recommended):**
+1. Go to [lang-bmb Releases](https://github.com/iyulab/lang-bmb/releases)
+2. Download `bmb-libs-<your-platform>.zip` from the latest release
+3. Place `bmb_crypto.dll` / `libbmb_crypto.so` / `libbmb_crypto.dylib` next to `index.js`
+
+**Option B — Build from source:**
+```bash
+cd /path/to/lang-bmb
+cargo build --release
+./target/release/bmb build ecosystem/bmb-crypto/src/lib.bmb --shared -o ecosystem/bmb-crypto/bmb_crypto
+```
 
 ## Functions
 

@@ -123,6 +123,108 @@ jobs:
           files: |
             artifacts/**/*
 
+  build-libs:
+    name: Build native libs (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            ext: so
+            prefix: lib
+          - os: windows-latest
+            ext: dll
+            prefix: ""
+          - os: macos-latest
+            ext: dylib
+            prefix: lib
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build BMB compiler
+        run: cargo build --release
+
+      - name: Build shared libraries (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          for lib in bmb-algo bmb-compute bmb-text bmb-crypto bmb-json; do
+            name=$(echo $lib | tr '-' '_')
+            ./target/release/bmb build ecosystem/$lib/src/lib.bmb --shared \
+              -o ecosystem/$lib/${{ matrix.prefix }}${name}
+          done
+
+      - name: Build shared libraries (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          foreach ($lib in @('bmb-algo','bmb-compute','bmb-text','bmb-crypto','bmb-json')) {
+            $name = $lib -replace '-','_'
+            ./target/release/bmb build ecosystem/$lib/src/lib.bmb --shared `
+              -o ecosystem/$lib/$name
+          }
+
+      - name: Package libs
+        shell: bash
+        run: |
+          mkdir -p lib-dist
+          for lib in bmb-algo bmb-compute bmb-text bmb-crypto bmb-json; do
+            name=$(echo $lib | tr '-' '_')
+            ext=${{ matrix.ext }}
+            prefix=${{ matrix.prefix }}
+            src="ecosystem/$lib/${prefix}${name}.${ext}"
+            [ -f "$src" ] && cp "$src" lib-dist/ || echo "Warning: $src not found"
+          done
+
+      - name: Upload lib artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bmb-libs-${{ matrix.os }}
+          path: lib-dist/
+
+  release:
+    name: Create Release
+    needs: [build, build-libs]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: BMB ${{ steps.version.outputs.version }}
+          body_path: docs/RELEASE_v1.0.0-beta.md
+          draft: true
+          prerelease: ${{ contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'alpha') }}
+          files: |
+            artifacts/**/*
+
   verify:
     name: Verify Release
     needs: build

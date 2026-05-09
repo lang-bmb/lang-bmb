@@ -8,8 +8,21 @@ High-performance string processing powered by [BMB](https://github.com/iyulab/la
 npm install bmb-text koffi
 ```
 
-Requires the `bmb_text` native shared library (`.dll`/`.so`/`.dylib`) to be present.
-See the [main README](../../README.md) for build instructions.
+Requires the `bmb_text` native shared library.
+
+## Getting the native library
+
+**Option A — Download from GitHub Releases (recommended):**
+1. Go to [lang-bmb Releases](https://github.com/iyulab/lang-bmb/releases)
+2. Download `bmb-libs-<your-platform>.zip` from the latest release
+3. Place `bmb_text.dll` / `libbmb_text.so` / `libbmb_text.dylib` next to `index.js`
+
+**Option B — Build from source:**
+```bash
+cd /path/to/lang-bmb
+cargo build --release
+./target/release/bmb build ecosystem/bmb-text/src/lib.bmb --shared -o ecosystem/bmb-text/bmb_text
+```
 
 ## Functions
 

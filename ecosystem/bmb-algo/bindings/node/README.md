@@ -9,18 +9,26 @@ High-performance algorithms compiled from [BMB](https://github.com/iyulab/lang-b
 ## Requirements
 
 - Node.js ≥ 18
-- `bmb_algo.dll` (Windows) / `libbmb_algo.so` (Linux) / `libbmb_algo.dylib` (macOS) — built from `ecosystem/bmb-algo/`
+- `bmb_algo.dll` (Windows) / `libbmb_algo.so` (Linux) / `libbmb_algo.dylib` (macOS)
+
+### Getting the native library
+
+**Option A — Download from GitHub Releases (recommended):**
+1. Go to [lang-bmb Releases](https://github.com/iyulab/lang-bmb/releases)
+2. Download `bmb-libs-<your-platform>.zip` from the latest release
+3. Place the library file next to `index.js` or in `ecosystem/bmb-algo/`
+
+**Option B — Build from source:**
+```bash
+cd /path/to/lang-bmb
+cargo build --release
+./target/release/bmb build ecosystem/bmb-algo/src/lib.bmb --shared -o ecosystem/bmb-algo/bmb_algo
+```
 
 ## Quick Start
 
 ```bash
-# In ecosystem/bmb-algo/bindings/node/
-npm install
-
-# Build the DLL first (if not already built)
-cd ../../..  # to lang-bmb root
-python ecosystem/build_all.py --lib algo
-cd ecosystem/bmb-algo/bindings/node
+npm install bmb-algo
 ```
 
 ```javascript

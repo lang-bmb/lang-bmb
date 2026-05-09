@@ -1,0 +1,45 @@
+name: Publish npm packages
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (no actual publish)'
+        type: boolean
+        default: true
+
+jobs:
+  publish:
+    name: npm publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies (all 5 packages)
+        run: |
+          for lib in bmb-algo bmb-compute bmb-text bmb-crypto bmb-json; do
+            echo "=== Installing $lib ==="
+            npm install --prefix ecosystem/$lib/bindings/node
+          done
+
+      - name: Publish packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          DRY=${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}
+          for lib in bmb-algo bmb-compute bmb-text bmb-crypto bmb-json; do
+            echo "=== Publishing $lib ==="
+            cd ecosystem/$lib/bindings/node
+            npm publish $DRY --access public
+            cd $GITHUB_WORKSPACE
+          done
