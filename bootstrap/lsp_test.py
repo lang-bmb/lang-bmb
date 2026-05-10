@@ -15,11 +15,12 @@ Requirements:
 
 import subprocess, json, os, sys, tempfile
 
-# Resolve paths
+# Resolve paths (platform-aware)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(SCRIPT_DIR)
-LSP_BIN = os.path.join(SCRIPT_DIR, "lsp.exe")
-DEFAULT_BMB = os.path.join(ROOT_DIR, "target", "release", "bmb.exe")
+_EXE = ".exe" if sys.platform == "win32" else ""
+LSP_BIN = os.path.join(SCRIPT_DIR, "lsp" + _EXE)
+DEFAULT_BMB = os.path.join(ROOT_DIR, "target", "release", "bmb" + _EXE)
 BMB_PATH = os.environ.get("BMB_PATH", DEFAULT_BMB)
 
 
@@ -117,6 +118,128 @@ def test_completion():
         test("let keyword in completions", "let" in labels)
         test("println builtin in completions", "println" in labels)
         test("pre keyword in completions", "pre" in labels)
+
+
+def test_completion_from_file():
+    print("\n--- Test: textDocument/completion (from file symbols) ---")
+    content = (
+        "fn my_func(x: i64) -> i64 = x + 1;\n"
+        "fn helper_func(s: String) -> String = s;\n"
+        "struct MyStruct { x: i64 }\n"
+        "enum MyEnum { A, B }\n"
+    )
+    with tempfile.NamedTemporaryFile(suffix=".bmb", mode="w", delete=False) as f:
+        f.write(content)
+        tmp_path = f.name
+    try:
+        uri = "file:///" + tmp_path.replace("\\", "/")
+        msgs = (
+            make_msg({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"capabilities": {}}})
+            + make_msg({"jsonrpc": "2.0", "method": "initialized", "params": {}})
+            + make_msg({"jsonrpc": "2.0", "id": 2, "method": "textDocument/completion",
+                        "params": {"textDocument": {"uri": uri}, "position": {"line": 0, "character": 0}}})
+            + make_msg({"jsonrpc": "2.0", "id": 3, "method": "shutdown", "params": {}})
+            + make_msg({"jsonrpc": "2.0", "method": "exit"})
+        )
+        responses = run_lsp(msgs)
+        comp_resp = next((r for r in responses if r.get("id") == 2), None)
+        test("completion from file: response received", comp_resp is not None)
+        if comp_resp:
+            result = comp_resp.get("result", {})
+            items = result.get("items", [])
+            labels = [i["label"] for i in items]
+            kinds = {i["label"]: i.get("kind") for i in items}
+            test("completion from file: my_func appears", "my_func" in labels,
+                 f"labels={labels[:10]}")
+            test("completion from file: helper_func appears", "helper_func" in labels)
+            test("completion from file: MyStruct appears", "MyStruct" in labels)
+            test("completion from file: MyEnum appears", "MyEnum" in labels)
+            test("completion from file: my_func kind=3 (Function)",
+                 kinds.get("my_func") == 3, f"got {kinds.get('my_func')}")
+            test("completion from file: MyStruct kind=22 (Struct)",
+                 kinds.get("MyStruct") == 22, f"got {kinds.get('MyStruct')}")
+            test("completion from file: MyEnum kind=13 (Enum)",
+                 kinds.get("MyEnum") == 13, f"got {kinds.get('MyEnum')}")
+            test("completion from file: static items still present", "fn" in labels)
+            test("completion from file: isIncomplete=false",
+                 result.get("isIncomplete") is False)
+            # Check that function detail includes signature
+            details = {i["label"]: i.get("detail", "") for i in items}
+            test("completion from file: my_func detail has signature",
+                 "my_func" in details.get("my_func", "") or "fn" in details.get("my_func", ""),
+                 f"got detail='{details.get('my_func', '')}'")
+            test("completion from file: helper_func detail has 'String'",
+                 "String" in details.get("helper_func", ""),
+                 f"got detail='{details.get('helper_func', '')}'")
+            test("completion from file: MyStruct detail is 'struct'",
+                 details.get("MyStruct") == "struct", f"got '{details.get('MyStruct')}'")
+            test("completion from file: MyEnum detail is 'enum'",
+                 details.get("MyEnum") == "enum", f"got '{details.get('MyEnum')}'")
+    finally:
+        os.unlink(tmp_path)
+
+
+def test_code_action():
+    print("\n--- Test: textDocument/codeAction ---")
+    content = (
+        "fn compute(x: i64, y: i64) -> i64 = x + y;\n"
+        "// not a function declaration\n"
+        "fn main() -> i64 = compute(1, 2);\n"
+    )
+    with tempfile.NamedTemporaryFile(suffix=".bmb", mode="w", delete=False) as f:
+        f.write(content)
+        tmp_path = f.name
+    try:
+        uri = "file:///" + tmp_path.replace("\\", "/")
+        msgs = (
+            make_msg({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"capabilities": {}}})
+            + make_msg({"jsonrpc": "2.0", "method": "initialized", "params": {}})
+            # code action on fn line (line 0)
+            + make_msg({"jsonrpc": "2.0", "id": 2, "method": "textDocument/codeAction",
+                        "params": {"textDocument": {"uri": uri},
+                                   "range": {"start": {"line": 0, "character": 0},
+                                             "end": {"line": 0, "character": 0}},
+                                   "context": {"diagnostics": []}}})
+            # code action on non-fn line (line 1 — comment line)
+            + make_msg({"jsonrpc": "2.0", "id": 3, "method": "textDocument/codeAction",
+                        "params": {"textDocument": {"uri": uri},
+                                   "range": {"start": {"line": 1, "character": 0},
+                                             "end": {"line": 1, "character": 0}},
+                                   "context": {"diagnostics": []}}})
+            + make_msg({"jsonrpc": "2.0", "id": 4, "method": "shutdown", "params": {}})
+            + make_msg({"jsonrpc": "2.0", "method": "exit"})
+        )
+        responses = run_lsp(msgs)
+        caps_resp = next((r for r in responses if r.get("id") == 1), None)
+        ca_fn = next((r for r in responses if r.get("id") == 2), None)
+        ca_non_fn = next((r for r in responses if r.get("id") == 3), None)
+
+        test("codeActionProvider in capabilities",
+             caps_resp is not None and
+             caps_resp.get("result", {}).get("capabilities", {}).get("codeActionProvider") is True)
+        test("code action on fn line: response received", ca_fn is not None)
+        if ca_fn:
+            result = ca_fn.get("result", [])
+            test("code action on fn line: returns list", isinstance(result, list),
+                 f"got {type(result)}")
+            test("code action on fn line: 2 actions returned", len(result) == 2,
+                 f"got {len(result)}")
+            if len(result) >= 2:
+                titles = [a.get("title", "") for a in result]
+                test("code action: pre action present",
+                     any("pre" in t.lower() for t in titles), str(titles))
+                test("code action: post action present",
+                     any("post" in t.lower() for t in titles), str(titles))
+                test("code action: has edit field",
+                     all("edit" in a for a in result), str(titles))
+        test("code action on non-fn line: response received", ca_non_fn is not None)
+        if ca_non_fn:
+            result_non_fn = ca_non_fn.get("result", [])
+            test("code action on non-fn line: empty list",
+                 isinstance(result_non_fn, list) and len(result_non_fn) == 0,
+                 f"got {result_non_fn}")
+    finally:
+        os.unlink(tmp_path)
 
 
 def test_hover():
@@ -531,6 +654,8 @@ if __name__ == "__main__":
 
     test_initialize()
     test_completion()
+    test_completion_from_file()
+    test_code_action()
     test_hover()
     test_diagnostics()
     test_shutdown()

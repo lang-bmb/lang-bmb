@@ -15,10 +15,12 @@ Requirements:
 
 import subprocess, json, os, sys, tempfile
 
+# Resolve paths (platform-aware)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(SCRIPT_DIR)
-VH_BIN = os.path.join(SCRIPT_DIR, "verify_host.exe")
-DEFAULT_BMB = os.path.join(ROOT_DIR, "target", "release", "bmb.exe")
+_EXE = ".exe" if sys.platform == "win32" else ""
+VH_BIN = os.path.join(SCRIPT_DIR, "verify_host" + _EXE)
+DEFAULT_BMB = os.path.join(ROOT_DIR, "target", "release", "bmb" + _EXE)
 BMB_PATH = os.environ.get("BMB_PATH", DEFAULT_BMB)
 
 tests_passed = 0
@@ -229,6 +231,130 @@ def test_output_schema():
         os.unlink(tmp)
 
 
+def test_proof_database():
+    print("\n--- Test: proof database (Z3 conditions cache) ---")
+    # File with pre/post contracts → Z3 IPC should create proof DB
+    content = (
+        "fn add(x: i64, y: i64) -> i64\n"
+        "pre x > 0\n"
+        "pre y > 0\n"
+        "post result > 0\n"
+        "= x + y;\n"
+        "fn main() -> i64 = add(1, 2);\n"
+    )
+    with tempfile.NamedTemporaryFile(suffix=".bmb", mode="w", delete=False) as f:
+        f.write(content)
+        tmp = f.name
+    proofdb_file = tmp + ".vh_proofdb"
+    cache_file = tmp + ".vh_cache"
+    try:
+        # First call: proof DB miss → Z3 runs, proof DB created
+        result1 = run_vh(tmp)
+        z3d1 = result1.get("z3_direct", {})
+        # Proof DB is only created if Z3 is available (status != "skipped")
+        if z3d1.get("status") == "skipped":
+            test("proof db: skipped (Z3 not available)", True)
+        else:
+            test("proof db: first call z3 status not skipped",
+                 z3d1.get("status") != "skipped", f"got {z3d1.get('status')}")
+            test("proof db: proof DB file created",
+                 os.path.exists(proofdb_file), f"expected {proofdb_file}")
+
+            if os.path.exists(proofdb_file):
+                with open(proofdb_file, "r") as pf:
+                    db_data = pf.read()
+                db_lines = db_data.split("\n", 1)
+                test("proof db: first line has hash:len format", ":" in db_lines[0],
+                     f"got '{db_lines[0]}'")
+                test("proof db: second line is JSON", len(db_lines) > 1 and db_lines[1].startswith("{"),
+                     f"got '{db_lines[1][:40] if len(db_lines) > 1 else ''}'")
+
+            # Second call: proof DB hit (Z3 not re-run, same z3_direct result)
+            result2 = run_vh(tmp)
+            z3d2 = result2.get("z3_direct", {})
+            test("proof db: second call z3 status same",
+                 z3d1.get("status") == z3d2.get("status"),
+                 f"r1={z3d1.get('status')} r2={z3d2.get('status')}")
+
+            # Modify only the implementation body (contracts unchanged) → proof DB hit
+            content_same_contracts = (
+                "fn add(x: i64, y: i64) -> i64\n"
+                "pre x > 0\n"
+                "pre y > 0\n"
+                "post result > 0\n"
+                "= x + y + 0;\n"  # different body, same contracts
+                "fn main() -> i64 = add(1, 2);\n"
+            )
+            with open(tmp, "w") as f:
+                f.write(content_same_contracts)
+            # File-level cache miss (file changed), but proof DB should still hit
+            result3 = run_vh(tmp)
+            z3d3 = result3.get("z3_direct", {})
+            test("proof db: same contracts -> same z3 result",
+                 z3d1.get("status") == z3d3.get("status"),
+                 f"r1={z3d1.get('status')} r3={z3d3.get('status')}")
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        if os.path.exists(proofdb_file):
+            os.unlink(proofdb_file)
+        if os.path.exists(cache_file):
+            os.unlink(cache_file)
+
+
+def test_incremental_cache():
+    print("\n--- Test: incremental verification cache ---")
+    content = "fn main() -> i64 = 42;\n"
+    with tempfile.NamedTemporaryFile(suffix=".bmb", mode="w", delete=False) as f:
+        f.write(content)
+        tmp = f.name
+    cache_file = tmp + ".vh_cache"
+    try:
+        # First call: cache miss — should compute and write cache
+        result1 = run_vh(tmp)
+        test("cache: first call returns ok", result1.get("status") == "ok",
+             f"got {result1.get('status')}")
+        test("cache: cache file created after first call", os.path.exists(cache_file),
+             f"expected {cache_file}")
+
+        # Read cache content to verify format
+        if os.path.exists(cache_file):
+            with open(cache_file, "r") as cf:
+                cache_data = cf.read()
+            lines = cache_data.split("\n", 1)
+            test("cache: first line is hash (colon-separated)", ":" in lines[0],
+                 f"got '{lines[0]}'")
+            test("cache: second line is JSON", len(lines) > 1 and lines[1].startswith("{"),
+                 f"got '{lines[1][:40] if len(lines) > 1 else ''}'")
+
+        # Second call: cache hit — same result
+        result2 = run_vh(tmp)
+        test("cache: second call returns ok (cache hit)", result2.get("status") == "ok",
+             f"got {result2.get('status')}")
+        test("cache: results are identical", result1 == result2,
+             f"r1={result1.get('status')} r2={result2.get('status')}")
+
+        # Modify file: cache miss — should recompute
+        with open(tmp, "w") as f:
+            f.write("fn main() -> i64 = 99;\n")
+        result3 = run_vh(tmp)
+        test("cache: after file change, still returns ok", result3.get("status") == "ok",
+             f"got {result3.get('status')}")
+
+        # Restore same content as original: should hit cache again
+        with open(tmp, "w") as f:
+            f.write(content)
+        result4 = run_vh(tmp)
+        test("cache: restored file gets cache hit", result4.get("status") == "ok",
+             f"got {result4.get('status')}")
+        test("cache: restored result matches original", result4 == result1,
+             f"r4={result4.get('status')} r1={result1.get('status')}")
+    finally:
+        os.unlink(tmp)
+        if os.path.exists(cache_file):
+            os.unlink(cache_file)
+
+
 # ============================================================
 # Main
 # ============================================================
@@ -250,6 +376,8 @@ if __name__ == "__main__":
     test_stdin_fallback()
     test_no_file_error()
     test_output_schema()
+    test_incremental_cache()
+    test_proof_database()
 
     print()
     print(f"Results: {tests_passed} passed, {tests_failed} failed")

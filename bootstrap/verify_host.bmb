@@ -346,6 +346,12 @@ fn count_newlines(s: String, pos: i64, n: i64) -> i64 =
     else if s.byte_at(pos) == 10 { count_newlines(s, pos + 1, n + 1) }
     else { count_newlines(s, pos + 1, n) };
 
+// Proof database: caches Z3 results keyed on conditions hash.
+// Format (same as file cache): <cond_hash>\n<z3_json>
+// Located at: <file_path>.vh_proofdb
+fn proof_db_path(file_path: String) -> String =
+    file_path + ".vh_proofdb";
+
 fn run_z3_direct(file_path: String) -> String = {
     if z3_available() == false {
         "{\"status\":\"skipped\",\"message\":\"Z3 not found\",\"checks\":0,\"passed\":0,\"failed\":0}"
@@ -359,20 +365,29 @@ fn run_z3_direct(file_path: String) -> String = {
         if all_conds == "" {
             "{\"status\":\"skipped\",\"message\":\"no contracts found\",\"checks\":0,\"passed\":0,\"failed\":0}"
         } else {
-            let n_checks = count_newlines(all_conds, 0, 0) + 1;
-            let vars = collect_all_vars(all_conds, 0, "");
-            let decls = gen_declarations(vars, 0, "");
-            let asserts = gen_asserts_from_conds(all_conds, 0, "");
-            let smt2 = decls + asserts + "(check-sat)\n";
-            let result = run_z3_query(smt2);
-            let status = if result == "unsat" { "unsatisfiable" }
-                         else if result == "sat" { "consistent" }
-                         else { "error" };
-            "{\"status\":\"" + status + "\"," +
-            "\"checks\":" + int_to_string(n_checks) + "," +
-            "\"passed\":" + int_to_string(if result == "sat" or result == "unsat" { n_checks } else { 0 }) + "," +
-            "\"failed\":0," +
-            "\"z3_result\":\"" + result + "\"}"
+            let cond_hash = file_hash(all_conds);
+            let db_path = proof_db_path(file_path);
+            let cached_z3 = read_cache(db_path, cond_hash);
+            if cached_z3 != "" {
+                cached_z3
+            } else {
+                let n_checks = count_newlines(all_conds, 0, 0) + 1;
+                let vars = collect_all_vars(all_conds, 0, "");
+                let decls = gen_declarations(vars, 0, "");
+                let asserts = gen_asserts_from_conds(all_conds, 0, "");
+                let smt2 = decls + asserts + "(check-sat)\n";
+                let result = run_z3_query(smt2);
+                let status = if result == "unsat" { "unsatisfiable" }
+                             else if result == "sat" { "consistent" }
+                             else { "error" };
+                let z3_json = "{\"status\":\"" + status + "\"," +
+                    "\"checks\":" + int_to_string(n_checks) + "," +
+                    "\"passed\":" + int_to_string(if result == "sat" or result == "unsat" { n_checks } else { 0 }) + "," +
+                    "\"failed\":0," +
+                    "\"z3_result\":\"" + result + "\"}";
+                let _cw = write_cache(db_path, cond_hash, z3_json);
+                z3_json
+            }
         }
     }
 };
@@ -472,6 +487,44 @@ fn run_verify_contracts(file_path: String) -> String = {
 };
 
 // ============================================================
+// Incremental verification cache
+// ============================================================
+
+// djb2 hash of file content + length tag, suitable for cache key.
+fn file_hash(content: String) -> String = {
+    let mut h: i64 = 5381;
+    let mut i: i64 = 0;
+    while i < content.len() {
+        set h = h * 33 + content.byte_at(i);
+        set i = i + 1
+    };
+    int_to_string(h) + ":" + int_to_string(content.len())
+};
+
+fn cache_path(file_path: String) -> String =
+    file_path + ".vh_cache";
+
+// Returns cached JSON result if hash matches, "" on miss or missing file.
+fn read_cache(cp: String, expected_hash: String) -> String = {
+    let data = read_file(cp);
+    if data == "" { "" }
+    else {
+        let nl = vh_find_nl(data, 0);
+        if nl < 0 { "" }
+        else {
+            let stored_hash = data.slice(0, nl);
+            if stored_hash == expected_hash {
+                data.slice(nl + 1, data.len())
+            } else { "" }
+        }
+    }
+};
+
+// Writes hash + newline + JSON result to cache file.
+fn write_cache(cp: String, hash: String, result: String) -> i64 =
+    write_file(cp, hash + "\n" + result);
+
+// ============================================================
 // Main
 // ============================================================
 
@@ -487,26 +540,36 @@ fn main() -> i64 = {
         write_stdout("{\"status\":\"error\",\"message\":\"no file specified (set BMB_FILE or provide path via stdin)\"}\n");
         1
     } else {
-        let check = run_type_check(file_path);
-        let verify = run_verify_contracts(file_path);
-        let z3d = run_z3_direct(file_path);
-        let check_ok = vh_contains(check, "\"status\":\"ok\"");
-        let verify_ok = vh_contains(verify, "\"status\":\"verified\"") or
-                        vh_contains(verify, "\"status\":\"skipped\"");
-        let z3d_ok = vh_contains(z3d, "\"status\":\"consistent\"") or
-                     vh_contains(z3d, "\"status\":\"skipped\"");
-        let overall = if check_ok and verify_ok and z3d_ok { "ok" }
-                      else if check_ok == false { "type_error" }
-                      else if verify_ok == false { "verify_error" }
-                      else { "z3_direct_error" };
-        let result = "{" +
-            "\"status\":\"" + overall + "\"," +
-            "\"file\":\"" + vh_escape(file_path) + "\"," +
-            "\"type_check\":" + check + "," +
-            "\"contracts\":" + verify + "," +
-            "\"z3_direct\":" + z3d +
-            "}";
-        write_stdout(result + "\n");
-        if overall == "ok" { 0 } else { 1 }
+        let content = read_file(file_path);
+        let h = file_hash(content);
+        let cp = cache_path(file_path);
+        let cached = read_cache(cp, h);
+        if cached != "" {
+            write_stdout(cached + "\n");
+            if vh_contains(cached, "\"status\":\"ok\"") { 0 } else { 1 }
+        } else {
+            let check = run_type_check(file_path);
+            let verify = run_verify_contracts(file_path);
+            let z3d = run_z3_direct(file_path);
+            let check_ok = vh_contains(check, "\"status\":\"ok\"");
+            let verify_ok = vh_contains(verify, "\"status\":\"verified\"") or
+                            vh_contains(verify, "\"status\":\"skipped\"");
+            let z3d_ok = vh_contains(z3d, "\"status\":\"consistent\"") or
+                         vh_contains(z3d, "\"status\":\"skipped\"");
+            let overall = if check_ok and verify_ok and z3d_ok { "ok" }
+                          else if check_ok == false { "type_error" }
+                          else if verify_ok == false { "verify_error" }
+                          else { "z3_direct_error" };
+            let result = "{" +
+                "\"status\":\"" + overall + "\"," +
+                "\"file\":\"" + vh_escape(file_path) + "\"," +
+                "\"type_check\":" + check + "," +
+                "\"contracts\":" + verify + "," +
+                "\"z3_direct\":" + z3d +
+                "}";
+            let _cw = write_cache(cp, h, result);
+            write_stdout(result + "\n");
+            if overall == "ok" { 0 } else { 1 }
+        }
     }
 };

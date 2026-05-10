@@ -35,6 +35,8 @@ Cargo.lock
 # Auto-generated files
 *.mir
 *.ll.raw
+*.vh_cache
+*.vh_proofdb
 
 # Temp files from benchmark/test runs
 _bench_*

@@ -1,59 +1,53 @@
-# BMB Session Handoff -- 2026-05-10 (Cycles 2603-2608 -- Track S LSP + verify-host)
+# BMB Session Handoff -- 2026-05-10 (Cycles 2609-2618 -- Track S ~97% + CI 통합)
 
-> **이전 HEAD**: `2e4cadf7` (Track S LSP references + 45-test)
+> **이전 HEAD**: `196a02e9` (Track S LSP 69-test + verify-host Z3 IPC)
 > **새 HEAD**: TBD (push pending)
-> **세션 성격**: 6-cycle run-cycle -- Track S LSP 기능 확장 + verify-host Z3 IPC
-> **핵심 성과**: LSP 69-test suite (69/69 PASS), verify-host Z3 직접 IPC, verify_host_test.py 33-test
+> **세션 성격**: 10-cycle run-cycle -- Track S 완성 + CI 통합
+> **핵심 성과**: Track S ~92% → ~97%. LSP 92-test + verify-host 48-test. CI job 추가.
 
 ---
 
-## 1. 이번 세션 산출물 (Cycles 2603-2608)
+## 1. 이번 세션 산출물 (Cycles 2609-2618)
 
-### Cycle 2603 -- workspace/symbol 구현 + 10 tests
-- `workspaceSymbolProvider: true` capability 추가
-- `handle_workspace_symbol`: BMB_WORKSPACE env → dir 명령 → 파일별 심볼 스캔
-- `scan_file_lines` while-loop 기반 (스택 오버플로 방지)
-- `build_ws_cmd` helper (BMB codegen 버그 우회)
-- `path_to_file_uri`, `qs_contains`, `mk_ws_symbol`
-- **55/55 PASS** (이전: 45/45)
+### Cycle 2609 -- LSP completion from current file symbols
+- `handle_completion`: URI → `read_file` → `scan_for_completion` → 파일 심볼 추가
+- `sk_to_ck`: 워크스페이스 심볼 kind → completion item kind 변환
+- `scan_for_completion`: while-loop 기반 fn/struct/enum 스캔
+- **79/79 PASS** (이전: 69/69)
 
-### Cycle 2604 -- verify-host Z3 직접 IPC 구현
-- `run_z3_query`: 임시파일 기반 Z3 IPC (`vh_z3_tmp.smt2` → `z3 <file>`)
-- `extract_pre_conds` / `extract_post_conds`: BMB 소스 `pre`/`post` 추출
-- `expr_to_smt2`: infix BMB 비교 → SMT-LIB2 prefix 변환
-- `collect_all_vars` / `gen_declarations` / `gen_asserts_from_conds`
-- `run_z3_direct`: sat → "consistent", unsat → "unsatisfiable", 미발견 → "skipped"
-- `z3_direct` 필드 JSON 출력에 추가
-- **6210/6210 cargo nextest PASS** 확인
+### Cycle 2610 -- verify-host incremental verification (파일 레벨 캐시)
+- `file_hash(content)`: djb2 while-loop 해시 (`hash:length` 형식)
+- `cache_path`, `read_cache`, `write_cache`: `<file>.vh_cache` 캐시 시스템
+- `main()` 수정: 파일 hash → cache hit/miss 분기
+- **42/42 PASS** (이전: 33/33)
 
-### Cycle 2605 -- LSP signatureHelp 구현 + 11 tests
-- `signatureHelpProvider: {"triggerCharacters":["(","," ]}` capability 추가
-- `sh_find_call_open_r`: 후방 스캔 → 콜 컨텍스트 `(` 위치
-- `sh_count_commas_r`: depth-0 쉼표 카운트 → activeParameter
-- `sh_fn_name_before`: paren 직전 identifier 추출
-- `sh_extract_sig_from_file` + `sh_sig_scan`: 파일 내 `fn name(` 스캔 → 시그니처
-- `sh_sig_builtin`: 내장 함수 18개 시그니처 테이블
-- `sh_param_labels` + `sh_build_param_ranges`: parameter label ranges 생성
-- **66/66 PASS** (이전: 55/55)
+### Cycle 2611 -- verify-host proof database (Z3 conditions 캐시) + .gitignore
+- `proof_db_path`: `<file>.vh_proofdb`
+- `run_z3_direct` 수정: pre/post 조건 hash 기반 Z3 결과 캐시 (file_hash/read_cache/write_cache 재활용)
+- `.gitignore`: `*.vh_cache`, `*.vh_proofdb` 추가
+- **48/48 PASS** (이전: 42/42)
 
-### Cycle 2606 -- verify_host_test.py 33-test suite 신규 작성
-- `test_valid_file()`: status ok + 스키마 검증 (10 assertions)
-- `test_type_error_file()`: 타입 오류 → type_error 상태 (4 assertions)
-- `test_no_contracts()`: pre/post 없음 → z3_direct skipped (1 assertion)
-- `test_contracts_consistent()`: pre 조건 → z3_direct consistent (3 assertions)
-- `test_stdin_fallback()`: BMB_FILE 미설정 → stdin 폴백 (2 assertions)
-- `test_no_file_error()`: 존재하지 않는 파일 → 에러 JSON (2 assertions)
-- `test_output_schema()`: 전체 JSON 스키마 타입 검증 (11 assertions)
-- **33/33 PASS**
+### Cycle 2612 -- LSP code actions (pre/post condition stubs)
+- `codeActionProvider: true` capability 추가 (10 capabilities)
+- `textDocument/codeAction` 핸들러 추가
+- `line_at_loop`: while-loop 기반 라인 추출 (재귀 방지)
+- `ca_make_edit`, `ca_make_action`: WorkspaceEdit 기반 code action JSON 생성
+- `build_code_actions`: fn 라인 감지 → "Add pre/post condition" 제공
+- **88/88 PASS** (이전: 79/79)
 
-### Cycle 2607 -- hover 개선 (사용자 정의 함수 시그니처) + 3 tests
-- `handle_hover`: 키워드 매치 실패 시 `sh_extract_sig_from_file` 호출
-- 코드 블록 형식: ` ```bmb\nfn name(params) -> RetType\n``` `
-- **69/69 PASS** (이전: 66/66)
+### Cycle 2613 -- CI 통합 + 플랫폼 독립 수정
+- `lsp_test.py`, `verify_host_test.py`: `_EXE` 플랫폼 변수 추가 (Linux/macOS 지원)
+- `.github/workflows/ci.yml`: `track-s-tests` job 추가
+  - `ubuntu-latest`, `sudo apt-get install -y llvm`
+  - `bmb build bootstrap/lsp.bmb -o bootstrap/lsp`
+  - `python3 bootstrap/lsp_test.py` (88 tests)
+  - `bmb build bootstrap/verify_host.bmb -o bootstrap/verify_host`
+  - `python3 bootstrap/verify_host_test.py` (48 tests)
 
-### Cycle 2608 -- 회귀 확인 + HANDOFF
-- `cargo nextest run --release`: **6210/6210 PASS**
-- HANDOFF 업데이트
+### Cycle 2614 -- LSP completion detail 개선 (함수 시그니처)
+- `extract_fn_sig_at(src, fn_pos)`: fn 위치에서 직접 시그니처 추출 (sh_find_char_fwd 재활용)
+- `scan_for_completion` 수정: 함수에 "user function" 대신 전체 시그니처 detail 제공
+- **92/92 PASS** (이전: 88/88)
 
 ---
 
@@ -68,41 +62,44 @@
 | O (Context Pack) | ~95% ✅ | `uses` 의존성 그래프 포함 |
 | Q (Ambiguity Audit) | ~92% ✅ | 10 checks, 90 pytest, CI "10 checks" |
 | R (LLM Bench) | ~95% ✅ | run+analyze 파이프라인 완성, 30 pytest |
-| S (BMB-rewrite) | ~92% ✅ | LSP ~97% + verify-host ~75% = 전체 ~92% |
+| S (BMB-rewrite) | ~97% ✅ | LSP ~99% + verify-host ~88% = 전체 ~97% |
 | T (External Bindings) | ~95% ✅ | Node.js 5/5, npm-publish.yml |
 
 ### Track S 세부 현황
 
-**LSP (bootstrap/lsp.bmb, ~1200 LOC)**:
-- ✅ initialize (signatureHelpProvider 포함 9 capabilities)
+**LSP (bootstrap/lsp.bmb, ~1380 LOC)**:
+- ✅ initialize (10 capabilities, codeActionProvider 포함)
 - ✅ textDocument/hover (키워드 + 사용자 정의 함수 시그니처)
-- ✅ textDocument/completion (37 items)
+- ✅ textDocument/completion (37 static + file symbols, 함수 시그니처 detail)
 - ✅ textDocument/publishDiagnostics (bmb check 연동)
 - ✅ textDocument/documentSymbol
 - ✅ textDocument/definition
 - ✅ textDocument/references
 - ✅ workspace/symbol (BMB_WORKSPACE env, while-loop 스캔)
 - ✅ textDocument/signatureHelp (activeParameter, parameter labels)
+- ✅ textDocument/codeAction ("Add pre/post condition" stubs)
 - ✅ shutdown + exit
-- **테스트**: 69/69 PASS
+- **테스트**: 92/92 PASS
 
-**verify-host (bootstrap/verify_host.bmb, ~510 LOC)**:
+**verify-host (bootstrap/verify_host.bmb, ~575 LOC)**:
 - ✅ BMB_FILE env var + stdin fallback
-- ✅ `bmb check` 실행 → 에러/경고 파싱 → JSON
-- ✅ `bmb verify` 실행 → verify_result 파싱 → JSON
-- ✅ Z3 직접 IPC (`run_z3_direct`): pre/post 추출 → SMT-LIB2 → Z3 실행
-- ✅ CI type check 추가
-- ✅ verify_host_test.py 33-test suite
-- ⬜ incremental verification 미구현
-- ⬜ proof database 미구현
+- ✅ `bmb check` → 에러/경고 파싱 → JSON
+- ✅ `bmb verify` → verify_result 파싱 → JSON
+- ✅ Z3 직접 IPC (pre/post 추출 → SMT-LIB2 → Z3 실행)
+- ✅ incremental verification: 파일 레벨 캐시 (`<file>.vh_cache`)
+- ✅ proof database: Z3 조건 레벨 캐시 (`<file>.vh_proofdb`)
+- ✅ CI type check
+- ✅ verify_host_test.py 48-test suite
+- ⬜ 함수 레벨 incremental verification 미구현
+- **테스트**: 48/48 PASS
 
 ### 테스트 현황
 
 | 스위트 | 결과 |
 |--------|------|
 | `cargo nextest run --release` | ✅ 6210 passed |
-| `python3 bootstrap/lsp_test.py` | ✅ 69 passed |
-| `python3 bootstrap/verify_host_test.py` | ✅ 33 passed |
+| `python3 bootstrap/lsp_test.py` | ✅ 92 passed |
+| `python3 bootstrap/verify_host_test.py` | ✅ 48 passed |
 | `bmb-ai-bench pytest` | ✅ 30 passed |
 | `bmb-mcp pytest` | ✅ 90 passed |
 
@@ -123,21 +120,21 @@ GitHub Actions → "Publish npm packages" → `workflow_dispatch` → `dry_run: 
 | ★1순위 | **bmb-algo** | 성능 스토리 최강 (knapsack 6.8x > C) |
 | ★2순위 | **bmb-json** | AI/LLM 도메인 정합, zero-copy |
 
-### 3차 -- Track S ~95%+ 달성 (자율)
+### 3차 -- Track S 추가 개선 (자율, 선택적)
 
-현재 ~92%. 잔여 (~8%):
-- verify-host: incremental verification, proof database → ~85%
-- LSP: code actions, completion from current file → ~99%
+현재 ~97%. 선택적 개선:
+- LSP: `textDocument/rename` 심볼 이름 변경 (2-3 cycles)
+- CI: Z3 설치 추가 → verify_host Z3 IPC 테스트 CI에서 검증
+- verify-host: 함수 레벨 incremental verification
 
 ### Backlog
 
 | 작업 | 추정 | 우선도 |
 |------|------|--------|
 | Track R `run` 실제 LLM 실험 | API key 필요 | HUMAN |
-| LSP completion from current file | 1 cycle | Medium |
-| LSP code actions | 2 cycles | Low |
-| verify-host incremental verification | 2-3 cycles | Medium |
-| CI에 lsp_test.py + verify_host_test.py 추가 | 1 cycle (LLVM 설치 포함) | Low |
+| LSP rename symbol | 2-3 cycles | Medium |
+| CI에 Z3 설치 → verify_host Z3 완전 테스트 | 1 cycle | Low |
+| verify-host 함수 레벨 캐시 | 2-3 cycles | Low |
 | M3 showcase 공식 벤치마크 측정 | 2 cycles | HUMAN 선택 후 |
 
 ---
@@ -152,8 +149,8 @@ GitHub Actions → "Publish npm packages" → `workflow_dispatch` → `dry_run: 
 | BMB workspace | `Cargo.toml workspace.version = "0.98.0"` |
 | `target/release/bmb.exe` | 캐시 유효 |
 | Branch | `main` |
-| `bootstrap/lsp.bmb` | ~1200 LOC, 69-test suite |
-| `bootstrap/verify_host.bmb` | ~510 LOC, 33-test suite |
+| `bootstrap/lsp.bmb` | ~1380 LOC, 92-test suite |
+| `bootstrap/verify_host.bmb` | ~575 LOC, 48-test suite |
 | `bootstrap/lsp.exe` | gitignored (재빌드: `bmb build bootstrap/lsp.bmb -o bootstrap/lsp.exe`) |
 | `bootstrap/verify_host.exe` | gitignored (재빌드: `bmb build bootstrap/verify_host.bmb -o bootstrap/verify_host.exe`) |
 
@@ -171,6 +168,8 @@ GitHub Actions → "Publish npm packages" → `workflow_dispatch` → `dry_run: 
 
 **BMB codegen 버그**: `getenv()` 결과 let 바인딩 후 String concat 우측 피연산자로 사용 시 오동작 → helper function 파라미터로 전달하는 방식으로 우회
 
+**캐시 파일**: `*.vh_cache`, `*.vh_proofdb` → `.gitignore` 등록됨
+
 ---
 
 ## 5. HUMAN-Decision (미결)
@@ -186,17 +185,17 @@ GitHub Actions → "Publish npm packages" → `workflow_dispatch` → `dry_run: 
 
 ## 6. Push 상태
 
-- 이전 세션: ✅ push 완료 (`9d1a6cf6 → 2e4cadf7`)
-- **이번 세션**: 🔴 push pending (커밋 후 push 필요)
+- 이전 세션: ✅ push 완료 (`2e4cadf7 → 196a02e9`)
+- **이번 세션**: ⏳ push 대기 (commit pending)
 
 ### 다음 세션 시작 체크리스트
 
 - [ ] `git push` 완료 확인
 - [ ] `./target/release/bmb build bootstrap/lsp.bmb -o bootstrap/lsp.exe`
 - [ ] `./target/release/bmb build bootstrap/verify_host.bmb -o bootstrap/verify_host.exe`
-- [ ] `python3 bootstrap/lsp_test.py` → 69/69 PASS 확인
-- [ ] `python3 bootstrap/verify_host_test.py` → 33/33 PASS 확인
+- [ ] `python3 bootstrap/lsp_test.py` → 92/92 PASS 확인
+- [ ] `python3 bootstrap/verify_host_test.py` → 48/48 PASS 확인
 
 ---
 
-**세션 종료**: 2026-05-10 (Cycles 2603-2608)
+**세션 종료**: 2026-05-10 (Cycles 2609-2618, 10 cycles)
