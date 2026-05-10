@@ -116,6 +116,7 @@
 | M5-2 | Result enum + 다중 payload | 언어 | ✅ **완료** (Cycle 2635, M5-1 인프라 재사용) |
 | M5-3 | Multi-field enum `Branch(i64,i64)` | 언어 | ✅ **완료** (Cycle 2637) |
 | M5-4 | `println(String/f64)` + struct String 필드 종합 dispatch | 언어 | ✅ **완료** (Cycle 2640-2646) |
+| M5-5 | `[String; N]` array element 타입 추적 | 언어 (인프라 확장) | ⬜ 후보 — 큰 변경 |
 
 ---
 
