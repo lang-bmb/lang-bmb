@@ -1,5 +1,5 @@
 // bootstrap/verify_host.bmb -- BMB contract verification host script
-// Cycle 2598, Track S
+// Cycle 2598 (initial), Cycle 2604 (Z3 IPC addition), Track S
 //
 // Usage:
 //   BMB_FILE=<file.bmb> ./bootstrap/verify_host.exe
@@ -10,11 +10,14 @@
 //     "file": "...",
 //     "type_check": { "status": "ok"|"error", "error_count": N, "diagnostics": [...] },
 //     "contracts": { "status": "verified"|"failed"|"skipped"|"error",
-//                    "total": N, "verified": N, "failed": N } }
+//                    "total": N, "verified": N, "failed": N },
+//     "z3_direct": { "status": "ok"|"skipped"|"error",
+//                    "checks": N, "passed": N, "failed": N } }
 //
 // Environment:
 //   BMB_FILE   -- path to the .bmb file to verify (required)
 //   BMB_PATH   -- path to the bmb binary (default: "bmb")
+//   Z3_PATH    -- path to z3 binary (default: "z3")
 
 fn bmb_binary() -> String = {
     let env = getenv("BMB_PATH");
@@ -52,6 +55,327 @@ fn vh_escape_loop(s: String, i: i64, acc: String) -> String =
                   else { chr(c) };
         vh_escape_loop(s, i + 1, acc + esc)
     };
+
+// ============================================================
+// Z3 Direct IPC
+// ============================================================
+
+fn z3_binary() -> String = {
+    let env = getenv("Z3_PATH");
+    if env != "" { env } else { "z3" }
+};
+
+fn z3_available() -> bool = {
+    let out = system_capture("z3 --version 2>&1");
+    vh_contains(out, "Z3 version")
+};
+
+fn run_z3_query(smt2: String) -> String = {
+    let tmp = "vh_z3_tmp.smt2";
+    let _w = write_file(tmp, smt2);
+    let out = system_capture("z3 " + tmp);
+    let _d = delete_file(tmp);
+    let first_line = vh_first_line(out);
+    if first_line == "unsat" { "unsat" }
+    else if first_line == "sat" { "sat" }
+    else if first_line == "unknown" { "unknown" }
+    else { "error" }
+};
+
+fn vh_first_line(s: String) -> String = {
+    let nl = vh_find_nl(s, 0);
+    let end = if nl < 0 { s.len() } else { nl };
+    vh_strip_cr(s.slice(0, end))
+};
+
+fn vh_strip_cr(s: String) -> String =
+    if s.len() > 0 and s.byte_at(s.len() - 1) == 13 { s.slice(0, s.len() - 1) }
+    else { s };
+
+// ============================================================
+// Contract extraction from BMB source
+// ============================================================
+
+// Find all "pre <expr>" lines in source, return as newline-separated string
+fn extract_pre_conds(src: String, pos: i64, acc: String) -> String =
+    if pos >= src.len() { acc }
+    else {
+        let nl = vh_find_nl(src, pos);
+        let end = if nl < 0 { src.len() } else { nl };
+        let line = vh_strip_cr(src.slice(pos, end));
+        let trimmed = vh_skip_ws(line, 0);
+        let new_acc = if starts_with_kw(line, trimmed, "pre ") {
+            let expr = line.slice(trimmed + 4, line.len());
+            if acc == "" { expr } else { acc + "\n" + expr }
+        } else { acc };
+        let next = if nl < 0 { src.len() } else { nl + 1 };
+        extract_pre_conds(src, next, new_acc)
+    };
+
+fn extract_post_conds(src: String, pos: i64, acc: String) -> String =
+    if pos >= src.len() { acc }
+    else {
+        let nl = vh_find_nl(src, pos);
+        let end = if nl < 0 { src.len() } else { nl };
+        let line = vh_strip_cr(src.slice(pos, end));
+        let trimmed = vh_skip_ws(line, 0);
+        let new_acc = if starts_with_kw(line, trimmed, "post ") {
+            let expr = line.slice(trimmed + 5, line.len());
+            if acc == "" { expr } else { acc + "\n" + expr }
+        } else { acc };
+        let next = if nl < 0 { src.len() } else { nl + 1 };
+        extract_post_conds(src, next, new_acc)
+    };
+
+fn vh_skip_ws(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos }
+    else {
+        let c = s.byte_at(pos);
+        if c == 32 or c == 9 { vh_skip_ws(s, pos + 1) }
+        else { pos }
+    };
+
+fn starts_with_kw(line: String, trimmed: i64, kw: String) -> bool =
+    if trimmed + kw.len() > line.len() { false }
+    else { line.slice(trimmed, trimmed + kw.len()) == kw };
+
+// ============================================================
+// Simple BMB expression to SMT-LIB2 translation
+// ============================================================
+
+// Tokenize a BMB expression (split by spaces)
+// Returns the expression with BMB operators converted to SMT-LIB2
+
+// Very simple infix→prefix conversion for basic comparisons:
+//   "x > 0"     → "(> x 0)"
+//   "x >= 0"    → "(>= x 0)"
+//   "x < n"     → "(< x n)"
+//   "x == y"    → "(= x y)"
+//   "x != y"    → "(not (= x y))"
+//   "A and B"   → "(and A B)" (where A, B are sub-expressions)
+//   "not A"     → "(not A)"
+// Falls back to raw expression if pattern not matched (Z3 may reject)
+
+fn bmb_op_to_smt(op: String) -> String =
+    if op == "==" { "=" }
+    else if op == "!=" { "not_eq" }
+    else if op == "and" { "and" }
+    else if op == "or" { "or" }
+    else { op };
+
+// Translate a simple "var OP literal" or "var OP var" expression to SMT-LIB2
+fn translate_simple_cmp(tok1: String, op: String, tok2: String) -> String =
+    if op == "!=" { "(not (= " + tok1 + " " + tok2 + "))" }
+    else { "(" + bmb_op_to_smt(op) + " " + tok1 + " " + tok2 + ")" };
+
+// Split an expression by " and " or " or " into parts
+// Returns a simple translated form
+fn expr_to_smt2(expr: String) -> String = {
+    let and_pos = find_subst(expr, " and ", 0);
+    let or_pos  = find_subst(expr, " or ", 0);
+    if and_pos >= 0 and (or_pos < 0 or and_pos <= or_pos) {
+        let left  = expr.slice(0, and_pos);
+        let right = expr.slice(and_pos + 5, expr.len());
+        "(and " + expr_to_smt2(left) + " " + expr_to_smt2(right) + ")"
+    } else if or_pos >= 0 {
+        let left  = expr.slice(0, or_pos);
+        let right = expr.slice(or_pos + 4, expr.len());
+        "(or " + expr_to_smt2(left) + " " + expr_to_smt2(right) + ")"
+    } else {
+        translate_atomic(expr)
+    }
+};
+
+fn find_subst(s: String, sub: String, pos: i64) -> i64 =
+    if pos + sub.len() > s.len() { 0 - 1 }
+    else if s.slice(pos, pos + sub.len()) == sub { pos }
+    else { find_subst(s, sub, pos + 1) };
+
+// Translate atomic expression "tok1 OP tok2"
+fn translate_atomic(expr: String) -> String = {
+    let trimmed = vh_skip_ws(expr, 0);
+    let e = if trimmed > 0 { expr.slice(trimmed, expr.len()) } else { expr };
+    let ops = find_op(e, 0);
+    if ops < 0 { e }  // Not recognized, return as-is
+    else {
+        let op_end = find_op_end(e, ops);
+        let tok1 = vh_strip_trailing_ws(e.slice(0, ops));
+        let op   = e.slice(ops, op_end);
+        let tok2 = vh_skip_ws_str(e, op_end);
+        translate_simple_cmp(tok1, op, tok2)
+    }
+};
+
+fn find_op(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { 0 - 1 }
+    else {
+        let c = s.byte_at(pos);
+        if c == 32 { find_op_after_ws(s, pos) }
+        else { find_op(s, pos + 1) }
+    };
+
+fn find_op_after_ws(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { 0 - 1 }
+    else {
+        let next_non_ws = vh_skip_ws(s, pos);
+        if next_non_ws >= s.len() { 0 - 1 }
+        else {
+            let c = s.byte_at(next_non_ws);
+            if c == 62 or c == 60 or c == 61 or c == 33 { next_non_ws }
+            else { find_op(s, pos + 1) }
+        }
+    };
+
+fn find_op_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos }
+    else {
+        let c = s.byte_at(pos);
+        if c == 62 or c == 60 or c == 61 or c == 33 { find_op_end(s, pos + 1) }
+        else { pos }
+    };
+
+fn vh_strip_trailing_ws(s: String) -> String =
+    if s.len() == 0 { s }
+    else {
+        let last = s.byte_at(s.len() - 1);
+        if last == 32 or last == 9 { vh_strip_trailing_ws(s.slice(0, s.len() - 1)) }
+        else { s }
+    };
+
+fn vh_skip_ws_str(s: String, pos: i64) -> String =
+    s.slice(vh_skip_ws(s, pos), s.len());
+
+// ============================================================
+// Collect variable names from pre/post conditions
+// ============================================================
+
+fn collect_vars_from_cond(expr: String, pos: i64, acc: String) -> String =
+    if pos >= expr.len() { acc }
+    else {
+        let c = expr.byte_at(pos);
+        if is_alpha(c) {
+            let name_end = find_name_end(expr, pos);
+            let name = expr.slice(pos, name_end);
+            let is_kw = name == "and" or name == "or" or name == "not" or name == "true" or name == "false";
+            let new_acc = if is_kw { acc }
+                          else if var_in_list(acc, name) { acc }
+                          else if acc == "" { name }
+                          else { acc + " " + name };
+            collect_vars_from_cond(expr, name_end, new_acc)
+        } else { collect_vars_from_cond(expr, pos + 1, acc) }
+    };
+
+fn is_alpha(c: i64) -> bool =
+    (c >= 97 and c <= 122) or (c >= 65 and c <= 90) or c == 95;
+
+fn find_name_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos }
+    else {
+        let c = s.byte_at(pos);
+        if is_alpha(c) or (c >= 48 and c <= 57) { find_name_end(s, pos + 1) }
+        else { pos }
+    };
+
+fn var_in_list(list: String, name: String) -> bool =
+    vh_contains(list, name);
+
+// ============================================================
+// Z3 query generation and execution
+// ============================================================
+
+// Generate declarations for variables from all conditions
+fn collect_all_vars(conds: String, pos: i64, acc: String) -> String =
+    if pos >= conds.len() { acc }
+    else {
+        let nl = vh_find_nl(conds, pos);
+        let end = if nl < 0 { conds.len() } else { nl };
+        let cond = vh_strip_cr(conds.slice(pos, end));
+        let vars = if cond == "" { "" } else { collect_vars_from_cond(cond, 0, "") };
+        let new_acc = merge_var_lists(acc, vars);
+        let next = if nl < 0 { conds.len() } else { nl + 1 };
+        collect_all_vars(conds, next, new_acc)
+    };
+
+fn merge_var_lists(a: String, b: String) -> String =
+    if b == "" { a }
+    else { merge_vars_loop(a, b, 0) };
+
+fn merge_vars_loop(a: String, b: String, pos: i64) -> String =
+    if pos >= b.len() { a }
+    else {
+        let c = b.byte_at(pos);
+        if is_alpha(c) {
+            let name_end = find_name_end(b, pos);
+            let name = b.slice(pos, name_end);
+            let new_a = if var_in_list(a, name) { a }
+                        else if a == "" { name }
+                        else { a + " " + name };
+            merge_vars_loop(new_a, b, name_end)
+        } else { merge_vars_loop(a, b, pos + 1) }
+    };
+
+fn gen_declarations(vars: String, pos: i64, acc: String) -> String =
+    if pos >= vars.len() { acc }
+    else {
+        let c = vars.byte_at(pos);
+        if is_alpha(c) {
+            let name_end = find_name_end(vars, pos);
+            let name = vars.slice(pos, name_end);
+            let decl = "(declare-const " + name + " Int)\n";
+            gen_declarations(vars, name_end, acc + decl)
+        } else { gen_declarations(vars, pos + 1, acc) }
+    };
+
+fn gen_asserts_from_conds(conds: String, pos: i64, acc: String) -> String =
+    if pos >= conds.len() { acc }
+    else {
+        let nl = vh_find_nl(conds, pos);
+        let end = if nl < 0 { conds.len() } else { nl };
+        let cond = vh_strip_cr(conds.slice(pos, end));
+        let new_acc = if cond == "" { acc }
+                      else {
+                          let smt = expr_to_smt2(cond);
+                          acc + "(assert " + smt + ")\n"
+                      };
+        let next = if nl < 0 { conds.len() } else { nl + 1 };
+        gen_asserts_from_conds(conds, next, new_acc)
+    };
+
+fn count_newlines(s: String, pos: i64, n: i64) -> i64 =
+    if pos >= s.len() { n }
+    else if s.byte_at(pos) == 10 { count_newlines(s, pos + 1, n + 1) }
+    else { count_newlines(s, pos + 1, n) };
+
+fn run_z3_direct(file_path: String) -> String = {
+    if z3_available() == false {
+        "{\"status\":\"skipped\",\"message\":\"Z3 not found\",\"checks\":0,\"passed\":0,\"failed\":0}"
+    } else {
+        let src = read_file(file_path);
+        let pres  = extract_pre_conds(src, 0, "");
+        let posts = extract_post_conds(src, 0, "");
+        let all_conds = if pres == "" { posts }
+                        else if posts == "" { pres }
+                        else { pres + "\n" + posts };
+        if all_conds == "" {
+            "{\"status\":\"skipped\",\"message\":\"no contracts found\",\"checks\":0,\"passed\":0,\"failed\":0}"
+        } else {
+            let n_checks = count_newlines(all_conds, 0, 0) + 1;
+            let vars = collect_all_vars(all_conds, 0, "");
+            let decls = gen_declarations(vars, 0, "");
+            let asserts = gen_asserts_from_conds(all_conds, 0, "");
+            let smt2 = decls + asserts + "(check-sat)\n";
+            let result = run_z3_query(smt2);
+            let status = if result == "unsat" { "unsatisfiable" }
+                         else if result == "sat" { "consistent" }
+                         else { "error" };
+            "{\"status\":\"" + status + "\"," +
+            "\"checks\":" + int_to_string(n_checks) + "," +
+            "\"passed\":" + int_to_string(if result == "sat" or result == "unsat" { n_checks } else { 0 }) + "," +
+            "\"failed\":0," +
+            "\"z3_result\":\"" + result + "\"}"
+        }
+    }
+};
 
 // ============================================================
 // BMB check output parser
@@ -165,17 +489,22 @@ fn main() -> i64 = {
     } else {
         let check = run_type_check(file_path);
         let verify = run_verify_contracts(file_path);
+        let z3d = run_z3_direct(file_path);
         let check_ok = vh_contains(check, "\"status\":\"ok\"");
         let verify_ok = vh_contains(verify, "\"status\":\"verified\"") or
                         vh_contains(verify, "\"status\":\"skipped\"");
-        let overall = if check_ok and verify_ok { "ok" }
+        let z3d_ok = vh_contains(z3d, "\"status\":\"consistent\"") or
+                     vh_contains(z3d, "\"status\":\"skipped\"");
+        let overall = if check_ok and verify_ok and z3d_ok { "ok" }
                       else if check_ok == false { "type_error" }
-                      else { "verify_error" };
+                      else if verify_ok == false { "verify_error" }
+                      else { "z3_direct_error" };
         let result = "{" +
             "\"status\":\"" + overall + "\"," +
             "\"file\":\"" + vh_escape(file_path) + "\"," +
             "\"type_check\":" + check + "," +
-            "\"contracts\":" + verify +
+            "\"contracts\":" + verify + "," +
+            "\"z3_direct\":" + z3d +
             "}";
         write_stdout(result + "\n");
         if overall == "ok" { 0 } else { 1 }

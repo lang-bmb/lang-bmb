@@ -121,24 +121,34 @@ def test_completion():
 
 def test_hover():
     print("\n--- Test: textDocument/hover ---")
+    content = (
+        "fn helper(x: i64, y: i64) -> i64 = x + y;\n"
+        "fn main() -> i64 = helper(1, 2);\n"
+    )
     with tempfile.NamedTemporaryFile(suffix=".bmb", mode="w", delete=False) as f:
-        f.write("fn main() -> i64 = 0;\n")
+        f.write(content)
         tmp_path = f.name
     try:
         uri = "file:///" + tmp_path.replace("\\", "/")
         msgs = (
             make_msg({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"capabilities": {}}})
             + make_msg({"jsonrpc": "2.0", "method": "initialized", "params": {}})
+            # hover on 'fn' keyword (line 0, char 0)
             + make_msg({"jsonrpc": "2.0", "id": 2, "method": "textDocument/hover",
                         "params": {"textDocument": {"uri": uri}, "position": {"line": 0, "character": 0}}})
+            # hover past EOF
             + make_msg({"jsonrpc": "2.0", "id": 3, "method": "textDocument/hover",
                         "params": {"textDocument": {"uri": uri}, "position": {"line": 0, "character": 100}}})
-            + make_msg({"jsonrpc": "2.0", "id": 4, "method": "shutdown", "params": {}})
+            # hover on 'helper' call site (line 1, char 21 = 'h' in helper(...))
+            + make_msg({"jsonrpc": "2.0", "id": 4, "method": "textDocument/hover",
+                        "params": {"textDocument": {"uri": uri}, "position": {"line": 1, "character": 21}}})
+            + make_msg({"jsonrpc": "2.0", "id": 5, "method": "shutdown", "params": {}})
             + make_msg({"jsonrpc": "2.0", "method": "exit"})
         )
         responses = run_lsp(msgs)
         hover_fn = next((r for r in responses if r.get("id") == 2), None)
         hover_eof = next((r for r in responses if r.get("id") == 3), None)
+        hover_user = next((r for r in responses if r.get("id") == 4), None)
         test("hover response received", hover_fn is not None)
         if hover_fn:
             result = hover_fn.get("result")
@@ -150,6 +160,14 @@ def test_hover():
         if hover_eof:
             test("hover past EOF returns null", hover_eof.get("result") is None,
                  str(hover_eof.get("result")))
+        test("hover on user-defined fn response received", hover_user is not None)
+        if hover_user:
+            result = hover_user.get("result")
+            test("hover on 'helper' returns content", result is not None,
+                 str(result))
+            if result:
+                val = result.get("contents", {}).get("value", "")
+                test("hover shows 'helper' signature", "helper" in val, val[:80])
     finally:
         os.unlink(tmp_path)
 
@@ -370,6 +388,133 @@ def test_references():
         os.unlink(tmp_path)
 
 
+def test_workspace_symbol():
+    print("\n--- Test: workspace/symbol ---")
+    # Create a temp workspace directory with two .bmb files
+    with tempfile.TemporaryDirectory() as ws_dir:
+        # File 1: defines foo, bar
+        file1 = os.path.join(ws_dir, "file1.bmb")
+        with open(file1, "w") as f:
+            f.write("fn foo() -> i64 = 1;\nfn bar() -> i64 = 2;\n")
+        # File 2: defines baz, qux
+        file2 = os.path.join(ws_dir, "file2.bmb")
+        with open(file2, "w") as f:
+            f.write("fn baz() -> i64 = 3;\nfn qux() -> i64 = 4;\n")
+
+        env = os.environ.copy()
+        env["BMB_PATH"] = BMB_PATH
+        env["BMB_WORKSPACE"] = ws_dir
+
+        # Test 1: empty query returns all symbols
+        msgs = (
+            make_msg({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"capabilities": {}}})
+            + make_msg({"jsonrpc": "2.0", "method": "initialized", "params": {}})
+            + make_msg({"jsonrpc": "2.0", "id": 2, "method": "workspace/symbol",
+                        "params": {"query": ""}})
+            + make_msg({"jsonrpc": "2.0", "id": 3, "method": "workspace/symbol",
+                        "params": {"query": "ba"}})
+            + make_msg({"jsonrpc": "2.0", "id": 4, "method": "shutdown", "params": {}})
+            + make_msg({"jsonrpc": "2.0", "method": "exit"})
+        )
+        proc = subprocess.run(
+            [LSP_BIN], input=msgs, capture_output=True, timeout=30, env=env
+        )
+        responses = parse_responses(proc.stdout)
+
+        caps_resp = next((r for r in responses if r.get("id") == 1), None)
+        all_syms = next((r for r in responses if r.get("id") == 2), None)
+        ba_syms = next((r for r in responses if r.get("id") == 3), None)
+
+        test("workspaceSymbolProvider in capabilities",
+             caps_resp is not None and
+             caps_resp.get("result", {}).get("capabilities", {}).get("workspaceSymbolProvider") is True)
+        test("workspace/symbol empty query returns list", all_syms is not None)
+        if all_syms:
+            result = all_syms.get("result", [])
+            test("workspace/symbol empty query >= 4 symbols", len(result) >= 4,
+                 f"got {len(result)}")
+            names = [s.get("name") for s in result]
+            test("foo symbol present", "foo" in names, str(names))
+            test("baz symbol present", "baz" in names, str(names))
+            if result:
+                loc = result[0].get("location", {})
+                test("symbol has uri", "uri" in loc, str(list(loc.keys())))
+        test("workspace/symbol query 'ba' returns results", ba_syms is not None)
+        if ba_syms:
+            result = ba_syms.get("result", [])
+            names = [s.get("name") for s in result]
+            test("query 'ba' matches bar", "bar" in names, str(names))
+            test("query 'ba' matches baz", "baz" in names, str(names))
+            test("query 'ba' excludes foo", "foo" not in names, str(names))
+
+
+def test_signature_help():
+    print("\n--- Test: textDocument/signatureHelp ---")
+    # Line 0: fn add(x: i64, y: i64) -> i64 = x + y;
+    # Line 1: fn main() -> i64 = add(1, 2);
+    # In "add(1, 2)":
+    #   char 22 = '(' (call open), char 23 = '1', char 24 = ',', char 26 = '2'
+    content = (
+        "fn add(x: i64, y: i64) -> i64 = x + y;\n"
+        "fn main() -> i64 = add(1, 2);\n"
+    )
+    with tempfile.NamedTemporaryFile(suffix=".bmb", mode="w", delete=False) as f:
+        f.write(content)
+        tmp_path = f.name
+    try:
+        uri = "file:///" + tmp_path.replace("\\", "/")
+        msgs = (
+            make_msg({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"capabilities": {}}})
+            + make_msg({"jsonrpc": "2.0", "method": "initialized", "params": {}})
+            # cursor at first argument (char 23 = '1') -> activeParameter 0
+            + make_msg({"jsonrpc": "2.0", "id": 2, "method": "textDocument/signatureHelp",
+                        "params": {"textDocument": {"uri": uri}, "position": {"line": 1, "character": 23}}})
+            # cursor at second argument (char 26 = '2') -> activeParameter 1
+            + make_msg({"jsonrpc": "2.0", "id": 3, "method": "textDocument/signatureHelp",
+                        "params": {"textDocument": {"uri": uri}, "position": {"line": 1, "character": 26}}})
+            # cursor outside call (line 0, inside fn body) -> null
+            + make_msg({"jsonrpc": "2.0", "id": 4, "method": "textDocument/signatureHelp",
+                        "params": {"textDocument": {"uri": uri}, "position": {"line": 0, "character": 35}}})
+            + make_msg({"jsonrpc": "2.0", "id": 5, "method": "shutdown", "params": {}})
+            + make_msg({"jsonrpc": "2.0", "method": "exit"})
+        )
+        responses = run_lsp(msgs)
+        caps_resp = next((r for r in responses if r.get("id") == 1), None)
+        sh_first = next((r for r in responses if r.get("id") == 2), None)
+        sh_second = next((r for r in responses if r.get("id") == 3), None)
+        sh_outside = next((r for r in responses if r.get("id") == 4), None)
+
+        test("signatureHelpProvider in capabilities",
+             caps_resp is not None and
+             "signatureHelpProvider" in caps_resp.get("result", {}).get("capabilities", {}))
+        test("signatureHelp response for first param", sh_first is not None)
+        if sh_first:
+            result = sh_first.get("result")
+            test("signatureHelp first param not null", result is not None, str(result))
+            if result:
+                sigs = result.get("signatures", [])
+                test("signatureHelp has 1 signature", len(sigs) == 1, f"got {len(sigs)}")
+                if sigs:
+                    label = sigs[0].get("label", "")
+                    test("signature label contains 'add'", "add" in label, label)
+                    params = sigs[0].get("parameters", [])
+                    test("signature has 2 parameters", len(params) == 2, f"got {len(params)}")
+                test("activeSignature is 0", result.get("activeSignature") == 0)
+                test("activeParameter is 0 for first arg", result.get("activeParameter") == 0,
+                     f"got {result.get('activeParameter')}")
+        if sh_second:
+            result = sh_second.get("result")
+            test("signatureHelp second param not null", result is not None, str(result))
+            if result:
+                test("activeParameter is 1 for second arg", result.get("activeParameter") == 1,
+                     f"got {result.get('activeParameter')}")
+        test("signatureHelp outside call returns null",
+             sh_outside is not None and sh_outside.get("result") is None,
+             str(sh_outside))
+    finally:
+        os.unlink(tmp_path)
+
+
 # ============================================================
 # Main
 # ============================================================
@@ -393,6 +538,8 @@ if __name__ == "__main__":
     test_document_symbols()
     test_definition()
     test_references()
+    test_workspace_symbol()
+    test_signature_help()
 
     print()
     print(f"Results: {tests_passed} passed, {tests_failed} failed")
