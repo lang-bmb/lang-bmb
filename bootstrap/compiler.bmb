@@ -15199,20 +15199,40 @@ fn llvm_gen_phi_with_strings_sb(line: String, pos: i64, dest: String, str_sb: i6
     };
 
 fn llvm_gen_call_with_string_tracking_sb_reg(line: String, pos: i64, dest: String, str_sb: i64, string_fns: String, registry: String) -> String =
-    let llvm_code = llvm_gen_call_reg(line, pos, dest, registry);
     let fn_name = extract_call_fn_name(line, pos);
+    let dispatch = llvm_try_println_str_dispatch(line, pos, dest, fn_name, str_sb);
+    if dispatch != "" { same_mapping(dispatch) }
+    else {
+    let llvm_code = llvm_gen_call_reg(line, pos, dest, registry);
     let is_hardcoded_string_fn = is_string_returning_fn(fn_name);
     let is_dynamic_string_fn_result = is_dynamic_string_fn(fn_name, string_fns);
     let is_string_fn = is_hardcoded_string_fn or is_dynamic_string_fn_result;
     let ret_type = lookup_fn_ret(registry, fn_name);
     let is_double_fn = ret_type == "double" or is_builtin_double_fn(fn_name);
-    // v0.95: Track i32-returning functions
     let is_i32_fn = ret_type == "i32";
     let w = if is_string_fn { push_string_marker(str_sb, dest) }
             else if is_double_fn { push_double_marker(str_sb, dest) }
             else if is_i32_fn { push_i32_marker(str_sb, dest) }
             else { 0 };
-    same_mapping(llvm_code);
+    same_mapping(llvm_code)
+    };
+
+fn llvm_try_println_str_dispatch(line: String, pos: i64, dest: String, fn_name: String, str_sb: i64) -> String =
+    if fn_name == "println" or fn_name == "print" or fn_name == "eprintln" or fn_name == "eprint" {
+        let after_call = low_skip_ws(line, pos + 4);
+        let at_pos = if line.byte_at(after_call) == 64 { after_call + 1 } else { after_call };
+        let paren_pos = find_char(line, at_pos, 40);
+        let close_pos = find_char(line, paren_pos, 41);
+        let arg = trim(line.slice(paren_pos + 1, close_pos));
+        if is_string_var_sb(arg, str_sb) {
+            let str_fn = if fn_name == "println" { "@println_str" }
+                         else if fn_name == "print" { "@print_str" }
+                         else if fn_name == "eprintln" { "@eprintln_str" }
+                         else { "@eprint_str" };
+            let ptr_tmp = dest + "_sp";
+            "  " + ptr_tmp + " = inttoptr i64 " + arg + " to ptr" + SEP() + "  call void " + str_fn + "(ptr " + ptr_tmp + ")" + SEP() + "  " + dest + " = add nsw i64 0, 0"
+        } else { "" }
+    } else { "" };
 
 fn is_builtin_double_fn(name: String) -> bool =
     name == "sqrt" or name == "i64_to_f64" or name == "sin" or name == "cos" or name == "tan" or name == "atan" or name == "atan2" or name == "log" or name == "log2" or name == "log10" or name == "exp" or name == "fmod" or name == "pow_f64" or
