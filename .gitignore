@@ -110,6 +110,10 @@ ecosystem/bmb-*/bindings/python/*.dll
 ecosystem/bmb-*/bindings/python/*.so
 ecosystem/bmb-*/bindings/python/*.dylib
 
+# C# / .NET build artifacts
+ecosystem/bmb-*/bindings/csharp/bin/
+ecosystem/bmb-*/bindings/csharp/obj/
+
 # Node.js
 **/node_modules/
 **/package-lock.json

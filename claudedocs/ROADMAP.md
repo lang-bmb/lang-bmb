@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-10 (Cycle 2618 — 전체 작업 검토 후 갱신)
+> 최종 업데이트: 2026-05-11 (Cycles 2640-2649 — M5-4 dispatch 종합 + struct String 필드 추적)
 > 이 문서는 매 세션의 **유일한 실무 앵커**다.
 > 상세 사이클 로그: `docs/ROADMAP.md` | 개발 규칙: `CLAUDE.md` | 세션 상태: `claudedocs/HANDOFF.md`
 

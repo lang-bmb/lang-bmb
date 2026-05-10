@@ -1,11 +1,11 @@
-# BMB Session Handoff — 2026-05-11 (Cycles 2619-2646 — M4 언어 갭 + M5 완전 dispatch)
+# BMB Session Handoff — 2026-05-11 (Cycles 2619-2649 — M4 언어 갭 + M5 완전 dispatch)
 
-> **HEAD**: `0597a455` (Cycle 2646 커밋)
+> **HEAD**: `34e8cece` (Cycle 2649 마무리 커밋, 추가 정리 commit 예정)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 
 ---
 
-## 0. 이번 세션 작업 (Cycles 2619-2646)
+## 0. 이번 세션 작업 (Cycles 2619-2649)
 
 ### 세션 성과 요약
 
@@ -36,6 +36,9 @@
 | **2644** | **enum String payload 통합 테스트** | **Message::Text(String) → match → println 종합 ✅** |
 | **2645** | **struct String 필드 타입 추적** | **registry `~s` suffix + is_field_string ✅** |
 | **2646** | **중첩 + mut struct String 검증** | **set_field 경로 영향 없음 확인 ✅** |
+| **2647** | **HANDOFF + ROADMAP + CLAUDE.md 종합 갱신** | **— 문서 갱신** |
+| **2648** | **dispatch 갭 탐색 + M5-4 매트릭스** | **`arr[i]` of String 미지원 명확화** |
+| **2649** | **M5-5 후보 등록 + 세션 마무리** | **— 세션 종료 정리** |
 
 ---
 
@@ -122,38 +125,61 @@
 
 ## 3. 다음 세션 우선순위
 
-### 1순위 — M5 후속 + M6 계획
+### 1순위 — M5-5 또는 M3-2 (자율 실행 가능)
 
-1. **`println(greet(name))` 체이닝 검증**: string_fns 경로로 사용자 함수 반환값 println 테스트
-2. **M6 계획 수립**: bootstrap arena OOM 근본 해결 방향 (문자열 AST → 구조체 전환, 장기)
-3. **M5-4 `println_f64` 연동 검토**: `is_double_var_sb` 인프라 이미 있음 (별도 사이클)
+1. **M5-5 array element 타입 추적**: `arr[i]` of `[String; N]` dispatch
+   - 인프라: 배열 element 타입 registry 신규 도입 (struct registry 패턴 미러링)
+   - 영향 범위: `lower_index_sb` (MIR), `llvm_gen_index` (codegen), 새 함수 `is_array_element_string`
+   - 소요: 3-5 cycles
+2. **M3-2 showcase 벤치마크 측정**: bmb-algo (이미 선정) 공식 벤치 측정
+   - 조건: BMB --release + opt -O2 vs C -O2 -march=native (Rule 4)
+   - 산출: M3 완료 마지막 자율 게이트
+   - 소요: 1-2 cycles
 
-### 2순위 — PyPI publish + NuGet publish
+### 2순위 — M6 계획 수립 (장기 아키텍처)
 
-4. **PyPI windows-2022 수정 push** → 재실행 트리거 (`.github/workflows/pypi-publish.yml` 수정 이미 커밋됨)
-5. **NuGet publish**: 5개 C# 패키지 (M4-6 완료 후)
+3. **arena OOM 근본 해결**: `compiler.bmb` self-compile 시 32G+ 초과
+   - 원인: 문자열 기반 AST의 O(n²) 성장 (Cycle 2634 확인)
+   - 방향: 문자열 AST → 구조체 전환 (큰 변경, M6 메이저)
+   - Fixed Point (S2 == S3) 복원 차단 해소
 
-### 3순위 — M3 완료 (HUMAN 결정 필요)
+### 3순위 — HUMAN 결정 대기
 
-5. **M3-3** npm publish + **M3-4** PyPI publish → **v0.100** 선언
-6. **M4-1** B 공식 측정 (API key 필요)
+| # | 작업 | 트리거 |
+|---|------|------|
+| M3-3 | npm publish | `workflow_dispatch` dry_run=false |
+| M3-4 | PyPI publish | `workflow_dispatch` publish=true (windows-2022 수정 push 선행 필요) |
+| M3-5 | NuGet publish 5 C# 패키지 | M4-6 완료 후 |
+| M4-1 | B 공식 측정 | `BMB_BENCH_API_KEY` 필요 |
+| v0.100 | 메이저 버전 선언 | M3 publish 직후 메인테이너 결정 |
 
 ---
 
-## 4. M4-4 사이드 이펙트 주의사항
+## 4. M5-4 dispatch 인프라 (Cycle 2640-2646 정리)
 
-`Type::Variant(x)` 구문이 `(call <Type_Variant> x)` 로 파싱됨.
+신규 println dispatch 함수: `llvm_try_println_str_dispatch` (compiler.bmb 라인 ~15220).
 
-```bmb
-// 현재 동작
-fn Option_Some(v: i64) -> i64 = v;  // 자유 함수 필요
-let x = Option::Some(42);           // → Option_Some(42) 호출
+**호출 순서** (`llvm_gen_call_with_string_tracking_sb_reg`):
+1. `extract_call_fn_name` → fn_name 추출
+2. `llvm_try_println_str_dispatch` → fn_name이 print/println/eprint/eprintln + arg가 String/f64이면 dispatch IR 반환
+3. dispatch가 비어있지 않으면 즉시 반환, 아니면 기존 `llvm_gen_call_reg` 경로
 
-// M5-1 완성 후
-let x = Option::Some(42);           // → enum_construct 노드
-```
+**str_sb 마커 종류**:
+| 접두 | 의미 | push 시점 |
+|-----|------|---------|
+| `S:` | String 변수 | 문자열 리터럴, string_fns 호출, `~s` struct 필드 load |
+| `D:` | f64 변수 | float 리터럴, double-반환 함수 호출 |
+| `F:` | f64 ptr | (별도 추적) |
 
-→ CLAUDE.md Rule 2에 이미 명시됨. M5-1 완성 전까지 payload enum constructor 사용 금지.
+**struct registry 신규 suffix** (Cycle 2645):
+- `~d` = f64 (기존)
+- `~s` = String (신규)
+- `~p-Type` = pointer to struct (기존)
+- (없음) = i64 (기본)
+
+**미해결 갭**:
+- `arr[i]` of `[String; N]` — 배열 element 타입 추적 부재 (M5-5 후보)
+- 워크어라운드: `fn elem(a: ..., i: i64) -> String = a[i];` 함수 래핑 → string_fns 경로
 
 ---
 
@@ -195,10 +221,12 @@ let x = Option::Some(42);           // → enum_construct 노드
 ## 7. 다음 세션 시작 체크리스트
 
 - [ ] `claudedocs/ROADMAP.md` 읽기 (실무 앵커)
-- [ ] `cargo nextest run --release` → 6210/6210 확인
-- [ ] bootstrap 골든 테스트: `compiler.exe run test_golden_m4_integration.bmb` → 42
-- [ ] `./target/release/bmb build bootstrap/lsp.bmb -o bootstrap/lsp.exe`
-- [ ] `python3 bootstrap/lsp_test.py` → 100/100 확인
+- [ ] `claudedocs/cycle-logs/cycle-2649.md` 읽기 (마지막 Carry-Forward)
+- [ ] `cargo test --release` → 6210/6210 확인
+- [ ] M5-4 신규 골든 테스트 4개 검증:
+  - `./target/bootstrap/bmb-stage1 build tests/bootstrap/test_golden_println_string.bmb -o /tmp/g && /tmp/g.exe` → "hello", exit 42
+  - `./target/bootstrap/bmb-stage1 build tests/bootstrap/test_golden_struct_str_field.bmb -o /tmp/g && /tmp/g.exe` → "Bob\n25", exit 42
+- [ ] (선택) `./target/release/bmb build bootstrap/lsp.bmb -o bootstrap/lsp.exe` + `python3 bootstrap/lsp_test.py` → 100/100
 
 ---
 
