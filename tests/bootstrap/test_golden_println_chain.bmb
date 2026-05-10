@@ -1,0 +1,7 @@
+fn greet(n: i64) -> String =
+    if n == 1 { "hello" } else { "world" };
+
+fn main() -> i64 =
+    let _p1 = println(greet(1));
+    let _p2 = println(greet(2));
+    42;

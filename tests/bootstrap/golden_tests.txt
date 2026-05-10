@@ -2839,3 +2839,4 @@ test_golden_enum_chaining.bmb|137
 test_golden_enum_multi_field.bmb|60
 test_golden_enum_3field.bmb|36
 test_golden_println_string.bmb|42
+test_golden_println_chain.bmb|42
