@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-11 (Cycles 2660-2669 — nqueen 측정 + in-process timing + M5-5b 구현)
 
-> **HEAD**: (commit 예정)
+> **HEAD**: `257130a5` (통합 commit Cycles 2660-2667) + 마무리 commit (예정)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 > **이전 세션 핸드오프**: 이전 세션 내용(Cycles 2650-2659)은 cycle-logs/cycle-2650~2659.md 참조
 
