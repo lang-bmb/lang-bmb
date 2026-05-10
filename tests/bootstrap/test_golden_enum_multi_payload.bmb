@@ -1,0 +1,20 @@
+// Golden test: 3-variant all-payload enum - M5-2
+// Expected output: 80
+
+enum Color { Red(i64), Green(i64), Blue(i64) }
+
+fn brightness(c: Color) -> i64 =
+    match c {
+        Color::Red(r) => r * 3,
+        Color::Green(g) => g * 6,
+        Color::Blue(b) => b,
+    }
+
+fn main() -> i64 = {
+    let a = Color::Red(10);
+    let b = Color::Green(5);
+    let c = Color::Blue(20);
+    let total = brightness(a) + brightness(b) + brightness(c);
+    println(total);
+    0
+}

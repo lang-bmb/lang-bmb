@@ -1,0 +1,26 @@
+// Golden test: Result enum with both payload variants - M5-2
+// Expected output: 46
+
+enum Result { Ok(i64), Err(i64) }
+
+fn safe_sqrt(x: i64) -> Result =
+    if x < 0 {
+        Result::Err(x)
+    } else {
+        Result::Ok(x * x)
+    }
+
+fn main() -> i64 = {
+    let r1 = safe_sqrt(7);
+    let r2 = safe_sqrt(-3);
+    let v1 = match r1 {
+        Result::Ok(v) => v,
+        Result::Err(e) => e,
+    };
+    let v2 = match r2 {
+        Result::Ok(v) => v,
+        Result::Err(e) => e,
+    };
+    println(v1 + v2);
+    0
+}

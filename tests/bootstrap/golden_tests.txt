@@ -2833,3 +2833,6 @@ test_golden_static_method_advanced.bmb|100
 test_golden_m4_integration.bmb|42
 test_golden_enum_payload.bmb|42
 test_golden_enum_wildcard.bmb|74
+test_golden_enum_result.bmb|46
+test_golden_enum_multi_payload.bmb|80
+test_golden_enum_chaining.bmb|137

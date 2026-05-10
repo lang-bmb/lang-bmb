@@ -1,0 +1,34 @@
+// Golden test: chaining multiple enum types (Maybe + Result) - M5-2
+// Expected output: 137
+
+enum Maybe { Nothing, Just(i64) }
+enum Result { Ok(i64), Err(i64) }
+
+fn double_if_positive(m: Maybe) -> Result =
+    match m {
+        Maybe::Nothing => Result::Err(0),
+        Maybe::Just(v) => if v > 0 { Result::Ok(v * 2) } else { Result::Err(v) },
+    }
+
+fn main() -> i64 = {
+    let m1 = Maybe::Just(21);
+    let m2 = Maybe::Just(-5);
+    let m3 = Maybe::Nothing;
+    let r1 = double_if_positive(m1);
+    let r2 = double_if_positive(m2);
+    let r3 = double_if_positive(m3);
+    let v1 = match r1 {
+        Result::Ok(v) => v,
+        Result::Err(_) => 0,
+    };
+    let v2 = match r2 {
+        Result::Ok(v) => v,
+        Result::Err(e) => e,
+    };
+    let v3 = match r3 {
+        Result::Ok(v) => v,
+        Result::Err(_) => 100,
+    };
+    println(v1 + v2 + v3);
+    0
+}
