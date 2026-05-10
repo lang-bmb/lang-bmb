@@ -104,19 +104,21 @@ BMB는 커스텀 언어이므로 일반 언어 지식으로 추측하면 안 된
 ✅ tests/ 디렉토리의 기존 테스트를 grep해서 실제 지원 문법 확인
 ```
 
-**BMB bootstrap 컴파일러 지원 문법** (Cycle 2620-2621, 2633 추가):
+**BMB bootstrap 컴파일러 지원 문법** (Cycle 2620-2646 추가):
 - Tuple destructuring (`let (a, b) = expr`) ✅ — Cycle 2621에서 추가 (표현식 + 블록 컨텍스트 양쪽)
 - Static method calls (`Type::method(args)`) ✅ — Cycle 2620에서 추가 (`Type_method(args)` 로 망글링)
 - Payload enum constructor (`Option::Some(42)`) ✅ — Cycle 2633에서 추가 (heap calloc 2-word 표현)
 - Payload enum match (`Option::Some(v) => v`) ✅ — Cycle 2633에서 추가 (tag 비교 + payload extract)
 - Multi-field enum (`Node::Branch(20, 30)`, `Triple::Three(1,2,3)`) ✅ — Cycle 2637에서 추가
 - Underscore wildcard (`_` in match) ✅ — 기존 지원 (오해 수정: Cycle 2634 확인)
+- `println(String)` / `println(f64)` 자동 dispatch ✅ — Cycle 2640/2643 (str_sb 추적 기반)
+- struct String 필드 (`p.name`) 자동 dispatch ✅ — Cycle 2645 (`~s` registry suffix)
 
 **BMB가 지원하지 않는 문법** (반복 마찰 원인):
-- `Option::Some(x)` / payload enum — ✅ M5-1 완료 (Cycle 2633). 이하 구 항목 제거
 - Trait impl blocks
 - Generic type parameters in bootstrap compiler (부분 지원)
-- Result<T, E> enum (M5-2 대상)
+- 함수 body 다중 statement는 `{...}` 블록 필수 (단일 식이면 `=` 표현식)
+- Field assignment는 `set b.label = x` 형식 (`b.label = x` 미지원)
 
 **주의 — M4-4 사이드 이펙트 (해소됨)**:
 M5-1 완료로 `Option::Some(x)` 는 이제 정상 enum_val AST 노드로 처리됨.

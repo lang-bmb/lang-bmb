@@ -1,11 +1,11 @@
-# BMB Session Handoff — 2026-05-10 (Cycles 2619-2640 — M4 언어 갭 + M5-1~M5-4)
+# BMB Session Handoff — 2026-05-11 (Cycles 2619-2646 — M4 언어 갭 + M5 완전 dispatch)
 
-> **HEAD**: `07169e6f` (Cycle 2640 커밋)
+> **HEAD**: `0597a455` (Cycle 2646 커밋)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 
 ---
 
-## 0. 이번 세션 작업 (Cycles 2619-2640)
+## 0. 이번 세션 작업 (Cycles 2619-2646)
 
 ### 세션 성과 요약
 
@@ -30,6 +30,12 @@
 | **2638** | **CLAUDE.md Rule 2 업데이트** | **M5-3 문서화 + HANDOFF 갱신 ✅** |
 | **2639** | **Dead Code 제거** | **`resolve_payload_extracts` 2개 함수 제거 ✅** |
 | **2640** | **M5-4 println(String) 구현** | **`str_sb` dispatch → `@println_str` 자동 선택 ✅** |
+| **2641** | **HANDOFF + ROADMAP M5-4 반영** | **— 문서 갱신** |
+| **2642** | **println(user_fn()) 체이닝 검증** | **string_fns 경로 골든 테스트 ✅** |
+| **2643** | **println(f64) dispatch** | **is_double_var_sb 인프라 활용 → @println_f64 ✅** |
+| **2644** | **enum String payload 통합 테스트** | **Message::Text(String) → match → println 종합 ✅** |
+| **2645** | **struct String 필드 타입 추적** | **registry `~s` suffix + is_field_string ✅** |
+| **2646** | **중첩 + mut struct String 검증** | **set_field 경로 영향 없음 확인 ✅** |
 
 ---
 
@@ -43,6 +49,10 @@
 | `Type::method(args)` | ❌ 미지원 | ✅ M4-4 구현 (Cycle 2620) |
 | `Option::Some(x)` 표현식 | ❌ 미지원 | ✅ M5-1 구현 완료 (Cycle 2633) |
 | `println(String)` | ❌ 포인터 정수 출력 | ✅ M5-4 구현 완료 (Cycle 2640) |
+| `println(user_fn() -> String)` | ❌ 포인터 정수 출력 | ✅ Cycle 2642 검증 (string_fns 경로) |
+| `println(f64)` | ❌ 링크 실패 (type mismatch) | ✅ Cycle 2643 (`@println_f64` dispatch) |
+| `println(struct.string_field)` | ❌ 포인터 정수 출력 | ✅ Cycle 2645 (registry `~s` suffix) |
+| `set b.string_field = x` (mut) | ✅ 작동 | ✅ Cycle 2646 검증 (set_field 영향 없음) |
 
 ### Track 스냅샷
 
@@ -64,14 +74,14 @@
 | M2 AI-Ready Infra | ✅ COMPLETE |
 | M3 External Bindings | 🔄 ~90% (showcase 선정+벤치+publish 잔여, HUMAN 결정) |
 | M4 Adopted | 🔄 ~40% (M4-3 ✅, M4-4 ✅, M4-6 ✅, M4-5→M5-1 ✅, M4-1 미착수) |
-| M5 Language Completeness | 🔄 M5-1 ✅ M5-2 ✅ M5-3 ✅ M5-4 ✅ (Fixed Point 차단 — arena OOM pre-existing) |
+| M5 Language Completeness | 🔄 M5-1 ✅ M5-2 ✅ M5-3 ✅ M5-4 ✅ + dispatch 종합 (Fixed Point 차단 — arena OOM pre-existing) |
 
 ### 테스트 현황
 
 | 스위트 | 결과 |
 |--------|------|
 | `cargo test --release` | ✅ 6210 passed |
-| `bootstrap` 골든 테스트 | ✅ 총 2841개 (M5: enum_payload, enum_wildcard, enum_result, enum_multi_payload, enum_chaining, enum_multi_field, enum_3field, println_string) |
+| `bootstrap` 골든 테스트 | ✅ 총 2846개 (M5: enum_payload, enum_wildcard, enum_result, enum_multi_payload, enum_chaining, enum_multi_field, enum_3field, println_string, println_chain, println_f64, enum_str_payload, struct_str_field, struct_str_mut) |
 | struct/enum 회귀 (Stage 1) | ✅ 8/8 PASS (enum_match, enum_variant, enum_payload, struct_complex, struct_method, nested_struct, mut_struct, struct_fn) |
 
 ---
@@ -105,7 +115,7 @@
 | M5-1 | payload enum 구현 | 언어 아키텍처 | ✅ **완료** (Cycle 2633) |
 | M5-2 | Result enum + 다중 payload | 언어 | ✅ **완료** (Cycle 2635, M5-1 인프라 재사용) |
 | M5-3 | Multi-field enum `Branch(i64,i64)` | 언어 | ✅ **완료** (Cycle 2637) |
-| M5-4 | `println(String)` 타입 추론 dispatch | 언어 | ✅ **완료** (Cycle 2640) |
+| M5-4 | `println(String/f64)` + struct String 필드 종합 dispatch | 언어 | ✅ **완료** (Cycle 2640-2646) |
 
 ---
 
