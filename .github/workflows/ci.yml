@@ -229,11 +229,12 @@ jobs:
         with:
           shared-key: "ci"
 
-      - name: Install LLVM (opt + llc for bmb build)
+      - name: Install LLVM and Z3
         run: |
-          sudo apt-get install -y llvm
+          sudo apt-get install -y llvm z3
           which opt && opt --version
           which llc && llc --version
+          which z3 && z3 --version
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -255,7 +256,7 @@ jobs:
           ./target/release/bmb build bootstrap/lsp.bmb -o bootstrap/lsp
           echo "LSP binary: $(ls -lh bootstrap/lsp)"
 
-      - name: Run LSP roundtrip tests (Track S — 88 tests)
+      - name: Run LSP roundtrip tests (Track S — 100 tests)
         run: |
           echo "=== LSP Roundtrip Tests ==="
           python3 bootstrap/lsp_test.py

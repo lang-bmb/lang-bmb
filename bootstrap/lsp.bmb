@@ -328,7 +328,8 @@ fn handle_initialize(id: String) -> () = {
             "\"referencesProvider\":true," +
             "\"workspaceSymbolProvider\":true," +
             "\"signatureHelpProvider\":{\"triggerCharacters\":[\"(\",\",\"]}," +
-            "\"codeActionProvider\":true" +
+            "\"codeActionProvider\":true," +
+            "\"renameProvider\":true" +
         "}," +
         "\"serverInfo\":{\"name\":\"bmb-lsp\",\"version\":\"0.98.0\"}" +
     "}";
@@ -1373,6 +1374,62 @@ fn handle_code_action(id: String, doc: i64, root: i64, src: String) -> () = {
 };
 
 // ============================================
+// textDocument/rename handler
+// ============================================
+
+// Scan src for all word-boundary matches of target and emit TextEdit JSON for each.
+fn find_rename_edits(src: String, target: String, new_name: String) -> String = {
+    let tlen = target.len();
+    let slen = src.len();
+    let mut pos: i64 = 0;
+    let mut line: i64 = 0;
+    let mut col: i64 = 0;
+    let mut acc: String = "";
+    while pos < slen {
+        let c = src.byte_at(pos);
+        let is_nl = c == 10;
+        let matches = is_nl == false and pos + tlen <= slen and
+                      src.slice(pos, pos + tlen) == target and
+                      (pos == 0 or (is_ident_char(src.byte_at(pos - 1)) == false)) and
+                      (pos + tlen >= slen or (is_ident_char(src.byte_at(pos + tlen)) == false));
+        let edit = if matches {
+            "{\"range\":{\"start\":{\"line\":" + int_to_string(line) + ",\"character\":" + int_to_string(col) + "},\"end\":{\"line\":" + int_to_string(line) + ",\"character\":" + int_to_string(col + tlen) + "}},\"newText\":\"" + new_name + "\"}"
+        } else { "" };
+        set acc = if edit == "" { acc } else if acc == "" { edit } else { acc + "," + edit };
+        set line = if is_nl { line + 1 } else { line };
+        set col = if is_nl { 0 } else { col + 1 };
+        set pos = pos + 1
+    };
+    acc
+};
+
+fn handle_rename(id: String, doc: i64, root: i64, src: String) -> () = {
+    let params_n = jobj_get(doc, root, "params", src);
+    if params_n < 0 { send_response(id, "null") }
+    else {
+        let td = jobj_get(doc, params_n, "textDocument", src);
+        let pos_n = jobj_get(doc, params_n, "position", src);
+        if td < 0 or pos_n < 0 { send_response(id, "null") }
+        else {
+            let uri = jobj_str(doc, td, "uri", src);
+            let req_line = jobj_num(doc, pos_n, "line", src);
+            let req_char = jobj_num(doc, pos_n, "character", src);
+            let new_name = jobj_str(doc, params_n, "newName", src);
+            let file_path = uri_to_path(uri);
+            let content = if file_path == "" { "" } else { read_file(file_path) };
+            let word = word_at_position(content, req_line, req_char);
+            if word == "" or new_name == "" { send_response(id, "null") }
+            else {
+                let edits = find_rename_edits(content, word, new_name);
+                let result = if edits == "" { "null" }
+                             else { "{\"changes\":{\"" + uri + "\":[" + edits + "]}}" };
+                send_response(id, result)
+            }
+        }
+    }
+};
+
+// ============================================
 // Main Message Loop
 // ============================================
 
@@ -1436,6 +1493,8 @@ fn dispatch_method(method: String, id: String, doc: i64, root: i64, src: String)
         handle_signature_help(id, doc, root, src); false
     } else if method == "textDocument/codeAction" {
         handle_code_action(id, doc, root, src); false
+    } else if method == "textDocument/rename" {
+        handle_rename(id, doc, root, src); false
     } else {
         if id != "" { send_response(id, "null") } else { () };
         false

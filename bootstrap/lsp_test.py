@@ -511,6 +511,60 @@ def test_references():
         os.unlink(tmp_path)
 
 
+def test_rename():
+    print("\n--- Test: textDocument/rename ---")
+    content = (
+        "fn compute(x: i64, y: i64) -> i64 = x + y;\n"
+        "fn main() -> i64 = compute(1, 2);\n"
+        "fn other() -> i64 = compute(3, 4) + compute(5, 6);\n"
+    )
+    with tempfile.NamedTemporaryFile(suffix=".bmb", mode="w", delete=False) as f:
+        f.write(content)
+        tmp_path = f.name
+    try:
+        uri = "file:///" + tmp_path.replace("\\", "/")
+        msgs = (
+            make_msg({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"capabilities": {}}})
+            + make_msg({"jsonrpc": "2.0", "method": "initialized", "params": {}})
+            # Rename 'compute' (4 occurrences: 1 decl + 3 usages)
+            + make_msg({"jsonrpc": "2.0", "id": 2, "method": "textDocument/rename",
+                        "params": {"textDocument": {"uri": uri},
+                                   "position": {"line": 0, "character": 3},
+                                   "newName": "calculate"}})
+            # Rename on '-' in '->' (non-ident, prev=space) -> null
+            + make_msg({"jsonrpc": "2.0", "id": 3, "method": "textDocument/rename",
+                        "params": {"textDocument": {"uri": uri},
+                                   "position": {"line": 0, "character": 27},
+                                   "newName": "newname"}})
+            + make_msg({"jsonrpc": "2.0", "id": 4, "method": "shutdown", "params": {}})
+            + make_msg({"jsonrpc": "2.0", "method": "exit"})
+        )
+        responses = run_lsp(msgs)
+        rename_resp = next((r for r in responses if r.get("id") == 2), None)
+        rename_empty = next((r for r in responses if r.get("id") == 3), None)
+        test("rename response received", rename_resp is not None)
+        if rename_resp:
+            result = rename_resp.get("result")
+            test("rename result not null", result is not None, str(result))
+            if result:
+                changes = result.get("changes", {})
+                test("rename changes has uri key", uri in changes, str(list(changes.keys())[:2]))
+                edits = changes.get(uri, [])
+                test("rename edits count = 4 (1 decl + 3 usage)", len(edits) == 4, f"got {len(edits)}")
+                if edits:
+                    test("first edit newText is 'calculate'", edits[0].get("newText") == "calculate",
+                         edits[0].get("newText"))
+                    test("all edits have range and newText",
+                         all("range" in e and "newText" in e for e in edits))
+                    test("all edits newText = 'calculate'",
+                         all(e.get("newText") == "calculate" for e in edits))
+        test("rename on no-word returns null",
+             rename_empty is not None and rename_empty.get("result") is None,
+             str(rename_empty))
+    finally:
+        os.unlink(tmp_path)
+
+
 def test_workspace_symbol():
     print("\n--- Test: workspace/symbol ---")
     # Create a temp workspace directory with two .bmb files
@@ -663,6 +717,7 @@ if __name__ == "__main__":
     test_document_symbols()
     test_definition()
     test_references()
+    test_rename()
     test_workspace_symbol()
     test_signature_help()
 
