@@ -1,0 +1,17 @@
+enum Message {
+    Text(String),
+    Number(i64)
+}
+
+fn describe(m: Message) -> String =
+    match m {
+        Message::Text(s) => s,
+        Message::Number(n) => int_to_string(n)
+    };
+
+fn main() -> i64 =
+    let m1 = Message::Text("hello");
+    let m2 = Message::Number(42);
+    let _p1 = println(describe(m1));
+    let _p2 = println(describe(m2));
+    42;
