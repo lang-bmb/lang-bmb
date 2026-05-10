@@ -3061,9 +3061,8 @@ fn resolve_enum_variants_in_ast(ast: String, enum_reg: String) -> String =
     if enum_reg == "" { ast }
     else {
         let ast1 = resolve_tag_checks(ast, enum_reg);
-        let ast2 = resolve_payload_extracts(ast1);
         let sb = sb_new();
-        let w = resolve_ev_sb(ast2, 0, enum_reg, sb);
+        let w = resolve_ev_sb(ast1, 0, enum_reg, sb);
         sb_build(sb)
     };
 
@@ -3157,25 +3156,6 @@ fn resolve_tag_checks_sb(ast: String, pos: i64, enum_reg: String, sb: i64) -> i6
             let replacement = "(binop == (field (var <__match>) 0) (int " + int_to_string(n) + "))";
             let w2 = sb_push(sb, replacement);
             resolve_tag_checks_sb(ast, close_pos, enum_reg, sb)
-        }
-    };
-
-fn resolve_payload_extracts(ast: String) -> String =
-    let sb = sb_new();
-    let w = resolve_payload_extracts_sb(ast, 0, sb);
-    sb_build(sb);
-
-fn resolve_payload_extracts_sb(ast: String, pos: i64, sb: i64) -> i64 =
-    if pos >= ast.len() { 0 }
-    else {
-        let marker = "(enum_payload_extract (var <__match>))";
-        let found = find_substr_pos(ast, marker, pos);
-        if found < 0 {
-            let w = sb_push_range(sb, ast, pos, ast.len()); 0
-        } else {
-            let w1 = sb_push_range(sb, ast, pos, found);
-            let w2 = sb_push(sb, "(field (var <__match>) 1)");
-            resolve_payload_extracts_sb(ast, found + marker.len(), sb)
         }
     };
 
