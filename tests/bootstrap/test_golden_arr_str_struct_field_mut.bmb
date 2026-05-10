@@ -1,0 +1,12 @@
+// M5-5d edge golden: let mut + set field reassignment
+// Expected: "x\na\nc\n", exit 42
+struct Box { tags: Array<String> }
+
+fn main() -> i64 = {
+    let mut b = Box { tags: ["x", "y"] };
+    let _p0 = println(b.tags[0]);
+    let _set = set b.tags = ["a", "b", "c"];
+    let _p1 = println(b.tags[0]);
+    let _p2 = println(b.tags[2]);
+    42
+};

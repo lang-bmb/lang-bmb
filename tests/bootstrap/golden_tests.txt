@@ -2849,3 +2849,9 @@ test_golden_arr_str_alias.bmb|42
 test_golden_arr_str_for_loop.bmb|42
 test_golden_arr_str_mut_set.bmb|42
 test_golden_arr_str_var_repeat.bmb|42
+test_golden_arr_str_fn_return.bmb|42
+test_golden_arr_str_fn_return_alias.bmb|42
+test_golden_arr_str_fn_return_loop.bmb|42
+test_golden_arr_str_struct_field.bmb|42
+test_golden_arr_str_struct_field_loop.bmb|42
+test_golden_arr_str_struct_field_mut.bmb|42

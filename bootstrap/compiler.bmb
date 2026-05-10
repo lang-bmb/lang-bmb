@@ -2645,6 +2645,21 @@ fn parse_return_type(src: String, pos: i64) -> String =
     else if tok_kind(t4) == TK_LPAREN() {
         skip_tuple_type_tokens(src, tok_end(t4), "i64")
     }
+    // M5-5c: recognize Array<String> (and Array<other> falls back to i64)
+    else if tok_kind(t4) == TK_IDENT() {
+        let name = get_ident_text(src, pos, t4);
+        let ne = tok_end(t4);
+        let t5 = next_token_raw(src, ne);
+        if name == "Array" and tok_kind(t5) == TK_LT() {
+            let t6 = next_token_raw(src, tok_end(t5));
+            if tok_kind(t6) == TK_STRING_TYPE() {
+                let t7 = next_token_raw(src, tok_end(t6));
+                if tok_kind(t7) == TK_GT() {
+                    pack_result(skip_nullable(src, tok_end(t7)), "Array<String>")
+                } else { let after_targs = skip_optional_type_args(src, ne); pack_result(skip_nullable(src, after_targs), "i64") }
+            } else { let after_targs = skip_optional_type_args(src, ne); pack_result(skip_nullable(src, after_targs), "i64") }
+        } else { let after_targs = skip_optional_type_args(src, ne); pack_result(skip_nullable(src, after_targs), "i64") }
+    }
     else { let after_targs = skip_optional_type_args(src, tok_end(t4)); pack_result(skip_nullable(src, after_targs), "i64") };
 
 fn skip_tuple_type_tokens(src: String, pos: i64, type_str: String) -> String =
@@ -2888,7 +2903,7 @@ fn parse_struct_fields_to_registry(src: String, pos: i64, rsb: i64, idx: i64) ->
         // Check field type (after : token) for f64 or *StructName marker
         let type_info = check_field_type(src, tok_end(tok));
         let ptr_type = get_field_ptr_type(src, tok_end(tok));
-        let type_suffix = if type_info == 1 { "~d" } else if type_info == 2 { "~s" } else if ptr_type != "" { "~p-" + ptr_type } else { "" };
+        let type_suffix = if type_info == 1 { "~d" } else if type_info == 2 { "~s" } else if type_info == 3 { "~a" } else if ptr_type != "" { "~p-" + ptr_type } else { "" };
         let w1 = if idx > 0 { sb_push(rsb, ",") } else { 0 };
         let w2 = sb_push(rsb, field_name + type_suffix);
         let after_field = skip_field_type(src, tok_end(tok));
@@ -2898,13 +2913,25 @@ fn parse_struct_fields_to_registry(src: String, pos: i64, rsb: i64, idx: i64) ->
         parse_struct_fields_to_registry(src, tok_end(tok), rsb, idx)
     };
 
-// Check field type: 1=f64, 2=String, 0=other (default i64)
+// Check field type: 1=f64, 2=String, 3=Array<String>, 0=other (default i64)
+// M5-5d: recognize Array<String> field type for str-ptr array dispatch
 fn check_field_type(src: String, pos: i64) -> i64 =
     let t1 = next_token_raw(src, pos);
     if tok_kind(t1) == TK_COLON() {
         let t2 = next_token_raw(src, tok_end(t1));
         if tok_kind(t2) == TK_F64() { 1 }
         else if tok_kind(t2) == TK_STRING_TYPE() { 2 }
+        else if tok_kind(t2) == TK_IDENT() {
+            let name = get_ident_text(src, tok_end(t1), t2);
+            let t3 = next_token_raw(src, tok_end(t2));
+            if name == "Array" and tok_kind(t3) == TK_LT() {
+                let t4 = next_token_raw(src, tok_end(t3));
+                if tok_kind(t4) == TK_STRING_TYPE() {
+                    let t5 = next_token_raw(src, tok_end(t4));
+                    if tok_kind(t5) == TK_GT() { 3 } else { 0 }
+                } else { 0 }
+            } else { 0 }
+        }
         else { 0 }
     } else { 0 };
 
@@ -6502,6 +6529,8 @@ fn get_fn_return_type(ast: String) -> String =
     get_fn_return_scan(content, 0);
 
 // v0.46: Added String return type support
+// M5-5c: recognize "Array<String>" — emitted by parse_return_type as two sexp tokens:
+// "Array" followed by "<String>" because read_sexp_at stops ident at '<'
 fn get_fn_return_scan(content: String, pos: i64) -> String =
     let p = low_skip_ws(content, pos);
     if p >= content.len() { "i64" } else {
@@ -6513,7 +6542,18 @@ fn get_fn_return_scan(content: String, pos: i64) -> String =
             else { "i64" }
         } else {
             let child = read_sexp_at(content, p);
-            if child == "" { "i64" } else if child == "i32" or child == "i64" or child == "f64" or child == "bool" or child == "String" or child == "ptr" { child } else if child.byte_at(0) == 40 { get_fn_return_scan(content, p + child.len()) } else if child.byte_at(0) == 60 { get_fn_return_scan(content, p + child.len()) } else { get_fn_return_scan(content, p + child.len()) }
+            if child == "" { "i64" }
+            else if child == "i32" or child == "i64" or child == "f64" or child == "bool" or child == "String" or child == "ptr" { child }
+            else if child == "Array" {
+                // Check if next token is "<String>"
+                let after = low_skip_ws(content, p + child.len());
+                let next_sexp = read_sexp_at(content, after);
+                if next_sexp == "<String>" { "Array<String>" }
+                else { get_fn_return_scan(content, p + child.len()) }
+            }
+            else if child.byte_at(0) == 40 { get_fn_return_scan(content, p + child.len()) }
+            else if child.byte_at(0) == 60 { get_fn_return_scan(content, p + child.len()) }
+            else { get_fn_return_scan(content, p + child.len()) }
         }
     };
 
@@ -13799,9 +13839,14 @@ fn collect_string_fns_acc(mir: String, pos: i64, acc: String) -> String =
         else {
             let fn_name = extract_fn_name_from_mir(mir, fn_start);
             let ret_type = extract_fn_ret_type_from_mir(mir, fn_start);
-            let new_acc = if ret_type == "String" {
-                if acc == "" { fn_name } else { acc + "," + fn_name }
-            } else { acc };
+            // M5-5c: tag Array<String> returns with "A:" prefix in same registry
+            // to avoid plumbing a separate list through ~20 codegen signatures
+            let entry = if ret_type == "String" { fn_name }
+                else if ret_type == "Array<String>" { "A:" + fn_name }
+                else { "" };
+            let new_acc = if entry == "" { acc }
+                else if acc == "" { entry }
+                else { acc + "," + entry };
             // Find end of this function and continue
             let fn_end = find_fn_end(mir, fn_start);
             if fn_end < 0 { new_acc } else { collect_string_fns_acc(mir, fn_end, new_acc) }
@@ -13856,6 +13901,25 @@ fn check_fn_in_list(fn_name: String, list: String, pos: i64) -> bool =
         if item == fn_name { true }
         else if comma >= list.len() { false }
         else { check_fn_in_list(fn_name, list, comma + 1) }
+    };
+
+// M5-5c: Check if function returns Array<String> (tagged as "A:fn_name")
+fn is_dynamic_string_array_fn(fn_name: String, string_fns: String) -> bool =
+    if string_fns == "" { false }
+    else { check_array_fn_in_list(fn_name, string_fns, 0) };
+
+fn check_array_fn_in_list(fn_name: String, list: String, pos: i64) -> bool =
+    if pos >= list.len() { false }
+    else {
+        let comma = find_comma_or_end(list, pos);
+        let item = list.slice(pos, comma);
+        // Match "A:" + fn_name exactly
+        let matches = if item.len() >= 2 and item.byte_at(0) == 65 and item.byte_at(1) == 58 {
+            item.slice(2, item.len()) == fn_name
+        } else { false };
+        if matches { true }
+        else if comma >= list.len() { false }
+        else { check_array_fn_in_list(fn_name, list, comma + 1) }
     };
 
 // Generate global string constants
@@ -14848,9 +14912,13 @@ fn llvm_gen_field_access(line: String, pos: i64, dest: String, struct_reg: Strin
     let field_idx = if field.len() > 0 and is_digit(field.byte_at(0)) { parse_int_simple(field, 0, 0) } else { lookup_field_by_name(struct_reg, field) };
     let field_is_dbl = is_field_f64(struct_reg, field);
     let field_is_str = is_field_string(struct_reg, field);
+    // M5-5d: Array<String> field — mark dest as str-ptr array so subsequent
+    // index/load propagates @println_str dispatch (mirrors M5-5c fn-return pattern)
+    let field_is_str_arr = is_field_str_array(struct_reg, field);
     let load_type = if field_is_dbl == 1 { "double" } else { "i64" };
     let _dm = if field_is_dbl == 1 { push_double_marker(str_sb, dest) } else { 0 };
     let _sm = if field_is_str == 1 { push_string_marker(str_sb, dest) } else { 0 };
+    let _am = if field_is_str_arr == 1 { push_str_ptr_marker(str_sb, dest) } else { 0 };
     let field_ptr = get_field_ptr_from_registry(struct_reg, field);
     let _pm = if field_ptr != "" { push_ptr_marker(ptr_sb, dest, field_ptr) } else { 0 };
     let ptr_name = dest + "_ptr";
@@ -14946,6 +15014,35 @@ fn check_field_is_string(fields: String, pos: i64, target: String) -> i64 =
         }
         else if comma_pos >= fields.len() { 0 - 1 }
         else { check_field_is_string(fields, comma_pos + 1, target) }
+    };
+
+// M5-5d: check if a field holds an Array<String> (carries str-ptr markers)
+fn is_field_str_array(registry: String, field_name: String) -> i64 =
+    is_field_str_array_at(registry, 0, field_name);
+
+fn is_field_str_array_at(registry: String, pos: i64, field_name: String) -> i64 =
+    if pos >= registry.len() { 0 } else {
+        let semi_pos = find_char(registry, pos, 59);
+        let entry = registry.slice(pos, semi_pos);
+        let colon_pos = find_char(entry, 0, 58);
+        let fields = entry.slice(colon_pos + 1, entry.len());
+        let result = check_field_is_str_array(fields, 0, field_name);
+        if result >= 0 { result }
+        else if semi_pos + 1 >= registry.len() { 0 }
+        else { is_field_str_array_at(registry, semi_pos + 1, field_name) }
+    };
+
+fn check_field_is_str_array(fields: String, pos: i64, target: String) -> i64 =
+    if pos >= fields.len() { 0 - 1 } else {
+        let comma_pos = find_comma_or_end(fields, pos);
+        let raw_name = fields.slice(pos, comma_pos);
+        let name = strip_type_suffix(raw_name);
+        if name == target {
+            let suffix = if raw_name.len() > name.len() { raw_name.slice(name.len(), raw_name.len()) } else { "" };
+            if suffix == "~a" { 1 } else { 0 }
+        }
+        else if comma_pos >= fields.len() { 0 - 1 }
+        else { check_field_is_str_array(fields, comma_pos + 1, target) }
     };
 
 fn get_field_ptr_from_registry(registry: String, field_name: String) -> String =
@@ -15260,10 +15357,13 @@ fn llvm_gen_call_with_string_tracking_sb_reg(line: String, pos: i64, dest: Strin
     let is_hardcoded_string_fn = is_string_returning_fn(fn_name);
     let is_dynamic_string_fn_result = is_dynamic_string_fn(fn_name, string_fns);
     let is_string_fn = is_hardcoded_string_fn or is_dynamic_string_fn_result;
+    // M5-5c: function returns Array<String> → dest carries str-ptr array
+    let is_str_array_fn = is_dynamic_string_array_fn(fn_name, string_fns);
     let ret_type = lookup_fn_ret(registry, fn_name);
     let is_double_fn = ret_type == "double" or is_builtin_double_fn(fn_name);
     let is_i32_fn = ret_type == "i32";
     let w = if is_string_fn { push_string_marker(str_sb, dest) }
+            else if is_str_array_fn { push_str_ptr_marker(str_sb, dest) }
             else if is_double_fn { push_double_marker(str_sb, dest) }
             else if is_i32_fn { push_i32_marker(str_sb, dest) }
             else { 0 };

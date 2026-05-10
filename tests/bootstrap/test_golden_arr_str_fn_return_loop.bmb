@@ -1,0 +1,12 @@
+// M5-5c golden: fn return + for-loop iteration
+// Expected: "one\ntwo\nthree\n", exit 42
+fn make_words() -> Array<String> = ["one", "two", "three"];
+
+fn main() -> i64 = {
+    let arr = make_words();
+    let _loop = for i in 0..3 {
+        let _p = println(arr[i]);
+        0
+    };
+    42
+};

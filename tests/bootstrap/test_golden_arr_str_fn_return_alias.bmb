@@ -1,0 +1,11 @@
+// M5-5c golden: fn return + alias propagation
+// Expected: "apple\nbanana\n", exit 42
+fn make_strs() -> Array<String> = ["apple", "banana"];
+
+fn main() -> i64 = {
+    let arr = make_strs();
+    let arr2 = arr;
+    let _p0 = println(arr2[0]);
+    let _p1 = println(arr[1]);
+    42
+};

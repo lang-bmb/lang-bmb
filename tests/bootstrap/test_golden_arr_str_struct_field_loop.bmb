@@ -1,0 +1,12 @@
+// M5-5d golden: struct field Array<String> + for-loop
+// Expected: "alpha\nbeta\ngamma\n", exit 42
+struct Box { tags: Array<String> }
+
+fn main() -> i64 = {
+    let b = Box { tags: ["alpha", "beta", "gamma"] };
+    let _loop = for i in 0..3 {
+        let _p = println(b.tags[i]);
+        0
+    };
+    42
+};
