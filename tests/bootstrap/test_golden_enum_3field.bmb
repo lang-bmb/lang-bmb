@@ -1,0 +1,19 @@
+// Golden test: 3-field enum variant - M5-3
+// Expected output: 36
+
+enum Triple { None, Two(i64, i64), Three(i64, i64, i64) }
+
+fn sum_triple(t: Triple) -> i64 =
+    match t {
+        Triple::None => 0,
+        Triple::Two(a, b) => a + b,
+        Triple::Three(a, b, c) => a + b + c,
+    }
+
+fn main() -> i64 = {
+    let t1 = Triple::None;
+    let t2 = Triple::Two(10, 20);
+    let t3 = Triple::Three(1, 2, 3);
+    println(sum_triple(t1) + sum_triple(t2) + sum_triple(t3));
+    0
+}

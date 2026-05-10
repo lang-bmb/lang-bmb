@@ -1,0 +1,17 @@
+// Golden test: multi-field enum variant Node::Branch(i64, i64) - M5-3
+// Expected output: 60
+
+enum Node { Leaf(i64), Branch(i64, i64) }
+
+fn sum_node(n: Node) -> i64 =
+    match n {
+        Node::Leaf(v) => v,
+        Node::Branch(a, b) => a + b,
+    }
+
+fn main() -> i64 = {
+    let l = Node::Leaf(10);
+    let b = Node::Branch(20, 30);
+    println(sum_node(l) + sum_node(b));
+    0
+}

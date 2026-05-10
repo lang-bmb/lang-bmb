@@ -2151,12 +2151,12 @@ fn parse_match_arms(src: String, pos: i64, scrutinee: String, prefix: String, su
                 let variant_name = get_ident_text(src, tok_end(peek), var_tok);
                 let after_var = next_token_raw(src, tok_end(var_tok));
                 if tok_kind(after_var) == TK_LPAREN() {
-                    // Type::Variant(v) => — payload enum pattern binding
-                    let bind_tok = next_token_raw(src, tok_end(after_var));
-                    let bind_name = get_ident_text(src, tok_end(after_var), bind_tok);
-                    let close_tok = next_token_raw(src, tok_end(bind_tok));
-                    let pat_expr = "(enum_payload_bind <" + pat_text + "> <" + variant_name + "> <" + bind_name + ">)";
-                    parse_match_arm_arrow(src, tok_end(close_tok), scrutinee, pat_expr, prefix, suffix)
+                    // Type::Variant(a) or Type::Variant(a, b, ...) — payload pattern binding
+                    let binds_result = parse_payload_bind_list(src, tok_end(after_var), "");
+                    let bind_names = unpack_ast(binds_result);
+                    let close_pos = unpack_pos(binds_result);
+                    let pat_expr = "(enum_payload_bind <" + pat_text + "> <" + variant_name + ">" + bind_names + ")";
+                    parse_match_arm_arrow(src, close_pos, scrutinee, pat_expr, prefix, suffix)
                 } else {
                     let pat_expr = "(enum_variant <" + pat_text + "> <" + variant_name + ">)";
                     parse_match_arm_arrow(src, tok_end(var_tok), scrutinee, pat_expr, prefix, suffix)
@@ -2297,6 +2297,19 @@ fn parse_match_single_pattern(src: String, pos: i64) -> String =
     }
     else { make_error_at("expected pattern value in OR pattern, got " + tok_kind_name(kind), src, pos) };
 
+// Build nested lets for payload fields: (let <a> (field M 1) (let <b> (field M 2) body))
+// pos = position in pat_expr pointing to '<' of current name, or ')'/end if no more
+fn build_payload_lets_from_pat(pat_expr: String, pos: i64, field_idx: i64, body: String) -> String =
+    if pos >= pat_expr.len() or pat_expr.byte_at(pos) != 60 { body }
+    else {
+        let name_end = find_char_pos(pat_expr, 62, pos + 1);
+        let name = pat_expr.slice(pos + 1, name_end);
+        let after_gt = name_end + 1;
+        let next_pos = if after_gt < pat_expr.len() and pat_expr.byte_at(after_gt) == 32 { after_gt + 1 } else { after_gt };
+        let inner = build_payload_lets_from_pat(pat_expr, next_pos, field_idx + 1, body);
+        "(let <" + name + "> (field (var <__match>) " + int_to_string(field_idx) + ") " + inner + ")"
+    };
+
 fn parse_match_arm_body(src: String, pos: i64, scrutinee: String, pat_expr: String, prefix: String, suffix: String) -> String =
     let rb = parse_expr(src, pos);
     if is_error(rb) { rb }
@@ -2305,17 +2318,16 @@ fn parse_match_arm_body(src: String, pos: i64, scrutinee: String, pat_expr: Stri
         let pb_prefix = "(enum_payload_bind <";
         let is_payload_bind = pat_expr.len() > 20 and pat_expr.slice(0, 20) == pb_prefix;
         if is_payload_bind {
-            // Extract type, variant, varname from (enum_payload_bind <Type> <Variant> <varname>)
+            // Extract type, variant from (enum_payload_bind <Type> <Variant> <name1> <name2>...)
+            // M5-3: supports multi-field: each <nameN> binds (field (var <__match>) N)
             let type_end = find_char_pos(pat_expr, 62, 20);
             let type_name = pat_expr.slice(20, type_end);
             let v_start = type_end + 3;
             let v_end = find_char_pos(pat_expr, 62, v_start);
             let variant_name = pat_expr.slice(v_start, v_end);
-            let vn_start = v_end + 3;
-            let vn_end = find_char_pos(pat_expr, 62, vn_start);
-            let varname = pat_expr.slice(vn_start, vn_end);
+            let vn_start = v_end + 2;
             let tag_cond = "(enum_tag_check <" + type_name + "> <" + variant_name + ">)";
-            let payload_bind = "(let <" + varname + "> (enum_payload_extract (var <__match>)) " + body + ")";
+            let payload_bind = build_payload_lets_from_pat(pat_expr, vn_start, 1, body);
             let new_prefix = prefix + "(if " + tag_cond + " " + payload_bind + " ";
             let new_suffix = ")" + suffix;
             parse_match_arm_sep(src, unpack_pos(rb), scrutinee, new_prefix, new_suffix)
@@ -2339,6 +2351,23 @@ fn parse_match_arm_sep(src: String, pos: i64, scrutinee: String, prefix: String,
         pack_result(tok_end(t), result)
     }
     else { let tmatch = next_token_raw(src, pos); make_error_at("expected ',' or '}' after match arm body, got " + tok_kind_name(tok_kind(tmatch)), src, pos) };
+
+// Parse comma-separated bind name list inside payload pattern: (a, b, c) → returns " <a> <b> <c>" + pos after ')'
+fn parse_payload_bind_list(src: String, pos: i64, acc: String) -> String =
+    let tok = next_token_raw(src, pos);
+    let kind = tok_kind(tok);
+    if kind == TK_RPAREN() {
+        pack_result(tok_end(tok), acc)
+    } else if kind == TK_IDENT() {
+        let name = get_ident_text(src, pos, tok);
+        let new_acc = acc + " <" + name + ">";
+        let after = next_token_raw(src, tok_end(tok));
+        if tok_kind(after) == TK_COMMA() {
+            parse_payload_bind_list(src, tok_end(after), new_acc)
+        } else if tok_kind(after) == TK_RPAREN() {
+            pack_result(tok_end(after), new_acc)
+        } else { make_error_at("expected ',' or ')' in payload bind list, got " + tok_kind_name(tok_kind(after)), src, tok_end(tok)) }
+    } else { make_error_at("expected identifier in payload bind list, got " + tok_kind_name(kind), src, pos) };
 
 fn parse_match_wildcard(src: String, pos: i64, scrutinee: String, prefix: String, suffix: String) -> String =
     let t = next_token_raw(src, pos);
@@ -4848,12 +4877,15 @@ fn lower_lambda_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit:
         pack_ids(temp_id + 1, block_id)
     };
 
-// Lower (enum_val (int N) payload_expr) → calloc(2,8) + field-store tag + field-store payload
+// Lower (enum_val (int N) payload1 payload2...) → calloc(1+N,8) + field-stores
+// M5-3: supports multi-field variants; child 0 = tag, children 1..N = payloads
 fn lower_enum_val_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
-    let tag_expr = get_child(ast, 0);
-    let payload_expr = get_child(ast, 1);
+    let n_children = count_children(ast);
+    let n_payload = n_children - 1;
     let ptr_tmp = "%_t" + int_to_string(temp_id);
-    let w0 = sb_push_mir(sb, "  " + ptr_tmp + " = call @calloc(2, 8)");
+    let alloc_words = int_to_string(1 + n_payload);
+    let w0 = sb_push_mir(sb, "  " + ptr_tmp + " = call @calloc(" + alloc_words + ", 8)");
+    let tag_expr = get_child(ast, 0);
     let tag_result = lower_expr_sb(tag_expr, temp_id + 1, block_id, sb, loop_exit);
     let tag_temp = unpack_temp(tag_result);
     let tag_block = unpack_block(tag_result);
@@ -4861,16 +4893,25 @@ fn lower_enum_val_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exi
     let fs0_base = "%_t" + int_to_string(tag_temp);
     let w1 = sb_push_mir(sb, "  " + fs0_base + " = copy " + ptr_tmp);
     let w2 = sb_push_mir(sb, "  field-store " + fs0_base + ".0, %_t" + int_to_string(tag_id));
-    let payload_result = lower_expr_sb(payload_expr, tag_temp + 1, tag_block, sb, loop_exit);
-    let payload_temp = unpack_temp(payload_result);
-    let payload_block = unpack_block(payload_result);
-    let payload_id = payload_temp - 1;
-    let fs1_base = "%_t" + int_to_string(payload_temp);
-    let w3 = sb_push_mir(sb, "  " + fs1_base + " = copy " + ptr_tmp);
-    let w4 = sb_push_mir(sb, "  field-store " + fs1_base + ".1, %_t" + int_to_string(payload_id));
-    let result_tmp = "%_t" + int_to_string(payload_temp + 1);
-    let w5 = sb_push_mir(sb, "  " + result_tmp + " = copy " + ptr_tmp);
-    pack_ids(payload_temp + 2, payload_block);
+    lower_enum_payload_fields_sb(ast, 1, n_children, tag_temp + 1, tag_block, ptr_tmp, sb, loop_exit);
+
+fn lower_enum_payload_fields_sb(ast: String, field_idx: i64, n_children: i64, cur_temp: i64, cur_block: i64, ptr_tmp: String, sb: i64, loop_exit: String) -> i64 =
+    if field_idx >= n_children {
+        let result_tmp = "%_t" + int_to_string(cur_temp);
+        let w = sb_push_mir(sb, "  " + result_tmp + " = copy " + ptr_tmp);
+        pack_ids(cur_temp + 1, cur_block)
+    } else {
+        let payload_expr = get_child(ast, field_idx);
+        let payload_result = lower_expr_sb(payload_expr, cur_temp, cur_block, sb, loop_exit);
+        let payload_temp = unpack_temp(payload_result);
+        let payload_block = unpack_block(payload_result);
+        let payload_id = payload_temp - 1;
+        let fs_base = "%_t" + int_to_string(payload_temp);
+        let field_num = int_to_string(field_idx);
+        let wx = sb_push_mir(sb, "  " + fs_base + " = copy " + ptr_tmp);
+        let wy = sb_push_mir(sb, "  field-store " + fs_base + "." + field_num + ", %_t" + int_to_string(payload_id));
+        lower_enum_payload_fields_sb(ast, field_idx + 1, n_children, payload_temp + 1, payload_block, ptr_tmp, sb, loop_exit)
+    };
 
 // Collect lambda parameters: scan children until we find a non-param node
 fn collect_lambda_params(ast: String, idx: i64, acc: String) -> String =
