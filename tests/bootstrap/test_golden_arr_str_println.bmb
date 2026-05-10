@@ -1,0 +1,9 @@
+// Golden test M5-5: println(arr[i]) of [String; N]
+// Expected output: hello\nworld\n42 with exit 42
+
+fn main() -> i64 = {
+    let arr = ["hello", "world", "bmb"];
+    println(arr[0]);
+    println(arr[1]);
+    42
+};

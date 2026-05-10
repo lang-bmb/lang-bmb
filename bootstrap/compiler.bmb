@@ -5267,6 +5267,10 @@ fn lower_array_literal_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loo
     let result_temp = unpack_temp(ids);
     let result_tmp = "%_t" + int_to_string(result_temp);
     let w3 = sb_push_mir(sb, "  " + result_tmp + " = copy " + arr_tmp);
+    // M5-5: Mark array of String for dispatch (first element type detection)
+    let first_elem = if count > 0 { get_child(ast, 0) } else { "" };
+    let first_type = if first_elem == "" { "" } else { get_node_type(first_elem) };
+    let w_mark = if first_type == "string" { sb_push_mir(sb, "  mark_str_ptr " + result_tmp) } else { 0 };
     pack_ids(result_temp + 1, unpack_block(ids));
 
 // Store each element of array/tuple literal

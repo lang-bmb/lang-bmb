@@ -2844,3 +2844,7 @@ test_golden_println_f64.bmb|42
 test_golden_enum_str_payload.bmb|42
 test_golden_struct_str_field.bmb|42
 test_golden_struct_str_mut.bmb|42
+test_golden_arr_str_println.bmb|42
+test_golden_arr_str_alias.bmb|42
+test_golden_arr_str_for_loop.bmb|42
+test_golden_arr_str_mut_set.bmb|42

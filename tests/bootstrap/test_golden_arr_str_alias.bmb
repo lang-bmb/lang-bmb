@@ -1,0 +1,10 @@
+// Golden test M5-5: array of String aliased through let — should still dispatch
+// Expected output: ant\nbee with exit 42
+
+fn main() -> i64 = {
+    let arr = ["ant", "bee", "cat"];
+    let arr2 = arr;
+    println(arr2[0]);
+    println(arr2[1]);
+    42
+};

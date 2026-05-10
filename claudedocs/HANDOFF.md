@@ -1,6 +1,6 @@
-# BMB Session Handoff — 2026-05-11 (Cycles 2619-2649 — M4 언어 갭 + M5 완전 dispatch)
+# BMB Session Handoff — 2026-05-11 (Cycles 2650-2657 — M5-5 array dispatch + M3-2 정식 측정 5개)
 
-> **HEAD**: `34e8cece` (Cycle 2649 마무리 커밋, 추가 정리 commit 예정)
+> **HEAD**: `d9855b04` (커밋 예정 — cycle 2650-2657 변경 누적)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 
 ---
@@ -39,6 +39,15 @@
 | **2647** | **HANDOFF + ROADMAP + CLAUDE.md 종합 갱신** | **— 문서 갱신** |
 | **2648** | **dispatch 갭 탐색 + M5-4 매트릭스** | **`arr[i]` of String 미지원 명확화** |
 | **2649** | **M5-5 후보 등록 + 세션 마무리** | **— 세션 종료 정리** |
+| **2650** | **tuple String 갭 발견 + M5-5 인프라 조사** | **`let (s,n)=...` String component 미지원 확정** |
+| **2651** | **M5-5 array literal of String dispatch ✅** | **`lower_array_literal_sb` mark_str_ptr 발행** |
+| **2652** | **M5-5 alias / while iter 검증 ✅** | **R: marker propagation 정상** |
+| **2653** | **M5-5 mut set 검증 ✅ + struct field array ❌** | **M5-5 매트릭스 4/7 ✅ 확정** |
+| **2654** | **bmb-algo Python 벤치 7/7 BMB faster** | **6/7 FAST ≥2x speedup** |
+| **2655** | **knapsack BMB vs C 정식 측정** | **BMB 1.22x slower (1417 vs 1152 ms)** |
+| **2656** | **추가 4개 알고리즘 C 비교** | **fibonacci 1000x BMB faster (@pure), sieve/lcs ≈ C, edit_dist 1.50x slower** |
+| **2657** | **checksum DIFFER 조사 + HANDOFF 갱신** | **5/5 알고리즘 checksum 동일 (trailing newline만 차이)** |
+| **2658** | **floyd_warshall 측정 + 종합 정리** | **BMB 1.73x faster (591 vs 1021 ms), 6개 알고리즘 매트릭스 ✅** |
 
 ---
 
@@ -56,6 +65,10 @@
 | `println(f64)` | ❌ 링크 실패 (type mismatch) | ✅ Cycle 2643 (`@println_f64` dispatch) |
 | `println(struct.string_field)` | ❌ 포인터 정수 출력 | ✅ Cycle 2645 (registry `~s` suffix) |
 | `set b.string_field = x` (mut) | ✅ 작동 | ✅ Cycle 2646 검증 (set_field 영향 없음) |
+| `println(arr[i])` of `["a","b"]` | ❌ 포인터 정수 출력 | ✅ Cycle 2651 (mark_str_ptr 발행 + R: 자동 propagation) |
+| `let arr2 = arr` alias dispatch | ❌ | ✅ Cycle 2652 (R: 마커 propagation) |
+| `let mut arr; set arr[i] = "x"` | ❌ | ✅ Cycle 2653 (alloca R: 보존) |
+| `[s; N]` var-repeat / `fn() -> Array<String>` / `p.field[i]` | ❌ | ❌ 미지원 (lower-time type registry 필요, M6 후보) |
 
 ### Track 스냅샷
 
@@ -75,16 +88,16 @@
 |---------|------|
 | M1 Self-Validated | ✅ COMPLETE |
 | M2 AI-Ready Infra | ✅ COMPLETE |
-| M3 External Bindings | 🔄 ~90% (showcase 선정+벤치+publish 잔여, HUMAN 결정) |
+| M3 External Bindings | 🔄 ~93% (showcase 5/7 정식 측정 ✅, npm/PyPI publish 잔여 HUMAN) |
 | M4 Adopted | 🔄 ~40% (M4-3 ✅, M4-4 ✅, M4-6 ✅, M4-5→M5-1 ✅, M4-1 미착수) |
-| M5 Language Completeness | 🔄 M5-1 ✅ M5-2 ✅ M5-3 ✅ M5-4 ✅ + dispatch 종합 (Fixed Point 차단 — arena OOM pre-existing) |
+| M5 Language Completeness | 🔄 M5-1~M5-4 ✅ + M5-5 핵심 4/7 ✅ (literal/alias/while/mut, [s;N]/fn-return/struct-field 미지원) |
 
 ### 테스트 현황
 
 | 스위트 | 결과 |
 |--------|------|
 | `cargo test --release` | ✅ 6210 passed |
-| `bootstrap` 골든 테스트 | ✅ 총 2846개 (M5: enum_payload, enum_wildcard, enum_result, enum_multi_payload, enum_chaining, enum_multi_field, enum_3field, println_string, println_chain, println_f64, enum_str_payload, struct_str_field, struct_str_mut) |
+| `bootstrap` 골든 테스트 | ✅ 총 2850개 (M5-5 신규 4: arr_str_println, arr_str_alias, arr_str_for_loop, arr_str_mut_set) |
 | struct/enum 회귀 (Stage 1) | ✅ 8/8 PASS (enum_match, enum_variant, enum_payload, struct_complex, struct_method, nested_struct, mut_struct, struct_fn) |
 
 ---

@@ -1,0 +1,12 @@
+// Golden test M5-5: for-loop iteration over String array
+// Expected output: foo\nbar\nbaz with exit 42
+
+fn main() -> i64 = {
+    let arr = ["foo", "bar", "baz"];
+    let mut i = 0;
+    while i < 3 {
+        println(arr[i]);
+        set i = i + 1;
+    };
+    42
+};

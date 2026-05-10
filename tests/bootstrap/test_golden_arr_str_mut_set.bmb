@@ -1,0 +1,11 @@
+// Golden test M5-5: set arr[i] = "literal" — mutate String array element
+// Expected output: alpha\nNEW\ngamma with exit 42
+
+fn main() -> i64 = {
+    let mut arr = ["alpha", "beta", "gamma"];
+    set arr[1] = "NEW";
+    println(arr[0]);
+    println(arr[1]);
+    println(arr[2]);
+    42
+};
