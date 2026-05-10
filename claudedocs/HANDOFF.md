@@ -1,75 +1,30 @@
-# BMB Session Handoff — 2026-05-10 (Cycles 2609-2617 + 철학 정렬)
+# BMB Session Handoff — 2026-05-10 (Cycle 2618 — 전체 작업 검토 + 로드맵 갱신)
 
-> **이전 HEAD**: `196a02e9` (Track S LSP 69-test + verify-host Z3 IPC)
-> **새 HEAD**: `d9a4fad9` (Track S LSP rename + CI Z3 + 100-test — S~99%)
-> **Push 상태**: ⏳ **push 대기** — 다음 세션 시작 전 먼저 실행
-> **실무 앵커**: `claudedocs/ROADMAP.md` (이번 세션 신규 작성)
-
----
-
-## 0. 철학 정렬 (이번 세션 추가 작업)
-
-이번 세션에서 4가지 drift를 진단하고 로드맵을 재정렬했다.
-
-| Drift | 내용 | 처방 |
-|-------|------|------|
-| A | 도그푸딩 프레임 미명시 | 모든 활동 = 도그푸딩, low-level 게이트 항상 열림 |
-| B | B(Failure Rate) #1인데 미측정 | M4 첫 액션 = LLM 1-shot baseline 측정 |
-| C | AI-native 선언 vs. 언어 갭 | 미지원 패턴 목록화 → 스펙 백로그 |
-| D | 앵커 문서 분산 | `claudedocs/ROADMAP.md` = 유일한 실무 앵커 |
-
-**신규 작성**: `claudedocs/ROADMAP.md` — 다음 세션부터 이 파일이 1차 참조점.  
-**설계 스펙**: `docs/superpowers/specs/2026-05-10-bmb-philosophy-roadmap-design.md`
+> **HEAD**: `3747c35e` (docs: 철학 정렬 + claudedocs 재구성)
+> **Push 상태**: ✅ pushed (origin/main == local main)
+> **실무 앵커**: `claudedocs/ROADMAP.md`
 
 ---
 
-## 1. 이번 세션 산출물 (Cycles 2609-2617)
+## 0. 이번 세션 작업 (Cycle 2618)
 
-### Cycle 2609 — LSP completion (파일 심볼)
-- `handle_completion`: URI → `read_file` → `scan_for_completion` → 파일 심볼 추가
-- `scan_for_completion`: while-loop 기반 fn/struct/enum 스캔
-- **79/79 PASS**
+### 전면 검토 결과 요약
 
-### Cycle 2610 — verify-host incremental (파일 레벨 캐시)
-- `file_hash(content)`: djb2 while-loop (`hash:length` 형식)
-- `cache_path` / `read_cache` / `write_cache`: `<file>.vh_cache` 캐시
-- **42/42 PASS**
+ROADMAP.md §1~§5 기준으로 전체 작업 상태를 검토하고 갱신했다.
 
-### Cycle 2611 — verify-host proof database + .gitignore
-- `proof_db_path`: `<file>.vh_proofdb`
-- `run_z3_direct`: pre/post hash 기반 Z3 결과 캐시
-- `.gitignore`: `*.vh_cache`, `*.vh_proofdb` 추가
-- **48/48 PASS**
+**주요 발견**:
 
-### Cycle 2612 — LSP code actions (pre/post condition stubs)
-- `codeActionProvider: true` (10 capabilities)
-- `build_code_actions`: fn 라인 감지 → "Add pre/post condition"
-- **88/88 PASS**
-
-### Cycle 2613 — CI 통합 + 플랫폼 독립
-- `lsp_test.py` / `verify_host_test.py`: `_EXE` 플랫폼 변수
-- `.github/workflows/ci.yml`: `track-s-tests` job (ubuntu-latest, llvm+z3)
-
-### Cycle 2614 — LSP completion 함수 시그니처 detail
-- `extract_fn_sig_at`: fn 위치에서 직접 시그니처 추출
-- **92/92 PASS**
-
-### Cycle 2615 — LSP rename
-- `find_rename_edits` / `handle_rename`: WorkspaceEdit 반환
-- `renameProvider: true` (11 capabilities)
-- **100/100 PASS**
-
-### Cycle 2616 — CI Z3 설치
-- `track-s-tests` job: `sudo apt-get install -y llvm z3`
-- `which z3 && z3 --version` 검증 step
-
-### Cycle 2617 — 철학 정렬 + HANDOFF
-- `claudedocs/ROADMAP.md` 신규 작성
-- `claudedocs/HANDOFF.md` 업데이트
+| 발견 | 내용 |
+|------|------|
+| B 상태 정정 | "미측정"→ 비공식 결과 존재 (90.9%, 2026-03-26, ~100문제). 인프라 완성, 공식 선언만 없음 |
+| 언어 갭 실제 | CLAUDE.md 목록 중 실제 파서 갭: let-tuple / static-method-call / Option expr. 나머지는 지원됨 |
+| M3 진도 | ~75% → ~90%로 상향. Track S 99%, 바인딩 5/5 ✅. 잔여: showcase 선정+벤치+publish |
+| bmb-mcp 미커밋 | `ecosystem/bmb-mcp` 변경사항 커밋 필요 |
+| benchmark-bmb | v0.34(2026-01-09) 결과만 존재. v0.98 공식 벤치 없음 |
 
 ---
 
-## 2. 현재 상태
+## 1. 현재 상태
 
 ### Track 스냅샷
 
@@ -83,15 +38,14 @@
 | S (BMB-rewrite) | ~99% ✅ | LSP 100-test + verify-host 48-test + CI Z3 |
 | T (External Bindings) | ~95% ✅ | Node.js 5/5, npm-publish.yml 준비 |
 
-### Track S 세부
+### 마일스톤 상태
 
-**LSP (`bootstrap/lsp.bmb`, ~1450 LOC)**: 11 capabilities, 100/100 PASS
-- initialize, hover, completion (시그니처 detail), diagnostics, documentSymbol,
-  definition, references, workspace/symbol, signatureHelp, codeAction, rename, shutdown
-
-**verify-host (`bootstrap/verify_host.bmb`, ~575 LOC)**: 48/48 PASS
-- bmb check/verify 파싱, Z3 직접 IPC, incremental cache (파일+proof DB)
-- 미구현: 함수 레벨 incremental (M4 범위)
+| 마일스톤 | 상태 |
+|---------|------|
+| M1 Self-Validated | ✅ COMPLETE |
+| M2 AI-Ready Infra | ✅ COMPLETE |
+| M3 External Bindings | 🔄 ~90% (showcase 선정+벤치+publish 잔여) |
+| M4 Adopted | ⬜ 대기 |
 
 ### 테스트 현황
 
@@ -105,30 +59,49 @@
 
 ---
 
+## 2. 태스크 목록
+
+### M3 완료 태스크
+
+| # | 태스크 | 성격 | 소요 |
+|---|--------|------|------|
+| M3-1 | **[HUMAN]** showcase 선정: bmb-algo vs bmb-json | 결정 | 즉시 |
+| M3-2 | showcase 공식 벤치마크 측정 (v0.98 기준) | 자율 | 1-2 cycles |
+| M3-3 | **[HUMAN]** npm publish: `workflow_dispatch` → `dry_run: false` | 실행 | 즉시 |
+| M3-4 | **[HUMAN]** PyPI publish: `workflow_dispatch` → `publish: true, repository: pypi` | 실행 | 즉시 |
+| M3-5 | bmb-mcp 미커밋 변경사항 커밋+push | 위생 | 즉시 |
+
+### M4 준비 태스크 (선행 가능)
+
+| # | 태스크 | 성격 | 소요 |
+|---|--------|------|------|
+| M4-1 | **[HUMAN+KEY]** B 공식 측정: `BMB_BENCH_API_KEY` + `bmb-ai-bench run` | B축 | 1 cycle |
+| M4-2 | 언어 갭 이슈 등록 (let-tuple / static-method / Option-expr) | Drift C | 즉시 |
+| M4-3 | `let (a, b) = expr` — tuple destructuring 파서 추가 | 언어 | 2-3 cycles |
+| M4-4 | `Type::method()` — static method call expression 파서 추가 | 언어 | 2-3 cycles |
+| M4-5 | `Option::Some(x)` 표현식 위치 지원 | 언어 | 1-2 cycles |
+| M4-6 | C# 바인딩 scaffold | 바인딩 | 3-5 cycles |
+
+---
+
 ## 3. 다음 세션 우선순위
 
-### 즉시 실행 (세션 시작 전)
+### 즉시 (세션 시작 전)
 
-```bash
-git push   # d9a4fad9 push
+```
+git push  # 이미 완료 (3747c35e pushed)
 ```
 
 ### 1순위 — M3 완료 (HUMAN 결정 필요)
 
-1. **M3 showcase 선정**: bmb-algo (1순위) / bmb-json (2순위) 중 결정
-2. **공식 벤치마크 측정**: 선정된 라이브러리 성능 측정 (1-2 cycles)
-3. **npm publish**: `npm-publish.yml` → `workflow_dispatch` → `dry_run: false`
-4. **PyPI publish**: `pypi-publish.yml` → `workflow_dispatch`
+1. **M3-1** showcase 선정 → **M3-2** 벤치마크 측정 (자율)
+2. **M3-3** npm publish + **M3-4** PyPI publish
+3. **M3-5** bmb-mcp 미커밋 커밋 (자율, 즉시 가능)
 
-### 2순위 — M3→M4 전환 준비 (자율)
+### 2순위 — M4 준비 (자율 선행 가능)
 
-5. **B baseline 측정**: Track R에서 LLM 1-shot 성공률 최초 측정 (M4 첫 액션)
-6. **언어 갭 이슈 등록**: LLM 미지원 패턴 → `claudedocs/issues/` 백로그
-
-### 3순위 — 선택적
-
-7. **verify-host 함수 레벨 캐시**: 2-3 cycles (low priority)
-8. **v0.100 버전 선언**: M3 완료 후 메인테이너 결정
+4. **M4-2** 언어 갭 이슈 등록 (즉시)
+5. **M4-1** B 공식 측정 (API key 필요)
 
 ---
 
@@ -156,18 +129,16 @@ git push   # d9a4fad9 push
 
 | 항목 | 현황 |
 |------|------|
-| git push (d9a4fad9) | ⏳ 세션 시작 전 필수 |
 | M3 showcase 선정 | ⏳ bmb-algo(1순위) / bmb-json(2순위) |
 | npm publish | ⏳ `workflow_dispatch` dry_run=false |
-| PyPI publish | ⏳ `workflow_dispatch` |
+| PyPI publish | ⏳ `workflow_dispatch` publish=true, repository=pypi |
 | v0.100 버전 선언 | ⏳ M3 완료 후 |
-| Track R LLM 실험 | ⏳ API key + `BMB_BENCH_API_KEY` 필요 |
+| B 공식 측정 | ⏳ `BMB_BENCH_API_KEY` 설정 필요 |
 
 ---
 
 ## 6. 다음 세션 시작 체크리스트
 
-- [ ] `git push` 완료 확인
 - [ ] `claudedocs/ROADMAP.md` 읽기 (실무 앵커)
 - [ ] `./target/release/bmb build bootstrap/lsp.bmb -o bootstrap/lsp.exe`
 - [ ] `./target/release/bmb build bootstrap/verify_host.bmb -o bootstrap/verify_host.exe`
@@ -176,4 +147,4 @@ git push   # d9a4fad9 push
 
 ---
 
-**세션 종료**: 2026-05-10 (Cycles 2609-2617 + 철학 정렬)
+**세션 종료**: 2026-05-10 (Cycle 2618 — 전체 작업 검토 + ROADMAP 갱신)
