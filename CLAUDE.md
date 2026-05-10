@@ -109,6 +109,7 @@ BMB는 커스텀 언어이므로 일반 언어 지식으로 추측하면 안 된
 - Static method calls (`Type::method(args)`) ✅ — Cycle 2620에서 추가 (`Type_method(args)` 로 망글링)
 - Payload enum constructor (`Option::Some(42)`) ✅ — Cycle 2633에서 추가 (heap calloc 2-word 표현)
 - Payload enum match (`Option::Some(v) => v`) ✅ — Cycle 2633에서 추가 (tag 비교 + payload extract)
+- Multi-field enum (`Node::Branch(20, 30)`, `Triple::Three(1,2,3)`) ✅ — Cycle 2637에서 추가
 - Underscore wildcard (`_` in match) ✅ — 기존 지원 (오해 수정: Cycle 2634 확인)
 
 **BMB가 지원하지 않는 문법** (반복 마찰 원인):
