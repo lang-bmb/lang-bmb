@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-11 (Cycles 2670-2679 — M5-5c/d 구현 → M5-5 7/7 완료)
 
-> **HEAD**: `fe8dde38` (이전 세션 종료) + 마무리 commit (예정)
+> **HEAD**: `3c303fda` (통합 commit Cycles 2670-2678) + 마무리 commit (예정)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 > **이전 세션 핸드오프**: cycle-logs/cycle-2660~2669.md 참조
 
