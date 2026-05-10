@@ -1,0 +1,45 @@
+// Golden test: static method call advanced patterns
+// Tests: multiple types, method chains via temp vars, combined with let-tuple
+// Expected output: 100
+
+fn Vec2_new(x: i64, y: i64) -> (i64, i64) = (x, y);
+fn Vec2_add(ax: i64, ay: i64, bx: i64, by: i64) -> (i64, i64) = (ax + bx, ay + by);
+fn Vec2_scale(x: i64, y: i64, s: i64) -> (i64, i64) = (x * s, y * s);
+fn Vec2_dot(ax: i64, ay: i64, bx: i64, by: i64) -> i64 = ax * bx + ay * by;
+
+fn Math_clamp(v: i64, lo: i64, hi: i64) -> i64 =
+    if v < lo { lo } else if v > hi { hi } else { v };
+
+fn Math_abs(v: i64) -> i64 = if v < 0 { 0 - v } else { v };
+
+fn main() -> i64 = {
+    // Vec2 operations using static method calls
+    let (ax, ay) = Vec2::new(3, 4);
+    let (bx, by) = Vec2::new(1, 2);
+
+    // add and scale
+    let (cx, cy) = Vec2::add(ax, ay, bx, by);
+    // cx=4, cy=6
+    let (dx, dy) = Vec2::scale(cx, cy, 2);
+    // dx=8, dy=12
+
+    // dot product
+    let dot = Vec2::dot(dx, dy, ax, ay);
+    // dot = 8*3 + 12*4 = 24 + 48 = 72
+
+    // clamped value
+    let clamped = Math::clamp(dot, 0, 50);
+    // clamped = 50
+
+    // abs of negative
+    let neg = Math::abs(0 - 22);
+    // neg = 22
+
+    // result: 50 + 22 + 28 = 100
+    let delta = Vec2::dot(3, 4, 3, 4);
+    // delta = 9 + 16 = 25
+    let result = clamped + neg + delta + 3;
+    // 50 + 22 + 25 + 3 = 100
+    println(result);
+    0
+};

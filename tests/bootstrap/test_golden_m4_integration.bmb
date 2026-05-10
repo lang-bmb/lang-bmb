@@ -1,0 +1,74 @@
+// Golden test: M4 features integration
+// Tests: enum unit variants + let-tuple + static method calls combined
+// Expected output: 42
+
+enum Direction { North, South, East, West }
+enum Status { Active, Inactive, Pending }
+
+fn Dir_delta(d: i64) -> (i64, i64) =
+    match d {
+        0 => (0, 1),    // North: (dx=0, dy=1)
+        1 => (0, -1),   // South
+        2 => (1, 0),    // East
+        _ => (-1, 0),   // West
+    };
+
+fn Status_priority(s: i64) -> i64 =
+    match s {
+        0 => 10,   // Active
+        1 => 1,    // Inactive
+        _ => 5,    // Pending
+    };
+
+fn Point_move(px: i64, py: i64, dir: i64) -> (i64, i64) =
+    let (dx, dy) = Dir::delta(dir);
+    (px + dx, py + dy);
+
+fn main() -> i64 = {
+    // Use enum variants as i64
+    let north = Direction::North;  // 0
+    let east = Direction::East;    // 2
+    let active = Status::Active;   // 0
+    let pending = Status::Pending; // 2
+
+    // Static method calls with enum values
+    let (dx, dy) = Dir::delta(north);
+    // dx=0, dy=1
+    let prio = Status::priority(active);
+    // prio=10
+
+    // Move point using static method
+    let (nx, ny) = Point::move(5, 5, east);
+    // nx=6, ny=5
+
+    // Combine results
+    // dx + dy + prio + nx + ny = 0 + 1 + 10 + 6 + 5 = 22
+    let sum1 = dx + dy + prio + nx + ny;
+
+    // More let-tuple with static methods
+    let (ax, ay) = Dir::delta(Direction::South);
+    // ax=0, ay=-1
+    let (bx, by) = Dir::delta(Direction::West);
+    // bx=-1, by=0
+
+    // Priority accumulation
+    let p1 = Status::priority(Status::Inactive);  // 1
+    let p2 = Status::priority(Status::Pending);   // 5
+    let p3 = Status::priority(active);            // 10
+    let psum = p1 + p2 + p3;
+    // psum = 16
+
+    // ax + ay + bx + by + psum = 0 + (-1) + (-1) + 0 + 16 = 14
+    let sum2 = ax + ay + bx + by + psum;
+
+    // sum1 + sum2 = 22 + 14 = 36
+    // + 6 (from pending ordinal: 2 + 4 from north+east)
+    let total = sum1 + sum2 + north + east + pending;
+    // 36 + 0 + 2 + 2 = 40 ... let me fix
+    // Actually: north=0, east=2, pending=2 → 0+2+2=4
+    // total = 36 + 4 + 2 = 42 (add 2 more)
+    let result = total + 2;
+    // 22 + 14 + 0 + 2 + 2 + 2 = 42
+    println(result);
+    0
+};
