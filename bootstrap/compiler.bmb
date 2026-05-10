@@ -15231,6 +15231,12 @@ fn llvm_try_println_str_dispatch(line: String, pos: i64, dest: String, fn_name: 
                          else { "@eprint_str" };
             let ptr_tmp = dest + "_sp";
             "  " + ptr_tmp + " = inttoptr i64 " + arg + " to ptr" + SEP() + "  call void " + str_fn + "(ptr " + ptr_tmp + ")" + SEP() + "  " + dest + " = add nsw i64 0, 0"
+        } else if is_double_var_sb(arg, str_sb) {
+            let f64_fn = if fn_name == "println" { "@println_f64" }
+                         else if fn_name == "print" { "@print_f64" }
+                         else if fn_name == "eprintln" { "@eprintln_f64" }
+                         else { "@eprint_f64" };
+            "  call void " + f64_fn + "(double " + arg + ")" + SEP() + "  " + dest + " = add nsw i64 0, 0"
         } else { "" }
     } else { "" };
 
