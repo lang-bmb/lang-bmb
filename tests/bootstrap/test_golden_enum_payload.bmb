@@ -1,0 +1,19 @@
+// Golden test: payload enum (Option with i64 payload) - M5-1
+// Expected output: 42
+
+enum Option { None, Some(i64) }
+
+fn get_or_default(opt: Option, default: i64) -> i64 =
+    match opt {
+        Option::None => default,
+        Option::Some(v) => v,
+    }
+
+fn main() -> i64 = {
+    let none = Option::None;
+    let some42 = Option::Some(42);
+    let r1 = get_or_default(none, 0);
+    let r2 = get_or_default(some42, 0);
+    println(r1 + r2);
+    0
+}

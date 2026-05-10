@@ -2149,8 +2149,18 @@ fn parse_match_arms(src: String, pos: i64, scrutinee: String, prefix: String, su
             if tok_kind(peek) == TK_DCOLON() {
                 let var_tok = next_token_raw(src, tok_end(peek));
                 let variant_name = get_ident_text(src, tok_end(peek), var_tok);
-                let pat_expr = "(enum_variant <" + pat_text + "> <" + variant_name + ">)";
-                parse_match_arm_arrow(src, tok_end(var_tok), scrutinee, pat_expr, prefix, suffix)
+                let after_var = next_token_raw(src, tok_end(var_tok));
+                if tok_kind(after_var) == TK_LPAREN() {
+                    // Type::Variant(v) => — payload enum pattern binding
+                    let bind_tok = next_token_raw(src, tok_end(after_var));
+                    let bind_name = get_ident_text(src, tok_end(after_var), bind_tok);
+                    let close_tok = next_token_raw(src, tok_end(bind_tok));
+                    let pat_expr = "(enum_payload_bind <" + pat_text + "> <" + variant_name + "> <" + bind_name + ">)";
+                    parse_match_arm_arrow(src, tok_end(close_tok), scrutinee, pat_expr, prefix, suffix)
+                } else {
+                    let pat_expr = "(enum_variant <" + pat_text + "> <" + variant_name + ">)";
+                    parse_match_arm_arrow(src, tok_end(var_tok), scrutinee, pat_expr, prefix, suffix)
+                }
             } else {
                 parse_match_var_bind(src, tok_end(t), scrutinee, pat_text, prefix, suffix)
             }
@@ -2292,10 +2302,29 @@ fn parse_match_arm_body(src: String, pos: i64, scrutinee: String, pat_expr: Stri
     if is_error(rb) { rb }
     else {
         let body = unpack_ast(rb);
-        let cond = "(binop == (var <__match>) " + pat_expr + ")";
-        let new_prefix = prefix + "(if " + cond + " " + body + " ";
-        let new_suffix = ")" + suffix;
-        parse_match_arm_sep(src, unpack_pos(rb), scrutinee, new_prefix, new_suffix)
+        let pb_prefix = "(enum_payload_bind <";
+        let is_payload_bind = pat_expr.len() > 20 and pat_expr.slice(0, 20) == pb_prefix;
+        if is_payload_bind {
+            // Extract type, variant, varname from (enum_payload_bind <Type> <Variant> <varname>)
+            let type_end = find_char_pos(pat_expr, 62, 20);
+            let type_name = pat_expr.slice(20, type_end);
+            let v_start = type_end + 3;
+            let v_end = find_char_pos(pat_expr, 62, v_start);
+            let variant_name = pat_expr.slice(v_start, v_end);
+            let vn_start = v_end + 3;
+            let vn_end = find_char_pos(pat_expr, 62, vn_start);
+            let varname = pat_expr.slice(vn_start, vn_end);
+            let tag_cond = "(enum_tag_check <" + type_name + "> <" + variant_name + ">)";
+            let payload_bind = "(let <" + varname + "> (enum_payload_extract (var <__match>)) " + body + ")";
+            let new_prefix = prefix + "(if " + tag_cond + " " + payload_bind + " ";
+            let new_suffix = ")" + suffix;
+            parse_match_arm_sep(src, unpack_pos(rb), scrutinee, new_prefix, new_suffix)
+        } else {
+            let cond = "(binop == (var <__match>) " + pat_expr + ")";
+            let new_prefix = prefix + "(if " + cond + " " + body + " ";
+            let new_suffix = ")" + suffix;
+            parse_match_arm_sep(src, unpack_pos(rb), scrutinee, new_prefix, new_suffix)
+        }
     };
 
 fn parse_match_arm_sep(src: String, pos: i64, scrutinee: String, prefix: String, suffix: String) -> String =
@@ -2914,8 +2943,18 @@ fn parse_enum_variants_to_registry(src: String, pos: i64, rsb: i64, idx: i64) ->
     else if kind == TK_IDENT() {
         let variant_name = get_ident_text(src, pos, tok);
         let w1 = if idx > 0 { sb_push(rsb, ",") } else { 0 };
-        let w2 = sb_push(rsb, variant_name);
-        parse_enum_variants_to_registry(src, tok_end(tok), rsb, idx + 1)
+        let after_name = next_token_raw(src, tok_end(tok));
+        if tok_kind(after_name) == TK_LPAREN() {
+            // Variant(Type) — payload variant: store as "Variant[Type]"
+            let type_tok = next_token_raw(src, tok_end(after_name));
+            let payload_type = get_ident_text(src, tok_end(after_name), type_tok);
+            let close_tok = next_token_raw(src, tok_end(type_tok));
+            let w2 = sb_push(rsb, variant_name + "[" + payload_type + "]");
+            parse_enum_variants_to_registry(src, tok_end(close_tok), rsb, idx + 1)
+        } else {
+            let w2 = sb_push(rsb, variant_name);
+            parse_enum_variants_to_registry(src, tok_end(tok), rsb, idx + 1)
+        }
     } else {
         // Skip commas, etc.
         parse_enum_variants_to_registry(src, tok_end(tok), rsb, idx)
@@ -2947,32 +2986,79 @@ fn count_variant_index(variants: String, target: String, pos: i64, idx: i64) -> 
     if pos >= variants.len() { -1 }
     else {
         let comma = find_char_pos(variants, 44, pos);
-        let name = variants.slice(pos, comma);
+        let raw = variants.slice(pos, comma);
+        let bracket = find_char_pos(raw, 91, 0);
+        let name = if bracket < raw.len() { raw.slice(0, bracket) } else { raw };
         if name == target { idx }
         else { count_variant_index(variants, target, comma + 1, idx + 1) }
+    };
+
+fn enum_has_payload(reg: String, enum_name: String) -> bool =
+    let prefix = enum_name + ":";
+    let start = find_substr_pos(reg, prefix, 0);
+    if start < 0 { false }
+    else {
+        let vs = start + prefix.len();
+        let semi = find_char_pos(reg, 59, vs);
+        let variants = reg.slice(vs, semi);
+        find_char_pos(variants, 91, 0) < variants.len()
+    };
+
+fn enum_variant_has_payload(reg: String, enum_name: String, variant: String) -> bool =
+    let prefix = enum_name + ":";
+    let start = find_substr_pos(reg, prefix, 0);
+    if start < 0 { false }
+    else {
+        let vs = start + prefix.len();
+        let semi = find_char_pos(reg, 59, vs);
+        let variants = reg.slice(vs, semi);
+        variant_has_bracket(variants, variant, 0)
+    };
+
+fn variant_has_bracket(variants: String, target: String, pos: i64) -> bool =
+    if pos >= variants.len() { false }
+    else {
+        let comma = find_char_pos(variants, 44, pos);
+        let entry = variants.slice(pos, comma);
+        let bracket = find_char_pos(entry, 91, 0);
+        if bracket < entry.len() {
+            if entry.slice(0, bracket) == target { true }
+            else { variant_has_bracket(variants, target, comma + 1) }
+        } else { variant_has_bracket(variants, target, comma + 1) }
     };
 
 // Resolve (enum_variant <Name> <Variant>) → (int N) in AST text
 fn resolve_enum_variants_in_ast(ast: String, enum_reg: String) -> String =
     if enum_reg == "" { ast }
     else {
+        let ast1 = resolve_tag_checks(ast, enum_reg);
+        let ast2 = resolve_payload_extracts(ast1);
         let sb = sb_new();
-        let w = resolve_ev_sb(ast, 0, enum_reg, sb);
+        let w = resolve_ev_sb(ast2, 0, enum_reg, sb);
         sb_build(sb)
     };
 
 fn resolve_ev_sb(ast: String, pos: i64, enum_reg: String, sb: i64) -> i64 =
     if pos >= ast.len() { 0 }
     else {
-        let marker = "(enum_variant ";
-        let found = find_substr_pos(ast, marker, pos);
+        let ctx_marker = "(binop == (var <__match>) (enum_variant ";
+        let ev_marker = "(enum_variant ";
+        let found_ctx = find_substr_pos(ast, ctx_marker, pos);
+        let found_ev = find_substr_pos(ast, ev_marker, pos);
+        // Prefer ctx_marker when it appears before ev_marker (ctx includes ev as suffix)
+        let use_ctx = found_ctx >= 0 and (found_ev < 0 or found_ctx < found_ev);
+        let found = if use_ctx { found_ctx } else { found_ev };
         if found < 0 {
             let w = sb_push_range(sb, ast, pos, ast.len());
             0
+        } else if use_ctx {
+            let w1 = sb_push_range(sb, ast, pos, found_ctx);
+            let after_ctx = found_ctx + ctx_marker.len();
+            resolve_ev_match_ctx(ast, after_ctx, enum_reg, sb)
         } else {
-            let w1 = sb_push_range(sb, ast, pos, found);
-            let after_marker = found + marker.len();
-            resolve_ev_one(ast, after_marker, enum_reg, sb)
+            let w1 = sb_push_range(sb, ast, pos, found_ev);
+            let after_ev = found_ev + ev_marker.len();
+            resolve_ev_one(ast, after_ev, enum_reg, sb)
         }
     };
 
@@ -2981,15 +3067,131 @@ fn resolve_ev_one(ast: String, pos: i64, enum_reg: String, sb: i64) -> i64 =
     let name_start = pos + 1;
     let name_end = find_char_pos(ast, 62, name_start);
     let enum_name = ast.slice(name_start, name_end);
-    // After "> <", skip 3 chars to get variant name start
     let var_start = name_end + 3;
     let var_end = find_char_pos(ast, 62, var_start);
     let variant = ast.slice(var_start, var_end);
     let close = var_end + 2;
     let ordinal = enum_variant_ordinal(enum_reg, enum_name, variant);
-    let replacement = if ordinal >= 0 { "(int " + int_to_string(ordinal) + ")" } else { "(int 0)" };
+    let n = if ordinal >= 0 { ordinal } else { 0 };
+    let is_payload = enum_has_payload(enum_reg, enum_name);
+    let replacement = if is_payload {
+        "(enum_val (int " + int_to_string(n) + ") (int 0))"
+    } else {
+        "(int " + int_to_string(n) + ")"
+    };
     let w = sb_push(sb, replacement);
     resolve_ev_sb(ast, close, enum_reg, sb);
+
+fn resolve_ev_match_ctx(ast: String, pos: i64, enum_reg: String, sb: i64) -> i64 =
+    // pos points to: <Name> <Variant>)) — close the enum_variant AND the binop
+    let name_start = pos + 1;
+    let name_end = find_char_pos(ast, 62, name_start);
+    let enum_name = ast.slice(name_start, name_end);
+    let var_start = name_end + 3;
+    let var_end = find_char_pos(ast, 62, var_start);
+    let variant = ast.slice(var_start, var_end);
+    let close_pos = var_end + 3; // skip '>))': '>', ')', ')'
+    let ordinal = enum_variant_ordinal(enum_reg, enum_name, variant);
+    let n = if ordinal >= 0 { ordinal } else { 0 };
+    let is_payload = enum_has_payload(enum_reg, enum_name);
+    let replacement = if is_payload {
+        "(binop == (field (var <__match>) 0) (int " + int_to_string(n) + "))"
+    } else {
+        "(binop == (var <__match>) (int " + int_to_string(n) + "))"
+    };
+    let w = sb_push(sb, replacement);
+    resolve_ev_sb(ast, close_pos, enum_reg, sb);
+
+fn resolve_tag_checks(ast: String, enum_reg: String) -> String =
+    let sb = sb_new();
+    let w = resolve_tag_checks_sb(ast, 0, enum_reg, sb);
+    sb_build(sb);
+
+fn resolve_tag_checks_sb(ast: String, pos: i64, enum_reg: String, sb: i64) -> i64 =
+    if pos >= ast.len() { 0 }
+    else {
+        let marker = "(enum_tag_check <";
+        let found = find_substr_pos(ast, marker, pos);
+        if found < 0 {
+            let w = sb_push_range(sb, ast, pos, ast.len()); 0
+        } else {
+            let w1 = sb_push_range(sb, ast, pos, found);
+            let name_start = found + 17; // len("(enum_tag_check <") = 17
+            let name_end = find_char_pos(ast, 62, name_start);
+            let enum_name = ast.slice(name_start, name_end);
+            let var_start = name_end + 3;
+            let var_end = find_char_pos(ast, 62, var_start);
+            let variant = ast.slice(var_start, var_end);
+            let close_pos = var_end + 2; // skip '>)'
+            let ordinal = enum_variant_ordinal(enum_reg, enum_name, variant);
+            let n = if ordinal >= 0 { ordinal } else { 0 };
+            let replacement = "(binop == (field (var <__match>) 0) (int " + int_to_string(n) + "))";
+            let w2 = sb_push(sb, replacement);
+            resolve_tag_checks_sb(ast, close_pos, enum_reg, sb)
+        }
+    };
+
+fn resolve_payload_extracts(ast: String) -> String =
+    let sb = sb_new();
+    let w = resolve_payload_extracts_sb(ast, 0, sb);
+    sb_build(sb);
+
+fn resolve_payload_extracts_sb(ast: String, pos: i64, sb: i64) -> i64 =
+    if pos >= ast.len() { 0 }
+    else {
+        let marker = "(enum_payload_extract (var <__match>))";
+        let found = find_substr_pos(ast, marker, pos);
+        if found < 0 {
+            let w = sb_push_range(sb, ast, pos, ast.len()); 0
+        } else {
+            let w1 = sb_push_range(sb, ast, pos, found);
+            let w2 = sb_push(sb, "(field (var <__match>) 1)");
+            resolve_payload_extracts_sb(ast, found + marker.len(), sb)
+        }
+    };
+
+fn resolve_payload_calls_in_ast(ast: String, enum_reg: String) -> String =
+    if enum_reg == "" { ast }
+    else {
+        let sb = sb_new();
+        let w = resolve_payload_calls_sb(ast, 0, enum_reg, sb);
+        sb_build(sb)
+    };
+
+fn resolve_payload_calls_sb(ast: String, pos: i64, enum_reg: String, sb: i64) -> i64 =
+    if pos >= ast.len() { 0 }
+    else {
+        let marker = "(call <";
+        let found = find_substr_pos(ast, marker, pos);
+        if found < 0 {
+            let w = sb_push_range(sb, ast, pos, ast.len()); 0
+        } else {
+            let name_start = found + 7;
+            let name_end = find_char_pos(ast, 62, name_start);
+            let call_name = ast.slice(name_start, name_end);
+            let us_pos = find_char_pos(call_name, 95, 0);
+            if us_pos >= call_name.len() {
+                let w = sb_push_range(sb, ast, pos, name_start);
+                resolve_payload_calls_sb(ast, name_start, enum_reg, sb)
+            } else {
+                let type_name = call_name.slice(0, us_pos);
+                let var_name = call_name.slice(us_pos + 1, call_name.len());
+                let ordinal = enum_variant_ordinal(enum_reg, type_name, var_name);
+                let is_pv = if ordinal >= 0 { enum_variant_has_payload(enum_reg, type_name, var_name) } else { false };
+                if is_pv {
+                    let call_close = low_find_close_paren(ast, found, 0);
+                    let arg_str = ast.slice(name_end + 1, call_close);
+                    let replacement = "(enum_val (int " + int_to_string(ordinal) + ")" + arg_str + ")";
+                    let w1 = sb_push_range(sb, ast, pos, found);
+                    let w2 = sb_push(sb, replacement);
+                    resolve_payload_calls_sb(ast, call_close + 1, enum_reg, sb)
+                } else {
+                    let w = sb_push_range(sb, ast, pos, name_start);
+                    resolve_payload_calls_sb(ast, name_start, enum_reg, sb)
+                }
+            }
+        }
+    };
 
 fn parse_source(src: String) -> String =
     let sb = sb_new();
@@ -3849,6 +4051,13 @@ fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String
         let new_block = unpack_block(result);
         make_step(new_temp, new_block, cur_exit_label, "")
     }
+    // M5-1: payload enum constructor — delegate to recursive lowering
+    else if ntype == "enum_val" {
+        let result = lower_enum_val_sb(ast, cur_temp, cur_block, sb, cur_exit_label);
+        let new_temp = unpack_temp(result);
+        let new_block = unpack_block(result);
+        make_step(new_temp, new_block, cur_exit_label, "")
+    }
     else { make_step_leaf(cur_temp) };
 
 // IN: Integer literal - emit MIR, advance temp
@@ -4639,6 +4848,30 @@ fn lower_lambda_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit:
         pack_ids(temp_id + 1, block_id)
     };
 
+// Lower (enum_val (int N) payload_expr) → calloc(2,8) + field-store tag + field-store payload
+fn lower_enum_val_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
+    let tag_expr = get_child(ast, 0);
+    let payload_expr = get_child(ast, 1);
+    let ptr_tmp = "%_t" + int_to_string(temp_id);
+    let w0 = sb_push_mir(sb, "  " + ptr_tmp + " = call @calloc(2, 8)");
+    let tag_result = lower_expr_sb(tag_expr, temp_id + 1, block_id, sb, loop_exit);
+    let tag_temp = unpack_temp(tag_result);
+    let tag_block = unpack_block(tag_result);
+    let tag_id = tag_temp - 1;
+    let fs0_base = "%_t" + int_to_string(tag_temp);
+    let w1 = sb_push_mir(sb, "  " + fs0_base + " = copy " + ptr_tmp);
+    let w2 = sb_push_mir(sb, "  field-store " + fs0_base + ".0, %_t" + int_to_string(tag_id));
+    let payload_result = lower_expr_sb(payload_expr, tag_temp + 1, tag_block, sb, loop_exit);
+    let payload_temp = unpack_temp(payload_result);
+    let payload_block = unpack_block(payload_result);
+    let payload_id = payload_temp - 1;
+    let fs1_base = "%_t" + int_to_string(payload_temp);
+    let w3 = sb_push_mir(sb, "  " + fs1_base + " = copy " + ptr_tmp);
+    let w4 = sb_push_mir(sb, "  field-store " + fs1_base + ".1, %_t" + int_to_string(payload_id));
+    let result_tmp = "%_t" + int_to_string(payload_temp + 1);
+    let w5 = sb_push_mir(sb, "  " + result_tmp + " = copy " + ptr_tmp);
+    pack_ids(payload_temp + 2, payload_block);
+
 // Collect lambda parameters: scan children until we find a non-param node
 fn collect_lambda_params(ast: String, idx: i64, acc: String) -> String =
     let child = get_child(ast, idx);
@@ -5235,7 +5468,7 @@ fn step_array_repeat_expr(count_temp: String, cur_temp: i64, sb: i64) -> String 
 
 fn lower_expr_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
     let ntype = get_node_type(ast);
-    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else if ntype == "float" { lower_float_sb(ast, temp_id, block_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) } else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let_mut" { lower_let_mut_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "method" { lower_method_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "block" { lower_block_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unit" { lower_unit_sb(ast, temp_id, block_id, sb) } else if ntype == "seq" { lower_seq_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "assign" { lower_assign_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "while" { lower_while_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "loop" { lower_loop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "for" { lower_for_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "for_incl" { lower_for_incl_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "for_step" { lower_for_step_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "for_step_incl" { lower_for_step_incl_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "field" { lower_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_field" { lower_set_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "index" { lower_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "ptr_index" { lower_ptr_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_index" { lower_set_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_ptr_index" { lower_ptr_set_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "break" { lower_break_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "continue" { lower_continue_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "return" { lower_return_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "cast_ptr_f64" { lower_cast_ptr_f64_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "cast_i64" { lower_cast_i64_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "cast_f64" { lower_cast_f64_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "cast_i32" { lower_cast_i32_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array_repeat" { lower_array_repeat_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array" { lower_array_literal_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "tuple" { lower_tuple_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "struct_init" { lower_struct_init_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_var" { lower_set_var_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "lambda" { lower_lambda_sb(ast, temp_id, block_id, sb, loop_exit) } else { pack_ids(temp_id, block_id) };
+    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else if ntype == "float" { lower_float_sb(ast, temp_id, block_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) } else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let_mut" { lower_let_mut_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "method" { lower_method_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "block" { lower_block_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unit" { lower_unit_sb(ast, temp_id, block_id, sb) } else if ntype == "seq" { lower_seq_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "assign" { lower_assign_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "while" { lower_while_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "loop" { lower_loop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "for" { lower_for_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "for_incl" { lower_for_incl_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "for_step" { lower_for_step_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "for_step_incl" { lower_for_step_incl_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "field" { lower_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_field" { lower_set_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "index" { lower_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "ptr_index" { lower_ptr_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_index" { lower_set_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_ptr_index" { lower_ptr_set_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "break" { lower_break_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "continue" { lower_continue_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "return" { lower_return_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "cast_ptr_f64" { lower_cast_ptr_f64_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "cast_i64" { lower_cast_i64_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "cast_f64" { lower_cast_f64_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "cast_i32" { lower_cast_i32_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array_repeat" { lower_array_repeat_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array" { lower_array_literal_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "tuple" { lower_tuple_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "struct_init" { lower_struct_init_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_var" { lower_set_var_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "lambda" { lower_lambda_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "enum_val" { lower_enum_val_sb(ast, temp_id, block_id, sb, loop_exit) } else { pack_ids(temp_id, block_id) };
 
 fn lower_int_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let val = extract_int_value(ast);
@@ -14699,8 +14932,8 @@ fn llvm_gen_field_store(line: String, pos: i64, struct_reg: String, str_sb: i64)
     let field = trim_end(line.slice(dot_pos + 1, comma_pos));
     let p2 = low_skip_ws(line, comma_pos + 1);
     let value = trim_end(line.slice(p2, line.len()));
-    // Look up field index
-    let field_idx = lookup_field_by_name(struct_reg, field);
+    // Look up field index (numeric field names like "0", "1" for enum payload)
+    let field_idx = if field.len() > 0 and is_digit(field.byte_at(0)) { parse_int_simple(field, 0, 0) } else { lookup_field_by_name(struct_reg, field) };
     let prefix = base + "_fs" + i2s(field_idx);
     let conv = "  " + prefix + "_p = inttoptr i64 " + base + " to ptr";
     let gep_line = "  " + prefix + "_ptr = getelementptr inbounds nuw i64, ptr " + prefix + "_p, i32 " + i2s(field_idx);
@@ -16472,7 +16705,8 @@ fn compile_program(source: String, safe: i64) -> String =
     let ast_raw = parse_source(source);
     if is_error(ast_raw) { ast_raw } else {
         let enum_reg = build_enum_registry(source);
-        let ast = resolve_enum_variants_in_ast(ast_raw, enum_reg);
+        let ast1 = resolve_enum_variants_in_ast(ast_raw, enum_reg);
+        let ast = resolve_payload_calls_in_ast(ast1, enum_reg);
         let struct_reg = build_struct_registry(source);
         let mir_raw = lower_program_sb(ast, safe);
         if mir_raw == "" { "ERR:lowering produced empty MIR" } else {

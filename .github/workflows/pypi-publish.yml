@@ -44,10 +44,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
+          - os: windows-2022
             # Cycle 2478/2479: MSVC Rust target + text backend (no inkwell)
             # avoids the LLVM-Windows-installer dev-libs gap. See
             # bindings-ci.yml for full rationale.
+            # Cycle 2632: pinned to windows-2022 — windows-latest now redirects
+            # to windows-2025-vs2026 which broke pip install in May 2026.
             target: x86_64-pc-windows-msvc
             llvm_setup: mingw
             plat_tag: win_amd64

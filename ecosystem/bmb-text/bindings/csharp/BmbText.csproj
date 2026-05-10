@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>BmbTextLib</RootNamespace>
+    <AssemblyName>BmbText</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!-- NuGet packaging -->
+    <PackageId>BmbText</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>iyulab</Authors>
+    <Description>High-performance text search and transform powered by BMB — C# bindings via P/Invoke</Description>
+    <PackageTags>bmb;text;string;search;transform;performance;native;pinvoke</PackageTags>
+    <PackageProjectUrl>https://github.com/lang-bmb/lang-bmb</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/lang-bmb/lang-bmb</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="BmbTextTests.cs"/>
+    <None Include="README.md" Pack="true" PackagePath="\"/>
+  </ItemGroup>
+
+</Project>

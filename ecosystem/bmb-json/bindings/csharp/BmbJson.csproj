@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>BmbJsonLib</RootNamespace>
+    <AssemblyName>BmbJson</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!-- NuGet packaging -->
+    <PackageId>BmbJson</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>iyulab</Authors>
+    <Description>JSON parsing powered by BMB — C# bindings via P/Invoke</Description>
+    <PackageTags>bmb;json;parsing;performance;native;pinvoke</PackageTags>
+    <PackageProjectUrl>https://github.com/lang-bmb/lang-bmb</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/lang-bmb/lang-bmb</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="BmbJsonTests.cs"/>
+    <None Include="README.md" Pack="true" PackagePath="\"/>
+  </ItemGroup>
+
+</Project>

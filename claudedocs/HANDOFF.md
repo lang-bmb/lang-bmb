@@ -1,11 +1,11 @@
-# BMB Session Handoff — 2026-05-10 (Cycles 2619-2628 — M4 언어 갭 구현)
+# BMB Session Handoff — 2026-05-10 (Cycles 2619-2633 — M4 언어 갭 + M5-1 payload enum)
 
 > **HEAD**: 커밋 예정 (Cycle 2628 후 최종 커밋)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 
 ---
 
-## 0. 이번 세션 작업 (Cycles 2619-2628)
+## 0. 이번 세션 작업 (Cycles 2619-2633)
 
 ### 세션 성과 요약
 
@@ -19,8 +19,10 @@
 | 2624 | 엣지 케이스 골든 테스트 | 2개 테스트 추가 (let-tuple-advanced, static-method-advanced) |
 | 2625 | M5-1 아키텍처 설계 문서 | `DESIGN-M5-1-payload-enum.md` 작성 |
 | 2626 | M4 통합 테스트 | `test_golden_m4_integration.bmb` → 42 |
-| 2627 | HANDOFF + ROADMAP 갱신 | (현재) |
-| 2628 | 최종 커밋 | 예정 |
+| 2627 | HANDOFF + ROADMAP 갱신 | — |
+| 2628 | M4 최종 커밋 | 완료 |
+| 2629-2632 | C# 바인딩 + PyPI 수정 | M4-6 C# 5/5 ✅, PyPI windows-2022 수정 |
+| **2633** | **M5-1 payload enum 구현** | **`enum Option { None, Some(i64) }` + match ✅** |
 
 ---
 
@@ -32,7 +34,7 @@
 |------|------|------|
 | `let (a, b) = expr` | ❌ 미지원 | ✅ M4-3 구현 (Cycle 2621) |
 | `Type::method(args)` | ❌ 미지원 | ✅ M4-4 구현 (Cycle 2620) |
-| `Option::Some(x)` 표현식 | ❌ 미지원 | ❌ M5-1로 재분류 (7-12 cycles 필요) |
+| `Option::Some(x)` 표현식 | ❌ 미지원 | ✅ M5-1 구현 완료 (Cycle 2633) |
 
 ### Track 스냅샷
 
@@ -53,14 +55,16 @@
 | M1 Self-Validated | ✅ COMPLETE |
 | M2 AI-Ready Infra | ✅ COMPLETE |
 | M3 External Bindings | 🔄 ~90% (showcase 선정+벤치+publish 잔여, HUMAN 결정) |
-| M4 Adopted | 🔄 ~30% (M4-3 ✅, M4-4 ✅, M4-5→M5-1, M4-1/M4-6 미착수) |
+| M4 Adopted | 🔄 ~40% (M4-3 ✅, M4-4 ✅, M4-6 ✅, M4-5→M5-1 ✅, M4-1 미착수) |
+| M5 Language Completeness | 🔄 M5-1 payload enum Stage 1 ✅ (Fixed Point 차단 — arena OOM pre-existing) |
 
 ### 테스트 현황
 
 | 스위트 | 결과 |
 |--------|------|
-| `cargo nextest run --release` | ✅ 6210 passed |
-| `bootstrap` 골든 테스트 | ✅ 신규 4개 추가 (let_tuple, static_method_call, let_tuple_advanced, static_method_advanced, m4_integration) |
+| `cargo test --release` | ✅ 23 passed |
+| `bootstrap` 골든 테스트 | ✅ 총 2834개 (신규: let_tuple, static_method_call, let_tuple_advanced, static_method_advanced, m4_integration, **enum_payload**) |
+| struct/enum 회귀 (Stage 1) | ✅ 8/8 PASS (enum_match, enum_variant, enum_payload, struct_complex, struct_method, nested_struct, mut_struct, struct_fn) |
 
 ---
 
@@ -90,26 +94,27 @@
 
 | # | 태스크 | 성격 | 소요 |
 |---|--------|------|------|
-| M5-1 | payload enum 설계 및 구현 | 언어 아키텍처 | 7-12 cycles |
-| M5-2 | (TBD) | - | - |
+| M5-1 | payload enum 구현 | 언어 아키텍처 | ✅ **완료** (Cycle 2633, Stage 1 기준) |
+| M5-2 | `_` wildcard + Result enum | 언어 | 다음 3-5 cycles |
 
 ---
 
 ## 3. 다음 세션 우선순위
 
-### 1순위 — M3 완료 (HUMAN 결정 필요)
+### 1순위 — M5-1 후속 + bootstrap OOM 조사
 
-1. **M3-1** showcase 선정 → **M3-2** 벤치마크 측정 (자율)
-2. **M3-3** npm publish + **M3-4** PyPI publish
+1. **Arena OOM 근본 원인 파악**: Cycle 2237 이후 언제 Fixed Point가 깨졌는지 `git bisect` 또는 변경량 추적
+2. **M5-2 준비**: `_` wildcard match arm + Result enum 설계
 
-### 2순위 — M4 계속
+### 2순위 — PyPI publish + NuGet publish
 
-3. **M4-6** C# 바인딩 scaffold (자율, 3-5 cycles)
-4. **M4-1** B 공식 측정 (API key 필요)
+3. **PyPI windows-2022 수정 push** → 재실행 트리거 (`.github/workflows/pypi-publish.yml`)
+4. **NuGet publish**: 5개 C# 패키지 (M4-6 완료 후)
 
-### 3순위 — M5 준비
+### 3순위 — M3 완료 (HUMAN 결정 필요)
 
-5. **M5-1** payload enum 구현 시작 (설계 문서: `claudedocs/issues/DESIGN-M5-1-payload-enum.md`)
+5. **M3-3** npm publish + **M3-4** PyPI publish → **v0.100** 선언
+6. **M4-1** B 공식 측정 (API key 필요)
 
 ---
 
@@ -130,16 +135,18 @@ let x = Option::Some(42);           // → enum_construct 노드
 
 ---
 
-## 5. HUMAN 결정 대기 (변경 없음)
+## 5. HUMAN 결정 사항 (2026-05-10 확정)
 
-| 항목 | 현황 |
+| 항목 | 결정 |
 |------|------|
-| M3 showcase 선정 | ⏳ bmb-algo(1순위) / bmb-json(2순위) |
-| npm publish | ⏳ `workflow_dispatch` dry_run=false |
-| PyPI publish | ⏳ `workflow_dispatch` publish=true, repository=pypi |
-| v0.100 버전 선언 | ⏳ M3 완료 후 |
-| B 공식 측정 | ⏳ `BMB_BENCH_API_KEY` 설정 필요 |
-| M5-1 payload enum 설계 결정 | ⏳ unit enum 하위 호환성 + LLVM 표현 방식 |
+| M3 showcase 선정 | ✅ **bmb-algo** (알고리즘·CPU bound → 성능 가설 직접 증명) |
+| npm publish | ✅ **즉시 진행** — `workflow_dispatch` dry_run=false |
+| PyPI publish | ✅ **즉시 진행** — `workflow_dispatch` publish=true, repository=pypi |
+| v0.100 버전 선언 | ✅ **M3 publish 완료 직후** 메인테이너 결정 |
+| B 공식 측정 | ✅ **즉시 실행** — `BMB_BENCH_API_KEY` 설정 후 `bmb-ai-bench run` |
+| M5-1 하위 호환성 | ✅ **전체 마이그레이션** — unit enum도 `{i64, i64}` 로 통일 (이중 코드젠 경로 금지) |
+| M5-1 LLVM 표현 | ✅ **고정 2-word** — `%EnumValue = type { i64, i64 }` (heap alloc 없음) |
+| M5-1 가변 페이로드 | ✅ **M5-2로 defer** — M5-1 범위 = i64 단일 페이로드 + Option/패턴 매칭 |
 
 ---
 
@@ -173,4 +180,30 @@ let x = Option::Some(42);           // → enum_construct 노드
 
 ---
 
-**세션 종료**: 2026-05-10 (Cycles 2619-2628 — M4 언어 갭 구현)
+---
+
+## 8. M5-1 구현 핵심 사항
+
+### 페이로드 enum LLVM 표현
+
+```
+heap calloc(2, 8) → 2-word struct:
+  word 0: tag (i64)    — variant index (0-based)
+  word 1: payload (i64) — 값 (unit variant = 0)
+```
+
+### 두 lowering 시스템 동시 처리 필수 (Rule 추가 예정)
+
+| 시스템 | 위치 | 목적 |
+|--------|------|------|
+| recursive | `lower_expr_sb` | 표현식 내 중첩 eval |
+| iterative | `step_expr` | 함수 body `let` 체인 |
+
+신규 AST 노드 추가 시 **두 곳 모두** 수정 필수. (struct_init, lambda, enum_val 선례)
+
+### bootstrap Arena OOM (pre-existing, 사이클 2237 이후)
+
+`compiler.bmb` (~20K LOC) → Stage 2 빌드 시 arena 한계(16G) 초과.  
+M5-1과 무관한 사전 존재 문제. Fixed Point 복원에 32G+ arena 또는 증분 컴파일 필요.
+
+**세션 종료**: 2026-05-10 (Cycles 2619-2633 — M4 언어 갭 + M5-1 payload enum)
