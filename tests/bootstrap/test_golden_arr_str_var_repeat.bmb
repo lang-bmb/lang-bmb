@@ -1,0 +1,11 @@
+// Golden test M5-5b: [s; N] var-repeat array of String dispatch
+// Expected output: hello\nhello\nhello with exit 42
+
+fn main() -> i64 = {
+    let s = "hello";
+    let arr = [s; 3];
+    let _p0 = println(arr[0]);
+    let _p1 = println(arr[1]);
+    let _p2 = println(arr[2]);
+    42
+};

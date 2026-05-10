@@ -5116,7 +5116,10 @@ fn lower_array_repeat_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop
             let new_block = unpack_block(ids);
             let val_temp = "%_t" + int_to_string(new_temp - 1);
             let arr_ids = lower_array_repeat_lit_with_val_sb(val_temp, count_val, new_temp, new_block, sb);
-            let w_mark = if val_type == "string" { sb_push_mir(sb, "  mark_str_ptr %_t" + int_to_string(unpack_temp(arr_ids) - 1)) } else { 0 };
+            // M5-5b: var case — emit conditional marker (codegen checks str_sb at processing time)
+            let w_mark = if val_type == "string" { sb_push_mir(sb, "  mark_str_ptr %_t" + int_to_string(unpack_temp(arr_ids) - 1)) }
+                else if val_type == "var" { sb_push_mir(sb, "  mark_str_ptr_if %_t" + int_to_string(unpack_temp(arr_ids) - 1) + ", " + val_temp) }
+                else { 0 };
             arr_ids
         }
     } else {
@@ -5392,7 +5395,10 @@ fn step_array_repeat(item: String, cur_temp: i64, cur_block: i64, cur_exit_label
             let val_temp = "%_t" + i2s(new_temp - 1);
             let arr_leaf = step_array_repeat_lit_with_val(val_temp, count_val, new_temp, sb);
             let result_temp = new_temp + 6 + count_val * 2 + 1;
-            let w_mark = if val_type == "string" { sb_push_mir(sb, "  mark_str_ptr %_t" + i2s(result_temp - 1)) } else { 0 };
+            // M5-5b: var case — emit conditional marker (codegen checks str_sb at processing time)
+            let w_mark = if val_type == "string" { sb_push_mir(sb, "  mark_str_ptr %_t" + i2s(result_temp - 1)) }
+                else if val_type == "var" { sb_push_mir(sb, "  mark_str_ptr_if %_t" + i2s(result_temp - 1) + ", " + val_temp) }
+                else { 0 };
             arr_leaf
         }
     } else {
@@ -14397,6 +14403,7 @@ fn llvm_gen_line_structs(line: String, ret_type: String, strings: String, string
     else if low_starts_with_at(line, p, "store") { llvm_gen_store_sb(line, p, mapping, str_sb) }
     else if low_starts_with_at(line, p, "field-store") { llvm_gen_field_store(line, p + 11, struct_reg, str_sb) }
     else if low_starts_with_at(line, p, "mark_f64_ptr") { llvm_handle_mark_f64_ptr(line, p, str_sb) }
+    else if low_starts_with_at(line, p, "mark_str_ptr_if") { llvm_handle_mark_str_ptr_if(line, p, str_sb) }
     else if low_starts_with_at(line, p, "mark_str_ptr") { llvm_handle_mark_str_ptr(line, p, str_sb) }
     else if low_starts_with_at(line, p, "mutex-") { same_mapping(llvm_gen_conc_stmt(line, p)) }
     else if low_starts_with_at(line, p, "arc-") { same_mapping(llvm_gen_conc_stmt(line, p)) }
@@ -15092,6 +15099,18 @@ fn llvm_handle_mark_f64_ptr(line: String, p: i64, str_sb: i64) -> String =
 fn llvm_handle_mark_str_ptr(line: String, p: i64, str_sb: i64) -> String =
     let varname = trim_end(line.slice(p + 13, line.len()));
     let w = push_str_ptr_marker(str_sb, varname);
+    same_mapping("");
+
+// M5-5b: mark_str_ptr_if %dest, %src — conditional marking based on src var type
+// "mark_str_ptr_if" = 15 chars, then space, args start at p+16
+fn llvm_handle_mark_str_ptr_if(line: String, p: i64, str_sb: i64) -> String =
+    let rest = line.slice(p + 16, line.len());
+    let comma = find_comma(rest, 0);
+    let dest = trim_end(rest.slice(0, comma));
+    let src_start = low_skip_ws(rest, comma + 1);
+    let src_clean = trim_end(rest.slice(src_start, rest.len()));
+    let src_is_str = is_string_var_sb(src_clean, str_sb);
+    let w = if src_is_str { push_str_ptr_marker(str_sb, dest) } else { 0 };
     same_mapping("");
 
 fn llvm_gen_cmp_with_strings_sb(pred: String, line: String, pos: i64, dest: String, str_sb: i64) -> String =

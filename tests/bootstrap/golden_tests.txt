@@ -2848,3 +2848,4 @@ test_golden_arr_str_println.bmb|42
 test_golden_arr_str_alias.bmb|42
 test_golden_arr_str_for_loop.bmb|42
 test_golden_arr_str_mut_set.bmb|42
+test_golden_arr_str_var_repeat.bmb|42
