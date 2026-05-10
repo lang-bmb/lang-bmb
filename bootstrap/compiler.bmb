@@ -783,7 +783,14 @@ fn parse_ident_or_call(src: String, pos: i64, tok: i64) -> String =
         let variant_tok = next_token_raw(src, tok_end(next));
         if tok_kind(variant_tok) == TK_IDENT() {
             let variant_name = get_ident_text(src, tok_end(next), variant_tok);
-            pack_result(tok_end(variant_tok), "(enum_variant <" + name + "> <" + variant_name + ">)")
+            let after_variant = next_token_raw(src, tok_end(variant_tok));
+            if tok_kind(after_variant) == TK_LPAREN() {
+                // Type::method(args) → static call with mangled name Type_method
+                let rargs = parse_args(src, tok_end(after_variant), "");
+                pack_result(unpack_pos(rargs), "(call <" + name + "_" + variant_name + ">" + unpack_ast(rargs) + ")")
+            } else {
+                pack_result(tok_end(variant_tok), "(enum_variant <" + name + "> <" + variant_name + ">)")
+            }
         } else {
             make_error_at("expected variant name after '::', got " + tok_kind_name(tok_kind(variant_tok)), src, tok_end(next))
         }
@@ -1061,6 +1068,9 @@ fn parse_block_let(src: String, pos: i64) -> String =
             // Skip type annotation until '='
             parse_block_let_skip_type(src, tok_end(t2), name, false)
         } else { make_error_at("expected '=' or ':' in let binding, got " + tok_kind_name(tok_kind(t2)), src, tok_end(t1)) }
+    } else if tok_kind(t1) == TK_LPAREN() {
+        // let (a, b, ...) = expr; rest  — block-level tuple destructuring (M4-3)
+        parse_block_let_tuple(src, tok_end(t1), pos)
     } else { make_error_at("expected variable name after 'let', got " + tok_kind_name(tok_kind(t1)), src, pos) };
 
 // v0.91: let mut name ...
@@ -1102,6 +1112,57 @@ fn parse_block_let_skip_array_type(src: String, pos: i64, name: String, is_mut: 
         parse_block_let_skip_type(src, tok_end(t), name, is_mut)
     } else {
         parse_block_let_skip_array_type(src, tok_end(t), name, is_mut)
+    };
+
+// M4-3: Block-level tuple destructuring: let (a, b) = expr; rest
+fn parse_block_let_tuple(src: String, pos: i64, start_pos: i64) -> String =
+    parse_block_tuple_names_acc(src, pos, start_pos, "", 0);
+
+fn parse_block_tuple_names_acc(src: String, pos: i64, start_pos: i64, names_acc: String, count: i64) -> String =
+    let t = next_token_raw(src, pos);
+    let k = tok_kind(t);
+    if k == TK_IDENT() {
+        let name = get_ident_text(src, pos, t);
+        let new_acc = if count == 0 { name } else { names_acc + "|" + name };
+        parse_block_tuple_names_sep(src, tok_end(t), start_pos, new_acc, count + 1)
+    } else if k == TK_RPAREN() {
+        parse_block_tuple_eq(src, tok_end(t), start_pos, names_acc, count)
+    } else {
+        make_error_at("expected identifier in tuple pattern, got " + tok_kind_name(k), src, pos)
+    };
+
+fn parse_block_tuple_names_sep(src: String, pos: i64, start_pos: i64, names_acc: String, count: i64) -> String =
+    let t = next_token_raw(src, pos);
+    let k = tok_kind(t);
+    if k == TK_COMMA() {
+        parse_block_tuple_names_acc(src, tok_end(t), start_pos, names_acc, count)
+    } else if k == TK_RPAREN() {
+        parse_block_tuple_eq(src, tok_end(t), start_pos, names_acc, count)
+    } else {
+        make_error_at("expected ',' or ')' in tuple pattern, got " + tok_kind_name(k), src, pos)
+    };
+
+fn parse_block_tuple_eq(src: String, pos: i64, start_pos: i64, names: String, count: i64) -> String =
+    let t = next_token_raw(src, pos);
+    if tok_kind(t) != TK_EQ() {
+        make_error_at("expected '=' after tuple pattern, got " + tok_kind_name(tok_kind(t)), src, pos)
+    } else {
+        let rv = parse_expr(src, tok_end(t));
+        if is_error(rv) { rv } else {
+            let val_ast = unpack_ast(rv);
+            let t2 = next_token_raw(src, unpack_pos(rv));
+            if tok_kind(t2) != TK_SEMI() {
+                make_error_at("expected ';' after tuple destructuring value, got " + tok_kind_name(tok_kind(t2)), src, unpack_pos(rv))
+            } else {
+                let rb = parse_block_stmts(src, tok_end(t2));
+                if is_error(rb) { rb } else {
+                    let body_ast = unpack_ast(rb);
+                    let tup_name = "__tup_" + int_to_string(start_pos);
+                    let inner_ast = build_tuple_bindings(names, tup_name, body_ast, 0, count);
+                    pack_result(unpack_pos(rb), "(let <" + tup_name + "> " + val_ast + " " + inner_ast + ")")
+                }
+            }
+        }
     };
 
 // v0.91: Parse value and body for block let
@@ -1729,6 +1790,9 @@ fn parse_let_expr(src: String, pos: i64, start_pos: i64) -> String =
     } else if k1 == TK_IDENT() {
         // let name = ...
         parse_let_name(src, pos, t1)
+    } else if k1 == TK_LPAREN() {
+        // let (a, b, ...) = expr; body  — tuple destructuring (M4-3)
+        parse_let_tuple_pattern(src, tok_end(t1), start_pos)
     } else { make_error_at("expected variable name after 'let', got " + tok_kind_name(k1), src, pos) };
 
 fn parse_let_name(src: String, pos: i64, t1: i64) -> String =
@@ -1807,6 +1871,78 @@ fn make_let_mut_ast(pos: i64, name: String, val_ast: String, body_ast: String) -
     let p1 = "(let_mut <" + name + "> ";
     let p2 = p1 + val_ast + " ";
     pack_result(pos, p2 + body_ast + ")");
+
+// ============================================================================
+// M4-3: Tuple destructuring — let (a, b) = expr; body
+// Desugar: (let <__tup_P> val (let <a> (field (var <__tup_P>) 0) (let <b> ... body)))
+// ============================================================================
+
+fn parse_let_tuple_pattern(src: String, pos: i64, start_pos: i64) -> String =
+    parse_tuple_names_acc(src, pos, start_pos, "", 0);
+
+fn parse_tuple_names_acc(src: String, pos: i64, start_pos: i64, names_acc: String, count: i64) -> String =
+    let t = next_token_raw(src, pos);
+    let k = tok_kind(t);
+    if k == TK_IDENT() {
+        let name = get_ident_text(src, pos, t);
+        let new_acc = if count == 0 { name } else { names_acc + "|" + name };
+        parse_tuple_names_sep(src, tok_end(t), start_pos, new_acc, count + 1)
+    } else if k == TK_RPAREN() {
+        parse_let_tuple_eq(src, tok_end(t), start_pos, names_acc, count)
+    } else {
+        make_error_at("expected identifier in tuple pattern, got " + tok_kind_name(k), src, pos)
+    };
+
+fn parse_tuple_names_sep(src: String, pos: i64, start_pos: i64, names_acc: String, count: i64) -> String =
+    let t = next_token_raw(src, pos);
+    let k = tok_kind(t);
+    if k == TK_COMMA() {
+        parse_tuple_names_acc(src, tok_end(t), start_pos, names_acc, count)
+    } else if k == TK_RPAREN() {
+        parse_let_tuple_eq(src, tok_end(t), start_pos, names_acc, count)
+    } else {
+        make_error_at("expected ',' or ')' in tuple pattern, got " + tok_kind_name(k), src, pos)
+    };
+
+fn parse_let_tuple_eq(src: String, pos: i64, start_pos: i64, names: String, count: i64) -> String =
+    let t = next_token_raw(src, pos);
+    if tok_kind(t) != TK_EQ() {
+        make_error_at("expected '=' after tuple pattern, got " + tok_kind_name(tok_kind(t)), src, pos)
+    } else {
+        let rv = parse_expr(src, tok_end(t));
+        if is_error(rv) { rv } else {
+            let val_ast = unpack_ast(rv);
+            let t2 = next_token_raw(src, unpack_pos(rv));
+            if tok_kind(t2) != TK_SEMI() {
+                make_error_at("expected ';' after tuple destructuring value, got " + tok_kind_name(tok_kind(t2)), src, unpack_pos(rv))
+            } else {
+                let rb = parse_expr(src, tok_end(t2));
+                if is_error(rb) { rb } else {
+                    let body_ast = unpack_ast(rb);
+                    let tup_name = "__tup_" + int_to_string(start_pos);
+                    let inner_ast = build_tuple_bindings(names, tup_name, body_ast, 0, count);
+                    pack_result(unpack_pos(rb), "(let <" + tup_name + "> " + val_ast + " " + inner_ast + ")")
+                }
+            }
+        }
+    };
+
+fn build_tuple_bindings(names: String, tup_name: String, body_ast: String, idx: i64, count: i64) -> String =
+    if idx >= count { body_ast }
+    else {
+        let name = get_pipe_name(names, idx);
+        let var_ast = "(var <" + tup_name + ">)";
+        let field_ast = "(field " + var_ast + " " + int_to_string(idx) + ")";
+        let inner = build_tuple_bindings(names, tup_name, body_ast, idx + 1, count);
+        "(let <" + name + "> " + field_ast + " " + inner + ")"
+    };
+
+fn get_pipe_name(names: String, idx: i64) -> String =
+    get_pipe_name_at(names, 0, idx);
+
+fn get_pipe_name_at(names: String, pos: i64, idx: i64) -> String =
+    if idx == 0 { names.slice(pos, find_char(names, pos, 124)) }
+    else { get_pipe_name_at(names, find_char(names, pos, 124) + 1, idx - 1) };
 
 // ============================================================================
 // ============================================================================

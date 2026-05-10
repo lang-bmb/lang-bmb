@@ -1,0 +1,26 @@
+// Golden test: let (a, b) = expr tuple destructuring
+// Expected output: 42
+
+fn make_pair() -> (i64, i64) = (10, 32);
+fn make_triple() -> (i64, i64, i64) = (1, 2, 39);
+
+fn main() -> i64 = {
+    // Basic two-element destructuring
+    let (a, b) = make_pair();
+    // a=10, b=32, sum=42
+    let sum1 = a + b;
+
+    // Three-element destructuring
+    let (x, y, z) = make_triple();
+    // x=1, y=2, z=39, sum=42
+    let sum2 = x + y + z;
+
+    // Inline tuple literal destructuring
+    let (p, q) = (20, 22);
+    // p=20, q=22, sum=42
+    let sum3 = p + q;
+
+    // Use sum1 as the final answer (42)
+    println(sum1);
+    0
+};

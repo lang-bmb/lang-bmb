@@ -1,0 +1,27 @@
+// Golden test: Type::method() static method call desugaring
+// Expected output: 139
+
+// "Static methods" via Type::method(x) → Type_method(x) name mangling
+fn Math_double(x: i64) -> i64 = x * 2;
+fn Math_add(a: i64, b: i64) -> i64 = a + b;
+fn Math_square(x: i64) -> i64 = x * x;
+
+// Existing enum still works (no parens = enum_variant, unchanged)
+enum Color { Red, Green, Blue }
+
+fn main() -> i64 = {
+    // Type::method(args) → Math_double(21) = 42
+    let a = Math::double(21);
+    // Type::method(a, b) → Math_add(40, 2) = 42
+    let b = Math::add(40, 2);
+    // Type::method(x) → Math_square(7) = 49
+    let c = Math::square(7);
+    // Existing unit enum variants still work (no parens)
+    let r = Color::Red;    // 0
+    let g = Color::Green;  // 1
+    let blue = Color::Blue; // 2
+    // 42 + 42 + 49 - 0 - 1 - 2 + 9 = 139
+    let sum = a + b + c - r - g - blue + 9;
+    println(sum);
+    0
+};

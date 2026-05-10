@@ -2826,3 +2826,5 @@ test_golden_clamp_intrinsic.bmb|5
 test_golden_bswap_rotate.bmb|578437695752307201
 test_golden_float_intrinsics.bmb|3
 test_golden_math_intrinsics.bmb|0
+test_golden_static_method_call.bmb|139
+test_golden_let_tuple.bmb|42
