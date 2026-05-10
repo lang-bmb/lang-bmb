@@ -2842,3 +2842,4 @@ test_golden_println_string.bmb|42
 test_golden_println_chain.bmb|42
 test_golden_println_f64.bmb|42
 test_golden_enum_str_payload.bmb|42
+test_golden_struct_str_field.bmb|42

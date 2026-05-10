@@ -1,0 +1,10 @@
+struct Person {
+    name: String,
+    age: i64
+}
+
+fn main() -> i64 =
+    let p = Person { name: "Bob", age: 25 };
+    let _p1 = println(p.name);
+    let _p2 = println(p.age);
+    42;

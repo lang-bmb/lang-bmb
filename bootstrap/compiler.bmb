@@ -2888,7 +2888,7 @@ fn parse_struct_fields_to_registry(src: String, pos: i64, rsb: i64, idx: i64) ->
         // Check field type (after : token) for f64 or *StructName marker
         let type_info = check_field_type(src, tok_end(tok));
         let ptr_type = get_field_ptr_type(src, tok_end(tok));
-        let type_suffix = if type_info == 1 { "~d" } else if ptr_type != "" { "~p-" + ptr_type } else { "" };
+        let type_suffix = if type_info == 1 { "~d" } else if type_info == 2 { "~s" } else if ptr_type != "" { "~p-" + ptr_type } else { "" };
         let w1 = if idx > 0 { sb_push(rsb, ",") } else { 0 };
         let w2 = sb_push(rsb, field_name + type_suffix);
         let after_field = skip_field_type(src, tok_end(tok));
@@ -2898,13 +2898,14 @@ fn parse_struct_fields_to_registry(src: String, pos: i64, rsb: i64, idx: i64) ->
         parse_struct_fields_to_registry(src, tok_end(tok), rsb, idx)
     };
 
-// Check if field type is f64 (returns 1 if f64, 0 otherwise)
+// Check field type: 1=f64, 2=String, 0=other (default i64)
 fn check_field_type(src: String, pos: i64) -> i64 =
     let t1 = next_token_raw(src, pos);
     if tok_kind(t1) == TK_COLON() {
         let t2 = next_token_raw(src, tok_end(t1));
-        // f64 is tokenized as TK_F64, not TK_IDENT
-        if tok_kind(t2) == TK_F64() { 1 } else { 0 }
+        if tok_kind(t2) == TK_F64() { 1 }
+        else if tok_kind(t2) == TK_STRING_TYPE() { 2 }
+        else { 0 }
     } else { 0 };
 
 fn get_field_ptr_type(src: String, pos: i64) -> String =
@@ -14835,9 +14836,10 @@ fn llvm_gen_field_access(line: String, pos: i64, dest: String, struct_reg: Strin
     let field = trim_end(line.slice(dot_pos + 1, line.len()));
     let field_idx = if field.len() > 0 and is_digit(field.byte_at(0)) { parse_int_simple(field, 0, 0) } else { lookup_field_by_name(struct_reg, field) };
     let field_is_dbl = is_field_f64(struct_reg, field);
+    let field_is_str = is_field_string(struct_reg, field);
     let load_type = if field_is_dbl == 1 { "double" } else { "i64" };
-    // Mark result as double if f64 field
     let _dm = if field_is_dbl == 1 { push_double_marker(str_sb, dest) } else { 0 };
+    let _sm = if field_is_str == 1 { push_string_marker(str_sb, dest) } else { 0 };
     let field_ptr = get_field_ptr_from_registry(struct_reg, field);
     let _pm = if field_ptr != "" { push_ptr_marker(ptr_sb, dest, field_ptr) } else { 0 };
     let ptr_name = dest + "_ptr";
@@ -14905,6 +14907,34 @@ fn check_field_is_f64(fields: String, pos: i64, target: String) -> i64 =
         }
         else if comma_pos >= fields.len() { 0 - 1 }
         else { check_field_is_f64(fields, comma_pos + 1, target) }
+    };
+
+fn is_field_string(registry: String, field_name: String) -> i64 =
+    is_field_string_at(registry, 0, field_name);
+
+fn is_field_string_at(registry: String, pos: i64, field_name: String) -> i64 =
+    if pos >= registry.len() { 0 } else {
+        let semi_pos = find_char(registry, pos, 59);
+        let entry = registry.slice(pos, semi_pos);
+        let colon_pos = find_char(entry, 0, 58);
+        let fields = entry.slice(colon_pos + 1, entry.len());
+        let result = check_field_is_string(fields, 0, field_name);
+        if result >= 0 { result }
+        else if semi_pos + 1 >= registry.len() { 0 }
+        else { is_field_string_at(registry, semi_pos + 1, field_name) }
+    };
+
+fn check_field_is_string(fields: String, pos: i64, target: String) -> i64 =
+    if pos >= fields.len() { 0 - 1 } else {
+        let comma_pos = find_comma_or_end(fields, pos);
+        let raw_name = fields.slice(pos, comma_pos);
+        let name = strip_type_suffix(raw_name);
+        if name == target {
+            let suffix = if raw_name.len() > name.len() { raw_name.slice(name.len(), raw_name.len()) } else { "" };
+            if suffix == "~s" { 1 } else { 0 }
+        }
+        else if comma_pos >= fields.len() { 0 - 1 }
+        else { check_field_is_string(fields, comma_pos + 1, target) }
     };
 
 fn get_field_ptr_from_registry(registry: String, field_name: String) -> String =
