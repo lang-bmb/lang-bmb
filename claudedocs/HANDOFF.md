@@ -1,6 +1,7 @@
 # BMB Session Handoff — 2026-05-11 (Cycles 2660-2669 — nqueen 측정 + in-process timing + M5-5b 구현)
 
-> **HEAD**: `257130a5` (통합 commit Cycles 2660-2667) + 마무리 commit (예정)
+> **HEAD**: `6aa6c7cc` (세션-종료 commit) + 정리 commit (예정)
+> **submodule**: `ecosystem/benchmark-bmb` HEAD `6ce9f8d` (in-process harness commit)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 > **이전 세션 핸드오프**: 이전 세션 내용(Cycles 2650-2659)은 cycle-logs/cycle-2650~2659.md 참조
 
@@ -247,7 +248,26 @@ fn llvm_handle_mark_str_ptr_if(line: String, p: i64, str_sb: i64) -> String =
 
 ---
 
-## 9. M5-5c 구현 가이드 (다음 세션)
+## 9. 세션 정리 작업 (이번 세션 마지막)
+
+### 정리 완료
+- ✅ 임시 binary 18개 삭제 (`*_v098*.exe`, `*_inproc*.exe`)
+- ✅ in-process harness source 4개 submodule commit (`6ce9f8d`)
+- ✅ HEAD hash 갱신 (`6aa6c7cc`)
+- ✅ submodule pointer 메인 repo에 반영
+
+### 보존된 진단용 임시 파일 (다음 세션 활용)
+- `tests/bootstrap/test_m55b_var_repeat.bmb` — m55b 동작 확인용 (골든 `arr_str_var_repeat` 동등)
+- `tests/bootstrap/test_m55c_fn_return_array_string.bmb` — M5-5c 다음 세션 진단 시작점
+
+### 환경 cleanup 확인
+- bootstrap stage1 정상 빌드 ✅
+- cargo test 6210/6210 ✅
+- 골든 2851/2851 ✅
+
+---
+
+## 10. M5-5c 구현 가이드 (다음 세션)
 
 ### 옵션 A 단계 (5-7 cycles 예상)
 
@@ -266,4 +286,4 @@ fn llvm_handle_mark_str_ptr_if(line: String, p: i64, str_sb: i64) -> String =
 4. **호출 결과 처리**: `llvm_gen_call_*`에서 fn_name 추출 → `is_dynamic_string_array_fn` → `push_str_ptr_marker(str_sb, dest)` 호출
 5. **골든 테스트**: `test_golden_arr_str_fn_return.bmb` (`fn make_strs() -> Array<String> = [...]`, `let arr = make_strs()`, `println(arr[0])`)
 
-**세션 종료**: 2026-05-11 (Cycles 2660-2669 — nqueen 측정 + in-process timing + M5-5b 구현)
+**세션 종료**: 2026-05-11 (Cycles 2660-2669 — nqueen 측정 + in-process timing + M5-5b 구현 + submodule in-process harness commit)
