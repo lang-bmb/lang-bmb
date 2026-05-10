@@ -1,11 +1,11 @@
-# BMB Session Handoff — 2026-05-10 (Cycles 2619-2633 — M4 언어 갭 + M5-1 payload enum)
+# BMB Session Handoff — 2026-05-10 (Cycles 2619-2640 — M4 언어 갭 + M5-1~M5-4)
 
-> **HEAD**: 커밋 예정 (Cycle 2628 후 최종 커밋)
+> **HEAD**: `07169e6f` (Cycle 2640 커밋)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 
 ---
 
-## 0. 이번 세션 작업 (Cycles 2619-2633)
+## 0. 이번 세션 작업 (Cycles 2619-2640)
 
 ### 세션 성과 요약
 
@@ -27,6 +27,9 @@
 | **2635** | **M5-2 Result enum 검증** | **`Result<Ok,Err>` + 3-variant + 체이닝 골든 테스트 3개 ✅** |
 | **2636** | **HANDOFF + M5-3 설계** | **DESIGN-M5-3 설계 문서 + HANDOFF 갱신 ✅** |
 | **2637** | **M5-3 다중 필드 enum** | **`Branch(i64,i64)` + `Three(i64,i64,i64)` 구현 ✅** |
+| **2638** | **CLAUDE.md Rule 2 업데이트** | **M5-3 문서화 + HANDOFF 갱신 ✅** |
+| **2639** | **Dead Code 제거** | **`resolve_payload_extracts` 2개 함수 제거 ✅** |
+| **2640** | **M5-4 println(String) 구현** | **`str_sb` dispatch → `@println_str` 자동 선택 ✅** |
 
 ---
 
@@ -39,6 +42,7 @@
 | `let (a, b) = expr` | ❌ 미지원 | ✅ M4-3 구현 (Cycle 2621) |
 | `Type::method(args)` | ❌ 미지원 | ✅ M4-4 구현 (Cycle 2620) |
 | `Option::Some(x)` 표현식 | ❌ 미지원 | ✅ M5-1 구현 완료 (Cycle 2633) |
+| `println(String)` | ❌ 포인터 정수 출력 | ✅ M5-4 구현 완료 (Cycle 2640) |
 
 ### Track 스냅샷
 
@@ -60,14 +64,14 @@
 | M2 AI-Ready Infra | ✅ COMPLETE |
 | M3 External Bindings | 🔄 ~90% (showcase 선정+벤치+publish 잔여, HUMAN 결정) |
 | M4 Adopted | 🔄 ~40% (M4-3 ✅, M4-4 ✅, M4-6 ✅, M4-5→M5-1 ✅, M4-1 미착수) |
-| M5 Language Completeness | 🔄 M5-1 ✅ M5-2 ✅ M5-3 ✅ (Fixed Point 차단 — arena OOM pre-existing, O(n²) 문자열 AST) |
+| M5 Language Completeness | 🔄 M5-1 ✅ M5-2 ✅ M5-3 ✅ M5-4 ✅ (Fixed Point 차단 — arena OOM pre-existing) |
 
 ### 테스트 현황
 
 | 스위트 | 결과 |
 |--------|------|
 | `cargo test --release` | ✅ 6210 passed |
-| `bootstrap` 골든 테스트 | ✅ 총 2840개 (M5: enum_payload, enum_wildcard, enum_result, enum_multi_payload, enum_chaining, enum_multi_field, enum_3field) |
+| `bootstrap` 골든 테스트 | ✅ 총 2841개 (M5: enum_payload, enum_wildcard, enum_result, enum_multi_payload, enum_chaining, enum_multi_field, enum_3field, println_string) |
 | struct/enum 회귀 (Stage 1) | ✅ 8/8 PASS (enum_match, enum_variant, enum_payload, struct_complex, struct_method, nested_struct, mut_struct, struct_fn) |
 
 ---
@@ -101,22 +105,22 @@
 | M5-1 | payload enum 구현 | 언어 아키텍처 | ✅ **완료** (Cycle 2633) |
 | M5-2 | Result enum + 다중 payload | 언어 | ✅ **완료** (Cycle 2635, M5-1 인프라 재사용) |
 | M5-3 | Multi-field enum `Branch(i64,i64)` | 언어 | ✅ **완료** (Cycle 2637) |
-| M5-4 | String payload 타입 추론 + dead code 정리 | 언어/위생 | ⏳ 다음 2-3 cycles |
+| M5-4 | `println(String)` 타입 추론 dispatch | 언어 | ✅ **완료** (Cycle 2640) |
 
 ---
 
 ## 3. 다음 세션 우선순위
 
-### 1순위 — M5-4 + enum 마무리
+### 1순위 — M5 후속 + M6 계획
 
-1. **`enum_payload_extract` / `resolve_payload_extracts` dead code 제거**: M5-3 이후 미사용
-2. **M5-4**: String payload (`Some(String)`) 타입 추론 개선
-3. **bootstrap arena OOM 근본 해결 방향**: 문자열 AST → 구조체 전환 (장기, 다음 메이저 아키텍처)
+1. **`println(greet(name))` 체이닝 검증**: string_fns 경로로 사용자 함수 반환값 println 테스트
+2. **M6 계획 수립**: bootstrap arena OOM 근본 해결 방향 (문자열 AST → 구조체 전환, 장기)
+3. **M5-4 `println_f64` 연동 검토**: `is_double_var_sb` 인프라 이미 있음 (별도 사이클)
 
 ### 2순위 — PyPI publish + NuGet publish
 
-3. **PyPI windows-2022 수정 push** → 재실행 트리거 (`.github/workflows/pypi-publish.yml` 수정 이미 커밋됨)
-4. **NuGet publish**: 5개 C# 패키지 (M4-6 완료 후)
+4. **PyPI windows-2022 수정 push** → 재실행 트리거 (`.github/workflows/pypi-publish.yml` 수정 이미 커밋됨)
+5. **NuGet publish**: 5개 C# 패키지 (M4-6 완료 후)
 
 ### 3순위 — M3 완료 (HUMAN 결정 필요)
 
