@@ -2832,3 +2832,4 @@ test_golden_let_tuple_advanced.bmb|42
 test_golden_static_method_advanced.bmb|100
 test_golden_m4_integration.bmb|42
 test_golden_enum_payload.bmb|42
+test_golden_enum_wildcard.bmb|74

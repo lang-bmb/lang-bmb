@@ -1,0 +1,22 @@
+// Golden test: enum wildcard match + payload enum combined - M5-2 prep
+// Expected output: 74
+
+enum Shape { Circle(i64), Rect(i64), Other }
+
+fn area_or_zero(s: Shape) -> i64 =
+    match s {
+        Shape::Circle(r) => r * r,
+        Shape::Rect(side) => side * side,
+        _ => 0,
+    }
+
+fn main() -> i64 = {
+    let c = Shape::Circle(7);
+    let r = Shape::Rect(5);
+    let o = Shape::Other;
+    let a1 = area_or_zero(c);
+    let a2 = area_or_zero(r);
+    let a3 = area_or_zero(o);
+    println(a1 + a2 + a3);
+    0
+}
