@@ -23,6 +23,8 @@
 | 2628 | M4 최종 커밋 | 완료 |
 | 2629-2632 | C# 바인딩 + PyPI 수정 | M4-6 C# 5/5 ✅, PyPI windows-2022 수정 |
 | **2633** | **M5-1 payload enum 구현** | **`enum Option { None, Some(i64) }` + match ✅** |
+| **2634** | **Rule 문서화 + OOM 분석** | **wildcard 지원 확인 + CLAUDE.md Rule 2/3 업데이트 ✅** |
+| **2635** | **M5-2 Result enum 검증** | **`Result<Ok,Err>` + 3-variant + 체이닝 골든 테스트 3개 ✅** |
 
 ---
 
@@ -56,14 +58,14 @@
 | M2 AI-Ready Infra | ✅ COMPLETE |
 | M3 External Bindings | 🔄 ~90% (showcase 선정+벤치+publish 잔여, HUMAN 결정) |
 | M4 Adopted | 🔄 ~40% (M4-3 ✅, M4-4 ✅, M4-6 ✅, M4-5→M5-1 ✅, M4-1 미착수) |
-| M5 Language Completeness | 🔄 M5-1 payload enum Stage 1 ✅ (Fixed Point 차단 — arena OOM pre-existing) |
+| M5 Language Completeness | 🔄 M5-1 ✅ M5-2 ✅ (Fixed Point 차단 — arena OOM pre-existing, O(n²) 문자열 AST) |
 
 ### 테스트 현황
 
 | 스위트 | 결과 |
 |--------|------|
-| `cargo test --release` | ✅ 23 passed |
-| `bootstrap` 골든 테스트 | ✅ 총 2834개 (신규: let_tuple, static_method_call, let_tuple_advanced, static_method_advanced, m4_integration, **enum_payload**) |
+| `cargo test --release` | ✅ 6210 passed |
+| `bootstrap` 골든 테스트 | ✅ 총 2838개 (신규 M5: enum_payload, enum_wildcard, enum_result, enum_multi_payload, enum_chaining) |
 | struct/enum 회귀 (Stage 1) | ✅ 8/8 PASS (enum_match, enum_variant, enum_payload, struct_complex, struct_method, nested_struct, mut_struct, struct_fn) |
 
 ---
@@ -94,21 +96,22 @@
 
 | # | 태스크 | 성격 | 소요 |
 |---|--------|------|------|
-| M5-1 | payload enum 구현 | 언어 아키텍처 | ✅ **완료** (Cycle 2633, Stage 1 기준) |
-| M5-2 | `_` wildcard + Result enum | 언어 | 다음 3-5 cycles |
+| M5-1 | payload enum 구현 | 언어 아키텍처 | ✅ **완료** (Cycle 2633) |
+| M5-2 | Result enum + 다중 payload | 언어 | ✅ **완료** (Cycle 2635, M5-1 인프라 재사용) |
+| M5-3 | String payload + multi-field enum | 언어 | ⏳ 다음 3-5 cycles |
 
 ---
 
 ## 3. 다음 세션 우선순위
 
-### 1순위 — M5-1 후속 + bootstrap OOM 조사
+### 1순위 — M5-3 준비
 
-1. **Arena OOM 근본 원인 파악**: Cycle 2237 이후 언제 Fixed Point가 깨졌는지 `git bisect` 또는 변경량 추적
-2. **M5-2 준비**: `_` wildcard match arm + Result enum 설계
+1. **M5-3 범위**: String payload (`Some(String)`) 또는 multi-field (`Point(i64, i64)`) enum 설계
+2. **bootstrap arena OOM 근본 해결 방향**: 문자열 AST → 구조체 전환 (장기, 다음 메이저 아키텍처)
 
 ### 2순위 — PyPI publish + NuGet publish
 
-3. **PyPI windows-2022 수정 push** → 재실행 트리거 (`.github/workflows/pypi-publish.yml`)
+3. **PyPI windows-2022 수정 push** → 재실행 트리거 (`.github/workflows/pypi-publish.yml` 수정 이미 커밋됨)
 4. **NuGet publish**: 5개 C# 패키지 (M4-6 완료 후)
 
 ### 3순위 — M3 완료 (HUMAN 결정 필요)
