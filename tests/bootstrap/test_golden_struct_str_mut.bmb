@@ -1,0 +1,14 @@
+struct Box {
+    label: String,
+    count: i64
+}
+
+fn main() -> i64 = {
+    let mut b = Box { label: "initial", count: 0 };
+    let _p1 = println(b.label);
+    set b.label = "updated";
+    set b.count = 5;
+    let _p2 = println(b.label);
+    let _p3 = println(b.count);
+    42
+};
