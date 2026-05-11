@@ -6,7 +6,21 @@
 
 ---
 
-## 0. 이번 세션 작업 (Cycles 2737-2743, 7 cycles)
+## 결정 채택 (2026-05-11, 세션 종료 직전)
+
+권장 옵션 모두 채택. 다음 세션 첫 cycle은 **§ 2.5 권장 실행 시퀀스** 참조.
+
+| # | 결정 사항 | 채택 |
+|---|----------|------|
+| M4-1 | B baseline 즉시 실행 — 모델 **claude-sonnet-4-6** + 100문제 × 3 run | ✅ |
+| M3-5 | bmb-algo bench 재실행 + README 정정 (자율) — publish 이전 처리 | ✅ |
+| M3-3 + M3-4 | M3-5 정정 후 publish dry_run → 실 publish (HUMAN dispatch) | ✅ |
+| M3-6 | CI workflow + Dockerfile 5위치 `-march=native` 일괄 PR (서브모듈, draft 자율) | ✅ |
+| M3-7 | M4-1 실행 결과에 "supersedes 2026-03-26 (baseline change Cycle 2742)" annotation | ✅ (M4-1 종속) |
+
+---
+
+## 0. 이번 세션 작업 (Cycles 2737-2744, 8 cycles)
 
 ### 큰 변곡점
 
@@ -140,40 +154,80 @@
 
 ## 2. 태스크 목록
 
-### 다음 세션 첫 cycle (백그라운드 결과 확인)
+### 다음 세션 첫 cycle — 채택 결정 시퀀스
+
+#### 시퀀스 A (자율, 백그라운드 bench 종료 후) — Cycle 2745
 
 | # | 태스크 | 성격 |
 |---|--------|------|
-| (0) | `/tmp/golden-full-2729.json` 결과 (FAIL count + 4 flaky test 재현율) | 검증 |
-| (1) | `target/benchmarks/tier_all_2026_05_11_c2729.json` 결과 분석 (P-track 변화) | 검증 |
-| (2) | golden-flakiness-inttoptr ISSUE `observed_rate` 갱신 | 갱신 |
-| (3) | 백그라운드 process 잔존 시 정리 | 정리 |
+| A.0 | 백그라운드 bench 상태 확인: `target/benchmarks/tier_all_2026_05_11_c2729.json` 출현 여부 | 검증 |
+| A.1 | 잔존 process 확인: `ps -ef \| grep benchmark.sh` — 종료/진행 결정 | 정리 |
+| A.2 | bench 완료 시: P-track ISSUE 측정 stamp 갱신 (hashmap-perf, alloc-optimization, or-chain-lowering) | 갱신 |
 
-### 자율 가능 작업 (잔여 18 active 중)
+#### 시퀀스 B (자율, M3-5 정정 — publish 선결 조건) — Cycle 2746-2747
+
+| # | 태스크 | 성격 |
+|---|--------|------|
+| B.1 | `bench_algo.py` v0.98 재실행 (5-run median) — 현재 config (10 items) 기준 정확한 측정 | 측정 |
+| B.2 | README 표 정정: "knapsack(10 items)" + clang vs gcc 라벨 명시 | doc |
+| B.3 | headline "90x/181x" 처리 — 옵션: (a) v0.98 측정값으로 재정정 (b) 100-items bench 변종 추가 (c) "Up to" 약화 표현 | doc |
+| B.4 | bmb-algo CHANGELOG `[Unreleased]` 에 "measurement re-baseline 2026-05-11" 명시 | doc |
+
+#### 시퀀스 C (HUMAN dispatch) — Cycle 2748 (사용자 트리거 후)
+
+| # | 태스크 | 성격 |
+|---|--------|------|
+| C.1 | M3-3: `gh workflow run npm-publish.yml -f dry_run=true` → artifact 검증 → `dry_run=false` 재실행 | HUMAN |
+| C.2 | M3-4: `gh workflow run pypi-publish.yml -f publish=false -f repository=pypi` → 검증 → `publish=true` | HUMAN |
+| C.3 | publish 결과 PyPI/npm metadata + README rendering + links 24h 모니터링 | 검증 |
+
+#### 시퀀스 D (HUMAN trigger, M4-1 baseline) — Cycle 2749 부터
+
+| # | 태스크 | 성격 |
+|---|--------|------|
+| D.1 | `.env.local`에 `BMB_BENCH_API_KEY` 설정 (HUMAN) + Model 고정 `claude-sonnet-4-6` | HUMAN setup |
+| D.2 | `bmb-ai-bench doctor` 환경 검증 + `bmb-ai-bench run --pilot --dry-run --json` 정합 확인 | 자율 |
+| D.3 | `bmb-ai-bench run --all --runs 3 --model claude-sonnet-4-6` 실행 (예상 8-12시간) | 실행 |
+| D.4 | 결과 `results/baseline-2026-05-11-sonnet/` commit + ROADMAP § 5 B축 baseline 선언 | 자율 |
+| D.5 | M3-7 자동 처리: 결과 README/CHANGELOG에 "supersedes 2026-03-26" annotation | 자율 |
+| D.6 | 9 B-track ISSUE 일괄 갱신 (`_b_track_methodology_stamp.md`) + 5-7 close 후보 | 자율 |
+
+#### 시퀀스 E (분리 PR, M3-6 CI flag) — Cycle 2750+
+
+| # | 태스크 | 성격 |
+|---|--------|------|
+| E.1 | benchmark-bmb 서브모듈 새 branch `fix/march-native-spec-parity` | 자율 (push HUMAN) |
+| E.2 | 5 위치 일괄 수정 (workflows x4 + Dockerfile x1) — Cycle 2743 매핑 활용 | 자율 |
+| E.3 | PR draft 본문: "baseline change", "이전 CI history 직접 비교 불가" 명시 | 자율 |
+| E.4 | HUMAN merge → 첫 CI run을 새 baseline으로 stamp | HUMAN |
+
+### 자율 가능 작업 (multi-cycle 분리 phase 후보)
+
+채택 결정 시퀀스 A-E **외**의 잔여 자율 작업:
 
 | # | 태스크 | 성격 | 상태 |
 |---|--------|------|------|
-| (1) | M4-1 B 공식 baseline 실행 (`BMB_BENCH_API_KEY` HUMAN 결정 필요) | HUMAN | ⏳ 잠금 |
-| (2) | 9 B-track LLM-bench ISSUE 일괄 갱신 (M4-1 실행 후) | 자율 | M4-1 종속 |
-| (3) | `inttoptr` codegen 전환 (golden-flakiness 근본 fix) | multi-cycle (5-10) | 분리 phase 권고 |
-| (4) | HashMap 3% / Alloc 4% 갭 multi-cycle phase | multi-cycle | 분리 phase |
-| (5) | `or` chain proper fix (codegen AST/MIR 변경) | multi-cycle (3-5) | 분리 phase |
-| (6) | FP 1+2-arg arity guard 36 사이트 (mechanical) | 1 cycle, low ROI | carry-forward |
-| (7) | `multiple-pre-clauses` 파서 spec 확장 (compiler.bmb + bootstrap) | 1-2 cycles | 언어 spec, bench 동시 실행 회피 권고 |
-| (8) | ~~`BENCHMARK_REPORT.md` stale 경고~~ | ✅ Cycle 2737 |
-| (9) | ~~context-overflow-prevention~~ | ✅ Cycle 2739-2740 |
-| (10) | ~~crosslang gcc flag~~ | ✅ Cycle 2742 |
+| (1) | `inttoptr` codegen 전환 (golden-flakiness 근본 fix) | multi-cycle (5-10) | 분리 phase (P3 우선순위) |
+| (2) | HashMap 3% / Alloc 4% 갭 multi-cycle phase | multi-cycle | 분리 phase |
+| (3) | `or` chain proper fix (codegen AST/MIR 변경) | multi-cycle (3-5) | 분리 phase |
+| (4) | FP 1+2-arg arity guard 36 사이트 (mechanical) | 1 cycle, low ROI | carry-forward |
+| (5) | `multiple-pre-clauses` 파서 spec 확장 (compiler.bmb + bootstrap) | 1-2 cycles | 언어 spec, bench 동시 실행 회피 권고 |
+| (6) | ~~`BENCHMARK_REPORT.md` stale 경고~~ | ✅ Cycle 2737 |
+| (7) | ~~context-overflow-prevention~~ | ✅ Cycle 2739-2740 |
+| (8) | ~~crosslang gcc flag~~ | ✅ Cycle 2742 |
 
-### HUMAN 결정 잔여 (Cycles 2737-2743 확장 포함)
+### HUMAN 결정 잔여 (채택 결정 반영)
 
-| # | 태스크 |
-|---|--------|
-| M3-3 | npm publish (workflow_dispatch) |
-| M3-4 | PyPI publish (workflow_dispatch) |
-| M3-5 | bmb-algo README clang vs gcc 라벨 + **(Cycle 2741)** knapsack(100 items) 표기 vs 실제 10 items 불일치 + headline "90x/181x" source 검증 |
-| M3-6 (신규, Cycle 2743) | CI workflow + Dockerfile 5 위치 `-march=native` 추가 (clang Unix x3, MinGW Win x1, Dockerfile clang x1) — spec 정합 vs CI history 단절 trade-off |
-| M3-7 (신규, Cycle 2742) | M4-1 baseline 재실행 시 "C baseline 변경 사실" 명시 — 이전 (2026-03-26) 결과는 `-march=native` 누락 상태 측정 (run_crosslang.py 측정 |
-| M4-1 | B 공식 측정 (`BMB_BENCH_API_KEY`) |
+모든 결정은 ✅ 채택. 잔여는 **실제 실행 트리거**만 HUMAN 필요:
+
+| # | 항목 | HUMAN action |
+|---|------|-------------|
+| M3-3 | npm publish | `gh workflow run npm-publish.yml -f dry_run=false` 시점 결정 (M3-5 정정 후) |
+| M3-4 | PyPI publish | `gh workflow run pypi-publish.yml -f publish=true` 시점 결정 (M3-5 정정 후) |
+| M3-5 | bmb-algo README headline 처리 옵션 (a/b/c) 선택 | 시퀀스 B.3 자율 정정 후 review |
+| M3-6 | CI flag PR merge | 자율 draft PR → review → merge |
+| M3-7 | (M4-1에 종속, 자동 처리) | — |
+| M4-1 | B baseline 실행 | `.env.local`에 `BMB_BENCH_API_KEY` 설정 + 모델 confirm (sonnet-4-6) |
 
 ---
 
@@ -227,27 +281,40 @@ Close 트리거 leverage:
 
 ## 5. 다음 세션 시작 체크리스트
 
+### 기본 검증
 - [ ] `claudedocs/ROADMAP.md` 읽기 (실무 앵커)
-- [ ] `claudedocs/cycle-logs/cycle-2728~2735.md` 읽기 (이번 세션 8 cycle)
-- [ ] `cargo test --release` → 6210/6210 확인
-- [ ] `./scripts/bootstrap.sh` → Fixed Point S2 == S3 확인
-- [ ] **백그라운드 작업 결과 확인** (`/tmp/golden-full-2729.json` + `target/benchmarks/tier_all_2026_05_11_c2729.json`)
-- [ ] **백그라운드 process kill** (process 잔존 시: `pkill -f "benchmark.sh\|run-golden"`)
-- [ ] **golden-flakiness-inttoptr ISSUE `observed_rate` 갱신** (full 2862 실측 rate)
-- [ ] M4-1 잠금 해제 검토 (HUMAN 결정)
+- [ ] `claudedocs/cycle-logs/cycle-2737~2745.md` 읽기 (이번 세션 9 cycle)
+- [ ] `cargo test --release` → 6210/6210 확인 (필요 시)
+- [ ] `./scripts/bootstrap.sh` → Fixed Point S2 == S3 (필요 시)
+
+### 백그라운드 정리 (시퀀스 A)
+- [ ] `ls -la target/benchmarks/tier_all_2026_05_11_c2729.json` — JSON 완료 여부
+- [ ] `ps -ef | grep benchmark.sh` — 잔존 process 확인
+- [ ] 완료 시: P-track ISSUE 측정 stamp 갱신
+- [ ] 미완료 시: 백그라운드 process 종료 결정 (대기 vs 강제 종료)
+
+### 채택 결정 순차 실행
+- [ ] **시퀀스 B** (자율): M3-5 bmb-algo bench 재실행 + README 정정
+- [ ] **시퀀스 C** (HUMAN): M3-3/M3-4 publish dry_run → 실 publish
+- [ ] **시퀀스 D** (HUMAN setup + 자율 실행): M4-1 baseline 측정 — sonnet-4-6 100문제 × 3 run
+- [ ] **시퀀스 E** (자율 draft + HUMAN merge): M3-6 CI flag PR
 
 ---
 
-## 6. HUMAN 결정 사항 (불변, 직전 세션 유지)
+## 6. HUMAN 결정 사항 (Cycles 2737-2745 채택 갱신)
 
 | 항목 | 결정 |
 |------|------|
 | M3 showcase 선정 | ✅ bmb-algo |
-| npm publish | ✅ 즉시 진행 |
-| PyPI publish | ✅ 즉시 진행 |
+| npm publish | ✅ M3-5 정정 **후** 즉시 진행 (순서 정정) |
+| PyPI publish | ✅ M3-5 정정 **후** 즉시 진행 (순서 정정) |
 | v0.100 버전 선언 | ✅ M3 publish 완료 직후 |
-| B 공식 측정 | ✅ 즉시 실행 — `BMB_BENCH_API_KEY` 필요 |
-| README "knapsack 6.8x faster" | ⏳ clang -O3 outlier (M4-9 deferred) |
+| B 공식 측정 모델 | ✅ **claude-sonnet-4-6** (Opus 대비 비용 1/5, 품질 80%+) — 채택 |
+| B 공식 측정 실행 | ✅ 즉시 — `BMB_BENCH_API_KEY` 설정 후 자동 |
+| M3-5 bmb-algo README 처리 | ✅ **재측정 + 정정** (BMB 철학 "측정 없는 성능 주장 금지"). headline 옵션 자율 검토 후 review |
+| M3-6 CI flag PR | ✅ **spec 정합 적용** (CI history 단절 수용) — 단일 PR draft |
+| M3-7 baseline 변경 명시 | ✅ M4-1 결과에 inline annotation (M4-1 종속) |
+| README "knapsack 6.8x faster" | ⏳ clang -O3 outlier (M4-9 deferred) — M3-5 처리와 분리 |
 
 ---
 
