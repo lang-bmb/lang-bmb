@@ -218,7 +218,7 @@ bench 진행 중 ↔ 컴파일러 변경 회피 상태에서 doc-only 자율 작
 
 **다음 세션 진입점**: 시퀀스 A (백그라운드 bench JSON 확인) → 완료 시 시퀀스 B.
 
-#### 시퀀스 A (자율, 백그라운드 bench 종료 후) — 다음 세션 Cycle 2747
+#### 시퀀스 A (자율, 백그라운드 bench 종료 후) — 다음 세션 Cycle 2749
 
 | # | 태스크 | 성격 |
 |---|--------|------|
@@ -235,7 +235,7 @@ bench 진행 중 ↔ 컴파일러 변경 회피 상태에서 doc-only 자율 작
 | B.3 | headline "90x/181x" 처리 — 옵션: (a) v0.98 측정값으로 재정정 (b) 100-items bench 변종 추가 (c) "Up to" 약화 표현 | doc |
 | B.4 | bmb-algo CHANGELOG `[Unreleased]` 에 "measurement re-baseline 2026-05-11" 명시 | doc |
 
-#### 시퀀스 C (HUMAN dispatch) — Cycle 2748 (사용자 트리거 후)
+#### 시퀀스 C (HUMAN dispatch) — Cycle 2750+ (사용자 트리거 후)
 
 | # | 태스크 | 성격 |
 |---|--------|------|
@@ -433,9 +433,9 @@ stale ISSUE 처리 알고리즘 (Cycle 2735에서 확정):
 
 ---
 
-## 8. 다음 세션 첫 cycle 권고 (Cycle 2747 진입점)
+## 8. 다음 세션 첫 cycle 권고 (Cycle 2749 진입점)
 
-### Cycle 2747 — 시퀀스 A 백그라운드 bench JSON 확인
+### Cycle 2749 — 시퀀스 A 백그라운드 bench JSON 확인
 
 ```bash
 # Tier all 결과 (Cycle 2729 시작, Cycle 2746 미완료 상태)
@@ -446,7 +446,7 @@ ps -ef | grep -E "benchmark.sh|run-golden" | grep -v grep
 jq '.[] | select(.tier==1 or .tier==3)' target/benchmarks/tier_all_2026_05_11_c2729.json | head -50
 ```
 
-### Cycle 2748 — 시퀀스 B (bench 종료 후, autonomous)
+### Cycle 2750 — 시퀀스 B (bench 종료 후, autonomous)
 
 - M3-5 bmb-algo bench v0.98 재실행 (5-run median, 현재 config 10 items)
 - README 표 정정: "knapsack(10 items)" + clang vs gcc 라벨
