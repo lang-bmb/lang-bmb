@@ -2855,3 +2855,14 @@ test_golden_arr_str_fn_return_loop.bmb|42
 test_golden_arr_str_struct_field.bmb|42
 test_golden_arr_str_struct_field_loop.bmb|42
 test_golden_arr_str_struct_field_mut.bmb|42
+test_golden_arr_str_nested_struct.bmb|42
+test_golden_arr_str_nested_struct_loop.bmb|42
+test_golden_arr_str_triple_nested.bmb|42
+test_golden_arr_i64_baseline.bmb|42
+test_golden_arr_f64_literal.bmb|42
+test_golden_arr_f64_fn_return.bmb|42
+test_golden_arr_f64_struct_field.bmb|42
+test_golden_arr_f64_alias.bmb|42
+test_golden_arr_f64_for_loop.bmb|42
+test_golden_arr_f64_nested_struct.bmb|42
+test_golden_arr_f64_mut_set.bmb|42
