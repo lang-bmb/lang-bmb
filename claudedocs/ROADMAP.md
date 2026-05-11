@@ -423,7 +423,7 @@ historic.json (2026-05-02, 5-run) + tier3-10runs.json (2026-05-01, 10-run, noise
 
 ---
 
-## HUMAN 결정 사항 (2026-05-11 갱신, Cycle 2745 채택)
+## HUMAN 결정 사항 (2026-05-11 갱신, Cycles 2745-2747 채택 + 실행 변경)
 
 ### M3/M4 실행 결정 (시퀀스 명시)
 
@@ -436,7 +436,7 @@ historic.json (2026-05-02, 5-run) + tier3-10runs.json (2026-05-01, 10-run, noise
 | v0.100 버전 선언 | ✅ M3 publish 완료 직후 메인테이너 결정 | publish 후 |
 | **B 공식 측정 모델** | ✅ **claude-sonnet-4-6** — Opus 대비 비용 1/5 + 품질 80%+ | — |
 | B 공식 측정 실행 | ✅ 즉시 — `BMB_BENCH_API_KEY` 설정 후 자동 | **시퀀스 D (HUMAN setup + 자율 실행)** |
-| **M3-6 신규: CI workflow + Dockerfile 5위치 `-march=native`** | ✅ **spec 정합 적용** — CI history 단절 수용 (정확성 > 연속성, BMB 철학 정렬) | **시퀀스 E (자율 draft + HUMAN merge)** |
+| **M3-6 신규: CI workflow + Dockerfile 5위치 `-march=native`** | ✅ **spec 정합 적용** — CI history 단절 수용 (정확성 > 연속성, BMB 철학 정렬). **실행 변경 (Cycle 2747)**: PR overhead 회피 → maintainer 직접 main merge | **✅ 시퀀스 E 완결 (Cycles 2746-2747)** |
 | M3-7: M4-1 결과에 "supersedes 2026-03-26 (baseline change Cycle 2742)" annotation | ✅ M4-1 종속, 자동 처리 | M4-1과 함께 |
 
 ### M5 언어 설계 결정 (불변)
