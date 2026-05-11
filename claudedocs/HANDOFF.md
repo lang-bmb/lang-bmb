@@ -1,8 +1,10 @@
-# BMB Session Handoff — 2026-05-11 (Cycles 2746-2747 — 시퀀스 E 자율 + 직접 main merge)
+# BMB Session Handoff — 2026-05-11 (Cycles 2746-2748 — 시퀀스 E 완결 + ROADMAP 동기화)
 
-> **HEAD**: `477e5827` (Cycle 2747 — PR 회수 + main merge + submodule pointer bump)
-> **Cycle 2746 commit**: `b3e19883` → session-close `75ec6639` (HANDOFF 갱신)
-> **Cycle 2747**: 서브모듈 cb478d2 push → PR #2 회수 → main fast-forward merge → branch 삭제 → 부모 submodule pointer bump
+> **HEAD**: `2bd5d712` (Cycle 2748 — ROADMAP M3-6 완결 반영)
+> **Cycle 2746 commit**: `b3e19883` → session-close `75ec6639` (HANDOFF 갱신 + PR draft)
+> **Cycle 2747 commit**: `477e5827` → session-close `ea90256a` (서브모듈 main merge + 부모 submodule pointer bump)
+> **Cycle 2748 commit**: `2bd5d712` (ROADMAP § M3 표 + § 4 progress bar)
+> **origin/main 동기화**: ✅ Cycle 2747 push (22 commit ahead 해소)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 > **이전 세션 핸드오프**: cycle-logs/cycle-2737~2745.md (Cycles 2737-2745 policy-vs-code 갭 fix + HUMAN 결정 채택)
 > **이번 cycle log**: cycle-logs/cycle-2746.md (gitignored, disk only)
@@ -24,7 +26,7 @@
 
 ---
 
-## 0. 이번 세션 작업 (Cycle 2746, 1 cycle)
+## 0. 이번 세션 작업 (Cycles 2746-2748, 3 cycles)
 
 ### Cycle 2746 — 시퀀스 E 자율 실행
 
@@ -48,6 +50,17 @@
 | 부모 repo submodule pointer bump | ✅ (this Cycle 2747 commit) |
 
 **사용자 결정 근거**: PR overhead 회피, 단일 commit + spec 정합이라 maintainer 직접 main 적용 적합.
+
+### Cycle 2748 — ROADMAP M3-6(신) 완결 반영
+
+| 항목 | 상태 |
+|------|------|
+| ROADMAP 헤더 갱신 (Cycles 2746-2748) | ✅ |
+| § 4 progress bar M3 ~96% → ~97% | ✅ |
+| § M3 잔여 표 M3-6(신) ⏳ → ✅ | ✅ |
+| ETA 재추정 (잔여 M3-5/M3-3/M3-4/M3-7) | ✅ |
+
+bench 진행 중 ↔ 컴파일러 변경 회피 상태에서 doc-only 자율 작업 선택 (bench와 진짜 독립).
 
 ### 진행 회피 (의도된 skip)
 
