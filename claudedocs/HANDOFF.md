@@ -1,10 +1,10 @@
 # BMB Session Handoff — 2026-05-11~12 (Cycles 2746-2749 — 시퀀스 E 완결 + 정리)
 
-> **HEAD**: `<this commit>` (Cycle 2749 — 일관성 정리 + bench JSON 완료 반영)
+> **HEAD**: `ac47fdfe` (Cycle 2749 — 일관성 정리 + bench JSON 완료 반영)
 > **Cycle 2746 commit**: `b3e19883` → session-close `75ec6639` (HANDOFF 갱신 + PR draft)
 > **Cycle 2747 commit**: `477e5827` → session-close `ea90256a` (서브모듈 main merge + 부모 submodule pointer bump)
 > **Cycle 2748 commit**: `2bd5d712` (ROADMAP § M3 표 + § 4 progress bar)
-> **Cycle 2749 commit**: `<this>` (HANDOFF/ROADMAP 일관성 정리 + bench JSON ✅ 완료 반영 + feedback memory)
+> **Cycle 2749 commit**: `ac47fdfe` (HANDOFF/ROADMAP 일관성 정리 + bench JSON ✅ 완료 반영 + feedback memory)
 > **origin/main 동기화**: ✅ Cycle 2747 + 2748 push (22 commit ahead 해소)
 > **백그라운드 bench**: ✅ JSON 생성됨 (00:11, 37401 bytes) — 다음 세션 A.2 즉시 진행
 > **실무 앵커**: `claudedocs/ROADMAP.md`
