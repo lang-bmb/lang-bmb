@@ -57,7 +57,7 @@
 | `cargo test --release` | ✅ **6210/6210 passed** (Cycle 2718) |
 | Bootstrap Fixed Point | ✅ S2 == S3 |
 | **풀 골든** (Cycle 2718 시작, 세션 종료 직후 완료) | ⚠️ **2861/2862 PASS, 1 FAIL** — `test_golden_lcs_three` (expected=511, got=empty) |
-| Tier all 측정 (background, Cycle 2725 시작) | ⏳ **세션 종료 시점 미완료** — Cycle 2725는 historic JSON 데이터로 진행 |
+| Tier all 측정 (background, Cycle 2725 시작) | ⚠️ **2개 인스턴스 실행 중** (PID 37866 @ 20:45 + PID 66563 @ 21:28) — output 충돌 추정 (`tier_all_2026_05_11.json` 미생성). 다음 세션 시작 시 process kill + 재측정 권고 |
 
 ### 🚨 풀 골든 회귀 1건 — 다음 세션 첫 cycle 처리
 
@@ -189,9 +189,11 @@ historic.json은 git untracked (target/ ignored). 다음 세션 측정 재실행
 - [ ] `claudedocs/cycle-logs/cycle-2718~2727.md` 읽기 (이번 세션 회복 라이브러리)
 - [ ] `cargo test --release` → **6210/6210** 확인
 - [ ] `./scripts/bootstrap.sh` → Fixed Point S2 == S3 확인
-- [ ] **풀 골든 결과 확인** — `/tmp/golden-full-2718.json` fail count (이번 세션 종료 시점 ~2307/2862, 남은 ~555 tests 검증 필요)
-- [ ] **Tier all 측정 결과 확인** — `target/benchmarks/tier_all_2026_05_11.json` (이번 세션 백그라운드 미완료)
-- [ ] **ISSUE 양식 표준화 작업** (최우선 structural improvement)
+- [ ] **🚨 1순위 — `lcs_three` 회귀 fix** (BLOCKING, inherited defect)
+- [ ] **백그라운드 benchmark process kill** (`pkill -f "benchmark.sh"` 또는 PID 37866/66563)
+- [ ] **풀 골든 재실행** (회귀 fix 검증) — `/tmp/golden-full-2718.json` 결과 참조
+- [ ] **Tier all 재측정** (위 process kill 후)
+- [ ] **🚨 2순위 — ISSUE 양식 표준화 작업** (HIGHEST LEVERAGE structural improvement)
 
 ---
 
