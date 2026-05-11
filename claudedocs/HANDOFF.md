@@ -56,8 +56,24 @@
 |--------|------|
 | `cargo test --release` | ✅ **6210/6210 passed** (Cycle 2718) |
 | Bootstrap Fixed Point | ✅ S2 == S3 |
-| 풀 골든 (background, Cycle 2718 시작) | ⏳ **세션 종료 시점 ~2307/2862 진행 중** (stern_brocot 영역) — 다음 세션에서 확인 |
+| **풀 골든** (Cycle 2718 시작, 세션 종료 직후 완료) | ⚠️ **2861/2862 PASS, 1 FAIL** — `test_golden_lcs_three` (expected=511, got=empty) |
 | Tier all 측정 (background, Cycle 2725 시작) | ⏳ **세션 종료 시점 미완료** — Cycle 2725는 historic JSON 데이터로 진행 |
+
+### 🚨 풀 골든 회귀 1건 — 다음 세션 첫 cycle 처리
+
+**증상**: `test_golden_lcs_three` (3-way Longest Common Subsequence), expected=511, **got=empty** (출력 없음)
+
+**컨텍스트**:
+- Cycle 2701 (2026-05-02): 2862/2862 ✅ 0 FAIL
+- Cycle 2715 (직전 세션): sample 50 (S1) + sample 30 (S2) 모두 PASS
+- 이번 세션 (2718-2727): compiler 변경 **없음** (script + workflow + ISSUE doc만)
+- → **직전 세션 Cycle 2711-2714** (5M token packing + 30 arity guard) 회귀 가장 유력
+
+**다음 세션 우선 조치**:
+1. `tests/bootstrap/test_golden_lcs_three.bmb` 소스 검토
+2. Stage 1 컴파일 + LLVM IR 추출 → empty output 원인 식별
+3. Cycle 2711 (5M scale) 또는 Cycle 2712/2714 (arity guard) 영향 분리
+4. fix 후 풀 골든 재실행
 
 ### ISSUE 백로그 변화
 
@@ -96,8 +112,9 @@ ROADMAP § 5 추가됨 — 6개 P-track 벤치마크 모두 ≤1.085x. M1 ≤1.0
 
 | # | 태스크 | 성격 | 상태 |
 |---|--------|------|------|
+| (0) | **🚨 lcs_three 골든 회귀 fix** | inherited defect | 🔴 다음 세션 첫 cycle (Rule 4) |
 | (1) | **ISSUE 양식 표준화** | 구조 개선 | 🚨 HIGHEST LEVERAGE |
-| (2) | 풀 골든 결과 확인 (이번 세션 백그라운드) | 검증 | ⏳ 다음 세션 시작 시점 |
+| (2) | 풀 골든 결과 확인 — ✅ 완료 (1 FAIL) | 검증 | (0)으로 이어짐 |
 | (3) | Tier all 측정 결과 확인 (이번 세션 백그라운드) | 검증 | ⏳ 다음 세션 시작 시점 |
 | (4) | FP 1+2-arg arity guard 통합 (36 사이트) | mechanical | ⏳ 낮은 우선순위 (1 cycle, 단 부담 큼) |
 | (5) | HashMap 3% 갭 (1.027x → ≤1.00x) | multi-cycle | ⏳ Arena/hash 교체 phase |
@@ -223,15 +240,31 @@ advisor의 가장 큰 가치: **이미 transcript에 있는 답을 명시화**. 
 
 ## 8. 다음 세션 첫 cycle 권고
 
-### 시퀀스 A — 검증 (병렬 가능)
+### 시퀀스 A — 🚨 회귀 fix [BLOCKING]
 
-**Cycle 1 — 백그라운드 결과 확인** (≤2 min):
+**Cycle 1 — `lcs_three` 회귀 진단 + fix**:
 ```bash
-# 풀 골든 (cycle 2718 백그라운드)
-grep -cE "PASS|FAIL" /tmp/golden-full-2718.json
-grep -c "FAIL" /tmp/golden-full-2718.json
+# 1. 소스 검토
+cat tests/bootstrap/test_golden_lcs_three.bmb
 
-# Tier all 측정 (cycle 2725 백그라운드)
+# 2. Stage 1 컴파일 + 실행 (수동 재현)
+./scripts/run-golden-tests.sh --limit 1 2>&1 | grep lcs_three  # filter 안 되면 manifest 위치 확인
+# 또는 single test:
+$STAGE1 tests/bootstrap/test_golden_lcs_three.bmb /tmp/lcs.ll && \
+  opt -O2 -S /tmp/lcs.ll -o /tmp/lcs_opt.ll && \
+  llc -O3 -filetype=obj /tmp/lcs_opt.ll -o /tmp/lcs.o && \
+  gcc -O2 -o /tmp/lcs /tmp/lcs.o $RUNTIME && /tmp/lcs
+
+# 3. v0.51.22 또는 cycle 2711 전 commit과 비교 (IR diff)
+# 4. fix 후 풀 골든 재실행 (43분) — 0 FAIL 회복 확인
+```
+
+추정 원인: arity guard 신규 분기 (`call_has_one_arg`/`call_has_two_args`)가 lcs_three 코드의 builtin 호출에서 사용자 fn fallback으로 잘못 분기 → empty output.
+
+### 시퀀스 B — 검증 (회귀 fix 후 진행)
+
+```bash
+# Tier all 측정 결과 확인 (cycle 2725 백그라운드, 미완료 추정)
 ls -la target/benchmarks/tier_all_2026_05_11.json
 jq '.[] | select(.tier==1 or .tier==3)' target/benchmarks/tier_all_2026_05_11.json
 ```
