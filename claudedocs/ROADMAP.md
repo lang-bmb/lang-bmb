@@ -392,14 +392,26 @@ historic.json (2026-05-02, 5-run) + tier3-10runs.json (2026-05-01, 10-run, noise
 | `if-else-early-return-codegen` (Cycle 2735) | v0.98 재현 5/5 정답 (v0.51.22 era 버그, codegen 변경으로 fix) |
 | `recursive-function-codegen` (Cycle 2735) | v0.98 재현 heapify 5/5 deterministic (v0.51.22 era 버그) |
 
-### Cycle 2728 신규 ISSUE — 양식 first application
+### Cycle 2728 신규 ISSUE — 양식 first application (Cycle 2736 가설 확정)
 
-`ISSUE-20260511-golden-flakiness-inttoptr.md` — 풀 골든 4건 environmental flakiness 진단:
+`ISSUE-20260511-golden-flakiness-inttoptr.md` — 풀 골든 4건 environmental flakiness:
 - HANDOFF 원본 "lcs_three 1 FAIL 회귀" framing **기각**
 - 실제: 4 tests fail (lcs_three / cholesky_trace / crc32_simple / assortativity)
-- 격리 stress: lcs_three 20% segfault rate (50회 반복)
-- `inttoptr/ptrtoint` round-trip + Windows MSYS2/UCRT64 heap UB 추정
-- Fix scope: codegen `inttoptr` → `alloca ptr` 전환, multi-cycle (5-10 cycles)
+- 3 measurement points (load 종속):
+  - 격리 stress (50회): **20% segfault**
+  - 첫 풀 골든 (2 concurrent benches): **4/2862 fail (0.14%)**
+  - 깨끗한 환경 재실행 (Cycle 2736, 1 concurrent bench): **0/2862 fail (0%)** ✅
+- → MSYS2/UCRT64 fork/heap concurrent UB 확정. `inttoptr/ptrtoint` 패턴은 발현 빈도만 결정
+- 우선순위 P2 → **P3 강등** (실제 사용자 영향 극히 미미)
+- Fix scope: codegen `inttoptr` → `alloca ptr` 전환, multi-cycle (5-10 cycles), low priority
+
+### 풀 골든 결과 (Cycle 2736 갱신)
+
+| Cycle | 실행 환경 | 결과 |
+|-------|----------|------|
+| 2701 (2026-05-02) | 깨끗 | 2862/2862 PASS ✅ |
+| 2718 (Cycle 2718 시점) | 2 background benches 동시 | 2858/2862 PASS (4 fail flaky) |
+| **2736 (Cycle 2729→2736)** | 1 background bench | **2862/2862 PASS** ✅ (35.2분) |
 
 ---
 

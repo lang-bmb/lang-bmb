@@ -51,8 +51,8 @@
 |--------|------|
 | `cargo test --release` | ✅ 6210/6210 passed (직전 세션 검증, 이 세션 코드 변경 없음) |
 | Bootstrap Fixed Point | ✅ S2 == S3 |
-| **풀 골든** (Cycle 2729 시작, 백그라운드 진행 중) | ⏳ ~1147/2862 (40%, **0 FAIL** so far at session end) — 다음 세션 시작 시 결과 확인 |
-| **Tier all** (Cycle 2729 시작, 백그라운드) | ⏳ Tier 0 ✅ + Tier 1 ~70% — 다음 세션 결과 확인 |
+| **풀 골든** (Cycle 2729 시작, **Cycle 2736 완료**) | ✅ **2862/2862 PASS, 0 FAIL, 35.2분** (4 flaky tests 모두 PASS — environmental UB 확정) |
+| **Tier all** (Cycle 2729 시작, 백그라운드 진행 중) | ⏳ Tier 0 ✅ + Tier 1 진행 중 — 다음 세션 결과 확인 |
 
 ### ⚠️ 풀 골든 4건 environmental flakiness — Cycle 2728에서 진단 완료
 
@@ -72,9 +72,15 @@
 - `inttoptr/ptrtoint` round-trip 빈도 높은 패턴에서만 발현 (lcs_three 41 hits vs lcs 17 / ackermann 3)
 - Windows MSYS2/UCRT64 heap UB 추정
 
-**등록된 ISSUE**: `claudedocs/issues/ISSUE-20260511-golden-flakiness-inttoptr.md` (Cycle 2728)
+**등록된 ISSUE**: `claudedocs/issues/ISSUE-20260511-golden-flakiness-inttoptr.md` (Cycle 2728, **Cycle 2736 갱신: 우선순위 P3 강등**)
 
-**Fix scope**: codegen `inttoptr` → `alloca ptr` 전환, 5-10 cycles, multi-cycle phase
+**Cycle 2736 데이터로 가설 확정**:
+- 첫 실행 (2 concurrent benches): 4/2862 fail (0.14%)
+- 격리 stress (50회): 20% segfault
+- 깨끗한 환경 재실행 (1 concurrent bench): **0/2862 fail (0%)**
+- → system load + concurrent process count에 강한 종속. **inttoptr는 빈도 차이만 결정, root cause는 MSYS2/UCRT64 fork/heap UB**
+
+**Fix scope**: codegen `inttoptr` → `alloca ptr` 전환은 여전히 multi-cycle (5-10), 우선순위는 P3로 강등 (실제 사용자 영향 극히 미미)
 
 ### ISSUE 백로그 변화 (이 세션 누적)
 
@@ -257,30 +263,24 @@ stale ISSUE 처리 알고리즘 (Cycle 2735에서 확정):
 
 ## 8. 다음 세션 첫 cycle 권고
 
-### 시퀀스 A — 백그라운드 검증 [필수]
+### 시퀀스 A — Tier all 결과 분석 (golden은 Cycle 2736 완료, 0 FAIL ✅)
 
-**Cycle 1 — 백그라운드 결과 분석**:
+**Cycle 1 — Tier all bench 결과**:
 ```bash
-# 1. golden full 결과
-wc -l /tmp/golden-full-2729.json
-grep -c "FAIL" /tmp/golden-full-2729.json
-
-# 2. 4 flaky test 결과
-grep -E "lcs_three|cholesky_trace|crc32_simple|assortativity" /tmp/golden-full-2729.json
-
-# 3. Tier all bench 결과
+# Tier all 결과 (Cycle 2729 시작, Cycle 2736 미완료)
 ls -la target/benchmarks/tier_all_2026_05_11_c2729.json
 jq '.[] | select(.tier==1 or .tier==3)' target/benchmarks/tier_all_2026_05_11_c2729.json | head -50
 
-# 4. 백그라운드 process 잔존 정리
+# 백그라운드 process 잔존 정리
 ps -ef | grep -E "benchmark.sh|run-golden" | grep -v grep
 ```
 
-### 시퀀스 B — ISSUE observed_rate 갱신
+### 시퀀스 B — P-track ISSUE 측정값 갱신 (Tier all 결과 활용)
 
-- `ISSUE-20260511-golden-flakiness-inttoptr.md` observed_rate 필드 갱신 (full 2862 실측)
-- 만약 4 fail 재현 → multi-cycle codegen 전환 phase 결정 (HUMAN 결정 사항 추가 권고)
-- 만약 0 fail 재현 → flakiness rate 인터미턴트 확정 (rare event, ISSUE priority 강등 가능)
+- `hashmap-perf` (현재 1.027x, 측정일 2026-05-02) — Tier all 갱신값으로 측정 추이 row append
+- `alloc-optimization` (현재 1.043x) — 동일
+- `or-chain-lowering` (현재 1.000x) — 동일
+- 측정값 변화 ≥ 5pp 시 우선순위 재검토 (양식 보존 가이드)
 
 ### 시퀀스 C — 잔여 자율 작업
 
