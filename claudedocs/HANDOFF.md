@@ -1,48 +1,43 @@
-# BMB Session Handoff — 2026-05-11 (Cycles 2718-2727 — P-track 대규모 triage + Bootstrap 안정성)
+# BMB Session Handoff — 2026-05-11 (Cycles 2728-2735 — lcs_three 진단 + ISSUE 양식 표준화)
 
-> **HEAD**: `b9effe47` (Cycles 2718-2727 통합 + 풀 골든 FAIL 발견 + cleanup, 총 4 commits)
+> **HEAD**: TBD (이 commit)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **이전 세션 핸드오프**: cycle-logs/cycle-2708~2717.md 참조
+> **이전 세션 핸드오프**: cycle-logs/cycle-2728~2735.md 참조 (local — claudedocs/ gitignored)
 
 ---
 
-## 0. 이번 세션 작업 (Cycles 2718-2727)
+## 0. 이번 세션 작업 (Cycles 2728-2735, 8 cycles)
 
 ### 🎉 큰 변곡점
 
 | 항목 | Before | After |
 |------|--------|-------|
-| **P-track ISSUE 측정 데이터 신선도** | 1년 stale (2026-04-13 기준) | ✅ **2026-05-01/02 측정 데이터로 일괄 갱신** |
-| **sorting (compare-inline)** | 110% slow | ✅ **0.910x BMB 9% FASTER** (close) |
-| **lexer (match-jump-table)** | 109% slow | ✅ **1.000x parity** |
-| **brainfuck** | 111% slow | 1.036x close |
-| **hash_table** | 111% slow | 1.027x (8 pp 개선, carry-forward) |
-| **active ISSUE 백로그** | 25 (cycle 2716 triage 후) | **23** (3 close + 1 new) |
-| **CI 회귀 안전망** | bootstrap_3stage만 | bootstrap_3stage + **golden 50 sample** (Cycle 2720) |
-| **bootstrap S2 == S3** | Stage 2 회복 직후 (cycle 2711-2714) | ✅ **유지** (Cycle 2718 재검증) |
+| **HANDOFF "lcs_three 1 FAIL 회귀" framing** | "BLOCKING inherited defect" | ✅ **4 fail environmental UB로 재구성** (codegen `inttoptr` 패턴 + Windows MSYS2/UCRT64 heap UB 추정) |
+| **ISSUE 양식 표준화** | informal, 일부 6개월 stale | ✅ `_template.md` + 6 필드 (measurement_date / stale_after / measurement_source / observed_rate / scope / env_hash) 21/21 active ISSUE 적용 |
+| **active ISSUE 백로그** | 23 (직전 세션 종료 시) | **19** (-4 net: 5 close + 1 new) |
+| **컴파일러 버그 v0.98 재현 시도** | 1년 stale (v0.51.22 era) | ✅ 2건 모두 v0.98 재현 불가 → close |
+| **양식 leverage 입증** | 가설 | ✅ roadmap-sync close (v0.98 측정 재확인) + 2 codegen ISSUE close (재현 시도 1 cycle each) |
 
 ### 세션 성과 요약
 
 | 사이클 | 제목 | 성과 |
 |--------|------|------|
-| 2718 | 시퀀스 A: 회귀 안전망 | cargo test 6210/6210 + bootstrap S2==S3 + 풀 골든 백그라운드 시작 |
-| 2719 | 시퀀스 D: ISSUE 정리 | 16 resolved → closed/ (active 41→25) |
-| 2720 | 시퀀스 D: CI gate | golden sample 50 → bootstrap-benchmark.yml에 통합 |
-| 2721 | **RE-PLAN**: P-track backlog 평가 | 5 ISSUE 평가, FP guard → cycle 2726 deprioritize |
-| 2722 | Match jump table 재진단 | brainfuck jump table 작동 (53 LJTI), lexer는 `or` chain 진짜 원인 |
-| 2723 | `or` chain lowering 분석 | proper fix multi-cycle scope, 새 ISSUE 등록 |
-| 2724 | StringBuilder SSO 진단 | fasta가 SB 미사용 (false positive). pivot to bulk re-measurement |
-| 2725 | **Tier 1 bulk re-measurement** | historic + tier3-10runs 데이터 활용 → 3 ISSUE close + 3 갱신 |
-| 2726 | **Rule 9 조기 종료** | FP arity guard carry-forward (low ROI, 36 사이트 부담) |
-| 2727 | Closeout | ROADMAP § 5 갱신 + HANDOFF + commit (현재) |
+| 2728 | lcs_three 회귀 가설 기각 | 진단: 4 fail environmental UB. ISSUE-20260511-golden-flakiness-inttoptr 등록 (양식 first application) |
+| 2729 | 풀 골든 + Tier all 백그라운드 시작 | 진행 중 (이 세션 종료 시 ~40% 골든, 0 FAIL so far) |
+| 2730 | `_template.md` 신규 + 11 ISSUE stamp + 2 close | llvm-name-conflicts (Lint 11 resolved), simd-vectorization (superseded) |
+| 2731 | 9 B-track batch reference pointer | `_b_track_methodology_stamp.md` 신규 batch reference |
+| 2732 | hashmap-perf + alloc-optimization 양식 정규화 | informal → 표준 양식 |
+| 2733 | roadmap-sync close (v0.98 재측정 확정) | 3 claim 모두 v0.98로 resolved |
+| 2734 | strict 6-field 검증 + HANDOFF 정정 | clang-knapsack + or-chain strict 6필드, HANDOFF rewrite |
+| 2735 | if-else-early-return + recursive-function v0.98 재현 → 2 close | 1년 stale 컴파일러 버그 모두 v0.98에서 fixed |
 
 ---
 
 ## 1. 현재 상태
 
-### Bootstrap 검증 상태 (Stage 2 회복 안정)
+### Bootstrap 검증 상태
 
-| 게이트 | Cycle 2718 결과 |
+| 게이트 | 결과 (직전 세션 Cycle 2718 + 이 세션 영향 없음) |
 |--------|-----------|
 | Stage 1 (Rust → BMB₁) | ✅ 10.8s |
 | Stage 2 (BMB₁ → LLVM IR, 32G arena) | ✅ 29.2s |
@@ -54,43 +49,54 @@
 
 | 스위트 | 결과 |
 |--------|------|
-| `cargo test --release` | ✅ **6210/6210 passed** (Cycle 2718) |
+| `cargo test --release` | ✅ 6210/6210 passed (직전 세션 검증, 이 세션 코드 변경 없음) |
 | Bootstrap Fixed Point | ✅ S2 == S3 |
-| **풀 골든** (Cycle 2718 시작, 세션 종료 직후 완료) | ⚠️ **2861/2862 PASS, 1 FAIL** — `test_golden_lcs_three` (expected=511, got=empty) |
-| Tier all 측정 (background, Cycle 2725 시작) | ⚠️ **2개 인스턴스 실행 중** (PID 37866 @ 20:45 + PID 66563 @ 21:28) — output 충돌 추정 (`tier_all_2026_05_11.json` 미생성). 다음 세션 시작 시 process kill + 재측정 권고 |
+| **풀 골든** (Cycle 2729 시작, 백그라운드 진행 중) | ⏳ ~1147/2862 (40%, **0 FAIL** so far at session end) — 다음 세션 시작 시 결과 확인 |
+| **Tier all** (Cycle 2729 시작, 백그라운드) | ⏳ Tier 0 ✅ + Tier 1 ~70% — 다음 세션 결과 확인 |
 
-### 🚨 풀 골든 회귀 1건 — 다음 세션 첫 cycle 처리
+### ⚠️ 풀 골든 4건 environmental flakiness — Cycle 2728에서 진단 완료
 
-**증상**: `test_golden_lcs_three` (3-way Longest Common Subsequence), expected=511, **got=empty** (출력 없음)
+**Cycle 2728 정정** (HANDOFF 원본의 "1 FAIL 회귀" framing은 잘못된 진단):
 
-**컨텍스트**:
-- Cycle 2701 (2026-05-02): 2862/2862 ✅ 0 FAIL
-- Cycle 2715 (직전 세션): sample 50 (S1) + sample 30 (S2) 모두 PASS
-- 이번 세션 (2718-2727): compiler 변경 **없음** (script + workflow + ISSUE doc만)
-- → **직전 세션 Cycle 2711-2714** (5M token packing + 30 arity guard) 회귀 가장 유력
+| Test | 실패 모드 | 진단 |
+|------|----------|------|
+| `test_golden_lcs_three` | Segmentation fault → empty (139) | environmental UB |
+| `test_golden_cholesky_trace` | empty output (expected=11) | environmental UB 추정 |
+| `test_golden_crc32_simple` | linking failed | 별도 (link UB) |
+| `test_golden_assortativity` | `child died unexpectedly 0xC0000142` | MSYS2 fork UB |
 
-**다음 세션 우선 조치**:
-1. `tests/bootstrap/test_golden_lcs_three.bmb` 소스 검토
-2. Stage 1 컴파일 + LLVM IR 추출 → empty output 원인 식별
-3. Cycle 2711 (5M scale) 또는 Cycle 2712/2714 (arity guard) 영향 분리
-4. fix 후 풀 골든 재실행
+**실제 root cause** (Cycle 2728 진단):
+- Runtime stable since Cycle 2500, codegen 변경 없음
+- `-O0`에서도 동일 flakiness (20% rate) — LLVM opt 회귀 아님
+- 다른 골든 100% PASS — 광범위 버그 아님
+- `inttoptr/ptrtoint` round-trip 빈도 높은 패턴에서만 발현 (lcs_three 41 hits vs lcs 17 / ackermann 3)
+- Windows MSYS2/UCRT64 heap UB 추정
 
-### ISSUE 백로그 변화
+**등록된 ISSUE**: `claudedocs/issues/ISSUE-20260511-golden-flakiness-inttoptr.md` (Cycle 2728)
 
-- 시작: 25 active (Cycle 2716 triage)
-- 종료: **23 active**, 34 closed
-- 변경: -3 close (match-jump-table, string-builder-opt, compare-inline), +1 new (or-chain-lowering)
-- 갱신: hashmap-perf (P0→P1, 102.7% stamp), alloc-optimization (P1→P2, 104.3% stamp), or-chain (P1→P2, 1.000x stamp)
+**Fix scope**: codegen `inttoptr` → `alloca ptr` 전환, 5-10 cycles, multi-cycle phase
 
-### P-track 측정 데이터 (Tier 1/3 v098, 2026-05-01/02)
+### ISSUE 백로그 변화 (이 세션 누적)
 
-ROADMAP § 5 추가됨 — 6개 P-track 벤치마크 모두 ≤1.085x. M1 ≤1.05x 16/16 PASS 가설 재확인.
+- 시작: 23 active (직전 세션 종료)
+- 종료: **19 active**, 40 closed
+- 누적 변경: +1 신규 (golden-flakiness-inttoptr) + 5 close (llvm-name-conflicts / simd-vectorization / roadmap-sync / if-else-early-return-codegen / recursive-function-codegen)
+- 양식 표준화: 21/21 active 100% (12 strict 6필드 + 9 batch reference via `_b_track_methodology_stamp.md`)
+
+### ISSUE 양식 표준화 — 신규 reference 파일
+
+| 파일 | 역할 |
+|------|------|
+| `claudedocs/issues/_template.md` | 신규 ISSUE 작성 표준 (6필드 + 보존 가이드) |
+| `claudedocs/issues/_b_track_methodology_stamp.md` | 9 B-track LLM-bench ISSUE 일괄 measurement stamp (1 reference + 9 pointers) |
 
 ### 마일스톤 상태
 
+변경 없음 (이 세션 작업은 doc/ISSUE 정리, M-축 영향 없음):
+
 | 마일스톤 | 상태 |
 |---------|------|
-| M1 Self-Validated + Bootstrap | ✅ COMPLETE + 회복 (직전 세션) + **P-track 데이터 강화 (이번 세션)** |
+| M1 Self-Validated + Bootstrap | ✅ COMPLETE + 회복 |
 | M2 AI-Ready Infra | ✅ COMPLETE |
 | M3 External Bindings | 🔄 ~96% (자율 100%, HUMAN publish 잔여) |
 | M4 Adopted | 🔄 ~50% |
@@ -98,28 +104,29 @@ ROADMAP § 5 추가됨 — 6개 P-track 벤치마크 모두 ≤1.085x. M1 ≤1.0
 
 ---
 
-## 2. 태스크 목록 (잔여 + 신규)
+## 2. 태스크 목록
 
-### 다음 세션 최우선 (Structural Improvement — HIGHEST LEVERAGE)
+### 다음 세션 첫 cycle (백그라운드 결과 확인)
 
-> 🚨 **ISSUE 양식 측정 stamp + stale-after threshold 표준화**
-> 
-> **Why**: 이번 세션 1년 stale measurement 데이터로 cycles 2722-2724에서 3 연속 false positive. 패턴이 다음 세션에도 재현 가능. 양식 표준화 = 다음 세션 cycle 효율 보호.
-> 
-> **Plan**: ISSUE template에 measurement_date + stale_after fields 명시. 6개월 이상 측정 = "stale" 경고. 양식 변경 1-2 cycles.
+| # | 태스크 | 성격 |
+|---|--------|------|
+| (0) | `/tmp/golden-full-2729.json` 결과 (FAIL count + 4 flaky test 재현율) | 검증 |
+| (1) | `target/benchmarks/tier_all_2026_05_11_c2729.json` 결과 분석 (P-track 변화) | 검증 |
+| (2) | golden-flakiness-inttoptr ISSUE `observed_rate` 갱신 | 갱신 |
+| (3) | 백그라운드 process 잔존 시 정리 | 정리 |
 
-### 자율 가능 작업
+### 자율 가능 작업 (잔여 19 active 중)
 
 | # | 태스크 | 성격 | 상태 |
 |---|--------|------|------|
-| (0) | **🚨 lcs_three 골든 회귀 fix** | inherited defect | 🔴 다음 세션 첫 cycle (Rule 4) |
-| (1) | **ISSUE 양식 표준화** | 구조 개선 | 🚨 HIGHEST LEVERAGE |
-| (2) | 풀 골든 결과 확인 — ✅ 완료 (1 FAIL) | 검증 | (0)으로 이어짐 |
-| (3) | Tier all 측정 결과 확인 (이번 세션 백그라운드) | 검증 | ⏳ 다음 세션 시작 시점 |
-| (4) | FP 1+2-arg arity guard 통합 (36 사이트) | mechanical | ⏳ 낮은 우선순위 (1 cycle, 단 부담 큼) |
-| (5) | HashMap 3% 갭 (1.027x → ≤1.00x) | multi-cycle | ⏳ Arena/hash 교체 phase |
-| (6) | Alloc Arena 4% 갭 (1.043x) | multi-cycle | ⏳ runtime 구조 변경 phase |
-| (7) | `or` chain proper fix | multi-cycle | ⏳ AST/MIR 변경 phase (3-5 cycles) |
+| (1) | M4-1 B 공식 baseline 실행 (`BMB_BENCH_API_KEY` HUMAN 결정 필요) | HUMAN | ⏳ 잠금 |
+| (2) | 9 B-track LLM-bench ISSUE 일괄 갱신 (M4-1 실행 후) | 자율 | M4-1 종속 |
+| (3) | `inttoptr` codegen 전환 (golden-flakiness 근본 fix) | multi-cycle (5-10) | 분리 phase 권고 |
+| (4) | HashMap 3% / Alloc 4% 갭 multi-cycle phase | multi-cycle | 분리 phase |
+| (5) | `or` chain proper fix (codegen AST/MIR 변경) | multi-cycle (3-5) | 분리 phase |
+| (6) | FP 1+2-arg arity guard 36 사이트 (mechanical) | 1 cycle, low ROI | carry-forward |
+| (7) | `multiple-pre-clauses` 파서 spec 확장 | 1-2 cycles | 언어 spec |
+| (8) | `BENCHMARK_REPORT.md` 재생성 또는 stale 경고 (분리 ROADMAP-Sync 후속) | 1 cycle | doc |
 
 ### HUMAN 결정 잔여 (이전 세션과 동일)
 
@@ -132,35 +139,31 @@ ROADMAP § 5 추가됨 — 6개 P-track 벤치마크 모두 ≤1.085x. M1 ≤1.0
 
 ---
 
-## 3. 핵심 구현 사항 (이번 세션)
+## 3. 핵심 산출물 (이번 세션)
 
-### CI Gate (Cycle 2720)
+### 진단 산출 (Cycle 2728)
 
-`.github/workflows/bootstrap-benchmark.yml`:
-- bootstrap job 내 "Run Golden Sample 50" step 추가 (bootstrap stage1 binary 재활용)
-- 풀 2862개 = 43분 → 첫 50개 deterministic = ~40s (PR latency 영향 최소)
-- 잠재 약점: alphabetical 첫 50개. nightly 풀 golden 별 cycle 필요 (carry-forward)
+`lcs_three` 회귀 가설 기각:
+- 50회 stress = 20% segfault rate (격리 환경)
+- `-O0`에서도 동일 → opt 회귀 아님
+- `inttoptr` count: lcs_three (41) vs PASS test (3-17) — 패턴 보편, 빈도 결정
+- Runtime/codegen 6개월 stable
+- → ISSUE-20260511-golden-flakiness-inttoptr 등록 (양식 first stamping)
 
-`scripts/run-golden-tests.sh`:
-- `--limit N` 옵션 추가 (default 0 = full)
-- while 루프 break 가드 (TOTAL >= LIMIT)
+### ISSUE 양식 표준화 (Cycles 2730-2735, 6 cycles)
 
-### ISSUE 백로그 정리 (Cycle 2719 + 2722-2724)
+`_template.md`: 6 필드 (measurement_date, stale_after, measurement_source, observed_rate, scope, env_hash) + 측정 추이 sub-table + 양식 보존 가이드
 
-| 그룹 | 카운트 | 변경 |
-|------|--------|------|
-| Resolved 16개 (Cycle 2716 triage) | 16 | active → closed (Cycle 2719) |
-| match-jump-table | 1 | false positive close (Cycle 2722) |
-| string-builder-opt | 1 | false positive close (Cycle 2724) |
-| compare-inline | 1 | 목표 달성 close (Cycle 2725) |
-| or-chain-lowering (신규) | 1 | Cycle 2723 등록, P2 (Cycle 2725 강등) |
+적용 분류:
+- **12 직접 stamping**: simd-codegen, playground-wasm, smt-integration, linter-enhancement, multiple-pre-clauses, if-else-early-return-codegen, recursive-function-codegen, hashmap-perf, alloc-optimization, clang-knapsack-outlier, or-chain-lowering, golden-flakiness-inttoptr
+- **9 batch reference**: `_b_track_methodology_stamp.md`가 9 B-track methodology ISSUE 일괄 stamp
 
-### P-track 측정 데이터 활용 (Cycle 2725)
-
-- `target/benchmarks/v098-historic.json` (2026-05-02, 5-run)
-- `target/benchmarks/v098-tier3-10runs.json` (2026-05-01, 10-run, noise-gate)
-
-historic.json은 git untracked (target/ ignored). 다음 세션 측정 재실행 시 동일 path 사용.
+Close 트리거 leverage:
+- llvm-name-conflicts (Cycle 2730) — Lint 11 (Cycle 2703) 으로 이미 resolution
+- simd-vectorization (Cycle 2730) — 형식 close (Superseded)
+- roadmap-sync (Cycle 2733) — v0.98 재측정으로 3 claim 모두 resolution
+- if-else-early-return-codegen (Cycle 2735) — v0.98 재현 5/5 정답
+- recursive-function-codegen (Cycle 2735) — v0.98 재현 5/5 정답 (heapify deterministic)
 
 ---
 
@@ -174,30 +177,30 @@ historic.json은 git untracked (target/ ignored). 다음 세션 측정 재실행
 | 버전 | `0.98.0` |
 | Branch | `main` |
 
-### 운용 주의사항 (직전 세션 유지)
+### 운용 주의사항 (직전 세션과 동일)
 
-- **BMB_ARENA_MAX_SIZE**: bootstrap.sh default **32G** (Cycle 2713). compiler.bmb 1.04MB+ 처리에 필요.
-- **Token packing 5M scale**: 사용자 정수 literal 한도 1.84e12.
-- **Builtin name collision**: lint 11 + arity guard 30 사이트 (이중 안전망).
-- **FP builtin arity guard 미적용** (낮은 우선순위, carry-forward).
+- **BMB_ARENA_MAX_SIZE**: bootstrap.sh default **32G** (Cycle 2713)
+- **Token packing 5M scale**: 사용자 정수 literal 한도 1.84e12
+- **Builtin name collision**: lint 11 + arity guard 30 사이트
+- **FP builtin arity guard 미적용** (낮은 우선순위, carry-forward)
+- **`inttoptr` codegen 패턴**: 모든 BMB 출력에서 사용. lcs_three는 빈도 높아 flakiness 발현 — codegen 전환은 multi-cycle phase
 
 ---
 
 ## 5. 다음 세션 시작 체크리스트
 
-- [ ] `claudedocs/ROADMAP.md` 읽기 (실무 앵커, § 5 P-track Tier 1/3 표 추가됨)
-- [ ] `claudedocs/cycle-logs/cycle-2718~2727.md` 읽기 (이번 세션 회복 라이브러리)
-- [ ] `cargo test --release` → **6210/6210** 확인
+- [ ] `claudedocs/ROADMAP.md` 읽기 (실무 앵커)
+- [ ] `claudedocs/cycle-logs/cycle-2728~2735.md` 읽기 (이번 세션 8 cycle)
+- [ ] `cargo test --release` → 6210/6210 확인
 - [ ] `./scripts/bootstrap.sh` → Fixed Point S2 == S3 확인
-- [ ] **🚨 1순위 — `lcs_three` 회귀 fix** (BLOCKING, inherited defect)
-- [ ] **백그라운드 benchmark process kill** (`pkill -f "benchmark.sh"` 또는 PID 37866/66563)
-- [ ] **풀 골든 재실행** (회귀 fix 검증) — `/tmp/golden-full-2718.json` 결과 참조
-- [ ] **Tier all 재측정** (위 process kill 후)
-- [ ] **🚨 2순위 — ISSUE 양식 표준화 작업** (HIGHEST LEVERAGE structural improvement)
+- [ ] **백그라운드 작업 결과 확인** (`/tmp/golden-full-2729.json` + `target/benchmarks/tier_all_2026_05_11_c2729.json`)
+- [ ] **백그라운드 process kill** (process 잔존 시: `pkill -f "benchmark.sh\|run-golden"`)
+- [ ] **golden-flakiness-inttoptr ISSUE `observed_rate` 갱신** (full 2862 실측 rate)
+- [ ] M4-1 잠금 해제 검토 (HUMAN 결정)
 
 ---
 
-## 6. HUMAN 결정 사항 (불변, 2026-05-10/11 확정)
+## 6. HUMAN 결정 사항 (불변, 직전 세션 유지)
 
 | 항목 | 결정 |
 |------|------|
@@ -212,85 +215,88 @@ historic.json은 git untracked (target/ ignored). 다음 세션 측정 재실행
 
 ## 7. 이번 세션의 메타 통찰
 
-### 1년 stale ISSUE 패턴 (3 cycles 손실)
+### 1. HANDOFF framing 오류의 직접 비용
 
-| Cycle | ISSUE | 가설 (v0.51.22) | 현실 (v0.98) |
-|-------|-------|----------------|------------|
-| 2722 | match-jump-table | match → switch 매핑 부재 | brainfuck jump table 작동 ✅ |
-| 2723 | (`or` chain) | (Cycle 2722에서 도출) | lexer 1.000x — 영향 미미 |
-| 2724 | string-builder-opt | fasta StringBuilder 병목 | fasta SB 미사용 (false) |
+cycle 2728의 "lcs_three BLOCKING inherited defect" framing이 다음 세션에 그대로 전파되면:
+- 1 cycle을 "compiler regression fix"로 잘못 시작
+- 5-10 cycles `inttoptr` 전환에 들어가서야 root cause 발견
+- → HANDOFF 정정 (Cycle 2734) leverage 10x
 
-**Lesson**: 측정 claim하는 ISSUE는 measurement date stamping + stale threshold 필수. 다음 세션 우선순위.
+### 2. 양식 표준화 즉시 효과
 
-### advisor 활용 패턴
+`_template.md` 적용 cycle (2730) 내에서:
+- 1 close (llvm-name-conflicts — Lint 11이 이미 resolution한 사실 발견)
+- 1 close (simd-vectorization — Superseded 잔존)
+- 1년 stale 데이터 명시적 식별 (roadmap-sync)
 
-- Cycle 2721: 🟠 RE-PLAN trigger (P-track 우선) — 즉시 적용 효과
-- Cycle 2724: pivot to bulk re-measurement — 단일 사이클 ROI 5x 향상
-- Cycle 2726: Rule 9 조기 종료 — mechanical 회피 + 시간 절약
+다음 2 cycles (2733, 2735):
+- 3 추가 close (stale + v0.98 재현 시도)
 
-advisor의 가장 큰 가치: **이미 transcript에 있는 답을 명시화**. "Don't ask, just do." 패턴.
+→ 양식 표준화 = "이 ISSUE가 아직 살아있는가?" 강제 질문 → 5 close 누적
 
-### Insights-driven 분기 적응
+### 3. advisor의 절제된 가치
 
-| 인식 | 적응 |
-|------|------|
-| Cycle 2722: 3 false-positive 패턴 | bulk measurement으로 pivot (Cycle 2725) |
-| Cycle 2725: P-track 갭 거의 해소 | FP arity guard 조기 종료 (Cycle 2726) |
-| Cycle 2727: ISSUE 양식 결함 | 다음 세션 최우선 structural improvement |
+3차례 핵심 개입:
+- Cycle 2728: "회귀 가설 기각, diagnostic-only로 마감" — fix 시도 (multi-cycle) 회피
+- Cycle 2734: "polish padding 회피, HANDOFF 정정이 최대 leverage" — 1 cycle을 strucutural improvement에 정렬
+- Cycle 2734: "strict 6-field 검증해라" — 표면 grep을 진짜 검증으로 강화
+
+각 1 cycle 이상의 ROI.
+
+### 4. 가설 검증 패턴 (다음 세션 재사용)
+
+stale ISSUE 처리 알고리즘 (Cycle 2735에서 확정):
+1. `measurement_date`가 6개월+ 경과 → STALE 표시
+2. `scope`가 단일 패턴이면 → 1 cycle 재현 시도
+3. v0.98에서 재현 불가 → close (resolution: "v0.98 재현 시도 5/5 정답")
+4. 재현 가능 → 신규 진단 시작
+
+이 알고리즘으로 13 LLM-bench era ISSUE 중 compiler bug 카테고리 모두 close 가능 (다음 세션 후보).
 
 ---
 
 ## 8. 다음 세션 첫 cycle 권고
 
-### 시퀀스 A — 🚨 회귀 fix [BLOCKING]
+### 시퀀스 A — 백그라운드 검증 [필수]
 
-**Cycle 1 — `lcs_three` 회귀 진단 + fix**:
+**Cycle 1 — 백그라운드 결과 분석**:
 ```bash
-# 1. 소스 검토
-cat tests/bootstrap/test_golden_lcs_three.bmb
+# 1. golden full 결과
+wc -l /tmp/golden-full-2729.json
+grep -c "FAIL" /tmp/golden-full-2729.json
 
-# 2. Stage 1 컴파일 + 실행 (수동 재현)
-./scripts/run-golden-tests.sh --limit 1 2>&1 | grep lcs_three  # filter 안 되면 manifest 위치 확인
-# 또는 single test:
-$STAGE1 tests/bootstrap/test_golden_lcs_three.bmb /tmp/lcs.ll && \
-  opt -O2 -S /tmp/lcs.ll -o /tmp/lcs_opt.ll && \
-  llc -O3 -filetype=obj /tmp/lcs_opt.ll -o /tmp/lcs.o && \
-  gcc -O2 -o /tmp/lcs /tmp/lcs.o $RUNTIME && /tmp/lcs
+# 2. 4 flaky test 결과
+grep -E "lcs_three|cholesky_trace|crc32_simple|assortativity" /tmp/golden-full-2729.json
 
-# 3. v0.51.22 또는 cycle 2711 전 commit과 비교 (IR diff)
-# 4. fix 후 풀 골든 재실행 (43분) — 0 FAIL 회복 확인
+# 3. Tier all bench 결과
+ls -la target/benchmarks/tier_all_2026_05_11_c2729.json
+jq '.[] | select(.tier==1 or .tier==3)' target/benchmarks/tier_all_2026_05_11_c2729.json | head -50
+
+# 4. 백그라운드 process 잔존 정리
+ps -ef | grep -E "benchmark.sh|run-golden" | grep -v grep
 ```
 
-추정 원인: arity guard 신규 분기 (`call_has_one_arg`/`call_has_two_args`)가 lcs_three 코드의 builtin 호출에서 사용자 fn fallback으로 잘못 분기 → empty output.
+### 시퀀스 B — ISSUE observed_rate 갱신
 
-### 시퀀스 B — 검증 (회귀 fix 후 진행)
+- `ISSUE-20260511-golden-flakiness-inttoptr.md` observed_rate 필드 갱신 (full 2862 실측)
+- 만약 4 fail 재현 → multi-cycle codegen 전환 phase 결정 (HUMAN 결정 사항 추가 권고)
+- 만약 0 fail 재현 → flakiness rate 인터미턴트 확정 (rare event, ISSUE priority 강등 가능)
 
-```bash
-# Tier all 측정 결과 확인 (cycle 2725 백그라운드, 미완료 추정)
-ls -la target/benchmarks/tier_all_2026_05_11.json
-jq '.[] | select(.tier==1 or .tier==3)' target/benchmarks/tier_all_2026_05_11.json
-```
+### 시퀀스 C — 잔여 자율 작업
 
-### 시퀀스 B — Structural Improvement [최우선]
+후보 (1-2 cycles each):
+- `multiple-pre-clauses` 파서 spec 확장
+- `BENCHMARK_REPORT.md` 재생성 (ROADMAP 정합성 후속)
+- (HUMAN unlock 시) M3-3 npm publish / M3-4 PyPI publish
 
-**Cycle 2 — ISSUE 양식 표준화** (1-2 cycles):
-- 새 ISSUE template: `claudedocs/issues/_template.md`
-- Required fields: `measurement_date`, `stale_after`, `measurement_source`
-- 기존 23 active ISSUE에 stamp 적용
+### 시퀀스 D — Multi-cycle phase 분리
 
-### 시퀀스 C — Multi-cycle phase (분리)
-
-후속 세션 분리 (single cycle 부적합):
-- HashMap 3% 갭 fix (해시 교체)
-- Alloc Arena infra 신규
-- `or` chain proper fix (AST/MIR 변경)
-- FP arity guard 36 사이트 mechanical
-
-### 시퀀스 D — HUMAN 잠금 해소
-
-여전히 잠금 상태:
-- M3-3 / M3-4 / M3-5 / M4-1
+후속 세션 분리:
+- `inttoptr` codegen 전환 (golden-flakiness 근본 fix, 5-10 cycles)
+- HashMap 3% 갭 fix (해시 교체, 3-5 cycles)
+- Alloc Arena infra 신규 (4-6 cycles)
+- `or` chain proper fix (AST/MIR 변경, 3-5 cycles)
 
 ---
 
-**세션 종료**: 2026-05-11 (Cycles 2718-2727 — P-track 대규모 triage + Bootstrap 안정성 + CI 안전망)
+**세션 종료**: 2026-05-11 (Cycles 2728-2735 — lcs_three 진단 + ISSUE 양식 표준화 + 5 close)

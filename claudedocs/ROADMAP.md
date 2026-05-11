@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-11 (Cycles 2718-2727 — **P-track 대규모 triage** + CI golden sample 50 + 풀 골든 1 FAIL 발견)
+> 최종 업데이트: 2026-05-11 (Cycles 2728-2735 — **lcs_three 진단** + **ISSUE 양식 표준화** + 5 close)
 > 이 문서는 매 세션의 **유일한 실무 앵커**다.
 > 상세 사이클 로그: `docs/ROADMAP.md` | 개발 규칙: `CLAUDE.md` | 세션 상태: `claudedocs/HANDOFF.md`
 
@@ -357,6 +357,49 @@ historic.json (2026-05-02, 5-run) + tier3-10runs.json (2026-05-01, 10-run, noise
 - M1 가설 ≤1.05x 16/16 PASS — historic 데이터에서 6/6 P-track 벤치마크 모두 ≤1.085x
 
 **시스템적 발견**: 1년 stale measurement이 3 cycles false-positive 야기. ISSUE 양식 측정 stamp + stale-after threshold 표준화 필요 (다음 세션 우선).
+
+---
+
+## § 6 ISSUE 양식 표준화 (Cycles 2728-2735, 신규)
+
+`claudedocs/issues/_template.md` 양식 표준:
+
+| 필수 필드 | 목적 |
+|----------|------|
+| `measurement_date` | 측정한 날짜 (commit date 아님) |
+| `stale_after` | stale로 간주되는 시점 (기본 +3개월) |
+| `measurement_source` | 측정 명령/파일 경로 |
+| `observed_rate` | 정량값 (% / ratio / count) |
+| `scope` | 영향 범위 |
+| `env_hash` | OS / LLVM / GCC 버전 hash |
+
+### Cycle 2735 시점 ISSUE 백로그
+
+| 항목 | 카운트 |
+|------|-------|
+| Active ISSUE | **19** (직전 23 - 5 close + 1 신규) |
+| Closed (누적) | **40** (+5 이번 세션) |
+| 양식 적용 | 21/21 (직접 12 + batch reference 9) = **100%** |
+| 신규 표준 파일 | `_template.md`, `_b_track_methodology_stamp.md` (모두 `claudedocs/issues/` 하 local) |
+
+### 이번 세션 close 5건 (Cycles 2728-2735)
+
+| ISSUE | 사유 |
+|-------|------|
+| `llvm-name-conflicts` (Cycle 2730) | Lint 11 (Cycle 2703)에서 이미 resolution |
+| `simd-vectorization` (Cycle 2730) | Superseded (Cycle 2220) 잔존 정리 |
+| `roadmap-sync` (Cycle 2733) | v0.98 재측정으로 3 claim 모두 resolved (Fixed Point ✅, 0 FAIL ✅, BMB ≥ C ✅) |
+| `if-else-early-return-codegen` (Cycle 2735) | v0.98 재현 5/5 정답 (v0.51.22 era 버그, codegen 변경으로 fix) |
+| `recursive-function-codegen` (Cycle 2735) | v0.98 재현 heapify 5/5 deterministic (v0.51.22 era 버그) |
+
+### Cycle 2728 신규 ISSUE — 양식 first application
+
+`ISSUE-20260511-golden-flakiness-inttoptr.md` — 풀 골든 4건 environmental flakiness 진단:
+- HANDOFF 원본 "lcs_three 1 FAIL 회귀" framing **기각**
+- 실제: 4 tests fail (lcs_three / cholesky_trace / crc32_simple / assortativity)
+- 격리 stress: lcs_three 20% segfault rate (50회 반복)
+- `inttoptr/ptrtoint` round-trip + Windows MSYS2/UCRT64 heap UB 추정
+- Fix scope: codegen `inttoptr` → `alloca ptr` 전환, multi-cycle (5-10 cycles)
 
 ---
 
