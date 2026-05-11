@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-11 (Cycles 2718-2727 — P-track 대규모 triage + Bootstrap 안정성)
 
-> **HEAD**: `2657dd68` (Cycles 2718-2727 통합 commit)
+> **HEAD**: `b9effe47` (Cycles 2718-2727 통합 + 풀 골든 FAIL 발견 + cleanup, 총 4 commits)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 > **이전 세션 핸드오프**: cycle-logs/cycle-2708~2717.md 참조
 
