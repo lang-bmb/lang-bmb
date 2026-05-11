@@ -1,8 +1,10 @@
-# BMB Session Handoff — 2026-05-11 (Cycles 2737-2745 — Doc/Script policy-vs-code 갭 fix + HUMAN 결정 채택)
+# BMB Session Handoff — 2026-05-11 (Cycle 2746 — 시퀀스 E 자율 실행: -march=native PR draft)
 
-> **HEAD**: `6ddf0ccd` (Cycles 2737-2745 — policy-vs-code + 결정 채택 + 시퀀스 A-E 확정)
+> **HEAD**: `627dd3a1` (Cycle 2746에서 부모 repo HEAD 변경 0건 — 서브모듈 commit + claudedocs gitignored)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **이전 세션 핸드오프**: cycle-logs/cycle-2728~2736.md (Cycles 2728-2736 lcs_three 진단 + ISSUE 양식 표준화 + 5 close)
+> **이전 세션 핸드오프**: cycle-logs/cycle-2737~2745.md (Cycles 2737-2745 policy-vs-code 갭 fix + HUMAN 결정 채택)
+> **이번 cycle log**: cycle-logs/cycle-2746.md (gitignored, disk only)
+> **이번 PR draft**: pr-draft-march-native.md (gitignored, disk only)
 
 ---
 
@@ -20,7 +22,35 @@
 
 ---
 
-## 0. 이번 세션 작업 (Cycles 2737-2744, 8 cycles)
+## 0. 이번 세션 작업 (Cycle 2746, 1 cycle)
+
+### Cycle 2746 — 시퀀스 E 자율 실행
+
+| 항목 | 상태 |
+|------|------|
+| 서브모듈 branch `fix/march-native-spec-parity` (`ecosystem/benchmark-bmb`) | ✅ 생성 + commit `cb478d2` |
+| 5 위치 `-march=native` 일괄 수정 | ✅ 3 files, +5/-5 (Cycle 2743 매핑 그대로) |
+| PR body draft 파일 | ✅ `claudedocs/pr-draft-march-native.md` (gitignored, disk only) |
+| 서브모듈 push | ⏸ **HUMAN trigger 대기** (HANDOFF E.4 명시) |
+| 부모 repo submodule pointer | ⏸ **미커밋** (서브모듈 미push 상태에서 bump하면 broken pointer) |
+
+### 진행 회피 (의도된 skip)
+
+| 시퀀스 | 사유 |
+|--------|------|
+| A | 백그라운드 bench JSON 미생성 (Cycle 2729 시작, ~2시간 진행 중, 마지막 출력 mergesort) — carry-forward |
+| B | bench 동시 실행 시 system load 충돌 (golden-flakiness-inttoptr ISSUE 확정) — bench 종료 후 |
+| C | M3-3/M3-4 publish는 HUMAN gh workflow run trigger 필요 + M3-5 정정 선결 |
+| D | M4-1 baseline은 HUMAN `BMB_BENCH_API_KEY` setup 선결 |
+
+### 부모 repo 상태
+
+- HEAD: `627dd3a1` (변경 없음, 이 cycle은 parent commit 0건)
+- Working tree dirty: ` M ecosystem/benchmark-bmb` (서브모듈 HEAD 이동 인지) — **commit 금지**
+
+---
+
+## 0a. 이전 세션 작업 (Cycles 2737-2744, 8 cycles)
 
 ### 큰 변곡점
 
@@ -154,9 +184,13 @@
 
 ## 2. 태스크 목록
 
-### 다음 세션 첫 cycle — 채택 결정 시퀀스
+### 다음 세션 첫 cycle — 채택 결정 시퀀스 (Cycle 2746 진척 반영)
 
-#### 시퀀스 A (자율, 백그라운드 bench 종료 후) — Cycle 2745
+**Cycle 2746 자율 완결**: 시퀀스 E (서브모듈 commit `cb478d2` + PR draft). HUMAN push 대기.
+
+**다음 세션 진입점**: 시퀀스 A (백그라운드 bench JSON 확인) → 완료 시 시퀀스 B.
+
+#### 시퀀스 A (자율, 백그라운드 bench 종료 후) — 다음 세션 Cycle 2747
 
 | # | 태스크 | 성격 |
 |---|--------|------|
@@ -192,14 +226,16 @@
 | D.5 | M3-7 자동 처리: 결과 README/CHANGELOG에 "supersedes 2026-03-26" annotation | 자율 |
 | D.6 | 9 B-track ISSUE 일괄 갱신 (`_b_track_methodology_stamp.md`) + 5-7 close 후보 | 자율 |
 
-#### 시퀀스 E (분리 PR, M3-6 CI flag) — Cycle 2750+
+#### 시퀀스 E (분리 PR, M3-6 CI flag) — ✅ Cycle 2746 자율 완료
 
-| # | 태스크 | 성격 |
+| # | 태스크 | 상태 |
 |---|--------|------|
-| E.1 | benchmark-bmb 서브모듈 새 branch `fix/march-native-spec-parity` | 자율 (push HUMAN) |
-| E.2 | 5 위치 일괄 수정 (workflows x4 + Dockerfile x1) — Cycle 2743 매핑 활용 | 자율 |
-| E.3 | PR draft 본문: "baseline change", "이전 CI history 직접 비교 불가" 명시 | 자율 |
-| E.4 | HUMAN merge → 첫 CI run을 새 baseline으로 stamp | HUMAN |
+| E.1 | benchmark-bmb 서브모듈 새 branch `fix/march-native-spec-parity` | ✅ Cycle 2746 |
+| E.2 | 5 위치 일괄 수정 (workflows x4 + Dockerfile x1) — Cycle 2743 매핑 활용 | ✅ Cycle 2746 (3 files, +5/-5) |
+| E.3 | PR draft 본문: "baseline change", "이전 CI history 직접 비교 불가" 명시 | ✅ `claudedocs/pr-draft-march-native.md` |
+| E.4 | 서브모듈 commit (push 금지) | ✅ `cb478d2` (Cycle 2746) |
+| E.5 | **HUMAN push + PR open + merge** → 첫 CI run을 새 baseline으로 stamp | ⏸ **HUMAN trigger** |
+| E.6 | (E.5 후 자율) 부모 repo submodule pointer bump commit | ⏸ HUMAN merge 후 자율 |
 
 ### 자율 가능 작업 (multi-cycle 분리 phase 후보)
 
@@ -215,6 +251,7 @@
 | (6) | ~~`BENCHMARK_REPORT.md` stale 경고~~ | ✅ Cycle 2737 |
 | (7) | ~~context-overflow-prevention~~ | ✅ Cycle 2739-2740 |
 | (8) | ~~crosslang gcc flag~~ | ✅ Cycle 2742 |
+| (9) | ~~시퀀스 E CI -march=native 5위치 PR draft~~ | ✅ Cycle 2746 (push HUMAN 대기) |
 
 ### HUMAN 결정 잔여 (채택 결정 반영)
 
@@ -225,7 +262,7 @@
 | M3-3 | npm publish | `gh workflow run npm-publish.yml -f dry_run=false` 시점 결정 (M3-5 정정 후) |
 | M3-4 | PyPI publish | `gh workflow run pypi-publish.yml -f publish=true` 시점 결정 (M3-5 정정 후) |
 | M3-5 | bmb-algo README headline 처리 옵션 (a/b/c) 선택 | 시퀀스 B.3 자율 정정 후 review |
-| M3-6 | CI flag PR merge | 자율 draft PR → review → merge |
+| M3-6 | CI flag PR push + open + merge | **Cycle 2746에서 commit 완료**. HUMAN: `cd ecosystem/benchmark-bmb && git push -u origin fix/march-native-spec-parity` + `gh pr create --draft --body-file claudedocs/pr-draft-march-native.md` |
 | M3-7 | (M4-1에 종속, 자동 처리) | — |
 | M4-1 | B baseline 실행 | `.env.local`에 `BMB_BENCH_API_KEY` 설정 + 모델 confirm (sonnet-4-6) |
 
@@ -283,21 +320,27 @@ Close 트리거 leverage:
 
 ### 기본 검증
 - [ ] `claudedocs/ROADMAP.md` 읽기 (실무 앵커)
-- [ ] `claudedocs/cycle-logs/cycle-2737~2745.md` 읽기 (이번 세션 9 cycle)
+- [ ] `claudedocs/cycle-logs/cycle-2746.md` 읽기 (직전 cycle, gitignored)
+- [ ] `claudedocs/cycle-logs/cycle-2737~2745.md` 읽기 (이전 세션 9 cycle)
 - [ ] `cargo test --release` → 6210/6210 확인 (필요 시)
 - [ ] `./scripts/bootstrap.sh` → Fixed Point S2 == S3 (필요 시)
 
-### 백그라운드 정리 (시퀀스 A)
+### 부모 repo 상태 확인 (Cycle 2746 영향)
+- [ ] `git status` → ` M ecosystem/benchmark-bmb` 표시 (서브모듈 HEAD 이동)
+- [ ] **commit 금지**: 서브모듈 미push 상태 → submodule pointer bump 하면 broken
+- [ ] HUMAN이 서브모듈 push + PR merge 완료한 후에만 부모에서 submodule pointer bump
+
+### 백그라운드 정리 (시퀀스 A — Cycle 2746에서 미완료, 다음 세션 첫 cycle)
 - [ ] `ls -la target/benchmarks/tier_all_2026_05_11_c2729.json` — JSON 완료 여부
 - [ ] `ps -ef | grep benchmark.sh` — 잔존 process 확인
-- [ ] 완료 시: P-track ISSUE 측정 stamp 갱신
+- [ ] 완료 시: P-track ISSUE 측정 stamp 갱신 (hashmap-perf / alloc-optimization / or-chain-lowering)
 - [ ] 미완료 시: 백그라운드 process 종료 결정 (대기 vs 강제 종료)
 
-### 채택 결정 순차 실행
-- [ ] **시퀀스 B** (자율): M3-5 bmb-algo bench 재실행 + README 정정
+### 채택 결정 순차 실행 (잔여)
+- [ ] **시퀀스 B** (자율, bench 종료 후): M3-5 bmb-algo bench 재실행 + README 정정
 - [ ] **시퀀스 C** (HUMAN): M3-3/M3-4 publish dry_run → 실 publish
 - [ ] **시퀀스 D** (HUMAN setup + 자율 실행): M4-1 baseline 측정 — sonnet-4-6 100문제 × 3 run
-- [ ] **시퀀스 E** (자율 draft + HUMAN merge): M3-6 CI flag PR
+- [x] ~~**시퀀스 E** (자율 draft + HUMAN merge): M3-6 CI flag PR~~ → **Cycle 2746 자율 완료**, HUMAN push 대기
 
 ---
 
@@ -360,42 +403,45 @@ stale ISSUE 처리 알고리즘 (Cycle 2735에서 확정):
 
 ---
 
-## 8. 다음 세션 첫 cycle 권고
+## 8. 다음 세션 첫 cycle 권고 (Cycle 2747 진입점)
 
-### 시퀀스 A — Tier all 결과 분석 (golden은 Cycle 2736 완료, 0 FAIL ✅)
+### Cycle 2747 — 시퀀스 A 백그라운드 bench JSON 확인
 
-**Cycle 1 — Tier all bench 결과**:
 ```bash
-# Tier all 결과 (Cycle 2729 시작, Cycle 2736 미완료)
+# Tier all 결과 (Cycle 2729 시작, Cycle 2746 미완료 상태)
 ls -la target/benchmarks/tier_all_2026_05_11_c2729.json
-jq '.[] | select(.tier==1 or .tier==3)' target/benchmarks/tier_all_2026_05_11_c2729.json | head -50
-
-# 백그라운드 process 잔존 정리
 ps -ef | grep -E "benchmark.sh|run-golden" | grep -v grep
+
+# 완료 시
+jq '.[] | select(.tier==1 or .tier==3)' target/benchmarks/tier_all_2026_05_11_c2729.json | head -50
 ```
 
-### 시퀀스 B — P-track ISSUE 측정값 갱신 (Tier all 결과 활용)
+### Cycle 2748 — 시퀀스 B (bench 종료 후, autonomous)
 
-- `hashmap-perf` (현재 1.027x, 측정일 2026-05-02) — Tier all 갱신값으로 측정 추이 row append
-- `alloc-optimization` (현재 1.043x) — 동일
-- `or-chain-lowering` (현재 1.000x) — 동일
-- 측정값 변화 ≥ 5pp 시 우선순위 재검토 (양식 보존 가이드)
+- M3-5 bmb-algo bench v0.98 재실행 (5-run median, 현재 config 10 items)
+- README 표 정정: "knapsack(10 items)" + clang vs gcc 라벨
+- headline "90x/181x" 처리 (a/b/c 옵션 자율 분석 후 review)
+- CHANGELOG `[Unreleased]` re-baseline annotation
 
-### 시퀀스 C — 잔여 자율 작업
+### 시퀀스 C/D — HUMAN trigger 시점 결정
 
-후보 (1-2 cycles each):
-- `multiple-pre-clauses` 파서 spec 확장
-- `BENCHMARK_REPORT.md` 재생성 (ROADMAP 정합성 후속)
-- (HUMAN unlock 시) M3-3 npm publish / M3-4 PyPI publish
+- C: M3-3 npm publish / M3-4 PyPI publish (M3-5 정정 후)
+- D: M4-1 baseline (`BMB_BENCH_API_KEY` setup 후)
 
-### 시퀀스 D — Multi-cycle phase 분리
+### 시퀀스 E — HUMAN push pending
 
-후속 세션 분리:
-- `inttoptr` codegen 전환 (golden-flakiness 근본 fix, 5-10 cycles)
+- 서브모듈 commit `cb478d2` ready on `fix/march-native-spec-parity`
+- PR body draft: `claudedocs/pr-draft-march-native.md`
+- HUMAN: `git push -u origin fix/march-native-spec-parity` + `gh pr create --draft --body-file ...`
+- Post-merge: 부모 repo submodule pointer bump (자율 가능)
+
+### Multi-cycle phase 분리 (별도 세션)
+
+- `inttoptr` codegen 전환 (golden-flakiness 근본 fix, 5-10 cycles, P3 우선순위)
 - HashMap 3% 갭 fix (해시 교체, 3-5 cycles)
 - Alloc Arena infra 신규 (4-6 cycles)
 - `or` chain proper fix (AST/MIR 변경, 3-5 cycles)
 
 ---
 
-**세션 종료**: 2026-05-11 (Cycles 2728-2735 — lcs_three 진단 + ISSUE 양식 표준화 + 5 close)
+**세션 종료**: 2026-05-11 (Cycle 2746 — 시퀀스 E 자율 실행: -march=native PR draft + 서브모듈 commit `cb478d2`)
