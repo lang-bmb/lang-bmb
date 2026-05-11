@@ -992,18 +992,56 @@ fn parse_set_index(src: String, pos: i64, target_name: String) -> String =
         }
     };
 
-// set obj.field = val  or  set obj.field += val
+// set obj.field[.field]*[idx]? = val (M5-5g + Cycle 2692 nested chain)
+// 진입 시: pos가 첫 '.' 다음 위치, target_name은 root var
+// chain 누적: prev_base = "(var <target_name>)" → "(field <prev_base> f1)" → ...
 fn parse_set_field(src: String, pos: i64, target_name: String) -> String =
-    let t3 = next_token_raw(src, pos);
-    let field_name = get_ident_text(src, pos, t3);
-    let t_eq = next_token_raw(src, tok_end(t3));
-    if not is_assign_op(tok_kind(t_eq)) { make_error_at("expected '=', '+=', '-=', '*=', or '/=' in set, got " + tok_kind_name(tok_kind(t_eq)), src, tok_end(t3)) } else {
-        let op = compound_op(tok_kind(t_eq));
-        let rv = parse_expr(src, tok_end(t_eq));
-        if is_error(rv) { rv } else {
-            let val_ast = if op == "" { unpack_ast(rv) }
-                else { "(binop " + op + " (field (var <" + target_name + ">) " + field_name + ") " + unpack_ast(rv) + ")" };
-            pack_result(unpack_pos(rv), "(set_field (var <" + target_name + ">) " + field_name + " " + val_ast + ")")
+    parse_set_field_chain(src, pos, "(var <" + target_name + ">)");
+
+// 재귀 helper: 한 번에 한 field 읽고, 다음 토큰에 따라 분기
+//   '.'        → chain 계속 (재귀)
+//   '['        → set_field_chain_index (terminal)
+//   assign op  → set_field terminal
+fn parse_set_field_chain(src: String, pos: i64, prev_base: String) -> String =
+    let t_f = next_token_raw(src, pos);
+    if tok_kind(t_f) != TK_IDENT() { make_error_at("expected identifier after '.' in set, got " + tok_kind_name(tok_kind(t_f)), src, pos) }
+    else {
+        let field_name = get_ident_text(src, pos, t_f);
+        let t_next = next_token_raw(src, tok_end(t_f));
+        if tok_kind(t_next) == TK_DOT() {
+            let new_base = "(field " + prev_base + " " + field_name + ")";
+            parse_set_field_chain(src, tok_end(t_next), new_base)
+        } else if tok_kind(t_next) == TK_LBRACKET() {
+            parse_set_field_chain_index(src, tok_end(t_next), prev_base, field_name)
+        } else if is_assign_op(tok_kind(t_next)) {
+            let op = compound_op(tok_kind(t_next));
+            let rv = parse_expr(src, tok_end(t_next));
+            if is_error(rv) { rv } else {
+                let val_ast = if op == "" { unpack_ast(rv) }
+                    else { "(binop " + op + " (field " + prev_base + " " + field_name + ") " + unpack_ast(rv) + ")" };
+                pack_result(unpack_pos(rv), "(set_field " + prev_base + " " + field_name + " " + val_ast + ")")
+            }
+        } else { make_error_at("expected '.', '[', '=', '+=', '-=', '*=', or '/=' in set, got " + tok_kind_name(tok_kind(t_next)), src, tok_end(t_f)) }
+    };
+
+// set <prev_base>.<field_name>[idx] = val (or +=/-=/*=//=)
+// Desugar to (set_index (field <prev_base> field_name) idx val)
+fn parse_set_field_chain_index(src: String, pos: i64, prev_base: String, field_name: String) -> String =
+    let ri = parse_expr(src, pos);
+    if is_error(ri) { ri } else {
+        let t_close = next_token_raw(src, unpack_pos(ri));
+        if tok_kind(t_close) != TK_RBRACKET() { make_error_at("expected ']' in set field-index, got " + tok_kind_name(tok_kind(t_close)), src, unpack_pos(ri)) } else {
+            let t_eq = next_token_raw(src, tok_end(t_close));
+            if not is_assign_op(tok_kind(t_eq)) { make_error_at("expected '=', '+=', '-=', '*=', or '/=' in set field-index, got " + tok_kind_name(tok_kind(t_eq)), src, tok_end(t_close)) } else {
+                let op = compound_op(tok_kind(t_eq));
+                let rv = parse_expr(src, tok_end(t_eq));
+                if is_error(rv) { rv } else {
+                    let base_field = "(field " + prev_base + " " + field_name + ")";
+                    let val_ast = if op == "" { unpack_ast(rv) }
+                        else { "(binop " + op + " (index " + base_field + " " + unpack_ast(ri) + ") " + unpack_ast(rv) + ")" };
+                    pack_result(unpack_pos(rv), "(set_index " + base_field + " " + unpack_ast(ri) + " " + val_ast + ")")
+                }
+            }
         }
     };
 
@@ -15508,22 +15546,20 @@ fn is_string_fn_group1(name: String) -> bool =
     name == "bmb_string_slice" or name == "bmb_string_concat" or
     name == "bmb_string_from_cstr" or name == "bmb_chr" or name == "bmb_read_file" or
     name == "bmb_getenv" or name == "get_arg" or name == "int_to_string" or
-    name == "chr" or name == "slice" or name == "concat" or
-    name == "concat3" or name == "concat5" or name == "concat7" or
+    name == "chr" or name == "slice" or
     name == "bmb_string_concat3" or name == "bmb_string_concat5" or name == "bmb_string_concat7";
 
 fn is_string_fn_group2(name: String) -> bool =
     name == "sb_build" or name == "digit_char" or name == "escape_parens" or
     name == "unescape_parens_from_ast" or name == "extract_string_content" or
     name == "get_fn_return_type" or name == "collect_params" or name == "get_fn_body" or
-    name == "lower_function_sb" or name == "lower_program_sb" or
-    name == "compile_function" or name == "compile_source";
+    name == "lower_function_sb" or name == "lower_program_sb";
 
 fn is_string_fn_group3(name: String) -> bool =
     name == "parse_source" or name == "gen_function" or name == "gen_program" or
-    name == "tokenize" or name == "read_file" or name == "make_error" or
+    name == "read_file" or
     name == "gen_module_header" or name == "gen_runtime_decls" or
-    name == "gen_string_globals" or name == "gen_program_sb_with_strings" or
+    name == "gen_string_globals" or
     name == "collect_strings_from_mir" or name == "compile_program";
 
 fn is_string_fn_group4(name: String) -> bool =

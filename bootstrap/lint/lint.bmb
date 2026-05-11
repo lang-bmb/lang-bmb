@@ -1,7 +1,7 @@
 // lint.bmb -BMB-native AI-friendly lint tool (Track Q Phase 2+3+4)
 // Cycles 2567-2573+2579. Pattern-based lint checks without a full parse step.
 //
-// Implements 9 checks detectable by source text analysis:
+// Implements 11 checks detectable by source text analysis:
 //   1. non_snake_case          -CamelCase function name
 //   2. missing_postcondition   -pub fn without post clause
 //   3. negated_if_condition    -if not( ... )
@@ -11,6 +11,8 @@
 //   7. missing_pre_index       -pub fn with idx/index param but no pre clause
 //   8. redundant_if_expression -if cond { true } else { false } (single-line)
 //   9. empty_block             -{ } or { () } placeholder body
+//  10. double_negation         -not(not(expr))
+//  11. builtin_name_collision  -fn name shadows compiler builtin/intrinsic (e.g. tokenize, bit_or)
 //
 // Output: one JSON line per warning + trailing lint summary line.
 // Format matches `bmb lint` machine output for drop-in compatibility.
@@ -343,6 +345,38 @@ fn check_double_negation(source: String, ls: i64, nl: i64, filename: String, lin
     } else { 0 }
 };
 
+// Check 11: builtin_name_collision -fn name shadows compiler builtin/intrinsic.
+// Background: bootstrap compiler hardcodes function-name → string-return mapping
+// (compiler.bmb:is_string_fn_group*) and arity-specific intrinsics
+// (compiler.bmb:llvm_gen_call @bit_or etc). User fn with same name + different
+// signature → silent IR corruption (Cycle 2697 bit_or, Cycle 2700 tokenize).
+// Heuristic: warn if user fn name matches well-known reserved set.
+fn is_reserved_builtin_name(name: String) -> bool = {
+    name == "bit_or" or name == "bit_and" or name == "bit_xor" or
+    name == "popcount" or name == "clz" or name == "ctz" or
+    name == "bit_reverse" or name == "bit_not" or
+    name == "chr" or name == "slice" or
+    name == "read_file" or name == "sb_build" or
+    name == "parse_source" or name == "compile_program" or
+    name == "gen_function" or name == "gen_program" or
+    name == "get_field" or name == "trim_end" or name == "i2s" or
+    name == "int_to_string" or name == "digit_char"
+};
+
+fn check_builtin_collision(source: String, ls: i64, nl: i64, filename: String, line_num: i64, offset: i64) -> i64 = {
+    let is_fn = line_starts(source, ls, "pub fn ") or line_starts(source, ls, "fn ");
+    if not(is_fn) { 0 }
+    else {
+        let name_start = if line_starts(source, ls, "pub fn ") { ls + 7 } else { ls + 3 };
+        let name = extract_ident(source, name_start, nl);
+        if name.len() == 0 or not(is_reserved_builtin_name(name)) { 0 }
+        else {
+            emit_warning(filename, "builtin_name_collision", line_num, offset,
+                "Function name `" + name + "` collides with a compiler builtin/intrinsic -rename to avoid silent IR corruption (e.g., `user_" + name + "`)")
+        }
+    }
+};
+
 // ============================================================================
 // SECTION 4: Main lint loop
 // ============================================================================
@@ -366,6 +400,7 @@ fn lint_source(source: String, filename: String) -> i64 = {
             warnings = warnings + check_redundant_if_expr(source, ls, nl, filename, line_num, pos);
             warnings = warnings + check_empty_block(source, ls, nl, filename, line_num, pos);
             warnings = warnings + check_double_negation(source, ls, nl, filename, line_num, pos);
+            warnings = warnings + check_builtin_collision(source, ls, nl, filename, line_num, pos);
             0
         } else { 0 };
         warnings = warnings + check_todo_comment(source, ls, nl, filename, line_num, pos);
