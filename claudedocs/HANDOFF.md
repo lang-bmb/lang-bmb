@@ -213,3 +213,83 @@ Cycle 2708→2709→2711의 가설 진화:
 ---
 
 **세션 종료**: 2026-05-11 (Cycles 2708-2717 — **Stage 2 Fixed Point 회복** + builtin arity proper-fix 30 사이트 + bootstrap.sh 32G + ISSUE triage 40개)
+
+---
+
+## 8. 다음 세션 첫 cycle 권고 시퀀스
+
+각 sequence는 self-contained micro-loop (사이클 1개 = 1 action).
+
+### 시퀀스 A — 회귀 안전망 확보 (병렬 가능)
+
+**Cycle 1 — 풀 골든 백그라운드 시작** (사이클 fire-and-forget):
+```bash
+nohup ./scripts/run-golden-tests.sh --json > /tmp/golden-full.json 2>&1 &
+# 43분 소요. 다른 사이클 동시 진행
+```
+완료 후 fail count 확인. 0 FAIL 기대 (sample 80/80 통과).
+
+**Cycle 2 — 부트스트랩 회복 sanity** (≤2 min):
+```bash
+BMB_ARENA_MAX_SIZE=32G ./scripts/bootstrap.sh
+# Stage 1 OK + Stage 2 OK + S2==S3 fixed point 확인
+```
+
+### 시퀀스 B — HUMAN 잠금 해소 (우선순위)
+
+**Cycle 3 — M4-1 B 공식 측정** (HUMAN 결정 잔여, 자율 실행):
+```bash
+export BMB_BENCH_API_KEY=<key>
+./tools/bmb-ai-bench run --suite full --model <fixed>
+# 결과 → claudedocs/B-baseline-2026-05-XX.json
+```
+완료 시 ROADMAP § 5 측정 지표 표 B축 갱신 + 13개 2026-03-26 ISSUE 재평가 가능.
+
+### 시퀀스 C — Actionable backlog (P축 클러스터)
+
+**Cycle 4-8 — P축 actionable 5개** (1 cycle = 1 issue):
+- HashMap 해시 함수 최적화 (`ISSUE-20260413-hashmap-perf.md`)
+- StringBuilder 성능 (`ISSUE-20260413-string-builder-opt.md`)
+- 메모리 할당 최적화 (`ISSUE-20260413-alloc-optimization.md`)
+- 비교 인라인 (`ISSUE-20260413-compare-inline.md`)
+- match → jump table (`ISSUE-20260413-match-jump-table.md`)
+
+### 시퀀스 D — 정리 (낮은 우선순위)
+
+**Cycle N — ISSUE 폴더 정리**:
+```bash
+mkdir -p claudedocs/issues/closed/
+mv claudedocs/issues/ISSUE-20260501-track-*.md claudedocs/issues/closed/
+mv claudedocs/issues/ISSUE-20260510-let-tuple-destructuring.md claudedocs/issues/closed/
+mv claudedocs/issues/ISSUE-20260510-static-method-call.md claudedocs/issues/closed/
+mv claudedocs/issues/ISSUE-20260510-option-expr-position.md claudedocs/issues/closed/
+mv claudedocs/issues/DESIGN-M5-*.md claudedocs/issues/closed/
+mv claudedocs/issues/ISSUE-20260511-set-field-index.md claudedocs/issues/closed/
+mv claudedocs/issues/ISSUE-20260511-golden-regression-3.md claudedocs/issues/closed/
+mv claudedocs/issues/ISSUE-20260511-golden-manifest-audit.md claudedocs/issues/closed/
+mv claudedocs/issues/ISSUE-20260413-bootstrap-fixed-point.md claudedocs/issues/closed/
+# 15개 resolved → active backlog 40 → 25
+```
+
+**Cycle N+1 — CI 게이트 추가**:
+`.github/workflows/` 또는 동등 위치에 `bootstrap_3stage` + golden sample 50 추가.
+
+### 시퀀스 E — Long-term (필요 시점에)
+
+- **Token packing B안 (bit-pack `kind << 32 | pos`)** — 5M scale 임시 회수
+- **O(n²) AST proper-fix** — string AST → binary, 수개월
+- **FP 1-arg/2-arg builtin arity guard 확장** — consistency
+- **`bmb verify` D축 활성화** — Z3 IPC 인프라 활용 (Cycle 2606)
+- **`bmb-ai-bench` C축 활성화** — Track R suite
+
+### Decision Framework 적용 (다음 cycle 진입 시)
+
+각 시퀀스 진입 전 CLAUDE.md § Decision Framework 검토:
+1. 언어 스펙 변경 필요? — 시퀀스 E의 token packing B안이 해당
+2. 컴파일러 구조 변경? — O(n²) AST proper-fix
+3. 최적화 패스? — 시퀀스 C (P축)
+4. 코드 생성? — 시퀀스 C
+5. 런타임? — 해당 없음
+
+낮은 수준에서 해결하려는 유혹 경계. **workaround 금지** (CLAUDE.md Principle 2).
+
