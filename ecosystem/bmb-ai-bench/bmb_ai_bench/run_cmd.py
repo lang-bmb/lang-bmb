@@ -95,6 +95,9 @@ def _run_one_problem(
     attempts: list[AttemptRecord] = []
 
     for attempt_num in range(1, max_loops + 1):
+        # Context truncation (HTTP 413 prevention): keep initial prompt + last 2 assistant/user pairs
+        if len(messages) > 5:
+            messages = [messages[0]] + messages[-4:]
         response = llm.generate(sys_instruction, messages)
         code = llm.extract_code(response, "bmb")
 

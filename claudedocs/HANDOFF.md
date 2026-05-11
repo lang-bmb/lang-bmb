@@ -1,12 +1,40 @@
-# BMB Session Handoff — 2026-05-11 (Cycles 2728-2735 — lcs_three 진단 + ISSUE 양식 표준화)
+# BMB Session Handoff — 2026-05-11 (Cycles 2737-2743 — Doc/Script policy-vs-code 갭 fix)
 
-> **HEAD**: `a94acb40` (Cycles 2728-2736 — closeout 풀 골든 0 FAIL 재확인 포함)
+> **HEAD**: 다음 commit 시 갱신 (Cycles 2737-2743 — context-overflow extension + crosslang gcc flag + stale warnings)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **이전 세션 핸드오프**: cycle-logs/cycle-2728~2735.md 참조 (local — claudedocs/ gitignored)
+> **이전 세션 핸드오프**: cycle-logs/cycle-2728~2736.md (Cycles 2728-2736 lcs_three 진단 + ISSUE 양식 표준화 + 5 close)
 
 ---
 
-## 0. 이번 세션 작업 (Cycles 2728-2735, 8 cycles)
+## 0. 이번 세션 작업 (Cycles 2737-2743, 7 cycles)
+
+### 큰 변곡점
+
+| 항목 | Before | After |
+|------|--------|-------|
+| **BENCHMARK_REPORT.md** | v0.51.22 / v0.50.51 (3.5개월 stale, misleading) | ✅ ROADMAP redirect + stale warning + 핵심 변화 표 |
+| **context-overflow-prevention 적용 범위** | scripts/run_experiment.py 누락 (production `run_cmd.py` 미발견) | ✅ 3 위치 정합 (scripts/run_experiment.py + scripts/run_crosslang.py + bmb_ai_bench/run_cmd.py) |
+| **crosslang gcc baseline** | `-O2` only (README/registry/metadata spec 정합 위반) | ✅ `-O2 -march=native` 정책 정합 |
+| **policy-vs-code 갭 인벤토리** | 미문서화 | ✅ 7 위치 매핑 (3 자율 fix + 5 HUMAN 결정) |
+| **active ISSUE** | 19 | 18 (-1 net: context-overflow close) |
+
+### 세션 성과 요약
+
+| 사이클 | 제목 | 성과 |
+|--------|------|------|
+| 2737 | BENCHMARK_REPORT.md stale warning + ROADMAP redirect | 두 파일 stale 경고 + 핵심 변화 표 (sorting 0.910x BMB FASTER 등) |
+| 2738 | ISSUE backlog deep audit | 19/19 카테고리 분류, 추가 close 후보 부재 결론 (audit-only) |
+| 2739 | context-overflow-prevention close + scripts/run_experiment.py fix | sliding window 적용, ISSUE close |
+| 2740 | production run_cmd.py 동일 fix (leverage 확장) | `bmb-ai-bench run` 명령 production 경로 + ai-bench 30 pytest PASS |
+| 2741 | closed ISSUE 본문 갱신 + bmb-algo README 불일치 발견 | 3 위치 명시 + M3-5 HUMAN 큐 확장 (knapsack 100→10 items, 90x source) |
+| 2742 | scripts/run_crosslang.py `-march=native` 추가 | README 정책 정합, ai-bench 30 pytest PASS |
+| 2743 | CI workflow + Dockerfile -march=native 갭 발견 (HUMAN) | 5 위치 매핑, blast-radius 기준 자율 fix 회피 |
+
+---
+
+---
+
+## 0' (이전 세션). 이번 세션 작업 (Cycles 2728-2735, 8 cycles)
 
 ### 🎉 큰 변곡점
 
@@ -121,7 +149,7 @@
 | (2) | golden-flakiness-inttoptr ISSUE `observed_rate` 갱신 | 갱신 |
 | (3) | 백그라운드 process 잔존 시 정리 | 정리 |
 
-### 자율 가능 작업 (잔여 19 active 중)
+### 자율 가능 작업 (잔여 18 active 중)
 
 | # | 태스크 | 성격 | 상태 |
 |---|--------|------|------|
@@ -131,16 +159,20 @@
 | (4) | HashMap 3% / Alloc 4% 갭 multi-cycle phase | multi-cycle | 분리 phase |
 | (5) | `or` chain proper fix (codegen AST/MIR 변경) | multi-cycle (3-5) | 분리 phase |
 | (6) | FP 1+2-arg arity guard 36 사이트 (mechanical) | 1 cycle, low ROI | carry-forward |
-| (7) | `multiple-pre-clauses` 파서 spec 확장 | 1-2 cycles | 언어 spec |
-| (8) | `BENCHMARK_REPORT.md` 재생성 또는 stale 경고 (분리 ROADMAP-Sync 후속) | 1 cycle | doc |
+| (7) | `multiple-pre-clauses` 파서 spec 확장 (compiler.bmb + bootstrap) | 1-2 cycles | 언어 spec, bench 동시 실행 회피 권고 |
+| (8) | ~~`BENCHMARK_REPORT.md` stale 경고~~ | ✅ Cycle 2737 |
+| (9) | ~~context-overflow-prevention~~ | ✅ Cycle 2739-2740 |
+| (10) | ~~crosslang gcc flag~~ | ✅ Cycle 2742 |
 
-### HUMAN 결정 잔여 (이전 세션과 동일)
+### HUMAN 결정 잔여 (Cycles 2737-2743 확장 포함)
 
 | # | 태스크 |
 |---|--------|
 | M3-3 | npm publish (workflow_dispatch) |
 | M3-4 | PyPI publish (workflow_dispatch) |
-| M3-5 | bmb-algo README clang vs gcc 라벨 |
+| M3-5 | bmb-algo README clang vs gcc 라벨 + **(Cycle 2741)** knapsack(100 items) 표기 vs 실제 10 items 불일치 + headline "90x/181x" source 검증 |
+| M3-6 (신규, Cycle 2743) | CI workflow + Dockerfile 5 위치 `-march=native` 추가 (clang Unix x3, MinGW Win x1, Dockerfile clang x1) — spec 정합 vs CI history 단절 trade-off |
+| M3-7 (신규, Cycle 2742) | M4-1 baseline 재실행 시 "C baseline 변경 사실" 명시 — 이전 (2026-03-26) 결과는 `-march=native` 누락 상태 측정 (run_crosslang.py 측정 |
 | M4-1 | B 공식 측정 (`BMB_BENCH_API_KEY`) |
 
 ---

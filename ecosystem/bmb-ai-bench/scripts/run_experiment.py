@@ -89,6 +89,9 @@ def run_problem(problem_dir: Path, llm, bmb_exe: str, reference: str) -> Problem
     attempts = []
 
     for attempt_num in range(1, MAX_LOOPS + 1):
+        # Context truncation (HTTP 413 prevention): keep initial prompt + last 2 assistant/user pairs
+        if len(messages) > 5:
+            messages = [messages[0]] + messages[-4:]
         # Generate
         response = llm.generate(sys_instruction, messages)
         code = llm.extract_code(response, "bmb")

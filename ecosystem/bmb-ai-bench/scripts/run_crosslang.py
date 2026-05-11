@@ -100,7 +100,8 @@ def _run_c(code: str, tests: list[dict], tmpdir: Path) -> tuple[bool, bool, str]
     out = tmpdir / "solution.exe"
 
     try:
-        r = subprocess.run(["gcc", "-O2", "-o", str(out), str(src), "-lm"],
+        # README baseline policy: -O2 -march=native (matches registry.py default + 100/100 problem metadata)
+        r = subprocess.run(["gcc", "-O2", "-march=native", "-o", str(out), str(src), "-lm"],
                           capture_output=True, text=True, timeout=60, cwd=str(tmpdir))
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
         return False, False, str(e)
