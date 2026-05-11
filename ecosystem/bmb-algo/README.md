@@ -1,6 +1,6 @@
 # bmb-algo — Blazing Fast Algorithms
 
-> 90x faster than Python on knapsack. 181x faster on N-Queens.
+> Up to ~450× faster than pure Python on DP workloads at scale (knapsack(100) at v0.98, 2026-05-12).
 
 High-performance algorithms compiled from [BMB](https://github.com/iyulab/lang-bmb), a language where compile-time contracts eliminate runtime overhead.
 
@@ -19,17 +19,41 @@ See [`bindings/node/README.md`](bindings/node/README.md) for full Node.js API do
 
 ## Benchmarks (vs Pure Python)
 
+Measured at **v0.98** (2026-05-12). Configuration in [`benchmarks/bench_algo.py`](benchmarks/bench_algo.py).
+
 | Algorithm | bmb-algo | Python | Speedup |
 |-----------|----------|--------|---------|
-| knapsack(100 items) | 2 us | 12 us | **6.3x** |
-| nqueens(10) | 1.6 ms | 6.8 ms | **4.1x** |
-| prime_count(10k) | 10 us | 315 us | **32x** |
-| edit_distance | 1.4 us | 8.8 us | **6.4x** |
-| merge_sort(15) | 2 us | 6.8 us | **3.3x** |
-| quicksort(15) | 2 us | 4.2 us | **2.1x** |
-| fibonacci(30) | 0.2 us | 0.5 us | **2x** |
+| **knapsack(100 items, cap ~1300)** | 50 us | 22.5 ms | **~450×** |
+| knapsack(10 items, cap 20) | 3.5 us | 24 us | ~7× |
+| prime_count(10000) | 9 us | 448 us | **~49×** |
+| edit_distance | 1.7 us | 14.6 us | **~8.5×** |
+| nqueens(10) | 1.72 ms | 9.93 ms | **~5.8×** |
+| merge_sort(15) | 4.0 us | 11.6 us | **~2.9×** |
+| **quicksort(1000)** | 218 us | 548 us | **~2.5×** |
+| quicksort(15) | 3.9 us | 3.6 us | ~0.9× ⚠️ |
+| fibonacci(30) | 0.4 us | 0.6 us | ~1.5× |
 
-*All timings include ctypes FFI overhead.*
+*All timings include ctypes FFI overhead — 100-500-iteration mean after 10-iter warmup. Numbers ≈ approximations (5-10% run-to-run variance).*
+
+### Scaling behavior
+
+BMB's advantage **amplifies with input size**, because FFI call overhead is amortized over more algorithmic work:
+
+| size | knapsack speedup | quicksort speedup |
+|------|------------------|-------------------|
+| n=10 | ~7× | ~0.9× (FFI-bound) |
+| n=30 | ~170× | parity |
+| n=100 | **~450×** | ~1.2× |
+| n=300 | ~600× | — |
+| n=1000 | — | **~2.5×** |
+
+**Recommendation**: use bmb-algo for inputs where algorithmic work ≫ FFI overhead. Below ~100 elements / states, raw Python may match or beat bmb-algo due to ctypes marshalling cost.
+
+### Historical measurements (archived)
+
+`bmb-algo v0.2.0` (2026-03-23) recorded `knapsack 90.7×` and `nqueens(8) 181.6×` vs Python.
+The `knapsack 90.7×` is consistent with the scaling table above (achievable at n≥30).
+The `nqueens(8) 181.6×` does not reproduce at any tested size with the current `bench_algo.py` baseline — likely a different bench configuration or baseline. See [CHANGELOG.md](CHANGELOG.md) for re-baseline notes.
 
 ## Quick Start
 

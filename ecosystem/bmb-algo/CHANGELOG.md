@@ -2,6 +2,19 @@
 
 All notable changes to bmb-algo will be documented in this file.
 
+## [Unreleased]
+
+### Documentation
+- README benchmark table re-baselined to v0.98 measurements (2026-05-12). Supersedes v0.2.0 numbers from 2026-03-23.
+- Headline updated to **"Up to ~450× (knapsack(100))"** — confirms v0.2.0 90× knapsack as the n=10 floor; new measurement shows the speedup scales with input size.
+- Added `knapsack(100)` and `quicksort(1000)` to the benchmark suite to demonstrate **scaling behavior**: BMB's advantage amplifies as algorithmic work exceeds FFI overhead.
+- Added a **scaling table** showing knapsack speedup at n=10/30/100/300 and quicksort at n=15/100/1000.
+- Disclosed quicksort(15) regression with input-size guidance — FFI overhead crossover at ~n=50; recommend ≥100 elements for measurable speedup.
+- v0.2.0 `nqueens(8) 181.6×` flagged as not reproducible at any tested size — likely a baseline configuration difference.
+
+### Benchmarks
+- `bench_algo.py`: added `knapsack(100)`, `quicksort(1000)` runs. Existing small-input runs retained for the FFI overhead reference point.
+
 ## [0.3.0] - 2026-03-23
 
 ### Added

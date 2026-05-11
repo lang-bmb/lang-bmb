@@ -1025,6 +1025,32 @@ fn divide(a: i64, b: i64) -> i64
 = a / b;
 ```
 
+**Single-clause constraint**: each function accepts **at most one `pre` clause and one `post` clause**.
+Combine multiple preconditions with `and`:
+
+```bmb
+-- ❌ Parser error: multiple pre clauses not supported
+fn safe_get(v: i64, idx: i64, len: i64) -> i64
+  pre idx >= 0
+  pre idx < len
+= vec_get(v, idx);
+
+-- ✅ Use 'and' to combine
+fn safe_get(v: i64, idx: i64, len: i64) -> i64
+  pre idx >= 0 and idx < len
+= vec_get(v, idx);
+
+-- ✅ Or use the preferred 'where { }' block (Section 10.3)
+fn safe_get(v: i64, idx: i64, len: i64{it < len}) -> i64
+  where {
+    bounded: idx >= 0,
+  }
+= vec_get(v, idx);
+```
+
+The `where { }` block style is preferred for new code and supports named
+contracts plus multiple conditions natively.
+
 ### 10.5 Contract Keywords
 
 | Keyword | Context | Description |

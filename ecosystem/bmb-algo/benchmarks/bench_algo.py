@@ -106,6 +106,14 @@ CAPACITY  = 20
 SORT_DATA = [64, 34, 25, 12, 22, 11, 90, 45, 78, 56, 33, 17, 99, 3, 60]
 STR_A, STR_B = "intention", "execution"
 
+# Larger inputs — demonstrate scaling (BMB advantage amplifies with N)
+import random as _r
+_r.seed(42)
+WEIGHTS_LG  = [_r.randint(1, 50) for _ in range(100)]
+VALUES_LG   = [_r.randint(1, 100) for _ in range(100)]
+CAPACITY_LG = sum(WEIGHTS_LG) // 2
+SORT_DATA_LG = [_r.randint(1, 10000) for _ in range(1000)]
+
 if __name__ == '__main__':
     print("=" * 65)
     print(f"{'Benchmark: bmb-algo vs pure Python':^65}")
@@ -114,9 +122,13 @@ if __name__ == '__main__':
     print("-" * 65)
 
     results = [
-        run("knapsack",
+        run("knapsack(10)",
             lambda: bmb.knapsack(WEIGHTS, VALUES, CAPACITY),
             lambda: py_knapsack(WEIGHTS, VALUES, CAPACITY)),
+        run("knapsack(100)",
+            lambda: bmb.knapsack(WEIGHTS_LG, VALUES_LG, CAPACITY_LG),
+            lambda: py_knapsack(WEIGHTS_LG, VALUES_LG, CAPACITY_LG),
+            iterations=100),
         run("fibonacci(30)",
             lambda: bmb.fibonacci(30),
             lambda: py_fibonacci(30)),
@@ -131,6 +143,10 @@ if __name__ == '__main__':
         run("quicksort(15)",
             lambda: bmb.quicksort(SORT_DATA),
             lambda: py_quicksort(SORT_DATA)),
+        run("quicksort(1000)",
+            lambda: bmb.quicksort(SORT_DATA_LG),
+            lambda: py_quicksort(SORT_DATA_LG),
+            iterations=50),
         run("merge_sort(15)",
             lambda: bmb.merge_sort(SORT_DATA),
             lambda: py_merge_sort(SORT_DATA)),

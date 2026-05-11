@@ -1,147 +1,76 @@
-# BMB Session Handoff — 2026-05-11~12 (Cycles 2746-2749 — 시퀀스 E 완결 + 정리)
+# BMB Session Handoff — 2026-05-12 (Cycles 2750-2758 — 시퀀스 A.2 + B 확장 + methodology finding)
 
-> **HEAD**: `ac47fdfe` (Cycle 2749 — 일관성 정리 + bench JSON 완료 반영)
-> **Cycle 2746 commit**: `b3e19883` → session-close `75ec6639` (HANDOFF 갱신 + PR draft)
-> **Cycle 2747 commit**: `477e5827` → session-close `ea90256a` (서브모듈 main merge + 부모 submodule pointer bump)
-> **Cycle 2748 commit**: `2bd5d712` (ROADMAP § M3 표 + § 4 progress bar)
-> **Cycle 2749 commit**: `ac47fdfe` (HANDOFF/ROADMAP 일관성 정리 + bench JSON ✅ 완료 반영 + feedback memory)
-> **origin/main 동기화**: ✅ Cycle 2747 + 2748 push (22 commit ahead 해소)
-> **백그라운드 bench**: ✅ JSON 생성됨 (00:11, 37401 bytes) — 다음 세션 A.2 즉시 진행
+> **HEAD**: `eaa60a21` 직후 + Cycles 2750-2758 미커밋 변경 (Cycle 2759에서 commit 예정)
+> **이전 세션 핸드오프**: Cycle 2749 (`ac47fdfe`) — 시퀀스 E 완결 + bench JSON 완료 반영
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **이전 세션 핸드오프**: cycle-logs/cycle-2737~2745.md (Cycles 2737-2745 policy-vs-code 갭 fix + HUMAN 결정 채택)
-> **이번 cycle log**: cycle-logs/cycle-2746.md (gitignored, disk only)
-> **이번 PR draft**: pr-draft-march-native.md (gitignored, disk only)
+> **이번 세션 진입점**: Cycle 2750 (HANDOFF § 8 권고)
+> **이번 세션 cycle logs**: cycle-2750.md ~ cycle-2758.md (gitignored, disk only)
 
 ---
 
-## 결정 채택 (2026-05-11, 세션 종료 직전)
-
-권장 옵션 모두 채택. 다음 세션 첫 cycle은 **§ 2.5 권장 실행 시퀀스** 참조.
+## 결정 채택 (이전 세션 Cycle 2749, 채택 그대로)
 
 | # | 결정 사항 | 채택 |
 |---|----------|------|
-| M4-1 | B baseline 즉시 실행 — 모델 **claude-sonnet-4-6** + 100문제 × 3 run | ✅ |
-| M3-5 | bmb-algo bench 재실행 + README 정정 (자율) — publish 이전 처리 | ✅ |
-| M3-3 + M3-4 | M3-5 정정 후 publish dry_run → 실 publish (HUMAN dispatch) | ✅ |
-| M3-6 | CI workflow + Dockerfile 5위치 `-march=native` 일괄 PR (서브모듈, draft 자율) | ✅ |
-| M3-7 | M4-1 실행 결과에 "supersedes 2026-03-26 (baseline change Cycle 2742)" annotation | ✅ (M4-1 종속) |
+| M4-1 | B baseline 실행 — claude-sonnet-4-6 × 100문제 × 3 run | ✅ HUMAN setup 대기 |
+| M3-5 | bmb-algo bench 재실행 + README 정정 — publish 이전 처리 | ✅ **Cycles 2753-2754 완결** (자율) — HUMAN review 대기 |
+| M3-3 + M3-4 | publish dry_run → 실 publish (HUMAN dispatch) | ⏳ M3-5 review 후 즉시 |
+| M3-6 | CI workflow + Dockerfile -march=native | ✅ 완결 (Cycle 2746-2747) |
+| M3-7 | M4-1 supersedes annotation | M4-1 종속 자동 |
 
 ---
 
-## 0. 이번 세션 작업 (Cycles 2746-2749, 4 cycles)
-
-### Cycle 2746 — 시퀀스 E 자율 실행
-
-| 항목 | 상태 |
-|------|------|
-| 서브모듈 branch `fix/march-native-spec-parity` (`ecosystem/benchmark-bmb`) | ✅ 생성 + commit `cb478d2` |
-| 5 위치 `-march=native` 일괄 수정 | ✅ 3 files, +5/-5 (Cycle 2743 매핑 그대로) |
-| PR body draft 파일 | ✅ `claudedocs/pr-draft-march-native.md` (gitignored, disk only) |
-| 서브모듈 push | ⏸ HUMAN trigger 대기 (당시) → Cycle 2747에서 진행 |
-| 부모 repo submodule pointer | ⏸ 미커밋 (당시) → Cycle 2747에서 bump |
-
-### Cycle 2747 — 사용자 결정 변경: PR 회수 + main 직접 merge
-
-| 항목 | 상태 |
-|------|------|
-| 서브모듈 `git push -u origin fix/march-native-spec-parity` | ✅ |
-| PR #2 (https://github.com/lang-bmb/benchmark-bmb/pull/2) | ✅ open → close (withdrawn) |
-| 서브모듈 main fast-forward merge (`62feed4..cb478d2`) | ✅ |
-| 서브모듈 main push (`origin/main`) | ✅ |
-| 서브모듈 fix branch 삭제 (local + remote) | ✅ |
-| 부모 repo submodule pointer bump | ✅ (this Cycle 2747 commit) |
-
-**사용자 결정 근거**: PR overhead 회피, 단일 commit + spec 정합이라 maintainer 직접 main 적용 적합.
-
-### Cycle 2748 — ROADMAP M3-6(신) 완결 반영
-
-| 항목 | 상태 |
-|------|------|
-| ROADMAP 헤더 갱신 (Cycles 2746-2748) | ✅ |
-| § 4 progress bar M3 ~96% → ~97% | ✅ |
-| § M3 잔여 표 M3-6(신) ⏳ → ✅ | ✅ |
-| ETA 재추정 (잔여 M3-5/M3-3/M3-4/M3-7) | ✅ |
-
-bench 진행 중 ↔ 컴파일러 변경 회피 상태에서 doc-only 자율 작업 선택 (bench와 진짜 독립).
-
-### Cycle 2749 — 세션 종료 정리 (사용자 명시 요청)
-
-| 항목 | 상태 |
-|------|------|
-| HANDOFF.md 8 위치 일관성 정리 (마일스톤 %, 시퀀스 번호, Cycle 번호 충돌, § 6 헤더, § 8 stale 섹션) | ✅ |
-| ROADMAP.md M3-6 결정 표에 실행 변경 반영 + § HUMAN 결정 헤더 갱신 | ✅ |
-| Memory feedback 등록: PR overhead 회피 + 직접 main merge 선호 (`feedback_pr_overhead.md`) | ✅ |
-| 세션 막판 bench JSON 완료 반영 (00:11, 37401 bytes) — § 0/§ 5/§ 8 모두 갱신 | ✅ |
-| 다음 세션 진입점: Cycle 2750 시퀀스 A.2 (P-track stamp 갱신) — 즉시 진행 가능 | ✅ |
-
-### 진행 회피 (의도된 skip)
-
-| 시퀀스 | 사유 |
-|--------|------|
-| A | 백그라운드 bench JSON ✅ **세션 막판 완료** (00:11, `target/benchmarks/tier_all_2026_05_11_c2729.json`, 37401 bytes, total ~150분). process 정리 완료. 다음 세션 Cycle 2750은 A.2 즉시 진행 가능 |
-| B | bench 동시 실행 시 system load 충돌 (golden-flakiness-inttoptr ISSUE 확정) — bench 종료 후 |
-| C | M3-3/M3-4 publish는 HUMAN gh workflow run trigger 필요 + M3-5 정정 선결 |
-| D | M4-1 baseline은 HUMAN `BMB_BENCH_API_KEY` setup 선결 |
-
-### 부모 repo 상태
-
-- HEAD: `627dd3a1` (변경 없음, 이 cycle은 parent commit 0건)
-- Working tree dirty: ` M ecosystem/benchmark-bmb` (서브모듈 HEAD 이동 인지) — **commit 금지**
-
----
-
-## 0a. 이전 세션 작업 (Cycles 2737-2744, 8 cycles)
-
-### 큰 변곡점
-
-| 항목 | Before | After |
-|------|--------|-------|
-| **BENCHMARK_REPORT.md** | v0.51.22 / v0.50.51 (3.5개월 stale, misleading) | ✅ ROADMAP redirect + stale warning + 핵심 변화 표 |
-| **context-overflow-prevention 적용 범위** | scripts/run_experiment.py 누락 (production `run_cmd.py` 미발견) | ✅ 3 위치 정합 (scripts/run_experiment.py + scripts/run_crosslang.py + bmb_ai_bench/run_cmd.py) |
-| **crosslang gcc baseline** | `-O2` only (README/registry/metadata spec 정합 위반) | ✅ `-O2 -march=native` 정책 정합 |
-| **policy-vs-code 갭 인벤토리** | 미문서화 | ✅ 7 위치 매핑 (3 자율 fix + 5 HUMAN 결정) |
-| **active ISSUE** | 19 | 18 (-1 net: context-overflow close) |
-
-### 세션 성과 요약
-
-| 사이클 | 제목 | 성과 |
-|--------|------|------|
-| 2737 | BENCHMARK_REPORT.md stale warning + ROADMAP redirect | 두 파일 stale 경고 + 핵심 변화 표 (sorting 0.910x BMB FASTER 등) |
-| 2738 | ISSUE backlog deep audit | 19/19 카테고리 분류, 추가 close 후보 부재 결론 (audit-only) |
-| 2739 | context-overflow-prevention close + scripts/run_experiment.py fix | sliding window 적용, ISSUE close |
-| 2740 | production run_cmd.py 동일 fix (leverage 확장) | `bmb-ai-bench run` 명령 production 경로 + ai-bench 30 pytest PASS |
-| 2741 | closed ISSUE 본문 갱신 + bmb-algo README 불일치 발견 | 3 위치 명시 + M3-5 HUMAN 큐 확장 (knapsack 100→10 items, 90x source) |
-| 2742 | scripts/run_crosslang.py `-march=native` 추가 | README 정책 정합, ai-bench 30 pytest PASS |
-| 2743 | CI workflow + Dockerfile -march=native 갭 발견 (HUMAN) | 5 위치 매핑, blast-radius 기준 자율 fix 회피 |
-
----
-
----
-
-## 0' (이전 세션). 이번 세션 작업 (Cycles 2728-2735, 8 cycles)
+## 0. 이번 세션 작업 (Cycles 2750-2758, 9 cycles)
 
 ### 🎉 큰 변곡점
 
 | 항목 | Before | After |
 |------|--------|-------|
-| **HANDOFF "lcs_three 1 FAIL 회귀" framing** | "BLOCKING inherited defect" | ✅ **4 fail environmental UB로 재구성** (codegen `inttoptr` 패턴 + Windows MSYS2/UCRT64 heap UB 추정) |
-| **ISSUE 양식 표준화** | informal, 일부 6개월 stale | ✅ `_template.md` + 6 필드 (measurement_date / stale_after / measurement_source / observed_rate / scope / env_hash) 21/21 active ISSUE 적용 |
-| **active ISSUE 백로그** | 23 (직전 세션 종료 시) | **19** (-4 net: 5 close + 1 new) |
-| **컴파일러 버그 v0.98 재현 시도** | 1년 stale (v0.51.22 era) | ✅ 2건 모두 v0.98 재현 불가 → close |
-| **양식 leverage 입증** | 가설 | ✅ roadmap-sync close (v0.98 측정 재확인) + 2 codegen ISSUE close (재현 시도 1 cycle each) |
+| **bmb-algo headline** | "90× knapsack / 181× nqueens" (v0.2.0 archival, 재현 불가) | ✅ **"Up to ~450× (knapsack(100))"** — v0.98 직접 측정, scaling table demo |
+| **M3 progress** | ~97% (M3-5 자율 잔여) | **~98%** (M3-5 자율 완결, HUMAN review 잔여) |
+| **Active ISSUE 백로그** | 19 | **17** (-2 net: 2 신규, 3 close) |
+| **Tier 3 measurement methodology** | "lexer 1.310x 회귀 후보" (Cycle 2750 false positive) | ✅ 회귀 가설 기각 + **methodology defect ISSUE 등록** (Cycle 2757) |
+| **bench_algo.py scaling demo** | 단일 input config (10 items) | knapsack(10) + knapsack(100) + quicksort(15) + quicksort(1000) + scaling sweep section |
+| **`docs/LANGUAGE_REFERENCE`** | multiple-pre clauses 제약 미명시 | § 10.4 명시적 disclose + `where { }` 권장 예시 |
 
-### 세션 성과 요약
+### Cycle-by-cycle 요약
 
 | 사이클 | 제목 | 성과 |
 |--------|------|------|
-| 2728 | lcs_three 회귀 가설 기각 | 진단: 4 fail environmental UB. ISSUE-20260511-golden-flakiness-inttoptr 등록 (양식 first application) |
-| 2729 | 풀 골든 + Tier all 백그라운드 시작 | 진행 중 (이 세션 종료 시 ~40% 골든, 0 FAIL so far) |
-| 2730 | `_template.md` 신규 + 11 ISSUE stamp + 2 close | llvm-name-conflicts (Lint 11 resolved), simd-vectorization (superseded) |
-| 2731 | 9 B-track batch reference pointer | `_b_track_methodology_stamp.md` 신규 batch reference |
-| 2732 | hashmap-perf + alloc-optimization 양식 정규화 | informal → 표준 양식 |
-| 2733 | roadmap-sync close (v0.98 재측정 확정) | 3 claim 모두 v0.98로 resolved |
-| 2734 | strict 6-field 검증 + HANDOFF 정정 | clang-knapsack + or-chain strict 6필드, HANDOFF rewrite |
-| 2735 | if-else-early-return + recursive-function v0.98 재현 → 2 close | 1년 stale 컴파일러 버그 모두 v0.98에서 fixed |
+| 2750 | 시퀀스 A.2 — P-track ISSUE 측정 stamp 갱신 | 3 ISSUE stamps (hashmap-perf 1.040x, alloc-optimization 1.010x, or-chain-lowering 1.310x ⚠️). ROADMAP § 5 c2729 sub-section 추가. lexer/json_serialize/json_parse 회귀 후보 surfaced |
+| 2751 | Tier 3 10-run noise-gate 재측정 | 3 회귀 후보 모두 기각 (lexer 1.000x, json_serialize 0.870x, json_parse 1.070x). ROADMAP § 5 Cycle 2751 검증 sub-section |
+| 2752 | Bench framework C-side anomaly 점검 (advisor 권고) | clang/gcc fallback = clang (size match). **직접 측정 발견**: Tier 3 workload ~7ms vs framework 30-130ms (80-95% spawn overhead). bmb-algo submodule 아님 (직접 directory). 90x source = v0.2.0 vs Python (NOT clang outlier) |
+| 2753 | M3-5 bmb-algo README 정정 v1 | option (a): headline "Up to 43× (prime_count)" + table v0.98 numbers + 90x archival note + quicksort 회귀 disclose. 신규 ISSUE-quicksort-ffi-overhead 등록 |
+| 2754 | bench_algo.py large variant 추가 | knapsack(100) 추가 → **447×** 재현! v0.2.0 90× 가 n≥30에서 reproducible 확인. quicksort(1000) 추가 → 2.5×. README headline "Up to ~450×" 회복 + scaling section. v0.2.0 nqueens(8) 181× 모든 N에서 재현 불가 disclose |
+| 2755 | ISSUE 백로그 cleanup 1 | alloc-optimization close (1.010x ≈ parity, Arena infra 부적합 ROI). smt-integration close (Deferred 1+ 년 archival). active 17 |
+| 2756 | multiple-pre-clauses ISSUE close | Rule 6 정렬 (Rust 새 기능 금지) → documentation 옵션. `docs/LANGUAGE_REFERENCE.md` § 10.4 갱신. acceptance criterion (2) 충족 close. active 16 |
+| 2757 | Tier 3 spawn-overhead methodology ISSUE 등록 (advisor 권고) | Cycle 2752 발견 영속화 — ISSUE-20260512-tier3-spawn-overhead-methodology. 3 옵션 (A: workload amplification / B: inproc port / C: warning). active 17 |
+| 2758 | HANDOFF rewrite (본 cycle) | — |
+
+### advisor leverage
+
+- **Cycle 2752 호출**: "C-side anomaly 가볍게 처리 위험" 지적 → 5분 investigation → spawn overhead 발견 → Cycle 2754 scaling 재발견 정합. **Cycle 2750 회귀 가설 단정 시 5-10 cycles 헛수고 회피**.
+- **Cycle 2756 호출**: "Tier 3 methodology gitignored, 90x narrative 강화, FP arity guard 36 sites drop" 지적 → Cycle 2757-2759 정확 정합
+
+### 진행 회피 (의도된 skip)
+
+| 시퀀스 | 사유 |
+|--------|------|
+| C (M3-3/4 publish) | HUMAN dispatch 필요. M3-5 review 후. |
+| D (M4-1 B baseline) | HUMAN `BMB_BENCH_API_KEY` setup 필요 |
+| Multi-cycle phase (inttoptr / HashMap / Arena / or-chain proper fix / Tier 3 inproc) | 잔여 cycle 부족, 별도 세션 |
+
+### 부모 repo 상태
+
+- HEAD: `eaa60a21` (변경 없음)
+- 미커밋 변경:
+  - `claudedocs/ROADMAP.md` (§ 5 Cycle 2750/2751 sub-section + § 6 Cycle 2755-2757 sub-section + M3 progress 98% + M3-5 row ✅)
+  - `ecosystem/bmb-algo/README.md` (headline 450× + scaling table + variant table + v0.2.0 archival)
+  - `ecosystem/bmb-algo/CHANGELOG.md` ([Unreleased] section)
+  - `ecosystem/bmb-algo/benchmarks/bench_algo.py` (large variant + scaling sweep)
+  - `docs/LANGUAGE_REFERENCE.md` (§ 10.4 single-clause constraint)
+- 서브모듈: ` M ecosystem/benchmark-bmb` (untracked content, Cycle 2746부터 — **commit 금지**)
+- Cycle 2759 = commit all changes
 
 ---
 
@@ -149,194 +78,125 @@ bench 진행 중 ↔ 컴파일러 변경 회피 상태에서 doc-only 자율 작
 
 ### Bootstrap 검증 상태
 
-| 게이트 | 결과 (직전 세션 Cycle 2718 + 이 세션 영향 없음) |
+| 게이트 | 결과 (직전 세션 Cycle 2718, 이번 세션 코드 변경 없음) |
 |--------|-----------|
 | Stage 1 (Rust → BMB₁) | ✅ 10.8s |
 | Stage 2 (BMB₁ → LLVM IR, 32G arena) | ✅ 29.2s |
 | Stage 3 (BMB₂ → LLVM IR) | ✅ 36.7s |
 | **Fixed Point S2 == S3** | ✅ **유지** |
-| Total | 77.4s |
 
 ### 테스트 현황
 
 | 스위트 | 결과 |
 |--------|------|
-| `cargo test --release` | ✅ 6210/6210 passed (직전 세션 검증, 이 세션 코드 변경 없음) |
-| Bootstrap Fixed Point | ✅ S2 == S3 |
-| **풀 골든** (Cycle 2729 시작, **Cycle 2736 완료**) | ✅ **2862/2862 PASS, 0 FAIL, 35.2분** (4 flaky tests 모두 PASS — environmental UB 확정) |
-| **Tier all** (Cycle 2729 시작, 백그라운드 진행 중) | ⏳ Tier 0 ✅ + Tier 1 진행 중 — 다음 세션 결과 확인 |
-
-### ⚠️ 풀 골든 4건 environmental flakiness — Cycle 2728에서 진단 완료
-
-**Cycle 2728 정정** (HANDOFF 원본의 "1 FAIL 회귀" framing은 잘못된 진단):
-
-| Test | 실패 모드 | 진단 |
-|------|----------|------|
-| `test_golden_lcs_three` | Segmentation fault → empty (139) | environmental UB |
-| `test_golden_cholesky_trace` | empty output (expected=11) | environmental UB 추정 |
-| `test_golden_crc32_simple` | linking failed | 별도 (link UB) |
-| `test_golden_assortativity` | `child died unexpectedly 0xC0000142` | MSYS2 fork UB |
-
-**실제 root cause** (Cycle 2728 진단):
-- Runtime stable since Cycle 2500, codegen 변경 없음
-- `-O0`에서도 동일 flakiness (20% rate) — LLVM opt 회귀 아님
-- 다른 골든 100% PASS — 광범위 버그 아님
-- `inttoptr/ptrtoint` round-trip 빈도 높은 패턴에서만 발현 (lcs_three 41 hits vs lcs 17 / ackermann 3)
-- Windows MSYS2/UCRT64 heap UB 추정
-
-**등록된 ISSUE**: `claudedocs/issues/ISSUE-20260511-golden-flakiness-inttoptr.md` (Cycle 2728, **Cycle 2736 갱신: 우선순위 P3 강등**)
-
-**Cycle 2736 데이터로 가설 확정**:
-- 첫 실행 (2 concurrent benches): 4/2862 fail (0.14%)
-- 격리 stress (50회): 20% segfault
-- 깨끗한 환경 재실행 (1 concurrent bench): **0/2862 fail (0%)**
-- → system load + concurrent process count에 강한 종속. **inttoptr는 빈도 차이만 결정, root cause는 MSYS2/UCRT64 fork/heap UB**
-
-**Fix scope**: codegen `inttoptr` → `alloca ptr` 전환은 여전히 multi-cycle (5-10), 우선순위는 P3로 강등 (실제 사용자 영향 극히 미미)
-
-### ISSUE 백로그 변화 (이 세션 누적)
-
-- 시작: 23 active (직전 세션 종료)
-- 종료: **19 active**, 40 closed
-- 누적 변경: +1 신규 (golden-flakiness-inttoptr) + 5 close (llvm-name-conflicts / simd-vectorization / roadmap-sync / if-else-early-return-codegen / recursive-function-codegen)
-- 양식 표준화: 21/21 active 100% (12 strict 6필드 + 9 batch reference via `_b_track_methodology_stamp.md`)
-
-### ISSUE 양식 표준화 — 신규 reference 파일
-
-| 파일 | 역할 |
-|------|------|
-| `claudedocs/issues/_template.md` | 신규 ISSUE 작성 표준 (6필드 + 보존 가이드) |
-| `claudedocs/issues/_b_track_methodology_stamp.md` | 9 B-track LLM-bench ISSUE 일괄 measurement stamp (1 reference + 9 pointers) |
+| `cargo test --release` | ✅ 6210/6210 passed (코드 변경 없음, 이번 세션 doc-only) |
+| 풀 골든 | ✅ Cycle 2736 2862/2862 PASS (이번 세션 코드 변경 없음) |
+| Tier all bench | ✅ c2729 + tier3_10run_c2751 (이번 세션 측정) |
 
 ### 마일스톤 상태
-
-Cycles 2746-2748 영향: **M3 ~96% → ~97%** (M3-6 신 완결, ROADMAP 동기화). M1/M2/M4/M5 영향 없음.
 
 | 마일스톤 | 상태 |
 |---------|------|
 | M1 Self-Validated + Bootstrap | ✅ COMPLETE + 회복 |
 | M2 AI-Ready Infra | ✅ COMPLETE |
-| M3 External Bindings | 🔄 ~97% (M3-6 신 완결, M3-5 자율 잔여 + HUMAN publish 잔여) |
+| **M3 External Bindings** | **🔄 ~98%** (M3-5 자율 ✅ + M3-6 ✅, HUMAN review/dispatch 잔여) |
 | M4 Adopted | 🔄 ~50% |
 | M5 Language Completeness | 🔄 M5-1~M5-5g ✅ |
+
+### ⚠️ M3-5 review surface area 증가 (이전 plan 대비)
+
+원 시퀀스 B 계획 (Cycle 2745): "bmb-algo bench 재실행 + README 표 정정 + headline 옵션 선택"
+실제 (Cycles 2753-2754):
+1. ✅ 표 정정 (knapsack(10/100), quicksort(15/1000), prime_count, nqueens, edit_distance, merge_sort, fibonacci — v0.98 numbers)
+2. ✅ **headline 옵션 (a) → 추가 (a+b hybrid)**: v0.98 numbers + scaling variant 추가 → 450× 회복
+3. ✅ **scaling sweep section 신규** (n=10/30/100/300 knapsack, n=15/100/1000 quicksort)
+4. ✅ **bench_algo.py 코드 변경**: WEIGHTS_LG/VALUES_LG/CAPACITY_LG/SORT_DATA_LG 신규 + 2 신규 run() 호출
+5. ✅ v0.2.0 nqueens(8) 181× **재현 불가 명시 disclose**
+6. ✅ quicksort(15) 0.6× FFI overhead **disclose + 별도 ISSUE 등록**
+7. ✅ CHANGELOG [Unreleased] 다중 entry (re-baseline + headline 갱신 + scaling demo + variant added)
+
+→ "narrative tweak" 수준이 아닌 **실측 회복 + 신규 demo 추가 + 코드 변경**. HUMAN review 시간 평소 대비 증가 권고.
+
+### ISSUE 백로그 변화 (이번 세션)
+
+| 시점 | active | closed |
+|------|--------|--------|
+| 시작 (Cycle 2735 종료) | 19 | 40 |
+| 종료 (Cycle 2757) | **17** | **43** |
+
+**신규 2건**: `ISSUE-20260512-bmb-algo-quicksort-ffi-overhead`, `ISSUE-20260512-tier3-spawn-overhead-methodology`
+**Close 3건**: `alloc-optimization` (1.010x parity), `smt-integration` (Deferred archival), `multiple-pre-clauses` (Rule 6 → documentation)
 
 ---
 
 ## 2. 태스크 목록
 
-### 다음 세션 첫 cycle — 채택 결정 시퀀스 (Cycles 2746-2748 진척 반영)
+### 다음 세션 첫 cycle — 진입점 분기
 
-**Cycles 2746-2748 완결**:
-- 시퀀스 E (M3-6): 서브모듈 `cb478d2` main merge + 부모 submodule pointer bump (`477e5827`). PR #2 withdrawn (사용자 결정 변경).
-- ROADMAP 동기화: M3 ~96% → ~97% (`2bd5d712`).
-- origin/main 동기화: ✅ (22 commit ahead 해소).
+#### 분기 A — HUMAN review (M3-5 narrative) 우선
 
-**다음 세션 진입점**: 시퀀스 A (백그라운드 bench JSON 확인) → 완료 시 시퀀스 B.
+| # | 태스크 | 책임 |
+|---|--------|------|
+| A.1 | `ecosystem/bmb-algo/README.md` 검토: headline "Up to ~450×" + scaling table + v0.2.0 archival note 적정성 | HUMAN |
+| A.2 | `ecosystem/bmb-algo/CHANGELOG.md [Unreleased]` 검토 | HUMAN |
+| A.3 | quicksort 회귀 disclose 표현 검토 (별도 ISSUE 처리 적절성) | HUMAN |
+| A.4 | review 후 추가 정정 지시 또는 publish 허가 | HUMAN |
 
-#### 시퀀스 A (자율, 백그라운드 bench 종료 후) — 다음 세션 Cycle 2749
+#### 분기 B — review 통과 후 publish dispatch (시퀀스 C)
+
+| # | 태스크 | 명령 |
+|---|--------|------|
+| B.1 | M3-3: npm publish dry_run | `gh workflow run npm-publish.yml -f dry_run=true` |
+| B.2 | M3-3: npm 실 publish | `gh workflow run npm-publish.yml -f dry_run=false` |
+| B.3 | M3-4: PyPI publish dry_run | `gh workflow run pypi-publish.yml -f publish=false -f repository=pypi` |
+| B.4 | M3-4: PyPI 실 publish | `gh workflow run pypi-publish.yml -f publish=true` |
+| B.5 | publish 결과 24h 모니터링 (metadata + README rendering + links) | 자율/HUMAN 혼합 |
+
+#### 분기 C — M4-1 B baseline (HUMAN setup + 자율 실행)
+
+| # | 태스크 | 책임 |
+|---|--------|------|
+| C.1 | `.env.local` `BMB_BENCH_API_KEY` 설정 | HUMAN |
+| C.2 | `bmb-ai-bench doctor` 검증 + `--pilot --dry-run` | 자율 |
+| C.3 | `bmb-ai-bench run --all --runs 3 --model claude-sonnet-4-6` (예상 8-12h) | 실행 |
+| C.4 | 결과 commit + ROADMAP § 5 B축 baseline 선언 + M3-7 자동 annotation | 자율 |
+| C.5 | 9 B-track ISSUE 일괄 갱신 (`_b_track_methodology_stamp.md`) | 자율 |
+
+#### 자율 분리 phase 후보 (별도 세션)
 
 | # | 태스크 | 성격 |
 |---|--------|------|
-| A.0 | 백그라운드 bench 상태 확인: `target/benchmarks/tier_all_2026_05_11_c2729.json` 출현 여부 | 검증 |
-| A.1 | 잔존 process 확인: `ps -ef \| grep benchmark.sh` — 종료/진행 결정 | 정리 |
-| A.2 | bench 완료 시: P-track ISSUE 측정 stamp 갱신 (hashmap-perf, alloc-optimization, or-chain-lowering) | 갱신 |
-
-#### 시퀀스 B (자율, M3-5 정정 — publish 선결 조건) — 다음 세션 Cycle 2750-2751
-
-| # | 태스크 | 성격 |
-|---|--------|------|
-| B.1 | `bench_algo.py` v0.98 재실행 (5-run median) — 현재 config (10 items) 기준 정확한 측정 | 측정 |
-| B.2 | README 표 정정: "knapsack(10 items)" + clang vs gcc 라벨 명시 | doc |
-| B.3 | headline "90x/181x" 처리 — 옵션: (a) v0.98 측정값으로 재정정 (b) 100-items bench 변종 추가 (c) "Up to" 약화 표현 | doc |
-| B.4 | bmb-algo CHANGELOG `[Unreleased]` 에 "measurement re-baseline 2026-05-11" 명시 | doc |
-
-#### 시퀀스 C (HUMAN dispatch) — Cycle 2750+ (사용자 트리거 후)
-
-| # | 태스크 | 성격 |
-|---|--------|------|
-| C.1 | M3-3: `gh workflow run npm-publish.yml -f dry_run=true` → artifact 검증 → `dry_run=false` 재실행 | HUMAN |
-| C.2 | M3-4: `gh workflow run pypi-publish.yml -f publish=false -f repository=pypi` → 검증 → `publish=true` | HUMAN |
-| C.3 | publish 결과 PyPI/npm metadata + README rendering + links 24h 모니터링 | 검증 |
-
-#### 시퀀스 D (HUMAN trigger, M4-1 baseline) — Cycle 2752+ (M3-5 정정 + C dispatch 후)
-
-| # | 태스크 | 성격 |
-|---|--------|------|
-| D.1 | `.env.local`에 `BMB_BENCH_API_KEY` 설정 (HUMAN) + Model 고정 `claude-sonnet-4-6` | HUMAN setup |
-| D.2 | `bmb-ai-bench doctor` 환경 검증 + `bmb-ai-bench run --pilot --dry-run --json` 정합 확인 | 자율 |
-| D.3 | `bmb-ai-bench run --all --runs 3 --model claude-sonnet-4-6` 실행 (예상 8-12시간) | 실행 |
-| D.4 | 결과 `results/baseline-2026-05-11-sonnet/` commit + ROADMAP § 5 B축 baseline 선언 | 자율 |
-| D.5 | M3-7 자동 처리: 결과 README/CHANGELOG에 "supersedes 2026-03-26" annotation | 자율 |
-| D.6 | 9 B-track ISSUE 일괄 갱신 (`_b_track_methodology_stamp.md`) + 5-7 close 후보 | 자율 |
-
-#### 시퀀스 E (분리 PR, M3-6 CI flag) — ✅ Cycles 2746-2747 완료
-
-| # | 태스크 | 상태 |
-|---|--------|------|
-| E.1 | benchmark-bmb 서브모듈 새 branch `fix/march-native-spec-parity` | ✅ Cycle 2746 |
-| E.2 | 5 위치 일괄 수정 (workflows x4 + Dockerfile x1) — Cycle 2743 매핑 활용 | ✅ Cycle 2746 (3 files, +5/-5) |
-| E.3 | PR draft 본문: "baseline change", "이전 CI history 직접 비교 불가" 명시 | ✅ `claudedocs/pr-draft-march-native.md` |
-| E.4 | 서브모듈 commit (push 금지) | ✅ `cb478d2` (Cycle 2746) |
-| E.5 | **사용자 결정 변경**: PR 회수 + 직접 main merge | ✅ Cycle 2747: push → PR #2 close (withdrawn) → ff-merge → branch 삭제 |
-| E.6 | 부모 repo submodule pointer bump commit | ✅ Cycle 2747 (this commit) |
-| E.7 | 첫 CI run을 새 baseline으로 stamp | ⏳ 자동 (main push 직후 schedule trigger) |
-
-### 자율 가능 작업 (multi-cycle 분리 phase 후보)
-
-채택 결정 시퀀스 A-E **외**의 잔여 자율 작업:
-
-| # | 태스크 | 성격 | 상태 |
-|---|--------|------|------|
-| (1) | `inttoptr` codegen 전환 (golden-flakiness 근본 fix) | multi-cycle (5-10) | 분리 phase (P3 우선순위) |
-| (2) | HashMap 3% / Alloc 4% 갭 multi-cycle phase | multi-cycle | 분리 phase |
-| (3) | `or` chain proper fix (codegen AST/MIR 변경) | multi-cycle (3-5) | 분리 phase |
-| (4) | FP 1+2-arg arity guard 36 사이트 (mechanical) | 1 cycle, low ROI | carry-forward |
-| (5) | `multiple-pre-clauses` 파서 spec 확장 (compiler.bmb + bootstrap) | 1-2 cycles | 언어 spec, bench 동시 실행 회피 권고 |
-| (6) | ~~`BENCHMARK_REPORT.md` stale 경고~~ | ✅ Cycle 2737 |
-| (7) | ~~context-overflow-prevention~~ | ✅ Cycle 2739-2740 |
-| (8) | ~~crosslang gcc flag~~ | ✅ Cycle 2742 |
-| (9) | ~~시퀀스 E CI -march=native 5위치 PR draft~~ | ✅ Cycle 2746 (push HUMAN 대기) |
-
-### HUMAN 결정 잔여 (채택 결정 반영)
-
-모든 결정은 ✅ 채택. 잔여는 **실제 실행 트리거**만 HUMAN 필요:
-
-| # | 항목 | HUMAN action |
-|---|------|-------------|
-| M3-3 | npm publish | `gh workflow run npm-publish.yml -f dry_run=false` 시점 결정 (M3-5 정정 후) |
-| M3-4 | PyPI publish | `gh workflow run pypi-publish.yml -f publish=true` 시점 결정 (M3-5 정정 후) |
-| M3-5 | bmb-algo README headline 처리 옵션 (a/b/c) 선택 | 시퀀스 B.3 자율 정정 후 review |
-| M3-6 | CI flag PR push + open + merge | ✅ **Cycle 2747 완료** (서브모듈 main에 cb478d2 직접 ff-merge, PR #2 withdrawn, 부모 submodule pointer bump) |
-| M3-7 | (M4-1에 종속, 자동 처리) | — |
-| M4-1 | B baseline 실행 | `.env.local`에 `BMB_BENCH_API_KEY` 설정 + 모델 confirm (sonnet-4-6) |
+| (1) | `inttoptr` codegen 전환 (golden-flakiness 근본 fix) | multi-cycle 5-10, P3 |
+| (2) | HashMap 3% 갭 fix (해시 교체) | multi-cycle 3-5 |
+| (3) | `or` chain proper fix (codegen AST/MIR 변경) | multi-cycle 3-5 |
+| (4) | **Tier 3 inproc 변환 (또는 workload amplification)** | multi-cycle (A: 1-2, B: 5-10) — ISSUE-20260512-tier3-spawn-overhead-methodology |
+| (5) | bmb-algo quicksort FFI 최적화 (Option B) | multi-cycle 2-3 — ISSUE-20260512-bmb-algo-quicksort-ffi-overhead |
 
 ---
 
 ## 3. 핵심 산출물 (이번 세션)
 
-### 진단 산출 (Cycle 2728)
+### Documentation 산출
 
-`lcs_three` 회귀 가설 기각:
-- 50회 stress = 20% segfault rate (격리 환경)
-- `-O0`에서도 동일 → opt 회귀 아님
-- `inttoptr` count: lcs_three (41) vs PASS test (3-17) — 패턴 보편, 빈도 결정
-- Runtime/codegen 6개월 stable
-- → ISSUE-20260511-golden-flakiness-inttoptr 등록 (양식 first stamping)
+- `docs/LANGUAGE_REFERENCE.md` § 10.4 — multiple-pre clauses 제약 + `where { }` 권장
+- `ecosystem/bmb-algo/README.md` — headline 450× + scaling section + v0.2.0 archival
+- `ecosystem/bmb-algo/CHANGELOG.md` `[Unreleased]` — 다중 entry
+- `claudedocs/ROADMAP.md` § 5 Cycle 2750/2751 sub-sections + § 6 Cycle 2755-2757
 
-### ISSUE 양식 표준화 (Cycles 2730-2735, 6 cycles)
+### Code 산출
 
-`_template.md`: 6 필드 (measurement_date, stale_after, measurement_source, observed_rate, scope, env_hash) + 측정 추이 sub-table + 양식 보존 가이드
+- `ecosystem/bmb-algo/benchmarks/bench_algo.py` — WEIGHTS_LG/VALUES_LG/CAPACITY_LG/SORT_DATA_LG + 2 신규 run() 호출 (knapsack(100), quicksort(1000))
 
-적용 분류:
-- **12 직접 stamping**: simd-codegen, playground-wasm, smt-integration, linter-enhancement, multiple-pre-clauses, if-else-early-return-codegen, recursive-function-codegen, hashmap-perf, alloc-optimization, clang-knapsack-outlier, or-chain-lowering, golden-flakiness-inttoptr
-- **9 batch reference**: `_b_track_methodology_stamp.md`가 9 B-track methodology ISSUE 일괄 stamp
+### ISSUE 산출
 
-Close 트리거 leverage:
-- llvm-name-conflicts (Cycle 2730) — Lint 11 (Cycle 2703) 으로 이미 resolution
-- simd-vectorization (Cycle 2730) — 형식 close (Superseded)
-- roadmap-sync (Cycle 2733) — v0.98 재측정으로 3 claim 모두 resolution
-- if-else-early-return-codegen (Cycle 2735) — v0.98 재현 5/5 정답
-- recursive-function-codegen (Cycle 2735) — v0.98 재현 5/5 정답 (heapify deterministic)
+- 신규: `ISSUE-20260512-bmb-algo-quicksort-ffi-overhead.md` (P3, ecosystem/bindings)
+- 신규: `ISSUE-20260512-tier3-spawn-overhead-methodology.md` (P2, ci/benchmarks)
+- Closed: alloc-optimization, smt-integration, multiple-pre-clauses
+
+### Measurement 산출
+
+- `target/benchmarks/tier3_10run_2026_05_12_c2751.json` (10-run noise-gate Tier 3, 36s wall, 7 benches)
+- bmb-algo bench v0.98 측정 (knapsack/nqueens/quicksort scaling sweep)
 
 ---
 
@@ -350,152 +210,114 @@ Close 트리거 leverage:
 | 버전 | `0.98.0` |
 | Branch | `main` |
 
-### 운용 주의사항 (직전 세션과 동일)
+### 운용 주의사항
 
-- **BMB_ARENA_MAX_SIZE**: bootstrap.sh default **32G** (Cycle 2713)
-- **Token packing 5M scale**: 사용자 정수 literal 한도 1.84e12
-- **Builtin name collision**: lint 11 + arity guard 30 사이트
-- **FP builtin arity guard 미적용** (낮은 우선순위, carry-forward)
-- **`inttoptr` codegen 패턴**: 모든 BMB 출력에서 사용. lcs_three는 빈도 높아 flakiness 발현 — codegen 전환은 multi-cycle phase
+- **Tier 3 bench 측정 시 주의** (NEW from Cycle 2752): wall-time 30-130ms 중 80-95%가 OS spawn overhead. ratio_c는 fair, absolute ms 변화는 노이즈. `ISSUE-20260512-tier3-spawn-overhead-methodology` 참조.
+- **bmb-algo는 submodule 아님** (NEW from Cycle 2752): `.gitmodules`에 없음. `ecosystem/bmb-algo/`는 부모 repo 직접 directory. PR 부담 없음.
+- 직전 세션 운용 주의사항 그대로:
+  - BMB_ARENA_MAX_SIZE default 32G
+  - Token packing 5M scale
+  - Builtin name collision (Lint 11 + arity guard 30 사이트)
+  - FP builtin arity guard 미적용 (낮은 우선순위, carry-forward — advisor "drop filler" 권고로 본 세션 진행 안 함)
 
 ---
 
 ## 5. 다음 세션 시작 체크리스트
 
 ### 기본 검증
-- [ ] `claudedocs/ROADMAP.md` 읽기 (실무 앵커)
-- [ ] `claudedocs/cycle-logs/cycle-2746.md` 읽기 (직전 cycle, gitignored)
-- [ ] `claudedocs/cycle-logs/cycle-2737~2745.md` 읽기 (이전 세션 9 cycle)
-- [ ] `cargo test --release` → 6210/6210 확인 (필요 시)
-- [ ] `./scripts/bootstrap.sh` → Fixed Point S2 == S3 (필요 시)
+- [ ] `claudedocs/ROADMAP.md` 읽기 (실무 앵커, Cycle 2750-2757 누적 반영)
+- [ ] `claudedocs/cycle-logs/cycle-2758.md` 읽기 (이 cycle, gitignored disk only)
+- [ ] `claudedocs/cycle-logs/cycle-2750~2757.md` 필요 시 (gitignored)
+- [ ] `cargo test --release` → 6210/6210 (필요 시, 이번 세션 코드 변경은 doc + bench_algo.py만 — bmb compiler 영향 없음)
 
-### 부모 repo 상태 확인 (Cycles 2746-2747 영향)
-- [x] ~~서브모듈 미push 상태에서 submodule pointer commit 금지~~ → **Cycle 2747에서 push + ff-merge 완료**
-- [x] ~~HUMAN merge 후 부모에서 submodule pointer bump~~ → **Cycle 2747에서 직접 main merge + bump 완료**
-- [ ] 다음 세션 시작 시 `git submodule update --init --recursive` (clone/fresh checkout 시)
-- [ ] CI baseline 첫 stamp: 다음 schedule trigger (Sunday 00:00 UTC) 또는 workflow_dispatch
+### M3-5 review 진입 (분기 A)
+- [ ] `ecosystem/bmb-algo/README.md` headline + scaling table review
+- [ ] `ecosystem/bmb-algo/CHANGELOG.md [Unreleased]` review
+- [ ] 통과 시 → 분기 B (publish dispatch)
+- [ ] 추가 정정 필요 시 → 자율 정정 cycle
 
-### 백그라운드 정리 (시퀀스 A — ✅ Cycle 2749 세션 막판 bench 완료)
-- [x] ~~`ls -la target/benchmarks/tier_all_2026_05_11_c2729.json` — JSON 완료 여부~~ → ✅ **JSON 생성 (00:11, 37401 bytes)**
-- [x] ~~`ps -ef | grep benchmark.sh` — 잔존 process 확인~~ → ✅ **process 모두 종료**
-- [ ] **다음 세션 Cycle 2750 첫 작업**: P-track ISSUE 측정 stamp 갱신 (hashmap-perf / alloc-optimization / or-chain-lowering) — JSON 분석
+### Publish 진입 (분기 B, M3-5 review 통과 후)
+- [ ] `gh workflow run npm-publish.yml -f dry_run=true`
+- [ ] dry_run artifact 검증
+- [ ] `dry_run=false` 재실행
+- [ ] PyPI 동일 절차
 
-### 채택 결정 순차 실행 (잔여)
-- [ ] **시퀀스 B** (자율, bench 종료 후): M3-5 bmb-algo bench 재실행 + README 정정
-- [ ] **시퀀스 C** (HUMAN): M3-3/M3-4 publish dry_run → 실 publish
-- [ ] **시퀀스 D** (HUMAN setup + 자율 실행): M4-1 baseline 측정 — sonnet-4-6 100문제 × 3 run
-- [x] ~~**시퀀스 E** (자율 draft + HUMAN merge): M3-6 CI flag PR~~ → **Cycles 2746-2747 완료** (PR #2 withdrawn, 서브모듈 main merge + 부모 submodule pointer bump). ROADMAP 동기화 Cycle 2748.
+### M4-1 B baseline (분기 C, HUMAN setup 후)
+- [ ] `BMB_BENCH_API_KEY` 설정 확인
+- [ ] `bmb-ai-bench doctor` PASS
+- [ ] `--all --runs 3` 실행 (8-12h, ScheduleWakeup 활용 가능)
 
 ---
 
-## 6. HUMAN 결정 사항 (Cycles 2737-2748 누적)
+## 6. HUMAN 결정 사항 (Cycles 2737-2758 누적)
 
 | 항목 | 결정 |
 |------|------|
-| M3 showcase 선정 | ✅ bmb-algo |
-| npm publish | ✅ M3-5 정정 **후** 즉시 진행 (순서 정정) |
-| PyPI publish | ✅ M3-5 정정 **후** 즉시 진행 (순서 정정) |
+| M3 showcase | ✅ bmb-algo |
+| npm publish | ✅ M3-5 review **후** 즉시 진행 |
+| PyPI publish | ✅ M3-5 review **후** 즉시 진행 |
 | v0.100 버전 선언 | ✅ M3 publish 완료 직후 |
-| B 공식 측정 모델 | ✅ **claude-sonnet-4-6** (Opus 대비 비용 1/5, 품질 80%+) — 채택 |
-| B 공식 측정 실행 | ✅ 즉시 — `BMB_BENCH_API_KEY` 설정 후 자동 |
-| M3-5 bmb-algo README 처리 | ✅ **재측정 + 정정** (BMB 철학 "측정 없는 성능 주장 금지"). headline 옵션 자율 검토 후 review |
-| M3-6 CI flag PR | ✅ **spec 정합 적용** (CI history 단절 수용) — 단일 PR draft |
-| M3-7 baseline 변경 명시 | ✅ M4-1 결과에 inline annotation (M4-1 종속) |
-| README "knapsack 6.8x faster" | ⏳ clang -O3 outlier (M4-9 deferred) — M3-5 처리와 분리 |
+| B 공식 측정 모델 | ✅ **claude-sonnet-4-6** |
+| B 공식 측정 실행 | ✅ 즉시 — API key 설정 후 자동 |
+| **M3-5 README/CHANGELOG (Cycles 2753-2754 누적)** | ⏳ **HUMAN review 대기** — surface area 증가 (headline 450× 회복 + scaling table + variant 추가 + quicksort disclose) |
+| M3-6 CI flag | ✅ **Cycles 2746-2747 완결** |
+| M3-7 baseline annotation | ✅ M4-1 종속 자동 |
+| **신규 (Cycle 2755)**: alloc-optimization close (1.010x parity) | ✅ 자율 |
+| **신규 (Cycle 2755)**: smt-integration archival (Deferred 1+ 년) | ✅ 자율 |
+| **신규 (Cycle 2756)**: multiple-pre-clauses documentation 옵션 | ✅ 자율 (Rule 6 정렬) |
 
 ---
 
 ## 7. 이번 세션의 메타 통찰
 
-### 1. HANDOFF framing 오류의 직접 비용
+### 1. advisor 절제 leverage (3차)
 
-cycle 2728의 "lcs_three BLOCKING inherited defect" framing이 다음 세션에 그대로 전파되면:
-- 1 cycle을 "compiler regression fix"로 잘못 시작
-- 5-10 cycles `inttoptr` 전환에 들어가서야 root cause 발견
-- → HANDOFF 정정 (Cycle 2734) leverage 10x
+- **Cycle 2752 호출** (Cycle 2751 advisor): "C-side anomaly 가볍게 처리 위험" → 5분 investigation → spawn overhead 발견 → Cycle 2750 회귀 가설 단정 회피 (5-10 cycles 분석 부담 회피)
+- **Cycle 2756 호출**: "Tier 3 methodology gitignored, 90x narrative 강화, FP arity guard drop" → Cycle 2757-2759 정확 정합 (재구성된 2-cycle wrap-up + 결과 ISSUE 영속화)
+- 각각 1.5-10 cycles ROI
 
-### 2. 양식 표준화 즉시 효과
+### 2. v0.2.0 archival → 회복의 narrative 강화
 
-`_template.md` 적용 cycle (2730) 내에서:
-- 1 close (llvm-name-conflicts — Lint 11이 이미 resolution한 사실 발견)
-- 1 close (simd-vectorization — Superseded 잔존)
-- 1년 stale 데이터 명시적 식별 (roadmap-sync)
+Cycle 2753 option (a) "v0.98 numbers, 90× retire"가 conservative honesty. Cycle 2754 scaling demo가 발견적 회복 — knapsack(100) 447× → **v0.2.0 90× 가 합당했으며, 실제 더 큰 N에서 amplify 됨**. 
 
-다음 2 cycles (2733, 2735):
-- 3 추가 close (stale + v0.98 재현 시도)
+이 패턴은 BMB 철학 정렬:
+- "측정 없는 성능 주장 금지" — v0.98 numbers 명시
+- "성능 저하는 버그다" — quicksort(15) 0.6× disclose + ISSUE 등록
+- **"BMB는 C/Rust 추월 목표"** — knapsack(100) 447×는 BMB의 존재가치 입증 demo
 
-→ 양식 표준화 = "이 ISSUE가 아직 살아있는가?" 강제 질문 → 5 close 누적
+### 3. 측정 framework methodology 발견의 영속화
 
-### 3. advisor의 절제된 가치
+Cycle 2752 발견 (Tier 3 workload < spawn overhead)이 gitignored cycle log에만 → advisor 권고로 ISSUE 영속화 (Cycle 2757). gitignored cycle logs는 본 세션에서만 유효, **tracked artifact만 다음 세션에 전파**. 핵심 발견은 ISSUE/ROADMAP에 등록 필수.
 
-3차례 핵심 개입:
-- Cycle 2728: "회귀 가설 기각, diagnostic-only로 마감" — fix 시도 (multi-cycle) 회피
-- Cycle 2734: "polish padding 회피, HANDOFF 정정이 최대 leverage" — 1 cycle을 strucutural improvement에 정렬
-- Cycle 2734: "strict 6-field 검증해라" — 표면 grep을 진짜 검증으로 강화
+### 4. Rule 6 적용의 좁은 범위
 
-각 1 cycle 이상의 ROI.
-
-### 4. 가설 검증 패턴 (다음 세션 재사용)
-
-stale ISSUE 처리 알고리즘 (Cycle 2735에서 확정):
-1. `measurement_date`가 6개월+ 경과 → STALE 표시
-2. `scope`가 단일 패턴이면 → 1 cycle 재현 시도
-3. v0.98에서 재현 불가 → close (resolution: "v0.98 재현 시도 5/5 정답")
-4. 재현 가능 → 신규 진단 시작
-
-이 알고리즘으로 13 LLM-bench era ISSUE 중 compiler bug 카테고리 모두 close 가능 (다음 세션 후보).
+multiple-pre-clauses는 작은 Rust 변경으로 fix 가능했으나 Rule 6 적용 → documentation 옵션. BMB가 Rust 컴파일러 졸업으로 점진 전환 중인 상태에서 새 예외 만들지 않음. 작은 변경이라도 컨벤션 우선.
 
 ---
 
-## 8. 다음 세션 첫 cycle 권고 (Cycle 2750 진입점)
+## 8. 다음 세션 첫 cycle 권고
 
-### Cycle 2750 — 시퀀스 A.2 P-track ISSUE 측정 stamp 갱신 (즉시 가능)
-
-bench JSON ✅ 이미 생성됨 (Cycle 2729 시작 → 00:11 완료, 150분). 분석 즉시 진행:
+### Cycle 2760 — 분기 A (HUMAN review)
 
 ```bash
-# Tier 1 + Tier 3 결과 추출
-jq '.[] | select(.tier==1 or .tier==3) | {bench, ratio_c, ratio_rust}' \
-    target/benchmarks/tier_all_2026_05_11_c2729.json
-
-# P-track 핵심 3 ISSUE
-jq '.[] | select(.bench=="hash_table" or .bench=="binary_trees" or .bench=="lexer")' \
-    target/benchmarks/tier_all_2026_05_11_c2729.json
+# Review m3-5 narrative
+cat ecosystem/bmb-algo/README.md       # headline + scaling + archival
+cat ecosystem/bmb-algo/CHANGELOG.md    # [Unreleased]
+cat claudedocs/issues/ISSUE-20260512-bmb-algo-quicksort-ffi-overhead.md  # 별도 disclose
 ```
 
-갱신 대상:
-- `hashmap-perf` (현재 1.027x, 2026-05-02): tier_all 갱신값으로 측정 추이 row append
-- `alloc-optimization` (현재 1.043x): 동일
-- `or-chain-lowering` (현재 1.000x): 동일
-- 변화 ≥5pp 시 우선순위 재검토 (양식 보존 가이드 적용)
+review 결과 분기:
+- ✅ 통과 → Cycle 2761 분기 B (publish dispatch)
+- 정정 필요 → 자율 정정 → review 재요청
 
-### Cycle 2751 — 시퀀스 B (M3-5 bmb-algo bench 재실행)
+### Cycle 2761+ — 분기 B/C
 
-- M3-5 bmb-algo bench v0.98 재실행 (5-run median, 현재 config 10 items)
-- README 표 정정: "knapsack(10 items)" + clang vs gcc 라벨
-- headline "90x/181x" 처리 (a/b/c 옵션 자율 분석 후 review)
-- CHANGELOG `[Unreleased]` re-baseline annotation
+분기 B (publish dispatch) → 분기 C (M4-1 baseline) 또는 multi-cycle phase 시작 (자율 분리 phase 후보 (1)~(5)).
 
-### 시퀀스 C/D — HUMAN trigger 시점 결정
+### Cycle 2762+ — 자율 분리 phase 후보 진입
 
-- C: M3-3 npm publish / M3-4 PyPI publish (M3-5 정정 후)
-- D: M4-1 baseline (`BMB_BENCH_API_KEY` setup 후)
-
-### 시퀀스 E — ✅ Cycles 2746-2748 완료
-
-- 서브모듈 `cb478d2` on `main` (push 완료, fix branch 삭제)
-- PR #2 withdrawn (사용자 결정: PR overhead 회피, maintainer 직접 main 적용)
-- 부모 repo submodule pointer bump: `477e5827`
-- ROADMAP 동기화: `2bd5d712`
-- CI baseline 첫 stamp: 다음 schedule trigger (Sunday 00:00 UTC) 또는 workflow_dispatch
-
-### Multi-cycle phase 분리 (별도 세션)
-
-- `inttoptr` codegen 전환 (golden-flakiness 근본 fix, 5-10 cycles, P3 우선순위)
-- HashMap 3% 갭 fix (해시 교체, 3-5 cycles)
-- Alloc Arena infra 신규 (4-6 cycles)
-- `or` chain proper fix (AST/MIR 변경, 3-5 cycles)
+advisor pacing 권고: bounded single-cycle vs multi-cycle phase 결정. 잔여 cycle 충분 시 (4) Tier 3 inproc 변환 또는 (1) inttoptr codegen 추천 (둘 다 5-10 cycles, P-track 신뢰도 향상 직결).
 
 ---
 
-**세션 종료**: 2026-05-11~12 (Cycles 2746-2749 — 시퀀스 E 완결: -march=native CI spec parity, 서브모듈 main merge + 부모 pointer bump + ROADMAP 동기화 + 정리. origin/main push 완료. bench JSON ✅ 생성)
+**세션 종료**: 2026-05-12 (Cycles 2750-2758 — 시퀀스 A.2 + B 확장 완결 + methodology finding + ISSUE -2 net). Cycle 2759에서 commit all changes.
