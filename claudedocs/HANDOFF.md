@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-12 (Cycles 2760-2764 — M3-5 honest re-baseline)
 
-> **HEAD**: TBD (Cycle 2764 commit 후 갱신)
+> **HEAD**: `e98669fa` (Cycle 2764 commit — M3-5 honest re-baseline)
 > **이전 세션 핸드오프**: Cycle 2759 (`9f31fa74`) — 시퀀스 A.2 + B 확장 + methodology finding
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 > **이번 세션 진입점**: Cycle 2760 (HUMAN review of M3-5 narrative → re-baseline 발견 → 정정)
@@ -247,4 +247,4 @@ gh workflow run pypi-publish.yml -f publish=true
 
 ---
 
-**세션 종료**: 2026-05-12 (Cycles 2760-2764 — M3-5 honest re-baseline 완결). HEAD TBD (Cycle 2764 commit).
+**세션 종료**: 2026-05-12 (Cycles 2760-2764 — M3-5 honest re-baseline 완결). HEAD `e98669fa` (Cycle 2764 commit).
