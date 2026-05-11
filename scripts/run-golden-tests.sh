@@ -32,6 +32,7 @@ STAGE1=""
 VERBOSE=false
 JSON_OUTPUT=false
 BUILD_STAGE1=false
+LIMIT=0  # 0 = no limit (run full manifest)
 
 # Timeouts (seconds)
 COMPILE_TIMEOUT=60
@@ -69,6 +70,10 @@ while [[ $# -gt 0 ]]; do
         --build-stage1)
             BUILD_STAGE1=true
             shift
+            ;;
+        --limit)
+            LIMIT="$2"
+            shift 2
             ;;
         *)
             echo "Unknown option: $1"
@@ -160,6 +165,11 @@ main() {
         [[ "$line" =~ ^#.*$ ]] && continue
         [[ -z "$line" ]] && continue
         [[ ! "$line" =~ \| ]] && continue
+
+        # CI sample mode: stop after $LIMIT tests have been counted
+        if [ "$LIMIT" -gt 0 ] && [ "$TOTAL" -ge "$LIMIT" ]; then
+            break
+        fi
 
         FILENAME=$(echo "$line" | cut -d'|' -f1)
         EXPECTED=$(echo "$line" | cut -d'|' -f2)

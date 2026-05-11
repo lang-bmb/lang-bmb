@@ -200,6 +200,17 @@ jobs:
           fi
           echo "::notice::Bootstrap verified - fixed point reached"
 
+      # Cycle 2720: PR-gated golden regression net.
+      # Runs after Fixed Point check, reuses target/bootstrap/bmb-stage1
+      # which was just built. --limit 50 bounds runtime to <1min.
+      # Full 2862-test suite runs in nightly-bench.yml (deferred follow-up).
+      - name: Run Golden Sample 50
+        run: |
+          chmod +x scripts/run-golden-tests.sh
+          ./scripts/run-golden-tests.sh --limit 50 --json > golden_sample_50.json 2>&1 || \
+            { echo "::error::Golden sample 50 failed"; tail -40 golden_sample_50.json; exit 1; }
+          tail -5 golden_sample_50.json
+
       - name: Upload Bootstrap Artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -208,6 +219,7 @@ jobs:
           path: |
             bootstrap_results.json
             bootstrap_log.txt
+            golden_sample_50.json
             target/bootstrap/
 
   # ==========================================================================
@@ -358,7 +370,7 @@ jobs:
           echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Build & Test | ${{ needs.test.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| 3-Stage Bootstrap | ${{ needs.bootstrap.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 3-Stage Bootstrap + Golden 50 | ${{ needs.bootstrap.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Fixed Point | ${{ needs.bootstrap.outputs.fixed_point }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Benchmark Suite | ${{ needs.benchmark.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

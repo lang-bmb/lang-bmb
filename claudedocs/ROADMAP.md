@@ -338,6 +338,26 @@ GitHub stars      ≥ 1,000
 - mandelbrot: BMB 148000 / Clang 138000 / GCC 133000
 - nqueen/fibonacci 절대값은 이전 세션 측정 (HANDOFF 표 참조)
 
+### P 축 Tier 1/3 측정 (Cycle 2725 — 1년 stale 데이터 재검증)
+
+historic.json (2026-05-02, 5-run) + tier3-10runs.json (2026-05-01, 10-run, noise-gate):
+
+| benchmark | tier | BMB | C | ratio_c | 이전 (2026-04-13) | 변화 |
+|-----------|------|-----|---|---------|-------------------|------|
+| **sorting** | 3 | 121 | 133 | **0.910x** ✅ | 1.10x | **19 pp** BMB **9% FASTER** |
+| **lexer** | 3 | 28 | 28 | **1.000x** ✅ | 1.09x | **9 pp** parity |
+| **brainfuck** | 3 | 29 | 28 | **1.036x** | 1.11x | 7.4 pp 개선 |
+| hash_table | 1 | 112 | 109 | **1.027x** | 1.11x | 8.3 pp 개선 |
+| binary_trees | 1 | 121 | 116 | **1.043x** | 1.06x | 1.7 pp 개선 |
+| fasta | 1 | 115 | 106 | **1.085x** | 1.08x | ≈ same (StringBuilder 무관 확인) |
+
+**Cycle 2722-2725 진단 결과**:
+- 3 ISSUE close (compare-inline / string-builder-opt / match-jump-table 모두 false positive 또는 목표 달성)
+- 1 new ISSUE 등록 (or-chain-lowering, lexer 1.000x 달성으로 P2 강등)
+- M1 가설 ≤1.05x 16/16 PASS — historic 데이터에서 6/6 P-track 벤치마크 모두 ≤1.085x
+
+**시스템적 발견**: 1년 stale measurement이 3 cycles false-positive 야기. ISSUE 양식 측정 stamp + stale-after threshold 표준화 필요 (다음 세션 우선).
+
 ---
 
 ## HUMAN 결정 사항 (2026-05-10 확정)
