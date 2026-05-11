@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-11 (Cycles 2680-2689 — nested + Array<f64> 일반화 + inproc 측정 표준화)
 
-> **HEAD**: `796a55b2` → (예정 통합 commit Cycles 2680-2687)
+> **HEAD**: `fc4ddcc5` (통합 commit Cycles 2680-2688) + chore 마무리 (예정)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 > **이전 세션 핸드오프**: cycle-logs/cycle-2670~2679.md 참조
 
