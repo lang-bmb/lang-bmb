@@ -1,56 +1,53 @@
-# BMB Session Handoff — 2026-05-11 (Cycles 2680-2689 — nested + Array<f64> 일반화 + inproc 측정 표준화)
+# BMB Session Handoff — 2026-05-11 (Cycles 2690-2707 — set field-index + 골든 0 FAIL + hardcoded list cleanup + lint 11 + clang outlier 분석)
 
-> **HEAD**: `fc4ddcc5` (통합 commit Cycles 2680-2688) + chore 마무리 (예정)
+> **HEAD**: `9d8b3da2` (Cycles 2690-2707 통합 commit)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **이전 세션 핸드오프**: cycle-logs/cycle-2670~2679.md 참조
+> **이전 세션 핸드오프**: cycle-logs/cycle-2680~2689.md 참조
 
 ---
 
-## 0. 이번 세션 작업 (Cycles 2680-2689)
+## 0. 이번 세션 작업 (Cycles 2690-2707)
 
 ### 세션 성과 요약
 
 | 사이클 | 제목 | 성과 |
 |--------|------|------|
-| 2680 | **nested struct array 검증** ✅ | M5-5d 인프라가 nested 경로 자연 처리 — 무구현 통과, 골든 3개 |
-| 2681 | **Array<f64> literal dispatch** ✅ | `mark_f64_ptr` 1-line fix — array literal 동작 |
-| 2682 | **Array<f64> fn return + struct field** ✅ | 4+4 point fix (M5-5c/d f64 변형) — `F:` prefix + `~af` suffix |
-| 2683 | **Array<f64> 변형 시나리오** ✅ | alias/loop/nested/mut set 4개 무구현 통과 — 골든 4개 |
-| 2684 | **set field-index 파서 갭 발견** | `set s.values[0] = x` 미지원 → ISSUE-20260511-set-field-index 등록 |
-| 2685 | **In-process timing 표준 패턴 문서화** | `INPROC_TIMING_GUIDE.md` 신규 + nqueen 측정 재확인 |
-| 2686 | **fibonacci inproc 변환 + 측정** | BMB vs clang 1.04x, BMB vs gcc 0.38x (BMB 2.6x faster) |
-| 2687 | **종합 회귀 + 안정성 검증** | 11개 신규 골든 모두 PASS + cargo test 6210 |
-| 2688 | ROADMAP/HANDOFF 갱신 (현재) | (다음) |
-| 2689 | 통합 commit + 세션 마무리 | (다음) |
+| 2690 | **set field-index 파서 설계 + 기본 i64** ✅ | AST desugar 전략 — `(set_index (field obj f) i v)`, 신규 노드 0 |
+| 2691 | **set field-index 변형 (f64/String/compound)** | 3/3 PASS, nested 갭 발견 |
+| 2692 | **nested field path 일반화** ✅ | `parse_set_field_chain` 재귀 — 7 변형 PASS |
+| 2693 | **골든 등록 + manifest 검증 결함 정정** | 19개 manifest 오등록 fix |
+| 2694 | **Knapsack inproc 측정** ✅ | BMB vs clang 0.149x (6.7x faster), vs gcc 1.39x |
+| 2695 | **Mandelbrot inproc 측정** ✅ | BMB vs clang 1.075x, vs gcc 1.110x |
+| 2696 | **측정 데이터 종합 + 골든 end-to-end** | 2850/2862 PASS, 9 manifest + 3 회귀 분류 |
+| 2697 | **set_cover 회귀 단일 질문 IR diff** ✅ | builtin `@bit_or` arity 충돌 — source rename fix |
+| 2698 | **골든 스위트 재실행 + audit 스크립트** ✅ | 2859 PASS / 3 FAIL, audit-first 권고 |
+| 2699 | **token_scan + tokenizer 동시 진단** ✅ | hardcoded `tokenize` String-fn 충돌 → silent IR corruption |
+| 2700 | **회귀 source rename** ✅ | 2개 회귀 즉시 fix |
+| 2701 | **골든 end-to-end 종결** ✅ | **2862/2862 PASS, 0 FAIL** |
+| 2702 | **컴파일러 fix: tokenize 제거** ✅ | source rename 워크어라운드 불필요해짐 |
+| 2703 | **Lint 11 — builtin_name_collision** ✅ | 25 reserved 이름 정적 감지 |
+| 2704 | **M4-9 clang knapsack outlier IR 분석** ✅ | clang -O3 unconditional store + select-phi anti-pattern → ISSUE deferral |
+| 2705 | **hardcoded dead entries 8개 추가 제거** ✅ | concat/3/5/7, make_error 등 |
+| 2706 | HANDOFF/ROADMAP 갱신 (현재) | (다음) |
+| 2707 | 통합 commit + 세션 마무리 | (다음) |
 
 ---
 
 ## 1. 현재 상태
 
-### 언어 갭 구현 현황 (Array<X> 일반화 확장)
+### 언어 갭 구현 현황 (M5-5g 확장)
 
 | 기능 | 이전 | 현재 |
 |------|------|------|
-| `let (a, b) = expr` | ❌ | ✅ M4-3 (Cycle 2621) |
-| `Type::method(args)` | ❌ | ✅ M4-4 (Cycle 2620) |
-| `Option::Some(x)` 표현식 | ❌ | ✅ M5-1 (Cycle 2633) |
-| `println(String)` | ❌ | ✅ M5-4 (Cycle 2640) |
-| **Array<String> 전체 시나리오** | ❌ | ✅ M5-5 7/7 (Cycle 2651-2675) |
-| **nested struct Array<String> field** | 미검증 | ✅ Cycle 2680 (무구현 통과) |
-| **Array<f64> literal/fn-return/struct-field** | ❌ | ✅ **Cycle 2681-2682** |
-| **Array<f64> alias/loop/nested/mut set** | 미검증 | ✅ **Cycle 2683** (모두 무구현 통과) |
-
-### Track 스냅샷 (변화 없음)
-
-| Track | % | 상태 |
-|-------|---|------|
-| M (Machine-First) | ~100% ✅ | 완료 |
-| N (MCP Server) | ~99% ✅ | 완료 |
-| O (Context Pack) | ~95% ✅ | 완료 |
-| Q (Ambiguity Audit) | ~92% ✅ | 완료 |
-| R (LLM Bench) | ~95% ✅ | 완료 |
-| S (BMB-rewrite) | ~99% ✅ | 완료 |
-| T (External Bindings) | ~95% ✅ | 완료 |
+| `let (a, b) = expr` | ✅ M4-3 | ✅ |
+| `Type::method(args)` | ✅ M4-4 | ✅ |
+| `Option::Some(x)` 표현식 | ✅ M5-1 | ✅ |
+| `println(String)` | ✅ M5-4 | ✅ |
+| **Array<String> 전체 시나리오** | ✅ M5-5 | ✅ |
+| **Array<f64> literal/fn-return/struct-field/nested/alias/loop/mut** | ✅ M5-5f | ✅ |
+| **set obj.field[idx] = val** | ❌ | ✅ **M5-5g (Cycle 2690)** |
+| **set o.f1.f2[idx] = val (nested chain)** | ❌ | ✅ **M5-5g 확장 (Cycle 2692)** |
+| **set o.f1.f2.f3 = val (3-level chain)** | ❌ | ✅ **M5-5g 확장 (Cycle 2692)** |
 
 ### 마일스톤 상태
 
@@ -59,23 +56,30 @@
 | M1 Self-Validated | ✅ COMPLETE |
 | M2 AI-Ready Infra | ✅ COMPLETE |
 | M3 External Bindings | 🔄 ~96% (자율 100%, HUMAN publish 잔여) |
-| M4 Adopted | 🔄 ~40% (M4-3/M4-4/M4-6 ✅, M4-1 미착수) |
-| M5 Language Completeness | 🔄 M5-1~M5-5 ✅ + **M5-5e nested ✅** + **M5-5f Array<f64> ✅** |
+| M4 Adopted | 🔄 ~50% (M4-3/4/6/7/8 ✅, M4-1 미착수) |
+| M5 Language Completeness | 🔄 M5-1~M5-5g ✅ (full set field chain) |
 
 ### 테스트 현황
 
 | 스위트 | 결과 |
 |--------|------|
 | `cargo test --release` | ✅ 6210 passed |
-| `bootstrap` 골든 | ✅ 총 **2868개** (이전 2857 + 신규 11) |
-| Stage 1 빌드 | ✅ OK (10.7s) |
+| `bootstrap` 골든 manifest | 2862개 |
+| Stage 1 빌드 | ✅ OK (10s) |
+| **골든 스위트 end-to-end (Cycle 2701)** | ✅ **2862/2862 PASS, 0 FAIL** (43분 풀 실행) |
+| 회귀 정정 누적 | 9 manifest (Cycles 2693, 2696) + 1 source rename (Cycle 2697 bit_or) + 컴파일러 fix (Cycle 2702 tokenize hardcoded 제거) |
 
-### 측정 현황 (in-process timing)
+### 측정 현황 (in-process timing 누적)
 
-| Bench | BMB vs clang -O3 | BMB vs gcc -O3 | 판정 |
-|-------|------------------|----------------|------|
-| nqueen (15-queens × 10 iter) | 1.06x (BMB +5.8%) | 1.27x (BMB +26%) | LLVM parity, gcc 특화 알려진 케이스 |
-| fibonacci (50, 100M iter) | 1.04x (BMB +4.3%) | 0.38x (**BMB 2.6x faster**) | LLVM iter loop 최적 |
+| Bench | BMB vs clang -O3 -march=native | BMB vs gcc -O3 -march=native | 판정 |
+|-------|--------------------------------|-------------------------------|------|
+| nqueen (15-q × 10 iter) | 1.06x | 1.27x | LLVM parity, gcc 특화 |
+| fibonacci (50, 100M iter) | 1.04x | 0.38x (BMB 2.6x faster) | LLVM iter loop 최적 |
+| knapsack (N=2000, cap=5000) | **0.149x (BMB 6.7x faster)** | 1.39x | **clang outlier** (M4-9 분석 후보) |
+| mandelbrot (size=2000) | 1.075x | 1.110x | dual baseline parity |
+
+**평균 (clang, knapsack 제외)**: 1.058x — LLVM parity 일관.
+**평균 (clang, all)**: 0.831x (knapsack outlier 영향).
 
 ---
 
@@ -85,47 +89,56 @@
 
 | # | 태스크 | 성격 | 상태 |
 |---|--------|------|------|
-| **NEW** | **`set obj.field[idx] = val` 파서 확장** | 자율 (2-3 cycles) | ⏳ ISSUE-20260511 |
+| ~~NEW~~ token_scan / tokenizer segfault | 자율 | ✅ Cycle 2699-2702 (compiler fix + lint) |
+| ~~NEW~~ builtin `@bit_*` arity 체크 | 자율 | ⏳ 부분 — Cycle 2697/2700 source rename + Cycle 2702/2705 hardcoded dead 9개 제거. arity 체크 자체는 미진행 |
+| ~~NEW~~ golden manifest auto-audit script | 자율 | ✅ `scripts/audit-golden-manifest.sh` (Cycle 2698), 풀 스위트가 동등 검증 |
+| ~~M4-9~~ clang knapsack outlier IR 분석 | 자율 | ✅ Cycle 2704 → ISSUE-20260511-clang-knapsack-outlier (deferral) |
 | M4-1 | B 공식 측정 (1-shot LLM 성공률) | 자율 | ⏳ — `BMB_BENCH_API_KEY` 필요 |
-| M3-3 | **[HUMAN]** npm publish | 실행 | ⏳ workflow_dispatch dry_run=false |
-| M3-4 | **[HUMAN]** PyPI publish | 실행 | ⏳ workflow_dispatch publish=true |
-| M3-5 | **[HUMAN]** bmb-algo README baseline 명시 | 결정 | ⏳ |
-| **NEW** | **Tier 1 bench inproc 변환** (Knapsack, Mandelbrot) | 자율 | ⏳ |
-| **NEW** | **BMB vs gcc IR 비교 사이클** (도메인별 갭 분석) | 자율 | ⏳ |
-| arena OOM | compiler.bmb self-compile 32G+ 초과 | 장기 | ⏳ — Fixed Point 검증 차단 중 |
+| M3-3 | **[HUMAN]** npm publish | 실행 | ⏳ |
+| M3-4 | **[HUMAN]** PyPI publish | 실행 | ⏳ |
+| M3-5 | **[HUMAN]** bmb-algo README baseline 라벨 | 결정 | ⏳ — "knapsack 6.7x faster than C" → "vs Clang -O3 outlier" 정정 권장 |
+| Stage 2 진단 | compiler.bmb self-compile parse error vs arena OOM 두 가설 분리 | 장기 | ⏳ |
+| Option C dynamic 우선화 | Stage 2 복원 후 재검토 | 장기 | ⏳ |
 | M6 | type-checker 분리 + AST inferred type attach | 장기 | ⏳ |
-| `Array<X>` 추가 일반화 | bool, char (낮은 우선순위) | 장기 | ⏳ |
 
 ---
 
 ## 3. 핵심 구현 사항 (이번 세션)
 
-### Array<f64> 5+4 point fix (Cycle 2681-2682)
+### M5-5g set field-index + nested chain (Cycle 2690-2692)
 
-**Part 1: fn return** (M5-5c f64 변형)
-1. `parse_return_type` (line 2649) — Array + LT + F64 + GT 토큰 시퀀스 → `"Array<f64>"`
-2. `get_fn_return_scan` (line 6537) — sexp 두 토큰 "Array" + "<f64>" 합쳐 인식
-3. `collect_string_fns_acc` (line 13836) — ret_type=="Array<f64>" → `F:` prefix
-4. `is_dynamic_f64_array_fn` + `check_f64_array_fn_in_list` (line 13937, 신규)
-5. `llvm_gen_call` dispatch (line 15363) — `is_f64_array_fn` → push_f64_ptr_marker
+**전략**: AST 차원 desugar — 신규 AST/MIR 노드 0개
 
-**Part 2: struct field** (M5-5d f64 변형)
-1. `check_field_type` (line 2918) — Array<f64> → type_info==4
-2. `parse_struct_fields_to_registry` (line 2906) — `~af` suffix
-3. `is_field_f64_array` + `check_field_is_f64_array` (신규)
-4. `llvm_gen_field_access` (line 14909) — `field_is_f64_arr` → push_f64_ptr_marker
+`bootstrap/compiler.bmb`:
+- `parse_set_field` (996): `parse_set_field_chain` helper 위임
+- `parse_set_field_chain` (신규): 한 번에 한 field 읽고 `.` / `[` / assign op 분기
+- `parse_set_field_chain_index` (신규): `(set_index (field <prev_base> f) idx val)` 생성
 
-**핵심 통찰**: M5-5c/d 패턴과 완전 동형. `mark_f64_ptr` MIR 명령어는 이미 존재 — 인프라 0 추가, 인식 + dispatch 채널 연결만.
+**핵심 통찰**: `step_set_field` / `step_set_index` 가 base를 `EX`로 평가하므로 nested `(field ...)` 표현이 자동 처리 (M5-5e 무구현 통과 패턴 동일).
 
-### In-process timing 표준 패턴 (Cycle 2685-2686)
+### Tier 1 inproc 측정 (Cycle 2694-2695)
 
-**산출물**:
-- `ecosystem/benchmark-bmb/docs/INPROC_TIMING_GUIDE.md` — BMB/C/Rust harness 패턴
-- `fibonacci/bmb/main_inproc.bmb` + `fibonacci/c/main_inproc.c` 샘플 (nqueen 외 첫 변환)
+`ecosystem/benchmark-bmb/benches/compute/`:
+- knapsack/bmb/main_inproc.bmb + c/main_inproc.c — 측정 첫 실행 (직전 세션 inproc 파일은 존재, 측정만 미실행)
+- mandelbrot/bmb/main_inproc.bmb + c/main_inproc.c — 신규 변환
+
+**환경**: BMB --release / Clang -O3 -march=native / GCC -O3 -march=native, median of 5 runs.
+
+### Golden manifest 정정 (Cycle 2693, 2696)
+
+총 28개 manifest expected 정정:
+- Cycle 2651-2675 잔재 8개: arr_str_* (mut_set, var_repeat, fn_return*, struct_field*)
+- Cycle 2680-2683 잔재 11개: arr_str_nested*, arr_i64_baseline, arr_f64_*
+- Cycle 2690-2692 신규 7개: set_field_index_*, set_field_chain_*
+- Cycle 2696 발견 9개 추가: println_string, println_chain, println_f64, enum_str_payload, struct_str_field/mut, arr_str_println/alias/for_loop
+
+### Golden 회귀 fix (Cycle 2697)
+
+`test_golden_set_cover.bmb`: source rename `bit_or` → `bits_or_n` (builtin `@bit_or` arity 충돌 회피).
 
 ---
 
-## 4. 환경 노트 (변화 없음)
+## 4. 환경 노트
 
 | 환경 | 상태 |
 |------|------|
@@ -137,52 +150,26 @@
 
 ### 운용 주의사항
 
-- **BMB_PATH 절대경로 필수**: `BMB_PATH=D:/data/lang-bmb/target/release/bmb.exe`
-- **BMB 소스 em-dash 금지**: U+2014 → ASCII 하이픈
-- **새 generic 타입 추가 시**: parse_return_type + get_fn_return_scan + check_field_type 모두 점검 (M5-5c/d/f 패턴)
-- **string_fns 카테고리 (`A:` / `F:`)**: 다음 카테고리 추가 시 동일 패턴 (`B:` bool 등)
+- **BMB_PATH 절대경로 필수**
+- **BMB 소스 em-dash 금지** (U+2014 → ASCII)
+- **새 generic 타입 추가 시**: parse_return_type + get_fn_return_scan + check_field_type 모두 점검
+- **builtin 이름 충돌**: Cycle 2702-2705로 9개 dead/안전 entries 제거 + Cycle 2703 lint 11 (builtin_name_collision) 추가. 21개 reserved 이름은 lint가 정적 감지. 컴파일러 자체는 hardcoded list 일부 잔존 (chr/slice/get_field 등 — defined in compiler.bmb).
+- **AST 차원 desugar 패턴**: 신규 AST 노드 추가 전, 기존 노드의 base/operand로 표현 가능한지 먼저 검토 (M5-5g/e 무구현 통과 사례)
 
 ---
 
 ## 5. 다음 세션 시작 체크리스트
 
 - [ ] `claudedocs/ROADMAP.md` 읽기 (실무 앵커)
-- [ ] `claudedocs/cycle-logs/cycle-2681.md` + `cycle-2682.md` 읽기 (Array<f64> 5+4 point fix)
-- [ ] `claudedocs/issues/ISSUE-20260511-set-field-index.md` 읽기 (다음 자율 작업)
+- [ ] `claudedocs/cycle-logs/cycle-2700~2707.md` 읽기 (이번 세션 fix 라이브러리)
+- [ ] `claudedocs/issues/ISSUE-20260511-clang-knapsack-outlier.md` (M4-9 deferral)
 - [ ] `cargo test --release` → 6210/6210 확인
-- [ ] 신규 11개 골든 검증:
-  - `arr_f64_*` 시리즈 (literal/fn_return/struct_field/alias/for_loop/nested_struct/mut_set)
-  - `arr_str_nested_struct{,_loop,_triple_nested}` 시리즈
+- [ ] 골든 스위트 sample (`./scripts/run-golden-tests.sh --json`) — **0 FAIL 예상** (Cycle 2701에서 2862/2862 PASS 확인)
+- [ ] HUMAN 결정 잔여: M3-3 (npm), M3-4 (PyPI), M3-5 (README clang vs gcc 라벨), M4-1 (B 측정 BMB_BENCH_API_KEY)
 
 ---
 
-## 6. 다음 세션 우선순위
-
-### 1순위 — HUMAN 결정 (불변)
-
-| # | 작업 | 트리거 |
-|---|------|------|
-| M3-3 | npm publish | `workflow_dispatch` dry_run=false |
-| M3-4 | PyPI publish | `workflow_dispatch` publish=true |
-| M3-5 | bmb-algo README baseline | clang vs gcc 명시 권장 |
-| v0.100 | 메이저 버전 선언 | M3 publish 직후 메인테이너 결정 |
-
-### 2순위 — 자율 (작은 사이클)
-
-- **set field-index 파서 확장** (ISSUE-20260511, 2-3 cycles) — 신규 갭, AI-native 패턴
-- **B 공식 측정**: `BMB_BENCH_API_KEY` 설정 후 `bmb-ai-bench run` (M4-1)
-- **Tier 1 bench inproc 변환** (Knapsack, Mandelbrot, JSON parse) — 회귀 가드 강화
-
-### 3순위 — 장기 아키텍처
-
-- **BMB vs gcc IR 비교 사이클** — 도메인별 갭 분석 (nqueen 1.27x, fibonacci 0.38x 양극)
-- **arena OOM**: compiler.bmb self-compile 32G+ 초과 — Stage 2/3 검증 차단
-- **type-checker 분리** (M6): AST inferred type attach + lookup_fn_ret_raw
-- **Array<X> 추가 일반화**: bool, char (낮은 우선순위, 사례 부족)
-
----
-
-## 7. HUMAN 결정 사항 (불변, 2026-05-10/11 확정)
+## 6. HUMAN 결정 사항 (불변, 2026-05-10/11 확정)
 
 | 항목 | 결정 |
 |------|------|
@@ -191,8 +178,8 @@
 | PyPI publish | ✅ 즉시 진행 |
 | v0.100 버전 선언 | ✅ M3 publish 완료 직후 |
 | B 공식 측정 | ✅ 즉시 실행 |
-| README "knapsack 6.8x faster" | ⏳ clang baseline 재현, gcc 미재현 — 라벨 명시 권장 |
+| README "knapsack 6.8x faster" | ⏳ **clang -O3 -march=native 재현 확인** (Cycle 2694), gcc는 BMB 1.39x slower — 라벨 명시 권장 |
 
 ---
 
-**세션 종료**: 2026-05-11 (Cycles 2680-2689 — nested + Array<f64> 일반화 + inproc 측정 표준화, 골든 2857 → 2868)
+**세션 종료**: 2026-05-11 (Cycles 2690-2707 — M5-5g + 골든 0 FAIL + hardcoded list cleanup 9개 + Lint 11 + clang outlier 분석)
