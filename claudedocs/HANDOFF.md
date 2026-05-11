@@ -1,6 +1,8 @@
-# BMB Session Handoff — 2026-05-11 (Cycle 2746 — 시퀀스 E 자율 실행: -march=native PR draft)
+# BMB Session Handoff — 2026-05-11 (Cycles 2746-2747 — 시퀀스 E 자율 + 직접 main merge)
 
-> **HEAD**: `b3e19883` (Cycle 2746 HANDOFF 갱신 commit. 코드 변경 0건, 서브모듈 commit `cb478d2` + claudedocs gitignored)
+> **HEAD**: `<this commit>` (Cycle 2747 — PR 회수 + main merge + submodule pointer bump)
+> **Cycle 2746 commit**: `b3e19883` → session-close `75ec6639` (HANDOFF 갱신)
+> **Cycle 2747**: 서브모듈 cb478d2 push → PR #2 회수 → main fast-forward merge → branch 삭제 → 부모 submodule pointer bump
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 > **이전 세션 핸드오프**: cycle-logs/cycle-2737~2745.md (Cycles 2737-2745 policy-vs-code 갭 fix + HUMAN 결정 채택)
 > **이번 cycle log**: cycle-logs/cycle-2746.md (gitignored, disk only)
@@ -31,8 +33,21 @@
 | 서브모듈 branch `fix/march-native-spec-parity` (`ecosystem/benchmark-bmb`) | ✅ 생성 + commit `cb478d2` |
 | 5 위치 `-march=native` 일괄 수정 | ✅ 3 files, +5/-5 (Cycle 2743 매핑 그대로) |
 | PR body draft 파일 | ✅ `claudedocs/pr-draft-march-native.md` (gitignored, disk only) |
-| 서브모듈 push | ⏸ **HUMAN trigger 대기** (HANDOFF E.4 명시) |
-| 부모 repo submodule pointer | ⏸ **미커밋** (서브모듈 미push 상태에서 bump하면 broken pointer) |
+| 서브모듈 push | ⏸ HUMAN trigger 대기 (당시) → Cycle 2747에서 진행 |
+| 부모 repo submodule pointer | ⏸ 미커밋 (당시) → Cycle 2747에서 bump |
+
+### Cycle 2747 — 사용자 결정 변경: PR 회수 + main 직접 merge
+
+| 항목 | 상태 |
+|------|------|
+| 서브모듈 `git push -u origin fix/march-native-spec-parity` | ✅ |
+| PR #2 (https://github.com/lang-bmb/benchmark-bmb/pull/2) | ✅ open → close (withdrawn) |
+| 서브모듈 main fast-forward merge (`62feed4..cb478d2`) | ✅ |
+| 서브모듈 main push (`origin/main`) | ✅ |
+| 서브모듈 fix branch 삭제 (local + remote) | ✅ |
+| 부모 repo submodule pointer bump | ✅ (this Cycle 2747 commit) |
+
+**사용자 결정 근거**: PR overhead 회피, 단일 commit + spec 정합이라 maintainer 직접 main 적용 적합.
 
 ### 진행 회피 (의도된 skip)
 
@@ -226,7 +241,7 @@
 | D.5 | M3-7 자동 처리: 결과 README/CHANGELOG에 "supersedes 2026-03-26" annotation | 자율 |
 | D.6 | 9 B-track ISSUE 일괄 갱신 (`_b_track_methodology_stamp.md`) + 5-7 close 후보 | 자율 |
 
-#### 시퀀스 E (분리 PR, M3-6 CI flag) — ✅ Cycle 2746 자율 완료
+#### 시퀀스 E (분리 PR, M3-6 CI flag) — ✅ Cycles 2746-2747 완료
 
 | # | 태스크 | 상태 |
 |---|--------|------|
@@ -234,8 +249,9 @@
 | E.2 | 5 위치 일괄 수정 (workflows x4 + Dockerfile x1) — Cycle 2743 매핑 활용 | ✅ Cycle 2746 (3 files, +5/-5) |
 | E.3 | PR draft 본문: "baseline change", "이전 CI history 직접 비교 불가" 명시 | ✅ `claudedocs/pr-draft-march-native.md` |
 | E.4 | 서브모듈 commit (push 금지) | ✅ `cb478d2` (Cycle 2746) |
-| E.5 | **HUMAN push + PR open + merge** → 첫 CI run을 새 baseline으로 stamp | ⏸ **HUMAN trigger** |
-| E.6 | (E.5 후 자율) 부모 repo submodule pointer bump commit | ⏸ HUMAN merge 후 자율 |
+| E.5 | **사용자 결정 변경**: PR 회수 + 직접 main merge | ✅ Cycle 2747: push → PR #2 close (withdrawn) → ff-merge → branch 삭제 |
+| E.6 | 부모 repo submodule pointer bump commit | ✅ Cycle 2747 (this commit) |
+| E.7 | 첫 CI run을 새 baseline으로 stamp | ⏳ 자동 (main push 직후 schedule trigger) |
 
 ### 자율 가능 작업 (multi-cycle 분리 phase 후보)
 
@@ -262,7 +278,7 @@
 | M3-3 | npm publish | `gh workflow run npm-publish.yml -f dry_run=false` 시점 결정 (M3-5 정정 후) |
 | M3-4 | PyPI publish | `gh workflow run pypi-publish.yml -f publish=true` 시점 결정 (M3-5 정정 후) |
 | M3-5 | bmb-algo README headline 처리 옵션 (a/b/c) 선택 | 시퀀스 B.3 자율 정정 후 review |
-| M3-6 | CI flag PR push + open + merge | **Cycle 2746에서 commit 완료**. HUMAN: `cd ecosystem/benchmark-bmb && git push -u origin fix/march-native-spec-parity` + `gh pr create --draft --body-file claudedocs/pr-draft-march-native.md` |
+| M3-6 | CI flag PR push + open + merge | ✅ **Cycle 2747 완료** (서브모듈 main에 cb478d2 직접 ff-merge, PR #2 withdrawn, 부모 submodule pointer bump) |
 | M3-7 | (M4-1에 종속, 자동 처리) | — |
 | M4-1 | B baseline 실행 | `.env.local`에 `BMB_BENCH_API_KEY` 설정 + 모델 confirm (sonnet-4-6) |
 
@@ -325,10 +341,11 @@ Close 트리거 leverage:
 - [ ] `cargo test --release` → 6210/6210 확인 (필요 시)
 - [ ] `./scripts/bootstrap.sh` → Fixed Point S2 == S3 (필요 시)
 
-### 부모 repo 상태 확인 (Cycle 2746 영향)
-- [ ] `git status` → ` M ecosystem/benchmark-bmb` 표시 (서브모듈 HEAD 이동)
-- [ ] **commit 금지**: 서브모듈 미push 상태 → submodule pointer bump 하면 broken
-- [ ] HUMAN이 서브모듈 push + PR merge 완료한 후에만 부모에서 submodule pointer bump
+### 부모 repo 상태 확인 (Cycles 2746-2747 영향)
+- [x] ~~서브모듈 미push 상태에서 submodule pointer commit 금지~~ → **Cycle 2747에서 push + ff-merge 완료**
+- [x] ~~HUMAN merge 후 부모에서 submodule pointer bump~~ → **Cycle 2747에서 직접 main merge + bump 완료**
+- [ ] 다음 세션 시작 시 `git submodule update --init --recursive` (clone/fresh checkout 시)
+- [ ] CI baseline 첫 stamp: 다음 schedule trigger (Sunday 00:00 UTC) 또는 workflow_dispatch
 
 ### 백그라운드 정리 (시퀀스 A — Cycle 2746에서 미완료, 다음 세션 첫 cycle)
 - [ ] `ls -la target/benchmarks/tier_all_2026_05_11_c2729.json` — JSON 완료 여부
