@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-11 (Cycles 2728-2735 — lcs_three 진단 + ISSUE 양식 표준화)
 
-> **HEAD**: TBD (이 commit)
+> **HEAD**: `73cfd05c` (Cycles 2728-2735 통합 commit)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 > **이전 세션 핸드오프**: cycle-logs/cycle-2728~2735.md 참조 (local — claudedocs/ gitignored)
 
