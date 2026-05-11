@@ -1,6 +1,6 @@
-# BMB Session Handoff — 2026-05-11 (Cycles 2737-2743 — Doc/Script policy-vs-code 갭 fix)
+# BMB Session Handoff — 2026-05-11 (Cycles 2737-2744 — Doc/Script policy-vs-code 갭 fix)
 
-> **HEAD**: 다음 commit 시 갱신 (Cycles 2737-2743 — context-overflow extension + crosslang gcc flag + stale warnings)
+> **HEAD**: `0b6a5500` (Cycles 2737-2744 — context-overflow extension + crosslang gcc flag + stale warnings)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 > **이전 세션 핸드오프**: cycle-logs/cycle-2728~2736.md (Cycles 2728-2736 lcs_three 진단 + ISSUE 양식 표준화 + 5 close)
 
