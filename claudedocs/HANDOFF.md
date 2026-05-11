@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-11 (Cycles 2746-2747 — 시퀀스 E 자율 + 직접 main merge)
 
-> **HEAD**: `<this commit>` (Cycle 2747 — PR 회수 + main merge + submodule pointer bump)
+> **HEAD**: `477e5827` (Cycle 2747 — PR 회수 + main merge + submodule pointer bump)
 > **Cycle 2746 commit**: `b3e19883` → session-close `75ec6639` (HANDOFF 갱신)
 > **Cycle 2747**: 서브모듈 cb478d2 push → PR #2 회수 → main fast-forward merge → branch 삭제 → 부모 submodule pointer bump
 > **실무 앵커**: `claudedocs/ROADMAP.md`
