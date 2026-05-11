@@ -92,11 +92,18 @@ def bench(fn, iterations=500):
     for _ in range(iterations): fn()
     return (time.perf_counter() - t0) / iterations
 
-def run(name, bmb_fn, py_fn, iterations=500):
-    bmb_us = bench(bmb_fn, iterations) * 1e6
-    py_us  = bench(py_fn,  iterations) * 1e6
-    speedup = py_us / bmb_us if bmb_us > 0 else float('inf')
-    return name, bmb_us, py_us, speedup
+def run(name, bmb_fn, py_fn, iterations=500, runs=1):
+    """Return (name, median_bmb_us, median_py_us, median_speedup, all_speedups)."""
+    samples = []
+    for _ in range(runs):
+        bmb_us = bench(bmb_fn, iterations) * 1e6
+        py_us  = bench(py_fn,  iterations) * 1e6
+        speedup = py_us / bmb_us if bmb_us > 0 else float('inf')
+        samples.append((bmb_us, py_us, speedup))
+    samples.sort(key=lambda x: x[2])
+    mid = samples[len(samples) // 2]
+    all_speedups = [s[2] for s in samples]
+    return name, mid[0], mid[1], mid[2], all_speedups
 
 # ── Test data ─────────────────────────────────────────────────────────────
 
@@ -114,52 +121,114 @@ VALUES_LG   = [_r.randint(1, 100) for _ in range(100)]
 CAPACITY_LG = sum(WEIGHTS_LG) // 2
 SORT_DATA_LG = [_r.randint(1, 10000) for _ in range(1000)]
 
+def scaling_sweep(runs=1):
+    """Reproduces the scaling table from README (n=10/30/100/300 knapsack, n=15/50/100/500/1000 quicksort)."""
+    print("=" * 75)
+    print(f"{'Scaling sweep — FFI overhead amortization':^75}")
+    print("=" * 75)
+    fmt_hdr = f"{'Config':<22} {'BMB (µs)':>10} {'Py (µs)':>10} {'Speedup':>10}"
+    if runs > 1:
+        fmt_hdr += f"  {'min-max':>14}"
+    print(fmt_hdr)
+    print("-" * 75)
+
+    def gen_knapsack(n, seed=42):
+        r = _r.Random(seed)
+        w = [r.randint(1, 50) for _ in range(n)]
+        v = [r.randint(1, 100) for _ in range(n)]
+        return w, v, sum(w) // 2
+
+    def gen_sort(n, seed=42):
+        r = _r.Random(seed)
+        return [r.randint(1, 10000) for _ in range(n)]
+
+    sweep = []
+    for n, iters in [(10, 500), (30, 200), (100, 100), (300, 20)]:
+        w, v, c = gen_knapsack(n)
+        sweep.append(run(f"knapsack(n={n})",
+            lambda w=w, v=v, c=c: bmb.knapsack(w, v, c),
+            lambda w=w, v=v, c=c: py_knapsack(w, v, c),
+            iterations=iters, runs=runs))
+    for n, iters in [(15, 500), (50, 500), (100, 500), (500, 100), (1000, 50)]:
+        data = gen_sort(n)
+        sweep.append(run(f"quicksort(n={n})",
+            lambda d=data: bmb.quicksort(d),
+            lambda d=data: py_quicksort(d),
+            iterations=iters, runs=runs))
+
+    for name, bmb_us, py_us, speedup, all_speedups in sweep:
+        marker = "FAST" if speedup >= 2.0 else ("OK" if speedup >= 1.0 else "SLOW")
+        line = f"{name:<22} {bmb_us:>10.2f} {py_us:>10.2f} {speedup:>9.2f}x  {marker}"
+        if runs > 1:
+            line += f"  {min(all_speedups):>5.2f}-{max(all_speedups):.2f}x"
+        print(line)
+    print("=" * 75)
+
+
 if __name__ == '__main__':
-    print("=" * 65)
-    print(f"{'Benchmark: bmb-algo vs pure Python':^65}")
-    print("=" * 65)
-    print(f"{'Function':<20} {'BMB (µs)':>10} {'Python (µs)':>12} {'Speedup':>9}")
-    print("-" * 65)
+    runs = 1
+    for arg in sys.argv:
+        if arg.startswith('--runs='):
+            runs = int(arg.split('=', 1)[1])
+
+    print("=" * 75)
+    title = 'Benchmark: bmb-algo vs pure Python' + (f' (median of {runs} runs)' if runs > 1 else '')
+    print(f"{title:^75}")
+    print("=" * 75)
+    hdr = f"{'Function':<20} {'BMB (µs)':>10} {'Py (µs)':>10} {'Speedup':>10}"
+    if runs > 1:
+        hdr += f"  {'min-max':>14}"
+    print(hdr)
+    print("-" * 75)
 
     results = [
         run("knapsack(10)",
             lambda: bmb.knapsack(WEIGHTS, VALUES, CAPACITY),
-            lambda: py_knapsack(WEIGHTS, VALUES, CAPACITY)),
+            lambda: py_knapsack(WEIGHTS, VALUES, CAPACITY), runs=runs),
         run("knapsack(100)",
             lambda: bmb.knapsack(WEIGHTS_LG, VALUES_LG, CAPACITY_LG),
             lambda: py_knapsack(WEIGHTS_LG, VALUES_LG, CAPACITY_LG),
-            iterations=100),
+            iterations=100, runs=runs),
         run("fibonacci(30)",
             lambda: bmb.fibonacci(30),
-            lambda: py_fibonacci(30)),
+            lambda: py_fibonacci(30), runs=runs),
         run("prime_count(10000)",
             lambda: bmb.prime_count(10000),
             lambda: py_prime_count(10000),
-            iterations=100),
+            iterations=100, runs=runs),
         run("nqueens(10)",
             lambda: bmb.nqueens(10),
             lambda: py_nqueens(10),
-            iterations=100),
+            iterations=100, runs=runs),
         run("quicksort(15)",
             lambda: bmb.quicksort(SORT_DATA),
-            lambda: py_quicksort(SORT_DATA)),
+            lambda: py_quicksort(SORT_DATA), runs=runs),
         run("quicksort(1000)",
             lambda: bmb.quicksort(SORT_DATA_LG),
             lambda: py_quicksort(SORT_DATA_LG),
-            iterations=50),
+            iterations=50, runs=runs),
         run("merge_sort(15)",
             lambda: bmb.merge_sort(SORT_DATA),
-            lambda: py_merge_sort(SORT_DATA)),
+            lambda: py_merge_sort(SORT_DATA), runs=runs),
         run("edit_distance",
             lambda: bmb.edit_distance(STR_A, STR_B),
-            lambda: py_edit_distance(STR_A, STR_B)),
+            lambda: py_edit_distance(STR_A, STR_B), runs=runs),
     ]
 
-    for name, bmb_us, py_us, speedup in results:
+    for name, bmb_us, py_us, speedup, all_speedups in results:
         marker = "FAST" if speedup >= 2.0 else ("OK" if speedup >= 1.0 else "SLOW")
-        print(f"{name:<20} {bmb_us:>10.2f} {py_us:>12.2f} {speedup:>8.2f}x {marker}")
+        line = f"{name:<20} {bmb_us:>10.2f} {py_us:>10.2f} {speedup:>9.2f}x  {marker}"
+        if runs > 1:
+            line += f"  {min(all_speedups):>5.2f}-{max(all_speedups):.2f}x"
+        print(line)
 
-    print("=" * 65)
-    wins = sum(1 for _, b, p, _ in results if b < p)
-    print(f"BMB faster in {wins}/{len(results)} benchmarks")
-    print("Note: BMB includes ctypes FFI overhead in all timings.")
+    print("=" * 75)
+    wins = sum(1 for r in results if r[1] < r[2])
+    print(f"BMB faster in {wins}/{len(results)} benchmarks (median).")
+    print("Note: BMB includes ctypes FFI overhead. 50-500-iter mean per sample, 10-iter warmup.")
+    print("Run `python bench_algo.py --runs=5` for median-of-5 with min-max spread.")
+    print("Run `python bench_algo.py --scaling` to reproduce the README scaling table.")
+
+    if '--scaling' in sys.argv:
+        print()
+        scaling_sweep(runs=runs)

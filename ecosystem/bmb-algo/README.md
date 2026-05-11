@@ -1,6 +1,6 @@
 # bmb-algo — Blazing Fast Algorithms
 
-> Up to ~450× faster than pure Python on DP workloads at scale (knapsack(100) at v0.98, 2026-05-12).
+> Up to ~245× faster than pure Python on DP workloads (knapsack(100), median of 5 runs at v0.98, 2026-05-12). Scales to ~300× at n=300.
 
 High-performance algorithms compiled from [BMB](https://github.com/iyulab/lang-bmb), a language where compile-time contracts eliminate runtime overhead.
 
@@ -19,21 +19,21 @@ See [`bindings/node/README.md`](bindings/node/README.md) for full Node.js API do
 
 ## Benchmarks (vs Pure Python)
 
-Measured at **v0.98** (2026-05-12). Configuration in [`benchmarks/bench_algo.py`](benchmarks/bench_algo.py).
+Measured at **v0.98** (2026-05-12), **median of 5 runs**. Reproduce with `python benchmarks/bench_algo.py --runs=5`.
 
-| Algorithm | bmb-algo | Python | Speedup |
-|-----------|----------|--------|---------|
-| **knapsack(100 items, cap ~1300)** | 50 us | 22.5 ms | **~450×** |
-| knapsack(10 items, cap 20) | 3.5 us | 24 us | ~7× |
-| prime_count(10000) | 9 us | 448 us | **~49×** |
-| edit_distance | 1.7 us | 14.6 us | **~8.5×** |
-| nqueens(10) | 1.72 ms | 9.93 ms | **~5.8×** |
-| merge_sort(15) | 4.0 us | 11.6 us | **~2.9×** |
-| **quicksort(1000)** | 218 us | 548 us | **~2.5×** |
-| quicksort(15) | 3.9 us | 3.6 us | ~0.9× ⚠️ |
-| fibonacci(30) | 0.4 us | 0.6 us | ~1.5× |
+| Algorithm | bmb-algo | Python | Speedup (median) | spread |
+|-----------|----------|--------|------------------|--------|
+| **knapsack(100 items, cap ~1300)** | 42 us | 10.2 ms | **~243×** | 235-257× |
+| knapsack(10 items, cap 20) | 2.1 us | 12.9 us | ~6.2× | 6.0-6.5× |
+| prime_count(10000) | 11 us | 329 us | **~31×** | 30-31× |
+| edit_distance | 1.4 us | 9.3 us | **~6.6×** | 4.9-7.0× |
+| nqueens(10) | 1.74 ms | 6.90 ms | **~4.0×** | 3.9-4.0× |
+| **quicksort(1000)** | 100 us | 488 us | **~4.9×** | 4.8-4.9× |
+| merge_sort(15) | 2.1 us | 6.5 us | **~3.2×** | 3.0-3.2× |
+| fibonacci(30) | 0.23 us | 0.51 us | ~2.2× | 2.1-2.3× |
+| quicksort(15) | 2.0 us | 3.4 us | ~1.7× | 1.6-1.7× |
 
-*All timings include ctypes FFI overhead — 100-500-iteration mean after 10-iter warmup. Numbers ≈ approximations (5-10% run-to-run variance).*
+*All timings include ctypes FFI overhead — 50-500-iteration mean per sample, 10-iter warmup. Inter-run variance ~5% on stable runs; `edit_distance` shows occasional outliers (1 of 5 measured 4.87× — Python L1-cache miss susceptibility).*
 
 ### Scaling behavior
 
@@ -41,19 +41,26 @@ BMB's advantage **amplifies with input size**, because FFI call overhead is amor
 
 | size | knapsack speedup | quicksort speedup |
 |------|------------------|-------------------|
-| n=10 | ~7× | ~0.9× (FFI-bound) |
-| n=30 | ~170× | parity |
-| n=100 | **~450×** | ~1.2× |
-| n=300 | ~600× | — |
-| n=1000 | — | **~2.5×** |
+| n=10 | ~29× | — |
+| n=15 | — | ~1.6× (FFI overhead 큰 비중) |
+| n=30 | ~119× | — |
+| n=50 | — | ~3.0× |
+| n=100 | **~246×** | ~3.0× |
+| n=300 | **~306×** | — |
+| n=500 | — | ~4.4× |
+| n=1000 | — | **~4.7×** |
 
-**Recommendation**: use bmb-algo for inputs where algorithmic work ≫ FFI overhead. Below ~100 elements / states, raw Python may match or beat bmb-algo due to ctypes marshalling cost.
+Reproduce with `python benchmarks/bench_algo.py --runs=5 --scaling` (adds ~30s).
+
+**Recommendation**: use bmb-algo for inputs where algorithmic work ≫ FFI overhead. For DP workloads (knapsack, edit_distance), the advantage is already material at n≈10 and grows rapidly with state count. For sorting, the crossover where BMB clearly wins is around n≈30–50.
 
 ### Historical measurements (archived)
 
 `bmb-algo v0.2.0` (2026-03-23) recorded `knapsack 90.7×` and `nqueens(8) 181.6×` vs Python.
-The `knapsack 90.7×` is consistent with the scaling table above (achievable at n≥30).
-The `nqueens(8) 181.6×` does not reproduce at any tested size with the current `bench_algo.py` baseline — likely a different bench configuration or baseline. See [CHANGELOG.md](CHANGELOG.md) for re-baseline notes.
+The `knapsack 90.7×` reproduces in scale (current median-of-5 puts knapsack(n=30) at ~119×, which is in the ballpark of the v0.2.0 number).
+The `nqueens(8) 181.6×` does not reproduce against the current `py_nqueens` baseline (n=8/10/12 all measure ~4-8× speedup) — likely a different bench configuration in v0.2.0.
+
+A more recent intermediate measurement on 2026-05-12 (Cycle 2754) reported `knapsack(100) ~450×` and `quicksort(15) ~0.9× SLOW`. **Neither reproduces against the current median-of-5 baseline** — the Cycle 2754 sample was n=2 and appears to have hit unusual system conditions. The numbers in the table above (median of 5 back-to-back runs on the same machine, within 5% inter-run variance) are the durable baseline. See [CHANGELOG.md](CHANGELOG.md) for full re-baseline notes.
 
 ## Quick Start
 

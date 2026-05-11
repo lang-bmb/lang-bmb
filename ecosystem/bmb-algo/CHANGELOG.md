@@ -5,15 +5,17 @@ All notable changes to bmb-algo will be documented in this file.
 ## [Unreleased]
 
 ### Documentation
-- README benchmark table re-baselined to v0.98 measurements (2026-05-12). Supersedes v0.2.0 numbers from 2026-03-23.
-- Headline updated to **"Up to ~450× (knapsack(100))"** — confirms v0.2.0 90× knapsack as the n=10 floor; new measurement shows the speedup scales with input size.
-- Added `knapsack(100)` and `quicksort(1000)` to the benchmark suite to demonstrate **scaling behavior**: BMB's advantage amplifies as algorithmic work exceeds FFI overhead.
-- Added a **scaling table** showing knapsack speedup at n=10/30/100/300 and quicksort at n=15/100/1000.
-- Disclosed quicksort(15) regression with input-size guidance — FFI overhead crossover at ~n=50; recommend ≥100 elements for measurable speedup.
-- v0.2.0 `nqueens(8) 181.6×` flagged as not reproducible at any tested size — likely a baseline configuration difference.
+- README benchmark table re-baselined to **median-of-5 measurements** at v0.98 (2026-05-12). Supersedes both v0.2.0 numbers (2026-03-23) and an intermediate Cycle 2754 single-pair sample that turned out to be an outlier.
+- Headline updated to **"Up to ~245× (knapsack(100), median-of-5)"** with a note that the scaling table reaches ~306× at n=300. Earlier "~450×" claim withdrawn — it was a one-shot sample that does not reproduce on this machine under representative load.
+- New baseline includes inter-run spread per row (min-max across 5 runs), exposing variance honestly rather than reporting a single value.
+- Added a **scaling table** showing knapsack speedup at n=10/30/100/300 and quicksort at n=15/50/100/500/1000, reproducible with `bench_algo.py --runs=5 --scaling`.
+- `quicksort(15)` is currently **~1.7× faster** (not slower) than pure Python under median-of-5 — the earlier "0.9× SLOW" disclosure was an artifact of the same one-shot sampling. The associated quicksort FFI overhead ISSUE is closed as not-reproducible.
+- v0.2.0 `nqueens(8) 181.6×` remains not reproducible against the current baseline (n=8/10/12 all measure ~4-8×) — flagged in the historical archive.
 
 ### Benchmarks
-- `bench_algo.py`: added `knapsack(100)`, `quicksort(1000)` runs. Existing small-input runs retained for the FFI overhead reference point.
+- `bench_algo.py`: added `--runs=N` median-of-N harness with per-row min-max spread reporting.
+- `bench_algo.py`: added `--scaling` sweep covering knapsack n=10/30/100/300 and quicksort n=15/50/100/500/1000 — directly reproduces the README scaling table.
+- `bench_algo.py`: added `knapsack(100)`, `quicksort(1000)` to the default suite; existing small-input runs retained as the FFI overhead reference point.
 
 ## [0.3.0] - 2026-03-23
 

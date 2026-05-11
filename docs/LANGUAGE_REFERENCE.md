@@ -1041,9 +1041,9 @@ fn safe_get(v: i64, idx: i64, len: i64) -> i64
 = vec_get(v, idx);
 
 -- ✅ Or use the preferred 'where { }' block (Section 10.3)
-fn safe_get(v: i64, idx: i64, len: i64{it < len}) -> i64
+fn safe_get(v: i64, idx: i64, len: i64) -> i64
   where {
-    bounded: idx >= 0,
+    bounded: idx >= 0 and idx < len,
   }
 = vec_get(v, idx);
 ```
