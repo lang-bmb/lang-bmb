@@ -201,7 +201,7 @@ fn load_source(input: String) -> String =
 // ============================================================================
 
 // Moved from 10000000 range to avoid collision with integer literal 10000000
-// Token packing: kind * 1000000 + pos, so token kind must not collide with any i64 literal value
+// Token packing: kind * 5000000 + pos (Cycle 2711 scale-up 1M -> 5M), so token kind must not collide with any i64 literal value
 // 2 billion is safely above all realistic integer literal values used in BMB programs
 fn TK_FN() -> i64 = 2000000000 + 100;
 fn TK_LET() -> i64 = 2000000000 + 101;
@@ -384,27 +384,28 @@ fn skip_ws_comments(s: String, pos: i64) -> i64 =
     if p2 == p1 { p1 } else { skip_ws_comments(s, p2) };
 
 // Actual value is reconstructed from source text in parse_int_lit
-// Safe max: 9223372036854 * 1000000 = 9.22e18 < i64 MAX (9.22e18)
+// Cycle 2711 (M5-bootstrap): scale 1e6 -> 5e6 to support source > 1MB
+// Safe max: 1.844e12 * 5e6 = 9.22e18 < i64 MAX (9.22e18)
 fn scan_int(s: String, pos: i64, acc: i64) -> i64 =
     if pos >= s.len() { pack_int_tok(acc, pos) } else {
         let c = s.byte_at(pos);
         if is_digit(c) {
-            let new_acc = if acc < 9000000000000 { acc * 10 + (c - 48) } else { 9200000000000 };
+            let new_acc = if acc < 1800000000000 { acc * 10 + (c - 48) } else { 1840000000000 };
             scan_int(s, pos + 1, new_acc)
         } else if c == 95 { scan_int(s, pos + 1, acc) }
         else { pack_int_tok(acc, pos) }
     };
 
 fn pack_int_tok(acc: i64, pos: i64) -> i64 =
-    if acc >= 9000000000000 { 9200000000000 * 1000000 + pos }
-    else { acc * 1000000 + pos };
+    if acc >= 1800000000000 { 1840000000000 * 5000000 + pos }
+    else { acc * 5000000 + pos };
 
 // v0.91: Scan number - detects float if '.' followed by digit
 fn scan_hex_int(s: String, pos: i64, acc: i64) -> i64 =
     if pos >= s.len() { pack_int_tok(acc, pos) } else {
         let c = s.byte_at(pos);
         if is_hex_digit(c) {
-            let new_acc = if acc < 9000000000000 { acc * 16 + hex_digit_val(c) } else { 9200000000000 };
+            let new_acc = if acc < 1800000000000 { acc * 16 + hex_digit_val(c) } else { 1840000000000 };
             scan_hex_int(s, pos + 1, new_acc)
         } else if c == 95 { scan_hex_int(s, pos + 1, acc) }
         else { pack_int_tok(acc, pos) }
@@ -414,7 +415,7 @@ fn scan_bin_int(s: String, pos: i64, acc: i64) -> i64 =
     if pos >= s.len() { pack_int_tok(acc, pos) } else {
         let c = s.byte_at(pos);
         if c == 48 or c == 49 {
-            let new_acc = if acc < 9000000000000 { acc * 2 + (c - 48) } else { 9200000000000 };
+            let new_acc = if acc < 1800000000000 { acc * 2 + (c - 48) } else { 1840000000000 };
             scan_bin_int(s, pos + 1, new_acc)
         } else if c == 95 { scan_bin_int(s, pos + 1, acc) }
         else { pack_int_tok(acc, pos) }
@@ -425,7 +426,7 @@ fn scan_oct_int(s: String, pos: i64, acc: i64) -> i64 =
     if pos >= s.len() { pack_int_tok(acc, pos) } else {
         let c = s.byte_at(pos);
         if c >= 48 and c <= 55 {
-            let new_acc = if acc < 9000000000000 { acc * 8 + (c - 48) } else { 9200000000000 };
+            let new_acc = if acc < 1800000000000 { acc * 8 + (c - 48) } else { 1840000000000 };
             scan_oct_int(s, pos + 1, new_acc)
         } else if c == 95 { scan_oct_int(s, pos + 1, acc) }
         else { pack_int_tok(acc, pos) }
@@ -503,10 +504,10 @@ fn get_char_value(s: String, pos: i64) -> i64 =
         s.byte_at(inner)
     };
 
-fn tok_val(r: i64) -> i64 = r / 1000000;
-fn tok_end(r: i64) -> i64 = r - (r / 1000000) * 1000000;
+fn tok_val(r: i64) -> i64 = r / 5000000;
+fn tok_end(r: i64) -> i64 = r - (r / 5000000) * 5000000;
 fn tok_kind(r: i64) -> i64 = tok_val(r);
-fn make_tok(kind: i64, endpos: i64) -> i64 = kind * 1000000 + endpos;
+fn make_tok(kind: i64, endpos: i64) -> i64 = kind * 5000000 + endpos;
 
 // Reduces average comparisons from 9.5 to ~2-3 by checking length first
 fn keyword_or_ident(s: String, start: i64, endpos: i64) -> i64 =
@@ -620,7 +621,7 @@ fn next_token_raw(s: String, pos: i64) -> i64 =
     };
 
 fn get_ident_text(s: String, pos: i64, tok: i64) -> String =
-    let start = tok_end(tok) - (tok_val(tok) / 1000000);
+    let start = tok_end(tok) - (tok_val(tok) / 5000000);
     let p = skip_ws_comments(s, pos);
     let endp = scan_ident_end(s, p + 1);
     s.slice(p, endp);
@@ -7038,6 +7039,13 @@ fn call_has_two_args(line: String, paren_pos: i64, close_pos: i64) -> bool =
         comma2 >= rest.len()
     };
 
+// Cycle 2714: arity guard for 1-arg builtins.
+// Returns true iff args slice has no commas (single argument).
+fn call_has_one_arg(line: String, paren_pos: i64, close_pos: i64) -> bool =
+    let args = line.slice(paren_pos + 1, close_pos);
+    if args.len() == 0 { false }
+    else { find_char(args, 0, 44) >= args.len() };
+
 // v0.96.27: Emit regular i64 call for user-defined function
 fn emit_regular_i64_call(line: String, paren_pos: i64, close_pos: i64, fn_name: String, dest: String) -> String =
     let args = line.slice(paren_pos + 1, close_pos);
@@ -7112,78 +7120,104 @@ fn llvm_gen_call(line: String, pos: i64, dest: String) -> String =
     } else if fn_name == "@bmb_string_len" {
         let str_arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + "_str = inttoptr i64 " + str_arg + " to ptr" + SEP() + "  " + dest + "_lp = getelementptr inbounds nuw {ptr, i64, i64}, ptr " + dest + "_str, i32 0, i32 1" + SEP() + "  " + dest + " = load i64, ptr " + dest + "_lp, !invariant.load !0"
-    } else if fn_name == "@popcount" {
+    } else if fn_name == "@popcount" and call_has_one_arg(line, paren_pos, close_pos) {
         // v0.96: LLVM intrinsic — single POPCNT instruction
+        // Cycle 2714: arity guard — user-defined popcount(>1 args) falls through to regular call
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = call i64 @llvm.ctpop.i64(i64 " + arg + ")"
-    } else if fn_name == "@clz" {
-        // v0.96: LLVM intrinsic — single LZCNT instruction; i1 false = defined for zero
+    } else if fn_name == "@popcount" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if fn_name == "@clz" and call_has_one_arg(line, paren_pos, close_pos) {
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = call i64 @llvm.ctlz.i64(i64 " + arg + ", i1 false)"
-    } else if fn_name == "@ctz" {
-        // v0.96: LLVM intrinsic — single TZCNT instruction; i1 false = defined for zero
+    } else if fn_name == "@clz" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if fn_name == "@ctz" and call_has_one_arg(line, paren_pos, close_pos) {
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = call i64 @llvm.cttz.i64(i64 " + arg + ", i1 false)"
-    } else if fn_name == "@bit_reverse" {
-        // v0.96: LLVM intrinsic — bit reversal
+    } else if fn_name == "@ctz" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if fn_name == "@bit_reverse" and call_has_one_arg(line, paren_pos, close_pos) {
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = call i64 @llvm.bitreverse.i64(i64 " + arg + ")"
-    } else if fn_name == "@bit_not" {
+    } else if fn_name == "@bit_reverse" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if fn_name == "@bit_not" and call_has_one_arg(line, paren_pos, close_pos) {
         // Cycle 2384: x.bit_not() lowers to `xor x, -1`.
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = xor i64 " + arg + ", -1"
-    } else if fn_name == "@bit_and" {
+    } else if fn_name == "@bit_not" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if fn_name == "@bit_and" and call_has_two_args(line, paren_pos, close_pos) {
         // Cycle 2384: a.bit_and(b) lowers to native `and` — cheaper than BinOp dispatch.
+        // Cycle 2712: arity guard — user-defined bit_and(>2 args) falls through to regular call.
         let args = line.slice(paren_pos + 1, close_pos);
         let comma = find_char(args, 0, 44);
         let left = trim_end(args.slice(0, comma));
         let right = trim(args.slice(comma + 1, args.len()));
         "  " + dest + " = and i64 " + left + ", " + right
-    } else if fn_name == "@bit_or" {
+    } else if fn_name == "@bit_and" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if fn_name == "@bit_or" and call_has_two_args(line, paren_pos, close_pos) {
         let args = line.slice(paren_pos + 1, close_pos);
         let comma = find_char(args, 0, 44);
         let left = trim_end(args.slice(0, comma));
         let right = trim(args.slice(comma + 1, args.len()));
         "  " + dest + " = or i64 " + left + ", " + right
-    } else if fn_name == "@bit_xor" {
+    } else if fn_name == "@bit_or" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if fn_name == "@bit_xor" and call_has_two_args(line, paren_pos, close_pos) {
         let args = line.slice(paren_pos + 1, close_pos);
         let comma = find_char(args, 0, 44);
         let left = trim_end(args.slice(0, comma));
         let right = trim(args.slice(comma + 1, args.len()));
         "  " + dest + " = xor i64 " + left + ", " + right
-    } else if fn_name == "@bit_shift_left" {
+    } else if fn_name == "@bit_xor" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if fn_name == "@bit_shift_left" and call_has_two_args(line, paren_pos, close_pos) {
         let args = line.slice(paren_pos + 1, close_pos);
         let comma = find_char(args, 0, 44);
         let left = trim_end(args.slice(0, comma));
         let right = trim(args.slice(comma + 1, args.len()));
         "  " + dest + " = shl i64 " + left + ", " + right
-    } else if fn_name == "@bit_shift_right" {
+    } else if fn_name == "@bit_shift_left" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if fn_name == "@bit_shift_right" and call_has_two_args(line, paren_pos, close_pos) {
         // Arithmetic shift for signed i64 (preserves sign bit).
         let args = line.slice(paren_pos + 1, close_pos);
         let comma = find_char(args, 0, 44);
         let left = trim_end(args.slice(0, comma));
         let right = trim(args.slice(comma + 1, args.len()));
         "  " + dest + " = ashr i64 " + left + ", " + right
-    } else if fn_name == "@abs" or fn_name == "@bmb_abs" {
+    } else if fn_name == "@bit_shift_right" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if (fn_name == "@abs" or fn_name == "@bmb_abs") and call_has_one_arg(line, paren_pos, close_pos) {
         // v0.96: LLVM intrinsic — abs; i1 false = INT_MIN is not poison
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = call i64 @llvm.abs.i64(i64 " + arg + ", i1 false)"
-    } else if fn_name == "@min" or fn_name == "@bmb_min" {
+    } else if fn_name == "@abs" or fn_name == "@bmb_abs" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if (fn_name == "@min" or fn_name == "@bmb_min") and call_has_two_args(line, paren_pos, close_pos) {
         // v0.96: LLVM intrinsic — signed minimum
         let args = line.slice(paren_pos + 1, close_pos);
         let comma = find_char(args, 0, 44);
         let left = trim_end(args.slice(0, comma));
         let right = trim(args.slice(comma + 1, args.len()));
         "  " + dest + " = call i64 @llvm.smin.i64(i64 " + left + ", i64 " + right + ")"
-    } else if fn_name == "@max" or fn_name == "@bmb_max" {
+    } else if fn_name == "@min" or fn_name == "@bmb_min" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if (fn_name == "@max" or fn_name == "@bmb_max") and call_has_two_args(line, paren_pos, close_pos) {
         // v0.96: LLVM intrinsic — signed maximum
         let args = line.slice(paren_pos + 1, close_pos);
         let comma = find_char(args, 0, 44);
         let left = trim_end(args.slice(0, comma));
         let right = trim(args.slice(comma + 1, args.len()));
         "  " + dest + " = call i64 @llvm.smax.i64(i64 " + left + ", i64 " + right + ")"
-    } else if fn_name == "@clamp" or fn_name == "@bmb_clamp" {
+    } else if fn_name == "@max" or fn_name == "@bmb_max" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if (fn_name == "@clamp" or fn_name == "@bmb_clamp") and count_commas(line.slice(paren_pos + 1, close_pos), 0) == 2 {
         // v0.96: clamp(value, lo, hi) = smin(smax(value, lo), hi) — two LLVM intrinsics
+        // Cycle 2712: arity guard — user-defined clamp(!=3 args) falls through to regular call
         let args = line.slice(paren_pos + 1, close_pos);
         let comma1 = find_char(args, 0, 44);
         let value = trim_end(args.slice(0, comma1));
@@ -7192,10 +7226,14 @@ fn llvm_gen_call(line: String, pos: i64, dest: String) -> String =
         let lo = trim(rest.slice(0, comma2));
         let hi = trim(rest.slice(comma2 + 1, rest.len()));
         "  " + dest + "_c = call i64 @llvm.smax.i64(i64 " + value + ", i64 " + lo + ")" + SEP() + "  " + dest + " = call i64 @llvm.smin.i64(i64 " + dest + "_c, i64 " + hi + ")"
-    } else if fn_name == "@bswap" {
+    } else if fn_name == "@clamp" or fn_name == "@bmb_clamp" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if fn_name == "@bswap" and call_has_one_arg(line, paren_pos, close_pos) {
         // v0.96: LLVM intrinsic — byte swap (endian conversion), single BSWAP instruction
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = call i64 @llvm.bswap.i64(i64 " + arg + ")"
+    } else if fn_name == "@bswap" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
     } else if fn_name == "@rotate_left" and call_has_two_args(line, paren_pos, close_pos) {
         // v0.96: LLVM intrinsic — bit rotate left, single ROL instruction
         // rotate_left(x, n) = fshl(x, x, n) — only for 2-arg built-in
@@ -7386,67 +7424,96 @@ fn llvm_gen_call_reg(line: String, pos: i64, dest: String, registry: String) -> 
     } else if fn_name == "@bmb_string_len" {
         let str_arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + "_str = inttoptr i64 " + str_arg + " to ptr" + SEP() + "  " + dest + "_lp = getelementptr inbounds nuw {ptr, i64, i64}, ptr " + dest + "_str, i32 0, i32 1" + SEP() + "  " + dest + " = load i64, ptr " + dest + "_lp, !invariant.load !0"
-    } else if fn_name == "@popcount" {
+    } else if fn_name == "@popcount" and call_has_one_arg(line, paren_pos, close_pos) {
+        // Cycle 2714: arity guard
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = call i64 @llvm.ctpop.i64(i64 " + arg + ")"
-    } else if fn_name == "@clz" {
+    } else if fn_name == "@popcount" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if fn_name == "@clz" and call_has_one_arg(line, paren_pos, close_pos) {
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = call i64 @llvm.ctlz.i64(i64 " + arg + ", i1 false)"
-    } else if fn_name == "@ctz" {
+    } else if fn_name == "@clz" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if fn_name == "@ctz" and call_has_one_arg(line, paren_pos, close_pos) {
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = call i64 @llvm.cttz.i64(i64 " + arg + ", i1 false)"
-    } else if fn_name == "@bit_reverse" {
+    } else if fn_name == "@ctz" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if fn_name == "@bit_reverse" and call_has_one_arg(line, paren_pos, close_pos) {
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = call i64 @llvm.bitreverse.i64(i64 " + arg + ")"
-    } else if fn_name == "@bit_not" {
+    } else if fn_name == "@bit_reverse" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if fn_name == "@bit_not" and call_has_one_arg(line, paren_pos, close_pos) {
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = xor i64 " + arg + ", -1"
-    } else if fn_name == "@bit_and" {
+    } else if fn_name == "@bit_not" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if fn_name == "@bit_and" and call_has_two_args(line, paren_pos, close_pos) {
+        // Cycle 2712: arity guard — user-defined bit_and(>2 args) falls through to regular call
         let args = line.slice(paren_pos + 1, close_pos);
         let comma = find_char(args, 0, 44);
         let left = trim_end(args.slice(0, comma));
         let right = trim(args.slice(comma + 1, args.len()));
         "  " + dest + " = and i64 " + left + ", " + right
-    } else if fn_name == "@bit_or" {
+    } else if fn_name == "@bit_and" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if fn_name == "@bit_or" and call_has_two_args(line, paren_pos, close_pos) {
         let args = line.slice(paren_pos + 1, close_pos);
         let comma = find_char(args, 0, 44);
         let left = trim_end(args.slice(0, comma));
         let right = trim(args.slice(comma + 1, args.len()));
         "  " + dest + " = or i64 " + left + ", " + right
-    } else if fn_name == "@bit_xor" {
+    } else if fn_name == "@bit_or" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if fn_name == "@bit_xor" and call_has_two_args(line, paren_pos, close_pos) {
         let args = line.slice(paren_pos + 1, close_pos);
         let comma = find_char(args, 0, 44);
         let left = trim_end(args.slice(0, comma));
         let right = trim(args.slice(comma + 1, args.len()));
         "  " + dest + " = xor i64 " + left + ", " + right
-    } else if fn_name == "@bit_shift_left" {
+    } else if fn_name == "@bit_xor" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if fn_name == "@bit_shift_left" and call_has_two_args(line, paren_pos, close_pos) {
         let args = line.slice(paren_pos + 1, close_pos);
         let comma = find_char(args, 0, 44);
         let left = trim_end(args.slice(0, comma));
         let right = trim(args.slice(comma + 1, args.len()));
         "  " + dest + " = shl i64 " + left + ", " + right
-    } else if fn_name == "@bit_shift_right" {
+    } else if fn_name == "@bit_shift_left" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if fn_name == "@bit_shift_right" and call_has_two_args(line, paren_pos, close_pos) {
         let args = line.slice(paren_pos + 1, close_pos);
         let comma = find_char(args, 0, 44);
         let left = trim_end(args.slice(0, comma));
         let right = trim(args.slice(comma + 1, args.len()));
         "  " + dest + " = ashr i64 " + left + ", " + right
-    } else if fn_name == "@abs" or fn_name == "@bmb_abs" {
+    } else if fn_name == "@bit_shift_right" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if (fn_name == "@abs" or fn_name == "@bmb_abs") and call_has_one_arg(line, paren_pos, close_pos) {
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = call i64 @llvm.abs.i64(i64 " + arg + ", i1 false)"
-    } else if fn_name == "@min" or fn_name == "@bmb_min" {
+    } else if fn_name == "@abs" or fn_name == "@bmb_abs" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if (fn_name == "@min" or fn_name == "@bmb_min") and call_has_two_args(line, paren_pos, close_pos) {
         let args = line.slice(paren_pos + 1, close_pos);
         let comma = find_char(args, 0, 44);
         let left = trim_end(args.slice(0, comma));
         let right = trim(args.slice(comma + 1, args.len()));
         "  " + dest + " = call i64 @llvm.smin.i64(i64 " + left + ", i64 " + right + ")"
-    } else if fn_name == "@max" or fn_name == "@bmb_max" {
+    } else if fn_name == "@min" or fn_name == "@bmb_min" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if (fn_name == "@max" or fn_name == "@bmb_max") and call_has_two_args(line, paren_pos, close_pos) {
         let args = line.slice(paren_pos + 1, close_pos);
         let comma = find_char(args, 0, 44);
         let left = trim_end(args.slice(0, comma));
         let right = trim(args.slice(comma + 1, args.len()));
         "  " + dest + " = call i64 @llvm.smax.i64(i64 " + left + ", i64 " + right + ")"
-    } else if fn_name == "@clamp" or fn_name == "@bmb_clamp" {
+    } else if fn_name == "@max" or fn_name == "@bmb_max" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if (fn_name == "@clamp" or fn_name == "@bmb_clamp") and count_commas(line.slice(paren_pos + 1, close_pos), 0) == 2 {
+        // Cycle 2712: arity guard — user-defined clamp(!=3 args) falls through to regular call
         let args = line.slice(paren_pos + 1, close_pos);
         let comma1 = find_char(args, 0, 44);
         let value = trim_end(args.slice(0, comma1));
@@ -7455,9 +7522,13 @@ fn llvm_gen_call_reg(line: String, pos: i64, dest: String, registry: String) -> 
         let lo = trim(rest.slice(0, comma2));
         let hi = trim(rest.slice(comma2 + 1, rest.len()));
         "  " + dest + "_c = call i64 @llvm.smax.i64(i64 " + value + ", i64 " + lo + ")" + SEP() + "  " + dest + " = call i64 @llvm.smin.i64(i64 " + dest + "_c, i64 " + hi + ")"
-    } else if fn_name == "@bswap" {
+    } else if fn_name == "@clamp" or fn_name == "@bmb_clamp" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
+    } else if fn_name == "@bswap" and call_has_one_arg(line, paren_pos, close_pos) {
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = call i64 @llvm.bswap.i64(i64 " + arg + ")"
+    } else if fn_name == "@bswap" {
+        emit_regular_i64_call(line, paren_pos, close_pos, fn_name, dest)
     } else if fn_name == "@rotate_left" and call_has_two_args(line, paren_pos, close_pos) and find_substr_pos(registry, fn_name + ":", 0) < 0 {
         // Built-in rotate_left(x, n) — NOT user-defined (not in registry)
         let args = line.slice(paren_pos + 1, close_pos);
