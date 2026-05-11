@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-11 (Cycles 2718-2727 — P-track 대규모 triage + Bootstrap 안정성)
 
-> **HEAD**: (이번 commit으로 갱신 예정)
+> **HEAD**: `2657dd68` (Cycles 2718-2727 통합 commit)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 > **이전 세션 핸드오프**: cycle-logs/cycle-2708~2717.md 참조
 
