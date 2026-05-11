@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-11 (Cycles 2708-2717 — Stage 2 Fixed Point 회복 + builtin arity proper-fix)
 
-> **HEAD**: (이번 세션 통합 commit 후 갱신)
+> **HEAD**: `abf78075` (Cycles 2708-2717 통합 commit)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 > **이전 세션 핸드오프**: cycle-logs/cycle-2690~2707.md 참조
 
@@ -181,6 +181,7 @@
 - [ ] `claudedocs/cycle-logs/cycle-2708~2717.md` 읽기 (이번 세션 회복 라이브러리)
 - [ ] `cargo test --release` → **6210/6210** 확인
 - [ ] `./scripts/bootstrap.sh` → **Fixed Point S2 == S3** 확인 (32G arena 사용)
+- [ ] **`./scripts/run-golden-tests.sh` 백그라운드 실행** — Cycle 2712-2714 변경 후 풀 골든 회귀 검증 (sample 80개는 PASS, 풀 2862개 미검증, 43분 소요)
 - [ ] HUMAN 결정 잔여: M3-3 (npm), M3-4 (PyPI), M3-5 (README clang vs gcc 라벨), M4-1 (B 측정 BMB_BENCH_API_KEY)
 
 ---
