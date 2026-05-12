@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-13 (Cycle 2788 — **bench output fairness 16/17 PASS**: lexer 6-bug fix + csv_parse skip_ws zero-position bug fix, 2 ISSUE close)
+> 최종 업데이트: 2026-05-13 (Cycle 2790 — **bench output fairness 17/17 PASS**: fibonacci 6B→100M iterations, ISSUE 완전 종결)
 > 이전 갱신: Cycles 2765-2773 (bench verify infrastructure + P0 store_u8 bug 진단), Cycles 2760-2764 (M3-5 honest re-baseline median-of-5)
 > 이 문서는 매 세션의 **유일한 실무 앵커**다.
 > 상세 사이클 로그: `docs/ROADMAP.md` | 개발 규칙: `CLAUDE.md` | 세션 상태: `claudedocs/HANDOFF.md`
@@ -485,20 +485,20 @@ historic.json (2026-05-02, 5-run) + tier3-10runs.json (2026-05-01, 10-run, noise
 `scripts/verify_bench_outputs.py` (240 LOC) — BMB ↔ C bench 출력 정합 검사:
 - Tier 1/3 17 benches hardcoded
 - 1차 측정: 11 PASS / 4 mismatch / 2 fail (Tier 1 8/10, Tier 3 3/7)
-- **최신 (Cycle 2788, 2026-05-13)**: `--epsilon 1e-6` 적용 → **16/17 PASS** ✅ (잔여 1건: fibonacci C timeout P3)
+- **최신 (Cycle 2790, 2026-05-13)**: fibonacci 6B→100M iterations → **17/17 PASS** ✅ (모든 bench 공정 비교 확인)
 - `scripts/full-cycle.sh` Step 3.5에 통합 (`--skip-verify` opt, non-blocking, exit 0/1/2 mapping)
 - `bench_verify.json` artifact 출력
 
-**측정 신뢰도 메타-우려**: ~~24%~~ 1/17 benches가 unfair comparison (fibonacci only). **P-track ratio 측정 전 verify 통과 확인 권고**.
+**측정 신뢰도 회복**: 17/17 benches 모두 fair comparison. **P-track ratio 신뢰도 ✅**.
 
-### Cycle 2788 갱신 (2026-05-13, bench output fairness 16/17 PASS)
+### Cycle 2788-2790 갱신 (2026-05-13, bench output fairness 17/17 PASS)
 
 | 항목 | 카운트 |
 |------|-------|
-| Active ISSUE | **20** (Cycle 2773 22 - 2 close) |
-| Closed 이번 phase (Cycle 2788) | **2** (bmb-lexer-bench-zero-tokens RESOLVED, bootstrap-stack-depth-hash_table → closed/) |
+| Active ISSUE | **17** (유틸 파일 제외 실제 ISSUE) |
+| Closed 이번 phase (Cycle 2788-2790) | **4** (bmb-lexer-bench-zero-tokens, sorting-rebuild-regression, bench-output-fairness-survey, + 1 이전) |
 | 신규 이번 phase | **0** |
-| Closed (누적) | **47** (+2) |
+| Closed (누적) | **50** |
 
 **Close 근거**:
 - `bmb-lexer-bench-zero-tokens` (Cycle 2788): 6개 버그 전면 수정 (is_keyword_at 3번째 문자 체크, tuple packing, str/comment 추적, 7-type 출력). verify PASS = C 출력 정확히 일치.

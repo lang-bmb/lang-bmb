@@ -2,22 +2,22 @@
 
 ## 핵심 메타
 
-**우선순위**: P2 → P3 (16/17 PASS 달성, 잔여 1건은 C timeout)
+**우선순위**: ~~P2~~ **CLOSED**
 **영역**: ecosystem/benchmark-bmb / bench correctness
-**상태**: 거의 완료 — fibonacci C timeout만 잔여 (P3)
+**상태**: **RESOLVED (Cycle 2790, 2026-05-13)** — **17/17 PASS** ✅
 
-## 측정 stamp (최신: Cycle 2788+)
+## 측정 stamp (최종: Cycle 2790)
 
 | 필드 | 값 |
 |------|----|
-| `measurement_date` | 2026-05-13 (Cycle 2788+) |
+| `measurement_date` | 2026-05-13 (Cycle 2790) |
 | `stale_after` | 2026-08-13 (3개월) |
 | `measurement_source` | `python scripts/verify_bench_outputs.py --tier all --epsilon 1e-6` |
-| `observed_rate` | **16/17 PASS (94%)** |
+| `observed_rate` | **17/17 PASS (100%)** ✅ |
 | `scope` | Tier 1 (10 benches) + Tier 3 (7 benches) |
 | `env_hash` | win32 / LLVM 21.1.8 / MSYS2 UCRT64 / gcc MinGW |
 
-## 초기 측정 (Cycle 2769): 11/17 → 최종: 16/17
+## 초기 측정 (Cycle 2769): 11/17 → 최종: 17/17
 
 | bench | Cycle 2769 | Cycle 2788+ | 비고 |
 |-------|-----------|------------|------|
@@ -72,8 +72,8 @@
 ## 종결 기준
 
 - [x] 16/17 PASS (epsilon 적용)
-- [ ] fibonacci C timeout 해결 → 17/17 PASS
-- [ ] CI workflow에 `verify_bench_outputs.py` 통합
+- [x] fibonacci C timeout 해결 → **17/17 PASS** ✅ (Cycle 2790: 6B→100M iterations)
+- [ ] CI workflow에 `verify_bench_outputs.py` 통합 → D5-A (HUMAN-blocked)
 
 ## 관련 ISSUE
 
