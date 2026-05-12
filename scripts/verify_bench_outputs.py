@@ -8,7 +8,11 @@ performance ratios become meaningless.
 
 Usage:
     python3 scripts/verify_bench_outputs.py [--tier {1,3,all}] [--rebuild]
-        [--verbose] [--json OUT.json]
+        [--verbose] [--json OUT.json] [--epsilon FLOAT]
+
+    --epsilon FLOAT  Allow this relative tolerance for floating-point tokens
+                     (e.g. --epsilon 1e-6). Integer and non-numeric tokens
+                     are still compared exactly.
 
 Exit:
     0 = all matched (or no benches found)
@@ -62,6 +66,39 @@ class Result:
 def normalize(s: str) -> str:
     """Strip trailing whitespace per line, collapse final blanks."""
     return "\n".join(line.rstrip() for line in s.splitlines()).strip()
+
+
+def _tokens_approx_equal(tok_a: str, tok_b: str, epsilon: float) -> bool:
+    """Compare two tokens with float epsilon; fall back to exact match."""
+    if tok_a == tok_b:
+        return True
+    try:
+        fa, fb = float(tok_a), float(tok_b)
+        # Relative tolerance: |a-b| <= epsilon * max(|a|, |b|, 1.0)
+        return abs(fa - fb) <= epsilon * max(abs(fa), abs(fb), 1.0)
+    except ValueError:
+        return False
+
+
+def outputs_match(a: str, b: str, epsilon: Optional[float]) -> bool:
+    """Return True if outputs a and b are equivalent within epsilon."""
+    if a == b:
+        return True
+    if epsilon is None:
+        return False
+    a_lines = a.splitlines()
+    b_lines = b.splitlines()
+    if len(a_lines) != len(b_lines):
+        return False
+    for la, lb in zip(a_lines, b_lines):
+        if la == lb:
+            continue
+        ta, tb = la.split(), lb.split()
+        if len(ta) != len(tb):
+            return False
+        if not all(_tokens_approx_equal(x, y, epsilon) for x, y in zip(ta, tb)):
+            return False
+    return True
 
 
 def run_exe(exe: Path, timeout: float = 60.0) -> tuple[bool, str]:
@@ -122,7 +159,7 @@ def diff_lines(a: str, b: str, max_lines: int = 10) -> str:
     return "\n".join(out) if out else "(identical after normalization)"
 
 
-def verify_bench(rel: str, rebuild: bool, verbose: bool) -> Result:
+def verify_bench(rel: str, rebuild: bool, verbose: bool, epsilon: Optional[float] = None) -> Result:
     bench_dir = BENCHES / rel
     tier = 1 if rel.startswith("compute/") else 3
 
@@ -144,7 +181,7 @@ def verify_bench(rel: str, rebuild: bool, verbose: bool) -> Result:
     bmb_norm = normalize(bmb_out) if bmb_ok else ""
     c_norm = normalize(c_out) if c_ok else ""
 
-    match = bmb_ok and c_ok and bmb_norm == c_norm
+    match = bmb_ok and c_ok and outputs_match(bmb_norm, c_norm, epsilon)
     diff = "" if match else diff_lines(bmb_norm, c_norm)
 
     return Result(rel, tier, bmb_ok, c_ok, match, bmb_norm, c_norm, diff)
@@ -156,6 +193,8 @@ def main():
     ap.add_argument("--rebuild", action="store_true")
     ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--json", help="write machine-readable JSON report")
+    ap.add_argument("--epsilon", type=float, default=None,
+                    help="relative tolerance for float token comparison (e.g. 1e-6)")
     args = ap.parse_args()
 
     if args.tier == "1":
@@ -175,7 +214,7 @@ def main():
     t0 = time.time()
     for rel in benches:
         print(f"  {rel:<40}", end="", flush=True)
-        r = verify_bench(rel, args.rebuild, args.verbose)
+        r = verify_bench(rel, args.rebuild, args.verbose, args.epsilon)
         results.append(r)
         if r.note:
             print(f" SKIP — {r.note}")
@@ -205,6 +244,7 @@ def main():
         with open(args.json, "w") as f:
             json.dump({
                 "tier": args.tier,
+                "epsilon": args.epsilon,
                 "total": len(results),
                 "matched": matched,
                 "mismatched": mismatched,
