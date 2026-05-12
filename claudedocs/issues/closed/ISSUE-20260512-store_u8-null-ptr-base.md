@@ -4,7 +4,7 @@
 
 **우선순위**: **P0** (silent correctness bug — output divergence without compile/run error)
 **영역**: codegen / llvm_text.rs (or .rs) / store_u8 lowering
-**상태**: Open — Cycle 2772 진단 완료, fix는 multi-cycle (Rule 6)
+**상태**: **CLOSED** — Cycle 2777 fix 완료 (llvm_text.rs param_set heuristic 제거, 6 intrinsics)
 **estimated_cycles**: 3-5 (hypothesis — compiler operand selection fix + verify)
 
 ## 측정 stamp

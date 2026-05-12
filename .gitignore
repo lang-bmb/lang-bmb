@@ -1,6 +1,12 @@
 # Local / IDE
 local-docs/
-claudedocs/
+claudedocs/*
+!claudedocs/issues/
+!claudedocs/issues/**
+!claudedocs/measurements/
+!claudedocs/measurements/**
+!claudedocs/HANDOFF.md
+!claudedocs/ROADMAP.md
 /research/
 .serena/
 CLAUDE.md

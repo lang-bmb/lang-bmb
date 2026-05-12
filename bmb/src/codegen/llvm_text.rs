@@ -4488,12 +4488,7 @@ impl TextCodeGen {
                             }
                         }
                         if let Some((add_lhs, add_rhs)) = add_parts {
-                            let param_set: std::collections::HashSet<&String> = func.params.iter().map(|(n,_)| n).collect();
-                            let (base_op, offset_op) = if matches!(add_rhs, Operand::Place(p) if param_set.contains(&p.name)) {
-                                (add_rhs, add_lhs)
-                            } else {
-                                (add_lhs, add_rhs)
-                            };
+                            let (base_op, offset_op) = (add_lhs, add_rhs);
 
                             // Check if offset = index * 8 for element-type GEP
                             let mut scaled_index: Option<&Operand> = None;
@@ -4656,12 +4651,7 @@ impl TextCodeGen {
                             }
                         }
                         if let Some((add_lhs, add_rhs)) = add_parts {
-                            let param_set: std::collections::HashSet<&String> = func.params.iter().map(|(n,_)| n).collect();
-                            let (base_op, offset_op) = if matches!(add_rhs, Operand::Place(p) if param_set.contains(&p.name)) {
-                                (add_rhs, add_lhs)
-                            } else {
-                                (add_lhs, add_rhs)
-                            };
+                            let (base_op, offset_op) = (add_lhs, add_rhs);
 
                             // v0.96.35: Check if offset = index * 8 (element size for i64)
                             // If so, emit getelementptr i64 with element index instead of
@@ -4845,12 +4835,7 @@ impl TextCodeGen {
                             }
                         }
                         if let Some((add_lhs, add_rhs)) = add_parts {
-                            let param_set: std::collections::HashSet<&String> = func.params.iter().map(|(n,_)| n).collect();
-                            let (base_op, offset_op) = if matches!(add_rhs, Operand::Place(p) if param_set.contains(&p.name)) {
-                                (add_rhs, add_lhs)
-                            } else {
-                                (add_lhs, add_rhs)
-                            };
+                            let (base_op, offset_op) = (add_lhs, add_rhs);
 
                             // Check if offset = index * 8 for element-type GEP (f64 is 8 bytes)
                             let mut scaled_index: Option<&Operand> = None;
@@ -4981,12 +4966,7 @@ impl TextCodeGen {
                             }
                         }
                         if let Some((add_lhs, add_rhs)) = add_parts {
-                            let param_set: std::collections::HashSet<&String> = func.params.iter().map(|(n,_)| n).collect();
-                            let (base_op, offset_op) = if matches!(add_rhs, Operand::Place(p) if param_set.contains(&p.name)) {
-                                (add_rhs, add_lhs)
-                            } else {
-                                (add_lhs, add_rhs)
-                            };
+                            let (base_op, offset_op) = (add_lhs, add_rhs);
 
                             // Check if offset = index * 8 for element-type GEP (f64 is 8 bytes)
                             let mut scaled_index: Option<&Operand> = None;
@@ -5253,13 +5233,7 @@ impl TextCodeGen {
                             }
                         }
                         if let Some((add_lhs, add_rhs)) = add_parts {
-                            // Determine base (prefer function param for stable pointer) and offset
-                            let param_set: std::collections::HashSet<&String> = func.params.iter().map(|(n,_)| n).collect();
-                            let (base_op, offset_op) = if matches!(add_rhs, Operand::Place(p) if param_set.contains(&p.name)) {
-                                (add_rhs, add_lhs)
-                            } else {
-                                (add_lhs, add_rhs)
-                            };
+                            let (base_op, offset_op) = (add_lhs, add_rhs);
                             // Load base operand value
                             // v0.93.122: Handle narrowed i32 params with sext for inttoptr
                             let base_val = match base_op {
@@ -5376,12 +5350,7 @@ impl TextCodeGen {
                             }
                         }
                         if let Some((add_lhs, add_rhs)) = add_parts {
-                            let param_set: std::collections::HashSet<&String> = func.params.iter().map(|(n,_)| n).collect();
-                            let (base_op, offset_op) = if matches!(add_rhs, Operand::Place(p) if param_set.contains(&p.name)) {
-                                (add_rhs, add_lhs)
-                            } else {
-                                (add_lhs, add_rhs)
-                            };
+                            let (base_op, offset_op) = (add_lhs, add_rhs);
                             // Load base
                             // v0.93.122: Handle narrowed i32 params with sext for inttoptr
                             let base_val = match base_op {
@@ -9309,6 +9278,26 @@ mod tests {
     fn test_rt_comparison_ne() {
         let ir = source_to_ir("fn ne(a: i64, b: i64) -> bool = a != b;");
         assert!(ir.contains("icmp ne i64"));
+    }
+
+    #[test]
+    fn test_store_u8_param_param_uses_lhs_as_base() {
+        // P0 bug (Cycle 2777): when both buf and pos are function params,
+        // old param_set heuristic swapped them → pos used as base → null GEP when pos=0
+        let ir = source_to_ir(
+            "fn write_byte(buf: i64, pos: i64, c: i64) -> i64 = { let _s = store_u8(buf + pos, c); 0 };",
+        );
+        // buf (lhs) must be the base; pos (rhs) must be the offset
+        // Correct: inttoptr i64 %buf to ptr
+        // Wrong:   inttoptr i64 %pos to ptr  (was null when pos=0)
+        assert!(
+            ir.contains("inttoptr i64 %buf") || ir.contains("getelementptr") && ir.contains("%buf"),
+            "store_u8 must use buf (lhs) as base pointer, not pos. IR:\n{ir}"
+        );
+        assert!(
+            !ir.contains("inttoptr i64 %pos"),
+            "store_u8 must NOT use pos (rhs) as base pointer. IR:\n{ir}"
+        );
     }
 
     #[test]
