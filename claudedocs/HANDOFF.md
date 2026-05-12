@@ -1,7 +1,7 @@
-# BMB Session Handoff — 2026-05-13 (Cycles 2788-2789 — bench verify 16/17 PASS + cleanup)
+# BMB Session Handoff — 2026-05-13 (Cycles 2788-2791 — bench verify 17/17 PASS fair comparison)
 
-> **HEAD**: `2891382f`
-> **이번 세션 commits**: lexer 6-bug fix + csv_parse skip_ws → 16/17 PASS; ISSUE 정리; fibonacci 6B→100M → **17/17 PASS**
+> **HEAD**: `[pending commit]`
+> **이번 세션 commits**: lexer 6-bug fix + csv_parse skip_ws → 16/17 PASS; fibonacci 6B→100M → 17/17 PASS; fibonacci fair fix (bmb_black_box + noinline) → **17/17 PASS fair comparison** ✅
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2787 기준, bootstrap 변경 없음)
 > **이전 세션 핸드오프**: Cycles 2783-2787 (`96512434`)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
@@ -32,14 +32,17 @@ Result: verify PASS (Small: Identifiers:20/Numbers:9/Keywords:12/..., Large tota
 
 Result: verify PASS (Rows:11/Fields:44/Quoted:4/Total chars:274 — C와 정확히 일치)
 
-### 최종 verify 결과: **16/17 PASS** (epsilon 1e-6)
+### 최종 verify 결과: **17/17 PASS** (epsilon 1e-6, fair comparison)
 
 ```
-python3 scripts/verify_bench_outputs.py --tier all --epsilon 1e-6
-→ Matched: 16/17, Mismatched: 0, Failed: 1 (fibonacci C timeout)
+python scripts/verify_bench_outputs.py --tier all --epsilon 1e-6 --rebuild
+→ Matched: 17/17, Mismatched: 0, Failed: 0, Time: 43.6s
 ```
 
-fibonacci: C binary가 6B iterations 실제 실행(~60s) vs BMB LLVM constant-fold(17ms). P3 known issue.
+fibonacci fair fix (Cycle 2791):
+- BMB: `fibonacci_iter(bmb_black_box(50))` → LLVM @pure constant-fold 방지
+- C: `__attribute__((noinline))` → GCC hoisting/constant-propagation 방지
+- 시간 12.7s → 43.6s: fibonacci 이제 C+BMB 모두 실제 ~2s 실행 (fair)
 
 ### ISSUE 정리
 

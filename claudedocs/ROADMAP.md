@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-13 (Cycle 2790 — **bench output fairness 17/17 PASS**: fibonacci 6B→100M iterations, ISSUE 완전 종결)
+> 최종 업데이트: 2026-05-13 (Cycle 2791 — **fibonacci fair fix**: bmb_black_box + noinline → 17/17 PASS fair comparison ✅)
 > 이전 갱신: Cycles 2765-2773 (bench verify infrastructure + P0 store_u8 bug 진단), Cycles 2760-2764 (M3-5 honest re-baseline median-of-5)
 > 이 문서는 매 세션의 **유일한 실무 앵커**다.
 > 상세 사이클 로그: `docs/ROADMAP.md` | 개발 규칙: `CLAUDE.md` | 세션 상태: `claudedocs/HANDOFF.md`
@@ -485,13 +485,13 @@ historic.json (2026-05-02, 5-run) + tier3-10runs.json (2026-05-01, 10-run, noise
 `scripts/verify_bench_outputs.py` (240 LOC) — BMB ↔ C bench 출력 정합 검사:
 - Tier 1/3 17 benches hardcoded
 - 1차 측정: 11 PASS / 4 mismatch / 2 fail (Tier 1 8/10, Tier 3 3/7)
-- **최신 (Cycle 2790, 2026-05-13)**: fibonacci 6B→100M iterations → **17/17 PASS** ✅ (모든 bench 공정 비교 확인)
+- **최신 (Cycle 2791, 2026-05-13)**: fibonacci fair fix (bmb_black_box + noinline) → **17/17 PASS ✅ fair comparison** (모든 bench BMB ↔ C 실제 실행)
 - `scripts/full-cycle.sh` Step 3.5에 통합 (`--skip-verify` opt, non-blocking, exit 0/1/2 mapping)
 - `bench_verify.json` artifact 출력
 
-**측정 신뢰도 회복**: 17/17 benches 모두 fair comparison. **P-track ratio 신뢰도 ✅**.
+**측정 신뢰도 완전 회복 (Cycle 2791)**: 17/17 benches 모두 fair comparison. fibonacci BMB: `bmb_black_box(50)` → LLVM constant-fold 방지. fibonacci C: `__attribute__((noinline))` → GCC hoisting 방지. **P-track ratio 신뢰도 ✅**.
 
-### Cycle 2788-2790 갱신 (2026-05-13, bench output fairness 17/17 PASS)
+### Cycle 2788-2791 갱신 (2026-05-13, bench output fairness 17/17 PASS + fair fix)
 
 | 항목 | 카운트 |
 |------|-------|
@@ -509,7 +509,7 @@ historic.json (2026-05-02, 5-run) + tier3-10runs.json (2026-05-01, 10-run, noise
 - `lexer` 전면 재작성 (6-bug fix, 이전 세션): verify Small + Large(100x) 정확히 일치.
 
 **bench verify 최종 상태** (`python scripts/verify_bench_outputs.py --tier all --epsilon 1e-6`):
-- **16/17 PASS** (잔여: fibonacci C timeout P3 — C exe ~60s, BMB LLVM constant-fold 17ms)
+- **17/17 PASS** ✅ (fibonacci fair: bmb_black_box + noinline 적용. C ~2s, BMB ~2s 실측)
 
 ### Cycle 2765-2773 advisor leverage 4건
 
