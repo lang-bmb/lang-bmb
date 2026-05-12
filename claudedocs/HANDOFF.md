@@ -1,15 +1,50 @@
-# BMB Session Handoff — 2026-05-12 (Cycles 2765-2773 — bench verify infrastructure + P0 store_u8 bug)
+# BMB Session Handoff — 2026-05-12 (Cycles 2783-2787 — sorting P0 fix + int_to_string i64::MIN)
 
-> **HEAD**: `c14f2265` (D1-D8 권장 옵션 결정 commit)
-> **이번 세션 commits**: `45a96748` (feat 2765-2773) → `227608fa` (session-close) → `8d1b7bd2` (cleanup measurements) → `681d0f2e` (session-close) → `c14f2265` (D1-D8 결정)
-> **이전 세션 핸드오프**: Cycle 2764 (`e98669fa`) — M3-5 honest re-baseline
+> **HEAD**: `6d6d520d` (fix bootstrap int_to_string modular files)
+> **이번 세션 commits**: `7a48b80a` (sorting P0 MkTuple) → `dad2b346` (int_to_string compiler.bmb) → `ab5d9d5f` (D5-B epsilon) → `6d6d520d` (int_to_string modular)
+> **이전 세션 핸드오프**: Cycles 2765-2773 (`c14f2265`)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **이번 세션 진입점**: Cycle 2765 (Phase A Tier 3 workload amplification 시도)
+> **이번 세션 진입점**: Cycle 2783 (D2' sorting P0 UB fix + P1 bootstrap parser fix)
 > **이번 세션 cycle logs**: gitignored (disk only)
 
 ---
 
-## 0. 이번 세션 작업 (Cycles 2765-2773, 9 cycles, infrastructure + diagnosis 중심)
+## 0. 이번 세션 작업 (Cycles 2783-2787, 5 cycles, P0+P1 correctness fixes)
+
+### ✅ D2' sorting P0 fix (Cycle 2783)
+
+`MkTuple` handler in `llvm_text.rs`에서 `insertvalue` chain 이후 alloca에 store가 빠짐 →
+SROA가 load를 `undef`로 대체 → `partition` 함수 재귀 호출 인수가 `undef` → 무한 루프 (~500×).
+Fix: `if local_names.contains(&dest.name) { store struct_type %dest_name, ptr %dest.name.addr }` 추가.
+Result: sorting 203ms + `403905348` ✅ (ref Feb 9 = 234ms).
+
+### ✅ P1 bootstrap int_to_string i64::MIN fix (Cycle 2784)
+
+`bootstrap/compiler.bmb`의 `int_to_string`에서 `0 - i64::MIN = i64::MIN` (wrap-around) →
+무한 재귀 → STATUS_STACK_OVERFLOW on hash_table (226 LOC).
+Root cause는 parser recursion이 아님 (3 else-if chains ≠ 64MB overflow) — bisection으로 확인.
+Fix: `int_to_string_neg` helper 추가 (음수를 negation 없이 직접 처리).
+Result: `stage1.exe build hash_table/main.bmb` ✅ (was STATUS_STACK_OVERFLOW).
+Issue document 근본 수정 (hypothesis 오류 정정).
+
+### ✅ D5-B epsilon FP tolerance (Cycle 2785)
+
+`full-cycle.sh` verify step에 `--epsilon 1e-6` 추가 → n_body FP precision 차이 (~7e-7 rel)
+가 false MISMATCH 유발하던 문제 해결. Tier 1 verify: 9/10 matched (fibonacci C timeout = 기존).
+
+### ✅ int_to_string fix 6 modular files (Cycle 2786)
+
+Rule 5 (전수 검색): mir.bmb / optimize.bmb / lowering.bmb / llvm_ir.bmb / parser_ast.bmb /
+types.bmb 모두 동일 `0 - n` 패턴 수정. build_unified_compiler.sh + CI 커버.
+
+### ✅ Tier 3 verify sorting confirmed (Cycle 2787)
+
+`verify_bench_outputs.py --tier 3 --rebuild --epsilon 1e-6`: sorting ✅ (5/7 matched).
+csv_parse + lexer MISMATCH = pre-existing tracked issues.
+
+---
+
+## [PREV] 이전 세션 작업 (Cycles 2765-2773, 9 cycles, infrastructure + diagnosis 중심)
 
 ### 🚨 중대 발견 — **P0 store_u8 silent correctness bug**
 
@@ -105,20 +140,20 @@ Cycle 2769에서 `scripts/verify_bench_outputs.py` 작성 (240 LOC):
 
 > Decision matrix는 § 6 참조. **권장 ordering** = 다음 세션 진입 시 순차 실행.
 
-### 진입 ordering (12-15 cycles + 2 HUMAN dispatch)
+### 진입 ordering (갱신 2026-05-12, Cycles 2783-2787 반영)
 
-| # | 결정 | 태스크 | 성격 | 추정 |
+| # | 결정 | 태스크 | 성격 | 상태 |
 |---|------|--------|------|------|
-| 1 | **D6** | submodule revert (lexer/brainfuck POC, effect 없음) | 자율 | 1 cycle |
-| 2 | **D4** | `.gitignore` `!claudedocs/issues/` + `!measurements/` 예외 | 자율 | 1 cycle |
-| 3 | **D7** | M3 publish dispatch (npm + PyPI) | **HUMAN dispatch** | 즉시 |
-| 4 | **D1** | P0 `store_u8` fix in bootstrap + 골든 테스트 | 자율 | 3-5 cycles |
-| 5 | **D5-B** | `verify_bench_outputs.py --epsilon` FP tolerance | 자율 | 1 cycle |
-| 6 | **D5-A** | GitHub Actions verify workflow step | 자율 + HUMAN approval | 1 cycle |
-| 7 | **D2** | bootstrap parser stack fix (`-Wl,--stack=64M`) | 자율 | 1-2 cycles |
-| 8 | **D2'** | sorting Rust bisect (진단 only, fix 안 함) | 자율 | 2-3 cycles |
-| 9 | **D8** | M4-1 B baseline (`BMB_BENCH_API_KEY` setup → bmb-ai-bench --all) | **HUMAN setup + 자율 8-12h** | 1 cycle |
-| 10 | **D3** | Rule 6 정책 명시 + bootstrap port roadmap (CLAUDE.md) | 자율 | 1 cycle |
+| 1 | D6 | submodule revert | 자율 | ✅ 이전 세션 완료 |
+| 2 | D4 | `.gitignore` exceptions | 자율 | ✅ 이전 세션 완료 |
+| 3 | **D7** | M3 publish dispatch (npm + PyPI) | **HUMAN dispatch** | ⏳ |
+| 4 | D1 | P0 `store_u8` fix | 자율 | ✅ Cycle 2777 완료 (closed) |
+| 5 | D5-B | epsilon FP tolerance | 자율 | ✅ **Cycle 2785 완료** |
+| 6 | **D5-A** | GitHub Actions verify workflow | HUMAN approval | ⏳ |
+| 7 | D2 | bootstrap parser stack fix | 자율 | ✅ **Cycle 2784 완료** (int_to_string root cause fix) |
+| 8 | D2' | sorting P0 UB fix | 자율 | ✅ **Cycle 2783 완료** |
+| 9 | **D8** | M4-1 B baseline | **HUMAN setup** | ⏳ |
+| 10 | D3 | Rule 6 정책 CLAUDE.md | 자율 | ✅ Cycle 2781 완료 |
 
 ### 자율 진입 가능 (HUMAN 차단 없음)
 
