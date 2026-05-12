@@ -1143,6 +1143,9 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
             #[cfg(target_os = "windows")]
             if clang_is_mingw {
                 cmd.args(["-static", "-static-libgcc"]);
+                // D2 (Cycle 2780): 64MB stack — prevents STATUS_STACK_OVERFLOW on deeply
+                // nested ASTs (bootstrap parser recursion depth). Default Windows stack is 1MB.
+                cmd.arg("-Wl,--stack,67108864");
             }
 
             if config.verbose {
@@ -1371,6 +1374,9 @@ fn link_native(
         // MinGW driver (gcc or clang with windows-gnu target).
         if linker_targets_mingw(&linker) {
             cmd.args(["-static", "-static-libgcc"]);
+            // D2 (Cycle 2780): 64MB stack — prevents STATUS_STACK_OVERFLOW on deeply
+            // nested ASTs (bootstrap parser recursion depth). Default Windows stack is 1MB.
+            cmd.arg("-Wl,--stack,67108864");
         }
     }
 
