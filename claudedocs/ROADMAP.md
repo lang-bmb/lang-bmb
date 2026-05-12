@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-13 (Cycle 2791 — **fibonacci fair fix**: bmb_black_box + noinline → 17/17 PASS fair comparison ✅)
+> 최종 업데이트: 2026-05-13 (Cycle 2792 — **or/and short-circuit fix**: bootstrap lowering → S2==S3 ✅)
 > 이전 갱신: Cycles 2765-2773 (bench verify infrastructure + P0 store_u8 bug 진단), Cycles 2760-2764 (M3-5 honest re-baseline median-of-5)
 > 이 문서는 매 세션의 **유일한 실무 앵커**다.
 > 상세 사이클 로그: `docs/ROADMAP.md` | 개발 규칙: `CLAUDE.md` | 세션 상태: `claudedocs/HANDOFF.md`
@@ -490,6 +490,30 @@ historic.json (2026-05-02, 5-run) + tier3-10runs.json (2026-05-01, 10-run, noise
 - `bench_verify.json` artifact 출력
 
 **측정 신뢰도 완전 회복 (Cycle 2791)**: 17/17 benches 모두 fair comparison. fibonacci BMB: `bmb_black_box(50)` → LLVM constant-fold 방지. fibonacci C: `__attribute__((noinline))` → GCC hoisting 방지. **P-track ratio 신뢰도 ✅**.
+
+### Cycle 2792 갱신 (2026-05-13, or/and short-circuit lowering fix)
+
+| 항목 | 카운트 |
+|------|-------|
+| Active ISSUE | **16** (or-chain-lowering close) |
+| Closed 이번 cycle | **1** (ISSUE-20260511-or-chain-lowering) |
+| 신규 이번 cycle | **0** |
+| Closed (누적) | **51** |
+
+**핵심 수정 (bootstrap/compiler.bmb)**:
+- `is_pure_expr`: `or`/`and` → impure 표시 (branch path 강제)
+- `lower_binop_sb` (recursive): `or`/`and` → `lower_if_branch_sb` 디스패치
+- `step_binop_start` (iterative): `or`/`and` → `IT` work item 디스패치
+
+**검증**: `false and expensive(42)` → expensive 미호출 ✅ / `false or expensive(42)` → 호출 ✅
+
+**S2==S3 Fixed Point** ✅ | cargo test 6211/6211 PASS
+
+**Close 근거**: ISSUE-20260511-or-chain-lowering — short-circuit 시맨틱 위반 수정됨.  
+Note: 순수 or-chain의 jump table 생성은 MIR 옵티마이저의 `select` 폴딩으로 여전히 미달성.
+이는 `lexer 1.000x parity`(Cycle 2751) 달성 후 P3로 강등된 상태이며, 별도 ISSUE 불필요.
+
+---
 
 ### Cycle 2788-2791 갱신 (2026-05-13, bench output fairness 17/17 PASS + fair fix)
 

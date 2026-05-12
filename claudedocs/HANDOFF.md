@@ -1,11 +1,11 @@
 # BMB Session Handoff — 2026-05-13 (Cycles 2788-2792 — or/and short-circuit fix + 17/17 PASS)
 
-> **HEAD**: `edd256f1`
+> **HEAD**: `b909749e`
 > **이번 세션 commits**: lexer 6-bug fix + csv_parse skip_ws → 16/17 PASS; fibonacci 6B→100M → 17/17 PASS; fibonacci fair fix → 17/17 PASS; **or/and 단락평가 fix (Cycle 2792) → S2==S3 ✅**
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2792, bootstrap 변경 포함)
 > **이전 세션 핸드오프**: Cycles 2783-2787 (`96512434`)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **이번 세션 진입점**: Cycle 2788 (bench output fairness) → Cycle 2792 (or/and short-circuit)
+> **다음 세션 진입점**: Cycle 2793 — M4 계획 또는 bootstrap `error_test` 포맷 정합 (Active ISSUE 16개)
 > **이번 세션 cycle logs**: gitignored (disk only)
 
 ---
@@ -66,8 +66,10 @@ fibonacci fair fix (Cycle 2791):
 - `ISSUE-20260512-bootstrap-stack-depth-hash_table.md` → **closed/** 이동 (Cycle 2784 해결)
 - `ISSUE-20260512-bench-output-fairness-survey.md` → fibonacci P3 scope 노트 추가 (Cycle 2789)
 
-Active ISSUE: **17** (실제 ISSUE 기준, 유틸 파일 제외) / Closed: **50**
-(Cycle 2790: bench-output-fairness-survey → closed/)
+Active ISSUE: **16** / Closed: **51** (Cycle 2792: or-chain-lowering → closed/)
+
+**Cycle 2792 ISSUE 정리**:
+- `ISSUE-20260511-or-chain-lowering.md` → **closed/** (short-circuit 시맨틱 수정 완료)
 
 ---
 
