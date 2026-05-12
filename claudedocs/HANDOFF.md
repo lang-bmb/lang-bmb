@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-12 (Cycles 2765-2773 — bench verify infrastructure + P0 store_u8 bug)
 
-> **HEAD**: TBD (Cycle 2774 commit 예정)
+> **HEAD**: `45a96748` (Cycle 2774 commit — bench verify infrastructure + P0 store_u8 diagnosis)
 > **이전 세션 핸드오프**: Cycle 2764 (`e98669fa`) — M3-5 honest re-baseline
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 > **이번 세션 진입점**: Cycle 2765 (Phase A Tier 3 workload amplification 시도)
@@ -305,4 +305,4 @@ HUMAN 검토 후 분기:
 
 ---
 
-**세션 종료**: 2026-05-12 (Cycles 2765-2773 — bench verify infrastructure + P0 store_u8 bug 진단). HEAD TBD (Cycle 2774 commit 예정).
+**세션 종료**: 2026-05-12 (Cycles 2765-2773 — bench verify infrastructure + P0 store_u8 bug 진단). HEAD `45a96748` (Cycle 2774 commit).
