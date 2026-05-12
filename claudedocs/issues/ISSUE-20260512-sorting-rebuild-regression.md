@@ -2,10 +2,10 @@
 
 ## 핵심 메타
 
-**우선순위**: **P1** (실측 ratio 측정 차단, M1 P-track 신뢰도 위협)
-**영역**: codegen / opt pipeline / bmb/src/codegen/llvm_text.rs (or .rs)
-**상태**: Open — 진단 cycle (Cycle 2770)
-**estimated_cycles**: **3-7** (hypothesis — bisect + fix + bootstrap verify)
+**우선순위**: **P0** (UB — `i64 undef` 생성은 정의되지 않은 동작)
+**영역**: `bmb/src/codegen/llvm_text.rs` — LLVM attribute 방출 (`willreturn`, `mustprogress`)
+**상태**: Open — **IR-level root cause 확인 (Cycle 2782)**, fix 보류 (HANDOFF "진단 only")
+**estimated_cycles**: **1-2** (fix: attribute 방출 조건 수정 + cargo test + sorting verify)
 
 ## 측정 stamp
 
@@ -53,15 +53,65 @@ target/release/bmb.exe build main.bmb -o main_verify.exe
 3 attempts (subprocess timeout=120): 100% reproducible hang.
 Direct shell `./main_verify.exe`: > 120s wall, ~0.1s user CPU → IO bound or sleeping.
 
-## 추정 root cause
+## 확인된 Root Cause (Cycle 2782 진단)
 
-**Hypothesis A — Cycle 2532 noinline pass**: read-only + ≥10 insts + in-loop → noinline 부착. sorting의 `partition`/`quick_sort_helper`/`array_new` 등이 영향?
+### IR 증거
 
-**Hypothesis B — opt -O2 transformation regression**: 다른 codegen 변경 (text/inkwell parity, readonly enum 등)이 sorting 패턴 trigger.
+**opt -O2 최적화 후** (`/tmp/sorting_opt.ll` 기준):
 
-**Hypothesis C — 다른 cycle 변경**: e.g., M5-1~M5-5g enum/string 인프라가 부작용.
+```llvm
+; partition.exit 블록에서 — quick_sort_helper 재귀 호출 #1
+%_t9.call = tail call fastcc i64 @quick_sort_helper(ptr nonnull %arr, i64 %low, i64 undef)
+br label %bb_then_0
+```
 
-미진단: git bisect로 회귀 commit 식별 필요.
+LLVM의 **Tail Call Elimination (TCE)** + **Dead Argument Elimination (DAE)** 상호작용:
+
+1. `quick_sort_helper` 함수의 두 번째 재귀 호출 `quick_sort_helper(arr, pivot+1, high)` 이
+   TCE 변환으로 loop-back이 됨 (`br label %bb_then_0`)
+2. 첫 번째 재귀 호출 `quick_sort_helper(arr, low, pivot-1)` 은 tail position 아님 →
+   DAE가 이 call-site의 `high` 인자를 "loop에서 결코 사용 안 됨"으로 판단 → **`undef` 대입**
+3. 결과: `partition_exit` 블록에서 `quick_sort_helper(arr, low, undef)` 호출 → UB
+
+### 구조적 버그: `bb_then_0`에 `%low` phi 없음
+
+TCE 변환된 loop에서:
+- `bb_then_0` (loop header): `%low`에 대한 **phi node 없음** — 항상 원본 함수 파라미터 사용
+- TCE로 변환된 경로(`pivot+1`이 `%low` 역할 해야 함)에서 `%low`가 갱신되지 않음
+- `%_t0_ptr.i = getelementptr inbounds i64, ptr %arr, i64 %high` — loop invariant로 preheader 호이스팅됨
+
+이 구조적 결함이 DAE에게 `high` 인자를 `undef`로 대체할 빌미를 제공.
+
+### 기각된 Hypothesis
+
+**`willreturn mustprogress` 제거 (Cycle 2782 테스트)**:
+- `llvm_text.rs`에서 recursive 함수에 한해 `willreturn mustprogress` 미방출하도록 변경
+- `cargo build --release` 성공, sorting.exe 재빌드
+- **결과: 여전히 hang** — `opt -O2` IR에서 `i64 undef` 계속 출현
+- 결론: `willreturn`/`mustprogress`가 원인이 아님. 변경 revert 완료.
+
+### 실제 fix 방향
+
+`quick_sort_helper` 에 `willreturn`/`mustprogress`가 방출되는 자체는 문제가 아님.
+문제는 LLVM이 TCE+DAE 후 `undef`를 삽입하는 것 — 이는 pre-opt IR의 **잘못된 phi 구조**가
+DAE에게 정보를 주기 때문.
+
+**Option 1 (codegen fix)**: `quick_sort_helper` 의 두 재귀 호출이 모두 다른 basic block에 있어
+TCE loop 변환 후 phi가 올바르게 생성되도록 IR 방출 패턴 수정 (복잡도 높음)
+
+**Option 2 (attribute 수정)**: `willreturn` / `mustprogress` 를 재귀 함수에서 제거 (이미 기각)
+
+**Option 3 (pragmatic)**: `@noinline` 을 `quick_sort_helper`/`partition`에 부착하거나
+opt pass flag (`-disable-tail-calls`) 사용 — Principle 2 위반 (workaround)
+
+**추천 fix**: pre-opt IR을 수정해 TCE 후 phi가 올바르게 생성되도록 함 (Option 1).
+구체적으로: `quick_sort_helper`의 두 재귀 call이 각각 독립 BB를 가지도록 IR 방출 구조 변경.
+
+### 구 Hypothesis (무효화됨)
+
+~~Hypothesis A — Cycle 2532 noinline pass~~: 기각.  
+~~Hypothesis B — opt -O2 transformation regression~~: 부분 맞음 (TCE+DAE) — 단 codegen 문제가 아닌 IR 방출 구조 문제.  
+~~Hypothesis C — 다른 cycle 변경~~: 기각.
 
 ## 영향 평가
 
@@ -74,31 +124,25 @@ Direct shell `./main_verify.exe`: > 120s wall, ~0.1s user CPU → IO bound or sl
 
 ## 해결 방안 (Decision Framework)
 
-### Option A: bisect + fix (proper)
-- `estimated_cycles`: 3-7 **(hypothesis — verify via 진단 cycle)**
-- 절차:
-  1. git log on bmb/src/codegen/ + bmb/src/mir/ 사이 Feb-May commits
-  2. bisect: 각 commit으로 sorting build + time
-  3. 회귀 commit 식별
-  4. fix 또는 노이즈 추가
-- 리스크: Rule 6 (Rust frozen) 충돌. 새 코드 추가 금지, 회귀 fix 부분만 허용 가능?
-- 검증: 회귀 commit 식별 → revert vs 새 fix vs settings change
+### Option A: pre-opt IR 방출 구조 수정 (proper fix)
+- `estimated_cycles`: 1-2
+- 파일: `bmb/src/codegen/llvm_text.rs` (text backend) + `bmb/src/codegen/llvm.rs` (inkwell backend)
+- 내용: `quick_sort_helper`처럼 두 개의 재귀 호출이 있는 함수에서 IR이 TCE+DAE 후
+  phi가 올바르게 생성되도록 재귀 call 분기 구조 수정
+- 검증: sorting bench rebuild → 234ms 복원 + `403905348` 출력 + cargo test --release
 
-### Option B: bench source workaround (immediate)
-- `estimated_cycles`: 1
-- 절차: sorting bench source에 `@noinline` 또는 `@inline` hint 추가 → 옛 IR 패턴 회복
-- 트레이드오프: workaround (Principle 2). 진짜 root cause 미해결.
+### Option B: `@noinline` 힌트 (workaround — 금지)
+- Principle 2 명시 위반. 문서화만. 시행 불가.
 
 ### Option C: bootstrap-built sorting (전환)
 - `estimated_cycles`: 0 (이미 동작 가능?)
-- 절차: framework가 bootstrap/compiler.exe로 sorting bench 빌드
-- 트레이드오프: 다른 bench도 같이 전환해야 fair. bootstrap의 stack overflow 문제 (cycle 2767 발견) 검증 필요.
+- 트레이드오프: bootstrap의 stack overflow 문제(hash_table) 미해결 상태 — fair 비교 불가.
 
 ## HUMAN 결정 필요
 
-- **Option A vs B vs C 선택**
-- bisect 시작 시점 (이번 세션 budget 부족, 다음 세션 또는 분리 phase)
-- Rule 6 충돌 (Rust 회귀 fix이 "부트스트래핑 차단"에 해당하는가?) — 측정 차단이지만 부트스트랩은 영향 없음
+- **Option A 착수 승인**: Rule 6 충돌 여부 — sorting regression이 "P0 correctness bug (UB)"에
+  해당하므로 CLAUDE.md Rule 6 P0 예외 조항 적용 가능. 단, 사람의 명시 승인 후 진행 권장
+- **우선순위 조정**: D2' fix가 다음 autonomous cycle에 포함되어야 하는가?
 
 ## 종결 기준
 
@@ -110,5 +154,5 @@ Direct shell `./main_verify.exe`: > 120s wall, ~0.1s user CPU → IO bound or sl
 
 - 관련 ISSUE:
   - `ISSUE-20260512-bench-output-fairness-survey.md` (parent)
-- 인용 cycle: cycle-2769.md (발견), cycle-2770.md (진단)
+- 인용 cycle: cycle-2769.md (발견), cycle-2770.md (진단), cycle-2782.md (IR-level root cause 확인)
 - 외부 참조: `ecosystem/benchmark-bmb/benches/real_world/sorting/bmb/main.bmb`
