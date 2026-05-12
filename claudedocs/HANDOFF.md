@@ -1,7 +1,7 @@
 # BMB Session Handoff — 2026-05-13 (Cycles 2788-2789 — bench verify 16/17 PASS + cleanup)
 
-> **HEAD**: `fed4deca`
-> **이번 세션 commits**: lexer 6-bug fix + csv_parse skip_ws zero-pos fix → 16/17 PASS; ISSUE 정리 (lexer + sorting closed)
+> **HEAD**: `2891382f`
+> **이번 세션 commits**: lexer 6-bug fix + csv_parse skip_ws → 16/17 PASS; ISSUE 정리; fibonacci 6B→100M → **17/17 PASS**
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2787 기준, bootstrap 변경 없음)
 > **이전 세션 핸드오프**: Cycles 2783-2787 (`96512434`)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
@@ -48,7 +48,8 @@ fibonacci: C binary가 6B iterations 실제 실행(~60s) vs BMB LLVM constant-fo
 - `ISSUE-20260512-bootstrap-stack-depth-hash_table.md` → **closed/** 이동 (Cycle 2784 해결)
 - `ISSUE-20260512-bench-output-fairness-survey.md` → fibonacci P3 scope 노트 추가 (Cycle 2789)
 
-Active ISSUE: **18** (실제 ISSUE 기준, 유틸 파일 제외) / Closed: **49**
+Active ISSUE: **17** (실제 ISSUE 기준, 유틸 파일 제외) / Closed: **50**
+(Cycle 2790: bench-output-fairness-survey → closed/)
 
 ---
 
