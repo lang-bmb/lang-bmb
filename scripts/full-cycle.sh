@@ -207,7 +207,7 @@ if [ "$SKIP_VERIFY" = false ]; then
     VERIFY_OUT="$OUTPUT_DIR/bench_verify.json"
     # Capture exit code without invoking set -e (run in subshell + collect $?).
     set +e
-    python3 "$SCRIPT_DIR/verify_bench_outputs.py" --tier all --rebuild --json "$VERIFY_OUT" 2>&1 | tee "$OUTPUT_DIR/bench_verify_output.txt" | tail -10
+    python3 "$SCRIPT_DIR/verify_bench_outputs.py" --tier all --rebuild --epsilon 1e-6 --json "$VERIFY_OUT" 2>&1 | tee "$OUTPUT_DIR/bench_verify_output.txt" | tail -10
     VERIFY_EXIT=${PIPESTATUS[0]}
     set -e
     if [ "$VERIFY_EXIT" -eq 0 ]; then
