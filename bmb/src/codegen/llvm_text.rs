@@ -7253,6 +7253,13 @@ impl TextCodeGen {
                         writeln!(out, "  %{} = insertvalue {} %{}_0, i64 0, 0 ; alias", dest_name, struct_type, dest_name)?;
                     }
                 }
+
+                // P0 fix (Cycle 2783): store the built tuple value into its alloca so that
+                // a subsequent load (in the return handler) reads the actual value, not undef.
+                // Without this store, LLVM SROA replaces the load with undef after inlining.
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store {} %{}, ptr %{}.addr", struct_type, dest_name, dest.name)?;
+                }
             }
 
             // v0.55: Tuple field extraction - extracts element from LLVM struct
