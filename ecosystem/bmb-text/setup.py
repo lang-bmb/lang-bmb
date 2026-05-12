@@ -27,6 +27,8 @@ class bdist_wheel_platform(_bdist_wheel):
 
     def get_tag(self):
         _, _, plat = super().get_tag()
+        if plat.startswith("linux_"):
+            plat = plat.replace("linux_", "manylinux_2_17_", 1)
         return "py3", "none", plat
 
 
