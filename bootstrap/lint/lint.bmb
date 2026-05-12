@@ -1,7 +1,7 @@
 // lint.bmb -BMB-native AI-friendly lint tool (Track Q Phase 2+3+4)
-// Cycles 2567-2573+2579. Pattern-based lint checks without a full parse step.
+// Cycles 2567-2573+2579+2795. Pattern-based lint checks without a full parse step.
 //
-// Implements 11 checks detectable by source text analysis:
+// Implements 13 checks detectable by source text analysis:
 //   1. non_snake_case          -CamelCase function name
 //   2. missing_postcondition   -pub fn without post clause
 //   3. negated_if_condition    -if not( ... )
@@ -13,6 +13,8 @@
 //   9. empty_block             -{ } or { () } placeholder body
 //  10. double_negation         -not(not(expr))
 //  11. builtin_name_collision  -fn name shadows compiler builtin/intrinsic (e.g. tokenize, bit_or)
+//  12. type_naming             -type definition with non-PascalCase name
+//  13. todo_call               -todo() runtime call (will panic)
 //
 // Output: one JSON line per warning + trailing lint summary line.
 // Format matches `bmb lint` machine output for drop-in compatibility.
@@ -377,6 +379,61 @@ fn check_builtin_collision(source: String, ls: i64, nl: i64, filename: String, l
     }
 };
 
+// Check 12: type_naming — type definitions must use PascalCase (uppercase first letter).
+// LLM-generated code often uses snake_case for type aliases, violating BMB convention.
+fn check_type_naming(source: String, ls: i64, nl: i64, filename: String, line_num: i64, offset: i64) -> i64 = {
+    if not(line_starts(source, ls, "type ")) { 0 }
+    else {
+        let name = extract_ident(source, ls + 5, nl);
+        if name.len() == 0 { 0 }
+        else if is_upper(name.byte_at(0)) { 0 }
+        else {
+            emit_warning(filename, "type_naming", line_num, offset,
+                "Type name `" + name + "` should be PascalCase (start with uppercase)")
+        }
+    }
+};
+
+// Check 13: todo_call — todo() runtime calls indicate unimplemented code that will panic.
+// Distinct from // TODO comments: these are live code paths that crash at runtime.
+// Uses word-boundary check to avoid matching `test_todo()` or similar names.
+fn has_todo_call(s: String, pos: i64, end: i64) -> bool = {
+    let plen = 6;  // length of "todo()"
+    if end - pos < plen { false }
+    else {
+        let limit = end - plen;
+        let mut i = pos;
+        let mut in_str = false;
+        let mut found = false;
+        while i <= limit and not(found) {
+            let c = s.byte_at(i);
+            let _r = if in_str {
+                if c == 92 { i = i + 1 }
+                else if c == 34 { in_str = false }
+                else { () };
+                0
+            } else if c == 34 {
+                in_str = true;
+                0
+            } else if s.slice(i, i + plen) == "todo()" {
+                // Word boundary: char before "todo" must not be an ident char
+                let prev_ok = i == pos or not(is_ident_char(s.byte_at(i - 1)));
+                if prev_ok { found = true } else { () };
+                0
+            } else { 0 };
+            i = i + 1
+        };
+        found
+    }
+};
+
+fn check_todo_call(source: String, ls: i64, nl: i64, filename: String, line_num: i64, offset: i64) -> i64 = {
+    if has_todo_call(source, ls, nl) {
+        emit_warning(filename, "todo_call", line_num, offset,
+            "`todo()` call will panic at runtime -replace with actual implementation")
+    } else { 0 }
+};
+
 // ============================================================================
 // SECTION 4: Main lint loop
 // ============================================================================
@@ -401,6 +458,8 @@ fn lint_source(source: String, filename: String) -> i64 = {
             warnings = warnings + check_empty_block(source, ls, nl, filename, line_num, pos);
             warnings = warnings + check_double_negation(source, ls, nl, filename, line_num, pos);
             warnings = warnings + check_builtin_collision(source, ls, nl, filename, line_num, pos);
+            warnings = warnings + check_type_naming(source, ls, nl, filename, line_num, pos);
+            warnings = warnings + check_todo_call(source, ls, nl, filename, line_num, pos);
             0
         } else { 0 };
         warnings = warnings + check_todo_comment(source, ls, nl, filename, line_num, pos);

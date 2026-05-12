@@ -41,7 +41,7 @@ fn check_file(source_file: String) -> String =
 
 fn test_type_mismatch() -> i64 =
     let output = check_file(TEST_DIR() + "/type_mismatch.bmb");
-    if contains(output, "Type error") and contains(output, "expected i64") {
+    if contains(output, "\"kind\":\"type\"") and contains(output, "expected i64") {
         let p1 = println_str("  PASS: type mismatch error");
         1
     } else {
@@ -63,7 +63,7 @@ fn test_undefined_var() -> i64 =
 
 fn test_syntax_error() -> i64 =
     let output = check_file(TEST_DIR() + "/syntax_error.bmb");
-    if contains(output, "Parser error") {
+    if contains(output, "\"kind\":\"parser\"") {
         let p1 = println_str("  PASS: syntax error");
         1
     } else {
@@ -74,7 +74,7 @@ fn test_syntax_error() -> i64 =
 
 fn test_missing_return() -> i64 =
     let output = check_file(TEST_DIR() + "/missing_return.bmb");
-    if contains(output, "Parser error") and contains(output, "Expected") {
+    if contains(output, "\"kind\":\"parser\"") and contains(output, "Expected") {
         let p1 = println_str("  PASS: missing return error");
         1
     } else {
@@ -107,7 +107,7 @@ fn test_duplicate_fn() -> i64 =
 
 fn test_arg_type_mismatch() -> i64 =
     let output = check_file(TEST_DIR() + "/arg_type_mismatch.bmb");
-    if contains(output, "Type error") and contains(output, "expected i64") {
+    if contains(output, "\"kind\":\"type\"") and contains(output, "expected i64") {
         let p1 = println_str("  PASS: argument type mismatch error");
         1
     } else {

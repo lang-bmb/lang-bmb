@@ -94,12 +94,17 @@ fix_ir.py
 
 # Test artifacts
 test_*.bmb
+tmp_*.bmb
 test_*_bin
 test_*_mir
 test_hash
 test_simple
 *_test.exe
 *_debug.ll
+
+# Python cache
+**/__pycache__/
+*.pyc
 
 # Misc
 experiments/.env.local
