@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-13 (Cycles 2788-2792 — or/and short-circuit fix + 17/17 PASS)
 
-> **HEAD**: `(pending commit)`
+> **HEAD**: `edd256f1`
 > **이번 세션 commits**: lexer 6-bug fix + csv_parse skip_ws → 16/17 PASS; fibonacci 6B→100M → 17/17 PASS; fibonacci fair fix → 17/17 PASS; **or/and 단락평가 fix (Cycle 2792) → S2==S3 ✅**
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2792, bootstrap 변경 포함)
 > **이전 세션 핸드오프**: Cycles 2783-2787 (`96512434`)
