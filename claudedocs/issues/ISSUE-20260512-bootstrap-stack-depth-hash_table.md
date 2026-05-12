@@ -1,9 +1,10 @@
 ---
 id: ISSUE-20260512-bootstrap-stack-depth-hash_table
-title: Bootstrap stage1.exe: STATUS_STACK_OVERFLOW on hash_table (226 LOC)
+title: Bootstrap stage1.exe: int_to_string infinite recursion on i64::MIN
 priority: P1
-status: open
+status: RESOLVED (Cycle 2784)
 discovered: 2026-05-12 (Cycle 2780)
+resolved: 2026-05-12 (Cycle 2784)
 ---
 
 ## Symptom
@@ -12,59 +13,84 @@ discovered: 2026-05-12 (Cycle 2780)
 with STATUS_STACK_OVERFLOW (0xC00000FD) when compiling
 `ecosystem/benchmark-bmb/benches/compute/hash_table/bmb/main.bmb` (226 LOC).
 
-Reproducer:
+Minimal reproducer:
+```bmb
+fn not_found() -> i64 = 0 - 9223372036854775807 - 1;
+fn main() -> i64 = 0;
 ```
-bootstrap/stage1.exe build ecosystem/benchmark-bmb/benches/compute/hash_table/bmb/main.bmb -o /tmp/test.exe
-# → exit code -1073741571 (STATUS_STACK_OVERFLOW)
+Stage1 exits with -1073741571 (STATUS_STACK_OVERFLOW).
+
+## Confirmed Root Cause (Cycle 2784)
+
+**NOT** parser recursion depth (the original hypothesis was wrong).
+
+The actual cause is `int_to_string` in `bootstrap/compiler.bmb` (line 22):
+
+```bmb
+fn int_to_string(n: i64) -> String =
+    if n < 0 { "-" + int_to_string(0 - n) } ...
 ```
 
-The Rust-based `target/release/bmb` handles hash_table without issue.
+For `n = i64::MIN = -9223372036854775808`:
+- `n < 0` → true
+- `0 - n = 0 - (-9223372036854775808) = i64::MIN` (i64 overflow wraps)
+- Infinite recursion → STATUS_STACK_OVERFLOW
 
-## D2 Context
+The expression `0 - 9223372036854775807 - 1` is constant-folded to `i64::MIN` during
+compilation. When the compiler emits this constant as a string literal in the IR,
+`int_to_string(i64::MIN)` is called, triggering infinite recursion.
 
-Cycle 2780 raised the stack reserve on all stage1-style BMB binaries from 1MB → 64MB via
-`-Wl,--stack,67108864` in `bmb/src/build/mod.rs`. This is a strict improvement and fixes
-overflow on simpler files. hash_table still crashes at 64MB, revealing that the parser
-recursion is unbounded for `while` + `if/else if/else` + `@inline` patterns common in
-real-world BMB code.
+## Bisection Evidence
 
-## Root Cause (hypothesis)
+| Expression | Exit Code | Result |
+|-----------|-----------|--------|
+| `fn main() -> i64 = 0;` | 0 | ✅ |
+| `0 - 9223372036854775807` | 0 | ✅ (-MAX, works) |
+| `0 - 9223372036854775806 - 1` | 0 | ✅ (-MAX, different path) |
+| `1 - 9223372036854775807 - 1` | 0 | ✅ (-MAX, different start) |
+| `0 - 9223372036854775807 - 2` | 0 | ✅ (wraps to MAX-1) |
+| `0 - 9223372036854775807 - 1` | -1073741571 | ❌ **i64::MIN** |
 
-`bootstrap/compiler.bmb` parser uses deep recursive descent. The `while` loop body
-parser likely recurses through `parse_stmt → parse_expr → parse_if_expr → parse_block → parse_stmt`
-without tail-call optimization, creating O(LOC) stack frames. With complex files that have
-many nested `if/else if/else` chains and `@inline` attribute parsing, the depth grows well
-beyond 64MB.
+## Fix (Cycle 2784)
 
-The Rust compiler avoids this because the lalrpop-generated parser is iterative (LR table-driven).
+**File**: `bootstrap/compiler.bmb` lines 22-23
 
-## Files to Investigate
+Added `int_to_string_neg` helper that processes negative numbers directly
+(without negating them), avoiding the wrap-around overflow:
 
-- `bootstrap/parser.bmb` — entry points: `parse_stmt`, `parse_expr`, `parse_block`
-- `bootstrap/compiler.bmb` — driver that calls parser
-- Focus: any mutual recursion path from `parse_stmt` through `parse_expr` → `parse_if_chain`
+```bmb
+fn int_to_string_neg(n: i64) -> String =
+    if n > 0 - 10 { digit_char(0 - n) } else { int_to_string_neg(n / 10) + digit_char(0 - (n - (n / 10) * 10)) };
 
-## Proposed Fix
+fn int_to_string(n: i64) -> String =
+    if n < 0 { "-" + int_to_string_neg(n) } else if n < 10 { digit_char(n) } else { int_to_string(n / 10) + digit_char(n - (n / 10) * 10) };
+```
 
-Option A: Convert the deepest recursion chains to iterative (while-loop accumulator)
-  - e.g., `parse_if_else_chain` should consume `else if` arms in a loop
-  - Targeted refactor; minimal risk
+`n / 10` is always safe for i64::MIN (`-9223372036854775808 / 10 = -922337203685477580`).
+Digit extraction `0 - (n - (n/10)*10)` is always in [0,9] for negative inputs.
 
-Option B: Add explicit stack depth guard + error message
-  - Quick mitigation; doesn't eliminate the recursion
+## Verification
 
-Option C: Increase stack further (128MB+)
-  - Not a fix — hash_table is only 226 LOC; production BMB programs will be larger
+| Check | Result |
+|-------|--------|
+| `stage1.exe build hash_table/main.bmb` | ✅ exit 0 |
+| hash_table output vs Rust compiler | ✅ `95259 100000 46445` (identical) |
+| Minimal `0 - i64::MAX - 1` reproducer | ✅ exit 0 |
+| `cargo test --release` | ✅ 23/23 pass |
+| Stage 1 → stage2 (compiler.bmb self-compile) | ✅ exit 0 |
 
-**Recommended**: Option A for `parse_if_else_chain`, Option B as safety net.
+## Original Hypothesis (Wrong)
 
-## Why P1
+The issue was originally diagnosed as parser recursion depth:
+> "The while loop body parser likely recurses through parse_stmt → parse_expr → parse_if_expr →
+> parse_block → parse_stmt without tail-call optimization, creating O(LOC) stack frames."
 
-hash_table is a Tier 1 benchmark. If stage1 can't compile it, bootstrap verification
-of benchmark equivalence is blocked for an entire category. Real BMB programs with
-similar patterns (deeply nested if/else) will also fail to compile with stage1.
+This was incorrect. hash_table is only 226 LOC with 3 simple while loops. The real cause
+was unrelated to the parser — it was a well-known i64::MIN negation trap in integer-to-string conversion.
 
-## Not P0
+The proposed Options A/B/C (iterative parse_if_else_chain, depth guard, stack increase)
+were all addressing the wrong root cause and are not needed.
 
-The Rust compiler (`target/release/bmb`) is unaffected. CI does not yet test stage1
-compilation of benchmark files. Users are not impacted in the short term.
+## Carry-Forward
+
+None — issue fully resolved.
