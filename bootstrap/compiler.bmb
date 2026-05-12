@@ -4192,14 +4192,24 @@ fn step_var(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String,
     make_step_leaf(cur_temp + 1);
 
 // BI: Start binop - push left expr, then BR continuation
+// or/and are short-circuit: dispatch directly to IT (if-then) work items, not BR+BF eager path
 fn step_binop_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let op = get_field(item, 1);
     let left = get_field(item, 2);
     let right = get_field(item, 3);
-    // After left, cur_temp will have advanced. BR needs to know where left result is.
-    let cont = make_work("BR", op, right, i2s(cur_temp), "", "");
-    let do_left = make_work3("EX", left, "", "");
-    make_step(cur_temp, cur_block, cur_exit_label, do_left + work_sep() + cont);
+    if op == "or" {
+        let cont = make_work("IT", "(bool true)", right, i2s(cur_temp), i2s(cur_block), "");
+        let do_cond = make_work3("EX", left, "", "");
+        make_step(cur_temp, cur_block, cur_exit_label, do_cond + work_sep() + cont)
+    } else if op == "and" {
+        let cont = make_work("IT", right, "(bool false)", i2s(cur_temp), i2s(cur_block), "");
+        let do_cond = make_work3("EX", left, "", "");
+        make_step(cur_temp, cur_block, cur_exit_label, do_cond + work_sep() + cont)
+    } else {
+        let cont = make_work("BR", op, right, i2s(cur_temp), "", "");
+        let do_left = make_work3("EX", left, "", "");
+        make_step(cur_temp, cur_block, cur_exit_label, do_left + work_sep() + cont)
+    };
 
 // BR: Binop right - left done, do right. cur_temp-1 is left result.
 fn step_binop_right(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
@@ -5628,22 +5638,26 @@ fn lower_binop_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: 
     let op = get_child(ast, 0);
     let left_ast = get_child(ast, 1);
     let right_ast = get_child(ast, 2);
-    let left_result = lower_expr_sb(left_ast, temp_id, block_id, sb, loop_exit);
-    let left_temp = unpack_temp(left_result);
-    let left_block = unpack_block(left_result);
-    let left_id = left_temp - 1;
-    let right_result = lower_expr_sb(right_ast, left_temp, left_block, sb, loop_exit);
-    let right_temp = unpack_temp(right_result);
-    let right_block = unpack_block(right_result);
-    let right_id = right_temp - 1;
-    // v0.96.24: Safe mode divzero check (matches step_binop_final behavior)
-    let is_safe_div = sb % 2 == 1 and (op == "/" or op == "%");
-    let t = if is_safe_div { safe_divzero_check(sb, right_temp, right_id) } else { right_temp };
-    let result_tmp = "%_t" + int_to_string(t);
-    // v0.92: Use float MIR operator (f+, f-, etc) when operands are float
-    let mir_op = if is_float_expr(left_ast) { "f" + op } else { op };
-    let w1 = sb_push_mir(sb, "  " + result_tmp + " = " + mir_op + " %_t" + int_to_string(left_id) + ", %_t" + int_to_string(right_id));
-    pack_ids(t + 1, right_block);
+    // Short-circuit lowering: a or b → if a { true } else { b }; a and b → if a { b } else { false }
+    // Uses branch+phi (not eager or i1) — enables LLVM switch folding for or-chains
+    if op == "or" { lower_if_branch_sb(left_ast, "(bool true)", right_ast, temp_id, block_id, sb, loop_exit) }
+    else if op == "and" { lower_if_branch_sb(left_ast, right_ast, "(bool false)", temp_id, block_id, sb, loop_exit) }
+    else {
+        let left_result = lower_expr_sb(left_ast, temp_id, block_id, sb, loop_exit);
+        let left_temp = unpack_temp(left_result);
+        let left_block = unpack_block(left_result);
+        let left_id = left_temp - 1;
+        let right_result = lower_expr_sb(right_ast, left_temp, left_block, sb, loop_exit);
+        let right_temp = unpack_temp(right_result);
+        let right_block = unpack_block(right_result);
+        let right_id = right_temp - 1;
+        let is_safe_div = sb % 2 == 1 and (op == "/" or op == "%");
+        let t = if is_safe_div { safe_divzero_check(sb, right_temp, right_id) } else { right_temp };
+        let result_tmp = "%_t" + int_to_string(t);
+        let mir_op = if is_float_expr(left_ast) { "f" + op } else { op };
+        let w1 = sb_push_mir(sb, "  " + result_tmp + " = " + mir_op + " %_t" + int_to_string(left_id) + ", %_t" + int_to_string(right_id));
+        pack_ids(t + 1, right_block)
+    };
 
 fn lower_unary_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
     let op = get_child(ast, 0);
@@ -5666,7 +5680,7 @@ fn is_pure_expr(ast: String) -> bool =
     if nt == "int" or nt == "bool" or nt == "var" or nt == "float" or nt == "unit" { true }
     else if nt == "binop" {
         let op = get_child(ast, 0);
-        if op == "/" or op == "%" { false }
+        if op == "/" or op == "%" or op == "or" or op == "and" { false }
         else { is_pure_expr(get_child(ast, 1)) and is_pure_expr(get_child(ast, 2)) }
     }
     else if nt == "unary" { is_pure_expr(get_child(ast, 1)) }

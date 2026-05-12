@@ -1,16 +1,31 @@
-# BMB Session Handoff — 2026-05-13 (Cycles 2788-2791 — bench verify 17/17 PASS fair comparison)
+# BMB Session Handoff — 2026-05-13 (Cycles 2788-2792 — or/and short-circuit fix + 17/17 PASS)
 
-> **HEAD**: `[pending commit]`
-> **이번 세션 commits**: lexer 6-bug fix + csv_parse skip_ws → 16/17 PASS; fibonacci 6B→100M → 17/17 PASS; fibonacci fair fix (bmb_black_box + noinline) → **17/17 PASS fair comparison** ✅
-> **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2787 기준, bootstrap 변경 없음)
+> **HEAD**: `(pending commit)`
+> **이번 세션 commits**: lexer 6-bug fix + csv_parse skip_ws → 16/17 PASS; fibonacci 6B→100M → 17/17 PASS; fibonacci fair fix → 17/17 PASS; **or/and 단락평가 fix (Cycle 2792) → S2==S3 ✅**
+> **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2792, bootstrap 변경 포함)
 > **이전 세션 핸드오프**: Cycles 2783-2787 (`96512434`)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **이번 세션 진입점**: Cycle 2788 (bench output fairness — lexer + csv_parse fix)
+> **이번 세션 진입점**: Cycle 2788 (bench output fairness) → Cycle 2792 (or/and short-circuit)
 > **이번 세션 cycle logs**: gitignored (disk only)
 
 ---
 
-## 0. 이번 세션 작업 (Cycles 2788+, bench output fairness)
+## 0. 이번 세션 작업 (Cycles 2788-2792)
+
+### ✅ or/and 단락 평가(Short-Circuit) 부트스트랩 fix (Cycle 2792)
+
+`bootstrap/compiler.bmb` 3개 위치 수정:
+1. `is_pure_expr`: `or`/`and`를 impure로 표시
+2. `lower_binop_sb` (recursive): `or`/`and` → `lower_if_branch_sb` 디스패치
+3. `step_binop_start` (iterative): `or`/`and` → `IT` work item 디스패치
+
+검증: `false and expensive(42)` → expensive 미호출 ✅, `false or expensive(42)` → 호출 ✅
+
+Result: S2==S3 Fixed Point ✅, cargo test 6211/6211 PASS
+
+---
+
+## [PREV] 이번 세션 작업 (Cycles 2788-2791, bench output fairness)
 
 ### ✅ lexer benchmark 6-bug fix (Cycle 2788)
 
