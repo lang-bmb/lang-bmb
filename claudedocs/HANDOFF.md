@@ -1,16 +1,55 @@
-# BMB Session Handoff — 2026-05-12 (Cycles 2783-2787 — sorting P0 fix + int_to_string i64::MIN)
+# BMB Session Handoff — 2026-05-13 (Cycles 2788+ — bench output fairness 16/17 PASS)
 
-> **HEAD**: `96512434` (session-close Cycles 2783-2787)
-> **이번 세션 commits**: `7a48b80a` (sorting P0 MkTuple) → `dad2b346` (int_to_string compiler.bmb) → `ab5d9d5f` (D5-B epsilon) → `6d6d520d` (int_to_string modular) → `96512434` (session-close)
-> **3-Stage Fixed Point**: ✅ S2 == S3 confirmed (only ModuleID/source_filename header comment differs)
-> **이전 세션 핸드오프**: Cycles 2765-2773 (`c14f2265`)
+> **HEAD**: (새 commit 후 갱신 예정)
+> **이번 세션 commits**: lexer 6-bug fix + csv_parse skip_ws zero-pos fix → 16/17 PASS
+> **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2787 기준, bootstrap 변경 없음)
+> **이전 세션 핸드오프**: Cycles 2783-2787 (`96512434`)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **이번 세션 진입점**: Cycle 2783 (D2' sorting P0 UB fix + P1 bootstrap parser fix)
+> **이번 세션 진입점**: Cycle 2788 (bench output fairness — lexer + csv_parse fix)
 > **이번 세션 cycle logs**: gitignored (disk only)
 
 ---
 
-## 0. 이번 세션 작업 (Cycles 2783-2787, 5 cycles, P0+P1 correctness fixes)
+## 0. 이번 세션 작업 (Cycles 2788+, bench output fairness)
+
+### ✅ lexer benchmark 6-bug fix (Cycle 2788)
+
+`ecosystem/benchmark-bmb/benches/real_world/lexer/bmb/main.bmb` 전면 수정:
+1. `is_keyword_at`: "return" vs "result" 구분 위해 3번째 문자 체크 (`peek(src,start+2)==116`) 추가
+2. 단일 i64 packing → (i64, i64) 튜플 반환 (op=17→19 overflow 해결)
+3. `count_tokens_loop`: `new_str`/`new_comment` 추적 추가
+4. `main()`: Strings, Comments 출력 추가 + 빈 줄 추가
+5. `count_tokens` 반환 타입 (i64, i64) 변경
+
+Result: verify PASS (Small: Identifiers:20/Numbers:9/Keywords:12/..., Large total:8900 — C와 정확히 일치)
+
+### ✅ csv_parse skip_ws zero-position 버그 수정 (Cycle 2788)
+
+`ecosystem/benchmark-bmb/benches/real_world/csv_parse/bmb/main.bmb` skip_ws 수정:
+- **Root cause**: pos=0에서 비공백 문자를 만나면 exit trick `len+0=len`, decode `len>len=false`로 `len` 반환
+- 영향: 첫 행의 모든 필드가 "1 field, 0 chars"로 잘못 집계 (소규모: 41 fields vs 44, 대규모: 9991 vs 10000)
+- 수정: `else { len + p }` → `else { len + p + 1 }`, `if p > len { p - len }` → `if p > len { p - len - 1 }`
+
+Result: verify PASS (Rows:11/Fields:44/Quoted:4/Total chars:274 — C와 정확히 일치)
+
+### 최종 verify 결과: **16/17 PASS** (epsilon 1e-6)
+
+```
+python3 scripts/verify_bench_outputs.py --tier all --epsilon 1e-6
+→ Matched: 16/17, Mismatched: 0, Failed: 1 (fibonacci C timeout)
+```
+
+fibonacci: C binary가 6B iterations 실제 실행(~60s) vs BMB LLVM constant-fold(17ms). P3 known issue.
+
+### ISSUE 정리
+
+- `ISSUE-20260512-bmb-lexer-bench-zero-tokens.md` → **RESOLVED** (갱신)
+- `ISSUE-20260512-bootstrap-stack-depth-hash_table.md` → **closed/** 이동 (Cycle 2784 해결)
+- `ISSUE-20260512-bench-output-fairness-survey.md` → 16/17 반영 갱신
+
+---
+
+## [PREV] 이번 세션 작업 (Cycles 2783-2787, 5 cycles, P0+P1 correctness fixes)
 
 ### ✅ D2' sorting P0 fix (Cycle 2783)
 
@@ -109,7 +148,7 @@ Cycle 2769에서 `scripts/verify_bench_outputs.py` 작성 (240 LOC):
 | 스위트 | 결과 |
 |--------|------|
 | `cargo test --release` | ✅ (BMB compiler 변경 없음) |
-| **신규 verify_bench_outputs.py** | ⚠️ 11/17 PASS (Tier 1 8/10 + Tier 3 3/7) |
+| **verify_bench_outputs.py** | ✅ **16/17 PASS** (--epsilon 1e-6, Cycle 2788+ 갱신) |
 
 ### 마일스톤 상태
 

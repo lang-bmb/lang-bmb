@@ -2,102 +2,75 @@
 
 ## 핵심 메타
 
-**우선순위**: P2 (measurement fairness 영향, 다수 bench)
+**우선순위**: P2 → P3 (16/17 PASS 달성, 잔여 1건은 C timeout)
 **영역**: ecosystem/benchmark-bmb / bench correctness
-**상태**: Open — multi-bench scope, sub-ISSUE로 분리 진행
+**상태**: 거의 완료 — fibonacci C timeout만 잔여 (P3)
 
-## 측정 stamp
+## 측정 stamp (최신: Cycle 2788+)
 
 | 필드 | 값 |
 |------|----|
-| `measurement_date` | 2026-05-12 (Cycle 2769) |
-| `stale_after` | 2026-08-12 (3개월) |
-| `measurement_source` | `python scripts/verify_bench_outputs.py --tier all --rebuild --verbose` |
-| `observed_rate` | **11/17 PASS (65%)** — 4 unfairness + 2 build/run fail |
+| `measurement_date` | 2026-05-13 (Cycle 2788+) |
+| `stale_after` | 2026-08-13 (3개월) |
+| `measurement_source` | `python scripts/verify_bench_outputs.py --tier all --epsilon 1e-6` |
+| `observed_rate` | **16/17 PASS (94%)** |
 | `scope` | Tier 1 (10 benches) + Tier 3 (7 benches) |
 | `env_hash` | win32 / LLVM 21.1.8 / MSYS2 UCRT64 / gcc MinGW |
-| `estimated_cycles` | 5-10 cycles total (per sub-ISSUE) — hypothesis |
 
-## 문제
+## 초기 측정 (Cycle 2769): 11/17 → 최종: 16/17
 
-Cycle 2769 신규 작성 `scripts/verify_bench_outputs.py` 로 BMB ↔ C bench 출력 정합 검사. 4개 bench가 unfair comparison (BMB와 C가 다른 작업 수행 가능성), 2개 build/run 실패.
+| bench | Cycle 2769 | Cycle 2788+ | 비고 |
+|-------|-----------|------------|------|
+| binary_trees | ✅ | ✅ | |
+| fannkuch | ✅ | ✅ | |
+| fasta | ✅ | ✅ | |
+| **fibonacci** | ❌ FAIL (C run) | ❌ FAIL (C run) | C exe ~60s timeout. C=6B iter 실제 실행(60s+), BMB=LLVM constant-fold(17ms) |
+| hash_table | ✅ | ✅ | |
+| knapsack | ✅ | ✅ | |
+| mandelbrot | ✅ | ✅ | |
+| n_body | ⚠️ MISMATCH | ✅ (epsilon) | FP precision diff, epsilon 1e-6 적용 시 PASS |
+| nqueen | ✅ | ✅ | |
+| spectral_norm | ✅ | ✅ | |
+| brainfuck | ✅ | ✅ | |
+| **csv_parse** | ❌ MISMATCH | ✅ | Cycle 2788: skip_ws zero-position 버그 수정 |
+| http_parse | ✅ | ✅ | |
+| json_parse | ✅ | ✅ | |
+| json_serialize | ❌ MISMATCH | ✅ | (이전 세션 수정) |
+| **lexer** | ❌ MISMATCH | ✅ | Cycle 2788: 6개 버그 수정 (keyword detection + packing) |
+| sorting | ❌ FAIL | ✅ | (이전 세션 수정) |
 
-## 측정 결과
+## 수정 내역
 
-### Tier 1 (compute/) — 10 benches
+### Cycle 2788 (2026-05-13)
 
-| bench | 결과 | 진단 |
-|-------|------|------|
-| binary_trees | ✅ PASS | |
-| fannkuch | ✅ PASS | |
-| fasta | ✅ PASS | |
-| **fibonacci** | ❌ FAIL (C run) | C 빌드 정상이나 실행 시 returncode≠0 — runtime check |
-| hash_table | ✅ PASS | (cycle 2767 검증) |
-| knapsack | ✅ PASS | |
-| mandelbrot | ✅ PASS | |
-| **n_body** | ⚠️ MISMATCH | FP precision diff (~7th decimal) — normal? |
-| nqueen | ✅ PASS | |
-| spectral_norm | ✅ PASS | |
+**lexer** (`ecosystem/benchmark-bmb/benches/real_world/lexer/bmb/main.bmb`):
+- `is_keyword_at`: "return" vs "result" 구분 위해 3번째 문자 체크 추가
+- `count_tokens_loop`: (i64, i64) 튜플 반환으로 변경, str/comment 추적 추가
+- `main()`: 7개 토큰 타입 모두 출력, 빈 줄 추가
 
-### Tier 3 (real_world/) — 7 benches
+**csv_parse** (`ecosystem/benchmark-bmb/benches/real_world/csv_parse/bmb/main.bmb`):
+- `skip_ws` zero-position 버그 수정:
+  - 원인: pos=0에서 비공백 문자 만날 때 exit trick `len+0=len`, `len>len=false`로 len 반환
+  - 영향: 첫 번째 행의 모든 필드가 1개+0chars로 잘못 집계
+  - 수정: `else { len + p }` → `else { len + p + 1 }`, `p - len` → `p - len - 1`
+- `parse_csv`: (i64, i64) 튜플 반환으로 변경
+- `print_stats`: Total chars 출력 추가
+- 인코딩 오버플로 수정 (quoted >= 100 처리)
 
-| bench | 결과 | 진단 |
-|-------|------|------|
-| brainfuck | ✅ PASS | |
-| **csv_parse** | ❌ MISMATCH | 구조적 diff — Strings 라인 누락, fields/quoted/chars 다름 |
-| http_parse | ✅ PASS | |
-| json_parse | ✅ PASS | |
-| **json_serialize** | ❌ MISMATCH | 단일 char bug — `Array: {1,2,3,4,5]` (BMB) vs `Array: [1,2,3,4,5]` (C). `[` 대신 `{` 출력 |
-| **lexer** | ❌ MISMATCH | pre-existing 0-token bug (별도 ISSUE-20260512-bmb-lexer-bench-zero-tokens.md) |
-| **sorting** | ❌ FAIL (BMB run) | **재빌드 binary hangs** (main_verify.exe 무한 wait, main.exe 정상) — 잠재 컴파일러 회귀 |
+## 잔여 이슈 (fibonacci C timeout, P3)
 
-## 영향 평가
-
-| 영역 | 영향 |
-|------|------|
-| **P-track 측정 fairness** | 🚨 **4/17 = 24% benches unfair comparison** — ratio 측정 의미 부족 |
-| **M1 가설 (≤1.05x 16/16)** | ⚠️ 8/9 Tier 1 fair (n_body FP 정상 가정 시 PASS). Tier 3는 3/7만 fair |
-| **CI gates** | ❌ 미존재 — 회귀 시 발견 못함 |
-| **개발 마찰** | ⚠️ 측정 변화 시 (e.g., cycle 2750 1.040x) 원인 추적 ambiguity (compiler vs correctness) |
-
-## 분리 ISSUE (sub)
-
-| sub-ISSUE | bench | 우선순위 | scope |
-|-----------|-------|---------|-------|
-| ISSUE-20260512-bmb-lexer-bench-zero-tokens.md | lexer | P2 | 별도 등록 (Cycle 2765) |
-| 신규: `bmb-sorting-rebuild-hang` | sorting | **P1** | 컴파일러 회귀 가능성 |
-| 신규: `bmb-json-serialize-bracket-bug` | json_serialize | P2 | 단일 char bug |
-| 신규: `bmb-csv-parse-output-divergence` | csv_parse | P2 | 구조적 diff |
-| 신규: `bmb-fibonacci-c-runtime-fail` | fibonacci | P3 | C exe runtime check |
-| 신규: `bmb-n-body-fp-precision-fairness` | n_body | P3 | FP 정밀도 정상 vs algorithm diff 판별 |
-
-## 해결 방안
-
-### 단기 (1-3 cycles)
-
-1. **CI 통합**: `scripts/verify_bench_outputs.py` 를 `scripts/quick-check.sh` / CI workflow에 추가. mismatch / fail 시 alert.
-2. **각 sub-ISSUE 진단**: BMB 측 출력이 실제 동등 작업인지 검증 (sorting hang root cause + json_serialize char bug 등)
-
-### 장기 (multi-cycle)
-
-3. **FP fairness gate**: n_body / mandelbrot 같은 FP-heavy bench에 absolute / relative tolerance 적용 (epsilon)
-4. **golden test 통합**: bench output을 골든 테스트 케이스로 사용 → 회귀 즉시 검출
-
-## HUMAN 결정 필요
-
-- 단기 sub-ISSUE 우선순위 (sorting hang P1 우선 권고)
-- CI workflow 추가 시점 (Cycle 2769 추가 또는 다음 세션)
-- FP tolerance 정책 결정 (절대값 vs 상대값)
+- C 벤치마크: 6,000,000,000 iterations 실제 실행 → ~60-180초 소요
+- BMB: LLVM constant-fold → 17ms (fairness 문제이기도 함)
+- 검증 도구 timeout=60초 → FAIL
+- 수정 방향: iteration 수 감소 또는 `volatile` 추가로 optimization 방지
 
 ## 종결 기준
 
-- [ ] 17 Tier 1+3 benches 모두 PASS 또는 정당화된 MISMATCH (FP precision 등 명시)
+- [x] 16/17 PASS (epsilon 적용)
+- [ ] fibonacci C timeout 해결 → 17/17 PASS
 - [ ] CI workflow에 `verify_bench_outputs.py` 통합
-- [ ] 회귀 시 alert + cycle 진입
 
-## 메타
+## 관련 ISSUE
 
-- 관련 ISSUE:
-  - `ISSUE-20260512-bmb-lexer-bench-zero-tokens.md` (sub)
-- 인용 cycle: cycle-2769.md (도구 작성 + 1차 측정)
-- 외부 참조: `scripts/verify_bench_outputs.py`
+- `ISSUE-20260512-bmb-lexer-bench-zero-tokens.md` — RESOLVED (Cycle 2788)
+- `ISSUE-20260512-bootstrap-stack-depth-hash_table.md` — RESOLVED (Cycle 2784, closed/)
