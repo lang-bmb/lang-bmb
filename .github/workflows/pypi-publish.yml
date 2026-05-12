@@ -59,14 +59,9 @@ jobs:
             llvm_setup: apt
             plat_tag: linux_x86_64
             cargo_features: "--features llvm"
-          # macos-13 is the last Intel-native runner; macos-latest / macos-14
-          # is Apple Silicon. Pinning runner per arch avoids cross-compile with
-          # the arch-specific brew LLVM, which breaks --features llvm linking.
-          - os: macos-13
-            target: x86_64-apple-darwin
-            llvm_setup: brew
-            plat_tag: macosx_10_9_x86_64
-            cargo_features: "--features llvm"
+          # macos-13 (Intel) removed 2026-05-12: runner allocation consistently
+          # times out (5h+ queue, no assignment). ARM wheel runs on Intel Macs
+          # via Rosetta 2 — no separate x86_64 wheel needed.
           - os: macos-latest
             target: aarch64-apple-darwin
             llvm_setup: brew
