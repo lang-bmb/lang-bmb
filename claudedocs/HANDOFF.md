@@ -1,7 +1,8 @@
 # BMB Session Handoff — 2026-05-12 (Cycles 2783-2787 — sorting P0 fix + int_to_string i64::MIN)
 
-> **HEAD**: `6d6d520d` (fix bootstrap int_to_string modular files)
-> **이번 세션 commits**: `7a48b80a` (sorting P0 MkTuple) → `dad2b346` (int_to_string compiler.bmb) → `ab5d9d5f` (D5-B epsilon) → `6d6d520d` (int_to_string modular)
+> **HEAD**: `96512434` (session-close Cycles 2783-2787)
+> **이번 세션 commits**: `7a48b80a` (sorting P0 MkTuple) → `dad2b346` (int_to_string compiler.bmb) → `ab5d9d5f` (D5-B epsilon) → `6d6d520d` (int_to_string modular) → `96512434` (session-close)
+> **3-Stage Fixed Point**: ✅ S2 == S3 confirmed (only ModuleID/source_filename header comment differs)
 > **이전 세션 핸드오프**: Cycles 2765-2773 (`c14f2265`)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 > **이번 세션 진입점**: Cycle 2783 (D2' sorting P0 UB fix + P1 bootstrap parser fix)
@@ -41,6 +42,12 @@ types.bmb 모두 동일 `0 - n` 패턴 수정. build_unified_compiler.sh + CI �
 
 `verify_bench_outputs.py --tier 3 --rebuild --epsilon 1e-6`: sorting ✅ (5/7 matched).
 csv_parse + lexer MISMATCH = pre-existing tracked issues.
+
+### ✅ 3-Stage Fixed Point verified (post-Cycle 2787)
+
+`stage2_test.exe build compiler.bmb → stage3.ll` vs `stage3_test.exe build compiler.bmb → s3.ll`:
+**S2 == S3** — only ModuleID/source_filename header comments differ (embedded binary name, not code).
+int_to_string fix is deterministic across self-compilation rounds. Rule 3 compliance confirmed.
 
 ---
 
