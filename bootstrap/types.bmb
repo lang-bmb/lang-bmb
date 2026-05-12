@@ -178,8 +178,11 @@ fn fin_type_info(n: i64) -> String =
     "Fin:" + fin_int_to_str(n);
 
 // Helper: convert integer to string (local impl to avoid circular deps)
+fn fin_int_to_str_neg(n: i64) -> String =
+    if n > 0 - 10 { fin_digit_char(0 - n) } else { fin_int_to_str_neg(n / 10) + fin_digit_char(0 - (n - (n / 10) * 10)) };
+
 fn fin_int_to_str(n: i64) -> String =
-    if n < 0 { "-" + fin_int_to_str(0 - n) }
+    if n < 0 { "-" + fin_int_to_str_neg(n) }
     else if n < 10 { fin_digit_char(n) }
     else { fin_int_to_str(n / 10) + fin_digit_char(n - (n / 10) * 10) };
 
@@ -2303,8 +2306,15 @@ fn char_to_string(c: i64) -> String =
     // Create single-char string (using slice trick)
     "0123456789".slice(c - 48, c - 48 + 1);
 
+fn int_to_string_neg_acc(n: i64, acc: String) -> String =
+    if n == 0 { acc } else {
+        let digit = 0 - (n - (n / 10) * 10);
+        let c = digit + 48;
+        int_to_string_neg_acc(n / 10, char_to_string(c) + acc)
+    };
+
 fn int_to_string(n: i64) -> String =
-    if n == 0 { "0" } else if n < 0 { "-" + int_to_string(0 - n) } else { int_to_string_helper(n, "") };
+    if n == 0 { "0" } else if n < 0 { "-" + int_to_string_neg_acc(n, "") } else { int_to_string_helper(n, "") };
 
 // ============================================================================
 // Expression Type Inference
