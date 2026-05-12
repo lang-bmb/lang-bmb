@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-13 (Cycles 2788-2789 — bench verify 16/17 PASS + cleanup)
 
-> **HEAD**: `TBD` (Cycle 2789 commit pending)
+> **HEAD**: `fed4deca`
 > **이번 세션 commits**: lexer 6-bug fix + csv_parse skip_ws zero-pos fix → 16/17 PASS; ISSUE 정리 (lexer + sorting closed)
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2787 기준, bootstrap 변경 없음)
 > **이전 세션 핸드오프**: Cycles 2783-2787 (`96512434`)
