@@ -1,0 +1,87 @@
+{
+  "tier": "3",
+  "total": 7,
+  "matched": 3,
+  "mismatched": 3,
+  "failed": 1,
+  "elapsed_sec": 75.3,
+  "results": [
+    {
+      "bench": "real_world/brainfuck",
+      "tier": 3,
+      "bmb_ok": true,
+      "c_ok": true,
+      "output_match": true,
+      "bmb_stdout": "Brainfuck Interpreter Benchmark\nHello World: Hello World!\n\nNested loops (1000 iterations): X\n\nAdd test (8*8=@): @\nHello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Done.",
+      "c_stdout": "Brainfuck Interpreter Benchmark\nHello World: Hello World!\n\nNested loops (1000 iterations): X\n\nAdd test (8*8=@): @\nHello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Hello World!\nX\n@Done.",
+      "diff": "",
+      "note": ""
+    },
+    {
+      "bench": "real_world/csv_parse",
+      "tier": 3,
+      "bmb_ok": true,
+      "c_ok": true,
+      "output_match": false,
+      "bmb_stdout": "CSV Parse Benchmark\n\nSmall dataset:\n  Rows: 11\n  Fields: 41\n  Quoted fields: 4\n\nLarge dataset (1000 rows):\n  Rows: 1000\n  Fields: 10000\n  Quoted fields: 99\n\nDone.",
+      "c_stdout": "CSV Parse Benchmark\nSmall dataset:\n  Rows: 11\n  Fields: 44\n  Quoted fields: 4\n  Total chars: 274\n\nLarge dataset (1000 rows):\n  Rows: 1000\n  Fields: 10000\n  Quoted fields: 1000\n  Total chars: 67000\n\nDone.",
+      "diff": "  line 2: BMB=''  C='Small dataset:'\n  line 3: BMB='Small dataset:'  C='  Rows: 11'\n  line 4: BMB='  Rows: 11'  C='  Fields: 44'\n  line 5: BMB='  Fields: 41'  C='  Quoted fields: 4'\n  line 6: BMB='  Quoted fields: 4'  C='  Total chars: 274'\n  line 11: BMB='  Quoted fields: 99'  C='  Quoted fields: 1000'\n  line 12: BMB=''  C='  Total chars: 67000'\n  line 13: BMB='Done.'  C=''\n  line 14: BMB='<EOF>'  C='Done.'",
+      "note": ""
+    },
+    {
+      "bench": "real_world/http_parse",
+      "tier": 3,
+      "bmb_ok": true,
+      "c_ok": true,
+      "output_match": true,
+      "bmb_stdout": "HTTP Parse Benchmark\n\nSample request:\n  Method: GET\n  Path length: 11\n  Version: HTTP/1.1\n  Headers: 4\n\nBenchmark (10000 iterations x 5 requests):\n  Total headers parsed: 160000\n  Total content-length: 2980000\n\nDone.",
+      "c_stdout": "HTTP Parse Benchmark\n\nSample request:\n  Method: GET\n  Path length: 11\n  Version: HTTP/1.1\n  Headers: 4\n\nBenchmark (10000 iterations x 5 requests):\n  Total headers parsed: 160000\n  Total content-length: 2980000\n\nDone.",
+      "diff": "",
+      "note": ""
+    },
+    {
+      "bench": "real_world/json_parse",
+      "tier": 3,
+      "bmb_ok": true,
+      "c_ok": true,
+      "output_match": true,
+      "bmb_stdout": "1100000",
+      "c_stdout": "1100000",
+      "diff": "",
+      "note": ""
+    },
+    {
+      "bench": "real_world/json_serialize",
+      "tier": 3,
+      "bmb_ok": true,
+      "c_ok": true,
+      "output_match": false,
+      "bmb_stdout": "JSON Serialize Benchmark\nTotal characters: 1590000\nSample output:\n  Object: {\"name\":\"Test User\",\"age\":42,\"city\":\"Boston\",\"salary\":75000}\n  Array: {1,2,3,4,5]\nDone.",
+      "c_stdout": "JSON Serialize Benchmark\nTotal characters: 1590000\nSample output:\n  Object: {\"name\":\"Test User\",\"age\":42,\"city\":\"Boston\",\"salary\":75000}\n  Array: [1,2,3,4,5]\nDone.",
+      "diff": "  line 5: BMB='  Array: {1,2,3,4,5]'  C='  Array: [1,2,3,4,5]'",
+      "note": ""
+    },
+    {
+      "bench": "real_world/lexer",
+      "tier": 3,
+      "bmb_ok": true,
+      "c_ok": true,
+      "output_match": false,
+      "bmb_stdout": "Lexer Benchmark\nSmall source:\n  Identifiers: 0\n  Numbers: 0\n  Keywords: 0\n  Operators: 0\n  Punctuation: 0\n\nLarge source (1000x):\n  Total tokens: 0\nDone.",
+      "c_stdout": "Lexer Benchmark\nSmall source:\n  Identifiers: 20\n  Numbers: 9\n  Keywords: 12\n  Strings: 1\n  Operators: 17\n  Punctuation: 29\n  Comments: 1\n\nLarge source (1000x):\n  Total tokens: 89000\n\nDone.",
+      "diff": "  line 3: BMB='  Identifiers: 0'  C='  Identifiers: 20'\n  line 4: BMB='  Numbers: 0'  C='  Numbers: 9'\n  line 5: BMB='  Keywords: 0'  C='  Keywords: 12'\n  line 6: BMB='  Operators: 0'  C='  Strings: 1'\n  line 7: BMB='  Punctuation: 0'  C='  Operators: 17'\n  line 8: BMB=''  C='  Punctuation: 29'\n  line 9: BMB='Large source (1000x):'  C='  Comments: 1'\n  line 10: BMB='  Total tokens: 0'  C=''\n  line 11: BMB='Done.'  C='Large source (1000x):'\n  line 12: BMB='<EOF>'  C='  Total tokens: 89000'\n  ... (2 more)",
+      "note": ""
+    },
+    {
+      "bench": "real_world/sorting",
+      "tier": 3,
+      "bmb_ok": false,
+      "c_ok": true,
+      "output_match": false,
+      "bmb_stdout": "",
+      "c_stdout": "403905348",
+      "diff": "  line 1: BMB='<EOF>'  C='403905348'",
+      "note": ""
+    }
+  ]
+}

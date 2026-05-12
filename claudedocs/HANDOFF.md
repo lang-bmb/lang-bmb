@@ -168,9 +168,11 @@ estimated_cycles: 3-7 (hypothesis).
 
 ### Measurement 산출
 
-- Tier 1 verify: 8/10 PASS (`/tmp/verify_tier1.json`)
-- Tier 3 verify: 3/7 PASS (`/tmp/verify_tier3.json`)
+- Tier 1 verify: 8/10 PASS (`claudedocs/measurements/verify_tier1_2026-05-12_c2769.json`)
+- Tier 3 verify: 3/7 PASS (`claudedocs/measurements/verify_tier3_2026-05-12_c2769.json`)
 - hash_table A/B 측정: BMB orig 82.2ms / @inline 82.1ms / C 80.6ms (median, 10-run)
+
+> 향후 재측정 시 baseline diff 가능 — `claudedocs/measurements/` 디렉토리 정착 권고.
 
 ---
 
