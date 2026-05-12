@@ -123,8 +123,8 @@ ret { i64, i64 } %_t19_ret_load
 ## 종결 기준
 
 - [x] sorting bench rebuild 결과가 Feb 9 build 와 동등 (`203ms` vs `234ms`, output `403905348` ✅)
-- [ ] `verify_bench_outputs.py --tier 3` 결과 sorting PASS (다음 세션)
-- [ ] CI에서 sorting 회귀 자동 감지 (다음 세션)
+- [x] `verify_bench_outputs.py --tier 3` 결과 sorting PASS ✅ (Cycle 2789, 2026-05-13)
+- [ ] CI에서 sorting 회귀 자동 감지 → D5-A (HUMAN-blocked, 별도 추적)
 
 ## Fix
 

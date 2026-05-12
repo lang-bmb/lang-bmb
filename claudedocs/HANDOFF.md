@@ -1,7 +1,7 @@
-# BMB Session Handoff — 2026-05-13 (Cycles 2788+ — bench output fairness 16/17 PASS)
+# BMB Session Handoff — 2026-05-13 (Cycles 2788-2789 — bench verify 16/17 PASS + cleanup)
 
-> **HEAD**: `77b15c43`
-> **이번 세션 commits**: lexer 6-bug fix + csv_parse skip_ws zero-pos fix → 16/17 PASS
+> **HEAD**: `TBD` (Cycle 2789 commit pending)
+> **이번 세션 commits**: lexer 6-bug fix + csv_parse skip_ws zero-pos fix → 16/17 PASS; ISSUE 정리 (lexer + sorting closed)
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2787 기준, bootstrap 변경 없음)
 > **이전 세션 핸드오프**: Cycles 2783-2787 (`96512434`)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
@@ -43,9 +43,12 @@ fibonacci: C binary가 6B iterations 실제 실행(~60s) vs BMB LLVM constant-fo
 
 ### ISSUE 정리
 
-- `ISSUE-20260512-bmb-lexer-bench-zero-tokens.md` → **RESOLVED** (갱신)
+- `ISSUE-20260512-bmb-lexer-bench-zero-tokens.md` → **closed/** 이동 (Cycle 2789 재확인)
+- `ISSUE-20260512-sorting-rebuild-regression.md` → **closed/** 이동 (Cycle 2789 verify PASS 확인)
 - `ISSUE-20260512-bootstrap-stack-depth-hash_table.md` → **closed/** 이동 (Cycle 2784 해결)
-- `ISSUE-20260512-bench-output-fairness-survey.md` → 16/17 반영 갱신
+- `ISSUE-20260512-bench-output-fairness-survey.md` → fibonacci P3 scope 노트 추가 (Cycle 2789)
+
+Active ISSUE: **18** (실제 ISSUE 기준, 유틸 파일 제외) / Closed: **49**
 
 ---
 
@@ -160,12 +163,14 @@ Cycle 2769에서 `scripts/verify_bench_outputs.py` 작성 (240 LOC):
 | M4 Adopted | 🔄 ~50% |
 | M5 Language Completeness | 🔄 M5-1~M5-5g ✅ |
 
-### ISSUE 백로그 변화 (Cycles 2765-2772)
+### ISSUE 백로그 변화 (Cycles 2765-2789)
 
 | 시점 | active | closed |
 |------|--------|--------|
 | 시작 (Cycle 2764 종료) | 16 | 44 |
-| 종료 (Cycle 2772) | **22** | **45** |
+| 종료 (Cycle 2772) | 22 | 45 |
+| 종료 (Cycle 2788) | 20 | 47 |
+| **종료 (Cycle 2789)** | **18** | **49** |
 
 **Close 1건**: `hashmap-perf` (실측 1.020x ≈ parity)
 

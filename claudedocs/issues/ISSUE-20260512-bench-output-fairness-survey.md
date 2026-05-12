@@ -62,7 +62,12 @@
 - C 벤치마크: 6,000,000,000 iterations 실제 실행 → ~60-180초 소요
 - BMB: LLVM constant-fold → 17ms (fairness 문제이기도 함)
 - 검증 도구 timeout=60초 → FAIL
-- 수정 방향: iteration 수 감소 또는 `volatile` 추가로 optimization 방지
+- **수정 방향** (Cycle 2789 scope decision):
+  1. **C 측**: 루프 변수에 `volatile` 선언 → optimizer 우회 → 실제 실행 강제
+  2. **BMB 측**: `bmb_black_box(result)` 호출 추가 → constant-fold 방지
+  3. **iteration 감소**: 6B → 100M (C ~1s, BMB 실측) — `volatile`/`bmb_black_box` 없이는 fairness 미달
+  4. **우선순위**: P3. 17/17 PASS 달성 조건이지만 16/17에서 project 진행 가능
+  5. **예상 작업**: C 파일 1줄 수정 + BMB 파일 1줄 수정 + iteration 상수 조정 (~1 cycle)
 
 ## 종결 기준
 
