@@ -96,7 +96,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install Python build tooling
-        run: pip install --upgrade pip setuptools wheel build twine
+        run: python -m pip install --upgrade pip setuptools wheel build twine
 
       # Cycle 2488: Swatinem/rust-cache@v2 — see ci.yml for rationale.
       - name: Cache cargo
