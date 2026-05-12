@@ -15,6 +15,7 @@
 #   --baseline FILE     Baseline JSON file for comparison
 #   --output DIR        Output directory for results
 #   --skip-tests        Skip cargo tests
+#   --skip-verify       Skip bench output verification (Cycle 2771)
 #   --tier1-strict      Fail on any Tier 1 regression (default: warning only)
 #   --verbose           Show detailed output
 #   --json              Output results in JSON format
@@ -29,6 +30,7 @@ BASELINE_FILE=""
 
 # Parse arguments
 SKIP_TESTS=false
+SKIP_VERIFY=false
 TIER1_STRICT=false
 VERBOSE=false
 JSON_OUTPUT=false
@@ -45,6 +47,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --skip-tests)
             SKIP_TESTS=true
+            shift
+            ;;
+        --skip-verify)
+            SKIP_VERIFY=true
             shift
             ;;
         --tier1-strict)
@@ -106,6 +112,8 @@ RESULTS[bootstrap_passed]=false
 RESULTS[bootstrap_fixed_point]=false
 RESULTS[bootstrap_time_ms]=0
 RESULTS[benchmark_time_ms]=0
+RESULTS[verify_passed]=true
+RESULTS[verify_time_ms]=0
 RESULTS[comparison_passed]=true
 RESULTS[total_time_ms]=0
 
@@ -188,6 +196,41 @@ BENCHMARK_END=$(get_time_ms)
 RESULTS[benchmark_time_ms]=$((BENCHMARK_END - BENCHMARK_START))
 log ""
 
+# Step 3.5: Bench output fairness verification (Cycle 2771)
+# Catches BMB <-> C output divergence (correctness/fairness regressions like
+# lexer 0-token bug from Cycle 2765, sorting rebuild hang from Cycle 2770).
+# Non-blocking: mismatch logs warning, build/run error logs error, but full-cycle continues.
+if [ "$SKIP_VERIFY" = false ]; then
+    log "${YELLOW}[3.5/4] Verifying bench output fairness (BMB <-> C)...${NC}"
+    VERIFY_START=$(get_time_ms)
+    cd "$PROJECT_ROOT"
+    VERIFY_OUT="$OUTPUT_DIR/bench_verify.json"
+    # Capture exit code without invoking set -e (run in subshell + collect $?).
+    set +e
+    python3 "$SCRIPT_DIR/verify_bench_outputs.py" --tier all --rebuild --json "$VERIFY_OUT" 2>&1 | tee "$OUTPUT_DIR/bench_verify_output.txt" | tail -10
+    VERIFY_EXIT=${PIPESTATUS[0]}
+    set -e
+    if [ "$VERIFY_EXIT" -eq 0 ]; then
+        log "${GREEN}Bench output verification passed${NC}"
+        RESULTS[verify_passed]=true
+    elif [ "$VERIFY_EXIT" -eq 1 ]; then
+        log "${YELLOW}Bench output mismatch detected (see $VERIFY_OUT)${NC}"
+        log "${YELLOW}Continuing — ratio measurements may be unfair${NC}"
+        RESULTS[verify_passed]=false
+    else
+        log "${RED}Bench output verification failed (build/run error, exit=$VERIFY_EXIT)${NC}"
+        RESULTS[verify_passed]=false
+    fi
+    VERIFY_END=$(get_time_ms)
+    RESULTS[verify_time_ms]=$((VERIFY_END - VERIFY_START))
+    log ""
+else
+    log "${YELLOW}[3.5/4] Skipping bench output verification (--skip-verify)${NC}"
+    RESULTS[verify_passed]=true
+    RESULTS[verify_time_ms]=0
+    log ""
+fi
+
 # Step 4: Regression Comparison
 log "${YELLOW}[4/4] Checking for regressions...${NC}"
 
@@ -239,6 +282,7 @@ log "| Tests                     | ${RESULTS[tests_passed]}$(printf '%*s' $((25-
 log "| Bootstrap                 | ${RESULTS[bootstrap_passed]}$(printf '%*s' $((25-5-${#RESULTS[bootstrap_passed]})) '')| ${RESULTS[bootstrap_time_ms]}ms$(printf '%*s' $((10-${#RESULTS[bootstrap_time_ms]}-2)) '')|"
 log "| Fixed Point               | ${RESULTS[bootstrap_fixed_point]}$(printf '%*s' $((25-5-${#RESULTS[bootstrap_fixed_point]})) '')| -         |"
 log "| Benchmarks                | complete$(printf '%*s' $((25-5-8)) '')| ${RESULTS[benchmark_time_ms]}ms$(printf '%*s' $((10-${#RESULTS[benchmark_time_ms]}-2)) '')|"
+log "| Bench Output Verify       | ${RESULTS[verify_passed]}$(printf '%*s' $((25-5-${#RESULTS[verify_passed]})) '')| ${RESULTS[verify_time_ms]}ms$(printf '%*s' $((10-${#RESULTS[verify_time_ms]}-2)) '')|"
 log "| Regression Check          | ${RESULTS[comparison_passed]}$(printf '%*s' $((25-5-${#RESULTS[comparison_passed]})) '')| -         |"
 log "|---------------------------|---------------------------|-----------|"
 log "| Total                     |                           | ${RESULTS[total_time_ms]}ms$(printf '%*s' $((10-${#RESULTS[total_time_ms]}-2)) '')|"

@@ -1,6 +1,6 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-12 (Cycles 2760-2764 — **M3-5 honest re-baseline**: median-of-5 measurement, headline 245×, quicksort-ffi ISSUE close, LANGUAGE_REFERENCE § 10.4 fix)
-> 이전 갱신: Cycles 2750-2759 (시퀀스 A.2 + B 확장 + Cycle 2754 outlier 등록), Cycles 2746-2748 (시퀀스 E 완결)
+> 최종 업데이트: 2026-05-12 (Cycles 2765-2773 — **bench verify infrastructure + P0 store_u8 bug 진단**: verify 도구 신규 + 양식 강화 + 6 신규 ISSUE 등록 (P0 1, P1 1, P2 3, P3 1))
+> 이전 갱신: Cycles 2760-2764 (M3-5 honest re-baseline median-of-5), Cycles 2750-2759 (시퀀스 A.2 + B 확장)
 > 이 문서는 매 세션의 **유일한 실무 앵커**다.
 > 상세 사이클 로그: `docs/ROADMAP.md` | 개발 규칙: `CLAUDE.md` | 세션 상태: `claudedocs/HANDOFF.md`
 
@@ -456,6 +456,48 @@ historic.json (2026-05-02, 5-run) + tier3-10runs.json (2026-05-01, 10-run, noise
 - `alloc-optimization` (Cycle 2755): Tier 1 binary_trees 1.010x ≈ parity, Arena infra 4-6 cycles 부적합 ROI, P-track 기준 충족
 - `smt-integration` (Cycle 2755): 2026-04-13 Cycle 382 Deferred 결정 1+ 년 미진척, active backlog 정리
 - `multiple-pre-clauses` (Cycle 2756): Rule 6 (Rust 새 기능 금지) 적용, documentation 옵션 채택, `where { }` block 권장 — acceptance criterion (2) 충족
+
+### Cycle 2765-2773 갱신 (2026-05-12, bench verify infrastructure + P0 store_u8 bug)
+
+| 항목 | 카운트 |
+|------|-------|
+| Active ISSUE | **22** (Cycle 2764 16 + 6 신규 - 1 close (hashmap-perf) + 1 close (이전 hashmap)) — `closed/` 이동) |
+| Closed 이번 phase (Cycles 2765-2773) | **1** (hashmap-perf — 실측 1.020x ≈ parity, advisor 가설 우월) |
+| 신규 이번 phase | **6** (bmb-lexer-bench-zero-tokens, bootstrap-parser-stack-overflow, bench-output-fairness-survey, sorting-rebuild-regression, store_u8-null-ptr-base, _template.md 메타 강화) |
+| Closed (누적) | **45** (+1) |
+
+**Close 근거**:
+- `hashmap-perf` (Cycle 2767): bootstrap-built measurement (분기 ①) STATUS_STACK_OVERFLOW로 차단, A/B `@inline` 측정 우회 결과 1.020x ≈ parity. compiler fix ROI 0.2pp 개선 → 5-7 cycle work 부정. advisor 가설 (cycle 2725 → 2750 = 노이즈 범위) 우월. P-track 기준 1.05x 내부.
+
+**신규 ISSUE — 우선순위 ordering**:
+
+| ISSUE | 우선순위 | 발견 cycle | scope (hypothesis) |
+|-------|---------|-----------|---|
+| `store_u8-null-ptr-base` | **P0** | 2772 | silent UB: pos=0 시 null base GEP, store 제거. json_serialize `Array: {...]` |
+| `sorting-rebuild-regression` | **P1** | 2770 | sorting 재빌드 시 ~500× 슬로다운, Rust compiler 회귀 |
+| `bmb-lexer-bench-zero-tokens` | P2 | 2765 | lexer count_tokens 모든 token 0 출력 |
+| `bench-output-fairness-survey` | P2 | 2769 | 통합 ISSUE — verify 도구 4 unfair + 2 fail |
+| `bootstrap-parser-stack-overflow` | P3 | 2767 | hash_table source가 bootstrap STATUS_STACK_OVERFLOW |
+| (양식) `_template.md` 메타 강화 | n/a | 2768 | estimated_cycles + hypothesis 필드 (3 cycle 갭 패턴 회귀 방지) |
+
+### Bench verify 인프라 (Cycles 2769-2771, 신규)
+
+`scripts/verify_bench_outputs.py` (240 LOC) — BMB ↔ C bench 출력 정합 검사:
+- Tier 1/3 17 benches hardcoded
+- 1차 측정: **11 PASS / 4 mismatch / 2 fail** (Tier 1 8/10, Tier 3 3/7)
+- `scripts/full-cycle.sh` Step 3.5에 통합 (`--skip-verify` opt, non-blocking, exit 0/1/2 mapping)
+- `bench_verify.json` artifact 출력
+
+**측정 신뢰도 메타-우려**: 24% benches가 unfair comparison. **P-track ratio 측정 전 verify 통과 확인 권고**.
+
+### Cycle 2765-2773 advisor leverage 4건
+
+1. **Cycle 2765**: Option A 비현실성 + HashMap 우선순위 권고
+2. **Cycle 2766**: "1.040x → 0.95x" expectation 근거 부재 지적
+3. **Cycle 2767**: 측정 후 가설 거부 → bootstrap port ROI 부정 결정
+4. **Cycle 2772 (메타)**: verify 도구가 P0 bug 즉시 catch — infrastructure 효과 누적 검증
+
+**Meta-pattern (3 cycle 연속)**: ISSUE 본문 cycle estimate은 검증 전까지 가설. `_template.md` 양식 강화로 영속화 (cycle 2768).
 
 ### Cycle 2760-2764 갱신 (2026-05-12, M3-5 honest re-baseline)
 
