@@ -56,6 +56,11 @@ def main(argv: list[str] | None = None) -> int:
     analyze_p.add_argument("--results-dir", default="results/", help="Directory with results.json")
     analyze_p.add_argument("--format", default="markdown", choices=["markdown", "json"], help="Output format")
 
+    # stats — statistical significance analysis for crosslang experiments
+    stats_p = sub.add_parser("stats", help="Statistical analysis for cross-language experiment results")
+    stats_p.add_argument("results_dir", help="Path to crosslang results directory")
+    stats_p.add_argument("--json", action="store_true", help="Output JSON")
+
     args = parser.parse_args(argv)
 
     if args.command == "doctor":
@@ -90,6 +95,10 @@ def main(argv: list[str] | None = None) -> int:
         from pathlib import Path
         report = generate_report(Path(args.results_dir), args.format)
         print(report)
+        return 0
+    elif args.command == "stats":
+        from bmb_ai_bench.analysis.stats import run_stats
+        run_stats(args.results_dir, json_output=args.json)
         return 0
     else:
         parser.print_help()

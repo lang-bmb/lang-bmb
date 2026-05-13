@@ -154,34 +154,40 @@ def _run_one_problem(
                 messages.append({"role": "user", "content": feedback})
                 continue
 
-            # Test
-            all_pass = True
-            fail_msg = ""
+            # Test — collect up to 3 failures for richer feedback
+            failures: list[str] = []
             for i, tc in enumerate(tests):
+                if len(failures) >= 3:
+                    break
                 try:
                     result = subprocess.run(
                         [str(out)], input=tc.get("stdin", ""),
                         capture_output=True, text=True, timeout=_TEST_TIMEOUT,
                     )
                     if result.stdout != tc.get("expected_stdout", ""):
-                        all_pass = False
-                        fail_msg = (
-                            f"Test {i}: expected {tc['expected_stdout']!r}, "
-                            f"got {result.stdout!r}"
+                        stdin_str = tc.get("stdin", "")
+                        failures.append(
+                            f"Test {i}:\n"
+                            f"  stdin: {stdin_str!r}\n"
+                            f"  expected: {tc['expected_stdout']!r}\n"
+                            f"  got: {result.stdout!r}"
                         )
-                        break
                 except subprocess.TimeoutExpired:
-                    all_pass = False
-                    fail_msg = f"Test {i}: timeout"
-                    break
+                    failures.append(f"Test {i}: timeout (stdin: {tc.get('stdin', '')!r})")
+            all_pass = len(failures) == 0
+            fail_msg = "\n".join(failures) if failures else ""
 
             if not all_pass:
-                error = normalize_error(fail_msg, "bmb", is_test_failure=True)
+                error = normalize_error(failures[0], "bmb", is_test_failure=True)
                 lt = classify_loop(error, "bmb")
                 loop_types[lt.value] += 1
                 attempts.append(AttemptRecord(attempt_num, code, True, False, fail_msg, lt.value))
+                n_fail = len(failures)
+                n_total = len(tests)
                 feedback = (
-                    f"test_failure: {fail_msg}\nFix. Output ONLY corrected code in a ```bmb block."
+                    f"test_failure ({n_fail} of {n_total} tests failed):\n"
+                    f"{fail_msg}\n"
+                    "Fix the logic error. Output ONLY corrected code in a ```bmb block."
                 )
                 messages.append({"role": "assistant", "content": response})
                 messages.append({"role": "user", "content": feedback})

@@ -16,7 +16,7 @@
     "expected_stdout": "4\n"
   },
   {
-    "stdin": "1 4 1000 1000 1000",
+    "stdin": "1 3 1000 1000 1000",
     "expected_stdout": "3000\n"
   },
   {

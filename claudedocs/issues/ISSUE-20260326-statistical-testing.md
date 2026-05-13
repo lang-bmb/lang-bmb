@@ -1,6 +1,6 @@
 # Statistical Significance Testing Missing
 
-**Status: OPEN** — Cycle 2730 양식: 측정 stamp는 [`_b_track_methodology_stamp.md`](_b_track_methodology_stamp.md) 참조 (**STALE** since 2026-04-26)
+**Status: RESOLVED** — Cycle 2816 (2026-05-13): `bmb_ai_bench/analysis/stats.py` 구현 완료. Wilson CI + McNemar 검정. CLI `stats` 서브커맨드 추가.
 **Priority: MEDIUM**
 **Category: Experiment Analysis**
 

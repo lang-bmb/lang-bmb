@@ -1,6 +1,6 @@
 # Type D (Test Failure) Dominates — Root Cause Analysis Needed
 
-**Status: OPEN** — Cycle 2730 양식: 측정 stamp는 [`_b_track_methodology_stamp.md`](_b_track_methodology_stamp.md) 참조 (**STALE** since 2026-04-26)
+**Status: ROOT CAUSE RESOLVED** — Cycles 2812+2818 (2026-05-13): Type D failures의 주 원인 = title-only problem.md 51개. 모두 수정 완료. 이제 Type D는 실제 논리 오류만 남음. 재측정 필요 (HUMAN).
 **Priority: HIGH**
 **Category: Compiler / Error Messages**
 

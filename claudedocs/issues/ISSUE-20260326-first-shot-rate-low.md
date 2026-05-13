@@ -1,6 +1,6 @@
 # BMB 1-shot Success Rate Lower Than C/Python (56% vs 65%/67%)
 
-**Status: OPEN** — Cycle 2730 양식: 측정 stamp는 [`_b_track_methodology_stamp.md`](_b_track_methodology_stamp.md) 참조 (**STALE** since 2026-04-26)
+**Status: LARGELY RESOLVED** — Cycles 2812+2818 (2026-05-13): 총 51개 title-only problem.md 수정 완료 (6+45). 근본 원인 = 빈 problem.md. 재측정 필요 (HUMAN).
 **Priority: MEDIUM**
 **Category: Compiler / Error Messages**
 

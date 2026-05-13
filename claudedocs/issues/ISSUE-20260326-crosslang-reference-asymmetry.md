@@ -1,6 +1,6 @@
 # Cross-Language Experiment: Reference Document Asymmetry
 
-**Status: OPEN** — Cycle 2730 양식: 측정 stamp는 [`_b_track_methodology_stamp.md`](_b_track_methodology_stamp.md) 참조 (**STALE** since 2026-04-26)
+**Status: RESOLVED** — Cycle 2817 (2026-05-13): `protocol/c_reference.md` + `protocol/python_reference.md` 추가. `run_crosslang.py` 모든 언어에 reference 제공하도록 수정.
 **Priority: HIGH**
 **Category: Experiment Methodology**
 

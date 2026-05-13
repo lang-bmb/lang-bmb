@@ -52,9 +52,10 @@ def _build_prompt(desc: str, tests: list[dict], lang: str, reference: str = "") 
         f"stdin: {t['stdin']}  → stdout: {t['expected_stdout']}"
         for t in tests[:5]
     )
+    lang_label = {"bmb": "BMB", "c": "C", "python": "Python"}.get(lang, lang.upper())
     parts = []
-    if reference and lang == "bmb":
-        parts.append(f"## BMB Reference\n{reference}\n---")
+    if reference:
+        parts.append(f"## {lang_label} Reference\n{reference}\n---")
     parts.append(desc)
     parts.append(f"## Examples\n{test_preview}")
     parts.append(f"\nWrite a complete {lang} program that reads from stdin and writes to stdout.")
@@ -228,10 +229,16 @@ def main() -> int:
     langs = [l.strip() for l in args.langs.split(",")]
 
     problems_dir = _BASE / "problems"
-    ref_path = _BASE / "protocol" / "bmb_reference.md"
-    if not ref_path.exists():
-        ref_path = _BASE.parent / "ai-proof" / "protocol" / "bmb_reference.md"
-    reference = ref_path.read_text(encoding="utf-8") if ref_path.exists() else ""
+    protocol_dir = _BASE / "protocol"
+    references: dict[str, str] = {}
+    for lang_key, fname in [("bmb", "bmb_reference.md"), ("c", "c_reference.md"), ("python", "python_reference.md")]:
+        p = protocol_dir / fname
+        references[lang_key] = p.read_text(encoding="utf-8") if p.exists() else ""
+    # Backward compat: if bmb_reference missing in protocol/, try legacy path
+    if not references["bmb"]:
+        legacy = _BASE.parent / "ai-proof" / "protocol" / "bmb_reference.md"
+        references["bmb"] = legacy.read_text(encoding="utf-8") if legacy.exists() else ""
+    reference = references.get("bmb", "")  # kept for backward-compat callers
 
     dirs = sorted(d for d in problems_dir.iterdir() if d.is_dir() and d.name[0].isdigit())
 
@@ -279,7 +286,7 @@ def main() -> int:
 
                 print(f"  {pid} [{lang}]...", end=" ", flush=True)
                 try:
-                    result = run_problem_lang(d, lang, llm, reference)
+                    result = run_problem_lang(d, lang, llm, references.get(lang, ""))
                     status = f"PASS({result.loop_count})" if result.final_correct else f"FAIL({result.loop_count})"
                     print(status)
                     data = {
