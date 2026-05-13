@@ -188,6 +188,75 @@ let val = vec_get(queue, front);
 front = front + 1;
 ```
 
+## Pattern: Selection sort
+```bmb
+// Sort v[0..n] ascending in-place
+for i in 0..n {
+    let mut min_idx = i;
+    for j in (i+1)..n {
+        if vec_get(v, j) < vec_get(v, min_idx) { min_idx = j } else { () }
+    };
+    if min_idx != i {
+        let tmp = vec_get(v, i);
+        let _s1 = vec_set(v, i, vec_get(v, min_idx));
+        let _s2 = vec_set(v, min_idx, tmp);
+        ()
+    } else { () }
+};
+```
+
+## Pattern: Absolute value and GCD
+```bmb
+// Absolute value (no -x syntax; use 0 - x)
+let abs_x = if x >= 0 { x } else { 0 - x };
+
+// GCD (Euclidean)
+fn gcd(a: i64, b: i64) -> i64 =
+    if b == 0 { a } else { gcd(b, a - (a / b) * b) };
+```
+
+## Pattern: 2D array (vec of rows)
+```bmb
+// Create n×m grid, initialized to 0
+let rows = vec_new();
+for _i in 0..n {
+    let row = vec_new();
+    for _j in 0..m {
+        let _p = vec_push(row, 0)
+    };
+    let _r = vec_push(rows, row)
+};
+// Access grid[i][j]
+let row_i = vec_get(rows, i);
+let val = vec_get(row_i, j);
+// Set grid[i][j] = v
+let row_i2 = vec_get(rows, i);
+let _s = vec_set(row_i2, j, v);
+```
+
+## Pattern: Read until n commands with variable args
+```bmb
+let n = read_int();
+for _i in 0..n {
+    let op = read_int();
+    if op == 1 {
+        let k = read_int();
+        let v = read_int();
+        // set operation
+        ()
+    } else if op == 2 {
+        let k = read_int();
+        // get operation — print result
+        let _p = println(result);
+        ()
+    } else {
+        // count operation — print count
+        let _p = println(count);
+        ()
+    }
+};
+```
+
 ## Common Pitfalls
 - `println()` returns `()`, not `i64` — always wrap: `let _r = println(x);`
 - `vec_push()/vec_set()/vec_free()` all return `()` — always wrap with `let _`
@@ -198,3 +267,4 @@ front = front + 1;
 - Vec handle type is `i64`, not `Vec<T>`
 - if/else used as statement MUST have `else { () }`
 - Use `0 - x` instead of `-x` for negation
+- `for j in (i+1)..n` — parentheses required when start is an expression
