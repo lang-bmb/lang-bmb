@@ -1,39 +1,62 @@
-# BMB Session Handoff — 2026-05-13 (Cycles 2808-2809 — ROADMAP M4-3/4/5 동기화 + 조기 종료)
+# BMB Session Handoff — 2026-05-13 (Cycle 2810 — M4-1 B축 공식 baseline 94.7%)
 
-> **HEAD**: `030ddff7`
-> **이번 세션 commits**: ROADMAP M4-3/4/5 ✅ 동기화 (C2808) + 조기 종료 (C2809)
+> **HEAD**: `030ddff7` (pre-commit; Cycle 2810 commit 예정)
+> **이번 세션 commits**: ROADMAP M4-3/4/5 ✅ 동기화 (C2808) + 조기 종료 (C2809) + **M4-1 B baseline (C2810)**
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2792, 이번 세션 bootstrap 미변경)
-> **이전 세션 핸드오프**: Cycles 2803-2807 (`82c4949d`)
+> **이전 세션 핸드오프**: Cycles 2803-2809 (`030ddff7`)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2810 — HUMAN 결정 대기 중 (아래 우선순위 참고)
-> **이번 세션 cycle logs**: cycle-2808.md ~ cycle-2809.md (claudedocs/cycle-logs/)
+> **다음 세션 진입점**: Cycle 2811
+> **이번 세션 cycle logs**: cycle-2810.md (claudedocs/cycle-logs/)
+
+## Cycle 2810 완료 — M4-1 B축 공식 baseline
+
+### 결과
+
+| 필드 | 값 |
+|------|----|
+| 모델 | claude-sonnet-4-6 |
+| 문제 수 | 100 × 3 runs = 300 |
+| 성공 | 284 / 300 |
+| **성공률** | **94.7%** |
+| Median loops | **1** |
+| 이전 비공식 | 90.9% (2026-03-26) |
+| 개선 | **+3.8pp** |
+
+**일관 실패 4종** (개선 대상):
+- `65_chain_calls`, `67_nested_loops` — 3/3 FAIL
+- `77_state_machine` — 2/3 FAIL
+- `47_word_count` — 2/3 FAIL
+
+산출물: `claudedocs/measurements/b_baseline_2026-05-13_c2810.json`
 
 ---
 
-## 다음 세션 우선순위 (Cycle 2810+)
+---
 
-### Active ISSUE 11개 현황 (Cycle 2809 기준)
+## 다음 세션 우선순위 (Cycle 2811+)
+
+### Active ISSUE 11개 현황 (Cycle 2810 기준)
 
 | ISSUE | 우선순위 | 상태 | 비고 |
 |-------|---------|------|------|
 | `ISSUE-20260512-tier3-spawn-overhead-methodology` | P2 | 🔴 HUMAN 결정 | Option A/B/C 선택 필요 |
 | `ISSUE-20260511-golden-flakiness-inttoptr` | P3 | 환경 의존 | 부하 높을 때만 발현 |
 | `ISSUE-20260511-clang-knapsack-outlier` | low | 외부 | Clang upstream 이슈 |
-| B-track `ISSUE-20260326-*` (8개) | HIGH/MED | 🔴 API 필요 | benchmark 재측정 키 필요 |
+| B-track `ISSUE-20260326-*` (8개) | HIGH/MED | B baseline 확보됨 | 개선 작업 착수 가능 |
 
-### 자율 착수 가능 작업
+### B축 개선 착수 가능 작업 (API 불필요)
 
-1. **bootstrap parser 재귀→iterative 전환** — P3 장기 개선 (multi-cycle, 3-5 사이클 예상)  
-   ⚠️ 착수 전 분할 커밋 계획 필수: 부분 커밋 상태로 세션 종료 불가  
-   ⚠️ **구체적 실패 없는 선제적 작업** — 현재 스택오버플로 미발생. 착수 동인 미충족.
-2. ~~`--check-only` CI 연동~~ — **❌ REJECTED (Cycle 2808)**: exe 미 git-tracked → CI fresh checkout에서 항상 stale; PE32+ Linux 불호환
+1. **일관 실패 4종 분석** — `65_chain_calls`, `67_nested_loops`, `77_state_machine`, `47_word_count`
+   - 각 문제 FAIL 원인 파악 (test feedback 부족? 언어 표현력? 문제 설계?)
+   - `ISSUE-20260326-type-d-failure-analysis` 처방 적용 (stdin 포함 feedback)
+2. **bootstrap parser 재귀→iterative 전환** — P3 장기 개선 (3-5 사이클)
+   ⚠️ 구체적 실패 없는 선제적 작업 — 착수 동인 미충족.
 
 ### 다음 사이클 권장
 
-**Cycle 2810**: HUMAN 결정 입력 대기
-- HUMAN 결정 시: tier3-spawn-overhead Option A/B/C → 즉시 착수
-- HUMAN 결정 시: B-track API key → benchmark 재측정 사이클
-- 자율 선택 시: ROADMAP §신규 ISSUE 발굴 (현재 자율 가능 항목 없음)
+**Cycle 2811**: B축 일관 실패 분석 (자율 가능)
+- `65_chain_calls` / `67_nested_loops` FAIL 원인 파악 → feedback 개선 또는 언어 스펙 검토
+- tier3-spawn-overhead HUMAN 결정 시 즉시 착수
 
 ---
 
