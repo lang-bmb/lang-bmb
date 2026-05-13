@@ -1,8 +1,8 @@
 // lint.bmb -BMB-native AI-friendly lint tool (Track Q Phase 2+3+4)
 // Cycles 2567-2573+2579+2795. Pattern-based lint checks without a full parse step.
 //
-// Implements 13 checks detectable by source text analysis:
-//   1. non_snake_case          -CamelCase function name
+// Implements 14 checks detectable by source text analysis:
+//   1. non_snake_case          -CamelCase function name (ALL_CAPS constants exempt)
 //   2. missing_postcondition   -pub fn without post clause
 //   3. negated_if_condition    -if not( ... )
 //   4. redundant_bool_compare  -== true / == false
@@ -15,6 +15,7 @@
 //  11. builtin_name_collision  -fn name shadows compiler builtin/intrinsic (e.g. tokenize, bit_or)
 //  12. type_naming             -type definition with non-PascalCase name
 //  13. todo_call               -todo() runtime call (will panic)
+//  14. missing_pre_bounds      -pub fn accessing arr[/buf[/data[ without pre bounds clause
 //
 // Output: one JSON line per warning + trailing lint summary line.
 // Format matches `bmb lint` machine output for drop-in compatibility.
@@ -95,6 +96,24 @@ fn is_upper(c: i64) -> bool = c >= 65 and c <= 90;
 fn is_lower(c: i64) -> bool = c >= 97 and c <= 122;
 fn is_digit(c: i64) -> bool = c >= 48 and c <= 57;
 fn is_ident_char(c: i64) -> bool = is_lower(c) or is_upper(c) or is_digit(c) or c == 95;
+
+// is_all_caps: ALL_CAPS_WITH_UNDERSCORES — conventional constant name pattern.
+// Starts with uppercase; contains only uppercase, digits, underscores.
+fn is_all_caps(name: String) -> bool = {
+    let n = name.len();
+    if n == 0 { false }
+    else if not(is_upper(name.byte_at(0))) { false }
+    else {
+        let mut i = 1;
+        let mut ok = true;
+        while i < n and ok {
+            let c = name.byte_at(i);
+            if is_upper(c) or is_digit(c) or c == 95 { i = i + 1 }
+            else { ok = false }
+        };
+        ok
+    }
+};
 
 fn extract_ident(s: String, pos: i64, end: i64) -> String = {
     let mut p = pos;
@@ -185,10 +204,11 @@ fn check_snake_case(source: String, ls: i64, nl: i64, filename: String, line_num
     else {
         let name_start = if line_starts(source, ls, "pub fn ") { ls + 7 } else { ls + 3 };
         let name = extract_ident(source, name_start, nl);
-        if name.len() == 0 or is_snake_case(name) { 0 }
+        // ALL_CAPS names are constants (BMB convention: fn MY_CONST() -> T = val;) — skip
+        if name.len() == 0 or is_snake_case(name) or is_all_caps(name) { 0 }
         else {
             emit_warning(filename, "non_snake_case", line_num, offset,
-                "Function name `" + name + "` should be snake_case")
+                "Function name `" + name + "` should be snake_case (or ALL_CAPS for constants)")
         }
     }
 };
@@ -379,6 +399,48 @@ fn check_builtin_collision(source: String, ls: i64, nl: i64, filename: String, l
     }
 };
 
+// Check 14: missing_pre_bounds — pub fn that directly subscripts array/slice params (arr[, s[)
+// without a pre bounds clause. Bounds checks are eliminated only when pre clauses are present.
+fn check_missing_pre_bounds(source: String, ls: i64, nl: i64, filename: String, line_num: i64, offset: i64) -> i64 = {
+    if not(line_starts(source, ls, "pub fn ")) { 0 }
+    else {
+        let has_subscript = line_contains(source, ls, nl, "arr[") or
+                            line_contains(source, ls, nl, "buf[") or
+                            line_contains(source, ls, nl, "data[");
+        if not(has_subscript) { 0 }
+        else {
+            let name_start = ls + 7;
+            let name = extract_ident(source, name_start, nl);
+            let has_body_on_line = line_contains_outside_str(source, ls, nl, " = ");
+            if has_body_on_line { 0 }
+            else {
+                let mut pos2 = if nl >= source.len() { source.len() } else { nl + 1 };
+                let mut found_pre = false;
+                let mut found_body = false;
+                let mut steps = 0;
+                while pos2 < source.len() and not(found_pre) and not(found_body) and steps < 8 {
+                    let next_nl = find_nl(source, pos2);
+                    let next_ls = skip_ws(source, pos2, next_nl);
+                    let is_blank = next_ls >= next_nl;
+                    let _r = if not(is_blank) {
+                        if line_starts(source, next_ls, "pre ") { found_pre = true }
+                        else if line_starts(source, next_ls, "post ") { () }
+                        else { found_body = true };
+                        steps = steps + 1;
+                        0
+                    } else { 0 };
+                    pos2 = if next_nl >= source.len() { source.len() } else { next_nl + 1 }
+                };
+                if found_pre or not(found_body) { 0 }
+                else {
+                    emit_warning(filename, "missing_pre_bounds", line_num, offset,
+                        "pub fn `" + name + "` accesses array/buffer but has no pre bounds clause -add `pre 0 <= idx < arr.len()` to eliminate bounds checks")
+                }
+            }
+        }
+    }
+};
+
 // Check 12: type_naming — type definitions must use PascalCase (uppercase first letter).
 // LLM-generated code often uses snake_case for type aliases, violating BMB convention.
 fn check_type_naming(source: String, ls: i64, nl: i64, filename: String, line_num: i64, offset: i64) -> i64 = {
@@ -460,6 +522,7 @@ fn lint_source(source: String, filename: String) -> i64 = {
             warnings = warnings + check_builtin_collision(source, ls, nl, filename, line_num, pos);
             warnings = warnings + check_type_naming(source, ls, nl, filename, line_num, pos);
             warnings = warnings + check_todo_call(source, ls, nl, filename, line_num, pos);
+            warnings = warnings + check_missing_pre_bounds(source, ls, nl, filename, line_num, pos);
             0
         } else { 0 };
         warnings = warnings + check_todo_comment(source, ls, nl, filename, line_num, pos);
