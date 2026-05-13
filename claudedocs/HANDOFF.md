@@ -1,12 +1,41 @@
 # BMB Session Handoff — 2026-05-13 (Cycles 2793-2802 — lint 20 rules + 2 ISSUE close)
 
-> **HEAD**: `(see commit after this session)`
+> **HEAD**: `71055ef3`
 > **이번 세션 commits**: lint Rules 15-17 (C2798) + lint Rules 18-20 + Rule20 FP fix (C2799-2800) + SIMD P1 close (C2801) + bootstrap stack fix (C2802)
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2792, 마지막 bootstrap 변경 — 이번 세션 bootstrap 미변경)
 > **이전 세션 핸드오프**: Cycles 2788-2792 (`b909749e`)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2803 — Active ISSUE 12개 중 다음 우선순위 작업
+> **다음 세션 진입점**: Cycle 2803 — Active ISSUE 12개 아래 우선순위 참고
 > **이번 세션 cycle logs**: cycle-2793.md ~ cycle-2802.md (claudedocs/cycle-logs/)
+
+---
+
+## 다음 세션 우선순위 (Cycle 2803+)
+
+### Active ISSUE 12개 현황
+
+| ISSUE | 우선순위 | 상태 | 비고 |
+|-------|---------|------|------|
+| `ISSUE-20260512-tier3-spawn-overhead-methodology` | P2 | 🔴 HUMAN 결정 | Option A/B/C 선택 필요 |
+| `ISSUE-20260413-playground-wasm` | P2 | ⚙️ 멀티사이클 | wasm32 크로스컴파일 |
+| `ISSUE-20260511-golden-flakiness-inttoptr` | P3 | 환경 의존 | 부하 높을 때만 발현 |
+| `ISSUE-20260512-bootstrap-parser-stack-overflow` | ✅ Closed | — | Cycle 2802 완료 |
+| `ISSUE-20260511-clang-knapsack-outlier` | low | 외부 | Clang upstream 이슈 |
+| B-track `ISSUE-20260326-*` (8개) | HIGH/MED | 🔴 API 필요 | benchmark 재측정 키 필요 |
+
+### 자율 착수 가능 작업
+
+1. **playground-wasm Phase 1 scoping** — wasm32 크로스컴파일 타당성 조사 (1 사이클)
+2. **lint Rule 13 검증** — `has_todo_call`이 이미 ident-char guard 포함 확인됨, 추가 작업 불필요
+3. **bootstrap compiler.exe 재빌드 CI 추가** — 스크립트 1개로 stale-stack 재발 방지 (P4)
+4. **bootstrap parser 재귀→iterative 전환** — P3 장기 개선 (multi-cycle)
+
+### 다음 사이클 권장
+
+**Cycle 2803**: playground-wasm Phase 1 — wasm32 타겟 빌드 가능성 조사
+- `cargo build --target wasm32-wasi` 또는 `wasm32-unknown-unknown` 가능 여부
+- 브라우저에서 BMB→IR 실행 파이프라인 설계
+- 완료 기준 정의
 
 ---
 

@@ -491,6 +491,18 @@ historic.json (2026-05-02, 5-run) + tier3-10runs.json (2026-05-01, 10-run, noise
 
 **측정 신뢰도 완전 회복 (Cycle 2791)**: 17/17 benches 모두 fair comparison. fibonacci BMB: `bmb_black_box(50)` → LLVM constant-fold 방지. fibonacci C: `__attribute__((noinline))` → GCC hoisting 방지. **P-track ratio 신뢰도 ✅**.
 
+### Cycle 2803+ 진입점 (다음 세션)
+
+**자율 착수 가능**:
+- playground-wasm Phase 1 — wasm32 타겟 조사 (P2, 1사이클 scoping)
+- bootstrap parser iterative 전환 — P3 장기
+
+**HUMAN 결정 대기**:
+- tier3-spawn-overhead-methodology — Option A(in-process 재측정) / B(process별 warmup) / C(Tier3 제외) 선택
+- B-track 재측정 — API 키 필요
+
+---
+
 ### Cycle 2802 갱신 (2026-05-13, bootstrap stack overflow P3 fix)
 
 | 항목 | 카운트 |
