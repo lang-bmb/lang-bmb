@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-13 (Cycles 2803-2807 — playground-wasm close + bootstrap CI script)
 
-> **HEAD**: `78c7b8e8`
+> **HEAD**: `82c4949d`
 > **이번 세션 commits**: playground-wasm ISSUE close (C2805) + rebuild-bootstrap-exe.sh (C2806) + session-close (C2807)
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2792, 이번 세션 bootstrap 미변경)
 > **이전 세션 핸드오프**: Cycles 2793-2802 (`71055ef3`)
@@ -23,15 +23,16 @@
 
 ### 자율 착수 가능 작업
 
-1. **bootstrap parser 재귀→iterative 전환** — P3 장기 개선 (multi-cycle, 3-5 사이클 예상)
+1. **bootstrap parser 재귀→iterative 전환** — P3 장기 개선 (multi-cycle, 3-5 사이클 예상)  
+   ⚠️ 착수 전 분할 커밋 계획 필수: 부분 커밋 상태로 세션 종료 불가
 2. **`--check-only` CI 연동** — `scripts/rebuild-bootstrap-exe.sh --check-only` 를 GitHub Actions step에 연결 (P4, 1 사이클)
 3. **ROADMAP Active ISSUE 탐색** — 다른 자율 착수 가능 항목 확인
 
 ### 다음 사이클 권장
 
-**Cycle 2808**: ROADMAP.md 검토 후 자율 항목 선택
-- bootstrap parser iterative conversion 착수 여부 결정
-- 또는 ROADMAP의 다른 P2/P3 항목 선택
+**Cycle 2808**: `claudedocs/ROADMAP.md` 확인 → 자율 항목 선택
+- 추천 1: `--check-only` CI 연동 (P4, 1 사이클, 명확한 완료 기준)
+- 추천 2: bootstrap parser iterative conversion — 사이클 분할 계획 후 착수
 
 ---
 

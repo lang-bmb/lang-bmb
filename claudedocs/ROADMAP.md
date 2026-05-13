@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-13 (Cycle 2805 — **playground-wasm ISSUE close**: 5/5 examples verified, Active ISSUE 11)
+> 최종 업데이트: 2026-05-13 (Cycle 2807 — **bootstrap CI 재빌드 스크립트 완료 + 세션 종료**: Active ISSUE 11, Closed 56)
 > 이전 갱신: Cycles 2765-2773 (bench verify infrastructure + P0 store_u8 bug 진단), Cycles 2760-2764 (M3-5 honest re-baseline median-of-5)
 > 이 문서는 매 세션의 **유일한 실무 앵커**다.
 > 상세 사이클 로그: `docs/ROADMAP.md` | 개발 규칙: `CLAUDE.md` | 세션 상태: `claudedocs/HANDOFF.md`
@@ -507,16 +507,29 @@ historic.json (2026-05-02, 5-run) + tier3-10runs.json (2026-05-01, 10-run, noise
   5/5 예제 직접 확인 (Hello World/Factorial/GCD/Power/Range Clamp). 첫 실행 ~9ms, 반복 ~1ms.
   Note: 프로덕션 배포 시 WASM 파일 same-origin 복사 필요 (deployment 문제, code 결함 아님).
 
-### Cycle 2803+ 진입점 (다음 세션)
+### Cycle 2803-2807 완료 (2026-05-13)
 
-**자율 착수 가능**:
-- ~~playground-wasm Phase 1~~ ✅ Cycles 2803-2805 완료
-- bootstrap compiler.exe CI 재빌드 스크립트 (P4, 1 cycle) — stale-stack 재발 방지
-- bootstrap parser iterative 전환 — P3 장기
+**자율 완료**:
+- ~~playground-wasm Phase 1~~ ✅ Cycles 2803-2805 (ISSUE-20260413 close, Active 12→11, Closed 56)
+- ~~bootstrap compiler.exe CI 재빌드 스크립트 (P4)~~ ✅ Cycle 2806 (`scripts/rebuild-bootstrap-exe.sh` 75 LOC)
+  - Staleness check + `bmb build --fast-compile` + PE32+ 스택 검증 (64 MB)
+  - `scripts/bootstrap.sh` 통합: Stage 1 전 exe freshness 자동 확인
+  - Cycle 2807: Linux OSTYPE guard 수정 (`STACK_MB > 0 && < 32` 조건)
 
 **HUMAN 결정 대기**:
 - tier3-spawn-overhead-methodology — Option A(in-process 재측정) / B(process별 warmup) / C(Tier3 제외) 선택
 - B-track 재측정 — API 키 필요
+
+### Cycle 2808+ 진입점 (다음 세션)
+
+**자율 착수 가능**:
+- bootstrap parser 재귀→iterative 전환 — P3 장기 (3-5 사이클 예상, 분할 커밋 계획 필요)
+- `scripts/rebuild-bootstrap-exe.sh --check-only` → GitHub Actions step 연결 (P4, 1 사이클)
+- ROADMAP 다른 P2/P3 항목 탐색
+
+**HUMAN 결정 대기**:
+- tier3-spawn-overhead-methodology — Option A/B/C 선택 필요
+- B-track 재측정 (M4-1) — `BMB_BENCH_API_KEY` setup 필요
 
 ---
 
