@@ -1,16 +1,48 @@
-# BMB Session Handoff — 2026-05-13 (Cycles 2788-2792 — or/and short-circuit fix + 17/17 PASS)
+# BMB Session Handoff — 2026-05-13 (Cycles 2793-2799 — lint 20 rules + ISSUE-20260413 close)
 
-> **HEAD**: `b909749e`
-> **이번 세션 commits**: lexer 6-bug fix + csv_parse skip_ws → 16/17 PASS; fibonacci 6B→100M → 17/17 PASS; fibonacci fair fix → 17/17 PASS; **or/and 단락평가 fix (Cycle 2792) → S2==S3 ✅**
-> **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2792, bootstrap 변경 포함)
-> **이전 세션 핸드오프**: Cycles 2783-2787 (`96512434`)
+> **HEAD**: `(see commit after this session)`
+> **이번 세션 commits**: lint Rules 15-17 (Cycle 2798) + lint Rules 18-20 (Cycle 2799) → ISSUE-20260413 ✅ Close
+> **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2792, 마지막 bootstrap 변경 — 이번 세션 bootstrap 미변경)
+> **이전 세션 핸드오프**: Cycles 2788-2792 (`b909749e`)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2793 — M4 계획 또는 bootstrap `error_test` 포맷 정합 (Active ISSUE 16개)
-> **이번 세션 cycle logs**: gitignored (disk only)
+> **다음 세션 진입점**: Cycle 2800 — Active ISSUE 14개 중 다음 P2 작업 (P-track 또는 언어 갭)
+> **이번 세션 cycle logs**: cycle-2793.md ~ cycle-2799.md (claudedocs/cycle-logs/)
 
 ---
 
-## 0. 이번 세션 작업 (Cycles 2788-2792)
+## 0. 이번 세션 작업 (Cycles 2793-2799)
+
+### ✅ lint Rules 15-17 + UTF-8 boundary fix (Cycle 2798)
+
+`bootstrap/lint/lint.bmb` 14→17 rules:
+- **Rule 15** (negated_comparison): `not(a == b)` → `a != b`
+- **Rule 16** (long_line): 100자 초과 경고
+- **Rule 17** (fn_too_many_params): 6+ params 경고
+- **UTF-8 fix**: `line_contains_outside_str`에서 멀티바이트 UTF-8 문자(em dash `—`) 경계에서 슬라이스 패닉 수정
+  → start/end char boundary guard 추가 (byte < 128 or >= 192)
+
+Result: cargo test 6211/6211 PASS, lint self-test 86 warnings 패닉 없음
+
+### ✅ lint Rules 18-20 + line_contains 버그 수정 (Cycle 2799)
+
+`bootstrap/lint/lint.bmb` 17→20 rules:
+- **Rule 18** (string_chain_concat): 4+ `+` concatenation chain 경고
+- **Rule 19** (dual_negation): `not(a) and not(b)` → De Morgan 제안
+- **Rule 20** (bare_panic): `panic()` call → `pre` contract 제안
+- **Bug fix**: `check_string_chain_concat`에서 `line_contains(_, _, _, "\"")` 항상 false 반환 버그 수정
+  Root cause: `line_contains` → `line_contains_outside_str`는 `"` 구분자 자체를 매칭하지 않음
+  Fix: raw byte scan (`while qi < nl and byte_at(qi) != 34`)으로 교체
+
+Result: cargo test 6211/6211 PASS, lint self-test 104 warnings, 3 new rules 모두 발화 확인
+
+### ✅ ISSUE-20260413-linter-enhancement Closed
+
+완료 기준 "20+ 린트 규칙" 달성 → `claudedocs/issues/closed/`로 이동.
+Active ISSUE: 16 → 14. Closed (누적): 52 → 53.
+
+---
+
+## [PREV] 이번 세션 작업 (Cycles 2788-2792)
 
 ### ✅ or/and 단락 평가(Short-Circuit) 부트스트랩 fix (Cycle 2792)
 

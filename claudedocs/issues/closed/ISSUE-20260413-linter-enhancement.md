@@ -2,7 +2,7 @@
 
 **우선순위**: P2
 **영역**: tools
-**상태**: Open (Cycle 2703 부분 진척 — Lint 11 builtin_name_collision 추가)
+**상태**: Closed (Cycle 2799 완료 — 20 rules 달성, 2026-05-13)
 
 ## 측정 stamp (Cycle 2730 표준화)
 

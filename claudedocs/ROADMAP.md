@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-13 (Cycle 2792 — **or/and short-circuit fix**: bootstrap lowering → S2==S3 ✅)
+> 최종 업데이트: 2026-05-13 (Cycle 2799 — **lint 20 rules 달성**: ISSUE-20260413-linter-enhancement ✅ Close)
 > 이전 갱신: Cycles 2765-2773 (bench verify infrastructure + P0 store_u8 bug 진단), Cycles 2760-2764 (M3-5 honest re-baseline median-of-5)
 > 이 문서는 매 세션의 **유일한 실무 앵커**다.
 > 상세 사이클 로그: `docs/ROADMAP.md` | 개발 규칙: `CLAUDE.md` | 세션 상태: `claudedocs/HANDOFF.md`
@@ -490,6 +490,22 @@ historic.json (2026-05-02, 5-run) + tier3-10runs.json (2026-05-01, 10-run, noise
 - `bench_verify.json` artifact 출력
 
 **측정 신뢰도 완전 회복 (Cycle 2791)**: 17/17 benches 모두 fair comparison. fibonacci BMB: `bmb_black_box(50)` → LLVM constant-fold 방지. fibonacci C: `__attribute__((noinline))` → GCC hoisting 방지. **P-track ratio 신뢰도 ✅**.
+
+### Cycle 2799 갱신 (2026-05-13, lint 20 rules + ISSUE-20260413 close)
+
+| 항목 | 카운트 |
+|------|-------|
+| Active ISSUE | **14** (ISSUE-20260413-linter-enhancement close) |
+| Closed 이번 cycle | **1** (ISSUE-20260413-linter-enhancement) |
+| 신규 이번 cycle | **0** |
+| Closed (누적) | **53** |
+
+**Close 근거**:
+- `ISSUE-20260413-linter-enhancement` (Cycles 2795-2799): lint.bmb 14→17→20 rules. 완료 기준 "20+ 린트 규칙" 달성.
+  새 규칙: negated_comparison(15), long_line(16), fn_too_many_params(17), string_chain_concat(18), dual_negation(19), bare_panic(20).
+  UTF-8 경계 패닉 수정 + `line_contains`→raw-byte-scan 버그 수정 포함.
+
+---
 
 ### Cycle 2794 갱신 (2026-05-13, error_test fix + Stage 3 OOM close)
 
