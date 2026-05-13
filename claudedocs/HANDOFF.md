@@ -1,14 +1,14 @@
-# BMB Session Handoff — 2026-05-13 (Cycles 2816-2819 — B축 인프라 개선)
+# BMB Session Handoff — 2026-05-13 (Cycles 2816-2821 — B축 인프라 개선 + 자율 작업 완료)
 
-> **HEAD**: commit 예정 (이 세션 종료 시)
+> **HEAD**: `7bbfe433` (Cycle 2821)
 > **이전 HEAD**: `e11e62b5` (Cycle 2811)
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2792, 이번 세션 bootstrap 미변경)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2820
+> **다음 세션 진입점**: Cycle 2822
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 2816-2819)
+## 이번 세션 작업 요약 (Cycles 2816-2821)
 
 ### 주요 변경 사항
 
@@ -18,8 +18,10 @@
 | 2817 | C/Python reference 추가 | `protocol/c_reference.md` + `protocol/python_reference.md`, `run_crosslang.py` 대칭 수정 |
 | 2818 | problem.md 45종 전량 수정 | title-only → Input/Output/Example 완전 설명 (총 51종: Cycle 2812에서 6종 + 이번 45종) |
 | 2819 | ISSUE 상태 갱신 | 4개 ISSUE RESOLVED/LARGELY RESOLVED 마킹, HANDOFF/ROADMAP 갱신 |
+| 2820 | 커밋 | 2816-2819 전체 변경사항 커밋 (1e3694aa) |
+| 2821 | bmb_reference.md 확장 | 200→270줄: 정렬/abs/gcd/2D배열/가변인자 커맨드 패턴 추가. 조기 종료. |
 
-### B-track ISSUE 상태 (Cycle 2819 기준)
+### B-track ISSUE 상태 (Cycle 2821 기준)
 
 | ISSUE | 우선순위 | 상태 |
 |-------|---------|------|
@@ -61,7 +63,7 @@
 
 ---
 
-## 다음 세션 우선순위 (Cycle 2820+)
+## 다음 세션 우선순위 (Cycle 2822+)
 
 ### 1순위 — HUMAN 결정 후 즉시 가능
 
@@ -80,9 +82,9 @@ python scripts/run_crosslang.py --all --runs 3 --model claude-sonnet-4-6
 
 ### 2순위 — 자율 가능
 
-- `ISSUE-20260326-integration-category-weakness`: BMB 언어 기능 개선 (integration 카테고리 63% → 개선)
-- `bmb_reference.md` 확장: 현재 200줄 → 더 많은 BMB 관용 패턴
-- problem.md 검증: 일부 스펙 추론이 모호할 수 있음 (특히 52_base_convert, 62_deep_nesting)
+- `ISSUE-20260326-integration-category-weakness`: BMB 언어 기능 개선 (integration 카테고리)
+  - 재측정 후 실제 실패율 확인 → 언어 스펙 변경 필요 여부 결정
+  - `bmb_reference.md` 이미 270줄 (정렬/abs/gcd/2D배열/가변인자 패턴 포함, Cycle 2821)
 
 ### 3순위 — HUMAN 결정 필요
 
