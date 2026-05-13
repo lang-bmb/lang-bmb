@@ -2,7 +2,7 @@
 
 **우선순위**: P1
 **영역**: codegen, mir, runtime
-**상태**: Open (Cycles 2220-2222 후속)
+**상태**: Closed (Cycle 2801 검증 — 완료 기준 3/3 충족, 2026-05-13)
 **전제 작업 완료**: Cycles 2215-2219 (Type system + lexer + grammar 스캐폴딩, 회귀 0)
 
 ## 측정 stamp (Cycle 2730 표준화)

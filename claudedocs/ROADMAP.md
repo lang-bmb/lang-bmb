@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-13 (Cycle 2799 — **lint 20 rules 달성**: ISSUE-20260413-linter-enhancement ✅ Close)
+> 최종 업데이트: 2026-05-13 (Cycle 2801 — **SIMD P1 ISSUE close**: fadd fast <4 x double> ✅, ≥3x speedup ✅)
 > 이전 갱신: Cycles 2765-2773 (bench verify infrastructure + P0 store_u8 bug 진단), Cycles 2760-2764 (M3-5 honest re-baseline median-of-5)
 > 이 문서는 매 세션의 **유일한 실무 앵커**다.
 > 상세 사이클 로그: `docs/ROADMAP.md` | 개발 규칙: `CLAUDE.md` | 세션 상태: `claudedocs/HANDOFF.md`
@@ -490,6 +490,30 @@ historic.json (2026-05-02, 5-run) + tier3-10runs.json (2026-05-01, 10-run, noise
 - `bench_verify.json` artifact 출력
 
 **측정 신뢰도 완전 회복 (Cycle 2791)**: 17/17 benches 모두 fair comparison. fibonacci BMB: `bmb_black_box(50)` → LLVM constant-fold 방지. fibonacci C: `__attribute__((noinline))` → GCC hoisting 방지. **P-track ratio 신뢰도 ✅**.
+
+### Cycle 2801 갱신 (2026-05-13, SIMD P1 ISSUE close)
+
+| 항목 | 카운트 |
+|------|-------|
+| Active ISSUE | **13** (ISSUE-20260413-simd-codegen close) |
+| Closed 이번 cycle | **1** (ISSUE-20260413-simd-codegen) |
+| 신규 이번 cycle | **0** |
+| Closed (누적) | **54** |
+
+**검증 결과**:
+- `fadd fast <4 x double>` IR emit 확인 ✅ (tmp_simd_bench 빌드 → IR 검사)
+- SIMD 성능: SIMD <1ms vs scalar ~3ms (5000×4096 FMAs) → **≥3x 빠름** ✅ (기준: 1.5x+)
+- 체크섬 일치 (20480) ✅ 정확도 확인
+- Bootstrap Fixed Point (S2==S3, Cycle 2792) ✅
+- 모든 완료 기준 3/3 충족
+
+**Close 근거**:
+- `ISSUE-20260413-simd-codegen` (Cycles 2215-2283 구현, Cycle 2801 검증): SIMD 1급 타입 코드젠 완성.
+  `f64x4`/`f64x8`/`i32x8` 등 벡터 타입 IR emit, `fadd fast <N x T>` BinOp, `stdlib/simd/mod.bmb` 5+ 헬퍼.
+  테스트: `tests/bench/simd_correctness.bmb` (0=PASS), `simd_dot_simd.bmb` (≥3x vs scalar), `simd_hsum_smoke.bmb`.
+  Note: 이 구현은 Rust 코드젠 레이어 (cycles 2215-2283, Rule 6 확립 이전) — bootstrap 포팅은 별도 P3 작업.
+
+---
 
 ### Cycle 2799 갱신 (2026-05-13, lint 20 rules + ISSUE-20260413 close)
 
