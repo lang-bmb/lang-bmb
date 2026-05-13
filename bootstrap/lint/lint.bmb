@@ -66,6 +66,8 @@ fn line_starts(s: String, pos: i64, prefix: String) -> bool = {
 
 // line_contains_outside_str: checks for pattern outside double-quoted string literals.
 // Skips content inside "..." to avoid false positives from message strings.
+// NOTE: cannot find `"` (34) as a pattern — the quote byte is consumed as a state-transition
+// delimiter and never reaches the pattern-match branch. Use a raw byte scan instead.
 fn line_contains_outside_str(s: String, pos: i64, end: i64, pattern: String) -> bool = {
     let plen = pattern.len();
     if plen == 0 or end - pos < plen { false }
@@ -661,11 +663,15 @@ fn check_dual_negation(source: String, ls: i64, nl: i64, filename: String, line_
 // Check 20: bare_panic — direct panic() call that bypasses contract verification.
 // Prefer `pre condition` contracts that enable compile-time elimination of the check.
 // Distinct from todo() (Rule 13): panic() is intentional but often replaceable by pre/post.
+// Guard: ident-char preceding `panic(` → identifier (e.g. check_bare_panic()), not a bare call.
 fn check_bare_panic(source: String, ls: i64, nl: i64, filename: String, line_num: i64, offset: i64) -> i64 = {
-    if line_contains(source, ls, nl, "panic(") {
+    let panic_pos = find_pattern_outside_str(source, ls, nl, "panic(");
+    if panic_pos == -1 { 0 }
+    else if panic_pos > ls and is_ident_char(source.byte_at(panic_pos - 1)) { 0 }
+    else {
         emit_warning(filename, "bare_panic", line_num, offset,
             "`panic()` call -consider using `pre` contract instead to enable compile-time elimination")
-    } else { 0 }
+    }
 };
 
 // ============================================================================
