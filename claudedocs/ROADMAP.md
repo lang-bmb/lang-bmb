@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-13 (Cycle 2807 — **bootstrap CI 재빌드 스크립트 완료 + 세션 종료**: Active ISSUE 11, Closed 56)
+> 최종 업데이트: 2026-05-13 (Cycle 2809 — **ROADMAP M4-3/4/5 동기화 + 조기 종료**: Active ISSUE 11, Closed 56)
 > 이전 갱신: Cycles 2765-2773 (bench verify infrastructure + P0 store_u8 bug 진단), Cycles 2760-2764 (M3-5 honest re-baseline median-of-5)
 > 이 문서는 매 세션의 **유일한 실무 앵커**다.
 > 상세 사이클 로그: `docs/ROADMAP.md` | 개발 규칙: `CLAUDE.md` | 세션 상태: `claudedocs/HANDOFF.md`
