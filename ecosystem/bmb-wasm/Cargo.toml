@@ -1,0 +1,22 @@
+[package]
+name = "bmb-wasm"
+version = "0.98.0"
+edition = "2024"
+description = "BMB compiler WASM bindings for browser playground"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+bmb = { path = "../../bmb" }
+wasm-bindgen = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+console_error_panic_hook = "0.1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3"
+
+[features]
+default = []

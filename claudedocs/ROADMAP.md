@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-13 (Cycle 2802 — **bootstrap stack overflow P3 fix**: hash_table PASS ✅, Active ISSUE 12)
+> 최종 업데이트: 2026-05-13 (Cycle 2805 — **playground-wasm ISSUE close**: 5/5 examples verified, Active ISSUE 11)
 > 이전 갱신: Cycles 2765-2773 (bench verify infrastructure + P0 store_u8 bug 진단), Cycles 2760-2764 (M3-5 honest re-baseline median-of-5)
 > 이 문서는 매 세션의 **유일한 실무 앵커**다.
 > 상세 사이클 로그: `docs/ROADMAP.md` | 개발 규칙: `CLAUDE.md` | 세션 상태: `claudedocs/HANDOFF.md`
@@ -491,10 +491,27 @@ historic.json (2026-05-02, 5-run) + tier3-10runs.json (2026-05-01, 10-run, noise
 
 **측정 신뢰도 완전 회복 (Cycle 2791)**: 17/17 benches 모두 fair comparison. fibonacci BMB: `bmb_black_box(50)` → LLVM constant-fold 방지. fibonacci C: `__attribute__((noinline))` → GCC hoisting 방지. **P-track ratio 신뢰도 ✅**.
 
+### Cycle 2805 갱신 (2026-05-13, playground-wasm ISSUE close)
+
+| 항목 | 카운트 |
+|------|-------|
+| Active ISSUE | **11** (ISSUE-20260413-playground-wasm close) |
+| Closed 이번 cycle | **1** (ISSUE-20260413-playground-wasm) |
+| 신규 이번 cycle | **0** |
+| Closed (누적) | **56** |
+
+**Close 근거**:
+- `ISSUE-20260413-playground-wasm` (Cycles 2803-2805): wasm32 크로스컴파일 완성.
+  `ecosystem/bmb-wasm/` crate (wasm-bindgen), `bmb/src/interp/eval.rs` wasm_heap 모듈 (`std::alloc` 기반),
+  `wasm-pack --target web` 빌드 (1.54 MB), playground WASM 통합 (compiler-wasm.ts + App.tsx + Header.tsx).
+  5/5 예제 직접 확인 (Hello World/Factorial/GCD/Power/Range Clamp). 첫 실행 ~9ms, 반복 ~1ms.
+  Note: 프로덕션 배포 시 WASM 파일 same-origin 복사 필요 (deployment 문제, code 결함 아님).
+
 ### Cycle 2803+ 진입점 (다음 세션)
 
 **자율 착수 가능**:
-- playground-wasm Phase 1 — wasm32 타겟 조사 (P2, 1사이클 scoping)
+- ~~playground-wasm Phase 1~~ ✅ Cycles 2803-2805 완료
+- bootstrap compiler.exe CI 재빌드 스크립트 (P4, 1 cycle) — stale-stack 재발 방지
 - bootstrap parser iterative 전환 — P3 장기
 
 **HUMAN 결정 대기**:

@@ -7,10 +7,14 @@ use super::value::Value;
 use crate::ast::{Attribute, BinOp, EnumDef, Expr, FnDef, LiteralPattern, Pattern, Program, Spanned, StructDef, Type, UnOp};
 use std::cell::RefCell;
 use std::collections::HashMap;
+#[cfg(not(target_arch = "wasm32"))]
 use std::env;
+#[cfg(not(target_arch = "wasm32"))]
 use std::fs;
 use std::io::{self, BufRead, Write};
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
+#[cfg(not(target_arch = "wasm32"))]
 use std::process::Command;
 use std::rc::Rc;
 
@@ -206,27 +210,29 @@ impl Interpreter {
         self.builtins.insert("abs".to_string(), builtin_abs);
         self.builtins.insert("min".to_string(), builtin_min);
         self.builtins.insert("max".to_string(), builtin_max);
-        // v0.31.10: File I/O builtins for Phase 32.0 Bootstrap Infrastructure
-        self.builtins.insert("read_file".to_string(), builtin_read_file);
-        self.builtins.insert("write_file".to_string(), builtin_write_file);
-        self.builtins.insert("append_file".to_string(), builtin_append_file);
-        self.builtins.insert("file_exists".to_string(), builtin_file_exists);
-        self.builtins.insert("file_size".to_string(), builtin_file_size);
-        // v0.96: Directory operation builtins for gotgan-bmb
-        self.builtins.insert("is_dir".to_string(), builtin_is_dir);
-        self.builtins.insert("make_dir".to_string(), builtin_make_dir);
-        self.builtins.insert("list_dir".to_string(), builtin_list_dir);
-        self.builtins.insert("remove_file".to_string(), builtin_remove_file);
-        self.builtins.insert("delete_file".to_string(), builtin_remove_file);
-        self.builtins.insert("remove_dir".to_string(), builtin_remove_dir);
-        self.builtins.insert("getcwd".to_string(), builtin_getcwd);
-        self.builtins.insert("current_dir".to_string(), builtin_getcwd);
-
-        // v0.31.11: Process execution builtins for Phase 32.0.2 Bootstrap Infrastructure
-        self.builtins.insert("exec".to_string(), builtin_exec);
-        self.builtins.insert("exec_output".to_string(), builtin_exec_output);
-        self.builtins.insert("system".to_string(), builtin_system);
-        self.builtins.insert("getenv".to_string(), builtin_getenv);
+        // v0.31.10: File I/O builtins (native only — not available in WASM)
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.builtins.insert("read_file".to_string(), builtin_read_file);
+            self.builtins.insert("write_file".to_string(), builtin_write_file);
+            self.builtins.insert("append_file".to_string(), builtin_append_file);
+            self.builtins.insert("file_exists".to_string(), builtin_file_exists);
+            self.builtins.insert("file_size".to_string(), builtin_file_size);
+            // v0.96: Directory operation builtins for gotgan-bmb
+            self.builtins.insert("is_dir".to_string(), builtin_is_dir);
+            self.builtins.insert("make_dir".to_string(), builtin_make_dir);
+            self.builtins.insert("list_dir".to_string(), builtin_list_dir);
+            self.builtins.insert("remove_file".to_string(), builtin_remove_file);
+            self.builtins.insert("delete_file".to_string(), builtin_remove_file);
+            self.builtins.insert("remove_dir".to_string(), builtin_remove_dir);
+            self.builtins.insert("getcwd".to_string(), builtin_getcwd);
+            self.builtins.insert("current_dir".to_string(), builtin_getcwd);
+            // v0.31.11: Process execution builtins
+            self.builtins.insert("exec".to_string(), builtin_exec);
+            self.builtins.insert("exec_output".to_string(), builtin_exec_output);
+            self.builtins.insert("system".to_string(), builtin_system);
+            self.builtins.insert("getenv".to_string(), builtin_getenv);
+        }
 
         // v0.63: Timing builtin for bmb-bench
         self.builtins.insert("time_ns".to_string(), builtin_time_ns);
@@ -6183,6 +6189,11 @@ impl Interpreter {
         self.functions.insert(fn_def.name.node.clone(), fn_def);
     }
 
+    /// Register or replace a builtin function (e.g. for WASM output capture)
+    pub fn register_builtin(&mut self, name: &str, func: BuiltinFn) {
+        self.builtins.insert(name.to_string(), func);
+    }
+
     // ============ v0.30.280: ScopeStack-based Fast Evaluation ============
 
     /// Evaluate an expression using ScopeStack for efficient memory
@@ -7040,12 +7051,89 @@ fn builtin_i64_to_i32(args: &[Value]) -> InterpResult<Value> {
 // on the same heap and makes auto-growing Vec<T> work in the interpreter
 // (previously vec_grow silently returned uninitialized memory).
 
+#[cfg(not(target_arch = "wasm32"))]
 unsafe extern "C" {
     fn malloc(size: usize) -> *mut u8;
     fn realloc(ptr: *mut u8, new_size: usize) -> *mut u8;
     fn free(ptr: *mut u8);
     fn calloc(count: usize, size: usize) -> *mut u8;
 }
+
+// On wasm32-unknown-unknown there is no libc, so implement the heap allocator
+// using Rust's std::alloc. A thread-local map tracks each allocation's size so
+// that realloc can supply the original Layout.
+#[cfg(target_arch = "wasm32")]
+mod wasm_heap {
+    use std::alloc::{Layout, alloc, alloc_zeroed, dealloc, realloc as std_realloc};
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+
+    thread_local! {
+        static SIZES: RefCell<HashMap<usize, usize>> = RefCell::new(HashMap::new());
+    }
+
+    pub unsafe fn malloc(size: usize) -> *mut u8 {
+        if size == 0 {
+            return std::ptr::null_mut();
+        }
+        let layout = Layout::from_size_align(size, 8).expect("bad layout");
+        let ptr = unsafe { alloc(layout) };
+        if !ptr.is_null() {
+            SIZES.with(|s| s.borrow_mut().insert(ptr as usize, size));
+        }
+        ptr
+    }
+
+    pub unsafe fn calloc(count: usize, size: usize) -> *mut u8 {
+        let total = count.saturating_mul(size);
+        if total == 0 {
+            return std::ptr::null_mut();
+        }
+        let layout = Layout::from_size_align(total, 8).expect("bad layout");
+        let ptr = unsafe { alloc_zeroed(layout) };
+        if !ptr.is_null() {
+            SIZES.with(|s| s.borrow_mut().insert(ptr as usize, total));
+        }
+        ptr
+    }
+
+    pub unsafe fn free(ptr: *mut u8) {
+        if ptr.is_null() {
+            return;
+        }
+        if let Some(sz) = SIZES.with(|s| s.borrow_mut().remove(&(ptr as usize))) {
+            let layout = Layout::from_size_align(sz, 8).expect("bad layout");
+            unsafe { dealloc(ptr, layout) };
+        }
+    }
+
+    pub unsafe fn realloc(ptr: *mut u8, new_size: usize) -> *mut u8 {
+        if ptr.is_null() {
+            return unsafe { malloc(new_size) };
+        }
+        if new_size == 0 {
+            unsafe { free(ptr) };
+            return std::ptr::null_mut();
+        }
+        let old_size = SIZES.with(|s| s.borrow().get(&(ptr as usize)).copied());
+        if let Some(old_sz) = old_size {
+            let old_layout = Layout::from_size_align(old_sz, 8).expect("bad layout");
+            let new_ptr = unsafe { std_realloc(ptr, old_layout, new_size) };
+            if !new_ptr.is_null() {
+                SIZES.with(|s| {
+                    let mut m = s.borrow_mut();
+                    m.remove(&(ptr as usize));
+                    m.insert(new_ptr as usize, new_size);
+                });
+            }
+            new_ptr
+        } else {
+            std::ptr::null_mut()
+        }
+    }
+}
+#[cfg(target_arch = "wasm32")]
+use wasm_heap::{calloc, free, malloc, realloc};
 
 /// malloc(size: i64) -> i64 (pointer as integer)
 /// Allocates `size` bytes via libc::malloc and returns the pointer as an i64.
@@ -7984,11 +8072,14 @@ fn builtin_hashset_free(args: &[Value]) -> InterpResult<Value> {
 
 // ============ v0.31.10: File I/O Builtins for Phase 32.0 Bootstrap Infrastructure ============
 
+// NOTE: extract_string is shared by both native and WASM builds
+
 /// Helper: Extract string from Value (handles both Str and StringRope)
 fn extract_string(val: &Value) -> Option<String> {
     val.materialize_string()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// read_file(path: String) -> String
 /// Reads entire file contents as a string. Returns error on failure.
 fn builtin_read_file(args: &[Value]) -> InterpResult<Value> {
@@ -8006,6 +8097,7 @@ fn builtin_read_file(args: &[Value]) -> InterpResult<Value> {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// write_file(path: String, content: String) -> i64
 /// Writes content to file. Returns 0 on success, -1 on error.
 fn builtin_write_file(args: &[Value]) -> InterpResult<Value> {
@@ -8026,6 +8118,7 @@ fn builtin_write_file(args: &[Value]) -> InterpResult<Value> {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// append_file(path: String, content: String) -> i64
 /// Appends content to file. Returns 0 on success, -1 on error.
 fn builtin_append_file(args: &[Value]) -> InterpResult<Value> {
@@ -8055,6 +8148,7 @@ fn builtin_append_file(args: &[Value]) -> InterpResult<Value> {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// file_exists(path: String) -> i64
 /// Returns 1 if file exists, 0 otherwise.
 fn builtin_file_exists(args: &[Value]) -> InterpResult<Value> {
@@ -8070,6 +8164,7 @@ fn builtin_file_exists(args: &[Value]) -> InterpResult<Value> {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// file_size(path: String) -> i64
 /// Returns file size in bytes, or -1 on error.
 fn builtin_file_size(args: &[Value]) -> InterpResult<Value> {
@@ -8089,6 +8184,7 @@ fn builtin_file_size(args: &[Value]) -> InterpResult<Value> {
 
 // ============ v0.96: Directory Operation Builtins for gotgan-bmb ============
 
+#[cfg(not(target_arch = "wasm32"))]
 /// is_dir(path: String) -> i64
 /// Returns 1 if path is a directory, 0 otherwise.
 fn builtin_is_dir(args: &[Value]) -> InterpResult<Value> {
@@ -8104,6 +8200,7 @@ fn builtin_is_dir(args: &[Value]) -> InterpResult<Value> {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// make_dir(path: String) -> i64
 /// Creates directory, returns 0 on success, -1 on error.
 fn builtin_make_dir(args: &[Value]) -> InterpResult<Value> {
@@ -8121,6 +8218,7 @@ fn builtin_make_dir(args: &[Value]) -> InterpResult<Value> {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// list_dir(path: String) -> String
 /// Returns newline-separated directory listing, or empty string on error.
 fn builtin_list_dir(args: &[Value]) -> InterpResult<Value> {
@@ -8148,6 +8246,7 @@ fn builtin_list_dir(args: &[Value]) -> InterpResult<Value> {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// remove_file(path: String) -> i64
 /// Deletes a file. Returns 0 on success, -1 on error.
 fn builtin_remove_file(args: &[Value]) -> InterpResult<Value> {
@@ -8163,6 +8262,7 @@ fn builtin_remove_file(args: &[Value]) -> InterpResult<Value> {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// remove_dir(path: String) -> i64
 /// Removes an empty directory. Returns 0 on success, -1 on error.
 fn builtin_remove_dir(args: &[Value]) -> InterpResult<Value> {
@@ -8179,6 +8279,7 @@ fn builtin_remove_dir(args: &[Value]) -> InterpResult<Value> {
 }
 
 // v0.97: getcwd() -> String
+#[cfg(not(target_arch = "wasm32"))]
 fn builtin_getcwd(args: &[Value]) -> InterpResult<Value> {
     if !args.is_empty() {
         return Err(RuntimeError::arity_mismatch("getcwd", 0, args.len()));
@@ -8189,8 +8290,9 @@ fn builtin_getcwd(args: &[Value]) -> InterpResult<Value> {
     Ok(Value::Str(Rc::new(cwd)))
 }
 
-// ============ v0.31.11: Process Execution Builtins for Phase 32.0.2 Bootstrap Infrastructure ============
+// ============ v0.31.11: Process Execution Builtins (native only) ============
 
+#[cfg(not(target_arch = "wasm32"))]
 /// Helper: Parse command arguments string into Vec<String>
 /// Simple split on whitespace, handles quoted strings
 fn parse_args(args_str: &str) -> Vec<String> {
@@ -8226,8 +8328,7 @@ fn parse_args(args_str: &str) -> Vec<String> {
     result
 }
 
-/// exec(command: String, args: String) -> i64
-/// Execute a command with arguments, returns exit code (0 = success, -1 = error).
+#[cfg(not(target_arch = "wasm32"))]
 fn builtin_exec(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 2 {
         return Err(RuntimeError::arity_mismatch("exec", 2, args.len()));
@@ -8249,8 +8350,7 @@ fn builtin_exec(args: &[Value]) -> InterpResult<Value> {
     }
 }
 
-/// exec_output(command: String, args: String) -> String
-/// Execute a command and capture stdout.
+#[cfg(not(target_arch = "wasm32"))]
 fn builtin_exec_output(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 2 {
         return Err(RuntimeError::arity_mismatch("exec_output", 2, args.len()));
@@ -8273,8 +8373,7 @@ fn builtin_exec_output(args: &[Value]) -> InterpResult<Value> {
     }
 }
 
-/// system(command: String) -> i64
-/// Execute a shell command, returns exit code.
+#[cfg(not(target_arch = "wasm32"))]
 fn builtin_system(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 1 {
         return Err(RuntimeError::arity_mismatch("system", 1, args.len()));
@@ -8299,8 +8398,7 @@ fn builtin_system(args: &[Value]) -> InterpResult<Value> {
     }
 }
 
-/// getenv(name: String) -> String
-/// Get environment variable value, or empty string if not set.
+#[cfg(not(target_arch = "wasm32"))]
 fn builtin_getenv(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 1 {
         return Err(RuntimeError::arity_mismatch("getenv", 1, args.len()));

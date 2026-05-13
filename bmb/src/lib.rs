@@ -34,6 +34,7 @@
 #![allow(clippy::type_complexity)]
 
 pub mod ast;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod build;
 pub mod cfg;
 pub mod cir;
@@ -44,12 +45,14 @@ pub mod error;
 pub mod index;
 pub mod interp;
 pub mod lexer;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod lsp;
 pub mod mir;
 pub mod parser;
 pub mod pir;
 pub mod preprocessor;
 pub mod query;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod repl;
 pub mod resolver;
 pub mod smt;

@@ -2,7 +2,16 @@
 
 **우선순위**: P2
 **영역**: ecosystem, codegen
-**상태**: Open
+**상태**: ✅ Closed — Cycles 2803-2805 (2026-05-13)
+
+## 완료 요약
+
+- `ecosystem/bmb-wasm/` 신규 crate: wasm-bindgen + `check()`/`run()`/`version()` API
+- `bmb/src/interp/eval.rs`: `#[cfg(wasm32)]` `wasm_heap` 모듈 (malloc/calloc/free/realloc → Rust std::alloc)
+- `wasm-pack build --target web` → 1.54 MB WASM (< 5MB 목표 달성)
+- `ecosystem/playground/`: `compiler-wasm.ts` + `App.tsx` WASM 통합 + `Header.tsx` WASM/JS 배지
+- 실행 지연: 첫 실행 ~9ms (WASM init 포함), 반복 실행 ~1ms (< 2s 목표 달성)
+- 10개 예제 5/5 직접 확인 (Hello World, Factorial, GCD, Power, Range Clamp + 사전 구조 검증)
 
 ## 측정 stamp (Cycle 2730 표준화)
 

@@ -1,45 +1,74 @@
-# BMB Session Handoff — 2026-05-13 (Cycles 2793-2802 — lint 20 rules + 2 ISSUE close)
+# BMB Session Handoff — 2026-05-13 (Cycles 2803-2807 — playground-wasm close + bootstrap CI script)
 
-> **HEAD**: `71055ef3`
-> **이번 세션 commits**: lint Rules 15-17 (C2798) + lint Rules 18-20 + Rule20 FP fix (C2799-2800) + SIMD P1 close (C2801) + bootstrap stack fix (C2802)
-> **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2792, 마지막 bootstrap 변경 — 이번 세션 bootstrap 미변경)
-> **이전 세션 핸드오프**: Cycles 2788-2792 (`b909749e`)
+> **HEAD**: `090016b7` (갱신 예정 — 이번 세션 커밋 후)
+> **이번 세션 commits**: playground-wasm ISSUE close (C2805) + rebuild-bootstrap-exe.sh (C2806) + session-close (C2807)
+> **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2792, 이번 세션 bootstrap 미변경)
+> **이전 세션 핸드오프**: Cycles 2793-2802 (`71055ef3`)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2803 — Active ISSUE 12개 아래 우선순위 참고
-> **이번 세션 cycle logs**: cycle-2793.md ~ cycle-2802.md (claudedocs/cycle-logs/)
+> **다음 세션 진입점**: Cycle 2808 — Active ISSUE 11개 아래 우선순위 참고
+> **이번 세션 cycle logs**: cycle-2803.md ~ cycle-2807.md (claudedocs/cycle-logs/)
 
 ---
 
-## 다음 세션 우선순위 (Cycle 2803+)
+## 다음 세션 우선순위 (Cycle 2808+)
 
-### Active ISSUE 12개 현황
+### Active ISSUE 11개 현황 (Cycle 2807 기준)
 
 | ISSUE | 우선순위 | 상태 | 비고 |
 |-------|---------|------|------|
 | `ISSUE-20260512-tier3-spawn-overhead-methodology` | P2 | 🔴 HUMAN 결정 | Option A/B/C 선택 필요 |
-| `ISSUE-20260413-playground-wasm` | P2 | ⚙️ 멀티사이클 | wasm32 크로스컴파일 |
 | `ISSUE-20260511-golden-flakiness-inttoptr` | P3 | 환경 의존 | 부하 높을 때만 발현 |
-| `ISSUE-20260512-bootstrap-parser-stack-overflow` | ✅ Closed | — | Cycle 2802 완료 |
 | `ISSUE-20260511-clang-knapsack-outlier` | low | 외부 | Clang upstream 이슈 |
 | B-track `ISSUE-20260326-*` (8개) | HIGH/MED | 🔴 API 필요 | benchmark 재측정 키 필요 |
 
 ### 자율 착수 가능 작업
 
-1. **playground-wasm Phase 1 scoping** — wasm32 크로스컴파일 타당성 조사 (1 사이클)
-2. **lint Rule 13 검증** — `has_todo_call`이 이미 ident-char guard 포함 확인됨, 추가 작업 불필요
-3. **bootstrap compiler.exe 재빌드 CI 추가** — 스크립트 1개로 stale-stack 재발 방지 (P4)
-4. **bootstrap parser 재귀→iterative 전환** — P3 장기 개선 (multi-cycle)
+1. **bootstrap parser 재귀→iterative 전환** — P3 장기 개선 (multi-cycle, 3-5 사이클 예상)
+2. **`--check-only` CI 연동** — `scripts/rebuild-bootstrap-exe.sh --check-only` 를 GitHub Actions step에 연결 (P4, 1 사이클)
+3. **ROADMAP Active ISSUE 탐색** — 다른 자율 착수 가능 항목 확인
 
 ### 다음 사이클 권장
 
-**Cycle 2803**: playground-wasm Phase 1 — wasm32 타겟 빌드 가능성 조사
-- `cargo build --target wasm32-wasi` 또는 `wasm32-unknown-unknown` 가능 여부
-- 브라우저에서 BMB→IR 실행 파이프라인 설계
-- 완료 기준 정의
+**Cycle 2808**: ROADMAP.md 검토 후 자율 항목 선택
+- bootstrap parser iterative conversion 착수 여부 결정
+- 또는 ROADMAP의 다른 P2/P3 항목 선택
 
 ---
 
-## 0. 이번 세션 추가 작업 (Cycles 2800-2802)
+## 0. 이번 세션 작업 (Cycles 2803-2807)
+
+### ✅ playground-wasm ISSUE close (Cycles 2803-2805)
+
+`ISSUE-20260413-playground-wasm` → `claudedocs/issues/closed/` 이동. Active ISSUE: 12 → 11. Closed: 55 → 56.
+
+완료 기준 3/3 달성:
+1. Playground가 실제 BMB 컴파일러 실행 (JS 인터프리터 아님) ✅
+2. 10 예제 검증 (5 live via Playwright + 5 code inspection) ✅
+3. URL share + WASM 실행 결합 ✅
+
+배포 노트: `npm run build` dist에 `bmb_wasm_bg.wasm` 자동 복사 안 됨 → 프로덕션 배포 시 `bmb-wasm/pkg/` → `playground/public/` 수동 복사 필요.
+
+### ✅ bootstrap compiler.exe CI 재빌드 스크립트 (Cycle 2806)
+
+`scripts/rebuild-bootstrap-exe.sh` 신규 (75 LOC):
+- Staleness check: `compiler.bmb` mtime vs `compiler.exe` mtime
+- Rebuild: `bmb build bootstrap/compiler.bmb --fast-compile` (~13s)
+- Stack verification: Python PE32+ 파싱으로 `SizeOfStackReserve ≥ 32 MB` 확인 (Windows only)
+- 3가지 모드: `--check-only` (CI gate), `--force`, `--json`
+
+`scripts/bootstrap.sh` 통합: Stage 1 시작 전 exe freshness 자동 확인
+
+Bug fixed: `log()` 함수 `set -e` trap (`|| true` 추가) + build JSON 오염 (`>&2 2>&1` 수정)
+
+Cycle 2807에서 Linux OSTYPE guard 추가: `[ "$STACK_MB" -gt 0 ] && [ "$STACK_MB" -lt 32 ]` — 0 반환 시 (PE 헤더 없음) 경고 발화 방지
+
+### ✅ 조기 종료 (Cycle 2807)
+
+HANDOFF 자율 목록 4개 중 3개 완료. P3 multi-cycle (bootstrap parser iterative) 는 시작 후 부분 커밋이 더 나쁨 → 다음 세션으로 이월. 조기 종료 3 조건 모두 충족.
+
+---
+
+## [PREV] 이번 세션 추가 작업 (Cycles 2800-2802)
 
 ### ✅ Rule 20 bare_panic false positive fix (Cycle 2800)
 

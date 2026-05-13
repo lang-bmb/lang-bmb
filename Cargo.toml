@@ -1,5 +1,5 @@
 [workspace]
-members = ["bmb", "ecosystem/gotgan"]
+members = ["bmb", "ecosystem/gotgan", "ecosystem/bmb-wasm"]
 resolver = "2"
 
 [workspace.package]

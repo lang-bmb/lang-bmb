@@ -234,6 +234,20 @@ if [ "$needs_rebuild" = true ]; then
 fi
 
 log "${GREEN}Prerequisites OK${NC}"
+
+# Check bootstrap/compiler.exe freshness (stale exe = 2MB stack → STATUS_STACK_OVERFLOW on deep sources)
+if [ -f "$SCRIPT_DIR/rebuild-bootstrap-exe.sh" ]; then
+    BOOTSTRAP_EXE_STATUS=$(bash "$SCRIPT_DIR/rebuild-bootstrap-exe.sh" --json 2>/dev/null || echo '{"status":"skip"}')
+    EXE_STATUS=$(echo "$BOOTSTRAP_EXE_STATUS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','skip'))" 2>/dev/null || echo "skip")
+    EXE_STACK=$(echo "$BOOTSTRAP_EXE_STATUS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('stack_mb',0))" 2>/dev/null || echo "0")
+    if [ "$EXE_STATUS" = "current" ]; then
+        log_verbose "bootstrap/compiler.exe current (stack: ${EXE_STACK} MB)"
+    elif [ "$EXE_STATUS" = "ok" ]; then
+        log "${YELLOW}bootstrap/compiler.exe was stale — rebuilt (stack: ${EXE_STACK} MB)${NC}"
+    else
+        log_verbose "bootstrap/compiler.exe check skipped"
+    fi
+fi
 log ""
 
 # Stage 1: Rust BMB compiles bootstrap to native binary
