@@ -4,7 +4,7 @@
 
 **우선순위**: P3 (single bench affected, narrow scope, Rule 6 영향 별도)
 **영역**: bootstrap/compiler.bmb (parser)
-**상태**: Open — separate phase
+**상태**: Closed (Cycle 2802 — Rust compiler rebuild로 64MB 스택 적용, hash_table PASS, 2026-05-13)
 
 ## 측정 stamp
 
@@ -69,18 +69,20 @@ bootstrap parser를:
 
 ## 구현 단계 (multi-cycle scope)
 
-1. [ ] Windows linker `--stack` 옵션으로 bootstrap exe stack 크기 증가 (예: 8MB → 64MB)
-2. [ ] 회귀 테스트: Stage 1 빌드 + 3-Stage Fixed Point 유지
-3. [ ] hash_table bench bootstrap 빌드 재시도
+1. [x] Windows linker `--stack` 옵션으로 bootstrap exe stack 크기 증가 (예: 8MB → 64MB)
+   - Cycle 2780에서 Rust 빌드 파이프라인에 `-Wl,--stack,67108864` 추가됨 (D2)
+   - Cycle 2802에서 `bmb build bootstrap/compiler.bmb --release` 재빌드 → 2MB → 64MB
+2. [x] 회귀 테스트: Stage 1 빌드 완료, cargo test 2377/2377 PASS
+3. [x] hash_table bench bootstrap 빌드 재시도 → `{"type":"build_success"}` + 실행 정상
 
 향후 (장기):
-4. [ ] parser iterative 재작성 또는 lalrpop equivalent in BMB
+4. [ ] parser iterative 재작성 또는 lalrpop equivalent in BMB (P5, 64MB로 충분)
 
 ## 완료 기준
 
-- [ ] bootstrap이 hash_table bench 빌드 성공
-- [ ] Stage 2/3 Fixed Point 유지
-- [ ] 다른 deeply-nested test 회귀 없음
+- [x] bootstrap이 hash_table bench 빌드 성공 (Cycle 2802, exit 0)
+- [x] Stage 2/3 Fixed Point 유지 (Cycle 2792 고정점, 소스 변경 없음)
+- [x] 다른 deeply-nested test 회귀 없음 (tier 1: 9/10 PASS, 1 mismatch = pre-existing n_body fp)
 
 ## 메타
 

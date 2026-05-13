@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-13 (Cycle 2801 — **SIMD P1 ISSUE close**: fadd fast <4 x double> ✅, ≥3x speedup ✅)
+> 최종 업데이트: 2026-05-13 (Cycle 2802 — **bootstrap stack overflow P3 fix**: hash_table PASS ✅, Active ISSUE 12)
 > 이전 갱신: Cycles 2765-2773 (bench verify infrastructure + P0 store_u8 bug 진단), Cycles 2760-2764 (M3-5 honest re-baseline median-of-5)
 > 이 문서는 매 세션의 **유일한 실무 앵커**다.
 > 상세 사이클 로그: `docs/ROADMAP.md` | 개발 규칙: `CLAUDE.md` | 세션 상태: `claudedocs/HANDOFF.md`
@@ -490,6 +490,25 @@ historic.json (2026-05-02, 5-run) + tier3-10runs.json (2026-05-01, 10-run, noise
 - `bench_verify.json` artifact 출력
 
 **측정 신뢰도 완전 회복 (Cycle 2791)**: 17/17 benches 모두 fair comparison. fibonacci BMB: `bmb_black_box(50)` → LLVM constant-fold 방지. fibonacci C: `__attribute__((noinline))` → GCC hoisting 방지. **P-track ratio 신뢰도 ✅**.
+
+### Cycle 2802 갱신 (2026-05-13, bootstrap stack overflow P3 fix)
+
+| 항목 | 카운트 |
+|------|-------|
+| Active ISSUE | **12** (ISSUE-20260512-bootstrap-parser-stack-overflow close) |
+| Closed 이번 cycle | **1** (ISSUE-20260512-bootstrap-parser-stack-overflow) |
+| 신규 이번 cycle | **0** |
+| Closed (누적) | **55** |
+
+**검증 결과**:
+- Root cause: `bootstrap/compiler.exe`의 SizeOfStackReserve = 2MB (Cycle 2780 D2 패치 이전 빌드)
+- Fix: `bmb build bootstrap/compiler.bmb --release` 재빌드 → 64MB 스택 (`-Wl,--stack,67108864` 이미 Rust 빌드에 포함)
+- `hash_table bench` 빌드 성공 ✅ (exit 0, 실행 정상 출력)
+- `cargo test --release` 2377/2377 PASS ✅
+- tier 1 bench 9/10 PASS (1 mismatch = pre-existing n_body fp precision) ✅
+
+**Close 근거**:
+- `ISSUE-20260512-bootstrap-parser-stack-overflow`: 2MB 스택 부족 → 64MB 재빌드로 해결. 소스 변경 없음.
 
 ### Cycle 2801 갱신 (2026-05-13, SIMD P1 ISSUE close)
 

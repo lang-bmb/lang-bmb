@@ -1,16 +1,43 @@
-# BMB Session Handoff — 2026-05-13 (Cycles 2793-2799 — lint 20 rules + ISSUE-20260413 close)
+# BMB Session Handoff — 2026-05-13 (Cycles 2793-2802 — lint 20 rules + 2 ISSUE close)
 
 > **HEAD**: `(see commit after this session)`
-> **이번 세션 commits**: lint Rules 15-17 (Cycle 2798) + lint Rules 18-20 (Cycle 2799) → ISSUE-20260413 ✅ Close
+> **이번 세션 commits**: lint Rules 15-17 (C2798) + lint Rules 18-20 + Rule20 FP fix (C2799-2800) + SIMD P1 close (C2801) + bootstrap stack fix (C2802)
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2792, 마지막 bootstrap 변경 — 이번 세션 bootstrap 미변경)
 > **이전 세션 핸드오프**: Cycles 2788-2792 (`b909749e`)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2800 — Active ISSUE 14개 중 다음 P2 작업 (P-track 또는 언어 갭)
-> **이번 세션 cycle logs**: cycle-2793.md ~ cycle-2799.md (claudedocs/cycle-logs/)
+> **다음 세션 진입점**: Cycle 2803 — Active ISSUE 12개 중 다음 우선순위 작업
+> **이번 세션 cycle logs**: cycle-2793.md ~ cycle-2802.md (claudedocs/cycle-logs/)
 
 ---
 
-## 0. 이번 세션 작업 (Cycles 2793-2799)
+## 0. 이번 세션 추가 작업 (Cycles 2800-2802)
+
+### ✅ Rule 20 bare_panic false positive fix (Cycle 2800)
+
+`bootstrap/lint/lint.bmb`: `check_bare_panic`에서 `line_contains` → `find_pattern_outside_str` + ident-char guard
+- Root cause: `fn check_bare_panic(` 같은 식별자가 `panic(` 패턴을 포함해 오탐
+- Fix: panic_pos 앞 byte가 ident char면 skip
+- `line_contains_outside_str` NOTE comment 추가 (`"` 자체 매칭 불가 설계 문서화)
+- Result: 104 → 102 warnings (2 FP 제거)
+
+### ✅ SIMD P1 ISSUE close (Cycle 2801)
+
+`ISSUE-20260413-simd-codegen`: Cycles 2215-2283 구현, Cycle 2801 검증
+- `fadd fast <4 x double>` IR emit ✅, SIMD ≥3x speedup ✅, Fixed Point ✅
+- `claudedocs/issues/closed/`로 이동. Active ISSUE: 14 → 13.
+
+### ✅ bootstrap stack overflow P3 fix (Cycle 2802)
+
+`ISSUE-20260512-bootstrap-parser-stack-overflow`:
+- Root cause: `bootstrap/compiler.exe`의 SizeOfStackReserve = 2MB (Cycle 2780 D2 패치 이전 빌드)
+- Fix: `bmb build bootstrap/compiler.bmb --release` 재빌드 → 64MB 스택 확인
+- `hash_table bench` 빌드 및 실행 성공 ✅
+- `cargo test --release` 2377/2377 PASS ✅
+- `claudedocs/issues/closed/`로 이동. Active ISSUE: 13 → 12.
+
+---
+
+## [PREV] 이번 세션 작업 (Cycles 2793-2799)
 
 ### ✅ lint Rules 15-17 + UTF-8 boundary fix (Cycle 2798)
 
