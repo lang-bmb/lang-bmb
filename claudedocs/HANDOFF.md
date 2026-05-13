@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-13 (Cycles 2803-2807 — playground-wasm close + bootstrap CI script)
 
-> **HEAD**: `090016b7` (갱신 예정 — 이번 세션 커밋 후)
+> **HEAD**: `78c7b8e8`
 > **이번 세션 commits**: playground-wasm ISSUE close (C2805) + rebuild-bootstrap-exe.sh (C2806) + session-close (C2807)
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2792, 이번 세션 bootstrap 미변경)
 > **이전 세션 핸드오프**: Cycles 2793-2802 (`71055ef3`)
