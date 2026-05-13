@@ -1,0 +1,24 @@
+{
+  "problem_id": "39_partial_sum_query",
+  "category": "performance",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let arr = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(arr, val)\n    };\n    let prefix = vec_new();\n    let _p0 = vec_push(prefix, 0);\n    for i in 0..n {\n        let prev = vec_get(prefix, i);\n        let cur = vec_get(arr, i);\n        let _p = vec_push(prefix, prev + cur)\n    };\n    let q = read_int();\n    for _qi in 0..q {\n        let l = read_int();\n        let r = read_int();\n        let sum = vec_get(prefix, r + 1) - vec_get(prefix, l);\n        let _p = println(sum)\n    };\n    let _f1 = vec_free(arr);\n    let _f2 = vec_free(prefix);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

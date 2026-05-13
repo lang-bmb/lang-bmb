@@ -1,0 +1,32 @@
+{
+  "problem_id": "41_collatz_length",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn collatz_len(n: i64) -> i64 =\n    if n == 1 { 1 }\n    else if n - (n / 2) * 2 == 0 { 1 + collatz_len(n / 2) }\n    else { 1 + collatz_len(3 * n + 1) };\n\nfn main() -> i64 = {\n    let _a = read_int();\n    let n = read_int();\n    let result = collatz_len(n);\n    let _p = println(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 7: expected '1\\n2\\n8\\n', got '1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn collatz_len(n: i64) -> i64 =\n    if n == 1 { 1 }\n    else if n - (n / 2) * 2 == 0 { 1 + collatz_len(n / 2) }\n    else { 1 + collatz_len(3 * n + 1) };\n\nfn main() -> i64 = {\n    let q = read_int();\n    for _i in 0..q {\n        let n = read_int();\n        let result = collatz_len(n);\n        let _p = println(result)\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

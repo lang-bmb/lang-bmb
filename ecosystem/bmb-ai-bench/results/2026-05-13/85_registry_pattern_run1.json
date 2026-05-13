@@ -1,0 +1,48 @@
+{
+  "problem_id": "85_registry_pattern",
+  "category": "integration",
+  "difficulty": "medium",
+  "loop_count": 4,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 3
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let keys = vec_new();\n    let vals = vec_new();\n    let n = read_int();\n    for _i in 0..n {\n        let op = read_int();\n        if op == 1 {\n            let key = read_int();\n            let value = read_int();\n            let len = vec_len(keys);\n            let mut found = 0;\n            for j in 0..len {\n                if vec_get(keys, j) == key {\n                    let _s = vec_set(vals, j, value);\n                    found = 1;\n                    break\n                } else { () }\n            };\n            if found == 0 {\n                let _pk = vec_push(keys, key);\n                let _pv = vec_push(vals, value);\n                ()\n            } else { () }\n        } else if op == 2 {\n            let key = read_int();\n            let len = vec_len(keys);\n            let mut result = 0 - 1;\n            for j in 0..len {\n                if vec_get(keys, j) == key {\n                    result = vec_get(vals, j);\n                    break\n                } else { () }\n            };\n            let _p = println(result);\n            ()\n        } else {\n            let _key = read_int();\n            let count = vec_len(keys);\n            let _p = println(count);\n            ()\n        }\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 9: expected '3\\n50\\n60\\n70\\n', got '3\\n3\\n3\\n3\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let keys = vec_new();\n    let vals = vec_new();\n    let fronts = vec_new();\n    let n = read_int();\n    for _i in 0..n {\n        let op = read_int();\n        if op == 1 {\n            let key = read_int();\n            let value = read_int();\n            let klen = vec_len(keys);\n            let mut kidx = 0 - 1;\n            for j in 0..klen {\n                if vec_get(keys, j) == key {\n                    kidx = j;\n                    break\n                } else { () }\n            };\n            if kidx == 0 - 1 {\n                let newq = vec_new();\n                let _pv = vec_push(newq, value);\n                let _pk = vec_push(keys, key);\n                let _pq = vec_push(vals, newq);\n                let _pf = vec_push(fronts, 0);\n                ()\n            } else {\n                let q = vec_get(vals, kidx);\n                let _pv = vec_push(q, value);\n                ()\n            }\n        } else if op == 2 {\n            let key = read_int();\n            let klen = vec_len(keys);\n            let mut result = 0 - 1;\n            for j in 0..klen {\n                if vec_get(keys, j) == key {\n                    let q = vec_get(vals, j);\n                    let front = vec_get(fronts, j);\n                    let qlen = vec_len(q);\n                    if front < qlen {\n                        result = vec_get(q, front);\n                        let _sf = vec_set(fronts, j, front + 1);\n                        ()\n                    } else { () };\n                    break\n                } else { () }\n            };\n            let _p = println(result);\n            ()\n        } else {\n            let key = read_int();\n            let klen = vec_len(keys);\n            let mut count = 0;\n            for j in 0..klen {\n                if vec_get(keys, j) == key {\n                    let q = vec_get(vals, j);\n                    let front = vec_get(fronts, j);\n                    count = vec_len(q) - front;\n                    break\n                } else { () }\n            };\n            let _p = println(count);\n            ()\n        }\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '100\\n1\\n', got '100\\n0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let keys = vec_new();\n    let vals = vec_new();\n    let n = read_int();\n    for _i in 0..n {\n        let op = read_int();\n        if op == 1 {\n            let key = read_int();\n            let value = read_int();\n            let klen = vec_len(keys);\n            let mut found = 0;\n            for j in 0..klen {\n                if vec_get(keys, j) == key {\n                    let _s = vec_set(vals, j, value);\n                    found = 1;\n                    break\n                } else { () }\n            };\n            if found == 0 {\n                let _pk = vec_push(keys, key);\n                let _pv = vec_push(vals, value);\n                ()\n            } else { () }\n        } else if op == 2 {\n            let key = read_int();\n            let klen = vec_len(keys);\n            let mut result = 0 - 1;\n            for j in 0..klen {\n                if vec_get(keys, j) == key {\n                    result = vec_get(vals, j);\n                    break\n                } else { () }\n            };\n            let _p = println(result);\n            ()\n        } else {\n            let _key = read_int();\n            let count = vec_len(keys);\n            let _p = println(count);\n            ()\n        }\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 9: expected '3\\n50\\n60\\n70\\n', got '3\\n3\\n3\\n3\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn main() -> i64 = {\n    let keys = vec_new();\n    let vals = vec_new();\n    let n = read_int();\n    for _i in 0..n {\n        let op = read_int();\n        if op == 1 {\n            let key = read_int();\n            let value = read_int();\n            let klen = vec_len(keys);\n            let mut found = 0;\n            for j in 0..klen {\n                if vec_get(keys, j) == key {\n                    let _s = vec_set(vals, j, value);\n                    found = 1;\n                    break\n                } else { () }\n            };\n            if found == 0 {\n                let _pk = vec_push(keys, key);\n                let _pv = vec_push(vals, value);\n                ()\n            } else { () }\n        } else if op == 2 {\n            let key = read_int();\n            let klen = vec_len(keys);\n            let mut result = 0 - 1;\n            for j in 0..klen {\n                if vec_get(keys, j) == key {\n                    result = vec_get(vals, j);\n                    break\n                } else { () }\n            };\n            let _p = println(result);\n            ()\n        } else {\n            let count = vec_len(keys);\n            let _p = println(count);\n            ()\n        }\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

@@ -1,0 +1,88 @@
+{
+  "problem_id": "86_heap_sort",
+  "category": "algorithm",
+  "difficulty": "medium",
+  "loop_count": 9,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 8
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn heapify(v: i64, n: i64, i: i64) -> i64 = {\n    let mut largest = i;\n    let left = 2 * i + 1;\n    let right = 2 * i + 2;\n    let mut cont = 1;\n    let mut cur = i;\n    while cont == 1 {\n        largest = cur;\n        let l = 2 * cur + 1;\n        let r = 2 * cur + 2;\n        let new_largest = if l < n and vec_get(v, l) > vec_get(v, largest) { l } else { largest };\n        let new_largest2 = if r < n and vec_get(v, r) > vec_get(v, new_largest) { r } else { new_largest };\n        if new_largest2 != cur {\n            let tmp = vec_get(v, cur);\n            let _s1 = vec_set(v, cur, vec_get(v, new_largest2));\n            let _s2 = vec_set(v, new_largest2, tmp);\n            cur = new_largest2;\n            ()\n        } else {\n            cont = 0;\n            ()\n        }\n    };\n    0\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let mut i = n / 2 - 1;\n    while i >= 0 {\n        let _h = heapify(v, n, i);\n        i = i - 1\n    };\n    let mut size = n;\n    while size > 1 {\n        let tmp = vec_get(v, 0);\n        let _s1 = vec_set(v, 0, vec_get(v, size - 1));\n        let _s2 = vec_set(v, size - 1, tmp);\n        size = size - 1;\n        let _h = heapify(v, size, 0)\n    };\n    for i in 0..n {\n        if i > 0 { let _s = print_str(\" \"); () } else { () };\n        let _p = print(vec_get(v, i))\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '1 2 3 4 5\\n', got '-8070446133677404453-8070446133677404453-8070446133677404453-8070446133677404453-8070446133677404453\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn heapify(v: i64, n: i64, root: i64) -> i64 = {\n    let mut cur = root;\n    let mut running = 1;\n    while running == 1 {\n        let l = 2 * cur + 1;\n        let r = 2 * cur + 2;\n        let mut largest = cur;\n        if l < n and vec_get(v, l) > vec_get(v, largest) {\n            largest = l;\n            ()\n        } else { () };\n        if r < n and vec_get(v, r) > vec_get(v, largest) {\n            largest = r;\n            ()\n        } else { () };\n        if largest != cur {\n            let tmp = vec_get(v, cur);\n            let _s1 = vec_set(v, cur, vec_get(v, largest));\n            let _s2 = vec_set(v, largest, tmp);\n            cur = largest;\n            ()\n        } else {\n            running = 0;\n            ()\n        }\n    };\n    0\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let mut i = n / 2 - 1;\n    while i >= 0 {\n        let _h = heapify(v, n, i);\n        i = i - 1\n    };\n    let mut size = n;\n    while size > 1 {\n        let tmp = vec_get(v, 0);\n        let _s1 = vec_set(v, 0, vec_get(v, size - 1));\n        let _s2 = vec_set(v, size - 1, tmp);\n        size = size - 1;\n        let _h = heapify(v, size, 0)\n    };\n    for i in 0..n {\n        if i > 0 { let _s = print_str(\" \"); () } else { () };\n        let _p = print(vec_get(v, i))\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '1 2 3 4 5\\n', got '-8070429637509205895-8070429637509205895-8070429637509205895-8070429637509205895-8070429637509205895\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn heapify(v: i64, n: i64, root: i64) -> i64 = {\n    let mut cur = root;\n    let mut running = 1;\n    while running == 1 {\n        let l = 2 * cur + 1;\n        let r = 2 * cur + 2;\n        let mut largest = cur;\n        if l < n {\n            if vec_get(v, l) > vec_get(v, largest) {\n                largest = l;\n                ()\n            } else { () }\n        } else { () };\n        if r < n {\n            if vec_get(v, r) > vec_get(v, largest) {\n                largest = r;\n                ()\n            } else { () }\n        } else { () };\n        if largest != cur {\n            let tmp = vec_get(v, cur);\n            let _s1 = vec_set(v, cur, vec_get(v, largest));\n            let _s2 = vec_set(v, largest, tmp);\n            cur = largest;\n            ()\n        } else {\n            running = 0;\n            ()\n        }\n    };\n    0\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let mut i = n / 2 - 1;\n    while i >= 0 {\n        let _h = heapify(v, n, i);\n        i = i - 1\n    };\n    let mut size = n;\n    while size > 1 {\n        let tmp = vec_get(v, 0);\n        let _s1 = vec_set(v, 0, vec_get(v, size - 1));\n        let _s2 = vec_set(v, size - 1, tmp);\n        size = size - 1;\n        let _h = heapify(v, size, 0)\n    };\n    for i in 0..n {\n        if i > 0 { let _s = print_str(\" \"); () } else { () };\n        let _p = print(vec_get(v, i))\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '1 2 3 4 5\\n', got '-8070425239514016763-8070425239514016763-8070425239514016763-8070425239514016763-8070425239514016763\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let mut i = n / 2 - 1;\n    while i >= 0 {\n        let mut cur = i;\n        let mut running = 1;\n        while running == 1 {\n            let l = 2 * cur + 1;\n            let r = 2 * cur + 2;\n            let mut largest = cur;\n            if l < n {\n                if vec_get(v, l) > vec_get(v, largest) {\n                    largest = l;\n                    ()\n                } else { () }\n            } else { () };\n            if r < n {\n                if vec_get(v, r) > vec_get(v, largest) {\n                    largest = r;\n                    ()\n                } else { () }\n            } else { () };\n            if largest != cur {\n                let tmp = vec_get(v, cur);\n                let _s1 = vec_set(v, cur, vec_get(v, largest));\n                let _s2 = vec_set(v, largest, tmp);\n                cur = largest;\n                ()\n            } else {\n                running = 0;\n                ()\n            }\n        };\n        i = i - 1\n    };\n    let mut size = n;\n    while size > 1 {\n        let tmp = vec_get(v, 0);\n        let _s1 = vec_set(v, 0, vec_get(v, size - 1));\n        let _s2 = vec_set(v, size - 1, tmp);\n        size = size - 1;\n        let mut cur = 0;\n        let mut running = 1;\n        while running == 1 {\n            let l = 2 * cur + 1;\n            let r = 2 * cur + 2;\n            let mut largest = cur;\n            if l < size {\n                if vec_get(v, l) > vec_get(v, largest) {\n                    largest = l;\n                    ()\n                } else { () }\n            } else { () };\n            if r < size {\n                if vec_get(v, r) > vec_get(v, largest) {\n                    largest = r;\n                    ()\n                } else { () }\n            } else { () };\n            if largest != cur {\n                let tmp2 = vec_get(v, cur);\n                let _s1 = vec_set(v, cur, vec_get(v, largest));\n                let _s2 = vec_set(v, largest, tmp2);\n                cur = largest;\n                ()\n            } else {\n                running = 0;\n                ()\n            }\n        }\n    };\n    for i in 0..n {\n        if i > 0 { let _s = print_str(\" \"); () } else { () };\n        let _p = print(vec_get(v, i))\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '1 2 3 4 5\\n', got '-8070445030492246077-8070445030492246077-8070445030492246077-8070445030492246077-8070445030492246077\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 5,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let mut i = n / 2 - 1;\n    while i >= 0 {\n        let mut cur = i;\n        let mut running = 1;\n        while running == 1 {\n            let l = 2 * cur + 1;\n            let r = 2 * cur + 2;\n            let mut largest = cur;\n            if l < n {\n                let vl = vec_get(v, l);\n                let vlargest = vec_get(v, largest);\n                if vl > vlargest {\n                    largest = l;\n                    ()\n                } else { () }\n            } else { () };\n            if r < n {\n                let vr = vec_get(v, r);\n                let vlargest2 = vec_get(v, largest);\n                if vr > vlargest2 {\n                    largest = r;\n                    ()\n                } else { () }\n            } else { () };\n            if largest != cur {\n                let tmp = vec_get(v, cur);\n                let vl2 = vec_get(v, largest);\n                let _s1 = vec_set(v, cur, vl2);\n                let _s2 = vec_set(v, largest, tmp);\n                cur = largest;\n                ()\n            } else {\n                running = 0;\n                ()\n            }\n        };\n        i = i - 1\n    };\n    let mut size = n;\n    while size > 1 {\n        let tmp = vec_get(v, 0);\n        let vlast = vec_get(v, size - 1);\n        let _s1 = vec_set(v, 0, vlast);\n        let _s2 = vec_set(v, size - 1, tmp);\n        size = size - 1;\n        let mut cur = 0;\n        let mut running = 1;\n        while running == 1 {\n            let l = 2 * cur + 1;\n            let r = 2 * cur + 2;\n            let mut largest = cur;\n            if l < size {\n                let vl = vec_get(v, l);\n                let vlargest = vec_get(v, largest);\n                if vl > vlargest {\n                    largest = l;\n                    ()\n                } else { () }\n            } else { () };\n            if r < size {\n                let vr = vec_get(v, r);\n                let vlargest2 = vec_get(v, largest);\n                if vr > vlargest2 {\n                    largest = r;\n                    ()\n                } else { () }\n            } else { () };\n            if largest != cur {\n                let tmp2 = vec_get(v, cur);\n                let vl2 = vec_get(v, largest);\n                let _s1 = vec_set(v, cur, vl2);\n                let _s2 = vec_set(v, largest, tmp2);\n                cur = largest;\n                ()\n            } else {\n                running = 0;\n                ()\n            }\n        }\n    };\n    for i in 0..n {\n        let val = vec_get(v, i);\n        if i > 0 {\n            let _s = print_str(\" \");\n            ()\n        } else { () };\n        let _p = print(val)\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '1 2 3 4 5\\n', got '-8070442833920528404-8070442833920528404-8070442833920528404-8070442833920528404-8070442833920528404\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 6,
+      "code": "fn heapify(v: i64, size: i64, root: i64) -> i64 = {\n    let mut cur = root;\n    let mut running = 1;\n    while running == 1 {\n        let l = 2 * cur + 1;\n        let r = 2 * cur + 2;\n        let mut largest = cur;\n        if l < size {\n            let vl = vec_get(v, l);\n            let vlargest = vec_get(v, largest);\n            if vl > vlargest {\n                largest = l;\n                ()\n            } else { () }\n        } else { () };\n        if r < size {\n            let vr = vec_get(v, r);\n            let vlargest2 = vec_get(v, largest);\n            if vr > vlargest2 {\n                largest = r;\n                ()\n            } else { () }\n        } else { () };\n        if largest != cur {\n            let tmp = vec_get(v, cur);\n            let vl2 = vec_get(v, largest);\n            let _s1 = vec_set(v, cur, vl2);\n            let _s2 = vec_set(v, largest, tmp);\n            cur = largest;\n            ()\n        } else {\n            running = 0;\n            ()\n        }\n    };\n    0\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let _t = heapify(v, n, 0);\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '1 2 3 4 5\\n', got ''",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 7,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let mut i = 1;\n    while i < n {\n        let key = vec_get(v, i);\n        let mut j = i - 1;\n        while j >= 0 {\n            let vj = vec_get(v, j);\n            if vj > key {\n                let _s = vec_set(v, j + 1, vj);\n                j = j - 1;\n                ()\n            } else {\n                j = 0 - 1;\n                ()\n            }\n        };\n        let _s = vec_set(v, j + 1, key);\n        i = i + 1\n    };\n    for i in 0..n {\n        let val = vec_get(v, i);\n        if i > 0 {\n            let _sp = print_str(\" \");\n            ()\n        } else { () };\n        let _p = print(val)\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '1 2 3 4 5\\n', got ' 22518380394315843 22518380394315843 22518380394315843 22518380394315843 22518380394315843\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 8,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let mut i = 1;\n    while i < n {\n        let key = vec_get(v, i);\n        let mut j = i - 1;\n        while j >= 0 {\n            let vj = vec_get(v, j);\n            if vj > key {\n                let _s = vec_set(v, j + 1, vj);\n                j = j - 1\n            } else {\n                j = 0 - 1\n            }\n        };\n        if j == 0 - 1 {\n            let _s = vec_set(v, 0, key);\n            ()\n        } else {\n            let _s = vec_set(v, j + 1, key);\n            ()\n        };\n        i = i + 1\n    };\n    for idx in 0..n {\n        if idx > 0 {\n            let _sp = print_str(\" \");\n            ()\n        } else { () };\n        let _p = print(vec_get(v, idx))\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '1 2 3 4 5\\n', got '2 4 3 5 5\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 9,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let mut i = 1;\n    while i < n {\n        let key = vec_get(v, i);\n        let mut j = i - 1;\n        let mut pos = 0;\n        let mut searching = 1;\n        while searching == 1 {\n            if j < 0 {\n                pos = 0;\n                searching = 0\n            } else {\n                let vj = vec_get(v, j);\n                if vj > key {\n                    let _s = vec_set(v, j + 1, vj);\n                    j = j - 1\n                } else {\n                    pos = j + 1;\n                    searching = 0\n                }\n            }\n        };\n        let _s = vec_set(v, pos, key);\n        i = i + 1\n    };\n    for idx in 0..n {\n        if idx > 0 {\n            let _sp = print_str(\" \");\n            ()\n        } else { () };\n        let _p = print(vec_get(v, idx))\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

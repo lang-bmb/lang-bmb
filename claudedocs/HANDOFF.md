@@ -1,41 +1,51 @@
-# BMB Session Handoff — 2026-05-13 (Cycle 2810 — M4-1 B축 공식 baseline 94.7%)
+# BMB Session Handoff — 2026-05-13 (Cycle 2811 — B축 98.0%, 4종 problem.md 수정)
 
-> **HEAD**: `030ddff7` (pre-commit; Cycle 2810 commit 예정)
-> **이번 세션 commits**: ROADMAP M4-3/4/5 ✅ 동기화 (C2808) + 조기 종료 (C2809) + **M4-1 B baseline (C2810)**
+> **HEAD**: `030ddff7` (pre-commit; Cycle 2810-2811 commit 예정)
+> **이번 세션 commits**: ROADMAP M4-3/4/5 ✅ 동기화 (C2808) + 조기 종료 (C2809) + **M4-1 B baseline (C2810)** + **4종 problem.md 수정 (C2811)**
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2792, 이번 세션 bootstrap 미변경)
 > **이전 세션 핸드오프**: Cycles 2803-2809 (`030ddff7`)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2811
-> **이번 세션 cycle logs**: cycle-2810.md (claudedocs/cycle-logs/)
+> **다음 세션 진입점**: Cycle 2812
+> **이번 세션 cycle logs**: cycle-2810.md, cycle-2811.md (claudedocs/cycle-logs/)
+
+## Cycle 2811 완료 — 실패 4종 problem.md 수정 → 98.0%
+
+### 원인 분석 결과
+
+**근본 원인**: 4개 문제 모두 `problem.md`가 제목만 있고 설명 없음 (1줄).  
+통과 문제는 37줄 이상의 완전한 설명 (Input/Output/Example/Constraints) 보유.
+
+| 문제 | 이전 | 이후 | 원인 |
+|------|------|------|------|
+| `65_chain_calls` | 3/3 FAIL | 3/3 PASS | 함수체인 공식 불명 (`x²×2+1`) |
+| `67_nested_loops` | 3/3 FAIL | 3/3 PASS | 트리플릿 카운팅 문제 정의 부재 |
+| `77_state_machine` | 2/3 FAIL | 3/3 PASS | 5가지 커맨드 정의 부재 |
+| `47_word_count` | 2/3 FAIL | 3/3 PASS | 제목 오류(Word Count→Longest Run) + `mod` 키워드 미지원 |
+
+**수정 내용**: 각 `problem.md`에 완전한 Input/Output/Example/Constraints 추가.  
+`47_word_count`: 실제 문제(Longest Consecutive Run)를 정확히 설명하도록 제목/내용 재작성.
+
+### 갱신된 B축 baseline
+
+| 필드 | Cycle 2810 | Cycle 2811 |
+|------|-----------|-----------|
+| 성공 | 284 / 300 | **294 / 300** |
+| **성공률** | 94.7% | **98.0%** |
+| Median loops | 1 | 1 |
+
+산출물: `claudedocs/measurements/b_baseline_2026-05-13_c2810.json` (갱신됨)
+
+---
 
 ## Cycle 2810 완료 — M4-1 B축 공식 baseline
 
-### 결과
-
-| 필드 | 값 |
-|------|----|
-| 모델 | claude-sonnet-4-6 |
-| 문제 수 | 100 × 3 runs = 300 |
-| 성공 | 284 / 300 |
-| **성공률** | **94.7%** |
-| Median loops | **1** |
-| 이전 비공식 | 90.9% (2026-03-26) |
-| 개선 | **+3.8pp** |
-
-**일관 실패 4종** (개선 대상):
-- `65_chain_calls`, `67_nested_loops` — 3/3 FAIL
-- `77_state_machine` — 2/3 FAIL
-- `47_word_count` — 2/3 FAIL
-
-산출물: `claudedocs/measurements/b_baseline_2026-05-13_c2810.json`
+(초기 측정: 284/300 = 94.7%. Cycle 2811에서 98.0%로 갱신됨)
 
 ---
 
----
+## 다음 세션 우선순위 (Cycle 2812+)
 
-## 다음 세션 우선순위 (Cycle 2811+)
-
-### Active ISSUE 11개 현황 (Cycle 2810 기준)
+### Active ISSUE 11개 현황 (Cycle 2811 기준)
 
 | ISSUE | 우선순위 | 상태 | 비고 |
 |-------|---------|------|------|
@@ -44,18 +54,16 @@
 | `ISSUE-20260511-clang-knapsack-outlier` | low | 외부 | Clang upstream 이슈 |
 | B-track `ISSUE-20260326-*` (8개) | HIGH/MED | B baseline 확보됨 | 개선 작업 착수 가능 |
 
-### B축 개선 착수 가능 작업 (API 불필요)
+### B축 잔여 작업
 
-1. **일관 실패 4종 분석** — `65_chain_calls`, `67_nested_loops`, `77_state_machine`, `47_word_count`
-   - 각 문제 FAIL 원인 파악 (test feedback 부족? 언어 표현력? 문제 설계?)
-   - `ISSUE-20260326-type-d-failure-analysis` 처방 적용 (stdin 포함 feedback)
-2. **bootstrap parser 재귀→iterative 전환** — P3 장기 개선 (3-5 사이클)
-   ⚠️ 구체적 실패 없는 선제적 작업 — 착수 동인 미충족.
+- 300 runs 중 6 FAIL 잔존 — 비결정적 발생 패턴
+- 다음 단계: `--runs 5` 재측정으로 결정론적 실패 문제 식별 → problem.md 또는 언어 피처 개선
+- 목표: **99%+** (현재 98.0%)
 
 ### 다음 사이클 권장
 
-**Cycle 2811**: B축 일관 실패 분석 (자율 가능)
-- `65_chain_calls` / `67_nested_loops` FAIL 원인 파악 → feedback 개선 또는 언어 스펙 검토
+**Cycle 2812**: 잔여 6 FAIL 분석 (자율 가능)
+- 현재 FAIL 패턴이 비결정적 → `--runs 5`로 안정적 실패 패턴 식별
 - tier3-spawn-overhead HUMAN 결정 시 즉시 착수
 
 ---

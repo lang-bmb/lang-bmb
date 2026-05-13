@@ -1,0 +1,40 @@
+{
+  "problem_id": "37_binary_exp",
+  "category": "performance",
+  "difficulty": "medium",
+  "loop_count": 3,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 2
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn power(base: i64, exp: i64) -> i64 =\n    if exp == 0 {\n        1\n    } else if exp == 1 {\n        base\n    } else if exp * 2 / 2 == exp {\n        let half = power(base, exp / 2);\n        half * half\n    } else {\n        base * power(base, exp - 1)\n    };\n\nfn main() -> i64 = {\n    let op = read_int();\n    let base = read_int();\n    let exp = read_int();\n    let result = if op == 1 {\n        power(base, exp)\n    } else {\n        0\n    };\n    let _p = println(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '1024\\n', got '256\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn power(base: i64, exp: i64) -> i64 =\n    if exp == 0 {\n        1\n    } else {\n        let half = power(base, exp / 2);\n        let half_sq = half * half;\n        if exp - (exp / 2) * 2 == 0 {\n            half_sq\n        } else {\n            base * half_sq\n        }\n    };\n\nfn main() -> i64 = {\n    let op = read_int();\n    let base = read_int();\n    let exp = read_int();\n    let result = if op == 1 {\n        power(base, exp)\n    } else {\n        0\n    };\n    let _p = println(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 6: expected '1024\\n243\\n1\\n', got '0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn power(base: i64, exp: i64) -> i64 =\n    if exp == 0 {\n        1\n    } else {\n        let half = power(base, exp / 2);\n        let half_sq = half * half;\n        if exp - (exp / 2) * 2 == 0 {\n            half_sq\n        } else {\n            base * half_sq\n        }\n    };\n\nfn main() -> i64 = {\n    let q = read_int();\n    for _i in 0..q {\n        let base = read_int();\n        let exp = read_int();\n        let result = power(base, exp);\n        let _p = println(result)\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

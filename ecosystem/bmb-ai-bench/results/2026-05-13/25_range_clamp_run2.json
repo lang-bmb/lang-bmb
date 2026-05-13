@@ -1,0 +1,32 @@
+{
+  "problem_id": "25_range_clamp",
+  "category": "contract",
+  "difficulty": "easy",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 1,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn clamp(x: i64, lo: i64, hi: i64) -> i64\n    pre lo <= hi\n    post ret >= lo and ret <= hi\n= if x < lo { lo } else if x > hi { hi } else { x };\n\nfn main() -> i64 = {\n    let lo = read_int();\n    let hi = read_int();\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    for i in 0..n {\n        if i > 0 { let _s = print_str(\" \"); () } else { () };\n        let _p = print(clamp(vec_get(v, i), lo, hi))\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"message\":\"Linker error: clang compile failed: C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpb2_jlg0_\\\\solution.ll:555:28: error: invalid redefinition of function 'clamp'\n\\n  555 | define private noundef i64 @clamp(i64 noundef %x, i64 noundef %lo, i64 noundef %hi) inlinehint nosync nounwind willreturn mustprogress nofree norecurse memory(none) speculatable \\\"no-trapping-math\\\"=\\\"true\\\" uwtable {\n\\n      |                            ^\n\\n1 error generated.\n\\n\",\"suggestion\":\"BMB uses T? for nullable types, not Option<T>.\",\"example_wrong\":\"let x: Option<i64> = Some(42);\",\"example_correct\":\"let x: i64? = 42;\",\"pattern\":\"option_type\"}",
+      "loop_type": "C"
+    },
+    {
+      "attempt": 2,
+      "code": "fn clamp_range(x: i64, lo: i64, hi: i64) -> i64\n    pre lo <= hi\n    post ret >= lo and ret <= hi\n= if x < lo { lo } else if x > hi { hi } else { x };\n\nfn main() -> i64 = {\n    let lo = read_int();\n    let hi = read_int();\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    for i in 0..n {\n        if i > 0 { let _s = print_str(\" \"); () } else { () };\n        let _p = print(clamp_range(vec_get(v, i), lo, hi))\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

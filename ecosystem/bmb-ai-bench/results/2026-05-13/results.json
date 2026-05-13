@@ -1,0 +1,114 @@
+{
+  "model": "claude-sonnet-4-6",
+  "date": "2026-05-13",
+  "problems": {
+    "47_word_count": {
+      "category": "practical",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "65_chain_calls": {
+      "category": "edge",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "67_nested_loops": {
+      "category": "edge",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "77_state_machine": {
+      "category": "integration",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    }
+  }
+}

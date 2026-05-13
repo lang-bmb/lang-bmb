@@ -1,0 +1,24 @@
+{
+  "problem_id": "54_text_wrap",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let k = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let mut i = 0;\n    while i < n {\n        let mut sum = 0;\n        let mut j = 0;\n        while j < k {\n            if i + j < n {\n                sum = sum + vec_get(v, i + j);\n                ()\n            } else { () };\n            j = j + 1\n        };\n        let _p = println(sum);\n        i = i + k\n    };\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

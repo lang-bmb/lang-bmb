@@ -1,0 +1,24 @@
+{
+  "problem_id": "94_lru_simulate",
+  "category": "system",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let k = read_int();\n    let n = read_int();\n    \n    let cache = vec_new();\n    let mut misses = 0;\n    \n    for _i in 0..n {\n        let page = read_int();\n        \n        let cache_len = vec_len(cache);\n        let mut found = 0;\n        let mut found_idx = 0;\n        \n        for j in 0..cache_len {\n            if vec_get(cache, j) == page {\n                found = 1;\n                found_idx = j;\n                break\n            } else { () }\n        };\n        \n        if found == 1 {\n            for j in found_idx..(cache_len - 1) {\n                let _s = vec_set(cache, j, vec_get(cache, j + 1));\n                ()\n            };\n            let _s2 = vec_set(cache, cache_len - 1, page);\n            ()\n        } else {\n            misses = misses + 1;\n            let cur_len = vec_len(cache);\n            if cur_len < k {\n                let _p = vec_push(cache, page);\n                ()\n            } else {\n                for j in 0..(cur_len - 1) {\n                    let _s = vec_set(cache, j, vec_get(cache, j + 1));\n                    ()\n                };\n                let _s3 = vec_set(cache, cur_len - 1, page);\n                ()\n            }\n        }\n    };\n    \n    let _p = println(misses);\n    let _f = vec_free(cache);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

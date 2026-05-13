@@ -1,11 +1,18 @@
 {
   "date": "2026-05-13",
+  "cycle": "2810-2811",
   "model": "claude-sonnet-4-6",
   "total_problems": 100,
   "runs": 3,
   "total_runs": 300,
-  "passed": 284,
-  "success_rate": 94.7,
+  "passed": 294,
+  "success_rate": 98.0,
   "median_loops": 1,
-  "output_dir": "D:\\data\\lang-bmb\\ecosystem\\bmb-ai-bench\\results\\2026-05-13"
+  "output_dir": "D:\\data\\lang-bmb\\ecosystem\\bmb-ai-bench\\results\\2026-05-13",
+  "stale_after": "2026-08-13",
+  "notes": [
+    "Cycle 2810: initial run — 284/300 (94.7%)",
+    "Cycle 2811: 4 empty problem.md fixed (47,65,67,77) — re-ran those 4 → 294/300 (98.0%)",
+    "Root cause: 4 problems had title-only problem.md (1 line) vs passing problems with 37+ lines"
+  ]
 }

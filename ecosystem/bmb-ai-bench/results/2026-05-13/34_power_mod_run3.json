@@ -1,0 +1,32 @@
+{
+  "problem_id": "34_power_mod",
+  "category": "performance",
+  "difficulty": "medium",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn power_mod(base: i64, exp: i64, m: i64) -> i64 =\n    if m == 1 { 0 }\n    else {\n        let mut result: i64 = 1;\n        let mut b: i64 = base - (base / m) * m;\n        let mut e: i64 = exp;\n        while e > 0 {\n            if (e - (e / 2) * 2) == 1 {\n                result = (result * b) - ((result * b) / m) * m;\n                ()\n            } else { () };\n            b = (b * b) - ((b * b) / m) * m;\n            e = e / 2\n        };\n        result\n    };\n\nfn main() -> i64 = {\n    let op = read_int();\n    let a = read_int();\n    let b = read_int();\n    let m = read_int();\n    let ans = if op == 1 { power_mod(a, b, m) } else { 0 };\n    let _p = println(ans);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 6: expected '24\\n6\\n5\\n', got '0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn power_mod(base: i64, exp: i64, m: i64) -> i64 =\n    if m == 1 { 0 }\n    else {\n        let mut result: i64 = 1;\n        let mut b: i64 = base - (base / m) * m;\n        let mut e: i64 = exp;\n        while e > 0 {\n            if (e - (e / 2) * 2) == 1 {\n                result = (result * b) - ((result * b) / m) * m;\n                ()\n            } else { () };\n            b = (b * b) - ((b * b) / m) * m;\n            e = e / 2\n        };\n        result\n    };\n\nfn main() -> i64 = {\n    let n = read_int();\n    for _i in 0..n {\n        let a = read_int();\n        let b = read_int();\n        let m = read_int();\n        let ans = power_mod(a, b, m);\n        let _p = println(ans)\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

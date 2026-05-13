@@ -1,0 +1,40 @@
+{
+  "problem_id": "34_power_mod",
+  "category": "performance",
+  "difficulty": "medium",
+  "loop_count": 3,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 2
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn power_mod(base: i64, exp: i64, m: i64) -> i64 =\n    if m == 1 { 0 }\n    else if exp == 0 { 1 }\n    else if exp == 1 { base - (base / m) * m }\n    else {\n        let half = power_mod(base, exp / 2, m);\n        let half_sq = (half * half) - ((half * half) / m) * m;\n        if exp - (exp / 2) * 2 == 0 {\n            half_sq\n        } else {\n            let tmp = half_sq * base;\n            tmp - (tmp / m) * m\n        }\n    };\n\nfn main() -> i64 = {\n    let op = read_int();\n    let a = read_int();\n    let b = read_int();\n    let m = read_int();\n    let result = if op == 1 {\n        power_mod(a, b, m)\n    } else { 0 };\n    let _p = println(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 6: expected '24\\n6\\n5\\n', got '0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn power_mod(base: i64, exp: i64, m: i64) -> i64 =\n    if m == 1 { 0 }\n    else if exp == 0 { 1 }\n    else if exp == 1 { base - (base / m) * m }\n    else {\n        let half = power_mod(base, exp / 2, m);\n        let half_sq = (half * half) - ((half * half) / m) * m;\n        if exp - (exp / 2) * 2 == 0 {\n            half_sq\n        } else {\n            let tmp = half_sq * base;\n            tmp - (tmp / m) * m\n        }\n    };\n\nfn main() -> i64 = {\n    let n = read_int();\n    for _i in 0..n {\n        let op = read_int();\n        let a = read_int();\n        let b = read_int();\n        let m = read_int();\n        let result = if op == 1 {\n            power_mod(a, b, m)\n        } else { 0 };\n        let _p = println(result)\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '24\\n', got '0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn power_mod(base: i64, exp: i64, m: i64) -> i64 =\n    if m == 1 { 0 }\n    else if exp == 0 { 1 }\n    else if exp == 1 { base - (base / m) * m }\n    else {\n        let half = power_mod(base, exp / 2, m);\n        let half_sq = (half * half) - ((half * half) / m) * m;\n        if exp - (exp / 2) * 2 == 0 {\n            half_sq\n        } else {\n            let tmp = half_sq * base;\n            tmp - (tmp / m) * m\n        }\n    };\n\nfn main() -> i64 = {\n    let n = read_int();\n    for _i in 0..n {\n        let a = read_int();\n        let b = read_int();\n        let m = read_int();\n        let result = power_mod(a, b, m);\n        let _p = println(result)\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

@@ -1,0 +1,24 @@
+{
+  "problem_id": "58_spiral_order",
+  "category": "practical",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let grid = vec_new();\n    for i in 0..n {\n        for j in 0..n {\n            let val = read_int();\n            let _p = vec_push(grid, val)\n        }\n    };\n    \n    let result = vec_new();\n    \n    let mut top = 0;\n    let mut bottom = n - 1;\n    let mut left = 0;\n    let mut right = n - 1;\n    \n    while top <= bottom {\n        // traverse right along top row\n        for col in left..right+1 {\n            let val = vec_get(grid, top * n + col);\n            let _p = vec_push(result, val)\n        };\n        top = top + 1;\n        \n        // traverse down along right column\n        for row in top..bottom+1 {\n            let val = vec_get(grid, row * n + right);\n            let _p = vec_push(result, val)\n        };\n        right = right - 1;\n        \n        if top <= bottom {\n            // traverse left along bottom row\n            let mut col = right;\n            while col >= left {\n                let val = vec_get(grid, bottom * n + col);\n                let _p = vec_push(result, val);\n                col = col - 1\n            };\n            bottom = bottom - 1;\n            ()\n        } else { () };\n        \n        if left <= right {\n            // traverse up along left column\n            let mut row = bottom;\n            while row >= top {\n                let val = vec_get(grid, row * n + left);\n                let _p = vec_push(result, val);\n                row = row - 1\n            };\n            left = left + 1;\n            ()\n        } else { () }\n    };\n    \n    let len = vec_len(result);\n    for i in 0..len {\n        if i > 0 {\n            let _s = print_str(\" \");\n            ()\n        } else { () };\n        let _p = print(vec_get(result, i))\n    };\n    let _nl = println_str(\"\");\n    \n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

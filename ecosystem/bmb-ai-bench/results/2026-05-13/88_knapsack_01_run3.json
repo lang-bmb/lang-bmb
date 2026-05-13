@@ -1,0 +1,24 @@
+{
+  "problem_id": "88_knapsack_01",
+  "category": "algorithm",
+  "difficulty": "hard",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let w = read_int();\n    let weights = vec_new();\n    let values = vec_new();\n    for _i in 0..n {\n        let wi = read_int();\n        let vi = read_int();\n        let _pw = vec_push(weights, wi);\n        let _pv = vec_push(values, vi)\n    };\n    let dp = vec_new();\n    for _j in 0..(w + 1) {\n        let _p = vec_push(dp, 0)\n    };\n    for i in 0..n {\n        let wi = vec_get(weights, i);\n        let vi = vec_get(values, i);\n        let mut j = w;\n        while j >= wi {\n            let prev = vec_get(dp, j - wi) + vi;\n            let cur = vec_get(dp, j);\n            if prev > cur {\n                let _s = vec_set(dp, j, prev);\n                ()\n            } else { () };\n            j = j - 1\n        }\n    };\n    let ans = vec_get(dp, w);\n    let _p = println(ans);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

@@ -1,0 +1,40 @@
+{
+  "problem_id": "49_roman_to_int",
+  "category": "practical",
+  "difficulty": "medium",
+  "loop_count": 3,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 2
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let _skip = read_int();\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let mut result = 0;\n    for i in 0..n {\n        let cur = vec_get(v, i);\n        if i + 1 < n {\n            let nxt = vec_get(v, i + 1);\n            if cur < nxt {\n                result = result + (0 - cur)\n            } else {\n                result = result + cur\n            }\n        } else {\n            result = result + cur\n        }\n    };\n    let _f = vec_free(v);\n    let _p = println(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 6: expected '1\\n20\\n', got '1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let t = read_int();\n    for _t in 0..t {\n        let n = read_int();\n        let v = vec_new();\n        for _i in 0..n {\n            let val = read_int();\n            let _p = vec_push(v, val)\n        };\n        let mut result = 0;\n        for i in 0..n {\n            let cur = vec_get(v, i);\n            if i + 1 < n {\n                let nxt = vec_get(v, i + 1);\n                if cur < nxt {\n                    result = result + (0 - cur)\n                } else {\n                    result = result + cur\n                }\n            } else {\n                result = result + cur\n            }\n        };\n        let _f = vec_free(v);\n        let _p = println(result)\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '3000\\n', got '3002\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let t = read_int();\n    for _t in 0..t {\n        let n = read_int();\n        let v = vec_new();\n        for _i in 0..n {\n            let val = read_int();\n            let _p = vec_push(v, val)\n        };\n        let mut result = 0;\n        for i in 0..n {\n            let cur = vec_get(v, i);\n            if i + 1 < n {\n                let nxt = vec_get(v, i + 1);\n                if cur < nxt {\n                    result = result + (0 - cur)\n                } else {\n                    result = result + cur\n                }\n            } else {\n                result = result + cur\n            }\n        };\n        let _p = println(result)\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

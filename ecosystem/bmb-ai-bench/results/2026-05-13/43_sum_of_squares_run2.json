@@ -1,0 +1,72 @@
+{
+  "problem_id": "43_sum_of_squares",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 7,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 6
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let _op = read_int();\n    let n = read_int();\n    let mut sum: i64 = 0;\n    for i in 1..n+1 {\n        sum = sum + i * i\n    };\n    let _p = println(sum);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 6: expected '1\\n5\\n14\\n', got '1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let op = read_int();\n    let n = read_int();\n    if op == 1 {\n        let mut sum: i64 = 0;\n        for i in 1..n+1 {\n            sum = sum + i * i\n        };\n        let _p = println(sum);\n        ()\n    } else { () };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 6: expected '1\\n5\\n14\\n', got ''",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let mut running: i64 = 1;\n    while running == 1 {\n        let op = read_int();\n        if op == 0 {\n            running = 0\n        } else {\n            let n = read_int();\n            let mut sum: i64 = 0;\n            for i in 1..n+1 {\n                sum = sum + i * i\n            };\n            let _p = println(sum);\n            ()\n        }\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: timeout",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn main() -> i64 = {\n    let q = read_int();\n    for _i in 0..q {\n        let op = read_int();\n        let n = read_int();\n        if op == 1 {\n            let mut sum: i64 = 0;\n            for i in 1..n+1 {\n                sum = sum + i * i\n            };\n            let _p = println(sum);\n            ()\n        } else { () }\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1: expected '5\\n', got ''",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 5,
+      "code": "fn main() -> i64 = {\n    let op = read_int();\n    let n = read_int();\n    if op == 1 {\n        let mut sum: i64 = 0;\n        for i in 1..n+1 {\n            sum = sum + i * i\n        };\n        let _p = println(sum);\n        ()\n    } else { () };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 6: expected '1\\n5\\n14\\n', got ''",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 6,
+      "code": "fn main() -> i64 = {\n    let q = read_int();\n    for _i in 0..q {\n        let op = read_int();\n        let n = read_int();\n        if op == 1 {\n            let mut sum: i64 = 0;\n            for i in 1..n+1 {\n                sum = sum + i * i\n            };\n            let _p = println(sum);\n            ()\n        } else { () }\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1: expected '5\\n', got ''",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 7,
+      "code": "fn main() -> i64 = {\n    let q = read_int();\n    for _i in 0..q {\n        let n = read_int();\n        let mut sum: i64 = 0;\n        for i in 1..n+1 {\n            sum = sum + i * i\n        };\n        let _p = println(sum);\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

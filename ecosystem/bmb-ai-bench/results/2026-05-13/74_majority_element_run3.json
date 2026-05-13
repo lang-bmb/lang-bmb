@@ -1,0 +1,32 @@
+{
+  "problem_id": "74_majority_element",
+  "category": "edge",
+  "difficulty": "medium",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let _t = read_int();\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let mut candidate = 0;\n    let mut count = 0;\n    for i in 0..n {\n        let val = vec_get(v, i);\n        if count == 0 {\n            candidate = val;\n            count = 1;\n            ()\n        } else if val == candidate {\n            count = count + 1;\n            ()\n        } else {\n            count = count - 1;\n            ()\n        }\n    };\n    let mut freq = 0;\n    for i in 0..n {\n        if vec_get(v, i) == candidate {\n            freq = freq + 1;\n            ()\n        } else { () }\n    };\n    let result = if freq * 2 > n { candidate } else { 0 - 1 };\n    let _p = println(result);\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 5: expected '5\\n-1\\n', got '5\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let t = read_int();\n    for _t in 0..t {\n        let n = read_int();\n        let v = vec_new();\n        for _i in 0..n {\n            let val = read_int();\n            let _p = vec_push(v, val)\n        };\n        let mut candidate = 0;\n        let mut count = 0;\n        for i in 0..n {\n            let val = vec_get(v, i);\n            if count == 0 {\n                candidate = val;\n                count = 1;\n                ()\n            } else if val == candidate {\n                count = count + 1;\n                ()\n            } else {\n                count = count - 1;\n                ()\n            }\n        };\n        let mut freq = 0;\n        for i in 0..n {\n            if vec_get(v, i) == candidate {\n                freq = freq + 1;\n                ()\n            } else { () }\n        };\n        let result = if freq * 2 > n { candidate } else { 0 - 1 };\n        let _p = println(result);\n        let _f = vec_free(v)\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

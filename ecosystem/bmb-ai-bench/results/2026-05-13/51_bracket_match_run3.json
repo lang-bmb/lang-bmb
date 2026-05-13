@@ -1,0 +1,48 @@
+{
+  "problem_id": "51_bracket_match",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 4,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 3
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let stack = vec_new();\n    let mut valid = 1;\n    let mut i = 0;\n    for _i in 0..n {\n        let code = read_int();\n        if code == 40 {\n            let _p = vec_push(stack, 40);\n            ()\n        } else if code == 91 {\n            let _p = vec_push(stack, 91);\n            ()\n        } else if code == 41 {\n            let slen = vec_len(stack);\n            if slen == 0 {\n                valid = 0;\n                ()\n            } else {\n                let top = vec_get(stack, slen - 1);\n                if top == 40 {\n                    let _p = vec_pop(stack);\n                    ()\n                } else {\n                    valid = 0;\n                    ()\n                }\n            };\n            ()\n        } else if code == 93 {\n            let slen = vec_len(stack);\n            if slen == 0 {\n                valid = 0;\n                ()\n            } else {\n                let top = vec_get(stack, slen - 1);\n                if top == 91 {\n                    let _p = vec_pop(stack);\n                    ()\n                } else {\n                    valid = 0;\n                    ()\n                }\n            };\n            ()\n        } else { () };\n        i = i + 1\n    };\n    let slen2 = vec_len(stack);\n    if slen2 != 0 {\n        valid = 0;\n        ()\n    } else { () };\n    let _p = println(valid);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 2: expected '0\\n', got '1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let stack = vec_new();\n    let mut valid = 1;\n    for _i in 0..n {\n        let code = read_int();\n        if valid == 1 {\n            if code == 40 {\n                let _p = vec_push(stack, 40);\n                ()\n            } else if code == 91 {\n                let _p = vec_push(stack, 91);\n                ()\n            } else if code == 41 {\n                let slen = vec_len(stack);\n                if slen == 0 {\n                    valid = 0;\n                    ()\n                } else {\n                    let top = vec_get(stack, slen - 1);\n                    if top == 40 {\n                        let _p = vec_pop(stack);\n                        ()\n                    } else {\n                        valid = 0;\n                        ()\n                    }\n                };\n                ()\n            } else if code == 93 {\n                let slen = vec_len(stack);\n                if slen == 0 {\n                    valid = 0;\n                    ()\n                } else {\n                    let top = vec_get(stack, slen - 1);\n                    if top == 91 {\n                        let _p = vec_pop(stack);\n                        ()\n                    } else {\n                        valid = 0;\n                        ()\n                    }\n                };\n                ()\n            } else { () }\n        } else { () }\n    };\n    let slen2 = vec_len(stack);\n    if slen2 != 0 {\n        valid = 0;\n        ()\n    } else { () };\n    let _p = println(valid);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 2: expected '0\\n', got '1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let _ignore = read_int();\n    let n = read_int();\n    let stack = vec_new();\n    let mut valid = 1;\n    for _i in 0..n {\n        let code = read_int();\n        if valid == 1 {\n            if code == 40 {\n                let _p = vec_push(stack, 40);\n                ()\n            } else if code == 91 {\n                let _p = vec_push(stack, 91);\n                ()\n            } else if code == 41 {\n                let slen = vec_len(stack);\n                if slen == 0 {\n                    valid = 0;\n                    ()\n                } else {\n                    let top = vec_get(stack, slen - 1);\n                    if top == 40 {\n                        let _p = vec_pop(stack);\n                        ()\n                    } else {\n                        valid = 0;\n                        ()\n                    }\n                };\n                ()\n            } else if code == 93 {\n                let slen = vec_len(stack);\n                if slen == 0 {\n                    valid = 0;\n                    ()\n                } else {\n                    let top = vec_get(stack, slen - 1);\n                    if top == 91 {\n                        let _p = vec_pop(stack);\n                        ()\n                    } else {\n                        valid = 0;\n                        ()\n                    }\n                };\n                ()\n            } else { () }\n        } else { () }\n    };\n    let slen2 = vec_len(stack);\n    if slen2 != 0 {\n        valid = 0;\n        ()\n    } else { () };\n    let _p = println(valid);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 6: expected '1\\n1\\n', got '1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn main() -> i64 = {\n    let q = read_int();\n    for _q in 0..q {\n        let n = read_int();\n        let stack = vec_new();\n        let mut valid = 1;\n        for _i in 0..n {\n            let code = read_int();\n            if valid == 1 {\n                if code == 40 {\n                    let _p = vec_push(stack, 40);\n                    ()\n                } else if code == 91 {\n                    let _p = vec_push(stack, 91);\n                    ()\n                } else if code == 41 {\n                    let slen = vec_len(stack);\n                    if slen == 0 {\n                        valid = 0;\n                        ()\n                    } else {\n                        let top = vec_get(stack, slen - 1);\n                        if top == 40 {\n                            let _p = vec_pop(stack);\n                            ()\n                        } else {\n                            valid = 0;\n                            ()\n                        }\n                    };\n                    ()\n                } else if code == 93 {\n                    let slen = vec_len(stack);\n                    if slen == 0 {\n                        valid = 0;\n                        ()\n                    } else {\n                        let top = vec_get(stack, slen - 1);\n                        if top == 91 {\n                            let _p = vec_pop(stack);\n                            ()\n                        } else {\n                            valid = 0;\n                            ()\n                        }\n                    };\n                    ()\n                } else { () }\n            } else { () }\n        };\n        let slen2 = vec_len(stack);\n        if slen2 != 0 {\n            valid = 0;\n            ()\n        } else { () };\n        let _p = println(valid);\n        let _f = vec_free(stack);\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

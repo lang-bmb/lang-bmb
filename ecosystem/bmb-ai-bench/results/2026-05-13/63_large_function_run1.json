@@ -1,0 +1,32 @@
+{
+  "problem_id": "63_large_function",
+  "category": "edge",
+  "difficulty": "easy",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let mut sum: i64 = 0;\n    let mut mn = vec_get(v, 0);\n    let mut mx = vec_get(v, 0);\n    for i in 0..n {\n        let val = vec_get(v, i);\n        sum = sum + val;\n        if val < mn { mn = val; () } else { () };\n        if val > mx { mx = val; () } else { () }\n    };\n    let mut count_min: i64 = 0;\n    let mut count_pos: i64 = 0;\n    for i in 0..n {\n        let val = vec_get(v, i);\n        if val == mn { count_min = count_min + 1; () } else { () };\n        if val > 0 { count_pos = count_pos + 1; () } else { () }\n    };\n    let _p1 = println(sum);\n    let _p2 = println(mn);\n    let _p3 = println(mx);\n    let _p4 = println(count_min);\n    let _p5 = println(count_pos);\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '15\\n1\\n5\\n2\\n5\\n', got '15\\n1\\n5\\n1\\n5\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let mut sum: i64 = 0;\n    let mut mn = vec_get(v, 0);\n    let mut mx = vec_get(v, 0);\n    for i in 0..n {\n        let val = vec_get(v, i);\n        sum = sum + val;\n        if val < mn { mn = val; () } else { () };\n        if val > mx { mx = val; () } else { () }\n    };\n    let mut count_even: i64 = 0;\n    let mut count_pos: i64 = 0;\n    for i in 0..n {\n        let val = vec_get(v, i);\n        if val * (val / 2 * 2 - val) == 0 {\n            if val / 2 * 2 == val { count_even = count_even + 1; () } else { () }\n        } else { () };\n        if val > 0 { count_pos = count_pos + 1; () } else { () }\n    };\n    let _p1 = println(sum);\n    let _p2 = println(mn);\n    let _p3 = println(mx);\n    let _p4 = println(count_even);\n    let _p5 = println(count_pos);\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

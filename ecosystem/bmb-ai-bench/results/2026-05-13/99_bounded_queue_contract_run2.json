@@ -1,0 +1,24 @@
+{
+  "problem_id": "99_bounded_queue_contract",
+  "category": "contract",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let cap = read_int();\n    let n = read_int();\n    let queue = vec_new();\n    let mut front = 0;\n    for _i in 0..n {\n        let op = read_int();\n        if op == 1 {\n            let x = read_int();\n            let size = vec_len(queue) - front;\n            if size >= cap {\n                let _p = println(0 - 1);\n                ()\n            } else {\n                let _p = vec_push(queue, x);\n                ()\n            }\n        } else if op == 2 {\n            let size = vec_len(queue) - front;\n            if size <= 0 {\n                let _p = println(0 - 1);\n                ()\n            } else {\n                let val = vec_get(queue, front);\n                front = front + 1;\n                let _p = println(val);\n                ()\n            }\n        } else if op == 3 {\n            let size = vec_len(queue) - front;\n            let _p = println(size);\n            ()\n        } else { () }\n    };\n    let _f = vec_free(queue);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

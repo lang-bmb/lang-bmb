@@ -1,0 +1,96 @@
+{
+  "problem_id": "75_longest_plateau",
+  "category": "edge",
+  "difficulty": "medium",
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 10
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let _t = read_int();\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let mut best = 1;\n    let mut i = 0;\n    while i < n {\n        let cur = vec_get(v, i);\n        let mut j = i + 1;\n        while j < n {\n            if vec_get(v, j) == cur {\n                j = j + 1\n            } else {\n                j = n\n            }\n        };\n        let run_end = if j == n {\n            let mut k = i + 1;\n            while k < n {\n                if vec_get(v, k) == cur {\n                    k = k + 1\n                } else {\n                    k = n\n                }\n            };\n            if k == n { n } else { k }\n        } else { j };\n        let mut actual_end = i + 1;\n        while actual_end < n {\n            if vec_get(v, actual_end) == cur {\n                actual_end = actual_end + 1\n            } else {\n                actual_end = n + 1\n            }\n        };\n        let len = if actual_end > n { actual_end - 1 - i } else { actual_end - i };\n        let is_plateau = if actual_end > n {\n            1\n        } else {\n            0\n        };\n        let left_ok = if i == 0 { 1 } else { if vec_get(v, i - 1) < cur { 1 } else { 0 } };\n        let right_end = i + len;\n        let right_ok = if right_end >= n { 1 } else { if vec_get(v, right_end) < cur { 1 } else { 0 } };\n        if left_ok == 1 {\n            if right_ok == 1 {\n                if len > best {\n                    best = len\n                } else { () }\n            } else { () }\n        } else { () };\n        i = i + len\n    };\n    let _p = println(best);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '3\\n', got '5\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let _t = read_int();\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let mut best = 1;\n    let mut i = 0;\n    while i < n {\n        let cur = vec_get(v, i);\n        let mut run_len = 1;\n        let mut k = i + 1;\n        while k < n {\n            if vec_get(v, k) == cur {\n                run_len = run_len + 1;\n                k = k + 1\n            } else {\n                k = n\n            }\n        };\n        let left_ok = if i == 0 { 1 } else { if vec_get(v, i - 1) < cur { 1 } else { 0 } };\n        let right_end = i + run_len;\n        let right_ok = if right_end >= n { 1 } else { if vec_get(v, right_end) < cur { 1 } else { 0 } };\n        if left_ok == 1 {\n            if right_ok == 1 {\n                if run_len > best {\n                    best = run_len\n                } else { () }\n            } else { () }\n        } else { () };\n        i = i + 1\n    };\n    let _p = println(best);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 5: expected '2\\n4\\n', got '1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let t = read_int();\n    for _tc in 0..t {\n        let n = read_int();\n        let v = vec_new();\n        for _i in 0..n {\n            let val = read_int();\n            let _p = vec_push(v, val)\n        };\n        let mut best = 1;\n        let mut i = 0;\n        while i < n {\n            let cur = vec_get(v, i);\n            let mut run_len = 1;\n            let mut k = i + 1;\n            while k < n {\n                if vec_get(v, k) == cur {\n                    run_len = run_len + 1;\n                    k = k + 1\n                } else {\n                    k = n\n                }\n            };\n            let left_ok = if i == 0 { 1 } else { if vec_get(v, i - 1) < cur { 1 } else { 0 } };\n            let right_end = i + run_len;\n            let right_ok = if right_end >= n { 1 } else { if vec_get(v, right_end) < cur { 1 } else { 0 } };\n            if left_ok == 1 {\n                if right_ok == 1 {\n                    if run_len > best {\n                        best = run_len\n                    } else { () }\n                } else { () }\n            } else { () };\n            i = i + 1\n        };\n        let _p = println(best);\n        let _f = vec_free(v)\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 5: expected '2\\n4\\n', got '1\\n4\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn main() -> i64 = {\n    let t = read_int();\n    for _tc in 0..t {\n        let n = read_int();\n        let v = vec_new();\n        for _i in 0..n {\n            let val = read_int();\n            let _p = vec_push(v, val)\n        };\n        let mut best = 1;\n        let mut i = 0;\n        while i < n {\n            let cur = vec_get(v, i);\n            let mut run_len = 1;\n            let mut k = i + 1;\n            while k < n {\n                if vec_get(v, k) == cur {\n                    run_len = run_len + 1;\n                    k = k + 1\n                } else {\n                    k = n\n                }\n            };\n            let left_ok = if i == 0 { 1 } else { if vec_get(v, i - 1) < cur { 1 } else { 0 } };\n            let right_end = i + run_len;\n            let right_ok = if right_end >= n { 1 } else { if vec_get(v, right_end) < cur { 1 } else { 0 } };\n            if left_ok == 1 {\n                if right_ok == 1 {\n                    if run_len > best {\n                        best = run_len\n                    } else { () }\n                } else { () }\n            } else { () };\n            i = i + run_len\n        };\n        let _p = println(best);\n        let _f = vec_free(v)\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 5: expected '2\\n4\\n', got '1\\n4\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 5,
+      "code": "fn main() -> i64 = {\n    let t = read_int();\n    for _tc in 0..t {\n        let n = read_int();\n        let v = vec_new();\n        for _i in 0..n {\n            let val = read_int();\n            let _p = vec_push(v, val)\n        };\n        let mut best = 0;\n        let mut i = 0;\n        while i < n {\n            let cur = vec_get(v, i);\n            let mut run_len = 1;\n            let mut k = i + 1;\n            while k < n {\n                if vec_get(v, k) == cur {\n                    run_len = run_len + 1;\n                    k = k + 1\n                } else {\n                    k = n\n                }\n            };\n            let left_ok = if i == 0 { 1 } else { if vec_get(v, i - 1) < cur { 1 } else { 0 } };\n            let right_end = i + run_len;\n            let right_ok = if right_end >= n { 1 } else { if vec_get(v, right_end) < cur { 1 } else { 0 } };\n            if left_ok == 1 {\n                if right_ok == 1 {\n                    if run_len > best {\n                        best = run_len\n                    } else { () }\n                } else { () }\n            } else { () };\n            i = i + run_len\n        };\n        let _p = println(best);\n        let _f = vec_free(v)\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 5: expected '2\\n4\\n', got '1\\n4\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 6,
+      "code": "fn main() -> i64 = {\n    let t = read_int();\n    for _tc in 0..t {\n        let n = read_int();\n        let v = vec_new();\n        for _i in 0..n {\n            let val = read_int();\n            let _p = vec_push(v, val)\n        };\n        let mut best = 0;\n        let mut i = 0;\n        while i < n {\n            let cur = vec_get(v, i);\n            let mut run_len = 1;\n            let mut k = i + 1;\n            while k < n {\n                if vec_get(v, k) == cur {\n                    run_len = run_len + 1;\n                    k = k + 1\n                } else {\n                    k = n\n                }\n            };\n            let left_ok = if i == 0 { 1 } else { if vec_get(v, i - 1) < cur { 1 } else { 0 } };\n            let right_end = i + run_len;\n            let right_ok = if right_end >= n { 1 } else { if vec_get(v, right_end) < cur { 1 } else { 0 } };\n            if left_ok == 1 {\n                if right_ok == 1 {\n                    if run_len > best {\n                        best = run_len\n                    } else { () };\n                    i = i + run_len\n                } else {\n                    i = i + run_len\n                }\n            } else {\n                i = i + 1\n            };\n            ()\n        };\n        let _p = println(best);\n        let _f = vec_free(v)\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 5: expected '2\\n4\\n', got '1\\n4\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 7,
+      "code": "fn main() -> i64 = {\n    let t = read_int();\n    for _tc in 0..t {\n        let n = read_int();\n        let v = vec_new();\n        for _i in 0..n {\n            let val = read_int();\n            let _p = vec_push(v, val)\n        };\n        let mut best = 0;\n        let mut i = 0;\n        while i < n {\n            let cur = vec_get(v, i);\n            let mut run_len = 1;\n            let mut k = i + 1;\n            while k < n {\n                if vec_get(v, k) == cur {\n                    run_len = run_len + 1;\n                    k = k + 1\n                } else {\n                    k = n\n                }\n            };\n            let left_ok = if i == 0 { 1 } else { if vec_get(v, i - 1) < cur { 1 } else { 0 } };\n            let right_end = i + run_len;\n            let right_ok = if right_end >= n { 1 } else { if vec_get(v, right_end) < cur { 1 } else { 0 } };\n            if left_ok == 1 {\n                if right_ok == 1 {\n                    if run_len > best {\n                        best = run_len\n                    } else { () }\n                } else { () }\n            } else { () };\n            i = i + 1\n        };\n        let _p = println(best);\n        let _f = vec_free(v)\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 5: expected '2\\n4\\n', got '1\\n4\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 8,
+      "code": "fn main() -> i64 = {\n    let t = read_int();\n    for _tc in 0..t {\n        let n = read_int();\n        let v = vec_new();\n        for _i in 0..n {\n            let val = read_int();\n            let _p = vec_push(v, val)\n        };\n        let mut best = 0;\n        let mut i = 0;\n        while i < n {\n            let cur = vec_get(v, i);\n            let left_ok = if i == 0 { 1 } else { if vec_get(v, i - 1) < cur { 1 } else { 0 } };\n            if left_ok == 1 {\n                let mut run_len = 0;\n                let mut j = i;\n                while j < n {\n                    if vec_get(v, j) == cur {\n                        run_len = run_len + 1;\n                        j = j + 1\n                    } else {\n                        j = n\n                    }\n                };\n                let right_end = i + run_len;\n                let right_ok = if right_end >= n { 1 } else { if vec_get(v, right_end) < cur { 1 } else { 0 } };\n                if right_ok == 1 {\n                    if run_len > best {\n                        best = run_len\n                    } else { () }\n                } else { () }\n            } else { () };\n            i = i + 1\n        };\n        let _p = println(best);\n        let _f = vec_free(v)\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 5: expected '2\\n4\\n', got '1\\n4\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 9,
+      "code": "fn main() -> i64 = {\n    let t = read_int();\n    for _tc in 0..t {\n        let n = read_int();\n        let v = vec_new();\n        for _i in 0..n {\n            let val = read_int();\n            let _p = vec_push(v, val)\n        };\n        let mut best = 1;\n        let mut i = 0;\n        while i < n {\n            let cur = vec_get(v, i);\n            let left_ok = if i == 0 { 1 } else { if vec_get(v, i - 1) < cur { 1 } else { 0 } };\n            if left_ok == 1 {\n                let mut run_len = 1;\n                let mut j = i + 1;\n                while j < n {\n                    if vec_get(v, j) == cur {\n                        run_len = run_len + 1;\n                        j = j + 1\n                    } else {\n                        j = n + 1\n                    }\n                };\n                let right_end = i + run_len;\n                let right_ok = if right_end >= n { 1 } else { if vec_get(v, right_end) < cur { 1 } else { 0 } };\n                if right_ok == 1 {\n                    if run_len > best {\n                        best = run_len\n                    } else { () }\n                } else { () };\n                i = i + run_len\n            } else {\n                i = i + 1\n            }\n        };\n        let _p = println(best);\n        let _f = vec_free(v)\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 5: expected '2\\n4\\n', got '1\\n4\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 10,
+      "code": "fn main() -> i64 = {\n    let t = read_int();\n    for _tc in 0..t {\n        let n = read_int();\n        let v = vec_new();\n        for _i in 0..n {\n            let val = read_int();\n            let _p = vec_push(v, val)\n        };\n        let mut best = 0;\n        let mut i = 0;\n        while i < n {\n            let cur = vec_get(v, i);\n            let left_ok = if i == 0 { 1 } else { if vec_get(v, i - 1) < cur { 1 } else { 0 } };\n            let mut run_len = 1;\n            let mut j = i + 1;\n            while j < n {\n                if vec_get(v, j) == cur {\n                    run_len = run_len + 1;\n                    j = j + 1\n                } else {\n                    j = n + 1\n                }\n            };\n            let right_end = i + run_len;\n            let right_ok = if right_end >= n { 1 } else { if vec_get(v, right_end) < cur { 1 } else { 0 } };\n            if left_ok == 1 {\n                if right_ok == 1 {\n                    if run_len > best {\n                        best = run_len\n                    } else { () }\n                } else { () }\n            } else { () };\n            i = i + 1\n        };\n        let _p = println(best);\n        let _f = vec_free(v)\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 5: expected '2\\n4\\n', got '1\\n4\\n'",
+      "loop_type": "D"
+    }
+  ],
+  "run_id": 1
+}

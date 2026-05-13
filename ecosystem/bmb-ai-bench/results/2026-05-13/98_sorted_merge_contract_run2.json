@@ -1,0 +1,24 @@
+{
+  "problem_id": "98_sorted_merge_contract",
+  "category": "contract",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n1 = read_int();\n    let v1 = vec_new();\n    for _i in 0..n1 {\n        let val = read_int();\n        let _p = vec_push(v1, val)\n    };\n\n    let n2 = read_int();\n    let v2 = vec_new();\n    for _i in 0..n2 {\n        let val = read_int();\n        let _p = vec_push(v2, val)\n    };\n\n    let result = vec_new();\n    let mut i = 0;\n    let mut j = 0;\n\n    while i < n1 and j < n2 {\n        let a = vec_get(v1, i);\n        let b = vec_get(v2, j);\n        if a <= b {\n            let _p = vec_push(result, a);\n            i = i + 1;\n            ()\n        } else {\n            let _p = vec_push(result, b);\n            j = j + 1;\n            ()\n        }\n    };\n\n    while i < n1 {\n        let _p = vec_push(result, vec_get(v1, i));\n        i = i + 1\n    };\n\n    while j < n2 {\n        let _p = vec_push(result, vec_get(v2, j));\n        j = j + 1\n    };\n\n    let len = vec_len(result);\n    for k in 0..len {\n        if k > 0 {\n            let _s = print_str(\" \");\n            ()\n        } else { () };\n        let _p = print(vec_get(result, k))\n    };\n    let _nl = println_str(\"\");\n\n    let _f1 = vec_free(v1);\n    let _f2 = vec_free(v2);\n    let _fr = vec_free(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

@@ -1,0 +1,48 @@
+{
+  "problem_id": "66_acc_recursion",
+  "category": "edge",
+  "difficulty": "easy",
+  "loop_count": 4,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 3
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn acc(n: i64) -> i64 =\n    if n <= 0 { 0 } else { n + acc(n - 1) };\n\nfn main() -> i64 = {\n    let op = read_int();\n    if op == 1 {\n        let n = read_int();\n        let result = acc(n);\n        let _p = println(result);\n        ()\n    } else if op == 2 {\n        let n = read_int();\n        let result = acc(n);\n        let _p = println(result);\n        ()\n    } else if op == 3 {\n        let n = read_int();\n        let mut sum = 0;\n        for _i in 0..n {\n            let val = read_int();\n            sum = sum + val;\n            let _p = println(sum)\n        };\n        ()\n    } else { () };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '1\\n3\\n6\\n', got '2\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn acc(n: i64) -> i64 =\n    if n <= 0 { 0 } else { n + acc(n - 1) };\n\nfn main() -> i64 = {\n    let op = read_int();\n    if op == 1 {\n        let n = read_int();\n        let result = acc(n);\n        let _p = println(result);\n        ()\n    } else if op == 2 {\n        let n = read_int();\n        let result = acc(n);\n        let _p = println(result);\n        ()\n    } else {\n        let mut sum = 0;\n        for _i in 0..op {\n            let val = read_int();\n            sum = sum + val;\n            let _p = println(sum)\n        };\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 8: expected '28\\n36\\n', got '28\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn acc(n: i64) -> i64 =\n    if n <= 0 { 0 } else { n + acc(n - 1) };\n\nfn main() -> i64 = {\n    let op = read_int();\n    if op == 1 {\n        let n = read_int();\n        let result = acc(n);\n        let _p = println(result);\n        ()\n    } else {\n        let mut sum = 0;\n        for _i in 0..op {\n            let val = read_int();\n            sum = sum + val;\n            let _p = println(sum)\n        };\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 8: expected '28\\n36\\n', got '7\\n15\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn acc(n: i64) -> i64 =\n    if n <= 0 { 0 } else { n + acc(n - 1) };\n\nfn main() -> i64 = {\n    let op = read_int();\n    if op == 1 {\n        let n = read_int();\n        let result = acc(n);\n        let _p = println(result);\n        ()\n    } else {\n        let mut sum = 0;\n        for i in 0..op {\n            let val = read_int();\n            let contribution = if i == 0 { acc(val) } else { val };\n            sum = sum + contribution;\n            let _p = println(sum)\n        };\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

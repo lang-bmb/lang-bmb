@@ -1,0 +1,32 @@
+{
+  "problem_id": "52_base_convert",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn int_to_base(n: i64, base: i64) -> i64 = {\n    let digits = vec_new();\n    let mut num = n;\n    if num == 0 {\n        let _p = vec_push(digits, 0);\n        ()\n    } else {\n        while num > 0 {\n            let d = num - (num / base) * base;\n            let _p = vec_push(digits, d);\n            num = num / base\n        }\n    };\n    let len = vec_len(digits);\n    for i in 0..(len / 2) {\n        let j = len - 1 - i;\n        let tmp = vec_get(digits, i);\n        let _s1 = vec_set(digits, i, vec_get(digits, j));\n        let _s2 = vec_set(digits, j, tmp)\n    };\n    for i in 0..len {\n        let d = vec_get(digits, i);\n        if d < 10 {\n            let _p = print(d);\n            ()\n        } else {\n            if d == 10 { let _p = print_str(\"A\"); () } else { () };\n            if d == 11 { let _p = print_str(\"B\"); () } else { () };\n            if d == 12 { let _p = print_str(\"C\"); () } else { () };\n            if d == 13 { let _p = print_str(\"D\"); () } else { () };\n            if d == 14 { let _p = print_str(\"E\"); () } else { () };\n            if d == 15 { let _p = print_str(\"F\"); () } else { () };\n            ()\n        }\n    };\n    let _f = vec_free(digits);\n    0\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    for _i in 0..t {\n        let n = read_int();\n        let base = read_int();\n        let _r = int_to_base(n, base);\n        let _nl = println_str(\"\")\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1: expected '1515\\n', got 'FF\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn int_to_base(n: i64, base: i64) -> i64 = {\n    let digits = vec_new();\n    let mut num = n;\n    if num == 0 {\n        let _p = vec_push(digits, 0);\n        ()\n    } else {\n        while num > 0 {\n            let d = num - (num / base) * base;\n            let _p = vec_push(digits, d);\n            num = num / base\n        }\n    };\n    let len = vec_len(digits);\n    for i in 0..(len / 2) {\n        let j = len - 1 - i;\n        let tmp = vec_get(digits, i);\n        let _s1 = vec_set(digits, i, vec_get(digits, j));\n        let _s2 = vec_set(digits, j, tmp)\n    };\n    for i in 0..len {\n        let d = vec_get(digits, i);\n        let _p = print(d);\n        ()\n    };\n    let _f = vec_free(digits);\n    0\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    for _i in 0..t {\n        let n = read_int();\n        let base = read_int();\n        let _r = int_to_base(n, base);\n        let _nl = println_str(\"\")\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

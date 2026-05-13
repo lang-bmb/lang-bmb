@@ -1,0 +1,40 @@
+{
+  "problem_id": "66_acc_recursion",
+  "category": "edge",
+  "difficulty": "easy",
+  "loop_count": 3,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 2
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let mut acc = 0;\n    for i in 0..n {\n        acc = acc + vec_get(v, i);\n        let _p = println(acc)\n    };\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 2: expected '55\\n', got '10\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn tri(k: i64) -> i64 = k * (k + 1) / 2;\n\nfn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let mut acc = 0;\n    for i in 0..n {\n        let k = vec_get(v, i);\n        acc = acc + tri(k);\n        let _p = println(acc)\n    };\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '1\\n3\\n6\\n', got '1\\n4\\n10\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn tri(k: i64) -> i64 = k * (k + 1) / 2;\n\nfn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    for i in 0..n {\n        let k = vec_get(v, i);\n        let _p = println(tri(k))\n    };\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

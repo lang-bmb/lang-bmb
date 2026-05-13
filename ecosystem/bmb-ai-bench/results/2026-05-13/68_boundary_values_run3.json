@@ -1,0 +1,32 @@
+{
+  "problem_id": "68_boundary_values",
+  "category": "edge",
+  "difficulty": "easy",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 1,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn clamp(val: i64, lo: i64, hi: i64) -> i64 =\n    if val < lo { lo } else if val > hi { hi } else { val };\n\nfn main() -> i64 = {\n    let n = read_int();\n    for _i in 0..n {\n        let val = read_int();\n        let lo = read_int();\n        let hi = read_int();\n        let result = clamp(val, lo, hi);\n        let _p = println(result);\n        ()\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"message\":\"Linker error: clang compile failed: C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmphn_wc56t\\\\solution.ll:546:28: error: invalid redefinition of function 'clamp'\n\\n  546 | define private noundef i64 @clamp(i64 noundef %val, i64 noundef %lo, i64 noundef %hi) inlinehint nosync nounwind willreturn mustprogress nofree norecurse memory(none) speculatable \\\"no-trapping-math\\\"=\\\"true\\\" uwtable {\n\\n      |                            ^\n\\n1 error generated.\n\\n\",\"suggestion\":\"BMB uses T? for nullable types, not Option<T>.\",\"example_wrong\":\"let x: Option<i64> = Some(42);\",\"example_correct\":\"let x: i64? = 42;\",\"pattern\":\"option_type\"}",
+      "loop_type": "C"
+    },
+    {
+      "attempt": 2,
+      "code": "fn clamp_val(val: i64, lo: i64, hi: i64) -> i64 =\n    if val < lo { lo } else if val > hi { hi } else { val };\n\nfn main() -> i64 = {\n    let n = read_int();\n    for _i in 0..n {\n        let val = read_int();\n        let lo = read_int();\n        let hi = read_int();\n        let result = clamp_val(val, lo, hi);\n        let _p = println(result);\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

@@ -1,0 +1,24 @@
+{
+  "problem_id": "01_binary_search",
+  "category": "algorithm",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let target = read_int();\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let mut lo: i64 = 0;\n    let mut hi: i64 = n - 1;\n    let mut result: i64 = 0 - 1;\n    while lo <= hi {\n        let mid = lo + (hi - lo) / 2;\n        let midval = vec_get(v, mid);\n        if midval == target {\n            result = mid;\n            lo = hi + 1\n        } else if midval < target {\n            lo = mid + 1\n        } else {\n            hi = mid - 1\n        }\n    };\n    let _p = println(result);\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

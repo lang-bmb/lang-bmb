@@ -1,0 +1,32 @@
+{
+  "problem_id": "63_large_function",
+  "category": "edge",
+  "difficulty": "easy",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let mut sum: i64 = 0;\n    let mut mn = vec_get(v, 0);\n    let mut mx = vec_get(v, 0);\n    for i in 0..n {\n        let x = vec_get(v, i);\n        sum = sum + x;\n        if x < mn { mn = x; () } else { () };\n        if x > mx { mx = x; () } else { () }\n    };\n    let _p1 = println(sum);\n    let _p2 = println(mn);\n    let _p3 = println(mx);\n    let mut cnt_neg: i64 = 0;\n    let mut cnt_pos: i64 = 0;\n    for i in 0..n {\n        let x = vec_get(v, i);\n        if x < 0 { cnt_neg = cnt_neg + 1; () } else { () };\n        if x > 0 { cnt_pos = cnt_pos + 1; () } else { () }\n    };\n    let _p4 = println(cnt_neg);\n    let _p5 = println(cnt_pos);\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '15\\n1\\n5\\n2\\n5\\n', got '15\\n1\\n5\\n0\\n5\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn is_even(x: i64) -> bool =\n    if x >= 0 {\n        (x / 2) * 2 == x\n    } else {\n        ((0 - x) / 2) * 2 == (0 - x)\n    };\n\nfn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let mut sum: i64 = 0;\n    let mut mn = vec_get(v, 0);\n    let mut mx = vec_get(v, 0);\n    for i in 0..n {\n        let x = vec_get(v, i);\n        sum = sum + x;\n        if x < mn { mn = x; () } else { () };\n        if x > mx { mx = x; () } else { () }\n    };\n    let _p1 = println(sum);\n    let _p2 = println(mn);\n    let _p3 = println(mx);\n    let mut cnt_even: i64 = 0;\n    let mut cnt_pos: i64 = 0;\n    for i in 0..n {\n        let x = vec_get(v, i);\n        if is_even(x) { cnt_even = cnt_even + 1; () } else { () };\n        if x > 0 { cnt_pos = cnt_pos + 1; () } else { () }\n    };\n    let _p4 = println(cnt_even);\n    let _p5 = println(cnt_pos);\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

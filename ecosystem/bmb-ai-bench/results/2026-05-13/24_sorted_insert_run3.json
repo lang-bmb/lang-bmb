@@ -1,0 +1,24 @@
+{
+  "problem_id": "24_sorted_insert",
+  "category": "contract",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn insert_sorted(arr: i64, n: i64, val: i64) -> i64\n    pre n >= 0\n    post ret == n + 1\n= {\n    let mut pos = n;\n    let mut i = 0;\n    while i < n {\n        if vec_get(arr, i) > val {\n            pos = i;\n            break\n        } else { () };\n        i = i + 1\n    };\n    let _p = vec_push(arr, 0);\n    let mut j = n;\n    while j > pos {\n        let _s = vec_set(arr, j, vec_get(arr, j - 1));\n        j = j - 1\n    };\n    let _s = vec_set(arr, pos, val);\n    n + 1\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let arr = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(arr, val)\n    };\n    let val = read_int();\n    let new_len = insert_sorted(arr, n, val);\n    for i in 0..new_len {\n        if i > 0 { let _s = print_str(\" \"); () } else { () };\n        let _p = print(vec_get(arr, i))\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(arr);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

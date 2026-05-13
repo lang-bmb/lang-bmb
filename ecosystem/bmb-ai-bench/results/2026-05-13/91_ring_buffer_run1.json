@@ -1,0 +1,24 @@
+{
+  "problem_id": "91_ring_buffer",
+  "category": "system",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let capacity = read_int();\n    let n = read_int();\n    let buf = vec_new();\n    for _i in 0..capacity {\n        let _p = vec_push(buf, 0)\n    };\n    let mut head = 0;\n    let mut tail = 0;\n    let mut size = 0;\n    for _i in 0..n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            if size == capacity {\n                let _s = vec_set(buf, tail, val);\n                tail = (tail + 1) - ((tail + 1) / capacity) * capacity;\n                head = (head + 1) - ((head + 1) / capacity) * capacity\n            } else {\n                let _s = vec_set(buf, tail, val);\n                tail = (tail + 1) - ((tail + 1) / capacity) * capacity;\n                size = size + 1\n            }\n        } else if op == 2 {\n            if size == 0 {\n                let _p = println(0 - 1);\n                ()\n            } else {\n                let val = vec_get(buf, head);\n                let _p = println(val);\n                head = (head + 1) - ((head + 1) / capacity) * capacity;\n                size = size - 1\n            }\n        } else {\n            let _p = println(size);\n            ()\n        }\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

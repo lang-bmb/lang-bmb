@@ -1,0 +1,24 @@
+{
+  "problem_id": "23_bounded_sum",
+  "category": "contract",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn safe_get(arr: i64, idx: i64, len: i64) -> i64\n    pre idx >= 0 and idx < len\n    post ret >= 0 - 9223372036854775807\n= vec_get(arr, idx);\n\nfn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let mut sum: i64 = 0;\n    for i in 0..n {\n        sum = sum + safe_get(v, i, n)\n    };\n    let _p = println(sum);\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

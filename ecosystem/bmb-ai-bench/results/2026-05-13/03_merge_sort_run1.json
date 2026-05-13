@@ -1,0 +1,24 @@
+{
+  "problem_id": "03_merge_sort",
+  "category": "algorithm",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn merge(v: i64, tmp: i64, left: i64, mid: i64, right: i64) -> i64 = {\n    let mut i = left;\n    let mut j = mid;\n    let mut k = left;\n    while i < mid and j < right {\n        let vi = vec_get(v, i);\n        let vj = vec_get(v, j);\n        if vi <= vj {\n            let _s = vec_set(tmp, k, vi);\n            i = i + 1;\n            k = k + 1\n        } else {\n            let _s = vec_set(tmp, k, vj);\n            j = j + 1;\n            k = k + 1\n        }\n    };\n    while i < mid {\n        let _s = vec_set(tmp, k, vec_get(v, i));\n        i = i + 1;\n        k = k + 1\n    };\n    while j < right {\n        let _s = vec_set(tmp, k, vec_get(v, j));\n        j = j + 1;\n        k = k + 1\n    };\n    let mut idx = left;\n    while idx < right {\n        let _s = vec_set(v, idx, vec_get(tmp, idx));\n        idx = idx + 1\n    };\n    0\n};\n\nfn merge_sort(v: i64, tmp: i64, left: i64, right: i64) -> i64 = {\n    if right - left <= 1 {\n        0\n    } else {\n        let mid = left + (right - left) / 2;\n        let _l = merge_sort(v, tmp, left, mid);\n        let _r = merge_sort(v, tmp, mid, right);\n        let _m = merge(v, tmp, left, mid, right);\n        0\n    }\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let tmp = vec_new();\n    for _i in 0..n {\n        let _p = vec_push(tmp, 0)\n    };\n    let _ms = merge_sort(v, tmp, 0, n);\n    for i in 0..n {\n        if i > 0 {\n            let _s = print_str(\" \");\n            ()\n        } else { () };\n        let _p = print(vec_get(v, i))\n    };\n    let _nl = println_str(\"\");\n    let _f1 = vec_free(v);\n    let _f2 = vec_free(tmp);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

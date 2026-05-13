@@ -1,0 +1,24 @@
+{
+  "problem_id": "67_nested_loops",
+  "category": "edge",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let t = read_int();\n    for _tc in 0..t {\n        let n = read_int();\n        let target = read_int();\n        let mut count: i64 = 0;\n        for i in 0..n {\n            for j in 0..n {\n                for k in 0..n {\n                    if i + j + k == target {\n                        count = count + 1;\n                        ()\n                    } else { () }\n                }\n            }\n        };\n        let _p = println(count);\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

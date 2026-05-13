@@ -1,0 +1,24 @@
+{
+  "problem_id": "15_min_max",
+  "category": "system",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let first = read_int();\n    let mut mn = first;\n    let mut mx = first;\n    for _i in 1..n {\n        let val = read_int();\n        if val < mn { mn = val; () } else { () };\n        if val > mx { mx = val; () } else { () }\n    };\n    let _p = print(mn);\n    let _s = print_str(\" \");\n    let _q = println(mx);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

@@ -1,0 +1,24 @@
+{
+  "problem_id": "59_calendar_day",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn days_in_month(m: i64) -> i64 =\n    if m == 1 { 31 }\n    else if m == 2 { 28 }\n    else if m == 3 { 31 }\n    else if m == 4 { 30 }\n    else if m == 5 { 31 }\n    else if m == 6 { 30 }\n    else if m == 7 { 31 }\n    else if m == 8 { 31 }\n    else if m == 9 { 30 }\n    else if m == 10 { 31 }\n    else if m == 11 { 30 }\n    else { 31 };\n\nfn day_of_year(month: i64, day: i64) -> i64 = {\n    let mut total: i64 = 0;\n    for m in 1..month {\n        total = total + days_in_month(m)\n    };\n    total + day\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    for _i in 0..n {\n        let month = read_int();\n        let day = read_int();\n        let result = day_of_year(month, day);\n        let _p = println(result)\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

@@ -1,0 +1,24 @@
+{
+  "problem_id": "58_spiral_order",
+  "category": "practical",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..(n * n) {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    let result = vec_new();\n    let mut top = 0;\n    let mut bottom = n - 1;\n    let mut left = 0;\n    let mut right = n - 1;\n\n    let mut going = 1;\n    while going == 1 {\n        if top > bottom {\n            going = 0\n        } else if left > right {\n            going = 0\n        } else {\n            // top row: left to right\n            for col in left..(right + 1) {\n                let _p = vec_push(result, vec_get(v, top * n + col))\n            };\n            top = top + 1;\n\n            // right col: top to bottom\n            if top <= bottom {\n                for row in top..(bottom + 1) {\n                    let _p = vec_push(result, vec_get(v, row * n + right))\n                };\n                right = right - 1\n            } else { () };\n\n            // bottom row: right to left\n            if top <= bottom {\n                let mut col = right;\n                let mut going2 = 1;\n                while going2 == 1 {\n                    let _p = vec_push(result, vec_get(v, bottom * n + col));\n                    if col == left {\n                        going2 = 0\n                    } else {\n                        col = col - 1\n                    }\n                };\n                bottom = bottom - 1\n            } else { () };\n\n            // left col: bottom to top\n            if left <= right {\n                if top <= bottom {\n                    let mut row = bottom;\n                    let mut going3 = 1;\n                    while going3 == 1 {\n                        let _p = vec_push(result, vec_get(v, row * n + left));\n                        if row == top {\n                            going3 = 0\n                        } else {\n                            row = row - 1\n                        }\n                    };\n                    left = left + 1\n                } else { () }\n            } else { () }\n        }\n    };\n\n    let rlen = vec_len(result);\n    for i in 0..rlen {\n        if i > 0 {\n            let _s = print_str(\" \");\n            ()\n        } else { () };\n        let _p = print(vec_get(result, i))\n    };\n    let _nl = println_str(\"\");\n\n    let _f = vec_free(v);\n    let _f2 = vec_free(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

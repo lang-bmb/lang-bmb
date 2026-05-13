@@ -1,0 +1,24 @@
+{
+  "problem_id": "80_array_of_arrays",
+  "category": "integration",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let rows = read_int();\n    let cols = read_int();\n    let data = vec_new();\n    for _i in 0..rows {\n        for _j in 0..cols {\n            let val = read_int();\n            let _p = vec_push(data, val)\n        }\n    };\n    let sums = vec_new();\n    for j in 0..cols {\n        let _p = vec_push(sums, 0)\n    };\n    for i in 0..rows {\n        for j in 0..cols {\n            let idx = i * cols + j;\n            let val = vec_get(data, idx);\n            let _s = vec_set(sums, j, vec_get(sums, j) + val)\n        }\n    };\n    for j in 0..cols {\n        if j > 0 {\n            let _sp = print_str(\" \");\n            ()\n        } else { () };\n        let _p = print(vec_get(sums, j))\n    };\n    let _nl = println_str(\"\");\n    let _f1 = vec_free(data);\n    let _f2 = vec_free(sums);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

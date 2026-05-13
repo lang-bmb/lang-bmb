@@ -1,0 +1,24 @@
+{
+  "problem_id": "46_csv_parser",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let q = read_int();\n    let mut qi = 0;\n    while qi < q {\n        let n = read_int();\n        let mut sum = 0;\n        for i in 0..n {\n            let val = read_int();\n            sum = sum + val\n        };\n        if qi > 0 {\n            let _nl = println_str(\"\");\n            ()\n        } else { () };\n        let _p1 = print(n);\n        let _sp = print_str(\" \");\n        let _p2 = print(sum);\n        qi = qi + 1\n    };\n    let _nl = println_str(\"\");\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

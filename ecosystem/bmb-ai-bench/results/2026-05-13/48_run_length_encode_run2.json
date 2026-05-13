@@ -1,0 +1,24 @@
+{
+  "problem_id": "48_run_length_encode",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    let runs_val = vec_new();\n    let runs_cnt = vec_new();\n\n    for i in 0..n {\n        let cur = vec_get(v, i);\n        let rlen = vec_len(runs_val);\n        if rlen == 0 {\n            let _pv = vec_push(runs_val, cur);\n            let _pc = vec_push(runs_cnt, 1);\n            ()\n        } else {\n            let last = vec_get(runs_val, rlen - 1);\n            if last == cur {\n                let _s = vec_set(runs_cnt, rlen - 1, vec_get(runs_cnt, rlen - 1) + 1);\n                ()\n            } else {\n                let _pv = vec_push(runs_val, cur);\n                let _pc = vec_push(runs_cnt, 1);\n                ()\n            }\n        }\n    };\n\n    let num_runs = vec_len(runs_val);\n    let _p = println(num_runs);\n\n    for i in 0..num_runs {\n        let _pv = print(vec_get(runs_val, i));\n        let _ps = print_str(\" \");\n        let _pc = println(vec_get(runs_cnt, i));\n        ()\n    };\n\n    let _fv = vec_free(v);\n    let _frv = vec_free(runs_val);\n    let _frc = vec_free(runs_cnt);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

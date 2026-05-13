@@ -1,0 +1,24 @@
+{
+  "problem_id": "53_phone_keypad",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn letters(d: i64) -> i64 =\n    if d == 2 { 3 }\n    else if d == 3 { 3 }\n    else if d == 4 { 3 }\n    else if d == 5 { 3 }\n    else if d == 6 { 3 }\n    else if d == 7 { 4 }\n    else if d == 8 { 3 }\n    else if d == 9 { 4 }\n    else { 0 };\n\nfn main() -> i64 = {\n    let n = read_int();\n    let mut total: i64 = 0;\n    for _i in 0..n {\n        let d = read_int();\n        total = total + letters(d)\n    };\n    let _p = println(total);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

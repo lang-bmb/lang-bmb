@@ -1,0 +1,96 @@
+{
+  "problem_id": "49_roman_to_int",
+  "category": "practical",
+  "difficulty": "medium",
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 10
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n_queries = read_int();\n    let mut q = 0;\n    while q < n_queries {\n        let len = read_int();\n        let v = vec_new();\n        for _i in 0..len {\n            let val = read_int();\n            let _p = vec_push(v, val)\n        };\n        let mut total = 0;\n        let mut i = 0;\n        while i < len {\n            let cur = vec_get(v, i);\n            if i + 1 < len {\n                let nxt = vec_get(v, i + 1);\n                if cur < nxt {\n                    total = total + (nxt - cur);\n                    i = i + 2\n                } else {\n                    total = total + cur;\n                    i = i + 1\n                }\n            } else {\n                total = total + cur;\n                i = i + 1\n            }\n        };\n        let _f = vec_free(v);\n        let _p = println(total);\n        q = q + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '3000\\n', got '3002\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let n_queries = read_int();\n    let mut q = 0;\n    while q < n_queries {\n        let len = read_int();\n        let v = vec_new();\n        for _i in 0..len {\n            let val = read_int();\n            let _p = vec_push(v, val)\n        };\n        let mut total = 0;\n        for i in 0..len {\n            let cur = vec_get(v, i);\n            if i + 1 < len {\n                let nxt = vec_get(v, i + 1);\n                if cur < nxt {\n                    total = total - cur\n                } else {\n                    total = total + cur\n                }\n            } else {\n                total = total + cur\n            }\n        };\n        let _f = vec_free(v);\n        let _p = println(total);\n        q = q + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '3000\\n', got '3002\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let len = read_int();\n    let v = vec_new();\n    for _i in 0..len {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let mut total = 0;\n    for i in 0..len {\n        let cur = vec_get(v, i);\n        if i + 1 < len {\n            let nxt = vec_get(v, i + 1);\n            if cur < nxt {\n                total = total - cur\n            } else {\n                total = total + cur\n            }\n        } else {\n            total = total + cur\n        }\n    };\n    let _f = vec_free(v);\n    let _p = println(total);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '1900\\n', got '3\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn main() -> i64 = {\n    let n_queries = read_int();\n    let mut q = 0;\n    while q < n_queries {\n        let len = read_int();\n        let v = vec_new();\n        for _i in 0..len {\n            let val = read_int();\n            let _p = vec_push(v, val)\n        };\n        let mut total = 0;\n        let mut i = 0;\n        while i < len {\n            let cur = vec_get(v, i);\n            let next_i = i + 1;\n            if next_i < len {\n                let nxt = vec_get(v, next_i);\n                if cur < nxt {\n                    total = total - cur;\n                    i = i + 2\n                } else {\n                    total = total + cur;\n                    i = i + 1\n                }\n            } else {\n                total = total + cur;\n                i = i + 1\n            }\n        };\n        let _f = vec_free(v);\n        let _p = println(total);\n        q = q + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '1900\\n', got '900\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 5,
+      "code": "fn main() -> i64 = {\n    let n_queries = read_int();\n    let mut q = 0;\n    while q < n_queries {\n        let len = read_int();\n        let v = vec_new();\n        for _i in 0..len {\n            let val = read_int();\n            let _p = vec_push(v, val)\n        };\n        let mut total = 0;\n        let mut i = 0;\n        while i < len {\n            let cur = vec_get(v, i);\n            let next_i = i + 1;\n            if next_i < len {\n                let nxt = vec_get(v, next_i);\n                if cur < nxt {\n                    total = total + nxt - cur;\n                    i = i + 2\n                } else {\n                    total = total + cur;\n                    i = i + 1\n                }\n            } else {\n                total = total + cur;\n                i = i + 1\n            }\n        };\n        let _f = vec_free(v);\n        let _p = println(total);\n        q = q + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '3000\\n', got '3002\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 6,
+      "code": "fn main() -> i64 = {\n    let n_queries = read_int();\n    let mut q = 0;\n    while q < n_queries {\n        let len = read_int();\n        let v = vec_new();\n        for _i in 0..len {\n            let val = read_int();\n            let _p = vec_push(v, val)\n        };\n        let mut total = 0;\n        let mut i = 0;\n        while i < len {\n            let cur = vec_get(v, i);\n            let next_i = i + 1;\n            if next_i < len {\n                let nxt = vec_get(v, next_i);\n                if cur < nxt {\n                    total = total + nxt - cur;\n                    i = i + 2\n                } else {\n                    total = total + cur;\n                    i = i + 1\n                }\n            } else {\n                total = total + cur;\n                i = i + 1\n            }\n        };\n        let mut count = 1;\n        let mut j = 1;\n        let mut max_run = 1;\n        while j < len {\n            if vec_get(v, j) == vec_get(v, j - 1) {\n                count = count + 1;\n                if count > max_run { max_run = count } else { () }\n            } else {\n                count = 1\n            };\n            j = j + 1\n        };\n        if max_run >= 4 {\n            let first_val = vec_get(v, 0);\n            total = total - first_val\n        } else { () };\n        let _f = vec_free(v);\n        let _p = println(total);\n        q = q + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '3000\\n', got '3004\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 7,
+      "code": "fn main() -> i64 = {\n    let n_queries = read_int();\n    let mut q = 0;\n    while q < n_queries {\n        let len = read_int();\n        let v = vec_new();\n        for _i in 0..len {\n            let val = read_int();\n            let _p = vec_push(v, val)\n        };\n        let mut total = 0;\n        let mut i = 0;\n        while i < len {\n            let cur = vec_get(v, i);\n            let next_i = i + 1;\n            if next_i < len {\n                let nxt = vec_get(v, next_i);\n                if cur < nxt {\n                    total = total + nxt - cur;\n                    i = i + 2\n                } else {\n                    let mut run = 0;\n                    let mut k = i;\n                    while k < len {\n                        if vec_get(v, k) == cur {\n                            run = run + 1;\n                            k = k + 1\n                        } else {\n                            k = len\n                        }\n                    };\n                    if run > 3 { run = 3 } else { () };\n                    total = total + cur * run;\n                    i = i + run\n                }\n            } else {\n                total = total + cur;\n                i = i + 1\n            }\n        };\n        let _f = vec_free(v);\n        let _p = println(total);\n        q = q + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '3000\\n', got '3002\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 8,
+      "code": "fn main() -> i64 = {\n    let n_queries = read_int();\n    let mut q = 0;\n    while q < n_queries {\n        let len = read_int();\n        let v = vec_new();\n        for _i in 0..len {\n            let val = read_int();\n            let _p = vec_push(v, val)\n        };\n        let mut total = 0;\n        let mut i = 0;\n        while i < len {\n            let cur = vec_get(v, i);\n            let next_i = i + 1;\n            if next_i < len {\n                let nxt = vec_get(v, next_i);\n                if cur < nxt {\n                    total = total + nxt - cur;\n                    i = i + 2\n                } else {\n                    let mut run = 0;\n                    let mut k = i;\n                    while k < len {\n                        if vec_get(v, k) == cur {\n                            run = run + 1;\n                            k = k + 1\n                        } else {\n                            k = len\n                        }\n                    };\n                    let actual_run = run;\n                    if run > 3 { run = 3 } else { () };\n                    total = total + cur * run;\n                    i = i + actual_run\n                }\n            } else {\n                total = total + cur;\n                i = i + 1\n            }\n        };\n        let _f = vec_free(v);\n        let _p = println(total);\n        q = q + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '3000\\n', got '3002\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 9,
+      "code": "fn main() -> i64 = {\n    let n_queries = read_int();\n    let mut q = 0;\n    while q < n_queries {\n        let len = read_int();\n        let v = vec_new();\n        for _i in 0..len {\n            let val = read_int();\n            let _p = vec_push(v, val)\n        };\n        let mut total = 0;\n        let mut i = 0;\n        while i < len {\n            let cur = vec_get(v, i);\n            let next_i = i + 1;\n            if next_i < len {\n                let nxt = vec_get(v, next_i);\n                if cur < nxt {\n                    total = total + nxt - cur;\n                    i = i + 2\n                } else {\n                    let mut run = 1;\n                    let mut k = i + 1;\n                    let mut stop = 0;\n                    while k < len {\n                        if stop == 0 {\n                            if vec_get(v, k) == cur {\n                                run = run + 1;\n                                k = k + 1\n                            } else {\n                                stop = 1;\n                                k = k + 1\n                            }\n                        } else {\n                            k = len\n                        }\n                    };\n                    let actual_run = run;\n                    if run > 3 { run = 3 } else { () };\n                    total = total + cur * run;\n                    i = i + actual_run\n                }\n            } else {\n                total = total + cur;\n                i = i + 1\n            }\n        };\n        let _f = vec_free(v);\n        let _p = println(total);\n        q = q + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '3000\\n', got '3002\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 10,
+      "code": "fn main() -> i64 = {\n    let n_queries = read_int();\n    let mut q = 0;\n    while q < n_queries {\n        let len = read_int();\n        let v = vec_new();\n        for _i in 0..len {\n            let val = read_int();\n            let _p = vec_push(v, val)\n        };\n        let mut total = 0;\n        for i in 0..len {\n            let cur = vec_get(v, i);\n            let next_i = i + 1;\n            if next_i < len {\n                let nxt = vec_get(v, next_i);\n                if cur < nxt {\n                    total = total - cur\n                } else {\n                    total = total + cur\n                }\n            } else {\n                total = total + cur\n            }\n        };\n        let _f = vec_free(v);\n        let _p = println(total);\n        q = q + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '3000\\n', got '3002\\n'",
+      "loop_type": "D"
+    }
+  ],
+  "run_id": 3
+}

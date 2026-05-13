@@ -1,0 +1,96 @@
+{
+  "problem_id": "83_pipeline",
+  "category": "integration",
+  "difficulty": "easy",
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 10
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let op = read_int();\n    if op == 1 {\n        let k = read_int();\n        for i in 0..n {\n            let _s = vec_set(v, i, vec_get(v, i) + k)\n        }\n    } else if op == 2 {\n        let k = read_int();\n        for i in 0..n {\n            let _s = vec_set(v, i, vec_get(v, i) * k)\n        }\n    } else if op == 3 {\n        for i in 0..n {\n            let _s = vec_set(v, i, 0 - vec_get(v, i))\n        }\n    } else if op == 4 {\n        for i in 0..n {\n            let cur = vec_get(v, i);\n            let abs_val = if cur < 0 { 0 - cur } else { cur };\n            let _s = vec_set(v, i, abs_val)\n        }\n    } else if op == 5 {\n        let mut left = 0;\n        let mut right = n - 1;\n        while left < right {\n            let tmp = vec_get(v, left);\n            let _s1 = vec_set(v, left, vec_get(v, right));\n            let _s2 = vec_set(v, right, tmp);\n            left = left + 1;\n            right = right - 1\n        }\n    } else { () };\n    for i in 0..n {\n        if i > 0 { let _s = print_str(\" \"); () } else { () };\n        let _p = print(vec_get(v, i))\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '11 12 13\\n', got '2 3 4\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let op = read_int();\n    let arg = read_int();\n    if op == 1 {\n        for i in 0..n {\n            let _s = vec_set(v, i, vec_get(v, i) + arg)\n        }\n    } else if op == 2 {\n        for i in 0..n {\n            let _s = vec_set(v, i, vec_get(v, i) * arg)\n        }\n    } else if op == 3 {\n        for i in 0..n {\n            let _s = vec_set(v, i, 0 - vec_get(v, i))\n        }\n    } else if op == 4 {\n        for i in 0..n {\n            let cur = vec_get(v, i);\n            let abs_val = if cur < 0 { 0 - cur } else { cur };\n            let _s = vec_set(v, i, abs_val)\n        }\n    } else if op == 5 {\n        let mut left = 0;\n        let mut right = n - 1;\n        while left < right {\n            let tmp = vec_get(v, left);\n            let _s1 = vec_set(v, left, vec_get(v, right));\n            let _s2 = vec_set(v, right, tmp);\n            left = left + 1;\n            right = right - 1\n        }\n    } else { () };\n    for i in 0..n {\n        if i > 0 { let _s = print_str(\" \"); () } else { () };\n        let _p = print(vec_get(v, i))\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '11 12 13\\n', got '2 3 4\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let _skip = read_int();\n    let op = read_int();\n    let arg = read_int();\n    if op == 1 {\n        for i in 0..n {\n            let _s = vec_set(v, i, vec_get(v, i) + arg)\n        }\n    } else if op == 2 {\n        for i in 0..n {\n            let _s = vec_set(v, i, vec_get(v, i) * arg)\n        }\n    } else if op == 3 {\n        for i in 0..n {\n            let _s = vec_set(v, i, 0 - vec_get(v, i))\n        }\n    } else if op == 4 {\n        for i in 0..n {\n            let cur = vec_get(v, i);\n            let abs_val = if cur < 0 { 0 - cur } else { cur };\n            let _s = vec_set(v, i, abs_val)\n        }\n    } else if op == 5 {\n        let mut left = 0;\n        let mut right = n - 1;\n        while left < right {\n            let tmp = vec_get(v, left);\n            let _s1 = vec_set(v, left, vec_get(v, right));\n            let _s2 = vec_set(v, right, tmp);\n            left = left + 1;\n            right = right - 1\n        }\n    } else { () };\n    for i in 0..n {\n        if i > 0 { let _s = print_str(\" \"); () } else { () };\n        let _p = print(vec_get(v, i))\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 6: expected '6 9 12\\n', got '2 3 4\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let op = read_int();\n    let arg = read_int();\n    if op == 1 {\n        for i in 0..n {\n            let _s = vec_set(v, i, vec_get(v, i) + arg)\n        }\n    } else if op == 2 {\n        for i in 0..n {\n            let _s = vec_set(v, i, vec_get(v, i) * arg)\n        }\n    } else if op == 3 {\n        for i in 0..n {\n            let _s = vec_set(v, i, 0 - vec_get(v, i))\n        }\n    } else if op == 4 {\n        for i in 0..n {\n            let cur = vec_get(v, i);\n            let abs_val = if cur < 0 { 0 - cur } else { cur };\n            let _s = vec_set(v, i, abs_val)\n        }\n    } else if op == 5 {\n        let mut left = 0;\n        let mut right = n - 1;\n        while left < right {\n            let tmp = vec_get(v, left);\n            let _s1 = vec_set(v, left, vec_get(v, right));\n            let _s2 = vec_set(v, right, tmp);\n            left = left + 1;\n            right = right - 1\n        }\n    } else { () };\n    for i in 0..n {\n        if i > 0 { let _s = print_str(\" \"); () } else { () };\n        let _p = print(vec_get(v, i))\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '11 12 13\\n', got '2 3 4\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 5,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let cat = read_int();\n    let op = read_int();\n    if cat == 1 {\n        if op == 1 {\n            let arg = read_int();\n            for i in 0..n {\n                let _s = vec_set(v, i, vec_get(v, i) + arg)\n            }\n        } else if op == 2 {\n            let arg = read_int();\n            for i in 0..n {\n                let _s = vec_set(v, i, vec_get(v, i) * arg)\n            }\n        } else if op == 3 {\n            for i in 0..n {\n                let _s = vec_set(v, i, 0 - vec_get(v, i))\n            }\n        } else if op == 4 {\n            for i in 0..n {\n                let cur = vec_get(v, i);\n                let abs_val = if cur < 0 { 0 - cur } else { cur };\n                let _s = vec_set(v, i, abs_val)\n            }\n        } else if op == 5 {\n            let mut left = 0;\n            let mut right = n - 1;\n            while left < right {\n                let tmp = vec_get(v, left);\n                let _s1 = vec_set(v, left, vec_get(v, right));\n                let _s2 = vec_set(v, right, tmp);\n                left = left + 1;\n                right = right - 1\n            }\n        } else { () }\n    } else if cat == 2 {\n        for i in 0..n {\n            let _s = vec_set(v, i, vec_get(v, i) * op)\n        }\n    } else { () };\n    for i in 0..n {\n        if i > 0 { let _s = print_str(\" \"); () } else { () };\n        let _p = print(vec_get(v, i))\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 6: expected '6 9 12\\n', got '1 2 3\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 6,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let op = read_int();\n    let arg = read_int();\n    if op == 1 {\n        for i in 0..n {\n            let _s = vec_set(v, i, vec_get(v, i) + arg)\n        }\n    } else if op == 2 {\n        for i in 0..n {\n            let _s = vec_set(v, i, vec_get(v, i) * arg)\n        }\n    } else if op == 3 {\n        for i in 0..n {\n            let _s = vec_set(v, i, 0 - vec_get(v, i))\n        }\n    } else if op == 4 {\n        for i in 0..n {\n            let cur = vec_get(v, i);\n            let abs_val = if cur < 0 { 0 - cur } else { cur };\n            let _s = vec_set(v, i, abs_val)\n        }\n    } else if op == 5 {\n        let mut left = 0;\n        let mut right = n - 1;\n        while left < right {\n            let tmp = vec_get(v, left);\n            let _s1 = vec_set(v, left, vec_get(v, right));\n            let _s2 = vec_set(v, right, tmp);\n            left = left + 1;\n            right = right - 1\n        }\n    } else { () };\n    for i in 0..n {\n        if i > 0 { let _s = print_str(\" \"); () } else { () };\n        let _p = print(vec_get(v, i))\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '11 12 13\\n', got '2 3 4\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 7,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let op = read_int();\n    let sub_op = read_int();\n    if op == 1 {\n        if sub_op == 1 {\n            let arg = read_int();\n            for i in 0..n {\n                let _s = vec_set(v, i, vec_get(v, i) + arg)\n            }\n        } else if sub_op == 2 {\n            let arg = read_int();\n            for i in 0..n {\n                let _s = vec_set(v, i, vec_get(v, i) * arg)\n            }\n        } else if sub_op == 3 {\n            for i in 0..n {\n                let _s = vec_set(v, i, 0 - vec_get(v, i))\n            }\n        } else if sub_op == 4 {\n            for i in 0..n {\n                let cur = vec_get(v, i);\n                let abs_val = if cur < 0 { 0 - cur } else { cur };\n                let _s = vec_set(v, i, abs_val)\n            }\n        } else if sub_op == 5 {\n            let mut left = 0;\n            let mut right = n - 1;\n            while left < right {\n                let tmp = vec_get(v, left);\n                let _s1 = vec_set(v, left, vec_get(v, right));\n                let _s2 = vec_set(v, right, tmp);\n                left = left + 1;\n                right = right - 1\n            }\n        } else { () }\n    } else { () };\n    for i in 0..n {\n        if i > 0 { let _s = print_str(\" \"); () } else { () };\n        let _p = print(vec_get(v, i))\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 6: expected '6 9 12\\n', got '1 2 3\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 8,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let op = read_int();\n    if op == 1 {\n        let arg = read_int();\n        for i in 0..n {\n            let _s = vec_set(v, i, vec_get(v, i) + arg)\n        }\n    } else if op == 2 {\n        let arg = read_int();\n        for i in 0..n {\n            let _s = vec_set(v, i, vec_get(v, i) * arg)\n        }\n    } else if op == 3 {\n        for i in 0..n {\n            let _s = vec_set(v, i, 0 - vec_get(v, i))\n        }\n    } else if op == 4 {\n        for i in 0..n {\n            let cur = vec_get(v, i);\n            let abs_val = if cur < 0 { 0 - cur } else { cur };\n            let _s = vec_set(v, i, abs_val)\n        }\n    } else if op == 5 {\n        let mut left = 0;\n        let mut right = n - 1;\n        while left < right {\n            let tmp = vec_get(v, left);\n            let _s1 = vec_set(v, left, vec_get(v, right));\n            let _s2 = vec_set(v, right, tmp);\n            left = left + 1;\n            right = right - 1\n        }\n    } else { () };\n    for i in 0..n {\n        if i > 0 { let _s = print_str(\" \"); () } else { () };\n        let _p = print(vec_get(v, i))\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '11 12 13\\n', got '2 3 4\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 9,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let op = read_int();\n    let sub_op = read_int();\n    if op == 1 {\n        if sub_op == 1 {\n            let arg = read_int();\n            for i in 0..n {\n                let _s = vec_set(v, i, vec_get(v, i) + arg)\n            }\n        } else if sub_op == 2 {\n            let arg = read_int();\n            for i in 0..n {\n                let _s = vec_set(v, i, vec_get(v, i) * arg)\n            }\n        } else if sub_op == 3 {\n            for i in 0..n {\n                let _s = vec_set(v, i, 0 - vec_get(v, i))\n            }\n        } else if sub_op == 4 {\n            for i in 0..n {\n                let cur = vec_get(v, i);\n                let abs_val = if cur < 0 { 0 - cur } else { cur };\n                let _s = vec_set(v, i, abs_val)\n            }\n        } else if sub_op == 5 {\n            let mut left = 0;\n            let mut right = n - 1;\n            while left < right {\n                let tmp = vec_get(v, left);\n                let _s1 = vec_set(v, left, vec_get(v, right));\n                let _s2 = vec_set(v, right, tmp);\n                left = left + 1;\n                right = right - 1\n            }\n        } else { () }\n    } else if op == 2 {\n        let arg = read_int();\n        for i in 0..n {\n            let _s = vec_set(v, i, vec_get(v, i) * arg)\n        }\n    } else { () };\n    for i in 0..n {\n        if i > 0 { let _s = print_str(\" \"); () } else { () };\n        let _p = print(vec_get(v, i))\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 6: expected '6 9 12\\n', got '1 2 3\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 10,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let op = read_int();\n    if op == 1 {\n        let sub_op = read_int();\n        if sub_op == 1 {\n            let arg = read_int();\n            for i in 0..n {\n                let _s = vec_set(v, i, vec_get(v, i) + arg)\n            }\n        } else if sub_op == 2 {\n            let arg = read_int();\n            for i in 0..n {\n                let _s = vec_set(v, i, vec_get(v, i) * arg)\n            }\n        } else if sub_op == 3 {\n            for i in 0..n {\n                let _s = vec_set(v, i, 0 - vec_get(v, i))\n            }\n        } else if sub_op == 4 {\n            for i in 0..n {\n                let cur = vec_get(v, i);\n                let abs_val = if cur < 0 { 0 - cur } else { cur };\n                let _s = vec_set(v, i, abs_val)\n            }\n        } else if sub_op == 5 {\n            let mut left = 0;\n            let mut right = n - 1;\n            while left < right {\n                let tmp = vec_get(v, left);\n                let _s1 = vec_set(v, left, vec_get(v, right));\n                let _s2 = vec_set(v, right, tmp);\n                left = left + 1;\n                right = right - 1\n            }\n        } else { () }\n    } else if op == 2 {\n        let arg = read_int();\n        for i in 0..n {\n            let _s = vec_set(v, i, vec_get(v, i) * arg)\n        }\n    } else { () };\n    for i in 0..n {\n        if i > 0 { let _s = print_str(\" \"); () } else { () };\n        let _p = print(vec_get(v, i))\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 6: expected '6 9 12\\n', got '1 2 3\\n'",
+      "loop_type": "D"
+    }
+  ],
+  "run_id": 3
+}

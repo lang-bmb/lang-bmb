@@ -1,0 +1,24 @@
+{
+  "problem_id": "64_many_params",
+  "category": "edge",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    for _q in 0..n {\n        let vals = vec_new();\n        for _i in 0..6 {\n            let v = read_int();\n            let _p = vec_push(vals, v)\n        };\n        let weights = vec_new();\n        for _i in 0..6 {\n            let w = read_int();\n            let _p = vec_push(weights, w)\n        };\n        let mut sum: i64 = 0;\n        for i in 0..6 {\n            sum = sum + vec_get(vals, i) * vec_get(weights, i)\n        };\n        let _p = println(sum);\n        let _f1 = vec_free(vals);\n        let _f2 = vec_free(weights)\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

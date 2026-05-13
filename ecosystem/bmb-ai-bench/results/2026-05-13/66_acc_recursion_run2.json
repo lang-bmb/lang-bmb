@@ -1,0 +1,56 @@
+{
+  "problem_id": "66_acc_recursion",
+  "category": "edge",
+  "difficulty": "easy",
+  "loop_count": 5,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 4
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn triangular(n: i64) -> i64 =\n    if n <= 0 { 0 } else { n + triangular(n - 1) };\n\nfn main() -> i64 = {\n    let op = read_int();\n    if op == 1 {\n        let n = read_int();\n        let result = triangular(n);\n        let _p = println(result);\n        ()\n    } else if op == 2 {\n        let n = read_int();\n        let _p = println(n);\n        ()\n    } else if op == 3 {\n        let count = read_int();\n        let mut acc = 0;\n        for _i in 0..count {\n            let val = read_int();\n            acc = acc + val;\n            let _p = println(acc);\n            ()\n        };\n        ()\n    } else { () };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4: expected '1\\n3\\n6\\n', got '2\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn triangular(n: i64) -> i64 =\n    if n <= 0 { 0 } else { n + triangular(n - 1) };\n\nfn main() -> i64 = {\n    let op = read_int();\n    if op == 1 {\n        let n = read_int();\n        let result = triangular(n);\n        let _p = println(result);\n        ()\n    } else if op == 2 {\n        let a = read_int();\n        let b = read_int();\n        let _p = println(a + b);\n        ()\n    } else if op == 3 {\n        let mut acc = 0;\n        for _i in 0..op {\n            let val = read_int();\n            acc = acc + val;\n            let _p = println(acc);\n            ()\n        };\n        ()\n    } else {\n        let mut acc = 0;\n        for _i in 0..op {\n            let val = read_int();\n            acc = acc + val;\n            let _p = println(acc);\n            ()\n        };\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 8: expected '28\\n36\\n', got '15\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let q = read_int();\n    for _qi in 0..q {\n        let op = read_int();\n        let mut acc = 0;\n        for _i in 0..op {\n            let val = read_int();\n            acc = acc + val;\n            let _p = println(acc);\n            ()\n        };\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: expected '0\\n', got ''",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn triangular(n: i64) -> i64 =\n    if n <= 0 { 0 } else { n + triangular(n - 1) };\n\nfn main() -> i64 = {\n    let op = read_int();\n    if op == 1 {\n        let n = read_int();\n        let result = triangular(n);\n        let _p = println(result);\n        ()\n    } else {\n        let mut acc = 0;\n        for _i in 0..op {\n            let val = read_int();\n            acc = acc + val;\n            let _p = println(acc);\n            ()\n        };\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 8: expected '28\\n36\\n', got '7\\n15\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 5,
+      "code": "fn triangular(n: i64) -> i64 =\n    if n <= 0 { 0 } else { n + triangular(n - 1) };\n\nfn main() -> i64 = {\n    let op = read_int();\n    if op == 1 {\n        let n = read_int();\n        let result = triangular(n);\n        let _p = println(result);\n        ()\n    } else {\n        for _i in 0..op {\n            let val = read_int();\n            let result = triangular(val);\n            let _p = println(result);\n            ()\n        };\n        ()\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

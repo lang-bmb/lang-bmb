@@ -1,0 +1,32 @@
+{
+  "problem_id": "75_longest_plateau",
+  "category": "edge",
+  "difficulty": "medium",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let _t = read_int();\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let mut best = 0;\n    let mut i = 0;\n    while i < n {\n        let cur = vec_get(v, i);\n        let mut j = i;\n        while j < n {\n            if vec_get(v, j) == cur {\n                j = j + 1\n            } else {\n                break\n            }\n        };\n        let run_len = j - i;\n        let left_ok = if i == 0 { 1 } else { if vec_get(v, i - 1) < cur { 1 } else { 0 } };\n        let right_ok = if j == n { 1 } else { if vec_get(v, j) < cur { 1 } else { 0 } };\n        if left_ok == 1 {\n            if right_ok == 1 {\n                if run_len > best {\n                    best = run_len\n                } else { () }\n            } else { () }\n        } else { () };\n        i = j\n    };\n    let _p = println(best);\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 5: expected '2\\n4\\n', got '1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let t = read_int();\n    for _tc in 0..t {\n        let n = read_int();\n        let v = vec_new();\n        for _i in 0..n {\n            let val = read_int();\n            let _p = vec_push(v, val)\n        };\n        let mut best = 0;\n        let mut i = 0;\n        while i < n {\n            let cur = vec_get(v, i);\n            let mut j = i;\n            while j < n {\n                if vec_get(v, j) == cur {\n                    j = j + 1\n                } else {\n                    break\n                }\n            };\n            let run_len = j - i;\n            if run_len > best {\n                best = run_len\n            } else { () };\n            i = j\n        };\n        let _p = println(best);\n        let _f = vec_free(v)\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

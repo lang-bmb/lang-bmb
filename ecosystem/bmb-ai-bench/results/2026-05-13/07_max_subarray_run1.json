@@ -1,0 +1,24 @@
+{
+  "problem_id": "07_max_subarray",
+  "category": "algorithm",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let mut max_sum = 0 - 9223372036854775807;\n    let mut current_sum = 0 - 9223372036854775807;\n    let mut first = 1;\n    for _i in 0..n {\n        let val = read_int();\n        if first == 1 {\n            current_sum = val;\n            max_sum = val;\n            first = 0;\n            ()\n        } else {\n            if current_sum + val > val {\n                current_sum = current_sum + val;\n                ()\n            } else {\n                current_sum = val;\n                ()\n            };\n            if current_sum > max_sum {\n                max_sum = current_sum;\n                ()\n            } else { () };\n            ()\n        }\n    };\n    let _p = println(max_sum);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

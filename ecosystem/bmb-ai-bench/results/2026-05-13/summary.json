@@ -1,0 +1,12 @@
+{
+  "date": "2026-05-13",
+  "model": "claude-sonnet-4-6",
+  "total_problems": 100,
+  "runs": 3,
+  "total_runs": 300,
+  "passed": 294,
+  "success_rate": 98.0,
+  "median_loops": 1,
+  "output_dir": "D:\\data\\lang-bmb\\ecosystem\\bmb-ai-bench\\results\\2026-05-13",
+  "note": "4 problem.md descriptions added (65,67,77,47) in Cycle 2811 — re-ran those 4 problems only"
+}

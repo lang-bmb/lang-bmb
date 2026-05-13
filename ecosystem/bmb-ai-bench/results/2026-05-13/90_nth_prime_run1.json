@@ -1,0 +1,32 @@
+{
+  "problem_id": "90_nth_prime",
+  "category": "algorithm",
+  "difficulty": "medium",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn is_prime(n: i64) -> i64 =\n    if n < 2 { 0 }\n    else if n == 2 { 1 }\n    else if n * 1 > 0 {\n        let mut result = 1;\n        let mut i = 2;\n        while i * i <= n {\n            if n - (n / i) * i == 0 {\n                result = 0;\n                i = n\n            } else { () };\n            i = i + 1\n        };\n        result\n    } else { 0 };\n\nfn main() -> i64 = {\n    let _t = read_int();\n    let n = read_int();\n    let mut count = 0;\n    let mut num = 1;\n    let mut answer = 2;\n    while count < n {\n        num = num + 1;\n        if is_prime(num) == 1 {\n            count = count + 1;\n            answer = num\n        } else { () }\n    };\n    let _p = println(answer);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 5: expected '2\\n3\\n5\\n', got '2\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn is_prime(n: i64) -> i64 =\n    if n < 2 { 0 }\n    else if n == 2 { 1 }\n    else {\n        let mut result = 1;\n        let mut i = 2;\n        while i * i <= n {\n            if n - (n / i) * i == 0 {\n                result = 0;\n                i = n\n            } else { () };\n            i = i + 1\n        };\n        result\n    };\n\nfn main() -> i64 = {\n    let t = read_int();\n    let mut q = 0;\n    while q < t {\n        let n = read_int();\n        let mut count = 0;\n        let mut num = 1;\n        let mut answer = 2;\n        while count < n {\n            num = num + 1;\n            if is_prime(num) == 1 {\n                count = count + 1;\n                answer = num\n            } else { () }\n        };\n        let _p = println(answer);\n        q = q + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}
