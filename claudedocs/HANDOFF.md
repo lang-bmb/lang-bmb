@@ -1,18 +1,18 @@
-# BMB Session Handoff — 2026-05-13 (Cycles 2803-2807 — playground-wasm close + bootstrap CI script)
+# BMB Session Handoff — 2026-05-13 (Cycles 2808-2809 — ROADMAP M4-3/4/5 동기화 + 조기 종료)
 
-> **HEAD**: `82c4949d`
-> **이번 세션 commits**: playground-wasm ISSUE close (C2805) + rebuild-bootstrap-exe.sh (C2806) + session-close (C2807)
+> **HEAD**: `8b021019` (세션 중 신규 커밋 예정)
+> **이번 세션 commits**: ROADMAP M4-3/4/5 ✅ 동기화 (C2808) + 조기 종료 (C2809)
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2792, 이번 세션 bootstrap 미변경)
-> **이전 세션 핸드오프**: Cycles 2793-2802 (`71055ef3`)
+> **이전 세션 핸드오프**: Cycles 2803-2807 (`82c4949d`)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2808 — Active ISSUE 11개 아래 우선순위 참고
-> **이번 세션 cycle logs**: cycle-2803.md ~ cycle-2807.md (claudedocs/cycle-logs/)
+> **다음 세션 진입점**: Cycle 2810 — HUMAN 결정 대기 중 (아래 우선순위 참고)
+> **이번 세션 cycle logs**: cycle-2808.md ~ cycle-2809.md (claudedocs/cycle-logs/)
 
 ---
 
-## 다음 세션 우선순위 (Cycle 2808+)
+## 다음 세션 우선순위 (Cycle 2810+)
 
-### Active ISSUE 11개 현황 (Cycle 2807 기준)
+### Active ISSUE 11개 현황 (Cycle 2809 기준)
 
 | ISSUE | 우선순위 | 상태 | 비고 |
 |-------|---------|------|------|
@@ -24,19 +24,37 @@
 ### 자율 착수 가능 작업
 
 1. **bootstrap parser 재귀→iterative 전환** — P3 장기 개선 (multi-cycle, 3-5 사이클 예상)  
-   ⚠️ 착수 전 분할 커밋 계획 필수: 부분 커밋 상태로 세션 종료 불가
-2. **`--check-only` CI 연동** — `scripts/rebuild-bootstrap-exe.sh --check-only` 를 GitHub Actions step에 연결 (P4, 1 사이클)
-3. **ROADMAP Active ISSUE 탐색** — 다른 자율 착수 가능 항목 확인
+   ⚠️ 착수 전 분할 커밋 계획 필수: 부분 커밋 상태로 세션 종료 불가  
+   ⚠️ **구체적 실패 없는 선제적 작업** — 현재 스택오버플로 미발생. 착수 동인 미충족.
+2. ~~`--check-only` CI 연동~~ — **❌ REJECTED (Cycle 2808)**: exe 미 git-tracked → CI fresh checkout에서 항상 stale; PE32+ Linux 불호환
 
 ### 다음 사이클 권장
 
-**Cycle 2808**: `claudedocs/ROADMAP.md` 확인 → 자율 항목 선택
-- 추천 1: `--check-only` CI 연동 (P4, 1 사이클, 명확한 완료 기준)
-- 추천 2: bootstrap parser iterative conversion — 사이클 분할 계획 후 착수
+**Cycle 2810**: HUMAN 결정 입력 대기
+- HUMAN 결정 시: tier3-spawn-overhead Option A/B/C → 즉시 착수
+- HUMAN 결정 시: B-track API key → benchmark 재측정 사이클
+- 자율 선택 시: ROADMAP §신규 ISSUE 발굴 (현재 자율 가능 항목 없음)
 
 ---
 
-## 0. 이번 세션 작업 (Cycles 2803-2807)
+## 0. 이번 세션 작업 (Cycles 2808-2809)
+
+### ✅ ROADMAP M4-3/M4-4/M4-5 완료 동기화 (Cycle 2808)
+
+`claudedocs/ROADMAP.md` M4 준비 태스크 테이블 3개 행 갱신:
+- M4-3 `2-3 cycles` → `✅ Cycle 2621` (let-tuple destructuring)
+- M4-4 `2-3 cycles` → `✅ Cycle 2620` (static method call)
+- M4-5 `1-2 cycles` → `✅ Cycle 2633` (payload enum constructor)
+
+`--check-only` CI 제안: **REJECTED** (exe 미 git-tracked → CI 항상 실패; PE32+ Linux 불호환).
+
+### ✅ 조기 종료 (Cycle 2809)
+
+Active ISSUE 11개 전수 스캔 — 모두 HUMAN-blocked 또는 환경 의존. Rule 9 조건 3/3 충족.
+
+---
+
+## [PREV] 이전 세션 작업 (Cycles 2803-2807)
 
 ### ✅ playground-wasm ISSUE close (Cycles 2803-2805)
 
