@@ -1,5 +1,6 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-14 (Cycle 2849 — **str_hashmap_keys/sorted_keys**: keys iteration 2종 추가. SVEC_REGISTRY 재활용. 2373 tests ✅)
+> 최종 업데이트: 2026-05-14 (Cycle 2850 — **svec_new/push + str_hashmap_inc**: svec API 완성 + atomic increment. 2375 tests ✅)
+> 이전 갱신: 2026-05-14 (Cycle 2849 — **str_hashmap_keys/sorted_keys**: keys iteration 2종 추가. SVEC_REGISTRY 재활용. 2373 tests ✅)
 > 이전 갱신: 2026-05-14 (Cycle 2848 — **{expr} 보간**: 산술/필드접근/단항 표현식 지원. InterpMini 미니파서 내장. 2372 tests ✅)
 > 이전 갱신: 2026-05-14 (Cycle 2847 — **필드 복합 할당**: `set obj.field += e` 5종 연산자. BlockExpr desugar 방식으로 LR(1) 충돌 해결. 2371 tests ✅)
 > 이전 갱신: 2026-05-14 (Cycle 2846 — **str_hashmap 완성**: String→i64 HashMap 6종 builtin 구현 (interpreter-only). 기존 v0.90.83 스텁 완성 + type signature 수정. 2375 tests ✅)

@@ -376,6 +376,9 @@ impl Interpreter {
         self.builtins.insert("str_hashmap_free".to_string(), builtin_str_hashmap_free);
         self.builtins.insert("str_hashmap_keys".to_string(), builtin_str_hashmap_keys);
         self.builtins.insert("str_hashmap_sorted_keys".to_string(), builtin_str_hashmap_sorted_keys);
+        self.builtins.insert("str_hashmap_inc".to_string(), builtin_str_hashmap_inc);
+        self.builtins.insert("svec_new".to_string(), builtin_svec_new);
+        self.builtins.insert("svec_push".to_string(), builtin_svec_push);
 
         // v0.34.24: HashSet builtins
         self.builtins
@@ -9473,6 +9476,53 @@ fn builtin_svec_join(args: &[Value]) -> InterpResult<Value> {
         }
     })?;
     Ok(Value::Str(std::rc::Rc::new(result)))
+}
+
+// v0.98.5: svec_new + svec_push (Cycle 2850, interpreter-only)
+fn builtin_svec_new(args: &[Value]) -> InterpResult<Value> {
+    if !args.is_empty() {
+        return Err(RuntimeError::arity_mismatch("svec_new", 0, args.len()));
+    }
+    let handle = SVEC_REGISTRY.with(|reg| {
+        let mut v = reg.borrow_mut();
+        let idx = v.len();
+        v.push(Some(Vec::new()));
+        idx
+    });
+    Ok(Value::Int(handle as i64))
+}
+
+fn builtin_svec_push(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("svec_push", 2, args.len()));
+    }
+    let idx = match &args[0] {
+        Value::Int(n) => *n as usize,
+        _ => return Err(RuntimeError::type_error("i64", args[0].type_name())),
+    };
+    let s = args[1].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[1].type_name()))?;
+    let ok = SVEC_REGISTRY.with(|reg| {
+        reg.borrow_mut().get_mut(idx).and_then(|slot| slot.as_mut()).map(|v| { v.push(s.to_string()); true }).unwrap_or(false)
+    });
+    if !ok { return Err(RuntimeError::io_error("svec_push: invalid or freed handle")); }
+    Ok(Value::Unit)
+}
+
+// v0.98.5: str_hashmap_inc (Cycle 2850, interpreter-only)
+// Atomically increments the value for key by delta (inserts with delta if absent)
+fn builtin_str_hashmap_inc(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 3 {
+        return Err(RuntimeError::arity_mismatch("str_hashmap_inc", 3, args.len()));
+    }
+    let map = unsafe { &mut *str_hashmap_ptr(&args[0])? };
+    let key = str_key(&args[1], "str_hashmap_inc")?;
+    let delta = match &args[2] {
+        Value::Int(n) => *n,
+        _ => return Err(RuntimeError::type_error("i64", args[2].type_name())),
+    };
+    let entry = map.entry(key).or_insert(0);
+    *entry += delta;
+    Ok(Value::Unit)
 }
 
 /// format(template: String, args...) -> String — positional string formatting (Cycle 2835)

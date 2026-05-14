@@ -24804,6 +24804,87 @@ fn test_interp_str_hashmap() {
 }
 
 // ============================================
+// Cycle 2850: svec_new/push + str_hashmap_inc
+// ============================================
+
+#[test]
+fn test_interp_svec_new_push() {
+    // build svec manually and join
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let sv = svec_new();
+            let _a = svec_push(sv, "hello");
+            let _b = svec_push(sv, "world");
+            let n = svec_len(sv);
+            let _f = svec_free(sv);
+            n
+        };"#),
+        Value::Int(2)
+    );
+
+    // svec join after manual push
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let sv = svec_new();
+            let _a = svec_push(sv, "a");
+            let _b = svec_push(sv, "b");
+            let _c = svec_push(sv, "c");
+            let s = svec_join(sv, "-");
+            let n = str_len(s);
+            let _f = svec_free(sv);
+            n
+        };"#),
+        Value::Int(5)  // "a-b-c" = 5 chars
+    );
+}
+
+#[test]
+fn test_interp_str_hashmap_inc() {
+    // basic increment: insert 0 + inc
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let m = str_hashmap_new();
+            let _a = str_hashmap_inc(m, "x", 1);
+            let _b = str_hashmap_inc(m, "x", 1);
+            let _c = str_hashmap_inc(m, "x", 1);
+            let v = str_hashmap_get(m, "x");
+            let _f = str_hashmap_free(m);
+            v
+        };"#),
+        Value::Int(3)
+    );
+
+    // increment by delta
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let m = str_hashmap_new();
+            let _a = str_hashmap_inc(m, "n", 10);
+            let _b = str_hashmap_inc(m, "n", 5);
+            let v = str_hashmap_get(m, "n");
+            let _f = str_hashmap_free(m);
+            v
+        };"#),
+        Value::Int(15)
+    );
+
+    // word frequency with inc (simpler than get+insert pattern)
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let counts = str_hashmap_new();
+            let _a1 = str_hashmap_inc(counts, "apple", 1);
+            let _b1 = str_hashmap_inc(counts, "banana", 1);
+            let _a2 = str_hashmap_inc(counts, "apple", 1);
+            let _a3 = str_hashmap_inc(counts, "apple", 1);
+            let ca = str_hashmap_get(counts, "apple");
+            let cb = str_hashmap_get(counts, "banana");
+            let _f = str_hashmap_free(counts);
+            ca * 10 + cb
+        };"#),
+        Value::Int(31)  // apple=3, banana=1
+    );
+}
+
+// ============================================
 // Cycle 2849: str_hashmap_keys / str_hashmap_sorted_keys
 // ============================================
 

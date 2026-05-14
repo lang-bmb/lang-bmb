@@ -92,6 +92,10 @@ let msg = "value=" + to_string(n);    // concatenation with any type
 // Note: str_split("abc", "") splits into individual characters
 // Note: Use "let _f = svec_free(parts)" not "svec_free(parts);" (no standalone expr stmts)
 //   let j = svec_join(parts, "-");       // join all parts with delimiter (v0.98.3, interp-only)
+// Build svec manually (v0.98.5+, interpreter-only):
+//   let sv = svec_new();                 // create empty svec
+//   let _p = svec_push(sv, "item");      // append string
+//   let _f = svec_free(sv);              // release
 
 // Positional string formatting (v0.98.3+, interpreter-only)
 // format(template, arg0, arg1, ...) → String
@@ -100,10 +104,11 @@ let msg = "value=" + to_string(n);    // concatenation with any type
 
 // String interpolation (v0.98.4+, interpreter-only)
 // "Hello {name}" → automatically desugars to format("Hello {0}", name)
-// Only simple identifier patterns {ident} work — numeric {0} kept as-is
-// let greeting = "Hello {name}";   // → format("Hello {0}", name)
-// let info = "{a} + {b} = result"; // → format("{0} + {1} = result", a, b)
-// Placeholders: {0}, {1}, {2}, ... replaced by args in order.
+// Supports: idents, arithmetic ({n+1}), field access ({p.x}), unary ({-n}), parens
+// Numeric {0} kept as-is (format-arg style). Function calls not supported inside {}.
+// let greeting = "Hello {name}";    // → format("Hello {0}", name)
+// let info = "n+1 = {n + 1}";       // → format("n+1 = {0}", n + 1)
+// let fp = "x={p.x}";              // → format("x={0}", p.x)
 // Any type accepted; non-String args are formatted via their Display representation.
 ```
 
@@ -151,6 +156,7 @@ let val = str_hashmap_get(m, "word");              // value or i64::MIN if not f
 let n = str_hashmap_len(m);                        // number of distinct keys
 let keys = str_hashmap_keys(m);                    // svec handle of all keys (unordered)
 let skeys = str_hashmap_sorted_keys(m);            // svec handle of keys (sorted a-z, v0.98.5+)
+let _i = str_hashmap_inc(m, "word", 1);            // increment value by 1 (insert 0 if absent, v0.98.5+)
 let _f = str_hashmap_free(m);                      // deallocate
 // After using keys/skeys: svec_free(keys) / svec_free(skeys)
 ```
