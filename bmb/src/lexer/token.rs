@@ -415,6 +415,18 @@ pub enum Token {
     #[token("*|")]
     StarPipe,
 
+    // v0.98.4: Compound assignment operators (Cycle 2844-2845)
+    #[token("+=")]
+    PlusEq,
+    #[token("-=")]
+    MinusEq,
+    #[token("*=")]
+    MulEq,
+    #[token("/=")]
+    DivEq,
+    #[token("%=")]
+    ModEq,
+
     // v0.32: Symbolic logical operators
     #[token("&&")]
     AmpAmp,
@@ -530,6 +542,12 @@ impl std::fmt::Display for Token {
             Token::PlusPipe => write!(f, "+|"),
             Token::MinusPipe => write!(f, "-|"),
             Token::StarPipe => write!(f, "*|"),
+            // v0.98.4: Compound assignment operators (Cycle 2844-2845)
+            Token::PlusEq => write!(f, "+="),
+            Token::MinusEq => write!(f, "-="),
+            Token::MulEq => write!(f, "*="),
+            Token::DivEq => write!(f, "/="),
+            Token::ModEq => write!(f, "%="),
             // v0.32: Symbolic logical operators
             Token::AmpAmp => write!(f, "&&"),
             Token::PipePipe => write!(f, "||"),

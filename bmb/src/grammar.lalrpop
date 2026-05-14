@@ -189,6 +189,12 @@ extern {
         "+|" => Token::PlusPipe,
         "-|" => Token::MinusPipe,
         "*|" => Token::StarPipe,
+        // v0.98.4: Compound assignment operators (Cycle 2844-2845)
+        "+=" => Token::PlusEq,
+        "-=" => Token::MinusEq,
+        "*=" => Token::MulEq,
+        "/=" => Token::DivEq,
+        "%=" => Token::ModEq,
         // v0.32: Symbolic logical operators
         "&&" => Token::AmpAmp,
         "||" => Token::PipePipe,
@@ -1313,6 +1319,47 @@ BlockStmt: Spanned<Expr> = {
         name: n,
         value: Box::new(v),
     }, Span::new(l, r)),
+    // v0.98.4: Compound assignment operators — desugar x += e → x = x + e (Cycle 2844)
+    <l:@L> <n:RawIdent> "+=" <v:SpannedBlockExpr> <r:@R> => Spanned::new(Expr::Assign {
+        name: n.clone(),
+        value: Box::new(Spanned::new(Expr::Binary {
+            left: Box::new(Spanned::new(Expr::Var(n), Span::new(l, l))),
+            op: BinOp::Add,
+            right: Box::new(v),
+        }, Span::new(l, r))),
+    }, Span::new(l, r)),
+    <l:@L> <n:RawIdent> "-=" <v:SpannedBlockExpr> <r:@R> => Spanned::new(Expr::Assign {
+        name: n.clone(),
+        value: Box::new(Spanned::new(Expr::Binary {
+            left: Box::new(Spanned::new(Expr::Var(n), Span::new(l, l))),
+            op: BinOp::Sub,
+            right: Box::new(v),
+        }, Span::new(l, r))),
+    }, Span::new(l, r)),
+    <l:@L> <n:RawIdent> "*=" <v:SpannedBlockExpr> <r:@R> => Spanned::new(Expr::Assign {
+        name: n.clone(),
+        value: Box::new(Spanned::new(Expr::Binary {
+            left: Box::new(Spanned::new(Expr::Var(n), Span::new(l, l))),
+            op: BinOp::Mul,
+            right: Box::new(v),
+        }, Span::new(l, r))),
+    }, Span::new(l, r)),
+    <l:@L> <n:RawIdent> "/=" <v:SpannedBlockExpr> <r:@R> => Spanned::new(Expr::Assign {
+        name: n.clone(),
+        value: Box::new(Spanned::new(Expr::Binary {
+            left: Box::new(Spanned::new(Expr::Var(n), Span::new(l, l))),
+            op: BinOp::Div,
+            right: Box::new(v),
+        }, Span::new(l, r))),
+    }, Span::new(l, r)),
+    <l:@L> <n:RawIdent> "%=" <v:SpannedBlockExpr> <r:@R> => Spanned::new(Expr::Assign {
+        name: n.clone(),
+        value: Box::new(Spanned::new(Expr::Binary {
+            left: Box::new(Spanned::new(Expr::Var(n), Span::new(l, l))),
+            op: BinOp::Mod,
+            right: Box::new(v),
+        }, Span::new(l, r))),
+    }, Span::new(l, r)),
     // v0.89.4: Let binding in block context (Cycle 43)
     // Parsed as Let with Unit body; desugar_block_lets nests them properly.
     // Uses SpannedBlockExpr (not SpannedExpr) to avoid conflict with Expr's "let...;body" form.
@@ -2267,7 +2314,8 @@ Args: Vec<Spanned<Expr>> = {
 Primary: Expr = {
     "int" => Expr::IntLit(<>),
     "float" => Expr::FloatLit(<>),
-    "string" => Expr::StringLit(<>),
+    // v0.98.4: String interpolation (Cycle 2842) — "Hello {name}" → format("Hello {0}", name)
+    "string" => desugar_string_interp(<>),
     // v0.64: Character literal
     "charlit" => Expr::CharLit(<>),
     "true" => Expr::BoolLit(true),

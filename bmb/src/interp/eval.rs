@@ -778,7 +778,30 @@ impl Interpreter {
                         }
                         Ok(Value::Unit)
                     }
-                    _ => Err(RuntimeError::type_error("Range or Array", iter_val.type_name())),
+                    // v0.98.4: vec handle iteration (Cycle 2841, interpreter-only)
+                    // Value::Int holds a vec_new()/vec_push() handle; iterate using header layout
+                    Value::Int(vec_ptr) if vec_ptr != 0 => {
+                        let (len, data_ptr) = unsafe {
+                            let header = vec_ptr as *const i64;
+                            (*header.add(1), *header)
+                        };
+                        let child = child_env(env);
+                        for idx in 0..len {
+                            let elem = unsafe {
+                                let data = data_ptr as *const i64;
+                                Value::Int(*data.add(idx as usize))
+                            };
+                            child.borrow_mut().define(var.clone(), elem);
+                            match self.eval(body, &child) {
+                                Ok(_) => {},
+                                Err(e) if matches!(e.kind, ErrorKind::Continue) => continue,
+                                Err(e) if matches!(e.kind, ErrorKind::Break(_)) => break,
+                                Err(e) => return Err(e),
+                            }
+                        }
+                        Ok(Value::Unit)
+                    }
+                    _ => Err(RuntimeError::type_error("Range, Array, or vec handle (i64)", iter_val.type_name())),
                 }
             }
 

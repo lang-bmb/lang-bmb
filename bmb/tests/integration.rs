@@ -8906,8 +8906,12 @@ fn test_index_write_and_read() {
                   struct TestStruct { field: i64 }";
     let index = source_to_index(source);
 
-    let dir = std::env::temp_dir().join("bmb_test_index_rw");
-    let _ = std::fs::create_dir_all(&dir);
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let dir = std::env::temp_dir().join(format!("bmb_test_index_rw_{}", unique));
+    std::fs::create_dir_all(&dir).unwrap();
 
     bmb::index::write_index(&index, &dir).unwrap();
     let loaded = bmb::index::read_index(&dir).unwrap();
@@ -14466,15 +14470,24 @@ fn test_for_in_array_break() {
 
 #[test]
 fn test_for_in_array_type_error() {
-    let source = r#"
+    // Since Cycle 2841: i64 is valid as vec handle iterator (type-check passes)
+    // Non-iterable types (bool, f64) still fail
+    let bool_source = r#"
         fn main() -> i64 = {
-            for x in 42 {
-                x
-            };
+            let b: bool = true;
+            for x in b { () };
             0
         };
     "#;
-    assert!(type_error(source));
+    assert!(type_error(bool_source));
+    let f64_source = r#"
+        fn main() -> i64 = {
+            let f: f64 = 1.0;
+            for x in f { () };
+            0
+        };
+    "#;
+    assert!(type_error(f64_source));
 }
 
 // --- Cycle 268: Float method support ---
@@ -24512,6 +24525,137 @@ fn test_integration_gcd_iterative() {
             fn main() -> i64 = gcd(48, 18);
         "#),
         6
+    );
+}
+
+#[test]
+fn test_interp_string_interpolation() {
+    // Basic: "Hello {name}" where name = "World" → "Hello World"
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let name = "World"; let s = "Hello {name}"; str_contains(s, "World") };"#),
+        Value::Int(1)
+    );
+    // Length check: "Hello World" is 11 chars
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let name = "World"; let s = "Hello {name}"; str_len(s) };"#),
+        Value::Int(11)
+    );
+    // Integer interpolation: n=42 → "n=42"
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let n = 42; let s = "n={n}"; str_contains(s, "42") };"#),
+        Value::Int(1)
+    );
+    // Multiple vars: "{a} + {b}"
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let a = 1; let b = 2; let s = "{a} + {b}"; str_len(s) };"#),
+        Value::Int(5)  // "1 + 2" = 5 chars
+    );
+    // No interpolation: plain string unchanged
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let s = "no braces"; str_len(s) };"#),
+        Value::Int(9)
+    );
+    // Numeric {0} not interpolated (not identifier pattern)
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let s = "{0} literal"; str_contains(s, "{0}") };"#),
+        Value::Int(1)
+    );
+}
+
+#[test]
+fn test_interp_for_in_vec() {
+    // Basic sum: 10+20+30 = 60
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let v = vec_new(); vec_push(v, 10); vec_push(v, 20); vec_push(v, 30); let s = 0; for x in v { set s = s + x; }; vec_free(v); s };"#),
+        Value::Int(60)
+    );
+    // Empty vec iteration: no body executes
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let v = vec_new(); let s = 0; for x in v { set s = s + 1; }; vec_free(v); s };"#),
+        Value::Int(0)
+    );
+    // Range still works after change
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let s = 0; for i in 0..5 { set s = s + i; }; s };"#),
+        Value::Int(10)
+    );
+    // Conditional inside loop
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let v = vec_new(); vec_push(v, 1); vec_push(v, 2); vec_push(v, 3); let cnt = 0; for x in v { if x > 1 { set cnt = cnt + 1; }; }; vec_free(v); cnt };"#),
+        Value::Int(2)
+    );
+    // Push via range then iterate
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let v = vec_new(); for j in 0..5 { vec_push(v, j); }; let s = 0; for x in v { set s = s + x; }; vec_free(v); s };"#),
+        Value::Int(10)
+    );
+}
+
+#[test]
+fn test_interp_compound_assign() {
+    // += basic
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let s = 0; s += 5; s };"#),
+        Value::Int(5)
+    );
+    // += accumulation
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let s = 10; s += 3; s += 7; s };"#),
+        Value::Int(20)
+    );
+    // -= basic
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let s = 10; s -= 3; s };"#),
+        Value::Int(7)
+    );
+    // *= basic
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let s = 4; s *= 5; s };"#),
+        Value::Int(20)
+    );
+    // /= basic
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let s = 20; s /= 4; s };"#),
+        Value::Int(5)
+    );
+    // += in for loop (classic pattern)
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let s = 0; for i in 0..5 { s += i; }; s };"#),
+        Value::Int(10)
+    );
+    // -= in for loop
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let s = 100; for i in 0..5 { s -= i; }; s };"#),
+        Value::Int(90)
+    );
+    // %= basic
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let s = 17; s %= 5; s };"#),
+        Value::Int(2)
+    );
+}
+
+#[test]
+fn test_interp_string_interp_escape() {
+    // {{ → literal { (9 chars: {literal})
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let s = "{{literal}}"; str_len(s) };"#),
+        Value::Int(9)
+    );
+    // {{ escape does not interpolate: "{{name}}" → "{name}" (6 chars)
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let name = "Alice"; let s = "{{name}}"; str_len(s) };"#),
+        Value::Int(6)
+    );
+    // Mix: {{ and {ident}: "{{key}}: {n}" with n=42 → "{key}: 42" (9 chars)
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let n = 42; let s = "{{key}}: {n}"; str_len(s) };"#),
+        Value::Int(9)
+    );
+    // Plain string (no braces) unchanged
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let s = "no braces"; str_len(s) };"#),
+        Value::Int(9)
     );
 }
 

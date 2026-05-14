@@ -2128,7 +2128,7 @@ impl TypeChecker {
 
                 let iter_ty = self.infer(&iter.node, iter.span)?;
 
-                // Iterator must be a Range, Array, or Receiver<T> type
+                // Iterator must be a Range, Array, Receiver<T>, or i64 (vec handle) type
                 let elem_ty = match &iter_ty {
                     Type::Range(elem) => (**elem).clone(),
                     // v0.90.33: Array iteration
@@ -2138,9 +2138,12 @@ impl TypeChecker {
                     Type::Generic { name, type_args } if name == "Receiver" => {
                         type_args.first().map(|t| (**t).clone()).unwrap_or(Type::I64)
                     }
+                    // v0.98.4: i64 vec handle iteration (Cycle 2841, interpreter-only)
+                    // vec_new()/vec_push() return i64 handles; elements are i64
+                    Type::I64 => Type::I64,
                     _ => {
                         return Err(CompileError::type_error(
-                            format!("for loop requires Range, Array, or Receiver type, got {iter_ty}"),
+                            format!("for loop requires Range, Array, Receiver, or vec handle (i64) type, got {iter_ty}"),
                             iter.span,
                         ));
                     }
@@ -10958,9 +10961,13 @@ mod tests {
 
     #[test]
     fn test_err_for_loop_non_range_iterator() {
-        // For loop requires Range or Receiver type, not an integer
+        // For loop rejects non-iterable types (bool, f64, etc.)
+        // Note: i64 is now valid (vec handle) since Cycle 2841
         assert!(err(
-            "fn bad(n: i64) -> () = { for _x in n { () }; () };"
+            "fn bad(b: bool) -> () = { for _x in b { () }; () };"
+        ));
+        assert!(err(
+            "fn bad(f: f64) -> () = { for _x in f { () }; () };"
         ));
     }
 

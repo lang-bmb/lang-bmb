@@ -97,6 +97,12 @@ let msg = "value=" + to_string(n);    // concatenation with any type
 // format(template, arg0, arg1, ...) → String
 // let s = format("{0} + {1} = {2}", to_string(a), to_string(b), to_string(a+b));
 // let msg = format("name={0}, age={1}", name, to_string(age));
+
+// String interpolation (v0.98.4+, interpreter-only)
+// "Hello {name}" → automatically desugars to format("Hello {0}", name)
+// Only simple identifier patterns {ident} work — numeric {0} kept as-is
+// let greeting = "Hello {name}";   // → format("Hello {0}", name)
+// let info = "{a} + {b} = result"; // → format("{0} + {1} = result", a, b)
 // Placeholders: {0}, {1}, {2}, ... replaced by args in order.
 // Any type accepted; non-String args are formatted via their Display representation.
 ```
@@ -418,13 +424,22 @@ while front < vec_len(queue) {
 };
 ```
 
-## Pattern: Iterate vec by index (no for-in-vec)
+## Pattern: Iterate vec directly (for-in-vec, v0.98.4+, interpreter-only)
 ```bmb
-// BMB for loop only supports ranges. To iterate a vec:
+// Direct vec iteration — elem type is i64 (same as vec element type)
+for x in v {
+    // use x (i64 element value)
+    ()
+};
+```
+
+## Pattern: Iterate vec by index (works everywhere)
+```bmb
+// Use when you need the index, or for bmb build (native):
 let n = vec_len(v);
 for i in 0..n {
     let val = vec_get(v, i);
-    // use val
+    // use val and i
     ()
 };
 ```
@@ -597,6 +612,60 @@ fn char_freq(s: String, freq: i64) -> i64 = {
 // let count = vec_get(freq, ord('a'));
 ```
 
+## Pattern: Vec iteration and transformation (interpreter-only)
+```bmb
+// Sum all elements in a vec
+fn vec_total(v: i64) -> i64 = {
+    let s = 0;
+    for x in v {
+        s = s + x
+    };
+    s
+};
+
+// Filter and collect elements > threshold into new vec
+fn filter_gt(v: i64, thresh: i64) -> i64 = {
+    let out = vec_new();
+    for x in v {
+        if x > thresh { let _p = vec_push(out, x); }
+    };
+    out
+};
+```
+
+## Pattern: String interpolation (interpreter-only)
+```bmb
+// Simple variable interpolation in string literals
+fn greet(name: String, age: i64) -> String = {
+    let s = "Hello {name}, you are {age} years old";
+    // Equivalent to: format("Hello {0}, you are {1} years old", name, age)
+    s
+};
+
+// Combine with other string ops
+fn build_label(key: String, val: i64) -> String = {
+    let v = to_string(val);
+    "{key}: {v}"   // → format("{0}: {1}", key, v)
+};
+```
+
+## Pattern: Compound assignment operators (v0.98.4+)
+```bmb
+// +=, -=, *=, /= desugar to x = x op expr at parse time
+fn accumulate(n: i64) -> i64 = {
+    let sum = 0;
+    for i in 0..n { sum += i; };
+    sum
+};
+
+fn scale_down(v: i64, factor: i64) -> i64 = {
+    let r = v;
+    r /= factor;
+    r
+};
+// Note: works everywhere set/assignment works (interpreter + native)
+```
+
 ## Common Pitfalls
 - `println()` returns `()`, not `i64` — always wrap: `let _r = println(x);`
 - `vec_push()/vec_set()/vec_free()` all return `()` — always wrap with `let _`
@@ -609,12 +678,14 @@ fn char_freq(s: String, freq: i64) -> i64 = {
 - `if` as STATEMENT (result discarded) — `else` is optional (v0.98.1+)
 - `-x` (unary minus) works for negation — `0 - x` is unnecessary
 - `for j in (i+1)..n` — parentheses required when start is an expression
-- `for` loop only supports ranges (`0..n`, `a..=b`) — NOT arbitrary iterators; use index loop
-- `for x in my_vec` does NOT work — vec is an i64 handle, use `for i in 0..vec_len(v)`
+- `for` loop supports ranges (`0..n`, `a..=b`) AND vec handles (`for x in v {}` — interpreter-only, v0.98.4+)
+- `for x in my_vec` works with interpreter only — for bmb build (native) use index loop `for i in 0..vec_len(v)`
 - `hashmap_get` returns `i64::MIN` (not 0) when key is absent — always check `hashmap_contains` first
 - `to_string(x)` converts any value to String without extra quotes (v0.98.2+)
 - `int_to_string(n)` is i64-only; use `to_string(n)` when type may vary
 - `while let` only supports enum-variant patterns (e.g., `Opt::Some(x)`) — bare `while let x = e` not supported (would infinite-loop anyway)
-- `format()` and `while let` are interpreter-only (`bmb run`) — `bmb build` (native) doesn't support them yet
+- `format()`, `while let`, `for x in vec` and string interpolation `"Hello {name}"` are interpreter-only (`bmb run`) — `bmb build` (native) doesn't support them yet
+- In string interpolation, `{{` → literal `{` and `}}` → literal `}` (v0.98.5+). Example: `"{{key}}: {val}"` → `"{key}: <value>"`
+- `+=`, `-=`, `*=`, `/=`, `%=` compound assignment operators available (v0.98.4+) — desugars to `x = x op e`
 - String builtins (`str_contains`, `str_find`, `str_substr`, `str_trim`, `str_to_int`, `to_string`, `str_split`, `svec_*`, `str_replace`, `str_repeat`, `format`) work with `bmb run` only — `bmb build` (native) will fail for these
 - Vec aggregate/search builtins (`vec_sum`, `vec_max`, `vec_min`, `vec_sort`, `vec_contains`, `vec_index_of`) are interpreter-only (`bmb run`) — `bmb build` (native) unsupported

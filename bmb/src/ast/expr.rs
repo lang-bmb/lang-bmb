@@ -789,6 +789,70 @@ fn desugar_stmts(stmts: Vec<Spanned<Expr>>) -> Expr {
     }
 }
 
+/// Desugar string interpolation: `"Hello {name}"` → `format("Hello {0}", name)`
+/// Only simple identifier patterns `{ident}` are recognized (Cycle 2842, interpreter-only).
+/// Plain `{0}` numeric patterns are left as-is (already format-style args).
+/// `{{` is an escape for a literal `{` (Cycle 2845).
+/// Strings with no `{ident}` patterns return `Expr::StringLit` unchanged.
+pub fn desugar_string_interp(s: String) -> Expr {
+    let chars: Vec<char> = s.chars().collect();
+    let mut template = String::new();
+    let mut args: Vec<Spanned<Expr>> = Vec::new();
+    let mut i = 0;
+
+    while i < chars.len() {
+        if chars[i] == '{' {
+            // Escape: {{ → literal {
+            if i + 1 < chars.len() && chars[i + 1] == '{' {
+                template.push('{');
+                i += 2;
+                continue;
+            }
+            let start = i + 1;
+            // First char must be ASCII letter or underscore
+            if start < chars.len() && (chars[start].is_ascii_alphabetic() || chars[start] == '_') {
+                let mut end = start + 1;
+                while end < chars.len() && (chars[end].is_ascii_alphanumeric() || chars[end] == '_') {
+                    end += 1;
+                }
+                if end < chars.len() && chars[end] == '}' {
+                    let ident: String = chars[start..end].iter().collect();
+                    let idx = args.len();
+                    template.push('{');
+                    template.push_str(&idx.to_string());
+                    template.push('}');
+                    let dummy = Span::new(0, 0);
+                    args.push(Spanned::new(Expr::Var(ident), dummy));
+                    i = end + 1;
+                    continue;
+                }
+            }
+        }
+        // Escape: }} → literal }
+        if chars[i] == '}' && i + 1 < chars.len() && chars[i + 1] == '}' {
+            template.push('}');
+            i += 2;
+            continue;
+        }
+        template.push(chars[i]);
+        i += 1;
+    }
+
+    if args.is_empty() {
+        Expr::StringLit(template)
+    } else {
+        let dummy = Span::new(0, 0);
+        let mut all_args = Vec::with_capacity(args.len() + 1);
+        all_args.push(Spanned::new(Expr::StringLit(template), dummy));
+        all_args.extend(args);
+        Expr::Call {
+            func: "format".to_string(),
+            args: all_args,
+            type_args: vec![],
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1600,5 +1664,46 @@ mod tests {
             body: Box::new(spanned(Expr::Unit)),
         };
         assert!(matches!(e, Expr::While { invariant: Some(_), .. }));
+    }
+
+    // v0.98.5: desugar_string_interp unit tests (Cycle 2845)
+    #[test]
+    fn test_desugar_string_interp_basic() {
+        // No interpolation → StringLit unchanged
+        assert!(matches!(desugar_string_interp("hello".to_string()), Expr::StringLit(s) if s == "hello"));
+    }
+
+    #[test]
+    fn test_desugar_string_interp_brace_escape() {
+        // {{ → { and }} → }
+        assert!(matches!(
+            desugar_string_interp("{{literal}}".to_string()),
+            Expr::StringLit(s) if s == "{literal}"
+        ));
+        // Just {{ without }}
+        assert!(matches!(
+            desugar_string_interp("{{".to_string()),
+            Expr::StringLit(s) if s == "{"
+        ));
+        // Just }} without {{
+        assert!(matches!(
+            desugar_string_interp("}}".to_string()),
+            Expr::StringLit(s) if s == "}"
+        ));
+    }
+
+    #[test]
+    fn test_desugar_string_interp_with_ident() {
+        // {name} → format call with Var("name")
+        let result = desugar_string_interp("Hello {name}".to_string());
+        assert!(matches!(result, Expr::Call { ref func, ref args, .. }
+            if func == "format" && args.len() == 2));
+    }
+
+    #[test]
+    fn test_desugar_string_interp_escape_no_interpolation() {
+        // {{name}} → "{name}" literal, NOT interpolated
+        let result = desugar_string_interp("{{name}}".to_string());
+        assert!(matches!(result, Expr::StringLit(s) if s == "{name}"));
     }
 }
