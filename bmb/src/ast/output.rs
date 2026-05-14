@@ -476,6 +476,11 @@ pub fn format_expr(expr: &Expr) -> String {
             )
         }
 
+        // v0.98.3: while let (Cycle 2834, interpreter-only)
+        Expr::WhileLet { expr, body, .. } => {
+            format!("(while-let _ = {} {})", format_expr(&expr.node), format_expr(&body.node))
+        }
+
         // v0.37: Include invariant if present
         Expr::While { cond, invariant, body } => {
             match invariant {

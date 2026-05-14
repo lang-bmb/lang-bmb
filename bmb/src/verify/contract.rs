@@ -488,6 +488,11 @@ impl ContractVerifier {
                     self.check_expr_for_conflicts(&arm.body.node, function_index, report);
                 }
             }
+            // v0.98.3: while let — interpreter-only (Cycle 2834)
+            Expr::WhileLet { expr, body, .. } => {
+                self.check_expr_for_conflicts(&expr.node, function_index, report);
+                self.check_expr_for_conflicts(&body.node, function_index, report);
+            }
         }
     }
 

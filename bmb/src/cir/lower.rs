@@ -531,6 +531,9 @@ impl CirLowerer {
                 }
             }
 
+            // v0.98.3: while let — interpreter-only; CIR/codegen path should not be reached
+            Expr::WhileLet { .. } => CirExpr::Unit,
+
             Expr::Let { name, mutable, ty, value, body } => {
                 let cir_ty = ty.as_ref()
                     .map(|t| self.lower_type(&t.node))

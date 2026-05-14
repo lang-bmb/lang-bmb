@@ -312,6 +312,10 @@ impl SmtTranslator {
                 Err(TranslateError::UnsupportedFeature("while loop".to_string()))
             }
 
+            Expr::WhileLet { .. } => {
+                Err(TranslateError::UnsupportedFeature("while let".to_string()))
+            }
+
             Expr::Call { func, args: _, type_args: _ } => {
                 Err(TranslateError::UnsupportedFeature(format!("function call: {}", func)))
             }

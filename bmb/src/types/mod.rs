@@ -416,6 +416,11 @@ impl TypeChecker {
         functions.insert("str_substr".to_string(), (vec![Type::String, Type::I64, Type::I64], Type::String));
         functions.insert("str_trim".to_string(), (vec![Type::String], Type::String));
         functions.insert("str_to_int".to_string(), (vec![Type::String], Type::I64));
+        // v0.98.3: str_split + svec_* (Cycle 2833, interpreter-only)
+        functions.insert("str_split".to_string(), (vec![Type::String, Type::String], Type::I64));
+        functions.insert("svec_len".to_string(), (vec![Type::I64], Type::I64));
+        functions.insert("svec_get".to_string(), (vec![Type::I64, Type::I64], Type::String));
+        functions.insert("svec_free".to_string(), (vec![Type::I64], Type::Unit));
 
         // v0.34: Math intrinsics for Phase 34.4 Benchmark Gate (n_body, mandelbrot_fp)
         // sqrt(x: f64) -> f64 (square root)
@@ -2060,6 +2065,21 @@ impl TypeChecker {
                 let _ = self.infer(&body.node, body.span)?;
 
                 // While returns unit
+                Ok(Type::Unit)
+            }
+
+            // v0.98.3: while let (Cycle 2834, interpreter-only)
+            Expr::WhileLet { pattern, expr: scrutinee, body } => {
+                let scrutinee_ty = self.infer(&scrutinee.node, scrutinee.span)?;
+                // Check the pattern against the scrutinee type (binds variables into scope)
+                self.binding_tracker.push_scope();
+                self.check_pattern(&pattern.node, &scrutinee_ty, pattern.span)?;
+                // Type check body
+                let _ = self.infer(&body.node, body.span)?;
+                let (unused, _unused_mut) = self.binding_tracker.pop_scope();
+                for (name, name_span) in unused {
+                    self.add_warning(CompileWarning::unused_binding(name, name_span));
+                }
                 Ok(Type::Unit)
             }
 

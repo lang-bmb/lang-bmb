@@ -20,11 +20,21 @@ z = 5;                     // reassignment
 ## Control Flow
 ```bmb
 if x > 0 { x } else { 0 }           // expression — returns value
+if x > 0 { do_something() }         // if without else — returns unit (v0.98.3)
 while cond { body; }                 // while loop
 for i in 0..n { body; }             // for loop with range [0, n)
 break;                               // exit loop early
 continue;                            // skip to next iteration
 return expr;                         // early return from function
+
+// while let — pattern-matching loop (v0.98.3, interpreter-only)
+// Exits when pattern doesn't match. Requires enum-variant pattern (not bare variable).
+// enum Opt { None, Some(i64) }
+// fn next(n: i64) -> Opt = if n > 0 { Opt::Some(n - 1) } else { Opt::None };
+// while let Opt::Some(v) = next(count) {
+//     count = v;
+//     sum = sum + v
+// };
 ```
 
 ## I/O
@@ -68,6 +78,17 @@ let s2 = to_string(3.14);             // f64 → String ("3.14")
 let s3 = to_string("hello");          // String → String (identity, no extra quotes)
 // Use instead of int_to_string when type is not statically known
 let msg = "value=" + to_string(n);    // concatenation with any type
+
+// String split (v0.98.3+, interpreter-only)
+// fn example() -> i64 = {
+//   let parts = str_split("a,b,c", ",");  // → opaque handle (i64)
+//   let n = svec_len(parts);              // number of parts (3)
+//   let first = svec_get(parts, 0);       // get string at index ("a")
+//   let _f = svec_free(parts);            // release (use "let _f =" to discard Unit)
+//   n
+// };
+// Note: str_split("abc", "") splits into individual characters
+// Note: Use "let _f = svec_free(parts)" not "svec_free(parts);" (no standalone expr stmts)
 ```
 
 ## Dynamic Arrays (vec)
@@ -416,4 +437,4 @@ for i in 0..n {
 - `hashmap_get` returns `i64::MIN` (not 0) when key is absent — always check `hashmap_contains` first
 - `to_string(x)` converts any value to String without extra quotes (v0.98.2+)
 - `int_to_string(n)` is i64-only; use `to_string(n)` when type may vary
-- String builtins (`str_contains`, `str_find`, `str_substr`, `str_trim`, `str_to_int`, `to_string`) work with `bmb run` only — `bmb build` (native) will fail with linker errors for these
+- String builtins (`str_contains`, `str_find`, `str_substr`, `str_trim`, `str_to_int`, `to_string`, `str_split`, `svec_*`) work with `bmb run` only — `bmb build` (native) will fail with linker errors for these

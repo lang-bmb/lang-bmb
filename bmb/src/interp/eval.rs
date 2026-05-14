@@ -25,6 +25,12 @@ thread_local! {
     static PROGRAM_ARGS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
 }
 
+// v0.98.3: Thread-local string-vec registry for str_split (Cycle 2833)
+// Each slot is Option<Vec<String>>; None means freed.
+thread_local! {
+    static SVEC_REGISTRY: RefCell<Vec<Option<Vec<String>>>> = const { RefCell::new(Vec::new()) };
+}
+
 /// v0.46: Set program arguments for the interpreter
 /// Called before running a BMB program to pass command-line arguments
 pub fn set_program_args(args: Vec<String>) {
@@ -278,6 +284,11 @@ impl Interpreter {
         self.builtins.insert("str_to_int".to_string(), builtin_str_to_int);
         // v0.98.2: Generic to_string (Cycle 2830)
         self.builtins.insert("to_string".to_string(), builtin_to_string);
+        // v0.98.3: String-vec builtins for str_split (Cycle 2833, interpreter-only)
+        self.builtins.insert("str_split".to_string(), builtin_str_split);
+        self.builtins.insert("svec_len".to_string(), builtin_svec_len);
+        self.builtins.insert("svec_get".to_string(), builtin_svec_get);
+        self.builtins.insert("svec_free".to_string(), builtin_svec_free);
 
         // v0.34: Math intrinsics for Phase 34.4 Benchmark Gate (n_body, mandelbrot_fp)
         self.builtins.insert("sqrt".to_string(), builtin_sqrt);
@@ -678,7 +689,30 @@ impl Interpreter {
                 Ok(Value::Unit)
             }
 
-            // v0.2: Range expression with kind
+            
+            // v0.98.3: while let PAT = EXPR { BODY } (Cycle 2834, interpreter-only)
+            Expr::WhileLet { pattern, expr: scrutinee, body } => {
+                loop {
+                    let val = self.eval(scrutinee, env)?;
+                    match self.match_pattern(&pattern.node, &val) {
+                        Some(bindings) => {
+                            let child = child_env(env);
+                            for (name, v) in bindings {
+                                child.borrow_mut().define(name, v);
+                            }
+                            match self.eval(body, &child) {
+                                Ok(_) => {},
+                                Err(e) if matches!(e.kind, ErrorKind::Continue) => continue,
+                                Err(e) if matches!(e.kind, ErrorKind::Break(_)) => break,
+                                Err(e) => return Err(e),
+                            }
+                        }
+                        None => break,
+                    }
+                }
+                Ok(Value::Unit)
+            }
+// v0.2: Range expression with kind
             Expr::Range { start, end, kind } => {
                 let start_val = self.eval(start, env)?;
                 let end_val = self.eval(end, env)?;
@@ -6341,6 +6375,30 @@ impl Interpreter {
                 Ok(Value::Unit)
             }
 
+            // v0.98.3: while let (Cycle 2834, interpreter-only) — eval_fast path
+            Expr::WhileLet { pattern, expr: scrutinee, body } => {
+                loop {
+                    let val = self.eval_fast(scrutinee)?;
+                    match self.match_pattern(&pattern.node, &val) {
+                        Some(bindings) => {
+                            self.scope_stack.push_scope();
+                            for (name, v) in bindings {
+                                self.scope_stack.define(name, v);
+                            }
+                            let result = match self.eval_fast(body) {
+                                Ok(_) => Ok(()),
+                                Err(e) if matches!(e.kind, ErrorKind::Continue) => { self.scope_stack.pop_scope(); continue; }
+                                Err(e) if matches!(e.kind, ErrorKind::Break(_)) => { self.scope_stack.pop_scope(); break; }
+                                Err(e) => { self.scope_stack.pop_scope(); return Err(e); }
+                            };
+                            self.scope_stack.pop_scope();
+                            result?;
+                        }
+                        None => break,
+                    }
+                }
+                Ok(Value::Unit)
+            }
             // v0.30.280: Match expression using ScopeStack
             Expr::Match { expr: match_expr, arms } => {
                 let val = self.eval_fast(match_expr)?;
@@ -8959,6 +9017,86 @@ fn builtin_to_string(args: &[Value]) -> InterpResult<Value> {
         other => format!("{other}"),
     };
     Ok(Value::Str(std::rc::Rc::new(result)))
+}
+
+/// str_split(s: String, delim: String) -> i64 (Cycle 2833, interpreter-only)
+/// Splits s by delim and stores parts in SVEC_REGISTRY; returns opaque handle (i64 index).
+/// Use svec_len / svec_get to read results, svec_free to release.
+fn builtin_str_split(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("str_split", 2, args.len()));
+    }
+    let s = args[0].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[0].type_name()))?;
+    let delim = args[1].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[1].type_name()))?;
+    let parts: Vec<String> = if delim.is_empty() {
+        s.chars().map(|c| c.to_string()).collect()
+    } else {
+        s.split(delim.as_str()).map(|p| p.to_string()).collect()
+    };
+    let handle = SVEC_REGISTRY.with(|reg| {
+        let mut v = reg.borrow_mut();
+        let idx = v.len();
+        v.push(Some(parts));
+        idx
+    });
+    Ok(Value::Int(handle as i64))
+}
+
+/// svec_len(handle: i64) -> i64 — number of strings in split result
+fn builtin_svec_len(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("svec_len", 1, args.len()));
+    }
+    let idx = match &args[0] {
+        Value::Int(n) => *n as usize,
+        _ => return Err(RuntimeError::type_error("i64", args[0].type_name())),
+    };
+    let len = SVEC_REGISTRY.with(|reg| {
+        reg.borrow().get(idx).and_then(|slot| slot.as_ref()).map(|v| v.len() as i64).unwrap_or(-1)
+    });
+    if len < 0 {
+        return Err(RuntimeError::io_error("svec_len: invalid or freed handle"));
+    }
+    Ok(Value::Int(len))
+}
+
+/// svec_get(handle: i64, index: i64) -> String — get string at index
+fn builtin_svec_get(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("svec_get", 2, args.len()));
+    }
+    let idx = match &args[0] {
+        Value::Int(n) => *n as usize,
+        _ => return Err(RuntimeError::type_error("i64", args[0].type_name())),
+    };
+    let elem = match &args[1] {
+        Value::Int(n) => *n as usize,
+        _ => return Err(RuntimeError::type_error("i64", args[1].type_name())),
+    };
+    let result = SVEC_REGISTRY.with(|reg| {
+        reg.borrow().get(idx).and_then(|slot| slot.as_ref()).and_then(|v| v.get(elem)).cloned()
+    });
+    match result {
+        Some(s) => Ok(Value::Str(std::rc::Rc::new(s))),
+        None => Err(RuntimeError::index_out_of_bounds(elem as i64, 0)),
+    }
+}
+
+/// svec_free(handle: i64) — release split result memory
+fn builtin_svec_free(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("svec_free", 1, args.len()));
+    }
+    let idx = match &args[0] {
+        Value::Int(n) => *n as usize,
+        _ => return Err(RuntimeError::type_error("i64", args[0].type_name())),
+    };
+    SVEC_REGISTRY.with(|reg| {
+        if let Some(slot) = reg.borrow_mut().get_mut(idx) {
+            *slot = None;
+        }
+    });
+    Ok(Value::Unit)
 }
 
 #[cfg(test)]

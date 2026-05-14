@@ -80,6 +80,14 @@ pub enum Expr {
         body: Box<Spanned<Expr>>,
     },
 
+    /// while let PATTERN = EXPR { BODY } — pattern-matching loop (v0.98.3, Cycle 2834)
+    /// Evaluates EXPR each iteration; exits when pattern doesn't match.
+    WhileLet {
+        pattern: Spanned<Pattern>,
+        expr: Box<Spanned<Expr>>,
+        body: Box<Spanned<Expr>>,
+    },
+
     /// For loop: for var in iter { body } (v0.5 Phase 3)
     For {
         var: String,

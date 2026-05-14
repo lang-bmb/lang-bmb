@@ -1508,6 +1508,60 @@ fn test_interp_to_string() {
 }
 
 #[test]
+fn test_interp_str_split() {
+    // Basic split by comma
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let parts = str_split("a,b,c", ","); let n = svec_len(parts); let _f = svec_free(parts); n };"#),
+        Value::Int(3)
+    );
+    // svec_get returns correct strings
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let parts = str_split("hello world", " "); let first = svec_get(parts, 0); let ok = if str_contains(first, "hello") == 1 { 1 } else { 0 }; let _f = svec_free(parts); ok };"#),
+        Value::Int(1)
+    );
+    // Split with no delimiter match: returns original string in one slot
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let parts = str_split("nodot", ","); let n = svec_len(parts); let _f = svec_free(parts); n };"#),
+        Value::Int(1)
+    );
+    // Empty delimiter splits into characters
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let parts = str_split("abc", ""); let n = svec_len(parts); let _f = svec_free(parts); n };"#),
+        Value::Int(3)
+    );
+}
+
+#[test]
+fn test_interp_while_let() {
+    // Immediately exits when pattern doesn't match
+    assert_eq!(
+        run_program(r#"
+enum MyOpt { None, Some(i64) }
+fn always_none() -> MyOpt = MyOpt::None;
+fn main() -> i64 = { while let MyOpt::Some(_v) = always_none() { }; 42 };
+"#),
+        Value::Int(42)
+    );
+    // Iterates, accumulates sum via mutable outer variable
+    assert_eq!(
+        run_program(r#"
+enum Opt { None, Some(i64) }
+fn decr(n: i64) -> Opt = if n > 0 { Opt::Some(n - 1) } else { Opt::None };
+fn main() -> i64 = {
+    let mut n = 3;
+    let mut sum = 0;
+    while let Opt::Some(v) = decr(n) {
+        n = v;
+        sum = sum + v
+    };
+    sum
+};
+"#),
+        Value::Int(3)
+    );
+}
+
+#[test]
 fn test_interp_multiple_functions() {
     assert_eq!(
         run_program("fn add(a: i64, b: i64) -> i64 = a + b;\nfn mul(a: i64, b: i64) -> i64 = a * b;\nfn main() -> i64 = add(mul(3, 4), 5);"),

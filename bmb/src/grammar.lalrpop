@@ -1389,6 +1389,17 @@ BlockExpr: Expr = {
     "select" "{" <arms:SelectArms> "}" => Expr::Select {
         arms,
     },
+    // while let (Cycle 2834, interpreter-only): while let PAT = EXPR { BODY }
+    // Uses WhileLetPattern (not SpannedPattern) to avoid LALR(1) conflict with let-expr
+    "while" "let" <p:SpannedWhileLetPattern> "=" <e:SpannedExpr> <l:@L> "{" <es:(<BlockStmt> ";")*> <last:BlockStmt?> "}" <r:@R> => Expr::WhileLet {
+        pattern: p,
+        expr: Box::new(e),
+        body: Box::new(Spanned::new({
+            let mut exprs = es;
+            if let Some(last) = last { exprs.push(last); }
+            desugar_block_lets(exprs)
+        }, Span::new(l, r))),
+    },
     // while (with invariant)
     "while" <c:SpannedExpr> "invariant" <inv:SpannedExpr> <l:@L> "{" <es:(<BlockStmt> ";")*> <last:BlockStmt?> "}" <r:@R> => Expr::While {
         cond: Box::new(c),
@@ -1544,6 +1555,16 @@ Expr: Expr = {
     // v0.51: Body now accepts BlockStmt sequence (let bindings + assignments)
     // Syntax: while cond invariant inv { stmts }
     // v0.89.4: All loop bodies use desugar_block_lets for let-in-loop support
+    // v0.98.3: while let (Cycle 2834) — uses WhileLetPattern to avoid LALR conflict
+    "while" "let" <p:SpannedWhileLetPattern> "=" <e:SpannedExpr> <l:@L> "{" <es:(<BlockStmt> ";")*> <last:BlockStmt?> "}" <r:@R> => Expr::WhileLet {
+        pattern: p,
+        expr: Box::new(e),
+        body: Box::new(Spanned::new({
+            let mut exprs = es;
+            if let Some(last) = last { exprs.push(last); }
+            desugar_block_lets(exprs)
+        }, Span::new(l, r))),
+    },
     "while" <c:SpannedExpr> "invariant" <inv:SpannedExpr> <l:@L> "{" <es:(<BlockStmt> ";")*> <last:BlockStmt?> "}" <r:@R> => Expr::While {
         cond: Box::new(c),
         invariant: Some(Box::new(inv)),
@@ -1777,6 +1798,59 @@ AtomicPattern: Pattern = {
     "[" <parts:ArrayPatternParts> "]" => ArrayPatternPart::into_pattern(parts),
     // Variable binding (must be after enum variant, struct pattern, and binding to avoid ambiguity)
     <n:RawIdent> => Pattern::Var(n),
+};
+
+// v0.98.3: Cycle 2834 — WhileLetPattern excludes bare RawIdent (Pattern::Var)
+// to avoid LALR(1) conflict: "while" "let" RawIdent "=" is ambiguous with let-expr.
+// Supported: enum-variant, struct, binding, tuple, array, wildcard, literals.
+// Not supported: bare variable binding (while let x = e — always matches, rarely useful).
+SpannedWhileLetPattern: Spanned<Pattern> = {
+    <l:@L> <p:WhileLetPattern> <r:@R> => Spanned::new(p, Span::new(l, r)),
+};
+
+WhileLetPattern: Pattern = {
+    "_" => Pattern::Wildcard,
+    <start:"int"> ".." <end:"int"> => Pattern::Range {
+        start: LiteralPattern::Int(start),
+        end: LiteralPattern::Int(end),
+        inclusive: false,
+    },
+    <start:"int"> "..=" <end:"int"> => Pattern::Range {
+        start: LiteralPattern::Int(start),
+        end: LiteralPattern::Int(end),
+        inclusive: true,
+    },
+    <n:"int"> => Pattern::Literal(LiteralPattern::Int(n)),
+    <n:"float"> => Pattern::Literal(LiteralPattern::Float(n)),
+    <s:"string"> => Pattern::Literal(LiteralPattern::String(s)),
+    "true" => Pattern::Literal(LiteralPattern::Bool(true)),
+    "false" => Pattern::Literal(LiteralPattern::Bool(false)),
+    <enum_name:RawIdent> "::" <variant:RawIdent> => Pattern::EnumVariant {
+        enum_name,
+        variant,
+        bindings: vec![],
+    },
+    <enum_name:RawIdent> "::" <variant:RawIdent> "(" <bindings:EnumPatternBindings> ")" => Pattern::EnumVariant {
+        enum_name,
+        variant,
+        bindings,
+    },
+    <name:RawIdent> "{" <fields:StructPatternFields> "}" => Pattern::Struct {
+        name,
+        fields,
+    },
+    <name:RawIdent> "@" <pat:SpannedAtomicPattern> => Pattern::Binding {
+        name,
+        pattern: Box::new(pat),
+    },
+    "(" <p:SpannedPattern> "," ")" => Pattern::Tuple(vec![p]),
+    "(" <first:SpannedPattern> "," <rest:TuplePatternElems> ")" => {
+        let mut elems = vec![first];
+        elems.extend(rest);
+        Pattern::Tuple(elems)
+    },
+    "[" "]" => Pattern::Array(vec![]),
+    "[" <parts:ArrayPatternParts> "]" => ArrayPatternPart::into_pattern(parts),
 };
 
 // v0.40: Struct pattern fields

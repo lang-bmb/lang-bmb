@@ -1248,6 +1248,9 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             Operand::Place(Place::new(actual_name))
         }
 
+        // v0.98.3: while let — interpreter-only; MIR lowering returns unit
+        Expr::WhileLet { .. } => Operand::Constant(Constant::Unit),
+
         // v0.37: Invariant is for SMT verification, MIR lowering ignores it
         // v0.60.16: Push loop context for break/continue support
         Expr::While { cond, invariant: _, body } => {
