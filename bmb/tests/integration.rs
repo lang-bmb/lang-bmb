@@ -24659,6 +24659,66 @@ fn test_interp_string_interp_escape() {
     );
 }
 
+// ============================================
+// Cycle 2848: {expr} complex interpolation
+// ============================================
+
+#[test]
+fn test_interp_string_interp_expr() {
+    // {n + 1} — arithmetic
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let n = 5;
+            let s = "val is {n + 1}";
+            str_len(s)
+        };"#),
+        Value::Int(8)  // "val is 6" = 8 chars
+    );
+
+    // {a * b} — multiplication
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let a = 3;
+            let b = 4;
+            let s = "{a * b}";
+            str_len(s)
+        };"#),
+        Value::Int(2)  // "12" = 2 chars
+    );
+
+    // {p.x} — field access
+    assert_eq!(
+        run_program(r#"struct Pt { x: i64, y: i64 }
+        fn main() -> i64 = {
+            let p: Pt = new Pt { x: 7, y: 3 };
+            let s = "x={p.x}";
+            str_len(s)
+        };"#),
+        Value::Int(3)  // "x=7" = 3 chars
+    );
+
+    // {n - 1} — subtraction
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let n = 10;
+            let s = "{n - 1}";
+            str_len(s)
+        };"#),
+        Value::Int(1)  // "9" = 1 char
+    );
+
+    // mixed: ident and expr in same string
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let n = 2;
+            let name = "Alice";
+            let s = "{name} is {n + 0}";
+            str_len(s)
+        };"#),
+        Value::Int(10)  // "Alice is 2" = 10 chars
+    );
+}
+
 #[test]
 fn test_interp_str_hashmap() {
     // basic insert + get

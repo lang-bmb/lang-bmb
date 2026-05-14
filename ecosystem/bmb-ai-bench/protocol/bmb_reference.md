@@ -669,6 +669,30 @@ fn filter_gt(v: i64, thresh: i64) -> i64 = {
 };
 ```
 
+## Pattern: String expression interpolation (v0.98.5+, interpreter-only)
+```bmb
+// {expr} inside strings — supports arithmetic, field access, unary minus, parens
+fn main() -> i64 = {
+    let n = 5;
+    let s1 = "n+1 = {n + 1}";       // → "n+1 = 6"
+    let s2 = "{n * 2} doubled";      // → "10 doubled"
+
+    // Field access in interpolation
+    // struct Pt { x: i64, y: i64 }
+    // let p: Pt = new Pt { x: 3, y: 7 };
+    // let s3 = "x={p.x}, y={p.y}";  // → "x=3, y=7"
+
+    // Mixed: ident + expr
+    let a = 4; let b = 6;
+    let s4 = "{a} + {b} = {a + b}";  // → "4 + 6 = 10"
+
+    str_len(s4)  // 10
+};
+// Supported inside {}: arithmetic (+,-,*,/,%), field chains (a.b.c), unary minus, parens
+// NOT supported: function calls ({to_string(n)} won't work — use let binding instead)
+// {{  }} remain literal brace escapes
+```
+
 ## Pattern: String interpolation (interpreter-only)
 ```bmb
 // Simple variable interpolation in string literals
@@ -748,6 +772,7 @@ fn main() -> i64 = {
 - `while let` only supports enum-variant patterns (e.g., `Opt::Some(x)`) — bare `while let x = e` not supported (would infinite-loop anyway)
 - `format()`, `while let`, `for x in vec` and string interpolation `"Hello {name}"` are interpreter-only (`bmb run`) — `bmb build` (native) doesn't support them yet
 - In string interpolation, `{{` → literal `{` and `}}` → literal `}` (v0.98.5+). Example: `"{{key}}: {val}"` → `"{key}: <value>"`
+- String interpolation `{expr}` supports arithmetic/field access but NOT function calls — use `let tmp = fn(x); "{tmp}"` instead (v0.98.5+)
 - `+=`, `-=`, `*=`, `/=`, `%=` compound assignment operators available (v0.98.4+) — desugars to `x = x op e`; also available on struct fields: `set obj.field += e` (v0.98.5+, interpreter-only)
 - String builtins (`str_contains`, `str_find`, `str_substr`, `str_trim`, `str_to_int`, `to_string`, `str_split`, `svec_*`, `str_replace`, `str_repeat`, `format`) work with `bmb run` only — `bmb build` (native) will fail for these
 - Vec aggregate/search builtins (`vec_sum`, `vec_max`, `vec_min`, `vec_sort`, `vec_contains`, `vec_index_of`) are interpreter-only (`bmb run`) — `bmb build` (native) unsupported

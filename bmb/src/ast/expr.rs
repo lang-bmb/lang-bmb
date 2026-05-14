@@ -789,11 +789,162 @@ fn desugar_stmts(stmts: Vec<Spanned<Expr>>) -> Expr {
     }
 }
 
+/// Mini recursive-descent parser for expression interpolation inside `{...}`.
+/// Supports: idents, i64 literals, field chains (a.b.c), arithmetic (+,-,*,/,%),
+/// unary minus, and parenthesised sub-expressions.
+/// Returns `None` on parse failure or when content is a bare numeric literal (format-arg passthrough).
+fn parse_interp_expr(src: &str) -> Option<Expr> {
+    let s = src.trim();
+    if s.is_empty() { return None; }
+    // bare numeric → format-arg placeholder passthrough
+    if s.chars().all(|c| c.is_ascii_digit()) { return None; }
+    let chars: Vec<char> = s.chars().collect();
+    let mut p = InterpMini { chars: &chars, pos: 0 };
+    let e = p.expr()?;
+    p.skip_ws();
+    if p.pos != p.chars.len() { return None; }
+    Some(e)
+}
+
+struct InterpMini<'a> {
+    chars: &'a [char],
+    pos: usize,
+}
+
+impl<'a> InterpMini<'a> {
+    fn skip_ws(&mut self) {
+        while self.pos < self.chars.len() && self.chars[self.pos].is_ascii_whitespace() {
+            self.pos += 1;
+        }
+    }
+    fn peek(&mut self) -> Option<char> {
+        self.skip_ws();
+        self.chars.get(self.pos).copied()
+    }
+    fn consume(&mut self) -> Option<char> {
+        self.skip_ws();
+        let c = self.chars.get(self.pos).copied();
+        if c.is_some() { self.pos += 1; }
+        c
+    }
+    fn expect(&mut self, ch: char) -> Option<()> {
+        if self.peek() == Some(ch) { self.pos += 1; Some(()) } else { None }
+    }
+
+    fn expr(&mut self) -> Option<Expr> { self.additive() }
+
+    fn additive(&mut self) -> Option<Expr> {
+        let mut left = self.multiplicative()?;
+        loop {
+            self.skip_ws();
+            let op = match self.chars.get(self.pos) {
+                Some('+') => BinOp::Add,
+                Some('-') => BinOp::Sub,
+                _ => break,
+            };
+            self.pos += 1;
+            let right = self.multiplicative()?;
+            left = Expr::Binary {
+                left: Box::new(Spanned::new(left, Span::new(0, 0))),
+                op,
+                right: Box::new(Spanned::new(right, Span::new(0, 0))),
+            };
+        }
+        Some(left)
+    }
+
+    fn multiplicative(&mut self) -> Option<Expr> {
+        let mut left = self.unary()?;
+        loop {
+            self.skip_ws();
+            let op = match self.chars.get(self.pos) {
+                Some('*') => BinOp::Mul,
+                Some('/') => BinOp::Div,
+                Some('%') => BinOp::Mod,
+                _ => break,
+            };
+            self.pos += 1;
+            let right = self.unary()?;
+            left = Expr::Binary {
+                left: Box::new(Spanned::new(left, Span::new(0, 0))),
+                op,
+                right: Box::new(Spanned::new(right, Span::new(0, 0))),
+            };
+        }
+        Some(left)
+    }
+
+    fn unary(&mut self) -> Option<Expr> {
+        self.skip_ws();
+        if self.chars.get(self.pos) == Some(&'-') {
+            self.pos += 1;
+            let e = self.unary()?;
+            return Some(Expr::Unary { op: UnOp::Neg, expr: Box::new(Spanned::new(e, Span::new(0, 0))) });
+        }
+        self.postfix()
+    }
+
+    fn postfix(&mut self) -> Option<Expr> {
+        let mut e = self.primary()?;
+        loop {
+            self.skip_ws();
+            if self.chars.get(self.pos) == Some(&'.') {
+                self.pos += 1;
+                self.skip_ws();
+                let field = self.ident_str()?;
+                let fspan = Spanned::new(field, Span::new(0, 0));
+                e = Expr::FieldAccess { expr: Box::new(Spanned::new(e, Span::new(0, 0))), field: fspan };
+            } else {
+                break;
+            }
+        }
+        Some(e)
+    }
+
+    fn primary(&mut self) -> Option<Expr> {
+        self.skip_ws();
+        match self.chars.get(self.pos)? {
+            '(' => {
+                self.pos += 1;
+                let e = self.expr()?;
+                self.expect(')')?;
+                Some(e)
+            }
+            c if c.is_ascii_digit() => {
+                let start = self.pos;
+                while self.pos < self.chars.len() && self.chars[self.pos].is_ascii_digit() {
+                    self.pos += 1;
+                }
+                let n: i64 = self.chars[start..self.pos].iter().collect::<String>().parse().ok()?;
+                Some(Expr::IntLit(n))
+            }
+            c if c.is_ascii_alphabetic() || *c == '_' => {
+                let name = self.ident_str()?;
+                Some(Expr::Var(name))
+            }
+            _ => None,
+        }
+    }
+
+    fn ident_str(&mut self) -> Option<String> {
+        self.skip_ws();
+        let start = self.pos;
+        if self.pos >= self.chars.len() { return None; }
+        let first = self.chars[self.pos];
+        if !first.is_ascii_alphabetic() && first != '_' { return None; }
+        self.pos += 1;
+        while self.pos < self.chars.len() && (self.chars[self.pos].is_ascii_alphanumeric() || self.chars[self.pos] == '_') {
+            self.pos += 1;
+        }
+        Some(self.chars[start..self.pos].iter().collect())
+    }
+}
+
 /// Desugar string interpolation: `"Hello {name}"` → `format("Hello {0}", name)`
-/// Only simple identifier patterns `{ident}` are recognized (Cycle 2842, interpreter-only).
+/// Supports identifier, arithmetic expression, and field-access patterns inside `{...}` (Cycle 2848).
 /// Plain `{0}` numeric patterns are left as-is (already format-style args).
 /// `{{` is an escape for a literal `{` (Cycle 2845).
-/// Strings with no `{ident}` patterns return `Expr::StringLit` unchanged.
+/// Strings with no interpolation patterns return `Expr::StringLit` unchanged.
 pub fn desugar_string_interp(s: String) -> Expr {
     let chars: Vec<char> = s.chars().collect();
     let mut template = String::new();
@@ -808,21 +959,26 @@ pub fn desugar_string_interp(s: String) -> Expr {
                 i += 2;
                 continue;
             }
+            // Find matching } with brace-depth tracking
             let start = i + 1;
-            // First char must be ASCII letter or underscore
-            if start < chars.len() && (chars[start].is_ascii_alphabetic() || chars[start] == '_') {
-                let mut end = start + 1;
-                while end < chars.len() && (chars[end].is_ascii_alphanumeric() || chars[end] == '_') {
-                    end += 1;
+            let mut depth = 1usize;
+            let mut end = start;
+            while end < chars.len() && depth > 0 {
+                match chars[end] {
+                    '{' => depth += 1,
+                    '}' => depth -= 1,
+                    _ => {}
                 }
-                if end < chars.len() && chars[end] == '}' {
-                    let ident: String = chars[start..end].iter().collect();
+                if depth > 0 { end += 1; }
+            }
+            if depth == 0 {
+                let content: String = chars[start..end].iter().collect();
+                if let Some(expr) = parse_interp_expr(&content) {
                     let idx = args.len();
                     template.push('{');
                     template.push_str(&idx.to_string());
                     template.push('}');
-                    let dummy = Span::new(0, 0);
-                    args.push(Spanned::new(Expr::Var(ident), dummy));
+                    args.push(Spanned::new(expr, Span::new(0, 0)));
                     i = end + 1;
                     continue;
                 }
