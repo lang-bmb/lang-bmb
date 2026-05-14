@@ -425,6 +425,19 @@ impl TypeChecker {
         // Variadic: format("{0} + {1} = {2}", a, b, c). Extra args beyond template are untyped.
         // Variadic handling in type checker: see VARIADIC_BUILTINS check near non-generic lookup.
         functions.insert("format".to_string(), (vec![Type::String], Type::String));
+        // v0.98.3: str_replace + str_repeat (Cycle 2837, interpreter-only)
+        functions.insert("str_replace".to_string(), (vec![Type::String, Type::String, Type::String], Type::String));
+        functions.insert("str_repeat".to_string(), (vec![Type::String, Type::I64], Type::String));
+        // v0.98.3: svec_join (Cycle 2838, interpreter-only)
+        functions.insert("svec_join".to_string(), (vec![Type::I64, Type::String], Type::String));
+        // v0.98.3: Vec aggregate builtins (Cycle 2836, interpreter-only)
+        functions.insert("vec_sum".to_string(), (vec![Type::I64], Type::I64));
+        functions.insert("vec_max".to_string(), (vec![Type::I64], Type::I64));
+        functions.insert("vec_min".to_string(), (vec![Type::I64], Type::I64));
+        functions.insert("vec_sort".to_string(), (vec![Type::I64], Type::Unit));
+        // v0.98.3: vec_contains + vec_index_of (Cycle 2838, interpreter-only)
+        functions.insert("vec_contains".to_string(), (vec![Type::I64, Type::I64], Type::I64));
+        functions.insert("vec_index_of".to_string(), (vec![Type::I64, Type::I64], Type::I64));
 
         // v0.34: Math intrinsics for Phase 34.4 Benchmark Gate (n_body, mandelbrot_fp)
         // sqrt(x: f64) -> f64 (square root)

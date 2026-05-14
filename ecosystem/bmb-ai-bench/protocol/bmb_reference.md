@@ -64,13 +64,15 @@ let fi = i64_to_f64(n);           // i64 → f64
 let ni = f64_to_i64(3.7);         // f64 → i64 (truncates toward zero)
 
 // String search / manipulation (v0.98.1+)
-let found = str_contains(s, "sub");     // 1 if contains, 0 if not
-let ok = str_starts_with(s, "pre");    // 1 if starts with prefix
-let ok2 = str_ends_with(s, "suf");    // 1 if ends with suffix
-let idx = str_find(s, "needle");       // first byte index, or -1
-let sub = str_substr(s, 6, 5);         // substring (start, len)
-let trimmed = str_trim(s);             // trim leading/trailing whitespace
-let n2 = str_to_int("42");             // parse integer string → i64 (0 on failure)
+let found = str_contains(s, "sub");         // 1 if contains, 0 if not
+let ok = str_starts_with(s, "pre");        // 1 if starts with prefix
+let ok2 = str_ends_with(s, "suf");         // 1 if ends with suffix
+let idx = str_find(s, "needle");            // first byte index, or -1
+let sub = str_substr(s, 6, 5);             // substring (start, len)
+let trimmed = str_trim(s);                 // trim leading/trailing whitespace
+let n2 = str_to_int("42");                 // parse integer string → i64 (0 on failure)
+let replaced = str_replace(s, "x", "y");  // replace all "x" with "y" (v0.98.3, interp-only)
+let rep = str_repeat("ab", 3);             // "ababab" — repeat n times (v0.98.3, interp-only)
 
 // Generic to_string (v0.98.2+)
 let s1 = to_string(42);               // i64 → String ("42")
@@ -89,6 +91,7 @@ let msg = "value=" + to_string(n);    // concatenation with any type
 // };
 // Note: str_split("abc", "") splits into individual characters
 // Note: Use "let _f = svec_free(parts)" not "svec_free(parts);" (no standalone expr stmts)
+//   let j = svec_join(parts, "-");       // join all parts with delimiter (v0.98.3, interp-only)
 
 // Positional string formatting (v0.98.3+, interpreter-only)
 // format(template, arg0, arg1, ...) → String
@@ -106,7 +109,16 @@ let val = vec_get(v, 0);        // read at index (0-indexed)
 let _s = vec_set(v, idx, val);  // write at index
 let len = vec_len(v);           // length
 let _p = vec_pop(v);            // remove last
+let _c = vec_clear(v);          // set length to 0 (keep capacity)
 let _f = vec_free(v);           // deallocate
+
+// Aggregate operations (interpreter-only, v0.98.3):
+let s = vec_sum(v);             // sum all elements (i64)
+let mx = vec_max(v);            // maximum element (error on empty)
+let mn = vec_min(v);            // minimum element (error on empty)
+let _o = vec_sort(v);           // sort ascending in-place
+let ok = vec_contains(v, 42);  // 1 if 42 found, 0 otherwise
+let i = vec_index_of(v, 42);   // first index of 42, or -1 if not found
 ```
 
 ## HashMap (key→value store)
@@ -427,6 +439,164 @@ for i in 0..n {
 };
 ```
 
+## Pattern: Binary search
+```bmb
+// Find leftmost index where v[i] >= target in sorted v[0..n]. Returns n if all < target.
+let mut lo = 0;
+let mut hi = n;
+while lo < hi {
+    let mid = lo + (hi - lo) / 2;
+    if vec_get(v, mid) < target { lo = mid + 1 } else { hi = mid }
+};
+// lo is the answer. Check lo < n && vec_get(v, lo) == target for exact match.
+```
+
+## Pattern: DFS (depth-first search)
+```bmb
+// Iterative DFS using a stack (avoids deep recursion)
+let visited = vec_new();
+for _i in 0..n { let _p = vec_push(visited, 0) };
+let stk = vec_new();
+let _p = vec_push(stk, start);
+while vec_len(stk) > 0 {
+    let top = vec_get(stk, vec_len(stk) - 1);
+    let _pop = vec_pop(stk);
+    if vec_get(visited, top) == 0 {
+        let _v = vec_set(visited, top, 1);
+        // Process node `top` here
+        let nb_start = vec_get(adj_start, top);
+        let nb_end = vec_get(adj_start, top + 1);
+        for j in nb_start..nb_end {
+            let nb = vec_get(neighbors, j);
+            if vec_get(visited, nb) == 0 { let _p = vec_push(stk, nb) }
+        }
+    }
+};
+```
+
+## Pattern: String accumulation (build result string)
+```bmb
+// Build "1,2,3,4,5" from a vec
+let mut result = "";
+for i in 0..n {
+    if i > 0 { result = result + "," };
+    result = result + to_string(vec_get(v, i))
+};
+let _p = println_str(result);
+```
+
+## Pattern: while let with enum (safe iteration)
+```bmb
+// Iterate over an enum-based optional sequence
+enum Opt { None, Some(i64) }
+fn next_val(n: i64) -> Opt = if n > 0 { Opt::Some(n - 1) } else { Opt::None };
+// fn main() -> i64 = {
+//     let mut cursor = 5;
+//     let mut sum = 0;
+//     while let Opt::Some(v) = next_val(cursor) {
+//         cursor = v;
+//         sum = sum + v
+//     };
+//     sum   // = 0+1+2+3+4 = 10
+// };
+```
+
+## Pattern: Number to string conversions
+```bmb
+let si = to_string(42);        // i64 → "42"
+let sf = to_string(3.14);      // f64 → "3.14"
+let sb = to_string(true);      // bool → "true"
+// Positional format string (interpreter-only):
+let msg = format("{0}+{1}={2}", to_string(a), to_string(b), to_string(a+b));
+// Output "3+4=7" for a=3, b=4
+```
+
+## Pattern: Memoization (DP with HashMap cache)
+```bmb
+// Fibonacci with memoization — O(n) vs O(2^n) naive recursion
+fn fib_memo(n: i64, memo: i64) -> i64 = {
+    if hashmap_contains(memo, n) == 1 { hashmap_get(memo, n) }
+    else {
+        let result = if n <= 1 { n }
+                     else { fib_memo(n - 1, memo) + fib_memo(n - 2, memo) };
+        let _i = hashmap_insert(memo, n, result);
+        result
+    }
+};
+fn main() -> i64 = {
+    let memo = hashmap_new();
+    let r = fib_memo(10, memo);
+    let _f = hashmap_free(memo);
+    r     // 55
+};
+```
+
+## Pattern: Two-pointer technique
+```bmb
+// Find pair that sums to target in sorted array
+fn find_pair(v: i64, target: i64) -> i64 = {
+    let lo = 0;
+    let hi = vec_len(v) - 1;
+    let found = 0;
+    while lo < hi {
+        let s = vec_get(v, lo) + vec_get(v, hi);
+        if s == target { found = 1; lo = hi }
+        else { if s < target { lo = lo + 1 } else { hi = hi - 1 } }
+    };
+    found
+};
+```
+
+## Pattern: Kadane's algorithm (maximum subarray sum)
+```bmb
+fn max_subarray(v: i64) -> i64 = {
+    let n = vec_len(v);
+    let best = vec_get(v, 0);
+    let cur = best;
+    let i = 1;
+    while i < n {
+        let x = vec_get(v, i);
+        cur = if cur + x > x { cur + x } else { x };
+        best = if cur > best { cur } else { best };
+        i = i + 1
+    };
+    best
+};
+```
+
+## Pattern: String processing pipeline (split + transform + join)
+```bmb
+// Replace all commas with semicolons in CSV-like string (interpreter-only)
+fn csv_to_ssv(s: String) -> String = {
+    let parts = str_split(s, ",");
+    let n = svec_len(parts);
+    let result = svec_join(parts, ";");
+    let _f = svec_free(parts);
+    result
+};
+// Or use str_replace directly:
+fn csv_to_ssv_v2(s: String) -> String = str_replace(s, ",", ";");
+```
+
+## Pattern: Frequency count on string characters
+```bmb
+// Count occurrences of each ASCII character in a string
+fn char_freq(s: String, freq: i64) -> i64 = {
+    // freq is a vec of size 128 (initialized to 0)
+    let i = 0;
+    let n = str_len(s);
+    while i < n {
+        let b = s.byte_at(i);
+        let c = vec_get(freq, b);
+        let _s = vec_set(freq, b, c + 1);
+        i = i + 1
+    };
+    0
+};
+// Query: how many times does 'a' appear?
+// let count = vec_get(freq, ord('a'));
+```
+
 ## Common Pitfalls
 - `println()` returns `()`, not `i64` — always wrap: `let _r = println(x);`
 - `vec_push()/vec_set()/vec_free()` all return `()` — always wrap with `let _`
@@ -444,4 +614,7 @@ for i in 0..n {
 - `hashmap_get` returns `i64::MIN` (not 0) when key is absent — always check `hashmap_contains` first
 - `to_string(x)` converts any value to String without extra quotes (v0.98.2+)
 - `int_to_string(n)` is i64-only; use `to_string(n)` when type may vary
-- String builtins (`str_contains`, `str_find`, `str_substr`, `str_trim`, `str_to_int`, `to_string`, `str_split`, `svec_*`) work with `bmb run` only — `bmb build` (native) will fail with linker errors for these
+- `while let` only supports enum-variant patterns (e.g., `Opt::Some(x)`) — bare `while let x = e` not supported (would infinite-loop anyway)
+- `format()` and `while let` are interpreter-only (`bmb run`) — `bmb build` (native) doesn't support them yet
+- String builtins (`str_contains`, `str_find`, `str_substr`, `str_trim`, `str_to_int`, `to_string`, `str_split`, `svec_*`, `str_replace`, `str_repeat`, `format`) work with `bmb run` only — `bmb build` (native) will fail for these
+- Vec aggregate/search builtins (`vec_sum`, `vec_max`, `vec_min`, `vec_sort`, `vec_contains`, `vec_index_of`) are interpreter-only (`bmb run`) — `bmb build` (native) unsupported

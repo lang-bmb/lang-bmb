@@ -1556,6 +1556,92 @@ fn test_interp_format() {
 }
 
 #[test]
+fn test_interp_svec_join_vec_search() {
+    // svec_join: join split parts with delimiter
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let parts = str_split("a,b,c", ","); let j = svec_join(parts, "-"); let ok = str_contains(j, "a-b-c"); let _f = svec_free(parts); ok };"#),
+        Value::Int(1)
+    );
+    // svec_join: single element (no delimiters)
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let parts = str_split("hello", ","); let j = svec_join(parts, ","); let n = str_len(j); let _f = svec_free(parts); n };"#),
+        Value::Int(5)
+    );
+    // vec_contains: found
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let v = vec_new(); vec_push(v, 10); vec_push(v, 20); vec_push(v, 30); let c = vec_contains(v, 20); vec_free(v); c };"#),
+        Value::Int(1)
+    );
+    // vec_contains: not found
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let v = vec_new(); vec_push(v, 10); vec_push(v, 20); let c = vec_contains(v, 99); vec_free(v); c };"#),
+        Value::Int(0)
+    );
+    // vec_index_of: found at index 2
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let v = vec_new(); vec_push(v, 10); vec_push(v, 20); vec_push(v, 30); let i = vec_index_of(v, 30); vec_free(v); i };"#),
+        Value::Int(2)
+    );
+    // vec_index_of: not found → -1
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let v = vec_new(); vec_push(v, 10); let i = vec_index_of(v, 99); vec_free(v); i };"#),
+        Value::Int(-1)
+    );
+}
+
+#[test]
+fn test_interp_str_replace_repeat() {
+    // str_replace: replace all occurrences
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let s = str_replace("aabbcc", "bb", "XX"); str_len(s) };"#),
+        Value::Int(6)  // "aaXXcc" length = 6
+    );
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let s = str_replace("hello world", "world", "BMB"); str_contains(s, "BMB") };"#),
+        Value::Int(1)
+    );
+    // str_replace: no match → same string
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let s = str_replace("abc", "xyz", "ZZZ"); str_len(s) };"#),
+        Value::Int(3)
+    );
+    // str_repeat: repeat 3 times
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let s = str_repeat("ab", 3); str_len(s) };"#),
+        Value::Int(6)  // "ababab"
+    );
+    // str_repeat: n=0 → empty
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let s = str_repeat("abc", 0); str_len(s) };"#),
+        Value::Int(0)
+    );
+}
+
+#[test]
+fn test_interp_vec_aggregate() {
+    // vec_sum: sum of 1+2+3+4+5 = 15
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let v = vec_new(); vec_push(v, 1); vec_push(v, 2); vec_push(v, 3); vec_push(v, 4); vec_push(v, 5); let s = vec_sum(v); vec_free(v); s };"#),
+        Value::Int(15)
+    );
+    // vec_max: max of 3,1,4,1,5,9 = 9
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let v = vec_new(); vec_push(v, 3); vec_push(v, 1); vec_push(v, 4); vec_push(v, 1); vec_push(v, 5); vec_push(v, 9); let m = vec_max(v); vec_free(v); m };"#),
+        Value::Int(9)
+    );
+    // vec_min: min of 3,1,4 = 1
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let v = vec_new(); vec_push(v, 3); vec_push(v, 1); vec_push(v, 4); let m = vec_min(v); vec_free(v); m };"#),
+        Value::Int(1)
+    );
+    // vec_sort: sort [3,1,4,1,5] -> first elem = 1, last = 5
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let v = vec_new(); vec_push(v, 3); vec_push(v, 1); vec_push(v, 4); vec_push(v, 1); vec_push(v, 5); vec_sort(v); let first = vec_get(v, 0); let last = vec_get(v, 4); vec_free(v); first + last * 10 };"#),
+        Value::Int(51)  // 1 + 5*10 = 51
+    );
+}
+
+#[test]
 fn test_interp_while_let() {
     // Immediately exits when pattern doesn't match
     assert_eq!(

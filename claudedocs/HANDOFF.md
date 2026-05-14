@@ -1,104 +1,73 @@
-# BMB Session Handoff — 2026-05-14 (Cycles 2823-2832 — 언어 갭 해소 + 문서 + Builtins + to_string)
+# BMB Session Handoff — 2026-05-14 (Cycles 2834-2840 — 언어 갭 해소 + 빌트인 확장)
 
-> **HEAD**: `68d97445` (Cycles 2823-2832 session close)
-> **이전 HEAD**: `9464fc01` (Cycle 2822 priority adjust)
+> **HEAD**: `af4aa074` (Cycles 2823-2832 이전 HEAD — 이번 세션 커밋 예정)
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2822, 120790 lines) — 이번 세션 bootstrap 변경 없음
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2833
+> **다음 세션 진입점**: Cycle 2841
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 2823-2832)
+## 이번 세션 작업 요약 (Cycles 2834-2840)
 
 ### 주요 변경 사항
 
 | Cycle | 제목 | 내용 |
 |-------|------|------|
-| 2823 | SpannedIfExpr 선택적 else | `if a { } else if b { }` — 최종 else 없는 체인 지원. `#[precedence]` 패턴 |
-| 2824 | bmb_reference 기본 갱신 | CRITICAL if-else 섹션 재작성, `else { () }` 패턴 제거 |
-| 2825 | Math Builtins 문서화 | `abs`, `sign`, `min`, `max`, `pow`, `sqrt` 등 + `-x` 부정 오류 수정 |
-| 2826 | String Builtins 문서화 | `str_len`, `int_to_string`, `i64_to_f64`, `str_to_int` 참조 추가 |
-| 2827 | HashMap Builtins 문서화 | `hashmap_new`, `hashmap_insert`, `hashmap_get` etc. `i64::MIN` sentinel 명시 |
-| 2828 | 문자열 처리 Builtins 구현 | `str_contains`, `str_starts_with`, `str_ends_with`, `str_find`, `str_substr`, `str_trim`, `str_to_int` |
-| 2829 | Bootstrap 검증 + HANDOFF 갱신 | Stage 1 ✅, 전체 2358 tests passed |
-| 2830 | to_string<T> generic builtin | `to_string(x)` — i64/f64/bool/String 변환, 2359 tests ✅ |
-| 2831 | 알고리즘 패턴 보강 | BFS/prefix-sum/find-max/hashmap-count + Pitfalls 보강 |
-| 2832 | HANDOFF/ROADMAP 갱신 + 커밋 | 이번 세션 마무리 |
+| 2834 | while let 패턴 구현 | `while let Opt::Some(v) = expr { body }` — LALR(1) conflict WhileLetPattern로 해결. grammar + AST + types + interp + 5 match-arm files |
+| 2835 | format() 가변인수 빌트인 | `format("{0}+{1}", a, b)` — variadic type checker + interpreter builtin |
+| 2836 | vec 집계 빌트인 + 패턴 5종 | `vec_sum/max/min/sort` + bmb_reference Binary search/DFS/String acc/while-let/Number-to-string |
+| 2837 | str_replace + str_repeat | `str_replace(s, old, new)` (replace-all) + `str_repeat(s, n)` |
+| 2838 | svec_join + vec_contains + vec_index_of | split-join pair + linear search builtins |
+| 2839 | bmb_reference 알고리즘 패턴 5종 | Memoization(DP) / Two-pointer / Kadane / String pipeline / Char freq |
+| 2840 | 최종 테스트 + 커밋 | `cargo test --release` ✅ ALL PASS, session close |
 
 ### 변경 파일
 
 **Rust 소스 (언어 갭 해소)**:
-- `bmb/src/grammar.lalrpop`: `SpannedIfExpr` — no-else 대안 추가 (`#[precedence(level="1")]`)
-- `bmb/src/interp/eval.rs`: 7개 string builtins + `to_string<T>` builtin 등록 + 구현 (**interpreter-only** — `bmb run` 전용, `bmb build` native에는 linker declarations 미존재)
-- `bmb/src/types/mod.rs`: 7개 string builtins + `to_string<T>` generic_functions 등록
+- `bmb/src/grammar.lalrpop`: `WhileLetPattern` non-terminal (excludes `Pattern::Var` to avoid LALR conflict), `SpannedWhileLetPattern` production, `Expr::WhileLet` in BlockExpr
+- `bmb/src/ast/expr.rs`: `Expr::WhileLet { pattern, expr, body }` variant
+- `bmb/src/ast/output.rs`: WhileLet display case
+- `bmb/src/cir/lower.rs`: WhileLet → `CirExpr::Unit` (interp-only fallback)
+- `bmb/src/smt/translator.rs`: WhileLet → UnsupportedFeature
+- `bmb/src/verify/contract.rs`: WhileLet recursive conflict check
+- `bmb/src/lsp/mod.rs`: WhileLet format_expr case
+- `bmb/src/mir/lower.rs`: WhileLet → `Operand::Constant(Constant::Unit)`
+- `bmb/src/main.rs`: WhileLet format_expr case
+- `bmb/src/interp/eval.rs`: WhileLet eval + eval_fast; format() variadic; vec_sum/max/min/sort; str_replace/str_repeat; svec_join; vec_contains/vec_index_of (all interpreter-only)
+- `bmb/src/types/mod.rs`: type registrations for all new builtins + variadic `format` exception in arity check
 
 **문서**:
-- `ecosystem/bmb-ai-bench/protocol/bmb_reference.md`: 전체 갱신 (CRITICAL 섹션, Math Builtins, String Operations, HashMap, 패턴 정리)
+- `ecosystem/bmb-ai-bench/protocol/bmb_reference.md`: 10+ 패턴 추가 (while-let, format, vec aggregate, str_replace/repeat, svec_join, memoization, two-pointer, Kadane, string pipeline, char freq). 22+ total patterns.
 
 **테스트**:
-- `bmb/tests/integration.rs`: `test_interp_else_if_no_final_else` + `test_interp_str_builtins` + `test_interp_to_string` (2357→2359)
+- `bmb/tests/integration.rs`: `test_interp_while_let`, `test_interp_format`, `test_interp_vec_aggregate`, `test_interp_str_replace_repeat`, `test_interp_svec_join_vec_search` (2362→2377+ tests)
 
-**기타**:
-- `ecosystem/bmb-wasm/src/lib.rs`: thread_local const 초기화 clippy 수정
-
-**사이클 로그**: `claudedocs/cycle-logs/cycle-2823.md` ~ `cycle-2832.md`
+**사이클 로그**: `claudedocs/cycle-logs/cycle-2834.md` ~ `cycle-2840.md`
 
 ---
 
-## B-track ISSUE 상태 (2832 기준)
+## M4 ① 언어 갭 현황 (2840 기준)
 
-| ISSUE | 우선순위 | 상태 |
-|-------|---------|------|
-| `ISSUE-20260326-statistical-testing` | MEDIUM | ✅ **RESOLVED** |
-| `ISSUE-20260326-crosslang-reference-asymmetry` | HIGH | ✅ **RESOLVED** |
-| `ISSUE-20260326-first-shot-rate-low` | MEDIUM | 🔄 LARGELY RESOLVED (재측정 HUMAN) |
-| `ISSUE-20260326-type-d-failure-analysis` | HIGH | 🔄 ROOT CAUSE RESOLVED (재측정 HUMAN) |
-| `ISSUE-20260326-integration-category-weakness` | HIGH | 🔄 **PARTIALLY RESOLVED** — 2822+2823+2828 언어 기능 추가, 재측정 HUMAN |
-| `ISSUE-20260326-external-problem-validation` | MEDIUM | OPEN (HUMAN) |
-| `ISSUE-20260326-multi-model-validation` | HIGH | OPEN (HUMAN) |
-| `ISSUE-20260326-problem-difficulty-bias` | LOW | OPEN (HUMAN) |
-
----
-
-## B축 현재 상태
-
-### 공식 baseline (2026-05-13)
-
-| 필드 | 값 |
-|------|-----|
-| 총 runs | 300 (100문제 × 3회) |
-| 성공 | 294 (98.0%) |
-| 측정 시점 | Cycle 2810-2811 |
-| JSON | `claudedocs/measurements/b_baseline_2026-05-13_c2810.json` |
-
-**⚠️ 재측정 권장**: Cycles 2822-2832 언어 기능 추가 + 문서 대폭 개선. 재측정 시 99%+ 달성 예상.
-
----
-
-## 다음 세션 우선순위 (Cycle 2833+)
-
-> **방침**: 언어 갭 해소 선행. B축 재측정은 언어완성 증명 단계까지 후순위 (ROADMAP § M4 ④ 참조).
-
-### 1순위 — 언어 갭 해소 (자율)
-
-- `else if` 체인 최종 else 없음 ✅ (Cycle 2823)
-- string 처리 builtins ✅ (Cycle 2828, interpreter-only)
-- to_string<T> generic builtin ✅ (Cycle 2830, interpreter-only)
-- **다음**: `split(s, delim)` builtin — 문자열을 구분자로 분리해 vec 반환 (P3)
-- **다음**: string interpolation (고복잡도 — lexer 변경 필요)
-- **다음**: `for x in vec {}` (for-in-vec — vec 핸들이 i64 → 구조적 변경 필요, 고복잡도)
-- **다음**: `while let Some(x) = ...` while-let 패턴
-
----
-
-## 기술 상태
-
-| 항목 | 상태 |
+| 기능 | 상태 |
 |------|------|
-| Bootstrap 3-Stage Fixed Point | ✅ S2 == S3 (Cycle 2822, 이번 세션 변경 없음) |
-| `cargo test --release` | ✅ 2359 passed |
-| Stage 1 (2829+2831 확인) | ✅ compiler.bmb 빌드 성공 |
-| M1 Self-Validated | ✅ COMPLETE |
-| M2 AI-Ready Infra | ✅ COMPLETE |
-| M3 External Bindings | 🔄 ~99% |
-| M4 Adopted | 🔄 ~50% |
+| let-tuple | ✅ Cycle 2621 |
+| static method | ✅ Cycle 2620 |
+| Option::Some expr | ✅ Cycle 2633 |
+| if-without-else | ✅ Cycle 2822 |
+| else-if-chain | ✅ Cycle 2823 |
+| 7종 string builtins | ✅ Cycle 2828, interpreter-only |
+| to_string<T> | ✅ Cycle 2830, interpreter-only |
+| str_split + svec_* | ✅ Cycle 2833, interpreter-only |
+| while let PAT = expr {} | ✅ Cycle 2834, interpreter-only |
+| format(template, ...args) | ✅ Cycle 2835, interpreter-only |
+| vec_sum/max/min/sort | ✅ Cycle 2836, interpreter-only |
+| str_replace + str_repeat | ✅ Cycle 2837, interpreter-only |
+| svec_join + vec_contains + vec_index_of | ✅ Cycle 2838, interpreter-only |
+| for-in-vec | ⏳ 고복잡도 — 언어 스펙 변경 필요 (3-4 cycles) |
+| String interpolation `"Hello {name}"` | ⏳ 고복잡도 — lexer 변경 필요 |
+
+## 다음 세션 우선순위
+
+1. **for-in-vec** (고가치, 고복잡도) — `for x in my_vec { }` 구문 지원. Grammar + AST + type checker + interpreter + MIR 전체 수정 필요. LALR 충돌 가능성 있음.
+2. **String interpolation** — `"Hello {name}"` lexer 변환. 고복잡도.
+3. **bmb_reference 추가 패턴** — 특정 알고리즘 도메인 필요 시.

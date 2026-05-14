@@ -282,6 +282,11 @@ impl Interpreter {
         self.builtins.insert("str_substr".to_string(), builtin_str_substr);
         self.builtins.insert("str_trim".to_string(), builtin_str_trim);
         self.builtins.insert("str_to_int".to_string(), builtin_str_to_int);
+        // v0.98.3: str_replace + str_repeat (Cycle 2837, interpreter-only)
+        self.builtins.insert("str_replace".to_string(), builtin_str_replace);
+        self.builtins.insert("str_repeat".to_string(), builtin_str_repeat);
+        // v0.98.3: svec_join (Cycle 2838, interpreter-only)
+        self.builtins.insert("svec_join".to_string(), builtin_svec_join);
         // v0.98.2: Generic to_string (Cycle 2830)
         self.builtins.insert("to_string".to_string(), builtin_to_string);
         // v0.98.3: String-vec builtins for str_split (Cycle 2833, interpreter-only)
@@ -335,6 +340,14 @@ impl Interpreter {
         self.builtins.insert("vec_cap".to_string(), builtin_vec_cap);
         self.builtins.insert("vec_free".to_string(), builtin_vec_free);
         self.builtins.insert("vec_clear".to_string(), builtin_vec_clear);
+        // v0.98.3: Vec aggregate builtins (Cycle 2836, interpreter-only)
+        self.builtins.insert("vec_sum".to_string(), builtin_vec_sum);
+        self.builtins.insert("vec_max".to_string(), builtin_vec_max);
+        self.builtins.insert("vec_min".to_string(), builtin_vec_min);
+        self.builtins.insert("vec_sort".to_string(), builtin_vec_sort);
+        // v0.98.3: vec_contains + vec_index_of (Cycle 2838, interpreter-only)
+        self.builtins.insert("vec_contains".to_string(), builtin_vec_contains);
+        self.builtins.insert("vec_index_of".to_string(), builtin_vec_index_of);
 
         // v0.34.24: Hash builtins
         self.builtins.insert("hash_i64".to_string(), builtin_hash_i64);
@@ -7723,6 +7736,172 @@ fn builtin_vec_clear(args: &[Value]) -> InterpResult<Value> {
     }
 }
 
+// ============ v0.98.3: Vec Aggregate Builtins (Cycle 2836, interpreter-only) ============
+
+/// vec_sum(vec: i64) -> i64: Sum all elements
+fn builtin_vec_sum(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("vec_sum", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(vec_ptr) => {
+            if *vec_ptr == 0 {
+                return Err(RuntimeError::io_error("vec_sum: null vector"));
+            }
+            unsafe {
+                let header = *vec_ptr as *const i64;
+                let ptr = *header;
+                let len = *header.add(1);
+                let data = ptr as *const i64;
+                let mut sum: i64 = 0;
+                for i in 0..len as usize {
+                    sum = sum.wrapping_add(*data.add(i));
+                }
+                Ok(Value::Int(sum))
+            }
+        }
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+/// vec_max(vec: i64) -> i64: Maximum element (error on empty)
+fn builtin_vec_max(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("vec_max", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(vec_ptr) => {
+            if *vec_ptr == 0 {
+                return Err(RuntimeError::io_error("vec_max: null vector"));
+            }
+            unsafe {
+                let header = *vec_ptr as *const i64;
+                let ptr = *header;
+                let len = *header.add(1);
+                if len == 0 {
+                    return Err(RuntimeError::io_error("vec_max: empty vector"));
+                }
+                let data = ptr as *const i64;
+                let mut max = *data;
+                for i in 1..len as usize {
+                    let v = *data.add(i);
+                    if v > max { max = v; }
+                }
+                Ok(Value::Int(max))
+            }
+        }
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+/// vec_min(vec: i64) -> i64: Minimum element (error on empty)
+fn builtin_vec_min(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("vec_min", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(vec_ptr) => {
+            if *vec_ptr == 0 {
+                return Err(RuntimeError::io_error("vec_min: null vector"));
+            }
+            unsafe {
+                let header = *vec_ptr as *const i64;
+                let ptr = *header;
+                let len = *header.add(1);
+                if len == 0 {
+                    return Err(RuntimeError::io_error("vec_min: empty vector"));
+                }
+                let data = ptr as *const i64;
+                let mut min = *data;
+                for i in 1..len as usize {
+                    let v = *data.add(i);
+                    if v < min { min = v; }
+                }
+                Ok(Value::Int(min))
+            }
+        }
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+/// vec_sort(vec: i64) -> Unit: Sort elements in ascending order in-place
+fn builtin_vec_sort(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("vec_sort", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(vec_ptr) => {
+            if *vec_ptr == 0 {
+                return Err(RuntimeError::io_error("vec_sort: null vector"));
+            }
+            unsafe {
+                let header = *vec_ptr as *const i64;
+                let ptr = *header;
+                let len = *header.add(1);
+                if len > 1 {
+                    let data = ptr as *mut i64;
+                    let slice = std::slice::from_raw_parts_mut(data, len as usize);
+                    slice.sort_unstable();
+                }
+            }
+            Ok(Value::Unit)
+        }
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+/// vec_contains(vec: i64, val: i64) -> i64 (v0.98.3, Cycle 2838, interpreter-only)
+/// Returns 1 if val is found in vec, 0 otherwise.
+fn builtin_vec_contains(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("vec_contains", 2, args.len()));
+    }
+    match (&args[0], &args[1]) {
+        (Value::Int(vec_ptr), Value::Int(val)) => {
+            if *vec_ptr == 0 {
+                return Err(RuntimeError::io_error("vec_contains: null vector"));
+            }
+            unsafe {
+                let header = *vec_ptr as *const i64;
+                let ptr = *header;
+                let len = *header.add(1);
+                let data = ptr as *const i64;
+                for i in 0..len as usize {
+                    if *data.add(i) == *val { return Ok(Value::Int(1)); }
+                }
+            }
+            Ok(Value::Int(0))
+        }
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+/// vec_index_of(vec: i64, val: i64) -> i64 (v0.98.3, Cycle 2838, interpreter-only)
+/// Returns first index of val, or -1 if not found.
+fn builtin_vec_index_of(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("vec_index_of", 2, args.len()));
+    }
+    match (&args[0], &args[1]) {
+        (Value::Int(vec_ptr), Value::Int(val)) => {
+            if *vec_ptr == 0 {
+                return Err(RuntimeError::io_error("vec_index_of: null vector"));
+            }
+            unsafe {
+                let header = *vec_ptr as *const i64;
+                let ptr = *header;
+                let len = *header.add(1);
+                let data = ptr as *const i64;
+                for i in 0..len as usize {
+                    if *data.add(i) == *val { return Ok(Value::Int(i as i64)); }
+                }
+            }
+            Ok(Value::Int(-1))
+        }
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
 // ============ v0.34.24: Hash Builtins ============
 
 /// hash_i64(x: i64) -> i64: Hash function for integers
@@ -9007,6 +9186,35 @@ fn builtin_str_to_int(args: &[Value]) -> InterpResult<Value> {
     Ok(Value::Int(s.trim().parse::<i64>().unwrap_or(0)))
 }
 
+/// str_replace(s: String, old: String, new: String) -> String (v0.98.3, Cycle 2837, interpreter-only)
+/// Replaces all occurrences of old with new.
+fn builtin_str_replace(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 3 {
+        return Err(RuntimeError::arity_mismatch("str_replace", 3, args.len()));
+    }
+    let s = args[0].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[0].type_name()))?;
+    let old = args[1].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[1].type_name()))?;
+    let new = args[2].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[2].type_name()))?;
+    Ok(Value::Str(std::rc::Rc::new(s.replace(old.as_str(), new.as_str()))))
+}
+
+/// str_repeat(s: String, n: i64) -> String (v0.98.3, Cycle 2837, interpreter-only)
+/// Repeats string s n times. Returns empty string if n <= 0.
+fn builtin_str_repeat(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("str_repeat", 2, args.len()));
+    }
+    let s = args[0].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[0].type_name()))?;
+    let n = match &args[1] {
+        Value::Int(n) => *n,
+        other => return Err(RuntimeError::type_error("i64", other.type_name())),
+    };
+    if n <= 0 {
+        return Ok(Value::Str(std::rc::Rc::new(String::new())));
+    }
+    Ok(Value::Str(std::rc::Rc::new(s.repeat(n as usize))))
+}
+
 /// to_string<T>(x: T) -> String — generic value-to-string conversion (v0.98.2, Cycle 2830)
 /// Unlike Display (which adds quotes around strings), this returns the raw string content.
 fn builtin_to_string(args: &[Value]) -> InterpResult<Value> {
@@ -9099,6 +9307,27 @@ fn builtin_svec_free(args: &[Value]) -> InterpResult<Value> {
         }
     });
     Ok(Value::Unit)
+}
+
+/// svec_join(handle: i64, delim: String) -> String (v0.98.3, Cycle 2838, interpreter-only)
+/// Joins all strings in svec with delimiter between them.
+fn builtin_svec_join(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("svec_join", 2, args.len()));
+    }
+    let idx = match &args[0] {
+        Value::Int(n) => *n as usize,
+        _ => return Err(RuntimeError::type_error("i64", args[0].type_name())),
+    };
+    let delim = args[1].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[1].type_name()))?;
+    let result = SVEC_REGISTRY.with(|reg| {
+        let borrow = reg.borrow();
+        match borrow.get(idx) {
+            Some(Some(parts)) => Ok(parts.join(delim.as_str())),
+            _ => Err(RuntimeError::io_error(&format!("svec_join: invalid handle {idx}"))),
+        }
+    })?;
+    Ok(Value::Str(std::rc::Rc::new(result)))
 }
 
 /// format(template: String, args...) -> String — positional string formatting (Cycle 2835)
