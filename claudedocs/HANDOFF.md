@@ -57,28 +57,34 @@
 
 ## 다음 세션 우선순위 (Cycle 2823+)
 
-### 1순위 — HUMAN 결정 후 즉시 가능
+> **방침**: AI-friendly 검증(B축 재측정/crosslang)은 언어 완성도 충분 후 수행. 언어 갭 해소 → 측정 순서.
 
-**B축 재측정** (HUMAN: API key + 8-12h 실행):
+### 1순위 — 언어 갭 해소 (자율)
+
+LLM이 자연스럽게 쓰는 패턴 중 미지원 항목 우선:
+- `else if` 체인 마지막 else 없는 경우 (`SpannedIfExpr` 선택적 else 확장)
+- `for x in iter { }` for-loop (현재 while만 지원)
+- `while let Some(x) = iter.next() { }` while-let 패턴
+- string interpolation / format string (`f"hello {name}"` 또는 유사)
+- `bmb_reference.md` if-without-else 패턴 추가 (LLM 참조 문서 갱신)
+
+### 2순위 — P축 / 기술 부채
+
+- P축 ≤1.00x 유지 확인
+- bootstrap 파서 재귀→iterative 전환 (P3)
+
+### 3순위 — 검증 (언어 완성 후)
+
+**B축 재측정** (언어 갭 주요 항목 해소 후 + HUMAN API key):
 ```bash
 bmb-ai-bench run --all --runs 3 --model claude-sonnet-4-6
 ```
+현 baseline 98.0% stale 기한: **2026-08-13** (여유 있음)
 
-**crosslang 재실험** (HUMAN: API key + 24h 실행):
+**crosslang 재실험** (동일 조건):
 ```bash
 python scripts/run_crosslang.py --all --runs 3 --model claude-sonnet-4-6
 ```
-
-### 2순위 — 자율 가능
-
-- integration 카테고리 분석 심화: `SpannedIfExpr`의 선택적 else 허용 (else-if 체인 마지막 else 제거)
-- `bmb_reference.md` if-without-else 패턴 추가 (LLM 참조 문서 갱신)
-
-### 3순위 — HUMAN 결정 필요
-
-- 다중 모델 crosslang 실험
-- 외부 문제 세트 검증
-- 더 어려운 문제 추가
 
 ---
 
