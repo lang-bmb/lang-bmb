@@ -8,7 +8,7 @@
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 2823-2829)
+## 이번 세션 작업 요약 (Cycles 2823-2832)
 
 ### 주요 변경 사항
 
@@ -36,13 +36,16 @@
 - `ecosystem/bmb-ai-bench/protocol/bmb_reference.md`: 전체 갱신 (CRITICAL 섹션, Math Builtins, String Operations, HashMap, 패턴 정리)
 
 **테스트**:
-- `bmb/tests/integration.rs`: `test_interp_else_if_no_final_else` + `test_interp_str_builtins` (2357→2358)
+- `bmb/tests/integration.rs`: `test_interp_else_if_no_final_else` + `test_interp_str_builtins` + `test_interp_to_string` (2357→2359)
 
-**사이클 로그**: `claudedocs/cycle-logs/cycle-2823.md` ~ `cycle-2829.md`
+**기타**:
+- `ecosystem/bmb-wasm/src/lib.rs`: thread_local const 초기화 clippy 수정
+
+**사이클 로그**: `claudedocs/cycle-logs/cycle-2823.md` ~ `cycle-2832.md`
 
 ---
 
-## B-track ISSUE 상태 (2829 기준)
+## B-track ISSUE 상태 (2832 기준)
 
 | ISSUE | 우선순위 | 상태 |
 |-------|---------|------|
@@ -68,11 +71,11 @@
 | 측정 시점 | Cycle 2810-2811 |
 | JSON | `claudedocs/measurements/b_baseline_2026-05-13_c2810.json` |
 
-**⚠️ 재측정 권장**: Cycles 2822-2828 언어 기능 추가 + 문서 대폭 개선. 재측정 시 99%+ 달성 예상.
+**⚠️ 재측정 권장**: Cycles 2822-2832 언어 기능 추가 + 문서 대폭 개선. 재측정 시 99%+ 달성 예상.
 
 ---
 
-## 다음 세션 우선순위 (Cycle 2830+)
+## 다음 세션 우선순위 (Cycle 2833+)
 
 > **방침**: 언어 갭 해소 선행 → 측정 순서. 현재 baseline stale 기한: 2026-08-13.
 
