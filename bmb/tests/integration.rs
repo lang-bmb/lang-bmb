@@ -24804,6 +24804,50 @@ fn test_interp_str_hashmap() {
 }
 
 // ============================================
+// Cycle 2849: str_hashmap_keys / str_hashmap_sorted_keys
+// ============================================
+
+#[test]
+fn test_interp_str_hashmap_keys() {
+    // basic keys: count = str_hashmap_len
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let m = str_hashmap_new();
+            let _a = str_hashmap_insert(m, "x", 1);
+            let _b = str_hashmap_insert(m, "y", 2);
+            let _c = str_hashmap_insert(m, "z", 3);
+            let keys = str_hashmap_keys(m);
+            let n = svec_len(keys);
+            let _fk = svec_free(keys);
+            let _fm = str_hashmap_free(m);
+            n
+        };"#),
+        Value::Int(3)
+    );
+
+    // sorted keys: verify order and lookup
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let m = str_hashmap_new();
+            let _a = str_hashmap_insert(m, "banana", 10);
+            let _b = str_hashmap_insert(m, "apple", 20);
+            let _c = str_hashmap_insert(m, "cherry", 30);
+            let keys = str_hashmap_sorted_keys(m);
+            let k0 = svec_get(keys, 0);
+            let k1 = svec_get(keys, 1);
+            let k2 = svec_get(keys, 2);
+            let v0 = str_hashmap_get(m, k0);
+            let v1 = str_hashmap_get(m, k1);
+            let v2 = str_hashmap_get(m, k2);
+            let _fk = svec_free(keys);
+            let _fm = str_hashmap_free(m);
+            v0 * 100 + v1 * 10 + v2
+        };"#),
+        Value::Int(2130)  // sorted: apple(20), banana(10), cherry(30) → 20*100 + 10*10 + 30 = 2130
+    );
+}
+
+// ============================================
 // Cycle 2847: Field compound assignment
 // ============================================
 

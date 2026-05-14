@@ -559,6 +559,10 @@ impl TypeChecker {
         functions.insert("str_hashmap_len".to_string(), (vec![Type::I64], Type::I64));
         // str_hashmap_free(map: i64) -> ()
         functions.insert("str_hashmap_free".to_string(), (vec![Type::I64], Type::Unit));
+        // str_hashmap_keys(map: i64) -> i64 (svec handle, Cycle 2849, interpreter-only)
+        functions.insert("str_hashmap_keys".to_string(), (vec![Type::I64], Type::I64));
+        // str_hashmap_sorted_keys(map: i64) -> i64 (svec handle, alphabetically sorted)
+        functions.insert("str_hashmap_sorted_keys".to_string(), (vec![Type::I64], Type::I64));
         // reg_cached_lookup(reg: String, name: String, slot: i64) -> String
         functions.insert("reg_cached_lookup".to_string(), (vec![Type::String, Type::String, Type::I64], Type::String));
 

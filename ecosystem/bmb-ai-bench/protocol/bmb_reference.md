@@ -149,7 +149,10 @@ let _i = str_hashmap_insert(m, "word", 42);        // insert or overwrite
 let ok = str_hashmap_contains(m, "word");          // 1 if exists, 0 otherwise
 let val = str_hashmap_get(m, "word");              // value or i64::MIN if not found
 let n = str_hashmap_len(m);                        // number of distinct keys
+let keys = str_hashmap_keys(m);                    // svec handle of all keys (unordered)
+let skeys = str_hashmap_sorted_keys(m);            // svec handle of keys (sorted a-z, v0.98.5+)
 let _f = str_hashmap_free(m);                      // deallocate
+// After using keys/skeys: svec_free(keys) / svec_free(skeys)
 ```
 
 Usage pattern for get-with-default (string keys):
@@ -488,6 +491,31 @@ fn count_word(counts: i64, word: String) -> i64 = {
 //     let _f = str_hashmap_free(counts);
 //     apple_count
 // };
+```
+
+## Pattern: Iterate str_hashmap keys (v0.98.5+, interpreter-only)
+```bmb
+// Iterate over all key-value pairs using str_hashmap_sorted_keys
+fn main() -> i64 = {
+    let m = str_hashmap_new();
+    let _a = str_hashmap_insert(m, "c", 30);
+    let _b = str_hashmap_insert(m, "a", 10);
+    let _c = str_hashmap_insert(m, "b", 20);
+
+    let keys = str_hashmap_sorted_keys(m);   // sorted: ["a","b","c"]
+    let n = svec_len(keys);
+    let sum = 0;
+    for i in 0..n {
+        let key = svec_get(keys, i);
+        let val = str_hashmap_get(m, key);
+        sum += val
+    };
+    let _fk = svec_free(keys);
+    let _fm = str_hashmap_free(m);
+    sum  // 60
+};
+// str_hashmap_keys returns unordered keys; str_hashmap_sorted_keys returns alphabetical order
+// Use svec_len + svec_get loop (for-in-svec not yet supported)
 ```
 
 ## Pattern: Binary search

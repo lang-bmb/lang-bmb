@@ -374,6 +374,8 @@ impl Interpreter {
         self.builtins.insert("str_hashmap_contains".to_string(), builtin_str_hashmap_contains);
         self.builtins.insert("str_hashmap_len".to_string(), builtin_str_hashmap_len);
         self.builtins.insert("str_hashmap_free".to_string(), builtin_str_hashmap_free);
+        self.builtins.insert("str_hashmap_keys".to_string(), builtin_str_hashmap_keys);
+        self.builtins.insert("str_hashmap_sorted_keys".to_string(), builtin_str_hashmap_sorted_keys);
 
         // v0.34.24: HashSet builtins
         self.builtins
@@ -8374,6 +8376,38 @@ fn builtin_str_hashmap_free(args: &[Value]) -> InterpResult<Value> {
         }
         _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
     }
+}
+
+// v0.98.5: str_hashmap_keys / str_hashmap_sorted_keys (Cycle 2849, interpreter-only)
+fn builtin_str_hashmap_keys(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("str_hashmap_keys", 1, args.len()));
+    }
+    let map = unsafe { &*str_hashmap_ptr(&args[0])? };
+    let keys: Vec<String> = map.keys().cloned().collect();
+    let handle = SVEC_REGISTRY.with(|reg| {
+        let mut v = reg.borrow_mut();
+        let idx = v.len();
+        v.push(Some(keys));
+        idx
+    });
+    Ok(Value::Int(handle as i64))
+}
+
+fn builtin_str_hashmap_sorted_keys(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("str_hashmap_sorted_keys", 1, args.len()));
+    }
+    let map = unsafe { &*str_hashmap_ptr(&args[0])? };
+    let mut keys: Vec<String> = map.keys().cloned().collect();
+    keys.sort();
+    let handle = SVEC_REGISTRY.with(|reg| {
+        let mut v = reg.borrow_mut();
+        let idx = v.len();
+        v.push(Some(keys));
+        idx
+    });
+    Ok(Value::Int(handle as i64))
 }
 
 // ============ v0.34.24: HashSet Builtins ============
