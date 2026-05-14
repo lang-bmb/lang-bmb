@@ -1417,6 +1417,123 @@ BlockExpr: Expr = {
             other => panic!("Expected variable, index, field access, or dereference after 'set', got {:?}", other),
         }
     },
+    // v0.98.5: Compound assignment for variables and fields (Cycle 2847)
+    // "set x += e" and "set obj.field += e" — desugars to FieldAssign/Assign with Binary lhs
+    "set" <lhs:SpannedUnaryExpr> "+=" <rhs:SpannedExpr> => {
+        let lspan = lhs.span;
+        match lhs.node {
+            Expr::Var(name) => Expr::Assign {
+                name: name.clone(),
+                value: Box::new(Spanned::new(Expr::Binary {
+                    left: Box::new(Spanned::new(Expr::Var(name), lspan)),
+                    op: BinOp::Add,
+                    right: Box::new(rhs),
+                }, lspan)),
+            },
+            Expr::FieldAccess { expr, field } => {
+                let expr2 = expr.clone(); let field2 = field.clone();
+                Expr::FieldAssign { object: expr, field,
+                    value: Box::new(Spanned::new(Expr::Binary {
+                        left: Box::new(Spanned::new(Expr::FieldAccess { expr: expr2, field: field2 }, lspan)),
+                        op: BinOp::Add, right: Box::new(rhs),
+                    }, lspan)),
+                }
+            },
+            other => panic!("set +=: invalid lhs {:?}", other),
+        }
+    },
+    "set" <lhs:SpannedUnaryExpr> "-=" <rhs:SpannedExpr> => {
+        let lspan = lhs.span;
+        match lhs.node {
+            Expr::Var(name) => Expr::Assign {
+                name: name.clone(),
+                value: Box::new(Spanned::new(Expr::Binary {
+                    left: Box::new(Spanned::new(Expr::Var(name), lspan)),
+                    op: BinOp::Sub,
+                    right: Box::new(rhs),
+                }, lspan)),
+            },
+            Expr::FieldAccess { expr, field } => {
+                let expr2 = expr.clone(); let field2 = field.clone();
+                Expr::FieldAssign { object: expr, field,
+                    value: Box::new(Spanned::new(Expr::Binary {
+                        left: Box::new(Spanned::new(Expr::FieldAccess { expr: expr2, field: field2 }, lspan)),
+                        op: BinOp::Sub, right: Box::new(rhs),
+                    }, lspan)),
+                }
+            },
+            other => panic!("set -=: invalid lhs {:?}", other),
+        }
+    },
+    "set" <lhs:SpannedUnaryExpr> "*=" <rhs:SpannedExpr> => {
+        let lspan = lhs.span;
+        match lhs.node {
+            Expr::Var(name) => Expr::Assign {
+                name: name.clone(),
+                value: Box::new(Spanned::new(Expr::Binary {
+                    left: Box::new(Spanned::new(Expr::Var(name), lspan)),
+                    op: BinOp::Mul,
+                    right: Box::new(rhs),
+                }, lspan)),
+            },
+            Expr::FieldAccess { expr, field } => {
+                let expr2 = expr.clone(); let field2 = field.clone();
+                Expr::FieldAssign { object: expr, field,
+                    value: Box::new(Spanned::new(Expr::Binary {
+                        left: Box::new(Spanned::new(Expr::FieldAccess { expr: expr2, field: field2 }, lspan)),
+                        op: BinOp::Mul, right: Box::new(rhs),
+                    }, lspan)),
+                }
+            },
+            other => panic!("set *=: invalid lhs {:?}", other),
+        }
+    },
+    "set" <lhs:SpannedUnaryExpr> "/=" <rhs:SpannedExpr> => {
+        let lspan = lhs.span;
+        match lhs.node {
+            Expr::Var(name) => Expr::Assign {
+                name: name.clone(),
+                value: Box::new(Spanned::new(Expr::Binary {
+                    left: Box::new(Spanned::new(Expr::Var(name), lspan)),
+                    op: BinOp::Div,
+                    right: Box::new(rhs),
+                }, lspan)),
+            },
+            Expr::FieldAccess { expr, field } => {
+                let expr2 = expr.clone(); let field2 = field.clone();
+                Expr::FieldAssign { object: expr, field,
+                    value: Box::new(Spanned::new(Expr::Binary {
+                        left: Box::new(Spanned::new(Expr::FieldAccess { expr: expr2, field: field2 }, lspan)),
+                        op: BinOp::Div, right: Box::new(rhs),
+                    }, lspan)),
+                }
+            },
+            other => panic!("set /=: invalid lhs {:?}", other),
+        }
+    },
+    "set" <lhs:SpannedUnaryExpr> "%=" <rhs:SpannedExpr> => {
+        let lspan = lhs.span;
+        match lhs.node {
+            Expr::Var(name) => Expr::Assign {
+                name: name.clone(),
+                value: Box::new(Spanned::new(Expr::Binary {
+                    left: Box::new(Spanned::new(Expr::Var(name), lspan)),
+                    op: BinOp::Mod,
+                    right: Box::new(rhs),
+                }, lspan)),
+            },
+            Expr::FieldAccess { expr, field } => {
+                let expr2 = expr.clone(); let field2 = field.clone();
+                Expr::FieldAssign { object: expr, field,
+                    value: Box::new(Spanned::new(Expr::Binary {
+                        left: Box::new(Spanned::new(Expr::FieldAccess { expr: expr2, field: field2 }, lspan)),
+                        op: BinOp::Mod, right: Box::new(rhs),
+                    }, lspan)),
+                }
+            },
+            other => panic!("set %=: invalid lhs {:?}", other),
+        }
+    },
     // if with optional else (v0.89.6: BlockStmt sequences in branches, Cycle 52)
     IfExprOpt,
     // block

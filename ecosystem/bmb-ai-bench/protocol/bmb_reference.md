@@ -702,6 +702,31 @@ fn scale_down(v: i64, factor: i64) -> i64 = {
 // Note: works everywhere set/assignment works (interpreter + native)
 ```
 
+## Pattern: Field compound assignment (v0.98.5+, interpreter-only)
+```bmb
+// set obj.field += e  desugars to  set obj.field = obj.field op e
+struct Stats { total: i64, count: i64 }
+
+fn add_sample(s: Stats, v: i64) -> i64 = {
+    set s.total += v;
+    set s.count += 1;
+    0  // returns unit sentinel
+};
+
+fn main() -> i64 = {
+    let mut st: Stats = new Stats { total: 0, count: 0 };
+    let _a = add_sample(st, 10);  // note: BMB passes structs by copy; mutation in callee won't propagate
+    // Mutate directly:
+    set st.total += 100;
+    set st.total += 200;
+    set st.count += 1;
+    set st.count += 1;
+    st.total + st.count  // 302
+};
+// Supports all 5 operators: +=  -=  *=  /=  %=
+// Interpreter-only (bmb run); bmb build (native) unsupported in v0.98.5
+```
+
 ## Common Pitfalls
 - `println()` returns `()`, not `i64` — always wrap: `let _r = println(x);`
 - `vec_push()/vec_set()/vec_free()` all return `()` — always wrap with `let _`
@@ -723,6 +748,6 @@ fn scale_down(v: i64, factor: i64) -> i64 = {
 - `while let` only supports enum-variant patterns (e.g., `Opt::Some(x)`) — bare `while let x = e` not supported (would infinite-loop anyway)
 - `format()`, `while let`, `for x in vec` and string interpolation `"Hello {name}"` are interpreter-only (`bmb run`) — `bmb build` (native) doesn't support them yet
 - In string interpolation, `{{` → literal `{` and `}}` → literal `}` (v0.98.5+). Example: `"{{key}}: {val}"` → `"{key}: <value>"`
-- `+=`, `-=`, `*=`, `/=`, `%=` compound assignment operators available (v0.98.4+) — desugars to `x = x op e`
+- `+=`, `-=`, `*=`, `/=`, `%=` compound assignment operators available (v0.98.4+) — desugars to `x = x op e`; also available on struct fields: `set obj.field += e` (v0.98.5+, interpreter-only)
 - String builtins (`str_contains`, `str_find`, `str_substr`, `str_trim`, `str_to_int`, `to_string`, `str_split`, `svec_*`, `str_replace`, `str_repeat`, `format`) work with `bmb run` only — `bmb build` (native) will fail for these
 - Vec aggregate/search builtins (`vec_sum`, `vec_max`, `vec_min`, `vec_sort`, `vec_contains`, `vec_index_of`) are interpreter-only (`bmb run`) — `bmb build` (native) unsupported

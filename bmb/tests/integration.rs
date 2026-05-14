@@ -24743,3 +24743,92 @@ fn test_interp_str_hashmap() {
     );
 }
 
+// ============================================
+// Cycle 2847: Field compound assignment
+// ============================================
+
+#[test]
+fn test_interp_field_compound_assign() {
+    // basic += on struct field
+    assert_eq!(
+        run_program_i64(
+            "struct Counter { n: i64, step: i64 }
+             fn main() -> i64 = {
+               let mut c: Counter = new Counter { n: 0, step: 5 };
+               set c.n += 10;
+               set c.n += 3;
+               c.n
+             };"
+        ),
+        13
+    );
+
+    // -= on struct field
+    assert_eq!(
+        run_program_i64(
+            "struct Val { x: i64 }
+             fn main() -> i64 = {
+               let mut v: Val = new Val { x: 100 };
+               set v.x -= 40;
+               v.x
+             };"
+        ),
+        60
+    );
+
+    // *= on struct field
+    assert_eq!(
+        run_program_i64(
+            "struct Val { x: i64 }
+             fn main() -> i64 = {
+               let mut v: Val = new Val { x: 3 };
+               set v.x *= 7;
+               v.x
+             };"
+        ),
+        21
+    );
+
+    // /= on struct field
+    assert_eq!(
+        run_program_i64(
+            "struct Val { x: i64 }
+             fn main() -> i64 = {
+               let mut v: Val = new Val { x: 50 };
+               set v.x /= 5;
+               v.x
+             };"
+        ),
+        10
+    );
+
+    // %= on struct field
+    assert_eq!(
+        run_program_i64(
+            "struct Val { x: i64 }
+             fn main() -> i64 = {
+               let mut v: Val = new Val { x: 17 };
+               set v.x %= 5;
+               v.x
+             };"
+        ),
+        2
+    );
+
+    // multiple fields, compound assign inside loop
+    assert_eq!(
+        run_program_i64(
+            "struct Acc { total: i64, count: i64 }
+             fn main() -> i64 = {
+               let mut a: Acc = new Acc { total: 0, count: 0 };
+               set a.total += 10;
+               set a.total += 20;
+               set a.count += 1;
+               set a.count += 1;
+               a.total + a.count
+             };"
+        ),
+        32
+    );
+}
+
