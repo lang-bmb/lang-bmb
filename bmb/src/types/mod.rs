@@ -408,6 +408,14 @@ impl TypeChecker {
         functions.insert("str_len".to_string(), (vec![Type::String], Type::I64));
         // int_to_string(n: i64) -> String (convert integer to string representation)
         functions.insert("int_to_string".to_string(), (vec![Type::I64], Type::String));
+        // v0.98.1: String processing builtins (Cycle 2828)
+        functions.insert("str_contains".to_string(), (vec![Type::String, Type::String], Type::I64));
+        functions.insert("str_starts_with".to_string(), (vec![Type::String, Type::String], Type::I64));
+        functions.insert("str_ends_with".to_string(), (vec![Type::String, Type::String], Type::I64));
+        functions.insert("str_find".to_string(), (vec![Type::String, Type::String], Type::I64));
+        functions.insert("str_substr".to_string(), (vec![Type::String, Type::I64, Type::I64], Type::String));
+        functions.insert("str_trim".to_string(), (vec![Type::String], Type::String));
+        functions.insert("str_to_int".to_string(), (vec![Type::String], Type::I64));
 
         // v0.34: Math intrinsics for Phase 34.4 Benchmark Gate (n_body, mandelbrot_fp)
         // sqrt(x: f64) -> f64 (square root)
@@ -551,6 +559,16 @@ impl TypeChecker {
                 vec![TypeParam::new("T")],
                 vec![Type::Ptr(Box::new(Type::TypeVar("T".to_string())))],
                 Type::I64,
+            ),
+        );
+
+        // v0.98.2: to_string<T>(x: T) -> String — generic value-to-string conversion (Cycle 2830)
+        generic_functions.insert(
+            "to_string".to_string(),
+            (
+                vec![TypeParam::new("T")],
+                vec![Type::TypeVar("T".to_string())],
+                Type::String,
             ),
         );
 

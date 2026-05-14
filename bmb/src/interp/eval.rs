@@ -269,6 +269,15 @@ impl Interpreter {
             .insert("char_to_string".to_string(), builtin_char_to_string);
         // v0.67: String utilities
         self.builtins.insert("str_len".to_string(), builtin_str_len);
+        self.builtins.insert("str_contains".to_string(), builtin_str_contains);
+        self.builtins.insert("str_starts_with".to_string(), builtin_str_starts_with);
+        self.builtins.insert("str_ends_with".to_string(), builtin_str_ends_with);
+        self.builtins.insert("str_find".to_string(), builtin_str_find);
+        self.builtins.insert("str_substr".to_string(), builtin_str_substr);
+        self.builtins.insert("str_trim".to_string(), builtin_str_trim);
+        self.builtins.insert("str_to_int".to_string(), builtin_str_to_int);
+        // v0.98.2: Generic to_string (Cycle 2830)
+        self.builtins.insert("to_string".to_string(), builtin_to_string);
 
         // v0.34: Math intrinsics for Phase 34.4 Benchmark Gate (n_body, mandelbrot_fp)
         self.builtins.insert("sqrt".to_string(), builtin_sqrt);
@@ -8852,6 +8861,104 @@ fn builtin_str_len(args: &[Value]) -> InterpResult<Value> {
         }
         _ => Err(RuntimeError::type_error("String", args[0].type_name())),
     }
+}
+
+fn builtin_str_contains(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("str_contains", 2, args.len()));
+    }
+    let haystack = args[0].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[0].type_name()))?;
+    let needle = args[1].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[1].type_name()))?;
+    Ok(Value::Int(if haystack.contains(needle.as_str()) { 1 } else { 0 }))
+}
+
+fn builtin_str_starts_with(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("str_starts_with", 2, args.len()));
+    }
+    let haystack = args[0].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[0].type_name()))?;
+    let prefix = args[1].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[1].type_name()))?;
+    Ok(Value::Int(if haystack.starts_with(prefix.as_str()) { 1 } else { 0 }))
+}
+
+fn builtin_str_ends_with(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("str_ends_with", 2, args.len()));
+    }
+    let haystack = args[0].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[0].type_name()))?;
+    let suffix = args[1].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[1].type_name()))?;
+    Ok(Value::Int(if haystack.ends_with(suffix.as_str()) { 1 } else { 0 }))
+}
+
+/// str_find(haystack, needle) -> i64
+/// Returns byte index of first occurrence of needle, or -1 if not found.
+fn builtin_str_find(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("str_find", 2, args.len()));
+    }
+    let haystack = args[0].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[0].type_name()))?;
+    let needle = args[1].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[1].type_name()))?;
+    Ok(Value::Int(match haystack.find(needle.as_str()) {
+        Some(idx) => idx as i64,
+        None => -1,
+    }))
+}
+
+/// str_substr(s, start, len) -> String
+/// Returns substring starting at byte `start` with byte length `len`.
+/// Returns "" if out of bounds.
+fn builtin_str_substr(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 3 {
+        return Err(RuntimeError::arity_mismatch("str_substr", 3, args.len()));
+    }
+    let s = args[0].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[0].type_name()))?;
+    let start = match &args[1] {
+        Value::Int(n) => *n as usize,
+        _ => return Err(RuntimeError::type_error("i64", args[1].type_name())),
+    };
+    let len = match &args[2] {
+        Value::Int(n) => *n as usize,
+        _ => return Err(RuntimeError::type_error("i64", args[2].type_name())),
+    };
+    let bytes = s.as_bytes();
+    let end = (start + len).min(bytes.len());
+    if start >= bytes.len() {
+        return Ok(Value::Str(std::rc::Rc::new(String::new())));
+    }
+    let sub = String::from_utf8_lossy(&bytes[start..end]).into_owned();
+    Ok(Value::Str(std::rc::Rc::new(sub)))
+}
+
+fn builtin_str_trim(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("str_trim", 1, args.len()));
+    }
+    let s = args[0].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[0].type_name()))?;
+    Ok(Value::Str(std::rc::Rc::new(s.trim().to_string())))
+}
+
+/// str_to_int(s) -> i64
+/// Parses a decimal integer string. Returns 0 if parsing fails.
+fn builtin_str_to_int(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("str_to_int", 1, args.len()));
+    }
+    let s = args[0].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[0].type_name()))?;
+    Ok(Value::Int(s.trim().parse::<i64>().unwrap_or(0)))
+}
+
+/// to_string<T>(x: T) -> String — generic value-to-string conversion (v0.98.2, Cycle 2830)
+/// Unlike Display (which adds quotes around strings), this returns the raw string content.
+fn builtin_to_string(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("to_string", 1, args.len()));
+    }
+    let result = match &args[0] {
+        Value::Str(s) => s.as_ref().clone(),
+        Value::StringRope(_) => args[0].materialize_string().unwrap_or_default(),
+        other => format!("{other}"),
+    };
+    Ok(Value::Str(std::rc::Rc::new(result)))
 }
 
 #[cfg(test)]

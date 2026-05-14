@@ -1392,10 +1392,118 @@ fn test_interp_if_no_else_never_branch() {
 }
 
 #[test]
+fn test_interp_str_builtins() {
+    // str_contains
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = str_contains("hello world", "world");"#),
+        Value::Int(1)
+    );
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = str_contains("hello world", "xyz");"#),
+        Value::Int(0)
+    );
+    // str_starts_with
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = str_starts_with("hello world", "hello");"#),
+        Value::Int(1)
+    );
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = str_starts_with("hello world", "world");"#),
+        Value::Int(0)
+    );
+    // str_ends_with
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = str_ends_with("hello world", "world");"#),
+        Value::Int(1)
+    );
+    // str_find
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = str_find("hello world", "world");"#),
+        Value::Int(6)
+    );
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = str_find("hello world", "xyz");"#),
+        Value::Int(-1)
+    );
+    // str_substr
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = str_len(str_substr("hello world", 6, 5));"#),
+        Value::Int(5)
+    );
+    // str_trim
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = str_len(str_trim("  hello  "));"#),
+        Value::Int(5)
+    );
+    // str_to_int
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = str_to_int("42");"#),
+        Value::Int(42)
+    );
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = str_to_int("-7");"#),
+        Value::Int(-7)
+    );
+}
+
+#[test]
+fn test_interp_else_if_no_final_else() {
+    // else-if chain without final else: all branches unit, conditions select path
+    assert_eq!(
+        run_program("fn main() -> i64 = { let mut x = 0; if x == 1 { set x = 10 } else if x == 0 { set x = 42 }; x };"),
+        Value::Int(42)
+    );
+    // neither branch matches: x stays 0
+    assert_eq!(
+        run_program("fn main() -> i64 = { let mut x = 5; if x == 1 { set x = 10 } else if x == 2 { set x = 20 }; x };"),
+        Value::Int(5)
+    );
+    // three-way else-if chain without final else
+    assert_eq!(
+        run_program("fn main() -> i64 = { let mut x = 0; let v = 3; if v == 1 { set x = 10 } else if v == 2 { set x = 20 } else if v == 3 { set x = 30 }; x };"),
+        Value::Int(30)
+    );
+    // else-if chain followed by else (final else present — should still work)
+    assert_eq!(
+        run_program("fn main() -> i64 = if true { 1 } else if false { 2 } else { 3 };"),
+        Value::Int(1)
+    );
+}
+
+#[test]
 fn test_interp_let_in_if_branch() {
     assert_eq!(
         run_program("fn main() -> i64 = if true { let y = 10; y } else { 0 };"),
         Value::Int(10)
+    );
+}
+
+#[test]
+fn test_interp_to_string() {
+    // to_string(i64) -> String
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = str_len(to_string(42));"#),
+        Value::Int(2)
+    );
+    // to_string(0) -> "0"
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = str_len(to_string(0));"#),
+        Value::Int(1)
+    );
+    // to_string(String) returns raw string (no extra quotes)
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = str_len(to_string("hello"));"#),
+        Value::Int(5)
+    );
+    // to_string(f64)
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = str_contains(to_string(3.14), "3.14");"#),
+        Value::Int(1)
+    );
+    // to_string usable in concatenation
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = str_len("n=" + to_string(99));"#),
+        Value::Int(4)
     );
 }
 

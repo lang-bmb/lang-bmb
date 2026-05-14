@@ -6,7 +6,7 @@ use wasm_bindgen::prelude::*;
 
 // Thread-local output buffer: captures println output during WASM execution
 thread_local! {
-    static WASM_OUTPUT: RefCell<Vec<String>> = RefCell::new(Vec::new());
+    static WASM_OUTPUT: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
 }
 
 fn wasm_println(args: &[bmb::interp::Value]) -> bmb::interp::InterpResult<bmb::interp::Value> {
