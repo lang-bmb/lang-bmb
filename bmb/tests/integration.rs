@@ -24659,3 +24659,87 @@ fn test_interp_string_interp_escape() {
     );
 }
 
+#[test]
+fn test_interp_str_hashmap() {
+    // basic insert + get
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let m = str_hashmap_new();
+            let _i = str_hashmap_insert(m, "hello", 42);
+            let v = str_hashmap_get(m, "hello");
+            let _f = str_hashmap_free(m);
+            v
+        };"#),
+        Value::Int(42)
+    );
+
+    // contains: present → 1, absent → 0
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let m = str_hashmap_new();
+            let _i = str_hashmap_insert(m, "key", 1);
+            let yes = str_hashmap_contains(m, "key");
+            let no = str_hashmap_contains(m, "missing");
+            let _f = str_hashmap_free(m);
+            yes * 10 + no
+        };"#),
+        Value::Int(10)
+    );
+
+    // len
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let m = str_hashmap_new();
+            let _i1 = str_hashmap_insert(m, "a", 1);
+            let _i2 = str_hashmap_insert(m, "b", 2);
+            let _i3 = str_hashmap_insert(m, "c", 3);
+            let n = str_hashmap_len(m);
+            let _f = str_hashmap_free(m);
+            n
+        };"#),
+        Value::Int(3)
+    );
+
+    // overwrite
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let m = str_hashmap_new();
+            let _i1 = str_hashmap_insert(m, "x", 10);
+            let _i2 = str_hashmap_insert(m, "x", 99);
+            let v = str_hashmap_get(m, "x");
+            let _f = str_hashmap_free(m);
+            v
+        };"#),
+        Value::Int(99)
+    );
+
+    // absent key returns a sentinel (i64::MIN), which is negative
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let m = str_hashmap_new();
+            let v = str_hashmap_get(m, "absent");
+            let _f = str_hashmap_free(m);
+            if v < 0 { 1 } else { 0 }
+        };"#),
+        Value::Int(1)
+    );
+
+    // word frequency count pattern
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let counts = str_hashmap_new();
+            let prev_a = if str_hashmap_contains(counts, "a") == 1 { str_hashmap_get(counts, "a") } else { 0 };
+            let _ia1 = str_hashmap_insert(counts, "a", prev_a + 1);
+            let prev_b = if str_hashmap_contains(counts, "b") == 1 { str_hashmap_get(counts, "b") } else { 0 };
+            let _ib = str_hashmap_insert(counts, "b", prev_b + 1);
+            let prev_a2 = if str_hashmap_contains(counts, "a") == 1 { str_hashmap_get(counts, "a") } else { 0 };
+            let _ia2 = str_hashmap_insert(counts, "a", prev_a2 + 1);
+            let cnt_a = str_hashmap_get(counts, "a");
+            let cnt_b = str_hashmap_get(counts, "b");
+            let _f2 = str_hashmap_free(counts);
+            cnt_a * 10 + cnt_b
+        };"#),
+        Value::Int(21)
+    );
+}
+

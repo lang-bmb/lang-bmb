@@ -1,5 +1,6 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-14 (Cycle 2845 — **`{{` 이스케이프 + `%=`**: desugar_string_interp `{{`/`}}` 처리 + 5번째 복합 할당 연산자)
+> 최종 업데이트: 2026-05-14 (Cycle 2846 — **str_hashmap 완성**: String→i64 HashMap 6종 builtin 구현 (interpreter-only). 기존 v0.90.83 스텁 완성 + type signature 수정. 2375 tests ✅)
+> 이전 갱신: 2026-05-14 (Cycle 2845 — **`{{` 이스케이프 + `%=`**: desugar_string_interp `{{`/`}}` 처리 + 5번째 복합 할당 연산자)
 > 이전 갱신: 2026-05-14 (Cycle 2844 — **복합 할당 연산자 구현**: `+=`, `-=`, `*=`, `/=`. grammar.lalrpop BlockStmt desugar. 6142 tests ✅)
 > 이전 갱신: 2026-05-14 (Cycle 2842 — **String interpolation 구현**: `"Hello {name}"` → `format("Hello {0}", name)`. 2367 integration tests ✅)
 > 이전 갱신: 2026-05-14 (Cycle 2841 — **for-in-vec 구현 (M4-10)**: `for x in v {}` vec 핸들 iteration 지원. types/mod.rs + interp/eval.rs 변경. 2366 tests ✅)

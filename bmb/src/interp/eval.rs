@@ -367,6 +367,14 @@ impl Interpreter {
         self.builtins
             .insert("hashmap_free".to_string(), builtin_hashmap_free);
 
+        // v0.98.5: String-keyed hashmap builtins (interpreter-only, Cycle 2846)
+        self.builtins.insert("str_hashmap_new".to_string(), builtin_str_hashmap_new);
+        self.builtins.insert("str_hashmap_insert".to_string(), builtin_str_hashmap_insert);
+        self.builtins.insert("str_hashmap_get".to_string(), builtin_str_hashmap_get);
+        self.builtins.insert("str_hashmap_contains".to_string(), builtin_str_hashmap_contains);
+        self.builtins.insert("str_hashmap_len".to_string(), builtin_str_hashmap_len);
+        self.builtins.insert("str_hashmap_free".to_string(), builtin_str_hashmap_free);
+
         // v0.34.24: HashSet builtins
         self.builtins
             .insert("hashset_new".to_string(), builtin_hashset_new);
@@ -8282,6 +8290,86 @@ fn builtin_hashmap_free(args: &[Value]) -> InterpResult<Value> {
                     .map_err(|_| RuntimeError::io_error("hashmap_free: invalid header layout"))?;
                 std::alloc::dealloc(*map_ptr as *mut u8, header_layout);
             }
+            Ok(Value::Unit)
+        }
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+// ============ v0.98.5: String-keyed HashMap Builtins (interpreter-only) ============
+
+fn str_hashmap_ptr(v: &Value) -> InterpResult<*mut std::collections::HashMap<String, i64>> {
+    match v {
+        Value::Int(p) if *p != 0 => Ok(*p as *mut std::collections::HashMap<String, i64>),
+        Value::Int(_) => Err(RuntimeError::io_error("str_hashmap: null handle")),
+        _ => Err(RuntimeError::type_error("i64", v.type_name())),
+    }
+}
+
+fn str_key(v: &Value, fname: &str) -> InterpResult<String> {
+    match v {
+        Value::Str(s) => Ok(s.as_ref().clone()),
+        Value::StringRope(r) => Ok(r.borrow().iter().map(|s| s.as_str()).collect()),
+        _ => Err(RuntimeError::type_error(&format!("{fname}: String key"), v.type_name())),
+    }
+}
+
+fn builtin_str_hashmap_new(args: &[Value]) -> InterpResult<Value> {
+    if !args.is_empty() {
+        return Err(RuntimeError::arity_mismatch("str_hashmap_new", 0, args.len()));
+    }
+    let map: Box<std::collections::HashMap<String, i64>> = Box::new(std::collections::HashMap::new());
+    Ok(Value::Int(Box::into_raw(map) as i64))
+}
+
+fn builtin_str_hashmap_insert(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 3 {
+        return Err(RuntimeError::arity_mismatch("str_hashmap_insert", 3, args.len()));
+    }
+    let map = unsafe { &mut *str_hashmap_ptr(&args[0])? };
+    let key = str_key(&args[1], "str_hashmap_insert")?;
+    let val = match &args[2] {
+        Value::Int(n) => *n,
+        _ => return Err(RuntimeError::type_error("i64", args[2].type_name())),
+    };
+    map.insert(key, val);
+    Ok(Value::Unit)
+}
+
+fn builtin_str_hashmap_get(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("str_hashmap_get", 2, args.len()));
+    }
+    let map = unsafe { &*str_hashmap_ptr(&args[0])? };
+    let key = str_key(&args[1], "str_hashmap_get")?;
+    Ok(Value::Int(*map.get(&key).unwrap_or(&i64::MIN)))
+}
+
+fn builtin_str_hashmap_contains(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("str_hashmap_contains", 2, args.len()));
+    }
+    let map = unsafe { &*str_hashmap_ptr(&args[0])? };
+    let key = str_key(&args[1], "str_hashmap_contains")?;
+    Ok(Value::Int(if map.contains_key(&key) { 1 } else { 0 }))
+}
+
+fn builtin_str_hashmap_len(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("str_hashmap_len", 1, args.len()));
+    }
+    let map = unsafe { &*str_hashmap_ptr(&args[0])? };
+    Ok(Value::Int(map.len() as i64))
+}
+
+fn builtin_str_hashmap_free(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("str_hashmap_free", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(0) => Ok(Value::Unit),
+        Value::Int(p) => {
+            unsafe { drop(Box::from_raw(*p as *mut std::collections::HashMap<String, i64>)); }
             Ok(Value::Unit)
         }
         _ => Err(RuntimeError::type_error("i64", args[0].type_name())),

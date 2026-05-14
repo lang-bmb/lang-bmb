@@ -546,10 +546,18 @@ impl TypeChecker {
         // hashmap_free(map: i64) -> Unit (deallocate hashmap)
         functions.insert("hashmap_free".to_string(), (vec![Type::I64], Type::Unit));
 
-        // v0.90.83: String-content hashmap + cached registry lookup
+        // v0.98.5: String-keyed hashmap (interpreter-only, Cycle 2846)
+        // str_hashmap_new() -> i64 (handle)
         functions.insert("str_hashmap_new".to_string(), (vec![], Type::I64));
-        functions.insert("str_hashmap_insert".to_string(), (vec![Type::I64, Type::I64, Type::I64], Type::I64));
-        functions.insert("str_hashmap_get".to_string(), (vec![Type::I64, Type::I64], Type::I64));
+        // str_hashmap_insert(map: i64, key: String, val: i64) -> ()
+        functions.insert("str_hashmap_insert".to_string(), (vec![Type::I64, Type::String, Type::I64], Type::Unit));
+        // str_hashmap_get(map: i64, key: String) -> i64 (i64::MIN if not found)
+        functions.insert("str_hashmap_get".to_string(), (vec![Type::I64, Type::String], Type::I64));
+        // str_hashmap_contains(map: i64, key: String) -> i64 (1 if exists, 0 otherwise)
+        functions.insert("str_hashmap_contains".to_string(), (vec![Type::I64, Type::String], Type::I64));
+        // str_hashmap_len(map: i64) -> i64
+        functions.insert("str_hashmap_len".to_string(), (vec![Type::I64], Type::I64));
+        // str_hashmap_free(map: i64) -> ()
         functions.insert("str_hashmap_free".to_string(), (vec![Type::I64], Type::Unit));
         // reg_cached_lookup(reg: String, name: String, slot: i64) -> String
         functions.insert("reg_cached_lookup".to_string(), (vec![Type::String, Type::String, Type::I64], Type::String));

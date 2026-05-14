@@ -127,7 +127,7 @@ let ok = vec_contains(v, 42);  // 1 if 42 found, 0 otherwise
 let i = vec_index_of(v, 42);   // first index of 42, or -1 if not found
 ```
 
-## HashMap (key→value store)
+## HashMap (i64 key→value store)
 ```bmb
 let m = hashmap_new();               // create map (key=i64, value=i64)
 let _i = hashmap_insert(m, k, v);   // insert or overwrite
@@ -140,6 +140,21 @@ let _f = hashmap_free(m);           // deallocate
 Usage pattern for get-with-default:
 ```bmb
 let result = if hashmap_contains(m, key) == 1 { hashmap_get(m, key) } else { -1 };
+```
+
+## String HashMap (String key→i64 store, interpreter-only v0.98.5+)
+```bmb
+let m = str_hashmap_new();                         // create map (key=String, value=i64)
+let _i = str_hashmap_insert(m, "word", 42);        // insert or overwrite
+let ok = str_hashmap_contains(m, "word");          // 1 if exists, 0 otherwise
+let val = str_hashmap_get(m, "word");              // value or i64::MIN if not found
+let n = str_hashmap_len(m);                        // number of distinct keys
+let _f = str_hashmap_free(m);                      // deallocate
+```
+
+Usage pattern for get-with-default (string keys):
+```bmb
+let result = if str_hashmap_contains(m, key) == 1 { str_hashmap_get(m, key) } else { 0 };
 ```
 
 ## Contracts
@@ -454,6 +469,27 @@ for i in 0..n {
 };
 ```
 
+## Pattern: String word frequency (str_hashmap, interpreter-only v0.98.5+)
+```bmb
+// Count occurrences of string keys (e.g., word → count)
+fn count_word(counts: i64, word: String) -> i64 = {
+    let prev = if str_hashmap_contains(counts, word) == 1 {
+        str_hashmap_get(counts, word)
+    } else { 0 };
+    let _i = str_hashmap_insert(counts, word, prev + 1);
+    0
+};
+// fn main() -> i64 = {
+//     let counts = str_hashmap_new();
+//     let _c1 = count_word(counts, "apple");
+//     let _c2 = count_word(counts, "banana");
+//     let _c3 = count_word(counts, "apple");
+//     let apple_count = str_hashmap_get(counts, "apple");  // → 2
+//     let _f = str_hashmap_free(counts);
+//     apple_count
+// };
+```
+
 ## Pattern: Binary search
 ```bmb
 // Find leftmost index where v[i] >= target in sorted v[0..n]. Returns n if all < target.
@@ -680,7 +716,8 @@ fn scale_down(v: i64, factor: i64) -> i64 = {
 - `for j in (i+1)..n` — parentheses required when start is an expression
 - `for` loop supports ranges (`0..n`, `a..=b`) AND vec handles (`for x in v {}` — interpreter-only, v0.98.4+)
 - `for x in my_vec` works with interpreter only — for bmb build (native) use index loop `for i in 0..vec_len(v)`
-- `hashmap_get` returns `i64::MIN` (not 0) when key is absent — always check `hashmap_contains` first
+- `hashmap_get` and `str_hashmap_get` return `i64::MIN` (not 0) when key is absent — always check `*_contains` first
+- `str_hashmap_*` builtins use String keys; interpreter-only (`bmb run`) — `bmb build` (native) unsupported (v0.98.5+)
 - `to_string(x)` converts any value to String without extra quotes (v0.98.2+)
 - `int_to_string(n)` is i64-only; use `to_string(n)` when type may vary
 - `while let` only supports enum-variant patterns (e.g., `Opt::Some(x)`) — bare `while let x = e` not supported (would infinite-loop anyway)
