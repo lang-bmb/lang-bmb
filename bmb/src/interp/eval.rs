@@ -289,6 +289,8 @@ impl Interpreter {
         self.builtins.insert("svec_len".to_string(), builtin_svec_len);
         self.builtins.insert("svec_get".to_string(), builtin_svec_get);
         self.builtins.insert("svec_free".to_string(), builtin_svec_free);
+        // v0.98.3: format(template, ...args) -> String (Cycle 2835, interpreter-only)
+        self.builtins.insert("format".to_string(), builtin_format);
 
         // v0.34: Math intrinsics for Phase 34.4 Benchmark Gate (n_body, mandelbrot_fp)
         self.builtins.insert("sqrt".to_string(), builtin_sqrt);
@@ -9097,6 +9099,27 @@ fn builtin_svec_free(args: &[Value]) -> InterpResult<Value> {
         }
     });
     Ok(Value::Unit)
+}
+
+/// format(template: String, args...) -> String — positional string formatting (Cycle 2835)
+/// Replaces {0}, {1}, ... placeholders with corresponding args. Any value type accepted.
+fn builtin_format(args: &[Value]) -> InterpResult<Value> {
+    if args.is_empty() {
+        return Err(RuntimeError::arity_mismatch("format", 1, 0));
+    }
+    let template = args[0].materialize_string()
+        .ok_or_else(|| RuntimeError::type_error("String", args[0].type_name()))?;
+    let mut result = template;
+    for (i, arg) in args[1..].iter().enumerate() {
+        let placeholder = std::format!("{{{}}}", i);
+        let value_str = match arg {
+            Value::Str(s) => s.as_ref().clone(),
+            Value::StringRope(_) => arg.materialize_string().unwrap_or_default(),
+            other => std::format!("{other}"),
+        };
+        result = result.replace(&placeholder, &value_str);
+    }
+    Ok(Value::Str(std::rc::Rc::new(result)))
 }
 
 #[cfg(test)]

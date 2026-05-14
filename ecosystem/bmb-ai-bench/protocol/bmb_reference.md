@@ -89,6 +89,13 @@ let msg = "value=" + to_string(n);    // concatenation with any type
 // };
 // Note: str_split("abc", "") splits into individual characters
 // Note: Use "let _f = svec_free(parts)" not "svec_free(parts);" (no standalone expr stmts)
+
+// Positional string formatting (v0.98.3+, interpreter-only)
+// format(template, arg0, arg1, ...) → String
+// let s = format("{0} + {1} = {2}", to_string(a), to_string(b), to_string(a+b));
+// let msg = format("name={0}, age={1}", name, to_string(age));
+// Placeholders: {0}, {1}, {2}, ... replaced by args in order.
+// Any type accepted; non-String args are formatted via their Display representation.
 ```
 
 ## Dynamic Arrays (vec)

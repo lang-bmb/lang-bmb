@@ -421,6 +421,10 @@ impl TypeChecker {
         functions.insert("svec_len".to_string(), (vec![Type::I64], Type::I64));
         functions.insert("svec_get".to_string(), (vec![Type::I64, Type::I64], Type::String));
         functions.insert("svec_free".to_string(), (vec![Type::I64], Type::Unit));
+        // v0.98.3: format(template, ...args) -> String (Cycle 2835, interpreter-only)
+        // Variadic: format("{0} + {1} = {2}", a, b, c). Extra args beyond template are untyped.
+        // Variadic handling in type checker: see VARIADIC_BUILTINS check near non-generic lookup.
+        functions.insert("format".to_string(), (vec![Type::String], Type::String));
 
         // v0.34: Math intrinsics for Phase 34.4 Benchmark Gate (n_body, mandelbrot_fp)
         // sqrt(x: f64) -> f64 (square root)
@@ -2253,13 +2257,24 @@ impl TypeChecker {
 
                 // v0.15: Try non-generic functions
                 if let Some((param_tys, ret_ty)) = self.functions.get(func).cloned() {
-                    if args.len() != param_tys.len() {
-                        let sig: Vec<String> = param_tys.iter().map(|t| format!("{}", t)).collect();
+                    // v0.98.3: Cycle 2835 — variadic builtins allow extra args beyond declared params
+                    let is_variadic = matches!(func.as_str(), "format");
+                    if is_variadic && args.len() < param_tys.len() {
+                        let sig: Vec<String> = param_tys.iter().map(|t| std::string::ToString::to_string(t)).collect();
                         return Err(CompileError::type_error(
-                            format!(
+                            std::string::String::from(format!(
+                                "'{}' requires at least {} arguments ({}), got {}",
+                                func, param_tys.len(), sig.join(", "), args.len()
+                            )),
+                            span,
+                        ));
+                    } else if !is_variadic && args.len() != param_tys.len() {
+                        let sig: Vec<String> = param_tys.iter().map(|t| std::string::ToString::to_string(t)).collect();
+                        return Err(CompileError::type_error(
+                            std::string::String::from(format!(
                                 "'{}' expects {} arguments ({}), got {}",
                                 func, param_tys.len(), sig.join(", "), args.len()
-                            ),
+                            )),
                             span,
                         ));
                     }
@@ -2267,6 +2282,12 @@ impl TypeChecker {
                     for (arg, param_ty) in args.iter().zip(param_tys.iter()) {
                         let arg_ty = self.infer(&arg.node, arg.span)?;
                         self.unify(param_ty, &arg_ty, arg.span)?;
+                    }
+                    // For variadic builtins: infer (but don't constrain) extra args
+                    if is_variadic {
+                        for arg in args.iter().skip(param_tys.len()) {
+                            let _ = self.infer(&arg.node, arg.span)?;
+                        }
                     }
 
                     return Ok(ret_ty);

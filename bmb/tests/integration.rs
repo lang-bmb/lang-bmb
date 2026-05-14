@@ -1532,6 +1532,30 @@ fn test_interp_str_split() {
 }
 
 #[test]
+fn test_interp_format() {
+    // Basic template with no placeholders
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let s = format("hello"); let n = str_len(s); n };"#),
+        Value::Int(5)
+    );
+    // Single placeholder {0}
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let s = format("x={0}", int_to_string(42)); let n = str_len(s); n };"#),
+        Value::Int(4)  // "x=42" is 4 chars
+    );
+    // Two placeholders {0} and {1}
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let s = format("{0}+{1}", int_to_string(3), int_to_string(4)); let ok = if str_contains(s, "3+4") == 1 { 1 } else { 0 }; ok };"#),
+        Value::Int(1)
+    );
+    // Integer arg directly (format converts non-string via Display)
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let s = format("n={0}", 99); let ok = if str_contains(s, "99") == 1 { 1 } else { 0 }; ok };"#),
+        Value::Int(1)
+    );
+}
+
+#[test]
 fn test_interp_while_let() {
     // Immediately exits when pattern doesn't match
     assert_eq!(
