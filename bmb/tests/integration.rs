@@ -1360,6 +1360,38 @@ fn test_interp_assign_in_if_branch() {
 }
 
 #[test]
+fn test_interp_if_no_else_side_effect() {
+    // if without else: condition true, side effect executes
+    assert_eq!(
+        run_program("fn main() -> i64 = { let mut x = 0; if x < 5 { set x = 10 }; x };"),
+        Value::Int(10)
+    );
+    // if without else: condition false, side effect skipped
+    assert_eq!(
+        run_program("fn main() -> i64 = { let mut x = 0; if x > 100 { set x = 999 }; x };"),
+        Value::Int(0)
+    );
+    // if without else followed by if-else still works
+    assert_eq!(
+        run_program("fn main() -> i64 = { let mut x = 0; if x < 5 { set x = 3 }; if x > 0 { 1 } else { 0 } };"),
+        Value::Int(1)
+    );
+}
+
+#[test]
+fn test_interp_if_no_else_never_branch() {
+    // if without else: Never branch (return) unified with implicit Unit else
+    assert_eq!(
+        run_program("fn guard(x: i64) -> i64 = { if x < 0 { return 99 }; 42 };\nfn main() -> i64 = guard(5);"),
+        Value::Int(42)
+    );
+    assert_eq!(
+        run_program("fn guard(x: i64) -> i64 = { if x < 0 { return 99 }; 42 };\nfn main() -> i64 = guard(-1);"),
+        Value::Int(99)
+    );
+}
+
+#[test]
 fn test_interp_let_in_if_branch() {
     assert_eq!(
         run_program("fn main() -> i64 = if true { let y = 10; y } else { 0 };"),

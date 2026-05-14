@@ -1,27 +1,31 @@
-# BMB Session Handoff — 2026-05-13 (Cycles 2816-2821 — B축 인프라 개선 + 자율 작업 완료)
+# BMB Session Handoff — 2026-05-14 (Cycle 2822 — if-without-else 구현)
 
-> **HEAD**: `7bbfe433` (Cycle 2821)
-> **이전 HEAD**: `e11e62b5` (Cycle 2811)
-> **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2792, 이번 세션 bootstrap 미변경)
+> **HEAD**: (Cycle 2822 커밋 후 갱신)
+> **이전 HEAD**: `7bbfe433` (Cycle 2821)
+> **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2822, 120790 lines)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2822
+> **다음 세션 진입점**: Cycle 2823
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 2816-2821)
+## 이번 세션 작업 요약 (Cycle 2822)
 
 ### 주요 변경 사항
 
 | Cycle | 제목 | 내용 |
 |-------|------|------|
-| 2816 | 통계 검정 구현 | `analysis/stats.py` (Wilson CI + McNemar), CLI `stats` 서브커맨드 |
-| 2817 | C/Python reference 추가 | `protocol/c_reference.md` + `protocol/python_reference.md`, `run_crosslang.py` 대칭 수정 |
-| 2818 | problem.md 45종 전량 수정 | title-only → Input/Output/Example 완전 설명 (총 51종: Cycle 2812에서 6종 + 이번 45종) |
-| 2819 | ISSUE 상태 갱신 | 4개 ISSUE RESOLVED/LARGELY RESOLVED 마킹, HANDOFF/ROADMAP 갱신 |
-| 2820 | 커밋 | 2816-2819 전체 변경사항 커밋 (1e3694aa) |
-| 2821 | bmb_reference.md 확장 | 200→270줄: 정렬/abs/gcd/2D배열/가변인자 커맨드 패턴 추가. 조기 종료. |
+| 2822 | if-without-else 구현 | `if cond { body }` (else 절 없는 if) — grammar + types + bootstrap + 테스트 |
 
-### B-track ISSUE 상태 (Cycle 2821 기준)
+### 변경 파일
+
+- `bmb/src/grammar.lalrpop`: `IfExprOpt` nonterminal 신규 추가 (dangling-else 충돌 해소)
+- `bmb/src/types/mod.rs`: `unify`에 Never 바텀 타입 처리 추가
+- `bootstrap/compiler.bmb`: 묵시적 else AST 표현 `(int 0)` → `(unit)` 수정 (2곳)
+- `bmb/tests/integration.rs`: `test_interp_if_no_else_side_effect` + `test_interp_if_no_else_never_branch` 추가
+
+---
+
+## B-track ISSUE 상태 (Cycle 2822 기준)
 
 | ISSUE | 우선순위 | 상태 |
 |-------|---------|------|
@@ -29,7 +33,7 @@
 | `ISSUE-20260326-crosslang-reference-asymmetry` | HIGH | ✅ **RESOLVED** (Cycle 2817) |
 | `ISSUE-20260326-first-shot-rate-low` | MEDIUM | 🔄 **LARGELY RESOLVED** (Cycle 2818, 재측정 HUMAN) |
 | `ISSUE-20260326-type-d-failure-analysis` | HIGH | 🔄 **ROOT CAUSE RESOLVED** (Cycle 2818, 재측정 HUMAN) |
-| `ISSUE-20260326-integration-category-weakness` | HIGH | OPEN (언어 개선 필요, 일부 HUMAN) |
+| `ISSUE-20260326-integration-category-weakness` | HIGH | 🔄 **PARTIALLY RESOLVED** (if-without-else 추가, 재측정 HUMAN) |
 | `ISSUE-20260326-external-problem-validation` | MEDIUM | OPEN (HUMAN) |
 | `ISSUE-20260326-multi-model-validation` | HIGH | OPEN (HUMAN) |
 | `ISSUE-20260326-problem-difficulty-bias` | LOW | OPEN (HUMAN) |
@@ -44,26 +48,14 @@
 |------|-----|
 | 총 runs | 300 (100문제 × 3회) |
 | 성공 | 294 (98.0%) |
-| 측정 시점 | Cycle 2810-2811 (stale 없음) |
+| 측정 시점 | Cycle 2810-2811 |
 | JSON | `claudedocs/measurements/b_baseline_2026-05-13_c2810.json` |
 
-**⚠️ 재측정 권장**: Cycle 2812+2818에서 총 51개 problem.md 수정 완료. 재측정 시 99%+ 달성 예상.
-
-### crosslang 통계 (2026-03-26 기준 — 비대칭 조건)
-
-| 언어 | 통과율 | 95% CI |
-|------|--------|--------|
-| BMB | 90.0% | [86.1%–92.9%] |
-| C | 82.0% | [77.3%–85.9%] |
-| Python | 84.3% | [79.7%–88.0%] |
-
-- McNemar BMB vs C: p=0.0863 (NOT significant at α=0.05)
-- ⚠️ 이 데이터는 C/Python reference 없는 조건에서 측정됨 (Cycle 2817에서 수정됨)
-- 공정한 비교를 위해 crosslang 재실험 필요 (HUMAN)
+**⚠️ 재측정 권장**: Cycle 2818 51개 problem.md 수정 + Cycle 2822 if-without-else 언어 기능 추가. 재측정 시 99%+ 달성 예상.
 
 ---
 
-## 다음 세션 우선순위 (Cycle 2822+)
+## 다음 세션 우선순위 (Cycle 2823+)
 
 ### 1순위 — HUMAN 결정 후 즉시 가능
 
@@ -71,57 +63,33 @@
 ```bash
 bmb-ai-bench run --all --runs 3 --model claude-sonnet-4-6
 ```
-- 51개 problem.md 수정 효과 검증
-- 목표: 99%+ 달성
 
 **crosslang 재실험** (HUMAN: API key + 24h 실행):
 ```bash
 python scripts/run_crosslang.py --all --runs 3 --model claude-sonnet-4-6
 ```
-- 이제 C/Python reference 포함 → 공정한 비교
 
 ### 2순위 — 자율 가능
 
-- `ISSUE-20260326-integration-category-weakness`: BMB 언어 기능 개선 (integration 카테고리)
-  - 재측정 후 실제 실패율 확인 → 언어 스펙 변경 필요 여부 결정
-  - `bmb_reference.md` 이미 270줄 (정렬/abs/gcd/2D배열/가변인자 패턴 포함, Cycle 2821)
+- integration 카테고리 분석 심화: `SpannedIfExpr`의 선택적 else 허용 (else-if 체인 마지막 else 제거)
+- `bmb_reference.md` if-without-else 패턴 추가 (LLM 참조 문서 갱신)
 
 ### 3순위 — HUMAN 결정 필요
 
-- 다중 모델 crosslang 실험 (GPT-4o, Gemini 등 추가)
+- 다중 모델 crosslang 실험
 - 외부 문제 세트 검증
-- 더 어려운 문제 추가 (difficulty bias 해소)
+- 더 어려운 문제 추가
 
 ---
 
-## 기술 상태 (변경 없음)
+## 기술 상태
 
 | 항목 | 상태 |
 |------|------|
-| Bootstrap 3-Stage Fixed Point | ✅ S2 == S3 (Cycle 2792) |
-| `cargo test --release` | ✅ (BMB compiler 변경 없음) |
+| Bootstrap 3-Stage Fixed Point | ✅ S2 == S3 (Cycle 2822, 120790 lines) |
+| `cargo test --release` | ✅ 2355 passed |
 | `py -m pytest tests/ -x -q` (bmb-ai-bench) | ✅ 30/30 PASS |
 | M1 Self-Validated | ✅ COMPLETE |
 | M2 AI-Ready Infra | ✅ COMPLETE |
 | M3 External Bindings | 🔄 ~99% |
 | M4 Adopted | 🔄 ~50% |
-
----
-
-## 파일 변경 목록 (이번 세션)
-
-### 신규 생성
-- `ecosystem/bmb-ai-bench/bmb_ai_bench/analysis/stats.py`
-- `ecosystem/bmb-ai-bench/protocol/c_reference.md`
-- `ecosystem/bmb-ai-bench/protocol/python_reference.md`
-- `ecosystem/bmb-ai-bench/problems/*/problem.md` (45개 — 전체 100개 중 title-only 해소)
-
-### 수정
-- `ecosystem/bmb-ai-bench/bmb_ai_bench/run_cmd.py` (다중 실패 피드백, stdin 포함)
-- `ecosystem/bmb-ai-bench/bmb_ai_bench/cli.py` (`stats` 서브커맨드 추가)
-- `ecosystem/bmb-ai-bench/scripts/run_crosslang.py` (C/Python reference 포함)
-- `ecosystem/bmb-ai-bench/problems/46_csv_parser/baseline.c` (스펙 수정)
-- `ecosystem/bmb-ai-bench/problems/47_word_count/baseline.c` (스펙 수정)
-- `ecosystem/bmb-ai-bench/problems/49_roman_to_int/tests.json` (UB 케이스 수정)
-- `claudedocs/issues/ISSUE-20260326-*.md` (4개 상태 갱신)
-- `claudedocs/cycle-logs/cycle-2812.md` through `cycle-2819.md`

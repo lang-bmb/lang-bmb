@@ -8825,6 +8825,11 @@ impl TypeChecker {
             return self.unify(inner1, inner2, span);
         }
 
+        // Never is the bottom type — compatible with any type
+        if matches!(&expected, Type::Never) || matches!(&actual, Type::Never) {
+            return Ok(());
+        }
+
         if expected == actual {
             Ok(())
         } else {

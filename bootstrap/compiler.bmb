@@ -1720,7 +1720,7 @@ fn parse_if_chain_else(src: String, pos: i64, new_prefix: String, new_suffix: St
         else if k4 == TK_LBRACE() { parse_if_chain_final_else(src, tok_end(t4), new_prefix, new_suffix) }
         else { make_error_at("expected 'if' or '{' after 'else', got " + tok_kind_name(tok_kind(t4)), src, tok_end(t3)) }
     } else {
-        pack_result(pos, new_prefix + "(int 0)" + new_suffix)
+        pack_result(pos, new_prefix + "(unit)" + new_suffix)
     };
 
 fn parse_if_chain_final_else(src: String, pos: i64, new_prefix: String, new_suffix: String) -> String =
@@ -1792,7 +1792,7 @@ fn parse_if_brace_else(src: String, pos: i64, cond_ast: String, then_ast: String
     let t3 = next_token_raw(src, pos);
     if tok_kind(t3) == TK_ELSE() { parse_if_brace_else_body(src, tok_end(t3), cond_ast, then_ast) }
     else {
-        make_if_ast(pos, cond_ast, then_ast, "(int 0)")
+        make_if_ast(pos, cond_ast, then_ast, "(unit)")
     };
 
 fn parse_if_brace_else_body(src: String, pos: i64, cond_ast: String, then_ast: String) -> String =
