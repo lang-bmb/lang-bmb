@@ -77,23 +77,17 @@
 
 ## 다음 세션 우선순위 (Cycle 2833+)
 
-> **방침**: 언어 갭 해소 선행 → 측정 순서. 현재 baseline stale 기한: 2026-08-13.
+> **방침**: 언어 갭 해소 선행. B축 재측정은 언어완성 증명 단계까지 후순위 (ROADMAP § M4 ④ 참조).
 
 ### 1순위 — 언어 갭 해소 (자율)
 
 - `else if` 체인 최종 else 없음 ✅ (Cycle 2823)
-- string 처리 builtins ✅ (Cycle 2828)
+- string 처리 builtins ✅ (Cycle 2828, interpreter-only)
+- to_string<T> generic builtin ✅ (Cycle 2830, interpreter-only)
 - **다음**: `split(s, delim)` builtin — 문자열을 구분자로 분리해 vec 반환 (P3)
 - **다음**: string interpolation (고복잡도 — lexer 변경 필요)
 - **다음**: `for x in vec {}` (for-in-vec — vec 핸들이 i64 → 구조적 변경 필요, 고복잡도)
 - **다음**: `while let Some(x) = ...` while-let 패턴
-
-### 2순위 — 검증 (언어 완성 후)
-
-**B축 재측정** (HUMAN API key 필요):
-```bash
-bmb-ai-bench run --all --runs 3 --model claude-sonnet-4-6
-```
 
 ---
 
