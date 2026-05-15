@@ -61,8 +61,22 @@ Explanation:
 - `op` is one of 1, 2, 3, 4, 5
 - Only `op=1` and `op=2` have an argument `k`; ops 3, 4, 5 have no argument
 
+## Parse Order (explicit)
+
+```
+n = read_int()
+for i in 0..n: array[i] = read_int()    // read n array values
+m = read_int()                            // number of operations to apply
+for _ in 0..m:                            // loop m times
+    op = read_int()                       // op code 1–5
+    if op == 1 or op == 2: k = read_int()  // only op 1,2 have an arg
+    apply(op, k, array)
+print(array)
+```
+
 ## Key Notes
 
+- **`m` is the count of operations** (read it in its own `read_int()` call before the op loop)
 - Operations 3, 4, 5 do NOT read an extra integer — they apply immediately
 - Print space-separated values with NO trailing space, followed by `\n`
 - No test cases wrapper (single problem per input)

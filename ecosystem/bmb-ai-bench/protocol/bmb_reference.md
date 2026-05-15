@@ -577,6 +577,35 @@ fn main() -> i64 = {
 // for-in-svec (v0.98.7+): iterates String elements directly; native-supported v0.98.9+
 ```
 
+## Pattern: Integer-keyed registry/map using str_hashmap (native-supported v0.98.9+)
+```bmb
+// BMB has no dedicated int→int map. Use str_hashmap with to_string() for int keys.
+fn main() -> i64 = {
+    let m = str_hashmap_new();
+
+    // set key=42 to value=100
+    let key = to_string(42);
+    let _s = str_hashmap_insert(m, key, 100);
+
+    // get value for key=42 (-1 if not found)
+    let lookup_key = to_string(42);
+    let val = if str_hashmap_contains(m, lookup_key) == 1 {
+        str_hashmap_get(m, lookup_key)
+    } else { -1 };
+
+    // overwrite: str_hashmap_insert on existing key replaces value
+    let _upd = str_hashmap_insert(m, to_string(42), 200);
+
+    // count distinct keys
+    let count = str_hashmap_len(m);
+
+    let _fm = str_hashmap_free(m);
+    count  // 1
+};
+// Key rule: always convert integer keys to strings via to_string() before insert/get/contains
+// This pattern is the standard BMB approach for int-keyed maps/registries/memoization tables
+```
+
 ## Pattern: Binary search
 ```bmb
 // Find leftmost index where v[i] >= target in sorted v[0..n]. Returns n if all < target.
