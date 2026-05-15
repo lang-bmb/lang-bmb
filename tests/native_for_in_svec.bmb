@@ -1,0 +1,20 @@
+// Test: for-in-svec native porting (Cycle 2886)
+// for s in svec_var generates index loop in native
+// Expected output: 5 (total length of "a"+"bb"+"ccc" = 1+2+3 = 6? no wait)
+// Actually: count items = 3, sum of lengths = 1+2+3 = 6
+
+fn main() -> i64 = {
+    let sv = svec_new();
+    svec_push(sv, "a");
+    svec_push(sv, "bb");
+    svec_push(sv, "ccc");
+
+    let total_len = [0; 1];
+    for s in sv {
+        set total_len[0] = total_len[0] + str_len(s);
+    };
+
+    println(total_len[0]);
+    svec_free(sv);
+    total_len[0]
+};

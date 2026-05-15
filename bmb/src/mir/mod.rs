@@ -33,7 +33,7 @@ pub use proof_guided::{
     run_proof_guided_optimizations, run_proof_guided_program,
 };
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// A MIR program containing all functions
 #[derive(Debug, Clone)]
@@ -1092,6 +1092,12 @@ pub struct LoweringContext {
     /// Maps generic function name → list of (specialized_name, return_type)
     /// Used by call lowering to redirect generic calls to specialized versions
     pub mono_redirects: HashMap<String, Vec<(String, MirType)>>,
+    /// v0.98.9: Tracks variables that hold dynamic vec handles (from vec_new/vec_with_capacity)
+    /// Used to detect `for x in vec_var` and generate index-based loop (native-compatible)
+    pub vec_vars: HashSet<String>,
+    /// v0.98.9: Tracks variables that hold svec handles (from svec_new)
+    /// Used to detect `for s in svec_var` and generate index-based loop (native-compatible)
+    pub svec_vars: HashSet<String>,
 }
 
 impl LoweringContext {
@@ -1146,6 +1152,8 @@ impl LoweringContext {
             var_name_map: HashMap::new(),
             last_let_binding: None,
             mono_redirects: HashMap::new(),
+            vec_vars: HashSet::new(),
+            svec_vars: HashSet::new(),
         }
     }
 

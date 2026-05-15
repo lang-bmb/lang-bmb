@@ -1,0 +1,23 @@
+// Test: str_hashmap_keys / str_hashmap_sorted_keys native (Cycle 2888)
+// Map: a→1, b→2, c→3
+// sorted_keys: ["a","b","c"] → join with "," → "a,b,c"
+// Expected output: 3  a,b,c
+
+fn main() -> i64 = {
+    let m = str_hashmap_new();
+    str_hashmap_insert(m, "a", 1);
+    str_hashmap_insert(m, "b", 2);
+    str_hashmap_insert(m, "c", 3);
+
+    let skeys = str_hashmap_sorted_keys(m);
+    let n = svec_len(skeys);
+    println(n);   // 3
+
+    let sep = "-";
+    let joined = svec_join(skeys, sep);
+    println_str(joined);  // a-b-c
+
+    svec_free(skeys);
+    str_hashmap_free(m);
+    n
+};

@@ -1,0 +1,16 @@
+fn main() -> i64 = {
+  let map = str_hashmap_new();
+  str_hashmap_insert(map, "apple", 3);
+  str_hashmap_insert(map, "banana", 5);
+  str_hashmap_insert(map, "cherry", 7);
+  let n = str_hashmap_len(map);
+  let has_apple = str_hashmap_contains(map, "apple");
+  let has_fig = str_hashmap_contains(map, "fig");
+  let val = str_hashmap_get(map, "banana");
+  str_hashmap_delete(map, "apple");
+  let n2 = str_hashmap_len(map);
+  str_hashmap_free(map);
+  let result = n + has_apple + has_fig + val + n2;
+  println(result);
+  result
+};

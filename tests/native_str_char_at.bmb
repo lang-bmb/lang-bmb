@@ -1,0 +1,26 @@
+// Test str_char_at native porting (v0.98.9+)
+// str_char_at(s: String, idx: i64) -> String returns single-char string
+fn main() -> i64 = {
+    let s = "hello";
+    let c0 = str_char_at(s, 0);   // "h"
+    let c1 = str_char_at(s, 1);   // "e"
+    let c4 = str_char_at(s, 4);   // "o"
+
+    // verify lengths are all 1
+    let v0 = str_len(c0);   // 1
+    let v1 = str_len(c1);   // 1
+    let v4 = str_len(c4);   // 1
+
+    // verify content using str_contains("hello", char)
+    let eq_h = str_contains("hello", c0);   // 1 (h is in hello)
+    let eq_e = str_contains("hello", c1);   // 1 (e is in hello)
+    let eq_o = str_contains("hello", c4);   // 1 (o is in hello)
+
+    // verify a char NOT in "e": h not in "e"
+    let h_in_e = str_contains("e", c0);  // 0
+
+    let sum = v0 + v1 + v4 + eq_h + eq_e + eq_o + h_in_e;
+    // expected: 1+1+1+1+1+1+0 = 6
+    let _p = println(sum);
+    sum
+};

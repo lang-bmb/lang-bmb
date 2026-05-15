@@ -1,0 +1,30 @@
+// Test while let native porting (v0.98.9+)
+// while let Pattern = expr { body } works in bmb build (native) since Cycle 2882
+enum Opt { None, Some(i64) }
+
+fn decr(n: i64) -> Opt = if n > 0 { Opt::Some(n - 1) } else { Opt::None };
+
+fn main() -> i64 = {
+    // Test 1: while let iterates until None
+    let count = 5;
+    let sum = 0;
+    while let Opt::Some(v) = decr(count) {
+        set count = v;
+        set sum = sum + v
+    };
+    // count went 5->4->3->2->1->0 (5 iterations)
+    // sum = 4+3+2+1+0 = 10
+
+    // Test 2: while let immediately exits when pattern doesn't match
+    let n2 = 0;
+    while let Opt::Some(_x) = decr(n2) {
+        set n2 = n2 + 1
+    };
+    // n2 stays 0 (no iterations)
+
+    let _p1 = println(sum);
+    let _p2 = println(n2);
+
+    sum + n2
+    // 10 + 0 = 10
+};

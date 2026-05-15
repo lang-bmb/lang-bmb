@@ -1,0 +1,11 @@
+// Test str_is_empty native builtin (v0.98.9+)
+fn main() -> i64 = {
+    let e1 = str_is_empty("");
+    let e2 = str_is_empty("hello");
+    let e3 = str_is_empty("  ");
+    let e4 = str_is_empty("a");
+    let sum = e1 + e2 + e3 + e4;
+    let _p = println(sum);
+    // e1=1, e2=0, e3=0, e4=0 → sum=1, prints "1"
+    sum
+};

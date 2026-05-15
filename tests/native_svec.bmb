@@ -1,0 +1,25 @@
+// Test: BmbSvec native support (Cycle 2886)
+// svec_new/push/len/get/index_of/contains/join/free all native
+// Expected output: 3 1 0 1 hello-world-foo
+
+fn main() -> i64 = {
+    let sv = svec_new();
+    svec_push(sv, "hello");
+    svec_push(sv, "world");
+    svec_push(sv, "foo");
+
+    let n = svec_len(sv);              // 3
+    let has_world = svec_contains(sv, "world");   // 1
+    let has_bar = svec_contains(sv, "bar");       // 0
+    let idx = svec_index_of(sv, "world");         // 1
+    let joined = svec_join(sv, "-");
+
+    println(n);
+    println(has_world);
+    println(has_bar);
+    println(idx);
+    println_str(joined);
+
+    svec_free(sv);
+    n
+};

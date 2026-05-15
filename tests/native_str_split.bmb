@@ -1,0 +1,31 @@
+// Test: str_split / str_split_whitespace / str_lines native (Cycle 2887)
+// Expected output: 3  hello  world  foo  2  hello  world  2  line1  line2
+
+fn main() -> i64 = {
+    // str_split
+    let parts = str_split("hello,world,foo", ",");
+    let n = svec_len(parts);
+    println(n);                           // 3
+    println_str(svec_get(parts, 0));      // hello
+    println_str(svec_get(parts, 1));      // world
+    println_str(svec_get(parts, 2));      // foo
+    svec_free(parts);
+
+    // str_split_whitespace
+    let words = str_split_whitespace("  hello   world  ");
+    let nw = svec_len(words);
+    println(nw);                          // 2
+    println_str(svec_get(words, 0));      // hello
+    println_str(svec_get(words, 1));      // world
+    svec_free(words);
+
+    // str_lines
+    let lines = str_lines("line1\nline2");
+    let nl = svec_len(lines);
+    println(nl);                          // 2
+    println_str(svec_get(lines, 0));      // line1
+    println_str(svec_get(lines, 1));      // line2
+    svec_free(lines);
+
+    n
+};

@@ -1,0 +1,35 @@
+// Test set obj.field += e compound assignment in native mode (v0.98.9+)
+// Verifies that FieldStore correctly handles compound ops on local struct vars
+struct Point { x: i64, y: i64 }
+struct Counter { val: i64 }
+
+fn main() -> i64 = {
+    // Test 1: basic += on local
+    let p = new Point { x: 3, y: 4 };
+    set p.x += 7;
+    // p.x should be 10
+
+    // Test 2: -= on local
+    set p.y -= 2;
+    // p.y should be 2
+
+    // Test 3: *= on local
+    set p.x *= 2;
+    // p.x should be 20
+
+    // Test 4: chained on single field
+    let c = new Counter { val: 0 };
+    set c.val += 100;
+    set c.val += 200;
+    set c.val += 3;
+    // c.val should be 303
+
+    let _p1 = println(p.x);
+    let _p2 = println(p.y);
+    let _p3 = println(c.val);
+    // expected output: 20 / 2 / 303
+
+    let sum = p.x + p.y + c.val;
+    // 20 + 2 + 303 = 325
+    sum
+};

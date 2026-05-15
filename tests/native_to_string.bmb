@@ -1,0 +1,15 @@
+// Test: to_string<f64> / to_string<bool> native (Cycle 2889)
+// Expected output: 3.14  true  false
+
+fn main() -> i64 = {
+    let sf = to_string(3.14);
+    println_str(sf);     // 3.14
+
+    let bt = to_string(true);
+    println_str(bt);     // true
+
+    let bf = to_string(false);
+    println_str(bf);     // false
+
+    0
+};

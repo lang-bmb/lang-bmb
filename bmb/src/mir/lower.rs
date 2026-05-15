@@ -1156,6 +1156,27 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             // Register local with unique name
             ctx.locals.insert(unique_name.clone(), mir_ty);
 
+            // v0.98.9: Track vec handle variables for native for-in-vec detection
+            let is_vec_create = matches!(&value.node,
+                Expr::Call { func, .. } if func == "vec_new" || func == "vec_with_capacity"
+            );
+            if is_vec_create {
+                ctx.vec_vars.insert(unique_name.clone());
+            }
+            // v0.98.9: Track svec handle variables for native for-in-svec detection
+            let is_svec_create = matches!(&value.node,
+                Expr::Call { func, .. }
+                    if func == "svec_new"
+                    || func == "str_split"
+                    || func == "str_split_whitespace"
+                    || func == "str_lines"
+                    || func == "str_hashmap_keys"
+                    || func == "str_hashmap_sorted_keys"
+            );
+            if is_svec_create {
+                ctx.svec_vars.insert(unique_name.clone());
+            }
+
             // Assign to the variable using unique name
             let var_place = Place::new(unique_name.clone());
             match value_op {
@@ -1173,6 +1194,14 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                     // v0.51.35: Propagate array element types for struct array handling
                     if let Some(elem_ty) = ctx.array_element_types.get(&src.name).cloned() {
                         ctx.array_element_types.insert(unique_name.clone(), elem_ty);
+                    }
+                    // v0.98.9: Propagate vec_vars membership
+                    if ctx.vec_vars.contains(&src.name) {
+                        ctx.vec_vars.insert(unique_name.clone());
+                    }
+                    // v0.98.9: Propagate svec_vars membership
+                    if ctx.svec_vars.contains(&src.name) {
+                        ctx.svec_vars.insert(unique_name.clone());
                     }
                     ctx.push_inst(MirInst::Copy {
                         dest: var_place,
@@ -1248,8 +1277,51 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             Operand::Place(Place::new(actual_name))
         }
 
-        // v0.98.3: while let — interpreter-only; MIR lowering returns unit
-        Expr::WhileLet { .. } => Operand::Constant(Constant::Unit),
+        // v0.98.9: while let — native MIR lowering (Cycle 2882)
+        // Desugar: while let Pattern = expr { body }
+        //   cond:  tmp = lower(expr); switch tmp.tag → body | exit
+        //   body:  bind_pattern; lower(body); goto cond
+        //   exit:  unit
+        Expr::WhileLet { pattern, expr: scrutinee, body } => {
+            let cond_label = ctx.fresh_label("wlet_cond");
+            let body_label = ctx.fresh_label("wlet_body");
+            let exit_label = ctx.fresh_label("wlet_exit");
+
+            ctx.finish_block(Terminator::Goto(cond_label.clone()));
+
+            // Condition block: lower scrutinee, switch on discriminant tag
+            ctx.start_block(cond_label.clone());
+            let scrutinee_op = lower_expr(scrutinee, ctx);
+            let scrutinee_place = match &scrutinee_op {
+                Operand::Place(p) => p.clone(),
+                Operand::Constant(c) => {
+                    let temp = ctx.fresh_temp();
+                    ctx.push_inst(MirInst::Const { dest: temp.clone(), value: c.clone() });
+                    temp
+                }
+            };
+            // Build switch cases using compile_match_patterns (single-arm match)
+            let dummy_body = *body.clone();
+            let arm = MatchArm { pattern: pattern.clone(), guard: None, body: dummy_body };
+            let (cases, _) = compile_match_patterns(&[arm], &[body_label.clone()], &exit_label);
+            ctx.finish_block(Terminator::Switch {
+                discriminant: Operand::Place(scrutinee_place.clone()),
+                cases,
+                default: exit_label.clone(),
+            });
+
+            // Body block: bind pattern vars, lower body, loop back
+            ctx.loop_context_stack.push((cond_label.clone(), exit_label.clone()));
+            ctx.start_block(body_label);
+            bind_pattern_variables(&pattern.node, &scrutinee_place, ctx);
+            let _ = lower_expr(body, ctx);
+            ctx.finish_block(Terminator::Goto(cond_label));
+            ctx.loop_context_stack.pop();
+
+            // Exit block
+            ctx.start_block(exit_label);
+            Operand::Constant(Constant::Unit)
+        }
 
         // v0.37: Invariant is for SMT verification, MIR lowering ignores it
         // v0.60.16: Push loop context for break/continue support
@@ -1363,6 +1435,78 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
             // Check if this is a void function (runtime functions that return void)
             let is_void_func = matches!(func.as_str(), "println" | "print" | "assert");
+
+            // v0.98.9: to_string<T> → type-specific native function (Cycle 2881)
+            if func == "to_string" && arg_ops.len() == 1 {
+                let mir_ty = match &arg_ops[0] {
+                    Operand::Constant(Constant::Int(_)) => Some(MirType::I64),
+                    Operand::Constant(Constant::Float(_)) => Some(MirType::F64),
+                    Operand::Constant(Constant::String(_)) => Some(MirType::String),
+                    Operand::Constant(Constant::Bool(_)) => Some(MirType::Bool),
+                    Operand::Place(p) => ctx.locals.get(&p.name)
+                        .or_else(|| ctx.params.get(&p.name))
+                        .or_else(|| ctx.temp_types.get(&p.name))
+                        .cloned(),
+                    _ => None,
+                };
+                let specialized = match mir_ty {
+                    Some(MirType::I64) | Some(MirType::I32) => Some("int_to_string"),
+                    Some(MirType::F64) => Some("bmb_f64_to_string"),
+                    Some(MirType::Bool) => Some("bmb_bool_to_string"),
+                    Some(MirType::String) => {
+                        // Identity: String is already a String — return arg directly
+                        return arg_ops.into_iter().next().unwrap();
+                    }
+                    _ => None,
+                };
+                if let Some(native_fn) = specialized {
+                    let dest = ctx.fresh_temp();
+                    ctx.locals.insert(dest.name.clone(), MirType::String);
+                    ctx.push_inst(MirInst::Call {
+                        dest: Some(dest.clone()),
+                        func: native_fn.to_string(),
+                        args: arg_ops,
+                        is_tail: false,
+                    });
+                    return Operand::Place(dest);
+                }
+            }
+
+            // v0.98.9: format(template, args...) → string concat chain (Cycle 2890)
+            // Lowers compile-time-constant template to bmb_string_concat calls, enabling native.
+            if func == "format" && !arg_ops.is_empty() {
+                if let Operand::Constant(Constant::String(template)) = &arg_ops[0].clone() {
+                    let template = template.clone();
+                    let rest_ops = arg_ops[1..].to_vec();
+                    // Parse template into segments: alternating literal and placeholder {N}
+                    let pieces = lower_format_template_to_pieces(&template, &rest_ops, ctx);
+                    // Chain bmb_string_concat over all pieces
+                    if pieces.is_empty() {
+                        let t = ctx.fresh_temp();
+                        ctx.locals.insert(t.name.clone(), MirType::String);
+                        ctx.push_inst(MirInst::Call {
+                            dest: Some(t.clone()),
+                            func: "bmb_string_new_const".to_string(),
+                            args: vec![Operand::Constant(Constant::String(String::new()))],
+                            is_tail: false,
+                        });
+                        return Operand::Place(t);
+                    }
+                    let mut acc = pieces[0].clone();
+                    for piece in &pieces[1..] {
+                        let t = ctx.fresh_temp();
+                        ctx.locals.insert(t.name.clone(), MirType::String);
+                        ctx.push_inst(MirInst::Call {
+                            dest: Some(t.clone()),
+                            func: "string_concat".to_string(),
+                            args: vec![acc, piece.clone()],
+                            is_tail: false,
+                        });
+                        acc = Operand::Place(t);
+                    }
+                    return acc;
+                }
+            }
 
             // v0.97.3: Resolve generic function calls to monomorphized versions
             let resolved_func = if let Some(turbofish_name) = turbofish_resolved {
@@ -1736,6 +1880,138 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
                 // For loop returns unit
                 Operand::Constant(Constant::Unit)
+            } else if let Expr::Var(iter_name) = &iter.node {
+                // v0.98.9: Vec-based for loop — detected by vec_vars membership
+                // `for x in v` where v came from vec_new()/vec_with_capacity()
+                // Generated as index loop: for i in 0..vec_len(v) { x = vec_get(v, i); body }
+                let resolved_name = ctx.var_name_map
+                    .get(iter_name)
+                    .cloned()
+                    .unwrap_or_else(|| iter_name.clone());
+                let is_vec = ctx.vec_vars.contains(&resolved_name);
+                let is_svec = ctx.svec_vars.contains(&resolved_name);
+
+                if is_vec || is_svec {
+                    let (len_fn, get_fn) = if is_svec {
+                        ("svec_len", "svec_get")
+                    } else {
+                        ("vec_len", "vec_get")
+                    };
+
+                    // Loop index variable (hidden)
+                    let idx_name = format!("__vec_idx_{}", ctx.temp_counter);
+                    ctx.temp_counter += 1;
+                    ctx.locals.insert(idx_name.clone(), MirType::I64);
+                    let idx_place = Place::new(idx_name.clone());
+                    ctx.push_inst(MirInst::Const { dest: idx_place.clone(), value: Constant::Int(0) });
+
+                    // Compute len once before the loop
+                    let len_dest = ctx.fresh_temp();
+                    ctx.locals.insert(len_dest.name.clone(), MirType::I64);
+                    ctx.push_inst(MirInst::Call {
+                        dest: Some(len_dest.clone()),
+                        func: len_fn.to_string(),
+                        args: vec![Operand::Place(Place::new(resolved_name.clone()))],
+                        is_tail: false,
+                    });
+
+                    // Register loop element variable (String for svec, i64 for vec)
+                    let elem_mir_ty = if is_svec { MirType::String } else { MirType::I64 };
+                    ctx.locals.insert(var.clone(), elem_mir_ty);
+                    let var_place = Place::new(var.clone());
+
+                    // Labels
+                    let cond_label = ctx.fresh_label("for_vec_cond");
+                    let body_label = ctx.fresh_label("for_vec_body");
+                    let exit_label = ctx.fresh_label("for_vec_exit");
+
+                    ctx.finish_block(Terminator::Goto(cond_label.clone()));
+
+                    // Condition: idx < len
+                    ctx.start_block(cond_label.clone());
+                    let cond_tmp = ctx.fresh_temp();
+                    ctx.push_inst(MirInst::BinOp {
+                        dest: cond_tmp.clone(),
+                        op: MirBinOp::Lt,
+                        lhs: Operand::Place(idx_place.clone()),
+                        rhs: Operand::Place(len_dest),
+                    });
+                    ctx.finish_block(Terminator::Branch {
+                        cond: Operand::Place(cond_tmp),
+                        then_label: body_label.clone(),
+                        else_label: exit_label.clone(),
+                    });
+
+                    // Body: x = get(v, idx); [body]; idx = idx + 1
+                    ctx.start_block(body_label);
+                    ctx.push_inst(MirInst::Call {
+                        dest: Some(var_place),
+                        func: get_fn.to_string(),
+                        args: vec![
+                            Operand::Place(Place::new(resolved_name.clone())),
+                            Operand::Place(idx_place.clone()),
+                        ],
+                        is_tail: false,
+                    });
+                    let _ = lower_expr(body, ctx);
+                    let inc_tmp = ctx.fresh_temp();
+                    ctx.push_inst(MirInst::BinOp {
+                        dest: inc_tmp.clone(),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(idx_place.clone()),
+                        rhs: Operand::Constant(Constant::Int(1)),
+                    });
+                    ctx.push_inst(MirInst::Copy { dest: idx_place, src: inc_tmp });
+                    ctx.finish_block(Terminator::Goto(cond_label));
+
+                    ctx.start_block(exit_label);
+                    Operand::Constant(Constant::Unit)
+                } else {
+                    // Receiver-based for loop (channel/svec)
+                    let recv_op = lower_expr(iter, ctx);
+
+                    ctx.locals.insert(var.clone(), MirType::I64);
+                    let var_place = Place::new(var.clone());
+
+                    let cond_label = ctx.fresh_label("for_recv_cond");
+                    let body_label = ctx.fresh_label("for_recv_body");
+                    let exit_label = ctx.fresh_label("for_recv_exit");
+
+                    ctx.finish_block(Terminator::Goto(cond_label.clone()));
+                    ctx.start_block(cond_label.clone());
+
+                    let recv_result = ctx.fresh_temp();
+                    ctx.locals.insert(recv_result.name.clone(), MirType::I64);
+                    ctx.push_inst(MirInst::ChannelRecvOpt {
+                        dest: recv_result.clone(),
+                        receiver: recv_op.clone(),
+                    });
+
+                    let cond_temp = ctx.fresh_temp();
+                    ctx.locals.insert(cond_temp.name.clone(), MirType::I64);
+                    ctx.push_inst(MirInst::BinOp {
+                        dest: cond_temp.clone(),
+                        op: MirBinOp::Ne,
+                        lhs: Operand::Place(recv_result.clone()),
+                        rhs: Operand::Constant(Constant::Int(-1)),
+                    });
+
+                    ctx.finish_block(Terminator::Branch {
+                        cond: Operand::Place(cond_temp),
+                        then_label: body_label.clone(),
+                        else_label: exit_label.clone(),
+                    });
+
+                    ctx.start_block(body_label);
+                    ctx.push_inst(MirInst::Copy {
+                        dest: var_place,
+                        src: recv_result,
+                    });
+                    let _ = lower_expr(body, ctx);
+                    ctx.finish_block(Terminator::Goto(cond_label));
+                    ctx.start_block(exit_label);
+                    Operand::Constant(Constant::Unit)
+                }
             } else {
                 // v0.81: Receiver-based for loop (iterate until channel closed)
                 // The iterator must be a Receiver<T> (type checked above)
@@ -6815,4 +7091,109 @@ fn substitute_ast_type(
         // Concrete types pass through
         _ => ty.clone(),
     }
+}
+
+/// v0.98.9: Parse format template and emit to_string conversions for each placeholder.
+/// Returns a Vec<Operand> of string pieces to be concatenated (Cycle 2890).
+fn lower_format_template_to_pieces(
+    template: &str,
+    rest_ops: &[Operand],
+    ctx: &mut LoweringContext,
+) -> Vec<Operand> {
+    let mut pieces: Vec<Operand> = Vec::new();
+    let mut i = 0;
+    let chars: Vec<char> = template.chars().collect();
+    let mut literal = String::new();
+
+    while i < chars.len() {
+        if chars[i] == '{' && i + 1 < chars.len() && chars[i + 1] == '{' {
+            literal.push('{');
+            i += 2;
+            continue;
+        }
+        if chars[i] == '{' {
+            // find closing }
+            let mut j = i + 1;
+            while j < chars.len() && chars[j] != '}' { j += 1; }
+            let placeholder = &chars[i+1..j].iter().collect::<String>();
+            if let Ok(idx) = placeholder.parse::<usize>() {
+                // Flush literal segment
+                if !literal.is_empty() {
+                    pieces.push(Operand::Constant(Constant::String(literal.clone())));
+                    literal.clear();
+                }
+                // Convert arg idx to String
+                if idx < rest_ops.len() {
+                    let op = &rest_ops[idx];
+                    let mir_ty = match op {
+                        Operand::Constant(Constant::Int(_)) => Some(MirType::I64),
+                        Operand::Constant(Constant::Float(_)) => Some(MirType::F64),
+                        Operand::Constant(Constant::Bool(_)) => Some(MirType::Bool),
+                        Operand::Constant(Constant::String(_)) => Some(MirType::String),
+                        Operand::Place(p) => ctx.locals.get(&p.name)
+                            .or_else(|| ctx.params.get(&p.name))
+                            .or_else(|| ctx.temp_types.get(&p.name))
+                            .cloned(),
+                        _ => None,
+                    };
+                    let str_op = match mir_ty {
+                        Some(MirType::String) => op.clone(),
+                        Some(MirType::F64) => {
+                            let t = ctx.fresh_temp();
+                            ctx.locals.insert(t.name.clone(), MirType::String);
+                            ctx.push_inst(MirInst::Call {
+                                dest: Some(t.clone()),
+                                func: "bmb_f64_to_string".to_string(),
+                                args: vec![op.clone()],
+                                is_tail: false,
+                            });
+                            Operand::Place(t)
+                        }
+                        Some(MirType::Bool) => {
+                            let t = ctx.fresh_temp();
+                            ctx.locals.insert(t.name.clone(), MirType::String);
+                            ctx.push_inst(MirInst::Call {
+                                dest: Some(t.clone()),
+                                func: "bmb_bool_to_string".to_string(),
+                                args: vec![op.clone()],
+                                is_tail: false,
+                            });
+                            Operand::Place(t)
+                        }
+                        _ => {
+                            // Default: int_to_string
+                            let t = ctx.fresh_temp();
+                            ctx.locals.insert(t.name.clone(), MirType::String);
+                            ctx.push_inst(MirInst::Call {
+                                dest: Some(t.clone()),
+                                func: "int_to_string".to_string(),
+                                args: vec![op.clone()],
+                                is_tail: false,
+                            });
+                            Operand::Place(t)
+                        }
+                    };
+                    pieces.push(str_op);
+                }
+            } else {
+                // Not a numeric placeholder — treat as literal
+                literal.push('{');
+                literal.push_str(placeholder);
+                if j < chars.len() { literal.push('}'); }
+            }
+            i = j + 1;
+            continue;
+        }
+        if chars[i] == '}' && i + 1 < chars.len() && chars[i + 1] == '}' {
+            literal.push('}');
+            i += 2;
+            continue;
+        }
+        literal.push(chars[i]);
+        i += 1;
+    }
+    if !literal.is_empty() {
+        pieces.push(Operand::Constant(Constant::String(literal)));
+    }
+    pieces
 }
