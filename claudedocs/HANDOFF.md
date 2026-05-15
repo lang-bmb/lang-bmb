@@ -1,10 +1,10 @@
-# BMB Session Handoff — 2026-05-15 (Cycles 2877-2898 — native 포팅 완료 + C# 바인딩 완료)
+# BMB Session Handoff — 2026-05-15 (Cycles 2877-2900 — native 포팅 완료 + C# 바인딩 완료 + Java scaffold)
 
-> **HEAD**: `5fdc6408` (이번 세션 완료)
+> **HEAD**: `43eb0ba9` (이번 세션 완료)
 > **이전 HEAD**: `921a5a39` (Cycles 2871-2876)
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2822, 120790 lines) — 이번 세션 bootstrap 변경 없음
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2899
+> **다음 세션 진입점**: Cycle 2901
 
 ---
 
@@ -23,6 +23,9 @@
 | 2895 | 문서 완성도 정리 + mir 복구 | bmb_reference.md 14개 stale "interpreter-only" 레이블 + mir/lower.rs Cycles 2884-2890 누락 커밋 복구 |
 | 2896 | B축 재측정 준비 | 69_overflow_detect problem.md 버그 수정 + 83_pipeline 명확화 + bmb_reference int-key hashmap 패턴 추가 |
 | 2897 | M4-6 C# 바인딩 완료 검증 + FFI 버그 수정 | 4개 csproj DLL 경로 수정 + bmb_json_type global→heap fix. 93/93 통과 |
+| 2898 | HANDOFF 갱신 | 세션 마무리 문서화 |
+| 2899 | Java JNA scaffold (bmb-algo) | M4 ④ Java 바인딩 시작 — BmbAlgoLib + BmbAlgo + 24 JUnit 5 테스트 |
+| 2900 | HANDOFF 갱신 | 세션 마무리 문서화 |
 
 ### 테스트 변화
 2388 tests (변화 없음). C# 바인딩: 93/93 통과 (algo 33 + json 14 + compute 17 + crypto 10 + text 19).
@@ -109,6 +112,12 @@
 - `ecosystem/bmb-json/src/lib.bmb`: bmb_json_type FFI crash 수정 (Cycle 2897)
 - `ecosystem/bmb-json/bindings/csharp/BmbJson.csproj` + 3개 csproj: DLL content 추가 (Cycle 2897)
 
+**Java 바인딩 (Cycle 2899)**:
+- `ecosystem/bmb-algo/bindings/java/pom.xml`: Maven 빌드 설정 (JNA 5.14.0 + JUnit Jupiter 5.10.2)
+- `ecosystem/bmb-algo/bindings/java/src/main/java/io/bmb/algo/BmbAlgoLib.java`: raw JNA interface
+- `ecosystem/bmb-algo/bindings/java/src/main/java/io/bmb/algo/BmbAlgo.java`: public safe API
+- `ecosystem/bmb-algo/bindings/java/src/test/java/io/bmb/algo/BmbAlgoTest.java`: 24 JUnit 5 테스트
+
 ---
 
 ## 다음 세션 우선순위
@@ -121,14 +130,16 @@
 2. **bmb_runtime.c 변경 시 CI 자동 rebuild** — 현재 수동 `gcc -c` + `ar` 필요.
 3. **inkwell/text 백엔드 함수 등록 정합성 테스트** — Rule 7 위반 방지를 위한 compile-time assertion 또는 CI 체크.
 4. **코드젠: `@export pub fn -> String` static literal 반환 자동 heap-copy** — `bmb_json_type` 수동 패치로 해결됨, but 근본 수정 필요 (bootstrap Rule 6).
+5. **BmbAlgo.runSafe(Runnable) 오버로드** — void FFI call 래핑을 더 명확하게 (현재 `Supplier<Long>` 박싱 우회).
 
 ### Pending Human Decisions
 - **B축 재측정**: .env.local에 API key 설정됨. 재측정 스크립트 준비 완료. 모델명 확인 후 실행 가능.
   - 예상 개선: 69_overflow_detect(problem.md 수정), 85_registry_pattern(int-key 패턴 추가)으로 98.0% → 98.5%+ 기대
   - Stale 기한: 2026-08-13
 - **tier3-spawn-overhead**: ISSUE-20260512 Option A/B/C 선택.
+- **Java 바인딩 계속 개발**: bmb-json/compute/crypto/text Java scaffold (나머지 4개, bmb-algo와 동일 패턴) 여부.
 
-### 다음 자율 작업 권장 (Cycle 2899+)
+### 다음 자율 작업 권장 (Cycle 2901+)
 - **② B축 재측정 실행** (API key 확인 후 HUMAN 실행)
 - **③ P-track 유지** — 도메인 핵심 ≤1.00x 확인
-- **Java 바인딩 scaffold** (M4 ④ 미완 항목)
+- **Java 바인딩 scaffold 계속** (bmb-json/compute/crypto/text, M4 ④) — Java 설치 후 `mvn test` 검증 포함
