@@ -1012,6 +1012,11 @@ BmbString* bmb_int_to_string(int64_t n) {
 // v0.97: Wrapper for non-prefixed name
 BmbString* int_to_string(int64_t n) { return bmb_int_to_string(n); }
 
+// v0.98.9: bool_to_string (Cycle 2883) — takes i1 from LLVM IR
+BmbString* bmb_bool_to_string(int8_t b) {
+    return b ? bmb_string_from_cstr("true") : bmb_string_from_cstr("false");
+}
+
 // v0.98.8: int_to_hex / int_to_bin (Cycle 2873)
 BmbString* bmb_int_to_hex(int64_t n) {
     char buf[17];  // max 16 hex digits + null
@@ -1358,6 +1363,15 @@ int64_t bmb_string_char_at(const BmbString* s, int64_t index) {
 // v0.51.51: Alias for codegen compatibility - takes BmbString*
 int64_t char_at(const BmbString* s, int64_t index) {
     return bmb_string_char_at(s, index);
+}
+
+// v0.98.9: str_char_at → String (single-character string, Cycle 2880)
+BmbString* bmb_str_char_at(const BmbString* s, int64_t index) {
+    char c = (s && s->data && index >= 0 && index < s->len) ? s->data[index] : '\0';
+    char* data = (char*)bmb_alloc(2);
+    data[0] = c;
+    data[1] = '\0';
+    return bmb_string_wrap(data);
 }
 
 // String equality comparison - parameters are BmbString*
@@ -2521,6 +2535,254 @@ int64_t str_hashmap_values(int64_t handle) {
         }
     }
     return v;
+}
+
+// v0.98.9: bmb_str_hashmap_* native wrappers (Cycle 2884)
+// Takes BmbString* directly for key args instead of int64_t (interpreter cast)
+int64_t bmb_str_hashmap_new(void) { return str_hashmap_new(); }
+int64_t bmb_str_hashmap_insert(int64_t handle, BmbString* key, int64_t value) {
+    return str_hashmap_insert(handle, (int64_t)key, value);
+}
+int64_t bmb_str_hashmap_get(int64_t handle, BmbString* key) {
+    return str_hashmap_get(handle, (int64_t)key);
+}
+int64_t bmb_str_hashmap_contains(int64_t handle, BmbString* key) {
+    return str_hashmap_contains(handle, (int64_t)key);
+}
+int64_t bmb_str_hashmap_len(int64_t handle) { return str_hashmap_len(handle); }
+int64_t bmb_str_hashmap_remove(int64_t handle, BmbString* key) {
+    return str_hashmap_remove(handle, (int64_t)key);
+}
+int64_t bmb_str_hashmap_free(int64_t handle) { str_hashmap_free(handle); return 0; }
+int64_t bmb_str_hashmap_inc(int64_t handle, BmbString* key, int64_t delta) {
+    int64_t cur = str_hashmap_get(handle, (int64_t)key);
+    str_hashmap_insert(handle, (int64_t)key, cur + delta);
+    return 0;
+}
+// v0.98.10: str_hashmap_update — overwrite value for existing key (Cycle 2892)
+int64_t bmb_str_hashmap_update(int64_t handle, BmbString* key, int64_t val) {
+    str_hashmap_insert(handle, (int64_t)key, val);
+    return 0;
+}
+// NOTE: bmb_str_hashmap_keys / bmb_str_hashmap_sorted_keys defined after BmbSvec infrastructure below
+
+// v0.98.9: BmbSvec (String Vector) C infrastructure (Cycle 2886)
+// Provides native svec_new/push/len/get/free/join/index_of/contains
+typedef struct { BmbString** data; int64_t len; int64_t cap; } BmbSvec;
+static BmbSvec* g_svec_pool = NULL;
+static int64_t g_svec_pool_len = 0;
+static int64_t g_svec_pool_cap = 0;
+
+int64_t bmb_svec_new(void) {
+    if (g_svec_pool_len >= g_svec_pool_cap) {
+        int64_t nc = g_svec_pool_cap == 0 ? 16 : g_svec_pool_cap * 2;
+        g_svec_pool = (BmbSvec*)realloc(g_svec_pool, nc * sizeof(BmbSvec));
+        if (!g_svec_pool) return -1;
+        g_svec_pool_cap = nc;
+    }
+    int64_t h = g_svec_pool_len++;
+    g_svec_pool[h].data = NULL; g_svec_pool[h].len = 0; g_svec_pool[h].cap = 0;
+    return h;
+}
+int64_t bmb_svec_push(int64_t handle, BmbString* s) {
+    if (handle < 0 || handle >= g_svec_pool_len) return -1;
+    BmbSvec* sv = &g_svec_pool[handle];
+    if (sv->len >= sv->cap) {
+        int64_t nc = sv->cap == 0 ? 8 : sv->cap * 2;
+        sv->data = (BmbString**)realloc(sv->data, nc * sizeof(BmbString*));
+        if (!sv->data) return -1;
+        sv->cap = nc;
+    }
+    sv->data[sv->len++] = s;
+    return 0;
+}
+int64_t bmb_svec_len(int64_t handle) {
+    if (handle < 0 || handle >= g_svec_pool_len) return 0;
+    return g_svec_pool[handle].len;
+}
+BmbString* bmb_svec_get(int64_t handle, int64_t index) {
+    if (handle < 0 || handle >= g_svec_pool_len) return NULL;
+    BmbSvec* sv = &g_svec_pool[handle];
+    if (index < 0 || index >= sv->len) return NULL;
+    return sv->data[index];
+}
+int64_t bmb_svec_free(int64_t handle) {
+    if (handle < 0 || handle >= g_svec_pool_len) return 0;
+    BmbSvec* sv = &g_svec_pool[handle];
+    if (sv->data) { free(sv->data); sv->data = NULL; }
+    sv->len = 0; sv->cap = 0;
+    return 0;
+}
+BmbString* bmb_svec_join(int64_t handle, BmbString* delim) {
+    if (handle < 0 || handle >= g_svec_pool_len) return bmb_string_new("", 0);
+    BmbSvec* sv = &g_svec_pool[handle];
+    if (sv->len == 0) return bmb_string_new("", 0);
+    int64_t total = 0;
+    for (int64_t i = 0; i < sv->len; i++) if (sv->data[i]) total += sv->data[i]->len;
+    if (delim && sv->len > 1) total += delim->len * (sv->len - 1);
+    char* buf = (char*)bmb_alloc(total + 1);
+    char* p = buf;
+    for (int64_t i = 0; i < sv->len; i++) {
+        if (i > 0 && delim && delim->len > 0) { memcpy(p, delim->data, delim->len); p += delim->len; }
+        if (sv->data[i]) { memcpy(p, sv->data[i]->data, sv->data[i]->len); p += sv->data[i]->len; }
+    }
+    *p = '\0';
+    return bmb_string_new(buf, total);
+}
+int64_t bmb_svec_index_of(int64_t handle, BmbString* needle) {
+    if (handle < 0 || handle >= g_svec_pool_len || !needle) return -1;
+    BmbSvec* sv = &g_svec_pool[handle];
+    for (int64_t i = 0; i < sv->len; i++) {
+        BmbString* s = sv->data[i];
+        if (s && s->len == needle->len && memcmp(s->data, needle->data, needle->len) == 0) return i;
+    }
+    return -1;
+}
+int64_t bmb_svec_contains(int64_t handle, BmbString* needle) {
+    return bmb_svec_index_of(handle, needle) >= 0 ? 1 : 0;
+}
+
+// v0.98.10: svec_sort / svec_remove / svec_clear (Cycle 2892)
+static int bmbstring_cmp(const void* a, const void* b) {
+    const BmbString* sa = *(const BmbString* const*)a;
+    const BmbString* sb = *(const BmbString* const*)b;
+    if (!sa && !sb) return 0;
+    if (!sa) return -1;
+    if (!sb) return 1;
+    int64_t minlen = sa->len < sb->len ? sa->len : sb->len;
+    int r = memcmp(sa->data, sb->data, (size_t)minlen);
+    if (r != 0) return r;
+    return (int)(sa->len - sb->len);
+}
+int64_t bmb_svec_sort(int64_t handle) {
+    if (handle < 0 || handle >= g_svec_pool_len) return 0;
+    BmbSvec* sv = &g_svec_pool[handle];
+    if (sv->len > 1) qsort(sv->data, (size_t)sv->len, sizeof(BmbString*), bmbstring_cmp);
+    return 0;
+}
+int64_t bmb_svec_remove(int64_t handle, int64_t index) {
+    if (handle < 0 || handle >= g_svec_pool_len) return 0;
+    BmbSvec* sv = &g_svec_pool[handle];
+    if (index < 0 || index >= sv->len) return 0;
+    for (int64_t i = index; i < sv->len - 1; i++) sv->data[i] = sv->data[i + 1];
+    sv->len--;
+    return 1;
+}
+int64_t bmb_svec_clear(int64_t handle) {
+    if (handle < 0 || handle >= g_svec_pool_len) return 0;
+    g_svec_pool[handle].len = 0;
+    return 0;
+}
+
+// v0.98.9: str_split / str_split_whitespace / str_lines → SvecHandle (Cycle 2887)
+
+// Helper: push a C string into a svec
+static void push_cstr_to_svec(int64_t handle, const char* cstr, int64_t len) {
+    BmbString* part = bmb_string_new(cstr, len);
+    bmb_svec_push(handle, part);
+}
+
+// str_split(s, delim) -> svec handle; empty delim → split by char
+int64_t bmb_str_split(BmbString* s, BmbString* delim) {
+    int64_t handle = bmb_svec_new();
+    if (!s || s->len == 0) return handle;
+    if (!delim || delim->len == 0) {
+        // split each byte (ASCII)
+        for (int64_t i = 0; i < s->len; i++) {
+            push_cstr_to_svec(handle, s->data + i, 1);
+        }
+        return handle;
+    }
+    const char* p = s->data;
+    int64_t slen = s->len;
+    int64_t dlen = delim->len;
+    const char* end = p + slen;
+    while (p < end) {
+        const char* found = NULL;
+        for (const char* q = p; q <= end - dlen; q++) {
+            if (memcmp(q, delim->data, (size_t)dlen) == 0) { found = q; break; }
+        }
+        if (found) {
+            push_cstr_to_svec(handle, p, found - p);
+            p = found + dlen;
+        } else {
+            push_cstr_to_svec(handle, p, end - p);
+            break;
+        }
+    }
+    return handle;
+}
+
+// str_split_whitespace(s) -> svec handle; splits on any whitespace, skips empty tokens
+int64_t bmb_str_split_whitespace(BmbString* s) {
+    int64_t handle = bmb_svec_new();
+    if (!s || s->len == 0) return handle;
+    const char* p = s->data;
+    const char* end = p + s->len;
+    while (p < end) {
+        while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')) p++;
+        if (p >= end) break;
+        const char* start = p;
+        while (p < end && *p != ' ' && *p != '\t' && *p != '\n' && *p != '\r') p++;
+        push_cstr_to_svec(handle, start, p - start);
+    }
+    return handle;
+}
+
+// str_lines(s) -> svec handle; splits by \n or \r\n
+int64_t bmb_str_lines(BmbString* s) {
+    int64_t handle = bmb_svec_new();
+    if (!s || s->len == 0) return handle;
+    const char* p = s->data;
+    const char* end = p + s->len;
+    while (p < end) {
+        const char* start = p;
+        while (p < end && *p != '\n') p++;
+        int64_t len = p - start;
+        // strip trailing \r
+        if (len > 0 && start[len - 1] == '\r') len--;
+        push_cstr_to_svec(handle, start, len);
+        if (p < end) p++; // skip \n
+    }
+    return handle;
+}
+
+// v0.98.9: str_hashmap_keys / str_hashmap_sorted_keys → svec handle (Cycle 2888)
+
+// qsort comparator for BmbString* by lexicographic content
+static int cmp_bmb_str_ptr(const void* a, const void* b) {
+    BmbString* sa = *(BmbString**)a;
+    BmbString* sb = *(BmbString**)b;
+    if (!sa && !sb) return 0;
+    if (!sa) return -1;
+    if (!sb) return 1;
+    int64_t min_len = sa->len < sb->len ? sa->len : sb->len;
+    int r = memcmp(sa->data, sb->data, (size_t)min_len);
+    if (r != 0) return r;
+    return (int)(sa->len - sb->len);
+}
+
+int64_t bmb_str_hashmap_keys(int64_t handle) {
+    int64_t sv = bmb_svec_new();
+    if (!handle) return sv;
+    StrHashMap* m = (StrHashMap*)handle;
+    for (int64_t i = 0; i < m->capacity; i++) {
+        if (m->entries[i].state == 1) {
+            BmbString* k = (BmbString*)m->entries[i].key;
+            bmb_svec_push(sv, k);
+        }
+    }
+    return sv;
+}
+
+int64_t bmb_str_hashmap_sorted_keys(int64_t handle) {
+    int64_t sv = bmb_str_hashmap_keys(handle);
+    // sort the BmbSvec data in-place
+    BmbSvec* vec = &g_svec_pool[sv];
+    if (vec->len > 1) {
+        qsort(vec->data, (size_t)vec->len, sizeof(BmbString*), cmp_bmb_str_ptr);
+    }
+    return sv;
 }
 
 // v0.90.83: Cached registry lookup for type checker performance

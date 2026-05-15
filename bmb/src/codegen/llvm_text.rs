@@ -850,6 +850,43 @@ impl TextCodeGen {
         // v0.98.8: int_to_hex / int_to_bin (Cycle 2873)
         writeln!(out, "declare nonnull ptr @bmb_int_to_hex(i64) nocallback nounwind nosync willreturn")?;
         writeln!(out, "declare nonnull ptr @bmb_int_to_bin(i64) nocallback nounwind nosync willreturn")?;
+        // v0.98.9: str_char_at → String (Cycle 2880)
+        writeln!(out, "declare nonnull ptr @bmb_str_char_at(ptr nonnull nocapture readonly, i64) nocallback nounwind nosync willreturn")?;
+        // v0.98.9: bmb_f64_to_string (Cycle 2881) — used by to_string(f64)
+        writeln!(out, "declare nonnull ptr @bmb_f64_to_string(double) nocallback nounwind nosync willreturn")?;
+        // v0.98.9: bmb_bool_to_string (Cycle 2883) — used by to_string(bool); takes i1
+        writeln!(out, "declare nonnull ptr @bmb_bool_to_string(i1) nocallback nounwind nosync willreturn")?;
+        // v0.98.9: str_hashmap native wrappers (Cycle 2884) — key args take ptr (BmbString*)
+        writeln!(out, "declare i64 @bmb_str_hashmap_new() nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare i64 @bmb_str_hashmap_insert(i64, ptr nonnull nocapture readonly, i64) nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare i64 @bmb_str_hashmap_get(i64, ptr nonnull nocapture readonly) nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare i64 @bmb_str_hashmap_contains(i64, ptr nonnull nocapture readonly) nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare i64 @bmb_str_hashmap_len(i64) nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare i64 @bmb_str_hashmap_remove(i64, ptr nonnull nocapture readonly) nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare i64 @bmb_str_hashmap_free(i64) nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare i64 @bmb_str_hashmap_inc(i64, ptr nonnull nocapture readonly, i64) nocallback nounwind nosync willreturn")?;
+        // v0.98.9: BmbSvec native wrappers (Cycle 2886)
+        writeln!(out, "declare i64 @bmb_svec_new() nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare i64 @bmb_svec_push(i64, ptr nonnull nocapture readonly) nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare i64 @bmb_svec_len(i64) nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare nonnull ptr @bmb_svec_get(i64, i64) nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare i64 @bmb_svec_free(i64) nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare nonnull ptr @bmb_svec_join(i64, ptr nonnull nocapture readonly) nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare i64 @bmb_svec_index_of(i64, ptr nonnull nocapture readonly) nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare i64 @bmb_svec_contains(i64, ptr nonnull nocapture readonly) nocallback nounwind nosync willreturn")?;
+        // v0.98.10: svec_sort / svec_remove / svec_clear (Cycle 2892)
+        writeln!(out, "declare i64 @bmb_svec_sort(i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_svec_remove(i64, i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_svec_clear(i64) nounwind")?;
+        // v0.98.10: str_hashmap_update (Cycle 2892)
+        writeln!(out, "declare i64 @bmb_str_hashmap_update(i64, ptr nonnull nocapture readonly, i64) nounwind")?;
+        // v0.98.9: str_split / str_split_whitespace / str_lines → svec handle (Cycle 2887)
+        writeln!(out, "declare i64 @bmb_str_split(ptr nonnull nocapture readonly, ptr nonnull nocapture readonly) nounwind")?;
+        writeln!(out, "declare i64 @bmb_str_split_whitespace(ptr nonnull nocapture readonly) nounwind")?;
+        writeln!(out, "declare i64 @bmb_str_lines(ptr nonnull nocapture readonly) nounwind")?;
+        // v0.98.9: str_hashmap_keys / str_hashmap_sorted_keys → svec handle (Cycle 2888)
+        writeln!(out, "declare i64 @bmb_str_hashmap_keys(i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_str_hashmap_sorted_keys(i64) nounwind")?;
         // v0.98.8: str_substr / str_count / str_pad_left / str_pad_right (Cycle 2874)
         writeln!(out, "declare nonnull ptr @bmb_string_substr(ptr nonnull, i64, i64) nocallback nounwind nosync willreturn")?;
         writeln!(out, "declare i64 @bmb_string_count(ptr nonnull nocapture readonly, ptr nonnull nocapture readonly) nocallback nofree nosync nounwind willreturn")?;
@@ -6366,6 +6403,20 @@ impl TextCodeGen {
                         | ("vec_index_of", 0) | ("vec_index_of", 1)
                         | ("vec_remove", 0) | ("vec_remove", 1)
                         | ("vec_fill", 0) | ("vec_fill", 1) => Some("i64"),
+                        // v0.98.9: int_to_hex / int_to_bin (Cycle 2878)
+                        ("int_to_hex", 0) | ("bmb_int_to_hex", 0)
+                        | ("int_to_bin", 0) | ("bmb_int_to_bin", 0) => Some("i64"),
+                        // v0.98.9: hashmap operations (Cycle 2878)
+                        ("hashmap_insert", 0) | ("hashmap_insert", 1) | ("hashmap_insert", 2)
+                        | ("bmb_hashmap_insert", 0) | ("bmb_hashmap_insert", 1) | ("bmb_hashmap_insert", 2) => Some("i64"),
+                        ("hashmap_get", 0) | ("hashmap_get", 1)
+                        | ("bmb_hashmap_get", 0) | ("bmb_hashmap_get", 1) => Some("i64"),
+                        ("hashmap_contains", 0) | ("hashmap_contains", 1)
+                        | ("bmb_hashmap_contains", 0) | ("bmb_hashmap_contains", 1) => Some("i64"),
+                        ("hashmap_len", 0) | ("bmb_hashmap_len", 0) => Some("i64"),
+                        ("hashmap_free", 0) | ("bmb_hashmap_free", 0) => Some("i64"),
+                        // v0.98.9: vec_clear (Cycle 2878)
+                        ("vec_clear", 0) | ("bmb_vec_clear", 0) => Some("i64"),
                         // v0.97: Other common runtime functions
                         ("read_int", _) | ("bmb_read_int", _) => None,
                         ("println_str", 0) | ("print_str", 0) => Some("ptr"),
@@ -6507,6 +6558,8 @@ impl TextCodeGen {
                         // v0.96.35: abs/min/max/clamp replaced with LLVM intrinsics (above)
                         "pow" => "bmb_pow",
                         "int_to_string" => "bmb_int_to_string",
+                        // v0.98.9: string_concat (format() lowering, Cycle 2890)
+                        "string_concat" => "bmb_string_concat",
                         // v0.93.7: String method calls → bmb_string_* runtime functions
                         "len" => "bmb_string_len",
                         "byte_at" => "bmb_string_char_at",
@@ -6523,6 +6576,7 @@ impl TextCodeGen {
                         "is_empty" => "bmb_string_is_empty",
                         // v0.98.8: str_* free-function form → bmb_string_* runtime
                         "str_len" => "bmb_string_len",
+                        "str_is_empty" => "bmb_string_is_empty",
                         "str_contains" => "bmb_string_contains",
                         "str_starts_with" => "bmb_string_starts_with",
                         "str_ends_with" => "bmb_string_ends_with",
@@ -6542,6 +6596,40 @@ impl TextCodeGen {
                         "str_reverse" => "bmb_string_reverse",
                         "int_to_hex" => "bmb_int_to_hex",
                         "int_to_bin" => "bmb_int_to_bin",
+                        // v0.98.9: str_char_at → String (Cycle 2880)
+                        "str_char_at" => "bmb_str_char_at",
+                        // v0.98.9: str_hashmap native (Cycle 2884)
+                        "str_hashmap_new" => "bmb_str_hashmap_new",
+                        "str_hashmap_insert" => "bmb_str_hashmap_insert",
+                        "str_hashmap_get" => "bmb_str_hashmap_get",
+                        "str_hashmap_contains" => "bmb_str_hashmap_contains",
+                        "str_hashmap_len" => "bmb_str_hashmap_len",
+                        "str_hashmap_delete" => "bmb_str_hashmap_remove",
+                        "str_hashmap_remove" => "bmb_str_hashmap_remove",
+                        "str_hashmap_free" => "bmb_str_hashmap_free",
+                        "str_hashmap_inc" => "bmb_str_hashmap_inc",
+                        // v0.98.9: str_hashmap_keys / str_hashmap_sorted_keys (Cycle 2888)
+                        "str_hashmap_keys" => "bmb_str_hashmap_keys",
+                        "str_hashmap_sorted_keys" => "bmb_str_hashmap_sorted_keys",
+                        // v0.98.9: BmbSvec native (Cycle 2886)
+                        "svec_new" => "bmb_svec_new",
+                        "svec_push" => "bmb_svec_push",
+                        "svec_len" => "bmb_svec_len",
+                        "svec_get" => "bmb_svec_get",
+                        "svec_free" => "bmb_svec_free",
+                        "svec_join" => "bmb_svec_join",
+                        "svec_index_of" => "bmb_svec_index_of",
+                        "svec_contains" => "bmb_svec_contains",
+                        // v0.98.10: svec_sort / svec_remove / svec_clear (Cycle 2892)
+                        "svec_sort" => "bmb_svec_sort",
+                        "svec_remove" => "bmb_svec_remove",
+                        "svec_clear" => "bmb_svec_clear",
+                        // v0.98.10: str_hashmap_update (Cycle 2892)
+                        "str_hashmap_update" => "bmb_str_hashmap_update",
+                        // v0.98.9: str_split / str_split_whitespace / str_lines (Cycle 2887)
+                        "str_split" => "bmb_str_split",
+                        "str_split_whitespace" => "bmb_str_split_whitespace",
+                        "str_lines" => "bmb_str_lines",
                         // v0.98.8: str_substr / str_count / str_pad_left / str_pad_right (Cycle 2874)
                         "str_substr" => "bmb_string_substr",
                         "str_count" => "bmb_string_count",
@@ -8722,7 +8810,15 @@ impl TextCodeGen {
                         // a regression as the narrowing pass evolves.
                         let local_ty = place_types.get(&p.name).copied().unwrap_or("i64");
                         if local_ty == "i32" { disc_ty = "i32"; }
-                        writeln!(out, "  %{}.disc_{} = load {}, ptr %{}.addr", p.name, default, local_ty, p.name)?;
+                        if local_ty == "ptr" {
+                            // v0.98.9 (Cycle 2882): local holds an enum ptr — two-level load:
+                            // 1. load the enum ptr from .addr, 2. load the i64 tag from the ptr
+                            let tmp_ptr = format!("{}.enum_ptr_{}", p.name, default);
+                            writeln!(out, "  %{} = load ptr, ptr %{}.addr", tmp_ptr, p.name)?;
+                            writeln!(out, "  %{}.disc_{} = load i64, ptr %{}", p.name, default, tmp_ptr)?;
+                        } else {
+                            writeln!(out, "  %{}.disc_{} = load {}, ptr %{}.addr", p.name, default, local_ty, p.name)?;
+                        }
                         format!("%{}.disc_{}", p.name, default)
                     } else if place_types.get(&p.name).copied() == Some("ptr") {
                         // v0.97.4: Enum variable (ptr from EnumVariant alloca or ptr parameter)
@@ -9088,7 +9184,7 @@ impl TextCodeGen {
             | "len" | "char_at" | "byte_at" | "ord"
             | "starts_with" | "ends_with" | "contains" | "index_of" | "is_empty"
             // v0.98.8: str_* free-function form (i64 return)
-            | "str_len" | "str_contains" | "str_starts_with" | "str_ends_with" | "str_find"
+            | "str_len" | "str_is_empty" | "str_contains" | "str_starts_with" | "str_ends_with" | "str_find"
             | "str_to_int" | "bmb_parse_int"
             | "str_count" | "bmb_string_count"
             // v0.98.8: integer math (Cycle 2876)
@@ -9096,6 +9192,44 @@ impl TextCodeGen {
             | "gcd_i64" | "bmb_gcd_i64"
             | "clamp_i64" | "bmb_clamp_i64"
             | "popcount" | "bmb_popcount" => "i64",
+
+            // i64 return - str_hashmap (Cycle 2884)
+            | "str_hashmap_new" | "bmb_str_hashmap_new"
+            | "str_hashmap_insert" | "bmb_str_hashmap_insert"
+            | "str_hashmap_get" | "bmb_str_hashmap_get"
+            | "str_hashmap_contains" | "bmb_str_hashmap_contains"
+            | "str_hashmap_len" | "bmb_str_hashmap_len"
+            | "str_hashmap_delete" | "str_hashmap_remove" | "bmb_str_hashmap_remove"
+            | "str_hashmap_inc" | "bmb_str_hashmap_inc"
+            // str_hashmap_keys / sorted_keys → svec handle (Cycle 2888)
+            | "str_hashmap_keys" | "bmb_str_hashmap_keys"
+            | "str_hashmap_sorted_keys" | "bmb_str_hashmap_sorted_keys" => "i64",
+
+            // i64 return - str_hashmap_free (Cycle 2884)
+            | "str_hashmap_free" | "bmb_str_hashmap_free" => "i64",
+
+            // i64 return - BmbSvec (Cycle 2886)
+            | "svec_new" | "bmb_svec_new"
+            | "svec_push" | "bmb_svec_push"
+            | "svec_len" | "bmb_svec_len"
+            | "svec_free" | "bmb_svec_free"
+            | "svec_index_of" | "bmb_svec_index_of"
+            | "svec_contains" | "bmb_svec_contains"
+            // v0.98.10: svec_sort / svec_remove / svec_clear (Cycle 2892)
+            | "svec_sort" | "bmb_svec_sort"
+            | "svec_remove" | "bmb_svec_remove"
+            | "svec_clear" | "bmb_svec_clear"
+            // v0.98.10: str_hashmap_update (Cycle 2892)
+            | "str_hashmap_update" | "bmb_str_hashmap_update" => "i64",
+
+            // i64 return - str_split / str_split_whitespace / str_lines (Cycle 2887)
+            | "str_split" | "bmb_str_split"
+            | "str_split_whitespace" | "bmb_str_split_whitespace"
+            | "str_lines" | "bmb_str_lines" => "i64",
+
+            // ptr return - BmbSvec get/join (Cycle 2886)
+            | "svec_get" | "bmb_svec_get"
+            | "svec_join" | "bmb_svec_join" => "ptr",
 
             // i64 return - File I/O (both full and wrapper names)
             "bmb_file_exists" | "bmb_file_size" | "bmb_write_file" | "bmb_append_file"
@@ -9124,7 +9258,7 @@ impl TextCodeGen {
 
             // ptr return - String operations (both full and wrapper names)
             "bmb_string_new" | "bmb_string_from_cstr" | "bmb_string_slice"
-            | "bmb_string_concat" | "bmb_chr"
+            | "bmb_string_concat" | "string_concat" | "bmb_chr"
             | "bmb_string_to_lower" | "bmb_string_to_upper" | "bmb_string_trim"
             | "bmb_string_replace" | "bmb_string_repeat"
             | "bmb_int_to_string" | "bmb_fast_i2s"
@@ -9136,7 +9270,13 @@ impl TextCodeGen {
             | "bmb_string_trim_left" | "bmb_string_trim_right" | "bmb_string_reverse"
             | "int_to_hex" | "int_to_bin" | "bmb_int_to_hex" | "bmb_int_to_bin"
             | "str_substr" | "str_pad_left" | "str_pad_right"
-            | "bmb_string_substr" | "bmb_str_pad_left" | "bmb_str_pad_right" => "ptr",
+            | "bmb_string_substr" | "bmb_str_pad_left" | "bmb_str_pad_right"
+            // v0.98.9: str_char_at → String (Cycle 2880)
+            | "str_char_at" | "bmb_str_char_at"
+            // v0.98.9: f64_to_string (Cycle 2881)
+            | "bmb_f64_to_string"
+            // v0.98.9: bool_to_string (Cycle 2883)
+            | "bmb_bool_to_string" => "ptr",
 
             // ptr return - File I/O (both full and wrapper names)
             "bmb_read_file" | "read_file" => "ptr",

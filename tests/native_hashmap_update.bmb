@@ -1,0 +1,11 @@
+fn main() -> i64 = {
+  let h = str_hashmap_new();
+  str_hashmap_insert(h, "x", 10);
+  let before = str_hashmap_get(h, "x");
+  str_hashmap_update(h, "x", 99);
+  let after = str_hashmap_get(h, "x");
+  println(before);
+  println(after);
+  str_hashmap_free(h);
+  0
+};

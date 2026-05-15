@@ -1286,6 +1286,16 @@ impl<'ctx> LlvmContext<'ctx> {
         let svec_contains_fn = self.module.add_function("bmb_svec_contains", svec_contains_type, None);
         self.functions.insert("svec_contains".to_string(), svec_contains_fn);
 
+        // v0.98.10: svec_sort / svec_remove / svec_clear (Cycle 2892)
+        let svec_h_fn = i64_type.fn_type(&[i64_type.into()], false);
+        self.functions.insert("svec_sort".to_string(), self.module.add_function("bmb_svec_sort", svec_h_fn, None));
+        self.functions.insert("svec_clear".to_string(), self.module.add_function("bmb_svec_clear", svec_h_fn, None));
+        let svec_remove_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+        self.functions.insert("svec_remove".to_string(), self.module.add_function("bmb_svec_remove", svec_remove_type, None));
+        // v0.98.10: str_hashmap_update (Cycle 2892)
+        let shm_update_t = i64_type.fn_type(&[i64_type.into(), ptr_type.into(), i64_type.into()], false);
+        self.functions.insert("str_hashmap_update".to_string(), self.module.add_function("bmb_str_hashmap_update", shm_update_t, None));
+
         // v0.98.9: str_split / str_split_whitespace / str_lines → svec handle (Cycle 2887)
         let str_split_type = i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
         let str_split_fn = self.module.add_function("bmb_str_split", str_split_type, None);
@@ -1493,6 +1503,9 @@ impl<'ctx> LlvmContext<'ctx> {
         self.functions.insert("tan".to_string(), self.module.add_function("tan", f64_1_fn, None));
         self.functions.insert("atan".to_string(), self.module.add_function("atan", f64_1_fn, None));
         self.functions.insert("atan2".to_string(), self.module.add_function("atan2", f64_2_fn, None));
+        // v0.98.10: read_f64 — read double from stdin (Cycle 2892)
+        let read_f64_type = f64_type.fn_type(&[], false);
+        self.functions.insert("read_f64".to_string(), self.module.add_function("bmb_read_f64", read_f64_type, None));
 
         // v0.46: string_from_cstr - convert C string to BmbString
         // string_from_cstr(cstr: ptr) -> ptr (returns BmbString*)

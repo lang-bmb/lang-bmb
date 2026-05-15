@@ -1,0 +1,21 @@
+fn main() -> i64 = {
+  let sv = svec_new();
+  svec_push(sv, "cherry");
+  svec_push(sv, "apple");
+  svec_push(sv, "banana");
+  let before = svec_get(sv, 0);
+  svec_sort(sv);
+  let after = svec_get(sv, 0);
+  let len1 = svec_len(sv);
+  svec_remove(sv, 0);
+  let len2 = svec_len(sv);
+  svec_clear(sv);
+  let len3 = svec_len(sv);
+  println_str(before);
+  println_str(after);
+  println(len1);
+  println(len2);
+  println(len3);
+  svec_free(sv);
+  0
+};
