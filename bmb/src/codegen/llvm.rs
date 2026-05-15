@@ -1029,6 +1029,7 @@ impl<'ctx> LlvmContext<'ctx> {
         len_fn.add_attribute(AttributeLoc::Param(0), nocapture_attr);
         len_fn.add_attribute(AttributeLoc::Param(0), nonnull_attr);
         self.functions.insert("len".to_string(), len_fn);
+        self.functions.insert("str_len".to_string(), len_fn); // alias: str_len → bmb_string_len
 
         // v0.46: byte_at(ptr, i64) -> i64
         let byte_at_type = i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false);
@@ -1215,22 +1216,97 @@ impl<'ctx> LlvmContext<'ctx> {
         let hashmap_free_fn = self.module.add_function("hashmap_free", hashmap_free_type, None);
         self.functions.insert("hashmap_free".to_string(), hashmap_free_fn);
 
-        // v0.90.83: String-content hashmap (str_hashmap) + cached registry lookup
-        let str_hashmap_new_type = ptr_type.fn_type(&[], false);
-        let str_hashmap_new_fn = self.module.add_function("str_hashmap_new", str_hashmap_new_type, None);
-        self.functions.insert("str_hashmap_new".to_string(), str_hashmap_new_fn);
+        // v0.98.9: str_hashmap — new BmbString*-key API (Cycle 2884 inkwell parity, Cycle 2891)
+        // These match the text backend dispatch: str_hashmap_* → bmb_str_hashmap_* (i64 handle, BmbString* key)
+        let shm_new_t = i64_type.fn_type(&[], false);
+        let shm_new_fn = self.module.add_function("bmb_str_hashmap_new", shm_new_t, None);
+        self.functions.insert("str_hashmap_new".to_string(), shm_new_fn);
 
-        let str_hashmap_insert_type = i64_type.fn_type(&[ptr_type.into(), ptr_type.into(), i64_type.into()], false);
-        let str_hashmap_insert_fn = self.module.add_function("str_hashmap_insert", str_hashmap_insert_type, None);
-        self.functions.insert("str_hashmap_insert".to_string(), str_hashmap_insert_fn);
+        let shm_insert_t = i64_type.fn_type(&[i64_type.into(), ptr_type.into(), i64_type.into()], false);
+        let shm_insert_fn = self.module.add_function("bmb_str_hashmap_insert", shm_insert_t, None);
+        self.functions.insert("str_hashmap_insert".to_string(), shm_insert_fn);
 
-        let str_hashmap_get_type = i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
-        let str_hashmap_get_fn = self.module.add_function("str_hashmap_get", str_hashmap_get_type, None);
-        self.functions.insert("str_hashmap_get".to_string(), str_hashmap_get_fn);
+        let shm_get_t = i64_type.fn_type(&[i64_type.into(), ptr_type.into()], false);
+        let shm_get_fn = self.module.add_function("bmb_str_hashmap_get", shm_get_t, None);
+        self.functions.insert("str_hashmap_get".to_string(), shm_get_fn);
 
-        let str_hashmap_free_type = void_type.fn_type(&[ptr_type.into()], false);
-        let str_hashmap_free_fn = self.module.add_function("str_hashmap_free", str_hashmap_free_type, None);
-        self.functions.insert("str_hashmap_free".to_string(), str_hashmap_free_fn);
+        let shm_contains_t = i64_type.fn_type(&[i64_type.into(), ptr_type.into()], false);
+        let shm_contains_fn = self.module.add_function("bmb_str_hashmap_contains", shm_contains_t, None);
+        self.functions.insert("str_hashmap_contains".to_string(), shm_contains_fn);
+
+        let shm_len_t = i64_type.fn_type(&[i64_type.into()], false);
+        let shm_len_fn = self.module.add_function("bmb_str_hashmap_len", shm_len_t, None);
+        self.functions.insert("str_hashmap_len".to_string(), shm_len_fn);
+
+        let shm_remove_t = i64_type.fn_type(&[i64_type.into(), ptr_type.into()], false);
+        let shm_remove_fn = self.module.add_function("bmb_str_hashmap_remove", shm_remove_t, None);
+        self.functions.insert("str_hashmap_delete".to_string(), shm_remove_fn);
+        self.functions.insert("str_hashmap_remove".to_string(), shm_remove_fn);
+
+        let shm_free_t = i64_type.fn_type(&[i64_type.into()], false);
+        let shm_free_fn = self.module.add_function("bmb_str_hashmap_free", shm_free_t, None);
+        self.functions.insert("str_hashmap_free".to_string(), shm_free_fn);
+
+        let shm_inc_t = i64_type.fn_type(&[i64_type.into(), ptr_type.into(), i64_type.into()], false);
+        let shm_inc_fn = self.module.add_function("bmb_str_hashmap_inc", shm_inc_t, None);
+        self.functions.insert("str_hashmap_inc".to_string(), shm_inc_fn);
+
+        // v0.98.9: BmbSvec native functions (Cycle 2886)
+        let svec_new_type = i64_type.fn_type(&[], false);
+        let svec_new_fn = self.module.add_function("bmb_svec_new", svec_new_type, None);
+        self.functions.insert("svec_new".to_string(), svec_new_fn);
+
+        let svec_push_type = i64_type.fn_type(&[i64_type.into(), ptr_type.into()], false);
+        let svec_push_fn = self.module.add_function("bmb_svec_push", svec_push_type, None);
+        self.functions.insert("svec_push".to_string(), svec_push_fn);
+
+        let svec_len_type = i64_type.fn_type(&[i64_type.into()], false);
+        let svec_len_fn = self.module.add_function("bmb_svec_len", svec_len_type, None);
+        self.functions.insert("svec_len".to_string(), svec_len_fn);
+
+        // svec_get(handle: i64, index: i64) -> BmbString*
+        let svec_get_type = ptr_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+        let svec_get_fn = self.module.add_function("bmb_svec_get", svec_get_type, None);
+        self.functions.insert("svec_get".to_string(), svec_get_fn);
+
+        let svec_free_type = i64_type.fn_type(&[i64_type.into()], false);
+        let svec_free_fn = self.module.add_function("bmb_svec_free", svec_free_type, None);
+        self.functions.insert("svec_free".to_string(), svec_free_fn);
+
+        // svec_join(handle: i64, delim: BmbString*) -> BmbString*
+        let svec_join_type = ptr_type.fn_type(&[i64_type.into(), ptr_type.into()], false);
+        let svec_join_fn = self.module.add_function("bmb_svec_join", svec_join_type, None);
+        self.functions.insert("svec_join".to_string(), svec_join_fn);
+
+        let svec_index_of_type = i64_type.fn_type(&[i64_type.into(), ptr_type.into()], false);
+        let svec_index_of_fn = self.module.add_function("bmb_svec_index_of", svec_index_of_type, None);
+        self.functions.insert("svec_index_of".to_string(), svec_index_of_fn);
+
+        let svec_contains_type = i64_type.fn_type(&[i64_type.into(), ptr_type.into()], false);
+        let svec_contains_fn = self.module.add_function("bmb_svec_contains", svec_contains_type, None);
+        self.functions.insert("svec_contains".to_string(), svec_contains_fn);
+
+        // v0.98.9: str_split / str_split_whitespace / str_lines → svec handle (Cycle 2887)
+        let str_split_type = i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
+        let str_split_fn = self.module.add_function("bmb_str_split", str_split_type, None);
+        self.functions.insert("str_split".to_string(), str_split_fn);
+
+        let str_split_ws_type = i64_type.fn_type(&[ptr_type.into()], false);
+        let str_split_ws_fn = self.module.add_function("bmb_str_split_whitespace", str_split_ws_type, None);
+        self.functions.insert("str_split_whitespace".to_string(), str_split_ws_fn);
+
+        let str_lines_type = i64_type.fn_type(&[ptr_type.into()], false);
+        let str_lines_fn = self.module.add_function("bmb_str_lines", str_lines_type, None);
+        self.functions.insert("str_lines".to_string(), str_lines_fn);
+
+        // v0.98.9: str_hashmap_keys / str_hashmap_sorted_keys → svec handle (Cycle 2888)
+        let hashmap_keys_type = i64_type.fn_type(&[i64_type.into()], false);
+        let hashmap_keys_fn = self.module.add_function("bmb_str_hashmap_keys", hashmap_keys_type, None);
+        self.functions.insert("str_hashmap_keys".to_string(), hashmap_keys_fn);
+
+        let hashmap_sorted_keys_type = i64_type.fn_type(&[i64_type.into()], false);
+        let hashmap_sorted_keys_fn = self.module.add_function("bmb_str_hashmap_sorted_keys", hashmap_sorted_keys_type, None);
+        self.functions.insert("str_hashmap_sorted_keys".to_string(), hashmap_sorted_keys_fn);
 
         // reg_cached_lookup(reg: ptr, name: ptr, slot: i64) -> ptr
         let reg_cached_lookup_type = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), i64_type.into()], false);
@@ -1278,6 +1354,145 @@ impl<'ctx> LlvmContext<'ctx> {
         int_to_str_fn.add_attribute(AttributeLoc::Return, nonnull_attr);
         self.functions.insert("int_to_string".to_string(), int_to_str_fn);
         self.function_return_types.insert("int_to_string".to_string(), MirType::String);
+
+        // v0.98.9: bmb_f64_to_string / bmb_bool_to_string (Cycle 2889 — used by to_string<f64/bool>)
+        let f64_to_str_type = ptr_type.fn_type(&[f64_type.into()], false);
+        let f64_to_str_fn = self.module.add_function("bmb_f64_to_string", f64_to_str_type, None);
+        f64_to_str_fn.add_attribute(AttributeLoc::Return, nonnull_attr);
+        self.functions.insert("bmb_f64_to_string".to_string(), f64_to_str_fn);
+        self.function_return_types.insert("bmb_f64_to_string".to_string(), MirType::String);
+
+        let i1_type = self.context.bool_type();
+        let bool_to_str_type = ptr_type.fn_type(&[i1_type.into()], false); // i1 in LLVM IR
+        let bool_to_str_fn = self.module.add_function("bmb_bool_to_string", bool_to_str_type, None);
+        bool_to_str_fn.add_attribute(AttributeLoc::Return, nonnull_attr);
+        self.functions.insert("bmb_bool_to_string".to_string(), bool_to_str_fn);
+        self.function_return_types.insert("bmb_bool_to_string".to_string(), MirType::String);
+
+        // v0.98.8/9: String query functions (i64 return) — Cycles 2871-2876 inkwell parity
+        let s1_i64 = i64_type.fn_type(&[ptr_type.into()], false);
+        let s2_i64 = i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
+
+        let str_is_empty_fn = self.module.add_function("bmb_string_is_empty", s1_i64, None);
+        self.functions.insert("str_is_empty".to_string(), str_is_empty_fn);
+
+        let str_contains_fn = self.module.add_function("bmb_string_contains", s2_i64, None);
+        self.functions.insert("str_contains".to_string(), str_contains_fn);
+
+        let str_starts_with_fn = self.module.add_function("bmb_string_starts_with", s2_i64, None);
+        self.functions.insert("str_starts_with".to_string(), str_starts_with_fn);
+
+        let str_ends_with_fn = self.module.add_function("bmb_string_ends_with", s2_i64, None);
+        self.functions.insert("str_ends_with".to_string(), str_ends_with_fn);
+
+        let str_find_fn = self.module.add_function("bmb_string_index_of", s2_i64, None);
+        self.functions.insert("str_find".to_string(), str_find_fn);
+
+        let str_to_int_fn = self.module.add_function("bmb_parse_int", s1_i64, None);
+        self.functions.insert("str_to_int".to_string(), str_to_int_fn);
+
+        let str_count_fn = self.module.add_function("bmb_string_count", s2_i64, None);
+        self.functions.insert("str_count".to_string(), str_count_fn);
+
+        // str_to_f64(s: ptr) -> f64
+        let str_to_f64_type = f64_type.fn_type(&[ptr_type.into()], false);
+        let str_to_f64_fn = self.module.add_function("bmb_parse_f64", str_to_f64_type, None);
+        self.functions.insert("str_to_f64".to_string(), str_to_f64_fn);
+
+        // v0.98.8/9: String transform functions (ptr return) — Cycles 2871-2876 inkwell parity
+        let s1_ptr = ptr_type.fn_type(&[ptr_type.into()], false);
+        let s_i64_ptr = ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false);
+        let s_i64_i64_ptr = ptr_type.fn_type(&[ptr_type.into(), i64_type.into(), i64_type.into()], false);
+        let s_i64_s_ptr = ptr_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into()], false);
+
+        macro_rules! reg_str_fn {
+            ($bmb_name:expr, $llvm_name:expr, $ty:expr) => {{
+                let f = self.module.add_function($llvm_name, $ty, None);
+                f.add_attribute(AttributeLoc::Return, nonnull_attr);
+                self.functions.insert($bmb_name.to_string(), f);
+                self.function_return_types.insert($bmb_name.to_string(), MirType::String);
+            }};
+        }
+
+        reg_str_fn!("str_trim",       "bmb_string_trim",       s1_ptr);
+        reg_str_fn!("str_to_upper",   "bmb_string_to_upper",   s1_ptr);
+        reg_str_fn!("str_to_lower",   "bmb_string_to_lower",   s1_ptr);
+        // str_replace aliases the pre-registered "replace" → bmb_string_replace (line ~1111)
+        if let Some(&existing) = self.functions.get("replace") {
+            self.functions.insert("str_replace".to_string(), existing);
+            self.function_return_types.insert("str_replace".to_string(), MirType::String);
+        }
+        reg_str_fn!("str_repeat",     "bmb_string_repeat",     s_i64_ptr);
+        reg_str_fn!("str_trim_left",  "bmb_string_trim_left",  s1_ptr);
+        reg_str_fn!("str_trim_right", "bmb_string_trim_right", s1_ptr);
+        reg_str_fn!("str_reverse",    "bmb_string_reverse",    s1_ptr);
+        reg_str_fn!("str_char_at",    "bmb_str_char_at",       s_i64_ptr);
+        reg_str_fn!("str_substr",     "bmb_string_substr",     s_i64_i64_ptr);
+        reg_str_fn!("str_pad_left",   "bmb_str_pad_left",      s_i64_s_ptr);
+        reg_str_fn!("str_pad_right",  "bmb_str_pad_right",     s_i64_s_ptr);
+
+        // int_to_hex / int_to_bin: i64 → ptr
+        let i64_to_ptr = ptr_type.fn_type(&[i64_type.into()], false);
+        let int_to_hex_fn = self.module.add_function("bmb_int_to_hex", i64_to_ptr, None);
+        int_to_hex_fn.add_attribute(AttributeLoc::Return, nonnull_attr);
+        self.functions.insert("int_to_hex".to_string(), int_to_hex_fn);
+        self.function_return_types.insert("int_to_hex".to_string(), MirType::String);
+
+        let int_to_bin_fn = self.module.add_function("bmb_int_to_bin", i64_to_ptr, None);
+        int_to_bin_fn.add_attribute(AttributeLoc::Return, nonnull_attr);
+        self.functions.insert("int_to_bin".to_string(), int_to_bin_fn);
+        self.function_return_types.insert("int_to_bin".to_string(), MirType::String);
+
+        // v0.98.8: Vec aggregate functions — Cycles 2871-2876 inkwell parity
+        let i64_1_fn = i64_type.fn_type(&[i64_type.into()], false);
+        let i64_2_fn = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+        let void_1_fn = self.context.void_type().fn_type(&[i64_type.into()], false);
+        let void_2_fn = self.context.void_type().fn_type(&[i64_type.into(), i64_type.into()], false);
+
+        self.functions.insert("vec_sum".to_string(), self.module.add_function("vec_sum", i64_1_fn, None));
+        self.functions.insert("vec_min".to_string(), self.module.add_function("vec_min", i64_1_fn, None));
+        self.functions.insert("vec_max".to_string(), self.module.add_function("vec_max", i64_1_fn, None));
+        self.functions.insert("vec_sort".to_string(), self.module.add_function("vec_sort", void_1_fn, None));
+        self.functions.insert("vec_reverse".to_string(), self.module.add_function("vec_reverse", void_1_fn, None));
+        self.functions.insert("vec_contains".to_string(), self.module.add_function("vec_contains", i64_2_fn, None));
+        self.functions.insert("vec_index_of".to_string(), self.module.add_function("vec_index_of", i64_2_fn, None));
+        self.functions.insert("vec_remove".to_string(), self.module.add_function("vec_remove", i64_2_fn, None));
+        self.functions.insert("vec_fill".to_string(), self.module.add_function("vec_fill", void_2_fn, None));
+
+        // v0.98.8: Integer math — Cycles 2876 inkwell parity
+        let i64_2_math = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+        let i64_3_math = i64_type.fn_type(&[i64_type.into(), i64_type.into(), i64_type.into()], false);
+        let i64_1_math = i64_type.fn_type(&[i64_type.into()], false);
+
+        self.functions.insert("pow_i64".to_string(), self.module.add_function("bmb_pow_i64", i64_2_math, None));
+        self.functions.insert("gcd_i64".to_string(), self.module.add_function("bmb_gcd_i64", i64_2_math, None));
+        self.functions.insert("clamp_i64".to_string(), self.module.add_function("bmb_clamp_i64", i64_3_math, None));
+        self.functions.insert("popcount".to_string(), self.module.add_function("bmb_popcount", i64_1_math, None));
+
+        // v0.98.8: Float math — Cycles 2875 inkwell parity
+        // LLVM intrinsics for log, log2, log10, exp, round, min, max
+        let f64_1_fn = f64_type.fn_type(&[f64_type.into()], false);
+        let f64_2_fn = f64_type.fn_type(&[f64_type.into(), f64_type.into()], false);
+
+        self.functions.insert("log".to_string(), self.module.add_function("llvm.log.f64", f64_1_fn, None));
+        self.functions.insert("log2".to_string(), self.module.add_function("llvm.log2.f64", f64_1_fn, None));
+        self.functions.insert("log10".to_string(), self.module.add_function("llvm.log10.f64", f64_1_fn, None));
+        self.functions.insert("exp".to_string(), self.module.add_function("llvm.exp.f64", f64_1_fn, None));
+        self.functions.insert("round".to_string(), self.module.add_function("llvm.round.f64", f64_1_fn, None));
+
+        // min_f64 / max_f64: also stored under llvm.* name for clamp_f64 inline emit
+        let min_f64_fn = self.module.add_function("llvm.minnum.f64", f64_2_fn, None);
+        self.functions.insert("min_f64".to_string(), min_f64_fn);
+        self.functions.insert("llvm.minnum.f64".to_string(), min_f64_fn);
+
+        let max_f64_fn = self.module.add_function("llvm.maxnum.f64", f64_2_fn, None);
+        self.functions.insert("max_f64".to_string(), max_f64_fn);
+        self.functions.insert("llvm.maxnum.f64".to_string(), max_f64_fn);
+
+        // C library: tan, atan, atan2
+        self.functions.insert("tan".to_string(), self.module.add_function("tan", f64_1_fn, None));
+        self.functions.insert("atan".to_string(), self.module.add_function("atan", f64_1_fn, None));
+        self.functions.insert("atan2".to_string(), self.module.add_function("atan2", f64_2_fn, None));
 
         // v0.46: string_from_cstr - convert C string to BmbString
         // string_from_cstr(cstr: ptr) -> ptr (returns BmbString*)
@@ -3521,6 +3736,32 @@ impl<'ctx> LlvmContext<'ctx> {
                         .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
                     if let Some(dest_place) = dest
                         && let Some(ret_val) = call_result.try_as_basic_value().basic()
+                    {
+                        self.store_to_place(dest_place, ret_val)?;
+                    }
+                    return Ok(());
+                }
+
+                // v0.98.8: clamp_f64(x, lo, hi) → max(min(x, hi), lo) via LLVM intrinsics (Cycle 2891)
+                if func == "clamp_f64" && args.len() == 3 {
+                    let x = self.gen_operand(&args[0])?;
+                    let lo = self.gen_operand(&args[1])?;
+                    let hi = self.gen_operand(&args[2])?;
+                    let minnum_fn = *self.functions.get("llvm.minnum.f64")
+                        .ok_or_else(|| CodeGenError::UnknownFunction("llvm.minnum.f64".to_string()))?;
+                    let maxnum_fn = *self.functions.get("llvm.maxnum.f64")
+                        .ok_or_else(|| CodeGenError::UnknownFunction("llvm.maxnum.f64".to_string()))?;
+                    let min_call = self.builder
+                        .build_call(minnum_fn, &[x.into(), hi.into()], "clamp.min")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    let min_val = min_call.try_as_basic_value()
+                        .basic()
+                        .ok_or(CodeGenError::TypeMismatch)?;
+                    let max_call = self.builder
+                        .build_call(maxnum_fn, &[min_val.into(), lo.into()], "clamp.max")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    if let Some(dest_place) = dest
+                        && let Some(ret_val) = max_call.try_as_basic_value().basic()
                     {
                         self.store_to_place(dest_place, ret_val)?;
                     }
