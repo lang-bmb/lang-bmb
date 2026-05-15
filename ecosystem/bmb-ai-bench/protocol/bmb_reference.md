@@ -27,7 +27,7 @@ break;                               // exit loop early
 continue;                            // skip to next iteration
 return expr;                         // early return from function
 
-// while let — pattern-matching loop (v0.98.3, interpreter-only)
+// while let — pattern-matching loop (v0.98.3+, native v0.98.9+)
 // Exits when pattern doesn't match. Requires enum-variant pattern (not bare variable).
 // enum Opt { None, Some(i64) }
 // fn next(n: i64) -> Opt = if n > 0 { Opt::Some(n - 1) } else { Opt::None };
@@ -70,23 +70,24 @@ let ok2 = str_ends_with(s, "suf");         // 1 if ends with suffix
 let idx = str_find(s, "needle");            // first byte index, or -1
 let sub = str_substr(s, 6, 5);             // substring (start, len)
 let trimmed = str_trim(s);                 // trim leading/trailing whitespace
-let tl = str_trim_left(s);                // trim leading whitespace only (v0.98.7+, interp-only)
-let tr = str_trim_right(s);               // trim trailing whitespace only (v0.98.7+, interp-only)
+let tl = str_trim_left(s);                // trim leading whitespace only (v0.98.7+)
+let tr = str_trim_right(s);               // trim trailing whitespace only (v0.98.7+)
 let n2 = str_to_int("42");                 // parse integer string → i64 (0 on failure)
-let h = int_to_hex(255);                   // → "ff"  (lowercase hex, v0.98.7+, interp-only)
-let b = int_to_bin(10);                    // → "1010" (binary, v0.98.7+, interp-only)
-let replaced = str_replace(s, "x", "y");  // replace all "x" with "y" (v0.98.3, interp-only)
-let rep = str_repeat("ab", 3);             // "ababab" — repeat n times (v0.98.3, interp-only)
-let cnt = str_count("aababc", "ab");       // 2 — count substring occurrences (v0.98.6+, interp-only)
-let pl = str_pad_left("42", 5, "0");       // "00042" — left-pad to width (v0.98.6+, interp-only)
-let pr = str_pad_right("hi", 5, " ");      // "hi   " — right-pad to width (v0.98.6+, interp-only)
-let up = str_to_upper("hello");           // "HELLO" — Unicode uppercase (v0.98.6+, interp-only)
-let lo = str_to_lower("WORLD");           // "world" — Unicode lowercase (v0.98.6+, interp-only)
-let ch = str_char_at("hello", 1);         // "e" — single-char String at index (v0.98.6+, interp-only)
-let rv = str_reverse("hello");            // "olleh" — reverse string (v0.98.7+, interp-only)
-let fv = str_to_f64("3.14");              // parse float string → f64 (0.0 on failure, v0.98.7+, interp-only)
-let fv2 = read_f64();                     // read f64 from stdin (v0.98.7+, interp-only)
-// str_lines(s) → SvecHandle — split by '\n', strip '\r' (v0.98.7+, interpreter-only)
+let h = int_to_hex(255);                   // → "ff"  (lowercase hex, v0.98.7+)
+let b = int_to_bin(10);                    // → "1010" (binary, v0.98.7+)
+let replaced = str_replace(s, "x", "y");  // replace all "x" with "y" (v0.98.3+)
+let rep = str_repeat("ab", 3);             // "ababab" — repeat n times (v0.98.3+)
+let cnt = str_count("aababc", "ab");       // 2 — count substring occurrences (v0.98.6+)
+let pl = str_pad_left("42", 5, "0");       // "00042" — left-pad to width (v0.98.6+)
+let pr = str_pad_right("hi", 5, " ");      // "hi   " — right-pad to width (v0.98.6+)
+let up = str_to_upper("hello");           // "HELLO" — Unicode uppercase (v0.98.6+)
+let lo = str_to_lower("WORLD");           // "world" — Unicode lowercase (v0.98.6+)
+let ch = str_char_at("hello", 1);         // "e" — single-char String at index (v0.98.6+, native v0.98.9+)
+let rv = str_reverse("hello");            // "olleh" — reverse string (v0.98.7+)
+let fv = str_to_f64("3.14");              // parse float string → f64 (0.0 on failure, v0.98.7+)
+let fv2 = read_f64();                     // read f64 from stdin (v0.98.7+)
+let empty = str_is_empty(s);             // 1 if s == "", 0 otherwise (v0.98.9+)
+// str_lines(s) → SvecHandle — split by '\n', strip '\r' (v0.98.7+, native v0.98.9+)
 // let lines = str_lines("a\nb\nc");  // 3 elements; use svec_* to iterate/access
 
 // Generic to_string (v0.98.2+)
@@ -96,7 +97,7 @@ let s3 = to_string("hello");          // String → String (identity, no extra q
 // Use instead of int_to_string when type is not statically known
 let msg = "value=" + to_string(n);    // concatenation with any type
 
-// String split (v0.98.3+, interpreter-only)
+// String split (v0.98.3+, native v0.98.9+)
 // fn example() -> i64 = {
 //   let parts = str_split("a,b,c", ",");  // → SvecHandle (opaque)
 //   let n = svec_len(parts);              // number of parts (3)
@@ -104,27 +105,27 @@ let msg = "value=" + to_string(n);    // concatenation with any type
 //   let _f = svec_free(parts);            // release (use "let _f =" to discard Unit)
 //   n
 // };
-// str_split_whitespace(s) → SvecHandle — split by whitespace, skip empty tokens (v0.98.7+)
+// str_split_whitespace(s) → SvecHandle — split by whitespace, skip empty tokens (v0.98.7+, native v0.98.9+)
 // let tokens = str_split_whitespace("  1 2   3  ");  // → ["1","2","3"] (3 elements)
 // Note: str_split("abc", "") splits into individual characters
 // Note: Use "let _f = svec_free(parts)" not "svec_free(parts);" (no standalone expr stmts)
-//   let j = svec_join(parts, "-");       // join all parts with delimiter (v0.98.3, interp-only)
-// Build svec manually (v0.98.5+, interpreter-only):
+//   let j = svec_join(parts, "-");       // join all parts with delimiter (v0.98.3, native v0.98.9+)
+// Build svec manually (v0.98.5+, native v0.98.9+/v0.98.10+):
 //   let sv = svec_new();                 // create empty svec
 //   let _p = svec_push(sv, "item");      // append string
-//   let _so = svec_sort(sv);             // sort lexicographically in-place (v0.98.6+)
+//   let _so = svec_sort(sv);             // sort lexicographically in-place (v0.98.6+, native v0.98.10+)
 //   let ok = svec_contains(sv, "item");  // 1 if found, 0 otherwise (v0.98.6+)
 //   let i = svec_index_of(sv, "item");  // first index or -1 (v0.98.7+)
-//   let _rm = svec_remove(sv, 0);        // remove element at index (v0.98.6+)
-//   let _cl = svec_clear(sv);            // remove all elements (v0.98.6+)
+//   let _rm = svec_remove(sv, 0);        // remove element at index (v0.98.6+, native v0.98.10+)
+//   let _cl = svec_clear(sv);            // remove all elements (v0.98.6+, native v0.98.10+)
 //   let _f = svec_free(sv);              // release
 
-// Positional string formatting (v0.98.3+, interpreter-only)
+// Positional string formatting (v0.98.3+, native v0.98.9+)
 // format(template, arg0, arg1, ...) → String
 // let s = format("{0} + {1} = {2}", to_string(a), to_string(b), to_string(a+b));
 // let msg = format("name={0}, age={1}", name, to_string(age));
 
-// String interpolation (v0.98.4+, interpreter-only)
+// String interpolation (v0.98.4+, native v0.98.9+)
 // "Hello {name}" → automatically desugars to format("Hello {0}", name)
 // Supports: idents, arithmetic ({n+1}), field access ({p.x}), unary ({-n}), parens, function calls ({fn(args)} v0.98.6+)
 // Numeric {0} kept as-is (format-arg style).
@@ -145,7 +146,7 @@ let _p = vec_pop(v);            // remove last
 let _c = vec_clear(v);          // set length to 0 (keep capacity)
 let _f = vec_free(v);           // deallocate
 
-// Aggregate operations (interpreter-only, v0.98.3):
+// Aggregate operations (v0.98.3+):
 let s = vec_sum(v);             // sum all elements (i64)
 let mx = vec_max(v);            // maximum element (error on empty)
 let mn = vec_min(v);            // minimum element (error on empty)
@@ -368,8 +369,8 @@ let x = max(3, 7);             // → 7    (free function, i64 only — use max_
 let p = pow_i64(2, 10);        // → 1024 (i64^i64 → i64, v0.98.6+)
 let c = clamp_i64(x, 0, 100); // → clamped x in [0, 100] (v0.98.6+)
 let g = gcd_i64(48, 18);       // → 6   (Euclidean GCD, v0.98.6+)
-let pc = popcount(7);           // → 3   (count set bits, 7 = 0b111, v0.98.7+, interp-only)
-// Float min/max/clamp (v0.98.7+, interpreter-only)
+let pc = popcount(7);           // → 3   (count set bits, 7 = 0b111, v0.98.7+)
+// Float min/max/clamp (v0.98.7+)
 let mf = min_f64(3.14, 2.72);          // → 2.72
 let xf = max_f64(3.14, 2.72);          // → 3.14
 let cf = clamp_f64(v, 0.0, 1.0);       // → clamped v in [0.0, 1.0]
@@ -388,17 +389,17 @@ let sr = a >> 1;       // right shift by 1 (arithmetic)
 let r = sqrt(2.0);         // → 1.414...  (f64 → f64)
 let f = floor(3.7);        // → 3.0
 let ce = ceil(3.2);        // → 4.0
-let rn = round(3.7);       // → 4.0  (v0.98.7+, interp-only)
+let rn = round(3.7);       // → 4.0  (v0.98.7+)
 let ab = fabs(-3.5);       // → 3.5  (float absolute value)
-let l = log(2.718282);     // → ~1.0  (natural log, v0.98.7+, interp-only)
-let l2 = log2(8.0);        // → 3.0  (base-2 log, v0.98.7+, interp-only)
-let l10 = log10(100.0);    // → 2.0  (base-10 log, v0.98.7+, interp-only)
-let e = exp(1.0);          // → ~2.718  (e^x, v0.98.7+, interp-only)
+let l = log(2.718282);     // → ~1.0  (natural log, v0.98.7+)
+let l2 = log2(8.0);        // → 3.0  (base-2 log, v0.98.7+)
+let l10 = log10(100.0);    // → 2.0  (base-10 log, v0.98.7+)
+let e = exp(1.0);          // → ~2.718  (e^x, v0.98.7+)
 let s = sin(0.0);          // → 0.0
 let c = cos(0.0);          // → 1.0
-let t = tan(0.0);          // → 0.0  (v0.98.7+, interp-only)
-let a = atan(1.0);         // → ~0.785 (π/4, v0.98.7+, interp-only)
-let a2 = atan2(1.0, 1.0);  // → ~0.785 (2-arg atan, v0.98.7+, interp-only)
+let t = tan(0.0);          // → 0.0  (v0.98.7+)
+let a = atan(1.0);         // → ~0.785 (π/4, v0.98.7+)
+let a2 = atan2(1.0, 1.0);  // → ~0.785 (2-arg atan, v0.98.7+)
 let p = pow_f64(2.0, 10.0); // → 1024.0
 ```
 
@@ -531,7 +532,7 @@ for i in 0..n {
 };
 ```
 
-## Pattern: String word frequency (str_hashmap, interpreter-only v0.98.5+)
+## Pattern: String word frequency (str_hashmap, native-supported v0.98.9+)
 ```bmb
 // Count occurrences of string keys (e.g., word → count)
 fn count_word(counts: i64, word: String) -> i64 = {
@@ -552,7 +553,7 @@ fn count_word(counts: i64, word: String) -> i64 = {
 // };
 ```
 
-## Pattern: Iterate str_hashmap keys (v0.98.5+, interpreter-only)
+## Pattern: Iterate str_hashmap keys (v0.98.5+; key iteration requires interpreter-only svec)
 ```bmb
 // Iterate over all key-value pairs using str_hashmap_sorted_keys
 fn main() -> i64 = {
@@ -812,21 +813,13 @@ fn scale_down(v: i64, factor: i64) -> i64 = {
 // Note: works everywhere set/assignment works (interpreter + native)
 ```
 
-## Pattern: Field compound assignment (v0.98.5+, interpreter-only)
+## Pattern: Field compound assignment (v0.98.5+, native-supported v0.98.9+)
 ```bmb
 // set obj.field += e  desugars to  set obj.field = obj.field op e
 struct Stats { total: i64, count: i64 }
 
-fn add_sample(s: Stats, v: i64) -> i64 = {
-    set s.total += v;
-    set s.count += 1;
-    0  // returns unit sentinel
-};
-
 fn main() -> i64 = {
-    let mut st: Stats = new Stats { total: 0, count: 0 };
-    let _a = add_sample(st, 10);  // note: BMB passes structs by copy; mutation in callee won't propagate
-    // Mutate directly:
+    let st = new Stats { total: 0, count: 0 };
     set st.total += 100;
     set st.total += 200;
     set st.count += 1;
@@ -834,7 +827,9 @@ fn main() -> i64 = {
     st.total + st.count  // 302
 };
 // Supports all 5 operators: +=  -=  *=  /=  %=
-// Interpreter-only (bmb run); bmb build (native) unsupported in v0.98.5
+// Works in both bmb run (interpreter) and bmb build (native) for local variables (v0.98.9+)
+// Note: struct parameters passed to functions behave as references in native mode —
+//   mutations inside callee WILL propagate back (unlike interpreter pass-by-value)
 ```
 
 ## Pattern: Palindrome check (v0.98.7+, interpreter-only)
@@ -917,16 +912,21 @@ fn sum_n_floats(count: i64) -> f64 = {
 - `-x` (unary minus) works for negation — `0 - x` is unnecessary
 - `for j in (i+1)..n` — parentheses required when start is an expression
 - `for` loop supports ranges (`0..n`, `a..=b`), vec handles (`for x in v {}` — interp-only, v0.98.4+), and svec handles (`for s in sv {}` — interp-only, v0.98.7+)
-- `for x in my_vec` works with interpreter only — for bmb build (native) use index loop `for i in 0..vec_len(v)`
-- `for s in svec_handle` iterates String elements; works after svec_new/str_split/str_lines (interpreter-only, v0.98.7+)
+- `for x in my_vec` is **native-supported** (v0.98.9+) when `my_vec` was assigned from `vec_new()` or `vec_with_capacity()` — generates index loop internally. Fallback: manual `for i in 0..vec_len(v)` always works.
+- `for s in svec_var` iterates String elements; **native-supported** (v0.98.9+) when `svec_var` from `svec_new()`, `str_split()`, `str_split_whitespace()`, `str_lines()`, `str_hashmap_keys()`, or `str_hashmap_sorted_keys()` — generates index loop internally
 - `hashmap_get` and `str_hashmap_get` return `i64::MIN` (not 0) when key is absent — always check `*_contains` first
-- `str_hashmap_*` builtins use String keys; interpreter-only (`bmb run`) — `bmb build` (native) unsupported (v0.98.5+)
-- `to_string(x)` converts any value to String without extra quotes (v0.98.2+)
+- `str_hashmap_new/insert/get/contains/len/delete/free/inc/update` are **native-supported** (v0.98.9+/v0.98.10+); `str_hashmap_keys/sorted_keys` are **native-supported** (v0.98.9+); `str_hashmap_values` still interpreter-only
+- `to_string(x)` converts any value to String without extra quotes (v0.98.2+); **native-supported** (v0.98.9+) for all arg types: `i64`, `f64`, `String`, `bool`
 - `int_to_string(n)` is i64-only; use `to_string(n)` when type may vary
 - `while let` only supports enum-variant patterns (e.g., `Opt::Some(x)`) — bare `while let x = e` not supported (would infinite-loop anyway)
-- `format()`, `while let`, `for x in vec` and string interpolation `"Hello {name}"` are interpreter-only (`bmb run`) — `bmb build` (native) doesn't support them yet
+- `format()` and string interpolation `"Hello {name}"` are **native-supported** (v0.98.9+, Cycle 2890) — lowered to string concat chain at compile time (template must be a literal)
+- `while let` with enum-variant patterns now works in native (`bmb build`) since v0.98.9+
 - In string interpolation, `{{` → literal `{` and `}}` → literal `}` (v0.98.5+). Example: `"{{key}}: {val}"` → `"{key}: <value>"`
 - String interpolation `{expr}` supports arithmetic, field access, and function calls `{fn(args)}` (v0.98.6+). Example: `"result: {to_string(n)}"`, `"upper: {str_to_upper(s)}"`
-- `+=`, `-=`, `*=`, `/=`, `%=` compound assignment operators available (v0.98.4+) — desugars to `x = x op e`; also available on struct fields: `set obj.field += e` (v0.98.5+, interpreter-only)
-- String builtins (`str_contains`, `str_find`, `str_substr`, `str_trim`, `str_to_int`, `str_to_f64`, `to_string`, `str_split`, `str_lines`, `svec_*`, `str_replace`, `str_repeat`, `str_to_upper`, `str_to_lower`, `str_char_at`, `format`) work with `bmb run` only — `bmb build` (native) will fail for these
-- Vec aggregate/search/mutation builtins (`vec_sum`, `vec_max`, `vec_min`, `vec_sort`, `vec_contains`, `vec_index_of`, `vec_remove`, `vec_reverse`, `vec_fill`) are interpreter-only (`bmb run`) — `bmb build` (native) unsupported
+- `str_split(s, delim)`, `str_split_whitespace(s)`, `str_lines(s)` are **native-supported** (v0.98.9+, Cycle 2887) — return svec handles
+- `+=`, `-=`, `*=`, `/=`, `%=` compound assignment operators available (v0.98.4+) — desugars to `x = x op e`; also available on struct fields: `set obj.field += e` (v0.98.5+, native-supported v0.98.9+ for local struct vars)
+- String builtins with **native support** (both `bmb run` and `bmb build`): `str_len`, `str_is_empty`, `str_contains`, `str_starts_with`, `str_ends_with`, `str_find`, `str_trim`, `str_trim_left`, `str_trim_right`, `str_to_int`, `str_to_f64`, `str_substr`, `str_count`, `str_pad_left`, `str_pad_right`, `str_replace`, `str_repeat`, `str_to_upper`, `str_to_lower`, `str_reverse`, `str_char_at`, `int_to_hex`, `int_to_bin`, `str_split`, `str_split_whitespace`, `str_lines` (v0.98.9+)
+- String builtins with **interpreter-only** support (`bmb run` only — `bmb build` will fail): `str_hashmap_values`
+- `svec_sort`, `svec_remove`, `svec_clear` are **native-supported** (v0.98.10+); all other `svec_*` already native since v0.98.9+
+- Vec aggregate/search/mutation builtins with **native support** (both `bmb run` and `bmb build`): `vec_sum`, `vec_max`, `vec_min`, `vec_sort`, `vec_contains`, `vec_index_of`, `vec_remove`, `vec_reverse`, `vec_fill` (v0.98.9+)
+- **Native struct parameter behavior**: In `bmb build` (native), struct arguments are passed by pointer — mutations inside a callee function DO affect the caller's copy (unlike interpreter which uses pass-by-value). Avoid mutating struct params inside callees if interpreter/native parity is needed.
