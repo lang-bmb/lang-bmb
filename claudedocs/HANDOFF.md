@@ -1,36 +1,36 @@
-# BMB Session Handoff — 2026-05-15 (Cycles 2851-2860 — 언어 갭 해소 3차)
+# BMB Session Handoff — 2026-05-15 (Cycles 2861-2870 — 언어 갭 해소 4차)
 
-> **HEAD**: `21e91395` (session-close commit)
-> **이전 HEAD**: `ea584bab` (Cycles 2841-2850)
+> **HEAD**: `(commit 후 갱신 예정)`
+> **이전 HEAD**: `21e91395` (Cycles 2851-2860)
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2822, 120790 lines) — 이번 세션 bootstrap 변경 없음
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2861
+> **다음 세션 진입점**: Cycle 2871
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 2851-2860)
+## 이번 세션 작업 요약 (Cycles 2861-2870)
 
 ### 주요 변경 사항
 
 | Cycle | 제목 | 내용 |
 |-------|------|------|
-| 2851 | str_hashmap_delete + str_hashmap_update | 키 삭제 + 값 덮어쓰기 (11종 완성) |
-| 2852 | str_to_upper / str_to_lower / str_char_at | Unicode case변환 + 단문자 String 반환 |
-| 2853 | vec_remove / vec_reverse / vec_fill | vec API 갭 해소 (19종 완성) |
-| 2854 | svec_sort / svec_contains / svec_remove / svec_clear | svec API 완성 (10종) |
-| 2855 | `{fn_call(args)}` 보간 | InterpMini primary() 확장 → Expr::Call 생성 |
-| 2856 | pow_i64 / clamp_i64 / gcd_i64 | 정수 수학 builtins (free function) |
-| 2857 | str_count / str_pad_left / str_pad_right | 문자열 포맷팅 유틸리티 |
-| 2858 | dead_code 제거 + ROADMAP 갱신 | InterpMini::consume() 제거, M4-12 추가 |
-| 2859 | HANDOFF 갱신 | 이번 문서 |
-| 2860 | 최종 검증 + 커밋 | 전체 테스트 재확인 + git commit |
+| 2861 | SvecHandle 타입 + for-in-svec | Value::SvecHandle(usize) + SVEC_REGISTRY 반복 |
+| 2862 | 타입 체커 for-in svec String 추론 | Type::Named("SvecHandle") + for-in 타입 서명 13종 |
+| 2863 | str_to_f64 / read_f64 / str_lines | float 파싱 + 라인 분할 builtins |
+| 2864 | bmb_reference 정비 (stale 수정) | {fn_call()} 정정 + v0.98.7 API 문서화 |
+| 2865 | f64 수학 free function 8종 | log/log2/log10/exp/round/tan/atan/atan2 |
+| 2866 | min_f64/max_f64/clamp_f64 + str_trim_left/right | f64 min/max/clamp + 방향별 trim |
+| 2867 | str_split_whitespace + int_to_hex/bin | 공백 분리 + 진수 변환 |
+| 2868 | str_reverse + popcount + svec_index_of | 회문 체크 + 비트 count + svec 위치 검색 |
+| 2869 | bmb_reference 비트 연산 + 알고리즘 패턴 | band/bor/bxor 문서화 + Palindrome/Tokenized 패턴 |
+| 2870 | HANDOFF/ROADMAP 정리 + 커밋 | 이번 문서 |
 
 ### 테스트 변화
-2375 → **2382** (+7 integration tests)
+2382 → **2388** (+6 integration tests)
 
 ---
 
-## M4 ① 언어 갭 현황 (2860 기준)
+## M4 ① 언어 갭 현황 (2870 기준)
 
 | 기능 | 상태 |
 |------|------|
@@ -62,20 +62,28 @@
 | `{fn_call(args)}` 함수 호출 보간 | ✅ Cycle 2855, interpreter-only |
 | pow_i64 / clamp_i64 / gcd_i64 | ✅ Cycle 2856, interpreter-only |
 | str_count / str_pad_left / str_pad_right | ✅ Cycle 2857, interpreter-only |
+| Value::SvecHandle + for-in-svec | ✅ Cycle 2861-2862, interpreter-only |
+| str_to_f64 / read_f64 / str_lines | ✅ Cycle 2863, interpreter-only |
+| f64 수학 free function 8종 (log~atan2) | ✅ Cycle 2865, interpreter-only |
+| min_f64 / max_f64 / clamp_f64 | ✅ Cycle 2866, interpreter-only |
+| str_trim_left / str_trim_right | ✅ Cycle 2866, interpreter-only |
+| str_split_whitespace | ✅ Cycle 2867, interpreter-only |
+| int_to_hex / int_to_bin | ✅ Cycle 2867, interpreter-only |
+| str_reverse / popcount / svec_index_of | ✅ Cycle 2868, interpreter-only |
 
 ---
 
 ## 변경 파일 (이번 세션 전체)
 
 **Rust 소스**:
-- `bmb/src/interp/eval.rs`: 22종 builtin 구현 + 등록 (Cycles 2851-2857)
-- `bmb/src/ast/expr.rs`: InterpMini 확장 (call_args + primary 함수호출) + consume() 제거
-- `bmb/src/types/mod.rs`: 22종 타입 서명 추가
-- `bmb/tests/integration.rs`: 7개 test 함수 추가 (2375→2382)
+- `bmb/src/interp/eval.rs`: 27종 builtin 구현 + 등록 (Cycles 2861-2868) + Value::SvecHandle 활용
+- `bmb/src/interp/value.rs`: Value::SvecHandle(usize) 추가 (Cycle 2861)
+- `bmb/src/types/mod.rs`: 27종 타입 서명 추가 (Cycles 2862-2868)
+- `bmb/tests/integration.rs`: 6개 test 함수 추가 (2382→2388)
 
 **문서**:
-- `ecosystem/bmb-ai-bench/protocol/bmb_reference.md`: 전 사이클 신규 API 문서화
-- `claudedocs/ROADMAP.md`: 최신화 (Cycle 2860까지) + M4-12 추가
+- `ecosystem/bmb-ai-bench/protocol/bmb_reference.md`: 전체 v0.98.7 API 문서화 + stale 수정 + 패턴 2종 추가
+- `claudedocs/ROADMAP.md`: 최신화
 
 ---
 
@@ -85,26 +93,28 @@
 없음 — 모든 계획된 작업 완료.
 
 ### Structural Improvement Proposals
-1. **`for x in svec {}`** — `Value::SvecHandle(usize)` 별도 값 타입 필요. 현재 svec/vec 모두 `i64`라 구분 불가. 구현 시: `Value` enum에 SvecHandle 추가 → interp/eval.rs for-in 로직 분기 + types 업데이트.
-2. **필드 복합 할당 native 지원** — `set obj.field += e`가 codegen(llvm_text.rs)에서도 동작하도록 확장. 현재 interpreter-only.
+1. **필드 복합 할당 native 지원** — `set obj.field += e`가 codegen(llvm_text.rs)에서도 동작하도록 확장. 현재 interpreter-only.
+2. **bmb_reference 예시 통합 테스트** — 패턴 코드 예시를 실제 integration test로 연결하는 체계 구축 (stale 방지)
 
 ### Pending Human Decisions
 - **B축 재측정**: `BMB_BENCH_API_KEY` 환경변수 필요. 언어 갭 충분히 해소됨 — baseline 2026-08-13 stale 기한 이전에 재측정 권장.
 - **tier3-spawn-overhead**: ISSUE-20260512 Option A/B/C 선택 (HUMAN 결정 필요).
 
 ### 다음 권장 작업 (우선순위 순)
-1. **B축 재측정** — 이번 세션으로 언어 갭 28종 해소. "AI가 BMB로 자연스럽게 코드 작성 가능"을 주장할 수 있는 수준.
-2. **`for x in svec {}`** — `Value::SvecHandle` 도입으로 for-in 범위 확장.
-3. **새로운 M4 언어 갭 발굴** — B축 측정에서 실패하는 패턴 분석 후 추가 갭 식별.
+1. **B축 재측정** — 이번 4차 세션으로 언어 갭 ~35종 해소. "AI가 BMB로 자연스럽게 코드 작성 가능"을 주장할 수 있는 수준.
+2. **새로운 M4 언어 갭 발굴** — B축 측정에서 실패하는 패턴 분석 후 추가 갭 식별.
+3. **interpreter-only → native 포팅** — 주요 str/svec/hashmap builtins의 LLVM 코드젠 지원.
 
 ---
 
 ## 기술 인사이트 (다음 세션 참고)
 
-1. **InterpMini 함수 호출 파싱**: `primary()` 내 ident 읽은 후 `(` 체크 → `call_args()` → `Expr::Call`. 재귀적으로 인수도 `expr()` 호출하므로 중첩 함수 호출 자동 지원.
+1. **Value::SvecHandle(usize) 도입 이유**: 기존 svec/vec 핸들이 모두 `Value::Int(i64)`였기 때문에 for-in dispatch 불가능. `Value::SvecHandle(usize)`로 구분 → SVEC_REGISTRY 반복 가능.
 
-2. **svec vs vec 핸들 구분 불가**: 두 핸들 모두 `i64`. svec 핸들은 SVEC_REGISTRY index, vec 핸들은 heap ptr. `Value::SvecHandle(usize)` 추가 시 해결 가능.
+2. **svec_t scope 제약**: `types/mod.rs`에서 `svec_t`는 L425에서 정의됨. svec_t를 인자로 사용하는 타입 서명은 반드시 L425 이후에 배치해야 함 (Cycle 2868에서 발견).
 
-3. **str_hashmap raw ptr + SVEC_REGISTRY 혼합**: str_hashmap은 `Box<HashMap<String, i64>>` raw ptr, svec는 SVEC_REGISTRY index. 두 방식의 lifetime 관리가 다름 — free 순서 중요.
+3. **f64 수학 macro 패턴**: `f64_unary_builtin!(fn_name, "fn_name", method_name)` 매크로로 단항 f64 builtin 7종을 간결하게 구현. 향후 추가 f64 함수에도 재사용 가능.
 
-4. **InterpMini::consume() 패턴**: 초기 설계 시 skip+advance를 하나로 묶었으나 `expect()` 만으로 충분. dead_code 경고 시 즉시 제거.
+4. **str_split vs str_split_whitespace**: `str_split(s, " ")`은 연속 공백에 빈 토큰 생성. `str_split_whitespace(s)`는 Rust의 `split_whitespace()`로 빈 토큰 자동 제거 — 경쟁 프로그래밍 입력 파싱에 권장.
+
+5. **bmb_reference stale 관리**: 이번 세션에서 {fn_call()} 지원이 3 사이클(2855→2858→2864) 동안 stale 상태로 있었음. 기능 추가 사이클에서 bmb_reference도 즉시 업데이트하는 규칙 필요.

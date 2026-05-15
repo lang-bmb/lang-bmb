@@ -209,6 +209,8 @@ impl Interpreter {
         self.builtins.insert("print_f64".to_string(), builtin_print_f64);
         self.builtins.insert("assert".to_string(), builtin_assert);
         self.builtins.insert("read_int".to_string(), builtin_read_int);
+        // v0.98.7: read_f64 (Cycle 2863, interpreter-only)
+        self.builtins.insert("read_f64".to_string(), builtin_read_f64);
         // v0.97: read_bytes + write_stdout for LSP protocol
         self.builtins.insert("read_line".to_string(), builtin_read_line);
         self.builtins.insert("read_bytes".to_string(), builtin_read_bytes);
@@ -220,6 +222,16 @@ impl Interpreter {
         self.builtins.insert("clamp_i64".to_string(), builtin_clamp_i64);
         self.builtins.insert("gcd_i64".to_string(), builtin_gcd_i64);
         self.builtins.insert("max".to_string(), builtin_max);
+        // v0.98.7: min_f64 / max_f64 / clamp_f64 / str_trim_left / str_trim_right (Cycle 2866, interpreter-only)
+        self.builtins.insert("min_f64".to_string(), builtin_min_f64);
+        self.builtins.insert("max_f64".to_string(), builtin_max_f64);
+        self.builtins.insert("clamp_f64".to_string(), builtin_clamp_f64);
+        self.builtins.insert("str_trim_left".to_string(), builtin_str_trim_left);
+        self.builtins.insert("str_trim_right".to_string(), builtin_str_trim_right);
+        // v0.98.7: str_reverse / popcount / svec_index_of (Cycle 2868, interpreter-only)
+        self.builtins.insert("str_reverse".to_string(), builtin_str_reverse);
+        self.builtins.insert("popcount".to_string(), builtin_popcount);
+        self.builtins.insert("svec_index_of".to_string(), builtin_svec_index_of);
         // v0.31.10: File I/O builtins (native only — not available in WASM)
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -286,6 +298,9 @@ impl Interpreter {
         self.builtins.insert("str_substr".to_string(), builtin_str_substr);
         self.builtins.insert("str_trim".to_string(), builtin_str_trim);
         self.builtins.insert("str_to_int".to_string(), builtin_str_to_int);
+        // v0.98.7: str_to_f64 + str_lines (Cycle 2863, interpreter-only)
+        self.builtins.insert("str_to_f64".to_string(), builtin_str_to_f64);
+        self.builtins.insert("str_lines".to_string(), builtin_str_lines);
         // v0.98.3: str_replace + str_repeat (Cycle 2837, interpreter-only)
         self.builtins.insert("str_replace".to_string(), builtin_str_replace);
         self.builtins.insert("str_repeat".to_string(), builtin_str_repeat);
@@ -303,6 +318,10 @@ impl Interpreter {
         self.builtins.insert("to_string".to_string(), builtin_to_string);
         // v0.98.3: String-vec builtins for str_split (Cycle 2833, interpreter-only)
         self.builtins.insert("str_split".to_string(), builtin_str_split);
+        // v0.98.7: str_split_whitespace / int_to_hex / int_to_bin (Cycle 2867, interpreter-only)
+        self.builtins.insert("str_split_whitespace".to_string(), builtin_str_split_whitespace);
+        self.builtins.insert("int_to_hex".to_string(), builtin_int_to_hex);
+        self.builtins.insert("int_to_bin".to_string(), builtin_int_to_bin);
         self.builtins.insert("svec_len".to_string(), builtin_svec_len);
         self.builtins.insert("svec_get".to_string(), builtin_svec_get);
         self.builtins.insert("svec_free".to_string(), builtin_svec_free);
@@ -318,6 +337,15 @@ impl Interpreter {
         self.builtins.insert("ceil".to_string(), builtin_ceil);
         self.builtins.insert("fabs".to_string(), builtin_fabs);
         self.builtins.insert("pow_f64".to_string(), builtin_pow_f64);
+        // v0.98.7: log/exp/round/tan/atan free functions (Cycle 2865, interpreter-only)
+        self.builtins.insert("log".to_string(), builtin_log);
+        self.builtins.insert("log2".to_string(), builtin_log2);
+        self.builtins.insert("log10".to_string(), builtin_log10);
+        self.builtins.insert("exp".to_string(), builtin_exp);
+        self.builtins.insert("round".to_string(), builtin_round);
+        self.builtins.insert("tan".to_string(), builtin_tan);
+        self.builtins.insert("atan".to_string(), builtin_atan);
+        self.builtins.insert("atan2".to_string(), builtin_atan2);
         self.builtins.insert("i64_to_f64".to_string(), builtin_i64_to_f64);
         self.builtins.insert("f64_to_i64".to_string(), builtin_f64_to_i64);
         // v0.51.47: i32 conversion functions for performance-critical code
@@ -837,7 +865,25 @@ impl Interpreter {
                         }
                         Ok(Value::Unit)
                     }
-                    _ => Err(RuntimeError::type_error("Range, Array, or vec handle (i64)", iter_val.type_name())),
+                    // v0.98.7: svec handle iteration (Cycle 2861, interpreter-only)
+                    Value::SvecHandle(svec_reg_idx) => {
+                        let strings = SVEC_REGISTRY.with(|reg| {
+                            reg.borrow().get(svec_reg_idx).and_then(|slot| slot.as_ref()).cloned()
+                        });
+                        let strings = strings.ok_or_else(|| RuntimeError::io_error("for-in svec: invalid or freed handle"))?;
+                        let child = child_env(env);
+                        for s in strings {
+                            child.borrow_mut().define(var.clone(), Value::Str(std::rc::Rc::new(s)));
+                            match self.eval(body, &child) {
+                                Ok(_) => {},
+                                Err(e) if matches!(e.kind, ErrorKind::Continue) => continue,
+                                Err(e) if matches!(e.kind, ErrorKind::Break(_)) => break,
+                                Err(e) => return Err(e),
+                            }
+                        }
+                        Ok(Value::Unit)
+                    }
+                    _ => Err(RuntimeError::type_error("Range, Array, vec, or svec handle", iter_val.type_name())),
                 }
             }
 
@@ -7042,6 +7088,41 @@ fn builtin_max(args: &[Value]) -> InterpResult<Value> {
     }
 }
 
+// v0.98.7: min_f64 / max_f64 / clamp_f64 / str_trim_left / str_trim_right (Cycle 2866, interpreter-only)
+fn builtin_min_f64(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 { return Err(RuntimeError::arity_mismatch("min_f64", 2, args.len())); }
+    let a = match &args[0] { Value::Float(f) => *f, Value::Int(n) => *n as f64, _ => return Err(RuntimeError::type_error("f64", args[0].type_name())) };
+    let b = match &args[1] { Value::Float(f) => *f, Value::Int(n) => *n as f64, _ => return Err(RuntimeError::type_error("f64", args[1].type_name())) };
+    Ok(Value::Float(a.min(b)))
+}
+fn builtin_max_f64(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 { return Err(RuntimeError::arity_mismatch("max_f64", 2, args.len())); }
+    let a = match &args[0] { Value::Float(f) => *f, Value::Int(n) => *n as f64, _ => return Err(RuntimeError::type_error("f64", args[0].type_name())) };
+    let b = match &args[1] { Value::Float(f) => *f, Value::Int(n) => *n as f64, _ => return Err(RuntimeError::type_error("f64", args[1].type_name())) };
+    Ok(Value::Float(a.max(b)))
+}
+fn builtin_clamp_f64(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 3 { return Err(RuntimeError::arity_mismatch("clamp_f64", 3, args.len())); }
+    let v = match &args[0] { Value::Float(f) => *f, Value::Int(n) => *n as f64, _ => return Err(RuntimeError::type_error("f64", args[0].type_name())) };
+    let lo = match &args[1] { Value::Float(f) => *f, Value::Int(n) => *n as f64, _ => return Err(RuntimeError::type_error("f64", args[1].type_name())) };
+    let hi = match &args[2] { Value::Float(f) => *f, Value::Int(n) => *n as f64, _ => return Err(RuntimeError::type_error("f64", args[2].type_name())) };
+    Ok(Value::Float(v.clamp(lo, hi)))
+}
+fn builtin_str_trim_left(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 { return Err(RuntimeError::arity_mismatch("str_trim_left", 1, args.len())); }
+    match &args[0] {
+        Value::Str(s) => Ok(Value::Str(std::rc::Rc::new(s.trim_start().to_string()))),
+        _ => Err(RuntimeError::type_error("String", args[0].type_name())),
+    }
+}
+fn builtin_str_trim_right(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 { return Err(RuntimeError::arity_mismatch("str_trim_right", 1, args.len())); }
+    match &args[0] {
+        Value::Str(s) => Ok(Value::Str(std::rc::Rc::new(s.trim_end().to_string()))),
+        _ => Err(RuntimeError::type_error("String", args[0].type_name())),
+    }
+}
+
 // v0.98.6: pow_i64 / clamp_i64 / gcd_i64 (Cycle 2856, interpreter-only)
 fn builtin_pow_i64(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 2 {
@@ -7157,6 +7238,35 @@ fn builtin_pow_f64(args: &[Value]) -> InterpResult<Value> {
         _ => return Err(RuntimeError::type_error("f64", args[1].type_name())),
     };
     Ok(Value::Float(base.powf(exp)))
+}
+
+// v0.98.7: f64 math free functions (Cycle 2865, interpreter-only)
+macro_rules! f64_unary_builtin {
+    ($name:ident, $fname:literal, $method:ident) => {
+        fn $name(args: &[Value]) -> InterpResult<Value> {
+            if args.len() != 1 { return Err(RuntimeError::arity_mismatch($fname, 1, args.len())); }
+            let x = match &args[0] {
+                Value::Float(f) => *f,
+                Value::Int(n) => *n as f64,
+                _ => return Err(RuntimeError::type_error("f64", args[0].type_name())),
+            };
+            Ok(Value::Float(x.$method()))
+        }
+    };
+}
+f64_unary_builtin!(builtin_log, "log", ln);
+f64_unary_builtin!(builtin_log2, "log2", log2);
+f64_unary_builtin!(builtin_log10, "log10", log10);
+f64_unary_builtin!(builtin_exp, "exp", exp);
+f64_unary_builtin!(builtin_round, "round", round);
+f64_unary_builtin!(builtin_tan, "tan", tan);
+f64_unary_builtin!(builtin_atan, "atan", atan);
+
+fn builtin_atan2(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 { return Err(RuntimeError::arity_mismatch("atan2", 2, args.len())); }
+    let y = match &args[0] { Value::Float(f) => *f, Value::Int(n) => *n as f64, _ => return Err(RuntimeError::type_error("f64", args[0].type_name())) };
+    let x = match &args[1] { Value::Float(f) => *f, Value::Int(n) => *n as f64, _ => return Err(RuntimeError::type_error("f64", args[1].type_name())) };
+    Ok(Value::Float(y.atan2(x)))
 }
 
 /// i64_to_f64(x: i64) -> f64
@@ -8547,7 +8657,7 @@ fn builtin_str_hashmap_keys(args: &[Value]) -> InterpResult<Value> {
         v.push(Some(keys));
         idx
     });
-    Ok(Value::Int(handle as i64))
+    Ok(Value::SvecHandle(handle))
 }
 
 fn builtin_str_hashmap_sorted_keys(args: &[Value]) -> InterpResult<Value> {
@@ -8563,7 +8673,7 @@ fn builtin_str_hashmap_sorted_keys(args: &[Value]) -> InterpResult<Value> {
         v.push(Some(keys));
         idx
     });
-    Ok(Value::Int(handle as i64))
+    Ok(Value::SvecHandle(handle))
 }
 
 // ============ v0.34.24: HashSet Builtins ============
@@ -9487,6 +9597,75 @@ fn builtin_str_to_int(args: &[Value]) -> InterpResult<Value> {
     Ok(Value::Int(s.trim().parse::<i64>().unwrap_or(0)))
 }
 
+// v0.98.7: str_reverse / popcount / svec_index_of (Cycle 2868, interpreter-only)
+fn builtin_str_reverse(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 { return Err(RuntimeError::arity_mismatch("str_reverse", 1, args.len())); }
+    match &args[0] {
+        Value::Str(s) => Ok(Value::Str(std::rc::Rc::new(s.chars().rev().collect()))),
+        _ => Err(RuntimeError::type_error("String", args[0].type_name())),
+    }
+}
+
+fn builtin_popcount(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 { return Err(RuntimeError::arity_mismatch("popcount", 1, args.len())); }
+    match &args[0] {
+        Value::Int(n) => Ok(Value::Int(n.count_ones() as i64)),
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+/// svec_index_of(sv: SvecHandle, s: String) -> i64 — first index of s, or -1
+fn builtin_svec_index_of(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 { return Err(RuntimeError::arity_mismatch("svec_index_of", 2, args.len())); }
+    let idx = svec_idx(&args[0])?;
+    let needle = args[1].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[1].type_name()))?;
+    let pos = SVEC_REGISTRY.with(|reg| {
+        reg.borrow().get(idx).and_then(|slot| slot.as_ref()).and_then(|v| {
+            v.iter().position(|s| *s == needle)
+        }).map(|i| i as i64).unwrap_or(-1)
+    });
+    Ok(Value::Int(pos))
+}
+
+// v0.98.7: str_to_f64 / read_f64 / str_lines (Cycle 2863, interpreter-only)
+fn builtin_str_to_f64(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("str_to_f64", 1, args.len()));
+    }
+    let s = args[0].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[0].type_name()))?;
+    Ok(Value::Float(s.trim().parse::<f64>().unwrap_or(0.0)))
+}
+
+fn builtin_read_f64(_args: &[Value]) -> InterpResult<Value> {
+    let stdin = io::stdin();
+    let line = stdin
+        .lock()
+        .lines()
+        .next()
+        .ok_or_else(|| RuntimeError::io_error("end of input"))?
+        .map_err(|e| RuntimeError::io_error(&e.to_string()))?;
+    line.trim()
+        .parse::<f64>()
+        .map(Value::Float)
+        .map_err(|_| RuntimeError::type_error("f64", "invalid input"))
+}
+
+/// str_lines(s: String) -> SvecHandle — split string by newlines, stripping \r\n
+fn builtin_str_lines(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("str_lines", 1, args.len()));
+    }
+    let s = args[0].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[0].type_name()))?;
+    let parts: Vec<String> = s.lines().map(|l| l.to_string()).collect();
+    let handle = SVEC_REGISTRY.with(|reg| {
+        let mut v = reg.borrow_mut();
+        let idx = v.len();
+        v.push(Some(parts));
+        idx
+    });
+    Ok(Value::SvecHandle(handle))
+}
+
 // v0.98.6: str_count / str_pad_left / str_pad_right (Cycle 2857, interpreter-only)
 fn builtin_str_count(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 2 {
@@ -9606,8 +9785,18 @@ fn builtin_to_string(args: &[Value]) -> InterpResult<Value> {
     Ok(Value::Str(std::rc::Rc::new(result)))
 }
 
-/// str_split(s: String, delim: String) -> i64 (Cycle 2833, interpreter-only)
-/// Splits s by delim and stores parts in SVEC_REGISTRY; returns opaque handle (i64 index).
+/// Extract SVEC_REGISTRY index from Value::SvecHandle or Value::Int (backward-compat).
+/// Used by all svec builtins.
+fn svec_idx(v: &Value) -> InterpResult<usize> {
+    match v {
+        Value::SvecHandle(idx) => Ok(*idx),
+        Value::Int(n) => Ok(*n as usize),
+        _ => Err(RuntimeError::type_error("svec handle", v.type_name())),
+    }
+}
+
+/// str_split(s: String, delim: String) -> SvecHandle (Cycle 2833, interpreter-only)
+/// Splits s by delim and stores parts in SVEC_REGISTRY; returns opaque SvecHandle.
 /// Use svec_len / svec_get to read results, svec_free to release.
 fn builtin_str_split(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 2 {
@@ -9626,18 +9815,45 @@ fn builtin_str_split(args: &[Value]) -> InterpResult<Value> {
         v.push(Some(parts));
         idx
     });
-    Ok(Value::Int(handle as i64))
+    Ok(Value::SvecHandle(handle))
 }
 
-/// svec_len(handle: i64) -> i64 — number of strings in split result
+/// str_split_whitespace(s: String) -> SvecHandle — split by whitespace, skip empty tokens
+fn builtin_str_split_whitespace(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 { return Err(RuntimeError::arity_mismatch("str_split_whitespace", 1, args.len())); }
+    let s = args[0].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[0].type_name()))?;
+    let parts: Vec<String> = s.split_whitespace().map(|p| p.to_string()).collect();
+    let handle = SVEC_REGISTRY.with(|reg| {
+        let mut v = reg.borrow_mut();
+        let idx = v.len();
+        v.push(Some(parts));
+        idx
+    });
+    Ok(Value::SvecHandle(handle))
+}
+
+fn builtin_int_to_hex(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 { return Err(RuntimeError::arity_mismatch("int_to_hex", 1, args.len())); }
+    match &args[0] {
+        Value::Int(n) => Ok(Value::Str(std::rc::Rc::new(format!("{:x}", n)))),
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+fn builtin_int_to_bin(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 { return Err(RuntimeError::arity_mismatch("int_to_bin", 1, args.len())); }
+    match &args[0] {
+        Value::Int(n) => Ok(Value::Str(std::rc::Rc::new(format!("{:b}", n)))),
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+/// svec_len(handle: SvecHandle) -> i64 — number of strings in split result
 fn builtin_svec_len(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 1 {
         return Err(RuntimeError::arity_mismatch("svec_len", 1, args.len()));
     }
-    let idx = match &args[0] {
-        Value::Int(n) => *n as usize,
-        _ => return Err(RuntimeError::type_error("i64", args[0].type_name())),
-    };
+    let idx = svec_idx(&args[0])?;
     let len = SVEC_REGISTRY.with(|reg| {
         reg.borrow().get(idx).and_then(|slot| slot.as_ref()).map(|v| v.len() as i64).unwrap_or(-1)
     });
@@ -9647,15 +9863,12 @@ fn builtin_svec_len(args: &[Value]) -> InterpResult<Value> {
     Ok(Value::Int(len))
 }
 
-/// svec_get(handle: i64, index: i64) -> String — get string at index
+/// svec_get(handle: SvecHandle, index: i64) -> String — get string at index
 fn builtin_svec_get(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 2 {
         return Err(RuntimeError::arity_mismatch("svec_get", 2, args.len()));
     }
-    let idx = match &args[0] {
-        Value::Int(n) => *n as usize,
-        _ => return Err(RuntimeError::type_error("i64", args[0].type_name())),
-    };
+    let idx = svec_idx(&args[0])?;
     let elem = match &args[1] {
         Value::Int(n) => *n as usize,
         _ => return Err(RuntimeError::type_error("i64", args[1].type_name())),
@@ -9669,15 +9882,12 @@ fn builtin_svec_get(args: &[Value]) -> InterpResult<Value> {
     }
 }
 
-/// svec_free(handle: i64) — release split result memory
+/// svec_free(handle: SvecHandle) — release split result memory
 fn builtin_svec_free(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 1 {
         return Err(RuntimeError::arity_mismatch("svec_free", 1, args.len()));
     }
-    let idx = match &args[0] {
-        Value::Int(n) => *n as usize,
-        _ => return Err(RuntimeError::type_error("i64", args[0].type_name())),
-    };
+    let idx = svec_idx(&args[0])?;
     SVEC_REGISTRY.with(|reg| {
         if let Some(slot) = reg.borrow_mut().get_mut(idx) {
             *slot = None;
@@ -9686,16 +9896,13 @@ fn builtin_svec_free(args: &[Value]) -> InterpResult<Value> {
     Ok(Value::Unit)
 }
 
-/// svec_join(handle: i64, delim: String) -> String (v0.98.3, Cycle 2838, interpreter-only)
+/// svec_join(handle: SvecHandle, delim: String) -> String (v0.98.3, Cycle 2838, interpreter-only)
 /// Joins all strings in svec with delimiter between them.
 fn builtin_svec_join(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 2 {
         return Err(RuntimeError::arity_mismatch("svec_join", 2, args.len()));
     }
-    let idx = match &args[0] {
-        Value::Int(n) => *n as usize,
-        _ => return Err(RuntimeError::type_error("i64", args[0].type_name())),
-    };
+    let idx = svec_idx(&args[0])?;
     let delim = args[1].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[1].type_name()))?;
     let result = SVEC_REGISTRY.with(|reg| {
         let borrow = reg.borrow();
@@ -9718,17 +9925,14 @@ fn builtin_svec_new(args: &[Value]) -> InterpResult<Value> {
         v.push(Some(Vec::new()));
         idx
     });
-    Ok(Value::Int(handle as i64))
+    Ok(Value::SvecHandle(handle))
 }
 
 fn builtin_svec_push(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 2 {
         return Err(RuntimeError::arity_mismatch("svec_push", 2, args.len()));
     }
-    let idx = match &args[0] {
-        Value::Int(n) => *n as usize,
-        _ => return Err(RuntimeError::type_error("i64", args[0].type_name())),
-    };
+    let idx = svec_idx(&args[0])?;
     let s = args[1].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[1].type_name()))?;
     let ok = SVEC_REGISTRY.with(|reg| {
         reg.borrow_mut().get_mut(idx).and_then(|slot| slot.as_mut()).map(|v| { v.push(s.to_string()); true }).unwrap_or(false)
@@ -9742,10 +9946,7 @@ fn builtin_svec_sort(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 1 {
         return Err(RuntimeError::arity_mismatch("svec_sort", 1, args.len()));
     }
-    let idx = match &args[0] {
-        Value::Int(n) => *n as usize,
-        _ => return Err(RuntimeError::type_error("i64", args[0].type_name())),
-    };
+    let idx = svec_idx(&args[0])?;
     let ok = SVEC_REGISTRY.with(|reg| {
         reg.borrow_mut().get_mut(idx).and_then(|slot| slot.as_mut()).map(|v| { v.sort(); true }).unwrap_or(false)
     });
@@ -9757,10 +9958,7 @@ fn builtin_svec_contains(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 2 {
         return Err(RuntimeError::arity_mismatch("svec_contains", 2, args.len()));
     }
-    let idx = match &args[0] {
-        Value::Int(n) => *n as usize,
-        _ => return Err(RuntimeError::type_error("i64", args[0].type_name())),
-    };
+    let idx = svec_idx(&args[0])?;
     let s = args[1].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[1].type_name()))?;
     let found = SVEC_REGISTRY.with(|reg| {
         reg.borrow().get(idx).and_then(|slot| slot.as_ref()).map(|v| v.contains(&s.to_string())).unwrap_or(false)
@@ -9772,10 +9970,7 @@ fn builtin_svec_remove(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 2 {
         return Err(RuntimeError::arity_mismatch("svec_remove", 2, args.len()));
     }
-    let idx = match &args[0] {
-        Value::Int(n) => *n as usize,
-        _ => return Err(RuntimeError::type_error("i64", args[0].type_name())),
-    };
+    let idx = svec_idx(&args[0])?;
     let elem_idx = match &args[1] {
         Value::Int(n) => *n as usize,
         _ => return Err(RuntimeError::type_error("i64", args[1].type_name())),
@@ -9793,10 +9988,7 @@ fn builtin_svec_clear(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 1 {
         return Err(RuntimeError::arity_mismatch("svec_clear", 1, args.len()));
     }
-    let idx = match &args[0] {
-        Value::Int(n) => *n as usize,
-        _ => return Err(RuntimeError::type_error("i64", args[0].type_name())),
-    };
+    let idx = svec_idx(&args[0])?;
     let ok = SVEC_REGISTRY.with(|reg| {
         reg.borrow_mut().get_mut(idx).and_then(|slot| slot.as_mut()).map(|v| { v.clear(); true }).unwrap_or(false)
     });

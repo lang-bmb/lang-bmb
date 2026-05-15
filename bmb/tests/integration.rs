@@ -25313,3 +25313,234 @@ fn test_interp_field_compound_assign() {
     );
 }
 
+// Cycle 2868: str_reverse / popcount / svec_index_of (interpreter-only)
+#[test]
+fn test_interp_str_reverse_popcount_svec_indexof() {
+    // str_reverse
+    assert_eq!(
+        run_program(r#"fn main() -> String = str_reverse("hello");"#),
+        Value::Str(std::rc::Rc::new("olleh".to_string()))
+    );
+    // str_reverse: palindrome check
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let s = "racecar"; if s == str_reverse(s) { 1 } else { 0 } };"#),
+        Value::Int(1)
+    );
+    // str_reverse: non-palindrome
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let s = "hello"; if s == str_reverse(s) { 1 } else { 0 } };"#),
+        Value::Int(0)
+    );
+    // popcount: 0 has 0 bits
+    assert_eq!(run_program(r#"fn main() -> i64 = popcount(0);"#), Value::Int(0));
+    // popcount: 7 = 0b111 has 3 bits
+    assert_eq!(run_program(r#"fn main() -> i64 = popcount(7);"#), Value::Int(3));
+    // popcount: 255 has 8 bits
+    assert_eq!(run_program(r#"fn main() -> i64 = popcount(255);"#), Value::Int(8));
+    // svec_index_of: found
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let sv = svec_new(); let _a = svec_push(sv, "x"); let _b = svec_push(sv, "y"); let _c = svec_push(sv, "z"); let i = svec_index_of(sv, "y"); let _f = svec_free(sv); i };"#),
+        Value::Int(1)
+    );
+    // svec_index_of: not found returns -1
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let sv = svec_new(); let _a = svec_push(sv, "a"); let i = svec_index_of(sv, "b"); let _f = svec_free(sv); i };"#),
+        Value::Int(-1)
+    );
+}
+
+// Cycle 2867: str_split_whitespace / int_to_hex / int_to_bin (interpreter-only)
+#[test]
+fn test_interp_split_whitespace_and_int_convert() {
+    // str_split_whitespace: standard space-separated
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let sv = str_split_whitespace("1 2 3"); let n = svec_len(sv); let _f = svec_free(sv); n };"#),
+        Value::Int(3)
+    );
+    // str_split_whitespace: multiple/mixed whitespace, empty tokens filtered
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let sv = str_split_whitespace("  hello   world  "); let n = svec_len(sv); let _f = svec_free(sv); n };"#),
+        Value::Int(2)
+    );
+    // str_split_whitespace: first token
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let sv = str_split_whitespace("abc def"); let s = svec_get(sv, 0); let n = str_len(s); let _f = svec_free(sv); n };"#),
+        Value::Int(3)
+    );
+    // int_to_hex: decimal to hex string
+    assert_eq!(
+        run_program(r#"fn main() -> String = int_to_hex(255);"#),
+        Value::Str(std::rc::Rc::new("ff".to_string()))
+    );
+    // int_to_hex: 0
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = str_len(int_to_hex(0));"#),
+        Value::Int(1)
+    );
+    // int_to_bin: 10 = 1010b
+    assert_eq!(
+        run_program(r#"fn main() -> String = int_to_bin(10);"#),
+        Value::Str(std::rc::Rc::new("1010".to_string()))
+    );
+    // int_to_bin: length of binary representation
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = str_len(int_to_bin(8));"#),
+        Value::Int(4)
+    );
+}
+
+// Cycle 2866: min_f64/max_f64/clamp_f64/str_trim_left/str_trim_right (interpreter-only)
+#[test]
+fn test_interp_f64_minmax_trim() {
+    // min_f64
+    assert_eq!(
+        run_program(r#"fn main() -> f64 = min_f64(3.14, 2.72);"#),
+        Value::Float(2.72)
+    );
+    // max_f64
+    assert_eq!(
+        run_program(r#"fn main() -> f64 = max_f64(3.14, 2.72);"#),
+        Value::Float(3.14)
+    );
+    // clamp_f64: value within range
+    assert_eq!(
+        run_program(r#"fn main() -> f64 = clamp_f64(3.0, 0.0, 5.0);"#),
+        Value::Float(3.0)
+    );
+    // clamp_f64: value below min
+    assert_eq!(
+        run_program(r#"fn main() -> f64 = clamp_f64(-1.0, 0.0, 5.0);"#),
+        Value::Float(0.0)
+    );
+    // clamp_f64: value above max
+    assert_eq!(
+        run_program(r#"fn main() -> f64 = clamp_f64(9.0, 0.0, 5.0);"#),
+        Value::Float(5.0)
+    );
+    // str_trim_left
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = str_len(str_trim_left("  hello  "));"#),
+        Value::Int(7)
+    );
+    // str_trim_right
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = str_len(str_trim_right("  hello  "));"#),
+        Value::Int(7)
+    );
+}
+
+// Cycle 2865: log/exp/round/tan/atan/atan2 free functions (interpreter-only)
+#[test]
+fn test_interp_math_free_functions() {
+    // log: natural log
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let v = log(1.0); if v < 0.001 && v > -0.001 { 1 } else { 0 } };"#),
+        Value::Int(1)
+    );
+    // exp(0) = 1.0
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let v = exp(0.0); if v < 1.001 && v > 0.999 { 1 } else { 0 } };"#),
+        Value::Int(1)
+    );
+    // round(3.7) = 4.0
+    assert_eq!(
+        run_program(r#"fn main() -> f64 = round(3.7);"#),
+        Value::Float(4.0)
+    );
+    // round(3.2) = 3.0
+    assert_eq!(
+        run_program(r#"fn main() -> f64 = round(3.2);"#),
+        Value::Float(3.0)
+    );
+    // log10(100.0) ≈ 2.0
+    assert_eq!(
+        run_program(r#"fn main() -> f64 = round(log10(100.0));"#),
+        Value::Float(2.0)
+    );
+    // log2(8.0) ≈ 3.0
+    assert_eq!(
+        run_program(r#"fn main() -> f64 = round(log2(8.0));"#),
+        Value::Float(3.0)
+    );
+    // tan(0.0) = 0.0
+    assert_eq!(
+        run_program(r#"fn main() -> f64 = tan(0.0);"#),
+        Value::Float(0.0)
+    );
+    // atan(0.0) = 0.0
+    assert_eq!(
+        run_program(r#"fn main() -> f64 = atan(0.0);"#),
+        Value::Float(0.0)
+    );
+    // atan2(0.0, 1.0) = 0.0
+    assert_eq!(
+        run_program(r#"fn main() -> f64 = atan2(0.0, 1.0);"#),
+        Value::Float(0.0)
+    );
+}
+
+// Cycle 2863: str_to_f64 / read_f64 / str_lines (interpreter-only)
+#[test]
+fn test_interp_str_to_f64_str_lines() {
+    // str_to_f64: parse float string
+    assert_eq!(
+        run_program(r#"fn main() -> f64 = str_to_f64("3.14");"#),
+        Value::Float(3.14)
+    );
+    // str_to_f64: integer string parses to f64
+    assert_eq!(
+        run_program(r#"fn main() -> f64 = str_to_f64("42");"#),
+        Value::Float(42.0)
+    );
+    // str_lines: split by newlines returns SvecHandle, count lines
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let sv = str_lines("a\nb\nc"); let n = svec_len(sv); let _f = svec_free(sv); n };"#),
+        Value::Int(3)
+    );
+    // str_lines: first element
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let sv = str_lines("hello\nworld"); let s = svec_get(sv, 0); let n = str_len(s); let _f = svec_free(sv); n };"#),
+        Value::Int(5)
+    );
+}
+
+// Cycle 2861: for-in svec (Value::SvecHandle)
+#[test]
+fn test_interp_for_in_svec() {
+    // Count elements via for-in (svec_new + push)
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let sv = svec_new(); let _a = svec_push(sv, "hello"); let _b = svec_push(sv, "world"); let _c = svec_push(sv, "foo"); let cnt = 0; for s in sv { cnt += 1; }; let _f = svec_free(sv); cnt };"#),
+        Value::Int(3)
+    );
+    // for-in on str_split result
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let sv = str_split("a,b,c,d", ","); let cnt = 0; for s in sv { cnt += 1; }; let _f = svec_free(sv); cnt };"#),
+        Value::Int(4)
+    );
+    // empty svec: no iterations
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let sv = svec_new(); let cnt = 0; for s in sv { cnt += 1; }; let _f = svec_free(sv); cnt };"#),
+        Value::Int(0)
+    );
+    // for-in on str_hashmap_sorted_keys result (keys are strings)
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let m = str_hashmap_new(); let _a = str_hashmap_insert(m, "x", 1); let _b = str_hashmap_insert(m, "y", 2); let _c = str_hashmap_insert(m, "z", 3); let keys = str_hashmap_sorted_keys(m); let cnt = 0; for k in keys { cnt += 1; }; let _f = svec_free(keys); let _fm = str_hashmap_free(m); cnt };"#),
+        Value::Int(3)
+    );
+    // break inside for-in svec
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let sv = svec_new(); let _a = svec_push(sv, "a"); let _b = svec_push(sv, "b"); let _c = svec_push(sv, "c"); let cnt = 0; for s in sv { cnt += 1; if cnt == 2 { break; }; }; let _f = svec_free(sv); cnt };"#),
+        Value::Int(2)
+    );
+    // String operations on loop variable (Cycle 2862: s : String inferred)
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let sv = svec_new(); let _a = svec_push(sv, "hello"); let _b = svec_push(sv, "world"); let total = 0; for s in sv { total += str_len(s); }; let _f = svec_free(sv); total };"#),
+        Value::Int(10)
+    );
+    // str_split + for-in with String op
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = { let sv = str_split("abc,de,f", ","); let total = 0; for s in sv { total += str_len(s); }; let _f = svec_free(sv); total };"#),
+        Value::Int(6)
+    );
+}
+

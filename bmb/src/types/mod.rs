@@ -275,6 +275,10 @@ impl TypeChecker {
         functions.insert("abs".to_string(), (vec![Type::I64], Type::I64));
         // min(a, b) -> i64
         functions.insert("min".to_string(), (vec![Type::I64, Type::I64], Type::I64));
+        // v0.98.7: min_f64 / max_f64 / clamp_f64 (Cycle 2866, interpreter-only)
+        functions.insert("min_f64".to_string(), (vec![Type::F64, Type::F64], Type::F64));
+        functions.insert("max_f64".to_string(), (vec![Type::F64, Type::F64], Type::F64));
+        functions.insert("clamp_f64".to_string(), (vec![Type::F64, Type::F64, Type::F64], Type::F64));
         // max(a, b) -> i64
         functions.insert("max".to_string(), (vec![Type::I64, Type::I64], Type::I64));
         // v0.98.6: pow_i64 / clamp_i64 / gcd_i64 (Cycle 2856, interpreter-only)
@@ -419,12 +423,25 @@ impl TypeChecker {
         functions.insert("str_find".to_string(), (vec![Type::String, Type::String], Type::I64));
         functions.insert("str_substr".to_string(), (vec![Type::String, Type::I64, Type::I64], Type::String));
         functions.insert("str_trim".to_string(), (vec![Type::String], Type::String));
+        // v0.98.7: str_trim_left / str_trim_right (Cycle 2866, interpreter-only)
+        functions.insert("str_trim_left".to_string(), (vec![Type::String], Type::String));
+        functions.insert("str_trim_right".to_string(), (vec![Type::String], Type::String));
+        // v0.98.7: str_reverse / popcount (Cycle 2868, interpreter-only)
+        functions.insert("str_reverse".to_string(), (vec![Type::String], Type::String));
+        functions.insert("popcount".to_string(), (vec![Type::I64], Type::I64));
         functions.insert("str_to_int".to_string(), (vec![Type::String], Type::I64));
+        // v0.98.7: int_to_hex / int_to_bin (Cycle 2867, interpreter-only)
+        functions.insert("int_to_hex".to_string(), (vec![Type::I64], Type::String));
+        functions.insert("int_to_bin".to_string(), (vec![Type::I64], Type::String));
         // v0.98.3: str_split + svec_* (Cycle 2833, interpreter-only)
-        functions.insert("str_split".to_string(), (vec![Type::String, Type::String], Type::I64));
-        functions.insert("svec_len".to_string(), (vec![Type::I64], Type::I64));
-        functions.insert("svec_get".to_string(), (vec![Type::I64, Type::I64], Type::String));
-        functions.insert("svec_free".to_string(), (vec![Type::I64], Type::Unit));
+        // v0.98.7: SvecHandle named type for proper String element inference in for-in (Cycle 2862)
+        let svec_t = Type::Named("SvecHandle".to_string());
+        functions.insert("str_split".to_string(), (vec![Type::String, Type::String], svec_t.clone()));
+        // v0.98.7: str_split_whitespace (Cycle 2867, interpreter-only)
+        functions.insert("str_split_whitespace".to_string(), (vec![Type::String], svec_t.clone()));
+        functions.insert("svec_len".to_string(), (vec![svec_t.clone()], Type::I64));
+        functions.insert("svec_get".to_string(), (vec![svec_t.clone(), Type::I64], Type::String));
+        functions.insert("svec_free".to_string(), (vec![svec_t.clone()], Type::Unit));
         // v0.98.3: format(template, ...args) -> String (Cycle 2835, interpreter-only)
         // Variadic: format("{0} + {1} = {2}", a, b, c). Extra args beyond template are untyped.
         // Variadic handling in type checker: see VARIADIC_BUILTINS check near non-generic lookup.
@@ -441,7 +458,7 @@ impl TypeChecker {
         functions.insert("str_to_lower".to_string(), (vec![Type::String], Type::String));
         functions.insert("str_char_at".to_string(), (vec![Type::String, Type::I64], Type::String));
         // v0.98.3: svec_join (Cycle 2838, interpreter-only)
-        functions.insert("svec_join".to_string(), (vec![Type::I64, Type::String], Type::String));
+        functions.insert("svec_join".to_string(), (vec![svec_t.clone(), Type::String], Type::String));
         // v0.98.3: Vec aggregate builtins (Cycle 2836, interpreter-only)
         functions.insert("vec_sum".to_string(), (vec![Type::I64], Type::I64));
         functions.insert("vec_max".to_string(), (vec![Type::I64], Type::I64));
@@ -465,6 +482,15 @@ impl TypeChecker {
         functions.insert("ceil".to_string(), (vec![Type::F64], Type::F64));
         functions.insert("fabs".to_string(), (vec![Type::F64], Type::F64));
         functions.insert("pow_f64".to_string(), (vec![Type::F64, Type::F64], Type::F64));
+        // v0.98.7: log/exp/round/tan/atan/atan2 free functions (Cycle 2865, interpreter-only)
+        functions.insert("log".to_string(), (vec![Type::F64], Type::F64));
+        functions.insert("log2".to_string(), (vec![Type::F64], Type::F64));
+        functions.insert("log10".to_string(), (vec![Type::F64], Type::F64));
+        functions.insert("exp".to_string(), (vec![Type::F64], Type::F64));
+        functions.insert("round".to_string(), (vec![Type::F64], Type::F64));
+        functions.insert("tan".to_string(), (vec![Type::F64], Type::F64));
+        functions.insert("atan".to_string(), (vec![Type::F64], Type::F64));
+        functions.insert("atan2".to_string(), (vec![Type::F64, Type::F64], Type::F64));
         // i64_to_f64(x: i64) -> f64 (type conversion)
         functions.insert("i64_to_f64".to_string(), (vec![Type::I64], Type::F64));
         // f64_to_i64(x: f64) -> i64 (type conversion, truncates toward zero)
@@ -576,9 +602,9 @@ impl TypeChecker {
         // str_hashmap_free(map: i64) -> ()
         functions.insert("str_hashmap_free".to_string(), (vec![Type::I64], Type::Unit));
         // str_hashmap_keys(map: i64) -> i64 (svec handle, Cycle 2849, interpreter-only)
-        functions.insert("str_hashmap_keys".to_string(), (vec![Type::I64], Type::I64));
+        functions.insert("str_hashmap_keys".to_string(), (vec![Type::I64], svec_t.clone()));
         // str_hashmap_sorted_keys(map: i64) -> i64 (svec handle, alphabetically sorted)
-        functions.insert("str_hashmap_sorted_keys".to_string(), (vec![Type::I64], Type::I64));
+        functions.insert("str_hashmap_sorted_keys".to_string(), (vec![Type::I64], svec_t.clone()));
         // str_hashmap_inc(map: i64, key: String, delta: i64) -> () — increment value by delta (Cycle 2850, interpreter-only)
         functions.insert("str_hashmap_inc".to_string(), (vec![Type::I64, Type::String, Type::I64], Type::Unit));
         // str_hashmap_delete(map: i64, key: String) -> () — remove key (Cycle 2851, interpreter-only)
@@ -586,14 +612,20 @@ impl TypeChecker {
         // str_hashmap_update(map: i64, key: String, val: i64) -> () — overwrite value (Cycle 2851, interpreter-only)
         functions.insert("str_hashmap_update".to_string(), (vec![Type::I64, Type::String, Type::I64], Type::Unit));
         // svec_new() -> i64 (Cycle 2850, interpreter-only)
-        functions.insert("svec_new".to_string(), (vec![], Type::I64));
-        // svec_push(handle: i64, s: String) -> () (Cycle 2850, interpreter-only)
-        functions.insert("svec_push".to_string(), (vec![Type::I64, Type::String], Type::Unit));
+        functions.insert("svec_new".to_string(), (vec![], svec_t.clone()));
+        // svec_push(handle: SvecHandle, s: String) -> () (Cycle 2850, interpreter-only)
+        functions.insert("svec_push".to_string(), (vec![svec_t.clone(), Type::String], Type::Unit));
         // v0.98.6: svec_sort / svec_contains / svec_remove / svec_clear (Cycle 2854, interpreter-only)
-        functions.insert("svec_sort".to_string(), (vec![Type::I64], Type::Unit));
-        functions.insert("svec_contains".to_string(), (vec![Type::I64, Type::String], Type::I64));
-        functions.insert("svec_remove".to_string(), (vec![Type::I64, Type::I64], Type::Unit));
-        functions.insert("svec_clear".to_string(), (vec![Type::I64], Type::Unit));
+        functions.insert("svec_sort".to_string(), (vec![svec_t.clone()], Type::Unit));
+        functions.insert("svec_contains".to_string(), (vec![svec_t.clone(), Type::String], Type::I64));
+        functions.insert("svec_remove".to_string(), (vec![svec_t.clone(), Type::I64], Type::Unit));
+        functions.insert("svec_clear".to_string(), (vec![svec_t.clone()], Type::Unit));
+        // v0.98.7: svec_index_of (Cycle 2868, interpreter-only) — requires svec_t
+        functions.insert("svec_index_of".to_string(), (vec![svec_t.clone(), Type::String], Type::I64));
+        // v0.98.7: str_to_f64 / read_f64 / str_lines (Cycle 2863, interpreter-only)
+        functions.insert("str_to_f64".to_string(), (vec![Type::String], Type::F64));
+        functions.insert("read_f64".to_string(), (vec![], Type::F64));
+        functions.insert("str_lines".to_string(), (vec![Type::String], svec_t.clone()));
         // reg_cached_lookup(reg: String, name: String, slot: i64) -> String
         functions.insert("reg_cached_lookup".to_string(), (vec![Type::String, Type::String, Type::I64], Type::String));
 
@@ -2184,9 +2216,11 @@ impl TypeChecker {
                     // v0.98.4: i64 vec handle iteration (Cycle 2841, interpreter-only)
                     // vec_new()/vec_push() return i64 handles; elements are i64
                     Type::I64 => Type::I64,
+                    // v0.98.7: SvecHandle iteration (Cycle 2862) — elements are String
+                    Type::Named(name) if name == "SvecHandle" => Type::String,
                     _ => {
                         return Err(CompileError::type_error(
-                            format!("for loop requires Range, Array, Receiver, or vec handle (i64) type, got {iter_ty}"),
+                            format!("for loop requires Range, Array, Receiver, vec handle (i64), or SvecHandle type, got {iter_ty}"),
                             iter.span,
                         ));
                     }

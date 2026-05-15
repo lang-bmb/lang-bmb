@@ -40,6 +40,9 @@ pub enum Value {
         body: Box<crate::ast::Spanned<crate::ast::Expr>>,
         env: super::env::EnvRef,
     },
+    /// Svec handle (v0.98.7, Cycle 2861): SVEC_REGISTRY index for string-vec handles.
+    /// Distinct from Value::Int so for-in can dispatch to SVEC_REGISTRY iteration.
+    SvecHandle(usize),
 }
 
 impl Value {
@@ -61,6 +64,7 @@ impl Value {
             Value::Array(arr) => !arr.is_empty(),
             Value::Tuple(_) => true, // Tuples are always truthy
             Value::Closure { .. } => true, // Closures are always truthy
+            Value::SvecHandle(_) => true,
         }
     }
 
@@ -82,6 +86,7 @@ impl Value {
             Value::Array(_) => "array",
             Value::Tuple(_) => "tuple",
             Value::Closure { .. } => "closure",
+            Value::SvecHandle(_) => "svec",
         }
     }
 
@@ -236,6 +241,7 @@ impl fmt::Display for Value {
             Value::Closure { params, .. } => {
                 write!(f, "<closure({})>", params.join(", "))
             }
+            Value::SvecHandle(idx) => write!(f, "svec@{idx}"),
         }
     }
 }
@@ -280,6 +286,7 @@ impl PartialEq for Value {
             (Value::Tuple(t1), Value::Tuple(t2)) => t1 == t2,
             // v0.92: Closures are never equal (identity semantics)
             (Value::Closure { .. }, Value::Closure { .. }) => false,
+            (Value::SvecHandle(a), Value::SvecHandle(b)) => a == b,
             _ => false,
         }
     }

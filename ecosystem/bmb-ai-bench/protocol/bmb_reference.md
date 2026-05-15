@@ -70,7 +70,11 @@ let ok2 = str_ends_with(s, "suf");         // 1 if ends with suffix
 let idx = str_find(s, "needle");            // first byte index, or -1
 let sub = str_substr(s, 6, 5);             // substring (start, len)
 let trimmed = str_trim(s);                 // trim leading/trailing whitespace
+let tl = str_trim_left(s);                // trim leading whitespace only (v0.98.7+, interp-only)
+let tr = str_trim_right(s);               // trim trailing whitespace only (v0.98.7+, interp-only)
 let n2 = str_to_int("42");                 // parse integer string → i64 (0 on failure)
+let h = int_to_hex(255);                   // → "ff"  (lowercase hex, v0.98.7+, interp-only)
+let b = int_to_bin(10);                    // → "1010" (binary, v0.98.7+, interp-only)
 let replaced = str_replace(s, "x", "y");  // replace all "x" with "y" (v0.98.3, interp-only)
 let rep = str_repeat("ab", 3);             // "ababab" — repeat n times (v0.98.3, interp-only)
 let cnt = str_count("aababc", "ab");       // 2 — count substring occurrences (v0.98.6+, interp-only)
@@ -79,6 +83,11 @@ let pr = str_pad_right("hi", 5, " ");      // "hi   " — right-pad to width (v0
 let up = str_to_upper("hello");           // "HELLO" — Unicode uppercase (v0.98.6+, interp-only)
 let lo = str_to_lower("WORLD");           // "world" — Unicode lowercase (v0.98.6+, interp-only)
 let ch = str_char_at("hello", 1);         // "e" — single-char String at index (v0.98.6+, interp-only)
+let rv = str_reverse("hello");            // "olleh" — reverse string (v0.98.7+, interp-only)
+let fv = str_to_f64("3.14");              // parse float string → f64 (0.0 on failure, v0.98.7+, interp-only)
+let fv2 = read_f64();                     // read f64 from stdin (v0.98.7+, interp-only)
+// str_lines(s) → SvecHandle — split by '\n', strip '\r' (v0.98.7+, interpreter-only)
+// let lines = str_lines("a\nb\nc");  // 3 elements; use svec_* to iterate/access
 
 // Generic to_string (v0.98.2+)
 let s1 = to_string(42);               // i64 → String ("42")
@@ -89,12 +98,14 @@ let msg = "value=" + to_string(n);    // concatenation with any type
 
 // String split (v0.98.3+, interpreter-only)
 // fn example() -> i64 = {
-//   let parts = str_split("a,b,c", ",");  // → opaque handle (i64)
+//   let parts = str_split("a,b,c", ",");  // → SvecHandle (opaque)
 //   let n = svec_len(parts);              // number of parts (3)
 //   let first = svec_get(parts, 0);       // get string at index ("a")
 //   let _f = svec_free(parts);            // release (use "let _f =" to discard Unit)
 //   n
 // };
+// str_split_whitespace(s) → SvecHandle — split by whitespace, skip empty tokens (v0.98.7+)
+// let tokens = str_split_whitespace("  1 2   3  ");  // → ["1","2","3"] (3 elements)
 // Note: str_split("abc", "") splits into individual characters
 // Note: Use "let _f = svec_free(parts)" not "svec_free(parts);" (no standalone expr stmts)
 //   let j = svec_join(parts, "-");       // join all parts with delimiter (v0.98.3, interp-only)
@@ -103,6 +114,7 @@ let msg = "value=" + to_string(n);    // concatenation with any type
 //   let _p = svec_push(sv, "item");      // append string
 //   let _so = svec_sort(sv);             // sort lexicographically in-place (v0.98.6+)
 //   let ok = svec_contains(sv, "item");  // 1 if found, 0 otherwise (v0.98.6+)
+//   let i = svec_index_of(sv, "item");  // first index or -1 (v0.98.7+)
 //   let _rm = svec_remove(sv, 0);        // remove element at index (v0.98.6+)
 //   let _cl = svec_clear(sv);            // remove all elements (v0.98.6+)
 //   let _f = svec_free(sv);              // release
@@ -114,8 +126,8 @@ let msg = "value=" + to_string(n);    // concatenation with any type
 
 // String interpolation (v0.98.4+, interpreter-only)
 // "Hello {name}" → automatically desugars to format("Hello {0}", name)
-// Supports: idents, arithmetic ({n+1}), field access ({p.x}), unary ({-n}), parens
-// Numeric {0} kept as-is (format-arg style). Function calls not supported inside {}.
+// Supports: idents, arithmetic ({n+1}), field access ({p.x}), unary ({-n}), parens, function calls ({fn(args)} v0.98.6+)
+// Numeric {0} kept as-is (format-arg style).
 // let greeting = "Hello {name}";    // → format("Hello {0}", name)
 // let info = "n+1 = {n + 1}";       // → format("n+1 = {0}", n + 1)
 // let fp = "x={p.x}";              // → format("x={0}", p.x)
@@ -351,18 +363,43 @@ for i in 0..n {
 // Integer math
 let a = abs(-5);               // → 5    (works for i64 and f64)
 let s = sign(-3);              // → -1   (method: n.sign()) (1 / 0 / -1 for i64)
-let m = min(3, 7);             // → 3    (free function, i64 or f64)
-let x = max(3, 7);             // → 7    (free function, i64 or f64)
+let m = min(3, 7);             // → 3    (free function, i64 only — use min_f64 for f64)
+let x = max(3, 7);             // → 7    (free function, i64 only — use max_f64 for f64)
 let p = pow_i64(2, 10);        // → 1024 (i64^i64 → i64, v0.98.6+)
 let c = clamp_i64(x, 0, 100); // → clamped x in [0, 100] (v0.98.6+)
 let g = gcd_i64(48, 18);       // → 6   (Euclidean GCD, v0.98.6+)
+let pc = popcount(7);           // → 3   (count set bits, 7 = 0b111, v0.98.7+, interp-only)
+// Float min/max/clamp (v0.98.7+, interpreter-only)
+let mf = min_f64(3.14, 2.72);          // → 2.72
+let xf = max_f64(3.14, 2.72);          // → 3.14
+let cf = clamp_f64(v, 0.0, 1.0);       // → clamped v in [0.0, 1.0]
+
+// Bitwise operators (infix keywords, i64 only)
+// NOTE: BMB uses keywords, NOT &/|/^ symbols
+let ba = a band b;     // bitwise AND
+let bo = a bor b;      // bitwise OR
+let bx = a bxor b;     // bitwise XOR
+let sl = a << 3;       // left shift by 3
+let sr = a >> 1;       // right shift by 1 (arithmetic)
+// n.bit_not() → bitwise NOT (method only)
+// n.bit_count() / popcount(n) → count set bits (v0.98.7+)
 
 // Float math
-let r = sqrt(2.0);        // → 1.414...
-let f = floor(3.7);       // → 3.0
-let ce = ceil(3.2);       // → 4.0
-let l = log(2.718);       // → natural log
-let e = exp(1.0);         // → e (~2.718)
+let r = sqrt(2.0);         // → 1.414...  (f64 → f64)
+let f = floor(3.7);        // → 3.0
+let ce = ceil(3.2);        // → 4.0
+let rn = round(3.7);       // → 4.0  (v0.98.7+, interp-only)
+let ab = fabs(-3.5);       // → 3.5  (float absolute value)
+let l = log(2.718282);     // → ~1.0  (natural log, v0.98.7+, interp-only)
+let l2 = log2(8.0);        // → 3.0  (base-2 log, v0.98.7+, interp-only)
+let l10 = log10(100.0);    // → 2.0  (base-10 log, v0.98.7+, interp-only)
+let e = exp(1.0);          // → ~2.718  (e^x, v0.98.7+, interp-only)
+let s = sin(0.0);          // → 0.0
+let c = cos(0.0);          // → 1.0
+let t = tan(0.0);          // → 0.0  (v0.98.7+, interp-only)
+let a = atan(1.0);         // → ~0.785 (π/4, v0.98.7+, interp-only)
+let a2 = atan2(1.0, 1.0);  // → ~0.785 (2-arg atan, v0.98.7+, interp-only)
+let p = pow_f64(2.0, 10.0); // → 1024.0
 ```
 
 ## Pattern: Absolute value and GCD
@@ -525,10 +562,9 @@ fn main() -> i64 = {
     let _c = str_hashmap_insert(m, "b", 20);
 
     let keys = str_hashmap_sorted_keys(m);   // sorted: ["a","b","c"]
-    let n = svec_len(keys);
     let sum = 0;
-    for i in 0..n {
-        let key = svec_get(keys, i);
+    // v0.98.7+: for-in-svec directly iterates String elements
+    for key in keys {
         let val = str_hashmap_get(m, key);
         sum += val
     };
@@ -537,7 +573,7 @@ fn main() -> i64 = {
     sum  // 60
 };
 // str_hashmap_keys returns unordered keys; str_hashmap_sorted_keys returns alphabetical order
-// Use svec_len + svec_get loop (for-in-svec not yet supported)
+// for-in-svec (v0.98.7+): iterates String elements directly; interpreter-only
 ```
 
 ## Pattern: Binary search
@@ -738,8 +774,8 @@ fn main() -> i64 = {
 
     str_len(s4)  // 10
 };
-// Supported inside {}: arithmetic (+,-,*,/,%), field chains (a.b.c), unary minus, parens
-// NOT supported: function calls ({to_string(n)} won't work — use let binding instead)
+// Supported inside {}: arithmetic (+,-,*,/,%), field chains (a.b.c), unary minus, parens, function calls (v0.98.6+)
+// Example with fn call: "result: {to_string(n)}", "upper: {str_to_upper(s)}"
 // {{  }} remain literal brace escapes
 ```
 
@@ -801,6 +837,71 @@ fn main() -> i64 = {
 // Interpreter-only (bmb run); bmb build (native) unsupported in v0.98.5
 ```
 
+## Pattern: Palindrome check (v0.98.7+, interpreter-only)
+```bmb
+fn is_palindrome(s: String) -> i64 =
+    if s == str_reverse(s) { 1 } else { 0 };
+```
+
+## Pattern: Whitespace-tokenized input (v0.98.7+, interpreter-only)
+```bmb
+// Parse "3 1 4 1 5" from a single line into a vec of i64
+fn parse_ints(line: String) -> i64 = {
+    let tokens = str_split_whitespace(line);
+    let n = svec_len(tokens);
+    let v = vec_new();
+    let i = 0;
+    while i < n {
+        let t = svec_get(tokens, i);
+        let _p = vec_push(v, str_to_int(t));
+        i += 1
+    };
+    let _f = svec_free(tokens);
+    v  // returns i64 vec handle
+};
+// Usage:
+// let v = parse_ints(read_line());
+// let first = vec_get(v, 0);
+```
+
+## Pattern: Float parsing and line-by-line text (v0.98.7+, interpreter-only)
+```bmb
+// Parse float from string (str_to_f64)
+fn parse_two_floats(line: String) -> f64 = {
+    // e.g. line = "3.14 2.72"
+    let parts = str_split(line, " ");
+    let a = str_to_f64(svec_get(parts, 0));
+    let b = str_to_f64(svec_get(parts, 1));
+    let _f = svec_free(parts);
+    a + b
+};
+
+// Process multi-line text with str_lines
+fn count_nonempty_lines(text: String) -> i64 = {
+    let lines = str_lines(text);
+    let n = 0;
+    for line in lines {
+        if str_len(line) > 0 { n += 1; }
+    };
+    let _f = svec_free(lines);
+    n
+};
+
+// Read multiple float inputs from stdin
+fn sum_n_floats(count: i64) -> f64 = {
+    let total = 0.0;
+    let i = 0;
+    while i < count {
+        let v = read_f64();
+        total = total + v;
+        i += 1
+    };
+    total
+};
+// Note: str_lines strips \r\n (handles Windows/Unix line endings)
+// Note: str_to_f64 returns 0.0 on parse failure
+```
+
 ## Common Pitfalls
 - `println()` returns `()`, not `i64` — always wrap: `let _r = println(x);`
 - `vec_push()/vec_set()/vec_free()` all return `()` — always wrap with `let _`
@@ -809,12 +910,15 @@ fn main() -> i64 = {
 - No `impl` blocks — use free functions
 - Blocks must end with `;` after `}` in while/if/for
 - Vec handle type is `i64`, not `Vec<T>`
+- Bitwise operators use **keywords** `band`/`bor`/`bxor`, NOT `&`/`|`/`^` symbols (those are parse errors)
+- `str_reverse(s)` reverses the string (v0.98.7+); `popcount(n)` counts set bits (v0.98.7+)
 - `if` as VALUE (used in `let x = if ...`) MUST have `else`
 - `if` as STATEMENT (result discarded) — `else` is optional (v0.98.1+)
 - `-x` (unary minus) works for negation — `0 - x` is unnecessary
 - `for j in (i+1)..n` — parentheses required when start is an expression
-- `for` loop supports ranges (`0..n`, `a..=b`) AND vec handles (`for x in v {}` — interpreter-only, v0.98.4+)
+- `for` loop supports ranges (`0..n`, `a..=b`), vec handles (`for x in v {}` — interp-only, v0.98.4+), and svec handles (`for s in sv {}` — interp-only, v0.98.7+)
 - `for x in my_vec` works with interpreter only — for bmb build (native) use index loop `for i in 0..vec_len(v)`
+- `for s in svec_handle` iterates String elements; works after svec_new/str_split/str_lines (interpreter-only, v0.98.7+)
 - `hashmap_get` and `str_hashmap_get` return `i64::MIN` (not 0) when key is absent — always check `*_contains` first
 - `str_hashmap_*` builtins use String keys; interpreter-only (`bmb run`) — `bmb build` (native) unsupported (v0.98.5+)
 - `to_string(x)` converts any value to String without extra quotes (v0.98.2+)
@@ -824,5 +928,5 @@ fn main() -> i64 = {
 - In string interpolation, `{{` → literal `{` and `}}` → literal `}` (v0.98.5+). Example: `"{{key}}: {val}"` → `"{key}: <value>"`
 - String interpolation `{expr}` supports arithmetic, field access, and function calls `{fn(args)}` (v0.98.6+). Example: `"result: {to_string(n)}"`, `"upper: {str_to_upper(s)}"`
 - `+=`, `-=`, `*=`, `/=`, `%=` compound assignment operators available (v0.98.4+) — desugars to `x = x op e`; also available on struct fields: `set obj.field += e` (v0.98.5+, interpreter-only)
-- String builtins (`str_contains`, `str_find`, `str_substr`, `str_trim`, `str_to_int`, `to_string`, `str_split`, `svec_*`, `str_replace`, `str_repeat`, `str_to_upper`, `str_to_lower`, `str_char_at`, `format`) work with `bmb run` only — `bmb build` (native) will fail for these
+- String builtins (`str_contains`, `str_find`, `str_substr`, `str_trim`, `str_to_int`, `str_to_f64`, `to_string`, `str_split`, `str_lines`, `svec_*`, `str_replace`, `str_repeat`, `str_to_upper`, `str_to_lower`, `str_char_at`, `format`) work with `bmb run` only — `bmb build` (native) will fail for these
 - Vec aggregate/search/mutation builtins (`vec_sum`, `vec_max`, `vec_min`, `vec_sort`, `vec_contains`, `vec_index_of`, `vec_remove`, `vec_reverse`, `vec_fill`) are interpreter-only (`bmb run`) — `bmb build` (native) unsupported

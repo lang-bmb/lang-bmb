@@ -1,5 +1,6 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-15 (Cycles 2851-2858 — **언어 갭 해소 3차**: str_hashmap delete/update + str_to_upper/lower/char_at + vec_remove/reverse/fill + svec_sort/contains/remove/clear + {fn_call()} 보간 + pow_i64/clamp_i64/gcd_i64 + str_count/pad_left/pad_right. 2382 tests ✅)
+> 최종 업데이트: 2026-05-15 (Cycles 2861-2870 — **언어 갭 해소 4차**: SvecHandle 타입 + for-in-svec + str_to_f64/read_f64/str_lines + f64 수학 8종 + min_f64/max_f64/clamp_f64 + str_trim_left/right + str_split_whitespace + int_to_hex/int_to_bin + str_reverse/popcount/svec_index_of + bmb_reference 대폭 갱신. **2388 tests** ✅)
+> 이전 갱신: 2026-05-15 (Cycles 2851-2858 — **언어 갭 해소 3차**: str_hashmap delete/update + str_to_upper/lower/char_at + vec_remove/reverse/fill + svec_sort/contains/remove/clear + {fn_call()} 보간 + pow_i64/clamp_i64/gcd_i64 + str_count/pad_left/pad_right. 2382 tests ✅)
 > 이전 갱신: 2026-05-14 (Cycle 2850 — **svec_new/push + str_hashmap_inc**: svec API 완성 + atomic increment. 2375 tests ✅)
 > 이전 갱신: 2026-05-14 (Cycle 2849 — **str_hashmap_keys/sorted_keys**: keys iteration 2종 추가. SVEC_REGISTRY 재활용. 2373 tests ✅)
 > 이전 갱신: 2026-05-14 (Cycle 2848 — **{expr} 보간**: 산술/필드접근/단항 표현식 지원. InterpMini 미니파서 내장. 2372 tests ✅)
