@@ -821,12 +821,6 @@ impl<'a> InterpMini<'a> {
         self.skip_ws();
         self.chars.get(self.pos).copied()
     }
-    fn consume(&mut self) -> Option<char> {
-        self.skip_ws();
-        let c = self.chars.get(self.pos).copied();
-        if c.is_some() { self.pos += 1; }
-        c
-    }
     fn expect(&mut self, ch: char) -> Option<()> {
         if self.peek() == Some(ch) { self.pos += 1; Some(()) } else { None }
     }
@@ -901,6 +895,28 @@ impl<'a> InterpMini<'a> {
         Some(e)
     }
 
+    // Parse argument list for function call: already consumed '('
+    fn call_args(&mut self) -> Option<Vec<Spanned<Expr>>> {
+        let dummy = Span::new(0, 0);
+        let mut args = Vec::new();
+        self.skip_ws();
+        if self.chars.get(self.pos) == Some(&')') {
+            self.pos += 1;
+            return Some(args);
+        }
+        loop {
+            let a = self.expr()?;
+            args.push(Spanned::new(a, dummy));
+            self.skip_ws();
+            match self.chars.get(self.pos) {
+                Some(',') => { self.pos += 1; }
+                Some(')') => { self.pos += 1; break; }
+                _ => return None,
+            }
+        }
+        Some(args)
+    }
+
     fn primary(&mut self) -> Option<Expr> {
         self.skip_ws();
         match self.chars.get(self.pos)? {
@@ -920,7 +936,15 @@ impl<'a> InterpMini<'a> {
             }
             c if c.is_ascii_alphabetic() || *c == '_' => {
                 let name = self.ident_str()?;
-                Some(Expr::Var(name))
+                self.skip_ws();
+                // function call: name(args...)
+                if self.chars.get(self.pos) == Some(&'(') {
+                    self.pos += 1;
+                    let args = self.call_args()?;
+                    Some(Expr::Call { func: name, args, type_args: vec![] })
+                } else {
+                    Some(Expr::Var(name))
+                }
             }
             _ => None,
         }

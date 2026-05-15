@@ -73,6 +73,12 @@ let trimmed = str_trim(s);                 // trim leading/trailing whitespace
 let n2 = str_to_int("42");                 // parse integer string → i64 (0 on failure)
 let replaced = str_replace(s, "x", "y");  // replace all "x" with "y" (v0.98.3, interp-only)
 let rep = str_repeat("ab", 3);             // "ababab" — repeat n times (v0.98.3, interp-only)
+let cnt = str_count("aababc", "ab");       // 2 — count substring occurrences (v0.98.6+, interp-only)
+let pl = str_pad_left("42", 5, "0");       // "00042" — left-pad to width (v0.98.6+, interp-only)
+let pr = str_pad_right("hi", 5, " ");      // "hi   " — right-pad to width (v0.98.6+, interp-only)
+let up = str_to_upper("hello");           // "HELLO" — Unicode uppercase (v0.98.6+, interp-only)
+let lo = str_to_lower("WORLD");           // "world" — Unicode lowercase (v0.98.6+, interp-only)
+let ch = str_char_at("hello", 1);         // "e" — single-char String at index (v0.98.6+, interp-only)
 
 // Generic to_string (v0.98.2+)
 let s1 = to_string(42);               // i64 → String ("42")
@@ -95,6 +101,10 @@ let msg = "value=" + to_string(n);    // concatenation with any type
 // Build svec manually (v0.98.5+, interpreter-only):
 //   let sv = svec_new();                 // create empty svec
 //   let _p = svec_push(sv, "item");      // append string
+//   let _so = svec_sort(sv);             // sort lexicographically in-place (v0.98.6+)
+//   let ok = svec_contains(sv, "item");  // 1 if found, 0 otherwise (v0.98.6+)
+//   let _rm = svec_remove(sv, 0);        // remove element at index (v0.98.6+)
+//   let _cl = svec_clear(sv);            // remove all elements (v0.98.6+)
 //   let _f = svec_free(sv);              // release
 
 // Positional string formatting (v0.98.3+, interpreter-only)
@@ -130,6 +140,9 @@ let mn = vec_min(v);            // minimum element (error on empty)
 let _o = vec_sort(v);           // sort ascending in-place
 let ok = vec_contains(v, 42);  // 1 if 42 found, 0 otherwise
 let i = vec_index_of(v, 42);   // first index of 42, or -1 if not found
+let rm = vec_remove(v, 2);     // remove at index 2, shift left, return removed value (v0.98.6+)
+let _rv = vec_reverse(v);      // reverse elements in-place (v0.98.6+)
+let _fi = vec_fill(v, 0);      // set all elements to 0 (v0.98.6+)
 ```
 
 ## HashMap (i64 key→value store)
@@ -157,6 +170,8 @@ let n = str_hashmap_len(m);                        // number of distinct keys
 let keys = str_hashmap_keys(m);                    // svec handle of all keys (unordered)
 let skeys = str_hashmap_sorted_keys(m);            // svec handle of keys (sorted a-z, v0.98.5+)
 let _i = str_hashmap_inc(m, "word", 1);            // increment value by 1 (insert 0 if absent, v0.98.5+)
+let _d = str_hashmap_delete(m, "key");             // remove key (no-op if absent, v0.98.6+)
+let _u = str_hashmap_update(m, "key", 99);         // overwrite value (v0.98.6+)
 let _f = str_hashmap_free(m);                      // deallocate
 // After using keys/skeys: svec_free(keys) / svec_free(skeys)
 ```
@@ -334,12 +349,13 @@ for i in 0..n {
 ## Math Builtins
 ```bmb
 // Integer math
-let a = abs(-5);          // → 5    (works for i64 and f64)
-let s = sign(-3);         // → -1   (1 / 0 / -1 for i64)
-let m = min(3, 7);        // → 3
-let x = max(3, 7);        // → 7
-let p = pow(2, 10);       // → 1024 (i64^i64 → i64)
-let c = clamp(x, 0, 100); // → clamped x in [0, 100]
+let a = abs(-5);               // → 5    (works for i64 and f64)
+let s = sign(-3);              // → -1   (method: n.sign()) (1 / 0 / -1 for i64)
+let m = min(3, 7);             // → 3    (free function, i64 or f64)
+let x = max(3, 7);             // → 7    (free function, i64 or f64)
+let p = pow_i64(2, 10);        // → 1024 (i64^i64 → i64, v0.98.6+)
+let c = clamp_i64(x, 0, 100); // → clamped x in [0, 100] (v0.98.6+)
+let g = gcd_i64(48, 18);       // → 6   (Euclidean GCD, v0.98.6+)
 
 // Float math
 let r = sqrt(2.0);        // → 1.414...
@@ -806,7 +822,7 @@ fn main() -> i64 = {
 - `while let` only supports enum-variant patterns (e.g., `Opt::Some(x)`) — bare `while let x = e` not supported (would infinite-loop anyway)
 - `format()`, `while let`, `for x in vec` and string interpolation `"Hello {name}"` are interpreter-only (`bmb run`) — `bmb build` (native) doesn't support them yet
 - In string interpolation, `{{` → literal `{` and `}}` → literal `}` (v0.98.5+). Example: `"{{key}}: {val}"` → `"{key}: <value>"`
-- String interpolation `{expr}` supports arithmetic/field access but NOT function calls — use `let tmp = fn(x); "{tmp}"` instead (v0.98.5+)
+- String interpolation `{expr}` supports arithmetic, field access, and function calls `{fn(args)}` (v0.98.6+). Example: `"result: {to_string(n)}"`, `"upper: {str_to_upper(s)}"`
 - `+=`, `-=`, `*=`, `/=`, `%=` compound assignment operators available (v0.98.4+) — desugars to `x = x op e`; also available on struct fields: `set obj.field += e` (v0.98.5+, interpreter-only)
-- String builtins (`str_contains`, `str_find`, `str_substr`, `str_trim`, `str_to_int`, `to_string`, `str_split`, `svec_*`, `str_replace`, `str_repeat`, `format`) work with `bmb run` only — `bmb build` (native) will fail for these
-- Vec aggregate/search builtins (`vec_sum`, `vec_max`, `vec_min`, `vec_sort`, `vec_contains`, `vec_index_of`) are interpreter-only (`bmb run`) — `bmb build` (native) unsupported
+- String builtins (`str_contains`, `str_find`, `str_substr`, `str_trim`, `str_to_int`, `to_string`, `str_split`, `svec_*`, `str_replace`, `str_repeat`, `str_to_upper`, `str_to_lower`, `str_char_at`, `format`) work with `bmb run` only — `bmb build` (native) will fail for these
+- Vec aggregate/search/mutation builtins (`vec_sum`, `vec_max`, `vec_min`, `vec_sort`, `vec_contains`, `vec_index_of`, `vec_remove`, `vec_reverse`, `vec_fill`) are interpreter-only (`bmb run`) — `bmb build` (native) unsupported

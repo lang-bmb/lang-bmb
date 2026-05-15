@@ -24884,6 +24884,302 @@ fn test_interp_str_hashmap_inc() {
     );
 }
 
+#[test]
+fn test_interp_str_hashmap_delete_update() {
+    // delete: removed key returns 0 via get (default)
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let m = str_hashmap_new();
+            let _i = str_hashmap_insert(m, "x", 42);
+            let before = str_hashmap_contains(m, "x");
+            let _d = str_hashmap_delete(m, "x");
+            let after = str_hashmap_contains(m, "x");
+            let _f = str_hashmap_free(m);
+            before * 10 + after
+        };"#),
+        Value::Int(10)  // before=1, after=0
+    );
+
+    // delete non-existent key is a no-op
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let m = str_hashmap_new();
+            let _i = str_hashmap_insert(m, "a", 1);
+            let _d = str_hashmap_delete(m, "missing");
+            let len = str_hashmap_len(m);
+            let _f = str_hashmap_free(m);
+            len
+        };"#),
+        Value::Int(1)
+    );
+
+    // update: overwrites existing value
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let m = str_hashmap_new();
+            let _i = str_hashmap_insert(m, "k", 10);
+            let _u = str_hashmap_update(m, "k", 99);
+            let v = str_hashmap_get(m, "k");
+            let _f = str_hashmap_free(m);
+            v
+        };"#),
+        Value::Int(99)
+    );
+}
+
+// ============================================
+// Cycle 2857: str_count / str_pad_left / str_pad_right
+// ============================================
+
+#[test]
+fn test_interp_str_count_pad() {
+    // str_count: count substring occurrences
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = str_count("hello world hello", "hello");"#),
+        Value::Int(2)
+    );
+
+    // str_pad_left: left-pad with character
+    assert_eq!(
+        run_program(r#"fn main() -> String = str_pad_left("42", 5, "0");"#),
+        Value::Str(std::rc::Rc::new("00042".to_string()))
+    );
+
+    // str_pad_right: right-pad with space
+    assert_eq!(
+        run_program(r#"fn main() -> String = str_pad_right("hi", 5, " ");"#),
+        Value::Str(std::rc::Rc::new("hi   ".to_string()))
+    );
+
+    // no padding needed when already wide enough
+    assert_eq!(
+        run_program(r#"fn main() -> String = str_pad_left("hello", 3, " ");"#),
+        Value::Str(std::rc::Rc::new("hello".to_string()))
+    );
+}
+
+// ============================================
+// Cycle 2856: pow_i64 / clamp_i64 / gcd_i64
+// ============================================
+
+#[test]
+fn test_interp_math_builtins() {
+    // pow_i64
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = pow_i64(2, 10);"#),
+        Value::Int(1024)
+    );
+
+    // clamp_i64
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let lo = clamp_i64(-5, 0, 100);
+            let mid = clamp_i64(50, 0, 100);
+            let hi = clamp_i64(200, 0, 100);
+            lo + mid + hi
+        };"#),
+        Value::Int(150)  // 0 + 50 + 100
+    );
+
+    // gcd_i64
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = gcd_i64(48, 18);"#),
+        Value::Int(6)
+    );
+}
+
+// ============================================
+// Cycle 2855: {fn_call(args)} 보간
+// ============================================
+
+#[test]
+fn test_interp_string_interp_fn_call() {
+    // function call in interpolation
+    assert_eq!(
+        run_program(r#"fn main() -> String = {
+            let n = 42;
+            "result: {to_string(n)}"
+        };"#),
+        Value::Str(std::rc::Rc::new("result: 42".to_string()))
+    );
+
+    // nested: str_to_upper in interpolation
+    assert_eq!(
+        run_program(r#"fn main() -> String = {
+            let s = "hello";
+            "upper: {str_to_upper(s)}"
+        };"#),
+        Value::Str(std::rc::Rc::new("upper: HELLO".to_string()))
+    );
+
+    // function call with arithmetic arg in interpolation
+    assert_eq!(
+        run_program(r#"fn main() -> String = {
+            let x = 5;
+            "doubled: {to_string(x * 2)}"
+        };"#),
+        Value::Str(std::rc::Rc::new("doubled: 10".to_string()))
+    );
+}
+
+// ============================================
+// Cycle 2854: svec_sort / svec_contains / svec_remove / svec_clear
+// ============================================
+
+#[test]
+fn test_interp_svec_sort_contains_remove_clear() {
+    // svec_sort: sorts strings lexicographically
+    assert_eq!(
+        run_program(r#"fn main() -> String = {
+            let sv = svec_new();
+            let _a = svec_push(sv, "banana");
+            let _b = svec_push(sv, "apple");
+            let _c = svec_push(sv, "cherry");
+            let _s = svec_sort(sv);
+            let first = svec_get(sv, 0);
+            let _f = svec_free(sv);
+            first
+        };"#),
+        Value::Str(std::rc::Rc::new("apple".to_string()))
+    );
+
+    // svec_contains: 1 if found, 0 otherwise
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let sv = svec_new();
+            let _a = svec_push(sv, "hello");
+            let _b = svec_push(sv, "world");
+            let yes = svec_contains(sv, "hello");
+            let no = svec_contains(sv, "missing");
+            let _f = svec_free(sv);
+            yes * 10 + no
+        };"#),
+        Value::Int(10)  // yes=1, no=0
+    );
+
+    // svec_remove: removes element at index
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let sv = svec_new();
+            let _a = svec_push(sv, "a");
+            let _b = svec_push(sv, "b");
+            let _c = svec_push(sv, "c");
+            let _r = svec_remove(sv, 1);
+            let len = svec_len(sv);
+            let _f = svec_free(sv);
+            len
+        };"#),
+        Value::Int(2)
+    );
+
+    // svec_clear: empties without freeing handle
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let sv = svec_new();
+            let _a = svec_push(sv, "x");
+            let _b = svec_push(sv, "y");
+            let _c = svec_clear(sv);
+            let len = svec_len(sv);
+            let _f = svec_free(sv);
+            len
+        };"#),
+        Value::Int(0)
+    );
+}
+
+// ============================================
+// Cycle 2853: vec_remove / vec_reverse / vec_fill
+// ============================================
+
+#[test]
+fn test_interp_vec_remove_reverse_fill() {
+    // vec_remove: returns removed element, length decrements
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let v = vec_new();
+            let _a = vec_push(v, 10);
+            let _b = vec_push(v, 20);
+            let _c = vec_push(v, 30);
+            let removed = vec_remove(v, 1);
+            let len = vec_len(v);
+            let _f = vec_free(v);
+            removed * 10 + len
+        };"#),
+        Value::Int(202)  // removed=20, len=2
+    );
+
+    // vec_reverse: reverses in-place
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let v = vec_new();
+            let _a = vec_push(v, 1);
+            let _b = vec_push(v, 2);
+            let _c = vec_push(v, 3);
+            let _r = vec_reverse(v);
+            let first = vec_get(v, 0);
+            let _f = vec_free(v);
+            first
+        };"#),
+        Value::Int(3)
+    );
+
+    // vec_fill: fills all elements with value
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let v = vec_new();
+            let _a = vec_push(v, 1);
+            let _b = vec_push(v, 2);
+            let _c = vec_push(v, 3);
+            let _fi = vec_fill(v, 99);
+            let sum = vec_sum(v);
+            let _f = vec_free(v);
+            sum
+        };"#),
+        Value::Int(297)  // 99*3=297
+    );
+}
+
+// ============================================
+// Cycle 2852: str_to_upper / str_to_lower / str_char_at
+// ============================================
+
+#[test]
+fn test_interp_str_case_and_char() {
+    // str_to_upper
+    assert_eq!(
+        run_program(r#"fn main() -> String = {
+            str_to_upper("hello")
+        };"#),
+        Value::Str(std::rc::Rc::new("HELLO".to_string()))
+    );
+
+    // str_to_lower
+    assert_eq!(
+        run_program(r#"fn main() -> String = {
+            str_to_lower("WORLD")
+        };"#),
+        Value::Str(std::rc::Rc::new("world".to_string()))
+    );
+
+    // str_char_at returns single-char string
+    assert_eq!(
+        run_program(r#"fn main() -> String = {
+            str_char_at("hello", 1)
+        };"#),
+        Value::Str(std::rc::Rc::new("e".to_string()))
+    );
+
+    // str_to_upper + str_to_lower roundtrip (encode as i64 via str_len to avoid Value::Str equality issues)
+    assert_eq!(
+        run_program(r#"fn main() -> i64 = {
+            let up = str_to_upper("abc");
+            let down = str_to_lower(up);
+            str_len(down)
+        };"#),
+        Value::Int(3)
+    );
+}
+
 // ============================================
 // Cycle 2849: str_hashmap_keys / str_hashmap_sorted_keys
 // ============================================

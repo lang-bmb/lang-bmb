@@ -277,6 +277,10 @@ impl TypeChecker {
         functions.insert("min".to_string(), (vec![Type::I64, Type::I64], Type::I64));
         // max(a, b) -> i64
         functions.insert("max".to_string(), (vec![Type::I64, Type::I64], Type::I64));
+        // v0.98.6: pow_i64 / clamp_i64 / gcd_i64 (Cycle 2856, interpreter-only)
+        functions.insert("pow_i64".to_string(), (vec![Type::I64, Type::I64], Type::I64));
+        functions.insert("clamp_i64".to_string(), (vec![Type::I64, Type::I64, Type::I64], Type::I64));
+        functions.insert("gcd_i64".to_string(), (vec![Type::I64, Type::I64], Type::I64));
 
         // v0.31.10: File I/O builtins for Phase 32.0 Bootstrap Infrastructure
         // read_file(path: String) -> String
@@ -428,6 +432,14 @@ impl TypeChecker {
         // v0.98.3: str_replace + str_repeat (Cycle 2837, interpreter-only)
         functions.insert("str_replace".to_string(), (vec![Type::String, Type::String, Type::String], Type::String));
         functions.insert("str_repeat".to_string(), (vec![Type::String, Type::I64], Type::String));
+        // v0.98.6: str_count / str_pad_left / str_pad_right (Cycle 2857, interpreter-only)
+        functions.insert("str_count".to_string(), (vec![Type::String, Type::String], Type::I64));
+        functions.insert("str_pad_left".to_string(), (vec![Type::String, Type::I64, Type::String], Type::String));
+        functions.insert("str_pad_right".to_string(), (vec![Type::String, Type::I64, Type::String], Type::String));
+        // v0.98.6: str_to_upper / str_to_lower / str_char_at (Cycle 2852, interpreter-only)
+        functions.insert("str_to_upper".to_string(), (vec![Type::String], Type::String));
+        functions.insert("str_to_lower".to_string(), (vec![Type::String], Type::String));
+        functions.insert("str_char_at".to_string(), (vec![Type::String, Type::I64], Type::String));
         // v0.98.3: svec_join (Cycle 2838, interpreter-only)
         functions.insert("svec_join".to_string(), (vec![Type::I64, Type::String], Type::String));
         // v0.98.3: Vec aggregate builtins (Cycle 2836, interpreter-only)
@@ -438,6 +450,10 @@ impl TypeChecker {
         // v0.98.3: vec_contains + vec_index_of (Cycle 2838, interpreter-only)
         functions.insert("vec_contains".to_string(), (vec![Type::I64, Type::I64], Type::I64));
         functions.insert("vec_index_of".to_string(), (vec![Type::I64, Type::I64], Type::I64));
+        // v0.98.6: vec_remove / vec_reverse / vec_fill (Cycle 2853, interpreter-only)
+        functions.insert("vec_remove".to_string(), (vec![Type::I64, Type::I64], Type::I64));
+        functions.insert("vec_reverse".to_string(), (vec![Type::I64], Type::Unit));
+        functions.insert("vec_fill".to_string(), (vec![Type::I64, Type::I64], Type::Unit));
 
         // v0.34: Math intrinsics for Phase 34.4 Benchmark Gate (n_body, mandelbrot_fp)
         // sqrt(x: f64) -> f64 (square root)
@@ -565,10 +581,19 @@ impl TypeChecker {
         functions.insert("str_hashmap_sorted_keys".to_string(), (vec![Type::I64], Type::I64));
         // str_hashmap_inc(map: i64, key: String, delta: i64) -> () — increment value by delta (Cycle 2850, interpreter-only)
         functions.insert("str_hashmap_inc".to_string(), (vec![Type::I64, Type::String, Type::I64], Type::Unit));
+        // str_hashmap_delete(map: i64, key: String) -> () — remove key (Cycle 2851, interpreter-only)
+        functions.insert("str_hashmap_delete".to_string(), (vec![Type::I64, Type::String], Type::Unit));
+        // str_hashmap_update(map: i64, key: String, val: i64) -> () — overwrite value (Cycle 2851, interpreter-only)
+        functions.insert("str_hashmap_update".to_string(), (vec![Type::I64, Type::String, Type::I64], Type::Unit));
         // svec_new() -> i64 (Cycle 2850, interpreter-only)
         functions.insert("svec_new".to_string(), (vec![], Type::I64));
         // svec_push(handle: i64, s: String) -> () (Cycle 2850, interpreter-only)
         functions.insert("svec_push".to_string(), (vec![Type::I64, Type::String], Type::Unit));
+        // v0.98.6: svec_sort / svec_contains / svec_remove / svec_clear (Cycle 2854, interpreter-only)
+        functions.insert("svec_sort".to_string(), (vec![Type::I64], Type::Unit));
+        functions.insert("svec_contains".to_string(), (vec![Type::I64, Type::String], Type::I64));
+        functions.insert("svec_remove".to_string(), (vec![Type::I64, Type::I64], Type::Unit));
+        functions.insert("svec_clear".to_string(), (vec![Type::I64], Type::Unit));
         // reg_cached_lookup(reg: String, name: String, slot: i64) -> String
         functions.insert("reg_cached_lookup".to_string(), (vec![Type::String, Type::String, Type::I64], Type::String));
 

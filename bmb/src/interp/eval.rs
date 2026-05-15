@@ -215,6 +215,10 @@ impl Interpreter {
         self.builtins.insert("write_stdout".to_string(), builtin_write_stdout);
         self.builtins.insert("abs".to_string(), builtin_abs);
         self.builtins.insert("min".to_string(), builtin_min);
+        // v0.98.6: pow_i64 / clamp_i64 / gcd_i64 (Cycle 2856, interpreter-only)
+        self.builtins.insert("pow_i64".to_string(), builtin_pow_i64);
+        self.builtins.insert("clamp_i64".to_string(), builtin_clamp_i64);
+        self.builtins.insert("gcd_i64".to_string(), builtin_gcd_i64);
         self.builtins.insert("max".to_string(), builtin_max);
         // v0.31.10: File I/O builtins (native only — not available in WASM)
         #[cfg(not(target_arch = "wasm32"))]
@@ -285,6 +289,14 @@ impl Interpreter {
         // v0.98.3: str_replace + str_repeat (Cycle 2837, interpreter-only)
         self.builtins.insert("str_replace".to_string(), builtin_str_replace);
         self.builtins.insert("str_repeat".to_string(), builtin_str_repeat);
+        // v0.98.6: str_count / str_pad_left / str_pad_right (Cycle 2857, interpreter-only)
+        self.builtins.insert("str_count".to_string(), builtin_str_count);
+        self.builtins.insert("str_pad_left".to_string(), builtin_str_pad_left);
+        self.builtins.insert("str_pad_right".to_string(), builtin_str_pad_right);
+        // v0.98.6: str_to_upper / str_to_lower / str_char_at (Cycle 2852, interpreter-only)
+        self.builtins.insert("str_to_upper".to_string(), builtin_str_to_upper);
+        self.builtins.insert("str_to_lower".to_string(), builtin_str_to_lower);
+        self.builtins.insert("str_char_at".to_string(), builtin_str_char_at);
         // v0.98.3: svec_join (Cycle 2838, interpreter-only)
         self.builtins.insert("svec_join".to_string(), builtin_svec_join);
         // v0.98.2: Generic to_string (Cycle 2830)
@@ -348,6 +360,10 @@ impl Interpreter {
         // v0.98.3: vec_contains + vec_index_of (Cycle 2838, interpreter-only)
         self.builtins.insert("vec_contains".to_string(), builtin_vec_contains);
         self.builtins.insert("vec_index_of".to_string(), builtin_vec_index_of);
+        // v0.98.6: vec_remove / vec_reverse / vec_fill (Cycle 2853, interpreter-only)
+        self.builtins.insert("vec_remove".to_string(), builtin_vec_remove);
+        self.builtins.insert("vec_reverse".to_string(), builtin_vec_reverse);
+        self.builtins.insert("vec_fill".to_string(), builtin_vec_fill);
 
         // v0.34.24: Hash builtins
         self.builtins.insert("hash_i64".to_string(), builtin_hash_i64);
@@ -377,8 +393,15 @@ impl Interpreter {
         self.builtins.insert("str_hashmap_keys".to_string(), builtin_str_hashmap_keys);
         self.builtins.insert("str_hashmap_sorted_keys".to_string(), builtin_str_hashmap_sorted_keys);
         self.builtins.insert("str_hashmap_inc".to_string(), builtin_str_hashmap_inc);
+        self.builtins.insert("str_hashmap_delete".to_string(), builtin_str_hashmap_delete);
+        self.builtins.insert("str_hashmap_update".to_string(), builtin_str_hashmap_update);
         self.builtins.insert("svec_new".to_string(), builtin_svec_new);
         self.builtins.insert("svec_push".to_string(), builtin_svec_push);
+        // v0.98.6: svec_sort / svec_contains / svec_remove / svec_clear (Cycle 2854, interpreter-only)
+        self.builtins.insert("svec_sort".to_string(), builtin_svec_sort);
+        self.builtins.insert("svec_contains".to_string(), builtin_svec_contains);
+        self.builtins.insert("svec_remove".to_string(), builtin_svec_remove);
+        self.builtins.insert("svec_clear".to_string(), builtin_svec_clear);
 
         // v0.34.24: HashSet builtins
         self.builtins
@@ -7019,6 +7042,45 @@ fn builtin_max(args: &[Value]) -> InterpResult<Value> {
     }
 }
 
+// v0.98.6: pow_i64 / clamp_i64 / gcd_i64 (Cycle 2856, interpreter-only)
+fn builtin_pow_i64(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("pow_i64", 2, args.len()));
+    }
+    match (&args[0], &args[1]) {
+        (Value::Int(base), Value::Int(exp)) => {
+            if *exp < 0 { return Err(RuntimeError::io_error("pow_i64: negative exponent")); }
+            Ok(Value::Int(base.wrapping_pow(*exp as u32)))
+        }
+        _ => Err(RuntimeError::type_error("i64, i64", "other")),
+    }
+}
+
+fn builtin_clamp_i64(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 3 {
+        return Err(RuntimeError::arity_mismatch("clamp_i64", 3, args.len()));
+    }
+    match (&args[0], &args[1], &args[2]) {
+        (Value::Int(val), Value::Int(lo), Value::Int(hi)) => Ok(Value::Int((*val).clamp(*lo, *hi))),
+        _ => Err(RuntimeError::type_error("i64, i64, i64", "other")),
+    }
+}
+
+fn builtin_gcd_i64(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("gcd_i64", 2, args.len()));
+    }
+    match (&args[0], &args[1]) {
+        (Value::Int(a), Value::Int(b)) => {
+            let mut x = a.abs();
+            let mut y = b.abs();
+            while y != 0 { let t = y; y = x % y; x = t; }
+            Ok(Value::Int(x))
+        }
+        _ => Err(RuntimeError::type_error("i64, i64", "other")),
+    }
+}
+
 // ============ v0.34: Math Intrinsics for Phase 34.4 Benchmark Gate ============
 
 /// sqrt(x: f64) -> f64
@@ -7935,6 +7997,97 @@ fn builtin_vec_index_of(args: &[Value]) -> InterpResult<Value> {
             Ok(Value::Int(-1))
         }
         _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+// v0.98.6: vec_remove / vec_reverse / vec_fill (Cycle 2853, interpreter-only)
+
+/// vec_remove(vec: i64, idx: i64) -> i64 — remove element at idx, shift left, return removed value
+fn builtin_vec_remove(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("vec_remove", 2, args.len()));
+    }
+    match (&args[0], &args[1]) {
+        (Value::Int(vec_ptr), Value::Int(idx)) => {
+            if *vec_ptr == 0 {
+                return Err(RuntimeError::io_error("vec_remove: null vector"));
+            }
+            unsafe {
+                let header = *vec_ptr as *mut i64;
+                let ptr = *header;
+                let len = *header.add(1);
+                if *idx < 0 || *idx >= len {
+                    return Err(RuntimeError::io_error(&format!(
+                        "vec_remove: index {} out of bounds (len={})", idx, len
+                    )));
+                }
+                let data = ptr as *mut i64;
+                let removed = *data.add(*idx as usize);
+                // shift elements left
+                for i in (*idx as usize)..(len as usize - 1) {
+                    *data.add(i) = *data.add(i + 1);
+                }
+                *header.add(1) = len - 1;
+                Ok(Value::Int(removed))
+            }
+        }
+        _ => Err(RuntimeError::type_error("i64, i64", "other")),
+    }
+}
+
+/// vec_reverse(vec: i64) -> () — reverse elements in-place
+fn builtin_vec_reverse(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("vec_reverse", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(vec_ptr) => {
+            if *vec_ptr == 0 {
+                return Err(RuntimeError::io_error("vec_reverse: null vector"));
+            }
+            unsafe {
+                let header = *vec_ptr as *const i64;
+                let ptr = *header;
+                let len = *header.add(1) as usize;
+                let data = ptr as *mut i64;
+                let mut lo = 0usize;
+                let mut hi = if len == 0 { 0 } else { len - 1 };
+                while lo < hi {
+                    let tmp = *data.add(lo);
+                    *data.add(lo) = *data.add(hi);
+                    *data.add(hi) = tmp;
+                    lo += 1;
+                    hi -= 1;
+                }
+            }
+            Ok(Value::Unit)
+        }
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+/// vec_fill(vec: i64, val: i64) -> () — set all existing elements to val
+fn builtin_vec_fill(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("vec_fill", 2, args.len()));
+    }
+    match (&args[0], &args[1]) {
+        (Value::Int(vec_ptr), Value::Int(val)) => {
+            if *vec_ptr == 0 {
+                return Err(RuntimeError::io_error("vec_fill: null vector"));
+            }
+            unsafe {
+                let header = *vec_ptr as *const i64;
+                let ptr = *header;
+                let len = *header.add(1) as usize;
+                let data = ptr as *mut i64;
+                for i in 0..len {
+                    *data.add(i) = *val;
+                }
+            }
+            Ok(Value::Unit)
+        }
+        _ => Err(RuntimeError::type_error("i64, i64", "other")),
     }
 }
 
@@ -9334,6 +9487,82 @@ fn builtin_str_to_int(args: &[Value]) -> InterpResult<Value> {
     Ok(Value::Int(s.trim().parse::<i64>().unwrap_or(0)))
 }
 
+// v0.98.6: str_count / str_pad_left / str_pad_right (Cycle 2857, interpreter-only)
+fn builtin_str_count(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("str_count", 2, args.len()));
+    }
+    let s = args[0].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[0].type_name()))?;
+    let sub = args[1].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[1].type_name()))?;
+    if sub.is_empty() { return Ok(Value::Int(0)); }
+    let count = s.matches(sub.as_str()).count() as i64;
+    Ok(Value::Int(count))
+}
+
+fn builtin_str_pad_left(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 3 {
+        return Err(RuntimeError::arity_mismatch("str_pad_left", 3, args.len()));
+    }
+    let s = args[0].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[0].type_name()))?;
+    let width = match &args[1] { Value::Int(n) => *n as usize, _ => return Err(RuntimeError::type_error("i64", args[1].type_name())) };
+    let pad = args[2].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[2].type_name()))?;
+    let pad_ch = pad.chars().next().unwrap_or(' ');
+    let current_len = s.chars().count();
+    if current_len >= width {
+        return Ok(Value::Str(std::rc::Rc::new(s.to_string())));
+    }
+    let needed = width - current_len;
+    let padding: String = std::iter::repeat(pad_ch).take(needed).collect();
+    Ok(Value::Str(std::rc::Rc::new(std::format!("{}{}", padding, s))))
+}
+
+fn builtin_str_pad_right(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 3 {
+        return Err(RuntimeError::arity_mismatch("str_pad_right", 3, args.len()));
+    }
+    let s = args[0].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[0].type_name()))?;
+    let width = match &args[1] { Value::Int(n) => *n as usize, _ => return Err(RuntimeError::type_error("i64", args[1].type_name())) };
+    let pad = args[2].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[2].type_name()))?;
+    let pad_ch = pad.chars().next().unwrap_or(' ');
+    let current_len = s.chars().count();
+    if current_len >= width {
+        return Ok(Value::Str(std::rc::Rc::new(s.to_string())));
+    }
+    let needed = width - current_len;
+    let padding: String = std::iter::repeat(pad_ch).take(needed).collect();
+    Ok(Value::Str(std::rc::Rc::new(std::format!("{}{}", s, padding))))
+}
+
+// v0.98.6: str_to_upper / str_to_lower / str_char_at (Cycle 2852, interpreter-only)
+fn builtin_str_to_upper(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("str_to_upper", 1, args.len()));
+    }
+    let s = args[0].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[0].type_name()))?;
+    Ok(Value::Str(std::rc::Rc::new(s.to_uppercase())))
+}
+
+fn builtin_str_to_lower(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("str_to_lower", 1, args.len()));
+    }
+    let s = args[0].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[0].type_name()))?;
+    Ok(Value::Str(std::rc::Rc::new(s.to_lowercase())))
+}
+
+fn builtin_str_char_at(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("str_char_at", 2, args.len()));
+    }
+    let s = args[0].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[0].type_name()))?;
+    let idx = match &args[1] {
+        Value::Int(n) => *n,
+        _ => return Err(RuntimeError::type_error("i64", args[1].type_name())),
+    };
+    let ch = s.chars().nth(idx as usize).unwrap_or('\0');
+    Ok(Value::Str(std::rc::Rc::new(ch.to_string())))
+}
+
 /// str_replace(s: String, old: String, new: String) -> String (v0.98.3, Cycle 2837, interpreter-only)
 /// Replaces all occurrences of old with new.
 fn builtin_str_replace(args: &[Value]) -> InterpResult<Value> {
@@ -9508,6 +9737,73 @@ fn builtin_svec_push(args: &[Value]) -> InterpResult<Value> {
     Ok(Value::Unit)
 }
 
+// v0.98.6: svec_sort / svec_contains / svec_remove / svec_clear (Cycle 2854, interpreter-only)
+fn builtin_svec_sort(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("svec_sort", 1, args.len()));
+    }
+    let idx = match &args[0] {
+        Value::Int(n) => *n as usize,
+        _ => return Err(RuntimeError::type_error("i64", args[0].type_name())),
+    };
+    let ok = SVEC_REGISTRY.with(|reg| {
+        reg.borrow_mut().get_mut(idx).and_then(|slot| slot.as_mut()).map(|v| { v.sort(); true }).unwrap_or(false)
+    });
+    if !ok { return Err(RuntimeError::io_error("svec_sort: invalid or freed handle")); }
+    Ok(Value::Unit)
+}
+
+fn builtin_svec_contains(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("svec_contains", 2, args.len()));
+    }
+    let idx = match &args[0] {
+        Value::Int(n) => *n as usize,
+        _ => return Err(RuntimeError::type_error("i64", args[0].type_name())),
+    };
+    let s = args[1].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[1].type_name()))?;
+    let found = SVEC_REGISTRY.with(|reg| {
+        reg.borrow().get(idx).and_then(|slot| slot.as_ref()).map(|v| v.contains(&s.to_string())).unwrap_or(false)
+    });
+    Ok(Value::Int(if found { 1 } else { 0 }))
+}
+
+fn builtin_svec_remove(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("svec_remove", 2, args.len()));
+    }
+    let idx = match &args[0] {
+        Value::Int(n) => *n as usize,
+        _ => return Err(RuntimeError::type_error("i64", args[0].type_name())),
+    };
+    let elem_idx = match &args[1] {
+        Value::Int(n) => *n as usize,
+        _ => return Err(RuntimeError::type_error("i64", args[1].type_name())),
+    };
+    let ok = SVEC_REGISTRY.with(|reg| {
+        reg.borrow_mut().get_mut(idx).and_then(|slot| slot.as_mut()).map(|v| {
+            if elem_idx < v.len() { v.remove(elem_idx); true } else { false }
+        }).unwrap_or(false)
+    });
+    if !ok { return Err(RuntimeError::io_error("svec_remove: invalid handle or index out of bounds")); }
+    Ok(Value::Unit)
+}
+
+fn builtin_svec_clear(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("svec_clear", 1, args.len()));
+    }
+    let idx = match &args[0] {
+        Value::Int(n) => *n as usize,
+        _ => return Err(RuntimeError::type_error("i64", args[0].type_name())),
+    };
+    let ok = SVEC_REGISTRY.with(|reg| {
+        reg.borrow_mut().get_mut(idx).and_then(|slot| slot.as_mut()).map(|v| { v.clear(); true }).unwrap_or(false)
+    });
+    if !ok { return Err(RuntimeError::io_error("svec_clear: invalid or freed handle")); }
+    Ok(Value::Unit)
+}
+
 // v0.98.5: str_hashmap_inc (Cycle 2850, interpreter-only)
 // Atomically increments the value for key by delta (inserts with delta if absent)
 fn builtin_str_hashmap_inc(args: &[Value]) -> InterpResult<Value> {
@@ -9522,6 +9818,31 @@ fn builtin_str_hashmap_inc(args: &[Value]) -> InterpResult<Value> {
     };
     let entry = map.entry(key).or_insert(0);
     *entry += delta;
+    Ok(Value::Unit)
+}
+
+// v0.98.6: str_hashmap_delete / str_hashmap_update (Cycle 2851, interpreter-only)
+fn builtin_str_hashmap_delete(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("str_hashmap_delete", 2, args.len()));
+    }
+    let map = unsafe { &mut *str_hashmap_ptr(&args[0])? };
+    let key = str_key(&args[1], "str_hashmap_delete")?;
+    map.remove(&key);
+    Ok(Value::Unit)
+}
+
+fn builtin_str_hashmap_update(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 3 {
+        return Err(RuntimeError::arity_mismatch("str_hashmap_update", 3, args.len()));
+    }
+    let map = unsafe { &mut *str_hashmap_ptr(&args[0])? };
+    let key = str_key(&args[1], "str_hashmap_update")?;
+    let val = match &args[2] {
+        Value::Int(n) => *n,
+        _ => return Err(RuntimeError::type_error("i64", args[2].type_name())),
+    };
+    map.insert(key, val);
     Ok(Value::Unit)
 }
 

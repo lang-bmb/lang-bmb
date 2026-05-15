@@ -1,36 +1,36 @@
-# BMB Session Handoff — 2026-05-15 (Cycles 2841-2850 — 언어 갭 해소 2차)
+# BMB Session Handoff — 2026-05-15 (Cycles 2851-2860 — 언어 갭 해소 3차)
 
-> **HEAD**: `ea584bab` (Cycle 2850 session close)
-> **이전 HEAD**: `38f84ebd` (Cycles 2834-2840)
+> **HEAD**: TBD (Cycle 2860 commit 후 갱신)
+> **이전 HEAD**: `ea584bab` (Cycles 2841-2850)
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2822, 120790 lines) — 이번 세션 bootstrap 변경 없음
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2851
+> **다음 세션 진입점**: Cycle 2861
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 2841-2850)
+## 이번 세션 작업 요약 (Cycles 2851-2860)
 
 ### 주요 변경 사항
 
 | Cycle | 제목 | 내용 |
 |-------|------|------|
-| 2841 | for-in-vec 구현 (M4-10) | `for x in vec_handle {}` — interpreter-only, types + interp + grammar |
-| 2842 | String interpolation | `"Hello {name}"` → `format("Hello {0}", name)` desugar (grammar + ast/expr.rs) |
-| 2843 | `{0}` numeric placeholder | format-arg passthrough + 기존 numeric interp 보존 |
-| 2844 | compound assignment +=/-=/*=//= | 4종 연산자. grammar.lalrpop BlockStmt desugar |
-| 2845 | %=, {{ escape + flaky fix | %=5번째 연산자 + `{{`/`}}` literal brace + test_index_write_and_read 경쟁 조건 수정 |
-| 2846 | str_hashmap 6종 완성 | 기존 v0.90.83 스텁 → 완전 구현. type signature 수정 (String key) |
-| 2847 | `set obj.field += e` 필드 복합 할당 | BlockExpr desugar 방식으로 LR(1) 충돌 해결 |
-| 2848 | `{expr}` 보간 | 산술/필드접근/단항 지원. InterpMini 미니파서 내장 |
-| 2849 | str_hashmap_keys/sorted_keys | SVEC_REGISTRY 재활용 → svec handle 반환 |
-| 2850 | svec_new/push + str_hashmap_inc | svec API 완성 + atomic word-freq increment |
+| 2851 | str_hashmap_delete + str_hashmap_update | 키 삭제 + 값 덮어쓰기 (11종 완성) |
+| 2852 | str_to_upper / str_to_lower / str_char_at | Unicode case변환 + 단문자 String 반환 |
+| 2853 | vec_remove / vec_reverse / vec_fill | vec API 갭 해소 (19종 완성) |
+| 2854 | svec_sort / svec_contains / svec_remove / svec_clear | svec API 완성 (10종) |
+| 2855 | `{fn_call(args)}` 보간 | InterpMini primary() 확장 → Expr::Call 생성 |
+| 2856 | pow_i64 / clamp_i64 / gcd_i64 | 정수 수학 builtins (free function) |
+| 2857 | str_count / str_pad_left / str_pad_right | 문자열 포맷팅 유틸리티 |
+| 2858 | dead_code 제거 + ROADMAP 갱신 | InterpMini::consume() 제거, M4-12 추가 |
+| 2859 | HANDOFF 갱신 | 이번 문서 |
+| 2860 | 최종 검증 + 커밋 | 전체 테스트 재확인 + git commit |
 
 ### 테스트 변화
-2370 → **2375** (+5 integration tests)
+2375 → **2382** (+7 integration tests)
 
 ---
 
-## M4 ① 언어 갭 현황 (2850 기준)
+## M4 ① 언어 갭 현황 (2860 기준)
 
 | 기능 | 상태 |
 |------|------|
@@ -55,21 +55,27 @@
 | `{expr}` 복잡 표현식 보간 | ✅ Cycle 2848, interpreter-only |
 | str_hashmap_keys/sorted_keys | ✅ Cycle 2849, interpreter-only |
 | svec_new/push + str_hashmap_inc | ✅ Cycle 2850, interpreter-only |
+| str_hashmap_delete + str_hashmap_update | ✅ Cycle 2851, interpreter-only |
+| str_to_upper / str_to_lower / str_char_at | ✅ Cycle 2852, interpreter-only |
+| vec_remove / vec_reverse / vec_fill | ✅ Cycle 2853, interpreter-only |
+| svec_sort / svec_contains / svec_remove / svec_clear | ✅ Cycle 2854, interpreter-only |
+| `{fn_call(args)}` 함수 호출 보간 | ✅ Cycle 2855, interpreter-only |
+| pow_i64 / clamp_i64 / gcd_i64 | ✅ Cycle 2856, interpreter-only |
+| str_count / str_pad_left / str_pad_right | ✅ Cycle 2857, interpreter-only |
 
 ---
 
 ## 변경 파일 (이번 세션 전체)
 
 **Rust 소스**:
-- `bmb/src/grammar.lalrpop`: for-in-vec grammar + compound assignment BlockStmt 5종 + `{expr}` interp이 이미 Expr에 desugar됨 + BlockExpr 필드복합할당 5종
-- `bmb/src/ast/expr.rs`: `desugar_string_interp` (ident→complex expr 확장) + `InterpMini` 미니파서 (~120줄)
-- `bmb/src/interp/eval.rs`: for-in-vec eval + str_hashmap 6종 + svec_new/push + str_hashmap_keys/sorted_keys + str_hashmap_inc
-- `bmb/src/types/mod.rs`: 위 모든 빌트인 타입 서명 등록
-- `bmb/tests/integration.rs`: 5개 test 함수 추가 (field_compound, str_interp_expr, str_hashmap_keys, svec_new_push, str_hashmap_inc)
+- `bmb/src/interp/eval.rs`: 22종 builtin 구현 + 등록 (Cycles 2851-2857)
+- `bmb/src/ast/expr.rs`: InterpMini 확장 (call_args + primary 함수호출) + consume() 제거
+- `bmb/src/types/mod.rs`: 22종 타입 서명 추가
+- `bmb/tests/integration.rs`: 7개 test 함수 추가 (2375→2382)
 
 **문서**:
-- `ecosystem/bmb-ai-bench/protocol/bmb_reference.md`: 필드복합할당 패턴 + {expr} 보간 패턴 + str_hashmap_keys 순회 패턴 + svec_new/push + str_hashmap_inc 갱신
-- `claudedocs/ROADMAP.md`: 최신화 (Cycle 2850까지)
+- `ecosystem/bmb-ai-bench/protocol/bmb_reference.md`: 전 사이클 신규 API 문서화
+- `claudedocs/ROADMAP.md`: 최신화 (Cycle 2860까지) + M4-12 추가
 
 ---
 
@@ -77,22 +83,21 @@
 
 ### Structural Improvement Proposals (Carry-Forward)
 1. **`for x in svec {}`** — `Value::SvecHandle(usize)` 별도 값 타입 필요. 현재 svec/vec 모두 `i64`라 구분 불가.
-2. **`{fn_call(args)}` 보간** — InterpMini에 함수 호출 파싱 추가. args 재귀적으로 복잡.
-3. **필드 복합 할당 native 지원** — `set obj.field += e`가 codegen에서도 동작하도록 확장.
-4. **`str_hashmap_delete(map, key)`** — 키 삭제 기능.
+2. **필드 복합 할당 native 지원** — `set obj.field += e`가 codegen에서도 동작하도록 확장.
 
 ### 다음 권장 작업
 - **B축 재측정** (언어 갭 충분히 해소됨 — baseline 2026-08-13 stale 전에 재측정 고려)
-- 또는 계속 언어 갭 해소 (위 Structural Proposals)
+- **`for x in svec {}`** (`Value::SvecHandle` 도입)
+- 또는 새로운 M4 언어 갭 발굴
 
 ---
 
 ## 기술 인사이트 (다음 세션 참고)
 
-1. **LR(1) 충돌 패턴**: `"set" RawIdent "." Ident "+="` 형태를 BlockStmt에 직접 추가 시 shift-reduce 충돌. 해결책: `BlockExpr`에서 `SpannedUnaryExpr` 전체 파싱 후 연산자 토큰으로 분기.
+1. **InterpMini 함수 호출 파싱**: `primary()` 내 ident 읽은 후 `(` 체크 → `call_args()` → `Expr::Call`. 재귀적으로 인수도 `expr()` 호출하므로 중첩 함수 호출 자동 지원.
 
-2. **desugar_string_interp는 파싱 타임 호출**: grammar action에서 직접 호출됨 → 서브-파서 내장 필요. `InterpMini` 재귀 하강 파서가 분리된 구조체로 깔끔하게 동작.
+2. **svec vs vec 핸들 구분 불가**: 두 핸들 모두 `i64`. svec 핸들은 SVEC_REGISTRY index, vec 핸들은 heap ptr. `Value::SvecHandle(usize)` 추가 시 해결 가능.
 
-3. **svec vs vec 핸들 구분 불가**: 두 핸들 모두 `i64`. svec 핸들은 작은 정수(registry index), vec 핸들은 큰 포인터값이지만 타입 시스템상 구분 없음. `Value::SvecHandle(usize)` 추가 시 해결 가능.
+3. **str_hashmap raw ptr + SVEC_REGISTRY 혼합**: str_hashmap은 `Box<HashMap<String, i64>>` raw ptr, svec는 SVEC_REGISTRY index. 두 방식의 lifetime 관리가 다름 — free 순서 중요.
 
-4. **str_hashmap raw ptr + SVEC_REGISTRY 혼합**: str_hashmap은 `Box<HashMap<String, i64>>` raw ptr (heap), svec는 `thread_local` SVEC_REGISTRY index. 두 방식의 lifetime 관리가 다름 — free 순서 중요.
+4. **InterpMini::consume() 패턴**: 초기 설계 시 skip+advance를 하나로 묶었으나 `expect()` 만으로 충분. dead_code 경고 시 즉시 제거.
