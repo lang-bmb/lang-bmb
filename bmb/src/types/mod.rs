@@ -414,6 +414,8 @@ impl TypeChecker {
         // str_len(s: String) -> i64 (Unicode character count, O(n))
         // Note: s.len() returns byte length (O(1)), str_len returns char count
         functions.insert("str_len".to_string(), (vec![Type::String], Type::I64));
+        // str_is_empty(s: String) -> i64 (1 if empty, 0 otherwise; v0.98.9+)
+        functions.insert("str_is_empty".to_string(), (vec![Type::String], Type::I64));
         // int_to_string(n: i64) -> String (convert integer to string representation)
         functions.insert("int_to_string".to_string(), (vec![Type::I64], Type::String));
         // v0.98.1: String processing builtins (Cycle 2828)
@@ -605,6 +607,8 @@ impl TypeChecker {
         functions.insert("str_hashmap_keys".to_string(), (vec![Type::I64], svec_t.clone()));
         // str_hashmap_sorted_keys(map: i64) -> i64 (svec handle, alphabetically sorted)
         functions.insert("str_hashmap_sorted_keys".to_string(), (vec![Type::I64], svec_t.clone()));
+        // str_hashmap_values(map: i64) -> i64 (vec handle of i64 values, Cycle 2894)
+        functions.insert("str_hashmap_values".to_string(), (vec![Type::I64], Type::I64));
         // str_hashmap_inc(map: i64, key: String, delta: i64) -> () — increment value by delta (Cycle 2850, interpreter-only)
         functions.insert("str_hashmap_inc".to_string(), (vec![Type::I64, Type::String, Type::I64], Type::Unit));
         // str_hashmap_delete(map: i64, key: String) -> () — remove key (Cycle 2851, interpreter-only)

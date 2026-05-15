@@ -2564,6 +2564,8 @@ int64_t bmb_str_hashmap_update(int64_t handle, BmbString* key, int64_t val) {
     str_hashmap_insert(handle, (int64_t)key, val);
     return 0;
 }
+// v0.98.10: str_hashmap_values → vec handle of i64 values (Cycle 2894)
+int64_t bmb_str_hashmap_values(int64_t handle) { return str_hashmap_values(handle); }
 // NOTE: bmb_str_hashmap_keys / bmb_str_hashmap_sorted_keys defined after BmbSvec infrastructure below
 
 // v0.98.9: BmbSvec (String Vector) C infrastructure (Cycle 2886)

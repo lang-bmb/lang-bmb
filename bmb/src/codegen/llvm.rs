@@ -1295,6 +1295,9 @@ impl<'ctx> LlvmContext<'ctx> {
         // v0.98.10: str_hashmap_update (Cycle 2892)
         let shm_update_t = i64_type.fn_type(&[i64_type.into(), ptr_type.into(), i64_type.into()], false);
         self.functions.insert("str_hashmap_update".to_string(), self.module.add_function("bmb_str_hashmap_update", shm_update_t, None));
+        // v0.98.10: str_hashmap_values → vec handle (Cycle 2894)
+        let shm_vals_t = i64_type.fn_type(&[i64_type.into()], false);
+        self.functions.insert("str_hashmap_values".to_string(), self.module.add_function("bmb_str_hashmap_values", shm_vals_t, None));
 
         // v0.98.9: str_split / str_split_whitespace / str_lines → svec handle (Cycle 2887)
         let str_split_type = i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);

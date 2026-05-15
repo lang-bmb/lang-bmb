@@ -1,0 +1,13 @@
+fn main() -> i64 = {
+  let h = str_hashmap_new();
+  str_hashmap_insert(h, "a", 10);
+  str_hashmap_insert(h, "b", 20);
+  str_hashmap_insert(h, "c", 30);
+  let vals = str_hashmap_values(h);
+  let n = vec_len(vals);
+  let s = vec_sum(vals);
+  println(n);
+  println(s);
+  str_hashmap_free(h);
+  0
+};

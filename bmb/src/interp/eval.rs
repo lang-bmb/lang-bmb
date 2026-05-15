@@ -291,6 +291,7 @@ impl Interpreter {
             .insert("char_to_string".to_string(), builtin_char_to_string);
         // v0.67: String utilities
         self.builtins.insert("str_len".to_string(), builtin_str_len);
+        self.builtins.insert("str_is_empty".to_string(), builtin_str_is_empty);
         self.builtins.insert("str_contains".to_string(), builtin_str_contains);
         self.builtins.insert("str_starts_with".to_string(), builtin_str_starts_with);
         self.builtins.insert("str_ends_with".to_string(), builtin_str_ends_with);
@@ -423,6 +424,8 @@ impl Interpreter {
         self.builtins.insert("str_hashmap_inc".to_string(), builtin_str_hashmap_inc);
         self.builtins.insert("str_hashmap_delete".to_string(), builtin_str_hashmap_delete);
         self.builtins.insert("str_hashmap_update".to_string(), builtin_str_hashmap_update);
+        // v0.98.10: str_hashmap_values → vec handle of i64 values (Cycle 2894)
+        self.builtins.insert("str_hashmap_values".to_string(), builtin_str_hashmap_values);
         self.builtins.insert("svec_new".to_string(), builtin_svec_new);
         self.builtins.insert("svec_push".to_string(), builtin_svec_push);
         // v0.98.6: svec_sort / svec_contains / svec_remove / svec_clear (Cycle 2854, interpreter-only)
@@ -9498,6 +9501,14 @@ fn builtin_char_to_string(args: &[Value]) -> InterpResult<Value> {
 /// str_len(s: String) -> i64
 /// Returns the Unicode character count of a string.
 /// Note: This is O(n) for UTF-8. Use s.len() for O(1) byte length.
+fn builtin_str_is_empty(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("str_is_empty", 1, args.len()));
+    }
+    let s = args[0].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[0].type_name()))?;
+    Ok(Value::Int(if s.is_empty() { 1 } else { 0 }))
+}
+
 /// v0.67: Added for string utilities
 fn builtin_str_len(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 1 {
@@ -10022,6 +10033,21 @@ fn builtin_str_hashmap_delete(args: &[Value]) -> InterpResult<Value> {
     let key = str_key(&args[1], "str_hashmap_delete")?;
     map.remove(&key);
     Ok(Value::Unit)
+}
+
+// v0.98.10: str_hashmap_values → vec handle of i64 values (Cycle 2894)
+fn builtin_str_hashmap_values(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("str_hashmap_values", 1, args.len()));
+    }
+    let map = unsafe { &*str_hashmap_ptr(&args[0])? };
+    let values: Vec<Value> = map.values().map(|&v| Value::Int(v)).collect();
+    // Create vec using the same raw allocation as vec_new/vec_push
+    let vec_val = builtin_vec_new(&[])?;
+    for val in values {
+        builtin_vec_push(&[vec_val.clone(), val])?;
+    }
+    Ok(vec_val)
 }
 
 fn builtin_str_hashmap_update(args: &[Value]) -> InterpResult<Value> {

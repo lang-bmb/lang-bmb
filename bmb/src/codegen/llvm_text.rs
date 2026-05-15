@@ -880,6 +880,8 @@ impl TextCodeGen {
         writeln!(out, "declare i64 @bmb_svec_clear(i64) nounwind")?;
         // v0.98.10: str_hashmap_update (Cycle 2892)
         writeln!(out, "declare i64 @bmb_str_hashmap_update(i64, ptr nonnull nocapture readonly, i64) nounwind")?;
+        // v0.98.10: str_hashmap_values → vec handle of i64 values (Cycle 2894)
+        writeln!(out, "declare i64 @bmb_str_hashmap_values(i64) nounwind")?;
         // v0.98.9: str_split / str_split_whitespace / str_lines → svec handle (Cycle 2887)
         writeln!(out, "declare i64 @bmb_str_split(ptr nonnull nocapture readonly, ptr nonnull nocapture readonly) nounwind")?;
         writeln!(out, "declare i64 @bmb_str_split_whitespace(ptr nonnull nocapture readonly) nounwind")?;
@@ -6626,6 +6628,8 @@ impl TextCodeGen {
                         "svec_clear" => "bmb_svec_clear",
                         // v0.98.10: str_hashmap_update (Cycle 2892)
                         "str_hashmap_update" => "bmb_str_hashmap_update",
+                        // v0.98.10: str_hashmap_values (Cycle 2894)
+                        "str_hashmap_values" => "bmb_str_hashmap_values",
                         // v0.98.9: str_split / str_split_whitespace / str_lines (Cycle 2887)
                         "str_split" => "bmb_str_split",
                         "str_split_whitespace" => "bmb_str_split_whitespace",
@@ -9219,8 +9223,9 @@ impl TextCodeGen {
             | "svec_sort" | "bmb_svec_sort"
             | "svec_remove" | "bmb_svec_remove"
             | "svec_clear" | "bmb_svec_clear"
-            // v0.98.10: str_hashmap_update (Cycle 2892)
-            | "str_hashmap_update" | "bmb_str_hashmap_update" => "i64",
+            // v0.98.10: str_hashmap_update / str_hashmap_values (Cycle 2892/2894)
+            | "str_hashmap_update" | "bmb_str_hashmap_update"
+            | "str_hashmap_values" | "bmb_str_hashmap_values" => "i64",
 
             // i64 return - str_split / str_split_whitespace / str_lines (Cycle 2887)
             | "str_split" | "bmb_str_split"
