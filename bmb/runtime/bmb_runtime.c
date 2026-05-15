@@ -137,6 +137,8 @@ void bmb_println_f64(double f) { printf("%.9f\n", f); }
 void bmb_print_f64(double f) { printf("%.9f", f); }
 int64_t bmb_read_int() { int64_t n; scanf("%" SCNd64, &n); return n; }
 int64_t read_int(void) { return bmb_read_int(); }
+// v0.98.8: read_f64 — read double from stdin (Cycle 2875)
+double bmb_read_f64(void) { double f; scanf("%lf", &f); return f; }
 void bmb_assert(int cond) {
     if (!cond) {
         if (g_ffi_active) bmb_ffi_trigger("assertion failed");
@@ -221,6 +223,25 @@ BmbString* bmb_string_trim(BmbString* s) {
     while (end > start && (s->data[end-1] == ' ' || s->data[end-1] == '\t' ||
            s->data[end-1] == '\n' || s->data[end-1] == '\r')) end--;
     return bmb_string_slice(s, start, end);
+}
+
+// v0.98.8: str_trim_left / str_trim_right (Cycle 2873)
+BmbString* bmb_string_trim_left(BmbString* s) {
+    if (!s || s->len == 0) return s;
+    int64_t start = 0;
+    while (start < s->len && (s->data[start] == ' ' || s->data[start] == '\t' ||
+           s->data[start] == '\n' || s->data[start] == '\r')) start++;
+    if (start == 0) return s;
+    return bmb_string_slice(s, start, s->len);
+}
+
+BmbString* bmb_string_trim_right(BmbString* s) {
+    if (!s || s->len == 0) return s;
+    int64_t end = s->len;
+    while (end > 0 && (s->data[end-1] == ' ' || s->data[end-1] == '\t' ||
+           s->data[end-1] == '\n' || s->data[end-1] == '\r')) end--;
+    if (end == s->len) return s;
+    return bmb_string_slice(s, 0, end);
 }
 
 BmbString* bmb_string_replace(BmbString* s, BmbString* old_str, BmbString* new_str) {
@@ -340,6 +361,22 @@ BmbString* bmb_string_pad_right(BmbString* s, int64_t width, int64_t ch) {
     memset(data + s->len, (char)ch, (size_t)pad);
     data[width] = '\0';
     return bmb_string_wrap(data);
+}
+
+// v0.98.8: str_substr → bmb_string_substr(s, start, len) wraps bmb_string_slice (Cycle 2874)
+BmbString* bmb_string_substr(const BmbString* s, int64_t start, int64_t len) {
+    return bmb_string_slice(s, start, start + len);
+}
+
+// v0.98.8: str_pad_left/right with String pad char (Cycle 2874)
+BmbString* bmb_str_pad_left(BmbString* s, int64_t width, BmbString* pad_str) {
+    int64_t ch = (pad_str && pad_str->len > 0) ? (uint8_t)pad_str->data[0] : ' ';
+    return bmb_string_pad_left(s, width, ch);
+}
+
+BmbString* bmb_str_pad_right(BmbString* s, int64_t width, BmbString* pad_str) {
+    int64_t ch = (pad_str && pad_str->len > 0) ? (uint8_t)pad_str->data[0] : ' ';
+    return bmb_string_pad_right(s, width, ch);
 }
 
 // v0.95: Find last occurrence of substring
@@ -902,6 +939,31 @@ int64_t bmb_ctz(int64_t n) {
     return count;
 }
 
+// v0.98.8: Integer math (Cycle 2876)
+int64_t bmb_pow_i64(int64_t base, int64_t exp) {
+    if (exp < 0) return 0;
+    int64_t result = 1;
+    while (exp > 0) {
+        if (exp & 1) result *= base;
+        base *= base;
+        exp >>= 1;
+    }
+    return result;
+}
+
+int64_t bmb_gcd_i64(int64_t a, int64_t b) {
+    if (a < 0) a = -a;
+    if (b < 0) b = -b;
+    while (b != 0) { int64_t t = b; b = a % b; a = t; }
+    return a;
+}
+
+int64_t bmb_clamp_i64(int64_t x, int64_t lo, int64_t hi) {
+    if (x < lo) return lo;
+    if (x > hi) return hi;
+    return x;
+}
+
 int64_t bmb_bit_reverse(int64_t n) {
     uint64_t x = (uint64_t)n;
     x = ((x >> 1) & 0x5555555555555555ULL) | ((x & 0x5555555555555555ULL) << 1);
@@ -949,6 +1011,27 @@ BmbString* bmb_int_to_string(int64_t n) {
 
 // v0.97: Wrapper for non-prefixed name
 BmbString* int_to_string(int64_t n) { return bmb_int_to_string(n); }
+
+// v0.98.8: int_to_hex / int_to_bin (Cycle 2873)
+BmbString* bmb_int_to_hex(int64_t n) {
+    char buf[17];  // max 16 hex digits + null
+    snprintf(buf, sizeof(buf), "%" PRIx64, (uint64_t)n);
+    return bmb_string_from_cstr(buf);
+}
+
+BmbString* bmb_int_to_bin(int64_t n) {
+    uint64_t u = (uint64_t)n;
+    if (u == 0) return bmb_string_from_cstr("0");
+    // Find highest set bit
+    int bits = 64;
+    while (bits > 1 && !((u >> (bits - 1)) & 1)) bits--;
+    char* buf = (char*)bmb_alloc(bits + 1);
+    for (int i = 0; i < bits; i++) {
+        buf[i] = ((u >> (bits - 1 - i)) & 1) ? '1' : '0';
+    }
+    buf[bits] = '\0';
+    return bmb_string_wrap(buf);
+}
 
 // v0.60.244: Fast integer-to-BmbString conversion for bootstrap compiler
 // Returns BmbString* which matches the bootstrap's String type

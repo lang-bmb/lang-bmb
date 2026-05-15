@@ -1,0 +1,61 @@
+fn main() -> i64 = {
+  let v = vec_new();
+  vec_push(v, 30);
+  vec_push(v, 10);
+  vec_push(v, 20);
+  vec_push(v, 10);
+
+  let s = vec_sum(v);
+  println(s);
+
+  let mx = vec_max(v);
+  println(mx);
+
+  let mn = vec_min(v);
+  println(mn);
+
+  let has10 = vec_contains(v, 10);
+  println(has10);
+
+  let has99 = vec_contains(v, 99);
+  println(has99);
+
+  let idx = vec_index_of(v, 20);
+  println(idx);
+
+  let no_idx = vec_index_of(v, 99);
+  println(no_idx);
+
+  let removed = vec_remove(v, 0);
+  println(removed);
+
+  let len_after = vec_len(v);
+  println(len_after);
+
+  vec_sort(v);
+  let first = vec_get(v, 0);
+  println(first);
+
+  let v2 = vec_new();
+  vec_push(v2, 3);
+  vec_push(v2, 1);
+  vec_push(v2, 2);
+  vec_reverse(v2);
+  let r0 = vec_get(v2, 0);
+  println(r0);
+
+  let v3 = vec_new();
+  vec_push(v3, 0);
+  vec_push(v3, 0);
+  vec_push(v3, 0);
+  vec_fill(v3, 7);
+  let f0 = vec_get(v3, 0);
+  let f2 = vec_get(v3, 2);
+  println(f0);
+  println(f2);
+
+  vec_free(v);
+  vec_free(v2);
+  vec_free(v3);
+  0
+};

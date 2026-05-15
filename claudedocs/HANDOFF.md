@@ -1,36 +1,67 @@
-# BMB Session Handoff — 2026-05-15 (Cycles 2861-2870 — 언어 갭 해소 4차)
+# BMB Session Handoff — 2026-05-15 (Cycles 2871-2876 — interpreter-only → native 포팅 1차)
 
-> **HEAD**: `7eecdf8f`
-> **이전 HEAD**: `21e91395` (Cycles 2851-2860)
+> **HEAD**: `7eecdf8f` (이번 세션 커밋 예정)
+> **이전 HEAD**: `7eecdf8f` (Cycles 2861-2870)
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2822, 120790 lines) — 이번 세션 bootstrap 변경 없음
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2871
+> **다음 세션 진입점**: Cycle 2877
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 2861-2870)
+## 이번 세션 작업 요약 (Cycles 2871-2876)
 
 ### 주요 변경 사항
 
 | Cycle | 제목 | 내용 |
 |-------|------|------|
-| 2861 | SvecHandle 타입 + for-in-svec | Value::SvecHandle(usize) + SVEC_REGISTRY 반복 |
-| 2862 | 타입 체커 for-in svec String 추론 | Type::Named("SvecHandle") + for-in 타입 서명 13종 |
-| 2863 | str_to_f64 / read_f64 / str_lines | float 파싱 + 라인 분할 builtins |
-| 2864 | bmb_reference 정비 (stale 수정) | {fn_call()} 정정 + v0.98.7 API 문서화 |
-| 2865 | f64 수학 free function 8종 | log/log2/log10/exp/round/tan/atan/atan2 |
-| 2866 | min_f64/max_f64/clamp_f64 + str_trim_left/right | f64 min/max/clamp + 방향별 trim |
-| 2867 | str_split_whitespace + int_to_hex/bin | 공백 분리 + 진수 변환 |
-| 2868 | str_reverse + popcount + svec_index_of | 회문 체크 + 비트 count + svec 위치 검색 |
-| 2869 | bmb_reference 비트 연산 + 알고리즘 패턴 | band/bor/bxor 문서화 + Palindrome/Tokenized 패턴 |
-| 2870 | HANDOFF/ROADMAP 정리 + 커밋 | 이번 문서 |
+| 2871 | str free-functions 12종 native 포팅 | str_len/contains/starts_with/ends_with/find/trim/to_upper/to_lower/replace/repeat/to_int + str_to_f64 |
+| 2872 | vec 집계/변환 9종 native 포팅 | vec_sum/min/max/sort/contains/index_of/remove/reverse/fill |
+| 2873 | str_trim_left/right/reverse + int_to_hex/bin native 포팅 | C 런타임 새 함수 4종 추가 |
+| 2874 | str_substr/count/pad_left/pad_right native 포팅 | BMB↔C 시그니처 불일치 래퍼 패턴 |
+| 2875 | f64 수학 free functions 11종 native 포팅 | log/log2/log10/exp/round/tan/atan/atan2/min_f64/max_f64/clamp_f64 |
+| 2876 | 정수 수학 4종 native 포팅 + P0 버그 수정 | pow_i64/gcd_i64/clamp_i64/popcount + 음수 arg i32 버그 |
 
 ### 테스트 변화
-2382 → **2388** (+6 integration tests)
+2388 (이번 세션 새 integration test 없음 — native 포팅 테스트는 별도 `.bmb` 파일)
 
 ---
 
-## M4 ① 언어 갭 현황 (2870 기준)
+## native 포팅 현황 (2876 기준)
+
+### ✅ interpreter + native (이번 세션 완료)
+
+| 함수 | native 포팅 Cycle |
+|------|-----------------|
+| str_len, str_contains, str_starts_with, str_ends_with | 2871 |
+| str_find, str_trim, str_to_upper, str_to_lower | 2871 |
+| str_replace, str_repeat, str_to_int, str_to_f64 | 2871 |
+| vec_sum, vec_min, vec_max, vec_sort | 2872 |
+| vec_contains, vec_index_of, vec_remove, vec_reverse, vec_fill | 2872 |
+| str_trim_left, str_trim_right, str_reverse | 2873 |
+| int_to_hex, int_to_bin | 2873 |
+| str_substr, str_count, str_pad_left, str_pad_right | 2874 |
+| log, log2, log10, exp, round, tan, atan, atan2 | 2875 |
+| min_f64, max_f64, clamp_f64 | 2875 |
+| pow_i64, gcd_i64, clamp_i64, popcount | 2876 |
+
+### ⚠️ 아직 interpreter-only
+
+| 기능 | 상태 | 복잡도 |
+|------|------|--------|
+| str_split (→ svec) | interpreter-only | 高 — svec 핸들 native 표현 필요 |
+| str_split_whitespace (→ svec) | interpreter-only | 高 |
+| str_lines (→ svec) | interpreter-only | 高 |
+| svec_* 전체 | interpreter-only | 高 — SVEC_REGISTRY native 표현 필요 |
+| str_hashmap_* 전체 | interpreter-only | 高 |
+| format() variadic | interpreter-only | 高 |
+| str_char_at (→ String) | interpreter-only | 中 — 타입 불일치 |
+| to_string\<T\> | interpreter-only | 中 |
+| while let / for-in-svec | interpreter-only | 中 |
+| str_is_empty | 미등록 | 低 |
+
+---
+
+## M4 ① 언어 갭 현황 (2876 기준)
 
 | 기능 | 상태 |
 |------|------|
@@ -44,9 +75,9 @@
 | str_split + svec_\* | ✅ Cycle 2833, interpreter-only |
 | while let PAT = expr {} | ✅ Cycle 2834, interpreter-only |
 | format(template, ...args) | ✅ Cycle 2835, interpreter-only |
-| vec_sum/max/min/sort | ✅ Cycle 2836, interpreter-only |
-| str_replace + str_repeat | ✅ Cycle 2837, interpreter-only |
-| svec_join + vec_contains + vec_index_of | ✅ Cycle 2838, interpreter-only |
+| vec_sum/max/min/sort | ✅ Cycle 2836, interpreter+native (2872) |
+| str_replace + str_repeat | ✅ Cycle 2837, interpreter+native (2871) |
+| svec_join + vec_contains + vec_index_of | ✅ Cycle 2838, interpreter+native (2872) |
 | for-in-vec | ✅ Cycle 2841, interpreter-only |
 | String interpolation `"Hello {name}"` | ✅ Cycle 2842, interpreter-only |
 | compound assignment `+=/-=/*=//=/%=` | ✅ Cycle 2844-2845, interpreter+native |
@@ -56,65 +87,76 @@
 | str_hashmap_keys/sorted_keys | ✅ Cycle 2849, interpreter-only |
 | svec_new/push + str_hashmap_inc | ✅ Cycle 2850, interpreter-only |
 | str_hashmap_delete + str_hashmap_update | ✅ Cycle 2851, interpreter-only |
-| str_to_upper / str_to_lower / str_char_at | ✅ Cycle 2852, interpreter-only |
-| vec_remove / vec_reverse / vec_fill | ✅ Cycle 2853, interpreter-only |
+| str_to_upper / str_to_lower / str_char_at | ✅ Cycle 2852, str_to_upper/lower native (2871) |
+| vec_remove / vec_reverse / vec_fill | ✅ Cycle 2853, interpreter+native (2872) |
 | svec_sort / svec_contains / svec_remove / svec_clear | ✅ Cycle 2854, interpreter-only |
 | `{fn_call(args)}` 함수 호출 보간 | ✅ Cycle 2855, interpreter-only |
-| pow_i64 / clamp_i64 / gcd_i64 | ✅ Cycle 2856, interpreter-only |
-| str_count / str_pad_left / str_pad_right | ✅ Cycle 2857, interpreter-only |
+| pow_i64 / clamp_i64 / gcd_i64 | ✅ Cycle 2856, interpreter+native (2876) |
+| str_count / str_pad_left / str_pad_right | ✅ Cycle 2857, interpreter+native (2874) |
 | Value::SvecHandle + for-in-svec | ✅ Cycle 2861-2862, interpreter-only |
-| str_to_f64 / read_f64 / str_lines | ✅ Cycle 2863, interpreter-only |
-| f64 수학 free function 8종 (log~atan2) | ✅ Cycle 2865, interpreter-only |
-| min_f64 / max_f64 / clamp_f64 | ✅ Cycle 2866, interpreter-only |
-| str_trim_left / str_trim_right | ✅ Cycle 2866, interpreter-only |
+| str_to_f64 / read_f64 / str_lines | ✅ Cycle 2863, str_to_f64+read_f64 native (2875) |
+| f64 수학 free function 8종 (log~atan2) | ✅ Cycle 2865, interpreter+native (2875) |
+| min_f64 / max_f64 / clamp_f64 | ✅ Cycle 2866, interpreter+native (2875) |
+| str_trim_left / str_trim_right | ✅ Cycle 2866, interpreter+native (2873) |
 | str_split_whitespace | ✅ Cycle 2867, interpreter-only |
-| int_to_hex / int_to_bin | ✅ Cycle 2867, interpreter-only |
-| str_reverse / popcount / svec_index_of | ✅ Cycle 2868, interpreter-only |
+| int_to_hex / int_to_bin | ✅ Cycle 2867, interpreter+native (2873) |
+| str_reverse / popcount / svec_index_of | ✅ Cycle 2868, str_reverse+popcount native (2873/2876) |
 
 ---
 
 ## 변경 파일 (이번 세션 전체)
 
 **Rust 소스**:
-- `bmb/src/interp/eval.rs`: 27종 builtin 구현 + 등록 (Cycles 2861-2868) + Value::SvecHandle 활용
-- `bmb/src/interp/value.rs`: Value::SvecHandle(usize) 추가 (Cycle 2861)
-- `bmb/src/types/mod.rs`: 27종 타입 서명 추가 (Cycles 2862-2868)
-- `bmb/tests/integration.rs`: 6개 test 함수 추가 (2382→2388)
+- `bmb/src/codegen/llvm_text.rs`: 35종+ builtin native 포팅 (IR선언 + name mapping + return type + param type)
+- `bmb/runtime/bmb_runtime.c`: C 래퍼 함수 추가 (trim_left/right, int_to_hex/bin, substr, pad_left/right, pow_i64, gcd_i64, clamp_i64, read_f64)
 
-**문서**:
-- `ecosystem/bmb-ai-bench/protocol/bmb_reference.md`: 전체 v0.98.7 API 문서화 + stale 수정 + 패턴 2종 추가
-- `claudedocs/ROADMAP.md`: 최신화
+**테스트 파일**:
+- `tests/native_str_builtins.bmb`: str 12종 native 테스트
+- `tests/native_vec_builtins.bmb`: vec 9종 native 테스트
+- `tests/native_str2_builtins.bmb`: str_trim/reverse/hex/bin 테스트
+- `tests/native_str3_builtins.bmb`: substr/count/pad 테스트
+- `tests/native_f64_builtins.bmb`: f64 수학 11종 테스트
+- `tests/native_int_math_builtins.bmb`: 정수 수학 4종 테스트
+
+**사이클 로그**:
+- `claudedocs/cycle-logs/cycle-2871.md` ~ `cycle-2876.md`
 
 ---
 
 ## 다음 세션 우선순위
 
 ### Carry-Forward (Actionable)
-없음 — 모든 계획된 작업 완료.
+없음.
 
 ### Structural Improvement Proposals
-1. **필드 복합 할당 native 지원** — `set obj.field += e`가 codegen(llvm_text.rs)에서도 동작하도록 확장. 현재 interpreter-only.
-2. **bmb_reference 예시 통합 테스트** — 패턴 코드 예시를 실제 integration test로 연결하는 체계 구축 (stale 방지)
+1. **음수 리터럴 i32 narrow 근본 수정** — 음수 arg가 alloca i32로 생성되는 codegen 버그의 root cause 파악 및 fix (현재 runtime_param_type 등록으로 우회). 관련: `build_place_type_map`에서 place_type이 i32로 설정되는 경로.
+2. **필드 복합 할당 native 지원** — `set obj.field += e`가 llvm_text.rs에서도 동작하도록. 현재 interpreter-only.
+3. **bmb_reference interpreter-only 경고 해제** — 이번 세션에서 많은 함수가 native 포팅됨 → bmb_reference.md의 "(interpreter-only)" 경고 제거 필요.
 
 ### Pending Human Decisions
-- **B축 재측정**: `BMB_BENCH_API_KEY` 환경변수 필요. 언어 갭 충분히 해소됨 — baseline 2026-08-13 stale 기한 이전에 재측정 권장.
+- **B축 재측정**: `BMB_BENCH_API_KEY` 환경변수 필요. 언어 갭 + native 포팅 진전 — baseline 2026-08-13 stale 기한 이전에 재측정 권장.
 - **tier3-spawn-overhead**: ISSUE-20260512 Option A/B/C 선택 (HUMAN 결정 필요).
 
 ### 다음 권장 작업 (우선순위 순)
-1. **B축 재측정** — 이번 4차 세션으로 언어 갭 ~35종 해소. "AI가 BMB로 자연스럽게 코드 작성 가능"을 주장할 수 있는 수준.
-2. **새로운 M4 언어 갭 발굴** — B축 측정에서 실패하는 패턴 분석 후 추가 갭 식별.
-3. **interpreter-only → native 포팅** — 주요 str/svec/hashmap builtins의 LLVM 코드젠 지원.
+1. **B축 재측정** — native 포팅 35종 완료로 `bmb build`에서도 실행 가능한 프로그램 범위 대폭 확대.
+2. **bmb_reference 업데이트** — interpreter-only 경고 해제 + native 포팅 표시.
+3. **str_is_empty native 포팅** — 미등록 함수, types/mod.rs + llvm_text.rs 소규모 추가.
+4. **음수 리터럴 i32 narrow 근본 수정** — `build_place_type_map` 버그 추적.
 
 ---
 
 ## 기술 인사이트 (다음 세션 참고)
 
-1. **Value::SvecHandle(usize) 도입 이유**: 기존 svec/vec 핸들이 모두 `Value::Int(i64)`였기 때문에 for-in dispatch 불가능. `Value::SvecHandle(usize)`로 구분 → SVEC_REGISTRY 반복 가능.
+1. **native 포팅 3-레이어 패턴**: IR declare → name mapping → infer_call_return_type. 세 레이어 모두 필요.
 
-2. **svec_t scope 제약**: `types/mod.rs`에서 `svec_t`는 L425에서 정의됨. svec_t를 인자로 사용하는 타입 서명은 반드시 L425 이후에 배치해야 함 (Cycle 2868에서 발견).
+2. **runtime_param_type 등록 필수**: 음수 리터럴 등 i32로 narrow된 temp가 함수 인수로 전달될 때 sext가 필요. runtime_param_type에 등록 안 하면 i32 arg → i64 param 타입 불일치 버그 발생.
 
-3. **f64 수학 macro 패턴**: `f64_unary_builtin!(fn_name, "fn_name", method_name)` 매크로로 단항 f64 builtin 7종을 간결하게 구현. 향후 추가 f64 함수에도 재사용 가능.
+3. **C 래퍼 패턴**: BMB API와 C 런타임 시그니처 불일치 시 얇은 C 래퍼 추가:
+   - `str_substr(s, start, len)` vs `bmb_string_slice(s, start, end)` → `bmb_string_substr(s, start, start+len)`
+   - `str_pad_left(s, w, pad: String)` vs `bmb_string_pad_left(s, w, ch: i64)` → `bmb_str_pad_left(s, w, pad_str)` (첫 바이트 추출)
 
-4. **str_split vs str_split_whitespace**: `str_split(s, " ")`은 연속 공백에 빈 토큰 생성. `str_split_whitespace(s)`는 Rust의 `split_whitespace()`로 빈 토큰 자동 제거 — 경쟁 프로그래밍 입력 파싱에 권장.
+4. **void 반환 함수 주의**: `vec_sort/reverse/fill` 같이 void 반환하는 함수는 `infer_call_return_type`에 명시적 "void" 등록 필요. 미등록 시 undefined behavior.
 
-5. **bmb_reference stale 관리**: 이번 세션에서 {fn_call()} 지원이 3 사이클(2855→2858→2864) 동안 stale 상태로 있었음. 기능 추가 사이클에서 bmb_reference도 즉시 업데이트하는 규칙 필요.
+5. **clamp_f64 인라인**: LLVM `llvm.clamp.f64` intrinsic 없음 → `max(min(x, hi), lo)` 인라인 구현 (llvm.minnum.f64 + llvm.maxnum.f64).
+
+6. **str_to_f64/read_f64 double 반환**: f64 반환 함수는 `infer_call_return_type`에 "double" 등록 필요. 미등록 시 "ptr"로 오판.

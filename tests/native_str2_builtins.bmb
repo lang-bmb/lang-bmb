@@ -1,0 +1,38 @@
+fn main() -> i64 = {
+  let padded_l = "  hello";
+  let padded_r = "hello  ";
+  let padded_b = "  hello  ";
+
+  let tl = str_trim_left(padded_l);
+  println_str(tl);
+
+  let tr = str_trim_right(padded_r);
+  println_str(tr);
+
+  let tb = str_trim(padded_b);
+  println_str(tb);
+
+  let s = "hello";
+  let rev = str_reverse(s);
+  println_str(rev);
+
+  let h = int_to_hex(255);
+  println_str(h);
+
+  let h2 = int_to_hex(0);
+  println_str(h2);
+
+  let h3 = int_to_hex(16);
+  println_str(h3);
+
+  let b = int_to_bin(10);
+  println_str(b);
+
+  let b2 = int_to_bin(0);
+  println_str(b2);
+
+  let b3 = int_to_bin(1);
+  println_str(b3);
+
+  0
+};

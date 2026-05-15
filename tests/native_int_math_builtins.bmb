@@ -1,0 +1,24 @@
+fn main() -> i64 = {
+  let n1 = if pow_i64(2, 10) == 1024 { 10 } else { 0 };
+
+  let n2 = if pow_i64(3, 4) == 81 { 10 } else { 0 };
+
+  let n3 = if pow_i64(5, 0) == 1 { 10 } else { 0 };
+
+  let n4 = if gcd_i64(12, 8) == 4 { 10 } else { 0 };
+
+  let n5 = if gcd_i64(100, 75) == 25 { 10 } else { 0 };
+
+  let n6 = if clamp_i64(10, 0, 5) == 5 { 10 } else { 0 };
+
+  let n7 = if clamp_i64(-3, 0, 5) == 0 { 10 } else { 0 };
+
+  let n8 = if clamp_i64(3, 0, 5) == 3 { 10 } else { 0 };
+
+  let n9 = if popcount(7) == 3 { 10 } else { 0 };
+
+  let n10 = if popcount(255) == 8 { 10 } else { 0 };
+
+  println(n1 + n2 + n3 + n4 + n5 + n6 + n7 + n8 + n9 + n10);
+  0
+};

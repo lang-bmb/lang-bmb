@@ -840,6 +840,26 @@ impl TextCodeGen {
         writeln!(out, "declare nonnull ptr @bmb_string_to_lower(ptr nonnull nocapture) nocallback nounwind nosync willreturn")?;
         writeln!(out, "declare nonnull ptr @bmb_string_repeat(ptr nonnull nocapture, i64) nocallback nounwind nosync willreturn")?;
         writeln!(out, "declare i64 @bmb_string_is_empty(ptr nonnull nocapture readonly) nocallback nofree nosync memory(argmem: read) nounwind willreturn speculatable")?;
+        // v0.98.8: str_to_int free-function → bmb_parse_int
+        writeln!(out, "declare i64 @bmb_parse_int(ptr nonnull nocapture readonly) nocallback nofree nosync memory(argmem: read) nounwind willreturn")?;
+        // v0.98.8: str_trim_left / str_trim_right / str_reverse (Cycle 2873)
+        writeln!(out, "declare nonnull ptr @bmb_string_trim_left(ptr nonnull nocapture) nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare nonnull ptr @bmb_string_trim_right(ptr nonnull nocapture) nocallback nounwind nosync willreturn")?;
+        // bmb_string_reverse declared separately (already exists in C runtime since Cycle 2868)
+        writeln!(out, "declare nonnull ptr @bmb_string_reverse(ptr nonnull nocapture) nocallback nounwind nosync willreturn")?;
+        // v0.98.8: int_to_hex / int_to_bin (Cycle 2873)
+        writeln!(out, "declare nonnull ptr @bmb_int_to_hex(i64) nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare nonnull ptr @bmb_int_to_bin(i64) nocallback nounwind nosync willreturn")?;
+        // v0.98.8: str_substr / str_count / str_pad_left / str_pad_right (Cycle 2874)
+        writeln!(out, "declare nonnull ptr @bmb_string_substr(ptr nonnull, i64, i64) nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare i64 @bmb_string_count(ptr nonnull nocapture readonly, ptr nonnull nocapture readonly) nocallback nofree nosync nounwind willreturn")?;
+        writeln!(out, "declare nonnull ptr @bmb_str_pad_left(ptr nonnull, i64, ptr nonnull) nocallback nounwind nosync willreturn")?;
+        writeln!(out, "declare nonnull ptr @bmb_str_pad_right(ptr nonnull, i64, ptr nonnull) nocallback nounwind nosync willreturn")?;
+        // v0.98.8: integer math (Cycle 2876)
+        writeln!(out, "declare i64 @bmb_pow_i64(i64, i64) nocallback nounwind nosync nofree willreturn")?;
+        writeln!(out, "declare i64 @bmb_gcd_i64(i64, i64) nocallback nounwind nosync nofree willreturn")?;
+        writeln!(out, "declare i64 @bmb_clamp_i64(i64, i64, i64) nocallback nounwind nosync nofree willreturn")?;
+        writeln!(out, "declare i64 @bmb_popcount(i64) nocallback nounwind nosync nofree willreturn")?;
         writeln!(out, "declare nonnull ptr @bmb_chr(i64) nocallback nounwind nosync willreturn")?;
         writeln!(out, "declare i64 @bmb_ord(ptr nonnull nocapture) nocallback nofree nosync memory(argmem: read) nounwind willreturn speculatable")?;
         writeln!(out, "declare void @bmb_print_str(ptr nonnull) nocallback nounwind nofree nosync")?;
@@ -1119,6 +1139,19 @@ impl TextCodeGen {
         writeln!(out, "declare double @llvm.fabs.f64(double)")?;
         writeln!(out, "declare double @llvm.pow.f64(double, double)")?;
         writeln!(out, "declare double @llvm.fma.f64(double, double, double)")?;
+        // v0.98.8: f64 math intrinsics (Cycle 2875)
+        writeln!(out, "declare double @llvm.log.f64(double)")?;
+        writeln!(out, "declare double @llvm.log2.f64(double)")?;
+        writeln!(out, "declare double @llvm.log10.f64(double)")?;
+        writeln!(out, "declare double @llvm.exp.f64(double)")?;
+        writeln!(out, "declare double @llvm.round.f64(double)")?;
+        writeln!(out, "declare double @llvm.minnum.f64(double, double)")?;
+        writeln!(out, "declare double @llvm.maxnum.f64(double, double)")?;
+        writeln!(out, "declare double @tan(double) nounwind willreturn")?;
+        writeln!(out, "declare double @atan(double) nounwind willreturn")?;
+        writeln!(out, "declare double @atan2(double, double) nounwind willreturn")?;
+        writeln!(out, "declare double @bmb_parse_f64(ptr nonnull nocapture readonly) nocallback nofree nosync nounwind willreturn")?;
+        writeln!(out, "declare double @bmb_read_f64() nounwind")?;
         // v0.51.35: memcpy intrinsic for struct array initialization
         writeln!(out, "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)")?;
         // v0.60.59: memset intrinsic for zero-initialized array optimization
@@ -1208,6 +1241,16 @@ impl TextCodeGen {
         writeln!(out, "declare void @vec_set(i64, i64, i64) nocallback nofree nosync nounwind")?;
         writeln!(out, "declare i64 @vec_push(i64, i64) nocallback nounwind nosync")?;
         writeln!(out, "declare i64 @bmb_vec_push(i64, i64) nocallback nounwind nosync")?;
+        // v0.98.8: vec aggregate/mutation builtins (Cycle 2872)
+        writeln!(out, "declare i64 @vec_sum(i64) nocallback nofree nosync nounwind willreturn")?;
+        writeln!(out, "declare i64 @vec_min(i64) nocallback nofree nosync nounwind willreturn")?;
+        writeln!(out, "declare i64 @vec_max(i64) nocallback nofree nosync nounwind willreturn")?;
+        writeln!(out, "declare void @vec_sort(i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare i64 @vec_contains(i64, i64) nocallback nofree nosync nounwind willreturn")?;
+        writeln!(out, "declare i64 @vec_index_of(i64, i64) nocallback nofree nosync nounwind willreturn")?;
+        writeln!(out, "declare i64 @vec_remove(i64, i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare void @vec_reverse(i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare void @vec_fill(i64, i64) nocallback nounwind nosync")?;
         writeln!(out)?;
 
         // v0.50.64: Hashmap runtime functions
@@ -3156,14 +3199,23 @@ impl TextCodeGen {
                 }
 
                 // v0.97.1: f64 math intrinsics — sin, cos, floor, ceil, fabs
-                // Same pattern as sqrt: load arg, convert if needed, call llvm intrinsic
-                if matches!(fn_name.as_str(), "sin" | "cos" | "floor" | "ceil" | "fabs") && args.len() == 1 {
+                // v0.98.8: log, log2, log10, exp, round, tan, atan (Cycle 2875)
+                // Same pattern as sqrt: load arg, convert if needed, call llvm intrinsic/C fn
+                if matches!(fn_name.as_str(), "sin" | "cos" | "floor" | "ceil" | "fabs"
+                    | "log" | "log2" | "log10" | "exp" | "round" | "tan" | "atan") && args.len() == 1 {
                     let intrinsic = match fn_name.as_str() {
                         "sin" => "llvm.sin.f64",
                         "cos" => "llvm.cos.f64",
                         "floor" => "llvm.floor.f64",
                         "ceil" => "llvm.ceil.f64",
                         "fabs" => "llvm.fabs.f64",
+                        "log" => "llvm.log.f64",
+                        "log2" => "llvm.log2.f64",
+                        "log10" => "llvm.log10.f64",
+                        "exp" => "llvm.exp.f64",
+                        "round" => "llvm.round.f64",
+                        "tan" => "tan",
+                        "atan" => "atan",
                         _ => unreachable!(),
                     };
                     let arg_ty = match &args[0] {
@@ -3200,6 +3252,143 @@ impl TextCodeGen {
                     }
                     return Ok(());
                 }
+
+                // v0.98.8: 2-arg f64 math — atan2, min_f64, max_f64 (Cycle 2875)
+                if matches!(fn_name.as_str(), "atan2" | "min_f64" | "max_f64") && args.len() == 2 {
+                    let intrinsic = match fn_name.as_str() {
+                        "atan2" => "atan2",
+                        "min_f64" => "llvm.minnum.f64",
+                        "max_f64" => "llvm.maxnum.f64",
+                        _ => unreachable!(),
+                    };
+                    // arg 0
+                    let ty0 = match &args[0] {
+                        Operand::Constant(c) => self.constant_type(c),
+                        Operand::Place(p) => place_types.get(&p.name).copied()
+                            .unwrap_or_else(|| self.infer_place_type(p, func)),
+                    };
+                    let raw0 = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let ln = self.unique_name(&format!("{}.f2a.a0", p.name), name_counts);
+                            writeln!(out, "  %{} = load {}, ptr %{}.addr", ln, ty0, p.name)?;
+                            format!("%{}", ln)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    let a0 = if ty0 == "i64" {
+                        let cn = self.unique_name("f2a.conv0", name_counts);
+                        writeln!(out, "  %{} = sitofp i64 {} to double", cn, raw0)?;
+                        format!("%{}", cn)
+                    } else { raw0 };
+                    // arg 1
+                    let ty1 = match &args[1] {
+                        Operand::Constant(c) => self.constant_type(c),
+                        Operand::Place(p) => place_types.get(&p.name).copied()
+                            .unwrap_or_else(|| self.infer_place_type(p, func)),
+                    };
+                    let raw1 = match &args[1] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let ln = self.unique_name(&format!("{}.f2a.a1", p.name), name_counts);
+                            writeln!(out, "  %{} = load {}, ptr %{}.addr", ln, ty1, p.name)?;
+                            format!("%{}", ln)
+                        }
+                        _ => self.format_operand_with_strings(&args[1], string_table),
+                    };
+                    let a1 = if ty1 == "i64" {
+                        let cn = self.unique_name("f2a.conv1", name_counts);
+                        writeln!(out, "  %{} = sitofp i64 {} to double", cn, raw1)?;
+                        format!("%{}", cn)
+                    } else { raw1 };
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let tn = self.unique_name(&format!("{}.{}", d.name, fn_name), name_counts);
+                            writeln!(out, "  %{} = call double @{}(double {}, double {})", tn, intrinsic, a0, a1)?;
+                            writeln!(out, "  store double %{}, ptr %{}.addr", tn, d.name)?;
+                        } else {
+                            let dn = self.unique_name(&d.name, name_counts);
+                            writeln!(out, "  %{} = call double @{}(double {}, double {})", dn, intrinsic, a0, a1)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
+                // v0.98.8: 3-arg f64 — clamp_f64(x, lo, hi) (Cycle 2875)
+                if fn_name == "clamp_f64" && args.len() == 3 {
+                    // load x
+                    let tyx = match &args[0] {
+                        Operand::Constant(c) => self.constant_type(c),
+                        Operand::Place(p) => place_types.get(&p.name).copied()
+                            .unwrap_or_else(|| self.infer_place_type(p, func)),
+                    };
+                    let rawx = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let ln = self.unique_name(&format!("{}.clamp.x", p.name), name_counts);
+                            writeln!(out, "  %{} = load {}, ptr %{}.addr", ln, tyx, p.name)?;
+                            format!("%{}", ln)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    let vx = if tyx == "i64" {
+                        let cn = self.unique_name("clamp.cx", name_counts);
+                        writeln!(out, "  %{} = sitofp i64 {} to double", cn, rawx)?;
+                        format!("%{}", cn)
+                    } else { rawx };
+                    // load lo
+                    let tylo = match &args[1] {
+                        Operand::Constant(c) => self.constant_type(c),
+                        Operand::Place(p) => place_types.get(&p.name).copied()
+                            .unwrap_or_else(|| self.infer_place_type(p, func)),
+                    };
+                    let rawlo = match &args[1] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let ln = self.unique_name(&format!("{}.clamp.lo", p.name), name_counts);
+                            writeln!(out, "  %{} = load {}, ptr %{}.addr", ln, tylo, p.name)?;
+                            format!("%{}", ln)
+                        }
+                        _ => self.format_operand_with_strings(&args[1], string_table),
+                    };
+                    let vlo = if tylo == "i64" {
+                        let cn = self.unique_name("clamp.clo", name_counts);
+                        writeln!(out, "  %{} = sitofp i64 {} to double", cn, rawlo)?;
+                        format!("%{}", cn)
+                    } else { rawlo };
+                    // load hi
+                    let tyhi = match &args[2] {
+                        Operand::Constant(c) => self.constant_type(c),
+                        Operand::Place(p) => place_types.get(&p.name).copied()
+                            .unwrap_or_else(|| self.infer_place_type(p, func)),
+                    };
+                    let rawhi = match &args[2] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let ln = self.unique_name(&format!("{}.clamp.hi", p.name), name_counts);
+                            writeln!(out, "  %{} = load {}, ptr %{}.addr", ln, tyhi, p.name)?;
+                            format!("%{}", ln)
+                        }
+                        _ => self.format_operand_with_strings(&args[2], string_table),
+                    };
+                    let vhi = if tyhi == "i64" {
+                        let cn = self.unique_name("clamp.chi", name_counts);
+                        writeln!(out, "  %{} = sitofp i64 {} to double", cn, rawhi)?;
+                        format!("%{}", cn)
+                    } else { rawhi };
+                    // clamp = max(min(x, hi), lo)
+                    let mn = self.unique_name("clamp.min", name_counts);
+                    let mx_n = self.unique_name("clamp.max", name_counts);
+                    writeln!(out, "  %{} = call double @llvm.minnum.f64(double {}, double {})", mn, vx, vhi)?;
+                    writeln!(out, "  %{} = call double @llvm.maxnum.f64(double %{}, double {})", mx_n, mn, vlo)?;
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            writeln!(out, "  store double %{}, ptr %{}.addr", mx_n, d.name)?;
+                        } else {
+                            let dn = self.unique_name(&d.name, name_counts);
+                            writeln!(out, "  %{} = fadd double %{}, 0.0", dn, mx_n)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
+                // v0.98.8: str_to_f64 / read_f64 (Cycle 2875) — handled by generic call path
+                // (str_to_f64 → bmb_parse_f64 via name mapping; double return via infer_call_return_type)
 
                 // v0.97 (Cycle 2253): SIMD fused multiply-add.
                 //   fma_f64x4(a, b, c) → llvm.fma.v4f64(a, b, c)  == a * b + c
@@ -6147,6 +6336,12 @@ impl TextCodeGen {
                         | ("clamp", 0) | ("clamp", 1) | ("clamp", 2)
                         | ("bmb_clamp", 0) | ("bmb_clamp", 1) | ("bmb_clamp", 2)
                         | ("pow", 0) | ("pow", 1) | ("bmb_pow", 0) | ("bmb_pow", 1) => Some("i64"),
+                        // v0.98.8: integer math (Cycle 2876) — sext i32 arg → i64 when temp is narrowed
+                        ("pow_i64", 0) | ("pow_i64", 1) | ("bmb_pow_i64", 0) | ("bmb_pow_i64", 1) => Some("i64"),
+                        ("gcd_i64", 0) | ("gcd_i64", 1) | ("bmb_gcd_i64", 0) | ("bmb_gcd_i64", 1) => Some("i64"),
+                        ("clamp_i64", 0) | ("clamp_i64", 1) | ("clamp_i64", 2)
+                        | ("bmb_clamp_i64", 0) | ("bmb_clamp_i64", 1) | ("bmb_clamp_i64", 2) => Some("i64"),
+                        ("popcount", 0) | ("bmb_popcount", 0) => Some("i64"),
                         ("sb_push_char", 0) | ("sb_push_char", 1) => Some("i64"),
                         ("sb_push_int", 0) | ("sb_push_int", 1) => Some("i64"),
                         ("bmb_sb_push_char", 0) | ("bmb_sb_push_char", 1) => Some("i64"),
@@ -6164,6 +6359,13 @@ impl TextCodeGen {
                         ("vec_new", _) | ("bmb_vec_new", _) => Some("i64"),
                         ("vec_swap", 0) | ("vec_swap", 1) | ("vec_swap", 2)
                         | ("bmb_vec_swap", 0) | ("bmb_vec_swap", 1) | ("bmb_vec_swap", 2) => Some("i64"),
+                        // v0.98.8: vec aggregate/mutation builtins (Cycle 2872)
+                        ("vec_sum", 0) | ("vec_min", 0) | ("vec_max", 0) | ("vec_sort", 0)
+                        | ("vec_reverse", 0) => Some("i64"),
+                        ("vec_contains", 0) | ("vec_contains", 1)
+                        | ("vec_index_of", 0) | ("vec_index_of", 1)
+                        | ("vec_remove", 0) | ("vec_remove", 1)
+                        | ("vec_fill", 0) | ("vec_fill", 1) => Some("i64"),
                         // v0.97: Other common runtime functions
                         ("read_int", _) | ("bmb_read_int", _) => None,
                         ("println_str", 0) | ("print_str", 0) => Some("ptr"),
@@ -6319,6 +6521,37 @@ impl TextCodeGen {
                         "replace" => "bmb_string_replace",
                         "repeat" => "bmb_string_repeat",
                         "is_empty" => "bmb_string_is_empty",
+                        // v0.98.8: str_* free-function form → bmb_string_* runtime
+                        "str_len" => "bmb_string_len",
+                        "str_contains" => "bmb_string_contains",
+                        "str_starts_with" => "bmb_string_starts_with",
+                        "str_ends_with" => "bmb_string_ends_with",
+                        "str_find" => "bmb_string_index_of",
+                        "str_trim" => "bmb_string_trim",
+                        "str_to_upper" => "bmb_string_to_upper",
+                        "str_to_lower" => "bmb_string_to_lower",
+                        "str_replace" => "bmb_string_replace",
+                        "str_repeat" => "bmb_string_repeat",
+                        "str_to_int" => "bmb_parse_int",
+                        // v0.98.8: str_to_f64 / read_f64 (Cycle 2875)
+                        "str_to_f64" => "bmb_parse_f64",
+                        "read_f64" => "bmb_read_f64",
+                        // v0.98.8: str_trim_left / str_trim_right / str_reverse / int_to_hex / int_to_bin (Cycle 2873)
+                        "str_trim_left" => "bmb_string_trim_left",
+                        "str_trim_right" => "bmb_string_trim_right",
+                        "str_reverse" => "bmb_string_reverse",
+                        "int_to_hex" => "bmb_int_to_hex",
+                        "int_to_bin" => "bmb_int_to_bin",
+                        // v0.98.8: str_substr / str_count / str_pad_left / str_pad_right (Cycle 2874)
+                        "str_substr" => "bmb_string_substr",
+                        "str_count" => "bmb_string_count",
+                        "str_pad_left" => "bmb_str_pad_left",
+                        "str_pad_right" => "bmb_str_pad_right",
+                        // v0.98.8: integer math (Cycle 2876)
+                        "pow_i64" => "bmb_pow_i64",
+                        "gcd_i64" => "bmb_gcd_i64",
+                        "clamp_i64" => "bmb_clamp_i64",
+                        "popcount" => "bmb_popcount",
                         _ => fn_name.as_str(),
                     }
                 };
@@ -8810,6 +9043,8 @@ impl TextCodeGen {
         match fn_name {
             // Void return
             "println" | "print" | "assert" | "bmb_print_str" | "print_str" => "void",
+            // v0.98.8: vec void-return builtins (Cycle 2872)
+            "vec_sort" | "vec_reverse" | "vec_fill" => "void",
 
             // i64 return - Basic
             // v0.51.48: Added i32_to_i64, i64_to_i32 for i32 conversion support
@@ -8829,7 +9064,11 @@ impl TextCodeGen {
             // functions like vec_get_f64.
             "sqrt" | "sin" | "cos" | "floor" | "ceil" | "fabs" | "pow_f64"
             | "i64_to_f64" | "i32_to_f64"
-            | "load_f64" => "double",
+            | "load_f64"
+            // v0.98.8: additional f64 math (Cycle 2875)
+            | "log" | "log2" | "log10" | "exp" | "round" | "tan" | "atan" | "atan2"
+            | "min_f64" | "max_f64" | "clamp_f64"
+            | "str_to_f64" | "bmb_parse_f64" | "read_f64" | "bmb_read_f64" => "double",
 
             // Cycle 2307-2308 (Task B-13): 32-bit float load returns `float`.
             "load_f32" => "float",
@@ -8847,7 +9086,16 @@ impl TextCodeGen {
             | "bmb_string_starts_with" | "bmb_string_ends_with" | "bmb_string_contains"
             | "bmb_string_index_of" | "bmb_string_is_empty"
             | "len" | "char_at" | "byte_at" | "ord"
-            | "starts_with" | "ends_with" | "contains" | "index_of" | "is_empty" => "i64",
+            | "starts_with" | "ends_with" | "contains" | "index_of" | "is_empty"
+            // v0.98.8: str_* free-function form (i64 return)
+            | "str_len" | "str_contains" | "str_starts_with" | "str_ends_with" | "str_find"
+            | "str_to_int" | "bmb_parse_int"
+            | "str_count" | "bmb_string_count"
+            // v0.98.8: integer math (Cycle 2876)
+            | "pow_i64" | "bmb_pow_i64"
+            | "gcd_i64" | "bmb_gcd_i64"
+            | "clamp_i64" | "bmb_clamp_i64"
+            | "popcount" | "bmb_popcount" => "i64",
 
             // i64 return - File I/O (both full and wrapper names)
             "bmb_file_exists" | "bmb_file_size" | "bmb_write_file" | "bmb_append_file"
@@ -8881,7 +9129,14 @@ impl TextCodeGen {
             | "bmb_string_replace" | "bmb_string_repeat"
             | "bmb_int_to_string" | "bmb_fast_i2s"
             | "slice" | "chr" | "to_lower" | "to_upper" | "trim" | "replace" | "repeat"
-            | "int_to_string" => "ptr",
+            | "int_to_string"
+            // v0.98.8: str_* free-function form (ptr return)
+            | "str_trim" | "str_to_upper" | "str_to_lower" | "str_replace" | "str_repeat"
+            | "str_trim_left" | "str_trim_right" | "str_reverse"
+            | "bmb_string_trim_left" | "bmb_string_trim_right" | "bmb_string_reverse"
+            | "int_to_hex" | "int_to_bin" | "bmb_int_to_hex" | "bmb_int_to_bin"
+            | "str_substr" | "str_pad_left" | "str_pad_right"
+            | "bmb_string_substr" | "bmb_str_pad_left" | "bmb_str_pad_right" => "ptr",
 
             // ptr return - File I/O (both full and wrapper names)
             "bmb_read_file" | "read_file" => "ptr",

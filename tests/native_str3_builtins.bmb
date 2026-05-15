@@ -1,0 +1,20 @@
+fn main() -> i64 = {
+  let s = "Hello, World!";
+
+  let sub = str_substr(s, 7, 5);
+  println_str(sub);
+
+  let cnt = str_count(s, "l");
+  println(cnt);
+
+  let pl = str_pad_left("hi", 5, " ");
+  println_str(pl);
+
+  let pr = str_pad_right("hi", 5, "-");
+  println_str(pr);
+
+  let cnt0 = str_count(s, "z");
+  println(cnt0);
+
+  0
+};

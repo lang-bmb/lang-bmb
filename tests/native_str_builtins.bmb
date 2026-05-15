@@ -1,0 +1,46 @@
+fn main() -> i64 = {
+  let s = "Hello, World!";
+  let sub = "World";
+
+  let l = str_len(s);
+  println(l);
+
+  let found = str_contains(s, sub);
+  println(found);
+
+  let sw = str_starts_with(s, "Hello");
+  println(sw);
+
+  let ew = str_ends_with(s, "!");
+  println(ew);
+
+  let idx = str_find(s, sub);
+  println(idx);
+
+  let up = str_to_upper(s);
+  println_str(up);
+
+  let lo = str_to_lower(s);
+  println_str(lo);
+
+  let padded = "  hello  ";
+  let trimmed = str_trim(padded);
+  println_str(trimmed);
+
+  let replaced = str_replace(s, "World", "BMB");
+  println_str(replaced);
+
+  let rep = str_repeat("ab", 3);
+  println_str(rep);
+
+  let n = str_to_int("42");
+  println(n);
+
+  let no_sw = str_starts_with(s, "World");
+  println(no_sw);
+
+  let no_ew = str_ends_with(s, "Hello");
+  println(no_ew);
+
+  0
+};
