@@ -1,14 +1,14 @@
-# BMB Session Handoff — 2026-05-15 (Cycles 2877-2895 — 전체 native 포팅 완료)
+# BMB Session Handoff — 2026-05-15 (Cycles 2877-2898 — native 포팅 완료 + C# 바인딩 완료)
 
-> **HEAD**: `372e8bf8` (이번 세션 완료)
+> **HEAD**: `5fdc6408` (이번 세션 완료)
 > **이전 HEAD**: `921a5a39` (Cycles 2871-2876)
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2822, 120790 lines) — 이번 세션 bootstrap 변경 없음
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2896
+> **다음 세션 진입점**: Cycle 2899
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 2877-2895)
+## 이번 세션 작업 요약 (Cycles 2877-2898)
 
 ### 주요 변경 사항
 
@@ -20,10 +20,12 @@
 | 2892 | svec_sort/remove/clear + str_hashmap_update native 포팅 | C 런타임 구현 + 양 백엔드 등록 |
 | 2893 | bmb_reference.md 업데이트 + HANDOFF 갱신 | interpreter-only 경고 해제 |
 | 2894 | str_hashmap_values native 포팅 | C wrapper + types + interp + text/inkwell 백엔드. **interpreter-only 빌트인 제로 달성** |
-| 2895 | 문서 완성도 정리 | bmb_reference.md 14개 stale "interpreter-only" 레이블 → native 갱신. ROADMAP/HANDOFF 갱신 |
+| 2895 | 문서 완성도 정리 + mir 복구 | bmb_reference.md 14개 stale "interpreter-only" 레이블 + mir/lower.rs Cycles 2884-2890 누락 커밋 복구 |
+| 2896 | B축 재측정 준비 | 69_overflow_detect problem.md 버그 수정 + 83_pipeline 명확화 + bmb_reference int-key hashmap 패턴 추가 |
+| 2897 | M4-6 C# 바인딩 완료 검증 + FFI 버그 수정 | 4개 csproj DLL 경로 수정 + bmb_json_type global→heap fix. 93/93 통과 |
 
 ### 테스트 변화
-2388 tests (변화 없음). Native 테스트: 22종 모두 통과 (inkwell + text 양쪽).
+2388 tests (변화 없음). C# 바인딩: 93/93 통과 (algo 33 + json 14 + compute 17 + crypto 10 + text 19).
 
 ---
 
@@ -100,26 +102,33 @@
 - `tests/native_hashmap_update.bmb`: str_hashmap_update native 테스트 (Cycle 2892)
 
 **문서**:
-- `ecosystem/bmb-ai-bench/protocol/bmb_reference.md`: interpreter-only 경고 해제 (Cycle 2893) + str_hashmap_values native 갱신 (Cycle 2894) + 14개 stale 레이블 전체 갱신 (Cycle 2895)
-- `claudedocs/ROADMAP.md`: ① 우선순위 갱신 (Cycle 2895)
+- `ecosystem/bmb-ai-bench/protocol/bmb_reference.md`: interpreter-only 경고 해제 (Cycle 2893) + str_hashmap_values native 갱신 (Cycle 2894) + 14개 stale 레이블 전체 갱신 (Cycle 2895) + int-key hashmap 패턴 추가 (Cycle 2896)
+- `claudedocs/ROADMAP.md`: ① 우선순위 갱신 (Cycle 2895) + M4-6 완료 (Cycle 2897)
+- `ecosystem/bmb-ai-bench/problems/69_overflow_detect/problem.md`: 버그 수정 (Cycle 2896)
+- `ecosystem/bmb-ai-bench/problems/83_pipeline/problem.md`: 명확화 (Cycle 2896)
+- `ecosystem/bmb-json/src/lib.bmb`: bmb_json_type FFI crash 수정 (Cycle 2897)
+- `ecosystem/bmb-json/bindings/csharp/BmbJson.csproj` + 3개 csproj: DLL content 추가 (Cycle 2897)
 
 ---
 
 ## 다음 세션 우선순위
 
 ### Carry-Forward (Actionable)
-- **없음** — interpreter-only 제로 달성. M4 ① 언어 갭 전체 완료.
+- **없음** — 모든 major 마일스톤(M4 ① 언어 갭, M4-6 C# 바인딩) 완료.
 
 ### Structural Improvement Proposals
 1. **런타임 라이브러리 단일화** — inkwell/text 백엔드가 동일 `libbmb_runtime.a` 사용하도록 경로 통합.
 2. **bmb_runtime.c 변경 시 CI 자동 rebuild** — 현재 수동 `gcc -c` + `ar` 필요.
 3. **inkwell/text 백엔드 함수 등록 정합성 테스트** — Rule 7 위반 방지를 위한 compile-time assertion 또는 CI 체크.
+4. **코드젠: `@export pub fn -> String` static literal 반환 자동 heap-copy** — `bmb_json_type` 수동 패치로 해결됨, but 근본 수정 필요 (bootstrap Rule 6).
 
 ### Pending Human Decisions
-- **B축 재측정**: `BMB_BENCH_API_KEY` 환경변수 필요. 언어 갭 완료 + native 포팅 완료 → 지금이 최적 재측정 시점. baseline 2026-08-13 stale 기한.
+- **B축 재측정**: .env.local에 API key 설정됨. 재측정 스크립트 준비 완료. 모델명 확인 후 실행 가능.
+  - 예상 개선: 69_overflow_detect(problem.md 수정), 85_registry_pattern(int-key 패턴 추가)으로 98.0% → 98.5%+ 기대
+  - Stale 기한: 2026-08-13
 - **tier3-spawn-overhead**: ISSUE-20260512 Option A/B/C 선택.
 
-### 다음 자율 작업 권장 (Cycle 2896+)
-- **② B축 재측정 준비**: API key 없이 가능한 준비 작업 (측정 스크립트 점검, 문제 세트 갱신 등)
-- **④ C# 바인딩 scaffold** (3-5 cycles)
-- **③ P-track 유지** — 도메인 핵심 ≤1.00x
+### 다음 자율 작업 권장 (Cycle 2899+)
+- **② B축 재측정 실행** (API key 확인 후 HUMAN 실행)
+- **③ P-track 유지** — 도메인 핵심 ≤1.00x 확인
+- **Java 바인딩 scaffold** (M4 ④ 미완 항목)
