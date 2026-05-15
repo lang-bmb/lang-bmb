@@ -23,6 +23,7 @@
   <ItemGroup>
     <Compile Remove="BmbJsonTests.cs"/>
     <None Include="README.md" Pack="true" PackagePath="\"/>
+    <Content Include="../../bmb_json.dll" CopyToOutputDirectory="PreserveNewest"/>
   </ItemGroup>
 
 </Project>

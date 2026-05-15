@@ -23,6 +23,7 @@
   <ItemGroup>
     <Compile Remove="BmbComputeTests.cs"/>
     <None Include="README.md" Pack="true" PackagePath="\"/>
+    <Content Include="../../bmb_compute.dll" CopyToOutputDirectory="PreserveNewest"/>
   </ItemGroup>
 
 </Project>

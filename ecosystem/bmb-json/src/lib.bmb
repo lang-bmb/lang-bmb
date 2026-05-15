@@ -377,13 +377,14 @@ pub fn bmb_json_type(input: String) -> String = {
     let root = rn(pval(doc, input, wskip(input, 0)));
     let tag = jtype(doc, root);
     let _fd = vec_free(doc);
-    if tag == J_NULL() { "null" }
+    let type_name = if tag == J_NULL() { "null" }
     else if tag == J_BOOL() { "bool" }
     else if tag == J_NUM() { "number" }
     else if tag == J_STR() { "string" }
     else if tag == J_ARR() { "array" }
     else if tag == J_OBJ() { "object" }
-    else { "unknown" }
+    else { "unknown" };
+    str_repeat(type_name, 1)
 };
 
 // Get object value by key (returns JSON string representation)
