@@ -1,14 +1,14 @@
-# BMB Session Handoff — 2026-05-15 (Cycles 2877-2893 — inkwell 백엔드 완전 패리티)
+# BMB Session Handoff — 2026-05-15 (Cycles 2877-2895 — 전체 native 포팅 완료)
 
-> **HEAD**: `ea4b5002` (이번 세션 완료)
+> **HEAD**: `ac2b4d80` (이번 세션 완료)
 > **이전 HEAD**: `921a5a39` (Cycles 2871-2876)
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2822, 120790 lines) — 이번 세션 bootstrap 변경 없음
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2894
+> **다음 세션 진입점**: Cycle 2896
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 2877-2893)
+## 이번 세션 작업 요약 (Cycles 2877-2895)
 
 ### 주요 변경 사항
 
@@ -19,15 +19,17 @@
 | 2891 | inkwell 백엔드 패리티 — 40+ 함수 (Rule 7 위반 수정) | llvm.rs에 누락 함수 전부 등록 + str_hashmap API 수정 |
 | 2892 | svec_sort/remove/clear + str_hashmap_update native 포팅 | C 런타임 구현 + 양 백엔드 등록 |
 | 2893 | bmb_reference.md 업데이트 + HANDOFF 갱신 | interpreter-only 경고 해제 |
+| 2894 | str_hashmap_values native 포팅 | C wrapper + types + interp + text/inkwell 백엔드. **interpreter-only 빌트인 제로 달성** |
+| 2895 | 문서 완성도 정리 | bmb_reference.md 14개 stale "interpreter-only" 레이블 → native 갱신. ROADMAP/HANDOFF 갱신 |
 
 ### 테스트 변화
-2388 tests (변화 없음). Native 테스트: 21종 모두 통과 (inkwell + text 양쪽).
+2388 tests (변화 없음). Native 테스트: 22종 모두 통과 (inkwell + text 양쪽).
 
 ---
 
-## native 포팅 현황 (2893 기준)
+## native 포팅 현황 (2895 기준) — **전체 완료**
 
-### ✅ interpreter + native (완료)
+### ✅ interpreter + native (전체 완료 — Cycles 2871-2894)
 
 | 함수 그룹 | native 포팅 Cycle |
 |-----------|-----------------|
@@ -47,17 +49,14 @@
 | svec_sort/svec_remove/svec_clear | 2892 |
 | str_hashmap_update | 2892 |
 | read_f64 (inkwell 추가) | 2892 |
+| **str_hashmap_values** | **2894** ← 마지막 interpreter-only 함수, native 포팅으로 **제로 달성** |
 
-### ⚠️ 아직 interpreter-only
-
-| 기능 | 상태 | 비고 |
-|------|------|------|
-| str_hashmap_values | interpreter-only | C 런타임 미구현 |
-| (기타 발견 시 다음 사이클에서 감사) | | |
+### interpreter-only 현황
+**없음** — 모든 빌트인이 `bmb build` (native)에서 작동한다.
 
 ---
 
-## M4 ① 언어 갭 현황 (2893 기준)
+## M4 ① 언어 갭 현황 (2895 기준)
 
 | 기능 | 상태 |
 |------|------|
@@ -101,15 +100,15 @@
 - `tests/native_hashmap_update.bmb`: str_hashmap_update native 테스트 (Cycle 2892)
 
 **문서**:
-- `ecosystem/bmb-ai-bench/protocol/bmb_reference.md`: interpreter-only 경고 해제 (Cycle 2893)
+- `ecosystem/bmb-ai-bench/protocol/bmb_reference.md`: interpreter-only 경고 해제 (Cycle 2893) + str_hashmap_values native 갱신 (Cycle 2894) + 14개 stale 레이블 전체 갱신 (Cycle 2895)
+- `claudedocs/ROADMAP.md`: ① 우선순위 갱신 (Cycle 2895)
 
 ---
 
 ## 다음 세션 우선순위
 
 ### Carry-Forward (Actionable)
-- **두 runtime 라이브러리 통합 검토**: `bmb/runtime/libbmb_runtime.a` (text 백엔드용)와 `runtime/libbmb_runtime.a` (inkwell용) — C 런타임 변경 시 양쪽 모두 재빌드해야 함. CI에서 자동화 권장.
-- **str_hashmap_values native 구현**: svec handle 반환 — 구현 복잡도 中.
+- **없음** — interpreter-only 제로 달성. M4 ① 언어 갭 전체 완료.
 
 ### Structural Improvement Proposals
 1. **런타임 라이브러리 단일화** — inkwell/text 백엔드가 동일 `libbmb_runtime.a` 사용하도록 경로 통합.
@@ -117,6 +116,10 @@
 3. **inkwell/text 백엔드 함수 등록 정합성 테스트** — Rule 7 위반 방지를 위한 compile-time assertion 또는 CI 체크.
 
 ### Pending Human Decisions
-- **B축 재측정**: `BMB_BENCH_API_KEY` 환경변수 필요. 언어 갭 + native 포팅 진전 — baseline 2026-08-13 stale 기한 이전에 재측정 권장.
+- **B축 재측정**: `BMB_BENCH_API_KEY` 환경변수 필요. 언어 갭 완료 + native 포팅 완료 → 지금이 최적 재측정 시점. baseline 2026-08-13 stale 기한.
 - **tier3-spawn-overhead**: ISSUE-20260512 Option A/B/C 선택.
-- **str_hashmap_values**: 구현 여부 결정.
+
+### 다음 자율 작업 권장 (Cycle 2896+)
+- **② B축 재측정 준비**: API key 없이 가능한 준비 작업 (측정 스크립트 점검, 문제 세트 갱신 등)
+- **④ C# 바인딩 scaffold** (3-5 cycles)
+- **③ P-track 유지** — 도메인 핵심 ≤1.00x

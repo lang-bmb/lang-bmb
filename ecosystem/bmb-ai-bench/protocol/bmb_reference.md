@@ -173,7 +173,7 @@ Usage pattern for get-with-default:
 let result = if hashmap_contains(m, key) == 1 { hashmap_get(m, key) } else { -1 };
 ```
 
-## String HashMap (String key→i64 store, interpreter-only v0.98.5+)
+## String HashMap (String key→i64 store, native-supported v0.98.9+/v0.98.10+)
 ```bmb
 let m = str_hashmap_new();                         // create map (key=String, value=i64)
 let _i = str_hashmap_insert(m, "word", 42);        // insert or overwrite
@@ -502,7 +502,7 @@ while front < vec_len(queue) {
 };
 ```
 
-## Pattern: Iterate vec directly (for-in-vec, v0.98.4+, interpreter-only)
+## Pattern: Iterate vec directly (for-in-vec, v0.98.4+, native-supported v0.98.9+)
 ```bmb
 // Direct vec iteration — elem type is i64 (same as vec element type)
 for x in v {
@@ -553,7 +553,7 @@ fn count_word(counts: i64, word: String) -> i64 = {
 // };
 ```
 
-## Pattern: Iterate str_hashmap keys (v0.98.5+; key iteration requires interpreter-only svec)
+## Pattern: Iterate str_hashmap keys (v0.98.5+, native-supported v0.98.9+)
 ```bmb
 // Iterate over all key-value pairs using str_hashmap_sorted_keys
 fn main() -> i64 = {
@@ -574,7 +574,7 @@ fn main() -> i64 = {
     sum  // 60
 };
 // str_hashmap_keys returns unordered keys; str_hashmap_sorted_keys returns alphabetical order
-// for-in-svec (v0.98.7+): iterates String elements directly; interpreter-only
+// for-in-svec (v0.98.7+): iterates String elements directly; native-supported v0.98.9+
 ```
 
 ## Pattern: Binary search
@@ -644,7 +644,7 @@ fn next_val(n: i64) -> Opt = if n > 0 { Opt::Some(n - 1) } else { Opt::None };
 let si = to_string(42);        // i64 → "42"
 let sf = to_string(3.14);      // f64 → "3.14"
 let sb = to_string(true);      // bool → "true"
-// Positional format string (interpreter-only):
+// Positional format string (native-supported v0.98.9+):
 let msg = format("{0}+{1}={2}", to_string(a), to_string(b), to_string(a+b));
 // Output "3+4=7" for a=3, b=4
 ```
@@ -704,7 +704,7 @@ fn max_subarray(v: i64) -> i64 = {
 
 ## Pattern: String processing pipeline (split + transform + join)
 ```bmb
-// Replace all commas with semicolons in CSV-like string (interpreter-only)
+// Replace all commas with semicolons in CSV-like string (native-supported v0.98.9+)
 fn csv_to_ssv(s: String) -> String = {
     let parts = str_split(s, ",");
     let n = svec_len(parts);
@@ -735,7 +735,7 @@ fn char_freq(s: String, freq: i64) -> i64 = {
 // let count = vec_get(freq, ord('a'));
 ```
 
-## Pattern: Vec iteration and transformation (interpreter-only)
+## Pattern: Vec iteration and transformation (native-supported v0.98.9+)
 ```bmb
 // Sum all elements in a vec
 fn vec_total(v: i64) -> i64 = {
@@ -756,7 +756,7 @@ fn filter_gt(v: i64, thresh: i64) -> i64 = {
 };
 ```
 
-## Pattern: String expression interpolation (v0.98.5+, interpreter-only)
+## Pattern: String expression interpolation (v0.98.5+, native-supported v0.98.9+)
 ```bmb
 // {expr} inside strings — supports arithmetic, field access, unary minus, parens
 fn main() -> i64 = {
@@ -780,7 +780,7 @@ fn main() -> i64 = {
 // {{  }} remain literal brace escapes
 ```
 
-## Pattern: String interpolation (interpreter-only)
+## Pattern: String interpolation (native-supported v0.98.9+)
 ```bmb
 // Simple variable interpolation in string literals
 fn greet(name: String, age: i64) -> String = {
@@ -832,13 +832,13 @@ fn main() -> i64 = {
 //   mutations inside callee WILL propagate back (unlike interpreter pass-by-value)
 ```
 
-## Pattern: Palindrome check (v0.98.7+, interpreter-only)
+## Pattern: Palindrome check (v0.98.7+, native-supported v0.98.9+)
 ```bmb
 fn is_palindrome(s: String) -> i64 =
     if s == str_reverse(s) { 1 } else { 0 };
 ```
 
-## Pattern: Whitespace-tokenized input (v0.98.7+, interpreter-only)
+## Pattern: Whitespace-tokenized input (v0.98.7+, native-supported v0.98.9+)
 ```bmb
 // Parse "3 1 4 1 5" from a single line into a vec of i64
 fn parse_ints(line: String) -> i64 = {
@@ -859,7 +859,7 @@ fn parse_ints(line: String) -> i64 = {
 // let first = vec_get(v, 0);
 ```
 
-## Pattern: Float parsing and line-by-line text (v0.98.7+, interpreter-only)
+## Pattern: Float parsing and line-by-line text (v0.98.7+, native-supported v0.98.9+)
 ```bmb
 // Parse float from string (str_to_f64)
 fn parse_two_floats(line: String) -> f64 = {
@@ -911,11 +911,11 @@ fn sum_n_floats(count: i64) -> f64 = {
 - `if` as STATEMENT (result discarded) — `else` is optional (v0.98.1+)
 - `-x` (unary minus) works for negation — `0 - x` is unnecessary
 - `for j in (i+1)..n` — parentheses required when start is an expression
-- `for` loop supports ranges (`0..n`, `a..=b`), vec handles (`for x in v {}` — interp-only, v0.98.4+), and svec handles (`for s in sv {}` — interp-only, v0.98.7+)
+- `for` loop supports ranges (`0..n`, `a..=b`), vec handles (`for x in v {}` — native-supported v0.98.9+), and svec handles (`for s in sv {}` — native-supported v0.98.9+)
 - `for x in my_vec` is **native-supported** (v0.98.9+) when `my_vec` was assigned from `vec_new()` or `vec_with_capacity()` — generates index loop internally. Fallback: manual `for i in 0..vec_len(v)` always works.
 - `for s in svec_var` iterates String elements; **native-supported** (v0.98.9+) when `svec_var` from `svec_new()`, `str_split()`, `str_split_whitespace()`, `str_lines()`, `str_hashmap_keys()`, or `str_hashmap_sorted_keys()` — generates index loop internally
 - `hashmap_get` and `str_hashmap_get` return `i64::MIN` (not 0) when key is absent — always check `*_contains` first
-- `str_hashmap_new/insert/get/contains/len/delete/free/inc/update` are **native-supported** (v0.98.9+/v0.98.10+); `str_hashmap_keys/sorted_keys` are **native-supported** (v0.98.9+); `str_hashmap_values` still interpreter-only
+- `str_hashmap_new/insert/get/contains/len/delete/free/inc/update` are **native-supported** (v0.98.9+/v0.98.10+); `str_hashmap_keys/sorted_keys` are **native-supported** (v0.98.9+); `str_hashmap_values` is **native-supported** (v0.98.10+, Cycle 2894)
 - `to_string(x)` converts any value to String without extra quotes (v0.98.2+); **native-supported** (v0.98.9+) for all arg types: `i64`, `f64`, `String`, `bool`
 - `int_to_string(n)` is i64-only; use `to_string(n)` when type may vary
 - `while let` only supports enum-variant patterns (e.g., `Opt::Some(x)`) — bare `while let x = e` not supported (would infinite-loop anyway)
@@ -926,7 +926,7 @@ fn sum_n_floats(count: i64) -> f64 = {
 - `str_split(s, delim)`, `str_split_whitespace(s)`, `str_lines(s)` are **native-supported** (v0.98.9+, Cycle 2887) — return svec handles
 - `+=`, `-=`, `*=`, `/=`, `%=` compound assignment operators available (v0.98.4+) — desugars to `x = x op e`; also available on struct fields: `set obj.field += e` (v0.98.5+, native-supported v0.98.9+ for local struct vars)
 - String builtins with **native support** (both `bmb run` and `bmb build`): `str_len`, `str_is_empty`, `str_contains`, `str_starts_with`, `str_ends_with`, `str_find`, `str_trim`, `str_trim_left`, `str_trim_right`, `str_to_int`, `str_to_f64`, `str_substr`, `str_count`, `str_pad_left`, `str_pad_right`, `str_replace`, `str_repeat`, `str_to_upper`, `str_to_lower`, `str_reverse`, `str_char_at`, `int_to_hex`, `int_to_bin`, `str_split`, `str_split_whitespace`, `str_lines` (v0.98.9+)
-- String builtins with **interpreter-only** support (`bmb run` only — `bmb build` will fail): `str_hashmap_values`
+- All string/vec/svec/hashmap/math builtins are now **native-supported** (`bmb build` works) as of v0.98.10+ (Cycles 2871-2894). No interpreter-only builtins remain.
 - `svec_sort`, `svec_remove`, `svec_clear` are **native-supported** (v0.98.10+); all other `svec_*` already native since v0.98.9+
 - Vec aggregate/search/mutation builtins with **native support** (both `bmb run` and `bmb build`): `vec_sum`, `vec_max`, `vec_min`, `vec_sort`, `vec_contains`, `vec_index_of`, `vec_remove`, `vec_reverse`, `vec_fill` (v0.98.9+)
 - **Native struct parameter behavior**: In `bmb build` (native), struct arguments are passed by pointer — mutations inside a callee function DO affect the caller's copy (unlike interpreter which uses pass-by-value). Avoid mutating struct params inside callees if interpreter/native parity is needed.
