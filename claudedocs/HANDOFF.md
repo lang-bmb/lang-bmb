@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-15 (Cycles 2851-2860 — 언어 갭 해소 3차)
 
-> **HEAD**: TBD (Cycle 2860 commit 후 갱신)
+> **HEAD**: `11f4bb26` (Cycle 2860 session close)
 > **이전 HEAD**: `ea584bab` (Cycles 2841-2850)
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2822, 120790 lines) — 이번 세션 bootstrap 변경 없음
 > **실무 앵커**: `claudedocs/ROADMAP.md`
@@ -81,14 +81,21 @@
 
 ## 다음 세션 우선순위
 
-### Structural Improvement Proposals (Carry-Forward)
-1. **`for x in svec {}`** — `Value::SvecHandle(usize)` 별도 값 타입 필요. 현재 svec/vec 모두 `i64`라 구분 불가.
-2. **필드 복합 할당 native 지원** — `set obj.field += e`가 codegen에서도 동작하도록 확장.
+### Carry-Forward (Actionable)
+없음 — 모든 계획된 작업 완료.
 
-### 다음 권장 작업
-- **B축 재측정** (언어 갭 충분히 해소됨 — baseline 2026-08-13 stale 전에 재측정 고려)
-- **`for x in svec {}`** (`Value::SvecHandle` 도입)
-- 또는 새로운 M4 언어 갭 발굴
+### Structural Improvement Proposals
+1. **`for x in svec {}`** — `Value::SvecHandle(usize)` 별도 값 타입 필요. 현재 svec/vec 모두 `i64`라 구분 불가. 구현 시: `Value` enum에 SvecHandle 추가 → interp/eval.rs for-in 로직 분기 + types 업데이트.
+2. **필드 복합 할당 native 지원** — `set obj.field += e`가 codegen(llvm_text.rs)에서도 동작하도록 확장. 현재 interpreter-only.
+
+### Pending Human Decisions
+- **B축 재측정**: `BMB_BENCH_API_KEY` 환경변수 필요. 언어 갭 충분히 해소됨 — baseline 2026-08-13 stale 기한 이전에 재측정 권장.
+- **tier3-spawn-overhead**: ISSUE-20260512 Option A/B/C 선택 (HUMAN 결정 필요).
+
+### 다음 권장 작업 (우선순위 순)
+1. **B축 재측정** — 이번 세션으로 언어 갭 28종 해소. "AI가 BMB로 자연스럽게 코드 작성 가능"을 주장할 수 있는 수준.
+2. **`for x in svec {}`** — `Value::SvecHandle` 도입으로 for-in 범위 확장.
+3. **새로운 M4 언어 갭 발굴** — B축 측정에서 실패하는 패턴 분석 후 추가 갭 식별.
 
 ---
 
