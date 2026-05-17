@@ -304,7 +304,7 @@ fn str_token_count(s: String, delim: i64) -> i64 = {
 
 fn str_reverse(s: String) -> String = {
     let len = s.len();
-    if len == 0 { "" }
+    if len == 0 { str_repeat("", 1) }
     else {
         let sb = sb_new();
         let mut i = len - 1;
@@ -443,7 +443,7 @@ fn str_to_lower(s: String) -> String = {
 
 fn str_trim(s: String) -> String = {
     let len = s.len();
-    if len == 0 { "" }
+    if len == 0 { str_repeat("", 1) }
     else {
         // Find first non-whitespace
         let mut start = 0;
@@ -469,7 +469,7 @@ fn str_trim(s: String) -> String = {
             };
             0
         };
-        if start >= end { "" } else { s.slice(start, end) }
+        if start >= end { str_repeat("", 1) } else { s.slice(start, end) }
     }
 };
 

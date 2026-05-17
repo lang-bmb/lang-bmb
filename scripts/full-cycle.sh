@@ -125,6 +125,25 @@ log "======================================"
 log "Output: $OUTPUT_DIR"
 log ""
 
+# Step 0a: Runtime library staleness check
+log "${YELLOW}[0/4] Checking runtime library...${NC}"
+if ! bash "$SCRIPT_DIR/rebuild-runtime.sh" --ci > /dev/null 2>&1; then
+    log "${YELLOW}libbmb_runtime.a is stale — rebuilding...${NC}"
+    bash "$SCRIPT_DIR/rebuild-runtime.sh" || { log "${RED}Runtime rebuild failed${NC}"; exit 1; }
+fi
+log "${GREEN}Runtime library OK${NC}"
+log ""
+
+# Step 0b: Backend parity check
+log "${YELLOW}[0/4] Checking inkwell/text backend parity...${NC}"
+if ! python3 "$SCRIPT_DIR/check_backend_parity.py" --ci > /dev/null 2>&1; then
+    python3 "$SCRIPT_DIR/check_backend_parity.py"
+    log "${RED}Backend parity FAIL — new Rule 7 violation detected${NC}"
+    exit 1
+fi
+log "${GREEN}Backend parity OK${NC}"
+log ""
+
 # Step 1: Cargo Test
 if [ "$SKIP_TESTS" = false ]; then
     log "${YELLOW}[1/4] Running cargo test --release...${NC}"
