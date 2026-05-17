@@ -127,6 +127,11 @@ ecosystem/bmb-*/bindings/python/*.dylib
 ecosystem/bmb-*/bindings/csharp/bin/
 ecosystem/bmb-*/bindings/csharp/obj/
 
+# C bindings build artifacts (compiled executables and DLL copies)
+ecosystem/bmb-*/bindings/c/*.dll
+ecosystem/bmb-*/bindings/c/*.so
+ecosystem/bmb-*/bindings/c/*.dylib
+
 # Node.js
 **/node_modules/
 **/package-lock.json
