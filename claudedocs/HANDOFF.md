@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-17 (Cycles 2901-2905 — P0 수정 + CI 스크립트 + Java 바인딩 배치)
 
-> **HEAD**: `0c4e0a11` (이번 세션 완료)
+> **HEAD**: `13ee62bf` (이번 세션 완료)
 > **이전 HEAD**: `c0070797` (Cycles 2877-2900)
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2822, 120790 lines) — 이번 세션 bootstrap 변경 없음
 > **실무 앵커**: `claudedocs/ROADMAP.md`
