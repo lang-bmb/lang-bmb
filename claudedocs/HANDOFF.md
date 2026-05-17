@@ -103,8 +103,23 @@ Step 3+: benchmarks
 - `ecosystem/bmb-{json,compute,crypto,text}/bindings/java/src/main/java/io/bmb/*/BmbXxx.java`
 - `ecosystem/bmb-{json,compute,crypto,text}/bindings/java/src/test/java/io/bmb/*/BmbXxxTest.java`
 
+**FFI 바인딩 수정 (Cycle 2906)**:
+- `ecosystem/bmb-text/bindings/node/index.js`
+- `ecosystem/bmb-text/bindings/csharp/BmbText.cs`
+- `ecosystem/bmb-text/bindings/java/src/main/java/io/bmb/text/BmbText.java`
+- `ecosystem/bmb-crypto/bindings/node/index.js`
+- `ecosystem/bmb-crypto/bindings/csharp/BmbCrypto.cs`
+- `ecosystem/bmb-crypto/bindings/java/src/main/java/io/bmb/crypto/BmbCrypto.java`
+- `ecosystem/bmb-json/bindings/csharp/BmbJson.cs`
+- `ecosystem/bmb-json/bindings/java/src/main/java/io/bmb/json/BmbJson.java`
+
+**git 추적 제거 (Cycle 2907)**:
+- `bmb/runtime/libbmb_runtime.a` — `git rm --cached`
+- `runtime/libbmb_runtime.a` — `git rm --cached`
+- `.gitignore` — `claudedocs/cycle-logs/` 예외 규칙 추가
+
 **Cycle logs**:
-- `claudedocs/cycle-logs/cycle-2901.md` ~ `cycle-2905.md`
+- `claudedocs/cycle-logs/cycle-2901.md` ~ `cycle-2907.md`
 
 ---
 
