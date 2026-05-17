@@ -144,6 +144,16 @@ fi
 log "${GREEN}Backend parity OK${NC}"
 log ""
 
+# Step 0c: Export string safety check
+log "${YELLOW}[0/4] Checking @export -> String safety...${NC}"
+if ! python3 "$SCRIPT_DIR/check_export_string_safety.py" --ci > /dev/null 2>&1; then
+    python3 "$SCRIPT_DIR/check_export_string_safety.py"
+    log "${RED}Export string FAIL — P0 static literal return detected${NC}"
+    exit 1
+fi
+log "${GREEN}Export string safety OK${NC}"
+log ""
+
 # Step 1: Cargo Test
 if [ "$SKIP_TESTS" = false ]; then
     log "${YELLOW}[1/4] Running cargo test --release...${NC}"
