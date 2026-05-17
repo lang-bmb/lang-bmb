@@ -31,11 +31,12 @@ public final class BmbText {
         }
     }
 
+    // BMB function results are arena-allocated (bmb_alloc), not malloc.
+    // Read the data only — do NOT call bmb_ffi_free_string on the return value.
+    // Inputs from bmb_ffi_cstr_to_string (malloc) are freed by the finally block.
     private static String stringResult(Pointer bmbStr) {
         if (bmbStr == null || bmbStr.equals(Pointer.NULL)) return "";
-        String s = LIB.bmb_ffi_string_data(bmbStr).getString(0);
-        LIB.bmb_ffi_free_string(bmbStr);
-        return s;
+        return LIB.bmb_ffi_string_data(bmbStr).getString(0);
     }
 
     // ── Search ─────────────────────────────────────────────────────────────────

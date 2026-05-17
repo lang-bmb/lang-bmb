@@ -35,7 +35,8 @@ function _safe(fn) {
 }
 
 const _s    = (str) => _cstr_to_str(str);
-const _from = (ptr) => { const s = _str_data(ptr); _free_str(ptr); return s; };
+// BMB function results are arena-allocated (bmb_alloc), not malloc — never call _free_str on them.
+const _from = (ptr) => _str_data(ptr);
 
 // All crypto functions: String → String (hash/encode/decode)
 const _sha256   = _lib.func('void* bmb_sha256(void* s)');
@@ -56,15 +57,17 @@ const _hex_dec  = _lib.func('void* bmb_hex_decode(void* s)');
 function _call1(fn, s) {
   const p = _s(s);
   const ptr = _safe(() => fn(p));
+  const result = _from(ptr);  // read before free
   _free_str(p);
-  return _from(ptr);
+  return result;
 }
 
 function _call2(fn, a, b) {
   const pa = _s(a), pb = _s(b);
   const ptr = _safe(() => fn(pa, pb));
+  const result = _from(ptr);  // read before free
   _free_str(pa); _free_str(pb);
-  return _from(ptr);
+  return result;
 }
 
 /** SHA-256 hex digest. */

@@ -35,7 +35,9 @@ function _safe(fn) {
 }
 
 const _s = (str) => _cstr_to_str(str);
-const _from = (ptr) => { const s = _str_data(ptr); _free_str(ptr); return s; };
+// BMB function results are arena-allocated (bmb_alloc), not malloc — never call _free_str on them.
+// Only inputs from _cstr_to_str (which uses malloc) are individually freed.
+const _from = (ptr) => _str_data(ptr);
 
 // String×String → i64
 const _kmp_search   = _lib.func('int64_t bmb_kmp_search(void* text, void* pattern)');
@@ -82,8 +84,10 @@ function _ss(fn, a, b) {
 function _sss(fn, a, b, c_str) {
   const pa = _s(a), pb = _s(b), pc = _s(c_str);
   const ptr = _safe(() => fn(pa, pb, pc));
+  // Read data BEFORE freeing inputs: ptr may alias pa on passthrough (no-match).
+  const result = _from(ptr);
   _free_str(pa); _free_str(pb); _free_str(pc);
-  return _from(ptr);
+  return result;
 }
 function _s1(fn, a) {
   const pa = _s(a);
@@ -94,8 +98,10 @@ function _s1(fn, a) {
 function _s1str(fn, a) {
   const pa = _s(a);
   const ptr = _safe(() => fn(pa));
+  // Read data BEFORE freeing input: ptr may alias pa on empty-string passthrough.
+  const result = _from(ptr);
   _free_str(pa);
-  return _from(ptr);
+  return result;
 }
 
 // ── API ───────────────────────────────────────────────────────────────────────
@@ -190,8 +196,9 @@ function str_replace_all(s, from, to) { return _sss(_replace_all, s, from, to); 
 function repeat(s, n) {
   const ps = _s(s);
   const ptr = _safe(() => _repeat(ps, Number(n)));
+  const result = _from(ptr);
   _free_str(ps);
-  return _from(ptr);
+  return result;
 }
 
 module.exports = {

@@ -5,7 +5,7 @@ namespace BmbJsonLib;
 /// <summary>
 /// JSON parsing powered by BMB — P/Invoke bindings.
 /// All functions call into the native bmb_json shared library.
-/// Functions returning BMB strings automatically convert to C# strings and free the native handle.
+/// Functions returning BMB strings automatically convert to C# strings (arena memory — not individually freed).
 /// </summary>
 public static class Json
 {
@@ -71,16 +71,13 @@ public static class Json
         finally { bmb_ffi_free_string(pa); bmb_ffi_free_string(pb); }
     }
 
-    /// <summary>
-    /// Converts a BMB-owned string handle to a C# string, then frees the native handle.
-    /// Returns empty string if the pointer is null.
-    /// </summary>
+    // BMB function results are arena-allocated (bmb_alloc), not malloc.
+    // Read the data only — do NOT call bmb_ffi_free_string on the return value.
+    // Inputs from bmb_ffi_cstr_to_string (malloc) are freed by WithBmbString(s).
     private static string BmbStringToCS(IntPtr p)
     {
         if (p == IntPtr.Zero) return "";
-        string r = Marshal.PtrToStringAnsi(bmb_ffi_string_data(p)) ?? "";
-        bmb_ffi_free_string(p);
-        return r;
+        return Marshal.PtrToStringAnsi(bmb_ffi_string_data(p)) ?? "";
     }
 
     // ── Public API ───────────────────────────────────────────────────────────

@@ -5,6 +5,8 @@ claudedocs/*
 !claudedocs/issues/**
 !claudedocs/measurements/
 !claudedocs/measurements/**
+!claudedocs/cycle-logs/
+!claudedocs/cycle-logs/**
 !claudedocs/HANDOFF.md
 !claudedocs/ROADMAP.md
 /research/

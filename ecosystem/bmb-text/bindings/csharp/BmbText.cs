@@ -90,12 +90,13 @@ public static class Text
         finally { bmb_ffi_free_string(pa); bmb_ffi_free_string(pb); bmb_ffi_free_string(pc); }
     }
 
+    // BMB function results are arena-allocated (bmb_alloc), not malloc.
+    // Read the data only — do NOT call bmb_ffi_free_string on the return value.
+    // Inputs from bmb_ffi_cstr_to_string (malloc) are freed by WithBmbString(s).
     private static string BmbStringToCS(IntPtr p)
     {
         if (p == IntPtr.Zero) return "";
-        string r = Marshal.PtrToStringAnsi(bmb_ffi_string_data(p)) ?? "";
-        bmb_ffi_free_string(p);
-        return r;
+        return Marshal.PtrToStringAnsi(bmb_ffi_string_data(p)) ?? "";
     }
 
     // ── Public API — Search ──────────────────────────────────────────────────
