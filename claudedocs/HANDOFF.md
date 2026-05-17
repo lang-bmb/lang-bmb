@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-17 (Cycles 2901-2907 — P0 수정 + CI 스크립트 + Java 바인딩 배치 + FFI arena-free 수정)
 
-> **HEAD**: 커밋 예정 (이번 세션 완료)
+> **HEAD**: `1d884b22` (이번 세션 완료)
 > **이전 HEAD**: `13ee62bf` (Cycles 2901-2905)
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2822, 120790 lines) — 이번 세션 bootstrap 변경 없음
 > **실무 앵커**: `claudedocs/ROADMAP.md`
