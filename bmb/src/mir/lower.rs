@@ -1444,6 +1444,36 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             // Check if this is a void function (runtime functions that return void)
             let is_void_func = matches!(func.as_str(), "println" | "print" | "assert");
 
+            // v0.99 Cycle 2940: println/print(String) → println_str/print_str dispatch
+            // Type checker accepts println(String) but MIR must route to the correct native fn.
+            if matches!(func.as_str(), "println" | "print") && arg_ops.len() == 1 {
+                let mir_ty = match &arg_ops[0] {
+                    Operand::Constant(Constant::String(_)) => Some(MirType::String),
+                    Operand::Constant(Constant::Float(_)) => Some(MirType::F64),
+                    Operand::Place(p) => ctx.locals.get(&p.name)
+                        .or_else(|| ctx.params.get(&p.name))
+                        .or_else(|| ctx.temp_types.get(&p.name))
+                        .cloned(),
+                    _ => None,
+                };
+                let str_fn = if func == "println" { "println_str" } else { "print_str" };
+                let f64_fn = if func == "println" { "println_f64" } else { "print_f64" };
+                let dispatch = match mir_ty {
+                    Some(MirType::String) => Some(str_fn),
+                    Some(MirType::F64) => Some(f64_fn),
+                    _ => None,
+                };
+                if let Some(native_fn) = dispatch {
+                    ctx.push_inst(MirInst::Call {
+                        dest: None,
+                        func: native_fn.to_string(),
+                        args: arg_ops,
+                        is_tail: false,
+                    });
+                    return Operand::Constant(Constant::Unit);
+                }
+            }
+
             // v0.98.9: to_string<T> → type-specific native function (Cycle 2881)
             if func == "to_string" && arg_ops.len() == 1 {
                 let mir_ty = match &arg_ops[0] {

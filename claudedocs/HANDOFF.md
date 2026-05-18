@@ -1,10 +1,10 @@
-# BMB Session Handoff — 2026-05-19 (Cycles 2928-2934 — HOF + http_parse + str_data + bootstrap HOF)
+# BMB Session Handoff — 2026-05-19 (Cycles 2939-2940 — LetTuple desugaring + native codegen)
 
-> **HEAD**: `(Cycle 2934 완료, commit 예정)`
-> **이전 HEAD**: `7139e451` (Cycle 2933 완료)
+> **HEAD**: `(Cycle 2940 완료, commit 예정)`
+> **이전 HEAD**: `2af17fb4` (Cycle 2927 완료)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930) — GCC MinGW 링커 비결정성으로 binary hash 비교 불가, IR hash 비교로 방법론 정정. bootstrap/compiler_s3.exe IR == compiler_s4.exe IR
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2935
+> **다음 세션 진입점**: Cycle 2941
 
 ---
 

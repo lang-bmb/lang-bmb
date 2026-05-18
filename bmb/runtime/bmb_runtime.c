@@ -1374,6 +1374,12 @@ BmbString* bmb_str_char_at(const BmbString* s, int64_t index) {
     return bmb_string_wrap(data);
 }
 
+// v0.99 Cycle 2940: str_byte_at → i64 (ASCII byte value at index)
+int64_t bmb_str_byte_at(const BmbString* s, int64_t index) {
+    if (!s || !s->data || index < 0 || index >= s->len) return 0;
+    return (int64_t)(unsigned char)s->data[index];
+}
+
 // String equality comparison - parameters are BmbString*
 int64_t bmb_string_eq(const BmbString* a, const BmbString* b) {
     if (a == b) return 1;  // Same struct pointer

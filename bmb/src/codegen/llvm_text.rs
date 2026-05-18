@@ -852,6 +852,8 @@ impl TextCodeGen {
         writeln!(out, "declare nonnull ptr @bmb_int_to_bin(i64) nocallback nounwind nosync willreturn")?;
         // v0.98.9: str_char_at → String (Cycle 2880)
         writeln!(out, "declare nonnull ptr @bmb_str_char_at(ptr nonnull nocapture readonly, i64) nocallback nounwind nosync willreturn")?;
+        // v0.99 Cycle 2940: str_byte_at → i64 (ASCII byte value)
+        writeln!(out, "declare i64 @bmb_str_byte_at(ptr nonnull nocapture readonly, i64) nocallback nounwind nofree nosync willreturn")?;
         // v0.98.9: bmb_f64_to_string (Cycle 2881) — used by to_string(f64)
         writeln!(out, "declare nonnull ptr @bmb_f64_to_string(double) nocallback nounwind nosync willreturn")?;
         // v0.98.9: bmb_bool_to_string (Cycle 2883) — used by to_string(bool); takes i1
@@ -2009,7 +2011,9 @@ impl TextCodeGen {
                     && !callee.starts_with("bmb_")
                     && callee != "malloc" && callee != "calloc" && callee != "realloc" && callee != "free"
                     && callee != "println" && callee != "print" && callee != "eprintln"
-                    && callee != "print_f64" && callee != "read_int" && callee != "bmb_read_line"
+                    && callee != "println_str" && callee != "print_str"
+                    && callee != "println_f64" && callee != "print_f64"
+                    && callee != "read_int" && callee != "bmb_read_line"
                     && callee != "read_bytes" && callee != "write_stdout" && callee != "read_line"
                     && callee != "abs" && callee != "min" && callee != "max" && callee != "clamp" && callee != "pow")
             })
@@ -6437,6 +6441,8 @@ impl TextCodeGen {
                         ("hashmap_free", 0) | ("bmb_hashmap_free", 0) => Some("i64"),
                         // v0.98.9: vec_clear (Cycle 2878)
                         ("vec_clear", 0) | ("bmb_vec_clear", 0) => Some("i64"),
+                        // v0.99 Cycle 2940: str_byte_at(ptr, i64) → i64
+                        ("str_byte_at", 1) | ("bmb_str_byte_at", 1) => Some("i64"),
                         // v0.97: Other common runtime functions
                         ("read_int", _) | ("bmb_read_int", _) => None,
                         ("println_str", 0) | ("print_str", 0) => Some("ptr"),
@@ -6652,6 +6658,8 @@ impl TextCodeGen {
                         "int_to_bin" => "bmb_int_to_bin",
                         // v0.98.9: str_char_at → String (Cycle 2880)
                         "str_char_at" => "bmb_str_char_at",
+                        // v0.99 Cycle 2940: str_byte_at → i64
+                        "str_byte_at" => "bmb_str_byte_at",
                         // v0.98.9: str_hashmap native (Cycle 2884)
                         "str_hashmap_new" => "bmb_str_hashmap_new",
                         "str_hashmap_insert" => "bmb_str_hashmap_insert",
@@ -9198,7 +9206,9 @@ impl TextCodeGen {
         // Built-in functions
         match fn_name {
             // Void return
-            "println" | "print" | "assert" | "bmb_print_str" | "print_str" => "void",
+            "println" | "print" | "assert" | "bmb_print_str" | "print_str"
+            // v0.99 Cycle 2940: println/print String/f64 dispatch
+            | "println_str" | "println_f64" | "print_f64" => "void",
             // v0.98.8: vec void-return builtins (Cycle 2872)
             "vec_sort" | "vec_reverse" | "vec_fill" => "void",
 
