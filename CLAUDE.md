@@ -105,7 +105,7 @@ BMB는 커스텀 언어이므로 일반 언어 지식으로 추측하면 안 된
 ```
 
 **BMB bootstrap 컴파일러 지원 문법** (Cycle 2620-2646 추가):
-- Tuple destructuring (`let (a, b) = expr`) ✅ — Cycle 2621에서 추가 (표현식 + 블록 컨텍스트 양쪽)
+- Tuple destructuring (`let (a, b) = expr`) ✅ — bootstrap: Cycle 2621 (양쪽 컨텍스트), Rust interp: Cycle 2939 (블록 컨텍스트만, 표현식 컨텍스트는 LALR 충돌로 미지원)
 - Static method calls (`Type::method(args)`) ✅ — Cycle 2620에서 추가 (`Type_method(args)` 로 망글링)
 - Payload enum constructor (`Option::Some(42)`) ✅ — Cycle 2633에서 추가 (heap calloc 2-word 표현)
 - Payload enum match (`Option::Some(v) => v`) ✅ — Cycle 2633에서 추가 (tag 비교 + payload extract)
@@ -147,7 +147,10 @@ Stage 1 통과 ≠ Stage 2 통과 ≠ Stage 3 통과
 부트스트랩 컴파일러(`bootstrap/`) 변경 시:
 1. **Stage 1**: Rust 컴파일러로 `compiler.bmb` 빌드 → 골든 테스트
 2. **Stage 2**: Stage 1 바이너리로 `compiler.bmb` 컴파일 → Stage 2 IR 생성
-3. **Stage 3**: Stage 2 바이너리로 `compiler.bmb` 컴파일 → Fixed Point (S2 == S3) 검증
+3. **Stage 3**: Stage 2 바이너리로 `compiler.bmb` 컴파일 → **Fixed Point (S2 IR == S3 IR) 검증**
+
+> **Fixed Point 주의** (Cycle 2930 정정): GCC MinGW-w64 링커는 동일 소스라도 빌드 시마다 binary가 달라짐 (비결정적 `.exe`). **Binary hash가 아닌 IR hash**로 비교해야 함.
+> 올바른 검증: `compiler.exe build compiler.bmb --emit-ir -o s3.ll` + `compiler.exe build compiler.bmb --emit-ir -o s4.ll` → `diff s3.ll s4.ll` (0 diff = Fixed Point 달성).
 
 **알려진 부트스트랩 실패 패턴**:
 | 패턴 | 증상 | 원인 |
@@ -792,7 +795,7 @@ All PRs must:
 | Stage 2 세그폴트 (O2만) | LLVM opt 최적화 버그 | O0/O1로 테스트, IR 패턴 분석 |
 | Stage 2 스택 오버플로 | 깊은 재귀 | 트램폴린/반복 방식으로 전환 |
 | Stage 2 잘못된 출력 | 부트스트랩 파서 버그 | 골든 테스트로 최소 재현 |
-| S2 ≠ S3 (고정점 실패) | 코드젠 비결정성 | `diff` 첫 차이점에서 원인 추적 |
+| S2 IR ≠ S3 IR (고정점 실패) | 코드젠 비결정성 | `diff s3.ll s4.ll` 첫 차이점에서 원인 추적 (binary hash ❌ — GCC MinGW 비결정적) |
 
 ### BMB 코드 생성 실패
 

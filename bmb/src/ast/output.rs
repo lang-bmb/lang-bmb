@@ -476,6 +476,9 @@ pub fn format_expr(expr: &Expr) -> String {
             )
         }
 
+        // v0.99 Cycle 2939: LetTuple is desugared by desugar_block_lets — never reaches here
+        Expr::LetTuple { .. } => unreachable!("LetTuple must be desugared before formatting"),
+
         // v0.98.3: while let (Cycle 2834, interpreter-only)
         Expr::WhileLet { expr, body, .. } => {
             format!("(while-let _ = {} {})", format_expr(&expr.node), format_expr(&body.node))

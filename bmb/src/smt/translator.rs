@@ -301,6 +301,7 @@ impl SmtTranslator {
                 // Use a fresh constant for uninitialized value
                 Ok(format!("(let (({} undefined_array)) {})", name, b))
             }
+            Expr::LetTuple { .. } => unreachable!("LetTuple desugared before SMT"),
 
             Expr::Assign { name, .. } => {
                 // Assignment not fully supported in pure SMT

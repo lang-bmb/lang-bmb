@@ -765,6 +765,8 @@ impl Interpreter {
                 self.eval(body, env)
             }
 
+            Expr::LetTuple { .. } => unreachable!("LetTuple desugared"),
+
             // v0.37: Invariant is for SMT verification, not runtime
             Expr::While { cond, invariant: _, body } => {
                 while self.eval(cond, env)?.is_truthy() {

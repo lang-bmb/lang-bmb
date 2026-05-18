@@ -341,6 +341,7 @@ impl ContractVerifier {
             Expr::LetUninit { body, .. } => {
                 self.check_expr_for_conflicts(&body.node, function_index, report);
             }
+            Expr::LetTuple { .. } => {}
             Expr::Binary { left, right, .. } => {
                 self.check_expr_for_conflicts(&left.node, function_index, report);
                 self.check_expr_for_conflicts(&right.node, function_index, report);

@@ -1258,6 +1258,7 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             lower_expr(body, ctx)
         }
 
+        Expr::LetTuple { .. } => unreachable!("LetTuple desugared before MIR lowering"),
         Expr::Assign { name, value } => {
             // Lower the value
             let value_op = lower_expr(value, ctx);

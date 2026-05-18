@@ -293,6 +293,7 @@ impl Backend {
             Expr::LetUninit { body, .. } => {
                 self.collect_expr_refs(&body.node, refs);
             }
+            Expr::LetTuple { .. } => {},
             Expr::If { cond, then_branch, else_branch } => {
                 self.collect_expr_refs(&cond.node, refs);
                 self.collect_expr_refs(&then_branch.node, refs);
@@ -440,6 +441,7 @@ impl Backend {
                 // Recurse into body only (no value for uninitialized binding)
                 self.collect_locals(&body.node, body_span, locals);
             }
+            Expr::LetTuple { .. } => {},
             Expr::Block(stmts) => {
                 for stmt in stmts {
                     self.collect_locals(&stmt.node, scope_span, locals);
@@ -1472,6 +1474,7 @@ fn format_expr(expr: &Expr) -> String {
             )
         }
 
+        Expr::LetTuple { names, .. } => format!("let ({}) = ...", names.join(", ")),
         Expr::Call { func, args, .. } => {
             let args_str: Vec<_> = args.iter().map(|a| format_expr(&a.node)).collect();
             format!("{}({})", func, args_str.join(", "))

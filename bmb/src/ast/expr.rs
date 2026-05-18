@@ -63,6 +63,15 @@ pub enum Expr {
         body: Box<Spanned<Expr>>,
     },
 
+    /// Tuple destructuring let: `let (a, b) = expr; body` (v0.99, Cycle 2939)
+    /// Always desugared to nested Expr::Let + Expr::TupleField before type checking.
+    /// body is Expr::Unit in block context (desugar_stmts expands it).
+    LetTuple {
+        names: Vec<String>,
+        value: Box<Spanned<Expr>>,
+        body: Box<Spanned<Expr>>,
+    },
+
     /// Assignment: name = value (v0.5 Phase 2)
     Assign {
         name: String,
@@ -722,6 +731,7 @@ pub fn desugar_block_lets(stmts: Vec<Spanned<Expr>>) -> Expr {
         matches!(&s.node,
             Expr::Let { body, .. } | Expr::LetUninit { body, .. }
             if matches!(body.node, Expr::Unit))
+            || matches!(&s.node, Expr::LetTuple { body, .. } if matches!(body.node, Expr::Unit))
     });
 
     if !has_stmt_let {
@@ -767,6 +777,35 @@ fn desugar_stmts(stmts: Vec<Spanned<Expr>>) -> Expr {
                 body: Box::new(Spanned::new(rest, rest_span)),
             }
         }
+        // v0.99 Cycle 2939: Tuple destructuring — desugar to nested Let + TupleField
+        // let (a, b) = v; rest  →  let __tup = v; let a = __tup.0; let b = __tup.1; rest
+        Expr::LetTuple { names, value, body } if matches!(body.node, Expr::Unit) => {
+            let rest = desugar_stmts(stmts);
+            let rest_span = Span::new(first_span.end, first_span.end + 1);
+            let tup_name = format!("__tup_{}", first_span.start);
+            // Build innermost body first (innermost field binding wraps rest)
+            let mut inner = Spanned::new(rest, rest_span);
+            for (i, name) in names.iter().enumerate().rev() {
+                let field_expr = Spanned::new(Expr::TupleField {
+                    expr: Box::new(Spanned::new(Expr::Var(tup_name.clone()), first_span)),
+                    index: i,
+                }, first_span);
+                inner = Spanned::new(Expr::Let {
+                    name: name.clone(),
+                    mutable: false,
+                    ty: None,
+                    value: Box::new(field_expr),
+                    body: Box::new(inner),
+                }, first_span);
+            }
+            Expr::Let {
+                name: tup_name,
+                mutable: false,
+                ty: None,
+                value,
+                body: Box::new(inner),
+            }
+        }
         other => {
             // Non-let statement: wrap in Block with remaining statements
             let mut all = vec![Spanned::new(other, first_span)];
@@ -775,6 +814,7 @@ fn desugar_stmts(stmts: Vec<Spanned<Expr>>) -> Expr {
                 matches!(&s.node,
                     Expr::Let { body, .. } | Expr::LetUninit { body, .. }
                     if matches!(body.node, Expr::Unit))
+                    || matches!(&s.node, Expr::LetTuple { body, .. } if matches!(body.node, Expr::Unit))
             });
             if rest_has_let {
                 let rest = desugar_stmts(stmts);

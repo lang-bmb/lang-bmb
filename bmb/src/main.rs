@@ -2970,6 +2970,7 @@ fn format_expr(expr: &bmb::ast::Expr) -> String {
                 format_expr(&body.node)
             )
         }
+        Expr::LetTuple { names, .. } => format!("let ({}) = ...", names.join(", ")),
 
         Expr::Call { func, args, .. } => {
             let args_str: Vec<_> = args.iter().map(|a| format_expr(&a.node)).collect();

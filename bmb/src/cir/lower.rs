@@ -421,6 +421,7 @@ impl CirLowerer {
             Expr::LetUninit { body, .. } => {
                 self.collect_loop_invariants(&body.node, invariants);
             }
+            Expr::LetTuple { .. } => unreachable!("LetTuple desugared before CIR"),
             Expr::Loop { body } => {
                 let loop_id = self.loop_counter;
                 self.loop_counter += 1;
@@ -578,6 +579,8 @@ impl CirLowerer {
                     }
                 }
             }
+
+            Expr::LetTuple { .. } => unreachable!("LetTuple desugared before CIR lowering"),
 
             Expr::Assign { name, value } => {
                 let cir_value = self.lower_expr(&value.node);

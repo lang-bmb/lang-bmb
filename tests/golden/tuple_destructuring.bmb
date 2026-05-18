@@ -1,0 +1,30 @@
+// v0.99 Cycle 2939: let (a, b) = expr tuple destructuring in block context
+fn swap(t: (i64, i64)) -> (i64, i64) = (t.1, t.0);
+
+fn min_max(a: i64, b: i64) -> (i64, i64) =
+    if a <= b { (a, b) } else { (b, a) };
+
+fn main() -> i64 = {
+    // Basic 2-tuple
+    let t = (10, 20);
+    let (a, b) = t;
+    println(a + b);
+
+    // 3-tuple
+    let (x, y, z) = (1, 2, 3);
+    println(x + y + z);
+
+    // From function return
+    let (lo, hi) = min_max(42, 17);
+    println(lo);
+    println(hi);
+
+    // Nested usage
+    let pair = (100, 200);
+    let (p, q) = pair;
+    let (q2, p2) = swap((p, q));
+    println(p2);
+    println(q2);
+
+    0
+};

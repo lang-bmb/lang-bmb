@@ -1380,6 +1380,17 @@ BlockStmt: Spanned<Expr> = {
         value: Box::new(v),
         body: Box::new(Spanned::new(Expr::Unit, Span::new(r, r))),
     }, Span::new(l, r)),
+    // v0.99 Cycle 2939: Tuple destructuring in block context: let (a, b) = expr
+    // Desugared to nested Let+TupleField by desugar_stmts before type checking.
+    <l:@L> "let" "(" <ns:(<RawIdent> ",")*> <last:RawIdent> ")" "=" <v:SpannedBlockExpr> <r:@R> => {
+        let mut names = ns;
+        names.push(last);
+        Spanned::new(Expr::LetTuple {
+            names,
+            value: Box::new(v),
+            body: Box::new(Spanned::new(Expr::Unit, Span::new(r, r))),
+        }, Span::new(l, r))
+    },
     SpannedBlockExpr,
 };
 

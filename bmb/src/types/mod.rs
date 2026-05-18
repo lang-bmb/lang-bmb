@@ -2118,6 +2118,7 @@ impl TypeChecker {
                 }
             }
 
+            Expr::LetTuple { .. } => unreachable!("LetTuple desugared before type checking"),
             Expr::Assign { name, value } => {
                 // Check that variable exists
                 let var_ty = self.env.get(name).cloned().ok_or_else(|| {
