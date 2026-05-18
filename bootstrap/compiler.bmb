@@ -1140,6 +1140,9 @@ fn parse_block_let_skip_type(src: String, pos: i64, name: String, is_mut: bool) 
         parse_block_let_skip_array_type(src, tok_end(t), name, is_mut)
     } else if k == TK_LPAREN() {
         parse_block_let_skip_tuple_type(src, tok_end(t), name, is_mut)
+    } else if k == TK_FN() {
+        -- Cycle 2933: fn(T)->R type annotation in let binding
+        parse_block_let_skip_type(src, skip_fn_type(src, tok_end(t)), name, is_mut)
     } else { make_error_at("expected '=' after type in let binding, got " + tok_kind_name(k), src, pos) };
 
 fn parse_block_let_skip_tuple_type(src: String, pos: i64, name: String, is_mut: bool) -> String =
@@ -1869,6 +1872,9 @@ fn parse_let_skip_type(src: String, pos: i64, name: String, is_mut: bool) -> Str
         parse_let_skip_array_type(src, tok_end(t), name, is_mut)
     } else if k == TK_LPAREN() {
         parse_let_skip_tuple_type(src, tok_end(t), name, is_mut)
+    } else if k == TK_FN() {
+        -- Cycle 2933: fn(T)->R type annotation in let binding
+        parse_let_skip_type(src, skip_fn_type(src, tok_end(t)), name, is_mut)
     } else { make_error_at("expected '=' after type in let binding, got " + tok_kind_name(k), src, pos) };
 
 fn parse_let_skip_tuple_type(src: String, pos: i64, name: String, is_mut: bool) -> String =
@@ -2530,6 +2536,37 @@ fn parse_struct_field_sep(src: String, pos: i64, acc: String) -> String =
 // SECTION 6: Function and Program Parser
 // ============================================================================
 
+-- Cycle 2933: Skip tokens inside fn(...) until ')' for HOF type annotation
+fn skip_fn_type_param_list(src: String, pos: i64) -> i64 =
+    let t = next_token_raw(src, pos);
+    if tok_kind(t) == TK_RPAREN() { tok_end(t) }
+    else { skip_fn_type_param_list(src, tok_end(t)) };
+
+-- Cycle 2933: Skip one simple type token (handles nested fn types)
+fn skip_one_type_tok(src: String, pos: i64) -> i64 =
+    let t = next_token_raw(src, pos);
+    if tok_kind(t) == TK_FN() {
+        -- skip fn(params) -> ret
+        let t2 = next_token_raw(src, tok_end(t));
+        if tok_kind(t2) == TK_LPAREN() {
+            let after_params = skip_fn_type_param_list(src, tok_end(t2));
+            let t_arr = next_token_raw(src, after_params);
+            if tok_kind(t_arr) == TK_ARROW() { skip_one_type_tok(src, tok_end(t_arr)) }
+            else { after_params }
+        } else { tok_end(t) }
+    } else { tok_end(t) };
+
+-- Cycle 2933: Skip entire fn(T)->R type and return position after it
+fn skip_fn_type(src: String, pos: i64) -> i64 =
+    -- pos is after TK_FN, expect '(' params ')' '->' ret_type
+    let t = next_token_raw(src, pos);
+    if tok_kind(t) == TK_LPAREN() {
+        let after_params = skip_fn_type_param_list(src, tok_end(t));
+        let t_arr = next_token_raw(src, after_params);
+        if tok_kind(t_arr) == TK_ARROW() { skip_one_type_tok(src, tok_end(t_arr)) }
+        else { after_params }
+    } else { pos };
+
 fn parse_param(src: String, pos: i64) -> String =
     let t1 = next_token_raw(src, pos);
     if tok_kind(t1) == TK_IDENT() {
@@ -2538,7 +2575,7 @@ fn parse_param(src: String, pos: i64) -> String =
         if tok_kind(t2) == TK_COLON() {
             let t3 = next_token_raw(src, tok_end(t2));
             let kind = tok_kind(t3);
-            if kind == TK_I32() { pack_result(skip_nullable(src, tok_end(t3)), "(param <" + name + "> i32)") } else if kind == TK_I64() { pack_result(skip_nullable(src, tok_end(t3)), "(param <" + name + "> i64)") } else if kind == TK_F64() { pack_result(skip_nullable(src, tok_end(t3)), "(param <" + name + "> f64)") } else if kind == TK_BOOL() { pack_result(skip_nullable(src, tok_end(t3)), "(param <" + name + "> bool)") } else if kind == TK_STRING_TYPE() { pack_result(skip_nullable(src, tok_end(t3)), "(param <" + name + "> String)") } else if kind == TK_STAR() { let t4 = next_token_raw(src, tok_end(t3)); let struct_name = get_ident_text(src, tok_end(t3), t4); pack_result(skip_nullable(src, tok_end(t4)), "(param <" + name + "> *" + struct_name + ")") } else if kind == TK_LBRACKET() { parse_param_array_type(src, tok_end(t3), name) } else if kind == TK_AMP() { parse_param_ref_type(src, tok_end(t3), name) } else if kind == TK_IDENT() { let after_targs = skip_optional_type_args(src, tok_end(t3)); pack_result(skip_nullable(src, after_targs), "(param <" + name + "> i64)") } else { make_error_at("expected parameter type, got " + tok_kind_name(kind), src, tok_end(t2)) }
+            if kind == TK_I32() { pack_result(skip_nullable(src, tok_end(t3)), "(param <" + name + "> i32)") } else if kind == TK_I64() { pack_result(skip_nullable(src, tok_end(t3)), "(param <" + name + "> i64)") } else if kind == TK_F64() { pack_result(skip_nullable(src, tok_end(t3)), "(param <" + name + "> f64)") } else if kind == TK_BOOL() { pack_result(skip_nullable(src, tok_end(t3)), "(param <" + name + "> bool)") } else if kind == TK_STRING_TYPE() { pack_result(skip_nullable(src, tok_end(t3)), "(param <" + name + "> String)") } else if kind == TK_STAR() { let t4 = next_token_raw(src, tok_end(t3)); let struct_name = get_ident_text(src, tok_end(t3), t4); pack_result(skip_nullable(src, tok_end(t4)), "(param <" + name + "> *" + struct_name + ")") } else if kind == TK_LBRACKET() { parse_param_array_type(src, tok_end(t3), name) } else if kind == TK_AMP() { parse_param_ref_type(src, tok_end(t3), name) } else if kind == TK_FN() { pack_result(skip_fn_type(src, tok_end(t3)), "(param <" + name + "> fn_i64)") } else if kind == TK_IDENT() { let after_targs = skip_optional_type_args(src, tok_end(t3)); pack_result(skip_nullable(src, after_targs), "(param <" + name + "> i64)") } else { make_error_at("expected parameter type, got " + tok_kind_name(kind), src, tok_end(t2)) }
         } else { make_error_at("expected ':' after parameter name, got " + tok_kind_name(tok_kind(t2)), src, tok_end(t1)) }
     } else { make_error_at("expected parameter name, got " + tok_kind_name(tok_kind(t1)), src, pos) };
 
@@ -13629,7 +13666,7 @@ fn format_fn_params(params: String, pos: i64, acc: String) -> String =
         // v0.95: i32 params declared as i32 with _i32 suffix (sext in prologue)
         // Note: String params remain i64 (pointer-as-integer model) — nonnull on params
         // requires full ptr-mode migration of the bootstrap codegen pipeline
-        let llvm_type = if param_type == "f64" { "double" } else if param_type == "i32" { "i32" } else { "i64" };
+        let llvm_type = if param_type == "f64" { "double" } else if param_type == "i32" { "i32" } else if param_type == "fn_i64" { "i64" } else { "i64" };
         let param_name = if param_type == "i32" { "%" + name + "_i32" } else { "%" + name };
         let typed_param = llvm_type + " noundef " + param_name;
         let new_acc = if acc == "" { typed_param } else { acc + ", " + typed_param };
@@ -14388,6 +14425,10 @@ fn collect_i64_params_sb(params: String, pos: i64, str_sb: i64) -> i64 =
                 let w1 = sb_push(str_sb, "P:%");
                 let w2 = sb_push(str_sb, param_name);
                 sb_push(str_sb, ",")
+            } else if param_type == "fn_i64" {
+                let w1 = sb_push(str_sb, "H:%");
+                let w2 = sb_push(str_sb, param_name);
+                sb_push(str_sb, ",")
             } else { 0 }
         } else { 0 };
         if comma_pos >= params.len() { 0 }
@@ -14696,7 +14737,15 @@ fn llvm_gen_rhs_with_strings_map_and_fns_reg(line: String, pos: i64, dest: Strin
     } else if low_starts_with_at(line, pos, "copy") {
         let src_start = low_skip_ws(line, pos + 4);
         let src = trim_end(line.slice(src_start, line.len()));
-        if is_user_variable(dest) {
+        // Cycle 2934: HOF — if src is %name where @name is a known function, emit ptrtoint
+        // Exclude HOF/i64 params that might share a name with a global function
+        let is_fnref = src.len() > 1 and src.byte_at(0) == 37
+            and not (is_hof_param_sb(src, str_sb) or is_i64_param_sb(src, str_sb))
+            and find_pattern_at(registry, "@" + src.slice(1, src.len()) + ":", 0) >= 0;
+        if is_fnref {
+            let fn_name = src.slice(1, src.len());
+            same_mapping("  " + dest + " = ptrtoint ptr @" + fn_name + " to i64")
+        } else if is_user_variable(dest) {
             let resolved_src = resolve_variable(src, mapping);
             let src_is_string = is_string_var_sb(src, str_sb);
             let src_is_double = is_double_var_sb(src, str_sb);
@@ -14902,6 +14951,9 @@ fn llvm_gen_call_struct_aware(line: String, pos: i64, dest: String, strings: Str
     if resolved == "ALLOCA" {
         // v0.95: Uniform closure call — all ALLOCA indirect calls use closure protocol
         llvm_gen_indirect_call(line, pos, dest, var_name, str_sb)
+    } else if is_hof_param_sb(var_name, str_sb) {
+        // Cycle 2934: HOF call — fn(T)->R parameter, direct inttoptr + call (no closure protocol)
+        llvm_gen_hof_call(line, pos, dest, var_name)
     } else if is_i64_param_sb(var_name, str_sb) {
         // v0.95: Uniform closure call — all param indirect calls use closure protocol
         llvm_gen_indirect_call_param(line, pos, dest, var_name, str_sb)
@@ -14920,6 +14972,19 @@ fn llvm_gen_call_struct_aware(line: String, pos: i64, dest: String, strings: Str
     let _w = if fn_ret_struct != "" { push_ptr_marker(ptr_sb, dest, fn_ret_struct) } else { 0 };
     result
     };
+
+// Cycle 2934: HOF call — plain function pointer parameter, direct inttoptr + call
+// MIR: %_tN = call @f(args) where f: fn_i64 → inttoptr %f to ptr; call i64 %fptr(args)
+fn llvm_gen_hof_call(line: String, pos: i64, dest: String, var_name: String) -> String =
+    let at_pos = find_char(line, pos, 64);
+    let paren_pos = find_char(line, at_pos, 40);
+    let close_pos = find_char(line, paren_pos, 41);
+    let args = line.slice(paren_pos + 1, close_pos);
+    let fptr_tmp = dest + "_hfptr";
+    let cast_ir = "  " + fptr_tmp + " = inttoptr i64 " + var_name + " to ptr";
+    let formatted_args = format_i64_call_args(args);
+    let call_ir = "  " + dest + " = call i64 " + fptr_tmp + "(" + formatted_args + ")";
+    same_mapping(cast_ir + SEP() + call_ir);
 
 // v0.95: Generate indirect call through function pointer stored in alloca variable
 // MIR: %_tN = call @var_name(args) → loads from alloca, inttoptr, indirect call
@@ -15337,6 +15402,11 @@ fn push_f64_ptr_marker(str_sb: i64, varname: String) -> i64 =
 // v0.95: Check if variable is an i64 function parameter (for indirect call detection)
 fn is_i64_param_sb(varname: String, str_sb: i64) -> bool =
     let marker = "P:" + varname;
+    bmb_sb_contains(str_sb, marker) > 0;
+
+// Cycle 2934: Check if variable is a HOF (fn(T)->R) parameter
+fn is_hof_param_sb(varname: String, str_sb: i64) -> bool =
+    let marker = "H:" + varname;
     bmb_sb_contains(str_sb, marker) > 0;
 
 // v0.95: Check if variable is marked as i32 in SB

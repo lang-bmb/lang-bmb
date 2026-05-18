@@ -83,7 +83,7 @@ echo -e "${YELLOW}[2/4] Stage 2: Stage 1 -> LLVM IR${NC}"
 echo "Command: $STAGE1_BIN $BOOTSTRAP_SRC $STAGE2_LL"
 
 # Run Stage 1 compiler to generate LLVM IR (uses | as line separator)
-$STAGE1_BIN $BOOTSTRAP_SRC $STAGE2_LL.tmp
+BMB_ARENA_MAX_SIZE=${BMB_ARENA_MAX_SIZE:-32G} $STAGE1_BIN $BOOTSTRAP_SRC $STAGE2_LL.tmp
 
 # Convert | to newlines for LLVM tools
 tr '|' '\n' < $STAGE2_LL.tmp > $STAGE2_LL
@@ -135,6 +135,9 @@ if [ ! -f "$BMB_RUNTIME" ]; then
 else
     # Link Stage 2 binary with runtime
     echo "Linking Stage 2 binary with runtime..."
+    # -Wl,--stack,67108864: 64MB stack (same as Rust bmb linker) to handle deep recursion in compiler.bmb self-compile
+    clang "$STAGE2_OBJ" "$BMB_RUNTIME" -o "$STAGE2_BIN" -lm -lws2_32 -Wl,--stack,67108864 -no-pie 2>/dev/null || \
+    clang "$STAGE2_OBJ" "$BMB_RUNTIME" -o "$STAGE2_BIN" -lm -Wl,--stack,67108864 -no-pie 2>/dev/null || \
     clang "$STAGE2_OBJ" "$BMB_RUNTIME" -o "$STAGE2_BIN" -lm -no-pie
 
     if [ ! -f "$STAGE2_BIN" ]; then
@@ -147,7 +150,7 @@ else
     # Run Stage 2 binary to generate Stage 3 LLVM IR
     # This is the TRUE 3-stage verification
     echo "Running Stage 2 binary to generate Stage 3 LLVM IR..."
-    $STAGE2_BIN $BOOTSTRAP_SRC $STAGE3_LL.tmp
+    BMB_ARENA_MAX_SIZE=${BMB_ARENA_MAX_SIZE:-32G} $STAGE2_BIN $BOOTSTRAP_SRC $STAGE3_LL.tmp
 fi
 
 # Convert | to newlines for LLVM tools

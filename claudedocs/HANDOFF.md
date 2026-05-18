@@ -1,10 +1,10 @@
 # BMB Session Handoff — 2026-05-19 (Cycles 2939-2942 — 언어 갭 + 성능 최적화)
 
-> **HEAD**: `797d7e3f` (Cycle 2942 완료)
+> **HEAD**: `797d7e3f` (Cycle 2942 완료 — Cycles 2943-2944: 문서/분석만, 코드 변경 없음)
 > **이전 HEAD**: `2af17fb4` (Cycle 2927 완료)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930) — GCC MinGW 링커 비결정성으로 binary hash 비교 불가, IR hash 비교로 방법론 정정. bootstrap/compiler_s3.exe IR == compiler_s4.exe IR
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2943
+> **다음 세션 진입점**: Cycle 2945
 
 ---
 
@@ -63,10 +63,10 @@
 
 ---
 
-## 다음 사이클 (Cycle 2943)
+## 다음 사이클 (Cycle 2945)
 
-- **Cycle 2943** (현재 세션): HANDOFF/ROADMAP 갱신 + CLAUDE.md @inline 패턴 문서화 + 추가 언어 갭 탐색
-- **Cycle 2944** (현재 세션): 필요 시 추가 최적화 또는 cleanup
+- **Cycles 2943-2944** (완료): HANDOFF/ROADMAP 갱신 + @inline 패턴 문서화 + csv_parse @inline 실험 (회귀 확인, 복구)
+- **Cycle 2945** (다음 세션): 새 언어 갭 탐색 or inttoptr UB P3 착수 (대형 작업)
 
 ### 잔여 개선 가능 항목
 
