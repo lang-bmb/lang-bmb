@@ -1,319 +1,78 @@
-# BMB Session Handoff — 2026-05-19 (Cycles 2939-2940 — LetTuple desugaring + native codegen)
+# BMB Session Handoff — 2026-05-19 (Cycles 2939-2942 — 언어 갭 + 성능 최적화)
 
-> **HEAD**: `(Cycle 2940 완료, commit 예정)`
+> **HEAD**: `797d7e3f` (Cycle 2942 완료)
 > **이전 HEAD**: `2af17fb4` (Cycle 2927 완료)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930) — GCC MinGW 링커 비결정성으로 binary hash 비교 불가, IR hash 비교로 방법론 정정. bootstrap/compiler_s3.exe IR == compiler_s4.exe IR
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2941
+> **다음 세션 진입점**: Cycle 2943
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 2928-2932)
+## 이번 세션 작업 요약 (Cycles 2939-2942)
 
 ### 주요 변경 사항
 
 | Cycle | 제목 | 내용 |
 |-------|------|------|
-| 2928 | str_data builtin 추가 | bootstrap compiler.bmb에 `@str_data` 인라인 에미터 추가 (Stage 1 완료) |
-| 2929 | csv_parse flat v2 | compound-cond 단일함수. 3300 µs (6.1% 개선). vs Clang 1.150× |
-| 2930 | Bootstrap Fixed Point | IR Fixed Point 확인 + GCC 링커 비결정성 발견 + 방법론 정정 |
-| 2931 | http_parse flat + P0 fix | flat 단일함수 1.099× + str_data literal crash P0 수정 (llvm_text.rs) |
-| 2932 | str_data literal 테스트 | test_str_data_literal.bmb + .expected 신규. HANDOFF/ROADMAP 갱신 |
+| 2939 | let (a,b) = expr Rust interpreter | `Expr::LetTuple` + `desugar_stmts` 탈당화 (9파일 unreachable!) + grammar.lalrpop BlockStmt 규칙 |
+| 2940 | str_byte_at native + println dispatch | bmb_runtime.c + llvm_text.rs + mir/lower.rs MIR 타입 기반 dispatch |
+| 2941 | csv_parse break-loop + http_parse @inline | csv 1.204×→1.057× + http 1.099×→0.947× (BMB faster) |
+| 2942 | brainfuck @inline bracket+interpreter | brainfuck 1.274×→0.949× (BMB faster). 전체 7/7 real-world 6개 BMB faster |
 
-### 성능 현황 (tier3 inproc)
+### 성능 현황 (tier3 real-world inproc — Cycle 2942 기준)
 
 | 벤치마크 | BMB (µs) | C GCC (µs) | 비율 | 이전 비율 |
 |---------|----------|-----------|------|---------|
-| csv_parse flat v2 | ~3300 | ~2740 | **1.204×** | 1.283× (4.06× 이전) |
-| http_parse flat v1 | ~2542 | ~2313 | **1.099×** | 1.186× |
+| brainfuck | ~7830 | ~8247 | **0.949×** ← BMB faster | 1.274× |
+| csv_parse | ~3119 | ~2950 | **1.057×** | 1.204× |
+| http_parse | ~2395 | ~2528 | **0.947×** ← BMB faster | 1.099× |
+| lexer | ~1458 | ~8562 | **0.170×** ← BMB 5.9× faster | - |
+| json_parse | ~2545 | ~3275 | **0.777×** ← BMB faster | - |
+| json_serialize | ~494 | ~713 | **0.693×** ← BMB faster | - |
+| sorting | ~502579 | ~3240793 | **0.155×** ← BMB 6.5× faster | - |
+
+**7/7 real-world: 6개 BMB faster, 1개(csv_parse) 1.057× 이내**
 
 ### 핵심 변경 사항
 
-**1. `str_data` builtin (Cycle 2928 — bootstrap)**:
-- `bootstrap/compiler.bmb`에 `@str_data` 인라인 에미터 추가
-- `llvm_gen_call` + `llvm_gen_call_reg` + `mlcse_safe_builtins`에 등록
-- `tests/bootstrap/test_str_data_load_u8.bmb` 신규
+**1. `let (a, b) = expr` Rust interpreter 지원 (Cycle 2939)**:
+- `bmb/src/ast/expr.rs`: `Expr::LetTuple` + `desugar_stmts` 탈당화 로직
+- `bmb/src/grammar.lalrpop`: BlockStmt 컨텍스트 tuple destructuring 규칙
+- 9개 파일에 `unreachable!()` arm 추가
+- `tests/golden/tuple_destructuring.bmb` 신규 (6출력 검증)
+- LALR 충돌로 Expr 컨텍스트 미지원 (의도된 설계)
 
-**2. csv_parse flat v2 (Cycle 2929)**:
-- `ecosystem/benchmark-bmb/benches/real_world/csv_parse/bmb/main_inproc.bmb` 재작성
-- 단일 `parse_csv` 함수 + compound `and` while 조건
-- 6.1% 개선. 잔여 갭 원인: i64 vs i32 arithmetic (~15%)
+**2. native codegen 개선 (Cycle 2940)**:
+- `bmb/runtime/bmb_runtime.c`: `bmb_str_byte_at` 함수 신규
+- `bmb/src/codegen/llvm_text.rs`: str_byte_at declare + 매핑 + void list
+- `bmb/src/mir/lower.rs`: println/print 인자 타입 기반 native dispatch
+  `println(String)` → `println_str`, `println(f64)` → `println_f64`
 
-**3. http_parse flat v1 (Cycle 2931)**:
-- `ecosystem/benchmark-bmb/benches/real_world/http_parse/bmb/main_inproc.bmb` 재작성
-- request line skip (C와 동등), compound-cond 전체 inline
-- `@inline fn tol`, `@inline fn is_content_length` 추가
-- 1.186× → 1.099× (7% 비율 개선)
+**3. csv_parse v3 + http_parse @inline (Cycle 2941)**:
+- csv_parse: in_quote 플래그 → break 기반 quoted loop (phi node 제거)
+- http_parse: `@inline fn parse_http_flat` → 5× inlining → LLVM cross-function 최적화
+- **패턴 확립**: LLVM 인라이닝 임계값 초과 함수 → `@inline`으로 명시적 강제
 
-**4. str_data literal P0 fix (Cycle 2931 — llvm_text.rs)**:
-- 버그: `let s = "literal"; str_data(s)` → SEGV (상수 전파된 Constant::String이 raw bytes 사용)
-- 수정: `bmb/src/codegen/llvm_text.rs:5699` — `Constant::String` 분기 추가, `@.str.0.bmb` (struct) 사용
-- 검증: `test_str_data_literal.bmb` + .expected
-
-**5. Bootstrap Fixed Point 방법론 정정 (Cycle 2930)**:
-- GCC MinGW-w64 링커 비결정적: 동일 소스 2회 빌드도 binary hash 다름
-- 올바른 방법: IR hash 비교 (S3 IR == S4 IR for multiple test files ✓)
-- CLAUDE.md 업데이트 권장 (아직 미완)
+**4. brainfuck @inline (Cycle 2942)**:
+- `@inline find_matching_close`, `@inline find_matching_open`, `@inline interpret_check`
+- bracket 탐색 + 전체 interpreter 인라이닝
+- 1.274× → 0.949×
 
 ### 테스트 변화
-6249+ tests (cargo test --release: 3778 + 2388 + 47 + 13 + 23), 0 FAILED.
-test_str_data_literal.bmb 신규 (bootstrap + Rust backend 양쪽 확인).
+2388 tests, 0 FAILED (cargo test --release).
 
 ---
 
-## 이번 세션 작업 요약 (Cycle 2933 — HOF)
+## 다음 사이클 (Cycle 2943)
 
-### 주요 변경 사항
+- **Cycle 2943** (현재 세션): HANDOFF/ROADMAP 갱신 + CLAUDE.md @inline 패턴 문서화 + 추가 언어 갭 탐색
+- **Cycle 2944** (현재 세션): 필요 시 추가 최적화 또는 cleanup
 
-| Cycle | 제목 | 내용 |
-|-------|------|------|
-| 2933 | HOF fn 타입 파라미터 구현 | `fn(T) -> R` 타입 파라미터 지원. 5레이어 구현. 인터프리터+네이티브 ✅ |
+### 잔여 개선 가능 항목
 
-### HOF 구현 범위
+| 항목 | 현재 | 개선 방법 |
+|------|------|----------|
+| csv_parse | 1.057× | calloc→memset 패턴 (native memset 필요) |
+| brainfuck | 0.949× | 추가 최적화 가능하나 이미 BMB faster |
+| inttoptr UB | P3 flakiness | 대규모 codegen 변경 (Option A, 5-10 cycles) |
 
-- **파서**: `PlainType`에 `fn(T1, T2) -> R` 규칙 추가 (`grammar.lalrpop`)
-- **타입체커**: `Expr::Var` — named fn → `Type::Fn` 반환
-- **인터프리터**: `Value::FnRef(String)` + 두 평가 경로 (regular+fast) 지원
-- **MIR**: `Constant::FnRef(String)` + lowerer에서 fn 이름 → FnRef 상수 생성
-- **코드젠**: `ptrtoint ptr @fn to i64` + HOF 간접 호출 (`inttoptr` + `call i64 %fnptr(...)`)
-
-### 신규 테스트
-- `tests/bootstrap/test_hof_apply.expected`: `apply(double, 21)` → `42`
-- `tests/bootstrap/test_hof_multi.expected`: `apply2(add, 10, 32)` → `42`
-
-### 다음 자율 작업 권장 (Cycle 2935+)
-1. 클로저 HOF 지원 (현재 named fn만 HOF 가능)
-2. WASM 백엔드 HOF 지원 (현재 placeholder)
-3. 언어 갭 해소 지속 (ROADMAP 참조)
-
----
-
-## 이번 세션 작업 요약 (Cycle 2934 — Bootstrap HOF 포팅)
-
-### 주요 변경 사항
-
-| Cycle | 제목 | 내용 |
-|-------|------|------|
-| 2934 | Bootstrap HOF 타입 파서 포팅 | `fn(T)->R` 파라미터 타입 bootstrap 지원. 6개 수정점. 2개 테스트 통과. |
-
-### 구현 범위
-
-**`bootstrap/compiler.bmb`** — 6개 수정점:
-1. `llvm_gen_rhs_with_strings_map_and_fns_reg` copy 케이스: 함수명 참조 → `ptrtoint ptr @fn to i64`
-   - `is_fnref` 조건에 HOF/i64 파라미터 제외 로직 추가 (robustness fix, Cycle 2935에서 완료)
-2. `parse_param` TK_FN 케이스: `fn(T)->R` 파라미터 → `fn_i64` MIR 타입 태그
-3. `format_fn_params`: `fn_i64 → i64` LLVM 시그니처 변환
-4. `collect_i64_params_sb`: HOF 파라미터 → `H:%name,` 마커 (`P:` 대신)
-5. `llvm_gen_call_struct_aware`: `is_hof_param_sb` 우선 체크 추가
-6. 신규 함수 2개: `is_hof_param_sb`, `llvm_gen_hof_call`
-
-### 검증 결과
-```
-test_hof_apply.bmb → 42 ✅
-test_hof_multi.bmb → 42\n42 ✅
-골든 테스트: 5/5 passed ✅
-cargo test --release: 23/23 passed ✅ (gotgan flaky 1 test 제외)
-Quick Check: passed ✅
-```
-
----
-
----
-
-## 이번 세션 작업 요약 (Cycles 2918-2925)
-
-### 주요 변경 사항
-
-| Cycle | 제목 | 내용 |
-|-------|------|------|
-| 2918 | lexer+brainfuck inproc (Phase 1) | `time_ns()` 기반 harness. lexer 0.169× ✅ PASS, brainfuck 1.21× ⚠️ 조건부 |
-| 2919 | csv_parse+http_parse inproc (Phase 2) | csv_parse 4.06× FAIL, http_parse 1.255× ⚠️ 조건부 |
-| 2920 | json_parse+json_serialize inproc (Phase 3) | json_parse 0.829× ✅ PASS, json_serialize 0.715× ✅ PASS |
-| 2921 | sorting inproc (Phase 4) | C main_inproc.c 신규. BMB 0.156× ✅ PASS (6.41× faster) |
-| 2922 | ISSUE close + 요약 문서 | ISSUE-20260512 CLOSED. tier3_inproc_summary 신규 |
-| 2923 | csv_parse 최적화 | tuple return + 단일패스. 4.06× FAIL → 1.148× ⚠️ 조건부 |
-| 2924 | http_parse 사전 할당 | 5 String 사전 생성. 1.255× → 1.186× ⚠️ 조건부 |
-| 2925 | 회귀 검증 + ROADMAP 갱신 | cargo test 6249+ passed, 0 FAIL. ROADMAP 갱신 완료 |
-
-### tier3 inproc 최종 결과
-
-| 벤치마크 | BMB (µs) | C GCC (µs) | 비율 | 판정 |
-|---------|----------|-----------|------|------|
-| lexer | 1140 | 6740 | 0.169× | ✅ PASS (5.9× faster) |
-| brainfuck | 2065 | 1707 | 1.21× | ⚠️ 조건부 (heap vs stack) |
-| csv_parse | 3423 | 2982 | 1.148× | ⚠️ 조건부 (Cycle 2923 최적화) |
-| http_parse | 2906 | 2451 | 1.186× | ⚠️ 조건부 (Cycle 2924 최적화) |
-| json_parse | 2537 | 3062 | 0.829× | ✅ PASS (1.21× faster) |
-| json_serialize | 467 | 653 | 0.715× | ✅ PASS (1.40× faster) |
-| sorting | 471670 | 3023238 | 0.156× | ✅ PASS (6.41× faster) |
-
-**요약**: 4 PASS / 3 조건부 / 0 FAIL — ISSUE-20260512 CLOSED
-
-### 조건부 원인 분석 (구조적 한계)
-
-| 벤치마크 | 원인 |
-|---------|-----|
-| brainfuck | heap malloc tape vs C stack array (언어 기능 필요) |
-| csv_parse | `byte_at()` 간접 접근 overhead 누적 |
-| http_parse | `byte_at()` 간접 접근 vs C `char*` 직접 포인터 |
-
-### 변경 파일 (이번 세션)
-
-- `ecosystem/benchmark-bmb/benches/real_world/sorting/c/main_inproc.c` — 신규 (C inproc harness)
-- `ecosystem/benchmark-bmb/benches/real_world/csv_parse/bmb/main.bmb` — 전면 재작성 (tuple + 단일패스)
-- `ecosystem/benchmark-bmb/benches/real_world/csv_parse/bmb/main_inproc.bmb` — 전면 재작성
-- `ecosystem/benchmark-bmb/benches/real_world/http_parse/bmb/main_inproc.bmb` — 사전 할당 최적화
-- `claudedocs/measurements/tier3_inproc_summary_2026-05-19.md` — 신규
-- `claudedocs/issues/closed/ISSUE-20260512-tier3-spawn-overhead-methodology.md` — 이동+CLOSED
-- `claudedocs/ROADMAP.md` — Cycles 2918-2924 갱신
-- `claudedocs/cycle-logs/cycle-2918.md` ~ `cycle-2925.md` — 신규 8개
-
-### 테스트 변화
-6249+ tests (cargo test --release: 3778 + 2388 + 47 + 13 + 23), 0 FAILED.
-bootstrap 변경 없음 → 3-Stage Fixed Point 유지.
-
----
-
-## 이번 세션 작업 요약 (Cycles 2915-2917)
-
-### 주요 변경 사항
-
-| Cycle | 제목 | 내용 |
-|-------|------|------|
-| 2915 | Always FAIL 진단 1 | 15 placeholder problem.md 수정 (31-45) + 25/28/71/99 근본 원인 진단 |
-| 2916 | Always FAIL 진단 2 | 79/89/90/91 진단+수정, bmb_reference 링 버퍼 패턴 추가 |
-| 2917 | GPUStack 재측정 | Always FAIL 11 → 0 (100% pass), 추정 B축 85.0% → 96.0% |
-
-### B축 현황
-
-| 모델 | Success Rate | 측정일 | 비고 |
-|------|-------------|--------|------|
-| claude-sonnet-4-6 | **98.0%** | 2026-05-13 | 공식 baseline (stale 기한 2026-08-13) |
-| qwen3.6-35b-a3b (Cycle 2914) | **85.0%** | 2026-05-18 | Always FAIL 11문제 포함 |
-| qwen3.6-35b-a3b (Cycle 2917) | **96.0% (추정)** | 2026-05-18 | Targeted retest: 11문제 100%, 나머지 동일 가정 |
-
-**Always FAIL 11문제 수정 목록**:
-- 25_range_clamp: `clamp_val` 이름 충돌 경고
-- 28_positive_factorial: main() contract 금지 설명
-- 34, 39, 41: placeholder → 완전한 문제 설명
-- 71_single_element: 설명 오류 완전 수정 (first/last/count)
-- 79_mini_interpreter: op5=DUP, op6=print-without-pop 수정
-- 89_topological_sort: O(n*m) BFS 알고리즘 힌트 추가
-- 91_ring_buffer: overwrite-oldest 의미론 수정
-- 90, 99: bmb_reference 강화 (`;` 패턴, vec_pop CRITICAL, 링 버퍼 패턴)
-
-### 테스트 변화
-2388 tests (변화 없음). bootstrap 변경 없음.
-
----
-
----
-
-## 이번 세션 작업 요약 (Cycles 2908-2914)
-
-### 주요 변경 사항
-
-| Cycle | 제목 | 내용 |
-|-------|------|------|
-| 2908 | bmb-algo C 바인딩 | `bindings/c/` 생성 (76 tests / 55 함수) |
-| 2909 | bmb-compute C 바인딩 | `bindings/c/` 생성 (56 tests / 33 함수) |
-| 2910 | bmb-crypto C 바인딩 | `bindings/c/` 생성 (23 tests / 14 함수) + arena-free 규칙 발견 |
-| 2911 | bmb-text C 바인딩 | `bindings/c/` 생성 (33 tests / 23 함수) |
-| 2912 | bmb-json C 바인딩 | `bindings/c/` 생성 (28 tests / 12 함수) |
-| 2913 | ROADMAP 갱신 + Rule 9 | M4-14 항목 추가 + .gitignore + 조기 종료 |
-| 2914 | GPUStack B축 측정 | qwen3.6-35b-a3b 85.0% (255/300) + bmb-ai-bench GPUSTACK_* 연동 |
-
-### 테스트 변화
-2388 tests (변화 없음). C 바인딩: 216개 C 테스트 (별도 GCC 빌드).
-
----
-
-## C 바인딩 현황
-
-| 라이브러리 | 파일 | 테스트 | 함수 수 |
-|-----------|------|--------|---------|
-| bmb-algo   | ✅ Cycle 2908 | 76 | 55 |
-| bmb-compute | ✅ Cycle 2909 | 56 | 33 |
-| bmb-crypto | ✅ Cycle 2910 | 23 | 14 |
-| bmb-text   | ✅ Cycle 2911 | 33 | 23 |
-| bmb-json   | ✅ Cycle 2912 | 28 | 12 |
-
-총 **216 C tests** (5개 라이브러리). GCC + DLL 직접 링크.
-
-### M4 ④ 바인딩 완성도
-
-| 언어 | 상태 | 완료 Cycle |
-|------|------|-----------|
-| Python | ✅ | Cycle 2649 |
-| Node.js | ✅ | Cycle 2556 |
-| C#     | ✅ | Cycle 2897 |
-| Java   | ✅ | Cycle 2904 |
-| **C**  | ✅ | **Cycle 2908-2912** |
-
----
-
-## arena-free 규칙 (신규 확립 — Cycle 2910)
-
-C 바인딩에서 `@export` 반환 String은 arena-backed:
-- **입력** (`bmb_ffi_cstr_to_string` 결과) → `bmb_ffi_free_string` 호출 필수
-- **출력** (`@export` 함수 반환값) → `bmb_ffi_free_string` 절대 금지, `bmb_ffi_end()` 전에 데이터 읽기
-
-위반 시 `STATUS_HEAP_CORRUPTION (0xC0000374)` 발생.
-C 바인딩 README 각각에 CRITICAL 섹션으로 문서화.
-
----
-
-## 변경 파일 (이번 세션)
-
-**C 바인딩 신규** (각 4파일 × 5라이브러리 = 20파일):
-- `ecosystem/bmb-{algo,compute,crypto,text,json}/bindings/c/Makefile`
-- `ecosystem/bmb-{algo,compute,crypto,text,json}/bindings/c/example.c`
-- `ecosystem/bmb-{algo,compute,crypto,text,json}/bindings/c/test.c`
-- `ecosystem/bmb-{algo,compute,crypto,text,json}/bindings/c/README.md`
-
-**설정 갱신**:
-- `.gitignore`: `ecosystem/bmb-*/bindings/c/*.dll/.so/.dylib` 추가
-
-**문서 갱신**:
-- `claudedocs/ROADMAP.md`: M4-14 C 바인딩 ✅ 항목 추가, 헤더 갱신
-- `claudedocs/cycle-logs/cycle-2908.md` ~ `cycle-2913.md`
-
----
-
-## 다음 세션 우선순위
-
-### Carry-Forward (Actionable)
-- **없음** — str_data P0 fix + http_parse flat + Bootstrap Fixed Point 완료
-
-### Pending Human Decisions
-- **GPUStack B축 실제 재측정**: `.env.local` 필요. qwen3.6-35b-a3b Cycle 2917 추정 96.0% (실측 필요).
-- **Claude B축 재측정**: Stale 기한 2026-08-13 (아직 유효).
-- **i32 타입 추가**: ≤1.05× 유일한 경로 (언어 스펙 변경, Level 1 Decision). Pending Human 확인 필요.
-
-### 다음 자율 작업 권장 (Cycle 2933+)
-- **언어 갭 추가 해소** — 고차함수/제너릭 등 미구현 BMB 언어 기능 (HANDOFF 최우선 자율 작업)
-- **brainfuck stack array** (Long-term): 언어 기능 추가 필요 (고정 크기 stack array)
-- **CLAUDE.md Fixed Point 방법론 정정**: binary hash → IR hash 비교 (Cycle 2930 발견)
-
----
-
-## 세션 종료 정리 (2026-05-19 최신 — Cycle 2932 포함)
-
-### 최종 커밋 이력
-| SHA | 내용 |
-|-----|------|
-| `07884ec1` | chore: 세션 종료 정리 — HANDOFF/ROADMAP 최종 갱신 (Cycle 2927) |
-| *(이번 세션)* | feat(cycles-2928-2932): str_data builtin+http_parse flat+P0 fix+Bootstrap IR Fixed Point |
-
-### 테스트 상태
-- `cargo test --release`: 6249+ passed, 0 failed ✅
-- IR Fixed Point: S3 IR == S4 IR (3 test files verified, Cycle 2930)
-- str_data literal P0 fix: test_str_data_literal.bmb 신규 ✅
-
-### 다음 세션 진입 체크리스트
-- [ ] `claudedocs/HANDOFF.md` HEAD 확인 (최신 커밋 SHA)
-- [ ] Cycle 2933 시작 — 언어 갭 해소 (고차함수/제너릭) 또는 i32 타입 추가 (HUMAN 결정 있으면)
-- [ ] Pending Human Decisions 재확인:
-  - GPUStack B축 실측 (`.env.local` 필요)
-  - Claude B축 재측정 (stale 기한 2026-08-13)
-  - npm/PyPI publish (M3-3/M3-4)

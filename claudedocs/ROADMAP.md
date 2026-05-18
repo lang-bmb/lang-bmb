@@ -1,5 +1,6 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-19 (Cycles 2928-2932 — **str_data builtin** bootstrap 추가 + **csv_parse flat v2** 1.283×→**1.204×** + **http_parse flat v1** 1.186×→**1.099×** + **str_data literal P0 bug fix** (llvm_text.rs Constant::String 분기) + **Bootstrap Fixed Point 방법론 정정** (binary hash→IR hash, GCC MinGW 비결정적). HEAD `7f1fbddc`)
+> 최종 업데이트: 2026-05-19 (Cycles 2939-2942 — **let (a,b) tuple destructuring** Rust interp ✅ + **str_byte_at native** + **println(String/f64) dispatch** + **P축 대폭 개선**: csv_parse 1.204×→**1.057×** / http_parse 1.099×→**0.947×** / brainfuck 1.274×→**0.949×**. **전체 7/7 real-world: 6개 BMB faster than C**. @inline 전략으로 LLVM 인라이닝 임계값 초과 함수 최적화. HEAD `797d7e3f`)
+> 이전 갱신: 2026-05-19 (Cycles 2928-2932 — **str_data builtin** bootstrap 추가 + **csv_parse flat v2** 1.283×→**1.204×** + **http_parse flat v1** 1.186×→**1.099×** + **str_data literal P0 bug fix** (llvm_text.rs Constant::String 분기) + **Bootstrap Fixed Point 방법론 정정** (binary hash→IR hash, GCC MinGW 비결정적). HEAD `7f1fbddc`)
 > 이전 갱신: 2026-05-19 (Cycles 2918-2926 — **tier3-spawn-overhead Option B Phase 1-4 완료**: 7개 real_world 벤치마크 inproc 포팅 완료(lexer/brainfuck/csv_parse/http_parse/json_parse/json_serialize/sorting). **csv_parse 최적화**: tuple return + single-pass → 4.06× FAIL → 1.148× 조건부. **http_parse**: 1.255→1.186×. **sorting 6.4×** BMB faster. ISSUE-20260512 CLOSED. HEAD `8c8a85ad`)
 > 이전 갱신: 2026-05-18 (Cycle 2914 — **GPUStack B축 측정**: qwen3.6-35b-a3b **85.0%** (255/300, 100문제×3 runs) + bmb-ai-bench GPUSTACK_* 자동 연동(thinking off/max_tokens 16384). cf. Claude 공식 baseline 98.0% (2026-05-13). HEAD `e89c7b5`)
 > 이전 갱신: 2026-05-18 (Cycles 2908-2913 — **C 바인딩 5/5 완료**(algo 76+compute 56+crypto 23+text 33+json 28=**216 C tests**) + arena-free UB 규칙 C 바인딩에 확립(Cycle 2910) + 헤더 날짜 갱신. M4 ④ 바인딩 축 Python/Node/C#/Java/C **5종 완성**. HEAD `5092d94b`)
@@ -360,7 +361,7 @@ GitHub stars      ≥ 1,000
 | 축 | 현재값 | 목표 | 측정 방법 |
 |----|--------|------|----------|
 | **B** Failure Rate | ✅ **공식 98.0%** (2026-05-13, Cycle 2811, claude-sonnet-4-6) · **GPUStack 85.0%** (2026-05-18, Cycle 2914, qwen3.6-35b-a3b) | 99%+ 목표 (Claude) · 90%+ 목표 (GPUStack) | LLM 1-shot 컴파일+verifier 통과율 |
-| **P** Performance | ✅ 16/16 ≤1.05x · inproc 4 도메인 (knapsack/mandelbrot/fibonacci/nqueen 평균 BMB vs clang 1.057x, vs gcc 도메인별 양극 0.38-1.39x) | 도메인 핵심 ≤1.00x, 일부 FAST | Tier 1/3 벤치마크 + inproc (Cycle 2685-2695) |
+| **P** Performance | ✅ 16/16 ≤1.05x · **real-world 7/7: 6개 BMB faster, 1개 ≤1.06×** (Cycles 2941-2942 @inline 최적화: brainfuck 0.95× / csv 1.06× / http 0.95× / lexer 0.17× / json_parse 0.78× / json_ser 0.69× / sorting 0.15×) | 도메인 핵심 ≤1.00x, 일부 FAST | Tier 1/3 벤치마크 + inproc (Cycle 2685-2695, 2941-2942) |
 | **A** Token Efficiency | ❌ 미측정 | BMB ≤ Rust LOC (동일 알고리즘) | LOC·토큰 비교 |
 | **D** Verification | ❌ 미측정 | contract 자동 증명률 추적 | `bmb verify` 통과율 |
 | **C** Navigability | ❌ 미측정 | LLM N-파일 정답률 추적 | Track R suite |
