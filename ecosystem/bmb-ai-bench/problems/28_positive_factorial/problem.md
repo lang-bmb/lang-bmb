@@ -2,21 +2,26 @@
 
 ## Description
 
-Compute factorial with a contract ensuring the input is non-negative and within a safe range.
+Compute factorial for multiple queries. Use a helper function `factorial(n: i64) -> i64` with contracts. The contract goes on the **helper function**, not on `main`.
 
 **Input** (stdin):
 - First integer: `n`, number of queries (1 <= n <= 20)
 - Next `n` integers: values to compute factorial for (0 <= x <= 20)
 
 **Output** (stdout):
-- For each value, print x!
+- For each value, print x! on its own line
 
 ## Contract Requirement
 
+The `factorial` helper function must have:
 ```
-pre n >= 0 and n <= 20
-post ret >= 1
+fn factorial(n: i64) -> i64
+    pre n >= 0 and n <= 20
+    post ret >= 1
+= ...
 ```
+
+Do NOT put contracts on `fn main()` — main has no parameters so contract variables would be undefined.
 
 ## Example
 

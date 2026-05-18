@@ -40,6 +40,12 @@
     "51_bracket_match 2/3",
     "56_char_frequency 1/3"
   ],
+  "problem_md_changes": {
+    "cycle": "2915",
+    "date": "2026-05-18",
+    "fixed": ["31_dot_product", "32_selection_sort", "33_counting_sort", "34_power_mod", "35_sieve_primes", "36_array_rotation", "37_binary_exp", "38_matrix_trace", "39_partial_sum_query", "40_bubble_sort", "41_collatz_length", "42_integer_sqrt", "43_sum_of_squares", "44_euclidean_dist", "45_array_compact"],
+    "note": "15 placeholder problem.md files replaced with proper descriptions. Claude 98.0% baseline comparison remains valid (different problems affected). Future re-measurement results are not directly comparable to this baseline for problems 31-45."
+  },
   "notes": [
     "GPUStack local inference 첫 측정 (Claude 공식 baseline 대비 비교 목적)",
     "Qwen3 thinking mode 비활성화 필수 (chat_template_kwargs.enable_thinking=false) — 미설정 시 응답 truncation으로 0% 수준",

@@ -334,13 +334,45 @@ let _p = vec_pop(stack);
 
 ## Pattern: Queue (FIFO with front pointer)
 ```bmb
+// CRITICAL: vec_pop removes from the BACK. For FIFO dequeue, use front index + size, NOT vec_pop.
 let queue = vec_new();
 let mut front = 0;
+let mut size = 0;
 // enqueue
 let _p = vec_push(queue, value);
-// dequeue
+size = size + 1;
+// dequeue (check size > 0 first)
 let val = vec_get(queue, front);
 front = front + 1;
+size = size - 1;
+// check if empty
+// if size == 0 { /* empty */ }
+```
+
+## Pattern: Bounded queue (FIFO, capacity limit)
+```bmb
+// Queue with max capacity. Enqueue to full = overflow (-1). Uses front+size.
+let q = vec_new();
+let mut front = 0;
+let mut size = 0;
+let cap = read_int();
+// enqueue val (if not full)
+if size < cap {
+    let _p = vec_push(q, val);
+    size = size + 1
+} else {
+    let _p = println(-1)  // overflow
+};
+// dequeue (if not empty)
+if size > 0 {
+    let val = vec_get(q, front);
+    let _p = println(val);
+    front = front + 1;
+    size = size - 1
+} else {
+    let _p = println(-1)  // underflow
+};
+// size query: println(size)
 ```
 
 ## Pattern: Selection sort
@@ -925,6 +957,13 @@ fn sum_n_floats(count: i64) -> f64 = {
 // Note: str_lines strips \r\n (handles Windows/Unix line endings)
 // Note: str_to_f64 returns 0.0 on parse failure
 ```
+
+## Reserved stdlib function names — DO NOT redefine
+The following names are defined in BMB's standard prelude and will cause `invalid redefinition` errors if you define them yourself. Use a different name (e.g., `clamp_val` instead of `clamp`):
+- `clamp(x, lo, hi)` — clamped x in [lo,hi] (use `clamp_val` or `clamp_i64` as your function name)
+- `min(a, b)`, `max(a, b)` — integer min/max (use `min_val` / `max_val` as your function name)
+- `abs(x)` — absolute value
+- `gcd_i64(a, b)` — GCD
 
 ## Common Pitfalls
 - `println()` returns `()`, not `i64` — always wrap: `let _r = println(x);`

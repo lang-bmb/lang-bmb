@@ -4,6 +4,8 @@
 
 Clamp each element of an array to a given range [lo, hi] using contracts.
 
+**IMPORTANT**: Name your clamp function `clamp_val` (not `clamp` — that name is reserved in BMB's standard library).
+
 **Input** (stdin):
 - First two integers: `lo hi` (lo <= hi)
 - Third integer: `n`, the number of elements (1 <= n <= 100000)
@@ -14,7 +16,7 @@ Clamp each element of an array to a given range [lo, hi] using contracts.
 
 ## Contract Requirement
 
-The clamp function must have:
+The `clamp_val` function must have:
 ```
 pre lo <= hi
 post ret >= lo and ret <= hi
