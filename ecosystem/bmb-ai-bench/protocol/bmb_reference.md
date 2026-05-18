@@ -354,6 +354,31 @@ size = size - 1;
 // if size == 0 { /* empty */ }
 ```
 
+## Pattern: Ring buffer (circular, overwrites oldest when full)
+```bmb
+// Ring buffer: write always succeeds; when full, overwrites oldest element (head advances).
+// size tracks current count; when full, size stays at cap.
+let buf = vec_new();
+let cap = read_int();
+for _i in 0..cap { let _p = vec_push(buf, 0) };
+let mut head = 0;
+let mut tail = 0;
+let mut size = 0;
+// write val
+let _s = vec_set(buf, tail, val);
+tail = (tail + 1) % cap;
+if size < cap { size = size + 1 }
+else { head = (head + 1) % cap };  // overwrite: advance head
+// read (dequeue oldest)
+if size > 0 {
+    let val = vec_get(buf, head);
+    let _p = println(val);
+    head = (head + 1) % cap;
+    size = size - 1
+} else { let _p = println(-1) };
+// size query: println(size)
+```
+
 ## Pattern: Bounded queue (FIFO, capacity limit)
 ```bmb
 // Queue with max capacity. Enqueue to full = overflow (-1). Uses front+size.
