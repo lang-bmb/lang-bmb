@@ -1,0 +1,84 @@
+{
+  "date": "2026-05-18",
+  "cycle": "2917",
+  "model": "qwen3.6-35b-a3b",
+  "api_endpoint": "http://172.30.1.53:8080/v1",
+  "via": "GPUStack (local inference)",
+  "scope": "targeted retest — always-fail 11 problems only",
+  "total_problems": 11,
+  "runs": 3,
+  "total_runs": 33,
+  "passed": 33,
+  "success_rate": 100.0,
+  "median_loops": 1,
+  "output_dir": "ecosystem/bmb-ai-bench/results/2026-05-18-c2917",
+  "config": {
+    "enable_thinking": false,
+    "max_tokens": 16384,
+    "temperature": 0.0
+  },
+  "problems_tested": [
+    "25_range_clamp",
+    "28_positive_factorial",
+    "34_power_mod",
+    "39_partial_sum_query",
+    "41_collatz_length",
+    "71_single_element",
+    "79_mini_interpreter",
+    "89_topological_sort",
+    "90_nth_prime",
+    "91_ring_buffer",
+    "99_bounded_queue_contract"
+  ],
+  "loop_counts": {
+    "25_range_clamp": 1,
+    "28_positive_factorial": 1,
+    "34_power_mod": 2,
+    "39_partial_sum_query": 1,
+    "41_collatz_length": 1,
+    "71_single_element": 1,
+    "79_mini_interpreter": 1,
+    "89_topological_sort": 1,
+    "90_nth_prime": 2,
+    "91_ring_buffer": 1,
+    "99_bounded_queue_contract": 1
+  },
+  "before_fix": {
+    "passed_from_these_11": 0,
+    "total_from_these_11": 33,
+    "ref": "b_baseline_2026-05-18_c2914_qwen3.json"
+  },
+  "after_fix": {
+    "passed_from_these_11": 33,
+    "total_from_these_11": 33
+  },
+  "estimated_full_score": {
+    "method": "old_pass(255) - old_always_fail_pass(0) + new_always_fail_pass(33)",
+    "estimated_pass": 288,
+    "estimated_total": 300,
+    "estimated_rate": 96.0,
+    "note": "Estimate only. Sometimes-fail 8 problems unchanged (original 12/24 passes). Full re-run needed for exact figure."
+  },
+  "fixes_applied": [
+    "Cycle 2915: 15 placeholder problem.md files (31-45) replaced",
+    "Cycle 2915: 25_range_clamp — clamp_val name warning added",
+    "Cycle 2915: 28_positive_factorial — contract-on-main() prohibition",
+    "Cycle 2915: 71_single_element — problem description completely rewritten",
+    "Cycle 2916: 79_mini_interpreter — op5=DUP, op6=print-without-pop corrected",
+    "Cycle 2916: 89_topological_sort — algorithm hint (parallel edge arrays, O(n*m) BFS)",
+    "Cycle 2916: 91_ring_buffer — overwrite-oldest semantics corrected",
+    "Cycle 2916: bmb_reference — vec_pop CRITICAL warning, ring buffer pattern, if-semicolon pitfall"
+  ],
+  "comparison": {
+    "baseline_2026-05-18": {
+      "success_rate": 85.0,
+      "always_fail": 11,
+      "ref": "b_baseline_2026-05-18_c2914_qwen3.json"
+    },
+    "claude-sonnet-4-6": {
+      "success_rate": 98.0,
+      "date": "2026-05-13",
+      "ref": "b_baseline_2026-05-13_c2810.json"
+    }
+  }
+}

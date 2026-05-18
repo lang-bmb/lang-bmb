@@ -1,10 +1,45 @@
-# BMB Session Handoff — 2026-05-18 (Cycles 2908-2914 — GPUStack B축 측정)
+# BMB Session Handoff — 2026-05-18 (Cycles 2915-2917 — Always FAIL 진단+수정+검증)
 
-> **HEAD**: `89ea1e76` (세션 최종 — HANDOFF/ROADMAP 정리 완료)
-> **이전 HEAD**: `6290e46f` (Cycles 2908-2913)
+> **HEAD**: `(갱신 예정)` (Cycles 2915-2917 완료)
+> **이전 HEAD**: `89ea1e76` (Cycle 2914)
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2822, 120790 lines) — 이번 세션 bootstrap 변경 없음
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2915
+> **다음 세션 진입점**: Cycle 2918
+
+---
+
+## 이번 세션 작업 요약 (Cycles 2915-2917)
+
+### 주요 변경 사항
+
+| Cycle | 제목 | 내용 |
+|-------|------|------|
+| 2915 | Always FAIL 진단 1 | 15 placeholder problem.md 수정 (31-45) + 25/28/71/99 근본 원인 진단 |
+| 2916 | Always FAIL 진단 2 | 79/89/90/91 진단+수정, bmb_reference 링 버퍼 패턴 추가 |
+| 2917 | GPUStack 재측정 | Always FAIL 11 → 0 (100% pass), 추정 B축 85.0% → 96.0% |
+
+### B축 현황
+
+| 모델 | Success Rate | 측정일 | 비고 |
+|------|-------------|--------|------|
+| claude-sonnet-4-6 | **98.0%** | 2026-05-13 | 공식 baseline (stale 기한 2026-08-13) |
+| qwen3.6-35b-a3b (Cycle 2914) | **85.0%** | 2026-05-18 | Always FAIL 11문제 포함 |
+| qwen3.6-35b-a3b (Cycle 2917) | **96.0% (추정)** | 2026-05-18 | Targeted retest: 11문제 100%, 나머지 동일 가정 |
+
+**Always FAIL 11문제 수정 목록**:
+- 25_range_clamp: `clamp_val` 이름 충돌 경고
+- 28_positive_factorial: main() contract 금지 설명
+- 34, 39, 41: placeholder → 완전한 문제 설명
+- 71_single_element: 설명 오류 완전 수정 (first/last/count)
+- 79_mini_interpreter: op5=DUP, op6=print-without-pop 수정
+- 89_topological_sort: O(n*m) BFS 알고리즘 힌트 추가
+- 91_ring_buffer: overwrite-oldest 의미론 수정
+- 90, 99: bmb_reference 강화 (`;` 패턴, vec_pop CRITICAL, 링 버퍼 패턴)
+
+### 테스트 변화
+2388 tests (변화 없음). bootstrap 변경 없음.
+
+---
 
 ---
 
