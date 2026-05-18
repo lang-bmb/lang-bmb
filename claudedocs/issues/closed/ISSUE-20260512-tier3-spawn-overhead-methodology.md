@@ -4,7 +4,7 @@
 
 **우선순위**: P2 (P-track measurement integrity)
 **영역**: ci / benchmarks
-**상태**: Open — Option B 확정 (2026-05-18, Cycle 2914), Phase 1 대기
+**상태**: ✅ CLOSED — Option B Phase 1-4 완료 (2026-05-19, Cycles 2918-2921). 7개 real_world 전체 inproc 포팅. Summary: `claudedocs/measurements/tier3_inproc_summary_2026-05-19.md`
 
 ## 측정 stamp
 

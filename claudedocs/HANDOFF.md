@@ -1,10 +1,64 @@
-# BMB Session Handoff — 2026-05-18 (Cycles 2915-2917 — Always FAIL 진단+수정+검증)
+# BMB Session Handoff — 2026-05-19 (Cycles 2918-2925 — tier3 inproc 포팅 완료)
 
-> **HEAD**: `(갱신 예정)` (Cycles 2915-2917 완료)
+> **HEAD**: `(갱신 예정)` (Cycles 2918-2925 완료)
 > **이전 HEAD**: `89ea1e76` (Cycle 2914)
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2822, 120790 lines) — 이번 세션 bootstrap 변경 없음
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2918
+> **다음 세션 진입점**: Cycle 2926+
+
+---
+
+## 이번 세션 작업 요약 (Cycles 2918-2925)
+
+### 주요 변경 사항
+
+| Cycle | 제목 | 내용 |
+|-------|------|------|
+| 2918 | lexer+brainfuck inproc (Phase 1) | `time_ns()` 기반 harness. lexer 0.169× ✅ PASS, brainfuck 1.21× ⚠️ 조건부 |
+| 2919 | csv_parse+http_parse inproc (Phase 2) | csv_parse 4.06× FAIL, http_parse 1.255× ⚠️ 조건부 |
+| 2920 | json_parse+json_serialize inproc (Phase 3) | json_parse 0.829× ✅ PASS, json_serialize 0.715× ✅ PASS |
+| 2921 | sorting inproc (Phase 4) | C main_inproc.c 신규. BMB 0.156× ✅ PASS (6.41× faster) |
+| 2922 | ISSUE close + 요약 문서 | ISSUE-20260512 CLOSED. tier3_inproc_summary 신규 |
+| 2923 | csv_parse 최적화 | tuple return + 단일패스. 4.06× FAIL → 1.148× ⚠️ 조건부 |
+| 2924 | http_parse 사전 할당 | 5 String 사전 생성. 1.255× → 1.186× ⚠️ 조건부 |
+| 2925 | 회귀 검증 + ROADMAP 갱신 | cargo test 6249+ passed, 0 FAIL. ROADMAP 갱신 완료 |
+
+### tier3 inproc 최종 결과
+
+| 벤치마크 | BMB (µs) | C GCC (µs) | 비율 | 판정 |
+|---------|----------|-----------|------|------|
+| lexer | 1140 | 6740 | 0.169× | ✅ PASS (5.9× faster) |
+| brainfuck | 2065 | 1707 | 1.21× | ⚠️ 조건부 (heap vs stack) |
+| csv_parse | 3423 | 2982 | 1.148× | ⚠️ 조건부 (Cycle 2923 최적화) |
+| http_parse | 2906 | 2451 | 1.186× | ⚠️ 조건부 (Cycle 2924 최적화) |
+| json_parse | 2537 | 3062 | 0.829× | ✅ PASS (1.21× faster) |
+| json_serialize | 467 | 653 | 0.715× | ✅ PASS (1.40× faster) |
+| sorting | 471670 | 3023238 | 0.156× | ✅ PASS (6.41× faster) |
+
+**요약**: 4 PASS / 3 조건부 / 0 FAIL — ISSUE-20260512 CLOSED
+
+### 조건부 원인 분석 (구조적 한계)
+
+| 벤치마크 | 원인 |
+|---------|-----|
+| brainfuck | heap malloc tape vs C stack array (언어 기능 필요) |
+| csv_parse | `byte_at()` 간접 접근 overhead 누적 |
+| http_parse | `byte_at()` 간접 접근 vs C `char*` 직접 포인터 |
+
+### 변경 파일 (이번 세션)
+
+- `ecosystem/benchmark-bmb/benches/real_world/sorting/c/main_inproc.c` — 신규 (C inproc harness)
+- `ecosystem/benchmark-bmb/benches/real_world/csv_parse/bmb/main.bmb` — 전면 재작성 (tuple + 단일패스)
+- `ecosystem/benchmark-bmb/benches/real_world/csv_parse/bmb/main_inproc.bmb` — 전면 재작성
+- `ecosystem/benchmark-bmb/benches/real_world/http_parse/bmb/main_inproc.bmb` — 사전 할당 최적화
+- `claudedocs/measurements/tier3_inproc_summary_2026-05-19.md` — 신규
+- `claudedocs/issues/closed/ISSUE-20260512-tier3-spawn-overhead-methodology.md` — 이동+CLOSED
+- `claudedocs/ROADMAP.md` — Cycles 2918-2924 갱신
+- `claudedocs/cycle-logs/cycle-2918.md` ~ `cycle-2925.md` — 신규 8개
+
+### 테스트 변화
+6249+ tests (cargo test --release: 3778 + 2388 + 47 + 13 + 23), 0 FAILED.
+bootstrap 변경 없음 → 3-Stage Fixed Point 유지.
 
 ---
 
@@ -116,63 +170,36 @@ C 바인딩 README 각각에 CRITICAL 섹션으로 문서화.
 
 ## 다음 세션 우선순위
 
-### Cycle 2914 추가 (GPUStack B축)
-- `ecosystem/bmb-ai-bench/bmb_ai_bench/run_cmd.py`: GPUSTACK_* 폴백 + GPUStack 자동 설정 (thinking off, max_tokens 16384)
-- `ecosystem/bmb-ai-bench/bmb_ai_bench/runner/llm_client.py`: extra_body 파라미터 추가
-- `claudedocs/measurements/b_baseline_2026-05-18_c2914_qwen3.json`: 측정 결과 저장
-- `claudedocs/cycle-logs/cycle-2914.md`: 사이클 로그
-
-### qwen3.6-35b-a3b B축 측정 결과 (Cycle 2914)
-
-| 지표 | 값 |
-|------|-----|
-| Success Rate | **85.0%** (255/300) |
-| Median Loops | 1 |
-| Always FAIL | 11문제 |
-| Sometimes FAIL | 8문제 |
-
-**cf. Claude baseline**: 98.0% (2026-05-13, stale 기한 2026-08-13)
-
 ### Carry-Forward (Actionable)
-- **없음** — 측정 완료
+- **없음** — tier3 inproc 작업 완료, ISSUE-20260512 CLOSED
 
 ### Pending Human Decisions
-- **Claude B축 재측정**: ANTHROPIC_API_KEY로 재측정 시 98.5%+ 예상. Stale 기한: 2026-08-13 (아직 유효).
+- **GPUStack B축 실제 재측정**: `.env.local` 필요. qwen3.6-35b-a3b Cycle 2917 추정 96.0% (실측 필요).
+- **Claude B축 재측정**: Stale 기한 2026-08-13 (아직 유효).
 
-### 자율 작업 확정 (Cycle 2914)
-- **tier3-spawn-overhead Option B**: ISSUE-20260512 Option B 선택 확정 (2026-05-18). inproc timing port — Phase 1(lexer+brainfuck) → Phase 4(sorting) 순차 실행.
-
-### 다음 자율 작업 권장 (Cycle 2915+)
-- **언어 갭 추가 해소** — 아직 미구현 BMB 언어 기능 탐색 (고차함수/제너릭 등)
-- **Always FAIL 11문제 분석** — BMB reference 개선으로 qwen3 성능 향상 가능성 탐색
-- **tier3-spawn-overhead Phase 1** — lexer+brainfuck inproc timing 포팅 (ISSUE-20260512 Phase 1)
-- **Claude baseline 재측정** (stale 기한: 2026-08-13, 아직 유효)
+### 다음 자율 작업 권장 (Cycle 2926+)
+- **언어 갭 추가 해소** — 고차함수/제너릭 등 미구현 BMB 언어 기능
+- **byte_at 최적화** (Long-term): `load_u8(ptr)` 기반 raw pointer 스캔 → csv_parse/http_parse ≤1.05× 목표
+- **brainfuck stack array** (Long-term): 언어 기능 추가 필요 (고정 크기 stack array)
 
 ---
 
-## 세션 종료 정리 (2026-05-18 최종 — Cycle 2914 포함)
+## 세션 종료 정리 (2026-05-19 최종 — Cycle 2925 포함)
 
 ### 최종 커밋 이력
 | SHA | 내용 |
 |-----|------|
-| `9dfc0d5b` | feat(cycles-2908-2913): C 바인딩 5/5 완료 (216 tests) + arena-free 규칙 |
-| `5092d94b` | chore(headers): 날짜 갱신 + bmb_c_ 접두어 주석 보완 |
-| `6290e46f` | chore: 세션 종료 정리 — HANDOFF/ROADMAP HEAD 갱신 |
-| `b9ee36ce` | feat(cycle-2914): GPUStack B축 측정 — qwen3.6-35b-a3b 85.0% (255/300) |
-| `e89c7b5` | chore: HANDOFF HEAD 갱신 (b9ee36ce) — Cycle 2914 완료 |
 | `89ea1e76` | chore: 세션 종료 정리 — HANDOFF/ROADMAP 최종 갱신 (Cycle 2914) |
+| *(이번 세션)* | feat(cycles-2918-2925): tier3 inproc 완료 — 7/7 벤치마크, ISSUE-20260512 CLOSED |
 
 ### 미커밋 정리 항목
-- **없음** — 워킹 트리 클린 (세션 종료 커밋 후)
+- **없음** — 이번 Cycle 2926 커밋 후 클린
 
 ### 테스트 상태
-- `cargo test --release`: 2388 passed, 0 failed ✅
-- C 바인딩 216 tests: GCC 빌드 통과 ✅ (별도 GCC 빌드)
+- `cargo test --release`: 6249+ passed, 0 failed ✅
 - 3-Stage Fixed Point: S2==S3 유지 (Cycle 2822 이후 bootstrap 변경 없음)
 
 ### 다음 세션 진입 체크리스트
-- [ ] `claudedocs/HANDOFF.md` HEAD 확인 (이번 커밋 SHA)
-- [ ] Cycle 2915 시작 — 언어 갭 해소 (고차함수/제너릭 등) 또는 Always FAIL 11문제 분석
-- [ ] Pending Human Decisions 재확인 (Claude B축 재측정 ANTHROPIC_API_KEY 필요)
-- [ ] tier3-spawn-overhead Phase 1 자율 실행 가능 (Option B 확정)
-- [ ] GPUStack B축: `.env.local` 있으면 자동 — 추가 측정 시 `bmb-ai-bench run --runs 3` 즉시 가능
+- [ ] `claudedocs/HANDOFF.md` HEAD 확인 (이번 커밋 SHA 갱신 후)
+- [ ] Cycle 2926+ 시작 — 언어 갭 해소 또는 byte_at 최적화 탐색
+- [ ] Pending Human Decisions 재확인 (GPUStack `.env.local`, Claude B축 stale 기한 확인)
