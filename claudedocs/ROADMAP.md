@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-18 (Cycles 2908-2912 — **C 바인딩 5/5 완료**(algo 76+compute 56+crypto 23+text 33+json 28=**216 C tests**) + arena-free UB 규칙 C 바인딩에 확립(Cycle 2910). M4 ④ 바인딩 축 Python/Node/C#/Java/C **5종 완성**. HEAD 미갱신)
+> 최종 업데이트: 2026-05-18 (Cycles 2908-2913 — **C 바인딩 5/5 완료**(algo 76+compute 56+crypto 23+text 33+json 28=**216 C tests**) + arena-free UB 규칙 C 바인딩에 확립(Cycle 2910) + 헤더 날짜 갱신. M4 ④ 바인딩 축 Python/Node/C#/Java/C **5종 완성**. HEAD `5092d94b`)
 > 이전 갱신: 2026-05-17 (Cycles 2906-2907 — **FFI arena-free UB/double-free 전수 수정**(Node.js/C#/Java 9개 바인딩 — bmb-text/crypto/json 각 3종) + `libbmb_runtime.a` git 추적 제거(git rm --cached, .gitignore `*.a` 적용) + `.gitignore` cycle-logs 예외 규칙 추가. HEAD eca0680b)
 > 이전 갱신: 2026-05-17 (Cycles 2901-2905 — **P0 FFI @export→String 전파 수정**(bmb-text 3+bmb-crypto 6+bmb-json 7 = 16 total) + **CI 3종 스크립트**(rebuild-runtime/check_backend_parity/check_export_string_safety) + **Java 바인딩 5/5 완료**(120 tests) + quick-check/full-cycle Step0a/0b/0c 통합. HEAD 9522e6b7)
 > 이전 갱신: 2026-05-15 (Cycles 2895-2900 — **M4-6 C# 바인딩 93/93 ✅** + bmb_json_type FFI crash 수정(str_repeat heap-copy) + **Java JNA scaffold 시작**(bmb-algo, 24 tests) + B축 재측정 준비(problem.md 2종 + int-key 패턴). HEAD 9c29b6d9)
