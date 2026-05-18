@@ -102,7 +102,8 @@ C 바인딩 README 각각에 CRITICAL 섹션으로 문서화.
 - **없음** — 측정 완료
 
 ### Pending Human Decisions
-- **B축 재측정**: API key 확인 후 실행 가능. 예상 98.0% → 98.5%+. Stale 기한: 2026-08-13.
+- **Claude B축 재측정**: ANTHROPIC_API_KEY로 재측정 시 98.5%+ 예상. Stale 기한: 2026-08-13 (아직 유효).
+- **GPUStack B축 개선**: qwen3.6-35b-a3b 85.0% — Always FAIL 11문제 중 BMB reference 개선으로 해결 가능한 것 탐색 (자율 가능).
 - **tier3-spawn-overhead**: ISSUE-20260512 Option A/B/C 선택.
 
 ### 다음 자율 작업 권장 (Cycle 2915+)
@@ -112,18 +113,20 @@ C 바인딩 README 각각에 CRITICAL 섹션으로 문서화.
 
 ---
 
-## 세션 종료 정리 (2026-05-18 최종)
+## 세션 종료 정리 (2026-05-18 최종 — Cycle 2914 포함)
 
 ### 최종 커밋 이력
 | SHA | 내용 |
 |-----|------|
 | `9dfc0d5b` | feat(cycles-2908-2913): C 바인딩 5/5 완료 (216 tests) + arena-free 규칙 |
-| `4a57453f` | chore: HANDOFF HEAD 최종 갱신 |
 | `5092d94b` | chore(headers): 날짜 갱신 + bmb_c_ 접두어 주석 보완 |
 | `6290e46f` | chore: 세션 종료 정리 — HANDOFF/ROADMAP HEAD 갱신 |
+| `b9ee36ce` | feat(cycle-2914): GPUStack B축 측정 — qwen3.6-35b-a3b 85.0% (255/300) |
+| `e89c7b5` | chore: HANDOFF HEAD 갱신 (b9ee36ce) — Cycle 2914 완료 |
+| *(이번 커밋)* | chore: 세션 종료 정리 — HANDOFF/ROADMAP 최종 갱신 |
 
 ### 미커밋 정리 항목
-- **없음** — 워킹 트리 클린
+- **없음** — 워킹 트리 클린 (세션 종료 커밋 후)
 
 ### 테스트 상태
 - `cargo test --release`: 2388 passed, 0 failed ✅
@@ -131,6 +134,7 @@ C 바인딩 README 각각에 CRITICAL 섹션으로 문서화.
 - 3-Stage Fixed Point: S2==S3 유지 (Cycle 2822 이후 bootstrap 변경 없음)
 
 ### 다음 세션 진입 체크리스트
-- [ ] `claudedocs/HANDOFF.md` HEAD 확인 (`5092d94b`)
-- [ ] Cycle 2914 시작 — Re-plan: 언어 갭 해소 또는 B축 재측정
-- [ ] Pending Human Decisions 재확인 (B축 API key / ISSUE-20260512 Option 선택)
+- [ ] `claudedocs/HANDOFF.md` HEAD 확인 (이번 커밋 SHA)
+- [ ] Cycle 2915 시작 — 언어 갭 해소 (고차함수/제너릭 등) 또는 Always FAIL 11문제 분석
+- [ ] Pending Human Decisions 재확인 (tier3-spawn-overhead Option A/B/C)
+- [ ] GPUStack B축: `.env.local` 있으면 자동 — 추가 측정 시 `bmb-ai-bench run --runs 3` 즉시 가능

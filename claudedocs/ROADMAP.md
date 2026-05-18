@@ -1,5 +1,6 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-18 (Cycles 2908-2913 — **C 바인딩 5/5 완료**(algo 76+compute 56+crypto 23+text 33+json 28=**216 C tests**) + arena-free UB 규칙 C 바인딩에 확립(Cycle 2910) + 헤더 날짜 갱신. M4 ④ 바인딩 축 Python/Node/C#/Java/C **5종 완성**. HEAD `5092d94b`)
+> 최종 업데이트: 2026-05-18 (Cycle 2914 — **GPUStack B축 측정**: qwen3.6-35b-a3b **85.0%** (255/300, 100문제×3 runs) + bmb-ai-bench GPUSTACK_* 자동 연동(thinking off/max_tokens 16384). cf. Claude 공식 baseline 98.0% (2026-05-13). HEAD `e89c7b5`)
+> 이전 갱신: 2026-05-18 (Cycles 2908-2913 — **C 바인딩 5/5 완료**(algo 76+compute 56+crypto 23+text 33+json 28=**216 C tests**) + arena-free UB 규칙 C 바인딩에 확립(Cycle 2910) + 헤더 날짜 갱신. M4 ④ 바인딩 축 Python/Node/C#/Java/C **5종 완성**. HEAD `5092d94b`)
 > 이전 갱신: 2026-05-17 (Cycles 2906-2907 — **FFI arena-free UB/double-free 전수 수정**(Node.js/C#/Java 9개 바인딩 — bmb-text/crypto/json 각 3종) + `libbmb_runtime.a` git 추적 제거(git rm --cached, .gitignore `*.a` 적용) + `.gitignore` cycle-logs 예외 규칙 추가. HEAD eca0680b)
 > 이전 갱신: 2026-05-17 (Cycles 2901-2905 — **P0 FFI @export→String 전파 수정**(bmb-text 3+bmb-crypto 6+bmb-json 7 = 16 total) + **CI 3종 스크립트**(rebuild-runtime/check_backend_parity/check_export_string_safety) + **Java 바인딩 5/5 완료**(120 tests) + quick-check/full-cycle Step0a/0b/0c 통합. HEAD 9522e6b7)
 > 이전 갱신: 2026-05-15 (Cycles 2895-2900 — **M4-6 C# 바인딩 93/93 ✅** + bmb_json_type FFI crash 수정(str_repeat heap-copy) + **Java JNA scaffold 시작**(bmb-algo, 24 tests) + B축 재측정 준비(problem.md 2종 + int-key 패턴). HEAD 9c29b6d9)
@@ -356,7 +357,7 @@ GitHub stars      ≥ 1,000
 
 | 축 | 현재값 | 목표 | 측정 방법 |
 |----|--------|------|----------|
-| **B** Failure Rate | ✅ **공식 98.0%** (2026-05-13, Cycle 2811, 100문제 × 3 runs, claude-sonnet-4-6, median loops=1) — 초기 94.7%→4종 problem.md 추가→98.0% — supersedes 비공식 90.9% (2026-03-26) | 99%+ 목표 — 잔여 6개 분석 | LLM 1-shot 컴파일+verifier 통과율 |
+| **B** Failure Rate | ✅ **공식 98.0%** (2026-05-13, Cycle 2811, claude-sonnet-4-6) · **GPUStack 85.0%** (2026-05-18, Cycle 2914, qwen3.6-35b-a3b) | 99%+ 목표 (Claude) · 90%+ 목표 (GPUStack) | LLM 1-shot 컴파일+verifier 통과율 |
 | **P** Performance | ✅ 16/16 ≤1.05x · inproc 4 도메인 (knapsack/mandelbrot/fibonacci/nqueen 평균 BMB vs clang 1.057x, vs gcc 도메인별 양극 0.38-1.39x) | 도메인 핵심 ≤1.00x, 일부 FAST | Tier 1/3 벤치마크 + inproc (Cycle 2685-2695) |
 | **A** Token Efficiency | ❌ 미측정 | BMB ≤ Rust LOC (동일 알고리즘) | LOC·토큰 비교 |
 | **D** Verification | ❌ 미측정 | contract 자동 증명률 추적 | `bmb verify` 통과율 |
@@ -386,6 +387,33 @@ GitHub stars      ≥ 1,000
 **잔여 실패 6건** (300 runs 중 6 FAIL, 각 run별 비결정적):
 - 이전 실패 4종은 모두 해소됨 — 남은 6건은 다른 문제에서 산발적 발생
 - 다음 분석 대상: `--runs 5` 재측정으로 결정론적 실패 식별
+
+### B 축 GPUStack baseline (Cycle 2914, 2026-05-18)
+
+| 필드 | 값 |
+|------|----|
+| `measurement_date` | 2026-05-18 |
+| `stale_after` | 2026-08-18 (3개월) |
+| `model` | qwen3.6-35b-a3b |
+| `via` | GPUStack (local inference, http://172.30.1.53:8080/v1) |
+| `total_problems` | 100 |
+| `runs` | 3 |
+| `total_runs` | 300 |
+| `passed` | 255 |
+| `success_rate` | **85.0%** |
+| `median_loops` | **1** |
+| `source` | `claudedocs/measurements/b_baseline_2026-05-18_c2914_qwen3.json` |
+
+**비교 요약**:
+
+| 모델 | Rate | 날짜 | 비고 |
+|------|------|------|------|
+| claude-sonnet-4-6 | 98.0% | 2026-05-13 | 공식 baseline (stale: 2026-08-13) |
+| qwen3.6-35b-a3b | 85.0% | 2026-05-18 | GPUStack 로컬, 비공식 참고용 |
+
+**Always FAIL 11문제**: 25_range_clamp / 28_positive_factorial / 34_power_mod / 39_partial_sum_query / 41_collatz_length / 71_single_element / 79_mini_interpreter / 89_topological_sort / 90_nth_prime / 91_ring_buffer / 99_bounded_queue_contract
+
+**GPUStack 설정 주의**: Qwen3 `enable_thinking=false` + `max_tokens=16384` 필수. `.env.local` 있으면 `bmb-ai-bench run` 자동 적용.
 
 ### P 축 inproc 측정 누적표 (Cycle 2661-2695)
 
