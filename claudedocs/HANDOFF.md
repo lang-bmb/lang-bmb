@@ -200,6 +200,9 @@ C 바인딩 README 각각에 CRITICAL 섹션으로 문서화.
 - 3-Stage Fixed Point: S2==S3 유지 (Cycle 2822 이후 bootstrap 변경 없음)
 
 ### 다음 세션 진입 체크리스트
-- [ ] `claudedocs/HANDOFF.md` HEAD 확인 (이번 커밋 SHA 갱신 후)
-- [ ] Cycle 2926+ 시작 — 언어 갭 해소 또는 byte_at 최적화 탐색
-- [ ] Pending Human Decisions 재확인 (GPUStack `.env.local`, Claude B축 stale 기한 확인)
+- [ ] `claudedocs/HANDOFF.md` HEAD 확인 (최신 커밋 SHA)
+- [ ] Cycle 2928 시작 — 언어 갭 해소 (고차함수/제너릭) 또는 `.env.local` 있으면 GPUStack 재측정
+- [ ] Pending Human Decisions 재확인:
+  - GPUStack B축 실측 (`.env.local` 필요)
+  - Claude B축 재측정 (stale 기한 2026-08-13)
+  - npm/PyPI publish (M3-3/M3-4)

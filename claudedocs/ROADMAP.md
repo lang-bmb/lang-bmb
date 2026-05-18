@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-19 (Cycles 2918-2924 — **tier3-spawn-overhead Option B Phase 1-4 완료**: 7개 real_world 벤치마크 inproc 포팅 완료(lexer/brainfuck/csv_parse/http_parse/json_parse/json_serialize/sorting). **csv_parse 최적화**: tuple return + single-pass → 4.06× FAIL → 1.148× 조건부. **http_parse**: 1.255→1.186×. **sorting 6.4×** BMB faster. ISSUE-20260512 CLOSED. HEAD 갱신 예정)
+> 최종 업데이트: 2026-05-19 (Cycles 2918-2926 — **tier3-spawn-overhead Option B Phase 1-4 완료**: 7개 real_world 벤치마크 inproc 포팅 완료(lexer/brainfuck/csv_parse/http_parse/json_parse/json_serialize/sorting). **csv_parse 최적화**: tuple return + single-pass → 4.06× FAIL → 1.148× 조건부. **http_parse**: 1.255→1.186×. **sorting 6.4×** BMB faster. ISSUE-20260512 CLOSED. HEAD `8c8a85ad`)
 > 이전 갱신: 2026-05-18 (Cycle 2914 — **GPUStack B축 측정**: qwen3.6-35b-a3b **85.0%** (255/300, 100문제×3 runs) + bmb-ai-bench GPUSTACK_* 자동 연동(thinking off/max_tokens 16384). cf. Claude 공식 baseline 98.0% (2026-05-13). HEAD `e89c7b5`)
 > 이전 갱신: 2026-05-18 (Cycles 2908-2913 — **C 바인딩 5/5 완료**(algo 76+compute 56+crypto 23+text 33+json 28=**216 C tests**) + arena-free UB 규칙 C 바인딩에 확립(Cycle 2910) + 헤더 날짜 갱신. M4 ④ 바인딩 축 Python/Node/C#/Java/C **5종 완성**. HEAD `5092d94b`)
 > 이전 갱신: 2026-05-17 (Cycles 2906-2907 — **FFI arena-free UB/double-free 전수 수정**(Node.js/C#/Java 9개 바인딩 — bmb-text/crypto/json 각 3종) + `libbmb_runtime.a` git 추적 제거(git rm --cached, .gitignore `*.a` 적용) + `.gitignore` cycle-logs 예외 규칙 추가. HEAD eca0680b)
@@ -512,6 +512,39 @@ historic.json (2026-05-02, 5-run) + tier3-10runs.json (2026-05-01, 10-run, noise
 - ✅ Cycle 2750 환경 변동성 가설 우위 판단 정확 (회귀 단정 회피의 leverage)
 - 📝 **C-side anomaly 3건 (brainfuck/csv_parse/http_parse)**: BMB 측 stable → BMB 측 측정에 영향 없으나 fairness 점검 필요 (carry-forward)
 - 📝 **구조 개선 후보**: scripts/benchmark.sh Tier 3 default 10-run으로 변경 권고 (5-run은 신뢰 부족)
+
+### P 축 Tier 3 inproc 측정 (Cycles 2918-2924 — 신뢰가능 기준치, 2026-05-19)
+
+**방법**: `time_ns()` 직접 측정 + `bmb_black_box()` per-iter (DCE 차단)  
+**빌드**: BMB `--release` + LLVM opt -O2 / C GCC -O2  
+**문서**: `claudedocs/measurements/tier3_inproc_summary_2026-05-19.md`
+
+| 벤치마크 | BMB median (µs) | C GCC (µs) | 비율 (BMB/C) | 판정 |
+|---------|----------------|-----------|-------------|------|
+| lexer | 1140 | 6740 | **0.169×** | ✅ PASS (5.9× faster) |
+| brainfuck | 2065 | 1707 | **1.21×** | ⚠️ 조건부 |
+| csv_parse | 3423 | 2982 | **1.148×** | ⚠️ 조건부 (Cycle 2923 최적화) |
+| http_parse | 2906 | 2451 | **1.186×** | ⚠️ 조건부 (Cycle 2924 최적화) |
+| json_parse | 2537 | 3062 | **0.829×** | ✅ PASS (1.21× faster) |
+| json_serialize | 467 | 653 | **0.715×** | ✅ PASS (1.40× faster) |
+| sorting | 471670 | 3023238 | **0.156×** | ✅ PASS (6.41× faster) |
+
+**요약**: 4 PASS / 3 조건부 / 0 FAIL — spawn overhead(200ms+) 제거 후 신뢰가능 절대값
+
+**조건부 원인** (구조적 한계, workaround 아님):
+- brainfuck: heap malloc tape vs C stack array (언어 기능 — fixed-size stack array 미지원)
+- csv_parse/http_parse: `String.byte_at(p)` 간접 접근 vs C `char*` 직접 포인터
+
+**이전 framework(spawn) 측정 비교**:
+| 구분 | 이전 framework | inproc |
+|------|--------------|--------|
+| csv_parse 비율 | ~1.0× (200ms spawn으로 마스킹) | 4.06× (최적화 전) → 1.148× |
+| sorting 비율 | ~1.0× (마스킹) | 0.156× (BMB 6.4× faster) |
+| 신뢰도 | ratio만 유효, absolute 무의미 | absolute 측정값 신뢰가능 |
+
+**차기 최적화 후보** (Carry-Forward, 비자율):
+- `byte_at` → `load_u8(ptr)` raw pointer 스캔: csv_parse/http_parse → ≤1.05× 목표
+- stack array 언어 기능: brainfuck → PASS 전환 가능
 
 ---
 
