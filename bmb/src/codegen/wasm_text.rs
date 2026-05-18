@@ -1344,6 +1344,8 @@ impl WasmCodeGen {
             }
             // v0.64: Character constant (Unicode codepoint as i32)
             Constant::Char(c) => writeln!(out, "    i32.const {}", *c as u32)?,
+            // v0.99: FnRef not supported in WASM backend yet
+            Constant::FnRef(name) => writeln!(out, "    ;; FnRef {} (unsupported in WASM)", name)?,
         }
         Ok(())
     }
@@ -1678,6 +1680,8 @@ impl WasmCodeGen {
                     // v0.64: Character type
                     Constant::Char(_) => MirType::Char,
                     Constant::Unit => MirType::Unit,
+                    // v0.99: Function reference is i64
+                    Constant::FnRef(_) => MirType::I64,
                 };
                 Some((dest.name.clone(), ty))
             }
@@ -1892,6 +1896,8 @@ impl WasmCodeGen {
                 // v0.64: Character type
                 Constant::Char(_) => MirType::Char,
                 Constant::Unit => MirType::Unit,
+                // v0.99: Function reference is i64
+                Constant::FnRef(_) => MirType::I64,
             },
             Operand::Place(p) => self.infer_place_mir_type(&p.name, func),
         }
@@ -1908,6 +1914,8 @@ impl WasmCodeGen {
                 // v0.64: Character type
                 Constant::Char(_) => "i32",
                 Constant::Unit => "i32",
+                // v0.99: Function reference is i64
+                Constant::FnRef(_) => "i64",
             },
             Operand::Place(p) => {
                 // Check parameters

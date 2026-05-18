@@ -1836,15 +1836,21 @@ impl TypeChecker {
             Expr::Var(name) => {
                 // v0.48: Mark variable as used for unused binding detection
                 self.binding_tracker.mark_used(name);
-                self.env.get(name).cloned().ok_or_else(|| {
-                    // v0.62: Suggest similar variable names
-                    let var_names: Vec<&str> = self.env.keys().map(|s| s.as_str()).collect();
-                    let suggestion = find_similar_name(name, &var_names, 2);
-                    CompileError::type_error(
-                        format!("undefined variable: `{}`{}", name, format_suggestion_hint(suggestion)),
-                        span,
-                    )
-                })
+                if let Some(ty) = self.env.get(name).cloned() {
+                    return Ok(ty);
+                }
+                // v0.99 Cycle 2933: HOF — named fn used as first-class value
+                if let Some((param_tys, ret_ty)) = self.functions.get(name) {
+                    let params = param_tys.iter().map(|t| Box::new(t.clone())).collect();
+                    return Ok(Type::Fn { params, ret: Box::new(ret_ty.clone()) });
+                }
+                // v0.62: Suggest similar variable names
+                let var_names: Vec<&str> = self.env.keys().map(|s| s.as_str()).collect();
+                let suggestion = find_similar_name(name, &var_names, 2);
+                Err(CompileError::type_error(
+                    format!("undefined variable: `{}`{}", name, format_suggestion_hint(suggestion)),
+                    span,
+                ))
             }
 
             Expr::Binary { left, op, right } => {

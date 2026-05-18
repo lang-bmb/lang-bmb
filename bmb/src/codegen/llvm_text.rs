@@ -2685,6 +2685,12 @@ impl TextCodeGen {
                         Constant::Char(c) => {
                             writeln!(out, "  store {} {}, ptr %{}.addr", dest_ty, *c as u32, dest.name)?;
                         }
+                        // v0.99 Cycle 2933: Function reference as i64
+                        Constant::FnRef(fn_name) => {
+                            let tmp = self.unique_name(&format!("{}.fnptr", dest.name), name_counts);
+                            writeln!(out, "  %{} = ptrtoint ptr @{} to i64", tmp, fn_name)?;
+                            writeln!(out, "  store i64 %{}, ptr %{}.addr", tmp, dest.name)?;
+                        }
                     }
                 } else {
                     let dest_name = self.unique_name(&dest.name, name_counts);
@@ -2719,6 +2725,10 @@ impl TextCodeGen {
                         // v0.64: Character constant (stored as i32 Unicode codepoint)
                         Constant::Char(c) => {
                             writeln!(out, "  %{} = add {} 0, {}", dest_name, const_ty, *c as u32)?;
+                        }
+                        // v0.99 Cycle 2933: Function reference as i64
+                        Constant::FnRef(fn_name) => {
+                            writeln!(out, "  %{} = ptrtoint ptr @{} to i64", dest_name, fn_name)?;
                         }
                     }
                 }
@@ -6484,6 +6494,40 @@ impl TextCodeGen {
                     })
                     .collect();
 
+                // v0.99 Cycle 2933: HOF indirect call — fn_name is a parameter holding an i64 fn ptr
+                // Detect: fn_name is in func.params (type i64) and NOT in fn_param_types (user fns)
+                if !fn_param_types.contains_key(fn_name)
+                    && func.params.iter().any(|(n, ty)| n == fn_name && *ty == crate::mir::MirType::I64)
+                {
+                    let fnptr_name = format!("{}.fnptr", call_base);
+                    writeln!(out, "  %{} = inttoptr i64 %{} to ptr", fnptr_name, fn_name)?;
+                    // Sign-extend any i32 args to i64 for the indirect call
+                    let mut hof_args: Vec<String> = Vec::new();
+                    for (i, (arg_ty, val, _)) in arg_vals.iter().enumerate() {
+                        if arg_ty == "i32" {
+                            let sext_name = format!("{}.hof.sext{}", call_base, i);
+                            writeln!(out, "  %{} = sext i32 {} to i64", sext_name, val)?;
+                            hof_args.push(format!("i64 %{}", sext_name));
+                        } else {
+                            hof_args.push(format!("{} {}", arg_ty, val));
+                        }
+                    }
+                    let args_joined = hof_args.join(", ");
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let tmp = format!("{}.hof.ret", d.name);
+                            writeln!(out, "  %{} = call i64 %{}({})", tmp, fnptr_name, args_joined)?;
+                            writeln!(out, "  store i64 %{}, ptr %{}.addr", tmp, d.name)?;
+                        } else {
+                            let dest_name = self.unique_name(&d.name, name_counts);
+                            writeln!(out, "  %{} = call i64 %{}({})", dest_name, fnptr_name, args_joined)?;
+                        }
+                    } else {
+                        writeln!(out, "  call i64 %{}({})", fnptr_name, args_joined)?;
+                    }
+                    return Ok(());
+                }
+
                 // v0.96.35: Replace min/max/abs with LLVM intrinsics for branchless codegen
                 // @llvm.smin.i64, @llvm.smax.i64 are pure, branchless, and LLVM can optimize them
                 // into cmov/conditional-select without function call overhead
@@ -9007,6 +9051,8 @@ impl TextCodeGen {
             // v0.64: Character constant (32-bit Unicode codepoint)
             Constant::Char(_) => "i32",
             Constant::Unit => "i8",
+            // v0.99: Function reference is an i64 pointer value
+            Constant::FnRef(_) => "i64",
         }
     }
 
@@ -9022,6 +9068,8 @@ impl TextCodeGen {
             // v0.64: Character constant (Unicode codepoint)
             Constant::Char(c) => (*c as u32).to_string(),
             Constant::Unit => "0".to_string(),
+            // v0.99 Cycle 2933: Function reference as i64 (HOF support)
+            Constant::FnRef(name) => format!("ptrtoint (ptr @{} to i64)", name),
         }
     }
 

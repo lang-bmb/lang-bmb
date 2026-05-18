@@ -832,6 +832,8 @@ pub enum Constant {
     /// Character constant (v0.64)
     Char(char),
     Unit,
+    /// Function reference as i64 pointer (v0.99 Cycle 2933): ptrtoint ptr @name to i64
+    FnRef(String),
 }
 
 /// MIR binary operators
@@ -1241,6 +1243,8 @@ impl LoweringContext {
                 // v0.64: Character type
                 Constant::Char(_) => MirType::Char,
                 Constant::Unit => MirType::Unit,
+                // v0.99: Function references are i64 pointers
+                Constant::FnRef(_) => MirType::I64,
             },
             Operand::Place(p) => {
                 if let Some(ty) = self.locals.get(&p.name) {
@@ -1663,6 +1667,7 @@ fn format_constant(c: &Constant) -> String {
         // v0.64: Character constant
         Constant::Char(c) => format!("C:'{}'", c.escape_default()),
         Constant::Unit => "U".to_string(),
+        Constant::FnRef(name) => format!("FR:{}", name),
     }
 }
 

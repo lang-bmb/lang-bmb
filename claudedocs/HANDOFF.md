@@ -1,10 +1,10 @@
-# BMB Session Handoff — 2026-05-19 (Cycles 2928-2932 — http_parse flat + str_data P0 fix)
+# BMB Session Handoff — 2026-05-19 (Cycles 2928-2933 — HOF + http_parse + str_data)
 
-> **HEAD**: `7f1fbddc` (Cycles 2928-2932 완료)
-> **이전 HEAD**: `07884ec1` (Cycles 2918-2927)
+> **HEAD**: `[다음 커밋 후 갱신]` (Cycle 2933 완료)
+> **이전 HEAD**: `7f1fbddc` (Cycles 2928-2932)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930) — GCC MinGW 링커 비결정성으로 binary hash 비교 불가, IR hash 비교로 방법론 정정. bootstrap/compiler_s3.exe IR == compiler_s4.exe IR
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2933
+> **다음 세션 진입점**: Cycle 2934
 
 ---
 
@@ -58,6 +58,33 @@
 ### 테스트 변화
 6249+ tests (cargo test --release: 3778 + 2388 + 47 + 13 + 23), 0 FAILED.
 test_str_data_literal.bmb 신규 (bootstrap + Rust backend 양쪽 확인).
+
+---
+
+## 이번 세션 작업 요약 (Cycle 2933 — HOF)
+
+### 주요 변경 사항
+
+| Cycle | 제목 | 내용 |
+|-------|------|------|
+| 2933 | HOF fn 타입 파라미터 구현 | `fn(T) -> R` 타입 파라미터 지원. 5레이어 구현. 인터프리터+네이티브 ✅ |
+
+### HOF 구현 범위
+
+- **파서**: `PlainType`에 `fn(T1, T2) -> R` 규칙 추가 (`grammar.lalrpop`)
+- **타입체커**: `Expr::Var` — named fn → `Type::Fn` 반환
+- **인터프리터**: `Value::FnRef(String)` + 두 평가 경로 (regular+fast) 지원
+- **MIR**: `Constant::FnRef(String)` + lowerer에서 fn 이름 → FnRef 상수 생성
+- **코드젠**: `ptrtoint ptr @fn to i64` + HOF 간접 호출 (`inttoptr` + `call i64 %fnptr(...)`)
+
+### 신규 테스트
+- `tests/bootstrap/test_hof_apply.expected`: `apply(double, 21)` → `42`
+- `tests/bootstrap/test_hof_multi.expected`: `apply2(add, 10, 32)` → `42`
+
+### 다음 자율 작업 권장 (Cycle 2934+)
+1. `bootstrap/compiler.bmb`에 HOF 타입 파서 포팅
+2. 클로저 HOF 지원 (현재 named fn만 HOF 가능)
+3. CLAUDE.md Fixed Point 방법론 업데이트
 
 ---
 

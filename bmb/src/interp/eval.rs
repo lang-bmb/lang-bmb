@@ -670,9 +670,14 @@ impl Interpreter {
             }
 
             Expr::Var(name) => {
-                env.borrow()
-                    .get(name)
-                    .ok_or_else(|| RuntimeError::undefined_variable(name))
+                if let Some(v) = env.borrow().get(name) {
+                    return Ok(v);
+                }
+                // HOF: named function used as a value
+                if self.functions.contains_key(name) || self.builtins.contains_key(name) {
+                    return Ok(Value::FnRef(name.clone()));
+                }
+                Err(RuntimeError::undefined_variable(name))
             }
 
             Expr::Binary { left, op, right } => {
@@ -899,6 +904,10 @@ impl Interpreter {
                 // v0.92: Check if func resolves to a closure value
                 if let Some(Value::Closure { params, body, env: captured_env }) = env.borrow().get(func) {
                     return self.call_closure(&params, &body, &captured_env, arg_vals);
+                }
+                // v0.99 Cycle 2933: HOF — func param holds a FnRef
+                if let Some(Value::FnRef(actual)) = env.borrow().get(func) {
+                    return self.call(&actual.clone(), arg_vals);
                 }
 
                 self.call(func, arg_vals)
@@ -6379,9 +6388,14 @@ impl Interpreter {
             Expr::Unit => Ok(Value::Unit),
 
             Expr::Var(name) => {
-                self.scope_stack
-                    .get(name)
-                    .ok_or_else(|| RuntimeError::undefined_variable(name))
+                if let Some(v) = self.scope_stack.get(name) {
+                    return Ok(v);
+                }
+                // HOF: named function used as a value
+                if self.functions.contains_key(name) || self.builtins.contains_key(name) {
+                    return Ok(Value::FnRef(name.clone()));
+                }
+                Err(RuntimeError::undefined_variable(name))
             }
 
             Expr::Binary { left, op, right } => {
@@ -6452,6 +6466,10 @@ impl Interpreter {
                     .iter()
                     .map(|a| self.eval_fast(a))
                     .collect::<InterpResult<Vec<_>>>()?;
+                // v0.99 Cycle 2933: HOF — func param holds a FnRef
+                if let Some(Value::FnRef(actual)) = self.scope_stack.get(func) {
+                    return self.call_fast(&actual, arg_vals);
+                }
                 self.call_fast(func, arg_vals)
             }
 

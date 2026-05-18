@@ -43,6 +43,9 @@ pub enum Value {
     /// Svec handle (v0.98.7, Cycle 2861): SVEC_REGISTRY index for string-vec handles.
     /// Distinct from Value::Int so for-in can dispatch to SVEC_REGISTRY iteration.
     SvecHandle(usize),
+    /// Named function reference (v0.99, Cycle 2933): first-class fn value.
+    /// Enables HOF — pass a named fn as an argument of type fn(T) -> R.
+    FnRef(String),
 }
 
 impl Value {
@@ -65,6 +68,7 @@ impl Value {
             Value::Tuple(_) => true, // Tuples are always truthy
             Value::Closure { .. } => true, // Closures are always truthy
             Value::SvecHandle(_) => true,
+            Value::FnRef(_) => true,
         }
     }
 
@@ -87,6 +91,7 @@ impl Value {
             Value::Tuple(_) => "tuple",
             Value::Closure { .. } => "closure",
             Value::SvecHandle(_) => "svec",
+            Value::FnRef(_) => "fn",
         }
     }
 
@@ -242,6 +247,7 @@ impl fmt::Display for Value {
                 write!(f, "<closure({})>", params.join(", "))
             }
             Value::SvecHandle(idx) => write!(f, "svec@{idx}"),
+            Value::FnRef(name) => write!(f, "<fn {name}>"),
         }
     }
 }

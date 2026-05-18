@@ -1114,6 +1114,8 @@ Type: Type = {
 
 // Plain types without refinement (used in impl targets to avoid ambiguity)
 PlainType: Type = {
+    // v0.99: Function type: fn(T1, T2) -> R
+    "fn" "(" <params:TypeArgList> ")" "->" <ret:BoxedType> => Type::Fn { params, ret },
     "i32" => Type::I32,
     "i64" => Type::I64,
     // v0.38: Unsigned integer types

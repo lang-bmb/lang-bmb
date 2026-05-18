@@ -962,9 +962,16 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
         }
 
         Expr::Var(name) => {
+            // v0.99 Cycle 2933: HOF — if name is a function, return FnRef constant
+            let mapped = ctx.var_name_map.get(name).cloned().unwrap_or_else(|| name.clone());
+            if !ctx.locals.contains_key(&mapped)
+                && !ctx.params.contains_key(&mapped)
+                && ctx.func_return_types.contains_key(name)
+            {
+                return Operand::Constant(crate::mir::Constant::FnRef(name.clone()));
+            }
             // v0.88.1: Look up the unique SSA name for this variable
-            let actual_name = ctx.var_name_map.get(name).cloned().unwrap_or_else(|| name.clone());
-            Operand::Place(Place::new(actual_name))
+            Operand::Place(Place::new(mapped))
         }
 
         Expr::Binary { left, op, right } => {
