@@ -1,0 +1,39 @@
+// v0.99 Cycle 2936: break <expr> — loop { break value } returns the value
+fn first_square_gt(n: i64) -> i64 = {
+    let i = 1;
+    loop {
+        if i * i > n { break i };
+        set i = i + 1
+    }
+};
+
+fn find_divisor(n: i64) -> i64 = {
+    let i = 2;
+    loop {
+        if i * i > n { break 0 - 1 };
+        if n % i == 0 { break i };
+        set i = i + 1
+    }
+};
+
+fn countdown(from: i64) -> i64 = {
+    let i = from;
+    loop {
+        if i == 0 { break 0 };
+        set i = i - 1
+    }
+};
+
+fn main() -> i64 = {
+    let r1 = first_square_gt(20);
+    let r2 = first_square_gt(99);
+    let r3 = find_divisor(35);
+    let r4 = find_divisor(37);
+    let r5 = countdown(5);
+    println(r1);
+    println(r2);
+    println(r3);
+    println(r4);
+    println(r5);
+    0
+};

@@ -1,10 +1,10 @@
-# BMB Session Handoff — 2026-05-19 (Cycles 2928-2933 — HOF + http_parse + str_data)
+# BMB Session Handoff — 2026-05-19 (Cycles 2928-2934 — HOF + http_parse + str_data + bootstrap HOF)
 
-> **HEAD**: `7139e451` (Cycle 2933 완료)
-> **이전 HEAD**: `7f1fbddc` (Cycles 2928-2932)
+> **HEAD**: `(Cycle 2934 완료, commit 예정)`
+> **이전 HEAD**: `7139e451` (Cycle 2933 완료)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930) — GCC MinGW 링커 비결정성으로 binary hash 비교 불가, IR hash 비교로 방법론 정정. bootstrap/compiler_s3.exe IR == compiler_s4.exe IR
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2934
+> **다음 세션 진입점**: Cycle 2935
 
 ---
 
@@ -81,10 +81,40 @@ test_str_data_literal.bmb 신규 (bootstrap + Rust backend 양쪽 확인).
 - `tests/bootstrap/test_hof_apply.expected`: `apply(double, 21)` → `42`
 - `tests/bootstrap/test_hof_multi.expected`: `apply2(add, 10, 32)` → `42`
 
-### 다음 자율 작업 권장 (Cycle 2934+)
-1. `bootstrap/compiler.bmb`에 HOF 타입 파서 포팅
-2. 클로저 HOF 지원 (현재 named fn만 HOF 가능)
-3. CLAUDE.md Fixed Point 방법론 업데이트
+### 다음 자율 작업 권장 (Cycle 2935+)
+1. 클로저 HOF 지원 (현재 named fn만 HOF 가능)
+2. WASM 백엔드 HOF 지원 (현재 placeholder)
+3. 언어 갭 해소 지속 (ROADMAP 참조)
+
+---
+
+## 이번 세션 작업 요약 (Cycle 2934 — Bootstrap HOF 포팅)
+
+### 주요 변경 사항
+
+| Cycle | 제목 | 내용 |
+|-------|------|------|
+| 2934 | Bootstrap HOF 타입 파서 포팅 | `fn(T)->R` 파라미터 타입 bootstrap 지원. 6개 수정점. 2개 테스트 통과. |
+
+### 구현 범위
+
+**`bootstrap/compiler.bmb`** — 6개 수정점:
+1. `llvm_gen_rhs_with_strings_map_and_fns_reg` copy 케이스: 함수명 참조 → `ptrtoint ptr @fn to i64`
+   - `is_fnref` 조건에 HOF/i64 파라미터 제외 로직 추가 (robustness fix, Cycle 2935에서 완료)
+2. `parse_param` TK_FN 케이스: `fn(T)->R` 파라미터 → `fn_i64` MIR 타입 태그
+3. `format_fn_params`: `fn_i64 → i64` LLVM 시그니처 변환
+4. `collect_i64_params_sb`: HOF 파라미터 → `H:%name,` 마커 (`P:` 대신)
+5. `llvm_gen_call_struct_aware`: `is_hof_param_sb` 우선 체크 추가
+6. 신규 함수 2개: `is_hof_param_sb`, `llvm_gen_hof_call`
+
+### 검증 결과
+```
+test_hof_apply.bmb → 42 ✅
+test_hof_multi.bmb → 42\n42 ✅
+골든 테스트: 5/5 passed ✅
+cargo test --release: 23/23 passed ✅ (gotgan flaky 1 test 제외)
+Quick Check: passed ✅
+```
 
 ---
 

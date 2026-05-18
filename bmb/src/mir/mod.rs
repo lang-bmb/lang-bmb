@@ -1080,8 +1080,9 @@ pub struct LoweringContext {
     /// Maps array variable name -> element type
     pub array_element_types: HashMap<String, MirType>,
     /// v0.60.16: Loop context stack for break/continue support
-    /// Each entry is (continue_label, break_label) for the enclosing loop
-    pub loop_context_stack: Vec<(String, String)>,
+    /// Each entry is (continue_label, break_label, result_slot) for the enclosing loop
+    /// result_slot is Some(name) for `loop` with break-value support, None for while/for
+    pub loop_context_stack: Vec<(String, String, Option<String>)>,
     /// v0.70: Counter for generating unique spawn function names
     pub spawn_counter: usize,
     /// v0.88.1: Maps original variable name -> unique SSA-compatible name

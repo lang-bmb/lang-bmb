@@ -1318,7 +1318,7 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             });
 
             // Body block: bind pattern vars, lower body, loop back
-            ctx.loop_context_stack.push((cond_label.clone(), exit_label.clone()));
+            ctx.loop_context_stack.push((cond_label.clone(), exit_label.clone(), None));
             ctx.start_block(body_label);
             bind_pattern_variables(&pattern.node, &scrutinee_place, ctx);
             let _ = lower_expr(body, ctx);
@@ -1351,7 +1351,7 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             });
 
             // v0.60.16: Push loop context for break/continue
-            ctx.loop_context_stack.push((cond_label.clone(), exit_label.clone()));
+            ctx.loop_context_stack.push((cond_label.clone(), exit_label.clone(), None));
 
             // Body block
             ctx.start_block(body_label);
@@ -2937,11 +2937,16 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             let loop_label = ctx.fresh_label("loop_body");
             let exit_label = ctx.fresh_label("loop_exit");
 
+            // v0.99 Cycle 2937: Create result slot for break-with-value
+            let result_slot = ctx.fresh_temp();
+            ctx.locals.insert(result_slot.name.clone(), MirType::I64);
+            ctx.push_inst(MirInst::Const { dest: result_slot.clone(), value: Constant::Int(0) });
+
             // Jump to loop body
             ctx.finish_block(Terminator::Goto(loop_label.clone()));
 
-            // Push loop context for break/continue
-            ctx.loop_context_stack.push((loop_label.clone(), exit_label.clone()));
+            // Push loop context with result slot for break/continue
+            ctx.loop_context_stack.push((loop_label.clone(), exit_label.clone(), Some(result_slot.name.clone())));
 
             // Body block
             ctx.start_block(loop_label.clone());
@@ -2951,25 +2956,35 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             // Pop loop context
             ctx.loop_context_stack.pop();
 
-            // Exit block (reached by break)
+            // Exit block (reached by break) — return result slot value
             ctx.start_block(exit_label);
-
-            // Loop returns unit
-            Operand::Constant(Constant::Unit)
+            Operand::Place(result_slot)
         }
 
         // v0.60.16: Break - jump to loop exit
+        // v0.99 Cycle 2937: Store break value into loop result slot (native codegen support)
         Expr::Break { value } => {
-            // If break has a value, lower it (but while loops ignore it)
+            // Get the exit label and result slot from the loop context stack
+            let (exit_label, slot_name) = if let Some((_, exit, slot)) = ctx.loop_context_stack.last().cloned() {
+                (Some(exit), slot)
+            } else {
+                (None, None)
+            };
+
+            // If break has a value, lower it and store in result slot
             if let Some(v) = value {
-                let _ = lower_expr(v, ctx);
+                let val_op = lower_expr(v, ctx);
+                if let Some(ref slot) = slot_name {
+                    let slot_place = Place::new(slot.clone());
+                    match val_op {
+                        Operand::Constant(c) => ctx.push_inst(MirInst::Const { dest: slot_place, value: c }),
+                        Operand::Place(src) => ctx.push_inst(MirInst::Copy { dest: slot_place, src }),
+                    }
+                }
             }
 
-            // Get the exit label from the loop context stack
-            if let Some((_, exit_label)) = ctx.loop_context_stack.last() {
-                // Finish current block with jump to exit
-                ctx.finish_block(Terminator::Goto(exit_label.clone()));
-                // Start a new unreachable block for code after break
+            if let Some(exit_label) = exit_label {
+                ctx.finish_block(Terminator::Goto(exit_label));
                 let unreachable_label = ctx.fresh_label("after_break");
                 ctx.start_block(unreachable_label);
             }
@@ -2980,7 +2995,7 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
         // v0.60.16: Continue - jump to loop condition
         Expr::Continue => {
             // Get the continue label from the loop context stack
-            if let Some((cond_label, _)) = ctx.loop_context_stack.last() {
+            if let Some((cond_label, _, _)) = ctx.loop_context_stack.last() {
                 // Finish current block with jump to condition check
                 ctx.finish_block(Terminator::Goto(cond_label.clone()));
                 // Start a new unreachable block for code after continue

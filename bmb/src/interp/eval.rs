@@ -313,6 +313,8 @@ impl Interpreter {
         self.builtins.insert("str_to_upper".to_string(), builtin_str_to_upper);
         self.builtins.insert("str_to_lower".to_string(), builtin_str_to_lower);
         self.builtins.insert("str_char_at".to_string(), builtin_str_char_at);
+        // v0.99 Cycle 2938: str_byte_at(s, i) -> i64 byte value (interpreter-only)
+        self.builtins.insert("str_byte_at".to_string(), builtin_str_byte_at);
         // v0.98.3: svec_join (Cycle 2838, interpreter-only)
         self.builtins.insert("svec_join".to_string(), builtin_svec_join);
         // v0.98.2: Generic to_string (Cycle 2830)
@@ -6923,7 +6925,12 @@ fn builtin_print(args: &[Value]) -> InterpResult<Value> {
         if i > 0 {
             print!(" ");
         }
-        print!("{arg}");
+        // v0.99 Cycle 2938: print strings without quotes
+        if let Some(s) = arg.materialize_string() {
+            print!("{}", s);
+        } else {
+            print!("{arg}");
+        }
     }
     io::stdout().flush().map_err(|e| RuntimeError::io_error(&e.to_string()))?;
     Ok(Value::Unit)
@@ -6934,7 +6941,12 @@ fn builtin_println(args: &[Value]) -> InterpResult<Value> {
         if i > 0 {
             print!(" ");
         }
-        print!("{arg}");
+        // v0.99 Cycle 2938: print strings without quotes
+        if let Some(s) = arg.materialize_string() {
+            print!("{}", s);
+        } else {
+            print!("{arg}");
+        }
     }
     println!();
     Ok(Value::Unit)
@@ -9769,6 +9781,21 @@ fn builtin_str_char_at(args: &[Value]) -> InterpResult<Value> {
     };
     let ch = s.chars().nth(idx as usize).unwrap_or('\0');
     Ok(Value::Str(std::rc::Rc::new(ch.to_string())))
+}
+
+/// str_byte_at(s: String, idx: i64) -> i64 (v0.99 Cycle 2938, interpreter-only)
+/// Returns the byte value at position idx (0 if out of bounds).
+fn builtin_str_byte_at(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("str_byte_at", 2, args.len()));
+    }
+    let s = args[0].materialize_string().ok_or_else(|| RuntimeError::type_error("String", args[0].type_name()))?;
+    let idx = match &args[1] {
+        Value::Int(n) => *n,
+        _ => return Err(RuntimeError::type_error("i64", args[1].type_name())),
+    };
+    let byte = s.as_bytes().get(idx as usize).copied().unwrap_or(0);
+    Ok(Value::Int(byte as i64))
 }
 
 /// str_replace(s: String, old: String, new: String) -> String (v0.98.3, Cycle 2837, interpreter-only)

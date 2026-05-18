@@ -459,6 +459,8 @@ impl TypeChecker {
         functions.insert("str_to_upper".to_string(), (vec![Type::String], Type::String));
         functions.insert("str_to_lower".to_string(), (vec![Type::String], Type::String));
         functions.insert("str_char_at".to_string(), (vec![Type::String, Type::I64], Type::String));
+        // v0.99 Cycle 2938: str_byte_at(s, i) -> i64 byte value
+        functions.insert("str_byte_at".to_string(), (vec![Type::String, Type::I64], Type::I64));
         // v0.98.3: svec_join (Cycle 2838, interpreter-only)
         functions.insert("svec_join".to_string(), (vec![svec_t.clone(), Type::String], Type::String));
         // v0.98.3: Vec aggregate builtins (Cycle 2836, interpreter-only)
@@ -2357,6 +2359,19 @@ impl TypeChecker {
                         }
                         // Fall through to try non-generic version
                     }
+
+                // v0.99 Cycle 2938: println/print accept String by dispatching to _str variant
+                if matches!(func.as_str(), "println" | "print") && args.len() == 1 {
+                    let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                    if matches!(arg_ty, Type::String) {
+                        return Ok(Type::Unit);
+                    }
+                    // For f64 dispatch
+                    if matches!(arg_ty, Type::F64) {
+                        return Ok(Type::Unit);
+                    }
+                    // Fall through to normal i64 check
+                }
 
                 // v0.15: Try non-generic functions
                 if let Some((param_tys, ret_ty)) = self.functions.get(func).cloned() {

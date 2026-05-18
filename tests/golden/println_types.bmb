@@ -1,0 +1,10 @@
+// v0.99 Cycle 2938: println/print with String and f64 type dispatch
+fn main() -> i64 = {
+    println(42);
+    println(3.14);
+    println("hello world");
+    println("BMB language");
+    let s = "test string";
+    println(s);
+    0
+};

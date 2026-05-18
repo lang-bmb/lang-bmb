@@ -1394,6 +1394,8 @@ BlockExpr: Expr = {
     ImpliesExpr,
     // v0.90.22: Early return with value
     "return" <e:SpannedImpliesExpr> => Expr::Return { value: Some(Box::new(e)) },
+    // v0.99 Cycle 2936: Break with value
+    "break" <e:SpannedImpliesExpr> => Expr::Break { value: Some(Box::new(e)) },
     // set (store assignment)
     // v0.90.101: Added Expr::Var case for set var = expr (mutable variable reassignment)
     "set" <lhs:SpannedUnaryExpr> "=" <rhs:SpannedExpr> => {
@@ -1652,6 +1654,8 @@ Expr: Expr = {
     ImpliesExpr,
     // v0.90.22: Early return with value (uses ImpliesExpr to avoid recursive return)
     "return" <e:SpannedImpliesExpr> => Expr::Return { value: Some(Box::new(e)) },
+    // v0.99 Cycle 2936: Break with value - loop { break expr }
+    "break" <e:SpannedImpliesExpr> => Expr::Break { value: Some(Box::new(e)) },
     // v0.51.23: Store assignment expression using 'set' keyword
     // Allows set to appear in any expression context (e.g., after let body)
     // v0.60.21: Changed to SpannedUnaryExpr to support dereference: set *p = value
