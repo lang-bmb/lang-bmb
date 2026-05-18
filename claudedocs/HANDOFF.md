@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-18 (Cycles 2908-2914 — GPUStack B축 측정)
 
-> **HEAD**: `(커밋 후 갱신 예정)` (Cycle 2914 — qwen3.6-35b-a3b B축 85.0%)
+> **HEAD**: `b9ee36ce` (Cycle 2914 — qwen3.6-35b-a3b B축 85.0%)
 > **이전 HEAD**: `6290e46f` (Cycles 2908-2913)
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2822, 120790 lines) — 이번 세션 bootstrap 변경 없음
 > **실무 앵커**: `claudedocs/ROADMAP.md`
