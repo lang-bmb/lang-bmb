@@ -103,12 +103,14 @@ C 바인딩 README 각각에 CRITICAL 섹션으로 문서화.
 
 ### Pending Human Decisions
 - **Claude B축 재측정**: ANTHROPIC_API_KEY로 재측정 시 98.5%+ 예상. Stale 기한: 2026-08-13 (아직 유효).
-- **GPUStack B축 개선**: qwen3.6-35b-a3b 85.0% — Always FAIL 11문제 중 BMB reference 개선으로 해결 가능한 것 탐색 (자율 가능).
-- **tier3-spawn-overhead**: ISSUE-20260512 Option A/B/C 선택.
+
+### 자율 작업 확정 (Cycle 2914)
+- **tier3-spawn-overhead Option B**: ISSUE-20260512 Option B 선택 확정 (2026-05-18). inproc timing port — Phase 1(lexer+brainfuck) → Phase 4(sorting) 순차 실행.
 
 ### 다음 자율 작업 권장 (Cycle 2915+)
 - **언어 갭 추가 해소** — 아직 미구현 BMB 언어 기능 탐색 (고차함수/제너릭 등)
 - **Always FAIL 11문제 분석** — BMB reference 개선으로 qwen3 성능 향상 가능성 탐색
+- **tier3-spawn-overhead Phase 1** — lexer+brainfuck inproc timing 포팅 (ISSUE-20260512 Phase 1)
 - **Claude baseline 재측정** (stale 기한: 2026-08-13, 아직 유효)
 
 ---
@@ -136,5 +138,6 @@ C 바인딩 README 각각에 CRITICAL 섹션으로 문서화.
 ### 다음 세션 진입 체크리스트
 - [ ] `claudedocs/HANDOFF.md` HEAD 확인 (이번 커밋 SHA)
 - [ ] Cycle 2915 시작 — 언어 갭 해소 (고차함수/제너릭 등) 또는 Always FAIL 11문제 분석
-- [ ] Pending Human Decisions 재확인 (tier3-spawn-overhead Option A/B/C)
+- [ ] Pending Human Decisions 재확인 (Claude B축 재측정 ANTHROPIC_API_KEY 필요)
+- [ ] tier3-spawn-overhead Phase 1 자율 실행 가능 (Option B 확정)
 - [ ] GPUStack B축: `.env.local` 있으면 자동 — 추가 측정 시 `bmb-ai-bench run --runs 3` 즉시 가능

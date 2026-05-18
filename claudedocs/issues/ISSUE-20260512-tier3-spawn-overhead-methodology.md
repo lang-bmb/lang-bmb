@@ -4,7 +4,7 @@
 
 **우선순위**: P2 (P-track measurement integrity)
 **영역**: ci / benchmarks
-**상태**: Open — 별도 multi-cycle phase
+**상태**: Open — Option B 확정 (2026-05-18, Cycle 2914), Phase 1 대기
 
 ## 측정 stamp
 
@@ -146,11 +146,31 @@ Total binary wall time: 6-8ms.
 - 트레이드오프: 측정 정확도 향상 아님, awareness만
 - **권고**: Option A 보완 가능
 
-## HUMAN 결정 필요
+## 결정 (2026-05-18, Cycle 2914)
 
-- Option A vs B vs A+C 선택
-- Tier 3 bench source 변경 commit 시 옛 측정값 archive 절차
-- multi-cycle phase 시작 시점
+**선택: Option B — inproc timing port**
+
+근거:
+- Option C는 awareness 개선뿐 — 측정 정확도 향상 없음 (CLAUDE.md Principle 2: Workaround 금지)
+- Option A 단독은 BMB LLVM DCE 회피 불가 (Cycle 2765 실증)
+- Option B는 Tier 1 inproc 패턴(`time_ns()` + `bmb_black_box`)을 그대로 Tier 3에 포팅 — framework wall-time 의존 완전 제거
+- 작업량이 크다는 것은 하지 않을 이유가 아님 (CLAUDE.md Principle 3)
+- 성능 주장은 측정으로 증명 (CLAUDE.md Verification Principle)
+
+**Phase 실행 계획** (각 Phase = 1-2 cycles):
+
+| Phase | 대상 벤치마크 | 우선도 |
+|-------|------------|--------|
+| 1 | `lexer`, `brainfuck` | 최우선 (DCE 문제 실증된 케이스) |
+| 2 | `csv_parse`, `http_parse` | 2순위 |
+| 3 | `json_parse`, `json_serialize` | 3순위 |
+| 4 | `sorting` | 4순위 (BMB faster 이미 확인, 노이즈 제거로 신뢰도 향상) |
+
+각 Phase 진입 시:
+1. BMB + C 양쪽 main() → `time_ns()` 직접 측정 harness로 교체
+2. `bmb_black_box(input_seed)` per-iter 적용 (DCE 회피)
+3. 기존 wall-time 측정값 archive (`measurements/tier3_legacy_*.json`)
+4. 새 inproc 측정값으로 ROADMAP P-track row 갱신
 
 ## 종결 기준
 
