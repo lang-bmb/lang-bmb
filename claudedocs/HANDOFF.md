@@ -1,10 +1,65 @@
-# BMB Session Handoff — 2026-05-19 (Cycles 2918-2925 — tier3 inproc 포팅 완료)
+# BMB Session Handoff — 2026-05-19 (Cycles 2928-2932 — http_parse flat + str_data P0 fix)
 
-> **HEAD**: `07884ec1` (Cycles 2918-2927 완료)
-> **이전 HEAD**: `89ea1e76` (Cycle 2914)
-> **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2822, 120790 lines) — 이번 세션 bootstrap 변경 없음
+> **HEAD**: `[다음 커밋 후 갱신]` (Cycles 2928-2932 완료)
+> **이전 HEAD**: `07884ec1` (Cycles 2918-2927)
+> **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930) — GCC MinGW 링커 비결정성으로 binary hash 비교 불가, IR hash 비교로 방법론 정정. bootstrap/compiler_s3.exe IR == compiler_s4.exe IR
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2928
+> **다음 세션 진입점**: Cycle 2933
+
+---
+
+## 이번 세션 작업 요약 (Cycles 2928-2932)
+
+### 주요 변경 사항
+
+| Cycle | 제목 | 내용 |
+|-------|------|------|
+| 2928 | str_data builtin 추가 | bootstrap compiler.bmb에 `@str_data` 인라인 에미터 추가 (Stage 1 완료) |
+| 2929 | csv_parse flat v2 | compound-cond 단일함수. 3300 µs (6.1% 개선). vs Clang 1.150× |
+| 2930 | Bootstrap Fixed Point | IR Fixed Point 확인 + GCC 링커 비결정성 발견 + 방법론 정정 |
+| 2931 | http_parse flat + P0 fix | flat 단일함수 1.099× + str_data literal crash P0 수정 (llvm_text.rs) |
+| 2932 | str_data literal 테스트 | test_str_data_literal.bmb + .expected 신규. HANDOFF/ROADMAP 갱신 |
+
+### 성능 현황 (tier3 inproc)
+
+| 벤치마크 | BMB (µs) | C GCC (µs) | 비율 | 이전 비율 |
+|---------|----------|-----------|------|---------|
+| csv_parse flat v2 | ~3300 | ~2740 | **1.204×** | 1.283× (4.06× 이전) |
+| http_parse flat v1 | ~2542 | ~2313 | **1.099×** | 1.186× |
+
+### 핵심 변경 사항
+
+**1. `str_data` builtin (Cycle 2928 — bootstrap)**:
+- `bootstrap/compiler.bmb`에 `@str_data` 인라인 에미터 추가
+- `llvm_gen_call` + `llvm_gen_call_reg` + `mlcse_safe_builtins`에 등록
+- `tests/bootstrap/test_str_data_load_u8.bmb` 신규
+
+**2. csv_parse flat v2 (Cycle 2929)**:
+- `ecosystem/benchmark-bmb/benches/real_world/csv_parse/bmb/main_inproc.bmb` 재작성
+- 단일 `parse_csv` 함수 + compound `and` while 조건
+- 6.1% 개선. 잔여 갭 원인: i64 vs i32 arithmetic (~15%)
+
+**3. http_parse flat v1 (Cycle 2931)**:
+- `ecosystem/benchmark-bmb/benches/real_world/http_parse/bmb/main_inproc.bmb` 재작성
+- request line skip (C와 동등), compound-cond 전체 inline
+- `@inline fn tol`, `@inline fn is_content_length` 추가
+- 1.186× → 1.099× (7% 비율 개선)
+
+**4. str_data literal P0 fix (Cycle 2931 — llvm_text.rs)**:
+- 버그: `let s = "literal"; str_data(s)` → SEGV (상수 전파된 Constant::String이 raw bytes 사용)
+- 수정: `bmb/src/codegen/llvm_text.rs:5699` — `Constant::String` 분기 추가, `@.str.0.bmb` (struct) 사용
+- 검증: `test_str_data_literal.bmb` + .expected
+
+**5. Bootstrap Fixed Point 방법론 정정 (Cycle 2930)**:
+- GCC MinGW-w64 링커 비결정적: 동일 소스 2회 빌드도 binary hash 다름
+- 올바른 방법: IR hash 비교 (S3 IR == S4 IR for multiple test files ✓)
+- CLAUDE.md 업데이트 권장 (아직 미완)
+
+### 테스트 변화
+6249+ tests (cargo test --release: 3778 + 2388 + 47 + 13 + 23), 0 FAILED.
+test_str_data_literal.bmb 신규 (bootstrap + Rust backend 양쪽 확인).
+
+---
 
 ---
 
@@ -171,37 +226,36 @@ C 바인딩 README 각각에 CRITICAL 섹션으로 문서화.
 ## 다음 세션 우선순위
 
 ### Carry-Forward (Actionable)
-- **없음** — tier3 inproc 작업 완료, ISSUE-20260512 CLOSED
+- **없음** — str_data P0 fix + http_parse flat + Bootstrap Fixed Point 완료
 
 ### Pending Human Decisions
 - **GPUStack B축 실제 재측정**: `.env.local` 필요. qwen3.6-35b-a3b Cycle 2917 추정 96.0% (실측 필요).
 - **Claude B축 재측정**: Stale 기한 2026-08-13 (아직 유효).
+- **i32 타입 추가**: ≤1.05× 유일한 경로 (언어 스펙 변경, Level 1 Decision). Pending Human 확인 필요.
 
-### 다음 자율 작업 권장 (Cycle 2926+)
-- **언어 갭 추가 해소** — 고차함수/제너릭 등 미구현 BMB 언어 기능
-- **byte_at 최적화** (Long-term): `load_u8(ptr)` 기반 raw pointer 스캔 → csv_parse/http_parse ≤1.05× 목표
+### 다음 자율 작업 권장 (Cycle 2933+)
+- **언어 갭 추가 해소** — 고차함수/제너릭 등 미구현 BMB 언어 기능 (HANDOFF 최우선 자율 작업)
 - **brainfuck stack array** (Long-term): 언어 기능 추가 필요 (고정 크기 stack array)
+- **CLAUDE.md Fixed Point 방법론 정정**: binary hash → IR hash 비교 (Cycle 2930 발견)
 
 ---
 
-## 세션 종료 정리 (2026-05-19 최종 — Cycle 2925 포함)
+## 세션 종료 정리 (2026-05-19 최신 — Cycle 2932 포함)
 
 ### 최종 커밋 이력
 | SHA | 내용 |
 |-----|------|
-| `89ea1e76` | chore: 세션 종료 정리 — HANDOFF/ROADMAP 최종 갱신 (Cycle 2914) |
-| *(이번 세션)* | feat(cycles-2918-2925): tier3 inproc 완료 — 7/7 벤치마크, ISSUE-20260512 CLOSED |
-
-### 미커밋 정리 항목
-- **없음** — 이번 Cycle 2926 커밋 후 클린
+| `07884ec1` | chore: 세션 종료 정리 — HANDOFF/ROADMAP 최종 갱신 (Cycle 2927) |
+| *(이번 세션)* | feat(cycles-2928-2932): str_data builtin+http_parse flat+P0 fix+Bootstrap IR Fixed Point |
 
 ### 테스트 상태
 - `cargo test --release`: 6249+ passed, 0 failed ✅
-- 3-Stage Fixed Point: S2==S3 유지 (Cycle 2822 이후 bootstrap 변경 없음)
+- IR Fixed Point: S3 IR == S4 IR (3 test files verified, Cycle 2930)
+- str_data literal P0 fix: test_str_data_literal.bmb 신규 ✅
 
 ### 다음 세션 진입 체크리스트
 - [ ] `claudedocs/HANDOFF.md` HEAD 확인 (최신 커밋 SHA)
-- [ ] Cycle 2928 시작 — 언어 갭 해소 (고차함수/제너릭) 또는 `.env.local` 있으면 GPUStack 재측정
+- [ ] Cycle 2933 시작 — 언어 갭 해소 (고차함수/제너릭) 또는 i32 타입 추가 (HUMAN 결정 있으면)
 - [ ] Pending Human Decisions 재확인:
   - GPUStack B축 실측 (`.env.local` 필요)
   - Claude B축 재측정 (stale 기한 2026-08-13)

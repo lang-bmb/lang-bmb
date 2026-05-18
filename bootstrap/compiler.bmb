@@ -7137,6 +7137,11 @@ fn llvm_gen_call(line: String, pos: i64, dest: String) -> String =
     } else if fn_name == "@bmb_string_len" {
         let str_arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + "_str = inttoptr i64 " + str_arg + " to ptr" + SEP() + "  " + dest + "_lp = getelementptr inbounds nuw {ptr, i64, i64}, ptr " + dest + "_str, i32 0, i32 1" + SEP() + "  " + dest + " = load i64, ptr " + dest + "_lp, !invariant.load !0"
+    } else if fn_name == "@str_data" {
+        // Cycle 2928: str_data(s: String) -> i64 — raw pointer to string byte array
+        // Hoisting this before loops eliminates repeated struct loads in byte scanning
+        let str_arg = trim_end(line.slice(paren_pos + 1, close_pos));
+        "  " + dest + "_sp = inttoptr i64 " + str_arg + " to ptr" + SEP() + "  " + dest + "_dp = getelementptr inbounds nuw {ptr, i64, i64}, ptr " + dest + "_sp, i32 0, i32 0" + SEP() + "  " + dest + "_pp = load ptr, ptr " + dest + "_dp, !invariant.load !0" + SEP() + "  " + dest + " = ptrtoint ptr " + dest + "_pp to i64"
     } else if fn_name == "@popcount" and call_has_one_arg(line, paren_pos, close_pos) {
         // v0.96: LLVM intrinsic — single POPCNT instruction
         // Cycle 2714: arity guard — user-defined popcount(>1 args) falls through to regular call
@@ -7441,6 +7446,10 @@ fn llvm_gen_call_reg(line: String, pos: i64, dest: String, registry: String) -> 
     } else if fn_name == "@bmb_string_len" {
         let str_arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + "_str = inttoptr i64 " + str_arg + " to ptr" + SEP() + "  " + dest + "_lp = getelementptr inbounds nuw {ptr, i64, i64}, ptr " + dest + "_str, i32 0, i32 1" + SEP() + "  " + dest + " = load i64, ptr " + dest + "_lp, !invariant.load !0"
+    } else if fn_name == "@str_data" {
+        // Cycle 2928: str_data(s: String) -> i64 — raw pointer to string byte array
+        let str_arg = trim_end(line.slice(paren_pos + 1, close_pos));
+        "  " + dest + "_sp = inttoptr i64 " + str_arg + " to ptr" + SEP() + "  " + dest + "_dp = getelementptr inbounds nuw {ptr, i64, i64}, ptr " + dest + "_sp, i32 0, i32 0" + SEP() + "  " + dest + "_pp = load ptr, ptr " + dest + "_dp, !invariant.load !0" + SEP() + "  " + dest + " = ptrtoint ptr " + dest + "_pp to i64"
     } else if fn_name == "@popcount" and call_has_one_arg(line, paren_pos, close_pos) {
         // Cycle 2714: arity guard
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
@@ -11226,7 +11235,7 @@ fn mlcse_update_vtable(vtable: String, line: String) -> String =
 // Known-safe builtins that do NOT write to pointer memory.
 // Uses ";name;" delimited format for exact matching.
 fn mlcse_safe_builtins() -> String =
-    ";abs;min;max;sqrt;floor;ceil;round;sin;cos;tan;atan;atan2;exp;log;log2;log10;pow_f64;fmod;fabs;f64_min;f64_max;popcount;clz;ctz;bit_reverse;bswap;rotate_left;rotate_right;clamp;i64_to_f64;f64_to_i64;chr;ord;len;byte_at;char_at;str_eq;str_cmp;str_len;load_i64;load_f64;load_u8;load_i32;hash_i64;hash_str;println;print;println_str;print_str;println_f64;print_f64;bmb_println_i64;bmb_print_i64;bmb_println_str;bmb_print_str;bmb_println_f64;bmb_print_f64;vec_len;";
+    ";abs;min;max;sqrt;floor;ceil;round;sin;cos;tan;atan;atan2;exp;log;log2;log10;pow_f64;fmod;fabs;f64_min;f64_max;popcount;clz;ctz;bit_reverse;bswap;rotate_left;rotate_right;clamp;i64_to_f64;f64_to_i64;chr;ord;len;byte_at;char_at;str_eq;str_cmp;str_len;str_data;load_i64;load_f64;load_u8;load_i32;hash_i64;hash_str;println;print;println_str;print_str;println_f64;print_f64;bmb_println_i64;bmb_print_i64;bmb_println_str;bmb_print_str;bmb_println_f64;bmb_print_f64;vec_len;";
 
 // Check if a function call is safe (does not write to pointer memory)
 fn mlcse_is_safe_call(fn_name: String, pure_set: String, safe_set: String) -> bool =

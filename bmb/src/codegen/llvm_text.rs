@@ -5696,6 +5696,14 @@ impl TextCodeGen {
                             writeln!(out, "  %{} = load ptr, ptr %{}.addr", load_name, p.name)?;
                             format!("%{}", load_name)
                         }
+                        // String literals: constant-propagated → need .bmb struct, not raw bytes
+                        Operand::Constant(Constant::String(s)) => {
+                            if let Some(global_name) = string_table.get(s) {
+                                format!("@{}.bmb", global_name)
+                            } else {
+                                self.format_operand_with_strings(&args[0], string_table)
+                            }
+                        }
                         _ => self.format_operand_with_strings(&args[0], string_table),
                     };
                     // Get pointer to first field (data ptr) and load it
