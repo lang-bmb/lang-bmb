@@ -322,14 +322,19 @@ for j in 0..len {
 
 ## Pattern: Stack (push/pop/top)
 ```bmb
+// CRITICAL: vec_pop returns () (unit), NOT the removed value.
+// Always vec_get the value BEFORE calling vec_pop.
 let stack = vec_new();
 // push
 let _p = vec_push(stack, value);
-// top
+// read top (get before pop)
 let len = vec_len(stack);
-let top = vec_get(stack, len - 1);
-// pop
-let _p = vec_pop(stack);
+let top = vec_get(stack, len - 1);   // read
+let _p = vec_pop(stack);              // discard (returns ())
+// pop two and compute (stack pattern):
+let b = vec_get(stack, vec_len(stack) - 1); let _pb = vec_pop(stack);
+let a = vec_get(stack, vec_len(stack) - 1); let _pa = vec_pop(stack);
+let _r = vec_push(stack, a + b);
 ```
 
 ## Pattern: Queue (FIFO with front pointer)
@@ -971,7 +976,8 @@ The following names are defined in BMB's standard prelude and will cause `invali
 - No `v[i]` for vec — use `vec_get(v, i)` and `vec_set(v, i, val)`
 - No closures, iterators, or method calls — use free functions
 - No `impl` blocks — use free functions
-- Blocks must end with `;` after `}` in while/if/for
+- Blocks must end with `;` after `}` in while/if/for — including early-return `if` blocks: `if n < 2 { return 0 };` (not `if n < 2 { return 0 }`)
+- `vec_pop(v)` returns `()`, NOT the removed value — always `vec_get` the value before calling `vec_pop`
 - Vec handle type is `i64`, not `Vec<T>`
 - Bitwise operators use **keywords** `band`/`bor`/`bxor`, NOT `&`/`|`/`^` symbols (those are parse errors)
 - `str_reverse(s)` reverses the string (v0.98.7+); `popcount(n)` counts set bits (v0.98.7+)

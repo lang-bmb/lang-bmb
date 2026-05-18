@@ -1,19 +1,49 @@
 # Mini Interpreter
 
-Stack-based bytecode interpreter. op=1 (push) reads an extra integer; other ops take no extra argument.
+Stack-based bytecode interpreter.
 
 ## Input
-- First integer: n (total instruction count)
+- First integer: `n` (total instruction count)
 - Instructions follow as token stream:
-  - op=1 (push val): push val onto stack
-  - op=2 (add): pop two, push sum
-  - op=3 (subtract): pop a then b, push b-a
-  - op=4 (multiply): pop two, push product
-  - op=5 (divide): pop a then b, push b/a
-  - op=6 (print): pop top and print it
+  - `op=1` (push): reads one extra integer `val`, pushes `val` onto stack
+  - `op=2` (add): pops two values `b` (top) then `a`, pushes `a+b`
+  - `op=3` (subtract): pops two values `b` (top) then `a`, pushes `a-b`
+  - `op=4` (multiply): pops two values `b` (top) then `a`, pushes `a*b`
+  - `op=5` (dup): duplicates the top of stack (pushes a copy without removing)
+  - `op=6` (print): prints the **current top** of stack (does NOT pop it)
 
 ## Output
-Each op=6 prints one line.
+
+Each `op=6` prints one line.
 
 ## Example
-`4 1 3 1 4 2 6` -> push(3), push(4), add, print -> 7
+
+Input:
+```
+4 1 3 1 4 2 6
+```
+Output:
+```
+7
+```
+(push 3, push 4, add→7, print top=7)
+
+Input:
+```
+5 1 5 5 2 6 6
+```
+Output:
+```
+10
+10
+```
+(push 5, dup→[5,5], add→[10], print 10, print 10 again)
+
+## Constraints
+
+- Stack operations are always valid (never pop from empty stack in tests)
+- 1 <= n <= 1000
+
+## Category
+
+Integration (stack machine)
