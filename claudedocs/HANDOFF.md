@@ -1,14 +1,14 @@
-# BMB Session Handoff — 2026-05-18 (Cycles 2908-2913 — C 바인딩 5/5 완료)
+# BMB Session Handoff — 2026-05-18 (Cycles 2908-2914 — GPUStack B축 측정)
 
-> **HEAD**: `6290e46f` (세션 최종 — HANDOFF/ROADMAP 정리 완료)
-> **이전 HEAD**: `0d829b4d` (Cycles 2901-2907)
+> **HEAD**: `(커밋 후 갱신 예정)` (Cycle 2914 — qwen3.6-35b-a3b B축 85.0%)
+> **이전 HEAD**: `6290e46f` (Cycles 2908-2913)
 > **3-Stage Fixed Point**: ✅ S2 == S3 (Cycle 2822, 120790 lines) — 이번 세션 bootstrap 변경 없음
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2914
+> **다음 세션 진입점**: Cycle 2915
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 2908-2913)
+## 이번 세션 작업 요약 (Cycles 2908-2914)
 
 ### 주요 변경 사항
 
@@ -20,6 +20,7 @@
 | 2911 | bmb-text C 바인딩 | `bindings/c/` 생성 (33 tests / 23 함수) |
 | 2912 | bmb-json C 바인딩 | `bindings/c/` 생성 (28 tests / 12 함수) |
 | 2913 | ROADMAP 갱신 + Rule 9 | M4-14 항목 추가 + .gitignore + 조기 종료 |
+| 2914 | GPUStack B축 측정 | qwen3.6-35b-a3b 85.0% (255/300) + bmb-ai-bench GPUSTACK_* 연동 |
 
 ### 테스트 변화
 2388 tests (변화 없음). C 바인딩: 216개 C 테스트 (별도 GCC 빌드).
@@ -80,16 +81,34 @@ C 바인딩 README 각각에 CRITICAL 섹션으로 문서화.
 
 ## 다음 세션 우선순위
 
+### Cycle 2914 추가 (GPUStack B축)
+- `ecosystem/bmb-ai-bench/bmb_ai_bench/run_cmd.py`: GPUSTACK_* 폴백 + GPUStack 자동 설정 (thinking off, max_tokens 16384)
+- `ecosystem/bmb-ai-bench/bmb_ai_bench/runner/llm_client.py`: extra_body 파라미터 추가
+- `claudedocs/measurements/b_baseline_2026-05-18_c2914_qwen3.json`: 측정 결과 저장
+- `claudedocs/cycle-logs/cycle-2914.md`: 사이클 로그
+
+### qwen3.6-35b-a3b B축 측정 결과 (Cycle 2914)
+
+| 지표 | 값 |
+|------|-----|
+| Success Rate | **85.0%** (255/300) |
+| Median Loops | 1 |
+| Always FAIL | 11문제 |
+| Sometimes FAIL | 8문제 |
+
+**cf. Claude baseline**: 98.0% (2026-05-13, stale 기한 2026-08-13)
+
 ### Carry-Forward (Actionable)
-- **없음** — Rule 9 Early Termination (Cycle 2913)
+- **없음** — 측정 완료
 
 ### Pending Human Decisions
 - **B축 재측정**: API key 확인 후 실행 가능. 예상 98.0% → 98.5%+. Stale 기한: 2026-08-13.
 - **tier3-spawn-overhead**: ISSUE-20260512 Option A/B/C 선택.
 
-### 다음 자율 작업 권장 (Cycle 2914+)
+### 다음 자율 작업 권장 (Cycle 2915+)
 - **언어 갭 추가 해소** — 아직 미구현 BMB 언어 기능 탐색 (고차함수/제너릭 등)
-- **B축 재측정** (API key 확보 후)
+- **Always FAIL 11문제 분석** — BMB reference 개선으로 qwen3 성능 향상 가능성 탐색
+- **Claude baseline 재측정** (stale 기한: 2026-08-13, 아직 유효)
 
 ---
 

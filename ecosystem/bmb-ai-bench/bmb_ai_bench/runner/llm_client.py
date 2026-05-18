@@ -10,13 +10,14 @@ import urllib.request
 class LlmClient:
     def __init__(self, model: str, base_url: str, api_key: str = "",
                  temperature: float = 0.0, max_tokens: int = 4096,
-                 timeout: int = 120):
+                 timeout: int = 120, extra_body: dict | None = None):
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout = timeout
+        self.extra_body = extra_body or {}
 
     def generate(self, system: str, messages: list[dict],
                  retries: int = 2) -> str:
@@ -28,6 +29,7 @@ class LlmClient:
             "messages": ([{"role": "system", "content": system}] if system else [])
                         + messages,
         }
+        payload.update(self.extra_body)
         data = json.dumps(payload).encode("utf-8")
         headers = {"Content-Type": "application/json"}
         if self.api_key:

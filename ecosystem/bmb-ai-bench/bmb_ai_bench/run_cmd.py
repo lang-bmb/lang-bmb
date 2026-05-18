@@ -264,13 +264,19 @@ def run_run(
     """Entry point for the `run` subcommand."""
     _load_env_file(env_file)
 
-    # Env fallbacks
+    # Env fallbacks — BMB_BENCH_* → GPUSTACK_* → Anthropic defaults
     if not model:
-        model = os.environ.get("BMB_BENCH_MODEL", "")
+        model = os.environ.get("BMB_BENCH_MODEL",
+                os.environ.get("GPUSTACK_MODEL", ""))
     if not api_base:
-        api_base = os.environ.get("BMB_BENCH_API_BASE", "https://api.anthropic.com/v1")
+        gpustack_ep = os.environ.get("GPUSTACK_ENDPOINT", "")
+        gpustack_base = (gpustack_ep.rstrip("/") + "/v1") if gpustack_ep else ""
+        api_base = os.environ.get("BMB_BENCH_API_BASE",
+                   gpustack_base or "https://api.anthropic.com/v1")
     if not api_key:
-        api_key = os.environ.get("BMB_BENCH_API_KEY", os.environ.get("ANTHROPIC_API_KEY", ""))
+        api_key = os.environ.get("BMB_BENCH_API_KEY",
+                  os.environ.get("GPUSTACK_API_KEY",
+                  os.environ.get("ANTHROPIC_API_KEY", "")))
 
     if not model:
         msg = "ERROR: --model is required (or set BMB_BENCH_MODEL)"
@@ -322,7 +328,13 @@ def run_run(
         return 0
 
     from bmb_ai_bench.runner.llm_client import LlmClient
-    llm = LlmClient(model=model, base_url=api_base, api_key=api_key)
+    # GPUStack (local inference): larger token budget + disable Qwen3 thinking mode
+    gpustack_ep = os.environ.get("GPUSTACK_ENDPOINT", "")
+    using_gpustack = bool(gpustack_ep) and gpustack_ep.split("/")[2] in api_base
+    llm_max_tokens = 16384 if using_gpustack else 4096
+    llm_extra = {"chat_template_kwargs": {"enable_thinking": False}} if using_gpustack else {}
+    llm = LlmClient(model=model, base_url=api_base, api_key=api_key,
+                    max_tokens=llm_max_tokens, extra_body=llm_extra)
 
     out_dir = Path(output_dir)
     if not out_dir.is_absolute():
