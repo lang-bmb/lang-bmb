@@ -2,7 +2,7 @@
  * bmb_compute.h — Numeric computation
  *
  * Auto-generated from BMB source. Do not edit manually.
- * Generated: 2026-03-23
+ * Generated: 2026-05-18
  *
  * Usage:
  *   #include "bmb_compute.h"
@@ -91,8 +91,10 @@ int64_t bmb_array_copy(int64_t src, int64_t dst, int64_t n);
 
 int64_t bmb_lerp_scaled(int64_t a, int64_t b, int64_t t);
 
+/** stays the same; only the exported C symbol changes. */
 int64_t bmb_c_is_power_of_two(int64_t n);
 
+/** C-symbol collision with runtime `bmb_next_power_of_two` in bmb_runtime.c. */
 int64_t bmb_c_next_power_of_two(int64_t n);
 
 /** Caller must pass a sorted array */

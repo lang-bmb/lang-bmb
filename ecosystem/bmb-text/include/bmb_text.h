@@ -2,7 +2,7 @@
  * bmb_text.h — String processing
  *
  * Auto-generated from BMB source. Do not edit manually.
- * Generated: 2026-03-23
+ * Generated: 2026-05-18
  *
  * Usage:
  *   #include "bmb_text.h"
