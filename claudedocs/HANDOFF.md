@@ -1,4 +1,4 @@
-# BMB Session Handoff — 2026-05-20 (Cycles 2981-2990 — GPUStack 99.0% + 품질 대폭 개선)
+# BMB Session Handoff — 2026-05-20 (Cycles 2981-2990 — GPUStack 99.7% 확인 + 품질 대폭 개선)
 
 > **HEAD**: `af4dac54` (Cycle 2989 — 추가 패턴 검사 완료)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930)
@@ -67,12 +67,17 @@ fn main() -> i64 = { ... };  // 마지막이 '};' 여야 함 ('}' 만 쓰면 타
 |------|------|------|--------|
 | Claude (claude-sonnet-4-6) | **98.0%** | 고정 베이스라인 | 2026-05-13 |
 | GPUStack (qwen3.6-35b-a3b) | **99.0%** | +2%p (97.0%→99.0%) | 2026-05-20 |
+| GPUStack 3-run 공식 | **99.7%** | **최종 확인** (299/300) | 2026-05-20 |
 
-GPUStack 세부: 99/100 통과, first-shot 94% (94/100)
+GPUStack 3-run 공식 세부: 299/300 통과
+유일 실패: 91_ring_buffer run1 (수정 전 측정 시작 — run2/run3 PASS)
+04_fibonacci: 3회 모두 2-shot (Type D: `i=2, while i < n` → CRITICAL 노트 추가 완료)
+
+GPUStack 단일 측정 세부(Cycle 2984): 99/100 통과, first-shot 94% (94/100)
 Multi-shot: 04_fibonacci(2), 29_bounded_stack(2), 36_array_rotation(2), 69_overflow_detect(3), 75_longest_plateau(2)
 실패: 91_ring_buffer (11회 전부 실패 → 수정 완료)
 
-**다음 측정 예상**: 100/100 가능 (모든 식별된 문제 수정 완료)
+**3-run 공식 결과**: 299/300 (99.7%) — 04_fibonacci는 일관 2-shot (Type D 로직 오류, CRITICAL 노트 추가)
 
 ### 테스트 결과
 
@@ -92,11 +97,13 @@ cargo test --release (Cycle 2987 확인)
 
 ### 권장 우선순위
 
-1. **GPUStack 3-run 측정** — 통계적 신뢰성 확보 (100/100 예상)
-   - 사전 준비: `GPUSTACK_API_KEY` 환경변수 설정
-   - 실행: `cd ecosystem/bmb-ai-bench && python3 -m bmb_ai_bench.run_cmd --model qwen3.6-35b-a3b --base-url http://172.30.1.53:8080/v1 --out results/2026-05-21 --runs 3`
-2. **Bootstrap for-loop 스코프 버그** (낮은 우선순위, 재현 불가)
-3. **ISSUE 재검토**: golden-flakiness-inttoptr (P3), clang-knapsack-outlier (P3)
+1. **GPUStack 3-run 측정 완료** ✅ — 99.7% (299/300, 2026-05-20)
+   - 유일 실패: 91_ring_buffer run1 (수정 전 측정 시작)
+   - 04_fibonacci: 일관 2-shot (Type D, CRITICAL 노트 추가 완료)
+2. **다음 세션 선택지**:
+   - 04_fibonacci CRITICAL 노트 효과 검증 (단일 문제 재측정)
+   - Bootstrap for-loop 스코프 버그 (낮은 우선순위, 재현 불가)
+   - ISSUE 재검토: golden-flakiness-inttoptr (P3), clang-knapsack-outlier (P3)
 
 ### GPUStack 2차 측정 실행 방법
 

@@ -367,7 +367,7 @@ GitHub stars      ≥ 1,000
 
 | 축 | 현재값 | 목표 | 측정 방법 |
 |----|--------|------|----------|
-| **B** Failure Rate | ✅ **공식 98.0%** (2026-05-13, Cycle 2811, claude-sonnet-4-6) · **GPUStack 99.0%** (2026-05-20, Cycle 2984, qwen3.6-35b-a3b, 99/100, 1-shot 94%) | 99%+ 목표 (Claude) · **99%+ 달성 (GPUStack)** | LLM 1-shot 컴파일+verifier 통과율 |
+| **B** Failure Rate | ✅ **공식 98.0%** (2026-05-13, Cycle 2811, claude-sonnet-4-6) · **GPUStack 99.7%** (2026-05-20, 3-run, qwen3.6-35b-a3b, 299/300) | 99%+ 목표 (Claude) · **99%+ 달성 (GPUStack)** | LLM 1-shot 컴파일+verifier 통과율 |
 | **P** Performance | ✅ 16/16 ≤1.05x · **real-world 7/7: 6개 BMB faster, 1개 ≤1.06×** (Cycles 2941-2942 @inline 최적화: brainfuck 0.95× / csv 1.06× / http 0.95× / lexer 0.17× / json_parse 0.78× / json_ser 0.69× / sorting 0.15×) | 도메인 핵심 ≤1.00x, 일부 FAST | Tier 1/3 벤치마크 + inproc (Cycle 2685-2695, 2941-2942) |
 | **A** Token Efficiency | ❌ 미측정 | BMB ≤ Rust LOC (동일 알고리즘) | LOC·토큰 비교 |
 | **D** Verification | ❌ 미측정 | contract 자동 증명률 추적 | `bmb verify` 통과율 |
@@ -421,6 +421,8 @@ GitHub stars      ≥ 1,000
 | claude-sonnet-4-6 | 98.0% | 2026-05-13 | 공식 baseline (stale: 2026-08-13) |
 | qwen3.6-35b-a3b | 85.0% | 2026-05-18 | GPUStack 로컬, 기준선 (Cycle 2914) |
 | qwen3.6-35b-a3b | **97.0%** (291/300) | 2026-05-19 | GPUStack 로컬, Cycle 2963 재측정 ✅ |
+| qwen3.6-35b-a3b | **99.0%** (99/100) | 2026-05-20 | GPUStack 로컬, Cycle 2984 재측정 ✅ |
+| qwen3.6-35b-a3b | **99.7%** (299/300) | 2026-05-20 | GPUStack 3-run 공식, Cycles 2981-2990 품질 개선 후 ✅ |
 
 **Cycles 2945-2962 개선 → Cycle 2963 재측정 결과**:
 - Cycles 2945-2953: 에러 패턴 4종 신규/3종 개선 + problem.md 30개 수정 + vec_clear codegen

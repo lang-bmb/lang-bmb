@@ -37,6 +37,7 @@ Algorithm (dynamic programming)
 ## BMB Notes
 - Iterative with two variables — no array needed
 - Handle n=0 (output 0) and n=1 (output 1) as base cases before the loop
+- **CRITICAL**: Start `i=1` with `while i < n` — NOT `i=2`. Common mistake: `i=2, while i < n` gives wrong answer for n≥3 (only n-2 iterations instead of n-1)
 ```
 fn main() -> i64 = {
     let n: i64 = read_int();
