@@ -34,3 +34,25 @@ Output:
 ## Category
 
 Algorithm (binary search)
+
+## BMB Notes
+- t is the query count; for each query read ONE integer n
+- Binary search: hi = 1000000000 (since sqrt(10^18) = 10^9)
+```
+fn isqrt(n: i64) -> i64 = {
+    if n == 0 { 0 } else {
+        let mut lo: i64 = 0; let mut hi: i64 = 1000000000;
+        while lo < hi {
+            let mid: i64 = (lo + hi + 1) / 2;
+            if mid * mid <= n { lo = mid } else { hi = mid - 1 }
+        };
+        lo
+    }
+};
+
+fn main() -> i64 = {
+    let t: i64 = read_int();
+    for _i in 0..t { println(isqrt(read_int())) };
+    0
+};
+```

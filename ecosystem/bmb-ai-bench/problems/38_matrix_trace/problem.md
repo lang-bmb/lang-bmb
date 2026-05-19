@@ -34,3 +34,15 @@ Output:
 ## Category
 
 Algorithm (matrix arithmetic)
+
+## BMB Notes
+- Store flat in row-major vec: diagonal at index `i*n+i`
+```
+let n: i64 = read_int();
+let v = vec_new();
+for _i in 0..(n*n) { vec_push(v, read_int()) };
+let mut trace: i64 = 0;
+for i in 0..n { trace = trace + vec_get(v, i*n+i) };
+println(trace);
+0
+```

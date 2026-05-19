@@ -21,9 +21,9 @@ Your sieve loop must go up to and **including** n:
 ```
 // Sieve array of size n+1 (indices 0..n inclusive)
 let sieve = vec_new();
-let i = 0;
+let mut i: i64 = 0;
 while i <= n {   // <= n, NOT < n
-    let _p = vec_push(sieve, 1);  // 1 = prime
+    vec_push(sieve, 1);  // 1 = prime
     i = i + 1
 };
 // Mark 0 and 1 as non-prime

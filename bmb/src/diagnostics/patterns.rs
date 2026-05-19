@@ -108,17 +108,20 @@ pub static PATTERNS: &[DiagPattern] = &[
         id: "tuple_destruct",
         kind: "",
         triggers: &["let (", "destructur", "tuple"],
-        suggestion: "BMB does not support tuple destructuring. Use separate let bindings.",
-        example_wrong: "let (a, b) = pair;",
-        example_correct: "let a: i64 = pair_first(p);\nlet b: i64 = pair_second(p);",
+        // `let (a, b) = expr` WORKS inside a block `{ ... }`.
+        // It fails only in expression context (LALR conflict). Keep code in a block.
+        suggestion: "Tuple destructuring `let (a, b) = expr;` WORKS inside a block { ... }.\nIf it fails, ensure it is inside a function block body, not in expression position.",
+        example_wrong: "fn f() -> i64 = let (a, b) = pair;  // expression position — fails",
+        example_correct: "fn f() -> i64 = { let (a, b) = pair; a + b };  // block — works",
     },
     DiagPattern {
         id: "match_wildcard",
         kind: "",
-        triggers: &["_ =>", "_ ->", "wildcard"],
-        suggestion: "BMB does not support underscore patterns in match. Use else.",
-        example_wrong: "match x { 1 => a, _ => b }",
-        example_correct: "if x == 1 { a } else { b }",
+        triggers: &["_ ->", "wildcard"],
+        // `_ =>` in match WORKS in BMB. Only `_ ->` (wrong arrow) is an issue.
+        suggestion: "BMB match uses `=>` arrow (not `->`). The `_` wildcard works: `match x { 1 => a, _ => b }`.",
+        example_wrong: "match x { 1 -> a, _ -> b }",
+        example_correct: "match x { 1 => a, _ => b }",
     },
     DiagPattern {
         id: "static_method",
@@ -217,13 +220,13 @@ pub static PATTERNS: &[DiagPattern] = &[
     DiagPattern {
         id: "bool_operators",
         kind: "parser",
-        // `||` produces "Unrecognized token `|`"; `&&` produces "Unrecognized token `&`"
-        // Single `|` (bitwise OR) and single `&` (bitwise AND) produce the same tokens.
-        // These are the most common source of B-loop: model uses C/Java/Rust boolean/bitwise ops
+        // Single `|` (bitwise OR) and single `&` (bitwise AND) are unrecognized tokens.
+        // Note: `||` and `&&` DO work in BMB (they are valid boolean operators).
+        // The error fires only for single `|` or `&` used as bitwise operators.
         triggers: &["Unrecognized token `|`", "Unrecognized token `&`"],
-        suggestion: "BMB does not use '|', '||', '&', '&&' operators.\nFor BOOLEAN operators: 'a || b' → 'a or b',  'a && b' → 'a and b'\nFor BITWISE operators: 'a | b' → 'a bor b',  'a & b' → 'a band b'\nNote: BMB uses 'band'/'bor'/'bxor' for bitwise — NOT &/|/^.",
-        example_wrong: "if x > 0 || y > 0 { ... }\nlet bit: i64 = n & 1;",
-        example_correct: "if x > 0 or y > 0 { ... }\nlet bit: i64 = n band 1;",
+        suggestion: "BMB does not support single '|' or '&' as operators.\nFor BITWISE operators: 'a | b' → 'a bor b',  'a & b' → 'a band b',  'a ^ b' → 'a bxor b'\nNote: '||' and '&&' DO work in BMB for boolean OR/AND (no change needed for those).",
+        example_wrong: "let bit: i64 = n & 1;\nlet masked: i64 = a | b;",
+        example_correct: "let bit: i64 = n band 1;\nlet masked: i64 = a bor b;",
     },
     DiagPattern {
         id: "closure_lambda",
@@ -253,9 +256,9 @@ pub static PATTERNS: &[DiagPattern] = &[
         id: "if_without_else_unit",
         kind: "type",
         triggers: &["if expression without else", "branch types do not match"],
-        suggestion: "BMB if without else returns (). Both branches must match types. Add else { () } for unit if-statements.",
-        example_wrong: "if x > 0 { set count = count + 1 };",
-        example_correct: "if x > 0 { set count = count + 1; () } else { () };",
+        suggestion: "BMB `if cond { body }` without else returns (). This works fine for statements.\nIf used as a VALUE (assigned to a variable), add else: `if cond { expr } else { default }`.",
+        example_wrong: "let x: i64 = if cond { 42 };  // if-as-value requires else",
+        example_correct: "let x: i64 = if cond { 42 } else { 0 };\nif cond { do_side_effect() };  // side-effect only — no else needed",
     },
     DiagPattern {
         id: "iterator_methods",
@@ -289,7 +292,7 @@ pub static PATTERNS: &[DiagPattern] = &[
         kind: "type",
         // Matches common AI hallucinated function names
         triggers: &["unknown function"],
-        suggestion: "Check function name. BMB built-ins:\n  I/O: println(i64), println_str(&str), print(i64), print_str(&str), read_int(), read_line()\n  Vec: vec_new(), vec_push(v,x), vec_get(v,i), vec_set(v,i,x), vec_len(v), vec_pop(v), vec_clear(v), vec_free(v)\n  Math: abs(i64)->i64, i64_min(a,b), i64_max(a,b), f64_sqrt(x)\n  String: str_concat(a,b), str_len(s), str_substr(s,start,len), str_to_int(s)",
+        suggestion: "Check function name. BMB built-ins:\n  I/O: println(i64), println_str(&str), print(i64), print_str(&str), read_int(), read_line()\n  Vec: vec_new(), vec_push(v,x), vec_get(v,i), vec_set(v,i,x), vec_len(v), vec_pop(v), vec_clear(v), vec_free(v)\n  Math: abs(x)->i64/f64, min(a,b), max(a,b), f64_sqrt(x)\n  String: str_concat(a,b), str_len(s), str_substr(s,start,len), str_to_int(s)",
         example_wrong: "let x: i64 = input();",
         example_correct: "let x: i64 = read_int();",
     },

@@ -44,3 +44,24 @@ Explanation:
 ## Category
 
 Algorithm / nested loops / counting
+
+## BMB Notes
+```
+let t: i64 = read_int();
+let mut tc: i64 = 0;
+while tc < t {
+    let n: i64 = read_int();
+    let target: i64 = read_int();
+    let mut count: i64 = 0;
+    for i in 0..n {
+        for j in 0..n {
+            for k in 0..n {
+                if i + j + k == target { count = count + 1 } else { () }
+            }
+        }
+    };
+    println(count);
+    set tc = tc + 1;
+};
+0
+```

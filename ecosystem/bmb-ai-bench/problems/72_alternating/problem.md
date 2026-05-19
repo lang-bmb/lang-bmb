@@ -55,3 +55,16 @@ Explanation:
 ## Category
 
 Math / patterns
+
+## BMB Notes
+- Use `n % 2` to check even/odd
+```
+let t: i64 = read_int();
+let mut i: i64 = 0;
+while i < t {
+    let n: i64 = read_int();
+    println(n % 2);
+    set i = i + 1;
+};
+0
+```

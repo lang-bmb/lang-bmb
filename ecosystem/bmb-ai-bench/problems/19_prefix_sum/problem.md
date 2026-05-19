@@ -37,3 +37,20 @@ Output:
 ## Category
 
 System (data structure / precomputation)
+
+## BMB Notes
+- Build prefix array: `prefix[i+1] = prefix[i] + arr[i]`; answer `sum(l,r) = prefix[r+1] - prefix[l]`
+```
+let n: i64 = read_int();
+let arr = vec_new();
+for _i in 0..n { vec_push(arr, read_int()) };
+let prefix = vec_new();
+vec_push(prefix, 0);
+for i in 0..n { vec_push(prefix, vec_get(prefix, i) + vec_get(arr, i)) };
+let q: i64 = read_int();
+for _qi in 0..q {
+    let l: i64 = read_int(); let r: i64 = read_int();
+    println(vec_get(prefix, r+1) - vec_get(prefix, l))
+};
+0
+```

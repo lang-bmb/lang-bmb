@@ -36,3 +36,21 @@ Output:
 ## Category
 
 System (data structure)
+
+## BMB Notes
+- Use `vec_push` to enqueue, `vec_remove(q, 0)` to dequeue from front
+- `vec_remove(v, idx)` removes element at idx and returns it (shifts elements left)
+- Check `vec_len(q) == 0` before dequeue
+```
+let q_count: i64 = read_int();
+let queue = vec_new();
+for _i in 0..q_count {
+    let op: i64 = read_int();
+    if op == 1 { let val: i64 = read_int(); vec_push(queue, val) }
+    else {
+        if vec_len(queue) == 0 { println(-1) }
+        else { println(vec_remove(queue, 0)) }
+    }
+};
+0
+```

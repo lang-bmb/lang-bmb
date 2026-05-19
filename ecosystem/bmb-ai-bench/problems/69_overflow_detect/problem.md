@@ -51,3 +51,16 @@ Explanation:
 ## Category
 
 Practical / math / overflow detection
+
+## BMB Notes
+- All arithmetic in i64; check `product > 2147483647 or product < -2147483648`
+- Output: `overflow_flag product` with a space separator
+```
+let t: i64 = read_int();
+for _i in 0..t {
+    let a: i64 = read_int(); let b: i64 = read_int();
+    let product: i64 = a * b;
+    let overflow: i64 = if product > 2147483647 { 1 } else { if product < -2147483648 { 1 } else { 0 } };
+    print(overflow); print_str(" "); println(product)
+};
+0

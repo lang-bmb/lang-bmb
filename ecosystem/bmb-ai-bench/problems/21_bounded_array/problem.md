@@ -49,3 +49,20 @@ Output:
 ## Category
 
 Contract (bounds verification)
+
+## BMB Notes
+- Put the `pre` contract on the accessor function, between `)` and `=`
+```
+fn safe_get(arr: i64, idx: i64, n: i64) -> i64
+    pre idx >= 0 and idx < n
+= vec_get(arr, idx);
+
+fn main() -> i64 = {
+    let n: i64 = read_int();
+    let arr = vec_new();
+    for _i in 0..n { vec_push(arr, read_int()) };
+    let idx: i64 = read_int();
+    println(safe_get(arr, idx, n));
+    0
+};
+```

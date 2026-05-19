@@ -35,3 +35,26 @@ Output:
 ## Category
 
 Algorithm (array manipulation)
+
+## BMB Notes
+- No need to physically rotate; just print elements from index k to n-1, then 0 to k-1
+- Space-separated output with print/print_str pattern
+```
+let n: i64 = read_int();
+let k: i64 = read_int();
+let v = vec_new();
+for _i in 0..n { vec_push(v, read_int()) };
+let mut first: i64 = 1;
+for i in k..n {
+    if first == 0 { print_str(" ") } else { () };
+    print(vec_get(v, i));
+    first = 0
+};
+for i in 0..k {
+    if first == 0 { print_str(" ") } else { () };
+    print(vec_get(v, i));
+    first = 0
+};
+println_str("");
+0
+```

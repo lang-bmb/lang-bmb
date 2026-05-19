@@ -16,14 +16,13 @@ Compute modular exponentiation: a^b mod m for multiple queries using fast expone
 Read `n` FIRST. Then loop `n` times, and in each iteration read exactly THREE integers: `a`, `b`, `m`.
 
 ```
-let n = read_int();   // query count — read THIS first
-let i = 0;
+let n: i64 = read_int();
+let mut i: i64 = 0;
 while i < n {
-    let a = read_int();   // base
-    let b = read_int();   // exponent
-    let m = read_int();   // modulus
-    let res = pow_mod(a, b, m);
-    let _p = println(res);
+    let a: i64 = read_int();
+    let b: i64 = read_int();
+    let m: i64 = read_int();
+    println(pow_mod(a, b, m));
     i = i + 1
 };
 ```

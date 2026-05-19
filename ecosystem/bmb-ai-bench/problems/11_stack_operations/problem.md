@@ -37,3 +37,23 @@ Output:
 ## Category
 
 System (data structure)
+
+## BMB Notes
+- Use `vec_push` for push, `vec_pop` for pop, `vec_len` to check empty
+- `vec_pop` removes and returns the last element (top of stack)
+```
+let q: i64 = read_int();
+let stack = vec_new();
+for _i in 0..q {
+    let op: i64 = read_int();
+    if op == 1 { let val: i64 = read_int(); vec_push(stack, val) }
+    else if op == 2 {
+        if vec_len(stack) == 0 { println(-1) }
+        else { println(vec_pop(stack)) }
+    } else {
+        if vec_len(stack) == 0 { println(-1) }
+        else { println(vec_get(stack, vec_len(stack) - 1)) }
+    }
+};
+0
+```

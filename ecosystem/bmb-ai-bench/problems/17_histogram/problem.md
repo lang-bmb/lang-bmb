@@ -36,3 +36,22 @@ Output:
 ## Category
 
 System (counting/aggregation)
+
+## BMB Notes
+- Create a count vec of size k, initialized to zeros
+- For each element, increment the corresponding bucket
+- Output: for each bucket index 0..k, print `index count` on one line using `format`
+```
+let k: i64 = read_int();
+let n: i64 = read_int();
+let counts = vec_new();
+for _i in 0..k { vec_push(counts, 0) };
+for _i in 0..n {
+    let v: i64 = read_int();
+    vec_set(counts, v, vec_get(counts, v) + 1)
+};
+for i in 0..k {
+    println_str(format("{} {}", i, vec_get(counts, i)))
+};
+0
+```

@@ -42,3 +42,23 @@ Output:
 ## Category
 
 Contract (2D bounds verification)
+
+## BMB Notes
+- Flat row-major storage: element (r,c) is at index `r*cols+c`
+```
+fn mat_get(m: i64, r: i64, c: i64, rows: i64, cols: i64) -> i64
+    pre r >= 0 and r < rows and c >= 0 and c < cols
+= vec_get(m, r*cols+c);
+
+fn main() -> i64 = {
+    let rows: i64 = read_int(); let cols: i64 = read_int();
+    let m = vec_new();
+    for _i in 0..(rows*cols) { vec_push(m, read_int()) };
+    let q: i64 = read_int();
+    for _qi in 0..q {
+        let r: i64 = read_int(); let c: i64 = read_int();
+        println(mat_get(m, r, c, rows, cols))
+    };
+    0
+};
+```

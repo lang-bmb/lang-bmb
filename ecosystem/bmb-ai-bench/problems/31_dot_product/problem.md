@@ -35,3 +35,17 @@ Output:
 ## Category
 
 Algorithm (vector arithmetic)
+
+## BMB Notes
+- Read ALL n elements of A first, then ALL n elements of B (never interleave)
+```
+let n: i64 = read_int();
+let a = vec_new();
+for _i in 0..n { vec_push(a, read_int()) };
+let b = vec_new();
+for _i in 0..n { vec_push(b, read_int()) };
+let mut sum: i64 = 0;
+for i in 0..n { sum = sum + vec_get(a, i) * vec_get(b, i) };
+println(sum);
+0
+```

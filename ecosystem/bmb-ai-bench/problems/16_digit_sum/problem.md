@@ -30,3 +30,16 @@ Output:
 ## Category
 
 System (number processing)
+
+## BMB Notes
+- Extract digits with `n % 10` (last digit) and `n / 10`; handle n=0 specially
+```
+let n: i64 = read_int();
+if n == 0 { println(0) } else {
+    let mut x: i64 = n;
+    let mut sum: i64 = 0;
+    while x > 0 { sum = sum + x % 10; x = x / 10 };
+    println(sum)
+};
+0
+```

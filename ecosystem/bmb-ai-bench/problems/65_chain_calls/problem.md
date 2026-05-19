@@ -47,3 +47,16 @@ Explanation:
 ## Category
 
 Edge cases / function composition
+
+## BMB Notes
+```
+let t: i64 = read_int();
+let mut i: i64 = 0;
+while i < t {
+    let x: i64 = read_int();
+    let result: i64 = x * x * 2 + 1;
+    println(result);
+    set i = i + 1;
+};
+0
+```

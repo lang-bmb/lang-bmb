@@ -33,3 +33,15 @@ Output:
 ## Category
 
 Algorithm (dynamic programming)
+
+## BMB Notes
+- Iterative with two variables — no array needed
+- Handle n=0 (output 0) and n=1 (output 1) as base cases before the loop
+```
+let n: i64 = read_int();
+if n == 0 { println(0) } else {
+    let mut a: i64 = 0; let mut b: i64 = 1; let mut i: i64 = 1;
+    while i < n { let tmp: i64 = b; set b = a + b; set a = tmp; set i = i + 1 };
+    println(b)
+};
+0

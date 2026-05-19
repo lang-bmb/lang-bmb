@@ -33,3 +33,16 @@ Output:
 ## Category
 
 System (data structure simulation)
+
+## BMB Notes
+- BMB has no pointer/struct linked list; simulate with a vec (equivalent to array-based list)
+- Since we only need the sum, just read elements and accumulate — no need to store the list
+```
+let n: i64 = read_int();
+let mut sum: i64 = 0;
+for _i in 0..n {
+    sum = sum + read_int()
+};
+println(sum);
+0
+```

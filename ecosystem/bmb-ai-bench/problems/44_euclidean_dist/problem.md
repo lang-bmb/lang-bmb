@@ -18,30 +18,22 @@ Read ALL n elements of vector A first, THEN read ALL n elements of vector B.
 Do NOT interleave reading of A and B elements.
 
 ```
-let n = read_int();
-// Read all of A (n integers)
+let n: i64 = read_int();
 let a = vec_new();
-let i = 0;
-while i < n {
-    let _p = vec_push(a, read_int());
-    i = i + 1
-};
-// Read all of B (n integers) — only AFTER reading all of A
+let mut i: i64 = 0;
+while i < n { vec_push(a, read_int()); i = i + 1 };
 let b = vec_new();
-let j = 0;
-while j < n {
-    let _p = vec_push(b, read_int());
-    j = j + 1
-};
-// Compute squared distance
-let dist = 0;
-let k = 0;
+let mut j: i64 = 0;
+while j < n { vec_push(b, read_int()); j = j + 1 };
+let mut dist: i64 = 0;
+let mut k: i64 = 0;
 while k < n {
-    let diff = vec_get(a, k) - vec_get(b, k);
+    let diff: i64 = vec_get(a, k) - vec_get(b, k);
     dist = dist + diff * diff;
     k = k + 1
 };
-let _p = println(dist);
+println(dist);
+0
 ```
 
 ## Example

@@ -32,3 +32,16 @@ Output:
 ## Category
 
 System (array processing)
+
+## BMB Notes
+- Simple linear scan; no array storage needed, just count on the fly
+```
+let target: i64 = read_int();
+let n: i64 = read_int();
+let mut count: i64 = 0;
+for _i in 0..n {
+    let v: i64 = read_int();
+    if v == target { set count = count + 1 } else { () }
+};
+println(count);
+0

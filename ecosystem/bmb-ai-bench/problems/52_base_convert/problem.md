@@ -34,5 +34,24 @@ while i < t {
 
 ## String Building Hint
 
-Use `str_concat(a, b)` to concatenate and `format("{}", digit)` to convert digit to string.
-Collect digits by repeatedly doing `number % base`, then reverse.
+Collect digits LSB-first via `number % base`, then read backwards:
+```
+fn convert(number: i64, base: i64) -> i64 = {
+    if number == 0 { println_str("0") } else {
+        let digits = vec_new();
+        let mut n: i64 = number;
+        while n > 0 {
+            vec_push(digits, n % base);
+            n = n / base
+        };
+        let len: i64 = vec_len(digits);
+        let mut result: &str = "";
+        let mut i: i64 = len - 1;
+        while i >= 0 {
+            result = str_concat(result, format("{}", vec_get(digits, i)));
+            i = i - 1
+        };
+        println_str(result)
+    }
+};
+```

@@ -34,3 +34,24 @@ Output:
 ## Category
 
 System (matrix operation)
+
+## BMB Notes
+- Store the matrix flat: `v[row * cols + col]`
+- Transposed output: for each output row `c` (0..cols), print row `r` (0..rows): `v[r * cols + c]`
+- Space-separated per row with `println_str("")` after each row
+```
+let rows: i64 = read_int();
+let cols: i64 = read_int();
+let v = vec_new();
+for _i in 0..(rows * cols) { vec_push(v, read_int()) };
+for c in 0..cols {
+    let mut first: i64 = 1;
+    for r in 0..rows {
+        if first == 0 { print_str(" ") } else { () };
+        print(vec_get(v, r * cols + c));
+        first = 0
+    };
+    println_str("")
+};
+0
+```

@@ -42,3 +42,27 @@ Explanation:
 ## Category
 
 Practical / math / conversion
+
+## BMB Notes
+- Read all digit values into a vec; use index-based while loop
+- If current < next: add (next - current) to result and advance by 2; else add current and advance by 1
+```
+fn main() -> i64 = {
+    let t: i64 = read_int();
+    for _i in 0..t {
+        let n: i64 = read_int();
+        let v = vec_new();
+        for _j in 0..n { vec_push(v, read_int()) };
+        let mut result: i64 = 0; let mut idx: i64 = 0;
+        while idx < n {
+            let cur: i64 = vec_get(v, idx);
+            if idx + 1 < n {
+                let nxt: i64 = vec_get(v, idx + 1);
+                if cur < nxt { set result = result + (nxt - cur); set idx = idx + 2 }
+                else { set result = result + cur; set idx = idx + 1 }
+            } else { set result = result + cur; set idx = idx + 1 }
+        };
+        println(result)
+    };
+    0
+};

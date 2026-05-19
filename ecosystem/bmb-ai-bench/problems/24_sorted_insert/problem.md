@@ -18,13 +18,13 @@ Output exactly ONE line with all n+1 elements separated by spaces:
 ```
 // CORRECT:
 // Build result into vec, then print all at end
-let i = 0;
+let mut i: i64 = 0;
 while i < vec_len(result) {
-    if i > 0 { let _s = print_str(" ") };
-    let _p = print(vec_get(result, i));
+    if i > 0 { print_str(" ") } else { () };
+    print(vec_get(result, i));
     i = i + 1
 };
-println_str("");  // newline at end
+println_str("");
 
 // WRONG — print elements during insertion:
 // Do NOT print elements while you are searching/shifting.

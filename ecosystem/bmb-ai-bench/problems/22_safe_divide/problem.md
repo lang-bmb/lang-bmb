@@ -42,3 +42,22 @@ Output:
 ## Category
 
 Contract (division safety)
+
+## BMB Notes
+- Contract syntax: `fn name(...) -> T pre condition = body;`
+- Contract goes between `)` and `=`
+```
+fn safe_divide(a: i64, b: i64) -> i64
+    pre b != 0
+= a / b;
+
+fn main() -> i64 = {
+    let n: i64 = read_int();
+    for _i in 0..n {
+        let a: i64 = read_int();
+        let b: i64 = read_int();
+        println(safe_divide(a, b))
+    };
+    0
+};
+```

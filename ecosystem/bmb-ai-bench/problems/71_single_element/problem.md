@@ -24,19 +24,17 @@ Output EXACTLY 3 lines: first element, last element, n. Nothing else.
 
 Correct approach:
 ```
-let n = read_int();
-// Read all into vec
+let n: i64 = read_int();
 let v = vec_new();
-let i = 0;
+let mut i: i64 = 0;
 while i < n {
-    let val = read_int();
-    let _p = vec_push(v, val);
+    let _p = vec_push(v, read_int());
     i = i + 1
 };
-// Print exactly 3 things
-let _a = println(vec_get(v, 0));      // first
-let _b = println(vec_get(v, n - 1)); // last
-let _c = println(n);                  // count
+println(vec_get(v, 0));
+println(vec_get(v, n - 1));
+println(n);
+0
 ```
 
 ## Example

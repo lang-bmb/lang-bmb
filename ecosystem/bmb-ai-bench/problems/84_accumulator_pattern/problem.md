@@ -49,4 +49,4 @@ while i < t {
 - op=3 (min): initial acc = first element (read first, then loop n-1 times) or i64_max
 - op=4 (max): initial acc = first element (read first, then loop n-1 times) or i64_min
 
-Use `i64_min(a, b)` and `i64_max(a, b)` for min/max comparison.
+Use `min(a, b)` and `max(a, b)` builtins for min/max comparison.

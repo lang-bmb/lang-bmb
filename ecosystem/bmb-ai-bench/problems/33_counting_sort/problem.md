@@ -33,3 +33,30 @@ Output:
 ## Category
 
 Algorithm (sorting)
+
+## BMB Notes
+- Read n and max_val first, then read n elements
+- Create a count vec of size max_val+1, initialized to zeros
+- Increment `counts[val]` for each input element
+- Output: for each value 0..=max_val, print value `counts[v]` times, space-separated
+```
+let n: i64 = read_int();
+let max_val: i64 = read_int();
+let counts = vec_new();
+for _i in 0..(max_val+1) { let _p = vec_push(counts, 0) };
+for _i in 0..n {
+    let v: i64 = read_int();
+    let _s = vec_set(counts, v, vec_get(counts, v) + 1)
+};
+let mut first: i64 = 1;
+for v in 0..(max_val+1) {
+    let cnt: i64 = vec_get(counts, v);
+    for _j in 0..cnt {
+        if first == 0 { print_str(" ") } else { () };
+        print(v);
+        first = 0
+    }
+};
+println_str("");
+0
+```

@@ -34,3 +34,28 @@ Output:
 ## Category
 
 Algorithm (array filtering)
+
+## BMB Notes
+- Collect non-zero elements into a result vec using vec_push
+- Print count first, then space-separated elements (if count > 0)
+- `println_str("")` for the empty line when all zeros
+```
+let n: i64 = read_int();
+let result = vec_new();
+for _i in 0..n {
+    let v: i64 = read_int();
+    if v != 0 { let _p = vec_push(result, v) } else { () }
+};
+let cnt: i64 = vec_len(result);
+println(cnt);
+if cnt > 0 {
+    let mut first: i64 = 1;
+    for i in 0..cnt {
+        if first == 0 { print_str(" ") } else { () };
+        print(vec_get(result, i));
+        first = 0
+    };
+    println_str("")
+} else { () };
+0
+```

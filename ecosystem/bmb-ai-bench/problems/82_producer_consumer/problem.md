@@ -13,3 +13,12 @@ Each dequeue prints one line.
 
 ## Example
 `4 1 10 1 20 2 2` -> enqueue 10, enqueue 20, dequeue->10, dequeue->20
+
+## BMB Notes
+- Use a vec as queue with a front-pointer (don't shift elements on dequeue):
+```
+let queue = vec_new();
+let mut front: i64 = 0;
+// enqueue: vec_push(queue, val)
+// dequeue: println(vec_get(queue, front)); front = front + 1
+```

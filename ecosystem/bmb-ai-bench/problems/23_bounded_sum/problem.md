@@ -40,3 +40,21 @@ Output:
 ## Category
 
 Contract (bounds verification)
+
+## BMB Notes
+- The contract goes on the accessor helper; main loop can just use for-in
+```
+fn bounded_get(arr: i64, idx: i64, len: i64) -> i64
+    pre idx >= 0 and idx < len
+= vec_get(arr, idx);
+
+fn main() -> i64 = {
+    let n: i64 = read_int();
+    let arr = vec_new();
+    for _i in 0..n { vec_push(arr, read_int()) };
+    let mut sum: i64 = 0;
+    for i in 0..n { sum = sum + bounded_get(arr, i, n) };
+    println(sum);
+    0
+};
+```

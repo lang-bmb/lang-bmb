@@ -84,3 +84,26 @@ print(array)
 ## Category
 
 Arrays / simulation / pipeline
+
+## BMB Notes
+- Use `abs(x)` for absolute value (built-in)
+- Negate: `0 - val` (not `-val` directly)
+- Reverse: two-pointer swap with `tmp` variable
+- No trailing space: use `print(x)` + `print_str(" ")` pattern with index check
+```
+// op 4 abs:
+for j in 0..n {
+    let val = vec_get(v, j);
+    if val < 0 { let _s = vec_set(v, j, 0 - val) } else { () }
+};
+// op 5 reverse:
+let mut lo: i64 = 0;
+let mut hi: i64 = n - 1;
+while lo < hi {
+    let tmp = vec_get(v, lo);
+    let _s1 = vec_set(v, lo, vec_get(v, hi));
+    let _s2 = vec_set(v, hi, tmp);
+    lo = lo + 1;
+    hi = hi - 1
+};
+```

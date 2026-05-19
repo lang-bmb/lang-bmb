@@ -24,12 +24,11 @@ The input always starts with `t` (the number of queries). You must:
 
 Reading pattern:
 ```
-let t = read_int();   // number of queries
-let i = 0;
+let t: i64 = read_int();
+let mut i: i64 = 0;
 while i < t {
-    let n = read_int();   // value for THIS query
-    let length = collatz_len(n);
-    let _p = println(length);
+    let n: i64 = read_int();
+    println(collatz_len(n));
     i = i + 1
 };
 ```

@@ -25,8 +25,8 @@ Read items as interleaved (weight, value) pairs:
 ```
 let n: i64 = read_int();
 let W: i64 = read_int();
-let weights: i64 = vec_new();
-let values: i64 = vec_new();
+let weights = vec_new();
+let values = vec_new();
 let mut i: i64 = 0;
 while i < n {
     vec_push(weights, read_int());  // weight first
@@ -40,8 +40,8 @@ while i < n {
 Standard 1D DP approach (O(n*W) time, O(W) space):
 
 ```
-// dp[w] = max value achievable with capacity exactly w
-let dp: i64 = vec_new();
+// dp[w] = max value achievable with capacity w
+let dp = vec_new();
 let mut w: i64 = 0;
 while w <= W { vec_push(dp, 0); set w = w + 1; };
 

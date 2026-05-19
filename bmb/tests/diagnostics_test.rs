@@ -115,22 +115,28 @@ fn test_if_stmt_no_semicolon_identifier() {
 
 #[test]
 fn test_bool_operators_pipe() {
-    // "||" in source produces "Unrecognized token `|`" — should suggest 'or'
+    // single `|` (bitwise OR) produces "Unrecognized token `|`" — should suggest 'bor'
     let matches = find_patterns("parser", "Unrecognized token `|` found at 5:6");
     assert!(!matches.is_empty());
     let ids: Vec<&str> = matches.iter().map(|m| m.id).collect();
     assert!(ids.contains(&"bool_operators"), "expected bool_operators, got {:?}", ids);
     let pat = matches.iter().find(|m| m.id == "bool_operators").unwrap();
-    assert!(pat.suggestion.contains("or"), "suggestion should mention 'or'");
+    assert!(pat.suggestion.contains("bor"), "suggestion should mention 'bor' for bitwise OR");
+    // `||` and `&&` DO work in BMB — suggestion must NOT say they don't work
+    assert!(!pat.suggestion.contains("'||' → 'or'"), "suggestion must not redirect || to or (|| works in BMB)");
 }
 
 #[test]
 fn test_bool_operators_ampersand() {
-    // "&&" in source produces "Unrecognized token `&`" — should suggest 'and'
+    // single `&` (bitwise AND) produces "Unrecognized token `&`" — should suggest 'band'
     let matches = find_patterns("parser", "Unrecognized token `&` found at 5:6");
     assert!(!matches.is_empty());
     let ids: Vec<&str> = matches.iter().map(|m| m.id).collect();
     assert!(ids.contains(&"bool_operators"), "expected bool_operators, got {:?}", ids);
+    let pat = matches.iter().find(|m| m.id == "bool_operators").unwrap();
+    assert!(pat.suggestion.contains("band"), "suggestion should mention 'band' for bitwise AND");
+    // Note: `&&` DOES work — suggestion must clarify this
+    assert!(pat.suggestion.contains("&&"), "suggestion should mention && works");
 }
 
 #[test]

@@ -18,26 +18,24 @@ Answer range sum queries on an integer array using prefix sums.
 Read in this EXACT sequence: n → n elements → q → q×(l,r). Do NOT read q or any query integers before reading all n array elements.
 
 ```
-let n = read_int();
-// Step 1: Read all n elements
+let n: i64 = read_int();
 let v = vec_new();
-let i = 0;
-while i < n {
-    let val = read_int();
-    let _p = vec_push(v, val);
-    i = i + 1
-};
-// Step 2: Read q AFTER the array
-let q = read_int();
-// Step 3: Process q queries
-let qi = 0;
+let mut i: i64 = 0;
+while i < n { vec_push(v, read_int()); i = i + 1 };
+// Build prefix sums
+let prefix = vec_new();
+vec_push(prefix, 0);
+let mut pi: i64 = 0;
+while pi < n { vec_push(prefix, vec_get(prefix, pi) + vec_get(v, pi)); pi = pi + 1 };
+let q: i64 = read_int();
+let mut qi: i64 = 0;
 while qi < q {
-    let l = read_int();
-    let r = read_int();
-    // answer = prefix[r+1] - prefix[l]
-    ...
+    let l: i64 = read_int();
+    let r: i64 = read_int();
+    println(vec_get(prefix, r+1) - vec_get(prefix, l));
     qi = qi + 1
 };
+0
 ```
 
 ## Algorithm: Prefix Sums

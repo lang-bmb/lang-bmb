@@ -45,3 +45,29 @@ FULL
 ## Category
 
 Contract (capacity verification)
+
+## BMB Notes
+- Use a vec as the stack; track size with `vec_len`
+- Guard push/pop with if-else; print FULL/EMPTY on violation rather than calling contracted fn
+```
+fn main() -> i64 = {
+    let cap: i64 = read_int(); let q: i64 = read_int();
+    let stk = vec_new();
+    for _i in 0..q {
+        let op: i64 = read_int();
+        if op == 1 {
+            let x: i64 = read_int();
+            if vec_len(stk) < cap { vec_push(stk, x) } else { println_str("FULL") }
+        } else {
+            if op == 2 {
+                if vec_len(stk) > 0 {
+                    let top: i64 = vec_len(stk) - 1;
+                    let val: i64 = vec_get(stk, top);
+                    vec_pop(stk);
+                    println(val)
+                } else { println_str("EMPTY") }
+            } else { println(vec_len(stk)) }
+        }
+    };
+    0
+};

@@ -40,3 +40,40 @@ Output:
 ## Category
 
 Algorithm (frequency table)
+
+## BMB Notes
+- BMB has no hash map for integers; sort the input array, then count runs
+- Use insertion sort to sort, then scan for runs of equal values
+- Output: distinct count first, then `value count` per line using `format`
+```
+let n: i64 = read_int();
+let arr = vec_new();
+for _i in 0..n { vec_push(arr, read_int()) };
+// insertion sort
+for i in 1..n {
+    let key: i64 = vec_get(arr, i);
+    let mut j: i64 = i - 1;
+    while j >= 0 && vec_get(arr, j) > key {
+        vec_set(arr, j+1, vec_get(arr, j));
+        j = j - 1
+    };
+    vec_set(arr, j+1, key)
+};
+// count distinct
+let mut distinct: i64 = 0;
+let keys = vec_new(); let counts = vec_new();
+let mut i: i64 = 0;
+while i < n {
+    let v: i64 = vec_get(arr, i);
+    let mut cnt: i64 = 1;
+    while i + cnt < n && vec_get(arr, i + cnt) == v { cnt = cnt + 1 };
+    vec_push(keys, v); vec_push(counts, cnt);
+    distinct = distinct + 1;
+    i = i + cnt
+};
+println(distinct);
+for idx in 0..distinct {
+    println_str(format("{} {}", vec_get(keys, idx), vec_get(counts, idx)))
+};
+0
+```

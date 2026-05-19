@@ -34,3 +34,17 @@ Output:
 ## Category
 
 System (streaming computation)
+
+## BMB Notes
+- Maintain a running sum; after each read, print sum / count (integer division = truncate)
+```
+let n: i64 = read_int();
+let mut sum: i64 = 0;
+let mut i: i64 = 1;
+while i <= n {
+    let v: i64 = read_int();
+    set sum = sum + v;
+    println(sum / i);
+    set i = i + 1
+};
+0

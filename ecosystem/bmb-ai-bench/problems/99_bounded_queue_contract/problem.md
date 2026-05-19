@@ -19,12 +19,8 @@ Use a circular buffer (ring buffer) with head and tail indices. Use modular arit
 
 ```
 let buf = vec_new();
-// Pre-allocate capacity slots
-let i = 0;
-while i < capacity {
-    let _p = vec_push(buf, 0);
-    i = i + 1
-};
+let mut i: i64 = 0;
+while i < capacity { vec_push(buf, 0); i = i + 1 };
 let mut head = 0;   // front of queue (oldest element)
 let mut tail = 0;   // next empty slot
 let mut count = 0;

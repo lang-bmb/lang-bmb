@@ -13,3 +13,13 @@ Each op=2 prints one line.
 
 ## Example
 `3 1 5 10 2 5 2 0` -> set[5]=10, get[5]->10, get[0]->0
+
+## BMB Notes
+- BMB has no int→int hash map. Use two parallel vecs: `keys` and `vals`.
+- To look up an index, scan keys linearly.
+```
+let keys = vec_new();
+let vals = vec_new();
+// set: find key in keys vec, update vals[j]; if not found, push to both
+// get: scan keys for idx; if found print vals[j], else print 0
+```

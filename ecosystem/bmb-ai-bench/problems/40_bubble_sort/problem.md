@@ -31,3 +31,32 @@ Output:
 ## Category
 
 Algorithm (sorting)
+
+## BMB Notes
+- Use `vec_set` for swap; early termination if no swaps in a pass
+- Space-separated output with print/print_str pattern
+```
+let n: i64 = read_int();
+let v = vec_new();
+for _i in 0..n { vec_push(v, read_int()) };
+let mut swapped: i64 = 1;
+while swapped == 1 {
+    swapped = 0;
+    for i in 0..(n-1) {
+        if vec_get(v, i) > vec_get(v, i+1) {
+            let tmp: i64 = vec_get(v, i);
+            vec_set(v, i, vec_get(v, i+1));
+            vec_set(v, i+1, tmp);
+            swapped = 1
+        }
+    }
+};
+let mut first: i64 = 1;
+for i in 0..n {
+    if first == 0 { print_str(" ") } else { () };
+    print(vec_get(v, i));
+    first = 0
+};
+println_str("");
+0
+```

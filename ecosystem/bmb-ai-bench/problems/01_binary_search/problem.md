@@ -35,3 +35,20 @@ Output:
 ## Category
 
 Algorithm (search)
+
+## BMB Notes
+- Read target first, then n, then the array
+- Standard lo/hi/mid; return mid when found, -1 if lo > hi
+```
+let target: i64 = read_int();
+let n: i64 = read_int();
+let v = vec_new();
+for _i in 0..n { vec_push(v, read_int()) };
+let mut lo: i64 = 0; let mut hi: i64 = n - 1; let mut ans: i64 = -1;
+while lo <= hi {
+    let mid: i64 = (lo + hi) / 2;
+    if vec_get(v, mid) == target { lo = hi + 1; ans = mid }
+    else { if vec_get(v, mid) < target { lo = mid + 1 } else { hi = mid - 1 } }
+};
+println(ans);
+0

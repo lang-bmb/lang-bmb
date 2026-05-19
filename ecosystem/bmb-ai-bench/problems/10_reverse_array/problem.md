@@ -32,3 +32,21 @@ Output:
 ## Category
 
 Algorithm (array manipulation)
+
+## BMB Notes
+- Read into vec, then print from n-1 down to 0; space-separated with print/print_str
+```
+let n: i64 = read_int();
+let v = vec_new();
+for _i in 0..n { vec_push(v, read_int()) };
+let mut first: i64 = 1;
+let mut i: i64 = n - 1;
+while i >= 0 {
+    if first == 0 { print_str(" ") } else { () };
+    print(vec_get(v, i));
+    first = 0;
+    i = i - 1
+};
+println_str("");
+0
+```

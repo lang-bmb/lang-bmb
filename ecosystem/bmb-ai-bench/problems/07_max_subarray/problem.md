@@ -34,3 +34,20 @@ Output:
 ## Category
 
 Algorithm (dynamic programming)
+
+## BMB Notes
+- Initialize with first element (handles all-negative case)
+- Kadane's: `cur = max(v, cur + v)` at each step; `best = max(best, cur)`
+```
+let n: i64 = read_int();
+let first: i64 = read_int();
+let mut cur: i64 = first;
+let mut best: i64 = first;
+for _i in 1..n {
+    let v: i64 = read_int();
+    cur = max(v, cur + v);
+    best = max(best, cur)
+};
+println(best);
+0
+```

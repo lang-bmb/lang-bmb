@@ -31,3 +31,18 @@ Output:
 ## Category
 
 System (array processing)
+
+## BMB Notes
+- Use `min(a, b)` and `max(a, b)` builtins; output both on ONE line with `print_str(" ")` between
+```
+let n: i64 = read_int();
+let first: i64 = read_int();
+let mut mn: i64 = first; let mut mx: i64 = first;
+for _i in 1..n {
+    let v: i64 = read_int();
+    mn = min(mn, v);
+    mx = max(mx, v)
+};
+print(mn); print_str(" "); println(mx);
+0
+```
