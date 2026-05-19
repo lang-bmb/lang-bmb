@@ -14,13 +14,21 @@ Given an array (possibly empty), output its sum and count.
 `0` -> 0 and 0; `3 1 2 3` -> 6 and 3
 
 ## BMB Notes
-- `for _i in 0..n` handles n=0 correctly (no iterations)
-- Output sum first, then n (no conditional needed)
+
+**CRITICAL**: Must print BOTH sum AND n (two lines). Missing `println(n)` gives only one line of output.
+**CRITICAL**: Use `set sum = sum + read_int()` NOT `sum = sum + read_int()`. Always need `set`.
+
 ```
-let n: i64 = read_int();
-let mut sum: i64 = 0;
-for _i in 0..n { sum = sum + read_int() };
-println(sum);
-println(n);
-0
+fn main() -> i64 = {
+    let n: i64 = read_int();
+    let mut sum: i64 = 0;
+    let mut i: i64 = 0;
+    while i < n {
+        set sum = sum + read_int();
+        set i = i + 1
+    };
+    println(sum);
+    println(n);
+    0
+};
 ```

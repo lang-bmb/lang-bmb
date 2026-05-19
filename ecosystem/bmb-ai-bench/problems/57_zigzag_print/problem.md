@@ -19,22 +19,47 @@ Output:
 ```
 
 ## BMB Notes
-- Use `print(x)` (no newline) + `print_str(" ")` for space-separated; `println_str("")` for newline
-- Row direction: `row % 2 == 0` → forward, `row % 2 == 1` → backward
+
+**CRITICAL**: Use `set j = j + 1` (NOT `j = j + 1`). BMB requires `set` for ALL variable updates.
+**CRITICAL**: Use `if row % 2 == 0 { ... } else { ... }` directly. Do NOT assign to a bool and compare with `== 1`.
+  - WRONG: `let is_even = row % 2 == 0; if is_even == 1 { ... }` — type error (bool vs i64)
+  - CORRECT: `if row % 2 == 0 { ... } else { ... }`
+
 ```
-// forward row: j = i..actual_end
-let mut j: i64 = i;
-while j < actual_end {
-    if j > i { let _s = print_str(" "); () } else { () };
-    let _p = print(vec_get(v, j)); j = j + 1
+fn main() -> i64 = {
+    let n: i64 = read_int();
+    let w: i64 = read_int();
+    let v = vec_new();
+    let mut k: i64 = 0;
+    while k < n {
+        let _p = vec_push(v, read_int());
+        set k = k + 1
+    };
+    let mut row: i64 = 0;
+    let mut i: i64 = 0;
+    while i < n {
+        let actual_end: i64 = if i + w < n { i + w } else { n };
+        if row % 2 == 0 {
+            let mut j: i64 = i;
+            while j < actual_end {
+                if j > i { print_str(" ") } else { () };
+                print(vec_get(v, j));
+                set j = j + 1
+            }
+        } else {
+            let mut j: i64 = actual_end - 1;
+            let mut first: i64 = 1;
+            while j >= i {
+                if first == 0 { print_str(" ") } else { () };
+                print(vec_get(v, j));
+                set first = 0;
+                set j = j - 1
+            }
+        };
+        println_str("");
+        set i = i + w;
+        set row = row + 1
+    };
+    0
 };
-println_str("");
-// backward row: j = actual_end-1 downto i
-let mut j: i64 = actual_end - 1;
-let mut first: i64 = 1;
-while j >= i {
-    if first == 0 { let _s = print_str(" "); () } else { () };
-    let _p = print(vec_get(v, j)); first = 0; j = j - 1
-};
-println_str("");
 ```

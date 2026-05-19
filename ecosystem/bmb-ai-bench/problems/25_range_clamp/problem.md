@@ -40,6 +40,34 @@ Output:
 - 1 <= n <= 100000
 - All values fit in a 64-bit signed integer
 
+## BMB Notes
+
+**CRITICAL**: Name the function `clamp_val` (NOT `clamp`). `clamp` is a reserved built-in in BMB and causes a linker error.
+
+```
+fn clamp_val(x: i64, lo: i64, hi: i64) -> i64
+    pre lo <= hi
+    post ret >= lo and ret <= hi
+= if x < lo { lo } else if x > hi { hi } else { x };
+
+fn main() -> i64 = {
+    let lo: i64 = read_int();
+    let hi: i64 = read_int();
+    let n: i64 = read_int();
+    let mut first: i64 = 1;
+    let mut i: i64 = 0;
+    while i < n {
+        let x: i64 = read_int();
+        if first == 0 { print_str(" ") } else { () };
+        print(clamp_val(x, lo, hi));
+        set first = 0;
+        set i = i + 1
+    };
+    println_str("");
+    0
+};
+```
+
 ## Category
 
 Contract (range verification)

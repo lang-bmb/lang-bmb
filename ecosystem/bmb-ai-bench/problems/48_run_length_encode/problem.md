@@ -14,12 +14,15 @@ Given an array of n integers, compute its run-length encoding.
 
 Each run is ONE line: value and count separated by a single space.
 ```
-// CORRECT — one line per run:
-println_str(format("{} {}", val, count));   // prints "1 2" or "2 3"
+// CORRECT — one line per run (use print + print_str + println):
+print(val); print_str(" "); println(count);   // prints "1 2" or "2 3"
 
 // WRONG — two separate lines:
 println(val);    // "1" on one line
 println(count);  // "2" on next line — WRONG
+
+// WRONG — format("{} {}", ...) does NOT substitute {} placeholders:
+println_str(format("{} {}", val, count));  // prints literal "{} {}" — WRONG
 ```
 
 ## Example

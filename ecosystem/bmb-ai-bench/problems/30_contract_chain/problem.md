@@ -57,7 +57,10 @@ Contract (multi-function propagation)
 ## BMB Notes
 - Three helper functions each with pre/post; main reads params then calls chain per value
 - normalize maps [min,max] → [0,100] via `(x - mn) * 100 / (mx - mn)`
-- CRITICAL: `bound` must have `pre x >= 0 and limit >= 0` (not just `pre limit >= 0`) — Z3 needs `x >= 0` to prove `ret >= 0`
+- CRITICAL: The `bound` pre-condition MUST be EXACTLY `pre x >= 0 and limit >= 0`. Both conditions required.
+  - WRONG: `pre x >= 0` alone — Z3 will find limit<0 counterexample
+  - WRONG: `pre limit >= 0` alone — Z3 will find x<0 counterexample
+  - CORRECT: `pre x >= 0 and limit >= 0` (both x AND limit must be >= 0)
 ```
 fn normalize(x: i64, mn: i64, mx: i64) -> i64
     pre mn < mx

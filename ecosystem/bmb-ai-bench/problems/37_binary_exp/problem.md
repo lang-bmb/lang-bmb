@@ -38,22 +38,30 @@ Algorithm (fast exponentiation)
 ## BMB Notes
 - b ≤ 30, result fits in i64 — no modulus needed
 - Use `e band 1` to test the low bit; shift right by `e = e / 2`
+**CRITICAL**: Use `set` for ALL variable updates inside loops. `result = result * b` does NOT work — must be `set result = result * b`.
+
 ```
 fn fast_pow(base: i64, exp: i64) -> i64 = {
-    let mut result: i64 = 1; let mut b: i64 = base; let mut e: i64 = exp;
+    let mut result: i64 = 1;
+    let mut b: i64 = base;
+    let mut e: i64 = exp;
     while e > 0 {
-        if (e band 1) == 1 { result = result * b } else { () };
-        b = b * b; e = e / 2
+        if (e band 1) == 1 { set result = result * b } else { () };
+        set b = b * b;
+        set e = e / 2
     };
     result
 };
+
 fn main() -> i64 = {
     let n: i64 = read_int();
-    for _i in 0..n {
-        let a: i64 = read_int(); let b: i64 = read_int();
-        println(fast_pow(a, b))
+    let mut i: i64 = 0;
+    while i < n {
+        let a: i64 = read_int();
+        let b: i64 = read_int();
+        println(fast_pow(a, b));
+        set i = i + 1
     };
     0
 };
-
 ```

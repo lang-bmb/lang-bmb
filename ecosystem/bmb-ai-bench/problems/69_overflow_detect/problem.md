@@ -53,16 +53,19 @@ Explanation:
 Practical / math / overflow detection
 
 ## BMB Notes
-- All arithmetic in i64; check `product > 2147483647 or product < -2147483648`
-- Output: `overflow_flag product` with a space separator
-```
-let t: i64 = read_int();
-for _i in 0..t {
-    let a: i64 = read_int(); let b: i64 = read_int();
-    let product: i64 = a * b;
-    let overflow: i64 = if product > 2147483647 { 1 } else { if product < -2147483648 { 1 } else { 0 } };
-    print(overflow); print_str(" "); println(product)
-};
-0
 
+**CRITICAL**: There is NO operation code. Input is EXACTLY: first `t`, then for each test case exactly TWO integers `a` and `b`. Do NOT read an `op` code. Just multiply and check i32 bounds.
+
+```
+fn main() -> i64 = {
+    let t: i64 = read_int();
+    for _i in 0..t {
+        let a: i64 = read_int();
+        let b: i64 = read_int();
+        let product: i64 = a * b;
+        let overflow: i64 = if product > 2147483647 { 1 } else { if product < -2147483648 { 1 } else { 0 } };
+        print(overflow); print_str(" "); println(product)
+    };
+    0
+}
 ```

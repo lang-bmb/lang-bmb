@@ -15,36 +15,55 @@ op=1 overflow (-1), op=2 dequeue value, and op=3 size each print one line.
 
 ## IMPORTANT: Use Circular Buffer with Modular Arithmetic
 
-Use a circular buffer (ring buffer) with head and tail indices. Use modular arithmetic to wrap around.
+**CRITICAL**: Use `set` for ALL variable updates. `tail = ...`, `count = ...`, `head = ...` do NOT work — must be `set tail = ...`, `set count = ...`, `set head = ...`.
+**CRITICAL**: op=2 (dequeue) on an EMPTY queue prints -1. Check count == 0 first.
 
 ```
-let buf = vec_new();
-let mut i: i64 = 0;
-while i < capacity { vec_push(buf, 0); i = i + 1 };
-let mut head = 0;   // front of queue (oldest element)
-let mut tail = 0;   // next empty slot
-let mut count = 0;
-
-// op=1 enqueue(val):
-if count == capacity {
-    let _p = println(-1)  // overflow, do NOT add
-} else {
-    let _w = vec_set(buf, tail, val);
-    tail = (tail + 1) % capacity;
-    count = count + 1
+fn main() -> i64 = {
+    let capacity: i64 = read_int();
+    let n: i64 = read_int();
+    let buf = vec_new();
+    let mut i: i64 = 0;
+    while i < capacity {
+        let _p = vec_push(buf, 0);
+        set i = i + 1
+    };
+    let mut head: i64 = 0;
+    let mut tail: i64 = 0;
+    let mut count: i64 = 0;
+    let mut op_idx: i64 = 0;
+    while op_idx < n {
+        let op: i64 = read_int();
+        if op == 1 {
+            let val: i64 = read_int();
+            if count == capacity {
+                println(-1)
+            } else {
+                let _w = vec_set(buf, tail, val);
+                set tail = (tail + 1) % capacity;
+                set count = count + 1
+            }
+        } else {
+            if op == 2 {
+                if count == 0 {
+                    println(-1)
+                } else {
+                    let front: i64 = vec_get(buf, head);
+                    set head = (head + 1) % capacity;
+                    set count = count - 1;
+                    println(front)
+                }
+            } else {
+                println(count)
+            }
+        };
+        set op_idx = op_idx + 1
+    };
+    0
 };
-
-// op=2 dequeue:
-let front = vec_get(buf, head);
-head = (head + 1) % capacity;  // MUST use modular arithmetic
-count = count - 1;
-let _p = println(front);
-
-// op=3 size:
-let _p = println(count);
 ```
 
-**Critical**: `head = (head + 1) % capacity` — without modular arithmetic, head will drift past the allocated array bounds, causing garbage values.
+**Critical**: `set head = (head + 1) % capacity` — without modular arithmetic, head will drift past the allocated array bounds.
 
 ## Example
 

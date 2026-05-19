@@ -38,13 +38,16 @@ Algorithm (binary search)
 ## BMB Notes
 - t is the query count; for each query read ONE integer n
 - Binary search: hi = 1000000000 (since sqrt(10^18) = 10^9)
+**CRITICAL**: Use `set lo = mid` and `set hi = mid - 1` — NOT `lo = mid`. BMB requires `set` for all variable updates.
+
 ```
 fn isqrt(n: i64) -> i64 = {
     if n == 0 { 0 } else {
-        let mut lo: i64 = 0; let mut hi: i64 = 1000000000;
+        let mut lo: i64 = 0;
+        let mut hi: i64 = 1000000000;
         while lo < hi {
             let mid: i64 = (lo + hi + 1) / 2;
-            if mid * mid <= n { lo = mid } else { hi = mid - 1 }
+            if mid * mid <= n { set lo = mid } else { set hi = mid - 1 }
         };
         lo
     }
@@ -52,7 +55,11 @@ fn isqrt(n: i64) -> i64 = {
 
 fn main() -> i64 = {
     let t: i64 = read_int();
-    for _i in 0..t { println(isqrt(read_int())) };
+    let mut i: i64 = 0;
+    while i < t {
+        println(isqrt(read_int()));
+        set i = i + 1
+    };
     0
 };
 ```

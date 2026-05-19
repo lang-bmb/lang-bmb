@@ -57,14 +57,20 @@ Explanation:
 Math / patterns
 
 ## BMB Notes
-- Use `n % 2` to check even/odd
+
+**CRITICAL**: Read exactly ONE integer per test case (`n`). Do NOT read two integers. Do NOT compare two numbers. The answer is simply `n % 2`.
+
+- n=0 → 0, n=1 → 1, n=2 → 0, n=3 → 1 (always `n % 2`)
+
 ```
-let t: i64 = read_int();
-let mut i: i64 = 0;
-while i < t {
-    let n: i64 = read_int();
-    println(n % 2);
-    set i = i + 1;
-};
-0
+fn main() -> i64 = {
+    let t: i64 = read_int();
+    let mut i: i64 = 0;
+    while i < t {
+        let n: i64 = read_int();
+        println(n % 2);
+        set i = i + 1;
+    };
+    0
+}
 ```

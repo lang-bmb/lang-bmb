@@ -44,8 +44,12 @@ Explanation:
 Practical / math / conversion
 
 ## BMB Notes
-- Read all digit values into a vec; use index-based while loop
-- If current < next: add (next - current) to result and advance by 2; else add current and advance by 1
+
+**CRITICAL**: Use a `while idx < n` loop (NOT `for i in 0..n`). When `cur < next`, advance `idx` by 2 to skip the next position. A `for` loop cannot skip positions.
+
+- If current < next: add `(next - current)` to result, advance idx by **2**
+- Else: add `current` to result, advance idx by 1
+- Handle last element (no next): just add current and advance by 1
 ```
 fn main() -> i64 = {
     let t: i64 = read_int();

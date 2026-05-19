@@ -18,36 +18,38 @@ Input: `3  5 1 1 1 2 3  3 1 2 3  1 42`
 
 ## IMPORTANT: t is the query count
 
-For each test case, first read n, then read n values.
+**CRITICAL**: Do NOT discard t. You MUST loop t times using `while i < t`.
+**CRITICAL**: `let arr = vec_new()` — NO type annotation. `let arr: i64 = vec_new()` is WRONG.
+**CRITICAL**: `let _p = vec_push(arr, read_int())` — vec_push result must be bound.
 
 ```
-let t: i64 = read_int();
-let mut i: i64 = 0;
-while i < t {
-    let n: i64 = read_int();
-    let arr: i64 = vec_new();
-    let mut j: i64 = 0;
-    while j < n {
-        vec_push(arr, read_int());
-        set j = j + 1;
-    };
-    // count each element; majority means count * 2 > n
-    let mut majority: i64 = -1;
-    let mut k: i64 = 0;
-    while k < n {
-        let candidate: i64 = vec_get(arr, k);
-        let mut cnt: i64 = 0;
-        let mut m: i64 = 0;
-        while m < n {
-            if vec_get(arr, m) == candidate { set cnt = cnt + 1 } else { () };
-            set m = m + 1;
+fn main() -> i64 = {
+    let t: i64 = read_int();
+    let mut i: i64 = 0;
+    while i < t {
+        let n: i64 = read_int();
+        let arr = vec_new();
+        let mut j: i64 = 0;
+        while j < n {
+            let _p = vec_push(arr, read_int());
+            set j = j + 1
         };
-        if cnt * 2 > n { set majority = candidate } else { () };
-        set k = k + 1;
+        let mut majority: i64 = -1;
+        let mut k: i64 = 0;
+        while k < n {
+            let candidate: i64 = vec_get(arr, k);
+            let mut cnt: i64 = 0;
+            let mut m: i64 = 0;
+            while m < n {
+                if vec_get(arr, m) == candidate { set cnt = cnt + 1 } else { () };
+                set m = m + 1
+            };
+            if cnt * 2 > n { set majority = candidate } else { () };
+            set k = k + 1
+        };
+        println(majority);
+        set i = i + 1
     };
-    println(majority);
-    vec_free(arr);
-    set i = i + 1;
+    0
 };
-0
 ```

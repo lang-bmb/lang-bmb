@@ -13,22 +13,25 @@ Compute the sum of squares 1^2 + 2^2 + ... + n^2 for multiple queries.
 
 ## IMPORTANT: Reading Multiple Queries
 
-The FIRST integer is `t` (number of queries). Loop `t` times, reading one `n` per iteration.
+**CRITICAL**: Use `set` for ALL variable updates. `qi = qi + 1` does NOT work — must be `set qi = qi + 1`.
+**CRITICAL**: Declare mutable variables with `let mut`. `let qi = 0` is immutable and cannot be incremented.
 
 ```
-let t = read_int();   // number of queries — read FIRST
-let qi = 0;
-while qi < t {
-    let n = read_int();   // this query's n
-    // compute sum of squares 1^2 + ... + n^2
-    let sum = 0;
-    let i = 1;
-    while i <= n {
-        sum = sum + i * i;
-        i = i + 1
+fn main() -> i64 = {
+    let t: i64 = read_int();
+    let mut qi: i64 = 0;
+    while qi < t {
+        let n: i64 = read_int();
+        let mut sum: i64 = 0;
+        let mut i: i64 = 1;
+        while i <= n {
+            set sum = sum + i * i;
+            set i = i + 1
+        };
+        println(sum);
+        set qi = qi + 1
     };
-    let _p = println(sum);
-    qi = qi + 1
+    0
 };
 ```
 

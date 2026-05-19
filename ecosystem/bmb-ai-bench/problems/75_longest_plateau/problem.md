@@ -50,27 +50,31 @@ Initialize `max_len = 1`, `cur_len = 1`. For i from 1 to n-1:
 Arrays / scanning
 
 ## BMB Notes
-- Use `vec_new()`/`vec_push()`/`vec_get()` for array storage
+
+**CRITICAL**: Initialize `max_len = 1` and `cur_len = 1` (NOT 0). A single-element array always has plateau length 1. Never initialize to 0.
+
 ```
-let t: i64 = read_int();
-let mut tc: i64 = 0;
-while tc < t {
-    let n: i64 = read_int();
-    let arr = vec_new();
-    for _i in 0..n { let _p = vec_push(arr, read_int()) };
-    let mut max_len: i64 = 1;
-    let mut cur_len: i64 = 1;
-    for i in 1..n {
-        if vec_get(arr, i) == vec_get(arr, i - 1) {
-            cur_len = cur_len + 1;
-            if cur_len > max_len { max_len = cur_len } else { () }
-        } else {
-            cur_len = 1
-        }
+fn main() -> i64 = {
+    let t: i64 = read_int();
+    let mut tc: i64 = 0;
+    while tc < t {
+        let n: i64 = read_int();
+        let arr = vec_new();
+        for _i in 0..n { let _p = vec_push(arr, read_int()) };
+        let mut max_len: i64 = 1;
+        let mut cur_len: i64 = 1;
+        for i in 1..n {
+            if vec_get(arr, i) == vec_get(arr, i - 1) {
+                cur_len = cur_len + 1;
+                if cur_len > max_len { max_len = cur_len } else { () }
+            } else {
+                cur_len = 1
+            }
+        };
+        println(max_len);
+        vec_free(arr);
+        set tc = tc + 1;
     };
-    println(max_len);
-    vec_free(arr);
-    set tc = tc + 1;
-};
-0
+    0
+}
 ```

@@ -81,6 +81,11 @@ print(array)
 - Print space-separated values with NO trailing space, followed by `\n`
 - No test cases wrapper (single problem per input)
 
+**CRITICAL parse order** (do not confuse `m` and `k`):
+1. Read `n`, then read exactly `n` array values
+2. Read `m` (number of operations)
+3. For each of `m` operations: read `op`, then if `op==1` or `op==2` read `k`; ops 3/4/5 read nothing extra
+
 ## Category
 
 Arrays / simulation / pipeline

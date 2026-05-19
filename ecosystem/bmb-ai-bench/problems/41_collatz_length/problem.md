@@ -22,14 +22,27 @@ The input always starts with `t` (the number of queries). You must:
 
 **DO NOT** treat the first integer as the value to compute. It is the query count.
 
-Reading pattern:
+**CRITICAL**: Use `set i = i + 1` NOT `i = i + 1`. BMB requires `set` for all variable updates.
+**CRITICAL**: To check even: use `if n % 2 == 0` (NOT `n / 2 * 2 == n` in function context — this returns bool which causes type errors when combined with other expressions).
+
 ```
-let t: i64 = read_int();
-let mut i: i64 = 0;
-while i < t {
-    let n: i64 = read_int();
-    println(collatz_len(n));
-    i = i + 1
+fn collatz_len(n: i64) -> i64 = {
+    if n == 1 { 1 }
+    else {
+        if n % 2 == 0 { 1 + collatz_len(n / 2) }
+        else { 1 + collatz_len(3 * n + 1) }
+    }
+};
+
+fn main() -> i64 = {
+    let t: i64 = read_int();
+    let mut i: i64 = 0;
+    while i < t {
+        let n: i64 = read_int();
+        println(collatz_len(n));
+        set i = i + 1
+    };
+    0
 };
 ```
 

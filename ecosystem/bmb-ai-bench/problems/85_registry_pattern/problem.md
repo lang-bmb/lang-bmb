@@ -84,8 +84,11 @@ Or simpler: use linear scan with a `count` variable, checking each key in order.
 ## Key Notes
 
 - Op 1 reads **two** integers (k then v); op 2 reads **one** integer (k); op 3 reads **none**
+- **Op 1 (set): NO output** — do not print anything for set operations
 - Set overwrites existing key — count does NOT increase for duplicate sets
 - Count reflects distinct keys at query time (not total set operations)
+
+**CRITICAL**: Only op 2 (get) and op 3 (count) produce output. Op 1 (set) produces NO output at all. Do not call `println` inside the set branch.
 
 ## Constraints
 

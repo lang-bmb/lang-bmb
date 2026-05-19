@@ -22,19 +22,22 @@ Output EXACTLY 3 lines: first element, last element, n. Nothing else.
 - Do NOT loop over elements to print them
 - Do NOT print any element except index 0 and index n-1
 
-Correct approach:
+**CRITICAL**: This outputs `first element`, `last element`, `n` — NOT min, max, sum. Access by INDEX [0] and [n-1], do not compute min/max.
+
 ```
-let n: i64 = read_int();
-let v = vec_new();
-let mut i: i64 = 0;
-while i < n {
-    let _p = vec_push(v, read_int());
-    i = i + 1
+fn main() -> i64 = {
+    let n: i64 = read_int();
+    let v = vec_new();
+    let mut i: i64 = 0;
+    while i < n {
+        let _p = vec_push(v, read_int());
+        set i = i + 1
+    };
+    println(vec_get(v, 0));
+    println(vec_get(v, n - 1));
+    println(n);
+    0
 };
-println(vec_get(v, 0));
-println(vec_get(v, n - 1));
-println(n);
-0
 ```
 
 ## Example

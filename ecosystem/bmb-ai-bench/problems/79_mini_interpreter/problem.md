@@ -71,6 +71,54 @@ Output:
 ```
 (push 5→[5], dup→[5,5], add→[10], print top=10 no-pop→[10], print top=10 no-pop→[10])
 
+## CRITICAL: Main Loop
+
+**CRITICAL**: Use `set i = i + 1` NOT `i = i + 1`. Each operation increments i by exactly 1.
+**CRITICAL**: For op=1 (push), read val with `read_int()` WITHIN the loop body. Do NOT increment i by 2.
+
+```
+fn main() -> i64 = {
+    let n: i64 = read_int();
+    let stack = vec_new();
+    let mut i: i64 = 0;
+    while i < n {
+        let op: i64 = read_int();
+        if op == 1 {
+            let val: i64 = read_int();
+            let _p = vec_push(stack, val)
+        } else {
+            if op == 2 {
+                let b: i64 = vec_pop(stack);
+                let a: i64 = vec_pop(stack);
+                let _p = vec_push(stack, a + b)
+            } else {
+                if op == 3 {
+                    let b: i64 = vec_pop(stack);
+                    let a: i64 = vec_pop(stack);
+                    let _p = vec_push(stack, a - b)
+                } else {
+                    if op == 4 {
+                        let b: i64 = vec_pop(stack);
+                        let a: i64 = vec_pop(stack);
+                        let _p = vec_push(stack, a * b)
+                    } else {
+                        if op == 5 {
+                            let top: i64 = vec_get(stack, vec_len(stack) - 1);
+                            let _p = vec_push(stack, top)
+                        } else {
+                            let top: i64 = vec_get(stack, vec_len(stack) - 1);
+                            println(top)
+                        }
+                    }
+                }
+            }
+        };
+        set i = i + 1
+    };
+    0
+};
+```
+
 ## Constraints
 
 - Stack operations are always valid (never pop from empty stack in tests)

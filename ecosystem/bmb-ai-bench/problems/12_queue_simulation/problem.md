@@ -41,16 +41,25 @@ System (data structure)
 - Use `vec_push` to enqueue, `vec_remove(q, 0)` to dequeue from front
 - `vec_remove(v, idx)` removes element at idx and returns it (shifts elements left)
 - Check `vec_len(q) == 0` before dequeue
+
+**CRITICAL**: `fn main()` MUST end with `};` (brace + semicolon). Missing `;` causes a parse error.
+
 ```
-let q_count: i64 = read_int();
-let queue = vec_new();
-for _i in 0..q_count {
-    let op: i64 = read_int();
-    if op == 1 { let val: i64 = read_int(); vec_push(queue, val) }
-    else {
-        if vec_len(queue) == 0 { println(-1) }
-        else { println(vec_remove(queue, 0)) }
-    }
+fn main() -> i64 = {
+    let q_count: i64 = read_int();
+    let queue = vec_new();
+    let mut i: i64 = 0;
+    while i < q_count {
+        let op: i64 = read_int();
+        if op == 1 {
+            let val: i64 = read_int();
+            let _p = vec_push(queue, val)
+        } else {
+            if vec_len(queue) == 0 { println(-1) }
+            else { println(vec_remove(queue, 0)) }
+        };
+        set i = i + 1
+    };
+    0
 };
-0
 ```

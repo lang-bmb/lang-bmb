@@ -48,7 +48,7 @@ fn convert(number: i64, base: i64) -> i64 = {
         let mut result: &str = "";
         let mut i: i64 = len - 1;
         while i >= 0 {
-            result = str_concat(result, format("{}", vec_get(digits, i)));
+            result = str_concat(result, to_string(vec_get(digits, i)));
             i = i - 1
         };
         println_str(result)

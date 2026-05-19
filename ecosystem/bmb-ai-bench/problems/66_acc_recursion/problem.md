@@ -14,13 +14,17 @@ n=0→0, n=1→1, n=5→15, n=10→55
 
 ## IMPORTANT: t is the query count, not the value
 
+**CRITICAL**: There is NO operation type (no op=1/op=2). Each test case is JUST ONE integer n. Read t first, then loop t times reading ONE n each time.
+
 ```
-let t: i64 = read_int();  // number of test cases
-let mut i: i64 = 0;
-while i < t {
-    let n: i64 = read_int();
-    println(n * (n + 1) / 2);
-    set i = i + 1;
+fn main() -> i64 = {
+    let t: i64 = read_int();
+    let mut i: i64 = 0;
+    while i < t {
+        let n: i64 = read_int();
+        println(n * (n + 1) / 2);
+        set i = i + 1
+    };
+    0
 };
-0
 ```

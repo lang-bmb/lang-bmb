@@ -14,12 +14,15 @@ Output the frequency of each distinct value in sorted order.
 
 Each entry is ONE line: value and count separated by a single space. No leading/trailing spaces.
 ```
-// CORRECT — one line per entry:
-println_str(format("{} {}", val, count));   // prints "1 2"
+// CORRECT — one line per entry (use print + print_str + println):
+print(val); print_str(" "); println(count);   // prints "1 2"
 
 // WRONG — separate lines:
 println(val);    // "1" → WRONG
 println(count);  // "2" → WRONG
+
+// WRONG — format("{} {}", ...) prints literal "{} {}" not values:
+println_str(format("{} {}", val, count));  // WRONG
 ```
 
 ## Example
@@ -73,7 +76,9 @@ while i < n {
 };
 println(distinct);
 for idx in 0..distinct {
-    println_str(format("{} {}", vec_get(keys, idx), vec_get(counts, idx)))
+    print(vec_get(keys, idx));
+    print_str(" ");
+    println(vec_get(counts, idx))
 };
 0
 ```

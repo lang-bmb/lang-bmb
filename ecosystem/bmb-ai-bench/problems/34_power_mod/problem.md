@@ -15,33 +15,32 @@ Compute modular exponentiation: a^b mod m for multiple queries using fast expone
 
 Read `n` FIRST. Then loop `n` times, and in each iteration read exactly THREE integers: `a`, `b`, `m`.
 
-```
-let n: i64 = read_int();
-let mut i: i64 = 0;
-while i < n {
-    let a: i64 = read_int();
-    let b: i64 = read_int();
-    let m: i64 = read_int();
-    println(pow_mod(a, b, m));
-    i = i + 1
-};
-```
-
-## Algorithm: Fast Exponentiation (Required)
-
-Since b can be up to 10^18, you MUST use fast modular exponentiation (binary exponentiation):
+**CRITICAL**: Use `set` for ALL variable updates. `i = i + 1`, `result = ...`, `b = ...`, `e = ...` do NOT work without `set`.
 
 ```
 fn pow_mod(base: i64, exp: i64, m: i64) -> i64 = {
-    let mut result = 1;
-    let mut b = base % m;
-    let mut e = exp;
+    let mut result: i64 = 1;
+    let mut b: i64 = base % m;
+    let mut e: i64 = exp;
     while e > 0 {
-        if (e band 1) == 1 { result = (result * b) % m };
-        b = (b * b) % m;
-        e = e / 2
+        if (e band 1) == 1 { set result = (result * b) % m } else { () };
+        set b = (b * b) % m;
+        set e = e / 2
     };
     result
+};
+
+fn main() -> i64 = {
+    let n: i64 = read_int();
+    let mut i: i64 = 0;
+    while i < n {
+        let a: i64 = read_int();
+        let bv: i64 = read_int();
+        let m: i64 = read_int();
+        println(pow_mod(a, bv, m));
+        set i = i + 1
+    };
+    0
 };
 ```
 

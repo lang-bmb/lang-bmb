@@ -20,27 +20,30 @@ Input: `3  5 1 2 3 2 1  3 1 2 3  1 42`
 
 For each test case, first read n, then read n values.
 
+**CRITICAL**: The main function MUST end with `0` (the i64 return value). Do NOT end the function body with `println(ok)` — that returns `()`, not `i64`, causing a type error.
+
 ```
-let t: i64 = read_int();
-let mut i: i64 = 0;
-while i < t {
-    let n: i64 = read_int();
-    let arr: i64 = vec_new();
-    let mut j: i64 = 0;
-    while j < n {
-        vec_push(arr, read_int());
-        set j = j + 1;
+fn main() -> i64 = {
+    let t: i64 = read_int();
+    let mut i: i64 = 0;
+    while i < t {
+        let n: i64 = read_int();
+        let arr = vec_new();
+        let mut j: i64 = 0;
+        while j < n {
+            let _p = vec_push(arr, read_int());
+            set j = j + 1;
+        };
+        let mut ok: i64 = 1;
+        let mut k: i64 = 0;
+        while k < n / 2 {
+            if vec_get(arr, k) != vec_get(arr, n - 1 - k) { set ok = 0 } else { () };
+            set k = k + 1;
+        };
+        println(ok);
+        vec_free(arr);
+        set i = i + 1;
     };
-    // check palindrome: compare arr[k] with arr[n-1-k]
-    let mut ok: i64 = 1;
-    let mut k: i64 = 0;
-    while k < n / 2 {
-        if vec_get(arr, k) != vec_get(arr, n - 1 - k) { set ok = 0 } else { () };
-        set k = k + 1;
-    };
-    println(ok);
-    vec_free(arr);
-    set i = i + 1;
+    0
 };
-0
 ```

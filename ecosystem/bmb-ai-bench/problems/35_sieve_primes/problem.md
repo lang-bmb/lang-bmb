@@ -18,19 +18,40 @@ The range is **[2, n]** — the number n itself is included if it is prime.
 - n=10: primes are {2,3,5,7} → count=**4**
 
 Your sieve loop must go up to and **including** n:
+**CRITICAL**: Use `set i = i + 1` NOT `i = i + 1`. BMB requires `set` for all variable reassignment.
+**CRITICAL**: BMB has NO `return` statement and NO `break`. Use `while` loops, not `loop { break }`.
+
 ```
-// Sieve array of size n+1 (indices 0..n inclusive)
-let sieve = vec_new();
-let mut i: i64 = 0;
-while i <= n {   // <= n, NOT < n
-    vec_push(sieve, 1);  // 1 = prime
-    i = i + 1
+fn main() -> i64 = {
+    let n: i64 = read_int();
+    let sieve = vec_new();
+    let mut i: i64 = 0;
+    while i <= n {
+        let _p = vec_push(sieve, 1);
+        set i = i + 1
+    };
+    let _a = vec_set(sieve, 0, 0);
+    if n >= 1 { let _b = vec_set(sieve, 1, 0) } else { () };
+    let mut p: i64 = 2;
+    while p * p <= n {
+        if vec_get(sieve, p) == 1 {
+            let mut m: i64 = p * p;
+            while m <= n {
+                let _c = vec_set(sieve, m, 0);
+                set m = m + p
+            }
+        } else { () };
+        set p = p + 1
+    };
+    let mut count: i64 = 0;
+    let mut q: i64 = 2;
+    while q <= n {
+        if vec_get(sieve, q) == 1 { set count = count + 1 } else { () };
+        set q = q + 1
+    };
+    println(count);
+    0
 };
-// Mark 0 and 1 as non-prime
-let _a = vec_set(sieve, 0, 0);
-let _b = vec_set(sieve, 1, 0);
-// Sieve
-...
 ```
 
 ## Example
