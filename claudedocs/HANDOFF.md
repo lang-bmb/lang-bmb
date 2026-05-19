@@ -1,35 +1,46 @@
-# BMB Session Handoff — 2026-05-19 (Cycle 2963 — GPUStack B축 재측정 97.0% 달성)
+# BMB Session Handoff — 2026-05-19 (Cycles 2964-2968 — &&/|| Short-Circuit 완료)
 
-> **HEAD**: `468b16ca` (Cycle 2962 완료, 커밋 완료)
+> **HEAD**: `4bfff5c9` (Cycle 2967 완료, 커밋 완료)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2964
+> **다음 세션 진입점**: Cycle 2969
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 2958-2962)
+## 이번 세션 작업 요약 (Cycles 2964-2968)
 
 ### 주요 변경 사항
 
 | Cycle | 제목 | 내용 |
 |-------|------|------|
-| 2958 | diagnostics 2종 수정 + 첫 배치 | unknown_function(i64_min→min/max) + if_without_else_unit 오해 해소 + 10개 problem.md |
-| 2959 | 임계 버그 7개 수정 | `let i = 0` → `let mut i: i64 = 0` (반복 루프 immutable 버그) + 10개 problem.md |
-| 2960 | 알고리즘 + 계약 문제 | 03_merge_sort/06_matrix_multiply/33/45/13/17/20 + 계약 문제 21/22/23/26/27 |
-| 2961 | 정렬/알고리즘/계약 다수 | 07/09/10/11/12/19/31/32/36/38/40/54 + 15/16/42 + 계약 96/97/98/100 |
-| 2962 | 나머지 20개 완결 | 01/02/04/05/08/14/18/28/29/30/37/46/47/49/53/60/63/69/77/87 + 87 헤더 추가 |
+| 2964 | B-axis 3문제 수정 | 01_binary_search/30_contract_chain/86_heap_sort problem.md 근본 수정 |
+| 2965 | &&/\|\| MIR short-circuit | `bmb/src/mir/lower.rs`: BinOp::And/Or phi 노드 기반 단락 평가 |
+| 2966 | &&/\|\| 문서화 | 86_heap_sort CRITICAL 경고 제거, LANGUAGE_REFERENCE.md 업데이트 |
+| 2967 | short-circuit 테스트 | 인터프리터 OOB 보호 테스트 2개 추가 |
+| 2968 | csv_parse 벤치마크 | short-circuit 변경 후 C 파리티 확인 (~1.0×, 회귀 없음) |
 
-### B축 개선 현황
+### B-axis 3문제 수정 내용
 
-**기준선**: 85.0% (255/300) — Cycle 2914 GPUStack qwen3.6-35b-a3b 측정  
-**예상 개선**: 90%+ (재측정 필요) — Cycles 2945-2962 개선 누적  
-**달성**: 100/100 problem.md 완전한 BMB 코드 스케치 포함
+| 문제 | 실패 원인 | 수정 내용 |
+|------|----------|----------|
+| 01_binary_search | 모델이 leftmost search 생성 | "first mid-comparison" 패턴 CRITICAL 경고 + 완전한 코드 예시 |
+| 30_contract_chain | Z3 counterexample `limit=0` | bound() pre 조건에 `x >= 0` 추가 |
+| 86_heap_sort | `&&` OOB 메모리 접근 | bubble sort 예시 + 잘못된 "&&미지원" 경고 제거 |
 
-### 코드 변경 파일
+### &&/|| Short-Circuit 구현
 
-- `bmb/src/diagnostics/patterns.rs` — 2개 패턴 수정 (unknown_function, if_without_else_unit)
-- `bmb/tests/diagnostics_test.rs` — 패턴 수정 반영
-- `ecosystem/bmb-ai-bench/problems/*/problem.md` — 전체 100개 파일 (이번 세션 ~57개)
+**파일**: `bmb/src/mir/lower.rs`
+
+**변경**: `Expr::Binary { BinOp::And/Or }` 매치 암에 short-circuit lowering 추가:
+- `a && b` → `if a { b } else { false }` (phi 노드)
+- `a || b` → `if a { true } else { b }` (phi 노드)
+
+**검증**:
+- Bootstrap 컴파일러: 이미 short-circuit 구현 완료 (lines 5679-5681)
+- Interpreter: 이미 short-circuit 구현 완료 (lines 688-703)
+- `&&`/`||`은 파서에서 v0.32부터 지원 (grammar.lalrpop)
+- `test_ir_boolean_logic`: phi i1 패턴 검증으로 업데이트
+- `test_short_circuit_and/or_prevents_oob`: 새 테스트 추가
 
 ### 테스트 결과
 
@@ -38,61 +49,41 @@ cargo test --release
   lib.rs:         3778/3778 PASSED
   main.rs:          47/47   PASSED
   diagnostics:      22/22   PASSED
-  integration.rs: 2388/2388 PASSED
-  총: 6258 tests, 0 failed
+  integration.rs: 2390/2390 PASSED  (+2 new short-circuit tests)
+  총: 6260 tests, 0 failed
 ```
 
-### 적용된 BMB 패턴 일람 (problem.md 전체 일관 적용)
+### P축 상태 (csv_parse)
 
-| 패턴 | 올바른 형식 |
-|------|-----------|
-| mutable 변수 | `let mut x: i64 = 0; set x = x + 1` |
-| vec 핸들 | `let v = vec_new()` (타입 추론, `i64` 명시 불필요) |
-| vec_push 반환값 | `vec_push(v, x)` (반환값 무시 가능) |
-| 계약 문법 | `fn name(args) -> T pre cond and cond post ret > 0 = body;` |
-| 부호 반전 | `0 - x` (unary minus 대신) |
-| 공백 구분 출력 | first-flag 패턴 또는 `print_str(" ")` |
-| if-without-else | `if cond { side_effect() }` — else 불필요 (Cycle 2822 이후) |
+| 벤치마크 | 이전 | 현재 |
+|----------|------|------|
+| csv_parse | 1.057× (C 대비) | ~0.991× (C 파리티) |
+
+Note: short-circuit phi 노드가 eager `and i1`보다 실제로 더 빠른 경우 존재.
 
 ---
 
-## Cycle 2963 완료: GPUStack B축 재측정
-
-### 결과
-
-| 항목 | 값 |
-|------|-----|
-| **성공률** | **97.0%** (291/300) |
-| Baseline (2026-05-18) | 85.0% (255/300) |
-| **개선폭** | **+12.0%p** |
-| Median Loops | 1 |
-| 결과 저장 | `ecosystem/bmb-ai-bench/results/2026-05-19/` |
-
-### 잔여 실패 (3문제, 3회 일관 실패)
-
-| 문제 | 비고 |
-|------|------|
-| 01_binary_search | 반복 루프+포인터 패턴 |
-| 30_contract_chain | 계약 체인 복합 |
-| 86_heap_sort | heap 자료구조 구현 |
-
----
-
-## 다음 세션 (Cycle 2964+)
+## 다음 세션 (Cycle 2969+)
 
 ### 권장 우선순위
 
-1. **잔여 3문제 problem.md 개선** — 01/30/86 실패 원인 분석 후 힌트 추가
-2. **`||`/`&&` BMB 언어 추가** — bool_operators 패턴 우회 중, 근본 해결 필요
+1. **GPUStack 재측정** — 3문제 수정 + &&/|| short-circuit 반영 확인
+   - 예상: 97.0% → 99-100% (01/30/86 모두 수정됨)
+2. **추가 언어 개선** — 언어 갭 식별 후 구현
 3. **inttoptr UB (P3)** — HUMAN 결정 대기 (Option A codegen, 5-10 cycles)
-4. **claude-sonnet-4-6 재측정** — 98.0% (2026-05-13, stale: 2026-08-13) — stale 전 수행 권장
+4. **claude-sonnet-4-6 재측정** — 98.0% (2026-05-13, stale: 2026-08-13)
 
 ### 잔여 개선 항목
 
-| 항목 | 현재 | 개선 방법 | 비고 |
-|------|------|----------|------|
-| GPUStack B축 잔여 3문제 | 0% (3회 일관 실패) | problem.md 힌트 개선 | 01/30/86 |
-| `||`/`&&` 지원 | bool_operators 패턴만 | BMB 언어 추가 | 언어 갭 |
-| csv_parse | 1.057× | LLVM IR 수준 최적화 | P축 낮은 우선순위 |
-| inttoptr UB | P3 flakiness | Option A codegen | HUMAN 결정 필요 |
-| claude-sonnet-4-6 재측정 | 98.0% (2026-05-13, stale: 2026-08-13) | `--runs 5` 재측정 | stale 전 수행 권장 |
+| 항목 | 현재 | 비고 |
+|------|------|------|
+| GPUStack B축 | 97.0% (2026-05-19) | 3문제 수정 후 재측정 필요 |
+| csv_parse P축 | ~1.0× | C 파리티 달성 |
+| inttoptr UB | P3 flakiness | HUMAN 결정 필요 |
+| claude-sonnet-4-6 | 98.0% (stale: 2026-08-13) | 재측정 권장 |
+
+### 알려진 언어 갭 (현재 없음)
+- `&&`/`||` short-circuit: ✅ 완전 지원
+- `break`/`continue`/`return`: ✅ 지원
+- vec/str/svec/hashmap builtins: ✅ 완전 native 지원
+- string interpolation/format: ✅ 지원

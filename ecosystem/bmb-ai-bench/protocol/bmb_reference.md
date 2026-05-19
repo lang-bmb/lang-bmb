@@ -1005,6 +1005,7 @@ The following names are defined in BMB's standard prelude and will cause `invali
 - `vec_pop(v)` returns `()`, NOT the removed value — always `vec_get` the value before calling `vec_pop`
 - Vec handle type is `i64`, not `Vec<T>`
 - Bitwise operators use **keywords** `band`/`bor`/`bxor`, NOT `&`/`|`/`^` symbols (those are parse errors)
+- `&&` and `||` (also written `and`/`or`) have **short-circuit semantics** — right side is NOT evaluated when left side determines the result. Use `i < n && vec_get(v, i) > 0` safely: `vec_get` is skipped when `i >= n`.
 - `str_reverse(s)` reverses the string (v0.98.7+); `popcount(n)` counts set bits (v0.98.7+)
 - `if` as VALUE (used in `let x = if ...`) MUST have `else`
 - `if` as STATEMENT (result discarded) — `else` is optional (v0.98.1+)

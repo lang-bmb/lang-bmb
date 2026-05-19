@@ -332,6 +332,9 @@ This position **could not exist before AI**.
 - `&&`/`||`/`!` for Rust compatibility
 - `and`/`or`/`not` for contract readability
 - No ambiguity: both are binary/unary operators
+- **Short-circuit semantics**: `a && b` / `a and b` evaluates `b` only when `a` is true;
+  `a || b` / `a or b` evaluates `b` only when `a` is false.
+  This guarantees safe boundary checks like `i < n && vec_get(v, i) > 0`.
 
 ---
 

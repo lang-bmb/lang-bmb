@@ -1,5 +1,6 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-19 (Cycle 2963 — **GPUStack B축 재측정 97.0% 달성**: 85.0%→97.0% (+12%p), 291/300, Median Loops=1. 잔여 실패 3문제(01/30/86) 일관. HEAD `468b16ca`.)
+> 최종 업데이트: 2026-05-19 (Cycles 2964-2968 — **&&/|| short-circuit MIR lowering 구현**: phi 노드 기반 단락 평가, B-axis 3문제 근본 수정(01/30/86), csv_parse C 파리티 ~1.0× 확인. 6258+2 tests ✅. HEAD `4bfff5c9`.)
+> 이전 갱신: 2026-05-19 (Cycle 2963 — **GPUStack B축 재측정 97.0% 달성**: 85.0%→97.0% (+12%p), 291/300, Median Loops=1. 잔여 실패 3문제(01/30/86) 일관. HEAD `468b16ca`.)
 > 이전 갱신: 2026-05-19 (Cycles 2958-2962 — **100/100 problem.md BMB Notes 완결**: 전 문제 완전한 BMB 코드 스케치 포함. diagnostics 2종 수정(unknown_function i64_min→min/max, if_without_else_unit 오해 해소). 임계 버그 7개 수정(let i=0 immutable 루프 변수). 6258 tests ✅. HEAD `468b16ca`.)
 > 이전 갱신: 2026-05-19 (Cycles 2945-2953 — **GPUStack B축 대규모 개선**: 에러 패턴 4종 신규(function_name_reserved/if_stmt_no_semicolon/contract_param_undefined/bool_operators)+3종 개선 + problem.md 30개 수정(always-fail 10 + partial-fail 9 + 추가 11) + vec_clear codegen fix. diagnostics 테스트 13→22. HEAD `efb7d343`)
 > 이전 갱신: 2026-05-19 (Cycles 2943-2944 — **CLAUDE.md @inline 패턴 문서화** + **csv_parse @inline 실험 → 역효과 확인** (201-line IR: +17% 회귀, 대형 독립 루프는 @inline 금지 패턴 확립) + **bootstrap Cycle 2933 fn(T)->R 타입 let binding** + bootstrap_3stage.sh 32G arena / 64MB stack. HEAD `9ef76b6b`)
