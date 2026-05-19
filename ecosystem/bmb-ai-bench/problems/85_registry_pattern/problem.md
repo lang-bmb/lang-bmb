@@ -72,8 +72,8 @@ fn reg_set(keys: i64, vals: i64, size_ref: i64, k: i64, v: i64) -> i64 = {
     if found >= 0 {
         vec_set(vals, found, v)
     } else {
-        vec_push(keys, k);
-        vec_push(vals, v);
+        let _pk = vec_push(keys, k);
+        let _pv = vec_push(vals, v);
         vec_set(size_ref, 0, vec_get(size_ref, 0) + 1)
     }
 };

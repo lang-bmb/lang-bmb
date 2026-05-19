@@ -38,8 +38,9 @@ Algorithm (search)
 
 ## BMB Notes
 - Read target first, then n, then the array
-- CRITICAL: When target found at mid, set `ans = mid` and `lo = hi + 1` to EXIT immediately — do NOT change `hi` (changing hi searches leftmost/rightmost, wrong!)
+- CRITICAL: When target found at mid, `set ans = mid` and `set lo = hi + 1` to EXIT immediately — do NOT change `hi` (changing hi searches leftmost/rightmost, wrong!)
 - Use overflow-safe midpoint: `lo + (hi - lo) / 2`
+- CRITICAL: Use `set` for ALL variable updates in BMB. `ans = mid` does NOT work — must be `set ans = mid`.
 ```
 fn main() -> i64 = {
     let target: i64 = read_int();
@@ -56,10 +57,10 @@ fn main() -> i64 = {
         let mid: i64 = lo + (hi - lo) / 2;
         let val: i64 = vec_get(v, mid);
         if val == target {
-            ans = mid;
-            lo = hi + 1
+            set ans = mid;
+            set lo = hi + 1
         } else {
-            if val < target { lo = mid + 1 } else { hi = mid - 1 }
+            if val < target { set lo = mid + 1 } else { set hi = mid - 1 }
         }
     };
     let _p = println(ans);

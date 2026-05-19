@@ -108,7 +108,7 @@ while lo < hi {
     let tmp = vec_get(v, lo);
     let _s1 = vec_set(v, lo, vec_get(v, hi));
     let _s2 = vec_set(v, hi, tmp);
-    lo = lo + 1;
-    hi = hi - 1
+    set lo = lo + 1;
+    set hi = hi - 1
 };
 ```
