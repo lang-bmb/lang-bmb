@@ -1,6 +1,6 @@
 # BMB 1-shot Success Rate Lower Than C/Python (56% vs 65%/67%)
 
-**Status: LARGELY RESOLVED** — Cycles 2812+2818 (2026-05-13): 총 51개 title-only problem.md 수정 완료 (6+45). 근본 원인 = 빈 problem.md. 재측정 필요 (HUMAN).
+**Status: CLOSED** — Cycle 2983 (2026-05-20): GPUStack 재측정에서 **95.1% first-shot 달성** (61/64, 목표 65% 대비 +30%p). 근본 원인(빈 problem.md 51개) Cycles 2812+2818 해소. 종료.
 **Priority: MEDIUM**
 **Category: Compiler / Error Messages**
 

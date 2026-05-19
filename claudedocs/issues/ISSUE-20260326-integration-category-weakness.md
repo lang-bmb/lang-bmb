@@ -1,7 +1,7 @@
 # BMB Integration Category Weakness (63% vs Python 76%)
 
-**Status: OPEN** — Cycle 2730 양식: 측정 stamp는 [`_b_track_methodology_stamp.md`](_b_track_methodology_stamp.md) 참조 (**STALE** since 2026-04-26)
-**Priority: HIGH**
+**Status: PARTIALLY RESOLVED** — Cycle 2983 (2026-05-20): B-axis 차원에서는 ALL integration 문제 GPUStack 1-shot 통과. crosslang 차원(BMB vs C vs Python) 측정은 stale. 두 차원 분리 필요.
+**Priority: MEDIUM** (B-axis 해소됨, crosslang만 남음)
 **Category: Language Design / Compiler**
 
 ## Summary

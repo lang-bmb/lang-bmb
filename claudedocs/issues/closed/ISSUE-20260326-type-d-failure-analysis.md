@@ -1,6 +1,6 @@
 # Type D (Test Failure) Dominates — Root Cause Analysis Needed
 
-**Status: ROOT CAUSE RESOLVED** — Cycles 2812+2818 (2026-05-13): Type D failures의 주 원인 = title-only problem.md 51개. 모두 수정 완료. 이제 Type D는 실제 논리 오류만 남음. 재측정 필요 (HUMAN).
+**Status: CLOSED** — Cycle 2983 (2026-05-20): 재측정 결과 Type D failures 극소화. GPUStack 2026-05-20: 64/64 통과, 3개만 2회 시도(04/29/36). 빈 problem.md 51개 수정 효과 확인. 종료.
 **Priority: HIGH**
 **Category: Compiler / Error Messages**
 
