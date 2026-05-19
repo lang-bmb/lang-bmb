@@ -1,71 +1,49 @@
-# BMB Session Handoff — 2026-05-19 (Cycles 2964-2973 — B-axis 개선 완료)
+# BMB Session Handoff — 2026-05-19 (Cycles 2976-2980 — B축 problem.md 대규모 개선)
 
-> **HEAD**: `c1bf68de` (Cycle 2973, 세션 종료)
+> **HEAD**: `5513a57a` (Cycle 2980, 세션)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2974
+> **다음 세션 진입점**: Cycle 2981
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 2964-2973)
+## 이번 세션 작업 요약 (Cycles 2974-2980)
 
 ### 주요 변경 사항
 
 | Cycle | 제목 | 내용 |
 |-------|------|------|
-| 2964 | B-axis 3문제 수정 | 01_binary_search/30_contract_chain/86_heap_sort problem.md 근본 수정 |
-| 2965 | &&/\|\| MIR short-circuit | `bmb/src/mir/lower.rs`: BinOp::And/Or phi 노드 기반 단락 평가 |
-| 2966 | &&/\|\| 문서화 | 86_heap_sort CRITICAL 경고 제거, LANGUAGE_REFERENCE.md 업데이트 |
-| 2967 | short-circuit 테스트 | 인터프리터 OOB 보호 테스트 2개 추가 |
-| 2968 | csv_parse 벤치마크 | short-circuit 변경 후 C 파리티 확인 (~1.0×, 회귀 없음) |
-| 2969 | ROADMAP/HANDOFF 갱신 | 세션 요약 + GPUStack 재측정 권장 |
-| 2970 | SPECIFICATION.md 문서화 | short-circuit semantics §2.4 + bmb_reference.md 노트 추가 |
-| 2971 | vec_pop 버그 수정 | bmb_reference.md CRITICAL 오류 정정 + 89_topological_sort BMB Notes |
-| 2972 | 코드 블록 정리 | 18개 problem.md 미닫힌 코드 블록 수정 + 패턴 일관성 |
-| 2973 | HANDOFF/ROADMAP 갱신 | 세션 마무리 |
+| 2974 | B-axis 6문제 FAIL 분석 | Claude loops=11 context overflow 근본 원인 + 6문제 수정 |
+| 2975 | format("{} {}") 버그 수정 | 4개 problem.md에서 잘못된 format 패턴 수정 |
+| 2976 | palindrome_check + memory_pool | avg=3 고루프 2문제 완전한 fn main 래퍼 추가 |
+| 2977 | avg=2 고루프 7문제 수정 | `set` 누락, `break`/`loop` 미지원, `for v in` 변수 충돌 |
+| 2978 | Claude 고루프 8문제 수정 | `set` 누락, t 무시, bool→i64 패턴 |
+| 2979 | Claude 고루프 9문제 수정 | `set` 누락, bound contract, mini_interpreter 완전 구현 |
+| 2980 | 최종 3문제 수정 | integer_sqrt binary search, mutual_recursion, clamp_val 예약어 |
 
-### B-axis 3문제 수정 내용
+### problem.md 개선 요약 (35개 파일)
 
-| 문제 | 실패 원인 | 수정 내용 |
-|------|----------|----------|
-| 01_binary_search | 모델이 leftmost search 생성 | "first mid-comparison" 패턴 CRITICAL 경고 + 완전한 코드 예시 |
-| 30_contract_chain | Z3 counterexample `limit=0` | bound() pre 조건에 `x >= 0` 추가 |
-| 86_heap_sort | `&&` OOB 메모리 접근 | bubble sort 예시 + 잘못된 "&&미지원" 경고 제거 |
+#### 주요 패턴별 수정
 
-### &&/|| Short-Circuit 구현
+| 패턴 | 영향 문제 수 | 설명 |
+|------|------------|------|
+| `set` 누락 | ~25개 | `i = i + 1` → `set i = i + 1` 등 |
+| `break`/`loop`/`return` 미지원 | 5개 | `while` 패턴으로 교체 |
+| 완전한 fn main 래퍼 없음 | 15개 | 완전한 구현 예시 추가 |
+| 다중 쿼리 t 무시 | 8개 | CRITICAL: "loop t times" 경고 |
+| format("{} {}") 버그 | 4개 | print/print_str/println 패턴 |
+| 논리 오류 | 5개 | 62_deep_nesting (-1 not n), 99_bounded_queue (empty dequeue) 등 |
+| 변수 스코프 충돌 | 1개 | 33_counting_sort: v → val/vi 분리 |
 
-**파일**: `bmb/src/mir/lower.rs`
-
-**변경**: `Expr::Binary { BinOp::And/Or }` 매치 암에 short-circuit lowering 추가:
-- `a && b` → `if a { b } else { false }` (phi 노드)
-- `a || b` → `if a { true } else { b }` (phi 노드)
-
-**검증**:
-- Bootstrap 컴파일러: 이미 short-circuit 구현 완료 (lines 5679-5681)
-- Interpreter: 이미 short-circuit 구현 완료 (lines 688-703)
-- `&&`/`||`은 파서에서 v0.32부터 지원 (grammar.lalrpop)
-- `test_ir_boolean_logic`: phi i1 패턴 검증으로 업데이트
-- `test_short_circuit_and/or_prevents_oob`: 새 테스트 추가
-
-### vec_pop 문서 버그 수정 (Cycle 2971)
-
-**발견**: bmb_reference.md에 `vec_pop`이 `()` 반환한다는 CRITICAL 오류 존재
-**실제**: `vec_pop(v) -> i64` (제거된 요소 반환)
-**수정**:
-- Stack 패턴: `let b = vec_pop(stack)` 직접 사용으로 간소화
-- DFS 패턴: `let top = vec_pop(stk)` 1줄
-- Common Pitfalls: 올바른 설명으로 교체
-- 29_bounded_stack, 77_state_machine, 89_topological_sort 코드 예시 개선
-
-### 89_topological_sort BMB Notes 추가 (Cycle 2971)
-
-유일하게 BMB 코드가 없던 문제. Kahn's BFS 완전한 구현 추가.
-- 12/12 테스트 통과 (네이티브)
-
-### 코드 블록 일관성 수정 (Cycle 2972)
-
-18개 problem.md 파일에서 BMB Notes 섹션의 코드 블록 미닫힘 수정.
-- 영향: AI 모델의 마크다운 파싱 개선
+#### 수정된 파일 목록
+12_queue_simulation, 17_histogram, 25_range_clamp, 30_contract_chain, 33_counting_sort,
+34_power_mod, 35_sieve_primes, 37_binary_exp, 41_collatz_length, 42_integer_sqrt,
+43_sum_of_squares, 48_run_length_encode, 49_roman_to_int, 51_bracket_match,
+52_base_convert, 55_token_count, 56_char_frequency, 57_zigzag_print, 61_mutual_recursion,
+62_deep_nesting, 66_acc_recursion, 69_overflow_detect, 70_empty_input, 71_single_element,
+72_alternating, 73_palindrome_check, 74_majority_element, 75_longest_plateau,
+76_multi_function, 79_mini_interpreter, 83_pipeline, 85_registry_pattern, 90_nth_prime,
+95_memory_pool, 99_bounded_queue_contract
 
 ### 테스트 결과
 
@@ -78,36 +56,37 @@ cargo test --release
   총: 6260 tests, 0 failed
 ```
 
-### P축 상태 (csv_parse)
+### 잠재 버그 발견 (Bootstrap 컴파일러)
 
-| 벤치마크 | 이전 | 현재 |
-|----------|------|------|
-| csv_parse | 1.057× (C 대비) | ~0.991× (C 파리티) |
+**33_counting_sort**에서 발견: BMB 네이티브 컴파일러에서 `for v in 0..N`이 외부 스코프에
+이미 선언된 `v` 변수를 덮어쓰지 않는 스코프 버그.
+- 인터프리터: 정상 (변수 스코프 올바름)
+- 네이티브: 이전 `let v = ...`의 마지막 값 유지
+- 임시 해결: 변수명 분리 (v → val/vi)
+- 실제 fix: bootstrap compiler `for` 루프 변수 스코프 수정 필요
 
 ---
 
-## 다음 세션 (Cycle 2974+)
+## 다음 세션 (Cycle 2981+)
 
 ### 권장 우선순위
 
-1. **GPUStack 재측정** — B-axis 3문제 수정 + vec_pop 수정 + short-circuit 구현 반영
-   - 예상: 97.0% → ~99-100% (01/30/86 모두 수정됨)
-2. **추가 언어 개선** — 언어 갭 식별 후 구현
-3. **inttoptr UB (P3)** — HUMAN 결정 대기 (Option A codegen, 5-10 cycles)
-4. **claude-sonnet-4-6 재측정** — 98.0% (2026-05-13, stale: 2026-08-13)
+1. **GPUStack 재측정** — 35개 problem.md 개선 반영. 예상: 97.0% → ~99-100%
+   - 실행: `cd ecosystem/bmb-ai-bench && python3 -m bmb_ai_bench.run_cmd --model <gpustack-model> --out results/2026-05-19-v2`
+2. **Claude 재측정** — 98.0% (stale: 2026-08-13) → 재측정으로 개선 확인
+3. **Bootstrap 컴파일러 for-loop 스코프 버그** — 변수 섀도잉 미작동 (33_counting_sort 발견)
+4. **inttoptr UB (P3)** — HUMAN 결정 대기
 
-### 잔여 개선 항목
-
-| 항목 | 현재 | 비고 |
-|------|------|------|
-| GPUStack B축 | 97.0% (2026-05-19) | 3문제 수정 후 재측정 필요 |
-| csv_parse P축 | ~1.0× | C 파리티 달성 |
-| inttoptr UB | P3 flakiness | HUMAN 결정 필요 |
-| claude-sonnet-4-6 | 98.0% (stale: 2026-08-13) | 재측정 권장 |
-
-### 알려진 언어 갭 (현재 없음)
-- `&&`/`||` short-circuit: ✅ 완전 지원
+### 알려진 언어 갭
+- `&&`/`||` short-circuit: ✅ 완전 지원 (Cycle 2965)
 - `break`/`continue`/`return`: ✅ 지원
 - vec/str/svec/hashmap builtins: ✅ 완전 native 지원
-- string interpolation/format: ✅ 지원
-- `vec_pop`: ✅ `i64` 반환 (제거된 요소) — 직접 사용 가능
+- format: ✅ `{0}`, `{1}` 포지셔널 플레이스홀더 지원 (`{}` 빈 플레이스홀더 미지원)
+- `vec_pop`: ✅ `i64` 반환 (제거된 요소)
+
+### B-axis 상태
+
+| 모델 | 마지막 측정 | 예상 현재 |
+|------|-----------|----------|
+| Claude (claude-sonnet-4-6) | 98.0% (2026-05-13) | 재측정 필요 |
+| GPUStack | 97.0% (2026-05-19) | ~99-100% (수정 후) |
