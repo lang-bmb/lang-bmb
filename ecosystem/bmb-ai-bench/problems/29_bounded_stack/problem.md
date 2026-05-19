@@ -57,7 +57,7 @@ fn main() -> i64 = {
         let op: i64 = read_int();
         if op == 1 {
             let x: i64 = read_int();
-            if vec_len(stk) < cap { vec_push(stk, x) } else { println_str("FULL") }
+            if vec_len(stk) < cap { let _p = vec_push(stk, x) } else { println_str("FULL") }
         } else {
             if op == 2 {
                 if vec_len(stk) > 0 {

@@ -67,5 +67,5 @@ fn main() -> i64 = {
         print(overflow); print_str(" "); println(product)
     };
     0
-}
+};
 ```
