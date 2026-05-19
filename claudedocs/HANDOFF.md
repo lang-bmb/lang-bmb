@@ -71,9 +71,10 @@ cargo test --release
 
 1. **GPUStack 재측정** — 35개 problem.md 개선 반영. 예상: 97.0% → ~99-100%
    - 실행: `cd ecosystem/bmb-ai-bench && python3 -m bmb_ai_bench.run_cmd --model <gpustack-model> --out results/2026-05-19-v2`
-2. **Claude 재측정** — 98.0% (stale: 2026-05-13) → 재측정으로 개선 확인
-3. **Bootstrap 컴파일러 for-loop 스코프 버그** — 변수 섀도잉 미작동 (33_counting_sort 발견)
-4. **inttoptr UB (P3)** — HUMAN 결정 대기
+2. **Bootstrap 컴파일러 for-loop 스코프 버그** — 변수 섀도잉 미작동 (33_counting_sort 발견)
+3. **inttoptr UB (P3)** — HUMAN 결정 대기
+
+> **Claude 재측정 비활성화** (2026-05-20): ANTHROPIC_API_KEY 환경변수 제거됨. Claude B-axis 98.0% (2026-05-13) 을 고정 베이스라인으로 유지. 비용 절감 목적.
 
 ### 알려진 언어 갭
 - `&&`/`||` short-circuit: ✅ 완전 지원 (Cycle 2965)
@@ -84,7 +85,7 @@ cargo test --release
 
 ### B-axis 상태
 
-| 모델 | 마지막 측정 | 예상 현재 |
-|------|-----------|----------|
-| Claude (claude-sonnet-4-6) | 98.0% (2026-05-13) | 재측정 필요 |
-| GPUStack | 97.0% (2026-05-19) | ~99-100% (수정 후) |
+| 모델 | 마지막 측정 | 상태 |
+|------|-----------|------|
+| Claude (claude-sonnet-4-6) | 98.0% (2026-05-13) | 고정 베이스라인 (재측정 없음) |
+| GPUStack | 97.0% (2026-05-19) | 재측정 필요 (~99-100% 예상) |
