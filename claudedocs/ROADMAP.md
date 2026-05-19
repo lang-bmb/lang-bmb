@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-19 (Cycles 2976-2980 — **B-axis problem.md 대규모 개선**: `set` 누락·`break`/`loop` 미지원·완전한 fn main 래퍼·다중쿼리 t 무시·논리 오류 등 5대 패턴을 35개 파일에서 수정. 모델 루프 수 대폭 감소 예상. 6260 tests ✅. HEAD `5513a57a`.)
+> 최종 업데이트: 2026-05-20 (Cycles 2981-2984 — **GPUStack B축 재측정: 97.0%→99.0%** (+2%p). 1회 실패: 91_ring_buffer (else-if 체인 `;` 누락 패턴 발견+수정). 94_lru_simulate `break`→flag 수정. first-shot 94%. ISSUE 4개 CLOSED (first-shot-rate-low/type-d-failure-analysis/crosslang-asymmetry/statistical-testing). HEAD `efef2b47`.)
 > 이전 갱신: 2026-05-19 (Cycles 2964-2973 — **B-axis 종합 개선**: &&/|| short-circuit MIR lowering, B-axis 3문제 수정(01/30/86), vec_pop 문서 버그 수정(→i64), 89_topological_sort BMB Notes 추가, 18개 problem.md 코드블록 정리, 77_state_machine/29_bounded_stack 코드 예시 개선. 6260 tests ✅. HEAD `c1bf68de`.)
 > 이전 갱신: 2026-05-19 (Cycles 2964-2968 — **&&/|| short-circuit MIR lowering 구현**: phi 노드 기반 단락 평가, B-axis 3문제 근본 수정(01/30/86), csv_parse C 파리티 ~1.0× 확인. 6258+2 tests ✅. HEAD `4bfff5c9`.)
 > 이전 갱신: 2026-05-19 (Cycle 2963 — **GPUStack B축 재측정 97.0% 달성**: 85.0%→97.0% (+12%p), 291/300, Median Loops=1. 잔여 실패 3문제(01/30/86) 일관. HEAD `468b16ca`.)
@@ -367,7 +367,7 @@ GitHub stars      ≥ 1,000
 
 | 축 | 현재값 | 목표 | 측정 방법 |
 |----|--------|------|----------|
-| **B** Failure Rate | ✅ **공식 98.0%** (2026-05-13, Cycle 2811, claude-sonnet-4-6) · **GPUStack 97.0%** (2026-05-19, Cycle 2963, qwen3.6-35b-a3b, 291/300) | 99%+ 목표 (Claude) · 97%+ 달성 (GPUStack) | LLM 1-shot 컴파일+verifier 통과율 |
+| **B** Failure Rate | ✅ **공식 98.0%** (2026-05-13, Cycle 2811, claude-sonnet-4-6) · **GPUStack 99.0%** (2026-05-20, Cycle 2984, qwen3.6-35b-a3b, 99/100, 1-shot 94%) | 99%+ 목표 (Claude) · **99%+ 달성 (GPUStack)** | LLM 1-shot 컴파일+verifier 통과율 |
 | **P** Performance | ✅ 16/16 ≤1.05x · **real-world 7/7: 6개 BMB faster, 1개 ≤1.06×** (Cycles 2941-2942 @inline 최적화: brainfuck 0.95× / csv 1.06× / http 0.95× / lexer 0.17× / json_parse 0.78× / json_ser 0.69× / sorting 0.15×) | 도메인 핵심 ≤1.00x, 일부 FAST | Tier 1/3 벤치마크 + inproc (Cycle 2685-2695, 2941-2942) |
 | **A** Token Efficiency | ❌ 미측정 | BMB ≤ Rust LOC (동일 알고리즘) | LOC·토큰 비교 |
 | **D** Verification | ❌ 미측정 | contract 자동 증명률 추적 | `bmb verify` 통과율 |
