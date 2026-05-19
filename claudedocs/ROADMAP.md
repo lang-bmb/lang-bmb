@@ -1,5 +1,6 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-19 (Cycles 2943-2944 — **CLAUDE.md @inline 패턴 문서화** + **csv_parse @inline 실험 → 역효과 확인** (201-line IR: +17% 회귀, 대형 독립 루프는 @inline 금지 패턴 확립) + **bootstrap Cycle 2933 fn(T)->R 타입 let binding** + bootstrap_3stage.sh 32G arena / 64MB stack. HEAD `9ef76b6b`)
+> 최종 업데이트: 2026-05-19 (Cycles 2945-2953 — **GPUStack B축 대규모 개선**: 에러 패턴 4종 신규(function_name_reserved/if_stmt_no_semicolon/contract_param_undefined/bool_operators)+3종 개선 + problem.md 30개 수정(always-fail 10 + partial-fail 9 + 추가 11) + vec_clear codegen fix. diagnostics 테스트 13→22. HEAD `efb7d343`)
+> 이전 갱신: 2026-05-19 (Cycles 2943-2944 — **CLAUDE.md @inline 패턴 문서화** + **csv_parse @inline 실험 → 역효과 확인** (201-line IR: +17% 회귀, 대형 독립 루프는 @inline 금지 패턴 확립) + **bootstrap Cycle 2933 fn(T)->R 타입 let binding** + bootstrap_3stage.sh 32G arena / 64MB stack. HEAD `9ef76b6b`)
 > 이전 갱신: 2026-05-19 (Cycles 2939-2942 — **let (a,b) tuple destructuring** Rust interp ✅ + **str_byte_at native** + **println(String/f64) dispatch** + **P축 대폭 개선**: csv_parse 1.204×→**1.057×** / http_parse 1.099×→**0.947×** / brainfuck 1.274×→**0.949×**. **전체 7/7 real-world: 6개 BMB faster than C**. @inline 전략으로 LLVM 인라이닝 임계값 초과 함수 최적화. HEAD `797d7e3f`)
 > 이전 갱신: 2026-05-19 (Cycles 2928-2932 — **str_data builtin** bootstrap 추가 + **csv_parse flat v2** 1.283×→**1.204×** + **http_parse flat v1** 1.186×→**1.099×** + **str_data literal P0 bug fix** (llvm_text.rs Constant::String 분기) + **Bootstrap Fixed Point 방법론 정정** (binary hash→IR hash, GCC MinGW 비결정적). HEAD `7f1fbddc`)
 > 이전 갱신: 2026-05-19 (Cycles 2918-2926 — **tier3-spawn-overhead Option B Phase 1-4 완료**: 7개 real_world 벤치마크 inproc 포팅 완료(lexer/brainfuck/csv_parse/http_parse/json_parse/json_serialize/sorting). **csv_parse 최적화**: tuple return + single-pass → 4.06× FAIL → 1.148× 조건부. **http_parse**: 1.255→1.186×. **sorting 6.4×** BMB faster. ISSUE-20260512 CLOSED. HEAD `8c8a85ad`)
@@ -361,7 +362,7 @@ GitHub stars      ≥ 1,000
 
 | 축 | 현재값 | 목표 | 측정 방법 |
 |----|--------|------|----------|
-| **B** Failure Rate | ✅ **공식 98.0%** (2026-05-13, Cycle 2811, claude-sonnet-4-6) · **GPUStack 85.0%** (2026-05-18, Cycle 2914, qwen3.6-35b-a3b) | 99%+ 목표 (Claude) · 90%+ 목표 (GPUStack) | LLM 1-shot 컴파일+verifier 통과율 |
+| **B** Failure Rate | ✅ **공식 98.0%** (2026-05-13, Cycle 2811, claude-sonnet-4-6) · **GPUStack 85.0%** (2026-05-18, Cycle 2914, qwen3.6-35b-a3b) → **재측정 대기** (Cycles 2945-2953 개선 후, 목표 90%+) | 99%+ 목표 (Claude) · 90%+ 목표 (GPUStack) | LLM 1-shot 컴파일+verifier 통과율 |
 | **P** Performance | ✅ 16/16 ≤1.05x · **real-world 7/7: 6개 BMB faster, 1개 ≤1.06×** (Cycles 2941-2942 @inline 최적화: brainfuck 0.95× / csv 1.06× / http 0.95× / lexer 0.17× / json_parse 0.78× / json_ser 0.69× / sorting 0.15×) | 도메인 핵심 ≤1.00x, 일부 FAST | Tier 1/3 벤치마크 + inproc (Cycle 2685-2695, 2941-2942) |
 | **A** Token Efficiency | ❌ 미측정 | BMB ≤ Rust LOC (동일 알고리즘) | LOC·토큰 비교 |
 | **D** Verification | ❌ 미측정 | contract 자동 증명률 추적 | `bmb verify` 통과율 |
@@ -415,23 +416,46 @@ GitHub stars      ≥ 1,000
 | claude-sonnet-4-6 | 98.0% | 2026-05-13 | 공식 baseline (stale: 2026-08-13) |
 | qwen3.6-35b-a3b | 85.0% | 2026-05-18 | GPUStack 로컬, 비공식 참고용 |
 
-**Always FAIL 11문제 — Cycles 2945-2946 수정 완료 (재측정 대기)**:
+**Cycles 2945-2953 수정 완료 (재측정 대기)**:
+
+_Always-fail 11문제 (Cycles 2945-2946)_:
 
 | 문제 | Cycle | 수정 내용 | 상태 |
 |------|-------|---------|------|
-| 25_range_clamp | 2945 | function_name_reserved 패턴 + option_type false positive 제거 | ✅ 수정 완료 |
-| 89_topological_sort | 2945 | vec_clear native codegen 선언 추가 | ✅ 수정 완료 |
-| 90_nth_prime | 2945 | if_stmt_no_semicolon 에러 패턴 추가 | ✅ 수정 완료 |
-| 28_positive_factorial | 2946 | contract_param_undefined 에러 패턴 추가 | ✅ 수정 완료 |
-| 34_power_mod | 2946 | problem.md: n-first 읽기 + fast exponentiation 힌트 | ✅ 수정 완료 |
-| 39_partial_sum_query | 2946 | problem.md: 단계별 읽기 순서 명시 | ✅ 수정 완료 |
-| 41_collatz_length | 2946 | problem.md: 멀티쿼리 t-first 읽기 구조 | ✅ 수정 완료 |
-| 71_single_element | 2946 | problem.md: exactly 3 lines 출력 + 구현 예시 | ✅ 수정 완료 |
-| 79_mini_interpreter | 2946 | problem.md: op=5 dup, op=6 print-no-pop 구현 스케치 | ✅ 수정 완료 |
-| 91_ring_buffer | 2946 | problem.md: head 전진 overwrite 로직 + 구현 스케치 | ✅ 수정 완료 |
+| 25_range_clamp | 2945 | function_name_reserved 패턴 + option_type false positive 제거 | ✅ |
+| 89_topological_sort | 2945 | vec_clear native codegen + if_stmt_no_semicolon 확장(C2949) | ✅ |
+| 90_nth_prime | 2945 | if_stmt_no_semicolon 에러 패턴 추가 | ✅ |
+| 28_positive_factorial | 2946 | contract_param_undefined 에러 패턴 추가 | ✅ |
+| 34_power_mod | 2946 | problem.md: n-first 읽기 + fast exponentiation 힌트 | ✅ |
+| 39_partial_sum_query | 2946 | problem.md: 단계별 읽기 순서 명시 | ✅ |
+| 41_collatz_length | 2946 | problem.md: 멀티쿼리 t-first 읽기 구조 | ✅ |
+| 71_single_element | 2946 | problem.md: exactly 3 lines 출력 + 구현 예시 | ✅ |
+| 79_mini_interpreter | 2946 | problem.md: op=5 dup, op=6 print-no-pop 구현 스케치 | ✅ |
+| 91_ring_buffer | 2946 | problem.md: head 전진 overwrite 로직 + 구현 스케치 | ✅ |
 | 99_bounded_queue_contract | 2945 | 실제 PASS (3/3 run 성공) — always-fail 오분류 | ✅ 폐기 |
 
-→ **전체 11개 addressed. GPUStack 재측정으로 효과 검증 필요 (85.0% → 90%+ 목표)**
+_Partial-fail 2/3-fail 5문제 (Cycle 2947)_:
+
+| 문제 | 수정 내용 |
+|------|---------|
+| 35_sieve_primes | `<= n` + n=2→1 예시 |
+| 48_run_length_encode | 1줄 출력 format 명시 |
+| 56_char_frequency | 공백 구분 1줄 출력 |
+| 24_sorted_insert | 완전 삽입 후 전체 출력 |
+| 99_bounded_queue_contract | 순환 큐 정확한 예시 |
+
+_Partial-fail 1/3-fail 4문제 (Cycle 2948)_:
+
+| 문제 | 수정 내용 |
+|------|---------|
+| 43_sum_of_squares | t-first 멀티쿼리 구조 |
+| 51_bracket_match | bool_operators 패턴 (`\|\|`→`or`) |
+| 44_euclidean_dist | A 전체 → B 전체 읽기 순서 |
+| 50_calculator | pop 순서 명시 (a=top, b=second) |
+
+_추가 개선 (Cycles 2950-2952)_: 84/85/92/61/62/66/68/73/74/81/52/59/64/87/88 problem.md 15개 + bool_operators bitwise 확장 + unwrap_bang not 키워드 추가
+
+→ **전체 30개 problem.md 수정 + 에러 패턴 4신규/3개선. GPUStack 재측정 필요 (85.0% → 90%+ 목표)**
 
 **GPUStack 설정 주의**: Qwen3 `enable_thinking=false` + `max_tokens=16384` 필수. `.env.local` 있으면 `bmb-ai-bench run` 자동 적용.
 
