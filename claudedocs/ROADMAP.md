@@ -1,5 +1,6 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-19 (Cycles 2945-2953 — **GPUStack B축 대규모 개선**: 에러 패턴 4종 신규(function_name_reserved/if_stmt_no_semicolon/contract_param_undefined/bool_operators)+3종 개선 + problem.md 30개 수정(always-fail 10 + partial-fail 9 + 추가 11) + vec_clear codegen fix. diagnostics 테스트 13→22. HEAD `efb7d343`)
+> 최종 업데이트: 2026-05-19 (Cycles 2958-2962 — **100/100 problem.md BMB Notes 완결**: 전 문제 완전한 BMB 코드 스케치 포함. diagnostics 2종 수정(unknown_function i64_min→min/max, if_without_else_unit 오해 해소). 임계 버그 7개 수정(let i=0 immutable 루프 변수). 6258 tests ✅. HEAD `468b16ca`. GPUStack 재측정 대기.)
+> 이전 갱신: 2026-05-19 (Cycles 2945-2953 — **GPUStack B축 대규모 개선**: 에러 패턴 4종 신규(function_name_reserved/if_stmt_no_semicolon/contract_param_undefined/bool_operators)+3종 개선 + problem.md 30개 수정(always-fail 10 + partial-fail 9 + 추가 11) + vec_clear codegen fix. diagnostics 테스트 13→22. HEAD `efb7d343`)
 > 이전 갱신: 2026-05-19 (Cycles 2943-2944 — **CLAUDE.md @inline 패턴 문서화** + **csv_parse @inline 실험 → 역효과 확인** (201-line IR: +17% 회귀, 대형 독립 루프는 @inline 금지 패턴 확립) + **bootstrap Cycle 2933 fn(T)->R 타입 let binding** + bootstrap_3stage.sh 32G arena / 64MB stack. HEAD `9ef76b6b`)
 > 이전 갱신: 2026-05-19 (Cycles 2939-2942 — **let (a,b) tuple destructuring** Rust interp ✅ + **str_byte_at native** + **println(String/f64) dispatch** + **P축 대폭 개선**: csv_parse 1.204×→**1.057×** / http_parse 1.099×→**0.947×** / brainfuck 1.274×→**0.949×**. **전체 7/7 real-world: 6개 BMB faster than C**. @inline 전략으로 LLVM 인라이닝 임계값 초과 함수 최적화. HEAD `797d7e3f`)
 > 이전 갱신: 2026-05-19 (Cycles 2928-2932 — **str_data builtin** bootstrap 추가 + **csv_parse flat v2** 1.283×→**1.204×** + **http_parse flat v1** 1.186×→**1.099×** + **str_data literal P0 bug fix** (llvm_text.rs Constant::String 분기) + **Bootstrap Fixed Point 방법론 정정** (binary hash→IR hash, GCC MinGW 비결정적). HEAD `7f1fbddc`)
@@ -416,9 +417,13 @@ GitHub stars      ≥ 1,000
 | claude-sonnet-4-6 | 98.0% | 2026-05-13 | 공식 baseline (stale: 2026-08-13) |
 | qwen3.6-35b-a3b | 85.0% | 2026-05-18 | GPUStack 로컬, 비공식 참고용 |
 
-**Cycles 2945-2953 수정 완료 (재측정 대기)**:
+**Cycles 2945-2962 수정 완료 (재측정 대기)**:
+- Cycles 2945-2953: 에러 패턴 4종 신규/3종 개선 + problem.md 30개 수정 + vec_clear codegen
+- Cycles 2958-2962: **100/100 problem.md 완전한 BMB 코드 스케치** + diagnostics 2종 수정 + 임계 버그 7개
 
-_Always-fail 11문제 (Cycles 2945-2946)_:
+**Always-fail 표 (Cycles 2945-2946)**:
+
+_Always-fail 11문제 (Cycles 2945-2946, 포함)_:
 
 | 문제 | Cycle | 수정 내용 | 상태 |
 |------|-------|---------|------|
