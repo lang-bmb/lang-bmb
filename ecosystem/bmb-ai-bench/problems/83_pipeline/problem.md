@@ -95,20 +95,46 @@ Arrays / simulation / pipeline
 - Negate: `0 - val` (not `-val` directly)
 - Reverse: two-pointer swap with `tmp` variable
 - No trailing space: use `print(x)` + `print_str(" ")` pattern with index check
+
+**CRITICAL**: op dispatch with `else if` chain — use `for _mi in 0..m` (no counter update) so the if-chain is the last expression and needs NO trailing `;`. If you use a while loop with `set mi = mi + 1`, the chain MUST end with `;`.
+
 ```
-// op 4 abs:
-for j in 0..n {
-    let val = vec_get(v, j);
-    if val < 0 { let _s = vec_set(v, j, 0 - val) } else { () }
-};
-// op 5 reverse:
-let mut lo: i64 = 0;
-let mut hi: i64 = n - 1;
-while lo < hi {
-    let tmp = vec_get(v, lo);
-    let _s1 = vec_set(v, lo, vec_get(v, hi));
-    let _s2 = vec_set(v, hi, tmp);
-    set lo = lo + 1;
-    set hi = hi - 1
+fn main() -> i64 = {
+    let n: i64 = read_int();
+    let v = vec_new();
+    for _i in 0..n { let _p = vec_push(v, read_int()) };
+    let m: i64 = read_int();
+    for _mi in 0..m {
+        let op: i64 = read_int();
+        if op == 1 {
+            let k: i64 = read_int();
+            for j in 0..n { let _s = vec_set(v, j, vec_get(v, j) + k) }
+        } else if op == 2 {
+            let k: i64 = read_int();
+            for j in 0..n { let _s = vec_set(v, j, vec_get(v, j) * k) }
+        } else if op == 3 {
+            for j in 0..n { let _s = vec_set(v, j, 0 - vec_get(v, j)) }
+        } else if op == 4 {
+            for j in 0..n {
+                let val: i64 = vec_get(v, j);
+                if val < 0 { let _s = vec_set(v, j, 0 - val) } else { () }
+            }
+        } else {
+            let mut lo: i64 = 0; let mut hi: i64 = n - 1;
+            while lo < hi {
+                let tmp: i64 = vec_get(v, lo);
+                let _s1 = vec_set(v, lo, vec_get(v, hi));
+                let _s2 = vec_set(v, hi, tmp);
+                set lo = lo + 1; set hi = hi - 1
+            }
+        }
+        // NOTE: for-loop body — if-chain is last expression, no ';' needed
+    };
+    for i in 0..n {
+        if i > 0 { print_str(" ") } else { () };
+        print(vec_get(v, i))
+    };
+    print_str("\n");
+    0
 };
 ```

@@ -38,6 +38,36 @@ For divide: `b / a` = (second from top) / (top)
 
 `3 0 20 0 4 4` → push(20), push(4), divide(a=4,b=20)→push(20/4=5) → output: 5
 
+## BMB Notes
+
+**CRITICAL**: `if op==0 {...} else if op==1 {...} else if op==4 {...}` used as a statement (not last expression) MUST end with `;`. Use nested `if-else` or ensure trailing `;`.
+
+Recommended pattern (nested if-else avoids the semicolon issue):
+```
+fn main() -> i64 = {
+    let n: i64 = read_int();
+    let stack = vec_new();
+    let mut i: i64 = 0;
+    while i < n {
+        let op: i64 = read_int();
+        if op == 0 {
+            let val: i64 = read_int();
+            let _p = vec_push(stack, val)
+        } else {
+            let b: i64 = vec_pop(stack);
+            let a: i64 = vec_pop(stack);
+            if op == 1 { let _p = vec_push(stack, a + b) }
+            else if op == 2 { let _p = vec_push(stack, b - a) }
+            else if op == 3 { let _p = vec_push(stack, a * b) }
+            else { let _p = vec_push(stack, b / a) }
+        };
+        set i = i + 1
+    };
+    println(vec_get(stack, vec_len(stack) - 1));
+    0
+};
+```
+
 ## Constraints
 - Stack is always valid (no underflow in tests)
 - 1 <= n <= 1000

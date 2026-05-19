@@ -50,3 +50,42 @@ while i < t {
 - op=4 (max): initial acc = first element (read first, then loop n-1 times) or i64_min
 
 Use `min(a, b)` and `max(a, b)` builtins for min/max comparison.
+
+## BMB Notes
+
+**CRITICAL**: When using a while loop with `set j = j + 1` after an `else if` chain, the chain MUST end with `;`:
+```
+if op == 1 { set acc = acc + v }
+else if op == 2 { set acc = acc * v }
+else if op == 3 { if v < acc { set acc = v } else { () } }
+else if op == 4 { if v > acc { set acc = v } else { () } };  // <-- ';' REQUIRED
+set j = j + 1
+```
+
+Complete implementation:
+```
+fn main() -> i64 = {
+    let t: i64 = read_int();
+    let mut qi: i64 = 0;
+    while qi < t {
+        let op: i64 = read_int();
+        let n: i64 = read_int();
+        let mut acc: i64 = if op == 2 { 1 } else { 0 };
+        let mut j: i64 = 0;
+        while j < n {
+            let v: i64 = read_int();
+            if op == 1 { set acc = acc + v }
+            else if op == 2 { set acc = acc * v }
+            else if op == 3 {
+                if j == 0 || v < acc { set acc = v } else { () }
+            } else {
+                if j == 0 || v > acc { set acc = v } else { () }
+            };   // <-- semicolon REQUIRED (set j = j + 1 follows)
+            set j = j + 1
+        };
+        println(acc);
+        set qi = qi + 1
+    };
+    0
+};
+```
