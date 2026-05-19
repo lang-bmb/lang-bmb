@@ -1,9 +1,9 @@
-# BMB Session Handoff — 2026-05-19 (Cycles 2958-2962 — B축 100/100 problem.md 완결)
+# BMB Session Handoff — 2026-05-19 (Cycle 2963 — GPUStack B축 재측정 97.0% 달성)
 
 > **HEAD**: `468b16ca` (Cycle 2962 완료, 커밋 완료)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2963
+> **다음 세션 진입점**: Cycle 2964
 
 ---
 
@@ -56,22 +56,42 @@ cargo test --release
 
 ---
 
-## 다음 세션 (Cycle 2963+)
+## Cycle 2963 완료: GPUStack B축 재측정
+
+### 결과
+
+| 항목 | 값 |
+|------|-----|
+| **성공률** | **97.0%** (291/300) |
+| Baseline (2026-05-18) | 85.0% (255/300) |
+| **개선폭** | **+12.0%p** |
+| Median Loops | 1 |
+| 결과 저장 | `ecosystem/bmb-ai-bench/results/2026-05-19/` |
+
+### 잔여 실패 (3문제, 3회 일관 실패)
+
+| 문제 | 비고 |
+|------|------|
+| 01_binary_search | 반복 루프+포인터 패턴 |
+| 30_contract_chain | 계약 체인 복합 |
+| 86_heap_sort | heap 자료구조 구현 |
+
+---
+
+## 다음 세션 (Cycle 2964+)
 
 ### 권장 우선순위
 
-1. **GPUStack B축 재측정** — Cycles 2945-2962 누적 수정 효과 검증 (API 필요, 수 시간 소요)
-   - 목표: 85.0% → 90%+
-   - 실행: `python ecosystem/bmb-ai-bench/run_bench.py --model qwen3.6... --runs 3`
-2. **잔여 실패 패턴 분석** — 재측정 후 남은 실패 문제 추가 개선
-3. **`||`/`&&` 언어 추가** — bool_operators 패턴으로 우회 중이나 근본 해결 필요
-4. **inttoptr UB (P3)** — HUMAN 결정 대기 (Option A codegen, 5-10 cycles)
+1. **잔여 3문제 problem.md 개선** — 01/30/86 실패 원인 분석 후 힌트 추가
+2. **`||`/`&&` BMB 언어 추가** — bool_operators 패턴 우회 중, 근본 해결 필요
+3. **inttoptr UB (P3)** — HUMAN 결정 대기 (Option A codegen, 5-10 cycles)
+4. **claude-sonnet-4-6 재측정** — 98.0% (2026-05-13, stale: 2026-08-13) — stale 전 수행 권장
 
 ### 잔여 개선 항목
 
 | 항목 | 현재 | 개선 방법 | 비고 |
 |------|------|----------|------|
-| GPUStack B축 | 85.0% (기준) | 재측정 — 90%+ 예상 | 재측정 대기 |
+| GPUStack B축 잔여 3문제 | 0% (3회 일관 실패) | problem.md 힌트 개선 | 01/30/86 |
 | `||`/`&&` 지원 | bool_operators 패턴만 | BMB 언어 추가 | 언어 갭 |
 | csv_parse | 1.057× | LLVM IR 수준 최적화 | P축 낮은 우선순위 |
 | inttoptr UB | P3 flakiness | Option A codegen | HUMAN 결정 필요 |
