@@ -1,20 +1,18 @@
 # BMB Session Handoff — 2026-05-19 (Cycles 2976-2980 — B축 problem.md 대규모 개선)
 
-> **HEAD**: `5513a57a` (Cycle 2980, 세션)
+> **HEAD**: `8c131005` (세션 종료 정리 커밋)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 > **다음 세션 진입점**: Cycle 2981
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 2974-2980)
+## 이번 세션 작업 요약 (Cycles 2976-2980)
 
 ### 주요 변경 사항
 
 | Cycle | 제목 | 내용 |
 |-------|------|------|
-| 2974 | B-axis 6문제 FAIL 분석 | Claude loops=11 context overflow 근본 원인 + 6문제 수정 |
-| 2975 | format("{} {}") 버그 수정 | 4개 problem.md에서 잘못된 format 패턴 수정 |
 | 2976 | palindrome_check + memory_pool | avg=3 고루프 2문제 완전한 fn main 래퍼 추가 |
 | 2977 | avg=2 고루프 7문제 수정 | `set` 누락, `break`/`loop` 미지원, `for v in` 변수 충돌 |
 | 2978 | Claude 고루프 8문제 수정 | `set` 누락, t 무시, bool→i64 패턴 |
@@ -73,7 +71,7 @@ cargo test --release
 
 1. **GPUStack 재측정** — 35개 problem.md 개선 반영. 예상: 97.0% → ~99-100%
    - 실행: `cd ecosystem/bmb-ai-bench && python3 -m bmb_ai_bench.run_cmd --model <gpustack-model> --out results/2026-05-19-v2`
-2. **Claude 재측정** — 98.0% (stale: 2026-08-13) → 재측정으로 개선 확인
+2. **Claude 재측정** — 98.0% (stale: 2026-05-13) → 재측정으로 개선 확인
 3. **Bootstrap 컴파일러 for-loop 스코프 버그** — 변수 섀도잉 미작동 (33_counting_sort 발견)
 4. **inttoptr UB (P3)** — HUMAN 결정 대기
 
