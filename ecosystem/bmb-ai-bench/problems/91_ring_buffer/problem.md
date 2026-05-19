@@ -87,6 +87,57 @@ dequeue oldest=buf[head=1]=20)
 - 1 <= capacity <= 1000
 - All read ops when non-empty, prints are valid
 
+## BMB Notes
+
+**CRITICAL**: In BMB, an `if ... else if ... else if ...` chain used as a statement (not last expression) MUST end with `;`:
+```
+if op == 1 {
+    // write
+} else if op == 2 {
+    // read
+} else if op == 3 {
+    // size
+};     // <-- semicolon REQUIRED — without it, next statement causes parse error
+```
+
+**CRITICAL**: Use `set` for mutable variable updates: `set tail = (tail + 1) % capacity`.
+
+Complete example:
+```
+fn main() -> i64 = {
+    let capacity: i64 = read_int();
+    let n: i64 = read_int();
+    let buf = vec_new();
+    for _i in 0..capacity { let _p = vec_push(buf, 0) };
+    let mut head: i64 = 0; let mut tail: i64 = 0; let mut count: i64 = 0;
+    let mut op_idx: i64 = 0;
+    while op_idx < n {
+        let op: i64 = read_int();
+        if op == 1 {
+            let val: i64 = read_int();
+            let _w = vec_set(buf, tail, val);
+            set tail = (tail + 1) % capacity;
+            if count == capacity {
+                set head = (head + 1) % capacity
+            } else {
+                set count = count + 1
+            }
+        } else if op == 2 {
+            if count > 0 {
+                let oldest: i64 = vec_get(buf, head);
+                set head = (head + 1) % capacity;
+                set count = count - 1;
+                println(oldest)
+            } else { println(-1) }
+        } else if op == 3 {
+            println(count)
+        };
+        set op_idx = op_idx + 1
+    };
+    0
+};
+```
+
 ## Category
 
 System (circular buffer)
