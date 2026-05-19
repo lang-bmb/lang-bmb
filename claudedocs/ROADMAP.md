@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-19 (Cycles 2964-2973 — **B-axis 종합 개선**: &&/|| short-circuit MIR lowering, B-axis 3문제 수정(01/30/86), vec_pop 문서 버그 수정(→i64), 89_topological_sort BMB Notes 추가, 18개 problem.md 코드블록 정리, 77_state_machine/29_bounded_stack 코드 예시 개선. 6260 tests ✅.)
+> 최종 업데이트: 2026-05-19 (Cycles 2964-2973 — **B-axis 종합 개선**: &&/|| short-circuit MIR lowering, B-axis 3문제 수정(01/30/86), vec_pop 문서 버그 수정(→i64), 89_topological_sort BMB Notes 추가, 18개 problem.md 코드블록 정리, 77_state_machine/29_bounded_stack 코드 예시 개선. 6260 tests ✅. HEAD `c1bf68de`.)
 > 이전 갱신: 2026-05-19 (Cycles 2964-2968 — **&&/|| short-circuit MIR lowering 구현**: phi 노드 기반 단락 평가, B-axis 3문제 근본 수정(01/30/86), csv_parse C 파리티 ~1.0× 확인. 6258+2 tests ✅. HEAD `4bfff5c9`.)
 > 이전 갱신: 2026-05-19 (Cycle 2963 — **GPUStack B축 재측정 97.0% 달성**: 85.0%→97.0% (+12%p), 291/300, Median Loops=1. 잔여 실패 3문제(01/30/86) 일관. HEAD `468b16ca`.)
 > 이전 갱신: 2026-05-19 (Cycles 2958-2962 — **100/100 problem.md BMB Notes 완결**: 전 문제 완전한 BMB 코드 스케치 포함. diagnostics 2종 수정(unknown_function i64_min→min/max, if_without_else_unit 오해 해소). 임계 버그 7개 수정(let i=0 immutable 루프 변수). 6258 tests ✅. HEAD `468b16ca`.)
