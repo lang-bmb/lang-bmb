@@ -142,7 +142,7 @@ let _p = vec_push(v, 42);       // append
 let val = vec_get(v, 0);        // read at index (0-indexed)
 let _s = vec_set(v, idx, val);  // write at index
 let len = vec_len(v);           // length
-let _p = vec_pop(v);            // remove last
+let top = vec_pop(v);           // remove and return last element (i64)
 let _c = vec_clear(v);          // set length to 0 (keep capacity)
 let _f = vec_free(v);           // deallocate
 
@@ -322,18 +322,17 @@ for j in 0..len {
 
 ## Pattern: Stack (push/pop/top)
 ```bmb
-// CRITICAL: vec_pop returns () (unit), NOT the removed value.
-// Always vec_get the value BEFORE calling vec_pop.
+// vec_pop(stack) removes and RETURNS the last element (i64). Use directly.
 let stack = vec_new();
 // push
 let _p = vec_push(stack, value);
-// read top (get before pop)
-let len = vec_len(stack);
-let top = vec_get(stack, len - 1);   // read
-let _p = vec_pop(stack);              // discard (returns ())
-// pop two and compute (stack pattern):
-let b = vec_get(stack, vec_len(stack) - 1); let _pb = vec_pop(stack);
-let a = vec_get(stack, vec_len(stack) - 1); let _pa = vec_pop(stack);
+// peek top without removing:
+let top = vec_get(stack, vec_len(stack) - 1);
+// pop (remove and get value):
+let val = vec_pop(stack);             // removes last, returns i64
+// pop two and compute (stack binary-op pattern):
+let b = vec_pop(stack);
+let a = vec_pop(stack);
 let _r = vec_push(stack, a + b);
 ```
 
@@ -688,8 +687,7 @@ for _i in 0..n { let _p = vec_push(visited, 0) };
 let stk = vec_new();
 let _p = vec_push(stk, start);
 while vec_len(stk) > 0 {
-    let top = vec_get(stk, vec_len(stk) - 1);
-    let _pop = vec_pop(stk);
+    let top = vec_pop(stk);    // remove and return top element
     if vec_get(visited, top) == 0 {
         let _v = vec_set(visited, top, 1);
         // Process node `top` here
@@ -1002,7 +1000,7 @@ The following names are defined in BMB's standard prelude and will cause `invali
 - No closures, iterators, or method calls — use free functions
 - No `impl` blocks — use free functions
 - Blocks must end with `;` after `}` in while/if/for — including early-return `if` blocks: `if n < 2 { return 0 };` (not `if n < 2 { return 0 }`)
-- `vec_pop(v)` returns `()`, NOT the removed value — always `vec_get` the value before calling `vec_pop`
+- `vec_pop(v)` returns the removed element as `i64` — use directly: `let val = vec_pop(v);` (unlike `vec_push`/`vec_set`/`vec_free` which return `()`)
 - Vec handle type is `i64`, not `Vec<T>`
 - Bitwise operators use **keywords** `band`/`bor`/`bxor`, NOT `&`/`|`/`^` symbols (those are parse errors)
 - `&&` and `||` (also written `and`/`or`) have **short-circuit semantics** — right side is NOT evaluated when left side determines the result. Use `i < n && vec_get(v, i) > 0` safely: `vec_get` is skipped when `i >= n`.

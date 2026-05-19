@@ -61,9 +61,7 @@ fn main() -> i64 = {
         } else {
             if op == 2 {
                 if vec_len(stk) > 0 {
-                    let top: i64 = vec_len(stk) - 1;
-                    let val: i64 = vec_get(stk, top);
-                    vec_pop(stk);
+                    let val: i64 = vec_pop(stk);
                     println(val)
                 } else { println_str("EMPTY") }
             } else { println(vec_len(stk)) }
@@ -71,3 +69,4 @@ fn main() -> i64 = {
     };
     0
 };
+```

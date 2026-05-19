@@ -58,16 +58,20 @@ Simulation / state machine
 
 ## BMB Notes
 - Use if-else chain on command (1..5); state is a mutable i64 starting at 0
-```
-let n: i64 = read_int();
-let mut state: i64 = 0;
-for _i in 0..n {
-    let cmd: i64 = read_int();
-    if cmd == 1 { set state = state + 1 }
-    else { if cmd == 2 { set state = state - 1 }
-    else { if cmd == 3 { set state = state * 2 }
-    else { if cmd == 4 { set state = 0 }
-    else { set state = 0 - state } } } }
+- Use `set state = 0 - state` for negate (not `-state`)
+```bmb
+fn main() -> i64 = {
+    let n: i64 = read_int();
+    let mut state: i64 = 0;
+    for _i in 0..n {
+        let cmd: i64 = read_int();
+        if cmd == 1 { set state = state + 1 }
+        else { if cmd == 2 { set state = state - 1 }
+        else { if cmd == 3 { set state = state * 2 }
+        else { if cmd == 4 { set state = 0 }
+        else { set state = 0 - state } } } }
+    };
+    println(state);
+    0
 };
-println(state);
-0
+```

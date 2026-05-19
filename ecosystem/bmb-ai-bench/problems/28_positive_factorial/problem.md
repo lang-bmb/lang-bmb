@@ -62,3 +62,5 @@ fn main() -> i64 = {
     for _i in 0..q { println(factorial(read_int())) };
     0
 };
+
+```

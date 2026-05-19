@@ -61,3 +61,5 @@ while i < n {
 };
 print(ri); print_str(" "); println(rj);
 0
+
+```

@@ -58,3 +58,61 @@ Output:
 ## Category
 
 Algorithm (topological sort / Kahn's BFS)
+
+## BMB Notes
+- Use two parallel vecs for edges (`edge_from`, `edge_to`) + in-degree vec
+- Queue = vec with `front` index (front-pointer pattern, no vec_pop for queue)
+- Scan all m edges each BFS step (O(n*m) — correct and simple)
+- Output space-separated with first-flag pattern
+```bmb
+fn main() -> i64 = {
+    let n: i64 = read_int();
+    let m: i64 = read_int();
+    let edge_from = vec_new();
+    let edge_to = vec_new();
+    let indeg = vec_new();
+    let mut ii: i64 = 0;
+    while ii < n { let _p = vec_push(indeg, 0); set ii = ii + 1 };
+    let mut i: i64 = 0;
+    while i < m {
+        let u: i64 = read_int();
+        let v: i64 = read_int();
+        let _pu = vec_push(edge_from, u);
+        let _pv = vec_push(edge_to, v);
+        let _si = vec_set(indeg, v, vec_get(indeg, v) + 1);
+        set i = i + 1
+    };
+    let queue = vec_new();
+    let mut front: i64 = 0;
+    let mut qi: i64 = 0;
+    while qi < n {
+        if vec_get(indeg, qi) == 0 { let _pq = vec_push(queue, qi) } else { () };
+        set qi = qi + 1
+    };
+    let result = vec_new();
+    while front < vec_len(queue) {
+        let u: i64 = vec_get(queue, front);
+        set front = front + 1;
+        let _pr = vec_push(result, u);
+        let mut j: i64 = 0;
+        while j < m {
+            if vec_get(edge_from, j) == u {
+                let v: i64 = vec_get(edge_to, j);
+                let new_indeg: i64 = vec_get(indeg, v) - 1;
+                let _sd = vec_set(indeg, v, new_indeg);
+                if new_indeg == 0 { let _pq = vec_push(queue, v) } else { () }
+            } else { () };
+            set j = j + 1
+        }
+    };
+    let rn = vec_len(result);
+    let mut ri: i64 = 0;
+    while ri < rn {
+        if ri > 0 { let _ps = print_str(" ") } else { () };
+        print(vec_get(result, ri));
+        set ri = ri + 1
+    };
+    let _pn = println_str("");
+    0
+};
+```

@@ -22,3 +22,5 @@ let mut sum: i64 = 0;
 for _i in 0..n { set sum = sum + read_int() };
 println(sum % 256);
 0
+
+```

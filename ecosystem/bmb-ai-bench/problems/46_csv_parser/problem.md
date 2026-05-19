@@ -23,3 +23,5 @@ for _i in 0..t {
     print(n); print_str(" "); println(sum)
 };
 0
+
+```

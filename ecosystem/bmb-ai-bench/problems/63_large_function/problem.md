@@ -34,3 +34,5 @@ for _i in 1..n {
 };
 println(sum); println(mn); println(mx); println(even); println(pos);
 0
+
+```
