@@ -1,84 +1,88 @@
-# BMB Session Handoff — 2026-05-19 (Cycles 2939-2944 — 언어 갭 + 성능 최적화 + @inline 실험)
+# BMB Session Handoff — 2026-05-19 (Cycles 2945-2953 — GPUStack B축 대규모 개선)
 
-> **HEAD**: `9ef76b6b` (Cycle 2944 완료)
-> **이전 HEAD**: `2af17fb4` (Cycle 2927 완료)
-> **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930) — GCC MinGW 링커 비결정성으로 binary hash 비교 불가, IR hash 비교로 방법론 정정. bootstrap/compiler_s3.exe IR == compiler_s4.exe IR
+> **HEAD**: `9ef76b6b` (Cycle 2944 완료) → 이번 세션 미커밋
+> **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2945
+> **다음 세션 진입점**: Cycle 2954
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 2939-2944)
+## 이번 세션 작업 요약 (Cycles 2945-2953)
 
 ### 주요 변경 사항
 
 | Cycle | 제목 | 내용 |
 |-------|------|------|
-| 2939 | let (a,b) = expr Rust interpreter | `Expr::LetTuple` + `desugar_stmts` 탈당화 (9파일 unreachable!) + grammar.lalrpop BlockStmt 규칙 |
-| 2940 | str_byte_at native + println dispatch | bmb_runtime.c + llvm_text.rs + mir/lower.rs MIR 타입 기반 dispatch |
-| 2941 | csv_parse break-loop + http_parse @inline | csv 1.204×→1.057× + http 1.099×→0.947× (BMB faster) |
-| 2942 | brainfuck @inline bracket+interpreter | brainfuck 1.274×→0.949× (BMB faster). 전체 7/7 real-world 6개 BMB faster |
-| 2943 | ROADMAP/HANDOFF/CLAUDE.md 갱신 | P축 현황 갱신 + @inline 전략 패턴 문서화 |
-| 2944 | csv_parse @inline 실험 → 회귀 확인 | 201-line IR @inline: 3345µs→3929µs(+17%) 회귀. 즉시 복구. 조기 종료 |
+| 2945 | GPUStack always-fail 1차 | vec_clear codegen + option_type FP fix + if_stmt_no_semicolon |
+| 2946 | GPUStack always-fail 2차 | contract_param_undefined 패턴 + problem.md 5개 |
+| 2947 | 2/3-fail + HANDOFF 갱신 | problem.md 5개 (sieve/rle/char_freq/sorted_insert/bounded_queue) |
+| 2948 | 1/3-fail + bool_operators | bool_operators 패턴 + problem.md 3개 |
+| 2949 | if_stmt_no_semicolon 확장 | identifier 뒤 세미콜론 누락도 패턴 발동 |
+| 2950 | bitwise 연산자 개선 | bool_operators bitwise 케이스 + 3개 problem.md |
+| 2951 | t-first 7종 일괄 | 61/62/66/68/73/74/81 problem.md |
+| 2952 | unwrap_bang not + 알고리즘 힌트 | not 키워드 안내 + 87/88/52/59/64 problem.md |
+| 2953 | 최종 테스트 + HANDOFF + 커밋 | 전체 검증 완료 |
 
-### 성능 현황 (tier3 real-world inproc — Cycle 2942 기준)
+### GPUStack B축 개선 현황
 
-| 벤치마크 | BMB (µs) | C GCC (µs) | 비율 | 이전 비율 |
-|---------|----------|-----------|------|---------|
-| brainfuck | ~7830 | ~8247 | **0.949×** ← BMB faster | 1.274× |
-| csv_parse | ~3119 | ~2950 | **1.057×** | 1.204× |
-| http_parse | ~2395 | ~2528 | **0.947×** ← BMB faster | 1.099× |
-| lexer | ~1458 | ~8562 | **0.170×** ← BMB 5.9× faster | - |
-| json_parse | ~2545 | ~3275 | **0.777×** ← BMB faster | - |
-| json_serialize | ~494 | ~713 | **0.693×** ← BMB faster | - |
-| sorting | ~502579 | ~3240793 | **0.155×** ← BMB 6.5× faster | - |
+**기준선**: 85.0% (255/300) — Cycle 2914 GPUStack qwen3.6-35b-a3b 측정
+**예상 개선**: 90%+ (재측정 필요)
 
-**7/7 real-world: 6개 BMB faster, 1개(csv_parse) 1.057× 이내**
+### 에러 패턴 변경 사항
 
-### 핵심 변경 사항
+| 패턴 ID | 변경 | 효과 |
+|--------|------|------|
+| `function_name_reserved` | 신규 (C2945) | 25_range_clamp clamp 충돌 |
+| `if_stmt_no_semicolon` | 신규 + C2949 확장 | 90/89 B루프 |
+| `contract_param_undefined` | 신규 (C2946) | 28_positive_factorial C루프 |
+| `bool_operators` | 신규 (C2948) + C2950 bitwise 확장 | 51_bracket_match + 비트연산 오류 |
+| `unknown_function` | C2950 builtin 목록 확장 | 더 완전한 안내 |
+| `unwrap_bang` | C2952 `not` 키워드 추가 | `!x` → `not x` 안내 |
 
-**1. `let (a, b) = expr` Rust interpreter 지원 (Cycle 2939)**:
-- `bmb/src/ast/expr.rs`: `Expr::LetTuple` + `desugar_stmts` 탈당화 로직
-- `bmb/src/grammar.lalrpop`: BlockStmt 컨텍스트 tuple destructuring 규칙
-- 9개 파일에 `unreachable!()` arm 추가
-- `tests/golden/tuple_destructuring.bmb` 신규 (6출력 검증)
-- LALR 충돌로 Expr 컨텍스트 미지원 (의도된 설계)
+### problem.md 수정 현황 (총 30개 파일)
 
-**2. native codegen 개선 (Cycle 2940)**:
-- `bmb/runtime/bmb_runtime.c`: `bmb_str_byte_at` 함수 신규
-- `bmb/src/codegen/llvm_text.rs`: str_byte_at declare + 매핑 + void list
-- `bmb/src/mir/lower.rs`: println/print 인자 타입 기반 native dispatch
-  `println(String)` → `println_str`, `println(f64)` → `println_f64`
+**Always-fail 수정 (Cycles 2945-2946)**:
+41_collatz, 34_power_mod, 39_partial_sum_query, 71_single_element, 91_ring_buffer, 79_mini_interpreter
 
-**3. csv_parse v3 + http_parse @inline (Cycle 2941)**:
-- csv_parse: in_quote 플래그 → break 기반 quoted loop (phi node 제거)
-- http_parse: `@inline fn parse_http_flat` → 5× inlining → LLVM cross-function 최적화
-- **패턴 확립**: LLVM 인라이닝 임계값 초과 함수 → `@inline`으로 명시적 강제
+**Partial-fail 수정 (Cycles 2947-2948)**:
+35_sieve_primes, 48_run_length_encode, 56_char_frequency, 24_sorted_insert, 99_bounded_queue_contract, 43_sum_of_squares, 44_euclidean_dist, 50_calculator
 
-**4. brainfuck @inline (Cycle 2942)**:
-- `@inline find_matching_close`, `@inline find_matching_open`, `@inline interpret_check`
-- bracket 탐색 + 전체 interpreter 인라이닝
-- 1.274× → 0.949×
+**추가 개선 (Cycles 2950-2952)**:
+84_accumulator, 85_registry (병렬 배열 힌트), 92_bit_counting (bitwise 안내), 61/62/66/68/73/74/81 (t-first 경고), 52_base_convert, 59_calendar_day, 64_many_params, 87_longest_increasing (LIS DP 스케치), 88_knapsack_01 (1D DP 스케치)
 
-**5. csv_parse @inline 실험 (Cycle 2944)**:
-- `parse_csv`: 201-line IR, `inlinehint`이지만 LLVM 자동 인라이닝 미적용 확인
-- `@inline` 추가 시 3345µs→3929µs (+17% 회귀) — 코드 블로트 > 크로스함수 최적화 이득
-- **신규 지식**: 대형 독립 루프 함수(201-line IR)는 @inline이 역효과
-- 튜플 반환: `{ i64, i64 }` by value (레지스터, no sret, no calloc) — 기존 전제 `calloc-per-iter` 틀림
+### 코드 변경 파일
 
-### 테스트 변화
-2388 tests, 0 FAILED (cargo test --release).
+- `bmb/src/diagnostics/patterns.rs` — 4개 신규 패턴 + 3개 개선
+- `bmb/src/codegen/llvm_text.rs` — vec_clear codegen fix
+- `bmb/tests/diagnostics_test.rs` — 9개 신규 테스트 (13→22)
+- `ecosystem/bmb-ai-bench/problems/*/problem.md` — 30개 파일
+
+### 테스트 결과
+
+```
+cargo test --release -p bmb
+  lib.rs:         3778/3778 PASSED
+  main.rs:          47/47   PASSED
+  diagnostics:      22/22   PASSED  (was 13 pre-session, +9)
+  integration.rs: 2388/2388 PASSED
+```
 
 ---
 
-## 다음 사이클 (Cycle 2945)
+## 다음 사이클 (Cycle 2954+)
 
-- **Cycle 2945** (다음 세션): 새 언어 갭 탐색 or inttoptr UB P3 착수 (대형 작업)
+### 권장 우선순위
 
-### 잔여 개선 가능 항목
+1. **GPUStack B축 재측정** — 9 cycles분 fix 효과 검증 (API 필요, 수 시간 소요)
+2. **51_bracket_match `||` 지원** — BMB 언어에 `||`/`&&` 추가 (언어 갭)
+3. **inttoptr UB (P3)** — HUMAN 결정 대기 (Option A codegen, 5-10 cycles)
+4. **추가 패턴 발굴** — GPUStack 재측정 후 남은 실패 패턴 분석
+
+### 잔여 개선 항목
 
 | 항목 | 현재 | 개선 방법 | 비고 |
 |------|------|----------|------|
-| csv_parse | 1.057× | LLVM IR 수준 최적화 탐색 (calloc 없음, @inline 역효과 확인) | ≤1.06× 기준 통과 — 낮은 우선순위 |
-| inttoptr UB | P3 flakiness | 대규모 codegen 변경 (Option A, 5-10 cycles) | 고우선순위 안전성 |
-| b.field = x | 미지원 | GLR 파서 필요 (lalrpop 미지원) — `set` 키워드가 올바른 설계 | HUMAN 결정 필요 |
+| GPUStack B축 | 85.0% | 재측정 필요 | 재측정 대기 |
+| `||`/`&&` 지원 | bool_operators 패턴만 | BMB 언어 추가 | 언어 갭 |
+| csv_parse | 1.057× | LLVM IR 수준 최적화 | P축 낮은 우선순위 |
+| inttoptr UB | P3 flakiness | Option A codegen | HUMAN 결정 필요 |

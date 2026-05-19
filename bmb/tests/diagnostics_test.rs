@@ -78,6 +78,91 @@ fn test_total_pattern_count() {
     );
 }
 
+#[test]
+fn test_option_none_no_false_positive() {
+    // "memory(none)" in LLVM IR errors must NOT trigger option_type
+    let msg = "Linker error: clang compile failed: invalid redefinition of function 'clamp'\n  define private i64 @clamp(...) memory(none) nounwind";
+    let matches = find_patterns("", msg);
+    let opt_matches: Vec<_> = matches.iter().filter(|m| m.id == "option_type").collect();
+    assert!(opt_matches.is_empty(), "option_type must not fire on LLVM IR memory(none)");
+}
+
+#[test]
+fn test_function_name_reserved() {
+    let matches = find_patterns("", "Linker error: clang compile failed: invalid redefinition of function 'clamp'");
+    assert!(!matches.is_empty());
+    let ids: Vec<&str> = matches.iter().map(|m| m.id).collect();
+    assert!(ids.contains(&"function_name_reserved"), "expected function_name_reserved, got {:?}", ids);
+}
+
+#[test]
+fn test_if_stmt_no_semicolon() {
+    let matches = find_patterns("parser", "Unrecognized token `if` found at 123:125\nExpected one of \";\" or \"}\"");
+    assert!(!matches.is_empty());
+    let ids: Vec<&str> = matches.iter().map(|m| m.id).collect();
+    assert!(ids.contains(&"if_stmt_no_semicolon"), "expected if_stmt_no_semicolon, got {:?}", ids);
+}
+
+#[test]
+fn test_if_stmt_no_semicolon_identifier() {
+    // "Unrecognized token `i`... Expected one of \"else\", \";\" or \"}\"" also triggers if_stmt_no_semicolon
+    let msg = "Unrecognized token `i` found at 350:351\nExpected one of \"else\", \";\" or \"}\"";
+    let matches = find_patterns("parser", msg);
+    assert!(!matches.is_empty());
+    let ids: Vec<&str> = matches.iter().map(|m| m.id).collect();
+    assert!(ids.contains(&"if_stmt_no_semicolon"), "expected if_stmt_no_semicolon for identifier after if-block, got {:?}", ids);
+}
+
+#[test]
+fn test_bool_operators_pipe() {
+    // "||" in source produces "Unrecognized token `|`" — should suggest 'or'
+    let matches = find_patterns("parser", "Unrecognized token `|` found at 5:6");
+    assert!(!matches.is_empty());
+    let ids: Vec<&str> = matches.iter().map(|m| m.id).collect();
+    assert!(ids.contains(&"bool_operators"), "expected bool_operators, got {:?}", ids);
+    let pat = matches.iter().find(|m| m.id == "bool_operators").unwrap();
+    assert!(pat.suggestion.contains("or"), "suggestion should mention 'or'");
+}
+
+#[test]
+fn test_bool_operators_ampersand() {
+    // "&&" in source produces "Unrecognized token `&`" — should suggest 'and'
+    let matches = find_patterns("parser", "Unrecognized token `&` found at 5:6");
+    assert!(!matches.is_empty());
+    let ids: Vec<&str> = matches.iter().map(|m| m.id).collect();
+    assert!(ids.contains(&"bool_operators"), "expected bool_operators, got {:?}", ids);
+}
+
+#[test]
+fn test_bool_operators_bitwise_band() {
+    // "n & 1" produces "Unrecognized token `&`" — suggestion must mention 'band' for bitwise
+    let matches = find_patterns("parser", "Unrecognized token `&` found at 10:11");
+    assert!(!matches.is_empty());
+    let pat = matches.iter().find(|m| m.id == "bool_operators").unwrap();
+    assert!(pat.suggestion.contains("band"), "suggestion must mention 'band' for bitwise AND, got: {}", pat.suggestion);
+}
+
+#[test]
+fn test_bool_operators_bitwise_bor() {
+    // "n | 1" produces "Unrecognized token `|`" — suggestion must mention 'bor' for bitwise
+    let matches = find_patterns("parser", "Unrecognized token `|` found at 10:11");
+    assert!(!matches.is_empty());
+    let pat = matches.iter().find(|m| m.id == "bool_operators").unwrap();
+    assert!(pat.suggestion.contains("bor"), "suggestion must mention 'bor' for bitwise OR, got: {}", pat.suggestion);
+}
+
+#[test]
+fn test_contract_param_undefined() {
+    // "undefined variable: `n`" when contract is on fn main() should fire contract_param_undefined
+    let matches = find_patterns("type", "undefined variable: `n`");
+    assert!(!matches.is_empty());
+    let ids: Vec<&str> = matches.iter().map(|m| m.id).collect();
+    assert!(ids.contains(&"contract_param_undefined"), "expected contract_param_undefined, got {:?}", ids);
+    // Suggestion should mention main() and contracts
+    let pat = matches.iter().find(|m| m.id == "contract_param_undefined").unwrap();
+    assert!(pat.suggestion.contains("main"), "suggestion should mention main");
+}
+
 // Verify removed patterns don't exist (BMB now supports these features)
 #[test]
 fn test_no_for_loop_pattern() {

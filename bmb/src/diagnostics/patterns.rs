@@ -14,10 +14,20 @@ pub static PATTERNS: &[DiagPattern] = &[
         id: "option_type",
         kind: "",
         // Matches both source-level (Option<) and error messages (unknown type `option`, token `Some`)
-        triggers: &["Option<", "Option::", "Some(", "None", "token `some`", "token `none`", "unknown type `option`"],
+        // Note: "None" omitted — too generic, matches LLVM IR "memory(none)" and causes false positives
+        triggers: &["Option<", "Option::", "Some(", "token `some`", "token `none`", "unknown type `option`"],
         suggestion: "BMB uses T? for nullable types, not Option<T>.",
         example_wrong: "let x: Option<i64> = Some(42);",
         example_correct: "let x: i64? = 42;",
+    },
+    DiagPattern {
+        id: "function_name_reserved",
+        kind: "",
+        // Linker error when user defines a function with the same name as a BMB built-in
+        triggers: &["invalid redefinition of function", "redefinition of '"],
+        suggestion: "This function name conflicts with a BMB built-in. Use a different name (e.g., 'clamp_val' instead of 'clamp', which is reserved).",
+        example_wrong: "fn clamp(x: i64, lo: i64, hi: i64) -> i64 = ...;",
+        example_correct: "fn clamp_val(x: i64, lo: i64, hi: i64) -> i64 = ...;",
     },
     DiagPattern {
         id: "vec_generic",
@@ -205,6 +215,17 @@ pub static PATTERNS: &[DiagPattern] = &[
         example_correct: "let x: i64 = if cond { 1 } else { 0 };",
     },
     DiagPattern {
+        id: "bool_operators",
+        kind: "parser",
+        // `||` produces "Unrecognized token `|`"; `&&` produces "Unrecognized token `&`"
+        // Single `|` (bitwise OR) and single `&` (bitwise AND) produce the same tokens.
+        // These are the most common source of B-loop: model uses C/Java/Rust boolean/bitwise ops
+        triggers: &["Unrecognized token `|`", "Unrecognized token `&`"],
+        suggestion: "BMB does not use '|', '||', '&', '&&' operators.\nFor BOOLEAN operators: 'a || b' → 'a or b',  'a && b' → 'a and b'\nFor BITWISE operators: 'a | b' → 'a bor b',  'a & b' → 'a band b'\nNote: BMB uses 'band'/'bor'/'bxor' for bitwise — NOT &/|/^.",
+        example_wrong: "if x > 0 || y > 0 { ... }\nlet bit: i64 = n & 1;",
+        example_correct: "if x > 0 or y > 0 { ... }\nlet bit: i64 = n band 1;",
+    },
+    DiagPattern {
         id: "closure_lambda",
         kind: "parser",
         triggers: &["`|`", "closure", "lambda", "token `|`"],
@@ -268,17 +289,39 @@ pub static PATTERNS: &[DiagPattern] = &[
         kind: "type",
         // Matches common AI hallucinated function names
         triggers: &["unknown function"],
-        suggestion: "Check function name. BMB built-ins: println, println_str, print, print_str, read_int, vec_new, vec_push, vec_get, vec_set, vec_len, vec_pop, vec_free.",
+        suggestion: "Check function name. BMB built-ins:\n  I/O: println(i64), println_str(&str), print(i64), print_str(&str), read_int(), read_line()\n  Vec: vec_new(), vec_push(v,x), vec_get(v,i), vec_set(v,i,x), vec_len(v), vec_pop(v), vec_clear(v), vec_free(v)\n  Math: abs(i64)->i64, i64_min(a,b), i64_max(a,b), f64_sqrt(x)\n  String: str_concat(a,b), str_len(s), str_substr(s,start,len), str_to_int(s)",
         example_wrong: "let x: i64 = input();",
         example_correct: "let x: i64 = read_int();",
     },
     DiagPattern {
         id: "unwrap_bang",
         kind: "parser",
-        // NEW: AI tries Rust-style ! for unwrap or macros
+        // AI tries Rust-style ! for macros, unwrap, or boolean negation
         triggers: &["Unrecognized token `!`"],
-        suggestion: "BMB has no ! operator (no macros, no unwrap). For nullable T?, use match or change type to T.",
-        example_wrong: "let val: i64 = maybe_val!;",
-        example_correct: "let val: i64 = 42;  // use plain type if always present",
+        suggestion: "BMB has no ! operator.\n- For boolean negation: use 'not x' (NOT '!x')\n- For macros (println!, format!): use plain functions: println(x), format(\"{}\", x)\n- For unwrap: use match or change type to plain T",
+        example_wrong: "if !found { ... }\nprintln!(\"hello\");",
+        example_correct: "if not found { ... }\nprintln_str(\"hello\");",
+    },
+    DiagPattern {
+        id: "if_stmt_no_semicolon",
+        kind: "parser",
+        // lalrpop produces "Unrecognized token `if`" when an if-expression is used as a statement
+        // inside a block without a trailing ';', and another statement follows immediately.
+        // Also catches "Expected one of \"else\", \";\" or \"}\"" when any identifier follows an if-block.
+        triggers: &["Unrecognized token `if`", "token `if` found", "Expected one of \"else\", \";\" or \"}\""],
+        suggestion: "In BMB, if-expressions used as statements inside blocks must be followed by ';' before the next statement. Add ';' after each if-statement that is not the last expression in a block.",
+        example_wrong: "fn f(n: i64) -> i64 = {\n    if n < 2 { return 0 }\n    if n == 2 { return 1 }\n    n - 1\n};",
+        example_correct: "fn f(n: i64) -> i64 = {\n    if n < 2 { return 0 };\n    if n == 2 { return 1 };\n    n - 1\n};",
+    },
+    DiagPattern {
+        id: "contract_param_undefined",
+        kind: "type",
+        // Fires when "undefined variable" appears — most commonly when the model puts a contract
+        // (pre/post) on fn main() which has no parameters, causing "undefined variable: `n`".
+        // BMB contract variables must be function parameters or the special `ret` (postcondition).
+        triggers: &["undefined variable"],
+        suggestion: "In BMB, pre/post contracts can only reference function parameters (and `ret` in post). If you see 'undefined variable' inside a contract, the variable is not a parameter of that function.\nCOMMON MISTAKE: Do NOT put contracts on fn main() — main() has no parameters, so any name in main's pre/post will be undefined.\nFix: Move the contract to the helper function that receives the parameter.\nExample: fn factorial(n: i64) -> i64 pre n >= 0 and n <= 20 post ret >= 1 = ...;",
+        example_wrong: "fn main() -> i64\n    pre n >= 0\n= { ... };  // n is not a parameter of main",
+        example_correct: "fn factorial(n: i64) -> i64\n    pre n >= 0\n= ...;  // n is a parameter here",
     },
 ];

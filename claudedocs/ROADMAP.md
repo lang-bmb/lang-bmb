@@ -415,7 +415,23 @@ GitHub stars      ≥ 1,000
 | claude-sonnet-4-6 | 98.0% | 2026-05-13 | 공식 baseline (stale: 2026-08-13) |
 | qwen3.6-35b-a3b | 85.0% | 2026-05-18 | GPUStack 로컬, 비공식 참고용 |
 
-**Always FAIL 11문제**: 25_range_clamp / 28_positive_factorial / 34_power_mod / 39_partial_sum_query / 41_collatz_length / 71_single_element / 79_mini_interpreter / 89_topological_sort / 90_nth_prime / 91_ring_buffer / 99_bounded_queue_contract
+**Always FAIL 11문제 — Cycles 2945-2946 수정 완료 (재측정 대기)**:
+
+| 문제 | Cycle | 수정 내용 | 상태 |
+|------|-------|---------|------|
+| 25_range_clamp | 2945 | function_name_reserved 패턴 + option_type false positive 제거 | ✅ 수정 완료 |
+| 89_topological_sort | 2945 | vec_clear native codegen 선언 추가 | ✅ 수정 완료 |
+| 90_nth_prime | 2945 | if_stmt_no_semicolon 에러 패턴 추가 | ✅ 수정 완료 |
+| 28_positive_factorial | 2946 | contract_param_undefined 에러 패턴 추가 | ✅ 수정 완료 |
+| 34_power_mod | 2946 | problem.md: n-first 읽기 + fast exponentiation 힌트 | ✅ 수정 완료 |
+| 39_partial_sum_query | 2946 | problem.md: 단계별 읽기 순서 명시 | ✅ 수정 완료 |
+| 41_collatz_length | 2946 | problem.md: 멀티쿼리 t-first 읽기 구조 | ✅ 수정 완료 |
+| 71_single_element | 2946 | problem.md: exactly 3 lines 출력 + 구현 예시 | ✅ 수정 완료 |
+| 79_mini_interpreter | 2946 | problem.md: op=5 dup, op=6 print-no-pop 구현 스케치 | ✅ 수정 완료 |
+| 91_ring_buffer | 2946 | problem.md: head 전진 overwrite 로직 + 구현 스케치 | ✅ 수정 완료 |
+| 99_bounded_queue_contract | 2945 | 실제 PASS (3/3 run 성공) — always-fail 오분류 | ✅ 폐기 |
+
+→ **전체 11개 addressed. GPUStack 재측정으로 효과 검증 필요 (85.0% → 90%+ 목표)**
 
 **GPUStack 설정 주의**: Qwen3 `enable_thinking=false` + `max_tokens=16384` 필수. `.env.local` 있으면 `bmb-ai-bench run` 자동 적용.
 

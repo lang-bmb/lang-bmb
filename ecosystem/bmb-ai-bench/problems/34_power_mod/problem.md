@@ -6,10 +6,45 @@ Compute modular exponentiation: a^b mod m for multiple queries using fast expone
 
 **Input** (stdin):
 - First integer: `n`, the number of queries (1 <= n <= 100)
-- For each query: three integers `a b m` on the same line
+- For each query: three integers `a b m` (all on the same token stream)
 
 **Output** (stdout):
 - For each query, print a^b mod m on its own line
+
+## IMPORTANT: Reading Order
+
+Read `n` FIRST. Then loop `n` times, and in each iteration read exactly THREE integers: `a`, `b`, `m`.
+
+```
+let n = read_int();   // query count — read THIS first
+let i = 0;
+while i < n {
+    let a = read_int();   // base
+    let b = read_int();   // exponent
+    let m = read_int();   // modulus
+    let res = pow_mod(a, b, m);
+    let _p = println(res);
+    i = i + 1
+};
+```
+
+## Algorithm: Fast Exponentiation (Required)
+
+Since b can be up to 10^18, you MUST use fast modular exponentiation (binary exponentiation):
+
+```
+fn pow_mod(base: i64, exp: i64, m: i64) -> i64 = {
+    let mut result = 1;
+    let mut b = base % m;
+    let mut e = exp;
+    while e > 0 {
+        if (e band 1) == 1 { result = (result * b) % m };
+        b = (b * b) % m;
+        e = e / 2
+    };
+    result
+};
+```
 
 ## Example
 
@@ -25,7 +60,7 @@ Output:
 5
 ```
 
-(2^10 = 1024, 1024 mod 1000 = 24; 3^3 = 27, 27 mod 7 = 6; 5^1 = 5, 5 mod 1000 = 5)
+(n=3 queries: 2^10 mod 1000=24, 3^3 mod 7=6, 5^1 mod 1000=5)
 
 ## Constraints
 

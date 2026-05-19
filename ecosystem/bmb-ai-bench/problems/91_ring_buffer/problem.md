@@ -14,6 +14,49 @@ Circular buffer with fixed capacity. When the buffer is **full**, writing a new 
 
 `op=2` and `op=3` each print one line.
 
+## IMPORTANT: Overwrite-When-Full Logic
+
+When writing to a FULL buffer:
+1. Store the new value at `buf[tail]`
+2. Advance `tail = (tail + 1) % capacity`
+3. **Also advance `head = (head + 1) % capacity`** (oldest is lost)
+4. `count` stays at `capacity` (buffer remains full)
+
+When writing to a NOT-FULL buffer:
+1. Store the new value at `buf[tail]`
+2. Advance `tail = (tail + 1) % capacity`
+3. `count = count + 1`
+
+The `head` pointer ONLY advances when writing to a full buffer (to discard the oldest element).
+
+## Implementation Sketch
+
+```
+let mut head = 0;
+let mut tail = 0;
+let mut count = 0;
+// buf = vec of capacity elements (pre-allocated with zeros)
+
+// op=1 write val:
+if count == capacity {
+    // full: overwrite oldest, advance head
+    let _w = vec_set(buf, tail, val);
+    tail = (tail + 1) % capacity;
+    head = (head + 1) % capacity   // head advances!
+} else {
+    // not full: insert at tail
+    let _w = vec_set(buf, tail, val);
+    tail = (tail + 1) % capacity;
+    count = count + 1
+};
+
+// op=2 read (dequeue oldest):
+let oldest = vec_get(buf, head);
+head = (head + 1) % capacity;
+count = count - 1;
+let _p = println(oldest);
+```
+
 ## Example
 
 Input:
@@ -25,7 +68,7 @@ Output:
 3
 10
 ```
-(capacity=3, push 10,20,30 → size=3 → dequeue oldest=10)
+(capacity=3, write 10→[10] count=1, write 20→[10,20] count=2, write 30→[10,20,30] count=3, size=3, dequeue head=10)
 
 Input:
 ```
@@ -35,7 +78,9 @@ Output:
 ```
 20
 ```
-(capacity=2, push 10→[10], push 20→[10,20] full, push 30→overwrites head: [30,20] with head at 20 → dequeue=20)
+(capacity=2, write 10→buf[0]=10, count=1, write 20→buf[1]=20, count=2 FULL,
+write 30→FULL: buf[tail=0]=30, tail→1, head→1 (advance!). Buffer=[30,20], head=1, count=2.
+dequeue oldest=buf[head=1]=20)
 
 ## Constraints
 

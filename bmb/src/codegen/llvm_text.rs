@@ -1292,6 +1292,7 @@ impl TextCodeGen {
         writeln!(out, "declare i64 @vec_remove(i64, i64) nocallback nounwind nosync")?;
         writeln!(out, "declare void @vec_reverse(i64) nocallback nounwind nosync")?;
         writeln!(out, "declare void @vec_fill(i64, i64) nocallback nounwind nosync")?;
+        writeln!(out, "declare void @vec_clear(i64) nocallback nounwind nosync")?;
         writeln!(out)?;
 
         // v0.50.64: Hashmap runtime functions
@@ -9210,7 +9211,8 @@ impl TextCodeGen {
             // v0.99 Cycle 2940: println/print String/f64 dispatch
             | "println_str" | "println_f64" | "print_f64" => "void",
             // v0.98.8: vec void-return builtins (Cycle 2872)
-            "vec_sort" | "vec_reverse" | "vec_fill" => "void",
+            // Cycle 2945: vec_clear added
+            "vec_sort" | "vec_reverse" | "vec_fill" | "vec_clear" => "void",
 
             // i64 return - Basic
             // v0.51.48: Added i32_to_i64, i64_to_i32 for i32 conversion support
