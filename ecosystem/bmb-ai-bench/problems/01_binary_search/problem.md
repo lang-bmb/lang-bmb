@@ -12,7 +12,7 @@ Implement binary search on a sorted array of integers.
 **Output** (stdout):
 - Print the 0-based index of the target if found
 - Print `-1` if not found
-- If duplicates exist, return any valid index
+- If duplicates exist, return the index found by the first mid-point comparison
 
 ## Example
 
@@ -38,17 +38,30 @@ Algorithm (search)
 
 ## BMB Notes
 - Read target first, then n, then the array
-- Standard lo/hi/mid; return mid when found, -1 if lo > hi
+- CRITICAL: When target found at mid, set `ans = mid` and `lo = hi + 1` to EXIT immediately — do NOT change `hi` (changing hi searches leftmost/rightmost, wrong!)
+- Use overflow-safe midpoint: `lo + (hi - lo) / 2`
 ```
-let target: i64 = read_int();
-let n: i64 = read_int();
-let v = vec_new();
-for _i in 0..n { vec_push(v, read_int()) };
-let mut lo: i64 = 0; let mut hi: i64 = n - 1; let mut ans: i64 = -1;
-while lo <= hi {
-    let mid: i64 = (lo + hi) / 2;
-    if vec_get(v, mid) == target { lo = hi + 1; ans = mid }
-    else { if vec_get(v, mid) < target { lo = mid + 1 } else { hi = mid - 1 } }
+fn main() -> i64 = {
+    let target: i64 = read_int();
+    let n: i64 = read_int();
+    let v = vec_new();
+    for _i in 0..n {
+        let val: i64 = read_int();
+        let _p = vec_push(v, val)
+    };
+    let mut lo: i64 = 0;
+    let mut hi: i64 = n - 1;
+    let mut ans: i64 = -1;
+    while lo <= hi {
+        let mid: i64 = lo + (hi - lo) / 2;
+        let val: i64 = vec_get(v, mid);
+        if val == target {
+            ans = mid;
+            lo = hi + 1
+        } else {
+            if val < target { lo = mid + 1 } else { hi = mid - 1 }
+        }
+    };
+    let _p = println(ans);
+    0
 };
-println(ans);
-0

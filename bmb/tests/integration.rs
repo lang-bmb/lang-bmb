@@ -2246,18 +2246,57 @@ fn test_ir_float_operations() {
 
 #[test]
 fn test_ir_boolean_logic() {
-    // Boolean and/or/bxor should produce and/or/xor in LLVM IR
+    // `and`/`or` use short-circuit lowering (phi nodes); `bxor` is direct.
     let ir = source_to_ir_unopt(
         "fn bool_and(a: bool, b: bool) -> bool = a and b;
          fn bool_or(a: bool, b: bool) -> bool = a or b;
          fn int_xor(a: i64, b: i64) -> i64 = a bxor b;"
     );
-    assert!(ir.contains(" and "),
-        "Boolean 'and' should produce LLVM 'and' instruction, got:\n{}", ir);
-    assert!(ir.contains(" or "),
-        "Boolean 'or' should produce LLVM 'or' instruction, got:\n{}", ir);
+    assert!(ir.contains("phi i1"),
+        "Short-circuit 'and'/'or' should produce phi i1 nodes, got:\n{}", ir);
     assert!(ir.contains(" xor "),
         "Bitwise 'bxor' should produce LLVM 'xor' instruction, got:\n{}", ir);
+}
+
+#[test]
+fn test_short_circuit_and_prevents_oob() {
+    // Verify that `i < n && vec_get(v, i) > 0` short-circuits: vec_get is not
+    // called when i >= n. This was the root cause of 86_heap_sort failures.
+    assert_eq!(
+        run_program(
+            "fn main() -> i64 = {
+                let v = vec_new();
+                let _p1 = vec_push(v, 10);
+                let _p2 = vec_push(v, 20);
+                let n: i64 = 2;
+                let i: i64 = 3;
+                let ok: bool = i < n && vec_get(v, i) > 0;
+                let _f = vec_free(v);
+                if ok { 1 } else { 0 }
+            };"
+        ),
+        Value::Int(0)
+    );
+}
+
+#[test]
+fn test_short_circuit_or_prevents_oob() {
+    // Verify that `i >= n || vec_get(v, i) > 0` short-circuits: vec_get is not
+    // called when i >= n (the OR short-circuits to true).
+    assert_eq!(
+        run_program(
+            "fn main() -> i64 = {
+                let v = vec_new();
+                let _p1 = vec_push(v, 10);
+                let n: i64 = 1;
+                let i: i64 = 5;
+                let guarded: bool = i >= n || vec_get(v, i) > 0;
+                let _f = vec_free(v);
+                if guarded { 1 } else { 0 }
+            };"
+        ),
+        Value::Int(1)
+    );
 }
 
 #[test]

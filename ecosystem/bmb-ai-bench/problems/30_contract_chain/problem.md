@@ -24,8 +24,10 @@ Pipeline: normalize → scale → bound
 ```
 normalize: pre min < max, post ret >= 0 and ret <= 100
 scale: pre x >= 0, post ret >= 0
-bound: pre limit >= 0, post ret >= 0 and ret <= limit
+bound: pre x >= 0 and limit >= 0, post ret >= 0 and ret <= limit
 ```
+
+Note: `bound` requires `pre x >= 0` because the Z3 verifier checks postconditions symbolically. Without this precondition, Z3 cannot prove `ret >= 0` when `x <= limit` (x could be negative). In practice, x is always non-negative because it comes from `scale` which guarantees `ret >= 0`.
 
 ## Example
 
@@ -54,7 +56,8 @@ Contract (multi-function propagation)
 
 ## BMB Notes
 - Three helper functions each with pre/post; main reads params then calls chain per value
-- normalize maps [min,max] → [0,100] via `(x - min) * 100 / (max - min)`
+- normalize maps [min,max] → [0,100] via `(x - mn) * 100 / (mx - mn)`
+- CRITICAL: `bound` must have `pre x >= 0 and limit >= 0` (not just `pre limit >= 0`) — Z3 needs `x >= 0` to prove `ret >= 0`
 ```
 fn normalize(x: i64, mn: i64, mx: i64) -> i64
     pre mn < mx
@@ -67,7 +70,7 @@ fn scale(x: i64, factor: i64) -> i64
 = x * factor;
 
 fn bound(x: i64, limit: i64) -> i64
-    pre limit >= 0
+    pre x >= 0 and limit >= 0
     post ret >= 0 and ret <= limit
 = if x > limit { limit } else { x };
 

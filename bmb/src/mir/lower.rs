@@ -975,6 +975,77 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
         }
 
         Expr::Binary { left, op, right } => {
+            // Short-circuit evaluation for && and ||
+            // a && b → if a { b } else { false }
+            // a || b → if a { true } else { b }
+            if *op == BinOp::And {
+                let lhs = lower_expr(left, ctx);
+                let then_label = ctx.fresh_label("and_rhs");
+                let false_label = ctx.fresh_label("and_false");
+                let merge_label = ctx.fresh_label("and_merge");
+                let result = ctx.fresh_temp();
+
+                ctx.finish_block(Terminator::Branch {
+                    cond: lhs,
+                    then_label: then_label.clone(),
+                    else_label: false_label.clone(),
+                });
+
+                ctx.start_block(then_label.clone());
+                let rhs = lower_expr(right, ctx);
+                let then_exit = ctx.current_block_label().to_string();
+                ctx.finish_block(Terminator::Goto(merge_label.clone()));
+
+                ctx.start_block(false_label.clone());
+                let false_exit = false_label.clone();
+                ctx.finish_block(Terminator::Goto(merge_label.clone()));
+
+                ctx.start_block(merge_label);
+                ctx.locals.insert(result.name.clone(), MirType::Bool);
+                ctx.push_inst(MirInst::Phi {
+                    dest: result.clone(),
+                    values: vec![
+                        (rhs, then_exit),
+                        (Operand::Constant(Constant::Bool(false)), false_exit),
+                    ],
+                });
+                return Operand::Place(result);
+            }
+
+            if *op == BinOp::Or {
+                let lhs = lower_expr(left, ctx);
+                let true_label = ctx.fresh_label("or_true");
+                let else_label = ctx.fresh_label("or_rhs");
+                let merge_label = ctx.fresh_label("or_merge");
+                let result = ctx.fresh_temp();
+
+                ctx.finish_block(Terminator::Branch {
+                    cond: lhs,
+                    then_label: true_label.clone(),
+                    else_label: else_label.clone(),
+                });
+
+                ctx.start_block(true_label.clone());
+                let true_exit = true_label.clone();
+                ctx.finish_block(Terminator::Goto(merge_label.clone()));
+
+                ctx.start_block(else_label.clone());
+                let rhs = lower_expr(right, ctx);
+                let else_exit = ctx.current_block_label().to_string();
+                ctx.finish_block(Terminator::Goto(merge_label.clone()));
+
+                ctx.start_block(merge_label);
+                ctx.locals.insert(result.name.clone(), MirType::Bool);
+                ctx.push_inst(MirInst::Phi {
+                    dest: result.clone(),
+                    values: vec![
+                        (Operand::Constant(Constant::Bool(true)), true_exit),
+                        (rhs, else_exit),
+                    ],
+                });
+                return Operand::Place(result);
+            }
+
             let lhs = lower_expr(left, ctx);
             let rhs = lower_expr(right, ctx);
             let dest = ctx.fresh_temp();

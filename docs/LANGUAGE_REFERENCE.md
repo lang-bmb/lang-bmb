@@ -73,9 +73,11 @@ fn add(a: i64, b: i64) -> i64 = a + b;  -- inline comment
 #### Logical Operators
 | Operator | Description | Precedence |
 |----------|-------------|------------|
-| `and` | Logical AND | 3 |
-| `or` | Logical OR | 2 |
+| `and` / `&&` | Logical AND (short-circuit) | 3 |
+| `or` / `\|\|` | Logical OR (short-circuit) | 2 |
 | `not` | Logical NOT | 8 (unary) |
+
+Both `and`/`or` and `&&`/`||` are accepted. Short-circuit semantics: the right operand is not evaluated if the result is already determined from the left operand.
 
 #### Range Operators
 | Operator | Description | Example |
@@ -339,8 +341,8 @@ Native build sets `-march=native` automatically in Release (Cycle 2250).
 | 6 | Additive (`+`, `-`) | Left |
 | 5 | Range (`..<`, `..=`, `..`) | - |
 | 4 | Comparison (`==`, `!=`, `<`, `>`, `<=`, `>=`) | - |
-| 3 | Logical AND (`and`) | Left |
-| 2 | Logical OR (`or`) | Left |
+| 3 | Logical AND (`and` / `&&`) | Left |
+| 2 | Logical OR (`or` / `\|\|`) | Left |
 | 1 | Conditional (`if-then-else`), `let`, blocks | - |
 
 ### 3.2 Primary Expressions
@@ -1205,8 +1207,8 @@ Primary     ::= INT | FLOAT | STRING | 'true' | 'false' | '(' ')' | IDENT
 | Precedence | Operators | Associativity | Description |
 |------------|-----------|---------------|-------------|
 | 1 | `if-then-else`, `let`, `match`, `while`, `for` | - | Control flow |
-| 2 | `or` | Left | Logical OR |
-| 3 | `and` | Left | Logical AND |
+| 2 | `or` / `\|\|` | Left | Logical OR (short-circuit) |
+| 3 | `and` / `&&` | Left | Logical AND (short-circuit) |
 | 4 | `==`, `!=`, `<`, `>`, `<=`, `>=` | Non-assoc | Comparison |
 | 5 | `..<`, `..=`, `..` | Non-assoc | Range |
 | 6 | `+`, `-` | Left | Additive |
