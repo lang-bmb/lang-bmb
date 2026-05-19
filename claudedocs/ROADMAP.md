@@ -1,5 +1,6 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-19 (Cycles 2958-2962 — **100/100 problem.md BMB Notes 완결**: 전 문제 완전한 BMB 코드 스케치 포함. diagnostics 2종 수정(unknown_function i64_min→min/max, if_without_else_unit 오해 해소). 임계 버그 7개 수정(let i=0 immutable 루프 변수). 6258 tests ✅. HEAD `468b16ca`. GPUStack 재측정 대기.)
+> 최종 업데이트: 2026-05-19 (Cycle 2963 — **GPUStack B축 재측정 97.0% 달성**: 85.0%→97.0% (+12%p), 291/300, Median Loops=1. 잔여 실패 3문제(01/30/86) 일관. HEAD `468b16ca`.)
+> 이전 갱신: 2026-05-19 (Cycles 2958-2962 — **100/100 problem.md BMB Notes 완결**: 전 문제 완전한 BMB 코드 스케치 포함. diagnostics 2종 수정(unknown_function i64_min→min/max, if_without_else_unit 오해 해소). 임계 버그 7개 수정(let i=0 immutable 루프 변수). 6258 tests ✅. HEAD `468b16ca`.)
 > 이전 갱신: 2026-05-19 (Cycles 2945-2953 — **GPUStack B축 대규모 개선**: 에러 패턴 4종 신규(function_name_reserved/if_stmt_no_semicolon/contract_param_undefined/bool_operators)+3종 개선 + problem.md 30개 수정(always-fail 10 + partial-fail 9 + 추가 11) + vec_clear codegen fix. diagnostics 테스트 13→22. HEAD `efb7d343`)
 > 이전 갱신: 2026-05-19 (Cycles 2943-2944 — **CLAUDE.md @inline 패턴 문서화** + **csv_parse @inline 실험 → 역효과 확인** (201-line IR: +17% 회귀, 대형 독립 루프는 @inline 금지 패턴 확립) + **bootstrap Cycle 2933 fn(T)->R 타입 let binding** + bootstrap_3stage.sh 32G arena / 64MB stack. HEAD `9ef76b6b`)
 > 이전 갱신: 2026-05-19 (Cycles 2939-2942 — **let (a,b) tuple destructuring** Rust interp ✅ + **str_byte_at native** + **println(String/f64) dispatch** + **P축 대폭 개선**: csv_parse 1.204×→**1.057×** / http_parse 1.099×→**0.947×** / brainfuck 1.274×→**0.949×**. **전체 7/7 real-world: 6개 BMB faster than C**. @inline 전략으로 LLVM 인라이닝 임계값 초과 함수 최적화. HEAD `797d7e3f`)
@@ -363,7 +364,7 @@ GitHub stars      ≥ 1,000
 
 | 축 | 현재값 | 목표 | 측정 방법 |
 |----|--------|------|----------|
-| **B** Failure Rate | ✅ **공식 98.0%** (2026-05-13, Cycle 2811, claude-sonnet-4-6) · **GPUStack 85.0%** (2026-05-18, Cycle 2914, qwen3.6-35b-a3b) → **재측정 대기** (Cycles 2945-2953 개선 후, 목표 90%+) | 99%+ 목표 (Claude) · 90%+ 목표 (GPUStack) | LLM 1-shot 컴파일+verifier 통과율 |
+| **B** Failure Rate | ✅ **공식 98.0%** (2026-05-13, Cycle 2811, claude-sonnet-4-6) · **GPUStack 97.0%** (2026-05-19, Cycle 2963, qwen3.6-35b-a3b, 291/300) | 99%+ 목표 (Claude) · 97%+ 달성 (GPUStack) | LLM 1-shot 컴파일+verifier 통과율 |
 | **P** Performance | ✅ 16/16 ≤1.05x · **real-world 7/7: 6개 BMB faster, 1개 ≤1.06×** (Cycles 2941-2942 @inline 최적화: brainfuck 0.95× / csv 1.06× / http 0.95× / lexer 0.17× / json_parse 0.78× / json_ser 0.69× / sorting 0.15×) | 도메인 핵심 ≤1.00x, 일부 FAST | Tier 1/3 벤치마크 + inproc (Cycle 2685-2695, 2941-2942) |
 | **A** Token Efficiency | ❌ 미측정 | BMB ≤ Rust LOC (동일 알고리즘) | LOC·토큰 비교 |
 | **D** Verification | ❌ 미측정 | contract 자동 증명률 추적 | `bmb verify` 통과율 |
@@ -415,11 +416,21 @@ GitHub stars      ≥ 1,000
 | 모델 | Rate | 날짜 | 비고 |
 |------|------|------|------|
 | claude-sonnet-4-6 | 98.0% | 2026-05-13 | 공식 baseline (stale: 2026-08-13) |
-| qwen3.6-35b-a3b | 85.0% | 2026-05-18 | GPUStack 로컬, 비공식 참고용 |
+| qwen3.6-35b-a3b | 85.0% | 2026-05-18 | GPUStack 로컬, 기준선 (Cycle 2914) |
+| qwen3.6-35b-a3b | **97.0%** (291/300) | 2026-05-19 | GPUStack 로컬, Cycle 2963 재측정 ✅ |
 
-**Cycles 2945-2962 수정 완료 (재측정 대기)**:
+**Cycles 2945-2962 개선 → Cycle 2963 재측정 결과**:
 - Cycles 2945-2953: 에러 패턴 4종 신규/3종 개선 + problem.md 30개 수정 + vec_clear codegen
 - Cycles 2958-2962: **100/100 problem.md 완전한 BMB 코드 스케치** + diagnostics 2종 수정 + 임계 버그 7개
+- **+12.0%p 개선** (85.0% → 97.0%)
+
+**잔여 실패 (3문제, 3회 일관 실패)**:
+
+| 문제 | 예상 원인 |
+|------|---------|
+| 01_binary_search | 반복 루프+포인터 패턴 |
+| 30_contract_chain | 계약 체인 복합 패턴 |
+| 86_heap_sort | heap 자료구조 구현 복잡도 |
 
 **Always-fail 표 (Cycles 2945-2946)**:
 
@@ -460,7 +471,7 @@ _Partial-fail 1/3-fail 4문제 (Cycle 2948)_:
 
 _추가 개선 (Cycles 2950-2952)_: 84/85/92/61/62/66/68/73/74/81/52/59/64/87/88 problem.md 15개 + bool_operators bitwise 확장 + unwrap_bang not 키워드 추가
 
-→ **전체 30개 problem.md 수정 + 에러 패턴 4신규/3개선. GPUStack 재측정 필요 (85.0% → 90%+ 목표)**
+→ **전체 30개 problem.md 수정 + 에러 패턴 4신규/3개선. Cycle 2963 재측정 완료: 85.0% → 97.0% (+12%p)**
 
 **GPUStack 설정 주의**: Qwen3 `enable_thinking=false` + `max_tokens=16384` 필수. `.env.local` 있으면 `bmb-ai-bench run` 자동 적용.
 
