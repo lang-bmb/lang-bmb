@@ -1,5 +1,6 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-20 (Cycles 2981-2990 — **GPUStack 3-run 공식 99.7% (299/300) 달성**. else-if 체인 `;` 패턴 발견+13개 problem.md 수정. 6260 tests ✅. HEAD `474f2d04`.)
+> 최종 업데이트: 2026-05-20 (Cycles 2991-2994 — **ISSUE triage + 품질 마무리**: 4개 stale ISSUE 현황 갱신, clang-knapsack-outlier CLOSED, cycle-logs/ROADMAP.md 재작성, 35_sieve_primes 노트 수정. HEAD `f62ca373`.)
+> 이전 갱신: 2026-05-20 (Cycles 2981-2990 — **GPUStack 3-run 공식 99.7% (299/300) 달성**. else-if 체인 `;` 패턴 발견+13개 problem.md 수정. 6260 tests ✅. HEAD `474f2d04`.)
 > 이전 갱신: 2026-05-20 (Cycles 2981-2984 — **GPUStack B축 재측정: 97.0%→99.0%** (+2%p). 1회 실패: 91_ring_buffer (else-if 체인 `;` 누락 패턴 발견+수정). 94_lru_simulate `break`→flag 수정. first-shot 94%. ISSUE 4개 CLOSED. HEAD `efef2b47`.)
 > 이전 갱신: 2026-05-19 (Cycles 2964-2973 — **B-axis 종합 개선**: &&/|| short-circuit MIR lowering, B-axis 3문제 수정(01/30/86), vec_pop 문서 버그 수정(→i64), 89_topological_sort BMB Notes 추가, 18개 problem.md 코드블록 정리, 77_state_machine/29_bounded_stack 코드 예시 개선. 6260 tests ✅. HEAD `c1bf68de`.)
 > 이전 갱신: 2026-05-19 (Cycles 2964-2968 — **&&/|| short-circuit MIR lowering 구현**: phi 노드 기반 단락 평가, B-axis 3문제 근본 수정(01/30/86), csv_parse C 파리티 ~1.0× 확인. 6258+2 tests ✅. HEAD `4bfff5c9`.)
