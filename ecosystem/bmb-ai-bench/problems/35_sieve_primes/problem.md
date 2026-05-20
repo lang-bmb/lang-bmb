@@ -19,7 +19,7 @@ The range is **[2, n]** — the number n itself is included if it is prime.
 
 Your sieve loop must go up to and **including** n:
 **CRITICAL**: Use `set i = i + 1` NOT `i = i + 1`. BMB requires `set` for all variable reassignment.
-**CRITICAL**: BMB has NO `return` statement and NO `break`. Use `while` loops, not `loop { break }`.
+**CRITICAL**: BMB has NO `break` in while loops. Use a flag variable to exit early (see example below).
 
 ```
 fn main() -> i64 = {

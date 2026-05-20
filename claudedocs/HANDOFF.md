@@ -1,142 +1,98 @@
-# BMB Session Handoff — 2026-05-20 (Cycles 2981-2990 — GPUStack 99.7% 확인 + 품질 대폭 개선)
+# BMB Session Handoff — 2026-05-20 (Cycles 2991-2994 — ISSUE triage + 품질 마무리)
 
-> **HEAD**: `474f2d04` (GPUStack 3-run 99.7% 결과 반영 + 04_fibonacci CRITICAL 노트)
+> **HEAD**: `474f2d04` (이번 세션 변경 예정)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2991
+> **다음 세션 진입점**: Cycle 2995
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 2981-2990)
+## 이번 세션 작업 요약 (Cycles 2991-2994)
 
 ### 주요 변경 사항
 
 | Cycle | 제목 | 내용 |
 |-------|------|------|
-| 2981 | ISSUE 정리 | for-loop 스코프 버그 재현 시도 (재현 불가), ISSUE 4개 closed |
-| 2982 | GPUStack 측정 + 3종 수정 | 01/30/86 pass 확인, lru_simulate/pipeline/registry 수정 |
-| 2983 | ISSUE 정리 + lru break 수정 | 94_lru_simulate의 break 키워드 → flag 패턴 |
-| 2984 | GPUStack 99.0% 달성 | 99/100 (↑97.0%), ring_buffer else-if 세미콜론 발견+수정 |
-| 2985 | else-if 체인 전수 검사 | 50_calculator/83_pipeline/84_accumulator_pattern 예방적 수정 |
-| 2986 | Multi-shot 분석 + fn main 수정 | 04_fibonacci/36_array_rotation/69_overflow/75_plateau/72_alternating |
-| 2987 | 품질 검토 + cargo test | 6260 tests ✅, HIGH RISK 파일 분석 (추가 수정 불필요) |
-| 2988 | 출력 포맷 + integration 확인 | Integration 100% 1-shot 확인 |
-| 2989 | 추가 패턴 검사 | i32/bool/return/stdin 패턴 — 이슈 없음 |
-| 2990 | 세션 종료 정리 | HANDOFF/ROADMAP 갱신 |
+| 2991 | ISSUE triage + ROADMAP 갱신 | 4개 stale ISSUE-20260326 현황 갱신, cycle-logs/ROADMAP.md 재작성 |
+| 2992 | P3 ISSUE 분석 | clang-knapsack-outlier CLOSED (CHANGELOG.md 노트 추가), inttoptr HUMAN-blocked 확인 |
+| 2993 | problem.md 품질 audit | 11개 no-note 파일 스캔, 35_sieve_primes "NO return" 수정 |
+| 2994 | 세션 종료 정리 | HANDOFF/ROADMAP 갱신 + commit |
 
-### 핵심 발견: BMB 언어 특성 (이번 세션 발견)
+### ISSUE triage 결과 (4개 ISSUE-20260326)
 
-**1. else-if 체인 세미콜론 규칙** (Cycle 2984 발견)
-```
-if op == 1 { ... } else if op == 2 { ... } else if op == 3 { ... };  // ';' 필수
-set op_idx = op_idx + 1  // ';' 없으면: parse error "Unrecognized token"
-```
+| ISSUE | 이전 상태 | 변경 후 | 근거 |
+|-------|----------|--------|------|
+| multi-model-validation | OPEN (HIGH) | PARTIALLY RESOLVED (MEDIUM) | GPUStack Qwen = 2번째 모델 |
+| external-problem-validation | OPEN (MEDIUM) | PARTIALLY RESOLVED (MEDIUM) | bench verify 17/17 PASS = C baseline AC |
+| integration-category-weakness | PARTIALLY RESOLVED (MEDIUM) | PARTIALLY RESOLVED (LOW) | B-axis 해소됨 강조, crosslang HUMAN |
+| problem-difficulty-bias | OPEN (LOW) | OPEN (LOW) | 변화 없음 — timestamp 갱신만 |
 
-**2. fn main 종결자** 
-```
-fn main() -> i64 = { ... };  // 마지막이 '};' 여야 함 ('}' 만 쓰면 타입 오류 가능)
-```
+### clang-knapsack-outlier CLOSED (Cycle 2992)
 
-**3. vec_push 타입 일관성**
-- `vec_push(v, x)` → i64 반환
-- if-else 분기에서 다른 branch가 `()` 반환이면 → `let _p = vec_push(v, x)` 사용
+`ecosystem/bmb-algo/CHANGELOG.md` v0.2.0 Performance 섹션 수정:
+- "6.8x faster than C" → "6.8x faster than Clang -O3 ⚠️ (see note)"
+- GCC -O3 사실 (1.39x faster than BMB) + IR 분석 노트 추가
+- ISSUE 상태 CLOSED, ROADMAP.md "README 측정 주장 검증 ⏳" → ✅
 
-### 수정된 problem.md 파일 (이번 세션, 13개)
+### problem.md 품질 audit (Cycle 2993)
 
-#### else-if 세미콜론 패턴
-- `91_ring_buffer`: CRITICAL 노트 + 완전한 fn main 예시 (Cycle 2984)
-- `50_calculator`: CRITICAL 노트 + 안전한 코드 패턴 (Cycle 2985)
-- `83_pipeline`: CRITICAL 노트 + 완전한 fn main 예시 (Cycle 2985)
-- `84_accumulator_pattern`: CRITICAL 노트 + 완전한 fn main 예시 (Cycle 2985)
+- 전수 검색: 89/100 파일 CRITICAL/BMB Notes 보유
+- 11개 no-note 파일 스캔: 이슈 없음
+- `35_sieve_primes` 수정: "NO `return` statement" 오류 → "NO `break` in while loops"
+- GPUStack 3-run 99.7% 기준 추가 수정 불필요
 
-#### fn main 래퍼/종결자
-- `04_fibonacci`: fn main 래퍼 추가 (Cycle 2986)
-- `36_array_rotation`: fn main 래퍼 + set first 수정 (Cycle 2986)
-- `69_overflow_detect`: `}` → `};` 수정 (Cycle 2986)
-- `75_longest_plateau`: `}` → `};` 수정 (Cycle 2986)
-- `72_alternating`: `}` → `};` 수정 (Cycle 2986)
-
-#### 기타
-- `94_lru_simulate`: break 키워드 → flag 패턴 (Cycle 2983)
-- `29_bounded_stack`: `vec_push` → `let _p = vec_push` (타입 일관성) (Cycle 2986)
-- `01_binary_search`, `85_registry_pattern`: set 키워드 수정 (Cycle 2982)
-
-### B-axis 측정 결과
-
-| 모델 | 점수 | 변화 | 측정일 |
-|------|------|------|--------|
-| Claude (claude-sonnet-4-6) | **98.0%** | 고정 베이스라인 | 2026-05-13 |
-| GPUStack (qwen3.6-35b-a3b) | **99.0%** | +2%p (97.0%→99.0%) | 2026-05-20 |
-| GPUStack 3-run 공식 | **99.7%** | **최종 확인** (299/300) | 2026-05-20 |
-
-GPUStack 3-run 공식 세부: 299/300 통과
-유일 실패: 91_ring_buffer run1 (수정 전 측정 시작 — run2/run3 PASS)
-04_fibonacci: 3회 모두 2-shot (Type D: `i=2, while i < n` → CRITICAL 노트 추가 완료)
-
-GPUStack 단일 측정 세부(Cycle 2984): 99/100 통과, first-shot 94% (94/100)
-Multi-shot: 04_fibonacci(2), 29_bounded_stack(2), 36_array_rotation(2), 69_overflow_detect(3), 75_longest_plateau(2)
-실패: 91_ring_buffer (11회 전부 실패 → 수정 완료)
-
-**3-run 공식 결과**: 299/300 (99.7%) — 04_fibonacci는 일관 2-shot (Type D 로직 오류, CRITICAL 노트 추가)
-
-### 테스트 결과
+### 테스트 상태
 
 ```
-cargo test --release (Cycle 2987 확인)
-  lib.rs:         3778/3778 PASSED
-  main.rs:          47/47   PASSED
-  diagnostics:      22/22   PASSED
-  integration.rs: 2390/2390 PASSED
-  + 기타:            23/23   PASSED
-  총: 6260 tests, 0 failed ✅
+cargo test --release (Cycle 2987 확인, 이번 세션 코드 변경 없음)
+  6260 tests, 0 failed ✅
 ```
 
 ---
 
-## 다음 세션 (Cycle 2991+)
+## 다음 세션 (Cycle 2995+)
 
 ### 권장 우선순위
 
-1. **GPUStack 3-run 측정 완료** ✅ — 99.7% (299/300, 2026-05-20)
-   - 유일 실패: 91_ring_buffer run1 (수정 전 측정 시작)
-   - 04_fibonacci: 일관 2-shot (Type D, CRITICAL 노트 추가 완료)
-2. **다음 세션 선택지**:
-   - 04_fibonacci CRITICAL 노트 효과 검증 (단일 문제 재측정)
-   - Bootstrap for-loop 스코프 버그 (낮은 우선순위, 재현 불가)
-   - ISSUE 재검토: golden-flakiness-inttoptr (P3), clang-knapsack-outlier (P3)
+1. **자율 작업 소진 상태** — 대부분 HUMAN-blocked
+2. **선택지**:
+   - 04_fibonacci CRITICAL 노트 효과 검증 (GPUStack 재측정 — API key 필요)
+   - problem-difficulty-bias: 신규 hard 문제 추가 (HUMAN 결정)
+   - inttoptr Option A/B/C 결정 (HUMAN)
+   - npm/PyPI publish (HUMAN dispatch)
 
-### GPUStack 2차 측정 실행 방법
+### 알려진 HUMAN-blocked 항목
 
-```bash
-# GPUSTACK_API_KEY 환경변수 설정 필요
-# PowerShell:
-$env:GPUSTACK_API_KEY = "your-api-key-here"
-$env:GPUSTACK_ENDPOINT = "http://172.30.1.53:8080"
+- GPT-4o 실험 (multi-model-validation 완결용)
+- npm/PyPI publish (M3 잔여)
+- golden-flakiness-inttoptr Option A/B/C 결정
+- problem-difficulty-bias 신규 hard 문제 20개
+- GPUStack 재측정 (GPUSTACK_API_KEY 재설정 필요)
 
-# 측정 실행 (백그라운드):
-cd D:\data\lang-bmb\ecosystem\bmb-ai-bench
-python3 -m bmb_ai_bench.run_cmd \
-  --model qwen3.6-35b-a3b \
-  --base-url http://172.30.1.53:8080/v1 \
-  --api-key $env:GPUSTACK_API_KEY \
-  --out results/2026-05-21 \
-  --max-loops 12 \
-  --runs 3
-```
+### ISSUE 현황 (2026-05-20 기준)
+
+| ISSUE | 상태 | 우선순위 |
+|-------|------|---------|
+| multi-model-validation | PARTIALLY RESOLVED | MEDIUM |
+| external-problem-validation | PARTIALLY RESOLVED | MEDIUM |
+| integration-category-weakness | PARTIALLY RESOLVED | LOW |
+| problem-difficulty-bias | OPEN | LOW |
+| clang-knapsack-outlier | **CLOSED** (Cycle 2992) | — |
+| golden-flakiness-inttoptr | OPEN | P3 |
 
 ### 알려진 BMB 언어 특성 (중요도 순)
+
 - `else if` 체인 세미콜론: statement 위치에서 `};` 필수 (Cycle 2984 발견)
 - `fn main() -> i64 = { ... };` 끝에 `;` 필수 (Cycle 2986 발견)
 - `break`/`continue`/`return`: ✅ 지원 (단, break는 while에서만)
 - `&&`/`||` short-circuit: ✅ 완전 지원 (Cycle 2965)
 - `vec_pop`: ✅ `i64` 반환 (제거된 요소)
 - `vec_push`: i64 반환 (branch 타입 불일치 시 `let _p = vec_push(...)`)
-- `set` 키워드: mutable 변수 업데이트에 필수 (block context에서 `x = expr`도 동작하나 `set` 권장)
+- `set` 키워드: mutable 변수 업데이트에 필수
 
 ### B-axis 상태
 
 | 모델 | 마지막 측정 | 상태 |
 |------|-----------|------|
 | Claude (claude-sonnet-4-6) | 98.0% (2026-05-13) | 고정 베이스라인 (재측정 없음) |
-| GPUStack (qwen3.6-35b-a3b) | **99.7%** 3-run 299/300 (2026-05-20) | ✅ 목표 달성 확인 — 세션 종료 |
-| 04_fibonacci | 일관 2-shot (Type D) | CRITICAL 노트 추가 완료 — 차기 측정 효과 확인 예정 |
+| GPUStack (qwen3.6-35b-a3b) | **99.7%** 3-run 299/300 (2026-05-20) | ✅ 목표 달성 |

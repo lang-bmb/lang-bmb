@@ -1,6 +1,6 @@
 # Problem Suite Difficulty Bias Toward Easy/Medium
 
-**Status: OPEN** — Cycle 2730 양식: 측정 stamp는 [`_b_track_methodology_stamp.md`](_b_track_methodology_stamp.md) 참조 (**STALE** since 2026-04-26)
+**Status: OPEN** — Cycle 2991 (2026-05-20) 재검토: 변화 없음. 100문제 동일, Hard 비율 그대로. 신규 hard 문제 추가는 HUMAN-blocked.
 **Priority: LOW**
 **Category: Experiment Methodology**
 

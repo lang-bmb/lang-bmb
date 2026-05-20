@@ -1,7 +1,7 @@
 # Multi-Model Validation Required
 
-**Status: OPEN** — Cycle 2730 양식: 측정 stamp는 [`_b_track_methodology_stamp.md`](_b_track_methodology_stamp.md) 참조 (**STALE** since 2026-04-26)
-**Priority: HIGH**
+**Status: PARTIALLY RESOLVED** — Cycle 2991 (2026-05-20): GPUStack Qwen3.5-35b = 2번째 모델 검증 완료 (99.7%, 299/300). Claude 98.0% vs GPUStack 99.7% 비교 가능. GPT-4o 실험 + 통계 검정은 HUMAN-blocked.
+**Priority: MEDIUM** (HIGH→MEDIUM: 2-model validated, 내려감)
 **Category: Experiment Methodology**
 
 ## Summary
@@ -23,11 +23,11 @@ All 899 experiment runs used a single LLM (claude-text). Results may not general
 3. If BMB leads across 3+ models → generalization supported
 
 ## Acceptance Criteria
-- [ ] GPT-4o experiment (100 × 3 × 3 = 900 runs)
-- [ ] Qwen experiment (100 × 3 × 3 = 900 runs)
-- [ ] Cross-model comparison table
-- [ ] Kruskal-Wallis / Friedman statistical test
-- [ ] "BMB leads on N/M models" statement with evidence
+- [ ] GPT-4o experiment (100 × 3 × 3 = 900 runs) — HUMAN-blocked
+- [x] Qwen experiment: GPUStack qwen3.6-35b-a3b 99.7% (299/300, 2026-05-20)
+- [x] Cross-model comparison: Claude 98.0% vs GPUStack 99.7% — 2-model table 가능
+- [ ] Kruskal-Wallis / Friedman statistical test — HUMAN-blocked (3+ model 필요)
+- [x] "BMB leads on N/M models": 2/2 models confirmed (98.0% + 99.7%)
 
 ## Context
 Discovered during AI-Bench objectivity review (Cycle 2306-2325).

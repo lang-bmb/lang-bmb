@@ -1,8 +1,9 @@
 # ISSUE-20260511 — Clang -O3 knapsack outlier (BMB 6.7x faster)
 
-**Date**: 2026-05-11 (Cycle 2704)
+**Date**: 2026-05-11 (Cycle 2704) | **Resolved**: 2026-05-20 (Cycle 2992) — CHANGELOG 라벨 수정 완료
 **Severity**: low (analysis-only, BMB benefits from clang's poor transformation)
 **Type**: external (LLVM/Clang upstream behavior)
+**Status**: CLOSED — CHANGELOG.md v0.2.0 "6.8x faster than C" → "6.8x faster than Clang -O3" + GCC 사실 노트 추가
 
 ## 측정 stamp (Cycle 2730 표준 양식)
 

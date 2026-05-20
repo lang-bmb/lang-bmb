@@ -41,9 +41,11 @@ All notable changes to bmb-algo will be documented in this file.
 - pyproject.toml (PEP 621 compliant)
 
 ### Performance
-- knapsack: 90.7x faster than Python, 6.8x faster than C
+- knapsack: 90.7x faster than Python, 6.8x faster than Clang -O3 ⚠️ (see note)
 - nqueens(8): 181.6x faster than Python
 - prime_count(10k): 25.6x faster than Python
+
+> **Note (2026-05-20, M4-9 analysis)**: "6.8x faster than C" refers specifically to **Clang -O3** on this benchmark. GCC -O3 is 1.39x *faster* than BMB on the same input. The Clang anomaly is caused by a Clang -O3 unconditional store + select-phi anti-pattern in the inner DP loop. See ISSUE-20260511-clang-knapsack-outlier for IR analysis. Current re-measured baseline (v0.98, knapsack N=2000): BMB 171ms / Clang 1138ms / GCC 124ms.
 
 ## [0.1.0] - 2026-03-15
 

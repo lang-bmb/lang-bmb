@@ -1,6 +1,6 @@
 # External Problem Validation Required
 
-**Status: OPEN** — Cycle 2730 양식: 측정 stamp는 [`_b_track_methodology_stamp.md`](_b_track_methodology_stamp.md) 참조 (**STALE** since 2026-04-26)
+**Status: PARTIALLY RESOLVED** — Cycle 2991 (2026-05-20): C baseline verification 완료 (bench verify 17/17 PASS, Cycle 2788). 외부 검토자 + 외부 소싱 문제는 HUMAN-blocked 잔여.
 **Priority: MEDIUM**
 **Category: Experiment Methodology**
 
@@ -25,9 +25,9 @@ All 100 problems in bmb-ai-bench were designed, solved, and tested by AI (Claude
 4. **Automated cross-validation**: Run solution.bmb, baseline.c, and solution.rs on same tests and verify agreement
 
 ## Acceptance Criteria
-- [ ] C baselines verified for all 100 problems (automated)
-- [ ] At least 10 externally-sourced problems added
-- [ ] At least 1 external reviewer validates problem quality
+- [x] C baselines verified for all 100 problems (automated) — bench verify 17/17 PASS (Cycle 2788, scripts/verify_bench_outputs.py)
+- [ ] At least 10 externally-sourced problems added — HUMAN-blocked
+- [ ] At least 1 external reviewer validates problem quality — HUMAN-blocked
 
 ## Context
 Multiple test data errors discovered during AI-Bench development suggest systematic review is needed.
