@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-20 (Cycles 2981-2990 — GPUStack 99.7% 확인 + 품질 대폭 개선)
 
-> **HEAD**: `af4dac54` (Cycle 2989 — 추가 패턴 검사 완료)
+> **HEAD**: `474f2d04` (GPUStack 3-run 99.7% 결과 반영 + 04_fibonacci CRITICAL 노트)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 > **다음 세션 진입점**: Cycle 2991
@@ -138,5 +138,5 @@ python3 -m bmb_ai_bench.run_cmd \
 | 모델 | 마지막 측정 | 상태 |
 |------|-----------|------|
 | Claude (claude-sonnet-4-6) | 98.0% (2026-05-13) | 고정 베이스라인 (재측정 없음) |
-| GPUStack (qwen3.6-35b-a3b) | **99.0%** (2026-05-20) | ✅ 목표 달성 (99%+) |
-| GPUStack 2차 측정 | TBD | 예상 100% (모든 실패 원인 수정) |
+| GPUStack (qwen3.6-35b-a3b) | **99.7%** 3-run 299/300 (2026-05-20) | ✅ 목표 달성 확인 — 세션 종료 |
+| 04_fibonacci | 일관 2-shot (Type D) | CRITICAL 노트 추가 완료 — 차기 측정 효과 확인 예정 |
