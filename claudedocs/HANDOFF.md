@@ -1,77 +1,74 @@
-# BMB Session Handoff — 2026-05-21 (Cycles 2995-2997 — IR 분석 + 문서 정리)
+# BMB Session Handoff — 2026-05-21 (Cycles 2999-3006 — M3-4 PyPI publish ✅ COMPLETE)
 
-> **HEAD**: `7696bdf6` (Cycles 2995-2998 — IR 분석 + 문서 정리)
+> **HEAD**: `3fa023c4` (Cycles 2999-3006 — GPUStack pilot + M3-4 PyPI publish)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 2999
+> **다음 세션 진입점**: Cycle 3007
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 2995-2997)
+## 이번 세션 작업 요약 (Cycles 2999-3006)
 
 ### 주요 변경 사항
 
 | Cycle | 제목 | 내용 |
 |-------|------|------|
-| 2995 | csv_parse IR 분석 — LLVM 파리티 확인 | `byte_at` → `getelementptr i8 + load i8` LLVM 파리티. `load_u8(ptr)` 전환 불필요 판정. ROADMAP 갱신 |
-| 2996 | rebuild-bootstrap-exe.sh --check-only CI 연결 분석 | `*.exe` gitignore로 CI 적용 불가. ROADMAP P4 아이템 CLOSED |
-| 2997 | M3-7 annotation + ISSUE triage | b_baseline JSON에 supersedes 필드 추가. clang-knapsack-outlier closed/ 이동. M3-7 ✅ |
+| 2999 | GPUStack API 연결 테스트 + 04_fibonacci 검증 | 3/3 PASS, loop=1 (CRITICAL 노트 효과 확인) |
+| 3000 | M3-3 확인 + PyPI 빌드 트리거 | npm ✅ 이미 완료(2026-05-10). 서브모듈 미push 수정 |
+| 3001 | 91_ring_buffer 재검증 | 3/3 PASS (loop=1). 이전 1실패는 노이즈 |
+| 3002 | CI 워크플로 submodules 수정 | pypi/npm publish: `recursive` → `false` |
+| 3003 | PyPI 빌드 모니터링 | Ubuntu ✅, macOS/Windows 진행 확인 |
+| 3004 | publish=true 워크플로 트리거 | run 26210535322 트리거 |
+| 3005 | CI 버그 연속 수정 (3종) | gotgan submodule / FnRef inkwell / bmb_str_char_at |
+| 3006 | **M3-4 PyPI Publish ✅ COMPLETE** | 5개 패키지 × 3 플랫폼 live on PyPI |
 
-### csv_parse IR 분석 결과 (Cycle 2995)
+### CI 버그 수정 (이번 세션)
 
-**핵심 발견**:
-- `byte_at` → `getelementptr inbounds i8 + load i8` — 추가 함수 호출 없음
-- BmbString ptr 필드 루프 밖 호이스팅 확인 (`bb_while_body_1.lr.ph`에서 단 1회 load)
-- `skip_ws`, `parse_quoted_field`, `parse_unquoted_field` 전부 `parse_csv`에 완전 인라인
-- C는 필드 내용을 출력 버퍼에 복사하는 반면 BMB는 길이 카운트만 (BMB가 더 경량)
-- csv_parse 1.06× = 측정 노이즈 (Tier 3 기준 BMB 0.820× — BMB faster)
+| # | 커밋 | 버그 |
+|---|------|------|
+| 1 | e5855d29 | `submodules: recursive` 불필요 → `false` |
+| 2 | 0341d92c | `ecosystem/gotgan` workspace member 미초기화 |
+| 3 | a783662b | `Constant::FnRef` inkwell backend 3 match arm 누락 |
+| 4 | 3fa023c4 | C 런타임 `bmb_str_char_at` → `bmb_str_char_at_str` rename |
 
-**결론**: `load_u8(ptr)` 전환 불필요. ROADMAP §5 항목 CLOSED.
+### PyPI 퍼블리시 결과
 
-### CI --check-only 분석 결과 (Cycle 2996)
-
-- `*.exe` gitignore → CI에서 prebuilt binary 없음
-- `--check-only`는 항상 exit 1 → CI 블로킹
-- `bootstrap-benchmark.yml`이 3-Stage 빌드 이미 커버
-- ROADMAP P4 아이템 CLOSED
-
-### M3-7 annotation (Cycle 2997)
-
-`claudedocs/measurements/b_baseline_2026-05-13_c2810.json`에 `supersedes` 필드 추가:
-- 2026-03-26 비공식 90.9% 측정 supersede 명시
-- M3 자율 작업 완전 소진
+| 패키지 | 버전 | 플랫폼 |
+|--------|------|--------|
+| bmb-algo | 0.3.0 | linux/macos/windows |
+| bmb-compute | 0.2.0 | linux/macos/windows |
+| bmb-text | 0.2.0 | linux/macos/windows |
+| bmb-crypto | 0.3.0 | linux/macos/windows |
+| bmb-json | 0.2.0 | linux/macos/windows |
 
 ### 테스트 상태
 
 ```
-코드 변경 없음 (IR 분석 + 문서 갱신만)
-cargo test --release: 6260 tests ✅ (이전 세션 Cycle 2987 확인)
+cargo test --release: ✅ (Cycle 3005 확인)
+cargo build --release -p bmb: ✅ (Cycle 3006 확인)
+PyPI 5개 패키지 live: ✅ (pypi.org 확인)
 ```
 
 ---
 
-## 다음 세션 (Cycle 2999+)
+## 다음 세션 (Cycle 3007+)
 
 ### 권장 우선순위
 
-1. **자율 작업 소진 상태** — 모두 HUMAN-blocked
-2. **선택지**:
-   - B-axis re-measurement (Claude — ANTHROPIC_API_KEY 필요)
-   - GPUStack 04_fibonacci CRITICAL 노트 효과 검증 (GPUSTACK_API_KEY 필요)
-   - npm/PyPI publish (HUMAN dispatch)
+1. **M3 publish 완료** — M3-3 ✅ (2026-05-10) + M3-4 ✅ (2026-05-21)
+2. **다음 ROADMAP 항목**: M3-7 (M4-1 종속) 이미 완료 확인됨 (Cycle 2997)
+3. **선택지**:
+   - M4 언어 갭 계속 작업
+   - B-axis Claude 재측정 (98.0% stale, 기한 2026-08-13)
    - inttoptr Option A/B/C 결정 (HUMAN)
-   - problem-difficulty-bias 신규 hard 문제 추가 (HUMAN 설계)
 
 ### 알려진 HUMAN-blocked 항목
 
-- GPT-4o 실험 (multi-model-validation 완결용)
-- npm/PyPI publish (M3 잔여)
-- golden-flakiness-inttoptr Option A/B/C 결정
+- GPT-4o 실험 (multi-model-validation)
+- golden-flakiness-inttoptr Option A/B/C
 - problem-difficulty-bias 신규 hard 문제 20개
-- GPUStack 재측정 (GPUSTACK_API_KEY 재설정 필요)
-- B-axis Claude 재측정 (ANTHROPIC_API_KEY 재설정 필요)
 
-### ISSUE 현황 (2026-05-21 기준)
+### ISSUE 현황
 
 | ISSUE | 상태 | 우선순위 |
 |-------|------|---------|
@@ -79,7 +76,7 @@ cargo test --release: 6260 tests ✅ (이전 세션 Cycle 2987 확인)
 | external-problem-validation | PARTIALLY RESOLVED | MEDIUM |
 | integration-category-weakness | PARTIALLY RESOLVED | LOW |
 | problem-difficulty-bias | OPEN | LOW |
-| clang-knapsack-outlier | **CLOSED** (Cycle 2992) | — |
+| clang-knapsack-outlier | **CLOSED** | — |
 | golden-flakiness-inttoptr | OPEN | P3 |
 
 ### 알려진 BMB 언어 특성 (중요도 순)
@@ -97,13 +94,4 @@ cargo test --release: 6260 tests ✅ (이전 세션 Cycle 2987 확인)
 | 모델 | 마지막 측정 | 상태 |
 |------|-----------|------|
 | Claude (claude-sonnet-4-6) | 98.0% (2026-05-13) | 고정 베이스라인 (재측정 없음) |
-| GPUStack (qwen3.6-35b-a3b) | **99.7%** 3-run 299/300 (2026-05-20) | ✅ 목표 달성 |
-
-### P-axis 상태 (Cycle 2995 갱신)
-
-| 구분 | 결과 | 비고 |
-|------|------|------|
-| csv_parse | 1.06× | 측정 노이즈 — IR LLVM 파리티 확인 |
-| 그 외 6개 | BMB faster | 0.15×~1.00× |
-
-`byte_at` → `load_u8(ptr)` 전환 불필요 (CLOSED Cycle 2995).
+| GPUStack qwen3 | 99.7% (2026-05-20) | 공식 최신 측정 |
