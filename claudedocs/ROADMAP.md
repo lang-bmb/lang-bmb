@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-22 (Cycles 3027-3030 — **MIR AndChainCSE P2 구현**: `and/or` 체인 내 중복 `load_u8` 자동 CSE. double-load+CSE = break-based 단일-load 동등 성능. ISSUE-20260521 RESOLVED. P-track 7/7 PASS 유지. HEAD `(커밋 예정)`.)
+> 최종 업데이트: 2026-05-22 (Cycles 3027-3030 — **MIR AndChainCSE P2 구현**: `and/or` 체인 내 중복 `load_u8` 자동 CSE. double-load+CSE = break-based 단일-load 동등 성능. ISSUE-20260521 RESOLVED. P-track 7/7 PASS 유지. HEAD `3ed5ca8b`.)
 > 이전 갱신: 2026-05-21 (Cycles 3017-3026 — **P-track 7/7: 전부 BMB faster** (brainfuck 1.037→0.956, csv 1.018→0.891, http 0.938→0.909). memset_fill 빌트인 + match dispatch + band 255 + single-load break. v0.100.0 유지. HEAD `72ddb300`.)
 > 이전 갱신: 2026-05-21 (Cycles 2999-3002 — **api-key test + publish 준비**: GPUStack pilot 3/3 ✅ + 04_fibonacci CRITICAL 노트 loop=1 ✅. M3-3 npm ✅ 이미 완료. 서브모듈 미push CI 버그 수정. HEAD `e5855d29`.)
 > 이전 갱신: 2026-05-20 (Cycles 2991-2994 — **ISSUE triage + 품질 마무리**: 4개 stale ISSUE 현황 갱신, clang-knapsack-outlier CLOSED, cycle-logs/ROADMAP.md 재작성, 35_sieve_primes 노트 수정. HEAD `f62ca373`.)

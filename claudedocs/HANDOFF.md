@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-22 (Cycles 3027-3030 — MIR AndChainCSE P2 구현)
 
-> **HEAD**: `(커밋 예정)` (Cycles 3027-3030 — MIR AndChainCSE: and/or 체인 중복 load_u8 자동 CSE)
+> **HEAD**: `3ed5ca8b` (Cycles 3027-3030 — MIR AndChainCSE: and/or 체인 중복 load_u8 자동 CSE)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 > **다음 세션 진입점**: Cycle 3031
