@@ -71,5 +71,5 @@ def run_dashboard(json_output: bool = False) -> int:
     if features:
         print(f"  Top BMB features tested: {', '.join(k for k, _ in features.most_common(5))}")
     print("=" * 60)
-    print("  Performance policy: tracking only — no hard gate (≤1.05×=15pts, ≤1.10×=10pts, ≤1.20×=5pts)")
+    print("  Performance policy: tracking only - no hard gate (<=1.05x=15pts, <=1.10x=10pts, <=1.20x=5pts)")
     return 0

@@ -13,6 +13,9 @@ dev = ["pytest>=7.4"]
 [project.scripts]
 bmb-ai-bench = "bmb_ai_bench.cli:main"
 
+[tool.setuptools.packages.find]
+include = ["bmb_ai_bench*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

@@ -7,7 +7,7 @@ fn find_insert_pos(v: i64, n: i64, val: i64) -> i64
     let mut pos = n;
     for idx in 0..n {
         if vec_get(v, idx) > val {
-            pos = idx;
+            set pos = idx;
             return pos
         } else { () }
     };
@@ -28,7 +28,7 @@ fn main() -> i64 = {
     let mut j = n;
     while j > pos {
         let _s = vec_set(v, j, vec_get(v, j - 1));
-        j = j - 1
+        set j = j - 1
     };
     let _s = vec_set(v, pos, val);
     // Print result
@@ -42,6 +42,6 @@ fn main() -> i64 = {
         ()
     };
     println_str("");
-    vec_free(v);
+    let _f = vec_free(v);
     0
 };

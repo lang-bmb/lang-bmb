@@ -1,0 +1,15 @@
+{
+  "measurement_date": "2026-05-21",
+  "stale_after": "2026-08-21",
+  "cycle": 3010,
+  "model": "qwen3.6-35b-a3b",
+  "via": "GPUStack (local inference, http://172.30.1.53:8080/v1)",
+  "total_problems": 100,
+  "runs": 3,
+  "total_runs": 300,
+  "passed": 300,
+  "success_rate": 100.0,
+  "median_loops": 1,
+  "output_dir": "D:\\data\\lang-bmb\\ecosystem\\bmb-ai-bench\\results\\2026-05-21",
+  "notes": "100% PASS — problem.md BMB Notes 완결 + 24_sorted_insert set/loop 패턴 수정 후 측정. 이전 99.7% 실패 3문제(01/30/86)는 LLM 비결정성 노이즈로 확인. Median loops=1 (1-shot이 중앙값)."
+}

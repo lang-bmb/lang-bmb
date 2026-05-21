@@ -5,9 +5,46 @@ All notable changes to BMB (Bare-Metal-Banter) will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.100.0] — 2026-05-21 (Cycles 2507-3006, M3 External Bindings Complete)
+
+### Milestone: M3 External Bindings Complete
+
+M3 (External Bindings) milestone completed. BMB is now available on PyPI and npm
+across 5 language bindings (Python, Node.js, C#, Java, C).
+
+**B-axis (LLM Success Rate)**:
+- Claude claude-sonnet-4-6: **98.0%** (294/300, 2026-05-13)
+- GPUStack qwen3.6-35b-a3b: **99.7%** (299/300, 2026-05-20)
+
+**P-axis (Performance vs C)**:
+- Tier 1: 8/9 ≤1.05× (LLVM parity), knapsack 6.7× BMB faster
+- Real-world 7/7: brainfuck 0.95×, csv 1.06×, http 0.95×, lexer 0.17×,
+  json_parse 0.78×, json_serialize 0.69×, sorting 0.15× (all relative to GCC -O2)
+
+**Language completeness** (Cycles 2619-2894):
+- 28+ language gaps filled (tuple destructuring, static methods, enum payload, etc.)
+- All stdlib APIs native-supported (interpreter-only zero)
+- if-without-else, while-let, String interpolation, compound assignment operators
+- str/vec/svec/hashmap builtins complete, for-in-vec/svec, format variadic
+
+**External Bindings** (Cycles 2895-3006):
+- Python wheels (5 packages × 3 platforms) on PyPI — bmb-algo, bmb-compute,
+  bmb-text, bmb-crypto, bmb-json (v0.2.0–v0.3.0)
+- npm packages (5 packages) — @bmb-lang/bmb-algo etc. (v0.1.0)
+- C# NuGet bindings (5 packages, 93 tests)
+- Java JNA bindings (5 packages, 120 JUnit 5 tests)
+- C direct bindings (5 packages, 216 tests)
+
+**Infrastructure**:
+- Bootstrap 3-Stage Fixed Point verified (S2==S3 IR)
+- 20 lint rules (lint.bmb)
+- LSP 11 handlers, Z3 verify-host
+- bmb bench --native, @inline attribute
+- &&/|| short-circuit MIR lowering
+
 ## [Unreleased]
 
-Work on `v0.98.x` — see cycle logs under `claudedocs/cycle-logs/cycle-2383.md`
+Work on `v0.100.x` — see cycle logs under `claudedocs/cycle-logs/cycle-3007.md`
 and later for per-cycle detail.
 
 ### Fixed (Cycle 2423) — MinGW runtime DLLs statically linked (Defect 5 follow-up P3-T3a)

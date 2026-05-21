@@ -1,72 +1,71 @@
-# BMB Session Handoff — 2026-05-21 (Cycles 2999-3006 — M3-4 PyPI publish ✅ COMPLETE)
+# BMB Session Handoff — 2026-05-21 (Cycles 3007-3016 — GPUStack B-axis 100% PASS)
 
-> **HEAD**: `f37e651a` (Cycles 2999-3006 — GPUStack pilot + M3-4 PyPI publish + 세션 정리)
+> **HEAD**: `1561d9ff` (세션 시작 기준 — 이번 세션 커밋 후 갱신 예정)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 3007
+> **다음 세션 진입점**: Cycle 3017
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 2999-3006)
+## 이번 세션 작업 요약 (Cycles 3007-3016)
 
 ### 주요 변경 사항
 
 | Cycle | 제목 | 내용 |
 |-------|------|------|
-| 2999 | GPUStack API 연결 테스트 + 04_fibonacci 검증 | 3/3 PASS, loop=1 (CRITICAL 노트 효과 확인) |
-| 3000 | M3-3 확인 + PyPI 빌드 트리거 | npm ✅ 이미 완료(2026-05-10). 서브모듈 미push 수정 |
-| 3001 | 91_ring_buffer 재검증 | 3/3 PASS (loop=1). 이전 1실패는 노이즈 |
-| 3002 | CI 워크플로 submodules 수정 | pypi/npm publish: `recursive` → `false` |
-| 3003 | PyPI 빌드 모니터링 | Ubuntu ✅, macOS/Windows 진행 확인 |
-| 3004 | publish=true 워크플로 트리거 | run 26210535322 트리거 |
-| 3005 | CI 버그 연속 수정 (3종) | gotgan submodule / FnRef inkwell / bmb_str_char_at |
-| 3006 | **M3-4 PyPI Publish ✅ COMPLETE** | 5개 패키지 × 3 플랫폼 live on PyPI |
+| 3007 | v0.100.0 선언 + GPUStack 설정 확인 | Cargo.toml 0.98.0→0.100.0, CHANGELOG 추가, 연결 확인 |
+| 3008 | Full B-axis run 시작 (100문제×3) | bmb-ai-bench results/2026-05-21/ 배경 실행 |
+| 3009 | 파일럿 3문제 재검증 | 01/30/86 모두 PASS — 이전 실패는 노이즈 확인 |
+| 3010 | **Full B-axis 100% PASS** | 300/300, Median Loops=1. dashboard.py Unicode fix, 24_sorted_insert 수정 |
+| 3011 | ROADMAP/측정값 갱신 | summary.json 저장, ROADMAP §5 갱신, 비교 표 추가 |
+| 3012 | ISSUE triage | multi-model-validation·integration-category-weakness 갱신 |
+| 3013 | ROADMAP M3/M4 현황 갱신 | M3 ✅ COMPLETE, M4 ~45%, 버전 0.100.0 |
+| 3014 | 커밋 준비 | 변경 파일 목록 확인, 테스트 통과 확인 |
+| 3015 | HANDOFF 갱신 | (이 문서) |
+| 3016 | 세션 종료 커밋 | (예정) |
 
-### CI 버그 수정 (이번 세션)
+### 핵심 결과
 
-| # | 커밋 | 버그 |
-|---|------|------|
-| 1 | e5855d29 | `submodules: recursive` 불필요 → `false` |
-| 2 | 0341d92c | `ecosystem/gotgan` workspace member 미초기화 |
-| 3 | a783662b | `Constant::FnRef` inkwell backend 3 match arm 누락 |
-| 4 | 3fa023c4 | C 런타임 `bmb_str_char_at` → `bmb_str_char_at_str` rename |
+| 항목 | 이전 | 이후 |
+|------|------|------|
+| BMB 버전 | 0.98.0 | **0.100.0** |
+| GPUStack B-axis | 99.7% (299/300) | **100.0% (300/300)** |
+| M3 상태 | ~99% | **✅ COMPLETE** |
+| M4 상태 | ~40% | ~45% (dev tasks 전체 ✅) |
 
-### PyPI 퍼블리시 결과
+### 파일 변경 목록
 
-| 패키지 | 버전 | 플랫폼 |
-|--------|------|--------|
-| bmb-algo | 0.3.0 | linux/macos/windows |
-| bmb-compute | 0.2.0 | linux/macos/windows |
-| bmb-text | 0.2.0 | linux/macos/windows |
-| bmb-crypto | 0.3.0 | linux/macos/windows |
-| bmb-json | 0.2.0 | linux/macos/windows |
-
-### 테스트 상태
-
-```
-cargo test --release: ✅ (Cycle 3005 확인)
-cargo build --release -p bmb: ✅ (Cycle 3006 확인)
-PyPI 5개 패키지 live: ✅ (pypi.org 확인)
-```
+| 파일 | 변경 내용 |
+|------|---------|
+| `Cargo.toml` | v0.98.0 → v0.100.0 |
+| `CHANGELOG.md` | v0.100.0 M3 COMPLETE 항목 추가 |
+| `claudedocs/ROADMAP.md` | M3 COMPLETE, M4 ~45%, GPUStack 100.0%, 버전 0.100.0 |
+| `claudedocs/issues/ISSUE-20260326-multi-model-validation.md` | 99.7% → 100.0% |
+| `claudedocs/issues/ISSUE-20260326-integration-category-weakness.md` | 100% PASS 갱신 |
+| `ecosystem/bmb-ai-bench/bmb_ai_bench/analysis/dashboard.py` | Unicode `≤`/`×` → ASCII |
+| `ecosystem/bmb-ai-bench/problems/24_sorted_insert/problem.md` | BMB Notes + set 패턴 수정 |
+| `ecosystem/bmb-ai-bench/problems/24_sorted_insert/solution.bmb` | set 키워드 누락 수정 |
+| `ecosystem/bmb-ai-bench/pyproject.toml` | packages.find 추가 |
+| `claudedocs/cycle-logs/cycle-3007~3016.md` | 신규 사이클 로그 10개 |
+| `claudedocs/measurements/b_baseline_2026-05-21_c3010_qwen3.json` | 측정값 저장 |
 
 ---
 
-## 다음 세션 (Cycle 3007+)
+## 다음 세션 (Cycle 3017+)
 
 ### 권장 우선순위
 
-1. **M3 publish 완료** — M3-3 ✅ (2026-05-10) + M3-4 ✅ (2026-05-21)
-2. **다음 ROADMAP 항목**: M3-7 (M4-1 종속) 이미 완료 확인됨 (Cycle 2997)
-3. **선택지**:
-   - M4 언어 갭 계속 작업
-   - B-axis Claude 재측정 (98.0% stale, 기한 2026-08-13)
-   - inttoptr Option A/B/C 결정 (HUMAN)
+1. **M4 채택 지표** — GitHub stars, 외부 PR, 외부 프로젝트 추적
+2. **P-track** — real-world 7/7 결과 유지, 새 최적화 기회 탐색
+3. **B축 Claude 재측정** — 98.0% stale 기한 2026-08-13 (아직 여유)
+4. **언어 기능** — BMB B-axis 100% 달성 → 다음 언어 완성도 갭 식별
 
 ### 알려진 HUMAN-blocked 항목
 
 - GPT-4o 실험 (multi-model-validation)
 - golden-flakiness-inttoptr Option A/B/C
 - problem-difficulty-bias 신규 hard 문제 20개
+- crosslang 측정 (stale)
 
 ### ISSUE 현황
 
@@ -76,7 +75,6 @@ PyPI 5개 패키지 live: ✅ (pypi.org 확인)
 | external-problem-validation | PARTIALLY RESOLVED | MEDIUM |
 | integration-category-weakness | PARTIALLY RESOLVED | LOW |
 | problem-difficulty-bias | OPEN | LOW |
-| clang-knapsack-outlier | **CLOSED** | — |
 | golden-flakiness-inttoptr | OPEN | P3 |
 
 ### 알려진 BMB 언어 특성 (중요도 순)
@@ -93,5 +91,5 @@ PyPI 5개 패키지 live: ✅ (pypi.org 확인)
 
 | 모델 | 마지막 측정 | 상태 |
 |------|-----------|------|
-| Claude (claude-sonnet-4-6) | 98.0% (2026-05-13) | 고정 베이스라인 (재측정 없음) |
-| GPUStack qwen3 | 99.7% (2026-05-20) | 공식 최신 측정 |
+| Claude (claude-sonnet-4-6) | 98.0% (2026-05-13) | 고정 베이스라인 (stale 기한: 2026-08-13) |
+| GPUStack qwen3.6-35b-a3b | **100.0% (2026-05-21)** | **최신 공식 측정** |
