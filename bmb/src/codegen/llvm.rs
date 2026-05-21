@@ -2958,7 +2958,8 @@ impl<'ctx> LlvmContext<'ctx> {
                             Constant::Float(_) => MirType::F64,
                             Constant::Bool(_) => MirType::Bool,
                             Constant::Char(_) => MirType::I32,
-                            Constant::String(_) => MirType::I64, // String is pointer as i64
+                            Constant::String(_) => MirType::I64,
+                            Constant::FnRef(_) => MirType::I64,
                             Constant::Unit => MirType::Unit,
                         });
                     }
@@ -6581,6 +6582,7 @@ impl<'ctx> LlvmContext<'ctx> {
             Constant::String(_) => self.context.ptr_type(inkwell::AddressSpace::default()).into(),
             Constant::Unit => self.context.i8_type().into(),
             Constant::Char(_) => self.context.i32_type().into(),
+            Constant::FnRef(_) => self.context.i64_type().into(),
         }
     }
 
@@ -6658,6 +6660,15 @@ impl<'ctx> LlvmContext<'ctx> {
             Constant::Unit => self.context.i8_type().const_int(0, false).into(),
             // v0.95: Char as i32 Unicode code point
             Constant::Char(c) => self.context.i32_type().const_int(*c as u64, false).into(),
+            Constant::FnRef(fn_name) => {
+                let func = self.module.get_function(fn_name)
+                    .unwrap_or_else(|| panic!("FnRef: function '{}' not found in module", fn_name));
+                let ptr = func.as_global_value().as_pointer_value();
+                self.builder
+                    .build_ptr_to_int(ptr, self.context.i64_type(), "fnref_int")
+                    .unwrap()
+                    .into()
+            }
         }
     }
 
