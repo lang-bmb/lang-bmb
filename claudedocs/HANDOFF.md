@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-21 (Cycles 2999-3006 — M3-4 PyPI publish ✅ COMPLETE)
 
-> **HEAD**: `3fa023c4` (Cycles 2999-3006 — GPUStack pilot + M3-4 PyPI publish)
+> **HEAD**: `f37e651a` (Cycles 2999-3006 — GPUStack pilot + M3-4 PyPI publish + 세션 정리)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 > **다음 세션 진입점**: Cycle 3007
