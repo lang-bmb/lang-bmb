@@ -226,8 +226,12 @@ impl TextCodeGen {
         // Emit string globals
         self.emit_string_globals(&mut output, &string_table)?;
 
+        // Collect user-defined function names to suppress conflicting runtime declares
+        let user_fn_names: std::collections::HashSet<&str> =
+            program.functions.iter().map(|f| f.name.as_str()).collect();
+
         // Runtime declarations
-        self.emit_runtime_declarations(&mut output)?;
+        self.emit_runtime_declarations(&mut output, &user_fn_names)?;
 
         // v0.97: Build call graph and detect indirect recursion for norecurse attribute
         // A function is recursive if it's part of a cycle in the call graph
@@ -791,7 +795,7 @@ impl TextCodeGen {
     }
 
     /// Emit runtime function declarations
-    fn emit_runtime_declarations(&self, out: &mut String) -> TextCodeGenResult<()> {
+    fn emit_runtime_declarations(&self, out: &mut String, user_fns: &std::collections::HashSet<&str>) -> TextCodeGenResult<()> {
         // v0.96.35: Added nounwind + nofree to I/O functions (they don't throw or free user memory)
         // v0.96.43: Added nocallback + nosync to non-threading functions for better interprocedural analysis
         writeln!(out, "; Runtime declarations - Basic I/O")?;
@@ -851,7 +855,10 @@ impl TextCodeGen {
         writeln!(out, "declare nonnull ptr @bmb_int_to_hex(i64) nocallback nounwind nosync willreturn")?;
         writeln!(out, "declare nonnull ptr @bmb_int_to_bin(i64) nocallback nounwind nosync willreturn")?;
         // v0.98.9: str_char_at → String (Cycle 2880)
-        writeln!(out, "declare nonnull ptr @bmb_str_char_at(ptr nonnull nocapture readonly, i64) nocallback nounwind nosync willreturn")?;
+        // Guard: skip if user code defines the same symbol (e.g. bmb-text lib re-exports it with i64 return)
+        if !user_fns.contains("bmb_str_char_at") {
+            writeln!(out, "declare nonnull ptr @bmb_str_char_at(ptr nonnull nocapture readonly, i64) nocallback nounwind nosync willreturn")?;
+        }
         // v0.99 Cycle 2940: str_byte_at → i64 (ASCII byte value)
         writeln!(out, "declare i64 @bmb_str_byte_at(ptr nonnull nocapture readonly, i64) nocallback nounwind nofree nosync willreturn")?;
         // v0.98.9: bmb_f64_to_string (Cycle 2881) — used by to_string(f64)
