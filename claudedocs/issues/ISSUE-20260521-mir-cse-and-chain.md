@@ -1,8 +1,14 @@
 # ISSUE-20260521 — MIR level CSE for `and/or` 조건 내 동일 load_u8 subexpression
 
-**Status: OPEN**
+**Status: RESOLVED** ✅ (Cycles 3027-3029, 2026-05-22)
 **Priority: P2**
 **Category: Compiler Optimization / MIR**
+
+**Resolution**: `AndChainCSE` optimization pass 구현 (`bmb/src/mir/optimize.rs`).
+- `and_rhs_*` 블록 간 중복 `load_u8` 호출을 자동으로 CSE
+- canonical form value equivalence로 주소 동등성 판단
+- `and_merge_*`에 phi 삽입 → 두 번째 `and_rhs_*`에서 Copy 교체
+- P-track 7/7 PASS, double-load+CSE = break-based 단일-load 동등 성능 확인
 
 ---
 

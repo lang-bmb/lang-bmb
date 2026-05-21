@@ -80,6 +80,8 @@ impl OptimizationPipeline {
                 pipeline.add_pass(Box::new(MemoryLoadCSE));
                 // v0.60.38: Global field access CSE for cross-block field access dedup
                 pipeline.add_pass(Box::new(GlobalFieldAccessCSE));
+                // v0.100.1: And-chain CSE — eliminate duplicate loads across and/or short-circuit blocks
+                pipeline.add_pass(Box::new(AndChainCSE));
                 // v0.50.76: Add contract-based optimization for dead branch elimination
                 pipeline.add_pass(Box::new(ContractBasedOptimization));
                 pipeline.add_pass(Box::new(ContractUnreachableElimination));
@@ -119,6 +121,8 @@ impl OptimizationPipeline {
                 pipeline.add_pass(Box::new(MemoryLoadCSE));
                 // v0.60.38: Global field access CSE for cross-block field access dedup
                 pipeline.add_pass(Box::new(GlobalFieldAccessCSE));
+                // v0.100.1: And-chain CSE — eliminate duplicate loads across and/or short-circuit blocks
+                pipeline.add_pass(Box::new(AndChainCSE));
                 pipeline.add_pass(Box::new(ContractBasedOptimization));
                 pipeline.add_pass(Box::new(ContractUnreachableElimination));
                 // v0.50.65: Add tail call optimization for recursive functions
@@ -2539,6 +2543,238 @@ impl OptimizationPass for GlobalFieldAccessCSE {
             }
 
             block.instructions = new_instructions;
+        }
+
+        changed
+    }
+}
+
+// ============================================================================
+// And-Chain CSE Pass (v0.100.1)
+// ============================================================================
+
+/// CSE for duplicate pure load calls across consecutive `and` chain blocks.
+///
+/// BMB's short-circuit `and` lowering creates separate basic blocks for each
+/// operand. This prevents LLVM GVN from eliminating duplicate calls when the
+/// same pure load appears in consecutive `and_rhs_*` blocks:
+///
+/// ```text
+/// and_rhs_N:  %t1 = call load_u8(%addr)   ; first load
+///             Goto(and_merge_K)
+/// and_false_N: Goto(and_merge_K)
+/// and_merge_K: %phi = Phi(%t1_result, false) → Branch(phi, and_rhs_P, ...)
+/// and_rhs_P:  %t4 = call load_u8(%addr)   ; DUPLICATE — t4 always equals t1 here
+/// ```
+///
+/// Fix: add a phi for `%t1` in `and_merge_K`, replace duplicate call with Copy.
+///
+/// ```text
+/// and_merge_K: %phi = Phi(%t1_result, false)
+///              %cse_phi = Phi(%t1, 0)          ← NEW
+///              Branch(phi, and_rhs_P, ...)
+/// and_rhs_P:  %t4 = Copy(%cse_phi)             ← REPLACED
+/// ```
+///
+/// Safety: `and_rhs_P` is only reachable when `phi = true`, which means
+/// execution came through `and_rhs_N` (the only true-valued predecessor).
+/// So `%t1` was definitely computed and `%cse_phi` holds its value.
+pub struct AndChainCSE;
+
+impl AndChainCSE {
+    /// Build a canonical-form map for each temporary defined in a block.
+    ///
+    /// Canonical forms:
+    /// - Param/outer var: `var:{name}` or `param:{name}`
+    /// - Const: `const:{debug_repr}`
+    /// - BinOp: `binop:{op:?}:{lhs_canon}:{rhs_canon}`
+    /// - Copy: same canonical as source
+    fn build_canonical_map(block: &BasicBlock, params: &HashSet<String>) -> HashMap<String, String> {
+        let mut cmap: HashMap<String, String> = HashMap::new();
+        for p in params {
+            cmap.insert(p.clone(), format!("param:{}", p));
+        }
+        for inst in &block.instructions {
+            match inst {
+                MirInst::BinOp { dest, op, lhs, rhs } => {
+                    let lk = Self::operand_canon(lhs, &cmap);
+                    let rk = Self::operand_canon(rhs, &cmap);
+                    cmap.insert(dest.name.clone(), format!("binop:{:?}:{}:{}", op, lk, rk));
+                }
+                MirInst::Copy { dest, src } => {
+                    let sk = cmap.get(&src.name)
+                        .cloned()
+                        .unwrap_or_else(|| format!("var:{}", src.name));
+                    cmap.insert(dest.name.clone(), sk);
+                }
+                MirInst::Const { dest, value } => {
+                    cmap.insert(dest.name.clone(), format!("const:{:?}", value));
+                }
+                _ => {}
+            }
+        }
+        cmap
+    }
+
+    fn operand_canon(op: &Operand, cmap: &HashMap<String, String>) -> String {
+        match op {
+            Operand::Place(p) => cmap.get(&p.name)
+                .cloned()
+                .unwrap_or_else(|| format!("var:{}", p.name)),
+            Operand::Constant(c) => format!("const:{:?}", c),
+        }
+    }
+
+    fn call_canon(fn_name: &str, args: &[Operand], cmap: &HashMap<String, String>) -> String {
+        let arg_keys: Vec<String> = args.iter().map(|a| Self::operand_canon(a, cmap)).collect();
+        format!("call:{}:{}", fn_name, arg_keys.join(","))
+    }
+
+    fn is_cse_eligible_load(fn_name: &str) -> bool {
+        matches!(fn_name, "load_u8" | "load_i64" | "load_i32" | "load_f64" | "load_f32")
+    }
+}
+
+impl OptimizationPass for AndChainCSE {
+    fn name(&self) -> &'static str {
+        "and_chain_cse"
+    }
+
+    fn run_on_function(&self, func: &mut MirFunction) -> bool {
+        let mut changed = false;
+        let params: HashSet<String> = func.params.iter().map(|(n, _)| n.clone()).collect();
+
+        // Phase 1: Collect pure load calls in each `and_rhs_*` block.
+        // Map: block_label → (load_dest_place, call_canonical_key)
+        let mut and_rhs_loads: HashMap<String, (Place, String)> = HashMap::new();
+
+        for block in &func.blocks {
+            if !block.label.contains("and_rhs") {
+                continue;
+            }
+            let cmap = Self::build_canonical_map(block, &params);
+            for inst in &block.instructions {
+                if let MirInst::Call { dest: Some(dest), func: fn_name, args, .. } = inst {
+                    if Self::is_cse_eligible_load(fn_name) && args.len() == 1 {
+                        let key = Self::call_canon(fn_name, args, &cmap);
+                        and_rhs_loads.insert(block.label.clone(), (dest.clone(), key));
+                        break; // one load per and_rhs block is enough
+                    }
+                }
+            }
+        }
+
+        // Phase 2: Find `and_merge_*` blocks that bridge two `and_rhs_*` blocks
+        // where both have the same canonical load call.
+        struct PendingTransform {
+            merge_block_idx: usize,
+            rhs_n_label: String,   // first and_rhs block (supplies t1)
+            false_label: String,   // and_false block (supplies dummy)
+            rhs_p_label: String,   // second and_rhs block (has duplicate load)
+            load_t1: Place,        // first load result
+            load_t4: Place,        // duplicate load result to replace
+        }
+
+        let mut transforms: Vec<PendingTransform> = Vec::new();
+
+        for (block_idx, block) in func.blocks.iter().enumerate() {
+            if !block.label.contains("and_merge") {
+                continue;
+            }
+
+            // Extract predecessor labels from the first phi in this block.
+            let mut rhs_n_label: Option<String> = None;
+            let mut false_label: Option<String> = None;
+            for inst in &block.instructions {
+                if let MirInst::Phi { values, .. } = inst {
+                    for (_, src_label) in values {
+                        if src_label.contains("and_rhs") {
+                            rhs_n_label = Some(src_label.clone());
+                        } else if src_label.contains("and_false") {
+                            false_label = Some(src_label.clone());
+                        }
+                    }
+                    break; // first phi is enough
+                }
+            }
+
+            let (rhs_n_label, false_label) = match (rhs_n_label, false_label) {
+                (Some(a), Some(b)) => (a, b),
+                _ => continue,
+            };
+
+            // This merge block must branch (then_label) to another and_rhs block.
+            let rhs_p_label = match &block.terminator {
+                Terminator::Branch { then_label, .. } if then_label.contains("and_rhs") => {
+                    then_label.clone()
+                }
+                _ => continue,
+            };
+
+            // Both and_rhs blocks must have a load with the same canonical key.
+            let (load_t1, key_n) = match and_rhs_loads.get(&rhs_n_label) {
+                Some(x) => x.clone(),
+                None => continue,
+            };
+            let (load_t4, key_p) = match and_rhs_loads.get(&rhs_p_label) {
+                Some(x) => x.clone(),
+                None => continue,
+            };
+
+            if key_n != key_p {
+                continue;
+            }
+
+            transforms.push(PendingTransform {
+                merge_block_idx: block_idx,
+                rhs_n_label,
+                false_label,
+                rhs_p_label,
+                load_t1,
+                load_t4,
+            });
+        }
+
+        // Phase 3: Apply transformations.
+        let mut phi_counter = 0u32;
+        for t in transforms {
+            phi_counter += 1;
+            let phi_name = format!("_and_cse_{}", phi_counter);
+
+            // 3a: Insert a new phi after existing phis in the merge block.
+            let insert_pos = func.blocks[t.merge_block_idx]
+                .instructions
+                .iter()
+                .take_while(|i| matches!(i, MirInst::Phi { .. }))
+                .count();
+            func.blocks[t.merge_block_idx].instructions.insert(
+                insert_pos,
+                MirInst::Phi {
+                    dest: Place::new(phi_name.clone()),
+                    values: vec![
+                        (Operand::Place(t.load_t1.clone()), t.rhs_n_label.clone()),
+                        (Operand::Constant(Constant::Int(0)), t.false_label.clone()),
+                    ],
+                },
+            );
+            // Register in locals so codegen knows the type.
+            func.locals.push((phi_name.clone(), MirType::I64));
+
+            // 3b: In and_rhs_P, replace the duplicate load with Copy of the new phi.
+            if let Some(rhs_p_idx) = func.blocks.iter().position(|b| b.label == t.rhs_p_label) {
+                for inst in &mut func.blocks[rhs_p_idx].instructions {
+                    if let MirInst::Call { dest: Some(dest), func: fn_name, .. } = inst {
+                        if Self::is_cse_eligible_load(fn_name) && dest.name == t.load_t4.name {
+                            *inst = MirInst::Copy {
+                                dest: dest.clone(),
+                                src: Place::new(phi_name.clone()),
+                            };
+                            changed = true;
+                            break;
+                        }
+                    }
+                }
+            }
         }
 
         changed
@@ -20193,6 +20429,210 @@ mod tests {
     fn test_global_field_access_cse_name() {
         let pass = GlobalFieldAccessCSE;
         assert_eq!(pass.name(), "global_field_access_cse");
+    }
+
+    // =========================================================================
+    // AndChainCSE tests (v0.100.1)
+    // =========================================================================
+
+    fn make_and_chain_func() -> MirFunction {
+        // Simulates: while pos < len and load_u8(ptr+pos) != 10 and load_u8(ptr+pos) != 13
+        //
+        // and_rhs_0:   %t0 = Add(ptr, pos); %t1 = load_u8(%t0); %t2 = Ne(%t1, 10) → and_merge_0
+        // and_false_0: → and_merge_0
+        // and_merge_0: %phi0 = Phi(%t2, false) → Branch(%phi0, and_rhs_1, and_false_1)
+        // and_rhs_1:   %t3 = Add(ptr, pos); %t4 = load_u8(%t3); %t5 = Ne(%t4, 13) → and_merge_1
+        // and_false_1: → and_merge_1
+        // and_merge_1: %phi1 = Phi(%t5, false) → Return
+        MirFunction {
+            name: "skip_chars".to_string(),
+            params: vec![
+                ("ptr".to_string(), MirType::I64),
+                ("pos".to_string(), MirType::I64),
+                ("len".to_string(), MirType::I64),
+            ],
+            ret_ty: MirType::Bool,
+            locals: vec![
+                ("t0".to_string(), MirType::I64),
+                ("t1".to_string(), MirType::I64),
+                ("t2".to_string(), MirType::Bool),
+                ("phi0".to_string(), MirType::Bool),
+                ("t3".to_string(), MirType::I64),
+                ("t4".to_string(), MirType::I64),
+                ("t5".to_string(), MirType::Bool),
+                ("phi1".to_string(), MirType::Bool),
+            ],
+            blocks: vec![
+                BasicBlock {
+                    label: "and_rhs_0".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("t0"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("ptr")),
+                            rhs: Operand::Place(Place::new("pos")),
+                        },
+                        MirInst::Call {
+                            dest: Some(Place::new("t1")),
+                            func: "load_u8".to_string(),
+                            args: vec![Operand::Place(Place::new("t0"))],
+                            is_tail: false,
+                        },
+                        MirInst::BinOp {
+                            dest: Place::new("t2"),
+                            op: MirBinOp::Ne,
+                            lhs: Operand::Place(Place::new("t1")),
+                            rhs: Operand::Constant(Constant::Int(10)),
+                        },
+                    ],
+                    terminator: Terminator::Goto("and_merge_0".to_string()),
+                },
+                BasicBlock {
+                    label: "and_false_0".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("and_merge_0".to_string()),
+                },
+                BasicBlock {
+                    label: "and_merge_0".to_string(),
+                    instructions: vec![MirInst::Phi {
+                        dest: Place::new("phi0"),
+                        values: vec![
+                            (Operand::Place(Place::new("t2")), "and_rhs_0".to_string()),
+                            (Operand::Constant(Constant::Bool(false)), "and_false_0".to_string()),
+                        ],
+                    }],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("phi0")),
+                        then_label: "and_rhs_1".to_string(),
+                        else_label: "and_false_1".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "and_rhs_1".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("t3"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("ptr")),
+                            rhs: Operand::Place(Place::new("pos")),
+                        },
+                        MirInst::Call {
+                            dest: Some(Place::new("t4")),
+                            func: "load_u8".to_string(),
+                            args: vec![Operand::Place(Place::new("t3"))],
+                            is_tail: false,
+                        },
+                        MirInst::BinOp {
+                            dest: Place::new("t5"),
+                            op: MirBinOp::Ne,
+                            lhs: Operand::Place(Place::new("t4")),
+                            rhs: Operand::Constant(Constant::Int(13)),
+                        },
+                    ],
+                    terminator: Terminator::Goto("and_merge_1".to_string()),
+                },
+                BasicBlock {
+                    label: "and_false_1".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("and_merge_1".to_string()),
+                },
+                BasicBlock {
+                    label: "and_merge_1".to_string(),
+                    instructions: vec![MirInst::Phi {
+                        dest: Place::new("phi1"),
+                        values: vec![
+                            (Operand::Place(Place::new("t5")), "and_rhs_1".to_string()),
+                            (Operand::Constant(Constant::Bool(false)), "and_false_1".to_string()),
+                        ],
+                    }],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("phi1")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            no_inline: false,
+            is_memory_free: false,
+            is_read_only: false,
+            is_export: false,
+        }
+    }
+
+    #[test]
+    fn test_and_chain_cse_eliminates_duplicate_load() {
+        let mut func = make_and_chain_func();
+        let pass = AndChainCSE;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed, "AndChainCSE should eliminate the duplicate load_u8");
+
+        // and_rhs_1 should now have Copy instead of Call(load_u8)
+        let and_rhs_1 = func.blocks.iter().find(|b| b.label == "and_rhs_1").unwrap();
+        let t4_inst = and_rhs_1.instructions.iter().find(|i| {
+            matches!(i, MirInst::Copy { dest, .. } if dest.name == "t4")
+        });
+        assert!(t4_inst.is_some(), "t4 should be a Copy after AndChainCSE, not a Call");
+
+        // No load_u8 call remaining for t4
+        let still_call = and_rhs_1.instructions.iter().any(|i| {
+            matches!(i, MirInst::Call { dest: Some(d), func: f, .. } if d.name == "t4" && f == "load_u8")
+        });
+        assert!(!still_call, "load_u8 call for t4 should have been replaced");
+    }
+
+    #[test]
+    fn test_and_chain_cse_adds_phi_to_merge_block() {
+        let mut func = make_and_chain_func();
+        let pass = AndChainCSE;
+        pass.run_on_function(&mut func);
+
+        // and_merge_0 should have 2 phi instructions now (original + new CSE phi)
+        let and_merge_0 = func.blocks.iter().find(|b| b.label == "and_merge_0").unwrap();
+        let phi_count = and_merge_0
+            .instructions
+            .iter()
+            .filter(|i| matches!(i, MirInst::Phi { .. }))
+            .count();
+        assert_eq!(phi_count, 2, "and_merge_0 should have 2 phis after AndChainCSE");
+
+        // The new phi should carry t1 from and_rhs_0
+        let cse_phi = and_merge_0.instructions.iter().find(|i| {
+            if let MirInst::Phi { values, .. } = i {
+                values.iter().any(|(v, src)| {
+                    src == "and_rhs_0" && matches!(v, Operand::Place(p) if p.name == "t1")
+                })
+            } else {
+                false
+            }
+        });
+        assert!(cse_phi.is_some(), "CSE phi should carry t1 from and_rhs_0");
+    }
+
+    #[test]
+    fn test_and_chain_cse_different_loads_no_change() {
+        // and_rhs_0 loads from ptr+pos, and_rhs_1 loads from ptr+pos2 — should NOT be CSE'd
+        let mut func = make_and_chain_func();
+        // Change the arg in and_rhs_1 to use a different offset variable
+        let and_rhs_1 = func.blocks.iter_mut().find(|b| b.label == "and_rhs_1").unwrap();
+        // Change %t3 = Add(ptr, pos) → Add(ptr, len) (different second arg)
+        and_rhs_1.instructions[0] = MirInst::BinOp {
+            dest: Place::new("t3"),
+            op: MirBinOp::Add,
+            lhs: Operand::Place(Place::new("ptr")),
+            rhs: Operand::Place(Place::new("len")),  // different var
+        };
+
+        let pass = AndChainCSE;
+        let changed = pass.run_on_function(&mut func);
+        assert!(!changed, "AndChainCSE should NOT CSE loads with different addresses");
+    }
+
+    #[test]
+    fn test_and_chain_cse_name() {
+        let pass = AndChainCSE;
+        assert_eq!(pass.name(), "and_chain_cse");
     }
 
     // --- ContractUnreachableElimination name ---

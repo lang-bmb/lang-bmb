@@ -24,7 +24,7 @@ pub use optimize::{
     CopyPropagation, CommonSubexpressionElimination, ContractBasedOptimization,
     ContractUnreachableElimination, PureFunctionCSE, ConstFunctionEval,
     ConstantPropagationNarrowing, LoopBoundedNarrowing, AggressiveInlining,
-    LinearRecurrenceToLoop,
+    LinearRecurrenceToLoop, AndChainCSE,
 };
 pub use proof_guided::{
     BoundsCheckElimination, NullCheckElimination, DivisionCheckElimination,
