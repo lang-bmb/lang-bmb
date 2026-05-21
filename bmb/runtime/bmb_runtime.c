@@ -1366,7 +1366,9 @@ int64_t char_at(const BmbString* s, int64_t index) {
 }
 
 // v0.98.9: str_char_at → String (single-character string, Cycle 2880)
-BmbString* bmb_str_char_at(const BmbString* s, int64_t index) {
+// Renamed bmb_str_char_at_str (from bmb_str_char_at) to avoid collision with
+// the bmb-text library's FFI export of the same name (which returns i64).
+BmbString* bmb_str_char_at_str(const BmbString* s, int64_t index) {
     char c = (s && s->data && index >= 0 && index < s->len) ? s->data[index] : '\0';
     char* data = (char*)bmb_alloc(2);
     data[0] = c;

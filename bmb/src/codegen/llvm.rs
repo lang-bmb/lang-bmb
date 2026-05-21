@@ -1439,7 +1439,7 @@ impl<'ctx> LlvmContext<'ctx> {
         reg_str_fn!("str_trim_left",  "bmb_string_trim_left",  s1_ptr);
         reg_str_fn!("str_trim_right", "bmb_string_trim_right", s1_ptr);
         reg_str_fn!("str_reverse",    "bmb_string_reverse",    s1_ptr);
-        reg_str_fn!("str_char_at",    "bmb_str_char_at",       s_i64_ptr);
+        reg_str_fn!("str_char_at",    "bmb_str_char_at_str",   s_i64_ptr);
         reg_str_fn!("str_substr",     "bmb_string_substr",     s_i64_i64_ptr);
         reg_str_fn!("str_pad_left",   "bmb_str_pad_left",      s_i64_s_ptr);
         reg_str_fn!("str_pad_right",  "bmb_str_pad_right",     s_i64_s_ptr);
