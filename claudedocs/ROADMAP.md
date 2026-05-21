@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-21 (Cycles 3007-3010 — **GPUStack B-axis 100% PASS**: 300/300, Median Loops=1. dashboard.py Unicode 수정 + 24_sorted_insert set/loop 패턴 수정 + 측정값 저장. HEAD `f37e651a`.)
+> 최종 업데이트: 2026-05-21 (Cycles 3007-3016 — **v0.100.0 + M3 ✅ COMPLETE + GPUStack B-axis 100%** (300/300). M4 dev tasks 전체 ✅. HEAD `9aeef2b3`.)
 > 이전 갱신: 2026-05-21 (Cycles 2999-3002 — **api-key test + publish 준비**: GPUStack pilot 3/3 ✅ + 04_fibonacci CRITICAL 노트 loop=1 ✅. M3-3 npm ✅ 이미 완료. 서브모듈 미push CI 버그 수정. HEAD `e5855d29`.)
 > 이전 갱신: 2026-05-20 (Cycles 2991-2994 — **ISSUE triage + 품질 마무리**: 4개 stale ISSUE 현황 갱신, clang-knapsack-outlier CLOSED, cycle-logs/ROADMAP.md 재작성, 35_sieve_primes 노트 수정. HEAD `f62ca373`.)
 > 이전 갱신: 2026-05-20 (Cycles 2981-2990 — **GPUStack 3-run 공식 99.7% (299/300) 달성**. else-if 체인 `;` 패턴 발견+13개 problem.md 수정. 6260 tests ✅. HEAD `474f2d04`.)
