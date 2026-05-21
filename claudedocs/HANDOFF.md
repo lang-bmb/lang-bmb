@@ -1,64 +1,76 @@
-# BMB Session Handoff — 2026-05-21 (Cycles 3007-3016 — GPUStack B-axis 100% PASS)
+# BMB Session Handoff — 2026-05-21 (Cycles 3017-3026 — P-track 7/7 전부 BMB faster)
 
-> **HEAD**: `9aeef2b3` (Cycles 3007-3016 — GPUStack B-axis 100% + M3 COMPLETE + v0.100.0)
+> **HEAD**: `088fe077` (Cycles 3017-3026 — P-track 전체 최적화: brainfuck+csv+http 대폭 개선)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 3017
+> **다음 세션 진입점**: Cycle 3027
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 3007-3016)
+## 이번 세션 작업 요약 (Cycles 3017-3026)
 
 ### 주요 변경 사항
 
 | Cycle | 제목 | 내용 |
 |-------|------|------|
-| 3007 | v0.100.0 선언 + GPUStack 설정 확인 | Cargo.toml 0.98.0→0.100.0, CHANGELOG 추가, 연결 확인 |
-| 3008 | Full B-axis run 시작 (100문제×3) | bmb-ai-bench results/2026-05-21/ 배경 실행 |
-| 3009 | 파일럿 3문제 재검증 | 01/30/86 모두 PASS — 이전 실패는 노이즈 확인 |
-| 3010 | **Full B-axis 100% PASS** | 300/300, Median Loops=1. dashboard.py Unicode fix, 24_sorted_insert 수정 |
-| 3011 | ROADMAP/측정값 갱신 | summary.json 저장, ROADMAP §5 갱신, 비교 표 추가 |
-| 3012 | ISSUE triage | multi-model-validation·integration-category-weakness 갱신 |
-| 3013 | ROADMAP M3/M4 현황 갱신 | M3 ✅ COMPLETE, M4 ~45%, 버전 0.100.0 |
-| 3014 | 커밋 준비 | 변경 파일 목록 확인, 테스트 통과 확인 |
-| 3015 | HANDOFF 갱신 | (이 문서) |
-| 3016 | 세션 종료 커밋 | 21개 파일, 583 insertions — HEAD `96e05300` |
+| 3017 | P-track 측정 + 최적화 기회 탐색 | 7/7 PASS, brainfuck 1.037× borderline, memset_fill 기회 발견 |
+| 3018 | memset_fill 빌트인 추가 | runtime.c + 4개 Rust 소스, brainfuck 1.037×→0.974× |
+| 3019 | P-track 전체 재측정 + ROADMAP 갱신 | 7/7 PASS 확인, ROADMAP §5 갱신 |
+| 3020 | brainfuck match dispatch 최적화 | if-else chain → match (switch IR) + byte_at 직접 접근, 0.958× |
+| 3021 | brainfuck band 255 branchless | % 256 → band 255, if v==0 제거, 1.037×→**0.956×** (누적) |
+| 3022 | csv_parse single-load 최적화 | and-chain 이중 load → break-based, 1.018×→**0.891×** |
+| 3023 | http_parse single-load 최적화 + 전체 재측정 | 4곳 이중-load 제거, 0.938×→**0.909×**. 7/7 전부 BMB faster |
+| 3024 | MIR CSE ISSUE 등록 + 탐색 | ISSUE-20260521-mir-cse-and-chain.md (P2) |
+| 3025 | lexer 알고리즘 분석 + P-track 검증 | lexer 0.169× = 알고리즘 우위 확인 |
+| 3026 | HANDOFF 갱신 + 최종 commit | (이 문서) |
 
 ### 핵심 결과
 
-| 항목 | 이전 | 이후 |
-|------|------|------|
-| BMB 버전 | 0.98.0 | **0.100.0** |
-| GPUStack B-axis | 99.7% (299/300) | **100.0% (300/300)** |
-| M3 상태 | ~99% | **✅ COMPLETE** |
-| M4 상태 | ~40% | ~45% (dev tasks 전체 ✅) |
+| 항목 | 세션 시작 | 세션 종료 |
+|------|---------|---------|
+| brainfuck | 1.037× ⚠️ | **0.956×** ✅ BMB faster |
+| csv_parse | 1.018× ⚠️ | **0.891×** ✅ BMB faster |
+| http_parse | 0.938× ✅ | **0.909×** ✅ 개선 |
+| lexer | 0.175× ✅ | **0.169×** ✅ 안정 |
+| json_parse | 0.815× ✅ | **0.822×** ✅ 안정 |
+| json_serialize | 0.701× ✅ | **0.668×** ✅ 안정 |
+| sorting | 0.154× ✅ | **0.154×** ✅ 안정 |
 
-### 파일 변경 목록
+**P-track 7/7: 세션 전후 모두 PASS. 3개 벤치마크 대폭 개선 (brainfuck -8.1pp, csv -12.7pp, http -2.9pp).**
+
+### 신규 빌트인: memset_fill(ptr, val, count) -> i64
 
 | 파일 | 변경 내용 |
 |------|---------|
-| `Cargo.toml` | v0.98.0 → v0.100.0 |
-| `CHANGELOG.md` | v0.100.0 M3 COMPLETE 항목 추가 |
-| `claudedocs/ROADMAP.md` | M3 COMPLETE, M4 ~45%, GPUStack 100.0%, 버전 0.100.0 |
-| `claudedocs/issues/ISSUE-20260326-multi-model-validation.md` | 99.7% → 100.0% |
-| `claudedocs/issues/ISSUE-20260326-integration-category-weakness.md` | 100% PASS 갱신 |
-| `ecosystem/bmb-ai-bench/bmb_ai_bench/analysis/dashboard.py` | Unicode `≤`/`×` → ASCII |
-| `ecosystem/bmb-ai-bench/problems/24_sorted_insert/problem.md` | BMB Notes + set 패턴 수정 |
-| `ecosystem/bmb-ai-bench/problems/24_sorted_insert/solution.bmb` | set 키워드 누락 수정 |
-| `ecosystem/bmb-ai-bench/pyproject.toml` | packages.find 추가 |
-| `claudedocs/cycle-logs/cycle-3007~3016.md` | 신규 사이클 로그 10개 |
-| `claudedocs/measurements/b_baseline_2026-05-21_c3010_qwen3.json` | 측정값 저장 |
+| `bmb/runtime/bmb_runtime.c` | `bmb_memset` + `memset_fill` alias 추가 |
+| `bmb/src/types/mod.rs` | 타입 등록 `[I64, I64, I64] -> I64` |
+| `bmb/src/codegen/llvm_text.rs` | IR 선언 `nocallback nounwind` |
+| `bmb/src/mir/mod.rs` | 반환 타입 등록 |
+| `bmb/src/codegen/llvm.rs` | inkwell backend 선언 (Rule 7 패리티) |
+
+### 최적화 패턴 (재사용 가능)
+
+1. **memset_fill 단일 alloc 패턴**: calloc×N → calloc×1 + memset_fill×N (per-iter 할당 제거)
+2. **match dispatch 패턴**: chained if-else → `match c { 62 => ..., _ => 0 }` (LLVM switch)
+3. **band 255 wrapping**: `(v + 1) % 256` → `(v + 1) band 255` (and i64 255, 분기 제거)
+4. **single-load break 패턴**: `while _ and load_u8(ptr+p) != X and load_u8(ptr+p) != Y` → break-based 단일 load
+
+### 신규 ISSUE
+
+| ISSUE | 우선순위 | 요약 |
+|-------|---------|------|
+| ISSUE-20260521-mir-cse-and-chain | P2 | BMB `and/or` 체인 내 동일 load_u8 CSE 최적화 |
 
 ---
 
-## 다음 세션 (Cycle 3017+)
+## 다음 세션 (Cycle 3027+)
 
 ### 권장 우선순위
 
-1. **M4 채택 지표** — GitHub stars, 외부 PR, 외부 프로젝트 추적
-2. **P-track** — real-world 7/7 결과 유지, 새 최적화 기회 탐색
+1. **MIR CSE 개선** (P2) — ISSUE-20260521-mir-cse-and-chain: `and/or` 체인 내 동일 subexpression 자동 CSE → 사용자가 break-based 패턴 강제 없이도 자동 최적화
+2. **M4 채택 지표** — GitHub stars, 외부 PR, 외부 프로젝트 추적 (HUMAN-blocked 잔여)
 3. **B축 Claude 재측정** — 98.0% stale 기한 2026-08-13 (아직 여유)
-4. **언어 기능** — BMB B-axis 100% 달성 → 다음 언어 완성도 갭 식별
+4. **Tier 1 벤치마크** — binary_trees/fasta/mandelbrot 등 최신 측정 확인
 
 ### 알려진 HUMAN-blocked 항목
 
@@ -67,10 +79,11 @@
 - problem-difficulty-bias 신규 hard 문제 20개
 - crosslang 측정 (stale)
 
-### ISSUE 현황
+### ISSUE 현황 (Active 6개)
 
 | ISSUE | 상태 | 우선순위 |
 |-------|------|---------|
+| **mir-cse-and-chain** | OPEN | **P2** (신규) |
 | multi-model-validation | PARTIALLY RESOLVED | MEDIUM |
 | external-problem-validation | PARTIALLY RESOLVED | MEDIUM |
 | integration-category-weakness | PARTIALLY RESOLVED | LOW |
@@ -81,11 +94,12 @@
 
 - `else if` 체인 세미콜론: statement 위치에서 `};` 필수 (Cycle 2984 발견)
 - `fn main() -> i64 = { ... };` 끝에 `;` 필수 (Cycle 2986 발견)
+- `match`: integer literal, char literal, OR pattern (`a | b => ...`) 지원
+- `match` arm body: block + comma 필요 (`{ expr }` 후 `,` 필수, 마지막 arm 제외)
+- `band`/`bor`/`bxor`/`bnot`: bitwise 연산자 지원
 - `break`/`continue`/`return`: ✅ 지원 (단, break는 while에서만)
 - `&&`/`||` short-circuit: ✅ 완전 지원 (Cycle 2965)
-- `vec_pop`: ✅ `i64` 반환 (제거된 요소)
-- `vec_push`: i64 반환 (branch 타입 불일치 시 `let _p = vec_push(...)`)
-- `set` 키워드: mutable 변수 업데이트에 필수
+- `memset_fill(ptr, val, count)`: ✅ native-only builtin (v0.100.1 신규)
 
 ### B-axis 상태
 
