@@ -1270,6 +1270,8 @@ impl TextCodeGen {
         writeln!(out, "; Runtime declarations - Low-level memory access")?;
         writeln!(out, "declare i64 @load_u8(i64) nocallback nofree nosync memory(read) nounwind willreturn speculatable")?;
         writeln!(out, "declare void @store_u8(i64, i64) nocallback nofree nosync memory(write) nounwind willreturn")?;
+        // v0.100.1: memset_fill(ptr, val, count) -> i64 (fill memory block, C memset wrapper)
+        writeln!(out, "declare i64 @memset_fill(i64, i64, i64) nocallback nounwind")?;
         writeln!(out, "declare i64 @str_data(ptr nocapture readonly) nocallback nofree nosync memory(argmem: read) nounwind willreturn speculatable")?;
         writeln!(out)?;
 

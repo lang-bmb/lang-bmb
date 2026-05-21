@@ -1135,6 +1135,7 @@ impl LoweringContext {
         func_return_types.insert("store_i32".to_string(), MirType::I64);
         func_return_types.insert("store_f32".to_string(), MirType::I64);
         func_return_types.insert("store_u8".to_string(), MirType::I64);
+        func_return_types.insert("memset_fill".to_string(), MirType::I64);
 
         Self {
             temp_counter: 0,

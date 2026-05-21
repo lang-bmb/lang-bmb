@@ -1075,6 +1075,12 @@ impl<'ctx> LlvmContext<'ctx> {
         store_u8_fn.add_attribute(AttributeLoc::Function, willreturn_attr);
         self.functions.insert("store_u8".to_string(), store_u8_fn);
 
+        // v0.100.1: memset_fill(ptr, val, count) -> i64 - fill memory block with byte value
+        let memset_fill_type = i64_type.fn_type(&[i64_type.into(), i64_type.into(), i64_type.into()], false);
+        let memset_fill_fn = self.module.add_function("memset_fill", memset_fill_type, None);
+        memset_fill_fn.add_attribute(AttributeLoc::Function, nounwind_attr);
+        self.functions.insert("memset_fill".to_string(), memset_fill_fn);
+
         // v0.60.58: load_i32(addr: i64) -> i64 - read 32-bit signed integer, sign-extended
         let load_i32_type = i64_type.fn_type(&[i64_type.into()], false);
         let load_i32_fn = self.module.add_function("load_i32", load_i32_type, None);

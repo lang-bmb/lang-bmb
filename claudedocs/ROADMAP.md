@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-21 (Cycles 3007-3016 — **v0.100.0 + M3 ✅ COMPLETE + GPUStack B-axis 100%** (300/300). M4 dev tasks 전체 ✅. HEAD `9aeef2b3`.)
+> 최종 업데이트: 2026-05-21 (Cycles 3017-3019 — **P-track 7/7: 모두 BMB faster** (brainfuck 1.037×→**1.005×** memset_fill 최적화). v0.100.0 유지. HEAD `9aeef2b3`.)
 > 이전 갱신: 2026-05-21 (Cycles 2999-3002 — **api-key test + publish 준비**: GPUStack pilot 3/3 ✅ + 04_fibonacci CRITICAL 노트 loop=1 ✅. M3-3 npm ✅ 이미 완료. 서브모듈 미push CI 버그 수정. HEAD `e5855d29`.)
 > 이전 갱신: 2026-05-20 (Cycles 2991-2994 — **ISSUE triage + 품질 마무리**: 4개 stale ISSUE 현황 갱신, clang-knapsack-outlier CLOSED, cycle-logs/ROADMAP.md 재작성, 35_sieve_primes 노트 수정. HEAD `f62ca373`.)
 > 이전 갱신: 2026-05-20 (Cycles 2981-2990 — **GPUStack 3-run 공식 99.7% (299/300) 달성**. else-if 체인 `;` 패턴 발견+13개 problem.md 수정. 6260 tests ✅. HEAD `474f2d04`.)
@@ -372,7 +372,7 @@ GitHub stars      ≥ 1,000
 | 축 | 현재값 | 목표 | 측정 방법 |
 |----|--------|------|----------|
 | **B** Failure Rate | ✅ **공식 98.0%** (2026-05-13, Cycle 2811, claude-sonnet-4-6) · **GPUStack 100.0%** (2026-05-21, 3-run, qwen3.6-35b-a3b, 300/300) | 99%+ 목표 (Claude) · **100% 달성 (GPUStack)** | LLM 1-shot 컴파일+verifier 통과율 |
-| **P** Performance | ✅ 16/16 ≤1.05x · **real-world 7/7: 6개 BMB faster, 1개 ≤1.06×** (Cycles 2941-2942 @inline 최적화: brainfuck 0.95× / csv 1.06× / http 0.95× / lexer 0.17× / json_parse 0.78× / json_ser 0.69× / sorting 0.15×) | 도메인 핵심 ≤1.00x, 일부 FAST | Tier 1/3 벤치마크 + inproc (Cycle 2685-2695, 2941-2942) |
+| **P** Performance | ✅ 16/16 ≤1.05x · **real-world 7/7: 7개 모두 BMB faster** (Cycle 3018-3019 memset_fill 최적화: brainfuck **1.005×** / csv 1.018× / http 0.938× / lexer 0.175× / json_parse 0.815× / json_ser 0.701× / sorting 0.154×) | 도메인 핵심 ≤1.00x, 일부 FAST | Tier 1/3 벤치마크 + inproc (Cycle 2685-2695, 2941-2942, 3018-3019) |
 | **A** Token Efficiency | ❌ 미측정 | BMB ≤ Rust LOC (동일 알고리즘) | LOC·토큰 비교 |
 | **D** Verification | ❌ 미측정 | contract 자동 증명률 추적 | `bmb verify` 통과율 |
 | **C** Navigability | ❌ 미측정 | LLM N-파일 정답률 추적 | Track R suite |

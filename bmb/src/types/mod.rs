@@ -529,6 +529,8 @@ impl TypeChecker {
         // load_u8(ptr: i64) -> i64 (read single byte from memory)
         functions.insert("load_u8".to_string(), (vec![Type::I64], Type::I64));
         functions.insert("store_u8".to_string(), (vec![Type::I64, Type::I64], Type::I64));
+        // v0.100.1: memset_fill(ptr, val, count) -> i64 (fill memory block with byte value)
+        functions.insert("memset_fill".to_string(), (vec![Type::I64, Type::I64, Type::I64], Type::I64));
         // v0.60.58: 32-bit integer intrinsics for efficient struct packing
         // load_i32(ptr: i64) -> i64 (read 32-bit signed integer, sign-extended to i64)
         functions.insert("load_i32".to_string(), (vec![Type::I64], Type::I64));

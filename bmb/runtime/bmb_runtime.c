@@ -1135,6 +1135,12 @@ int64_t bmb_calloc(int64_t count, int64_t size) {
     return (int64_t)calloc((size_t)count, (size_t)size);
 }
 
+// memset wrapper (fills memory with byte value, returns 0)
+int64_t bmb_memset(int64_t ptr, int64_t val, int64_t count) {
+    memset((void*)ptr, (int)val, (size_t)count);
+    return 0;
+}
+
 // Box convenience
 int64_t bmb_box_new_i64(int64_t value) {
     int64_t* ptr = (int64_t*)malloc(sizeof(int64_t));
@@ -1478,6 +1484,11 @@ int64_t load_u8(int64_t ptr) {
 
 void store_u8(int64_t ptr, int64_t value) {
     bmb_store_u8(ptr, value);
+}
+
+// v0.100.1: memset wrapper (fills memory block with byte value)
+int64_t memset_fill(int64_t ptr, int64_t val, int64_t count) {
+    return bmb_memset(ptr, val, count);
 }
 
 // v0.90.3: Unprefixed aliases for bootstrap compatibility
