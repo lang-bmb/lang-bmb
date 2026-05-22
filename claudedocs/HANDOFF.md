@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-22 (Cycle 3033 — println dispatch 버그 수정 + M5/M6 계획)
 
-> **HEAD**: `(Cycle 3033 커밋 후 갱신 필요)` (Cycle 3033 — println dispatch fix + M5/M6 계획 수립)
+> **HEAD**: `fe51af7b` (Cycle 3033 — println dispatch fix + M5/M6 계획 수립)
 > **이전 HEAD**: `25972701` (Cycles 3031-3032)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930)
 > **실무 앵커**: `claudedocs/ROADMAP.md`

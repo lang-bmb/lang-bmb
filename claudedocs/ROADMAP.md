@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-22 (Cycle 3033 — **println dispatch 버그 수정 + M5/M6 계획 수립**: `println(string_returning_fn(...))` native 버그 수정 (mir/lower.rs MirType::String 17종 추가). M5 Native Complete 정의 + M6 Full Dogfooding (완전 자체구현) 계획. HEAD `(갱신 예정)`.)
+> 최종 업데이트: 2026-05-22 (Cycle 3033 — **println dispatch 버그 수정 + M5/M6 계획 수립**: `println(string_returning_fn(...))` native 버그 수정 (mir/lower.rs MirType::String 17종 추가). M5 Native Complete 정의 + M6 Full Dogfooding (완전 자체구현) 계획. HEAD `fe51af7b`.)
 > 이전 갱신: 2026-05-22 (Cycles 3031-3032 — **P-track 7/7 재측정 + 조기 종료**: brainfuck 0.941×/csv 0.858×/http 0.934×/lexer 0.174×/json_parse 0.875×/json_ser 0.670×/sorting 0.155×. or-chain CSE 조사 → 전 벤치마크 단일-load 패턴, 추가 기회 소진. ISSUE-20260521 closed/ 이동. Active ISSUE 5개 전부 HUMAN-blocked. HEAD `25972701`.)
 > 이전 갱신: 2026-05-22 (Cycles 3027-3030 — **MIR AndChainCSE P2 구현**: `and/or` 체인 내 중복 `load_u8` 자동 CSE. double-load+CSE = break-based 단일-load 동등 성능. ISSUE-20260521 RESOLVED. P-track 7/7 PASS 유지. HEAD `3ed5ca8b`.)
 > 이전 갱신: 2026-05-21 (Cycles 3017-3026 — **P-track 7/7: 전부 BMB faster** (brainfuck 1.037→0.956, csv 1.018→0.891, http 0.938→0.909). memset_fill 빌트인 + match dispatch + band 255 + single-load break. v0.100.0 유지. HEAD `72ddb300`.)
