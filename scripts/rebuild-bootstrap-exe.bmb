@@ -36,15 +36,10 @@ fn is_stale(exe: String, src: String, force: bool) -> bool =
 fn log_msg(json: bool, msg: String) -> () =
     if json { () } else { println(msg) };
 
-fn has_flag(args: String, flag: String) -> bool =
-    let tokens = str_split(args, " ");
-    let n = svec_len(tokens);
-    check_flag(tokens, n, 0, flag);
-
-fn check_flag(tokens: SvecHandle, n: i64, idx: i64, flag: String) -> bool =
+fn svec_has_flag(args: SvecHandle, n: i64, idx: i64, flag: String) -> bool =
     if idx >= n { false }
-    else if svec_get(tokens, idx) == flag { true }
-    else { check_flag(tokens, n, idx + 1, flag) };
+    else if svec_get(args, idx) == flag { true }
+    else { svec_has_flag(args, n, idx + 1, flag) };
 
 fn do_rebuild(bmb: String, src: String, exe: String, json: bool) -> i64 =
     let t0 = time_ns();
@@ -67,10 +62,11 @@ fn do_rebuild(bmb: String, src: String, exe: String, json: bool) -> i64 =
     };
 
 fn main() -> i64 =
-    let args_env = getenv("BMB_ARGS");
-    let force      = has_flag(args_env, "--force");
-    let json_out   = has_flag(args_env, "--json");
-    let check_only = has_flag(args_env, "--check-only");
+    let args  = script_args();
+    let argc  = svec_len(args);
+    let force      = svec_has_flag(args, argc, 0, "--force");
+    let json_out   = svec_has_flag(args, argc, 0, "--json");
+    let check_only = svec_has_flag(args, argc, 0, "--check-only");
 
     let root = repo_root();
     let src  = bootstrap_src(root);

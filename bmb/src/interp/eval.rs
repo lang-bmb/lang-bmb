@@ -320,6 +320,8 @@ impl Interpreter {
         self.builtins.insert("svec_join".to_string(), builtin_svec_join);
         // v0.98.2: Generic to_string (Cycle 2830)
         self.builtins.insert("to_string".to_string(), builtin_to_string);
+        // M6: script_args() -> SvecHandle — returns CLI args (excluding program name)
+        self.builtins.insert("script_args".to_string(), builtin_script_args);
         // v0.98.3: String-vec builtins for str_split (Cycle 2833, interpreter-only)
         self.builtins.insert("str_split".to_string(), builtin_str_split);
         // v0.98.7: str_split_whitespace / int_to_hex / int_to_bin (Cycle 2867, interpreter-only)
@@ -9884,6 +9886,24 @@ fn svec_idx(v: &Value) -> InterpResult<usize> {
 }
 
 /// str_split(s: String, delim: String) -> SvecHandle (Cycle 2833, interpreter-only)
+/// script_args() -> SvecHandle — returns CLI args (args[1..], excluding program name)
+fn builtin_script_args(args: &[Value]) -> InterpResult<Value> {
+    if !args.is_empty() {
+        return Err(RuntimeError::arity_mismatch("script_args", 0, args.len()));
+    }
+    let parts: Vec<String> = PROGRAM_ARGS.with(|cell| {
+        let all = cell.borrow();
+        all.iter().skip(1).cloned().collect()
+    });
+    let handle = SVEC_REGISTRY.with(|reg| {
+        let mut v = reg.borrow_mut();
+        let idx = v.len();
+        v.push(Some(parts));
+        idx
+    });
+    Ok(Value::SvecHandle(handle))
+}
+
 /// Splits s by delim and stores parts in SVEC_REGISTRY; returns opaque SvecHandle.
 /// Use svec_len / svec_get to read results, svec_free to release.
 fn builtin_str_split(args: &[Value]) -> InterpResult<Value> {

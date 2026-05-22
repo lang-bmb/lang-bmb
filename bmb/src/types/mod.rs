@@ -440,6 +440,8 @@ impl TypeChecker {
         // v0.98.3: str_split + svec_* (Cycle 2833, interpreter-only)
         // v0.98.7: SvecHandle named type for proper String element inference in for-in (Cycle 2862)
         let svec_t = Type::Named("SvecHandle".to_string());
+        // M6: script_args() -> SvecHandle — CLI args excluding program name
+        functions.insert("script_args".to_string(), (vec![], svec_t.clone()));
         functions.insert("str_split".to_string(), (vec![Type::String, Type::String], svec_t.clone()));
         // v0.98.7: str_split_whitespace (Cycle 2867, interpreter-only)
         functions.insert("str_split_whitespace".to_string(), (vec![Type::String], svec_t.clone()));
