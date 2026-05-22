@@ -1,13 +1,82 @@
-# BMB Session Handoff — 2026-05-22 (Cycles 3031-3032 — P-track 재측정 + 조기 종료)
+# BMB Session Handoff — 2026-05-22 (Cycle 3033 — println dispatch 버그 수정 + M5/M6 계획)
 
-> **HEAD**: `25972701` (Cycles 3031-3032 — P-track 재측정 7/7 PASS, ISSUE-20260521 closed/, 조기 종료)
+> **HEAD**: `(Cycle 3033 커밋 후 갱신 필요)` (Cycle 3033 — println dispatch fix + M5/M6 계획 수립)
+> **이전 HEAD**: `25972701` (Cycles 3031-3032)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 3033
+> **다음 세션 진입점**: Cycle 3034
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 3031-3032)
+## 이번 세션 작업 요약 (Cycle 3033)
+
+### 주요 변경 사항
+
+| Cycle | 제목 | 내용 |
+|-------|------|------|
+| 3033 | println dispatch 버그 수정 | `mir/lower.rs` MirType::String 반환 함수 목록에 M4 builtin 17종 추가 |
+| 3033 | Native Complete 조사 | while-let/for-in-svec/string interpolation 모두 네이티브 정상 확인 |
+| 3033 | M5/M6 계획 수립 | ROADMAP에 M5 Native Complete + M6 Full Dogfooding 섹션 추가 |
+
+### 핵심 버그 수정: println dispatch (mir/lower.rs)
+
+**증상**: `println(str_replace("a","b","c"))` 등 String-returning builtin 함수 결과를 println으로 출력하면 문자열 내용 대신 메모리 주소 출력
+
+**원인**: `bmb/src/mir/lower.rs` line 1684에서 MirType::String 반환 함수 목록에 M4 builtin 누락.
+- 조건: println dispatch logic이 `ctx.locals.get(&p.name)`으로 인수의 MirType 조회
+- 누락된 함수들은 `_ => MirType::I64` 기본값으로 처리 → `@println(i64)` 호출 → 포인터 주소
+
+**수정** (`bmb/src/mir/lower.rs:1684`):
+```rust
+// 추가된 17종:
+"str_to_upper" | "str_to_lower" | "str_replace" | "str_repeat"
+| "str_trim" | "str_trim_left" | "str_trim_right" | "str_reverse"
+| "int_to_hex" | "int_to_bin"
+| "str_substr" | "str_pad_left" | "str_pad_right"
+| "str_char_at" | "svec_join" | "svec_get"
+| "read_line" | "read_bytes" => MirType::String,
+```
+
+**테스트 결과** (네이티브 빌드):
+```
+hello BMB       ← str_replace 정상
+HELLO WORLD     ← str_to_upper 정상
+dlrow olleh     ← str_reverse 정상
+ff              ← int_to_hex 정상
+00042           ← str_pad_left 정상
+```
+
+**cargo test --release 결과**: 3780 passed, 2 failed (pre-existing Windows 임시파일 권한 오류 — 내 변경과 무관)
+
+### Native Complete 조사 결과
+
+이전 세션에서 "interpreter-only 전수 native 포팅" 요청 대비 조사 결과:
+
+| 조사 항목 | 결과 |
+|---------|------|
+| eval.rs "interpreter-only" 주석 (~45개) | 모두 stale — Cycles 2871-2894 포팅 완료의 역사적 흔적 |
+| while-let 네이티브 동작 | ✅ 완전 동작 (enum 패턴 필수) |
+| for-in-vec 네이티브 동작 | ✅ 완전 동작 |
+| for-in-svec 네이티브 동작 | ✅ 완전 동작 |
+| CIR lower.rs의 `WhileLet => Unit` | 네이티브 경로 아님 (MIR 경로 완전) |
+| 실제 native 갭 | **1개** (println dispatch 버그, 이번 수정으로 해결) |
+
+**결론**: M4 "interpreter-only 제로" 선언은 실질적으로 맞았음. 단, println dispatch 버그 1개는 이번에 발견/수정.
+
+### M6 Full Dogfooding 계획 (사용자 결정: 완전 자체구현)
+
+상세 내용: `claudedocs/ROADMAP.md § M6` 참조
+
+| 컴포넌트 | 우선순위 | 예상 |
+|---------|---------|------|
+| bmb-mcp (Python→BMB) | P1 | 2-3 cycles |
+| scripts/핵심 (Shell→BMB) | P1 | 1-2 cycles |
+| bmb-ai-bench (Python→BMB) | P2 | 3-5 cycles |
+| gotgan (Rust→BMB) | P3 | 6-12 cycles |
+
+---
+
+## 이전 세션 작업 요약 (Cycles 3031-3032)
 
 ### 주요 변경 사항
 
@@ -38,14 +107,22 @@
 
 ---
 
-## 다음 세션 (Cycle 3033+)
+## 다음 세션 (Cycle 3034+)
 
 ### 권장 우선순위
 
-1. **M4 채택 지표** — GitHub stars, 외부 PR, 외부 프로젝트 추적 (HUMAN-blocked 잔여)
-2. **B축 Claude 재측정** — 98.0% stale 기한 2026-08-13 (아직 여유)
-3. **새 언어 기능** — 사용자 요청 시 진입 (`v[i]` Vec 인덱싱 등)
-4. **Tier 1 벤치마크** — binary_trees/fasta/mandelbrot 최신 측정
+1. **M6-P1: bmb-mcp Python→BMB 이식** — MCP 서버 자체구현 시작 (HTTP + JSON 필요)
+2. **M6-P1: scripts/ 핵심 스크립트 BMB CLI 전환** — benchmark/bootstrap 스크립트
+3. **M5 Language Complete 진행** — 미완료 언어 기능 완성 (M6 전제 조건)
+4. **B축 Claude 재측정** — 98.0% stale 기한 2026-08-13 (아직 여유)
+
+### M6 착수 전 필요 언어 기능 (M5 잔여)
+
+M6에서 bmb-mcp/scripts 이식 시 필요한 기능들:
+- HTTP 서버/클라이언트 stdlib
+- 환경 변수 처리 (`getenv` ✅ 이미 있음)
+- 프로세스 실행 (`system_capture` ✅ 이미 있음)
+- JSON 파싱 (bmb-json 라이브러리 활용 가능)
 
 ### 알려진 HUMAN-blocked 항목
 

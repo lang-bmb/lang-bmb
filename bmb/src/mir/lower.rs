@@ -1681,8 +1681,15 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                         // v0.46: get_arg returns string (pointer to BmbString)
                         // v0.46: sb_build returns string (pointer to BmbString)
                         // v0.50.53: chr returns string (single-char BmbString)
+                        // v0.100.0 Cycle 3033: M4 string builtins — println dispatch fix
                         "int_to_string" | "read_file" | "slice" | "digit_char" | "get_arg" | "sb_build" | "chr" | "system_capture" | "exec_output"
-                        | "concat3" | "concat5" | "concat7" => MirType::String,
+                        | "concat3" | "concat5" | "concat7"
+                        | "str_to_upper" | "str_to_lower" | "str_replace" | "str_repeat"
+                        | "str_trim" | "str_trim_left" | "str_trim_right" | "str_reverse"
+                        | "int_to_hex" | "int_to_bin"
+                        | "str_substr" | "str_pad_left" | "str_pad_right"
+                        | "str_char_at" | "svec_join" | "svec_get"
+                        | "read_line" | "read_bytes" => MirType::String,
                         // i64-returning runtime functions
                         // v0.46: arg_count returns i64
                         // v0.50.71: file_exists returns i64 (0 or 1), not bool - runtime uses int64_t
