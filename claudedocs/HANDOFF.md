@@ -1,14 +1,43 @@
-# BMB Session Handoff — 2026-05-22 (Cycle 3033 — println dispatch 버그 수정 + M5/M6 계획)
+# BMB Session Handoff — 2026-05-22 (Cycles 3034-3037 — M6-P1 bmb-mcp BMB 포팅 완료)
 
-> **HEAD**: `fe51af7b` (Cycle 3033 — println dispatch fix + M5/M6 계획 수립)
-> **이전 HEAD**: `25972701` (Cycles 3031-3032)
+> **HEAD**: `(commit pending)` — cycle-logs 3034-3037 + bmb-mcp submodule 갱신
+> **이전 HEAD**: `fe51af7b` (Cycle 3033 — println dispatch fix + M5/M6 계획 수립)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 3034
+> **다음 세션 진입점**: Cycle 3038
 
 ---
 
-## 이번 세션 작업 요약 (Cycle 3033)
+## 이번 세션 작업 요약 (Cycles 3034-3037)
+
+### 주요 변경 사항
+
+| Cycle | 제목 | 내용 |
+|-------|------|------|
+| 3034 | M6-P1 사전 감사 | HANDOFF 전제 검증 (HTTP→stdio 수정), server.py _QUICK_REFERENCE 오류 수정 |
+| 3035 | mcp_server.bmb 스캐폴드 | stdio JSON-RPC MCP 서버 BMB 구현 (4 tools + 전체 프로토콜 핸들러) |
+| 3036 | 추가 도구 구현 | bmb_verify + bmb_spec_lookup + bmb_example (7종 도구) |
+| 3037 | 완료 정리 | bmb_context_pack 추가 + mcp_server_config.json + submodule 커밋 |
+
+### 핵심 성과: M6-P1 bmb-mcp Python→BMB 포팅 완료
+
+**`ecosystem/bmb-mcp/mcp_server.bmb`** (~650줄) 신규 생성:
+- stdio JSON-RPC 2.0 + Content-Length 프레이밍 (LSP 패턴 동일)
+- 9종 도구: bmb_check/run/lint/ir/verify + bmb_spec_lookup/example + bmb_context_pack
+- 전체 MCP 프로토콜: initialize/tools/resources/prompts/shutdown
+- `exec_output(bmb, args)` 사용 (`system_capture`는 interpreter-only 미지원)
+- `getenv("BMB_BINARY")` + `getenv("BMB_REPO_ROOT")` 환경변수
+
+**핵심 발견**:
+- HANDOFF의 "HTTP 서버 필요" 전제가 틀렸음: FastMCP 기본값은 stdio (HTTP 아님)
+- `system_capture`는 codegen 전용 (interpreter eval.rs에 미등록) → `exec_output`으로 대체
+- `SvecHandle` 타입은 함수 시그니처에 명시 필요 (i64와 구별)
+
+**submodule 커밋**: `2be1c47` (ecosystem/bmb-mcp)
+
+---
+
+## 이전 세션 작업 요약 (Cycle 3033)
 
 ### 주요 변경 사항
 
