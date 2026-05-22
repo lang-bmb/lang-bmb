@@ -1,0 +1,345 @@
+// run-ai-bench.bmb — M6-P2 BMB port of bmb-ai-bench runner (Cycle 3045)
+//
+// Runs the LLM generate→check→test loop for a single bmb-ai-bench problem.
+// Uses interpreter mode for test execution (no native build required).
+//
+// Usage:
+//   bmb run scripts/run-ai-bench.bmb <problem_dir>
+//   bmb run scripts/run-ai-bench.bmb ecosystem/bmb-ai-bench/problems/04_fibonacci
+//
+// Env vars:
+//   BMB_REPO_ROOT       — repo root (default: ".")
+//   GPUSTACK_ENDPOINT   — e.g. http://172.30.1.53:8080
+//   GPUSTACK_API_KEY    — API key
+//   GPUSTACK_MODEL      — e.g. qwen3.6-35b-a3b
+//   BMB_AI_MAX_LOOPS    — max attempts (default: 10)
+
+fn repo_root() -> String =
+    let root = getenv("BMB_REPO_ROOT");
+    if root.len() > 0 { root } else { "." };
+
+fn bmb_exe(root: String) -> String =
+    let win = root + "/target/release/bmb.exe";
+    if file_exists(win) > 0 { win } else { root + "/target/release/bmb" };
+
+fn parse_int(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() { acc }
+    else {
+        let ch = s.char_code_at(pos);
+        if ch >= 48 and ch <= 57 { parse_int(s, pos + 1, acc * 10 + ch - 48) }
+        else { acc }
+    };
+
+fn get_max_loops() -> i64 =
+    let s = getenv("BMB_AI_MAX_LOOPS");
+    if s.len() > 0 { parse_int(s, 0, 0) } else { 10 };
+
+// ─── String search (shared pattern) ─────────────────────────────────────────
+
+fn search_from(s: String, sub: String, idx: i64) -> i64 =
+    if idx + sub.len() > s.len() { 0 - 1 }
+    else if str_substr(s, idx, sub.len()) == sub { idx }
+    else { search_from(s, sub, idx + 1) };
+
+// ─── JSON string decode (handles \n \t \\ \" escapes) ───────────────────────
+
+fn push_decoded(sb: i64, nxt: i64) -> i64 =
+    if nxt == 110 { sb_push_char(sb, 10) }
+    else if nxt == 116 { sb_push_char(sb, 9) }
+    else if nxt == 92  { sb_push_char(sb, 92) }
+    else if nxt == 34  { sb_push_char(sb, 34) }
+    else { sb_push_char(sb, nxt) };
+
+fn jstr_loop(s: String, pos: i64, sb: i64) -> String =
+    if pos >= s.len() { sb_build(sb) }
+    else {
+        let ch = s.char_code_at(pos);
+        if ch == 34 { sb_build(sb) }
+        else if ch == 92 {
+            let nxt = if pos + 1 < s.len() { s.char_code_at(pos + 1) } else { 0 };
+            let _r = push_decoded(sb, nxt);
+            jstr_loop(s, pos + 2, sb)
+        } else {
+            let _r = sb_push_char(sb, ch);
+            jstr_loop(s, pos + 1, sb)
+        }
+    };
+
+fn extract_jstr(s: String, open_q: i64) -> String = jstr_loop(s, open_q + 1, sb_new());
+
+fn find_jval(content: String, key: String, pos: i64) -> String =
+    let kp = search_from(content, key, pos);
+    if kp < 0 { "" }
+    else {
+        let qp = search_from(content, "\"", kp + key.len());
+        if qp < 0 { "" } else { extract_jstr(content, qp) }
+    };
+
+// ─── JSON string encode (str_replace-based, Unicode-safe) ───────────────────
+// Must escape backslash first, then quote, then control chars.
+
+fn json_encode(s: String) -> String =
+    let s1 = str_replace(s,  "\\",  "\\\\");
+    let s2 = str_replace(s1, "\"",  "\\\"");
+    let s3 = str_replace(s2, "\n",  "\\n");
+    let s4 = str_replace(s3, "\r",  "\\r");
+    str_replace(s4, "\t",  "\\t");
+
+// ─── Code block extraction ───────────────────────────────────────────────────
+
+fn block_end(s: String, start: i64) -> String =
+    let end = search_from(s, "```", start);
+    if end < 0 { str_trim(str_substr(s, start, s.len() - start)) }
+    else { str_trim(str_substr(s, start, end - start)) };
+
+fn extract_code(content: String) -> String =
+    let m1 = search_from(content, "```bmb\n", 0);
+    if m1 >= 0 { block_end(content, m1 + 7) }
+    else {
+        let m2 = search_from(content, "```\n", 0);
+        if m2 >= 0 { block_end(content, m2 + 4) }
+        else { str_trim(content) }
+    };
+
+// ─── Error detection in bmb output ──────────────────────────────────────────
+
+fn has_error(output: String) -> i64 =
+    let p1 = search_from(output, "\"type\":\"error\"", 0);
+    let p2 = search_from(output, "error[", 0);
+    if p1 >= 0 { 1 } else if p2 >= 0 { 1 } else { 0 };
+
+// ─── LLM API ─────────────────────────────────────────────────────────────────
+
+fn curl_args(endpoint: String, api_key: String) -> String =
+    "-s -X POST " + endpoint + "/v1/chat/completions" +
+    " -H \"Content-Type: application/json\"" +
+    " -H \"Authorization: Bearer " + api_key + "\"" +
+    " --data-binary @-";
+
+fn llm_request(model: String, messages_json: String) -> String =
+    "{\"model\":\"" + model + "\"," +
+    "\"temperature\":0.0,\"max_tokens\":16384," +
+    "\"chat_template_kwargs\":{\"enable_thinking\":false}," +
+    "\"messages\":" + messages_json + "}";
+
+fn call_llm(endpoint: String, api_key: String, model: String, messages_json: String) -> String =
+    exec_with_stdin("curl", curl_args(endpoint, api_key), llm_request(model, messages_json));
+
+fn extract_content(response: String) -> String =
+    find_jval(response, "\"content\":", 0);
+
+// ─── Messages array building ─────────────────────────────────────────────────
+
+fn sys_msg_plain(text: String) -> String =
+    "{\"role\":\"system\",\"content\":\"" + json_encode(text) + "\"}";
+
+fn user_msg(content: String) -> String =
+    "{\"role\":\"user\",\"content\":\"" + json_encode(content) + "\"}";
+
+fn asst_msg(content: String) -> String =
+    "{\"role\":\"assistant\",\"content\":\"" + json_encode(content) + "\"}";
+
+fn make_initial_msgs(ref_doc: String, problem_md: String, test_preview: String) -> String =
+    let system = sys_msg_plain("You are a BMB programmer. Output ONLY the complete source code inside a ```bmb code block. No explanation, no comments outside code.");
+    let ref_section = if ref_doc.len() > 0 { "## BMB Reference\n" + ref_doc + "\n---\n" } else { "" };
+    let prompt = ref_section + problem_md +
+                 "\n## Examples\n" + test_preview +
+                 "\n\nWrite a complete BMB program. Output ONLY code in a ```bmb block.";
+    "[" + system + "," + user_msg(prompt) + "]";
+
+fn append_round(msgs: String, assistant_resp: String, feedback: String) -> String =
+    let without_bracket = str_substr(msgs, 0, msgs.len() - 1);
+    without_bracket + "," + asst_msg(assistant_resp) + "," + user_msg(feedback) + "]";
+
+// ─── Test preview builder (first 5 tests from tests.json) ────────────────────
+
+// Build test preview as concatenated string
+fn preview_one(content: String, obj_pos: i64, num: i64) -> String =
+    let stdin_val = find_jval(content, "\"stdin\":", obj_pos);
+    let exp_val   = find_jval(content, "\"expected_stdout\":", obj_pos);
+    "stdin: " + stdin_val + "  -> stdout: " + exp_val;
+
+fn find_next_obj(content: String, pos: i64) -> i64 =
+    search_from(content, "{", pos);
+
+fn build_preview_loop(content: String, pos: i64, count: i64, acc: String) -> String =
+    if count >= 5 { acc }
+    else {
+        let obj = find_next_obj(content, pos);
+        if obj < 0 { acc }
+        else {
+            let sk = search_from(content, "\"stdin\":", obj);
+            if sk < 0 { acc }
+            else {
+                let line = preview_one(content, obj, count);
+                let new_acc = if acc.len() == 0 { line } else { acc + "\n" + line };
+                build_preview_loop(content, obj + 1, count + 1, new_acc)
+            }
+        }
+    };
+
+fn build_test_preview(tests_json: String) -> String =
+    build_preview_loop(tests_json, 0, 0, "");
+
+// ─── Test runner (interpreter mode) ──────────────────────────────────────────
+
+fn run_one_test(bmb: String, src: String, stdin_raw: String, expected: String) -> i64 =
+    let actual = exec_with_stdin(bmb, "run " + src, str_replace(stdin_raw, " ", "\n"));
+    if actual == expected { 1 } else { 0 };
+
+fn test_loop(content: String, bmb: String, src: String,
+             pos: i64, passed: i64, failed: i64) -> i64 =
+    let obj = find_next_obj(content, pos);
+    if obj < 0 { passed * 1000 + failed }
+    else {
+        let sk = search_from(content, "\"stdin\":", obj);
+        let nb = find_next_obj(content, obj + 1);
+        if sk < 0 { passed * 1000 + failed }
+        else if nb > 0 and sk > nb {
+            test_loop(content, bmb, src, obj + 1, passed, failed)
+        } else {
+            let stdin_val  = find_jval(content, "\"stdin\":", obj);
+            let exp_val    = find_jval(content, "\"expected_stdout\":", obj);
+            let ok = run_one_test(bmb, src, stdin_val, exp_val);
+            if ok > 0 {
+                test_loop(content, bmb, src, obj + 1, passed + 1, failed)
+            } else {
+                test_loop(content, bmb, src, obj + 1, passed, failed + 1)
+            }
+        }
+    };
+
+fn get_passed(result: i64) -> i64 = result / 1000;
+fn get_failed(result: i64) -> i64 = result - (result / 1000) * 1000;
+
+// ─── Find first test failure detail ──────────────────────────────────────────
+
+fn find_first_fail(content: String, bmb: String, src: String, pos: i64) -> String =
+    let obj = find_next_obj(content, pos);
+    if obj < 0 { "" }
+    else {
+        let sk = search_from(content, "\"stdin\":", obj);
+        let nb = find_next_obj(content, obj + 1);
+        if sk < 0 { "" }
+        else if nb > 0 and sk > nb { find_first_fail(content, bmb, src, obj + 1) }
+        else {
+            let stdin_val = find_jval(content, "\"stdin\":", obj);
+            let exp_val   = find_jval(content, "\"expected_stdout\":", obj);
+            let ok = run_one_test(bmb, src, stdin_val, exp_val);
+            if ok > 0 { find_first_fail(content, bmb, src, obj + 1) }
+            else {
+                let actual = exec_with_stdin(bmb, "run " + src,
+                                             str_replace(stdin_val, " ", "\n"));
+                "stdin=[" + stdin_val + "] expected=[" + exp_val + "] got=[" + actual + "]"
+            }
+        }
+    };
+
+// ─── Problem attempt loop ─────────────────────────────────────────────────────
+// init_msgs: original [system, user] pair — used for context truncation at attempt > 5
+
+fn attempt_loop(
+    bmb: String, endpoint: String, api_key: String, model: String,
+    tests_json: String, temp_src: String,
+    msgs: String, init_msgs: String, attempt: i64, max_loops: i64
+) -> i64 =
+    if attempt > max_loops {
+        let _r = println("  GAVE UP after " + int_to_string(max_loops) + " attempts");
+        0
+    } else {
+        let _r = println("  [attempt " + int_to_string(attempt) + "/" + int_to_string(max_loops) + "] calling LLM...");
+        let response = call_llm(endpoint, api_key, model, msgs);
+        let content  = extract_content(response);
+
+        if content.len() == 0 {
+            let _r = println("  ERROR: LLM response parse failed");
+            0
+        } else {
+            let code = extract_code(content);
+            let _r   = write_file(temp_src, code);
+            let check_out = exec_with_stdin(bmb, "check " + temp_src, "");
+            let is_err    = has_error(check_out);
+
+            if is_err > 0 {
+                let _r = println("  check FAIL → retry");
+                let feedback = "compile_error:\n" + check_out +
+                               "\nFix the error. Output ONLY corrected code in a ```bmb block.";
+                let base     = if attempt >= 5 { init_msgs } else { msgs };
+                let new_msgs = append_round(base, content, feedback);
+                attempt_loop(bmb, endpoint, api_key, model, tests_json, temp_src,
+                             new_msgs, init_msgs, attempt + 1, max_loops)
+            } else {
+                let _r = println("  check PASS → running tests...");
+                let result   = test_loop(tests_json, bmb, temp_src, 0, 0, 0);
+                let passed_n = get_passed(result);
+                let failed_n = get_failed(result);
+                let total_n  = passed_n + failed_n;
+
+                if failed_n == 0 {
+                    let _r = println("  PASS: " + int_to_string(passed_n) + "/" + int_to_string(total_n) + " tests");
+                    1
+                } else {
+                    let _r = println("  test FAIL: " + int_to_string(passed_n) + "/" + int_to_string(total_n) + " passed → retry");
+                    let fail_detail = find_first_fail(tests_json, bmb, temp_src, 0);
+                    let feedback = "test_failure (" + int_to_string(failed_n) + " of " + int_to_string(total_n) +
+                                   " tests failed).\nFirst failure: " + fail_detail +
+                                   "\nFix the logic. Output ONLY corrected code in a ```bmb block.";
+                    let base     = if attempt >= 5 { init_msgs } else { msgs };
+                    let new_msgs = append_round(base, content, feedback);
+                    attempt_loop(bmb, endpoint, api_key, model, tests_json, temp_src,
+                                 new_msgs, init_msgs, attempt + 1, max_loops)
+                }
+            }
+        }
+    };
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
+
+fn main() -> i64 =
+    let args     = script_args();
+    let root     = repo_root();
+    let bmb      = bmb_exe(root);
+    let endpoint = getenv("GPUSTACK_ENDPOINT");
+    let api_key  = getenv("GPUSTACK_API_KEY");
+    let model    = getenv("GPUSTACK_MODEL");
+    let max_lps  = get_max_loops();
+
+    if svec_len(args) < 1 {
+        let _r = println("Usage: bmb run scripts/run-ai-bench.bmb <problem_dir>");
+        1
+    } else if endpoint.len() == 0 {
+        let _r = println("ERROR: GPUSTACK_ENDPOINT not set");
+        1
+    } else {
+        let prob_dir    = svec_get(args, 0);
+        let problem_md  = if file_exists(prob_dir + "/problem.md") > 0 {
+            read_file(prob_dir + "/problem.md")
+        } else { "No problem description found." };
+        let tests_json  = if file_exists(prob_dir + "/tests.json") > 0 {
+            read_file(prob_dir + "/tests.json")
+        } else { "" };
+        let ref_path    = root + "/ecosystem/bmb-ai-bench/protocol/bmb_reference.md";
+        let ref_doc     = if file_exists(ref_path) > 0 { read_file(ref_path) } else { "" };
+        let temp_src    = root + "/_ai_bench_temp.bmb";
+
+        if tests_json.len() == 0 {
+            let _r = println("ERROR: tests.json not found in " + prob_dir);
+            1
+        } else {
+            let _r = println("=== BMB AI Bench: " + prob_dir + " ===");
+            let _r = println("model: " + model + "  max_loops: " + int_to_string(max_lps));
+            let preview  = build_test_preview(tests_json);
+            let init_msg = make_initial_msgs(ref_doc, problem_md, preview);
+            let _r = println("");
+            let success  = attempt_loop(bmb, endpoint, api_key, model, tests_json,
+                                        temp_src, init_msg, init_msg, 1, max_lps);
+            let _r = println("");
+            if success > 0 {
+                let _r = println("RESULT: PASS");
+                0
+            } else {
+                let _r = println("RESULT: FAIL");
+                1
+            }
+        }
+    };

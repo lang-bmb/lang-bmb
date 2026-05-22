@@ -1,0 +1,213 @@
+// run-all-ai-bench.bmb — Run LLM benchmark for all bmb-ai-bench problems
+//
+// Calls run-ai-bench.bmb for each problem, collects pass/fail results,
+// writes results-<date>.jsonl to ecosystem/bmb-ai-bench/results/.
+// Supports resume: if the output file already exists, completed problems are skipped.
+//
+// Usage:
+//   bmb run scripts/run-all-ai-bench.bmb [problems_root]
+//
+// Env vars (same as run-ai-bench.bmb):
+//   BMB_REPO_ROOT, GPUSTACK_ENDPOINT, GPUSTACK_API_KEY, GPUSTACK_MODEL,
+//   BMB_AI_MAX_LOOPS (default: 10)
+//   BMB_DATE        — date label for results file (default: "latest")
+//   BMB_PILOT       — set to "1" to run only pilot problems {1, 21, 50}
+
+fn repo_root() -> String =
+    let root = getenv("BMB_REPO_ROOT");
+    if root.len() > 0 { root } else { "." };
+
+fn bmb_exe(root: String) -> String =
+    let win = root + "/target/release/bmb.exe";
+    if file_exists(win) > 0 { win } else { root + "/target/release/bmb" };
+
+fn get_max_loops() -> i64 =
+    let s = getenv("BMB_AI_MAX_LOOPS");
+    if s.len() > 0 { parse_int_str(s) } else { 10 };
+
+fn get_date_tag() -> String =
+    let d = getenv("BMB_DATE");
+    if d.len() > 0 { d } else { "latest" };
+
+fn get_pilot_mode() -> i64 =
+    let s = getenv("BMB_PILOT");
+    if s == "1" { 1 } else { 0 };
+
+// Pilot problem numbers: 1 (binary_search), 21 (bounded_array), 50 (calculator)
+fn is_pilot_problem(name: String) -> i64 =
+    let n = parse_int_str(name);
+    if n == 1 { 1 } else if n == 21 { 1 } else if n == 50 { 1 } else { 0 };
+
+fn print_pilot_mode(pilot: i64) -> i64 =
+    if pilot > 0 { let _p = println("mode:      PILOT (problems 1, 21, 50)"); 0 } else { 0 };
+
+fn should_skip_pilot(pilot: i64, name: String) -> i64 =
+    if pilot == 0 { 0 }
+    else if is_pilot_problem(name) > 0 { 0 }
+    else { 1 };
+
+fn parse_int_str(s: String) -> i64 = parse_int_pos(s, 0, 0);
+
+fn parse_int_pos(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() { acc }
+    else {
+        let ch = s.char_code_at(pos);
+        if ch >= 48 and ch <= 57 { parse_int_pos(s, pos + 1, acc * 10 + ch - 48) }
+        else { acc }
+    };
+
+// ─── String search ────────────────────────────────────────────────────────────
+
+fn search_from(s: String, sub: String, idx: i64) -> i64 =
+    if idx + sub.len() > s.len() { 0 - 1 }
+    else if str_substr(s, idx, sub.len()) == sub { idx }
+    else { search_from(s, sub, idx + 1) };
+
+// ─── Count occurrences of "\"pass\":true" in jsonl ───────────────────────────
+
+fn count_pass(jsonl: String, pos: i64, acc: i64) -> i64 =
+    let p = search_from(jsonl, "\"pass\":true", pos);
+    if p < 0 { acc }
+    else { count_pass(jsonl, p + 11, acc + 1) };
+
+// ─── Count non-empty lines ────────────────────────────────────────────────────
+
+fn count_lines(s: String, pos: i64, acc: i64) -> i64 =
+    if s.len() == 0 { 0 }
+    else if pos >= s.len() { acc + 1 }
+    else {
+        let ch = s.char_code_at(pos);
+        if ch == 10 { count_lines(s, pos + 1, acc + 1) }
+        else { count_lines(s, pos + 1, acc) }
+    };
+
+// ─── Extract last "[attempt X/Y]" number ─────────────────────────────────────
+
+fn scan_attempts(s: String, pos: i64, last: i64) -> i64 =
+    let p = search_from(s, "[attempt ", pos);
+    if p < 0 { last }
+    else { scan_attempts(s, p + 1, parse_int_pos(s, p + 9, 0)) };
+
+fn extract_attempts(output: String) -> i64 =
+    let n = scan_attempts(output, 0, 0 - 1);
+    if n < 0 { 1 } else { n };
+
+// ─── Result parsing ──────────────────────────────────────────────────────────
+
+fn is_pass(output: String) -> i64 =
+    if search_from(output, "RESULT: PASS", 0) >= 0 { 1 } else { 0 };
+
+// ─── JSON encoding (Unicode-safe) ────────────────────────────────────────────
+
+fn json_encode(s: String) -> String =
+    let s1 = str_replace(s,  "\\",  "\\\\");
+    let s2 = str_replace(s1, "\"",  "\\\"");
+    let s3 = str_replace(s2, "\n",  "\\n");
+    let s4 = str_replace(s3, "\r",  "\\r");
+    str_replace(s4, "\t",  "\\t");
+
+// ─── Build result JSON line ───────────────────────────────────────────────────
+
+fn result_json(pid: String, pass_flag: i64, attempts: i64) -> String =
+    let pass_str = if pass_flag > 0 { "true" } else { "false" };
+    "{\"problem_id\":\"" + json_encode(pid) +
+    "\",\"pass\":" + pass_str +
+    ",\"attempts\":" + int_to_string(attempts) + "}";
+
+// ─── Resume: check if a problem is already in the jsonl ──────────────────────
+
+fn already_done(jsonl: String, name: String) -> i64 =
+    if search_from(jsonl, "\"problem_id\":\"" + name + "\"", 0) >= 0 { 1 } else { 0 };
+
+// ─── Process all problems (saves after each problem for crash-safe resume) ────
+
+fn process_problems(entries: SvecHandle, bmb: String, runner: String,
+                    problems_root: String, out_file: String, pilot: i64,
+                    idx: i64, jsonl: String) -> String =
+    if idx >= svec_len(entries) { jsonl }
+    else {
+        let name = svec_get(entries, idx);
+        if name.len() == 0 {
+            process_problems(entries, bmb, runner, problems_root, out_file, pilot, idx + 1, jsonl)
+        } else {
+            let prob_dir = problems_root + "/" + name;
+            if should_skip_pilot(pilot, name) > 0 {
+                process_problems(entries, bmb, runner, problems_root, out_file, pilot, idx + 1, jsonl)
+            } else if file_exists(prob_dir + "/tests.json") == 0 {
+                process_problems(entries, bmb, runner, problems_root, out_file, pilot, idx + 1, jsonl)
+            } else if already_done(jsonl, name) > 0 {
+                let _sk = println("[" + int_to_string(idx + 1) + "] " + name + " ... SKIP");
+                process_problems(entries, bmb, runner, problems_root, out_file, pilot, idx + 1, jsonl)
+            } else {
+                let _pr   = println("[" + int_to_string(idx + 1) + "] " + name + " ...");
+                let output = exec_with_stdin(bmb, "run " + runner + " " + prob_dir, "");
+                let ok     = is_pass(output);
+                let ats    = extract_attempts(output);
+                let status = if ok > 0 { "PASS (" + int_to_string(ats) + " attempt/s)" }
+                             else { "FAIL" };
+                let _pr2   = println("    " + status);
+                let line   = result_json(name, ok, ats);
+                let new_jl = if jsonl.len() == 0 { line } else { jsonl + "\n" + line };
+                let _save  = write_file(out_file, new_jl);
+                process_problems(entries, bmb, runner, problems_root, out_file, pilot, idx + 1, new_jl)
+            }
+        }
+    };
+
+// ─── Summary ─────────────────────────────────────────────────────────────────
+
+fn write_summary(jsonl: String, model: String, max_loops: i64,
+                 out_file: String) -> i64 =
+    let _blank = println("");
+    let total  = count_lines(jsonl, 0, 0);
+    let passed = count_pass(jsonl, 0, 0);
+    let pct    = if total > 0 { passed * 100 / total } else { 0 };
+    let _msg   = println("=== RESULT: " + int_to_string(passed) + "/" +
+                         int_to_string(total) + " (" + int_to_string(pct) + "%) PASS ===");
+    let _wr    = write_file(out_file, jsonl);
+    let _rp    = println("Results: " + out_file);
+    if passed == total { 0 } else { 1 };
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
+
+fn main() -> i64 =
+    let args     = script_args();
+    let root     = repo_root();
+    let bmb      = bmb_exe(root);
+    let runner   = root + "/scripts/run-ai-bench.bmb";
+    let model    = getenv("GPUSTACK_MODEL");
+    let endpoint = getenv("GPUSTACK_ENDPOINT");
+    let max_loops = get_max_loops();
+    let date_tag  = get_date_tag();
+    let pilot     = get_pilot_mode();
+    let problems_root =
+        if svec_len(args) > 0 { svec_get(args, 0) }
+        else { root + "/ecosystem/bmb-ai-bench/problems" };
+    let out_file = root + "/ecosystem/bmb-ai-bench/results/results-" + date_tag + ".jsonl";
+
+    if endpoint.len() == 0 {
+        let _e = println("ERROR: GPUSTACK_ENDPOINT not set");
+        1
+    } else if file_exists(bmb) == 0 {
+        let _e = println("ERROR: bmb not found: " + bmb);
+        1
+    } else if file_exists(runner) == 0 {
+        let _e = println("ERROR: runner not found: " + runner);
+        1
+    } else {
+        let existing      = if file_exists(out_file) > 0 { read_file(out_file) } else { "" };
+        let resume_count  = if existing.len() > 0 { count_lines(existing, 0, 0) } else { 0 };
+        let _h1 = println("=== BMB AI Bench (all problems) ===");
+        let _h2 = println("model:     " + model);
+        let _h3 = println("endpoint:  " + endpoint);
+        let _h4 = println("max_loops: " + int_to_string(max_loops));
+        let _h5 = println("output:    " + out_file);
+        let _h6 = println("problems:  " + problems_root);
+        let _h7 = println("resume:    " + int_to_string(resume_count) + " already done");
+        let _h8 = print_pilot_mode(pilot);
+        let _bl = println("");
+        let dir_listing = list_dir(problems_root);
+        let entries = str_lines(dir_listing);
+        let jsonl = process_problems(entries, bmb, runner, problems_root, out_file, pilot, 0, existing);
+        write_summary(jsonl, model, max_loops, out_file)
+    };
