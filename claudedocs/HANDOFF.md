@@ -1,119 +1,89 @@
-# BMB Session Handoff — 2026-05-22 (Cycles 3038-3043 — M6-P1 scripts BMB 포팅 완료)
+# BMB Session Handoff — 2026-05-22 (Cycles 3044-3053 — M6-P2 bmb-ai-bench runner 완료)
 
-> **HEAD**: `78719ac8` (feat(cycle-3041): run-all-bench-tests.bmb — 1230/1230 (100%) pass)
-> **이전 HEAD**: `2e9c4910` (chore(M6-P1): bmb-mcp BMB 포팅 완료)
+> **HEAD**: `65ccd682` (feat(cycle-3053): M6-P2 bmb-ai-bench runner BMB 포팅 완료)
+> **이전 HEAD**: `78719ac8` (feat(cycle-3041): run-all-bench-tests.bmb — 1230/1230 (100%) pass)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 3044
+> **다음 세션 진입점**: Cycle 3054
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 3038-3043)
+## 이번 세션 작업 요약 (Cycles 3044-3053)
 
 ### 주요 변경 사항
 
 | Cycle | 제목 | 내용 |
 |-------|------|------|
-| 3038 | exec_with_stdin 1차 | file_mtime builtin + rebuild scripts BMB 포팅 |
-| 3039 | exec_with_stdin 완성 | script_args builtin + check-version-sync + scripts 업그레이드 |
-| 3040 | run-bench-tests.bmb | exec_with_stdin + JSON 파서 + 테스트 러너 완성 |
-| 3041 | run-all-bench-tests.bmb | 100문제 일괄 실행 — **1230/1230 (100%) PASS** |
-| 3042 | ROADMAP 업데이트 | M6-P1 완료 표시, M6 현황 갱신 |
-| 3043 | HANDOFF 업데이트 | 세션 종료 정리 |
+| 3044 | M6-P2 설계 | run-ai-bench.bmb 설계 분석 |
+| 3045 | run-ai-bench.bmb | 단일 문제 LLM runner (generate→check→test loop) |
+| 3046 | run-all-ai-bench.bmb | 전체 문제 일괄 runner + JSONL 저장 |
+| 3047 | context truncation + 실패 피드백 | hard reset (attempt≥5) + find_first_fail |
+| 3048 | resume 지원 | 기존 JSONL 읽어 완료 문제 스킵 + 중간 저장 |
+| 3049 | 파일럿 모드 | BMB_PILOT=1: problems {1,21,50}만 실행 |
+| 3050 | test_loop 최적화 | dead code (first_fail 파라미터 + 이중 exec) 제거 |
+| 3051 | analyze-bench-results.bmb | JSONL 분석: pass/fail/attempts 분포/실패 목록 |
+| 3052 | ROADMAP 업데이트 | M6-P2 완료 상태 반영 |
+| 3053 | 커밋 + HANDOFF | 전체 M6-P2 변경사항 커밋 |
 
-### 핵심 성과: M6-P1 scripts 완전 완료
+### 핵심 성과: M6-P2 bmb-ai-bench runner 완전 완료
 
-**`exec_with_stdin` 빌트인** (신규):
-- 시그니처: `exec_with_stdin(cmd: String, args: String, stdin: String) -> String`
-- 구현: `bmb/src/interp/eval.rs` (Rust subprocess + piped stdin)
-- 타입 등록: `bmb/src/types/mod.rs`, codegen (`llvm_text.rs`, `llvm.rs`)
-- 런타임: `bmb/runtime/bmb_runtime.c` (Windows CreatePipe/CreateProcess + POSIX fork/pipe)
+**Python 런타임 없이 bmb-ai-bench 전체 실행 가능.**
 
-**새 BMB 스크립트** (scripts/):
-- `run-bench-tests.bmb` — JSON 파서 + exec 기반 테스트 러너 (15/15 × 3문제 검증)
-- `run-all-bench-tests.bmb` — 100문제 일괄 실행 + 집계 (1230/1230 PASS)
-- `rebuild-runtime.bmb` — C 런타임 재빌드 자동화 (Cycle 3038)
-- `rebuild-bootstrap-exe.bmb` — Bootstrap exe 재빌드 자동화 (Cycle 3038)
-- `check-version-sync.bmb` — 버전 동기화 검사 (Cycle 3039)
+#### 신규 스크립트 3종
 
-**핵심 버그 및 해결**:
-- `s.char_at(pos)` 메서드가 `String` 반환 (NOT i64) → `s.char_code_at(pos)` 사용 (i64 반환)
-- `file_read` 미등록 → `read_file` (올바른 빌트인 이름)
-- `SvecHandle` 파라미터는 타입 어노테이션에 `SvecHandle` 명시 필요 (i64와 구별)
-- `read_int()` 줄 단위 파싱 — 공백 구분 stdin은 `str_replace(s, " ", "\n")` 사전 변환 필요
+**`scripts/run-ai-bench.bmb`** — 단일 문제 runner:
+- GPUStack API 호출 (curl exec_with_stdin 기반)
+- Context truncation: attempt ≥ 5 시 init_msgs 하드 리셋
+- `find_first_fail`: 첫 번째 실패 케이스 상세 피드백 (stdin/expected/got)
+- 실행: `GPUSTACK_ENDPOINT=... bmb run scripts/run-ai-bench.bmb <problem_dir>`
 
----
+**`scripts/run-all-ai-bench.bmb`** — 전체 문제 runner:
+- 100문제 순차 실행, 중간 JSONL 저장 (크래시 안전)
+- **Resume**: 기존 JSONL 읽어 완료 문제 스킵
+- **파일럿 모드**: `BMB_PILOT=1` → problems {1,21,50}만 실행
+- 실행: `BMB_PILOT=1 BMB_DATE=<tag> GPUSTACK_ENDPOINT=... bmb run scripts/run-all-ai-bench.bmb`
 
-## 이전 세션 작업 요약 (Cycles 3034-3037)
-
-### M6-P1 bmb-mcp Python→BMB 포팅 완료
-
-**`ecosystem/bmb-mcp/mcp_server.bmb`** (~650줄):
-- stdio JSON-RPC 2.0 + Content-Length 프레이밍 (LSP 패턴 동일)
-- 9종 도구: bmb_check/run/lint/ir/verify + bmb_spec_lookup/example + bmb_context_pack
-- 전체 MCP 프로토콜: initialize/tools/resources/prompts/shutdown
-- `exec_output(bmb, args)` 사용 (`system_capture`는 interpreter-only 미지원)
-- `getenv("BMB_BINARY")` + `getenv("BMB_REPO_ROOT")` 환경변수
+**`scripts/analyze-bench-results.bmb`** — 결과 분석:
+- pass/fail 비율, attempts 분포 (1-shot/few-shot/mid/many), 실패 문제 목록
+- 실행: `bmb run scripts/analyze-bench-results.bmb <results.jsonl>`
 
 ---
 
-## M6 현황 (2026-05-22)
+## 미완료 사항 + 다음 세션 진입점
 
-| 컴포넌트 | 상태 | 비고 |
-|---------|------|------|
-| `bootstrap/compiler.bmb` | ✅ 완료 | 3-Stage Fixed Point |
-| `bootstrap/lsp.bmb` | ✅ 완료 | |
-| `bootstrap/lint.bmb` | ✅ 완료 | |
-| `ecosystem/bmb-mcp/` | ✅ 완료 | Cycle 3037, 9종 도구 |
-| `scripts/*.bmb` (핵심 5종) | ✅ 완료 | Cycles 3038-3041 |
-| `ecosystem/bmb-ai-bench/` | ❌ 미이식 | P2 다음 단계 |
-| `gotgan/` | ❌ 미이식 | P3 장기 |
-| `ecosystem/playground/` | ❌ (WASM 일부) | |
+### Pending Human Decisions
+1. **GPUStack 파일럿 실행** (API 사용 발생):
+   ```powershell
+   $env:BMB_PILOT="1"
+   $env:BMB_DATE="2026-05-22-pilot"
+   $env:GPUSTACK_ENDPOINT="<endpoint>"
+   $env:GPUSTACK_API_KEY="<key>"
+   $env:GPUSTACK_MODEL="<model>"
+   ./target/release/bmb run scripts/run-all-ai-bench.bmb
+   ```
+   실행 후: `./target/release/bmb run scripts/analyze-bench-results.bmb ecosystem/bmb-ai-bench/results/results-2026-05-22-pilot.jsonl`
 
-**M6-P1 완료** ✅ — bmb-mcp + scripts 핵심 5종 모두 BMB 자체구현 달성
+2. **전체 100문제 실행** (GPUStack 파일럿 성공 후):
+   ```powershell
+   $env:BMB_PILOT=""  # 파일럿 모드 해제
+   $env:BMB_DATE="2026-05-22-full"
+   ./target/release/bmb run scripts/run-all-ai-bench.bmb
+   ```
+
+### M6 잔여 작업
+- **M6-P3**: `gotgan` (Rust→BMB) — 패키지 매니저, 6-12 cycles 예상
 
 ---
 
-## 다음 세션 (Cycle 3044+)
+## 현재 상태 스냅샷
 
-### 권장 우선순위
-
-1. **M6-P2: bmb-ai-bench Python→BMB 이식** — HTTP 클라이언트 + JSON + 파일 I/O (복잡, 3-5 cycles)
-2. **exec_with_stdin codegen 검증** — bmb_runtime.c 구현 존재하나 네이티브 실행 미검증
-3. **B축 Claude 재측정** — 98.0% stale 기한 2026-08-13 (아직 여유)
-
-### M6-P2 착수 전 필요 언어 기능 체크
-
-bmb-ai-bench 이식에 필요한 기능들:
-- HTTP 클라이언트 (`http_post` 등) — 미구현 (신규 builtin 필요)
-- JSON 직렬화/역직렬화 — `bmb-json` 라이브러리 or BMB 자체 구현
-- 환경 변수 처리 (`getenv` ✅)
-- 파일 I/O (`read_file`, `write_file`, `file_exists`, `list_dir` ✅)
-- 프로세스 실행 (`exec_with_stdin` ✅)
-
-### 알려진 BMB 언어 특성 (중요도 순)
-
-- `s.char_at(pos)` → `String` 반환, `s.char_code_at(pos)` → `i64` 반환 (혼동 주의)
-- `else if` 체인 세미콜론: statement 위치에서 `};` 필수 (Cycle 2984 발견)
-- `fn main() -> i64 = { ... };` 끝에 `;` 필수 (Cycle 2986 발견)
-- `SvecHandle`: 함수 파라미터에 타입 명시 필수 (`entries: SvecHandle` NOT `entries: i64`)
-- `read_int()` 줄 단위 파싱 — 공백 구분 입력은 `str_replace(s, " ", "\n")` 변환 필요
-- `&&`/`||` short-circuit: ✅ 완전 지원 (Cycle 2965)
-- `memset_fill(ptr, val, count)`: ✅ native-only builtin (v0.100.1 신규)
-
-### ISSUE 현황 (Active 5개)
-
-| ISSUE | 상태 | 우선순위 |
-|-------|------|---------|
-| multi-model-validation | PARTIALLY RESOLVED | MEDIUM |
-| external-problem-validation | PARTIALLY RESOLVED | MEDIUM |
-| integration-category-weakness | PARTIALLY RESOLVED | LOW |
-| problem-difficulty-bias | OPEN | LOW |
-| golden-flakiness-inttoptr | OPEN | P3 |
-
-### B-axis 상태
-
-| 모델 | 마지막 측정 | 상태 |
-|------|-----------|------|
-| Claude (claude-sonnet-4-6) | 98.0% (2026-05-13) | 고정 베이스라인 (stale 기한: 2026-08-13) |
-| GPUStack qwen3.6-35b-a3b | **100.0% (2026-05-21)** | **최신 공식 측정** |
+| 항목 | 상태 |
+|------|------|
+| M1 (P축 성능) | ✅ COMPLETE (P-track 7/7 BMB faster) |
+| M2 (AI-Ready Infra) | ✅ COMPLETE |
+| M3 (External Bindings) | ✅ COMPLETE (PyPI ✅ 2026-05-21) |
+| M4 (Adopted) | 🔄 ~45% (외부 신호 대기) |
+| M5 (Language Complete) | 🔄 ~70% (Native Complete ✅) |
+| M6 (Full Dogfooding) | 🔄 ~40% (P1+P2 완료, P3 미이식) |
+| B-axis (GPUStack) | 100.0% (Cycle 3016, HEAD 9aeef2b3) |
+| Tests | 6260+ tests ✅ |
