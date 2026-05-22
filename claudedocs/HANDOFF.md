@@ -1,87 +1,51 @@
-# BMB Session Handoff — 2026-05-22 (Cycles 3027-3030 — MIR AndChainCSE P2 구현)
+# BMB Session Handoff — 2026-05-22 (Cycles 3031-3032 — P-track 재측정 + 조기 종료)
 
 > **HEAD**: `3ed5ca8b` (Cycles 3027-3030 — MIR AndChainCSE: and/or 체인 중복 load_u8 자동 CSE)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 3031
+> **다음 세션 진입점**: Cycle 3033
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 3027-3030)
+## 이번 세션 작업 요약 (Cycles 3031-3032)
 
 ### 주요 변경 사항
 
 | Cycle | 제목 | 내용 |
 |-------|------|------|
-| 3027 | MIR CSE 인프라 설계 | canonical form 값 동등성 설계, `and_rhs`→`and_merge`→`and_rhs_P` 패턴 분석 |
-| 3028 | AndChainCSE 구현 | `optimize.rs` Phase 1-3 전체 구현: phi 삽입 + Copy 교체, 4 unit test ✅ |
-| 3029 | P-track 검증 + ISSUE 조사 | 7/7 PASS, double-load+CSE = break-based 동등 성능, json_parse 가변성 확인 |
-| 3030 | ISSUE close + HANDOFF + commit | RESOLVED 마킹, 문서 갱신, 커밋 |
+| 3031 | P-track 재측정 + ROADMAP 갱신 | 7/7 PASS 확인, § 5 갱신, ISSUE-20260521 closed/ 이동 |
+| 3032 | Or-chain CSE 조사 → 조기 종료 | 모든 벤치마크 단일-load 패턴 확인, 추가 최적화 기회 소진 |
 
-### 핵심 결과
+### P-track 재측정 결과 (2026-05-22, 5-run median)
 
-| 항목 | 이번 세션 전 | 이번 세션 후 |
-|------|------------|------------|
-| brainfuck | 0.956× ✅ | **0.983×** ✅ (측정 가변성) |
-| csv_parse | 0.891× ✅ | **0.855×** ✅ |
-| http_parse | 0.909× ✅ | **0.917×** ✅ |
-| lexer | 0.169× ✅ | **0.201×** ✅ (측정 가변성) |
-| json_parse | 0.822× ✅ | **0.913×** ✅ (측정 가변성, CSE 영향 없음) |
-| json_serialize | 0.668× ✅ | **0.736×** ✅ |
-| sorting | 0.154× ✅ | **0.151×** ✅ |
+| 벤치마크 | Cycle 3023 | Cycle 3031 | 변동 |
+|---------|-----------|-----------|------|
+| brainfuck | 0.956× | **0.941×** | 개선 |
+| csv_parse | 0.891× | **0.858×** | 개선 |
+| http_parse | 0.909× | **0.934×** | ±노이즈 |
+| lexer | 0.169× | **0.174×** | ±노이즈 |
+| json_parse | 0.822× | **0.875×** | ±노이즈 |
+| json_serialize | 0.668× | **0.670×** | 동등 |
+| sorting | 0.154× | **0.155×** | 동등 |
 
-**P-track 7/7: 세션 전후 모두 PASS. AndChainCSE 최적화 pass 구현으로 double-load 패턴 자동 CSE.**
+**P-track 7/7 PASS** ✅ — 모두 BMB faster than C GCC -O2.
 
-### AndChainCSE 최적화 pass
+### 조기 종료 사유
 
-| 파일 | 변경 내용 |
-|------|---------|
-| `bmb/src/mir/optimize.rs` | `AndChainCSE` struct + impl (Phase 1-3) + 4 unit test 추가 |
-| `bmb/src/mir/mod.rs` | `AndChainCSE` pub use export 추가 |
-| Release/Aggressive 파이프라인 | `GlobalFieldAccessCSE` 직후 `AndChainCSE` 추가 |
-
-**알고리즘**:
-1. Phase 1: `and_rhs_*` 블록에서 pure load call(`load_u8` 등)과 canonical 주소 키 수집
-2. Phase 2: `and_merge_*` 블록에서 동일 canonical key의 인접 `and_rhs` 쌍 감지
-3. Phase 3: `and_merge_*`에 phi 삽입 + `and_rhs_P`에서 중복 Call → Copy 교체
-
-**canonical form**: `binop:Add:param:ptr:var:pos_phi` 형식으로 주소 동등성 판단
-
-**IR 검증 결과**:
-```llvm
-bb_and_rhs_3:
-  %_t5.u8.0 = load i8, ptr %gep_elem.0   ; ← 첫 번째 load (유지)
-bb_and_merge_5:
-  %_and_cse_1 = phi i64 [%_t5, bb_and_rhs_3], [0, bb_and_false_4]  ← CSE phi
-bb_and_rhs_6:
-  %_t10 = icmp ne i64 %_and_cse_1, 13   ; ← load i8 없음! phi 재사용
-```
-
-### CSE 성능 측정 (직접 비교)
-
-| 방식 | median | min |
-|------|--------|-----|
-| double-load + CSE (자동) | 6ms | 5ms |
-| break-based 단일 load (수동) | 6ms | 5ms |
-
-→ **완벽히 동등한 성능** ✅ — ISSUE-20260521 근본 해결. Principle 2 (Workaround 금지) 준수.
-
-### ISSUE 처리
-
-| ISSUE | 변경 | 비고 |
-|-------|------|------|
-| ISSUE-20260521-mir-cse-and-chain | OPEN → **RESOLVED ✅** | AndChainCSE 구현으로 근본 해결 |
+- P-track 추가 최적화 기회 소진 (모든 벤치마크 이미 단일-load 패턴)
+- Active ISSUE 5개 전부 HUMAN-blocked
+- Actionable defects 0개
 
 ---
 
-## 다음 세션 (Cycle 3031+)
+## 다음 세션 (Cycle 3033+)
 
 ### 권장 우선순위
 
 1. **M4 채택 지표** — GitHub stars, 외부 PR, 외부 프로젝트 추적 (HUMAN-blocked 잔여)
 2. **B축 Claude 재측정** — 98.0% stale 기한 2026-08-13 (아직 여유)
-3. **Tier 1 벤치마크** — binary_trees/fasta/mandelbrot 등 최신 측정 확인
-4. **추가 P-track 최적화** — 다음 단일-load 기회 탐색 (or-chain CSE 확장 등)
+3. **새 언어 기능** — 사용자 요청 시 진입 (`v[i]` Vec 인덱싱 등)
+4. **Tier 1 벤치마크** — binary_trees/fasta/mandelbrot 최신 측정
 
 ### 알려진 HUMAN-blocked 항목
 
@@ -89,12 +53,13 @@ bb_and_rhs_6:
 - golden-flakiness-inttoptr Option A/B/C
 - problem-difficulty-bias 신규 hard 문제 20개
 - crosslang 측정 (stale)
+- `v[i]` Vec 인덱싱 구현 여부 (Rule 6 예외 결정)
 
 ### ISSUE 현황 (Active 5개)
 
 | ISSUE | 상태 | 우선순위 |
 |-------|------|---------|
-| ~~mir-cse-and-chain~~ | ~~OPEN~~ → **RESOLVED ✅** | — |
+| ~~mir-cse-and-chain~~ | **RESOLVED → closed/** | — |
 | multi-model-validation | PARTIALLY RESOLVED | MEDIUM |
 | external-problem-validation | PARTIALLY RESOLVED | MEDIUM |
 | integration-category-weakness | PARTIALLY RESOLVED | LOW |
@@ -111,6 +76,7 @@ bb_and_rhs_6:
 - `break`/`continue`/`return`: ✅ 지원 (단, break는 while에서만)
 - `&&`/`||` short-circuit: ✅ 완전 지원 (Cycle 2965)
 - `memset_fill(ptr, val, count)`: ✅ native-only builtin (v0.100.1 신규)
+- `[T; N]` 고정 배열: ✅ 인터프리터 완전 동작 (read/write/init)
 
 ### B-axis 상태
 

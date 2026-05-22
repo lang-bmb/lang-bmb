@@ -1,5 +1,6 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-22 (Cycles 3027-3030 — **MIR AndChainCSE P2 구현**: `and/or` 체인 내 중복 `load_u8` 자동 CSE. double-load+CSE = break-based 단일-load 동등 성능. ISSUE-20260521 RESOLVED. P-track 7/7 PASS 유지. HEAD `3ed5ca8b`.)
+> 최종 업데이트: 2026-05-22 (Cycle 3031 — **P-track 7/7 재측정**: brainfuck 0.941×/csv 0.858×/http 0.934×/lexer 0.174×/json_parse 0.875×/json_ser 0.670×/sorting 0.155× — 전부 BMB faster. ISSUE-20260521 closed/ 이동 완료. HEAD `3ed5ca8b`.)
+> 이전 갱신: 2026-05-22 (Cycles 3027-3030 — **MIR AndChainCSE P2 구현**: `and/or` 체인 내 중복 `load_u8` 자동 CSE. double-load+CSE = break-based 단일-load 동등 성능. ISSUE-20260521 RESOLVED. P-track 7/7 PASS 유지. HEAD `3ed5ca8b`.)
 > 이전 갱신: 2026-05-21 (Cycles 3017-3026 — **P-track 7/7: 전부 BMB faster** (brainfuck 1.037→0.956, csv 1.018→0.891, http 0.938→0.909). memset_fill 빌트인 + match dispatch + band 255 + single-load break. v0.100.0 유지. HEAD `72ddb300`.)
 > 이전 갱신: 2026-05-21 (Cycles 2999-3002 — **api-key test + publish 준비**: GPUStack pilot 3/3 ✅ + 04_fibonacci CRITICAL 노트 loop=1 ✅. M3-3 npm ✅ 이미 완료. 서브모듈 미push CI 버그 수정. HEAD `e5855d29`.)
 > 이전 갱신: 2026-05-20 (Cycles 2991-2994 — **ISSUE triage + 품질 마무리**: 4개 stale ISSUE 현황 갱신, clang-knapsack-outlier CLOSED, cycle-logs/ROADMAP.md 재작성, 35_sieve_primes 노트 수정. HEAD `f62ca373`.)
@@ -373,7 +374,7 @@ GitHub stars      ≥ 1,000
 | 축 | 현재값 | 목표 | 측정 방법 |
 |----|--------|------|----------|
 | **B** Failure Rate | ✅ **공식 98.0%** (2026-05-13, Cycle 2811, claude-sonnet-4-6) · **GPUStack 100.0%** (2026-05-21, 3-run, qwen3.6-35b-a3b, 300/300) | 99%+ 목표 (Claude) · **100% 달성 (GPUStack)** | LLM 1-shot 컴파일+verifier 통과율 |
-| **P** Performance | ✅ 16/16 ≤1.05x · **real-world 7/7: 전부 BMB faster** (Cycle 3023: brainfuck **0.956×** / csv **0.891×** / http **0.909×** / lexer 0.169× / json_parse 0.822× / json_ser 0.668× / sorting 0.154×) | 도메인 핵심 ≤1.00x, 일부 FAST | Tier 1/3 벤치마크 + inproc (Cycle 2685-2695, 2941-2942, 3017-3023) |
+| **P** Performance | ✅ 16/16 ≤1.05x · **real-world 7/7: 전부 BMB faster** (Cycle 3031 2026-05-22: brainfuck **0.941×** / csv **0.858×** / http **0.934×** / lexer 0.174× / json_parse 0.875× / json_ser 0.670× / sorting 0.155×) | 도메인 핵심 ≤1.00x, 일부 FAST | Tier 1/3 벤치마크 + inproc (Cycle 2685-2695, 2941-2942, 3017-3031) |
 | **A** Token Efficiency | ❌ 미측정 | BMB ≤ Rust LOC (동일 알고리즘) | LOC·토큰 비교 |
 | **D** Verification | ❌ 미측정 | contract 자동 증명률 추적 | `bmb verify` 통과율 |
 | **C** Navigability | ❌ 미측정 | LLM N-파일 정답률 추적 | Track R suite |
