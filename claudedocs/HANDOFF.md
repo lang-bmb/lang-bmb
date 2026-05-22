@@ -1,6 +1,7 @@
-# BMB Session Handoff — 2026-05-22 (Cycles 3054-3062 — M6-P3 gotgan MVP 완료)
+# BMB Session Handoff — 2026-05-22 (Cycles 3054-3063 — M6-P3 gotgan MVP 완료)
 
-> **HEAD**: `4efaf4bb` (feat(cycles-3054-3062): M6-P3 gotgan MVP + P0 버그 수정 2종)
+> **HEAD**: `9fb9aacc` (chore: cycle-3063 조기 종료 로그)
+> **메인 커밋**: `4efaf4bb` (feat(cycles-3054-3062): M6-P3 gotgan MVP + P0 버그 수정 2종)
 > **이전 HEAD**: `65ccd682` (feat(cycle-3053): M6-P2 bmb-ai-bench runner BMB 포팅 완료)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
@@ -78,6 +79,7 @@ bmb run ecosystem/gotgan-bmb/gotgan.bmb tree  # in project dir
 | 항목 | 상태 |
 |------|------|
 | cargo test --release | ✅ 6264/6264 |
+| golden test suite | ✅ 2862/2862 (run-golden-tests.sh) |
 | bootstrap Stage 1 | ✅ build_success |
 | M6-P3 gotgan MVP | ✅ interp 모드 완전 동작 |
 | ISSUE-20260522 | ✅ closed |

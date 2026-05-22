@@ -1,5 +1,6 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-22 (Cycles 3045-3052 — **M6-P2 bmb-ai-bench runner BMB 포팅 완료**: run-ai-bench.bmb (단일 문제) + run-all-ai-bench.bmb (전체, resume/pilot/중간저장) + analyze-bench-results.bmb (JSONL 분석). Context truncation + failure feedback + BMB_PILOT=1. GPUStack 실행 HUMAN 승인 대기.)
+> 최종 업데이트: 2026-05-22 (Cycles 3054-3063 — **M6-P3 gotgan BMB MVP 완료**: gotgan.bmb 440 LOC / 6 commands(new/init/build/check/clean/tree) / grep-based TOML 파서 / dep tree 재귀. P0 버그 2종(GEP/getcwd) + bootstrap exec_with_stdin 동기화. golden 2862/2862 ✅. HEAD `9fb9aacc`.)
+> 이전 갱신: 2026-05-22 (Cycles 3045-3052 — **M6-P2 bmb-ai-bench runner BMB 포팅 완료**: run-ai-bench.bmb (단일 문제) + run-all-ai-bench.bmb (전체, resume/pilot/중간저장) + analyze-bench-results.bmb (JSONL 분석). Context truncation + failure feedback + BMB_PILOT=1. GPUStack 실행 HUMAN 승인 대기.)
 > 이전 갱신: 2026-05-22 (Cycles 3031-3032 — **P-track 7/7 재측정 + 조기 종료**: brainfuck 0.941×/csv 0.858×/http 0.934×/lexer 0.174×/json_parse 0.875×/json_ser 0.670×/sorting 0.155×. or-chain CSE 조사 → 전 벤치마크 단일-load 패턴, 추가 기회 소진. ISSUE-20260521 closed/ 이동. Active ISSUE 5개 전부 HUMAN-blocked. HEAD `25972701`.)
 > 이전 갱신: 2026-05-22 (Cycles 3027-3030 — **MIR AndChainCSE P2 구현**: `and/or` 체인 내 중복 `load_u8` 자동 CSE. double-load+CSE = break-based 단일-load 동등 성능. ISSUE-20260521 RESOLVED. P-track 7/7 PASS 유지. HEAD `3ed5ca8b`.)
 > 이전 갱신: 2026-05-21 (Cycles 3017-3026 — **P-track 7/7: 전부 BMB faster** (brainfuck 1.037→0.956, csv 1.018→0.891, http 0.938→0.909). memset_fill 빌트인 + match dispatch + band 255 + single-load break. v0.100.0 유지. HEAD `72ddb300`.)
