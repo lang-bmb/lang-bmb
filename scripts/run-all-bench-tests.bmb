@@ -1,0 +1,125 @@
+// run-all-bench-tests.bmb — Run tests for all bmb-ai-bench problems
+//
+// Usage: bmb run scripts/run-all-bench-tests.bmb [problems_root]
+//   Default problems_root: <repo>/ecosystem/bmb-ai-bench/problems
+//
+// For each problem directory that has tests.json + solution.bmb:
+//   - Runs run-bench-tests.bmb and captures output
+//   - Parses "Results: X/Y passed" to accumulate aggregate scores
+//   - Prints a summary at the end
+
+fn repo_root() -> String =
+    let root = getenv("BMB_REPO_ROOT");
+    if root.len() > 0 { root } else { "." };
+
+fn bmb_exe(root: String) -> String =
+    let win = root + "/target/release/bmb.exe";
+    if file_exists(win) > 0 { win } else { root + "/target/release/bmb" };
+
+// --- String search ---
+
+fn search_from(s: String, sub: String, idx: i64) -> i64 =
+    if idx >= s.len() { 0 - 1 }
+    else if str_substr(s, idx, sub.len()) == sub { idx }
+    else { search_from(s, sub, idx + 1) };
+
+// --- Parse integer at position (digits only, stops at first non-digit) ---
+
+fn parse_digits(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() { acc }
+    else {
+        let ch = s.char_code_at(pos);
+        if ch >= 48 and ch <= 57 {
+            parse_digits(s, pos + 1, acc * 10 + ch - 48)
+        } else { acc }
+    };
+
+fn parse_num_at(s: String, pos: i64) -> i64 =
+    parse_digits(s, pos, 0);
+
+// --- Extract passed/total from "Results: X/Y passed" ---
+
+fn extract_passed(output: String) -> i64 =
+    let marker = "Results: ";
+    let pos = search_from(output, marker, 0);
+    if pos < 0 { 0 - 1 }
+    else { parse_num_at(output, pos + marker.len()) };
+
+fn extract_total(output: String) -> i64 =
+    let marker = "Results: ";
+    let pos = search_from(output, marker, 0);
+    if pos < 0 { 0 - 1 }
+    else {
+        let num_start = pos + marker.len();
+        let slash = search_from(output, "/", num_start);
+        if slash < 0 { 0 - 1 }
+        else { parse_num_at(output, slash + 1) }
+    };
+
+// --- Problem runner ---
+
+fn run_problem(bmb: String, runner: String, prob_dir: String) -> String =
+    if file_exists(prob_dir + "/tests.json") == 0 { "" }
+    else if file_exists(prob_dir + "/solution.bmb") == 0 { "" }
+    else { exec_with_stdin(bmb, "run " + runner + " " + prob_dir, "") };
+
+// --- Iterate over all entries ---
+
+fn process_entries(entries: SvecHandle, bmb: String, runner: String, root: String,
+                   problems_root: String, idx: i64,
+                   total_passed: i64, total_tests: i64, skipped: i64) -> i64 =
+    if idx >= svec_len(entries) {
+        print_summary(total_passed, total_tests, skipped)
+    } else {
+        let name = svec_get(entries, idx);
+        if name.len() == 0 {
+            process_entries(entries, bmb, runner, root, problems_root,
+                            idx + 1, total_passed, total_tests, skipped)
+        } else {
+            let prob_dir = problems_root + "/" + name;
+            let output = run_problem(bmb, runner, prob_dir);
+            if output.len() == 0 {
+                process_entries(entries, bmb, runner, root, problems_root,
+                                idx + 1, total_passed, total_tests, skipped + 1)
+            } else {
+                let passed = extract_passed(output);
+                let total  = extract_total(output);
+                let ok     = passed == total;
+                let status = if ok { "✓" } else { "✗" };
+                let _line  = println(status + " " + name + ": " +
+                                     int_to_string(passed) + "/" + int_to_string(total));
+                process_entries(entries, bmb, runner, root, problems_root,
+                                idx + 1, total_passed + passed, total_tests + total, skipped)
+            }
+        }
+    };
+
+fn print_summary(total_passed: i64, total_tests: i64, skipped: i64) -> i64 =
+    let _blank = println("");
+    let pct = if total_tests > 0 { total_passed * 100 / total_tests } else { 0 };
+    let _msg = println("=== TOTAL: " + int_to_string(total_passed) + "/" +
+                        int_to_string(total_tests) + " (" + int_to_string(pct) + "%) passed" +
+                        " | skipped: " + int_to_string(skipped) + " ===");
+    if total_passed == total_tests { 0 } else { 1 };
+
+fn main() -> i64 =
+    let args = script_args();
+    let root = repo_root();
+    let bmb  = bmb_exe(root);
+    let runner = root + "/scripts/run-bench-tests.bmb";
+    let problems_root =
+        if svec_len(args) > 0 { svec_get(args, 0) }
+        else { root + "/ecosystem/bmb-ai-bench/problems" };
+    if file_exists(bmb) == 0 {
+        let _e = println("ERROR: bmb binary not found: " + bmb);
+        1
+    } else if file_exists(runner) == 0 {
+        let _e = println("ERROR: runner not found: " + runner);
+        1
+    } else {
+        let _hdr = println("=== BMB AI Bench: " + problems_root + " ===");
+        let _bl  = println("");
+        let dir_listing = list_dir(problems_root);
+        let entries = str_lines(dir_listing);
+        process_entries(entries, bmb, runner, root, problems_root, 0, 0, 0, 0)
+    };
