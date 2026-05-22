@@ -1776,6 +1776,11 @@ impl<'ctx> LlvmContext<'ctx> {
         let file_size_fn = self.module.add_function("file_size", file_size_type, None);
         self.functions.insert("file_size".to_string(), file_size_fn);
 
+        // M6: file_mtime(path: ptr) -> i64 (returns modification time as Unix seconds, -1 on error)
+        let file_mtime_type = i64_type.fn_type(&[ptr_type.into()], false);
+        let file_mtime_fn = self.module.add_function("file_mtime", file_mtime_type, None);
+        self.functions.insert("file_mtime".to_string(), file_mtime_fn);
+
         // v0.96: Directory operations for gotgan-bmb
         // is_dir(path: ptr) -> i64 (returns 1 if directory, 0 otherwise)
         let is_dir_type = i64_type.fn_type(&[ptr_type.into()], false);

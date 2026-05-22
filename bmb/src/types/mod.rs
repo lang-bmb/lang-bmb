@@ -299,6 +299,8 @@ impl TypeChecker {
         functions.insert("file_exists".to_string(), (vec![Type::String], Type::I64));
         // file_size(path: String) -> i64 (-1 = error)
         functions.insert("file_size".to_string(), (vec![Type::String], Type::I64));
+        // file_mtime(path: String) -> i64 (Unix seconds, -1 = error)
+        functions.insert("file_mtime".to_string(), (vec![Type::String], Type::I64));
 
         // v0.96: Directory operation builtins for gotgan-bmb
         // is_dir(path: String) -> i64 (1 = directory, 0 = not)

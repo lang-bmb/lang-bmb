@@ -1,0 +1,109 @@
+// rebuild-bootstrap-exe.bmb — BMB port of scripts/rebuild-bootstrap-exe.sh
+//
+// Rebuilds bootstrap/compiler.exe when compiler.bmb has changed.
+//
+// Usage: bmb run scripts/rebuild-bootstrap-exe.bmb [--force] [--json] [--check-only]
+//
+// Env vars:
+//   BMB_REPO_ROOT — project root (fallback: ".")
+//
+// Exit codes:
+//   0  exe is current (or was successfully rebuilt)
+//   1  --check-only and exe is stale, OR rebuild failed
+
+fn repo_root() -> String =
+    let root = getenv("BMB_REPO_ROOT");
+    if root.len() > 0 { root } else { "." };
+
+fn bootstrap_src(root: String) -> String =
+    root + "/bootstrap/compiler.bmb";
+
+fn bootstrap_exe(root: String) -> String =
+    let win = root + "/bootstrap/compiler.exe";
+    if file_exists(win) > 0 { win }
+    else { root + "/bootstrap/compiler" };
+
+fn rust_bmb(root: String) -> String =
+    let win = root + "/target/release/bmb.exe";
+    if file_exists(win) > 0 { win }
+    else { root + "/target/release/bmb" };
+
+fn is_stale(exe: String, src: String, force: bool) -> bool =
+    if force { true }
+    else if file_exists(exe) == 0 { true }
+    else { file_mtime(src) > file_mtime(exe) };
+
+fn log_msg(json: bool, msg: String) -> () =
+    if json { () } else { println(msg) };
+
+fn has_flag(args: String, flag: String) -> bool =
+    let tokens = str_split(args, " ");
+    let n = svec_len(tokens);
+    check_flag(tokens, n, 0, flag);
+
+fn check_flag(tokens: SvecHandle, n: i64, idx: i64, flag: String) -> bool =
+    if idx >= n { false }
+    else if svec_get(tokens, idx) == flag { true }
+    else { check_flag(tokens, n, idx + 1, flag) };
+
+fn do_rebuild(bmb: String, src: String, exe: String, json: bool) -> i64 =
+    let t0 = time_ns();
+    let _out = exec_output(bmb, "build " + src + " -o " + exe + " --fast-compile");
+    let ms = (time_ns() - t0) / 1000000;
+    if file_exists(exe) > 0 {
+        if json {
+            println("{\"status\":\"ok\",\"rebuilt\":true,\"build_ms\":" + int_to_string(ms) + "}");
+        } else {
+            println("OK: bootstrap/compiler.exe rebuilt in " + int_to_string(ms) + " ms");
+        };
+        0
+    } else {
+        if json {
+            println("{\"status\":\"error\",\"message\":\"bmb build failed\",\"rebuilt\":false}");
+        } else {
+            println("ERROR: bmb build bootstrap/compiler.bmb failed");
+        };
+        1
+    };
+
+fn main() -> i64 =
+    let args_env = getenv("BMB_ARGS");
+    let force      = has_flag(args_env, "--force");
+    let json_out   = has_flag(args_env, "--json");
+    let check_only = has_flag(args_env, "--check-only");
+
+    let root = repo_root();
+    let src  = bootstrap_src(root);
+    let exe  = bootstrap_exe(root);
+    let bmb  = rust_bmb(root);
+
+    if file_exists(bmb) == 0 {
+        if json_out {
+            println("{\"status\":\"error\",\"message\":\"Rust bmb binary not found — run cargo build --release first\",\"rebuilt\":false}");
+        } else {
+            println("ERROR: Rust bmb binary not found. Run: cargo build --release");
+        };
+        1
+    } else {
+        let stale = is_stale(exe, src, force);
+        if stale {
+            if check_only {
+                if json_out {
+                    println("{\"status\":\"stale\",\"rebuilt\":false}");
+                } else {
+                    println("ERROR: bootstrap/compiler.exe is stale vs compiler.bmb (run rebuild-bootstrap-exe.bmb)");
+                };
+                1
+            } else {
+                log_msg(json_out, "bootstrap/compiler.exe is stale — rebuilding with --fast-compile ...");
+                do_rebuild(bmb, src, exe, json_out)
+            }
+        } else {
+            if json_out {
+                println("{\"status\":\"current\",\"rebuilt\":false}");
+            } else {
+                println("bootstrap/compiler.exe is current");
+            };
+            0
+        }
+    };

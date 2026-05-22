@@ -19,11 +19,13 @@
 #include <windows.h>
 #include <io.h>       // v0.97: _setmode for binary stdio
 #include <fcntl.h>    // v0.97: _O_BINARY
+#include <sys/stat.h> // M6: file_mtime (struct _stat)
 #else
 #include <pthread.h>
 #include <errno.h>   // v0.77: For ETIMEDOUT
 #include <time.h>    // v0.77: For clock_gettime
 #include <unistd.h>  // getcwd (bmb_getcwd), rmdir (bmb_rmdir) on POSIX
+#include <sys/stat.h> // M6: file_mtime (struct stat)
 #endif
 
 // v0.98: Event loop for async I/O
@@ -2860,6 +2862,19 @@ BmbString* reg_cached_lookup(const BmbString* reg, const BmbString* name, int64_
 }
 
 // v0.46: Additional file functions
+// M6: file_mtime(path: String) -> i64 — modification time as Unix seconds, -1 on error
+int64_t bmb_file_mtime(const char* path) {
+#ifdef _WIN32
+    struct _stat st;
+    if (_stat(path, &st) != 0) return -1;
+    return (int64_t)st.st_mtime;
+#else
+    struct stat st;
+    if (stat(path, &st) != 0) return -1;
+    return (int64_t)st.st_mtime;
+#endif
+}
+
 int64_t bmb_file_size(const char* path) {
     FILE* f = fopen(path, "rb");
     if (!f) return -1;
@@ -3098,6 +3113,12 @@ int64_t file_size(const BmbString* path) {
     long size = ftell(f);
     fclose(f);
     return (int64_t)size;
+}
+
+// M6: file_mtime(path: BmbString*) -> i64 — modification time as Unix seconds
+int64_t file_mtime(const BmbString* path) {
+    if (!path || !path->data) return -1;
+    return bmb_file_mtime(path->data);
 }
 
 // v0.98: delete_file(path) -> i64: deletes a file, returns 0 on success, -1 on error

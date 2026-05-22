@@ -1,0 +1,144 @@
+// rebuild-runtime.bmb — BMB port of scripts/rebuild-runtime.sh
+//
+// Rebuilds bmb/runtime/libbmb_runtime.a when bmb_runtime.c or
+// bmb_event_loop.c are newer than the library.
+//
+// Usage: bmb run scripts/rebuild-runtime.bmb [--force] [--json] [--check-only]
+//
+// Exit codes (via process return value, printed to stdout for callers):
+//   0  library is current (or was successfully rebuilt)
+//   1  --check-only and library is stale, OR rebuild failed
+
+fn script_dir() -> String =
+    // Resolve relative to where bmb is invoked — use env fallback
+    let root = getenv("BMB_REPO_ROOT");
+    if root.len() > 0 { root } else { "." };
+
+fn runtime_dir(root: String) -> String = root + "/bmb/runtime";
+
+fn lib_primary(root: String) -> String =
+    runtime_dir(root) + "/libbmb_runtime.a";
+
+fn lib_secondary(root: String) -> String =
+    root + "/runtime/libbmb_runtime.a";
+
+fn runtime_c(root: String) -> String =
+    runtime_dir(root) + "/bmb_runtime.c";
+
+fn eventloop_c(root: String) -> String =
+    runtime_dir(root) + "/bmb_event_loop.c";
+
+fn pick_cc() -> String =
+    // Try clang first, then gcc
+    let clang_out = exec_output("clang", "--version");
+    if clang_out.len() > 0 { "clang" } else { "gcc" };
+
+fn is_stale(lib: String, src_c: String, evloop_c: String, force: bool) -> bool =
+    if force { true }
+    else if file_exists(lib) == 0 { true }
+    else {
+        let lib_t = file_mtime(lib);
+        let src_t = file_mtime(src_c);
+        let ev_t  = file_mtime(evloop_c);
+        src_t > lib_t or ev_t > lib_t
+    };
+
+fn log_msg(json: bool, msg: String) -> () =
+    if json { () } else { println(msg) };
+
+fn run_rebuild(root: String, cc: String, lib: String, lib2: String, json: bool) -> i64 =
+    let rd   = runtime_dir(root);
+    let src  = rd + "/bmb_runtime.c";
+    let evl  = rd + "/bmb_event_loop.c";
+    let obj1 = rd + "/bmb_runtime.o";
+    let obj2 = rd + "/bmb_event_loop.o";
+    let cflags = "-O2 -ffunction-sections -fdata-sections -I" + rd;
+    let t0 = time_ns();
+
+    let _r1 = exec_output(cc, "-c " + src  + " -o " + obj1 + " " + cflags);
+    let _r2 = exec_output(cc, "-c " + evl  + " -o " + obj2 + " " + cflags);
+    let _r3 = exec_output("ar", "rcs " + lib + " " + obj1 + " " + obj2);
+
+    // Clean up object files regardless of success
+    let _d1 = delete_file(obj1);
+    let _d2 = delete_file(obj2);
+
+    let build_ok = file_exists(lib) > 0;
+    if build_ok {
+        // Note: secondary copy (runtime/libbmb_runtime.a) not synced here;
+        // binary file copy requires platform-specific command.
+        let ms = (time_ns() - t0) / 1000000;
+        let sz = file_size(lib);
+        if json {
+            println("{\"status\":\"ok\",\"rebuilt\":true,\"compiler\":\"" + cc + "\",\"build_ms\":" + int_to_string(ms) + ",\"bytes\":" + int_to_string(sz) + "}");
+            0
+        } else {
+            println("OK: libbmb_runtime.a rebuilt in " + int_to_string(ms) + " ms (" + int_to_string(sz) + " bytes, compiler: " + cc + ")");
+            0
+        }
+    } else {
+        if json {
+            println("{\"status\":\"error\",\"message\":\"compile failed\",\"rebuilt\":false}");
+        } else {
+            println("ERROR: Failed to rebuild libbmb_runtime.a");
+        };
+        1
+    };
+
+fn has_flag(args: String, flag: String) -> bool =
+    let tokens = str_split(args, " ");
+    let n = svec_len(tokens);
+    check_flag(tokens, n, 0, flag);
+
+fn check_flag(tokens: SvecHandle, n: i64, idx: i64, flag: String) -> bool =
+    if idx >= n { false }
+    else if svec_get(tokens, idx) == flag { true }
+    else { check_flag(tokens, n, idx + 1, flag) };
+
+fn main() -> i64 =
+    // Read CLI args — BMB doesn't expose argv, so use env var BMB_ARGS
+    let args_env = getenv("BMB_ARGS");
+    let force      = has_flag(args_env, "--force");
+    let json_out   = has_flag(args_env, "--json");
+    let check_only = has_flag(args_env, "--check-only") or has_flag(args_env, "--ci");
+
+    let root = script_dir();
+    let lib  = lib_primary(root);
+    let lib2 = lib_secondary(root);
+    let src  = runtime_c(root);
+    let evl  = eventloop_c(root);
+
+    let stale = is_stale(lib, src, evl, force);
+    if stale {
+        if check_only {
+            if json_out {
+                println("{\"status\":\"stale\",\"rebuilt\":false}");
+            } else {
+                println("ERROR: libbmb_runtime.a is stale vs bmb_runtime.c / bmb_event_loop.c");
+                println("  Run: bmb run scripts/rebuild-runtime.bmb");
+            };
+            1
+        } else {
+            let cc = pick_cc();
+            if cc.len() == 0 {
+                if json_out {
+                    println("{\"status\":\"error\",\"message\":\"No C compiler found (clang or gcc required)\",\"rebuilt\":false}");
+                } else {
+                    println("ERROR: No C compiler found. Install clang or gcc.");
+                };
+                1
+            } else {
+                log_msg(json_out, "libbmb_runtime.a is stale — rebuilding with " + cc + " ...");
+                run_rebuild(root, cc, lib, lib2, json_out)
+            }
+        }
+    } else {
+        let sz = file_size(lib);
+        if json_out {
+            println("{\"status\":\"current\",\"rebuilt\":false,\"lib\":\"" + lib + "\",\"bytes\":" + int_to_string(sz) + "}");
+        } else {
+            println("bmb/runtime/libbmb_runtime.a is current (" + int_to_string(sz) + " bytes)");
+        };
+        0
+    };
+

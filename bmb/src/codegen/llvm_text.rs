@@ -912,6 +912,7 @@ impl TextCodeGen {
         writeln!(out, "; Runtime declarations - File I/O")?;
         writeln!(out, "declare i64 @bmb_file_exists(ptr) nocallback nounwind nofree")?;
         writeln!(out, "declare i64 @bmb_file_size(ptr) nocallback nounwind nofree")?;
+        writeln!(out, "declare i64 @bmb_file_mtime(ptr) nocallback nounwind nofree")?;
         writeln!(out, "declare ptr @bmb_read_file(ptr) nocallback nounwind")?;
         writeln!(out, "declare i64 @bmb_write_file(ptr, ptr) nocallback nounwind nofree")?;
         writeln!(out, "declare i64 @write_file_newlines(ptr, ptr) nocallback nounwind nofree")?;
@@ -1126,6 +1127,7 @@ impl TextCodeGen {
         writeln!(out, "declare i64 @file_exists_cstr(ptr) nocallback nounwind nofree")?;
         writeln!(out, "declare i64 @bmb_file_exists_cstr(ptr) nocallback nounwind nofree")?;
         writeln!(out, "declare i64 @file_size(ptr) nocallback nounwind nofree")?;
+        writeln!(out, "declare i64 @file_mtime(ptr) nocallback nounwind nofree")?;
         writeln!(out, "declare ptr @read_file(ptr) nocallback nounwind")?;
         writeln!(out, "declare i64 @write_file(ptr, ptr) nocallback nounwind nofree")?;
         writeln!(out, "declare i64 @append_file(ptr, ptr) nocallback nounwind nofree")?;
@@ -6613,6 +6615,7 @@ impl TextCodeGen {
                         "write_stdout" => "bmb_write_stdout",
                         "exec_output" => "bmb_exec_output",
                         "getenv" => "bmb_getenv",
+                        "file_mtime" => "bmb_file_mtime",
                         "file_exists" if all_string_args_are_literals => "file_exists_cstr",
                         "bmb_file_exists" if all_string_args_are_literals => "bmb_file_exists_cstr",
                         // v0.50.77: StringBuilder optimization - use cstr variant for string literals
@@ -9308,8 +9311,8 @@ impl TextCodeGen {
             | "svec_join" | "bmb_svec_join" => "ptr",
 
             // i64 return - File I/O (both full and wrapper names)
-            "bmb_file_exists" | "bmb_file_size" | "bmb_write_file" | "bmb_append_file"
-            | "file_exists" | "file_size" | "write_file" | "append_file" => "i64",
+            "bmb_file_exists" | "bmb_file_size" | "bmb_file_mtime" | "bmb_write_file" | "bmb_append_file"
+            | "file_exists" | "file_size" | "file_mtime" | "write_file" | "append_file" => "i64",
 
             // i64 return - StringBuilder (handle is i64)
             "bmb_sb_new" | "bmb_sb_push" | "bmb_sb_push_cstr" | "bmb_sb_push_char" | "bmb_sb_push_int" | "bmb_sb_push_escaped" | "bmb_sb_push_range" | "bmb_sb_len" | "bmb_sb_clear" | "bmb_sb_contains" | "bmb_sb_println"

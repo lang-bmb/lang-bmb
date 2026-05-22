@@ -240,6 +240,7 @@ impl Interpreter {
             self.builtins.insert("append_file".to_string(), builtin_append_file);
             self.builtins.insert("file_exists".to_string(), builtin_file_exists);
             self.builtins.insert("file_size".to_string(), builtin_file_size);
+            self.builtins.insert("file_mtime".to_string(), builtin_file_mtime);
             // v0.96: Directory operation builtins for gotgan-bmb
             self.builtins.insert("is_dir".to_string(), builtin_is_dir);
             self.builtins.insert("make_dir".to_string(), builtin_make_dir);
@@ -8853,6 +8854,35 @@ fn builtin_file_exists(args: &[Value]) -> InterpResult<Value> {
         Some(path) => {
             let exists = Path::new(&path).exists();
             Ok(Value::Int(if exists { 1 } else { 0 }))
+        }
+        None => Err(RuntimeError::type_error("string", args[0].type_name())),
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+/// file_mtime(path: String) -> i64
+/// Returns file modification time as Unix seconds, or -1 on error.
+fn builtin_file_mtime(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("file_mtime", 1, args.len()));
+    }
+    match extract_string(&args[0]) {
+        Some(path) => {
+            match fs::metadata(&path) {
+                Ok(meta) => {
+                    match meta.modified() {
+                        Ok(t) => {
+                            use std::time::UNIX_EPOCH;
+                            let secs = t.duration_since(UNIX_EPOCH)
+                                .map(|d| d.as_secs() as i64)
+                                .unwrap_or(-1);
+                            Ok(Value::Int(secs))
+                        }
+                        Err(_) => Ok(Value::Int(-1)),
+                    }
+                }
+                Err(_) => Ok(Value::Int(-1)),
+            }
         }
         None => Err(RuntimeError::type_error("string", args[0].type_name())),
     }
