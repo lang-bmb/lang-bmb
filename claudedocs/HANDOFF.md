@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-22 (Cycles 3031-3032 — P-track 재측정 + 조기 종료)
 
-> **HEAD**: `3ed5ca8b` (Cycles 3027-3030 — MIR AndChainCSE: and/or 체인 중복 load_u8 자동 CSE)
+> **HEAD**: `6f9979b8` (Cycles 3031-3032 — P-track 재측정 7/7 PASS, ISSUE-20260521 closed/, 조기 종료)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 > **다음 세션 진입점**: Cycle 3033
