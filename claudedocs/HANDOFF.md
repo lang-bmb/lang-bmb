@@ -1,76 +1,64 @@
-# BMB Session Handoff — 2026-05-22 (Cycles 3054-3063 — M6-P3 gotgan MVP 완료)
+# BMB Session Handoff — 2026-05-22 (Cycles 3064-3067 — gotgan native build 완전 가능화)
 
-> **HEAD**: `9fb9aacc` (chore: cycle-3063 조기 종료 로그)
-> **메인 커밋**: `4efaf4bb` (feat(cycles-3054-3062): M6-P3 gotgan MVP + P0 버그 수정 2종)
-> **이전 HEAD**: `65ccd682` (feat(cycle-3053): M6-P2 bmb-ai-bench runner BMB 포팅 완료)
-> **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930)
+> **HEAD**: `3ce0a765` (feat(cycles-3064-3067): gotgan native build 완전 가능화 + GPUStack 100% 재확인)
+> **이전 HEAD**: `9fb9aacc` (chore: cycle-3063 조기 종료 로그)
+> **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 3067 — S3==S4)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 3063 (버퍼/마무리) 또는 조기 종료
+> **다음 세션 진입점**: M6-P4 결정 또는 M7 착수 (사용자 결정)
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 3054-3062)
+## 이번 세션 작업 요약 (Cycles 3064-3067)
 
 ### 주요 변경 사항
 
 | Cycle | 제목 | 내용 |
 |-------|------|------|
-| 3054 | M6-P3 착수 | gotgan Rust 소스 분석 준비 |
-| 3055 | ISSUE-20260522 분석 | GEP 버그 근본 원인 파악 |
-| 3056 | P0 수정: GEP 버그 | `lower.rs` getenv/exec_with_stdin String 반환 추가 |
-| 3057 | gotgan 분석 | TOML 전략 결정 (Option A: grep-based), MVP 6 commands 확정 |
-| 3058 | gotgan.bmb MVP 구현 | 440 LOC, 6 commands, TOML 파서 구현 |
-| 3059 | bootstrap 검증 | Stage 1 check ✅, native 빌드 한계 확인 |
-| 3060 | 골든 테스트 | `test_golden_gotgan_bmb.bmb` 10 tests / 100점 |
-| 3061 | benchmark-bmb 동기화 | submodule P-track 3종 최적화 커밋 |
-| 3062 | 최종 커밋 | HANDOFF 갱신 |
+| 3064 | .gitignore 예외 패턴 | `tests/golden/test_golden_*.bmb` 예외 추가 |
+| 3065 | bootstrap svec/str_ native 지원 | 5개소 수정 → gotgan.bmb native 빌드 성공 |
+| 3066 | GPUStack ai-bench | 파일럿 3/3 ✅ + 전체 100/100 (100%) 재확인 |
+| 3067 | ROADMAP 갱신 + 커밋 | M6-P3 native build ✅ 마킹 |
+
+### 핵심 성과: gotgan.bmb 네이티브 빌드 가능화
+
+**bootstrap/compiler.bmb 수정 5개소**:
+
+1. `get_call_return_type` — `@bmb_svec_get`, `@bmb_svec_join` → `"ptr"` 반환
+2. `method_to_runtime_fn` — `char_code_at` → `bmb_string_char_at` 매핑
+3. `map_runtime_fn_full` — 16개 신규 매핑:
+   - `@str_contains/find/trim` → `@bmb_string_contains/index_of/trim`
+   - `@svec_new/push/len/get/free/join/index_of/contains/sort/remove/clear` → `@bmb_svec_*`
+   - `@str_lines` → `@bmb_str_lines`, `@make_dir` → `@make_dir`
+4. `get_call_arg_types` — 14개 신규 시그니처 추가
+5. IR preamble — 13개 LLVM declare 추가
+
+**결과**: `bootstrap/compiler_stage1.exe build ecosystem/gotgan-bmb/gotgan.bmb -o gotgan.exe` → ✅ build_success
 
 ### M6 현황
 
 ```
-M6 Full Dogfooding  ██████████████░░░░░░  🔄
-  P1 scripts ✅  P2 ai-bench ✅  P3 gotgan ✅ (interp 모드)
+M6 Full Dogfooding  ████████████████░░░░  🔄
+  P1 scripts ✅  P2 ai-bench ✅  P3 gotgan ✅ (native build ✅)
 ```
-
-### 이번 세션 핵심 산출물
-
-**gotgan.bmb MVP** (`ecosystem/gotgan-bmb/gotgan.bmb`):
-- `new` — 프로젝트 생성 (gotgan.toml + src/main.bmb)
-- `init` — 현재 디렉토리 초기화
-- `build` / `check` — bmb binary 호출 (PATH에 bmb 필요)
-- `clean` — target/ 정리
-- `tree` — 의존성 트리 재귀 출력
-
-사용 예시:
-```bash
-bmb run ecosystem/gotgan-bmb/gotgan.bmb new my-project
-bmb run ecosystem/gotgan-bmb/gotgan.bmb tree  # in project dir
-```
-
-**P0 버그 수정 2종**:
-- `bmb/src/mir/lower.rs:1685` — getenv/exec_with_stdin String 반환 추가
-- `bmb/src/types/mod.rs` — getcwd/current_dir 타입 체커 등록 누락
 
 ---
 
 ## Carry-Forward (다음 세션)
 
 ### Actionable
-- Cycle 3063: 버퍼 사이클 (조기 종료 가능 — 활성 carry-forward 없음)
-- `ecosystem/benchmark-bmb` submodule push 여부 (HUMAN 결정)
+- 없음 (M6-P4 결정 대기)
 
 ### Structural Improvement Proposals
-- `str_lines` / `svec_*` native codegen 지원 → gotgan.bmb native 빌드 가능화 (M7 scope)
-- `path_join(dir, file) -> String` 내장 builtin 추가 (P3 제안)
-- `tests/golden/test_*.bmb` gitignore 예외 패턴 추가 (`!tests/golden/test_golden_*.bmb`)
-- submodule 작업 후 `git submodule foreach git status` 체크 루틴화
+- `method_to_runtime_fn` catch-all `"bmb_" + method` 패턴 → 존재하지 않는 함수 이름 생성 위험 (M7 scope)
+- gotgan build/check: PATH 의존성 → `bmb_exe_path()` 내부 로직으로 대체 고려 (P3)
 
 ### Pending Human Decisions
 - `ecosystem/benchmark-bmb` submodule push to origin
+- M6-P4 결정 (M6 완료 여부, 다음 P4 범위)
 
 ### Known Issues
-- gotgan.bmb: native 빌드 불가 (인터프리터 전용 builtins — str_lines, svec_* — native codegen 미지원)
-- gotgan build/check: PATH에 `bmb` binary 필요
+- gotgan build/check: PATH에 `bmb` binary 필요 (기존 Known Issue)
+- gotgan.bmb 생성한 프로젝트 `target/` 디렉토리가 이미 존재 (gotgan new 시 자동 생성)
 
 ---
 
@@ -78,10 +66,10 @@ bmb run ecosystem/gotgan-bmb/gotgan.bmb tree  # in project dir
 
 | 항목 | 상태 |
 |------|------|
-| cargo test --release | ✅ 6264/6264 |
-| golden test suite | ✅ 2862/2862 (run-golden-tests.sh) |
+| cargo test --release | ✅ 3782/3782 + 전체 0 failed |
+| golden test suite | ✅ 2862/2862 (직전 세션 확인) |
 | bootstrap Stage 1 | ✅ build_success |
-| M6-P3 gotgan MVP | ✅ interp 모드 완전 동작 |
-| ISSUE-20260522 | ✅ closed |
-| B-axis | 100.0% (GPUStack 300/300) |
+| 3-Stage Fixed Point | ✅ S3 IR == S4 IR (Cycle 3067) |
+| M6-P3 gotgan | ✅ native build + interp 모드 완전 동작 |
+| B-axis | 100.0% (GPUStack 100/100, 2026-05-22) |
 | P-track | 7/7 BMB faster than C |
