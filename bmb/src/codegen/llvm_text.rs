@@ -953,6 +953,7 @@ impl TextCodeGen {
         writeln!(out, "declare i64 @bmb_system(ptr) nocallback nounwind")?;
         writeln!(out, "declare ptr @bmb_system_capture(ptr) nocallback nounwind")?;
         writeln!(out, "declare ptr @bmb_exec_output(ptr, ptr) nocallback nounwind")?;
+        writeln!(out, "declare ptr @bmb_exec_with_stdin(ptr, ptr, ptr) nocallback nounwind")?;
         writeln!(out, "declare ptr @bmb_getenv(ptr) nocallback nounwind nofree nosync")?;
         writeln!(out)?;
 
@@ -6614,6 +6615,7 @@ impl TextCodeGen {
                         "read_bytes" => "bmb_read_bytes",
                         "write_stdout" => "bmb_write_stdout",
                         "exec_output" => "bmb_exec_output",
+                        "exec_with_stdin" => "bmb_exec_with_stdin",
                         "getenv" => "bmb_getenv",
                         "file_mtime" => "bmb_file_mtime",
                         "file_exists" if all_string_args_are_literals => "file_exists_cstr",
@@ -9372,6 +9374,7 @@ impl TextCodeGen {
             "bmb_getenv" | "getenv" => "ptr",
             "bmb_system_capture" | "system_capture" => "ptr",
             "bmb_exec_output" | "exec_output" => "ptr",
+            "bmb_exec_with_stdin" | "exec_with_stdin" => "ptr",
 
             // v0.46: ptr return - CLI argument functions
             "get_arg" | "bmb_get_arg" => "ptr",

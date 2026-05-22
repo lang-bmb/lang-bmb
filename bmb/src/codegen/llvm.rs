@@ -1732,6 +1732,12 @@ impl<'ctx> LlvmContext<'ctx> {
         self.functions.insert("exec_output".to_string(), exec_output_fn);
         self.function_return_types.insert("exec_output".to_string(), MirType::String);
 
+        // exec_with_stdin(cmd: ptr, args: ptr, stdin: ptr) -> ptr
+        let exec_with_stdin_type = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false);
+        let exec_with_stdin_fn = self.module.add_function("exec_with_stdin", exec_with_stdin_type, None);
+        self.functions.insert("exec_with_stdin".to_string(), exec_with_stdin_fn);
+        self.function_return_types.insert("exec_with_stdin".to_string(), MirType::String);
+
         // v0.88.2: free_string(s: ptr) -> i64 (free a BmbString)
         let free_string_type = i64_type.fn_type(&[ptr_type.into()], false);
         let free_string_fn = self.module.add_function("bmb_string_free", free_string_type, None);

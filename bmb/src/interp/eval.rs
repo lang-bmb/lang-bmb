@@ -253,6 +253,7 @@ impl Interpreter {
             // v0.31.11: Process execution builtins
             self.builtins.insert("exec".to_string(), builtin_exec);
             self.builtins.insert("exec_output".to_string(), builtin_exec_output);
+            self.builtins.insert("exec_with_stdin".to_string(), builtin_exec_with_stdin);
             self.builtins.insert("system".to_string(), builtin_system);
             self.builtins.insert("getenv".to_string(), builtin_getenv);
         }
@@ -9077,6 +9078,46 @@ fn builtin_exec(args: &[Value]) -> InterpResult<Value> {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+fn builtin_exec_with_stdin(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 3 {
+        return Err(RuntimeError::arity_mismatch("exec_with_stdin", 3, args.len()));
+    }
+    match (extract_string(&args[0]), extract_string(&args[1]), extract_string(&args[2])) {
+        (Some(command), Some(args_str), Some(stdin_str)) => {
+            use std::io::Write;
+            let parsed_args = parse_args(&args_str);
+            match Command::new(&command)
+                .args(&parsed_args)
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+            {
+                Ok(mut child) => {
+                    if let Some(mut sin) = child.stdin.take() {
+                        let _ = sin.write_all(stdin_str.as_bytes());
+                    }
+                    match child.wait_with_output() {
+                        Ok(output) => {
+                            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                            Ok(Value::Str(Rc::new(stdout)))
+                        }
+                        Err(e) => {
+                            eprintln!("exec_with_stdin error: {}", e);
+                            Ok(Value::Str(Rc::new(String::new())))
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("exec_with_stdin error: {}", e);
+                    Ok(Value::Str(Rc::new(String::new())))
+                }
+            }
+        }
+        _ => Err(RuntimeError::type_error("(string, string, string)", "other")),
+    }
+}
+
 fn builtin_exec_output(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 2 {
         return Err(RuntimeError::arity_mismatch("exec_output", 2, args.len()));

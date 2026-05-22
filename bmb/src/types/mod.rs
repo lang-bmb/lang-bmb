@@ -321,6 +321,8 @@ impl TypeChecker {
         functions.insert("exec".to_string(), (vec![Type::String, Type::String], Type::I64));
         // exec_output(command: String, args: String) -> String (stdout)
         functions.insert("exec_output".to_string(), (vec![Type::String, Type::String], Type::String));
+        // exec_with_stdin(command, args, stdin) -> String
+        functions.insert("exec_with_stdin".to_string(), (vec![Type::String, Type::String, Type::String], Type::String));
         // system(command: String) -> i64 (exit code via shell)
         functions.insert("system".to_string(), (vec![Type::String], Type::I64));
         // v0.88.2: system_capture(command: String) -> String (capture stdout)

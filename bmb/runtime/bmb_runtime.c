@@ -26,6 +26,7 @@
 #include <time.h>    // v0.77: For clock_gettime
 #include <unistd.h>  // getcwd (bmb_getcwd), rmdir (bmb_rmdir) on POSIX
 #include <sys/stat.h> // M6: file_mtime (struct stat)
+#include <sys/wait.h> // M6: waitpid for exec_with_stdin
 #endif
 
 // v0.98: Event loop for async I/O
@@ -3007,6 +3008,132 @@ BmbString* bmb_exec_output(const BmbString* command, const BmbString* args) {
 }
 BmbString* exec_output(const BmbString* command, const BmbString* args) {
     return bmb_exec_output(command, args);
+}
+
+// M6: exec_with_stdin(command, args, stdin_data) -> String
+// Run command with piped stdin; capture stdout.
+BmbString* bmb_exec_with_stdin(const BmbString* command, const BmbString* args, const BmbString* input) {
+    if (!command || !command->data) return bmb_string_new("", 0);
+    size_t cmd_len  = command->len;
+    size_t args_len = (args && args->data) ? (size_t)args->len : 0;
+    size_t total    = cmd_len + (args_len > 0 ? args_len + 1 : 0) + 1;
+    char* full_cmd  = (char*)malloc(total);
+    if (!full_cmd) return bmb_string_new("", 0);
+    memcpy(full_cmd, command->data, cmd_len);
+    size_t pos = cmd_len;
+    if (args_len > 0) {
+        full_cmd[pos++] = ' ';
+        memcpy(full_cmd + pos, args->data, args_len);
+        pos += args_len;
+    }
+    full_cmd[pos] = '\0';
+
+    const char* in_data = (input && input->data) ? input->data : "";
+    size_t in_len       = (input && input->data) ? (size_t)input->len : 0;
+
+    size_t out_cap = 4096;
+    size_t out_len = 0;
+    char* out_buf  = (char*)malloc(out_cap);
+    if (!out_buf) { free(full_cmd); return bmb_string_new("", 0); }
+
+#ifdef _WIN32
+    HANDLE hStdinR = NULL, hStdinW = NULL;
+    HANDLE hStdoutR = NULL, hStdoutW = NULL;
+    SECURITY_ATTRIBUTES sa = { sizeof(SECURITY_ATTRIBUTES), NULL, TRUE };
+    if (!CreatePipe(&hStdinR, &hStdinW, &sa, 0) ||
+        !CreatePipe(&hStdoutR, &hStdoutW, &sa, 0)) {
+        free(full_cmd); free(out_buf);
+        return bmb_string_new("", 0);
+    }
+    SetHandleInformation(hStdinW,  HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation(hStdoutR, HANDLE_FLAG_INHERIT, 0);
+
+    STARTUPINFOA si = { sizeof(STARTUPINFOA) };
+    si.dwFlags    = STARTF_USESTDHANDLES;
+    si.hStdInput  = hStdinR;
+    si.hStdOutput = hStdoutW;
+    si.hStdError  = hStdoutW;
+    PROCESS_INFORMATION pi = {0};
+
+    if (!CreateProcessA(NULL, full_cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
+        free(full_cmd); free(out_buf);
+        CloseHandle(hStdinR); CloseHandle(hStdinW);
+        CloseHandle(hStdoutR); CloseHandle(hStdoutW);
+        return bmb_string_new("", 0);
+    }
+    CloseHandle(hStdinR);
+    CloseHandle(hStdoutW);
+
+    DWORD written = 0;
+    if (in_len > 0) WriteFile(hStdinW, in_data, (DWORD)in_len, &written, NULL);
+    CloseHandle(hStdinW);
+
+    char chunk[4096]; DWORD read_n = 0;
+    while (ReadFile(hStdoutR, chunk, sizeof(chunk), &read_n, NULL) && read_n > 0) {
+        while (out_len + read_n >= out_cap) { out_cap *= 2; char* nb = (char*)realloc(out_buf, out_cap); if (!nb) break; out_buf = nb; }
+        memcpy(out_buf + out_len, chunk, read_n);
+        out_len += read_n;
+    }
+    CloseHandle(hStdoutR);
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
+    free(full_cmd);
+#else
+    int stdin_pipe[2], stdout_pipe[2];
+    if (pipe(stdin_pipe) || pipe(stdout_pipe)) {
+        free(full_cmd); free(out_buf);
+        return bmb_string_new("", 0);
+    }
+    pid_t pid = fork();
+    if (pid < 0) {
+        free(full_cmd); free(out_buf);
+        close(stdin_pipe[0]); close(stdin_pipe[1]);
+        close(stdout_pipe[0]); close(stdout_pipe[1]);
+        return bmb_string_new("", 0);
+    }
+    if (pid == 0) {
+        dup2(stdin_pipe[0],  STDIN_FILENO);
+        dup2(stdout_pipe[1], STDOUT_FILENO);
+        dup2(stdout_pipe[1], STDERR_FILENO);
+        close(stdin_pipe[0]); close(stdin_pipe[1]);
+        close(stdout_pipe[0]); close(stdout_pipe[1]);
+        execl("/bin/sh", "sh", "-c", full_cmd, NULL);
+        _exit(1);
+    }
+    free(full_cmd);
+    close(stdin_pipe[0]);
+    close(stdout_pipe[1]);
+    if (in_len > 0) { write(stdin_pipe[1], in_data, in_len); }
+    close(stdin_pipe[1]);
+
+    ssize_t n;
+    char chunk[4096];
+    while ((n = read(stdout_pipe[0], chunk, sizeof(chunk))) > 0) {
+        while (out_len + (size_t)n >= out_cap) { out_cap *= 2; char* nb = (char*)realloc(out_buf, out_cap); if (!nb) break; out_buf = nb; }
+        memcpy(out_buf + out_len, chunk, (size_t)n);
+        out_len += (size_t)n;
+    }
+    close(stdout_pipe[0]);
+    int status; waitpid(pid, &status, 0);
+#endif
+
+    out_buf[out_len] = '\0';
+    BmbString* s = (BmbString*)bmb_alloc(sizeof(BmbString));
+    if (g_arena_enabled) {
+        char* arena_buf = (char*)bmb_alloc(out_len + 1);
+        for (size_t i = 0; i <= out_len; i++) arena_buf[i] = out_buf[i];
+        free(out_buf);
+        s->data = arena_buf;
+    } else {
+        s->data = out_buf;
+    }
+    s->len = (int64_t)out_len;
+    s->cap = (int64_t)(g_arena_enabled ? out_len : out_cap);
+    return s;
+}
+
+BmbString* exec_with_stdin(const BmbString* command, const BmbString* args, const BmbString* input) {
+    return bmb_exec_with_stdin(command, args, input);
 }
 
 // v0.90: Updated to accept/return BmbString* for bootstrap compatibility

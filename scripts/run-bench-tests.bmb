@@ -1,0 +1,159 @@
+// run-bench-tests.bmb — Local test runner for bmb-ai-bench problems
+//
+// Usage: bmb run scripts/run-bench-tests.bmb <problem_dir>
+//        bmb run scripts/run-bench-tests.bmb ecosystem/bmb-ai-bench/problems/01_binary_search
+//
+// Reads tests.json from the problem dir, runs solution.bmb with each test's stdin,
+// and reports pass/fail. No Python or external test infrastructure needed.
+
+fn repo_root() -> String =
+    let root = getenv("BMB_REPO_ROOT");
+    if root.len() > 0 { root } else { "." };
+
+fn bmb_exe(root: String) -> String =
+    let win = root + "/target/release/bmb.exe";
+    if file_exists(win) > 0 { win } else { root + "/target/release/bmb" };
+
+// --- String search utilities ---
+
+fn search_from(s: String, sub: String, idx: i64) -> i64 =
+    if idx >= s.len() { 0 - 1 }
+    else if str_substr(s, idx, sub.len()) == sub { idx }
+    else { search_from(s, sub, idx + 1) };
+
+fn find_from(s: String, sub: String, start: i64) -> i64 =
+    search_from(s, sub, start);
+
+// --- JSON string value extraction (handles \n, \t, \\ escapes) ---
+
+fn push_escaped_char(sb: i64, backslash_next: i64) -> i64 =
+    if backslash_next == 110 { sb_push_char(sb, 10) }
+    else if backslash_next == 116 { sb_push_char(sb, 9) }
+    else if backslash_next == 92 { sb_push_char(sb, 92) }
+    else { sb_push_char(sb, backslash_next) };
+
+fn json_str_loop(s: String, pos: i64, sb: i64) -> String =
+    if pos >= s.len() { sb_build(sb) }
+    else {
+        let ch = s.char_code_at(pos);
+        if ch == 34 {
+            // closing double-quote
+            sb_build(sb)
+        } else if ch == 92 {
+            // backslash escape
+            let next = if pos + 1 < s.len() { s.char_code_at(pos + 1) } else { 0 };
+            let _pushed = push_escaped_char(sb, next);
+            json_str_loop(s, pos + 2, sb)
+        } else {
+            let _pushed = sb_push_char(sb, ch);
+            json_str_loop(s, pos + 1, sb)
+        }
+    };
+
+// Extract JSON string starting just after the opening quote at `open_q`
+fn extract_jstr(s: String, open_q: i64) -> String =
+    json_str_loop(s, open_q + 1, sb_new());
+
+// Find the next JSON string value for key `key` starting at pos
+fn find_jval(content: String, key: String, pos: i64) -> String =
+    let key_pos = find_from(content, key, pos);
+    if key_pos < 0 { "" }
+    else {
+        let after_key = key_pos + key.len();
+        let q_pos = find_from(content, "\"", after_key);
+        if q_pos < 0 { "" }
+        else { extract_jstr(content, q_pos) }
+    };
+
+// Find position after end of JSON string value (past closing quote)
+fn skip_jstr(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos }
+    else {
+        let ch = s.char_code_at(pos);
+        if ch == 92 { skip_jstr(s, pos + 2) }
+        else if ch == 34 { pos }
+        else { skip_jstr(s, pos + 1) }
+    };
+
+// Find position just past the expected_stdout value for a test object at obj_pos
+fn after_obj(content: String, obj_pos: i64) -> i64 =
+    let key_pos = find_from(content, "\"expected_stdout\":", obj_pos);
+    if key_pos < 0 { -1 }
+    else {
+        let after_key = key_pos + 18;
+        let q_pos = find_from(content, "\"", after_key);
+        if q_pos < 0 { -1 }
+        else { skip_jstr(content, q_pos + 1) + 1 }
+    };
+
+// --- Test runner (tail-recursive, accumulates pass/fail counts) ---
+
+fn run_one_test(content: String, bmb: String, solution: String,
+                obj_pos: i64, test_num: i64, passed: i64, failed: i64) -> i64 =
+    let stdin_str = find_jval(content, "\"stdin\":", obj_pos);
+    let expected  = find_jval(content, "\"expected_stdout\":", obj_pos);
+    let actual    = exec_with_stdin(bmb, "run " + solution, str_replace(stdin_str, " ", "\n"));
+    let ok        = actual == expected;
+    let next_pos  = after_obj(content, obj_pos);
+    let advance   = if next_pos > 0 { next_pos } else { obj_pos + 1 };
+    if ok {
+        let _p = println("  test " + int_to_string(test_num) + ": PASS");
+        run_tests(content, bmb, solution, advance, test_num + 1, passed + 1, failed)
+    } else {
+        let _p1 = println("  test " + int_to_string(test_num) + ": FAIL");
+        let _p2 = println("    stdin:    " + stdin_str);
+        let _p3 = println("    expected: " + expected);
+        let _p4 = println("    actual:   " + actual);
+        run_tests(content, bmb, solution, advance, test_num + 1, passed, failed + 1)
+    };
+
+fn run_tests(content: String, bmb: String, solution: String,
+             pos: i64, test_num: i64, passed: i64, failed: i64) -> i64 =
+    let obj_pos = find_from(content, "{", pos);
+    if obj_pos < 0 {
+        print_results(test_num - 1, passed, failed)
+    } else {
+        let stdin_key  = find_from(content, "\"stdin\":", obj_pos);
+        let next_brace = find_from(content, "{", obj_pos + 1);
+        if stdin_key < 0 {
+            print_results(test_num - 1, passed, failed)
+        } else if next_brace > 0 and stdin_key > next_brace {
+            run_tests(content, bmb, solution, obj_pos + 1, test_num, passed, failed)
+        } else {
+            run_one_test(content, bmb, solution, obj_pos, test_num, passed, failed)
+        }
+    };
+
+fn print_results(total: i64, passed: i64, failed: i64) -> i64 =
+    let _blank = println("");
+    let _msg   = println("Results: " + int_to_string(passed) + "/" + int_to_string(total) + " passed");
+    if failed > 0 { 1 } else { 0 };
+
+fn main() -> i64 =
+    let args = script_args();
+    let argc = svec_len(args);
+    if argc < 1 {
+        let _usage = println("Usage: bmb run scripts/run-bench-tests.bmb <problem_dir>");
+        1
+    } else {
+        let prob_dir   = svec_get(args, 0);
+        let tests_file = prob_dir + "/tests.json";
+        let solution   = prob_dir + "/solution.bmb";
+        let root       = repo_root();
+        let bmb        = bmb_exe(root);
+
+        if file_exists(tests_file) == 0 {
+            let _e = println("ERROR: tests.json not found: " + tests_file);
+            1
+        } else if file_exists(solution) == 0 {
+            let _e = println("ERROR: solution.bmb not found: " + solution);
+            1
+        } else if file_exists(bmb) == 0 {
+            let _e = println("ERROR: bmb binary not found: " + bmb);
+            1
+        } else {
+            let content = read_file(tests_file);
+            let _hdr = println("Running tests for: " + prob_dir);
+            run_tests(content, bmb, solution, 0, 1, 0, 0)
+        }
+    };
