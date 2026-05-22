@@ -5878,6 +5878,7 @@ fn lower_nullable_method_sb(ast: String, method: String, temp_id: i64, block_id:
 fn method_to_runtime_fn(method: String) -> String =
     if method == "len" { "bmb_string_len" }
     else if method == "byte_at" { "bmb_string_char_at" }
+    else if method == "char_code_at" { "bmb_string_char_at" }
     else if method == "slice" { "bmb_string_slice" }
     else if method == "concat" { "bmb_string_concat" }
     else if method == "starts_with" { "bmb_string_starts_with" }
@@ -6881,6 +6882,8 @@ fn get_call_return_type(fn_name: String) -> String =
     else if fn_name == "@bmb_array_push" or fn_name == "@bmb_array_pop" { "ptr" }
     else if fn_name == "@bmb_array_concat" or fn_name == "@bmb_array_slice" { "ptr" }
     else if fn_name == "@list_dir" { "ptr" }
+    // v0.100: svec ptr-returning functions
+    else if fn_name == "@bmb_svec_get" or fn_name == "@bmb_svec_join" { "ptr" }
     // v0.96: sin/cos/tan/atan/atan2/log/log2/log10/exp/pow_f64/sqrt/fmod now LLVM intrinsics
     else if fn_name == "@i64_to_f64" { "double" }
     // v0.96: f64_floor/ceil/round/sqrt/abs/min/max now use LLVM intrinsics (handled in special cases)
@@ -7057,6 +7060,24 @@ fn map_runtime_fn_full(fn_name: String) -> String =
     else if fn_name == "@string_cmp" { "@bmb_string_cmp" }
     else if fn_name == "@string_hash" { "@bmb_string_hash" }
     else if fn_name == "@read_int" { "@bmb_read_int" }
+    // v0.100: str_ free-function aliases
+    else if fn_name == "@str_contains" { "@bmb_string_contains" }
+    else if fn_name == "@str_find" { "@bmb_string_index_of" }
+    else if fn_name == "@str_trim" { "@bmb_string_trim" }
+    // v0.100: svec/str_lines/make_dir
+    else if fn_name == "@svec_new" { "@bmb_svec_new" }
+    else if fn_name == "@svec_push" { "@bmb_svec_push" }
+    else if fn_name == "@svec_len" { "@bmb_svec_len" }
+    else if fn_name == "@svec_get" { "@bmb_svec_get" }
+    else if fn_name == "@svec_free" { "@bmb_svec_free" }
+    else if fn_name == "@svec_join" { "@bmb_svec_join" }
+    else if fn_name == "@svec_index_of" { "@bmb_svec_index_of" }
+    else if fn_name == "@svec_contains" { "@bmb_svec_contains" }
+    else if fn_name == "@svec_sort" { "@bmb_svec_sort" }
+    else if fn_name == "@svec_remove" { "@bmb_svec_remove" }
+    else if fn_name == "@svec_clear" { "@bmb_svec_clear" }
+    else if fn_name == "@str_lines" { "@bmb_str_lines" }
+    else if fn_name == "@make_dir" { "@make_dir" }
     else { fn_name };
 
 // v0.96.27: Format comma-separated args as i64-typed LLVM call args
@@ -7852,6 +7873,20 @@ fn get_call_arg_types(fn_name: String) -> String =
     else if fn_name == "@bmb_string_cmp" { "pp" }
     else if fn_name == "@bmb_string_hash" { "p" }
     else if fn_name == "@vec_min" or fn_name == "@vec_max" or fn_name == "@vec_product" { "p" }
+    // v0.100: svec functions
+    else if fn_name == "@bmb_svec_new" { "" }
+    else if fn_name == "@bmb_svec_push" { "ip" }
+    else if fn_name == "@bmb_svec_len" { "i" }
+    else if fn_name == "@bmb_svec_get" { "ii" }
+    else if fn_name == "@bmb_svec_free" { "i" }
+    else if fn_name == "@bmb_svec_join" { "ip" }
+    else if fn_name == "@bmb_svec_index_of" { "ip" }
+    else if fn_name == "@bmb_svec_contains" { "ip" }
+    else if fn_name == "@bmb_svec_sort" { "i" }
+    else if fn_name == "@bmb_svec_remove" { "ii" }
+    else if fn_name == "@bmb_svec_clear" { "i" }
+    else if fn_name == "@bmb_str_lines" { "p" }
+    else if fn_name == "@make_dir" { "p" }
     // Default: all i64
     else { "" };
 
@@ -13932,7 +13967,21 @@ fn gen_runtime_decls() -> String =
     // v0.98 (Cycle 2391): ephemeral local-port discovery after tcp_listen(0)/udp_bind(0)
     "declare i64 @bmb_async_socket_port(i64) nocallback nounwind" + SEP() +
     // v0.98 (Cycle 2392): peer/local host string accessor (char*, not copied)
-    "declare i64 @bmb_async_socket_host(i64) nocallback nounwind";
+    "declare i64 @bmb_async_socket_host(i64) nocallback nounwind" + SEP() +
+    // v0.100: SvecHandle (string vector) runtime
+    "declare i64 @bmb_svec_new() nocallback nounwind nosync willreturn" + SEP() +
+    "declare i64 @bmb_svec_push(i64, ptr nonnull nocapture readonly) nounwind" + SEP() +
+    "declare i64 @bmb_svec_len(i64) nocallback nounwind nosync willreturn memory(argmem: read)" + SEP() +
+    "declare nonnull ptr @bmb_svec_get(i64, i64) nocallback nounwind nosync willreturn" + SEP() +
+    "declare i64 @bmb_svec_free(i64) nounwind" + SEP() +
+    "declare nonnull ptr @bmb_svec_join(i64, ptr nonnull nocapture readonly) nounwind" + SEP() +
+    "declare i64 @bmb_svec_index_of(i64, ptr nonnull nocapture readonly) nounwind" + SEP() +
+    "declare i64 @bmb_svec_contains(i64, ptr nonnull nocapture readonly) nounwind" + SEP() +
+    "declare i64 @bmb_svec_sort(i64) nounwind" + SEP() +
+    "declare i64 @bmb_svec_remove(i64, i64) nounwind" + SEP() +
+    "declare i64 @bmb_svec_clear(i64) nounwind" + SEP() +
+    "declare i64 @bmb_str_lines(ptr nonnull nocapture readonly) nounwind" + SEP() +
+    "declare i64 @make_dir(ptr nocapture readonly) nofree nounwind willreturn";
 
 // ============================================================================
 // SECTION 12b: String Literal Handling (v0.60.109)

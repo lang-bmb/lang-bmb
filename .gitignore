@@ -27,6 +27,7 @@ tmpclaude-*-cwd
 /target/
 /bmb/target/
 /gotgan/target/
+ecosystem/gotgan-bmb/gotgan.exe
 **/*.rs.bk
 Cargo.lock
 
@@ -96,6 +97,8 @@ fix_ir.py
 
 # Test artifacts
 test_*.bmb
+!tests/golden/test_golden_*.bmb
+!tests/golden/test_golden_*.golden
 tmp_*.bmb
 test_*_bin
 test_*_mir
