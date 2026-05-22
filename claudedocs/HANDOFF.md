@@ -1,89 +1,85 @@
-# BMB Session Handoff — 2026-05-22 (Cycles 3044-3053 — M6-P2 bmb-ai-bench runner 완료)
+# BMB Session Handoff — 2026-05-22 (Cycles 3054-3062 — M6-P3 gotgan MVP 완료)
 
-> **HEAD**: `65ccd682` (feat(cycle-3053): M6-P2 bmb-ai-bench runner BMB 포팅 완료)
-> **이전 HEAD**: `78719ac8` (feat(cycle-3041): run-all-bench-tests.bmb — 1230/1230 (100%) pass)
+> **HEAD**: `4efaf4bb` (feat(cycles-3054-3062): M6-P3 gotgan MVP + P0 버그 수정 2종)
+> **이전 HEAD**: `65ccd682` (feat(cycle-3053): M6-P2 bmb-ai-bench runner BMB 포팅 완료)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 2930)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: Cycle 3054
+> **다음 세션 진입점**: Cycle 3063 (버퍼/마무리) 또는 조기 종료
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 3044-3053)
+## 이번 세션 작업 요약 (Cycles 3054-3062)
 
 ### 주요 변경 사항
 
 | Cycle | 제목 | 내용 |
 |-------|------|------|
-| 3044 | M6-P2 설계 | run-ai-bench.bmb 설계 분석 |
-| 3045 | run-ai-bench.bmb | 단일 문제 LLM runner (generate→check→test loop) |
-| 3046 | run-all-ai-bench.bmb | 전체 문제 일괄 runner + JSONL 저장 |
-| 3047 | context truncation + 실패 피드백 | hard reset (attempt≥5) + find_first_fail |
-| 3048 | resume 지원 | 기존 JSONL 읽어 완료 문제 스킵 + 중간 저장 |
-| 3049 | 파일럿 모드 | BMB_PILOT=1: problems {1,21,50}만 실행 |
-| 3050 | test_loop 최적화 | dead code (first_fail 파라미터 + 이중 exec) 제거 |
-| 3051 | analyze-bench-results.bmb | JSONL 분석: pass/fail/attempts 분포/실패 목록 |
-| 3052 | ROADMAP 업데이트 | M6-P2 완료 상태 반영 |
-| 3053 | 커밋 + HANDOFF | 전체 M6-P2 변경사항 커밋 |
+| 3054 | M6-P3 착수 | gotgan Rust 소스 분석 준비 |
+| 3055 | ISSUE-20260522 분석 | GEP 버그 근본 원인 파악 |
+| 3056 | P0 수정: GEP 버그 | `lower.rs` getenv/exec_with_stdin String 반환 추가 |
+| 3057 | gotgan 분석 | TOML 전략 결정 (Option A: grep-based), MVP 6 commands 확정 |
+| 3058 | gotgan.bmb MVP 구현 | 440 LOC, 6 commands, TOML 파서 구현 |
+| 3059 | bootstrap 검증 | Stage 1 check ✅, native 빌드 한계 확인 |
+| 3060 | 골든 테스트 | `test_golden_gotgan_bmb.bmb` 10 tests / 100점 |
+| 3061 | benchmark-bmb 동기화 | submodule P-track 3종 최적화 커밋 |
+| 3062 | 최종 커밋 | HANDOFF 갱신 |
 
-### 핵심 성과: M6-P2 bmb-ai-bench runner 완전 완료
+### M6 현황
 
-**Python 런타임 없이 bmb-ai-bench 전체 실행 가능.**
+```
+M6 Full Dogfooding  ██████████████░░░░░░  🔄
+  P1 scripts ✅  P2 ai-bench ✅  P3 gotgan ✅ (interp 모드)
+```
 
-#### 신규 스크립트 3종
+### 이번 세션 핵심 산출물
 
-**`scripts/run-ai-bench.bmb`** — 단일 문제 runner:
-- GPUStack API 호출 (curl exec_with_stdin 기반)
-- Context truncation: attempt ≥ 5 시 init_msgs 하드 리셋
-- `find_first_fail`: 첫 번째 실패 케이스 상세 피드백 (stdin/expected/got)
-- 실행: `GPUSTACK_ENDPOINT=... bmb run scripts/run-ai-bench.bmb <problem_dir>`
+**gotgan.bmb MVP** (`ecosystem/gotgan-bmb/gotgan.bmb`):
+- `new` — 프로젝트 생성 (gotgan.toml + src/main.bmb)
+- `init` — 현재 디렉토리 초기화
+- `build` / `check` — bmb binary 호출 (PATH에 bmb 필요)
+- `clean` — target/ 정리
+- `tree` — 의존성 트리 재귀 출력
 
-**`scripts/run-all-ai-bench.bmb`** — 전체 문제 runner:
-- 100문제 순차 실행, 중간 JSONL 저장 (크래시 안전)
-- **Resume**: 기존 JSONL 읽어 완료 문제 스킵
-- **파일럿 모드**: `BMB_PILOT=1` → problems {1,21,50}만 실행
-- 실행: `BMB_PILOT=1 BMB_DATE=<tag> GPUSTACK_ENDPOINT=... bmb run scripts/run-all-ai-bench.bmb`
+사용 예시:
+```bash
+bmb run ecosystem/gotgan-bmb/gotgan.bmb new my-project
+bmb run ecosystem/gotgan-bmb/gotgan.bmb tree  # in project dir
+```
 
-**`scripts/analyze-bench-results.bmb`** — 결과 분석:
-- pass/fail 비율, attempts 분포 (1-shot/few-shot/mid/many), 실패 문제 목록
-- 실행: `bmb run scripts/analyze-bench-results.bmb <results.jsonl>`
+**P0 버그 수정 2종**:
+- `bmb/src/mir/lower.rs:1685` — getenv/exec_with_stdin String 반환 추가
+- `bmb/src/types/mod.rs` — getcwd/current_dir 타입 체커 등록 누락
 
 ---
 
-## 미완료 사항 + 다음 세션 진입점
+## Carry-Forward (다음 세션)
+
+### Actionable
+- Cycle 3063: 버퍼 사이클 (조기 종료 가능 — 활성 carry-forward 없음)
+- `ecosystem/benchmark-bmb` submodule push 여부 (HUMAN 결정)
+
+### Structural Improvement Proposals
+- `str_lines` / `svec_*` native codegen 지원 → gotgan.bmb native 빌드 가능화 (M7 scope)
+- `path_join(dir, file) -> String` 내장 builtin 추가 (P3 제안)
+- `tests/golden/test_*.bmb` gitignore 예외 패턴 추가 (`!tests/golden/test_golden_*.bmb`)
+- submodule 작업 후 `git submodule foreach git status` 체크 루틴화
 
 ### Pending Human Decisions
-1. **GPUStack 파일럿 실행** (API 사용 발생):
-   ```powershell
-   $env:BMB_PILOT="1"
-   $env:BMB_DATE="2026-05-22-pilot"
-   $env:GPUSTACK_ENDPOINT="<endpoint>"
-   $env:GPUSTACK_API_KEY="<key>"
-   $env:GPUSTACK_MODEL="<model>"
-   ./target/release/bmb run scripts/run-all-ai-bench.bmb
-   ```
-   실행 후: `./target/release/bmb run scripts/analyze-bench-results.bmb ecosystem/bmb-ai-bench/results/results-2026-05-22-pilot.jsonl`
+- `ecosystem/benchmark-bmb` submodule push to origin
 
-2. **전체 100문제 실행** (GPUStack 파일럿 성공 후):
-   ```powershell
-   $env:BMB_PILOT=""  # 파일럿 모드 해제
-   $env:BMB_DATE="2026-05-22-full"
-   ./target/release/bmb run scripts/run-all-ai-bench.bmb
-   ```
-
-### M6 잔여 작업
-- **M6-P3**: `gotgan` (Rust→BMB) — 패키지 매니저, 6-12 cycles 예상
+### Known Issues
+- gotgan.bmb: native 빌드 불가 (인터프리터 전용 builtins — str_lines, svec_* — native codegen 미지원)
+- gotgan build/check: PATH에 `bmb` binary 필요
 
 ---
 
-## 현재 상태 스냅샷
+## 프로젝트 상태
 
 | 항목 | 상태 |
 |------|------|
-| M1 (P축 성능) | ✅ COMPLETE (P-track 7/7 BMB faster) |
-| M2 (AI-Ready Infra) | ✅ COMPLETE |
-| M3 (External Bindings) | ✅ COMPLETE (PyPI ✅ 2026-05-21) |
-| M4 (Adopted) | 🔄 ~45% (외부 신호 대기) |
-| M5 (Language Complete) | 🔄 ~70% (Native Complete ✅) |
-| M6 (Full Dogfooding) | 🔄 ~40% (P1+P2 완료, P3 미이식) |
-| B-axis (GPUStack) | 100.0% (Cycle 3016, HEAD 9aeef2b3) |
-| Tests | 6260+ tests ✅ |
+| cargo test --release | ✅ 6264/6264 |
+| bootstrap Stage 1 | ✅ build_success |
+| M6-P3 gotgan MVP | ✅ interp 모드 완전 동작 |
+| ISSUE-20260522 | ✅ closed |
+| B-axis | 100.0% (GPUStack 300/300) |
+| P-track | 7/7 BMB faster than C |
