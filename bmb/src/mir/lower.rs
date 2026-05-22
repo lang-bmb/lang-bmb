@@ -1683,6 +1683,7 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                         // v0.50.53: chr returns string (single-char BmbString)
                         // v0.100.0 Cycle 3033: M4 string builtins — println dispatch fix
                         "int_to_string" | "read_file" | "slice" | "digit_char" | "get_arg" | "sb_build" | "chr" | "system_capture" | "exec_output"
+                        | "getenv" | "exec_with_stdin"
                         | "concat3" | "concat5" | "concat7"
                         | "str_to_upper" | "str_to_lower" | "str_replace" | "str_repeat"
                         | "str_trim" | "str_trim_left" | "str_trim_right" | "str_reverse"

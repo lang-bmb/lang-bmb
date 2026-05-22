@@ -329,6 +329,9 @@ impl TypeChecker {
         functions.insert("system_capture".to_string(), (vec![Type::String], Type::String));
         // getenv(name: String) -> String (env var value)
         functions.insert("getenv".to_string(), (vec![Type::String], Type::String));
+        // getcwd() -> String (current working directory)
+        functions.insert("getcwd".to_string(), (vec![], Type::String));
+        functions.insert("current_dir".to_string(), (vec![], Type::String));
 
         // v0.88.2: Memory management functions
         functions.insert("free_string".to_string(), (vec![Type::String], Type::I64));

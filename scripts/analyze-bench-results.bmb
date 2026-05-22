@@ -96,7 +96,7 @@ fn stats_loop(entries: SvecHandle, idx: i64,
               total: i64, passed: i64,
               b1: i64, b2: i64, b3: i64, b4: i64) -> i64 =
     if idx >= svec_len(entries) {
-        total * 100000000 + passed * 10000 + b1 * 1000 + b2 * 100 + b3 * 10 + b4
+        total * 1000000000000000 + passed * 1000000000000 + b1 * 1000000000 + b2 * 1000000 + b3 * 1000 + b4
     }
     else {
         let line = svec_get(entries, idx);
@@ -114,13 +114,13 @@ fn stats_loop(entries: SvecHandle, idx: i64,
         }
     };
 
-// Decode packed stats
-fn st_total(v: i64)  -> i64 = v / 100000000;
-fn st_passed(v: i64) -> i64 = (v / 10000) - (v / 100000000) * 10000;
-fn st_b1(v: i64)     -> i64 = (v / 1000) - (v / 10000) * 10;
-fn st_b2(v: i64)     -> i64 = (v / 100)  - (v / 1000)  * 10;
-fn st_b3(v: i64)     -> i64 = (v / 10)   - (v / 100)   * 10;
-fn st_b4(v: i64)     -> i64 = v           - (v / 10)    * 10;
+// Decode packed stats (each field is 3 decimal digits wide = up to 999)
+fn st_total(v: i64)  -> i64 = v / 1000000000000000;
+fn st_passed(v: i64) -> i64 = v / 1000000000000 - (v / 1000000000000000) * 1000;
+fn st_b1(v: i64)     -> i64 = v / 1000000000 - (v / 1000000000000) * 1000;
+fn st_b2(v: i64)     -> i64 = v / 1000000 - (v / 1000000000) * 1000;
+fn st_b3(v: i64)     -> i64 = v / 1000 - (v / 1000000) * 1000;
+fn st_b4(v: i64)     -> i64 = v - (v / 1000) * 1000;
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 

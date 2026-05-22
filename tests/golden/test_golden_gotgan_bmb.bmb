@@ -1,0 +1,111 @@
+// Golden Test: gotgan.bmb MVP — TOML parsing and project scaffolding
+// Expected output: 100
+
+// Inline minimal TOML field extractor (same logic as gotgan.bmb)
+
+fn toml_extract_quote_loop(s: String, pos: i64, sb: i64) -> String =
+    if pos >= s.len() { sb_build(sb) }
+    else {
+        let ch = s.char_code_at(pos);
+        if ch == 34 { sb_build(sb) }
+        else {
+            let _p = sb_push_char(sb, ch);
+            toml_extract_quote_loop(s, pos + 1, sb)
+        }
+    };
+
+fn toml_extract_field(content: String, field_name: String) -> String = {
+    let needle = field_name + " = \"";
+    let pos = str_find(content, needle);
+    if pos < 0 { "" }
+    else { toml_extract_quote_loop(content, pos + needle.len(), sb_new()) }
+};
+
+fn toml_dep_is_path(val_part: String) -> i64 =
+    if str_contains(val_part, "path") > 0 { 1 } else { 0 };
+
+// Test 1: extract field from TOML content
+fn test_extract_name() -> bool = {
+    let toml = "[package]\nname = \"my-pkg\"\nversion = \"1.2.3\"\n";
+    let name = toml_extract_field(toml, "name");
+    name == "my-pkg"
+};
+
+fn test_extract_version() -> bool = {
+    let toml = "[package]\nname = \"pkg\"\nversion = \"0.5.0\"\ndescription = \"test\"\n";
+    let ver = toml_extract_field(toml, "version");
+    ver == "0.5.0"
+};
+
+fn test_extract_missing() -> bool = {
+    let toml = "[package]\nname = \"pkg\"\n";
+    let desc = toml_extract_field(toml, "description");
+    desc == ""
+};
+
+// Test 2: dep_is_path detection
+fn test_dep_is_path_true() -> bool =
+    toml_dep_is_path("{ path = \"../lib\" }") == 1;
+
+fn test_dep_is_path_false() -> bool =
+    toml_dep_is_path("\"1.0.0\"") == 0;
+
+// Test 3: toml_template generation (matches gotgan.bmb logic)
+fn make_toml_template(name: String) -> String =
+    "[package]\nname = \"" + name + "\"\nversion = \"0.1.0\"\ndescription = \"A BMB project\"\n\n[dependencies]\n";
+
+fn test_toml_template_name() -> bool = {
+    let t = make_toml_template("hello-world");
+    str_find(t, "name = \"hello-world\"") >= 0
+};
+
+fn test_toml_template_version() -> bool = {
+    let t = make_toml_template("pkg");
+    str_find(t, "version = \"0.1.0\"") >= 0
+};
+
+fn test_toml_template_deps_section() -> bool = {
+    let t = make_toml_template("pkg");
+    str_find(t, "[dependencies]") >= 0
+};
+
+// Test 4: path_join (same as gotgan.bmb)
+fn path_join_test(a: String, b: String) -> String =
+    if a.len() == 0 { b }
+    else {
+        let last = a.char_code_at(a.len() - 1);
+        if last == 47 or last == 92 { a + b }
+        else { a + "/" + b }
+    };
+
+fn test_path_join_basic() -> bool =
+    path_join_test("foo", "bar") == "foo/bar";
+
+fn test_path_join_trailing_slash() -> bool =
+    path_join_test("foo/", "bar") == "foo/bar";
+
+fn test_path_join_empty_prefix() -> bool =
+    path_join_test("", "bar") == "bar";
+
+// Test runner
+fn run_test(label: String, passed: bool) -> i64 =
+    if passed { 10 } else {
+        let _p = println("FAIL: " + label);
+        0
+    };
+
+fn main() -> i64 = {
+    let score = 0;
+    let score = score + run_test("extract name", test_extract_name());
+    let score = score + run_test("extract version", test_extract_version());
+    let score = score + run_test("extract missing", test_extract_missing());
+    let score = score + run_test("dep is_path true", test_dep_is_path_true());
+    let score = score + run_test("dep is_path false", test_dep_is_path_false());
+    let score = score + run_test("toml template name", test_toml_template_name());
+    let score = score + run_test("toml template version", test_toml_template_version());
+    let score = score + run_test("toml template deps section", test_toml_template_deps_section());
+    let score = score + run_test("path_join basic", test_path_join_basic());
+    let score = score + run_test("path_join trailing slash", test_path_join_trailing_slash());
+    println(score);
+    0
+};
