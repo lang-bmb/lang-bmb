@@ -4,7 +4,7 @@
 > **이전 HEAD**: `032eae83` (chore: HANDOFF HEAD 최종 갱신)
 > **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 3073 — S3==S4 `745082F5`)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: M7 정의 또는 인간 주도 방향 설정 (M6 COMPLETE, Known Issues 모두 HUMAN-blocked)
+> **다음 세션 진입점**: **M7 Contract Pipeline 착수** — M7-1 `compiler.bmb` 핵심 함수 contract 부착 (pre/post) + 선행 언어 갭 해소 (for-in range 우선)
 
 ---
 
@@ -59,7 +59,7 @@
 | M4 | ✅ COMPLETE |
 | M5 | ✅ COMPLETE (Native Complete 포함) |
 | M6 | ✅ COMPLETE (2026-05-23) |
-| M7 | 미정의 — 다음 세션 방향 설정 필요 |
+| M7 | 🔄 **Contract Pipeline** — "BMB가 BMB를 증명한다" (2026-05-23 결정) |
 
 ---
 
@@ -73,8 +73,18 @@
 
 ---
 
-## 다음 세션 권장 사항
+## 다음 세션 권장 사항 (M7 착수)
 
-1. M7 마일스톤 방향 사용자 결정 필요
-2. untracked golden tests 처리 (test_golden_extractor.bmb.out 포맷 불일치)
-3. benchmark Tier 3 run 횟수 표준화 (5-run → 10-run 권고)
+**M7 = Contract Pipeline**: M6이 "BMB builds BMB"를 완성했다면, M7은 "BMB verifies BMB".
+
+### 즉시 착수 가능 (P1)
+
+1. **언어 갭 선행 해소** — `for i in 0..n` range 문법 (contract loop bound 표현에 필수)
+2. **M7-1 착수** — `bootstrap/compiler.bmb` 핵심 함수 pre/post contract 부착 시작  
+   - 우선 대상: `method_to_runtime_fn`, `get_call_return_type`, `is_string_returning_fn`  
+   - 이미 잘 알려진 불변식이 있어 contract 작성이 명확함
+
+### 백로그
+
+3. untracked golden tests 처리 (test_golden_extractor.bmb.out 포맷 불일치)
+4. benchmark Tier 3 run 횟수 표준화 (5-run → 10-run 권고)
