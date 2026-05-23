@@ -5918,7 +5918,18 @@ fn method_to_runtime_fn(method: String) -> String =
     else if method == "bit_xor" { "bit_xor" }
     else if method == "bit_shift_left" { "bit_shift_left" }
     else if method == "bit_shift_right" { "bit_shift_right" }
-    else { "bmb_" + method };
+    // v0.100.1: explicit string/numeric method mappings (replaces catch-all)
+    else if method == "split" { "bmb_string_split" }
+    else if method == "reverse" { "bmb_string_reverse" }
+    else if method == "pad_left" { "bmb_string_pad_left" }
+    else if method == "pad_right" { "bmb_string_pad_right" }
+    else if method == "count" { "bmb_string_count" }
+    else if method == "last_index_of" { "bmb_string_last_index_of" }
+    else if method == "substr" { "bmb_string_substr" }
+    else if method == "abs" { "bmb_abs" }
+    else if method == "min" { "bmb_min" }
+    else if method == "max" { "bmb_max" }
+    else { "__unknown_method_" + method };
 
 fn lower_method_args_sb(ast: String, fn_name: String, receiver: String, temp_id: i64, block_id: i64, idx: i64, sb: i64, loop_exit: String) -> i64 =
     let recv_result = lower_expr_sb(receiver, temp_id, block_id, sb, loop_exit);
@@ -6879,6 +6890,7 @@ fn get_call_return_type(fn_name: String) -> String =
     else if fn_name == "@hashmap_new" or fn_name == "@vec_new" or fn_name == "@vec_with_capacity" or fn_name == "@str_hashmap_new" or fn_name == "@reg_cached_lookup" { "ptr" }
     else if fn_name == "@bmb_string_trim" or fn_name == "@bmb_string_replace" or fn_name == "@bmb_f64_to_string" or fn_name == "@bmb_string_reverse" or fn_name == "@bmb_string_pad_left" or fn_name == "@bmb_string_pad_right" or fn_name == "@bmb_to_hex" or fn_name == "@bmb_to_binary" or fn_name == "@bmb_to_octal" or fn_name == "@bmb_getcwd" or fn_name == "@bmb_exec_output" or fn_name == "@bmb_string_join" { "ptr" }
     else if fn_name == "@bmb_string_to_upper" or fn_name == "@bmb_string_to_lower" or fn_name == "@bmb_string_repeat" { "ptr" }
+    else if fn_name == "@bmb_string_substr" { "ptr" }   // v0.100.2: Cycle 3073 — was missing, caused call i64 on ptr-returning fn
     else if fn_name == "@bmb_array_push" or fn_name == "@bmb_array_pop" { "ptr" }
     else if fn_name == "@bmb_array_concat" or fn_name == "@bmb_array_slice" { "ptr" }
     else if fn_name == "@list_dir" { "ptr" }
@@ -7793,6 +7805,7 @@ fn get_call_arg_types(fn_name: String) -> String =
     else if fn_name == "@bmb_string_pad_left" { "pii" }
     else if fn_name == "@bmb_string_pad_right" { "pii" }
     else if fn_name == "@bmb_string_last_index_of" { "pp" }
+    else if fn_name == "@bmb_string_substr" { "pii" }
     else if fn_name == "@bmb_array_push" { "pi" }
     else if fn_name == "@bmb_array_pop" { "p" }
     else if fn_name == "@bmb_array_concat" { "pp" }
@@ -13780,6 +13793,7 @@ fn gen_runtime_decls() -> String =
     "declare noalias nonnull ptr @bmb_string_pad_left(ptr nocapture readonly, i64, i64) nofree nosync nounwind willreturn" + SEP() +
     "declare noalias nonnull ptr @bmb_string_pad_right(ptr nocapture readonly, i64, i64) nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @bmb_string_last_index_of(ptr nocapture readonly, ptr nocapture readonly) nofree nosync nounwind willreturn memory(argmem: read)" + SEP() +
+    "declare noalias nonnull ptr @bmb_string_substr(ptr nocapture readonly, i64, i64) nofree nosync nounwind willreturn" + SEP() +
     "declare noalias nonnull ptr @bmb_chr(i64) nofree nosync nounwind willreturn" + SEP() +
     "declare i64 @bmb_ord(ptr nocapture readonly) nofree nosync nounwind willreturn memory(argmem: read)" + SEP() +
     "declare noalias nonnull ptr @bmb_int_to_string(i64) nofree nosync nounwind willreturn" + SEP() +
@@ -15755,7 +15769,7 @@ fn llvm_gen_string_cmp_3(pred: String, dest: String, mapping: String, conv_l: St
 
 fn is_string_returning_fn(name: String) -> bool =
     is_string_fn_group1(name) or is_string_fn_group2(name) or is_string_fn_group3(name) or
-    is_string_fn_group4(name) or is_string_fn_group5(name);
+    is_string_fn_group4(name) or is_string_fn_group5(name) or is_string_fn_group6(name);
 
 fn is_string_fn_group1(name: String) -> bool =
     name == "get_node_type" or name == "get_child" or name == "extract_name" or
@@ -15793,6 +15807,21 @@ fn is_string_fn_group5(name: String) -> bool =
     name == "make_step" or name == "make_work" or name == "make_work3" or name == "make_work4" or
     name == "step_work" or name == "get_field" or name == "trim_end" or name == "i2s" or
     name == "sb_build" or name == "pack_lower_result" or name == "unescape_parens";
+
+// v0.100.2: runtime String-returning builtins missing from str_sb tracking (Cycle 3073)
+fn is_string_fn_group6(name: String) -> bool =
+    name == "bmb_string_reverse" or name == "bmb_string_substr" or
+    name == "bmb_string_pad_left" or name == "bmb_string_pad_right" or
+    name == "bmb_string_trim" or name == "bmb_string_replace" or
+    name == "bmb_string_to_upper" or name == "bmb_string_to_lower" or
+    name == "bmb_string_repeat" or name == "bmb_string_join" or
+    name == "bmb_f64_to_string" or name == "bmb_int_to_string" or
+    name == "bmb_to_hex" or name == "bmb_to_binary" or name == "bmb_to_octal" or
+    name == "bmb_getcwd" or name == "bmb_exec_output" or
+    name == "bmb_system_capture" or name == "bmb_read_line" or
+    name == "bmb_exec_with_stdin" or name == "exec_with_stdin" or
+    name == "bmb_svec_get" or name == "bmb_svec_join" or
+    name == "bmb_string_split";
 
 // Extract function name from call instruction
 fn extract_call_fn_name(line: String, pos: i64) -> String =

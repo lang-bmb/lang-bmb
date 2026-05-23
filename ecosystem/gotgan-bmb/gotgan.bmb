@@ -225,13 +225,17 @@ fn gotgan_init() -> i64 = {
 // ============================================================
 
 fn bmb_exe_path() -> String = {
-    let cwd = getcwd();
-    let win_path = path_join(cwd, "target/release/bmb.exe");
-    if file_exists(win_path) > 0 { win_path }
+    let env_path = getenv("BMB_PATH");
+    if env_path.len() > 0 { env_path }
     else {
-        let lin_path = path_join(cwd, "target/release/bmb");
-        if file_exists(lin_path) > 0 { lin_path }
-        else { "bmb" }
+        let cwd = getcwd();
+        let win_path = path_join(cwd, "target/release/bmb.exe");
+        if file_exists(win_path) > 0 { win_path }
+        else {
+            let lin_path = path_join(cwd, "target/release/bmb");
+            if file_exists(lin_path) > 0 { lin_path }
+            else { "bmb" }
+        }
     }
 };
 
