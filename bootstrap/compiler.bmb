@@ -33,8 +33,9 @@ fn is_alpha(c: i64) -> bool = (c >= 65 and c <= 90) or (c >= 97 and c <= 122);
 fn is_alnum_or_underscore(c: i64) -> bool = is_alpha(c) or is_digit(c) or c == 95;
 fn is_ident_start(c: i64) -> bool = is_alpha(c) or c == 95;
 
-fn skip_ws(s: String, pos: i64) -> i64 =
-    if pos >= s.len() { pos } else if is_whitespace(s.byte_at(pos)) { skip_ws(s, pos + 1) } else { pos };
+fn skip_ws(s: String, pos: i64) -> i64
+  pre pos >= 0
+= if pos >= s.len() { pos } else if is_whitespace(s.byte_at(pos)) { skip_ws(s, pos + 1) } else { pos };
 
 // Error handling utilities
 fn is_error(s: String) -> bool = s.len() >= 3 and s.slice(0, 3) == "ERR";
@@ -381,16 +382,18 @@ fn skip_block_comment(s: String, pos: i64) -> i64 =
     else if s.byte_at(pos) == 42 and s.byte_at(pos + 1) == 47 { pos + 2 }
     else { skip_block_comment(s, pos + 1) };
 
-fn skip_ws_comments(s: String, pos: i64) -> i64 =
-    let p1 = skip_ws(s, pos);
+fn skip_ws_comments(s: String, pos: i64) -> i64
+  pre pos >= 0
+= let p1 = skip_ws(s, pos);
     let p2 = skip_comment(s, p1);
     if p2 == p1 { p1 } else { skip_ws_comments(s, p2) };
 
 // Actual value is reconstructed from source text in parse_int_lit
 // Cycle 2711 (M5-bootstrap): scale 1e6 -> 5e6 to support source > 1MB
 // Safe max: 1.844e12 * 5e6 = 9.22e18 < i64 MAX (9.22e18)
-fn scan_int(s: String, pos: i64, acc: i64) -> i64 =
-    if pos >= s.len() { pack_int_tok(acc, pos) } else {
+fn scan_int(s: String, pos: i64, acc: i64) -> i64
+  pre pos >= 0 and acc >= 0
+= if pos >= s.len() { pack_int_tok(acc, pos) } else {
         let c = s.byte_at(pos);
         if is_digit(c) {
             let new_acc = if acc < 1800000000000 { acc * 10 + (c - 48) } else { 1840000000000 };
@@ -404,8 +407,9 @@ fn pack_int_tok(acc: i64, pos: i64) -> i64 =
     else { acc * 5000000 + pos };
 
 // v0.91: Scan number - detects float if '.' followed by digit
-fn scan_hex_int(s: String, pos: i64, acc: i64) -> i64 =
-    if pos >= s.len() { pack_int_tok(acc, pos) } else {
+fn scan_hex_int(s: String, pos: i64, acc: i64) -> i64
+  pre pos >= 0 and acc >= 0
+= if pos >= s.len() { pack_int_tok(acc, pos) } else {
         let c = s.byte_at(pos);
         if is_hex_digit(c) {
             let new_acc = if acc < 1800000000000 { acc * 16 + hex_digit_val(c) } else { 1840000000000 };
@@ -414,8 +418,9 @@ fn scan_hex_int(s: String, pos: i64, acc: i64) -> i64 =
         else { pack_int_tok(acc, pos) }
     };
 
-fn scan_bin_int(s: String, pos: i64, acc: i64) -> i64 =
-    if pos >= s.len() { pack_int_tok(acc, pos) } else {
+fn scan_bin_int(s: String, pos: i64, acc: i64) -> i64
+  pre pos >= 0 and acc >= 0
+= if pos >= s.len() { pack_int_tok(acc, pos) } else {
         let c = s.byte_at(pos);
         if c == 48 or c == 49 {
             let new_acc = if acc < 1800000000000 { acc * 2 + (c - 48) } else { 1840000000000 };
@@ -425,8 +430,9 @@ fn scan_bin_int(s: String, pos: i64, acc: i64) -> i64 =
     };
 
 // v0.95: Scan octal integer literal (0o...)
-fn scan_oct_int(s: String, pos: i64, acc: i64) -> i64 =
-    if pos >= s.len() { pack_int_tok(acc, pos) } else {
+fn scan_oct_int(s: String, pos: i64, acc: i64) -> i64
+  pre pos >= 0 and acc >= 0
+= if pos >= s.len() { pack_int_tok(acc, pos) } else {
         let c = s.byte_at(pos);
         if c >= 48 and c <= 55 {
             let new_acc = if acc < 1800000000000 { acc * 8 + (c - 48) } else { 1840000000000 };
@@ -455,11 +461,13 @@ fn scan_number(s: String, pos: i64) -> i64 =
     };
 
 // v0.91: Scan digits to end (helper for float fractional part)
-fn scan_digits_end(s: String, pos: i64) -> i64 =
-    if pos >= s.len() { pos } else if is_digit(s.byte_at(pos)) { scan_digits_end(s, pos + 1) } else { pos };
+fn scan_digits_end(s: String, pos: i64) -> i64
+  pre pos >= 0
+= if pos >= s.len() { pos } else if is_digit(s.byte_at(pos)) { scan_digits_end(s, pos + 1) } else { pos };
 
-fn scan_exponent(s: String, pos: i64) -> i64 =
-    if pos >= s.len() { pos }
+fn scan_exponent(s: String, pos: i64) -> i64
+  pre pos >= 0
+= if pos >= s.len() { pos }
     else if s.byte_at(pos) == 101 or s.byte_at(pos) == 69 {
         // 'e' (101) or 'E' (69)
         let after_e = pos + 1;
@@ -472,20 +480,23 @@ fn scan_exponent(s: String, pos: i64) -> i64 =
         }
     } else { pos };
 
-fn scan_ident_end(s: String, pos: i64) -> i64 =
-    if pos >= s.len() { pos } else if is_alnum_or_underscore(s.byte_at(pos)) { scan_ident_end(s, pos + 1) } else { pos };
+fn scan_ident_end(s: String, pos: i64) -> i64
+  pre pos >= 0
+= if pos >= s.len() { pos } else if is_alnum_or_underscore(s.byte_at(pos)) { scan_ident_end(s, pos + 1) } else { pos };
 
 // Returns position after closing quote, or s.len() if not found
-fn scan_string_end(s: String, pos: i64) -> i64 =
-    if pos >= s.len() { s.len() }
+fn scan_string_end(s: String, pos: i64) -> i64
+  pre pos >= 0
+= if pos >= s.len() { s.len() }
     else if s.byte_at(pos) == 92 and pos + 1 < s.len() { scan_string_end(s, pos + 2) }
     else if s.byte_at(pos) == 34 { pos + 1 }
     else { scan_string_end(s, pos + 1) };
 
 // Char literal scanner: expects pos right after opening quote
 // Handles: 'a', '\n', '\t', '\r', '\\', '\0', '\''
-fn scan_char_end(s: String, pos: i64) -> i64 =
-    if pos >= s.len() { s.len() }
+fn scan_char_end(s: String, pos: i64) -> i64
+  pre pos >= 0
+= if pos >= s.len() { s.len() }
     else if s.byte_at(pos) == 92 { pos + 3 }
     else { pos + 2 };
 
@@ -5875,6 +5886,7 @@ fn lower_nullable_method_sb(ast: String, method: String, temp_id: i64, block_id:
         pack_ids(def_temp + 1, def_block)
     } else { pack_ids(recv_temp, recv_block) };
 
+// invariant: method != "" → ret starts with "bmb_" or "popcount"/"clz"/"ctz"/"bit_*"/"f64_to_i64"/"i64_to_f64"; method == "" → "__unknown_method_"
 fn method_to_runtime_fn(method: String) -> String =
     if method == "len" { "bmb_string_len" }
     else if method == "byte_at" { "bmb_string_char_at" }
@@ -6861,6 +6873,7 @@ fn fix_phi_label(content: String) -> String =
     let label = content.slice(comma_pos + 2, content.len());
     val + ", %" + label;
 
+// invariant: ret ∈ {"void", "ptr", "i64", "double"} — exhaustive over all known runtime fn names; unknown fns → "i64"
 // v0.46: Determine LLVM return type from function name
 fn get_call_return_type(fn_name: String) -> String =
     // Void functions (no return value assignment)
@@ -7963,14 +7976,17 @@ fn call_arg_formatted(formatted: String) -> String =
     let sep = find_separator(formatted, 0);
     formatted.slice(sep + 3, formatted.len());
 
-fn find_comma(s: String, pos: i64) -> i64 =
-    if pos >= s.len() { pos } else if s.byte_at(pos) == 44 { pos } else { find_comma(s, pos + 1) };
+fn find_comma(s: String, pos: i64) -> i64
+  pre pos >= 0
+= if pos >= s.len() { pos } else if s.byte_at(pos) == 44 { pos } else { find_comma(s, pos + 1) };
 
-fn find_comma_or_end(s: String, pos: i64) -> i64 =
-    if pos >= s.len() { pos } else if s.byte_at(pos) == 44 { pos } else { find_comma_or_end(s, pos + 1) };
+fn find_comma_or_end(s: String, pos: i64) -> i64
+  pre pos >= 0
+= if pos >= s.len() { pos } else if s.byte_at(pos) == 44 { pos } else { find_comma_or_end(s, pos + 1) };
 
-fn find_char(s: String, pos: i64, ch: i64) -> i64 =
-    if pos >= s.len() { pos } else if s.byte_at(pos) == ch { pos } else { find_char(s, pos + 1, ch) };
+fn find_char(s: String, pos: i64, ch: i64) -> i64
+  pre pos >= 0 and ch >= 0
+= if pos >= s.len() { pos } else if s.byte_at(pos) == ch { pos } else { find_char(s, pos + 1, ch) };
 
 fn trim_end(s: String) -> String =
     trim_end_at(s, s.len() - 1);
@@ -9735,13 +9751,15 @@ fn eliminate_dead_stores_ir(ir: String) -> String = {
 // for functions never referenced. Uses line-by-line scanning with string builders
 // for O(n) memory usage on large IR.
 // Zero-allocation substring search (arena-safe replacement for find_pattern_at_slow)
-fn find_pattern_noa(s: String, pat: String, pos: i64) -> i64 =
-    if pos + pat.len() > s.len() { 0 - 1 }
+fn find_pattern_noa(s: String, pat: String, pos: i64) -> i64
+  pre pos >= 0
+= if pos + pat.len() > s.len() { 0 - 1 }
     else if match_bytes(s, pat, pos, 0) { pos }
     else { find_pattern_noa(s, pat, pos + 1) };
 
-fn match_bytes(s: String, pat: String, s_pos: i64, p_pos: i64) -> bool =
-    if p_pos >= pat.len() { true }
+fn match_bytes(s: String, pat: String, s_pos: i64, p_pos: i64) -> bool
+  pre s_pos >= 0 and p_pos >= 0
+= if p_pos >= pat.len() { true }
     else if s.byte_at(s_pos + p_pos) != pat.byte_at(p_pos) { false }
     else { match_bytes(s, pat, s_pos, p_pos + 1) };
 
@@ -9834,8 +9852,9 @@ fn extract_define_name_fast(ir: String, start: i64, end: i64) -> String = {
 };
 
 // Zero-allocation pattern search within range [pos, end)
-fn find_pattern_noa_range(s: String, pat: String, pos: i64, end: i64) -> i64 =
-    if pos + pat.len() > end { 0 - 1 }
+fn find_pattern_noa_range(s: String, pat: String, pos: i64, end: i64) -> i64
+  pre pos >= 0 and end >= 0
+= if pos + pat.len() > end { 0 - 1 }
     else if match_bytes(s, pat, pos, 0) { pos }
     else { find_pattern_noa_range(s, pat, pos + 1, end) };
 
@@ -15765,8 +15784,8 @@ fn llvm_gen_string_cmp_3(pred: String, dest: String, mapping: String, conv_l: St
     };
 
 // Track string-returning function calls
-
-
+// invariant: returns true iff name is a known stdlib/bootstrap fn that returns a heap-allocated String (ptr).
+// Used for str_sb tracking (push_string_marker). Must stay in sync with get_call_return_type "ptr" branch.
 fn is_string_returning_fn(name: String) -> bool =
     is_string_fn_group1(name) or is_string_fn_group2(name) or is_string_fn_group3(name) or
     is_string_fn_group4(name) or is_string_fn_group5(name) or is_string_fn_group6(name);
