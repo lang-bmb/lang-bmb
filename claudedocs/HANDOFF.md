@@ -1,81 +1,80 @@
-# BMB Session Handoff — 2026-05-23 (Cycles 3064-3068 — gotgan native build 완전 가능화)
+# BMB Session Handoff — 2026-05-23 (Cycles 3069-3074 — M6 완료 선언 + str_sb 추적 완전화)
 
-> **HEAD**: `41fbd5bc` (chore: 세션 종료 정리 — HANDOFF HEAD 갱신)
-> **이전 HEAD**: `ea3d201a` (chore: 세션 종료 정리 — HANDOFF HEAD 갱신)
-> **메인 커밋**: `3ce0a765` (feat(cycles-3064-3067): gotgan native build 완전 가능화)
-> **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 3067 — S3==S4)
+> **HEAD**: `3827e001` (feat(cycles-3069-3074): M6 완료 선언 + bootstrap str_sb 추적 완전화)
+> **이전 HEAD**: `032eae83` (chore: HANDOFF HEAD 최종 갱신)
+> **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 3073 — S3==S4 `745082F5`)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: M6-P4 결정 또는 M6 완료 선언 → M7 착수 (사용자 결정)
+> **다음 세션 진입점**: M7 정의 또는 인간 주도 방향 설정 (M6 COMPLETE, Known Issues 모두 HUMAN-blocked)
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 3064-3068)
+## 이번 세션 작업 요약 (Cycles 3069-3074)
 
 | Cycle | 제목 | 내용 |
 |-------|------|------|
-| 3064 | .gitignore 예외 패턴 | `tests/golden/test_golden_*.bmb` 예외 추가 |
-| 3065 | bootstrap svec/str_ native 지원 | 5개소 수정 → gotgan.bmb native 빌드 성공 |
-| 3066 | GPUStack ai-bench 파일럿 | 파일럿 3/3 ✅ + 전체 100/100 (100%) 재확인 |
-| 3067 | ROADMAP 갱신 + 커밋 | M6-P3 native build ✅ 마킹 |
-| 3068 | 세션 종료 정리 | Carry-Forward 도출, 최종 정리 |
+| 3069 | M6 완료 선언 | ROADMAP M6 ✅ COMPLETE 마킹 (P1/P2/P3 완료, playground 제외) |
+| 3070 | method_to_runtime_fn allowlist | catch-all→allowlist 교체, substr 3개소 추가, Fixed Point ✅ |
+| 3071 | gotgan BMB_PATH | `bmb_exe_path()` env var 우선 탐색 추가 |
+| 3072 | native 검증 + 결함 문서화 | str_sb 사전 결함 발견, Cycle 3073으로 이관 |
+| 3073 | is_string_returning_fn 완전화 | 20종 String-반환 함수 추가, native println 정상화, Fixed Point ✅ |
+| 3074 | ROADMAP + 조기 종료 | 조기 종료 조건 충족 (액션 없음) |
 
-### 핵심 성과: gotgan.bmb 네이티브 빌드 가능화
+### 핵심 성과: str_sb 추적 완전화 (Cycle 3073)
 
-**bootstrap/compiler.bmb 수정 5개소**:
-1. `get_call_return_type` — `@bmb_svec_get`, `@bmb_svec_join` → `"ptr"` 반환
-2. `method_to_runtime_fn` — `char_code_at` → `bmb_string_char_at`
-3. `map_runtime_fn_full` — str_contains/find/trim + svec 11종 + str_lines + make_dir (16개)
-4. `get_call_arg_types` — 14개 시그니처 추가
-5. IR preamble — 13개 LLVM declare 추가
+**발견**: `is_string_returning_fn` (bootstrap str_sb 추적 함수)에 런타임 String-반환 함수 20종 전부 누락.
+- `bmb_string_reverse`, `bmb_string_substr`, `bmb_string_pad_left/right`, `bmb_string_trim/replace`, `bmb_string_to_upper/lower/repeat/join`, `bmb_f64_to_string`, `bmb_to_hex/binary/octal`, `bmb_getcwd`, `bmb_exec_output/system_capture/read_line/exec_with_stdin`, `bmb_svec_get/join`, `bmb_string_split`
 
-**결과**: `bootstrap/compiler_stage1.exe build gotgan.bmb -o gotgan.exe` → ✅ build_success
+**결과**: `println(s.reverse())`, `println(s.substr(6, 5))`, `println("hi".pad_left(5, 32))` 등 native 정상화.
 
----
+**체크리스트** (향후 String-반환 함수 추가 시 5개소 동시 업데이트):
+1. `method_to_runtime_fn` — 메서드→함수 이름 매핑
+2. `get_call_arg_types` — 인수 타입 ("p", "i", "d")
+3. `get_call_return_type` — 반환 타입 ("ptr", "i64", "double")
+4. IR preamble — LLVM `declare` 추가
+5. `is_string_fn_group*` — str_sb 추적 등록
 
-## Carry-Forward (다음 세션)
+### method_to_runtime_fn allowlist (Cycle 3070)
 
-### Actionable
-- **없음** (모든 P0 수정 완료, M6-P4 방향은 사용자 결정)
-
-### Structural Improvement Proposals
-| 항목 | 범위 | 내용 |
-|------|------|------|
-| method_to_runtime_fn catch-all 위험 | M7 | `"bmb_" + method` 패턴이 런타임에 없는 함수 이름 생성 (`char_code_at` 사례). allowlist 방식으로 교체 필요 |
-| gotgan build/check PATH 개선 | P3 | `bmb_exe_path()` 내장 로직으로 PATH 의존성 제거 |
-| `str_contains` 중복 선언 주의 | P3 | `@bmb_string_contains` 이미 IR preamble에 있음 — str_ alias도 같은 preamble 참조 (문제 없음, 문서화 필요) |
-
-### Pending Human Decisions
-- **M6-P4 결정**: P3까지 완료 — P4 = playground/WASM? 또는 M6 완료 선언?
-- **`ecosystem/benchmark-bmb` submodule push**: 계속 carry-forward
-
-### Known Issues (기존)
-- gotgan build/check: PATH에 `bmb` binary 필요
-- gotgan.bmb `new` 명령: `path_join`이 절대경로를 중복 연결하는 경우 있음
+**변경**: catch-all `else { "bmb_" + method }` → `else { "__unknown_method_" + method }`
+- 명시적 매핑 10종 추가: split/reverse/pad_left/pad_right/count/last_index_of/substr/abs/min/max
+- 링크 에러 메시지 개선: `__unknown_method_unknown_name__` 형태로 즉시 진단 가능
 
 ---
 
-## 프로젝트 상태
+## 테스트 상태
 
-| 항목 | 상태 |
-|------|------|
-| cargo test --release | ✅ 0 failed |
-| golden test suite | ✅ 2862/2862 (직전 세션 확인) |
-| bootstrap Stage 1 | ✅ build_success |
-| 3-Stage Fixed Point | ✅ S3 IR == S4 IR (Cycle 3067) |
-| M6-P3 gotgan | ✅ native build + interp 모드 완전 동작 |
-| B-axis (GPUStack) | **100.0%** (100/100, 2026-05-22) |
-| P-track | **7/7 BMB faster than C** |
-| Active ISSUEs | 5개 (전부 HUMAN-blocked) |
-| Closed ISSUEs | 64개 |
+- `cargo test --release`: **6264 PASS** (3782 + 47 + 22 + 2390 + 23) ✅
+- 3-Stage Fixed Point: `745082F5CA427CCDA06AB36A2C603953EA792701D84E5B1DBD6A94D4A65FB6B7` ✅
+- native method_test (5종): `edcba`, `3`, `9`, `world`, `   hi` ✅
 
 ---
 
-## M6 현황
+## 현재 로드맵 상태
 
-```
-M6 Full Dogfooding  ████████████████░░░░  🔄 ~80%
-  P1 scripts  ✅ (run-bench-tests.bmb 등 5종)
-  P2 ai-bench ✅ (run-ai-bench + run-all-ai-bench + analyze)
-  P3 gotgan   ✅ (native build 포함)
-  P4          ❓ (사용자 결정 대기)
-```
+| 마일스톤 | 상태 |
+|---------|------|
+| M1 | ✅ COMPLETE |
+| M2 | ✅ COMPLETE |
+| M3 | ✅ COMPLETE (2026-05-21) |
+| M4 | ✅ COMPLETE |
+| M5 | ✅ COMPLETE (Native Complete 포함) |
+| M6 | ✅ COMPLETE (2026-05-23) |
+| M7 | 미정의 — 다음 세션 방향 설정 필요 |
+
+---
+
+## Known Issues (Active, 모두 HUMAN-blocked)
+
+- `ISSUE-20260326-external-problem-validation.md` — B축 외부 검증 방법론
+- `ISSUE-20260326-integration-category-weakness.md` — 통합 카테고리 취약점
+- `ISSUE-20260326-multi-model-validation.md` — 다중 모델 검증
+- `ISSUE-20260326-problem-difficulty-bias.md` — 문제 난이도 편향
+- `ISSUE-20260511-golden-flakiness-inttoptr.md` — 골든 테스트 비결정성
+
+---
+
+## 다음 세션 권장 사항
+
+1. M7 마일스톤 방향 사용자 결정 필요
+2. untracked golden tests 처리 (test_golden_extractor.bmb.out 포맷 불일치)
+3. benchmark Tier 3 run 횟수 표준화 (5-run → 10-run 권고)
