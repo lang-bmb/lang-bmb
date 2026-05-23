@@ -1,51 +1,54 @@
-# BMB Session Handoff — 2026-05-23 (Cycles 3069-3074 — M6 완료 선언 + str_sb 추적 완전화)
+# BMB Session Handoff — 2026-05-23 (Cycles 3075-3078 — M7-1 COMPLETE)
 
-> **HEAD**: `3827e001` (feat(cycles-3069-3074): M6 완료 선언 + bootstrap str_sb 추적 완전화)
-> **이전 HEAD**: `032eae83` (chore: HANDOFF HEAD 최종 갱신)
-> **3-Stage Fixed Point**: ✅ IR Fixed Point 확인 (Cycle 3073 — S3==S4 `745082F5`)
+> **HEAD**: `474e4d4c` (feat(cycles-3075-3077): M7-1 COMPLETE — 17종 contract 부착, 25 llvm.assume 주입)
+> **이전 HEAD**: `3827e001` (feat(cycles-3069-3074): M6 완료 선언 + bootstrap str_sb 추적 완전화)
+> **3-Stage Fixed Point**: ✅ `dc57beff` (이전: `745082F5`)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: **M7 Contract Pipeline 착수** — M7-1 `compiler.bmb` 핵심 함수 contract 부착 (pre/post) + 선행 언어 갭 해소 (for-in range 우선)
+> **다음 세션 진입점**: **M7-2 착수** — Rust SMT translator String theory 지원 추가 (`Type::String → SmtSort::Str`)
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 3069-3074)
+## 이번 세션 작업 요약 (Cycles 3075-3078)
 
 | Cycle | 제목 | 내용 |
 |-------|------|------|
-| 3069 | M6 완료 선언 | ROADMAP M6 ✅ COMPLETE 마킹 (P1/P2/P3 완료, playground 제외) |
-| 3070 | method_to_runtime_fn allowlist | catch-all→allowlist 교체, substr 3개소 추가, Fixed Point ✅ |
-| 3071 | gotgan BMB_PATH | `bmb_exe_path()` env var 우선 탐색 추가 |
-| 3072 | native 검증 + 결함 문서화 | str_sb 사전 결함 발견, Cycle 3073으로 이관 |
-| 3073 | is_string_returning_fn 완전화 | 20종 String-반환 함수 추가, native println 정상화, Fixed Point ✅ |
-| 3074 | ROADMAP + 조기 종료 | 조기 종료 조건 충족 (액션 없음) |
+| 3075 | M7 전제 검증 + 스모크 테스트 | 5개 진단 + Z3/assume 파이프라인 정상 확인 |
+| 3076 | M7-1 Track A 17종 계약 | 스캐너/패턴매처 25 llvm.assume 주입, Fixed Point dc57beff |
+| 3077 | M7-1 Track B 결정 | Z3 String 조건 미지원 확인, invariant 주석 문서화 |
+| 3078 | M7-2 범위 확정 | SMT translator String 근사화 발견, 조기 종료 |
 
-### 핵심 성과: str_sb 추적 완전화 (Cycle 3073)
+### 핵심 성과: M7-1 COMPLETE (Track A)
 
-**발견**: `is_string_returning_fn` (bootstrap str_sb 추적 함수)에 런타임 String-반환 함수 20종 전부 누락.
-- `bmb_string_reverse`, `bmb_string_substr`, `bmb_string_pad_left/right`, `bmb_string_trim/replace`, `bmb_string_to_upper/lower/repeat/join`, `bmb_f64_to_string`, `bmb_to_hex/binary/octal`, `bmb_getcwd`, `bmb_exec_output/system_capture/read_line/exec_with_stdin`, `bmb_svec_get/join`, `bmb_string_split`
+**17개 함수, 25개 llvm.assume 주입**:
+- 스캐너: `skip_ws`, `skip_ws_comments`, `scan_int/hex/bin/oct`, `scan_digits_end`, `scan_exponent`, `scan_ident_end`, `scan_string_end`, `scan_char_end`
+- 패턴 매처: `find_char`, `find_comma`, `find_comma_or_end`, `find_pattern_noa`, `match_bytes`, `find_pattern_noa_range`
+- 모두 `pre pos >= 0` 계열 — LLVM이 음수 포지션 케이스 제거 가능
 
-**결과**: `println(s.reverse())`, `println(s.substr(6, 5))`, `println("hi".pad_left(5, 32))` 등 native 정상화.
+**Track B 결정**: `method_to_runtime_fn`, `get_call_return_type`, `is_string_returning_fn`
+- Z3 String 조건 미지원 (`total:0`) → `// invariant:` 주석으로 보존
+- M7-2에서 실제 계약으로 승격 예정
 
-**체크리스트** (향후 String-반환 함수 추가 시 5개소 동시 업데이트):
-1. `method_to_runtime_fn` — 메서드→함수 이름 매핑
-2. `get_call_arg_types` — 인수 타입 ("p", "i", "d")
-3. `get_call_return_type` — 반환 타입 ("ptr", "i64", "double")
-4. IR preamble — LLVM `declare` 추가
-5. `is_string_fn_group*` — str_sb 추적 등록
+### Z3 String 미지원 근본 원인 발견 (Cycle 3078)
 
-### method_to_runtime_fn allowlist (Cycle 3070)
+`bmb/src/smt/translator.rs`:
+```
+Type::String => SmtSort::Int, // String as Int (simplified) v0.5
+Expr::StringLit(_) => Ok("0".to_string()) // approximated as 0
+```
 
-**변경**: catch-all `else { "bmb_" + method }` → `else { "__unknown_method_" + method }`
-- 명시적 매핑 10종 추가: split/reverse/pad_left/pad_right/count/last_index_of/substr/abs/min/max
-- 링크 에러 메시지 개선: `__unknown_method_unknown_name__` 형태로 즉시 진단 가능
+**M7-2 핵심 작업**: `Type::String → SmtSort::Str` + String literal/`.len()` SMT 번역 추가.
+
+### 문법 발견 (Cycle 3075)
+
+다중 `pre` 절은 `pre A\n  pre B` 형식 미지원 → `pre A and B` 로 결합 필수.
 
 ---
 
 ## 테스트 상태
 
-- `cargo test --release`: **6264 PASS** (3782 + 47 + 22 + 2390 + 23) ✅
-- 3-Stage Fixed Point: `745082F5CA427CCDA06AB36A2C603953EA792701D84E5B1DBD6A94D4A65FB6B7` ✅
-- native method_test (5종): `edcba`, `3`, `9`, `world`, `   hi` ✅
+- `cargo test --release`: **6264 PASS** ✅
+- 3-Stage Fixed Point: `dc57beff` ✅
+- Z3: `bmb verify bootstrap/compiler.bmb` → 1513/1513 ✅
 
 ---
 
@@ -59,7 +62,7 @@
 | M4 | ✅ COMPLETE |
 | M5 | ✅ COMPLETE (Native Complete 포함) |
 | M6 | ✅ COMPLETE (2026-05-23) |
-| M7 | 🔄 **Contract Pipeline** — "BMB가 BMB를 증명한다" (2026-05-23 결정) |
+| M7 | 🔄 **Contract Pipeline** — M7-1 ✅ COMPLETE, M7-2 착수 예정 |
 
 ---
 
@@ -73,18 +76,19 @@
 
 ---
 
-## 다음 세션 권장 사항 (M7 착수)
-
-**M7 = Contract Pipeline**: M6이 "BMB builds BMB"를 완성했다면, M7은 "BMB verifies BMB".
+## 다음 세션 권장 사항 (M7-2 착수)
 
 ### 즉시 착수 가능 (P1)
 
-1. **언어 갭 선행 해소** — `for i in 0..n` range 문법 (contract loop bound 표현에 필수)
-2. **M7-1 착수** — `bootstrap/compiler.bmb` 핵심 함수 pre/post contract 부착 시작  
-   - 우선 대상: `method_to_runtime_fn`, `get_call_return_type`, `is_string_returning_fn`  
-   - 이미 잘 알려진 불변식이 있어 contract 작성이 명확함
+1. **Rust SMT String theory 추가** (Rule 6 P0 예외 해당):
+   - `bmb/src/smt/translator.rs`: `Type::String → SmtSort::Str` (현재 `SmtSort::Int`)
+   - `Expr::StringLit(s)` 번역 (현재 `Ok("0")`)
+   - `.len()` 메서드 호출 → `(str.len var)` SMT 인코딩
+   - 완료 후 Track B 3개 함수 `pre fn_name.len() > 0` 검증 → `total:3, verified:3` 목표
+
+2. **M7-2 검증**: `bmb verify bootstrap/compiler.bmb` → Track B 계약 포함 검증 통과
 
 ### 백로그
 
-3. untracked golden tests 처리 (test_golden_extractor.bmb.out 포맷 불일치)
-4. benchmark Tier 3 run 횟수 표준화 (5-run → 10-run 권고)
+3. BMB 트랙 Z3 IPC (bootstrap/compiler.bmb에서 exec_output으로 z3 호출) — 대형 작업
+4. untracked golden tests 처리
