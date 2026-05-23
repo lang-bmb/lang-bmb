@@ -96,6 +96,7 @@ find_func.py
 fix_ir.py
 
 # Test artifacts
+_ai_bench_temp.bmb
 test_*.bmb
 !tests/golden/test_golden_*.bmb
 !tests/golden/test_golden_*.golden
