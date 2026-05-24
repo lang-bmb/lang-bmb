@@ -1,0 +1,181 @@
+// Golden test: context_pack Phase 6 — budget filter (strip_contracts + s2i)
+// Regression test for token budget filter added in Cycle 2544.
+//
+// Run: bmb run tests/golden/test_golden_context_pack_budget.bmb
+// Expected output: context_pack_budget: 8/8 tests passed
+
+// ============================================================================
+// Inlined from context_pack.bmb: helpers needed for budget filter
+// ============================================================================
+
+fn line_starts(s: String, pos: i64, prefix: String) -> bool = {
+    let plen = prefix.len();
+    if pos + plen > s.len() { false }
+    else {
+        let mut i = 0;
+        let mut ok = 1;
+        while i < plen and ok == 1 {
+            if s.byte_at(pos + i) != prefix.byte_at(i) { ok = 0 } else { () };
+            i = i + 1
+        };
+        ok == 1
+    }
+};
+
+fn find_contract_end(s: String, pos: i64) -> i64 = {
+    let mut p = pos;
+    while p < s.len() and s.byte_at(p) != 125 { p = p + 1 };
+    p
+};
+
+fn strip_contracts(modules_json: String) -> String = {
+    let target = ",\"contract\":{";
+    let tlen = target.len();
+    let mut out = "";
+    let mut i = 0;
+    let mut chunk_start = 0;
+    while i < modules_json.len() {
+        let _r = if line_starts(modules_json, i, target) {
+            out = out + modules_json.slice(chunk_start, i);
+            let end = find_contract_end(modules_json, i + tlen);
+            i = end + 1;
+            chunk_start = i;
+            0
+        } else {
+            i = i + 1;
+            0
+        };
+        0
+    };
+    out + modules_json.slice(chunk_start, modules_json.len())
+};
+
+fn s2i(s: String) -> i64 = {
+    if s.len() == 0 { 0 }
+    else {
+        let neg = s.byte_at(0) == 45;
+        let start = if neg { 1 } else { 0 };
+        let mut i = start;
+        let mut result = 0;
+        while i < s.len() {
+            let c = s.byte_at(i);
+            let _r = if c >= 48 and c <= 57 {
+                result = result * 10 + (c - 48);
+                i = i + 1;
+                0
+            } else {
+                i = s.len();
+                0
+            };
+            0
+        };
+        if neg { 0 - result } else { result }
+    }
+};
+
+// ============================================================================
+// Helper: count substrings
+// ============================================================================
+
+fn count_substr(s: String, pattern: String) -> i64 = {
+    if pattern.len() == 0 or s.len() < pattern.len() { 0 }
+    else {
+        let mut count = 0;
+        let mut i = 0;
+        let limit = s.len() - pattern.len() + 1;
+        while i < limit {
+            if s.slice(i, i + pattern.len()) == pattern {
+                count = count + 1;
+                i = i + pattern.len()
+            } else { i = i + 1 }
+        };
+        count
+    }
+};
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+fn test_s2i_basic() -> bool =
+    s2i("5000") == 5000 and
+    s2i("0") == 0 and
+    s2i("1") == 1 and
+    s2i("99999") == 99999;
+
+fn test_s2i_negative() -> bool =
+    s2i("-1") == 0 - 1 and
+    s2i("-100") == 0 - 100;
+
+fn test_s2i_empty() -> bool =
+    s2i("") == 0;
+
+fn test_strip_contracts_no_contracts() -> bool = {
+    let json = "{\"kind\":\"fn\",\"name\":\"add\",\"signature\":\"fn add(a: i64) -> i64\"}";
+    let result = strip_contracts(json);
+    result == json
+};
+
+fn test_strip_contracts_pre_only() -> bool = {
+    let json = "{\"kind\":\"fn\",\"name\":\"add\",\"signature\":\"fn add\",\"contract\":{\"pre\":\"n > 0\"}}";
+    let result = strip_contracts(json);
+    count_substr(result, "\"contract\"") == 0 and
+    count_substr(result, "\"kind\":\"fn\"") == 1 and
+    count_substr(result, "\"name\":\"add\"") == 1
+};
+
+fn test_strip_contracts_pre_and_post() -> bool = {
+    let json = "{\"kind\":\"fn\",\"name\":\"foo\",\"signature\":\"fn foo\",\"contract\":{\"pre\":\"a > 0\",\"post\":\"result > a\"}}";
+    let result = strip_contracts(json);
+    count_substr(result, "\"contract\"") == 0 and
+    count_substr(result, "\"name\":\"foo\"") == 1
+};
+
+fn test_strip_contracts_multiple() -> bool = {
+    let j1 = "{\"kind\":\"fn\",\"name\":\"a\",\"signature\":\"fn a\",\"contract\":{\"pre\":\"x > 0\"}}";
+    let j2 = ",{\"kind\":\"fn\",\"name\":\"b\",\"signature\":\"fn b\"}";
+    let j3 = ",{\"kind\":\"fn\",\"name\":\"c\",\"signature\":\"fn c\",\"contract\":{\"post\":\"r > 0\"}}";
+    let json = j1 + j2 + j3;
+    let result = strip_contracts(json);
+    count_substr(result, "\"contract\"") == 0 and
+    count_substr(result, "\"kind\":\"fn\"") == 3
+};
+
+fn test_strip_contracts_preserves_non_contract_fields() -> bool = {
+    let json = "{\"kind\":\"fn\",\"name\":\"sub\",\"signature\":\"fn sub(a: i64, b: i64) -> i64\",\"contract\":{\"pre\":\"a >= b\"}}";
+    let result = strip_contracts(json);
+    count_substr(result, "fn sub(a: i64, b: i64) -> i64") == 1
+};
+
+// ============================================================================
+// Test runner
+// ============================================================================
+
+fn run_test(name: String, result: bool) -> i64 = {
+    let _p1 = print_str(if result { "  PASS: " } else { "  FAIL: " });
+    let _p2 = print_str(name);
+    let _p3 = print_str("\n");
+    if result { 1 } else { 0 }
+};
+
+fn main() -> i64 = {
+    let _h = print_str("context_pack_budget: running tests\n");
+    let mut passed = 0;
+    let total = 8;
+
+    passed = passed + run_test("s2i basic", test_s2i_basic());
+    passed = passed + run_test("s2i negative", test_s2i_negative());
+    passed = passed + run_test("s2i empty", test_s2i_empty());
+    passed = passed + run_test("strip_contracts no contracts", test_strip_contracts_no_contracts());
+    passed = passed + run_test("strip_contracts pre only", test_strip_contracts_pre_only());
+    passed = passed + run_test("strip_contracts pre and post", test_strip_contracts_pre_and_post());
+    passed = passed + run_test("strip_contracts multiple", test_strip_contracts_multiple());
+    passed = passed + run_test("strip_contracts preserves signature", test_strip_contracts_preserves_non_contract_fields());
+
+    let _r1 = print_str("context_pack_budget: ");
+    let _r2 = print(passed);
+    let _r3 = print_str("/");
+    let _r4 = print(total);
+    let _r5 = print_str(" tests passed\n");
+    if passed == total { 0 } else { 1 }
+};

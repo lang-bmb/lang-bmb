@@ -1,0 +1,329 @@
+// Golden test: extractor — BMB export extractor
+// Tests bootstrap/context_pack/extractor.bmb functions
+// Regression test for UTF-8 em-dash panic (Cycle 2543)
+//
+// Run: bmb run tests/golden/test_golden_extractor.bmb
+// Expected output: extractor: 9/9 tests passed
+
+// ============================================================================
+// Inlined from extractor.bmb: helpers
+// ============================================================================
+
+fn find_nl(s: String, pos: i64) -> i64 = {
+    let mut p = pos;
+    while p < s.len() {
+        if s.byte_at(p) == 10 { break } else { p = p + 1 }
+    };
+    p
+};
+
+fn skip_ws(s: String, pos: i64, end: i64) -> i64 = {
+    let mut p = pos;
+    while p < end {
+        let c = s.byte_at(p);
+        if c == 32 or c == 9 { p = p + 1 } else { break }
+    };
+    p
+};
+
+fn line_starts(s: String, pos: i64, prefix: String) -> bool = {
+    let plen = prefix.len();
+    if pos + plen > s.len() { false }
+    else {
+        let mut i = 0;
+        let mut ok = 1;
+        while i < plen and ok == 1 {
+            if s.byte_at(pos + i) != prefix.byte_at(i) { ok = 0 } else { () };
+            i = i + 1
+        };
+        ok == 1
+    }
+};
+
+fn is_ident_char(c: i64) -> bool =
+    (c >= 97 and c <= 122) or (c >= 65 and c <= 90) or
+    (c >= 48 and c <= 57) or c == 95;
+
+fn extract_ident(s: String, pos: i64, end: i64) -> String = {
+    let mut p = pos;
+    while p < end and is_ident_char(s.byte_at(p)) {
+        p = p + 1
+    };
+    if p == pos { "" } else { s.slice(pos, p) }
+};
+
+fn trim_end(s: String, end: i64) -> i64 = {
+    let mut p = end;
+    while p > 0 {
+        let c = s.byte_at(p - 1);
+        if c == 32 or c == 9 or c == 13 { p = p - 1 } else { break }
+    };
+    p
+};
+
+fn json_escape(s: String) -> String = {
+    let mut i = 0;
+    let mut out = "";
+    while i < s.len() {
+        let c = s.byte_at(i);
+        let piece = if c == 34 { "\\\"" }
+                    else if c == 92 { "\\\\" }
+                    else if c == 10 { "\\n" }
+                    else if c == 13 { "\\r" }
+                    else { s.slice(i, i + 1) };
+        out = out + piece;
+        i = i + 1
+    };
+    out
+};
+
+fn jkv(key: String, val: String) -> String =
+    "\"" + key + "\":\"" + json_escape(val) + "\"";
+
+fn extract_sig_from_line(line: String, start: i64, nl: i64) -> String = {
+    let mut p = start;
+    while p < nl {
+        let c = line.byte_at(p);
+        if c == 61 or c == 123 { break } else { p = p + 1 }
+    };
+    let te = trim_end(line, p);
+    if te > start { line.slice(start, te) } else { "" }
+};
+
+fn build_fn_obj(name: String, sig: String, pre_c: String, post_c: String) -> String = {
+    let base = "{" + jkv("kind", "fn") + "," + jkv("name", name) + "," + jkv("signature", sig);
+    if pre_c.len() == 0 and post_c.len() == 0 { base + "}" }
+    else if pre_c.len() > 0 and post_c.len() > 0 {
+        base + ",\"contract\":{" + jkv("pre", pre_c) + "," + jkv("post", post_c) + "}}"
+    } else if pre_c.len() > 0 {
+        base + ",\"contract\":{" + jkv("pre", pre_c) + "}}"
+    } else {
+        base + ",\"contract\":{" + jkv("post", post_c) + "}}"
+    }
+};
+
+fn build_type_obj(name: String, sig: String) -> String =
+    "{" + jkv("kind", "type") + "," + jkv("name", name) + "," + jkv("definition", sig) + "}";
+
+fn build_const_obj(name: String, sig: String) -> String =
+    "{" + jkv("kind", "const") + "," + jkv("name", name) + "," + jkv("signature", sig) + "}";
+
+fn append_obj(acc: String, obj: String) -> String =
+    if acc.len() == 0 { obj } else { acc + "," + obj };
+
+fn extract_decls_from(source: String) -> String = {
+    let mut acc_json = "";
+    let mut pos = 0;
+    let mut in_fn = 0;
+    let mut cur_name = "";
+    let mut cur_sig = "";
+    let mut cur_pre = "";
+    let mut cur_post = "";
+
+    while pos < source.len() {
+        let nl = find_nl(source, pos);
+        let ls = skip_ws(source, pos, nl);
+        let is_blank = ls >= nl;
+        let is_annot = not(is_blank) and source.byte_at(ls) == 64;
+
+        let _c = if in_fn == 1 and not(is_blank) and not(is_annot) {
+            if line_starts(source, ls, "pre ") {
+                cur_pre = source.slice(ls + 4, trim_end(source, nl));
+                0
+            } else if line_starts(source, ls, "post ") {
+                cur_post = source.slice(ls + 5, trim_end(source, nl));
+                0
+            } else { 0 }
+        } else { 0 };
+
+        let is_contract = not(is_blank) and (line_starts(source, ls, "pre ") or line_starts(source, ls, "post ") or line_starts(source, ls, "inv "));
+        let is_cont = in_fn == 1 and (is_blank or is_annot or is_contract);
+
+        let _flush = if in_fn == 1 and not(is_cont) {
+            acc_json = append_obj(acc_json, build_fn_obj(cur_name, cur_sig, cur_pre, cur_post));
+            in_fn = 0;
+            cur_name = "";
+            cur_sig = "";
+            cur_pre = "";
+            cur_post = "";
+            0
+        } else { 0 };
+
+        let _p = if is_blank or is_annot { 0 }
+        else if line_starts(source, ls, "pub fn ") {
+            let name = extract_ident(source, ls + 7, nl);
+            let sig = extract_sig_from_line(source, ls + 4, nl);
+            cur_name = name;
+            cur_sig = sig;
+            cur_pre = "";
+            cur_post = "";
+            in_fn = 1;
+            0
+        } else if line_starts(source, ls, "pub type ") {
+            let name = extract_ident(source, ls + 9, nl);
+            let sig = extract_sig_from_line(source, ls + 4, nl);
+            acc_json = append_obj(acc_json, build_type_obj(name, sig));
+            0
+        } else if line_starts(source, ls, "pub const ") {
+            let name = extract_ident(source, ls + 10, nl);
+            let sig = extract_sig_from_line(source, ls + 4, nl);
+            acc_json = append_obj(acc_json, build_const_obj(name, sig));
+            0
+        } else if line_starts(source, ls, "pub struct ") {
+            let name = extract_ident(source, ls + 11, nl);
+            let sig = extract_sig_from_line(source, ls + 4, nl);
+            acc_json = append_obj(acc_json, build_type_obj(name, sig));
+            0
+        } else { 0 };
+
+        pos = if nl >= source.len() { source.len() } else { nl + 1 };
+        0
+    };
+
+    let _fin = if in_fn == 1 {
+        acc_json = append_obj(acc_json, build_fn_obj(cur_name, cur_sig, cur_pre, cur_post));
+        0
+    } else { 0 };
+
+    "[" + acc_json + "]"
+};
+
+// ============================================================================
+// Helper: substring count (for assertion)
+// ============================================================================
+
+fn count_substr(s: String, pattern: String) -> i64 = {
+    if pattern.len() == 0 or s.len() < pattern.len() { 0 }
+    else {
+        let mut count = 0;
+        let mut i = 0;
+        let limit = s.len() - pattern.len() + 1;
+        while i < limit {
+            if s.slice(i, i + pattern.len()) == pattern {
+                count = count + 1;
+                i = i + pattern.len()
+            } else { i = i + 1 }
+        };
+        count
+    }
+};
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+fn test_line_starts_basic() -> bool = {
+    let s = "pub fn foo() -> i64 = 0";
+    line_starts(s, 0, "pub fn ") and
+    not(line_starts(s, 0, "pub type ")) and
+    not(line_starts(s, 0, "//"))
+};
+
+fn test_line_starts_too_short() -> bool = {
+    not(line_starts("pub", 0, "pub fn ")) and
+    not(line_starts("", 0, "pub fn "))
+};
+
+fn test_line_starts_exact_match() -> bool = {
+    line_starts("pub fn ", 0, "pub fn ")
+};
+
+fn test_line_starts_offset() -> bool = {
+    // line_starts should work at non-zero offset too
+    let s = "// comment\npub fn bar";
+    line_starts(s, 11, "pub fn ")
+};
+
+// Regression test: Cycle 2543 UTF-8 em-dash panic
+// stdlib/json/mod.bmb contains em-dash (—, 3 bytes: 0xE2 0x80 0x94) in comments.
+// Old line_starts used s.slice(pos, pos + prefix.len()) which panics when the
+// end byte falls inside a multi-byte character boundary.
+// New line_starts uses byte_at() comparison loop — never panics.
+fn test_line_starts_emdash_no_panic() -> bool = {
+    let source = read_file("stdlib/json/mod.bmb");
+    // File must exist and have content
+    if source.len() < 100 { false }
+    else {
+        // Scanning the entire file exercises all em-dash comment lines.
+        // This must complete without panic.
+        let mut pos = 0;
+        let mut ok = 1;
+        while pos < source.len() and ok == 1 {
+            let nl = find_nl(source, pos);
+            let ls = skip_ws(source, pos, nl);
+            let _r1 = line_starts(source, ls, "pub fn ");
+            let _r2 = line_starts(source, ls, "pub type ");
+            let _r3 = line_starts(source, ls, "pub const ");
+            pos = if nl >= source.len() { source.len() } else { nl + 1 };
+            0
+        };
+        ok == 1
+    }
+};
+
+fn test_extract_pub_fn() -> bool = {
+    let src = "pub fn add(x: i64, y: i64) -> i64 = x + y\n";
+    let result = extract_decls_from(src);
+    count_substr(result, "\"kind\":\"fn\"") == 1 and
+    count_substr(result, "\"name\":\"add\"") == 1
+};
+
+fn test_extract_pub_type() -> bool = {
+    let src = "pub type Foo = i64\n";
+    let result = extract_decls_from(src);
+    count_substr(result, "\"kind\":\"type\"") == 1 and
+    count_substr(result, "\"name\":\"Foo\"") == 1
+};
+
+fn test_extract_pub_const() -> bool = {
+    let src = "pub const MAX: i64 = 100\n";
+    let result = extract_decls_from(src);
+    count_substr(result, "\"kind\":\"const\"") == 1 and
+    count_substr(result, "\"name\":\"MAX\"") == 1
+};
+
+fn test_extract_emdash_in_comment() -> bool = {
+    // Full extraction from stdlib/json/mod.bmb (contains em-dash).
+    // Must produce non-empty array without panicking.
+    let source = read_file("stdlib/json/mod.bmb");
+    if source.len() < 100 { false }
+    else {
+        let result = extract_decls_from(source);
+        // Result is a JSON array: starts with '[' (91) and has content
+        result.len() > 2 and result.byte_at(0) == 91
+    }
+};
+
+// ============================================================================
+// Test runner
+// ============================================================================
+
+fn run_test(name: String, result: bool) -> i64 = {
+    let _p1 = print_str(if result { "  PASS: " } else { "  FAIL: " });
+    let _p2 = print_str(name);
+    let _p3 = print_str("\n");
+    if result { 1 } else { 0 }
+};
+
+fn main() -> i64 = {
+    let _h = print_str("extractor: running tests\n");
+    let mut passed = 0;
+    let total = 9;
+
+    passed = passed + run_test("line_starts basic", test_line_starts_basic());
+    passed = passed + run_test("line_starts too short", test_line_starts_too_short());
+    passed = passed + run_test("line_starts exact match", test_line_starts_exact_match());
+    passed = passed + run_test("line_starts offset", test_line_starts_offset());
+    passed = passed + run_test("line_starts em-dash no panic (regression)", test_line_starts_emdash_no_panic());
+    passed = passed + run_test("extract pub fn", test_extract_pub_fn());
+    passed = passed + run_test("extract pub type", test_extract_pub_type());
+    passed = passed + run_test("extract pub const", test_extract_pub_const());
+    passed = passed + run_test("extract em-dash in comment", test_extract_emdash_in_comment());
+
+    let _r1 = print_str("extractor: ");
+    let _r2 = print(passed);
+    let _r3 = print_str("/");
+    let _r4 = print(total);
+    let _r5 = print_str(" tests passed\n");
+    if passed == total { 0 } else { 1 }
+};

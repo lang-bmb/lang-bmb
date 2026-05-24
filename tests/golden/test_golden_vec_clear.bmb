@@ -1,0 +1,22 @@
+// Golden Test: vec_clear resets length without deallocating
+// Tests that vec_clear allows reuse of the same vec handle.
+
+fn main() -> i64 = {
+    let v = vec_new();
+    let _p1 = vec_push(v, 10);
+    let _p2 = vec_push(v, 20);
+    let _p3 = vec_push(v, 30);
+    let len1 = vec_len(v);
+    let _c = vec_clear(v);
+    let len2 = vec_len(v);
+    -- reuse after clear
+    let _p4 = vec_push(v, 99);
+    let val = vec_get(v, 0);
+    let len3 = vec_len(v);
+    let _f = vec_free(v);
+    let _o1 = println(len1);
+    let _o2 = println(len2);
+    let _o3 = println(val);
+    let _o4 = println(len3);
+    0
+};

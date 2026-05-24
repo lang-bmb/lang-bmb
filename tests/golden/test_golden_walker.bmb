@@ -1,0 +1,158 @@
+// Golden test: walk_bmb directory tree walker
+// Tests bootstrap/context_pack/walker.bmb behavior
+
+// ============================================================================
+// walker.bmb inlined: helpers + walk_dir + walk_bmb
+// ============================================================================
+
+fn is_bmb_ext(name: String) -> bool =
+    name.len() > 4 and name.slice(name.len() - 4, name.len()) == ".bmb";
+
+fn is_excluded(name: String) -> bool =
+    name == "target" or name == ".git" or name == "node_modules"
+    or (name.len() > 1 and name.byte_at(0) == 46);
+
+fn path_join(base: String, name: String) -> String = {
+    let last = base.byte_at(base.len() - 1);
+    if last == 47 or last == 92 { base + name }
+    else { base + "/" + name }
+};
+
+fn find_nl(s: String, pos: i64) -> i64 = {
+    let mut p = pos;
+    while p < s.len() {
+        if s.byte_at(p) == 10 { break } else { p = p + 1 }
+    };
+    p
+};
+
+fn walk_dir(dir: String, root_len: i64, acc: String) -> String = {
+    let entries = list_dir(dir);
+    if entries.len() == 0 { acc }
+    else {
+        let mut result = acc;
+        let mut pos = 0;
+        while pos < entries.len() {
+            let nl = find_nl(entries, pos);
+            let name = entries.slice(pos, nl);
+            pos = if nl >= entries.len() { entries.len() } else { nl + 1 };
+            let _r = if name.len() == 0 { 0 }
+            else {
+                let full = path_join(dir, name);
+                if is_dir(full) == 1 and not(is_excluded(name)) {
+                    result = walk_dir(full, root_len, result);
+                    0
+                } else if is_bmb_ext(name) {
+                    let rel = full.slice(root_len, full.len());
+                    result = if result.len() == 0 { rel }
+                             else { result + "\n" + rel };
+                    0
+                } else { 0 }
+            };
+            0
+        };
+        result
+    }
+};
+
+fn walk_bmb(root: String) -> String = {
+    if root.len() == 0 { "" }
+    else {
+        let last = root.byte_at(root.len() - 1);
+        let root_len = if last == 47 or last == 92 { root.len() }
+                       else { root.len() + 1 };
+        walk_dir(root, root_len, "")
+    }
+};
+
+// ============================================================================
+// Count lines in a newline-separated string
+// ============================================================================
+
+fn count_lines(s: String) -> i64 = {
+    if s.len() == 0 { 0 }
+    else {
+        let mut count = 1;
+        let mut i = 0;
+        while i < s.len() {
+            if s.byte_at(i) == 10 { count = count + 1 } else { () };
+            i = i + 1
+        };
+        count
+    }
+};
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+fn test_is_bmb_ext() -> bool = {
+    is_bmb_ext("foo.bmb") and
+    is_bmb_ext("a.bmb") and
+    not(is_bmb_ext("foo.rs")) and
+    not(is_bmb_ext("foo.bmb.bak")) and
+    not(is_bmb_ext(".bmb")) and
+    not(is_bmb_ext(""))
+};
+
+fn test_is_excluded() -> bool = {
+    is_excluded("target") and
+    is_excluded(".git") and
+    is_excluded("node_modules") and
+    is_excluded(".hidden") and
+    not(is_excluded("src")) and
+    not(is_excluded("bootstrap")) and
+    not(is_excluded("stdlib"))
+};
+
+fn test_path_join_no_slash() -> bool = {
+    path_join("a", "b") == "a/b"
+};
+
+fn test_path_join_with_slash() -> bool = {
+    path_join("a/", "b") == "a/b"
+};
+
+fn test_walk_current_dir() -> bool = {
+    // stdlib dir always has .bmb files
+    let files = walk_bmb("stdlib");
+    files.len() > 0 and count_lines(files) >= 10
+};
+
+fn test_walk_nonexistent() -> bool = {
+    // Non-existent directory returns empty string
+    let files = walk_bmb("__nonexistent_walker_test__");
+    files.len() == 0
+};
+
+fn test_walk_empty_root() -> bool = {
+    walk_bmb("") == ""
+};
+
+fn run_test(name: String, result: bool) -> i64 = {
+    let _p1 = print_str(if result { "  PASS: " } else { "  FAIL: " });
+    let _p2 = print_str(name);
+    let _p3 = print_str("\n");
+    if result { 1 } else { 0 }
+};
+
+fn main() -> i64 = {
+    let _h = print_str("walker: running tests\n");
+    let mut passed = 0;
+    let total = 7;
+
+    passed = passed + run_test("is_bmb_ext", test_is_bmb_ext());
+    passed = passed + run_test("is_excluded", test_is_excluded());
+    passed = passed + run_test("path_join no slash", test_path_join_no_slash());
+    passed = passed + run_test("path_join with slash", test_path_join_with_slash());
+    passed = passed + run_test("walk current dir", test_walk_current_dir());
+    passed = passed + run_test("walk nonexistent", test_walk_nonexistent());
+    passed = passed + run_test("walk empty root", test_walk_empty_root());
+
+    let _r1 = print_str("walker: ");
+    let _r2 = print(passed);
+    let _r3 = print_str("/");
+    let _r4 = print(total);
+    let _r5 = print_str(" tests passed\n");
+    if passed == total { 0 } else { 1 }
+};
