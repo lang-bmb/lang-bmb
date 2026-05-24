@@ -5887,7 +5887,9 @@ fn lower_nullable_method_sb(ast: String, method: String, temp_id: i64, block_id:
     } else { pack_ids(recv_temp, recv_block) };
 
 // invariant: method != "" → ret starts with "bmb_" or "popcount"/"clz"/"ctz"/"bit_*"/"f64_to_i64"/"i64_to_f64"; method == "" → "__unknown_method_"
-fn method_to_runtime_fn(method: String) -> String =
+fn method_to_runtime_fn(method: String) -> String
+  pre method.len() > 0
+=
     if method == "len" { "bmb_string_len" }
     else if method == "byte_at" { "bmb_string_char_at" }
     else if method == "char_code_at" { "bmb_string_char_at" }
@@ -6875,7 +6877,9 @@ fn fix_phi_label(content: String) -> String =
 
 // invariant: ret ∈ {"void", "ptr", "i64", "double"} — exhaustive over all known runtime fn names; unknown fns → "i64"
 // v0.46: Determine LLVM return type from function name
-fn get_call_return_type(fn_name: String) -> String =
+fn get_call_return_type(fn_name: String) -> String
+  pre fn_name.len() > 0
+=
     // Void functions (no return value assignment)
     if fn_name == "@println" or fn_name == "@print_str" or fn_name == "@println_str" or fn_name == "@eprint" or fn_name == "@eprintln" or fn_name == "@eprint_str" or fn_name == "@eprintln_str" or fn_name == "@eprint_f64" or fn_name == "@eprintln_f64" or fn_name == "@bmb_panic" { "void" }
     else if fn_name == "@free" or fn_name == "@print_f64" or fn_name == "@println_f64" or fn_name == "@bmb_print_i64" or fn_name == "@puts_cstr" { "void" }
@@ -15786,7 +15790,9 @@ fn llvm_gen_string_cmp_3(pred: String, dest: String, mapping: String, conv_l: St
 // Track string-returning function calls
 // invariant: returns true iff name is a known stdlib/bootstrap fn that returns a heap-allocated String (ptr).
 // Used for str_sb tracking (push_string_marker). Must stay in sync with get_call_return_type "ptr" branch.
-fn is_string_returning_fn(name: String) -> bool =
+fn is_string_returning_fn(name: String) -> bool
+  pre name.len() > 0
+=
     is_string_fn_group1(name) or is_string_fn_group2(name) or is_string_fn_group3(name) or
     is_string_fn_group4(name) or is_string_fn_group5(name) or is_string_fn_group6(name);
 
