@@ -1,53 +1,50 @@
-# BMB Session Handoff — 2026-05-25 (Cycles 3075-3078 — M7-1 COMPLETE)
+# BMB Session Handoff — 2026-05-25 (Cycle 3079 — M7 COMPLETE)
 
-> **HEAD**: `009b4be8` (chore: 세션 종료 정리 — HANDOFF HEAD 갱신 (474e4d4c))
-> **이전 HEAD**: `474e4d4c` (feat(cycles-3075-3077): M7-1 COMPLETE — 17종 contract 부착, 25 llvm.assume 주입)
-> **3-Stage Fixed Point**: ✅ `dc57beff` (이전: `745082F5`)
+> **HEAD**: `6abdf9cf` (feat(cycle-3079): M7-2 COMPLETE — SMT String theory + Track B 계약 검증)
+> **이전 HEAD**: `2ff9f83a`
+> **3-Stage Fixed Point**: ✅ `ea550bf3` (이전: `dc57beff`)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: **M7-2 착수** — Rust SMT translator String theory 지원 추가 (`Type::String → SmtSort::Str`)
+> **다음 세션 진입점**: **M8 계획 수립** 또는 **untracked golden tests 처리**
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 3075-3078)
+## 이번 세션 작업 요약 (Cycle 3079)
 
 | Cycle | 제목 | 내용 |
 |-------|------|------|
-| 3075 | M7 전제 검증 + 스모크 테스트 | 5개 진단 + Z3/assume 파이프라인 정상 확인 |
-| 3076 | M7-1 Track A 17종 계약 | 스캐너/패턴매처 25 llvm.assume 주입, Fixed Point dc57beff |
-| 3077 | M7-1 Track B 결정 | Z3 String 조건 미지원 확인, invariant 주석 문서화 |
-| 3078 | M7-2 범위 확정 | SMT translator String 근사화 발견, 조기 종료 |
+| 3079 | M7-2 COMPLETE | SMT String theory 지원 + Track B 3종 계약 승격 |
 
-### 핵심 성과: M7-1 COMPLETE (Track A)
+### 핵심 성과: M7 COMPLETE
 
-**17개 함수, 25개 llvm.assume 주입**:
-- 스캐너: `skip_ws`, `skip_ws_comments`, `scan_int/hex/bin/oct`, `scan_digits_end`, `scan_exponent`, `scan_ident_end`, `scan_string_end`, `scan_char_end`
-- 패턴 매처: `find_char`, `find_comma`, `find_comma_or_end`, `find_pattern_noa`, `match_bytes`, `find_pattern_noa_range`
-- 모두 `pre pos >= 0` 계열 — LLVM이 음수 포지션 케이스 제거 가능
+**M7-2 구현 (translator.rs 9개 targeted change)**:
+1. `SmtSort::Str` 추가
+2. `SmtLibGenerator.has_strings` 필드
+3. `declare_var` — Str sort → "String" 선언
+4. `generate` — `has_strings` 시 `QF_LIA → ALL` logic 전환
+5. `clear` — `has_strings` 초기화
+6. `type_to_sort` — `Type::String → SmtSort::Str`
+7. `StringLit` 번역 — `"s"` (SMT-LIB2 string literal)
+8. `MethodCall.len()` — String 변수에 `(str.len var)` 번역
+9. `type_to_smt` — `Type::String → Ok("String")`
 
-**Track B 결정**: `method_to_runtime_fn`, `get_call_return_type`, `is_string_returning_fn`
-- Z3 String 조건 미지원 (`total:0`) → `// invariant:` 주석으로 보존
-- M7-2에서 실제 계약으로 승격 예정
+**Track B 계약 승격 (compiler.bmb)**:
+- `method_to_runtime_fn(method: String)`: `pre method.len() > 0`
+- `get_call_return_type(fn_name: String)`: `pre fn_name.len() > 0`
+- `is_string_returning_fn(name: String)`: `pre name.len() > 0`
 
-### Z3 String 미지원 근본 원인 발견 (Cycle 3078)
+### 검증 결과
 
-`bmb/src/smt/translator.rs`:
-```
-Type::String => SmtSort::Int, // String as Int (simplified) v0.5
-Expr::StringLit(_) => Ok("0".to_string()) // approximated as 0
-```
-
-**M7-2 핵심 작업**: `Type::String → SmtSort::Str` + String literal/`.len()` SMT 번역 추가.
-
-### 문법 발견 (Cycle 3075)
-
-다중 `pre` 절은 `pre A\n  pre B` 형식 미지원 → `pre A and B` 로 결합 필수.
+- `cargo test --release`: **6271 PASS** ✅ (6264 → 6271, +7 신규 테스트)
+- `bmb verify bootstrap/compiler.bmb`: **1513/1513** ✅ (Track B 3개 실제 Z3 검증)
+- 3-Stage Fixed Point: `ea550bf3` ✅
+- Human 모드 Track B 확인: `✓ method_to_runtime_fn: pre verified` 등 3개 전부
 
 ---
 
 ## 테스트 상태
 
-- `cargo test --release`: **6264 PASS** ✅
-- 3-Stage Fixed Point: `dc57beff` ✅
+- `cargo test --release`: **6271 PASS** ✅
+- 3-Stage Fixed Point: `ea550bf3` ✅
 - Z3: `bmb verify bootstrap/compiler.bmb` → 1513/1513 ✅
 
 ---
@@ -62,7 +59,7 @@ Expr::StringLit(_) => Ok("0".to_string()) // approximated as 0
 | M4 | ✅ COMPLETE |
 | M5 | ✅ COMPLETE (Native Complete 포함) |
 | M6 | ✅ COMPLETE (2026-05-23) |
-| M7 | 🔄 **Contract Pipeline** — M7-1 ✅ COMPLETE, M7-2 착수 예정 |
+| M7 | ✅ **COMPLETE** (2026-05-25) — M7-1 Track A (17종 contract) + M7-2 Track B (String SMT) |
 
 ---
 
@@ -76,19 +73,28 @@ Expr::StringLit(_) => Ok("0".to_string()) // approximated as 0
 
 ---
 
-## 다음 세션 권장 사항 (M7-2 착수)
+## 다음 세션 권장 사항
 
 ### 즉시 착수 가능 (P1)
 
-1. **Rust SMT String theory 추가** (Rule 6 P0 예외 해당):
-   - `bmb/src/smt/translator.rs`: `Type::String → SmtSort::Str` (현재 `SmtSort::Int`)
-   - `Expr::StringLit(s)` 번역 (현재 `Ok("0")`)
-   - `.len()` 메서드 호출 → `(str.len var)` SMT 인코딩
-   - 완료 후 Track B 3개 함수 `pre fn_name.len() > 0` 검증 → `total:3, verified:3` 목표
+1. **untracked golden tests 처리** (5개):
+   - `tests/golden/test_golden_context_pack_budget.bmb`
+   - `tests/golden/test_golden_extractor.bmb`
+   - `tests/golden/test_golden_json_parser_multi_trl.bmb`
+   - `tests/golden/test_golden_vec_clear.bmb`
+   - `tests/golden/test_golden_walker.bmb`
 
-2. **M7-2 검증**: `bmb verify bootstrap/compiler.bmb` → Track B 계약 포함 검증 통과
+2. **M8 계획 수립**: M7 완료 후 다음 마일스톤 결정
 
 ### 백로그
 
-3. BMB 트랙 Z3 IPC (bootstrap/compiler.bmb에서 exec_output으로 z3 호출) — 대형 작업
-4. untracked golden tests 처리
+3. BMB 트랙 Z3 IPC (bootstrap/compiler.bmb에서 exec_output으로 z3 호출) — M7 비전의 완전한 BMB 구현
+4. String SMT 확장: `contains`, `starts_with`, `ends_with` 번역 → 더 강한 Track B post-condition 가능
+
+### 기술 참고
+
+**SMT String theory 변경점 (M7-2)**:
+- String 파라미터 선언 시 자동으로 `(set-logic ALL)` 적용
+- `.len()` 메서드: String 변수에만 지원 (`(str.len var_name)`)
+- String 리터럴: SMT `"literal"` 형식
+- total:1513 유지 정상 — Track B 3개가 "auto-verified" → "actually verified"로 전환
