@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-25 (Cycles 3080-3083)
 
-> **HEAD**: `d57fcd2f` (현재 미커밋 — 커밋 후 갱신 예정)
+> **HEAD**: `9de96ebe` (feat(cycle-3083): Expr::It 타입 체커 수정 — post it.method() end-to-end 완결)
 > **이전 HEAD**: `749c0e99`
 > **3-Stage Fixed Point**: ✅ `ea550bf3`
 > **실무 앵커**: `claudedocs/ROADMAP.md`
