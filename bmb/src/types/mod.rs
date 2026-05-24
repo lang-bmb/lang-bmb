@@ -3266,12 +3266,9 @@ impl TypeChecker {
                 self.infer(&expr.node, expr.span)
             }
 
-            // v0.2: Refinement self-reference (type depends on context)
-            // When used in T{constraints}, 'it' has type T
-            Expr::It => {
-                // For now, return a placeholder type; actual type comes from context
-                Ok(Type::I64)
-            }
+            // v0.2: Refinement self-reference — type equals the enclosing function's return type
+            // (same mechanism as `ret`; fallback to i64 for refined-type constraints outside fns)
+            Expr::It => Ok(self.current_ret_ty.clone().unwrap_or(Type::I64)),
 
             // v0.20.0: Closure expressions
             Expr::Closure { params, ret_ty, body } => {
@@ -11866,6 +11863,27 @@ mod tests {
     fn test_err_if_cond_not_bool() {
         assert!(err(
             "fn test() -> i64 = if 42 { 1 } else { 0 };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_post_it_string_method() {
+        // `it` in a post-condition should have the function's return type (String here),
+        // so String methods like starts_with must type-check successfully.
+        assert!(ok(
+            r#"fn get_name() -> String
+  post it.starts_with("bmb_")
+= "bmb_hello";"#
+        ));
+    }
+
+    #[test]
+    fn test_tc_post_it_i64_comparison() {
+        // `it` in a post-condition on an i64-returning function should have type i64.
+        assert!(ok(
+            "fn double(x: i64) -> i64
+  post it > 0
+= x * 2;"
         ));
     }
 }

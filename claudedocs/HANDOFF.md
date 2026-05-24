@@ -1,49 +1,48 @@
-# BMB Session Handoff — 2026-05-25 (Cycle 3079 — M7 COMPLETE)
+# BMB Session Handoff — 2026-05-25 (Cycles 3080-3083)
 
-> **HEAD**: `749c0e99` (chore: 세션 종료 정리 — HANDOFF HEAD 갱신 (6abdf9cf))
-> **이전 HEAD**: `6abdf9cf` (feat(cycle-3079): M7-2 COMPLETE — SMT String theory + Track B 계약 검증)
-> **3-Stage Fixed Point**: ✅ `ea550bf3` (이전: `dc57beff`)
+> **HEAD**: `d57fcd2f` (현재 미커밋 — 커밋 후 갱신 예정)
+> **이전 HEAD**: `749c0e99`
+> **3-Stage Fixed Point**: ✅ `ea550bf3`
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: **M8 계획 수립** 또는 **untracked golden tests 처리**
+> **다음 세션 진입점**: **M7-3 착수** (HUMAN 결정 필요) 또는 **M8 계획 수립**
 
 ---
 
-## 이번 세션 작업 요약 (Cycle 3079)
+## 이번 세션 작업 요약 (Cycles 3080-3083)
 
 | Cycle | 제목 | 내용 |
 |-------|------|------|
-| 3079 | M7-2 COMPLETE | SMT String theory 지원 + Track B 3종 계약 승격 |
+| 3080 | Golden 테스트 정리 | 5개 golden test 커밋 + bootstrap/_method_test.bmb 삭제 |
+| 3081 | String SMT 확장 | contains/starts_with/ends_with 번역 + 테스트 3개 |
+| 3082 | post it.method() 인프라 | Expr::It 수신자 + __it__ 등록 + verify_post/__it__ 선언 |
+| 3083 | P0 버그 수정 | Expr::It 타입 체커 플레이스홀더 → current_ret_ty 반환 |
 
-### 핵심 성과: M7 COMPLETE
+### 핵심 성과
 
-**M7-2 구현 (translator.rs 9개 targeted change)**:
-1. `SmtSort::Str` 추가
-2. `SmtLibGenerator.has_strings` 필드
-3. `declare_var` — Str sort → "String" 선언
-4. `generate` — `has_strings` 시 `QF_LIA → ALL` logic 전환
-5. `clear` — `has_strings` 초기화
-6. `type_to_sort` — `Type::String → SmtSort::Str`
-7. `StringLit` 번역 — `"s"` (SMT-LIB2 string literal)
-8. `MethodCall.len()` — String 변수에 `(str.len var)` 번역
-9. `type_to_smt` — `Type::String → Ok("String")`
+**M7 post it.method() 완전 지원 — end-to-end 검증 완결**:
 
-**Track B 계약 승격 (compiler.bmb)**:
-- `method_to_runtime_fn(method: String)`: `pre method.len() > 0`
-- `get_call_return_type(fn_name: String)`: `pre fn_name.len() > 0`
-- `is_string_returning_fn(name: String)`: `pre name.len() > 0`
+1. **String SMT 3종** (Cycle 3081): `contains(t)→(str.contains s t)`, `starts_with(t)→(str.prefixof t s)`, `ends_with(t)→(str.suffixof t s)`
+2. **Expr::It 수신자** (Cycle 3082): `it.method()` → `"__it__"` SMT 이름으로 번역
+3. **verify_post __it__ 선언** (Cycle 3082): `verify_post`/`verify_named_contract`에 `(declare-const __it__ String)` + `(= __it__ __ret__)` 추가
+4. **타입 체커 P0 수정** (Cycle 3083): `Expr::It → Type::I64` 플레이스홀더 → `current_ret_ty.unwrap_or(Type::I64)`
+
+**end-to-end 검증 결과**:
+```
+✓ get_bmb_name: post verified      (body "bmb_hello" satisfies it.starts_with("bmb_"))
+✗ get_other_name: post verification failed   (counterexample: __it__ = "other_value")
+```
 
 ### 검증 결과
 
-- `cargo test --release`: **6271 PASS** ✅ (6264 → 6271, +7 신규 테스트)
-- `bmb verify bootstrap/compiler.bmb`: **1513/1513** ✅ (Track B 3개 실제 Z3 검증)
+- `cargo test --release`: **6278 PASS** ✅ (6271 → 6278, +7 사이클 간)
+- `bmb verify bootstrap/compiler.bmb`: **1513/1513** ✅
 - 3-Stage Fixed Point: `ea550bf3` ✅
-- Human 모드 Track B 확인: `✓ method_to_runtime_fn: pre verified` 등 3개 전부
 
 ---
 
 ## 테스트 상태
 
-- `cargo test --release`: **6271 PASS** ✅
+- `cargo test --release`: **6278 PASS** ✅
 - 3-Stage Fixed Point: `ea550bf3` ✅
 - Z3: `bmb verify bootstrap/compiler.bmb` → 1513/1513 ✅
 
@@ -59,7 +58,7 @@
 | M4 | ✅ COMPLETE |
 | M5 | ✅ COMPLETE (Native Complete 포함) |
 | M6 | ✅ COMPLETE (2026-05-23) |
-| M7 | ✅ **COMPLETE** (2026-05-25) — M7-1 Track A (17종 contract) + M7-2 Track B (String SMT) |
+| M7 | ✅ **COMPLETE** — M7-1 (17종 contract) + M7-2 (String SMT) + post it.method() end-to-end |
 
 ---
 
@@ -75,26 +74,22 @@
 
 ## 다음 세션 권장 사항
 
-### 즉시 착수 가능 (P1)
+### HUMAN 결정 필요
 
-1. **untracked golden tests 처리** (5개):
-   - `tests/golden/test_golden_context_pack_budget.bmb`
-   - `tests/golden/test_golden_extractor.bmb`
-   - `tests/golden/test_golden_json_parser_multi_trl.bmb`
-   - `tests/golden/test_golden_vec_clear.bmb`
-   - `tests/golden/test_golden_walker.bmb`
+1. **M7-3 scope**: complex contract 문법 (let-in-pre, quantifiers, array contracts, contract inheritance) 중 무엇을 구현할 것인가?
+2. **M8 계획 수립**: 외부 신호 기반 (GitHub stars ≥1000, external PRs ≥10 등)
 
-2. **M8 계획 수립**: M7 완료 후 다음 마일스톤 결정
+### 즉시 착수 가능 (P2)
 
-### 백로그
-
-3. BMB 트랙 Z3 IPC (bootstrap/compiler.bmb에서 exec_output으로 z3 호출) — M7 비전의 완전한 BMB 구현
-4. String SMT 확장: `contains`, `starts_with`, `ends_with` 번역 → 더 강한 Track B post-condition 가능
+1. Track B 단순 함수에 `post it.starts_with("bmb_")` 계약 추가 시도
+2. M7-3 착수 (HUMAN 결정 후)
 
 ### 기술 참고
 
-**SMT String theory 변경점 (M7-2)**:
-- String 파라미터 선언 시 자동으로 `(set-logic ALL)` 적용
-- `.len()` 메서드: String 변수에만 지원 (`(str.len var_name)`)
-- String 리터럴: SMT `"literal"` 형식
-- total:1513 유지 정상 — Track B 3개가 "auto-verified" → "actually verified"로 전환
+**SMT String theory 현재 지원**:
+- `s.len()` → `(str.len s)`
+- `s.contains(t)` → `(str.contains s t)`
+- `s.starts_with(t)` → `(str.prefixof t s)` (SMT-LIB2 순서: prefix first)
+- `s.ends_with(t)` → `(str.suffixof t s)` (SMT-LIB2 순서: suffix first)
+- `it.method()` post-condition: `__it__` 변수 자동 선언, `(= __it__ __ret__)` assertion
+- 타입 체커: `Expr::It` → 함수 반환 타입 (Cycle 3083 수정)
