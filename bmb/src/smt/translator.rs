@@ -409,12 +409,21 @@ impl SmtTranslator {
                 Err(TranslateError::UnsupportedFeature("array index assignment".to_string()))
             }
 
-            // v0.5 Phase 8: Method calls - only .len() on String variables supported
+            // v0.5 Phase 8: Method calls on String variables
             Expr::MethodCall { receiver, method, args } => {
-                if method == "len" && args.is_empty() {
-                    if let Expr::Var(name) = &receiver.node {
-                        if self.var_types.get(name) == Some(&SmtSort::Str) {
+                if let Expr::Var(name) = &receiver.node {
+                    if self.var_types.get(name) == Some(&SmtSort::Str) {
+                        if method == "len" && args.is_empty() {
                             return Ok(format!("(str.len {})", name));
+                        }
+                        if args.len() == 1 {
+                            let arg = self.translate_expr(&args[0].node)?;
+                            match method.as_str() {
+                                "contains" => return Ok(format!("(str.contains {} {})", name, arg)),
+                                "starts_with" => return Ok(format!("(str.prefixof {} {})", arg, name)),
+                                "ends_with" => return Ok(format!("(str.suffixof {} {})", arg, name)),
+                                _ => {}
+                            }
                         }
                     }
                 }
@@ -1860,5 +1869,43 @@ mod tests {
             state: crate::ast::StateKind::Post,
         });
         assert_eq!(trans.translate(&post_ref).unwrap(), "x_post");
+    }
+
+    #[test]
+    fn test_string_contains_literal() {
+        let mut trans = SmtTranslator::new();
+        trans.var_types.insert("s".to_string(), SmtSort::Str);
+        let expr = spanned(Expr::MethodCall {
+            receiver: Box::new(spanned(Expr::Var("s".to_string()))),
+            method: "contains".to_string(),
+            args: vec![spanned(Expr::StringLit("bmb_".to_string()))],
+        });
+        assert_eq!(trans.translate(&expr).unwrap(), r#"(str.contains s "bmb_")"#);
+    }
+
+    #[test]
+    fn test_string_starts_with_literal() {
+        let mut trans = SmtTranslator::new();
+        trans.var_types.insert("s".to_string(), SmtSort::Str);
+        let expr = spanned(Expr::MethodCall {
+            receiver: Box::new(spanned(Expr::Var("s".to_string()))),
+            method: "starts_with".to_string(),
+            args: vec![spanned(Expr::StringLit("bmb_".to_string()))],
+        });
+        // SMT-LIB2: (str.prefixof prefix string)
+        assert_eq!(trans.translate(&expr).unwrap(), r#"(str.prefixof "bmb_" s)"#);
+    }
+
+    #[test]
+    fn test_string_ends_with_literal() {
+        let mut trans = SmtTranslator::new();
+        trans.var_types.insert("s".to_string(), SmtSort::Str);
+        let expr = spanned(Expr::MethodCall {
+            receiver: Box::new(spanned(Expr::Var("s".to_string()))),
+            method: "ends_with".to_string(),
+            args: vec![spanned(Expr::StringLit("_fn".to_string()))],
+        });
+        // SMT-LIB2: (str.suffixof suffix string)
+        assert_eq!(trans.translate(&expr).unwrap(), r#"(str.suffixof "_fn" s)"#);
     }
 }
