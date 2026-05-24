@@ -120,6 +120,11 @@ impl SmtTranslator {
         generator.declare_var("__ret__", ret_sort);
         self.var_types.insert("__ret__".to_string(), ret_sort);
 
+        // Register __it__ type so `it.method()` calls resolve correctly in post-conditions.
+        // The generator declaration is deferred to each verification path (verify_post /
+        // verify_return_refinement) to avoid duplicate (declare-const __it__ ...) in SMT scripts.
+        self.var_types.insert("__it__".to_string(), ret_sort);
+
         // v0.2: Also declare named return binding if present (e.g., -> r: i64)
         if let Some(ret_name) = &func.ret_name {
             generator.declare_var(&ret_name.node, ret_sort);
@@ -409,9 +414,14 @@ impl SmtTranslator {
                 Err(TranslateError::UnsupportedFeature("array index assignment".to_string()))
             }
 
-            // v0.5 Phase 8: Method calls on String variables
+            // v0.5 Phase 8: Method calls on String variables (Var or `it` return reference)
             Expr::MethodCall { receiver, method, args } => {
-                if let Expr::Var(name) = &receiver.node {
+                let smt_name: Option<&str> = match &receiver.node {
+                    Expr::Var(name) => Some(name.as_str()),
+                    Expr::It => Some("__it__"),
+                    _ => None,
+                };
+                if let Some(name) = smt_name {
                     if self.var_types.get(name) == Some(&SmtSort::Str) {
                         if method == "len" && args.is_empty() {
                             return Ok(format!("(str.len {})", name));
@@ -1881,6 +1891,54 @@ mod tests {
             args: vec![spanned(Expr::StringLit("bmb_".to_string()))],
         });
         assert_eq!(trans.translate(&expr).unwrap(), r#"(str.contains s "bmb_")"#);
+    }
+
+    #[test]
+    fn test_it_starts_with_translates_via_it_receiver() {
+        // `it.starts_with("bmb_")` in a post-condition — Expr::It as receiver
+        let mut trans = SmtTranslator::new();
+        trans.var_types.insert("__it__".to_string(), SmtSort::Str);
+        let expr = spanned(Expr::MethodCall {
+            receiver: Box::new(spanned(Expr::It)),
+            method: "starts_with".to_string(),
+            args: vec![spanned(Expr::StringLit("bmb_".to_string()))],
+        });
+        // SMT-LIB2: (str.prefixof prefix __it__)
+        assert_eq!(trans.translate(&expr).unwrap(), r#"(str.prefixof "bmb_" __it__)"#);
+    }
+
+    #[test]
+    fn test_setup_function_registers_it_type() {
+        use crate::ast::{FnDef, Param, Spanned, Visibility};
+        fn dummy_span() -> crate::ast::Span {
+            crate::ast::Span { start: 0, end: 0 }
+        }
+        fn spanned_ty(t: Type) -> Spanned<Type> {
+            Spanned { node: t, span: dummy_span() }
+        }
+        fn spanned_name(s: &str) -> Spanned<String> {
+            Spanned { node: s.to_string(), span: dummy_span() }
+        }
+        let func = FnDef {
+            attributes: vec![],
+            visibility: Visibility::Private,
+            is_async: false,
+            name: spanned_name("f"),
+            type_params: vec![],
+            params: vec![Param { name: spanned_name("s"), ty: spanned_ty(Type::String) }],
+            ret_name: None,
+            ret_ty: spanned_ty(Type::String),
+            pre: None,
+            post: None,
+            contracts: vec![],
+            body: spanned(Expr::Var("s".to_string())),
+            span: dummy_span(),
+        };
+        let mut trans = SmtTranslator::new();
+        let mut generator = SmtLibGenerator::new();
+        trans.setup_function(&func, &mut generator);
+        // __it__ must be registered as Str so `it.starts_with(...)` method calls resolve
+        assert_eq!(trans.var_types().get("__it__"), Some(&SmtSort::Str));
     }
 
     #[test]

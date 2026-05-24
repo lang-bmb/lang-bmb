@@ -627,6 +627,11 @@ impl ContractVerifier {
     ) -> VerifyResult {
         let mut generator = base_generator.clone();
 
+        // Declare __it__ so `it` keyword in post-conditions resolves to the return value.
+        let ret_sort = SmtTranslator::type_to_sort(&func.ret_ty.node);
+        generator.declare_var("__it__", ret_sort);
+        generator.assert("(= __it__ __ret__)");
+
         // Translate body
         let body_smt = match translator.translate(&func.body) {
             Ok(s) => s,
@@ -680,6 +685,11 @@ impl ContractVerifier {
         func: &FnDef,
     ) -> VerifyResult {
         let mut generator = base_generator.clone();
+
+        // Declare __it__ so `it` keyword in named contracts resolves to the return value.
+        let ret_sort = SmtTranslator::type_to_sort(&func.ret_ty.node);
+        generator.declare_var("__it__", ret_sort);
+        generator.assert("(= __it__ __ret__)");
 
         // Translate body
         let body_smt = match translator.translate(&func.body) {
