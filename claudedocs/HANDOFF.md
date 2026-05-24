@@ -1,7 +1,7 @@
 # BMB Session Handoff — 2026-05-25 (Cycle 3079 — M7 COMPLETE)
 
-> **HEAD**: `6abdf9cf` (feat(cycle-3079): M7-2 COMPLETE — SMT String theory + Track B 계약 검증)
-> **이전 HEAD**: `2ff9f83a`
+> **HEAD**: `749c0e99` (chore: 세션 종료 정리 — HANDOFF HEAD 갱신 (6abdf9cf))
+> **이전 HEAD**: `6abdf9cf` (feat(cycle-3079): M7-2 COMPLETE — SMT String theory + Track B 계약 검증)
 > **3-Stage Fixed Point**: ✅ `ea550bf3` (이전: `dc57beff`)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 > **다음 세션 진입점**: **M8 계획 수립** 또는 **untracked golden tests 처리**
