@@ -1,0 +1,27 @@
+// Cycle 3086: Meaningful quantifier contracts — non-trivial Z3 verification
+//
+// Key insight: Z3 LIA (Linear Integer Arithmetic) can verify:
+//   - "exists k: i64, n == k * 2" (linear: 2*k is scalar multiplication)
+//   - "forall n: i64, ..." with implies chains
+// Limitation: nonlinear arithmetic (x / y where y is variable) → unknown
+
+// is_even: if true, then n is divisible by 2 (non-trivial exists in post)
+fn is_even(n: i64) -> bool
+  post it == true implies (exists k: i64, n == k * 2)
+= n % 2 == 0;
+
+// abs: non-negative always
+fn absolute(x: i64) -> i64
+  post it >= 0
+= if x >= 0 { x } else { 0 - x };
+
+// clamp: result stays within [lo, hi]
+fn clamp(x: i64, lo: i64, hi: i64) -> i64
+  pre lo <= hi
+  post it >= lo and it <= hi
+= if x < lo { lo } else if x > hi { hi } else { x };
+
+// max2: result is the larger of the two
+fn max2(a: i64, b: i64) -> i64
+  post it >= a and it >= b
+= if a >= b { a } else { b };

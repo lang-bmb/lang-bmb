@@ -1,0 +1,25 @@
+// Cycle 3090: Range and monotone contract patterns
+// Z3 LIA verifies these directly from the if-else structure (non-recursive)
+
+// min3: result is <= all three inputs
+fn min3(a: i64, b: i64, c: i64) -> i64
+  post it <= a and it <= b and it <= c
+= if a <= b and a <= c { a } else if b <= c { b } else { c };
+
+// max3: result is >= all three inputs
+fn max3(a: i64, b: i64, c: i64) -> i64
+  post it >= a and it >= b and it >= c
+= if a >= b and a >= c { a } else if b >= c { b } else { c };
+
+// sum_nonneg: when both non-negative, sum is >= both addends
+fn sum_nonneg(a: i64, b: i64) -> i64
+  pre a >= 0 and b >= 0
+  post it >= a and it >= b
+= a + b;
+
+// double_grows: doubling a non-negative number gives at least the original
+// (a * 2 >= a holds iff a >= 0 — Z3 LIA: scalar multiplication is linear)
+fn double_grows(a: i64) -> i64
+  pre a >= 0
+  post it >= a
+= a * 2;

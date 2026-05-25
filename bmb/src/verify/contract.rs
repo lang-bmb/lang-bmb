@@ -130,14 +130,14 @@ impl ContractVerifier {
 
         // Verify pre-condition if present
         if let Some(pre) = &func.pre {
-            report.pre_result = Some(self.verify_pre(&translator, &mut generator.clone(), pre, func));
+            report.pre_result = Some(self.verify_pre(&mut translator, &mut generator.clone(), pre, func));
         } else {
             report.pre_result = Some(VerifyResult::Verified);
         }
 
         // Verify post-condition if present
         if let Some(post) = &func.post {
-            report.post_result = Some(self.verify_post(&translator, &generator, post, func));
+            report.post_result = Some(self.verify_post(&mut translator, &generator, post, func));
         } else {
             report.post_result = Some(VerifyResult::Verified);
         }
@@ -145,7 +145,7 @@ impl ContractVerifier {
         // v0.2: Verify named contracts from where {} blocks
         for contract in &func.contracts {
             let contract_name = contract.name.as_ref().map(|s| s.node.clone());
-            let result = self.verify_named_contract(&translator, &generator, contract, func);
+            let result = self.verify_named_contract(&mut translator, &generator, contract, func);
             report.contract_results.push((contract_name, result));
         }
 
@@ -154,7 +154,7 @@ impl ContractVerifier {
         // Return type refinements are treated as postconditions
         if let Type::Refined { constraints, .. } = &func.ret_ty.node {
             for constraint in constraints {
-                let result = self.verify_return_refinement(&translator, &generator, constraint, func);
+                let result = self.verify_return_refinement(&mut translator, &generator, constraint, func);
                 report.refinement_results.push(("return".to_string(), result));
             }
         }
@@ -207,7 +207,7 @@ impl ContractVerifier {
 
         // Check precondition for tautology
         if let Some(pre) = &func.pre
-            && self.is_tautology(&translator, &generator, pre)
+            && self.is_tautology(&mut translator, &generator, pre)
         {
             report.warnings.push(
                 "Trivial contract: precondition is always true (tautology)".to_string()
@@ -216,7 +216,7 @@ impl ContractVerifier {
 
         // Check postcondition for tautology
         if let Some(post) = &func.post
-            && self.is_tautology(&translator, &generator, post)
+            && self.is_tautology(&mut translator, &generator, post)
         {
             report.warnings.push(
                 "Trivial contract: postcondition is always true (tautology)".to_string()
@@ -225,7 +225,7 @@ impl ContractVerifier {
 
         // Check named contracts for tautology
         for contract in &func.contracts {
-            if self.is_tautology(&translator, &generator, &contract.condition) {
+            if self.is_tautology(&mut translator, &generator, &contract.condition) {
                 let contract_name = contract.name.as_ref()
                     .map(|s| format!("contract '{}'", s.node))
                     .unwrap_or_else(|| "unnamed contract".to_string());
@@ -241,7 +241,7 @@ impl ContractVerifier {
     /// Returns true if NOT(expr) is unsatisfiable
     fn is_tautology(
         &self,
-        translator: &SmtTranslator,
+        translator: &mut SmtTranslator,
         base_generator: &SmtLibGenerator,
         expr: &Spanned<Expr>,
     ) -> bool {
@@ -255,6 +255,11 @@ impl ContractVerifier {
 
         // Assert negation of expression
         generator.assert(&format!("(not {})", smt_expr));
+
+        // Propagate quantifier flag
+        if translator.has_quantifiers {
+            generator.set_has_quantifiers();
+        }
 
         // Generate SMT script
         let script = generator.generate();
@@ -284,6 +289,9 @@ impl ContractVerifier {
 
         // Assert precondition and check if satisfiable
         generator.assert(&pre_smt);
+        if translator.has_quantifiers {
+            generator.set_has_quantifiers();
+        }
         let script = generator.generate();
 
         // If precondition is UNSAT, the function can never be called
@@ -577,6 +585,11 @@ impl ContractVerifier {
         };
         generator.assert(&pre_smt);
 
+        // Propagate quantifier flag
+        if translator.has_quantifiers {
+            generator.set_has_quantifiers();
+        }
+
         // Generate SMT script
         let script = generator.generate();
 
@@ -587,7 +600,7 @@ impl ContractVerifier {
     /// Verify pre-condition: Check that pre is satisfiable
     fn verify_pre(
         &self,
-        translator: &SmtTranslator,
+        translator: &mut SmtTranslator,
         generator: &mut SmtLibGenerator,
         pre: &crate::ast::Spanned<crate::ast::Expr>,
         _func: &FnDef,
@@ -597,6 +610,11 @@ impl ContractVerifier {
             Ok(s) => s,
             Err(e) => return VerifyResult::Unknown(format!("translation error: {}", e)),
         };
+
+        // Propagate quantifier flag so generator uses LIA instead of QF_LIA
+        if translator.has_quantifiers {
+            generator.set_has_quantifiers();
+        }
 
         // Assert pre-condition
         generator.assert(&pre_smt);
@@ -620,7 +638,7 @@ impl ContractVerifier {
     /// Verify post-condition: Check that (pre ∧ ret = body) → post
     fn verify_post(
         &self,
-        translator: &SmtTranslator,
+        translator: &mut SmtTranslator,
         base_generator: &SmtLibGenerator,
         post: &crate::ast::Spanned<crate::ast::Expr>,
         func: &FnDef,
@@ -659,6 +677,11 @@ impl ContractVerifier {
         // Assert negation of post-condition (to find counterexample)
         generator.assert(&format!("(not {})", post_smt));
 
+        // Propagate quantifier flag
+        if translator.has_quantifiers {
+            generator.set_has_quantifiers();
+        }
+
         // Generate SMT script
         let script = generator.generate();
 
@@ -679,7 +702,7 @@ impl ContractVerifier {
     /// Similar to verify_post: Check that (pre ∧ ret = body) → contract_condition
     fn verify_named_contract(
         &self,
-        translator: &SmtTranslator,
+        translator: &mut SmtTranslator,
         base_generator: &SmtLibGenerator,
         contract: &NamedContract,
         func: &FnDef,
@@ -722,6 +745,11 @@ impl ContractVerifier {
         // Assert negation of contract (to find counterexample)
         generator.assert(&format!("(not {})", contract_smt));
 
+        // Propagate quantifier flag
+        if translator.has_quantifiers {
+            generator.set_has_quantifiers();
+        }
+
         // Generate SMT script
         let script = generator.generate();
 
@@ -742,7 +770,7 @@ impl ContractVerifier {
     /// Check that (pre ∧ ret = body) → refinement_constraint
     fn verify_return_refinement(
         &self,
-        translator: &SmtTranslator,
+        translator: &mut SmtTranslator,
         base_generator: &SmtLibGenerator,
         constraint: &Spanned<Expr>,
         func: &FnDef,
@@ -785,6 +813,11 @@ impl ContractVerifier {
 
         // Assert negation of constraint (to find counterexample)
         generator.assert(&format!("(not {})", constraint_smt));
+
+        // Propagate quantifier flag
+        if translator.has_quantifiers {
+            generator.set_has_quantifiers();
+        }
 
         // Generate SMT script
         let script = generator.generate();

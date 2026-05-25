@@ -1,0 +1,26 @@
+// Cycle 3085: Non-trivial quantifier contract verification
+// Tests that Z3 can verify/refute meaningful forall/exists contracts
+
+// abs returns non-negative: post it >= 0 trivially provable
+fn abs_val(x: i64) -> i64
+  post it >= 0
+= if x >= 0 { x } else { 0 - x };
+
+// multiply_two: there exists a witness equal to result
+// Z3 can always prove "exists n, n == it" (trivially)
+fn multiply_two(x: i64) -> i64
+  pre x >= 0
+  post exists n: i64, n == it and n >= 0
+= x * 2;
+
+// bounded_sum: forall n >= 0, sum is >= n (monotone property)
+// With pre x >= 0 and y >= 0, post it >= x and it >= y
+fn bounded_sum(x: i64, y: i64) -> i64
+  pre x >= 0 and y >= 0
+  post it >= x
+= x + y;
+
+// exists: result is even — can Z3 verify it?
+fn double(x: i64) -> i64
+  post exists k: i64, it == k * 2
+= x * 2;

@@ -1,0 +1,19 @@
+// Cycle 3084: forall/exists quantifier E2E test
+// Tests that forall/exists in pre/post contracts can be verified by Z3
+
+// Simple: double of a positive number is positive
+fn double_positive(x: i64) -> i64
+  pre x > 0
+  post it > 0
+= x * 2;
+
+// forall in pre: wrapped in parens to work with and
+fn identity_with_forall(x: i64) -> i64
+  pre x > 0 and (forall n: i64, n > 0 implies n > 0)
+  post it == x
+= x;
+
+// exists in post: there exists an integer equal to the result
+fn always_forty_two() -> i64
+  post exists n: i64, n == it
+= 42;
