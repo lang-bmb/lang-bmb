@@ -5363,6 +5363,7 @@ fn step_call_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: 
 // CA: Call arg - process next arg or finalize
 fn step_call_arg(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let name = get_field(item, 1);
     let ast = get_field(item, 2);
     let idx = s2i(get_field(item, 3));
@@ -5386,11 +5387,13 @@ fn step_call_arg(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: St
 // CF: Call final (unused in new design, kept for compatibility)
 fn step_call_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = make_step_leaf(cur_temp);
 
 // MS: Start method - do receiver
 fn step_method_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let fn_name = get_field(item, 1);
     let receiver = get_field(item, 2);
     let ast = get_field(item, 3);
@@ -5403,6 +5406,7 @@ fn step_method_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label
 // MA: Method arg - process next arg or finalize
 fn step_method_arg(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let fn_name = get_field(item, 1);
     let ast = get_field(item, 2);
     let idx = s2i(get_field(item, 3));
@@ -5426,6 +5430,7 @@ fn step_method_arg(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: 
 // MF: Method final (unused)
 fn step_method_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = make_step_leaf(cur_temp);
 
 // T? is represented as i64 where 0 = null/none, non-zero = some value
@@ -5442,6 +5447,7 @@ fn is_nullable_method(name: String) -> bool
 // NR: Nullable result - receiver evaluated, emit comparison or dispatch unwrap_or
 fn step_nullable_result(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let method = get_field(item, 1);
     let ast = get_field(item, 2);
     let recv_id = cur_temp - 1;
@@ -5467,6 +5473,7 @@ fn step_nullable_result(item: String, cur_temp: i64, cur_block: i64, cur_exit_la
 // NO: Nullable or final - default evaluated, emit nullable_select
 fn step_nullable_or(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let recv_id = s2i(get_field(item, 1));
     let default_id = cur_temp - 1;
     let result = "%_t" + i2s(cur_temp);
@@ -5475,12 +5482,14 @@ fn step_nullable_or(item: String, cur_temp: i64, cur_block: i64, cur_exit_label:
 
 fn step_unit(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let tmp = "%_t" + i2s(cur_temp);
     let w1 = sb_push_mir(sb, "  " + tmp + " = const 0");
     make_step_leaf(cur_temp + 1);
 
 fn step_seq_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let e1 = get_field(item, 1);
     let e2 = get_field(item, 2);
     // First lower e1, then continue with e2
@@ -5490,11 +5499,13 @@ fn step_seq_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: S
 
 fn step_seq_second(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let e2 = get_field(item, 1);
     make_step(cur_temp, cur_block, cur_exit_label, make_work3("EX", e2, "", ""));
 
 fn step_assign_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let lhs = get_field(item, 1);
     let rhs = get_field(item, 2);
     // Lower RHS, then do assignment
@@ -5505,6 +5516,7 @@ fn step_assign_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label
 // v0.92: Use store instead of copy for mutable variable assignments
 fn step_assign_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let lhs = get_field(item, 1);
     // RHS value is in %_t(cur_temp-1)
     let rhs_temp = cur_temp - 1;
@@ -5517,6 +5529,7 @@ fn step_assign_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label
 
 fn step_array_index_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let base = get_field(item, 1);
     let idx = get_field(item, 2);
     let flag = get_field(item, 3);
@@ -5526,6 +5539,7 @@ fn step_array_index_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_
 
 fn step_array_index_idx(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let idx = get_field(item, 1);
     let flag = get_field(item, 2);
     let base_temp = cur_temp - 1;
@@ -5568,6 +5582,7 @@ fn safe_bounds_check(sb: i64, cur_temp: i64, base_t: String, idx_temp: i64) -> i
 
 fn step_array_index_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let base_t = get_field(item, 1);
     let flag = get_field(item, 2);
     let idx_temp = cur_temp - 1;
