@@ -1125,6 +1125,7 @@ fn parse_bool_lit(tok: i64, kind: i64) -> String
 
 fn parse_ident_or_call(src: String, pos: i64, tok: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let name = get_ident_text(src, pos, tok);
     let next = next_token_raw(src, tok_end(tok));
     if name == "assert" and tok_kind(next) == TK_LPAREN() {
@@ -2428,12 +2429,14 @@ fn parse_let_skip_type(src: String, pos: i64, name: String, is_mut: bool) -> Str
 
 fn parse_let_skip_tuple_type(src: String, pos: i64, name: String, is_mut: bool) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     if tok_kind(t) == TK_RPAREN() { parse_let_skip_type(src, tok_end(t), name, is_mut) }
     else { parse_let_skip_tuple_type(src, tok_end(t), name, is_mut) };
 
 fn parse_let_skip_array_type(src: String, pos: i64, name: String, is_mut: bool) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     let k = tok_kind(t);
     if k == TK_RBRACKET() {
@@ -2445,12 +2448,14 @@ fn parse_let_skip_array_type(src: String, pos: i64, name: String, is_mut: bool) 
 
 fn parse_let_value_mut(src: String, pos: i64, name: String, is_mut: bool) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rv = parse_expr(src, pos);
     if is_error(rv) { rv }
     else { parse_let_body_mut(src, unpack_pos(rv), name, unpack_ast(rv), is_mut) };
 
 fn parse_let_body_mut(src: String, pos: i64, name: String, val_ast: String, is_mut: bool) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t3 = next_token_raw(src, pos);
     if tok_kind(t3) != TK_SEMI() { make_error_at("expected ';' after let binding value, got " + tok_kind_name(tok_kind(t3)), src, pos) }
     else {
@@ -2465,12 +2470,14 @@ fn parse_let_body_mut(src: String, pos: i64, name: String, val_ast: String, is_m
 
 fn make_let_ast(pos: i64, name: String, val_ast: String, body_ast: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let p1 = "(let <" + name + "> ";
     let p2 = p1 + val_ast + " ";
     pack_result(pos, p2 + body_ast + ")");
 
 fn make_let_mut_ast(pos: i64, name: String, val_ast: String, body_ast: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let p1 = "(let_mut <" + name + "> ";
     let p2 = p1 + val_ast + " ";
     pack_result(pos, p2 + body_ast + ")");
@@ -2589,6 +2596,7 @@ fn parse_while_body_inner(src: String, pos: i64, cond_ast: String) -> String
 
 fn parse_while_finish(src: String, pos: i64, cond_ast: String, body_ast: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t2 = next_token_raw(src, pos);
     if tok_kind(t2) != TK_RBRACE() { make_error_at("expected '}' after while body, got " + tok_kind_name(tok_kind(t2)), src, pos) }
     else { pack_result(tok_end(t2), "(while " + cond_ast + " " + body_ast + ")") };
@@ -2618,12 +2626,14 @@ fn parse_loop_expr(src: String, pos: i64) -> String
 
 fn parse_loop_body(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rb = parse_block_stmts(src, pos);
     if is_error(rb) { rb }
     else { parse_loop_finish(src, unpack_pos(rb), unpack_ast(rb)) };
 
 fn parse_loop_finish(src: String, pos: i64, body_ast: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t2 = next_token_raw(src, pos);
     if tok_kind(t2) != TK_RBRACE() { make_error_at("expected '}' after loop body, got " + tok_kind_name(tok_kind(t2)), src, pos) }
     else { pack_result(tok_end(t2), "(loop " + body_ast + ")") };
@@ -2645,6 +2655,7 @@ fn parse_for_expr(src: String, pos: i64) -> String
 
 fn parse_for_range(src: String, pos: i64, varname: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rs = parse_or(src, pos);
     if is_error(rs) { rs }
     else {
@@ -2688,6 +2699,7 @@ fn parse_for_in_body(src: String, pos: i64, varname: String, arr_ast: String, ui
 
 fn parse_for_end(src: String, pos: i64, varname: String, start_ast: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let re = parse_or(src, pos);
     if is_error(re) { re }
     else {
@@ -2725,6 +2737,7 @@ fn parse_for_body(src: String, pos: i64, varname: String, start_ast: String, end
 
 fn parse_for_end_inclusive(src: String, pos: i64, varname: String, start_ast: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let re = parse_or(src, pos);
     if is_error(re) { re }
     else {
@@ -2771,6 +2784,7 @@ fn parse_match_expr(src: String, pos: i64) -> String
 
 fn parse_match_open(src: String, pos: i64, scrutinee: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     if tok_kind(t) != TK_LBRACE() { make_error_at("expected '{' after match expression, got " + tok_kind_name(tok_kind(t)), src, pos) }
     else { parse_match_arms(src, tok_end(t), scrutinee, "", "") };
