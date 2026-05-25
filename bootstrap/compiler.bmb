@@ -2980,6 +2980,7 @@ fn parse_match_single_pattern(src: String, pos: i64) -> String
 // pos = position in pat_expr pointing to '<' of current name, or ')'/end if no more
 fn build_payload_lets_from_pat(pat_expr: String, pos: i64, field_idx: i64, body: String) -> String
   pre pos >= 0
+  post it.len() >= 1
 = if pos >= pat_expr.len() or pat_expr.byte_at(pos) != 60 { body }
     else {
         let name_end = find_char_pos(pat_expr, 62, pos + 1);
@@ -3468,6 +3469,7 @@ fn parse_fn_with_annotation(src: String, pos: i64, ann: String) -> String
 // Handles @pure, @const, @inline at the source level (before tokenizer)
 fn skip_annotation(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let p = skip_ws_comments(src, pos);
     if p >= src.len() { "" }
     else if src.byte_at(p) == 64 {
@@ -3489,6 +3491,7 @@ fn pos_after_annotation(src: String, pos: i64) -> i64
 
 fn parse_program_sb(src: String, pos: i64, sb: i64) -> String
   pre pos >= 0
+  post it.len() >= 1
 = let ann = skip_annotation(src, pos);
     if ann.len() > 0 {
         let after_ann = pos_after_annotation(src, pos);
@@ -3678,6 +3681,7 @@ fn scan_structs(src: String, pos: i64, rsb: i64) -> i64
 // Parse struct Name { field: Type, ... } and register fields
 fn parse_struct_to_registry(src: String, pos: i64, rsb: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = let t1 = next_token_raw(src, pos);
     let name = get_ident_text(src, pos, t1);
     // v0.95: Skip generic type parameters <T> after struct name
@@ -3692,6 +3696,7 @@ fn parse_struct_to_registry(src: String, pos: i64, rsb: i64) -> i64
 
 fn parse_struct_fields_to_registry(src: String, pos: i64, rsb: i64, idx: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
     if kind == TK_RBRACE() { tok_end(tok) }
@@ -3746,7 +3751,8 @@ fn check_field_type(src: String, pos: i64) -> i64
 
 fn get_field_ptr_type(src: String, pos: i64) -> String
     pre pos >= 0
-= 
+    post it.len() >= 0
+=
     let t1 = next_token_raw(src, pos);
     if tok_kind(t1) == TK_COLON() {
         let t2 = next_token_raw(src, tok_end(t1));
@@ -3798,6 +3804,7 @@ fn scan_enums(src: String, pos: i64, rsb: i64) -> i64
 
 fn parse_enum_to_registry(src: String, pos: i64, rsb: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = let t1 = next_token_raw(src, pos);
     let name = get_ident_text(src, pos, t1);
     let t2 = next_token_raw(src, tok_end(t1));
@@ -3810,6 +3817,7 @@ fn parse_enum_to_registry(src: String, pos: i64, rsb: i64) -> i64
 
 fn parse_enum_variants_to_registry(src: String, pos: i64, rsb: i64, idx: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
     if kind == TK_RBRACE() { tok_end(tok) }
@@ -3900,6 +3908,7 @@ fn enum_variant_has_payload(reg: String, enum_name: String, variant: String) -> 
 
 fn variant_has_bracket(variants: String, target: String, pos: i64) -> bool
   pre pos >= 0
+  post it or not it
 = if pos >= variants.len() { false }
     else {
         let comma = find_char_pos(variants, 44, pos);
@@ -4315,6 +4324,7 @@ fn parse_oct_from(s: String, pos: i64, acc: i64) -> i64
 
 fn parse_int_from(s: String, pos: i64, acc: i64) -> i64
   pre pos >= 0
+  post it >= 0 or it < 0
 = if pos >= s.len() { acc } else {
         let c = s.byte_at(pos);
         if c == 45 { 0 - parse_int_from(s, pos + 1, 0) }
@@ -6129,6 +6139,7 @@ fn is_lambda_param_name(name: String, params: String) -> bool
 
 fn check_param_name_match(name: String, params: String, pos: i64) -> bool
   pre pos >= 0
+  post it or not it
 = let p = low_skip_ws(params, pos);
     if p >= params.len() { false }
     else {
@@ -6148,6 +6159,7 @@ fn var_in_list(name: String, list: String) -> bool
 
 fn check_var_list(name: String, list: String, pos: i64) -> bool
   pre pos >= 0
+  post it or not it
 = let p = low_skip_ws(list, pos);
     if p >= list.len() { false }
     else {
@@ -6281,7 +6293,8 @@ fn lower_array_repeat_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop
 
 // Stores val_tmp at arr[idx+2], arr[idx+3], ..., arr[count+1]
 fn emit_fill_stores(arr_ptr: String, val_tmp: String, idx: i64, count: i64, temp_id: i64, sb: i64) -> i64
-  pre idx >= 0
+  pre idx >= 0 and temp_id >= 0
+  post it >= 0
 = if idx >= count { temp_id }
     else {
         let actual_idx = idx + 2;
@@ -6294,7 +6307,8 @@ fn emit_fill_stores(arr_ptr: String, val_tmp: String, idx: i64, count: i64, temp
     };
 
 fn emit_fill_stores_step(arr_ptr: String, val_tmp: String, idx: i64, count: i64, temp_id: i64, sb: i64) -> i64
-  pre idx >= 0
+  pre idx >= 0 and temp_id >= 0
+  post it >= 0
 = if idx >= count { temp_id }
     else {
         let actual_idx = idx + 2;
@@ -8086,6 +8100,7 @@ fn fix_phi_label(content: String) -> String
 // v0.46: Determine LLVM return type from function name
 fn get_call_return_type(fn_name: String) -> String
   pre fn_name.len() > 0
+  post it.len() >= 1
 =
     // Void functions (no return value assignment)
     if fn_name == "@println" or fn_name == "@print_str" or fn_name == "@println_str" or fn_name == "@eprint" or fn_name == "@eprintln" or fn_name == "@eprint_str" or fn_name == "@eprintln_str" or fn_name == "@eprint_f64" or fn_name == "@eprintln_f64" or fn_name == "@bmb_panic" { "void" }
@@ -8323,6 +8338,7 @@ fn map_runtime_fn_full(fn_name: String) -> String
 // Uses StringBuilder to avoid String-select codegen bug (IfElseToSelect ptr/i64 mismatch)
 fn format_i64_args_sb(args: String, pos: i64, sb: i64, first: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= args.len() { 0 }
     else {
         let comma = find_char(args, pos, 44);
@@ -8346,6 +8362,7 @@ fn format_i64_call_args(args: String) -> String
 // v0.96.27: Check if a call has exactly 2 args (one comma)
 fn call_has_two_args(line: String, paren_pos: i64, close_pos: i64) -> bool
   pre paren_pos >= 0
+  post it or not it
 = let args = line.slice(paren_pos + 1, close_pos);
     let comma = find_char(args, 0, 44);
     if comma >= args.len() { false }
@@ -8359,6 +8376,7 @@ fn call_has_two_args(line: String, paren_pos: i64, close_pos: i64) -> bool
 // Returns true iff args slice has no commas (single argument).
 fn call_has_one_arg(line: String, paren_pos: i64, close_pos: i64) -> bool
   pre paren_pos >= 0
+  post it or not it
 = let args = line.slice(paren_pos + 1, close_pos);
     if args.len() == 0 { false }
     else { find_char(args, 0, 44) >= args.len() };
@@ -8366,6 +8384,7 @@ fn call_has_one_arg(line: String, paren_pos: i64, close_pos: i64) -> bool
 // v0.96.27: Emit regular i64 call for user-defined function
 fn emit_regular_i64_call(line: String, paren_pos: i64, close_pos: i64, fn_name: String, dest: String) -> String
   pre paren_pos >= 0
+  post it.len() >= 1
 = let args = line.slice(paren_pos + 1, close_pos);
     let all_args = format_i64_call_args(args);
     "  " + dest + " = call i64 " + fn_name + "(" + all_args + ")";
@@ -8373,6 +8392,7 @@ fn emit_regular_i64_call(line: String, paren_pos: i64, close_pos: i64, fn_name: 
 // v0.46: Handle different return types (i64, ptr, void)
 fn llvm_gen_call(line: String, pos: i64, dest: String) -> String
   pre pos >= 0
+  post it.len() >= 1
 = let at_pos = find_char(line, pos, 64);
     let paren_pos = find_char(line, at_pos, 40);
     let close_pos = find_char(line, paren_pos, 41);
@@ -8684,6 +8704,7 @@ fn llvm_gen_call(line: String, pos: i64, dest: String) -> String
 
 fn llvm_gen_call_reg(line: String, pos: i64, dest: String, registry: String) -> String
   pre pos >= 0
+  post it.len() >= 1
 = let at_pos = find_char(line, pos, 64);
     let paren_pos = find_char(line, at_pos, 40);
     let close_pos = find_char(line, paren_pos, 41);
@@ -9141,6 +9162,7 @@ fn get_call_arg_types(fn_name: String) -> String
 // Uses separator "###" to split conversions from args
 fn format_call_args_typed(args: String, types: String, pos: i64, idx: i64, conv_acc: String, arg_acc: String) -> String
   pre pos >= 0
+  post it.len() >= 1
 = let p = low_skip_ws(args, pos);
     if p >= args.len() { conv_acc + "###" + arg_acc } else {
         let comma = find_comma_or_end(args, p);
@@ -9191,6 +9213,7 @@ fn unpack_arg(pair: String) -> String
 // Find "###" separator
 fn find_separator(s: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos + 2 >= s.len() { s.len() }
     else if s.byte_at(pos) == 35 and s.byte_at(pos + 1) == 35 and s.byte_at(pos + 2) == 35 { pos }
     else { find_separator(s, pos + 1) };
@@ -9207,14 +9230,17 @@ fn call_arg_formatted(formatted: String) -> String
 
 fn find_comma(s: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= s.len() { pos } else if s.byte_at(pos) == 44 { pos } else { find_comma(s, pos + 1) };
 
 fn find_comma_or_end(s: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= s.len() { pos } else if s.byte_at(pos) == 44 { pos } else { find_comma_or_end(s, pos + 1) };
 
 fn find_char(s: String, pos: i64, ch: i64) -> i64
   pre pos >= 0 and ch >= 0
+  post it >= 0
 = if pos >= s.len() { pos } else if s.byte_at(pos) == ch { pos } else { find_char(s, pos + 1, ch) };
 
 fn trim_end(s: String) -> String
@@ -9223,6 +9249,7 @@ fn trim_end(s: String) -> String
 
 fn trim_end_at(s: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos < 0 { "" } else if low_is_whitespace(s.byte_at(pos)) { trim_end_at(s, pos - 1) } else { s.slice(0, pos + 1) };
 
 // v0.46: Trim both leading and trailing whitespace
@@ -9233,6 +9260,7 @@ fn trim(s: String) -> String
 
 fn llvm_gen_return_typed(line: String, pos: i64, ret_type: String) -> String
   pre pos >= 0
+  post it.len() >= 1
 = let val_start = low_skip_ws(line, pos + 6);
     let val_raw = line.slice(val_start, line.len());
     let val = trim(val_raw);
@@ -9259,6 +9287,7 @@ fn llvm_gen_return_typed(line: String, pos: i64, ret_type: String) -> String
 
 fn llvm_gen_branch(line: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 1
 = let after = low_skip_ws(line, pos + 6);
     let comma1 = find_comma(line, after);
     let cond = trim_end(line.slice(after, comma1));
@@ -9274,6 +9303,7 @@ fn llvm_gen_branch(line: String, pos: i64) -> String
 
 fn llvm_gen_goto(line: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 1
 = let label_start = low_skip_ws(line, pos + 4);
     let label = line.slice(label_start, line.len());
     "  br label %" + trim_end(label);
@@ -9282,6 +9312,7 @@ fn llvm_gen_goto(line: String, pos: i64) -> String
 // MIR: f+ %a, %b → LLVM: fadd double %a, %b
 fn llvm_gen_float_binop(op: String, line: String, pos: i64, dest: String) -> String
   pre pos >= 0
+  post it.len() >= 1
 = let p1 = low_skip_ws(line, pos);
     let comma = find_comma(line, p1);
     let left = line.slice(p1, comma);
@@ -9293,6 +9324,7 @@ fn llvm_gen_float_binop(op: String, line: String, pos: i64, dest: String) -> Str
 // MIR: f< %a, %b → LLVM: fcmp olt double %a, %b + zext i1 to i64
 fn llvm_gen_float_cmp(pred: String, line: String, pos: i64, dest: String) -> String
   pre pos >= 0
+  post it.len() >= 1
 = let p1 = low_skip_ws(line, pos);
     let comma = find_comma(line, p1);
     let left = line.slice(p1, comma);
@@ -9304,6 +9336,7 @@ fn llvm_gen_float_cmp(pred: String, line: String, pos: i64, dest: String) -> Str
 // MIR: alloca %name → LLVM: %name = alloca i64 + mapping[%name] = ALLOCA
 fn llvm_gen_alloca(line: String, pos: i64, mapping: String) -> String
   pre pos >= 0
+  post it.len() >= 1
 = let name_start = low_skip_ws(line, pos + 6);
     let name = trim_end(line.slice(name_start, line.len()));
     let new_mapping = add_mapping(mapping, name, "ALLOCA");
@@ -9313,6 +9346,7 @@ fn llvm_gen_alloca(line: String, pos: i64, mapping: String) -> String
 // MIR: store %name, %_tN → LLVM: store i64 %resolved_src, ptr %name
 fn llvm_gen_store_sb(line: String, pos: i64, mapping: String, str_sb: i64) -> String
   pre pos >= 0
+  post it.len() >= 1
 = let after_store = low_skip_ws(line, pos + 5);
     let comma_pos = find_comma(line, after_store);
     let dest_name = trim_end(line.slice(after_store, comma_pos));
@@ -9370,6 +9404,7 @@ fn fix_typed_ret_placeholders_ir(ir: String) -> String
 
 fn fix_ret_scan(ir: String, pos: i64, sb: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= ir.len() { 0 }
     else {
         let pipe_pos = find_pipe_skip_quotes(ir, pos);
@@ -9395,6 +9430,7 @@ fn fix_ret_line(line: String) -> String
 // Alias table format: ",dest=src,dest2=src2" (comma-prefixed for safe lookup)
 fn build_ir_copy_aliases(ir: String, pos: i64, aliases: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= ir.len() { aliases }
     else {
         let pipe_pos = find_pipe_skip_quotes(ir, pos);
@@ -9460,6 +9496,7 @@ fn find_alias_entry_noa(aliases: String, name: String, pos: i64) -> i64
 // Resolve alias transitively with depth limit
 fn resolve_ir_alias_d(aliases: String, name: String, depth: i64) -> String
   pre depth >= 0
+  post it.len() >= 0
 = if depth > 20 { name }
     else {
         let val_start = find_alias_entry_noa(aliases, name, 0);
@@ -9492,6 +9529,7 @@ fn is_identity_copy_ir(line: String) -> bool
 // Pass 2: Rebuild IR without identity copies, substituting aliases
 fn rebuild_ir_no_copies(ir: String, pos: i64, sb: i64, aliases: String) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= ir.len() { 0 }
     else {
         let pipe_pos = find_pipe_skip_quotes(ir, pos);
@@ -9515,6 +9553,7 @@ fn subst_ir_aliases_to_sb(line: String, aliases: String, outer_sb: i64) -> i64
 // Scan line for % tokens and substitute aliases
 fn subst_ir_scan(line: String, pos: i64, aliases: String, sb: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= line.len() { 0 }
     else if line.byte_at(pos) == 37 {
         let name_end = scan_ident_end(line, pos + 1);
@@ -9557,6 +9596,7 @@ fn eliminate_zext_trunc_ir(ir: String) -> String
 // Format: ",dest=i1_src,dest2=i1_src2"
 fn build_zext_map(ir: String, pos: i64, zmap: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= ir.len() { zmap }
     else {
         let pipe_pos = find_pipe_skip_quotes(ir, pos);
@@ -9597,6 +9637,7 @@ fn try_add_zext(line: String, zmap: String) -> String
 // Pass B: Find truncs whose source is in zext map, build alias table
 fn build_trunc_aliases(ir: String, pos: i64, zmap: String, aliases: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= ir.len() { aliases }
     else {
         let pipe_pos = find_pipe_skip_quotes(ir, pos);
@@ -9672,6 +9713,7 @@ fn is_aliased_trunc_ir(line: String, aliases: String) -> bool
 // Pass C: Rebuild IR without aliased truncs, substitute aliases
 fn rebuild_ir_no_truncs(ir: String, pos: i64, sb: i64, aliases: String) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= ir.len() { 0 }
     else {
         let pipe_pos = find_pipe_skip_quotes(ir, pos);
@@ -9702,6 +9744,7 @@ fn eliminate_dead_zexts_ir(ir: String) -> String
 // Scan IR for zext i1 lines, check if their results are unused
 fn build_dead_zext_set(ir: String, pos: i64, dead: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= ir.len() { dead }
     else {
         let pipe_pos = find_pipe_skip_quotes(ir, pos);
@@ -9770,6 +9813,7 @@ fn find_var_use_wb(ir: String, name: String, start: i64) -> i64
 // Check if a line is a dead zext (in the dead set)
 fn is_dead_zext_range(ir: String, start: i64, end: i64, dead: String) -> bool
   pre start >= 0
+  post it or not it
 = {
     let p = low_skip_ws(ir, start);
     if p >= end { false }
@@ -9799,6 +9843,7 @@ fn find_char_in_range(s: String, start: i64, end: i64, ch: i64) -> i64
 
 fn trim_end_pos(s: String, start: i64, end: i64) -> i64
   pre start >= 0
+  post it >= 0
 = if end <= start { start }
     else if s.byte_at(end - 1) == 32 or s.byte_at(end - 1) == 9 { trim_end_pos(s, start, end - 1) }
     else { end };
@@ -9807,6 +9852,7 @@ fn trim_end_pos(s: String, start: i64, end: i64) -> i64
 // v0.95.7: Uses sb_push_range to avoid line slice allocation for non-dead lines
 fn rebuild_ir_no_dead_zexts(ir: String, pos: i64, sb: i64, dead: String) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= ir.len() { 0 }
     else {
         let pipe_pos = find_pipe_skip_quotes(ir, pos);
@@ -9842,6 +9888,7 @@ fn eliminate_inttoptr_roundtrips_ir(ir: String) -> String
 // Format: ",i64_dest=ptr_src,..."
 fn build_ptrtoint_map(ir: String, pos: i64, pmap: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= ir.len() { pmap }
     else {
         let pipe_pos = find_pipe_skip_quotes(ir, pos);
@@ -9882,6 +9929,7 @@ fn try_add_ptrtoint(line: String, pmap: String) -> String
 // Pass 2: Find inttoptr whose i64 source is in ptrtoint map
 fn build_inttoptr_aliases(ir: String, pos: i64, pmap: String, aliases: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= ir.len() { aliases }
     else {
         let pipe_pos = find_pipe_skip_quotes(ir, pos);
@@ -9957,6 +10005,7 @@ fn is_aliased_inttoptr(line: String, aliases: String) -> bool
 // Pass 3: Rebuild IR without aliased inttoptrs, substitute aliases
 fn rebuild_ir_no_inttoptrs(ir: String, pos: i64, sb: i64, aliases: String) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= ir.len() { 0 }
     else {
         let pipe_pos = find_pipe_skip_quotes(ir, pos);
@@ -10020,6 +10069,7 @@ fn mn_is_pure_call(line: String) -> bool
 
 fn mn_has_memory_op(ir: String, pos: i64) -> bool
   pre pos >= 0
+  post it or not it
 = if pos >= ir.len() { false }
     else {
         let pipe_pos = find_pipe_skip_quotes(ir, pos);
@@ -10069,6 +10119,7 @@ fn mn_is_readonly_call(line: String) -> bool
 // Check if a function body has write operations (stores or write-capable calls)
 fn mn_has_write_op(ir: String, pos: i64) -> bool
   pre pos >= 0
+  post it or not it
 = if pos >= ir.len() { false }
     else {
         let pipe_pos = find_pipe_skip_quotes(ir, pos);
@@ -10144,6 +10195,7 @@ fn ipr_extract_at_name(line: String) -> String
 // Collect readonly names from declarations in the header section (line by line)
 fn ipr_collect_decl_names(ir: String, pos: i64, end: i64, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= end { acc }
     else {
         let pipe = find_pipe_in_range(ir, pos, end);
@@ -10158,6 +10210,7 @@ fn ipr_collect_decl_names(ir: String, pos: i64, end: i64, acc: String) -> String
 
 fn ipr_collect_readonly_names(ir: String, pos: i64, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= ir.len() { acc }
     else {
         let fn_end = find_double_pipe(ir, pos);
@@ -10188,6 +10241,7 @@ fn find_pipe_in_range(s: String, pos: i64, end: i64) -> i64
 // Check if a function body (from pos to end) has stores
 fn ipr_has_store(ir: String, pos: i64, end: i64) -> bool
   pre pos >= 0
+  post it or not it
 = if pos >= end { false }
     else {
         let pipe = find_pipe_in_range(ir, pos, end);
@@ -10200,6 +10254,7 @@ fn ipr_has_store(ir: String, pos: i64, end: i64) -> bool
 // Check if a function body has any memory operation (load, store, gep, inttoptr, ptrtoint)
 fn ipr_has_mem_op(ir: String, pos: i64, end: i64) -> bool
   pre pos >= 0
+  post it or not it
 = if pos >= end { false }
     else {
         let pipe = find_pipe_in_range(ir, pos, end);
@@ -10217,6 +10272,7 @@ fn ipr_has_mem_op(ir: String, pos: i64, end: i64) -> bool
 // Collect pure (memory(none)) function names from declarations and definitions
 fn ipr_collect_pure_decl_names(ir: String, pos: i64, end: i64, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= end { acc }
     else {
         let pipe = find_pipe_in_range(ir, pos, end);
@@ -10231,6 +10287,7 @@ fn ipr_collect_pure_decl_names(ir: String, pos: i64, end: i64, acc: String) -> S
 
 fn ipr_collect_pure_names(ir: String, pos: i64, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= ir.len() { acc }
     else {
         let fn_end = find_double_pipe(ir, pos);
@@ -10250,6 +10307,7 @@ fn ipr_collect_pure_names(ir: String, pos: i64, acc: String) -> String
 // Check if all call targets are in the pure (memory(none)) set
 fn ipr_all_calls_pure(ir: String, pos: i64, end: i64, known_pure: String) -> bool
   pre pos >= 0
+  post it or not it
 = if pos >= end { true }
     else {
         let pipe = find_pipe_in_range(ir, pos, end);
@@ -10279,6 +10337,7 @@ fn ipr_all_calls_pure(ir: String, pos: i64, end: i64, known_pure: String) -> boo
 // Check if all call targets in a function body are in the known readonly set
 fn ipr_all_calls_readonly(ir: String, pos: i64, end: i64, known: String) -> bool
   pre pos >= 0
+  post it or not it
 = if pos >= end { true }
     else {
         let pipe = find_pipe_in_range(ir, pos, end);
@@ -10310,6 +10369,7 @@ fn ipr_all_calls_readonly(ir: String, pos: i64, end: i64, known: String) -> bool
 // Try to annotate one function section with memory(none) or memory(read)
 fn ipr_try_annotate_section(ir: String, pos: i64, fn_end: i64, known: String, known_pure: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = {
     let pipe = find_pipe_in_range(ir, pos, fn_end);
     let header = ir.slice(pos, pipe);
@@ -10348,6 +10408,7 @@ fn ipr_try_annotate_section(ir: String, pos: i64, fn_end: i64, known: String, kn
 // Rebuild module IR with interprocedural memory annotations
 fn ipr_rebuild(ir: String, pos: i64, sb: i64, known: String, known_pure: String, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= ir.len() { count }
     else {
         let fn_end = find_double_pipe(ir, pos);
@@ -10390,6 +10451,7 @@ fn annotate_memory_read_interprocedural(module_ir: String) -> String
 // v0.96.9: Check if function body has sdiv/udiv/srem/urem (can trap → no speculatable)
 fn ipr_has_div_rem(ir: String, pos: i64, end: i64) -> bool
   pre pos >= 0
+  post it or not it
 = if pos >= end { false }
     else {
         let pipe = find_pipe_in_range(ir, pos, end);
@@ -10406,6 +10468,7 @@ fn ipr_has_div_rem(ir: String, pos: i64, end: i64) -> bool
 // Rebuild IR adding speculatable to memory(none) functions without div/rem
 fn spec_rebuild(ir: String, pos: i64, sb: i64, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= ir.len() { count }
     else {
         let fn_end = find_double_pipe(ir, pos);
@@ -10452,6 +10515,7 @@ fn annotate_speculatable(module_ir: String) -> String
 // v0.96.13: Count pipe-separated lines in function body (from pos to end)
 fn inline_count_lines(ir: String, pos: i64, end: i64, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= end { count }
     else {
         let pipe = find_pipe_in_range(ir, pos, end);
@@ -10461,6 +10525,7 @@ fn inline_count_lines(ir: String, pos: i64, end: i64, count: i64) -> i64
 // v0.96.13: Check if function body has back edges (loops via br to earlier label)
 fn inline_has_back_edge(ir: String, pos: i64, end: i64) -> bool
   pre pos >= 0
+  post it or not it
 = if pos >= end { false }
     else {
         let pipe = find_pipe_in_range(ir, pos, end);
@@ -10476,6 +10541,7 @@ fn inline_has_back_edge(ir: String, pos: i64, end: i64) -> bool
 // v0.96.13: Rebuild IR adding alwaysinline/inlinehint to qualifying functions
 fn inline_rebuild(ir: String, pos: i64, sb: i64, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= ir.len() { count }
     else {
         let fn_end = find_double_pipe(ir, pos);
@@ -10534,6 +10600,7 @@ fn annotate_inlining(module_ir: String) -> String
 // v0.96.13: Rebuild IR adding nofree to memory(none)/memory(read) functions
 fn nofree_rebuild(ir: String, pos: i64, sb: i64, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= ir.len() { count }
     else {
         let fn_end = find_double_pipe(ir, pos);
@@ -10584,6 +10651,7 @@ fn extract_ir_fn_name(header: String) -> String
 // replace "call " with "tail call " (LLVM will verify tail position)
 fn tailcall_annotate_body(ir: String, body_start: i64, fn_end: i64, fn_name: String, sb: i64, count: i64) -> i64
   pre count >= 0
+  post it >= 0
 = if body_start >= fn_end { count }
     else {
         let pipe = find_pipe_in_range(ir, body_start, fn_end);
@@ -10611,6 +10679,7 @@ fn tailcall_annotate_body(ir: String, body_start: i64, fn_end: i64, fn_name: Str
 // v0.96.14: Rebuild IR adding tail call annotations for self-recursive calls
 fn tailcall_rebuild(ir: String, pos: i64, sb: i64, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= ir.len() { count }
     else {
         let fn_end = find_double_pipe(ir, pos);
@@ -10669,6 +10738,7 @@ fn optimize_cont_loop_exits(module_ir: String) -> String
 // Rebuild IR function-by-function, optimizing cont-pattern exits
 fn cont_exit_rebuild(ir: String, pos: i64, sb: i64, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= ir.len() { count }
     else {
         let fn_end = find_double_pipe(ir, pos);
@@ -10693,6 +10763,7 @@ fn cont_exit_rebuild(ir: String, pos: i64, sb: i64, count: i64) -> i64
 // Returns: "loop_N\tVAR\t..." (tab-separated pairs)
 fn cont_exit_find_ctrl_vars(fn_ir: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = {
     let sb = sb_new();
     let _w = cont_exit_scan_headers(fn_ir, pos, sb);
@@ -10701,6 +10772,7 @@ fn cont_exit_find_ctrl_vars(fn_ir: String, pos: i64) -> String
 
 fn cont_exit_scan_headers(ir: String, pos: i64, sb: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= ir.len() { 0 }
     else {
         let sep = find_char_in_range(ir, pos, ir.len(), 31);
@@ -10768,6 +10840,7 @@ fn cont_exit_apply(fn_ir: String, ctrl_map: String) -> String
 // Process lines, tracking previous line for pattern matching
 fn cont_exit_apply_lines(ir: String, pos: i64, ctrl_map: String, sb: i64, prev_line: String) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= ir.len() { 0 }
     else {
         let sep = find_char_in_range(ir, pos, ir.len(), 31);
@@ -10800,6 +10873,7 @@ fn cont_exit_apply_lines(ir: String, pos: i64, ctrl_map: String, sb: i64, prev_l
 
 fn build_dead_ptrtoint_set(ir: String, pos: i64, dead: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= ir.len() { dead }
     else {
         let pipe_pos = find_pipe_skip_quotes(ir, pos);
@@ -10835,6 +10909,7 @@ fn try_mark_dead_ptrtoint(ir: String, line: String, dead: String) -> String
 
 fn is_dead_ptrtoint_range(ir: String, start: i64, end: i64, dead: String) -> bool
   pre start >= 0
+  post it or not it
 = {
     let p = low_skip_ws(ir, start);
     if p >= end { false }
@@ -10857,6 +10932,7 @@ fn is_dead_ptrtoint_range(ir: String, start: i64, end: i64, dead: String) -> boo
 // v0.95.7: Uses sb_push_range + range-based check
 fn rebuild_ir_no_dead_ptrtoints(ir: String, pos: i64, sb: i64, dead: String) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= ir.len() { 0 }
     else {
         let pipe_pos = find_pipe_skip_quotes(ir, pos);
@@ -10947,6 +11023,7 @@ fn slf_is_call(line: String) -> bool
 // Get the LAST value for key in the table (most recent store wins)
 fn slf_table_get_last(table: String, key: String, pos: i64, found: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= table.len() { found } else {
         let semi = find_char(table, pos, 59);
         let entry = table.slice(pos, semi);
@@ -10965,6 +11042,7 @@ fn slf_table_get(table: String, key: String) -> String
 // Process IR lines: forward stores to loads within the same basic block
 fn slf_process(ir: String, pos: i64, sb: i64, table: String) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= ir.len() { 0 } else {
         let pipe_pos = find_pipe_skip_quotes(ir, pos);
         let line = ir.slice(pos, pipe_pos);
@@ -11014,6 +11092,7 @@ fn eliminate_store_load_ir(ir: String) -> String
 // Returns comma-delimited dead set: ",name1,name2,"
 fn dsa_find_dead(ir: String, pos: i64, allocas: String, loaded: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= ir.len() {
         // Return allocas that are not in loaded set
         dsa_filter_dead(allocas, loaded, 0, "")
@@ -11054,6 +11133,7 @@ fn new_loaded_from_other(line: String, loaded: String) -> String
 // Filter: keep only alloca names not in loaded set
 fn dsa_filter_dead(allocas: String, loaded: String, pos: i64, dead: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= allocas.len() { dead }
     else {
         let next_comma = find_char(allocas, pos + 1, 44);
@@ -11096,6 +11176,7 @@ fn dsa_is_dead_line(line: String, dead: String) -> bool
 // Pass 2: Rebuild IR without dead lines
 fn dsa_rebuild(ir: String, pos: i64, sb: i64, dead: String) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= ir.len() { 0 }
     else {
         let pipe_pos = find_pipe_skip_quotes(ir, pos);
@@ -11130,12 +11211,14 @@ fn eliminate_dead_stores_ir(ir: String) -> String
 // Zero-allocation substring search (arena-safe replacement for find_pattern_at_slow)
 fn find_pattern_noa(s: String, pat: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= -1
 = if pos + pat.len() > s.len() { 0 - 1 }
     else if match_bytes(s, pat, pos, 0) { pos }
     else { find_pattern_noa(s, pat, pos + 1) };
 
 fn match_bytes(s: String, pat: String, s_pos: i64, p_pos: i64) -> bool
   pre s_pos >= 0 and p_pos >= 0
+  post it or not it
 = if p_pos >= pat.len() { true }
     else if s.byte_at(s_pos + p_pos) != pat.byte_at(p_pos) { false }
     else { match_bytes(s, pat, s_pos, p_pos + 1) };
@@ -11206,6 +11289,7 @@ fn find_at_name_end_in(s: String, pos: i64, end: i64) -> i64
 // Rebuild IR skipping dead function blocks (separated by ||)
 fn rebuild_ir_no_dead_fns(ir: String, pos: i64, sb: i64, called: String) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= ir.len() { 0 }
     else {
         let fn_end = find_double_pipe(ir, pos);
@@ -11227,6 +11311,7 @@ fn rebuild_ir_no_dead_fns(ir: String, pos: i64, sb: i64, called: String) -> i64
 // Extract function name from define header by searching directly in IR range
 fn extract_define_name_fast(ir: String, start: i64, end: i64) -> String
   pre start >= 0
+  post it.len() >= 0
 = {
     let def_pos = find_pattern_noa_range(ir, "define ", start, end);
     if def_pos < 0 { "" }
@@ -11243,6 +11328,7 @@ fn extract_define_name_fast(ir: String, start: i64, end: i64) -> String
 // Zero-allocation pattern search within range [pos, end)
 fn find_pattern_noa_range(s: String, pat: String, pos: i64, end: i64) -> i64
   pre pos >= 0 and end >= 0
+  post it >= -1
 = if pos + pat.len() > end { 0 - 1 }
     else if match_bytes(s, pat, pos, 0) { pos }
     else { find_pattern_noa_range(s, pat, pos + 1, end) };
@@ -11302,6 +11388,7 @@ fn collect_refs_in_code(code: String, pos: i64, sb: i64) -> i64
 // Iterate header lines, keep non-declare lines and used declare lines
 fn prune_decls_lines(ir: String, pos: i64, header_end: i64, refs: String, sb: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= header_end { 0 }
     else {
         let pipe = find_pipe_in_range(ir, pos, header_end);
@@ -11339,6 +11426,7 @@ fn build_all_registries(mir: String, fn_rsb: i64, ptr_rsb: i64) -> i64
 
 fn build_all_registries_acc(mir: String, pos: i64, fn_rsb: i64, ptr_rsb: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= mir.len() { 0 } else {
         let fn_end = find_double_pipe(mir, pos);
         let fn_mir = mir.slice(pos, fn_end);
@@ -11394,6 +11482,7 @@ fn build_const_map(mir: String) -> String
 
 fn build_const_map_acc(mir: String, pos: i64, sb: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= mir.len() { 0 } else {
         let fn_end = find_double_pipe(mir, pos);
         let fn_mir = mir.slice(pos, fn_end);
@@ -11452,6 +11541,7 @@ fn try_register_const_fn(fn_mir: String, sb: i64) -> i64
 // Apply all const map entries to MIR
 fn apply_const_map_to_mir(mir: String, const_map: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= const_map.len() { mir }
     else {
         let at_pos = find_char(const_map, pos, 64);
@@ -11483,6 +11573,7 @@ fn replace_all_in_mir(s: String, pattern: String, replacement: String) -> String
 
 fn replace_all_in_mir_acc(s: String, pos: i64, pattern: String, replacement: String, sb: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = let found = find_pattern_at(s, pattern, pos);
     if found < 0 {
         sb_push(sb, s.slice(pos, s.len()))
@@ -11505,6 +11596,7 @@ fn cf_table_set(table: String, key: String, val: i64) -> String
 
 fn cf_table_get_at(table: String, key: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0 or it < 0
 = if pos >= table.len() { 0 - 99999999 } else {
         let semi = find_char(table, pos, 59);
         let entry = table.slice(pos, semi);
@@ -11711,6 +11803,7 @@ fn cf_eval_shift(op: String, a: i64, b: i64) -> i64
 // 2^n helper for shift evaluation
 fn cf_pow2(n: i64) -> i64
   pre n >= 0
+  post it >= 1
 = if n <= 0 { 1 } else { 2 * cf_pow2(n - 1) };
 
 // Check if line is bitwise: %dest = band/bor/bxor %a, %b
@@ -11769,11 +11862,13 @@ fn cf_unary_src(line: String) -> String
 // Power-of-2 check: n > 1 and (n & (n-1)) == 0
 fn cf_is_pow2(n: i64) -> bool
   pre n >= 0
+  post it or not it
 = n > 1 and (n band (n - 1)) == 0;
 
 // Log2 for power-of-2 values
 fn cf_log2(n: i64) -> i64
   pre n >= 0
+  post it >= 0
 = if n <= 1 { 0 } else { 1 + cf_log2(n / 2) };
 
 // Check if algebraic simplification applies (one operand known: x+0, x*1, x*0, x-x, etc.)
@@ -12147,6 +12242,7 @@ fn cf_try_simplify_select(line: String, table: String) -> String
 
 fn cf_fold_fn_lines(mir: String, pos: i64, sb: i64, table: String) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= mir.len() { 0 } else {
         let pipe_pos = find_pipe_skip_quotes(mir, pos);
         let line = mir.slice(pos, pipe_pos);
@@ -12171,6 +12267,7 @@ fn cf_fold_function(fn_mir: String) -> String
 // Process entire program MIR function by function
 fn cf_fold_program(mir: String, pos: i64, sb: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= mir.len() { 0 } else {
         let fn_end = find_double_pipe(mir, pos);
         let fn_mir = mir.slice(pos, fn_end);
@@ -12217,6 +12314,7 @@ fn dce_var_in_rhs(line: String, target: String) -> bool
 // Check if target variable is used in any line after pos in fn_mir
 fn dce_var_used_after(fn_mir: String, target: String, pos: i64) -> bool
   pre pos >= 0
+  post it or not it
 = if pos >= fn_mir.len() { false } else {
         let pipe = find_char(fn_mir, pos, 31);
         let line = fn_mir.slice(pos, pipe);
@@ -12229,6 +12327,7 @@ fn dce_var_used_after(fn_mir: String, target: String, pos: i64) -> bool
 // reachable: 1 if in reachable block, 0 if in unreachable block
 fn dce_ube_fn_lines(fn_mir: String, pos: i64, sb: i64, targets: String, reachable: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= fn_mir.len() { 0 } else {
         let pipe = find_pipe_skip_quotes(fn_mir, pos);
         let line = fn_mir.slice(pos, pipe);
@@ -12272,6 +12371,7 @@ fn dce_function(fn_mir: String) -> String
 // DCE across all functions in the program
 fn dce_program(mir: String, pos: i64, sb: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= mir.len() { 0 } else {
         let fn_end = find_double_pipe(mir, pos);
         let fn_mir = mir.slice(pos, fn_end);
@@ -12335,6 +12435,7 @@ fn ube_goto_target(line: String) -> String
 // Collect all jump targets from function MIR (comma-separated label list)
 fn ube_collect_targets(fn_mir: String, pos: i64, targets: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= fn_mir.len() { targets } else {
         let pipe = find_pipe_skip_quotes(fn_mir, pos);
         let line = fn_mir.slice(pos, pipe);
@@ -12361,6 +12462,7 @@ fn ube_has_target(targets: String, label: String) -> bool
 
 fn ube_has_target_at(targets: String, label: String, pos: i64) -> bool
   pre pos >= 0
+  post it or not it
 = if pos >= targets.len() { false } else {
         let comma = find_char(targets, pos, 44);
         let entry = targets.slice(pos, comma);
@@ -12433,11 +12535,13 @@ fn ube_simplify_phi(line: String, targets: String) -> String
 // Check if character is alphanumeric or underscore (valid in variable names)
 fn cp_is_var_char(c: i64) -> bool
   pre c >= 0
+  post it or not it
 = (c >= 48 and c <= 57) or (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or c == 95;
 
 // Find end of variable name starting after '%'
 fn cp_var_end(s: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= s.len() { pos }
     else if cp_is_var_char(s.byte_at(pos)) { cp_var_end(s, pos + 1) }
     else { pos };
@@ -12449,6 +12553,7 @@ fn cp_table_set(table: String, key: String, val: String) -> String
 
 fn cp_table_get_at(table: String, key: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= table.len() { "" } else {
         let semi = find_char(table, pos, 59);
         let entry = table.slice(pos, semi);
@@ -12467,6 +12572,7 @@ fn cp_table_get(table: String, key: String) -> String
 // Replace %var patterns in text using copy table, starting from pos
 fn cp_replace_vars(text: String, table: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= text.len() { text }
     else if text.byte_at(pos) == 37 {
         let var_end = cp_var_end(text, pos + 1);
@@ -12505,6 +12611,7 @@ fn cp_replace_in_line(line: String, table: String) -> String
 // Process each line: track copies and replace in subsequent lines
 fn cp_fn_lines(fn_mir: String, pos: i64, sb: i64, table: String) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= fn_mir.len() { 0 } else {
         let pipe = find_char(fn_mir, pos, 31);
         let line = fn_mir.slice(pos, pipe);
@@ -12536,6 +12643,7 @@ fn cp_function(fn_mir: String) -> String
 
 fn cp_program(mir: String, pos: i64, sb: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= mir.len() { 0 } else {
         let fn_end = find_double_pipe(mir, pos);
         let fn_mir = mir.slice(pos, fn_end);
@@ -12568,6 +12676,7 @@ fn optimize_copy_prop(mir: String) -> String
 // Returns ";"-separated list: "name1;name2;"
 fn pfcse_build_pure_set(mir: String, pos: i64, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= mir.len() { acc } else {
         let fn_end = find_double_pipe(mir, pos);
         let fn_mir = mir.slice(pos, fn_end);
@@ -12595,6 +12704,7 @@ fn pfcse_is_pure(pure_set: String, name: String) -> bool
 // Format: "%var=value;%var2=value2;" where value is either "I:42" (constant) or "%other" (copy source)
 fn pfcse_val_lookup_at(vtable: String, name: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= vtable.len() { "" } else {
         let semi = find_char(vtable, pos, 59);
         if semi < 0 or semi >= vtable.len() { "" }
@@ -12666,6 +12776,7 @@ fn pfcse_resolve_arg(vtable: String, arg: String) -> String
 // temporaries holding the same constant value.
 fn pfcse_build_key_args(vtable: String, args: String, pos: i64, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= args.len() { acc }
     else {
         let comma = find_char(args, pos, 44);
@@ -12687,6 +12798,7 @@ fn pfcse_build_key(vtable: String, line: String) -> String
 // Call map: stores canonical_key -> dest mappings, format "key=dest;key2=dest2;"
 fn pfcse_map_lookup_at(cmap: String, sig: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= cmap.len() { "" } else {
         let semi = find_char(cmap, pos, 59);
         if semi < 0 or semi >= cmap.len() { "" }
@@ -12735,6 +12847,7 @@ fn pfcse_update_vtable(vtable: String, line: String) -> String
 // cmap (call map) and vtable (value table) are reset at each label (block boundary).
 fn pfcse_fn_lines(fn_mir: String, pos: i64, sb: i64, pure_set: String, cmap: String, vtable: String, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= fn_mir.len() { count } else {
         let pipe = find_pipe_skip_quotes(fn_mir, pos);
         let line = fn_mir.slice(pos, pipe);
@@ -12792,6 +12905,7 @@ fn pfcse_function(fn_mir: String, pure_set: String) -> String
 
 fn pfcse_program(mir: String, pos: i64, sb: i64, pure_set: String) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= mir.len() { 0 } else {
         let fn_end = find_double_pipe(mir, pos);
         let fn_mir = mir.slice(pos, fn_end);
@@ -12874,6 +12988,7 @@ fn mlcse_is_read_call(fn_name: String) -> bool
 // load_cache, gep_cache, and vtable are reset at each label (block boundary).
 fn mlcse_fn_lines(fn_mir: String, pos: i64, sb: i64, pure_set: String, safe_set: String, load_cache: String, gep_cache: String, vtable: String, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= fn_mir.len() { count } else {
         let pipe = find_pipe_skip_quotes(fn_mir, pos);
         let line = fn_mir.slice(pos, pipe);
@@ -13001,6 +13116,7 @@ fn mlcse_function(fn_mir: String, pure_set: String, safe_set: String) -> String
 
 fn mlcse_program(mir: String, pos: i64, sb: i64, pure_set: String, safe_set: String) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= mir.len() { 0 } else {
         let fn_end = find_double_pipe(mir, pos);
         let fn_mir = mir.slice(pos, fn_end);
@@ -13033,6 +13149,7 @@ fn optimize_mem_load_cse(mir: String) -> String
 // Check if function body has side-effectful instructions (calls, store_ptr, or labels)
 fn cfeval_has_side_effects(body: String, pos: i64) -> bool
   pre pos >= 0
+  post it or not it
 = if pos >= body.len() { false } else {
         let pipe = find_pipe_skip_quotes(body, pos);
         let line = body.slice(pos, pipe);
@@ -13048,6 +13165,7 @@ fn cfeval_has_side_effects(body: String, pos: i64) -> bool
 // Tracks const assignments and matches return variable to a constant.
 fn cfeval_find_return_const(body: String, pos: i64, consts: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= body.len() { "" } else {
         let pipe = find_pipe_skip_quotes(body, pos);
         let line = body.slice(pos, pipe);
@@ -13077,6 +13195,7 @@ fn cfeval_find_return_const(body: String, pos: i64, consts: String) -> String
 // Format: "fn_name=const_value;fn_name2=const_value2;"
 fn cfeval_build_const_map(mir: String, pos: i64, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= mir.len() { acc } else {
         let fn_end = find_double_pipe(mir, pos);
         let fn_mir = mir.slice(pos, fn_end);
@@ -13109,6 +13228,7 @@ fn cfeval_build_const_map(mir: String, pos: i64, acc: String) -> String
 // Replace 0-arg const function calls with constant values
 fn cfeval_fn_lines(fn_mir: String, pos: i64, sb: i64, const_map: String, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= fn_mir.len() { count } else {
         let pipe = find_pipe_skip_quotes(fn_mir, pos);
         let line = fn_mir.slice(pos, pipe);
