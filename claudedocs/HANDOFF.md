@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-25 (Cycles 3114-3121)
 
-> **HEAD**: TBD (commit 예정)
+> **HEAD**: `9a66f297`
 > **이번 세션 작업**: Cycles 3114-3121 (M8-A semantic contract 교체 48/97 bool + 3/10 i64)
 > **3-Stage Fixed Point**: ✅ `A8ADD96654CD39795443635F1DAAB55D`
 > **실무 앵커**: `claudedocs/ROADMAP.md`
