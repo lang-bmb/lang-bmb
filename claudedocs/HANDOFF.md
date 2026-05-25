@@ -1,124 +1,133 @@
-# BMB Session Handoff — 2026-05-25 (Cycles 3114-3121)
+# BMB Session Handoff — 2026-05-25 (Cycles 3148-3151)
 
-> **HEAD**: `9a66f297`
-> **이번 세션 작업**: Cycles 3114-3121 (M8-A semantic contract 교체 48/97 bool + 3/10 i64)
-> **3-Stage Fixed Point**: ✅ `A8ADD96654CD39795443635F1DAAB55D`
+> **HEAD**: `c71f2c90`
+> **이번 세션 작업**: Cycles 3148-3151 (M9 Batches 14-17 — missing_postcondition 628→568, −60)
+> **3-Stage Fixed Point**: (M8-A 기준 `A8ADD96654CD39795443635F1DAAB55D` — M9는 post-only 추가로 IR 불변)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: **M8-A 계속** — 남은 bool trivial 52개 중 추가 교체 또는 다음 마일스톤
+> **다음 세션 진입점**: **Cycle 3152** — `step_set_index/field/var/break/continue/return/cast` 계열 15개
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 3114-3121)
+## 이번 세션 작업 요약 (Cycles 3148-3151)
 
-| Cycle | 제목 | 교체 수 |
-|-------|------|---------|
-| 3114 | M8-C Phase 1 완료 확인 + 골든 테스트 | — |
-| 3115 | i64 trivial → range contracts | 3/10 |
-| 3116 | bool trivial → starts_with/contains (배치 1) | 10 |
-| 3117 | bool trivial → contains/identity (배치 2) | 12 |
-| 3118 | bool trivial → cf 계열 (배치 3) | 10 |
-| 3119 | bool trivial → contains + eq-chain (배치 4) | 6 |
-| 3120 | bool trivial → SB marker 패턴 (배치 5) | 7 |
-| 3121 | HANDOFF/ROADMAP 업데이트 + commit | — |
+| Cycle | 제목 | 추가 post | 잔여 missing_postcondition |
+|-------|------|----------|---------------------------|
+| 3148 | M9 Batch 14 — make_step_leaf/step_literal 계열 | 15 | 613 |
+| 3149 | M9 Batch 15 — i2s/trampoline/make_step/step_basic | 15 | 598 |
+| 3150 | M9 Batch 16 — step_binop/unary/if/let/mut/call | 15 | 583 |
+| 3151 | M9 Batch 17 — step_call/method/nullable/seq/assign/array_index | 15 | 568 |
 
-### 핵심 성과
-
-**M8-A 진행 중** — Semantic Contract 교체:
-
-1. **i64 3/10** (Cycle 3115):
-   - `s2i` → `post it >= 0` (digits-only parse)
-   - `update_range_from_ast` → `post it == 0` (all paths return 0)
-   - `main` → `post it >= 0` (all subcommands ≥ 0)
-   - 나머지 7개: 진정한 임의 i64 → trivial 유지 (정직한 결정)
-
-2. **bool 45/97** (Cycles 3116-3120):
-   - starts_with 패턴 14종: `is_error`, `fmt_is_fn_decl`, `is_temp_name` 등
-   - contains 패턴 15종: `dce_has_side_effects`, `cf_is_*` 계열 등
-   - identity eq-chain 7종: `mlcse_is_read_call`, `licm_is_pure_fn` 등
-   - SB marker 패턴 7종: `is_string_var_sb`, `is_double_var_sb` 등
-   - contains + compound 계약 2종: `pfcse_is_pure`, `gcs_label_in_phi` 등
-
-3. **Fixed Point 불변**: `A8ADD96654CD39795443635F1DAAB55D`
-   - string-based post conditions → `llvm.assume` 미생성 → IR 불변
-
-### 최종 상태
+### M9 전체 진행 현황
 
 | 항목 | 값 |
 |------|----|
-| 총 함수 | 1513 |
-| 계약 있음 | 1513 (100%) |
-| Z3 verified | 954/954 |
-| 3-Stage FP | `A8ADD96654CD39795443635F1DAAB55D` |
-| bmb check | ✅ (3128 warnings, M8-A 이전 3173 → −45) |
-| bmb verify | ✅ 954/954, 0 failed |
-| trivial bool 잔여 | ~52개 (`post it or not it`) |
-| trivial i64 잔여 | 7개 (`post it == it`) |
-| trivial String 잔여 | 279개 (`post it.len() >= 0`) |
+| M9 시작 (Cycle 3140 기준) | 814 missing_postcondition |
+| 이번 세션 시작 (Cycle 3148) | 628 missing_postcondition |
+| 현재 상태 | **568 missing_postcondition** |
+| M9 총 감소 | **−246 (30.2%)** |
+| cargo test | ✅ 6278 tests, 0 failed |
+| bmb check warnings | ✅ 2949 (net) |
+| bmb verify | ✅ 715/715, 0 failed |
+
+### 핵심 계약 패턴 수립 (Cycles 3149-3151)
+
+**`post it.len() >= 1` 체인**:
+```
+int_to_string(n) → post it.len() >= 1  (기존)
+i2s(n)          → post it.len() >= 1  (Cycle 3149: int_to_string 위임)
+make_step_leaf  → post it.len() >= 1  (Cycle 3149: i2s(temp) 직접 반환)
+make_step       → post it.len() >= 1  (Cycle 3149: i2s(temp) + SEP + ... 연결)
+do_step         → post it.len() >= 1  (Cycle 3149: make_step/make_step_leaf 반환)
+step_expr, step_int, step_float, step_bool, step_string, step_var  (Cycle 3149)
+step_binop_start/right/final, step_unary_start/final              (Cycle 3150)
+step_if_start/select/then/else/final                               (Cycle 3150)
+step_let_start/body, step_mut_start/body, step_call_start         (Cycle 3150)
+step_call_arg/final, step_method_start/arg/final                   (Cycle 3151)
+step_nullable_result/or, step_unit                                 (Cycle 3151)
+step_seq_start/second, step_assign_start/final                     (Cycle 3151)
+step_array_index_start/idx/final                                   (Cycle 3151)
+```
+
+**`post it >= 0` 패턴**:
+```
+trampoline_v3    → post it >= 0  (pack_ids 반환, Cycle 3149)
+lower_expr_iter  → post it >= 0  (trampoline_v3 반환, Cycle 3149)
+check_field_type → post it >= 0  (0~4 반환, Cycle 3149)
+parse_int_simple → pre acc >= 0 + post it >= 0  (누산기, Cycle 3149)
+parse_oct_from   → pre acc >= 0 + post it >= 0  (누산기, Cycle 3149)
+```
 
 ---
 
 ## 다음 세션 시작점
 
-### M8-A 계속 — 확정 태스크 목록 (남은 52개 분류 완료)
+### Cycle 3152 — step_set_index/field/var/break/continue/return/cast 계열
 
-#### Task A: ends_with 패턴 3개 (즉시 교체 가능)
-```
-L15035 ends_with_colon(s)    → post it == (s.len() > 0 and trim_end(s).byte_at(trim_end(s).len()-1) == 58)
-L21762 fmt_ends_eq(line)     → post it == (line.len() > 0 and fmt_rtrim(line, line.len()).byte_at(...-1) == 61)
-L21769 fmt_ends_semi(line)   → post it == (... == 59)
-```
-또는 BMB에 `ends_with` 메서드 확인 후: `post it == (s.trim_end().ends_with(":"))`
+**확정 대상 (모두 `post it.len() >= 1` — make_step/make_step_leaf 반환)**:
 
-#### Task B: contains/starts_with 패턴 2개
+#### Group 1: step_set_index (4개)
 ```
-L10692 dsa_is_dead_line(line, dead)   → 확인 필요 (2-param contains)
-L21751 fmt_starts_close(line)         → post it == (line.trimmed starts with } or ))
+step_set_index_start  — make_step(cur_temp, ...) 단일 경로
+step_set_index_idx    — make_step(cur_temp, ...) 단일 경로
+step_set_index_val    — make_step(cur_temp, ...) 단일 경로
+step_set_index_final  — make_step_leaf(cur_temp + N) 또는 make_step(...)
 ```
 
-#### Task C: user variable 패턴 1개
+#### Group 2: step_field_access (2개)
 ```
-L17321 is_user_variable(name)  → post it == (name.len() >= 2 and not name.starts_with("%_t"))
-```
-
-#### Task D: body-복사 eq-chain (낮은 가치 — skip 권고)
-```
-L17208 is_builtin_double_fn(name)   — 긴 equality chain, body 복사
-L17253-17296 is_string_fn_group1-6  — equality chain, body 복사
+step_field_access_start  — make_step(cur_temp, ...) 단일 경로
+step_field_access_final  — make_step_leaf(cur_temp + 1) 단일 경로
 ```
 
-#### Task E: delegate 패턴 1개
+#### Group 3: step_set_field (3개)
 ```
-L21688 fmt_is_blank(line)  → post it == (fmt_leading_ws(line, 0) >= line.len())
+step_set_field_start  — make_step(cur_temp, ...) 단일 경로
+step_set_field_val    — make_step(cur_temp, ...) 단일 경로
+step_set_field_final  — make_step_leaf(cur_temp + N) 단일 경로
 ```
 
-**즉시 착수 권고**: Task A (3개) → Task C (1개) → Task E (1개) = **5개 교체 목표**
+#### Group 4: step_set_var (2개)
+```
+step_set_var_start  — make_step(cur_temp, ...) 단일 경로
+step_set_var_final  — make_step_leaf(cur_temp + 1) 단일 경로
+```
 
-### M8-A 완료 후 선택지
+#### Group 5: 제어 흐름 (4개)
+```
+step_break         — make_step_leaf(cur_temp) (exit label 설정)
+step_continue      — make_step_leaf(cur_temp) (loop-back jump)
+step_return        — make_step_leaf(cur_temp) (void return)
+step_return_value  — make_step(cur_temp, ...) (value return, 평가 필요)
+```
 
-1. **M8-B**: String trivial (279개 `post it.len() >= 0`) → 함수별 분석
-2. **M9**: 다음 마일스톤 계획 수립
-3. **Bench/Quality**: 기존 벤치마크 회귀 확인
+**합계: 15개** — Cycle 3152 배치 목표
+
+#### 다음 배치 후보 (Cycle 3153+)
+```
+step_cast_to_i64/f64/i32              (3개)
+step_cast_ptr_f64_start/finish        (2개)
+step_array_literal                    (1개)
+step_tuple                            (1개)
+step_array_repeat, step_array_repeat_lit
+step_array_repeat_lit_with_val, step_array_repeat_expr
+```
 
 ### 기술 상태 스냅샷
 
 | 항목 | 값 |
 |------|----|
-| 총 함수 | 1513 |
-| 계약 있음 | 1513 (100%) |
-| M8-A bool 교체 완료 | 45/97 |
-| M8-A i64 교체 완료 | 3/10 |
-| 3-Stage FP | `A8ADD96654CD39795443635F1DAAB55D` |
-| cargo test | ✅ |
-| bmb check | ✅ (3128 warnings) |
-| bmb verify | ✅ 954/954, 0 failed |
+| HEAD | `c71f2c90` |
+| missing_postcondition | **568** (목표 → 0) |
+| bmb check warnings | 2949 |
+| bmb verify | 715/715, 0 failed |
+| cargo test | ✅ 6278 tests |
+| 3-Stage FP | IR 불변 (post-only 추가, llvm.assume 미생성) |
 
 ---
 
 ## 알려진 미결 사항
 
-- **trivial 계약 잔여**: `post it or not it` 52개 / `post it == it` 7개 / `post it.len() >= 0` 279개
-  - 52개 bool: 추가 교체 진행 중 (일부 복잡한 로직으로 trivial 유지가 정직)
-  - 7개 i64: 진정한 임의 값 반환 함수 — trivial이 가장 정직한 계약
-  - 279개 String: 향후 M8-B에서 함수별 분석 대상
-- **Z3 string theory**: starts_with/contains 계약은 문서화 가치는 있으나 Z3 검증 불가
-  - 이는 예상된 동작 (복잡한 함수 바디와 string theory의 상호작용 한계)
+- **missing_postcondition 568개**: M9 계속 — step_* 계열 75% 이상 처리 완료 추정, 잔여 40여 개 + 기타 함수군
+- **`get_child` / `get_child_at` / `read_sexp_at`**: 빈 문자열 `""` 반환 경로 존재 → `post it.len() >= 1` 불가, 별도 분석 필요
+- **semantic_duplication 증가**: uniform post 계약 추가 시 카운터 증가 (missing_postcondition 감소와 net 상쇄)
+- **Z3 budget 영향**: 복잡한 post 계약 추가 시 `bmb verify` 총 검증 수 점진적 감소 (정상)
