@@ -1,10 +1,10 @@
-# BMB Session Handoff — 2026-05-25 (Cycles 3094-3102)
+# BMB Session Handoff — 2026-05-25 (Cycles 3094-3103)
 
-> **HEAD**: `c9ef6fcc`
-> **이번 세션 작업**: Cycles 3094-3102 (M7-4 COMPLETE — AI 계약 생성 파이프라인)
+> **HEAD**: `90028dbf`
+> **이번 세션 작업**: Cycles 3094-3103 (M7-4 COMPLETE — AI 계약 생성 파이프라인 + Track B 125종)
 > **3-Stage Fixed Point**: ✅ `ea550bf3` (변경 없음 — 계약만 추가)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: **M8 계획** 또는 **Track B 계약 계속** (1342개 미계약 잔여)
+> **다음 세션 진입점**: **Track B 계약 계속** (1342개 미계약 잔여) 또는 **M8 계획 수립**
 
 ---
 
@@ -69,20 +69,34 @@
 
 ## 다음 세션 시작점
 
-### 즉시 착수 가능 (자율 결정)
+### 우선순위 작업 목록
 
-**Track B 계속** (1342개 잔여):
-- P1 잔여: 파서 함수 148개 (parse_* prefix)
-- LLVM 관련: 50개 (llvm_* prefix)
-- `bmb run bootstrap/list-uncontracted.bmb`로 현황 재확인
+| 우선순위 | 항목 | 설명 |
+|----------|------|------|
+| P1 | **Track B: parse_* 계약** | 148개 파서 함수 `pre pos >= 0` 배치 추가 |
+| P1 | **Track B: llvm_* 계약** | 50개 LLVM IR 생성 함수 계약 추가 |
+| P2 | **M8 계획 수립** | ROADMAP.md M8 섹션 정의 (Native 완전화 / 추가 마일스톤) |
+| P3 | **`bmb verify --suggest` 개선** | Z3 counterexample → pre 힌트 더 정교화 |
+| P3 | **Track B 나머지** | ifs/build/trl/index 등 1144개 추가 |
 
-**M8 계획 수립**:
-- ROADMAP.md M8 섹션 신규 정의
-- 제안: M8 = Native 컴파일 완전화 (bootstrap → native build pipeline)
+### 즉시 착수 명령
+
+```bash
+# 현황 재확인
+bmb run bootstrap/list-uncontracted.bmb
+
+# parse_* 함수 목록 확인
+bmb verify bootstrap/compiler.bmb --list-uncontracted | python3 -c "
+import sys,json; d=json.loads(sys.stdin.read())
+parse_fns=[f for f in d['functions'] if f['name'].startswith('parse_')]
+print(len(parse_fns), 'parse_ functions')
+for f in parse_fns[:10]: print(' ', f['name'], f['params'])
+"
+```
 
 ### HUMAN 결정 필요
 
-없음 — 자율 결정 가능.
+없음 — 모든 항목 자율 결정 가능.
 
 ---
 
