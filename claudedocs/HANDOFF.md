@@ -59,11 +59,39 @@
 
 ## 다음 세션 시작점
 
-### M8-A 계속
+### M8-A 계속 — 확정 태스크 목록 (남은 52개 분류 완료)
 
-남은 bool trivial 52개 중 추가 교체 가능한 것들:
-- 복잡한 로직 함수 (재귀 탐색, 2-param 등): Z3 검증 어렵지만 문서화 가치 있는 것들
-- 단순 equality chain body 복사 계약 (is_string_fn_group1-6 등): 가치 낮아 skip 권고
+#### Task A: ends_with 패턴 3개 (즉시 교체 가능)
+```
+L15035 ends_with_colon(s)    → post it == (s.len() > 0 and trim_end(s).byte_at(trim_end(s).len()-1) == 58)
+L21762 fmt_ends_eq(line)     → post it == (line.len() > 0 and fmt_rtrim(line, line.len()).byte_at(...-1) == 61)
+L21769 fmt_ends_semi(line)   → post it == (... == 59)
+```
+또는 BMB에 `ends_with` 메서드 확인 후: `post it == (s.trim_end().ends_with(":"))`
+
+#### Task B: contains/starts_with 패턴 2개
+```
+L10692 dsa_is_dead_line(line, dead)   → 확인 필요 (2-param contains)
+L21751 fmt_starts_close(line)         → post it == (line.trimmed starts with } or ))
+```
+
+#### Task C: user variable 패턴 1개
+```
+L17321 is_user_variable(name)  → post it == (name.len() >= 2 and not name.starts_with("%_t"))
+```
+
+#### Task D: body-복사 eq-chain (낮은 가치 — skip 권고)
+```
+L17208 is_builtin_double_fn(name)   — 긴 equality chain, body 복사
+L17253-17296 is_string_fn_group1-6  — equality chain, body 복사
+```
+
+#### Task E: delegate 패턴 1개
+```
+L21688 fmt_is_blank(line)  → post it == (fmt_leading_ws(line, 0) >= line.len())
+```
+
+**즉시 착수 권고**: Task A (3개) → Task C (1개) → Task E (1개) = **5개 교체 목표**
 
 ### M8-A 완료 후 선택지
 
