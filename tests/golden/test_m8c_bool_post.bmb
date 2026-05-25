@@ -1,0 +1,28 @@
+// Cycle 3114: M8-C Phase 1 ✅ already complete (Cycle 3083)
+// Demonstrates that Expr::It correctly uses current_ret_ty (declared return type)
+// so bool functions accept `post it == (cond)` and Z3 can verify them.
+//
+// Root: bmb/src/types/mod.rs:3271 — Expr::It => Ok(self.current_ret_ty.clone().unwrap_or(Type::I64))
+
+// Bool functions with meaningful post conditions (non-trivial Z3-verifiable)
+fn is_positive(x: i64) -> bool
+  post it == (x > 0)
+= x > 0;
+
+fn is_nonneg(x: i64) -> bool
+  post it == (x >= 0)
+= x >= 0;
+
+// When the body implies the post via structural equivalence
+fn is_zero(x: i64) -> bool
+  post it == (x == 0)
+= x == 0;
+
+// i64 functions with meaningful range contracts
+fn abs_val(x: i64) -> i64
+  post it >= 0
+= if x >= 0 { x } else { 0 - x };
+
+fn main() -> i64
+  post it == 0
+= 0;

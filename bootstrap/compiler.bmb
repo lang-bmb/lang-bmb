@@ -61,7 +61,7 @@ fn skip_ws(s: String, pos: i64) -> i64
 
 // Error handling utilities
 fn is_error(s: String) -> bool
-  post it or not it
+  post it == (s.starts_with("ERR"))
 = s.len() >= 3 and s.slice(0, 3) == "ERR";
 fn count_line_at(src: String, pos: i64, cur: i64, line: i64) -> i64
   pre pos >= 0 and cur >= 0 and line >= 1
@@ -4126,7 +4126,7 @@ fn extract_float_value_text(ast: String) -> String
 
 // Cycle 2394: fn-trust added so stdlib/time, stdlib/fs, stdlib/io, stdlib/process @include via bootstrap succeeds.
 fn is_fn_node(ast: String) -> bool
-  post it or not it
+  post it == (get_node_type(ast) == "fn" or get_node_type(ast) == "fn-pure" or get_node_type(ast) == "fn-const" or get_node_type(ast) == "fn-inline" or get_node_type(ast) == "fn-trust")
 = let nt = get_node_type(ast);
     nt == "fn" or nt == "fn-pure" or nt == "fn-const" or nt == "fn-inline" or nt == "fn-trust";
 
@@ -4345,7 +4345,7 @@ fn i2s(n: i64) -> String
   pre n >= 0
 = int_to_string(n);
 fn s2i(s: String) -> i64
-  post it == it
+  post it >= 0
 = parse_int_simple(s, 0, 0);
 
 fn parse_int_simple(s: String, pos: i64, acc: i64) -> i64
@@ -5203,7 +5203,7 @@ fn step_method_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label
 // unwrap_or(default) → select(value != 0, value, default)
 
 fn is_nullable_method(name: String) -> bool
-  post it or not it
+  post it == (name == "is_some" or name == "is_none" or name == "unwrap" or name == "unwrap_or" or name == "expect")
 = if name == "is_some" { true } else if name == "is_none" { true }
     else if name == "unwrap" { true } else if name == "unwrap_or" { true }
     else if name == "expect" { true } else { false };
@@ -5770,7 +5770,7 @@ fn collect_local_alloca_names(mir: String, pos: i64, acc: String) -> String
     };
 
 fn starts_with_alloca_pct(s: String) -> bool
-  post it or not it
+  post it == (s.starts_with("alloca %"))
 = s.len() >= 8
     and s.byte_at(0) == 97 and s.byte_at(1) == 108
     and s.byte_at(2) == 108 and s.byte_at(3) == 111
@@ -5824,11 +5824,11 @@ fn find_var_end(s: String, pos: i64) -> i64
     };
 
 fn is_temp_name(name: String) -> bool
-  post it or not it
+  post it == (name.starts_with("_t"))
 = name.len() >= 2 and name.byte_at(0) == 95 and name.byte_at(1) == 116;
 
 fn is_block_name(name: String) -> bool
-  post it or not it
+  post it == (name.starts_with("_b"))
 = name.len() >= 2 and name.byte_at(0) == 95 and name.byte_at(1) == 98;
 
 fn is_lambda_param_name(name: String, params: String) -> bool
@@ -10499,7 +10499,7 @@ fn rebuild_ir_no_dead_ptrtoints(ir: String, pos: i64, sb: i64, dead: String) -> 
 
 // Check if IR line is a store: "  store i64 %val, ptr %x"
 fn slf_is_store(line: String) -> bool
-  post it or not it
+  post it == (line.contains("store i64 ") or line.contains("store double "))
 = let s = low_skip_ws(line, 0);
     find_pattern_at(line, "store i64 ", s) == s or find_pattern_at(line, "store double ", s) == s;
 
@@ -10526,7 +10526,7 @@ fn slf_store_val(line: String) -> String
 
 // Check if IR line is a load: "  %t = load i64, ptr %x"
 fn slf_is_i64_load(line: String) -> bool
-  post it or not it
+  post it == (line.contains(" = load i64, ptr "))
 = find_pattern_at(line, " = load i64, ptr ", 0) >= 0;
 
 // Extract ptr from "  %t = load i64, ptr %x" → "%x"
@@ -10560,7 +10560,7 @@ fn slf_is_bb_boundary(line: String) -> bool
 
 // Check if line is a call (may clobber memory)
 fn slf_is_call(line: String) -> bool
-  post it or not it
+  post it == (line.contains("call "))
 = find_pattern_at(line, "call ", 0) >= 0;
 
 // Get the LAST value for key in the table (most recent store wins)
@@ -11185,7 +11185,7 @@ fn cf_extract_dest(line: String) -> String
 // Check/extract copy: %dest = copy %src
 // Must use first ` = ` to avoid matching inside string content.
 fn cf_is_copy(line: String) -> bool
-  post it or not it
+  post it == (line.contains(" = copy %"))
 = let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { false } else {
         starts_with(line.slice(eq_pos + 3, line.len()), "copy %", 0)
@@ -11201,7 +11201,7 @@ fn cf_copy_src(line: String) -> String
 
 // Check if line is binary arithmetic: %dest = OP %a, %b
 fn cf_is_arith(line: String) -> bool
-  post it or not it
+  post it == (line.contains(" = + ") or line.contains(" = - ") or line.contains(" = * ") or line.contains(" = / ") or line.contains(" = % "))
 = let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { false } else {
         let rest = line.slice(eq_pos + 3, line.len());
@@ -11213,7 +11213,7 @@ fn cf_is_arith(line: String) -> bool
 // Check if line is non-trapping arithmetic (excludes div/mod which trap on zero)
 // Used by IfElseToSelect to ensure select operands cannot cause UB
 fn cf_is_non_trapping_arith(line: String) -> bool
-  post it or not it
+  post it == (line.contains(" = + ") or line.contains(" = - ") or line.contains(" = * "))
 = let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { false } else {
         let rest = line.slice(eq_pos + 3, line.len());
@@ -11267,7 +11267,7 @@ fn cf_compute(op: String, a: i64, b: i64) -> i64
 
 // Check if line is comparison: %dest = OP %a, %b where OP is ==,!=,<,>,<=,>=
 fn cf_is_cmp(line: String) -> bool
-  post it or not it
+  post it == (line.contains(" = == ") or line.contains(" = != ") or line.contains(" = <= ") or line.contains(" = >= ") or line.contains(" = < ") or line.contains(" = > "))
 = let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { false } else {
         let rest = line.slice(eq_pos + 3, line.len());
@@ -11303,7 +11303,7 @@ fn cf_eval_cmp(op: String, a: i64, b: i64) -> i64
 
 // Check if line is shift: %dest = << %a, %b or >> %a, %b or >>> %a, %b
 fn cf_is_shift(line: String) -> bool
-  post it or not it
+  post it == (line.contains(" = << ") or line.contains(" = >>> ") or line.contains(" = >> "))
 = let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { false } else {
         let rest = line.slice(eq_pos + 3, line.len());
@@ -11334,7 +11334,7 @@ fn cf_pow2(n: i64) -> i64
 
 // Check if line is bitwise: %dest = band/bor/bxor %a, %b
 fn cf_is_bitwise(line: String) -> bool
-  post it or not it
+  post it == (line.contains(" = band ") or line.contains(" = bor ") or line.contains(" = bxor "))
 = let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { false } else {
         let rest = line.slice(eq_pos + 3, line.len());
@@ -11362,14 +11362,14 @@ fn cf_eval_bitwise(op: String, a: i64, b: i64) -> i64
 // Check if line is unary neg: %dest = neg %src
 // Must use first ` = ` to avoid matching inside string content.
 fn cf_is_neg(line: String) -> bool
-  post it or not it
+  post it == (line.contains(" = neg %"))
 = let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { false } else {
         starts_with(line.slice(eq_pos + 3, line.len()), "neg %", 0)
     };
 // Check if line is unary not: %dest = not %src
 fn cf_is_not(line: String) -> bool
-  post it or not it
+  post it == (line.contains(" = not %"))
 = let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { false } else {
         starts_with(line.slice(eq_pos + 3, line.len()), "not %", 0)
@@ -11613,7 +11613,7 @@ fn cf_update_table(line: String, table: String) -> String
 // Process one function's MIR lines for constant folding
 // Branch simplification: detect "branch %cond, then, else" with known cond
 fn cf_is_branch(line: String) -> bool
-  post it or not it
+  post it == (line.contains("branch "))
 = let s = low_skip_ws(line, 0);
     find_pattern_at(line, "branch ", s) == s;
 
@@ -11702,7 +11702,7 @@ fn cf_folded_phi(line: String, table: String) -> String
 
 // Check if line is a select instruction
 fn cf_is_select(line: String) -> bool
-  post it or not it
+  post it == (line.contains(" = select "))
 = let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { false }
     else { starts_with(line.slice(eq_pos + 3, line.len()), "select ", 0) };
@@ -11817,7 +11817,7 @@ fn optimize_const_folding(mir: String) -> String
 
 // Check if line has side effects (calls, stores — must keep even if result unused)
 fn dce_has_side_effects(line: String) -> bool
-  post it or not it
+  post it == (line.contains("call ") or line.contains("store ") or line.contains("store_ptr "))
 = find_pattern_at(line, "call ", 0) >= 0 or
     find_pattern_at(line, "store ", 0) >= 0 or
     find_pattern_at(line, "store_ptr ", 0) >= 0;
@@ -11940,7 +11940,7 @@ fn ube_label_name(line: String) -> String
 
 // Check if a label is an entry-like label (always reachable)
 fn ube_is_entry(label: String) -> bool
-  post it or not it
+  post it == (label == "entry" or label.starts_with("i32_entry"))
 = label == "entry" or starts_with(label, "i32_entry", 0);
 
 // Extract goto target from "  goto label"
@@ -11990,7 +11990,7 @@ fn ube_has_target_at(targets: String, label: String, pos: i64) -> bool
 
 // Check if a MIR line is a phi node: %dest = phi [...]
 fn ube_is_phi(line: String) -> bool
-  post it or not it
+  post it == (line.contains(" = phi "))
 = let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { false } else {
         starts_with(line.slice(eq_pos + 3, line.len()), "phi ", 0)
@@ -12206,7 +12206,7 @@ fn pfcse_build_pure_set(mir: String, pos: i64, acc: String) -> String
 
 // Check if function name is in the pure set
 fn pfcse_is_pure(pure_set: String, name: String) -> bool
-  post it or not it
+  post it == (pure_set != "" and name != "" and pure_set.contains(name + ";"))
 = if pure_set == "" or name == "" { false }
     else { find_pattern_at(pure_set, name + ";", 0) >= 0 };
 
@@ -12485,7 +12485,7 @@ fn mlcse_is_safe_call(fn_name: String, pure_set: String, safe_set: String) -> bo
 // Check if a function call is a memory-reading call that can be CSE'd.
 // These read from mutable memory but don't write — cacheable with invalidation on stores.
 fn mlcse_is_read_call(fn_name: String) -> bool
-  post it or not it
+  post it == (fn_name == "vec_get" or fn_name == "load_i64" or fn_name == "load_f64" or fn_name == "load_u8" or fn_name == "load_i32")
 = fn_name == "vec_get" or fn_name == "load_i64" or fn_name == "load_f64" or
     fn_name == "load_u8" or fn_name == "load_i32";
 
@@ -13368,7 +13368,7 @@ fn licm_is_invariant(vname: String, inv_map: String) -> String
 
 // Check if a function is pure (safe to hoist out of loop)
 fn licm_is_pure_fn(fn_name: String) -> bool
-  post it or not it
+  post it == (fn_name == "@bmb_string_len" or fn_name == "@bmb_array_len" or fn_name == "@bmb_string_char_at" or fn_name == "@bmb_string_eq" or fn_name == "@bmb_string_is_empty")
 = fn_name == "@bmb_string_len" or fn_name == "@bmb_array_len" or
     fn_name == "@bmb_string_char_at" or fn_name == "@bmb_string_eq" or
     fn_name == "@bmb_string_is_empty";
@@ -14431,7 +14431,7 @@ fn optimize_if_select(mir: String) -> String
 
 // Check if a label is referenced as a phi predecessor anywhere in the function
 fn gcs_label_in_phi(fn_mir: String, label: String) -> bool
-  post it or not it
+  post it == (fn_mir.contains(", " + label + "]"))
 = let pattern = ", " + label + "]";
     find_pattern_at(fn_mir, pattern, 0) >= 0;
 
@@ -14618,7 +14618,7 @@ fn pht_is_phi_fwd(fn_mir: String, pos: i64, pipe: i64) -> String
 
 // Check if a variable name has an alloca in the function MIR
 fn pht_has_alloca(fn_mir: String, name: String) -> bool
-  post it or not it
+  post it == (fn_mir.contains("alloca " + name))
 = let pattern = "alloca " + name;
     find_pattern_at(fn_mir, pattern, 0) >= 0;
 
@@ -15649,7 +15649,7 @@ fn gen_program_acc_sb_structs_reuse(mir: String, pos: i64, strings: String, stri
 
 // v0.93.4: Check if MIR contains a self-call (direct recursion)
 fn mir_has_self_call(mir: String, fn_name: String) -> bool
-  post it or not it
+  post it == (mir.contains("call @" + fn_name + "("))
 = let pattern = "call @" + fn_name + "(";
     find_pattern_noa(mir, pattern, 0) >= 0;
 
@@ -15916,7 +15916,7 @@ fn init_fn_ptr_returns_at(reg: String, pos: i64, ptr_sb: i64) -> i64
     };
 
 fn is_struct_ptr_type(t: String) -> bool
-  post it or not it
+  post it == (t.starts_with("*"))
 = t.len() >= 2 and t.byte_at(0) == 42;
 
 fn extract_struct_name_from_ptr_type(t: String) -> String
@@ -16880,7 +16880,7 @@ fn push_string_marker(str_sb: i64, varname: String) -> i64
     sb_push(str_sb, ",");
 
 fn is_string_var_sb(varname: String, str_sb: i64) -> bool
-  post it or not it
+  post it == (bmb_sb_contains(str_sb, "S:" + varname) > 0)
 = let marker = "S:" + varname;
     bmb_sb_contains(str_sb, marker) > 0;
 
@@ -16891,12 +16891,12 @@ fn push_double_marker(str_sb: i64, varname: String) -> i64
     sb_push(str_sb, ",");
 
 fn is_double_var_sb(varname: String, str_sb: i64) -> bool
-  post it or not it
+  post it == (bmb_sb_contains(str_sb, "D:" + varname) > 0)
 = let marker = "D:" + varname;
     bmb_sb_contains(str_sb, marker) > 0;
 
 fn is_f64_ptr_sb(varname: String, str_sb: i64) -> bool
-  post it or not it
+  post it == (bmb_sb_contains(str_sb, "F:" + varname) > 0)
 = let marker = "F:" + varname;
     bmb_sb_contains(str_sb, marker) > 0;
 
@@ -16908,19 +16908,19 @@ fn push_f64_ptr_marker(str_sb: i64, varname: String) -> i64
 
 // v0.95: Check if variable is an i64 function parameter (for indirect call detection)
 fn is_i64_param_sb(varname: String, str_sb: i64) -> bool
-  post it or not it
+  post it == (bmb_sb_contains(str_sb, "P:" + varname) > 0)
 = let marker = "P:" + varname;
     bmb_sb_contains(str_sb, marker) > 0;
 
 // Cycle 2934: Check if variable is a HOF (fn(T)->R) parameter
 fn is_hof_param_sb(varname: String, str_sb: i64) -> bool
-  post it or not it
+  post it == (bmb_sb_contains(str_sb, "H:" + varname) > 0)
 = let marker = "H:" + varname;
     bmb_sb_contains(str_sb, marker) > 0;
 
 // v0.95: Check if variable is marked as i32 in SB
 fn is_i32_var_sb(varname: String, str_sb: i64) -> bool
-  post it or not it
+  post it == (bmb_sb_contains(str_sb, "W:" + varname) > 0)
 = let marker = "W:" + varname;
     bmb_sb_contains(str_sb, marker) > 0;
 
@@ -16932,7 +16932,7 @@ fn push_i32_marker(str_sb: i64, varname: String) -> i64
     sb_push(str_sb, ",");
 
 fn is_str_ptr_sb(varname: String, str_sb: i64) -> bool
-  post it or not it
+  post it == (bmb_sb_contains(str_sb, "R:" + varname) > 0)
 = let marker = "R:" + varname;
     bmb_sb_contains(str_sb, marker) > 0;
 
@@ -18274,7 +18274,7 @@ fn str_to_int_acc(s: String, pos: i64, acc: i64) -> i64
 // state: vec of 4 elements [has_lo, lo, has_hi, hi_inclusive]
 // Handles compound "and" by recursing into both branches
 fn update_range_from_ast(ast: String, state: i64) -> i64
-  post it == it
+  post it == 0
 = let nt = get_node_type(ast);
     if nt == "binop" {
         let op = get_child(ast, 0);
@@ -18448,7 +18448,7 @@ fn annotate_return_ranges(module_ir: String, post_map: String) -> String
 // Check if a trimmed IR line is a @bmb_string_concat call (not concat3/5/7)
 // Pattern: "%dest = call ptr @bmb_string_concat(ptr arg1, ptr arg2)"
 fn sco_is_concat(line: String) -> bool
-  post it or not it
+  post it == (line.contains("@bmb_string_concat("))
 = let p = find_substr_pos(line, "@bmb_string_concat(", 0);
     p >= 0;
 
@@ -18909,7 +18909,7 @@ fn compile_program(source: String, safe: i64) -> String
 
 // Compile single function source to LLVM IR
 fn is_compile_error(result: String) -> bool
-  post it or not it
+  post it == (result.starts_with("ERR:"))
 = result.len() >= 4 and result.slice(0, 4) == "ERR:";
 
 fn err_no_file(input: String) -> i64
@@ -21690,27 +21690,27 @@ fn fmt_is_blank(line: String) -> bool
 
 // Check if line starts with "fn " (top-level function declaration)
 fn fmt_is_fn_decl(line: String) -> bool
-  post it or not it
+  post it == (line.starts_with("fn "))
 = line.len() >= 3 and line.byte_at(0) == 102 and line.byte_at(1) == 110 and line.byte_at(2) == 32;
 
 // Check if line starts with "struct " (top-level struct declaration)
 fn fmt_is_struct(line: String) -> bool
-  post it or not it
+  post it == (line.starts_with("struct "))
 = line.len() >= 7 and line.slice(0, 7) == "struct ";
 
 // Check if line starts with "enum " (top-level enum declaration)
 fn fmt_is_enum(line: String) -> bool
-  post it or not it
+  post it == (line.starts_with("enum "))
 = line.len() >= 5 and line.slice(0, 5) == "enum ";
 
 // Check if line starts with "@" (annotation)
 fn fmt_is_annotation(line: String) -> bool
-  post it or not it
+  post it == (line.starts_with("@"))
 = line.len() > 0 and line.byte_at(0) == 64;
 
 // Check if line starts with "//" (comment)
 fn fmt_is_comment(line: String) -> bool
-  post it or not it
+  post it == (line.starts_with("//"))
 = line.len() >= 2 and line.byte_at(0) == 47 and line.byte_at(1) == 47;
 
 // Check if a line is a top-level declaration (unindented fn/struct/enum/annotation/comment)
@@ -21773,14 +21773,14 @@ fn fmt_ends_semi(line: String) -> bool
 
 // Check if line is a contract (pre/post) - only valid between fn sig and body
 fn fmt_is_contract(content: String) -> bool
-  post it or not it
+  post it == (content.starts_with("pre ") or content.starts_with("post "))
 = if content.len() >= 4 and content.slice(0, 4) == "pre " { true }
     else if content.len() >= 5 and content.slice(0, 5) == "post " { true }
     else { false };
 
 // Check if line starts with '=' (body start after contracts)
 fn fmt_starts_eq(content: String) -> bool
-  post it or not it
+  post it == (content.starts_with("="))
 = content.len() > 0 and content.byte_at(0) == 61;
 
 // State encoding: 0 = normal, 1 = in_body, 2 = in_signature (between fn and =)
@@ -22688,7 +22688,7 @@ fn derive_output_name(input: String) -> String
 
 // Bootstrap version - extended CLI
 fn main() -> i64
-  post it == it
+  post it >= 0
 = let _arena = arena_mode(1);
     let argc = arg_count();
     if argc < 2 {
