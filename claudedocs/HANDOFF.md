@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-25 (Cycles 3111-3112)
 
-> **HEAD**: TBD (commit pending)
+> **HEAD**: `ed0f6133`
 > **이번 세션 작업**: Cycles 3111-3112 (Track B String/bool/i64 배치 완결)
 > **3-Stage Fixed Point**: ✅ `1dd7157776ec2e55ee502eb839816c54` (Cycle 3112)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
