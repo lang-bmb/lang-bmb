@@ -49,16 +49,22 @@
 
 ## 다음 세션 시작점
 
-### HUMAN 결정 필요
+### M8 경로 확정 (2026-05-25 HUMAN 결정)
 
-**M8 공식 계획 확정** — 3가지 방향:
+**M8-C Phase 1 선행 → M8-A 진행**
 
-| 옵션 | 내용 | 우선순위 |
-|------|------|----------|
-| **M8-A** | Track B 심화 — trivial 계약을 semantic 계약으로 교체 (`post it or not it` → 구체적 post) | P2 |
-| **M8-B** | Native Complete — 미포팅 빌트인 완전화 + 새 언어 기능 | P2 |
-| **M8-C** | Language Gaps — BMB 언어 갭 추가 해소 | P2 |
-| **M8-D** | Z3 trivial 계약 인식 — `post it == it` 류를 "trivially verified"로 처리 | P3 |
+```
+M8-C Phase 1  →  M8-A
+it 타입 고정       semantic 계약 교체
+(Rust 최소 패치)   (AI 파이프라인)
+```
+
+**즉시 착수 명령**:
+```bash
+# post 절 it 타입 바인딩 위치 파악
+grep -n "Expr::It\|ExprKind::It" bmb/src/types/infer.rs | head -20
+grep -n "post\|Post\|contract" bmb/src/types/infer.rs | head -20
+```
 
 ### 기술 상태 스냅샷
 
