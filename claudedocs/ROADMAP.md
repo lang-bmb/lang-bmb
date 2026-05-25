@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-25 (**M7 ✅ FULLY COMPLETE + M7-4 AI 파이프라인 완성** — Cycles 3094-3102: `bmb verify --list-uncontracted` + `suggest_contracts` MCP tool + `list-uncontracted.bmb` 자동화 + Track B 125개 계약 추가(1467→1342). M7 전체(M7-1~4) COMPLETE. HEAD 갱신 예정.)
+> 최종 업데이트: 2026-05-25 (**M7 ✅ FULLY COMPLETE + M7-4 AI 파이프라인 완성** — Cycles 3094-3102: `bmb verify --list-uncontracted` + `suggest_contracts` MCP tool + `list-uncontracted.bmb` 자동화 + Track B 125개 계약 추가(1467→1342). M7 전체(M7-1~4) COMPLETE. HEAD `c9ef6fcc`.)
 > 이전 갱신: 2026-05-25 (**M7-3 ✅ COMPLETE + Track B 대폭 확대** — Cycles 3084-3093: forall/exists E2E 버그 2종 수정 + Track B 계약 20종+(digit_char/starts_with/has_pattern/next_token_raw/escape_parens_sb 등 파서·토크나이저 전반) + 골든 테스트 4개 신규(test_forall_basic/quantifier_contracts/quantifier_meaningful/range_contracts) + is_even 비자명 divisibility + M7-4 사양 정의. 1513/1513 ✅. HEAD `79c3825d`.)
 > 이전 갱신: 2026-05-25 (**M7 ✅ COMPLETE + post it.method() end-to-end 완결** — Cycles 3080-3083: String SMT 3종(contains/starts_with/ends_with) + Expr::It 수신자 + verify_post `__it__` 선언 + P0 타입 체커 수정(Expr::It→current_ret_ty). 6278 tests ✅. Fixed Point `ea550bf3`. HEAD `36c211ff`.)
 > 이전 갱신: 2026-05-23 (**M7 Contract Pipeline 결정** — "BMB가 BMB를 증명한다". M7-1~4 정의. § M7 섹션 추가. Cycles 3070-3073: str_sb 추적 완전화 + method_to_runtime_fn allowlist. Fixed Point `745082F5` ✅.)
