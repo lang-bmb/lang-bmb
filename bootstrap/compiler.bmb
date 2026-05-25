@@ -96,6 +96,7 @@ fn find_line_end(src: String, pos: i64) -> i64
 
 fn make_error_at(msg: String, src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 4
 = let line = count_line_at(src, pos, 0, 1);
     let ls = find_line_start(src, pos);
     let le = find_line_end(src, pos);
@@ -207,6 +208,7 @@ fn include_resolve(rel_path: String, src_dir: String) -> String
 // Returns 0 (side-effects via sb).
 fn include_expand_sb(src: String, src_dir: String, pos: i64, depth: i64, sb: i64) -> i64
   pre pos >= 0
+  post it == 0
 = if pos >= src.len() { 0 }
     else {
         let le = find_line_end(src, pos);
@@ -601,6 +603,7 @@ fn TK_EOF() -> i64
 // v0.96: Token kind to human-readable name for error messages
 fn tok_kind_name(kind: i64) -> String
   pre kind >= 0
+  post it.len() >= 1
 = if kind == TK_IDENT() { "identifier" }
     else if kind == TK_STRING_LIT() { "string literal" }
     else if kind == TK_FLOAT_LIT() { "float literal" }
@@ -773,6 +776,7 @@ fn scan_ident_end(s: String, pos: i64) -> i64
 // Returns position after closing quote, or s.len() if not found
 fn scan_string_end(s: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= pos
 = if pos >= s.len() { s.len() }
     else if s.byte_at(pos) == 92 and pos + 1 < s.len() { scan_string_end(s, pos + 2) }
     else if s.byte_at(pos) == 34 { pos + 1 }
@@ -782,6 +786,7 @@ fn scan_string_end(s: String, pos: i64) -> i64
 // Handles: 'a', '\n', '\t', '\r', '\\', '\0', '\''
 fn scan_char_end(s: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= pos
 = if pos >= s.len() { s.len() }
     else if s.byte_at(pos) == 92 { pos + 3 }
     else { pos + 2 };
@@ -789,6 +794,7 @@ fn scan_char_end(s: String, pos: i64) -> i64
 // Get the ASCII value of a char literal (pos points to opening quote)
 fn get_char_value(s: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = let p = skip_ws_comments(s, pos);
     let inner = p + 1;
     if inner < s.len() and s.byte_at(inner) == 92 {
@@ -817,6 +823,7 @@ fn tok_end(r: i64) -> i64
 
 fn tok_kind(r: i64) -> i64
   pre r >= 0
+  post it >= 0
 = tok_val(r);
 
 fn make_tok(kind: i64, endpos: i64) -> i64
@@ -947,6 +954,7 @@ fn keyword_len10(word: String, endpos: i64) -> i64
 
 fn next_token_raw(s: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = let p = skip_ws_comments(s, pos);
     if p >= s.len() { make_tok(TK_EOF(), p) } else {
         let c = s.byte_at(p);
@@ -965,7 +973,8 @@ fn next_token_raw(s: String, pos: i64) -> i64
 
 fn get_ident_text(s: String, pos: i64, tok: i64) -> String
     pre pos >= 0
-= 
+    post it.len() >= 1
+=
     let start = tok_end(tok) - (tok_val(tok) / 5000000);
     let p = skip_ws_comments(s, pos);
     let endp = scan_ident_end(s, p + 1);
@@ -1003,6 +1012,7 @@ fn escape_parens_for_ast(s: String) -> String
 
 fn escape_parens_sb(s: String, pos: i64, sb: i64) -> i64
   pre pos >= 0
+  post it == 0
 = if pos >= s.len() { 0 }
     else {
         let c = s.byte_at(pos);
@@ -1031,6 +1041,7 @@ fn unescape_parens_from_ast(s: String) -> String
 
 fn unescape_parens_sb(s: String, pos: i64, sb: i64) -> i64
   pre pos >= 0
+  post it == 0
 = if pos >= s.len() { 0 }
     else if s.byte_at(pos) == 92 and pos + 1 < s.len() {
         let next = s.byte_at(pos + 1);
@@ -1055,6 +1066,7 @@ fn unescape_parens_sb(s: String, pos: i64, sb: i64) -> i64
 
 fn pack_result(pos: i64, ast: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = int_to_string(pos) + ":" + ast;
 
 fn unpack_pos(r: String) -> i64
@@ -1063,6 +1075,7 @@ fn unpack_pos(r: String) -> i64
 
 fn unpack_pos_acc(r: String, pos: i64, acc: i64) -> i64
   pre pos >= 0 and acc >= 0
+  post it >= acc
 = if pos >= r.len() { acc } else {
         let c = r.byte_at(pos);
         if c == 58 { acc } else if is_digit(c) { unpack_pos_acc(r, pos + 1, acc * 10 + (c - 48)) } else { acc }
@@ -1075,6 +1088,7 @@ fn unpack_ast(r: String) -> String
 
 fn find_colon(s: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= pos and it <= s.len()
 = if pos >= s.len() { pos } else if s.byte_at(pos) == 58 { pos } else { find_colon(s, pos + 1) };
 
 // ============================================================================
@@ -1085,10 +1099,12 @@ fn find_colon(s: String, pos: i64) -> i64
 // So integers are < 2000000100 OR >= 2000001000
 fn is_int_literal(kind: i64) -> bool
   pre kind >= 0
+  post it == (kind < 2000000100 or kind >= 2000001000)
 = kind < 2000000000 + 100 or kind >= 2000000000 + 1000;
 
 fn parse_int_lit(src: String, pos: i64, tok: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let p = skip_ws_comments(src, pos);
     let endpos = tok_end(tok);
     let text = src.slice(p, endpos);
@@ -1097,11 +1113,13 @@ fn parse_int_lit(src: String, pos: i64, tok: i64) -> String
 // v0.91: Parse float literal - extract text from source
 fn parse_float_lit(src: String, pos: i64, tok: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let text = get_float_text(src, pos, tok);
     pack_result(tok_end(tok), "(float " + text + ")");
 
 fn parse_bool_lit(tok: i64, kind: i64) -> String
   pre tok >= 0
+  post it.len() >= 2
 = if kind == TK_TRUE() { pack_result(tok_end(tok), "(bool true)") }
     else { pack_result(tok_end(tok), "(bool false)") };
 
@@ -1170,6 +1188,7 @@ fn parse_ident_or_call(src: String, pos: i64, tok: i64) -> String
 // assert(cond) or assert(cond, "msg") → (if (unary not cond) (call <bmb_panic> msg) (unit))
 fn parse_assert_call(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rc = parse_expr(src, pos);
     if is_error(rc) { rc } else {
         let cond_ast = unpack_ast(rc);
@@ -1200,6 +1219,7 @@ fn parse_assert_call(src: String, pos: i64) -> String
 // dbg(expr) → (let <__dbg_N> expr (seq (call <eprintln> (var <__dbg_N>)) (var <__dbg_N>)))
 fn parse_dbg_call(src: String, pos: i64, start_pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let re = parse_expr(src, pos);
     if is_error(re) { re } else {
         let val_ast = unpack_ast(re);
@@ -1215,6 +1235,7 @@ fn parse_dbg_call(src: String, pos: i64, start_pos: i64) -> String
 // dbg_str(expr) → prints string to stderr and returns it
 fn parse_dbg_str_call(src: String, pos: i64, start_pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let re = parse_expr(src, pos);
     if is_error(re) { re } else {
         let val_ast = unpack_ast(re);
@@ -1230,6 +1251,7 @@ fn parse_dbg_str_call(src: String, pos: i64, start_pos: i64) -> String
 // todo() or todo("msg"), unreachable() or unreachable("msg") → (call <bmb_panic> msg)
 fn parse_panic_call(src: String, pos: i64, default_msg: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     if tok_kind(t) == TK_RPAREN() {
         // No argument — use default message
@@ -1248,16 +1270,19 @@ fn parse_panic_call(src: String, pos: i64, default_msg: String) -> String
 // assert_eq(a, b) → compare two values, panic if not equal
 fn parse_assert_eq_call(src: String, pos: i64, start_pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = parse_assert_cmp_call(src, pos, start_pos, "!=", "assertion failed: values not equal");
 
 // assert_ne(a, b) → compare two values, panic if equal
 fn parse_assert_ne_call(src: String, pos: i64, start_pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = parse_assert_cmp_call(src, pos, start_pos, "==", "assertion failed: values unexpectedly equal");
 
 // Shared helper for assert_eq/assert_ne
 fn parse_assert_cmp_call(src: String, pos: i64, start_pos: i64, cmp_op: String, msg: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let ra = parse_expr(src, pos);
     if is_error(ra) { ra } else {
         let a_ast = unpack_ast(ra);
@@ -1284,11 +1309,13 @@ fn parse_assert_cmp_call(src: String, pos: i64, start_pos: i64, cmp_op: String, 
 
 fn parse_unary(src: String, tok: i64, op: String) -> String
   pre tok >= 0
+  post it.len() >= 2
 = let re = parse_atom(src, tok_end(tok));
     pack_result(unpack_pos(re), "(unary " + op + " " + unpack_ast(re) + ")");
 
 fn parse_paren_expr(src: String, tok: i64) -> String
   pre tok >= 0
+  post it.len() >= 2
 = let re = parse_expr(src, tok_end(tok));
     if is_error(re) { re } else {
         let next = next_token_raw(src, unpack_pos(re));
@@ -1301,6 +1328,7 @@ fn parse_paren_expr(src: String, tok: i64) -> String
 
 fn parse_tuple_rest(src: String, pos: i64, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let re = parse_expr(src, pos);
     if is_error(re) { re } else {
         let new_acc = acc + " " + unpack_ast(re);
@@ -1313,6 +1341,7 @@ fn parse_tuple_rest(src: String, pos: i64, acc: String) -> String
 // Get compound operator string from token kind, or "" for plain =
 fn compound_op(kind: i64) -> String
   pre kind >= 0
+  post it.len() <= 2
 = if kind == TK_PLUSEQ() { "+" }
     else if kind == TK_MINUSEQ() { "-" }
     else if kind == TK_STAREQ() { "*" }
@@ -1324,12 +1353,14 @@ fn compound_op(kind: i64) -> String
 
 fn is_assign_op(kind: i64) -> bool
   pre kind >= 0
+  post it == (kind == TK_EQ() or kind == TK_PLUSEQ() or kind == TK_MINUSEQ() or kind == TK_STAREQ() or kind == TK_SLASHEQ() or kind == TK_PERCENTEQ() or kind == TK_SHLEQ() or kind == TK_SHREQ())
 = kind == TK_EQ() or kind == TK_PLUSEQ() or kind == TK_MINUSEQ() or kind == TK_STAREQ() or kind == TK_SLASHEQ() or kind == TK_PERCENTEQ() or kind == TK_SHLEQ() or kind == TK_SHREQ();
 
 // target can be: arr[i] or obj.field or var
 // Supports: =, +=, -=, *=, /=
 fn parse_set_expr(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t1 = next_token_raw(src, pos);
     if tok_kind(t1) != TK_IDENT() { make_error_at("expected identifier after 'set', got " + tok_kind_name(tok_kind(t1)), src, pos) }
     else {
@@ -1347,6 +1378,7 @@ fn parse_set_expr(src: String, pos: i64) -> String
 // set x = val  or  set x += val
 fn parse_set_var(src: String, pos: i64, name: String, op: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rv = parse_expr(src, pos);
     if is_error(rv) { rv }
     else if op == "" {
@@ -1359,6 +1391,7 @@ fn parse_set_var(src: String, pos: i64, name: String, op: String) -> String
 // set arr[i] = val  or  set arr[i] += val
 fn parse_set_index(src: String, pos: i64, target_name: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let ri = parse_expr(src, pos);
     if is_error(ri) { ri } else {
         let t_close = next_token_raw(src, unpack_pos(ri));
@@ -1381,6 +1414,7 @@ fn parse_set_index(src: String, pos: i64, target_name: String) -> String
 // chain 누적: prev_base = "(var <target_name>)" → "(field <prev_base> f1)" → ...
 fn parse_set_field(src: String, pos: i64, target_name: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = parse_set_field_chain(src, pos, "(var <" + target_name + ">)");
 
 // 재귀 helper: 한 번에 한 field 읽고, 다음 토큰에 따라 분기
@@ -1389,6 +1423,7 @@ fn parse_set_field(src: String, pos: i64, target_name: String) -> String
 //   assign op  → set_field terminal
 fn parse_set_field_chain(src: String, pos: i64, prev_base: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t_f = next_token_raw(src, pos);
     if tok_kind(t_f) != TK_IDENT() { make_error_at("expected identifier after '.' in set, got " + tok_kind_name(tok_kind(t_f)), src, pos) }
     else {
@@ -1414,6 +1449,7 @@ fn parse_set_field_chain(src: String, pos: i64, prev_base: String) -> String
 // Desugar to (set_index (field <prev_base> field_name) idx val)
 fn parse_set_field_chain_index(src: String, pos: i64, prev_base: String, field_name: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let ri = parse_expr(src, pos);
     if is_error(ri) { ri } else {
         let t_close = next_token_raw(src, unpack_pos(ri));
@@ -1436,6 +1472,7 @@ fn parse_set_field_chain_index(src: String, pos: i64, prev_base: String, field_n
 // Where stmt is: let name = expr; or { lhs = rhs }; or expr;
 fn parse_block_expr(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let tok = next_token_raw(src, pos);
     if tok_kind(tok) == TK_RBRACE() {
         // Empty block: { } -> unit
@@ -1456,6 +1493,7 @@ fn parse_block_expr(src: String, pos: i64) -> String
 // Parse block statements: let binding or assignment or expression
 fn parse_block_stmts(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
     if kind == TK_RBRACE() {
@@ -1483,6 +1521,7 @@ fn parse_block_stmts(src: String, pos: i64) -> String
 // v0.91: Support type annotations: let name: type = val; rest
 fn parse_block_let(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t1 = next_token_raw(src, pos);
     if tok_kind(t1) == TK_MUT() {
         // v0.91: let mut name ...
@@ -1504,6 +1543,7 @@ fn parse_block_let(src: String, pos: i64) -> String
 // v0.91: let mut name ...
 fn parse_block_let_mut(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t1 = next_token_raw(src, pos);
     if tok_kind(t1) == TK_IDENT() {
         let name = get_ident_text(src, pos, t1);
@@ -1518,6 +1558,7 @@ fn parse_block_let_mut(src: String, pos: i64) -> String
 // v0.91: Skip type tokens until '=' in block let binding
 fn parse_block_let_skip_type(src: String, pos: i64, name: String, is_mut: bool) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     let k = tok_kind(t);
     if k == TK_EQ() {
@@ -1535,12 +1576,14 @@ fn parse_block_let_skip_type(src: String, pos: i64, name: String, is_mut: bool) 
 
 fn parse_block_let_skip_tuple_type(src: String, pos: i64, name: String, is_mut: bool) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     if tok_kind(t) == TK_RPAREN() { parse_block_let_skip_type(src, tok_end(t), name, is_mut) }
     else { parse_block_let_skip_tuple_type(src, tok_end(t), name, is_mut) };
 
 fn parse_block_let_skip_array_type(src: String, pos: i64, name: String, is_mut: bool) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     let k = tok_kind(t);
     if k == TK_RBRACKET() {
