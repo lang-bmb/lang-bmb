@@ -2383,16 +2383,19 @@ fn parse_let_expr(src: String, pos: i64, start_pos: i64) -> String
 
 fn parse_let_name(src: String, pos: i64, t1: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let name = get_ident_text(src, pos, t1);
     parse_let_after_name(src, tok_end(t1), name, false);
 
 fn parse_let_name_mut(src: String, pos: i64, t2: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let name = get_ident_text(src, pos, t2);
     parse_let_after_name(src, tok_end(t2), name, true);
 
 fn parse_let_after_name(src: String, pos: i64, name: String, is_mut: bool) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t2 = next_token_raw(src, pos);
     let k2 = tok_kind(t2);
     if k2 == TK_EQ() {
@@ -2405,6 +2408,7 @@ fn parse_let_after_name(src: String, pos: i64, name: String, is_mut: bool) -> St
 
 fn parse_let_skip_type(src: String, pos: i64, name: String, is_mut: bool) -> String
   pre pos >= 0
+  post it.len() >= 2
 = // Skip type token(s) until we find '='
     let t = next_token_raw(src, pos);
     let k = tok_kind(t);
@@ -2478,10 +2482,12 @@ fn make_let_mut_ast(pos: i64, name: String, val_ast: String, body_ast: String) -
 
 fn parse_let_tuple_pattern(src: String, pos: i64, start_pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = parse_tuple_names_acc(src, pos, start_pos, "", 0);
 
 fn parse_tuple_names_acc(src: String, pos: i64, start_pos: i64, names_acc: String, count: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     let k = tok_kind(t);
     if k == TK_IDENT() {
@@ -2496,6 +2502,7 @@ fn parse_tuple_names_acc(src: String, pos: i64, start_pos: i64, names_acc: Strin
 
 fn parse_tuple_names_sep(src: String, pos: i64, start_pos: i64, names_acc: String, count: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     let k = tok_kind(t);
     if k == TK_COMMA() {
@@ -2508,6 +2515,7 @@ fn parse_tuple_names_sep(src: String, pos: i64, start_pos: i64, names_acc: Strin
 
 fn parse_let_tuple_eq(src: String, pos: i64, start_pos: i64, names: String, count: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     if tok_kind(t) != TK_EQ() {
         make_error_at("expected '=' after tuple pattern, got " + tok_kind_name(tok_kind(t)), src, pos)
@@ -2574,6 +2582,7 @@ fn parse_while_body(src: String, pos: i64, cond_ast: String) -> String
 // v0.91: While body uses parse_block_stmts for let/assign/expr support
 fn parse_while_body_inner(src: String, pos: i64, cond_ast: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rb = parse_block_stmts(src, pos);
     if is_error(rb) { rb }
     else { parse_while_finish(src, unpack_pos(rb), cond_ast, unpack_ast(rb)) };
@@ -2656,6 +2665,7 @@ fn parse_for_range(src: String, pos: i64, varname: String) -> String
 // uid parameter ensures unique internal variable names for nested for-in loops
 fn parse_for_in_body(src: String, pos: i64, varname: String, arr_ast: String, uid: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rb = parse_block_stmts(src, pos);
     if is_error(rb) { rb }
     else {
@@ -2699,6 +2709,7 @@ fn parse_for_end(src: String, pos: i64, varname: String, start_ast: String) -> S
 
 fn parse_for_body(src: String, pos: i64, varname: String, start_ast: String, end_ast: String, step_ast: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rb = parse_block_stmts(src, pos);
     if is_error(rb) { rb }
     else {
@@ -2734,6 +2745,7 @@ fn parse_for_end_inclusive(src: String, pos: i64, varname: String, start_ast: St
 
 fn parse_for_body_inclusive(src: String, pos: i64, varname: String, start_ast: String, end_ast: String, step_ast: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rb = parse_block_stmts(src, pos);
     if is_error(rb) { rb }
     else {
@@ -2765,6 +2777,7 @@ fn parse_match_open(src: String, pos: i64, scrutinee: String) -> String
 
 fn parse_match_arms(src: String, pos: i64, scrutinee: String, prefix: String, suffix: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     let kind = tok_kind(t);
     if kind == TK_RBRACE() {
@@ -2952,6 +2965,7 @@ fn build_payload_lets_from_pat(pat_expr: String, pos: i64, field_idx: i64, body:
 
 fn parse_match_arm_body(src: String, pos: i64, scrutinee: String, pat_expr: String, prefix: String, suffix: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rb = parse_expr(src, pos);
     if is_error(rb) { rb }
     else {
