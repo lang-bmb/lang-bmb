@@ -3126,6 +3126,7 @@ fn parse_match_guard_body(src: String, pos: i64, scrutinee: String, name: String
 
 fn parse_match_var_bind_body(src: String, pos: i64, scrutinee: String, name: String, prefix: String, suffix: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rb = parse_expr(src, pos);
     if is_error(rb) { rb }
     else {
@@ -3559,6 +3560,7 @@ fn skip_extern_fn(src: String, pos: i64) -> i64
 // Transforms to (fn-const <NAME> () BODY)
 fn parse_const_decl(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let name_tok = next_token_raw(src, pos);
     if tok_kind(name_tok) != TK_IDENT() { make_error_at("expected name after 'const', got " + tok_kind_name(tok_kind(name_tok)), src, pos) }
     else {
@@ -3914,6 +3916,7 @@ fn resolve_enum_variants_in_ast(ast: String, enum_reg: String) -> String
 
 fn resolve_ev_sb(ast: String, pos: i64, enum_reg: String, sb: i64) -> i64
   pre pos >= 0
+  post it == 0
 = if pos >= ast.len() { 0 }
     else {
         let ctx_marker = "(binop == (var <__match>) (enum_variant ";
@@ -3939,6 +3942,7 @@ fn resolve_ev_sb(ast: String, pos: i64, enum_reg: String, sb: i64) -> i64
 
 fn resolve_ev_one(ast: String, pos: i64, enum_reg: String, sb: i64) -> i64
   pre pos >= 0
+  post it == 0
 = // pos points to: <Name> <Variant>)
     let name_start = pos + 1;
     let name_end = find_char_pos(ast, 62, name_start);
@@ -3960,6 +3964,7 @@ fn resolve_ev_one(ast: String, pos: i64, enum_reg: String, sb: i64) -> i64
 
 fn resolve_ev_match_ctx(ast: String, pos: i64, enum_reg: String, sb: i64) -> i64
   pre pos >= 0
+  post it == 0
 = // pos points to: <Name> <Variant>)) — close the enum_variant AND the binop
     let name_start = pos + 1;
     let name_end = find_char_pos(ast, 62, name_start);
@@ -3987,6 +3992,7 @@ fn resolve_tag_checks(ast: String, enum_reg: String) -> String
 
 fn resolve_tag_checks_sb(ast: String, pos: i64, enum_reg: String, sb: i64) -> i64
   pre pos >= 0
+  post it == 0
 = if pos >= ast.len() { 0 }
     else {
         let marker = "(enum_tag_check <";
@@ -4021,6 +4027,7 @@ fn resolve_payload_calls_in_ast(ast: String, enum_reg: String) -> String
 
 fn resolve_payload_calls_sb(ast: String, pos: i64, enum_reg: String, sb: i64) -> i64
   pre pos >= 0
+  post it == 0
 = if pos >= ast.len() { 0 }
     else {
         let marker = "(call <";
@@ -4067,24 +4074,29 @@ fn parse_source(src: String) -> String
 
 fn low_is_whitespace(c: i64) -> bool
   pre c >= 0
+  post it == (c == 32 or c == 9 or c == 10 or c == 13)
 = c == 32 or c == 9 or c == 10 or c == 13;
 
 fn low_skip_ws(s: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= pos
 = if pos >= s.len() { pos } else if low_is_whitespace(s.byte_at(pos)) { low_skip_ws(s, pos + 1) } else { pos };
 
 fn low_is_ident_char(c: i64) -> bool
   pre c >= 0
+  post it == ((c >= 65 and c <= 90) or (c >= 97 and c <= 122) or (c >= 48 and c <= 57) or c == 95 or c == 45)
 = (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or
     (c >= 48 and c <= 57) or c == 95 or c == 45;
 
 fn low_is_op_char(c: i64) -> bool
   pre c >= 0
+  post it == (c == 43 or c == 45 or c == 42 or c == 47 or c == 37 or c == 60 or c == 62 or c == 61 or c == 33 or c == 124)
 = c == 43 or c == 45 or c == 42 or c == 47 or c == 37 or
     c == 60 or c == 62 or c == 61 or c == 33 or c == 124;
 
 fn low_find_ident_end(s: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= pos
 = if pos >= s.len() { pos } else if low_is_ident_char(s.byte_at(pos)) { low_find_ident_end(s, pos + 1) } else { pos };
 
 fn low_find_op_end(s: String, pos: i64) -> i64
@@ -4094,6 +4106,7 @@ fn low_find_op_end(s: String, pos: i64) -> i64
 
 fn low_starts_with_at(s: String, pos: i64, prefix: String) -> bool
   pre pos >= 0
+  post it == (pos + prefix.len() <= s.len() and match_bytes(s, prefix, pos, 0))
 = if pos + prefix.len() > s.len() { false } else { match_bytes(s, prefix, pos, 0) };
 
 fn low_find_close_paren(s: String, pos: i64, depth: i64) -> i64
@@ -4258,7 +4271,8 @@ fn extract_int_value(ast: String) -> i64
     parse_int_from(content, num_start, 0);
 
 fn parse_hex_from(s: String, pos: i64, acc: i64) -> i64
-  pre pos >= 0
+  pre pos >= 0 and acc >= 0
+  post it >= 0
 = if pos >= s.len() { acc } else {
         let c = s.byte_at(pos);
         if is_hex_digit(c) { parse_hex_from(s, pos + 1, acc * 16 + hex_digit_val(c)) }
@@ -4267,7 +4281,8 @@ fn parse_hex_from(s: String, pos: i64, acc: i64) -> i64
     };
 
 fn parse_bin_from(s: String, pos: i64, acc: i64) -> i64
-  pre pos >= 0
+  pre pos >= 0 and acc >= 0
+  post it >= 0
 = if pos >= s.len() { acc } else {
         let c = s.byte_at(pos);
         if c == 48 or c == 49 { parse_bin_from(s, pos + 1, acc * 2 + (c - 48)) }
