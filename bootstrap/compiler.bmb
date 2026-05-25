@@ -2854,6 +2854,7 @@ fn parse_match_arms(src: String, pos: i64, scrutinee: String, prefix: String, su
 
 fn parse_match_arm_arrow(src: String, pos: i64, scrutinee: String, pat_expr: String, prefix: String, suffix: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     if tok_kind(t) == TK_PIPE() {
         parse_match_or_pattern(src, tok_end(t), scrutinee, pat_expr, prefix, suffix)
@@ -2867,6 +2868,7 @@ fn parse_match_arm_arrow(src: String, pos: i64, scrutinee: String, pat_expr: Str
 // Range pattern: lo..=hi => body — generates (binop and (>= __match lo) (<= __match hi))
 fn parse_match_range_pattern(src: String, pos: i64, scrutinee: String, lo_expr: String, prefix: String, suffix: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let hi_result = parse_match_single_pattern(src, pos);
     if is_error(hi_result) { hi_result }
     else {
@@ -2880,6 +2882,7 @@ fn parse_match_range_pattern(src: String, pos: i64, scrutinee: String, lo_expr: 
 
 fn parse_match_range_body(src: String, pos: i64, scrutinee: String, cond: String, prefix: String, suffix: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rb = parse_expr(src, pos);
     if is_error(rb) { rb }
     else {
@@ -2892,6 +2895,7 @@ fn parse_match_range_body(src: String, pos: i64, scrutinee: String, cond: String
 // OR pattern: `1 | 2 | 3 => body` collects alternatives and generates compound condition
 fn parse_match_or_pattern(src: String, pos: i64, scrutinee: String, first_pat: String, prefix: String, suffix: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let next_pat = parse_match_single_pattern(src, pos);
     if is_error(next_pat) { next_pat }
     else {
@@ -2902,6 +2906,7 @@ fn parse_match_or_pattern(src: String, pos: i64, scrutinee: String, first_pat: S
 
 fn parse_match_or_continue(src: String, pos: i64, scrutinee: String, cond_so_far: String, prefix: String, suffix: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     if tok_kind(t) == TK_PIPE() {
         let next_pat = parse_match_single_pattern(src, tok_end(t));
@@ -2917,6 +2922,7 @@ fn parse_match_or_continue(src: String, pos: i64, scrutinee: String, cond_so_far
 
 fn parse_match_or_body(src: String, pos: i64, scrutinee: String, cond: String, prefix: String, suffix: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rb = parse_expr(src, pos);
     if is_error(rb) { rb }
     else {
@@ -2929,6 +2935,7 @@ fn parse_match_or_body(src: String, pos: i64, scrutinee: String, cond: String, p
 // Parse a single pattern value (int, string, bool, enum variant) and return as pack_result
 fn parse_match_single_pattern(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     let kind = tok_kind(t);
     if is_int_literal(kind) {
@@ -3010,6 +3017,7 @@ fn parse_match_arm_body(src: String, pos: i64, scrutinee: String, pat_expr: Stri
 
 fn parse_match_arm_sep(src: String, pos: i64, scrutinee: String, prefix: String, suffix: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     let kind = tok_kind(t);
     if kind == TK_COMMA() {
@@ -3025,6 +3033,7 @@ fn parse_match_arm_sep(src: String, pos: i64, scrutinee: String, prefix: String,
 // Parse comma-separated bind name list inside payload pattern: (a, b, c) → returns " <a> <b> <c>" + pos after ')'
 fn parse_payload_bind_list(src: String, pos: i64, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
     if kind == TK_RPAREN() {
@@ -3042,12 +3051,14 @@ fn parse_payload_bind_list(src: String, pos: i64, acc: String) -> String
 
 fn parse_match_wildcard(src: String, pos: i64, scrutinee: String, prefix: String, suffix: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     if tok_kind(t) != TK_FAT_ARROW() { make_error_at("expected '=>' after '_', got " + tok_kind_name(tok_kind(t)), src, pos) }
     else { parse_match_wildcard_body(src, tok_end(t), scrutinee, prefix, suffix) };
 
 fn parse_match_wildcard_body(src: String, pos: i64, scrutinee: String, prefix: String, suffix: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rb = parse_expr(src, pos);
     if is_error(rb) { rb }
     else {
@@ -3059,6 +3070,7 @@ fn parse_match_wildcard_body(src: String, pos: i64, scrutinee: String, prefix: S
 
 fn parse_match_wildcard_end(src: String, pos: i64, result: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     let kind = tok_kind(t);
     if kind == TK_COMMA() {
@@ -3074,6 +3086,7 @@ fn parse_match_wildcard_end(src: String, pos: i64, result: String) -> String
 // Variable binding pattern: `n => body_using_n` binds n to the match scrutinee
 fn parse_match_var_bind(src: String, pos: i64, scrutinee: String, name: String, prefix: String, suffix: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     if tok_kind(t) == TK_IF() {
         // Guard clause: x if cond => body
@@ -3086,6 +3099,7 @@ fn parse_match_var_bind(src: String, pos: i64, scrutinee: String, name: String, 
 // Desugars to: (let <__match> scrutinee (let <x> (var <__match>) (if GUARD body SUFFIX)))
 fn parse_match_guard(src: String, pos: i64, scrutinee: String, name: String, prefix: String, suffix: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let cond_result = parse_expr(src, pos);
     if is_error(cond_result) { cond_result }
     else {
@@ -3097,6 +3111,7 @@ fn parse_match_guard(src: String, pos: i64, scrutinee: String, name: String, pre
 
 fn parse_match_guard_body(src: String, pos: i64, scrutinee: String, name: String, guard: String, prefix: String, suffix: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rb = parse_expr(src, pos);
     if is_error(rb) { rb }
     else {
