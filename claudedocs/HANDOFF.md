@@ -69,34 +69,42 @@
 
 ## 다음 세션 시작점
 
+### 현재 미계약 함수 상태 (385개)
+
+| 반환 타입 | 잔여 | 상태 / 제약 |
+|----------|------|------------|
+| String | 279 | `post it.len() >= 0` 시도 미완 — 소규모 테스트 먼저 |
+| bool | 96 | 타입 체커 한계 — 구조적 수정 필요 (현재 불가) |
+| i64 | 10 | 음수 반환 가능 (s2i, str_to_int, cf_compute 등) — 안전 계약 없음 |
+
 ### 우선순위 작업 목록
 
 | 우선순위 | 항목 | 설명 |
 |----------|------|------|
-| P1 | **Track B: parse_* 계약** | 148개 파서 함수 `pre pos >= 0` 배치 추가 |
-| P1 | **Track B: llvm_* 계약** | 50개 LLVM IR 생성 함수 계약 추가 |
-| P2 | **M8 계획 수립** | ROADMAP.md M8 섹션 정의 (Native 완전화 / 추가 마일스톤) |
+| P1 | **Track B: String 279개** | `post it.len() >= 0` 소규모 5개 테스트 → 통과 시 배치 추가 |
+| P2 | **bool 타입 체커 수정** | `post` 절 `it` 타입을 선언 반환 타입으로 고정 (구조적 개선) |
+| P3 | **M8 계획 수립** | ROADMAP.md M8 섹션 확정 (human 결정 필요) |
 | P3 | **`bmb verify --suggest` 개선** | Z3 counterexample → pre 힌트 더 정교화 |
-| P3 | **Track B 나머지** | ifs/build/trl/index 등 1144개 추가 |
 
 ### 즉시 착수 명령
 
 ```bash
 # 현황 재확인
+$env:BMB_ARENA_MAX_SIZE="32G"
 bmb run bootstrap/list-uncontracted.bmb
 
-# parse_* 함수 목록 확인
+# String 함수 소규모 테스트 (5개 샘플)
 bmb verify bootstrap/compiler.bmb --list-uncontracted | python3 -c "
 import sys,json; d=json.loads(sys.stdin.read())
-parse_fns=[f for f in d['functions'] if f['name'].startswith('parse_')]
-print(len(parse_fns), 'parse_ functions')
-for f in parse_fns[:10]: print(' ', f['name'], f['params'])
+str_fns=[f for f in d['functions'] if f.get('return_type')=='String']
+print(len(str_fns), 'String functions')
+for f in str_fns[:5]: print(' ', f['name'])
 "
 ```
 
 ### HUMAN 결정 필요
 
-없음 — 모든 항목 자율 결정 가능.
+- M8 공식 계획 확정 (M8-A Track B 전면화 vs M8-B Native 완전화 vs M8-C 언어 갭)
 
 ---
 
