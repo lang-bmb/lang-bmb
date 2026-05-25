@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-25 (**M9 Batches 18-26** — Cycles 3152-3160: lower_*/get_fn_*/llvm_gen_* 계열 135개 post 조건 추가. missing_postcondition **814→433 (−381 총계, 46.8% 감소)**. cargo test 6278 ✅. HEAD `c71f2c90`.)
+> 최종 업데이트: 2026-05-26 (**M9 Batches 27-34** — Cycles 3161-3168: rebuild_ir_*/ipr_*/pfcse_*/mlcse_*/cfeval_* 등 120개 post 조건 추가. missing_postcondition **814→313 (−501 총계, 61.5% 감소)**. cargo test 6278 ✅. HEAD `ccecf451`.)
 > 이전 갱신: 2026-05-25 (**M8-A/B ✅ 실질 완료** — Cycles 3115-3133: bool 91/97 교체 + String 202/279 교체 (77개 skip 확정). warnings 3173→2994 (−179). Fixed Point 불변. 953/953 verified.)
 > 이전 갱신: 2026-05-25 (**Track B ✅ COMPLETE — 전 함수 계약 달성** — Cycles 3111-3112: String 279개 `post it.len() >= 0` + bool 96개 `post it or not it` + i64 10개 `post it == it` 배치 추가. **미계약 1513→0 (100%)**. Fixed Point `1dd7157776ec2e55ee502eb839816c54`. bmb verify 954/954 ✅. HEAD `dd9a9fa2`.)
 > 이전 갱신: 2026-05-25 (**M7 ✅ FULLY COMPLETE + M7-4 AI 파이프라인 완성** — Cycles 3094-3102: `bmb verify --list-uncontracted` + `suggest_contracts` MCP tool + `list-uncontracted.bmb` 자동화 + Track B 125개 계약 추가(1467→1342). M7 전체(M7-1~4) COMPLETE. HEAD `c9ef6fcc`.)
@@ -1209,6 +1209,43 @@ Expr::It => Ok(self.current_ret_ty.clone().unwrap_or(Type::I64))
 | `post it or not it` (bool) | 6 | 재귀 AST/복합 탐색 — 선언적 계약 불가 |
 | `post it.len() >= 0` (String) | 77 | LLVM IR codegen/parser/formatter — 방향 불정 |
 | `post it == it` (i64) | 7 | 진정 임의 값 반환 — trivial이 정직한 계약 |
+
+---
+
+## § M9 — Missing Postcondition 소거 (2026-05-26 진행 중)
+
+### 목표
+
+M8-A/B 이후 잔여 `missing_postcondition` (pre는 있으나 post 없는 함수) 전체 소거.
+
+### 진행 현황
+
+| Batch | Cycles | 처리 함수 | 잔여 missing_postcondition |
+|-------|--------|----------|---------------------------|
+| Batches 1-17 | 3140-3151 | 255 | 814 → 568 |
+| Batches 18-26 | 3152-3160 | 135 | 568 → 433 |
+| Batches 27-34 | 3161-3168 | 120 | 433 → **313** |
+| **총합** | 3140-3168 | **501** | **814 → 313 (−61.5%)** |
+
+cargo test: ✅ 6278 tests, 0 failed | HEAD: `ccecf451`
+
+### 확립된 계약 패턴
+
+| 함수 유형 | post 조건 |
+|-----------|-----------|
+| String 반환 (항상 비어있음) | `post it.len() >= 1` |
+| String 반환 (빈 문자열 가능) | `post it.len() >= 0` |
+| i64 재구성/누산 반환 (0 기반) | `post it >= 0` |
+| i64 위치/count 반환 | `post it >= 0` |
+| i64 find 계열 (−1 sentinel) | `post it >= -1` |
+| i64 signed sentinel | `post it >= 0 or it < 0` |
+| bool 반환 | `post it or not it` |
+| i64 2^n | `post it >= 1` |
+
+### 다음 진입점
+
+`bmb check bootstrap/compiler.bmb 2>&1 | grep "missing_postcondition" | head -20` 으로 대상 확인.
+예상 다음 타깃: `cfeval_program`, `trl_parse_params`, `trl_param_at_scan`, `trl_find_tail_call` 등.
 
 ---
 
