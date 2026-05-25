@@ -175,6 +175,12 @@ enum Command {
         /// Timeout in seconds
         #[arg(long, short = 't', default_value = "10")]
         timeout: u32,
+        /// List functions without contracts instead of verifying
+        #[arg(long)]
+        list_uncontracted: bool,
+        /// Suggest pre-conditions from counterexamples in proof index
+        #[arg(long)]
+        suggest: bool,
     },
     /// Parse and dump AST (debug)
     Parse {
@@ -489,7 +495,15 @@ fn main() {
                 Command::Run { file, args, human: _, include_paths } => run_file(&file, &args, &include_paths),
                 Command::Repl => start_repl(),
                 Command::Check { file, include_paths } => check_file_with_includes(&file, &include_paths),
-                Command::Verify { file, z3_path, timeout } => verify_file(&file, &z3_path, timeout),
+                Command::Verify { file, z3_path, timeout, list_uncontracted, suggest } => {
+                    if list_uncontracted {
+                        list_uncontracted_fns(&file)
+                    } else if suggest {
+                        verify_suggest(&file, &z3_path, timeout)
+                    } else {
+                        verify_file(&file, &z3_path, timeout)
+                    }
+                },
                 Command::Parse { file, format } => parse_file(&file, &format),
                 Command::Tokens { file } => tokenize_file(&file),
                 Command::Test { file, filter, verbose } => test_file(&file, filter.as_deref(), verbose),
@@ -1459,6 +1473,114 @@ fn lint_directory(dir: &PathBuf, strict: bool, _include_paths: &[PathBuf]) -> Re
         std::process::exit(1);
     }
 
+    Ok(())
+}
+
+fn list_uncontracted_fns(path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    use bmb::ast::Item;
+
+    let source = std::fs::read_to_string(path)?;
+    let filename = path.display().to_string();
+
+    let tokens = bmb::lexer::tokenize(&source)?;
+    let ast = bmb::parser::parse(&filename, &source, tokens)?;
+
+    let mut functions = Vec::new();
+    for item in &ast.items {
+        let fn_def = match item {
+            Item::FnDef(f) => f,
+            _ => continue,
+        };
+        if fn_def.pre.is_none() && fn_def.post.is_none() && fn_def.contracts.is_empty() {
+            let line = source[..fn_def.name.span.start]
+                .chars()
+                .filter(|&c| c == '\n')
+                .count() + 1;
+            let params: Vec<String> = fn_def.params.iter().map(|p| {
+                format!("{}: {}", p.name.node, format_type(&p.ty.node))
+            }).collect();
+            functions.push((fn_def.name.node.clone(), line, params));
+        }
+    }
+
+    let count = functions.len();
+    let mut parts = Vec::new();
+    for (name, line, params) in &functions {
+        let params_json: Vec<String> = params.iter().map(|p| format!("\"{}\"", p.replace('"', "\\\""))).collect();
+        parts.push(format!(
+            "{{\"name\":\"{}\",\"line\":{},\"params\":[{}]}}",
+            name, line, params_json.join(",")
+        ));
+    }
+    println!(
+        "{{\"type\":\"uncontracted_functions\",\"file\":\"{}\",\"count\":{},\"functions\":[{}]}}",
+        filename.replace('\\', "/").replace('"', "\\\""),
+        count,
+        parts.join(",")
+    );
+    Ok(())
+}
+
+fn verify_suggest(path: &PathBuf, z3_path: &str, timeout: u32) -> Result<(), Box<dyn std::error::Error>> {
+    #[allow(unused_imports)]
+    use bmb::index::ProofStatus;
+
+    let source = std::fs::read_to_string(path)?;
+    let filename = path.display().to_string();
+    let tokens = bmb::lexer::tokenize(&source)?;
+    let ast = bmb::parser::parse(&filename, &source, tokens)?;
+    let mut checker = bmb::types::TypeChecker::new();
+    checker.check_program(&ast)?;
+
+    let verifier = bmb::verify::ContractVerifier::new()
+        .with_z3_path(z3_path)
+        .with_timeout(timeout);
+    if !verifier.is_solver_available() {
+        println!("{{\"type\":\"suggest_error\",\"reason\":\"z3_not_found\"}}");
+        return Ok(());
+    }
+
+    let report = verifier.verify_program(&ast);
+    let mut suggestions = Vec::new();
+
+    for func_report in &report.functions {
+        let failed = func_report.pre_result.as_ref().map_or(false, |r| matches!(r, bmb::smt::VerifyResult::Failed(_)))
+            || func_report.post_result.as_ref().map_or(false, |r| matches!(r, bmb::smt::VerifyResult::Failed(_)));
+        if !failed { continue; }
+
+        let counterexample = func_report.pre_result.as_ref().and_then(|r| {
+            if let bmb::smt::VerifyResult::Failed(ce) = r { Some(&ce.assignments) } else { None }
+        }).or_else(|| func_report.post_result.as_ref().and_then(|r| {
+            if let bmb::smt::VerifyResult::Failed(ce) = r { Some(&ce.assignments) } else { None }
+        }));
+
+        let mut hints = Vec::new();
+        if let Some(assignments) = counterexample {
+            for (param, val) in assignments {
+                if let Ok(n) = val.parse::<i64>() {
+                    if n < 0 {
+                        hints.push(format!("pre {} >= 0", param));
+                    } else if n == 0 {
+                        hints.push(format!("pre {} > 0", param));
+                    }
+                }
+            }
+        }
+        if !hints.is_empty() {
+            let hints_json: Vec<String> = hints.iter().map(|h| format!("\"{}\"", h)).collect();
+            suggestions.push(format!(
+                "{{\"fn\":\"{}\",\"hints\":[{}]}}",
+                func_report.name, hints_json.join(",")
+            ));
+        }
+    }
+
+    println!(
+        "{{\"type\":\"suggest\",\"file\":\"{}\",\"count\":{},\"suggestions\":[{}]}}",
+        filename.replace('\\', "/").replace('"', "\\\""),
+        suggestions.len(),
+        suggestions.join(",")
+    );
     Ok(())
 }
 

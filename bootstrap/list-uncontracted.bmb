@@ -1,0 +1,145 @@
+// list-uncontracted.bmb — compiler.bmb 미계약 함수 목록 및 우선순위 출력
+// M7-4 Track B 자동화 도구
+//
+// 실행: bmb run bootstrap/list-uncontracted.bmb
+// 출력: JSON 요약 (타입별 분류)
+
+// ============================================================
+// 문자열 유틸
+// ============================================================
+
+fn str_find_from(s: String, pattern: String, start: i64) -> i64 = {
+    let sliced = s.slice(start, s.len());
+    let rel = str_find(sliced, pattern);
+    if rel < 0 { -1 } else { start + rel }
+};
+
+fn parse_digits(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() { acc }
+    else {
+        let c = s.char_code_at(pos);
+        if c < 48 { acc }
+        else if c > 57 { acc }
+        else { parse_digits(s, pos + 1, acc * 10 + (c - 48)) }
+    };
+
+// ============================================================
+// JSON "count":N 추출
+// ============================================================
+
+fn extract_count(json: String) -> i64 = {
+    let key_pos = str_find(json, "\"count\":");
+    if key_pos < 0 { 0 }
+    else {
+        let val_start = key_pos + 8;
+        let comma_pos = str_find_from(json, ",", val_start);
+        let end_pos = if comma_pos < 0 { str_find_from(json, "}", val_start) } else { comma_pos };
+        let num_str = if end_pos < 0 { json.slice(val_start, json.len()) }
+                      else { json.slice(val_start, end_pos) };
+        parse_digits(num_str.trim(), 0, 0)
+    }
+};
+
+// ============================================================
+// 우선순위 분류 헬퍼
+// ============================================================
+
+fn has_pos_param(params_json: String) -> i64 =
+    if str_find(params_json, "pos") >= 0 { 1 }
+    else if str_find(params_json, "idx") >= 0 { 1 }
+    else if str_find(params_json, "start") >= 0 { 1 }
+    else if str_find(params_json, "offset") >= 0 { 1 }
+    else { 0 };
+
+fn is_priority1_name(name: String) -> i64 =
+    if str_starts_with(name, "find_") == 1 { 1 }
+    else if str_starts_with(name, "skip_") == 1 { 1 }
+    else if str_starts_with(name, "scan_") == 1 { 1 }
+    else if str_starts_with(name, "low_") == 1 { 1 }
+    else if str_starts_with(name, "count_") == 1 { 1 }
+    else if str_starts_with(name, "parse_") == 1 { 1 }
+    else { 0 };
+
+// ============================================================
+// 개별 JSON 아이템에서 name/params 추출
+// ============================================================
+
+fn extract_name_from_item(item: String) -> String = {
+    let name_start = str_find(item, "\"name\":\"");
+    if name_start < 0 { "" }
+    else {
+        let ns = name_start + 8;
+        let ne = str_find_from(item, "\"", ns);
+        if ne < 0 { "" } else { item.slice(ns, ne) }
+    }
+};
+
+fn params_section(item: String) -> String = {
+    let p = str_find(item, "\"params\"");
+    if p < 0 { "" } else { item.slice(p, item.len()) }
+};
+
+// ============================================================
+// 3가지 카운팅 패스 (각각 독립 재귀)
+// ============================================================
+
+// P1: pos/idx/start/offset 파라미터를 가진 함수
+fn count_p1(funcs_str: String, pos: i64, acc: i64) -> i64 = {
+    let item_start = str_find_from(funcs_str, "{", pos);
+    if item_start < 0 { acc }
+    else {
+        let item_end = str_find_from(funcs_str, "}", item_start);
+        if item_end < 0 { acc }
+        else {
+            let item = funcs_str.slice(item_start, item_end + 1);
+            let ps = params_section(item);
+            let is_p1 = has_pos_param(ps);
+            count_p1(funcs_str, item_end + 1, acc + is_p1)
+        }
+    }
+};
+
+// P2: find_/skip_/scan_ 등 이름 패턴 (pos 파라미터 없는 것만)
+fn count_p2(funcs_str: String, pos: i64, acc: i64) -> i64 = {
+    let item_start = str_find_from(funcs_str, "{", pos);
+    if item_start < 0 { acc }
+    else {
+        let item_end = str_find_from(funcs_str, "}", item_start);
+        if item_end < 0 { acc }
+        else {
+            let item = funcs_str.slice(item_start, item_end + 1);
+            let ps = params_section(item);
+            let name_val = extract_name_from_item(item);
+            let has_pos = has_pos_param(ps);
+            let is_p2 = if has_pos == 1 { 0 }
+                        else if is_priority1_name(name_val) == 1 { 1 }
+                        else { 0 };
+            count_p2(funcs_str, item_end + 1, acc + is_p2)
+        }
+    }
+};
+
+fn main() -> () = {
+    let bmb_exe = "./target/release/bmb";
+    let args = "verify bootstrap/compiler.bmb --list-uncontracted";
+    let result = exec_with_stdin(bmb_exe, args, "");
+
+    let total_count = extract_count(result);
+
+    let funcs_key = str_find(result, "\"functions\":[");
+    let funcs_start = if funcs_key < 0 { -1 } else { funcs_key + 13 };
+    // JSON ends with "...]}" — functions array ends 2 chars before result end
+    let funcs_end = if funcs_start < 0 { -1 } else { result.len() - 2 };
+    let funcs_str = if funcs_start < 0 { "" }
+                    else if funcs_end < 0 { result.slice(funcs_start, result.len()) }
+                    else { result.slice(funcs_start, funcs_end) };
+
+    let p1 = count_p1(funcs_str, 0, 0);
+    let p2 = count_p2(funcs_str, 0, 0);
+    let p3 = total_count - p1 - p2;
+
+    println("{\"type\":\"uncontracted_summary\",\"total\":" + int_to_string(total_count) +
+            ",\"priority1_pos_param\":" + int_to_string(p1) +
+            ",\"priority2_pattern_name\":" + int_to_string(p2) +
+            ",\"priority3_other\":" + int_to_string(p3) + "}")
+};

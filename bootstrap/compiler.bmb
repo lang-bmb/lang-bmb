@@ -120,8 +120,10 @@ fn skip_sp_tab(s: String, pos: i64, limit: i64) -> i64
     };
 
 // Find next double-quote at or after pos. Returns -1 if none.
-fn find_quote_after(s: String, pos: i64) -> i64 =
-    if pos >= s.len() { -1 }
+fn find_quote_after(s: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= if pos >= s.len() { -1 }
     else if s.byte_at(pos) == 34 { pos }
     else { find_quote_after(s, pos + 1) };
 
@@ -377,19 +379,25 @@ fn tok_kind_name(kind: i64) -> String =
 // SECTION 3: Lexer (from pipeline.bmb)
 // ============================================================================
 
-fn skip_to_eol(s: String, pos: i64) -> i64 =
-    if pos >= s.len() { pos } else if s.byte_at(pos) == 10 { pos + 1 } else { skip_to_eol(s, pos + 1) };
+fn skip_to_eol(s: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= if pos >= s.len() { pos } else if s.byte_at(pos) == 10 { pos + 1 } else { skip_to_eol(s, pos + 1) };
 
 // v0.46: Support both -- (legacy) and // (v0.32) comment styles
-fn skip_comment(s: String, pos: i64) -> i64 =
-    if pos + 1 < s.len() and s.byte_at(pos) == 45 and s.byte_at(pos + 1) == 45 { skip_comment(s, skip_to_eol(s, pos + 2)) }
+fn skip_comment(s: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= if pos + 1 < s.len() and s.byte_at(pos) == 45 and s.byte_at(pos + 1) == 45 { skip_comment(s, skip_to_eol(s, pos + 2)) }
     else if pos + 1 < s.len() and s.byte_at(pos) == 47 and s.byte_at(pos + 1) == 47 { skip_comment(s, skip_to_eol(s, pos + 2)) }
     else if pos + 1 < s.len() and s.byte_at(pos) == 47 and s.byte_at(pos + 1) == 42 { skip_comment(s, skip_block_comment(s, pos + 2)) }
     else { pos };
 
 // Skip block comment: find */ (byte 42 + byte 47)
-fn skip_block_comment(s: String, pos: i64) -> i64 =
-    if pos + 1 >= s.len() { s.len() }
+fn skip_block_comment(s: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= if pos + 1 >= s.len() { s.len() }
     else if s.byte_at(pos) == 42 and s.byte_at(pos + 1) == 47 { pos + 2 }
     else { skip_block_comment(s, pos + 1) };
 
@@ -455,8 +463,10 @@ fn scan_oct_int(s: String, pos: i64, acc: i64) -> i64
     };
 
 // Returns packed int token OR TK_FLOAT_LIT token
-fn scan_number(s: String, pos: i64) -> i64 =
-    if pos + 1 < s.len() and s.byte_at(pos) == 48 and (s.byte_at(pos + 1) == 120 or s.byte_at(pos + 1) == 88) {
+fn scan_number(s: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= if pos + 1 < s.len() and s.byte_at(pos) == 48 and (s.byte_at(pos + 1) == 120 or s.byte_at(pos + 1) == 88) {
         scan_hex_int(s, pos + 2, 0)
     } else if pos + 1 < s.len() and s.byte_at(pos) == 48 and (s.byte_at(pos + 1) == 98 or s.byte_at(pos + 1) == 66) {
         scan_bin_int(s, pos + 2, 0)
@@ -552,7 +562,10 @@ fn make_tok(kind: i64, endpos: i64) -> i64
 = kind * 5000000 + endpos;
 
 // Reduces average comparisons from 9.5 to ~2-3 by checking length first
-fn keyword_or_ident(s: String, start: i64, endpos: i64) -> i64 =
+fn keyword_or_ident(s: String, start: i64, endpos: i64) -> i64
+    pre start >= 0
+    post it >= 0
+= 
     let word = s.slice(start, endpos);
     let len = endpos - start;
     if len == 2 { keyword_len2(word, endpos) }
@@ -565,7 +578,10 @@ fn keyword_or_ident(s: String, start: i64, endpos: i64) -> i64 =
     else if len == 10 { keyword_len10(word, endpos) }  // v0.88
     else { make_tok(TK_IDENT(), endpos) };
 
-fn keyword_len2(word: String, endpos: i64) -> i64 =
+fn keyword_len2(word: String, endpos: i64) -> i64
+    pre endpos >= 0
+    post it >= 0
+= 
     if word == "fn" { make_tok(TK_FN(), endpos) }
     else if word == "if" { make_tok(TK_IF(), endpos) }
     else if word == "or" { make_tok(TK_OR(), endpos) }
@@ -573,7 +589,10 @@ fn keyword_len2(word: String, endpos: i64) -> i64 =
     else if word == "as" { make_tok(TK_AS(), endpos) }  // v0.90.1: cast
     else { make_tok(TK_IDENT(), endpos) };
 
-fn keyword_len3(word: String, endpos: i64) -> i64 =
+fn keyword_len3(word: String, endpos: i64) -> i64
+    pre endpos >= 0
+    post it >= 0
+= 
     if word == "let" { make_tok(TK_LET(), endpos) }
     else if word == "and" { make_tok(TK_AND(), endpos) }
     else if word == "not" { make_tok(TK_NOT(), endpos) }
@@ -588,7 +607,10 @@ fn keyword_len3(word: String, endpos: i64) -> i64 =
     else if word == "pub" { make_tok(TK_PUB(), endpos) }
     else { make_tok(TK_IDENT(), endpos) };
 
-fn keyword_len4(word: String, endpos: i64) -> i64 =
+fn keyword_len4(word: String, endpos: i64) -> i64
+    pre endpos >= 0
+    post it >= 0
+= 
     if word == "then" { make_tok(TK_THEN(), endpos) }
     else if word == "else" { make_tok(TK_ELSE(), endpos) }
     else if word == "true" { make_tok(TK_TRUE(), endpos) }
@@ -604,7 +626,10 @@ fn keyword_len4(word: String, endpos: i64) -> i64 =
     else if word == "impl" { make_tok(TK_IMPL(), endpos) }
     else { make_tok(TK_IDENT(), endpos) };
 
-fn keyword_len5(word: String, endpos: i64) -> i64 =
+fn keyword_len5(word: String, endpos: i64) -> i64
+    pre endpos >= 0
+    post it >= 0
+= 
     if word == "false" { make_tok(TK_FALSE(), endpos) }
     else if word == "while" { make_tok(TK_WHILE(), endpos) }  // v0.60.248
     else if word == "break" { make_tok(TK_BREAK(), endpos) }  // v0.90.8
@@ -618,7 +643,10 @@ fn keyword_len5(word: String, endpos: i64) -> i64 =
     else if word == "match" { make_tok(TK_MATCH(), endpos) }  // v0.90.86: match expression
     else { make_tok(TK_IDENT(), endpos) };
 
-fn keyword_len6(word: String, endpos: i64) -> i64 =
+fn keyword_len6(word: String, endpos: i64) -> i64
+    pre endpos >= 0
+    post it >= 0
+= 
     if word == "String" { make_tok(TK_STRING_TYPE(), endpos) }
     else if word == "select" { make_tok(TK_SELECT(), endpos) }  // v0.88
     else if word == "Future" { make_tok(TK_FUTURE(), endpos) }  // v0.88
@@ -631,17 +659,26 @@ fn keyword_len6(word: String, endpos: i64) -> i64 =
     else { make_tok(TK_IDENT(), endpos) };
 
 // v0.88: Concurrency type keywords
-fn keyword_len7(word: String, endpos: i64) -> i64 =
+fn keyword_len7(word: String, endpos: i64) -> i64
+    pre endpos >= 0
+    post it >= 0
+= 
     if word == "Channel" { make_tok(TK_CHANNEL(), endpos) }
     else if word == "implies" { make_tok(TK_OR(), endpos) }
     else { make_tok(TK_IDENT(), endpos) };
 
-fn keyword_len8(word: String, endpos: i64) -> i64 =
+fn keyword_len8(word: String, endpos: i64) -> i64
+    pre endpos >= 0
+    post it >= 0
+= 
     if word == "continue" { make_tok(TK_CONTINUE(), endpos) }  // v0.90.31
     else if word == "Receiver" { make_tok(TK_RECEIVER(), endpos) }
     else { make_tok(TK_IDENT(), endpos) };
 
-fn keyword_len10(word: String, endpos: i64) -> i64 =
+fn keyword_len10(word: String, endpos: i64) -> i64
+    pre endpos >= 0
+    post it >= 0
+= 
     if word == "ThreadPool" { make_tok(TK_THREADPOOL(), endpos) }
     else { make_tok(TK_IDENT(), endpos) };
 
@@ -663,24 +700,32 @@ fn next_token_raw(s: String, pos: i64) -> i64
         } else if c == 58 { if p + 1 < s.len() and s.byte_at(p + 1) == 58 { make_tok(TK_DCOLON(), p + 2) } else { make_tok(TK_COLON(), p + 1) } } else if c == 61 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_EQEQ(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_FAT_ARROW(), p + 2) } else { make_tok(TK_EQ(), p + 1) } } else if c == 59 { make_tok(TK_SEMI(), p + 1) } else if c == 44 { make_tok(TK_COMMA(), p + 1) } else if c == 40 { make_tok(TK_LPAREN(), p + 1) } else if c == 41 { make_tok(TK_RPAREN(), p + 1) } else if c == 43 { if p + 1 < s.len() and s.byte_at(p + 1) == 124 { make_tok(TK_PLUSSAT(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 37 { make_tok(TK_PLUSWRAP(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_PLUSEQ(), p + 2) } else { make_tok(TK_PLUS(), p + 1) } } else if c == 45 { if p + 1 < s.len() and s.byte_at(p + 1) == 124 { make_tok(TK_MINUSSAT(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 37 { make_tok(TK_MINUSWRAP(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_ARROW(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_MINUSEQ(), p + 2) } else { make_tok(TK_MINUS(), p + 1) } } else if c == 42 { if p + 1 < s.len() and s.byte_at(p + 1) == 124 { make_tok(TK_STARSAT(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 37 { make_tok(TK_STARWRAP(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_STAREQ(), p + 2) } else { make_tok(TK_STAR(), p + 1) } } else if c == 47 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_SLASHEQ(), p + 2) } else { make_tok(TK_SLASH(), p + 1) } } else if c == 37 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_PERCENTEQ(), p + 2) } else { make_tok(TK_PERCENT(), p + 1) } } else if c == 60 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_LTEQ(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 60 { if p + 2 < s.len() and s.byte_at(p + 2) == 61 { make_tok(TK_SHLEQ(), p + 3) } else { make_tok(TK_SHL(), p + 2) } } else { make_tok(TK_LT(), p + 1) } } else if c == 62 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_GTEQ(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 62 { if p + 2 < s.len() and s.byte_at(p + 2) == 62 { make_tok(TK_LSHR(), p + 3) } else if p + 2 < s.len() and s.byte_at(p + 2) == 61 { make_tok(TK_SHREQ(), p + 3) } else { make_tok(TK_SHR(), p + 2) } } else { make_tok(TK_GT(), p + 1) } } else if c == 33 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_NEQ(), p + 2) } else { make_tok(TK_EOF(), p) } } else if c == 46 { if p + 1 < s.len() and s.byte_at(p + 1) == 46 { if p + 2 < s.len() and s.byte_at(p + 2) == 61 { make_tok(TK_DOTDOTEQ(), p + 3) } else { make_tok(TK_DOTDOT(), p + 2) } } else { make_tok(TK_DOT(), p + 1) } } else if c == 91 { make_tok(TK_LBRACKET(), p + 1) } else if c == 93 { make_tok(TK_RBRACKET(), p + 1) } else if c == 123 { make_tok(TK_LBRACE(), p + 1) } else if c == 125 { make_tok(TK_RBRACE(), p + 1) } else if c == 38 { make_tok(TK_AMP(), p + 1) } else if c == 63 { make_tok(TK_QUESTION(), p + 1) } else if c == 94 { make_tok(TK_CARET(), p + 1) } else if c == 124 { make_tok(TK_PIPE(), p + 1) } else { make_tok(TK_EOF(), p) }
     };
 
-fn get_ident_text(s: String, pos: i64, tok: i64) -> String =
+fn get_ident_text(s: String, pos: i64, tok: i64) -> String
+    pre pos >= 0
+= 
     let start = tok_end(tok) - (tok_val(tok) / 5000000);
     let p = skip_ws_comments(s, pos);
     let endp = scan_ident_end(s, p + 1);
     s.slice(p, endp);
 
-fn get_int_text(s: String, pos: i64, tok: i64) -> String =
+fn get_int_text(s: String, pos: i64, tok: i64) -> String
+    pre pos >= 0
+= 
     let p = skip_ws_comments(s, pos);
     let endpos = tok_end(tok);
     s.slice(p, endpos);
 
-fn get_string_text(s: String, pos: i64, tok: i64) -> String =
+fn get_string_text(s: String, pos: i64, tok: i64) -> String
+    pre pos >= 0
+= 
     let p = skip_ws_comments(s, pos);
     let endpos = tok_end(tok);
     s.slice(p + 1, endpos - 1);
 
 // v0.91: Extract float literal text from source (e.g., "3.14")
-fn get_float_text(s: String, pos: i64, tok: i64) -> String =
+fn get_float_text(s: String, pos: i64, tok: i64) -> String
+    pre pos >= 0
+= 
     let p = skip_ws_comments(s, pos);
     let endpos = tok_end(tok);
     s.slice(p, endpos);
@@ -2029,10 +2074,14 @@ fn build_tuple_bindings(names: String, tup_name: String, body_ast: String, idx: 
         "(let <" + name + "> " + field_ast + " " + inner + ")"
     };
 
-fn get_pipe_name(names: String, idx: i64) -> String =
+fn get_pipe_name(names: String, idx: i64) -> String
+    pre idx >= 0
+= 
     get_pipe_name_at(names, 0, idx);
 
-fn get_pipe_name_at(names: String, pos: i64, idx: i64) -> String =
+fn get_pipe_name_at(names: String, pos: i64, idx: i64) -> String
+    pre pos >= 0
+= 
     if idx == 0 { names.slice(pos, find_char(names, pos, 124)) }
     else { get_pipe_name_at(names, find_char(names, pos, 124) + 1, idx - 1) };
 
@@ -2581,13 +2630,19 @@ fn parse_struct_field_sep(src: String, pos: i64, acc: String) -> String =
 // ============================================================================
 
 -- Cycle 2933: Skip tokens inside fn(...) until ')' for HOF type annotation
-fn skip_fn_type_param_list(src: String, pos: i64) -> i64 =
+fn skip_fn_type_param_list(src: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     let t = next_token_raw(src, pos);
     if tok_kind(t) == TK_RPAREN() { tok_end(t) }
     else { skip_fn_type_param_list(src, tok_end(t)) };
 
 -- Cycle 2933: Skip one simple type token (handles nested fn types)
-fn skip_one_type_tok(src: String, pos: i64) -> i64 =
+fn skip_one_type_tok(src: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     let t = next_token_raw(src, pos);
     if tok_kind(t) == TK_FN() {
         -- skip fn(params) -> ret
@@ -2601,7 +2656,10 @@ fn skip_one_type_tok(src: String, pos: i64) -> i64 =
     } else { tok_end(t) };
 
 -- Cycle 2933: Skip entire fn(T)->R type and return position after it
-fn skip_fn_type(src: String, pos: i64) -> i64 =
+fn skip_fn_type(src: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     -- pos is after TK_FN, expect '(' params ')' '->' ret_type
     let t = next_token_raw(src, pos);
     if tok_kind(t) == TK_LPAREN() {
@@ -2692,7 +2750,10 @@ fn parse_fn(src: String, pos: i64) -> String =
 
 // v0.95: Skip generic type parameters <T>, <T, U>, <T: Bound + Other> after fn/struct name
 // Returns position after closing '>'
-fn skip_generic_params(src: String, pos: i64) -> i64 =
+fn skip_generic_params(src: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     let t = next_token_raw(src, pos);
     let k = tok_kind(t);
     if k == TK_GT() { tok_end(t) }
@@ -2701,7 +2762,10 @@ fn skip_generic_params(src: String, pos: i64) -> i64 =
 
 // Skip generic type arguments <T>, <i64, String> after a type name
 // Returns position after closing '>' or original pos if no '<'
-fn skip_optional_type_args(src: String, pos: i64) -> i64 =
+fn skip_optional_type_args(src: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     let t = next_token_raw(src, pos);
     if tok_kind(t) == TK_LT() { skip_generic_params(src, tok_end(t)) }
     else { pos };
@@ -2712,7 +2776,10 @@ fn skip_array_type_tokens(src: String, pos: i64, type_str: String) -> String =
     else { skip_array_type_tokens(src, tok_end(t), type_str) };
 
 // Returns position after the '=' token
-fn skip_contracts(src: String, pos: i64) -> i64 =
+fn skip_contracts(src: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     let t = next_token_raw(src, pos);
     let k = tok_kind(t);
     if k == TK_EQ() { tok_end(t) }
@@ -2729,7 +2796,10 @@ fn skip_contracts(src: String, pos: i64) -> i64 =
     else { tok_end(t) };  // Unexpected token, try advancing
 
 // v0.95: Skip where clause tokens until '=' is found
-fn skip_where_clause(src: String, pos: i64) -> i64 =
+fn skip_where_clause(src: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     let t = next_token_raw(src, pos);
     let k = tok_kind(t);
     if k == TK_EQ() { tok_end(t) }
@@ -2798,7 +2868,10 @@ fn skip_tuple_type_tokens(src: String, pos: i64, type_str: String) -> String =
     else { skip_tuple_type_tokens(src, tok_end(t), type_str) };
 
 // Returns position past '?' if present, or original position if not
-fn skip_nullable(src: String, pos: i64) -> i64 =
+fn skip_nullable(src: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     let t = next_token_raw(src, pos);
     if tok_kind(t) == TK_QUESTION() { tok_end(t) } else { pos };
 
@@ -2898,7 +2971,10 @@ fn parse_program_sb(src: String, pos: i64, sb: i64) -> String =
         } else { make_error_at("expected 'fn' declaration, got " + tok_kind_name(kind), src, pos) }
     };
 
-fn skip_extern_fn(src: String, pos: i64) -> i64 =
+fn skip_extern_fn(src: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     let t = next_token_raw(src, pos);
     let k = tok_kind(t);
     if k == TK_SEMI() { tok_end(t) }
@@ -2933,7 +3009,10 @@ fn parse_const_decl(src: String, pos: i64) -> String =
         }
     };
 
-fn skip_struct_decl(src: String, pos: i64) -> i64 =
+fn skip_struct_decl(src: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     // Skip name
     let t1 = next_token_raw(src, pos);
     // v0.95: Skip generic type params <T> after name if present
@@ -2944,14 +3023,20 @@ fn skip_struct_decl(src: String, pos: i64) -> i64 =
         skip_to_rbrace(src, tok_end(t2))
     } else { tok_end(t2) };
 
-fn skip_to_rbrace(src: String, pos: i64) -> i64 =
+fn skip_to_rbrace(src: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     let tok = next_token_raw(src, pos);
     if tok_kind(tok) == TK_RBRACE() { tok_end(tok) }
     else if tok_kind(tok) == TK_EOF() { pos }
     else { skip_to_rbrace(src, tok_end(tok)) };
 
 // Skip tokens until semicolon (for type aliases, extern decls)
-fn skip_to_semi(src: String, pos: i64) -> i64 =
+fn skip_to_semi(src: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     let t = next_token_raw(src, pos);
     let k = tok_kind(t);
     if k == TK_SEMI() { tok_end(t) }
@@ -2960,7 +3045,10 @@ fn skip_to_semi(src: String, pos: i64) -> i64 =
 
 // Skip tokens until opening brace, then skip to matching closing brace
 // Used for trait/impl blocks: trait Name { ... }, impl Trait for Type { ... }
-fn skip_brace_block(src: String, pos: i64) -> i64 =
+fn skip_brace_block(src: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     let t = next_token_raw(src, pos);
     let k = tok_kind(t);
     if k == TK_LBRACE() { skip_nested_braces(src, tok_end(t), 1) }
@@ -2968,8 +3056,10 @@ fn skip_brace_block(src: String, pos: i64) -> i64 =
     else { skip_brace_block(src, tok_end(t)) };
 
 // Skip nested braces with depth tracking
-fn skip_nested_braces(src: String, pos: i64, depth: i64) -> i64 =
-    let t = next_token_raw(src, pos);
+fn skip_nested_braces(src: String, pos: i64, depth: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= let t = next_token_raw(src, pos);
     let k = tok_kind(t);
     if k == TK_EOF() { pos }
     else if k == TK_RBRACE() {
@@ -2986,8 +3076,10 @@ fn build_struct_registry(src: String) -> String =
     let w = scan_structs(src, 0, rsb);
     sb_build(rsb);
 
-fn scan_structs(src: String, pos: i64, rsb: i64) -> i64 =
-    if pos >= src.len() { 0 } else {
+fn scan_structs(src: String, pos: i64, rsb: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= if pos >= src.len() { 0 } else {
         let tok = next_token_raw(src, pos);
         let kind = tok_kind(tok);
         if kind == TK_EOF() {
@@ -3069,7 +3161,9 @@ fn check_field_type(src: String, pos: i64) -> i64 =
         else { 0 }
     } else { 0 };
 
-fn get_field_ptr_type(src: String, pos: i64) -> String =
+fn get_field_ptr_type(src: String, pos: i64) -> String
+    pre pos >= 0
+= 
     let t1 = next_token_raw(src, pos);
     if tok_kind(t1) == TK_COLON() {
         let t2 = next_token_raw(src, tok_end(t1));
@@ -3081,7 +3175,10 @@ fn get_field_ptr_type(src: String, pos: i64) -> String =
     } else { "" };
 
 // Skip field type annotation (: Type) until , or }
-fn skip_field_type(src: String, pos: i64) -> i64 =
+fn skip_field_type(src: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
     if kind == TK_COMMA() { tok_end(tok) }
@@ -3099,8 +3196,10 @@ fn build_enum_registry(src: String) -> String =
     let w = scan_enums(src, 0, rsb);
     sb_build(rsb);
 
-fn scan_enums(src: String, pos: i64, rsb: i64) -> i64 =
-    if pos >= src.len() { 0 } else {
+fn scan_enums(src: String, pos: i64, rsb: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= if pos >= src.len() { 0 } else {
         let tok = next_token_raw(src, pos);
         let kind = tok_kind(tok);
         if kind == TK_EOF() {
@@ -3163,17 +3262,26 @@ fn enum_variant_ordinal(reg: String, enum_name: String, variant: String) -> i64 
         count_variant_index(variants, variant, 0, 0)
     };
 
-fn find_substr_pos(s: String, sub: String, pos: i64) -> i64 =
+fn find_substr_pos(s: String, sub: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos + sub.len() > s.len() { -1 }
     else if s.slice(pos, pos + sub.len()) == sub { pos }
     else { find_substr_pos(s, sub, pos + 1) };
 
-fn find_char_pos(s: String, ch: i64, pos: i64) -> i64 =
+fn find_char_pos(s: String, ch: i64, pos: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos >= s.len() { s.len() }
     else if s.byte_at(pos) == ch { pos }
     else { find_char_pos(s, ch, pos + 1) };
 
-fn count_variant_index(variants: String, target: String, pos: i64, idx: i64) -> i64 =
+fn count_variant_index(variants: String, target: String, pos: i64, idx: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos >= variants.len() { -1 }
     else {
         let comma = find_char_pos(variants, 44, pos);
@@ -3391,13 +3499,19 @@ fn low_find_ident_end(s: String, pos: i64) -> i64
   pre pos >= 0
 = if pos >= s.len() { pos } else if low_is_ident_char(s.byte_at(pos)) { low_find_ident_end(s, pos + 1) } else { pos };
 
-fn low_find_op_end(s: String, pos: i64) -> i64 =
+fn low_find_op_end(s: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     if pos >= s.len() { pos } else if low_is_op_char(s.byte_at(pos)) { low_find_op_end(s, pos + 1) } else { pos };
 
 fn low_starts_with_at(s: String, pos: i64, prefix: String) -> bool =
     if pos + prefix.len() > s.len() { false } else { match_bytes(s, prefix, pos, 0) };
 
-fn low_find_close_paren(s: String, pos: i64, depth: i64) -> i64 =
+fn low_find_close_paren(s: String, pos: i64, depth: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     if pos >= s.len() { pos } else {
         let c = s.byte_at(pos);
         if c == 40 { low_find_close_paren(s, pos + 1, depth + 1) } else if c == 41 { if depth == 1 { pos } else { low_find_close_paren(s, pos + 1, depth - 1) } } else { low_find_close_paren(s, pos + 1, depth) }
@@ -3434,14 +3548,18 @@ fn is_float_expr(ast: String) -> bool =
     else if ntype == "binop" { is_float_expr(get_child(ast, 1)) }
     else { false };
 
-fn get_child(ast: String, idx: i64) -> String =
+fn get_child(ast: String, idx: i64) -> String
+    pre idx >= 0
+= 
     let content = extract_paren_content(ast);
     let pos = low_skip_ws(content, 0);
     let end1 = low_find_ident_end(content, pos);
     let after_type = if end1 > pos { end1 } else { low_find_op_end(content, pos) };
     get_child_at(content, after_type, idx);
 
-fn get_child_at(content: String, pos: i64, idx: i64) -> String =
+fn get_child_at(content: String, pos: i64, idx: i64) -> String
+    pre pos >= 0
+= 
     if idx < 0 { "" } else {
         let p = low_skip_ws(content, pos);
         if p >= content.len() { "" } else if idx == 0 { read_sexp_at(content, p) } else {
@@ -3477,10 +3595,16 @@ fn read_sexp_at(s: String, pos: i64) -> String =
         } else { "" }
     };
 
-fn find_angle_end(s: String, pos: i64) -> i64 =
+fn find_angle_end(s: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     if pos >= s.len() { pos } else if s.byte_at(pos) == 62 { pos + 1 } else { find_angle_end(s, pos + 1) };
 
-fn find_number_end(s: String, pos: i64) -> i64 =
+fn find_number_end(s: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     let p = if pos < s.len() and s.byte_at(pos) == 45 { pos + 1 } else { pos };
     let int_end = find_digits_end(s, p);
     // v0.91: Check for '.' followed by digit (float literal)
@@ -3488,7 +3612,10 @@ fn find_number_end(s: String, pos: i64) -> i64 =
         find_digits_end(s, int_end + 1)
     } else { int_end };
 
-fn find_digits_end(s: String, pos: i64) -> i64 =
+fn find_digits_end(s: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     if pos >= s.len() { pos } else if is_digit(s.byte_at(pos)) { find_digits_end(s, pos + 1) } else { pos };
 
 fn extract_name(ast: String) -> String =
@@ -3524,7 +3651,10 @@ fn rename_name_in_ast_at(ast: String, oldname: String, newname: String, pos: i64
     };
 
 // Find character c starting from pos (returns -1 if not found)
-fn find_char_at(ast: String, c: i64, pos: i64) -> i64 =
+fn find_char_at(ast: String, c: i64, pos: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos >= ast.len() { 0 - 1 }
     else if ast.byte_at(pos) == c { pos }
     else { find_char_at(ast, c, pos + 1) };
@@ -3737,15 +3867,22 @@ fn pop_work_rest(stack: String) -> String =
         if sep_pos >= stack.len() { "" } else { stack.slice(sep_pos + 1, stack.len()) }
     };
 
-fn find_work_sep(s: String, pos: i64) -> i64 =
+fn find_work_sep(s: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos >= s.len() { s.len() }
     else if s.byte_at(pos) == 9 { pos }
     else { find_work_sep(s, pos + 1) };
 
-fn get_field(item: String, idx: i64) -> String =
+fn get_field(item: String, idx: i64) -> String
+    pre idx >= 0
+= 
     get_field_at(item, 0, idx);
 
-fn get_field_at(item: String, pos: i64, idx: i64) -> String =
+fn get_field_at(item: String, pos: i64, idx: i64) -> String
+    pre pos >= 0
+= 
     if pos >= item.len() { "" }
     else if idx == 0 {
         let end = find_field_sep(item, pos);
@@ -3755,7 +3892,10 @@ fn get_field_at(item: String, pos: i64, idx: i64) -> String =
         if sep >= item.len() { "" } else { get_field_at(item, sep + 1, idx - 1) }
     };
 
-fn find_field_sep(s: String, pos: i64) -> i64 =
+fn find_field_sep(s: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos >= s.len() { s.len() }
     else if s.byte_at(pos) == 1 { pos }
     else { find_field_sep(s, pos + 1) };
@@ -3858,7 +3998,10 @@ fn make_step(temp: i64, block: i64, exit_label: String, work: String) -> String 
 fn make_step_leaf(temp: i64) -> String = i2s(temp);
 
 
-fn find_single_pipe(s: String, pos: i64) -> i64 =
+fn find_single_pipe(s: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos >= s.len() { s.len() }
     else if s.byte_at(pos) == 31 { pos }
     else { find_single_pipe(s, pos + 1) };
@@ -5077,7 +5220,9 @@ fn lower_enum_payload_fields_sb(ast: String, field_idx: i64, n_children: i64, cu
     };
 
 // Collect lambda parameters: scan children until we find a non-param node
-fn collect_lambda_params(ast: String, idx: i64, acc: String) -> String =
+fn collect_lambda_params(ast: String, idx: i64, acc: String) -> String
+    pre idx >= 0
+= 
     let child = get_child(ast, idx);
     if child == "" or get_node_type(child) != "param" { acc } else {
         let param_name = get_child(child, 0);
@@ -5089,7 +5234,9 @@ fn collect_lambda_params(ast: String, idx: i64, acc: String) -> String =
     };
 
 // Find lambda body: the first non-param child
-fn get_lambda_body(ast: String, idx: i64) -> String =
+fn get_lambda_body(ast: String, idx: i64) -> String
+    pre idx >= 0
+= 
     let child = get_child(ast, idx);
     if child == "" { "(int 0)" } else if get_node_type(child) != "param" { child } else { get_lambda_body(ast, idx + 1) };
 
@@ -5101,7 +5248,9 @@ fn find_free_vars_in_mir(body: String, params: String) -> String =
     filter_out_locals(all_refs, locals);
 
 // Collect names of alloca'd variables from pipe-separated MIR lines
-fn collect_local_alloca_names(mir: String, pos: i64, acc: String) -> String =
+fn collect_local_alloca_names(mir: String, pos: i64, acc: String) -> String
+    pre pos >= 0
+= 
     if pos >= mir.len() { acc }
     else {
         let p = low_skip_ws(mir, pos);
@@ -5141,7 +5290,9 @@ fn filter_out_locals(free_vars: String, locals: String) -> String =
         else { name + "," + filtered_rest }
     };
 
-fn scan_mir_for_free_vars(mir: String, pos: i64, found: String, params: String) -> String =
+fn scan_mir_for_free_vars(mir: String, pos: i64, found: String, params: String) -> String
+    pre pos >= 0
+= 
     if pos >= mir.len() { found }
     else {
         let next_pct = find_char(mir, pos, 37);
@@ -5160,7 +5311,10 @@ fn scan_mir_for_free_vars(mir: String, pos: i64, found: String, params: String) 
         }
     };
 
-fn find_var_end(s: String, pos: i64) -> i64 =
+fn find_var_end(s: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos >= s.len() { pos }
     else {
         let ch = s.byte_at(pos);
@@ -5206,10 +5360,14 @@ fn check_var_list(name: String, list: String, pos: i64) -> bool =
         else { check_var_list(name, list, comma + 1) }
     };
 
-fn count_csv_items(list: String) -> i64 =
-    if list == "" { 0 } else { count_csv_rec(list, 0) };
+fn count_csv_items(list: String) -> i64
+    post it >= 0
+= if list == "" { 0 } else { count_csv_rec(list, 0) };
 
-fn count_csv_rec(list: String, pos: i64) -> i64 =
+fn count_csv_rec(list: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     let p = low_skip_ws(list, pos);
     if p >= list.len() { 0 }
     else {
@@ -5528,10 +5686,14 @@ fn lower_struct_fields_sb(ast: String, idx: i64, total: i64, base_tmp: String, t
     };
 
 // Count children in AST node (array, call, etc.)
-fn count_children(ast: String) -> i64 =
-    count_children_at(ast, 0, 0);
+fn count_children(ast: String) -> i64
+    post it >= 0
+= count_children_at(ast, 0, 0);
 
-fn count_children_at(ast: String, idx: i64, count: i64) -> i64 =
+fn count_children_at(ast: String, idx: i64, count: i64) -> i64
+    pre idx >= 0
+    post it >= 0
+= 
     let child = get_child(ast, idx);
     if child == "" or child.len() == 0 { count }
     else { count_children_at(ast, idx + 1, count + 1) };
@@ -6689,7 +6851,9 @@ fn lower_program_inner_sb(ast: String, idx: i64, sb: i64, safe: i64) -> i64 =
 // SECTION 9: Expression Lowering
 // ============================================================================
 
-fn collect_params(ast: String, idx: i64, acc: String) -> String =
+fn collect_params(ast: String, idx: i64, acc: String) -> String
+    pre idx >= 0
+= 
     let child = get_child(ast, idx);
     if child == "" or get_node_type(child) != "param" { acc } else {
         let param_name = get_child(child, 0);
@@ -6708,7 +6872,9 @@ fn get_fn_return_type(ast: String) -> String =
 // v0.46: Added String return type support
 // M5-5c: recognize "Array<String>" — emitted by parse_return_type as two sexp tokens:
 // "Array" followed by "<String>" because read_sexp_at stops ident at '<'
-fn get_fn_return_scan(content: String, pos: i64) -> String =
+fn get_fn_return_scan(content: String, pos: i64) -> String
+    pre pos >= 0
+= 
     let p = low_skip_ws(content, pos);
     if p >= content.len() { "i64" } else {
         if content.byte_at(p) == 42 {
@@ -6739,7 +6905,9 @@ fn get_fn_body(ast: String) -> String =
     let content = extract_paren_content(ast);
     get_fn_body_scan(content, 0, "");
 
-fn get_fn_body_scan(content: String, pos: i64, last_expr: String) -> String =
+fn get_fn_body_scan(content: String, pos: i64, last_expr: String) -> String
+    pre pos >= 0
+= 
     let p = low_skip_ws(content, pos);
     if p >= content.len() { last_expr } else {
         let child = read_sexp_at(content, p);
@@ -6752,13 +6920,19 @@ fn get_fn_body_scan(content: String, pos: i64, last_expr: String) -> String =
     };
 
 
-fn find_pipe_skip_quotes(s: String, pos: i64) -> i64 =
+fn find_pipe_skip_quotes(s: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos >= s.len() { pos }
     else if s.byte_at(pos) == 31 { pos }
     else if s.byte_at(pos) == 34 { find_pipe_skip_quotes(s, skip_quoted_string(s, pos + 1)) }
     else { find_pipe_skip_quotes(s, pos + 1) };
 
-fn skip_quoted_string(s: String, pos: i64) -> i64 =
+fn skip_quoted_string(s: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     if pos >= s.len() { pos }
     else if s.byte_at(pos) == 34 { pos + 1 }
     else if s.byte_at(pos) == 92 { skip_quoted_string(s, pos + 2) }
@@ -6776,7 +6950,10 @@ fn extract_mir_return_type(mir: String) -> String =
         if ann == "" { raw } else { strip_annotation(raw) }
     };
 
-fn find_eq(s: String, pos: i64) -> i64 =
+fn find_eq(s: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos >= s.len() { pos } else if s.byte_at(pos) == 61 { pos } else { find_eq(s, pos + 1) };
 
 fn llvm_gen_binop(op: String, line: String, pos: i64, dest: String) -> String =
@@ -8238,7 +8415,10 @@ fn try_add_ir_copy_alias(line: String, aliases: String) -> String = {
 
 // Searches for ",name=" in aliases string, returns position of value (after '=')
 // or -1 if not found. Avoids creating "," + name + "=" key string.
-fn find_alias_entry_noa(aliases: String, name: String, pos: i64) -> i64 =
+fn find_alias_entry_noa(aliases: String, name: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos >= aliases.len() { 0 - 1 }
     else {
         let comma = find_char(aliases, pos, 44);
@@ -8522,7 +8702,10 @@ fn is_var_unused_in_ir(ir: String, name: String) -> bool = {
 };
 
 // Find next occurrence of name with word boundary check
-fn find_var_use_wb(ir: String, name: String, start: i64) -> i64 = {
+fn find_var_use_wb(ir: String, name: String, start: i64) -> i64
+    pre start >= 0
+    post it >= -1
+=  {
     let pos = find_pattern_at_slow(ir, name, start);
     if pos < 0 { -1 }
     else {
@@ -8557,7 +8740,10 @@ fn is_dead_zext_range(ir: String, start: i64, end: i64, dead: String) -> bool = 
     }
 };
 
-fn find_char_in_range(s: String, start: i64, end: i64, ch: i64) -> i64 =
+fn find_char_in_range(s: String, start: i64, end: i64, ch: i64) -> i64
+    pre start >= 0
+    post it >= -1
+= 
     if start >= end { end }
     else if s.byte_at(start) == ch { start }
     else { find_char_in_range(s, start + 1, end, ch) };
@@ -8915,7 +9101,10 @@ fn ipr_collect_readonly_names(ir: String, pos: i64, acc: String) -> String =
     };
 
 // Find first pipe (byte 31) in range [pos, end)
-fn find_pipe_in_range(s: String, pos: i64, end: i64) -> i64 =
+fn find_pipe_in_range(s: String, pos: i64, end: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos >= end { end }
     else if s.byte_at(pos) == 31 { pos }
     else if s.byte_at(pos) == 34 { find_pipe_in_range(s, skip_quoted_string(s, pos + 1), end) }
@@ -9827,7 +10016,10 @@ fn eliminate_dead_functions_ir(ir: String) -> String = {
 
 // Scan IR line-by-line for @name references, skip define header lines
 // is_def_line: 1 if current line is a define header (first line after ||)
-fn collect_refs_by_lines(ir: String, pos: i64, set_sb: i64, is_def_line: i64) -> i64 =
+fn collect_refs_by_lines(ir: String, pos: i64, set_sb: i64, is_def_line: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     if pos >= ir.len() { 0 }
     else {
         let pipe_pos = find_pipe_skip_quotes(ir, pos);
@@ -9842,7 +10034,10 @@ fn collect_refs_by_lines(ir: String, pos: i64, set_sb: i64, is_def_line: i64) ->
     };
 
 // Find @name references in IR range [start, end) and add to set_sb
-fn collect_refs_in_range(ir: String, start: i64, end: i64, set_sb: i64) -> i64 =
+fn collect_refs_in_range(ir: String, start: i64, end: i64, set_sb: i64) -> i64
+    pre start >= 0
+    post it >= 0
+= 
     if start >= end { 0 }
     else {
         let at_pos = find_byte_in_range(ir, 64, start, end);
@@ -9858,7 +10053,10 @@ fn collect_refs_in_range(ir: String, start: i64, end: i64, set_sb: i64) -> i64 =
         }
     };
 
-fn find_at_name_end_in(s: String, pos: i64, end: i64) -> i64 =
+fn find_at_name_end_in(s: String, pos: i64, end: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos >= end { pos }
     else {
         let ch = s.byte_at(pos);
@@ -9907,7 +10105,10 @@ fn find_pattern_noa_range(s: String, pat: String, pos: i64, end: i64) -> i64
     else if match_bytes(s, pat, pos, 0) { pos }
     else { find_pattern_noa_range(s, pat, pos + 1, end) };
 
-fn find_byte_in_range(s: String, byte: i64, pos: i64, end: i64) -> i64 =
+fn find_byte_in_range(s: String, byte: i64, pos: i64, end: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos >= end { -1 }
     else if s.byte_at(pos) == byte { pos }
     else { find_byte_in_range(s, byte, pos + 1, end) };
@@ -9937,7 +10138,10 @@ fn prune_unused_decls(module_ir: String) -> String = {
 };
 
 // Collect all @name references from code section
-fn collect_refs_in_code(code: String, pos: i64, sb: i64) -> i64 =
+fn collect_refs_in_code(code: String, pos: i64, sb: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     if pos >= code.len() { 0 }
     else {
         let at_pos = find_byte_in_range(code, 64, pos, code.len());
@@ -11721,7 +11925,9 @@ fn trl_param_names(header: String) -> String =
     if open < 0 or close <= open + 1 { "" }
     else { trl_parse_params(header.slice(open + 1, close), 0, "") };
 
-fn trl_parse_params(params: String, pos: i64, acc: String) -> String =
+fn trl_parse_params(params: String, pos: i64, acc: String) -> String
+    pre pos >= 0
+= 
     let p = low_skip_ws(params, pos);
     if p >= params.len() { acc }
     else {
@@ -11739,7 +11945,9 @@ fn trl_parse_params(params: String, pos: i64, acc: String) -> String =
 fn trl_param_at(params: String, idx: i64) -> String =
     trl_param_at_scan(params, 0, idx);
 
-fn trl_param_at_scan(params: String, pos: i64, idx: i64) -> String =
+fn trl_param_at_scan(params: String, pos: i64, idx: i64) -> String
+    pre pos >= 0
+= 
     if pos >= params.len() { "" }
     else {
         let semi = find_char(params, pos, 59);
@@ -11752,7 +11960,10 @@ fn trl_param_at_scan(params: String, pos: i64, idx: i64) -> String =
 fn trl_param_count(params: String) -> i64 =
     trl_count_chars(params, 0, 59, 0);
 
-fn trl_count_chars(s: String, pos: i64, ch: i64, count: i64) -> i64 =
+fn trl_count_chars(s: String, pos: i64, ch: i64, count: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     if pos >= s.len() { count }
     else if s.byte_at(pos) == ch { trl_count_chars(s, pos + 1, ch, count + 1) }
     else { trl_count_chars(s, pos + 1, ch, count) };
@@ -11762,7 +11973,9 @@ fn trl_count_chars(s: String, pos: i64, ch: i64, count: i64) -> i64 =
 // A tail call is: %_tN = call @self_name(...) immediately followed by goto merge_M
 // where merge_M has: phi [..., %_tN, this_block] then return %phi_result
 // v0.96.41: Also verify that goto target block leads to return (not loop continuation)
-fn trl_find_tail_call(fn_mir: String, pos: i64, fn_name: String) -> String =
+fn trl_find_tail_call(fn_mir: String, pos: i64, fn_name: String) -> String
+    pre pos >= 0
+= 
     if pos >= fn_mir.len() { "" }
     else {
         let pipe = find_pipe_skip_quotes(fn_mir, pos);
@@ -11826,7 +12039,9 @@ fn trl_call_args(line: String) -> String =
     if open < 0 or close <= open { "" }
     else { trl_split_args(line.slice(open + 1, close), 0, "") };
 
-fn trl_split_args(args: String, pos: i64, acc: String) -> String =
+fn trl_split_args(args: String, pos: i64, acc: String) -> String
+    pre pos >= 0
+= 
     let p = low_skip_ws(args, pos);
     if p >= args.len() { acc }
     else {
@@ -11838,10 +12053,14 @@ fn trl_split_args(args: String, pos: i64, acc: String) -> String =
     };
 
 // Find last occurrence of a character
-fn find_last_char(s: String, ch: i64) -> i64 =
-    find_last_char_scan(s, s.len() - 1, ch);
+fn find_last_char(s: String, ch: i64) -> i64
+    post it >= -1
+= find_last_char_scan(s, s.len() - 1, ch);
 
-fn find_last_char_scan(s: String, pos: i64, ch: i64) -> i64 =
+fn find_last_char_scan(s: String, pos: i64, ch: i64) -> i64
+    pre pos >= -1
+    post it >= -1
+= 
     if pos < 0 { 0 - 1 }
     else if s.byte_at(pos) == ch { pos }
     else { find_last_char_scan(s, pos - 1, ch) };
@@ -13789,7 +14008,10 @@ fn format_fn_params(params: String, pos: i64, acc: String) -> String =
         if comma >= params.len() { new_acc } else { format_fn_params(params, comma + 1, new_acc) }
     };
 
-fn find_arrow(s: String, pos: i64) -> i64 =
+fn find_arrow(s: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos + 1 >= s.len() { pos } else if s.byte_at(pos) == 45 and s.byte_at(pos + 1) == 62 { pos } else { find_arrow(s, pos + 1) };
 
 fn ends_with_colon(s: String) -> bool =
@@ -13798,7 +14020,10 @@ fn ends_with_colon(s: String) -> bool =
         if last.len() == 0 { false } else { last.byte_at(last.len() - 1) == 58 }
     };
 
-fn find_double_pipe(s: String, pos: i64) -> i64 =
+fn find_double_pipe(s: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos + 1 >= s.len() { s.len() }
     else if s.byte_at(pos) == 31 and s.byte_at(pos + 1) == 31 { pos }
     else if s.byte_at(pos) == 34 { find_double_pipe(s, skip_quoted_string(s, pos + 1)) }
@@ -14077,7 +14302,9 @@ fn collect_strings_from_mir(mir: String) -> String =
 // Uses String accumulator directly, trading some allocation for avoiding
 // the O(N) sb_build call that was happening on every string found
 // "empty list" from "list containing empty string" in tab-separated format
-fn collect_strings_acc_v2(mir: String, pos: i64, acc: String) -> String =
+fn collect_strings_acc_v2(mir: String, pos: i64, acc: String) -> String
+    pre pos >= 0
+= 
     if pos >= mir.len() { acc } else {
         let next = find_string_in_mir(mir, pos);
         if next < 0 { acc } else {
@@ -14094,7 +14321,10 @@ fn collect_strings_acc_v2(mir: String, pos: i64, acc: String) -> String =
     };
 
 // Find "string " pattern in MIR (returns position or -1)
-fn find_string_in_mir(mir: String, pos: i64) -> i64 =
+fn find_string_in_mir(mir: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos + 8 > mir.len() { 0 - 1 }
     else if matches_string_pattern(mir, pos) { pos }
     else { find_string_in_mir(mir, pos + 1) };
@@ -14105,7 +14335,10 @@ fn matches_string_pattern(s: String, pos: i64) -> bool =
     s.byte_at(pos + 4) == 110 and s.byte_at(pos + 5) == 103 and
     s.byte_at(pos + 6) == 32 and s.byte_at(pos + 7) == 34;
 
-fn find_quote_in_mir(s: String, pos: i64) -> i64 =
+fn find_quote_in_mir(s: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos >= s.len() { s.len() }
     else if s.byte_at(pos) == 92 and pos + 1 < s.len() { find_quote_in_mir(s, pos + 2) }
     else if s.byte_at(pos) == 34 { pos }
@@ -14124,16 +14357,23 @@ fn string_in_list_scan(list: String, target: String, pos: i64) -> i64 =
         else { string_in_list_scan(list, target, pipe + 1) }
     };
 
-fn find_tab_in_list(s: String, pos: i64) -> i64 =
+fn find_tab_in_list(s: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos >= s.len() { s.len() }
     else if s.byte_at(pos) == 9 { pos }
     else { find_tab_in_list(s, pos + 1) };
 
 // Find index of string in list
-fn find_string_index(list: String, target: String) -> i64 =
-    find_string_index_scan(list, target, 0, 0);
+fn find_string_index(list: String, target: String) -> i64
+    post it >= -1
+= find_string_index_scan(list, target, 0, 0);
 
-fn find_string_index_scan(list: String, target: String, pos: i64, idx: i64) -> i64 =
+fn find_string_index_scan(list: String, target: String, pos: i64, idx: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos >= list.len() { 0 } else {
         let pipe = find_tab_in_list(list, pos);
         let end = if pipe >= list.len() { list.len() } else { pipe };
@@ -14148,7 +14388,9 @@ fn find_string_index_scan(list: String, target: String, pos: i64, idx: i64) -> i
 fn collect_string_fns_from_mir(mir: String) -> String =
     collect_string_fns_acc(mir, 0, "");
 
-fn collect_string_fns_acc(mir: String, pos: i64, acc: String) -> String =
+fn collect_string_fns_acc(mir: String, pos: i64, acc: String) -> String
+    pre pos >= 0
+= 
     if pos >= mir.len() { acc }
     else {
         // Find next function definition
@@ -14174,7 +14416,10 @@ fn collect_string_fns_acc(mir: String, pos: i64, acc: String) -> String =
     };
 
 // Find "fn " at or after pos
-fn find_fn_start(mir: String, pos: i64) -> i64 =
+fn find_fn_start(mir: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos + 3 > mir.len() { 0 - 1 }
     else if mir.byte_at(pos) == 102 and mir.byte_at(pos + 1) == 110 and mir.byte_at(pos + 2) == 32 { pos }
     else { find_fn_start(mir, pos + 1) };
@@ -14196,14 +14441,20 @@ fn extract_fn_ret_type_from_mir(mir: String, fn_start: i64) -> String =
     };
 
 // Find "-> " after fn_start
-fn find_arrow_in_mir(mir: String, pos: i64) -> i64 =
+fn find_arrow_in_mir(mir: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos + 3 > mir.len() { 0 - 1 }
     else if mir.byte_at(pos) == 45 and mir.byte_at(pos + 1) == 62 and mir.byte_at(pos + 2) == 32 { pos }
     else if mir.byte_at(pos) == 123 { 0 - 1 }  // Hit '{' before finding arrow
     else { find_arrow_in_mir(mir, pos + 1) };
 
 // Find end of function (double unit separator)
-fn find_fn_end(mir: String, pos: i64) -> i64 =
+fn find_fn_end(mir: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos + 1 >= mir.len() { 0 - 1 }
     else if mir.byte_at(pos) == 31 and mir.byte_at(pos + 1) == 31 { pos + 2 }
     else { find_fn_end(mir, pos + 1) };
@@ -14291,10 +14542,14 @@ fn escape_llvm_string_acc(s: String, pos: i64, acc: String) -> String =
         else { escape_llvm_string_acc(s, pos + 1, acc + chr(ch)) }
     };
 
-fn count_string_bytes(s: String) -> i64 =
-    count_string_bytes_acc(s, 0, 0);
+fn count_string_bytes(s: String) -> i64
+    post it >= 0
+= count_string_bytes_acc(s, 0, 0);
 
-fn count_string_bytes_acc(s: String, pos: i64, count: i64) -> i64 =
+fn count_string_bytes_acc(s: String, pos: i64, count: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     if pos >= s.len() { count }
     else {
         let ch = s.byte_at(pos);
@@ -14492,7 +14747,10 @@ fn init_string_params_sb(mir: String, str_sb: i64) -> i64 =
     };
 
 // Collect string parameters and push "S:%name," markers to SB
-fn collect_string_params_sb(params: String, pos: i64, str_sb: i64) -> i64 =
+fn collect_string_params_sb(params: String, pos: i64, str_sb: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     let p = low_skip_ws(params, pos);
     if p >= params.len() { 0 }
     else {
@@ -14542,7 +14800,10 @@ fn init_i64_params_sb(mir: String, str_sb: i64) -> i64 =
         }
     };
 
-fn collect_i64_params_sb(params: String, pos: i64, str_sb: i64) -> i64 =
+fn collect_i64_params_sb(params: String, pos: i64, str_sb: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     let p = low_skip_ws(params, pos);
     if p >= params.len() { 0 }
     else {
@@ -14635,7 +14896,10 @@ fn init_ptr_params_sb(mir: String, ptr_sb: i64) -> i64 =
         }
     };
 
-fn collect_ptr_params_sb(params: String, pos: i64, ptr_sb: i64) -> i64 =
+fn collect_ptr_params_sb(params: String, pos: i64, ptr_sb: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     let p = low_skip_ws(params, pos);
     if p >= params.len() { 0 }
     else {
@@ -14672,7 +14936,9 @@ fn get_struct_ptr_type(varname: String, ptr_sb: i64) -> String =
     let content = sb_build(ptr_sb);
     get_struct_ptr_type_from(varname, content, 0);
 
-fn get_struct_ptr_type_from(varname: String, content: String, pos: i64) -> String =
+fn get_struct_ptr_type_from(varname: String, content: String, pos: i64) -> String
+    pre pos >= 0
+= 
     if pos >= content.len() { "" } else {
         let comma_pos = find_comma_or_end(content, pos);
         let entry = content.slice(pos, comma_pos);
@@ -14694,16 +14960,23 @@ fn get_struct_ptr_type_from(varname: String, content: String, pos: i64) -> Strin
         else { get_struct_ptr_type_from(varname, content, comma_pos + 1) }
     };
 
-fn find_char_from(s: String, pos: i64, ch: i64) -> i64 =
+fn find_char_from(s: String, pos: i64, ch: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos >= s.len() { s.len() }
     else if s.byte_at(pos) == ch { pos }
     else { find_char_from(s, pos + 1, ch) };
 
 
-fn count_struct_fields(registry: String, struct_name: String) -> i64 =
-    count_struct_fields_at(registry, 0, struct_name);
+fn count_struct_fields(registry: String, struct_name: String) -> i64
+    post it >= 0
+= count_struct_fields_at(registry, 0, struct_name);
 
-fn count_struct_fields_at(registry: String, pos: i64, struct_name: String) -> i64 =
+fn count_struct_fields_at(registry: String, pos: i64, struct_name: String) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     if pos >= registry.len() { 0 } else {
         let semi_pos = find_char(registry, pos, 59);
         let entry = registry.slice(pos, semi_pos);
@@ -14717,7 +14990,10 @@ fn count_struct_fields_at(registry: String, pos: i64, struct_name: String) -> i6
         else { count_struct_fields_at(registry, semi_pos + 1, struct_name) }
     };
 
-fn count_commas(s: String, pos: i64) -> i64 =
+fn count_commas(s: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     if pos >= s.len() { 0 }
     else if s.byte_at(pos) == 44 { 1 + count_commas(s, pos + 1) }
     else { count_commas(s, pos + 1) };
@@ -14766,14 +15042,20 @@ fn check_field_f64_at_index(fields: String, pos: i64, cur_idx: i64, target_idx: 
         else { check_field_f64_at_index(fields, comma_pos + 1, cur_idx + 1, target_idx) }
     };
 
-fn find_pattern_at(s: String, pat: String, pos: i64) -> i64 =
+fn find_pattern_at(s: String, pat: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     // Check from start - MIR functions always start with "fn "
     if pos == 0 and pat.len() <= s.len() and match_bytes(s, pat, 0, 0) { 0 }
     // If not at start, do linear search
     else { find_pattern_noa(s, pat, pos) };
 
 // Legacy alias — redirects to zero-allocation implementation
-fn find_pattern_at_slow(s: String, pat: String, pos: i64) -> i64 =
+fn find_pattern_at_slow(s: String, pat: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     find_pattern_noa(s, pat, pos);
 
 fn gen_fn_lines_structs(mir: String, pos: i64, sb: i64, ret_type: String, strings: String, string_fns: String, mapping: String, str_sb: i64, registry: String, struct_reg: String, ptr_sb: i64) -> i64 =
@@ -15235,7 +15517,10 @@ fn llvm_gen_closure_load(line: String, pos: i64, dest: String) -> String =
     let gep_tmp = dest + "_g";
     "  " + ptr_tmp + " = inttoptr i64 " + closure_var + " to ptr" + SEP() + "  " + gep_tmp + " = getelementptr inbounds nuw i64, ptr " + ptr_tmp + ", i32 " + int_to_string(offset) + SEP() + "  " + dest + " = load i64, ptr " + gep_tmp;
 
-fn find_fn_name_end(line: String, pos: i64) -> i64 =
+fn find_fn_name_end(line: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos >= line.len() { pos }
     else if line.byte_at(pos) == 40 { pos }  // '('
     else { find_fn_name_end(line, pos + 1) };
@@ -15312,7 +15597,10 @@ fn lookup_field_by_name_at(registry: String, pos: i64, field_name: String) -> i6
         else { lookup_field_by_name_at(registry, semi_pos + 1, field_name) }
     };
 
-fn find_field_index_or_neg(fields: String, pos: i64, idx: i64, target: String) -> i64 =
+fn find_field_index_or_neg(fields: String, pos: i64, idx: i64, target: String) -> i64
+    pre pos >= 0
+    post it >= -1
+= 
     if pos >= fields.len() { 0 - 1 } else {
         let comma_pos = find_comma_or_end(fields, pos);
         let raw_name = fields.slice(pos, comma_pos);
@@ -15575,8 +15863,9 @@ fn check_closure_marker(varname: String, str_sb: i64, n: i64) -> bool =
 fn get_closure_cap_count_sb(varname: String, str_sb: i64) -> i64 =
     find_closure_count(varname, str_sb, 9);
 
-fn find_closure_count(varname: String, str_sb: i64, n: i64) -> i64 =
-    if n <= 0 { 0 }
+fn find_closure_count(varname: String, str_sb: i64, n: i64) -> i64
+    post it >= 0
+= if n <= 0 { 0 }
     else {
         let marker = "C" + int_to_string(n) + ":" + varname + ",";
         if bmb_sb_contains(str_sb, marker) > 0 { n }
@@ -16732,7 +17021,10 @@ fn inject_post_assumes_in_fn_scan(fn_ir: String, post_map: String, pos: i64, cou
     };
 
 // Skip leading spaces
-fn skip_spaces(s: String, pos: i64) -> i64 =
+fn skip_spaces(s: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     if pos >= s.len() { pos }
     else if s.byte_at(pos) == 32 { skip_spaces(s, pos + 1) }
     else { pos };
@@ -17254,7 +17546,10 @@ fn optimize_ir_linear_recurrence(ir: String) -> String =
 
 // v0.96.27: Collect user-defined function names from LLVM IR code
 // Scans for "define ... @name(" patterns and stores names in sb as ";name;"
-fn collect_defined_fn_names(code: String, pos: i64, sb: i64) -> i64 =
+fn collect_defined_fn_names(code: String, pos: i64, sb: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     let def_pos = find_substr_pos(code, "define ", pos);
     if def_pos < 0 { 0 }
     else {
@@ -17494,7 +17789,9 @@ fn trim_ws_end(s: String, pos: i64) -> i64 =
     else { pos };
 
 // Extract a single parameter as "name: type" text
-fn index_parse_param_text(src: String, pos: i64) -> String =
+fn index_parse_param_text(src: String, pos: i64) -> String
+    pre pos >= 0
+= 
     let t1 = next_token_raw(src, pos);
     if tok_kind(t1) == TK_IDENT() {
         let name = src.slice(skip_ws_comments(src, pos), scan_ident_end(src, skip_ws_comments(src, pos)));
@@ -17507,7 +17804,9 @@ fn index_parse_param_text(src: String, pos: i64) -> String =
     } else { pack_result(tok_end(t1), "?") };
 
 // Read type text (i32, i64, f64, bool, String, *T, &T, &mut T, [T], [T;N])
-fn index_read_type_text(src: String, pos: i64) -> String =
+fn index_read_type_text(src: String, pos: i64) -> String
+    pre pos >= 0
+= 
     let t = next_token_raw(src, pos);
     let k = tok_kind(t);
     if k == TK_I32() { pack_result(skip_nullable_idx(src, tok_end(t)), "i32") }
@@ -17537,19 +17836,27 @@ fn index_read_type_text(src: String, pos: i64) -> String =
     else { pack_result(tok_end(t), "?") };
 
 // Skip to closing bracket
-fn index_skip_to_bracket(src: String, pos: i64) -> i64 =
+fn index_skip_to_bracket(src: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     let t = next_token_raw(src, pos);
     if tok_kind(t) == TK_RBRACKET() { tok_end(t) }
     else if tok_kind(t) == TK_EOF() { pos }
     else { index_skip_to_bracket(src, tok_end(t)) };
 
 // Skip nullable ? suffix for index type reading
-fn skip_nullable_idx(src: String, pos: i64) -> i64 =
+fn skip_nullable_idx(src: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     let p = skip_ws_comments(src, pos);
     if p < src.len() and src.byte_at(p) == 63 { p + 1 } else { p };
 
 // Collect parameters as comma-separated text
-fn index_collect_params(src: String, pos: i64, acc: String) -> String =
+fn index_collect_params(src: String, pos: i64, acc: String) -> String
+    pre pos >= 0
+= 
     let t = next_token_raw(src, pos);
     if tok_kind(t) == TK_RPAREN() { pack_result(tok_end(t), acc) }
     else {
@@ -17565,7 +17872,9 @@ fn index_collect_params(src: String, pos: i64, acc: String) -> String =
     };
 
 // Extract return type text
-fn index_read_ret_type(src: String, pos: i64) -> String =
+fn index_read_ret_type(src: String, pos: i64) -> String
+    pre pos >= 0
+= 
     let t = next_token_raw(src, pos);
     if tok_kind(t) == TK_ARROW() {
         index_read_type_text(src, tok_end(t))
@@ -17582,7 +17891,10 @@ fn index_is_decl_start(src: String, pos: i64) -> bool =
     };
 
 // Skip past a function body, stop when next top-level declaration starts
-fn index_skip_body(src: String, pos: i64, depth: i64) -> i64 =
+fn index_skip_body(src: String, pos: i64, depth: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     let t = next_token_raw(src, pos);
     let k = tok_kind(t);
     if k == TK_EOF() { pos }
@@ -17617,7 +17929,10 @@ fn index_has_name_search(list: String, name: String, pos: i64) -> bool =
         else { index_has_name_search(list, name, end_pos + 2) }  // skip ", "
     };
 
-fn index_find_comma_or_end(s: String, pos: i64) -> i64 =
+fn index_find_comma_or_end(s: String, pos: i64) -> i64
+    pre pos >= 0
+    post it >= 0
+= 
     if pos >= s.len() { pos }
     else if s.byte_at(pos) == 44 { pos }  // comma
     else { index_find_comma_or_end(s, pos + 1) };
@@ -20721,7 +21036,9 @@ fn print_build_timing(compile_ms: i64, link_ms: i64) -> i64 =
     0;
 
 // v0.96.5: Count line separators using while loop (O(1) stack space)
-fn count_ir_lines_loop(s: String) -> i64 = {
+fn count_ir_lines_loop(s: String) -> i64
+    post it >= 0
+= {
     let count = [0; 1];
     let pos = [0; 1];
     while pos[0] < s.len() {
@@ -20732,7 +21049,9 @@ fn count_ir_lines_loop(s: String) -> i64 = {
 };
 
 // v0.96.5: Count occurrences of a pattern at line starts (after chr(31)) using while loop
-fn count_line_pattern(s: String, pat: String) -> i64 = {
+fn count_line_pattern(s: String, pat: String) -> i64
+    post it >= 0
+= {
     let count = [0; 1];
     let pos = [0; 1];
     let _init = if s.len() >= pat.len() and match_bytes(s, pat, 0, 0) { set count[0] = 1 } else { set count[0] = 0 };
@@ -20748,7 +21067,9 @@ fn count_line_pattern(s: String, pat: String) -> i64 = {
 };
 
 // v0.96.5: Count all occurrences of a pattern using while loop
-fn count_substr_loop(s: String, pat: String) -> i64 = {
+fn count_substr_loop(s: String, pat: String) -> i64
+    post it >= 0
+= {
     let count = [0; 1];
     let pos = [0; 1];
     while pos[0] + pat.len() <= s.len() {

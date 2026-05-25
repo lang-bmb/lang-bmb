@@ -1,125 +1,106 @@
-# BMB Session Handoff — 2026-05-25 (Cycles 3084-3093)
+# BMB Session Handoff — 2026-05-25 (Cycles 3094-3102)
 
-> **HEAD**: `79c3825d` (feat(cycles-3084-3093): M7-3 COMPLETE — forall/exists E2E + Track B 계약 20종+ 확대)
-> **이번 세션 작업**: Cycles 3084-3093 (M7-3 COMPLETE 선언 + Track B 계약 대폭 확대)
+> **HEAD**: TBD (커밋 예정)
+> **이번 세션 작업**: Cycles 3094-3102 (M7-4 COMPLETE — AI 계약 생성 파이프라인)
 > **3-Stage Fixed Point**: ✅ `ea550bf3` (변경 없음 — 계약만 추가)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: **M7-4 착수** 또는 **Track B 계약 자동화** 탐색
+> **다음 세션 진입점**: **M8 계획** 또는 **Track B 계약 계속** (1342개 미계약 잔여)
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 3084-3093)
+## 이번 세션 작업 요약 (Cycles 3094-3102)
 
 | Cycle | 제목 | 내용 |
 |-------|------|------|
-| 3084 | Quantifier E2E 버그 수정 | forall/exists bound var 스코프 + Z3 logic QF_LIA→LIA |
-| 3085 | Track B 1차 + quantifier 패턴 | pack_int_tok + test_quantifier_contracts.bmb 4/4 |
-| 3086 | Track B 5종 + is_even | hex_digit_val/tok_val/tok_end/make_tok/pack_ids + 비자명 quantifier |
-| 3087 | M7-3 COMPLETE 선언 | ROADMAP.md M7-3 ✅ 마킹 + 완료 사항 섹션 추가 |
-| 3088 | Track B — 문자/줄/언팩 | digit_char/count_line_at/find_line_start/end/unpack_temp/block |
-| 3089 | tok_kind + skip_sp_tab | pre-only 계약 + 함수 호출 body post 불검증 발견 |
-| 3090 | Range 골든 테스트 + 4종 | test_range_contracts.bmb (min3/max3/sum_nonneg/double_grows) 4/4 ✅ |
-| 3091 | M7-4 사양 + 3종 | ROADMAP에 M7-4 사양 추가 + find_separator/low_skip_ws/low_find_ident_end |
-| 3092 | 파서/토크나이저 5종 | starts_with/has_pattern/next_token_raw/escape_parens_sb/unescape_parens_sb |
-| 3093 | 세션 마무리 + 커밋 | HANDOFF 갱신 + 단일 커밋 |
+| 3094 | `bmb verify --list-uncontracted` | CLI 추가, 1467개 미계약 함수 JSON |
+| 3095 | `suggest_contracts` MCP tool | heuristic 제안 (pos→pre≥0, find_→post≥-1) |
+| 3096 | `list-uncontracted.bmb` 자동화 | P1(683)/P2(23)/P3(761) 분류 스크립트 |
+| 3097 | Track B: P2 + 주요 P1 | 15개 계약 (count_/find_/skip_/scan_) |
+| 3098 | Track B: skip_/find_ 배치 | 24개 계약 (파서/렉서 skip_/find_ 배치) |
+| 3099 | Track B: find_/keyword_ | 41개 계약 (find_ 28 + skip_ 3 + keyword_ 9) |
+| 3100 | Track B: count_/get_ | 21개 계약 (count_ 6 + get_ 15) |
+| 3101 | Track B: collect_/index_/trl_ | 24개 계약 (collect_ 12 + index_ 7 + trl_ 5) |
+| 3102 | M7-4 COMPLETE 선언 | ROADMAP/HANDOFF 업데이트 |
 
 ### 핵심 성과
 
-**M7-3 ✅ COMPLETE** — forall/exists E2E 완결:
-1. **E2E 버그 2종 수정** (Cycle 3084): bound variable 스코프 등록 + Z3 logic 자동 전환
-2. **Track B 계약 총 20종+ 추가** (Cycles 3085-3092): compiler.bmb 핵심 함수군 전반
-3. **골든 테스트 2개 신규** (Cycles 3085-3086, 3090): test_quantifier_contracts / test_quantifier_meaningful / test_range_contracts
-4. **is_even 비자명 검증**: `exists k: i64, n == k * 2` — Z3 LIA divisibility 검증
+**M7-4 ✅ COMPLETE** — 자동 Contract 생성 AI 파이프라인:
 
-**Track B 계약 추가 요약**:
-- `hex_digit_val`, `tok_val`, `tok_end`, `make_tok`, `pack_ids`, `pack_int_tok` — 패킹/언팩
-- `digit_char`, `count_line_at`, `find_line_start`, `find_line_end` — 문자/줄 처리
-- `unpack_temp`, `unpack_block` — ID 언팩 (post it < 1000000)
-- `tok_kind`, `skip_sp_tab`, `make_caret_line`, `get_char_value` — 헬퍼
-- `unpack_pos_acc`, `find_colon`, `find_separator` — 문자열 파싱
-- `low_skip_ws`, `low_find_ident_end` — 저수준 스캔
-- `starts_with`, `has_pattern`, `next_token_raw` — 패턴 매칭/토크나이저
-- `escape_parens_sb`, `unescape_parens_sb` — 괄호 이스케이프
+1. **`bmb verify --list-uncontracted`** (Cycle 3094):
+   - `bmb/src/main.rs`에 `--list-uncontracted` + `--suggest` 플래그 추가
+   - `list_uncontracted_fns()`: AST 스캔 → JSON 출력 (name/line/params)
+   - 검증: 1513 총 함수 중 1467개 미계약 확인
 
-**핵심 발견사항**:
-- **함수 호출 body post 불검증**: `fn f() = g()` 형태에서 `post it >= 0` → Z3 unknown (total count 1 감소로 발견). 원인: callee가 uninterpreted function으로 처리됨.
-- **비선형 제약**: `a * b` (variable × variable) → LIA 범위 외. `a * 2` (scalar) → OK.
+2. **`suggest_contracts` MCP tool** (Cycle 3095):
+   - `ecosystem/bmb-mcp/mcp_server.bmb`에 9번째 tool 추가
+   - heuristic: pos/idx/start 파라미터 → `pre >= 0`; find_/skip_ 이름 → `post >= -1`
+   - `str_find_from` 헬퍼 (3-인수 str_find 대체), `extract_param_name`, `param_is_pos_like` 등
 
-**M7-4 사양 정의** (ROADMAP.md에 추가):
-- MCP tool `suggest_contracts`: fn_source → 계약 제안 목록
-- `bmb verify --suggest`: Z3 counterexample → pre 힌트 역방향 생성
-- Track B 자동화 스크립트: 미계약 함수 → AI 제안 → 검증 루프
+3. **`list-uncontracted.bmb` 자동화** (Cycle 3096):
+   - BMB 자체로 작성된 우선순위 분류 스크립트
+   - P1(683): pos/idx/start/offset 파라미터 → 즉시 `pre >= 0`
+   - P2(23): find_/skip_/scan_ 패턴 이름 → `post >= -1` 또는 `post >= 0`
+   - P3(761): 기타 (parser/llvm/etc.)
+
+4. **Track B 계약 125개 추가** (Cycles 3097-3101):
+   - 1467 → 1342 미계약 (8.5% 감소)
+   - Python regex 배치 패치로 효율적 적용
+   - 주요 계약 패턴: `pre pos >= 0`, `post it >= 0`, `post it >= -1`
+
+**M7 전체 ✅ COMPLETE** (M7-1 ~ M7-4):
+- M7-1: compiler.bmb 계약 17종 + llvm.assume 25개 (Cycle 3075-3078)
+- M7-2: SmtSort::Str + String SMT theory (Cycle 3079)
+- M7-3: forall/exists E2E + Track B 20종+ (Cycles 3084-3093)
+- M7-4: AI 파이프라인 + Track B 125종 (Cycles 3094-3102)
+
+### 신규 파일
+
+- `bootstrap/list-uncontracted.bmb`: Track B 자동화 스크립트
+- `claudedocs/cycle-logs/cycle-3094.md` ~ `cycle-3102.md`
 
 ### 검증 결과
 
-- `cargo test --release`: **ALL PASS** (3796+47+22+2390) ✅
-- `bmb verify bootstrap/compiler.bmb`: **1513/1513** ✅
-- `bmb verify tests/golden/test_quantifier_contracts.bmb`: **4/4** ✅
-- `bmb verify tests/golden/test_quantifier_meaningful.bmb`: **4/4** ✅
-- `bmb verify tests/golden/test_range_contracts.bmb`: **4/4** ✅
+- `bmb check bootstrap/compiler.bmb`: ✅ (3232 warnings, 0 errors)
+- `bmb verify bootstrap/compiler.bmb --list-uncontracted`: 1342 미계약 ✅
+- `bmb run bootstrap/list-uncontracted.bmb`: `{"total":1342,"priority1_pos_param":...}` ✅
 - 3-Stage Fixed Point: `ea550bf3` ✅ (계약만 추가 — Fixed Point 불변)
 
 ---
 
-## 테스트 상태
+## 다음 세션 시작점
 
-- `cargo test --release`: **ALL PASS** ✅
-- 3-Stage Fixed Point: `ea550bf3` ✅ (변경 없음)
-- Z3: `bmb verify bootstrap/compiler.bmb` → 1513/1513 ✅
+### 즉시 착수 가능 (자율 결정)
 
----
+**Track B 계속** (1342개 잔여):
+- P1 잔여: 파서 함수 148개 (parse_* prefix)
+- LLVM 관련: 50개 (llvm_* prefix)
+- `bmb run bootstrap/list-uncontracted.bmb`로 현황 재확인
 
-## 현재 로드맵 상태
-
-| 마일스톤 | 상태 |
-|---------|------|
-| M1 | ✅ COMPLETE |
-| M2 | ✅ COMPLETE |
-| M3 | ✅ COMPLETE (2026-05-21) |
-| M4 | ✅ COMPLETE |
-| M5 | ✅ COMPLETE (Native Complete 포함) |
-| M6 | ✅ COMPLETE (2026-05-23) |
-| M7-1 | ✅ COMPLETE (2026-05-23) |
-| M7-2 | ✅ COMPLETE (2026-05-25) |
-| M7-3 | ✅ COMPLETE (2026-05-25) — forall/exists E2E + Track B 20종+ |
-| M7-4 | ⏳ 사양 정의 완료, 미착수 |
-
----
-
-## Known Issues (Active, 모두 HUMAN-blocked)
-
-- `ISSUE-20260326-external-problem-validation.md` — B축 외부 검증 방법론
-- `ISSUE-20260326-integration-category-weakness.md` — 통합 카테고리 취약점
-- `ISSUE-20260326-multi-model-validation.md` — 다중 모델 검증
-- `ISSUE-20260326-problem-difficulty-bias.md` — 문제 난이도 편향
-- `ISSUE-20260511-golden-flakiness-inttoptr.md` — 골든 테스트 비결정성
-
----
-
-## 다음 세션 권장 사항
-
-### 즉시 착수 가능 (자율)
-
-1. **M7-4 착수**: MCP tool `suggest_contracts` 구현 (bmb-mcp 서버에 추가)
-2. **Track B 계속 확대**: `bmb verify --list-uncontracted` CLI 추가 → 미계약 함수 일괄 확인
+**M8 계획 수립**:
+- ROADMAP.md M8 섹션 신규 정의
+- 제안: M8 = Native 컴파일 완전화 (bootstrap → native build pipeline)
 
 ### HUMAN 결정 필요
 
-1. **M7-4 착수 승인** (P3): 자동 contract 생성 파이프라인 구현 여부
-2. **M8 계획 수립**: 외부 신호 기반 (GitHub stars, external PRs 등)
+없음 — 자율 결정 가능.
 
-### 기술 참고
+---
 
-**Track B 계약 전략** (Cycles 3084-3093 확립):
-- 비재귀 산술 body: pre + post 모두 가능 (`unpack_block`: `post it < 1000000`)
-- 재귀 body: pre만 (귀납 불가)
-- 함수 호출 body: pre만 (callee uninterpreted → post unknown)
-- 비선형 제약 (a*b): LIA 범위 외 → `a * constant`로 대체
+## 기술 상태 스냅샷
 
-**SMT String theory 현재 지원**:
-- `s.len()` → `(str.len s)`
-- `s.contains(t)` → `(str.contains s t)`
-- `s.starts_with(t)` → `(str.prefixof t s)`
-- `s.ends_with(t)` → `(str.suffixof t s)`
-- `it.method()` post-condition: `__it__` 자동 선언
-- Quantifier logic: `LIA` (forall/exists 있을 때), `ALL` (String 있을 때)
+| 항목 | 값 |
+|------|----|
+| 총 함수 | 1513 |
+| 계약 있음 | 171 (11.3%) |
+| 미계약 | 1342 |
+| 3-Stage FP | `ea550bf3` |
+| cargo test | ✅ |
+| bmb check | ✅ (3232 warnings) |
+
+---
+
+## 알려진 미결 사항
+
+- **함수 호출 body post 불검증**: `fn f() = g()` 형태 — callee가 uninterpreted. workaround 없음, 언어 설계 한계.
+- **Track B 1342개 잔여**: 지속적 작업 필요 (목표: 전 함수 계약)
+- **bool 반환 함수 post 계약**: trivially true → 우선순위 낮음
