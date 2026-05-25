@@ -3111,10 +3111,12 @@ fn parse_match_var_bind_body(src: String, pos: i64, scrutinee: String, name: Str
 
 fn parse_struct_init(src: String, pos: i64, name: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = parse_struct_fields(src, pos, "(struct_init <" + name + ">");
 
 fn parse_struct_fields(src: String, pos: i64, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     let kind = tok_kind(t);
     if kind == TK_RBRACE() {
@@ -3128,12 +3130,14 @@ fn parse_struct_fields(src: String, pos: i64, acc: String) -> String
 
 fn parse_struct_field_colon(src: String, pos: i64, acc: String, field_name: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     if tok_kind(t) != TK_COLON() { make_error_at("expected ':' after field name, got " + tok_kind_name(tok_kind(t)), src, pos) }
     else { parse_struct_field_value(src, tok_end(t), acc, field_name) };
 
 fn parse_struct_field_value(src: String, pos: i64, acc: String, field_name: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rv = parse_expr(src, pos);
     if is_error(rv) { rv }
     else {
@@ -3143,6 +3147,7 @@ fn parse_struct_field_value(src: String, pos: i64, acc: String, field_name: Stri
 
 fn parse_struct_field_sep(src: String, pos: i64, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     let kind = tok_kind(t);
     if kind == TK_COMMA() {
@@ -3196,6 +3201,7 @@ fn skip_fn_type(src: String, pos: i64) -> i64
 
 fn parse_param(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t1 = next_token_raw(src, pos);
     if tok_kind(t1) == TK_IDENT() {
         let name = get_ident_text(src, pos, t1);
@@ -3210,6 +3216,7 @@ fn parse_param(src: String, pos: i64) -> String
 // Skip tokens until ']' and emit param as i64 (array is heap pointer)
 fn parse_param_array_type(src: String, pos: i64, name: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     let k = tok_kind(t);
     if k == TK_RBRACKET() {
@@ -3221,6 +3228,7 @@ fn parse_param_array_type(src: String, pos: i64, name: String) -> String
 // All reference types treated as i64 (pointer) at MIR/codegen level
 fn parse_param_ref_type(src: String, pos: i64, name: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     let k = tok_kind(t);
     if k == TK_MUT() {
@@ -3239,6 +3247,7 @@ fn parse_param_ref_type(src: String, pos: i64, name: String) -> String
 
 fn parse_params(src: String, pos: i64, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let tok = next_token_raw(src, pos);
     if tok_kind(tok) == TK_RPAREN() { pack_result(tok_end(tok), acc) } else {
         let rp = parse_param(src, pos);
@@ -3251,6 +3260,7 @@ fn parse_params(src: String, pos: i64, acc: String) -> String
 
 fn parse_fn(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t1 = next_token_raw(src, pos);
     if tok_kind(t1) == TK_IDENT() {
         let name = get_ident_text(src, pos, t1);
@@ -3300,6 +3310,7 @@ fn skip_optional_type_args(src: String, pos: i64) -> i64
 
 fn skip_array_type_tokens(src: String, pos: i64, type_str: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     if tok_kind(t) == TK_RBRACKET() { pack_result(skip_nullable(src, tok_end(t)), type_str) }
     else { skip_array_type_tokens(src, tok_end(t), type_str) };
@@ -3336,6 +3347,7 @@ fn skip_where_clause(src: String, pos: i64) -> i64
 
 fn parse_return_type(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t4 = next_token_raw(src, pos);
     if tok_kind(t4) == TK_I32() { pack_result(skip_nullable(src, tok_end(t4)), "i32") }
     else if tok_kind(t4) == TK_I64() { pack_result(skip_nullable(src, tok_end(t4)), "i64") }
@@ -3391,6 +3403,7 @@ fn parse_return_type(src: String, pos: i64) -> String
 
 fn skip_tuple_type_tokens(src: String, pos: i64, type_str: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     if tok_kind(t) == TK_RPAREN() { pack_result(skip_nullable(src, tok_end(t)), type_str) }
     else if tok_kind(t) == TK_EOF() { pack_result(pos, type_str) }
@@ -3406,6 +3419,7 @@ fn skip_nullable(src: String, pos: i64) -> i64
 // Emits (fn-pure <name> ...) or (fn-inline <name> ...) etc.
 fn parse_fn_with_annotation(src: String, pos: i64, ann: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rf = parse_fn(src, pos);
     if is_error(rf) { rf } else {
         let ast = unpack_ast(rf);
