@@ -5085,6 +5085,7 @@ fn step_var(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String,
 // or/and are short-circuit: dispatch directly to IT (if-then) work items, not BR+BF eager path
 fn step_binop_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let op = get_field(item, 1);
     let left = get_field(item, 2);
     let right = get_field(item, 3);
@@ -5105,6 +5106,7 @@ fn step_binop_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label:
 // BR: Binop right - left done, do right. cur_temp-1 is left result.
 fn step_binop_right(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let op = get_field(item, 1);
     let right = get_field(item, 2);
     let left_start = s2i(get_field(item, 3));
@@ -5135,6 +5137,7 @@ fn safe_divzero_check(sb: i64, cur_temp: i64, divisor_temp: i64) -> i64
 // BF: Binop final - both done, emit binop MIR
 fn step_binop_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let op = get_field(item, 1);
     let left_id = s2i(get_field(item, 2));
     let right_start = s2i(get_field(item, 3));
@@ -5153,6 +5156,7 @@ fn step_binop_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label:
 // UN: Start unary - push operand, then UF
 fn step_unary_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let op = get_field(item, 1);
     let operand = get_field(item, 2);
     let cont = make_work3("UF", op, i2s(cur_temp), "");
@@ -5162,6 +5166,7 @@ fn step_unary_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label:
 // UF: Unary final - emit unary MIR
 fn step_unary_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let op = get_field(item, 1);
     let operand_id = cur_temp - 1;
     let mir_op = if op == "not" { "not" } else if op == "-" { "neg" } else { op };
@@ -5172,6 +5177,7 @@ fn step_unary_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label:
 // IS: Start if - push cond, then IT
 fn step_if_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let cond = get_field(item, 1);
     let then_br = get_field(item, 2);
     let else_br = get_field(item, 3);
@@ -5189,6 +5195,7 @@ fn step_if_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: St
 // IZ: If-select - cond done, emit both pure values and select
 fn step_if_select(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let then_br = get_field(item, 1);
     let else_br = get_field(item, 2);
     let cond_id = cur_temp - 1;
@@ -5206,6 +5213,7 @@ fn step_if_select(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: S
 // Sets exit_label to then_label for the then branch execution
 fn step_if_then(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let then_br = get_field(item, 1);
     let else_br = get_field(item, 2);
     let orig_temp = s2i(get_field(item, 3));
@@ -5230,6 +5238,7 @@ fn step_if_then(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: Str
 // Uses cur_exit_label as the actual then_exit (propagated through trampoline)
 fn step_if_else(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let else_br = get_field(item, 1);
     let my_block = s2i(get_field(item, 2));
     let then_label = get_field(item, 3);
@@ -5254,6 +5263,7 @@ fn step_if_else(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: Str
 // Uses cur_exit_label as the actual else_exit (propagated through trampoline)
 fn step_if_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let my_block = s2i(get_field(item, 1));
     let merge_label = get_field(item, 2);
     let then_id = s2i(get_field(item, 3));
@@ -5277,6 +5287,7 @@ fn step_if_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: St
 // LS: Start let - push value, then LB
 fn step_let_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let name = get_field(item, 1);
     let value = get_field(item, 2);
     let body = get_field(item, 3);
@@ -5290,6 +5301,7 @@ fn step_let_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: S
 // LB: Let body - value done, emit alloca+store, do body
 fn step_let_body(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let unique_name = get_field(item, 1);
     let body = get_field(item, 2);
     let val_id = cur_temp - 1;
@@ -5302,6 +5314,7 @@ fn step_let_body(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: St
 // v0.92: Mutable variables use alloca/store/load for correct loop behavior
 fn step_mut_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let name = get_field(item, 1);
     let value = get_field(item, 2);
     let body = get_field(item, 3);
@@ -5315,6 +5328,7 @@ fn step_mut_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: S
 // v0.92: Uses alloca/store/load pattern instead of copy for correct SSA in loops
 fn step_mut_body(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let name = get_field(item, 1);
     let body = get_field(item, 2);
     let val_id = cur_temp - 1;
@@ -5328,6 +5342,7 @@ fn step_mut_body(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: St
 // CS: Start call - begin processing args
 fn step_call_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let name = get_field(item, 1);
     let ast = get_field(item, 2);
     let idx = s2i(get_field(item, 3));
