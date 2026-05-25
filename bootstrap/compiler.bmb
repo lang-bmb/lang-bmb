@@ -3714,6 +3714,7 @@ fn parse_struct_fields_to_registry(src: String, pos: i64, rsb: i64, idx: i64) ->
 // Cycle 2682: recognize Array<f64> field type for f64-ptr array dispatch
 fn check_field_type(src: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = let t1 = next_token_raw(src, pos);
     if tok_kind(t1) == TK_COLON() {
         let t2 = next_token_raw(src, tok_end(t1));
@@ -4292,7 +4293,8 @@ fn parse_bin_from(s: String, pos: i64, acc: i64) -> i64
 
 // v0.95: Parse octal digits from string
 fn parse_oct_from(s: String, pos: i64, acc: i64) -> i64
-  pre pos >= 0
+  pre pos >= 0 and acc >= 0
+  post it >= 0
 = if pos >= s.len() { acc } else {
         let c = s.byte_at(pos);
         if c >= 48 and c <= 55 { parse_oct_from(s, pos + 1, acc * 8 + (c - 48)) }
@@ -4544,13 +4546,15 @@ fn make_work7(t: String, f1: String, f2: String, f3: String, f4: String, f5: Str
 
 fn i2s(n: i64) -> String
   pre n >= 0
+  post it.len() >= 1
 = int_to_string(n);
 fn s2i(s: String) -> i64
   post it >= 0
 = parse_int_simple(s, 0, 0);
 
 fn parse_int_simple(s: String, pos: i64, acc: i64) -> i64
-  pre pos >= 0
+  pre pos >= 0 and acc >= 0
+  post it >= 0
 = if pos >= s.len() { acc }
     else {
         let c = s.byte_at(pos);
@@ -4562,6 +4566,7 @@ fn parse_int_simple(s: String, pos: i64, acc: i64) -> i64
 // Uses a result-threaded trampoline: each step receives and returns (temp_id, block_id, exit_label)
 fn lower_expr_iter(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let init_work = make_work3("EX", ast, i2s(temp_id), i2s(block_id));
     let exit_sb = sb_new();
     let work_sb = sb_new();
@@ -4577,6 +4582,7 @@ fn lower_expr_iter(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64
 // 3. Single-pass pipe parsing for step results
 fn trampoline_v3(work_stack: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64, exit_sb: i64, work_sb: i64) -> i64
   pre cur_temp >= 0 and cur_block >= 0
+  post it >= 0
 = if work_stack == "" { pack_ids(cur_temp, cur_block) }
     else {
         let _save = bmb_arena_save();
@@ -4624,11 +4630,13 @@ fn trampoline_v3(work_stack: String, cur_temp: i64, cur_block: i64, cur_exit_lab
 // Format: "new_temp|new_block|exit_label|new_work"
 fn make_step(temp: i64, block: i64, exit_label: String, work: String) -> String
   pre temp >= 0
+  post it.len() >= 1
 = i2s(temp) + SEP() + i2s(block) + SEP() + exit_label + SEP() + work;
 
 // Used by steps that: (1) have no new work, (2) don't change block_id, (3) don't change exit_label
 fn make_step_leaf(temp: i64) -> String
   pre temp >= 0
+  post it.len() >= 1
 = i2s(temp);
 
 
@@ -4643,6 +4651,7 @@ fn find_single_pipe(s: String, pos: i64) -> i64
 // Uses first two bytes of work item directly for O(1) dispatch via nested if/else on bytes
 fn do_step(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let b0 = item.byte_at(0);
     // Group by first byte for faster average dispatch
     if b0 == 69 { // 'E'
@@ -4769,6 +4778,7 @@ fn do_step(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, 
 // EX: Dispatch based on node type - expand to specific handler
 fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let ast = get_field(item, 1);
     let ntype = get_node_type(ast);
     // INLINE LEAF: int literal
@@ -5023,6 +5033,7 @@ fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String
 // IN: Integer literal - emit MIR, advance temp
 fn step_int(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let ast = get_field(item, 1);
     let val = extract_int_value(ast);
     let tmp = "%_t" + i2s(cur_temp);
@@ -5032,6 +5043,7 @@ fn step_int(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String,
 // FL: Float literal - emit MIR const F:value, advance temp
 fn step_float(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let ast = get_field(item, 1);
     let text = extract_float_value_text(ast);
     let tmp = "%_t" + i2s(cur_temp);
@@ -5041,6 +5053,7 @@ fn step_float(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: Strin
 // BO: Boolean literal
 fn step_bool(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let ast = get_field(item, 1);
     let child = get_child(ast, 0);
     let val = if child == "true" { 1 } else { 0 };
@@ -5051,6 +5064,7 @@ fn step_bool(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String
 // ST: String literal
 fn step_string(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let ast = get_field(item, 1);
     let str_content = extract_string_content(ast);
     let tmp = "%_t" + i2s(cur_temp);
@@ -5060,6 +5074,7 @@ fn step_string(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: Stri
 // VA: Variable reference
 fn step_var(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let ast = get_field(item, 1);
     let name = extract_name(ast);
     let tmp = "%_t" + i2s(cur_temp);
