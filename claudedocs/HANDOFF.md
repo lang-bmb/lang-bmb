@@ -1,35 +1,40 @@
-# BMB Session Handoff — 2026-05-25 (Cycles 3148-3151)
+# BMB Session Handoff — 2026-05-25 (Cycles 3152-3160)
 
-> **HEAD**: `c71f2c90`
-> **이번 세션 작업**: Cycles 3148-3151 (M9 Batches 14-17 — missing_postcondition 628→568, −60)
+> **HEAD**: `c71f2c90` (미커밋 변경사항 있음 — compiler.bmb post 조건 추가)
+> **이번 세션 작업**: Cycles 3152-3160 (M9 Batches 18-26 — missing_postcondition 568→433, −135)
 > **3-Stage Fixed Point**: (M8-A 기준 `A8ADD96654CD39795443635F1DAAB55D` — M9는 post-only 추가로 IR 불변)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **다음 세션 진입점**: **Cycle 3152** — `step_set_index/field/var/break/continue/return/cast` 계열 15개
+> **다음 세션 진입점**: **Cycle 3161** — `llvm_gen_line/llvm_gen_fn_*/parse_struct_sb/parse_enum_sb/emit_fill_stores` 등 15개
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 3148-3151)
+## 이번 세션 작업 요약 (Cycles 3152-3160)
 
 | Cycle | 제목 | 추가 post | 잔여 missing_postcondition |
 |-------|------|----------|---------------------------|
-| 3148 | M9 Batch 14 — make_step_leaf/step_literal 계열 | 15 | 613 |
-| 3149 | M9 Batch 15 — i2s/trampoline/make_step/step_basic | 15 | 598 |
-| 3150 | M9 Batch 16 — step_binop/unary/if/let/mut/call | 15 | 583 |
-| 3151 | M9 Batch 17 — step_call/method/nullable/seq/assign/array_index | 15 | 568 |
+| 3152 | M9 Batch 18 — step_set_index/field/var/break/continue/return | 15 | 553 |
+| 3153 | M9 Batch 19 — step_cast/array/tuple/repeat/lambda/struct/enum | 15 | 538 |
+| 3154 | M9 Batch 20 — lower_call/struct_init/lambda/enum_val/call_sb | 15 | 523 |
+| 3155 | M9 Batch 21 — lower_lit/var/cast/if/match/let/nullable_sb | 15 | 508 |
+| 3156 | M9 Batch 22 — lower_method_args/block/unit/seq/assign/while/loop/break/continue/return/field/set_field/set_var/index_sb | 15 | 493 |
+| 3157 | M9 Batch 23 — lower_set/ptr_index/for_*/safe_*/lower_expr_sb/pos_after_annotation/replace_var_rec | 15 | 478 |
+| 3158 | M9 Batch 24 — get_int/string/float_text/get_child/read_sexp/get_pipe_name/get_field/rename/get_exit_label | 15 | 463 |
+| 3159 | M9 Batch 25 — collect_lambda/scan_mir/replace_free_vars/format/rewrite/lower_function/collect_params | 15 | 448 |
+| 3160 | M9 Batch 26 — get_fn_return_scan/get_fn_body_scan/llvm_gen_* | 15 | 433 |
 
 ### M9 전체 진행 현황
 
 | 항목 | 값 |
 |------|----|
 | M9 시작 (Cycle 3140 기준) | 814 missing_postcondition |
-| 이번 세션 시작 (Cycle 3148) | 628 missing_postcondition |
-| 현재 상태 | **568 missing_postcondition** |
-| M9 총 감소 | **−246 (30.2%)** |
+| 이번 세션 시작 (Cycle 3152) | 568 missing_postcondition |
+| 현재 상태 | **433 missing_postcondition** |
+| M9 총 감소 | **−381 (46.8%)** |
 | cargo test | ✅ 6278 tests, 0 failed |
-| bmb check warnings | ✅ 2949 (net) |
-| bmb verify | ✅ 715/715, 0 failed |
+| bmb check warnings | ✅ (net, post-only 추가) |
+| bmb verify | ✅ IR 불변 (post-only 추가) |
 
-### 핵심 계약 패턴 수립 (Cycles 3149-3151)
+### 핵심 계약 패턴 수립 (Cycles 3149-3160)
 
 **`post it.len() >= 1` 체인**:
 ```
@@ -61,65 +66,27 @@ parse_oct_from   → pre acc >= 0 + post it >= 0  (누산기, Cycle 3149)
 
 ## 다음 세션 시작점
 
-### Cycle 3152 — step_set_index/field/var/break/continue/return/cast 계열
+### Cycle 3161 — llvm_gen_line/llvm_gen_fn_*/parse_struct_sb/emit_fill_stores 계열
 
-**확정 대상 (모두 `post it.len() >= 1` — make_step/make_step_leaf 반환)**:
-
-#### Group 1: step_set_index (4개)
+**확정 대상 후보**:
 ```
-step_set_index_start  — make_step(cur_temp, ...) 단일 경로
-step_set_index_idx    — make_step(cur_temp, ...) 단일 경로
-step_set_index_val    — make_step(cur_temp, ...) 단일 경로
-step_set_index_final  — make_step_leaf(cur_temp + N) 또는 make_step(...)
+llvm_gen_line(...)          — String 반환, LLVM IR 한 줄 생성
+llvm_gen_fn_start(...)      — String 반환, 함수 시그니처 생성
+llvm_gen_fn_end(...)        — String 반환
+parse_struct_sb(...)        — String 반환, 구조체 MIR 생성
+parse_enum_sb(...)          — String 반환
+emit_fill_stores(...)       — i64 반환 (pre temp_id >= 0 확인 필요)
+get_fn_return_type(...)     — String 반환
+llvm_gen_alloca(...)        — String 반환
 ```
-
-#### Group 2: step_field_access (2개)
-```
-step_field_access_start  — make_step(cur_temp, ...) 단일 경로
-step_field_access_final  — make_step_leaf(cur_temp + 1) 단일 경로
-```
-
-#### Group 3: step_set_field (3개)
-```
-step_set_field_start  — make_step(cur_temp, ...) 단일 경로
-step_set_field_val    — make_step(cur_temp, ...) 단일 경로
-step_set_field_final  — make_step_leaf(cur_temp + N) 단일 경로
-```
-
-#### Group 4: step_set_var (2개)
-```
-step_set_var_start  — make_step(cur_temp, ...) 단일 경로
-step_set_var_final  — make_step_leaf(cur_temp + 1) 단일 경로
-```
-
-#### Group 5: 제어 흐름 (4개)
-```
-step_break         — make_step_leaf(cur_temp) (exit label 설정)
-step_continue      — make_step_leaf(cur_temp) (loop-back jump)
-step_return        — make_step_leaf(cur_temp) (void return)
-step_return_value  — make_step(cur_temp, ...) (value return, 평가 필요)
-```
-
-**합계: 15개** — Cycle 3152 배치 목표
-
-#### 다음 배치 후보 (Cycle 3153+)
-```
-step_cast_to_i64/f64/i32              (3개)
-step_cast_ptr_f64_start/finish        (2개)
-step_array_literal                    (1개)
-step_tuple                            (1개)
-step_array_repeat, step_array_repeat_lit
-step_array_repeat_lit_with_val, step_array_repeat_expr
-```
+- `bmb check bootstrap/compiler.bmb 2>&1 | grep "missing_postcondition" | head -20` 으로 실제 잔여 대상 확인 후 진행
 
 ### 기술 상태 스냅샷
 
 | 항목 | 값 |
 |------|----|
-| HEAD | `c71f2c90` |
-| missing_postcondition | **568** (목표 → 0) |
-| bmb check warnings | 2949 |
-| bmb verify | 715/715, 0 failed |
+| HEAD | `c71f2c90` (미커밋) |
+| missing_postcondition | **433** (목표 → 0) |
 | cargo test | ✅ 6278 tests |
 | 3-Stage FP | IR 불변 (post-only 추가, llvm.assume 미생성) |
 
@@ -127,7 +94,8 @@ step_array_repeat_lit_with_val, step_array_repeat_expr
 
 ## 알려진 미결 사항
 
-- **missing_postcondition 568개**: M9 계속 — step_* 계열 75% 이상 처리 완료 추정, 잔여 40여 개 + 기타 함수군
-- **`get_child` / `get_child_at` / `read_sexp_at`**: 빈 문자열 `""` 반환 경로 존재 → `post it.len() >= 1` 불가, 별도 분석 필요
+- **missing_postcondition 433개**: M9 계속 진행 — llvm_gen_line/parse_struct/emit_fill_stores 등 잔여
+- **`emit_fill_stores` / `emit_fill_stores_step`**: `pre temp_id >= 0` 없는 경우 존재 → 추가 전 확인 필요
+- **bool 반환 함수**: `variant_has_bracket` 등 bool post 조건 패턴 미결정
 - **semantic_duplication 증가**: uniform post 계약 추가 시 카운터 증가 (missing_postcondition 감소와 net 상쇄)
 - **Z3 budget 영향**: 복잡한 post 계약 추가 시 `bmb verify` 총 검증 수 점진적 감소 (정상)

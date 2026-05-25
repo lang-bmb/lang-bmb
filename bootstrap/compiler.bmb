@@ -982,14 +982,16 @@ fn get_ident_text(s: String, pos: i64, tok: i64) -> String
 
 fn get_int_text(s: String, pos: i64, tok: i64) -> String
     pre pos >= 0
-= 
+    post it.len() <= s.len()
+=
     let p = skip_ws_comments(s, pos);
     let endpos = tok_end(tok);
     s.slice(p, endpos);
 
 fn get_string_text(s: String, pos: i64, tok: i64) -> String
     pre pos >= 0
-= 
+    post it.len() <= s.len()
+=
     let p = skip_ws_comments(s, pos);
     let endpos = tok_end(tok);
     s.slice(p + 1, endpos - 1);
@@ -997,7 +999,8 @@ fn get_string_text(s: String, pos: i64, tok: i64) -> String
 // v0.91: Extract float literal text from source (e.g., "3.14")
 fn get_float_text(s: String, pos: i64, tok: i64) -> String
     pre pos >= 0
-= 
+    post it.len() <= s.len()
+=
     let p = skip_ws_comments(s, pos);
     let endpos = tok_end(tok);
     s.slice(p, endpos);
@@ -2547,6 +2550,7 @@ fn parse_let_tuple_eq(src: String, pos: i64, start_pos: i64, names: String, coun
 
 fn build_tuple_bindings(names: String, tup_name: String, body_ast: String, idx: i64, count: i64) -> String
   pre idx >= 0
+  post it.len() >= 0
 = if idx >= count { body_ast }
     else {
         let name = get_pipe_name(names, idx);
@@ -2558,12 +2562,14 @@ fn build_tuple_bindings(names: String, tup_name: String, body_ast: String, idx: 
 
 fn get_pipe_name(names: String, idx: i64) -> String
     pre idx >= 0
-= 
+    post it.len() <= names.len()
+=
     get_pipe_name_at(names, 0, idx);
 
 fn get_pipe_name_at(names: String, pos: i64, idx: i64) -> String
     pre pos >= 0
-= 
+    post it.len() <= names.len()
+=
     if idx == 0 { names.slice(pos, find_char(names, pos, 124)) }
     else { get_pipe_name_at(names, find_char(names, pos, 124) + 1, idx - 1) };
 
@@ -3473,6 +3479,7 @@ fn skip_annotation(src: String, pos: i64) -> String
 
 fn pos_after_annotation(src: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = let p = skip_ws_comments(src, pos);
     if p >= src.len() { p }
     else if src.byte_at(p) == 64 {
@@ -4154,7 +4161,8 @@ fn is_float_expr(ast: String) -> bool
 
 fn get_child(ast: String, idx: i64) -> String
     pre idx >= 0
-= 
+    post it.len() <= ast.len()
+=
     let content = extract_paren_content(ast);
     let pos = low_skip_ws(content, 0);
     let end1 = low_find_ident_end(content, pos);
@@ -4163,7 +4171,8 @@ fn get_child(ast: String, idx: i64) -> String
 
 fn get_child_at(content: String, pos: i64, idx: i64) -> String
     pre pos >= 0
-= 
+    post it.len() <= content.len()
+=
     if idx < 0 { "" } else {
         let p = low_skip_ws(content, pos);
         if p >= content.len() { "" } else if idx == 0 { read_sexp_at(content, p) } else {
@@ -4175,6 +4184,7 @@ fn get_child_at(content: String, pos: i64, idx: i64) -> String
 
 fn read_sexp_at(s: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() <= s.len()
 = let p = low_skip_ws(s, pos);
     if p >= s.len() { "" } else {
         let c = s.byte_at(p);
@@ -4233,6 +4243,7 @@ fn rename_name_in_ast(ast: String, oldname: String, newname: String) -> String
 
 fn rename_name_in_ast_at(ast: String, oldname: String, newname: String, pos: i64, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= ast.len() { acc } else {
         let lt_pos = find_char_at(ast, 60, pos);
         if lt_pos < 0 {
@@ -4366,6 +4377,7 @@ fn shallow_blocks(ast: String) -> i64
 
 fn get_exit_label(ast: String, entry_label: String, block_id: i64) -> String
   pre block_id >= 0
+  post it.len() >= 0
 = let ntype = get_node_type(ast);
     if ntype == "if" {
         let then_b = get_child(ast, 1);
@@ -4419,6 +4431,7 @@ fn get_exit_label(ast: String, entry_label: String, block_id: i64) -> String
 
 fn scan_exit_children(ast: String, idx: i64, count: i64, entry_label: String, block_id: i64) -> String
   pre idx >= 0
+  post it.len() >= 0
 = if idx >= count { entry_label }
     else {
         let child = get_child(ast, idx);
@@ -4498,12 +4511,14 @@ fn find_work_sep(s: String, pos: i64) -> i64
 
 fn get_field(item: String, idx: i64) -> String
     pre idx >= 0
-= 
+    post it.len() <= item.len()
+=
     get_field_at(item, 0, idx);
 
 fn get_field_at(item: String, pos: i64, idx: i64) -> String
     pre pos >= 0
-= 
+    post it.len() <= item.len()
+=
     if pos >= item.len() { "" }
     else if idx == 0 {
         let end = find_field_sep(item, pos);
@@ -5120,6 +5135,7 @@ fn step_binop_right(item: String, cur_temp: i64, cur_block: i64, cur_exit_label:
 // Returns the next available temp id after the check instructions
 fn safe_divzero_check(sb: i64, cur_temp: i64, divisor_temp: i64) -> i64
   pre cur_temp >= 0
+  post it >= 0
 = let zero = "%_t" + i2s(cur_temp);
     let w0 = sb_push_mir(sb, "  " + zero + " = const 0");
     let cmp = "%_t" + i2s(cur_temp + 1);
@@ -5551,6 +5567,7 @@ fn step_array_index_idx(item: String, cur_temp: i64, cur_block: i64, cur_exit_la
 // Returns the next available temp id after the bounds check instructions
 fn safe_bounds_check(sb: i64, cur_temp: i64, base_t: String, idx_temp: i64) -> i64
   pre cur_temp >= 0
+  post it >= 0
 = // Load length from arr[1] (array header: [capacity, length, data...])
     let len_const = "%_t" + i2s(cur_temp);
     let w0 = sb_push_mir(sb, "  " + len_const + " = const 1");
@@ -5615,6 +5632,7 @@ fn step_array_index_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_
 
 fn step_set_index_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let base = get_field(item, 1);
     let idx = get_field(item, 2);
     let val = get_field(item, 3);
@@ -5625,6 +5643,7 @@ fn step_set_index_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_la
 
 fn step_set_index_idx(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let idx = get_field(item, 1);
     let val = get_field(item, 2);
     let flag = get_field(item, 3);
@@ -5635,6 +5654,7 @@ fn step_set_index_idx(item: String, cur_temp: i64, cur_block: i64, cur_exit_labe
 
 fn step_set_index_val(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let base_t = get_field(item, 1);
     let val = get_field(item, 2);
     let flag = get_field(item, 3);
@@ -5645,6 +5665,7 @@ fn step_set_index_val(item: String, cur_temp: i64, cur_block: i64, cur_exit_labe
 
 fn step_set_index_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let base_t = get_field(item, 1);
     let idx_t = get_field(item, 2);
     let flag = get_field(item, 3);
@@ -5681,6 +5702,7 @@ fn step_set_index_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_la
 
 fn step_field_access_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let base_expr = get_field(item, 1);
     let field_name = get_field(item, 2);
     let cont = make_work3("F2", field_name, "", "");
@@ -5689,6 +5711,7 @@ fn step_field_access_start(item: String, cur_temp: i64, cur_block: i64, cur_exit
 
 fn step_field_access_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let field_name = get_field(item, 1);
     let base_temp = cur_temp - 1;
     let dest = "%_t" + i2s(cur_temp);
@@ -5697,6 +5720,7 @@ fn step_field_access_final(item: String, cur_temp: i64, cur_block: i64, cur_exit
 
 fn step_set_field_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let obj = get_field(item, 1);
     let field = get_field(item, 2);
     let val = get_field(item, 3);
@@ -5706,6 +5730,7 @@ fn step_set_field_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_la
 
 fn step_set_field_val(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let field = get_field(item, 1);
     let val = get_field(item, 2);
     let obj_temp = cur_temp - 1;
@@ -5715,6 +5740,7 @@ fn step_set_field_val(item: String, cur_temp: i64, cur_block: i64, cur_exit_labe
 
 fn step_set_field_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let obj_t = get_field(item, 1);
     let field = get_field(item, 2);
     let val_temp = cur_temp - 1;
@@ -5726,6 +5752,7 @@ fn step_set_field_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_la
 
 fn step_set_var_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let name = get_field(item, 1);
     let val = get_field(item, 2);
     let cont = make_work3("SW", name, "", "");
@@ -5734,6 +5761,7 @@ fn step_set_var_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_labe
 
 fn step_set_var_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let name = get_field(item, 1);
     let val_id = cur_temp - 1;
     let w1 = sb_push_mir(sb, "  store %" + name + ", %_t" + i2s(val_id));
@@ -5745,6 +5773,7 @@ fn step_set_var_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_labe
 // cur_exit_label should contain the while/for exit label
 fn step_break(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let goto_text = "  goto " + cur_exit_label;
     let w1 = sb_push_mir(sb, goto_text);
     let after_label = "after_break_" + i2s(cur_block);
@@ -5769,6 +5798,7 @@ fn derive_loop_start(exit_label: String) -> String
 
 fn step_continue(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let loop_label = derive_loop_start(cur_exit_label);
     let goto_text = "  goto " + loop_label;
     let w1 = sb_push_mir(sb, goto_text);
@@ -5783,6 +5813,7 @@ fn step_continue(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: St
 // Work item: RT~value_ast~~~
 fn step_return(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let value_ast = work3_get1(item);
     if value_ast.len() == 0 {
         // Bare return
@@ -5803,6 +5834,7 @@ fn step_return(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: Stri
 
 fn step_return_value(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let result_id = cur_temp - 1;
     let ret_text = "  return %_t" + i2s(result_id);
     let w1 = sb_push_mir(sb, ret_text);
@@ -5817,6 +5849,7 @@ fn step_return_value(item: String, cur_temp: i64, cur_block: i64, cur_exit_label
 // Inner expr already evaluated at cur_temp-1, emit fptosi MIR instruction
 fn step_cast_to_i64(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let result_id = cur_temp - 1;
     let src = "%_t" + i2s(result_id);
     let dst = "%_t" + i2s(cur_temp);
@@ -5826,6 +5859,7 @@ fn step_cast_to_i64(item: String, cur_temp: i64, cur_block: i64, cur_exit_label:
 // Inner expr already evaluated at cur_temp-1, emit sitofp MIR instruction
 fn step_cast_to_f64(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let result_id = cur_temp - 1;
     let src = "%_t" + i2s(result_id);
     let dst = "%_t" + i2s(cur_temp);
@@ -5836,6 +5870,7 @@ fn step_cast_to_f64(item: String, cur_temp: i64, cur_block: i64, cur_exit_label:
 // Inner expr already evaluated at cur_temp-1, emit trunc_i32 MIR instruction
 fn step_cast_to_i32(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let result_id = cur_temp - 1;
     let src = "%_t" + i2s(result_id);
     let dst = "%_t" + i2s(cur_temp);
@@ -5844,6 +5879,7 @@ fn step_cast_to_i32(item: String, cur_temp: i64, cur_block: i64, cur_exit_label:
 
 fn lower_cast_ptr_f64_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let inner = get_child(ast, 0);
     let result = lower_expr_sb(inner, temp_id, block_id, sb, loop_exit);
     let inner_temp = unpack_temp(result);
@@ -5854,6 +5890,7 @@ fn lower_cast_ptr_f64_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop
 
 fn lower_cast_i64_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let inner = get_child(ast, 0);
     let result = lower_expr_sb(inner, temp_id, block_id, sb, loop_exit);
     let inner_temp = unpack_temp(result);
@@ -5865,6 +5902,7 @@ fn lower_cast_i64_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exi
 
 fn lower_cast_f64_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let inner = get_child(ast, 0);
     let result = lower_expr_sb(inner, temp_id, block_id, sb, loop_exit);
     let inner_temp = unpack_temp(result);
@@ -5877,6 +5915,7 @@ fn lower_cast_f64_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exi
 // v0.95: Recursive: cast_i32 - evaluate inner and emit trunc_i32 (i64→i32)
 fn lower_cast_i32_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let inner = get_child(ast, 0);
     let result = lower_expr_sb(inner, temp_id, block_id, sb, loop_exit);
     let inner_temp = unpack_temp(result);
@@ -5891,6 +5930,7 @@ fn lower_cast_i32_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exi
 // Strategy: Extract lambda as a top-level function, return fn_ref
 fn lower_lambda_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let lambda_name = "__lambda_" + int_to_string(temp_id);
     let params = collect_lambda_params(ast, 0, "");
     let body_ast = get_lambda_body(ast, 0);
@@ -5929,6 +5969,7 @@ fn lower_lambda_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit:
 // M5-3: supports multi-field variants; child 0 = tag, children 1..N = payloads
 fn lower_enum_val_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let n_children = count_children(ast);
     let n_payload = n_children - 1;
     let ptr_tmp = "%_t" + int_to_string(temp_id);
@@ -5946,6 +5987,7 @@ fn lower_enum_val_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exi
 
 fn lower_enum_payload_fields_sb(ast: String, field_idx: i64, n_children: i64, cur_temp: i64, cur_block: i64, ptr_tmp: String, sb: i64, loop_exit: String) -> i64
   pre field_idx >= 0 and n_children >= 0 and cur_temp >= 0 and cur_block >= 0
+  post it >= 0
 = if field_idx >= n_children {
         let result_tmp = "%_t" + int_to_string(cur_temp);
         let w = sb_push_mir(sb, "  " + result_tmp + " = copy " + ptr_tmp);
@@ -5966,7 +6008,8 @@ fn lower_enum_payload_fields_sb(ast: String, field_idx: i64, n_children: i64, cu
 // Collect lambda parameters: scan children until we find a non-param node
 fn collect_lambda_params(ast: String, idx: i64, acc: String) -> String
     pre idx >= 0
-= 
+    post it.len() >= 0
+=
     let child = get_child(ast, idx);
     if child == "" or get_node_type(child) != "param" { acc } else {
         let param_name = get_child(child, 0);
@@ -5980,7 +6023,8 @@ fn collect_lambda_params(ast: String, idx: i64, acc: String) -> String
 // Find lambda body: the first non-param child
 fn get_lambda_body(ast: String, idx: i64) -> String
     pre idx >= 0
-= 
+    post it.len() >= 0
+=
     let child = get_child(ast, idx);
     if child == "" { "(int 0)" } else if get_node_type(child) != "param" { child } else { get_lambda_body(ast, idx + 1) };
 
@@ -5995,7 +6039,8 @@ fn find_free_vars_in_mir(body: String, params: String) -> String
 // Collect names of alloca'd variables from pipe-separated MIR lines
 fn collect_local_alloca_names(mir: String, pos: i64, acc: String) -> String
     pre pos >= 0
-= 
+    post it.len() >= 0
+=
     if pos >= mir.len() { acc }
     else {
         let p = low_skip_ws(mir, pos);
@@ -6039,7 +6084,8 @@ fn filter_out_locals(free_vars: String, locals: String) -> String
 
 fn scan_mir_for_free_vars(mir: String, pos: i64, found: String, params: String) -> String
     pre pos >= 0
-= 
+    post it.len() >= 0
+=
     if pos >= mir.len() { found }
     else {
         let next_pct = find_char(mir, pos, 37);
@@ -6130,6 +6176,7 @@ fn count_csv_rec(list: String, pos: i64) -> i64
 // Replace all free variables in MIR with capture parameter names (__cap0, __cap1, ...)
 fn replace_all_free_vars(mir: String, free_vars: String, cap_idx: i64) -> String
   pre cap_idx >= 0
+  post it.len() >= 0
 = if free_vars == "" { mir }
     else {
         let comma = find_comma_or_end(free_vars, 0);
@@ -6148,6 +6195,7 @@ fn replace_free_var(mir: String, old_name: String, new_name: String) -> String
 
 fn replace_var_rec(mir: String, pos: i64, old_name: String, new_name: String, rsb: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= mir.len() { 0 }
     else {
         let next_pct = find_char(mir, pos, 37);
@@ -6171,6 +6219,7 @@ fn replace_var_rec(mir: String, pos: i64, old_name: String, new_name: String, rs
 // Build MIR lines to load captures from __closure struct in lambda prologue
 fn build_capture_load_mir(free_vars: String, idx: i64) -> String
   pre idx >= 0
+  post it.len() >= 0
 = if free_vars == "" { "" }
     else {
         let comma = find_comma_or_end(free_vars, 0);
@@ -6184,6 +6233,7 @@ fn build_capture_load_mir(free_vars: String, idx: i64) -> String
 // Format free variable references with % prefix for closure_new MIR instruction
 fn format_free_var_refs(free_vars: String, pos: i64, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let p = low_skip_ws(free_vars, pos);
     if p >= free_vars.len() { acc }
     else {
@@ -6196,6 +6246,7 @@ fn format_free_var_refs(free_vars: String, pos: i64, acc: String) -> String
 
 fn lower_array_repeat_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let val_ast = get_child(ast, 0);
     let count_ast = get_child(ast, 1);
     let count_type = get_node_type(count_ast);
@@ -6260,6 +6311,7 @@ fn emit_fill_stores_step(arr_ptr: String, val_tmp: String, idx: i64, count: i64,
 // because lower_let_sb uses (val_temp - 1) as the result temp.
 fn lower_array_repeat_lit_sb(val_str: String, count_str: String, temp_id: i64, block_id: i64, sb: i64) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let count_val = parse_int_simple(count_str, 0, 0);
     let alloc_size = int_to_string(count_val + 2);
     let tmp = "%_t" + int_to_string(temp_id);
@@ -6296,6 +6348,7 @@ fn lower_array_repeat_lit_sb(val_str: String, count_str: String, temp_id: i64, b
 // count_val: compile-time known array size
 fn lower_array_repeat_lit_with_val_sb(val_temp: String, count_val: i64, temp_id: i64, block_id: i64, sb: i64) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let count_str = int_to_string(count_val);
     let alloc_size = int_to_string(count_val + 2);
     let tmp = "%_t" + int_to_string(temp_id);
@@ -6323,6 +6376,7 @@ fn lower_array_repeat_lit_with_val_sb(val_temp: String, count_val: i64, temp_id:
 
 fn lower_array_repeat_expr_sb(count_temp: String, temp_id: i64, block_id: i64, sb: i64) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = // Compute alloc_size = count + 2 at runtime
     let two_tmp = "%_t" + int_to_string(temp_id);
     let w0b = sb_push_mir(sb, "  " + two_tmp + " = const 2");
@@ -6350,6 +6404,7 @@ fn lower_array_repeat_expr_sb(count_temp: String, temp_id: i64, block_id: i64, s
 
 fn lower_array_literal_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let count = count_children(ast);
     let arr_tmp = "%_t" + int_to_string(temp_id);
     let w1 = sb_push_mir(sb, "  " + arr_tmp + " = call @calloc(" + int_to_string(count + 2) + ", 8)");
@@ -6385,14 +6440,17 @@ fn lower_array_literal_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loo
 // Store each element of array/tuple literal
 fn lower_array_elements_sb(ast: String, idx: i64, count: i64, arr_tmp: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0 and idx >= 0 and count >= 0
+  post it >= 0
 = lower_elements_with_offset_sb(ast, idx, count, arr_tmp, temp_id, block_id, sb, loop_exit, 2);
 
 fn lower_tuple_elements_sb(ast: String, idx: i64, count: i64, arr_tmp: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0 and idx >= 0 and count >= 0
+  post it >= 0
 = lower_elements_with_offset_sb(ast, idx, count, arr_tmp, temp_id, block_id, sb, loop_exit, 0);
 
 fn lower_elements_with_offset_sb(ast: String, idx: i64, count: i64, arr_tmp: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String, base_offset: i64) -> i64
   pre temp_id >= 0 and block_id >= 0 and idx >= 0 and count >= 0
+  post it >= 0
 = if idx >= count { pack_ids(temp_id, block_id) }
     else {
         let elem = get_child(ast, idx);
@@ -6412,6 +6470,7 @@ fn lower_elements_with_offset_sb(ast: String, idx: i64, count: i64, arr_tmp: Str
 // Same structure as array literal but semantically a tuple
 fn lower_tuple_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let count = count_children(ast);
     let tup_tmp = "%_t" + int_to_string(temp_id);
     let w1 = sb_push_mir(sb, "  " + tup_tmp + " = call @calloc(" + int_to_string(count) + ", 8)");
@@ -6425,6 +6484,7 @@ fn lower_tuple_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: 
 // MIR: calloc(field_count, 8) + field-store for each field
 fn lower_struct_init_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let total_children = count_children(ast);
     let field_count = (total_children - 1) / 2;
     let base_tmp = "%_t" + int_to_string(temp_id);
@@ -6437,6 +6497,7 @@ fn lower_struct_init_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_
 
 fn lower_struct_fields_sb(ast: String, idx: i64, total: i64, base_tmp: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0 and idx >= 0 and total >= 0
+  post it >= 0
 = if idx >= total { pack_ids(temp_id, block_id) }
     else {
         let field_name_raw = get_child(ast, idx);
@@ -6469,6 +6530,7 @@ fn count_children_at(ast: String, idx: i64, count: i64) -> i64
 
 fn step_cast_ptr_f64_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let inner = get_field(item, 1);
     let cont = make_work3("FQ", "", "", "");
     let eval = make_work3("EX", inner, "", "");
@@ -6476,6 +6538,7 @@ fn step_cast_ptr_f64_start(item: String, cur_temp: i64, cur_block: i64, cur_exit
 
 fn step_cast_ptr_f64_finish(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let result_id = cur_temp - 1;
     let result = "%_t" + i2s(result_id);
     let w1 = sb_push_mir(sb, "  mark_f64_ptr " + result);
@@ -6483,6 +6546,7 @@ fn step_cast_ptr_f64_finish(item: String, cur_temp: i64, cur_block: i64, cur_exi
 
 fn step_array_literal(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let ast = get_field(item, 1);
     let ids = lower_array_literal_sb(ast, cur_temp, cur_block, sb, cur_exit_label);
     let new_block = unpack_block(ids);
@@ -6491,6 +6555,7 @@ fn step_array_literal(item: String, cur_temp: i64, cur_block: i64, cur_exit_labe
 
 fn step_tuple(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let ast = get_field(item, 1);
     let ids = lower_tuple_sb(ast, cur_temp, cur_block, sb, cur_exit_label);
     let new_block = unpack_block(ids);
@@ -6499,6 +6564,7 @@ fn step_tuple(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: Strin
 
 fn step_array_repeat(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String
   pre cur_temp >= 0 and cur_block >= 0
+  post it.len() >= 1
 = let ast = get_field(item, 1);
     // AST: (array_repeat val_expr count_expr)
     let val_ast = get_child(ast, 0);
@@ -6534,6 +6600,7 @@ fn step_array_repeat(item: String, cur_temp: i64, cur_block: i64, cur_exit_label
 // IMPORTANT: The copy (result) MUST be the last temp before make_step_leaf
 fn step_array_repeat_lit(val_str: String, count_str: String, cur_temp: i64, sb: i64) -> String
   pre cur_temp >= 0
+  post it.len() >= 1
 = let tmp = "%_t" + i2s(cur_temp);
     let count_val = parse_int_simple(count_str, 0, 0);
     let alloc_size = int_to_string(count_val + 2);
@@ -6568,6 +6635,7 @@ fn step_array_repeat_lit(val_str: String, count_str: String, cur_temp: i64, sb: 
 
 fn step_array_repeat_lit_with_val(val_temp: String, count_val: i64, cur_temp: i64, sb: i64) -> String
   pre count_val >= 0
+  post it.len() >= 1
 = let count_str = int_to_string(count_val);
     let alloc_size = int_to_string(count_val + 2);
     let tmp = "%_t" + i2s(cur_temp);
@@ -6595,6 +6663,7 @@ fn step_array_repeat_lit_with_val(val_temp: String, count_val: i64, cur_temp: i6
 
 fn step_array_repeat_expr(count_temp: String, cur_temp: i64, sb: i64) -> String
   pre cur_temp >= 0
+  post it.len() >= 1
 = // Compute alloc_size = count + 2 at runtime
     let two_tmp = "%_t" + i2s(cur_temp);
     let w0b = sb_push_mir(sb, "  " + two_tmp + " = const 2");
@@ -6624,11 +6693,13 @@ fn step_array_repeat_expr(count_temp: String, cur_temp: i64, sb: i64) -> String
 
 fn lower_expr_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let ntype = get_node_type(ast);
     if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else if ntype == "float" { lower_float_sb(ast, temp_id, block_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) } else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let_mut" { lower_let_mut_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "method" { lower_method_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "block" { lower_block_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unit" { lower_unit_sb(ast, temp_id, block_id, sb) } else if ntype == "seq" { lower_seq_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "assign" { lower_assign_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "while" { lower_while_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "loop" { lower_loop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "for" { lower_for_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "for_incl" { lower_for_incl_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "for_step" { lower_for_step_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "for_step_incl" { lower_for_step_incl_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "field" { lower_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_field" { lower_set_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "index" { lower_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "ptr_index" { lower_ptr_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_index" { lower_set_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_ptr_index" { lower_ptr_set_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "break" { lower_break_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "continue" { lower_continue_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "return" { lower_return_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "cast_ptr_f64" { lower_cast_ptr_f64_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "cast_i64" { lower_cast_i64_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "cast_f64" { lower_cast_f64_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "cast_i32" { lower_cast_i32_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array_repeat" { lower_array_repeat_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array" { lower_array_literal_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "tuple" { lower_tuple_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "struct_init" { lower_struct_init_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_var" { lower_set_var_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "lambda" { lower_lambda_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "enum_val" { lower_enum_val_sb(ast, temp_id, block_id, sb, loop_exit) } else { pack_ids(temp_id, block_id) };
 
 fn lower_int_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let val = extract_int_value(ast);
     let tmp = "%_t" + int_to_string(temp_id);
     let w1 = sb_push_mir(sb, "  " + tmp + " = const " + int_to_string(val));
@@ -6637,6 +6708,7 @@ fn lower_int_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64
 // v0.91: Lower float literal to MIR: (float 3.14) → %_t0 = const F:3.14
 fn lower_float_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let text = extract_float_value_text(ast);
     let tmp = "%_t" + int_to_string(temp_id);
     let w1 = sb_push_mir(sb, "  " + tmp + " = const F:" + text);
@@ -6644,6 +6716,7 @@ fn lower_float_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64
 
 fn lower_bool_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let child = get_child(ast, 0);
     let val = if child == "true" { 1 } else { 0 };
     let tmp = "%_t" + int_to_string(temp_id);
@@ -6652,6 +6725,7 @@ fn lower_bool_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64
 
 fn lower_string_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let str_content = extract_string_content(ast);
     let tmp = "%_t" + int_to_string(temp_id);
     let w1 = sb_push_mir(sb, "  " + tmp + " = string " + chr(34) + str_content + chr(34));
@@ -6665,6 +6739,7 @@ fn extract_string_content(ast: String) -> String
 
 fn lower_var_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let name = extract_name(ast);
     let tmp = "%_t" + int_to_string(temp_id);
     let w1 = sb_push_mir(sb, "  " + tmp + " = copy %" + name);
@@ -6674,6 +6749,7 @@ fn lower_var_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64
 // v0.96.24: Safe mode division-by-zero check for recursive lowering path (while/for/loop bodies)
 fn lower_binop_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let op = get_child(ast, 0);
     let left_ast = get_child(ast, 1);
     let right_ast = get_child(ast, 2);
@@ -6700,6 +6776,7 @@ fn lower_binop_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: 
 
 fn lower_unary_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let op = get_child(ast, 0);
     let operand = get_child(ast, 1);
     let operand_result = lower_expr_sb(operand, temp_id, block_id, sb, loop_exit);
@@ -6730,6 +6807,7 @@ fn is_pure_expr(ast: String) -> bool
 
 fn lower_if_select_sb(cond: String, then_b: String, else_b: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let cond_result = lower_expr_sb(cond, temp_id, block_id, sb, loop_exit);
     let cond_temp = unpack_temp(cond_result);
     let cond_blk = unpack_block(cond_result);
@@ -6746,6 +6824,7 @@ fn lower_if_select_sb(cond: String, then_b: String, else_b: String, temp_id: i64
 
 fn lower_if_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let cond = get_child(ast, 0);
     let then_branch = get_child(ast, 1);
     let else_branch = get_child(ast, 2);
@@ -6757,6 +6836,7 @@ fn lower_if_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: Str
 
 fn lower_if_branch_sb(cond: String, then_branch: String, else_branch: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let cond_result = lower_expr_sb(cond, temp_id, block_id, sb, loop_exit);
     let cond_temp = unpack_temp(cond_result);
     let my_block_id = unpack_block(cond_result);
@@ -6795,6 +6875,7 @@ fn lower_if_branch_sb(cond: String, then_branch: String, else_branch: String, te
 // generated store to non-existent alloca. LLVM mem2reg promotes unused allocas.
 fn lower_let_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let name = extract_name(ast);
     // let binding names, fixing variable shadowing (let x = 1; let x = x + 10;)
     let unique_name = name + "_" + int_to_string(temp_id);
@@ -6812,6 +6893,7 @@ fn lower_let_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: St
 // v0.92: Mutable let - emit alloca + store instead of copy
 fn lower_let_mut_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let name = extract_name(ast);
     let unique_name = name + "_" + int_to_string(temp_id);
     let value_ast = get_child(ast, 1);
@@ -6827,11 +6909,13 @@ fn lower_let_mut_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit
 
 fn lower_call_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let name = extract_name(ast);
     lower_call_args_sb(ast, name, temp_id, block_id, 1, "", sb, loop_exit);
 
 fn lower_call_args_sb(ast: String, name: String, temp_id: i64, block_id: i64, idx: i64, args_acc: String, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0 and idx >= 0
+  post it >= 0
 = let arg = get_child(ast, idx);
     if arg == "" {
         let result_tmp = "%_t" + int_to_string(temp_id);
@@ -6850,6 +6934,7 @@ fn lower_call_args_sb(ast: String, name: String, temp_id: i64, block_id: i64, id
 // String methods map to bmb_string_* functions
 fn lower_method_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let method_name = get_child(ast, 0);
     if is_nullable_method(method_name) {
         lower_nullable_method_sb(ast, method_name, temp_id, block_id, sb, loop_exit)
@@ -6861,6 +6946,7 @@ fn lower_method_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit:
 
 fn lower_nullable_method_sb(ast: String, method: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let receiver = get_child(ast, 1);
     let recv_result = lower_expr_sb(receiver, temp_id, block_id, sb, loop_exit);
     let recv_temp = unpack_temp(recv_result);
@@ -6891,6 +6977,7 @@ fn lower_nullable_method_sb(ast: String, method: String, temp_id: i64, block_id:
 // invariant: method != "" → ret starts with "bmb_" or "popcount"/"clz"/"ctz"/"bit_*"/"f64_to_i64"/"i64_to_f64"; method == "" → "__unknown_method_"
 fn method_to_runtime_fn(method: String) -> String
   pre method.len() > 0
+  post it.len() > 0
 =
     if method == "len" { "bmb_string_len" }
     else if method == "byte_at" { "bmb_string_char_at" }
@@ -6949,6 +7036,7 @@ fn method_to_runtime_fn(method: String) -> String
 
 fn lower_method_args_sb(ast: String, fn_name: String, receiver: String, temp_id: i64, block_id: i64, idx: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0 and idx >= 0
+  post it >= 0
 = let recv_result = lower_expr_sb(receiver, temp_id, block_id, sb, loop_exit);
     let recv_temp = unpack_temp(recv_result);
     let recv_block = unpack_block(recv_result);
@@ -6958,6 +7046,7 @@ fn lower_method_args_sb(ast: String, fn_name: String, receiver: String, temp_id:
 
 fn lower_method_extra_args_sb(ast: String, fn_name: String, temp_id: i64, block_id: i64, idx: i64, args_acc: String, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0 and idx >= 0
+  post it >= 0
 = let arg = get_child(ast, idx);
     if arg == "" {
         let result_tmp = "%_t" + int_to_string(temp_id);
@@ -6975,6 +7064,7 @@ fn lower_method_extra_args_sb(ast: String, fn_name: String, temp_id: i64, block_
 // Block format: (block inner_expr)
 fn lower_block_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let inner = block_inner(ast);
     lower_expr_sb(inner, temp_id, block_id, sb, loop_exit);
 
@@ -6986,6 +7076,7 @@ fn block_inner(ast: String) -> String
 
 fn lower_unit_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let tmp = "%_t" + int_to_string(temp_id);
     let w1 = sb_push_mir(sb, "  " + tmp + " = const 0");
     pack_ids(temp_id + 1, block_id);
@@ -6993,6 +7084,7 @@ fn lower_unit_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64
 // Seq format: (seq expr1 expr2)
 fn lower_seq_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let e1 = seq_first(ast);
     let e2 = seq_second(ast);
     let r1 = lower_expr_sb(e1, temp_id, block_id, sb, loop_exit);
@@ -7021,6 +7113,7 @@ fn seq_second(ast: String) -> String
 // Find first balanced expression (stop at top-level space)
 fn find_first_balanced(s: String, idx: i64, depth: i64, acc: String) -> String
   pre idx >= 0
+  post it.len() >= 0
 = if idx >= s.len() { acc } else {
         let c = s.byte_at(idx);
         if c == 40 { find_first_balanced(s, idx + 1, depth + 1, acc + chr(c)) }
@@ -7032,6 +7125,7 @@ fn find_first_balanced(s: String, idx: i64, depth: i64, acc: String) -> String
 // Find rest after first balanced expression
 fn find_rest_balanced(s: String, idx: i64, depth: i64) -> String
   pre idx >= 0
+  post it.len() <= s.len()
 = if idx >= s.len() { "" } else {
         let c = s.byte_at(idx);
         if c == 40 { find_rest_balanced(s, idx + 1, depth + 1) }
@@ -7044,6 +7138,7 @@ fn find_rest_balanced(s: String, idx: i64, depth: i64) -> String
 // v0.92: Use store instead of copy for mutable variable assignments
 fn lower_assign_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let lhs = assign_lhs_expr(ast);
     let rhs = assign_rhs_expr(ast);
     let rr = lower_expr_sb(rhs, temp_id, block_id, sb, loop_exit);
@@ -7073,6 +7168,7 @@ fn lower_assign_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit:
 
 fn lower_while_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let cond_ast = get_child(ast, 0);
     let body_ast = get_child(ast, 1);
     let loop_label = "loop_" + int_to_string(block_id);
@@ -7117,6 +7213,7 @@ fn lower_while_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: 
 //     %result = const 0   ; loop returns unit
 fn lower_loop_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let body_ast = get_child(ast, 0);
     let loop_label = "loop_" + int_to_string(block_id);
     let exit_label = "exit_" + int_to_string(block_id);
@@ -7143,6 +7240,7 @@ fn lower_loop_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: S
 // AST: (break) → MIR: goto <exit_label> + unreachable block
 fn lower_break_sb(loop_exit: String, temp_id: i64, block_id: i64, sb: i64) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let goto_text = "  goto " + loop_exit;
     let w1 = sb_push_mir(sb, goto_text);
     // Start unreachable block for code after break (required for LLVM IR validity)
@@ -7159,6 +7257,7 @@ fn lower_break_sb(loop_exit: String, temp_id: i64, block_id: i64, sb: i64) -> i6
 // AST: (continue) → MIR: goto <loop_label> + unreachable block
 fn lower_continue_sb(loop_exit: String, temp_id: i64, block_id: i64, sb: i64) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let loop_label = derive_loop_start(loop_exit);
     let goto_text = "  goto " + loop_label;
     let w1 = sb_push_mir(sb, goto_text);
@@ -7175,6 +7274,7 @@ fn lower_continue_sb(loop_exit: String, temp_id: i64, block_id: i64, sb: i64) ->
 // AST: (return) or (return expr) → MIR: return or return %val + unreachable block
 fn lower_return_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = if ast.len() == 8 {
         // Bare return: (return)
         let w1 = sb_push_mir(sb, "  return");
@@ -7206,6 +7306,7 @@ fn lower_return_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit:
 // AST: (field base_expr field_name) → MIR: %dest = field-access %base.field_name
 fn lower_field_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let base_expr = get_child(ast, 0);
     let field_name = get_child(ast, 1);
     let base_result = lower_expr_sb(base_expr, temp_id, block_id, sb, loop_exit);
@@ -7218,6 +7319,7 @@ fn lower_field_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: 
 
 fn lower_set_field_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let base_expr = get_child(ast, 0);
     let field_name = get_child(ast, 1);
     let val_expr = get_child(ast, 2);
@@ -7236,6 +7338,7 @@ fn lower_set_field_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_ex
 
 fn lower_set_var_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let name = extract_name(ast);
     let val_expr = get_child(ast, 1);
     let val_result = lower_expr_sb(val_expr, temp_id, block_id, sb, loop_exit);
@@ -7250,6 +7353,7 @@ fn lower_set_var_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit
 // v0.96.24: Safe mode bounds check for recursive lowering path (while/for/loop bodies)
 fn lower_index_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let base_expr = get_child(ast, 0);
     let idx_expr = get_child(ast, 1);
     let base_result = lower_expr_sb(base_expr, temp_id, block_id, sb, loop_exit);
@@ -7277,6 +7381,7 @@ fn lower_index_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: 
 // v0.96.24: Safe mode bounds check for recursive lowering path (while/for/loop bodies)
 fn lower_set_index_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let base_expr = get_child(ast, 0);
     let idx_expr = get_child(ast, 1);
     let val_expr = get_child(ast, 2);
@@ -7310,6 +7415,7 @@ fn lower_set_index_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_ex
 // Raw pointer index: direct GEP without +2 array header offset
 fn lower_ptr_index_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let base_expr = get_child(ast, 0);
     let idx_expr = get_child(ast, 1);
     let base_result = lower_expr_sb(base_expr, temp_id, block_id, sb, loop_exit);
@@ -7329,6 +7435,7 @@ fn lower_ptr_index_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_ex
 // Raw pointer set_index: direct GEP without +2 array header offset
 fn lower_ptr_set_index_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let base_expr = get_child(ast, 0);
     let idx_expr = get_child(ast, 1);
     let val_expr = get_child(ast, 2);
@@ -7383,6 +7490,7 @@ fn extract_for_varname_from_ast(ast: String) -> String
 // cmp_op: "< " for exclusive (..), "<= " for inclusive (..=)
 fn lower_for_range_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String, cmp_op: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let varname = extract_for_varname_from_ast(ast);
     let unique_var = varname + "_" + int_to_string(temp_id);
     let start_ast = get_child(ast, 1);
@@ -7462,15 +7570,18 @@ fn lower_for_range_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_ex
 
 fn lower_for_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = lower_for_range_sb(ast, temp_id, block_id, sb, loop_exit, "< ");
 
 fn lower_for_incl_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = lower_for_range_sb(ast, temp_id, block_id, sb, loop_exit, "<= ");
 
 // for_step: (for_step <var> start end step body) — children: 1=start, 2=end, 3=step, 4=body
 fn lower_for_step_range_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String, cmp_op: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = let varname = extract_for_varname_from_ast(ast);
     let unique_var = varname + "_" + int_to_string(temp_id);
     let start_ast = get_child(ast, 1);
@@ -7551,10 +7662,12 @@ fn lower_for_step_range_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, lo
 
 fn lower_for_step_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = lower_for_step_range_sb(ast, temp_id, block_id, sb, loop_exit, "< ");
 
 fn lower_for_step_incl_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
   pre temp_id >= 0 and block_id >= 0
+  post it >= 0
 = lower_for_step_range_sb(ast, temp_id, block_id, sb, loop_exit, "<= ");
 
 // Extract lhs from (assign lhs rhs)
@@ -7597,6 +7710,7 @@ fn get_fn_annotation(ast: String) -> String
 // This ensures raw pointer indexing skips the +2 array header offset
 fn rewrite_ptr_index(body: String, ast: String, idx: i64) -> String
   pre idx >= 0
+  post it.len() >= 0
 = let child = get_child(ast, idx);
     if child == "" or get_node_type(child) != "param" { body } else {
         let param_name_raw = get_child(child, 0);
@@ -7612,6 +7726,7 @@ fn rewrite_ptr_index(body: String, ast: String, idx: i64) -> String
 
 fn lower_function_sb(ast: String, safe: i64) -> String
   pre safe >= 0
+  post it.len() >= 0
 = let name = extract_name(ast);
     let params = collect_params(ast, 1, "");
     let ret_type = get_fn_return_type(ast);
@@ -7638,6 +7753,7 @@ fn lower_function_sb(ast: String, safe: i64) -> String
 // Scans body_mir for chr(1)...chr(1) pairs and collects the content
 fn extract_lambda_fns(s: String, pos: i64, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= s.len() { acc }
     else if s.byte_at(pos) == 1 {
         // Found start marker, find end marker
@@ -7652,6 +7768,7 @@ fn extract_lambda_fns(s: String, pos: i64, acc: String) -> String
 // Returns the body with all chr(1)...chr(1) sections removed
 fn remove_lambda_markers(s: String, pos: i64, out_sb: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= s.len() { sb_build(out_sb) }
     else if s.byte_at(pos) == 1 {
         // Skip chr(1)...chr(1) section
@@ -7666,12 +7783,14 @@ fn remove_lambda_markers(s: String, pos: i64, out_sb: i64) -> String
 
 fn lower_program_sb(ast: String, safe: i64) -> String
   pre safe >= 0
+  post it.len() >= 0
 = let sb = sb_new();
     let w1 = lower_program_inner_sb(ast, 0, sb, safe);
     sb_build(sb);
 
 fn lower_program_inner_sb(ast: String, idx: i64, sb: i64, safe: i64) -> i64
   pre idx >= 0 and safe >= 0
+  post it >= 0
 = let fn_ast = get_child(ast, idx);
     if fn_ast.len() == 0 or fn_ast == "" { 0 } else if not is_fn_node(fn_ast) { 0 } else {
         let _save = bmb_arena_save();
@@ -7689,7 +7808,8 @@ fn lower_program_inner_sb(ast: String, idx: i64, sb: i64, safe: i64) -> i64
 
 fn collect_params(ast: String, idx: i64, acc: String) -> String
     pre idx >= 0
-= 
+    post it.len() >= 0
+=
     let child = get_child(ast, idx);
     if child == "" or get_node_type(child) != "param" { acc } else {
         let param_name = get_child(child, 0);
@@ -7711,7 +7831,8 @@ fn get_fn_return_type(ast: String) -> String
 // "Array" followed by "<String>" because read_sexp_at stops ident at '<'
 fn get_fn_return_scan(content: String, pos: i64) -> String
     pre pos >= 0
-= 
+    post it.len() >= 0
+=
     let p = low_skip_ws(content, pos);
     if p >= content.len() { "i64" } else {
         if content.byte_at(p) == 42 {
@@ -7745,7 +7866,8 @@ fn get_fn_body(ast: String) -> String
 
 fn get_fn_body_scan(content: String, pos: i64, last_expr: String) -> String
     pre pos >= 0
-= 
+    post it.len() >= 0
+=
     let p = low_skip_ws(content, pos);
     if p >= content.len() { last_expr } else {
         let child = read_sexp_at(content, p);
@@ -7794,6 +7916,7 @@ fn find_eq(s: String, pos: i64) -> i64
 
 fn llvm_gen_binop(op: String, line: String, pos: i64, dest: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let p1 = low_skip_ws(line, pos);
     let comma = find_comma(line, p1);
     let left = line.slice(p1, comma);
@@ -7805,6 +7928,7 @@ fn llvm_gen_binop(op: String, line: String, pos: i64, dest: String) -> String
 // v0.96: Saturating add/sub via LLVM intrinsic: call i64 @llvm.sadd.sat.i64(i64 %a, i64 %b)
 fn llvm_gen_sat_binop(intrinsic: String, line: String, pos: i64, dest: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let p1 = low_skip_ws(line, pos);
     let comma = find_comma(line, p1);
     let left = trim_end(line.slice(p1, comma));
@@ -7815,6 +7939,7 @@ fn llvm_gen_sat_binop(intrinsic: String, line: String, pos: i64, dest: String) -
 // v0.96: Saturating mul via smul.with.overflow + select
 fn llvm_gen_sat_mul(line: String, pos: i64, dest: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let p1 = low_skip_ws(line, pos);
     let comma = find_comma(line, p1);
     let left = trim_end(line.slice(p1, comma));
@@ -7832,6 +7957,7 @@ fn llvm_gen_sat_mul(line: String, pos: i64, dest: String) -> String
 // v0.96: Wrapping arithmetic: add/sub/mul WITHOUT nsw (allows overflow wrapping)
 fn llvm_gen_wrap_binop(op: String, line: String, pos: i64, dest: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let p1 = low_skip_ws(line, pos);
     let comma = find_comma(line, p1);
     let left = trim_end(line.slice(p1, comma));
@@ -7841,6 +7967,7 @@ fn llvm_gen_wrap_binop(op: String, line: String, pos: i64, dest: String) -> Stri
 
 fn llvm_gen_cmp(pred: String, line: String, pos: i64, dest: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let p1 = low_skip_ws(line, pos);
     let comma = find_comma(line, p1);
     let left = line.slice(p1, comma);
@@ -7850,12 +7977,14 @@ fn llvm_gen_cmp(pred: String, line: String, pos: i64, dest: String) -> String
 
 fn llvm_gen_not(line: String, pos: i64, dest: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let p = low_skip_ws(line, pos);
     let operand = line.slice(p, line.len());
     "  " + dest + " = xor i64 " + trim_end(operand) + ", 1";
 
 fn llvm_gen_bnot(line: String, pos: i64, dest: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let p = low_skip_ws(line, pos);
     let operand = line.slice(p, line.len());
     "  " + dest + " = xor i64 " + trim_end(operand) + ", -1";
@@ -7863,6 +7992,7 @@ fn llvm_gen_bnot(line: String, pos: i64, dest: String) -> String
 // MIR: gep %base, %idx → LLVM: getelementptr i64, ptr %base, i64 %idx
 fn llvm_gen_gep(line: String, pos: i64, dest: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let p1 = low_skip_ws(line, pos);
     let comma = find_comma(line, p1);
     let base = trim_end(line.slice(p1, comma));
@@ -7874,6 +8004,7 @@ fn llvm_gen_gep(line: String, pos: i64, dest: String) -> String
 
 fn llvm_gen_store_ptr_sb(line: String, pos: i64, str_sb: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let p1 = low_skip_ws(line, pos);
     let comma = find_comma(line, p1);
     let ptr = line.slice(p1, comma);
@@ -7889,6 +8020,7 @@ fn llvm_gen_store_ptr_sb(line: String, pos: i64, str_sb: i64) -> String
 
 fn llvm_gen_load_ptr_sb(line: String, pos: i64, dest: String, str_sb: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let p = low_skip_ws(line, pos);
     let ptr = trim_end(line.slice(p, line.len()));
     let ptr_is_f64 = is_f64_ptr_sb(ptr, str_sb);
@@ -7905,6 +8037,7 @@ fn llvm_gen_load_ptr_sb(line: String, pos: i64, dest: String, str_sb: i64) -> St
 
 fn llvm_gen_gep_sb(line: String, pos: i64, dest: String, str_sb: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let p1 = low_skip_ws(line, pos);
     let comma = find_comma(line, p1);
     let base = trim_end(line.slice(p1, comma));
@@ -7919,6 +8052,7 @@ fn llvm_gen_gep_sb(line: String, pos: i64, dest: String, str_sb: i64) -> String
 
 fn llvm_gen_phi(line: String, pos: i64, dest: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = llvm_gen_phi_typed(line, pos, dest, "i64");
 
 // Returns tagged result: llvm_line directly (mapping unchanged) or "!len:mapping+llvm_line" (mapping changed)
@@ -7929,6 +8063,7 @@ fn extract_phi_val(content: String) -> String
 
 fn llvm_gen_phi_typed(line: String, pos: i64, dest: String, ret_type: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let bracket_start = find_char(line, pos, 91);
     let first_end = find_char(line, bracket_start, 93);
     let first_content = line.slice(bracket_start + 1, first_end);

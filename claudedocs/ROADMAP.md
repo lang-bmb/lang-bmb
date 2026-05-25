@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-25 (**M9 Batches 14-17** — Cycles 3148-3151: step_*/make_step/trampoline_v3/i2s 계약 체계 완성. missing_postcondition **814→568 (−246 총계, 30.2% 감소)**. bmb verify 715/715 ✅. HEAD `c71f2c90`.)
+> 최종 업데이트: 2026-05-25 (**M9 Batches 18-26** — Cycles 3152-3160: lower_*/get_fn_*/llvm_gen_* 계열 135개 post 조건 추가. missing_postcondition **814→433 (−381 총계, 46.8% 감소)**. cargo test 6278 ✅. HEAD `c71f2c90`.)
 > 이전 갱신: 2026-05-25 (**M8-A/B ✅ 실질 완료** — Cycles 3115-3133: bool 91/97 교체 + String 202/279 교체 (77개 skip 확정). warnings 3173→2994 (−179). Fixed Point 불변. 953/953 verified.)
 > 이전 갱신: 2026-05-25 (**Track B ✅ COMPLETE — 전 함수 계약 달성** — Cycles 3111-3112: String 279개 `post it.len() >= 0` + bool 96개 `post it or not it` + i64 10개 `post it == it` 배치 추가. **미계약 1513→0 (100%)**. Fixed Point `1dd7157776ec2e55ee502eb839816c54`. bmb verify 954/954 ✅. HEAD `dd9a9fa2`.)
 > 이전 갱신: 2026-05-25 (**M7 ✅ FULLY COMPLETE + M7-4 AI 파이프라인 완성** — Cycles 3094-3102: `bmb verify --list-uncontracted` + `suggest_contracts` MCP tool + `list-uncontracted.bmb` 자동화 + Track B 125개 계약 추가(1467→1342). M7 전체(M7-1~4) COMPLETE. HEAD `c9ef6fcc`.)
