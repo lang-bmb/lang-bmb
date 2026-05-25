@@ -1595,10 +1595,12 @@ fn parse_block_let_skip_array_type(src: String, pos: i64, name: String, is_mut: 
 // M4-3: Block-level tuple destructuring: let (a, b) = expr; rest
 fn parse_block_let_tuple(src: String, pos: i64, start_pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = parse_block_tuple_names_acc(src, pos, start_pos, "", 0);
 
 fn parse_block_tuple_names_acc(src: String, pos: i64, start_pos: i64, names_acc: String, count: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     let k = tok_kind(t);
     if k == TK_IDENT() {
@@ -1613,6 +1615,7 @@ fn parse_block_tuple_names_acc(src: String, pos: i64, start_pos: i64, names_acc:
 
 fn parse_block_tuple_names_sep(src: String, pos: i64, start_pos: i64, names_acc: String, count: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     let k = tok_kind(t);
     if k == TK_COMMA() {
@@ -1625,6 +1628,7 @@ fn parse_block_tuple_names_sep(src: String, pos: i64, start_pos: i64, names_acc:
 
 fn parse_block_tuple_eq(src: String, pos: i64, start_pos: i64, names: String, count: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t = next_token_raw(src, pos);
     if tok_kind(t) != TK_EQ() {
         make_error_at("expected '=' after tuple pattern, got " + tok_kind_name(tok_kind(t)), src, pos)
@@ -1650,6 +1654,7 @@ fn parse_block_tuple_eq(src: String, pos: i64, start_pos: i64, names: String, co
 // v0.91: Parse value and body for block let
 fn parse_block_let_value(src: String, pos: i64, name: String, is_mut: bool) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rv = parse_expr(src, pos);
     if is_error(rv) { rv } else {
         let t3 = next_token_raw(src, unpack_pos(rv));
@@ -1665,6 +1670,7 @@ fn parse_block_let_value(src: String, pos: i64, name: String, is_mut: bool) -> S
 // Parse assignment inside block: { lhs = rhs }; rest
 fn parse_block_assign(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t1 = next_token_raw(src, pos);
     if tok_kind(t1) != TK_LBRACE() { make_error_at("expected '{' for assignment, got " + tok_kind_name(tok_kind(t1)), src, pos) } else {
         let peek1 = next_token_raw(src, tok_end(t1));
@@ -1697,6 +1703,7 @@ fn parse_block_assign(src: String, pos: i64) -> String
 
 fn parse_simple_assign_block(src: String, t1: i64, peek1: i64, peek2: i64) -> String
   pre t1 >= 0 and peek1 >= 0 and peek2 >= 0
+  post it.len() >= 2
 = let name = get_ident_text(src, tok_end(t1), peek1);
     let rr = parse_expr(src, tok_end(peek2));
     if is_error(rr) { rr } else {
@@ -1740,6 +1747,7 @@ fn parse_simple_assign_block(src: String, t1: i64, peek1: i64, peek2: i64) -> St
 // Used for patterns like { result = result + 1 } without inner braces
 fn parse_bare_assign(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let t1 = next_token_raw(src, pos);
     let name = get_ident_text(src, pos, t1);
     let t2 = next_token_raw(src, tok_end(t1));
@@ -1765,6 +1773,7 @@ fn parse_bare_assign(src: String, pos: i64) -> String
 // Parse expression statement: expr; rest or just expr at end
 fn parse_block_expr_stmt(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let re = parse_expr(src, pos);
     if is_error(re) { re } else {
         let t1 = next_token_raw(src, unpack_pos(re));
@@ -1782,6 +1791,7 @@ fn parse_block_expr_stmt(src: String, pos: i64) -> String
 
 fn parse_atom(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
     if is_int_literal(kind) { parse_int_lit(src, pos, tok) }
@@ -1826,6 +1836,7 @@ fn parse_atom(src: String, pos: i64) -> String
 // AST result: (lambda (param <p1> T1) (param <p2> T2) BODY_AST)
 fn parse_lambda_expr(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rp = parse_lambda_params(src, pos, "");
     if is_error(rp) { rp }
     else {
@@ -1846,6 +1857,7 @@ fn parse_lambda_expr(src: String, pos: i64) -> String
 // Parse lambda parameters: name: Type, name: Type |
 fn parse_lambda_params(src: String, pos: i64, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let tok = next_token_raw(src, pos);
     if tok_kind(tok) == TK_PIPE() { pack_result(tok_end(tok), acc) }
     else if tok_kind(tok) == TK_IDENT() {
@@ -1865,6 +1877,7 @@ fn parse_lambda_params(src: String, pos: i64, acc: String) -> String
 // [] → (array)
 fn parse_array_or_repeat(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let tok = next_token_raw(src, pos);
     if tok_kind(tok) == TK_RBRACKET() {
         // Empty array []
@@ -1899,6 +1912,7 @@ fn parse_array_or_repeat(src: String, pos: i64) -> String
 // Parse remaining elements of array literal after first element and comma
 fn parse_array_rest(src: String, pos: i64, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rv = parse_expr(src, pos);
     if is_error(rv) { rv }
     else {
@@ -1913,6 +1927,7 @@ fn parse_array_rest(src: String, pos: i64, acc: String) -> String
 
 fn parse_args(src: String, pos: i64, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let tok = next_token_raw(src, pos);
     if tok_kind(tok) == TK_RPAREN() { pack_result(tok_end(tok), acc) } else {
         let re = parse_expr(src, pos);
@@ -1925,11 +1940,13 @@ fn parse_args(src: String, pos: i64, acc: String) -> String
 
 fn parse_postfix(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rl = parse_atom(src, pos);
     if is_error(rl) { rl } else { parse_postfix_rest(src, unpack_pos(rl), unpack_ast(rl)) };
 
 fn parse_postfix_rest(src: String, pos: i64, left: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let tok = next_token_raw(src, pos);
     if tok_kind(tok) == TK_DOT() {
         let method_tok = next_token_raw(src, tok_end(tok));
@@ -1987,11 +2004,13 @@ fn parse_postfix_rest(src: String, pos: i64, left: String) -> String
 
 fn parse_mul(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rl = parse_postfix(src, pos);
     if is_error(rl) { rl } else { parse_mul_rest(src, unpack_pos(rl), unpack_ast(rl)) };
 
 fn parse_mul_rest(src: String, pos: i64, left: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
     if kind == TK_STAR() {
@@ -2013,11 +2032,13 @@ fn parse_mul_rest(src: String, pos: i64, left: String) -> String
 
 fn parse_add(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rl = parse_mul(src, pos);
     if is_error(rl) { rl } else { parse_add_rest(src, unpack_pos(rl), unpack_ast(rl)) };
 
 fn parse_add_rest(src: String, pos: i64, left: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
     if kind == TK_PLUS() {
@@ -2042,11 +2063,13 @@ fn parse_add_rest(src: String, pos: i64, left: String) -> String
 
 fn parse_shift(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rl = parse_add(src, pos);
     if is_error(rl) { rl } else { parse_shift_rest(src, unpack_pos(rl), unpack_ast(rl)) };
 
 fn parse_shift_rest(src: String, pos: i64, left: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
     if kind == TK_SHL() {
@@ -2062,11 +2085,13 @@ fn parse_shift_rest(src: String, pos: i64, left: String) -> String
 
 fn parse_cmp(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rl = parse_bitor(src, pos);
     if is_error(rl) { rl } else { parse_cmp_rest(src, unpack_pos(rl), unpack_ast(rl)) };
 
 fn parse_cmp_rest(src: String, pos: i64, left: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
     if kind == TK_LT() {
@@ -2091,11 +2116,13 @@ fn parse_cmp_rest(src: String, pos: i64, left: String) -> String
 
 fn parse_bitand(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rl = parse_shift(src, pos);
     if is_error(rl) { rl } else { parse_bitand_rest(src, unpack_pos(rl), unpack_ast(rl)) };
 
 fn parse_bitand_rest(src: String, pos: i64, left: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let tok = next_token_raw(src, pos);
     if tok_kind(tok) == TK_BAND() {
         let rr = parse_shift(src, tok_end(tok));
@@ -2104,11 +2131,13 @@ fn parse_bitand_rest(src: String, pos: i64, left: String) -> String
 
 fn parse_bitxor(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rl = parse_bitand(src, pos);
     if is_error(rl) { rl } else { parse_bitxor_rest(src, unpack_pos(rl), unpack_ast(rl)) };
 
 fn parse_bitxor_rest(src: String, pos: i64, left: String) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let tok = next_token_raw(src, pos);
     if tok_kind(tok) == TK_BXOR() or tok_kind(tok) == TK_CARET() {
         let rr = parse_bitand(src, tok_end(tok));
@@ -2117,6 +2146,7 @@ fn parse_bitxor_rest(src: String, pos: i64, left: String) -> String
 
 fn parse_bitor(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 2
 = let rl = parse_bitxor(src, pos);
     if is_error(rl) { rl } else { parse_bitor_rest(src, unpack_pos(rl), unpack_ast(rl)) };
 
