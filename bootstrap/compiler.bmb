@@ -9093,7 +9093,7 @@ fn resolve_ir_alias_d(aliases: String, name: String, depth: i64) -> String
 
 // Check if LLVM IR line is an identity copy
 fn is_identity_copy_ir(line: String) -> bool
-  post it or not it
+  post not it or line.contains("add nsw i64 0, ") or line.contains("fadd nsz double 0.0, ")
 = {
     let p = low_skip_ws(line, 0);
     if p >= line.len() { false }
@@ -9270,7 +9270,7 @@ fn lookup_zext_src(zmap: String, name: String) -> String
 
 // Check if line is a trunc that was aliased
 fn is_aliased_trunc_ir(line: String, aliases: String) -> bool
-  post it or not it
+  post not it or line.contains("trunc i64 ")
 = {
     let p = low_skip_ws(line, 0);
     if p >= line.len() { false }
@@ -9555,7 +9555,7 @@ fn lookup_ptr_src(pmap: String, name: String) -> String
 
 // Check if line is an inttoptr that was aliased
 fn is_aliased_inttoptr(line: String, aliases: String) -> bool
-  post it or not it
+  post not it or line.contains("inttoptr i64 ")
 = {
     let p = low_skip_ws(line, 0);
     if p >= line.len() { false }
@@ -9611,7 +9611,7 @@ fn eliminate_dead_ptrtoints_ir(ir: String) -> String
 
 // v0.93.4: Check if a call target is a known memory(none) function
 fn mn_is_pure_call(line: String) -> bool
-  post it or not it
+  post not it or line.contains("@llvm.") or line.contains("@bmb_f64_")
 = let at_pos = find_byte_in_range(line, 64, 0, line.len());
     if at_pos < 0 { false }
     else {
@@ -9662,7 +9662,7 @@ fn mn_has_memory_op(ir: String, pos: i64) -> bool
 
 // Check if a call target is a known read-only function (reads memory but does not write)
 fn mn_is_readonly_call(line: String) -> bool
-  post it or not it
+  post not it or line.contains("@bmb_") or line.contains("@llvm.")
 = if mn_is_pure_call(line) { true }
     else {
         let at_pos = find_byte_in_range(line, 64, 0, line.len());
@@ -10545,7 +10545,7 @@ fn slf_load_dest(line: String) -> String
 
 // Check if line is a basic block boundary (label or terminator)
 fn slf_is_bb_boundary(line: String) -> bool
-  post it or not it
+  post not it or line.contains(":") or line.contains("br ") or line.contains("ret ")
 = let s = low_skip_ws(line, 0);
     if s >= line.len() { false }
     else {
@@ -10689,7 +10689,7 @@ fn dsa_filter_dead(allocas: String, loaded: String, pos: i64, dead: String) -> S
 
 // Check if a line should be removed (dead alloca or store to dead alloca)
 fn dsa_is_dead_line(line: String, dead: String) -> bool
-  post it or not it
+  post not it or dead.len() > 0
 = if dead.len() == 0 { false }
     else {
         let trimmed = trim(line);
@@ -11145,7 +11145,7 @@ fn cf_table_has(table: String, key: String) -> bool
 // Check if line is integer constant: %dest = const <digits|minus>
 // Must match the ASSIGNMENT's `= const`, not ` = const ` inside string content.
 fn cf_is_int_const(line: String) -> bool
-  post it or not it
+  post not it or line.contains(" = const ")
 = let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { false } else {
         let after_eq = eq_pos + 3;
@@ -11397,7 +11397,7 @@ fn cf_log2(n: i64) -> i64
 
 // Check if algebraic simplification applies (one operand known: x+0, x*1, x*0, x-x, etc.)
 fn cf_can_simplify(line: String, table: String) -> bool
-  post it or not it
+  post not it or cf_is_arith(line) or cf_is_shift(line) or cf_is_bitwise(line)
 = if cf_is_arith(line) {
         let op = cf_arith_op(line);
         let left = cf_arith_left(line);
@@ -11531,7 +11531,7 @@ fn cf_simplified_bitwise(dest: String, line: String, table: String) -> String
 
 // Check if line can be constant-folded (arithmetic, comparison, or unary)
 fn cf_can_fold(line: String, table: String) -> bool
-  post it or not it
+  post not it or cf_is_arith(line) or cf_is_cmp(line) or cf_is_neg(line) or cf_is_not(line) or cf_is_shift(line) or cf_is_bitwise(line)
 = if cf_is_arith(line) or cf_is_cmp(line) or cf_is_shift(line) or cf_is_bitwise(line) {
         let left = cf_arith_left(line);
         let right = cf_arith_right(line);
@@ -11644,7 +11644,7 @@ fn cf_branch_else(line: String) -> String
     trim_end(line.slice(start2, line.len()));
 
 fn cf_can_simplify_branch(line: String, table: String) -> bool
-  post it or not it
+  post not it or cf_is_branch(line)
 = if cf_is_branch(line) {
         let cond = cf_branch_cond(line);
         // Known condition value
@@ -11668,7 +11668,7 @@ fn cf_simplified_branch(line: String, table: String) -> String
 
 // Check if phi can be folded (both incoming values are the same known constant)
 fn cf_can_fold_phi(line: String, table: String) -> bool
-  post it or not it
+  post not it or ube_is_phi(line)
 = if ube_is_phi(line) {
         let eq_pos = find_pattern_at(line, " = ", 0);
         let rhs = line.slice(eq_pos + 3, line.len());
@@ -11724,7 +11724,7 @@ fn cf_select_parts(line: String) -> String
 
 // Check if select can be simplified (same values or known condition)
 fn cf_can_simplify_select(line: String, table: String) -> bool
-  post it or not it
+  post not it or cf_is_select(line)
 = if cf_is_select(line) {
         let parts = cf_select_parts(line);
         let c1 = find_char(parts, 0, 44);
@@ -11824,7 +11824,7 @@ fn dce_has_side_effects(line: String) -> bool
 
 // Check if target variable appears in line's RHS (after " = ")
 fn dce_var_in_rhs(line: String, target: String) -> bool
-  post it or not it
+  post not it or line.contains(target)
 = let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 {
         find_pattern_at(line, target, 0) >= 0
@@ -12477,7 +12477,7 @@ fn mlcse_safe_builtins() -> String
 
 // Check if a function call is safe (does not write to pointer memory)
 fn mlcse_is_safe_call(fn_name: String, pure_set: String, safe_set: String) -> bool
-  post it or not it
+  post it or fn_name.len() > 0
 = if fn_name == "" { true }
     else if pfcse_is_pure(pure_set, fn_name) { true }
     else { find_pattern_at(safe_set, ";" + fn_name + ";", 0) >= 0 };
@@ -12900,7 +12900,7 @@ fn trl_find_tail_call(fn_mir: String, pos: i64, fn_name: String) -> String
 // Scans from the label until the next label or end of function.
 // A block is a tail position if it contains "return ..." (possibly preceded by phi).
 fn trl_block_has_return(fn_mir: String, label: String) -> bool
-  post it or not it
+  post not it or fn_mir.contains(label)
 = let label_pat = label + ":";
     let label_pos = find_pattern_at(fn_mir, label_pat, 0);
     if label_pos < 0 { false }
@@ -13788,7 +13788,7 @@ fn ifs_check_pattern(fn_mir: String, branch_line: String, branch_pos: i64) -> St
 // Pure: non-trapping arithmetic (+,-,*), comparison, shift, bitwise, neg, not, copy, const
 // NOT pure: div, mod (trap on zero), call, store, load, alloca, branch, goto, return, label
 fn ifs_is_pure(line: String) -> bool
-  post it or not it
+  post not it or line.contains(" = ")
 = let s = low_skip_ws(line, 0);
     if s >= line.len() { false }
     else if line.byte_at(s) != 37 { false }
@@ -17205,7 +17205,7 @@ fn llvm_try_println_str_dispatch(line: String, pos: i64, dest: String, fn_name: 
     } else { "" };
 
 fn is_builtin_double_fn(name: String) -> bool
-  post it or not it
+  post it == (name == "sqrt" or name == "i64_to_f64" or name == "sin" or name == "cos" or name == "tan" or name == "atan" or name == "atan2" or name == "log" or name == "log2" or name == "log10" or name == "exp" or name == "fmod" or name == "pow_f64" or name == "bmb_f64_floor" or name == "bmb_f64_ceil" or name == "bmb_f64_round" or name == "bmb_f64_sqrt" or name == "bmb_f64_abs" or name == "bmb_f64_min" or name == "bmb_f64_max" or name == "f64_min" or name == "f64_max" or name == "parse_f64" or name == "fabs" or name == "floor" or name == "ceil" or name == "round")
 = name == "sqrt" or name == "i64_to_f64" or name == "sin" or name == "cos" or name == "tan" or name == "atan" or name == "atan2" or name == "log" or name == "log2" or name == "log10" or name == "exp" or name == "fmod" or name == "pow_f64" or
     // v0.96: Float ops — MIR names kept for type tracking (codegen maps to LLVM intrinsics)
     name == "bmb_f64_floor" or name == "bmb_f64_ceil" or name == "bmb_f64_round" or
@@ -17250,7 +17250,7 @@ fn is_string_returning_fn(name: String) -> bool
     is_string_fn_group4(name) or is_string_fn_group5(name) or is_string_fn_group6(name);
 
 fn is_string_fn_group1(name: String) -> bool
-  post it or not it
+  post it == (name == "get_node_type" or name == "get_child" or name == "extract_name" or name == "bmb_string_slice" or name == "bmb_string_concat" or name == "bmb_string_from_cstr" or name == "bmb_chr" or name == "bmb_read_file" or name == "bmb_getenv" or name == "get_arg" or name == "int_to_string" or name == "chr" or name == "slice" or name == "bmb_string_concat3" or name == "bmb_string_concat5" or name == "bmb_string_concat7")
 = name == "get_node_type" or name == "get_child" or name == "extract_name" or
     name == "bmb_string_slice" or name == "bmb_string_concat" or
     name == "bmb_string_from_cstr" or name == "bmb_chr" or name == "bmb_read_file" or
@@ -17259,14 +17259,14 @@ fn is_string_fn_group1(name: String) -> bool
     name == "bmb_string_concat3" or name == "bmb_string_concat5" or name == "bmb_string_concat7";
 
 fn is_string_fn_group2(name: String) -> bool
-  post it or not it
+  post it == (name == "sb_build" or name == "digit_char" or name == "escape_parens" or name == "unescape_parens_from_ast" or name == "extract_string_content" or name == "get_fn_return_type" or name == "collect_params" or name == "get_fn_body" or name == "lower_function_sb" or name == "lower_program_sb")
 = name == "sb_build" or name == "digit_char" or name == "escape_parens" or
     name == "unescape_parens_from_ast" or name == "extract_string_content" or
     name == "get_fn_return_type" or name == "collect_params" or name == "get_fn_body" or
     name == "lower_function_sb" or name == "lower_program_sb";
 
 fn is_string_fn_group3(name: String) -> bool
-  post it or not it
+  post it == (name == "parse_source" or name == "gen_function" or name == "gen_program" or name == "read_file" or name == "gen_module_header" or name == "gen_runtime_decls" or name == "gen_string_globals" or name == "collect_strings_from_mir" or name == "compile_program")
 = name == "parse_source" or name == "gen_function" or name == "gen_program" or
     name == "read_file" or
     name == "gen_module_header" or name == "gen_runtime_decls" or
@@ -17274,7 +17274,7 @@ fn is_string_fn_group3(name: String) -> bool
     name == "collect_strings_from_mir" or name == "compile_program";
 
 fn is_string_fn_group4(name: String) -> bool
-  post it or not it
+  post it == (name == "gen_extern_println" or name == "gen_extern_print_str" or name == "llvm_gen_binop" or name == "llvm_gen_cmp" or name == "llvm_gen_call" or name == "llvm_gen_not" or name == "llvm_gen_neg" or name == "llvm_gen_phi" or name == "llvm_gen_branch" or name == "llvm_gen_goto" or name == "llvm_gen_return_typed" or name == "llvm_gen_string_ref" or name == "llvm_gen_line_with_ret")
 = name == "gen_extern_println" or name == "gen_extern_print_str" or
     name == "llvm_gen_binop" or name == "llvm_gen_cmp" or name == "llvm_gen_call" or
     name == "llvm_gen_not" or name == "llvm_gen_neg" or name == "llvm_gen_phi" or
@@ -17282,7 +17282,7 @@ fn is_string_fn_group4(name: String) -> bool
     name == "llvm_gen_string_ref" or name == "llvm_gen_line_with_ret";
 
 fn is_string_fn_group5(name: String) -> bool
-  post it or not it
+  post it == (name == "llvm_gen_assign_typed" or name == "llvm_gen_rhs_typed" or name == "gen_function_lines_typed" or name == "gen_function_sb_typed" or name == "llvm_gen_fn_line_typed" or name == "llvm_gen_fn_header" or name == "gen_all_externs" or name == "pack_result" or name == "unpack_ast" or name == "make_step" or name == "make_work" or name == "make_work3" or name == "make_work4" or name == "step_work" or name == "get_field" or name == "trim_end" or name == "i2s" or name == "sb_build" or name == "pack_lower_result" or name == "unescape_parens")
 = name == "llvm_gen_assign_typed" or name == "llvm_gen_rhs_typed" or
     name == "gen_function_lines_typed" or name == "gen_function_sb_typed" or
     name == "llvm_gen_fn_line_typed" or name == "llvm_gen_fn_header" or
@@ -17293,7 +17293,7 @@ fn is_string_fn_group5(name: String) -> bool
 
 // v0.100.2: runtime String-returning builtins missing from str_sb tracking (Cycle 3073)
 fn is_string_fn_group6(name: String) -> bool
-  post it or not it
+  post it == (name == "bmb_string_reverse" or name == "bmb_string_substr" or name == "bmb_string_pad_left" or name == "bmb_string_pad_right" or name == "bmb_string_trim" or name == "bmb_string_replace" or name == "bmb_string_to_upper" or name == "bmb_string_to_lower" or name == "bmb_string_repeat" or name == "bmb_string_join" or name == "bmb_f64_to_string" or name == "bmb_int_to_string" or name == "bmb_to_hex" or name == "bmb_to_binary" or name == "bmb_to_octal" or name == "bmb_getcwd" or name == "bmb_exec_output" or name == "bmb_system_capture" or name == "bmb_read_line" or name == "bmb_exec_with_stdin" or name == "exec_with_stdin" or name == "bmb_svec_get" or name == "bmb_svec_join" or name == "bmb_string_split")
 = name == "bmb_string_reverse" or name == "bmb_string_substr" or
     name == "bmb_string_pad_left" or name == "bmb_string_pad_right" or
     name == "bmb_string_trim" or name == "bmb_string_replace" or
@@ -18650,7 +18650,7 @@ fn lr2l_param_name(def_line: String) -> String
 // 2. Exactly two self-recursive calls with sub %param, 1 and sub %param, 2
 // 3. add nsw combining the two results
 fn lr2l_detect(fn_ir: String, fn_name: String, param: String) -> bool
-  post it or not it
+  post not it or fn_ir.contains(fn_name)
 = let cmp_pat1 = "icmp sle i64 " + param + ", 1";
     let cmp_pat2 = "icmp slt i64 " + param + ", 2";
     let has_cmp = find_substr_pos(fn_ir, cmp_pat1, 0) >= 0 or find_substr_pos(fn_ir, cmp_pat2, 0) >= 0;
@@ -18775,7 +18775,7 @@ fn collect_defined_fn_names(code: String, pos: i64, sb: i64) -> i64
 
 // Check if a declaration line conflicts with a user-defined function
 fn decl_has_conflict(decl_line: String, user_fn_names: String) -> bool
-  post it or not it
+  post not it or user_fn_names.len() > 0
 = let at = find_char(decl_line, 0, 64);
     let paren = find_char(decl_line, at, 40);
     if at >= decl_line.len() or paren >= decl_line.len() { false }

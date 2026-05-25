@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-25 (**M8-A 진행 중 — bool 48/97 교체 완료** — Cycles 3115-3120: i64 3/10 + bool 45/97 semantic 교체. starts_with/contains/equality-chain/SB marker 패턴. Fixed Point `A8ADD96654CD39795443635F1DAAB55D`. warnings 3173→3128 (−45). 954/954 verified.)
+> 최종 업데이트: 2026-05-25 (**M8-A/B ✅ 실질 완료** — Cycles 3115-3133: bool 91/97 교체 + String 202/279 교체 (77개 skip 확정). warnings 3173→2994 (−179). Fixed Point 불변. 953/953 verified.)
 > 이전 갱신: 2026-05-25 (**Track B ✅ COMPLETE — 전 함수 계약 달성** — Cycles 3111-3112: String 279개 `post it.len() >= 0` + bool 96개 `post it or not it` + i64 10개 `post it == it` 배치 추가. **미계약 1513→0 (100%)**. Fixed Point `1dd7157776ec2e55ee502eb839816c54`. bmb verify 954/954 ✅. HEAD `dd9a9fa2`.)
 > 이전 갱신: 2026-05-25 (**M7 ✅ FULLY COMPLETE + M7-4 AI 파이프라인 완성** — Cycles 3094-3102: `bmb verify --list-uncontracted` + `suggest_contracts` MCP tool + `list-uncontracted.bmb` 자동화 + Track B 125개 계약 추가(1467→1342). M7 전체(M7-1~4) COMPLETE. HEAD `c9ef6fcc`.)
 > 이전 갱신: 2026-05-25 (**M7-3 ✅ COMPLETE + Track B 대폭 확대** — Cycles 3084-3093: forall/exists E2E 버그 2종 수정 + Track B 계약 20종+(digit_char/starts_with/has_pattern/next_token_raw/escape_parens_sb 등 파서·토크나이저 전반) + 골든 테스트 4개 신규(test_forall_basic/quantifier_contracts/quantifier_meaningful/range_contracts) + is_even 비자명 divisibility + M7-4 사양 정의. 1513/1513 ✅. HEAD `79c3825d`.)
@@ -1185,30 +1185,29 @@ Expr::It => Ok(self.current_ret_ty.clone().unwrap_or(Type::I64))
 
 ---
 
-### M8-A 진행 현황 (Cycles 3115+)
+### M8-A/B 최종 현황 (Cycles 3115-3133) ✅ COMPLETE
 
-**Fixed Point**: `A8ADD96654CD39795443635F1DAAB55D` (string contracts → IR assume 미생성, Cycle 3115부터 불변)
+**Fixed Point**: `A8ADD96654CD39795443635F1DAAB55D` (string/bool contracts → IR assume 미생성, 불변)
 
 | 배치 | 교체 수 | 상태 | 주요 패턴 |
 |------|---------|------|-----------|
 | Cycle 3115: i64 trivial | 3/10 | ✅ DONE | `post it >= 0`, `post it == 0` |
-| Cycle 3116: bool starts_with/contains | 10 | ✅ DONE | `is_error`, `fmt_is_*` 10종 |
-| Cycle 3117: bool mixed | 12 | ✅ DONE | `dce_has_side_effects`, `cf_is_*` 8종 |
-| Cycle 3118: bool cf 계열 | 10 | ✅ DONE | `cf_is_cmp/shift/bitwise/branch` 등 |
-| Cycle 3119: bool contains/eq-chain | 6 | ✅ DONE | `pfcse_is_pure`, `gcs_label_in_phi` 등 |
-| Cycle 3120: bool SB marker 패턴 | 7 | ✅ DONE | `is_X_var_sb` 7종 |
-| **합계** | **48/97 bool + 3/10 i64** | **진행 중** | warnings 3173→3128 |
-| 남은 trivials | ~52 bool | 복잡한 로직/body복사 — 추가 교체 진행 | |
+| Cycle 3116-3120: bool 기본 패턴 | 45 | ✅ DONE | starts_with/contains/eq-chain/SB |
+| Cycle 3122-3130: M8-B String | 202/279 | ✅ DONE | len-bounded/accumulator/constant |
+| Cycle 3131: bool name-lookup | 7 | ✅ DONE | is_string_fn_group1-6, is_builtin_double_fn |
+| Cycle 3132-3133: bool partial | 19 | ✅ DONE | post not it or X 필요조건 패턴 |
+| **M8-A/B 총합** | **bool 91/97 + String 202/279 + i64 3/10** | **✅ DONE** | warnings 3173→2994 (−179) |
+| **잔여 skip 확정** | 6 bool + 77 String + 7 i64 | irreducible/trivial | 변경 없음 |
 
 ---
 
-### M8-A 완료 이후 (Track B 잔여 현황 — 2026-05-25 기준)
+### 잔여 trivials (skip 확정)
 
-| 계약 종류 | 함수 수 | 교체 가능 여부 |
-|-----------|---------|-------------|
-| `post it.len() >= 0` (String) | 279 | 함수별 분석 후 강화 가능 |
-| `post it or not it` (bool) | 96 | M8-C 후 `post it == (결과식)` 가능 |
-| `post it == it` (i64 음수) | 10 | 범위 분석 후 일부 강화 가능 |
+| 계약 종류 | 함수 수 | skip 이유 |
+|-----------|---------|-----------|
+| `post it or not it` (bool) | 6 | 재귀 AST/복합 탐색 — 선언적 계약 불가 |
+| `post it.len() >= 0` (String) | 77 | LLVM IR codegen/parser/formatter — 방향 불정 |
+| `post it == it` (i64) | 7 | 진정 임의 값 반환 — trivial이 정직한 계약 |
 
 ---
 
