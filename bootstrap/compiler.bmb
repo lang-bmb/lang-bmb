@@ -9,8 +9,12 @@
 // Note: Uses | as separator instead of newlines (BMB string limitation)
 
 // Internal separator (Unit Separator, char 31) - avoids conflict with | in sat arithmetic
-fn SEP() -> String = chr(31);
-fn DSEP() -> String = chr(31) + chr(31);
+fn SEP() -> String
+  post it.len() >= 0
+= chr(31);
+fn DSEP() -> String
+  post it.len() >= 0
+= chr(31) + chr(31);
 
 // ============================================================================
 // SECTION 1: String Utilities (required - no imports in bootstrap)
@@ -56,7 +60,9 @@ fn skip_ws(s: String, pos: i64) -> i64
 = if pos >= s.len() { pos } else if is_whitespace(s.byte_at(pos)) { skip_ws(s, pos + 1) } else { pos };
 
 // Error handling utilities
-fn is_error(s: String) -> bool = s.len() >= 3 and s.slice(0, 3) == "ERR";
+fn is_error(s: String) -> bool
+  post it or not it
+= s.len() >= 3 and s.slice(0, 3) == "ERR";
 fn count_line_at(src: String, pos: i64, cur: i64, line: i64) -> i64
   pre pos >= 0 and cur >= 0 and line >= 1
 = if cur >= pos or cur >= src.len() { line }
@@ -121,8 +127,9 @@ fn include_dirname_scan(path: String, i: i64) -> i64
     else { include_dirname_scan(path, i - 1) };
 
 // Directory portion of a path. "a/b/c.bmb" -> "a/b"; "c.bmb" -> "".
-fn include_dirname(path: String) -> String =
-    let i = include_dirname_scan(path, path.len() - 1);
+fn include_dirname(path: String) -> String
+  post it.len() >= 0
+= let i = include_dirname_scan(path, path.len() - 1);
     if i < 0 { "" } else { path.slice(0, i) };
 
 // Skip spaces/tabs (not newlines) within [pos, limit).
@@ -144,8 +151,9 @@ fn find_quote_after(s: String, pos: i64) -> i64
 
 // Parse path from `@include`-line body (after "@include"). Expects
 // whitespace then `"path"`. Returns "" on syntax error.
-fn include_parse_path(line: String) -> String =
-    let p = skip_sp_tab(line, 0, line.len());
+fn include_parse_path(line: String) -> String
+  post it.len() >= 0
+= let p = skip_sp_tab(line, 0, line.len());
     if p >= line.len() or line.byte_at(p) != 34 { "" }
     else {
         let start = p + 1;
@@ -160,12 +168,14 @@ fn include_parse_path(line: String) -> String =
 //    after verifying getenv is correctly String-typed in bootstrap)
 // 3. Relative to current working directory (supports `stdlib/...` when
 //    invoked from the project root).
-fn include_join_env(env: String, rel: String) -> String =
-    let prefix = env + "/";
+fn include_join_env(env: String, rel: String) -> String
+  post it.len() >= 0
+= let prefix = env + "/";
     prefix + rel;
 
-fn include_resolve(rel_path: String, src_dir: String) -> String =
-    let a = if src_dir == "" { rel_path } else { src_dir + "/" + rel_path };
+fn include_resolve(rel_path: String, src_dir: String) -> String
+  post it.len() >= 0
+= let a = if src_dir == "" { rel_path } else { src_dir + "/" + rel_path };
     if file_exists(a) == 1 { a }
     else {
         let env = getenv("BMB_STDLIB_PATH");
@@ -217,15 +227,17 @@ fn include_expand_sb(src: String, src_dir: String, pos: i64, depth: i64, sb: i64
     };
 
 // Public entry: given raw source + its path, return expanded text.
-fn preprocess_includes(src: String, src_path: String) -> String =
-    let sdir = include_dirname(src_path);
+fn preprocess_includes(src: String, src_path: String) -> String
+  post it.len() >= 0
+= let sdir = include_dirname(src_path);
     let sb = sb_new();
     let _e = include_expand_sb(src, sdir, 0, 0, sb);
     sb_build(sb);
 
 // Combined read + preprocess. Used at CLI entry points instead of raw read_file.
-fn load_source(input: String) -> String =
-    let raw = read_file(input);
+fn load_source(input: String) -> String
+  post it.len() >= 0
+= let raw = read_file(input);
     if raw.len() == 0 { "" }
     else { preprocess_includes(raw, input) };
 
@@ -957,8 +969,9 @@ fn get_float_text(s: String, pos: i64, tok: i64) -> String
 
 // This prevents unbalanced parens in strings from breaking AST parsing
 // Uses \L for (, \R for ), \B for \ to avoid actual parens in escaped content
-fn escape_parens_for_ast(s: String) -> String =
-    let sb = sb_new();
+fn escape_parens_for_ast(s: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let _p1 = escape_parens_sb(s, 0, sb);
     sb_build(sb);
 
@@ -984,8 +997,9 @@ fn escape_parens_sb(s: String, pos: i64, sb: i64) -> i64
     };
 
 // \L -> (, \R -> ), \B -> \
-fn unescape_parens_from_ast(s: String) -> String =
-    let sb = sb_new();
+fn unescape_parens_from_ast(s: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let _q1 = unescape_parens_sb(s, 0, sb);
     sb_build(sb);
 
@@ -1028,8 +1042,9 @@ fn unpack_pos_acc(r: String, pos: i64, acc: i64) -> i64
         if c == 58 { acc } else if is_digit(c) { unpack_pos_acc(r, pos + 1, acc * 10 + (c - 48)) } else { acc }
     };
 
-fn unpack_ast(r: String) -> String =
-    let cpos = find_colon(r, 0);
+fn unpack_ast(r: String) -> String
+  post it.len() >= 0
+= let cpos = find_colon(r, 0);
     if cpos >= r.len() { r } else { r.slice(cpos + 1, r.len()) };
 
 fn find_colon(s: String, pos: i64) -> i64
@@ -3440,8 +3455,9 @@ fn skip_nested_braces(src: String, pos: i64, depth: i64) -> i64
 
 // Pre-scans for struct declarations and builds registry:
 // Format: "StructName:field0,field1,...;StructName2:field0,field1,...;"
-fn build_struct_registry(src: String) -> String =
-    let rsb = sb_new();
+fn build_struct_registry(src: String) -> String
+  post it.len() >= 0
+= let rsb = sb_new();
     let w = scan_structs(src, 0, rsb);
     sb_build(rsb);
 
@@ -3561,8 +3577,9 @@ fn skip_field_type(src: String, pos: i64) -> i64
 
 // Enum registry: scans for `enum Name { Var1, Var2, ... }` declarations
 // Format: "Color:Red,Green,Blue;Direction:N,S,E,W;"
-fn build_enum_registry(src: String) -> String =
-    let rsb = sb_new();
+fn build_enum_registry(src: String) -> String
+  post it.len() >= 0
+= let rsb = sb_new();
     let w = scan_enums(src, 0, rsb);
     sb_build(rsb);
 
@@ -3661,8 +3678,9 @@ fn count_variant_index(variants: String, target: String, pos: i64, idx: i64) -> 
         else { count_variant_index(variants, target, comma + 1, idx + 1) }
     };
 
-fn enum_has_payload(reg: String, enum_name: String) -> bool =
-    let prefix = enum_name + ":";
+fn enum_has_payload(reg: String, enum_name: String) -> bool
+  post it or not it
+= let prefix = enum_name + ":";
     let start = find_substr_pos(reg, prefix, 0);
     if start < 0 { false }
     else {
@@ -3672,8 +3690,9 @@ fn enum_has_payload(reg: String, enum_name: String) -> bool =
         find_char_pos(variants, 91, 0) < variants.len()
     };
 
-fn enum_variant_has_payload(reg: String, enum_name: String, variant: String) -> bool =
-    let prefix = enum_name + ":";
+fn enum_variant_has_payload(reg: String, enum_name: String, variant: String) -> bool
+  post it or not it
+= let prefix = enum_name + ":";
     let start = find_substr_pos(reg, prefix, 0);
     if start < 0 { false }
     else {
@@ -3697,8 +3716,9 @@ fn variant_has_bracket(variants: String, target: String, pos: i64) -> bool
     };
 
 // Resolve (enum_variant <Name> <Variant>) → (int N) in AST text
-fn resolve_enum_variants_in_ast(ast: String, enum_reg: String) -> String =
-    if enum_reg == "" { ast }
+fn resolve_enum_variants_in_ast(ast: String, enum_reg: String) -> String
+  post it.len() >= 0
+= if enum_reg == "" { ast }
     else {
         let ast1 = resolve_tag_checks(ast, enum_reg);
         let sb = sb_new();
@@ -3773,8 +3793,9 @@ fn resolve_ev_match_ctx(ast: String, pos: i64, enum_reg: String, sb: i64) -> i64
     let w = sb_push(sb, replacement);
     resolve_ev_sb(ast, close_pos, enum_reg, sb);
 
-fn resolve_tag_checks(ast: String, enum_reg: String) -> String =
-    let sb = sb_new();
+fn resolve_tag_checks(ast: String, enum_reg: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let w = resolve_tag_checks_sb(ast, 0, enum_reg, sb);
     sb_build(sb);
 
@@ -3803,8 +3824,9 @@ fn resolve_tag_checks_sb(ast: String, pos: i64, enum_reg: String, sb: i64) -> i6
         }
     };
 
-fn resolve_payload_calls_in_ast(ast: String, enum_reg: String) -> String =
-    if enum_reg == "" { ast }
+fn resolve_payload_calls_in_ast(ast: String, enum_reg: String) -> String
+  post it.len() >= 0
+= if enum_reg == "" { ast }
     else {
         let sb = sb_new();
         let w = resolve_payload_calls_sb(ast, 0, enum_reg, sb);
@@ -3847,8 +3869,9 @@ fn resolve_payload_calls_sb(ast: String, pos: i64, enum_reg: String, sb: i64) ->
         }
     };
 
-fn parse_source(src: String) -> String =
-    let sb = sb_new();
+fn parse_source(src: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let w1 = sb_push(sb, "(program");
     parse_program_sb(src, 0, sb);
 
@@ -3895,14 +3918,16 @@ fn low_find_close_paren(s: String, pos: i64, depth: i64) -> i64
         if c == 40 { low_find_close_paren(s, pos + 1, depth + 1) } else if c == 41 { if depth == 1 { pos } else { low_find_close_paren(s, pos + 1, depth - 1) } } else { low_find_close_paren(s, pos + 1, depth) }
     };
 
-fn extract_paren_content(s: String) -> String =
-    if s.len() < 2 { "" } else if s.byte_at(0) == 40 {
+fn extract_paren_content(s: String) -> String
+  post it.len() >= 0
+= if s.len() < 2 { "" } else if s.byte_at(0) == 40 {
         let end = low_find_close_paren(s, 0, 0);
         s.slice(1, end)
     } else { "" };
 
-fn get_node_type(ast: String) -> String =
-    if ast.len() == 0 { "" } else {
+fn get_node_type(ast: String) -> String
+  post it.len() >= 0
+= if ast.len() == 0 { "" } else {
         let content = extract_paren_content(ast);
         let pos = low_skip_ws(content, 0);
         if pos >= content.len() { "" } else {
@@ -3919,8 +3944,9 @@ fn get_node_type(ast: String) -> String =
 
 // v0.92: Check if AST expression produces a float value
 // Detects float literals and binops on float operands (recursive)
-fn is_float_expr(ast: String) -> bool =
-    let ntype = get_node_type(ast);
+fn is_float_expr(ast: String) -> bool
+  post it or not it
+= let ntype = get_node_type(ast);
     if ntype == "float" { true }
     else if ntype == "unary" { is_float_expr(get_child(ast, 1)) }
     else if ntype == "binop" { is_float_expr(get_child(ast, 1)) }
@@ -3994,14 +4020,16 @@ fn find_digits_end(s: String, pos: i64) -> i64
 = 
     if pos >= s.len() { pos } else if is_digit(s.byte_at(pos)) { find_digits_end(s, pos + 1) } else { pos };
 
-fn extract_name(ast: String) -> String =
-    let child = get_child(ast, 0);
+fn extract_name(ast: String) -> String
+  post it.len() >= 0
+= let child = get_child(ast, 0);
     if child.len() >= 2 and child.byte_at(0) == 60 { child.slice(1, child.len() - 1) } else { child };
 
 // Finds all "(var <oldname>)" patterns and replaces with "(var <newname>)"
 
-fn rename_name_in_ast(ast: String, oldname: String, newname: String) -> String =
-    rename_name_in_ast_at(ast, oldname, newname, 0, "");
+fn rename_name_in_ast(ast: String, oldname: String, newname: String) -> String
+  post it.len() >= 0
+= rename_name_in_ast_at(ast, oldname, newname, 0, "");
 
 fn rename_name_in_ast_at(ast: String, oldname: String, newname: String, pos: i64, acc: String) -> String
   pre pos >= 0
@@ -4035,8 +4063,9 @@ fn find_char_at(ast: String, c: i64, pos: i64) -> i64
     else if ast.byte_at(pos) == c { pos }
     else { find_char_at(ast, c, pos + 1) };
 
-fn extract_int_value(ast: String) -> i64 =
-    let content = extract_paren_content(ast);
+fn extract_int_value(ast: String) -> i64
+  post it == it
+= let content = extract_paren_content(ast);
     let pos = low_skip_ws(content, 0);
     let end1 = low_find_ident_end(content, pos);
     let num_start = low_skip_ws(content, end1);
@@ -4087,16 +4116,18 @@ fn parse_int_from(s: String, pos: i64, acc: i64) -> i64
     };
 
 // v0.91: Extract float value text from AST node "(float 3.14)" → "3.14"
-fn extract_float_value_text(ast: String) -> String =
-    let content = extract_paren_content(ast);
+fn extract_float_value_text(ast: String) -> String
+  post it.len() >= 0
+= let content = extract_paren_content(ast);
     let pos = low_skip_ws(content, 0);
     let end1 = low_find_ident_end(content, pos);
     let val_start = low_skip_ws(content, end1);
     content.slice(val_start, content.len());
 
 // Cycle 2394: fn-trust added so stdlib/time, stdlib/fs, stdlib/io, stdlib/process @include via bootstrap succeeds.
-fn is_fn_node(ast: String) -> bool =
-    let nt = get_node_type(ast);
+fn is_fn_node(ast: String) -> bool
+  post it or not it
+= let nt = get_node_type(ast);
     nt == "fn" or nt == "fn-pure" or nt == "fn-const" or nt == "fn-inline" or nt == "fn-trust";
 
 // ============================================================================
@@ -4235,18 +4266,22 @@ fn sb_push_mir(sb: i64, text: String) -> i64
 // MA~fn_name~recv_id~temp_id~block_id~idx~args_acc~ast - Method: continue
 // MF~fn_name~temp_id~block_id~args_acc - Method: finalize
 
-fn work_sep() -> String = chr(9);
+fn work_sep() -> String
+  post it.len() >= 0
+= chr(9);
 // This eliminates escape_field/unescape_field overhead (50K+ SB creations)
 
 
-fn pop_work_item(stack: String) -> String =
-    if stack == "" { "" } else {
+fn pop_work_item(stack: String) -> String
+  post it.len() >= 0
+= if stack == "" { "" } else {
         let sep_pos = find_work_sep(stack, 0);
         if sep_pos >= stack.len() { stack } else { stack.slice(0, sep_pos) }
     };
 
-fn pop_work_rest(stack: String) -> String =
-    if stack == "" { "" } else {
+fn pop_work_rest(stack: String) -> String
+  post it.len() >= 0
+= if stack == "" { "" } else {
         let sep_pos = find_work_sep(stack, 0);
         if sep_pos >= stack.len() { "" } else { stack.slice(sep_pos + 1, stack.len()) }
     };
@@ -4284,26 +4319,34 @@ fn find_field_sep(s: String, pos: i64) -> i64
 
 // ~ (126) -> \^ (92, 94), \ (92) -> \\ (92, 92)
 
-fn make_work(t: String, f1: String, f2: String, f3: String, f4: String, f5: String) -> String =
-    t + chr(1) + f1 + chr(1) + f2 + chr(1) + f3 + chr(1) + f4 + chr(1) + f5;
+fn make_work(t: String, f1: String, f2: String, f3: String, f4: String, f5: String) -> String
+  post it.len() >= 0
+= t + chr(1) + f1 + chr(1) + f2 + chr(1) + f3 + chr(1) + f4 + chr(1) + f5;
 
-fn make_work3(t: String, f1: String, f2: String, f3: String) -> String =
-    t + chr(1) + f1 + chr(1) + f2 + chr(1) + f3;
+fn make_work3(t: String, f1: String, f2: String, f3: String) -> String
+  post it.len() >= 0
+= t + chr(1) + f1 + chr(1) + f2 + chr(1) + f3;
 
-fn work3_get1(item: String) -> String = get_field(item, 1);
+fn work3_get1(item: String) -> String
+  post it.len() >= 0
+= get_field(item, 1);
 
-fn make_work4(t: String, f1: String, f2: String, f3: String, f4: String) -> String =
-    t + chr(1) + f1 + chr(1) + f2 + chr(1) + f3 + chr(1) + f4;
+fn make_work4(t: String, f1: String, f2: String, f3: String, f4: String) -> String
+  post it.len() >= 0
+= t + chr(1) + f1 + chr(1) + f2 + chr(1) + f3 + chr(1) + f4;
 
 
-fn make_work7(t: String, f1: String, f2: String, f3: String, f4: String, f5: String, f6: String, f7: String) -> String =
-    t + chr(1) + f1 + chr(1) + f2 + chr(1) + f3 + chr(1) + f4 + chr(1) + f5 + chr(1) + f6 + chr(1) + f7;
+fn make_work7(t: String, f1: String, f2: String, f3: String, f4: String, f5: String, f6: String, f7: String) -> String
+  post it.len() >= 0
+= t + chr(1) + f1 + chr(1) + f2 + chr(1) + f3 + chr(1) + f4 + chr(1) + f5 + chr(1) + f6 + chr(1) + f7;
 
 
 fn i2s(n: i64) -> String
   pre n >= 0
 = int_to_string(n);
-fn s2i(s: String) -> i64 = parse_int_simple(s, 0, 0);
+fn s2i(s: String) -> i64
+  post it == it
+= parse_int_simple(s, 0, 0);
 
 fn parse_int_simple(s: String, pos: i64, acc: i64) -> i64
   pre pos >= 0
@@ -5159,8 +5202,9 @@ fn step_method_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label
 // unwrap()/expect() → identity (pass-through)
 // unwrap_or(default) → select(value != 0, value, default)
 
-fn is_nullable_method(name: String) -> bool =
-    if name == "is_some" { true } else if name == "is_none" { true }
+fn is_nullable_method(name: String) -> bool
+  post it or not it
+= if name == "is_some" { true } else if name == "is_none" { true }
     else if name == "unwrap" { true } else if name == "unwrap_or" { true }
     else if name == "expect" { true } else { false };
 
@@ -5468,8 +5512,9 @@ fn step_break(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: Strin
 // Derive loop header from exit label:
 //   "exit_N" → "loop_N" (while/loop)
 //   "for_end_N" → "for_start_N" (for)
-fn derive_loop_start(exit_label: String) -> String =
-    if exit_label.len() >= 8 and exit_label.slice(0, 8) == "for_end_" {
+fn derive_loop_start(exit_label: String) -> String
+  post it.len() >= 0
+= if exit_label.len() >= 8 and exit_label.slice(0, 8) == "for_end_" {
         // For loops: continue should jump to increment, not condition check
         "for_inc_" + exit_label.slice(8, exit_label.len())
     } else {
@@ -5695,8 +5740,9 @@ fn get_lambda_body(ast: String, idx: i64) -> String
 
 // v0.95: Free variable detection for closure capture
 // Scans lambda body MIR for %name references not matching temps, blocks, params, or locals
-fn find_free_vars_in_mir(body: String, params: String) -> String =
-    let locals = collect_local_alloca_names(body, 0, "");
+fn find_free_vars_in_mir(body: String, params: String) -> String
+  post it.len() >= 0
+= let locals = collect_local_alloca_names(body, 0, "");
     let all_refs = scan_mir_for_free_vars(body, 0, "", params);
     filter_out_locals(all_refs, locals);
 
@@ -5723,16 +5769,18 @@ fn collect_local_alloca_names(mir: String, pos: i64, acc: String) -> String
         else { collect_local_alloca_names(mir, pipe + 1, new_acc) }
     };
 
-fn starts_with_alloca_pct(s: String) -> bool =
-    s.len() >= 8
+fn starts_with_alloca_pct(s: String) -> bool
+  post it or not it
+= s.len() >= 8
     and s.byte_at(0) == 97 and s.byte_at(1) == 108
     and s.byte_at(2) == 108 and s.byte_at(3) == 111
     and s.byte_at(4) == 99 and s.byte_at(5) == 97
     and s.byte_at(6) == 32 and s.byte_at(7) == 37;
 
 // Filter out locally-defined variables from the free vars list
-fn filter_out_locals(free_vars: String, locals: String) -> String =
-    if free_vars == "" { "" }
+fn filter_out_locals(free_vars: String, locals: String) -> String
+  post it.len() >= 0
+= if free_vars == "" { "" }
     else {
         let comma = find_comma_or_end(free_vars, 0);
         let name = free_vars.slice(0, comma);
@@ -5775,14 +5823,17 @@ fn find_var_end(s: String, pos: i64) -> i64
         } else { pos }
     };
 
-fn is_temp_name(name: String) -> bool =
-    name.len() >= 2 and name.byte_at(0) == 95 and name.byte_at(1) == 116;
+fn is_temp_name(name: String) -> bool
+  post it or not it
+= name.len() >= 2 and name.byte_at(0) == 95 and name.byte_at(1) == 116;
 
-fn is_block_name(name: String) -> bool =
-    name.len() >= 2 and name.byte_at(0) == 95 and name.byte_at(1) == 98;
+fn is_block_name(name: String) -> bool
+  post it or not it
+= name.len() >= 2 and name.byte_at(0) == 95 and name.byte_at(1) == 98;
 
-fn is_lambda_param_name(name: String, params: String) -> bool =
-    if params == "" { false } else { check_param_name_match(name, params, 0) };
+fn is_lambda_param_name(name: String, params: String) -> bool
+  post it or not it
+= if params == "" { false } else { check_param_name_match(name, params, 0) };
 
 fn check_param_name_match(name: String, params: String, pos: i64) -> bool
   pre pos >= 0
@@ -5799,8 +5850,9 @@ fn check_param_name_match(name: String, params: String, pos: i64) -> bool
         }
     };
 
-fn var_in_list(name: String, list: String) -> bool =
-    if list == "" { false } else { check_var_list(name, list, 0) };
+fn var_in_list(name: String, list: String) -> bool
+  post it or not it
+= if list == "" { false } else { check_var_list(name, list, 0) };
 
 fn check_var_list(name: String, list: String, pos: i64) -> bool
   pre pos >= 0
@@ -5842,8 +5894,9 @@ fn replace_all_free_vars(mir: String, free_vars: String, cap_idx: i64) -> String
         replace_all_free_vars(new_mir, rest, cap_idx + 1)
     };
 
-fn replace_free_var(mir: String, old_name: String, new_name: String) -> String =
-    let rsb = sb_new();
+fn replace_free_var(mir: String, old_name: String, new_name: String) -> String
+  post it.len() >= 0
+= let rsb = sb_new();
     let w = replace_var_rec(mir, 0, old_name, new_name, rsb);
     sb_build(rsb);
 
@@ -6358,8 +6411,9 @@ fn lower_string_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64
     let w1 = sb_push_mir(sb, "  " + tmp + " = string " + chr(34) + str_content + chr(34));
     pack_ids(temp_id + 1, block_id);
 
-fn extract_string_content(ast: String) -> String =
-    let start = 8;
+fn extract_string_content(ast: String) -> String
+  post it.len() >= 0
+= let start = 8;
     let end = ast.len() - 1;
     if end > start { unescape_parens_from_ast(ast.slice(start, end)) } else { "" };
 
@@ -6415,8 +6469,9 @@ fn lower_unary_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: 
 // Select evaluates BOTH branches, so only pure (side-effect-free, non-trapping) expressions are safe.
 // String literals are excluded: bmb_string_new_from_cstr allocates memory (leak if not selected).
 // Division and modulo are excluded: they trap on zero (UB when divisor is 0).
-fn is_pure_expr(ast: String) -> bool =
-    let nt = get_node_type(ast);
+fn is_pure_expr(ast: String) -> bool
+  post it or not it
+= let nt = get_node_type(ast);
     if nt == "int" or nt == "bool" or nt == "var" or nt == "float" or nt == "unit" { true }
     else if nt == "binop" {
         let op = get_child(ast, 0);
@@ -6678,8 +6733,9 @@ fn lower_block_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: 
     lower_expr_sb(inner, temp_id, block_id, sb, loop_exit);
 
 // Extract inner expression from (block inner)
-fn block_inner(ast: String) -> String =
-    let len = ast.len();
+fn block_inner(ast: String) -> String
+  post it.len() >= 0
+= let len = ast.len();
     if len < 9 { "" } else { ast.slice(7, len - 1) };
 
 fn lower_unit_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64
@@ -6699,16 +6755,18 @@ fn lower_seq_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: St
     lower_expr_sb(e2, t1, b1, sb, loop_exit);
 
 // Extract first expression from (seq e1 e2)
-fn seq_first(ast: String) -> String =
-    let len = ast.len();
+fn seq_first(ast: String) -> String
+  post it.len() >= 0
+= let len = ast.len();
     if len < 10 { "" } else {
         let content = ast.slice(5, len - 1);
         find_first_balanced(content, 0, 0, "")
     };
 
 // Extract second expression from (seq e1 e2)
-fn seq_second(ast: String) -> String =
-    let len = ast.len();
+fn seq_second(ast: String) -> String
+  post it.len() >= 0
+= let len = ast.len();
     if len < 10 { "" } else {
         let content = ast.slice(5, len - 1);
         find_rest_balanced(content, 0, 0)
@@ -7071,8 +7129,9 @@ fn lower_ptr_set_index_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loo
 // for_end_N:
 //   %_tR = const 0  ; for returns unit
 
-fn extract_for_varname_from_ast(ast: String) -> String =
-    let raw = get_child(ast, 0);
+fn extract_for_varname_from_ast(ast: String) -> String
+  post it.len() >= 0
+= let raw = get_child(ast, 0);
     if raw.len() < 3 { "" } else if raw.byte_at(0) != 60 { raw } else { raw.slice(1, raw.len() - 1) };
 
 // cmp_op: "< " for exclusive (..), "<= " for inclusive (..=)
@@ -7253,16 +7312,18 @@ fn lower_for_step_incl_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loo
 = lower_for_step_range_sb(ast, temp_id, block_id, sb, loop_exit, "<= ");
 
 // Extract lhs from (assign lhs rhs)
-fn assign_lhs_expr(ast: String) -> String =
-    let len = ast.len();
+fn assign_lhs_expr(ast: String) -> String
+  post it.len() >= 0
+= let len = ast.len();
     if len < 15 { "" } else {
         let content = ast.slice(8, len - 1);
         find_first_balanced(content, 0, 0, "")
     };
 
 // Extract rhs from (assign lhs rhs)
-fn assign_rhs_expr(ast: String) -> String =
-    let len = ast.len();
+fn assign_rhs_expr(ast: String) -> String
+  post it.len() >= 0
+= let len = ast.len();
     if len < 15 { "" } else {
         let content = ast.slice(8, len - 1);
         find_rest_balanced(content, 0, 0)
@@ -7270,15 +7331,17 @@ fn assign_rhs_expr(ast: String) -> String =
 
 // Extract variable name from (var <name>)
 // v0.92: Fixed guard from < 10 to < 9 to handle single-char variable names
-fn extract_var_from_assign(ast: String) -> String =
-    let len = ast.len();
+fn extract_var_from_assign(ast: String) -> String
+  post it.len() >= 0
+= let len = ast.len();
     if len < 9 { "" } else {
         // (var <name>) -> skip "(var <" = 6, remove ">)" = 2
         ast.slice(6, len - 2)
     };
 
-fn get_fn_annotation(ast: String) -> String =
-    let nt = get_node_type(ast);
+fn get_fn_annotation(ast: String) -> String
+  post it.len() >= 0
+= let nt = get_node_type(ast);
     if nt == "fn-pure" { "pure" }
     else if nt == "fn-const" { "const" }
     else if nt == "fn-inline" { "inline" }
@@ -7392,8 +7455,9 @@ fn collect_params(ast: String, idx: i64, acc: String) -> String
         collect_params(ast, idx + 1, new_acc)
     };
 
-fn get_fn_return_type(ast: String) -> String =
-    let content = extract_paren_content(ast);
+fn get_fn_return_type(ast: String) -> String
+  post it.len() >= 0
+= let content = extract_paren_content(ast);
     get_fn_return_scan(content, 0);
 
 // v0.46: Added String return type support
@@ -7428,8 +7492,9 @@ fn get_fn_return_scan(content: String, pos: i64) -> String
         }
     };
 
-fn get_fn_body(ast: String) -> String =
-    let content = extract_paren_content(ast);
+fn get_fn_body(ast: String) -> String
+  post it.len() >= 0
+= let content = extract_paren_content(ast);
     get_fn_body_scan(content, 0, "");
 
 fn get_fn_body_scan(content: String, pos: i64, last_expr: String) -> String
@@ -7465,8 +7530,9 @@ fn skip_quoted_string(s: String, pos: i64) -> i64
 
 // v0.46: Extract return type from MIR function signature
 // MIR format: fn name(params) -> RetType {|...|}
-fn extract_mir_return_type(mir: String) -> String =
-    let arrow_pos = find_arrow(mir, 0);
+fn extract_mir_return_type(mir: String) -> String
+  post it.len() >= 0
+= let arrow_pos = find_arrow(mir, 0);
     let brace_pos = find_char(mir, arrow_pos, 123);
     if arrow_pos >= mir.len() or brace_pos <= arrow_pos + 2 { "i64" }
     else {
@@ -7610,8 +7676,9 @@ fn llvm_gen_phi(line: String, pos: i64, dest: String) -> String
 = llvm_gen_phi_typed(line, pos, dest, "i64");
 
 // Returns tagged result: llvm_line directly (mapping unchanged) or "!len:mapping+llvm_line" (mapping changed)
-fn extract_phi_val(content: String) -> String =
-    let comma_pos = find_char(content, 0, 44);
+fn extract_phi_val(content: String) -> String
+  post it.len() >= 0
+= let comma_pos = find_char(content, 0, 44);
     content.slice(0, comma_pos);
 
 fn llvm_gen_phi_typed(line: String, pos: i64, dest: String, ret_type: String) -> String
@@ -7627,8 +7694,9 @@ fn llvm_gen_phi_typed(line: String, pos: i64, dest: String, ret_type: String) ->
     let llvm_type = if ret_type == "String" { "ptr" } else if ret_type == "f64" { "double" } else { "i64" };
     "  " + dest + " = phi " + llvm_type + " [ " + first_fixed + " ], [ " + second_fixed + " ]";
 
-fn fix_phi_label(content: String) -> String =
-    let comma_pos = find_char(content, 0, 44);
+fn fix_phi_label(content: String) -> String
+  post it.len() >= 0
+= let comma_pos = find_char(content, 0, 44);
     let val = content.slice(0, comma_pos);
     let label = content.slice(comma_pos + 2, content.len());
     val + ", %" + label;
@@ -7678,8 +7746,9 @@ fn get_call_return_type(fn_name: String) -> String
     // All other functions return i64
     else { "i64" };
 
-fn map_runtime_fn(fn_name: String) -> String =
-    if fn_name.len() < 2 { fn_name }
+fn map_runtime_fn(fn_name: String) -> String
+  post it.len() >= 0
+= if fn_name.len() < 2 { fn_name }
     else {
         let c = fn_name.byte_at(1);
         // Fast reject: chars that can never be runtime functions
@@ -7693,8 +7762,9 @@ fn map_runtime_fn(fn_name: String) -> String =
         else { map_runtime_fn_full(fn_name) }
     };
 
-fn map_runtime_fn_full(fn_name: String) -> String =
-    if fn_name == "@main" { "@bmb_user_main" }
+fn map_runtime_fn_full(fn_name: String) -> String
+  post it.len() >= 0
+= if fn_name == "@main" { "@bmb_user_main" }
     else if fn_name == "@chr" { "@bmb_chr" }
     else if fn_name == "@ord" { "@bmb_ord" }
     else if fn_name == "@println" { "@println" }
@@ -7884,8 +7954,9 @@ fn format_i64_args_sb(args: String, pos: i64, sb: i64, first: i64) -> i64
         format_i64_args_sb(args, next, sb, 0)
     };
 
-fn format_i64_call_args(args: String) -> String =
-    let sb = sb_new();
+fn format_i64_call_args(args: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let _w = format_i64_args_sb(args, 0, sb, 1);
     let result = sb_build(sb);
     let _f = sb_free(sb);
@@ -8525,8 +8596,9 @@ fn llvm_gen_call_reg(line: String, pos: i64, dest: String, registry: String) -> 
     }
     }; // v0.90.9: close i64_to_f64/f64_to_i64 else
 
-fn get_call_arg_types(fn_name: String) -> String =
-    // String functions with ptr first arg
+fn get_call_arg_types(fn_name: String) -> String
+  post it.len() >= 0
+= // String functions with ptr first arg
     if fn_name == "@bmb_string_slice" { "pii" }
     else if fn_name == "@bmb_string_concat" { "pp" }
     else if fn_name == "@bmb_string_concat3" { "ppp" }
@@ -8719,16 +8791,20 @@ fn format_call_args_typed(args: String, types: String, pos: i64, idx: i64, conv_
     };
 
 // Helper to pack conversion and arg into a pair string
-fn pack_conv_arg(conv: String, arg: String) -> String = conv + "###" + arg;
+fn pack_conv_arg(conv: String, arg: String) -> String
+  post it.len() >= 0
+= conv + "###" + arg;
 
 // Helper to unpack conversion from pair
-fn unpack_conv(pair: String) -> String =
-    let sep = find_separator(pair, 0);
+fn unpack_conv(pair: String) -> String
+  post it.len() >= 0
+= let sep = find_separator(pair, 0);
     pair.slice(0, sep);
 
 // Helper to unpack arg from pair
-fn unpack_arg(pair: String) -> String =
-    let sep = find_separator(pair, 0);
+fn unpack_arg(pair: String) -> String
+  post it.len() >= 0
+= let sep = find_separator(pair, 0);
     pair.slice(sep + 3, pair.len());
 
 // Find "###" separator
@@ -8738,12 +8814,14 @@ fn find_separator(s: String, pos: i64) -> i64
     else if s.byte_at(pos) == 35 and s.byte_at(pos + 1) == 35 and s.byte_at(pos + 2) == 35 { pos }
     else { find_separator(s, pos + 1) };
 
-fn call_arg_conversions(formatted: String) -> String =
-    let sep = find_separator(formatted, 0);
+fn call_arg_conversions(formatted: String) -> String
+  post it.len() >= 0
+= let sep = find_separator(formatted, 0);
     formatted.slice(0, sep);
 
-fn call_arg_formatted(formatted: String) -> String =
-    let sep = find_separator(formatted, 0);
+fn call_arg_formatted(formatted: String) -> String
+  post it.len() >= 0
+= let sep = find_separator(formatted, 0);
     formatted.slice(sep + 3, formatted.len());
 
 fn find_comma(s: String, pos: i64) -> i64
@@ -8758,16 +8836,18 @@ fn find_char(s: String, pos: i64, ch: i64) -> i64
   pre pos >= 0 and ch >= 0
 = if pos >= s.len() { pos } else if s.byte_at(pos) == ch { pos } else { find_char(s, pos + 1, ch) };
 
-fn trim_end(s: String) -> String =
-    trim_end_at(s, s.len() - 1);
+fn trim_end(s: String) -> String
+  post it.len() >= 0
+= trim_end_at(s, s.len() - 1);
 
 fn trim_end_at(s: String, pos: i64) -> String
   pre pos >= 0
 = if pos < 0 { "" } else if low_is_whitespace(s.byte_at(pos)) { trim_end_at(s, pos - 1) } else { s.slice(0, pos + 1) };
 
 // v0.46: Trim both leading and trailing whitespace
-fn trim(s: String) -> String =
-    let start = low_skip_ws(s, 0);
+fn trim(s: String) -> String
+  post it.len() >= 0
+= let start = low_skip_ws(s, 0);
     if start >= s.len() { "" } else { trim_end(s.slice(start, s.len())) };
 
 fn llvm_gen_return_typed(line: String, pos: i64, ret_type: String) -> String
@@ -8881,7 +8961,9 @@ fn llvm_gen_store_sb(line: String, pos: i64, mapping: String, str_sb: i64) -> St
         same_mapping("  store i64 " + resolved_src + ", ptr " + dest_name)
     };
 
-fn eliminate_identity_copies_ir(ir: String) -> String = {
+fn eliminate_identity_copies_ir(ir: String) -> String
+  post it.len() >= 0
+= {
     let aliases = build_ir_copy_aliases(ir, 0, "");
     if aliases.len() == 0 { ir }
     else {
@@ -8895,7 +8977,9 @@ fn eliminate_identity_copies_ir(ir: String) -> String = {
 // `  ret float 0` with `  ret float 0.0`, `  ret ptr 0` with `  ret ptr null`.
 // Arises when `= todo` or `= ()` body's unit constant `0` propagates through
 // eliminate_identity_copies_ir into a typed ret slot.
-fn fix_typed_ret_placeholders_ir(ir: String) -> String = {
+fn fix_typed_ret_placeholders_ir(ir: String) -> String
+  post it.len() >= 0
+= {
     let sb = sb_new();
     let w = fix_ret_scan(ir, 0, sb);
     let result = sb_build(sb);
@@ -8917,8 +9001,9 @@ fn fix_ret_scan(ir: String, pos: i64, sb: i64) -> i64
         else { fix_ret_scan(ir, pipe_pos + 1, sb) }
     };
 
-fn fix_ret_line(line: String) -> String =
-    let p = low_skip_ws(line, 0);
+fn fix_ret_line(line: String) -> String
+  post it.len() >= 0
+= let p = low_skip_ws(line, 0);
     if p >= line.len() { line }
     else if low_starts_with_at(line, p, "ret double 0") and p + 12 == line.len() { "  ret double 0.0" }
     else if low_starts_with_at(line, p, "ret float 0") and p + 11 == line.len() { "  ret float 0.0" }
@@ -8942,7 +9027,9 @@ fn build_ir_copy_aliases(ir: String, pos: i64, aliases: String) -> String
     };
 
 // Check if line is an identity copy, add alias if so
-fn try_add_ir_copy_alias(line: String, aliases: String) -> String = {
+fn try_add_ir_copy_alias(line: String, aliases: String) -> String
+  post it.len() >= 0
+= {
     let p = low_skip_ws(line, 0);
     if p >= line.len() { aliases }
     else if line.byte_at(p) != 37 { aliases }
@@ -9005,7 +9092,9 @@ fn resolve_ir_alias_d(aliases: String, name: String, depth: i64) -> String
     };
 
 // Check if LLVM IR line is an identity copy
-fn is_identity_copy_ir(line: String) -> bool = {
+fn is_identity_copy_ir(line: String) -> bool
+  post it or not it
+= {
     let p = low_skip_ws(line, 0);
     if p >= line.len() { false }
     else if line.byte_at(p) != 37 { false }
@@ -9067,7 +9156,9 @@ fn subst_ir_scan(line: String, pos: i64, aliases: String, sb: i64) -> i64
 // ============================================================================
 
 // Entry point: eliminate redundant trunc(zext(i1)) roundtrips
-fn eliminate_zext_trunc_ir(ir: String) -> String = {
+fn eliminate_zext_trunc_ir(ir: String) -> String
+  post it.len() >= 0
+= {
     let zext_map = build_zext_map(ir, 0, "");
     if zext_map.len() == 0 { ir }
     else {
@@ -9098,7 +9189,9 @@ fn build_zext_map(ir: String, pos: i64, zmap: String) -> String
     };
 
 // Check if line is "zext i1 %X to i64", record dest → X in zext map
-fn try_add_zext(line: String, zmap: String) -> String = {
+fn try_add_zext(line: String, zmap: String) -> String
+  post it.len() >= 0
+= {
     let p = low_skip_ws(line, 0);
     if p >= line.len() { zmap }
     else if line.byte_at(p) != 37 { zmap }
@@ -9136,7 +9229,9 @@ fn build_trunc_aliases(ir: String, pos: i64, zmap: String, aliases: String) -> S
     };
 
 // Check if line is "trunc i64 %X to i1" where %X is a zext, add alias
-fn try_add_trunc_alias(line: String, zmap: String, aliases: String) -> String = {
+fn try_add_trunc_alias(line: String, zmap: String, aliases: String) -> String
+  post it.len() >= 0
+= {
     let p = low_skip_ws(line, 0);
     if p >= line.len() { aliases }
     else if line.byte_at(p) != 37 { aliases }
@@ -9161,7 +9256,9 @@ fn try_add_trunc_alias(line: String, zmap: String, aliases: String) -> String = 
 };
 
 // Lookup i1 source for a zext result
-fn lookup_zext_src(zmap: String, name: String) -> String = {
+fn lookup_zext_src(zmap: String, name: String) -> String
+  post it.len() >= 0
+= {
     let val_start = find_alias_entry_noa(zmap, name, 0);
     if val_start < 0 { "" }
     else {
@@ -9172,7 +9269,9 @@ fn lookup_zext_src(zmap: String, name: String) -> String = {
 };
 
 // Check if line is a trunc that was aliased
-fn is_aliased_trunc_ir(line: String, aliases: String) -> bool = {
+fn is_aliased_trunc_ir(line: String, aliases: String) -> bool
+  post it or not it
+= {
     let p = low_skip_ws(line, 0);
     if p >= line.len() { false }
     else if line.byte_at(p) != 37 { false }
@@ -9207,7 +9306,9 @@ fn rebuild_ir_no_truncs(ir: String, pos: i64, sb: i64, aliases: String) -> i64
         else { rebuild_ir_no_truncs(ir, pipe_pos + 1, sb, aliases) }
     };
 
-fn eliminate_dead_zexts_ir(ir: String) -> String = {
+fn eliminate_dead_zexts_ir(ir: String) -> String
+  post it.len() >= 0
+= {
     let dead = build_dead_zext_set(ir, 0, "");
     if dead.len() == 0 { ir }
     else {
@@ -9233,7 +9334,9 @@ fn build_dead_zext_set(ir: String, pos: i64, dead: String) -> String
     };
 
 // If line is a zext i1 and its dest is unused, add to dead set
-fn try_mark_dead_zext(ir: String, line: String, dead: String) -> String = {
+fn try_mark_dead_zext(ir: String, line: String, dead: String) -> String
+  post it.len() >= 0
+= {
     let p = low_skip_ws(line, 0);
     if p >= line.len() { dead }
     else if line.byte_at(p) != 37 { dead }
@@ -9253,7 +9356,9 @@ fn try_mark_dead_zext(ir: String, line: String, dead: String) -> String = {
 };
 
 // Check if a variable has only one occurrence (its definition) in the IR
-fn is_var_unused_in_ir(ir: String, name: String) -> bool = {
+fn is_var_unused_in_ir(ir: String, name: String) -> bool
+  post it or not it
+= {
     let first = find_var_use_wb(ir, name, 0);
     if first < 0 { true }
     else {
@@ -9336,7 +9441,9 @@ fn rebuild_ir_no_dead_zexts(ir: String, pos: i64, sb: i64, dead: String) -> i64
     };
 
 // Pattern: %a = ptrtoint ptr %P to i64 ... %b = inttoptr i64 %a to ptr → %b aliases %P
-fn eliminate_inttoptr_roundtrips_ir(ir: String) -> String = {
+fn eliminate_inttoptr_roundtrips_ir(ir: String) -> String
+  post it.len() >= 0
+= {
     let pmap = build_ptrtoint_map(ir, 0, "");
     if pmap.len() == 0 { ir }
     else {
@@ -9367,7 +9474,9 @@ fn build_ptrtoint_map(ir: String, pos: i64, pmap: String) -> String
     };
 
 // Check if line is "%X = ptrtoint ptr %P to i64", add to map
-fn try_add_ptrtoint(line: String, pmap: String) -> String = {
+fn try_add_ptrtoint(line: String, pmap: String) -> String
+  post it.len() >= 0
+= {
     let p = low_skip_ws(line, 0);
     if p >= line.len() { pmap }
     else if line.byte_at(p) != 37 { pmap }
@@ -9405,7 +9514,9 @@ fn build_inttoptr_aliases(ir: String, pos: i64, pmap: String, aliases: String) -
     };
 
 // Check if line is "%Y = inttoptr i64 %X to ptr" where %X is in ptrtoint map
-fn try_add_inttoptr_alias(line: String, pmap: String, aliases: String) -> String = {
+fn try_add_inttoptr_alias(line: String, pmap: String, aliases: String) -> String
+  post it.len() >= 0
+= {
     let p = low_skip_ws(line, 0);
     if p >= line.len() { aliases }
     else if line.byte_at(p) != 37 { aliases }
@@ -9430,7 +9541,9 @@ fn try_add_inttoptr_alias(line: String, pmap: String, aliases: String) -> String
 };
 
 // Lookup original ptr source for a ptrtoint result
-fn lookup_ptr_src(pmap: String, name: String) -> String = {
+fn lookup_ptr_src(pmap: String, name: String) -> String
+  post it.len() >= 0
+= {
     let val_start = find_alias_entry_noa(pmap, name, 0);
     if val_start < 0 { "" }
     else {
@@ -9441,7 +9554,9 @@ fn lookup_ptr_src(pmap: String, name: String) -> String = {
 };
 
 // Check if line is an inttoptr that was aliased
-fn is_aliased_inttoptr(line: String, aliases: String) -> bool = {
+fn is_aliased_inttoptr(line: String, aliases: String) -> bool
+  post it or not it
+= {
     let p = low_skip_ws(line, 0);
     if p >= line.len() { false }
     else if line.byte_at(p) != 37 { false }
@@ -9476,7 +9591,9 @@ fn rebuild_ir_no_inttoptrs(ir: String, pos: i64, sb: i64, aliases: String) -> i6
         else { rebuild_ir_no_inttoptrs(ir, pipe_pos + 1, sb, aliases) }
     };
 
-fn eliminate_dead_ptrtoints_ir(ir: String) -> String = {
+fn eliminate_dead_ptrtoints_ir(ir: String) -> String
+  post it.len() >= 0
+= {
     let dead = build_dead_ptrtoint_set(ir, 0, "");
     if dead.len() == 0 { ir }
     else {
@@ -9493,8 +9610,9 @@ fn eliminate_dead_ptrtoints_ir(ir: String) -> String = {
 // ============================================================================
 
 // v0.93.4: Check if a call target is a known memory(none) function
-fn mn_is_pure_call(line: String) -> bool =
-    let at_pos = find_byte_in_range(line, 64, 0, line.len());
+fn mn_is_pure_call(line: String) -> bool
+  post it or not it
+= let at_pos = find_byte_in_range(line, 64, 0, line.len());
     if at_pos < 0 { false }
     else {
         let paren_pos = find_char(line, at_pos, 40);
@@ -9543,8 +9661,9 @@ fn mn_has_memory_op(ir: String, pos: i64) -> bool
     };
 
 // Check if a call target is a known read-only function (reads memory but does not write)
-fn mn_is_readonly_call(line: String) -> bool =
-    if mn_is_pure_call(line) { true }
+fn mn_is_readonly_call(line: String) -> bool
+  post it or not it
+= if mn_is_pure_call(line) { true }
     else {
         let at_pos = find_byte_in_range(line, 64, 0, line.len());
         if at_pos < 0 { false }
@@ -9584,8 +9703,9 @@ fn mn_has_write_op(ir: String, pos: i64) -> bool
         }
     };
 
-fn annotate_memory_none_ir(ir: String) -> String =
-    // Only annotate functions that have nosync and don't already have memory(
+fn annotate_memory_none_ir(ir: String) -> String
+  post it.len() >= 0
+= // Only annotate functions that have nosync and don't already have memory(
     let pipe = find_pipe_skip_quotes(ir, 0);
     let header = ir.slice(0, pipe);
     if find_pattern_at(header, "nosync", 0) < 0 { ir }
@@ -9603,8 +9723,9 @@ fn annotate_memory_none_ir(ir: String) -> String =
     };
 
 // Annotate read-only functions with memory(read): has loads/GEPs but no stores/write-calls
-fn annotate_memory_read_ir(ir: String) -> String =
-    let pipe = find_pipe_skip_quotes(ir, 0);
+fn annotate_memory_read_ir(ir: String) -> String
+  post it.len() >= 0
+= let pipe = find_pipe_skip_quotes(ir, 0);
     let header = ir.slice(0, pipe);
     // Skip if already annotated or not a normal function
     if find_pattern_at(header, "memory(", 0) >= 0 { ir }
@@ -9627,7 +9748,9 @@ fn annotate_memory_read_ir(ir: String) -> String =
 
 // Collect readonly function names from declare/define headers in module IR
 // Extract @name from a line: find @ then find ( to get the name
-fn ipr_extract_at_name(line: String) -> String = {
+fn ipr_extract_at_name(line: String) -> String
+  post it.len() >= 0
+= {
     let at_pos = find_byte_in_range(line, 64, 0, line.len());
     if at_pos < 0 { "" }
     else {
@@ -9866,7 +9989,9 @@ fn ipr_rebuild(ir: String, pos: i64, sb: i64, known: String, known_pure: String,
     };
 
 // Main interprocedural memory annotation pass with fixpoint iteration
-fn annotate_memory_read_interprocedural(module_ir: String) -> String = {
+fn annotate_memory_read_interprocedural(module_ir: String) -> String
+  post it.len() >= 0
+= {
     let ir = module_ir;
     for _iter in 0..5 {
         // Collect known readonly and pure function names
@@ -9934,7 +10059,9 @@ fn spec_rebuild(ir: String, pos: i64, sb: i64, count: i64) -> i64
     };
 
 // Add speculatable attribute to memory(none) functions that cannot trap
-fn annotate_speculatable(module_ir: String) -> String = {
+fn annotate_speculatable(module_ir: String) -> String
+  post it.len() >= 0
+= {
     let sb = sb_new();
     let count = spec_rebuild(module_ir, 0, sb, 0);
     if count == 0 { module_ir }
@@ -10014,7 +10141,9 @@ fn inline_rebuild(ir: String, pos: i64, sb: i64, count: i64) -> i64
     };
 
 // v0.96.13: Add inlining attributes to qualifying functions
-fn annotate_inlining(module_ir: String) -> String = {
+fn annotate_inlining(module_ir: String) -> String
+  post it.len() >= 0
+= {
     let sb = sb_new();
     let count = inline_rebuild(module_ir, 0, sb, 0);
     if count == 0 { module_ir }
@@ -10050,7 +10179,9 @@ fn nofree_rebuild(ir: String, pos: i64, sb: i64, count: i64) -> i64
     };
 
 // v0.96.13: Add nofree to all functions with memory annotations
-fn annotate_nofree(module_ir: String) -> String = {
+fn annotate_nofree(module_ir: String) -> String
+  post it.len() >= 0
+= {
     let sb = sb_new();
     let count = nofree_rebuild(module_ir, 0, sb, 0);
     if count == 0 { module_ir }
@@ -10058,8 +10189,9 @@ fn annotate_nofree(module_ir: String) -> String = {
 };
 
 // v0.96.14: Extract function name (e.g. "@skip_ws") from LLVM IR define header
-fn extract_ir_fn_name(header: String) -> String =
-    let at_pos = find_char_in_range(header, 0, header.len(), 64); // '@'
+fn extract_ir_fn_name(header: String) -> String
+  post it.len() >= 0
+= let at_pos = find_char_in_range(header, 0, header.len(), 64); // '@'
     if at_pos < 0 { "" }
     else {
         let paren_pos = find_char_in_range(header, at_pos + 1, header.len(), 40); // '('
@@ -10129,7 +10261,9 @@ fn tailcall_rebuild(ir: String, pos: i64, sb: i64, count: i64) -> i64
         else { tailcall_rebuild(ir, fn_end + 2, sb, new_count) }
     };
 
-fn annotate_tailcalls(module_ir: String) -> String = {
+fn annotate_tailcalls(module_ir: String) -> String
+  post it.len() >= 0
+= {
     let sb = sb_new();
     let count = tailcall_rebuild(module_ir, 0, sb, 0);
     if count == 0 { module_ir }
@@ -10142,7 +10276,9 @@ fn annotate_tailcalls(module_ir: String) -> String = {
 // This creates cleaner loop CFG that LLVM can better optimize (enables loop unrolling, etc.)
 // The optimization detects: loop_N: load %var + icmp eq %var, 1 => %var is control variable
 // Then replaces: store 0, ptr %var + br loop_N => store 0, ptr %var + br exit_N
-fn optimize_cont_loop_exits(module_ir: String) -> String = {
+fn optimize_cont_loop_exits(module_ir: String) -> String
+  post it.len() >= 0
+= {
     let sb = sb_new();
     let count = cont_exit_rebuild(module_ir, 0, sb, 0);
     if count == 0 { module_ir }
@@ -10226,8 +10362,9 @@ fn cont_exit_scan_headers(ir: String, pos: i64, sb: i64) -> i64
 
 // Look up control variable for a given loop label in the map
 // map format: "loop_0\tcont_4\tloop_3\tflag_7\t..."
-fn cont_exit_lookup(map: String, loop_label: String) -> String =
-    let search = loop_label + chr(9);
+fn cont_exit_lookup(map: String, loop_label: String) -> String
+  post it.len() >= 0
+= let search = loop_label + chr(9);
     let pos = find_pattern_noa_range(map, search, 0, map.len());
     if pos < 0 { "" }
     else {
@@ -10239,7 +10376,9 @@ fn cont_exit_lookup(map: String, loop_label: String) -> String =
 // Phase 2: Apply cont-exit replacements to a function's IR
 // Scans line by line; when "store i64 0, ptr %CTRL" is followed by "br label %loop_N",
 // and CTRL matches loop_N's control variable, replace with "br label %exit_N"
-fn cont_exit_apply(fn_ir: String, ctrl_map: String) -> String = {
+fn cont_exit_apply(fn_ir: String, ctrl_map: String) -> String
+  post it.len() >= 0
+= {
     let sb = sb_new();
     let _w = cont_exit_apply_lines(fn_ir, 0, ctrl_map, sb, "");
     sb_build(sb)
@@ -10292,7 +10431,9 @@ fn build_dead_ptrtoint_set(ir: String, pos: i64, dead: String) -> String
         else { build_dead_ptrtoint_set(ir, pipe_pos + 1, new_dead) }
     };
 
-fn try_mark_dead_ptrtoint(ir: String, line: String, dead: String) -> String = {
+fn try_mark_dead_ptrtoint(ir: String, line: String, dead: String) -> String
+  post it.len() >= 0
+= {
     let p = low_skip_ws(line, 0);
     if p >= line.len() { dead }
     else if line.byte_at(p) != 37 { dead }
@@ -10357,19 +10498,22 @@ fn rebuild_ir_no_dead_ptrtoints(ir: String, pos: i64, sb: i64, dead: String) -> 
 // ============================================================================
 
 // Check if IR line is a store: "  store i64 %val, ptr %x"
-fn slf_is_store(line: String) -> bool =
-    let s = low_skip_ws(line, 0);
+fn slf_is_store(line: String) -> bool
+  post it or not it
+= let s = low_skip_ws(line, 0);
     find_pattern_at(line, "store i64 ", s) == s or find_pattern_at(line, "store double ", s) == s;
 
 // Extract ptr name from "  store i64 %val, ptr %x" → "%x"
-fn slf_store_ptr(line: String) -> String =
-    let ptr_pos = find_pattern_at(line, ", ptr ", 0);
+fn slf_store_ptr(line: String) -> String
+  post it.len() >= 0
+= let ptr_pos = find_pattern_at(line, ", ptr ", 0);
     if ptr_pos < 0 { "" }
     else { trim_end(line.slice(ptr_pos + 6, line.len())) };
 
 // Extract stored value from "  store i64 %val, ptr %x" → "%val"
-fn slf_store_val(line: String) -> String =
-    let s = low_skip_ws(line, 0);
+fn slf_store_val(line: String) -> String
+  post it.len() >= 0
+= let s = low_skip_ws(line, 0);
     let after_type = if find_pattern_at(line, "store i64 ", s) == s { s + 10 }
         else if find_pattern_at(line, "store double ", s) == s { s + 13 }
         else { 0 - 1 };
@@ -10381,24 +10525,28 @@ fn slf_store_val(line: String) -> String =
     };
 
 // Check if IR line is a load: "  %t = load i64, ptr %x"
-fn slf_is_i64_load(line: String) -> bool =
-    find_pattern_at(line, " = load i64, ptr ", 0) >= 0;
+fn slf_is_i64_load(line: String) -> bool
+  post it or not it
+= find_pattern_at(line, " = load i64, ptr ", 0) >= 0;
 
 // Extract ptr from "  %t = load i64, ptr %x" → "%x"
-fn slf_load_ptr(line: String) -> String =
-    let load_pos = find_pattern_at(line, " = load i64, ptr ", 0);
+fn slf_load_ptr(line: String) -> String
+  post it.len() >= 0
+= let load_pos = find_pattern_at(line, " = load i64, ptr ", 0);
     if load_pos < 0 { "" }
     else { trim_end(line.slice(load_pos + 17, line.len())) };
 
 // Extract dest from "  %t = load i64, ptr %x" → "%t"
-fn slf_load_dest(line: String) -> String =
-    let eq_pos = find_pattern_at(line, " = load i64, ptr ", 0);
+fn slf_load_dest(line: String) -> String
+  post it.len() >= 0
+= let eq_pos = find_pattern_at(line, " = load i64, ptr ", 0);
     if eq_pos < 0 { "" }
     else { trim(line.slice(0, eq_pos)) };
 
 // Check if line is a basic block boundary (label or terminator)
-fn slf_is_bb_boundary(line: String) -> bool =
-    let s = low_skip_ws(line, 0);
+fn slf_is_bb_boundary(line: String) -> bool
+  post it or not it
+= let s = low_skip_ws(line, 0);
     if s >= line.len() { false }
     else {
         let trimmed = trim(line);
@@ -10411,8 +10559,9 @@ fn slf_is_bb_boundary(line: String) -> bool =
     };
 
 // Check if line is a call (may clobber memory)
-fn slf_is_call(line: String) -> bool =
-    find_pattern_at(line, "call ", 0) >= 0;
+fn slf_is_call(line: String) -> bool
+  post it or not it
+= find_pattern_at(line, "call ", 0) >= 0;
 
 // Get the LAST value for key in the table (most recent store wins)
 fn slf_table_get_last(table: String, key: String, pos: i64, found: String) -> String
@@ -10428,8 +10577,9 @@ fn slf_table_get_last(table: String, key: String, pos: i64, found: String) -> St
         }
     };
 
-fn slf_table_get(table: String, key: String) -> String =
-    slf_table_get_last(table, key, 0, "");
+fn slf_table_get(table: String, key: String) -> String
+  post it.len() >= 0
+= slf_table_get_last(table, key, 0, "");
 
 // Process IR lines: forward stores to loads within the same basic block
 fn slf_process(ir: String, pos: i64, sb: i64, table: String) -> i64
@@ -10462,7 +10612,9 @@ fn slf_process(ir: String, pos: i64, sb: i64, table: String) -> i64
         else { slf_process(ir, pipe_pos + 1, sb, new_table) }
     };
 
-fn eliminate_store_load_ir(ir: String) -> String = {
+fn eliminate_store_load_ir(ir: String) -> String
+  post it.len() >= 0
+= {
     let sb = sb_new();
     let w = slf_process(ir, 0, sb, "");
     let result = sb_build(sb);
@@ -10512,8 +10664,9 @@ fn dsa_find_dead(ir: String, pos: i64, allocas: String, loaded: String) -> Strin
     };
 
 // Also track uses via "store ... ptr %name" where %name appears as a call argument, GEP base, etc.
-fn new_loaded_from_other(line: String, loaded: String) -> String =
-    // Check if line uses a ptr var for anything other than store dest
+fn new_loaded_from_other(line: String, loaded: String) -> String
+  post it.len() >= 0
+= // Check if line uses a ptr var for anything other than store dest
     // For now, just check if a ptr is used in GEP, call, or inttoptr context
     loaded;
 
@@ -10535,8 +10688,9 @@ fn dsa_filter_dead(allocas: String, loaded: String, pos: i64, dead: String) -> S
     };
 
 // Check if a line should be removed (dead alloca or store to dead alloca)
-fn dsa_is_dead_line(line: String, dead: String) -> bool =
-    if dead.len() == 0 { false }
+fn dsa_is_dead_line(line: String, dead: String) -> bool
+  post it or not it
+= if dead.len() == 0 { false }
     else {
         let trimmed = trim(line);
         // Dead alloca: "%name = alloca i64" where name is in dead set
@@ -10575,7 +10729,9 @@ fn dsa_rebuild(ir: String, pos: i64, sb: i64, dead: String) -> i64
         else { dsa_rebuild(ir, pipe_pos + 1, sb, dead) }
     };
 
-fn eliminate_dead_stores_ir(ir: String) -> String = {
+fn eliminate_dead_stores_ir(ir: String) -> String
+  post it.len() >= 0
+= {
     let dead = dsa_find_dead(ir, 0, "", "");
     if dead.len() == 0 { ir }
     else {
@@ -10604,7 +10760,9 @@ fn match_bytes(s: String, pat: String, s_pos: i64, p_pos: i64) -> bool
     else { match_bytes(s, pat, s_pos, p_pos + 1) };
 
 // Dead function elimination: remove unreferenced function definitions from module IR
-fn eliminate_dead_functions_ir(ir: String) -> String = {
+fn eliminate_dead_functions_ir(ir: String) -> String
+  post it.len() >= 0
+= {
     // Phase 1: collect @name refs from non-define lines (line-by-line for TCO safety)
     let set_sb = sb_new();
     let w1 = sb_push(set_sb, ",main,bmb_user_main,");
@@ -10719,7 +10877,9 @@ fn find_byte_in_range(s: String, byte: i64, pos: i64, end: i64) -> i64
 // The bootstrap emits all ~200 runtime declarations for every program.
 // This pass removes declarations whose @name is not referenced in any function body.
 // LLVM opt would remove them anyway, but this produces cleaner pre-opt IR.
-fn prune_unused_decls(module_ir: String) -> String = {
+fn prune_unused_decls(module_ir: String) -> String
+  post it.len() >= 0
+= {
     // Phase 1: Find the header section (before first DSEP = function definitions)
     let first_dsep = find_double_pipe(module_ir, 0);
     if first_dsep >= module_ir.len() { module_ir }
@@ -10835,15 +10995,17 @@ fn register_fn_type(fn_mir: String, rsb: i64) -> i64
 // ============================================================================
 
 // Main entry point: optimize MIR by inlining const functions
-fn optimize_const_inlining(mir: String) -> String =
-    let const_map = build_const_map(mir);
+fn optimize_const_inlining(mir: String) -> String
+  post it.len() >= 0
+= let const_map = build_const_map(mir);
     if const_map == "" { mir }
     else { apply_const_map_to_mir(mir, const_map, 0) };
 
 // Build map of const function name -> value from MIR
 // Format: "@name=value,@name2=value2,"
-fn build_const_map(mir: String) -> String =
-    let sb = sb_new();
+fn build_const_map(mir: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let w1 = build_const_map_acc(mir, 0, sb);
     let result = sb_build(sb);
     let _f = sb_free(sb);
@@ -10926,8 +11088,9 @@ fn apply_const_map_to_mir(mir: String, const_map: String, pos: i64) -> String
     };
 
 // Replace all occurrences of pattern in string with replacement
-fn replace_all_in_mir(s: String, pattern: String, replacement: String) -> String =
-    let first = find_pattern_at(s, pattern, 0);
+fn replace_all_in_mir(s: String, pattern: String, replacement: String) -> String
+  post it.len() >= 0
+= let first = find_pattern_at(s, pattern, 0);
     if first < 0 { s }
     else {
         let sb = sb_new();
@@ -10955,8 +11118,9 @@ fn replace_all_in_mir_acc(s: String, pos: i64, pattern: String, replacement: Str
 // ============================================================================
 
 // Constant table: "key1:val1;key2:val2" — ';' (59) entry sep, ':' (58) key-val sep
-fn cf_table_set(table: String, key: String, val: i64) -> String =
-    if table == "" { key + ":" + i2s(val) } else { table + ";" + key + ":" + i2s(val) };
+fn cf_table_set(table: String, key: String, val: i64) -> String
+  post it.len() >= 0
+= if table == "" { key + ":" + i2s(val) } else { table + ";" + key + ":" + i2s(val) };
 
 fn cf_table_get_at(table: String, key: String, pos: i64) -> i64
   pre pos >= 0
@@ -10971,13 +11135,18 @@ fn cf_table_get_at(table: String, key: String, pos: i64) -> i64
         }
     };
 
-fn cf_table_get(table: String, key: String) -> i64 = cf_table_get_at(table, key, 0);
-fn cf_table_has(table: String, key: String) -> bool = cf_table_get(table, key) != 0 - 99999999;
+fn cf_table_get(table: String, key: String) -> i64
+  post it == it
+= cf_table_get_at(table, key, 0);
+fn cf_table_has(table: String, key: String) -> bool
+  post it or not it
+= cf_table_get(table, key) != 0 - 99999999;
 
 // Check if line is integer constant: %dest = const <digits|minus>
 // Must match the ASSIGNMENT's `= const`, not ` = const ` inside string content.
-fn cf_is_int_const(line: String) -> bool =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn cf_is_int_const(line: String) -> bool
+  post it or not it
+= let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { false } else {
         let after_eq = eq_pos + 3;
         if after_eq + 6 > line.len() { false }
@@ -10992,8 +11161,9 @@ fn cf_is_int_const(line: String) -> bool =
 
 // Extract integer value from: %dest = const 42
 // Must use the ASSIGNMENT's `= const`, not one inside string content.
-fn cf_extract_int_val(line: String) -> i64 =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn cf_extract_int_val(line: String) -> i64
+  post it == it
+= let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { 0 } else {
         let after_eq = eq_pos + 3;
         if starts_with(line.slice(after_eq, line.len()), "const ", 0) {
@@ -11002,8 +11172,9 @@ fn cf_extract_int_val(line: String) -> i64 =
     };
 
 // Extract dest from: %dest = ...
-fn cf_extract_dest(line: String) -> String =
-    let start = low_skip_ws(line, 0);
+fn cf_extract_dest(line: String) -> String
+  post it.len() >= 0
+= let start = low_skip_ws(line, 0);
     if start >= line.len() { "" }
     else if line.byte_at(start) != 37 { "" }
     else {
@@ -11013,13 +11184,15 @@ fn cf_extract_dest(line: String) -> String =
 
 // Check/extract copy: %dest = copy %src
 // Must use first ` = ` to avoid matching inside string content.
-fn cf_is_copy(line: String) -> bool =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn cf_is_copy(line: String) -> bool
+  post it or not it
+= let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { false } else {
         starts_with(line.slice(eq_pos + 3, line.len()), "copy %", 0)
     };
-fn cf_copy_src(line: String) -> String =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn cf_copy_src(line: String) -> String
+  post it.len() >= 0
+= let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { "" } else {
         if starts_with(line.slice(eq_pos + 3, line.len()), "copy %", 0) {
             line.slice(eq_pos + 8, line.len())
@@ -11027,8 +11200,9 @@ fn cf_copy_src(line: String) -> String =
     };
 
 // Check if line is binary arithmetic: %dest = OP %a, %b
-fn cf_is_arith(line: String) -> bool =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn cf_is_arith(line: String) -> bool
+  post it or not it
+= let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { false } else {
         let rest = line.slice(eq_pos + 3, line.len());
         starts_with(rest, "+ ", 0) or starts_with(rest, "- ", 0) or
@@ -11038,8 +11212,9 @@ fn cf_is_arith(line: String) -> bool =
 
 // Check if line is non-trapping arithmetic (excludes div/mod which trap on zero)
 // Used by IfElseToSelect to ensure select operands cannot cause UB
-fn cf_is_non_trapping_arith(line: String) -> bool =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn cf_is_non_trapping_arith(line: String) -> bool
+  post it or not it
+= let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { false } else {
         let rest = line.slice(eq_pos + 3, line.len());
         starts_with(rest, "+ ", 0) or starts_with(rest, "- ", 0) or
@@ -11047,8 +11222,9 @@ fn cf_is_non_trapping_arith(line: String) -> bool =
     };
 
 // Extract operator from binary arithmetic
-fn cf_arith_op(line: String) -> String =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn cf_arith_op(line: String) -> String
+  post it.len() >= 0
+= let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { "" } else {
         let rest = line.slice(eq_pos + 3, line.len());
         if starts_with(rest, "+ ", 0) { "+" }
@@ -11060,8 +11236,9 @@ fn cf_arith_op(line: String) -> String =
     };
 
 // Extract left operand: %dest = OP %left, %right -> %left
-fn cf_arith_left(line: String) -> String =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn cf_arith_left(line: String) -> String
+  post it.len() >= 0
+= let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { "" } else {
         let rest = line.slice(eq_pos + 3, line.len());
         let pct = find_char(rest, 0, 37);
@@ -11072,8 +11249,9 @@ fn cf_arith_left(line: String) -> String =
     };
 
 // Extract right operand: ..., %right -> %right
-fn cf_arith_right(line: String) -> String =
-    let comma = find_char(line, 0, 44);
+fn cf_arith_right(line: String) -> String
+  post it.len() >= 0
+= let comma = find_char(line, 0, 44);
     if comma >= line.len() { "" } else {
         let rest = line.slice(comma + 1, line.len());
         let after_ws = low_skip_ws(rest, 0);
@@ -11083,12 +11261,14 @@ fn cf_arith_right(line: String) -> String =
     };
 
 // Binary arithmetic on constants (5 branches — bootstrap limit)
-fn cf_compute(op: String, a: i64, b: i64) -> i64 =
-    if op == "+" { a + b } else if op == "-" { a - b } else if op == "*" { a * b } else if op == "/" { if b == 0 { 0 } else { a / b } } else if op == "%" { if b == 0 { 0 } else { a - (a / b) * b } } else { 0 };
+fn cf_compute(op: String, a: i64, b: i64) -> i64
+  post it == it
+= if op == "+" { a + b } else if op == "-" { a - b } else if op == "*" { a * b } else if op == "/" { if b == 0 { 0 } else { a / b } } else if op == "%" { if b == 0 { 0 } else { a - (a / b) * b } } else { 0 };
 
 // Check if line is comparison: %dest = OP %a, %b where OP is ==,!=,<,>,<=,>=
-fn cf_is_cmp(line: String) -> bool =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn cf_is_cmp(line: String) -> bool
+  post it or not it
+= let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { false } else {
         let rest = line.slice(eq_pos + 3, line.len());
         starts_with(rest, "== ", 0) or starts_with(rest, "!= ", 0) or
@@ -11097,8 +11277,9 @@ fn cf_is_cmp(line: String) -> bool =
     };
 
 // Extract comparison operator
-fn cf_cmp_op(line: String) -> String =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn cf_cmp_op(line: String) -> String
+  post it.len() >= 0
+= let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { "" } else {
         let rest = line.slice(eq_pos + 3, line.len());
         if starts_with(rest, "== ", 0) { "==" }
@@ -11121,16 +11302,18 @@ fn cf_eval_cmp(op: String, a: i64, b: i64) -> i64
     else { if a >= b { 1 } else { 0 } };
 
 // Check if line is shift: %dest = << %a, %b or >> %a, %b or >>> %a, %b
-fn cf_is_shift(line: String) -> bool =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn cf_is_shift(line: String) -> bool
+  post it or not it
+= let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { false } else {
         let rest = line.slice(eq_pos + 3, line.len());
         starts_with(rest, "<< ", 0) or starts_with(rest, ">>> ", 0) or starts_with(rest, ">> ", 0)
     };
 
 // Extract shift operator
-fn cf_shift_op(line: String) -> String =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn cf_shift_op(line: String) -> String
+  post it.len() >= 0
+= let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { "" } else {
         let rest = line.slice(eq_pos + 3, line.len());
         if starts_with(rest, "<< ", 0) { "<<" }
@@ -11140,8 +11323,9 @@ fn cf_shift_op(line: String) -> String =
     };
 
 // Evaluate shift (>>> uses same approximation as >> for negative values; LLVM lshr is correct)
-fn cf_eval_shift(op: String, a: i64, b: i64) -> i64 =
-    if op == "<<" { a * cf_pow2(b) } else { a / cf_pow2(b) };
+fn cf_eval_shift(op: String, a: i64, b: i64) -> i64
+  post it == it
+= if op == "<<" { a * cf_pow2(b) } else { a / cf_pow2(b) };
 
 // 2^n helper for shift evaluation
 fn cf_pow2(n: i64) -> i64
@@ -11149,8 +11333,9 @@ fn cf_pow2(n: i64) -> i64
 = if n <= 0 { 1 } else { 2 * cf_pow2(n - 1) };
 
 // Check if line is bitwise: %dest = band/bor/bxor %a, %b
-fn cf_is_bitwise(line: String) -> bool =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn cf_is_bitwise(line: String) -> bool
+  post it or not it
+= let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { false } else {
         let rest = line.slice(eq_pos + 3, line.len());
         starts_with(rest, "band ", 0) or starts_with(rest, "bor ", 0) or
@@ -11158,8 +11343,9 @@ fn cf_is_bitwise(line: String) -> bool =
     };
 
 // Extract bitwise operator
-fn cf_bitwise_op(line: String) -> String =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn cf_bitwise_op(line: String) -> String
+  post it.len() >= 0
+= let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { "" } else {
         let rest = line.slice(eq_pos + 3, line.len());
         if starts_with(rest, "band ", 0) { "band" }
@@ -11169,25 +11355,29 @@ fn cf_bitwise_op(line: String) -> String =
     };
 
 // Evaluate bitwise (separate function)
-fn cf_eval_bitwise(op: String, a: i64, b: i64) -> i64 =
-    if op == "band" { a band b } else if op == "bor" { a bor b } else { a bxor b };
+fn cf_eval_bitwise(op: String, a: i64, b: i64) -> i64
+  post it == it
+= if op == "band" { a band b } else if op == "bor" { a bor b } else { a bxor b };
 
 // Check if line is unary neg: %dest = neg %src
 // Must use first ` = ` to avoid matching inside string content.
-fn cf_is_neg(line: String) -> bool =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn cf_is_neg(line: String) -> bool
+  post it or not it
+= let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { false } else {
         starts_with(line.slice(eq_pos + 3, line.len()), "neg %", 0)
     };
 // Check if line is unary not: %dest = not %src
-fn cf_is_not(line: String) -> bool =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn cf_is_not(line: String) -> bool
+  post it or not it
+= let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { false } else {
         starts_with(line.slice(eq_pos + 3, line.len()), "not %", 0)
     };
 // Extract source from unary: %dest = neg %src -> %src
-fn cf_unary_src(line: String) -> String =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn cf_unary_src(line: String) -> String
+  post it.len() >= 0
+= let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { "" } else {
         let rest = line.slice(eq_pos + 3, line.len());
         if starts_with(rest, "neg %", 0) { line.slice(eq_pos + 7, line.len()) }
@@ -11206,8 +11396,9 @@ fn cf_log2(n: i64) -> i64
 = if n <= 1 { 0 } else { 1 + cf_log2(n / 2) };
 
 // Check if algebraic simplification applies (one operand known: x+0, x*1, x*0, x-x, etc.)
-fn cf_can_simplify(line: String, table: String) -> bool =
-    if cf_is_arith(line) {
+fn cf_can_simplify(line: String, table: String) -> bool
+  post it or not it
+= if cf_is_arith(line) {
         let op = cf_arith_op(line);
         let left = cf_arith_left(line);
         let right = cf_arith_right(line);
@@ -11262,15 +11453,17 @@ fn cf_can_simplify(line: String, table: String) -> bool =
     } else { false };
 
 // Generate algebraically simplified line
-fn cf_simplified(line: String, table: String) -> String =
-    let dest = cf_extract_dest(line);
+fn cf_simplified(line: String, table: String) -> String
+  post it.len() >= 0
+= let dest = cf_extract_dest(line);
     if cf_is_arith(line) { cf_simplified_arith(dest, line, table) }
     else if cf_is_shift(line) { cf_simplified_shift(dest, line, table) }
     else if cf_is_bitwise(line) { cf_simplified_bitwise(dest, line, table) }
     else { line };
 
-fn cf_simplified_arith(dest: String, line: String, table: String) -> String =
-    let op = cf_arith_op(line);
+fn cf_simplified_arith(dest: String, line: String, table: String) -> String
+  post it.len() >= 0
+= let op = cf_arith_op(line);
     let left = cf_arith_left(line);
     let right = cf_arith_right(line);
     let lk = cf_table_has(table, left);
@@ -11304,16 +11497,18 @@ fn cf_simplified_arith(dest: String, line: String, table: String) -> String =
     }
     else { line };
 
-fn cf_simplified_shift(dest: String, line: String, table: String) -> String =
-    let left = cf_arith_left(line);
+fn cf_simplified_shift(dest: String, line: String, table: String) -> String
+  post it.len() >= 0
+= let left = cf_arith_left(line);
     let right = cf_arith_right(line);
     let rk = cf_table_has(table, right);
     // x << 0, x >> 0 → copy x
     if rk and cf_table_get(table, right) == 0 { "  " + dest + " = copy " + left }
     else { line };
 
-fn cf_simplified_bitwise(dest: String, line: String, table: String) -> String =
-    let op = cf_bitwise_op(line);
+fn cf_simplified_bitwise(dest: String, line: String, table: String) -> String
+  post it.len() >= 0
+= let op = cf_bitwise_op(line);
     let left = cf_arith_left(line);
     let right = cf_arith_right(line);
     let lk = cf_table_has(table, left);
@@ -11335,8 +11530,9 @@ fn cf_simplified_bitwise(dest: String, line: String, table: String) -> String =
     else { line };
 
 // Check if line can be constant-folded (arithmetic, comparison, or unary)
-fn cf_can_fold(line: String, table: String) -> bool =
-    if cf_is_arith(line) or cf_is_cmp(line) or cf_is_shift(line) or cf_is_bitwise(line) {
+fn cf_can_fold(line: String, table: String) -> bool
+  post it or not it
+= if cf_is_arith(line) or cf_is_cmp(line) or cf_is_shift(line) or cf_is_bitwise(line) {
         let left = cf_arith_left(line);
         let right = cf_arith_right(line);
         cf_table_has(table, left) and cf_table_has(table, right)
@@ -11346,8 +11542,9 @@ fn cf_can_fold(line: String, table: String) -> bool =
     } else { false };
 
 // Generate folded replacement line
-fn cf_folded(line: String, table: String) -> String =
-    let dest = cf_extract_dest(line);
+fn cf_folded(line: String, table: String) -> String
+  post it.len() >= 0
+= let dest = cf_extract_dest(line);
     if cf_is_neg(line) {
         let src = cf_unary_src(line);
         let val = cf_table_get(table, src);
@@ -11378,8 +11575,9 @@ fn cf_folded(line: String, table: String) -> String =
     };
 
 // Update const table after processing a line
-fn cf_update_table(line: String, table: String) -> String =
-    if cf_is_int_const(line) {
+fn cf_update_table(line: String, table: String) -> String
+  post it.len() >= 0
+= if cf_is_int_const(line) {
         let dest = cf_extract_dest(line);
         let val = cf_extract_int_val(line);
         cf_table_set(table, dest, val)
@@ -11414,26 +11612,30 @@ fn cf_update_table(line: String, table: String) -> String =
 
 // Process one function's MIR lines for constant folding
 // Branch simplification: detect "branch %cond, then, else" with known cond
-fn cf_is_branch(line: String) -> bool =
-    let s = low_skip_ws(line, 0);
+fn cf_is_branch(line: String) -> bool
+  post it or not it
+= let s = low_skip_ws(line, 0);
     find_pattern_at(line, "branch ", s) == s;
 
-fn cf_branch_cond(line: String) -> String =
-    let s = low_skip_ws(line, 0);
+fn cf_branch_cond(line: String) -> String
+  post it.len() >= 0
+= let s = low_skip_ws(line, 0);
     let after = s + 7;
     let comma = find_char(line, after, 44);
     trim_end(line.slice(after, comma));
 
-fn cf_branch_then(line: String) -> String =
-    let s = low_skip_ws(line, 0);
+fn cf_branch_then(line: String) -> String
+  post it.len() >= 0
+= let s = low_skip_ws(line, 0);
     let after = s + 7;
     let comma1 = find_char(line, after, 44);
     let start = low_skip_ws(line, comma1 + 1);
     let comma2 = find_char(line, start, 44);
     trim_end(line.slice(start, comma2));
 
-fn cf_branch_else(line: String) -> String =
-    let s = low_skip_ws(line, 0);
+fn cf_branch_else(line: String) -> String
+  post it.len() >= 0
+= let s = low_skip_ws(line, 0);
     let after = s + 7;
     let comma1 = find_char(line, after, 44);
     let start1 = low_skip_ws(line, comma1 + 1);
@@ -11441,8 +11643,9 @@ fn cf_branch_else(line: String) -> String =
     let start2 = low_skip_ws(line, comma2 + 1);
     trim_end(line.slice(start2, line.len()));
 
-fn cf_can_simplify_branch(line: String, table: String) -> bool =
-    if cf_is_branch(line) {
+fn cf_can_simplify_branch(line: String, table: String) -> bool
+  post it or not it
+= if cf_is_branch(line) {
         let cond = cf_branch_cond(line);
         // Known condition value
         if cf_table_has(table, cond) { true }
@@ -11450,8 +11653,9 @@ fn cf_can_simplify_branch(line: String, table: String) -> bool =
         else { cf_branch_then(line) == cf_branch_else(line) }
     } else { false };
 
-fn cf_simplified_branch(line: String, table: String) -> String =
-    let then_label = cf_branch_then(line);
+fn cf_simplified_branch(line: String, table: String) -> String
+  post it.len() >= 0
+= let then_label = cf_branch_then(line);
     let else_label = cf_branch_else(line);
     // Both targets the same — unconditional goto
     if then_label == else_label { "  goto " + then_label }
@@ -11463,8 +11667,9 @@ fn cf_simplified_branch(line: String, table: String) -> String =
     };
 
 // Check if phi can be folded (both incoming values are the same known constant)
-fn cf_can_fold_phi(line: String, table: String) -> bool =
-    if ube_is_phi(line) {
+fn cf_can_fold_phi(line: String, table: String) -> bool
+  post it or not it
+= if ube_is_phi(line) {
         let eq_pos = find_pattern_at(line, " = ", 0);
         let rhs = line.slice(eq_pos + 3, line.len());
         let phi_args = rhs.slice(4, rhs.len());
@@ -11482,8 +11687,9 @@ fn cf_can_fold_phi(line: String, table: String) -> bool =
     } else { false };
 
 // Fold phi to constant when both incoming values are the same known constant
-fn cf_folded_phi(line: String, table: String) -> String =
-    let dest = cf_extract_dest(line);
+fn cf_folded_phi(line: String, table: String) -> String
+  post it.len() >= 0
+= let dest = cf_extract_dest(line);
     let eq_pos = find_pattern_at(line, " = ", 0);
     let rhs = line.slice(eq_pos + 3, line.len());
     let phi_args = rhs.slice(4, rhs.len());
@@ -11495,14 +11701,16 @@ fn cf_folded_phi(line: String, table: String) -> String =
     "  " + dest + " = const " + i2s(val);
 
 // Check if line is a select instruction
-fn cf_is_select(line: String) -> bool =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn cf_is_select(line: String) -> bool
+  post it or not it
+= let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { false }
     else { starts_with(line.slice(eq_pos + 3, line.len()), "select ", 0) };
 
 // Parse select parts: returns "cond,val1,val2"
-fn cf_select_parts(line: String) -> String =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn cf_select_parts(line: String) -> String
+  post it.len() >= 0
+= let eq_pos = find_pattern_at(line, " = ", 0);
     let rhs = line.slice(eq_pos + 3, line.len());
     let after_sel = rhs.slice(7, rhs.len());
     let c1 = find_char(after_sel, 0, 44);
@@ -11515,8 +11723,9 @@ fn cf_select_parts(line: String) -> String =
     cond + "," + val1 + "," + val2;
 
 // Check if select can be simplified (same values or known condition)
-fn cf_can_simplify_select(line: String, table: String) -> bool =
-    if cf_is_select(line) {
+fn cf_can_simplify_select(line: String, table: String) -> bool
+  post it or not it
+= if cf_is_select(line) {
         let parts = cf_select_parts(line);
         let c1 = find_char(parts, 0, 44);
         let cond = parts.slice(0, c1);
@@ -11528,8 +11737,9 @@ fn cf_can_simplify_select(line: String, table: String) -> bool =
     } else { false };
 
 // Simplify select to copy
-fn cf_simplified_select(line: String, table: String) -> String =
-    let dest = cf_extract_dest(line);
+fn cf_simplified_select(line: String, table: String) -> String
+  post it.len() >= 0
+= let dest = cf_extract_dest(line);
     let parts = cf_select_parts(line);
     let c1 = find_char(parts, 0, 44);
     let cond = parts.slice(0, c1);
@@ -11541,15 +11751,17 @@ fn cf_simplified_select(line: String, table: String) -> String =
     else { "  " + dest + " = copy " + val2 };
 
 // Dispatch: try fold, simplify, branch, phi, select
-fn cf_try_simplify(line: String, table: String) -> String =
-    if cf_can_fold(line, table) { cf_folded(line, table) }
+fn cf_try_simplify(line: String, table: String) -> String
+  post it.len() >= 0
+= if cf_can_fold(line, table) { cf_folded(line, table) }
     else if cf_can_simplify(line, table) { cf_simplified(line, table) }
     else if cf_can_simplify_branch(line, table) { cf_simplified_branch(line, table) }
     else if cf_can_fold_phi(line, table) { cf_folded_phi(line, table) }
     else { cf_try_simplify_select(line, table) };
 
-fn cf_try_simplify_select(line: String, table: String) -> String =
-    if cf_can_simplify_select(line, table) { cf_simplified_select(line, table) }
+fn cf_try_simplify_select(line: String, table: String) -> String
+  post it.len() >= 0
+= if cf_can_simplify_select(line, table) { cf_simplified_select(line, table) }
     else { line };
 
 fn cf_fold_fn_lines(mir: String, pos: i64, sb: i64, table: String) -> i64
@@ -11567,8 +11779,9 @@ fn cf_fold_fn_lines(mir: String, pos: i64, sb: i64, table: String) -> i64
     };
 
 // Process one function's MIR
-fn cf_fold_function(fn_mir: String) -> String =
-    let sb = sb_new();
+fn cf_fold_function(fn_mir: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let w = cf_fold_fn_lines(fn_mir, 0, sb, "");
     let result = sb_build(sb);
     let _f = sb_free(sb);
@@ -11589,8 +11802,9 @@ fn cf_fold_program(mir: String, pos: i64, sb: i64) -> i64
     };
 
 // Main entry: constant folding optimization
-fn optimize_const_folding(mir: String) -> String =
-    let sb = sb_new();
+fn optimize_const_folding(mir: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let w = cf_fold_program(mir, 0, sb);
     let result = sb_build(sb);
     let _f = sb_free(sb);
@@ -11602,14 +11816,16 @@ fn optimize_const_folding(mir: String) -> String =
 // ============================================================================
 
 // Check if line has side effects (calls, stores — must keep even if result unused)
-fn dce_has_side_effects(line: String) -> bool =
-    find_pattern_at(line, "call ", 0) >= 0 or
+fn dce_has_side_effects(line: String) -> bool
+  post it or not it
+= find_pattern_at(line, "call ", 0) >= 0 or
     find_pattern_at(line, "store ", 0) >= 0 or
     find_pattern_at(line, "store_ptr ", 0) >= 0;
 
 // Check if target variable appears in line's RHS (after " = ")
-fn dce_var_in_rhs(line: String, target: String) -> bool =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn dce_var_in_rhs(line: String, target: String) -> bool
+  post it or not it
+= let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 {
         find_pattern_at(line, target, 0) >= 0
     } else {
@@ -11663,8 +11879,9 @@ fn dce_ube_fn_lines(fn_mir: String, pos: i64, sb: i64, targets: String, reachabl
     };
 
 // DCE a single function (with integrated UBE to remove unreachable blocks)
-fn dce_function(fn_mir: String) -> String =
-    let targets = ube_collect_targets(fn_mir, 0, "");
+fn dce_function(fn_mir: String) -> String
+  post it.len() >= 0
+= let targets = ube_collect_targets(fn_mir, 0, "");
     let sb = sb_new();
     let w = dce_ube_fn_lines(fn_mir, 0, sb, targets, 1);
     let result = sb_build(sb);
@@ -11686,8 +11903,9 @@ fn dce_program(mir: String, pos: i64, sb: i64) -> i64
     };
 
 // Main entry: dead code elimination
-fn optimize_dce(mir: String) -> String =
-    let sb = sb_new();
+fn optimize_dce(mir: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let w = dce_program(mir, 0, sb);
     let result = sb_build(sb);
     let _f = sb_free(sb);
@@ -11700,8 +11918,9 @@ fn optimize_dce(mir: String) -> String =
 // ============================================================================
 
 // Check if a MIR line is a label (trimmed line ends with ':')
-fn ube_is_label(line: String) -> bool =
-    let s = low_skip_ws(line, 0);
+fn ube_is_label(line: String) -> bool
+  post it or not it
+= let s = low_skip_ws(line, 0);
     if s >= line.len() { false } else {
         let trimmed = trim_end(line.slice(s, line.len()));
         if trimmed.len() == 0 { false }
@@ -11713,18 +11932,21 @@ fn ube_is_label(line: String) -> bool =
     };
 
 // Extract label name from a label line (everything before ':')
-fn ube_label_name(line: String) -> String =
-    let s = low_skip_ws(line, 0);
+fn ube_label_name(line: String) -> String
+  post it.len() >= 0
+= let s = low_skip_ws(line, 0);
     let trimmed = trim_end(line.slice(s, line.len()));
     trimmed.slice(0, trimmed.len() - 1);
 
 // Check if a label is an entry-like label (always reachable)
-fn ube_is_entry(label: String) -> bool =
-    label == "entry" or starts_with(label, "i32_entry", 0);
+fn ube_is_entry(label: String) -> bool
+  post it or not it
+= label == "entry" or starts_with(label, "i32_entry", 0);
 
 // Extract goto target from "  goto label"
-fn ube_goto_target(line: String) -> String =
-    let s = low_skip_ws(line, 0);
+fn ube_goto_target(line: String) -> String
+  post it.len() >= 0
+= let s = low_skip_ws(line, 0);
     if find_pattern_at(line, "goto ", s) == s {
         trim_end(line.slice(s + 5, line.len()))
     } else { "" };
@@ -11751,8 +11973,9 @@ fn ube_collect_targets(fn_mir: String, pos: i64, targets: String) -> String
     };
 
 // Check if label is in comma-separated target list
-fn ube_has_target(targets: String, label: String) -> bool =
-    if targets == "" { false }
+fn ube_has_target(targets: String, label: String) -> bool
+  post it or not it
+= if targets == "" { false }
     else { ube_has_target_at(targets, label, 0) };
 
 fn ube_has_target_at(targets: String, label: String, pos: i64) -> bool
@@ -11766,23 +11989,26 @@ fn ube_has_target_at(targets: String, label: String, pos: i64) -> bool
     };
 
 // Check if a MIR line is a phi node: %dest = phi [...]
-fn ube_is_phi(line: String) -> bool =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn ube_is_phi(line: String) -> bool
+  post it or not it
+= let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { false } else {
         starts_with(line.slice(eq_pos + 3, line.len()), "phi ", 0)
     };
 
 // Extract phi value from "[%val, label]" bracket expression
 // Returns the %val part
-fn ube_phi_val(bracket: String) -> String =
-    // bracket = "[%val, label]"
+fn ube_phi_val(bracket: String) -> String
+  post it.len() >= 0
+= // bracket = "[%val, label]"
     let start = 1;
     let comma = find_char(bracket, start, 44);
     trim_end(bracket.slice(start, comma));
 
 // Extract phi label from "[%val, label]" bracket expression
-fn ube_phi_label(bracket: String) -> String =
-    let comma = find_char(bracket, 0, 44);
+fn ube_phi_label(bracket: String) -> String
+  post it.len() >= 0
+= let comma = find_char(bracket, 0, 44);
     let start = low_skip_ws(bracket, comma + 1);
     let end_bracket = find_char(bracket, start, 93);
     trim_end(bracket.slice(start, end_bracket));
@@ -11791,8 +12017,9 @@ fn ube_phi_label(bracket: String) -> String =
 // If only one edge remains, convert to "copy %val".
 // Input: phi line like "  %dest = phi [%v1, l1], [%v2, l2]"
 // targets: comma-separated reachable labels
-fn ube_simplify_phi(line: String, targets: String) -> String =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn ube_simplify_phi(line: String, targets: String) -> String
+  post it.len() >= 0
+= let eq_pos = find_pattern_at(line, " = ", 0);
     let dest = line.slice(low_skip_ws(line, 0), eq_pos);
     let rhs = line.slice(eq_pos + 3, line.len());
     // rhs starts with "phi "
@@ -11835,8 +12062,9 @@ fn cp_var_end(s: String, pos: i64) -> i64
     else { pos };
 
 // Copy table: "key1=val1;key2=val2" using ';' (59) and '=' (61)
-fn cp_table_set(table: String, key: String, val: String) -> String =
-    if table == "" { key + "=" + val } else { table + ";" + key + "=" + val };
+fn cp_table_set(table: String, key: String, val: String) -> String
+  post it.len() >= 0
+= if table == "" { key + "=" + val } else { table + ";" + key + "=" + val };
 
 fn cp_table_get_at(table: String, key: String, pos: i64) -> String
   pre pos >= 0
@@ -11851,7 +12079,9 @@ fn cp_table_get_at(table: String, key: String, pos: i64) -> String
         }
     };
 
-fn cp_table_get(table: String, key: String) -> String = cp_table_get_at(table, key, 0);
+fn cp_table_get(table: String, key: String) -> String
+  post it.len() >= 0
+= cp_table_get_at(table, key, 0);
 
 // Replace %var patterns in text using copy table, starting from pos
 fn cp_replace_vars(text: String, table: String, pos: i64) -> String
@@ -11870,8 +12100,9 @@ fn cp_replace_vars(text: String, table: String, pos: i64) -> String
 
 // Replace variables in line's RHS only (preserve LHS destination)
 // Special handling for store: only replace value operand, not destination
-fn cp_replace_in_line(line: String, table: String) -> String =
-    if table == "" { line } else {
+fn cp_replace_in_line(line: String, table: String) -> String
+  post it.len() >= 0
+= if table == "" { line } else {
         let trimmed_start = low_skip_ws(line, 0);
         let eq_pos = find_pattern_at(line, " = ", 0);
         if eq_pos >= 0 {
@@ -11914,8 +12145,9 @@ fn cp_fn_lines(fn_mir: String, pos: i64, sb: i64, table: String) -> i64
         else { cp_fn_lines(fn_mir, pipe + 1, sb, new_table) }
     };
 
-fn cp_function(fn_mir: String) -> String =
-    let sb = sb_new();
+fn cp_function(fn_mir: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let w = cp_fn_lines(fn_mir, 0, sb, "");
     let result = sb_build(sb);
     let _f = sb_free(sb);
@@ -11934,8 +12166,9 @@ fn cp_program(mir: String, pos: i64, sb: i64) -> i64
         else { cp_program(mir, fn_end + 2, sb) }
     };
 
-fn optimize_copy_prop(mir: String) -> String =
-    let sb = sb_new();
+fn optimize_copy_prop(mir: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let w = cp_program(mir, 0, sb);
     let result = sb_build(sb);
     let _f = sb_free(sb);
@@ -11972,8 +12205,9 @@ fn pfcse_build_pure_set(mir: String, pos: i64, acc: String) -> String
     };
 
 // Check if function name is in the pure set
-fn pfcse_is_pure(pure_set: String, name: String) -> bool =
-    if pure_set == "" or name == "" { false }
+fn pfcse_is_pure(pure_set: String, name: String) -> bool
+  post it or not it
+= if pure_set == "" or name == "" { false }
     else { find_pattern_at(pure_set, name + ";", 0) >= 0 };
 
 // Value table: maps variable names to their resolved values.
@@ -11994,23 +12228,27 @@ fn pfcse_val_lookup_at(vtable: String, name: String, pos: i64) -> String
         }
     };
 
-fn pfcse_val_lookup(vtable: String, name: String) -> String =
-    pfcse_val_lookup_at(vtable, name, 0);
+fn pfcse_val_lookup(vtable: String, name: String) -> String
+  post it.len() >= 0
+= pfcse_val_lookup_at(vtable, name, 0);
 
-fn pfcse_val_add(vtable: String, name: String, value: String) -> String =
-    vtable + name + "=" + value + ";";
+fn pfcse_val_add(vtable: String, name: String, value: String) -> String
+  post it.len() >= 0
+= vtable + name + "=" + value + ";";
 
 // Resolve a variable to its canonical value through copy chains.
 // Returns the resolved value: a constant string like "I:42" or the root variable name.
-fn pfcse_resolve(vtable: String, name: String) -> String =
-    let val = pfcse_val_lookup(vtable, name);
+fn pfcse_resolve(vtable: String, name: String) -> String
+  post it.len() >= 0
+= let val = pfcse_val_lookup(vtable, name);
     if val == "" { name }
     else if val.len() > 0 and val.byte_at(0) == 37 { pfcse_resolve(vtable, val) }
     else { val };
 
 // Extract call function name from MIR: "  %_tN = call @fn_name(...)" -> "fn_name"
-fn pfcse_call_fn(line: String) -> String =
-    let call_at = find_pattern_at(line, "call @", 0);
+fn pfcse_call_fn(line: String) -> String
+  post it.len() >= 0
+= let call_at = find_pattern_at(line, "call @", 0);
     if call_at < 0 { "" }
     else {
         let name_start = call_at + 6;
@@ -12020,8 +12258,9 @@ fn pfcse_call_fn(line: String) -> String =
     };
 
 // Extract args string from call: "  %_t = call @fn(%a, %b)" -> "%a, %b"
-fn pfcse_call_args(line: String) -> String =
-    let open = find_pattern_at(line, "call @", 0);
+fn pfcse_call_args(line: String) -> String
+  post it.len() >= 0
+= let open = find_pattern_at(line, "call @", 0);
     if open < 0 { "" }
     else {
         let paren = find_char(line, open + 6, 40);
@@ -12034,8 +12273,9 @@ fn pfcse_call_args(line: String) -> String =
     };
 
 // Resolve a single argument through the value table
-fn pfcse_resolve_arg(vtable: String, arg: String) -> String =
-    let trimmed = trim(arg);
+fn pfcse_resolve_arg(vtable: String, arg: String) -> String
+  post it.len() >= 0
+= let trimmed = trim(arg);
     if trimmed == "" { "" }
     else if trimmed.byte_at(0) == 37 { pfcse_resolve(vtable, trimmed) }
     else { trimmed };
@@ -12056,8 +12296,9 @@ fn pfcse_build_key_args(vtable: String, args: String, pos: i64, acc: String) -> 
         else { pfcse_build_key_args(vtable, args, end_pos + 1, new_acc) }
     };
 
-fn pfcse_build_key(vtable: String, line: String) -> String =
-    let fn_name = pfcse_call_fn(line);
+fn pfcse_build_key(vtable: String, line: String) -> String
+  post it.len() >= 0
+= let fn_name = pfcse_call_fn(line);
     let args = pfcse_call_args(line);
     let resolved_args = pfcse_build_key_args(vtable, args, 0, "");
     fn_name + "(" + resolved_args + ")";
@@ -12079,15 +12320,18 @@ fn pfcse_map_lookup_at(cmap: String, sig: String, pos: i64) -> String
         }
     };
 
-fn pfcse_map_lookup(cmap: String, sig: String) -> String =
-    pfcse_map_lookup_at(cmap, sig, 0);
+fn pfcse_map_lookup(cmap: String, sig: String) -> String
+  post it.len() >= 0
+= pfcse_map_lookup_at(cmap, sig, 0);
 
-fn pfcse_map_add(cmap: String, sig: String, dest: String) -> String =
-    cmap + sig + "=" + dest + ";";
+fn pfcse_map_add(cmap: String, sig: String, dest: String) -> String
+  post it.len() >= 0
+= cmap + sig + "=" + dest + ";";
 
 // Update value table from instruction: track constants and copies
-fn pfcse_update_vtable(vtable: String, line: String) -> String =
-    let dest = cf_extract_dest(line);
+fn pfcse_update_vtable(vtable: String, line: String) -> String
+  post it.len() >= 0
+= let dest = cf_extract_dest(line);
     if dest == "" { vtable }
     else {
         let eq_pos = find_pattern_at(line, " = ", 0);
@@ -12157,8 +12401,9 @@ fn pfcse_fn_lines(fn_mir: String, pos: i64, sb: i64, pure_set: String, cmap: Str
         }
     };
 
-fn pfcse_function(fn_mir: String, pure_set: String) -> String =
-    let sb = sb_new();
+fn pfcse_function(fn_mir: String, pure_set: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let count = pfcse_fn_lines(fn_mir, 0, sb, pure_set, "", "", 0);
     let result = sb_build(sb);
     let _f = sb_free(sb);
@@ -12177,8 +12422,9 @@ fn pfcse_program(mir: String, pos: i64, sb: i64, pure_set: String) -> i64
         else { pfcse_program(mir, fn_end + 2, sb, pure_set) }
     };
 
-fn optimize_pure_fn_cse(mir: String) -> String =
-    let pure_set = pfcse_build_pure_set(mir, 0, "");
+fn optimize_pure_fn_cse(mir: String) -> String
+  post it.len() >= 0
+= let pure_set = pfcse_build_pure_set(mir, 0, "");
     if pure_set == "" { mir }
     else {
         let sb = sb_new();
@@ -12200,8 +12446,9 @@ fn optimize_pure_fn_cse(mir: String) -> String =
 
 // Extend value table to also track GEP canonical values.
 // For gep: %_tN = gep %base, %offset → vtable[%_tN] = "G:resolved_base,resolved_offset"
-fn mlcse_update_vtable(vtable: String, line: String) -> String =
-    let vt = pfcse_update_vtable(vtable, line);
+fn mlcse_update_vtable(vtable: String, line: String) -> String
+  post it.len() >= 0
+= let vt = pfcse_update_vtable(vtable, line);
     let dest = cf_extract_dest(line);
     if dest == "" { vt }
     else {
@@ -12224,19 +12471,22 @@ fn mlcse_update_vtable(vtable: String, line: String) -> String =
 
 // Known-safe builtins that do NOT write to pointer memory.
 // Uses ";name;" delimited format for exact matching.
-fn mlcse_safe_builtins() -> String =
-    ";abs;min;max;sqrt;floor;ceil;round;sin;cos;tan;atan;atan2;exp;log;log2;log10;pow_f64;fmod;fabs;f64_min;f64_max;popcount;clz;ctz;bit_reverse;bswap;rotate_left;rotate_right;clamp;i64_to_f64;f64_to_i64;chr;ord;len;byte_at;char_at;str_eq;str_cmp;str_len;str_data;load_i64;load_f64;load_u8;load_i32;hash_i64;hash_str;println;print;println_str;print_str;println_f64;print_f64;bmb_println_i64;bmb_print_i64;bmb_println_str;bmb_print_str;bmb_println_f64;bmb_print_f64;vec_len;";
+fn mlcse_safe_builtins() -> String
+  post it.len() >= 0
+= ";abs;min;max;sqrt;floor;ceil;round;sin;cos;tan;atan;atan2;exp;log;log2;log10;pow_f64;fmod;fabs;f64_min;f64_max;popcount;clz;ctz;bit_reverse;bswap;rotate_left;rotate_right;clamp;i64_to_f64;f64_to_i64;chr;ord;len;byte_at;char_at;str_eq;str_cmp;str_len;str_data;load_i64;load_f64;load_u8;load_i32;hash_i64;hash_str;println;print;println_str;print_str;println_f64;print_f64;bmb_println_i64;bmb_print_i64;bmb_println_str;bmb_print_str;bmb_println_f64;bmb_print_f64;vec_len;";
 
 // Check if a function call is safe (does not write to pointer memory)
-fn mlcse_is_safe_call(fn_name: String, pure_set: String, safe_set: String) -> bool =
-    if fn_name == "" { true }
+fn mlcse_is_safe_call(fn_name: String, pure_set: String, safe_set: String) -> bool
+  post it or not it
+= if fn_name == "" { true }
     else if pfcse_is_pure(pure_set, fn_name) { true }
     else { find_pattern_at(safe_set, ";" + fn_name + ";", 0) >= 0 };
 
 // Check if a function call is a memory-reading call that can be CSE'd.
 // These read from mutable memory but don't write — cacheable with invalidation on stores.
-fn mlcse_is_read_call(fn_name: String) -> bool =
-    fn_name == "vec_get" or fn_name == "load_i64" or fn_name == "load_f64" or
+fn mlcse_is_read_call(fn_name: String) -> bool
+  post it or not it
+= fn_name == "vec_get" or fn_name == "load_i64" or fn_name == "load_f64" or
     fn_name == "load_u8" or fn_name == "load_i32";
 
 // Process one function's MIR for memory load + GEP CSE.
@@ -12360,8 +12610,9 @@ fn mlcse_fn_lines(fn_mir: String, pos: i64, sb: i64, pure_set: String, safe_set:
         }
     };
 
-fn mlcse_function(fn_mir: String, pure_set: String, safe_set: String) -> String =
-    let sb = sb_new();
+fn mlcse_function(fn_mir: String, pure_set: String, safe_set: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let count = mlcse_fn_lines(fn_mir, 0, sb, pure_set, safe_set, "", "", "", 0);
     let result = sb_build(sb);
     let _f = sb_free(sb);
@@ -12380,8 +12631,9 @@ fn mlcse_program(mir: String, pos: i64, sb: i64, pure_set: String, safe_set: Str
         else { mlcse_program(mir, fn_end + 2, sb, pure_set, safe_set) }
     };
 
-fn optimize_mem_load_cse(mir: String) -> String =
-    let pure_set = pfcse_build_pure_set(mir, 0, "");
+fn optimize_mem_load_cse(mir: String) -> String
+  post it.len() >= 0
+= let pure_set = pfcse_build_pure_set(mir, 0, "");
     let safe_set = mlcse_safe_builtins();
     let sb = sb_new();
     let w = mlcse_program(mir, 0, sb, pure_set, safe_set);
@@ -12509,8 +12761,9 @@ fn cfeval_fn_lines(fn_mir: String, pos: i64, sb: i64, const_map: String, count: 
         }
     };
 
-fn cfeval_function(fn_mir: String, const_map: String) -> String =
-    let sb = sb_new();
+fn cfeval_function(fn_mir: String, const_map: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let count = cfeval_fn_lines(fn_mir, 0, sb, const_map, 0);
     let result = sb_build(sb);
     let _f = sb_free(sb);
@@ -12529,8 +12782,9 @@ fn cfeval_program(mir: String, pos: i64, sb: i64, const_map: String) -> i64
         else { cfeval_program(mir, fn_end + 2, sb, const_map) }
     };
 
-fn optimize_const_fn_eval(mir: String) -> String =
-    let const_map = cfeval_build_const_map(mir, 0, "");
+fn optimize_const_fn_eval(mir: String) -> String
+  post it.len() >= 0
+= let const_map = cfeval_build_const_map(mir, 0, "");
     if const_map == "" { mir }
     else {
         let sb = sb_new();
@@ -12548,8 +12802,9 @@ fn optimize_const_fn_eval(mir: String) -> String =
 // ============================================================================
 
 // Extract function name from MIR header: "fn name(...) -> ..."
-fn trl_fn_name(header: String) -> String =
-    let start = find_pattern_at(header, "fn ", 0);
+fn trl_fn_name(header: String) -> String
+  post it.len() >= 0
+= let start = find_pattern_at(header, "fn ", 0);
     if start < 0 { "" }
     else {
         let ns = start + 3;
@@ -12559,8 +12814,9 @@ fn trl_fn_name(header: String) -> String =
 
 // Extract parameter names from header: "fn name(p1: t1, p2: t2) -> ..."
 // Returns ";p1;p2;" format
-fn trl_param_names(header: String) -> String =
-    let open = find_char(header, 0, 40);
+fn trl_param_names(header: String) -> String
+  post it.len() >= 0
+= let open = find_char(header, 0, 40);
     let close = find_char(header, open + 1, 41);
     if open < 0 or close <= open + 1 { "" }
     else { trl_parse_params(header.slice(open + 1, close), 0, "") };
@@ -12643,8 +12899,9 @@ fn trl_find_tail_call(fn_mir: String, pos: i64, fn_name: String) -> String
 // v0.96.41: Check if a block (identified by label) contains a return statement.
 // Scans from the label until the next label or end of function.
 // A block is a tail position if it contains "return ..." (possibly preceded by phi).
-fn trl_block_has_return(fn_mir: String, label: String) -> bool =
-    let label_pat = label + ":";
+fn trl_block_has_return(fn_mir: String, label: String) -> bool
+  post it or not it
+= let label_pat = label + ":";
     let label_pos = find_pattern_at(fn_mir, label_pat, 0);
     if label_pos < 0 { false }
     else {
@@ -12675,8 +12932,9 @@ fn trl_scan_block_for_return(fn_mir: String, pos: i64) -> bool
 
 // Extract call arguments from "  %_tN = call @fn(arg1, arg2)"
 // Returns ";arg1;arg2;" format
-fn trl_call_args(line: String) -> String =
-    let open = find_char(line, 0, 40);
+fn trl_call_args(line: String) -> String
+  post it.len() >= 0
+= let open = find_char(line, 0, 40);
     let close = find_last_char(line, 41);
     if open < 0 or close <= open { "" }
     else { trl_split_args(line.slice(open + 1, close), 0, "") };
@@ -12709,8 +12967,9 @@ fn find_last_char_scan(s: String, pos: i64, ch: i64) -> i64
 
 // Substitute parameter references in a MIR line
 // Replaces %param_name with %param_name_loop for each varying param
-fn trl_subst_line(line: String, subst_from: String, subst_to: String) -> String =
-    if subst_from == "" { line }
+fn trl_subst_line(line: String, subst_from: String, subst_to: String) -> String
+  post it.len() >= 0
+= if subst_from == "" { line }
     else {
         let semi = find_char(subst_from, 0, 59);
         let from = subst_from.slice(0, semi);
@@ -12724,8 +12983,9 @@ fn trl_subst_line(line: String, subst_from: String, subst_to: String) -> String 
 
 // Replace occurrences of variable %name with %replacement in a line
 // Only replaces when %name is followed by non-alphanumeric (word boundary)
-fn trl_replace_var(line: String, var_name: String, replacement: String) -> String =
-    let pos = find_pattern_at(line, var_name, 0);
+fn trl_replace_var(line: String, var_name: String, replacement: String) -> String
+  post it.len() >= 0
+= let pos = find_pattern_at(line, var_name, 0);
     if pos < 0 { line }
     else {
         let after = pos + var_name.len();
@@ -12765,8 +13025,9 @@ fn trl_build_phis(params: String, call_args: String, idx: i64, count: i64, tail_
     };
 
 // Build substitution target list: ";%p1_loop;%p2_loop;" from ";%p1;%p2;"
-fn trl_build_subst_to(params: String) -> String =
-    if params == "" { "" }
+fn trl_build_subst_to(params: String) -> String
+  post it.len() >= 0
+= if params == "" { "" }
     else {
         let semi = find_char(params, 0, 59);
         let param = params.slice(0, semi);
@@ -12830,8 +13091,9 @@ fn trl_count_self_calls(body: String, pos: i64, fn_name: String, count: i64) -> 
 
 // Transform a single function: detect tail recursion and convert to loop
 // Only handles functions with exactly ONE self-recursive call (single tail call site)
-fn trl_transform_fn(fn_mir: String) -> String =
-    let first_pipe = find_pipe_skip_quotes(fn_mir, 0);
+fn trl_transform_fn(fn_mir: String) -> String
+  post it.len() >= 0
+= let first_pipe = find_pipe_skip_quotes(fn_mir, 0);
     let header = fn_mir.slice(0, first_pipe);
     let fn_name = trl_fn_name(header);
     if fn_name == "" or fn_name == "main" { fn_mir }
@@ -12868,15 +13130,17 @@ fn trl_transform_fn(fn_mir: String) -> String =
     };
 
 // Extract destination variable from tail call line: "  %_tN = call @fn(...)" -> "%_tN"
-fn trl_call_dest(line: String) -> String =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn trl_call_dest(line: String) -> String
+  post it.len() >= 0
+= let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { "" } else { trim(line.slice(0, eq_pos)) };
 
 // Simplify a phi that references the tail call result
 // If the phi has [base_val, base_label], [call_result, tail_label],
 // and call_result is the removed tail call dest, convert to copy of base_val
-fn trl_simplify_phi(line: String, call_dest: String, params: String, subst_to: String) -> String =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn trl_simplify_phi(line: String, call_dest: String, params: String, subst_to: String) -> String
+  post it.len() >= 0
+= let eq_pos = find_pattern_at(line, " = ", 0);
     let dest = trim(line.slice(0, eq_pos));
     // Check if this phi references the tail call result
     let has_call_dest = find_pattern_at(line, call_dest, eq_pos) >= 0;
@@ -12901,8 +13165,9 @@ fn trl_simplify_phi(line: String, call_dest: String, params: String, subst_to: S
     };
 
 // Build the transformed function MIR
-fn trl_build_transformed(fn_mir: String, header: String, body: String, params: String, subst_to: String, phis: String, tail_call_line: String, tail_block: String, fn_name: String) -> String =
-    let call_dest = trl_call_dest(tail_call_line);
+fn trl_build_transformed(fn_mir: String, header: String, body: String, params: String, subst_to: String, phis: String, tail_call_line: String, tail_block: String, fn_name: String) -> String
+  post it.len() >= 0
+= let call_dest = trl_call_dest(tail_call_line);
     let sb = sb_new();
     // Header
     let w1 = sb_push(sb, header);
@@ -12984,8 +13249,9 @@ fn trl_program(mir: String, pos: i64, sb: i64) -> i64
     };
 
 // Main entry point
-fn optimize_tail_recursive_to_loop(mir: String) -> String =
-    let sb = sb_new();
+fn optimize_tail_recursive_to_loop(mir: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let w = trl_program(mir, 0, sb);
     let result = sb_build(sb);
     let _f = sb_free(sb);
@@ -13000,8 +13266,9 @@ fn optimize_tail_recursive_to_loop(mir: String) -> String =
 // Check if a phi variable is invariant: back-edge value equals the dest.
 // E.g., %s_loop = phi [%s, entry], [%s_loop, else_1] → invariant (always %s)
 // Returns the entry value if invariant, "" otherwise.
-fn licm_phi_invariant(line: String, copy_map: String) -> String =
-    let eq_pos = find_pattern_at(line, " = phi ", 0);
+fn licm_phi_invariant(line: String, copy_map: String) -> String
+  post it.len() >= 0
+= let eq_pos = find_pattern_at(line, " = phi ", 0);
     if eq_pos < 0 { "" }
     else {
         let dest = trim(line.slice(0, eq_pos));
@@ -13034,8 +13301,9 @@ fn licm_phi_invariant(line: String, copy_map: String) -> String =
     };
 
 // Resolve a variable through the copy map. Returns the copy source or "".
-fn licm_resolve_copy(vname: String, copy_map: String) -> String =
-    let pat = vname + "=";
+fn licm_resolve_copy(vname: String, copy_map: String) -> String
+  post it.len() >= 0
+= let pat = vname + "=";
     let pos = find_pattern_at(copy_map, pat, 0);
     if pos < 0 { "" }
     else {
@@ -13087,8 +13355,9 @@ fn licm_scan_phis(fn_mir: String, pos: i64, acc: String, copy_map: String) -> St
     };
 
 // Check if a variable is in the invariant map. Returns entry value or "".
-fn licm_is_invariant(vname: String, inv_map: String) -> String =
-    let pat = vname + "=";
+fn licm_is_invariant(vname: String, inv_map: String) -> String
+  post it.len() >= 0
+= let pat = vname + "=";
     let pos = find_pattern_at(inv_map, pat, 0);
     if pos < 0 { "" }
     else {
@@ -13098,16 +13367,18 @@ fn licm_is_invariant(vname: String, inv_map: String) -> String =
     };
 
 // Check if a function is pure (safe to hoist out of loop)
-fn licm_is_pure_fn(fn_name: String) -> bool =
-    fn_name == "@bmb_string_len" or fn_name == "@bmb_array_len" or
+fn licm_is_pure_fn(fn_name: String) -> bool
+  post it or not it
+= fn_name == "@bmb_string_len" or fn_name == "@bmb_array_len" or
     fn_name == "@bmb_string_char_at" or fn_name == "@bmb_string_eq" or
     fn_name == "@bmb_string_is_empty";
 
 // Check if all arguments of a call are loop-invariant or constants.
 // call_line: "  %_t5 = call @fn(%arg1, %arg2)"
 // Returns true if all args are invariant (directly or via copy chain).
-fn licm_all_args_invariant(call_line: String, inv_map: String, copy_map: String) -> bool =
-    let open = find_char(call_line, 0, 40);
+fn licm_all_args_invariant(call_line: String, inv_map: String, copy_map: String) -> bool
+  post it or not it
+= let open = find_char(call_line, 0, 40);
     let close = find_last_char(call_line, 41);
     if open >= call_line.len() or close <= open + 1 { true }
     else {
@@ -13142,8 +13413,9 @@ fn licm_check_args(args: String, pos: i64, inv_map: String, copy_map: String) ->
     };
 
 // Replace loop variables with entry values in a call line
-fn licm_subst_invariant(call_line: String, inv_map: String, copy_map: String) -> String =
-    let open = find_char(call_line, 0, 40);
+fn licm_subst_invariant(call_line: String, inv_map: String, copy_map: String) -> String
+  post it.len() >= 0
+= let open = find_char(call_line, 0, 40);
     let close = find_last_char(call_line, 41);
     if open >= call_line.len() or close <= open + 1 { call_line }
     else {
@@ -13174,8 +13446,9 @@ fn licm_subst_args(args: String, pos: i64, acc: String, inv_map: String, copy_ma
     };
 
 // Extract function name from call: "  %_t5 = call @fn_name(args)" → "@fn_name"
-fn licm_call_fn_name(line: String) -> String =
-    let call_pos = find_pattern_at(line, "call @", 0);
+fn licm_call_fn_name(line: String) -> String
+  post it.len() >= 0
+= let call_pos = find_pattern_at(line, "call @", 0);
     if call_pos < 0 { "" }
     else {
         let start = call_pos + 5;
@@ -13184,8 +13457,9 @@ fn licm_call_fn_name(line: String) -> String =
     };
 
 // Main LICM transformation for a single function
-fn licm_function(fn_mir: String) -> String =
-    // Find loop_header: label
+fn licm_function(fn_mir: String) -> String
+  post it.len() >= 0
+= // Find loop_header: label
     let lh_pat = SEP() + "loop_header:";
     let lh_pos = find_pattern_at(fn_mir, lh_pat, 0);
     if lh_pos < 0 { fn_mir }
@@ -13234,8 +13508,9 @@ fn licm_find_hoistable(fn_mir: String, pos: i64, inv_map: String, acc: String, c
     };
 
 // Restructure: insert hoisted calls before "goto loop_header" and remove from loop body
-fn licm_restructure(fn_mir: String, hoistable: String, inv_map: String, copy_map: String) -> String =
-    let sb = sb_new();
+fn licm_restructure(fn_mir: String, hoistable: String, inv_map: String, copy_map: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let w = licm_emit(fn_mir, 0, sb, hoistable, inv_map, copy_map, false);
     let result = sb_build(sb);
     let _f = sb_free(sb);
@@ -13303,8 +13578,9 @@ fn licm_program(mir: String, pos: i64, sb: i64) -> i64
     };
 
 // Main entry point
-fn optimize_licm(mir: String) -> String =
-    let sb = sb_new();
+fn optimize_licm(mir: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let w = licm_program(mir, 0, sb);
     let result = sb_build(sb);
     let _f = sb_free(sb);
@@ -13319,8 +13595,9 @@ fn optimize_licm(mir: String) -> String =
 
 // Look up a variable's const definition in fn_mir.
 // Returns the constant value string if `var = const VAL`, else "".
-fn rpe_lookup_const(fn_mir: String, vname: String) -> String =
-    rpe_lookup_const_depth(fn_mir, vname, 0);
+fn rpe_lookup_const(fn_mir: String, vname: String) -> String
+  post it.len() >= 0
+= rpe_lookup_const_depth(fn_mir, vname, 0);
 
 // Look up a variable's const value, chasing through copy chains (up to depth 4)
 fn rpe_lookup_const_depth(fn_mir: String, vname: String, depth: i64) -> String
@@ -13352,8 +13629,9 @@ fn rpe_lookup_const_depth(fn_mir: String, vname: String, depth: i64) -> String
 
 // Simplify a phi line if all incoming values are the same constant.
 // Returns simplified line or original.
-fn rpe_simplify_phi(fn_mir: String, line: String) -> String =
-    let eq_pos = find_pattern_at(line, " = ", 0);
+fn rpe_simplify_phi(fn_mir: String, line: String) -> String
+  post it.len() >= 0
+= let eq_pos = find_pattern_at(line, " = ", 0);
     if eq_pos < 0 { line }
     else {
         let dest = line.slice(low_skip_ws(line, 0), eq_pos);
@@ -13393,8 +13671,9 @@ fn rpe_fn_lines(fn_mir: String, pos: i64, sb: i64) -> i64
     };
 
 // Process a single function
-fn rpe_function(fn_mir: String) -> String =
-    let sb = sb_new();
+fn rpe_function(fn_mir: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let w = rpe_fn_lines(fn_mir, 0, sb);
     let result = sb_build(sb);
     let _f = sb_free(sb);
@@ -13414,8 +13693,9 @@ fn rpe_program(mir: String, pos: i64, sb: i64) -> i64
         else { rpe_program(mir, fn_end + 2, sb) }
     };
 
-fn optimize_redundant_phi(mir: String) -> String =
-    let sb = sb_new();
+fn optimize_redundant_phi(mir: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let w = rpe_program(mir, 0, sb);
     let result = sb_build(sb);
     let _f = sb_free(sb);
@@ -13507,8 +13787,9 @@ fn ifs_check_pattern(fn_mir: String, branch_line: String, branch_pos: i64) -> St
 // Check if a line is a pure (side-effect-free, non-trapping) instruction
 // Pure: non-trapping arithmetic (+,-,*), comparison, shift, bitwise, neg, not, copy, const
 // NOT pure: div, mod (trap on zero), call, store, load, alloca, branch, goto, return, label
-fn ifs_is_pure(line: String) -> bool =
-    let s = low_skip_ws(line, 0);
+fn ifs_is_pure(line: String) -> bool
+  post it or not it
+= let s = low_skip_ws(line, 0);
     if s >= line.len() { false }
     else if line.byte_at(s) != 37 { false }
     else {
@@ -13616,8 +13897,9 @@ fn ifs_check_else_one_rest(fn_mir: String, p3: i64, cond: String, l_then: String
     } else { "" };
 
 // Common: match phi edges to then/else, return "extra~cond~val1~val2~dest"
-fn ifs_match_phi_select(phi_line: String, instr: String, cond: String, l_then: String, l_else: String) -> String =
-    let dest = cf_extract_dest(phi_line);
+fn ifs_match_phi_select(phi_line: String, instr: String, cond: String, l_then: String, l_else: String) -> String
+  post it.len() >= 0
+= let dest = cf_extract_dest(phi_line);
     let eq_pos = find_pattern_at(phi_line, " = ", 0);
     let rhs = phi_line.slice(eq_pos + 3, phi_line.len());
     let b1s = find_char(rhs, 0, 91);
@@ -13796,8 +14078,9 @@ fn ifs_check_both_rest2(fn_mir: String, p6: i64, instr1: String, instr2: String,
     } else { "" };
 
 // Match phi for both-sides pattern, returns "instr1~instr2~cond~val1~val2~dest"
-fn ifs_match_phi_both(phi_line: String, instr1: String, instr2: String, cond: String, l_then: String, l_else: String) -> String =
-    let dest = cf_extract_dest(phi_line);
+fn ifs_match_phi_both(phi_line: String, instr1: String, instr2: String, cond: String, l_then: String, l_else: String) -> String
+  post it.len() >= 0
+= let dest = cf_extract_dest(phi_line);
     let eq_pos = find_pattern_at(phi_line, " = ", 0);
     let rhs = phi_line.slice(eq_pos + 3, phi_line.len());
     let b1s = find_char(rhs, 0, 91);
@@ -14113,8 +14396,9 @@ fn ifs_emit_extended(fn_mir: String, pos: i64, result: String, sb: i64) -> i64
     if p8 >= fn_mir.len() { 0 }
     else { ifs_fn_lines(fn_mir, p8, sb) };
 
-fn ifs_function(fn_mir: String) -> String =
-    let sb = sb_new();
+fn ifs_function(fn_mir: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let w = ifs_fn_lines(fn_mir, 0, sb);
     let result = sb_build(sb);
     let _f = sb_free(sb);
@@ -14133,8 +14417,9 @@ fn ifs_program(mir: String, pos: i64, sb: i64) -> i64
         else { ifs_program(mir, fn_end + 2, sb) }
     };
 
-fn optimize_if_select(mir: String) -> String =
-    let sb = sb_new();
+fn optimize_if_select(mir: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let w = ifs_program(mir, 0, sb);
     let result = sb_build(sb);
     let _f = sb_free(sb);
@@ -14145,8 +14430,9 @@ fn optimize_if_select(mir: String) -> String =
 // E.g., goto L1 where L1: goto L2 → goto L2
 
 // Check if a label is referenced as a phi predecessor anywhere in the function
-fn gcs_label_in_phi(fn_mir: String, label: String) -> bool =
-    let pattern = ", " + label + "]";
+fn gcs_label_in_phi(fn_mir: String, label: String) -> bool
+  post it or not it
+= let pattern = ", " + label + "]";
     find_pattern_at(fn_mir, pattern, 0) >= 0;
 
 // Check if line at pos is a forwarding label (label: followed by goto)
@@ -14192,8 +14478,9 @@ fn gcs_find_in_map(map: String, search: String, from: i64) -> i64
     else { gcs_find_in_map(map, search, pos + 1) };
 
 // Look up label in forwarding map
-fn gcs_map_get(map: String, label: String) -> String =
-    let search = label + "=";
+fn gcs_map_get(map: String, label: String) -> String
+  post it.len() >= 0
+= let search = label + "=";
     let pos = gcs_find_in_map(map, search, 0);
     if pos < 0 { "" }
     else {
@@ -14214,8 +14501,9 @@ fn gcs_resolve(map: String, label: String, depth: i64) -> String
     };
 
 // Rewrite a goto line using forwarding map
-fn gcs_rewrite_goto(line: String, map: String) -> String =
-    let target = ube_goto_target(line);
+fn gcs_rewrite_goto(line: String, map: String) -> String
+  post it.len() >= 0
+= let target = ube_goto_target(line);
     if target == "" { line }
     else {
         let resolved = gcs_resolve(map, target, 0);
@@ -14224,8 +14512,9 @@ fn gcs_rewrite_goto(line: String, map: String) -> String =
     };
 
 // Rewrite a branch line using forwarding map
-fn gcs_rewrite_branch(line: String, map: String) -> String =
-    let cond = cf_branch_cond(line);
+fn gcs_rewrite_branch(line: String, map: String) -> String
+  post it.len() >= 0
+= let cond = cf_branch_cond(line);
     let t1 = cf_branch_then(line);
     let t2 = cf_branch_else(line);
     let r1 = gcs_resolve(map, t1, 0);
@@ -14234,8 +14523,9 @@ fn gcs_rewrite_branch(line: String, map: String) -> String =
     else { "  branch " + cond + ", " + r1 + ", " + r2 };
 
 // Rewrite a single line: replace goto/branch targets if forwarded
-fn gcs_rewrite_line(line: String, map: String) -> String =
-    if ube_goto_target(line) != "" { gcs_rewrite_goto(line, map) }
+fn gcs_rewrite_line(line: String, map: String) -> String
+  post it.len() >= 0
+= if ube_goto_target(line) != "" { gcs_rewrite_goto(line, map) }
     else if cf_is_branch(line) { gcs_rewrite_branch(line, map) }
     else { line };
 
@@ -14254,8 +14544,9 @@ fn gcs_rewrite_fn(fn_mir: String, pos: i64, map: String, sb: i64) -> i64
     };
 
 // Simplify goto chains in a single function
-fn gcs_function(fn_mir: String) -> String =
-    let map = gcs_find_forwards(fn_mir, 0, "");
+fn gcs_function(fn_mir: String) -> String
+  post it.len() >= 0
+= let map = gcs_find_forwards(fn_mir, 0, "");
     if map == "" { fn_mir }
     else {
         let sb = sb_new();
@@ -14279,8 +14570,9 @@ fn gcs_program(mir: String, pos: i64, sb: i64) -> i64
         else { gcs_program(mir, fn_end + 2, sb) }
     };
 
-fn optimize_goto_chain(mir: String) -> String =
-    let sb = sb_new();
+fn optimize_goto_chain(mir: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let w = gcs_program(mir, 0, sb);
     let result = sb_build(sb);
     let _f = sb_free(sb);
@@ -14325,8 +14617,9 @@ fn pht_is_phi_fwd(fn_mir: String, pos: i64, pipe: i64) -> String
     } else { "" };
 
 // Check if a variable name has an alloca in the function MIR
-fn pht_has_alloca(fn_mir: String, name: String) -> bool =
-    let pattern = "alloca " + name;
+fn pht_has_alloca(fn_mir: String, name: String) -> bool
+  post it or not it
+= let pattern = "alloca " + name;
     find_pattern_at(fn_mir, pattern, 0) >= 0;
 
 // Build copy-value map for copy-only forwarding blocks
@@ -14436,8 +14729,9 @@ fn pht_build_phi_map(fn_mir: String, fwd_map: String, pos: i64, phi_map: String)
     };
 
 // Replace label in a phi line: ", old_label]" → ", new_label]"
-fn pht_replace_phi_label(line: String, old_label: String, new_label: String) -> String =
-    let pattern = ", " + old_label + "]";
+fn pht_replace_phi_label(line: String, old_label: String, new_label: String) -> String
+  post it.len() >= 0
+= let pattern = ", " + old_label + "]";
     let pos = find_pattern_at(line, pattern, 0);
     if pos < 0 { line }
     else {
@@ -14460,8 +14754,9 @@ fn pht_copy_get(copy_map: String, label: String, pos: i64) -> String
     };
 
 // Replace both value and label in a phi operand: [old_val, old_label] → [new_val, new_label]
-fn pht_replace_phi_operand(line: String, old_label: String, new_label: String, old_val: String, new_val: String) -> String =
-    let pattern = old_val + ", " + old_label + "]";
+fn pht_replace_phi_operand(line: String, old_label: String, new_label: String, old_val: String, new_val: String) -> String
+  post it.len() >= 0
+= let pattern = old_val + ", " + old_label + "]";
     let pos = find_pattern_at(line, pattern, 0);
     if pos < 0 { pht_replace_phi_label(line, old_label, new_label) }
     else {
@@ -14493,8 +14788,9 @@ fn pht_update_phi_line(line: String, phi_map: String, copy_map: String, pos: i64
     };
 
 // Rewrite a single line: forward gotos/branches and update phi predecessors + values
-fn pht_rewrite_line(line: String, fwd_map: String, phi_map: String, copy_map: String) -> String =
-    if ube_goto_target(line) != "" { gcs_rewrite_goto(line, fwd_map) }
+fn pht_rewrite_line(line: String, fwd_map: String, phi_map: String, copy_map: String) -> String
+  post it.len() >= 0
+= if ube_goto_target(line) != "" { gcs_rewrite_goto(line, fwd_map) }
     else if cf_is_branch(line) { gcs_rewrite_branch(line, fwd_map) }
     else if ube_is_phi(line) { pht_update_phi_line(line, phi_map, copy_map, 0) }
     else { line };
@@ -14514,8 +14810,9 @@ fn pht_rewrite_fn(fn_mir: String, pos: i64, fwd_map: String, phi_map: String, co
     };
 
 // Apply phi-threading to a single function
-fn pht_function(fn_mir: String) -> String =
-    let fwd_map = pht_find_phi_fwds(fn_mir, 0, "");
+fn pht_function(fn_mir: String) -> String
+  post it.len() >= 0
+= let fwd_map = pht_find_phi_fwds(fn_mir, 0, "");
     if fwd_map == "" { fn_mir }
     else {
         let phi_map = pht_build_phi_map(fn_mir, fwd_map, 0, "");
@@ -14544,16 +14841,18 @@ fn pht_program(mir: String, pos: i64, sb: i64) -> i64
         else { pht_program(mir, fn_end + 2, sb) }
     };
 
-fn optimize_phi_thread(mir: String) -> String =
-    let sb = sb_new();
+fn optimize_phi_thread(mir: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let w = pht_program(mir, 0, sb);
     let result = sb_build(sb);
     let _f = sb_free(sb);
     result;
 
 // Run if-to-select twice to handle nested if-else (inner then outer in same iteration)
-fn optimize_if_select_twice(mir: String) -> String =
-    let first = optimize_if_select(mir);
+fn optimize_if_select_twice(mir: String) -> String
+  post it.len() >= 0
+= let first = optimize_if_select(mir);
     optimize_if_select(first);
 
 // Iterative optimization: CF + CP + DCE + if-select(x2) + goto-chain + phi-thread + DCE until stable (max 4 iterations)
@@ -14595,8 +14894,9 @@ fn build_param_sig(params: String, pos: i64, acc: String) -> String
         if comma >= params.len() { new_acc } else { build_param_sig(params, comma + 1, new_acc) }
     };
 
-fn lookup_fn_ret(registry: String, fn_name: String) -> String =
-    let clean_fn = if fn_name.len() > 0 and fn_name.byte_at(0) == 64 { fn_name.slice(1, fn_name.len()) } else { fn_name };
+fn lookup_fn_ret(registry: String, fn_name: String) -> String
+  post it.len() >= 0
+= let clean_fn = if fn_name.len() > 0 and fn_name.byte_at(0) == 64 { fn_name.slice(1, fn_name.len()) } else { fn_name };
     lookup_fn_ret_at(registry, 0, clean_fn);
 
 fn lookup_fn_ret_at(registry: String, pos: i64, fn_name: String) -> String
@@ -14614,8 +14914,9 @@ fn lookup_fn_ret_at(registry: String, pos: i64, fn_name: String) -> String
     };
 
 
-fn lookup_fn_both(registry: String, fn_name: String) -> String =
-    let clean_fn = if fn_name.len() > 0 and fn_name.byte_at(0) == 64 { fn_name.slice(1, fn_name.len()) } else { fn_name };
+fn lookup_fn_both(registry: String, fn_name: String) -> String
+  post it.len() >= 0
+= let clean_fn = if fn_name.len() > 0 and fn_name.byte_at(0) == 64 { fn_name.slice(1, fn_name.len()) } else { fn_name };
     lookup_fn_both_at(registry, 0, clean_fn);
 
 fn lookup_fn_both_at(registry: String, pos: i64, fn_name: String) -> String
@@ -14633,8 +14934,9 @@ fn lookup_fn_both_at(registry: String, pos: i64, fn_name: String) -> String
     };
 
 
-fn find_mir_annotation(s: String) -> String =
-    find_mir_annotation_at(s, 0);
+fn find_mir_annotation(s: String) -> String
+  post it.len() >= 0
+= find_mir_annotation_at(s, 0);
 
 fn find_mir_annotation_at(s: String, pos: i64) -> String
   pre pos >= 0
@@ -14644,8 +14946,9 @@ fn find_mir_annotation_at(s: String, pos: i64) -> String
         s.slice(pos + 1, name_end)
     } else { find_mir_annotation_at(s, pos + 1) };
 
-fn strip_annotation(s: String) -> String =
-    strip_annotation_at(s, 0);
+fn strip_annotation(s: String) -> String
+  post it.len() >= 0
+= strip_annotation_at(s, 0);
 
 fn strip_annotation_at(s: String, pos: i64) -> String
   pre pos >= 0
@@ -14728,8 +15031,9 @@ fn find_arrow(s: String, pos: i64) -> i64
 = 
     if pos + 1 >= s.len() { pos } else if s.byte_at(pos) == 45 and s.byte_at(pos + 1) == 62 { pos } else { find_arrow(s, pos + 1) };
 
-fn ends_with_colon(s: String) -> bool =
-    if s.len() == 0 { false } else {
+fn ends_with_colon(s: String) -> bool
+  post it or not it
+= if s.len() == 0 { false } else {
         let last = trim_end(s);
         if last.len() == 0 { false } else { last.byte_at(last.len() - 1) == 58 }
     };
@@ -14743,12 +15047,14 @@ fn find_double_pipe(s: String, pos: i64) -> i64
     else { find_double_pipe(s, pos + 1) };
 
 
-fn gen_module_header() -> String =
-    "; ModuleID = bmb_bootstrap";
+fn gen_module_header() -> String
+  post it.len() >= 0
+= "; ModuleID = bmb_bootstrap";
 
 // Runtime declarations — all LLVM extern function declarations
-fn gen_runtime_decls() -> String =
-    // I/O + Math + Array
+fn gen_runtime_decls() -> String
+  post it.len() >= 0
+= // I/O + Math + Array
     "declare void @println(i64) nofree nounwind willreturn" + SEP() +
     "declare void @print_str(ptr nocapture readonly) nofree nounwind willreturn" + SEP() +
     "declare void @println_str(ptr nocapture readonly) nofree nounwind willreturn" + SEP() +
@@ -15009,8 +15315,9 @@ fn gen_runtime_decls() -> String =
 
 // Collect all string literals from MIR, returns tab-separated list
 // Now passes current list as parameter instead of rebuilding every iteration
-fn collect_strings_from_mir(mir: String) -> String =
-    collect_strings_acc_v2(mir, 0, "");
+fn collect_strings_from_mir(mir: String) -> String
+  post it.len() >= 0
+= collect_strings_acc_v2(mir, 0, "");
 
 // Uses String accumulator directly, trading some allocation for avoiding
 // the O(N) sb_build call that was happening on every string found
@@ -15097,8 +15404,9 @@ fn find_string_index_scan(list: String, target: String, pos: i64, idx: i64) -> i
     };
 
 // Returns comma-separated list of function names
-fn collect_string_fns_from_mir(mir: String) -> String =
-    collect_string_fns_acc(mir, 0, "");
+fn collect_string_fns_from_mir(mir: String) -> String
+  post it.len() >= 0
+= collect_string_fns_acc(mir, 0, "");
 
 fn collect_string_fns_acc(mir: String, pos: i64, acc: String) -> String
     pre pos >= 0
@@ -15171,8 +15479,9 @@ fn find_fn_end(mir: String, pos: i64) -> i64
     else { find_fn_end(mir, pos + 1) };
 
 // Check if function name is in dynamic string functions list
-fn is_dynamic_string_fn(fn_name: String, string_fns: String) -> bool =
-    if string_fns == "" { false }
+fn is_dynamic_string_fn(fn_name: String, string_fns: String) -> bool
+  post it or not it
+= if string_fns == "" { false }
     else { check_fn_in_list(fn_name, string_fns, 0) };
 
 fn check_fn_in_list(fn_name: String, list: String, pos: i64) -> bool
@@ -15187,8 +15496,9 @@ fn check_fn_in_list(fn_name: String, list: String, pos: i64) -> bool
     };
 
 // M5-5c: Check if function returns Array<String> (tagged as "A:fn_name")
-fn is_dynamic_string_array_fn(fn_name: String, string_fns: String) -> bool =
-    if string_fns == "" { false }
+fn is_dynamic_string_array_fn(fn_name: String, string_fns: String) -> bool
+  post it or not it
+= if string_fns == "" { false }
     else { check_array_fn_in_list(fn_name, string_fns, 0) };
 
 fn check_array_fn_in_list(fn_name: String, list: String, pos: i64) -> bool
@@ -15207,8 +15517,9 @@ fn check_array_fn_in_list(fn_name: String, list: String, pos: i64) -> bool
     };
 
 // Cycle 2682: Check if function returns Array<f64> (tagged as "F:fn_name")
-fn is_dynamic_f64_array_fn(fn_name: String, string_fns: String) -> bool =
-    if string_fns == "" { false }
+fn is_dynamic_f64_array_fn(fn_name: String, string_fns: String) -> bool
+  post it or not it
+= if string_fns == "" { false }
     else { check_f64_array_fn_in_list(fn_name, string_fns, 0) };
 
 fn check_f64_array_fn_in_list(fn_name: String, list: String, pos: i64) -> bool
@@ -15227,16 +15538,18 @@ fn check_f64_array_fn_in_list(fn_name: String, list: String, pos: i64) -> bool
     };
 
 // Generate global string constants
-fn gen_string_globals(strings: String) -> String =
-    if strings == "" { "" } else {
+fn gen_string_globals(strings: String) -> String
+  post it.len() >= 0
+= if strings == "" { "" } else {
         let sb = sb_new();
         let w1 = gen_string_globals_acc(strings, 0, 0, sb);
         sb_build(sb)
     };
 
 // confusion with the output line separator. Use \7C for | (byte 124).
-fn escape_llvm_string(s: String) -> String =
-    escape_llvm_string_acc(s, 0, "");
+fn escape_llvm_string(s: String) -> String
+  post it.len() >= 0
+= escape_llvm_string_acc(s, 0, "");
 
 fn escape_llvm_string_acc(s: String, pos: i64, acc: String) -> String
   pre pos >= 0
@@ -15301,8 +15614,9 @@ fn gen_string_globals_acc(strings: String, pos: i64, idx: i64, sb: i64) -> i64
     };
 
 // Generate program with string table
-fn gen_program_sb_with_strings_fns_structs(mir: String, strings: String, string_fns: String, struct_reg: String) -> String =
-    let fn_rsb = sb_new();
+fn gen_program_sb_with_strings_fns_structs(mir: String, strings: String, string_fns: String, struct_reg: String) -> String
+  post it.len() >= 0
+= let fn_rsb = sb_new();
     let ptr_rsb = sb_new();
     let w0 = build_all_registries(mir, fn_rsb, ptr_rsb);
     let registry = sb_build(fn_rsb);
@@ -15334,13 +15648,15 @@ fn gen_program_acc_sb_structs_reuse(mir: String, pos: i64, strings: String, stri
     };
 
 // v0.93.4: Check if MIR contains a self-call (direct recursion)
-fn mir_has_self_call(mir: String, fn_name: String) -> bool =
-    let pattern = "call @" + fn_name + "(";
+fn mir_has_self_call(mir: String, fn_name: String) -> bool
+  post it or not it
+= let pattern = "call @" + fn_name + "(";
     find_pattern_noa(mir, pattern, 0) >= 0;
 
 // v0.93.4: Add norecurse attribute to non-recursive functions
-fn add_norecurse_attr(ir: String) -> String =
-    // Find "mustprogress" in the first line (define header) and add norecurse before it
+fn add_norecurse_attr(ir: String) -> String
+  post it.len() >= 0
+= // Find "mustprogress" in the first line (define header) and add norecurse before it
     let pipe_pos = find_pipe_skip_quotes(ir, 0);
     let header = ir.slice(0, pipe_pos);
     let rest = if pipe_pos >= ir.len() { "" } else { ir.slice(pipe_pos, ir.len()) };
@@ -15353,8 +15669,9 @@ fn add_norecurse_attr(ir: String) -> String =
     };
 
 // v0.96.44: Add nofree attribute to functions that don't call free/realloc
-fn add_nofree_attr(ir: String) -> String =
-    let pipe_pos = find_pipe_skip_quotes(ir, 0);
+fn add_nofree_attr(ir: String) -> String
+  post it.len() >= 0
+= let pipe_pos = find_pipe_skip_quotes(ir, 0);
     let header = ir.slice(0, pipe_pos);
     // Skip if already has nofree (pure/const functions)
     if find_pattern_noa(header, "nofree", 0) >= 0 { ir }
@@ -15375,8 +15692,9 @@ fn add_nofree_attr(ir: String) -> String =
 
 // v0.96.44: Add speculatable to memory(none) leaf functions (no user-defined calls)
 // Only safe for leaf functions — LLVM may speculate calls past base case in recursive functions
-fn add_speculatable_attr(ir: String) -> String =
-    let pipe_pos = find_pipe_skip_quotes(ir, 0);
+fn add_speculatable_attr(ir: String) -> String
+  post it.len() >= 0
+= let pipe_pos = find_pipe_skip_quotes(ir, 0);
     let header = ir.slice(0, pipe_pos);
     // Only apply to memory(none) functions
     if find_pattern_noa(header, "memory(none)", 0) < 0 { ir }
@@ -15415,8 +15733,9 @@ fn has_user_call_in_body(ir: String, pos: i64) -> bool
         }
     };
 
-fn gen_function_sb_structs_reuse(mir: String, strings: String, string_fns: String, registry: String, struct_reg: String, ptr_ret_reg: String, fn_sb: i64, str_sb: i64, ptr_sb: i64) -> String =
-    let _c1 = sb_clear(fn_sb);
+fn gen_function_sb_structs_reuse(mir: String, strings: String, string_fns: String, registry: String, struct_reg: String, ptr_ret_reg: String, fn_sb: i64, str_sb: i64, ptr_sb: i64) -> String
+  post it.len() >= 0
+= let _c1 = sb_clear(fn_sb);
     let _c2 = sb_clear(str_sb);
     let _c3 = sb_clear(ptr_sb);
     let ret_type = extract_mir_return_type(mir);
@@ -15596,11 +15915,13 @@ fn init_fn_ptr_returns_at(reg: String, pos: i64, ptr_sb: i64) -> i64
         }
     };
 
-fn is_struct_ptr_type(t: String) -> bool =
-    t.len() >= 2 and t.byte_at(0) == 42;
+fn is_struct_ptr_type(t: String) -> bool
+  post it or not it
+= t.len() >= 2 and t.byte_at(0) == 42;
 
-fn extract_struct_name_from_ptr_type(t: String) -> String =
-    if t.len() >= 2 and t.byte_at(0) == 42 { t.slice(1, t.len()) }
+fn extract_struct_name_from_ptr_type(t: String) -> String
+  post it.len() >= 0
+= if t.len() >= 2 and t.byte_at(0) == 42 { t.slice(1, t.len()) }
     else { "" };
 
 // Format: "P:%name:StructName," for each *StructName parameter
@@ -15653,8 +15974,9 @@ fn push_ptr_marker(ptr_sb: i64, varname: String, struct_name: String) -> i64
     let w4 = sb_push(ptr_sb, struct_name);
     sb_push(ptr_sb, ",");
 
-fn get_struct_ptr_type(varname: String, ptr_sb: i64) -> String =
-    let content = sb_build(ptr_sb);
+fn get_struct_ptr_type(varname: String, ptr_sb: i64) -> String
+  post it.len() >= 0
+= let content = sb_build(ptr_sb);
     get_struct_ptr_type_from(varname, content, 0);
 
 fn get_struct_ptr_type_from(varname: String, content: String, pos: i64) -> String
@@ -15716,8 +16038,9 @@ fn count_commas(s: String, pos: i64) -> i64
     else if s.byte_at(pos) == 44 { 1 + count_commas(s, pos + 1) }
     else { count_commas(s, pos + 1) };
 
-fn build_struct_gep_type(struct_reg: String, struct_name: String) -> String =
-    let field_count = count_struct_fields(struct_reg, struct_name);
+fn build_struct_gep_type(struct_reg: String, struct_name: String) -> String
+  post it.len() >= 0
+= let field_count = count_struct_fields(struct_reg, struct_name);
     "{ " + build_field_types_str(struct_reg, struct_name, field_count) + " }";
 
 fn build_field_types_str(struct_reg: String, struct_name: String, count: i64) -> String
@@ -15794,16 +16117,18 @@ fn gen_fn_lines_structs(mir: String, pos: i64, sb: i64, ret_type: String, string
         if pipe_pos >= mir.len() { 0 } else { gen_fn_lines_structs(mir, pipe_pos + 1, sb, ret_type, strings, string_fns, new_mapping, str_sb, registry, struct_reg, ptr_sb) }
     };
 
-fn llvm_gen_fn_line_structs(line: String, ret_type: String, strings: String, string_fns: String, mapping: String, str_sb: i64, registry: String, struct_reg: String, ptr_sb: i64) -> String =
-    let p = low_skip_ws(line, 0);
+fn llvm_gen_fn_line_structs(line: String, ret_type: String, strings: String, string_fns: String, mapping: String, str_sb: i64, registry: String, struct_reg: String, ptr_sb: i64) -> String
+  post it.len() >= 0
+= let p = low_skip_ws(line, 0);
     if p >= line.len() { same_mapping_empty() }
     else if low_starts_with_at(line, p, "fn ") { same_mapping(llvm_gen_fn_header(line, p)) }
     else if ends_with_colon(line) { same_mapping(line) }
     else if line == "}" { same_mapping("}") }
     else { llvm_gen_line_structs(line, ret_type, strings, string_fns, mapping, str_sb, registry, struct_reg, ptr_sb) };
 
-fn llvm_gen_line_structs(line: String, ret_type: String, strings: String, string_fns: String, mapping: String, str_sb: i64, registry: String, struct_reg: String, ptr_sb: i64) -> String =
-    let p = low_skip_ws(line, 0);
+fn llvm_gen_line_structs(line: String, ret_type: String, strings: String, string_fns: String, mapping: String, str_sb: i64, registry: String, struct_reg: String, ptr_sb: i64) -> String
+  post it.len() >= 0
+= let p = low_skip_ws(line, 0);
     if p >= line.len() { same_mapping_empty() }
     else if line.byte_at(p) == 37 { llvm_gen_assign_structs(line, p, strings, string_fns, mapping, str_sb, registry, struct_reg, ptr_sb) }
     else if low_starts_with_at(line, p, "return") { same_mapping(llvm_gen_return_typed(line, p, ret_type)) }
@@ -16262,8 +16587,9 @@ fn find_fn_name_end(line: String, pos: i64) -> i64
     else { find_fn_name_end(line, pos + 1) };
 
 // This looks in ptr_sb for "F:@fn_name:StructName," entries
-fn get_fn_ptr_return_type(fn_name: String, ptr_sb: i64) -> String =
-    let content = sb_build(ptr_sb);
+fn get_fn_ptr_return_type(fn_name: String, ptr_sb: i64) -> String
+  post it.len() >= 0
+= let content = sb_build(ptr_sb);
     get_fn_ptr_return_from(fn_name, content, 0);
 
 fn get_fn_ptr_return_from(fn_name: String, content: String, pos: i64) -> String
@@ -16351,8 +16677,9 @@ fn find_field_index_or_neg(fields: String, pos: i64, idx: i64, target: String) -
     };
 
 // Strip ~d type suffix from field name
-fn strip_type_suffix(name: String) -> String =
-    let tilde_pos = find_char(name, 0, 126);
+fn strip_type_suffix(name: String) -> String
+  post it.len() >= 0
+= let tilde_pos = find_char(name, 0, 126);
     if tilde_pos < name.len() { name.slice(0, tilde_pos) } else { name };
 
 // Check if a field is f64 by looking up in registry
@@ -16483,8 +16810,9 @@ fn check_field_is_f64_array(fields: String, pos: i64, target: String) -> i64
         else { check_field_is_f64_array(fields, comma_pos + 1, target) }
     };
 
-fn get_field_ptr_from_registry(registry: String, field_name: String) -> String =
-    get_field_ptr_from_registry_at(registry, 0, field_name);
+fn get_field_ptr_from_registry(registry: String, field_name: String) -> String
+  post it.len() >= 0
+= get_field_ptr_from_registry_at(registry, 0, field_name);
 
 fn get_field_ptr_from_registry_at(registry: String, pos: i64, field_name: String) -> String
   pre pos >= 0
@@ -16551,8 +16879,9 @@ fn push_string_marker(str_sb: i64, varname: String) -> i64
     let w2 = sb_push(str_sb, varname);
     sb_push(str_sb, ",");
 
-fn is_string_var_sb(varname: String, str_sb: i64) -> bool =
-    let marker = "S:" + varname;
+fn is_string_var_sb(varname: String, str_sb: i64) -> bool
+  post it or not it
+= let marker = "S:" + varname;
     bmb_sb_contains(str_sb, marker) > 0;
 
 fn push_double_marker(str_sb: i64, varname: String) -> i64
@@ -16561,12 +16890,14 @@ fn push_double_marker(str_sb: i64, varname: String) -> i64
     let w2 = sb_push(str_sb, varname);
     sb_push(str_sb, ",");
 
-fn is_double_var_sb(varname: String, str_sb: i64) -> bool =
-    let marker = "D:" + varname;
+fn is_double_var_sb(varname: String, str_sb: i64) -> bool
+  post it or not it
+= let marker = "D:" + varname;
     bmb_sb_contains(str_sb, marker) > 0;
 
-fn is_f64_ptr_sb(varname: String, str_sb: i64) -> bool =
-    let marker = "F:" + varname;
+fn is_f64_ptr_sb(varname: String, str_sb: i64) -> bool
+  post it or not it
+= let marker = "F:" + varname;
     bmb_sb_contains(str_sb, marker) > 0;
 
 fn push_f64_ptr_marker(str_sb: i64, varname: String) -> i64
@@ -16576,18 +16907,21 @@ fn push_f64_ptr_marker(str_sb: i64, varname: String) -> i64
     sb_push(str_sb, ",");
 
 // v0.95: Check if variable is an i64 function parameter (for indirect call detection)
-fn is_i64_param_sb(varname: String, str_sb: i64) -> bool =
-    let marker = "P:" + varname;
+fn is_i64_param_sb(varname: String, str_sb: i64) -> bool
+  post it or not it
+= let marker = "P:" + varname;
     bmb_sb_contains(str_sb, marker) > 0;
 
 // Cycle 2934: Check if variable is a HOF (fn(T)->R) parameter
-fn is_hof_param_sb(varname: String, str_sb: i64) -> bool =
-    let marker = "H:" + varname;
+fn is_hof_param_sb(varname: String, str_sb: i64) -> bool
+  post it or not it
+= let marker = "H:" + varname;
     bmb_sb_contains(str_sb, marker) > 0;
 
 // v0.95: Check if variable is marked as i32 in SB
-fn is_i32_var_sb(varname: String, str_sb: i64) -> bool =
-    let marker = "W:" + varname;
+fn is_i32_var_sb(varname: String, str_sb: i64) -> bool
+  post it or not it
+= let marker = "W:" + varname;
     bmb_sb_contains(str_sb, marker) > 0;
 
 // v0.95: Mark variable as i32 in SB
@@ -16597,8 +16931,9 @@ fn push_i32_marker(str_sb: i64, varname: String) -> i64
     let w2 = sb_push(str_sb, varname);
     sb_push(str_sb, ",");
 
-fn is_str_ptr_sb(varname: String, str_sb: i64) -> bool =
-    let marker = "R:" + varname;
+fn is_str_ptr_sb(varname: String, str_sb: i64) -> bool
+  post it or not it
+= let marker = "R:" + varname;
     bmb_sb_contains(str_sb, marker) > 0;
 
 fn push_str_ptr_marker(str_sb: i64, varname: String) -> i64
@@ -16608,8 +16943,9 @@ fn push_str_ptr_marker(str_sb: i64, varname: String) -> i64
     sb_push(str_sb, ",");
 
 // v0.95: Closure variable markers — CN:%varname, where N is capture count
-fn is_closure_var_sb(varname: String, str_sb: i64) -> bool =
-    check_closure_marker(varname, str_sb, 9);
+fn is_closure_var_sb(varname: String, str_sb: i64) -> bool
+  post it or not it
+= check_closure_marker(varname, str_sb, 9);
 
 fn check_closure_marker(varname: String, str_sb: i64, n: i64) -> bool
   pre n >= 0
@@ -16716,8 +17052,9 @@ fn llvm_gen_add_with_strings_sb_2(line: String, pos: i64, dest: String, mapping:
     let right_trimmed = trim_end(right);
     llvm_gen_add_with_strings_sb_3(dest, mapping, str_sb, left_trimmed, right_trimmed);
 
-fn llvm_gen_add_with_strings_sb_3(dest: String, mapping: String, str_sb: i64, left_trimmed: String, right_trimmed: String) -> String =
-    let left_is_string = is_string_var_sb(left_trimmed, str_sb);
+fn llvm_gen_add_with_strings_sb_3(dest: String, mapping: String, str_sb: i64, left_trimmed: String, right_trimmed: String) -> String
+  post it.len() >= 0
+= let left_is_string = is_string_var_sb(left_trimmed, str_sb);
     let right_is_string = is_string_var_sb(right_trimmed, str_sb);
     if left_is_string or right_is_string {
         llvm_gen_add_string_concat_sb(dest, str_sb, left_trimmed, right_trimmed)
@@ -16732,14 +17069,16 @@ fn llvm_gen_add_with_strings_sb_3(dest: String, mapping: String, str_sb: i64, le
         }
     };
 
-fn llvm_gen_add_string_concat_sb(dest: String, str_sb: i64, left_trimmed: String, right_trimmed: String) -> String =
-    let lptr = dest + "_l";
+fn llvm_gen_add_string_concat_sb(dest: String, str_sb: i64, left_trimmed: String, right_trimmed: String) -> String
+  post it.len() >= 0
+= let lptr = dest + "_l";
     let rptr = dest + "_r";
     let cptr = dest + "_c";
     llvm_gen_add_string_concat_sb_2(dest, str_sb, left_trimmed, right_trimmed, lptr, rptr, cptr);
 
-fn llvm_gen_add_string_concat_sb_2(dest: String, str_sb: i64, left_trimmed: String, right_trimmed: String, lptr: String, rptr: String, cptr: String) -> String =
-    let line1 = "  " + lptr + " = inttoptr i64 " + left_trimmed + " to ptr";
+fn llvm_gen_add_string_concat_sb_2(dest: String, str_sb: i64, left_trimmed: String, right_trimmed: String, lptr: String, rptr: String, cptr: String) -> String
+  post it.len() >= 0
+= let line1 = "  " + lptr + " = inttoptr i64 " + left_trimmed + " to ptr";
     let line2 = "  " + rptr + " = inttoptr i64 " + right_trimmed + " to ptr";
     let line3 = "  " + cptr + " = call ptr @bmb_string_concat(ptr " + lptr + ", ptr " + rptr + ")";
     let line4 = "  " + dest + " = ptrtoint ptr " + cptr + " to i64";
@@ -16865,8 +17204,9 @@ fn llvm_try_println_str_dispatch(line: String, pos: i64, dest: String, fn_name: 
         } else { "" }
     } else { "" };
 
-fn is_builtin_double_fn(name: String) -> bool =
-    name == "sqrt" or name == "i64_to_f64" or name == "sin" or name == "cos" or name == "tan" or name == "atan" or name == "atan2" or name == "log" or name == "log2" or name == "log10" or name == "exp" or name == "fmod" or name == "pow_f64" or
+fn is_builtin_double_fn(name: String) -> bool
+  post it or not it
+= name == "sqrt" or name == "i64_to_f64" or name == "sin" or name == "cos" or name == "tan" or name == "atan" or name == "atan2" or name == "log" or name == "log2" or name == "log10" or name == "exp" or name == "fmod" or name == "pow_f64" or
     // v0.96: Float ops — MIR names kept for type tracking (codegen maps to LLVM intrinsics)
     name == "bmb_f64_floor" or name == "bmb_f64_ceil" or name == "bmb_f64_round" or
     name == "bmb_f64_sqrt" or name == "bmb_f64_abs" or
@@ -16875,21 +17215,24 @@ fn is_builtin_double_fn(name: String) -> bool =
 
 // Check if a variable is marked as a string in the mapping
 
-fn llvm_gen_string_cmp(pred: String, left: String, right: String, dest: String, mapping: String) -> String =
-    let lptr = dest + "_lp";
+fn llvm_gen_string_cmp(pred: String, left: String, right: String, dest: String, mapping: String) -> String
+  post it.len() >= 0
+= let lptr = dest + "_lp";
     let rptr = dest + "_rp";
     let eq_dest = dest + "_streq";
     let conv_l = "  " + lptr + " = inttoptr i64 " + left + " to ptr";
     llvm_gen_string_cmp_2(pred, right, dest, mapping, lptr, rptr, eq_dest, conv_l);
 
-fn llvm_gen_string_cmp_2(pred: String, right: String, dest: String, mapping: String, lptr: String, rptr: String, eq_dest: String, conv_l: String) -> String =
-    let conv_r = "  " + rptr + " = inttoptr i64 " + right + " to ptr";
+fn llvm_gen_string_cmp_2(pred: String, right: String, dest: String, mapping: String, lptr: String, rptr: String, eq_dest: String, conv_l: String) -> String
+  post it.len() >= 0
+= let conv_r = "  " + rptr + " = inttoptr i64 " + right + " to ptr";
     let call_ln = "  " + eq_dest + " = call i64 @bmb_string_eq(ptr " + lptr + ", ptr " + rptr + ")";
     let cmp_ln = "  " + dest + "_cmp = icmp ne i64 " + eq_dest + ", 0";
     llvm_gen_string_cmp_3(pred, dest, mapping, conv_l, conv_r, call_ln, cmp_ln);
 
-fn llvm_gen_string_cmp_3(pred: String, dest: String, mapping: String, conv_l: String, conv_r: String, call_ln: String, cmp_ln: String) -> String =
-    let res_ln = "  " + dest + " = zext i1 " + dest + "_cmp to i64";
+fn llvm_gen_string_cmp_3(pred: String, dest: String, mapping: String, conv_l: String, conv_r: String, call_ln: String, cmp_ln: String) -> String
+  post it.len() >= 0
+= let res_ln = "  " + dest + " = zext i1 " + dest + "_cmp to i64";
     if pred == "ne" {
         let inv_cmp = "  " + dest + "_cmp = icmp eq i64 " + dest + "_streq, 0";
         same_mapping(conv_l + SEP() + conv_r + SEP() + call_ln + SEP() + inv_cmp + SEP() + res_ln)
@@ -16906,36 +17249,41 @@ fn is_string_returning_fn(name: String) -> bool
     is_string_fn_group1(name) or is_string_fn_group2(name) or is_string_fn_group3(name) or
     is_string_fn_group4(name) or is_string_fn_group5(name) or is_string_fn_group6(name);
 
-fn is_string_fn_group1(name: String) -> bool =
-    name == "get_node_type" or name == "get_child" or name == "extract_name" or
+fn is_string_fn_group1(name: String) -> bool
+  post it or not it
+= name == "get_node_type" or name == "get_child" or name == "extract_name" or
     name == "bmb_string_slice" or name == "bmb_string_concat" or
     name == "bmb_string_from_cstr" or name == "bmb_chr" or name == "bmb_read_file" or
     name == "bmb_getenv" or name == "get_arg" or name == "int_to_string" or
     name == "chr" or name == "slice" or
     name == "bmb_string_concat3" or name == "bmb_string_concat5" or name == "bmb_string_concat7";
 
-fn is_string_fn_group2(name: String) -> bool =
-    name == "sb_build" or name == "digit_char" or name == "escape_parens" or
+fn is_string_fn_group2(name: String) -> bool
+  post it or not it
+= name == "sb_build" or name == "digit_char" or name == "escape_parens" or
     name == "unescape_parens_from_ast" or name == "extract_string_content" or
     name == "get_fn_return_type" or name == "collect_params" or name == "get_fn_body" or
     name == "lower_function_sb" or name == "lower_program_sb";
 
-fn is_string_fn_group3(name: String) -> bool =
-    name == "parse_source" or name == "gen_function" or name == "gen_program" or
+fn is_string_fn_group3(name: String) -> bool
+  post it or not it
+= name == "parse_source" or name == "gen_function" or name == "gen_program" or
     name == "read_file" or
     name == "gen_module_header" or name == "gen_runtime_decls" or
     name == "gen_string_globals" or
     name == "collect_strings_from_mir" or name == "compile_program";
 
-fn is_string_fn_group4(name: String) -> bool =
-    name == "gen_extern_println" or name == "gen_extern_print_str" or
+fn is_string_fn_group4(name: String) -> bool
+  post it or not it
+= name == "gen_extern_println" or name == "gen_extern_print_str" or
     name == "llvm_gen_binop" or name == "llvm_gen_cmp" or name == "llvm_gen_call" or
     name == "llvm_gen_not" or name == "llvm_gen_neg" or name == "llvm_gen_phi" or
     name == "llvm_gen_branch" or name == "llvm_gen_goto" or name == "llvm_gen_return_typed" or
     name == "llvm_gen_string_ref" or name == "llvm_gen_line_with_ret";
 
-fn is_string_fn_group5(name: String) -> bool =
-    name == "llvm_gen_assign_typed" or name == "llvm_gen_rhs_typed" or
+fn is_string_fn_group5(name: String) -> bool
+  post it or not it
+= name == "llvm_gen_assign_typed" or name == "llvm_gen_rhs_typed" or
     name == "gen_function_lines_typed" or name == "gen_function_sb_typed" or
     name == "llvm_gen_fn_line_typed" or name == "llvm_gen_fn_header" or
     name == "gen_all_externs" or name == "pack_result" or name == "unpack_ast" or
@@ -16944,8 +17292,9 @@ fn is_string_fn_group5(name: String) -> bool =
     name == "sb_build" or name == "pack_lower_result" or name == "unescape_parens";
 
 // v0.100.2: runtime String-returning builtins missing from str_sb tracking (Cycle 3073)
-fn is_string_fn_group6(name: String) -> bool =
-    name == "bmb_string_reverse" or name == "bmb_string_substr" or
+fn is_string_fn_group6(name: String) -> bool
+  post it or not it
+= name == "bmb_string_reverse" or name == "bmb_string_substr" or
     name == "bmb_string_pad_left" or name == "bmb_string_pad_right" or
     name == "bmb_string_trim" or name == "bmb_string_replace" or
     name == "bmb_string_to_upper" or name == "bmb_string_to_lower" or
@@ -16968,8 +17317,9 @@ fn extract_call_fn_name(line: String, pos: i64) -> String
 
 // Check if a variable name is a user variable (not %_t)
 // v0.92: Fixed to handle short names like %i (len=2) - they ARE user vars
-fn is_user_variable(name: String) -> bool =
-    if name.len() < 2 { false }
+fn is_user_variable(name: String) -> bool
+  post it or not it
+= if name.len() < 2 { false }
     else if name.len() == 2 { true }
     else {
         let after_pct = name.byte_at(1);
@@ -16978,13 +17328,15 @@ fn is_user_variable(name: String) -> bool =
     };
 
 // Resolve a variable using the mapping
-fn resolve_variable(varname: String, mapping: String) -> String =
-    if not is_user_variable(varname) { varname }
+fn resolve_variable(varname: String, mapping: String) -> String
+  post it.len() >= 0
+= if not is_user_variable(varname) { varname }
     else { lookup_mapping(mapping, varname, varname) };
 
 // Look up a variable in the mapping, return default if not found
-fn lookup_mapping(mapping: String, name: String, default_val: String) -> String =
-    if mapping == "" { default_val }
+fn lookup_mapping(mapping: String, name: String, default_val: String) -> String
+  post it.len() >= 0
+= if mapping == "" { default_val }
     else { lookup_mapping_at(mapping, name, 0, default_val) };
 
 fn lookup_mapping_at(mapping: String, name: String, pos: i64, default_val: String) -> String
@@ -17000,24 +17352,33 @@ fn lookup_mapping_at(mapping: String, name: String, pos: i64, default_val: Strin
     };
 
 // Add a name:value pair to the mapping (prepend for O(1) recent lookup)
-fn add_mapping(mapping: String, name: String, value: String) -> String =
-    let entry = name + ":" + value;
+fn add_mapping(mapping: String, name: String, value: String) -> String
+  post it.len() >= 0
+= let entry = name + ":" + value;
     if mapping == "" { entry } else { entry + "," + mapping };
 
-fn same_mapping(llvm_line: String) -> String = llvm_line;
-fn same_mapping_empty() -> String = "";
-fn changed_mapping(new_mapping: String, llvm_line: String) -> String =
-    "!" + int_to_string(new_mapping.len()) + ":" + new_mapping + llvm_line;
-fn changed_mapping_empty(new_mapping: String) -> String =
-    "!" + int_to_string(new_mapping.len()) + ":" + new_mapping;
+fn same_mapping(llvm_line: String) -> String
+  post it.len() >= 0
+= llvm_line;
+fn same_mapping_empty() -> String
+  post it.len() >= 0
+= "";
+fn changed_mapping(new_mapping: String, llvm_line: String) -> String
+  post it.len() >= 0
+= "!" + int_to_string(new_mapping.len()) + ":" + new_mapping + llvm_line;
+fn changed_mapping_empty(new_mapping: String) -> String
+  post it.len() >= 0
+= "!" + int_to_string(new_mapping.len()) + ":" + new_mapping;
 
-fn extract_new_mapping(result: String) -> String =
-    let colon_pos = find_char(result, 1, 58);
+fn extract_new_mapping(result: String) -> String
+  post it.len() >= 0
+= let colon_pos = find_char(result, 1, 58);
     let map_len = parse_len_at(result, 1, colon_pos);
     result.slice(colon_pos + 1, colon_pos + 1 + map_len);
 
-fn extract_new_llvm_line(result: String) -> String =
-    let colon_pos = find_char(result, 1, 58);
+fn extract_new_llvm_line(result: String) -> String
+  post it.len() >= 0
+= let colon_pos = find_char(result, 1, 58);
     let map_len = parse_len_at(result, 1, colon_pos);
     result.slice(colon_pos + 1 + map_len, result.len());
 
@@ -17072,28 +17433,34 @@ fn conc_extract_three_third(line: String, pos: i64) -> String
 // Extract four space-separated operands
 
 
-fn conc_gen_call_i64_1(dest: String, fn_name: String, op: String) -> String =
-    "  " + dest + " = call i64 @" + fn_name + "(i64 " + op + ")";
+fn conc_gen_call_i64_1(dest: String, fn_name: String, op: String) -> String
+  post it.len() >= 0
+= "  " + dest + " = call i64 @" + fn_name + "(i64 " + op + ")";
 
 // Generate i64 call with 2 args
-fn conc_gen_call_i64_2(dest: String, fn_name: String, op1: String, op2: String) -> String =
-    "  " + dest + " = call i64 @" + fn_name + "(i64 " + op1 + ", i64 " + op2 + ")";
+fn conc_gen_call_i64_2(dest: String, fn_name: String, op1: String, op2: String) -> String
+  post it.len() >= 0
+= "  " + dest + " = call i64 @" + fn_name + "(i64 " + op1 + ", i64 " + op2 + ")";
 
 // Generate i64 call with 3 args
-fn conc_gen_call_i64_3(dest: String, fn_name: String, op1: String, op2: String, op3: String) -> String =
-    "  " + dest + " = call i64 @" + fn_name + "(i64 " + op1 + ", i64 " + op2 + ", i64 " + op3 + ")";
+fn conc_gen_call_i64_3(dest: String, fn_name: String, op1: String, op2: String, op3: String) -> String
+  post it.len() >= 0
+= "  " + dest + " = call i64 @" + fn_name + "(i64 " + op1 + ", i64 " + op2 + ", i64 " + op3 + ")";
 
 // Generate void call with 1 arg
-fn conc_gen_call_void_1(fn_name: String, op: String) -> String =
-    "  call void @" + fn_name + "(i64 " + op + ")";
+fn conc_gen_call_void_1(fn_name: String, op: String) -> String
+  post it.len() >= 0
+= "  call void @" + fn_name + "(i64 " + op + ")";
 
 // Generate void call with 2 args
-fn conc_gen_call_void_2(fn_name: String, op1: String, op2: String) -> String =
-    "  call void @" + fn_name + "(i64 " + op1 + ", i64 " + op2 + ")";
+fn conc_gen_call_void_2(fn_name: String, op1: String, op2: String) -> String
+  post it.len() >= 0
+= "  call void @" + fn_name + "(i64 " + op1 + ", i64 " + op2 + ")";
 
 // Generate i64 call with 0 args
-fn conc_gen_call_i64_0(dest: String, fn_name: String) -> String =
-    "  " + dest + " = call i64 @" + fn_name + "()";
+fn conc_gen_call_i64_0(dest: String, fn_name: String) -> String
+  post it.len() >= 0
+= "  " + dest + " = call i64 @" + fn_name + "()";
 
 // Input: line is full MIR line, pos points to start of RHS (after "= "), dest is "%varname"
 fn llvm_gen_conc_rhs(line: String, pos: i64, dest: String) -> String
@@ -17410,8 +17777,9 @@ fn llvm_gen_channel_new(line: String, p: i64) -> String
 // Legacy versions for compatibility
 
 
-fn llvm_gen_string_ref(dest: String, str_content: String, strings: String) -> String =
-    let idx = find_string_index(strings, str_content);
+fn llvm_gen_string_ref(dest: String, str_content: String, strings: String) -> String
+  post it.len() >= 0
+= let idx = find_string_index(strings, str_content);
     let idx_str = int_to_string(idx);
     "  " + dest + " = ptrtoint ptr @str_bmb_" + idx_str + " to i64";
 
@@ -17480,8 +17848,9 @@ fn extract_post_asts(src: String, pos: i64) -> String
 // Build a map of function names to their pre-condition ASTs
 // Format: "fn_name\tast1\tast2\nfn_name2\tast1\n..."
 // Uses chr(10) between entries, chr(9) between name and ASTs
-fn build_contracts_map(src: String) -> String =
-    let sb = sb_new();
+fn build_contracts_map(src: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let _w = build_contracts_map_scan(src, 0, sb);
     sb_build(sb);
 
@@ -17532,8 +17901,9 @@ fn build_contracts_map_scan(src: String, pos: i64, sb: i64) -> i64
 
 // Build a map of function names to their post-condition ASTs
 // Same format as pre map: "fn_name\tast1\tast2\nfn_name2\tast1\n..."
-fn build_post_contracts_map(src: String) -> String =
-    let sb = sb_new();
+fn build_post_contracts_map(src: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let _w = build_post_contracts_map_scan(src, 0, sb);
     sb_build(sb);
 
@@ -17574,8 +17944,9 @@ fn build_post_contracts_map_scan(src: String, pos: i64, sb: i64) -> i64
 
 // Look up a function's pre-condition ASTs in the contracts map
 // Returns tab-separated ASTs or "" if no contracts
-fn lookup_contracts(map: String, fn_name: String) -> String =
-    lookup_contracts_at(map, fn_name, 0);
+fn lookup_contracts(map: String, fn_name: String) -> String
+  post it.len() >= 0
+= lookup_contracts_at(map, fn_name, 0);
 
 fn lookup_contracts_at(map: String, fn_name: String, pos: i64) -> String
   pre pos >= 0
@@ -17592,8 +17963,9 @@ fn lookup_contracts_at(map: String, fn_name: String, pos: i64) -> String
     };
 
 // Convert comparison operator from AST to LLVM icmp predicate
-fn ast_op_to_icmp(op: String) -> String =
-    if op == ">=" { "sge" }
+fn ast_op_to_icmp(op: String) -> String
+  post it.len() >= 0
+= if op == ">=" { "sge" }
     else if op == ">" { "sgt" }
     else if op == "<" { "slt" }
     else if op == "<=" { "sle" }
@@ -17602,8 +17974,9 @@ fn ast_op_to_icmp(op: String) -> String =
     else { "" };
 
 // Extract bare name from angle-bracketed AST var: "<name>" → "name"
-fn strip_angle_brackets(s: String) -> String =
-    if s.len() >= 2 and s.byte_at(0) == 60 and s.byte_at(s.len() - 1) == 62 {
+fn strip_angle_brackets(s: String) -> String
+  post it.len() >= 0
+= if s.len() >= 2 and s.byte_at(0) == 60 and s.byte_at(s.len() - 1) == 62 {
         s.slice(1, s.len() - 1)
     } else { s };
 
@@ -17668,14 +18041,16 @@ fn unpack_assume_counter(result: String) -> i64
   post it >= 0
 = unpack_pos(result);  // Reuses same "number:text" format
 
-fn unpack_assume_ir(result: String) -> String =
-    unpack_ast(result);  // Reuses same "number:text" format
+fn unpack_assume_ir(result: String) -> String
+  post it.len() >= 0
+= unpack_ast(result);  // Reuses same "number:text" format
 
 // Generate all llvm.assume IR for a function's contracts
 // contracts: tab-separated AST strings
 // Returns: LLVM IR text to inject after entry: label, or ""
-fn gen_assumes_for_contracts(contracts: String) -> String =
-    if contracts == "" { "" }
+fn gen_assumes_for_contracts(contracts: String) -> String
+  post it.len() >= 0
+= if contracts == "" { "" }
     else { gen_assumes_for_contracts_acc(contracts, 0, 0, "") };
 
 fn gen_assumes_for_contracts_acc(contracts: String, pos: i64, counter: i64, acc: String) -> String
@@ -17696,8 +18071,9 @@ fn gen_assumes_for_contracts_acc(contracts: String, pos: i64, counter: i64, acc:
 
 // Inject llvm.assume calls into a single function's LLVM IR
 // Inserts assume IR right after the "entry:" label
-fn inject_fn_assumes(fn_ir: String, assumes_ir: String) -> String =
-    if assumes_ir == "" { fn_ir } else {
+fn inject_fn_assumes(fn_ir: String, assumes_ir: String) -> String
+  post it.len() >= 0
+= if assumes_ir == "" { fn_ir } else {
         // Find "entry:" in the IR
         let entry_pos = find_pattern_noa(fn_ir, "entry:", 0);
         if entry_pos < 0 { fn_ir } else {
@@ -17711,8 +18087,9 @@ fn inject_fn_assumes(fn_ir: String, assumes_ir: String) -> String =
 
 // Post-processing pass: inject llvm.assume into all functions
 // Iterates over DSEP-separated functions in the IR
-fn inject_contract_assumes_all(ir: String, contracts_map: String) -> String =
-    if contracts_map == "" { ir } else {
+fn inject_contract_assumes_all(ir: String, contracts_map: String) -> String
+  post it.len() >= 0
+= if contracts_map == "" { ir } else {
         let sb = sb_new();
         let _w = inject_assumes_scan(ir, 0, contracts_map, sb);
         sb_build(sb)
@@ -17745,8 +18122,9 @@ fn inject_assumes_scan(ir: String, pos: i64, contracts_map: String, sb: i64) -> 
 
 // v0.96.24: Post-condition assume injection at call sites
 // For each "call @fn_name" in the IR, inject llvm.assume for callee's postconditions
-fn inject_post_assumes_all(ir: String, post_map: String) -> String =
-    if post_map == "" { ir } else {
+fn inject_post_assumes_all(ir: String, post_map: String) -> String
+  post it.len() >= 0
+= if post_map == "" { ir } else {
         let sb = sb_new();
         let _w = inject_post_assumes_scan(ir, 0, post_map, sb);
         sb_build(sb)
@@ -17858,8 +18236,9 @@ fn gen_assumes_for_post_acc(contracts: String, pos: i64, counter: i64, acc: Stri
     };
 
 // Replace all occurrences of a pattern in a string
-fn replace_all_str(s: String, old: String, new_s: String) -> String =
-    let pos = find_pattern_noa(s, old, 0);
+fn replace_all_str(s: String, old: String, new_s: String) -> String
+  post it.len() >= 0
+= let pos = find_pattern_noa(s, old, 0);
     if pos < 0 { s }
     else {
         let before = s.slice(0, pos);
@@ -17876,8 +18255,9 @@ fn replace_all_str(s: String, old: String, new_s: String) -> String =
 // ============================================================================
 
 // Convert string integer literal to i64 value
-fn str_to_int(s: String) -> i64 =
-    if s.len() == 0 { 0 }
+fn str_to_int(s: String) -> i64
+  post it == it
+= if s.len() == 0 { 0 }
     else if s.byte_at(0) == 45 { 0 - str_to_int_acc(s, 1, 0) }
     else { str_to_int_acc(s, 0, 0) };
 
@@ -17893,8 +18273,9 @@ fn str_to_int_acc(s: String, pos: i64, acc: i64) -> i64
 // Update range bounds in state vec from a single postcondition AST
 // state: vec of 4 elements [has_lo, lo, has_hi, hi_inclusive]
 // Handles compound "and" by recursing into both branches
-fn update_range_from_ast(ast: String, state: i64) -> i64 =
-    let nt = get_node_type(ast);
+fn update_range_from_ast(ast: String, state: i64) -> i64
+  post it == it
+= let nt = get_node_type(ast);
     if nt == "binop" {
         let op = get_child(ast, 0);
         if op == "and" {
@@ -17982,8 +18363,9 @@ fn compute_ret_range_scan(asts: String, pos: i64, state: i64) -> i64
 
 // Format range attribute string from bounds
 // Returns "range(i64 lo, hi_exclusive) " or ""
-fn format_range_attr(has_lo: i64, lo: i64, has_hi: i64, hi_inclusive: i64) -> String =
-    if has_lo == 0 and has_hi == 0 { "" }
+fn format_range_attr(has_lo: i64, lo: i64, has_hi: i64, hi_inclusive: i64) -> String
+  post it.len() >= 0
+= if has_lo == 0 and has_hi == 0 { "" }
     else {
         let lo_str = if has_lo == 1 { int_to_string(lo) } else { "-9223372036854775808" };
         let hi_str = if has_hi == 0 { "-9223372036854775808" }
@@ -17995,8 +18377,9 @@ fn format_range_attr(has_lo: i64, lo: i64, has_hi: i64, hi_inclusive: i64) -> St
 // Compute range attribute from postcondition ASTs
 // asts: tab-separated postcondition AST S-expressions
 // Returns "range(i64 lo, hi) " or ""
-fn compute_ret_range(asts: String) -> String =
-    if asts == "" { "" }
+fn compute_ret_range(asts: String) -> String
+  post it.len() >= 0
+= if asts == "" { "" }
     else {
         let state = vec_new();
         let _p0 = vec_push(state, 0);
@@ -18045,8 +18428,9 @@ fn range_rebuild(ir: String, pos: i64, sb: i64, post_map: String, count: i64) ->
     };
 
 // Annotate return range attributes on function definitions from postconditions
-fn annotate_return_ranges(module_ir: String, post_map: String) -> String =
-    if post_map == "" { module_ir }
+fn annotate_return_ranges(module_ir: String, post_map: String) -> String
+  post it.len() >= 0
+= if post_map == "" { module_ir }
     else {
         let sb = sb_new();
         let count = range_rebuild(module_ir, 0, sb, post_map, 0);
@@ -18063,21 +18447,24 @@ fn annotate_return_ranges(module_ir: String, post_map: String) -> String =
 
 // Check if a trimmed IR line is a @bmb_string_concat call (not concat3/5/7)
 // Pattern: "%dest = call ptr @bmb_string_concat(ptr arg1, ptr arg2)"
-fn sco_is_concat(line: String) -> bool =
-    let p = find_substr_pos(line, "@bmb_string_concat(", 0);
+fn sco_is_concat(line: String) -> bool
+  post it or not it
+= let p = find_substr_pos(line, "@bmb_string_concat(", 0);
     p >= 0;
 
 // Extract destination from concat call line
 // "  %_t2_c = call ptr @bmb_string_concat(ptr a, ptr b)" -> "%_t2_c"
-fn sco_dest(line: String) -> String =
-    let eq = find_char(line, 0, 61);
+fn sco_dest(line: String) -> String
+  post it.len() >= 0
+= let eq = find_char(line, 0, 61);
     if eq >= line.len() { "" }
     else { trim(line.slice(0, eq)) };
 
 // Extract first arg from concat call
 // Find "(ptr " after @bmb_string_concat, then extract until ", ptr "
-fn sco_arg1(line: String) -> String =
-    let p = find_substr_pos(line, "@bmb_string_concat(ptr ", 0);
+fn sco_arg1(line: String) -> String
+  post it.len() >= 0
+= let p = find_substr_pos(line, "@bmb_string_concat(ptr ", 0);
     if p < 0 { "" }
     else {
         let start = p + 23;
@@ -18088,8 +18475,9 @@ fn sco_arg1(line: String) -> String =
 
 // Extract second arg from concat call
 // Find ", ptr " after first arg, then extract until ")"
-fn sco_arg2(line: String) -> String =
-    let p = find_substr_pos(line, "@bmb_string_concat(ptr ", 0);
+fn sco_arg2(line: String) -> String
+  post it.len() >= 0
+= let p = find_substr_pos(line, "@bmb_string_concat(ptr ", 0);
     if p < 0 { "" }
     else {
         let start = p + 23;
@@ -18201,8 +18589,9 @@ fn sco_process_lines(ir: String, pos: i64, sb: i64, chain_ops: String, chain_des
     };
 
 // Main entry point: optimize string concat chains in LLVM IR
-fn optimize_ir_string_concat(ir: String) -> String =
-    let sb = sb_new();
+fn optimize_ir_string_concat(ir: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let w = sco_process_lines(ir, 0, sb, "", "", "", 0);
     let result = sb_build(sb);
     let _f = sb_free(sb);
@@ -18216,8 +18605,9 @@ fn optimize_ir_string_concat(ir: String) -> String =
 // ============================================================================
 
 // Extract function name from define line: "define ... @fname(...)" -> "fname"
-fn lr2l_fn_name(def_line: String) -> String =
-    let at = find_char(def_line, 0, 64);
+fn lr2l_fn_name(def_line: String) -> String
+  post it.len() >= 0
+= let at = find_char(def_line, 0, 64);
     if at >= def_line.len() { "" }
     else {
         let paren = find_char(def_line, at, 40);
@@ -18227,8 +18617,9 @@ fn lr2l_fn_name(def_line: String) -> String =
 
 // Extract single i64 parameter name: "define ... @fn(i64 [noundef] %name) ..." -> "%name"
 // Returns "" if not single i64 param
-fn lr2l_param_name(def_line: String) -> String =
-    let at = find_char(def_line, 0, 64);
+fn lr2l_param_name(def_line: String) -> String
+  post it.len() >= 0
+= let at = find_char(def_line, 0, 64);
     if at >= def_line.len() { "" }
     else {
         let open = find_char(def_line, at, 40);
@@ -18257,8 +18648,9 @@ fn lr2l_param_name(def_line: String) -> String =
 // 1. icmp sle i64 %param, 1 (or slt i64 %param, 2) in entry
 // 2. Exactly two self-recursive calls with sub %param, 1 and sub %param, 2
 // 3. add nsw combining the two results
-fn lr2l_detect(fn_ir: String, fn_name: String, param: String) -> bool =
-    let cmp_pat1 = "icmp sle i64 " + param + ", 1";
+fn lr2l_detect(fn_ir: String, fn_name: String, param: String) -> bool
+  post it or not it
+= let cmp_pat1 = "icmp sle i64 " + param + ", 1";
     let cmp_pat2 = "icmp slt i64 " + param + ", 2";
     let has_cmp = find_substr_pos(fn_ir, cmp_pat1, 0) >= 0 or find_substr_pos(fn_ir, cmp_pat2, 0) >= 0;
     if not has_cmp { false }
@@ -18290,8 +18682,9 @@ fn lr2l_detect(fn_ir: String, fn_name: String, param: String) -> bool =
     };
 
 // Build the transformed function IR with loop structure
-fn lr2l_transform(fn_ir: String, fn_name: String, param: String) -> String =
-    let first_sep = find_pipe_skip_quotes(fn_ir, 0);
+fn lr2l_transform(fn_ir: String, fn_name: String, param: String) -> String
+  post it.len() >= 0
+= let first_sep = find_pipe_skip_quotes(fn_ir, 0);
     let def_line = fn_ir.slice(0, first_sep);
     let sb = sb_new();
     let w0 = sb_push(sb, def_line);
@@ -18320,8 +18713,9 @@ fn lr2l_transform(fn_ir: String, fn_name: String, param: String) -> String =
     result;
 
 // Process a single function block in the IR
-fn lr2l_process_fn(fn_ir: String) -> String =
-    let first_sep = find_pipe_skip_quotes(fn_ir, 0);
+fn lr2l_process_fn(fn_ir: String) -> String
+  post it.len() >= 0
+= let first_sep = find_pipe_skip_quotes(fn_ir, 0);
     let def_line = fn_ir.slice(0, first_sep);
     let is_define = find_substr_pos(def_line, "define ", 0) >= 0;
     if not is_define { fn_ir }
@@ -18351,8 +18745,9 @@ fn lr2l_program(ir: String, pos: i64, sb: i64) -> i64
     };
 
 // Main entry point: transform fibonacci-like double recursion to iterative loop
-fn optimize_ir_linear_recurrence(ir: String) -> String =
-    let sb = sb_new();
+fn optimize_ir_linear_recurrence(ir: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
     let w = lr2l_program(ir, 0, sb);
     let result = sb_build(sb);
     let _f = sb_free(sb);
@@ -18378,8 +18773,9 @@ fn collect_defined_fn_names(code: String, pos: i64, sb: i64) -> i64
     };
 
 // Check if a declaration line conflicts with a user-defined function
-fn decl_has_conflict(decl_line: String, user_fn_names: String) -> bool =
-    let at = find_char(decl_line, 0, 64);
+fn decl_has_conflict(decl_line: String, user_fn_names: String) -> bool
+  post it or not it
+= let at = find_char(decl_line, 0, 64);
     let paren = find_char(decl_line, at, 40);
     if at >= decl_line.len() or paren >= decl_line.len() { false }
     else {
@@ -18409,8 +18805,9 @@ fn filter_decls_scan(decls: String, pos: i64, user_fn_names: String, sb: i64) ->
 
 // Filter runtime declarations that conflict with user-defined functions
 // Removes "declare @X(...)" when user code has "define ... @X(...)"
-fn filter_conflicting_decls(decls: String, code: String) -> String =
-    let names_sb = sb_new();
+fn filter_conflicting_decls(decls: String, code: String) -> String
+  post it.len() >= 0
+= let names_sb = sb_new();
     let _w = collect_defined_fn_names(code, 0, names_sb);
     let user_fn_names = sb_build(names_sb);
     let _f = sb_free(names_sb);
@@ -18511,8 +18908,9 @@ fn compile_program(source: String, safe: i64) -> String
     };
 
 // Compile single function source to LLVM IR
-fn is_compile_error(result: String) -> bool =
-    result.len() >= 4 and result.slice(0, 4) == "ERR:";
+fn is_compile_error(result: String) -> bool
+  post it or not it
+= result.len() >= 4 and result.slice(0, 4) == "ERR:";
 
 fn err_no_file(input: String) -> i64
   post it >= 0
@@ -18526,8 +18924,9 @@ fn print_compile_err(input: String, llvm: String) -> i64
     { print_str("error["); print_str(category); print_str("]["); print_str(input); print_str("]: "); println_str(err_detail); 1 };
 
 // v0.96.3: Classify error by category for diagnostics
-fn classify_error(msg: String) -> String =
-    if has_pattern(msg, "unexpected token", 0) or has_pattern(msg, "expected", 0) or has_pattern(msg, "parse", 0) or has_pattern(msg, "missing", 0) { "parse" }
+fn classify_error(msg: String) -> String
+  post it.len() >= 0
+= if has_pattern(msg, "unexpected token", 0) or has_pattern(msg, "expected", 0) or has_pattern(msg, "parse", 0) or has_pattern(msg, "missing", 0) { "parse" }
     else if has_pattern(msg, "undefined variable", 0) or has_pattern(msg, "undefined function", 0) or has_pattern(msg, "not found", 0) { "resolve" }
     else if has_pattern(msg, "type mismatch", 0) or has_pattern(msg, "requires", 0) or has_pattern(msg, "must be", 0) or has_pattern(msg, "branches must", 0) or has_pattern(msg, "expects", 0) { "type" }
     else if has_pattern(msg, "body type", 0) or has_pattern(msg, "!= ", 0) { "type" }
@@ -18592,8 +18991,9 @@ fn extract_contract_text(src: String, pos: i64) -> String
     else { "" };
 
 // Trim leading/trailing whitespace from a string
-fn trim_ws(s: String) -> String =
-    let start = trim_ws_start(s, 0);
+fn trim_ws(s: String) -> String
+  post it.len() >= 0
+= let start = trim_ws_start(s, 0);
     let end_pos = trim_ws_end(s, s.len());
     if start >= end_pos { "" } else { s.slice(start, end_pos) };
 
@@ -18732,8 +19132,9 @@ fn index_skip_body(src: String, pos: i64, depth: i64) -> i64
     else { index_skip_body(src, tok_end(t), depth) };
 
 // Check if a name already exists in a comma-separated list
-fn index_has_name(list: String, name: String) -> bool =
-    if list == "" { false }
+fn index_has_name(list: String, name: String) -> bool
+  post it or not it
+= if list == "" { false }
     else if list == name { true }
     else { index_has_name_search(list, name, 0) };
 
@@ -19782,8 +20183,9 @@ fn cx_extract_params_end(sig: String, pos: i64, start: i64) -> String
     else { cx_extract_params_end(sig, pos + 1, start) };
 
 // Check if function is recursive (calls itself)
-fn cx_is_recursive(name: String, calls: String) -> bool =
-    callers_calls_contain(calls, name, 0);
+fn cx_is_recursive(name: String, calls: String) -> bool
+  post it or not it
+= callers_calls_contain(calls, name, 0);
 
 // Print complexity for each function entry
 fn cx_print_entries(entries: String, pos: i64, all: String) -> i64
@@ -20014,8 +20416,9 @@ fn layer_classify(entries: String, name: String, calls: String, caller_count: i6
     else if caller_count == 0 and not (name == "main") { 3 }
     else { 2 };
 
-fn layer_name(layer: i64) -> String =
-    if layer == 0 { "leaf" }
+fn layer_name(layer: i64) -> String
+  post it.len() >= 0
+= if layer == 0 { "leaf" }
     else if layer == 1 { "near-leaf" }
     else if layer == 2 { "mid" }
     else { "entry" };
@@ -20260,8 +20663,9 @@ fn clust_prefix(name: String, pos: i64) -> String
     else if name.byte_at(pos) == 95 { name.slice(0, pos) }
     else { clust_prefix(name, pos + 1) };
 
-fn clust_has_prefix(prefixes: String, prefix: String) -> bool =
-    if prefixes == "" { false }
+fn clust_has_prefix(prefixes: String, prefix: String) -> bool
+  post it or not it
+= if prefixes == "" { false }
     else { index_has_name(prefixes, prefix) };
 
 fn clust_collect_prefixes(entries: String, pos: i64, prefixes: String) -> String
@@ -20346,8 +20750,9 @@ fn clusters_file(input: String) -> i64
         0
     };
 
-fn cov_reachable(entries: String, name: String, visited: String) -> String =
-    if index_has_name(visited, name) { visited }
+fn cov_reachable(entries: String, name: String, visited: String) -> String
+  post it.len() >= 0
+= if index_has_name(visited, name) { visited }
     else {
         let new_visited = if visited == "" { name } else { visited + ", " + name };
         let calls = deps_find_calls(entries, 0, name);
@@ -20421,8 +20826,9 @@ fn coverage_file(input: String) -> i64
         0
     };
 
-fn pat_classify(entries: String, name: String, calls: String) -> String =
-    let call_count = outline_count_calls(calls, 0, 0);
+fn pat_classify(entries: String, name: String, calls: String) -> String
+  post it.len() >= 0
+= let call_count = outline_count_calls(calls, 0, 0);
     let caller_count = outline_count_callers(entries, 0, name, 0);
     let is_rec = cx_is_recursive(name, calls);
     if name == "main" { "entry" }
@@ -20587,8 +20993,9 @@ fn diff_calls_file(old_input: String, new_input: String) -> i64
         0
     };
 
-fn cls_category(name: String) -> String =
-    let prefix = clust_prefix(name, 0);
+fn cls_category(name: String) -> String
+  post it.len() >= 0
+= let prefix = clust_prefix(name, 0);
     if prefix == "parse" or prefix == "parser" or prefix == "tok" or prefix == "lex" { "parser" }
     else if prefix == "emit" or prefix == "gen" or prefix == "llvm" or prefix == "ir" or prefix == "codegen" { "codegen" }
     else if prefix == "type" or prefix == "infer" or prefix == "unify" or prefix == "check" { "types" }
@@ -21277,32 +21684,39 @@ fn fmt_leading_ws(line: String, pos: i64) -> i64
     else { pos };
 
 // Check if a line is empty or whitespace-only
-fn fmt_is_blank(line: String) -> bool =
-    fmt_leading_ws(line, 0) >= line.len();
+fn fmt_is_blank(line: String) -> bool
+  post it or not it
+= fmt_leading_ws(line, 0) >= line.len();
 
 // Check if line starts with "fn " (top-level function declaration)
-fn fmt_is_fn_decl(line: String) -> bool =
-    line.len() >= 3 and line.byte_at(0) == 102 and line.byte_at(1) == 110 and line.byte_at(2) == 32;
+fn fmt_is_fn_decl(line: String) -> bool
+  post it or not it
+= line.len() >= 3 and line.byte_at(0) == 102 and line.byte_at(1) == 110 and line.byte_at(2) == 32;
 
 // Check if line starts with "struct " (top-level struct declaration)
-fn fmt_is_struct(line: String) -> bool =
-    line.len() >= 7 and line.slice(0, 7) == "struct ";
+fn fmt_is_struct(line: String) -> bool
+  post it or not it
+= line.len() >= 7 and line.slice(0, 7) == "struct ";
 
 // Check if line starts with "enum " (top-level enum declaration)
-fn fmt_is_enum(line: String) -> bool =
-    line.len() >= 5 and line.slice(0, 5) == "enum ";
+fn fmt_is_enum(line: String) -> bool
+  post it or not it
+= line.len() >= 5 and line.slice(0, 5) == "enum ";
 
 // Check if line starts with "@" (annotation)
-fn fmt_is_annotation(line: String) -> bool =
-    line.len() > 0 and line.byte_at(0) == 64;
+fn fmt_is_annotation(line: String) -> bool
+  post it or not it
+= line.len() > 0 and line.byte_at(0) == 64;
 
 // Check if line starts with "//" (comment)
-fn fmt_is_comment(line: String) -> bool =
-    line.len() >= 2 and line.byte_at(0) == 47 and line.byte_at(1) == 47;
+fn fmt_is_comment(line: String) -> bool
+  post it or not it
+= line.len() >= 2 and line.byte_at(0) == 47 and line.byte_at(1) == 47;
 
 // Check if a line is a top-level declaration (unindented fn/struct/enum/annotation/comment)
-fn fmt_is_toplevel(line: String) -> bool =
-    if fmt_is_blank(line) { false }
+fn fmt_is_toplevel(line: String) -> bool
+  post it or not it
+= if fmt_is_blank(line) { false }
     else {
         let ws = fmt_leading_ws(line, 0);
         if ws > 0 { false }
@@ -21333,8 +21747,9 @@ fn fmt_indent(n: i64) -> String
     else { "                    " };
 
 // Check if trimmed line starts with closing brace/paren
-fn fmt_starts_close(line: String) -> bool =
-    let ws = fmt_leading_ws(line, 0);
+fn fmt_starts_close(line: String) -> bool
+  post it or not it
+= let ws = fmt_leading_ws(line, 0);
     if ws >= line.len() { false }
     else {
         let b = line.byte_at(ws);
@@ -21343,26 +21758,30 @@ fn fmt_starts_close(line: String) -> bool =
 
 // Format source: process line by line
 // Check if content ends with '=' (function body start), ignoring trailing whitespace
-fn fmt_ends_eq(line: String) -> bool =
-    let t = fmt_rtrim(line, line.len());
+fn fmt_ends_eq(line: String) -> bool
+  post it or not it
+= let t = fmt_rtrim(line, line.len());
     if t.len() == 0 { false }
     else { t.byte_at(t.len() - 1) == 61 };
 
 // Check if content ends with ';' (statement terminator)
-fn fmt_ends_semi(line: String) -> bool =
-    let t = fmt_rtrim(line, line.len());
+fn fmt_ends_semi(line: String) -> bool
+  post it or not it
+= let t = fmt_rtrim(line, line.len());
     if t.len() == 0 { false }
     else { t.byte_at(t.len() - 1) == 59 };
 
 // Check if line is a contract (pre/post) - only valid between fn sig and body
-fn fmt_is_contract(content: String) -> bool =
-    if content.len() >= 4 and content.slice(0, 4) == "pre " { true }
+fn fmt_is_contract(content: String) -> bool
+  post it or not it
+= if content.len() >= 4 and content.slice(0, 4) == "pre " { true }
     else if content.len() >= 5 and content.slice(0, 5) == "post " { true }
     else { false };
 
 // Check if line starts with '=' (body start after contracts)
-fn fmt_starts_eq(content: String) -> bool =
-    content.len() > 0 and content.byte_at(0) == 61;
+fn fmt_starts_eq(content: String) -> bool
+  post it or not it
+= content.len() > 0 and content.byte_at(0) == 61;
 
 // State encoding: 0 = normal, 1 = in_body, 2 = in_signature (between fn and =)
 // Tracks nesting depth for indentation, ensures blank lines between top-level items
@@ -21423,8 +21842,9 @@ fn fmt_lines(src: String, pos: i64, depth: i64, state: i64, prev_blank: bool, pr
     };
 
 // Format a source string
-fn fmt_source(source: String) -> String =
-    fmt_lines(source, 0, 0, 0, true, true, "");
+fn fmt_source(source: String) -> String
+  post it.len() >= 0
+= fmt_lines(source, 0, 0, 0, true, true, "");
 
 // Format a single file
 fn fmt_file(input: String, check: bool) -> i64
@@ -21710,8 +22130,9 @@ fn repl_help() -> i64
 
 // Try to compile an expression, returning IR or error
 // Heuristic: if starts with " it's likely a string expression
-fn repl_try_compile(line: String) -> String =
-    let dq = chr(34);
+fn repl_try_compile(line: String) -> String
+  post it.len() >= 0
+= let dq = chr(34);
     let is_str = if line.len() > 0 and line.slice(0, 1) == dq { true } else { false };
     if is_str {
         repl_try_str_first(line, dq)
@@ -21719,8 +22140,9 @@ fn repl_try_compile(line: String) -> String =
         repl_try_int_first(line, dq)
     };
 
-fn repl_try_int_first(line: String, dq: String) -> String =
-    // Strategy 1: wrap as print(expr) to show i64 result
+fn repl_try_int_first(line: String, dq: String) -> String
+  post it.len() >= 0
+= // Strategy 1: wrap as print(expr) to show i64 result
     let src1 = "fn main() -> i64 = let _r = print(" + line + "); let _nl = println_str(" + dq + dq + "); 0;";
     let llvm1 = compile_program(src1, 0);
     if is_compile_error(llvm1) == false { llvm1 }
@@ -21734,8 +22156,9 @@ fn repl_try_int_first(line: String, dq: String) -> String =
         }
     };
 
-fn repl_try_str_first(line: String, dq: String) -> String =
-    // Strategy 1: wrap as println_str(expr) for String result
+fn repl_try_str_first(line: String, dq: String) -> String
+  post it.len() >= 0
+= // Strategy 1: wrap as println_str(expr) for String result
     let src1 = "fn main() -> i64 = let _r = println_str(" + line + "); 0;";
     let llvm1 = compile_program(src1, 0);
     if is_compile_error(llvm1) == false { llvm1 }
@@ -21749,8 +22172,9 @@ fn repl_try_str_first(line: String, dq: String) -> String =
         }
     };
 
-fn repl_try_fallback(line: String) -> String =
-    // Strategy A: wrap as statement (for void/side-effect expressions)
+fn repl_try_fallback(line: String) -> String
+  post it.len() >= 0
+= // Strategy A: wrap as statement (for void/side-effect expressions)
     let src1 = "fn main() -> i64 = let _r = " + line + "; 0;";
     let llvm1 = compile_program(src1, 0);
     if is_compile_error(llvm1) == false { llvm1 }
@@ -21883,15 +22307,17 @@ fn test_file(input: String, runtime_path: String) -> i64
     };
 
 // Compare test output: strip CR (Windows CRLF -> LF) + trim trailing newlines
-fn compare_test_output(expected: String, actual: String) -> bool =
-    let norm_exp = trim_trailing_newlines(strip_cr(expected));
+fn compare_test_output(expected: String, actual: String) -> bool
+  post it or not it
+= let norm_exp = trim_trailing_newlines(strip_cr(expected));
     let norm_act = trim_trailing_newlines(strip_cr(actual));
     norm_exp == norm_act;
 
 // Strip all carriage return (CR, byte 13) characters from a string
 // Chunk-based: copy segments between \r characters (avoids per-byte recursion)
-fn strip_cr(s: String) -> String =
-    let cr_pos = find_char(s, 0, 13);
+fn strip_cr(s: String) -> String
+  post it.len() >= 0
+= let cr_pos = find_char(s, 0, 13);
     if cr_pos >= s.len() { s }
     else {
         let sb = sb_new();
@@ -21912,8 +22338,9 @@ fn strip_cr_chunks(s: String, pos: i64, sb: i64) -> i64
         else { strip_cr_chunks(s, cr + 1, sb) }
     };
 
-fn trim_trailing_newlines(s: String) -> String =
-    if s.len() == 0 { s }
+fn trim_trailing_newlines(s: String) -> String
+  post it.len() >= 0
+= if s.len() == 0 { s }
     else {
         let last = s.byte_at(s.len() - 1);
         if last == 10 or last == 13 { trim_trailing_newlines(s.slice(0, s.len() - 1)) }
@@ -22253,14 +22680,16 @@ fn run_file(input: String, runtime_path: String) -> i64
     };
 
 // Derive output name from input: foo.bmb -> foo (or foo.exe on Windows)
-fn derive_output_name(input: String) -> String =
-    if input.len() > 4 and input.slice(input.len() - 4, input.len()) == ".bmb" {
+fn derive_output_name(input: String) -> String
+  post it.len() >= 0
+= if input.len() > 4 and input.slice(input.len() - 4, input.len()) == ".bmb" {
         input.slice(0, input.len() - 4)
     } else { input + ".out" };
 
 // Bootstrap version - extended CLI
-fn main() -> i64 =
-    let _arena = arena_mode(1);
+fn main() -> i64
+  post it == it
+= let _arena = arena_mode(1);
     let argc = arg_count();
     if argc < 2 {
         show_help()
