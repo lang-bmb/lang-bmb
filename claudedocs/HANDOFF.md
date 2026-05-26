@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-26 (Cycles 3179-3188)
 
-> **HEAD**: 미커밋 변경사항 있음 — compiler.bmb post 조건 추가
+> **HEAD**: `6595319e`
 > **이번 세션 작업**: Cycles 3179-3188 (M9 Batches 45-54 — missing_postcondition 163→0, −163)
 > **3-Stage Fixed Point**: (M8-A 기준 `A8ADD96654CD39795443635F1DAAB55D` — M9는 post-only 추가로 IR 불변)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
@@ -49,7 +49,7 @@
 
 | 항목 | 값 |
 |------|----|
-| HEAD | 미커밋 (이번 세션 마무리 후 커밋 필요) |
+| HEAD | `6595319e` |
 | missing_postcondition | **0** ✅ |
 | cargo test | ✅ 23 passed, 0 failed |
 | 3-Stage FP | IR 불변 (post-only 추가, llvm.assume 미생성) |
