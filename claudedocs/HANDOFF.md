@@ -1,63 +1,71 @@
-# BMB Session Handoff — 2026-05-26 (Cycles 3179-3188)
+# BMB Session Handoff — 2026-05-26 (Cycle 3189)
 
-> **HEAD**: `6595319e`
-> **이번 세션 작업**: Cycles 3179-3188 (M9 Batches 45-54 — missing_postcondition 163→0, −163)
-> **3-Stage Fixed Point**: (M8-A 기준 `A8ADD96654CD39795443635F1DAAB55D` — M9는 post-only 추가로 IR 불변)
+> **HEAD**: `(커밋 후 업데이트)`
+> **이번 세션 작업**: Cycle 3189 — M10 Phase 1: unused_binding 781→64 (−717, 91.8%)
+> **3-Stage Fixed Point**: M8-A 기준 `A8ADD96654CD39795443635F1DAAB55D` (M10 변경 후 Stage 2 bootstrap 미검증 — 기존 이슈로 Stage 2 파싱 오류 선재)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **M9 상태**: **✅ COMPLETE** — missing_postcondition 814→0
+> **M10 상태**: 🔄 Phase 1 진행 중 (unused_binding 781→64)
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 3179-3188)
+## 이번 세션 작업 요약 (Cycle 3189)
 
-| Cycle | 제목 | 추가 post | 잔여 missing_postcondition |
-|-------|------|----------|---------------------------|
-| 3179 | M9 Batch 45 — conc_*/lower_*/llvm_gen_return 계열 | 16 | 147 |
-| 3180 | M9 Batch 46 — llvm_gen_phi/load/store/call 계열 | 16 | 131 |
-| 3181 | M9 Batch 47 — index_*/callers_* 시작 | 16 | 115 |
-| 3182 | M9 Batch 48 — callers_*/deps_*/ctx_* 계열 | 16 | 99 |
-| 3183 | M9 Batch 49 — outline_*/xref_*/impact_*/stats_* | 16 | 83 |
-| 3184 | M9 Batch 50 — cx_*/sim_*/layer_* 계열 | 16 | 67 |
-| 3185 | M9 Batch 51 — hot_*/iface_*/clust_*/cov_*/pat_* | 16 | 51 |
-| 3186 | M9 Batch 52 — dc_*/cls_*/sibl_*/summary_*/graph_*/split_*/inline_* | 16 | 35 |
-| 3187 | M9 Batch 53 — chain_*/suggest_*/scope_*/cl_*/fmt_* | 16 | 19 |
-| 3188 | M9 Batch 54 — fmt_dir_each/lint_*/strip_cr_chunks/…/check_arg_flag | 19 | **0** |
+### M10 Warning Zero 착수
 
-### M9 전체 진행 현황
+| 항목 | 이전 | 이후 | 변화 |
+|------|------|------|------|
+| unused_binding | 781 | 64 | −717 (−91.8%) |
+| 총 warnings | 2,839 | 2,121 | −718 |
+| bmb check errors | 0 | 0 | 유지 |
+| cargo test | 6278 ✅ | 6278 ✅ | 유지 |
+| Stage 1 bootstrap | ✅ | ✅ | 유지 |
 
-| 항목 | 값 |
-|------|----|
-| M9 시작 (Cycle 3140 기준) | 814 missing_postcondition |
-| 이번 세션 종료 (Cycle 3188) | **0 missing_postcondition** |
-| M9 총 감소 | **−814 (100%)** |
-| cargo test | ✅ 23 passed, 0 failed |
-| bmb check warnings | ✅ missing_postcondition 0 |
-| bmb verify | ✅ IR 불변 (post-only 추가) |
+### 핵심 구현
+- `scripts/fix_unused_bindings.py` 작성 (자동화 리네임 스크립트)
+  - `let var ` → `let _var ` (let 바인딩)
+  - 함수 파라미터 직접 리네임 (mapping, cleanup_file, cur_exit_label 5개)
+  - 알고리즘: warning `start` byte 이전 rfind + 함수 경계 내 word-boundary 검증
+
+### 잔여 64개 unused_binding 분석
+
+| 변수 | 개수 | 원인 |
+|------|------|------|
+| `sb` | 22 | BMB lint: sb_push(sb,...)는 사용이지만 "builder not consumed" semantic |
+| `cur_exit_label` | 18 | 함수 내 사용됨 (do_step/step_expr 등) — lint가 unused로 판단하는 이유 불명 |
+| `item` | 10 | sb와 유사 |
+| 기타 | 14 | loop_exit/name/ast/line 등 |
 
 ---
 
 ## 다음 세션 시작점
 
-### Cycle 3189 — M10 방향 결정
+### Cycle 3190 — M10 Phase 2
 
-**M9 완료 후 다음 방향 후보**:
-1. **semantic postcondition 강화** — 현재 uniform `post it >= 0` / `post it.len() >= 0`를 더 정확한 계약으로 교체
-2. **M10 언어 기능 갭** — ROADMAP 다음 마일스톤 확인
-3. **bootstrap Stage 1 검증** — `bmb check` 0 warnings 상태에서 Stage 1 빌드 확인
+**선택지**:
+1. **unused_binding 64개 추가 분석**: `sb`/`cur_exit_label` lint semantics 이해 후 처리
+2. **M10 Phase 2: chained_comparison** (758개) — 대형 equality chain을 `match`로 변환 (자동화 가능)
+3. **Stage 2 bootstrap 복구** — postcondition 구문 지원 bootstrap parser에 추가
+
+**권장**: M10 Phase 2 (chained_comparison 758개) → 자동화 스크립트로 처리 가능.
+chained_comparison 형식: `a == b || a == c || a == d || ...` → `match a { ... }` 변환.
 
 ### 기술 상태 스냅샷
 
 | 항목 | 값 |
 |------|----|
-| HEAD | `6595319e` |
-| missing_postcondition | **0** ✅ |
-| cargo test | ✅ 23 passed, 0 failed |
-| 3-Stage FP | IR 불변 (post-only 추가, llvm.assume 미생성) |
+| HEAD | (커밋 후 업데이트) |
+| unused_binding | **64** (목표: 0) |
+| chained_comparison | **758** |
+| non_snake_case | **108** |
+| total warnings | **2,121** |
+| cargo test | ✅ 6278 passed |
+| Stage 1 bootstrap | ✅ |
+| Stage 2 bootstrap | ❌ (기존 선재 이슈) |
 
 ---
 
 ## 알려진 미결 사항
 
-- **M10 계획 미수립**: M9 완료 후 다음 마일스톤 방향 결정 필요
-- **semantic_duplication**: uniform post 계약이 더 정밀한 계약으로 교체되면 감소 예정
-- **Z3 budget 영향**: 복잡한 post 계약 추가 시 `bmb verify` 총 검증 수 점진적 감소 (정상)
+- **Stage 2 bootstrap 오류**: `fn SEP() -> String` at line 12 파싱 오류. M10 이전부터 존재하는 기존 이슈 (원본 git HEAD에서도 동일 오류).
+- **unused_binding 64개**: `sb`/`cur_exit_label`/`item` — BMB lint semantic 이해 필요.
+- **M10 Phase 2**: chained_comparison 758개 처리 미완.
