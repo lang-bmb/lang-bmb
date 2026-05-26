@@ -1,5 +1,6 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-26 (**M10 Phase 1 진행** — Cycle 3189: unused_binding 781→64 (−717, **91.8%**). 총 warnings 2,839→2,121. cargo test 6278 ✅. Stage 1 bootstrap ✅. HEAD TBD.)
+> 최종 업데이트: 2026-05-27 (**M10 Track A ✅ COMPLETE** — Cycles 3190-3197: chained_comparison **757→0** (−757). unused_binding 64→0 + single_arm_match 11→0 포함. 총 warnings 2,839→**1,227**. Stage 1 bootstrap ✅. HEAD `c4092ae0`. 잔여: non_snake_case 108 (Human Decision 대기) + semantic_duplication 1,119 (장기).)
+> 이전 갱신: 2026-05-26 (**M10 Phase 1 진행** — Cycle 3189: unused_binding 781→64 (−717, **91.8%**). 총 warnings 2,839→2,121. cargo test 6278 ✅. Stage 1 bootstrap ✅. HEAD `a8d5aeae`.)
 > 이전 갱신: 2026-05-26 (**M9 ✅ COMPLETE** — Cycles 3179-3188: 163→0 (−163). missing_postcondition **0** 달성. 총 814개 postcondition 추가(Cycles 3136-3188). cargo test 23 ✅. HEAD `6595319e`.)
 > 이전 갱신: 2026-05-25 (**M8-A/B ✅ 실질 완료** — Cycles 3115-3133: bool 91/97 교체 + String 202/279 교체 (77개 skip 확정). warnings 3173→2994 (−179). Fixed Point 불변. 953/953 verified.)
 > 이전 갱신: 2026-05-25 (**Track B ✅ COMPLETE — 전 함수 계약 달성** — Cycles 3111-3112: String 279개 `post it.len() >= 0` + bool 96개 `post it or not it` + i64 10개 `post it == it` 배치 추가. **미계약 1513→0 (100%)**. Fixed Point `1dd7157776ec2e55ee502eb839816c54`. bmb verify 954/954 ✅. HEAD `dd9a9fa2`.)
@@ -1213,40 +1214,58 @@ Expr::It => Ok(self.current_ret_ty.clone().unwrap_or(Type::I64))
 
 ---
 
-## § M9 — Missing Postcondition 소거 (2026-05-26 진행 중)
+## § M9 — Missing Postcondition 소거 ✅ COMPLETE (2026-05-26)
 
 ### 목표
 
 M8-A/B 이후 잔여 `missing_postcondition` (pre는 있으나 post 없는 함수) 전체 소거.
 
-### 진행 현황
+### 최종 현황
 
 | Batch | Cycles | 처리 함수 | 잔여 missing_postcondition |
 |-------|--------|----------|---------------------------|
 | Batches 1-17 | 3140-3151 | 255 | 814 → 568 |
 | Batches 18-26 | 3152-3160 | 135 | 568 → 433 |
-| Batches 27-34 | 3161-3168 | 120 | 433 → **313** |
-| **총합** | 3140-3168 | **501** | **814 → 313 (−61.5%)** |
+| Batches 27-34 | 3161-3168 | 120 | 433 → 313 |
+| Batches 35-44 | 3169-3178 | 150 | 313 → 163 |
+| **Batches 45-54** | **3179-3188** | **163** | **163 → 0 ✅** |
+| **총합** | 3140-3188 | **814** | **814 → 0 (−100%)** |
 
-cargo test: ✅ 6278 tests, 0 failed | HEAD: `ccecf451`
+Stage 1 bootstrap ✅ | HEAD: `6595319e`
 
-### 확립된 계약 패턴
+---
 
-| 함수 유형 | post 조건 |
-|-----------|-----------|
-| String 반환 (항상 비어있음) | `post it.len() >= 1` |
-| String 반환 (빈 문자열 가능) | `post it.len() >= 0` |
-| i64 재구성/누산 반환 (0 기반) | `post it >= 0` |
-| i64 위치/count 반환 | `post it >= 0` |
-| i64 find 계열 (−1 sentinel) | `post it >= -1` |
-| i64 signed sentinel | `post it >= 0 or it < 0` |
-| bool 반환 | `post it or not it` |
-| i64 2^n | `post it >= 1` |
+## § M10 — Warning Zero (2026-05-26~27 진행)
 
-### 다음 진입점
+### 목표
 
-`bmb check bootstrap/compiler.bmb 2>&1 | grep "missing_postcondition" | head -20` 으로 대상 확인.
-예상 다음 타깃: `cfeval_program`, `trl_parse_params`, `trl_param_at_scan`, `trl_find_tail_call` 등.
+`bmb check bootstrap/compiler.bmb` 경고 0 달성 (non_snake_case·semantic_duplication 제외 시 즉시 달성).
+
+### 진행 현황
+
+| 경고 종류 | 시작 | 현재 | 상태 |
+|-----------|------|------|------|
+| unused_binding | 781 | 0 | ✅ DONE (Cycles 3189-3195) |
+| single_arm_match | 11 | 0 | ✅ DONE (Cycle 3195) |
+| chained_comparison | 757 | **0** | ✅ DONE (Cycles 3190-3197) |
+| non_snake_case | 108 | 108 | ⏸ Human Decision 대기 |
+| semantic_duplication | 1,119 | 1,119 | ⏸ 장기 과제 |
+| **총 warnings** | **2,839** | **1,227** | −1,612 |
+
+Stage 1 bootstrap ✅ | HEAD: `c4092ae0`
+
+### non_snake_case 처리 방향 (Human Decision 필요)
+
+108개 전부 `TK_*()` 함수 의도적 대문자 명명 (`TK_FN`, `TK_IF`, `TK_IDENT` 등).
+
+| 옵션 | 내용 | 영향 |
+|------|------|------|
+| **Option A** | `TK_FN` → `tk_fn` 전체 리네임 (~106 함수 × 다수 호출 사이트) | 대규모 기계적 변환, 가독성 변화 |
+| **Option B** | BMB `@allow(non_snake_case)` 어노테이션 지원 추가 | 언어 컴파일러 수정 필요 |
+
+### semantic_duplication 처리 계획 (1,119개)
+
+장기 구조적 과제 — M10 Cycles 3198-3199에서 분류 분석 후 접근 방식 결정.
 
 ---
 
