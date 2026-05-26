@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-26 (Cycle 3189)
 
-> **HEAD**: `(커밋 후 업데이트)`
+> **HEAD**: `a8d5aeae`
 > **이번 세션 작업**: Cycle 3189 — M10 Phase 1: unused_binding 781→64 (−717, 91.8%)
 > **3-Stage Fixed Point**: M8-A 기준 `A8ADD96654CD39795443635F1DAAB55D` (M10 변경 후 Stage 2 bootstrap 미검증 — 기존 이슈로 Stage 2 파싱 오류 선재)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
