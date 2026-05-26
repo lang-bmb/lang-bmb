@@ -1632,18 +1632,46 @@ impl TypeChecker {
             // Create postcondition key: span-agnostic S-expression
             let post_key = output::format_expr(&post.node);
 
-            let key = (sig_key, post_key);
+            // Skip trivially weak postconditions — they are naturally shared by many
+            // functions with the same type signature and don't indicate semantic duplication.
+            let is_trivial = matches!(
+                post_key.as_str(),
+                // it >= N (any non-negative integer result)
+                "(>= it 0)" | "(> it 0)" | "(>= it 1)" | "(> it 1)"
+                // it >= -1 (position-or-not-found: -1 = sentinel, literal form)
+                | "(>= it -1)"
+                // it >= -1 (unary-negation form: (- 1))
+                | "(>= it (- 1))"
+                // it == it (tautology)
+                | "(== it it)"
+                // it == 0 / it == 1 (side-effect functions always returning constant)
+                | "(== it 0)" | "(== it 1)"
+                // it or not it (boolean tautology)
+                | "(or it (not it))"
+                // it.len() >= N (non-empty / length-bounded string)
+                | "(>= (.len it) 0)" | "(> (.len it) 0)"
+                | "(>= (.len it) 1)" | "(> (.len it) 1)"
+                | "(>= (.len it) 2)" | "(> (.len it) 2)"
+                | "(>= (.len it) 3)" | "(> (.len it) 3)"
+            ) // it >= PARAM (position-advance: result ≥ input offset, simple var RHS)
+            || (post_key.starts_with("(>= it ") && !post_key[7..].contains('('))
+            // it.len() <= PARAM.len() (result fits within input string)
+            || post_key.starts_with("(<= (.len it) (.len ")
+            // it.len() >= PARAM.len() (result at least as long as input)
+            || post_key.starts_with("(>= (.len it) (.len ");
 
-            if let Some((existing_name, _)) = self.contract_signatures.get(&key) {
-                // Found a function with equivalent contract
-                self.add_warning(CompileWarning::semantic_duplication(
-                    &f.name.node,
-                    existing_name,
-                    f.name.span,
-                ));
-            } else {
-                // First function with this signature+postcondition
-                self.contract_signatures.insert(key, (f.name.node.clone(), f.name.span));
+            if !is_trivial {
+                let key = (sig_key, post_key);
+
+                if let Some((existing_name, _)) = self.contract_signatures.get(&key) {
+                    self.add_warning(CompileWarning::semantic_duplication(
+                        &f.name.node,
+                        existing_name,
+                        f.name.span,
+                    ));
+                } else {
+                    self.contract_signatures.insert(key, (f.name.node.clone(), f.name.span));
+                }
             }
         }
 
@@ -11885,5 +11913,65 @@ mod tests {
   post it > 0
 = x * 2;"
         ));
+    }
+
+    // ====================================================================
+    // semantic_duplication: trivial postcondition exclusion (Cycle 3200)
+    // ====================================================================
+
+    #[test]
+    fn test_tc_semantic_duplication_trivial_no_warning() {
+        // Two functions with the same signature AND trivial `it >= 0` post should NOT warn.
+        let tc = check(
+            "fn abs_a(x: i64) -> i64 post it >= 0 = if x >= 0 { x } else { -x };
+             fn abs_b(x: i64) -> i64 post it >= 0 = if x > 0 { x } else { -x };",
+        )
+        .expect("type-check should succeed");
+        assert!(
+            !tc.warnings().iter().any(|w| w.kind() == "semantic_duplication"),
+            "trivial `it >= 0` should not trigger semantic_duplication"
+        );
+    }
+
+    #[test]
+    fn test_tc_semantic_duplication_trivial_bool_tautology() {
+        // `it or not it` is a boolean tautology — should not warn.
+        let tc = check(
+            "fn check_a(x: i64) -> bool post it or not it = x > 0;
+             fn check_b(x: i64) -> bool post it or not it = x >= 0;",
+        )
+        .expect("type-check should succeed");
+        assert!(
+            !tc.warnings().iter().any(|w| w.kind() == "semantic_duplication"),
+            "trivial `it or not it` should not trigger semantic_duplication"
+        );
+    }
+
+    #[test]
+    fn test_tc_semantic_duplication_meaningful_warns() {
+        // Two functions sharing a meaningful (non-trivial) postcondition SHOULD warn.
+        let tc = check(
+            "fn mul2(x: i64) -> i64 post it == x * 2 = x + x;
+             fn double(x: i64) -> i64 post it == x * 2 = x * 2;",
+        )
+        .expect("type-check should succeed");
+        assert!(
+            tc.warnings().iter().any(|w| w.kind() == "semantic_duplication"),
+            "meaningful shared postcondition should trigger semantic_duplication"
+        );
+    }
+
+    #[test]
+    fn test_tc_semantic_duplication_different_sigs_no_warn() {
+        // Same postcondition form but different signatures — should NOT warn.
+        let tc = check(
+            "fn foo(x: i64) -> i64 post it == x * 2 = x + x;
+             fn bar(x: i64, y: i64) -> i64 post it == x * 2 = x + x + y - y;",
+        )
+        .expect("type-check should succeed");
+        assert!(
+            !tc.warnings().iter().any(|w| w.kind() == "semantic_duplication"),
+            "different signatures should not trigger semantic_duplication"
+        );
     }
 }

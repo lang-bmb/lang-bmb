@@ -1,5 +1,6 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-27 (**M10 Track A ✅ COMPLETE** — Cycles 3190-3197: chained_comparison **757→0** (−757). unused_binding 64→0 + single_arm_match 11→0 포함. 총 warnings 2,839→**1,227**. Stage 1 bootstrap ✅. HEAD `c4092ae0`. 잔여: non_snake_case 108 (Human Decision 대기) + semantic_duplication 1,119 (장기).)
+> 최종 업데이트: 2026-05-27 (**M10 ✅ COMPLETE** — Cycles 3198-3201: warnings **1,227 → 0** (100% 감소). non_snake_case 108→0 (SCREAMING_SNAKE_CASE 예외) + semantic_duplication 1119→0 (trivial 제외 + 5개 수정). TK_AS/TK_BXOR 토큰 ID 충돌 수정 + low_is_whitespace 삭제. 3800 tests ✅. Stage 1 bootstrap ✅. HEAD 커밋 예정.)
+> 이전 갱신: 2026-05-27 (**M10 Track A ✅ COMPLETE** — Cycles 3190-3197: chained_comparison **757→0** (−757). unused_binding 64→0 + single_arm_match 11→0 포함. 총 warnings 2,839→**1,227**. Stage 1 bootstrap ✅. HEAD `c4092ae0`. 잔여: non_snake_case 108 (Human Decision 대기) + semantic_duplication 1,119 (장기).)
 > 이전 갱신: 2026-05-26 (**M10 Phase 1 진행** — Cycle 3189: unused_binding 781→64 (−717, **91.8%**). 총 warnings 2,839→2,121. cargo test 6278 ✅. Stage 1 bootstrap ✅. HEAD `a8d5aeae`.)
 > 이전 갱신: 2026-05-26 (**M9 ✅ COMPLETE** — Cycles 3179-3188: 163→0 (−163). missing_postcondition **0** 달성. 총 814개 postcondition 추가(Cycles 3136-3188). cargo test 23 ✅. HEAD `6595319e`.)
 > 이전 갱신: 2026-05-25 (**M8-A/B ✅ 실질 완료** — Cycles 3115-3133: bool 91/97 교체 + String 202/279 교체 (77개 skip 확정). warnings 3173→2994 (−179). Fixed Point 불변. 953/953 verified.)

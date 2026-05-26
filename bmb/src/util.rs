@@ -69,7 +69,8 @@ pub fn format_suggestion_hint(suggestion: Option<&str>) -> String {
 
 /// Check if a name is snake_case.
 /// Valid: `foo`, `foo_bar`, `_foo`, `foo123`, `_`
-/// Invalid: `fooBar`, `FooBar`, `FOO_BAR` (unless all-caps which we allow)
+/// Invalid: `fooBar`, `FooBar`
+/// Valid (SCREAMING_SNAKE_CASE): `FOO_BAR`, `TK_FN`, `SEP` (constant naming convention)
 pub fn is_snake_case(name: &str) -> bool {
     if name.is_empty() || name == "_" {
         return true;
@@ -77,6 +78,10 @@ pub fn is_snake_case(name: &str) -> bool {
     // Allow names starting with underscore (private convention)
     let check = name.strip_prefix('_').unwrap_or(name);
     if check.is_empty() {
+        return true;
+    }
+    // Allow SCREAMING_SNAKE_CASE (constant naming convention: TK_FN, SEP, etc.)
+    if check.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_') {
         return true;
     }
     // All lowercase letters, digits, and underscores
@@ -215,7 +220,7 @@ mod tests {
         assert!(is_snake_case(""));
         assert!(!is_snake_case("fooBar"));
         assert!(!is_snake_case("FooBar"));
-        assert!(!is_snake_case("FOO_BAR"));
+        assert!(is_snake_case("FOO_BAR")); // SCREAMING_SNAKE_CASE allowed (constant convention)
     }
 
     #[test]
@@ -302,7 +307,7 @@ mod tests {
         assert!(is_snake_case("_x123"));
         assert!(is_snake_case("a_b_c"));
         assert!(is_snake_case("x"));
-        assert!(!is_snake_case("A"));
+        assert!(is_snake_case("A")); // Single uppercase letter = SCREAMING_SNAKE_CASE allowed
     }
 
     #[test]

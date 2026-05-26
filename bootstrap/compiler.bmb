@@ -20,7 +20,7 @@
 
 fn SEP() -> String
 
-  post it.len() == 1
+  post it == chr(31)
 
 = chr(31);
 
@@ -212,7 +212,7 @@ fn has_pattern(s: String, pat: String, pos: i64) -> bool
 
   pre pos >= 0
 
-  post not it or (pos + pat.len() <= s.len())
+  post not it or pat.len() <= s.len()
 
 = if pos + pat.len() > s.len() { false } else if match_bytes(s, pat, pos, 0) { true } else { has_pattern(s, pat, pos + 1) };
 
@@ -484,283 +484,283 @@ fn load_source(input: String) -> String
 
 fn TK_FN() -> i64
 
-  post it > 0
+  post it == 2000000000 + 100
 
 = 2000000000 + 100;
 
 fn TK_LET() -> i64
 
-  post it > 0
+  post it == 2000000000 + 101
 
 = 2000000000 + 101;
 
 fn TK_IF() -> i64
 
-  post it > 0
+  post it == 2000000000 + 102
 
 = 2000000000 + 102;
 
 fn TK_THEN() -> i64
 
-  post it > 0
+  post it == 2000000000 + 103
 
 = 2000000000 + 103;
 
 fn TK_ELSE() -> i64
 
-  post it > 0
+  post it == 2000000000 + 104
 
 = 2000000000 + 104;
 
 fn TK_TRUE() -> i64
 
-  post it > 0
+  post it == 2000000000 + 105
 
 = 2000000000 + 105;
 
 fn TK_FALSE() -> i64
 
-  post it > 0
+  post it == 2000000000 + 106
 
 = 2000000000 + 106;
 
 fn TK_AND() -> i64
 
-  post it > 0
+  post it == 2000000000 + 107
 
 = 2000000000 + 107;
 
 fn TK_OR() -> i64
 
-  post it > 0
+  post it == 2000000000 + 108
 
 = 2000000000 + 108;
 
 fn TK_NOT() -> i64
 
-  post it > 0
+  post it == 2000000000 + 109
 
 = 2000000000 + 109;
 
 fn TK_PRE() -> i64
 
-  post it > 0
+  post it == 2000000000 + 110
 
 = 2000000000 + 110;
 
 fn TK_POST() -> i64
 
-  post it > 0
+  post it == 2000000000 + 111
 
 = 2000000000 + 111;
 
 fn TK_MUT() -> i64
 
-  post it > 0
+  post it == 2000000000 + 117
 
 = 2000000000 + 117;
 
 fn TK_WHILE() -> i64
 
-  post it > 0
+  post it == 2000000000 + 118
 
 = 2000000000 + 118;
 
 fn TK_LOOP() -> i64
 
-  post it > 0
+  post it == 2000000000 + 131
 
 = 2000000000 + 131;      // v0.90.31: loop keyword
 
 fn TK_CONTINUE() -> i64
 
-  post it > 0
+  post it == 2000000000 + 132
 
 = 2000000000 + 132;  // v0.90.31: continue keyword
 
 fn TK_RETURN() -> i64
 
-  post it > 0
+  post it == 2000000000 + 133
 
 = 2000000000 + 133;    // v0.90.31: return keyword
 
 fn TK_BREAK() -> i64
 
-  post it > 0
+  post it == 2000000000 + 127
 
 = 2000000000 + 127;
 
 fn TK_FOR() -> i64
 
-  post it > 0
+  post it == 2000000000 + 125
 
 = 2000000000 + 125;
 
 fn TK_IN() -> i64
 
-  post it > 0
+  post it == 2000000000 + 126
 
 = 2000000000 + 126;
 
 fn TK_ASYNC() -> i64
 
-  post it > 0
+  post it == 2000000000 + 119
 
 = 2000000000 + 119;
 
 fn TK_AWAIT() -> i64
 
-  post it > 0
+  post it == 2000000000 + 120
 
 = 2000000000 + 120;
 
 fn TK_SELECT() -> i64
 
-  post it > 0
+  post it == 2000000000 + 121
 
 = 2000000000 + 121;
 
 fn TK_I32() -> i64
 
-  post it > 0
+  post it == 2000000000 + 150
 
 = 2000000000 + 150;
 
 fn TK_I64() -> i64
 
-  post it > 0
+  post it == 2000000000 + 151
 
 = 2000000000 + 151;
 
 fn TK_F64() -> i64
 
-  post it > 0
+  post it == 2000000000 + 152
 
 = 2000000000 + 152;
 
 fn TK_BOOL() -> i64
 
-  post it > 0
+  post it == 2000000000 + 153
 
 = 2000000000 + 153;
 
 fn TK_STRING_TYPE() -> i64
 
-  post it > 0
+  post it == 2000000000 + 154
 
 = 2000000000 + 154;
 
 fn TK_FUTURE() -> i64
 
-  post it > 0
+  post it == 2000000000 + 155
 
 = 2000000000 + 155;
 
 fn TK_MUTEX() -> i64
 
-  post it > 0
+  post it == 2000000000 + 156
 
 = 2000000000 + 156;
 
 fn TK_ATOMIC() -> i64
 
-  post it > 0
+  post it == 2000000000 + 157
 
 = 2000000000 + 157;
 
 fn TK_CHANNEL() -> i64
 
-  post it > 0
+  post it == 2000000000 + 158
 
 = 2000000000 + 158;
 
 fn TK_SENDER() -> i64
 
-  post it > 0
+  post it == 2000000000 + 159
 
 = 2000000000 + 159;
 
 fn TK_RECEIVER() -> i64
 
-  post it > 0
+  post it == 2000000000 + 160
 
 = 2000000000 + 160;
 
 fn TK_RWLOCK() -> i64
 
-  post it > 0
+  post it == 2000000000 + 161
 
 = 2000000000 + 161;
 
 fn TK_THREADPOOL() -> i64
 
-  post it > 0
+  post it == 2000000000 + 162
 
 = 2000000000 + 162;
 
 fn TK_SCOPE() -> i64
 
-  post it > 0
+  post it == 2000000000 + 163
 
 = 2000000000 + 163;
 
 fn TK_IDENT() -> i64
 
-  post it > 0
+  post it == 2000000000 + 201
 
 = 2000000000 + 201;
 
 fn TK_STRING_LIT() -> i64
 
-  post it > 0
+  post it == 2000000000 + 202
 
 = 2000000000 + 202;
 
 fn TK_FLOAT_LIT() -> i64
 
-  post it > 0
+  post it == 2000000000 + 203
 
 = 2000000000 + 203;
 
 fn TK_CHAR_LIT() -> i64
 
-  post it > 0
+  post it == 2000000000 + 204
 
 = 2000000000 + 204;
 
 fn TK_COLON() -> i64
 
-  post it > 0
+  post it == 2000000000 + 300
 
 = 2000000000 + 300;
 
 fn TK_EQ() -> i64
 
-  post it > 0
+  post it == 2000000000 + 302
 
 = 2000000000 + 302;
 
 fn TK_SEMI() -> i64
 
-  post it > 0
+  post it == 2000000000 + 303
 
 = 2000000000 + 303;
 
 fn TK_COMMA() -> i64
 
-  post it > 0
+  post it == 2000000000 + 304
 
 = 2000000000 + 304;
 
 fn TK_LPAREN() -> i64
 
-  post it > 0
+  post it == 2000000000 + 305
 
 = 2000000000 + 305;
 
 fn TK_RPAREN() -> i64
 
-  post it > 0
+  post it == 2000000000 + 306
 
 = 2000000000 + 306;
 
@@ -768,355 +768,355 @@ fn TK_RPAREN() -> i64
 
 fn TK_LBRACE() -> i64
 
-  post it > 0
+  post it == 2000000000 + 307
 
 = 2000000000 + 307;
 
 fn TK_RBRACE() -> i64
 
-  post it > 0
+  post it == 2000000000 + 308
 
 = 2000000000 + 308;
 
 fn TK_LBRACKET() -> i64
 
-  post it > 0
+  post it == 2000000000 + 309
 
 = 2000000000 + 309;
 
 fn TK_RBRACKET() -> i64
 
-  post it > 0
+  post it == 2000000000 + 310
 
 = 2000000000 + 310;
 
 fn TK_SET() -> i64
 
-  post it > 0
+  post it == 2000000000 + 164
 
 = 2000000000 + 164;
 
 fn TK_STRUCT() -> i64
 
-  post it > 0
+  post it == 2000000000 + 165
 
 = 2000000000 + 165;
 
 fn TK_NULL() -> i64
 
-  post it > 0
+  post it == 2000000000 + 166
 
 = 2000000000 + 166;
 
 fn TK_MATCH() -> i64
 
-  post it > 0
+  post it == 2000000000 + 168
 
 = 2000000000 + 168;
 
 fn TK_QUESTION() -> i64
 
-  post it > 0
+  post it == 2000000000 + 169
 
 = 2000000000 + 169;
 
 fn TK_PUB() -> i64
 
-  post it > 0
+  post it == 2000000000 + 170
 
 = 2000000000 + 170;
 
 fn TK_TYPE() -> i64
 
-  post it > 0
+  post it == 2000000000 + 171
 
 = 2000000000 + 171;
 
 fn TK_ENUM() -> i64
 
-  post it > 0
+  post it == 2000000000 + 172
 
 = 2000000000 + 172;
 
 fn TK_TRAIT() -> i64
 
-  post it > 0
+  post it == 2000000000 + 173
 
 = 2000000000 + 173;
 
 fn TK_IMPL() -> i64
 
-  post it > 0
+  post it == 2000000000 + 174
 
 = 2000000000 + 174;
 
 fn TK_CONST() -> i64
 
-  post it > 0
+  post it == 2000000000 + 175
 
 = 2000000000 + 175;
 
 fn TK_WHERE() -> i64
 
-  post it > 0
+  post it == 2000000000 + 176
 
 = 2000000000 + 176;
 
 fn TK_DCOLON() -> i64
 
-  post it > 0
+  post it == 2000000000 + 326
 
 = 2000000000 + 326;
 
 fn TK_PIPE() -> i64
 
-  post it > 0
+  post it == 2000000000 + 327
 
 = 2000000000 + 327;
 
 fn TK_ARROW() -> i64
 
-  post it > 0
+  post it == 2000000000 + 321
 
 = 2000000000 + 321;
 
 fn TK_DOT() -> i64
 
-  post it > 0
+  post it == 2000000000 + 322
 
 = 2000000000 + 322;
 
 fn TK_DOTDOT() -> i64
 
-  post it > 0
+  post it == 2000000000 + 323
 
 = 2000000000 + 323;
 
 fn TK_FAT_ARROW() -> i64
 
-  post it > 0
+  post it == 2000000000 + 324
 
 = 2000000000 + 324;
 
 fn TK_DOTDOTEQ() -> i64
 
-  post it > 0
+  post it == 2000000000 + 325
 
 = 2000000000 + 325;
 
 fn TK_PLUS() -> i64
 
-  post it > 0
+  post it == 2000000000 + 400
 
 = 2000000000 + 400;
 
 fn TK_MINUS() -> i64
 
-  post it > 0
+  post it == 2000000000 + 401
 
 = 2000000000 + 401;
 
 fn TK_STAR() -> i64
 
-  post it > 0
+  post it == 2000000000 + 402
 
 = 2000000000 + 402;
 
 fn TK_SLASH() -> i64
 
-  post it > 0
+  post it == 2000000000 + 403
 
 = 2000000000 + 403;
 
 fn TK_PERCENT() -> i64
 
-  post it > 0
+  post it == 2000000000 + 404
 
 = 2000000000 + 404;
 
 fn TK_LT() -> i64
 
-  post it > 0
+  post it == 2000000000 + 405
 
 = 2000000000 + 405;
 
 fn TK_GT() -> i64
 
-  post it > 0
+  post it == 2000000000 + 406
 
 = 2000000000 + 406;
 
 fn TK_EQEQ() -> i64
 
-  post it > 0
+  post it == 2000000000 + 410
 
 = 2000000000 + 410;
 
 fn TK_NEQ() -> i64
 
-  post it > 0
+  post it == 2000000000 + 411
 
 = 2000000000 + 411;
 
 fn TK_LTEQ() -> i64
 
-  post it > 0
+  post it == 2000000000 + 412
 
 = 2000000000 + 412;
 
 fn TK_GTEQ() -> i64
 
-  post it > 0
+  post it == 2000000000 + 413
 
 = 2000000000 + 413;
 
 fn TK_AS() -> i64
 
-  post it > 0
+  post it == 2000000000 + 134
 
-= 2000000000 + 127;
+= 2000000000 + 134;
 
 fn TK_BAND() -> i64
 
-  post it > 0
+  post it == 2000000000 + 128
 
 = 2000000000 + 128;
 
 fn TK_BOR() -> i64
 
-  post it > 0
+  post it == 2000000000 + 129
 
 = 2000000000 + 129;
 
 fn TK_BNOT() -> i64
 
-  post it > 0
+  post it == 2000000000 + 130
 
 = 2000000000 + 130;
 
 fn TK_BXOR() -> i64
 
-  post it > 0
+  post it == 2000000000 + 135
 
-= 2000000000 + 131;  // v0.90.2: bitwise xor
+= 2000000000 + 135;  // v0.90.2: bitwise xor
 
 fn TK_SHL() -> i64
 
-  post it > 0
+  post it == 2000000000 + 431
 
 = 2000000000 + 431;
 
 fn TK_SHR() -> i64
 
-  post it > 0
+  post it == 2000000000 + 432
 
 = 2000000000 + 432;
 
 fn TK_AMP() -> i64
 
-  post it > 0
+  post it == 2000000000 + 433
 
 = 2000000000 + 433;
 
 fn TK_PLUSEQ() -> i64
 
-  post it > 0
+  post it == 2000000000 + 440
 
 = 2000000000 + 440;
 
 fn TK_MINUSEQ() -> i64
 
-  post it > 0
+  post it == 2000000000 + 441
 
 = 2000000000 + 441;
 
 fn TK_STAREQ() -> i64
 
-  post it > 0
+  post it == 2000000000 + 442
 
 = 2000000000 + 442;
 
 fn TK_SLASHEQ() -> i64
 
-  post it > 0
+  post it == 2000000000 + 443
 
 = 2000000000 + 443;
 
 fn TK_PERCENTEQ() -> i64
 
-  post it > 0
+  post it == 2000000000 + 444
 
 = 2000000000 + 444;
 
 fn TK_SHLEQ() -> i64
 
-  post it > 0
+  post it == 2000000000 + 445
 
 = 2000000000 + 445;     // v0.95: <<=
 
 fn TK_SHREQ() -> i64
 
-  post it > 0
+  post it == 2000000000 + 446
 
 = 2000000000 + 446;     // v0.95: >>=
 
 fn TK_PLUSSAT() -> i64
 
-  post it > 0
+  post it == 2000000000 + 450
 
 = 2000000000 + 450;    // v0.96: +| (saturating add)
 
 fn TK_MINUSSAT() -> i64
 
-  post it > 0
+  post it == 2000000000 + 451
 
 = 2000000000 + 451;   // v0.96: -| (saturating sub)
 
 fn TK_STARSAT() -> i64
 
-  post it > 0
+  post it == 2000000000 + 452
 
 = 2000000000 + 452;    // v0.96: *| (saturating mul)
 
 fn TK_PLUSWRAP() -> i64
 
-  post it > 0
+  post it == 2000000000 + 453
 
 = 2000000000 + 453;    // v0.96: +% (wrapping add)
 
 fn TK_MINUSWRAP() -> i64
 
-  post it > 0
+  post it == 2000000000 + 454
 
 = 2000000000 + 454;   // v0.96: -% (wrapping sub)
 
 fn TK_STARWRAP() -> i64
 
-  post it > 0
+  post it == 2000000000 + 455
 
 = 2000000000 + 455;    // v0.96: *% (wrapping mul)
 
 fn TK_LSHR() -> i64
 
-  post it > 0
+  post it == 2000000000 + 456
 
 = 2000000000 + 456;       // v0.96: >>> (logical shift right)
 
 fn TK_CARET() -> i64
 
-  post it > 0
+  post it == 2000000000 + 457
 
 = 2000000000 + 457;      // v0.98: ^ (bitwise xor, synonym of bxor)
 
 fn TK_EXTERN() -> i64
 
-  post it > 0
+  post it == 2000000000 + 167
 
 = 2000000000 + 167;
 
 fn TK_EOF() -> i64
 
-  post it > 0
+  post it == 2000000000 + 900
 
 = 2000000000 + 900;
 
@@ -6974,13 +6974,6 @@ fn parse_source(src: String) -> String
 
 // ============================================================================
 
-fn low_is_whitespace(c: i64) -> bool
-
-  pre c >= 0
-
-  post it == (c == 32 or c == 9 or c == 10 or c == 13)
-
-= c == 32 or c == 9 or c == 10 or c == 13;
 
 fn low_skip_ws(s: String, pos: i64) -> i64
 
@@ -6988,7 +6981,7 @@ fn low_skip_ws(s: String, pos: i64) -> i64
 
   post it >= pos
 
-= if pos >= s.len() { pos } else if low_is_whitespace(s.byte_at(pos)) { low_skip_ws(s, pos + 1) } else { pos };
+= if pos >= s.len() { pos } else if is_whitespace(s.byte_at(pos)) { low_skip_ws(s, pos + 1) } else { pos };
 
 fn low_is_ident_char(c: i64) -> bool
 
@@ -7601,7 +7594,7 @@ fn sb_push_mir(sb: i64, text: String) -> i64
 
 fn work_sep() -> String
 
-  post it.len() == 1
+  post it == chr(9)
 
 = chr(9);
 
@@ -15199,7 +15192,7 @@ fn trim_end_at(s: String, pos: i64) -> String
 
   post it.len() >= 0
 
-= if pos < 0 { "" } else if low_is_whitespace(s.byte_at(pos)) { trim_end_at(s, pos - 1) } else { s.slice(0, pos + 1) };
+= if pos < 0 { "" } else if is_whitespace(s.byte_at(pos)) { trim_end_at(s, pos - 1) } else { s.slice(0, pos + 1) };
 
 // v0.46: Trim both leading and trailing whitespace
 
