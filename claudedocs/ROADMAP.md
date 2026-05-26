@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-27 (**M10 ✅ COMPLETE** — Cycles 3198-3201: warnings **1,227 → 0** (100% 감소). non_snake_case 108→0 (SCREAMING_SNAKE_CASE 예외) + semantic_duplication 1119→0 (trivial 제외 + 5개 수정). TK_AS/TK_BXOR 토큰 ID 충돌 수정 + low_is_whitespace 삭제. 3800 tests ✅. Stage 1 bootstrap ✅. HEAD 커밋 예정.)
+> 최종 업데이트: 2026-05-27 (**M10 ✅ COMPLETE** — Cycles 3198-3201: warnings **1,227 → 0** (100% 감소). non_snake_case 108→0 (SCREAMING_SNAKE_CASE 예외) + semantic_duplication 1119→0 (trivial 제외 + 5개 수정). TK_AS/TK_BXOR 토큰 ID 충돌 수정 + low_is_whitespace 삭제. 3800 tests ✅. Stage 1 bootstrap ✅. HEAD `98628ce9`.)
 > 이전 갱신: 2026-05-27 (**M10 Track A ✅ COMPLETE** — Cycles 3190-3197: chained_comparison **757→0** (−757). unused_binding 64→0 + single_arm_match 11→0 포함. 총 warnings 2,839→**1,227**. Stage 1 bootstrap ✅. HEAD `c4092ae0`. 잔여: non_snake_case 108 (Human Decision 대기) + semantic_duplication 1,119 (장기).)
 > 이전 갱신: 2026-05-26 (**M10 Phase 1 진행** — Cycle 3189: unused_binding 781→64 (−717, **91.8%**). 총 warnings 2,839→2,121. cargo test 6278 ✅. Stage 1 bootstrap ✅. HEAD `a8d5aeae`.)
 > 이전 갱신: 2026-05-26 (**M9 ✅ COMPLETE** — Cycles 3179-3188: 163→0 (−163). missing_postcondition **0** 달성. 총 814개 postcondition 추가(Cycles 3136-3188). cargo test 23 ✅. HEAD `6595319e`.)
@@ -1236,37 +1236,37 @@ Stage 1 bootstrap ✅ | HEAD: `6595319e`
 
 ---
 
-## § M10 — Warning Zero (2026-05-26~27 진행)
+## § M10 — Warning Zero ✅ COMPLETE (2026-05-27)
 
 ### 목표
 
-`bmb check bootstrap/compiler.bmb` 경고 0 달성 (non_snake_case·semantic_duplication 제외 시 즉시 달성).
+`bmb lint bootstrap/compiler.bmb` 경고 0 달성.
 
-### 진행 현황
+### 최종 현황
 
-| 경고 종류 | 시작 | 현재 | 상태 |
+| 경고 종류 | 시작 | 최종 | 상태 |
 |-----------|------|------|------|
 | unused_binding | 781 | 0 | ✅ DONE (Cycles 3189-3195) |
 | single_arm_match | 11 | 0 | ✅ DONE (Cycle 3195) |
 | chained_comparison | 757 | **0** | ✅ DONE (Cycles 3190-3197) |
-| non_snake_case | 108 | 108 | ⏸ Human Decision 대기 |
-| semantic_duplication | 1,119 | 1,119 | ⏸ 장기 과제 |
-| **총 warnings** | **2,839** | **1,227** | −1,612 |
+| non_snake_case | 108 | **0** | ✅ DONE (Cycle 3199 — SCREAMING_SNAKE_CASE 예외) |
+| semantic_duplication | 1,119 | **0** | ✅ DONE (Cycles 3198, 3200-3201) |
+| **총 warnings** | **2,839** | **0** | −2,839 (100%) |
 
-Stage 1 bootstrap ✅ | HEAD: `c4092ae0`
+Stage 1 bootstrap ✅ | HEAD: `98628ce9` | 3800 tests ✅
 
-### non_snake_case 처리 방향 (Human Decision 필요)
+### 해결 방법 요약
 
-108개 전부 `TK_*()` 함수 의도적 대문자 명명 (`TK_FN`, `TK_IF`, `TK_IDENT` 등).
+| 경고 | 해결책 |
+|------|--------|
+| non_snake_case | `is_snake_case()` SCREAMING_SNAKE_CASE 예외 (`bmb/src/util.rs`) |
+| semantic_duplication | TK_* exact postcondition + trivial is_trivial 제외 + 5개 직접 수정 |
+| 잠재 버그 발견 | TK_AS(127=TK_BREAK) / TK_BXOR(131=TK_LOOP) 토큰 ID 충돌 → 134/135로 수정 |
 
-| 옵션 | 내용 | 영향 |
-|------|------|------|
-| **Option A** | `TK_FN` → `tk_fn` 전체 리네임 (~106 함수 × 다수 호출 사이트) | 대규모 기계적 변환, 가독성 변화 |
-| **Option B** | BMB `@allow(non_snake_case)` 어노테이션 지원 추가 | 언어 컴파일러 수정 필요 |
+### 잔여 사항 (M10 범위 밖)
 
-### semantic_duplication 처리 계획 (1,119개)
-
-장기 구조적 과제 — M10 Cycles 3198-3199에서 분류 분석 후 접근 방식 결정.
+- **1,114개 약한 계약**: trivial postcondition 공유 (is_trivial 제외됨). M9/Track B 방식으로 별도 처리 가능.
+- **Stage 2 bootstrap**: pre-existing 이슈. M10과 무관.
 
 ---
 

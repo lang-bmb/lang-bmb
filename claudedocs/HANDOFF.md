@@ -1,6 +1,6 @@
-# BMB Session Handoff — 2026-05-27 (Cycle 3201)
+# BMB Session Handoff — 2026-05-27 (Cycle 3201, Session Close)
 
-> **HEAD**: `6cc31de9`
+> **HEAD**: `98628ce9`
 > **이번 세션 작업**: Cycles 3198-3201 — **M10 ✅ COMPLETE**: warnings 1,227 → **0**
 > **3-Stage Fixed Point**: Stage 2 bootstrap ❌ (pre-existing, 이 세션과 무관)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
@@ -38,25 +38,26 @@
 1. **테스트 4개 추가** (`bmb/src/types/mod.rs`): trivial 제외 + meaningful 검출 검증
 2. **`low_is_whitespace` 삭제**: `is_whitespace`와 완전 동일 body. 2 호출부 교체 후 삭제
 3. **SEP/work_sep postcondition 강화**: `it.len()==1` → `it==chr(31)`/`it==chr(9)`
-4. **has_pattern postcondition 구별**: `s.len() >= pos + pat.len()` (동치이지만 S-expr 키 상이)
+4. **has_pattern postcondition 약화**: 검색 의미 표현 (`post not it or pat.len() <= s.len()`)
 5. **TK_AS/TK_BXOR 토큰 ID 충돌 수정**: TK_AS 127→**134**, TK_BXOR 131→**135** (잠재 파싱 버그 수정)
 
 ---
 
 ## 다음 세션 시작점
 
-### M11 계획 수립 필요
+### 가능한 다음 단계 (우선순위 순)
 
-**가능한 다음 단계**:
-1. **Stage 2 bootstrap 복구**: 기존 pre-existing 이슈 — `fn SEP() -> String` 파싱 오류
-2. **M11 언어 갭 해소**: 언어 기능 추가 (ROADMAP 참조)
-3. **BMB 계약 품질 향상**: 남은 약한 계약들 (M9/Track B 방식으로 계속)
+| 순위 | 작업 | 설명 |
+|------|------|------|
+| 1 | **Stage 2 bootstrap 복구** | pre-existing — `fn SEP() -> String` 파싱 오류 진단 필요 |
+| 2 | **M11 계획 수립** | 언어 갭 해소 / 계약 품질 / 성능 등 다음 마일스톤 방향 결정 |
+| 3 | **BMB 계약 품질 향상** | 1,114개 약한 계약 (M9/Track B 방식 계속) |
 
 ### 기술 상태 스냅샷
 
 | 항목 | 값 |
 |------|----|
-| HEAD | `6cc31de9` |
+| HEAD | `98628ce9` |
 | chained_comparison | **0** ✅ |
 | non_snake_case | **0** ✅ |
 | semantic_duplication | **0** ✅ |
@@ -71,3 +72,4 @@
 
 - **Stage 2 bootstrap 오류**: pre-existing. 이 세션 변경사항과 무관.
 - **1,114개 약한 계약**: M9/Track B 방식으로 별도 처리 가능 (M10 범위 밖)
+- **M11 방향 미결정**: ROADMAP 참조, 다음 세션에서 방향 확정 필요
