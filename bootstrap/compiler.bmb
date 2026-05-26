@@ -18051,11 +18051,13 @@ fn conc_extract_single_op(line: String, pos: i64) -> String
 // Extract two space-separated operands: "%op1 %op2"
 fn conc_extract_two_ops_first(line: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let sp = find_char(line, pos, 32);
     line.slice(pos, sp);
 
 fn conc_extract_two_ops_second(line: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let sp = find_char(line, pos, 32);
     let p2 = low_skip_ws(line, sp + 1);
     trim_end(line.slice(p2, line.len()));
@@ -18063,11 +18065,13 @@ fn conc_extract_two_ops_second(line: String, pos: i64) -> String
 // Extract three space-separated operands: "%op1 %op2 %op3"
 fn conc_extract_three_first(line: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let sp = find_char(line, pos, 32);
     line.slice(pos, sp);
 
 fn conc_extract_three_second(line: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let sp1 = find_char(line, pos, 32);
     let p2 = low_skip_ws(line, sp1 + 1);
     let sp2 = find_char(line, p2, 32);
@@ -18075,6 +18079,7 @@ fn conc_extract_three_second(line: String, pos: i64) -> String
 
 fn conc_extract_three_third(line: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let sp1 = find_char(line, pos, 32);
     let p2 = low_skip_ws(line, sp1 + 1);
     let sp2 = find_char(line, p2, 32);
@@ -18116,6 +18121,7 @@ fn conc_gen_call_i64_0(dest: String, fn_name: String) -> String
 // Input: line is full MIR line, pos points to start of RHS (after "= "), dest is "%varname"
 fn llvm_gen_conc_rhs(line: String, pos: i64, dest: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = // Thread operations
     if low_starts_with_at(line, pos, "thread-spawn") {
         // Phase 1: synchronous. %dest = thread-spawn func(captures...)
@@ -18311,6 +18317,7 @@ fn llvm_gen_conc_rhs(line: String, pos: i64, dest: String) -> String
 // Handles MIR lines like "mutex-unlock %h = %v", "channel-send %s %v", etc.
 fn llvm_gen_conc_stmt(line: String, p: i64) -> String
   pre p >= 0
+  post it.len() >= 0
 = if low_starts_with_at(line, p, "mutex-unlock") {
         // mutex-unlock %handle = %value
         let op_start = low_skip_ws(line, p + 12);
@@ -18410,6 +18417,7 @@ fn llvm_gen_conc_stmt(line: String, p: i64) -> String
 
 fn llvm_gen_channel_new(line: String, p: i64) -> String
   pre p >= 0
+  post it.len() >= 0
 = // Parse: (%sender, %receiver) = channel-new %capacity
     let p1 = p + 1;
     let comma = find_comma(line, p1);
@@ -18443,6 +18451,7 @@ fn llvm_gen_string_ref(dest: String, str_content: String, strings: String) -> St
 // Only extracts `pre` conditions (post conditions handled separately)
 fn extract_pre_asts(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let t = next_token_raw(src, pos);
     let k = tok_kind(t);
     if k == TK_EQ() or k == TK_EOF() or k == TK_LBRACE() { "" }
@@ -18472,6 +18481,7 @@ fn extract_pre_asts(src: String, pos: i64) -> String
 // Returns tab-separated AST S-expressions for post conditions
 fn extract_post_asts(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let t = next_token_raw(src, pos);
     let k = tok_kind(t);
     if k == TK_EQ() or k == TK_EOF() or k == TK_LBRACE() { "" }
@@ -18509,6 +18519,7 @@ fn build_contracts_map(src: String) -> String
 // Jumps between function boundaries using find_pattern_noa instead of token-by-token
 fn build_contracts_map_scan(src: String, pos: i64, sb: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = // Find next "fn " in source (naive but bounded by function count, not token count)
     let fn_pos = find_pattern_noa(src, "fn ", pos);
     if fn_pos < 0 { 0 } else {
@@ -18560,6 +18571,7 @@ fn build_post_contracts_map(src: String) -> String
 
 fn build_post_contracts_map_scan(src: String, pos: i64, sb: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = let fn_pos = find_pattern_noa(src, "fn ", pos);
     if fn_pos < 0 { 0 } else {
         let is_real_fn = if fn_pos == 0 { true }
@@ -18601,6 +18613,7 @@ fn lookup_contracts(map: String, fn_name: String) -> String
 
 fn lookup_contracts_at(map: String, fn_name: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= map.len() { "" } else {
         // Find next entry: starts at pos, find tab separator
         let tab = find_char(map, pos, 9);
@@ -18637,6 +18650,7 @@ fn strip_angle_brackets(s: String) -> String
 // Returns: (counter, ir_text) packed as "counter:ir_text"
 fn contract_ast_to_assumes(ast: String, counter: i64) -> String
   pre counter >= 0
+  post it.len() >= 0
 = let nt = get_node_type(ast);
     if nt == "binop" {
         let op = get_child(ast, 0);
@@ -18686,6 +18700,7 @@ fn contract_ast_to_assumes(ast: String, counter: i64) -> String
 
 fn pack_assume_result(counter: i64, ir: String) -> String
   pre counter >= 0
+  post it.len() >= 0
 = int_to_string(counter) + ":" + ir;
 
 fn unpack_assume_counter(result: String) -> i64
@@ -18706,6 +18721,7 @@ fn gen_assumes_for_contracts(contracts: String) -> String
 
 fn gen_assumes_for_contracts_acc(contracts: String, pos: i64, counter: i64, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= contracts.len() { acc } else {
         let tab = find_char(contracts, pos, 9);
         let end = if tab >= contracts.len() { contracts.len() } else { tab };
@@ -18748,6 +18764,7 @@ fn inject_contract_assumes_all(ir: String, contracts_map: String) -> String
 
 fn inject_assumes_scan(ir: String, pos: i64, contracts_map: String, sb: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= ir.len() { 0 } else {
         // Find next DSEP (double chr(31))
         let fn_end = find_double_pipe(ir, pos);
@@ -18783,6 +18800,7 @@ fn inject_post_assumes_all(ir: String, post_map: String) -> String
 
 fn inject_post_assumes_scan(ir: String, pos: i64, post_map: String, sb: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= ir.len() { 0 } else {
         // Find next DSEP (double chr(31))
         let fn_end = find_double_pipe(ir, pos);
@@ -18812,6 +18830,7 @@ fn inject_post_assumes_in_fn(fn_ir: String, post_map: String, counter: i64) -> S
 
 fn inject_post_assumes_in_fn_scan(fn_ir: String, post_map: String, pos: i64, counter: i64, sb: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= fn_ir.len() { counter } else {
         // Find next SEP (line separator)
         let sep = find_char(fn_ir, pos, 31);
@@ -18864,6 +18883,7 @@ fn skip_spaces(s: String, pos: i64) -> i64
 // Uses %_post_assume_ prefix to avoid name collision with pre-condition assumes
 fn gen_assumes_for_post_contracts(contracts: String, counter: i64) -> String
   pre counter >= 0
+  post it.len() >= 0
 = let raw = gen_assumes_for_post_acc(contracts, 0, counter, "");
     let raw_counter = unpack_assume_counter(raw);
     let raw_ir = unpack_assume_ir(raw);
@@ -18873,6 +18893,7 @@ fn gen_assumes_for_post_contracts(contracts: String, counter: i64) -> String
 
 fn gen_assumes_for_post_acc(contracts: String, pos: i64, counter: i64, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= contracts.len() { pack_assume_result(counter, acc) } else {
         let tab = find_char(contracts, pos, 9);
         let end = if tab >= contracts.len() { contracts.len() } else { tab };
@@ -18915,6 +18936,7 @@ fn str_to_int(s: String) -> i64
 
 fn str_to_int_acc(s: String, pos: i64, acc: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= s.len() { acc }
     else {
         let c = s.byte_at(pos);
@@ -19003,6 +19025,7 @@ fn update_range_from_ast(ast: String, state: i64) -> i64
 // Scan tab-separated postcondition ASTs and update range state
 fn compute_ret_range_scan(asts: String, pos: i64, state: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= asts.len() { 0 }
     else {
         let tab = find_char(asts, pos, 9);
@@ -19045,6 +19068,7 @@ fn compute_ret_range(asts: String) -> String
 // Rebuild IR with range attributes on function definitions
 fn range_rebuild(ir: String, pos: i64, sb: i64, post_map: String, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= ir.len() { count }
     else {
         let fn_end = find_double_pipe(ir, pos);
@@ -19154,6 +19178,7 @@ fn sco_push_line(sb: i64, line: String) -> i64
 // Returns counter for unique naming
 fn sco_emit_pushes(sb: i64, operands: String, pos: i64, sb_var: String, sb_id: i64, counter: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= operands.len() { counter }
     else {
         let semi = find_char(operands, pos, 59);
@@ -19204,6 +19229,7 @@ fn sco_flush_chain(sb: i64, chain_operands: String, chain_dest: String, chain_or
 // State: chain_operands (""=no active chain), chain_dest, chain_orig, sb_id
 fn sco_process_lines(ir: String, pos: i64, sb: i64, chain_ops: String, chain_dest: String, chain_orig: String, sb_id: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= ir.len() {
         // End of input, flush any pending chain
         if chain_ops == "" { sb_id }
@@ -19384,6 +19410,7 @@ fn lr2l_process_fn(fn_ir: String) -> String
 // Process entire module IR: transform each function
 fn lr2l_program(ir: String, pos: i64, sb: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= ir.len() { 0 }
     else {
         let fn_end = find_double_pipe(ir, pos);
@@ -19439,6 +19466,7 @@ fn decl_has_conflict(decl_line: String, user_fn_names: String) -> bool
 // Scan through declarations, keeping non-conflicting ones
 fn filter_decls_scan(decls: String, pos: i64, user_fn_names: String, sb: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= decls.len() { 0 }
     else {
         let sep = find_pipe_skip_quotes(decls, pos);
@@ -19483,6 +19511,7 @@ fn filter_conflicting_decls(decls: String, code: String) -> String
 // - Function definitions
 fn compile_program(source: String, safe: i64) -> String
   pre safe >= 0
+  post it.len() >= 0
 = let ast_raw = parse_source(source);
     if is_error(ast_raw) { ast_raw } else {
         let enum_reg = build_enum_registry(source);
@@ -19615,6 +19644,7 @@ fn emit_ir(input: String, output: String) -> i64
 // Returns "pre <expr>" and/or "post <expr>" text, or "" if no contracts
 fn extract_contract_text(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let t = next_token_raw(src, pos);
     let k = tok_kind(t);
     if k == TK_EQ() { "" }
@@ -19651,12 +19681,14 @@ fn trim_ws(s: String) -> String
 
 fn trim_ws_start(s: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= s.len() { pos }
     else if is_whitespace(s.byte_at(pos)) { trim_ws_start(s, pos + 1) }
     else { pos };
 
 fn trim_ws_end(s: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos <= 0 { 0 }
     else if is_whitespace(s.byte_at(pos - 1)) { trim_ws_end(s, pos - 1) }
     else { pos };
@@ -19664,7 +19696,8 @@ fn trim_ws_end(s: String, pos: i64) -> i64
 // Extract a single parameter as "name: type" text
 fn index_parse_param_text(src: String, pos: i64) -> String
     pre pos >= 0
-= 
+    post it.len() >= 0
+=
     let t1 = next_token_raw(src, pos);
     if tok_kind(t1) == TK_IDENT() {
         let name = src.slice(skip_ws_comments(src, pos), scan_ident_end(src, skip_ws_comments(src, pos)));
@@ -19679,7 +19712,8 @@ fn index_parse_param_text(src: String, pos: i64) -> String
 // Read type text (i32, i64, f64, bool, String, *T, &T, &mut T, [T], [T;N])
 fn index_read_type_text(src: String, pos: i64) -> String
     pre pos >= 0
-= 
+    post it.len() >= 0
+=
     let t = next_token_raw(src, pos);
     let k = tok_kind(t);
     if k == TK_I32() { pack_result(skip_nullable_idx(src, tok_end(t)), "i32") }
@@ -19727,7 +19761,8 @@ fn skip_nullable_idx(src: String, pos: i64) -> i64
 // Collect parameters as comma-separated text
 fn index_collect_params(src: String, pos: i64, acc: String) -> String
     pre pos >= 0
-= 
+    post it.len() >= 0
+=
     let t = next_token_raw(src, pos);
     if tok_kind(t) == TK_RPAREN() { pack_result(tok_end(t), acc) }
     else {
@@ -19745,7 +19780,8 @@ fn index_collect_params(src: String, pos: i64, acc: String) -> String
 // Extract return type text
 fn index_read_ret_type(src: String, pos: i64) -> String
     pre pos >= 0
-= 
+    post it.len() >= 0
+=
     let t = next_token_raw(src, pos);
     if tok_kind(t) == TK_ARROW() {
         index_read_type_text(src, tok_end(t))
@@ -19754,6 +19790,7 @@ fn index_read_ret_type(src: String, pos: i64) -> String
 // Check if position marks the start of a new top-level declaration (fn, struct, @, EOF)
 fn index_is_decl_start(src: String, pos: i64) -> bool
   pre pos >= 0
+  post it or not it
 = let ann = skip_annotation(src, pos);
     if ann.len() > 0 { true }
     else {
@@ -19792,6 +19829,7 @@ fn index_has_name(list: String, name: String) -> bool
 
 fn index_has_name_search(list: String, name: String, pos: i64) -> bool
   pre pos >= 0
+  post it or not it
 = if pos >= list.len() { false }
     else {
         // Find next comma or end
@@ -19813,6 +19851,7 @@ fn index_find_comma_or_end(s: String, pos: i64) -> i64
 // Returns packed: "pos:calls_string"
 fn index_scan_body(src: String, pos: i64, depth: i64, calls: String, prev_was_dot: bool) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let t = next_token_raw(src, pos);
     let k = tok_kind(t);
     if k == TK_EOF() { pack_result(pos, calls) }
@@ -19851,6 +19890,7 @@ fn index_scan_body(src: String, pos: i64, depth: i64, calls: String, prev_was_do
 // Process one function: extract signature, calls, and print it, return position after function
 fn index_one_fn(src: String, pos: i64, ann: String) -> i64
   pre pos >= 0
+  post it >= 0
 = let t1 = next_token_raw(src, pos);
     if tok_kind(t1) == TK_IDENT() {
         let name = src.slice(skip_ws_comments(src, pos), scan_ident_end(src, skip_ws_comments(src, pos)));
@@ -19881,6 +19921,7 @@ fn index_one_fn(src: String, pos: i64, ann: String) -> i64
 // Extract struct field as "name: type" text
 fn index_struct_field(src: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
     if kind == TK_RBRACE() or kind == TK_EOF() { pack_result(pos, "") }
@@ -19897,6 +19938,7 @@ fn index_struct_field(src: String, pos: i64) -> String
 // Collect all struct fields as comma-separated text
 fn index_struct_fields(src: String, pos: i64, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
     if kind == TK_RBRACE() { pack_result(tok_end(tok), acc) }
@@ -19920,6 +19962,7 @@ fn index_struct_fields(src: String, pos: i64, acc: String) -> String
 // Index a struct declaration: print "struct Name { fields }"
 fn index_one_struct(src: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = let t1 = next_token_raw(src, pos);
     if tok_kind(t1) == TK_IDENT() {
         let name = src.slice(skip_ws_comments(src, pos), scan_ident_end(src, skip_ws_comments(src, pos)));
@@ -19938,6 +19981,7 @@ fn index_one_struct(src: String, pos: i64) -> i64
 // Returns packed count: fn_count * 10000 + struct_count
 fn index_source(src: String, pos: i64, fn_count: i64, struct_count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = let ann = skip_annotation(src, pos);
     if ann.len() > 0 {
         let after_ann = pos_after_annotation(src, pos);
@@ -19981,6 +20025,7 @@ fn index_file(input: String) -> i64
 // Returns packed "pos:matched" where matched = 1 if printed, 0 if skipped
 fn query_one_fn(src: String, pos: i64, ann: String, pattern: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let t1 = next_token_raw(src, pos);
     if tok_kind(t1) == TK_IDENT() {
         let name = src.slice(skip_ws_comments(src, pos), scan_ident_end(src, skip_ws_comments(src, pos)));
@@ -20011,6 +20056,7 @@ fn query_one_fn(src: String, pos: i64, ann: String, pattern: String) -> String
 // Query structs: print if name matches pattern
 fn query_one_struct(src: String, pos: i64, pattern: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let t1 = next_token_raw(src, pos);
     if tok_kind(t1) == TK_IDENT() {
         let name = src.slice(skip_ws_comments(src, pos), scan_ident_end(src, skip_ws_comments(src, pos)));
@@ -20038,6 +20084,7 @@ fn query_one_struct(src: String, pos: i64, pattern: String) -> String
 // Returns match_count
 fn query_source(src: String, pos: i64, pattern: String, match_count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = let ann = skip_annotation(src, pos);
     if ann.len() > 0 {
         let after_ann = pos_after_annotation(src, pos);
@@ -20082,6 +20129,7 @@ fn query_file(input: String, pattern: String) -> i64
 // Collect one function's name and calls as "name\tcalls_csv\n"
 fn callers_collect_fn(src: String, pos: i64, ann: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let t1 = next_token_raw(src, pos);
     if tok_kind(t1) == TK_IDENT() {
         let name = src.slice(skip_ws_comments(src, pos), scan_ident_end(src, skip_ws_comments(src, pos)));
@@ -20102,6 +20150,7 @@ fn callers_collect_fn(src: String, pos: i64, ann: String) -> String
 // Walk source collecting all function entries as "name\tcalls\tsig\n" strings
 fn callers_collect_source(src: String, pos: i64, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let ann = skip_annotation(src, pos);
     if ann.len() > 0 {
         let after_ann = pos_after_annotation(src, pos);
@@ -20128,6 +20177,7 @@ fn callers_collect_source(src: String, pos: i64, acc: String) -> String
 // Extract tab-separated field from entry: field 0 = name, 1 = calls, 2 = sig
 fn callers_get_field(ent: String, field: i64, pos: i64, cur_field: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= ent.len() {
         if cur_field == field { ent.slice(callers_field_start(ent, field, 0, 0), ent.len()) }
         else { "" }
@@ -20140,6 +20190,7 @@ fn callers_get_field(ent: String, field: i64, pos: i64, cur_field: i64) -> Strin
 
 fn callers_field_start(ent: String, field: i64, pos: i64, cur_field: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if cur_field == field { pos }
     else if pos >= ent.len() { pos }
     else if ent.byte_at(pos) == 9 { callers_field_start(ent, field, pos + 1, cur_field + 1) }
@@ -20148,6 +20199,7 @@ fn callers_field_start(ent: String, field: i64, pos: i64, cur_field: i64) -> i64
 // Search entries for callers of target, printing matches
 fn callers_search(entries: String, pos: i64, target: String, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { count }
     else {
         // Find end of line
@@ -20169,6 +20221,7 @@ fn callers_search(entries: String, pos: i64, target: String, count: i64) -> i64
 
 fn callers_find_eol(s: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= s.len() { pos }
     else if s.byte_at(pos) == 10 { pos }
     else { callers_find_eol(s, pos + 1) };
@@ -20176,6 +20229,7 @@ fn callers_find_eol(s: String, pos: i64) -> i64
 // Check if comma-separated calls list contains target name (exact match)
 fn callers_calls_contain(calls: String, target: String, pos: i64) -> bool
   pre pos >= 0
+  post it or not it
 = if calls == "" { false }
     else if calls == target { true }
     else {
@@ -20205,6 +20259,7 @@ fn callers_file(input: String, target: String) -> i64
 // Find calls for a specific function name from entries database
 fn deps_find_calls(entries: String, pos: i64, name: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= entries.len() { "" }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -20221,6 +20276,7 @@ fn deps_find_calls(entries: String, pos: i64, name: String) -> String
 // Returns updated visited set
 fn deps_visit_call(entries: String, calls: String, pos: i64, visited: String, depth: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= calls.len() { visited }
     else {
         let end = index_find_comma_or_end(calls, pos);
@@ -20234,6 +20290,7 @@ fn deps_visit_call(entries: String, calls: String, pos: i64, visited: String, de
 // DFS traversal: add name to visited, print it, then recurse into its calls
 fn deps_traverse(entries: String, name: String, visited: String, depth: i64) -> String
   pre depth >= 0
+  post it.len() >= 0
 = if index_has_name(visited, name) { visited }
     else {
         let new_visited = if visited == "" { name } else { visited + ", " + name };
@@ -20248,6 +20305,7 @@ fn deps_traverse(entries: String, name: String, visited: String, depth: i64) -> 
 // Build indentation string for depth
 fn deps_indent(depth: i64, acc: String) -> String
   pre depth >= 0
+  post it.len() >= 0
 = if depth <= 0 { acc }
     else { deps_indent(depth - 1, acc + "  ") };
 
@@ -20270,6 +20328,7 @@ fn deps_file(input: String, target: String) -> i64
 // Count names in comma-separated list
 fn deps_count_names(s: String, pos: i64, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if s == "" { 0 }
     else if pos >= s.len() { count + 1 }
     else if s.byte_at(pos) == 44 { deps_count_names(s, pos + 2, count + 1) }
@@ -20279,6 +20338,7 @@ fn deps_count_names(s: String, pos: i64, count: i64) -> i64
 // Find a function in source by name, return packed "start_pos:end_pos" or ""
 fn ctx_find_fn(src: String, pos: i64, target: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = let ann = skip_annotation(src, pos);
     if ann.len() > 0 {
         let after_ann = pos_after_annotation(src, pos);
@@ -20355,6 +20415,7 @@ fn ctx_find_fn(src: String, pos: i64, target: String) -> String
 // Print signatures of functions in a comma-separated calls list
 fn ctx_print_sigs(entries: String, calls: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= calls.len() { 0 }
     else {
         let end = index_find_comma_or_end(calls, pos);
@@ -20368,6 +20429,7 @@ fn ctx_print_sigs(entries: String, calls: String, pos: i64) -> i64
 // Find signature for a function name from entries database
 fn ctx_find_sig(entries: String, pos: i64, name: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= entries.len() { "" }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -20383,6 +20445,7 @@ fn ctx_find_sig(entries: String, pos: i64, name: String) -> String
 // Find all callers of a target from entries, return as comma-separated names
 fn ctx_find_callers(entries: String, pos: i64, target: String, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= entries.len() { acc }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -20442,6 +20505,7 @@ fn context_file(input: String, target: String) -> i64
 // Count how many functions call a given name
 fn outline_count_callers(entries: String, pos: i64, name: String, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { count }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -20457,6 +20521,7 @@ fn outline_count_callers(entries: String, pos: i64, name: String, count: i64) ->
 // Count items in comma-separated list
 fn outline_count_calls(calls: String, pos: i64, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if calls == "" { 0 }
     else if pos >= calls.len() { count + 1 }
     else if calls.byte_at(pos) == 44 { outline_count_calls(calls, pos + 2, count + 1) }
@@ -20465,6 +20530,7 @@ fn outline_count_calls(calls: String, pos: i64, count: i64) -> i64
 // Print outline for each function entry
 fn outline_print_entries(entries: String, pos: i64, all_entries: String) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { 0 }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -20488,6 +20554,7 @@ fn outline_print_entries(entries: String, pos: i64, all_entries: String) -> i64
 // Scan for structs and print them
 fn outline_scan_structs(src: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
     if kind == TK_EOF() { 0 }
@@ -20511,6 +20578,7 @@ fn outline_scan_structs(src: String, pos: i64) -> i64
 // Count entries in the entries string
 fn outline_count_entries(entries: String, pos: i64, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { count }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -20545,6 +20613,7 @@ fn outline_file(input: String) -> i64
 // Print source of each callee function
 fn xref_print_callee_sources(src: String, calls: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= calls.len() { 0 }
     else {
         let end = index_find_comma_or_end(calls, pos);
@@ -20614,6 +20683,7 @@ fn xref_file(input: String, target: String) -> i64
 // Find all callers of name from entries, return as comma-separated
 fn impact_find_callers(entries: String, pos: i64, name: String, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= entries.len() { acc }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -20632,6 +20702,7 @@ fn impact_find_callers(entries: String, pos: i64, name: String, acc: String) -> 
 // DFS reverse traversal: find all transitive callers
 fn impact_traverse(entries: String, name: String, visited: String, depth: i64) -> String
   pre depth >= 0
+  post it.len() >= 0
 = if index_has_name(visited, name) { visited }
     else {
         let new_visited = if visited == "" { name } else { visited + ", " + name };
@@ -20646,6 +20717,7 @@ fn impact_traverse(entries: String, name: String, visited: String, depth: i64) -
 // Process each caller in comma-separated list
 fn impact_visit_callers(entries: String, callers: String, pos: i64, visited: String, depth: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= callers.len() { visited }
     else {
         let end = index_find_comma_or_end(callers, pos);
@@ -20680,6 +20752,7 @@ fn impact_file(input: String, target: String) -> i64
 // Count lines in source
 fn stats_count_lines(src: String, pos: i64, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= src.len() { count }
     else if src.byte_at(pos) == 10 { stats_count_lines(src, pos + 1, count + 1) }
     else { stats_count_lines(src, pos + 1, count) };
@@ -20687,6 +20760,7 @@ fn stats_count_lines(src: String, pos: i64, count: i64) -> i64
 // Count entry points (functions with 0 callers, excluding main)
 fn stats_count_entries(entries: String, pos: i64, all: String, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { count }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -20703,6 +20777,7 @@ fn stats_count_entries(entries: String, pos: i64, all: String, count: i64) -> i6
 // Count leaf functions (functions that call nothing)
 fn stats_count_leaves(entries: String, pos: i64, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { count }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -20718,14 +20793,17 @@ fn stats_count_leaves(entries: String, pos: i64, count: i64) -> i64
 // Find function with most callers
 fn pick_best_name(name: String, count: i64, best_name: String, best_count: i64) -> String
   pre count >= 0
+  post it.len() >= 0
 = if count > best_count { name } else { best_name };
 
 fn pick_best_count(count: i64, best_count: i64) -> i64
   pre count >= 0
+  post it >= 0
 = if count > best_count { count } else { best_count };
 
 fn stats_most_called(entries: String, pos: i64, all: String, best_name: String, best_count: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= entries.len() { best_name + " (" + int_to_string(best_count) + " callers)" }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -20743,6 +20821,7 @@ fn stats_most_called(entries: String, pos: i64, all: String, best_name: String, 
 // Count structs in source
 fn stats_count_structs(src: String, pos: i64, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
     if kind == TK_EOF() { count }
@@ -20779,6 +20858,7 @@ fn stats_file(input: String) -> i64
 // v0.95: Unused command - find functions with 0 callers (dead code)
 fn unused_print_entries(entries: String, pos: i64, all: String, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { count }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -20816,6 +20896,7 @@ fn unused_file(input: String) -> i64
 // Count parameters in comma-separated string
 fn cx_count_params(params: String, pos: i64, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if params == "" { 0 }
     else if pos >= params.len() { count }
     else if params.byte_at(pos) == 44 { cx_count_params(params, pos + 1, count + 1) }
@@ -20824,12 +20905,14 @@ fn cx_count_params(params: String, pos: i64, count: i64) -> i64
 // Extract params text from signature: "fn name(params) -> ret" → "params"
 fn cx_extract_params(sig: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= sig.len() { "" }
     else if sig.byte_at(pos) == 40 { cx_extract_params_end(sig, pos + 1, pos + 1) }
     else { cx_extract_params(sig, pos + 1) };
 
 fn cx_extract_params_end(sig: String, pos: i64, start: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= sig.len() { "" }
     else if sig.byte_at(pos) == 41 { sig.slice(start, pos) }
     else { cx_extract_params_end(sig, pos + 1, start) };
@@ -20842,6 +20925,7 @@ fn cx_is_recursive(name: String, calls: String) -> bool
 // Print complexity for each function entry
 fn cx_print_entries(entries: String, pos: i64, all: String) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { 0 }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -20865,6 +20949,7 @@ fn cx_print_entries(entries: String, pos: i64, all: String) -> i64
 // Count recursive functions
 fn cx_count_recursive(entries: String, pos: i64, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { count }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -20881,6 +20966,7 @@ fn cx_count_recursive(entries: String, pos: i64, count: i64) -> i64
 // Find function with most parameters
 fn cx_most_params(entries: String, pos: i64, best_name: String, best_count: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= entries.len() { best_name + " (" + int_to_string(best_count) + " params)" }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -20900,6 +20986,7 @@ fn cx_most_params(entries: String, pos: i64, best_name: String, best_count: i64)
 // Find function with most calls (outgoing)
 fn cx_most_calls(entries: String, pos: i64, best_name: String, best_count: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= entries.len() { best_name + " (" + int_to_string(best_count) + " calls)" }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -20939,6 +21026,7 @@ fn complexity_file(input: String) -> i64
 // Count shared callees between two comma-separated call lists
 fn sim_count_shared(calls_a: String, calls_b: String, pos: i64, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if calls_a == "" or calls_b == "" { 0 }
     else if pos >= calls_a.len() {
         // end of last name
@@ -20957,10 +21045,12 @@ fn sim_count_shared(calls_a: String, calls_b: String, pos: i64, count: i64) -> i
 // Find start of current name (backtrack from pos to last comma+space or start)
 fn sim_find_start(s: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = sim_find_start_rev(s, pos - 1);
 
 fn sim_find_start_rev(s: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos < 0 { 0 }
     else if s.byte_at(pos) == 44 { pos + 2 }
     else { sim_find_start_rev(s, pos - 1) };
@@ -20968,6 +21058,7 @@ fn sim_find_start_rev(s: String, pos: i64) -> i64
 // Get target function's calls from entries
 fn sim_get_calls(entries: String, pos: i64, target: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= entries.len() { "" }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -20983,6 +21074,7 @@ fn sim_get_calls(entries: String, pos: i64, target: String) -> String
 // Print similar functions (those sharing callees with target)
 fn sim_print_entries(entries: String, pos: i64, target: String, target_calls: String, min_shared: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { 0 }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -21029,6 +21121,7 @@ fn similar_file(input: String, target: String) -> i64
 // Check if a function is a leaf (0 calls)
 fn layer_is_leaf(entries: String, pos: i64, name: String) -> bool
   pre pos >= 0
+  post it or not it
 = if pos >= entries.len() { false }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -21046,6 +21139,7 @@ fn layer_is_leaf(entries: String, pos: i64, name: String) -> bool
 // Check if all callees of a function are leaves
 fn layer_all_callees_leaf(entries: String, calls: String, pos: i64) -> bool
   pre pos >= 0
+  post it or not it
 = if calls == "" { true }
     else if pos >= calls.len() {
         let name = calls.slice(sim_find_start(calls, pos), calls.len());
@@ -21078,6 +21172,7 @@ fn layer_name(layer: i64) -> String
 // Count functions in each layer
 fn layer_count_at(entries: String, pos: i64, all: String, target_layer: i64, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { count }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -21096,6 +21191,7 @@ fn layer_count_at(entries: String, pos: i64, all: String, target_layer: i64, cou
 // Print functions in a specific layer
 fn layer_print_at(entries: String, pos: i64, all: String, target_layer: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { 0 }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -21145,6 +21241,7 @@ fn layers_file(input: String) -> i64
 // Precompute all scores in a single pass: "name\tcalls\tcallers\tscore\n..."
 fn hot_precompute(entries: String, pos: i64, all: String, scored: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= entries.len() { scored }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -21165,6 +21262,7 @@ fn hot_precompute(entries: String, pos: i64, all: String, scored: String) -> Str
 // Find best from precomputed scores (no recalculation needed)
 fn hot_find_best(scored: String, pos: i64, exclude: String, best_name: String, best_score: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= scored.len() { best_name + "\t" + int_to_string(best_score) }
     else {
         let eol = callers_find_eol(scored, pos);
@@ -21184,12 +21282,14 @@ fn hot_find_best(scored: String, pos: i64, exclude: String, best_name: String, b
 
 fn hot_result_name(result: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= result.len() { result }
     else if result.byte_at(pos) == 9 { result.slice(0, pos) }
     else { hot_result_name(result, pos + 1) };
 
 fn hot_get_detail(scored: String, pos: i64, name: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= scored.len() { "0\t0" }
     else {
         let eol = callers_find_eol(scored, pos);
@@ -21259,6 +21359,7 @@ fn body_file(input: String, target: String) -> i64
 
 fn iface_count(entries: String, pos: i64, all: String, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { count }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -21275,6 +21376,7 @@ fn iface_count(entries: String, pos: i64, all: String, count: i64) -> i64
 
 fn iface_print(entries: String, pos: i64, all: String) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { 0 }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -21311,6 +21413,7 @@ fn interface_file(input: String) -> i64
 
 fn clust_prefix(name: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= name.len() { name }
     else if name.byte_at(pos) == 95 { name.slice(0, pos) }
     else { clust_prefix(name, pos + 1) };
@@ -21322,6 +21425,7 @@ fn clust_has_prefix(prefixes: String, prefix: String) -> bool
 
 fn clust_collect_prefixes(entries: String, pos: i64, prefixes: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= entries.len() { prefixes }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -21339,6 +21443,7 @@ fn clust_collect_prefixes(entries: String, pos: i64, prefixes: String) -> String
 
 fn clust_count_prefix(entries: String, pos: i64, prefix: String, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { count }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -21355,6 +21460,7 @@ fn clust_count_prefix(entries: String, pos: i64, prefix: String, count: i64) -> 
 
 fn clust_print_prefix(entries: String, pos: i64, prefix: String) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { 0 }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -21374,6 +21480,7 @@ fn clust_print_prefix(entries: String, pos: i64, prefix: String) -> i64
 
 fn clust_print_all(entries: String, prefixes: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= prefixes.len() { 0 }
     else {
         let end = index_find_comma_or_end(prefixes, pos);
@@ -21413,6 +21520,7 @@ fn cov_reachable(entries: String, name: String, visited: String) -> String
 
 fn cov_visit_calls(entries: String, calls: String, pos: i64, visited: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= calls.len() { visited }
     else {
         let end = index_find_comma_or_end(calls, pos);
@@ -21424,6 +21532,7 @@ fn cov_visit_calls(entries: String, calls: String, pos: i64, visited: String) ->
 
 fn cov_count_covered(entries: String, pos: i64, reachable: String, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { count }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -21438,6 +21547,7 @@ fn cov_count_covered(entries: String, pos: i64, reachable: String, count: i64) -
 
 fn cov_print_uncovered(entries: String, pos: i64, reachable: String) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { 0 }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -21494,6 +21604,7 @@ fn pat_classify(entries: String, name: String, calls: String) -> String
 
 fn pat_count(entries: String, pos: i64, all: String, pattern: String, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { count }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -21538,6 +21649,7 @@ fn pattern_file(input: String) -> i64
 
 fn export_print(entries: String, pos: i64, all: String) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { 0 }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -21574,6 +21686,7 @@ fn export_file(input: String) -> i64
 
 fn dc_get_calls(entries: String, pos: i64, target: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= entries.len() { "" }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -21588,6 +21701,7 @@ fn dc_get_calls(entries: String, pos: i64, target: String) -> String
 
 fn dc_print_diff_item(items: String, pos: i64, other: String, prefix: String, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if items == "" { count }
     else if pos >= items.len() { count }
     else {
@@ -21604,6 +21718,7 @@ fn dc_print_diff_item(items: String, pos: i64, other: String, prefix: String, co
 
 fn dc_print_changes(new_entries: String, pos: i64, old_entries: String, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= new_entries.len() { count }
     else {
         let eol = callers_find_eol(new_entries, pos);
@@ -21667,6 +21782,7 @@ fn cls_category(name: String) -> String
 
 fn cls_count(entries: String, pos: i64, all: String, category: String, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { count }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -21682,6 +21798,7 @@ fn cls_count(entries: String, pos: i64, all: String, category: String, count: i6
 
 fn cls_print_cat(entries: String, pos: i64, category: String) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { 0 }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -21765,6 +21882,7 @@ fn rename_check_file(input: String, target: String) -> i64
 
 fn sibl_collect_callers(entries: String, pos: i64, target: String, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= entries.len() { acc }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -21782,6 +21900,7 @@ fn sibl_collect_callers(entries: String, pos: i64, target: String, acc: String) 
 
 fn sibl_add_from_calls(calls: String, pos: i64, target: String, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= calls.len() { acc }
     else {
         let end = index_find_comma_or_end(calls, pos);
@@ -21795,6 +21914,7 @@ fn sibl_add_from_calls(calls: String, pos: i64, target: String, acc: String) -> 
 
 fn sibl_collect_siblings(entries: String, callers_list: String, pos: i64, target: String, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= callers_list.len() { acc }
     else {
         let end = index_find_comma_or_end(callers_list, pos);
@@ -21807,6 +21927,7 @@ fn sibl_collect_siblings(entries: String, callers_list: String, pos: i64, target
 
 fn sibl_print_list(entries: String, siblings: String, pos: i64, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= siblings.len() { count }
     else {
         let end = index_find_comma_or_end(siblings, pos);
@@ -21840,6 +21961,7 @@ fn siblings_file(input: String, target: String) -> i64
 
 fn summary_count_recursive(entries: String, pos: i64, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { count }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -21889,6 +22011,7 @@ fn summary_file(input: String) -> i64
 
 fn graph_print_calls(calls: String, pos: i64, from_name: String) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= calls.len() { 0 }
     else {
         let end = index_find_comma_or_end(calls, pos);
@@ -21900,6 +22023,7 @@ fn graph_print_calls(calls: String, pos: i64, from_name: String) -> i64
 
 fn graph_print(entries: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { 0 }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -21930,6 +22054,7 @@ fn graph_file(input: String) -> i64
 
 fn split_count_params(sig: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= sig.len() { 0 }
     else if sig.slice(pos, pos + 1) == "(" {
         split_count_inner(sig, pos + 1, 0)
@@ -21938,6 +22063,7 @@ fn split_count_params(sig: String, pos: i64) -> i64
 
 fn split_count_inner(sig: String, pos: i64, commas: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= sig.len() { commas + 1 }
     else if sig.slice(pos, pos + 1) == ")" {
         if commas == 0 and sig.slice(pos - 1, pos) == "(" { 0 }
@@ -21948,6 +22074,7 @@ fn split_count_inner(sig: String, pos: i64, commas: i64) -> i64
 
 fn split_print(entries: String, pos: i64, all: String, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { count }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -21987,6 +22114,7 @@ fn split_candidates_file(input: String) -> i64
 
 fn inline_print(entries: String, pos: i64, all: String, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { count }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -22025,6 +22153,7 @@ fn inline_candidates_file(input: String) -> i64
 // DFS search: returns path string "a -> b -> c" or "" if not found
 fn chain_dfs_calls(entries: String, calls: String, pos: i64, target: String, visited: String, depth: i64, path: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= calls.len() { "" }
     else {
         let end = index_find_comma_or_end(calls, pos);
@@ -22045,6 +22174,7 @@ fn chain_dfs_calls(entries: String, calls: String, pos: i64, target: String, vis
 
 fn chain_search(entries: String, from_name: String, target: String, depth: i64, max_depth: i64) -> String
   pre depth >= 0
+  post it.len() >= 0
 = if depth > max_depth { "" }
     else {
         let calls = deps_find_calls(entries, 0, from_name);
@@ -22078,6 +22208,7 @@ fn chain_file(input: String, from_name: String, to_name: String) -> i64
 
 fn suggest_search(entries: String, pos: i64, pattern: String, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { count }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -22112,6 +22243,7 @@ fn suggest_file(input: String, pattern: String) -> i64
 
 fn scope_print_callees(entries: String, calls: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= calls.len() { 0 }
     else {
         let end = index_find_comma_or_end(calls, pos);
@@ -22124,6 +22256,7 @@ fn scope_print_callees(entries: String, calls: String, pos: i64) -> i64
 
 fn scope_print_callers(entries: String, pos: i64, target: String) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { 0 }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -22187,6 +22320,7 @@ fn scope_file(input: String, target: String) -> i64
 // Check if name exists in entries
 fn cl_has_name(entries: String, pos: i64, target: String) -> bool
   pre pos >= 0
+  post it or not it
 = if pos >= entries.len() { false }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -22202,6 +22336,7 @@ fn cl_has_name(entries: String, pos: i64, target: String) -> bool
 // Get signature for a function name from entries
 fn cl_get_sig(entries: String, pos: i64, target: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= entries.len() { "" }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -22217,6 +22352,7 @@ fn cl_get_sig(entries: String, pos: i64, target: String) -> String
 // Print added functions (in new but not in old)
 fn cl_print_added(new_entries: String, pos: i64, old_entries: String, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= new_entries.len() { count }
     else {
         let eol = callers_find_eol(new_entries, pos);
@@ -22237,6 +22373,7 @@ fn cl_print_added(new_entries: String, pos: i64, old_entries: String, count: i64
 // Print removed functions (in old but not in new)
 fn cl_print_removed(old_entries: String, pos: i64, new_entries: String, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= old_entries.len() { count }
     else {
         let eol = callers_find_eol(old_entries, pos);
@@ -22257,6 +22394,7 @@ fn cl_print_removed(old_entries: String, pos: i64, new_entries: String, count: i
 // Print changed functions (same name, different signature)
 fn cl_print_changed(new_entries: String, pos: i64, old_entries: String, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= new_entries.len() { count }
     else {
         let eol = callers_find_eol(new_entries, pos);
@@ -22314,6 +22452,7 @@ fn changelog_file(old_input: String, new_input: String) -> i64
 // Find end of line starting at pos
 fn fmt_eol(src: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= src.len() { src.len() }
     else if src.byte_at(pos) == 10 { pos }
     else { fmt_eol(src, pos + 1) };
@@ -22321,6 +22460,7 @@ fn fmt_eol(src: String, pos: i64) -> i64
 // Trim trailing whitespace from a line (spaces and tabs)
 fn fmt_rtrim(line: String, end: i64) -> String
   pre end >= 0
+  post it.len() >= 0
 = if end <= 0 { "" }
     else {
         let b = line.byte_at(end - 1);
@@ -22331,6 +22471,7 @@ fn fmt_rtrim(line: String, end: i64) -> String
 // Count leading whitespace (spaces) in a line
 fn fmt_leading_ws(line: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= line.len() { pos }
     else if line.byte_at(pos) == 32 { fmt_leading_ws(line, pos + 1) }
     else { pos };
@@ -22378,6 +22519,7 @@ fn fmt_is_toplevel(line: String) -> bool
 // Count open braces/parens in a line (incrementing nesting)
 fn fmt_count_opens(line: String, pos: i64, count: i64, in_str: bool) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= line.len() { count }
     else {
         let b = line.byte_at(pos);
@@ -22391,6 +22533,7 @@ fn fmt_count_opens(line: String, pos: i64, count: i64, in_str: bool) -> i64
 // Generate N spaces of indentation
 fn fmt_indent(n: i64) -> String
   pre n >= 0
+  post it.len() >= 0
 = if n <= 0 { "" }
     else if n == 1 { "    " }
     else if n == 2 { "        " }
@@ -22439,6 +22582,7 @@ fn fmt_starts_eq(content: String) -> bool
 // Tracks nesting depth for indentation, ensures blank lines between top-level items
 fn fmt_lines(src: String, pos: i64, depth: i64, state: i64, prev_blank: bool, prev_toplevel: bool, acc: String) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= src.len() { acc }
     else {
         let eol = fmt_eol(src, pos);
@@ -22526,6 +22670,7 @@ fn fmt_file(input: String, check: bool) -> i64
 // Format all .bmb files in a directory
 fn fmt_dir_each(bmb_files: String, pos: i64, dir: String, check: bool, changed: i64, total: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= bmb_files.len() {
         let _s = println_str("=== Fmt summary: " + int_to_string(total) + " files, " + int_to_string(changed) + " changed ===");
         changed
@@ -22570,6 +22715,7 @@ fn fmt_entry(input: String, check: bool) -> i64
 // Check for unused functions (not called by anyone, not main)
 fn lint_check_unused(entries: String, pos: i64, all: String, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { count }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -22591,6 +22737,7 @@ fn lint_check_unused(entries: String, pos: i64, all: String, count: i64) -> i64
 // Check for functions with too many parameters (> 6)
 fn lint_check_many_params(entries: String, pos: i64, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { count }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -22613,6 +22760,7 @@ fn lint_check_many_params(entries: String, pos: i64, count: i64) -> i64
 // Check for naming convention: detect uppercase letters (should be snake_case)
 fn lint_has_upper(name: String, pos: i64) -> bool
   pre pos >= 0
+  post it or not it
 = if pos >= name.len() { false }
     else {
         let b = name.byte_at(pos);
@@ -22622,6 +22770,7 @@ fn lint_has_upper(name: String, pos: i64) -> bool
 
 fn lint_check_naming(entries: String, pos: i64, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { count }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -22641,6 +22790,7 @@ fn lint_check_naming(entries: String, pos: i64, count: i64) -> i64
 // Check for functions with high outgoing call count (> 20 = too complex)
 fn lint_check_complexity(entries: String, pos: i64, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { count }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -22662,6 +22812,7 @@ fn lint_check_complexity(entries: String, pos: i64, count: i64) -> i64
 // Check for recursive functions (flag for performance awareness)
 fn lint_check_recursive(entries: String, pos: i64, count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= entries.len() { count }
     else {
         let eol = callers_find_eol(entries, pos);
@@ -22706,6 +22857,7 @@ fn lint_file(input: String) -> i64
 // Lint all .bmb files in a directory
 fn lint_find_bmb(files: String, pos: i64) -> String
   pre pos >= 0
+  post it.len() >= 0
 = if pos >= files.len() { "" }
     else {
         let eol = lint_find_eol(files, pos);
@@ -22718,12 +22870,14 @@ fn lint_find_bmb(files: String, pos: i64) -> String
 
 fn lint_find_eol(s: String, pos: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= s.len() { s.len() }
     else if s.byte_at(pos) == 10 { pos }
     else { lint_find_eol(s, pos + 1) };
 
 fn lint_dir_each(bmb_files: String, pos: i64, dir: String, total_warn: i64, file_count: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= bmb_files.len() {
         let _s = println_str("=== Lint summary: " + int_to_string(file_count) + " files, " + int_to_string(total_warn) + " warnings ===");
         total_warn
@@ -22981,6 +23135,7 @@ fn strip_cr(s: String) -> String
 
 fn strip_cr_chunks(s: String, pos: i64, sb: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= s.len() { 0 }
     else {
         let cr = find_char(s, pos, 13);
@@ -23021,6 +23176,7 @@ fn test_dir(dir: String, runtime_path: String) -> i64
 
 fn test_dir_each(bmb_files: String, pos: i64, dir: String, runtime_path: String, passed: i64, failed: i64, skipped: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= bmb_files.len() {
         let total = passed + failed + skipped;
         let _s1 = println_str("");
@@ -23088,6 +23244,7 @@ fn check_dir(dir: String) -> i64
 
 fn check_dir_each(bmb_files: String, pos: i64, dir: String, ok: i64, err: i64) -> i64
   pre pos >= 0
+  post it >= 0
 = if pos >= bmb_files.len() {
         let total = ok + err;
         let _s = println_str("=== Check summary: " + int_to_string(total) + " files, " + int_to_string(ok) + " ok, " + int_to_string(err) + " errors ===");
@@ -23120,6 +23277,7 @@ fn build_file(input: String, output: String, fast: bool, runtime_path: String) -
 
 fn build_file_ex(input: String, output: String, fast: bool, runtime_path: String, stats: bool, safe: i64) -> i64
   pre safe >= 0
+  post it >= 0
 = let t0 = time_ns() / 1000000;
     let source = load_source(input);
     if source.len() == 0 {
@@ -23482,27 +23640,32 @@ fn main() -> i64
 // Parse -o flag from build args
 fn parse_build_output(argc: i64, input: String) -> String
   pre argc >= 0
+  post it.len() >= 0
 = if argc >= 5 and get_arg(3) == "-o" { get_arg(4) }
     else { derive_output_name(input) };
 
 // Parse --fast-compile flag from build args
 fn parse_build_fast(argc: i64) -> bool
   pre argc >= 0
+  post it or not it
 = check_arg_flag(argc, 3, "--fast-compile");
 
 // Parse --runtime flag from build args (default: bmb/runtime)
 fn parse_build_runtime(argc: i64) -> String
   pre argc >= 0
+  post it.len() >= 0
 = find_arg_value(argc, 3, "--runtime", "bmb/runtime");
 
 fn find_arg_value(argc: i64, idx: i64, flag: String, default_val: String) -> String
   pre idx >= 0
+  post it.len() >= 0
 = if idx >= argc { default_val }
     else if get_arg(idx) == flag and idx + 1 < argc { get_arg(idx + 1) }
     else { find_arg_value(argc, idx + 1, flag, default_val) };
 
 fn check_arg_flag(argc: i64, idx: i64, flag: String) -> bool
   pre idx >= 0
+  post it or not it
 = if idx >= argc { false }
     else if get_arg(idx) == flag { true }
     else { check_arg_flag(argc, idx + 1, flag) };
