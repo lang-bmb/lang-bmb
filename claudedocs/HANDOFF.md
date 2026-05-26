@@ -1,64 +1,54 @@
-# BMB Session Handoff — 2026-05-26 (Cycle 3189)
+# BMB Session Handoff — 2026-05-26 (Cycle 3197)
 
-> **HEAD**: `a8d5aeae`
-> **이번 세션 작업**: Cycle 3189 — M10 Phase 1: unused_binding 781→64 (−717, 91.8%)
-> **3-Stage Fixed Point**: M8-A 기준 `A8ADD96654CD39795443635F1DAAB55D` (M10 변경 후 Stage 2 bootstrap 미검증 — 기존 이슈로 Stage 2 파싱 오류 선재)
+> **HEAD**: `d38f9075`
+> **이번 세션 작업**: Cycles 3190-3197 — M10 Track A COMPLETE: chained_comparison 757→0
+> **3-Stage Fixed Point**: M8-A 기준 `A8ADD96654CD39795443635F1DAAB55D` (M10 변경 후 Stage 2 bootstrap 미검증)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **M10 상태**: 🔄 Phase 1 진행 중 (unused_binding 781→64)
+> **M10 상태**: Track A ✅ COMPLETE (chained_comparison 0), Track B 🔄 진행 필요 (non_snake_case 108)
 
 ---
 
-## 이번 세션 작업 요약 (Cycle 3189)
+## 이번 세션 작업 요약 (Cycles 3190-3197)
 
-### M10 Warning Zero 착수
+### M10 Track A COMPLETE: chained_comparison 757→0
 
 | 항목 | 이전 | 이후 | 변화 |
 |------|------|------|------|
-| unused_binding | 781 | 64 | −717 (−91.8%) |
-| 총 warnings | 2,839 | 2,121 | −718 |
-| bmb check errors | 0 | 0 | 유지 |
-| cargo test | 6278 ✅ | 6278 ✅ | 유지 |
+| chained_comparison | 757 | **0** | −757 ✅ |
+| unused_binding | 64 | 0 | −64 ✅ |
+| single_arm_match | 11 | 0 | −11 ✅ |
+| non_snake_case | 108 | 108 | 유지 (Human Decision 대기) |
+| semantic_duplication | 1,119 | 1,119 | 유지 (장기) |
+| 총 warnings | ~2,121 | **1,227** | −894 |
 | Stage 1 bootstrap | ✅ | ✅ | 유지 |
 
 ### 핵심 구현
-- `scripts/fix_unused_bindings.py` 작성 (자동화 리네임 스크립트)
-  - `let var ` → `let _var ` (let 바인딩)
-  - 함수 파라미터 직접 리네임 (mapping, cleanup_file, cur_exit_label 5개)
-  - 알고리즘: warning `start` byte 이전 rfind + 함수 경계 내 word-boundary 검증
-
-### 잔여 64개 unused_binding 분석
-
-| 변수 | 개수 | 원인 |
-|------|------|------|
-| `sb` | 22 | BMB lint: sb_push(sb,...)는 사용이지만 "builder not consumed" semantic |
-| `cur_exit_label` | 18 | 함수 내 사용됨 (do_step/step_expr 등) — lint가 unused로 판단하는 이유 불명 |
-| `item` | 10 | sb와 유사 |
-| 기타 | 14 | loop_exit/name/ast/line 등 |
+- `scripts/convert_chains_to_match.py`: TK_*() integer literal 치환 + literal chain 자동 변환
+- `scripts/fix_else_match.py`: `else match VAR { }` → `else { match VAR { } }` 수정 (binary write)
+- 수동 변환 7건 (91→0): fn_name 157-arm, kind@3197 16-arm, get_exit_label 22-arm 등
+- CRLF 정규화 (`re.sub(b'\r+\n', b'\r\n', data)`)
 
 ---
 
 ## 다음 세션 시작점
 
-### Cycle 3190 — M10 Phase 2
+### Cycle 3198 — M10 잔여 처리
 
-**선택지**:
-1. **unused_binding 64개 추가 분석**: `sb`/`cur_exit_label` lint semantics 이해 후 처리
-2. **M10 Phase 2: chained_comparison** (758개) — 대형 equality chain을 `match`로 변환 (자동화 가능)
-3. **Stage 2 bootstrap 복구** — postcondition 구문 지원 bootstrap parser에 추가
-
-**권장**: M10 Phase 2 (chained_comparison 758개) → 자동화 스크립트로 처리 가능.
-chained_comparison 형식: `a == b || a == c || a == d || ...` → `match a { ... }` 변환.
+**우선순위**:
+1. **non_snake_case 108개**: TK_*() 함수 의도적 대문자 명명. Human Decision 필요:
+   - Option A: `TK_FN` → `tk_fn` 전체 리네임 (대규모, 가독성 변화)
+   - Option B: BMB `@allow(non_snake_case)` 어노테이션 지원 추가
+2. **semantic_duplication 1119개**: 구조적 장기 과제 — 분석 후 범위 결정
 
 ### 기술 상태 스냅샷
 
 | 항목 | 값 |
 |------|----|
-| HEAD | (커밋 후 업데이트) |
-| unused_binding | **64** (목표: 0) |
-| chained_comparison | **758** |
-| non_snake_case | **108** |
-| total warnings | **2,121** |
-| cargo test | ✅ 6278 passed |
+| HEAD | `d38f9075` |
+| chained_comparison | **0** ✅ |
+| non_snake_case | **108** (Human Decision 대기) |
+| semantic_duplication | **1,119** |
+| 총 warnings | **1,227** |
 | Stage 1 bootstrap | ✅ |
 | Stage 2 bootstrap | ❌ (기존 선재 이슈) |
 
