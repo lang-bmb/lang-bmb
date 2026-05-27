@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-27 (Cycles 3212-3218)
 
-> **HEAD**: TBD (커밋 예정)
+> **HEAD**: `6e8b8179`
 > **이번 세션 작업**: Cycles 3212-3218 — **M11-A Phase 5c-5j: trivial postconditions 28개 교체**
 > **M11-A 상태**: 🔵 수익 체감 확인 (358 → 263 trivials, -26.5%)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
