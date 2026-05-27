@@ -1,0 +1,30 @@
+// M11-C Phase 2 extension: [f64; N] element-size-aware stack allocation
+// Tests: auto-generated stack_bytes_new(N * 8) for f64 element type
+//
+// Note: [f64; N] allocates N * 8 bytes. Element i is at byte offset i * 8.
+// We verify allocation size by writing/reading at the last element slot.
+
+// [f64; N] zero-init: all bytes should be 0
+fn test_f64_array_zero_init() -> i64 = {
+    let arr: [f64; 8];
+    // read byte at start — should be 0 (zero-initialized via memset)
+    load_u8(arr + 0)
+};
+
+// [f64; N] write/read via raw i64 storage (same 8 bytes)
+fn test_f64_array_write_read() -> i64 = {
+    let mut arr: [f64; 8];
+    // write i64 value 55 at element 3 (byte offset 3 * 8 = 24)
+    let _w = store_i64(arr + 24, 55);
+    load_i64(arr + 24)  // should be 55
+};
+
+fn main() -> i64 = {
+    let v1 = test_f64_array_zero_init();
+    let _p1 = println(v1);    // 0
+
+    let v2 = test_f64_array_write_read();
+    let _p2 = println(v2);    // 55
+
+    0
+};

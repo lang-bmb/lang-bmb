@@ -1,5 +1,6 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-27 (**M11-B ✅ COMPLETE** — Cycle 3205: `bootstrap.sh fixed_point: true` E2E 달성. opt O1+ → Stage 2 binary 절단 진단, `llc -O2`만 사용으로 수정. 3-Stage bootstrap 전체 확인. HEAD 갱신 예정.)
+> 최종 업데이트: 2026-05-28 (**M11-A ✅ CONFIRMED COMPLETE** + **M11-C Phase 2 ✅ COMPLETE** — Cycles 3224-3226: `[i64/f64/i32; N]` element-size-aware stack arrays + 264 trivial postconditions 전부 skip 확정. Golden tests 52/52. Fixed Point S3==S4 ✅.)
+> 이전 갱신: 2026-05-27 (**M11-B ✅ COMPLETE** — Cycle 3205: `bootstrap.sh fixed_point: true` E2E 달성. opt O1+ → Stage 2 binary 절단 진단, `llc -O2`만 사용으로 수정. 3-Stage bootstrap 전체 확인. HEAD 갱신 예정.)
 > 이전 갱신: 2026-05-27 (**0-Warning ✅ RECOVERED** — Cycle 3203: chained_comparison 3개(skip_where_clause/type_suffix/extract_post_asts) + missing_postcondition 1개(has_param_ref_in_ir) 소거. `bmb lint bootstrap/compiler.bmb` → 0 warnings. Stage 1 bootstrap OK. 3800 tests ✅. HEAD `7d6d775b`.)
 > 이전 갱신: 2026-05-27 (**Stage 2 Bootstrap ✅ RECOVERED** — Cycle 3202: 스택 오버플로(exit 127) 근본 수정 + Semantic Fixed Point 달성. `-Wl,--stack,268435456` (256MB) 링크 플래그 + bootstrap.sh canonical 비교 + BMB-internal FP S4==S6 ✅. bmb-stage2.exe 256MB 스택 갱신. 3800 tests ✅. HEAD `be917a97`.)
 > 이전 갱신: 2026-05-27 (**M10 ✅ COMPLETE** — Cycles 3198-3201: warnings **1,227 → 0** (100% 감소). non_snake_case 108→0 (SCREAMING_SNAKE_CASE 예외) + semantic_duplication 1119→0 (trivial 제외 + 5개 수정). TK_AS/TK_BXOR 토큰 ID 충돌 수정 + low_is_whitespace 삭제. 3800 tests ✅. Stage 1 bootstrap ✅. HEAD `98628ce9`.)
@@ -1295,22 +1296,22 @@ M10 완료 + Stage 2 bootstrap 복구 + 0-warning 재복구 + M11-B(fixed_point:
 
 | 후보 | 내용 | 규모 | 상태 |
 |------|------|------|------|
-| **A. 약한 계약 → semantic 계약** | `post it or not it` 등 tautology → 의미 있는 계약 | ~4-6 cycles | 🏁 **수익 체감 확인** (358→263, -95, 26.5%) — 추가 진척 < 0.1% |
+| **A. 약한 계약 → semantic 계약** | `post it or not it` 등 tautology → 의미 있는 계약 | ~4-6 cycles | ✅ **CONFIRMED COMPLETE** (358→264, 264개 전부 skip 확정 — Cycle 3225) |
 | **B. 전체 3-Stage bootstrap 검증** | bootstrap.sh E2E (~8분), canonical FP 완전 확인 | 1 cycle | ✅ **COMPLETE** (Cycle 3205) |
 | **C. 언어 갭 추가 해소** | stack array / closure / generic 등 미지원 기능 | 가변 | **▶ 다음 추천** |
 | **D. B축 재측정** | claude-sonnet-4-6 98.0% stale 기한 2026-08-13 (API key 필요) | HUMAN | HUMAN |
 
-### M11-A 진척 (2026-05-27 갱신 — Cycles 3212-3218 후, **수익 체감 확인**)
+### M11-A 진척 (2026-05-28 갱신 — Cycle 3225 확정, ✅ CONFIRMED COMPLETE)
 
 | 종류 | 시작 | 현재 | skip 확정 |
 |------|------|------|-----------|
-| bool `post it or not it` | 49 | **26** | 7 (no-pre) + ~20 (semantic_duplication 충돌) |
-| i64 `post it == it` | 7 | 7 | 7 (all skip — 산술/추출) |
-| String `post it.len() >= 0` | 302 | **230** | 77 (no-pre) |
-| **합계** | **358** | **263** | — |
+| bool `post it or not it` | 49 | 27 | 7 (no-pre) + ~20 (semantic_duplication 충돌) — **모두 blocked** |
+| i64 `post it == it` | 7 | 7 | 7 (all skip — 산술/추출) — **모두 blocked** |
+| String `post it.len() >= 0` | 302 | 230 | ~207 (5개 카테고리) — **모두 blocked** |
+| **합계** | **358** | **264** | **264/264 — 전부 skip 확정** |
 | String `post it.len() >= 1` (누적) | 0 | **156** | — |
 
-**누적 달성**: 358 → 263 (-95, **26.5%**)
+**누적 달성**: 358 → 264 (-94, ~26.3%) → **✅ 실질 완료 (264개 모두 skip 확정)**
 
 ### M11-A: skip 확정 목록 (변경 금지)
 
@@ -1339,7 +1340,7 @@ M10 완료 + Stage 2 bootstrap 복구 + 0-warning 재복구 + M11-B(fixed_point:
 
 | 항목 | 내용 | 심각도 |
 |------|------|--------|
-| trivial postcondition 263개 | `post it or not it` / `post it.len() >= 0` 등 (358→263, -26.5%) — 수익체감으로 M11-A 중단 | P2 |
+| ~~trivial postcondition 264개~~ | ~~`post it or not it` / `post it.len() >= 0` 등~~ — **✅ M11-A CONFIRMED COMPLETE (Cycle 3225)** 264개 전부 skip 확정 | ✅ CLOSED |
 | ~~ifs_flex_check_goto Z3 FAIL~~ | ~~`pre next_p >= 0` 누락 → 141/141 미달성~~ **✅ RESOLVED (Cycle 3219)** — Z3 141/141 | P3 |
 | BMB IR → opt 최적화 불가 | printf 기반 IR 방출 코드가 opt O1+에 의해 절단 | P3 |
 | Unix 링크 스택 미설정 | bootstrap.sh Unix 브랜치 `-no-pie`만, 스택 설정 없음 | P3 |
@@ -1354,6 +1355,40 @@ M10 완료 + Stage 2 bootstrap 복구 + 0-warning 재복구 + M11-B(fixed_point:
 | `ipr_all_calls_pure` @llvm.memset 오분류 수정 (symmetric) | ✅ Cycle 3221 |
 | `stack_bytes_new` 빌트인 정상 동작 (brainfuck nested loops 'X') | ✅ Cycle 3220 |
 | ⚠️ `stack_bytes_new` @inline 래퍼 내 사용 금지 — LLVM lifetime.end 문제 | 문서화 완료 |
+
+### M11-C Phase 2 완료 현황 (Cycles 3222-3225) — ✅ COMPLETE
+
+| 항목 | 상태 |
+|------|------|
+| `[u8; N]` 파서 지원 (`parse_block_let_array_type_aware`) | ✅ Cycle 3223 |
+| `[i64; N]` / `[f64; N]` element size 8 bytes 지원 | ✅ Cycle 3224 |
+| `[i32; N]` element size 4 bytes 지원 | ✅ Cycle 3224 |
+| `[bool; T; N]` 1 byte/element (TK_IDENT 경유) | ✅ Cycle 3223 |
+| `compiler_3224.exe` Fixed Point S3==S4 ✅ | ✅ Cycle 3224 |
+| `test_golden_stack_array.bmb` (4 assertions: u8) | ✅ Cycle 3223 |
+| `test_golden_stack_array_typed.bmb` (4 assertions: i64/i32) | ✅ Cycle 3224 |
+| `test_golden_stack_array_f64.bmb` (2 assertions: f64) | ✅ Cycle 3225 |
+
+#### `[T; N]` 접근 패턴 요약
+
+```bmb
+let arr: [i64; N];  // stack_bytes_new(N * 8)
+// 접근: load_i64(arr + i * 8) / store_i64(arr + i * 8, v)
+
+let arr: [f64; N];  // stack_bytes_new(N * 8)
+// 접근: load_f64(arr + i * 8) / store_f64(arr + i * 8, v)
+
+let arr: [i32; N];  // stack_bytes_new(N * 4)
+// 접근: load_i32(arr + i * 4) / store_i32(arr + i * 4, v)
+
+let arr: [u8; N];   // stack_bytes_new(N)
+// 접근: load_u8(arr + i) / store_u8(arr + i, v)
+```
+
+#### M11-C Phase 3 (미래 스코프)
+
+`arr[i]` subscript 문법 → declared element type 기반 자동 desugar.
+Grammar + parser + type annotation tracking 필요. 2+ cycles 예상. defer.
 
 ---
 

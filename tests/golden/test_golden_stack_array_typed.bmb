@@ -1,0 +1,52 @@
+// M11-C Phase 2 extension: [i64; N] and [i32; N] element-size-aware stack allocation
+// Tests: auto-generated stack_bytes_new(N * elem_bytes) for multi-byte element types
+//
+// Note: load_i64/store_i64 take RAW BYTE ADDRESSES.
+// For [i64; N]: element i is at byte offset i * 8.
+// For [i32; N]: element i is at byte offset i * 4.
+
+// [i64; N] — allocates N * 8 bytes, access element i at byte addr: arr + i * 8
+fn test_i64_array_zero_init() -> i64 = {
+    let arr: [i64; 10];
+    load_i64(arr + 5 * 8)  // element 5 should be 0 (zero-initialized)
+};
+
+fn test_i64_array_write_read() -> i64 = {
+    let mut arr: [i64; 20];
+    let _w = store_i64(arr + 7 * 8, 42);
+    load_i64(arr + 7 * 8)  // element 7 should be 42
+};
+
+// [i64; N] with const-fn size expression
+@const fn i64_arr_size() -> i64 = 16;
+
+fn test_i64_const_size() -> i64 = {
+    let arr: [i64; i64_arr_size()];
+    let _w = store_i64(arr + 3 * 8, 99);
+    load_i64(arr + 3 * 8)  // element 3 should be 99
+};
+
+// [i32; N] — allocates N * 4 bytes, access element i at byte addr: arr + i * 4
+fn test_i32_array_size() -> i64 = {
+    let arr: [i32; 8];
+    // 8 elements * 4 bytes = 32 bytes allocated
+    // write byte at offset 28 (element 7 * 4 = 28)
+    let _w = store_u8(arr + 28, 77);
+    load_u8(arr + 28)  // should be 77
+};
+
+fn main() -> i64 = {
+    let v1 = test_i64_array_zero_init();
+    let _p1 = println(v1);    // 0
+
+    let v2 = test_i64_array_write_read();
+    let _p2 = println(v2);    // 42
+
+    let v3 = test_i64_const_size();
+    let _p3 = println(v3);    // 99
+
+    let v4 = test_i32_array_size();
+    let _p4 = println(v4);    // 77
+
+    0
+};

@@ -2727,8 +2727,8 @@ fn parse_block_let_skip_array_type(src: String, pos: i64, name: String, is_mut: 
 
     };
 
-// M11-C Phase 2: Detect [u8; N] or [i64; N] array type annotation in let binding.
-// If followed by ';' (no explicit initializer), auto-generates stack_bytes_new(N).
+// M11-C Phase 2: Detect [u8/i64/f64; N] array type annotation in let binding.
+// If followed by ';' (no explicit initializer), auto-generates stack_bytes_new(N * elem_bytes).
 // If followed by '=', parses the explicit value normally.
 // Falls back to old skip behavior for other array type forms.
 // Called after '[' is consumed.
@@ -2743,8 +2743,8 @@ fn parse_block_let_array_type_aware(src: String, pos: i64, name: String, is_mut:
 
     let k1 = tok_kind(t1);
 
-    // Match [elem_type; N] where elem_type is a simple type token
-    if k1 == TK_IDENT() or k1 == TK_I64() or k1 == TK_I32() or k1 == TK_BOOL() {
+    // Match [elem_type; N] where elem_type is a simple type token (u8=IDENT, i64, i32, f64, bool)
+    if k1 == TK_IDENT() or k1 == TK_I64() or k1 == TK_I32() or k1 == TK_F64() or k1 == TK_BOOL() {
 
         let t2 = next_token_raw(src, tok_end(t1));
 
@@ -2761,8 +2761,8 @@ fn parse_block_let_array_type_aware(src: String, pos: i64, name: String, is_mut:
 
                 if tok_kind(t3) == TK_RBRACKET() {
 
-                    // Successfully parsed [elem_type; N]
-                    parse_block_let_after_stack_array(src, tok_end(t3), name, is_mut, unpack_ast(size_rv))
+                    // Successfully parsed [elem_type; N] — pass elem_kind for byte-size computation
+                    parse_block_let_after_stack_array(src, tok_end(t3), name, is_mut, unpack_ast(size_rv), k1)
 
                 } else { parse_block_let_skip_array_type(src, pos, name, is_mut) }
 
@@ -2773,8 +2773,10 @@ fn parse_block_let_array_type_aware(src: String, pos: i64, name: String, is_mut:
     } else { parse_block_let_skip_array_type(src, pos, name, is_mut) };
 
 // After parsing [elem_type; N], handle what follows: '=' (explicit value) or ';' (implicit stack alloc).
+// elem_kind: token kind of element type — used to determine bytes per element.
+//   TK_I64 / TK_F64 → 8 bytes,  TK_I32 → 4 bytes,  TK_IDENT/TK_BOOL → 1 byte (u8 etc.)
 
-fn parse_block_let_after_stack_array(src: String, pos: i64, name: String, is_mut: bool, size_expr: String) -> String
+fn parse_block_let_after_stack_array(src: String, pos: i64, name: String, is_mut: bool, size_expr: String, elem_kind: i64) -> String
 
   pre pos >= 0
 
@@ -2784,12 +2786,12 @@ fn parse_block_let_after_stack_array(src: String, pos: i64, name: String, is_mut
 
     if tok_kind(t) == TK_EQ() {
 
-        // Explicit value: let tape: [u8; N] = value; — parse value normally
+        // Explicit value: let tape: [T; N] = value; — parse value normally
         parse_block_let_value(src, tok_end(t), name, is_mut)
 
     } else if tok_kind(t) == TK_SEMI() {
 
-        // Implicit: let tape: [u8; N]; — auto-generate stack_bytes_new(N)
+        // Implicit: let tape: [T; N]; — auto-generate stack_bytes_new(N * elem_bytes)
         let rb = parse_block_stmts(src, tok_end(t));
 
         if is_error(rb) { rb }
@@ -2800,7 +2802,17 @@ fn parse_block_let_after_stack_array(src: String, pos: i64, name: String, is_mut
 
             -- AST call format: (call <name> arg) — angle brackets for function name
             -- The MIR lowering (lower_call_args_sb) prepends '@' before emitting
-            let stack_call = "(call <stack_bytes_new> " + size_expr + ")";
+            -- Compute total byte count based on element type size
+            let byte_count_expr =
+                if elem_kind == TK_I64() or elem_kind == TK_F64() {
+                    "(binop * " + size_expr + " (int 8))"
+                } else if elem_kind == TK_I32() {
+                    "(binop * " + size_expr + " (int 4))"
+                } else {
+                    size_expr  -- TK_IDENT (u8, etc.), TK_BOOL — 1 byte per element
+                };
+
+            let stack_call = "(call <stack_bytes_new> " + byte_count_expr + ")";
 
             pack_result(unpack_pos(rb), "(" + tag + " <" + name + "> " + stack_call + " " + unpack_ast(rb) + ")")
 
