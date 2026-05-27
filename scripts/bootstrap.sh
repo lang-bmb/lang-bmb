@@ -357,13 +357,13 @@ if command -v llc &> /dev/null; then
     # LLVM's O3 handles identity copies internally; early instcombine canonicalizes
     # GEPs, preventing GVN load-forwarding in loops.
     STAGE2_BC="${OUTPUT_DIR}/bmb-stage2.bc"
-    if command -v opt &> /dev/null; then
-        log_verbose "Optimizing Stage 2 IR with opt..."
-        opt -passes='default<O3>,scalarizer' "$STAGE2_LL" -o "$STAGE2_BC"
-        llc -filetype=obj -O3 "$STAGE2_BC" -o "$STAGE2_OBJ"
-    else
-        llc -filetype=obj -O2 "$STAGE2_LL" -o "$STAGE2_OBJ"
-    fi
+    # NOTE: opt is intentionally NOT used for Stage 2 binary compilation.
+    # Any opt -O1+ pass applied to BMB-generated IR corrupts the Stage 2 binary:
+    # it truncates the generated Stage 3 IR at int_to_string (~6193 lines instead of ~134211).
+    # Root cause: LLVM opt transforms BMB's printf-based IR emission in a way that cuts off
+    # the function body generation. The unoptimized path produces correct output.
+    # See Cycle 3205 for diagnosis. Performance is not a goal here; correctness is.
+    llc -filetype=obj -O2 "$STAGE2_LL" -o "$STAGE2_OBJ"
 
     if [ ! -f "$STAGE2_OBJ" ]; then
         log "${RED}Stage 3 FAILED: Could not compile LLVM IR to object file${NC}"

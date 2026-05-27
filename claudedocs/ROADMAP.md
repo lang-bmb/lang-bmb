@@ -1,5 +1,6 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-27 (**0-Warning ✅ RECOVERED** — Cycle 3203: chained_comparison 3개(skip_where_clause/type_suffix/extract_post_asts) + missing_postcondition 1개(has_param_ref_in_ir) 소거. `bmb lint bootstrap/compiler.bmb` → 0 warnings. Stage 1 bootstrap OK. 3800 tests ✅. HEAD `7d6d775b`.)
+> 최종 업데이트: 2026-05-27 (**M11-B ✅ COMPLETE** — Cycle 3205: `bootstrap.sh fixed_point: true` E2E 달성. opt O1+ → Stage 2 binary 절단 진단, `llc -O2`만 사용으로 수정. 3-Stage bootstrap 전체 확인. HEAD 갱신 예정.)
+> 이전 갱신: 2026-05-27 (**0-Warning ✅ RECOVERED** — Cycle 3203: chained_comparison 3개(skip_where_clause/type_suffix/extract_post_asts) + missing_postcondition 1개(has_param_ref_in_ir) 소거. `bmb lint bootstrap/compiler.bmb` → 0 warnings. Stage 1 bootstrap OK. 3800 tests ✅. HEAD `7d6d775b`.)
 > 이전 갱신: 2026-05-27 (**Stage 2 Bootstrap ✅ RECOVERED** — Cycle 3202: 스택 오버플로(exit 127) 근본 수정 + Semantic Fixed Point 달성. `-Wl,--stack,268435456` (256MB) 링크 플래그 + bootstrap.sh canonical 비교 + BMB-internal FP S4==S6 ✅. bmb-stage2.exe 256MB 스택 갱신. 3800 tests ✅. HEAD `be917a97`.)
 > 이전 갱신: 2026-05-27 (**M10 ✅ COMPLETE** — Cycles 3198-3201: warnings **1,227 → 0** (100% 감소). non_snake_case 108→0 (SCREAMING_SNAKE_CASE 예외) + semantic_duplication 1119→0 (trivial 제외 + 5개 수정). TK_AS/TK_BXOR 토큰 ID 충돌 수정 + low_is_whitespace 삭제. 3800 tests ✅. Stage 1 bootstrap ✅. HEAD `98628ce9`.)
 > 이전 갱신: 2026-05-27 (**M10 Track A ✅ COMPLETE** — Cycles 3190-3197: chained_comparison **757→0** (−757). unused_binding 64→0 + single_arm_match 11→0 포함. 총 warnings 2,839→**1,227**. Stage 1 bootstrap ✅. HEAD `c4092ae0`. 잔여: non_snake_case 108 (Human Decision 대기) + semantic_duplication 1,119 (장기).)
@@ -1284,26 +1285,35 @@ Stage 1 bootstrap ✅ | HEAD: `98628ce9` | 3800 tests ✅
 
 ---
 
-## § M11 — 계획 중 (방향 미결정, 2026-05-27)
+## § M11 — 진행 중 (Cycle 3205~)
 
 ### 배경
 
-M10 완료 + Stage 2 bootstrap 복구 + 0-warning 재복구 후 다음 마일스톤 방향 결정 필요.
+M10 완료 + Stage 2 bootstrap 복구 + 0-warning 재복구 + M11-B(fixed_point: true) 달성 후.
 
-### 후보 방향 (우선순위 미확정, HUMAN 결정 필요)
+### 후보 방향
 
-| 후보 | 내용 | 규모 |
-|------|------|------|
-| **A. 약한 계약 → semantic 계약** | `post it or not it` 등 tautology 1,114개 → 의미 있는 계약 | ~4-6 cycles |
-| **B. 전체 3-Stage bootstrap 검증** | bootstrap.sh E2E (~8분), canonical FP 완전 확인 | 1 cycle |
-| **C. 언어 갭 추가 해소** | stack array / closure / generic 등 미지원 기능 | 가변 |
-| **D. B축 재측정** | claude-sonnet-4-6 98.0% stale 기한 2026-08-13 (API key 필요) | HUMAN |
+| 후보 | 내용 | 규모 | 상태 |
+|------|------|------|------|
+| **A. 약한 계약 → semantic 계약** | `post it or not it` 등 tautology 1,114개 → 의미 있는 계약 | ~4-6 cycles | 🔵 **진행 중** |
+| **B. 전체 3-Stage bootstrap 검증** | bootstrap.sh E2E (~8분), canonical FP 완전 확인 | 1 cycle | ✅ **COMPLETE** (Cycle 3205) |
+| **C. 언어 갭 추가 해소** | stack array / closure / generic 등 미지원 기능 | 가변 | 대기 |
+| **D. B축 재측정** | claude-sonnet-4-6 98.0% stale 기한 2026-08-13 (API key 필요) | HUMAN | HUMAN |
+
+### M11-A: skip 확정 목록 (변경 금지)
+
+| 종류 | 수 | 이유 |
+|------|----|----|
+| `post it or not it` (bool, skip 확정) | 6 | irreducible (함수 반환값 의미 불명확) |
+| `post it == it` (i64) | 7 | 진정 임의 값 반환 — trivial이 정직한 계약 |
+| `post it.len() >= 0` (String, skip 확정) | 77 | len() always ≥ 0, 삭제 or 유지 모두 trivial |
 
 ### 현재 기술 부채 목록
 
 | 항목 | 내용 | 심각도 |
 |------|------|--------|
-| trivial postcondition 1,114개 | `post it or not it` / `post it == it` 등 | P2 |
+| trivial postcondition ~1,114개 | `post it or not it` / `post it.len() >= 0` 등 | P2 |
+| BMB IR → opt 최적화 불가 | printf 기반 IR 방출 코드가 opt O1+에 의해 절단 | P3 |
 | Unix 링크 스택 미설정 | bootstrap.sh Unix 브랜치 `-no-pie`만, 스택 설정 없음 | P3 |
 | `compiler.bmb.compact.out.ll` 구버전 | 6,193 lines (구버전) — S4 IR(134,209 lines)로 교체 검토 | P4 |
 
