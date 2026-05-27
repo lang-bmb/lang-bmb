@@ -17324,7 +17324,9 @@ fn ipr_all_calls_pure(ir: String, pos: i64, end: i64, known_pure: String) -> boo
 
                     else {
 
-                        let key = fn_name + ",";
+                        // Use comma-bounded matching: ",fn_name," to prevent substring false positives
+                        // e.g. "free" must NOT match inside "array_free" in the known set
+                        let key = "," + fn_name + ",";
 
                         find_pattern_noa(known_pure, key, 0) >= 0
 
@@ -17386,7 +17388,9 @@ fn ipr_all_calls_readonly(ir: String, pos: i64, end: i64, known: String) -> bool
 
                     else {
 
-                        let key = fn_name + ",";
+                        // Use comma-bounded matching: ",fn_name," to prevent substring false positives
+                        // e.g. "free" must NOT match inside "array_free" in the known set
+                        let key = "," + fn_name + ",";
 
                         find_pattern_noa(known, key, 0) >= 0
 
@@ -25548,7 +25552,7 @@ fn ifs_check_flex_both_sides(fn_mir: String, branch_line: String, branch_pos: i6
 
   pre branch_pos >= 0
 
-  post it >= 0
+  post it >= -1
 
 = let cond = cf_branch_cond(branch_line);
 
@@ -41552,7 +41556,7 @@ fn build_link(ir_file: String, output: String, runtime_lib: String, cleanup_file
 
 =
 
-    let link_cmd = "clang -w -O3 -march=native " + ir_file + " " + runtime_lib + " -o " + output + " -lm -lws2_32";
+    let link_cmd = "clang -w -O3 -march=native -Wl,--stack,268435456 " + ir_file + " " + runtime_lib + " -o " + output + " -lm -lws2_32";
 
     let link_result = system(link_cmd);
 

@@ -1145,7 +1145,8 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
                 cmd.args(["-static", "-static-libgcc"]);
                 // D2 (Cycle 2780): 64MB stack — prevents STATUS_STACK_OVERFLOW on deeply
                 // nested ASTs (bootstrap parser recursion depth). Default Windows stack is 1MB.
-                cmd.arg("-Wl,--stack,67108864");
+                // Cycle 3232: bumped 64MB→256MB; compiler.bmb self-compile needs >64MB.
+                cmd.arg("-Wl,--stack,268435456");
             }
 
             if config.verbose {
@@ -1376,7 +1377,8 @@ fn link_native(
             cmd.args(["-static", "-static-libgcc"]);
             // D2 (Cycle 2780): 64MB stack — prevents STATUS_STACK_OVERFLOW on deeply
             // nested ASTs (bootstrap parser recursion depth). Default Windows stack is 1MB.
-            cmd.arg("-Wl,--stack,67108864");
+            // Cycle 3232: bumped 64MB→256MB; compiler.bmb self-compile needs >64MB.
+            cmd.arg("-Wl,--stack,268435456");
         }
     }
 
