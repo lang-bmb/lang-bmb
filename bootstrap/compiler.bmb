@@ -17203,7 +17203,12 @@ fn ipr_all_calls_pure(ir: String, pos: i64, end: i64, known_pure: String) -> boo
 
                     let fn_name = line.slice(at_pos + 1, paren);
 
-                    if find_pattern_at(fn_name, "llvm.", 0) >= 0 { true }
+                    // LLVM intrinsics are pure (memory(none)) EXCEPT memory-writing ones (memset/memcpy/memmove)
+                    if find_pattern_at(fn_name, "llvm.", 0) >= 0 {
+                        find_pattern_at(fn_name, "llvm.memset", 0) < 0
+                        and find_pattern_at(fn_name, "llvm.memcpy", 0) < 0
+                        and find_pattern_at(fn_name, "llvm.memmove", 0) < 0
+                    }
 
                     else {
 
