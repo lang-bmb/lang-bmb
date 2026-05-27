@@ -1,0 +1,24 @@
+{
+  "problem_id": "12_queue_simulation",
+  "category": "system",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let q = read_int();\n    let queue = vec_new();\n    let mut front = 0;\n    let mut i = 0;\n    while i < q {\n        let op = read_int();\n        if op == 1 {\n            let x = read_int();\n            let _p = vec_push(queue, x)\n        } else if op == 2 {\n            if front < vec_len(queue) {\n                let val = vec_get(queue, front);\n                front = front + 1;\n                let _p = println(val)\n            } else {\n                let _p = println(-1)\n            }\n        };\n        i = i + 1\n    };\n    let _f = vec_free(queue);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

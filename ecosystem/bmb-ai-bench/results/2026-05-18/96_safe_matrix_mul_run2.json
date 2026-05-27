@@ -1,0 +1,24 @@
+{
+  "problem_id": "96_safe_matrix_mul",
+  "category": "contract",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let a = vec_new();\n    let b = vec_new();\n    let i = 0;\n    while i < n * n {\n        let val = read_int();\n        let _p = vec_push(a, val);\n        i += 1\n    };\n    let j = 0;\n    while j < n * n {\n        let val = read_int();\n        let _p = vec_push(b, val);\n        j += 1\n    };\n\n    let row = 0;\n    while row < n {\n        let col = 0;\n        while col < n {\n            let sum = 0;\n            let k = 0;\n            while k < n {\n                let a_val = vec_get(a, row * n + k);\n                let b_val = vec_get(b, k * n + col);\n                sum = sum + (a_val * b_val);\n                k += 1\n            };\n            if col > 0 {\n                let _s = print_str(\" \")\n            };\n            let _p = print(sum);\n            col += 1\n        };\n        let _nl = println_str(\"\");\n        row += 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

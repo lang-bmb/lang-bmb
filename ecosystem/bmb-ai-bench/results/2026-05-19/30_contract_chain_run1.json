@@ -1,0 +1,96 @@
+{
+  "problem_id": "30_contract_chain",
+  "category": "contract",
+  "difficulty": "hard",
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "A": 10,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn normalize(x: i64, mn: i64, mx: i64) -> i64\n    pre mn < mx\n    post ret >= 0 and ret <= 100\n= (x - mn) * 100 / (mx - mn);\n\nfn scale(x: i64, factor: i64) -> i64\n    pre x >= 0\n    post ret >= 0\n= x * factor;\n\nfn bound(x: i64, limit: i64) -> i64\n    pre limit >= 0\n    post ret >= 0 and ret <= limit\n= if x > limit { limit } else { x };\n\nfn main() -> i64 = {\n    let mn: i64 = read_int();\n    let mx: i64 = read_int();\n    let factor: i64 = read_int();\n    let limit: i64 = read_int();\n    let n: i64 = read_int();\n    for _i in 0..n {\n        let x: i64 = read_int();\n        let _p = println(bound(scale(normalize(x, mn, mx), factor), limit))\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"message\":\"Contract verification failed:\\n  Function 'bound': Counterexample found\\n    Counterexample: Counterexample:\\n  limit = 0\\n\\n\"}",
+      "loop_type": "A"
+    },
+    {
+      "attempt": 2,
+      "code": "fn normalize(x: i64, mn: i64, mx: i64) -> i64\n    pre mn < mx\n    post ret >= 0 and ret <= 100\n= (x - mn) * 100 / (mx - mn);\n\nfn scale(x: i64, factor: i64) -> i64\n    pre x >= 0\n    post ret >= 0\n= x * factor;\n\nfn bound(x: i64, limit: i64) -> i64\n    pre limit >= 0\n    post ret >= 0 and ret <= limit\n= if x > limit { limit } else { x };\n\nfn main() -> i64 = {\n    let mn: i64 = read_int();\n    let mx: i64 = read_int();\n    let factor: i64 = read_int();\n    let limit: i64 = read_int();\n    let n: i64 = read_int();\n    for _i in 0..n {\n        let x: i64 = read_int();\n        let _p = println(bound(scale(normalize(x, mn, mx), factor), limit))\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"message\":\"Contract verification failed:\\n  Function 'bound': Counterexample found\\n    Counterexample: Counterexample:\\n  limit = 0\\n\\n\"}",
+      "loop_type": "A"
+    },
+    {
+      "attempt": 3,
+      "code": "fn normalize(x: i64, mn: i64, mx: i64) -> i64\n    pre mn < mx\n    post ret >= 0 and ret <= 100\n= (x - mn) * 100 / (mx - mn);\n\nfn scale(x: i64, factor: i64) -> i64\n    pre x >= 0\n    post ret >= 0\n= x * factor;\n\nfn bound(x: i64, limit: i64) -> i64\n    pre limit >= 0\n    post ret >= 0 and ret <= limit\n= if x > limit { limit } else { x };\n\nfn main() -> i64 = {\n    let mn: i64 = read_int();\n    let mx: i64 = read_int();\n    let factor: i64 = read_int();\n    let limit: i64 = read_int();\n    let n: i64 = read_int();\n    for _i in 0..n {\n        let x: i64 = read_int();\n        let _p = println(bound(scale(normalize(x, mn, mx), factor), limit))\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"message\":\"Contract verification failed:\\n  Function 'bound': Counterexample found\\n    Counterexample: Counterexample:\\n  limit = 0\\n\\n\"}",
+      "loop_type": "A"
+    },
+    {
+      "attempt": 4,
+      "code": "fn normalize(x: i64, mn: i64, mx: i64) -> i64\n    pre mn < mx\n    post ret >= 0 and ret <= 100\n= (x - mn) * 100 / (mx - mn);\n\nfn scale(x: i64, factor: i64) -> i64\n    pre x >= 0\n    post ret >= 0\n= x * factor;\n\nfn bound(x: i64, limit: i64) -> i64\n    pre limit >= 0\n    post ret >= 0 and ret <= limit\n= if x > limit { limit } else { x };\n\nfn main() -> i64 = {\n    let mn: i64 = read_int();\n    let mx: i64 = read_int();\n    let factor: i64 = read_int();\n    let limit: i64 = read_int();\n    let n: i64 = read_int();\n    for _i in 0..n {\n        let x: i64 = read_int();\n        let _p = println(bound(scale(normalize(x, mn, mx), factor), limit))\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"message\":\"Contract verification failed:\\n  Function 'bound': Counterexample found\\n    Counterexample: Counterexample:\\n  limit = 0\\n\\n\"}",
+      "loop_type": "A"
+    },
+    {
+      "attempt": 5,
+      "code": "fn normalize(x: i64, mn: i64, mx: i64) -> i64\n    pre mn < mx\n    post ret >= 0 and ret <= 100\n= (x - mn) * 100 / (mx - mn);\n\nfn scale(x: i64, factor: i64) -> i64\n    pre x >= 0\n    post ret >= 0\n= x * factor;\n\nfn bound(x: i64, limit: i64) -> i64\n    pre limit >= 0\n    post ret >= 0 and ret <= limit\n= if x > limit { limit } else { x };\n\nfn main() -> i64 = {\n    let mn: i64 = read_int();\n    let mx: i64 = read_int();\n    let factor: i64 = read_int();\n    let limit: i64 = read_int();\n    let n: i64 = read_int();\n    for _i in 0..n {\n        let x: i64 = read_int();\n        let _p = println(bound(scale(normalize(x, mn, mx), factor), limit))\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"message\":\"Contract verification failed:\\n  Function 'bound': Counterexample found\\n    Counterexample: Counterexample:\\n  limit = 0\\n\\n\"}",
+      "loop_type": "A"
+    },
+    {
+      "attempt": 6,
+      "code": "fn normalize(x: i64, mn: i64, mx: i64) -> i64\n    pre mn < mx\n    post ret >= 0 and ret <= 100\n= (x - mn) * 100 / (mx - mn);\n\nfn scale(x: i64, factor: i64) -> i64\n    pre x >= 0\n    post ret >= 0\n= x * factor;\n\nfn bound(x: i64, limit: i64) -> i64\n    pre limit >= 0\n    post ret >= 0 and ret <= limit\n= if x > limit { limit } else { x };\n\nfn main() -> i64 = {\n    let mn: i64 = read_int();\n    let mx: i64 = read_int();\n    let factor: i64 = read_int();\n    let limit: i64 = read_int();\n    let n: i64 = read_int();\n    for _i in 0..n {\n        let x: i64 = read_int();\n        let _p = println(bound(scale(normalize(x, mn, mx), factor), limit))\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"message\":\"Contract verification failed:\\n  Function 'bound': Counterexample found\\n    Counterexample: Counterexample:\\n  limit = 0\\n\\n\"}",
+      "loop_type": "A"
+    },
+    {
+      "attempt": 7,
+      "code": "fn normalize(x: i64, mn: i64, mx: i64) -> i64\n    pre mn < mx\n    post ret >= 0 and ret <= 100\n= (x - mn) * 100 / (mx - mn);\n\nfn scale(x: i64, factor: i64) -> i64\n    pre x >= 0\n    post ret >= 0\n= x * factor;\n\nfn bound(x: i64, limit: i64) -> i64\n    pre limit >= 0\n    post ret >= 0 and ret <= limit\n= if x > limit { limit } else { x };\n\nfn main() -> i64 = {\n    let mn: i64 = read_int();\n    let mx: i64 = read_int();\n    let factor: i64 = read_int();\n    let limit: i64 = read_int();\n    let n: i64 = read_int();\n    for _i in 0..n {\n        let x: i64 = read_int();\n        let _p = println(bound(scale(normalize(x, mn, mx), factor), limit))\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"message\":\"Contract verification failed:\\n  Function 'bound': Counterexample found\\n    Counterexample: Counterexample:\\n  limit = 0\\n\\n\"}",
+      "loop_type": "A"
+    },
+    {
+      "attempt": 8,
+      "code": "fn normalize(x: i64, mn: i64, mx: i64) -> i64\n    pre mn < mx\n    post ret >= 0 and ret <= 100\n= (x - mn) * 100 / (mx - mn);\n\nfn scale(x: i64, factor: i64) -> i64\n    pre x >= 0\n    post ret >= 0\n= x * factor;\n\nfn bound(x: i64, limit: i64) -> i64\n    pre limit >= 0\n    post ret >= 0 and ret <= limit\n= if x > limit { limit } else { x };\n\nfn main() -> i64 = {\n    let mn: i64 = read_int();\n    let mx: i64 = read_int();\n    let factor: i64 = read_int();\n    let limit: i64 = read_int();\n    let n: i64 = read_int();\n    for _i in 0..n {\n        let x: i64 = read_int();\n        let _p = println(bound(scale(normalize(x, mn, mx), factor), limit))\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"message\":\"Contract verification failed:\\n  Function 'bound': Counterexample found\\n    Counterexample: Counterexample:\\n  limit = 0\\n\\n\"}",
+      "loop_type": "A"
+    },
+    {
+      "attempt": 9,
+      "code": "fn normalize(x: i64, mn: i64, mx: i64) -> i64\n    pre mn < mx\n    post ret >= 0 and ret <= 100\n= (x - mn) * 100 / (mx - mn);\n\nfn scale(x: i64, factor: i64) -> i64\n    pre x >= 0\n    post ret >= 0\n= x * factor;\n\nfn bound(x: i64, limit: i64) -> i64\n    pre limit >= 0\n    post ret >= 0 and ret <= limit\n= if x > limit { limit } else { x };\n\nfn main() -> i64 = {\n    let mn: i64 = read_int();\n    let mx: i64 = read_int();\n    let factor: i64 = read_int();\n    let limit: i64 = read_int();\n    let n: i64 = read_int();\n    for _i in 0..n {\n        let x: i64 = read_int();\n        let _p = println(bound(scale(normalize(x, mn, mx), factor), limit))\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"message\":\"Contract verification failed:\\n  Function 'bound': Counterexample found\\n    Counterexample: Counterexample:\\n  limit = 0\\n\\n\"}",
+      "loop_type": "A"
+    },
+    {
+      "attempt": 10,
+      "code": "fn normalize(x: i64, mn: i64, mx: i64) -> i64\n    pre mn < mx\n    post ret >= 0 and ret <= 100\n= (x - mn) * 100 / (mx - mn);\n\nfn scale(x: i64, factor: i64) -> i64\n    pre x >= 0\n    post ret >= 0\n= x * factor;\n\nfn bound(x: i64, limit: i64) -> i64\n    pre limit >= 0\n    post ret >= 0 and ret <= limit\n= if x > limit { limit } else { x };\n\nfn main() -> i64 = {\n    let mn: i64 = read_int();\n    let mx: i64 = read_int();\n    let factor: i64 = read_int();\n    let limit: i64 = read_int();\n    let n: i64 = read_int();\n    for _i in 0..n {\n        let x: i64 = read_int();\n        let _p = println(bound(scale(normalize(x, mn, mx), factor), limit))\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"message\":\"Contract verification failed:\\n  Function 'bound': Counterexample found\\n    Counterexample: Counterexample:\\n  limit = 0\\n\\n\"}",
+      "loop_type": "A"
+    }
+  ],
+  "run_id": 1
+}

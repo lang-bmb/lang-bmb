@@ -1,0 +1,30 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - heading "BMB Playground" [level=1] [ref=e6]:
+      - generic [ref=e7]: BMB
+      - generic [ref=e8]: Playground
+    - generic [ref=e9]:
+      - button "Run" [ref=e10] [cursor=pointer]:
+        - img [ref=e11]
+        - text: Run
+      - button "Format" [ref=e13] [cursor=pointer]:
+        - img [ref=e14]
+        - text: Format
+      - button "Examples" [ref=e16] [cursor=pointer]:
+        - img [ref=e17]
+        - text: Examples
+    - generic [ref=e20]:
+      - generic "JS fallback interpreter" [ref=e21]: JS
+      - button "Share" [ref=e22] [cursor=pointer]:
+        - img [ref=e23]
+        - text: Share
+      - link "GitHub" [ref=e29] [cursor=pointer]:
+        - /url: https://github.com/lang-bmb/lang-bmb
+        - img [ref=e30]
+  - main [ref=e32]:
+    - generic [ref=e35]: Loading...
+    - generic [ref=e37]:
+      - generic [ref=e38]:
+        - generic [ref=e39]: Output
+        - generic [ref=e40]: Ready
+      - generic [ref=e42]: Press Ctrl+Enter or click Run to execute

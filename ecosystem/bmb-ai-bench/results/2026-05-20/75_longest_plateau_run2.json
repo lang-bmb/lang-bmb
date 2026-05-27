@@ -1,0 +1,32 @@
+{
+  "problem_id": "75_longest_plateau",
+  "category": "edge",
+  "difficulty": "medium",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let t: i64 = read_int();\n    let mut tc: i64 = 0;\n    while tc < t {\n        let n: i64 = read_int();\n        let arr = vec_new();\n        for _i in 0..n { let _p = vec_push(arr, read_int()) };\n        \n        let mut max_len: i64 = 1;\n        let mut cur_len: i64 = 1;\n        \n        let i: i64 = 1;\n        while i < n {\n            if vec_get(arr, i) == vec_get(arr, i - 1) {\n                cur_len = cur_len + 1;\n                if cur_len > max_len { max_len = cur_len } else { () }\n            } else {\n                cur_len = 1\n            };\n            let i = i + 1\n        };\n        \n        let _p = println(max_len);\n        let _f = vec_free(arr);\n        set tc = tc + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0: timeout (stdin: '1 5 1 1 2 2 2')\nTest 2: timeout (stdin: '1 4 1 1 1 1')\nTest 3: timeout (stdin: '1 5 1 2 3 4 5')",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let t: i64 = read_int();\n    let mut tc: i64 = 0;\n    while tc < t {\n        let n: i64 = read_int();\n        let arr = vec_new();\n        for _i in 0..n { let _p = vec_push(arr, read_int()) };\n        \n        let mut max_len: i64 = 1;\n        let mut cur_len: i64 = 1;\n        \n        let mut i: i64 = 1;\n        while i < n {\n            if vec_get(arr, i) == vec_get(arr, i - 1) {\n                cur_len = cur_len + 1;\n                if cur_len > max_len { max_len = cur_len } else { () }\n            } else {\n                cur_len = 1\n            };\n            i = i + 1\n        };\n        \n        let _p = println(max_len);\n        let _f = vec_free(arr);\n        tc = tc + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

@@ -1,0 +1,24 @@
+{
+  "problem_id": "47_word_count",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    if n == 0 {\n        let _p = println(0);\n        return 0\n    };\n\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    let mut max_run = 1;\n    let mut current_run = 1;\n    let mut i = 1;\n\n    while i < n {\n        let prev = vec_get(v, i - 1);\n        let curr = vec_get(v, i);\n        if prev == curr {\n            current_run = current_run + 1;\n            if current_run > max_run {\n                max_run = current_run\n            }\n        } else {\n            current_run = 1\n        };\n        i = i + 1\n    };\n\n    let _p = println(max_run);\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

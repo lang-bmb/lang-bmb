@@ -1,0 +1,24 @@
+{
+  "problem_id": "84_accumulator_pattern",
+  "category": "integration",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let t: i64 = read_int();\n    let mut i: i64 = 0;\n    while i < t {\n        let op: i64 = read_int();\n        let n: i64 = read_int();\n        \n        let mut acc: i64 = 0;\n        let mut j: i64 = 0;\n        \n        if op == 1 {\n            // Sum: initial 0\n            acc = 0;\n            while j < n {\n                let v: i64 = read_int();\n                acc = acc + v;\n                j = j + 1;\n            };\n        } else if op == 2 {\n            // Product: initial 1\n            acc = 1;\n            while j < n {\n                let v: i64 = read_int();\n                acc = acc * v;\n                j = j + 1;\n            };\n        } else if op == 3 {\n            // Min: read first element, then loop n-1 times\n            if n > 0 {\n                acc = read_int();\n                j = 1;\n                while j < n {\n                    let v: i64 = read_int();\n                    acc = min(acc, v);\n                    j = j + 1;\n                };\n            } else {\n                acc = 0;\n            }\n        } else if op == 4 {\n            // Max: read first element, then loop n-1 times\n            if n > 0 {\n                acc = read_int();\n                j = 1;\n                while j < n {\n                    let v: i64 = read_int();\n                    acc = max(acc, v);\n                    j = j + 1;\n                };\n            } else {\n                acc = 0;\n            }\n        };\n        \n        let _p = println(acc);\n        i = i + 1;\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

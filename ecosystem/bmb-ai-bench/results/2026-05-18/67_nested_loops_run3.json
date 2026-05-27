@@ -1,0 +1,24 @@
+{
+  "problem_id": "67_nested_loops",
+  "category": "edge",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let t = read_int();\n    let i = 0;\n    while i < t {\n        let n = read_int();\n        let target = read_int();\n        let count = 0;\n        let a = 0;\n        while a < n {\n            let b = 0;\n            while b < n {\n                let c = target - a - b;\n                if c >= 0 and c < n {\n                    let _inc = count + 1;\n                    // Since we can't do count += 1 directly in a way that updates the variable in a nested loop easily without mut,\n                    // we use a mutable variable for count.\n                };\n                b = b + 1\n            };\n            a = a + 1\n        };\n        // The above logic is flawed because 'count' is immutable. Let's rewrite with 'mut count'.\n        // Actually, let's just use the logic inside the loop properly.\n        \n        // Re-evaluating: We need to count triplets.\n        // Since n is small (up to 100), O(n^2) or O(n^3) is fine.\n        // O(n^2) approach: iterate i and j, check if k = target - i - j is in [0, n).\n        \n        let mut cnt = 0;\n        let i2 = 0;\n        while i2 < n {\n            let j2 = 0;\n            while j2 < n {\n                let k2 = target - i2 - j2;\n                if k2 >= 0 and k2 < n {\n                    cnt = cnt + 1\n                };\n                j2 = j2 + 1\n            };\n            i2 = i2 + 1\n        };\n        \n        let _p = println(cnt);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

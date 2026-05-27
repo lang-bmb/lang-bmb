@@ -1,0 +1,32 @@
+{
+  "problem_id": "42_integer_sqrt",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn isqrt(n: i64) -> i64 = {\n    if n < 0 { -1 }\n    else if n == 0 { 0 }\n    else {\n        let mut x = n;\n        let mut y = (x + 1) / 2;\n        while y < x {\n            x = y;\n            y = (x + n / x) / 2\n        };\n        x\n    }\n};\n\nfn main() -> i64 = {\n    let _t = read_int();\n    let n = read_int();\n    let result = isqrt(n);\n    let _p = println(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 7:\n  stdin: '3 0 1 4'\n  expected: '0\\n1\\n2\\n'\n  got: '0\\n'\nTest 11:\n  stdin: '2 15 16'\n  expected: '3\\n4\\n'\n  got: '3\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn isqrt(n: i64) -> i64 = {\n    if n < 0 { -1 }\n    else if n == 0 { 0 }\n    else {\n        let mut x = n;\n        let mut y = (x + 1) / 2;\n        while y < x {\n            x = y;\n            y = (x + n / x) / 2\n        };\n        x\n    }\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let i = 0;\n    while i < t {\n        let n = read_int();\n        let result = isqrt(n);\n        let _p = println(result);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

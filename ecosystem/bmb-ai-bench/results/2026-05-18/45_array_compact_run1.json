@@ -1,0 +1,80 @@
+{
+  "problem_id": "45_array_compact",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 8,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 1,
+    "D": 6
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    let mut write_idx = 0;\n    let len = vec_len(v);\n    let mut i = 0;\n    while i < len {\n        let val = vec_get(v, i);\n        if val != 0 {\n            let _s = vec_set(v, write_idx, val);\n            write_idx = write_idx + 1\n        };\n        i = i + 1\n    };\n\n    let _c = vec_clear(v);\n    let mut j = 0;\n    while j < write_idx {\n        let val = vec_get(v, j);\n        let _p = vec_push(v, val);\n        j = j + 1\n    };\n\n    let new_len = vec_len(v);\n    let _p = println(new_len);\n    let mut k = 0;\n    while k < new_len {\n        if k > 0 { let _s = print_str(\" \") };\n        let _p = print(vec_get(v, k));\n        k = k + 1\n    };\n    let _nl = println_str(\"\");\n\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"message\":\"Linker error: clang compile failed: C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpl60lyhaa\\\\solution.ll:761:25: error: use of undefined value '@vec_clear'\n\\n  761 |   %_t23.call = call i64 @vec_clear(i64 %_t23.v_v3.arg0)\n\\n      |                         ^\n\\n1 error generated.\n\\n\"}",
+      "loop_type": "C"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    let mut write_idx = 0;\n    let len = vec_len(v);\n    let mut i = 0;\n    while i < len {\n        let val = vec_get(v, i);\n        if val != 0 {\n            let _s = vec_set(v, write_idx, val);\n            write_idx = write_idx + 1\n        };\n        i = i + 1\n    };\n\n    let _f = vec_free(v);\n    let v2 = vec_new();\n    let mut j = 0;\n    while j < write_idx {\n        let val = vec_get(v2, j);\n        let _p = vec_push(v2, val);\n        j = j + 1\n    };\n\n    let new_len = vec_len(v2);\n    let _p = println(new_len);\n    let mut k = 0;\n    while k < new_len {\n        if k > 0 { let _s = print_str(\" \") };\n        let _p = print(vec_get(v2, k));\n        k = k + 1\n    };\n    let _nl = println_str(\"\");\n\n    let _f2 = vec_free(v2);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '5 1 0 2 0 3'\n  expected: '3\\n1 2 3\\n'\n  got: '3\\n24488718114619459 22236815223029833 23362818209415255\\n'\nTest 1:\n  stdin: '3 0 0 0'\n  expected: '0\\n'\n  got: '0\\n\\n'\nTest 2:\n  stdin: '3 1 2 3'\n  expected: '3\\n1 2 3\\n'\n  got: '3\\n27584964333011005 14918401405485112 14074182630178916\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    let mut write_idx = 0;\n    let len = vec_len(v);\n    let mut i = 0;\n    while i < len {\n        let val = vec_get(v, i);\n        if val != 0 {\n            let _s = vec_set(v, write_idx, val);\n            write_idx = write_idx + 1\n        };\n        i = i + 1\n    };\n\n    let _f = vec_free(v);\n    let v2 = vec_new();\n    let mut j = 0;\n    while j < write_idx {\n        let val = vec_get(v2, j);\n        let _p = vec_push(v2, val);\n        j = j + 1\n    };\n\n    let new_len = vec_len(v2);\n    let _p = println(new_len);\n    let mut k = 0;\n    while k < new_len {\n        if k > 0 { let _s = print_str(\" \") };\n        let _p = print(vec_get(v2, k));\n        k = k + 1\n    };\n    let _nl = println_str(\"\");\n\n    let _f2 = vec_free(v2);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '5 1 0 2 0 3'\n  expected: '3\\n1 2 3\\n'\n  got: '3\\n4294967296 13792480017252410 14918457237897284\\n'\nTest 1:\n  stdin: '3 0 0 0'\n  expected: '0\\n'\n  got: '0\\n\\n'\nTest 2:\n  stdin: '3 1 2 3'\n  expected: '3\\n1 2 3\\n'\n  got: '3\\n206162100272 23362788144447559 21110911020367956\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    let mut write_idx = 0;\n    let len = vec_len(v);\n    let mut i = 0;\n    while i < len {\n        let val = vec_get(v, i);\n        if val != 0 {\n            let _s = vec_set(v, write_idx, val);\n            write_idx = write_idx + 1\n        };\n        i = i + 1\n    };\n\n    let _f = vec_free(v);\n    let v2 = vec_new();\n    let mut j = 0;\n    while j < write_idx {\n        let val = vec_get(v, j);\n        let _p = vec_push(v2, val);\n        j = j + 1\n    };\n\n    let new_len = vec_len(v2);\n    let _p = println(new_len);\n    let mut k = 0;\n    while k < new_len {\n        if k > 0 { let _s = print_str(\" \") };\n        let _p = print(vec_get(v2, k));\n        k = k + 1\n    };\n    let _nl = println_str(\"\");\n\n    let _f2 = vec_free(v2);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '5 1 0 2 0 3'\n  expected: '3\\n1 2 3\\n'\n  got: '3\\n24488718114619459 22236815223029833 23362818209415255\\n'\nTest 1:\n  stdin: '3 0 0 0'\n  expected: '0\\n'\n  got: '0\\n\\n'\nTest 2:\n  stdin: '3 1 2 3'\n  expected: '3\\n1 2 3\\n'\n  got: '3\\n206162100272 23362788144447559 21110911020367956\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 5,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    let mut write_idx = 0;\n    let len = vec_len(v);\n    let mut i = 0;\n    while i < len {\n        let val = vec_get(v, i);\n        if val != 0 {\n            let _s = vec_set(v, write_idx, val);\n            write_idx = write_idx + 1\n        };\n        i = i + 1\n    };\n\n    let _f = vec_free(v);\n    let v2 = vec_new();\n    let mut j = 0;\n    while j < write_idx {\n        let val = vec_get(v, j);\n        let _p = vec_push(v2, val);\n        j = j + 1\n    };\n\n    let new_len = vec_len(v2);\n    let _p = println(new_len);\n    let mut k = 0;\n    while k < new_len {\n        if k > 0 { let _s = print_str(\" \") };\n        let _p = print(vec_get(v2, k));\n        k = k + 1\n    };\n    let _nl = println_str(\"\");\n\n    let _f2 = vec_free(v2);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1:\n  stdin: '3 0 0 0'\n  expected: '0\\n'\n  got: '0\\n\\n'\nTest 3:\n  stdin: '1 0'\n  expected: '0\\n'\n  got: '0\\n\\n'\nTest 10:\n  stdin: '4 0 0 0 0'\n  expected: '0\\n'\n  got: '0\\n\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 6,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    let mut write_idx = 0;\n    let len = vec_len(v);\n    let mut i = 0;\n    while i < len {\n        let val = vec_get(v, i);\n        if val != 0 {\n            let _s = vec_set(v, write_idx, val);\n            write_idx = write_idx + 1\n        };\n        i = i + 1\n    };\n\n    let _f = vec_free(v);\n    let v2 = vec_new();\n    let mut j = 0;\n    while j < write_idx {\n        let val = vec_get(v, j);\n        let _p = vec_push(v2, val);\n        j = j + 1\n    };\n\n    let new_len = vec_len(v2);\n    let _p = println(new_len);\n    let mut k = 0;\n    while k < new_len {\n        if k > 0 { let _s = print_str(\" \") };\n        let _p = print(vec_get(v2, k));\n        k = k + 1\n    };\n    if new_len > 0 {\n        let _nl = println_str(\"\");\n    };\n\n    let _f2 = vec_free(v2);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 8:\n  stdin: '5 1 0 0 0 0'\n  expected: '1\\n1\\n'\n  got: '1\\n26740453505630286\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 7,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    let mut write_idx = 0;\n    let len = vec_len(v);\n    let mut i = 0;\n    while i < len {\n        let val = vec_get(v, i);\n        if val != 0 {\n            let _s = vec_set(v, write_idx, val);\n            write_idx = write_idx + 1\n        };\n        i = i + 1\n    };\n\n    let _f = vec_free(v);\n    let v2 = vec_new();\n    let mut j = 0;\n    while j < write_idx {\n        let val = vec_get(v, j);\n        let _p = vec_push(v2, val);\n        j = j + 1\n    };\n\n    let new_len = vec_len(v2);\n    let _p = println(new_len);\n    let mut k = 0;\n    while k < new_len {\n        if k > 0 { let _s = print_str(\" \") };\n        let _p = print(vec_get(v2, k));\n        k = k + 1\n    };\n    if new_len > 0 {\n        let _nl = println_str(\"\");\n    };\n\n    let _f2 = vec_free(v2);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '5 1 0 2 0 3'\n  expected: '3\\n1 2 3\\n'\n  got: '3\\n0 0 0\\n'\nTest 4:\n  stdin: '1 42'\n  expected: '1\\n42\\n'\n  got: '1\\n18859218584141925\\n'\nTest 9:\n  stdin: '7 1 2 3 0 4 5 6'\n  expected: '6\\n1 2 3 4 5 6\\n'\n  got: '6\\n24488718114619459 22236815223029833 23362818209415255 19422134175727705 25895912609087565 22518380394315843\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 8,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    let mut write_idx = 0;\n    let len = vec_len(v);\n    let mut i = 0;\n    while i < len {\n        let val = vec_get(v, i);\n        if val != 0 {\n            let _s = vec_set(v, write_idx, val);\n            write_idx = write_idx + 1\n        };\n        i = i + 1\n    };\n\n    let new_len = write_idx;\n    let _p = println(new_len);\n    let mut k = 0;\n    while k < new_len {\n        if k > 0 { let _s = print_str(\" \") };\n        let _p = print(vec_get(v, k));\n        k = k + 1\n    };\n    if new_len > 0 {\n        let _nl = println_str(\"\");\n    };\n\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

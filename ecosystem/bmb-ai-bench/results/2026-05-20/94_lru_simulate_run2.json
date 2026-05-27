@@ -1,0 +1,24 @@
+{
+  "problem_id": "94_lru_simulate",
+  "category": "system",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let capacity: i64 = read_int();\n    let n: i64 = read_int();\n    let cache = vec_new();\n    let mut faults: i64 = 0;\n    for _i in 0..n {\n        let page: i64 = read_int();\n        let len: i64 = vec_len(cache);\n        let mut found: i64 = -1;\n        for j in 0..len {\n            if vec_get(cache, j) == page { set found = j } else { () }\n        };\n        if found >= 0 {\n            let tmp: i64 = vec_remove(cache, found);\n            let _p = vec_push(cache, tmp)\n        } else {\n            if vec_len(cache) >= capacity {\n                let _evict = vec_remove(cache, 0)\n            } else { () };\n            let _p = vec_push(cache, page);\n            set faults = faults + 1\n        }\n    };\n    println(faults);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

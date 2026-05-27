@@ -1,0 +1,24 @@
+{
+  "problem_id": "57_zigzag_print",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let w = read_int();\n    \n    let v = vec_new();\n    let i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(v, val);\n        i = i + 1\n    };\n    \n    let num_rows = n / w;\n    let remainder = n % w;\n    let total_rows = if remainder > 0 { num_rows + 1 } else { num_rows };\n    \n    let r = 0;\n    while r < total_rows {\n        let row_start = r * w;\n        let row_end = if r == total_rows - 1 && remainder > 0 {\n            row_start + remainder\n        } else {\n            row_start + w\n        };\n        \n        let row_len = row_end - row_start;\n        \n        if r % 2 == 0 {\n            // Forward\n            let c = 0;\n            while c < row_len {\n                let idx = row_start + c;\n                let val = vec_get(v, idx);\n                if c > 0 {\n                    let _s = print_str(\" \");\n                };\n                let _p = print(val);\n                c = c + 1\n            };\n        } else {\n            // Backward\n            let c = 0;\n            while c < row_len {\n                let idx = row_end - 1 - c;\n                let val = vec_get(v, idx);\n                if c > 0 {\n                    let _s = print_str(\" \");\n                };\n                let _p = print(val);\n                c = c + 1\n            };\n        };\n        \n        let _nl = println_str(\"\");\n        r = r + 1\n    };\n    \n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

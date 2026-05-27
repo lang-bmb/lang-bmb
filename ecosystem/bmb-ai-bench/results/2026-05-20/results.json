@@ -1,0 +1,2706 @@
+{
+  "model": "qwen3.6-35b-a3b",
+  "date": "2026-05-20",
+  "problems": {
+    "01_binary_search": {
+      "category": "algorithm",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "02_quicksort": {
+      "category": "algorithm",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "03_merge_sort": {
+      "category": "algorithm",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "04_fibonacci": {
+      "category": "algorithm",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 2,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 2,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 2,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "05_gcd": {
+      "category": "algorithm",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "06_matrix_multiply": {
+      "category": "algorithm",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "07_max_subarray": {
+      "category": "algorithm",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "08_two_sum": {
+      "category": "algorithm",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "09_insertion_sort": {
+      "category": "algorithm",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "100_verified_binary_search": {
+      "category": "contract",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "10_reverse_array": {
+      "category": "algorithm",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "11_stack_operations": {
+      "category": "system",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "12_queue_simulation": {
+      "category": "system",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "13_linked_list_sum": {
+      "category": "system",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "14_count_frequency": {
+      "category": "system",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "15_min_max": {
+      "category": "system",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "16_digit_sum": {
+      "category": "system",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "17_histogram": {
+      "category": "system",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "18_running_average": {
+      "category": "system",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "19_prefix_sum": {
+      "category": "system",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "20_matrix_transpose": {
+      "category": "system",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "21_bounded_array": {
+      "category": "contract",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "22_safe_divide": {
+      "category": "contract",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "23_bounded_sum": {
+      "category": "contract",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "24_sorted_insert": {
+      "category": "contract",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 2,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "25_range_clamp": {
+      "category": "contract",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "26_safe_sqrt": {
+      "category": "contract",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "27_matrix_safe_access": {
+      "category": "contract",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "28_positive_factorial": {
+      "category": "contract",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "29_bounded_stack": {
+      "category": "contract",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 2,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "30_contract_chain": {
+      "category": "contract",
+      "difficulty": "hard",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "31_dot_product": {
+      "category": "performance",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "32_selection_sort": {
+      "category": "performance",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "33_counting_sort": {
+      "category": "performance",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "34_power_mod": {
+      "category": "performance",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "35_sieve_primes": {
+      "category": "performance",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "36_array_rotation": {
+      "category": "performance",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 2,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "37_binary_exp": {
+      "category": "performance",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "38_matrix_trace": {
+      "category": "performance",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "39_partial_sum_query": {
+      "category": "performance",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "40_bubble_sort": {
+      "category": "performance",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "41_collatz_length": {
+      "category": "performance",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "42_integer_sqrt": {
+      "category": "performance",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "43_sum_of_squares": {
+      "category": "performance",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "44_euclidean_dist": {
+      "category": "performance",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "45_array_compact": {
+      "category": "performance",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "46_csv_parser": {
+      "category": "practical",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "47_word_count": {
+      "category": "practical",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "48_run_length_encode": {
+      "category": "practical",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "49_roman_to_int": {
+      "category": "practical",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "50_calculator": {
+      "category": "practical",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "51_bracket_match": {
+      "category": "practical",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "52_base_convert": {
+      "category": "practical",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "53_phone_keypad": {
+      "category": "practical",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "54_text_wrap": {
+      "category": "practical",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "55_token_count": {
+      "category": "practical",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "56_char_frequency": {
+      "category": "practical",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "57_zigzag_print": {
+      "category": "practical",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "58_spiral_order": {
+      "category": "practical",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "59_calendar_day": {
+      "category": "practical",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "60_checksum": {
+      "category": "practical",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "61_mutual_recursion": {
+      "category": "edge",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "62_deep_nesting": {
+      "category": "edge",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "63_large_function": {
+      "category": "edge",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "64_many_params": {
+      "category": "edge",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "65_chain_calls": {
+      "category": "edge",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "66_acc_recursion": {
+      "category": "edge",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "67_nested_loops": {
+      "category": "edge",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "68_boundary_values": {
+      "category": "edge",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "69_overflow_detect": {
+      "category": "edge",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 3,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "70_empty_input": {
+      "category": "edge",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "71_single_element": {
+      "category": "edge",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "72_alternating": {
+      "category": "edge",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "73_palindrome_check": {
+      "category": "edge",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "74_majority_element": {
+      "category": "edge",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "75_longest_plateau": {
+      "category": "edge",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 2,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 2,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "76_multi_function": {
+      "category": "integration",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "77_state_machine": {
+      "category": "integration",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "78_event_loop": {
+      "category": "integration",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "79_mini_interpreter": {
+      "category": "integration",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "80_array_of_arrays": {
+      "category": "integration",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "81_dispatch_table": {
+      "category": "integration",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "82_producer_consumer": {
+      "category": "integration",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "83_pipeline": {
+      "category": "integration",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "84_accumulator_pattern": {
+      "category": "integration",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "85_registry_pattern": {
+      "category": "integration",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "86_heap_sort": {
+      "category": "algorithm",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "87_longest_increasing": {
+      "category": "algorithm",
+      "difficulty": "hard",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "88_knapsack_01": {
+      "category": "algorithm",
+      "difficulty": "hard",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "89_topological_sort": {
+      "category": "algorithm",
+      "difficulty": "hard",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "90_nth_prime": {
+      "category": "algorithm",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "91_ring_buffer": {
+      "category": "system",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 11,
+          "final_correct": false,
+          "compiled": false,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "92_bit_counting": {
+      "category": "system",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "93_sparse_array": {
+      "category": "system",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "94_lru_simulate": {
+      "category": "system",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "95_memory_pool": {
+      "category": "system",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "96_safe_matrix_mul": {
+      "category": "contract",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "97_range_sum_contract": {
+      "category": "contract",
+      "difficulty": "easy",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "98_sorted_merge_contract": {
+      "category": "contract",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    },
+    "99_bounded_queue_contract": {
+      "category": "contract",
+      "difficulty": "medium",
+      "runs": [
+        {
+          "run_id": 1,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 2,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        },
+        {
+          "run_id": 3,
+          "loop_count": 1,
+          "final_correct": true,
+          "compiled": true,
+          "perf_ratio": null
+        }
+      ]
+    }
+  }
+}

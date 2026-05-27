@@ -1,0 +1,24 @@
+{
+  "problem_id": "32_selection_sort",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    for i in 0..n {\n        let mut min_idx: i64 = i;\n        for j in (i+1)..n {\n            if vec_get(v, j) < vec_get(v, min_idx) { min_idx = j }\n        };\n        if min_idx != i {\n            let tmp: i64 = vec_get(v, i);\n            let _s1 = vec_set(v, i, vec_get(v, min_idx));\n            let _s2 = vec_set(v, min_idx, tmp)\n        }\n    };\n    let mut first: i64 = 1;\n    for i in 0..n {\n        if first == 0 { let _s = print_str(\" \") };\n        let _p = print(vec_get(v, i));\n        first = 0\n    };\n    let _nl = println_str(\"\");\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

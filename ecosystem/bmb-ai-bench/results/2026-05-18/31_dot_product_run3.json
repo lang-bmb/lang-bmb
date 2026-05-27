@@ -1,0 +1,32 @@
+{
+  "problem_id": "31_dot_product",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let a = vec_new();\n    let b = vec_new();\n    \n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(a, val)\n    };\n    \n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(b, val)\n    };\n    \n    let mut dot = 0;\n    let mut i = 0;\n    while i < n {\n        let ai = vec_get(a, i);\n        let bi = vec_get(b, i);\n        dot = dot + (ai * bi);\n        i = i + 1\n    };\n    \n    let _fa = vec_free(a);\n    let _fb = vec_free(b);\n    dot\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '3 1 2 3 4 5 6'\n  expected: '32\\n'\n  got: ''\nTest 1:\n  stdin: '1 5 7'\n  expected: '35\\n'\n  got: ''\nTest 2:\n  stdin: '4 1 0 2 0 0 3 0 4'\n  expected: '0\\n'\n  got: ''",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let a = vec_new();\n    let b = vec_new();\n    \n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(a, val)\n    };\n    \n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(b, val)\n    };\n    \n    let mut dot = 0;\n    let mut i = 0;\n    while i < n {\n        let ai = vec_get(a, i);\n        let bi = vec_get(b, i);\n        dot = dot + (ai * bi);\n        i = i + 1\n    };\n    \n    let _fa = vec_free(a);\n    let _fb = vec_free(b);\n    let _p = println(dot);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

@@ -1,0 +1,24 @@
+{
+  "problem_id": "51_bracket_match",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let t: i64 = read_int();\n    let mut ti: i64 = 0;\n    while ti < t {\n        let n: i64 = read_int();\n        let stack = vec_new();\n        let mut i: i64 = 0;\n        let mut ok: i64 = 1;\n        while i < n {\n            let c: i64 = read_int();\n            if c == 40 || c == 91 || c == 123 {\n                let _p = vec_push(stack, c)\n            } else {\n                if vec_len(stack) == 0 {\n                    set ok = 0\n                } else {\n                    let top: i64 = vec_pop(stack);\n                    if (c == 41 && top != 40) || (c == 93 && top != 91) || (c == 125 && top != 123) {\n                        set ok = 0\n                    } else { () }\n                }\n            };\n            set i = i + 1\n        };\n        if ok == 1 && vec_len(stack) == 0 { println(1) } else { println(0) };\n        set ti = ti + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

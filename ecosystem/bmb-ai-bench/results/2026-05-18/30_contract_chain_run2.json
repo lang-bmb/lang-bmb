@@ -1,0 +1,32 @@
+{
+  "problem_id": "30_contract_chain",
+  "category": "contract",
+  "difficulty": "hard",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 1,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn normalize(x: i64, min: i64, max: i64) -> i64\n    pre min < max\n    post ret >= 0 and ret <= 100\n= (x - min) * 100 / (max - min);\n\nfn scale(x: i64, factor: i64) -> i64\n    pre x >= 0\n    post ret >= 0\n= x * factor;\n\nfn bound(x: i64, limit: i64) -> i64\n    pre limit >= 0\n    post ret >= 0 and ret <= limit\n= if x > limit { limit } else { x };\n\nfn main() -> i64 = {\n    let min = read_int();\n    let max = read_int();\n    let factor = read_int();\n    let limit = read_int();\n    let n = read_int();\n\n    let i = 0;\n    while i < n {\n        let x = read_int();\n        let normalized = normalize(x, min, max);\n        let scaled = scale(normalized, factor);\n        let result = bound(scaled, limit);\n        let _p = println(result);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"message\":\"Contract verification failed:\\n  Function 'bound': Counterexample found\\n    Counterexample: Counterexample:\\n  limit = 0\\n\\n\"}",
+      "loop_type": "A"
+    },
+    {
+      "attempt": 2,
+      "code": "fn normalize(x: i64, min: i64, max: i64) -> i64\n    pre min < max\n    post ret >= 0 and ret <= 100\n= (x - min) * 100 / (max - min);\n\nfn scale(x: i64, factor: i64) -> i64\n    pre x >= 0\n    post ret >= 0\n= x * factor;\n\nfn bound(x: i64, limit: i64) -> i64\n    pre limit >= 0\n    post ret >= 0 and ret <= limit\n= if x < 0 { 0 } else { if x > limit { limit } else { x } };\n\nfn main() -> i64 = {\n    let min = read_int();\n    let max = read_int();\n    let factor = read_int();\n    let limit = read_int();\n    let n = read_int();\n\n    let i = 0;\n    while i < n {\n        let x = read_int();\n        let normalized = normalize(x, min, max);\n        let scaled = scale(normalized, factor);\n        let result = bound(scaled, limit);\n        let _p = println(result);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

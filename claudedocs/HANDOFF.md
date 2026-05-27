@@ -1,60 +1,70 @@
-# BMB Session Handoff — 2026-05-27 (Cycles 3206-3209)
+# BMB Session Handoff — 2026-05-27 (Cycles 3212-3218)
 
-> **HEAD**: `(commit pending)`
-> **이번 세션 작업**: Cycles 3206-3209 — **M11-A Phase 1-4: trivial postconditions 49개 교체**
-> **M11-A 상태**: 🔵 진행 중 (358 → 309 trivials, -13.7%)
+> **HEAD**: TBD (커밋 예정)
+> **이번 세션 작업**: Cycles 3212-3218 — **M11-A Phase 5c-5j: trivial postconditions 28개 교체**
+> **M11-A 상태**: 🔵 수익 체감 확인 (358 → 263 trivials, -26.5%)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 > **M10 상태**: ✅ **COMPLETE** (이전 세션)
 > **Stage 2 상태**: ✅ **RECOVERED** (Cycle 3202)
-> **0-Warning 상태**: ✅ **유지** (lint 0 warnings, Cycle 3209까지)
+> **0-Warning 상태**: ✅ **유지** (lint 0 warnings)
 > **M11-B 상태**: ✅ **COMPLETE** (Cycle 3205)
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 3206-3209)
+## 이번 세션 작업 요약 (Cycles 3212-3218)
 
-### M11-A: trivial postcondition → semantic postcondition 교체
+### M11-A Phase 5c-5j: 추가 trivial postcondition 교체
 
-4개 사이클에 걸쳐 49개 trivial postcondition을 의미있는 계약으로 교체.
+7개 사이클에 걸쳐 28개 trivial postcondition을 의미있는 계약으로 교체.
 
 #### 변경 요약
 
 | 사이클 | 내용 | 변경 수 |
 |--------|------|---------|
-| 3206 | cf_is_pow2 + cp_is_var_char (bool 2) + 14개 llvm_gen_* (String >= 1) | 16 |
-| 3207 | bool scan 함수 7개 (pos < X.len() / pos < end / n > 0 / idx < argc) | 7 |
-| 3208 | bool scan/check 함수 6개 (unique sig, semantic_duplication 안전) | 6 |
-| 3209 | String LLVM codegen 13개 (항상 non-empty 확인) | 20 |
-| **합계** | | **49** |
+| 3212 | gen_assumes/hot/stats 체인 (String 4개) | 4 |
+| 3213 | contract/lr2l/cx_most/repl 체인 (String 8개) | 8 |
+| 3214 | pack_result/parse_source/lambda 체인 (String 6개) | 6 |
+| 3215 | index_* parse 체인 전체 (String 7개) | 7 |
+| 3216 | get_fn_return_scan (String 1개) + 광범위 분석 | 1 |
+| 3217 | has_param_ref_in_ir (bool 1개) + semantic_duplication 분석 | 1 |
+| 3218 | i64 7개 탐색 → 전부 skip (산술/추출 함수) | 0 |
+| **합계** | | **27** |
 
-#### 발견된 제약사항
+#### 발견된 패턴
 
-1. **semantic_duplication**: bool 함수에서 동일 (sig+pre+post) 조합 → lint 경고 발생.
-   같은 스캔 패턴을 공유하는 함수군에서 대표 1개만 semantic post 교체 가능.
-   **String 함수는 이 제약 없음** (empirical: 14개 동일 패턴 공존 후 0 warnings).
+1. **pack_result 체인**: `pack_result(pos, ast)` → `post it.len() >= 2` 이므로 이를 반환하는 모든 함수가 `>= 1`. `index_*`, `query_*`, `callers_collect_fn` 등 7개 일괄 업그레이드.
 
-2. **"all" 함수**: 빈 컨테이너에서 `true` 반환하는 함수 (`ipr_all_calls_pure`, `match_bytes` 등)
-   → `post not it or pos < X.len()` 성립 안 함 → skip.
+2. **repl compile 체인**: `compile_program` → `post it.len() >= 1`. `repl_try_*` 전체 체인 자동 업그레이드.
 
-3. **조건부 empty String**: `llvm_handle_mark_str_ptr_if` → `same_mapping("")` 항상 반환
-   → `>= 0` 유지 필수.
+3. **semantic_duplication bool 제약 심화**: post expression 내 파라미터 변수명이 같으면 함수명이 달라도 충돌. 대부분 bool 함수가 `not it or pos < X.len()` 같은 패턴을 공유해 차단됨.
 
-#### skip 확정 목록 (변경 금지)
+4. **i64 trivials 전부 skip**: 산술(+,-,*,shift,bitwise) 및 파싱 함수 — 전체 i64 범위 반환.
 
-| 종류 | 수 |
-|------|---|
-| bool no-pre (skip 확정) | 7 |
-| i64 `post it == it` | 7 |
-| String no-pre (skip 확정) | 77 |
-
-#### 현재 trivials 현황
+#### M11-A 최종 상태
 
 | 종류 | 세션 전 | 현재 |
 |------|---------|------|
-| bool `post it or not it` | 49 | **27** |
+| bool `post it or not it` | 27 | **26** |
 | i64 `post it == it` | 7 | 7 |
-| String `post it.len() >= 0` | 302 | **275** |
-| **합계** | **358** | **309** |
+| String `post it.len() >= 0` | 231 | **230** |
+| **합계** | **265** | **263** |
+| String `post it.len() >= 1` | 155 | **156** |
+
+**누적 진척**: 358 → 263 (-95, **26.5%**)
+
+#### skip 확정 목록 (변경 금지)
+
+| 종류 | 수 | 이유 |
+|------|---|------|
+| bool 충돌군 | ~20 | semantic_duplication (mn_has_memory_op/ipr_has_store/check_fn_in_list/layer_is_leaf) |
+| bool "all" 패턴 | ~5 | base returns true → post `not it or pos < X.len()` 불성립 |
+| bool 분석 함수 | ~4 | 자연스러운 semantic post 없음 |
+| i64 all 7개 | 7 | 산술/추출, 음수 포함 — skip 확정 |
+| String accumulator | ~60 | base: `acc` (초기 "") |
+| String lookup | ~40 | not-found 시 "" |
+| String pass-through | ~30 | 입력 반환 |
+| String sb_build | ~50 | 빈 입력 시 "" |
+| String no-pre 77개 | 77 | 확인 완료 skip |
 
 ---
 
@@ -64,15 +74,10 @@
 
 | 순위 | 작업 | 설명 |
 |------|------|------|
-| 1 | **M11-A Phase 5** | String 275개 중 198개 비-skip 추가 분석 (LLVM conc/channel 등) |
-| 2 | **언어 갭 추가** | stack array / closure / generic 등 미지원 기능 |
+| 1 | **언어 갭 작업(M11-C)** | stack array / closure capture / generic 등 미지원 기능 |
+| 2 | **M11-A 추가** | 남은 230 String 중 새 패턴 탐색 (hit rate < 0.4%로 낮음) |
 
-### M11-A Phase 5 세부 계획
-
-미분석 String 함수 중 확인 우선순위:
-- `llvm_gen_conc_rhs`, `llvm_gen_conc_stmt`, `llvm_gen_channel_new` — LLVM concurrent ops
-- `format_fn_params`, `gen_i32_param_sexts` — formatting (empty 반환 가능성)
-- `gen_assumes_for_contracts_acc`, `gen_assumes_for_post_acc` — accumulator (acc="" 가능)
+**M11-A 수익 체감 명확**: 이번 세션 7개 사이클 → 27개 발굴. 다음 세션은 M11-C 전환 추천.
 
 ### 기술 상태 스냅샷
 
@@ -85,14 +90,14 @@
 | Stage 2 bootstrap | ✅ |
 | bootstrap.sh fixed_point | ✅ **true** |
 | BMB-internal Fixed Point | ✅ |
-| 테스트 | 3800+ passed ✅ |
-| M11-A trivials | 358 → 309 (-49) 🔵 |
+| 테스트 | 2390 passed ✅ |
+| M11-A trivials | 358 → 263 (-95, 26.5%) 🔵 |
 
 ---
 
 ## 알려진 미결 사항
 
-- **trivial postconditions**: 309개 잔여 (이전 358개 대비 -49). M11-A 계속.
+- **trivial postconditions**: 263개 잔여 (원래 358개 대비 -95). M11-A 수익 체감 확인.
 - **ifs_flex_check_goto**: `post it >= 0` Z3 실패 (pre-existing) — `pre next_p >= 0` 누락.
 - **BMB IR → opt 최적화 불가**: printf 기반 IR 방출 코드가 opt O1+ 적용 시 절단됨.
 - **lint.exe 재빌드 불가**: `bootstrap/lint/lint.exe`의 PHI node IR 오류.
@@ -102,10 +107,15 @@
 
 ## 핵심 기술 메모
 
-### semantic_duplication 제약 (bool only)
+### semantic_duplication 제약 (bool) — 상세
 
-bool 함수에서 동일 (sig+pre+post) 조합 → lint `semantic_duplication` 경고.
-String 함수는 동일 조합도 경고 없음 (Cycle 3206 empirical 확인).
+bool 함수의 semantic_duplication 충돌 규칙:
+- **타입 비교**: 파라미터 TYPES (이름 아님)로 그룹화
+- **pre text 비교**: 리터럴 텍스트 일치
+- **post text 비교**: 리터럴 텍스트 일치 (변수명 포함!)
+
+충돌 탈출: post expression의 변수명이 다르면 text 불일치 → 충돌 없음
+예: `not it or pos < ir.len()` ≠ `not it or pos < s.len()` (ir vs s)
 
 ### `is_int_literal` 범위 주의 (핵심!)
 

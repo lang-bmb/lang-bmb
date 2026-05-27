@@ -1,0 +1,96 @@
+{
+  "problem_id": "91_ring_buffer",
+  "category": "system",
+  "difficulty": "medium",
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 10
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let capacity = read_int();\n    let n = read_int();\n\n    // Ring buffer implementation using vec and front pointer\n    // We use a fixed-size vec of capacity, with front and back pointers\n    // Since BMB vecs are dynamic, we'll pre-allocate and use modulo arithmetic\n    let buf = vec_new();\n    let i = 0;\n    while i < capacity {\n        let _p = vec_push(buf, 0);\n        i += 1\n    };\n\n    let mut front = 0;\n    let mut back = 0;\n    let mut count = 0;\n\n    let op_idx = 0;\n    while op_idx < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            if count < capacity {\n                let _s = vec_set(buf, back, val);\n                back = (back + 1) % capacity;\n                count = count + 1\n            }\n            // if full, discard val (no output)\n        } else if op == 2 {\n            if count > 0 {\n                let val = vec_get(buf, front);\n                let _p = println(val);\n                front = (front + 1) % capacity;\n                count = count - 1\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 3 {\n            let _p = println(count)\n        };\n        op_idx += 1\n    };\n\n    let _f = vec_free(buf);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 3:\n  stdin: '2 4 1 10 1 20 1 30 2'\n  expected: '20\\n'\n  got: '10\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let capacity = read_int();\n    let n = read_int();\n\n    // Ring buffer implementation using vec and front pointer\n    let buf = vec_new();\n    let i = 0;\n    while i < capacity {\n        let _p = vec_push(buf, 0);\n        i += 1\n    };\n\n    let mut front = 0;\n    let mut back = 0;\n    let mut count = 0;\n\n    let op_idx = 0;\n    while op_idx < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            if count < capacity {\n                let _s = vec_set(buf, back, val);\n                back = (back + 1) % capacity;\n                count = count + 1\n            }\n        } else if op == 2 {\n            if count > 0 {\n                let val = vec_get(buf, front);\n                let _p = println(val);\n                front = (front + 1) % capacity;\n                count = count - 1\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 3 {\n            let _p = println(count)\n        };\n        op_idx += 1\n    };\n\n    let _f = vec_free(buf);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 3:\n  stdin: '2 4 1 10 1 20 1 30 2'\n  expected: '20\\n'\n  got: '10\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let capacity = read_int();\n    let n = read_int();\n\n    // Ring buffer implementation using vec and front pointer\n    let buf = vec_new();\n    let i = 0;\n    while i < capacity {\n        let _p = vec_push(buf, 0);\n        i += 1\n    };\n\n    let mut front = 0;\n    let mut back = 0;\n    let mut count = 0;\n\n    let op_idx = 0;\n    while op_idx < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            if count < capacity {\n                let _s = vec_set(buf, back, val);\n                back = (back + 1) % capacity;\n                count = count + 1\n            }\n        } else if op == 2 {\n            if count > 0 {\n                let val = vec_get(buf, front);\n                let _p = println(val);\n                front = (front + 1) % capacity;\n                count = count - 1\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 3 {\n            let _p = println(count)\n        };\n        op_idx += 1\n    };\n\n    let _f = vec_free(buf);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 3:\n  stdin: '2 4 1 10 1 20 1 30 2'\n  expected: '20\\n'\n  got: '10\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn main() -> i64 = {\n    let capacity = read_int();\n    let n = read_int();\n\n    // Ring buffer implementation using vec and front pointer\n    let buf = vec_new();\n    let i = 0;\n    while i < capacity {\n        let _p = vec_push(buf, 0);\n        i += 1\n    };\n\n    let mut front = 0;\n    let mut back = 0;\n    let mut count = 0;\n\n    let op_idx = 0;\n    while op_idx < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            if count < capacity {\n                let _s = vec_set(buf, back, val);\n                back = (back + 1) % capacity;\n                count = count + 1\n            }\n        } else if op == 2 {\n            if count > 0 {\n                let val = vec_get(buf, front);\n                let _p = println(val);\n                front = (front + 1) % capacity;\n                count = count - 1\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 3 {\n            let _p = println(count)\n        };\n        op_idx += 1\n    };\n\n    let _f = vec_free(buf);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 3:\n  stdin: '2 4 1 10 1 20 1 30 2'\n  expected: '20\\n'\n  got: '10\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 5,
+      "code": "fn main() -> i64 = {\n    let capacity = read_int();\n    let n = read_int();\n\n    // Ring buffer implementation using vec and front pointer\n    let buf = vec_new();\n    let i = 0;\n    while i < capacity {\n        let _p = vec_push(buf, 0);\n        i += 1\n    };\n\n    let mut front = 0;\n    let mut back = 0;\n    let mut count = 0;\n\n    let op_idx = 0;\n    while op_idx < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            if count < capacity {\n                let _s = vec_set(buf, back, val);\n                back = (back + 1) % capacity;\n                count = count + 1\n            }\n        } else if op == 2 {\n            if count > 0 {\n                let val = vec_get(buf, front);\n                let _p = println(val);\n                front = (front + 1) % capacity;\n                count = count - 1\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 3 {\n            let _p = println(count)\n        };\n        op_idx += 1\n    };\n\n    let _f = vec_free(buf);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 3:\n  stdin: '2 4 1 10 1 20 1 30 2'\n  expected: '20\\n'\n  got: '10\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 6,
+      "code": "fn main() -> i64 = {\n    let capacity = read_int();\n    let n = read_int();\n\n    // Ring buffer implementation using vec and front pointer\n    let buf = vec_new();\n    let i = 0;\n    while i < capacity {\n        let _p = vec_push(buf, 0);\n        i += 1\n    };\n\n    let mut front = 0;\n    let mut back = 0;\n    let mut count = 0;\n\n    let op_idx = 0;\n    while op_idx < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            if count < capacity {\n                let _s = vec_set(buf, back, val);\n                back = (back + 1) % capacity;\n                count = count + 1\n            }\n        } else if op == 2 {\n            if count > 0 {\n                let val = vec_get(buf, front);\n                let _p = println(val);\n                front = (front + 1) % capacity;\n                count = count - 1\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 3 {\n            let _p = println(count)\n        };\n        op_idx += 1\n    };\n\n    let _f = vec_free(buf);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 3:\n  stdin: '2 4 1 10 1 20 1 30 2'\n  expected: '20\\n'\n  got: '10\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 7,
+      "code": "fn main() -> i64 = {\n    let capacity = read_int();\n    let n = read_int();\n\n    // Ring buffer implementation using vec and front pointer\n    let buf = vec_new();\n    let i = 0;\n    while i < capacity {\n        let _p = vec_push(buf, 0);\n        i += 1\n    };\n\n    let mut front = 0;\n    let mut back = 0;\n    let mut count = 0;\n\n    let op_idx = 0;\n    while op_idx < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            if count < capacity {\n                let _s = vec_set(buf, back, val);\n                back = (back + 1) % capacity;\n                count = count + 1\n            }\n        } else if op == 2 {\n            if count > 0 {\n                let val = vec_get(buf, front);\n                let _p = println(val);\n                front = (front + 1) % capacity;\n                count = count - 1\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 3 {\n            let _p = println(count)\n        };\n        op_idx += 1\n    };\n\n    let _f = vec_free(buf);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 3:\n  stdin: '2 4 1 10 1 20 1 30 2'\n  expected: '20\\n'\n  got: '10\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 8,
+      "code": "fn main() -> i64 = {\n    let capacity = read_int();\n    let n = read_int();\n\n    // Ring buffer implementation using vec and front pointer\n    let buf = vec_new();\n    let i = 0;\n    while i < capacity {\n        let _p = vec_push(buf, 0);\n        i += 1\n    };\n\n    let mut front = 0;\n    let mut back = 0;\n    let mut count = 0;\n\n    let op_idx = 0;\n    while op_idx < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            if count < capacity {\n                let _s = vec_set(buf, back, val);\n                back = (back + 1) % capacity;\n                count = count + 1\n            }\n        } else if op == 2 {\n            if count > 0 {\n                let val = vec_get(buf, front);\n                let _p = println(val);\n                front = (front + 1) % capacity;\n                count = count - 1\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 3 {\n            let _p = println(count)\n        };\n        op_idx += 1\n    };\n\n    let _f = vec_free(buf);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 3:\n  stdin: '2 4 1 10 1 20 1 30 2'\n  expected: '20\\n'\n  got: '10\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 9,
+      "code": "fn main() -> i64 = {\n    let capacity = read_int();\n    let n = read_int();\n\n    // Ring buffer implementation using vec and front pointer\n    let buf = vec_new();\n    let i = 0;\n    while i < capacity {\n        let _p = vec_push(buf, 0);\n        i += 1\n    };\n\n    let mut front = 0;\n    let mut back = 0;\n    let mut count = 0;\n\n    let op_idx = 0;\n    while op_idx < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            if count < capacity {\n                let _s = vec_set(buf, back, val);\n                back = (back + 1) % capacity;\n                count = count + 1\n            }\n        } else if op == 2 {\n            if count > 0 {\n                let val = vec_get(buf, front);\n                let _p = println(val);\n                front = (front + 1) % capacity;\n                count = count - 1\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 3 {\n            let _p = println(count)\n        };\n        op_idx += 1\n    };\n\n    let _f = vec_free(buf);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 3:\n  stdin: '2 4 1 10 1 20 1 30 2'\n  expected: '20\\n'\n  got: '10\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 10,
+      "code": "fn main() -> i64 = {\n    let capacity = read_int();\n    let n = read_int();\n\n    // Ring buffer implementation using vec and front pointer\n    let buf = vec_new();\n    let i = 0;\n    while i < capacity {\n        let _p = vec_push(buf, 0);\n        i += 1\n    };\n\n    let mut front = 0;\n    let mut back = 0;\n    let mut count = 0;\n\n    let op_idx = 0;\n    while op_idx < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            if count < capacity {\n                let _s = vec_set(buf, back, val);\n                back = (back + 1) % capacity;\n                count = count + 1\n            }\n        } else if op == 2 {\n            if count > 0 {\n                let val = vec_get(buf, front);\n                let _p = println(val);\n                front = (front + 1) % capacity;\n                count = count - 1\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 3 {\n            let _p = println(count)\n        };\n        op_idx += 1\n    };\n\n    let _f = vec_free(buf);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 3:\n  stdin: '2 4 1 10 1 20 1 30 2'\n  expected: '20\\n'\n  got: '10\\n'",
+      "loop_type": "D"
+    }
+  ],
+  "run_id": 3
+}

@@ -1,0 +1,32 @@
+{
+  "problem_id": "34_power_mod",
+  "category": "performance",
+  "difficulty": "medium",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 1,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn pow_mod(base: i64, mut exp: i64, m: i64) -> i64 = {\n    let mut result = 1;\n    let mut b = base % m;\n    while exp > 0 {\n        if exp % 2 == 1 {\n            result = (result * b) % m\n        };\n        exp = exp / 2;\n        b = (b * b) % m\n    };\n    result\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let i = 0;\n    while i < n {\n        let a = read_int();\n        let b = read_int();\n        let m = read_int();\n        let res = pow_mod(a, b, m);\n        let _p = println(res);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmps_7q538_\\\\solution.bmb\",\"start\":2944,\"end\":2947,\"line\":103,\"col\":23,\"message\":\"Unrecognized token `mut` found at 2944:2947\\nExpected one of \\\"ident\\\" or \\\")\\\"\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 2,
+      "code": "fn pow_mod(base: i64, exp: i64, m: i64) -> i64 = {\n    let mut result = 1;\n    let mut b = base % m;\n    let mut e = exp;\n    while e > 0 {\n        if e % 2 == 1 {\n            result = (result * b) % m\n        };\n        e = e / 2;\n        b = (b * b) % m\n    };\n    result\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let i = 0;\n    while i < n {\n        let a = read_int();\n        let b = read_int();\n        let m = read_int();\n        let res = pow_mod(a, b, m);\n        let _p = println(res);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

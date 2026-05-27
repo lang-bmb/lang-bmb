@@ -1,0 +1,96 @@
+{
+  "problem_id": "99_bounded_queue_contract",
+  "category": "contract",
+  "difficulty": "medium",
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 10
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let cap = read_int();\n    let n = read_int();\n    let queue = vec_new();\n    let mut front = 0;\n    let mut i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            let len = vec_len(queue);\n            if len < cap {\n                let _p = vec_push(queue, val)\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 2 {\n            let len = vec_len(queue);\n            if len > 0 {\n                let val = vec_get(queue, front);\n                let _p = println(val);\n                front = front + 1;\n                let _p = vec_pop(queue)\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 3 {\n            let len = vec_len(queue);\n            let _p = println(len)\n        };\n        i = i + 1\n    };\n    let _f = vec_free(queue);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 8:\n  stdin: '3 6 1 100 2 1 200 2 1 300 2'\n  expected: '100\\n200\\n300\\n'\n  got: '100\\n23081171432112173\\n33214425213370443\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let cap = read_int();\n    let n = read_int();\n    let queue = vec_new();\n    let mut front = 0;\n    let mut i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            let len = vec_len(queue);\n            if len < cap {\n                let _p = vec_push(queue, val)\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 2 {\n            let len = vec_len(queue);\n            if len > 0 {\n                let val = vec_get(queue, front);\n                let _p = println(val);\n                front = front + 1;\n                let _p = vec_pop(queue)\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 3 {\n            let len = vec_len(queue);\n            let _p = println(len)\n        };\n        i = i + 1\n    };\n    let _f = vec_free(queue);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 8:\n  stdin: '3 6 1 100 2 1 200 2 1 300 2'\n  expected: '100\\n200\\n300\\n'\n  got: '100\\n0\\n0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let cap = read_int();\n    let n = read_int();\n    let queue = vec_new();\n    let mut front = 0;\n    let mut i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            let len = vec_len(queue);\n            if len < cap {\n                let _p = vec_push(queue, val)\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 2 {\n            let len = vec_len(queue);\n            if len > 0 {\n                let val = vec_get(queue, front);\n                let _p = println(val);\n                front = front + 1;\n                let _p = vec_pop(queue)\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 3 {\n            let len = vec_len(queue);\n            let _p = println(len)\n        };\n        i = i + 1\n    };\n    let _f = vec_free(queue);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 8:\n  stdin: '3 6 1 100 2 1 200 2 1 300 2'\n  expected: '100\\n200\\n300\\n'\n  got: '100\\n15763114094493811\\n18859085435306038\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn main() -> i64 = {\n    let cap = read_int();\n    let n = read_int();\n    let queue = vec_new();\n    let mut front = 0;\n    let mut i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            let len = vec_len(queue);\n            if len < cap {\n                let _p = vec_push(queue, val)\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 2 {\n            let len = vec_len(queue);\n            if len > 0 {\n                let val = vec_get(queue, front);\n                let _p = println(val);\n                front = front + 1;\n                let _p = vec_pop(queue)\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 3 {\n            let len = vec_len(queue);\n            let _p = println(len)\n        };\n        i = i + 1\n    };\n    let _f = vec_free(queue);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 8:\n  stdin: '3 6 1 100 2 1 200 2 1 300 2'\n  expected: '100\\n200\\n300\\n'\n  got: '100\\n0\\n0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 5,
+      "code": "fn main() -> i64 = {\n    let cap = read_int();\n    let n = read_int();\n    let queue = vec_new();\n    let mut front = 0;\n    let mut i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            let len = vec_len(queue);\n            if len < cap {\n                let _p = vec_push(queue, val)\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 2 {\n            let len = vec_len(queue);\n            if len > 0 {\n                let val = vec_get(queue, front);\n                let _p = println(val);\n                front = front + 1;\n                let _p = vec_pop(queue)\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 3 {\n            let len = vec_len(queue);\n            let _p = println(len)\n        };\n        i = i + 1\n    };\n    let _f = vec_free(queue);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 8:\n  stdin: '3 6 1 100 2 1 200 2 1 300 2'\n  expected: '100\\n200\\n300\\n'\n  got: '100\\n0\\n0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 6,
+      "code": "fn main() -> i64 = {\n    let cap = read_int();\n    let n = read_int();\n    let queue = vec_new();\n    let mut front = 0;\n    let mut i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            let len = vec_len(queue);\n            if len < cap {\n                let _p = vec_push(queue, val)\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 2 {\n            let len = vec_len(queue);\n            if len > 0 {\n                let val = vec_get(queue, front);\n                let _p = println(val);\n                front = front + 1;\n                let _p = vec_pop(queue)\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 3 {\n            let len = vec_len(queue);\n            let _p = println(len)\n        };\n        i = i + 1\n    };\n    let _f = vec_free(queue);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 8:\n  stdin: '3 6 1 100 2 1 200 2 1 300 2'\n  expected: '100\\n200\\n300\\n'\n  got: '100\\n23081171432112173\\n33214425213370443\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 7,
+      "code": "fn main() -> i64 = {\n    let cap = read_int();\n    let n = read_int();\n    let queue = vec_new();\n    let mut front = 0;\n    let mut i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            let len = vec_len(queue);\n            if len < cap {\n                let _p = vec_push(queue, val)\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 2 {\n            let len = vec_len(queue);\n            if len > 0 {\n                let val = vec_get(queue, front);\n                let _p = println(val);\n                front = front + 1;\n                let _p = vec_pop(queue)\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 3 {\n            let len = vec_len(queue);\n            let _p = println(len)\n        };\n        i = i + 1\n    };\n    let _f = vec_free(queue);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 8:\n  stdin: '3 6 1 100 2 1 200 2 1 300 2'\n  expected: '100\\n200\\n300\\n'\n  got: '100\\n27303416344936568\\n13792535858643060\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 8,
+      "code": "fn main() -> i64 = {\n    let cap = read_int();\n    let n = read_int();\n    let queue = vec_new();\n    let mut front = 0;\n    let mut i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            let len = vec_len(queue);\n            if len < cap {\n                let _p = vec_push(queue, val)\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 2 {\n            let len = vec_len(queue);\n            if len > 0 {\n                let val = vec_get(queue, front);\n                let _p = println(val);\n                front = front + 1;\n                let _p = vec_pop(queue)\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 3 {\n            let len = vec_len(queue);\n            let _p = println(len)\n        };\n        i = i + 1\n    };\n    let _f = vec_free(queue);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 8:\n  stdin: '3 6 1 100 2 1 200 2 1 300 2'\n  expected: '100\\n200\\n300\\n'\n  got: '100\\n18296234268885077\\n19422181419843651\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 9,
+      "code": "fn main() -> i64 = {\n    let cap = read_int();\n    let n = read_int();\n    let queue = vec_new();\n    let mut front = 0;\n    let mut i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            let len = vec_len(queue);\n            if len < cap {\n                let _p = vec_push(queue, val)\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 2 {\n            let len = vec_len(queue);\n            if len > 0 {\n                let val = vec_get(queue, front);\n                let _p = println(val);\n                front = front + 1;\n                let _p = vec_pop(queue)\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 3 {\n            let len = vec_len(queue);\n            let _p = println(len)\n        };\n        i = i + 1\n    };\n    let _f = vec_free(queue);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 8:\n  stdin: '3 6 1 100 2 1 200 2 1 300 2'\n  expected: '100\\n200\\n300\\n'\n  got: '100\\n34058923159584883\\n27584964336550005\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 10,
+      "code": "fn main() -> i64 = {\n    let cap = read_int();\n    let n = read_int();\n    let queue = vec_new();\n    let mut front = 0;\n    let mut i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            let len = vec_len(queue);\n            if len < cap {\n                let _p = vec_push(queue, val)\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 2 {\n            let len = vec_len(queue);\n            if len > 0 {\n                let val = vec_get(queue, front);\n                let _p = println(val);\n                front = front + 1;\n                let _p = vec_pop(queue)\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 3 {\n            let len = vec_len(queue);\n            let _p = println(len)\n        };\n        i = i + 1\n    };\n    let _f = vec_free(queue);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 8:\n  stdin: '3 6 1 100 2 1 200 2 1 300 2'\n  expected: '100\\n200\\n300\\n'\n  got: '100\\n28429479460798578\\n32651513914720370\\n'",
+      "loop_type": "D"
+    }
+  ],
+  "run_id": 2
+}

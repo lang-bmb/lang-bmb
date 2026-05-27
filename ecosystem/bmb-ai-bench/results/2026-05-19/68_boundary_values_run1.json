@@ -1,0 +1,24 @@
+{
+  "problem_id": "68_boundary_values",
+  "category": "edge",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn clamp_val(x: i64, lo: i64, hi: i64) -> i64 =\n    if x < lo { lo } else if x > hi { hi } else { x };\n\nfn main() -> i64 = {\n    let t: i64 = read_int();\n    let mut i: i64 = 0;\n    while i < t {\n        let value: i64 = read_int();\n        let lo: i64 = read_int();\n        let hi: i64 = read_int();\n        let clamped: i64 = clamp_val(value, lo, hi);\n        let _p = println(clamped);\n        set i = i + 1;\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

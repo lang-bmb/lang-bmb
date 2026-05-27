@@ -1,0 +1,24 @@
+{
+  "problem_id": "58_spiral_order",
+  "category": "practical",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..(n * n) {\n        let _p = vec_push(v, read_int())\n    };\n\n    let mut top: i64 = 0;\n    let mut bottom: i64 = n - 1;\n    let mut left: i64 = 0;\n    let mut right: i64 = n - 1;\n    let mut first: i64 = 1;\n\n    while top <= bottom && left <= right {\n        // Traverse right along the top row\n        let mut col = left;\n        while col <= right {\n            let val = vec_get(v, top * n + col);\n            if first == 0 { let _s = print_str(\" \") };\n            let _p = print(val);\n            first = 0;\n            col = col + 1\n        };\n        top = top + 1;\n\n        // Traverse down along the right column\n        let mut row = top;\n        while row <= bottom {\n            let val = vec_get(v, row * n + right);\n            if first == 0 { let _s = print_str(\" \") };\n            let _p = print(val);\n            first = 0;\n            row = row + 1\n        };\n        right = right - 1;\n\n        // Traverse left along the bottom row\n        if top <= bottom {\n            let mut col = right;\n            while col >= left {\n                let val = vec_get(v, bottom * n + col);\n                if first == 0 { let _s = print_str(\" \") };\n                let _p = print(val);\n                first = 0;\n                col = col - 1\n            }\n        };\n        bottom = bottom - 1;\n\n        // Traverse up along the left column\n        if left <= right {\n            let mut row = bottom;\n            while row >= top {\n                let val = vec_get(v, row * n + left);\n                if first == 0 { let _s = print_str(\" \") };\n                let _p = print(val);\n                first = 0;\n                row = row - 1\n            }\n        };\n        left = left + 1\n    };\n\n    let _nl = println_str(\"\");\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

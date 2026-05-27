@@ -1,0 +1,24 @@
+{
+  "problem_id": "04_fibonacci",
+  "category": "algorithm",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    \n    if n == 0 {\n        let _p = println(0);\n        0\n    } else if n == 1 {\n        let _p = println(1);\n        1\n    } else {\n        let mut a = 0;\n        let mut b = 1;\n        let mut i = 2;\n        while i <= n {\n            let temp = a + b;\n            a = b;\n            b = temp;\n            i = i + 1\n        };\n        let _p = println(b);\n        b\n    }\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

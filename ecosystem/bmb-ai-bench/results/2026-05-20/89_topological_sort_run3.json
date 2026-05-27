@@ -1,0 +1,24 @@
+{
+  "problem_id": "89_topological_sort",
+  "category": "algorithm",
+  "difficulty": "hard",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let m: i64 = read_int();\n    let edge_from = vec_new();\n    let edge_to = vec_new();\n    let indeg = vec_new();\n    let mut ii: i64 = 0;\n    while ii < n { let _p = vec_push(indeg, 0); set ii = ii + 1 };\n    let mut i: i64 = 0;\n    while i < m {\n        let u: i64 = read_int();\n        let v: i64 = read_int();\n        let _pu = vec_push(edge_from, u);\n        let _pv = vec_push(edge_to, v);\n        let _si = vec_set(indeg, v, vec_get(indeg, v) + 1);\n        set i = i + 1\n    };\n    let queue = vec_new();\n    let mut front: i64 = 0;\n    let mut qi: i64 = 0;\n    while qi < n {\n        if vec_get(indeg, qi) == 0 { let _pq = vec_push(queue, qi) } else { () };\n        set qi = qi + 1\n    };\n    let result = vec_new();\n    while front < vec_len(queue) {\n        let u: i64 = vec_get(queue, front);\n        set front = front + 1;\n        let _pr = vec_push(result, u);\n        let mut j: i64 = 0;\n        while j < m {\n            if vec_get(edge_from, j) == u {\n                let v: i64 = vec_get(edge_to, j);\n                let new_indeg: i64 = vec_get(indeg, v) - 1;\n                let _sd = vec_set(indeg, v, new_indeg);\n                if new_indeg == 0 { let _pq = vec_push(queue, v) } else { () }\n            } else { () };\n            set j = j + 1\n        }\n    };\n    let rn = vec_len(result);\n    let mut ri: i64 = 0;\n    while ri < rn {\n        if ri > 0 { let _ps = print_str(\" \") } else { () };\n        print(vec_get(result, ri));\n        set ri = ri + 1\n    };\n    let _pn = println_str(\"\");\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

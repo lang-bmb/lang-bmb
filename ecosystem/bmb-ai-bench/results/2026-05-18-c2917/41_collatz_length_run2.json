@@ -1,0 +1,24 @@
+{
+  "problem_id": "41_collatz_length",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn collatz_len(n: i64) -> i64 = {\n    let mut current = n;\n    let mut length = 1;\n    while current != 1 {\n        if current % 2 == 0 {\n            current = current / 2\n        } else {\n            current = 3 * current + 1\n        };\n        length = length + 1\n    };\n    length\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let i = 0;\n    while i < t {\n        let n = read_int();\n        let len = collatz_len(n);\n        let _p = println(len);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

@@ -1,0 +1,40 @@
+{
+  "problem_id": "38_matrix_trace",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 3,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 1,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let trace = 0;\n    let mut i = 0;\n    while i < n {\n        let j = 0;\n        let mut k = 0;\n        while k < n {\n            let val = read_int();\n            if k == j {\n                let _s = vec_set(trace_vec, i, val)\n            };\n            k += 1\n        };\n        i += 1\n    };\n    let mut sum = 0;\n    let mut idx = 0;\n    while idx < n {\n        sum = sum + vec_get(trace_vec, idx);\n        idx += 1\n    };\n    sum\n};\n\nlet trace_vec = vec_new();",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmp_cypk5dr\\\\solution.bmb\",\"start\":3407,\"end\":3410,\"line\":128,\"col\":1,\"message\":\"Unrecognized token `let` found at 3407:3410\\nExpected one of \\\"fn\\\", \\\"struct\\\", \\\"enum\\\", \\\"pub\\\", \\\"use\\\", \\\"extern\\\", \\\"trait\\\", \\\"impl\\\", \\\"type\\\", \\\"async\\\" or \\\"@\\\"\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let mut trace_vec = vec_new();\n    let mut i = 0;\n    while i < n {\n        let j = 0;\n        let mut k = 0;\n        while k < n {\n            let val = read_int();\n            if k == j {\n                let _s = vec_push(trace_vec, val)\n            };\n            k += 1\n        };\n        i += 1\n    };\n    let mut sum = 0;\n    let mut idx = 0;\n    let len = vec_len(trace_vec);\n    while idx < len {\n        sum = sum + vec_get(trace_vec, idx);\n        idx += 1\n    };\n    sum\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '2 1 2 3 4'\n  expected: '5\\n'\n  got: ''\nTest 1:\n  stdin: '1 42'\n  expected: '42\\n'\n  got: ''\nTest 2:\n  stdin: '3 1 0 0 0 2 0 0 0 3'\n  expected: '6\\n'\n  got: ''",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let mut trace_vec = vec_new();\n    let mut i = 0;\n    while i < n {\n        let mut k = 0;\n        while k < n {\n            let val = read_int();\n            if k == i {\n                let _s = vec_push(trace_vec, val)\n            };\n            k += 1\n        };\n        i += 1\n    };\n    let mut sum = 0;\n    let mut idx = 0;\n    let len = vec_len(trace_vec);\n    while idx < len {\n        sum = sum + vec_get(trace_vec, idx);\n        idx += 1\n    };\n    let _p = println(sum);\n    sum\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

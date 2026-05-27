@@ -1,0 +1,32 @@
+{
+  "problem_id": "33_counting_sort",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let max_val: i64 = read_int();\n    let counts = vec_new();\n    for _i in 0..(max_val + 1) {\n        let _p = vec_push(counts, 0)\n    };\n    for _i in 0..n {\n        let v: i64 = read_int();\n        let _s = vec_set(counts, v, vec_get(counts, v) + 1)\n    };\n    let mut first: i64 = 1;\n    for v in 0..(max_val + 1) {\n        let cnt: i64 = vec_get(counts, v);\n        for _j in 0..cnt {\n            if first == 0 {\n                let _s = print_str(\" \")\n            } else {\n                ()\n            };\n            print(v);\n            first = 0\n        }\n    };\n    println_str(\"\");\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '5 9 3 1 4 1 5'\n  expected: '1 1 3 4 5\\n'\n  got: '5 5 5 5 5 5 5 5 5 5\\n'\nTest 1:\n  stdin: '1 10 7'\n  expected: '7\\n'\n  got: '7 7 7 7 7 7 7 7 7 7 7\\n'\nTest 2:\n  stdin: '4 5 5 3 1 2'\n  expected: '1 2 3 5\\n'\n  got: '2 2 2 2 2 2\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let max_val: i64 = read_int();\n    let counts = vec_new();\n    for _i in 0..(max_val + 1) {\n        let _p = vec_push(counts, 0)\n    };\n    for _i in 0..n {\n        let v: i64 = read_int();\n        let _s = vec_set(counts, v, vec_get(counts, v) + 1)\n    };\n    let mut first: i64 = 1;\n    let mut v: i64 = 0;\n    while v <= max_val {\n        let cnt: i64 = vec_get(counts, v);\n        let mut j: i64 = 0;\n        while j < cnt {\n            if first == 0 {\n                let _s = print_str(\" \")\n            } else {\n                ()\n            };\n            print(v);\n            first = 0;\n            j = j + 1\n        };\n        v = v + 1\n    };\n    println_str(\"\");\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

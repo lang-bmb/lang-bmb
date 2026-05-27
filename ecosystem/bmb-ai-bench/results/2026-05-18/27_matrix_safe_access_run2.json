@@ -1,0 +1,24 @@
+{
+  "problem_id": "27_matrix_safe_access",
+  "category": "contract",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn safe_get_2d(matrix: i64, rows: i64, cols: i64, r: i64, c: i64) -> i64\n    pre r >= 0 and r < rows and c >= 0 and c < cols\n= {\n    let row_idx = r * cols + c;\n    vec_get(matrix, row_idx)\n};\n\nfn main() -> i64 = {\n    let rows = read_int();\n    let cols = read_int();\n    \n    let n = rows * cols;\n    let matrix = vec_new();\n    let i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(matrix, val);\n        i = i + 1\n    };\n    \n    let q = read_int();\n    let qi = 0;\n    while qi < q {\n        let r = read_int();\n        let c = read_int();\n        let val = safe_get_2d(matrix, rows, cols, r, c);\n        let _p = println(val);\n        qi = qi + 1\n    };\n    \n    let _f = vec_free(matrix);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

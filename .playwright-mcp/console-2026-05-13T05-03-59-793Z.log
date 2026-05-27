@@ -1,0 +1,5 @@
+[   10736ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5173/playground/node_modules/.vite/deps/chunk-JE3BJ2RY.js?v=0406f2f6:21550
+[   10780ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://localhost:5173/playground/@fs/D:/data/lang-bmb/ecosystem/bmb-wasm/pkg/bmb_wasm_bg.wasm:0
+[   10780ms] [WARNING] BMB WASM not available, falling back to JS interpreter: TypeError: Failed to execute 'compile' on 'WebAssembly': HTTP status code is not ok @ http://localhost:5173/playground/src/compiler-wasm.ts:19
+[   45697ms] [LOG] [vite] server connection lost. Polling for restart... @ http://localhost:5173/playground/@vite/client:559
+[   46067ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5173/playground/node_modules/.vite/deps/chunk-JE3BJ2RY.js?v=1cd6ceb7:21550

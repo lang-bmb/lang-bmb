@@ -1,0 +1,24 @@
+{
+  "problem_id": "52_base_convert",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn convert_base(n: i64, b: i64) -> String = {\n    if n == 0 { return \"0\" };\n    \n    let mut digits = vec_new();\n    let mut num = n;\n    \n    while num > 0 {\n        let rem = num % b;\n        let _p = vec_push(digits, rem);\n        num = num / b\n    };\n    \n    let len = vec_len(digits);\n    let mut result = \"\";\n    let mut i = len - 1;\n    \n    while i >= 0 {\n        let d = vec_get(digits, i);\n        result = result + to_string(d);\n        i = i - 1\n    };\n    \n    let _f = vec_free(digits);\n    result\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let mut i = 0;\n    \n    while i < t {\n        let n = read_int();\n        let b = read_int();\n        let s = convert_base(n, b);\n        let _p = println_str(s);\n        i = i + 1\n    };\n    \n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

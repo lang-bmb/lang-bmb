@@ -1,0 +1,32 @@
+{
+  "problem_id": "12_queue_simulation",
+  "category": "system",
+  "difficulty": "medium",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 1,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let q_count: i64 = read_int();\n    let queue = vec_new();\n    for _i in 0..q_count {\n        let op: i64 = read_int();\n        if op == 1 {\n            let val: i64 = read_int();\n            let _p = vec_push(queue, val)\n        } else {\n            if vec_len(queue) == 0 {\n                let _p = println(-1)\n            } else {\n                let val = vec_remove(queue, 0);\n                let _p = println(val)\n            }\n        }\n    };\n    0\n}",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpjon_shc9\\\\solution.bmb\",\"start\":3404,\"end\":3405,\"line\":121,\"col\":2,\"message\":\"Unrecognized EOF found at 3404\\nExpected one of \\\";\\\"\",\"suggestion\":\"BMB top-level definitions (fn, struct) must end with ';'. Block expressions end with '};'.\",\"example_wrong\":\"fn main() -> i64 = { 0 }\",\"example_correct\":\"fn main() -> i64 = { 0 };\",\"pattern\":\"missing_semicolon_eof\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let q_count: i64 = read_int();\n    let queue = vec_new();\n    for _i in 0..q_count {\n        let op: i64 = read_int();\n        if op == 1 {\n            let val: i64 = read_int();\n            let _p = vec_push(queue, val)\n        } else {\n            if vec_len(queue) == 0 {\n                let _p = println(-1)\n            } else {\n                let val = vec_remove(queue, 0);\n                let _p = println(val)\n            }\n        }\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

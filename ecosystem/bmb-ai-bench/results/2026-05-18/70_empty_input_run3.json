@@ -1,0 +1,24 @@
+{
+  "problem_id": "70_empty_input",
+  "category": "edge",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    let i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(v, val);\n        i = i + 1\n    };\n    let sum = vec_sum(v);\n    let _f = vec_free(v);\n    let _p = println(sum);\n    let _p = println(n);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

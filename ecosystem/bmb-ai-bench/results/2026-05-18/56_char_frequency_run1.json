@@ -1,0 +1,40 @@
+{
+  "problem_id": "56_char_frequency",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 3,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 1,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    // Sort the array to group identical values\n    let _s = vec_sort(v);\n\n    // Count frequencies\n    let counts = hashmap_new();\n    let len = vec_len(v);\n    let i = 0;\n    while i < len {\n        let x = vec_get(v, i);\n        let prev = if hashmap_contains(counts, x) == 1 { hashmap_get(counts, x) } else { 0 };\n        let _ins = hashmap_insert(counts, x, prev + 1);\n        i = i + 1\n    };\n\n    // Get distinct count\n    let distinct_count = hashmap_len(counts);\n    let _p = println(distinct_count);\n\n    // Get keys and sort them\n    let keys = hashmap_keys(counts);\n    let _s = svec_sort(keys);\n    let num_keys = svec_len(keys);\n    let j = 0;\n    while j < num_keys {\n        let key_str = svec_get(keys, j);\n        let key_val = str_to_int(key_str);\n        let count = hashmap_get(counts, key_val);\n        let _p = println_str(key_str);\n        let _p = print_str(\" \");\n        let _p = println(count);\n        j = j + 1\n    };\n\n    let _f = svec_free(keys);\n    let _f = hashmap_free(counts);\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"type\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpkb7bm6_9\\\\solution.bmb\",\"start\":3639,\"end\":3659,\"line\":130,\"col\":16,\"message\":\"undefined function: `hashmap_keys`\"}",
+      "loop_type": "C"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    // Sort the array to group identical values\n    let _s = vec_sort(v);\n\n    // Count frequencies using a string-keyed hashmap to allow sorted iteration\n    let counts = str_hashmap_new();\n    let len = vec_len(v);\n    let i = 0;\n    while i < len {\n        let x = vec_get(v, i);\n        let key = to_string(x);\n        let prev = if str_hashmap_contains(counts, key) == 1 { str_hashmap_get(counts, key) } else { 0 };\n        let _ins = str_hashmap_insert(counts, key, prev + 1);\n        i = i + 1\n    };\n\n    // Get distinct count\n    let distinct_count = str_hashmap_len(counts);\n    let _p = println(distinct_count);\n\n    // Get sorted keys\n    let keys = str_hashmap_sorted_keys(counts);\n    let num_keys = svec_len(keys);\n    let j = 0;\n    while j < num_keys {\n        let key_str = svec_get(keys, j);\n        let count = str_hashmap_get(counts, key_str);\n        let _p = println_str(key_str);\n        let _p = print_str(\" \");\n        let _p = println(count);\n        j = j + 1\n    };\n\n    let _f = svec_free(keys);\n    let _f = str_hashmap_free(counts);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '5 1 2 1 3 2'\n  expected: '3\\n1 2\\n2 2\\n3 1\\n'\n  got: '3\\n1\\n 2\\n2\\n 2\\n3\\n 1\\n'\nTest 1:\n  stdin: '1 42'\n  expected: '1\\n42 1\\n'\n  got: '1\\n42\\n 1\\n'\nTest 2:\n  stdin: '3 5 5 5'\n  expected: '1\\n5 3\\n'\n  got: '1\\n5\\n 3\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    // Sort the array to group identical values\n    let _s = vec_sort(v);\n\n    // Count frequencies using a string-keyed hashmap to allow sorted iteration\n    let counts = str_hashmap_new();\n    let len = vec_len(v);\n    let i = 0;\n    while i < len {\n        let x = vec_get(v, i);\n        let key = to_string(x);\n        let prev = if str_hashmap_contains(counts, key) == 1 { str_hashmap_get(counts, key) } else { 0 };\n        let _ins = str_hashmap_insert(counts, key, prev + 1);\n        i = i + 1\n    };\n\n    // Get distinct count\n    let distinct_count = str_hashmap_len(counts);\n    let _p = println(distinct_count);\n\n    // Get sorted keys\n    let keys = str_hashmap_sorted_keys(counts);\n    let num_keys = svec_len(keys);\n    let j = 0;\n    while j < num_keys {\n        let key_str = svec_get(keys, j);\n        let count = str_hashmap_get(counts, key_str);\n        let _p = print_str(key_str);\n        let _p = print_str(\" \");\n        let _p = println(count);\n        j = j + 1\n    };\n\n    let _f = svec_free(keys);\n    let _f = str_hashmap_free(counts);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

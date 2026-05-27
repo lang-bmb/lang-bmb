@@ -1,0 +1,96 @@
+{
+  "problem_id": "28_positive_factorial",
+  "category": "contract",
+  "difficulty": "easy",
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 10,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn factorial(n: i64) -> i64 =\n    if n <= 1 { 1 } else { n * factorial(n - 1) };\n\nfn main() -> i64\n    pre n >= 0 and n <= 20\n    post ret >= 1\n= {\n    let n = read_int();\n    let i = 0;\n    while i < n {\n        let x = read_int();\n        let _p = println(factorial(x));\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"type\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmp_w6gpx25\\\\solution.bmb\",\"start\":3029,\"end\":3030,\"line\":107,\"col\":9,\"message\":\"undefined variable: `n`\"}",
+      "loop_type": "C"
+    },
+    {
+      "attempt": 2,
+      "code": "fn factorial(n: i64) -> i64 =\n    if n <= 1 { 1 } else { n * factorial(n - 1) };\n\nfn main() -> i64\n    pre n >= 0 and n <= 20\n    post ret >= 1\n= {\n    let n = read_int();\n    let i = 0;\n    while i < n {\n        let x = read_int();\n        let _p = println(factorial(x));\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"type\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpi6zxqij5\\\\solution.bmb\",\"start\":3029,\"end\":3030,\"line\":107,\"col\":9,\"message\":\"undefined variable: `n`\"}",
+      "loop_type": "C"
+    },
+    {
+      "attempt": 3,
+      "code": "fn factorial(n: i64) -> i64 =\n    if n <= 1 { 1 } else { n * factorial(n - 1) };\n\nfn main() -> i64\n    pre n >= 0 and n <= 20\n    post ret >= 1\n= {\n    let n = read_int();\n    let i = 0;\n    while i < n {\n        let x = read_int();\n        let _p = println(factorial(x));\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"type\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmp11m67s8g\\\\solution.bmb\",\"start\":3029,\"end\":3030,\"line\":107,\"col\":9,\"message\":\"undefined variable: `n`\"}",
+      "loop_type": "C"
+    },
+    {
+      "attempt": 4,
+      "code": "fn factorial(n: i64) -> i64 =\n    if n <= 1 { 1 } else { n * factorial(n - 1) };\n\nfn main() -> i64\n    pre n >= 0 and n <= 20\n    post ret >= 1\n= {\n    let n = read_int();\n    let i = 0;\n    while i < n {\n        let x = read_int();\n        let _p = println(factorial(x));\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"type\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpme74_o4t\\\\solution.bmb\",\"start\":3029,\"end\":3030,\"line\":107,\"col\":9,\"message\":\"undefined variable: `n`\"}",
+      "loop_type": "C"
+    },
+    {
+      "attempt": 5,
+      "code": "fn factorial(n: i64) -> i64 =\n    if n <= 1 { 1 } else { n * factorial(n - 1) };\n\nfn main() -> i64\n    pre n >= 0 and n <= 20\n    post ret >= 1\n= {\n    let n = read_int();\n    let i = 0;\n    while i < n {\n        let x = read_int();\n        let _p = println(factorial(x));\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"type\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpfi14nvht\\\\solution.bmb\",\"start\":3029,\"end\":3030,\"line\":107,\"col\":9,\"message\":\"undefined variable: `n`\"}",
+      "loop_type": "C"
+    },
+    {
+      "attempt": 6,
+      "code": "fn factorial(n: i64) -> i64 =\n    if n <= 1 { 1 } else { n * factorial(n - 1) };\n\nfn main() -> i64\n    pre n >= 0 and n <= 20\n    post ret >= 1\n= {\n    let n = read_int();\n    let i = 0;\n    while i < n {\n        let x = read_int();\n        let _p = println(factorial(x));\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"type\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpg1yn1pmk\\\\solution.bmb\",\"start\":3029,\"end\":3030,\"line\":107,\"col\":9,\"message\":\"undefined variable: `n`\"}",
+      "loop_type": "C"
+    },
+    {
+      "attempt": 7,
+      "code": "fn factorial(n: i64) -> i64 =\n    if n <= 1 { 1 } else { n * factorial(n - 1) };\n\nfn main() -> i64\n    pre n >= 0 and n <= 20\n    post ret >= 1\n= {\n    let n = read_int();\n    let i = 0;\n    while i < n {\n        let x = read_int();\n        let _p = println(factorial(x));\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"type\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpt4shdcfy\\\\solution.bmb\",\"start\":3029,\"end\":3030,\"line\":107,\"col\":9,\"message\":\"undefined variable: `n`\"}",
+      "loop_type": "C"
+    },
+    {
+      "attempt": 8,
+      "code": "fn factorial(n: i64) -> i64 =\n    if n <= 1 { 1 } else { n * factorial(n - 1) };\n\nfn main() -> i64\n    pre n >= 0 and n <= 20\n    post ret >= 1\n= {\n    let n = read_int();\n    let i = 0;\n    while i < n {\n        let x = read_int();\n        let _p = println(factorial(x));\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"type\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmp20fuppwt\\\\solution.bmb\",\"start\":3029,\"end\":3030,\"line\":107,\"col\":9,\"message\":\"undefined variable: `n`\"}",
+      "loop_type": "C"
+    },
+    {
+      "attempt": 9,
+      "code": "fn factorial(n: i64) -> i64 =\n    if n <= 1 { 1 } else { n * factorial(n - 1) };\n\nfn main() -> i64\n    pre n >= 0 and n <= 20\n    post ret >= 1\n= {\n    let n = read_int();\n    let i = 0;\n    while i < n {\n        let x = read_int();\n        let _p = println(factorial(x));\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"type\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmp21kqupf4\\\\solution.bmb\",\"start\":3029,\"end\":3030,\"line\":107,\"col\":9,\"message\":\"undefined variable: `n`\"}",
+      "loop_type": "C"
+    },
+    {
+      "attempt": 10,
+      "code": "fn factorial(n: i64) -> i64 =\n    if n <= 1 { 1 } else { n * factorial(n - 1) };\n\nfn main() -> i64\n    pre n >= 0 and n <= 20\n    post ret >= 1\n= {\n    let n = read_int();\n    let i = 0;\n    while i < n {\n        let x = read_int();\n        let _p = println(factorial(x));\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"type\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmprpvnby2a\\\\solution.bmb\",\"start\":3029,\"end\":3030,\"line\":107,\"col\":9,\"message\":\"undefined variable: `n`\"}",
+      "loop_type": "C"
+    }
+  ],
+  "run_id": 1
+}

@@ -1,0 +1,96 @@
+{
+  "problem_id": "90_nth_prime",
+  "category": "algorithm",
+  "difficulty": "medium",
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "A": 0,
+    "B": 10,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn is_prime(n: i64) -> i64 = {\n    if n < 2 { return 0 }\n    if n == 2 { return 1 }\n    if n % 2 == 0 { return 0 }\n    let mut i = 3;\n    while i * i <= n {\n        if n % i == 0 { return 0 }\n        i = i + 2\n    };\n    1\n};\n\nfn nth_prime(n: i64) -> i64 = {\n    let mut count = 0;\n    let mut candidate = 1;\n    while count < n {\n        candidate = candidate + 1;\n        if is_prime(candidate) == 1 {\n            count = count + 1\n        }\n    };\n    candidate\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let mut i = 0;\n    while i < t {\n        let n = read_int();\n        let result = nth_prime(n);\n        let _p = println(result);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpej6c8bn2\\\\solution.bmb\",\"start\":2983,\"end\":2985,\"line\":105,\"col\":5,\"message\":\"Unrecognized token `if` found at 2983:2985\\nExpected one of \\\";\\\" or \\\"}\\\"\",\"suggestion\":\"BMB top-level definitions (fn, struct) must end with ';'. Block expressions end with '};'.\",\"example_wrong\":\"fn main() -> i64 = { 0 }\",\"example_correct\":\"fn main() -> i64 = { 0 };\",\"pattern\":\"missing_semicolon_eof\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 2,
+      "code": "fn is_prime(n: i64) -> i64 = {\n    if n < 2 { return 0 }\n    if n == 2 { return 1 }\n    if n % 2 == 0 { return 0 }\n    let mut i = 3;\n    while i * i <= n {\n        if n % i == 0 { return 0 }\n        i = i + 2\n    };\n    1\n};\n\nfn nth_prime(n: i64) -> i64 = {\n    let mut count = 0;\n    let mut candidate = 1;\n    while count < n {\n        candidate = candidate + 1;\n        if is_prime(candidate) == 1 {\n            count = count + 1\n        }\n    };\n    candidate\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let mut i = 0;\n    while i < t {\n        let n = read_int();\n        let result = nth_prime(n);\n        let _p = println(result);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpvp2uvaa0\\\\solution.bmb\",\"start\":2983,\"end\":2985,\"line\":105,\"col\":5,\"message\":\"Unrecognized token `if` found at 2983:2985\\nExpected one of \\\";\\\" or \\\"}\\\"\",\"suggestion\":\"BMB top-level definitions (fn, struct) must end with ';'. Block expressions end with '};'.\",\"example_wrong\":\"fn main() -> i64 = { 0 }\",\"example_correct\":\"fn main() -> i64 = { 0 };\",\"pattern\":\"missing_semicolon_eof\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 3,
+      "code": "fn is_prime(n: i64) -> i64 = {\n    if n < 2 { return 0 }\n    if n == 2 { return 1 }\n    if n % 2 == 0 { return 0 }\n    let mut i = 3;\n    while i * i <= n {\n        if n % i == 0 { return 0 }\n        i = i + 2\n    };\n    1\n};\n\nfn nth_prime(n: i64) -> i64 = {\n    let mut count = 0;\n    let mut candidate = 1;\n    while count < n {\n        candidate = candidate + 1;\n        if is_prime(candidate) == 1 {\n            count = count + 1\n        }\n    };\n    candidate\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let mut i = 0;\n    while i < t {\n        let n = read_int();\n        let result = nth_prime(n);\n        let _p = println(result);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmp7py5owu9\\\\solution.bmb\",\"start\":2983,\"end\":2985,\"line\":105,\"col\":5,\"message\":\"Unrecognized token `if` found at 2983:2985\\nExpected one of \\\";\\\" or \\\"}\\\"\",\"suggestion\":\"BMB top-level definitions (fn, struct) must end with ';'. Block expressions end with '};'.\",\"example_wrong\":\"fn main() -> i64 = { 0 }\",\"example_correct\":\"fn main() -> i64 = { 0 };\",\"pattern\":\"missing_semicolon_eof\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 4,
+      "code": "fn is_prime(n: i64) -> i64 = {\n    if n < 2 { return 0 }\n    if n == 2 { return 1 }\n    if n % 2 == 0 { return 0 }\n    let mut i = 3;\n    while i * i <= n {\n        if n % i == 0 { return 0 }\n        i = i + 2\n    };\n    1\n};\n\nfn nth_prime(n: i64) -> i64 = {\n    let mut count = 0;\n    let mut candidate = 1;\n    while count < n {\n        candidate = candidate + 1;\n        if is_prime(candidate) == 1 {\n            count = count + 1\n        }\n    };\n    candidate\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let mut i = 0;\n    while i < t {\n        let n = read_int();\n        let result = nth_prime(n);\n        let _p = println(result);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmp5k723y7h\\\\solution.bmb\",\"start\":2983,\"end\":2985,\"line\":105,\"col\":5,\"message\":\"Unrecognized token `if` found at 2983:2985\\nExpected one of \\\";\\\" or \\\"}\\\"\",\"suggestion\":\"BMB top-level definitions (fn, struct) must end with ';'. Block expressions end with '};'.\",\"example_wrong\":\"fn main() -> i64 = { 0 }\",\"example_correct\":\"fn main() -> i64 = { 0 };\",\"pattern\":\"missing_semicolon_eof\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 5,
+      "code": "fn is_prime(n: i64) -> i64 = {\n    if n < 2 { return 0 }\n    if n == 2 { return 1 }\n    if n % 2 == 0 { return 0 }\n    let mut i = 3;\n    while i * i <= n {\n        if n % i == 0 { return 0 }\n        i = i + 2\n    };\n    1\n};\n\nfn nth_prime(n: i64) -> i64 = {\n    let mut count = 0;\n    let mut candidate = 1;\n    while count < n {\n        candidate = candidate + 1;\n        if is_prime(candidate) == 1 {\n            count = count + 1\n        }\n    };\n    candidate\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let mut i = 0;\n    while i < t {\n        let n = read_int();\n        let result = nth_prime(n);\n        let _p = println(result);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpyaoav1tl\\\\solution.bmb\",\"start\":2983,\"end\":2985,\"line\":105,\"col\":5,\"message\":\"Unrecognized token `if` found at 2983:2985\\nExpected one of \\\";\\\" or \\\"}\\\"\",\"suggestion\":\"BMB top-level definitions (fn, struct) must end with ';'. Block expressions end with '};'.\",\"example_wrong\":\"fn main() -> i64 = { 0 }\",\"example_correct\":\"fn main() -> i64 = { 0 };\",\"pattern\":\"missing_semicolon_eof\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 6,
+      "code": "fn is_prime(n: i64) -> i64 = {\n    if n < 2 { return 0 }\n    if n == 2 { return 1 }\n    if n % 2 == 0 { return 0 }\n    let mut i = 3;\n    while i * i <= n {\n        if n % i == 0 { return 0 }\n        i = i + 2\n    };\n    1\n};\n\nfn nth_prime(n: i64) -> i64 = {\n    let mut count = 0;\n    let mut candidate = 1;\n    while count < n {\n        candidate = candidate + 1;\n        if is_prime(candidate) == 1 {\n            count = count + 1\n        }\n    };\n    candidate\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let mut i = 0;\n    while i < t {\n        let n = read_int();\n        let result = nth_prime(n);\n        let _p = println(result);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmp3sgp8g1h\\\\solution.bmb\",\"start\":2983,\"end\":2985,\"line\":105,\"col\":5,\"message\":\"Unrecognized token `if` found at 2983:2985\\nExpected one of \\\";\\\" or \\\"}\\\"\",\"suggestion\":\"BMB top-level definitions (fn, struct) must end with ';'. Block expressions end with '};'.\",\"example_wrong\":\"fn main() -> i64 = { 0 }\",\"example_correct\":\"fn main() -> i64 = { 0 };\",\"pattern\":\"missing_semicolon_eof\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 7,
+      "code": "fn is_prime(n: i64) -> i64 = {\n    if n < 2 { return 0 }\n    if n == 2 { return 1 }\n    if n % 2 == 0 { return 0 }\n    let mut i = 3;\n    while i * i <= n {\n        if n % i == 0 { return 0 }\n        i = i + 2\n    };\n    1\n};\n\nfn nth_prime(n: i64) -> i64 = {\n    let mut count = 0;\n    let mut candidate = 1;\n    while count < n {\n        candidate = candidate + 1;\n        if is_prime(candidate) == 1 {\n            count = count + 1\n        }\n    };\n    candidate\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let mut i = 0;\n    while i < t {\n        let n = read_int();\n        let result = nth_prime(n);\n        let _p = println(result);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpdg40k15l\\\\solution.bmb\",\"start\":2983,\"end\":2985,\"line\":105,\"col\":5,\"message\":\"Unrecognized token `if` found at 2983:2985\\nExpected one of \\\";\\\" or \\\"}\\\"\",\"suggestion\":\"BMB top-level definitions (fn, struct) must end with ';'. Block expressions end with '};'.\",\"example_wrong\":\"fn main() -> i64 = { 0 }\",\"example_correct\":\"fn main() -> i64 = { 0 };\",\"pattern\":\"missing_semicolon_eof\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 8,
+      "code": "fn is_prime(n: i64) -> i64 = {\n    if n < 2 { return 0 }\n    if n == 2 { return 1 }\n    if n % 2 == 0 { return 0 }\n    let mut i = 3;\n    while i * i <= n {\n        if n % i == 0 { return 0 }\n        i = i + 2\n    };\n    1\n};\n\nfn nth_prime(n: i64) -> i64 = {\n    let mut count = 0;\n    let mut candidate = 1;\n    while count < n {\n        candidate = candidate + 1;\n        if is_prime(candidate) == 1 {\n            count = count + 1\n        }\n    };\n    candidate\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let mut i = 0;\n    while i < t {\n        let n = read_int();\n        let result = nth_prime(n);\n        let _p = println(result);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpaaaq72ta\\\\solution.bmb\",\"start\":2983,\"end\":2985,\"line\":105,\"col\":5,\"message\":\"Unrecognized token `if` found at 2983:2985\\nExpected one of \\\";\\\" or \\\"}\\\"\",\"suggestion\":\"BMB top-level definitions (fn, struct) must end with ';'. Block expressions end with '};'.\",\"example_wrong\":\"fn main() -> i64 = { 0 }\",\"example_correct\":\"fn main() -> i64 = { 0 };\",\"pattern\":\"missing_semicolon_eof\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 9,
+      "code": "fn is_prime(n: i64) -> i64 = {\n    if n < 2 { return 0 }\n    if n == 2 { return 1 }\n    if n % 2 == 0 { return 0 }\n    let mut i = 3;\n    while i * i <= n {\n        if n % i == 0 { return 0 }\n        i = i + 2\n    };\n    1\n};\n\nfn nth_prime(n: i64) -> i64 = {\n    let mut count = 0;\n    let mut candidate = 1;\n    while count < n {\n        candidate = candidate + 1;\n        if is_prime(candidate) == 1 {\n            count = count + 1\n        }\n    };\n    candidate\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let mut i = 0;\n    while i < t {\n        let n = read_int();\n        let result = nth_prime(n);\n        let _p = println(result);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpma0qm259\\\\solution.bmb\",\"start\":2983,\"end\":2985,\"line\":105,\"col\":5,\"message\":\"Unrecognized token `if` found at 2983:2985\\nExpected one of \\\";\\\" or \\\"}\\\"\",\"suggestion\":\"BMB top-level definitions (fn, struct) must end with ';'. Block expressions end with '};'.\",\"example_wrong\":\"fn main() -> i64 = { 0 }\",\"example_correct\":\"fn main() -> i64 = { 0 };\",\"pattern\":\"missing_semicolon_eof\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 10,
+      "code": "fn is_prime(n: i64) -> i64 = {\n    if n < 2 { return 0 }\n    if n == 2 { return 1 }\n    if n % 2 == 0 { return 0 }\n    let mut i = 3;\n    while i * i <= n {\n        if n % i == 0 { return 0 }\n        i = i + 2\n    };\n    1\n};\n\nfn nth_prime(n: i64) -> i64 = {\n    let mut count = 0;\n    let mut candidate = 1;\n    while count < n {\n        candidate = candidate + 1;\n        if is_prime(candidate) == 1 {\n            count = count + 1\n        }\n    };\n    candidate\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let mut i = 0;\n    while i < t {\n        let n = read_int();\n        let result = nth_prime(n);\n        let _p = println(result);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmppofzevn2\\\\solution.bmb\",\"start\":2983,\"end\":2985,\"line\":105,\"col\":5,\"message\":\"Unrecognized token `if` found at 2983:2985\\nExpected one of \\\";\\\" or \\\"}\\\"\",\"suggestion\":\"BMB top-level definitions (fn, struct) must end with ';'. Block expressions end with '};'.\",\"example_wrong\":\"fn main() -> i64 = { 0 }\",\"example_correct\":\"fn main() -> i64 = { 0 };\",\"pattern\":\"missing_semicolon_eof\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    }
+  ],
+  "run_id": 1
+}

@@ -1,0 +1,24 @@
+{
+  "problem_id": "83_pipeline",
+  "category": "integration",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let m = read_int();\n    for _i in 0..m {\n        let op = read_int();\n        if op == 1 {\n            let k = read_int();\n            let j = 0;\n            while j < n {\n                let val = vec_get(v, j);\n                let _s = vec_set(v, j, val + k);\n                j = j + 1\n            }\n        } else if op == 2 {\n            let k = read_int();\n            let j = 0;\n            while j < n {\n                let val = vec_get(v, j);\n                let _s = vec_set(v, j, val * k);\n                j = j + 1\n            }\n        } else if op == 3 {\n            let j = 0;\n            while j < n {\n                let val = vec_get(v, j);\n                let _s = vec_set(v, j, 0 - val);\n                j = j + 1\n            }\n        } else if op == 4 {\n            let j = 0;\n            while j < n {\n                let val = vec_get(v, j);\n                if val < 0 {\n                    let _s = vec_set(v, j, 0 - val)\n                } else {\n                    ()\n                };\n                j = j + 1\n            }\n        } else if op == 5 {\n            let mut lo = 0;\n            let mut hi = n - 1;\n            while lo < hi {\n                let tmp = vec_get(v, lo);\n                let _s1 = vec_set(v, lo, vec_get(v, hi));\n                let _s2 = vec_set(v, hi, tmp);\n                lo = lo + 1;\n                hi = hi - 1\n            }\n        } else {\n            ()\n        }\n    };\n    let i = 0;\n    while i < n {\n        if i > 0 {\n            let _s = print_str(\" \")\n        };\n        let _p = print(vec_get(v, i));\n        i = i + 1\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

@@ -1,0 +1,40 @@
+{
+  "problem_id": "45_array_compact",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 3,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 2
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    let mut write_idx = 0;\n    let len = vec_len(v);\n    let mut read_idx = 0;\n\n    while read_idx < len {\n        let val = vec_get(v, read_idx);\n        if val != 0 {\n            let _s = vec_set(v, write_idx, val);\n            write_idx = write_idx + 1\n        };\n        read_idx = read_idx + 1\n    };\n\n    let _f = vec_free(v);\n    write_idx\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '5 1 0 2 0 3'\n  expected: '3\\n1 2 3\\n'\n  got: ''\nTest 1:\n  stdin: '3 0 0 0'\n  expected: '0\\n'\n  got: ''\nTest 2:\n  stdin: '3 1 2 3'\n  expected: '3\\n1 2 3\\n'\n  got: ''",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    let mut write_idx = 0;\n    let len = vec_len(v);\n    let mut read_idx = 0;\n\n    while read_idx < len {\n        let val = vec_get(v, read_idx);\n        if val != 0 {\n            let _s = vec_set(v, write_idx, val);\n            write_idx = write_idx + 1\n        };\n        read_idx = read_idx + 1\n    };\n\n    let _p = println(write_idx);\n    let mut i = 0;\n    while i < write_idx {\n        if i > 0 { let _s = print_str(\" \") };\n        let _p = print(vec_get(v, i));\n        i = i + 1\n    };\n    let _nl = println_str(\"\");\n\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1:\n  stdin: '3 0 0 0'\n  expected: '0\\n'\n  got: '0\\n\\n'\nTest 3:\n  stdin: '1 0'\n  expected: '0\\n'\n  got: '0\\n\\n'\nTest 10:\n  stdin: '4 0 0 0 0'\n  expected: '0\\n'\n  got: '0\\n\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    let mut write_idx = 0;\n    let len = vec_len(v);\n    let mut read_idx = 0;\n\n    while read_idx < len {\n        let val = vec_get(v, read_idx);\n        if val != 0 {\n            let _s = vec_set(v, write_idx, val);\n            write_idx = write_idx + 1\n        };\n        read_idx = read_idx + 1\n    };\n\n    let _p = println(write_idx);\n    let mut i = 0;\n    while i < write_idx {\n        if i > 0 { let _s = print_str(\" \") };\n        let _p = print(vec_get(v, i));\n        i = i + 1\n    };\n    if write_idx > 0 {\n        let _nl = println_str(\"\");\n    };\n\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

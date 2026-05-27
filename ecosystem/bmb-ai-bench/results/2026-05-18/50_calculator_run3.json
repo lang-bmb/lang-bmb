@@ -1,0 +1,24 @@
+{
+  "problem_id": "50_calculator",
+  "category": "practical",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let stack = vec_new();\n    let i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 0 {\n            let val = read_int();\n            let _p = vec_push(stack, val)\n        } else if op == 1 {\n            let b = vec_pop(stack);\n            let a = vec_pop(stack);\n            let _p = vec_push(stack, a + b)\n        } else if op == 2 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b - a)\n        } else if op == 3 {\n            let b = vec_pop(stack);\n            let a = vec_pop(stack);\n            let _p = vec_push(stack, a * b)\n        } else if op == 4 {\n            let b = vec_pop(stack);\n            let a = vec_pop(stack);\n            let _p = vec_push(stack, a / b)\n        };\n        i = i + 1\n    };\n    let top = vec_get(stack, vec_len(stack) - 1);\n    let _f = vec_free(stack);\n    let _p = println(top);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

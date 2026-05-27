@@ -1,0 +1,24 @@
+{
+  "problem_id": "08_two_sum",
+  "category": "algorithm",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let target: i64 = read_int();\n    let n: i64 = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    let mut ri: i64 = 0;\n    let mut rj: i64 = 0;\n    let mut found: i64 = 0;\n    let mut i: i64 = 0;\n    while i < n {\n        let mut j: i64 = i + 1;\n        while j < n {\n            if found == 0 {\n                if vec_get(v, i) + vec_get(v, j) == target {\n                    set ri = i;\n                    set rj = j;\n                    set found = 1\n                } else { () }\n            } else { () };\n            set j = j + 1\n        };\n        set i = i + 1\n    };\n    let _p = print(ri);\n    let _s = print_str(\" \");\n    let _nl = println(rj);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

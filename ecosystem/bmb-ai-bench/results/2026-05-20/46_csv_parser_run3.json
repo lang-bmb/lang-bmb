@@ -1,0 +1,24 @@
+{
+  "problem_id": "46_csv_parser",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let t: i64 = read_int();\n    for _i in 0..t {\n        let n: i64 = read_int();\n        let mut sum: i64 = 0;\n        for _j in 0..n {\n            let val: i64 = read_int();\n            set sum = sum + val\n        };\n        let _p = print(n);\n        let _s = print_str(\" \");\n        let _l = println(sum)\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

@@ -1,0 +1,24 @@
+{
+  "problem_id": "36_array_rotation",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let k = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    // Effective rotation amount\n    let mut k_eff = k % n;\n    if k_eff < 0 {\n        k_eff = k_eff + n\n    };\n    if k_eff == 0 {\n        // No rotation needed\n        for i in 0..n {\n            if i > 0 { let _s = print_str(\" \") };\n            let _p = print(vec_get(v, i))\n        };\n        let _nl = println_str(\"\");\n        0\n    } else {\n        // Rotate left by k_eff\n        // Elements from index k_eff to n-1 come first, then 0 to k_eff-1\n        for i in 0..n {\n            if i > 0 { let _s = print_str(\" \") };\n            let orig_idx = (i + k_eff) % n;\n            let _p = print(vec_get(v, orig_idx))\n        };\n        let _nl = println_str(\"\");\n        0\n    }\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

@@ -1,0 +1,24 @@
+{
+  "problem_id": "92_bit_counting",
+  "category": "system",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn popcount(n: i64) -> i64 = {\n    let mut count: i64 = 0;\n    let mut x: i64 = n;\n    while x > 0 {\n        set count = count + (x band 1);\n        set x = x >> 1;\n    };\n    count\n};\n\nfn main() -> i64 = {\n    let t: i64 = read_int();\n    let mut i: i64 = 0;\n    while i < t {\n        let n: i64 = read_int();\n        let res = popcount(n);\n        let _p = println(res);\n        set i = i + 1;\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

@@ -1,0 +1,24 @@
+{
+  "problem_id": "95_memory_pool",
+  "category": "system",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let sizes = vec_new();\n    let active = vec_new();\n    let mut next_id: i64 = 0;\n    let mut i: i64 = 0;\n    while i < n {\n        let op: i64 = read_int();\n        if op == 1 {\n            let sz: i64 = read_int();\n            let _p1 = vec_push(sizes, sz);\n            let _p2 = vec_push(active, 1);\n            let _p3 = println(next_id);\n            set next_id = next_id + 1\n        } else {\n            if op == 2 {\n                let id: i64 = read_int();\n                let _s = vec_set(active, id, 0)\n            } else {\n                let mut total: i64 = 0;\n                let mut cnt: i64 = 0;\n                let mut j: i64 = 0;\n                while j < next_id {\n                    if vec_get(active, j) == 1 {\n                        set total = total + vec_get(sizes, j);\n                        set cnt = cnt + 1\n                    } else { () };\n                    set j = j + 1\n                };\n                let _p4 = print(total);\n                let _p5 = print_str(\" \");\n                let _p6 = println(cnt)\n            }\n        };\n        set i = i + 1\n    };\n    let _f1 = vec_free(sizes);\n    let _f2 = vec_free(active);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

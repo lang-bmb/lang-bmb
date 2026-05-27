@@ -1,0 +1,24 @@
+{
+  "problem_id": "06_matrix_multiply",
+  "category": "algorithm",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let size = n * n;\n\n    // Read matrix A\n    let a = vec_new();\n    let i = 0;\n    while i < size {\n        let val = read_int();\n        let _p = vec_push(a, val);\n        i += 1\n    };\n\n    // Read matrix B\n    let b = vec_new();\n    let i = 0;\n    while i < size {\n        let val = read_int();\n        let _p = vec_push(b, val);\n        i += 1\n    };\n\n    // Initialize result matrix C with zeros\n    let c = vec_new();\n    let i = 0;\n    while i < size {\n        let _p = vec_push(c, 0);\n        i += 1\n    };\n\n    // Matrix multiplication: C[i][j] = sum(A[i][k] * B[k][j])\n    let row = 0;\n    while row < n {\n        let col = 0;\n        while col < n {\n            let sum = 0;\n            let k = 0;\n            while k < n {\n                // A[row][k]\n                let a_idx = row * n + k;\n                let a_val = vec_get(a, a_idx);\n                // B[k][col]\n                let b_idx = k * n + col;\n                let b_val = vec_get(b, b_idx);\n                \n                let prod = a_val * b_val;\n                let new_sum = sum + prod;\n                sum = new_sum;\n                \n                k += 1\n            };\n            \n            // C[row][col]\n            let c_idx = row * n + col;\n            let _s = vec_set(c, c_idx, sum);\n            \n            col += 1\n        };\n        row += 1\n    };\n\n    // Print result matrix\n    let row = 0;\n    while row < n {\n        let col = 0;\n        while col < n {\n            if col > 0 {\n                let _s = print_str(\" \")\n            };\n            let idx = row * n + col;\n            let val = vec_get(c, idx);\n            let _p = print(val);\n            col += 1\n        };\n        let _nl = println_str(\"\");\n        row += 1\n    };\n\n    let _f = vec_free(a);\n    let _f = vec_free(b);\n    let _f = vec_free(c);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

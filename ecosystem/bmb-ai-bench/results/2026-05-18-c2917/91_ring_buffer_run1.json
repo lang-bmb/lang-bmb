@@ -1,0 +1,24 @@
+{
+  "problem_id": "91_ring_buffer",
+  "category": "system",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let cap = read_int();\n    let n = read_int();\n\n    // Initialize ring buffer with zeros\n    let buf = vec_new();\n    let _i = 0;\n    while _i < cap {\n        let _p = vec_push(buf, 0);\n        _i = _i + 1\n    };\n\n    let mut head = 0;\n    let mut tail = 0;\n    let mut size = 0;\n\n    let _op_idx = 0;\n    while _op_idx < n {\n        let op = read_int();\n\n        if op == 1 {\n            let val = read_int();\n            // Write val\n            let _s = vec_set(buf, tail, val);\n            tail = (tail + 1) % cap;\n            if size < cap {\n                size = size + 1\n            } else {\n                head = (head + 1) % cap\n            }\n        } else if op == 2 {\n            // Read (dequeue oldest)\n            if size > 0 {\n                let val = vec_get(buf, head);\n                let _p = println(val);\n                head = (head + 1) % cap;\n                size = size - 1\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 3 {\n            // Size\n            let _p = println(size)\n        };\n\n        _op_idx = _op_idx + 1\n    };\n\n    let _f = vec_free(buf);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

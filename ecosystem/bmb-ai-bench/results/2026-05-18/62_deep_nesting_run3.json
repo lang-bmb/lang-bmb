@@ -1,0 +1,40 @@
+{
+  "problem_id": "62_deep_nesting",
+  "category": "edge",
+  "difficulty": "easy",
+  "loop_count": 3,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 2
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let t = read_int();\n    let i = 0;\n    while i < t {\n        let n = read_int();\n        if n < 0 {\n            let _p = println(n);\n        } else {\n            let mut depth = 0;\n            let mut val = n;\n            while val >= 10 {\n                val = val / 10;\n                depth = depth + 1\n            };\n            let _p = println(depth)\n        };\n        i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 9:\n  stdin: '3 -100 0 9999'\n  expected: '-1\\n0\\n3\\n'\n  got: '-100\\n0\\n3\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let t = read_int();\n    let i = 0;\n    while i < t {\n        let n = read_int();\n        if n < 0 {\n            let _p = println(n);\n        } else {\n            let mut depth = 0;\n            let mut val = n;\n            while val >= 10 {\n                val = val / 10;\n                depth = depth + 1\n            };\n            let _p = println(depth)\n        };\n        i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 9:\n  stdin: '3 -100 0 9999'\n  expected: '-1\\n0\\n3\\n'\n  got: '-100\\n0\\n3\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let t = read_int();\n    let i = 0;\n    while i < t {\n        let n = read_int();\n        if n < 0 {\n            let _p = println(-1);\n        } else {\n            let mut depth = 0;\n            let mut val = n;\n            while val >= 10 {\n                val = val / 10;\n                depth = depth + 1\n            };\n            let _p = println(depth)\n        };\n        i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

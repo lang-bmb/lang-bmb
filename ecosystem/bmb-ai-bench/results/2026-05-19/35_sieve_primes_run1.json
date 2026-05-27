@@ -1,0 +1,32 @@
+{
+  "problem_id": "35_sieve_primes",
+  "category": "performance",
+  "difficulty": "medium",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    \n    // Handle small cases directly\n    if n < 2 {\n        let _p = println(0);\n        return 0;\n    };\n    \n    // Create sieve array of size n+1, initialized to 1 (prime)\n    let sieve = vec_new();\n    let mut i = 0;\n    while i <= n {\n        let _p = vec_push(sieve, 1);\n        i = i + 1;\n    };\n    \n    // Mark 0 and 1 as non-prime\n    let _a = vec_set(sieve, 0, 0);\n    let _b = vec_set(sieve, 1, 0);\n    \n    // Sieve of Eratosthenes\n    let mut p = 2;\n    while p * p <= n {\n        // If sieve[p] is still 1, it's prime\n        if vec_get(sieve, p) == 1 {\n            // Mark all multiples of p starting from p*p\n            let mut j = p * p;\n            while j <= n {\n                let _s = vec_set(sieve, j, 0);\n                j = j + p;\n            };\n        };\n        p = p + 1;\n    };\n    \n    // Count primes\n    let mut count = 0;\n    let mut k = 2;\n    while k <= n {\n        if vec_get(sieve, k) == 1 {\n            count = count + 1;\n        };\n        k = k + 1;\n    };\n    \n    let _f = vec_free(sieve);\n    count\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '10'\n  expected: '4\\n'\n  got: ''\nTest 2:\n  stdin: '2'\n  expected: '1\\n'\n  got: ''\nTest 3:\n  stdin: '100'\n  expected: '25\\n'\n  got: ''",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    \n    // Handle small cases directly\n    if n < 2 {\n        let _p = println(0);\n        return 0;\n    };\n    \n    // Create sieve array of size n+1, initialized to 1 (prime)\n    let sieve = vec_new();\n    let mut i = 0;\n    while i <= n {\n        let _p = vec_push(sieve, 1);\n        i = i + 1;\n    };\n    \n    // Mark 0 and 1 as non-prime\n    let _a = vec_set(sieve, 0, 0);\n    let _b = vec_set(sieve, 1, 0);\n    \n    // Sieve of Eratosthenes\n    let mut p = 2;\n    while p * p <= n {\n        // If sieve[p] is still 1, it's prime\n        if vec_get(sieve, p) == 1 {\n            // Mark all multiples of p starting from p*p\n            let mut j = p * p;\n            while j <= n {\n                let _s = vec_set(sieve, j, 0);\n                j = j + p;\n            };\n        };\n        p = p + 1;\n    };\n    \n    // Count primes\n    let mut count = 0;\n    let mut k = 2;\n    while k <= n {\n        if vec_get(sieve, k) == 1 {\n            count = count + 1;\n        };\n        k = k + 1;\n    };\n    \n    let _f = vec_free(sieve);\n    let _p = println(count);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

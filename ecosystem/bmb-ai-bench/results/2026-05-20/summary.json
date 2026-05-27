@@ -1,0 +1,11 @@
+{
+  "date": "2026-05-20",
+  "model": "qwen3.6-35b-a3b",
+  "total_problems": 100,
+  "runs": 3,
+  "total_runs": 300,
+  "passed": 299,
+  "success_rate": 99.7,
+  "median_loops": 1,
+  "output_dir": "D:/data/lang-bmb/ecosystem/bmb-ai-bench/results/2026-05-20"
+}

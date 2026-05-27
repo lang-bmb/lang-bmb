@@ -1,0 +1,24 @@
+{
+  "problem_id": "65_chain_calls",
+  "category": "edge",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let t: i64 = read_int();\n    let mut i: i64 = 0;\n    while i < t {\n        let x: i64 = read_int();\n        let result: i64 = x * x * 2 + 1;\n        let _p = println(result);\n        i = i + 1;\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

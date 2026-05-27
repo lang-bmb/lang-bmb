@@ -1,0 +1,32 @@
+{
+  "problem_id": "08_two_sum",
+  "category": "algorithm",
+  "difficulty": "easy",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let target = read_int();\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    let mut found_i = 0;\n    let mut found_j = 0;\n    let mut found = 0;\n\n    let i = 0;\n    while i < n {\n        let j = i + 1;\n        while j < n {\n            let sum = vec_get(v, i) + vec_get(v, j);\n            if sum == target {\n                found_i = i;\n                found_j = j;\n                found = 1;\n                break\n            };\n            j = j + 1\n        };\n        if found == 1 { break };\n        i = i + 1\n    };\n\n    if found_i > found_j {\n        let _p = println(found_j);\n        let _p = print(found_i)\n    } else {\n        let _p = println(found_i);\n        let _p = print(found_j)\n    };\n    let _nl = println_str(\"\");\n\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '9 4 2 7 11 15'\n  expected: '0 1\\n'\n  got: '0\\n1\\n'\nTest 1:\n  stdin: '3 3 1 2 3'\n  expected: '0 1\\n'\n  got: '0\\n1\\n'\nTest 2:\n  stdin: '10 4 5 5 3 7'\n  expected: '0 1\\n'\n  got: '0\\n1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let target = read_int();\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    let mut found_i = 0;\n    let mut found_j = 0;\n    let mut found = 0;\n\n    let i = 0;\n    while i < n {\n        let j = i + 1;\n        while j < n {\n            let sum = vec_get(v, i) + vec_get(v, j);\n            if sum == target {\n                found_i = i;\n                found_j = j;\n                found = 1;\n                break\n            };\n            j = j + 1\n        };\n        if found == 1 { break };\n        i = i + 1\n    };\n\n    let _p = print(found_i);\n    let _p = print_str(\" \");\n    let _p = println(found_j);\n\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

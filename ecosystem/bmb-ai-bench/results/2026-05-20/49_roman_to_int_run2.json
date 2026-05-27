@@ -1,0 +1,24 @@
+{
+  "problem_id": "49_roman_to_int",
+  "category": "practical",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let t: i64 = read_int();\n    for _i in 0..t {\n        let n: i64 = read_int();\n        let v = vec_new();\n        for _j in 0..n {\n            let val = read_int();\n            let _p = vec_push(v, val)\n        };\n        let mut result: i64 = 0;\n        let mut idx: i64 = 0;\n        while idx < n {\n            let cur: i64 = vec_get(v, idx);\n            if idx + 1 < n {\n                let nxt: i64 = vec_get(v, idx + 1);\n                if cur < nxt {\n                    set result = result + (nxt - cur);\n                    set idx = idx + 2\n                } else {\n                    set result = result + cur;\n                    set idx = idx + 1\n                }\n            } else {\n                set result = result + cur;\n                set idx = idx + 1\n            }\n        };\n        let _p = println(result);\n        let _f = vec_free(v)\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

@@ -1,0 +1,24 @@
+{
+  "problem_id": "75_longest_plateau",
+  "category": "edge",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn solve() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    if n == 0 {\n        let _f = vec_free(v);\n        0\n    } else {\n        let max_len = 1;\n        let cur_len = 1;\n        let i = 1;\n        let n_val = vec_len(v);\n        while i < n_val {\n            let prev = vec_get(v, i - 1);\n            let curr = vec_get(v, i);\n            if prev == curr {\n                let cur_len_new = cur_len + 1;\n                if cur_len_new > max_len {\n                    // We need to track max_len and cur_len. \n                    // Since we can't easily mutate variables in a simple while loop without let mut,\n                    // let's use let mut for both.\n                    ()\n                };\n                // Actually, let's rewrite with let mut\n                ()\n            } else {\n                ()\n            };\n            i = i + 1\n        };\n        // The above logic is flawed because I can't update max_len/cur_len easily in the loop \n        // without let mut. Let's restart with let mut.\n        0\n    }\n};\n\n// Let's write it properly with let mut\nfn main() -> i64 = {\n    let t = read_int();\n    let tc = 0;\n    while tc < t {\n        let n = read_int();\n        let v = vec_new();\n        for _i in 0..n {\n            let val = read_int();\n            let _p = vec_push(v, val)\n        };\n\n        if n == 0 {\n            let _f = vec_free(v);\n            let _p = println(0);\n            let tc_new = tc + 1;\n            tc = tc_new;\n            continue\n        };\n\n        let mut max_len = 1;\n        let mut cur_len = 1;\n        let mut i = 1;\n        let n_val = vec_len(v);\n        while i < n_val {\n            let prev = vec_get(v, i - 1);\n            let curr = vec_get(v, i);\n            if prev == curr {\n                cur_len = cur_len + 1;\n                if cur_len > max_len {\n                    max_len = cur_len\n                }\n            } else {\n                cur_len = 1\n            };\n            i = i + 1\n        };\n\n        let _p = println(max_len);\n        let _f = vec_free(v);\n        let tc_new = tc + 1;\n        tc = tc_new\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

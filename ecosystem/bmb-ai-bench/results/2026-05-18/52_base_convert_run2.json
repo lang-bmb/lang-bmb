@@ -1,0 +1,24 @@
+{
+  "problem_id": "52_base_convert",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn convert_base(n: i64, b: i64) -> String = {\n    if n == 0 { return \"0\" };\n    \n    let mut num = n;\n    let mut result = \"\";\n    \n    while num > 0 {\n        let digit = num % b;\n        let digit_str = to_string(digit);\n        result = digit_str + result;\n        num = num / b\n    };\n    \n    result\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let i = 0;\n    while i < t {\n        let n = read_int();\n        let b = read_int();\n        let res = convert_base(n, b);\n        let _p = println_str(res);\n        i += 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

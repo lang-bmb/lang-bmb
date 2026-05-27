@@ -1,0 +1,24 @@
+{
+  "problem_id": "69_overflow_detect",
+  "category": "edge",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let t: i64 = read_int();\n    for _i in 0..t {\n        let a: i64 = read_int();\n        let b: i64 = read_int();\n        let product: i64 = a * b;\n        let overflow: i64 = if product > 2147483647 { 1 } else { if product < -2147483648 { 1 } else { 0 } };\n        let _p1 = print(overflow);\n        let _p2 = print_str(\" \");\n        let _p3 = println(product)\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

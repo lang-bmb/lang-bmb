@@ -1,0 +1,24 @@
+{
+  "problem_id": "91_ring_buffer",
+  "category": "system",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let capacity: i64 = read_int();\n    let n: i64 = read_int();\n    let buf = vec_new();\n    for _i in 0..capacity { let _p = vec_push(buf, 0) };\n    let mut head: i64 = 0;\n    let mut tail: i64 = 0;\n    let mut count: i64 = 0;\n    let mut op_idx: i64 = 0;\n    while op_idx < n {\n        let op: i64 = read_int();\n        if op == 1 {\n            let val: i64 = read_int();\n            let _w = vec_set(buf, tail, val);\n            set tail = (tail + 1) % capacity;\n            if count == capacity {\n                set head = (head + 1) % capacity\n            } else {\n                set count = count + 1\n            }\n        } else if op == 2 {\n            if count > 0 {\n                let oldest: i64 = vec_get(buf, head);\n                set head = (head + 1) % capacity;\n                set count = count - 1;\n                let _p = println(oldest)\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 3 {\n            let _p = println(count)\n        };\n        set op_idx = op_idx + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

@@ -1,0 +1,96 @@
+{
+  "problem_id": "35_sieve_primes",
+  "category": "performance",
+  "difficulty": "medium",
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 10
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    \n    // Sieve of Eratosthenes\n    // We use a vec to represent the boolean array: 1 = prime, 0 = composite\n    // Initialize all to 1 (prime)\n    let sieve = vec_new();\n    let i = 0;\n    while i < n {\n        let _p = vec_push(sieve, 1);\n        i += 1\n    };\n    \n    // 0 and 1 are not prime\n    if n > 0 {\n        let _s0 = vec_set(sieve, 0, 0);\n    };\n    if n > 1 {\n        let _s1 = vec_set(sieve, 1, 0);\n    };\n    \n    // Sieve\n    let mut p = 2;\n    while p * p < n {\n        if vec_get(sieve, p) == 1 {\n            let mut multiple = p * p;\n            while multiple < n {\n                let _s = vec_set(sieve, multiple, 0);\n                multiple += p\n            }\n        };\n        p += 1\n    };\n    \n    // Count primes\n    let mut count = 0;\n    let i = 0;\n    while i < n {\n        if vec_get(sieve, i) == 1 {\n            count += 1\n        };\n        i += 1\n    };\n    \n    let _f = vec_free(sieve);\n    count\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '10'\n  expected: '4\\n'\n  got: ''\nTest 1:\n  stdin: '1'\n  expected: '0\\n'\n  got: ''\nTest 2:\n  stdin: '2'\n  expected: '1\\n'\n  got: ''",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    \n    // Sieve of Eratosthenes\n    // We use a vec to represent the boolean array: 1 = prime, 0 = composite\n    // Initialize all to 1 (prime)\n    let sieve = vec_new();\n    let i = 0;\n    while i < n {\n        let _p = vec_push(sieve, 1);\n        i += 1\n    };\n    \n    // 0 and 1 are not prime\n    if n > 0 {\n        let _s0 = vec_set(sieve, 0, 0);\n    };\n    if n > 1 {\n        let _s1 = vec_set(sieve, 1, 0);\n    };\n    \n    // Sieve\n    let mut p = 2;\n    while p * p < n {\n        if vec_get(sieve, p) == 1 {\n            let mut multiple = p * p;\n            while multiple < n {\n                let _s = vec_set(sieve, multiple, 0);\n                multiple += p\n            }\n        };\n        p += 1\n    };\n    \n    // Count primes\n    let mut count = 0;\n    let i = 0;\n    while i < n {\n        if vec_get(sieve, i) == 1 {\n            count += 1\n        };\n        i += 1\n    };\n    \n    let _f = vec_free(sieve);\n    let _p = println(count);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 2:\n  stdin: '2'\n  expected: '1\\n'\n  got: '0\\n'\nTest 6:\n  stdin: '3'\n  expected: '2\\n'\n  got: '1\\n'\nTest 11:\n  stdin: '7919'\n  expected: '1000\\n'\n  got: '999\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    \n    // Sieve of Eratosthenes\n    // We use a vec to represent the boolean array: 1 = prime, 0 = composite\n    // Initialize all to 1 (prime)\n    let sieve = vec_new();\n    let i = 0;\n    while i < n {\n        let _p = vec_push(sieve, 1);\n        i += 1\n    };\n    \n    // 0 and 1 are not prime\n    if n > 0 {\n        let _s0 = vec_set(sieve, 0, 0);\n    };\n    if n > 1 {\n        let _s1 = vec_set(sieve, 1, 0);\n    };\n    \n    // Sieve\n    let mut p = 2;\n    while p * p < n {\n        if vec_get(sieve, p) == 1 {\n            let mut multiple = p * p;\n            while multiple < n {\n                let _s = vec_set(sieve, multiple, 0);\n                multiple += p\n            }\n        };\n        p += 1\n    };\n    \n    // Count primes\n    let mut count = 0;\n    let i = 0;\n    while i < n {\n        if vec_get(sieve, i) == 1 {\n            count += 1\n        };\n        i += 1\n    };\n    \n    let _f = vec_free(sieve);\n    let _p = println(count);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 2:\n  stdin: '2'\n  expected: '1\\n'\n  got: '0\\n'\nTest 6:\n  stdin: '3'\n  expected: '2\\n'\n  got: '1\\n'\nTest 11:\n  stdin: '7919'\n  expected: '1000\\n'\n  got: '999\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    \n    // Sieve of Eratosthenes\n    // We use a vec to represent the boolean array: 1 = prime, 0 = composite\n    // Initialize all to 1 (prime)\n    let sieve = vec_new();\n    let i = 0;\n    while i < n {\n        let _p = vec_push(sieve, 1);\n        i += 1\n    };\n    \n    // 0 and 1 are not prime\n    if n > 0 {\n        let _s0 = vec_set(sieve, 0, 0);\n    };\n    if n > 1 {\n        let _s1 = vec_set(sieve, 1, 0);\n    };\n    \n    // Sieve\n    let mut p = 2;\n    while p * p < n {\n        if vec_get(sieve, p) == 1 {\n            let mut multiple = p * p;\n            while multiple < n {\n                let _s = vec_set(sieve, multiple, 0);\n                multiple += p\n            }\n        };\n        p += 1\n    };\n    \n    // Count primes\n    let mut count = 0;\n    let i = 0;\n    while i < n {\n        if vec_get(sieve, i) == 1 {\n            count += 1\n        };\n        i += 1\n    };\n    \n    let _f = vec_free(sieve);\n    let _p = println(count);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 2:\n  stdin: '2'\n  expected: '1\\n'\n  got: '0\\n'\nTest 6:\n  stdin: '3'\n  expected: '2\\n'\n  got: '1\\n'\nTest 11:\n  stdin: '7919'\n  expected: '1000\\n'\n  got: '999\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 5,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    \n    // Sieve of Eratosthenes\n    // We use a vec to represent the boolean array: 1 = prime, 0 = composite\n    // Initialize all to 1 (prime)\n    let sieve = vec_new();\n    let i = 0;\n    while i < n {\n        let _p = vec_push(sieve, 1);\n        i += 1\n    };\n    \n    // 0 and 1 are not prime\n    if n > 0 {\n        let _s0 = vec_set(sieve, 0, 0);\n    };\n    if n > 1 {\n        let _s1 = vec_set(sieve, 1, 0);\n    };\n    \n    // Sieve\n    let mut p = 2;\n    while p * p < n {\n        if vec_get(sieve, p) == 1 {\n            let mut multiple = p * p;\n            while multiple < n {\n                let _s = vec_set(sieve, multiple, 0);\n                multiple += p\n            }\n        };\n        p += 1\n    };\n    \n    // Count primes\n    let mut count = 0;\n    let i = 0;\n    while i < n {\n        if vec_get(sieve, i) == 1 {\n            count += 1\n        };\n        i += 1\n    };\n    \n    let _f = vec_free(sieve);\n    let _p = println(count);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 2:\n  stdin: '2'\n  expected: '1\\n'\n  got: '0\\n'\nTest 6:\n  stdin: '3'\n  expected: '2\\n'\n  got: '1\\n'\nTest 11:\n  stdin: '7919'\n  expected: '1000\\n'\n  got: '999\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 6,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    \n    // Sieve of Eratosthenes\n    // We use a vec to represent the boolean array: 1 = prime, 0 = composite\n    // Initialize all to 1 (prime)\n    let sieve = vec_new();\n    let i = 0;\n    while i < n {\n        let _p = vec_push(sieve, 1);\n        i += 1\n    };\n    \n    // 0 and 1 are not prime\n    if n > 0 {\n        let _s0 = vec_set(sieve, 0, 0);\n    };\n    if n > 1 {\n        let _s1 = vec_set(sieve, 1, 0);\n    };\n    \n    // Sieve\n    let mut p = 2;\n    while p * p < n {\n        if vec_get(sieve, p) == 1 {\n            let mut multiple = p * p;\n            while multiple < n {\n                let _s = vec_set(sieve, multiple, 0);\n                multiple += p\n            }\n        };\n        p += 1\n    };\n    \n    // Count primes\n    let mut count = 0;\n    let i = 0;\n    while i < n {\n        if vec_get(sieve, i) == 1 {\n            count += 1\n        };\n        i += 1\n    };\n    \n    let _f = vec_free(sieve);\n    let _p = println(count);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 2:\n  stdin: '2'\n  expected: '1\\n'\n  got: '0\\n'\nTest 6:\n  stdin: '3'\n  expected: '2\\n'\n  got: '1\\n'\nTest 11:\n  stdin: '7919'\n  expected: '1000\\n'\n  got: '999\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 7,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    \n    // Sieve of Eratosthenes\n    // We use a vec to represent the boolean array: 1 = prime, 0 = composite\n    // Initialize all to 1 (prime)\n    let sieve = vec_new();\n    let i = 0;\n    while i < n {\n        let _p = vec_push(sieve, 1);\n        i += 1\n    };\n    \n    // 0 and 1 are not prime\n    if n > 0 {\n        let _s0 = vec_set(sieve, 0, 0);\n    };\n    if n > 1 {\n        let _s1 = vec_set(sieve, 1, 0);\n    };\n    \n    // Sieve\n    let mut p = 2;\n    while p * p < n {\n        if vec_get(sieve, p) == 1 {\n            let mut multiple = p * p;\n            while multiple < n {\n                let _s = vec_set(sieve, multiple, 0);\n                multiple += p\n            }\n        };\n        p += 1\n    };\n    \n    // Count primes\n    let mut count = 0;\n    let i = 0;\n    while i < n {\n        if vec_get(sieve, i) == 1 {\n            count += 1\n        };\n        i += 1\n    };\n    \n    let _f = vec_free(sieve);\n    let _p = println(count);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 2:\n  stdin: '2'\n  expected: '1\\n'\n  got: '0\\n'\nTest 6:\n  stdin: '3'\n  expected: '2\\n'\n  got: '1\\n'\nTest 11:\n  stdin: '7919'\n  expected: '1000\\n'\n  got: '999\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 8,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    \n    // Sieve of Eratosthenes\n    // We use a vec to represent the boolean array: 1 = prime, 0 = composite\n    // Initialize all to 1 (prime)\n    let sieve = vec_new();\n    let i = 0;\n    while i < n {\n        let _p = vec_push(sieve, 1);\n        i += 1\n    };\n    \n    // 0 and 1 are not prime\n    if n > 0 {\n        let _s0 = vec_set(sieve, 0, 0);\n    };\n    if n > 1 {\n        let _s1 = vec_set(sieve, 1, 0);\n    };\n    \n    // Sieve\n    let mut p = 2;\n    while p * p < n {\n        if vec_get(sieve, p) == 1 {\n            let mut multiple = p * p;\n            while multiple < n {\n                let _s = vec_set(sieve, multiple, 0);\n                multiple += p\n            }\n        };\n        p += 1\n    };\n    \n    // Count primes\n    let mut count = 0;\n    let i = 0;\n    while i < n {\n        if vec_get(sieve, i) == 1 {\n            count += 1\n        };\n        i += 1\n    };\n    \n    let _f = vec_free(sieve);\n    let _p = println(count);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 2:\n  stdin: '2'\n  expected: '1\\n'\n  got: '0\\n'\nTest 6:\n  stdin: '3'\n  expected: '2\\n'\n  got: '1\\n'\nTest 11:\n  stdin: '7919'\n  expected: '1000\\n'\n  got: '999\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 9,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    \n    // Sieve of Eratosthenes\n    // We use a vec to represent the boolean array: 1 = prime, 0 = composite\n    // Initialize all to 1 (prime)\n    let sieve = vec_new();\n    let i = 0;\n    while i < n {\n        let _p = vec_push(sieve, 1);\n        i += 1\n    };\n    \n    // 0 and 1 are not prime\n    if n > 0 {\n        let _s0 = vec_set(sieve, 0, 0);\n    };\n    if n > 1 {\n        let _s1 = vec_set(sieve, 1, 0);\n    };\n    \n    // Sieve\n    let mut p = 2;\n    while p * p < n {\n        if vec_get(sieve, p) == 1 {\n            let mut multiple = p * p;\n            while multiple < n {\n                let _s = vec_set(sieve, multiple, 0);\n                multiple += p\n            }\n        };\n        p += 1\n    };\n    \n    // Count primes\n    let mut count = 0;\n    let i = 0;\n    while i < n {\n        if vec_get(sieve, i) == 1 {\n            count += 1\n        };\n        i += 1\n    };\n    \n    let _f = vec_free(sieve);\n    let _p = println(count);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 2:\n  stdin: '2'\n  expected: '1\\n'\n  got: '0\\n'\nTest 6:\n  stdin: '3'\n  expected: '2\\n'\n  got: '1\\n'\nTest 11:\n  stdin: '7919'\n  expected: '1000\\n'\n  got: '999\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 10,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    \n    // Sieve of Eratosthenes\n    // We use a vec to represent the boolean array: 1 = prime, 0 = composite\n    // Initialize all to 1 (prime)\n    let sieve = vec_new();\n    let i = 0;\n    while i < n {\n        let _p = vec_push(sieve, 1);\n        i += 1\n    };\n    \n    // 0 and 1 are not prime\n    if n > 0 {\n        let _s0 = vec_set(sieve, 0, 0);\n    };\n    if n > 1 {\n        let _s1 = vec_set(sieve, 1, 0);\n    };\n    \n    // Sieve\n    let mut p = 2;\n    while p * p < n {\n        if vec_get(sieve, p) == 1 {\n            let mut multiple = p * p;\n            while multiple < n {\n                let _s = vec_set(sieve, multiple, 0);\n                multiple += p\n            }\n        };\n        p += 1\n    };\n    \n    // Count primes\n    let mut count = 0;\n    let i = 0;\n    while i < n {\n        if vec_get(sieve, i) == 1 {\n            count += 1\n        };\n        i += 1\n    };\n    \n    let _f = vec_free(sieve);\n    let _p = println(count);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 2:\n  stdin: '2'\n  expected: '1\\n'\n  got: '0\\n'\nTest 6:\n  stdin: '3'\n  expected: '2\\n'\n  got: '1\\n'\nTest 11:\n  stdin: '7919'\n  expected: '1000\\n'\n  got: '999\\n'",
+      "loop_type": "D"
+    }
+  ],
+  "run_id": 2
+}

@@ -1,0 +1,40 @@
+{
+  "problem_id": "73_palindrome_check",
+  "category": "edge",
+  "difficulty": "easy",
+  "loop_count": 3,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 2,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let t: i64 = read_int();\n    let mut i: i64 = 0;\n    while i < t {\n        let n: i64 = read_int();\n        let arr: i64 = vec_new();\n        let mut j: i64 = 0;\n        while j < n {\n            let val: i64 = read_int();\n            let _p: i64 = vec_push(arr, val);\n            set j = j + 1;\n        };\n        let mut ok: i64 = 1;\n        let mut k: i64 = 0;\n        while k < n / 2 {\n            let left: i64 = vec_get(arr, k);\n            let right: i64 = vec_get(arr, n - 1 - k);\n            if left != right {\n                set ok = 0;\n            };\n            set k = k + 1;\n        };\n        let _p: i64 = println(ok);\n        let _f: i64 = vec_free(arr);\n        set i = i + 1;\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"type\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpile7nyfv\\\\solution.bmb\",\"start\":3196,\"end\":3214,\"line\":112,\"col\":27,\"message\":\"expected i64, got ()\",\"suggestion\":\"println/print/vec_push/vec_set/vec_free return () not i64. Wrap in a block: { println(x); 0 }\",\"example_wrong\":\"fn main() -> i64 = println(42);\",\"example_correct\":\"fn main() -> i64 = { println(42); 0 };\",\"pattern\":\"void_return_used\"}",
+      "loop_type": "C"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let t: i64 = read_int();\n    let mut i: i64 = 0;\n    while i < t {\n        let n: i64 = read_int();\n        let arr: i64 = vec_new();\n        let mut j: i64 = 0;\n        while j < n {\n            let val: i64 = read_int();\n            let _p: i64 = vec_push(arr, val);\n            set j = j + 1;\n        };\n        let mut ok: i64 = 1;\n        let mut k: i64 = 0;\n        while k < n / 2 {\n            let left: i64 = vec_get(arr, k);\n            let right: i64 = vec_get(arr, n - 1 - k);\n            if left != right {\n                set ok = 0;\n            };\n            set k = k + 1;\n        };\n        let _p: i64 = println(ok);\n        let _f: i64 = vec_free(arr);\n        set i = i + 1;\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"type\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmp859vc7h2\\\\solution.bmb\",\"start\":3196,\"end\":3214,\"line\":112,\"col\":27,\"message\":\"expected i64, got ()\",\"suggestion\":\"println/print/vec_push/vec_set/vec_free return () not i64. Wrap in a block: { println(x); 0 }\",\"example_wrong\":\"fn main() -> i64 = println(42);\",\"example_correct\":\"fn main() -> i64 = { println(42); 0 };\",\"pattern\":\"void_return_used\"}",
+      "loop_type": "C"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let t: i64 = read_int();\n    let mut i: i64 = 0;\n    while i < t {\n        let n: i64 = read_int();\n        let arr: i64 = vec_new();\n        let mut j: i64 = 0;\n        while j < n {\n            let val: i64 = read_int();\n            let _p = vec_push(arr, val);\n            set j = j + 1;\n        };\n        let mut ok: i64 = 1;\n        let mut k: i64 = 0;\n        while k < n / 2 {\n            let left: i64 = vec_get(arr, k);\n            let right: i64 = vec_get(arr, n - 1 - k);\n            if left != right {\n                set ok = 0;\n            };\n            set k = k + 1;\n        };\n        let _p = println(ok);\n        let _f = vec_free(arr);\n        set i = i + 1;\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

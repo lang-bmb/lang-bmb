@@ -1,0 +1,24 @@
+{
+  "problem_id": "89_topological_sort",
+  "category": "algorithm",
+  "difficulty": "hard",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let m = read_int();\n\n    // Edge storage: flat arrays for from/to\n    let edge_from = vec_new();\n    let edge_to = vec_new();\n    let _i = 0;\n    while _i < m {\n        let u = read_int();\n        let v = read_int();\n        let _p1 = vec_push(edge_from, u);\n        let _p2 = vec_push(edge_to, v);\n        _i = _i + 1\n    };\n\n    // In-degree array\n    let in_deg = vec_new();\n    let _j = 0;\n    while _j < n {\n        let _p = vec_push(in_deg, 0);\n        _j = _j + 1\n    };\n\n    // Compute in-degrees\n    let _k = 0;\n    while _k < m {\n        let v = vec_get(edge_to, _k);\n        let cur = vec_get(in_deg, v);\n        let _s = vec_set(in_deg, v, cur + 1);\n        _k = _k + 1\n    };\n\n    // Queue for BFS (front pointer pattern)\n    let queue = vec_new();\n    let mut front = 0;\n    let mut size = 0;\n\n    // Enqueue all nodes with in-degree 0 (in order 0..n-1)\n    let _q = 0;\n    while _q < n {\n        if vec_get(in_deg, _q) == 0 {\n            let _p = vec_push(queue, _q);\n            size = size + 1\n        };\n        _q = _q + 1\n    };\n\n    // Result storage\n    let result = vec_new();\n\n    // BFS loop\n    while front < size {\n        let u = vec_get(queue, front);\n        front = front + 1;\n\n        // Add u to result\n        let _p = vec_push(result, u);\n\n        // Scan all edges to find outgoing edges from u\n        let _e = 0;\n        while _e < m {\n            let from = vec_get(edge_from, _e);\n            let to = vec_get(edge_to, _e);\n            if from == u {\n                let deg = vec_get(in_deg, to);\n                let new_deg = deg - 1;\n                let _s = vec_set(in_deg, to, new_deg);\n                if new_deg == 0 {\n                    let _p2 = vec_push(queue, to);\n                    size = size + 1\n                }\n            };\n            _e = _e + 1\n        }\n    };\n\n    // Print result space-separated\n    let rlen = vec_len(result);\n    let _r = 0;\n    while _r < rlen {\n        if _r > 0 {\n            let _s = print_str(\" \")\n        };\n        let _p = print(vec_get(result, _r));\n        _r = _r + 1\n    };\n    let _nl = println_str(\"\");\n\n    // Cleanup\n    let _f1 = vec_free(edge_from);\n    let _f2 = vec_free(edge_to);\n    let _f3 = vec_free(in_deg);\n    let _f4 = vec_free(queue);\n    let _f5 = vec_free(result);\n\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

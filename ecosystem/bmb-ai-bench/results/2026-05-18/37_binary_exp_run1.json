@@ -1,0 +1,48 @@
+{
+  "problem_id": "37_binary_exp",
+  "category": "performance",
+  "difficulty": "medium",
+  "loop_count": 4,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 1,
+    "C": 0,
+    "D": 2
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let a = read_int();\n    let b = read_int();\n    let n = read_int();\n\n    let mut result = 1;\n    let mut base = a;\n    let mut exp = b;\n\n    while exp > 0 {\n        if exp band 1 == 1 {\n            result = result * base\n        };\n        base = base * base;\n        exp = exp >> 1\n    };\n\n    let _p = println(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '1 2 10'\n  expected: '1024\\n'\n  got: '1\\n'\nTest 1:\n  stdin: '1 3 5'\n  expected: '243\\n'\n  got: '1\\n'\nTest 5:\n  stdin: '1 -2 3'\n  expected: '-8\\n'\n  got: '1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let a = read_int();\n    let b = read_int();\n    let n = read_int();\n\n    let mut result = 1;\n    let mut base = a;\n    let mut exp = b;\n\n    // Handle negative exponent: not supported in this simple binary exp for integers\n    // But based on examples, b is always non-negative in examples.\n    // However, test 5 has b = -2. Let's check if we need to handle it.\n    // The problem says \"Compute a^b\". If b is negative, result is 0 for integer arithmetic usually, or we need float.\n    // But looking at test 5: input \"1 -2 3\", expected \"-8\". Wait, 1^(-2) is 1. \n    // Let's re-read the input format.\n    // \"First line: parameters. Remaining lines: data.\"\n    // Example: \"1 2 10\" -> stdout \"1024\". This looks like a=1, b=2, n=10? No, 1^2=1.\n    // Maybe the input is: base exponent?\n    // \"1 2 10\" -> 1024. 2^10 = 1024. So maybe the first number is ignored or it's a count?\n    // Let's look at \"1 3 5\" -> 243. 3^5 = 243.\n    // \"1 5 0\" -> 1. 5^0 = 1.\n    // \"1 1 100\" -> 1. 1^100 = 1.\n    // \"1 2 0\" -> 1. 2^0 = 1.\n    // It seems the first number is always 1 and is ignored. The second is base, third is exponent.\n    // Test 5: \"1 -2 3\" -> expected \"-8\". \n    // If base=-2, exp=3, then (-2)^3 = -8.\n    // So the input format is: <ignored> <base> <exponent>.\n    \n    let base = read_int();\n    let exp = read_int();\n\n    let mut result = 1;\n    let mut current_base = base;\n    let mut current_exp = exp;\n\n    // Handle negative exponent? The problem doesn't specify, but test 5 has negative base.\n    // If exp is negative, integer division would be needed. But let's assume exp >= 0 for now based on other tests.\n    // If exp < 0, we might need to return 0 or handle it. But let's look at the logic.\n    \n    if current_exp < 0 {\n        // For integer arithmetic, negative exponent usually means 0 or float.\n        // However, if the test expects -8 for base=-2, exp=3, then exp is positive.\n        // Let's assume exp is always non-negative for the power operation in this context.\n        // If exp is negative, we can't easily do integer binary exponentiation.\n        // Let's just handle non-negative exp.\n        // If the test case \"1 -2 3\" means base=-2, exp=3, then it works.\n        // What if input is \"1 2 -3\"? Then exp=-3.\n        // Let's assume exp >= 0.\n    }\n\n    let mut abs_exp = abs(current_exp);\n    \n    while abs_exp > 0 {\n        if abs_exp band 1 == 1 {\n            result = result * current_base\n        };\n        current_base = current_base * current_base;\n        abs_exp = abs_exp >> 1\n    };\n\n    if current_exp < 0 {\n        // If exponent is negative, result should be 0 for integer types (or 1/abs(result))\n        // But since we are dealing with i64, let's assume exp >= 0.\n        // If exp < 0, we might need to return 0.\n        // However, looking at test 5, exp is 3 (positive).\n        // So we don't need to handle negative exp.\n    }\n\n    let _p = println(result);\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpmcyckso3\\\\solution.bmb\",\"start\":5243,\"end\":5246,\"line\":153,\"col\":5,\"message\":\"Unrecognized token `let` found at 5243:5246\\nExpected one of \\\"else\\\", \\\";\\\" or \\\"}\\\"\",\"suggestion\":\"BMB if-expressions used as values require an else branch.\",\"example_wrong\":\"let x: i64 = if cond { 1 };\",\"example_correct\":\"let x: i64 = if cond { 1 } else { 0 };\",\"pattern\":\"missing_else\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let _ignored = read_int();\n    let base = read_int();\n    let exp = read_int();\n\n    let mut result = 1;\n    let mut current_base = base;\n    let mut abs_exp = abs(exp);\n\n    while abs_exp > 0 {\n        if abs_exp band 1 == 1 {\n            result = result * current_base\n        };\n        current_base = current_base * current_base;\n        abs_exp = abs_exp >> 1\n    };\n\n    if exp < 0 {\n        result = 0\n    };\n\n    let _p = println(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 6:\n  stdin: '3 2 10 3 5 5 0'\n  expected: '1024\\n243\\n1\\n'\n  got: '1024\\n'\nTest 11:\n  stdin: '2 4 3 6 2'\n  expected: '64\\n36\\n'\n  got: '64\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let i = 0;\n    while i < n {\n        let base = read_int();\n        let exp = read_int();\n\n        let mut result = 1;\n        let mut current_base = base;\n        let mut abs_exp = abs(exp);\n\n        while abs_exp > 0 {\n            if abs_exp band 1 == 1 {\n                result = result * current_base\n            };\n            current_base = current_base * current_base;\n            abs_exp = abs_exp >> 1\n        };\n\n        if exp < 0 {\n            result = 0\n        };\n\n        let _p = println(result);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

@@ -1,0 +1,24 @@
+{
+  "problem_id": "11_stack_operations",
+  "category": "system",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let q = read_int();\n    let stack = vec_new();\n    let mut i = 0;\n    while i < q {\n        let op = read_int();\n        if op == 1 {\n            let x = read_int();\n            let _p = vec_push(stack, x)\n        } else if op == 2 {\n            let len = vec_len(stack);\n            if len == 0 {\n                let _p = println(-1)\n            } else {\n                let top = vec_get(stack, len - 1);\n                let _p = println(top);\n                let _pop = vec_pop(stack)\n            }\n        } else if op == 3 {\n            let len = vec_len(stack);\n            if len == 0 {\n                let _p = println(-1)\n            } else {\n                let top = vec_get(stack, len - 1);\n                let _p = println(top)\n            }\n        };\n        i = i + 1\n    };\n    let _f = vec_free(stack);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

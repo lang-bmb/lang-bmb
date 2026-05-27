@@ -1,0 +1,24 @@
+{
+  "problem_id": "42_integer_sqrt",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn isqrt(n: i64) -> i64 = {\n    if n == 0 { 0 } else {\n        let mut lo: i64 = 0;\n        let mut hi: i64 = 1000000000;\n        while lo < hi {\n            let mid: i64 = (lo + hi + 1) / 2;\n            if mid * mid <= n { set lo = mid } else { set hi = mid - 1 }\n        };\n        lo\n    }\n};\n\nfn main() -> i64 = {\n    let t: i64 = read_int();\n    let mut i: i64 = 0;\n    while i < t {\n        let n: i64 = read_int();\n        let _p = println(isqrt(n));\n        set i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

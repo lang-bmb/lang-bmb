@@ -1,0 +1,24 @@
+{
+  "problem_id": "74_majority_element",
+  "category": "edge",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let t = read_int();\n    let _i = 0;\n    while _i < t {\n        let n = read_int();\n        let v = vec_new();\n        let _j = 0;\n        while _j < n {\n            let val = read_int();\n            let _p = vec_push(v, val);\n            _j = _j + 1\n        };\n\n        let mut candidate = -1;\n        let mut count = 0;\n        let _k = 0;\n        while _k < n {\n            let x = vec_get(v, _k);\n            if count == 0 {\n                candidate = x;\n                count = 1\n            } else {\n                if x == candidate {\n                    count = count + 1\n                } else {\n                    count = count - 1\n                }\n            };\n            _k = _k + 1\n        };\n\n        let mut actual_count = 0;\n        let _m = 0;\n        while _m < n {\n            if vec_get(v, _m) == candidate {\n                actual_count = actual_count + 1\n            };\n            _m = _m + 1\n        };\n\n        if actual_count > n / 2 {\n            let _p = println(candidate)\n        } else {\n            let _p = println(-1)\n        };\n\n        let _f = vec_free(v);\n        _i = _i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

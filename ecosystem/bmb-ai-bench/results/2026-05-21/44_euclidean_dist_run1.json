@@ -1,0 +1,24 @@
+{
+  "problem_id": "44_euclidean_dist",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let a = vec_new();\n    let mut i: i64 = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(a, val);\n        i = i + 1\n    };\n    let b = vec_new();\n    let mut j: i64 = 0;\n    while j < n {\n        let val = read_int();\n        let _p = vec_push(b, val);\n        j = j + 1\n    };\n    let mut dist: i64 = 0;\n    let mut k: i64 = 0;\n    while k < n {\n        let diff: i64 = vec_get(a, k) - vec_get(b, k);\n        dist = dist + diff * diff;\n        k = k + 1\n    };\n    let _p = println(dist);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

@@ -1,0 +1,24 @@
+{
+  "problem_id": "20_matrix_transpose",
+  "category": "system",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let rows: i64 = read_int();\n    let cols: i64 = read_int();\n    let v = vec_new();\n    let total = rows * cols;\n    let _i = 0;\n    while _i < total {\n        let val = read_int();\n        let _p = vec_push(v, val);\n        _i = _i + 1\n    };\n    let c = 0;\n    while c < cols {\n        let r = 0;\n        let mut first: i64 = 1;\n        while r < rows {\n            if first == 0 {\n                let _s = print_str(\" \")\n            };\n            let idx = r * cols + c;\n            let val = vec_get(v, idx);\n            let _p = print(val);\n            first = 0;\n            r = r + 1\n        };\n        let _nl = println_str(\"\");\n        c = c + 1\n    };\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

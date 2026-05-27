@@ -1,0 +1,24 @@
+{
+  "problem_id": "94_lru_simulate",
+  "category": "system",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let cap = read_int();\n    let n = read_int();\n    let cache = vec_new();\n    let mut faults = 0;\n    let mut i = 0;\n    while i < n {\n        let page = read_int();\n        let len = vec_len(cache);\n        let mut found = -1;\n        let mut j = 0;\n        while j < len {\n            if vec_get(cache, j) == page {\n                found = j;\n                break\n            };\n            j = j + 1\n        };\n        if found != -1 {\n            // Hit: remove from found position and append to end\n            let val = vec_get(cache, found);\n            let _rm = vec_remove(cache, found);\n            let _p = vec_push(cache, val);\n        } else {\n            // Miss\n            faults = faults + 1;\n            let cur_len = vec_len(cache);\n            if cur_len >= cap {\n                // Evict LRU (index 0)\n                let _rm = vec_remove(cache, 0);\n            };\n            let _p = vec_push(cache, page)\n        };\n        i = i + 1\n    };\n    let _p = println(faults);\n    let _f = vec_free(cache);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

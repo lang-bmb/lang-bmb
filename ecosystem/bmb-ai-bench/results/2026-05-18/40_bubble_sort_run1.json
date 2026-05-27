@@ -1,0 +1,24 @@
+{
+  "problem_id": "40_bubble_sort",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    // Bubble sort\n    let mut i = 0;\n    while i < n {\n        let mut j = 0;\n        while j < n - 1 - i {\n            if vec_get(v, j) > vec_get(v, j + 1) {\n                let tmp = vec_get(v, j);\n                let _s1 = vec_set(v, j, vec_get(v, j + 1));\n                let _s2 = vec_set(v, j + 1, tmp)\n            };\n            j = j + 1\n        };\n        i = i + 1\n    };\n\n    // Print space-separated\n    let mut k = 0;\n    while k < n {\n        if k > 0 { let _s = print_str(\" \") };\n        let _p = print(vec_get(v, k));\n        k = k + 1\n    };\n    let _nl = println_str(\"\");\n\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

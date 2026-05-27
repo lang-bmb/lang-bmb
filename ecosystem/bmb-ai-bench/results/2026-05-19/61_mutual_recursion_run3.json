@@ -1,0 +1,24 @@
+{
+  "problem_id": "61_mutual_recursion",
+  "category": "edge",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn is_even(n: i64) -> i64 =\n    if n == 0 { 1 } else { is_odd(n - 1) };\n\nfn is_odd(n: i64) -> i64 =\n    if n == 0 { 0 } else { is_even(n - 1) };\n\nfn main() -> i64 = {\n    let t: i64 = read_int();\n    let mut i: i64 = 0;\n    while i < t {\n        let n: i64 = read_int();\n        let _p = println(is_even(n));\n        set i = i + 1;\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

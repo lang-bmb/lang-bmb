@@ -1,0 +1,24 @@
+{
+  "problem_id": "38_matrix_trace",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let v = vec_new();\n    let total = n * n;\n    let _i = 0;\n    while _i < total {\n        let val = read_int();\n        let _p = vec_push(v, val);\n        _i = _i + 1\n    };\n    let mut trace: i64 = 0;\n    let mut i: i64 = 0;\n    while i < n {\n        let idx = i * n + i;\n        let val = vec_get(v, idx);\n        trace = trace + val;\n        i = i + 1\n    };\n    let _p = println(trace);\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

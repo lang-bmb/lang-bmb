@@ -1,0 +1,24 @@
+{
+  "problem_id": "58_spiral_order",
+  "category": "practical",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let total = n * n;\n    let v = vec_new();\n    let i = 0;\n    while i < total {\n        let val = read_int();\n        let _p = vec_push(v, val);\n        i += 1\n    };\n\n    if n == 0 {\n        let _f = vec_free(v);\n        return 0\n    };\n\n    let mut top = 0;\n    let mut bottom = n - 1;\n    let mut left = 0;\n    let mut right = n - 1;\n    let mut count = 0;\n\n    while count < total {\n        // Left to right along top row\n        let j = left;\n        while j <= right {\n            let idx = top * n + j;\n            let val = vec_get(v, idx);\n            if count > 0 { let _s = print_str(\" \") };\n            let _p = print(val);\n            count += 1;\n            j += 1\n        };\n        top += 1;\n        if count >= total { break };\n\n        // Top to bottom along right column\n        let i = top;\n        while i <= bottom {\n            let idx = i * n + right;\n            let val = vec_get(v, idx);\n            let _s = print_str(\" \");\n            let _p = print(val);\n            count += 1;\n            i += 1\n        };\n        right -= 1;\n        if count >= total { break };\n\n        // Right to left along bottom row\n        let j = right;\n        while j >= left {\n            let idx = bottom * n + j;\n            let val = vec_get(v, idx);\n            let _s = print_str(\" \");\n            let _p = print(val);\n            count += 1;\n            j -= 1\n        };\n        bottom -= 1;\n        if count >= total { break };\n\n        // Bottom to top along left column\n        let i = bottom;\n        while i >= top {\n            let idx = i * n + left;\n            let val = vec_get(v, idx);\n            let _s = print_str(\" \");\n            let _p = print(val);\n            count += 1;\n            i -= 1\n        };\n        left += 1;\n    };\n\n    let _nl = println_str(\"\");\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

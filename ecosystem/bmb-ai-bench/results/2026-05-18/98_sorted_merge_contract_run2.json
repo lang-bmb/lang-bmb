@@ -1,0 +1,24 @@
+{
+  "problem_id": "98_sorted_merge_contract",
+  "category": "contract",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n1 = read_int();\n    let v1 = vec_new();\n    let i1 = 0;\n    while i1 < n1 {\n        let val = read_int();\n        let _p = vec_push(v1, val);\n        i1 += 1\n    };\n\n    let n2 = read_int();\n    let v2 = vec_new();\n    let i2 = 0;\n    while i2 < n2 {\n        let val = read_int();\n        let _p = vec_push(v2, val);\n        i2 += 1\n    };\n\n    let result = vec_new();\n    let mut p1 = 0;\n    let mut p2 = 0;\n    let len1 = vec_len(v1);\n    let len2 = vec_len(v2);\n\n    while p1 < len1 and p2 < len2 {\n        let val1 = vec_get(v1, p1);\n        let val2 = vec_get(v2, p2);\n        if val1 <= val2 {\n            let _p = vec_push(result, val1);\n            p1 += 1\n        } else {\n            let _p = vec_push(result, val2);\n            p2 += 1\n        }\n    };\n\n    while p1 < len1 {\n        let val = vec_get(v1, p1);\n        let _p = vec_push(result, val);\n        p1 += 1\n    };\n\n    while p2 < len2 {\n        let val = vec_get(v2, p2);\n        let _p = vec_push(result, val);\n        p2 += 1\n    };\n\n    let total_len = vec_len(result);\n    let mut idx = 0;\n    while idx < total_len {\n        if idx > 0 {\n            let _s = print_str(\" \")\n        };\n        let _p = print(vec_get(result, idx));\n        idx += 1\n    };\n    let _nl = println_str(\"\");\n\n    let _f = vec_free(v1);\n    let _f2 = vec_free(v2);\n    let _f3 = vec_free(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

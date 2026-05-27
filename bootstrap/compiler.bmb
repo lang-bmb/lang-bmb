@@ -6960,7 +6960,7 @@ fn resolve_payload_calls_sb(ast: String, pos: i64, enum_reg: String, sb: i64) ->
 
 fn parse_source(src: String) -> String
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let sb = sb_new();
 
@@ -10094,7 +10094,7 @@ fn get_lambda_body(ast: String, idx: i64) -> String
 
     pre idx >= 0
 
-    post it.len() >= 0
+    post it.len() >= 1
 
 =
 
@@ -13146,7 +13146,7 @@ fn lower_function_sb(ast: String, safe: i64) -> String
 
   pre safe >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let name = extract_name(ast);
 
@@ -13340,7 +13340,7 @@ fn get_fn_return_scan(content: String, pos: i64) -> String
 
     pre pos >= 0
 
-    post it.len() >= 0
+    post it.len() >= 1
 
 =
 
@@ -29182,7 +29182,7 @@ fn llvm_gen_assign_structs(line: String, pos: i64, strings: String, string_fns: 
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let eq_pos = find_eq(line, pos);
 
@@ -29196,7 +29196,7 @@ fn llvm_gen_rhs_structs(line: String, pos: i64, dest: String, strings: String, s
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = if low_starts_with_at(line, pos, "field-access") {
 
@@ -29242,7 +29242,7 @@ fn llvm_gen_rhs_with_strings_map_and_fns_reg(line: String, pos: i64, dest: Strin
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = if low_starts_with_at(line, pos, "const") {
 
@@ -29626,7 +29626,7 @@ fn llvm_gen_add_struct_aware(line: String, pos: i64, dest: String, mapping: Stri
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let p1 = low_skip_ws(line, pos);
 
@@ -29672,7 +29672,7 @@ fn llvm_gen_copy_struct_aware(line: String, pos: i64, dest: String, mapping: Str
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let src_start = low_skip_ws(line, pos + 4);
 
@@ -29694,7 +29694,7 @@ fn llvm_gen_call_struct_aware(line: String, pos: i64, dest: String, strings: Str
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = // v0.95: Check for indirect call (function pointer in variable or parameter)
 
@@ -29900,7 +29900,7 @@ fn llvm_gen_closure_new_sb(line: String, pos: i64, dest: String, mapping: String
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = // pos points right after "closure_new"
 
@@ -30832,7 +30832,7 @@ fn llvm_gen_cmp_with_strings_sb(pred: String, line: String, pos: i64, dest: Stri
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let p1 = low_skip_ws(line, pos);
 
@@ -30846,7 +30846,7 @@ fn llvm_gen_cmp_with_strings_sb_2(pred: String, line: String, pos: i64, dest: St
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let p2 = low_skip_ws(line, comma + 1);
 
@@ -30862,7 +30862,7 @@ fn llvm_gen_cmp_with_strings_sb_3(pred: String, line: String, pos: i64, dest: St
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let left_is_string = is_string_var_sb(left_trimmed, str_sb);
 
@@ -30898,7 +30898,7 @@ fn llvm_gen_add_with_strings_sb(line: String, pos: i64, dest: String, mapping: S
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let p1 = low_skip_ws(line, pos);
 
@@ -30912,7 +30912,7 @@ fn llvm_gen_add_with_strings_sb_2(line: String, pos: i64, dest: String, mapping:
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let p2 = low_skip_ws(line, comma + 1);
 
@@ -31126,7 +31126,7 @@ fn llvm_gen_call_with_string_tracking_sb_reg(line: String, pos: i64, dest: Strin
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let fn_name = extract_call_fn_name(line, pos);
 
@@ -31682,7 +31682,7 @@ fn llvm_gen_conc_rhs(line: String, pos: i64, dest: String) -> String
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = // Thread operations
 
@@ -32072,7 +32072,7 @@ fn llvm_gen_conc_stmt(line: String, p: i64) -> String
 
   pre p >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = if low_starts_with_at(line, p, "mutex-unlock") {
 
@@ -32270,7 +32270,7 @@ fn llvm_gen_channel_new(line: String, p: i64) -> String
 
   pre p >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = // Parse: (%sender, %receiver) = channel-new %capacity
 
@@ -32304,7 +32304,7 @@ fn llvm_gen_channel_new(line: String, p: i64) -> String
 
 fn llvm_gen_string_ref(dest: String, str_content: String, strings: String) -> String
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let idx = find_string_index(strings, str_content);
 
@@ -32654,7 +32654,7 @@ fn contract_ast_to_assumes(ast: String, counter: i64) -> String
 
   pre counter >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let nt = get_node_type(ast);
 
@@ -33081,7 +33081,7 @@ fn inject_post_assumes_in_fn_scan(fn_ir: String, post_map: String, pos: i64, cou
 
 fn has_param_ref_in_ir(s: String, pos: i64) -> bool
 
-  post it or not it
+  post not it or pos < s.len()
 
 = if pos >= s.len() { false }
 
@@ -33131,7 +33131,7 @@ fn gen_assumes_for_post_contracts(contracts: String, counter: i64) -> String
 
   pre counter >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let raw = gen_assumes_for_post_acc(contracts, 0, counter, "");
 
@@ -33149,7 +33149,7 @@ fn gen_assumes_for_post_acc(contracts: String, pos: i64, counter: i64, acc: Stri
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = if pos >= contracts.len() { pack_assume_result(counter, acc) } else {
 
@@ -33995,7 +33995,7 @@ fn lr2l_detect(fn_ir: String, fn_name: String, param: String) -> bool
 
 fn lr2l_transform(fn_ir: String, _fn_name: String, param: String) -> String
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let first_sep = find_pipe_skip_quotes(fn_ir, 0);
 
@@ -34275,7 +34275,7 @@ fn compile_program(source: String, safe: i64) -> String
 
   pre safe >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let ast_raw = parse_source(source);
 
@@ -34595,7 +34595,7 @@ fn index_parse_param_text(src: String, pos: i64) -> String
 
     pre pos >= 0
 
-    post it.len() >= 0
+    post it.len() >= 1
 
 =
 
@@ -34625,7 +34625,7 @@ fn index_read_type_text(src: String, pos: i64) -> String
 
     pre pos >= 0
 
-    post it.len() >= 0
+    post it.len() >= 1
 
 =
     let t = next_token_raw(src, pos);
@@ -34691,7 +34691,7 @@ fn index_collect_params(src: String, pos: i64, acc: String) -> String
 
     pre pos >= 0
 
-    post it.len() >= 0
+    post it.len() >= 1
 
 =
 
@@ -34727,7 +34727,7 @@ fn index_read_ret_type(src: String, pos: i64) -> String
 
     pre pos >= 0
 
-    post it.len() >= 0
+    post it.len() >= 1
 
 =
 
@@ -34857,7 +34857,7 @@ fn index_scan_body(src: String, pos: i64, depth: i64, calls: String, prev_was_do
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let t = next_token_raw(src, pos);
 
@@ -34993,7 +34993,7 @@ fn index_struct_field(src: String, pos: i64) -> String
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let tok = next_token_raw(src, pos);
 
@@ -35025,7 +35025,7 @@ fn index_struct_fields(src: String, pos: i64, acc: String) -> String
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let tok = next_token_raw(src, pos);
 
@@ -35171,7 +35171,7 @@ fn query_one_fn(src: String, pos: i64, ann: String, pattern: String) -> String
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let t1 = next_token_raw(src, pos);
 
@@ -35231,7 +35231,7 @@ fn query_one_struct(src: String, pos: i64, pattern: String) -> String
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let t1 = next_token_raw(src, pos);
 
@@ -35348,7 +35348,7 @@ fn callers_collect_fn(src: String, pos: i64, ann: String) -> String
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let t1 = next_token_raw(src, pos);
 
@@ -36554,7 +36554,7 @@ fn stats_most_called(entries: String, pos: i64, all: String, best_name: String, 
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = if pos >= entries.len() { best_name + " (" + int_to_string(best_count) + " callers)" }
 
@@ -36858,7 +36858,7 @@ fn cx_most_params(entries: String, pos: i64, best_name: String, best_count: i64)
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = if pos >= entries.len() { best_name + " (" + int_to_string(best_count) + " params)" }
 
@@ -36896,7 +36896,7 @@ fn cx_most_calls(entries: String, pos: i64, best_name: String, best_count: i64) 
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = if pos >= entries.len() { best_name + " (" + int_to_string(best_count) + " calls)" }
 
@@ -37414,7 +37414,7 @@ fn hot_find_best(scored: String, pos: i64, exclude: String, best_name: String, b
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = if pos >= scored.len() { best_name + "\t" + int_to_string(best_score) }
 
@@ -37464,7 +37464,7 @@ fn hot_get_detail(scored: String, pos: i64, name: String) -> String
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = if pos >= scored.len() { "0\t0" }
 
@@ -40524,7 +40524,7 @@ fn repl_help() -> i64
 
 fn repl_try_compile(line: String) -> String
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let dq = chr(34);
 
@@ -40542,7 +40542,7 @@ fn repl_try_compile(line: String) -> String
 
 fn repl_try_int_first(line: String, dq: String) -> String
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = // Strategy 1: wrap as print(expr) to show i64 result
 
@@ -40566,7 +40566,7 @@ fn repl_try_int_first(line: String, dq: String) -> String
 
 fn repl_try_str_first(line: String, dq: String) -> String
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = // Strategy 1: wrap as println_str(expr) for String result
 
@@ -40590,7 +40590,7 @@ fn repl_try_str_first(line: String, dq: String) -> String
 
 fn repl_try_fallback(line: String) -> String
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = // Strategy A: wrap as statement (for void/side-effect expressions)
 

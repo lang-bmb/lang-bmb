@@ -1,0 +1,24 @@
+{
+  "problem_id": "93_sparse_array",
+  "category": "system",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let keys = vec_new();\n    let vals = vec_new();\n    let i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 1 {\n            let idx = read_int();\n            let val = read_int();\n            let len = vec_len(keys);\n            let mut found = 0;\n            let mut j = 0;\n            while j < len {\n                if vec_get(keys, j) == idx {\n                    let _s = vec_set(vals, j, val);\n                    found = 1;\n                    break\n                };\n                j = j + 1\n            };\n            if found == 0 {\n                let _pk = vec_push(keys, idx);\n                let _pv = vec_push(vals, val)\n            }\n        } else if op == 2 {\n            let idx = read_int();\n            let len = vec_len(keys);\n            let mut result = 0;\n            let mut j = 0;\n            while j < len {\n                if vec_get(keys, j) == idx {\n                    result = vec_get(vals, j);\n                    break\n                };\n                j = j + 1\n            };\n            let _p = println(result)\n        };\n        i = i + 1\n    };\n    let _f1 = vec_free(keys);\n    let _f2 = vec_free(vals);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

@@ -1,0 +1,24 @@
+{
+  "problem_id": "59_calendar_day",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn days_before_month(m: i64) -> i64 = {\n    let months: i64 = vec_new();\n    let _p0 = vec_push(months, 0);\n    let _p1 = vec_push(months, 0);\n    let _p2 = vec_push(months, 31);\n    let _p3 = vec_push(months, 59);\n    let _p4 = vec_push(months, 90);\n    let _p5 = vec_push(months, 120);\n    let _p6 = vec_push(months, 151);\n    let _p7 = vec_push(months, 181);\n    let _p8 = vec_push(months, 212);\n    let _p9 = vec_push(months, 243);\n    let _p10 = vec_push(months, 273);\n    let _p11 = vec_push(months, 304);\n    let _p12 = vec_push(months, 334);\n    let result = vec_get(months, m);\n    let _f = vec_free(months);\n    result\n};\n\nfn day_of_year(month: i64, day: i64) -> i64 = days_before_month(month) + day;\n\nfn main() -> i64 = {\n    let t: i64 = read_int();\n    let mut i: i64 = 0;\n    while i < t {\n        let month: i64 = read_int();\n        let day: i64 = read_int();\n        let result = day_of_year(month, day);\n        let _p = println(result);\n        set i = i + 1;\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

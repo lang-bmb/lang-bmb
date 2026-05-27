@@ -1300,35 +1300,46 @@ M10 완료 + Stage 2 bootstrap 복구 + 0-warning 재복구 + M11-B(fixed_point:
 | **C. 언어 갭 추가 해소** | stack array / closure / generic 등 미지원 기능 | 가변 | 대기 |
 | **D. B축 재측정** | claude-sonnet-4-6 98.0% stale 기한 2026-08-13 (API key 필요) | HUMAN | HUMAN |
 
-### M11-A 진척 (2026-05-27 갱신)
+### M11-A 진척 (2026-05-27 갱신 — Cycles 3212-3218 후, **수익 체감 확인**)
 
-| 종류 | 세션 전 | 현재 | skip 확정 |
-|------|---------|------|-----------|
-| bool `post it or not it` | 49 | **27** | 7 (no-pre) |
-| i64 `post it == it` | 7 | 7 | 7 (all skip) |
-| String `post it.len() >= 0` | 302 | **275** | 77 (no-pre) |
-| **합계** | **358** | **309** | — |
+| 종류 | 시작 | 현재 | skip 확정 |
+|------|------|------|-----------|
+| bool `post it or not it` | 49 | **26** | 7 (no-pre) + ~20 (semantic_duplication 충돌) |
+| i64 `post it == it` | 7 | 7 | 7 (all skip — 산술/추출) |
+| String `post it.len() >= 0` | 302 | **230** | 77 (no-pre) |
+| **합계** | **358** | **263** | — |
+| String `post it.len() >= 1` (누적) | 0 | **156** | — |
+
+**누적 달성**: 358 → 263 (-95, **26.5%**)
 
 ### M11-A: skip 확정 목록 (변경 금지)
 
 | 종류 | 수 | 이유 |
 |------|----|----|
 | `post it or not it` (bool, no-pre) | 7 | 의미있는 계약 불가 (pre 없음) |
-| `post it == it` (i64) | 7 | 진정 임의 값 반환 — trivial이 정직한 계약 |
+| `post it or not it` (bool, semantic_duplication 충돌) | ~20 | mn_has_memory_op/ipr_has_store/check_fn_in_list/layer_is_leaf 충돌 |
+| `post it or not it` (bool, "all" 패턴) | ~5 | 빈 컨테이너에서 true 반환 → post 불가 |
+| `post it == it` (i64) | 7 | 산술/추출 함수, 음수 포함 전체 범위 — trivial이 정직한 계약 |
 | `post it.len() >= 0` (String, no-pre) | 77 | len() always ≥ 0, 삭제 or 유지 모두 trivial |
+| `post it.len() >= 0` (String, accumulator) | ~60 | base: `acc` (초기 "") — 조건부 empty |
+| `post it.len() >= 0` (String, lookup) | ~40 | not-found 시 "" 반환 |
+| `post it.len() >= 0` (String, pass-through) | ~30 | 입력 반환 (빈 입력 가능) |
+| `post it.len() >= 0` (String, sb_build) | ~50 | 빈 입력 시 "" |
 
 ### M11-A 제약사항 (발견)
 
-- **semantic_duplication (bool only)**: 동일 (sig+pre+post) bool 함수 쌍 → lint 경고
-  → 그룹 대표 1개만 semantic post, 나머지 skip
+- **semantic_duplication (bool only)**: 동일 (sig+pre+post text (변수명 포함)) 쌍 → lint 경고
+  → post text 내 변수명이 같으면 함수명이 달라도 충돌 (post `not it or pos < ir.len()` 등)
+- **post text 탈출**: 변수명이 다르면 충돌 없음 (`ir` vs `s` → `not it or pos < ir.len()` ≠ `not it or pos < s.len()`)
 - **String: 경고 없음** → 동일 시그니처 다수 함수 독립적 교체 가능 (empirical)
 - **"all" 함수**: 빈 컨테이너에서 true 반환 → `not it or pos < X` 성립 안 함 → skip
+- **수익 체감**: Phase 5g(0.4% hit rate) → Phase 5h(1/5 적용) → Phase 5j(0개). 추가 진척 < 0.1%.
 
 ### 현재 기술 부채 목록
 
 | 항목 | 내용 | 심각도 |
 |------|------|--------|
-| trivial postcondition 309개 | `post it or not it` / `post it.len() >= 0` 등 (358→309) | P2 |
+| trivial postcondition 263개 | `post it or not it` / `post it.len() >= 0` 등 (358→263, -26.5%) | P2 |
 | BMB IR → opt 최적화 불가 | printf 기반 IR 방출 코드가 opt O1+에 의해 절단 | P3 |
 | Unix 링크 스택 미설정 | bootstrap.sh Unix 브랜치 `-no-pie`만, 스택 설정 없음 | P3 |
 | `compiler.bmb.compact.out.ll` 구버전 | 6,193 lines (구버전) — S4 IR(134,209 lines)로 교체 검토 | P4 |

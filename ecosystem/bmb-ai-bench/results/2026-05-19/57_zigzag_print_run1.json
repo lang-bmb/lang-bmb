@@ -1,0 +1,32 @@
+{
+  "problem_id": "57_zigzag_print",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 1,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let w = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    let mut row = 0;\n    let mut i = 0;\n    while i < n {\n        let actual_end = if i + w < n { i + w } else { n };\n        let is_even = row % 2 == 0;\n\n        if is_even == 1 {\n            // Forward: left to right\n            let mut j = i;\n            while j < actual_end {\n                if j > i {\n                    let _s = print_str(\" \");\n                } else {\n                    ()\n                };\n                let _p = print(vec_get(v, j));\n                j = j + 1\n            };\n        } else {\n            // Backward: right to left\n            let mut j = actual_end - 1;\n            let mut first = 1;\n            while j >= i {\n                if first == 0 {\n                    let _s = print_str(\" \");\n                } else {\n                    ()\n                };\n                let _p = print(vec_get(v, j));\n                first = 0;\n                j = j - 1\n            };\n        };\n        let _nl = println_str(\"\");\n        i = actual_end;\n        row = row + 1\n    };\n\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"type\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpjy_yryz2\\\\solution.bmb\",\"start\":3273,\"end\":3285,\"line\":118,\"col\":12,\"message\":\"expected bool, got i64\"}",
+      "loop_type": "C"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let w = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    let mut row = 0;\n    let mut i = 0;\n    while i < n {\n        let actual_end = if i + w < n { i + w } else { n };\n        let is_even = if row % 2 == 0 { 1 } else { 0 };\n\n        if is_even == 1 {\n            // Forward: left to right\n            let mut j = i;\n            while j < actual_end {\n                if j > i {\n                    let _s = print_str(\" \");\n                } else {\n                    ()\n                };\n                let _p = print(vec_get(v, j));\n                j = j + 1\n            };\n        } else {\n            // Backward: right to left\n            let mut j = actual_end - 1;\n            let mut first = 1;\n            while j >= i {\n                if first == 0 {\n                    let _s = print_str(\" \");\n                } else {\n                    ()\n                };\n                let _p = print(vec_get(v, j));\n                first = 0;\n                j = j - 1\n            };\n        };\n        let _nl = println_str(\"\");\n        i = actual_end;\n        row = row + 1\n    };\n\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

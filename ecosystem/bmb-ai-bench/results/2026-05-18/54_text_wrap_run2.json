@@ -1,0 +1,24 @@
+{
+  "problem_id": "54_text_wrap",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let w = read_int();\n    let v = vec_new();\n    let i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(v, val);\n        i = i + 1\n    };\n    let row_count = n / w;\n    let rem = n % w;\n    let mut r = 0;\n    while r < row_count {\n        let start = r * w;\n        let end = start + w;\n        let mut sum = 0;\n        let mut j = start;\n        while j < end {\n            sum = sum + vec_get(v, j);\n            j = j + 1\n        };\n        let _p = println(sum);\n        r = r + 1\n    };\n    if rem > 0 {\n        let start = row_count * w;\n        let end = n;\n        let mut sum = 0;\n        let mut j = start;\n        while j < end {\n            sum = sum + vec_get(v, j);\n            j = j + 1\n        };\n        let _p = println(sum)\n    };\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

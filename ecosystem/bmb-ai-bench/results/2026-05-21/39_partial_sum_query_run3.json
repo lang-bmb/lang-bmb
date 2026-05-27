@@ -1,0 +1,24 @@
+{
+  "problem_id": "39_partial_sum_query",
+  "category": "performance",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let v = vec_new();\n    let mut i: i64 = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(v, val);\n        i = i + 1\n    };\n    let prefix = vec_new();\n    let _p0 = vec_push(prefix, 0);\n    let mut pi: i64 = 0;\n    while pi < n {\n        let prev = vec_get(prefix, pi);\n        let curr = vec_get(v, pi);\n        let sum = prev + curr;\n        let _p = vec_push(prefix, sum);\n        pi = pi + 1\n    };\n    let q: i64 = read_int();\n    let mut qi: i64 = 0;\n    while qi < q {\n        let l: i64 = read_int();\n        let r: i64 = read_int();\n        let sum_r = vec_get(prefix, r + 1);\n        let sum_l = vec_get(prefix, l);\n        let result = sum_r - sum_l;\n        let _p = println(result);\n        qi = qi + 1\n    };\n    let _f = vec_free(v);\n    let _f2 = vec_free(prefix);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

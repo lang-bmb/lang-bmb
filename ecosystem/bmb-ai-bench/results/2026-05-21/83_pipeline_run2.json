@@ -1,0 +1,24 @@
+{
+  "problem_id": "83_pipeline",
+  "category": "integration",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let v = vec_new();\n    for _i in 0..n { let _p = vec_push(v, read_int()) };\n    let m: i64 = read_int();\n    for _mi in 0..m {\n        let op: i64 = read_int();\n        if op == 1 {\n            let k: i64 = read_int();\n            for j in 0..n { let _s = vec_set(v, j, vec_get(v, j) + k) }\n        } else if op == 2 {\n            let k: i64 = read_int();\n            for j in 0..n { let _s = vec_set(v, j, vec_get(v, j) * k) }\n        } else if op == 3 {\n            for j in 0..n { let _s = vec_set(v, j, 0 - vec_get(v, j)) }\n        } else if op == 4 {\n            for j in 0..n {\n                let val: i64 = vec_get(v, j);\n                if val < 0 { let _s = vec_set(v, j, 0 - val) } else { () }\n            }\n        } else {\n            let mut lo: i64 = 0; let mut hi: i64 = n - 1;\n            while lo < hi {\n                let tmp: i64 = vec_get(v, lo);\n                let _s1 = vec_set(v, lo, vec_get(v, hi));\n                let _s2 = vec_set(v, hi, tmp);\n                set lo = lo + 1; set hi = hi - 1\n            }\n        }\n    };\n    for i in 0..n {\n        if i > 0 { let _s = print_str(\" \") } else { () };\n        let _p = print(vec_get(v, i))\n    };\n    let _nl = println_str(\"\");\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

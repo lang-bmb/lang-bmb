@@ -1,0 +1,40 @@
+{
+  "problem_id": "95_memory_pool",
+  "category": "system",
+  "difficulty": "medium",
+  "loop_count": 3,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 2
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let sizes = vec_new();\n    let active = vec_new();\n    let mut next_id: i64 = 0;\n    let mut i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 1 {\n            let sz = read_int();\n            let _s = vec_push(sizes, sz);\n            let _a = vec_push(active, 1);\n            let _p = println(next_id);\n            next_id = next_id + 1\n        } else if op == 2 {\n            let id = read_int();\n            let _s = vec_set(active, id, 0)\n        } else if op == 3 {\n            let total = 0;\n            let count = 0;\n            let len = vec_len(sizes);\n            let mut j = 0;\n            while j < len {\n                if vec_get(active, j) == 1 {\n                    let s = vec_get(sizes, j);\n                    let c = vec_get(active, j);\n                    // We need to accumulate, but we can't easily do it in a simple while without mut vars\n                    // Let's use a different approach for stats to avoid complex mut logic inside loop if possible\n                    // Actually, we can just use mut vars.\n                    ()\n                };\n                j = j + 1\n            };\n            // Re-implementing stats loop properly with mut vars\n            let mut total_bytes = 0;\n            let mut alloc_count = 0;\n            let len2 = vec_len(sizes);\n            let mut k = 0;\n            while k < len2 {\n                if vec_get(active, k) == 1 {\n                    total_bytes = total_bytes + vec_get(sizes, k);\n                    alloc_count = alloc_count + 1\n                };\n                k = k + 1\n            };\n            let _p = println(total_bytes);\n            let _p = println(alloc_count)\n        };\n        i = i + 1\n    };\n    let _f = vec_free(sizes);\n    let _f = vec_free(active);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '5 1 100 1 200 3 2 0 3'\n  expected: '0\\n1\\n300 2\\n200 1\\n'\n  got: '0\\n1\\n300\\n2\\n200\\n1\\n'\nTest 1:\n  stdin: '2 1 50 3'\n  expected: '0\\n50 1\\n'\n  got: '0\\n50\\n1\\n'\nTest 2:\n  stdin: '1 3'\n  expected: '0 0\\n'\n  got: '0\\n0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let sizes = vec_new();\n    let active = vec_new();\n    let mut next_id: i64 = 0;\n    let mut i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 1 {\n            let sz = read_int();\n            let _s = vec_push(sizes, sz);\n            let _a = vec_push(active, 1);\n            let _p = println(next_id);\n            next_id = next_id + 1\n        } else if op == 2 {\n            let id = read_int();\n            let _s = vec_set(active, id, 0)\n        } else if op == 3 {\n            let mut total_bytes = 0;\n            let mut alloc_count = 0;\n            let len2 = vec_len(sizes);\n            let mut k = 0;\n            while k < len2 {\n                if vec_get(active, k) == 1 {\n                    total_bytes = total_bytes + vec_get(sizes, k);\n                    alloc_count = alloc_count + 1\n                };\n                k = k + 1\n            };\n            let _p = println(total_bytes + alloc_count * 1000000000000000000);\n            // Wait, println only takes one arg. We need to print \"total count\" on one line.\n            // Use print_str and println or format.\n            // Since format is native-supported, let's use it if available, or manual concat.\n            // The error shows they are printed on separate lines. We need them on the same line.\n            let msg = to_string(total_bytes) + \" \" + to_string(alloc_count);\n            let _p = println_str(msg)\n        };\n        i = i + 1\n    };\n    let _f = vec_free(sizes);\n    let _f = vec_free(active);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '5 1 100 1 200 3 2 0 3'\n  expected: '0\\n1\\n300 2\\n200 1\\n'\n  got: '0\\n1\\n2000000000000000300\\n300 2\\n1000000000000000200\\n200 1\\n'\nTest 1:\n  stdin: '2 1 50 3'\n  expected: '0\\n50 1\\n'\n  got: '0\\n1000000000000000050\\n50 1\\n'\nTest 2:\n  stdin: '1 3'\n  expected: '0 0\\n'\n  got: '0\\n0 0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let sizes = vec_new();\n    let active = vec_new();\n    let mut next_id: i64 = 0;\n    let mut i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 1 {\n            let sz = read_int();\n            let _s = vec_push(sizes, sz);\n            let _a = vec_push(active, 1);\n            let _p = println(next_id);\n            next_id = next_id + 1\n        } else if op == 2 {\n            let id = read_int();\n            let _s = vec_set(active, id, 0)\n        } else if op == 3 {\n            let mut total_bytes = 0;\n            let mut alloc_count = 0;\n            let len2 = vec_len(sizes);\n            let mut k = 0;\n            while k < len2 {\n                if vec_get(active, k) == 1 {\n                    total_bytes = total_bytes + vec_get(sizes, k);\n                    alloc_count = alloc_count + 1\n                };\n                k = k + 1\n            };\n            let msg = to_string(total_bytes) + \" \" + to_string(alloc_count);\n            let _p = println_str(msg)\n        };\n        i = i + 1\n    };\n    let _f = vec_free(sizes);\n    let _f = vec_free(active);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

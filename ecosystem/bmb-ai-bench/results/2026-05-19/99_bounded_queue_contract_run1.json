@@ -1,0 +1,32 @@
+{
+  "problem_id": "99_bounded_queue_contract",
+  "category": "contract",
+  "difficulty": "medium",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let capacity = read_int();\n    let n = read_int();\n\n    // Initialize circular buffer with zeros\n    let buf = vec_new();\n    let mut i = 0;\n    while i < capacity {\n        let _p = vec_push(buf, 0);\n        i = i + 1\n    };\n\n    let mut head = 0;\n    let mut tail = 0;\n    let mut count = 0;\n\n    let mut op_idx = 0;\n    while op_idx < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            if count == capacity {\n                let _p = println(-1)\n            } else {\n                let _w = vec_set(buf, tail, val);\n                tail = (tail + 1) % capacity;\n                count = count + 1\n            }\n        } else if op == 2 {\n            let front = vec_get(buf, head);\n            head = (head + 1) % capacity;\n            count = count - 1;\n            let _p = println(front)\n        } else if op == 3 {\n            let _p = println(count)\n        };\n        op_idx = op_idx + 1\n    };\n\n    let _f = vec_free(buf);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 3:\n  stdin: '3 3 2 3 1 5'\n  expected: '-1\\n0\\n'\n  got: '0\\n-1\\n'\nTest 4:\n  stdin: '2 6 1 1 1 2 1 3 2 2 2'\n  expected: '-1\\n1\\n2\\n-1\\n'\n  got: '-1\\n1\\n2\\n1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let capacity = read_int();\n    let n = read_int();\n\n    // Initialize circular buffer with zeros\n    let buf = vec_new();\n    let mut i = 0;\n    while i < capacity {\n        let _p = vec_push(buf, 0);\n        i = i + 1\n    };\n\n    let mut head = 0;\n    let mut tail = 0;\n    let mut count = 0;\n\n    let mut op_idx = 0;\n    while op_idx < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            if count == capacity {\n                let _p = println(-1)\n            } else {\n                let _w = vec_set(buf, tail, val);\n                tail = (tail + 1) % capacity;\n                count = count + 1\n            }\n        } else if op == 2 {\n            if count > 0 {\n                let front = vec_get(buf, head);\n                head = (head + 1) % capacity;\n                count = count - 1;\n                let _p = println(front)\n            } else {\n                let _p = println(-1)\n            }\n        } else if op == 3 {\n            let _p = println(count)\n        };\n        op_idx = op_idx + 1\n    };\n\n    let _f = vec_free(buf);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

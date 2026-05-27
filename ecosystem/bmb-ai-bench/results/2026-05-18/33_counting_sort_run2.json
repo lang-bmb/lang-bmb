@@ -1,0 +1,24 @@
+{
+  "problem_id": "33_counting_sort",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let max_val = read_int();\n    \n    let counts = vec_new();\n    let _f = vec_fill(counts, 0);\n    // Ensure capacity for max_val + 1\n    let i = 0;\n    while i <= max_val {\n        let _p = vec_push(counts, 0);\n        i += 1\n    };\n    \n    let j = 0;\n    while j < n {\n        let val = read_int();\n        let c = vec_get(counts, val);\n        let _s = vec_set(counts, val, c + 1);\n        j += 1\n    };\n    \n    let mut first = 1;\n    let k = 0;\n    while k <= max_val {\n        let count = vec_get(counts, k);\n        let m = 0;\n        while m < count {\n            if first == 1 {\n                let _p = print(k);\n                first = 0\n            } else {\n                let _s = print_str(\" \");\n                let _p = print(k)\n            };\n            m += 1\n        };\n        k += 1\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(counts);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

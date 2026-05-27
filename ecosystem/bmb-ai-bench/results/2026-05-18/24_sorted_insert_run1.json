@@ -1,0 +1,96 @@
+{
+  "problem_id": "24_sorted_insert",
+  "category": "contract",
+  "difficulty": "medium",
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 10
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn insert_sorted(arr: i64, n: i64, val: i64) -> i64\n    pre n >= 0\n    post vec_len(ret) == n + 1\n= {\n    let result = vec_new();\n    let i = 0;\n    let inserted = 0;\n    while i < n {\n        let cur = vec_get(arr, i);\n        if inserted == 0 and cur > val {\n            let _p = vec_push(result, val);\n            let inserted = 1\n        };\n        let _p = vec_push(result, cur);\n        i = i + 1\n    };\n    if inserted == 0 {\n        let _p = vec_push(result, val)\n    };\n    result\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let arr = vec_new();\n    let i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(arr, val);\n        i = i + 1\n    };\n    let val = read_int();\n    let result = insert_sorted(arr, n, val);\n    let len = vec_len(result);\n    let i = 0;\n    while i < len {\n        if i > 0 { let _s = print_str(\" \") };\n        let _p = print(vec_get(result, i));\n        i = i + 1\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(arr);\n    let _f = vec_free(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '5 1 3 5 7 9 4'\n  expected: '1 3 4 5 7 9\\n'\n  got: '1 3 4 5 4 7 4 9 4\\n'\nTest 2:\n  stdin: '1 5 3'\n  expected: '3 5\\n'\n  got: '3 5 3\\n'\nTest 5:\n  stdin: '3 1 2 3 0'\n  expected: '0 1 2 3\\n'\n  got: '0 1 0 2 0 3 0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn insert_sorted(arr: i64, n: i64, val: i64) -> i64\n    pre n >= 0\n    post vec_len(ret) == n + 1\n= {\n    let result = vec_new();\n    let i = 0;\n    let inserted = 0;\n    while i < n {\n        let cur = vec_get(arr, i);\n        if inserted == 0 and cur > val {\n            let _p = vec_push(result, val);\n            let inserted = 1\n        };\n        let _p = vec_push(result, cur);\n        i = i + 1\n    };\n    if inserted == 0 {\n        let _p = vec_push(result, val)\n    };\n    result\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let arr = vec_new();\n    let i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(arr, val);\n        i = i + 1\n    };\n    let val = read_int();\n    let result = insert_sorted(arr, n, val);\n    let len = vec_len(result);\n    let i = 0;\n    while i < len {\n        if i > 0 { let _s = print_str(\" \") };\n        let _p = print(vec_get(result, i));\n        i = i + 1\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(arr);\n    let _f = vec_free(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '5 1 3 5 7 9 4'\n  expected: '1 3 4 5 7 9\\n'\n  got: '1 3 4 5 4 7 4 9 4\\n'\nTest 2:\n  stdin: '1 5 3'\n  expected: '3 5\\n'\n  got: '3 5 3\\n'\nTest 5:\n  stdin: '3 1 2 3 0'\n  expected: '0 1 2 3\\n'\n  got: '0 1 0 2 0 3 0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn insert_sorted(arr: i64, n: i64, val: i64) -> i64\n    pre n >= 0\n    post vec_len(ret) == n + 1\n= {\n    let result = vec_new();\n    let i = 0;\n    let inserted = 0;\n    while i < n {\n        let cur = vec_get(arr, i);\n        if inserted == 0 and cur > val {\n            let _p = vec_push(result, val);\n            let inserted = 1\n        };\n        let _p = vec_push(result, cur);\n        i = i + 1\n    };\n    if inserted == 0 {\n        let _p = vec_push(result, val)\n    };\n    result\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let arr = vec_new();\n    let i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(arr, val);\n        i = i + 1\n    };\n    let val = read_int();\n    let result = insert_sorted(arr, n, val);\n    let len = vec_len(result);\n    let i = 0;\n    while i < len {\n        if i > 0 { let _s = print_str(\" \") };\n        let _p = print(vec_get(result, i));\n        i = i + 1\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(arr);\n    let _f = vec_free(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '5 1 3 5 7 9 4'\n  expected: '1 3 4 5 7 9\\n'\n  got: '1 3 4 5 4 7 4 9 4\\n'\nTest 2:\n  stdin: '1 5 3'\n  expected: '3 5\\n'\n  got: '3 5 3\\n'\nTest 5:\n  stdin: '3 1 2 3 0'\n  expected: '0 1 2 3\\n'\n  got: '0 1 0 2 0 3 0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn insert_sorted(arr: i64, n: i64, val: i64) -> i64\n    pre n >= 0\n    post vec_len(ret) == n + 1\n= {\n    let result = vec_new();\n    let i = 0;\n    let inserted = 0;\n    while i < n {\n        let cur = vec_get(arr, i);\n        if inserted == 0 and cur > val {\n            let _p = vec_push(result, val);\n            let inserted = 1\n        };\n        let _p = vec_push(result, cur);\n        i = i + 1\n    };\n    if inserted == 0 {\n        let _p = vec_push(result, val)\n    };\n    result\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let arr = vec_new();\n    let i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(arr, val);\n        i = i + 1\n    };\n    let val = read_int();\n    let result = insert_sorted(arr, n, val);\n    let len = vec_len(result);\n    let i = 0;\n    while i < len {\n        if i > 0 { let _s = print_str(\" \") };\n        let _p = print(vec_get(result, i));\n        i = i + 1\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(arr);\n    let _f = vec_free(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '5 1 3 5 7 9 4'\n  expected: '1 3 4 5 7 9\\n'\n  got: '1 3 4 5 4 7 4 9 4\\n'\nTest 2:\n  stdin: '1 5 3'\n  expected: '3 5\\n'\n  got: '3 5 3\\n'\nTest 5:\n  stdin: '3 1 2 3 0'\n  expected: '0 1 2 3\\n'\n  got: '0 1 0 2 0 3 0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 5,
+      "code": "fn insert_sorted(arr: i64, n: i64, val: i64) -> i64\n    pre n >= 0\n    post vec_len(ret) == n + 1\n= {\n    let result = vec_new();\n    let i = 0;\n    let inserted = 0;\n    while i < n {\n        let cur = vec_get(arr, i);\n        if inserted == 0 and cur > val {\n            let _p = vec_push(result, val);\n            let inserted = 1\n        };\n        let _p = vec_push(result, cur);\n        i = i + 1\n    };\n    if inserted == 0 {\n        let _p = vec_push(result, val)\n    };\n    result\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let arr = vec_new();\n    let i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(arr, val);\n        i = i + 1\n    };\n    let val = read_int();\n    let result = insert_sorted(arr, n, val);\n    let len = vec_len(result);\n    let i = 0;\n    while i < len {\n        if i > 0 { let _s = print_str(\" \") };\n        let _p = print(vec_get(result, i));\n        i = i + 1\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(arr);\n    let _f = vec_free(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '5 1 3 5 7 9 4'\n  expected: '1 3 4 5 7 9\\n'\n  got: '1 3 4 5 4 7 4 9 4\\n'\nTest 2:\n  stdin: '1 5 3'\n  expected: '3 5\\n'\n  got: '3 5 3\\n'\nTest 5:\n  stdin: '3 1 2 3 0'\n  expected: '0 1 2 3\\n'\n  got: '0 1 0 2 0 3 0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 6,
+      "code": "fn insert_sorted(arr: i64, n: i64, val: i64) -> i64\n    pre n >= 0\n    post vec_len(ret) == n + 1\n= {\n    let result = vec_new();\n    let i = 0;\n    let inserted = 0;\n    while i < n {\n        let cur = vec_get(arr, i);\n        if inserted == 0 and cur > val {\n            let _p = vec_push(result, val);\n            let inserted = 1\n        };\n        let _p = vec_push(result, cur);\n        i = i + 1\n    };\n    if inserted == 0 {\n        let _p = vec_push(result, val)\n    };\n    result\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let arr = vec_new();\n    let i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(arr, val);\n        i = i + 1\n    };\n    let val = read_int();\n    let result = insert_sorted(arr, n, val);\n    let len = vec_len(result);\n    let i = 0;\n    while i < len {\n        if i > 0 { let _s = print_str(\" \") };\n        let _p = print(vec_get(result, i));\n        i = i + 1\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(arr);\n    let _f = vec_free(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '5 1 3 5 7 9 4'\n  expected: '1 3 4 5 7 9\\n'\n  got: '1 3 4 5 4 7 4 9 4\\n'\nTest 2:\n  stdin: '1 5 3'\n  expected: '3 5\\n'\n  got: '3 5 3\\n'\nTest 5:\n  stdin: '3 1 2 3 0'\n  expected: '0 1 2 3\\n'\n  got: '0 1 0 2 0 3 0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 7,
+      "code": "fn insert_sorted(arr: i64, n: i64, val: i64) -> i64\n    pre n >= 0\n    post vec_len(ret) == n + 1\n= {\n    let result = vec_new();\n    let i = 0;\n    let inserted = 0;\n    while i < n {\n        let cur = vec_get(arr, i);\n        if inserted == 0 and cur > val {\n            let _p = vec_push(result, val);\n            let inserted = 1\n        };\n        let _p = vec_push(result, cur);\n        i = i + 1\n    };\n    if inserted == 0 {\n        let _p = vec_push(result, val)\n    };\n    result\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let arr = vec_new();\n    let i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(arr, val);\n        i = i + 1\n    };\n    let val = read_int();\n    let result = insert_sorted(arr, n, val);\n    let len = vec_len(result);\n    let i = 0;\n    while i < len {\n        if i > 0 { let _s = print_str(\" \") };\n        let _p = print(vec_get(result, i));\n        i = i + 1\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(arr);\n    let _f = vec_free(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '5 1 3 5 7 9 4'\n  expected: '1 3 4 5 7 9\\n'\n  got: '1 3 4 5 4 7 4 9 4\\n'\nTest 2:\n  stdin: '1 5 3'\n  expected: '3 5\\n'\n  got: '3 5 3\\n'\nTest 5:\n  stdin: '3 1 2 3 0'\n  expected: '0 1 2 3\\n'\n  got: '0 1 0 2 0 3 0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 8,
+      "code": "fn insert_sorted(arr: i64, n: i64, val: i64) -> i64\n    pre n >= 0\n    post vec_len(ret) == n + 1\n= {\n    let result = vec_new();\n    let i = 0;\n    let inserted = 0;\n    while i < n {\n        let cur = vec_get(arr, i);\n        if inserted == 0 and cur > val {\n            let _p = vec_push(result, val);\n            let inserted = 1\n        };\n        let _p = vec_push(result, cur);\n        i = i + 1\n    };\n    if inserted == 0 {\n        let _p = vec_push(result, val)\n    };\n    result\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let arr = vec_new();\n    let i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(arr, val);\n        i = i + 1\n    };\n    let val = read_int();\n    let result = insert_sorted(arr, n, val);\n    let len = vec_len(result);\n    let i = 0;\n    while i < len {\n        if i > 0 { let _s = print_str(\" \") };\n        let _p = print(vec_get(result, i));\n        i = i + 1\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(arr);\n    let _f = vec_free(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '5 1 3 5 7 9 4'\n  expected: '1 3 4 5 7 9\\n'\n  got: '1 3 4 5 4 7 4 9 4\\n'\nTest 2:\n  stdin: '1 5 3'\n  expected: '3 5\\n'\n  got: '3 5 3\\n'\nTest 5:\n  stdin: '3 1 2 3 0'\n  expected: '0 1 2 3\\n'\n  got: '0 1 0 2 0 3 0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 9,
+      "code": "fn insert_sorted(arr: i64, n: i64, val: i64) -> i64\n    pre n >= 0\n    post vec_len(ret) == n + 1\n= {\n    let result = vec_new();\n    let i = 0;\n    let inserted = 0;\n    while i < n {\n        let cur = vec_get(arr, i);\n        if inserted == 0 and cur > val {\n            let _p = vec_push(result, val);\n            let inserted = 1\n        };\n        let _p = vec_push(result, cur);\n        i = i + 1\n    };\n    if inserted == 0 {\n        let _p = vec_push(result, val)\n    };\n    result\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let arr = vec_new();\n    let i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(arr, val);\n        i = i + 1\n    };\n    let val = read_int();\n    let result = insert_sorted(arr, n, val);\n    let len = vec_len(result);\n    let i = 0;\n    while i < len {\n        if i > 0 { let _s = print_str(\" \") };\n        let _p = print(vec_get(result, i));\n        i = i + 1\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(arr);\n    let _f = vec_free(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '5 1 3 5 7 9 4'\n  expected: '1 3 4 5 7 9\\n'\n  got: '1 3 4 5 4 7 4 9 4\\n'\nTest 2:\n  stdin: '1 5 3'\n  expected: '3 5\\n'\n  got: '3 5 3\\n'\nTest 5:\n  stdin: '3 1 2 3 0'\n  expected: '0 1 2 3\\n'\n  got: '0 1 0 2 0 3 0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 10,
+      "code": "fn insert_sorted(arr: i64, n: i64, val: i64) -> i64\n    pre n >= 0\n    post vec_len(ret) == n + 1\n= {\n    let result = vec_new();\n    let i = 0;\n    let inserted = 0;\n    while i < n {\n        let cur = vec_get(arr, i);\n        if inserted == 0 and cur > val {\n            let _p = vec_push(result, val);\n            let inserted = 1\n        };\n        let _p = vec_push(result, cur);\n        i = i + 1\n    };\n    if inserted == 0 {\n        let _p = vec_push(result, val)\n    };\n    result\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let arr = vec_new();\n    let i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(arr, val);\n        i = i + 1\n    };\n    let val = read_int();\n    let result = insert_sorted(arr, n, val);\n    let len = vec_len(result);\n    let i = 0;\n    while i < len {\n        if i > 0 { let _s = print_str(\" \") };\n        let _p = print(vec_get(result, i));\n        i = i + 1\n    };\n    let _nl = println_str(\"\");\n    let _f = vec_free(arr);\n    let _f = vec_free(result);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '5 1 3 5 7 9 4'\n  expected: '1 3 4 5 7 9\\n'\n  got: '1 3 4 5 4 7 4 9 4\\n'\nTest 2:\n  stdin: '1 5 3'\n  expected: '3 5\\n'\n  got: '3 5 3\\n'\nTest 5:\n  stdin: '3 1 2 3 0'\n  expected: '0 1 2 3\\n'\n  got: '0 1 0 2 0 3 0\\n'",
+      "loop_type": "D"
+    }
+  ],
+  "run_id": 1
+}

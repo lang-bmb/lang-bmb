@@ -1,0 +1,32 @@
+{
+  "problem_id": "69_overflow_detect",
+  "category": "edge",
+  "difficulty": "medium",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let t = read_int();\n    let i = 0;\n    while i < t {\n        let a = read_int();\n        let b = read_int();\n        let product = a * b;\n        let overflow = if product > 2147483647 { 1 } else if product < -2147483648 { 1 } else { 0 };\n        let _p = println(overflow);\n        let _p2 = println(product);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '1 2 3'\n  expected: '0 6\\n'\n  got: '0\\n6\\n'\nTest 1:\n  stdin: '1 100000 100000'\n  expected: '1 10000000000\\n'\n  got: '1\\n10000000000\\n'\nTest 2:\n  stdin: '1 0 999999'\n  expected: '0 0\\n'\n  got: '0\\n0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let t = read_int();\n    let i = 0;\n    while i < t {\n        let a = read_int();\n        let b = read_int();\n        let product = a * b;\n        let overflow = if product > 2147483647 { 1 } else if product < -2147483648 { 1 } else { 0 };\n        let _p = println_str(to_string(overflow) + \" \" + to_string(product));\n        i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

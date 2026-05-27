@@ -1,0 +1,96 @@
+{
+  "problem_id": "90_nth_prime",
+  "category": "algorithm",
+  "difficulty": "medium",
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "A": 0,
+    "B": 10,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn is_prime(n: i64) -> i64 = {\n    if n < 2 { 0 }\n    else if n == 2 { 1 }\n    else if n % 2 == 0 { 0 }\n    else {\n        let mut i = 3;\n        let limit = sqrt(n);\n        while i <= limit {\n            if n % i == 0 { return 0 }\n            i = i + 2\n        };\n        1\n    }\n};\n\nfn nth_prime(n: i64) -> i64 = {\n    let mut count = 0;\n    let mut candidate = 1;\n    while count < n {\n        candidate = candidate + 1;\n        if is_prime(candidate) == 1 {\n            count = count + 1\n        }\n    };\n    candidate\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let mut i = 0;\n    while i < t {\n        let n = read_int();\n        let result = nth_prime(n);\n        let _p = println(result);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpyvd18pe1\\\\solution.bmb\",\"start\":3167,\"end\":3168,\"line\":112,\"col\":13,\"message\":\"Unrecognized token `i` found at 3167:3168\\nExpected one of \\\"else\\\", \\\";\\\" or \\\"}\\\"\",\"suggestion\":\"BMB if-expressions used as values require an else branch.\",\"example_wrong\":\"let x: i64 = if cond { 1 };\",\"example_correct\":\"let x: i64 = if cond { 1 } else { 0 };\",\"pattern\":\"missing_else\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 2,
+      "code": "fn is_prime(n: i64) -> i64 = {\n    if n < 2 { 0 }\n    else if n == 2 { 1 }\n    else if n % 2 == 0 { 0 }\n    else {\n        let mut i = 3;\n        let limit = sqrt(n);\n        while i <= limit {\n            if n % i == 0 { return 0 }\n            i = i + 2\n        };\n        1\n    }\n};\n\nfn nth_prime(n: i64) -> i64 = {\n    let mut count = 0;\n    let mut candidate = 1;\n    while count < n {\n        candidate = candidate + 1;\n        if is_prime(candidate) == 1 {\n            count = count + 1\n        }\n    };\n    candidate\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let mut i = 0;\n    while i < t {\n        let n = read_int();\n        let result = nth_prime(n);\n        let _p = println(result);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmp1acd7tci\\\\solution.bmb\",\"start\":3167,\"end\":3168,\"line\":112,\"col\":13,\"message\":\"Unrecognized token `i` found at 3167:3168\\nExpected one of \\\"else\\\", \\\";\\\" or \\\"}\\\"\",\"suggestion\":\"BMB if-expressions used as values require an else branch.\",\"example_wrong\":\"let x: i64 = if cond { 1 };\",\"example_correct\":\"let x: i64 = if cond { 1 } else { 0 };\",\"pattern\":\"missing_else\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 3,
+      "code": "fn is_prime(n: i64) -> i64 = {\n    if n < 2 { 0 }\n    else if n == 2 { 1 }\n    else if n % 2 == 0 { 0 }\n    else {\n        let mut i = 3;\n        let limit = sqrt(n);\n        while i <= limit {\n            if n % i == 0 { return 0 }\n            i = i + 2\n        };\n        1\n    }\n};\n\nfn nth_prime(n: i64) -> i64 = {\n    let mut count = 0;\n    let mut candidate = 1;\n    while count < n {\n        candidate = candidate + 1;\n        if is_prime(candidate) == 1 {\n            count = count + 1\n        }\n    };\n    candidate\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let mut i = 0;\n    while i < t {\n        let n = read_int();\n        let result = nth_prime(n);\n        let _p = println(result);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmprworsin8\\\\solution.bmb\",\"start\":3167,\"end\":3168,\"line\":112,\"col\":13,\"message\":\"Unrecognized token `i` found at 3167:3168\\nExpected one of \\\"else\\\", \\\";\\\" or \\\"}\\\"\",\"suggestion\":\"BMB if-expressions used as values require an else branch.\",\"example_wrong\":\"let x: i64 = if cond { 1 };\",\"example_correct\":\"let x: i64 = if cond { 1 } else { 0 };\",\"pattern\":\"missing_else\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 4,
+      "code": "fn is_prime(n: i64) -> i64 = {\n    if n < 2 { 0 }\n    else if n == 2 { 1 }\n    else if n % 2 == 0 { 0 }\n    else {\n        let mut i = 3;\n        let limit = sqrt(n);\n        while i <= limit {\n            if n % i == 0 { return 0 }\n            i = i + 2\n        };\n        1\n    }\n};\n\nfn nth_prime(n: i64) -> i64 = {\n    let mut count = 0;\n    let mut candidate = 1;\n    while count < n {\n        candidate = candidate + 1;\n        if is_prime(candidate) == 1 {\n            count = count + 1\n        }\n    };\n    candidate\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let mut i = 0;\n    while i < t {\n        let n = read_int();\n        let result = nth_prime(n);\n        let _p = println(result);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpe6atv24b\\\\solution.bmb\",\"start\":3167,\"end\":3168,\"line\":112,\"col\":13,\"message\":\"Unrecognized token `i` found at 3167:3168\\nExpected one of \\\"else\\\", \\\";\\\" or \\\"}\\\"\",\"suggestion\":\"BMB if-expressions used as values require an else branch.\",\"example_wrong\":\"let x: i64 = if cond { 1 };\",\"example_correct\":\"let x: i64 = if cond { 1 } else { 0 };\",\"pattern\":\"missing_else\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 5,
+      "code": "fn is_prime(n: i64) -> i64 = {\n    if n < 2 { 0 }\n    else if n == 2 { 1 }\n    else if n % 2 == 0 { 0 }\n    else {\n        let mut i = 3;\n        let limit = sqrt(n);\n        while i <= limit {\n            if n % i == 0 { return 0 }\n            i = i + 2\n        };\n        1\n    }\n};\n\nfn nth_prime(n: i64) -> i64 = {\n    let mut count = 0;\n    let mut candidate = 1;\n    while count < n {\n        candidate = candidate + 1;\n        if is_prime(candidate) == 1 {\n            count = count + 1\n        }\n    };\n    candidate\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let mut i = 0;\n    while i < t {\n        let n = read_int();\n        let result = nth_prime(n);\n        let _p = println(result);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpsg2ubg7q\\\\solution.bmb\",\"start\":3167,\"end\":3168,\"line\":112,\"col\":13,\"message\":\"Unrecognized token `i` found at 3167:3168\\nExpected one of \\\"else\\\", \\\";\\\" or \\\"}\\\"\",\"suggestion\":\"BMB if-expressions used as values require an else branch.\",\"example_wrong\":\"let x: i64 = if cond { 1 };\",\"example_correct\":\"let x: i64 = if cond { 1 } else { 0 };\",\"pattern\":\"missing_else\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 6,
+      "code": "fn is_prime(n: i64) -> i64 = {\n    if n < 2 { 0 }\n    else if n == 2 { 1 }\n    else if n % 2 == 0 { 0 }\n    else {\n        let mut i = 3;\n        let limit = sqrt(n);\n        while i <= limit {\n            if n % i == 0 { return 0 }\n            i = i + 2\n        };\n        1\n    }\n};\n\nfn nth_prime(n: i64) -> i64 = {\n    let mut count = 0;\n    let mut candidate = 1;\n    while count < n {\n        candidate = candidate + 1;\n        if is_prime(candidate) == 1 {\n            count = count + 1\n        }\n    };\n    candidate\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let mut i = 0;\n    while i < t {\n        let n = read_int();\n        let result = nth_prime(n);\n        let _p = println(result);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmp1n_3wzri\\\\solution.bmb\",\"start\":3167,\"end\":3168,\"line\":112,\"col\":13,\"message\":\"Unrecognized token `i` found at 3167:3168\\nExpected one of \\\"else\\\", \\\";\\\" or \\\"}\\\"\",\"suggestion\":\"BMB if-expressions used as values require an else branch.\",\"example_wrong\":\"let x: i64 = if cond { 1 };\",\"example_correct\":\"let x: i64 = if cond { 1 } else { 0 };\",\"pattern\":\"missing_else\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 7,
+      "code": "fn is_prime(n: i64) -> i64 = {\n    if n < 2 { 0 }\n    else if n == 2 { 1 }\n    else if n % 2 == 0 { 0 }\n    else {\n        let mut i = 3;\n        let limit = sqrt(n);\n        while i <= limit {\n            if n % i == 0 { return 0 }\n            i = i + 2\n        };\n        1\n    }\n};\n\nfn nth_prime(n: i64) -> i64 = {\n    let mut count = 0;\n    let mut candidate = 1;\n    while count < n {\n        candidate = candidate + 1;\n        if is_prime(candidate) == 1 {\n            count = count + 1\n        }\n    };\n    candidate\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let mut i = 0;\n    while i < t {\n        let n = read_int();\n        let result = nth_prime(n);\n        let _p = println(result);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmp0plk1zvf\\\\solution.bmb\",\"start\":3167,\"end\":3168,\"line\":112,\"col\":13,\"message\":\"Unrecognized token `i` found at 3167:3168\\nExpected one of \\\"else\\\", \\\";\\\" or \\\"}\\\"\",\"suggestion\":\"BMB if-expressions used as values require an else branch.\",\"example_wrong\":\"let x: i64 = if cond { 1 };\",\"example_correct\":\"let x: i64 = if cond { 1 } else { 0 };\",\"pattern\":\"missing_else\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 8,
+      "code": "fn is_prime(n: i64) -> i64 = {\n    if n < 2 { 0 }\n    else if n == 2 { 1 }\n    else if n % 2 == 0 { 0 }\n    else {\n        let mut i = 3;\n        let limit = sqrt(n);\n        while i <= limit {\n            if n % i == 0 { return 0 }\n            i = i + 2\n        };\n        1\n    }\n};\n\nfn nth_prime(n: i64) -> i64 = {\n    let mut count = 0;\n    let mut candidate = 1;\n    while count < n {\n        candidate = candidate + 1;\n        if is_prime(candidate) == 1 {\n            count = count + 1\n        }\n    };\n    candidate\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let mut i = 0;\n    while i < t {\n        let n = read_int();\n        let result = nth_prime(n);\n        let _p = println(result);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmph8avzuoe\\\\solution.bmb\",\"start\":3167,\"end\":3168,\"line\":112,\"col\":13,\"message\":\"Unrecognized token `i` found at 3167:3168\\nExpected one of \\\"else\\\", \\\";\\\" or \\\"}\\\"\",\"suggestion\":\"BMB if-expressions used as values require an else branch.\",\"example_wrong\":\"let x: i64 = if cond { 1 };\",\"example_correct\":\"let x: i64 = if cond { 1 } else { 0 };\",\"pattern\":\"missing_else\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 9,
+      "code": "fn is_prime(n: i64) -> i64 = {\n    if n < 2 { 0 }\n    else if n == 2 { 1 }\n    else if n % 2 == 0 { 0 }\n    else {\n        let mut i = 3;\n        let limit = sqrt(n);\n        while i <= limit {\n            if n % i == 0 { return 0 }\n            i = i + 2\n        };\n        1\n    }\n};\n\nfn nth_prime(n: i64) -> i64 = {\n    let mut count = 0;\n    let mut candidate = 1;\n    while count < n {\n        candidate = candidate + 1;\n        if is_prime(candidate) == 1 {\n            count = count + 1\n        }\n    };\n    candidate\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let mut i = 0;\n    while i < t {\n        let n = read_int();\n        let result = nth_prime(n);\n        let _p = println(result);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpp8wo8j5w\\\\solution.bmb\",\"start\":3167,\"end\":3168,\"line\":112,\"col\":13,\"message\":\"Unrecognized token `i` found at 3167:3168\\nExpected one of \\\"else\\\", \\\";\\\" or \\\"}\\\"\",\"suggestion\":\"BMB if-expressions used as values require an else branch.\",\"example_wrong\":\"let x: i64 = if cond { 1 };\",\"example_correct\":\"let x: i64 = if cond { 1 } else { 0 };\",\"pattern\":\"missing_else\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 10,
+      "code": "fn is_prime(n: i64) -> i64 = {\n    if n < 2 { 0 }\n    else if n == 2 { 1 }\n    else if n % 2 == 0 { 0 }\n    else {\n        let mut i = 3;\n        let limit = sqrt(n);\n        while i <= limit {\n            if n % i == 0 { return 0 }\n            i = i + 2\n        };\n        1\n    }\n};\n\nfn nth_prime(n: i64) -> i64 = {\n    let mut count = 0;\n    let mut candidate = 1;\n    while count < n {\n        candidate = candidate + 1;\n        if is_prime(candidate) == 1 {\n            count = count + 1\n        }\n    };\n    candidate\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let mut i = 0;\n    while i < t {\n        let n = read_int();\n        let result = nth_prime(n);\n        let _p = println(result);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpjn7lrtgr\\\\solution.bmb\",\"start\":3167,\"end\":3168,\"line\":112,\"col\":13,\"message\":\"Unrecognized token `i` found at 3167:3168\\nExpected one of \\\"else\\\", \\\";\\\" or \\\"}\\\"\",\"suggestion\":\"BMB if-expressions used as values require an else branch.\",\"example_wrong\":\"let x: i64 = if cond { 1 };\",\"example_correct\":\"let x: i64 = if cond { 1 } else { 0 };\",\"pattern\":\"missing_else\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    }
+  ],
+  "run_id": 2
+}

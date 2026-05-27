@@ -1,0 +1,24 @@
+{
+  "problem_id": "77_state_machine",
+  "category": "integration",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let mut state: i64 = 0;\n    for _i in 0..n {\n        let cmd: i64 = read_int();\n        if cmd == 1 { set state = state + 1 }\n        else { if cmd == 2 { set state = state - 1 }\n        else { if cmd == 3 { set state = state * 2 }\n        else { if cmd == 4 { set state = 0 }\n        else { set state = 0 - state } } } }\n    };\n    let _p = println(state);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

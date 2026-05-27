@@ -1,0 +1,40 @@
+{
+  "problem_id": "69_overflow_detect",
+  "category": "edge",
+  "difficulty": "medium",
+  "loop_count": 3,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 2,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let t: i64 = read_int();\n    for _i in 0..t {\n        let a: i64 = read_int();\n        let b: i64 = read_int();\n        let product: i64 = a * b;\n        let overflow: i64 = if product > 2147483647 { 1 } else { if product < -2147483648 { 1 } else { 0 } };\n        let _p1 = print(overflow);\n        let _p2 = print_str(\" \");\n        let _p3 = println(product)\n    };\n    0\n}",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:/Users/iyulab/AppData/Local/Temp/tmp241p6zjr/solution.bmb\",\"start\":3321,\"end\":3322,\"line\":115,\"col\":2,\"message\":\"Unrecognized EOF found at 3321\\nExpected one of \\\";\\\"\",\"suggestion\":\"BMB top-level definitions (fn, struct) must end with ';'. Block expressions end with '};'.\",\"example_wrong\":\"fn main() -> i64 = { 0 }\",\"example_correct\":\"fn main() -> i64 = { 0 };\",\"pattern\":\"missing_semicolon_eof\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let t: i64 = read_int();\n    for _i in 0..t {\n        let a: i64 = read_int();\n        let b: i64 = read_int();\n        let product: i64 = a * b;\n        let overflow: i64 = if product > 2147483647 { 1 } else { if product < -2147483648 { 1 } else { 0 } };\n        let _p1 = print(overflow);\n        let _p2 = print_str(\" \");\n        let _p3 = println(product)\n    };\n    0;\n}",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:/Users/iyulab/AppData/Local/Temp/tmpb30brbto/solution.bmb\",\"start\":3322,\"end\":3323,\"line\":115,\"col\":2,\"message\":\"Unrecognized EOF found at 3322\\nExpected one of \\\";\\\"\",\"suggestion\":\"BMB top-level definitions (fn, struct) must end with ';'. Block expressions end with '};'.\",\"example_wrong\":\"fn main() -> i64 = { 0 }\",\"example_correct\":\"fn main() -> i64 = { 0 };\",\"pattern\":\"missing_semicolon_eof\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let t: i64 = read_int();\n    for _i in 0..t {\n        let a: i64 = read_int();\n        let b: i64 = read_int();\n        let product: i64 = a * b;\n        let overflow: i64 = if product > 2147483647 { 1 } else { if product < -2147483648 { 1 } else { 0 } };\n        let _p1 = print(overflow);\n        let _p2 = print_str(\" \");\n        let _p3 = println(product)\n    };\n    0;\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

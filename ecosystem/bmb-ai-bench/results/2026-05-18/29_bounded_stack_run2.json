@@ -1,0 +1,32 @@
+{
+  "problem_id": "29_bounded_stack",
+  "category": "contract",
+  "difficulty": "medium",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 1,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn push(stack: i64, x: i64, size: i64, capacity: i64) -> i64 =\n    pre size < capacity\n    post ret == size + 1\n= {\n    let _p = vec_push(stack, x);\n    size + 1\n};\n\nfn pop(stack: i64, size: i64) -> i64 =\n    pre size > 0\n    post ret >= 0\n= {\n    let top = vec_get(stack, size - 1);\n    let _p = vec_pop(stack);\n    top\n};\n\nfn main() -> i64 = {\n    let capacity = read_int();\n    let q = read_int();\n    let stack = vec_new();\n    let mut size = 0;\n    let mut i = 0;\n    while i < q {\n        let op = read_int();\n        if op == 1 {\n            let x = read_int();\n            if size < capacity {\n                size = push(stack, x, size, capacity)\n            } else {\n                let _p = println_str(\"FULL\")\n            }\n        } else if op == 2 {\n            if size > 0 {\n                let val = pop(stack, size);\n                size = size - 1;\n                let _p = println(val)\n            } else {\n                let _p = println_str(\"EMPTY\")\n            }\n        } else if op == 3 {\n            let _p = println(size)\n        };\n        i = i + 1\n    };\n    let _f = vec_free(stack);\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpv7egq1si\\\\solution.bmb\",\"start\":2989,\"end\":2992,\"line\":104,\"col\":5,\"message\":\"Unrecognized token `pre` found at 2989:2992\\nExpected one of \\\"fn\\\", \\\"let\\\", \\\"if\\\", \\\"true\\\", \\\"false\\\", \\\"ret\\\", \\\"not\\\", \\\"match\\\", \\\"new\\\", \\\"set\\\", \\\"while\\\", \\\"for\\\", \\\"loop\\\", \\\"break\\\", \\\"continue\\\", \\\"return\\\", \\\"bnot\\\", \\\"forall\\\", \\\"exists\\\", \\\"it\\\", \\\"null\\\", \\\"sizeof\\\", \\\"todo\\\", \\\"spawn\\\", \\\"Mutex\\\", \\\"Atomic\\\", \\\"channel\\\", \\\"RwLock\\\", \\\"Barrier\\\", \\\"Condvar\\\", \\\"select\\\", \\\"int\\\", \\\"float\\\", \\\"string\\\", \\\"charlit\\\", \\\"ident\\\", \\\"(\\\", \\\"{\\\", \\\"[\\\", \\\"&\\\", \\\"-\\\", \\\"*\\\" or \\\"!\\\"\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 2,
+      "code": "fn push(stack: i64, x: i64, size: i64, capacity: i64) -> i64\n    pre size < capacity\n    post ret == size + 1\n= {\n    let _p = vec_push(stack, x);\n    size + 1\n};\n\nfn pop(stack: i64, size: i64) -> i64\n    pre size > 0\n    post ret >= 0\n= {\n    let top = vec_get(stack, size - 1);\n    let _p = vec_pop(stack);\n    top\n};\n\nfn main() -> i64 = {\n    let capacity = read_int();\n    let q = read_int();\n    let stack = vec_new();\n    let mut size = 0;\n    let mut i = 0;\n    while i < q {\n        let op = read_int();\n        if op == 1 {\n            let x = read_int();\n            if size < capacity {\n                size = push(stack, x, size, capacity)\n            } else {\n                let _p = println_str(\"FULL\")\n            }\n        } else if op == 2 {\n            if size > 0 {\n                let val = pop(stack, size);\n                size = size - 1;\n                let _p = println(val)\n            } else {\n                let _p = println_str(\"EMPTY\")\n            }\n        } else if op == 3 {\n            let _p = println(size)\n        };\n        i = i + 1\n    };\n    let _f = vec_free(stack);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

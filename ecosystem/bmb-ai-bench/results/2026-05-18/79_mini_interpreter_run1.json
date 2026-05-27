@@ -1,0 +1,96 @@
+{
+  "problem_id": "79_mini_interpreter",
+  "category": "integration",
+  "difficulty": "medium",
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 10
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let mut stack = vec_new();\n    let mut i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            let _p = vec_push(stack, val)\n        } else if op == 2 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b + a)\n        } else if op == 3 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b - a)\n        } else if op == 4 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b * a)\n        } else if op == 5 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b / a)\n        } else if op == 6 {\n            let val = vec_pop(stack);\n            let _p = println(val)\n        };\n        i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4:\n  stdin: '5 1 5 5 2 6 6'\n  expected: '10\\n10\\n'\n  got: '-1584533004868734557\\n18859085438976116\\n'\nTest 9:\n  stdin: '5 1 0 1 0 2 6 6'\n  expected: '0\\n0\\n'\n  got: '0\\n-8070442553370585527\\n'\nTest 10:\n  stdin: '3 1 7 5 6'\n  expected: '7\\n'\n  got: '-1152921154391218336\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let mut stack = vec_new();\n    let mut i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            let _p = vec_push(stack, val)\n        } else if op == 2 {\n            let a = vec_get(stack, vec_len(stack) - 1);\n            let _s = vec_pop(stack);\n            let b = vec_get(stack, vec_len(stack) - 1);\n            let _s = vec_pop(stack);\n            let _p = vec_push(stack, b + a)\n        } else if op == 3 {\n            let a = vec_get(stack, vec_len(stack) - 1);\n            let _s = vec_pop(stack);\n            let b = vec_get(stack, vec_len(stack) - 1);\n            let _s = vec_pop(stack);\n            let _p = vec_push(stack, b - a)\n        } else if op == 4 {\n            let a = vec_get(stack, vec_len(stack) - 1);\n            let _s = vec_pop(stack);\n            let b = vec_get(stack, vec_len(stack) - 1);\n            let _s = vec_pop(stack);\n            let _p = vec_push(stack, b * a)\n        } else if op == 5 {\n            let a = vec_get(stack, vec_len(stack) - 1);\n            let _s = vec_pop(stack);\n            let b = vec_get(stack, vec_len(stack) - 1);\n            let _s = vec_pop(stack);\n            let _p = vec_push(stack, b / a)\n        } else if op == 6 {\n            let val = vec_get(stack, vec_len(stack) - 1);\n            let _s = vec_pop(stack);\n            let _p = println(val)\n        };\n        i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4:\n  stdin: '5 1 5 5 2 6 6'\n  expected: '10\\n10\\n'\n  got: '-1614088126517520605\\n0\\n'\nTest 9:\n  stdin: '5 1 0 1 0 2 6 6'\n  expected: '0\\n0\\n'\n  got: '0\\n-8070429389763061297\\n'\nTest 10:\n  stdin: '3 1 7 5 6'\n  expected: '7\\n'\n  got: '-1152920807912827588\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let mut stack = vec_new();\n    let mut i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            let _p = vec_push(stack, val)\n        } else if op == 2 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b + a)\n        } else if op == 3 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b - a)\n        } else if op == 4 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b * a)\n        } else if op == 5 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b / a)\n        } else if op == 6 {\n            let val = vec_pop(stack);\n            let _p = println(val)\n        };\n        i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4:\n  stdin: '5 1 5 5 2 6 6'\n  expected: '10\\n10\\n'\n  got: '-1614089446349436381\\n0\\n'\nTest 9:\n  stdin: '5 1 0 1 0 2 6 6'\n  expected: '0\\n0\\n'\n  got: '0\\n-8070433702501153619\\n'\nTest 10:\n  stdin: '3 1 7 5 6'\n  expected: '7\\n'\n  got: '-1152916115312983628\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let mut stack = vec_new();\n    let mut i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            let _p = vec_push(stack, val)\n        } else if op == 2 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b + a)\n        } else if op == 3 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b - a)\n        } else if op == 4 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b * a)\n        } else if op == 5 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b / a)\n        } else if op == 6 {\n            let val = vec_pop(stack);\n            let _p = println(val)\n        };\n        i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4:\n  stdin: '5 1 5 5 2 6 6'\n  expected: '10\\n10\\n'\n  got: '-1598325048966876908\\n463863545956\\n'\nTest 9:\n  stdin: '5 1 0 1 0 2 6 6'\n  expected: '0\\n0\\n'\n  got: '0\\n-8070429388890233367\\n'\nTest 10:\n  stdin: '3 1 7 5 6'\n  expected: '7\\n'\n  got: '-1152919256414590207\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 5,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let mut stack = vec_new();\n    let mut i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            let _p = vec_push(stack, val)\n        } else if op == 2 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b + a)\n        } else if op == 3 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b - a)\n        } else if op == 4 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b * a)\n        } else if op == 5 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b / a)\n        } else if op == 6 {\n            let val = vec_pop(stack);\n            let _p = println(val)\n        };\n        i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4:\n  stdin: '5 1 5 5 2 6 6'\n  expected: '10\\n10\\n'\n  got: '-1614086958250237746\\n158549394257652125\\n'\nTest 9:\n  stdin: '5 1 0 1 0 2 6 6'\n  expected: '0\\n0\\n'\n  got: '0\\n-8070450215442900012\\n'\nTest 10:\n  stdin: '3 1 7 5 6'\n  expected: '7\\n'\n  got: '-1152917847537877694\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 6,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let mut stack = vec_new();\n    let mut i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            let _p = vec_push(stack, val)\n        } else if op == 2 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b + a)\n        } else if op == 3 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b - a)\n        } else if op == 4 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b * a)\n        } else if op == 5 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b / a)\n        } else if op == 6 {\n            let val = vec_pop(stack);\n            let _p = println(val)\n        };\n        i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4:\n  stdin: '5 1 5 5 2 6 6'\n  expected: '10\\n10\\n'\n  got: '-1614085615785843630\\n0\\n'\nTest 9:\n  stdin: '5 1 0 1 0 2 6 6'\n  expected: '0\\n0\\n'\n  got: '0\\n-8070444579905693115\\n'\nTest 10:\n  stdin: '3 1 7 5 6'\n  expected: '7\\n'\n  got: '-1152919702886105619\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 7,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let mut stack = vec_new();\n    let mut i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            let _p = vec_push(stack, val)\n        } else if op == 2 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b + a)\n        } else if op == 3 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b - a)\n        } else if op == 4 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b * a)\n        } else if op == 5 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b / a)\n        } else if op == 6 {\n            let val = vec_pop(stack);\n            let _p = println(val)\n        };\n        i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4:\n  stdin: '5 1 5 5 2 6 6'\n  expected: '10\\n10\\n'\n  got: '-1593820989889762259\\n27303266021111909\\n'\nTest 9:\n  stdin: '5 1 0 1 0 2 6 6'\n  expected: '0\\n0\\n'\n  got: '0\\n-8070433703758668290\\n'\nTest 10:\n  stdin: '3 1 7 5 6'\n  expected: '7\\n'\n  got: '-1152920179325092990\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 8,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let mut stack = vec_new();\n    let mut i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            let _p = vec_push(stack, val)\n        } else if op == 2 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b + a)\n        } else if op == 3 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b - a)\n        } else if op == 4 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b * a)\n        } else if op == 5 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b / a)\n        } else if op == 6 {\n            let val = vec_pop(stack);\n            let _p = println(val)\n        };\n        i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4:\n  stdin: '5 1 5 5 2 6 6'\n  expected: '10\\n10\\n'\n  got: '-1581719560242792275\\n2753521926800\\n'\nTest 9:\n  stdin: '5 1 0 1 0 2 6 6'\n  expected: '0\\n0\\n'\n  got: '0\\n-8070443932482476684\\n'\nTest 10:\n  stdin: '3 1 7 5 6'\n  expected: '7\\n'\n  got: '-1152921154791136773\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 9,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let mut stack = vec_new();\n    let mut i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            let _p = vec_push(stack, val)\n        } else if op == 2 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b + a)\n        } else if op == 3 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b - a)\n        } else if op == 4 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b * a)\n        } else if op == 5 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b / a)\n        } else if op == 6 {\n            let val = vec_pop(stack);\n            let _p = println(val)\n        };\n        i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4:\n  stdin: '5 1 5 5 2 6 6'\n  expected: '10\\n10\\n'\n  got: '-1601139357756518086\\n14355421387389029\\n'\nTest 9:\n  stdin: '5 1 0 1 0 2 6 6'\n  expected: '0\\n0\\n'\n  got: '0\\n-8070450530387991358\\n'\nTest 10:\n  stdin: '3 1 7 5 6'\n  expected: '7\\n'\n  got: '-1152920875867952853\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 10,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let mut stack = vec_new();\n    let mut i = 0;\n    while i < n {\n        let op = read_int();\n        if op == 1 {\n            let val = read_int();\n            let _p = vec_push(stack, val)\n        } else if op == 2 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b + a)\n        } else if op == 3 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b - a)\n        } else if op == 4 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b * a)\n        } else if op == 5 {\n            let a = vec_pop(stack);\n            let b = vec_pop(stack);\n            let _p = vec_push(stack, b / a)\n        } else if op == 6 {\n            let val = vec_pop(stack);\n            let _p = println(val)\n        };\n        i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4:\n  stdin: '5 1 5 5 2 6 6'\n  expected: '10\\n10\\n'\n  got: '-1583407727448955569\\n463863545956\\n'\nTest 9:\n  stdin: '5 1 0 1 0 2 6 6'\n  expected: '0\\n0\\n'\n  got: '0\\n-8070441258567734272\\n'\nTest 10:\n  stdin: '3 1 7 5 6'\n  expected: '7\\n'\n  got: '-1152921154608401744\\n'",
+      "loop_type": "D"
+    }
+  ],
+  "run_id": 1
+}

@@ -1,0 +1,71 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - heading "BMB Playground" [level=1] [ref=e6]:
+        - generic [ref=e7]: BMB
+        - generic [ref=e8]: Playground
+      - generic [ref=e9]:
+        - button "Run" [ref=e10] [cursor=pointer]:
+          - img [ref=e231]
+          - text: Run
+        - button "Format" [ref=e13] [cursor=pointer]:
+          - img [ref=e14]
+          - text: Format
+        - button "Examples" [ref=e16] [cursor=pointer]:
+          - img [ref=e17]
+          - text: Examples
+      - generic [ref=e20]:
+        - generic "BMB WASM v0.98.0" [ref=e43]: WASM
+        - button "Share" [ref=e22] [cursor=pointer]:
+          - img [ref=e23]
+          - text: Share
+        - link "GitHub" [ref=e29] [cursor=pointer]:
+          - /url: https://github.com/lang-bmb/lang-bmb
+          - img [ref=e30]
+    - main [ref=e32]:
+      - code [ref=e45]:
+        - generic [ref=e46]:
+          - textbox "Editor content" [ref=e47]
+          - textbox [ref=e48]
+          - generic [ref=e50]:
+            - generic [ref=e208]: "1"
+            - generic [ref=e55]: "2"
+            - generic [ref=e57]: "3"
+            - generic [ref=e58]:
+              - generic [ref=e59] [cursor=pointer]: 
+              - generic [ref=e60]: "4"
+            - generic [ref=e62]: "5"
+            - generic [ref=e64]: "6"
+            - generic [ref=e66]: "7"
+            - generic [ref=e68]: "8"
+            - generic [ref=e69]:
+              - generic [ref=e70] [cursor=pointer]: 
+              - generic [ref=e71]: "9"
+            - generic [ref=e73]: "10"
+            - generic [ref=e75]: "11"
+            - generic [ref=e77]: "12"
+            - generic [ref=e211]: "13"
+          - generic [ref=e106]:
+            - generic [ref=e216]: "-- Greatest Common Divisor"
+            - generic [ref=e218]: "-- Euclidean algorithm with contracts"
+            - generic [ref=e220]: "fn gcd(a: i64, b: i64) -> i64"
+            - generic [ref=e222]: pre a >= 0 and b >= 0
+            - generic [ref=e224]: post ret >= 0
+            - generic [ref=e226]: "= if b == 0 { a } else { gcd(b, a - (a / b) * b) };"
+            - generic [ref=e122]: "fn main() -> i64 = {"
+            - generic [ref=e228]: let u0 = println(gcd(48, 18)); -- 6
+            - generic [ref=e230]: let u1 = println(gcd(100, 25)); -- 25
+            - generic [ref=e128]: "0"
+            - generic [ref=e130]: "};"
+      - generic [ref=e37]:
+        - generic [ref=e38]:
+          - generic [ref=e39]: Output
+          - generic [ref=e40]: Success
+        - generic [ref=e41]:
+          - generic [ref=e42]:
+            - generic [ref=e233]: Standard Output
+            - generic [ref=e234]: 6 25
+          - generic [ref=e235]: Executed in 2.00ms
+  - generic [ref=e133]:
+    - alert
+    - alert

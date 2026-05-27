@@ -1,0 +1,24 @@
+{
+  "problem_id": "36_array_rotation",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let k: i64 = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n    \n    // Effective k (handle k >= n, though constraint says k < n)\n    let mut eff_k = k % n;\n    \n    let mut first: i64 = 1;\n    \n    // Print from index eff_k to n-1\n    let i = eff_k;\n    while i < n {\n        if first == 0 {\n            let _s = print_str(\" \")\n        };\n        let _p = print(vec_get(v, i));\n        first = 0;\n        i = i + 1\n    };\n    \n    // Print from index 0 to eff_k-1\n    let j = 0;\n    while j < eff_k {\n        if first == 0 {\n            let _s = print_str(\" \")\n        };\n        let _p = print(vec_get(v, j));\n        first = 0;\n        j = j + 1\n    };\n    \n    let _nl = println_str(\"\");\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

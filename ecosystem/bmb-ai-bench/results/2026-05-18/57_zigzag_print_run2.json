@@ -1,0 +1,40 @@
+{
+  "problem_id": "57_zigzag_print",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 3,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 2,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let w = read_int();\n    let v = vec_new();\n    let i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(v, val);\n        i += 1\n    };\n\n    let num_rows = (n + w - 1) / w;\n    let r = 0;\n    while r < num_rows {\n        let row_start = r * w;\n        let row_end = if row_start + w < n { row_start + w } else { n };\n        let row_len = row_end - row_start;\n\n        let first = 1;\n        let j = 0;\n        while j < row_len {\n            if first == 0 {\n                let _s = print_str(\" \")\n            };\n            first = 0;\n\n            let idx;\n            if r % 2 == 0 {\n                // Odd row (1-based): left-to-right\n                idx = row_start + j\n            } else {\n                // Even row (1-based): right-to-left\n                idx = row_end - 1 - j\n            };\n\n            let val = vec_get(v, idx);\n            let _p = print(val);\n            j += 1\n        };\n        let _nl = println_str(\"\");\n        r += 1\n    };\n\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmp_pseetsl\\\\solution.bmb\",\"start\":3555,\"end\":3556,\"line\":129,\"col\":20,\"message\":\"Unrecognized token `;` found at 3555:3556\\nExpected one of \\\":\\\" or \\\"=\\\"\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let w = read_int();\n    let v = vec_new();\n    let i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(v, val);\n        i += 1\n    };\n\n    let num_rows = (n + w - 1) / w;\n    let r = 0;\n    while r < num_rows {\n        let row_start = r * w;\n        let row_end = if row_start + w < n { row_start + w } else { n };\n        let row_len = row_end - row_start;\n\n        let first = 1;\n        let j = 0;\n        while j < row_len {\n            if first == 0 {\n                let _s = print_str(\" \")\n            };\n            first = 0;\n\n            let idx;\n            if r % 2 == 0 {\n                idx = row_start + j\n            } else {\n                idx = row_end - 1 - j\n            };\n\n            let val = vec_get(v, idx);\n            let _p = print(val);\n            j += 1\n        };\n        let _nl = println_str(\"\");\n        r += 1\n    };\n\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpkmjm0mut\\\\solution.bmb\",\"start\":3555,\"end\":3556,\"line\":129,\"col\":20,\"message\":\"Unrecognized token `;` found at 3555:3556\\nExpected one of \\\":\\\" or \\\"=\\\"\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let w = read_int();\n    let v = vec_new();\n    let i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(v, val);\n        i += 1\n    };\n\n    let num_rows = (n + w - 1) / w;\n    let r = 0;\n    while r < num_rows {\n        let row_start = r * w;\n        let row_end = if row_start + w < n { row_start + w } else { n };\n        let row_len = row_end - row_start;\n\n        let first = 1;\n        let j = 0;\n        while j < row_len {\n            if first == 0 {\n                let _s = print_str(\" \")\n            };\n            first = 0;\n\n            let idx = if r % 2 == 0 {\n                row_start + j\n            } else {\n                row_end - 1 - j\n            };\n\n            let val = vec_get(v, idx);\n            let _p = print(val);\n            j += 1\n        };\n        let _nl = println_str(\"\");\n        r += 1\n    };\n\n    let _f = vec_free(v);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

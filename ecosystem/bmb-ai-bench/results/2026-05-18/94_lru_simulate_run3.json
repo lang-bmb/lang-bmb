@@ -1,0 +1,32 @@
+{
+  "problem_id": "94_lru_simulate",
+  "category": "system",
+  "difficulty": "medium",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let capacity = read_int();\n    let n = read_int();\n\n    // Use two parallel vecs to simulate LRU:\n    // keys: stores the cached addresses\n    // order: stores the access order (timestamp) for each key\n    let keys = vec_new();\n    let order = vec_new();\n    let mut miss_count = 0;\n    let mut timestamp = 0;\n\n    let i = 0;\n    while i < n {\n        let addr = read_int();\n        let len = vec_len(keys);\n        let mut found = 0;\n        let mut idx = -1;\n        let j = 0;\n        while j < len {\n            if vec_get(keys, j) == addr {\n                found = 1;\n                idx = j;\n                break\n            };\n            j += 1\n        };\n\n        if found == 1 {\n            // Hit: update timestamp to current (mark as MRU)\n            let _s = vec_set(order, idx, timestamp);\n        } else {\n            // Miss\n            miss_count += 1;\n            timestamp += 1;\n\n            if len < capacity {\n                // Cache not full, just add\n                let _p = vec_push(keys, addr);\n                let _p = vec_push(order, timestamp);\n            } else {\n                // Cache full, find LRU (minimum timestamp)\n                let mut min_ts = vec_get(order, 0);\n                let mut min_idx = 0;\n                let k = 1;\n                while k < len {\n                    let ts = vec_get(order, k);\n                    if ts < min_ts {\n                        min_ts = ts;\n                        min_idx = k\n                    };\n                    k += 1\n                };\n                // Evict LRU and insert new\n                let _s = vec_set(keys, min_idx, addr);\n                let _s = vec_set(order, min_idx, timestamp);\n            }\n        };\n        i += 1\n    };\n\n    let _f = vec_free(keys);\n    let _f = vec_free(order);\n    miss_count\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '3 7 1 2 3 4 1 2 5'\n  expected: '7\\n'\n  got: ''\nTest 1:\n  stdin: '2 3 1 2 3'\n  expected: '3\\n'\n  got: ''\nTest 2:\n  stdin: '3 3 1 1 1'\n  expected: '1\\n'\n  got: ''",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let capacity = read_int();\n    let n = read_int();\n\n    // Use two parallel vecs to simulate LRU:\n    // keys: stores the cached addresses\n    // order: stores the access order (timestamp) for each key\n    let keys = vec_new();\n    let order = vec_new();\n    let mut miss_count = 0;\n    let mut timestamp = 0;\n\n    let i = 0;\n    while i < n {\n        let addr = read_int();\n        let len = vec_len(keys);\n        let mut found = 0;\n        let mut idx = -1;\n        let j = 0;\n        while j < len {\n            if vec_get(keys, j) == addr {\n                found = 1;\n                idx = j;\n                break\n            };\n            j += 1\n        };\n\n        if found == 1 {\n            // Hit: update timestamp to current (mark as MRU)\n            let _s = vec_set(order, idx, timestamp);\n        } else {\n            // Miss\n            miss_count += 1;\n            timestamp += 1;\n\n            if len < capacity {\n                // Cache not full, just add\n                let _p = vec_push(keys, addr);\n                let _p = vec_push(order, timestamp);\n            } else {\n                // Cache full, find LRU (minimum timestamp)\n                let mut min_ts = vec_get(order, 0);\n                let mut min_idx = 0;\n                let k = 1;\n                while k < len {\n                    let ts = vec_get(order, k);\n                    if ts < min_ts {\n                        min_ts = ts;\n                        min_idx = k\n                    };\n                    k += 1\n                };\n                // Evict LRU and insert new\n                let _s = vec_set(keys, min_idx, addr);\n                let _s = vec_set(order, min_idx, timestamp);\n            }\n        };\n        i += 1\n    };\n\n    let _f = vec_free(keys);\n    let _f = vec_free(order);\n    let _p = println(miss_count);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

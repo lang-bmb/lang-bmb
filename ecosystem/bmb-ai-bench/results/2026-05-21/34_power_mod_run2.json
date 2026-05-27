@@ -1,0 +1,24 @@
+{
+  "problem_id": "34_power_mod",
+  "category": "performance",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn pow_mod(base: i64, exp: i64, m: i64) -> i64 = {\n    let mut result: i64 = 1;\n    let mut b: i64 = base % m;\n    let mut e: i64 = exp;\n    while e > 0 {\n        if (e band 1) == 1 { set result = (result * b) % m } else { () };\n        set b = (b * b) % m;\n        set e = e / 2\n    };\n    result\n};\n\nfn main() -> i64 = {\n    let n: i64 = read_int();\n    let mut i: i64 = 0;\n    while i < n {\n        let a: i64 = read_int();\n        let bv: i64 = read_int();\n        let m: i64 = read_int();\n        let _p = println(pow_mod(a, bv, m));\n        set i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

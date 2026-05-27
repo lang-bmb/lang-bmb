@@ -1,0 +1,24 @@
+{
+  "problem_id": "51_bracket_match",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn is_balanced(n: i64, codes: i64) -> i64 = {\n    let stack = vec_new();\n    let i = 0;\n    while i < n {\n        let c = vec_get(codes, i);\n        if c == 40 || c == 91 || c == 123 {\n            let _p = vec_push(stack, c)\n        } else if c == 41 {\n            let len = vec_len(stack);\n            if len == 0 {\n                let _f = vec_free(stack);\n                return 0\n            };\n            let top = vec_get(stack, len - 1);\n            let _pop = vec_pop(stack);\n            if top != 40 {\n                let _f = vec_free(stack);\n                return 0\n            }\n        } else if c == 93 {\n            let len = vec_len(stack);\n            if len == 0 {\n                let _f = vec_free(stack);\n                return 0\n            };\n            let top = vec_get(stack, len - 1);\n            let _pop = vec_pop(stack);\n            if top != 91 {\n                let _f = vec_free(stack);\n                return 0\n            }\n        } else if c == 125 {\n            let len = vec_len(stack);\n            if len == 0 {\n                let _f = vec_free(stack);\n                return 0\n            };\n            let top = vec_get(stack, len - 1);\n            let _pop = vec_pop(stack);\n            if top != 123 {\n                let _f = vec_free(stack);\n                return 0\n            }\n        };\n        i = i + 1\n    };\n    let len = vec_len(stack);\n    let result = if len == 0 { 1 } else { 0 };\n    let _f = vec_free(stack);\n    result\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let mut tc = 0;\n    while tc < t {\n        let n = read_int();\n        let codes = vec_new();\n        let j = 0;\n        while j < n {\n            let val = read_int();\n            let _p = vec_push(codes, val);\n            j = j + 1\n        };\n        let res = is_balanced(n, codes);\n        let _p = println(res);\n        let _f = vec_free(codes);\n        tc = tc + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

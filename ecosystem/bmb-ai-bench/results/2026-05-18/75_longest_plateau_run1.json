@@ -1,0 +1,24 @@
+{
+  "problem_id": "75_longest_plateau",
+  "category": "edge",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn solve() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    if n == 0 {\n        let _f = vec_free(v);\n        0\n    } else {\n        let max_len = 1;\n        let cur_len = 1;\n        let i = 1;\n        let n_val = vec_len(v);\n        while i < n_val {\n            let prev = vec_get(v, i - 1);\n            let curr = vec_get(v, i);\n            if prev == curr {\n                cur_len = cur_len + 1;\n                if cur_len > max_len {\n                    max_len = cur_len\n                }\n            } else {\n                cur_len = 1\n            };\n            i = i + 1\n        };\n        let _f = vec_free(v);\n        max_len\n    }\n};\n\nfn main() -> i64 = {\n    let t = read_int();\n    let _i = 0;\n    while _i < t {\n        let result = solve();\n        let _p = println(result);\n        _i = _i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

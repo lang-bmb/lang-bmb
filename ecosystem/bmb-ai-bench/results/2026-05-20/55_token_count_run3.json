@@ -1,0 +1,24 @@
+{
+  "problem_id": "55_token_count",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let v = vec_new();\n    let mut i: i64 = 0;\n    while i < n {\n        let _p = vec_push(v, read_int());\n        set i = i + 1\n    };\n    let mut count: i64 = 0;\n    let mut idx: i64 = 0;\n    while idx < n {\n        let val: i64 = vec_get(v, idx);\n        let mut found: i64 = 0;\n        let mut j: i64 = 0;\n        while j < idx {\n            if vec_get(v, j) == val { set found = 1 } else { () };\n            set j = j + 1\n        };\n        if found == 0 { set count = count + 1 } else { () };\n        set idx = idx + 1\n    };\n    let _p = println(count);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

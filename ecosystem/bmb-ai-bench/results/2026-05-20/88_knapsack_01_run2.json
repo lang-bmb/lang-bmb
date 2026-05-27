@@ -1,0 +1,24 @@
+{
+  "problem_id": "88_knapsack_01",
+  "category": "algorithm",
+  "difficulty": "hard",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let W: i64 = read_int();\n    let weights = vec_new();\n    let values = vec_new();\n    let mut i: i64 = 0;\n    while i < n {\n        let _p = vec_push(weights, read_int());\n        let _p = vec_push(values, read_int());\n        set i = i + 1;\n    };\n\n    let dp = vec_new();\n    let mut w: i64 = 0;\n    while w <= W {\n        let _p = vec_push(dp, 0);\n        set w = w + 1;\n    };\n\n    let mut item: i64 = 0;\n    while item < n {\n        let wt: i64 = vec_get(weights, item);\n        let vl: i64 = vec_get(values, item);\n        set w = W;\n        while w >= wt {\n            let old: i64 = vec_get(dp, w);\n            let new_val: i64 = vec_get(dp, w - wt) + vl;\n            if new_val > old {\n                let _s = vec_set(dp, w, new_val);\n            } else {\n                ()\n            };\n            set w = w - 1;\n        };\n        set item = item + 1;\n    };\n\n    let result = vec_get(dp, W);\n    let _p = println(result);\n    result\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

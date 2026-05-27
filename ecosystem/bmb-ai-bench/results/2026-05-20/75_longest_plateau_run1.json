@@ -1,0 +1,32 @@
+{
+  "problem_id": "75_longest_plateau",
+  "category": "edge",
+  "difficulty": "medium",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 1,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let t: i64 = read_int();\n    let mut tc: i64 = 0;\n    while tc < t {\n        let n: i64 = read_int();\n        let arr = vec_new();\n        for _i in 0..n {\n            let _p = vec_push(arr, read_int())\n        };\n        let mut max_len: i64 = 1;\n        let mut cur_len: i64 = 1;\n        let mut i: i64 = 1;\n        while i < n {\n            if vec_get(arr, i) == vec_get(arr, i - 1) {\n                cur_len = cur_len + 1;\n                if cur_len > max_len { max_len = cur_len } else { () }\n            } else {\n                cur_len = 1\n            };\n            i = i + 1\n        };\n        let _p = println(max_len);\n        let _f = vec_free(arr);\n        set tc = tc + 1\n    };\n    0\n}",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"parser\",\"file\":\"C:/Users/iyulab/AppData/Local/Temp/tmpcv478w2f/solution.bmb\",\"start\":3647,\"end\":3648,\"line\":129,\"col\":2,\"message\":\"Unrecognized EOF found at 3647\\nExpected one of \\\";\\\"\",\"suggestion\":\"BMB top-level definitions (fn, struct) must end with ';'. Block expressions end with '};'.\",\"example_wrong\":\"fn main() -> i64 = { 0 }\",\"example_correct\":\"fn main() -> i64 = { 0 };\",\"pattern\":\"missing_semicolon_eof\"}\n{\"type\":\"hint\",\"message\":\"Fix this error and re-run check \u00e2\u20ac\u201d more errors may be found after parsing succeeds.\"}",
+      "loop_type": "B"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let t: i64 = read_int();\n    let mut tc: i64 = 0;\n    while tc < t {\n        let n: i64 = read_int();\n        let arr = vec_new();\n        for _i in 0..n {\n            let _p = vec_push(arr, read_int())\n        };\n        let mut max_len: i64 = 1;\n        let mut cur_len: i64 = 1;\n        let mut i: i64 = 1;\n        while i < n {\n            if vec_get(arr, i) == vec_get(arr, i - 1) {\n                cur_len = cur_len + 1;\n                if cur_len > max_len { max_len = cur_len } else { () }\n            } else {\n                cur_len = 1\n            };\n            i = i + 1\n        };\n        let _p = println(max_len);\n        let _f = vec_free(arr);\n        set tc = tc + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

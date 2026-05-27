@@ -1,0 +1,24 @@
+{
+  "problem_id": "28_positive_factorial",
+  "category": "contract",
+  "difficulty": "easy",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn factorial(n: i64) -> i64\n    pre n >= 0 and n <= 20\n    post ret >= 1\n= {\n    let mut result: i64 = 1;\n    let mut i: i64 = 2;\n    while i <= n {\n        set result = result * i;\n        set i = i + 1\n    };\n    result\n};\n\nfn main() -> i64 = {\n    let q: i64 = read_int();\n    for _i in 0..q {\n        let val: i64 = read_int();\n        let _p = println(factorial(val))\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

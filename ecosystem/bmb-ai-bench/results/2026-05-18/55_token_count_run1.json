@@ -1,0 +1,32 @@
+{
+  "problem_id": "55_token_count",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    let counts = hashmap_new();\n    let len = vec_len(v);\n    let i = 0;\n    while i < len {\n        let x = vec_get(v, i);\n        let prev = if hashmap_contains(counts, x) == 1 { hashmap_get(counts, x) } else { 0 };\n        let _ins = hashmap_insert(counts, x, prev + 1);\n        i = i + 1\n    };\n\n    let distinct = hashmap_len(counts);\n    let _f = hashmap_free(counts);\n    distinct\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '5 1 2 3 2 1'\n  expected: '3\\n'\n  got: ''\nTest 1:\n  stdin: '1 42'\n  expected: '1\\n'\n  got: ''\nTest 2:\n  stdin: '3 5 5 5'\n  expected: '1\\n'\n  got: ''",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v = vec_new();\n    for _i in 0..n {\n        let val = read_int();\n        let _p = vec_push(v, val)\n    };\n\n    let counts = hashmap_new();\n    let len = vec_len(v);\n    let i = 0;\n    while i < len {\n        let x = vec_get(v, i);\n        let prev = if hashmap_contains(counts, x) == 1 { hashmap_get(counts, x) } else { 0 };\n        let _ins = hashmap_insert(counts, x, prev + 1);\n        i = i + 1\n    };\n\n    let distinct = hashmap_len(counts);\n    let _f = hashmap_free(counts);\n    let _p = println(distinct);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

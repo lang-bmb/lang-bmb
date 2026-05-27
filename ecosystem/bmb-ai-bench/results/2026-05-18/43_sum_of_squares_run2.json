@@ -1,0 +1,96 @@
+{
+  "problem_id": "43_sum_of_squares",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 11,
+  "final_correct": false,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 1,
+    "D": 9
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let sum = 0;\n    let i = 1;\n    while i <= n {\n        sum = sum + i * i;\n        i = i + 1\n    };\n    println(sum)\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"type\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpzoobpziq\\\\solution.bmb\",\"start\":2941,\"end\":3088,\"line\":103,\"col\":20,\"message\":\"expected i64, got ()\",\"suggestion\":\"println/print/vec_push/vec_set/vec_free return () not i64. Wrap in a block: { println(x); 0 }\",\"example_wrong\":\"fn main() -> i64 = println(42);\",\"example_correct\":\"fn main() -> i64 = { println(42); 0 };\",\"pattern\":\"void_return_used\"}",
+      "loop_type": "C"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let sum = 0;\n    let i = 1;\n    while i <= n {\n        sum = sum + i * i;\n        i = i + 1\n    };\n    let _p = println(sum);\n    sum\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1:\n  stdin: '1 2'\n  expected: '5\\n'\n  got: '1\\n'\nTest 2:\n  stdin: '1 3'\n  expected: '14\\n'\n  got: '1\\n'\nTest 3:\n  stdin: '1 5'\n  expected: '55\\n'\n  got: '1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let sum = 0;\n    let i = 1;\n    while i <= n {\n        sum = sum + i * i;\n        i = i + 1\n    };\n    let _p = println(sum);\n    sum\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1:\n  stdin: '1 2'\n  expected: '5\\n'\n  got: '1\\n'\nTest 2:\n  stdin: '1 3'\n  expected: '14\\n'\n  got: '1\\n'\nTest 3:\n  stdin: '1 5'\n  expected: '55\\n'\n  got: '1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let sum = 0;\n    let i = 1;\n    while i <= n {\n        sum = sum + i * i;\n        i = i + 1\n    };\n    let _p = println(sum);\n    sum\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1:\n  stdin: '1 2'\n  expected: '5\\n'\n  got: '1\\n'\nTest 2:\n  stdin: '1 3'\n  expected: '14\\n'\n  got: '1\\n'\nTest 3:\n  stdin: '1 5'\n  expected: '55\\n'\n  got: '1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 5,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let sum = 0;\n    let i = 1;\n    while i <= n {\n        sum = sum + i * i;\n        i = i + 1\n    };\n    let _p = println(sum);\n    sum\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1:\n  stdin: '1 2'\n  expected: '5\\n'\n  got: '1\\n'\nTest 2:\n  stdin: '1 3'\n  expected: '14\\n'\n  got: '1\\n'\nTest 3:\n  stdin: '1 5'\n  expected: '55\\n'\n  got: '1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 6,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let sum = 0;\n    let i = 1;\n    while i <= n {\n        sum = sum + i * i;\n        i = i + 1\n    };\n    let _p = println(sum);\n    sum\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1:\n  stdin: '1 2'\n  expected: '5\\n'\n  got: '1\\n'\nTest 2:\n  stdin: '1 3'\n  expected: '14\\n'\n  got: '1\\n'\nTest 3:\n  stdin: '1 5'\n  expected: '55\\n'\n  got: '1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 7,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let sum = 0;\n    let i = 1;\n    while i <= n {\n        sum = sum + i * i;\n        i = i + 1\n    };\n    let _p = println(sum);\n    sum\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1:\n  stdin: '1 2'\n  expected: '5\\n'\n  got: '1\\n'\nTest 2:\n  stdin: '1 3'\n  expected: '14\\n'\n  got: '1\\n'\nTest 3:\n  stdin: '1 5'\n  expected: '55\\n'\n  got: '1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 8,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let sum = 0;\n    let i = 1;\n    while i <= n {\n        sum = sum + i * i;\n        i = i + 1\n    };\n    let _p = println(sum);\n    sum\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1:\n  stdin: '1 2'\n  expected: '5\\n'\n  got: '1\\n'\nTest 2:\n  stdin: '1 3'\n  expected: '14\\n'\n  got: '1\\n'\nTest 3:\n  stdin: '1 5'\n  expected: '55\\n'\n  got: '1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 9,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let sum = 0;\n    let i = 1;\n    while i <= n {\n        sum = sum + i * i;\n        i = i + 1\n    };\n    let _p = println(sum);\n    sum\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1:\n  stdin: '1 2'\n  expected: '5\\n'\n  got: '1\\n'\nTest 2:\n  stdin: '1 3'\n  expected: '14\\n'\n  got: '1\\n'\nTest 3:\n  stdin: '1 5'\n  expected: '55\\n'\n  got: '1\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 10,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let sum = 0;\n    let i = 1;\n    while i <= n {\n        sum = sum + i * i;\n        i = i + 1\n    };\n    let _p = println(sum);\n    sum\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 1:\n  stdin: '1 2'\n  expected: '5\\n'\n  got: '1\\n'\nTest 2:\n  stdin: '1 3'\n  expected: '14\\n'\n  got: '1\\n'\nTest 3:\n  stdin: '1 5'\n  expected: '55\\n'\n  got: '1\\n'",
+      "loop_type": "D"
+    }
+  ],
+  "run_id": 2
+}

@@ -1,0 +1,32 @@
+{
+  "problem_id": "44_euclidean_dist",
+  "category": "performance",
+  "difficulty": "easy",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 1
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let x1 = read_int();\n    let x2 = read_int();\n    \n    let v1 = vec_new();\n    let _p1 = vec_push(v1, x1);\n    let _p2 = vec_push(v1, x2);\n    \n    let v2 = vec_new();\n    let i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(v2, val);\n        i += 1\n    };\n    \n    let mut dist_sq = 0;\n    let len = vec_len(v2);\n    let j = 0;\n    while j < len {\n        let d = vec_get(v2, j) - vec_get(v1, j);\n        dist_sq = dist_sq + d * d;\n        j += 1\n    };\n    \n    let _f1 = vec_free(v1);\n    let _f2 = vec_free(v2);\n    \n    println(dist_sq);\n    0\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 0:\n  stdin: '3 1 2 3 4 5 6'\n  expected: '27\\n'\n  got: '33\\n'\nTest 1:\n  stdin: '1 0 0'\n  expected: '0\\n'\n  got: '4729466886802228224\\n'\nTest 3:\n  stdin: '1 5 5'\n  expected: '0\\n'\n  got: '-8724118041901779815\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    let v1 = vec_new();\n    let i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(v1, val);\n        i += 1\n    };\n    \n    let v2 = vec_new();\n    let j = 0;\n    while j < n {\n        let val = read_int();\n        let _p = vec_push(v2, val);\n        j += 1\n    };\n    \n    let mut dist_sq = 0;\n    let len = vec_len(v1);\n    let k = 0;\n    while k < len {\n        let d = vec_get(v1, k) - vec_get(v2, k);\n        dist_sq = dist_sq + d * d;\n        k += 1\n    };\n    \n    let _f1 = vec_free(v1);\n    let _f2 = vec_free(v2);\n    \n    println(dist_sq);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

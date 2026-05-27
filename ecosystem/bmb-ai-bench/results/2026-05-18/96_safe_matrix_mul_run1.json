@@ -1,0 +1,24 @@
+{
+  "problem_id": "96_safe_matrix_mul",
+  "category": "contract",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n = read_int();\n    \n    // Read matrix A\n    let a = vec_new();\n    let i = 0;\n    while i < n * n {\n        let val = read_int();\n        let _p = vec_push(a, val);\n        i += 1\n    };\n    \n    // Read matrix B\n    let b = vec_new();\n    let i = 0;\n    while i < n * n {\n        let val = read_int();\n        let _p = vec_push(b, val);\n        i += 1\n    };\n    \n    // Compute C = A * B\n    let c = vec_new();\n    let row = 0;\n    while row < n {\n        let col = 0;\n        while col < n {\n            let sum = 0;\n            let k = 0;\n            while k < n {\n                // A[row * n + k] * B[k * n + col]\n                let a_idx = row * n + k;\n                let b_idx = k * n + col;\n                let prod = vec_get(a, a_idx) * vec_get(b, b_idx);\n                sum = sum + prod;\n                k += 1\n            };\n            let _p = vec_push(c, sum);\n            col += 1\n        };\n        row += 1\n    };\n    \n    // Print result matrix C\n    let row = 0;\n    while row < n {\n        let col = 0;\n        while col < n {\n            if col > 0 {\n                let _s = print_str(\" \")\n            };\n            let val = vec_get(c, row * n + col);\n            let _p = print(val);\n            col += 1\n        };\n        let _nl = println_str(\"\");\n        row += 1\n    };\n    \n    let _f = vec_free(a);\n    let _f = vec_free(b);\n    let _f = vec_free(c);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

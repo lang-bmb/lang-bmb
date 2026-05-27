@@ -1,0 +1,24 @@
+{
+  "problem_id": "24_sorted_insert",
+  "category": "contract",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn insert_sorted(v: i64, arr: i64, n: i64) -> i64\n    pre n >= 0\n    post ret == n + 1\n= {\n    // Find insertion position: first index where arr[i] >= v\n    let mut i = 0;\n    while i < n {\n        if vec_get(arr, i) >= v {\n            break\n        };\n        i = i + 1\n    };\n\n    // Insert v at position i by shifting elements right\n    // We need to make space. The array has capacity for at least n+1 elements?\n    // The problem says input is sorted array of n elements. We assume we can push.\n    // But to maintain sorted order efficiently, we shift from end to i.\n    \n    // Actually, simpler approach: push v to end, then bubble it to correct position?\n    // Or: shift elements from i to n-1 to i+1 to n, then set arr[i] = v.\n    // Since vec is dynamic, we can just push v, then move it left.\n    \n    let _p = vec_push(arr, v);\n    let mut j = n; // current position of the new element (was at end)\n    while j > 0 {\n        let prev = vec_get(arr, j - 1);\n        let curr = vec_get(arr, j);\n        if prev <= curr {\n            break\n        };\n        // Swap arr[j-1] and arr[j]\n        let _s1 = vec_set(arr, j - 1, curr);\n        let _s2 = vec_set(arr, j, prev);\n        j = j - 1\n    };\n    \n    vec_len(arr)\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    let arr = vec_new();\n    let mut i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(arr, val);\n        i = i + 1\n    };\n    let val = read_int();\n    \n    let _len = insert_sorted(val, arr, n);\n    \n    // Print all elements space-separated\n    let total = vec_len(arr);\n    let mut i = 0;\n    while i < total {\n        if i > 0 {\n            let _s = print_str(\" \")\n        };\n        let _p = print(vec_get(arr, i));\n        i = i + 1\n    };\n    let _nl = println_str(\"\");\n    \n    let _f = vec_free(arr);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

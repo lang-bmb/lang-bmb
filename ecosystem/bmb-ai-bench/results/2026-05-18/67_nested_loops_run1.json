@@ -1,0 +1,32 @@
+{
+  "problem_id": "67_nested_loops",
+  "category": "edge",
+  "difficulty": "easy",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 1,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let t = read_int();\n    let i = 0;\n    while i < t {\n        let n = read_int();\n        let target = read_int();\n        let count = 0;\n        let a = 0;\n        while a < n {\n            let b = 0;\n            while b < n {\n                let c = target - a - b;\n                if c >= 0 and c < n {\n                    let _c = count + 1;\n                    // We need to update count, but count is immutable in this scope without let mut\n                    // Let's rewrite with let mut count\n                };\n                b = b + 1\n            };\n            a = a + 1\n        };\n        // The above logic is flawed because 'count' isn't mutable in the inner loops easily without restructuring.\n        // Let's use a mutable count variable.\n        ()\n    };\n    0\n};\n\n// Let's rewrite properly with mutable variables.\n\nfn main() -> i64 = {\n    let t = read_int();\n    let mut tc = 0;\n    while tc < t {\n        let n = read_int();\n        let target = read_int();\n        let mut count = 0;\n        let mut a = 0;\n        while a < n {\n            let mut b = 0;\n            while b < n {\n                let c = target - a - b;\n                if c >= 0 and c < n {\n                    count = count + 1\n                };\n                b = b + 1\n            };\n            a = a + 1\n        };\n        let _p = println(count);\n        tc = tc + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"message\":\"Linker error: clang compile failed: C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpypeemlie\\\\solution.ll:725:12: error: invalid redefinition of function 'bmb_user_main'\n\\n  725 | define i64 @bmb_user_main() alwaysinline nounwind norecurse uwtable \\\"no-trapping-math\\\"=\\\"true\\\" {\n\\n      |            ^\n\\n1 error generated.\n\\n\"}",
+      "loop_type": "C"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let t = read_int();\n    let mut tc = 0;\n    while tc < t {\n        let n = read_int();\n        let target = read_int();\n        let mut count = 0;\n        let mut a = 0;\n        while a < n {\n            let mut b = 0;\n            while b < n {\n                let c = target - a - b;\n                if c >= 0 and c < n {\n                    count = count + 1\n                };\n                b = b + 1\n            };\n            a = a + 1\n        };\n        let _p = println(count);\n        tc = tc + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

@@ -1,0 +1,48 @@
+{
+  "problem_id": "01_binary_search",
+  "category": "algorithm",
+  "difficulty": "easy",
+  "loop_count": 4,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 3
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let target = read_int();\n    let n = read_int();\n    \n    let v = vec_new();\n    let i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(v, val);\n        i = i + 1\n    };\n    \n    if n == 0 {\n        let _p = println(-1);\n        let _f = vec_free(v);\n        return 0\n    };\n    \n    let mut lo = 0;\n    let mut hi = n;\n    \n    while lo < hi {\n        let mid = lo + (hi - lo) / 2;\n        if vec_get(v, mid) < target {\n            lo = mid + 1\n        } else {\n            hi = mid\n        }\n    };\n    \n    if lo < n && vec_get(v, lo) == target {\n        let _p = println(lo);\n        let _f = vec_free(v);\n        return 0\n    } else {\n        let _p = println(-1);\n        let _f = vec_free(v);\n        return 0\n    }\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4:\n  stdin: '1 5 1 1 1 1 1'\n  expected: '2\\n'\n  got: '0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let target = read_int();\n    let n = read_int();\n    \n    let v = vec_new();\n    let i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(v, val);\n        i = i + 1\n    };\n    \n    if n == 0 {\n        let _p = println(-1);\n        let _f = vec_free(v);\n        return 0\n    };\n    \n    // Binary search for the first occurrence of target\n    let mut lo = 0;\n    let mut hi = n;\n    \n    while lo < hi {\n        let mid = lo + (hi - lo) / 2;\n        if vec_get(v, mid) < target {\n            lo = mid + 1\n        } else {\n            hi = mid\n        }\n    };\n    \n    if lo < n && vec_get(v, lo) == target {\n        let _p = println(lo);\n        let _f = vec_free(v);\n        return 0\n    } else {\n        let _p = println(-1);\n        let _f = vec_free(v);\n        return 0\n    }\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4:\n  stdin: '1 5 1 1 1 1 1'\n  expected: '2\\n'\n  got: '0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 3,
+      "code": "fn main() -> i64 = {\n    let target = read_int();\n    let n = read_int();\n    \n    let v = vec_new();\n    let i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(v, val);\n        i = i + 1\n    };\n    \n    if n == 0 {\n        let _p = println(-1);\n        let _f = vec_free(v);\n        return 0\n    };\n    \n    // Binary search for the first occurrence of target\n    let mut lo = 0;\n    let mut hi = n;\n    \n    while lo < hi {\n        let mid = lo + (hi - lo) / 2;\n        if vec_get(v, mid) < target {\n            lo = mid + 1\n        } else {\n            hi = mid\n        }\n    };\n    \n    if lo < n && vec_get(v, lo) == target {\n        let _p = println(lo);\n        let _f = vec_free(v);\n        return 0\n    } else {\n        let _p = println(-1);\n        let _f = vec_free(v);\n        return 0\n    }\n};",
+      "compiled": true,
+      "test_passed": false,
+      "error_msg": "Test 4:\n  stdin: '1 5 1 1 1 1 1'\n  expected: '2\\n'\n  got: '0\\n'",
+      "loop_type": "D"
+    },
+    {
+      "attempt": 4,
+      "code": "fn main() -> i64 = {\n    let target = read_int();\n    let n = read_int();\n    \n    let v = vec_new();\n    let i = 0;\n    while i < n {\n        let val = read_int();\n        let _p = vec_push(v, val);\n        i = i + 1\n    };\n    \n    if n == 0 {\n        let _p = println(-1);\n        let _f = vec_free(v);\n        return 0\n    };\n    \n    // Binary search for any occurrence of target\n    let mut lo = 0;\n    let mut hi = n - 1;\n    let mut found = -1;\n    \n    while lo <= hi {\n        let mid = lo + (hi - lo) / 2;\n        let mid_val = vec_get(v, mid);\n        if mid_val == target {\n            found = mid;\n            break\n        } else if mid_val < target {\n            lo = mid + 1\n        } else {\n            hi = mid - 1\n        }\n    };\n    \n    let _p = println(found);\n    let _f = vec_free(v);\n    return 0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

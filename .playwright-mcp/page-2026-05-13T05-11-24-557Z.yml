@@ -1,0 +1,133 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - heading "BMB Playground" [level=1] [ref=e6]:
+        - generic [ref=e7]: BMB
+        - generic [ref=e8]: Playground
+      - generic [ref=e9]:
+        - button "Run" [ref=e10] [cursor=pointer]:
+          - img [ref=e139]
+          - text: Run
+        - button "Format" [ref=e13] [cursor=pointer]:
+          - img [ref=e14]
+          - text: Format
+        - button "Examples" [active] [ref=e16] [cursor=pointer]:
+          - img [ref=e17]
+          - text: Examples
+      - generic [ref=e20]:
+        - generic "BMB WASM v0.98.0" [ref=e43]: WASM
+        - button "Share" [ref=e22] [cursor=pointer]:
+          - img [ref=e23]
+          - text: Share
+        - link "GitHub" [ref=e29] [cursor=pointer]:
+          - /url: https://github.com/lang-bmb/lang-bmb
+          - img [ref=e30]
+    - main [ref=e32]:
+      - code [ref=e45]:
+        - generic [ref=e46]:
+          - textbox "Editor content" [ref=e47]
+          - textbox [ref=e48]
+          - generic [ref=e50]:
+            - generic [ref=e53]: "1"
+            - generic [ref=e55]: "2"
+            - generic [ref=e57]: "3"
+            - generic [ref=e58]:
+              - generic [ref=e59] [cursor=pointer]: 
+              - generic [ref=e60]: "4"
+            - generic [ref=e62]: "5"
+            - generic [ref=e64]: "6"
+            - generic [ref=e66]: "7"
+            - generic [ref=e68]: "8"
+            - generic [ref=e69]:
+              - generic [ref=e70] [cursor=pointer]: 
+              - generic [ref=e71]: "9"
+            - generic [ref=e73]: "10"
+            - generic [ref=e75]: "11"
+            - generic [ref=e77]: "12"
+            - generic [ref=e79]: "13"
+            - generic [ref=e81]: "14"
+          - generic [ref=e106]:
+            - generic [ref=e108]: "-- BMB Playground"
+            - generic [ref=e110]: "-- Try editing this code!"
+            - generic [ref=e113]: "fn factorial(n: i64) -> i64"
+            - generic [ref=e115]: pre n >= 0
+            - generic [ref=e117]: post ret >= 1
+            - generic [ref=e119]: "= if n <= 1 { 1 } else { n * factorial(n - 1) };"
+            - generic [ref=e122]: "fn main() -> i64 = {"
+            - generic [ref=e124]: let u0 = println(factorial(5)); -- 120
+            - generic [ref=e126]: let u1 = println(factorial(10)); -- 3628800
+            - generic [ref=e128]: "0"
+            - generic [ref=e130]: "};"
+      - generic [ref=e37]:
+        - generic [ref=e38]:
+          - generic [ref=e39]: Output
+          - generic [ref=e40]: Success
+        - generic [ref=e41]:
+          - generic [ref=e42]:
+            - generic [ref=e141]: Standard Output
+            - generic [ref=e142]: 120 3628800
+          - generic [ref=e143]: Executed in 1.00ms
+    - generic [ref=e145]:
+      - generic [ref=e146]:
+        - heading "Example Gallery" [level=2] [ref=e147]
+        - button "×" [ref=e148] [cursor=pointer]
+      - generic [ref=e149]:
+        - button "All" [ref=e150] [cursor=pointer]
+        - button "Basics" [ref=e151] [cursor=pointer]
+        - button "Algorithms" [ref=e152] [cursor=pointer]
+        - button "Math" [ref=e153] [cursor=pointer]
+        - button "Contracts" [ref=e154] [cursor=pointer]
+      - generic [ref=e156]:
+        - generic [ref=e157] [cursor=pointer]:
+          - generic [ref=e158]: Basics
+          - heading "Hello World" [level=3] [ref=e159]
+          - paragraph [ref=e160]: Simple program that prints a number
+          - generic [ref=e161]: "-- Hello World -- The simplest BMB program fn main() -> i64 = { let u = println(42);..."
+        - generic [ref=e162] [cursor=pointer]:
+          - generic [ref=e163]: Basics
+          - heading "Factorial" [level=3] [ref=e164]
+          - paragraph [ref=e165]: Recursive factorial with contracts
+          - generic [ref=e166]: "-- Factorial with contracts -- Demonstrates pre/post conditions fn factorial(n: i64) -> i64 pre n >= 0..."
+        - generic [ref=e167] [cursor=pointer]:
+          - generic [ref=e168]: Algorithms
+          - heading "Fibonacci" [level=3] [ref=e169]
+          - paragraph [ref=e170]: Efficient tail-recursive Fibonacci
+          - generic [ref=e171]: "-- Fibonacci sequence -- Tail-recursive implementation fn fib_iter(n: i64, a: i64, b: i64) -> i64 = if n <= 0 { a } else { fib_iter(n - 1, b, a + b) };..."
+        - generic [ref=e172] [cursor=pointer]:
+          - generic [ref=e173]: Algorithms
+          - heading "GCD" [level=3] [ref=e174]
+          - paragraph [ref=e175]: Greatest common divisor using Euclid
+          - generic [ref=e176]: "-- Greatest Common Divisor -- Euclidean algorithm with contracts fn gcd(a: i64, b: i64) -> i64 pre a >= 0 and b >= 0..."
+        - generic [ref=e177] [cursor=pointer]:
+          - generic [ref=e178]: Algorithms
+          - heading "Binary Search" [level=3] [ref=e179]
+          - paragraph [ref=e180]: Binary search on sorted sequence
+          - generic [ref=e181]: "-- Binary Search -- Search in sorted sequence fn get_value(i: i64) -> i64 = i * 2; -- [0,2,4,6,8,10...] ..."
+        - generic [ref=e182] [cursor=pointer]:
+          - generic [ref=e183]: Math
+          - heading "Prime Check" [level=3] [ref=e184]
+          - paragraph [ref=e185]: Check if a number is prime
+          - generic [ref=e186]: "-- Prime Number Check -- With contract verification fn is_prime_iter(n: i64, i: i64) -> i64 = if i * i > n { 1 }..."
+        - generic [ref=e187] [cursor=pointer]:
+          - generic [ref=e188]: Math
+          - heading "Power" [level=3] [ref=e189]
+          - paragraph [ref=e190]: Exponentiation with contracts
+          - generic [ref=e191]: "-- Power function -- Tail-recursive exponentiation fn power_iter(base: i64, exp: i64, acc: i64) -> i64 = if exp <= 0 { acc } else { power_iter(base, exp - 1, acc * base) };..."
+        - generic [ref=e192] [cursor=pointer]:
+          - generic [ref=e193]: Contracts
+          - heading "Safe Division" [level=3] [ref=e194]
+          - paragraph [ref=e195]: Division with precondition preventing divide-by-zero
+          - generic [ref=e196]: "-- Safe Division -- Contract prevents divide-by-zero at compile time fn safe_divide(a: i64, b: i64) -> i64 pre b != 0..."
+        - generic [ref=e197] [cursor=pointer]:
+          - generic [ref=e198]: Contracts
+          - heading "Range Clamp" [level=3] [ref=e199]
+          - paragraph [ref=e200]: Clamp a value within a range with contracts
+          - generic [ref=e201]: "-- Range Clamp -- Demonstrates combined pre/post contracts fn clamp(value: i64, lo: i64, hi: i64) -> i64 pre lo <= hi..."
+        - generic [ref=e202] [cursor=pointer]:
+          - generic [ref=e203]: Math
+          - heading "Integer Abs" [level=3] [ref=e204]
+          - paragraph [ref=e205]: Absolute value with post-condition
+          - generic [ref=e206]: "-- Absolute Value -- Post-condition proves result is non-negative fn abs(n: i64) -> i64 post ret >= 0..."
+  - generic [ref=e133]:
+    - alert
+    - alert

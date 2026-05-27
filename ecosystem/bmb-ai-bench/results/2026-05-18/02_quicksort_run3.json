@@ -1,0 +1,24 @@
+{
+  "problem_id": "02_quicksort",
+  "category": "algorithm",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn quicksort(v: i64, low: i64, high: i64) -> i64 = {\n    if low < high {\n        let pi = partition(v, low, high);\n        let _q1 = quicksort(v, low, pi - 1);\n        let _q2 = quicksort(v, pi + 1, high)\n    };\n    0\n};\n\nfn partition(v: i64, low: i64, high: i64) -> i64 = {\n    let pivot = vec_get(v, high);\n    let mut i = low - 1;\n    let mut j = low;\n    while j < high {\n        if vec_get(v, j) <= pivot {\n            i = i + 1;\n            if i != j {\n                let tmp = vec_get(v, i);\n                let _s1 = vec_set(v, i, vec_get(v, j));\n                let _s2 = vec_set(v, j, tmp)\n            }\n        };\n        j = j + 1\n    };\n    if i + 1 != high {\n        let tmp = vec_get(v, i + 1);\n        let _s1 = vec_set(v, i + 1, vec_get(v, high));\n        let _s2 = vec_set(v, high, tmp)\n    };\n    i + 1\n};\n\nfn main() -> i64 = {\n    let n = read_int();\n    if n == 0 {\n        let _nl = println_str(\"\");\n        0\n    } else {\n        let v = vec_new();\n        let i = 0;\n        while i < n {\n            let val = read_int();\n            let _p = vec_push(v, val);\n            i = i + 1\n        };\n        let _qs = quicksort(v, 0, n - 1);\n        let j = 0;\n        while j < n {\n            if j > 0 { let _s = print_str(\" \") };\n            let _p = print(vec_get(v, j));\n            j = j + 1\n        };\n        let _nl = println_str(\"\");\n        let _f = vec_free(v);\n        0\n    }\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

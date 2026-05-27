@@ -1,0 +1,24 @@
+{
+  "problem_id": "96_safe_matrix_mul",
+  "category": "contract",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let n: i64 = read_int();\n    let a = vec_new();\n    let b = vec_new();\n    let c = vec_new();\n    let nn = n * n;\n    let _i0 = 0;\n    while _i0 < nn {\n        let val = read_int();\n        let _p = vec_push(a, val);\n        _i0 = _i0 + 1\n    };\n    let _i1 = 0;\n    while _i1 < nn {\n        let val = read_int();\n        let _p = vec_push(b, val);\n        _i1 = _i1 + 1\n    };\n    let _i2 = 0;\n    while _i2 < nn {\n        let _p = vec_push(c, 0);\n        _i2 = _i2 + 1\n    };\n    let i = 0;\n    while i < n {\n        let k = 0;\n        while k < n {\n            let a_ik = vec_get(a, i * n + k);\n            let j = 0;\n            while j < n {\n                let c_ij = vec_get(c, i * n + j);\n                let b_kj = vec_get(b, k * n + j);\n                let new_val = c_ij + a_ik * b_kj;\n                let _s = vec_set(c, i * n + j, new_val);\n                j = j + 1\n            };\n            k = k + 1\n        };\n        i = i + 1\n    };\n    let i = 0;\n    while i < n {\n        let j = 0;\n        while j < n {\n            if j > 0 {\n                let _s = print_str(\" \")\n            };\n            let val = vec_get(c, i * n + j);\n            let _p = print(val);\n            j = j + 1\n        };\n        let _nl = println_str(\"\");\n        i = i + 1\n    };\n    let _f = vec_free(a);\n    let _f = vec_free(b);\n    let _f = vec_free(c);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 2
+}

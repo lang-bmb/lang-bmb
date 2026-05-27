@@ -1,0 +1,24 @@
+{
+  "problem_id": "74_majority_element",
+  "category": "edge",
+  "difficulty": "medium",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let t: i64 = read_int();\n    let mut i: i64 = 0;\n    while i < t {\n        let n: i64 = read_int();\n        let arr = vec_new();\n        let mut j: i64 = 0;\n        while j < n {\n            let _p = vec_push(arr, read_int());\n            set j = j + 1\n        };\n        let mut majority: i64 = -1;\n        let mut k: i64 = 0;\n        while k < n {\n            let candidate: i64 = vec_get(arr, k);\n            let mut cnt: i64 = 0;\n            let mut m: i64 = 0;\n            while m < n {\n                if vec_get(arr, m) == candidate { set cnt = cnt + 1 } else { () };\n                set m = m + 1\n            };\n            if cnt * 2 > n { set majority = candidate } else { () };\n            set k = k + 1\n        };\n        let _p = println(majority);\n        set i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

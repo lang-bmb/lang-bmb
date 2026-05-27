@@ -1,0 +1,32 @@
+{
+  "problem_id": "46_csv_parser",
+  "category": "practical",
+  "difficulty": "easy",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 1,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn main() -> i64 = {\n    let t = read_int();\n    let i = 0;\n    while i < t {\n        let n = read_int();\n        let sum = 0;\n        let j = 0;\n        while j < n {\n            let val = read_int();\n            sum = sum + val;\n            j = j + 1\n        };\n        let _p = println(n + \" \" + to_string(sum));\n        i = i + 1\n    };\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"type\",\"file\":\"C:\\\\Users\\\\iyulab\\\\AppData\\\\Local\\\\Temp\\\\tmpqb6lp5mg\\\\solution.bmb\",\"start\":3211,\"end\":3218,\"line\":115,\"col\":26,\"message\":\"expected i64, got String\"}",
+      "loop_type": "C"
+    },
+    {
+      "attempt": 2,
+      "code": "fn main() -> i64 = {\n    let t = read_int();\n    let i = 0;\n    while i < t {\n        let n = read_int();\n        let sum = 0;\n        let j = 0;\n        while j < n {\n            let val = read_int();\n            sum = sum + val;\n            j = j + 1\n        };\n        let _p = println_str(to_string(n) + \" \" + to_string(sum));\n        i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}

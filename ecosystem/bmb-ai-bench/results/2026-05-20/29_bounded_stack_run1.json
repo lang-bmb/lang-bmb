@@ -1,0 +1,32 @@
+{
+  "problem_id": "29_bounded_stack",
+  "category": "contract",
+  "difficulty": "medium",
+  "loop_count": 2,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 1,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn push(stk: i64, val: i64, cap: i64) -> i64\n    pre vec_len(stk) < cap\n= vec_push(stk, val);\n\nfn pop(stk: i64) -> i64\n    pre vec_len(stk) > 0\n= vec_pop(stk);\n\nfn main() -> i64 = {\n    let cap: i64 = read_int();\n    let q: i64 = read_int();\n    let stk = vec_new();\n    for _i in 0..q {\n        let op: i64 = read_int();\n        if op == 1 {\n            let x: i64 = read_int();\n            if vec_len(stk) < cap {\n                let _p = push(stk, x, cap)\n            } else {\n                let _p = println_str(\"FULL\")\n            }\n        } else if op == 2 {\n            if vec_len(stk) > 0 {\n                let val: i64 = pop(stk);\n                let _p = println(val)\n            } else {\n                let _p = println_str(\"EMPTY\")\n            }\n        } else {\n            let _p = println(vec_len(stk))\n        }\n    };\n    let _f = vec_free(stk);\n    0\n};",
+      "compiled": false,
+      "test_passed": false,
+      "error_msg": "{\"type\":\"error\",\"kind\":\"type\",\"file\":\"C:/Users/iyulab/AppData/Local/Temp/tmp8uk9_ntj/solution.bmb\",\"start\":2996,\"end\":3014,\"line\":105,\"col\":3,\"message\":\"expected i64, got ()\",\"suggestion\":\"println/print/vec_push/vec_set/vec_free return () not i64. Wrap in a block: { println(x); 0 }\",\"example_wrong\":\"fn main() -> i64 = println(42);\",\"example_correct\":\"fn main() -> i64 = { println(42); 0 };\",\"pattern\":\"void_return_used\"}",
+      "loop_type": "C"
+    },
+    {
+      "attempt": 2,
+      "code": "fn push(stk: i64, val: i64, cap: i64) -> i64\n    pre vec_len(stk) < cap\n= { vec_push(stk, val); 0 };\n\nfn pop(stk: i64) -> i64\n    pre vec_len(stk) > 0\n= vec_pop(stk);\n\nfn main() -> i64 = {\n    let cap: i64 = read_int();\n    let q: i64 = read_int();\n    let stk = vec_new();\n    for _i in 0..q {\n        let op: i64 = read_int();\n        if op == 1 {\n            let x: i64 = read_int();\n            if vec_len(stk) < cap {\n                let _p = push(stk, x, cap)\n            } else {\n                let _p = println_str(\"FULL\")\n            }\n        } else if op == 2 {\n            if vec_len(stk) > 0 {\n                let val: i64 = pop(stk);\n                let _p = println(val)\n            } else {\n                let _p = println_str(\"EMPTY\")\n            }\n        } else {\n            let _p = println(vec_len(stk))\n        }\n    };\n    let _f = vec_free(stk);\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 1
+}

@@ -1,0 +1,24 @@
+{
+  "problem_id": "30_contract_chain",
+  "category": "contract",
+  "difficulty": "hard",
+  "loop_count": 1,
+  "final_correct": true,
+  "loop_types": {
+    "A": 0,
+    "B": 0,
+    "C": 0,
+    "D": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "code": "fn normalize(x: i64, mn: i64, mx: i64) -> i64\n    pre mn < mx\n    post ret >= 0 and ret <= 100\n= (x - mn) * 100 / (mx - mn);\n\nfn scale(x: i64, factor: i64) -> i64\n    pre x >= 0\n    post ret >= 0\n= x * factor;\n\nfn bound(x: i64, limit: i64) -> i64\n    pre x >= 0 and limit >= 0\n    post ret >= 0 and ret <= limit\n= if x > limit { limit } else { x };\n\nfn main() -> i64 = {\n    let mn: i64 = read_int();\n    let mx: i64 = read_int();\n    let factor: i64 = read_int();\n    let limit: i64 = read_int();\n    let n: i64 = read_int();\n    let mut i: i64 = 0;\n    while i < n {\n        let x: i64 = read_int();\n        let normalized = normalize(x, mn, mx);\n        let scaled = scale(normalized, factor);\n        let bounded = bound(scaled, limit);\n        let _p = println(bounded);\n        i = i + 1\n    };\n    0\n};",
+      "compiled": true,
+      "test_passed": true,
+      "error_msg": "",
+      "loop_type": ""
+    }
+  ],
+  "run_id": 3
+}
