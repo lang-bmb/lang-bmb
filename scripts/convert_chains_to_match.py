@@ -6,7 +6,7 @@ import re
 import subprocess
 from collections import defaultdict
 
-PRELUDE_LINES = 102
+PRELUDE_LINES = 0  # bmb lint reports file-direct line numbers (not prelude-adjusted)
 TARGET = 'bootstrap/compiler.bmb'
 
 # ── Parsing helpers ──────────────────────────────────────────────────────────
@@ -259,7 +259,7 @@ print(f"TK_* functions found: {len(tk_map)}")
 # ── Get warnings ─────────────────────────────────────────────────────────────
 
 result = subprocess.run(
-    ['./target/release/bmb', 'check', TARGET],
+    ['./target/release/bmb', 'lint', TARGET],
     capture_output=True, encoding='utf-8', errors='replace'
 )
 
@@ -293,6 +293,7 @@ for end_pp, ws in groups.items():
         'count': count,
         'file_line_approx': file_line_approx,
         'warning_line': root['line'],
+        'warning_start': root['start'],  # Direct byte offset from warning
     })
 
 print(f"Unique chains: {len(raw_chains)}")
@@ -318,9 +319,22 @@ def find_chain_start_byte(chain):
 
 
 # Augment chains with actual start positions
+# Primary: use warning's direct byte offset (bmb lint gives file-direct byte positions);
+# fallback to line-based search if direct offset doesn't match pattern.
 resolved = []
 for chain in raw_chains:
-    start = find_chain_start_byte(chain)
+    pat = re.compile(r'\bif\s+' + re.escape(chain['var']) + r'\s*==')
+    # Try warning's direct start byte first
+    direct_start = chain.get('warning_start')
+    start = None
+    if direct_start is not None:
+        seg = content[direct_start:direct_start+200]
+        m = pat.search(seg)
+        if m and m.start() < 10:  # Should be very close to the byte offset
+            start = direct_start + m.start()
+    if start is None:
+        # Fallback: search by line number
+        start = find_chain_start_byte(chain)
     if start is None:
         print(f"  SKIP: could not find chain for var={chain['var']} near line ~{chain['file_line_approx']}")
         continue
