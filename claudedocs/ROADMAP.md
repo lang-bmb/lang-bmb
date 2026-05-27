@@ -1295,24 +1295,40 @@ M10 완료 + Stage 2 bootstrap 복구 + 0-warning 재복구 + M11-B(fixed_point:
 
 | 후보 | 내용 | 규모 | 상태 |
 |------|------|------|------|
-| **A. 약한 계약 → semantic 계약** | `post it or not it` 등 tautology 1,114개 → 의미 있는 계약 | ~4-6 cycles | 🔵 **진행 중** |
+| **A. 약한 계약 → semantic 계약** | `post it or not it` 등 tautology → 의미 있는 계약 | ~4-6 cycles | 🔵 **진행 중** (Cycles 3206-3209: -49) |
 | **B. 전체 3-Stage bootstrap 검증** | bootstrap.sh E2E (~8분), canonical FP 완전 확인 | 1 cycle | ✅ **COMPLETE** (Cycle 3205) |
 | **C. 언어 갭 추가 해소** | stack array / closure / generic 등 미지원 기능 | 가변 | 대기 |
 | **D. B축 재측정** | claude-sonnet-4-6 98.0% stale 기한 2026-08-13 (API key 필요) | HUMAN | HUMAN |
+
+### M11-A 진척 (2026-05-27 갱신)
+
+| 종류 | 세션 전 | 현재 | skip 확정 |
+|------|---------|------|-----------|
+| bool `post it or not it` | 49 | **27** | 7 (no-pre) |
+| i64 `post it == it` | 7 | 7 | 7 (all skip) |
+| String `post it.len() >= 0` | 302 | **275** | 77 (no-pre) |
+| **합계** | **358** | **309** | — |
 
 ### M11-A: skip 확정 목록 (변경 금지)
 
 | 종류 | 수 | 이유 |
 |------|----|----|
-| `post it or not it` (bool, skip 확정) | 6 | irreducible (함수 반환값 의미 불명확) |
+| `post it or not it` (bool, no-pre) | 7 | 의미있는 계약 불가 (pre 없음) |
 | `post it == it` (i64) | 7 | 진정 임의 값 반환 — trivial이 정직한 계약 |
-| `post it.len() >= 0` (String, skip 확정) | 77 | len() always ≥ 0, 삭제 or 유지 모두 trivial |
+| `post it.len() >= 0` (String, no-pre) | 77 | len() always ≥ 0, 삭제 or 유지 모두 trivial |
+
+### M11-A 제약사항 (발견)
+
+- **semantic_duplication (bool only)**: 동일 (sig+pre+post) bool 함수 쌍 → lint 경고
+  → 그룹 대표 1개만 semantic post, 나머지 skip
+- **String: 경고 없음** → 동일 시그니처 다수 함수 독립적 교체 가능 (empirical)
+- **"all" 함수**: 빈 컨테이너에서 true 반환 → `not it or pos < X` 성립 안 함 → skip
 
 ### 현재 기술 부채 목록
 
 | 항목 | 내용 | 심각도 |
 |------|------|--------|
-| trivial postcondition ~1,114개 | `post it or not it` / `post it.len() >= 0` 등 | P2 |
+| trivial postcondition 309개 | `post it or not it` / `post it.len() >= 0` 등 (358→309) | P2 |
 | BMB IR → opt 최적화 불가 | printf 기반 IR 방출 코드가 opt O1+에 의해 절단 | P3 |
 | Unix 링크 스택 미설정 | bootstrap.sh Unix 브랜치 `-no-pie`만, 스택 설정 없음 | P3 |
 | `compiler.bmb.compact.out.ll` 구버전 | 6,193 lines (구버전) — S4 IR(134,209 lines)로 교체 검토 | P4 |

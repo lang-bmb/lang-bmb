@@ -6634,7 +6634,7 @@ fn variant_has_bracket(variants: String, target: String, pos: i64) -> bool
 
   pre pos >= 0
 
-  post it or not it
+  post not it or pos < variants.len()
 
 = if pos >= variants.len() { false }
 
@@ -10286,7 +10286,7 @@ fn check_param_name_match(name: String, params: String, pos: i64) -> bool
 
   pre pos >= 0
 
-  post it or not it
+  post not it or pos < params.len()
 
 = let p = low_skip_ws(params, pos);
 
@@ -13494,7 +13494,7 @@ fn llvm_gen_binop(op: String, line: String, pos: i64, dest: String) -> String
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let p1 = low_skip_ws(line, pos);
 
@@ -13516,7 +13516,7 @@ fn llvm_gen_sat_binop(intrinsic: String, line: String, pos: i64, dest: String) -
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let p1 = low_skip_ws(line, pos);
 
@@ -13536,7 +13536,7 @@ fn llvm_gen_sat_mul(line: String, pos: i64, dest: String) -> String
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let p1 = low_skip_ws(line, pos);
 
@@ -13570,7 +13570,7 @@ fn llvm_gen_wrap_binop(op: String, line: String, pos: i64, dest: String) -> Stri
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let p1 = low_skip_ws(line, pos);
 
@@ -13588,7 +13588,7 @@ fn llvm_gen_cmp(pred: String, line: String, pos: i64, dest: String) -> String
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let p1 = low_skip_ws(line, pos);
 
@@ -13606,7 +13606,7 @@ fn llvm_gen_not(line: String, pos: i64, dest: String) -> String
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let p = low_skip_ws(line, pos);
 
@@ -13618,7 +13618,7 @@ fn llvm_gen_bnot(line: String, pos: i64, dest: String) -> String
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let p = low_skip_ws(line, pos);
 
@@ -13632,7 +13632,7 @@ fn llvm_gen_gep(line: String, pos: i64, dest: String) -> String
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let p1 = low_skip_ws(line, pos);
 
@@ -13654,7 +13654,7 @@ fn llvm_gen_store_ptr_sb(line: String, pos: i64, str_sb: i64) -> String
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let p1 = low_skip_ws(line, pos);
 
@@ -13684,7 +13684,7 @@ fn llvm_gen_load_ptr_sb(line: String, pos: i64, dest: String, str_sb: i64) -> St
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let p = low_skip_ws(line, pos);
 
@@ -13716,7 +13716,7 @@ fn llvm_gen_gep_sb(line: String, pos: i64, dest: String, str_sb: i64) -> String
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let p1 = low_skip_ws(line, pos);
 
@@ -13744,7 +13744,7 @@ fn llvm_gen_phi(line: String, pos: i64, dest: String) -> String
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = llvm_gen_phi_typed(line, pos, dest, "i64");
 
@@ -13762,7 +13762,7 @@ fn llvm_gen_phi_typed(line: String, pos: i64, dest: String, ret_type: String) ->
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let bracket_start = find_char(line, pos, 91);
 
@@ -16240,7 +16240,7 @@ fn is_dead_zext_range(ir: String, start: i64, end: i64, dead: String) -> bool
 
   pre start >= 0
 
-  post it or not it
+  post not it or start < end
 
 = {
 
@@ -16722,7 +16722,7 @@ fn mn_has_memory_op(ir: String, pos: i64) -> bool
 
   pre pos >= 0
 
-  post it or not it
+  post not it or pos < ir.len()
 
 = if pos >= ir.len() { false }
 
@@ -17046,7 +17046,7 @@ fn ipr_has_store(ir: String, pos: i64, end: i64) -> bool
 
   pre pos >= 0
 
-  post it or not it
+  post not it or pos < end
 
 = if pos >= end { false }
 
@@ -20066,7 +20066,7 @@ fn cf_is_pow2(n: i64) -> bool
 
   pre n >= 0
 
-  post it or not it
+  post not it or n > 1
 
 = n > 1 and (n band (n - 1)) == 0;
 
@@ -20904,7 +20904,7 @@ fn dce_var_used_after(fn_mir: String, target: String, pos: i64) -> bool
 
   pre pos >= 0
 
-  post it or not it
+  post not it or pos < fn_mir.len()
 
 = if pos >= fn_mir.len() { false } else {
 
@@ -21176,7 +21176,7 @@ fn ube_has_target_at(targets: String, label: String, pos: i64) -> bool
 
   pre pos >= 0
 
-  post it or not it
+  post not it or pos < targets.len()
 
 = if pos >= targets.len() { false } else {
 
@@ -21310,7 +21310,7 @@ fn cp_is_var_char(c: i64) -> bool
 
   pre c >= 0
 
-  post it or not it
+  post not it or (c >= 48 and c <= 122)
 
 = (c >= 48 and c <= 57) or (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or c == 95;
 
@@ -22456,7 +22456,7 @@ fn cfeval_has_side_effects(body: String, pos: i64) -> bool
 
   pre pos >= 0
 
-  post it or not it
+  post not it or pos < body.len()
 
 = if pos >= body.len() { false } else {
 
@@ -22964,7 +22964,7 @@ fn trl_scan_block_for_return(fn_mir: String, pos: i64) -> bool
 
   pre pos >= 0
 
-  post it or not it
+  post not it or pos < fn_mir.len()
 
 = if pos >= fn_mir.len() { false }
 
@@ -26920,7 +26920,7 @@ fn llvm_gen_fn_header(line: String, pos: i64) -> String
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let name_start = pos + 3;
 
@@ -27686,7 +27686,7 @@ fn matches_string_pattern(s: String, pos: i64) -> bool
 
   pre pos >= 0
 
-  post it or not it
+  post not it or pos + 5 < s.len()
 
 = s.byte_at(pos) == 115 and s.byte_at(pos + 1) == 116 and
 
@@ -27932,7 +27932,7 @@ fn check_fn_in_list(fn_name: String, list: String, pos: i64) -> bool
 
   pre pos >= 0
 
-  post it or not it
+  post not it or pos < list.len()
 
 = if pos >= list.len() { false }
 
@@ -28994,7 +28994,7 @@ fn is_field_f64_by_index(struct_reg: String, struct_name: String, idx: i64) -> b
 
   pre idx >= 0
 
-  post it or not it
+  post not it or struct_reg.len() > 0
 
 = is_field_f64_by_index_at(struct_reg, 0, struct_name, idx);
 
@@ -29002,7 +29002,7 @@ fn is_field_f64_by_index_at(registry: String, pos: i64, struct_name: String, idx
 
   pre pos >= 0
 
-  post it or not it
+  post not it or pos < registry.len()
 
 = if pos >= registry.len() { false } else {
 
@@ -29032,7 +29032,7 @@ fn check_field_f64_at_index(fields: String, pos: i64, cur_idx: i64, target_idx: 
 
   pre pos >= 0
 
-  post it or not it
+  post not it or pos < fields.len()
 
 = if pos >= fields.len() { false } else {
 
@@ -29578,7 +29578,7 @@ fn llvm_gen_nullable_select(line: String, pos: i64, dest: String) -> String
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let p1 = low_skip_ws(line, pos);
 
@@ -29596,7 +29596,7 @@ fn llvm_gen_select(line: String, pos: i64, dest: String) -> String
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let p1 = low_skip_ws(line, pos);
 
@@ -29760,7 +29760,7 @@ fn llvm_gen_hof_call(line: String, pos: i64, dest: String, var_name: String) -> 
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let at_pos = find_char(line, pos, 64);
 
@@ -29788,7 +29788,7 @@ fn llvm_gen_indirect_call(line: String, pos: i64, dest: String, var_name: String
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = // Parse args from MIR line: %_tN = call @name(arg1, arg2, ...)
 
@@ -29832,7 +29832,7 @@ fn llvm_gen_indirect_call_param(line: String, pos: i64, dest: String, var_name: 
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let at_pos = find_char(line, pos, 64);
 
@@ -30006,7 +30006,7 @@ fn llvm_gen_closure_load(line: String, pos: i64, dest: String) -> String
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let p = low_skip_ws(line, pos);
 
@@ -30106,7 +30106,7 @@ fn llvm_gen_field_access(line: String, pos: i64, dest: String, struct_reg: Strin
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let p1 = low_skip_ws(line, pos);
 
@@ -30552,7 +30552,7 @@ fn llvm_gen_field_store(line: String, pos: i64, struct_reg: String, str_sb: i64)
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let p1 = low_skip_ws(line, pos);
 
@@ -30722,7 +30722,7 @@ fn check_closure_marker(varname: String, str_sb: i64, n: i64) -> bool
 
   pre n >= 0
 
-  post it or not it
+  post not it or n > 0
 
 = if n <= 0 { false }
 
@@ -30990,7 +30990,7 @@ fn llvm_gen_binop_sb(int_op: String, float_op: String, line: String, pos: i64, d
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let p1 = low_skip_ws(line, pos);
 
@@ -31026,7 +31026,7 @@ fn llvm_gen_cmp_sb(int_pred: String, float_pred: String, line: String, pos: i64,
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let p1 = low_skip_ws(line, pos);
 
@@ -31056,7 +31056,7 @@ fn llvm_gen_neg_sb(line: String, pos: i64, dest: String, str_sb: i64) -> String
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let p = low_skip_ws(line, pos);
 
@@ -31080,7 +31080,7 @@ fn llvm_gen_phi_with_strings_sb(line: String, pos: i64, dest: String, str_sb: i6
 
   pre pos >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = let bracket_start = find_char(line, pos, 91);
 
@@ -32752,7 +32752,7 @@ fn pack_assume_result(counter: i64, ir: String) -> String
 
   pre counter >= 0
 
-  post it.len() >= 0
+  post it.len() >= 1
 
 = int_to_string(counter) + ":" + ir;
 
@@ -35536,7 +35536,7 @@ fn callers_calls_contain(calls: String, target: String, pos: i64) -> bool
 
   pre pos >= 0
 
-  post it or not it
+  post not it or calls.len() > 0
 
 = if calls == "" { false }
 
@@ -37150,7 +37150,7 @@ fn layer_is_leaf(entries: String, pos: i64, name: String) -> bool
 
   pre pos >= 0
 
-  post it or not it
+  post not it or pos < entries.len()
 
 = if pos >= entries.len() { false }
 
@@ -40194,7 +40194,7 @@ fn lint_has_upper(name: String, pos: i64) -> bool
 
   pre pos >= 0
 
-  post it or not it
+  post not it or pos < name.len()
 
 = if pos >= name.len() { false }
 
@@ -41844,7 +41844,7 @@ fn parse_build_fast(argc: i64) -> bool
 
   pre argc >= 0
 
-  post it or not it
+  post not it or argc > 3
 
 = check_arg_flag(argc, 3, "--fast-compile");
 
@@ -41874,7 +41874,7 @@ fn check_arg_flag(argc: i64, idx: i64, flag: String) -> bool
 
   pre idx >= 0
 
-  post it or not it
+  post not it or idx < argc
 
 = if idx >= argc { false }
 
