@@ -1,7 +1,7 @@
 # BMB Session Handoff — 2026-05-27 (Cycles 3212-3218)
 
-> **HEAD**: `6e8b8179`
-> **이번 세션 작업**: Cycles 3212-3218 — **M11-A Phase 5c-5j: trivial postconditions 28개 교체**
+> **HEAD**: `606c4ebc`
+> **이번 세션 작업**: Cycles 3212-3218 — **M11-A Phase 5c-5j: trivial postconditions 27개 교체**
 > **M11-A 상태**: 🔵 수익 체감 확인 (358 → 263 trivials, -26.5%)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 > **M10 상태**: ✅ **COMPLETE** (이전 세션)
@@ -15,7 +15,7 @@
 
 ### M11-A Phase 5c-5j: 추가 trivial postcondition 교체
 
-7개 사이클에 걸쳐 28개 trivial postcondition을 의미있는 계약으로 교체.
+7개 사이클에 걸쳐 27개 trivial postcondition을 의미있는 계약으로 교체.
 
 #### 변경 요약
 
@@ -70,14 +70,26 @@
 
 ## 다음 세션 시작점
 
-### 가능한 다음 단계 (우선순위 순)
+### 추천 작업 순서 (우선순위)
 
-| 순위 | 작업 | 설명 |
-|------|------|------|
-| 1 | **언어 갭 작업(M11-C)** | stack array / closure capture / generic 등 미지원 기능 |
-| 2 | **M11-A 추가** | 남은 230 String 중 새 패턴 탐색 (hit rate < 0.4%로 낮음) |
+| 순위 | 작업 | 예상 임팩트 | 비고 |
+|------|------|------------|------|
+| **1** | **언어 갭 작업(M11-C)** | 높음 | stack array / closure capture / generic 미지원 기능 |
+| 2 | ifs_flex_check_goto 수정 | 낮음 | `pre next_p >= 0` 추가 → Z3 141/141 달성 |
+| 3 | M11-A 잔여 탐색 | 매우 낮음 | hit rate < 0.4%, 수익 체감 확인됨 |
 
-**M11-A 수익 체감 명확**: 이번 세션 7개 사이클 → 27개 발굴. 다음 세션은 M11-C 전환 추천.
+**M11-A 수익 체감 명확**: 이번 세션 7개 사이클 → 27개 발굴. **다음 세션은 M11-C 전환 강력 추천**.
+
+### M11-C 언어 갭 작업 후보
+
+ROADMAP § M11-C 또는 아래 갭 중 사용자 결정:
+
+| 갭 | 현황 | 접근 |
+|----|------|------|
+| Stack array `[T; N]` | 미지원 | 파서 + MIR + codegen + bootstrap |
+| Closure capture (upvalue) | 부분 지원 | MIR capture analysis |
+| Generic fn bootstrap | 부분 지원 | type param 처리 강화 |
+| `ifs_flex_check_goto` Z3 | pre-existing 1 FAIL | `pre next_p >= 0` 단순 추가 |
 
 ### 기술 상태 스냅샷
 

@@ -1295,9 +1295,9 @@ M10 완료 + Stage 2 bootstrap 복구 + 0-warning 재복구 + M11-B(fixed_point:
 
 | 후보 | 내용 | 규모 | 상태 |
 |------|------|------|------|
-| **A. 약한 계약 → semantic 계약** | `post it or not it` 등 tautology → 의미 있는 계약 | ~4-6 cycles | 🔵 **진행 중** (Cycles 3206-3209: -49) |
+| **A. 약한 계약 → semantic 계약** | `post it or not it` 등 tautology → 의미 있는 계약 | ~4-6 cycles | 🏁 **수익 체감 확인** (358→263, -95, 26.5%) — 추가 진척 < 0.1% |
 | **B. 전체 3-Stage bootstrap 검증** | bootstrap.sh E2E (~8분), canonical FP 완전 확인 | 1 cycle | ✅ **COMPLETE** (Cycle 3205) |
-| **C. 언어 갭 추가 해소** | stack array / closure / generic 등 미지원 기능 | 가변 | 대기 |
+| **C. 언어 갭 추가 해소** | stack array / closure / generic 등 미지원 기능 | 가변 | **▶ 다음 추천** |
 | **D. B축 재측정** | claude-sonnet-4-6 98.0% stale 기한 2026-08-13 (API key 필요) | HUMAN | HUMAN |
 
 ### M11-A 진척 (2026-05-27 갱신 — Cycles 3212-3218 후, **수익 체감 확인**)
@@ -1339,7 +1339,8 @@ M10 완료 + Stage 2 bootstrap 복구 + 0-warning 재복구 + M11-B(fixed_point:
 
 | 항목 | 내용 | 심각도 |
 |------|------|--------|
-| trivial postcondition 263개 | `post it or not it` / `post it.len() >= 0` 등 (358→263, -26.5%) | P2 |
+| trivial postcondition 263개 | `post it or not it` / `post it.len() >= 0` 등 (358→263, -26.5%) — 수익체감으로 M11-A 중단 | P2 |
+| ifs_flex_check_goto Z3 FAIL | `pre next_p >= 0` 누락 → 141/141 미달성 | P3 |
 | BMB IR → opt 최적화 불가 | printf 기반 IR 방출 코드가 opt O1+에 의해 절단 | P3 |
 | Unix 링크 스택 미설정 | bootstrap.sh Unix 브랜치 `-no-pie`만, 스택 설정 없음 | P3 |
 | `compiler.bmb.compact.out.ll` 구버전 | 6,193 lines (구버전) — S4 IR(134,209 lines)로 교체 검토 | P4 |
