@@ -388,8 +388,10 @@ if command -v llc &> /dev/null; then
         # v0.87: Add platform-specific libraries (ws2_32 for Windows sockets)
         log_verbose "Linking Stage 2 binary with runtime..."
         if [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ "$OSTYPE" == "win32" ]]; then
-            # Windows: need winsock2 library for async socket functions
-            clang "$STAGE2_OBJ" "$RUNTIME_OBJ" "$RUNTIME_EVT" -o "$STAGE2_BIN" -lm -lws2_32 -no-pie
+            # Windows: need winsock2 library + 256MB stack for deep compiler.bmb recursion
+            # Without --stack, Windows default thread stack (1MB) causes STATUS_STACK_OVERFLOW
+            # when compiling compiler.bmb.compact (exits with code 127/0x7F).
+            clang "$STAGE2_OBJ" "$RUNTIME_OBJ" "$RUNTIME_EVT" -o "$STAGE2_BIN" -lm -lws2_32 -Wl,--stack,268435456
         else
             # Unix: pthread is typically needed
             clang "$STAGE2_OBJ" "$RUNTIME_OBJ" "$RUNTIME_EVT" -o "$STAGE2_BIN" -lm -lpthread -no-pie
@@ -437,17 +439,47 @@ log ""
 # Verification: Compare Stage 2 and Stage 3 LLVM IR
 log "${YELLOW}[4/4] Verification: Comparing Stage 2 and Stage 3${NC}"
 
-if diff -q "$STAGE2_LL" "$STAGE3_LL" > /dev/null 2>&1; then
-    RESULTS[fixed_point]=true
-    log "${GREEN}✓ 3-Stage Bootstrap PASSED: Stage 2 == Stage 3${NC}"
-    log "The bootstrap compiler generates identical output when compiled by:"
-    log "  - Rust compiler (Stage 1 → Stage 2)"
-    log "  - Itself (Stage 2 → Stage 3)"
+# Fixed Point check: compare IR semantics (not raw text).
+# The Rust backend emits unsigned notation for negative i64 constants
+# (e.g. 18446744073709551615 for -1), while the BMB bootstrap emits
+# signed notation (-1). Both are bit-identical; use llvm-as+llvm-dis
+# to canonicalize before comparing.
+STAGE2_CANON="${OUTPUT_DIR}/bmb-stage2-canon.ll"
+STAGE3_CANON="${OUTPUT_DIR}/bmb-stage3-canon.ll"
+if command -v llvm-as &> /dev/null && command -v llvm-dis &> /dev/null; then
+    log_verbose "Canonicalizing IRs for semantic comparison..."
+    llvm-as "$STAGE2_LL" -o "${OUTPUT_DIR}/bmb-stage2.bc" 2>/dev/null && \
+        llvm-dis "${OUTPUT_DIR}/bmb-stage2.bc" -o "$STAGE2_CANON" 2>/dev/null
+    llvm-as "$STAGE3_LL" -o "${OUTPUT_DIR}/bmb-stage3.bc" 2>/dev/null && \
+        llvm-dis "${OUTPUT_DIR}/bmb-stage3.bc" -o "$STAGE3_CANON" 2>/dev/null
+    # Strip ModuleID / source_filename header lines (differ by output path only)
+    if diff -q <(tail -n+3 "$STAGE2_CANON") <(tail -n+3 "$STAGE3_CANON") > /dev/null 2>&1; then
+        RESULTS[fixed_point]=true
+        log "${GREEN}✓ 3-Stage Bootstrap PASSED: Stage 2 == Stage 3 (semantic)${NC}"
+        log "The bootstrap compiler generates identical output when compiled by:"
+        log "  - Rust compiler (Stage 1 → Stage 2)"
+        log "  - Itself (Stage 2 → Stage 3)"
+    else
+        log "${YELLOW}Stage 2 and Stage 3 differ (semantic)${NC}"
+        if [ "$VERBOSE" = true ]; then
+            log "Differences (canonicalized):"
+            diff <(tail -n+3 "$STAGE2_CANON") <(tail -n+3 "$STAGE3_CANON") | head -20
+        fi
+    fi
 else
-    log "${YELLOW}Stage 2 and Stage 3 differ${NC}"
-    if [ "$VERBOSE" = true ]; then
-        log "Differences:"
-        diff "$STAGE2_LL" "$STAGE3_LL" | head -20
+    # Fallback: raw textual diff (may fail due to signed/unsigned constant encoding)
+    if diff -q "$STAGE2_LL" "$STAGE3_LL" > /dev/null 2>&1; then
+        RESULTS[fixed_point]=true
+        log "${GREEN}✓ 3-Stage Bootstrap PASSED: Stage 2 == Stage 3${NC}"
+        log "The bootstrap compiler generates identical output when compiled by:"
+        log "  - Rust compiler (Stage 1 → Stage 2)"
+        log "  - Itself (Stage 2 → Stage 3)"
+    else
+        log "${YELLOW}Stage 2 and Stage 3 differ (llvm-as/llvm-dis not available for semantic check)${NC}"
+        if [ "$VERBOSE" = true ]; then
+            log "Differences:"
+            diff "$STAGE2_LL" "$STAGE3_LL" | head -20
+        fi
     fi
 fi
 log ""
@@ -482,6 +514,7 @@ if [ "${RESULTS[fixed_point]}" = false ]; then
 fi
 
 # Cleanup intermediate files
-rm -f "$STAGE2_OBJ" "${STAGE2_LL}.tmp" "${STAGE3_LL}.tmp"
+rm -f "$STAGE2_OBJ" "${STAGE2_LL}.tmp" "${STAGE3_LL}.tmp" \
+    "${OUTPUT_DIR}/bmb-stage2.bc" "${OUTPUT_DIR}/bmb-stage3.bc"
 
 log "${GREEN}Bootstrap verification complete${NC}"

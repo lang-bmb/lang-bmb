@@ -2223,22 +2223,105 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             let merge_label = ctx.fresh_label("match_merge");
             let default_label = ctx.fresh_label("match_default");
 
-            // Analyze patterns to generate switch cases
-            // v0.60.262: Also get wildcard arm index for proper default handling
-            let (cases, wildcard_arm_index) = compile_match_patterns(arms, &arm_labels, &default_label);
-
-            // v0.60.262: Use wildcard arm label as switch default if present
-            let actual_default_label = match wildcard_arm_index {
-                Some(idx) => arm_labels[idx].clone(),
-                None => default_label.clone(),
-            };
-
-            // Close current block with switch terminator
-            ctx.finish_block(Terminator::Switch {
-                discriminant: Operand::Place(match_place.clone()),
-                cases,
-                default: actual_default_label,
+            // v0.109.P0: Detect string literal patterns.
+            // Switch discriminant uses i64 (first word of struct), so string patterns
+            // would incorrectly use arm-index as discriminant. Generate if-else chain instead.
+            let has_string_patterns = arms.iter().any(|arm| {
+                matches!(&arm.pattern.node, Pattern::Literal(LiteralPattern::String(_)))
             });
+
+            let wildcard_arm_index: Option<usize>;
+
+            if has_string_patterns {
+                // String match: generate if-else chain via MirBinOp::Eq on strings.
+                // The codegen already handles ptr==ptr → bmb_string_eq call (lines ~2952 in llvm_text.rs).
+                let mut string_arm_indices: Vec<usize> = Vec::new();
+                let mut wildcard_idx: Option<usize> = None;
+
+                for (i, arm) in arms.iter().enumerate() {
+                    match &arm.pattern.node {
+                        Pattern::Literal(LiteralPattern::String(_)) => string_arm_indices.push(i),
+                        Pattern::Wildcard | Pattern::Var(_) => { wildcard_idx = Some(i); }
+                        _ => { /* mixed match: non-string non-wildcard arm ignored in this path */ }
+                    }
+                }
+
+                wildcard_arm_index = wildcard_idx;
+
+                let default_target = match wildcard_idx {
+                    Some(idx) => arm_labels[idx].clone(),
+                    None => default_label.clone(),
+                };
+
+                let n_string_arms = string_arm_indices.len();
+
+                // Pre-generate intermediate check-block start labels.
+                // check_start_labels[k] is the label that begins the (k+1)-th string arm's check.
+                // The 0-th check happens in the currently open block (no label needed).
+                let check_start_labels: Vec<String> = (1..n_string_arms)
+                    .map(|k| ctx.fresh_label(&format!("str_match_check_{}", k)))
+                    .collect();
+
+                if n_string_arms == 0 {
+                    // No string arms at all — just jump to wildcard/default
+                    ctx.finish_block(Terminator::Goto(default_target));
+                } else {
+                    for (chain_pos, &arm_idx) in string_arm_indices.iter().enumerate() {
+                        let pattern_str = match &arms[arm_idx].pattern.node {
+                            Pattern::Literal(LiteralPattern::String(s)) => s.clone(),
+                            _ => unreachable!(),
+                        };
+
+                        // Emit: eq_dest = (match_place == pattern_str)
+                        // Because match_place is ptr (String) and rhs is Constant::String,
+                        // the text codegen routes this through bmb_string_eq → i1 result.
+                        let eq_dest = ctx.fresh_temp();
+                        ctx.locals.insert(eq_dest.name.clone(), MirType::Bool);
+                        ctx.push_inst(MirInst::BinOp {
+                            dest: eq_dest.clone(),
+                            op: MirBinOp::Eq,
+                            lhs: Operand::Place(match_place.clone()),
+                            rhs: Operand::Constant(Constant::String(pattern_str)),
+                        });
+
+                        let is_last_string_arm = chain_pos + 1 == n_string_arms;
+                        let else_label = if is_last_string_arm {
+                            default_target.clone()
+                        } else {
+                            check_start_labels[chain_pos].clone()
+                        };
+
+                        ctx.finish_block(Terminator::Branch {
+                            cond: Operand::Place(eq_dest),
+                            then_label: arm_labels[arm_idx].clone(),
+                            else_label,
+                        });
+
+                        // Start next check block (for all except the last string arm)
+                        if !is_last_string_arm {
+                            ctx.start_block(check_start_labels[chain_pos].clone());
+                        }
+                    }
+                }
+            } else {
+                // Integer/bool/enum match: use switch terminator (original path)
+                // v0.60.262: Also get wildcard arm index for proper default handling
+                let (cases, wc_idx) = compile_match_patterns(arms, &arm_labels, &default_label);
+                wildcard_arm_index = wc_idx;
+
+                // v0.60.262: Use wildcard arm label as switch default if present
+                let actual_default_label = match wildcard_arm_index {
+                    Some(idx) => arm_labels[idx].clone(),
+                    None => default_label.clone(),
+                };
+
+                // Close current block with switch terminator
+                ctx.finish_block(Terminator::Switch {
+                    discriminant: Operand::Place(match_place.clone()),
+                    cases,
+                    default: actual_default_label,
+                });
+            }
 
             // Result place for PHI node
             let result_place = ctx.fresh_temp();
