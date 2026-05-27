@@ -17042,6 +17042,18 @@ fn find_pipe_in_range(s: String, pos: i64, end: i64) -> i64
 
     else { find_pipe_in_range(s, pos + 1, end) };
 
+// Check if an LLVM intrinsic function name refers to a memory-writing operation.
+// Used to exclude memset/memcpy/memmove from "readonly" and "pure" classifications.
+// Future additions: llvm.memcpy.inline, llvm.memmove.element.unordered.atomic, etc.
+
+fn llvm_intrinsic_is_memory_write(fn_name: String) -> bool
+
+  post it or not it
+
+= find_pattern_at(fn_name, "llvm.memset", 0) >= 0
+  or find_pattern_at(fn_name, "llvm.memcpy", 0) >= 0
+  or find_pattern_at(fn_name, "llvm.memmove", 0) >= 0;
+
 // Check if a function body (from pos to end) has stores
 
 fn ipr_has_store(ir: String, pos: i64, end: i64) -> bool
@@ -17203,11 +17215,9 @@ fn ipr_all_calls_pure(ir: String, pos: i64, end: i64, known_pure: String) -> boo
 
                     let fn_name = line.slice(at_pos + 1, paren);
 
-                    // LLVM intrinsics are pure (memory(none)) EXCEPT memory-writing ones (memset/memcpy/memmove)
+                    // LLVM intrinsics are pure (memory(none)) EXCEPT memory-writing ones
                     if find_pattern_at(fn_name, "llvm.", 0) >= 0 {
-                        find_pattern_at(fn_name, "llvm.memset", 0) < 0
-                        and find_pattern_at(fn_name, "llvm.memcpy", 0) < 0
-                        and find_pattern_at(fn_name, "llvm.memmove", 0) < 0
+                        not llvm_intrinsic_is_memory_write(fn_name)
                     }
 
                     else {
@@ -17266,9 +17276,8 @@ fn ipr_all_calls_readonly(ir: String, pos: i64, end: i64, known: String) -> bool
 
                     let fn_name = line.slice(at_pos + 1, paren);
 
-                    // LLVM intrinsics are readonly EXCEPT memory-writing ones (memset/memcpy/memmove)
-
-                    if find_pattern_at(fn_name, "llvm.", 0) >= 0 { find_pattern_at(fn_name, "llvm.memset", 0) < 0 and find_pattern_at(fn_name, "llvm.memcpy", 0) < 0 and find_pattern_at(fn_name, "llvm.memmove", 0) < 0 }
+                    // LLVM intrinsics are readonly EXCEPT memory-writing ones
+                    if find_pattern_at(fn_name, "llvm.", 0) >= 0 { not llvm_intrinsic_is_memory_write(fn_name) }
 
                     else {
 

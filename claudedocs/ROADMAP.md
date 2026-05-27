@@ -1340,10 +1340,20 @@ M10 완료 + Stage 2 bootstrap 복구 + 0-warning 재복구 + M11-B(fixed_point:
 | 항목 | 내용 | 심각도 |
 |------|------|--------|
 | trivial postcondition 263개 | `post it or not it` / `post it.len() >= 0` 등 (358→263, -26.5%) — 수익체감으로 M11-A 중단 | P2 |
-| ifs_flex_check_goto Z3 FAIL | `pre next_p >= 0` 누락 → 141/141 미달성 | P3 |
+| ~~ifs_flex_check_goto Z3 FAIL~~ | ~~`pre next_p >= 0` 누락 → 141/141 미달성~~ **✅ RESOLVED (Cycle 3219)** — Z3 141/141 | P3 |
 | BMB IR → opt 최적화 불가 | printf 기반 IR 방출 코드가 opt O1+에 의해 절단 | P3 |
 | Unix 링크 스택 미설정 | bootstrap.sh Unix 브랜치 `-no-pie`만, 스택 설정 없음 | P3 |
 | `compiler.bmb.compact.out.ll` 구버전 | 6,193 lines (구버전) — S4 IR(134,209 lines)로 교체 검토 | P4 |
+
+### M11-C Phase 1 완료 현황 (Cycles 3220-3221)
+
+| 항목 | 상태 |
+|------|------|
+| `ipr_all_calls_readonly` @llvm.memset 오분류 수정 | ✅ Cycle 3220 |
+| `ipr_has_store` @llvm.memset 탐지 추가 | ✅ Cycle 3220 |
+| `ipr_all_calls_pure` @llvm.memset 오분류 수정 (symmetric) | ✅ Cycle 3221 |
+| `stack_bytes_new` 빌트인 정상 동작 (brainfuck nested loops 'X') | ✅ Cycle 3220 |
+| ⚠️ `stack_bytes_new` @inline 래퍼 내 사용 금지 — LLVM lifetime.end 문제 | 문서화 완료 |
 
 ---
 
