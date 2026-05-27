@@ -1,8 +1,8 @@
 # BMB Session Handoff — 2026-05-27 (Cycle 3202, Session Close)
 
-> **HEAD**: `af81c313`
+> **HEAD**: `be917a97`
 > **이번 세션 작업**: Cycle 3202 — **Stage 2 Bootstrap ✅ RECOVERED**
-> **3-Stage Fixed Point**: Stage 2 bootstrap ✅ (BMB-internal Fixed Point: S4==S6, semantic S2≈S4)
+> **3-Stage Fixed Point**: Stage 2 bootstrap ✅ (BMB-internal FP: S4==S6, semantic S2≈S4)
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 > **M10 상태**: ✅ **COMPLETE** (이전 세션)
 > **Stage 2 상태**: ✅ **RECOVERED** (이번 세션)
@@ -20,7 +20,7 @@
 | 증상 | Stage 2 바이너리 즉시 종료, exit 127 |
 | 원인 | `STATUS_STACK_OVERFLOW` — Windows 기본 스택(1MB) 부족 |
 | 근거 | Rust 바이너리는 64MB thread spawn; BMB-compiled는 main thread에서 실행 |
-| 수정 | `-Wl,--stack,268435456` (256MB) 링크 플래그 추가 |
+| 수정 | `-Wl,--stack,268435456` (256MB) 링크 플래그 |
 
 #### Fixed Point 분석
 
@@ -34,8 +34,8 @@
 
 | 파일 | 변경 내용 |
 |------|----------|
-| `scripts/bootstrap.sh` | Windows 링크에 `-Wl,--stack,268435456` 추가; FP 체크 → semantic 비교 |
-| `bootstrap/bmb-stage2.exe` | 256MB 스택 바이너리로 교체 |
+| `scripts/bootstrap.sh` | Windows 링크에 `-Wl,--stack,268435456` 추가; FP 체크 → canonical 비교 |
+| `bootstrap/bmb-stage2.exe` | 256MB 스택 바이너리로 교체 (gitignored, 로컬 전용) |
 | `claudedocs/cycle-logs/cycle-3202.md` | 신규 |
 
 #### 검증
@@ -53,15 +53,15 @@
 
 | 순위 | 작업 | 설명 |
 |------|------|------|
-| 1 | **M11 계획 수립** | 언어 갭 해소 / 계약 품질 / 성능 등 다음 마일스톤 방향 결정 |
-| 2 | **전체 3-Stage 검증 실행** | bootstrap.sh 전체 실행으로 새 FP 체크 로직 확인 (~8분) |
+| 1 | **M11 계획 수립** | 언어 갭 해소 / 계약 품질 향상 / 성능 등 다음 마일스톤 방향 결정 |
+| 2 | **전체 3-Stage bootstrap.sh 실행** | bootstrap.sh 전체로 새 canonical FP 체크 E2E 검증 (~8분) |
 | 3 | **BMB 계약 품질 향상** | 1,114개 약한 계약 (M9/Track B 방식 계속) |
 
 ### 기술 상태 스냅샷
 
 | 항목 | 값 |
 |------|----|
-| HEAD | pending commit |
+| HEAD | `be917a97` |
 | chained_comparison | **0** ✅ |
 | non_snake_case | **0** ✅ |
 | semantic_duplication | **0** ✅ |
@@ -84,7 +84,7 @@
 
 ---
 
-## Stage 2 Bootstrap 기술 메모
+## Stage 2 Bootstrap 기술 메모 (다음 세션 참조용)
 
 ### 핵심 패턴: `STATUS_STACK_OVERFLOW = exit 127`
 

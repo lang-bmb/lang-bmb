@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-27 (**Stage 2 Bootstrap ✅ RECOVERED** — Cycle 3202: 스택 오버플로(exit 127) 근본 수정 + Semantic Fixed Point 달성. `-Wl,--stack,268435456` (256MB) 링크 플래그 + bootstrap.sh canonical 비교 + BMB-internal FP S4==S6 ✅. bmb-stage2.exe 256MB 스택 갱신. 3800 tests ✅. HEAD `af81c313`.)
+> 최종 업데이트: 2026-05-27 (**Stage 2 Bootstrap ✅ RECOVERED** — Cycle 3202: 스택 오버플로(exit 127) 근본 수정 + Semantic Fixed Point 달성. `-Wl,--stack,268435456` (256MB) 링크 플래그 + bootstrap.sh canonical 비교 + BMB-internal FP S4==S6 ✅. bmb-stage2.exe 256MB 스택 갱신. 3800 tests ✅. HEAD `be917a97`.)
 > 이전 갱신: 2026-05-27 (**M10 ✅ COMPLETE** — Cycles 3198-3201: warnings **1,227 → 0** (100% 감소). non_snake_case 108→0 (SCREAMING_SNAKE_CASE 예외) + semantic_duplication 1119→0 (trivial 제외 + 5개 수정). TK_AS/TK_BXOR 토큰 ID 충돌 수정 + low_is_whitespace 삭제. 3800 tests ✅. Stage 1 bootstrap ✅. HEAD `98628ce9`.)
 > 이전 갱신: 2026-05-27 (**M10 Track A ✅ COMPLETE** — Cycles 3190-3197: chained_comparison **757→0** (−757). unused_binding 64→0 + single_arm_match 11→0 포함. 총 warnings 2,839→**1,227**. Stage 1 bootstrap ✅. HEAD `c4092ae0`. 잔여: non_snake_case 108 (Human Decision 대기) + semantic_duplication 1,119 (장기).)
 > 이전 갱신: 2026-05-26 (**M10 Phase 1 진행** — Cycle 3189: unused_binding 781→64 (−717, **91.8%**). 총 warnings 2,839→2,121. cargo test 6278 ✅. Stage 1 bootstrap ✅. HEAD `a8d5aeae`.)
