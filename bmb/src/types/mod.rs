@@ -2000,8 +2000,13 @@ impl TypeChecker {
                 }
 
                 // v0.90.153: Detect chained equality comparisons (if x == 1 ... else if x == 2 ...)
-                if let Expr::Binary { op: BinOp::Eq, left, .. } = &cond.node
+                // Exemption: token constant comparisons like `kind == TK_IDENT()` use zero-arg
+                // function calls as the RHS. These cannot be converted to match expressions in the
+                // self-hosted bootstrap parser (values like 2000000201 fall in the range excluded
+                // by is_int_literal, so the parser misidentifies them as variable bindings).
+                if let Expr::Binary { op: BinOp::Eq, left, right } = &cond.node
                     && let Expr::Var(name) = &left.node
+                    && !matches!(&right.node, Expr::Call { args, .. } if args.is_empty())
                 {
                     let mut count = 1usize;
                     let mut current = &else_branch.node;

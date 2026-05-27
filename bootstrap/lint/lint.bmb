@@ -288,10 +288,13 @@ fn check_redundant_bool(source: String, ls: i64, nl: i64, filename: String, line
 
 // Check 5: chained_comparison -c == X or c == Y or c == Z (3+ or-linked comparisons)
 // Heuristic: count " == " and " or " on the same line; if or-count >= 2 and eq-count >= 3 → likely chained
+// Exemption: lines comparing against TK_*() token constants (can't safely convert to match
+// because the self-hosted parser misidentifies 2000000xxx integer literals as variable bindings)
 fn check_chained_comparison(source: String, ls: i64, nl: i64, filename: String, line_num: i64, offset: i64) -> i64 = {
     let or_count = count_pattern_in(source, ls, nl, " or ");
     let eq_count = count_pattern_in(source, ls, nl, " == ");
-    if or_count >= 2 and eq_count >= 3 {
+    let has_tk = line_contains(source, ls, nl, "TK_");
+    if or_count >= 2 and eq_count >= 3 and not has_tk {
         emit_warning(filename, "chained_comparison", line_num, offset,
             "3+ chained equality comparisons -consider a match expression for clarity and performance")
     } else { 0 }
