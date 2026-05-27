@@ -2686,7 +2686,8 @@ fn parse_block_let_skip_type(src: String, pos: i64, name: String, is_mut: bool) 
     } else if k == TK_IDENT() or k == TK_I64() or k == TK_I32() or k == TK_F64() or k == TK_BOOL() or k == TK_STRING_TYPE() or k == TK_STAR() or k == TK_AMP() or k == TK_MUT() or k == TK_QUESTION() {
         parse_block_let_skip_type(src, tok_end(t), name, is_mut)
     } else if k == TK_LBRACKET() {
-        parse_block_let_skip_array_type(src, tok_end(t), name, is_mut)
+        // M11-C Phase 2: Try to detect [elem_type; N] for auto stack alloc
+        parse_block_let_array_type_aware(src, tok_end(t), name, is_mut)
     } else if k == TK_LPAREN() {
         parse_block_let_skip_tuple_type(src, tok_end(t), name, is_mut)
     } else if k == TK_FN() {
@@ -2723,6 +2724,92 @@ fn parse_block_let_skip_array_type(src: String, pos: i64, name: String, is_mut: 
     } else {
 
         parse_block_let_skip_array_type(src, tok_end(t), name, is_mut)
+
+    };
+
+// M11-C Phase 2: Detect [u8; N] or [i64; N] array type annotation in let binding.
+// If followed by ';' (no explicit initializer), auto-generates stack_bytes_new(N).
+// If followed by '=', parses the explicit value normally.
+// Falls back to old skip behavior for other array type forms.
+// Called after '[' is consumed.
+
+fn parse_block_let_array_type_aware(src: String, pos: i64, name: String, is_mut: bool) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 2
+
+= let t1 = next_token_raw(src, pos);
+
+    let k1 = tok_kind(t1);
+
+    // Match [elem_type; N] where elem_type is a simple type token
+    if k1 == TK_IDENT() or k1 == TK_I64() or k1 == TK_I32() or k1 == TK_BOOL() {
+
+        let t2 = next_token_raw(src, tok_end(t1));
+
+        if tok_kind(t2) == TK_SEMI() {
+
+            // [elem_type; N] — parse size expression
+            let size_rv = parse_expr(src, tok_end(t2));
+
+            if is_error(size_rv) { parse_block_let_skip_array_type(src, pos, name, is_mut) }
+
+            else {
+
+                let t3 = next_token_raw(src, unpack_pos(size_rv));
+
+                if tok_kind(t3) == TK_RBRACKET() {
+
+                    // Successfully parsed [elem_type; N]
+                    parse_block_let_after_stack_array(src, tok_end(t3), name, is_mut, unpack_ast(size_rv))
+
+                } else { parse_block_let_skip_array_type(src, pos, name, is_mut) }
+
+            }
+
+        } else { parse_block_let_skip_array_type(src, pos, name, is_mut) }
+
+    } else { parse_block_let_skip_array_type(src, pos, name, is_mut) };
+
+// After parsing [elem_type; N], handle what follows: '=' (explicit value) or ';' (implicit stack alloc).
+
+fn parse_block_let_after_stack_array(src: String, pos: i64, name: String, is_mut: bool, size_expr: String) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 2
+
+= let t = next_token_raw(src, pos);
+
+    if tok_kind(t) == TK_EQ() {
+
+        // Explicit value: let tape: [u8; N] = value; — parse value normally
+        parse_block_let_value(src, tok_end(t), name, is_mut)
+
+    } else if tok_kind(t) == TK_SEMI() {
+
+        // Implicit: let tape: [u8; N]; — auto-generate stack_bytes_new(N)
+        let rb = parse_block_stmts(src, tok_end(t));
+
+        if is_error(rb) { rb }
+
+        else {
+
+            let tag = if is_mut { "let_mut" } else { "let" };
+
+            -- AST call format: (call <name> arg) — angle brackets for function name
+            -- The MIR lowering (lower_call_args_sb) prepends '@' before emitting
+            let stack_call = "(call <stack_bytes_new> " + size_expr + ")";
+
+            pack_result(unpack_pos(rb), "(" + tag + " <" + name + "> " + stack_call + " " + unpack_ast(rb) + ")")
+
+        }
+
+    } else {
+
+        // Fallback: continue as type (shouldn't happen for well-formed code)
+        parse_block_let_skip_type(src, pos, name, is_mut)
 
     };
 

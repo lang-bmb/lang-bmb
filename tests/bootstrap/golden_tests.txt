@@ -2290,6 +2290,7 @@ test_golden_stable_match.bmb|7
 test_golden_stable_sort.bmb|460
 test_golden_stack_bump_alloc.bmb|128
 test_golden_stack_frame_layout.bmb|64
+test_golden_stack_array.bmb|4
 test_golden_stack_machine.bmb|16
 test_golden_stack_sim.bmb|54599
 test_golden_stack_sort.bmb|153

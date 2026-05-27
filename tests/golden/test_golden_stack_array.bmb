@@ -1,0 +1,46 @@
+// M11-C Phase 2: [u8; N] implicit stack allocation golden test
+// Tests: let tape: [u8; N]; auto-generates stack_bytes_new(N)
+
+// Zero-initialized 100-byte stack array
+fn test_zero_init() -> i64 = {
+    let tape: [u8; 100];
+    load_u8(tape + 50)  // should be 0 (zero-initialized via memset)
+};
+
+// Write then read
+fn test_write_read() -> i64 = {
+    let mut buf: [u8; 200];
+    let _w = store_u8(buf + 42, 99);
+    load_u8(buf + 42)  // should be 99
+};
+
+// Size as const-fn expression
+@const fn arr_size() -> i64 = 64;
+
+fn test_const_size() -> i64 = {
+    let arr: [u8; arr_size()];
+    let _w = store_u8(arr + 0, 77);
+    load_u8(arr + 0)  // should be 77
+};
+
+// Explicit initializer still works
+fn test_explicit_init() -> i64 = {
+    let buf: [u8; 32] = stack_bytes_new(32);
+    load_u8(buf + 10)  // should be 0 (stack_bytes_new zero-initializes)
+};
+
+fn main() -> i64 = {
+    let v1 = test_zero_init();
+    let _p1 = println(v1);    // 0
+
+    let v2 = test_write_read();
+    let _p2 = println(v2);    // 99
+
+    let v3 = test_const_size();
+    let _p3 = println(v3);    // 77
+
+    let v4 = test_explicit_init();
+    let _p4 = println(v4);    // 0
+
+    0
+};
