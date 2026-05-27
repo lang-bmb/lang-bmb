@@ -160,6 +160,7 @@ Stage 1 통과 ≠ Stage 2 통과 ≠ Stage 3 통과
 | TK_INT 토큰 충돌 | 잘못된 파싱 | 정수 리터럴 토큰과 식별자 충돌 |
 | stale runtime object | 링크 에러 | bmb_runtime.c/bmb_event_loop.c 재빌드 필요 |
 | Stage 2 arena OOM (32G+) | compiler.bmb self-compile 시 메모리 한계 초과 | 문자열 기반 AST의 O(n²) 성장 (Cycle 2634 확인) |
+| **S2가 특정 코드 경로를 제거** (IR 절단, else 분기 소거) | **메타순환 계약 위반**: "실패 시 -1 반환" 함수에 `post it >= 0` → S1이 `range(i64 0,...)` + `llvm.assume` 주입 → S2에서 LLVM이 호출자 `if result >= 0` 조건 항상true로 DCE | `post it >= -1` 로 수정 (Cycle 3232, `ifs_check_flex_both_sides`) |
 
 **이중 Lowering 시스템 (신규 노드 추가 시 필수 — Cycle 2634)**:
 `bootstrap/compiler.bmb`에는 두 개의 독립 lowering 경로가 있다:
@@ -825,6 +826,14 @@ All PRs must:
 | Stage 2 스택 오버플로 | 깊은 재귀 | 트램폴린/반복 방식으로 전환 |
 | Stage 2 잘못된 출력 | 부트스트랩 파서 버그 | 골든 테스트로 최소 재현 |
 | S2 IR ≠ S3 IR (고정점 실패) | 코드젠 비결정성 | `diff s3.ll s4.ll` 첫 차이점에서 원인 추적 (binary hash ❌ — GCC MinGW 비결정적) |
+| **S2가 특정 함수 호출을 생략** (IR 절단, 잘못된 `norecurse`/`memory(none)`) | **메타순환 계약 위반**: bootstrap 함수에 `post it >= 0`인데 실패 시 `-1` 반환 → S1 컴파일 시 LLVM `range(i64 0,...)` 속성 + `llvm.assume(ret >= 0)` 주입 → S2에서 `if result >= 0` 분기가 항상 true → LLVM DCE가 else 분기 제거 | "not found" 반환 `-1` (= `0 - 1`) 함수에는 **`post it >= -1`** 사용 (Cycle 3232 발견, `ifs_check_flex_both_sides`) |
+
+**⚠️ 메타순환 계약 위반 상세 (Cycle 3232)**:
+`post it >= N` 계약은 bootstrap 컴파일러의 Return Range Attribute 시스템(v0.96.30)에 의해
+LLVM `range(i64 N, ...)` 속성 + `llvm.assume(ret >= N)` 로 변환된다.
+**규칙**: "성공 시 ≥ 0, 실패 시 -1 반환" 패턴의 함수는 `post it >= 0`이 아닌 **`post it >= -1`** 이어야 한다.
+잘못된 계약 → S2에서 호출자의 `if result >= 0` 조건이 항상 true로 LLVM 최적화 → else 분기 완전 소거.
+Fixed Point (S3==S4)로는 이 버그를 탐지할 수 없음 — compiler.bmb 자체에 해당 패턴이 없을 수 있음.
 
 ### BMB 코드 생성 실패
 

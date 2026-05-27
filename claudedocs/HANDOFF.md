@@ -1,12 +1,12 @@
-# BMB Session Handoff — 2026-05-28 (Cycle 3229)
+# BMB Session Handoff — 2026-05-28 (Cycle 3233)
 
-> **HEAD**: Cycle 3229 commit pending
-> **이번 세션 작업**: Cycle 3229 — **IPR `array_free memory(read)` false positive fix + sorting benchmark array allocation fix**
+> **HEAD**: Cycle 3233 commit (세션 종료 정리)
+> **이번 세션 작업**: Cycles 3232-3233 — **S2 IR 절단 버그 수정 (Cycle 3232) + 정렬 벤치마크 검증 + CLAUDE.md 문서화 (Cycle 3233)**
 > **M11-C Phase 2 상태**: ✅ **COMPLETE** — `[u8/i64/f64/i32; N]` 전 primitive 타입 지원 + 실벤치 검증
 > **M11-A 상태**: ✅ **CONFIRMED COMPLETE** — 264 trivial postconditions 전부 skip 확정
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **현재 bootstrap 바이너리**: `bootstrap/compiler_3229_rust_s1.exe` (Rust S1 빌드 - `compiler_3224.exe`는 Stage 2 breakage 있음)
-> **Fixed Point**: ✅ **S3 IR == S4 IR** (Cycle 3224 기준 — 금번 compiler.bmb 변경 시 재검증 필요)
+> **현재 bootstrap 바이너리**: `bootstrap/compiler.exe` (Cycle 3232 S2 고정 버전 — `ifs_check_flex_both_sides post it >= -1`)
+> **Fixed Point**: ✅ **S3 IR == S4 IR** (Cycle 3232 — fixed compiler.bmb 기준)
 > **0-Warning 상태**: ✅ **유지** (lint 0 warnings, compiler.bmb warnings 174)
 > **Z3 상태**: ✅ **141/141** (Cycle 3219 달성)
 > **Bootstrap Golden Tests**: ✅ **52/52** (기준 유지)
@@ -202,7 +202,7 @@ Element access는 raw byte 산술 + load/store 빌트인 필요.
 - generic 타입 파라미터 bootstrap 완전 지원
 - B축 재측정 (claude-sonnet-4-6, stale 기한 2026-08-13, API key 필요)
 
-### P-track 최신 수치 (Cycle 3227 기준)
+### P-track 최신 수치 (Cycle 3233 기준)
 
 | 벤치마크 | 이전 비율 | 최신 비율 |
 |---------|---------|---------|
@@ -212,4 +212,7 @@ Element access는 raw byte 산술 + load/store 빌트인 필요.
 | json_serialize | ~0.670× | — |
 | json_parse | ~0.875× | — |
 | lexer | ~0.174× | — |
-| sorting | ~0.155× | — |
+| sorting | ~0.155× | **~0.180×** (Cycle 3233, 5회 중앙값, S2 고정 binary) |
+
+> ℹ️ sorting: S2 IR 절단 수정(Cycle 3232) 후 S2 = S1 성능 동등 확인. 이전 ~0.155×는 bench_algo.py
+> 측정, 현재 ~0.180×는 직접 binary 측정. 방법론 차이로 인한 변동 (GCC 대비 ~5.5× faster 수준 유지).
