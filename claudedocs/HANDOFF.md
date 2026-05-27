@@ -1,32 +1,60 @@
-# BMB Session Handoff — 2026-05-28 (Cycle 3227)
+# BMB Session Handoff — 2026-05-28 (Cycle 3229)
 
-> **HEAD**: Cycle 3227 commit pending
-> **이번 세션 작업**: Cycles 3227 — **Brainfuck calloc→[u8;30000] stack migration**
+> **HEAD**: Cycle 3229 commit pending
+> **이번 세션 작업**: Cycle 3229 — **IPR `array_free memory(read)` false positive fix + sorting benchmark array allocation fix**
 > **M11-C Phase 2 상태**: ✅ **COMPLETE** — `[u8/i64/f64/i32; N]` 전 primitive 타입 지원 + 실벤치 검증
 > **M11-A 상태**: ✅ **CONFIRMED COMPLETE** — 264 trivial postconditions 전부 skip 확정
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **현재 bootstrap 바이너리**: `bootstrap/compiler_3224.exe`
-> **Fixed Point**: ✅ **S3 IR == S4 IR** (Cycle 3224)
+> **현재 bootstrap 바이너리**: `bootstrap/compiler_3229_rust_s1.exe` (Rust S1 빌드 - `compiler_3224.exe`는 Stage 2 breakage 있음)
+> **Fixed Point**: ✅ **S3 IR == S4 IR** (Cycle 3224 기준 — 금번 compiler.bmb 변경 시 재검증 필요)
 > **0-Warning 상태**: ✅ **유지** (lint 0 warnings, compiler.bmb warnings 174)
 > **Z3 상태**: ✅ **141/141** (Cycle 3219 달성)
-> **Bootstrap Golden Tests**: ✅ **52/52** (컴파일러 변경 없음 — 유지)
+> **Bootstrap Golden Tests**: ✅ **52/52** (기준 유지)
+> **cargo test**: ✅ **6282 tests, 0 FAILED**
 
 ---
 
-## 이번 세션 작업 요약 (Cycle 3227)
+## 이번 세션 작업 요약 (Cycle 3229)
 
-### Cycle 3227: Brainfuck calloc→[u8; 30000] Stack Migration (M11-C Phase 2 dogfood)
+### Cycle 3229: IPR `array_free memory(read)` False Positive Fix + Array Allocation Bug
 
-`main_inproc.bmb`에서 `calloc(tape_size(), 1)` → `let tape: [u8; 30000]` + `free` 제거.
+**P0 버그 수정**: IPR 분석 패스에서 substring match false positive가 `array_free`에 `memory(read)` 잘못 부여 → LLVM이 `@free()` DCE → STATUS_HEAP_CORRUPTION.
 
-- **IR 확인**: `alloca [30000 x i8], align 16` — LLVM이 calloc을 alloca로 자동 승격하지 않음
-- **성능**: 0.917× → **0.848×** (~7% 개선, 10회 측정 중앙값 기준)
-- **정확성**: 체크섬 = 0 (모든 측정)
-- **컴파일러 변경 없음** — 벤치마크 파일만 변경
+#### 수정 내용
+
+**1. `bootstrap/compiler.bmb` — IPR 블랙리스트 추가**
+- `ipr_all_calls_pure` (~line 17319): `free`/`realloc` 명시 예외 처리
+- `ipr_all_calls_readonly` (~line 17381): 동일
+
+```bmb
+// @free and @realloc modify allocator state — never readonly regardless of name matching
+else if fn_name == "free" or fn_name == "realloc" { false }
+```
+
+**근본 원인**: `ipr_try_annotate_section`이 `self_name`을 `known_self`에 추가한 후 calls 검사 → `fn_name="free"` + `key="free,"` → `"array_free,"` 내에서 매칭 → false positive
+
+**2. 벤치마크 파일 — `array_new` 할당 크기 수정**
+- `main.bmb` + `main_inproc.bmb`: `malloc(n * 8)` → `malloc((n + 2) * 8)`
+- 이유: BMB `arr[i]`는 bootstrap compiler에서 `+2` header offset을 더함 (lines 9438, 9568)
+- `arr[n-1]` = offset `(n+1)*8` → `n*8` 할당 시 8 bytes overflow
+
+#### 검증
+- `compiler_3229_rust_s1.exe emit-ir`: `array_free` → `memory(read)` 없음 ✅
+- `sort_s1_final.exe` 체크섬: 2019526740 ✅, exit 0 ✅
+- `cargo test --release`: **6282 tests, 0 FAILED** ✅
+
+#### 성능 (정정된 측정)
+| 비교 | 비율 | 비고 |
+|------|------|------|
+| BMB fixed vs GCC -O3 (공식 baseline) | **0.158×** | BMB 6.3× faster (LLVM vectorization) |
+| BMB fixed vs Clang -O2 | **0.822×** | BMB ~22% faster (같은 LLVM backend) |
+| 기존 메모리 0.92× | 2026-05-01 Cycle 2535 측정, 구 코드 기준 | 현재와 다름 |
+
+> LLVM이 `init_reverse` 루프들을 자동 vectorization (28 vector blocks in BMB IR vs 0 in GCC IR).
 
 ---
 
-## 이전 세션 작업 요약 (Cycles 3224-3226)
+## 이전 세션 작업 요약 (Cycles 3224-3227)
 
 ### Cycle 3224: M11-C Phase 2 Extension — `[i64; N]` / `[f64; N]` Element-Typed Stack Arrays
 

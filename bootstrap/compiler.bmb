@@ -17319,6 +17319,9 @@ fn ipr_all_calls_pure(ir: String, pos: i64, end: i64, known_pure: String) -> boo
                         not llvm_intrinsic_is_memory_write(fn_name)
                     }
 
+                    // @free and @realloc modify allocator state — never pure
+                    else if fn_name == "free" or fn_name == "realloc" { false }
+
                     else {
 
                         let key = fn_name + ",";
@@ -17377,6 +17380,9 @@ fn ipr_all_calls_readonly(ir: String, pos: i64, end: i64, known: String) -> bool
 
                     // LLVM intrinsics are readonly EXCEPT memory-writing ones
                     if find_pattern_at(fn_name, "llvm.", 0) >= 0 { not llvm_intrinsic_is_memory_write(fn_name) }
+
+                    // @free and @realloc modify allocator state — never readonly regardless of name matching
+                    else if fn_name == "free" or fn_name == "realloc" { false }
 
                     else {
 
