@@ -1673,7 +1673,26 @@ fn get_string_text(s: String, pos: i64, tok: i64) -> String
 
     let endpos = tok_end(tok);
 
-    s.slice(p + 1, endpos - 1);
+    // v0.100.x (Cycle 3234): {{ → { and }} → } escape processing (Rust desugar_string_interp parity)
+
+    process_str_escapes(s.slice(p + 1, endpos - 1));
+
+// v0.100.x (Cycle 3234): Brace escape processing for string literals: {{ to { and }} to }
+// Note: must use chr(123)/chr(125) to avoid meta-circular Rust desugar_string_interp stripping
+
+fn process_str_escapes(s: String) -> String
+
+  post it.len() <= s.len()
+
+= let double_open = chr(123) + chr(123);
+
+  let double_close = chr(125) + chr(125);
+
+  let single_open = chr(123);
+
+  let single_close = chr(125);
+
+  s.replace(double_open, single_open).replace(double_close, single_close);
 
 // v0.91: Extract float literal text from source (e.g., "3.14")
 

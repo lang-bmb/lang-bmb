@@ -1,5 +1,6 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-28 (**Cycle 3233: 정렬 벤치마크 검증 + CLAUDE.md 메타순환 계약 위반 패턴 문서화.** sorting S2 IR 완전 (667줄, 이전 63줄 절단에서 수정). 성능 0.180× vs GCC-O3 ✅ (S1≈S2). CLAUDE.md 부트스트랩 실패 패턴 2개소 추가. cargo test 6282/0 ✅.)
+> 최종 업데이트: 2026-05-28 (**Cycle 3234: P-track 전체 재측정(bootstrap-compiled) + `{{` 탈출문자 수정.** `bootstrap/compiler.bmb` `get_string_text`에 `{{`→`{` / `}}`→`}` 변환 추가 (Cycle 2845 Rust parity). Fixed Point S3==S4 ✅. bootstrap P-track 첫 측정: brainfuck 0.866×/csv 1.134×/http 0.934×/json_parse 0.556×/json_ser 0.925×/sorting 0.178×/lexer 1.459× (tuple calloc overhead). cargo test 6282/0 ✅.)
+> 이전 갱신: 2026-05-28 (**Cycle 3233: 정렬 벤치마크 검증 + CLAUDE.md 메타순환 계약 위반 패턴 문서화.** sorting S2 IR 완전 (667줄, 이전 63줄 절단에서 수정). 성능 0.180× vs GCC-O3 ✅ (S1≈S2). CLAUDE.md 부트스트랩 실패 패턴 2개소 추가. cargo test 6282/0 ✅.)
 > 이전 갱신: 2026-05-28 (**Cycle 3232: S2 IR 절단 버그 수정** — `ifs_check_flex_both_sides` `post it >= 0` → `post it >= -1`. Fixed Point S3==S4 ✅. sorting/rec_helper IR 완전 생성 확인.)
 > 이전 갱신: 2026-05-28 (**Cycle 3229: IPR `array_free memory(read)` false positive fix + sorting benchmark array allocation fix.** `bootstrap/compiler.bmb` `ipr_all_calls_readonly/pure`에 `free`/`realloc` 블랙리스트 추가. `main.bmb`+`main_inproc.bmb` `malloc((n+2)*8)` 수정. cargo test 6282/0 ✅. S1 compiler 검증 ✅. sorting 0.158× vs GCC-O3 (LLVM vectorization).)
 > 이전 갱신: 2026-05-28 (**M11-A ✅ CONFIRMED COMPLETE** + **M11-C Phase 2 ✅ COMPLETE** — Cycles 3224-3226: `[i64/f64/i32; N]` element-size-aware stack arrays + 264 trivial postconditions 전부 skip 확정. Golden tests 52/52. Fixed Point S3==S4 ✅.)
