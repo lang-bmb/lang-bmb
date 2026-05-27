@@ -1,19 +1,32 @@
-# BMB Session Handoff — 2026-05-28 (Cycle 3226)
+# BMB Session Handoff — 2026-05-28 (Cycle 3227)
 
-> **HEAD**: pending commit (Cycles 3224-3226)
-> **이번 세션 작업**: Cycles 3224-3226 — **M11-C Phase 2 COMPLETE + M11-A CONFIRMED COMPLETE**
-> **M11-C Phase 2 상태**: ✅ **COMPLETE** — `[u8/i64/f64/i32; N]` 전 primitive 타입 지원
+> **HEAD**: Cycle 3227 commit pending
+> **이번 세션 작업**: Cycles 3227 — **Brainfuck calloc→[u8;30000] stack migration**
+> **M11-C Phase 2 상태**: ✅ **COMPLETE** — `[u8/i64/f64/i32; N]` 전 primitive 타입 지원 + 실벤치 검증
 > **M11-A 상태**: ✅ **CONFIRMED COMPLETE** — 264 trivial postconditions 전부 skip 확정
 > **실무 앵커**: `claudedocs/ROADMAP.md`
 > **현재 bootstrap 바이너리**: `bootstrap/compiler_3224.exe`
 > **Fixed Point**: ✅ **S3 IR == S4 IR** (Cycle 3224)
 > **0-Warning 상태**: ✅ **유지** (lint 0 warnings, compiler.bmb warnings 174)
 > **Z3 상태**: ✅ **141/141** (Cycle 3219 달성)
-> **Bootstrap Golden Tests**: ✅ **52/52** (Cycles 3224-3225에서 6 추가)
+> **Bootstrap Golden Tests**: ✅ **52/52** (컴파일러 변경 없음 — 유지)
 
 ---
 
-## 이번 세션 작업 요약 (Cycles 3224-3226)
+## 이번 세션 작업 요약 (Cycle 3227)
+
+### Cycle 3227: Brainfuck calloc→[u8; 30000] Stack Migration (M11-C Phase 2 dogfood)
+
+`main_inproc.bmb`에서 `calloc(tape_size(), 1)` → `let tape: [u8; 30000]` + `free` 제거.
+
+- **IR 확인**: `alloca [30000 x i8], align 16` — LLVM이 calloc을 alloca로 자동 승격하지 않음
+- **성능**: 0.917× → **0.848×** (~7% 개선, 10회 측정 중앙값 기준)
+- **정확성**: 체크섬 = 0 (모든 측정)
+- **컴파일러 변경 없음** — 벤치마크 파일만 변경
+
+---
+
+## 이전 세션 작업 요약 (Cycles 3224-3226)
 
 ### Cycle 3224: M11-C Phase 2 Extension — `[i64; N]` / `[f64; N]` Element-Typed Stack Arrays
 
@@ -142,14 +155,33 @@ Element access는 raw byte 산술 + load/store 빌트인 필요.
 
 ## 다음 권장 작업
 
+### 단기 (Cycle 3228): json_serialize calloc 스택 마이그레이션 조사
+
+- `let buf = calloc(65536, 1)` → `let buf: [u8; 65536]` — 64KB 스택 배열 (대형)
+- `let arr = calloc(10, 8)` → `let arr: [i64; 10]` — 80바이트 스택 배열 (소형)
+- 성능 측정 전/후 비교 필수 (대형 스택 배열은 성능 개선 불확실)
+
 ### M11-C Phase 3: `arr[i]` subscript 문법 (주요 스코프, defer 추천)
 
 - `let arr: [i64; N]` 선언에서 원소 타입 추적
 - `arr[i]` → `load_i64(arr + i * 8)` (또는 해당 타입) 자동 desugar
 - grammar + parser + type annotation tracking 필요 — 2+ cycles 예상
+- **아키텍처 블로커**: bootstrap 컴파일러에 파스타임 심볼테이블 없음
 
 ### 기타 언어 갭
 
 - closure / lambda 지원
 - generic 타입 파라미터 bootstrap 완전 지원
 - B축 재측정 (claude-sonnet-4-6, stale 기한 2026-08-13, API key 필요)
+
+### P-track 최신 수치 (Cycle 3227 기준)
+
+| 벤치마크 | 이전 비율 | 최신 비율 |
+|---------|---------|---------|
+| brainfuck | 0.941× | **0.848×** (Cycle 3227, 10회 중앙값) |
+| csv | 0.858× | — |
+| http | 0.934× | — |
+| json_serialize | ~0.670× | — |
+| json_parse | ~0.875× | — |
+| lexer | ~0.174× | — |
+| sorting | ~0.155× | — |
