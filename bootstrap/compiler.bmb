@@ -7632,7 +7632,7 @@ fn scan_exit_children(ast: String, idx: i64, count: i64, entry_label: String, bl
 
     };
 
-// v0.96.20: sb may encode safe flag in LSB (sb_raw * 2 + safe_bit)
+// Cycle 3235: sb encodes two flags: bit0=safe, bit1=is_inline (sb_raw * 4 + is_inline * 2 + safe)
 
 // sb_push_mir decodes the real pointer before pushing
 
@@ -7642,7 +7642,7 @@ fn sb_push_mir(sb: i64, text: String) -> i64
 
 = if text.len() > 0 {
 
-        let real_sb = sb / 2;
+        let real_sb = sb / 4;
 
         let len = sb_len(real_sb);
 
@@ -10044,9 +10044,9 @@ fn lower_lambda_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, _loop_exit
 
     let lambda_sb_raw = sb_new();
 
-    // v0.96.41: Encode sb for lower_expr_sb (expects sb_raw * 2 + safe_bit)
+    // Cycle 3235: Encode sb for lower_expr_sb (sb_raw * 4 + is_inline * 2 + safe); lambda = no inline bit
 
-    let lambda_sb = lambda_sb_raw * 2;
+    let lambda_sb = lambda_sb_raw * 4;
 
     let lambda_result = lower_expr_sb(body_ast, 0, 0, lambda_sb, "");
 
@@ -10074,7 +10074,7 @@ fn lower_lambda_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, _loop_exit
 
         let lambda_fn = "fn " + lambda_name + "(" + all_params + ") -> i64 {" + SEP() + "entry:" + SEP() + lambda_body + SEP() + "}";
 
-        let _w3 = sb_push(sb / 2, chr(1) + lambda_fn + chr(1));
+        let _w3 = sb_push(sb / 4, chr(1) + lambda_fn + chr(1));
 
         pack_ids(temp_id + 1, block_id)
 
@@ -10096,7 +10096,7 @@ fn lower_lambda_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, _loop_exit
 
         let lambda_fn = "fn " + lambda_name + "(" + all_params + ") -> i64 {" + SEP() + "entry:" + SEP() + body_with_loads + SEP() + "}";
 
-        let _w3 = sb_push(sb / 2, chr(1) + lambda_fn + chr(1));
+        let _w3 = sb_push(sb / 4, chr(1) + lambda_fn + chr(1));
 
         pack_ids(temp_id + 1, block_id)
 
@@ -11060,7 +11060,14 @@ fn lower_tuple_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: 
 
     let tup_tmp = "%_t" + int_to_string(temp_id);
 
-    let _w1 = sb_push_mir(sb, "  " + tup_tmp + " = call @calloc(" + int_to_string(count) + ", 8)");
+    -- Cycle 3235: use alloca for @inline fns (is_inline = bit1 of sb); calloc for non-inline
+    let is_inline = (sb / 2) % 2;
+
+    let _w1 = if is_inline == 1 {
+        sb_push_mir(sb, "  " + tup_tmp + " = call @tuple_alloca(" + int_to_string(count) + ")")
+    } else {
+        sb_push_mir(sb, "  " + tup_tmp + " = call @calloc(" + int_to_string(count) + ", 8)")
+    };
 
     let ids = lower_tuple_elements_sb(ast, 0, count, tup_tmp, temp_id + 1, block_id, sb, loop_exit);
 
@@ -13282,9 +13289,11 @@ fn lower_function_sb(ast: String, safe: i64) -> String
 
     let sb_raw = sb_new();
 
-    // v0.96.20: Encode safe flag in LSB of sb (sb_raw * 2 + safe_bit)
+    // Cycle 3235: sb = sb_raw * 4 + is_inline * 2 + safe (bit0=safe, bit1=is_inline)
 
-    let sb = sb_raw * 2 + safe;
+    let is_inline = if ann == "inline" { 1 } else { 0 };
+
+    let sb = sb_raw * 4 + is_inline * 2 + safe;
 
     let final_result = lower_expr_iter(body_ast, 0, 0, sb);
 
@@ -14642,7 +14651,9 @@ fn llvm_gen_call(line: String, pos: i64, dest: String) -> String
 
         "  " + dest + " = frem double " + left + ", " + right, "@stack_bytes_new" => // M11-C: stack-allocate N bytes; returns i64 pointer (must be used in @inline fn or same fn)
         let n_arg = trim_end(line.slice(paren_pos + 1, close_pos));
-        "  " + dest + "_arr = alloca i8, i64 " + n_arg + ", align 16" + SEP() + "  call void @llvm.memset.p0.i64(ptr " + dest + "_arr, i8 0, i64 " + n_arg + ", i1 false)" + SEP() + "  " + dest + " = ptrtoint ptr " + dest + "_arr to i64", _ => let emitted_fn = map_runtime_fn(fn_name);
+        "  " + dest + "_arr = alloca i8, i64 " + n_arg + ", align 16" + SEP() + "  call void @llvm.memset.p0.i64(ptr " + dest + "_arr, i8 0, i64 " + n_arg + ", i1 false)" + SEP() + "  " + dest + " = ptrtoint ptr " + dest + "_arr to i64", "@tuple_alloca" => // Cycle 3235: stack-alloc N-element i64 tuple (safe in @inline fns — alloca is in caller)
+        let n_arg = trim_end(line.slice(paren_pos + 1, close_pos));
+        "  " + dest + "_arr = alloca [" + n_arg + " x i64], align 8" + SEP() + "  " + dest + " = ptrtoint ptr " + dest + "_arr to i64", _ => let emitted_fn = map_runtime_fn(fn_name);
 
     let args = line.slice(paren_pos + 1, close_pos);
 
