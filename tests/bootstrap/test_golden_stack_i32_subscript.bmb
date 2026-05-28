@@ -1,0 +1,7 @@
+fn main() -> i64 = {
+    let arr: [i32; 5];
+    let mut i = 0;
+    while i < 5 { set arr[i] = i * i; i = i + 1 };
+    let sum = arr[0] + arr[1] + arr[2] + arr[3] + arr[4];
+    println(sum)
+};
