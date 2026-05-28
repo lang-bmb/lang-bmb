@@ -30532,7 +30532,21 @@ fn llvm_gen_rhs_with_strings_map_and_fns_reg(line: String, pos: i64, dest: Strin
 
             let fn_name = src.slice(1, src.len());
 
+            // Cycle 3246: Zero-arg functions (const/fn-const) should be called, not ptr-ized
+            // A zero-arg fn has lookup_fn_both result ending with ':' (empty param list)
+            let both_sig = lookup_fn_both(registry, fn_name);
+            let is_zero_arg = both_sig.len() > 0 and both_sig.byte_at(both_sig.len() - 1) == 58;
+
+            if is_zero_arg {
+                let ret_type = lookup_fn_ret(registry, fn_name);
+                let llvm_ret = if ret_type == "double" { "double" } else { "i64" };
+                let _mark = if ret_type == "double" { push_double_marker(str_sb, dest) } else { 0 };
+                same_mapping("  " + dest + " = call " + llvm_ret + " @" + fn_name + "()")
+            } else {
+
             same_mapping("  " + dest + " = ptrtoint ptr @" + fn_name + " to i64")
+
+            }
 
         } else if is_user_variable(dest) {
 

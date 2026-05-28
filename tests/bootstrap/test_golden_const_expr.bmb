@@ -1,0 +1,24 @@
+-- Test: const declarations in expression context (Cycle 3246)
+-- const N = V creates a zero-arg @const function that is called at use sites
+
+const THRESHOLD = 5;
+const MULTIPLIER = 3;
+const MAX_VAL = 100;
+
+fn clamp(x: i64) -> i64
+  pre x >= 0
+  post it >= 0
+= if x > MAX_VAL { MAX_VAL } else { x };
+
+fn scale_if_above(x: i64) -> i64
+  pre x >= 0
+  post it >= 0
+= if x > THRESHOLD { x * MULTIPLIER } else { x };
+
+fn main() -> i64 = {
+    let a = scale_if_above(3);   -- 3 <= 5 → 3
+    let b = scale_if_above(7);   -- 7 > 5 → 21
+    let c = clamp(150);          -- 150 > 100 → 100
+    let d = THRESHOLD + MULTIPLIER;  -- 5 + 3 = 8
+    println(a + b + c + d)       -- 3 + 21 + 100 + 8 = 132
+};
