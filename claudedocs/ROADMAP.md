@@ -4,6 +4,7 @@
 > 이전 갱신: 2026-05-28 (**Cycle 3233: 정렬 벤치마크 검증 + CLAUDE.md 메타순환 계약 위반 패턴 문서화.** sorting S2 IR 완전 (667줄, 이전 63줄 절단에서 수정). 성능 0.180× vs GCC-O3 ✅ (S1≈S2). CLAUDE.md 부트스트랩 실패 패턴 2개소 추가. cargo test 6282/0 ✅.)
 > 이전 갱신: 2026-05-28 (**Cycle 3232: S2 IR 절단 버그 수정** — `ifs_check_flex_both_sides` `post it >= 0` → `post it >= -1`. Fixed Point S3==S4 ✅. sorting/rec_helper IR 완전 생성 확인.)
 > 이전 갱신: 2026-05-28 (**Cycle 3229: IPR `array_free memory(read)` false positive fix + sorting benchmark array allocation fix.** `bootstrap/compiler.bmb` `ipr_all_calls_readonly/pure`에 `free`/`realloc` 블랙리스트 추가. `main.bmb`+`main_inproc.bmb` `malloc((n+2)*8)` 수정. cargo test 6282/0 ✅. S1 compiler 검증 ✅. sorting 0.158× vs GCC-O3 (LLVM vectorization).)
+> 이전 갱신: 2026-05-28 (**M11-C Phase 3 ✅ COMPLETE** — Cycle 3237: `arr[i]` subscript for `[i64; N]` stack arrays. `@stack_i64_new` 빌트인 + `rewrite_stack_i64_index` post-parse rewriter. DSA `= alloca i64` 패턴 회피 (`alloca [N x i64]` 형식 사용). Fixed Point S3==S4 ✅. LLVM 상수 폴딩 확인 (println(30) 직접 출력).)
 > 이전 갱신: 2026-05-28 (**M11-A ✅ CONFIRMED COMPLETE** + **M11-C Phase 2 ✅ COMPLETE** — Cycles 3224-3226: `[i64/f64/i32; N]` element-size-aware stack arrays + 264 trivial postconditions 전부 skip 확정. Golden tests 52/52. Fixed Point S3==S4 ✅.)
 > 이전 갱신: 2026-05-27 (**M11-B ✅ COMPLETE** — Cycle 3205: `bootstrap.sh fixed_point: true` E2E 달성. opt O1+ → Stage 2 binary 절단 진단, `llc -O2`만 사용으로 수정. 3-Stage bootstrap 전체 확인. HEAD 갱신 예정.)
 > 이전 갱신: 2026-05-27 (**0-Warning ✅ RECOVERED** — Cycle 3203: chained_comparison 3개(skip_where_clause/type_suffix/extract_post_asts) + missing_postcondition 1개(has_param_ref_in_ir) 소거. `bmb lint bootstrap/compiler.bmb` → 0 warnings. Stage 1 bootstrap OK. 3800 tests ✅. HEAD `7d6d775b`.)
@@ -1390,10 +1391,18 @@ let arr: [u8; N];   // stack_bytes_new(N)
 // 접근: load_u8(arr + i) / store_u8(arr + i, v)
 ```
 
-#### M11-C Phase 3 (미래 스코프)
+#### M11-C Phase 3 ✅ COMPLETE (Cycle 3237)
 
-`arr[i]` subscript 문법 → declared element type 기반 자동 desugar.
-Grammar + parser + type annotation tracking 필요. 2+ cycles 예상. defer.
+`arr[i]` subscript 문법 for `[i64; N]` stack arrays — i64/f64 원소 타입 지원.
+
+| 구현 | 설명 |
+|------|------|
+| `@stack_i64_new` MIR 빌트인 | `alloca [N x i64]` + `mul N,8` + `memset` + `ptrtoint` → i64 ptr |
+| `rewrite_stack_i64_index` | 함수 body AST 스캔 → `(index ...)` → `(ptr_index ...)` 재작성 |
+| `find_char_back` 헬퍼 | 역방향 문자 스캔 (변수명 추출용) |
+| DSA 회피 | `alloca i64, i64 N` 대신 `alloca [N x i64]` — Dead Store Analysis가 `= alloca i64` 패턴 오매칭 방지 |
+
+**u8 subscript (`tape[i]`)**: 별도 `@stack_u8_new` + `lower_u8_index_sb` 필요 (i8 GEP stride). 미래 스코프.
 
 ---
 

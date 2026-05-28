@@ -190,6 +190,7 @@ Stage 1 통과 ≠ Stage 2 통과 ≠ Stage 3 통과
 | Rust 베이스라인 | `--release` (최소 O2) |
 | 비교 대상 | 동일 알고리즘, 동일 입력 |
 | 최적화 미적용 비교 금지 | 절대 수행하지 않음 |
+| **inproc 벤치마크 타이밍** | `$out = & exe; [int]($out[-1])` — 내부 `elapsed_us` 읽기. `Measure-Command { & exe \| Out-Null }` **금지** (프로세스 시작 오버헤드 ~5-10ms 포함, 오측정 발생) |
 
 ### Rule 5: AST/MIR 변형 추가 시 전수 검색
 

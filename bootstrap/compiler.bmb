@@ -2821,17 +2821,17 @@ fn parse_block_let_after_stack_array(src: String, pos: i64, name: String, is_mut
 
             -- AST call format: (call <name> arg) — angle brackets for function name
             -- The MIR lowering (lower_call_args_sb) prepends '@' before emitting
-            -- Compute total byte count based on element type size
-            let byte_count_expr =
+            -- M11-C Phase 3: i64/f64 elements use @stack_i64_new (element count only)
+            -- arr[i] subscript rewriting via rewrite_stack_i64_index in lower_function_sb
+            let stack_call =
                 if elem_kind == TK_I64() or elem_kind == TK_F64() {
-                    "(binop * " + size_expr + " (int 8))"
-                } else if elem_kind == TK_I32() {
-                    "(binop * " + size_expr + " (int 4))"
+                    "(call <stack_i64_new> " + size_expr + ")"
                 } else {
-                    size_expr  -- TK_IDENT (u8, etc.), TK_BOOL — 1 byte per element
+                    let byte_count_expr =
+                        if elem_kind == TK_I32() { "(binop * " + size_expr + " (int 4))" }
+                        else { size_expr };
+                    "(call <stack_bytes_new> " + byte_count_expr + ")"
                 };
-
-            let stack_call = "(call <stack_bytes_new> " + byte_count_expr + ")";
 
             pack_result(unpack_pos(rb), "(" + tag + " <" + name + "> " + stack_call + " " + unpack_ast(rb) + ")")
 
@@ -13267,6 +13267,56 @@ fn rewrite_ptr_index(body: String, ast: String, idx: i64) -> String
 
     };
 
+// M11-C Phase 3: scan backwards for character (used by rewrite_stack_i64_index)
+
+fn find_char_back(s: String, ch: i64, pos: i64) -> i64
+
+  pre pos >= -1
+
+  post it >= -1
+
+= if pos < 0 { -1 }
+
+    else if s.byte_at(pos) == ch { pos }
+
+    else { find_char_back(s, ch, pos - 1) };
+
+// M11-C Phase 3: rewrite (index (var <name>)) → (ptr_index (var <name>)) for [i64; N] stack arrays
+
+// Scans body for "> (call <stack_i64_new>" pattern to find binding names
+
+fn rewrite_stack_i64_index(body: String, pos: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 0
+
+= let needle = "> (call <stack_i64_new>";
+
+    let found = find_pattern_at(body, needle, pos);
+
+    if found < 0 { body }
+
+    else {
+
+        let lt_pos = find_char_back(body, 60, found - 1);
+
+        if lt_pos < 0 { rewrite_stack_i64_index(body, found + 1) }
+
+        else {
+
+            let name = body.slice(lt_pos + 1, found);
+
+            let b2 = body.replace("(index (var <" + name + ">)", "(ptr_index (var <" + name + ">)");
+
+            let b3 = b2.replace("(set_index (var <" + name + ">)", "(set_ptr_index (var <" + name + ">)");
+
+            rewrite_stack_i64_index(b3, found + needle.len())
+
+        }
+
+    };
+
 fn lower_function_sb(ast: String, safe: i64) -> String
 
   pre safe >= 0
@@ -13285,7 +13335,11 @@ fn lower_function_sb(ast: String, safe: i64) -> String
 
     // Rewrite index/set_index to ptr_index/set_ptr_index for raw pointer params
 
-    let body_ast = rewrite_ptr_index(body_ast_raw, ast, 1);
+    let body_ast_ptr = rewrite_ptr_index(body_ast_raw, ast, 1);
+
+    // M11-C Phase 3: rewrite stack [i64;N] subscripts to ptr_index
+
+    let body_ast = rewrite_stack_i64_index(body_ast_ptr, 0);
 
     let sb_raw = sb_new();
 
@@ -13981,7 +14035,7 @@ fn get_call_return_type(fn_name: String) -> String
 
     else if fn_name == "@bmb_sb_build" or fn_name == "@bmb_read_file" or fn_name == "@bmb_getenv" or fn_name == "@get_arg" { "ptr" }
 
-    else if fn_name == "@malloc" or fn_name == "@calloc" or fn_name == "@stack_bytes_new" { "ptr" }
+    else if fn_name == "@malloc" or fn_name == "@calloc" or fn_name == "@stack_bytes_new" or fn_name == "@stack_i64_new" { "ptr" }
 
     else if fn_name == "@hashmap_new" or fn_name == "@vec_new" or fn_name == "@vec_with_capacity" or fn_name == "@str_hashmap_new" or fn_name == "@reg_cached_lookup" { "ptr" }
 
@@ -14651,7 +14705,10 @@ fn llvm_gen_call(line: String, pos: i64, dest: String) -> String
 
         "  " + dest + " = frem double " + left + ", " + right, "@stack_bytes_new" => // M11-C: stack-allocate N bytes; returns i64 pointer (must be used in @inline fn or same fn)
         let n_arg = trim_end(line.slice(paren_pos + 1, close_pos));
-        "  " + dest + "_arr = alloca i8, i64 " + n_arg + ", align 16" + SEP() + "  call void @llvm.memset.p0.i64(ptr " + dest + "_arr, i8 0, i64 " + n_arg + ", i1 false)" + SEP() + "  " + dest + " = ptrtoint ptr " + dest + "_arr to i64", "@tuple_alloca" => // Cycle 3235: stack-alloc N-element i64 tuple (safe in @inline fns — alloca is in caller)
+        "  " + dest + "_arr = alloca i8, i64 " + n_arg + ", align 16" + SEP() + "  call void @llvm.memset.p0.i64(ptr " + dest + "_arr, i8 0, i64 " + n_arg + ", i1 false)" + SEP() + "  " + dest + " = ptrtoint ptr " + dest + "_arr to i64", "@stack_i64_new" => // M11-C Phase 3: stack-alloc N i64 elements; zero-init; returns i64 pointer
+        // NOTE: use alloca [N x i64] form, NOT alloca i64, i64 N — the latter matches DSA "= alloca i64" pattern and gets incorrectly eliminated
+        let n_arg = trim_end(line.slice(paren_pos + 1, close_pos));
+        "  " + dest + "_arr = alloca [" + n_arg + " x i64], align 8" + SEP() + "  " + dest + "_sz = mul i64 " + n_arg + ", 8" + SEP() + "  call void @llvm.memset.p0.i64(ptr " + dest + "_arr, i8 0, i64 " + dest + "_sz, i1 false)" + SEP() + "  " + dest + " = ptrtoint ptr " + dest + "_arr to i64", "@tuple_alloca" => // Cycle 3235: stack-alloc N-element i64 tuple (safe in @inline fns — alloca is in caller)
         let n_arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + "_arr = alloca [" + n_arg + " x i64], align 8" + SEP() + "  " + dest + " = ptrtoint ptr " + dest + "_arr to i64", _ => let emitted_fn = map_runtime_fn(fn_name);
 
@@ -15167,7 +15224,7 @@ fn get_call_arg_types(fn_name: String) -> String
 
 = // String functions with ptr first arg
 
-    match fn_name { "@stack_bytes_new" => "i", "@bmb_black_box" => "i", "@bmb_append_file" => "pp", "@bmb_arena_mode" => "i", "@bmb_array_concat" => "pp", "@bmb_array_len" => "p", "@bmb_array_pop" => "p", "@bmb_array_push" => "pi", "@bmb_array_slice" => "pii", "@bmb_delete_file" => "p", "@bmb_exec_output" => "pp", "@bmb_exit" => "i", "@bmb_f64_is_nan" => "d", "@bmb_f64_to_int" => "d", "@bmb_f64_to_string" => "d", "@bmb_file_exists" => "p", "@bmb_file_size" => "p", "@bmb_getenv" => "p", "@bmb_ord" => "p", "@bmb_panic" => "p", "@bmb_panic_bounds" => "ii", "@bmb_panic_divzero" => "", "@bmb_parse_f64" => "p", "@bmb_parse_int" => "p", "@bmb_print_i64" => "i", "@bmb_random_seed" => "i", "@bmb_read_file" => "p", "@bmb_read_line" => "", "@bmb_sb_contains" => "ip", "@bmb_sb_free" => "i", "@bmb_sb_push" => "ip", "@bmb_sb_push_escaped" => "ip", "@bmb_sb_push_f64" => "id", "@bmb_sleep_ms" => "i", "@bmb_str_lines" => "p", "@bmb_string_char_at" => "pi", "@bmb_string_cmp" => "pp", "@bmb_string_concat" => "pp", "@bmb_string_concat3" => "ppp", "@bmb_string_concat5" => "ppppp", "@bmb_string_concat7" => "ppppppp", "@bmb_string_contains" => "pp", "@bmb_string_count" => "pp", "@bmb_string_ends_with" => "pp", "@bmb_string_eq" => "pp", "@bmb_string_free" => "p", "@bmb_string_from_cstr" => "p", "@bmb_string_hash" => "p", "@bmb_string_index_of" => "pp", "@bmb_string_is_empty" => "p", "@bmb_string_join" => "ip", "@bmb_string_last_index_of" => "pp", "@bmb_string_len" => "p", "@bmb_string_new" => "pi", "@bmb_string_pad_left" => "pii", "@bmb_string_pad_right" => "pii", "@bmb_string_repeat" => "pi", "@bmb_string_replace" => "ppp", "@bmb_string_reverse" => "p", "@bmb_string_slice" => "pii", "@bmb_string_split" => "pp", "@bmb_string_starts_with" => "pp", "@bmb_string_substr" => "pii", "@bmb_string_to_lower" => "p", "@bmb_string_to_upper" => "p", "@bmb_string_trim" => "p", "@bmb_svec_clear" => "i", "@bmb_svec_contains" => "ip", "@bmb_svec_free" => "i", "@bmb_svec_get" => "ii", "@bmb_svec_index_of" => "ip", "@bmb_svec_join" => "ip", "@bmb_svec_len" => "i", "@bmb_svec_new" => "", "@bmb_svec_push" => "ip", "@bmb_svec_remove" => "ii", "@bmb_svec_sort" => "i", "@bmb_system" => "p", "@bmb_system_capture" => "p", "@bmb_to_binary" => "i", "@bmb_to_octal" => "i", "@bmb_write_file" => "pp", "@calloc" => "ii", "@char_at" => "pi", "@eprint" => "i", "@eprint_f64" => "d", "@eprint_str" => "p", "@eprintln" => "i", "@eprintln_f64" => "d", "@eprintln_str" => "p", "@free" => "p", "@hashmap_contains" => "pp", "@hashmap_free" => "p", "@hashmap_get" => "pp", "@hashmap_insert" => "ppi", "@hashmap_keys" => "p", "@hashmap_len" => "p", "@hashmap_remove" => "pp", "@hashmap_values" => "p", "@is_dir" => "p", "@list_dir" => "p", "@load_i64" => "pi", "@load_u8" => "pi", "@make_dir" => "p", "@malloc" => "i", "@print_f64" => "d", "@print_str" => "p", "@println_f64" => "d", "@println_str" => "p", "@puts_cstr" => "p", "@reg_cached_lookup" => "ppi", "@remove_file" => "p", "@sb_println" => "i", "@sb_push_range" => "ipii", "@sb_with_capacity" => "i", "@store_i64" => "pii", "@store_u8" => "pii", "@str_hashmap_contains" => "pp", "@str_hashmap_free" => "p", "@str_hashmap_get" => "pp", "@str_hashmap_insert" => "ppi", "@str_hashmap_keys" => "p", "@str_hashmap_len" => "p", "@str_hashmap_remove" => "pp", "@str_hashmap_values" => "p", "@strmap_contains" => "ip", "@strmap_free" => "i", "@strmap_get" => "ip", "@strmap_insert" => "ipi", "@strmap_keys" => "i", "@strmap_remove" => "ip", "@strmap_size" => "i", "@strmap_values" => "i", "@vec_cap" => "p", "@vec_clear" => "p", "@vec_contains" => "pi", "@vec_copy" => "p", "@vec_dedup" => "p", "@vec_extend" => "pp", "@vec_fill" => "pi", "@vec_free" => "p", "@vec_get" => "pi", "@vec_index_of" => "pi", "@vec_insert" => "pii", "@vec_len" => "p", "@vec_max" => "p", "@vec_min" => "p", "@vec_pop" => "p", "@vec_product" => "p", "@vec_push" => "pi", "@vec_remove" => "pi", "@vec_reverse" => "p", "@vec_set" => "pii", "@vec_slice" => "pii", "@vec_sort" => "p", "@vec_sum" => "p", "@vec_swap" => "pii", "@vec_with_capacity" => "i", "@write_file_newlines" => "pp", _ => "" };
+    match fn_name { "@stack_bytes_new" => "i", "@stack_i64_new" => "i", "@bmb_black_box" => "i", "@bmb_append_file" => "pp", "@bmb_arena_mode" => "i", "@bmb_array_concat" => "pp", "@bmb_array_len" => "p", "@bmb_array_pop" => "p", "@bmb_array_push" => "pi", "@bmb_array_slice" => "pii", "@bmb_delete_file" => "p", "@bmb_exec_output" => "pp", "@bmb_exit" => "i", "@bmb_f64_is_nan" => "d", "@bmb_f64_to_int" => "d", "@bmb_f64_to_string" => "d", "@bmb_file_exists" => "p", "@bmb_file_size" => "p", "@bmb_getenv" => "p", "@bmb_ord" => "p", "@bmb_panic" => "p", "@bmb_panic_bounds" => "ii", "@bmb_panic_divzero" => "", "@bmb_parse_f64" => "p", "@bmb_parse_int" => "p", "@bmb_print_i64" => "i", "@bmb_random_seed" => "i", "@bmb_read_file" => "p", "@bmb_read_line" => "", "@bmb_sb_contains" => "ip", "@bmb_sb_free" => "i", "@bmb_sb_push" => "ip", "@bmb_sb_push_escaped" => "ip", "@bmb_sb_push_f64" => "id", "@bmb_sleep_ms" => "i", "@bmb_str_lines" => "p", "@bmb_string_char_at" => "pi", "@bmb_string_cmp" => "pp", "@bmb_string_concat" => "pp", "@bmb_string_concat3" => "ppp", "@bmb_string_concat5" => "ppppp", "@bmb_string_concat7" => "ppppppp", "@bmb_string_contains" => "pp", "@bmb_string_count" => "pp", "@bmb_string_ends_with" => "pp", "@bmb_string_eq" => "pp", "@bmb_string_free" => "p", "@bmb_string_from_cstr" => "p", "@bmb_string_hash" => "p", "@bmb_string_index_of" => "pp", "@bmb_string_is_empty" => "p", "@bmb_string_join" => "ip", "@bmb_string_last_index_of" => "pp", "@bmb_string_len" => "p", "@bmb_string_new" => "pi", "@bmb_string_pad_left" => "pii", "@bmb_string_pad_right" => "pii", "@bmb_string_repeat" => "pi", "@bmb_string_replace" => "ppp", "@bmb_string_reverse" => "p", "@bmb_string_slice" => "pii", "@bmb_string_split" => "pp", "@bmb_string_starts_with" => "pp", "@bmb_string_substr" => "pii", "@bmb_string_to_lower" => "p", "@bmb_string_to_upper" => "p", "@bmb_string_trim" => "p", "@bmb_svec_clear" => "i", "@bmb_svec_contains" => "ip", "@bmb_svec_free" => "i", "@bmb_svec_get" => "ii", "@bmb_svec_index_of" => "ip", "@bmb_svec_join" => "ip", "@bmb_svec_len" => "i", "@bmb_svec_new" => "", "@bmb_svec_push" => "ip", "@bmb_svec_remove" => "ii", "@bmb_svec_sort" => "i", "@bmb_system" => "p", "@bmb_system_capture" => "p", "@bmb_to_binary" => "i", "@bmb_to_octal" => "i", "@bmb_write_file" => "pp", "@calloc" => "ii", "@char_at" => "pi", "@eprint" => "i", "@eprint_f64" => "d", "@eprint_str" => "p", "@eprintln" => "i", "@eprintln_f64" => "d", "@eprintln_str" => "p", "@free" => "p", "@hashmap_contains" => "pp", "@hashmap_free" => "p", "@hashmap_get" => "pp", "@hashmap_insert" => "ppi", "@hashmap_keys" => "p", "@hashmap_len" => "p", "@hashmap_remove" => "pp", "@hashmap_values" => "p", "@is_dir" => "p", "@list_dir" => "p", "@load_i64" => "pi", "@load_u8" => "pi", "@make_dir" => "p", "@malloc" => "i", "@print_f64" => "d", "@print_str" => "p", "@println_f64" => "d", "@println_str" => "p", "@puts_cstr" => "p", "@reg_cached_lookup" => "ppi", "@remove_file" => "p", "@sb_println" => "i", "@sb_push_range" => "ipii", "@sb_with_capacity" => "i", "@store_i64" => "pii", "@store_u8" => "pii", "@str_hashmap_contains" => "pp", "@str_hashmap_free" => "p", "@str_hashmap_get" => "pp", "@str_hashmap_insert" => "ppi", "@str_hashmap_keys" => "p", "@str_hashmap_len" => "p", "@str_hashmap_remove" => "pp", "@str_hashmap_values" => "p", "@strmap_contains" => "ip", "@strmap_free" => "i", "@strmap_get" => "ip", "@strmap_insert" => "ipi", "@strmap_keys" => "i", "@strmap_remove" => "ip", "@strmap_size" => "i", "@strmap_values" => "i", "@vec_cap" => "p", "@vec_clear" => "p", "@vec_contains" => "pi", "@vec_copy" => "p", "@vec_dedup" => "p", "@vec_extend" => "pp", "@vec_fill" => "pi", "@vec_free" => "p", "@vec_get" => "pi", "@vec_index_of" => "pi", "@vec_insert" => "pii", "@vec_len" => "p", "@vec_max" => "p", "@vec_min" => "p", "@vec_pop" => "p", "@vec_product" => "p", "@vec_push" => "pi", "@vec_remove" => "pi", "@vec_reverse" => "p", "@vec_set" => "pii", "@vec_slice" => "pii", "@vec_sort" => "p", "@vec_sum" => "p", "@vec_swap" => "pii", "@vec_with_capacity" => "i", "@write_file_newlines" => "pp", _ => "" };
 
 // Returns pair: (conversions_string, formatted_args_string)
 

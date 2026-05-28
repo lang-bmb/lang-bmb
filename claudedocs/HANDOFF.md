@@ -1,16 +1,60 @@
-# BMB Session Handoff — 2026-05-28 (Cycle 3236)
+# BMB Session Handoff — 2026-05-28 (Cycle 3237)
 
-> **HEAD**: Cycle 3236 commit
-> **이번 세션 작업**: Cycle 3236 — **P-track 전체 재측정** — 7/7 전부 ≤1.010× (측정 방법론 수정 포함)
+> **HEAD**: Cycle 3237 commit (pending)
+> **이번 세션 작업**: Cycle 3237 — **M11-C Phase 3 ✅ COMPLETE** — `arr[i]` subscript for `[i64; N]` stack arrays
+> **M11-C Phase 3 상태**: ✅ **COMPLETE** — i64/f64 원소 타입 subscript 지원. u8 subscript는 미래 스코프.
 > **M11-C Phase 2 상태**: ✅ **COMPLETE** — `[u8/i64/f64/i32; N]` 전 primitive 타입 지원 + 실벤치 검증
 > **M11-A 상태**: ✅ **CONFIRMED COMPLETE** — 264 trivial postconditions 전부 skip 확정
 > **실무 앵커**: `claudedocs/ROADMAP.md`
-> **현재 bootstrap 바이너리**: `bootstrap/compiler.exe` (Cycle 3235 S2 — tuple alloca 최적화 포함)
-> **Fixed Point**: ✅ **S3 IR == S4 IR** (Cycle 3235 — tuple alloca 최적화 기준, 메타데이터만 차이)
+> **현재 bootstrap 바이너리**: `bootstrap/compiler.exe` (Cycle 3237 S2 — arr[i] subscript 포함)
+> **Fixed Point**: ✅ **S3 IR == S4 IR** (Cycle 3237 — 0 diff)
 > **0-Warning 상태**: ✅ **유지** (lint 0 warnings, compiler.bmb warnings 174)
 > **Z3 상태**: ✅ **141/141** (Cycle 3219 달성)
 > **Bootstrap Golden Tests**: ✅ **2862/2865 PASS, 3 FAIL** (모두 File not found pre-existing, Cycle 3235 시점)
-> **cargo test**: ✅ **6282 tests, 0 FAILED**
+> **cargo test**: ✅ **6282 tests, 0 FAILED** (Cycle 3237 확인)
+
+---
+
+## 이번 세션 작업 요약 (Cycle 3237)
+
+### Cycle 3237: M11-C Phase 3 — `arr[i]` subscript for `[i64; N]` stack arrays
+
+**배경**: M11-C Phase 2에서 `[i64; N]` 스택 배열 선언이 구현됐지만 `arr[i]` subscript 접근이 미지원이었음.
+
+#### 핵심 설계: post-parse rewrite 전략
+
+parser는 element type을 알지만 AST에 보존하지 않음. 해결책:
+1. `@stack_i64_new` 빌트인으로 i64/f64 배열 식별
+2. `rewrite_stack_i64_index`가 함수 body AST를 스캔하여 `(index (var <name>))` → `(ptr_index (var <name>))`으로 재작성
+3. 기존 `lower_ptr_index_sb` 경로(GEP without header, i64 stride)를 재사용
+
+#### `bootstrap/compiler.bmb` 7개 변경점
+
+1. `parse_block_let_after_stack_array`: TK_I64/TK_F64 → `(call <stack_i64_new> N)` (기존: byte_count * 8)
+2. `fn_returns_ptr`: `@stack_i64_new` 추가
+3. 신규 `find_char_back` 함수: 역방향 문자 스캔 헬퍼
+4. 신규 `rewrite_stack_i64_index` 함수: `"> (call <stack_i64_new>"` 패턴 스캔 → 변수명 추출 → index 재작성
+5. `lower_function_sb`: `body_ast_ptr` + `rewrite_stack_i64_index` 호출 추가
+6. LLVM codegen: `@stack_i64_new` 핸들러 — `alloca [N x i64]` + `mul N,8` + `memset` + `ptrtoint`
+7. `get_call_arg_types`: `@stack_i64_new => "i"` 추가
+
+#### DSA 함정 (중요)
+
+초기 구현에서 `alloca i64, i64 N` 형식을 사용했으나 Dead Store Analysis(DSA)가 `= alloca i64` 패턴으로 오감지하여 alloca 라인을 제거함.
+수정: `alloca [N x i64]` 형식 사용 (`@tuple_alloca`와 동일) — DSA 패턴 매칭 회피.
+
+#### 검증
+
+- Stage 1 빌드 ✅ (S1 compiler로 골든 테스트 파일 컴파일)
+- `while i < 5 { set arr[i] = i * i; }` + sum → `30` ✅
+- LLVM 최적화: 전체 배열 연산 → `tail call void @println(i64 30)` 상수 폴딩 ✅
+- 3-Stage Fixed Point: S3 IR == S4 IR (0 diff) ✅
+- `bootstrap/compiler.exe` → Cycle 3237 S2로 업데이트 ✅
+
+#### 한계 및 미래 스코프
+
+- **u8 subscript** (`tape[i]`): `@stack_u8_new` + i8 GEP stride + i8 load/zext가 필요함. 미래 스코프.
+- **가변 크기 배열**: `[i64; n]` (n이 runtime 변수): `alloca [N x i64]` 형식 불가, 별도 지원 필요.
 
 ---
 
