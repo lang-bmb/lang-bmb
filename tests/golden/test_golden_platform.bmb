@@ -1,0 +1,7 @@
+// M15: platform declaration (parsed, semantic TBD)
+platform stdlib {
+    fn io_print(s: String): <IO> -> i64;
+    fn file_read(path: String): <File> -> String;
+}
+
+fn main() -> i64 = println(42);

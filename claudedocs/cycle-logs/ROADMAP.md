@@ -3,15 +3,16 @@
 > 이 파일은 **방향성 앵커**다 — 각 사이클 Derive-Next에서 수정 가능.
 > 실무 앵커: `claudedocs/ROADMAP.md`
 
-## 현재 상태 (Cycles 3251-3255 기준, 2026-05-29)
+## 현재 상태 (Cycles 3251-3260 기준, 2026-05-29)
 
-- HEAD: `[pending commit]` (M12+M13+M14 Phase 1 완료)
-- M12 Phase 1+2a+2b: ✅ COMPLETE (effect row 파싱, MIR/LLVM 전파)
-- M13 Phase 1+2: ✅ COMPLETE (intent 어노테이션 + lint)
-- M14 Phase 1: ✅ COMPLETE (gotgan SHA-256 lockfile)
+- HEAD: `[pending commit]` (M12+M13+M14+M15 Phase 1 완료)
+- M12 Phase 1+2a+2b+2c: ✅ COMPLETE
+- M13 Phase 1+2: ✅ COMPLETE
+- M14 Phase 1+2: ✅ COMPLETE (lock + verify)
+- M15 Phase 1: ✅ COMPLETE (platform 파싱)
 - cargo test --release: 2390 PASS ✅
-- 3-Stage Fixed Point: ✅ S2 == S3 (Cycle 3255)
-- lint: 177 non-recursive warnings (pre-existing, 새 경고 없음)
+- 3-Stage Fixed Point: ✅ S2 == S3 (Cycle 3259)
+- lint: 177 non-recursive warnings (pre-existing)
 
 ## Cycles 3094-3103 방향성 — M7-4 구현
 

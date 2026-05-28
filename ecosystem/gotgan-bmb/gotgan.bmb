@@ -311,7 +311,7 @@ fn gotgan_build() -> i64 = gotgan_build_or_check(0);
 fn gotgan_check() -> i64 = gotgan_build_or_check(1);
 
 // ============================================================
-// Section 7b: SHA-256 lockfile (M14 Phase 1)
+// Section 7b: SHA-256 lockfile + verification (M14 Phase 1+2)
 // ============================================================
 
 // Compute SHA-256 of a file using system tools.
@@ -389,6 +389,72 @@ fn gotgan_lock() -> i64 = {
             let _xw = write_file(lock_path, lock_content);
             let _xp = println("Wrote: " + lock_path + " (" + int_to_string(n) + " deps)");
             0
+        }
+    }
+};
+
+// Verify one dep's hash against gotgan.lock. Returns 0 (ok) or 1 (mismatch/missing).
+fn verify_single_dep(dep_name: String, dep_spec: String, is_path: i64,
+    root: String, lock_content: String) -> i64 =
+    if is_path > 0 {
+        let locked_hash = extract_toml_field(lock_content, dep_name);
+        if locked_hash.len() == 0 {
+            let _xw = println("Warning: " + dep_name + " not in gotgan.lock (run `gotgan lock` first)");
+            0
+        } else {
+            let dep_main = path_join(path_join(path_join(root, dep_spec), "src"), "main.bmb");
+            let current_hash = if file_exists(dep_main) > 0 { compute_sha256_file(dep_main) } else { sha256_zeros() };
+            if current_hash == locked_hash {
+                let _xok = println("  OK: " + dep_name);
+                0
+            } else {
+                let _xe1 = println("  MISMATCH: " + dep_name);
+                let _xe2 = println("    locked:  " + locked_hash);
+                let _xe3 = println("    current: " + current_hash);
+                1
+            }
+        }
+    } else { 0 };
+
+fn verify_dep_hashes_loop(dep_names: SvecHandle, dep_specs: SvecHandle, dep_types: i64,
+    root: String, lock_content: String, i: i64, n: i64, errors: i64) -> i64 =
+    if i >= n { errors }
+    else {
+        let dep_name = svec_get(dep_names, i);
+        let dep_spec = svec_get(dep_specs, i);
+        let is_path = vec_get(dep_types, i);
+        let err = verify_single_dep(dep_name, dep_spec, is_path, root, lock_content);
+        verify_dep_hashes_loop(dep_names, dep_specs, dep_types, root, lock_content, i + 1, n, errors + err)
+    };
+
+fn gotgan_verify() -> i64 = {
+    let cwd = getcwd();
+    let root = find_project_root(cwd, 10);
+    if root.len() == 0 {
+        let _xp = println("Error: no gotgan.toml found");
+        1
+    } else {
+        let lock_path = path_join(root, "gotgan.lock");
+        if file_exists(lock_path) == 0 {
+            let _xp = println("Error: no gotgan.lock found; run `gotgan lock` first");
+            1
+        } else {
+            let lock_content = read_file(lock_path);
+            let content = load_manifest_content(root);
+            let dep_names = svec_new();
+            let dep_specs = svec_new();
+            let dep_types = vec_new();
+            let _xpd = parse_deps(content, dep_names, dep_specs, dep_types);
+            let n = svec_len(dep_names);
+            let _xp = println("Verifying " + int_to_string(n) + " deps...");
+            let errors = verify_dep_hashes_loop(dep_names, dep_specs, dep_types, root, lock_content, 0, n, 0);
+            if errors == 0 {
+                let _xp2 = println("All deps verified OK");
+                0
+            } else {
+                let _xp2 = println("Error: " + int_to_string(errors) + " hash mismatch(es)");
+                1
+            }
         }
     }
 };
@@ -496,6 +562,7 @@ fn print_help() -> i64 = {
     let _xh9 = println("  clean       Remove build artifacts");
     let _xha = println("  tree        Display dependency tree");
     let _xhb = println("  lock        Generate gotgan.lock with SHA-256 hashes of deps");
+    let _xhc = println("  verify      Verify dep hashes against gotgan.lock");
     0
 };
 
@@ -521,6 +588,8 @@ fn main() -> i64 = {
             gotgan_tree()
         } else if cmd == "lock" {
             gotgan_lock()
+        } else if cmd == "verify" {
+            gotgan_verify()
         } else {
             let _xu = println("Unknown command: " + cmd);
             let _xh = print_help();
