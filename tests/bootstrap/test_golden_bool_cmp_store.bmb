@@ -1,0 +1,60 @@
+-- Test: store comparison result into bool/u8/i32 arrays (M11-C Phase 9)
+-- Covers the i1 → i8/i32 conversion bug when val ends with _cmp
+
+fn fill_bool_lt(arr: *bool, n: i64) -> i64
+  pre n >= 0
+  post it == 0
+= {
+    let mut i = 0;
+    while i < n {
+        -- store comparison result (i1) into bool array
+        set arr[i] = (i < 2);
+        i = i + 1
+    };
+    0
+};
+
+fn fill_u8_eq(arr: *u8, n: i64) -> i64
+  pre n >= 0
+  post it == 0
+= {
+    let mut i = 0;
+    while i < n {
+        -- store comparison result (i1) into u8 array (0 or 1)
+        set arr[i] = (i % 2 == 0);
+        i = i + 1
+    };
+    0
+};
+
+fn fill_i32_gt(arr: *i32, n: i64) -> i64
+  pre n >= 0
+  post it == 0
+= {
+    let mut i = 0;
+    while i < n {
+        -- store comparison result (i1) into i32 array (0 or 1)
+        set arr[i] = (i > 1);
+        i = i + 1
+    };
+    0
+};
+
+fn main() -> i64 = {
+    -- bool array: fill_bool_lt([0..3]) => [true, true, false, false] = [1,1,0,0], sum=2
+    let barr: [bool; 4];
+    let _r1 = fill_bool_lt(barr, 4);
+    let s1 = barr[0] + barr[1] + barr[2] + barr[3];
+
+    -- u8 array: fill_u8_eq([0..3]) => [1,0,1,0], sum=2
+    let uarr: [u8; 4];
+    let _r2 = fill_u8_eq(uarr, 4);
+    let s2 = uarr[0] + uarr[1] + uarr[2] + uarr[3];
+
+    -- i32 array: fill_i32_gt([0..3]) => [0,0,1,1], sum=2
+    let iarr: [i32; 4];
+    let _r3 = fill_i32_gt(iarr, 4);
+    let s3 = iarr[0] + iarr[1] + iarr[2] + iarr[3];
+
+    println(s1 + s2 + s3)
+};

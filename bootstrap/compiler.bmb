@@ -14705,7 +14705,7 @@ fn llvm_gen_store_ptr_u8_sb(line: String, pos: i64, _str_sb: i64) -> String
 
     let val = trim_end(line.slice(p2, line.len()));
 
-    let trunc_line = "  " + ptr + "_v = trunc i64 " + val + " to i8";
+    let trunc_line = if val.ends_with("_cmp") { "  " + ptr + "_v = zext i1 " + val + " to i8" } else { "  " + ptr + "_v = trunc i64 " + val + " to i8" };
 
     let store_line = "  store i8 " + ptr + "_v, ptr " + ptr + ", align 1";
 
@@ -14771,7 +14771,7 @@ fn llvm_gen_store_ptr_i32_sb(line: String, pos: i64, _str_sb: i64) -> String
 
     let val = trim_end(line.slice(p2, line.len()));
 
-    let trunc_line = "  " + ptr + "_v = trunc i64 " + val + " to i32";
+    let trunc_line = if val.ends_with("_cmp") { "  " + ptr + "_v = zext i1 " + val + " to i32" } else { "  " + ptr + "_v = trunc i64 " + val + " to i32" };
 
     let store_line = "  store i32 " + ptr + "_v, ptr " + ptr + ", align 4";
 
@@ -14837,7 +14837,7 @@ fn llvm_gen_store_ptr_bool_sb(line: String, pos: i64, _str_sb: i64) -> String
 
     let val = trim_end(line.slice(p2, line.len()));
 
-    let trunc_line = "  " + ptr + "_v = trunc i64 " + val + " to i8";
+    let trunc_line = if val.ends_with("_cmp") { "  " + ptr + "_v = zext i1 " + val + " to i8" } else { "  " + ptr + "_v = trunc i64 " + val + " to i8" };
 
     let store_line = "  store i8 " + ptr + "_v, ptr " + ptr + ", align 1";
 
@@ -17121,6 +17121,8 @@ fn build_trunc_aliases(ir: String, pos: i64, zmap: String, aliases: String) -> S
     };
 
 // Check if line is "trunc i64 %X to i1" where %X is a zext, add alias
+// IMPORTANT: Only matches "to i1" (round-trip elimination), NOT "to i8" or "to i32"
+// trunc to i8/i32 narrows to 8/32 bits (different semantics — must keep the trunc)
 
 fn try_add_trunc_alias(line: String, zmap: String, aliases: String) -> String
 
@@ -17148,7 +17150,9 @@ fn try_add_trunc_alias(line: String, zmap: String, aliases: String) -> String
 
             if starts_with(rhs, "trunc i64 ", 0) {
 
-                let to_pos = find_pattern_at_slow(rhs, " to ", 10);
+                // Only eliminate zext i1 → trunc to i1 round-trips (not to i8/i32)
+
+                let to_pos = find_pattern_at_slow(rhs, " to i1", 10);
 
                 if to_pos < 0 { aliases }
 
