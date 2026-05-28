@@ -1,0 +1,27 @@
+-- Test: compound const expressions (M11-C Phase 13, Cycle 3248)
+-- const TOTAL = ROWS * COLS should be usable as array size: let arr: [i64; TOTAL]
+
+const ROWS = 3;
+const COLS = 4;
+const TOTAL = ROWS * COLS;
+
+fn main() -> i64 = {
+    let arr: [i64; TOTAL];
+    -- fill: arr[i] = i+1 (1..12)
+    set arr[0] = 1;
+    set arr[1] = 2;
+    set arr[2] = 3;
+    set arr[3] = 4;
+    set arr[4] = 5;
+    set arr[5] = 6;
+    set arr[6] = 7;
+    set arr[7] = 8;
+    set arr[8] = 9;
+    set arr[9] = 10;
+    set arr[10] = 11;
+    set arr[11] = 12;
+    -- sum = 1+2+...+12 = 78
+    let sum = arr[0] + arr[1] + arr[2] + arr[3] + arr[4] + arr[5]
+            + arr[6] + arr[7] + arr[8] + arr[9] + arr[10] + arr[11];
+    println(sum)
+};
