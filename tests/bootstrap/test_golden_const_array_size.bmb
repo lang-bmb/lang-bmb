@@ -1,0 +1,15 @@
+-- Test: const NAME in array size position (M11-C Phase 12, Cycle 3247)
+-- const N = V should be usable as array size: let arr: [i64; N]
+
+const SIZE = 5;
+
+fn main() -> i64 = {
+    let arr: [i64; SIZE];
+    set arr[0] = 10;
+    set arr[1] = 20;
+    set arr[2] = 30;
+    set arr[3] = 40;
+    set arr[4] = 50;
+    let sum = arr[0] + arr[1] + arr[2] + arr[3] + arr[4];
+    println(sum)   -- 10+20+30+40+50 = 150
+};

@@ -20748,7 +20748,19 @@ fn apply_const_map_to_mir(mir: String, const_map: String, pos: i64) -> String
 
             let new_mir = replace_all_in_mir(mir, pattern, replacement);
 
-            apply_const_map_to_mir(new_mir, const_map, comma_pos + 1)
+            // Cycle 3247: Also replace "copy %fn_name" in MIR (for array size and other var uses).
+            // Use SEP-terminated pattern to avoid matching names that are prefixes of longer names.
+            // e.g., const SIZE=5 replaces "copy %SIZE<31>" but not "copy %SIZE_BIG<31>".
+            let copy_pat_mid = "copy %" + fn_name + SEP();
+            let copy_rep_mid = "const " + value + SEP();
+            let new_mir2 = replace_all_in_mir(new_mir, copy_pat_mid, copy_rep_mid);
+            // Handle last instruction (no trailing SEP): ends_with "copy %fn_name"
+            let copy_pat_end = "copy %" + fn_name;
+            let new_mir3 = if new_mir2.ends_with(copy_pat_end) {
+                new_mir2.slice(0, new_mir2.len() - copy_pat_end.len()) + "const " + value
+            } else { new_mir2 };
+
+            apply_const_map_to_mir(new_mir3, const_map, comma_pos + 1)
 
         }
 
