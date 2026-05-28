@@ -1,0 +1,22 @@
+// Golden Test: Multi-level compound const chaining
+// Tests that const A=3; const B=A+1; const C=B*2 correctly evaluates
+// via fixed-point const-inlining loop (M11-C Phase 14, Cycle 3250).
+// Previously broken: B was registered as the literal "1" instead of "4".
+
+const A = 3;
+const B = A + 1;   -- should be 4
+const C = B * 2;   -- should be 8
+
+const X = 5;
+const Y = X + 1;   -- should be 6
+const Z = Y * 3;   -- should be 18
+
+fn main() -> i64 = {
+    let _1 = println(A);   -- 3
+    let _2 = println(B);   -- 4
+    let _3 = println(C);   -- 8
+    let _4 = println(X);   -- 5
+    let _5 = println(Y);   -- 6
+    let _6 = println(Z);   -- 18
+    0
+};
