@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-28 (**M11-C Phase 5 ✅ COMPLETE** — Cycle 3239: `arr[i]` for `[i32; N]` stack arrays. `@stack_i32_new` 빌트인 + `gep_i32`/`load_ptr_i32`/`store_ptr_i32` MIR 명령어 + `rewrite_stack_i32_index`. TK_I32() 직접 사용. `sext i32→i64` signed 확장. Fixed Point S3==S4 ✅. Stack array subscript 완성: i64/f64(8B) + u8(1B,zext) + i32(4B,sext).)
+> 최종 업데이트: 2026-05-28 (**M11-C Phase 6 ✅ COMPLETE** — Cycle 3240: `arr[i]` for `[bool; N]` stack arrays. `@stack_bool_new` 빌트인 + `gep_bool`/`load_ptr_bool`/`store_ptr_bool` MIR 명령어 + `rewrite_stack_bool_index`. TK_BOOL() 직접 사용. `zext i8→i64` unsigned 확장 (bool 0/1). Fixed Point S3==S4 ✅. Stack array subscript 완성: i64/f64(8B) + u8(1B,zext) + i32(4B,sext) + bool(1B,zext).)
 > 이전 갱신: 2026-05-28 (**M11-C Phase 4 ✅ COMPLETE** — Cycle 3238: `tape[i]` for `[u8; N]` stack arrays. `@stack_u8_new` 빌트인 + `gep_u8`/`load_ptr_u8`/`store_ptr_u8` MIR 명령어 + `rewrite_stack_u8_index` post-parse rewriter. TK_U8_ELEM() 가상 토큰으로 u8 식별. DSA `alloca [N x i8]` 안전. Fixed Point S3==S4 ✅. LLVM 상수 폴딩 확인 (println(30) 직접 출력).)
 > 이전 갱신: 2026-05-28 (**Cycle 3236: P-track 전체 재측정 + 측정 방법론 수정** — 외부 wall-clock → 내부 elapsed_us 읽기로 교정. P-track **7/7 전부 ≤1.010×**: lexer 0.230× / sorting 0.180× / json_parse 0.539× / json_serialize 0.884× / brainfuck 0.871× / http_parse 0.907× / csv_parse 1.010× (parity). 고아 파일 정리. 비-inline tuple fn 안전성 확인.)
 > 이전 갱신: 2026-05-28 (**Cycle 3234: P-track 전체 재측정(bootstrap-compiled) + `{{` 탈출문자 수정.** `bootstrap/compiler.bmb` `get_string_text`에 `{{`→`{` / `}}`→`}` 변환 추가 (Cycle 2845 Rust parity). Fixed Point S3==S4 ✅. bootstrap P-track 첫 측정: brainfuck 0.866×/csv 1.134×/http 0.934×/json_parse 0.556×/json_ser 0.925×/sorting 0.178×/lexer 1.459× (tuple calloc overhead). cargo test 6282/0 ✅.)
@@ -1408,11 +1408,14 @@ let arr: [u8; N];   // stack_bytes_new(N)
 
 **M11-C Phase 5 ✅ COMPLETE (Cycle 3239)**: `arr[i]` for `[i32; N]` — `@stack_i32_new` (`alloca [N x i32]` + `mul N,4` + memset + ptrtoint) + `gep_i32`/`load_ptr_i32`/`store_ptr_i32` MIR 명령어 + `rewrite_stack_i32_index` post-parse rewriter. TK_I32() 직접 사용 (가상 토큰 불필요). `sext i32→i64` (signed 확장). Fixed Point S3==S4 ✅. LLVM 상수 폴딩 확인 (println(30) 직접 출력).
 
+**M11-C Phase 6 ✅ COMPLETE (Cycle 3240)**: `arr[i]` for `[bool; N]` — `@stack_bool_new` (`alloca [N x i8]` + memset + ptrtoint) + `gep_bool`/`load_ptr_bool`/`store_ptr_bool` MIR 명령어 + `rewrite_stack_bool_index` post-parse rewriter. TK_BOOL() 직접 사용 (가상 토큰 불필요). `zext i8→i64` (unsigned 확장 — bool 0/1). Fixed Point S3==S4 ✅. LLVM 상수 폴딩 확인 (println(3) 직접 출력).
+
 | 타입 | Phase | GEP element | 확장 방식 |
 |------|-------|------------|---------|
 | `[i64; N]`, `[f64; N]` | 3 | i64 (8B) | — |
 | `[u8; N]` | 4 | i8 (1B) | zext (unsigned) |
 | `[i32; N]` | 5 | i32 (4B) | sext (signed) |
+| `[bool; N]` | 6 | i8 (1B) | zext (unsigned) |
 
 ---
 
