@@ -3,14 +3,15 @@
 > 이 파일은 **방향성 앵커**다 — 각 사이클 Derive-Next에서 수정 가능.
 > 실무 앵커: `claudedocs/ROADMAP.md`
 
-## 현재 상태 (Cycle 3250 기준)
+## 현재 상태 (Cycles 3251-3255 기준, 2026-05-29)
 
-- HEAD: TBD (Cycle 3250 커밋 후 갱신)
-- M11-C Phase 13: ✅ COMPLETE (compound const as array size, two-pass inlining)
-- M11-C Phase 14: ✅ COMPLETE (multi-level compound const fixed-point inlining)
-- cargo test --release: ALL PASS ✅ (6259 tests)
-- 3-Stage Fixed Point: ✅ S2 == S3 (Cycle 3250)
-- bootstrap bare-filename SIGSEGV: P3 ISSUE 문서화 (`claudedocs/issues/bootstrap-bare-filename-sigsegv.md`)
+- HEAD: `[pending commit]` (M12+M13+M14 Phase 1 완료)
+- M12 Phase 1+2a+2b: ✅ COMPLETE (effect row 파싱, MIR/LLVM 전파)
+- M13 Phase 1+2: ✅ COMPLETE (intent 어노테이션 + lint)
+- M14 Phase 1: ✅ COMPLETE (gotgan SHA-256 lockfile)
+- cargo test --release: 2390 PASS ✅
+- 3-Stage Fixed Point: ✅ S2 == S3 (Cycle 3255)
+- lint: 177 non-recursive warnings (pre-existing, 새 경고 없음)
 
 ## Cycles 3094-3103 방향성 — M7-4 구현
 

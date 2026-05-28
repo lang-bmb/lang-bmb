@@ -1454,3 +1454,134 @@ let arr: [u8; N];   // stack_bytes_new(N)
 | M5-1 하위 호환성 | ✅ unit enum + payload enum 모두 `{i64, i64}` 통일 |
 | M5-1 LLVM 표현 | ✅ `%EnumValue = type { i64, i64 }` 고정 2-word (스택 할당) |
 | M5-1 가변 페이로드 | ✅ M5-1 = i64 단일 페이로드만. Result<T,E>는 M5-2로 defer |
+
+---
+
+## § 6 AI-Native Pivot (2026-05-28, Cycle 3250)
+
+> **전략 앵커**: `claudedocs/plans/ai-native-plan-2026.md`
+> **연구 앵커**: `claudedocs/research/` (3종 — 생태계 분석, 설계 요구사항, 도출)
+
+### 전환 배경
+
+BMB는 P-track 7/7 ALL BMB faster + Track B 1,513/1,513 계약 100%를 달성했다.
+연구 결과는 AI 코딩의 7대 구조적 실패(A~G)가 **모델 한계가 아닌 언어 설계 문제**임을 실증했다.
+BMB는 이 문제를 언어 수준에서 해결할 수 있는 가장 근접한 시스템이다.
+
+**현재 달성한 것 (연구 요구사항 대비)**:
+- DR-1 계약 1급 ● 완전 — `pre/post/inv` + Z3 + Track B 100%
+- DR-5 결정론 ● 완전 — P-track 실측 + Fixed Point 검증
+- DR-9 AI 친화 출력 ● 완전 — 기본 JSON + `suggest_contracts` MCP
+
+**핵심 갭 (우선순위 순)**:
+- DR-4 효과 시스템 ◑ 부분 — `pure fn` 이진만, 그레이디드 효과 없음 ← **가장 큰 갭**
+- DR-3 콘텐츠 어드레싱 ○ 미흡 — gotgan SHA 잠금 없음
+- DR-6 의도 보존 ◑ 부분 — `intent:` 어노테이션 없음
+- DR-2 검증 IR ◑ 부분 — Dafny/Lean4 백엔드 없음
+
+### M12-M15 마일스톤
+
+| 마일스톤 | 이름 | 연구 근거 | 예상 사이클 | Breaking |
+|---------|------|----------|------------|---------|
+| **M12** | Graded Effect System | DR-4, D3, Koka+TACIT | 7-9 | 높음 |
+| **M13** | AI Workflow First-class | DR-6, DR-9, D5 | 5-7 | 낮음 |
+| **M14** | Content Addressing | DR-3, D2, Unison | 3-5 | Phase 1-2 없음 |
+| **M15** | Platform/Capability Model | D4, DR-4, Roc+Wyvern | 6-8 | 매우 높음 |
+
+### M12: Graded Effect System — 상세
+
+```
+목표: fn foo(): <IO, File> -> T  (현재: pure fn | fn 이진만)
+
+Phase 1 (2-3 cycles): 문법·파서
+  - `<IO>`, `<File>`, `<Net>`, `<Sys>`, `<pure>`, `<*>` effect row
+  - grammar.lalrpop 확장
+  - 기존 pure fn → fn(): <pure> 자동 마이그레이션
+
+Phase 2 (3-4 cycles): 타입 체커 + bootstrap
+  - effect propagation: callee ⊆ caller
+  - bootstrap/compiler.bmb 어노테이션 전체 적용
+  - stdlib 함수 효과 선언
+
+Phase 3 (2 cycles): Z3 통합
+  - effect constraint → SMT predicate
+  - Fixed Point S2==S3 유지
+```
+
+**성공 기준**:
+- AI 삽입 `Net` 효과 코드가 `<pure>` 컨텍스트에서 컴파일 실패
+- bootstrap P-track 회귀 없음 (≤2%)
+- Z3 "이 함수는 Net 없음" 자동 증명
+
+### M13: AI Workflow First-class — 상세
+
+```
+Phase 1 (1-2 cycles): `intent:` 어노테이션
+  - fn foo() { intent: "자연어 의도" pre ... post ... }
+  - 컴파일러: intent↔계약 불일치 경고
+
+Phase 2 (2-3 cycles): 구조화 repair signal
+  - bmb verify 실패 → LLM-consumable JSON
+    { "violation": "...", "counterexample": {...},
+      "suggestion": "pre param >= 0", "confidence": 0.87 }
+  - repair-loop 테스트: LLM k회 재시도 성공률 측정
+
+Phase 3 (2 cycles): 세션 영속 계약
+  - .bmb-contracts: 프로젝트 레벨 불변식
+  - 새 함수가 project contract 위반 시 컴파일 차단
+```
+
+### M14: Content Addressing — 상세
+
+```
+Phase 1 (1-2 cycles): gotgan SHA 잠금
+  - gotgan.toml: sha256 필드 추가
+  - gotgan build: 해시 검증 (환각 패키지명 차단)
+  - lockfile 생성/검증
+
+Phase 2 (2-3 cycles): 컴파일러 중복 감지
+  - 함수 AST 정규화 → 구조 해시
+  - SemanticDuplicate 경고: "이 함수는 foo()와 AST 구조 91% 일치"
+  - bootstrap에서 실제 중복 발견 실험
+```
+
+### M15: Platform/Capability Model — 상세 (장기)
+
+```
+Phase 1 (3-4 cycles): platform 키워드
+  - platform stdlib { IO 프리미티브 소유 }
+  - 애플리케이션: 오직 platform 부여 효과만 사용
+  - AI 생성 코드 자동 sandbox
+
+Phase 2 (3-4 cycles): 모듈 capability 선언
+  - module X requires [File, Net]
+  - 인터페이스 보고 capability 흐름 분석 가능
+```
+
+### M12-M15 진척 현황 (Cycles 3251-3255, 2026-05-29)
+
+| 마일스톤 | 페이즈 | 상태 | 사이클 |
+|---------|------|------|------|
+| M12 Graded Effect | Phase 1: 문법·파서 | ✅ COMPLETE | 3251 |
+| M12 Graded Effect | Phase 2a: MIR 전파 | ✅ COMPLETE | 3254 |
+| M12 Graded Effect | Phase 2b: LLVM 속성 | ✅ COMPLETE | 3255 |
+| M12 Graded Effect | Phase 2c: callee eff 검증 | 🔄 진행 예정 | 3256+ |
+| M13 AI Workflow | Phase 1: intent: 파싱 | ✅ COMPLETE | 3252 |
+| M13 AI Workflow | Phase 2: intent_no_contract lint | ✅ COMPLETE | 3252 |
+| M14 Content Addressing | Phase 1: gotgan SHA-256 lockfile | ✅ COMPLETE | 3253 |
+
+### 실행 타임라인
+
+| 시점 | 작업 |
+|------|------|
+| ~~즉시 (Cycle 3251~)~~ | ~~M12 Phase 1 + M14 Phase 1~~ ✅ 완료 |
+| 단기 (Cycle 3256~) | M12 Phase 2c (callee eff 검증) + M13 Phase 2 (repair signal) |
+| 중기 (~1개월) | M12 Phase 3 (Z3 effect) + M14 Phase 2 (gotgan build --locked) + M15 Phase 1 시작 |
+| 장기 (~3개월) | M15 Phase 2-3 + M14 Phase 3 (언어 코어) |
+
+### 리팩토링 원칙
+
+1. **bootstrap/compiler.bmb가 최종 레퍼런스** — 새 기능은 반드시 compiler.bmb에 적용
+2. **Breaking change = 투자** — 인간 중심 패러다임의 잔재를 제거, workaround 금지
+3. **모든 변경은 P-track + Fixed Point 검증** — 효과 시스템이 성능 영향 없음 실측 증명
+4. **연구 앵커는 방향, 스펙이 아님** — Koka/Roc/Wyvern 설계 차용, BMB 철학으로 재해석

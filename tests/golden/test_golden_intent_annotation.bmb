@@ -1,0 +1,16 @@
+fn add_positive(x: i64, y: i64) -> i64
+    intent: "Adds two numbers and returns their sum"
+    pre x >= 0
+    pre y >= 0
+    post it >= 0
+= x + y;
+
+fn square(n: i64) -> i64
+    intent: "Squares the input value"
+= n * n;
+
+fn main() -> i64 = {
+    let a = add_positive(3, 4);
+    let b = square(5);
+    println(a + b)
+};

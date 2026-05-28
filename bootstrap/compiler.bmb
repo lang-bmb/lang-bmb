@@ -5744,6 +5744,154 @@ fn parse_params(src: String, pos: i64, acc: String) -> String
 
     };
 
+// Route after fn name(params): check for ':' (effect row) or '->' (plain return type).
+// pos = position after the closing ')'. Returns completed fn AST or error.
+
+fn parse_fn_after_params(src: String, pos: i64, name: String, params_ast: String) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 2
+
+= let t3 = next_token_raw(src, pos);
+
+    if tok_kind(t3) == TK_COLON() {
+
+        parse_fn_effect_tail(src, tok_end(t3), name, params_ast)
+
+    } else if tok_kind(t3) == TK_ARROW() {
+
+        let ret_type_and_end = parse_return_type(src, tok_end(t3));
+
+        let ret_type = unpack_ast(ret_type_and_end);
+
+        let eq_pos = skip_contracts(src, unpack_pos(ret_type_and_end));
+
+        let rb = parse_expr(src, eq_pos);
+
+        if is_error(rb) { rb } else {
+
+            let t6 = next_token_raw(src, unpack_pos(rb));
+
+            if tok_kind(t6) == TK_SEMI() { pack_result(tok_end(t6), "(fn <" + name + ">" + params_ast + " " + ret_type + " " + unpack_ast(rb) + ")") } else { pack_result(unpack_pos(rb), "(fn <" + name + ">" + params_ast + " " + ret_type + " " + unpack_ast(rb) + ")") }
+
+        }
+
+    } else { make_error_at("expected '->' after parameters, got " + tok_kind_name(tok_kind(t3)), src, pos) };
+
+// M12 Phase 1: Handle fn name(params): <effects> -> RetType = body
+// Entered after ':' is already consumed. src/pos = position after colon.
+// name = function name, params_ast = params sexp text from parse_params.
+
+fn parse_fn_effect_tail(src: String, pos: i64, name: String, params_ast: String) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 2
+
+= let t_lt = next_token_raw(src, pos);
+
+    if tok_kind(t_lt) != TK_LT() { make_error_at("expected '<' after ':' in effect row, got " + tok_kind_name(tok_kind(t_lt)), src, pos) } else {
+
+        let eff_r = parse_effect_row(src, tok_end(t_lt));
+
+        if is_error(eff_r) { eff_r } else {
+
+            let eff_str = unpack_ast(eff_r);
+
+            let t_arr = next_token_raw(src, unpack_pos(eff_r));
+
+            if tok_kind(t_arr) != TK_ARROW() { make_error_at("expected '->' after effect row, got " + tok_kind_name(tok_kind(t_arr)), src, unpack_pos(eff_r)) } else {
+
+                let ret_type_and_end = parse_return_type(src, tok_end(t_arr));
+
+                let ret_type = unpack_ast(ret_type_and_end);
+
+                let eq_pos = skip_contracts(src, unpack_pos(ret_type_and_end));
+
+                let rb = parse_expr(src, eq_pos);
+
+                if is_error(rb) { rb } else {
+
+                    let t6 = next_token_raw(src, unpack_pos(rb));
+
+                    let is_pure_eff = eff_str == "(eff pure)";
+
+                    let is_star_eff = eff_str == "(eff *)";
+
+                    let fn_tag = if is_pure_eff { "fn-pure" } else { "fn" };
+
+                    let eff_part = if is_pure_eff or is_star_eff { "" } else { " " + eff_str };
+
+                    let ast_str = "(" + fn_tag + " <" + name + ">" + params_ast + eff_part + " " + ret_type + " " + unpack_ast(rb) + ")";
+
+                    if tok_kind(t6) == TK_SEMI() { pack_result(tok_end(t6), ast_str) } else { pack_result(unpack_pos(rb), ast_str) }
+
+                }
+
+            }
+
+        }
+
+    };
+
+// M12 Phase 1: Parse effect row inside <...> for fn(): <IO, Net> -> T syntax.
+// Called after '<' is consumed. Returns pack_result(end_pos_after_gt, "(eff NAME1 NAME2 ...)").
+
+fn parse_effect_row(src: String, pos: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 2
+
+= parse_effect_names(src, pos, "");
+
+fn parse_effect_names(src: String, pos: i64, acc: String) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 2
+
+= let t = next_token_raw(src, pos);
+
+    let k = tok_kind(t);
+
+    if k == TK_GT() {
+
+        let eff_str = if acc == "" { "*" } else { acc };
+
+        pack_result(tok_end(t), "(eff " + eff_str + ")")
+
+    }
+
+    else if k == TK_STAR() {
+
+        let t2 = next_token_raw(src, tok_end(t));
+
+        if tok_kind(t2) == TK_GT() { pack_result(tok_end(t2), "(eff *)") }
+
+        else { make_error_at("expected '>' after '*' in effect row, got " + tok_kind_name(tok_kind(t2)), src, tok_end(t)) }
+
+    }
+
+    else if k == TK_IDENT() {
+
+        let eff_name = get_ident_text(src, pos, t);
+
+        let new_acc = if acc == "" { eff_name } else { acc + " " + eff_name };
+
+        let t2 = next_token_raw(src, tok_end(t));
+
+        if tok_kind(t2) == TK_COMMA() { parse_effect_names(src, tok_end(t2), new_acc) }
+
+        else if tok_kind(t2) == TK_GT() { pack_result(tok_end(t2), "(eff " + new_acc + ")") }
+
+        else { make_error_at("expected ',' or '>' in effect row, got " + tok_kind_name(tok_kind(t2)), src, tok_end(t)) }
+
+    }
+
+    else { make_error_at("expected effect name, '*', or '>' in effect row, got " + tok_kind_name(k), src, pos) };
+
 fn parse_fn(src: String, pos: i64) -> String
 
   pre pos >= 0
@@ -5770,31 +5918,8 @@ fn parse_fn(src: String, pos: i64) -> String
 
             if is_error(rp) { rp } else {
 
-                let t3 = next_token_raw(src, unpack_pos(rp));
-
-                if tok_kind(t3) == TK_ARROW() {
-
-                    let _t4 = next_token_raw(src, tok_end(t3));
-
-                    let ret_type_and_end = parse_return_type(src, tok_end(t3));
-
-                    let ret_type = unpack_ast(ret_type_and_end);
-
-                    let _t5 = next_token_raw(src, unpack_pos(ret_type_and_end));
-
-                    let eq_pos = skip_contracts(src, unpack_pos(ret_type_and_end));
-
-                    let rb = parse_expr(src, eq_pos);
-
-                    if is_error(rb) { rb } else {
-
-                        let t6 = next_token_raw(src, unpack_pos(rb));
-
-                        if tok_kind(t6) == TK_SEMI() { pack_result(tok_end(t6), "(fn <" + name + ">" + unpack_ast(rp) + " " + ret_type + " " + unpack_ast(rb) + ")") } else { pack_result(unpack_pos(rb), "(fn <" + name + ">" + unpack_ast(rp) + " " + ret_type + " " + unpack_ast(rb) + ")") }
-
-                    }
-
-                } else { let tarrow = next_token_raw(src, unpack_pos(rp)); make_error_at("expected '->' after parameters, got " + tok_kind_name(tok_kind(tarrow)), src, unpack_pos(rp)) }
+                // Delegate post-params routing (arrow vs effect colon) to helper
+                parse_fn_after_params(src, unpack_pos(rp), name, unpack_ast(rp))
 
             }
 
@@ -5881,6 +6006,24 @@ fn skip_contracts(src: String, pos: i64) -> i64
         // v0.95: Skip where clause: where T: Bound + Bound, U: Bound = ...
 
         skip_where_clause(src, tok_end(t))
+
+    }
+
+    else if k == TK_IDENT() and get_ident_text(src, pos, t) == "intent" {
+
+        // M13 Phase 1: intent: "description" annotation — parse and skip
+
+        let t_colon = next_token_raw(src, tok_end(t));
+
+        if tok_kind(t_colon) == TK_COLON() {
+
+            let t_str = next_token_raw(src, tok_end(t_colon));
+
+            if tok_kind(t_str) == TK_STRING_LIT() { skip_contracts(src, tok_end(t_str)) }
+
+            else { tok_end(t) }
+
+        } else { tok_end(t) }
 
     }
 
@@ -13764,6 +13907,50 @@ fn get_fn_annotation(ast: String) -> String
 
     else { match nt { "fn-const" => "const", "fn-inline" => "inline", _ => "" } };
 
+// M12 Phase 2: Extract the effect row string from a fn AST node.
+// Returns e.g. "IO Net" if the fn has (eff IO Net) child, "" otherwise.
+
+fn get_fn_effect_row(ast: String) -> String
+
+  post it.len() >= 0
+
+= let content = extract_paren_content(ast);
+
+    get_fn_eff_scan(content, 0);
+
+fn get_fn_eff_scan(content: String, pos: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 0
+
+= let p = low_skip_ws(content, pos);
+
+    if p >= content.len() { "" } else {
+
+        let child = read_sexp_at(content, p);
+
+        if child == "" { "" }
+
+        else if child.len() > 0 and child.byte_at(0) == 40 {
+
+            let ntype = get_node_type(child);
+
+            if ntype == "eff" {
+                // (eff IO Net) → skip "eff " prefix → "IO Net"
+                let inner = extract_paren_content(child);
+                let after_eff = low_skip_ws(inner, 3);  // skip "eff"
+                str_trim(inner.slice(after_eff, inner.len()))
+            }
+
+            else if ntype == "param" { get_fn_eff_scan(content, p + child.len()) }
+
+            else { "" }
+
+        } else { get_fn_eff_scan(content, p + child.len()) }
+
+    };
+
 // Rewrite (index (var <name>)) to (ptr_index (var <name>)) for raw pointer params
 
 // This ensures raw pointer indexing skips the +2 array header offset
@@ -14085,13 +14272,17 @@ fn lower_function_sb(ast: String, safe: i64) -> String
 
     let ann_suffix = if ann == "" { "" } else { " @" + ann };
 
+    // M12 Phase 2: Add @effect attribute if function has effect row annotation
+    let eff_row = get_fn_effect_row(ast);
+    let ann_suffix2 = if eff_row == "" { ann_suffix } else { ann_suffix + " @effect:" + eff_row };
+
     // v0.95: Extract lambda functions delimited by chr(1) markers
 
     let lambda_fns = extract_lambda_fns(body_mir_raw, 0, "");
 
     let body_mir = remove_lambda_markers(body_mir_raw, 0, sb_new());
 
-    let main_fn = "fn " + name + "(" + params + ") -> " + ret_type + ann_suffix + " {" + SEP() + "entry:" + SEP() + body_mir + SEP() + "}";
+    let main_fn = "fn " + name + "(" + params + ") -> " + ret_type + ann_suffix2 + " {" + SEP() + "entry:" + SEP() + body_mir + SEP() + "}";
 
     if lambda_fns == "" { main_fn } else { main_fn + DSEP() + lambda_fns };
 
@@ -14325,7 +14516,7 @@ fn get_fn_body_scan(content: String, pos: i64, last_expr: String) -> String
 
             let ntype = get_node_type(child);
 
-            if ntype == "param" { get_fn_body_scan(content, p + child.len(), last_expr) } else { get_fn_body_scan(content, p + child.len(), child) }
+            if ntype == "param" or ntype == "eff" { get_fn_body_scan(content, p + child.len(), last_expr) } else { get_fn_body_scan(content, p + child.len(), child) }
 
         } else {
 
@@ -28238,7 +28429,16 @@ fn llvm_gen_fn_header(line: String, pos: i64) -> String
 
     let inline_attrs = if ann == "inline" { " alwaysinline" } else { "" };
 
-    let attrs = base_attrs + pure_attrs + inline_attrs;
+    // M12 Phase 2b: @effect:IO Net → "bmb-effect"="IO Net" LLVM string attribute
+    let eff_attrs = if ann == "effect" {
+        let colon_pos = str_find(raw_ret_type, "@effect:");
+        if colon_pos >= 0 {
+            let eff_val = str_trim(raw_ret_type.slice(colon_pos + 8, raw_ret_type.len()));
+            " \"bmb-effect\"=\"" + eff_val + "\""
+        } else { "" }
+    } else { "" };
+
+    let attrs = base_attrs + pure_attrs + inline_attrs + eff_attrs;
 
     // v0.97: @export annotation → dllexport linkage (Windows) or global visibility (Unix/Linux)
 
@@ -28735,6 +28935,8 @@ fn gen_runtime_decls() -> String
     "declare i64 @memset_fill(i64, i64, i64) nounwind willreturn" + SEP() +
 
     "declare noalias ptr @bmb_exec_output(ptr, ptr) nofree nounwind willreturn" + SEP() +
+
+    "declare noalias ptr @exec_with_stdin(ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn" + SEP() +
 
     "declare i64 @bmb_string_split(ptr, ptr) nofree nosync nounwind willreturn" + SEP() +
 
@@ -33683,6 +33885,15 @@ fn extract_pre_asts(src: String, pos: i64) -> String
         let after = skip_where_clause(src, tok_end(t));
         extract_pre_asts(src, after)
     }
+    else if k == TK_IDENT() and get_ident_text(src, pos, t) == "intent" {
+        // M13: skip intent: "..." annotation
+        let t2 = next_token_raw(src, tok_end(t));
+        if tok_kind(t2) == TK_COLON() {
+            let t3 = next_token_raw(src, tok_end(t2));
+            if tok_kind(t3) == TK_STRING_LIT() { extract_pre_asts(src, tok_end(t3)) }
+            else { "" }
+        } else { "" }
+    }
     else { "" };
 
 // Extract post-condition ASTs from source at the position after return type
@@ -33719,7 +33930,57 @@ fn extract_post_asts(src: String, pos: i64) -> String
         let after = skip_where_clause(src, tok_end(t));
         extract_post_asts(src, after)
     }
+    else if k == TK_IDENT() and get_ident_text(src, pos, t) == "intent" {
+        // M13: skip intent: "..." annotation
+        let t2 = next_token_raw(src, tok_end(t));
+        if tok_kind(t2) == TK_COLON() {
+            let t3 = next_token_raw(src, tok_end(t2));
+            if tok_kind(t3) == TK_STRING_LIT() { extract_post_asts(src, tok_end(t3)) }
+            else { "" }
+        } else { "" }
+    }
     else { "" };
+
+// M13 Phase 2: Check if intent: "..." annotation is present in function contract zone.
+// Returns 1 if found, 0 otherwise.
+
+fn has_intent_annotation(src: String, pos: i64) -> i64
+
+  pre pos >= 0
+
+  post it == 0 or it == 1
+
+= let t = next_token_raw(src, pos);
+
+    let k = tok_kind(t);
+
+    if k == TK_EQ() or k == TK_EOF() or k == TK_LBRACE() { 0 }
+
+    else if k == TK_IDENT() and get_ident_text(src, pos, t) == "intent" {
+
+        let t2 = next_token_raw(src, tok_end(t));
+
+        if tok_kind(t2) == TK_COLON() {
+
+            let t3 = next_token_raw(src, tok_end(t2));
+
+            if tok_kind(t3) == TK_STRING_LIT() { 1 } else { 0 }
+
+        } else { 0 }
+
+    }
+
+    else if k == TK_PRE() or k == TK_POST() {
+
+        let re = parse_expr(src, tok_end(t));
+
+        if is_error(re) { 0 } else { has_intent_annotation(src, unpack_pos(re)) }
+
+    }
+
+    else if k == TK_WHERE() { has_intent_annotation(src, skip_where_clause(src, tok_end(t))) }
+
+    else { 0 };
 
 // Build a map of function names to their pre-condition ASTs
 // Format: "fn_name\tast1\tast2\nfn_name2\tast1\n..."
@@ -41664,6 +41925,73 @@ fn lint_check_recursive(entries: String, pos: i64, count: i64) -> i64
 
 // Lint a single file: static analysis on source
 
+// M13 Phase 2: Warn if function has intent: annotation but no pre/post contracts.
+// Rule: intent documents intent; contracts verify it. If you write intent, also write contracts.
+
+fn lint_check_intent_scan(src: String, pos: i64, count: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= let fn_pos = find_pattern_noa(src, "fn ", pos);
+
+    if fn_pos < 0 { count } else {
+
+        let is_real_fn = if fn_pos == 0 { true }
+
+            else { let prev = src.byte_at(fn_pos - 1); prev == 10 or prev == 13 or prev == 32 or prev == 59 or prev == 9 };
+
+        if is_real_fn {
+
+            let name_start = skip_ws_comments(src, fn_pos + 3);
+
+            let name_end = scan_ident_end(src, name_start);
+
+            let fname = src.slice(name_start, name_end);
+
+            if fname != "" and name_end > name_start {
+
+                let t2 = next_token_raw(src, name_end);
+
+                let after_gen = if tok_kind(t2) == TK_LT() { skip_generic_params(src, tok_end(t2)) } else { name_end };
+
+                let t2g = next_token_raw(src, after_gen);
+
+                if tok_kind(t2g) == TK_LPAREN() {
+
+                    let params = index_collect_params(src, tok_end(t2g), "");
+
+                    let rtype = index_read_ret_type(src, unpack_pos(params));
+
+                    let rp = unpack_pos(rtype);
+
+                    let has_intent = has_intent_annotation(src, rp);
+
+                    let pre_asts = extract_pre_asts(src, rp);
+
+                    let post_asts = extract_post_asts(src, rp);
+
+                    let no_contracts = pre_asts == "" and post_asts == "";
+
+                    let new_count = if has_intent == 1 and no_contracts {
+
+                        let _w = println_str("  [intent_no_contract] " + fname + ": has intent annotation but no pre/post contracts");
+
+                        count + 1
+
+                    } else { count };
+
+                    lint_check_intent_scan(src, fn_pos + 3, new_count)
+
+                } else { lint_check_intent_scan(src, fn_pos + 3, count) }
+
+            } else { lint_check_intent_scan(src, fn_pos + 3, count) }
+
+        } else { lint_check_intent_scan(src, fn_pos + 3, count) }
+
+    };
+
 fn lint_file(input: String) -> i64
 
   post it >= 0
@@ -41692,7 +42020,9 @@ fn lint_file(input: String) -> i64
 
         let w5 = lint_check_recursive(entries, 0, 0);
 
-        let total = w1 + w2 + w3 + w4;
+        let w6 = lint_check_intent_scan(source, 0, 0);
+
+        let total = w1 + w2 + w3 + w4 + w6;
 
         let _sep = println_str("---");
 
