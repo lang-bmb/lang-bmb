@@ -1,5 +1,6 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-28 (**Cycle 3236: P-track 전체 재측정 + 측정 방법론 수정** — 외부 wall-clock → 내부 elapsed_us 읽기로 교정. P-track **7/7 전부 ≤1.010×**: lexer 0.230× / sorting 0.180× / json_parse 0.539× / json_serialize 0.884× / brainfuck 0.871× / http_parse 0.907× / csv_parse 1.010× (parity). 고아 파일 정리. 비-inline tuple fn 안전성 확인.)
+> 최종 업데이트: 2026-05-28 (**M11-C Phase 4 ✅ COMPLETE** — Cycle 3238: `tape[i]` for `[u8; N]` stack arrays. `@stack_u8_new` 빌트인 + `gep_u8`/`load_ptr_u8`/`store_ptr_u8` MIR 명령어 + `rewrite_stack_u8_index` post-parse rewriter. TK_U8_ELEM() 가상 토큰으로 u8 식별. DSA `alloca [N x i8]` 안전. Fixed Point S3==S4 ✅. LLVM 상수 폴딩 확인 (println(30) 직접 출력).)
+> 이전 갱신: 2026-05-28 (**Cycle 3236: P-track 전체 재측정 + 측정 방법론 수정** — 외부 wall-clock → 내부 elapsed_us 읽기로 교정. P-track **7/7 전부 ≤1.010×**: lexer 0.230× / sorting 0.180× / json_parse 0.539× / json_serialize 0.884× / brainfuck 0.871× / http_parse 0.907× / csv_parse 1.010× (parity). 고아 파일 정리. 비-inline tuple fn 안전성 확인.)
 > 이전 갱신: 2026-05-28 (**Cycle 3234: P-track 전체 재측정(bootstrap-compiled) + `{{` 탈출문자 수정.** `bootstrap/compiler.bmb` `get_string_text`에 `{{`→`{` / `}}`→`}` 변환 추가 (Cycle 2845 Rust parity). Fixed Point S3==S4 ✅. bootstrap P-track 첫 측정: brainfuck 0.866×/csv 1.134×/http 0.934×/json_parse 0.556×/json_ser 0.925×/sorting 0.178×/lexer 1.459× (tuple calloc overhead). cargo test 6282/0 ✅.)
 > 이전 갱신: 2026-05-28 (**Cycle 3233: 정렬 벤치마크 검증 + CLAUDE.md 메타순환 계약 위반 패턴 문서화.** sorting S2 IR 완전 (667줄, 이전 63줄 절단에서 수정). 성능 0.180× vs GCC-O3 ✅ (S1≈S2). CLAUDE.md 부트스트랩 실패 패턴 2개소 추가. cargo test 6282/0 ✅.)
 > 이전 갱신: 2026-05-28 (**Cycle 3232: S2 IR 절단 버그 수정** — `ifs_check_flex_both_sides` `post it >= 0` → `post it >= -1`. Fixed Point S3==S4 ✅. sorting/rec_helper IR 완전 생성 확인.)
@@ -1402,7 +1403,7 @@ let arr: [u8; N];   // stack_bytes_new(N)
 | `find_char_back` 헬퍼 | 역방향 문자 스캔 (변수명 추출용) |
 | DSA 회피 | `alloca i64, i64 N` 대신 `alloca [N x i64]` — Dead Store Analysis가 `= alloca i64` 패턴 오매칭 방지 |
 
-**u8 subscript (`tape[i]`)**: 별도 `@stack_u8_new` + `lower_u8_index_sb` 필요 (i8 GEP stride). 미래 스코프.
+**M11-C Phase 4 ✅ COMPLETE (Cycle 3238)**: `tape[i]` for `[u8; N]` — `@stack_u8_new` (`alloca [N x i8]` + memset + ptrtoint) + `gep_u8`/`load_ptr_u8`/`store_ptr_u8` MIR 명령어 + `rewrite_stack_u8_index` post-parse rewriter. Fixed Point S3==S4 ✅. LLVM 상수 폴딩 확인 (println(30) 직접 출력).
 
 ---
 

@@ -1114,6 +1114,14 @@ fn TK_EXTERN() -> i64
 
 = 2000000000 + 167;
 
+// M11-C Phase 4: virtual token for u8 element type in [u8; N] array declarations
+
+fn TK_U8_ELEM() -> i64
+
+  post it == 2000000000 + 168
+
+= 2000000000 + 168;
+
 fn TK_EOF() -> i64
 
   post it == 2000000000 + 900
@@ -2780,8 +2788,9 @@ fn parse_block_let_array_type_aware(src: String, pos: i64, name: String, is_mut:
 
                 if tok_kind(t3) == TK_RBRACKET() {
 
-                    // Successfully parsed [elem_type; N] — pass elem_kind for byte-size computation
-                    parse_block_let_after_stack_array(src, tok_end(t3), name, is_mut, unpack_ast(size_rv), k1)
+                    // Successfully parsed [elem_type; N] — u8 is lexed as TK_IDENT; promote to TK_U8_ELEM for @stack_u8_new path
+                    let ek = if k1 == TK_IDENT() and get_ident_text(src, pos, t1) == "u8" { TK_U8_ELEM() } else { k1 };
+                    parse_block_let_after_stack_array(src, tok_end(t3), name, is_mut, unpack_ast(size_rv), ek)
 
                 } else { parse_block_let_skip_array_type(src, pos, name, is_mut) }
 
@@ -2822,10 +2831,13 @@ fn parse_block_let_after_stack_array(src: String, pos: i64, name: String, is_mut
             -- AST call format: (call <name> arg) — angle brackets for function name
             -- The MIR lowering (lower_call_args_sb) prepends '@' before emitting
             -- M11-C Phase 3: i64/f64 elements use @stack_i64_new (element count only)
-            -- arr[i] subscript rewriting via rewrite_stack_i64_index in lower_function_sb
+            -- M11-C Phase 4: u8 elements use @stack_u8_new (element count only)
+            -- arr[i] subscript rewriting via rewrite_stack_i64_index / rewrite_stack_u8_index in lower_function_sb
             let stack_call =
                 if elem_kind == TK_I64() or elem_kind == TK_F64() {
                     "(call <stack_i64_new> " + size_expr + ")"
+                } else if elem_kind == TK_U8_ELEM() {
+                    "(call <stack_u8_new> " + size_expr + ")"
                 } else {
                     let byte_count_expr =
                         if elem_kind == TK_I32() { "(binop * " + size_expr + " (int 4))" }
@@ -8336,7 +8348,17 @@ fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String
 
         let val = get_child(ast, 2);
 
-        make_step(cur_temp, cur_block, cur_exit_label, make_work4("SI", base, idx, val, "P")), "set_field" => let obj = get_child(ast, 0);
+        make_step(cur_temp, cur_block, cur_exit_label, make_work4("SI", base, idx, val, "P")), "ptr_index_u8" => let base = get_child(ast, 0);
+
+        let idx = get_child(ast, 1);
+
+        make_step(cur_temp, cur_block, cur_exit_label, make_work3("AI", base, idx, "U")), "set_ptr_index_u8" => let base = get_child(ast, 0);
+
+        let idx = get_child(ast, 1);
+
+        let val = get_child(ast, 2);
+
+        make_step(cur_temp, cur_block, cur_exit_label, make_work4("SI", base, idx, val, "U")), "set_field" => let obj = get_child(ast, 0);
 
         let field = get_child(ast, 1);
 
@@ -9442,6 +9464,20 @@ fn step_array_index_final(item: String, cur_temp: i64, cur_block: i64, _cur_exit
 
         make_step_leaf(cur_temp + 2)
 
+    } else if flag == "U" {
+
+        // M11-C Phase 4: u8 array GEP (i8 stride) + load i8 + zext to i64
+
+        let gep = "%_t" + i2s(cur_temp);
+
+        let load_tmp = "%_t" + i2s(cur_temp + 1);
+
+        let _w1 = sb_push_mir(sb, "  " + gep + " = gep_u8 %_t" + base_t + ", %_t" + i2s(idx_temp));
+
+        let _w2 = sb_push_mir(sb, "  " + load_tmp + " = load_ptr_u8 " + gep);
+
+        make_step_leaf(cur_temp + 2)
+
     } else {
 
         // v0.96.20: Safe mode bounds check (sb LSB = 1)
@@ -9563,6 +9599,22 @@ fn step_set_index_final(item: String, cur_temp: i64, cur_block: i64, _cur_exit_l
         let _w1 = sb_push_mir(sb, "  " + gep + " = gep %_t" + base_t + ", %_t" + idx_t);
 
         let _w2 = sb_push_mir(sb, "  store_ptr " + gep + ", %_t" + i2s(val_temp));
+
+        let result = "%_t" + i2s(cur_temp + 1);
+
+        let _w3 = sb_push_mir(sb, "  " + result + " = const 0");
+
+        make_step_leaf(cur_temp + 2)
+
+    } else if flag == "U" {
+
+        // M11-C Phase 4: u8 array GEP (i8 stride) + trunc i64 to i8 + store
+
+        let gep = "%_t" + i2s(cur_temp);
+
+        let _w1 = sb_push_mir(sb, "  " + gep + " = gep_u8 %_t" + base_t + ", %_t" + idx_t);
+
+        let _w2 = sb_push_mir(sb, "  store_ptr_u8 " + gep + ", %_t" + i2s(val_temp));
 
         let result = "%_t" + i2s(cur_temp + 1);
 
@@ -11483,7 +11535,7 @@ fn lower_expr_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: S
 
 = let ntype = get_node_type(ast);
 
-    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else { match ntype { "float" => lower_float_sb(ast, temp_id, block_id, sb), "bool" => lower_bool_sb(ast, temp_id, block_id, sb), "string" => lower_string_sb(ast, temp_id, block_id, sb), _ => match ntype { "var" => lower_var_sb(ast, temp_id, block_id, sb), "binop" => lower_binop_sb(ast, temp_id, block_id, sb, loop_exit), "unary" => lower_unary_sb(ast, temp_id, block_id, sb, loop_exit), "if" => lower_if_sb(ast, temp_id, block_id, sb, loop_exit), "let" => lower_let_sb(ast, temp_id, block_id, sb, loop_exit), "let_mut" => lower_let_mut_sb(ast, temp_id, block_id, sb, loop_exit), "call" => lower_call_sb(ast, temp_id, block_id, sb, loop_exit), "method" => lower_method_sb(ast, temp_id, block_id, sb, loop_exit), "block" => lower_block_sb(ast, temp_id, block_id, sb, loop_exit), "unit" => lower_unit_sb(ast, temp_id, block_id, sb), "seq" => lower_seq_sb(ast, temp_id, block_id, sb, loop_exit), "assign" => lower_assign_sb(ast, temp_id, block_id, sb, loop_exit), "while" => lower_while_sb(ast, temp_id, block_id, sb, loop_exit), "loop" => lower_loop_sb(ast, temp_id, block_id, sb, loop_exit), "for" => lower_for_sb(ast, temp_id, block_id, sb, loop_exit), "for_incl" => lower_for_incl_sb(ast, temp_id, block_id, sb, loop_exit), "for_step" => lower_for_step_sb(ast, temp_id, block_id, sb, loop_exit), "for_step_incl" => lower_for_step_incl_sb(ast, temp_id, block_id, sb, loop_exit), "field" => lower_field_sb(ast, temp_id, block_id, sb, loop_exit), "set_field" => lower_set_field_sb(ast, temp_id, block_id, sb, loop_exit), "index" => lower_index_sb(ast, temp_id, block_id, sb, loop_exit), "ptr_index" => lower_ptr_index_sb(ast, temp_id, block_id, sb, loop_exit), "set_index" => lower_set_index_sb(ast, temp_id, block_id, sb, loop_exit), "set_ptr_index" => lower_ptr_set_index_sb(ast, temp_id, block_id, sb, loop_exit), "break" => lower_break_sb(loop_exit, temp_id, block_id, sb), "continue" => lower_continue_sb(loop_exit, temp_id, block_id, sb), "return" => lower_return_sb(ast, temp_id, block_id, sb, loop_exit), "cast_ptr_f64" => lower_cast_ptr_f64_sb(ast, temp_id, block_id, sb, loop_exit), "cast_i64" => lower_cast_i64_sb(ast, temp_id, block_id, sb, loop_exit), "cast_f64" => lower_cast_f64_sb(ast, temp_id, block_id, sb, loop_exit), "cast_i32" => lower_cast_i32_sb(ast, temp_id, block_id, sb, loop_exit), "array_repeat" => lower_array_repeat_sb(ast, temp_id, block_id, sb, loop_exit), "array" => lower_array_literal_sb(ast, temp_id, block_id, sb, loop_exit), "tuple" => lower_tuple_sb(ast, temp_id, block_id, sb, loop_exit), "struct_init" => lower_struct_init_sb(ast, temp_id, block_id, sb, loop_exit), "set_var" => lower_set_var_sb(ast, temp_id, block_id, sb, loop_exit), "lambda" => lower_lambda_sb(ast, temp_id, block_id, sb, loop_exit), "enum_val" => lower_enum_val_sb(ast, temp_id, block_id, sb, loop_exit), _ => pack_ids(temp_id, block_id) } } };
+    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else { match ntype { "float" => lower_float_sb(ast, temp_id, block_id, sb), "bool" => lower_bool_sb(ast, temp_id, block_id, sb), "string" => lower_string_sb(ast, temp_id, block_id, sb), _ => match ntype { "var" => lower_var_sb(ast, temp_id, block_id, sb), "binop" => lower_binop_sb(ast, temp_id, block_id, sb, loop_exit), "unary" => lower_unary_sb(ast, temp_id, block_id, sb, loop_exit), "if" => lower_if_sb(ast, temp_id, block_id, sb, loop_exit), "let" => lower_let_sb(ast, temp_id, block_id, sb, loop_exit), "let_mut" => lower_let_mut_sb(ast, temp_id, block_id, sb, loop_exit), "call" => lower_call_sb(ast, temp_id, block_id, sb, loop_exit), "method" => lower_method_sb(ast, temp_id, block_id, sb, loop_exit), "block" => lower_block_sb(ast, temp_id, block_id, sb, loop_exit), "unit" => lower_unit_sb(ast, temp_id, block_id, sb), "seq" => lower_seq_sb(ast, temp_id, block_id, sb, loop_exit), "assign" => lower_assign_sb(ast, temp_id, block_id, sb, loop_exit), "while" => lower_while_sb(ast, temp_id, block_id, sb, loop_exit), "loop" => lower_loop_sb(ast, temp_id, block_id, sb, loop_exit), "for" => lower_for_sb(ast, temp_id, block_id, sb, loop_exit), "for_incl" => lower_for_incl_sb(ast, temp_id, block_id, sb, loop_exit), "for_step" => lower_for_step_sb(ast, temp_id, block_id, sb, loop_exit), "for_step_incl" => lower_for_step_incl_sb(ast, temp_id, block_id, sb, loop_exit), "field" => lower_field_sb(ast, temp_id, block_id, sb, loop_exit), "set_field" => lower_set_field_sb(ast, temp_id, block_id, sb, loop_exit), "index" => lower_index_sb(ast, temp_id, block_id, sb, loop_exit), "ptr_index" => lower_ptr_index_sb(ast, temp_id, block_id, sb, loop_exit), "set_index" => lower_set_index_sb(ast, temp_id, block_id, sb, loop_exit), "set_ptr_index" => lower_ptr_set_index_sb(ast, temp_id, block_id, sb, loop_exit), "ptr_index_u8" => lower_ptr_index_u8_sb(ast, temp_id, block_id, sb, loop_exit), "set_ptr_index_u8" => lower_ptr_set_index_u8_sb(ast, temp_id, block_id, sb, loop_exit), "break" => lower_break_sb(loop_exit, temp_id, block_id, sb), "continue" => lower_continue_sb(loop_exit, temp_id, block_id, sb), "return" => lower_return_sb(ast, temp_id, block_id, sb, loop_exit), "cast_ptr_f64" => lower_cast_ptr_f64_sb(ast, temp_id, block_id, sb, loop_exit), "cast_i64" => lower_cast_i64_sb(ast, temp_id, block_id, sb, loop_exit), "cast_f64" => lower_cast_f64_sb(ast, temp_id, block_id, sb, loop_exit), "cast_i32" => lower_cast_i32_sb(ast, temp_id, block_id, sb, loop_exit), "array_repeat" => lower_array_repeat_sb(ast, temp_id, block_id, sb, loop_exit), "array" => lower_array_literal_sb(ast, temp_id, block_id, sb, loop_exit), "tuple" => lower_tuple_sb(ast, temp_id, block_id, sb, loop_exit), "struct_init" => lower_struct_init_sb(ast, temp_id, block_id, sb, loop_exit), "set_var" => lower_set_var_sb(ast, temp_id, block_id, sb, loop_exit), "lambda" => lower_lambda_sb(ast, temp_id, block_id, sb, loop_exit), "enum_val" => lower_enum_val_sb(ast, temp_id, block_id, sb, loop_exit), _ => pack_ids(temp_id, block_id) } } };
 
 fn lower_int_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64
 
@@ -12815,6 +12867,94 @@ fn lower_ptr_set_index_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loo
 
     pack_ids(val_temp + 2, val_block);
 
+// M11-C Phase 4: u8 array subscript — GEP with i8 stride, load i8 + zext to i64
+
+fn lower_ptr_index_u8_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
+
+  pre temp_id >= 0 and block_id >= 0
+
+  post it >= 0
+
+= let base_expr = get_child(ast, 0);
+
+    let idx_expr = get_child(ast, 1);
+
+    let base_result = lower_expr_sb(base_expr, temp_id, block_id, sb, loop_exit);
+
+    let base_temp = unpack_temp(base_result);
+
+    let base_block = unpack_block(base_result);
+
+    let base_id = base_temp - 1;
+
+    let idx_result = lower_expr_sb(idx_expr, base_temp, base_block, sb, loop_exit);
+
+    let idx_temp = unpack_temp(idx_result);
+
+    let idx_block = unpack_block(idx_result);
+
+    let idx_id = idx_temp - 1;
+
+    let gep_dest = "%_t" + int_to_string(idx_temp);
+
+    let load_dest = "%_t" + int_to_string(idx_temp + 1);
+
+    let _w1 = sb_push_mir(sb, "  " + gep_dest + " = gep_u8 %_t" + int_to_string(base_id) + ", %_t" + int_to_string(idx_id));
+
+    let _w2 = sb_push_mir(sb, "  " + load_dest + " = load_ptr_u8 " + gep_dest);
+
+    pack_ids(idx_temp + 2, idx_block);
+
+// M11-C Phase 4: u8 array set_index — GEP with i8 stride, trunc i64 to i8 + store
+
+fn lower_ptr_set_index_u8_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
+
+  pre temp_id >= 0 and block_id >= 0
+
+  post it >= 0
+
+= let base_expr = get_child(ast, 0);
+
+    let idx_expr = get_child(ast, 1);
+
+    let val_expr = get_child(ast, 2);
+
+    let base_result = lower_expr_sb(base_expr, temp_id, block_id, sb, loop_exit);
+
+    let base_temp = unpack_temp(base_result);
+
+    let base_block = unpack_block(base_result);
+
+    let base_id = base_temp - 1;
+
+    let idx_result = lower_expr_sb(idx_expr, base_temp, base_block, sb, loop_exit);
+
+    let idx_temp = unpack_temp(idx_result);
+
+    let idx_block = unpack_block(idx_result);
+
+    let idx_id = idx_temp - 1;
+
+    let val_result = lower_expr_sb(val_expr, idx_temp, idx_block, sb, loop_exit);
+
+    let val_temp = unpack_temp(val_result);
+
+    let val_block = unpack_block(val_result);
+
+    let val_id = val_temp - 1;
+
+    let gep_dest = "%_t" + int_to_string(val_temp);
+
+    let _w1 = sb_push_mir(sb, "  " + gep_dest + " = gep_u8 %_t" + int_to_string(base_id) + ", %_t" + int_to_string(idx_id));
+
+    let _w2 = sb_push_mir(sb, "  store_ptr_u8 " + gep_dest + ", %_t" + int_to_string(val_id));
+
+    let result_dest = "%_t" + int_to_string(val_temp + 1);
+
+    let _w3 = sb_push_mir(sb, "  " + result_dest + " = const 0");
+
+    pack_ids(val_temp + 2, val_block);
+
 // ============================================================================
 
 // v0.95: For-Loop Range Lowering
@@ -13317,6 +13457,40 @@ fn rewrite_stack_i64_index(body: String, pos: i64) -> String
 
     };
 
+// M11-C Phase 4: rewrite (index (var <name>)) → (ptr_index_u8 (var <name>)) for [u8; N] stack arrays
+
+fn rewrite_stack_u8_index(body: String, pos: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 0
+
+= let needle = "> (call <stack_u8_new>";
+
+    let found = find_pattern_at(body, needle, pos);
+
+    if found < 0 { body }
+
+    else {
+
+        let lt_pos = find_char_back(body, 60, found - 1);
+
+        if lt_pos < 0 { rewrite_stack_u8_index(body, found + 1) }
+
+        else {
+
+            let name = body.slice(lt_pos + 1, found);
+
+            let b2 = body.replace("(index (var <" + name + ">)", "(ptr_index_u8 (var <" + name + ">)");
+
+            let b3 = b2.replace("(set_index (var <" + name + ">)", "(set_ptr_index_u8 (var <" + name + ">)");
+
+            rewrite_stack_u8_index(b3, found + needle.len())
+
+        }
+
+    };
+
 fn lower_function_sb(ast: String, safe: i64) -> String
 
   pre safe >= 0
@@ -13339,7 +13513,11 @@ fn lower_function_sb(ast: String, safe: i64) -> String
 
     // M11-C Phase 3: rewrite stack [i64;N] subscripts to ptr_index
 
-    let body_ast = rewrite_stack_i64_index(body_ast_ptr, 0);
+    let body_ast_i64 = rewrite_stack_i64_index(body_ast_ptr, 0);
+
+    // M11-C Phase 4: rewrite stack [u8;N] subscripts to ptr_index_u8
+
+    let body_ast = rewrite_stack_u8_index(body_ast_i64, 0);
 
     let sb_raw = sb_new();
 
@@ -13921,6 +14099,72 @@ fn llvm_gen_gep_sb(line: String, pos: i64, dest: String, str_sb: i64) -> String
 
     same_mapping(llvm_gen_gep(line, pos, dest));
 
+// M11-C Phase 4: gep_u8 base, idx — GEP with i8 element stride (1 byte)
+
+fn llvm_gen_gep_u8_sb(line: String, pos: i64, dest: String, _str_sb: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 1
+
+= let p1 = low_skip_ws(line, pos);
+
+    let comma = find_comma(line, p1);
+
+    let base = trim_end(line.slice(p1, comma));
+
+    let p2 = low_skip_ws(line, comma + 1);
+
+    let idx = trim_end(line.slice(p2, line.len()));
+
+    let conv = "  " + dest + "_gp = inttoptr i64 " + base + " to ptr";
+
+    let gep = "  " + dest + " = getelementptr inbounds nuw i8, ptr " + dest + "_gp, i64 " + idx;
+
+    same_mapping(conv + SEP() + gep);
+
+// M11-C Phase 4: load_ptr_u8 ptr — load i8 and zext to i64
+
+fn llvm_gen_load_ptr_u8_sb(line: String, pos: i64, dest: String, _str_sb: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 1
+
+= let p = low_skip_ws(line, pos);
+
+    let ptr = trim_end(line.slice(p, line.len()));
+
+    let load_line = "  " + dest + "_b = load i8, ptr " + ptr + ", align 1";
+
+    let zext_line = "  " + dest + " = zext i8 " + dest + "_b to i64";
+
+    same_mapping(load_line + SEP() + zext_line);
+
+// M11-C Phase 4: store_ptr_u8 ptr, val — trunc i64 to i8 and store
+
+fn llvm_gen_store_ptr_u8_sb(line: String, pos: i64, _str_sb: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 1
+
+= let p1 = low_skip_ws(line, pos);
+
+    let comma = find_comma(line, p1);
+
+    let ptr = trim_end(line.slice(p1, comma));
+
+    let p2 = low_skip_ws(line, comma + 1);
+
+    let val = trim_end(line.slice(p2, line.len()));
+
+    let trunc_line = "  " + ptr + "_v = trunc i64 " + val + " to i8";
+
+    let store_line = "  store i8 " + ptr + "_v, ptr " + ptr + ", align 1";
+
+    same_mapping(trunc_line + SEP() + store_line);
+
 fn llvm_gen_phi(line: String, pos: i64, dest: String) -> String
 
   pre pos >= 0
@@ -14035,7 +14279,7 @@ fn get_call_return_type(fn_name: String) -> String
 
     else if fn_name == "@bmb_sb_build" or fn_name == "@bmb_read_file" or fn_name == "@bmb_getenv" or fn_name == "@get_arg" { "ptr" }
 
-    else if fn_name == "@malloc" or fn_name == "@calloc" or fn_name == "@stack_bytes_new" or fn_name == "@stack_i64_new" { "ptr" }
+    else if fn_name == "@malloc" or fn_name == "@calloc" or fn_name == "@stack_bytes_new" or fn_name == "@stack_i64_new" or fn_name == "@stack_u8_new" { "ptr" }
 
     else if fn_name == "@hashmap_new" or fn_name == "@vec_new" or fn_name == "@vec_with_capacity" or fn_name == "@str_hashmap_new" or fn_name == "@reg_cached_lookup" { "ptr" }
 
@@ -14708,7 +14952,10 @@ fn llvm_gen_call(line: String, pos: i64, dest: String) -> String
         "  " + dest + "_arr = alloca i8, i64 " + n_arg + ", align 16" + SEP() + "  call void @llvm.memset.p0.i64(ptr " + dest + "_arr, i8 0, i64 " + n_arg + ", i1 false)" + SEP() + "  " + dest + " = ptrtoint ptr " + dest + "_arr to i64", "@stack_i64_new" => // M11-C Phase 3: stack-alloc N i64 elements; zero-init; returns i64 pointer
         // NOTE: use alloca [N x i64] form, NOT alloca i64, i64 N — the latter matches DSA "= alloca i64" pattern and gets incorrectly eliminated
         let n_arg = trim_end(line.slice(paren_pos + 1, close_pos));
-        "  " + dest + "_arr = alloca [" + n_arg + " x i64], align 8" + SEP() + "  " + dest + "_sz = mul i64 " + n_arg + ", 8" + SEP() + "  call void @llvm.memset.p0.i64(ptr " + dest + "_arr, i8 0, i64 " + dest + "_sz, i1 false)" + SEP() + "  " + dest + " = ptrtoint ptr " + dest + "_arr to i64", "@tuple_alloca" => // Cycle 3235: stack-alloc N-element i64 tuple (safe in @inline fns — alloca is in caller)
+        "  " + dest + "_arr = alloca [" + n_arg + " x i64], align 8" + SEP() + "  " + dest + "_sz = mul i64 " + n_arg + ", 8" + SEP() + "  call void @llvm.memset.p0.i64(ptr " + dest + "_arr, i8 0, i64 " + dest + "_sz, i1 false)" + SEP() + "  " + dest + " = ptrtoint ptr " + dest + "_arr to i64", "@stack_u8_new" => // M11-C Phase 4: stack-alloc N u8 elements; zero-init; returns i64 pointer
+        // NOTE: use alloca [N x i8] form — safe from DSA "= alloca i64" pattern
+        let n_arg = trim_end(line.slice(paren_pos + 1, close_pos));
+        "  " + dest + "_arr = alloca [" + n_arg + " x i8], align 1" + SEP() + "  call void @llvm.memset.p0.i64(ptr " + dest + "_arr, i8 0, i64 " + n_arg + ", i1 false)" + SEP() + "  " + dest + " = ptrtoint ptr " + dest + "_arr to i64", "@tuple_alloca" => // Cycle 3235: stack-alloc N-element i64 tuple (safe in @inline fns — alloca is in caller)
         let n_arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + "_arr = alloca [" + n_arg + " x i64], align 8" + SEP() + "  " + dest + " = ptrtoint ptr " + dest + "_arr to i64", _ => let emitted_fn = map_runtime_fn(fn_name);
 
@@ -15224,7 +15471,7 @@ fn get_call_arg_types(fn_name: String) -> String
 
 = // String functions with ptr first arg
 
-    match fn_name { "@stack_bytes_new" => "i", "@stack_i64_new" => "i", "@bmb_black_box" => "i", "@bmb_append_file" => "pp", "@bmb_arena_mode" => "i", "@bmb_array_concat" => "pp", "@bmb_array_len" => "p", "@bmb_array_pop" => "p", "@bmb_array_push" => "pi", "@bmb_array_slice" => "pii", "@bmb_delete_file" => "p", "@bmb_exec_output" => "pp", "@bmb_exit" => "i", "@bmb_f64_is_nan" => "d", "@bmb_f64_to_int" => "d", "@bmb_f64_to_string" => "d", "@bmb_file_exists" => "p", "@bmb_file_size" => "p", "@bmb_getenv" => "p", "@bmb_ord" => "p", "@bmb_panic" => "p", "@bmb_panic_bounds" => "ii", "@bmb_panic_divzero" => "", "@bmb_parse_f64" => "p", "@bmb_parse_int" => "p", "@bmb_print_i64" => "i", "@bmb_random_seed" => "i", "@bmb_read_file" => "p", "@bmb_read_line" => "", "@bmb_sb_contains" => "ip", "@bmb_sb_free" => "i", "@bmb_sb_push" => "ip", "@bmb_sb_push_escaped" => "ip", "@bmb_sb_push_f64" => "id", "@bmb_sleep_ms" => "i", "@bmb_str_lines" => "p", "@bmb_string_char_at" => "pi", "@bmb_string_cmp" => "pp", "@bmb_string_concat" => "pp", "@bmb_string_concat3" => "ppp", "@bmb_string_concat5" => "ppppp", "@bmb_string_concat7" => "ppppppp", "@bmb_string_contains" => "pp", "@bmb_string_count" => "pp", "@bmb_string_ends_with" => "pp", "@bmb_string_eq" => "pp", "@bmb_string_free" => "p", "@bmb_string_from_cstr" => "p", "@bmb_string_hash" => "p", "@bmb_string_index_of" => "pp", "@bmb_string_is_empty" => "p", "@bmb_string_join" => "ip", "@bmb_string_last_index_of" => "pp", "@bmb_string_len" => "p", "@bmb_string_new" => "pi", "@bmb_string_pad_left" => "pii", "@bmb_string_pad_right" => "pii", "@bmb_string_repeat" => "pi", "@bmb_string_replace" => "ppp", "@bmb_string_reverse" => "p", "@bmb_string_slice" => "pii", "@bmb_string_split" => "pp", "@bmb_string_starts_with" => "pp", "@bmb_string_substr" => "pii", "@bmb_string_to_lower" => "p", "@bmb_string_to_upper" => "p", "@bmb_string_trim" => "p", "@bmb_svec_clear" => "i", "@bmb_svec_contains" => "ip", "@bmb_svec_free" => "i", "@bmb_svec_get" => "ii", "@bmb_svec_index_of" => "ip", "@bmb_svec_join" => "ip", "@bmb_svec_len" => "i", "@bmb_svec_new" => "", "@bmb_svec_push" => "ip", "@bmb_svec_remove" => "ii", "@bmb_svec_sort" => "i", "@bmb_system" => "p", "@bmb_system_capture" => "p", "@bmb_to_binary" => "i", "@bmb_to_octal" => "i", "@bmb_write_file" => "pp", "@calloc" => "ii", "@char_at" => "pi", "@eprint" => "i", "@eprint_f64" => "d", "@eprint_str" => "p", "@eprintln" => "i", "@eprintln_f64" => "d", "@eprintln_str" => "p", "@free" => "p", "@hashmap_contains" => "pp", "@hashmap_free" => "p", "@hashmap_get" => "pp", "@hashmap_insert" => "ppi", "@hashmap_keys" => "p", "@hashmap_len" => "p", "@hashmap_remove" => "pp", "@hashmap_values" => "p", "@is_dir" => "p", "@list_dir" => "p", "@load_i64" => "pi", "@load_u8" => "pi", "@make_dir" => "p", "@malloc" => "i", "@print_f64" => "d", "@print_str" => "p", "@println_f64" => "d", "@println_str" => "p", "@puts_cstr" => "p", "@reg_cached_lookup" => "ppi", "@remove_file" => "p", "@sb_println" => "i", "@sb_push_range" => "ipii", "@sb_with_capacity" => "i", "@store_i64" => "pii", "@store_u8" => "pii", "@str_hashmap_contains" => "pp", "@str_hashmap_free" => "p", "@str_hashmap_get" => "pp", "@str_hashmap_insert" => "ppi", "@str_hashmap_keys" => "p", "@str_hashmap_len" => "p", "@str_hashmap_remove" => "pp", "@str_hashmap_values" => "p", "@strmap_contains" => "ip", "@strmap_free" => "i", "@strmap_get" => "ip", "@strmap_insert" => "ipi", "@strmap_keys" => "i", "@strmap_remove" => "ip", "@strmap_size" => "i", "@strmap_values" => "i", "@vec_cap" => "p", "@vec_clear" => "p", "@vec_contains" => "pi", "@vec_copy" => "p", "@vec_dedup" => "p", "@vec_extend" => "pp", "@vec_fill" => "pi", "@vec_free" => "p", "@vec_get" => "pi", "@vec_index_of" => "pi", "@vec_insert" => "pii", "@vec_len" => "p", "@vec_max" => "p", "@vec_min" => "p", "@vec_pop" => "p", "@vec_product" => "p", "@vec_push" => "pi", "@vec_remove" => "pi", "@vec_reverse" => "p", "@vec_set" => "pii", "@vec_slice" => "pii", "@vec_sort" => "p", "@vec_sum" => "p", "@vec_swap" => "pii", "@vec_with_capacity" => "i", "@write_file_newlines" => "pp", _ => "" };
+    match fn_name { "@stack_bytes_new" => "i", "@stack_i64_new" => "i", "@stack_u8_new" => "i", "@bmb_black_box" => "i", "@bmb_append_file" => "pp", "@bmb_arena_mode" => "i", "@bmb_array_concat" => "pp", "@bmb_array_len" => "p", "@bmb_array_pop" => "p", "@bmb_array_push" => "pi", "@bmb_array_slice" => "pii", "@bmb_delete_file" => "p", "@bmb_exec_output" => "pp", "@bmb_exit" => "i", "@bmb_f64_is_nan" => "d", "@bmb_f64_to_int" => "d", "@bmb_f64_to_string" => "d", "@bmb_file_exists" => "p", "@bmb_file_size" => "p", "@bmb_getenv" => "p", "@bmb_ord" => "p", "@bmb_panic" => "p", "@bmb_panic_bounds" => "ii", "@bmb_panic_divzero" => "", "@bmb_parse_f64" => "p", "@bmb_parse_int" => "p", "@bmb_print_i64" => "i", "@bmb_random_seed" => "i", "@bmb_read_file" => "p", "@bmb_read_line" => "", "@bmb_sb_contains" => "ip", "@bmb_sb_free" => "i", "@bmb_sb_push" => "ip", "@bmb_sb_push_escaped" => "ip", "@bmb_sb_push_f64" => "id", "@bmb_sleep_ms" => "i", "@bmb_str_lines" => "p", "@bmb_string_char_at" => "pi", "@bmb_string_cmp" => "pp", "@bmb_string_concat" => "pp", "@bmb_string_concat3" => "ppp", "@bmb_string_concat5" => "ppppp", "@bmb_string_concat7" => "ppppppp", "@bmb_string_contains" => "pp", "@bmb_string_count" => "pp", "@bmb_string_ends_with" => "pp", "@bmb_string_eq" => "pp", "@bmb_string_free" => "p", "@bmb_string_from_cstr" => "p", "@bmb_string_hash" => "p", "@bmb_string_index_of" => "pp", "@bmb_string_is_empty" => "p", "@bmb_string_join" => "ip", "@bmb_string_last_index_of" => "pp", "@bmb_string_len" => "p", "@bmb_string_new" => "pi", "@bmb_string_pad_left" => "pii", "@bmb_string_pad_right" => "pii", "@bmb_string_repeat" => "pi", "@bmb_string_replace" => "ppp", "@bmb_string_reverse" => "p", "@bmb_string_slice" => "pii", "@bmb_string_split" => "pp", "@bmb_string_starts_with" => "pp", "@bmb_string_substr" => "pii", "@bmb_string_to_lower" => "p", "@bmb_string_to_upper" => "p", "@bmb_string_trim" => "p", "@bmb_svec_clear" => "i", "@bmb_svec_contains" => "ip", "@bmb_svec_free" => "i", "@bmb_svec_get" => "ii", "@bmb_svec_index_of" => "ip", "@bmb_svec_join" => "ip", "@bmb_svec_len" => "i", "@bmb_svec_new" => "", "@bmb_svec_push" => "ip", "@bmb_svec_remove" => "ii", "@bmb_svec_sort" => "i", "@bmb_system" => "p", "@bmb_system_capture" => "p", "@bmb_to_binary" => "i", "@bmb_to_octal" => "i", "@bmb_write_file" => "pp", "@calloc" => "ii", "@char_at" => "pi", "@eprint" => "i", "@eprint_f64" => "d", "@eprint_str" => "p", "@eprintln" => "i", "@eprintln_f64" => "d", "@eprintln_str" => "p", "@free" => "p", "@hashmap_contains" => "pp", "@hashmap_free" => "p", "@hashmap_get" => "pp", "@hashmap_insert" => "ppi", "@hashmap_keys" => "p", "@hashmap_len" => "p", "@hashmap_remove" => "pp", "@hashmap_values" => "p", "@is_dir" => "p", "@list_dir" => "p", "@load_i64" => "pi", "@load_u8" => "pi", "@make_dir" => "p", "@malloc" => "i", "@print_f64" => "d", "@print_str" => "p", "@println_f64" => "d", "@println_str" => "p", "@puts_cstr" => "p", "@reg_cached_lookup" => "ppi", "@remove_file" => "p", "@sb_println" => "i", "@sb_push_range" => "ipii", "@sb_with_capacity" => "i", "@store_i64" => "pii", "@store_u8" => "pii", "@str_hashmap_contains" => "pp", "@str_hashmap_free" => "p", "@str_hashmap_get" => "pp", "@str_hashmap_insert" => "ppi", "@str_hashmap_keys" => "p", "@str_hashmap_len" => "p", "@str_hashmap_remove" => "pp", "@str_hashmap_values" => "p", "@strmap_contains" => "ip", "@strmap_free" => "i", "@strmap_get" => "ip", "@strmap_insert" => "ipi", "@strmap_keys" => "i", "@strmap_remove" => "ip", "@strmap_size" => "i", "@strmap_values" => "i", "@vec_cap" => "p", "@vec_clear" => "p", "@vec_contains" => "pi", "@vec_copy" => "p", "@vec_dedup" => "p", "@vec_extend" => "pp", "@vec_fill" => "pi", "@vec_free" => "p", "@vec_get" => "pi", "@vec_index_of" => "pi", "@vec_insert" => "pii", "@vec_len" => "p", "@vec_max" => "p", "@vec_min" => "p", "@vec_pop" => "p", "@vec_product" => "p", "@vec_push" => "pi", "@vec_remove" => "pi", "@vec_reverse" => "p", "@vec_set" => "pii", "@vec_slice" => "pii", "@vec_sort" => "p", "@vec_sum" => "p", "@vec_swap" => "pii", "@vec_with_capacity" => "i", "@write_file_newlines" => "pp", _ => "" };
 
 // Returns pair: (conversions_string, formatted_args_string)
 
@@ -29363,6 +29610,8 @@ fn llvm_gen_line_structs(line: String, ret_type: String, strings: String, string
 
     else if low_starts_with_at(line, p, "alloca") { llvm_gen_alloca(line, p, mapping) }
 
+    else if low_starts_with_at(line, p, "store_ptr_u8") { llvm_gen_store_ptr_u8_sb(line, p + 12, str_sb) }
+
     else if low_starts_with_at(line, p, "store_ptr") { llvm_gen_store_ptr_sb(line, p + 9, str_sb) }
 
     else if low_starts_with_at(line, p, "store") { llvm_gen_store_sb(line, p, mapping, str_sb) }
@@ -29755,9 +30004,15 @@ fn llvm_gen_rhs_with_strings_map_and_fns_reg(line: String, pos: i64, dest: Strin
 
     else if low_starts_with_at(line, pos, "scope-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
 
+    else if low_starts_with_at(line, pos, "gep_u8") { llvm_gen_gep_u8_sb(line, pos + 6, dest, str_sb) }
+
     else if low_starts_with_at(line, pos, "gep") { llvm_gen_gep_sb(line, pos + 3, dest, str_sb) }
 
+    else if low_starts_with_at(line, pos, "load_ptr_u8") { llvm_gen_load_ptr_u8_sb(line, pos + 11, dest, str_sb) }
+
     else if low_starts_with_at(line, pos, "load_ptr") { llvm_gen_load_ptr_sb(line, pos + 8, dest, str_sb) }
+
+    else if low_starts_with_at(line, pos, "store_ptr_u8") { llvm_gen_store_ptr_u8_sb(line, pos + 12, str_sb) }
 
     else if low_starts_with_at(line, pos, "store_ptr") { llvm_gen_store_ptr_sb(line, pos + 9, str_sb) }
 
