@@ -1,7 +1,7 @@
-# BMB Session Handoff — 2026-05-28 (Cycle 3235)
+# BMB Session Handoff — 2026-05-28 (Cycle 3236)
 
-> **HEAD**: Cycle 3235 commit
-> **이번 세션 작업**: Cycle 3235 — **Tuple Alloca 최적화** — lexer 1.459× → **0.225×** (BMB 4.4× faster than C!)
+> **HEAD**: Cycle 3236 commit
+> **이번 세션 작업**: Cycle 3236 — **P-track 전체 재측정** — 7/7 전부 ≤1.010× (측정 방법론 수정 포함)
 > **M11-C Phase 2 상태**: ✅ **COMPLETE** — `[u8/i64/f64/i32; N]` 전 primitive 타입 지원 + 실벤치 검증
 > **M11-A 상태**: ✅ **CONFIRMED COMPLETE** — 264 trivial postconditions 전부 skip 확정
 > **실무 앵커**: `claudedocs/ROADMAP.md`
@@ -11,6 +11,34 @@
 > **Z3 상태**: ✅ **141/141** (Cycle 3219 달성)
 > **Bootstrap Golden Tests**: ✅ **2862/2865 PASS, 3 FAIL** (모두 File not found pre-existing, Cycle 3235 시점)
 > **cargo test**: ✅ **6282 tests, 0 FAILED**
+
+---
+
+## 이번 세션 작업 요약 (Cycle 3236)
+
+### Cycle 3236: P-track 전체 재측정 + 측정 방법론 수정
+
+**측정 방법론 수정** (중요):
+- 기존: `Measure-Command { & exe | Out-Null }` → 외부 wall-clock (프로세스 시작 오버헤드 포함, 부정확)
+- 신규: `$out = & exe; [int]($out[-1])` → 내부 `elapsed_us` 읽기 (정확)
+- 영향: csv_parse 1.134× → **1.010×** (이전 수치는 외부 타이밍 오측정)
+
+**P-track 공식 결과 (Cycle 3236, 내부 타이밍, 5~10회 중앙값)**:
+
+| 벤치마크 | BMB (µs) | C (µs) | 비율 | 상태 |
+|---------|----------|--------|------|------|
+| lexer | 2100 | 9115 | **0.230×** | ✅ BMB 4.3× 빠름 |
+| sorting | 607868 | 3369715 | **0.180×** | ✅ BMB 5.6× 빠름 |
+| json_parse | 1843 | 3419 | **0.539×** | ✅ BMB 1.9× 빠름 |
+| json_serialize | 681 | 770 | **0.884×** | ✅ BMB 빠름 |
+| brainfuck | 7668 | 8799 | **0.871×** | ✅ BMB 빠름 |
+| http_parse | 2419 | 2666 | **0.907×** | ✅ BMB 빠름 |
+| csv_parse | 3413 | 3379 | **1.010×** | ✅ BMB ≈ parity |
+
+**7/7 전부 ≤1.010× — BMB P-track 전체 C 대비 parity 이상 달성!** ✅✅✅
+
+> ℹ️ csv_parse는 1.0-1.1× 노이즈 범위 내 parity. @inline 시 +17% 회귀 (Cycle 2944 확인).
+> ℹ️ 다음 권장: M11-C Phase 3 (`arr[i]` subscript 문법)
 
 ---
 
@@ -52,13 +80,14 @@
 | lexer | **2162** | 9609 | **0.225×** | ✅ BMB 4.4× faster (Cycle 3234: 1.459×) |
 | brainfuck | ~8016 | 9739 | **~0.823×** | ✅ BMB faster (변동 없음) |
 | json_parse | ~1901 | 3764 | **~0.505×** | ✅ BMB faster (변동 없음) |
-| csv_parse | 3688 | 3251 | **1.134×** | ⚠️ 미측정 (Cycle 3234 기준 유지) |
-| http_parse | 2555 | 2737 | **0.934×** | ✅ (Cycle 3234 기준 유지) |
-| json_serialize | 756 | 817 | **0.925×** | ✅ (Cycle 3234 기준 유지) |
-| sorting | 674133 | 3791074 | **0.178×** | ✅ (Cycle 3234 기준 유지) |
+| csv_parse | 3413 | 3379 | **1.010×** | ✅ parity (Cycle 3236 내부 타이밍 재측정) |
+| http_parse | 2419 | 2666 | **0.907×** | ✅ (Cycle 3236 내부 타이밍 재측정) |
+| json_serialize | 681 | 770 | **0.884×** | ✅ (Cycle 3236 내부 타이밍 재측정) |
+| sorting | 607868 | 3369715 | **0.180×** | ✅ (Cycle 3236 내부 타이밍 재측정) |
 
 > ℹ️ lexer: IR 확인 → `calloc` 호출 0개, `alloca [2 x i64]` 다수 ✅
-> ℹ️ csv_parse: C와 checksum 공식 다름 (timing 비교는 유효). String-as-i64 표현으로 LLVM 최적화 약화.
+> ℹ️ csv_parse: 내부 타이밍 기준 parity. 이전 1.134× = 외부 wall-clock 오측정.
+> ⚠️ **측정 방법론**: 내부 elapsed_us (`$out[-1]`) 사용 필수. Measure-Command는 부정확.
 
 ---
 

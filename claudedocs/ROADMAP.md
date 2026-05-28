@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-28 (**Cycle 3235: Tuple Alloca 최적화** — `@inline` 함수 내 tuple 생성을 `calloc(N,8)` → `alloca [N x i64]`로 변환. sb 인코딩 확장(bit1=is_inline). lexer: 1.459×(14024µs) → **0.225×(2162µs)** — BMB 4.4× faster than C! Fixed Point S3==S4 ✅. 6282 tests ✅.)
+> 최종 업데이트: 2026-05-28 (**Cycle 3236: P-track 전체 재측정 + 측정 방법론 수정** — 외부 wall-clock → 내부 elapsed_us 읽기로 교정. P-track **7/7 전부 ≤1.010×**: lexer 0.230× / sorting 0.180× / json_parse 0.539× / json_serialize 0.884× / brainfuck 0.871× / http_parse 0.907× / csv_parse 1.010× (parity). 고아 파일 정리. 비-inline tuple fn 안전성 확인.)
 > 이전 갱신: 2026-05-28 (**Cycle 3234: P-track 전체 재측정(bootstrap-compiled) + `{{` 탈출문자 수정.** `bootstrap/compiler.bmb` `get_string_text`에 `{{`→`{` / `}}`→`}` 변환 추가 (Cycle 2845 Rust parity). Fixed Point S3==S4 ✅. bootstrap P-track 첫 측정: brainfuck 0.866×/csv 1.134×/http 0.934×/json_parse 0.556×/json_ser 0.925×/sorting 0.178×/lexer 1.459× (tuple calloc overhead). cargo test 6282/0 ✅.)
 > 이전 갱신: 2026-05-28 (**Cycle 3233: 정렬 벤치마크 검증 + CLAUDE.md 메타순환 계약 위반 패턴 문서화.** sorting S2 IR 완전 (667줄, 이전 63줄 절단에서 수정). 성능 0.180× vs GCC-O3 ✅ (S1≈S2). CLAUDE.md 부트스트랩 실패 패턴 2개소 추가. cargo test 6282/0 ✅.)
 > 이전 갱신: 2026-05-28 (**Cycle 3232: S2 IR 절단 버그 수정** — `ifs_check_flex_both_sides` `post it >= 0` → `post it >= -1`. Fixed Point S3==S4 ✅. sorting/rec_helper IR 완전 생성 확인.)
@@ -396,7 +396,7 @@ GitHub stars      ≥ 1,000
 | 축 | 현재값 | 목표 | 측정 방법 |
 |----|--------|------|----------|
 | **B** Failure Rate | ✅ **공식 98.0%** (2026-05-13, Cycle 2811, claude-sonnet-4-6) · **GPUStack 100.0%** (2026-05-21, 3-run, qwen3.6-35b-a3b, 300/300) | 99%+ 목표 (Claude) · **100% 달성 (GPUStack)** | LLM 1-shot 컴파일+verifier 통과율 |
-| **P** Performance | ✅ 16/16 ≤1.05x · **real-world 7/7: 전부 BMB faster** (Cycle 3031 2026-05-22: brainfuck **0.941×** / csv **0.858×** / http **0.934×** / lexer 0.174× / json_parse 0.875× / json_ser 0.670× / sorting 0.155×) | 도메인 핵심 ≤1.00x, 일부 FAST | Tier 1/3 벤치마크 + inproc (Cycle 2685-2695, 2941-2942, 3017-3031) |
+| **P** Performance | ✅ **real-world 7/7 전부 ≤1.010×** (Cycle 3236 2026-05-28, 내부 타이밍): lexer **0.230×** / sorting **0.180×** / json_parse **0.539×** / json_serialize **0.884×** / brainfuck **0.871×** / http_parse **0.907×** / csv_parse **1.010×** | 도메인 핵심 ≤1.00x, 일부 FAST | Tier 1/3 벤치마크 + inproc (내부 elapsed_us 측정 필수) |
 | **A** Token Efficiency | ❌ 미측정 | BMB ≤ Rust LOC (동일 알고리즘) | LOC·토큰 비교 |
 | **D** Verification | ❌ 미측정 | contract 자동 증명률 추적 | `bmb verify` 통과율 |
 | **C** Navigability | ❌ 미측정 | LLM N-파일 정답률 추적 | Track R suite |
