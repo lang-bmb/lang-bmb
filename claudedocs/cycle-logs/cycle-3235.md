@@ -115,7 +115,9 @@ diff compiler_3235_s3.exe_opt.ll compiler_3235_s4.exe_opt.ll
 - json_parse (튜플 미사용): ~1901 µs 중앙값 — 이전 2091 µs 대비 유사 ✅
 - brainfuck (튜플 미사용): ~8016 µs 중앙값 — 이전 8433 µs 대비 유사 ✅
 - 골든 테스트 100개 샘플: 100/100 PASS ✅
-- 전체 골든 테스트 (2878개): 실행 중...
+- 전체 골든 테스트: **2862/2865 PASS, 3 FAIL** ✅
+  - 실패 3개: `test_golden_stack_array*.bmb` — File not found (pre-existing, 파일 누락 문제)
+  - `test_golden_lcs_three`: 이번에 통과 (이전 flaky → 2861/4에서 2862/3으로 개선)
 
 ### `bootstrap/compiler.exe` 업데이트
 

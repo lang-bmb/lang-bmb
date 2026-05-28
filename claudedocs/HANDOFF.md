@@ -9,7 +9,7 @@
 > **Fixed Point**: ✅ **S3 IR == S4 IR** (Cycle 3235 — tuple alloca 최적화 기준, 메타데이터만 차이)
 > **0-Warning 상태**: ✅ **유지** (lint 0 warnings, compiler.bmb warnings 174)
 > **Z3 상태**: ✅ **141/141** (Cycle 3219 달성)
-> **Bootstrap Golden Tests**: ✅ **2878/2878 PASS (확인 중), 0 FAIL** (Cycle 3235 시점)
+> **Bootstrap Golden Tests**: ✅ **2862/2865 PASS, 3 FAIL** (모두 File not found pre-existing, Cycle 3235 시점)
 > **cargo test**: ✅ **6282 tests, 0 FAILED**
 
 ---
@@ -155,7 +155,7 @@ fn process_str_escapes(s: String) -> String
 | M11-A trivials | **✅ CONFIRMED COMPLETE** — 264개 전부 skip 확정 |
 | M11-C Phase 2 | **✅ COMPLETE** — u8/i64/f64/i32/bool 전 primitive 지원 |
 | Fixed Point | ✅ S3==S4 (Cycle 3235 tuple alloca 기준) |
-| Bootstrap Golden Tests | ✅ 2878/2878 (확인 중, 0 FAIL) |
+| Bootstrap Golden Tests | ✅ 2862/2865 PASS, 3 FAIL (File not found pre-existing) |
 | P-track brainfuck | ✅ 0.823× (bootstrap, Cycle 3235) |
 | P-track lexer | **✅ NEW 0.225×** — tuple alloca (Cycle 3235, BMB 4.4× faster than C) |
 | `{{` 탈출문자 | ✅ — bootstrap compiler parity with Rust |
