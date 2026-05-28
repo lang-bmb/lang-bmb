@@ -1,5 +1,6 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-28 (**M11-C Phase 9 ✅ COMPLETE** — Cycle 3244: `set arr[i] = (cmp_expr)` for bool/u8/i32 arrays. Root cause: `eliminate_zext_trunc_ir`의 `try_add_trunc_alias`가 `trunc i64 X to i8/i32`를 잘못 alias(round-trip 처리) → i1 값이 i8/i32로 직접 store되어 LLVM 타입 오류. Fix: `" to "` → `" to i1"` (i1 round-trip만 제거). Golden test `test_golden_bool_cmp_store` output 6 ✅. Fixed Point S3==S4 ✅.)
+> 최종 업데이트: 2026-05-28 (**M11-C Phase 10 ✅ COMPLETE** — Cycle 3245: `set arr[i] = (cmp_expr)` / `set arr[i] = int_literal` for `[f64; N]` arrays. Root cause: `llvm_gen_store_ptr_f64_sb`가 `_str_sb` 미사용으로 double_marker 확인 없이 `store double %val` 직접 생성 → 비double 값(comparison result i64, 정수 리터럴)에 LLVM 타입 오류. Fix: `str_sb` 활성화 + `is_double_var_sb`/float literal 체크 분기 추가 → 비double 시 `sitofp i64 val to double` 선행 방출. Golden test `test_golden_cmp_store_f64_i64` output 4 ✅. Fixed Point S3==S4 ✅.)
+> 이전 갱신: 2026-05-28 (**M11-C Phase 9 ✅ COMPLETE** — Cycle 3244: `set arr[i] = (cmp_expr)` for bool/u8/i32 arrays. Root cause: `eliminate_zext_trunc_ir`의 `try_add_trunc_alias`가 `trunc i64 X to i8/i32`를 잘못 alias(round-trip 처리) → i1 값이 i8/i32로 직접 store되어 LLVM 타입 오류. Fix: `" to "` → `" to i1"` (i1 round-trip만 제거). Golden test `test_golden_bool_cmp_store` output 6 ✅. Fixed Point S3==S4 ✅.)
 > 이전 갱신: 2026-05-28 (**M11-C Phase 8 ✅ COMPLETE** — Cycle 3243: Typed pointer parameter subscript (`arr: *u8`, `arr: *i32`, `arr: *f64`, `arr: *bool`). `parse_param` TK_STAR 분기 확장 + `rewrite_ptr_index` `get_child(child,2)` 타입 suffix 분기 dispatch. u8(1B,gep_u8)/i32(4B,gep_i32)/f64(8B,gep_f64)/bool(1B,gep_bool)/default(8B,gep). Golden test output 116 ✅. Fixed Point S2==S3 ✅.)
 > 이전 갱신: 2026-05-28 (**M11-C Phase 4 ✅ COMPLETE** — Cycle 3238: `tape[i]` for `[u8; N]` stack arrays. `@stack_u8_new` 빌트인 + `gep_u8`/`load_ptr_u8`/`store_ptr_u8` MIR 명령어 + `rewrite_stack_u8_index` post-parse rewriter. TK_U8_ELEM() 가상 토큰으로 u8 식별. DSA `alloca [N x i8]` 안전. Fixed Point S3==S4 ✅. LLVM 상수 폴딩 확인 (println(30) 직접 출력).)
 > 이전 갱신: 2026-05-28 (**Cycle 3236: P-track 전체 재측정 + 측정 방법론 수정** — 외부 wall-clock → 내부 elapsed_us 읽기로 교정. P-track **7/7 전부 ≤1.010×**: lexer 0.230× / sorting 0.180× / json_parse 0.539× / json_serialize 0.884× / brainfuck 0.871× / http_parse 0.907× / csv_parse 1.010× (parity). 고아 파일 정리. 비-inline tuple fn 안전성 확인.)
@@ -1410,6 +1411,14 @@ let arr: [u8; N];   // stack_bytes_new(N)
 **M11-C Phase 5 ✅ COMPLETE (Cycle 3239)**: `arr[i]` for `[i32; N]` — `@stack_i32_new` (`alloca [N x i32]` + `mul N,4` + memset + ptrtoint) + `gep_i32`/`load_ptr_i32`/`store_ptr_i32` MIR 명령어 + `rewrite_stack_i32_index` post-parse rewriter. TK_I32() 직접 사용 (가상 토큰 불필요). `sext i32→i64` (signed 확장). Fixed Point S3==S4 ✅. LLVM 상수 폴딩 확인 (println(30) 직접 출력).
 
 **M11-C Phase 6 ✅ COMPLETE (Cycle 3240)**: `arr[i]` for `[bool; N]` — `@stack_bool_new` (`alloca [N x i8]` + memset + ptrtoint) + `gep_bool`/`load_ptr_bool`/`store_ptr_bool` MIR 명령어 + `rewrite_stack_bool_index` post-parse rewriter. TK_BOOL() 직접 사용 (가상 토큰 불필요). `zext i8→i64` (unsigned 확장 — bool 0/1). Fixed Point S3==S4 ✅. LLVM 상수 폴딩 확인 (println(3) 직접 출력).
+
+**M11-C Phase 7 ✅ COMPLETE (Cycle 3241)**: `arr[i]` for `[f64; N]` subscript read + write (`gep_f64`/`load_ptr_f64`/`store_ptr_f64` MIR) + `@stack_f64_new` (`alloca [N x double]`). Fixed Point S3==S4 ✅.
+
+**M11-C Phase 8 ✅ COMPLETE (Cycle 3243)**: Typed pointer parameter subscript (`arr: *u8`, `arr: *i32`, `arr: *f64`, `arr: *bool`). Fixed Point S2==S3 ✅.
+
+**M11-C Phase 9 ✅ COMPLETE (Cycle 3244)**: `set arr[i] = (cmp_expr)` for bool/u8/i32 arrays (`eliminate_zext_trunc_ir` `try_add_trunc_alias` fix: `" to "` → `" to i1"`). Fixed Point S3==S4 ✅.
+
+**M11-C Phase 10 ✅ COMPLETE (Cycle 3245)**: `set arr[i] = (cmp_expr)` / `set arr[i] = int_literal` for `[f64; N]` arrays (`llvm_gen_store_ptr_f64_sb` str_sb 활성화 + is_double_var_sb/float literal 분기 + sitofp 방출). Golden test `test_golden_cmp_store_f64_i64` output 4 ✅. Fixed Point S3==S4 ✅. **test_golden_stack_i64_subscript.bmb 소스 파일 신규 추가** (이전 .out 파일만 존재).
 
 | 타입 | Phase | GEP element | 확장 방식 |
 |------|-------|------------|---------|

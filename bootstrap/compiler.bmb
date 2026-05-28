@@ -14885,9 +14885,9 @@ fn llvm_gen_load_ptr_f64_sb(line: String, pos: i64, dest: String, str_sb: i64) -
 
     same_mapping(load_line);
 
-// M11-C Phase 7: store_ptr_f64 ptr, val — val is always a double temp (from double_marker), store directly
+// M11-C Phase 7+: store_ptr_f64 ptr, val — val may be double register, float literal, or i64 (cmp/int literal)
 
-fn llvm_gen_store_ptr_f64_sb(line: String, pos: i64, _str_sb: i64) -> String
+fn llvm_gen_store_ptr_f64_sb(line: String, pos: i64, str_sb: i64) -> String
 
   pre pos >= 0
 
@@ -14903,11 +14903,24 @@ fn llvm_gen_store_ptr_f64_sb(line: String, pos: i64, _str_sb: i64) -> String
 
     let val = trim_end(line.slice(p2, line.len()));
 
-    // val is a double LLVM temp (defined by fadd double / load double); store double directly
-
-    let store_line = "  store double " + val + ", ptr " + ptr + ", align 8";
-
-    same_mapping(store_line);
+    // val may be: double register (in double_marker), float literal, or i64 value (cmp result / int literal)
+    if low_starts_with_at(val, 0, "%") {
+        // LLVM register: check if tracked as double
+        if is_double_var_sb(val, str_sb) {
+            same_mapping("  store double " + val + ", ptr " + ptr + ", align 8")
+        } else {
+            // Integer register (e.g. zext i1 to i64): emit sitofp first
+            let conv = ptr + "_si";
+            same_mapping("  " + conv + " = sitofp i64 " + val + " to double" + SEP() + "  store double " + conv + ", ptr " + ptr + ", align 8")
+        }
+    } else if find_pattern_at_slow(val, ".", 0) >= 0 {
+        // Float literal (e.g. 1.5, 0.0): store directly
+        same_mapping("  store double " + val + ", ptr " + ptr + ", align 8")
+    } else {
+        // Integer literal (e.g. 0, 1): emit sitofp
+        let conv = ptr + "_si";
+        same_mapping("  " + conv + " = sitofp i64 " + val + " to double" + SEP() + "  store double " + conv + ", ptr " + ptr + ", align 8")
+    };
 
 fn llvm_gen_phi(line: String, pos: i64, dest: String) -> String
 
