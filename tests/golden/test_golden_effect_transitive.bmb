@@ -1,0 +1,14 @@
+// M12 Phase 4: Transitive Effect Propagation
+// A declares <IO>, calls B (no explicit effect), B calls C (<Net>)
+// → A must also declare <Net> (transitive requirement)
+
+fn c_fetch(): <Net> -> String = "data";
+
+fn b_helper() -> String = c_fetch();
+
+fn a_handler(): <IO> -> i64 = {
+    let _s = b_helper();
+    0
+};
+
+fn main() -> i64 = 0;

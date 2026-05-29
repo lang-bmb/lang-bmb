@@ -42417,6 +42417,384 @@ fn scan_fn_effect_entry(src: String, pos: i64) -> String
 
     };
 
+// --- M12 Phase 4: Transitive Effect Propagation ---
+
+// Add effect cap to space-separated set eff if not already present.
+fn eff_add_if_new(eff: String, cap: String) -> String
+
+  post it.len() >= 0
+
+= if cap == "" or cap == "pure" or cap == "*" { eff }
+
+    else if eff_contains_name(eff, cap) { eff }
+
+    else if eff == "" { cap }
+
+    else { eff + " " + cap };
+
+// Merge all space-separated effects from b into a (recursive helper).
+fn eff_merge_effects_pos(a: String, b: String, pos: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 0
+
+= if pos >= b.len() { a }
+
+    else {
+
+        let end = eff_find_space_or_end(b, pos);
+
+        let cap = b.slice(pos, end);
+
+        let new_a = eff_add_if_new(a, cap);
+
+        if end >= b.len() { new_a }
+
+        else { eff_merge_effects_pos(new_a, b, end + 1) }
+
+    };
+
+// Merge all effects from b into a.
+fn eff_merge_effects(a: String, b: String) -> String
+
+  post it.len() >= 0
+
+= if b == "" { a }
+
+    else { eff_merge_effects_pos(a, b, 0) };
+
+// Expand caller_eff by merging effects of each callee from transmap.
+fn expand_calls_effects_trans(calls: String, caller_eff: String, transmap: String, pos: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 0
+
+= if pos >= calls.len() { caller_eff }
+
+    else {
+
+        let end = index_find_comma_or_end(calls, pos);
+
+        let callee = calls.slice(pos, end);
+
+        let callee_eff = eff_map_get(transmap, callee, 0);
+
+        let new_eff = eff_merge_effects(caller_eff, callee_eff);
+
+        if end >= calls.len() { new_eff }
+
+        else { expand_calls_effects_trans(calls, new_eff, transmap, end + 2) }
+
+    };
+
+// Process all entries once to build transitive effect map.
+// Functions WITH explicit effects (in direct_map): keep direct effect unchanged.
+// Functions WITHOUT explicit effects: expand from callee transitive effects.
+fn build_transitive_pass(entries: String, direct_map: String, old_transmap: String, pos: i64, acc: String) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 0
+
+= if pos >= entries.len() { acc }
+
+    else {
+
+        let eol = callers_find_eol(entries, pos);
+
+        let line = entries.slice(pos, eol);
+
+        if line.len() == 0 { build_transitive_pass(entries, direct_map, old_transmap, eol + 1, acc) }
+
+        else {
+
+            let fn_name = callers_get_field(line, 0, 0, 0);
+
+            let calls = callers_get_field(line, 1, 0, 0);
+
+            let direct_raw = eff_map_get_raw(direct_map, fn_name, 0);
+
+            let is_plat = str_find(direct_raw, "PLAT:") == 0;
+
+            let has_direct = direct_raw != "";
+
+            let new_acc = if is_plat {
+
+                acc + fn_name + "\tPLAT:" + direct_raw.slice(5, direct_raw.len()) + "\n"
+
+            } else if has_direct {
+
+                // Keep explicit declaration unchanged (don't expand with callee effects)
+                acc + fn_name + "\t" + direct_raw + "\n"
+
+            } else {
+
+                // No explicit declaration: propagate callee transitive effects
+                let new_eff = expand_calls_effects_trans(calls, "", old_transmap, 0);
+
+                if new_eff == "" { acc } else { acc + fn_name + "\t" + new_eff + "\n" }
+
+            };
+
+            build_transitive_pass(entries, direct_map, old_transmap, eol + 1, new_acc)
+
+        }
+
+    };
+
+// Iterate transitive expansion until stable (max iter passes).
+fn build_transitive_effect_map_iter(entries: String, direct_map: String, transmap: String, iter: i64) -> String
+
+  pre iter >= 0
+
+  post it.len() >= 0
+
+= let new_map = build_transitive_pass(entries, direct_map, transmap, 0, "");
+
+    if iter <= 0 { new_map }
+
+    else if new_map.len() == transmap.len() { new_map }
+
+    else { build_transitive_effect_map_iter(entries, direct_map, new_map, iter - 1) };
+
+// Build transitive effect map: explicit-effect functions keep declared effects;
+// undeclared functions get computed transitive effects from callees.
+fn build_transitive_effect_map(entries: String, direct_map: String, iter: i64) -> String
+
+  pre iter >= 0
+
+  post it.len() >= 0
+
+= build_transitive_effect_map_iter(entries, direct_map, direct_map, iter);
+
+// --- M12 Phase 5: Missing Effect Annotation ---
+
+// Check one entry: if it has transitive effects but no explicit declaration, warn.
+fn lint_check_one_missing_effect(fn_name: String, direct_map: String, transitive_map: String) -> i64
+
+  post it >= 0
+
+= let direct_raw = eff_map_get_raw(direct_map, fn_name, 0);
+
+    let is_plat = str_find(direct_raw, "PLAT:") == 0;
+
+    let has_direct = direct_raw != "";
+
+    if has_direct or is_plat { 0 }
+
+    else {
+
+        let trans_eff = eff_map_get(transitive_map, fn_name, 0);
+
+        if trans_eff == "" or trans_eff == "pure" or trans_eff == "*" { 0 }
+
+        else {
+
+            let _w = println_str("  [missing_effect_annotation] " + fn_name + ": inferred effects <" + trans_eff + "> but no explicit annotation");
+
+            1
+
+        }
+
+    };
+
+// Scan all entries, warn for functions with transitive effects but no declaration.
+fn lint_check_missing_effect_annotations(entries: String, direct_map: String, transitive_map: String, pos: i64, count: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= entries.len() { count }
+
+    else {
+
+        let eol = callers_find_eol(entries, pos);
+
+        let line = entries.slice(pos, eol);
+
+        if line.len() == 0 { lint_check_missing_effect_annotations(entries, direct_map, transitive_map, eol + 1, count) }
+
+        else {
+
+            let fn_name = callers_get_field(line, 0, 0, 0);
+
+            let new_count = count + lint_check_one_missing_effect(fn_name, direct_map, transitive_map);
+
+            lint_check_missing_effect_annotations(entries, direct_map, transitive_map, eol + 1, new_count)
+
+        }
+
+    };
+
+// --- M15 Phase 3: Module Capability Declaration ---
+// Syntax: module X requires [IO, Net, File]
+// Parses module-level capability requirements for lint checking.
+
+// Scan 'module Name requires [cap1, cap2...]' returning "cap1 cap2..." string.
+fn scan_module_caps_list(src: String, pos: i64, acc: String) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 0
+
+= let t = next_token_raw(src, pos);
+
+    let k = tok_kind(t);
+
+    if k == TK_EOF() or k == TK_RBRACKET() { acc }
+
+    else if k == TK_IDENT() {
+
+        let cap = src.slice(skip_ws_comments(src, pos), scan_ident_end(src, skip_ws_comments(src, pos)));
+
+        let new_acc = if acc == "" { cap } else { acc + " " + cap };
+
+        scan_module_caps_list(src, tok_end(t), new_acc)
+
+    }
+
+    else { scan_module_caps_list(src, tok_end(t), acc) };
+
+// After 'module Name', parse 'requires [...]' and return capability list.
+fn scan_module_requires_entry(src: String, pos: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 0
+
+= let t1 = next_token_raw(src, pos);
+
+    if tok_kind(t1) != TK_IDENT() { "" }
+
+    else {
+
+        let t2 = next_token_raw(src, tok_end(t1));
+
+        // Check if next keyword is 'requires'
+        let req_pos = skip_ws_comments(src, tok_end(t1));
+
+        let req_end = scan_ident_end(src, req_pos);
+
+        let kw = src.slice(req_pos, req_end);
+
+        if kw != "requires" { "" }
+
+        else {
+
+            let t_lb = next_token_raw(src, req_end);
+
+            if tok_kind(t_lb) != TK_LBRACKET() { "" }
+
+            else { scan_module_caps_list(src, tok_end(t_lb), "") }
+
+        }
+
+    };
+
+// Scan source for 'module X requires [...]' declarations.
+// Returns space-separated capability list (from first module declaration found).
+fn scan_module_requires(src: String, pos: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 0
+
+= let ident_pos = find_pattern_noa(src, "module ", pos);
+
+    if ident_pos < 0 { "" }
+
+    else {
+
+        let is_real = if ident_pos == 0 { true }
+
+                      else { let prev = src.byte_at(ident_pos - 1); prev == 10 or prev == 13 };
+
+        if is_real {
+
+            let caps = scan_module_requires_entry(src, ident_pos + 7);
+
+            if caps != "" { caps }
+
+            else { scan_module_requires(src, ident_pos + 7) }
+
+        }
+
+        else { scan_module_requires(src, ident_pos + 7) }
+
+    };
+
+// Check if one effect cap from fn_eff is covered by module_caps, emitting warning if not.
+fn check_fn_vs_module_caps(fn_name: String, fn_eff: String, module_caps: String, pos: i64, count: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= fn_eff.len() { count }
+
+    else {
+
+        let end = eff_find_space_or_end(fn_eff, pos);
+
+        let cap = fn_eff.slice(pos, end);
+
+        let new_count = if cap.len() > 0 and not eff_contains_name(module_caps, cap) {
+
+            let _w = println_str("  [module_capability] " + fn_name + ": uses <" + cap + "> not declared in module requires [" + module_caps + "]");
+
+            count + 1
+
+        } else { count };
+
+        if end >= fn_eff.len() { new_count }
+
+        else { check_fn_vs_module_caps(fn_name, fn_eff, module_caps, end + 1, new_count) }
+
+    };
+
+// Check if all transitive effects in entries are covered by module capability list.
+// Warns: [module_capability] fn X has effect <Y> not declared in module requires.
+fn lint_check_module_caps_fn(fn_name: String, transitive_map: String, module_caps: String) -> i64
+
+  post it >= 0
+
+= let trans_eff = eff_map_get(transitive_map, fn_name, 0);
+
+    if trans_eff == "" or trans_eff == "pure" or trans_eff == "*" { 0 }
+
+    else { check_fn_vs_module_caps(fn_name, trans_eff, module_caps, 0, 0) };
+
+fn lint_check_module_capabilities(entries: String, transitive_map: String, module_caps: String, pos: i64, count: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= entries.len() or module_caps == "" { count }
+
+    else {
+
+        let eol = callers_find_eol(entries, pos);
+
+        let line = entries.slice(pos, eol);
+
+        if line.len() == 0 { lint_check_module_capabilities(entries, transitive_map, module_caps, eol + 1, count) }
+
+        else {
+
+            let fn_name = callers_get_field(line, 0, 0, 0);
+
+            let new_count = count + lint_check_module_caps_fn(fn_name, transitive_map, module_caps);
+
+            lint_check_module_capabilities(entries, transitive_map, module_caps, eol + 1, new_count)
+
+        }
+
+    };
+
 // Rule: intent documents intent; contracts verify it. If you write intent, also write contracts.
 
 fn lint_check_intent_scan(src: String, pos: i64, count: i64) -> i64
@@ -42517,9 +42895,17 @@ fn lint_file(input: String) -> i64
 
         let eff_map = build_fn_effect_map(source, 0, "");
 
-        let w8 = lint_check_effect_propagation(entries, eff_map, 0, 0);
+        let transitive_map = build_transitive_effect_map(entries, eff_map, 5);
 
-        let total = w1 + w2 + w3 + w4 + w6 + w7 + w8;
+        let w8 = lint_check_effect_propagation(entries, transitive_map, 0, 0);
+
+        let w9 = lint_check_missing_effect_annotations(entries, eff_map, transitive_map, 0, 0);
+
+        let module_caps = scan_module_requires(source, 0);
+
+        let w10 = lint_check_module_capabilities(entries, transitive_map, module_caps, 0, 0);
+
+        let total = w1 + w2 + w3 + w4 + w6 + w7 + w8 + w9 + w10;
 
         let _sep = println_str("---");
 
@@ -44163,6 +44549,222 @@ fn repair_hint_file(input: String) -> i64
 
 };
 
+// --- M13 Phase 4: Verify-Repair Combined Command ---
+
+// Contract completeness status for a function.
+fn vr_contract_status(has_pre: bool, has_post: bool, has_intent: bool) -> String
+
+  post it.len() >= 0
+
+= if has_pre and has_post { "contracted" }
+
+    else if has_pre or has_post { "partial" }
+
+    else if has_intent { "intent_only" }
+
+    else { "uncontracted" };
+
+// Emit one function entry with status + optional contracts.
+fn emit_fn_vr_entry(fname: String, pctexts: String, qctexts: String, meta: String, status: String, sb: i64) -> i64
+
+  post it == 0
+
+= {
+
+    let _o1 = sb_push(sb, "{\"name\":\"");
+
+    let _n1 = sb_push(sb, json_esc(fname));
+
+    let _st1 = sb_push(sb, "\",\"status\":\"");
+
+    let _st2 = sb_push(sb, status);
+
+    let _st3 = sb_push(sb, "\"");
+
+    let meta_tab = str_find(meta, "\t");
+
+    let intent_txt = if meta_tab < 0 { meta } else { meta.slice(0, meta_tab) };
+
+    let eff_txt = if meta_tab < 0 { "" } else { meta.slice(meta_tab + 1, meta.len()) };
+
+    let _eff = if eff_txt != "" {
+
+        let _a = sb_push(sb, ",\"effect\":\"");
+
+        let _b = sb_push(sb, json_esc(eff_txt));
+
+        sb_push(sb, "\"")
+
+    } else { 0 };
+
+    let _int = if intent_txt != "" {
+
+        let _a = sb_push(sb, ",\"intent\":\"");
+
+        let _b = sb_push(sb, json_esc(intent_txt));
+
+        sb_push(sb, "\"")
+
+    } else { 0 };
+
+    let _pci = if pctexts != "" {
+
+        let _a = sb_push(sb, ",\"pre\":[");
+
+        let _b = emit_contract_json(pctexts, sb, 0);
+
+        sb_push(sb, "]")
+
+    } else { 0 };
+
+    let _qci = if qctexts != "" {
+
+        let _a = sb_push(sb, ",\"post\":[");
+
+        let _b = emit_contract_json(qctexts, sb, 0);
+
+        sb_push(sb, "]")
+
+    } else { 0 };
+
+    let _fin = sb_push(sb, "}");
+
+    0
+
+};
+
+// Extract effect text from a function declaration.
+fn vr_get_eff_txt(src: String, fn_pos: i64) -> String
+
+  pre fn_pos >= 0
+
+  post it.len() >= 0
+
+= let eff_r = scan_fn_effect_entry(src, fn_pos + 3);
+
+    let eff_entry = unpack_ast(eff_r);
+
+    if eff_entry == "" { "" }
+
+    else {
+
+        let tab = str_find(eff_entry, "\t");
+
+        if tab >= 0 { eff_entry.slice(tab + 1, eff_entry.len()) } else { "" }
+
+    };
+
+// Extract position after params and return type (helper to reduce call count).
+fn vr_after_params_pos(src: String, after_lparen: i64) -> i64
+
+  pre after_lparen >= 0
+
+  post it >= 0
+
+= let prams_r = index_collect_params(src, after_lparen, "");
+
+    let after_rp = unpack_pos(prams_r);
+
+    let rtype_r = index_read_ret_type(src, after_rp);
+
+    unpack_pos(rtype_r);
+
+// Scan all functions, emitting status + contracts for each.
+fn verify_repair_scan(src: String, scanpos: i64, sb: i64, isfirst: i64) -> i64
+
+  pre scanpos >= 0
+
+  post it >= 0
+
+= let fn_pos = find_pattern_noa(src, "fn ", scanpos);
+
+    if fn_pos < 0 { 0 }
+
+    else {
+
+        let is_real = if fn_pos == 0 { true }
+
+                      else { let prev = src.byte_at(fn_pos - 1); prev == 10 or prev == 13 or prev == 32 or prev == 59 or prev == 9 };
+
+        if is_real {
+
+            let ns = skip_ws_comments(src, fn_pos + 3);
+
+            let ne = scan_ident_end(src, ns);
+
+            let fname = src.slice(ns, ne);
+
+            if fname != "" and ne > ns {
+
+                let t2 = next_token_raw(src, ne);
+
+                let after_gen = if tok_kind(t2) == TK_LT() { skip_generic_params(src, tok_end(t2)) } else { ne };
+
+                let t2g = next_token_raw(src, after_gen);
+
+                if tok_kind(t2g) == TK_LPAREN() {
+
+                    let rp = vr_after_params_pos(src, tok_end(t2g));
+
+                    let eff_txt = vr_get_eff_txt(src, fn_pos);
+
+                    let pctexts = extract_pre_texts(src, rp);
+
+                    let qctexts = extract_post_texts(src, rp);
+
+                    let intent_txt = extract_intent_tok(src, rp);
+
+                    let status = vr_contract_status(pctexts != "", qctexts != "", intent_txt != "");
+
+                    let meta_str = intent_txt + chr(9) + eff_txt;
+
+                    let _sep = if isfirst > 0 { 0 } else { sb_push(sb, ",") };
+
+                    let _e = emit_fn_vr_entry(fname, pctexts, qctexts, meta_str, status, sb);
+
+                    verify_repair_scan(src, fn_pos + 3, sb, 0)
+
+                } else { verify_repair_scan(src, fn_pos + 3, sb, isfirst) }
+
+            } else { verify_repair_scan(src, fn_pos + 3, sb, isfirst) }
+
+        } else { verify_repair_scan(src, fn_pos + 3, sb, isfirst) }
+
+    };
+
+fn verify_repair_run(input: String, src: String) -> i64
+
+  post it >= 0
+
+= {
+
+    let sb = sb_new();
+
+    let _h1 = sb_push(sb, "{\"type\":\"verify_repair\",\"file\":\"");
+
+    let _h2 = sb_push(sb, json_esc(input));
+
+    let _h3 = sb_push(sb, "\",\"functions\":[");
+
+    let _scan = verify_repair_scan(src, 0, sb, 1);
+
+    let _h4 = sb_push(sb, "]}");
+
+    let _p = println_str(sb_build(sb));
+
+    0
+
+};
+
+fn verify_repair_file(input: String) -> i64
+
+  post it >= 0
+
+= let src = read_file(input);
+
+    if src.len() == 0 { err_no_file(input) }
+
+    else { verify_repair_run(input, src) };
 
 fn main() -> i64
 
@@ -44432,6 +45034,11 @@ fn main() -> i64
 
             // M13 Phase 3: Structured repair hints — LLM-consumable contract JSON
             repair_hint_file(get_arg(2))
+
+        } else if cmd == "verify-repair" and argc >= 3 {
+
+            // M13 Phase 4: Combined verify+repair — all functions with status + contracts
+            verify_repair_file(get_arg(2))
 
         } else if argc >= 3 {
 

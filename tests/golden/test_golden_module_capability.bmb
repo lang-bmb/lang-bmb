@@ -1,0 +1,15 @@
+// M15 Phase 3: Module capability declaration
+// module X requires [IO] but a function has transitive <Net> effect
+
+module MyApp requires [IO]
+
+fn fetch_data(): <Net> -> String = "data";
+
+fn helper() -> String = fetch_data();
+
+fn process(): <IO> -> i64 = {
+    let _d = helper();
+    0
+};
+
+fn main() -> i64 = process();
