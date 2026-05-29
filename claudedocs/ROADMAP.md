@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-29 (**AI-Native Pivot Cycles 3286-3290** — M14-4b sim_count_shared 버그수정 + M12-6b(@pure violation effect-verify) + M12-6c(missing_effect_annotation) + M15-5(module-suggest + callers_collect_source platform fix). Within-gen Fixed Point ✅. HEAD `pending`.)
+> 최종 업데이트: 2026-05-29 (**AI-Native Pivot Cycles 3286-3295** — M12 Phase 6b/6c/6d(effect-verify 3-way violations + @pure Z3 UNSAT) + M15 Phase 5(module-suggest + platform fix) + M14 Phase 4b(sim_count_shared) + contracts-check require_effect_annotation JSON 통합. Within-gen Fixed Point ✅. HEAD `47883ca8`.)
 > 이전 갱신: 2026-05-29 (**AI-Native Pivot Cycles 3271-3280** — M12 Phase 4(transitive eff propagation) + M12 Phase 5([missing_effect_annotation]) + M13 Phase 4(verify-repair) + M15 Phase 3(module requires + [module_capability]) + M15 Phase 4(full transitive module cap check). Fixed Point S2==S3 ✅. HEAD `f6613685`.)
 > 이전 갱신: 2026-05-29 (**AI-Native Pivot Cycles 3271-3276** — M12 Phase 4(transitive effect propagation) + M12 Phase 5([missing_effect_annotation]) + M13 Phase 4(verify-repair 통합 명령) + M15 Phase 3(module X requires [...] + [module_capability] lint). Fixed Point S2==S3 ✅.)
 > 이전 갱신: 2026-05-29 (**AI-Native Pivot Cycles 3261-3270** — M14 Phase 3(gotgan add) + M12 Phase 3([effect_propagation] lint) + M15 Phase 2(platform capabilities) + M13 Phase 3 Full(repair-hint pre/post/intent JSON) + Fixed Point S2==S3 ✅.)
@@ -1591,6 +1591,7 @@ Phase 2 (3-4 cycles): 모듈 capability 선언
 | M15 Platform/Capability | Phase 3: module X requires [...] + [module_capability] | ✅ COMPLETE | 3275 |
 | M15 Platform/Capability | Phase 4: full transitive module cap check | ✅ COMPLETE | 3277 |
 | M15 Platform/Capability | Phase 5: module-suggest + callers_collect_source platform fix | ✅ COMPLETE | 3289 |
+| contracts-check | require_effect_annotation JSON violations | ✅ COMPLETE | 3294 |
 
 ### 실행 타임라인
 
