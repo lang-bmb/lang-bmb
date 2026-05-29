@@ -45891,6 +45891,64 @@ fn bc_check_forbid_eff(entries: String, transitive_map: String, forbidden: Strin
 
     };
 
+// Check require_effect_annotation: find functions with transitive effects but no declaration.
+// Emits JSON violation objects per function.
+fn bc_check_missing_eff_anno(entries: String, direct_map: String, transitive_map: String, pos: i64, sb: i64, isfirst: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= entries.len() { isfirst }
+
+    else {
+
+        let eol = callers_find_eol(entries, pos);
+
+        let line = entries.slice(pos, eol);
+
+        if line.len() == 0 { bc_check_missing_eff_anno(entries, direct_map, transitive_map, eol + 1, sb, isfirst) }
+
+        else {
+
+            let fn_name = callers_get_field(line, 0, 0, 0);
+
+            let sig = callers_get_field(line, 2, 0, 0);
+
+            let direct_raw = eff_map_get_raw(direct_map, fn_name, 0);
+
+            let is_plat = str_find(direct_raw, "PLAT:") == 0;
+
+            let is_pure_fn = str_find(sig, "@pure fn") >= 0 or str_find(sig, "@const fn") >= 0;
+
+            let is_main = fn_name == "main";
+
+            let new_isfirst = if direct_raw != "" or is_plat or is_pure_fn or is_main { isfirst }
+
+            else {
+
+                let trans_eff = eff_map_get(transitive_map, fn_name, 0);
+
+                if trans_eff == "" or trans_eff == "pure" or trans_eff == "*" { isfirst }
+
+                else {
+
+                    let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
+
+                    let _j = sb_push(sb, "{\"rule\":\"require_effect_annotation\",\"function\":\"" + json_esc(fn_name) + "\",\"message\":\"function " + json_esc(fn_name) + " has inferred effects <" + json_esc(trans_eff) + "> but no explicit annotation\"}");
+
+                    0
+
+                }
+
+            };
+
+            bc_check_missing_eff_anno(entries, direct_map, transitive_map, eol + 1, sb, new_isfirst)
+
+        }
+
+    };
+
 fn contracts_check_run(input: String, src: String, contracts: String) -> i64
 
   post it >= 0
@@ -45923,14 +45981,14 @@ fn contracts_check_run(input: String, src: String, contracts: String) -> i64
 
     } else { f2 };
 
-    // require_effect_annotation: use existing lint, just count
-    let eff_count = if req_eff_anno == "true" {
+    // require_effect_annotation: report missing annotations as JSON violations
+    let f4 = if req_eff_anno == "true" {
 
-        lint_check_missing_effect_annotations(entries, eff_map, transitive_map, 0, 0)
+        bc_check_missing_eff_anno(entries, eff_map, transitive_map, 0, viol_sb, f3)
 
-    } else { 0 };
+    } else { f3 };
 
-    let has_viol = f3 == 0 or eff_count > 0;
+    let has_viol = f4 == 0;
 
     let status = if has_viol { "violation" } else { "safe" };
 
