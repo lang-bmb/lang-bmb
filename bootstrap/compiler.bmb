@@ -42809,6 +42809,19 @@ fn lint_check_missing_effect_annotations(entries: String, direct_map: String, tr
 
 // ─── diagnose: lint_effects JSON builders ──────────────────────────────────
 
+// Count {"rule": occurrences in a warnings JSON array string.
+fn count_rule_entries(s: String, pos: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= let found = find_pattern_noa(s, "{\"rule\":", pos);
+
+  if found < 0 { 0 }
+
+  else { 1 + count_rule_entries(s, found + 8) };
+
 // JSON builder for effect_pure_violation: collects violations into sb array.
 fn lint_eff_pure_viol_sb(entries: String, pos: i64, sb: i64, isfirst: i64) -> i64
 
@@ -43036,9 +43049,9 @@ fn lint_effects_build_json(input: String, entries: String, eff_map: String, tran
 
     let f3 = lint_missing_eff_sb(entries, eff_map, transitive_map, 0, warn_sb, f2);
 
-    let has_warnings = f3 == 0;
+    let warnings_str = sb_build(warn_sb);
 
-    let count = if has_warnings { 0 } else { 0 };
+    let count = count_rule_entries(warnings_str, 0);
 
     let out_sb = sb_new();
 
@@ -43046,11 +43059,15 @@ fn lint_effects_build_json(input: String, entries: String, eff_map: String, tran
 
     let _h2 = sb_push(out_sb, json_esc(input));
 
-    let _h3 = sb_push(out_sb, "\",\"warnings\":[");
+    let _h3 = sb_push(out_sb, "\",\"count\":");
 
-    let _h4 = sb_push(out_sb, sb_build(warn_sb));
+    let _hc = sb_push(out_sb, int_to_string(count));
 
-    let _h5 = sb_push(out_sb, "]}");
+    let _h4 = sb_push(out_sb, ",\"warnings\":[");
+
+    let _h5 = sb_push(out_sb, warnings_str);
+
+    let _h6 = sb_push(out_sb, "]}");
 
     sb_build(out_sb)
 
@@ -46092,6 +46109,93 @@ fn bc_get(contracts: String, key: String, pos: i64) -> String
 
     };
 
+// Count commas at depth 0 (ignoring commas inside <>). Used for max_params check.
+fn count_top_commas(s: String, pos: i64, depth: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= s.len() { 0 }
+
+  else {
+
+    let c = s.byte_at(pos);
+
+    if c == 60 { count_top_commas(s, pos + 1, depth + 1) }
+
+    else if c == 62 { count_top_commas(s, pos + 1, depth - 1) }
+
+    else if c == 44 and depth == 0 { 1 + count_top_commas(s, pos + 1, depth) }
+
+    else { count_top_commas(s, pos + 1, depth) }
+
+  };
+
+// Count parameters in a function sig string "fn name(params) -> RetType".
+fn count_sig_params(sig: String) -> i64
+
+  post it >= 0
+
+= let lp = str_find(sig, "(");
+
+  if lp < 0 { 0 }
+
+  else {
+
+    let inner_start = lp + 1;
+
+    let rp = str_find(sig.slice(inner_start, sig.len()), ")");
+
+    let params_str = if rp >= 0 { str_trim(sig.slice(inner_start, inner_start + rp)) } else { "" };
+
+    if params_str == "" { 0 }
+
+    else { count_top_commas(params_str, 0, 0) + 1 }
+
+  };
+
+// Check max_params: scan entries for functions exceeding the parameter limit.
+fn bc_check_max_params_scan(entries: String, max_n: i64, sb: i64, isfirst: i64, pos: i64) -> i64
+
+  pre pos >= 0 and max_n >= 0
+
+  post it >= 0
+
+= if pos >= entries.len() { isfirst }
+
+  else {
+
+    let eol = callers_find_eol(entries, pos);
+
+    let line = entries.slice(pos, eol);
+
+    if line.len() == 0 { bc_check_max_params_scan(entries, max_n, sb, isfirst, eol + 1) }
+
+    else {
+
+      let fn_name = callers_get_field(line, 0, 0, 0);
+
+      let sig = callers_get_field(line, 2, 0, 0);
+
+      let param_count = count_sig_params(sig);
+
+      let new_isfirst = if param_count > max_n {
+
+        let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
+
+        let _j = sb_push(sb, "{\"rule\":\"max_params\",\"function\":\"" + json_esc(fn_name) + "\",\"params\":" + int_to_string(param_count) + ",\"max\":" + int_to_string(max_n) + ",\"message\":\"function " + json_esc(fn_name) + " has " + int_to_string(param_count) + " params (max=" + int_to_string(max_n) + ")\"}");
+
+        0
+
+      } else { isfirst };
+
+      bc_check_max_params_scan(entries, max_n, sb, new_isfirst, eol + 1)
+
+    }
+
+  };
+
 // Check require_postcondition: scan entries for user functions without post clause
 fn bc_check_post_scan(entries: String, src: String, eff_map: String, pos: i64, sb: i64, isfirst: i64) -> i64
 
@@ -46271,6 +46375,8 @@ fn cc_build_json(input: String, src: String, entries: String, eff_map: String, t
 
     let forbid_eff = bc_get(contracts, "forbid_effect", 0);
 
+    let max_params_str = bc_get(contracts, "max_params", 0);
+
     let viol_sb = sb_new();
 
     let f1 = 1;
@@ -46292,7 +46398,16 @@ fn cc_build_json(input: String, src: String, entries: String, eff_map: String, t
 
     } else { f3 };
 
-    let has_viol = f4 == 0;
+    // max_params check
+    let f5 = if max_params_str != "" {
+
+        let max_n = parse_int(max_params_str);
+
+        if max_n > 0 { bc_check_max_params_scan(entries, max_n, viol_sb, f4, 0) } else { f4 }
+
+    } else { f4 };
+
+    let has_viol = f5 == 0;
 
     let status = if has_viol { "violation" } else { "safe" };
 
