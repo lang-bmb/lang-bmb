@@ -1,6 +1,6 @@
-# BMB Session Handoff — 2026-05-29 (Cycles 3281-3284)
+# BMB Session Handoff — 2026-05-29 (Cycles 3286-3293)
 
-> **HEAD**: `2cab6bbc` (chore(docs): HEAD 갱신 d7d98a18)
+> **HEAD**: `adc0f0a1` (feat(ai-native): M12 Phase 6b/6c/6d + M15 Phase 5 + sim_count_shared)
 > **실무 앵커**: `claudedocs/ROADMAP.md` (§ 6 AI-Native Pivot + M12-M15 진척)
 > **전략 계획서**: `claudedocs/plans/ai-native-plan-2026.md`
 
@@ -10,108 +10,122 @@
 
 | 항목 | 상태 |
 |------|------|
-| cargo test --release | ✅ 3800+2390 tests, 0 FAILED |
-| 3-Stage Fixed Point | ✅ S3c == S4c (Cycle 3284) |
+| cargo test --release | ✅ 3800+2390+23 tests, 0 FAILED |
+| Within-gen Fixed Point | ✅ S3f==S4f (Cycle 3292) |
 | bmb lint warnings | ✅ 178 non-recursive (pre-existing) |
-| Z3 verify | ✅ 141/141 |
+| Z3 verify | ✅ 144/144 |
 | P-track 7/7 | ✅ ALL ≤1.010× |
 | B-axis Claude | ✅ 98.0% (stale: 2026-08-13) |
 | B-axis GPUStack | ✅ 100.0% (2026-05-21) |
 
 ---
 
-## 이번 세션 완료 (Cycles 3281-3284)
+## 이번 세션 완료 (Cycles 3286-3293)
 
 | 마일스톤 | 완료 사이클 | 내용 |
 |---------|-----------|------|
-| M12 Phase 6 | 3281-3282 | `effect-verify` Z3 formal verification |
-| M13 Phase 5 | 3283 | `.bmb-contracts` + `contracts-check` |
-| M14 Phase 4 | 3284 | `semantic-duplicate` call set 비교 |
-| Fixed Point | 3282/3284 | S3==S4 2회 확인 ✅ |
+| M14 Phase 4b | 3286 | sim_count_shared 버그수정 + semdp 통합 |
+| M12 Phase 6b | 3287 | @pure fn violation → effect-verify 탐지 |
+| M12 Phase 6c | 3288 | missing_effect_annotation → effect-verify 통합 |
+| M15 Phase 5 | 3289 | module-suggest + callers_collect_source platform fix |
+| M12 Phase 6d | 3291 | @pure fn → Z3 UNSAT 공식 검증 |
+| Fixed Point | 3292 | S3f==S4f Within-gen ✅ |
+| Commit | 3293 | adc0f0a1 |
 
 ---
 
 ## 새로 추가된 기능 요약
 
-### M12 Phase 6: effect-verify (Z3 formal verification)
+### M14 Phase 4b: sim_count_shared 버그 수정
 
-```bash
-$ compiler.exe effect-verify foo.bmb
-# violation case:
-{"type":"effect_verify","file":"foo.bmb","status":"violation","z3":"unsat",
- "violations":[{"caller":"bad_caller","callee":"safe_net","caller_effect":"IO","callee_effect":"Net"}]}
-# safe case:
-{"type":"effect_verify","file":"foo.bmb","status":"safe","z3":"sat"}
+```
+# 수정 전 (버그)
+./compiler similar test.bmb foo  →  [2 shared] (3-call 중 2만 매치)
+
+# 수정 후
+./compiler similar test.bmb foo  →  [3 shared] ✅
+
+# 원인: sim_find_start_rev의 `if pos < 0`이 LLVM pre-condition 최적화로 dead code 제거
+# 수정: `if pos < 0` → `if pos <= 0` (pos==0 안전 처리)
 ```
 
-- SMT-LIB2 생성: 함수 effect Boolean 변수 + call edge implication
-- `exec_with_stdin("z3", "-smt2 -in", smt)` → Z3 응답 파싱
-- UNSAT = 위반 (제약 불일치), SAT = 안전 (모든 제약 충족)
-- PLAT: prefix 확인으로 platform 함수 false positive 제거
+- `semdp_count_shared` / `semdp_name_start` 제거 (sim_count_shared 재사용)
 
-### M13 Phase 5: .bmb-contracts (Session-persistent contracts)
+### M12 Phase 6b: @pure fn violation → effect-verify
 
 ```bash
-# .bmb-contracts 파일:
-require_postcondition = true
-forbid_effect = Net
-
-$ compiler.exe contracts-check src/module.bmb
-{"type":"contracts_check","file":"src/module.bmb","status":"violation","violations":[
-  {"rule":"require_postcondition","function":"foo","message":"function foo has no postcondition"},
-  {"rule":"forbid_effect","function":"bar","message":"function bar uses <Net> (forbidden by project contracts)"}
+$ compiler.exe effect-verify test.bmb
+{"type":"effect_verify","status":"violation","z3":"sat","violations":[
+  {"caller":"bad_fn","callee":"io_fn","caller_effect":"pure","callee_effect":"IO"}
 ]}
 ```
 
-- `bc_parse_contracts` + `bc_get`: key-value 파서
-- `bc_check_post_scan`: post clause 검사 (vr_after_params_pos 활용)
-- `bc_check_forbid_eff`: 금지 effect 전이 검사
-
-### M14 Phase 4: semantic-duplicate (Call set duplicate detection)
+### M12 Phase 6c: missing_effect_annotation → effect-verify
 
 ```bash
-$ compiler.exe semantic-duplicate src/big_module.bmb
-{"type":"semantic_duplicate","file":"src/big_module.bmb","pairs":[
-  {"fn_a":"parse_for_body","fn_b":"parse_for_body_inclusive","shared_calls":11,"total_a":11,"total_b":11},
-  {"fn_a":"process_v1","fn_b":"process_v2","shared_calls":3,"total_a":3,"total_b":3}
+{"violations":[
+  {"caller":"wrapper","callee":"","caller_effect":"missing","callee_effect":"IO"}
 ]}
 ```
 
-- 기준: `semdp_count_shared == max(cnt_a, cnt_b)` AND ≥3 calls
-- `semdp_count_shared` 직접 구현 (`sim_count_shared` 버그 우회)
-- compiler.bmb에서 실제 중복 쌍 발견 (parse_for_body 계열 등)
+### M12 Phase 6d: @pure fn → Z3 UNSAT
+
+```bash
+# 기존: z3:"sat" (heuristic만)
+# 신규: z3:"unsat" ✅ (Z3 formal verification)
+{"status":"violation","z3":"unsat","violations":[...]}
+```
+
+- `eff_z3_gen_pure_decls`: @pure fn을 SMT에 all-effect=false로 선언
+- `eff_z3_gen_pure_edges`: 직접 implication 생성
+
+### M15 Phase 5: module-suggest + platform 버그 수정
+
+```bash
+$ compiler.exe module-suggest test.bmb
+{"type":"module_suggest","module":"myapp","declared":["IO"],"suggested":["File"],"status":"mismatch"}
+
+# status: "ok" | "mismatch" | "needs_module"
+```
+
+**P4 버그 수정**: `callers_collect_source`가 platform 블록을 swallow하던 버그 수정.
+- `skip_nested_brace` / `skip_platform_block` 추가
+- `callers_collect_source`: "platform" 식별 시 블록 전체 스킵
+
+---
+
+## effect-verify 3가지 위반 유형 (통합 완료)
+
+| 유형 | 탐지 방법 | Z3 상태 | 예시 |
+|------|---------|---------|------|
+| declared-effect 불일치 | Z3 SMT | `"unsat"` | `<IO>` caller가 `<Net>` callee 호출 |
+| @pure fn effectful 호출 | Z3 SMT | `"unsat"` ← NEW | `@pure fn` → IO 함수 호출 |
+| missing_effect_annotation | heuristic scan | `"sat"` | transitive IO 있으나 선언 없음 |
 
 ---
 
 ## 즉시 실행 가능한 다음 태스크
 
-### [P1] sim_count_shared 버그 수정
+### [P1] effect lattice 더 깊은 모델링 (optional)
 
-기존 `similar` 명령에서 같은 call set을 가진 함수들이 N-1 shared로 보고되는 버그.
-- 증상: `similar` 명령에서 3개 call → [2 shared] 오보
-- 원인 가설: `sim_count_shared`가 초기 count=0 전달 시 마지막 item을 count+1로 반환하지 않음
-- 영향: `semantic-duplicate` 는 `semdp_count_shared`로 우회 구현되어 정상 동작
-- 수정 후 `semdp_count_shared`를 `sim_count_shared` 재사용으로 통합 가능
+- missing_effect_annotation도 Z3 SMT에 추가 (inferred → assert constraints)
+- effect lattice partial order: `IO ≤ IO+Net` formally modeled
+- 현재: @pure Z3 UNSAT ✅, missing heuristic only
 
-### [P2] M12 Z3 더 깊은 통합
+### [P2] index 명령 platform 버그 수정
 
-현재 M12 Phase 6는 **명시적으로 선언된 effect** 간 call edge만 검증. 확장 방향:
-- `@pure fn` 위반도 Z3 SMT로 확인 (Phase 1 lint → Z3 cert)
-- `[missing_effect_annotation]` 함수에 대한 추론 effect → Z3 assertion
-- SMT에서 effect lattice 모델링 (IO < IO+Net 등 partial order)
+- `callers_collect_source`는 수정됨 → `index` 명령의 별도 코드 경로 수정 필요
+- platform 블록 내 fn이 잘못된 callee 목록으로 표시됨 (낮은 우선순위)
 
-### [P3] M15 Phase 5 — Platform/Module 연계 강화
+### [P3] contracts-check `require_effect_annotation` 통합
 
-`platform stdlib { fn ... }` 블록에서 함수의 capability가
-`module X requires [...]` 와 자동 연계되는 강화.
-- 현재: platform 선언 ↔ module requires 는 수동 매핑 필요
-- 목표: platform 블록에서 자동으로 module capability 검증
+- 현재: `lint_check_missing_effect_annotations`를 별도 호출
+- 개선: contracts-check JSON에 missing_annotation 위반도 포함
 
-### [P4] contracts-check Platform 블록 지원 개선
+### [P4] module-suggest `declared`==`suggested` 비교 정교화
 
-현재 `callers_collect_source`가 platform 블록 내 선언 파싱 시
-이후 함수를 swallow하는 기존 버그로 인해 contracts-check 부정확.
-- 해결 방향: platform 블록을 명시적으로 스킵하거나 depth tracking 추가
+- 현재: 문자열 직접 비교 (순서 의존)
+- 개선: set-equality 비교 (순서 무관)
 
 ---
 
@@ -128,11 +142,10 @@ $ compiler.exe semantic-duplicate src/big_module.bmb
 
 - **Rule 6**: 모든 새 기능은 bootstrap/compiler.bmb에서만.
 - **Python write 금지**: bootstrap/compiler.bmb 수정 시 Python write 금지. Edit 도구 사용 필수.
-- **fixed point**: S2 IR vs S3 IR 비교 (binary hash 아님).
-- **Z3 경로**: `z3`는 C:/msys64/ucrt64/bin/z3.exe 에 있어 PATH에서 접근 가능.
-- **Platform 블록 한계**: `callers_collect_source`가 platform 블록 내 선언을 처리 시
-  이후 함수를 swallow할 수 있음 (contracts-check 파일에 platform 블록 없어야 정확).
-- **semdp_count_shared**: `sim_count_shared` 버그 우회로 자체 구현. 두 함수는 별개.
+- **fixed point**: emit-ir 두 번 실행하여 동일성 확인 (binary hash 아님).
+- **Z3 경로**: `z3`는 C:/msys64/ucrt64/bin/z3.exe, PATH에서 접근 가능.
+- **sim_count_shared**: 수정 완료 (`if pos <= 0`). semdp_count_shared는 제거됨.
+- **callers_collect_source**: platform 블록 스킵 수정 완료. index 명령은 미수정.
 
 ---
 
@@ -140,8 +153,7 @@ $ compiler.exe semantic-duplicate src/big_module.bmb
 
 | 파일 | 역할 |
 |------|------|
-| `bootstrap/compiler.bmb` | 부트스트랩 컴파일러 (46K+ LOC) |
-| `tests/golden/test_golden_effect_verify.bmb` | M12 Phase 6 골든 테스트 |
-| `tests/golden/test_golden_contracts_check.bmb` | M13 Phase 5 골든 테스트 |
-| `tests/golden/test_golden_semantic_duplicate.bmb` | M14 Phase 4 골든 테스트 |
+| `bootstrap/compiler.bmb` | 부트스트랩 컴파일러 (~46K LOC) |
+| `tests/golden/test_golden_effect_verify_pure.bmb` | M12 Phase 6b 골든 테스트 |
+| `tests/golden/test_golden_effect_verify_comprehensive.bmb` | M12 3-way 통합 테스트 |
 | `claudedocs/ROADMAP.md` | 실무 앵커 (§ 6 AI-Native Pivot + 진척 표) |
