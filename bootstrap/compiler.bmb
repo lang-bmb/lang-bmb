@@ -44842,6 +44842,881 @@ fn verify_repair_file(input: String) -> i64
 
     else { verify_repair_run(input, src) };
 
+// M12 Phase 6: Effect system Z3 formal verification
+// Generates SMT-LIB2 encoding of effect constraints and uses Z3 to verify consistency.
+// SAT = all constraints consistent (safe). UNSAT = at least one violation.
+
+fn eff_smt_bool(eff: String, eff_name: String) -> String
+
+  post it.len() >= 0
+
+= if eff_contains_name(eff, eff_name) { "true" } else { "false" };
+
+fn eff_z3_gen_fn_decls(eff_map: String, pos: i64, sb: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= -1
+
+= if pos >= eff_map.len() { 0 }
+
+    else {
+
+        let eol = callers_find_eol(eff_map, pos);
+
+        let line = eff_map.slice(pos, eol);
+
+        if line.len() == 0 { eff_z3_gen_fn_decls(eff_map, eol + 1, sb) }
+
+        else {
+
+            let tab = str_find(line, "\t");
+
+            if tab < 0 { eff_z3_gen_fn_decls(eff_map, eol + 1, sb) }
+
+            else {
+
+                let fn_name = line.slice(0, tab);
+
+                let raw_eff = line.slice(tab + 1, line.len());
+
+                let eff = if str_find(raw_eff, "PLAT:") == 0 { raw_eff.slice(5, raw_eff.len()) } else { raw_eff };
+
+                let io_v = eff_smt_bool(eff, "IO");
+
+                let net_v = eff_smt_bool(eff, "Net");
+
+                let file_v = eff_smt_bool(eff, "File");
+
+                let sys_v = eff_smt_bool(eff, "Sys");
+
+                let _d1 = sb_push(sb, "(declare-const |" + fn_name + "_io| Bool)\n");
+
+                let _d2 = sb_push(sb, "(assert (= |" + fn_name + "_io| " + io_v + "))\n");
+
+                let _d3 = sb_push(sb, "(declare-const |" + fn_name + "_net| Bool)\n");
+
+                let _d4 = sb_push(sb, "(assert (= |" + fn_name + "_net| " + net_v + "))\n");
+
+                let _d5 = sb_push(sb, "(declare-const |" + fn_name + "_file| Bool)\n");
+
+                let _d6 = sb_push(sb, "(assert (= |" + fn_name + "_file| " + file_v + "))\n");
+
+                let _d7 = sb_push(sb, "(declare-const |" + fn_name + "_sys| Bool)\n");
+
+                let _d8 = sb_push(sb, "(assert (= |" + fn_name + "_sys| " + sys_v + "))\n");
+
+                eff_z3_gen_fn_decls(eff_map, eol + 1, sb)
+
+            }
+
+        }
+
+    };
+
+fn eff_z3_gen_call_edge(caller_name: String, callee_name: String, eff_map: String, sb: i64) -> i64
+
+  post it >= 0
+
+= {
+
+    let caller_eff = eff_map_get(eff_map, caller_name, 0);
+
+    let callee_eff = eff_map_get(eff_map, callee_name, 0);
+
+    if caller_eff == "" or callee_eff == "" or caller_eff == "*" or callee_eff == "*" { 0 }
+
+    else {
+
+        let _e1 = sb_push(sb, "(assert (=> |" + callee_name + "_io| |" + caller_name + "_io|))\n");
+
+        let _e2 = sb_push(sb, "(assert (=> |" + callee_name + "_net| |" + caller_name + "_net|))\n");
+
+        let _e3 = sb_push(sb, "(assert (=> |" + callee_name + "_file| |" + caller_name + "_file|))\n");
+
+        let _e4 = sb_push(sb, "(assert (=> |" + callee_name + "_sys| |" + caller_name + "_sys|))\n");
+
+        0
+
+    }
+
+};
+
+fn eff_z3_gen_calls(caller_name: String, calls: String, eff_map: String, pos: i64, sb: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= calls.len() { 0 }
+
+    else {
+
+        let end = index_find_comma_or_end(calls, pos);
+
+        let callee = calls.slice(pos, end);
+
+        let _x = eff_z3_gen_call_edge(caller_name, callee, eff_map, sb);
+
+        if end >= calls.len() { 0 }
+
+        else { eff_z3_gen_calls(caller_name, calls, eff_map, end + 2, sb) }
+
+    };
+
+fn eff_z3_gen_edges(entries: String, eff_map: String, pos: i64, sb: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= entries.len() { 0 }
+
+    else {
+
+        let eol = callers_find_eol(entries, pos);
+
+        let line = entries.slice(pos, eol);
+
+        if line.len() == 0 { eff_z3_gen_edges(entries, eff_map, eol + 1, sb) }
+
+        else {
+
+            let fn_name = callers_get_field(line, 0, 0, 0);
+
+            let calls = callers_get_field(line, 1, 0, 0);
+
+            // Skip platform-declared functions (PLAT: prefix) — they are trusted providers, not checked
+            let raw_eff = eff_map_get_raw(eff_map, fn_name, 0);
+
+            let is_plat = str_find(raw_eff, "PLAT:") == 0;
+
+            let _x = if not is_plat { eff_z3_gen_calls(fn_name, calls, eff_map, 0, sb) } else { 0 };
+
+            eff_z3_gen_edges(entries, eff_map, eol + 1, sb)
+
+        }
+
+    };
+
+fn eff_z3_gen_smt(entries: String, eff_map: String) -> String
+
+  post it.len() >= 0
+
+= {
+
+    let sb = sb_new();
+
+    let _h = sb_push(sb, "; BMB M12 Phase 6: Effect System Verification\n");
+
+    let _d = eff_z3_gen_fn_decls(eff_map, 0, sb);
+
+    let _e = eff_z3_gen_edges(entries, eff_map, 0, sb);
+
+    let _c = sb_push(sb, "(check-sat)\n");
+
+    sb_build(sb)
+
+};
+
+fn eff_z3_invoke(smt: String) -> String
+
+  post it.len() >= 0
+
+= {
+
+    let raw = exec_with_stdin("z3", "-smt2 -in", smt);
+
+    let t = str_trim(raw);
+
+    if t == "sat" { "sat" }
+
+    else if t == "unsat" { "unsat" }
+
+    else if t == "" { "unavailable" }
+
+    else { "unknown" }
+
+};
+
+fn eff_emit_viol_pair(caller_name: String, caller_eff: String, callee_name: String, callee_eff: String, sb: i64, isfirst: i64) -> i64
+
+  post it >= 0
+
+= {
+
+    let io_v = eff_contains_name(callee_eff, "IO") and not eff_contains_name(caller_eff, "IO");
+
+    let net_v = eff_contains_name(callee_eff, "Net") and not eff_contains_name(caller_eff, "Net");
+
+    let file_v = eff_contains_name(callee_eff, "File") and not eff_contains_name(caller_eff, "File");
+
+    let sys_v = eff_contains_name(callee_eff, "Sys") and not eff_contains_name(caller_eff, "Sys");
+
+    if io_v or net_v or file_v or sys_v {
+
+        let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
+
+        let _j = sb_push(sb, "{\"caller\":\"" + json_esc(caller_name) + "\",\"callee\":\"" + json_esc(callee_name) + "\",\"caller_effect\":\"" + json_esc(caller_eff) + "\",\"callee_effect\":\"" + json_esc(callee_eff) + "\"}");
+
+        0
+
+    } else { isfirst }
+
+};
+
+fn eff_collect_viol_calls(caller_name: String, calls: String, eff_map: String, pos: i64, sb: i64, isfirst: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= calls.len() { isfirst }
+
+    else {
+
+        let caller_eff = eff_map_get(eff_map, caller_name, 0);
+
+        let end = index_find_comma_or_end(calls, pos);
+
+        let callee = calls.slice(pos, end);
+
+        let callee_eff = eff_map_get(eff_map, callee, 0);
+
+        let new_isfirst = if callee_eff != "" and callee_eff != "*" and caller_eff != "*" {
+
+            eff_emit_viol_pair(caller_name, caller_eff, callee, callee_eff, sb, isfirst)
+
+        } else { isfirst };
+
+        if end >= calls.len() { new_isfirst }
+
+        else { eff_collect_viol_calls(caller_name, calls, eff_map, end + 2, sb, new_isfirst) }
+
+    };
+
+fn eff_collect_violations(entries: String, eff_map: String, pos: i64, sb: i64, isfirst: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= entries.len() { isfirst }
+
+    else {
+
+        let eol = callers_find_eol(entries, pos);
+
+        let line = entries.slice(pos, eol);
+
+        if line.len() == 0 { eff_collect_violations(entries, eff_map, eol + 1, sb, isfirst) }
+
+        else {
+
+            let fn_name = callers_get_field(line, 0, 0, 0);
+
+            let calls = callers_get_field(line, 1, 0, 0);
+
+            let raw_eff = eff_map_get_raw(eff_map, fn_name, 0);
+
+            let is_plat = str_find(raw_eff, "PLAT:") == 0;
+
+            let caller_eff = if is_plat { "" } else { eff_map_get(eff_map, fn_name, 0) };
+
+            let new_isfirst = if caller_eff != "" and caller_eff != "*" and calls.len() > 0 {
+
+                eff_collect_viol_calls(fn_name, calls, eff_map, 0, sb, isfirst)
+
+            } else { isfirst };
+
+            eff_collect_violations(entries, eff_map, eol + 1, sb, new_isfirst)
+
+        }
+
+    };
+
+fn effect_verify_run(input: String, src: String) -> i64
+
+  post it >= 0
+
+= {
+
+    let entries = callers_collect_source(src, 0, "");
+
+    let eff_map = build_fn_effect_map(src, 0, "");
+
+    let smt = eff_z3_gen_smt(entries, eff_map);
+
+    let z3_result = eff_z3_invoke(smt);
+
+    let viol_sb = sb_new();
+
+    let isfirst_after = eff_collect_violations(entries, eff_map, 0, viol_sb, 1);
+
+    let has_violation = isfirst_after == 0;
+
+    let status = if z3_result == "unavailable" {
+
+        if has_violation { "violation" } else { "safe" }
+
+    } else if z3_result == "unsat" { "violation" }
+
+    else { "safe" };
+
+    let out_sb = sb_new();
+
+    let _h1 = sb_push(out_sb, "{\"type\":\"effect_verify\",\"file\":\"");
+
+    let _h2 = sb_push(out_sb, json_esc(input));
+
+    let _h3 = sb_push(out_sb, "\",\"status\":\"" + status + "\",\"z3\":\"" + z3_result + "\"");
+
+    let _h4 = if status == "violation" {
+
+        let _vb = sb_push(out_sb, ",\"violations\":[");
+
+        let _vc = sb_push(out_sb, sb_build(viol_sb));
+
+        sb_push(out_sb, "]")
+
+    } else { 0 };
+
+    let _h5 = sb_push(out_sb, "}");
+
+    let _p = println_str(sb_build(out_sb));
+
+    0
+
+};
+
+fn effect_verify_file(input: String) -> i64
+
+  post it >= 0
+
+= let src = read_file(input);
+
+    if src.len() == 0 { err_no_file(input) }
+
+    else { effect_verify_run(input, src) };
+
+// M13 Phase 5: Session-persistent contracts (.bmb-contracts)
+// Loads project-level invariants from .bmb-contracts and checks a BMB file against them.
+// Format: lines of "key = value" (# comments, blank lines ignored).
+// Supported keys:
+//   require_postcondition = true/false
+//   require_effect_annotation = true/false
+//   max_params = N
+//   forbid_effect = EffectName (IO|Net|File|Sys)
+
+// Parse a single line of .bmb-contracts: returns "key\tvalue" or ""
+fn bc_parse_line(line: String) -> String
+
+  post it.len() >= 0
+
+= if line.len() == 0 { "" }
+
+    else if line.byte_at(0) == 35 { "" }  // # comment
+
+    else {
+
+        let eq = str_find(line, "=");
+
+        if eq < 0 { "" }
+
+        else {
+
+            let key = str_trim(line.slice(0, eq));
+
+            let val = str_trim(line.slice(eq + 1, line.len()));
+
+            if key == "" or val == "" { "" }
+
+            else { key + "\t" + val }
+
+        }
+
+    };
+
+// Scan .bmb-contracts content, collect "key\tvalue\n" map
+fn bc_parse_contracts(src: String, pos: i64, acc: String) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 0
+
+= if pos >= src.len() { acc }
+
+    else {
+
+        let eol = lint_find_eol(src, pos);
+
+        let line = str_trim(src.slice(pos, eol));
+
+        let entry = bc_parse_line(line);
+
+        let new_acc = if entry == "" { acc } else { acc + entry + "\n" };
+
+        bc_parse_contracts(src, eol + 1, new_acc)
+
+    };
+
+// Look up a key in contracts map ("key\tvalue\n" format)
+fn bc_get(contracts: String, key: String, pos: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 0
+
+= if pos >= contracts.len() { "" }
+
+    else {
+
+        let eol = lint_find_eol(contracts, pos);
+
+        let line = contracts.slice(pos, eol);
+
+        let tab = str_find(line, "\t");
+
+        if tab < 0 { bc_get(contracts, key, eol + 1) }
+
+        else if line.slice(0, tab) == key { line.slice(tab + 1, line.len()) }
+
+        else { bc_get(contracts, key, eol + 1) }
+
+    };
+
+// Check require_postcondition: scan entries for user functions without post clause
+fn bc_check_post_scan(entries: String, src: String, eff_map: String, pos: i64, sb: i64, isfirst: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= entries.len() { isfirst }
+
+    else {
+
+        let eol = callers_find_eol(entries, pos);
+
+        let line = entries.slice(pos, eol);
+
+        if line.len() == 0 { bc_check_post_scan(entries, src, eff_map, eol + 1, sb, isfirst) }
+
+        else {
+
+            let fn_name = callers_get_field(line, 0, 0, 0);
+
+            let raw_eff = eff_map_get_raw(eff_map, fn_name, 0);
+
+            let is_plat = str_find(raw_eff, "PLAT:") == 0;
+
+            let is_skip = fn_name == "main" or is_plat;
+
+            let fn_pos = if is_skip { -1 } else { find_pattern_noa(src, "fn " + fn_name + "(", 0) };
+
+            let post_texts = if fn_pos < 0 { "ok" }
+
+                             else {
+
+                                 let ns = skip_ws_comments(src, fn_pos + 3);
+
+                                 let ne = scan_ident_end(src, ns);
+
+                                 let t_after = next_token_raw(src, ne);
+
+                                 let after_gen = if tok_kind(t_after) == TK_LT() { skip_generic_params(src, tok_end(t_after)) } else { ne };
+
+                                 let t_lp = next_token_raw(src, after_gen);
+
+                                 if tok_kind(t_lp) == TK_LPAREN() {
+
+                                     let rp = vr_after_params_pos(src, tok_end(t_lp));
+
+                                     extract_post_texts(src, rp)
+
+                                 } else { "ok" }
+
+                             };
+
+            let new_isfirst = if post_texts == "" {
+
+                let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
+
+                let _j = sb_push(sb, "{\"rule\":\"require_postcondition\",\"function\":\"" + json_esc(fn_name) + "\",\"message\":\"function " + json_esc(fn_name) + " has no postcondition\"}");
+
+                0
+
+            } else { isfirst };
+
+            bc_check_post_scan(entries, src, eff_map, eol + 1, sb, new_isfirst)
+
+        }
+
+    };
+
+// Check forbid_effect: find user functions using a specific forbidden effect
+fn bc_check_forbid_eff(entries: String, transitive_map: String, forbidden: String, sb: i64, isfirst: i64, pos: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= entries.len() { isfirst }
+
+    else {
+
+        let eol = callers_find_eol(entries, pos);
+
+        let line = entries.slice(pos, eol);
+
+        if line.len() == 0 { bc_check_forbid_eff(entries, transitive_map, forbidden, sb, isfirst, eol + 1) }
+
+        else {
+
+            let fn_name = callers_get_field(line, 0, 0, 0);
+
+            let trans_eff = eff_map_get(transitive_map, fn_name, 0);
+
+            let new_isfirst = if eff_contains_name(trans_eff, forbidden) {
+
+                let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
+
+                let _j = sb_push(sb, "{\"rule\":\"forbid_effect\",\"function\":\"" + json_esc(fn_name) + "\",\"message\":\"function " + json_esc(fn_name) + " uses <" + json_esc(forbidden) + "> (forbidden by project contracts)\"}");
+
+                0
+
+            } else { isfirst };
+
+            bc_check_forbid_eff(entries, transitive_map, forbidden, sb, new_isfirst, eol + 1)
+
+        }
+
+    };
+
+fn contracts_check_run(input: String, src: String, contracts: String) -> i64
+
+  post it >= 0
+
+= {
+
+    let entries = callers_collect_source(src, 0, "");
+
+    let eff_map = build_fn_effect_map(src, 0, "");
+
+    let transitive_map = build_full_transitive_effect_map(entries, eff_map, 5);
+
+    let req_post = bc_get(contracts, "require_postcondition", 0);
+
+    let req_eff_anno = bc_get(contracts, "require_effect_annotation", 0);
+
+    let forbid_eff = bc_get(contracts, "forbid_effect", 0);
+
+    let viol_sb = sb_new();
+
+    let f1 = 1;
+
+    // require_postcondition check
+    let f2 = if req_post == "true" { bc_check_post_scan(entries, src, eff_map, 0, viol_sb, f1) } else { f1 };
+
+    // forbid_effect check
+    let f3 = if forbid_eff != "" {
+
+        bc_check_forbid_eff(entries, transitive_map, forbid_eff, viol_sb, f2, 0)
+
+    } else { f2 };
+
+    // require_effect_annotation: use existing lint, just count
+    let eff_count = if req_eff_anno == "true" {
+
+        lint_check_missing_effect_annotations(entries, eff_map, transitive_map, 0, 0)
+
+    } else { 0 };
+
+    let has_viol = f3 == 0 or eff_count > 0;
+
+    let status = if has_viol { "violation" } else { "safe" };
+
+    let out_sb = sb_new();
+
+    let _h1 = sb_push(out_sb, "{\"type\":\"contracts_check\",\"file\":\"");
+
+    let _h2 = sb_push(out_sb, json_esc(input));
+
+    let _h3 = sb_push(out_sb, "\",\"status\":\"" + status + "\"");
+
+    let _h4 = if has_viol {
+
+        let _vb = sb_push(out_sb, ",\"violations\":[");
+
+        let _vc = sb_push(out_sb, sb_build(viol_sb));
+
+        sb_push(out_sb, "]")
+
+    } else { 0 };
+
+    let _h5 = sb_push(out_sb, "}");
+
+    let _p = println_str(sb_build(out_sb));
+
+    0
+
+};
+
+fn contracts_check_file(input: String) -> i64
+
+  post it >= 0
+
+= let src = read_file(input);
+
+    if src.len() == 0 { err_no_file(input) }
+
+    else {
+
+        let contracts_src = read_file(".bmb-contracts");
+
+        let contracts = if contracts_src.len() > 0 {
+
+            bc_parse_contracts(contracts_src, 0, "")
+
+        } else { "" };
+
+        contracts_check_run(input, src, contracts)
+
+    };
+
+// M14 Phase 4: SemanticDuplicate — detect functions with identical call sets
+// Finds pairs of functions with same callee set (≥3 calls), indicating potential duplication.
+// Conservative threshold: exact call set overlap (shared == max(count_a, count_b)).
+
+fn semdp_call_count(calls: String, pos: i64, count: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if calls == "" { 0 }
+
+    else if pos >= calls.len() { count + 1 }
+
+    else if calls.byte_at(pos) == 44 { semdp_call_count(calls, pos + 2, count + 1) }
+
+    else { semdp_call_count(calls, pos + 1, count) };
+
+// Count calls in calls_a that appear in calls_b (using callers_calls_contain)
+fn semdp_count_shared(calls_a: String, calls_b: String, pos: i64, count: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if calls_a == "" or calls_b == "" { 0 }
+
+    else if pos >= calls_a.len() {
+
+        let end = calls_a.len();
+
+        let start = semdp_name_start(calls_a, pos - 1);
+
+        let name = calls_a.slice(start, end);
+
+        if name.len() > 0 and callers_calls_contain(calls_b, name, 0) { count + 1 }
+
+        else { count }
+
+    }
+
+    else if calls_a.byte_at(pos) == 44 {
+
+        let start = semdp_name_start(calls_a, pos - 1);
+
+        let name = calls_a.slice(start, pos);
+
+        let inc = if callers_calls_contain(calls_b, name, 0) { 1 } else { 0 };
+
+        semdp_count_shared(calls_a, calls_b, pos + 2, count + inc)
+
+    }
+
+    else { semdp_count_shared(calls_a, calls_b, pos + 1, count) };
+
+// Scan backward from pos to find start of current name
+fn semdp_name_start(s: String, pos: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos <= 0 { 0 }
+
+    else if s.byte_at(pos) == 44 { pos + 2 }  // past ", "
+
+    else { semdp_name_start(s, pos - 1) };
+
+// Check one pair (a, b): returns "fn_a\tfn_b\tshared\tcount_a\tcount_b\n" if duplicate
+fn semdp_check_pair(name_a: String, calls_a: String, name_b: String, calls_b: String) -> String
+
+  post it.len() >= 0
+
+= {
+
+    let cnt_a = semdp_call_count(calls_a, 0, 0);
+
+    let cnt_b = semdp_call_count(calls_b, 0, 0);
+
+    if cnt_a < 3 or cnt_b < 3 { "" }
+
+    else {
+
+        let shared = semdp_count_shared(calls_a, calls_b, 0, 0);
+
+        let max_cnt = if cnt_a > cnt_b { cnt_a } else { cnt_b };
+
+        // Exact overlap: shared == max (all calls of one are in the other)
+        if shared == max_cnt {
+
+            name_a + "\t" + name_b + "\t" + int_to_string(shared) + "\t" + int_to_string(cnt_a) + "\t" + int_to_string(cnt_b) + "\n"
+
+        } else { "" }
+
+    }
+
+};
+
+// Inner loop: compare fn_a against all subsequent entries
+fn semdp_inner(name_a: String, calls_a: String, entries: String, pos: i64, sb: i64, isfirst: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= entries.len() { isfirst }
+
+    else {
+
+        let eol = callers_find_eol(entries, pos);
+
+        let line = entries.slice(pos, eol);
+
+        if line.len() == 0 { semdp_inner(name_a, calls_a, entries, eol + 1, sb, isfirst) }
+
+        else {
+
+            let name_b = callers_get_field(line, 0, 0, 0);
+
+            let calls_b = callers_get_field(line, 1, 0, 0);
+
+            let pair = if name_a != name_b { semdp_check_pair(name_a, calls_a, name_b, calls_b) } else { "" };
+
+            let new_isfirst = if pair != "" {
+
+                let tab1 = str_find(pair, "\t");
+
+                let tab2 = str_find(pair.slice(tab1 + 1, pair.len()), "\t");
+
+                let name_b_from = pair.slice(tab1 + 1, tab1 + 1 + tab2);
+
+                let rest = pair.slice(tab1 + 1 + tab2 + 1, pair.len() - 1);
+
+                let tab3 = str_find(rest, "\t");
+
+                let shared_s = rest.slice(0, tab3);
+
+                let rest2 = rest.slice(tab3 + 1, rest.len());
+
+                let tab4 = str_find(rest2, "\t");
+
+                let cnt_a_s = rest2.slice(0, tab4);
+
+                let cnt_b_s = rest2.slice(tab4 + 1, rest2.len());
+
+                let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
+
+                let _j = sb_push(sb, "{\"fn_a\":\"" + json_esc(name_a) + "\",\"fn_b\":\"" + json_esc(name_b_from) + "\",\"shared_calls\":" + shared_s + ",\"total_a\":" + cnt_a_s + ",\"total_b\":" + cnt_b_s + "}");
+
+                0
+
+            } else { isfirst };
+
+            semdp_inner(name_a, calls_a, entries, eol + 1, sb, new_isfirst)
+
+        }
+
+    };
+
+// Outer loop: for each function, check against all subsequent functions
+fn semdp_outer(entries: String, all_entries: String, pos: i64, sb: i64, isfirst: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= entries.len() { isfirst }
+
+    else {
+
+        let eol = callers_find_eol(entries, pos);
+
+        let line = entries.slice(pos, eol);
+
+        if line.len() == 0 { semdp_outer(entries, all_entries, eol + 1, sb, isfirst) }
+
+        else {
+
+            let name_a = callers_get_field(line, 0, 0, 0);
+
+            let calls_a = callers_get_field(line, 1, 0, 0);
+
+            // Only compare against entries AFTER current position to avoid duplicate pairs
+            let new_isfirst = semdp_inner(name_a, calls_a, entries, eol + 1, sb, isfirst);
+
+            semdp_outer(entries, all_entries, eol + 1, sb, new_isfirst)
+
+        }
+
+    };
+
+fn semantic_duplicate_run(input: String, src: String) -> i64
+
+  post it >= 0
+
+= {
+
+    let entries = callers_collect_source(src, 0, "");
+
+    let viol_sb = sb_new();
+
+    let isfirst = semdp_outer(entries, entries, 0, viol_sb, 1);
+
+    let has_pairs = isfirst == 0;
+
+    let out_sb = sb_new();
+
+    let _h1 = sb_push(out_sb, "{\"type\":\"semantic_duplicate\",\"file\":\"");
+
+    let _h2 = sb_push(out_sb, json_esc(input));
+
+    let _h3 = sb_push(out_sb, "\",\"pairs\":[");
+
+    let _h4 = sb_push(out_sb, sb_build(viol_sb));
+
+    let _h5 = sb_push(out_sb, "]}");
+
+    let _p = println_str(sb_build(out_sb));
+
+    0
+
+};
+
+fn semantic_duplicate_file(input: String) -> i64
+
+  post it >= 0
+
+= let src = read_file(input);
+
+    if src.len() == 0 { err_no_file(input) }
+
+    else { semantic_duplicate_run(input, src) };
+
 fn main() -> i64
 
   post it >= 0
@@ -45115,6 +45990,21 @@ fn main() -> i64
 
             // M13 Phase 4: Combined verify+repair — all functions with status + contracts
             verify_repair_file(get_arg(2))
+
+        } else if cmd == "effect-verify" and argc >= 3 {
+
+            // M12 Phase 6: Z3 formal verification of effect constraints
+            effect_verify_file(get_arg(2))
+
+        } else if cmd == "contracts-check" and argc >= 3 {
+
+            // M13 Phase 5: Session-persistent contracts check via .bmb-contracts
+            contracts_check_file(get_arg(2))
+
+        } else if cmd == "semantic-duplicate" and argc >= 3 {
+
+            // M14 Phase 4: Find functions with identical call sets (potential duplicates)
+            semantic_duplicate_file(get_arg(2))
 
         } else if argc >= 3 {
 

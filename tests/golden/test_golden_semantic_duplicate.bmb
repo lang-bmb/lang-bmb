@@ -1,0 +1,23 @@
+// M14 Phase 4: SemanticDuplicate — detect functions with identical call sets
+// Tests: semantic-duplicate command finds process_v1/process_v2 as potential duplicates
+
+fn helper_a() -> i64 = 1;
+fn helper_b() -> i64 = 2;
+fn helper_c() -> i64 = 3;
+
+// These two functions have identical call sets (3 calls each)
+fn process_v1() -> i64 = {
+    let a = helper_a();
+    let b = helper_b();
+    let c = helper_c();
+    a + b + c
+};
+
+fn process_v2() -> i64 = {
+    let x = helper_c();
+    let y = helper_a();
+    let z = helper_b();
+    x + y + z
+};
+
+fn main() -> i64 = 0;

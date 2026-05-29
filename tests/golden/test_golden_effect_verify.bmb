@@ -1,0 +1,17 @@
+// M12 Phase 6: Effect system Z3 formal verification
+// Tests: effect-verify command generates correct JSON for violation case
+
+platform stdlib {
+    fn print_line(): <IO> -> ()
+    fn fetch_url(): <Net> -> String
+}
+
+// Violation: declares <IO> but calls safe_net which has <Net>
+fn safe_net(): <Net> -> String = fetch_url();
+
+fn bad_caller(): <IO> -> i64 = {
+    let _s = safe_net();
+    0
+};
+
+fn main() -> i64 = 0;

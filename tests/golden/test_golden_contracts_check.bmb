@@ -1,0 +1,10 @@
+// M13 Phase 5: Session-persistent contracts check
+// Tests: contracts-check command with .bmb-contracts require_postcondition rule
+
+fn missing_post() -> i64 = 42;
+
+fn has_post() -> i64
+  post it >= 0
+= 42;
+
+fn main() -> i64 = 0;
