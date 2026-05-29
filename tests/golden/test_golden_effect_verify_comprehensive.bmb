@@ -1,0 +1,36 @@
+// M12 Phase 6b/6c: Comprehensive effect-verify test
+// Tests all three violation types: Z3 declared, @pure, missing_annotation
+
+platform stdlib {
+    fn write_log(): <IO> -> ()
+    fn send_data(): <Net> -> ()
+}
+
+fn safe_io(): <IO> -> i64 = {
+    let _ = write_log();
+    0
+};
+
+fn net_fn(): <Net> -> i64 = {
+    let _ = send_data();
+    0
+};
+
+// Violation 1 (Z3 unsat): IO caller calls Net callee
+fn bad_io_caller(): <IO> -> i64 = {
+    let _ = net_fn();
+    0
+};
+
+// Violation 2 (@pure): pure fn calls IO fn
+@pure fn pure_bad(x: i64) -> i64 = safe_io() + x;
+
+// Violation 3 (missing): uses IO without declaration
+fn missing_ann() -> i64 = {
+    let _ = write_log();
+    42
+};
+
+@pure fn pure_ok(x: i64) -> i64 = x * 2;
+
+fn main() -> i64 = pure_ok(1);

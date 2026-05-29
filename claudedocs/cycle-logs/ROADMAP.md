@@ -1,60 +1,50 @@
 # Cycle-Logs 방향성 로드맵
-> 최종 업데이트: 2026-05-28 (Cycle 3250 — M11-C Phase 14 완료, multi-level compound const 수정)
+> 최종 업데이트: 2026-05-29 (Cycle 3285 — AI-Native Pivot M12~M15 Phase 완료, 세션 종료)
 > 이 파일은 **방향성 앵커**다 — 각 사이클 Derive-Next에서 수정 가능.
 > 실무 앵커: `claudedocs/ROADMAP.md`
 
-## 현재 상태 (Cycles 3251-3260 기준, 2026-05-29)
+## 현재 상태 (Cycles 3281-3285 기준, 2026-05-29)
 
-- HEAD: `[pending commit]` (M12+M13+M14+M15 Phase 1 완료)
-- M12 Phase 1+2a+2b+2c: ✅ COMPLETE
-- M13 Phase 1+2: ✅ COMPLETE
-- M14 Phase 1+2: ✅ COMPLETE (lock + verify)
-- M15 Phase 1: ✅ COMPLETE (platform 파싱)
-- cargo test --release: 2390 PASS ✅
-- 3-Stage Fixed Point: ✅ S2 == S3 (Cycle 3259)
-- lint: 177 non-recursive warnings (pre-existing)
+- HEAD: `2cab6bbc`
+- M12 Phase 1-6: ✅ COMPLETE (effect-verify Z3 formal verification 포함)
+- M13 Phase 1-5: ✅ COMPLETE (.bmb-contracts + contracts-check)
+- M14 Phase 1-4: ✅ COMPLETE (SHA lockfile + semantic-duplicate)
+- M15 Phase 1-4: ✅ COMPLETE (platform파싱 + capabilities + module requires)
+- cargo test --release: 3800+2390 PASS ✅
+- 3-Stage Fixed Point: ✅ S3c == S4c (Cycle 3284)
+- lint: 178 non-recursive warnings (pre-existing)
 
-## Cycles 3094-3103 방향성 — M7-4 구현
+## Cycles 3286-3295 방향성
 
-### M7-4 구성요소 (3가지)
+### 상속 Carry-Forward (P1 우선)
 
-1. `bmb verify --list-uncontracted` CLI
-2. `suggest_contracts` MCP tool (heuristic 기반)
-3. `bmb verify --suggest` (counterexample → pre 힌트)
-4. Track B 자동화 스크립트 (BMB 코드)
+1. **[P1] sim_count_shared 버그 수정**: `similar` 명령에서 N-1 shared 오보 → semdp와 통합
+2. **[P2] M12 더 깊은 Z3 통합**: `@pure fn` 위반 Z3 cert + effect lattice
+3. **[P3] M15 Phase 5**: platform stdlib 자동 → module capability 연계
+4. **[P4] contracts-check 개선**: platform 블록 swallow 버그 (depth tracking)
 
-### 우선순위 (계층 순)
+### 실행 계획 (방향성, 각 사이클에서 재검토)
 
-**Phase 1 (Cycles 3094-3095)**: `bmb verify --list-uncontracted` CLI
-- Rust CLI에 flag 추가
-- AST 스캔: pre/post/contracts 없는 함수 JSON 목록 출력
-- Track B 자동화의 기반
+**Phase 1 (Cycles 3286-3287)**: 버그 수정
+- sim_count_shared 근본 수정 → `similar` 명령 정상화
+- semdp_count_shared 통합 (중복 제거)
+- Fixed Point 확인
 
-**Phase 2 (Cycles 3096-3097)**: `suggest_contracts` MCP tool
-- mcp_server.bmb에 9번째 tool 추가
-- heuristic: pos/idx/n 파라미터 → `pre param >= 0` 제안
-- 함수 이름/반환 타입 패턴 기반 post 제안
+**Phase 2 (Cycles 3288-3290)**: M12 Z3 통합 심화
+- Phase 6b: `@pure fn` 위반도 Z3 SMT 확인
+- Phase 6c: `[missing_effect_annotation]` 추론 effect → Z3 assertion
+- Effect lattice 모델링 (IO ⊆ IO+Net partial order)
 
-**Phase 3 (Cycles 3098-3099)**: `bmb verify --suggest`
-- Failed 함수의 counterexample 파싱
-- 음수값 → `pre param >= 0` 힌트 출력
-- JSON 출력 확장
+**Phase 3 (Cycles 3291-3293)**: M15 Phase 5
+- platform stdlib 블록 → module capability 자동 연계
+- platform 함수 선언 → 해당 effect 자동 부여
+- contracts-check platform 블록 지원 개선
 
-**Phase 4 (Cycles 3100-3101)**: Track B 자동화 스크립트
-- `bootstrap/list-uncontracted.bmb`
-- 미계약 함수 목록 → 우선순위 출력
+**Phase 4 (Cycles 3294-3295)**: 마무리
+- M12/M13/M15 문서화 + 골든 테스트 보강
+- Fixed Point 확인 + 최종 커밋
 
-**Phase 5 (Cycles 3102-3103)**: 추가 Track B + M7-4 COMPLETE
-- 미계약 함수 중 주요 함수 계약 추가
-- ROADMAP M7-4 ✅ 마킹
+### HUMAN-blocked 항목
 
-### 조기 종료 조건
-
-- M7-4 3개 구성요소 완성 → 조기 종료 가능
-- HARD STOP 없이 자연 종료
-
-## 알려진 HUMAN-blocked 항목
-
-- B-axis 재측정 (API key 필요)
-- M8 계획 수립 (외부 신호 대기)
-- Active ISSUE 5개 (모두 HUMAN-blocked)
+- B-axis 재측정 (ANTHROPIC_API_KEY 필요, stale: 2026-08-13)
+- v1.0 선언 (외부 신호 대기)

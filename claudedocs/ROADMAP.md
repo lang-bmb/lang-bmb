@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-29 (**AI-Native Pivot Cycles 3281-3284** — M12 Phase 6(effect-verify Z3 formal verification) + M13 Phase 5(.bmb-contracts + contracts-check) + M14 Phase 4(SemanticDuplicate call set 비교). Fixed Point S3c==S4c ✅. HEAD `d7d98a18`.)
+> 최종 업데이트: 2026-05-29 (**AI-Native Pivot Cycles 3286-3290** — M14-4b sim_count_shared 버그수정 + M12-6b(@pure violation effect-verify) + M12-6c(missing_effect_annotation) + M15-5(module-suggest + callers_collect_source platform fix). Within-gen Fixed Point ✅. HEAD `pending`.)
 > 이전 갱신: 2026-05-29 (**AI-Native Pivot Cycles 3271-3280** — M12 Phase 4(transitive eff propagation) + M12 Phase 5([missing_effect_annotation]) + M13 Phase 4(verify-repair) + M15 Phase 3(module requires + [module_capability]) + M15 Phase 4(full transitive module cap check). Fixed Point S2==S3 ✅. HEAD `f6613685`.)
 > 이전 갱신: 2026-05-29 (**AI-Native Pivot Cycles 3271-3276** — M12 Phase 4(transitive effect propagation) + M12 Phase 5([missing_effect_annotation]) + M13 Phase 4(verify-repair 통합 명령) + M15 Phase 3(module X requires [...] + [module_capability] lint). Fixed Point S2==S3 ✅.)
 > 이전 갱신: 2026-05-29 (**AI-Native Pivot Cycles 3261-3270** — M14 Phase 3(gotgan add) + M12 Phase 3([effect_propagation] lint) + M15 Phase 2(platform capabilities) + M13 Phase 3 Full(repair-hint pre/post/intent JSON) + Fixed Point S2==S3 ✅.)
@@ -1563,7 +1563,7 @@ Phase 2 (3-4 cycles): 모듈 capability 선언
   - 인터페이스 보고 capability 흐름 분석 가능
 ```
 
-### M12-M15 진척 현황 (Cycles 3251-3284, 2026-05-29)
+### M12-M15 진척 현황 (Cycles 3251-3290, 2026-05-29)
 
 | 마일스톤 | 페이즈 | 상태 | 사이클 |
 |---------|------|------|------|
@@ -1574,6 +1574,8 @@ Phase 2 (3-4 cycles): 모듈 capability 선언
 | M12 Graded Effect | Phase 4: 전이 효과 전파 (A→B→C) | ✅ COMPLETE | 3271-3272 |
 | M12 Graded Effect | Phase 5: [missing_effect_annotation] lint | ✅ COMPLETE | 3273 |
 | M12 Graded Effect | Phase 6: Z3 formal verification (effect-verify) | ✅ COMPLETE | 3281-3282 |
+| M12 Graded Effect | Phase 6b: @pure fn violation → effect-verify | ✅ COMPLETE | 3287 |
+| M12 Graded Effect | Phase 6c: missing_effect_annotation → effect-verify | ✅ COMPLETE | 3288 |
 | M13 AI Workflow | Phase 1: intent: 파싱 | ✅ COMPLETE | 3252 |
 | M13 AI Workflow | Phase 2: intent_no_contract lint | ✅ COMPLETE | 3252 |
 | M13 AI Workflow | Phase 3: repair-hint Full (pre/post/intent JSON) | ✅ COMPLETE | 3267 |
@@ -1583,10 +1585,12 @@ Phase 2 (3-4 cycles): 모듈 capability 선언
 | M14 Content Addressing | Phase 2: gotgan verify + lock check | ✅ COMPLETE | 3259 |
 | M14 Content Addressing | Phase 3: gotgan add 명령 | ✅ COMPLETE | 3261 |
 | M14 Content Addressing | Phase 4: SemanticDuplicate call set 비교 (semantic-duplicate) | ✅ COMPLETE | 3284 |
+| M14 Content Addressing | Phase 4b: sim_count_shared 버그 수정 + semdp 통합 | ✅ COMPLETE | 3286 |
 | M15 Platform/Capability | Phase 1: platform 파싱 | ✅ COMPLETE | 3260 |
 | M15 Platform/Capability | Phase 2: platform capabilities effect map | ✅ COMPLETE | 3263 |
 | M15 Platform/Capability | Phase 3: module X requires [...] + [module_capability] | ✅ COMPLETE | 3275 |
 | M15 Platform/Capability | Phase 4: full transitive module cap check | ✅ COMPLETE | 3277 |
+| M15 Platform/Capability | Phase 5: module-suggest + callers_collect_source platform fix | ✅ COMPLETE | 3289 |
 
 ### 실행 타임라인
 

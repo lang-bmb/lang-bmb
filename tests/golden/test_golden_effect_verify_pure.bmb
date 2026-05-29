@@ -1,0 +1,11 @@
+// M12 Phase 6b: @pure fn violation detection in effect-verify
+// Tests: pure function calling an effectful function is detected
+
+fn io_fn(): <IO> -> i64 = 0;
+
+@pure fn safe_fn(x: i64) -> i64 = x + 1;
+
+// Violation: @pure fn calling IO function
+@pure fn bad_fn(x: i64) -> i64 = io_fn() + x;
+
+fn main() -> i64 = bad_fn(1);

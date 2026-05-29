@@ -36993,6 +36993,48 @@ fn callers_collect_fn(src: String, pos: i64, ann: String) -> String
 
 // Walk source collecting all function entries as "name\tcalls\tsig\n" strings
 
+// Skip nested brace block at depth>0. Used by skip_platform_block.
+fn skip_nested_brace(src: String, pos: i64, depth: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= let t = next_token_raw(src, pos);
+
+    let k = tok_kind(t);
+
+    if k == TK_EOF() { pos }
+
+    else if k == TK_LBRACE() { skip_nested_brace(src, tok_end(t), depth + 1) }
+
+    else if k == TK_RBRACE() {
+
+        if depth <= 1 { tok_end(t) }
+
+        else { skip_nested_brace(src, tok_end(t), depth - 1) }
+
+    }
+
+    else { skip_nested_brace(src, tok_end(t), depth) };
+
+// Skip 'platform Name { ... }' starting from after the 'platform' keyword.
+fn skip_platform_block(src: String, pos: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= let t_name = next_token_raw(src, pos);
+
+    let after_name = if tok_kind(t_name) == TK_IDENT() { tok_end(t_name) } else { tok_end(t_name) };
+
+    let t_brace = next_token_raw(src, after_name);
+
+    if tok_kind(t_brace) == TK_LBRACE() { skip_nested_brace(src, tok_end(t_brace), 1) }
+
+    else { after_name };
+
 fn callers_collect_source(src: String, pos: i64, acc: String) -> String
 
   pre pos >= 0
@@ -37036,6 +37078,21 @@ fn callers_collect_source(src: String, pos: i64, acc: String) -> String
             let new_acc = if entry == "" { acc } else { acc + entry + "\n" };
 
             callers_collect_source(src, unpack_pos(result), new_acc)
+
+        }
+
+        else if kind == TK_IDENT() {
+
+            let ident = get_ident_text(src, pos, tok);
+
+            if ident == "platform" {
+
+                // M15 Phase 5 fix: skip platform block to avoid swallowing subsequent functions
+                let after_plat = skip_platform_block(src, tok_end(tok));
+
+                callers_collect_source(src, after_plat, acc)
+
+            } else { callers_collect_source(src, tok_end(tok), acc) }
 
         }
 
@@ -38627,7 +38684,7 @@ fn sim_find_start_rev(s: String, pos: i64) -> i64
 
   post it >= 0
 
-= if pos < 0 { 0 }
+= if pos <= 0 { 0 }
 
     else if s.byte_at(pos) == 44 { pos + 2 }
 
@@ -42869,6 +42926,169 @@ fn lint_check_module_capabilities(entries: String, transitive_map: String, modul
 
     };
 
+// --- M15 Phase 5: Module Capability Suggestion ---
+// Analyzes actual platform capability usage and suggests the correct 'module X requires [...]'.
+
+// Gather all transitive capabilities used by non-platform, non-main functions.
+fn ms_gather_used_caps(entries: String, transitive_map: String, pos: i64, acc: String) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 0
+
+= if pos >= entries.len() { acc }
+
+    else {
+
+        let eol = callers_find_eol(entries, pos);
+
+        let line = entries.slice(pos, eol);
+
+        if line.len() == 0 { ms_gather_used_caps(entries, transitive_map, eol + 1, acc) }
+
+        else {
+
+            let fn_name = callers_get_field(line, 0, 0, 0);
+
+            let raw_eff = eff_map_get_raw(transitive_map, fn_name, 0);
+
+            let is_plat = str_find(raw_eff, "PLAT:") == 0;
+
+            let new_acc = if is_plat or fn_name == "main" { acc }
+
+            else {
+
+                let trans_eff = eff_map_get(transitive_map, fn_name, 0);
+
+                if trans_eff == "" or trans_eff == "pure" or trans_eff == "*" { acc }
+
+                else { eff_merge_effects(acc, trans_eff) }
+
+            };
+
+            ms_gather_used_caps(entries, transitive_map, eol + 1, new_acc)
+
+        }
+
+    };
+
+// Find any declared 'module X requires [...]' in src, return module name.
+fn scan_module_name(src: String, pos: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 0
+
+= let ident_pos = find_pattern_noa(src, "module ", pos);
+
+    if ident_pos < 0 { "" }
+
+    else {
+
+        let is_real = if ident_pos == 0 { true }
+
+                      else { let prev = src.byte_at(ident_pos - 1); prev == 10 or prev == 13 };
+
+        if is_real {
+
+            let name_start = skip_ws_comments(src, ident_pos + 7);
+
+            let name_end = scan_ident_end(src, name_start);
+
+            if name_end > name_start { src.slice(name_start, name_end) }
+
+            else { scan_module_name(src, ident_pos + 7) }
+
+        }
+
+        else { scan_module_name(src, ident_pos + 7) }
+
+    };
+
+// Main entry for module-suggest command.
+fn module_suggest_file(input: String) -> i64
+
+  post it >= 0
+
+= let src = read_file(input);
+
+    if src.len() == 0 { err_no_file(input) }
+
+    else {
+
+        let entries = callers_collect_source(src, 0, "");
+
+        let eff_map = build_fn_effect_map(src, 0, "");
+
+        let transitive_map = build_full_transitive_effect_map(entries, eff_map, 5);
+
+        let used_caps = ms_gather_used_caps(entries, transitive_map, 0, "");
+
+        let declared_caps = scan_module_requires(src, 0);
+
+        let module_name = scan_module_name(src, 0);
+
+        let out_sb = sb_new();
+
+        let _h1 = sb_push(out_sb, "{\"type\":\"module_suggest\",\"file\":\"");
+
+        let _h2 = sb_push(out_sb, json_esc(input));
+
+        let _h3 = sb_push(out_sb, "\",\"module\":\"" + json_esc(module_name) + "\"");
+
+        let _h4 = sb_push(out_sb, ",\"declared\":[");
+
+        let _h5 = sb_push(out_sb, ms_caps_to_json(declared_caps, 0, 1));
+
+        let _h6 = sb_push(out_sb, "],\"suggested\":[");
+
+        let _h7 = sb_push(out_sb, ms_caps_to_json(used_caps, 0, 1));
+
+        let _h8 = sb_push(out_sb, "],\"status\":\"");
+
+        let _h9 = sb_push(out_sb, if declared_caps == used_caps { "ok" }
+
+                                   else if declared_caps == "" { "needs_module" }
+
+                                   else { "mismatch" });
+
+        let _h10 = sb_push(out_sb, "\"}");
+
+        let _p = println_str(sb_build(out_sb));
+
+        0
+
+    };
+
+// Convert space-separated caps list to JSON array of strings.
+fn ms_caps_to_json(caps: String, pos: i64, isfirst: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 0
+
+= if pos >= caps.len() { "" }
+
+    else {
+
+        let end = eff_find_space_or_end(caps, pos);
+
+        let cap = caps.slice(pos, end);
+
+        let this = if cap.len() == 0 { "" }
+
+            else if isfirst == 1 { "\"" + json_esc(cap) + "\"" }
+
+            else { ",\"" + json_esc(cap) + "\"" };
+
+        let rest = if end >= caps.len() { "" }
+
+            else { ms_caps_to_json(caps, end + 1, if cap.len() == 0 { isfirst } else { 0 }) };
+
+        this + rest
+
+    };
+
 // Rule: intent documents intent; contracts verify it. If you write intent, also write contracts.
 
 fn lint_check_intent_scan(src: String, pos: i64, count: i64) -> i64
@@ -44999,6 +45219,144 @@ fn eff_z3_gen_edges(entries: String, eff_map: String, pos: i64, sb: i64) -> i64
 
     };
 
+// M12 Phase 6d: Add @pure/@const functions as Z3 pure-effect constraints.
+// Pure functions have all effects false, so calls from them to effectful fns → UNSAT.
+fn eff_z3_gen_pure_decls(entries: String, eff_map: String, pos: i64, sb: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= entries.len() { 0 }
+
+    else {
+
+        let eol = callers_find_eol(entries, pos);
+
+        let line = entries.slice(pos, eol);
+
+        if line.len() == 0 { eff_z3_gen_pure_decls(entries, eff_map, eol + 1, sb) }
+
+        else {
+
+            let fn_name = callers_get_field(line, 0, 0, 0);
+
+            let sig = callers_get_field(line, 2, 0, 0);
+
+            let calls = callers_get_field(line, 1, 0, 0);
+
+            let is_pure = str_find(sig, "@pure fn") >= 0 or str_find(sig, "@const fn") >= 0;
+
+            // Only add pure functions that actually call something in eff_map (otherwise useless)
+            let has_eff_callee = is_pure and eff_pure_has_eff_callee(calls, eff_map, 0);
+
+            let _x = if has_eff_callee {
+
+                // Declare pure fn with all effects = false
+                let _d1 = sb_push(sb, "(declare-const |" + fn_name + "_io| Bool)\n");
+
+                let _d2 = sb_push(sb, "(assert (= |" + fn_name + "_io| false))\n");
+
+                let _d3 = sb_push(sb, "(declare-const |" + fn_name + "_net| Bool)\n");
+
+                let _d4 = sb_push(sb, "(assert (= |" + fn_name + "_net| false))\n");
+
+                let _d5 = sb_push(sb, "(declare-const |" + fn_name + "_file| Bool)\n");
+
+                let _d6 = sb_push(sb, "(assert (= |" + fn_name + "_file| false))\n");
+
+                let _d7 = sb_push(sb, "(declare-const |" + fn_name + "_sys| Bool)\n");
+
+                let _d8 = sb_push(sb, "(assert (= |" + fn_name + "_sys| false))\n");
+
+                // Generate direct constraints for pure fn → effectful callees (bypassing caller_eff check)
+                eff_z3_gen_pure_edges(fn_name, calls, eff_map, 0, sb)
+
+            } else { 0 };
+
+            eff_z3_gen_pure_decls(entries, eff_map, eol + 1, sb)
+
+        }
+
+    };
+
+// Generate direct edge assertions for a pure fn calling effectful callees.
+// Unlike eff_z3_gen_call_edge, this doesn't require caller to be in eff_map.
+fn eff_z3_gen_pure_edge(caller_name: String, callee_name: String, eff_map: String, sb: i64) -> i64
+
+  post it >= 0
+
+= {
+
+    let callee_eff = eff_map_get(eff_map, callee_name, 0);
+
+    if callee_eff == "" or callee_eff == "*" { 0 }
+
+    else {
+
+        // For each effect in callee, assert: (=> callee_X caller_X)
+        // Since caller_X = false (pure), this creates contradiction if callee_X = true
+        let _e1 = sb_push(sb, "(assert (=> |" + callee_name + "_io| |" + caller_name + "_io|))\n");
+
+        let _e2 = sb_push(sb, "(assert (=> |" + callee_name + "_net| |" + caller_name + "_net|))\n");
+
+        let _e3 = sb_push(sb, "(assert (=> |" + callee_name + "_file| |" + caller_name + "_file|))\n");
+
+        let _e4 = sb_push(sb, "(assert (=> |" + callee_name + "_sys| |" + caller_name + "_sys|))\n");
+
+        0
+
+    }
+
+};
+
+fn eff_z3_gen_pure_edges(caller_name: String, calls: String, eff_map: String, pos: i64, sb: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= calls.len() { 0 }
+
+    else {
+
+        let end = index_find_comma_or_end(calls, pos);
+
+        let callee = calls.slice(pos, end);
+
+        let _x = eff_z3_gen_pure_edge(caller_name, callee, eff_map, sb);
+
+        if end >= calls.len() { 0 }
+
+        else { eff_z3_gen_pure_edges(caller_name, calls, eff_map, end + 2, sb) }
+
+    };
+
+// Check if any callee in calls list has a declared effect in eff_map.
+fn eff_pure_has_eff_callee(calls: String, eff_map: String, pos: i64) -> bool
+
+  pre pos >= 0
+
+  post not it or calls.len() > 0
+
+= if pos >= calls.len() { false }
+
+    else {
+
+        let end = index_find_comma_or_end(calls, pos);
+
+        let callee = calls.slice(pos, end);
+
+        let callee_eff = eff_map_get(eff_map, callee, 0);
+
+        if callee_eff != "" and callee_eff != "*" { true }
+
+        else if end >= calls.len() { false }
+
+        else { eff_pure_has_eff_callee(calls, eff_map, end + 2) }
+
+    };
+
 fn eff_z3_gen_smt(entries: String, eff_map: String) -> String
 
   post it.len() >= 0
@@ -45010,6 +45368,8 @@ fn eff_z3_gen_smt(entries: String, eff_map: String) -> String
     let _h = sb_push(sb, "; BMB M12 Phase 6: Effect System Verification\n");
 
     let _d = eff_z3_gen_fn_decls(eff_map, 0, sb);
+
+    let _p = eff_z3_gen_pure_decls(entries, eff_map, 0, sb);
 
     let _e = eff_z3_gen_edges(entries, eff_map, 0, sb);
 
@@ -45135,6 +45495,138 @@ fn eff_collect_violations(entries: String, eff_map: String, pos: i64, sb: i64, i
 
     };
 
+// M12 Phase 6b: Check @pure/@const fn calling a function with declared effects.
+// Emits JSON violation objects into sb; returns new isfirst.
+fn eff_collect_pure_calls(fn_name: String, calls: String, eff_map: String, pos: i64, sb: i64, isfirst: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= calls.len() { isfirst }
+
+    else {
+
+        let end = index_find_comma_or_end(calls, pos);
+
+        let callee = calls.slice(pos, end);
+
+        let callee_eff = eff_map_get(eff_map, callee, 0);
+
+        let new_isfirst = if callee_eff != "" and callee_eff != "*" {
+
+            let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
+
+            let _j = sb_push(sb, "{\"caller\":\"" + json_esc(fn_name) + "\",\"callee\":\"" + json_esc(callee) + "\",\"caller_effect\":\"pure\",\"callee_effect\":\"" + json_esc(callee_eff) + "\"}");
+
+            0
+
+        } else { isfirst };
+
+        if end >= calls.len() { new_isfirst }
+
+        else { eff_collect_pure_calls(fn_name, calls, eff_map, end + 2, sb, new_isfirst) }
+
+    };
+
+// Scan all entries for @pure/@const fn calling effectful callees.
+fn eff_collect_pure_violations(entries: String, eff_map: String, pos: i64, sb: i64, isfirst: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= entries.len() { isfirst }
+
+    else {
+
+        let eol = callers_find_eol(entries, pos);
+
+        let line = entries.slice(pos, eol);
+
+        if line.len() == 0 { eff_collect_pure_violations(entries, eff_map, eol + 1, sb, isfirst) }
+
+        else {
+
+            let fn_name = callers_get_field(line, 0, 0, 0);
+
+            let calls = callers_get_field(line, 1, 0, 0);
+
+            let sig = callers_get_field(line, 2, 0, 0);
+
+            let is_pure = str_find(sig, "@pure fn") >= 0 or str_find(sig, "@const fn") >= 0;
+
+            let new_isfirst = if is_pure and calls.len() > 0 {
+
+                eff_collect_pure_calls(fn_name, calls, eff_map, 0, sb, isfirst)
+
+            } else { isfirst };
+
+            eff_collect_pure_violations(entries, eff_map, eol + 1, sb, new_isfirst)
+
+        }
+
+    };
+
+// M12 Phase 6c: Missing effect annotation violations for effect_verify output.
+// Emits JSON violation objects for functions with inferred effects but no explicit declaration.
+fn eff_collect_missing_annot(entries: String, direct_map: String, transitive_map: String, pos: i64, sb: i64, isfirst: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= entries.len() { isfirst }
+
+    else {
+
+        let eol = callers_find_eol(entries, pos);
+
+        let line = entries.slice(pos, eol);
+
+        if line.len() == 0 { eff_collect_missing_annot(entries, direct_map, transitive_map, eol + 1, sb, isfirst) }
+
+        else {
+
+            let fn_name = callers_get_field(line, 0, 0, 0);
+
+            let sig = callers_get_field(line, 2, 0, 0);
+
+            let direct_raw = eff_map_get_raw(direct_map, fn_name, 0);
+
+            let is_plat = str_find(direct_raw, "PLAT:") == 0;
+
+            // Skip pure/const (already covered by eff_collect_pure_violations) and main
+            let is_pure_fn = str_find(sig, "@pure fn") >= 0 or str_find(sig, "@const fn") >= 0;
+
+            let is_main = fn_name == "main";
+
+            let new_isfirst = if direct_raw != "" or is_plat or is_pure_fn or is_main { isfirst }
+
+            else {
+
+                let trans_eff = eff_map_get(transitive_map, fn_name, 0);
+
+                if trans_eff == "" or trans_eff == "pure" or trans_eff == "*" { isfirst }
+
+                else {
+
+                    let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
+
+                    let _j = sb_push(sb, "{\"caller\":\"" + json_esc(fn_name) + "\",\"callee\":\"\",\"caller_effect\":\"missing\",\"callee_effect\":\"" + json_esc(trans_eff) + "\"}");
+
+                    0
+
+                }
+
+            };
+
+            eff_collect_missing_annot(entries, direct_map, transitive_map, eol + 1, sb, new_isfirst)
+
+        }
+
+    };
+
 fn effect_verify_run(input: String, src: String) -> i64
 
   post it >= 0
@@ -45145,6 +45637,8 @@ fn effect_verify_run(input: String, src: String) -> i64
 
     let eff_map = build_fn_effect_map(src, 0, "");
 
+    let transitive_map = build_full_transitive_effect_map(entries, eff_map, 5);
+
     let smt = eff_z3_gen_smt(entries, eff_map);
 
     let z3_result = eff_z3_invoke(smt);
@@ -45153,13 +45647,17 @@ fn effect_verify_run(input: String, src: String) -> i64
 
     let isfirst_after = eff_collect_violations(entries, eff_map, 0, viol_sb, 1);
 
-    let has_violation = isfirst_after == 0;
+    let isfirst_after2 = eff_collect_pure_violations(entries, eff_map, 0, viol_sb, isfirst_after);
 
-    let status = if z3_result == "unavailable" {
+    let isfirst_after3 = eff_collect_missing_annot(entries, eff_map, transitive_map, 0, viol_sb, isfirst_after2);
 
-        if has_violation { "violation" } else { "safe" }
+    let has_violation = isfirst_after3 == 0;
 
-    } else if z3_result == "unsat" { "violation" }
+    let status = if z3_result == "unsat" { "violation" }
+
+    else if has_violation { "violation" }
+
+    else if z3_result == "unavailable" { "safe" }
 
     else { "safe" };
 
@@ -45502,56 +46000,6 @@ fn semdp_call_count(calls: String, pos: i64, count: i64) -> i64
 
     else { semdp_call_count(calls, pos + 1, count) };
 
-// Count calls in calls_a that appear in calls_b (using callers_calls_contain)
-fn semdp_count_shared(calls_a: String, calls_b: String, pos: i64, count: i64) -> i64
-
-  pre pos >= 0
-
-  post it >= 0
-
-= if calls_a == "" or calls_b == "" { 0 }
-
-    else if pos >= calls_a.len() {
-
-        let end = calls_a.len();
-
-        let start = semdp_name_start(calls_a, pos - 1);
-
-        let name = calls_a.slice(start, end);
-
-        if name.len() > 0 and callers_calls_contain(calls_b, name, 0) { count + 1 }
-
-        else { count }
-
-    }
-
-    else if calls_a.byte_at(pos) == 44 {
-
-        let start = semdp_name_start(calls_a, pos - 1);
-
-        let name = calls_a.slice(start, pos);
-
-        let inc = if callers_calls_contain(calls_b, name, 0) { 1 } else { 0 };
-
-        semdp_count_shared(calls_a, calls_b, pos + 2, count + inc)
-
-    }
-
-    else { semdp_count_shared(calls_a, calls_b, pos + 1, count) };
-
-// Scan backward from pos to find start of current name
-fn semdp_name_start(s: String, pos: i64) -> i64
-
-  pre pos >= 0
-
-  post it >= 0
-
-= if pos <= 0 { 0 }
-
-    else if s.byte_at(pos) == 44 { pos + 2 }  // past ", "
-
-    else { semdp_name_start(s, pos - 1) };
-
 // Check one pair (a, b): returns "fn_a\tfn_b\tshared\tcount_a\tcount_b\n" if duplicate
 fn semdp_check_pair(name_a: String, calls_a: String, name_b: String, calls_b: String) -> String
 
@@ -45567,7 +46015,7 @@ fn semdp_check_pair(name_a: String, calls_a: String, name_b: String, calls_b: St
 
     else {
 
-        let shared = semdp_count_shared(calls_a, calls_b, 0, 0);
+        let shared = sim_count_shared(calls_a, calls_b, 0, 0);
 
         let max_cnt = if cnt_a > cnt_b { cnt_a } else { cnt_b };
 
@@ -46005,6 +46453,11 @@ fn main() -> i64
 
             // M14 Phase 4: Find functions with identical call sets (potential duplicates)
             semantic_duplicate_file(get_arg(2))
+
+        } else if cmd == "module-suggest" and argc >= 3 {
+
+            // M15 Phase 5: Suggest correct module X requires [...] based on actual capability usage
+            module_suggest_file(get_arg(2))
 
         } else if argc >= 3 {
 
