@@ -42822,6 +42822,32 @@ fn count_rule_entries(s: String, pos: i64) -> i64
 
   else { 1 + count_rule_entries(s, found + 8) };
 
+// Count {"caller": occurrences in a violations JSON array string (effect_verify format).
+fn count_caller_entries(s: String, pos: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= let found = find_pattern_noa(s, "{\"caller\":", pos);
+
+  if found < 0 { 0 }
+
+  else { 1 + count_caller_entries(s, found + 10) };
+
+// Count {"fn_a": occurrences in a pairs JSON array string (semantic_duplicate format).
+fn count_fn_a_entries(s: String, pos: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= let found = find_pattern_noa(s, "{\"fn_a\":", pos);
+
+  if found < 0 { 0 }
+
+  else { 1 + count_fn_a_entries(s, found + 8) };
+
 // JSON builder for effect_pure_violation: collects violations into sb array.
 fn lint_eff_pure_viol_sb(entries: String, pos: i64, sb: i64, isfirst: i64) -> i64
 
@@ -46029,19 +46055,23 @@ fn eff_verify_build_json(input: String, entries: String, eff_map: String, transi
 
     else { "safe" };
 
+    let viol_str = sb_build(viol_sb);
+
+    let viol_count = count_caller_entries(viol_str, 0);
+
     let out_sb = sb_new();
 
     let _h1 = sb_push(out_sb, "{\"type\":\"effect_verify\",\"file\":\"");
 
     let _h2 = sb_push(out_sb, json_esc(input));
 
-    let _h3 = sb_push(out_sb, "\",\"status\":\"" + status + "\",\"z3\":\"" + z3_result + "\"");
+    let _h3 = sb_push(out_sb, "\",\"status\":\"" + status + "\",\"z3\":\"" + z3_result + "\",\"violations_count\":" + int_to_string(viol_count));
 
     let _h4 = if status == "violation" {
 
         let _vb = sb_push(out_sb, ",\"violations\":[");
 
-        let _vc = sb_push(out_sb, sb_build(viol_sb));
+        let _vc = sb_push(out_sb, viol_str);
 
         sb_push(out_sb, "]")
 
@@ -46471,19 +46501,23 @@ fn cc_build_json(input: String, src: String, entries: String, eff_map: String, t
 
     let status = if has_viol { "violation" } else { "safe" };
 
+    let viol_str = sb_build(viol_sb);
+
+    let viol_count = count_rule_entries(viol_str, 0);
+
     let out_sb = sb_new();
 
     let _h1 = sb_push(out_sb, "{\"type\":\"contracts_check\",\"file\":\"");
 
     let _h2 = sb_push(out_sb, json_esc(input));
 
-    let _h3 = sb_push(out_sb, "\",\"status\":\"" + status + "\"");
+    let _h3 = sb_push(out_sb, "\",\"status\":\"" + status + "\",\"violations_count\":" + int_to_string(viol_count));
 
     let _h4 = if has_viol {
 
         let _vb = sb_push(out_sb, ",\"violations\":[");
 
-        let _vc = sb_push(out_sb, sb_build(viol_sb));
+        let _vc = sb_push(out_sb, viol_str);
 
         sb_push(out_sb, "]")
 
@@ -46678,6 +46712,37 @@ fn semdp_outer(entries: String, all_entries: String, pos: i64, sb: i64, isfirst:
 
     };
 
+// Build semantic_duplicate JSON string (without printing). Used by semantic_duplicate_run and diagnose_file.
+fn semdp_build_json(input: String, entries: String) -> String
+
+  post it.len() >= 1
+
+= {
+
+    let viol_sb = sb_new();
+
+    let _f = semdp_outer(entries, entries, 0, viol_sb, 1);
+
+    let pairs_str = sb_build(viol_sb);
+
+    let pairs_count = count_fn_a_entries(pairs_str, 0);
+
+    let out_sb = sb_new();
+
+    let _h1 = sb_push(out_sb, "{\"type\":\"semantic_duplicate\",\"file\":\"");
+
+    let _h2 = sb_push(out_sb, json_esc(input));
+
+    let _h3 = sb_push(out_sb, "\",\"pairs_count\":" + int_to_string(pairs_count) + ",\"pairs\":[");
+
+    let _h4 = sb_push(out_sb, pairs_str);
+
+    let _h5 = sb_push(out_sb, "]}");
+
+    sb_build(out_sb)
+
+};
+
 fn semantic_duplicate_run(input: String, src: String) -> i64
 
   post it >= 0
@@ -46686,25 +46751,9 @@ fn semantic_duplicate_run(input: String, src: String) -> i64
 
     let entries = callers_collect_source(src, 0, "");
 
-    let viol_sb = sb_new();
+    let json = semdp_build_json(input, entries);
 
-    let isfirst = semdp_outer(entries, entries, 0, viol_sb, 1);
-
-    let has_pairs = isfirst == 0;
-
-    let out_sb = sb_new();
-
-    let _h1 = sb_push(out_sb, "{\"type\":\"semantic_duplicate\",\"file\":\"");
-
-    let _h2 = sb_push(out_sb, json_esc(input));
-
-    let _h3 = sb_push(out_sb, "\",\"pairs\":[");
-
-    let _h4 = sb_push(out_sb, sb_build(viol_sb));
-
-    let _h5 = sb_push(out_sb, "]}");
-
-    let _p = println_str(sb_build(out_sb));
+    let _p = println_str(json);
 
     0
 
@@ -46752,6 +46801,8 @@ fn diagnose_file(input: String) -> i64
 
         let le_json = lint_effects_build_json(input, entries, eff_map, transitive_map);
 
+        let sd_json = semdp_build_json(input, entries);
+
         let out_sb = sb_new();
 
         let _h1 = sb_push(out_sb, "{\"type\":\"diagnose\",\"file\":\"");
@@ -46762,7 +46813,9 @@ fn diagnose_file(input: String) -> i64
 
         let _h4 = sb_push(out_sb, ",\"contracts_check\":" + cc_json);
 
-        let _h5 = sb_push(out_sb, ",\"lint_effects\":" + le_json + "}");
+        let _h5 = sb_push(out_sb, ",\"lint_effects\":" + le_json);
+
+        let _h6 = sb_push(out_sb, ",\"semantic_duplicate\":" + sd_json + "}");
 
         let _p = println_str(sb_build(out_sb));
 

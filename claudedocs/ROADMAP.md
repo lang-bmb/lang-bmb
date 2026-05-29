@@ -1,5 +1,6 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-29 (**AI-Native Pivot Cycles 3296-3305** — [P2] index/query platform 스킵 + [P3] eff_set_equals + [P1] diagnose CLI(effect_verify+contracts_check+lint_effects 3섹션) + lint_effects_build_json + bmb-mcp bmb_diagnose 도구 + 세션 종료 정리. Within-gen Fixed Point ✅. HEAD `a6543120`.)
+> 최종 업데이트: 2026-05-29 (**AI-Native Pivot Cycles 3306-3311** — [P1] lint_effects count 필드 + [P4] max_params 구현 + [P2] Z3 formal missing_annotation (eff_z3_gen_missing_anno_sb) + [P3] cross-gen Fixed Point S2==S3 ✅. HEAD `2c4e35e7`.)
+> 이전 갱신: 2026-05-29 (**AI-Native Pivot Cycles 3296-3305** — [P2] index/query platform 스킵 + [P3] eff_set_equals + [P1] diagnose CLI(effect_verify+contracts_check+lint_effects 3섹션) + lint_effects_build_json + bmb-mcp bmb_diagnose 도구 + 세션 종료 정리. Within-gen Fixed Point ✅. HEAD `a6543120`.)
 > 이전 갱신: 2026-05-29 (**AI-Native Pivot Cycles 3296-3299** — [P2] index/query platform 블록 스킵 버그 수정 + [P3] module-suggest eff_set_equals 순서-무관 비교 + [P1] diagnose CLI(effect-verify+contracts-check 통합 JSON) + eff_verify_build_json/cc_build_json 빌더 분리. Within-gen Fixed Point ✅. HEAD `78ed63b7`.)
 > 이전 갱신: 2026-05-29 (**AI-Native Pivot Cycles 3286-3295** — M12 Phase 6b/6c/6d(effect-verify 3-way violations + @pure Z3 UNSAT) + M15 Phase 5(module-suggest + platform fix) + M14 Phase 4b(sim_count_shared) + contracts-check require_effect_annotation JSON 통합. Within-gen Fixed Point ✅. HEAD `47883ca8`.)
 > 이전 갱신: 2026-05-29 (**AI-Native Pivot Cycles 3271-3280** — M12 Phase 4(transitive eff propagation) + M12 Phase 5([missing_effect_annotation]) + M13 Phase 4(verify-repair) + M15 Phase 3(module requires + [module_capability]) + M15 Phase 4(full transitive module cap check). Fixed Point S2==S3 ✅. HEAD `f6613685`.)
@@ -1594,6 +1595,10 @@ Phase 2 (3-4 cycles): 모듈 capability 선언
 | M15 Platform/Capability | Phase 4: full transitive module cap check | ✅ COMPLETE | 3277 |
 | M15 Platform/Capability | Phase 5: module-suggest + callers_collect_source platform fix | ✅ COMPLETE | 3289 |
 | contracts-check | require_effect_annotation JSON violations | ✅ COMPLETE | 3294 |
+| diagnose | lint_effects count 필드 (P1) | ✅ COMPLETE | 3306 |
+| contracts-check | max_params 규칙 구현 (P4) | ✅ COMPLETE | 3307 |
+| M12 Graded Effect | Phase 6e: Z3 formal missing_annotation via contradiction pairs | ✅ COMPLETE | 3309 |
+| Bootstrap | Cross-gen Fixed Point S2==S3 (P3) | ✅ COMPLETE | 3310 |
 
 ### 실행 타임라인
 
@@ -1604,7 +1609,8 @@ Phase 2 (3-4 cycles): 모듈 capability 선언
 | ~~중기 (Cycle 3281-3284)~~ | ~~M12 Phase 6 (Z3) + M13 Phase 5 (.bmb-contracts) + M14 Phase 4 (SemanticDuplicate)~~ ✅ 완료 |
 | ~~Cycle 3286-3295~~ | ~~M12 Phase 6b/6c/6d + M15 Phase 5 + sim_count_shared + contracts-check~~ ✅ 완료 |
 | ~~다음 세션 (P1-P3)~~ | ~~diagnose CLI 통합 + index platform 버그 수정 + module-suggest set-equality~~ ✅ 완료 (Cycles 3296-3299, HEAD `78ed63b7`) |
-| 다음 세션 | M12 Z3 lattice 확장 (missing_annotation formal) + diagnose lint-effects 섹션 + cross-gen Fixed Point |
+| ~~다음 세션 (P1-P4)~~ | ~~lint_effects count + max_params + Z3 missing_annotation + cross-gen FP~~ ✅ 완료 (Cycles 3306-3310, HEAD `2c4e35e7`) |
+| 다음 세션 | diagnose violations_count 추가 + semantic_duplicate 통합 + 새 contracts 규칙 |
 | 장기 (~3개월) | M15 Phase 6 (capability enforcement) + M13 Phase 6 (workflow telemetry) |
 
 ### 리팩토링 원칙
