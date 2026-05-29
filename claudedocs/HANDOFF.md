@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-29 (Cycles 3281-3284)
 
-> **HEAD**: `0de467ba` (feat(ai-native): M12 Phase 6 + M13 Phase 5 + M14 Phase 4)
+> **HEAD**: `2cab6bbc` (chore(docs): HEAD 갱신 d7d98a18)
 > **실무 앵커**: `claudedocs/ROADMAP.md` (§ 6 AI-Native Pivot + M12-M15 진척)
 > **전략 계획서**: `claudedocs/plans/ai-native-plan-2026.md`
 
@@ -85,21 +85,33 @@ $ compiler.exe semantic-duplicate src/big_module.bmb
 
 ## 즉시 실행 가능한 다음 태스크
 
-### M12 Z3 더 깊은 통합
-
-현재 M12 Phase 6는 선언된 effect만 비교. 다음:
-- `pure fn` 위반도 Z3로 확인 (Phase 1 위반의 Z3 cert)
-- Effect annotation 추론 결과를 Z3 assertion으로 변환
-
-### M15 Phase 5 — Platform capability 강화
-
-`platform stdlib { fn ... }` 블록에서 platform-declared 함수들의
-capability를 `module X requires [...]` 와 연계하는 강화.
-
-### sim_count_shared 버그 수정
+### [P1] sim_count_shared 버그 수정
 
 기존 `similar` 명령에서 같은 call set을 가진 함수들이 N-1 shared로 보고되는 버그.
-원인 분석: `sim_count_shared`가 마지막 item을 count에 포함시키지 않는 것으로 추정.
+- 증상: `similar` 명령에서 3개 call → [2 shared] 오보
+- 원인 가설: `sim_count_shared`가 초기 count=0 전달 시 마지막 item을 count+1로 반환하지 않음
+- 영향: `semantic-duplicate` 는 `semdp_count_shared`로 우회 구현되어 정상 동작
+- 수정 후 `semdp_count_shared`를 `sim_count_shared` 재사용으로 통합 가능
+
+### [P2] M12 Z3 더 깊은 통합
+
+현재 M12 Phase 6는 **명시적으로 선언된 effect** 간 call edge만 검증. 확장 방향:
+- `@pure fn` 위반도 Z3 SMT로 확인 (Phase 1 lint → Z3 cert)
+- `[missing_effect_annotation]` 함수에 대한 추론 effect → Z3 assertion
+- SMT에서 effect lattice 모델링 (IO < IO+Net 등 partial order)
+
+### [P3] M15 Phase 5 — Platform/Module 연계 강화
+
+`platform stdlib { fn ... }` 블록에서 함수의 capability가
+`module X requires [...]` 와 자동 연계되는 강화.
+- 현재: platform 선언 ↔ module requires 는 수동 매핑 필요
+- 목표: platform 블록에서 자동으로 module capability 검증
+
+### [P4] contracts-check Platform 블록 지원 개선
+
+현재 `callers_collect_source`가 platform 블록 내 선언 파싱 시
+이후 함수를 swallow하는 기존 버그로 인해 contracts-check 부정확.
+- 해결 방향: platform 블록을 명시적으로 스킵하거나 depth tracking 추가
 
 ---
 
