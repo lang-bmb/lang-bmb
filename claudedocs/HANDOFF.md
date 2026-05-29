@@ -1,7 +1,7 @@
-# BMB Session Handoff — 2026-05-29 (Cycles 3296-3305)
+# BMB Session Handoff — 2026-05-29 (Cycles 3306-3314)
 
-> **HEAD**: `a6543120` (chore(docs): 세션 종료 정리 — Cycles 3296-3305)
-> **실무 앵커**: `claudedocs/ROADMAP.md` (§ 6 AI-Native Pivot + M12-M15 진척)
+> **HEAD**: `80fb861e` (feat(diagnose): violations_count + semantic_duplicate 통합)
+> **실무 앵커**: `claudedocs/ROADMAP.md` (§ 6 AI-Native Pivot)
 > **전략 계획서**: `claudedocs/plans/ai-native-plan-2026.md`
 
 ---
@@ -11,7 +11,8 @@
 | 항목 | 상태 |
 |------|------|
 | cargo test --release | ✅ 3800+2390+23 tests, 0 FAILED |
-| Within-gen Fixed Point | ✅ fp3302a.ll == fp3302b.ll (Cycle 3302) |
+| Within-gen Fixed Point | ✅ fp3314a.ll == fp3314b.ll (Cycle 3314) |
+| Cross-gen Fixed Point | ✅ S2 IR == S3 IR (Cycle 3310) |
 | bmb lint warnings | ✅ 178 non-recursive (pre-existing) |
 | Z3 verify | ✅ 144/144 |
 | P-track 7/7 | ✅ ALL ≤1.010× |
@@ -20,89 +21,81 @@
 
 ---
 
-## 이번 세션 완료 (Cycles 3296-3305)
+## 이번 세션 완료 (Cycles 3306-3314)
 
 | 마일스톤 | 완료 사이클 | 내용 |
 |---------|-----------|------|
-| P2 버그 수정 | 3296 | index_source/query_source platform 블록 스킵 |
-| P3 set-equality | 3297 | eff_set_equals — module-suggest 순서 무관 비교 |
-| P1 diagnose CLI | 3298 | effect-verify + contracts-check 통합 JSON |
-| Fixed Point | 3299 | within-gen FP ✅, 커밋 `78ed63b7` |
-| ROADMAP | 3300 | § 6 타임라인 P1-P3 완료 마킹 |
-| lint_effects | 3301 | diagnose에 lint_effects 섹션 (3종 JSON 빌더) |
-| Fixed Point + 커밋 | 3302 | `cc01c81d` |
-| bmb-mcp | 3303 | bmb_diagnose MCP tool (도구 10번째) |
-| 커밋 | 3304 | `dabb82be` |
-| 메모리/세션 종료 | 3305 | MEMORY.md + HANDOFF + 최종 커밋 `a6543120` |
+| P1 count 필드 | 3306 | lint_effects_build_json count_rule_entries 카운터 |
+| P4 max_params | 3307 | bc_check_max_params_scan + count_top_commas + count_sig_params |
+| FP 검증 + 커밋 | 3308 | within-gen FP ✅ + 커밋 `da068fb4` |
+| P2 Z3 formal | 3309 | eff_z3_gen_missing_anno_sb contradiction pairs + transitive_map 통합 |
+| P3 cross-gen FP | 3310 | S2==S3 IR ✅ + 커밋 `2c4e35e7` |
+| ROADMAP 갱신 | 3311 | 진척 현황 표 + 타임라인 갱신 |
+| violations_count | 3312 | effect_verify+contracts_check violations_count:N + count_caller_entries |
+| semantic_duplicate | 3313 | semdp_build_json + diagnose 4번째 섹션 통합 |
+| FP + 커밋 | 3314 | within-gen FP ✅ + 커밋 `80fb861e` |
 
 ---
 
-## 신규 기능 요약
-
-### diagnose CLI (`compiler.exe diagnose src.bmb`)
+## diagnose 통합 현황 (4섹션)
 
 ```bash
 $ compiler.exe diagnose test.bmb
 {
   "type": "diagnose",
   "file": "test.bmb",
-  "effect_verify": {"type":"effect_verify","status":"safe","z3":"sat"},
-  "contracts_check": {"type":"contracts_check","status":"safe"},
+  "effect_verify": {
+    "type":"effect_verify","status":"safe","z3":"sat","violations_count":0
+  },
+  "contracts_check": {
+    "type":"contracts_check","status":"safe","violations_count":0
+  },
   "lint_effects": {
-    "type": "lint_effects",
-    "warnings": [
-      {"rule":"missing_effect_annotation","function":"foo","inferred_effect":"IO"}
-    ]
+    "type":"lint_effects","count":0,"warnings":[]
+  },
+  "semantic_duplicate": {
+    "type":"semantic_duplicate","pairs_count":0,"pairs":[]
   }
 }
 ```
 
-**내부 구조**:
-- `eff_verify_build_json(input, entries, eff_map, transitive_map) -> String`
-- `cc_build_json(input, src, entries, eff_map, transitive_map, contracts) -> String`
-- `lint_effects_build_json(input, entries, eff_map, transitive_map) -> String`
-  - `lint_eff_pure_viol_sb` + `lint_eff_propagation_sb` + `lint_missing_eff_sb`
-- entries/eff_map/transitive_map **1회 계산** (성능)
-
-### bmb-mcp: bmb_diagnose 도구 (ecosystem/bmb-mcp)
-
-```json
-{"name": "bmb_diagnose", "description": "Unified effect diagnostics: effect-verify + contracts-check + lint-effects"}
-```
-
-### index/query platform 버그 수정
-
-`index_source`와 `query_source`에 TK_IDENT "platform" → `skip_platform_block` 분기 추가.
-
-### module-suggest eff_set_equals
-
-`eff_subset(a,b,pos)` + `eff_set_equals(a,b)` — "IO File" == "File IO" → 순서 무관 비교.
+**새 기능 요약**:
+- `lint_effects.count`: 경고 총 수
+- `effect_verify.violations_count`: 위반 총 수  
+- `contracts_check.violations_count`: 규칙 위반 총 수
+- `semantic_duplicate.pairs_count`: 중복 쌍 수
+- `.bmb-contracts max_params = N`: 파라미터 수 제한 검사
+- `eff_z3_gen_missing_anno_sb`: Z3 formal missing_annotation 인증
 
 ---
 
 ## 즉시 실행 가능한 다음 태스크
 
-### [P1] diagnose 경고 count 필드 추가
+### [P1] violations 형식 통일 (기술부채)
 
-**배경**: `lint_effects.warnings` 배열 길이를 AI가 파악하려면 카운트 필요.
-**구현**: `lint_effects_build_json` 에서 count 집계 + `"count":N` 필드 추가.
+**배경**: 현재 violations 형식 불일치:
+- `effect_verify`: `{"caller":"...", "callee":"...",...}`
+- `contracts_check`: `{"rule":"...", "function":"...",...}`
+- `semantic_duplicate`: `{"fn_a":"...", "fn_b":"...",...}`
 
-### [P2] M12 Z3 lattice 확장 — missing_annotation formal
+**방향**: 모두 `{"type":"...", "function":"...",...}` 형식으로 통일.
+**복잡도**: 3-4 사이클 (포맷 변경 + 카운터 함수 통합).
 
-**배경**: 현재 `missing_effect_annotation`은 heuristic transitive scan. Z3 formal certification 없음.
-**방향**: `transitive_map` 기반 SMT 모델 확장 → Z3가 annotation 누락도 formal 검증.
-**복잡도**: 2-3 사이클.
+### [P2] diagnose summary 섹션
 
-### [P3] cross-gen Fixed Point 검증 (HANDOFF P5)
+**배경**: AI가 단일 필드로 파일 품질 요약 파악 가능.
+**구현**: `"summary": {"total_issues": N, "effect_issues": N, "contract_issues": N, "lint_issues": N, "duplicate_pairs": N}`
 
-**배경**: Within-gen FP ✅. Cross-gen(S2 IR vs S3 IR) 은 `-1` vs `18446744073709551615` 표현 차이 존재.
-**방향**: `sed` 정규화 후 비교.
-**필요**: llc + gcc 링크 (~40분).
+### [P3] M15 Phase 6: capability enforcement
 
-### [P4] .bmb-contracts max_params 규칙 구현
+**배경**: `module X requires [IO, Net]` 선언 기반 런타임 capability 강제.
+**복잡도**: 5-7 사이클.
 
-**배경**: `contracts_check_run`에 `max_params` 파싱은 있으나 실제 체크 없음.
-**수정**: `bc_check_max_params_scan(entries, max_n, viol_sb, isfirst)` 추가.
+### [P4] contracts-check 새 규칙: forbid_function
+
+**배경**: 특정 함수 직접 호출 금지 (e.g. `forbid_function = println_str` → wrapper 사용 강제).
+**구현**: `bc_check_forbid_fn_scan` + `.bmb-contracts forbid_function = fn_name`.
+**복잡도**: 1 사이클.
 
 ---
 
@@ -121,6 +114,7 @@ $ compiler.exe diagnose test.bmb
 - **Python write 금지**: bootstrap/compiler.bmb 수정 시 Python write 금지.
 - **Fixed Point**: `compiler_s1.exe emit-ir src out1.ll` 두 번 실행하여 동일성 확인.
 - **Z3 경로**: `z3`는 C:/msys64/ucrt64/bin/z3.exe, PATH 접근 가능.
+- **Stage 1 재빌드**: compiler.bmb 변경 후 반드시 `bootstrap/compiler.exe build bootstrap/compiler.bmb -o bootstrap/compiler_s1.exe` (BMB_ARENA_MAX_SIZE=32G).
 
 ---
 
