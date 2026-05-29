@@ -45670,7 +45670,64 @@ fn eff_pure_has_eff_callee(calls: String, eff_map: String, pos: i64) -> bool
 
     };
 
-fn eff_z3_gen_smt(entries: String, eff_map: String) -> String
+// M12 P2: For each unannotated function with transitive effects, emit a Z3
+// contradiction pair: (assert X) + (assert (not X)). Z3 reports UNSAT when
+// any such function exists, formally certifying missing annotation violations.
+fn eff_z3_gen_missing_anno_sb(entries: String, direct_map: String, transitive_map: String, pos: i64, sb: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= entries.len() { 0 }
+
+  else {
+
+    let eol = callers_find_eol(entries, pos);
+
+    let line = entries.slice(pos, eol);
+
+    if line.len() == 0 { eff_z3_gen_missing_anno_sb(entries, direct_map, transitive_map, eol + 1, sb) }
+
+    else {
+
+      let fn_name = callers_get_field(line, 0, 0, 0);
+
+      let sig = callers_get_field(line, 2, 0, 0);
+
+      let direct_raw = eff_map_get_raw(direct_map, fn_name, 0);
+
+      let is_plat = str_find(direct_raw, "PLAT:") == 0;
+
+      let is_pure = str_find(sig, "@pure fn") >= 0 or str_find(sig, "@const fn") >= 0;
+
+      let is_main = fn_name == "main";
+
+      let _x = if direct_raw == "" and not is_plat and not is_pure and not is_main {
+
+        let trans_eff = eff_map_get(transitive_map, fn_name, 0);
+
+        if trans_eff != "" and trans_eff != "pure" and trans_eff != "*" {
+
+          let vname = "|missing_anno_" + fn_name + "|";
+
+          let _d = sb_push(sb, "(declare-const " + vname + " Bool)\n");
+
+          let _a = sb_push(sb, "(assert " + vname + ")\n");
+
+          sb_push(sb, "(assert (not " + vname + "))\n")
+
+        } else { 0 }
+
+      } else { 0 };
+
+      eff_z3_gen_missing_anno_sb(entries, direct_map, transitive_map, eol + 1, sb)
+
+    }
+
+  };
+
+fn eff_z3_gen_smt(entries: String, eff_map: String, transitive_map: String) -> String
 
   post it.len() >= 0
 
@@ -45685,6 +45742,9 @@ fn eff_z3_gen_smt(entries: String, eff_map: String) -> String
     let _p = eff_z3_gen_pure_decls(entries, eff_map, 0, sb);
 
     let _e = eff_z3_gen_edges(entries, eff_map, 0, sb);
+
+    // M12 P2: formal missing annotation check via contradiction pairs
+    let _m = eff_z3_gen_missing_anno_sb(entries, eff_map, transitive_map, 0, sb);
 
     let _c = sb_push(sb, "(check-sat)\n");
 
@@ -45947,7 +46007,7 @@ fn eff_verify_build_json(input: String, entries: String, eff_map: String, transi
 
 = {
 
-    let smt = eff_z3_gen_smt(entries, eff_map);
+    let smt = eff_z3_gen_smt(entries, eff_map, transitive_map);
 
     let z3_result = eff_z3_invoke(smt);
 
