@@ -42807,6 +42807,255 @@ fn lint_check_missing_effect_annotations(entries: String, direct_map: String, tr
 
     };
 
+// ─── diagnose: lint_effects JSON builders ──────────────────────────────────
+
+// JSON builder for effect_pure_violation: collects violations into sb array.
+fn lint_eff_pure_viol_sb(entries: String, pos: i64, sb: i64, isfirst: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= entries.len() { isfirst }
+
+    else {
+
+        let eol = callers_find_eol(entries, pos);
+
+        let line = entries.slice(pos, eol);
+
+        if line.len() == 0 { lint_eff_pure_viol_sb(entries, eol + 1, sb, isfirst) }
+
+        else {
+
+            let fn_name = callers_get_field(line, 0, 0, 0);
+
+            let calls = callers_get_field(line, 1, 0, 0);
+
+            let sig = callers_get_field(line, 2, 0, 0);
+
+            let is_pure = str_find(sig, "@pure fn") >= 0 or str_find(sig, "@const fn") >= 0;
+
+            let has_io = if is_pure { calls_has_io_fn(calls) } else { 0 };
+
+            let new_isfirst = if has_io > 0 {
+
+                let _comma = if isfirst == 0 { sb_push(sb, ",") } else { 0 };
+
+                let _j = sb_push(sb, "{\"rule\":\"effect_pure_violation\",\"function\":\"" + json_esc(fn_name) + "\",\"message\":\"pure function calls IO function\"}");
+
+                0
+
+            } else { isfirst };
+
+            lint_eff_pure_viol_sb(entries, eol + 1, sb, new_isfirst)
+
+        }
+
+    };
+
+// JSON builder for check_callee_missing_effects.
+fn check_callee_missing_effects_sb(callee_eff: String, caller_eff: String,
+    fn_name: String, callee_name: String, pos: i64, sb: i64, isfirst: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= callee_eff.len() { isfirst }
+
+    else {
+
+        let end = eff_find_space_or_end(callee_eff, pos);
+
+        let cap = callee_eff.slice(pos, end);
+
+        let new_isfirst = if cap.len() > 0 and not eff_contains_name(caller_eff, cap) {
+
+            let _comma = if isfirst == 0 { sb_push(sb, ",") } else { 0 };
+
+            let _j = sb_push(sb, "{\"rule\":\"effect_propagation\",\"function\":\"" + json_esc(fn_name) + "\",\"callee\":\"" + json_esc(callee_name) + "\",\"caller_effect\":\"" + caller_eff + "\",\"missing_cap\":\"" + cap + "\"}");
+
+            0
+
+        } else { isfirst };
+
+        if end >= callee_eff.len() { new_isfirst }
+
+        else { check_callee_missing_effects_sb(callee_eff, caller_eff, fn_name, callee_name, end + 1, sb, new_isfirst) }
+
+    };
+
+fn check_one_callee_effect_sb(callee_name: String, caller_eff: String,
+    fn_name: String, eff_map: String, sb: i64, isfirst: i64) -> i64
+
+  post it >= 0
+
+= let callee_eff = eff_map_get(eff_map, callee_name, 0);
+
+    if callee_eff == "" or callee_eff == "pure" or callee_eff == "*" { isfirst }
+
+    else if caller_eff == "*" { isfirst }
+
+    else { check_callee_missing_effects_sb(callee_eff, caller_eff, fn_name, callee_name, 0, sb, isfirst) };
+
+fn check_calls_for_effects_sb(calls: String, caller_eff: String,
+    fn_name: String, eff_map: String, pos: i64, sb: i64, isfirst: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= calls.len() { isfirst }
+
+    else {
+
+        let end = index_find_comma_or_end(calls, pos);
+
+        let callee = calls.slice(pos, end);
+
+        let new_isfirst = check_one_callee_effect_sb(callee, caller_eff, fn_name, eff_map, sb, isfirst);
+
+        if end >= calls.len() { new_isfirst }
+
+        else { check_calls_for_effects_sb(calls, caller_eff, fn_name, eff_map, end + 2, sb, new_isfirst) }
+
+    };
+
+// JSON builder for effect_propagation lint warnings.
+fn lint_eff_propagation_sb(entries: String, eff_map: String, pos: i64, sb: i64, isfirst: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= entries.len() { isfirst }
+
+    else {
+
+        let eol = callers_find_eol(entries, pos);
+
+        let line = entries.slice(pos, eol);
+
+        if line.len() == 0 { lint_eff_propagation_sb(entries, eff_map, eol + 1, sb, isfirst) }
+
+        else {
+
+            let fn_name = callers_get_field(line, 0, 0, 0);
+
+            let calls = callers_get_field(line, 1, 0, 0);
+
+            let raw_caller_eff = eff_map_get_raw(eff_map, fn_name, 0);
+
+            let is_platform = str_find(raw_caller_eff, "PLAT:") == 0;
+
+            let caller_eff = if is_platform { raw_caller_eff.slice(5, raw_caller_eff.len()) }
+
+                             else { raw_caller_eff };
+
+            let should_check = not is_platform and caller_eff != "" and caller_eff != "pure" and caller_eff != "*";
+
+            let new_isfirst = if should_check and calls.len() > 0 {
+
+                check_calls_for_effects_sb(calls, caller_eff, fn_name, eff_map, 0, sb, isfirst)
+
+            } else { isfirst };
+
+            lint_eff_propagation_sb(entries, eff_map, eol + 1, sb, new_isfirst)
+
+        }
+
+    };
+
+// JSON builder for missing_effect_annotation warnings.
+fn lint_missing_eff_sb(entries: String, direct_map: String, transitive_map: String,
+    pos: i64, sb: i64, isfirst: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= entries.len() { isfirst }
+
+    else {
+
+        let eol = callers_find_eol(entries, pos);
+
+        let line = entries.slice(pos, eol);
+
+        if line.len() == 0 { lint_missing_eff_sb(entries, direct_map, transitive_map, eol + 1, sb, isfirst) }
+
+        else {
+
+            let fn_name = callers_get_field(line, 0, 0, 0);
+
+            let direct_raw = eff_map_get_raw(direct_map, fn_name, 0);
+
+            let is_plat = str_find(direct_raw, "PLAT:") == 0;
+
+            let has_direct = direct_raw != "";
+
+            let new_isfirst = if has_direct or is_plat { isfirst }
+
+            else {
+
+                let trans_eff = eff_map_get(transitive_map, fn_name, 0);
+
+                if trans_eff == "" or trans_eff == "pure" or trans_eff == "*" { isfirst }
+
+                else {
+
+                    let _comma = if isfirst == 0 { sb_push(sb, ",") } else { 0 };
+
+                    let _j = sb_push(sb, "{\"rule\":\"missing_effect_annotation\",\"function\":\"" + json_esc(fn_name) + "\",\"inferred_effect\":\"" + trans_eff + "\"}");
+
+                    0
+
+                }
+
+            };
+
+            lint_missing_eff_sb(entries, direct_map, transitive_map, eol + 1, sb, new_isfirst)
+
+        }
+
+    };
+
+// Build lint_effects JSON string: combines all three effect lint checks.
+fn lint_effects_build_json(input: String, entries: String, eff_map: String, transitive_map: String) -> String
+
+  post it.len() >= 1
+
+= {
+
+    let warn_sb = sb_new();
+
+    let f1 = lint_eff_pure_viol_sb(entries, 0, warn_sb, 1);
+
+    let f2 = lint_eff_propagation_sb(entries, eff_map, 0, warn_sb, f1);
+
+    let f3 = lint_missing_eff_sb(entries, eff_map, transitive_map, 0, warn_sb, f2);
+
+    let has_warnings = f3 == 0;
+
+    let count = if has_warnings { 0 } else { 0 };
+
+    let out_sb = sb_new();
+
+    let _h1 = sb_push(out_sb, "{\"type\":\"lint_effects\",\"file\":\"");
+
+    let _h2 = sb_push(out_sb, json_esc(input));
+
+    let _h3 = sb_push(out_sb, "\",\"warnings\":[");
+
+    let _h4 = sb_push(out_sb, sb_build(warn_sb));
+
+    let _h5 = sb_push(out_sb, "]}");
+
+    sb_build(out_sb)
+
+};
+
 // --- M15 Phase 3: Module Capability Declaration ---
 // Syntax: module X requires [IO, Net, File]
 // Parses module-level capability requirements for lint checking.
@@ -46326,6 +46575,8 @@ fn diagnose_file(input: String) -> i64
 
         let cc_json = cc_build_json(input, src, entries, eff_map, transitive_map, contracts);
 
+        let le_json = lint_effects_build_json(input, entries, eff_map, transitive_map);
+
         let out_sb = sb_new();
 
         let _h1 = sb_push(out_sb, "{\"type\":\"diagnose\",\"file\":\"");
@@ -46334,7 +46585,9 @@ fn diagnose_file(input: String) -> i64
 
         let _h3 = sb_push(out_sb, "\",\"effect_verify\":" + ev_json);
 
-        let _h4 = sb_push(out_sb, ",\"contracts_check\":" + cc_json + "}");
+        let _h4 = sb_push(out_sb, ",\"contracts_check\":" + cc_json);
+
+        let _h5 = sb_push(out_sb, ",\"lint_effects\":" + le_json + "}");
 
         let _p = println_str(sb_build(out_sb));
 
