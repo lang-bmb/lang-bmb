@@ -42569,6 +42569,80 @@ fn build_transitive_effect_map(entries: String, direct_map: String, iter: i64) -
 
 = build_transitive_effect_map_iter(entries, direct_map, direct_map, iter);
 
+// --- M15 Phase 4: Full Transitive Effect Map (all functions expanded) ---
+// Unlike build_transitive_effect_map, this expands ALL functions (even explicitly declared)
+// by merging callee effects. Used for module capability check only.
+
+fn build_full_transitive_pass(entries: String, old_transmap: String, pos: i64, acc: String) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 0
+
+= if pos >= entries.len() { acc }
+
+    else {
+
+        let eol = callers_find_eol(entries, pos);
+
+        let line = entries.slice(pos, eol);
+
+        if line.len() == 0 { build_full_transitive_pass(entries, old_transmap, eol + 1, acc) }
+
+        else {
+
+            let fn_name = callers_get_field(line, 0, 0, 0);
+
+            let calls = callers_get_field(line, 1, 0, 0);
+
+            let raw_eff = eff_map_get_raw(old_transmap, fn_name, 0);
+
+            let is_plat = str_find(raw_eff, "PLAT:") == 0;
+
+            let new_acc = if is_plat {
+
+                acc + fn_name + "\tPLAT:" + raw_eff.slice(5, raw_eff.len()) + "\n"
+
+            } else {
+
+                // Expand ALL functions (even explicitly declared) with callee transitive effects
+                let cur_eff = eff_map_get(old_transmap, fn_name, 0);
+
+                let new_eff = expand_calls_effects_trans(calls, cur_eff, old_transmap, 0);
+
+                if new_eff == "" { acc } else { acc + fn_name + "\t" + new_eff + "\n" }
+
+            };
+
+            build_full_transitive_pass(entries, old_transmap, eol + 1, new_acc)
+
+        }
+
+    };
+
+fn build_full_transitive_map_iter(entries: String, transmap: String, iter: i64) -> String
+
+  pre iter >= 0
+
+  post it.len() >= 0
+
+= let new_map = build_full_transitive_pass(entries, transmap, 0, "");
+
+    if iter <= 0 { new_map }
+
+    else if new_map.len() == transmap.len() { new_map }
+
+    else { build_full_transitive_map_iter(entries, new_map, iter - 1) };
+
+// Build full transitive effect map (all functions expanded, for module cap check).
+fn build_full_transitive_effect_map(entries: String, direct_map: String, iter: i64) -> String
+
+  pre iter >= 0
+
+  post it.len() >= 0
+
+= build_full_transitive_map_iter(entries, direct_map, iter);
+
 // --- M12 Phase 5: Missing Effect Annotation ---
 
 // Check one entry: if it has transitive effects but no explicit declaration, warn.
@@ -42903,7 +42977,9 @@ fn lint_file(input: String) -> i64
 
         let module_caps = scan_module_requires(source, 0);
 
-        let w10 = lint_check_module_capabilities(entries, transitive_map, module_caps, 0, 0);
+        let full_trans_map = if module_caps != "" { build_full_transitive_effect_map(entries, eff_map, 5) } else { "" };
+
+        let w10 = lint_check_module_capabilities(entries, full_trans_map, module_caps, 0, 0);
 
         let total = w1 + w2 + w3 + w4 + w6 + w7 + w8 + w9 + w10;
 

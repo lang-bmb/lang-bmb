@@ -1,5 +1,6 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-29 (**AI-Native Pivot Cycles 3271-3276** — M12 Phase 4(transitive effect propagation) + M12 Phase 5([missing_effect_annotation]) + M13 Phase 4(verify-repair 통합 명령) + M15 Phase 3(module X requires [...] + [module_capability] lint). Fixed Point S2==S3 ✅.)
+> 최종 업데이트: 2026-05-29 (**AI-Native Pivot Cycles 3271-3279** — M12 Phase 4(transitive eff propagation) + M12 Phase 5([missing_effect_annotation]) + M13 Phase 4(verify-repair) + M15 Phase 3(module requires + [module_capability]) + M15 Phase 4(full transitive module cap check). Fixed Point S2==S3 ✅.)
+> 이전 갱신: 2026-05-29 (**AI-Native Pivot Cycles 3271-3276** — M12 Phase 4(transitive effect propagation) + M12 Phase 5([missing_effect_annotation]) + M13 Phase 4(verify-repair 통합 명령) + M15 Phase 3(module X requires [...] + [module_capability] lint). Fixed Point S2==S3 ✅.)
 > 이전 갱신: 2026-05-29 (**AI-Native Pivot Cycles 3261-3270** — M14 Phase 3(gotgan add) + M12 Phase 3([effect_propagation] lint) + M15 Phase 2(platform capabilities) + M13 Phase 3 Full(repair-hint pre/post/intent JSON) + Fixed Point S2==S3 ✅.)
 > 이전 갱신: 2026-05-29 (**AI-Native Pivot Cycles 3251-3260 완료** — M12 Effect Row(`fn(): <IO, Net> -> T` + `"bmb-effect"="IO"` LLVM attr + `[effect_pure_violation]` lint) + M13 Intent(`intent: "..."` + `[intent_no_contract]` lint) + M14 SHA-256 Lockfile(gotgan lock/verify) + M15 platform 파싱. Fixed Point S2==S3 ✅. HEAD `f188ba92`.)
 > 이전 갱신: 2026-05-28 (**M11-C Phase 13 ✅ COMPLETE** — Cycle 3248: compound const expressions (`const TOTAL = ROWS * COLS`) as array sizes. Root cause: `try_register_const_fn` rejected `@TOTAL` (body had `= call @ROWS()`). Fix: second `optimize_const_inlining` pass after `optimize_cf_dce_loop` — after CF/DCE, `@TOTAL`'s body is already folded to `const 12`, so the second pass registers it. Golden test `test_golden_const_compound` output 78 ✅. Fixed Point S2==S3 ✅.)
@@ -1580,6 +1581,8 @@ Phase 2 (3-4 cycles): 모듈 capability 선언
 | M14 Content Addressing | Phase 3: gotgan add 명령 | ✅ COMPLETE | 3261 |
 | M15 Platform/Capability | Phase 1: platform 파싱 | ✅ COMPLETE | 3260 |
 | M15 Platform/Capability | Phase 2: platform capabilities effect map | ✅ COMPLETE | 3263 |
+| M15 Platform/Capability | Phase 3: module X requires [...] + [module_capability] | ✅ COMPLETE | 3275 |
+| M15 Platform/Capability | Phase 4: full transitive module cap check | ✅ COMPLETE | 3277 |
 
 ### 실행 타임라인
 
