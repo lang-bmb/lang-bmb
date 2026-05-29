@@ -1600,7 +1600,9 @@ Phase 2 (3-4 cycles): 모듈 capability 선언
 | ~~즉시 (Cycle 3251~)~~ | ~~M12-M15 초기 페이즈~~ ✅ 완료 |
 | ~~단기 (Cycle 3256-3274)~~ | ~~M12 Phase 3-5 + M13 Phase 3-4 + M14/M15~~ ✅ 완료 |
 | ~~중기 (Cycle 3281-3284)~~ | ~~M12 Phase 6 (Z3) + M13 Phase 5 (.bmb-contracts) + M14 Phase 4 (SemanticDuplicate)~~ ✅ 완료 |
-| 장기 (~3개월) | M15 Phase 5+ + M12 더 깊은 Z3 통합 (계약+효과 통합) |
+| ~~Cycle 3286-3295~~ | ~~M12 Phase 6b/6c/6d + M15 Phase 5 + sim_count_shared + contracts-check~~ ✅ 완료 |
+| 다음 세션 (P1-P3) | diagnose CLI 통합 + index platform 버그 수정 + module-suggest set-equality |
+| 장기 (~3개월) | M12 Z3 lattice 확장 (missing_annotation formal) + cross-gen Fixed Point |
 
 ### 리팩토링 원칙
 

@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-29 (Cycles 3286-3295)
 
-> **HEAD**: `47883ca8` (feat(ai-native): contracts-check require_effect_annotation JSON 통합)
+> **HEAD**: `2eb5658c` (chore(docs): 세션 종료 정리 — Cycles 3286-3295)
 > **실무 앵커**: `claudedocs/ROADMAP.md` (§ 6 AI-Native Pivot + M12-M15 진척)
 > **전략 계획서**: `claudedocs/plans/ai-native-plan-2026.md`
 
@@ -83,20 +83,38 @@ $ compiler.exe contracts-check test.bmb
 
 ## 즉시 실행 가능한 다음 태스크
 
-### [P1] missing_effect_annotation → Z3 (optional, 복잡)
+### [P1] effect-verify + lint 통합 CLI
 
-- 현재: heuristic scan만
-- 향후: transitive_map 기반으로 SMT 모델 확장 (복잡, 별도 세션)
+**배경**: 현재 effect-verify와 lint는 별개 명령. AI 워크플로우에서는 단일 명령으로 모든 effect 진단이 필요.
+**구현 방향**:
+```bash
+compiler.exe diagnose src.bmb   # effect-verify + lint effect rules + contracts 통합
+```
+- `effect-verify` 결과 + `lint --effect-only` 결과를 하나의 JSON으로 통합
+- AI agent가 한 번에 모든 effect 관련 위반을 파악 가능
 
 ### [P2] index 명령 platform 버그 수정
 
-- `callers_collect_source`는 수정됨
-- `index_file`의 별도 코드 경로는 미수정 (낮은 우선순위)
+**배경**: `callers_collect_source`는 수정됨(Cycle 3289). `index_file`의 `index_collect_source` 함수(별도 코드 경로)는 platform 블록 swallow 버그 미수정.
+**증상**: `compiler.exe index file_with_platform.bmb` → platform 내부 fn이 잘못된 callee 목록 포함.
+**수정 방향**: `index_collect_source`에도 `skip_platform_block` 적용.
 
 ### [P3] module-suggest set-equality 비교
 
-- 현재: `declared_caps == used_caps` (string 직접 비교, 순서 의존)
-- 개선: set-equality (IO File == File IO → ok)
+**배경**: 현재 `declared_caps == used_caps` (string 직접 비교, 순서 의존). "IO File" ≠ "File IO" → 오분류.
+**수정**: `eff_set_equals(a, b)` 함수 추가 — 각 cap이 상대방에 포함되는지 양방향 체크.
+
+### [P4] effect lattice 더 깊은 Z3 모델 (장기)
+
+**배경**: 현재 missing_effect_annotation은 heuristic scan. Z3 formal certification이 없음.
+**구현 방향**: `transitive_map` 기반으로 미선언 함수들도 SMT 모델에 추가 → Z3가 더 넓은 범위 검증.
+**복잡도**: 높음 (2-3 사이클), effect 집합 크기에 따라 SMT 폭발 가능.
+
+### [P5] bootstrap Fixed Point 완전 검증 (선택)
+
+**배경**: Within-gen Fixed Point(emit-ir 두 번)는 ✅. 하지만 cross-gen(S2 IR vs S3 IR)은 18446744073709551615 vs -1 표현 차이로 diff 존재. 이는 기능 동일하나 LLVM IR 표현 차이.
+**검증 방향**: `sed 's/18446744073709551615/-1/g'` 정규화 후 비교하면 완전 Fixed Point 확인 가능.
+**필요 조건**: llc + gcc 링크 (~40분), 큰 시간 투자.
 
 ---
 
