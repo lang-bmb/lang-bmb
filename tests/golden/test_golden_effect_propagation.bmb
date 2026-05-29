@@ -1,0 +1,31 @@
+// M12 Phase 3: Effect propagation — functions declaring <IO> only must not call <IO, Net> functions.
+// This test is for the bootstrap lint pass (compiler.exe lint), not the Rust-side parser.
+// The lint system detects: fn with declared effect <X> calling fn with effect <X, Y>
+
+// Network function — declares Net capability
+fn fetch_url(): <Net> -> String = "result";
+
+// IO function — declares only IO capability
+fn log_message(): <IO> -> i64 = {
+    let _p = println("logging");
+    0
+};
+
+// Combined — declares IO and Net
+fn send_and_log(): <IO, Net> -> i64 = {
+    let _data = fetch_url();
+    let _p = println("done");
+    0
+};
+
+// This should NOT trigger: function with no effect annotation (implicit <*>)
+fn do_anything() -> i64 = {
+    let _data = fetch_url();
+    0
+};
+
+fn main() -> i64 = {
+    let _s = send_and_log();
+    let _d = do_anything();
+    0
+}

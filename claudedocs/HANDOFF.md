@@ -1,6 +1,6 @@
-# BMB Session Handoff — 2026-05-29 (Cycles 3251-3260)
+# BMB Session Handoff — 2026-05-29 (Cycles 3261-3270)
 
-> **HEAD**: `[pending commit]` (M12+M13+M14+M15 Phase 1 완료)
+> **HEAD**: `[pending commit]` (M12 Phase 3 + M13 Phase 3 Full + M14 Phase 3 + M15 Phase 2)
 > **실무 앵커**: `claudedocs/ROADMAP.md` (§ 6 AI-Native Pivot + M12-M15 진척)
 > **전략 계획서**: `claudedocs/plans/ai-native-plan-2026.md`
 
@@ -11,7 +11,7 @@
 | 항목 | 상태 |
 |------|------|
 | cargo test --release | ✅ 2390 tests, 0 FAILED |
-| 3-Stage Fixed Point | ✅ S2 == S3 (Cycle 3259) |
+| 3-Stage Fixed Point | ✅ S2 == S3 (Cycle 3269) |
 | bmb lint 0-warning | ✅ 177 non-recursive (pre-existing), 0 새 경고 |
 | Z3 verify | ✅ 141/141 |
 | P-track 7/7 | ✅ ALL ≤1.010× |
@@ -20,81 +20,97 @@
 
 ---
 
-## 이번 세션 완료 마일스톤 (Cycles 3251-3260)
+## 이번 세션 완료 (Cycles 3261-3270)
 
 | 마일스톤 | 완료 사이클 | 내용 |
 |---------|-----------|------|
-| M12 Phase 1 | 3251 | `fn foo(): <IO, Net> -> T` 파싱 (parse_fn_after_params + parse_fn_effect_tail) |
-| M13 Phase 1+2 | 3252 | `intent: "..."` 어노테이션 + `[intent_no_contract]` lint |
-| M14 Phase 1 | 3253 | `gotgan lock` SHA-256 lockfile |
-| M12 Phase 2a | 3254 | effect row → MIR `@effect:IO Net` |
-| M12 Phase 2b | 3255 | effect → LLVM `"bmb-effect"="IO"` 속성 |
-| M12 Phase 2c | 3257 | `[effect_pure_violation]` lint: pure fn calling IO → warn |
-| M14 Phase 2 | 3258 | `gotgan verify` 해시 검증 명령 |
-| M15 Phase 1 | 3259 | `platform Name { ... }` 파싱 (skip) |
+| M14 Phase 3 | 3261 | `gotgan add <name> <path>` 명령 + lock 업데이트 |
+| M12 Phase 3 | 3262 | `[effect_propagation]` lint: callee effect ⊄ caller effect → warn |
+| M15 Phase 2 | 3263 | platform { fn ... }: <X> } → effect map 등록 (`PLAT:` prefix) |
+| M13 Phase 3 | 3264 | `repair-hint` 명령 스텁 (JSON `{type:repair_hints, file:..., functions:[]}`) |
+| M13 Phase 3 Full | 3267 | `repair-hint` full: pre/post/intent JSON 출력 |
+| Fixed Point | 3265+3269 | 3-Stage S2 == S3 ✅ |
 
 ---
 
-## 새로 추가된 언어 기능 요약
+## 새로 추가된 기능 요약
 
-### M12: Effect Row 문법
+### M14 Phase 3: gotgan add
+
+```
+$ gotgan add my-lib ../my-lib
+Added: my-lib = { path = "../my-lib" }
+```
+
+- `[dependencies]` 섹션 없으면 자동 생성
+- `gotgan.lock` 존재 시 SHA-256 자동 업데이트
+- 중복 dep 방지
+
+### M12 Phase 3: Effect Callee Propagation
 
 ```bmb
-fn double(x: i64): <pure> -> i64 = x * 2;     // fn-pure → memory(none) nofree
-fn read_io(path: String): <IO> -> String = ...;  // "bmb-effect"="IO" LLVM attr
-fn transfer(): <IO, Net> -> i64 = ...;           // "bmb-effect"="IO Net"
-fn free(n: i64): <*> -> i64 = n;                // 제한 없음
+fn fetch(): <Net> -> String = "data";
+fn handler(): <IO> -> i64 = { let _d = fetch(); 0 };
+// [effect_propagation] handler: declares <IO> but calls fetch which uses <Net>
 ```
 
-**Lint rule**: `[effect_pure_violation]` — `@pure fn` calling println/system/etc → warn
+- `build_fn_effect_map`: 소스 스캔으로 효과 맵 구성
+- `lint_check_effect_propagation`: 호출자 선언 effect ⊆ 피호출자 effect 검증
+- `eff_contains_name`, `check_callee_missing_effects` 등 헬퍼
 
-### M13: Intent 어노테이션
-
-```bmb
-fn add(x: i64, y: i64) -> i64
-    intent: "Adds two numbers"
-    pre x >= 0 and y >= 0
-    post it >= 0
-= x + y;
-```
-
-**Lint rule**: `[intent_no_contract]` — intent 있고 contracts 없으면 warn
-
-### M14: gotgan SHA-256 Lockfile
-
-```
-$ gotgan lock    → 생성: gotgan.lock (SHA-256 hashes of deps)
-$ gotgan verify  → 검증: locked vs current hash 비교
-```
-
-### M15: platform 선언
+### M15 Phase 2: Platform Capabilities
 
 ```bmb
 platform stdlib {
     fn io_print(s: String): <IO> -> i64;
+    fn net_fetch(url: String): <Net> -> String;
 }
-// → 파싱 되지만 현재는 무시 (Phase 2에서 effect capabilities 등록)
+// io_print, net_fetch가 effect propagation 검사의 callee로 활용됨
 ```
+
+- `scan_platform_effects`: platform { } 블록 내 fn 효과 추출
+- `PLAT:` prefix: platform 선언 함수는 callee 조회에만 사용, 본인 검사 제외
+- `eff_map_get_raw`: raw 조회 (PLAT: prefix 포함)
+
+### M13 Phase 3: Repair-hint Full
+
+```
+$ compiler.exe repair-hint foo.bmb
+{"type":"repair_hints","file":"foo.bmb","functions":[
+  {"name":"add","intent":"Adds two numbers","pre":["x >= 0","y >= 0"],"post":["it >= 0"]}
+]}
+```
+
+- `extract_pre_texts` / `extract_post_texts` / `extract_intent_tok` — contract 소스 텍스트 추출
+- `emit_fn_hint` (6 params) — JSON emitter
+- `repair_hint_scan` — 전체 소스 스캔
+- **학습**: `let x = e1; e2; e3;` 체인에서 `e2; e3`는 `{ }` 블록 없이 불가 → `let _z = e2; e3;` 필수
 
 ---
 
 ## 즉시 실행 가능한 다음 태스크
 
-### M12 Phase 3 — Z3 effect constraint
+### M13 Phase 3 Full — contract text 추출
 
-**목표**: effect가 pre/post와 연동 - `fn(): <IO>` → Z3 검증에서 IO effect 제약 조건
+**목표**: `repair-hint` 명령에서 함수별 pre/post/intent를 JSON으로 출력
+**Note**: 이번 세션에서 `extract_pre_texts`/`extract_post_texts`/`extract_intent_text` 구현 시도했으나 Python binary-mode 버그 및 string escaping 이슈로 롤백. 다음 세션에서 Edit 도구 사용 권장 (Python write 금지).
 
-### M15 Phase 2 — platform effect capabilities 등록
+**구현 방법**:
+1. `extract_pre_texts(src, pos) -> String` — pre 조건 텍스트 (tab-separated)
+2. `extract_post_texts(src, pos) -> String` — post 조건 텍스트
+3. `extract_intent_text(src, pos) -> String` — intent 텍스트
+4. `json_esc(s) -> String` — JSON 이스케이프
+5. `repair_hint_run(input, source)` — 메인 스캔 + JSON 출력
 
-**목표**: `platform stdlib { fn io_print: <IO> }` → `io_print` 함수에 <IO> effect 자동 등록
+**⚠️ 주의**: 변수명 `pre`, `post`, `ret` 는 BMB 예약어 → `pctexts`, `qctexts`, `rtype` 등으로 대체
 
-### M13 Phase 3 — 구조화 Repair Signal
+### M12 Phase 4 — Effect 전이 전파
 
-**목표**: `bmb verify` 실패 → LLM-consumable JSON repair signal
+**목표**: transitive effect 검사 (A calls B calls C: A must have C's effects too)
 
-### M14 Phase 3 — gotgan add 명령
+### M16 — Effect Inference (탐색적)
 
-**목표**: `gotgan add <name> <path>` → gotgan.toml에 dep 추가 + SHA-256 계산
+**목표**: 어노테이션 없는 함수의 effect를 body 분석으로 자동 추론
 
 ---
 
@@ -109,11 +125,10 @@ platform stdlib {
 
 ## 주의사항
 
-- **Rule 6**: 모든 새 기능은 bootstrap/compiler.bmb에서만. HANDOFF의 Rust 파일 참조는 stale.
-- **M12 주의**: `fn(): <pure>` → `fn-pure` AST (기존 @pure fn과 동등). `fn(): <IO>` → `fn` + `(eff IO)` 자식.
-- **M13 주의**: `extract_pre_asts`/`extract_post_asts`가 `intent:` 스킵하도록 수정됨.
-- **M14 주의**: `exec_with_stdin` LLVM declare 추가됨. `sha256sum` 먼저, certutil fallback.
-- **M15 주의**: `skip_brace_block` ≠ `skip_nested_braces(..tok_end(t_brace), 1)` — `{` 이후 위치에서는 후자를 사용.
+- **Rule 6**: 모든 새 기능은 bootstrap/compiler.bmb에서만.
+- **Python write 금지**: bootstrap/compiler.bmb 수정 시 Python으로 직접 파일 write 금지. Python text mode `'w'`가 `\n`→`\r\n` 변환. Edit 도구 사용 필수.
+- **BMB 예약어**: `pre`, `post`, `ret`, `type`, `for`, `in`, `let`, `fn`, `if`, `else`, `and`, `or`, `not`, `mut`, `set`, `as`, `bor` 등은 변수명/파라미터명으로 사용 불가.
+- **M12 lint**: effect propagation lint는 bootstrap의 `lint_file` 경로 (Rust-side `bmb lint`와 별개). `bootstrap/compiler.exe lint` 로 실행.
 - **fixed point**: 항상 S2 IR vs S3 IR 비교 (binary hash 아님).
 
 ---
@@ -123,8 +138,6 @@ platform stdlib {
 | 파일 | 역할 |
 |------|------|
 | `bootstrap/compiler.bmb` | 부트스트랩 컴파일러 (32K+ LOC) |
-| `ecosystem/gotgan-bmb/gotgan.bmb` | 패키지 매니저 (lock/verify 추가됨) |
-| `tests/golden/test_golden_effect_row.bmb` | M12 effect row 골든 테스트 |
-| `tests/golden/test_golden_intent_annotation.bmb` | M13 intent 골든 테스트 |
-| `tests/golden/test_golden_platform.bmb` | M15 platform 골든 테스트 |
+| `ecosystem/gotgan-bmb/gotgan.bmb` | 패키지 매니저 (add 추가됨) |
+| `tests/golden/test_golden_effect_propagation.bmb` | M12 Phase 3 골든 테스트 |
 | `claudedocs/ROADMAP.md` | 실무 앵커 (§ 6 AI-Native Pivot + 진척 표) |

@@ -1681,7 +1681,7 @@ fn get_string_text(s: String, pos: i64, tok: i64) -> String
 
     let endpos = tok_end(tok);
 
-    // v0.100.x (Cycle 3234): {{ → { and }} → } escape processing (Rust desugar_string_interp parity)
+    // v0.100.x (Cycle 3234): {{ -> { and }} -> } escape processing (Rust desugar_string_interp parity)
 
     process_str_escapes(s.slice(p + 1, endpos - 1));
 
@@ -1926,7 +1926,7 @@ fn parse_ident_or_call(src: String, pos: i64, tok: i64) -> String
 
         // Cycle 2375: Bare `todo` placeholder parses as unit (matching Rust
 
-        // compiler's Expr::Todo → Constant::Unit lowering). The ret emission
+        // compiler's Expr::Todo -> Constant::Unit lowering). The ret emission
 
         // path substitutes a type-appropriate literal per return type.
 
@@ -2004,7 +2004,7 @@ fn parse_ident_or_call(src: String, pos: i64, tok: i64) -> String
 
             if tok_kind(after_variant) == TK_LPAREN() {
 
-                // Type::method(args) → static call with mangled name Type_method
+                // Type::method(args) -> static call with mangled name Type_method
 
                 let rargs = parse_args(src, tok_end(after_variant), "");
 
@@ -2028,7 +2028,7 @@ fn parse_ident_or_call(src: String, pos: i64, tok: i64) -> String
 
     };
 
-// assert(cond) or assert(cond, "msg") → (if (unary not cond) (call <bmb_panic> msg) (unit))
+// assert(cond) or assert(cond, "msg") -> (if (unary not cond) (call <bmb_panic> msg) (unit))
 
 fn parse_assert_call(src: String, pos: i64) -> String
 
@@ -2088,7 +2088,7 @@ fn parse_assert_call(src: String, pos: i64) -> String
 
     };
 
-// dbg(expr) → (let <__dbg_N> expr (seq (call <eprintln> (var <__dbg_N>)) (var <__dbg_N>)))
+// dbg(expr) -> (let <__dbg_N> expr (seq (call <eprintln> (var <__dbg_N>)) (var <__dbg_N>)))
 
 fn parse_dbg_call(src: String, pos: i64, start_pos: i64) -> String
 
@@ -2118,7 +2118,7 @@ fn parse_dbg_call(src: String, pos: i64, start_pos: i64) -> String
 
     };
 
-// dbg_str(expr) → prints string to stderr and returns it
+// dbg_str(expr) -> prints string to stderr and returns it
 
 fn parse_dbg_str_call(src: String, pos: i64, start_pos: i64) -> String
 
@@ -2148,7 +2148,7 @@ fn parse_dbg_str_call(src: String, pos: i64, start_pos: i64) -> String
 
     };
 
-// todo() or todo("msg"), unreachable() or unreachable("msg") → (call <bmb_panic> msg)
+// todo() or todo("msg"), unreachable() or unreachable("msg") -> (call <bmb_panic> msg)
 
 fn parse_panic_call(src: String, pos: i64, default_msg: String) -> String
 
@@ -2184,7 +2184,7 @@ fn parse_panic_call(src: String, pos: i64, default_msg: String) -> String
 
     };
 
-// assert_eq(a, b) → compare two values, panic if not equal
+// assert_eq(a, b) -> compare two values, panic if not equal
 
 fn parse_assert_eq_call(src: String, pos: i64, start_pos: i64) -> String
 
@@ -2194,7 +2194,7 @@ fn parse_assert_eq_call(src: String, pos: i64, start_pos: i64) -> String
 
 = parse_assert_cmp_call(src, pos, start_pos, "!=", "assertion failed: values not equal");
 
-// assert_ne(a, b) → compare two values, panic if equal
+// assert_ne(a, b) -> compare two values, panic if equal
 
 fn parse_assert_ne_call(src: String, pos: i64, start_pos: i64) -> String
 
@@ -2443,7 +2443,7 @@ fn parse_set_index(src: String, pos: i64, target_name: String) -> String
 
 // 진입 시: pos가 첫 '.' 다음 위치, target_name은 root var
 
-// chain 누적: prev_base = "(var <target_name>)" → "(field <prev_base> f1)" → ...
+// chain 누적: prev_base = "(var <target_name>)" -> "(field <prev_base> f1)" -> ...
 
 fn parse_set_field(src: String, pos: i64, target_name: String) -> String
 
@@ -2455,11 +2455,11 @@ fn parse_set_field(src: String, pos: i64, target_name: String) -> String
 
 // 재귀 helper: 한 번에 한 field 읽고, 다음 토큰에 따라 분기
 
-//   '.'        → chain 계속 (재귀)
+//   '.'        -> chain 계속 (재귀)
 
-//   '['        → set_field_chain_index (terminal)
+//   '['        -> set_field_chain_index (terminal)
 
-//   assign op  → set_field terminal
+//   assign op  -> set_field terminal
 
 fn parse_set_field_chain(src: String, pos: i64, prev_base: String) -> String
 
@@ -2802,7 +2802,7 @@ fn parse_block_let_array_type_aware(src: String, pos: i64, name: String, is_mut:
 
 // After parsing [elem_type; N], handle what follows: '=' (explicit value) or ';' (implicit stack alloc).
 // elem_kind: token kind of element type — used to determine bytes per element.
-//   TK_I64 / TK_F64 → 8 bytes,  TK_I32 → 4 bytes,  TK_IDENT/TK_BOOL → 1 byte (u8 etc.)
+//   TK_I64 / TK_F64 -> 8 bytes,  TK_I32 -> 4 bytes,  TK_IDENT/TK_BOOL -> 1 byte (u8 etc.)
 
 fn parse_block_let_after_stack_array(src: String, pos: i64, name: String, is_mut: bool, size_expr: String, elem_kind: i64) -> String
 
@@ -3367,11 +3367,11 @@ fn parse_lambda_params(src: String, pos: i64, acc: String) -> String
 
     else { make_error_at("expected parameter name or '|' in lambda, got " + tok_kind_name(tok_kind(tok)), src, pos) };
 
-// [val; count] → (array_repeat val count)
+// [val; count] -> (array_repeat val count)
 
-// [expr1, expr2, ...] → (array expr1 expr2 ...)
+// [expr1, expr2, ...] -> (array expr1 expr2 ...)
 
-// [] → (array)
+// [] -> (array)
 
 fn parse_array_or_repeat(src: String, pos: i64) -> String
 
@@ -3565,13 +3565,13 @@ fn parse_postfix_rest(src: String, pos: i64, left: String) -> String
 
         } else if tok_kind(type_tok) == TK_I64() {
 
-            // v0.95: also used for i32→i64 sext (identity at MIR level, codegen emits sext)
+            // v0.95: also used for i32->i64 sext (identity at MIR level, codegen emits sext)
 
             parse_postfix_rest(src, tok_end(type_tok), "(cast_i64 " + left + ")")
 
         } else if tok_kind(type_tok) == TK_I32() {
 
-            // v0.95: as i32 - emit trunc_i32 MIR instruction (i64→i32 narrowing)
+            // v0.95: as i32 - emit trunc_i32 MIR instruction (i64->i32 narrowing)
 
             parse_postfix_rest(src, tok_end(type_tok), "(cast_i32 " + left + ")")
 
@@ -4684,7 +4684,7 @@ fn parse_for_range(src: String, pos: i64, varname: String) -> String
 
 // for x in arr { body }
 
-// → (block (let <__fia_N> arr (let <__fil_N> (method arr_len (var <__fia_N>))
+// -> (block (let <__fia_N> arr (let <__fil_N> (method arr_len (var <__fia_N>))
 
 //      (for <__fii_N> (int 0) (var <__fil_N>)
 
@@ -4880,7 +4880,7 @@ fn parse_for_body_inclusive(src: String, pos: i64, varname: String, start_ast: S
 
 // match expr { pat1 => body1, pat2 => body2, _ => default }
 
-// → (let <__match> expr (if (binop == (var <__match>) (int pat1)) body1 (if ... default)))
+// -> (let <__match> expr (if (binop == (var <__match>) (int pat1)) body1 (if ... default)))
 
 fn parse_match_expr(src: String, pos: i64) -> String
 
@@ -5280,7 +5280,7 @@ fn parse_match_arm_sep(src: String, pos: i64, scrutinee: String, prefix: String,
 
     else { let tmatch = next_token_raw(src, pos); make_error_at("expected ',' or '}' after match arm body, got " + tok_kind_name(tok_kind(tmatch)), src, pos) };
 
-// Parse comma-separated bind name list inside payload pattern: (a, b, c) → returns " <a> <b> <c>" + pos after ')'
+// Parse comma-separated bind name list inside payload pattern: (a, b, c) -> returns " <a> <b> <c>" + pos after ')'
 
 fn parse_payload_bind_list(src: String, pos: i64, acc: String) -> String
 
@@ -6306,7 +6306,7 @@ fn parse_program_sb(src: String, pos: i64, sb: i64) -> String
             let end_pos = skip_brace_block(src, tok_end(tok));
             parse_program_sb(src, end_pos, sb)
         } else if kind == TK_CONST() {
-            // const NAME[: TYPE] = EXPR;  →  (fn-const <NAME> () BODY)
+            // const NAME[: TYPE] = EXPR;  ->  (fn-const <NAME> () BODY)
             let cr = parse_const_decl(src, tok_end(tok));
             if is_error(cr) { cr } else {
                 let _w1 = sb_push(sb, " ");
@@ -6806,7 +6806,7 @@ fn parse_enum_variants_to_registry(src: String, pos: i64, rsb: i64, idx: i64) ->
     };
 
 
-// Look up enum variant ordinal: enum_variant_ordinal("Color:Red,Green,Blue;", "Color", "Red") → 0
+// Look up enum variant ordinal: enum_variant_ordinal("Color:Red,Green,Blue;", "Color", "Red") -> 0
 
 fn enum_variant_ordinal(reg: String, enum_name: String, variant: String) -> i64
 
@@ -6948,7 +6948,7 @@ fn variant_has_bracket(variants: String, target: String, pos: i64) -> bool
 
     };
 
-// Resolve (enum_variant <Name> <Variant>) → (int N) in AST text
+// Resolve (enum_variant <Name> <Variant>) -> (int N) in AST text
 
 fn resolve_enum_variants_in_ast(ast: String, enum_reg: String) -> String
 
@@ -7703,7 +7703,7 @@ fn parse_int_from(s: String, pos: i64, acc: i64) -> i64
 
     };
 
-// v0.91: Extract float value text from AST node "(float 3.14)" → "3.14"
+// v0.91: Extract float value text from AST node "(float 3.14)" -> "3.14"
 
 fn extract_float_value_text(ast: String) -> String
 
@@ -9364,11 +9364,11 @@ fn step_method_final(_item: String, cur_temp: i64, cur_block: i64, _cur_exit_lab
 
 // T? is represented as i64 where 0 = null/none, non-zero = some value
 
-// is_some() → value != 0, is_none() → value == 0
+// is_some() -> value != 0, is_none() -> value == 0
 
-// unwrap()/expect() → identity (pass-through)
+// unwrap()/expect() -> identity (pass-through)
 
-// unwrap_or(default) → select(value != 0, value, default)
+// unwrap_or(default) -> select(value != 0, value, default)
 
 fn is_nullable_method(name: String) -> bool
 
@@ -10100,9 +10100,9 @@ fn step_break(_item: String, cur_temp: i64, cur_block: i64, cur_exit_label: Stri
 
 // Derive loop header from exit label:
 
-//   "exit_N" → "loop_N" (while/loop)
+//   "exit_N" -> "loop_N" (while/loop)
 
-//   "for_end_N" → "for_start_N" (for)
+//   "for_end_N" -> "for_start_N" (for)
 
 fn derive_loop_start(exit_label: String) -> String
 
@@ -10250,7 +10250,7 @@ fn step_cast_to_f64(_item: String, cur_temp: i64, cur_block: i64, _cur_exit_labe
 
     make_step_leaf(cur_temp + 1);
 
-// v0.95: Cast i64→i32 (trunc_i32) - work-list continuation handler
+// v0.95: Cast i64->i32 (trunc_i32) - work-list continuation handler
 
 // Inner expr already evaluated at cur_temp-1, emit trunc_i32 MIR instruction
 
@@ -10334,7 +10334,7 @@ fn lower_cast_f64_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exi
 
     pack_ids(inner_temp + 1, inner_block);
 
-// v0.95: Recursive: cast_i32 - evaluate inner and emit trunc_i32 (i64→i32)
+// v0.95: Recursive: cast_i32 - evaluate inner and emit trunc_i32 (i64->i32)
 
 fn lower_cast_i32_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
 
@@ -10436,7 +10436,7 @@ fn lower_lambda_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, _loop_exit
 
     };
 
-// Lower (enum_val (int N) payload1 payload2...) → calloc(1+N,8) + field-stores
+// Lower (enum_val (int N) payload1 payload2...) -> calloc(1+N,8) + field-stores
 
 // M5-3: supports multi-field variants; child 0 = tag, children 1..N = payloads
 
@@ -11833,7 +11833,7 @@ fn lower_int_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64
 
     pack_ids(temp_id + 1, block_id);
 
-// v0.91: Lower float literal to MIR: (float 3.14) → %_t0 = const F:3.14
+// v0.91: Lower float literal to MIR: (float 3.14) -> %_t0 = const F:3.14
 
 fn lower_float_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64
 
@@ -11919,7 +11919,7 @@ fn lower_binop_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: 
 
     let right_ast = get_child(ast, 2);
 
-    // Short-circuit lowering: a or b → if a { true } else { b }; a and b → if a { b } else { false }
+    // Short-circuit lowering: a or b -> if a { true } else { b }; a and b -> if a { b } else { false }
 
     // Uses branch+phi (not eager or i1) — enables LLVM switch folding for or-chains
 
@@ -12337,7 +12337,7 @@ fn lower_nullable_method_sb(ast: String, method: String, temp_id: i64, block_id:
 
     } else { pack_ids(recv_temp, recv_block) };
 
-// invariant: method != "" → ret starts with "bmb_" or "popcount"/"clz"/"ctz"/"bit_*"/"f64_to_i64"/"i64_to_f64"; method == "" → "__unknown_method_"
+// invariant: method != "" -> ret starts with "bmb_" or "popcount"/"clz"/"ctz"/"bit_*"/"f64_to_i64"/"i64_to_f64"; method == "" -> "__unknown_method_"
 
 fn method_to_runtime_fn(method: String) -> String
 
@@ -12663,7 +12663,7 @@ fn lower_while_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, _loop_exit:
 
     pack_ids(body_temp + 1, body_block);
 
-// AST: (loop body) → MIR:
+// AST: (loop body) -> MIR:
 
 //   goto loop_N
 
@@ -12727,7 +12727,7 @@ fn lower_loop_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, _loop_exit: 
 
     pack_ids(body_temp + 1, body_block);
 
-// AST: (break) → MIR: goto <exit_label> + unreachable block
+// AST: (break) -> MIR: goto <exit_label> + unreachable block
 
 fn lower_break_sb(loop_exit: String, temp_id: i64, block_id: i64, sb: i64) -> i64
 
@@ -12759,7 +12759,7 @@ fn lower_break_sb(loop_exit: String, temp_id: i64, block_id: i64, sb: i64) -> i6
 
 // Derive loop header from exit label using derive_loop_start
 
-// AST: (continue) → MIR: goto <loop_label> + unreachable block
+// AST: (continue) -> MIR: goto <loop_label> + unreachable block
 
 fn lower_continue_sb(loop_exit: String, temp_id: i64, block_id: i64, sb: i64) -> i64
 
@@ -12791,7 +12791,7 @@ fn lower_continue_sb(loop_exit: String, temp_id: i64, block_id: i64, sb: i64) ->
 
     pack_ids(temp_id + 1, block_id);
 
-// AST: (return) or (return expr) → MIR: return or return %val + unreachable block
+// AST: (return) or (return expr) -> MIR: return or return %val + unreachable block
 
 fn lower_return_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
 
@@ -12853,7 +12853,7 @@ fn lower_return_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit:
 
     };
 
-// AST: (field base_expr field_name) → MIR: %dest = field-access %base.field_name
+// AST: (field base_expr field_name) -> MIR: %dest = field-access %base.field_name
 
 fn lower_field_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
 
@@ -13513,17 +13513,17 @@ fn lower_ptr_set_index_f64_sb(ast: String, temp_id: i64, block_id: i64, sb: i64,
 
 //   alloca %varname
 
-//   <start code> → %_tS
+//   <start code> -> %_tS
 
 //   store %varname, %_tS
 
-//   <end code> → %_tE
+//   <end code> -> %_tE
 
 //   goto for_start_N
 
 // for_start_N:
 
-//   %_tL = load %varname → resolves via alloca/load in codegen
+//   %_tL = load %varname -> resolves via alloca/load in codegen
 
 //   %_tC = < %_tL, %_tE
 
@@ -13949,7 +13949,7 @@ fn get_fn_eff_scan(content: String, pos: i64) -> String
             let ntype = get_node_type(child);
 
             if ntype == "eff" {
-                // (eff IO Net) → skip "eff " prefix → "IO Net"
+                // (eff IO Net) -> skip "eff " prefix -> "IO Net"
                 let inner = extract_paren_content(child);
                 let after_eff = low_skip_ws(inner, 3);  // skip "eff"
                 str_trim(inner.slice(after_eff, inner.len()))
@@ -14052,7 +14052,7 @@ fn find_char_back(s: String, ch: i64, pos: i64) -> i64
 
     else { find_char_back(s, ch, pos - 1) };
 
-// M11-C Phase 3: rewrite (index (var <name>)) → (ptr_index (var <name>)) for [i64; N] stack arrays
+// M11-C Phase 3: rewrite (index (var <name>)) -> (ptr_index (var <name>)) for [i64; N] stack arrays
 
 // Scans body for "> (call <stack_i64_new>" pattern to find binding names
 
@@ -14088,7 +14088,7 @@ fn rewrite_stack_i64_index(body: String, pos: i64) -> String
 
     };
 
-// M11-C Phase 4: rewrite (index (var <name>)) → (ptr_index_u8 (var <name>)) for [u8; N] stack arrays
+// M11-C Phase 4: rewrite (index (var <name>)) -> (ptr_index_u8 (var <name>)) for [u8; N] stack arrays
 
 fn rewrite_stack_u8_index(body: String, pos: i64) -> String
 
@@ -14122,7 +14122,7 @@ fn rewrite_stack_u8_index(body: String, pos: i64) -> String
 
     };
 
-// M11-C Phase 5: rewrite (index (var <name>)) → (ptr_index_i32 (var <name>)) for [i32; N] stack arrays
+// M11-C Phase 5: rewrite (index (var <name>)) -> (ptr_index_i32 (var <name>)) for [i32; N] stack arrays
 
 fn rewrite_stack_i32_index(body: String, pos: i64) -> String
 
@@ -14156,7 +14156,7 @@ fn rewrite_stack_i32_index(body: String, pos: i64) -> String
 
     };
 
-// M11-C Phase 6: rewrite (index (var <name>)) → (ptr_index_bool (var <name>)) for [bool; N] stack arrays
+// M11-C Phase 6: rewrite (index (var <name>)) -> (ptr_index_bool (var <name>)) for [bool; N] stack arrays
 
 fn rewrite_stack_bool_index(body: String, pos: i64) -> String
 
@@ -14190,7 +14190,7 @@ fn rewrite_stack_bool_index(body: String, pos: i64) -> String
 
     };
 
-// M11-C Phase 7: rewrite (index (var <name>)) → (ptr_index_f64 (var <name>)) for [f64; N] stack arrays
+// M11-C Phase 7: rewrite (index (var <name>)) -> (ptr_index_f64 (var <name>)) for [f64; N] stack arrays
 
 fn rewrite_stack_f64_index(body: String, pos: i64) -> String
 
@@ -14734,7 +14734,7 @@ fn llvm_gen_bnot(line: String, pos: i64, dest: String) -> String
 
     "  " + dest + " = xor i64 " + trim_end(operand) + ", -1";
 
-// MIR: gep %base, %idx → LLVM: getelementptr i64, ptr %base, i64 %idx
+// MIR: gep %base, %idx -> LLVM: getelementptr i64, ptr %base, i64 %idx
 
 fn llvm_gen_gep(line: String, pos: i64, dest: String) -> String
 
@@ -15181,7 +15181,7 @@ fn fix_phi_label(content: String) -> String
 
     val + ", %" + label;
 
-// invariant: ret ∈ {"void", "ptr", "i64", "double"} — exhaustive over all known runtime fn names; unknown fns → "i64"
+// invariant: ret ∈ {"void", "ptr", "i64", "double"} — exhaustive over all known runtime fn names; unknown fns -> "i64"
 
 // v0.46: Determine LLVM return type from function name
 
@@ -16422,7 +16422,7 @@ fn llvm_gen_call_reg(line: String, pos: i64, dest: String, registry: String) -> 
 
             conversions + "  call void " + emitted_fn + "(" + formatted_args + ")" + SEP() + "  " + dest + " = add nsw i64 0, 0"
 
-        } else { match reg_ret { "ptr" => conversions + "  " + dest + "_ptr = call ptr " + emitted_fn + "(" + formatted_args + ")" + SEP() + "  " + dest + " = ptrtoint ptr " + dest + "_ptr to i64", "double" => conversions + "  " + dest + " = call double " + emitted_fn + "(" + formatted_args + ")", "i32" => // v0.95: i32 return → call i32, sext to i64
+        } else { match reg_ret { "ptr" => conversions + "  " + dest + "_ptr = call ptr " + emitted_fn + "(" + formatted_args + ")" + SEP() + "  " + dest + " = ptrtoint ptr " + dest + "_ptr to i64", "double" => conversions + "  " + dest + " = call double " + emitted_fn + "(" + formatted_args + ")", "i32" => // v0.95: i32 return -> call i32, sext to i64
 
             conversions + "  " + dest + "_i32c = call i32 " + emitted_fn + "(" + formatted_args + ")" + SEP() + "  " + dest + " = sext i32 " + dest + "_i32c to i64", _ => conversions + "  " + dest + " = call " + reg_ret + " " + emitted_fn + "(" + formatted_args + ")" } }
 
@@ -16696,7 +16696,7 @@ fn llvm_gen_goto(line: String, pos: i64) -> String
 
 // v0.92: Float binary operation
 
-// MIR: f+ %a, %b → LLVM: fadd double %a, %b
+// MIR: f+ %a, %b -> LLVM: fadd double %a, %b
 
 fn llvm_gen_float_binop(op: String, line: String, pos: i64, dest: String) -> String
 
@@ -16718,7 +16718,7 @@ fn llvm_gen_float_binop(op: String, line: String, pos: i64, dest: String) -> Str
 
 // v0.92: Float comparison operation
 
-// MIR: f< %a, %b → LLVM: fcmp olt double %a, %b + zext i1 to i64
+// MIR: f< %a, %b -> LLVM: fcmp olt double %a, %b + zext i1 to i64
 
 fn llvm_gen_float_cmp(pred: String, line: String, pos: i64, dest: String) -> String
 
@@ -16740,7 +16740,7 @@ fn llvm_gen_float_cmp(pred: String, line: String, pos: i64, dest: String) -> Str
 
 // v0.92: Alloca for mutable variables - emit LLVM alloca and mark in mapping
 
-// MIR: alloca %name → LLVM: %name = alloca i64 + mapping[%name] = ALLOCA
+// MIR: alloca %name -> LLVM: %name = alloca i64 + mapping[%name] = ALLOCA
 
 fn llvm_gen_alloca(line: String, pos: i64, mapping: String) -> String
 
@@ -16758,7 +16758,7 @@ fn llvm_gen_alloca(line: String, pos: i64, mapping: String) -> String
 
 // v0.92: Store for mutable variables
 
-// MIR: store %name, %_tN → LLVM: store i64 %resolved_src, ptr %name
+// MIR: store %name, %_tN -> LLVM: store i64 %resolved_src, ptr %name
 
 fn llvm_gen_store_sb(line: String, pos: i64, mapping: String, str_sb: i64) -> String
 
@@ -17258,7 +17258,7 @@ fn build_zext_map(ir: String, pos: i64, zmap: String) -> String
 
     };
 
-// Check if line is "zext i1 %X to i64", record dest → X in zext map
+// Check if line is "zext i1 %X to i64", record dest -> X in zext map
 
 fn try_add_zext(line: String, zmap: String) -> String
 
@@ -17366,7 +17366,7 @@ fn try_add_trunc_alias(line: String, zmap: String, aliases: String) -> String
 
             if starts_with(rhs, "trunc i64 ", 0) {
 
-                // Only eliminate zext i1 → trunc to i1 round-trips (not to i8/i32)
+                // Only eliminate zext i1 -> trunc to i1 round-trips (not to i8/i32)
 
                 let to_pos = find_pattern_at_slow(rhs, " to i1", 10);
 
@@ -17748,7 +17748,7 @@ fn rebuild_ir_no_dead_zexts(ir: String, pos: i64, sb: i64, dead: String) -> i64
 
     };
 
-// Pattern: %a = ptrtoint ptr %P to i64 ... %b = inttoptr i64 %a to ptr → %b aliases %P
+// Pattern: %a = ptrtoint ptr %P to i64 ... %b = inttoptr i64 %a to ptr -> %b aliases %P
 
 fn eliminate_inttoptr_roundtrips_ir(ir: String) -> String
 
@@ -18312,7 +18312,7 @@ fn annotate_memory_read_ir(ir: String) -> String
 
     else {
 
-        // Has reads but no writes → memory(read)
+        // Has reads but no writes -> memory(read)
 
         let brace = find_char(header, 0, 123);
 
@@ -18871,7 +18871,7 @@ fn annotate_memory_read_interprocedural(module_ir: String) -> String
 
 };
 
-// v0.96.9: Check if function body has sdiv/udiv/srem/urem (can trap → no speculatable)
+// v0.96.9: Check if function body has sdiv/udiv/srem/urem (can trap -> no speculatable)
 
 fn ipr_has_div_rem(ir: String, pos: i64, end: i64) -> bool
 
@@ -19077,9 +19077,9 @@ fn inline_rebuild(ir: String, pos: i64, sb: i64, count: i64) -> i64
 
             let has_loops = inline_has_back_edge(ir, body_start, fn_end);
 
-            // Small functions (≤15 lines, no loops) → alwaysinline
+            // Small functions (≤15 lines, no loops) -> alwaysinline
 
-            // Medium functions (≤150 lines) → inlinehint
+            // Medium functions (≤150 lines) -> inlinehint
 
             if line_count <= 15 and not has_loops {
 
@@ -19843,7 +19843,7 @@ fn slf_is_store(line: String) -> bool
 
     find_pattern_at(line, "store i64 ", s) == s or find_pattern_at(line, "store double ", s) == s;
 
-// Extract ptr name from "  store i64 %val, ptr %x" → "%x"
+// Extract ptr name from "  store i64 %val, ptr %x" -> "%x"
 
 fn slf_store_ptr(line: String) -> String
 
@@ -19855,7 +19855,7 @@ fn slf_store_ptr(line: String) -> String
 
     else { trim_end(line.slice(ptr_pos + 6, line.len())) };
 
-// Extract stored value from "  store i64 %val, ptr %x" → "%val"
+// Extract stored value from "  store i64 %val, ptr %x" -> "%val"
 
 fn slf_store_val(line: String) -> String
 
@@ -19889,7 +19889,7 @@ fn slf_is_i64_load(line: String) -> bool
 
 = find_pattern_at(line, " = load i64, ptr ", 0) >= 0;
 
-// Extract ptr from "  %t = load i64, ptr %x" → "%x"
+// Extract ptr from "  %t = load i64, ptr %x" -> "%x"
 
 fn slf_load_ptr(line: String) -> String
 
@@ -19901,7 +19901,7 @@ fn slf_load_ptr(line: String) -> String
 
     else { trim_end(line.slice(load_pos + 17, line.len())) };
 
-// Extract dest from "  %t = load i64, ptr %x" → "%t"
+// Extract dest from "  %t = load i64, ptr %x" -> "%t"
 
 fn slf_load_dest(line: String) -> String
 
@@ -21579,39 +21579,39 @@ fn cf_can_simplify(line: String, table: String) -> bool
 
         let rk = cf_table_has(table, right);
 
-        // x - x → 0
+        // x - x -> 0
 
         if op == "-" and left == right { true }
 
-        // x + 0, x - 0 → x
+        // x + 0, x - 0 -> x
 
         else if (op == "+" or op == "-") and rk and cf_table_get(table, right) == 0 { true }
 
-        // 0 + x → x
+        // 0 + x -> x
 
         else if op == "+" and lk and cf_table_get(table, left) == 0 { true }
 
-        // x * 0, 0 * x → 0
+        // x * 0, 0 * x -> 0
 
         else if op == "*" and rk and cf_table_get(table, right) == 0 { true }
 
         else if op == "*" and lk and cf_table_get(table, left) == 0 { true }
 
-        // x * 1, 1 * x → x
+        // x * 1, 1 * x -> x
 
         else if op == "*" and rk and cf_table_get(table, right) == 1 { true }
 
         else if op == "*" and lk and cf_table_get(table, left) == 1 { true }
 
-        // x / 1 → x
+        // x / 1 -> x
 
         else if op == "/" and rk and cf_table_get(table, right) == 1 { true }
 
-        // x % 1 → 0
+        // x % 1 -> 0
 
         else if op == "%" and rk and cf_table_get(table, right) == 1 { true }
 
-        // x * 2^n → x << n (strength reduction)
+        // x * 2^n -> x << n (strength reduction)
 
         else if op == "*" and rk and cf_is_pow2(cf_table_get(table, right)) { true }
 
@@ -21625,7 +21625,7 @@ fn cf_can_simplify(line: String, table: String) -> bool
 
         let rk = cf_table_has(table, right);
 
-        // x << 0, x >> 0 → x
+        // x << 0, x >> 0 -> x
 
         rk and cf_table_get(table, right) == 0
 
@@ -21641,27 +21641,27 @@ fn cf_can_simplify(line: String, table: String) -> bool
 
         let rk = cf_table_has(table, right);
 
-        // x ^ x, x - x pattern → 0 (already handled for arith)
+        // x ^ x, x - x pattern -> 0 (already handled for arith)
 
         if (op == "bxor") and left == right { true }
 
-        // x & x → x, x | x → x
+        // x & x -> x, x | x -> x
 
         else if (op == "band" or op == "bor") and left == right { true }
 
-        // x & 0, 0 & x → 0
+        // x & 0, 0 & x -> 0
 
         else if op == "band" and rk and cf_table_get(table, right) == 0 { true }
 
         else if op == "band" and lk and cf_table_get(table, left) == 0 { true }
 
-        // x | 0, 0 | x → x
+        // x | 0, 0 | x -> x
 
         else if op == "bor" and rk and cf_table_get(table, right) == 0 { true }
 
         else if op == "bor" and lk and cf_table_get(table, left) == 0 { true }
 
-        // x ^ 0, 0 ^ x → x
+        // x ^ 0, 0 ^ x -> x
 
         else if op == "bxor" and rk and cf_table_get(table, right) == 0 { true }
 
@@ -21699,41 +21699,41 @@ fn cf_simplified_arith(dest: String, line: String, table: String) -> String
 
     let rk = cf_table_has(table, right);
 
-    // x - x → 0
+    // x - x -> 0
 
     if op == "-" and left == right { "  " + dest + " = const 0" }
 
-    // x * 0, 0 * x → 0
+    // x * 0, 0 * x -> 0
 
     else if op == "*" and rk and cf_table_get(table, right) == 0 { "  " + dest + " = const 0" }
 
     else if op == "*" and lk and cf_table_get(table, left) == 0 { "  " + dest + " = const 0" }
 
-    // x + 0, x - 0 → copy x
+    // x + 0, x - 0 -> copy x
 
     else if (op == "+" or op == "-") and rk and cf_table_get(table, right) == 0 { "  " + dest + " = copy " + left }
 
-    // 0 + x → copy x
+    // 0 + x -> copy x
 
     else if op == "+" and lk and cf_table_get(table, left) == 0 { "  " + dest + " = copy " + right }
 
-    // x * 1 → copy x
+    // x * 1 -> copy x
 
     else if op == "*" and rk and cf_table_get(table, right) == 1 { "  " + dest + " = copy " + left }
 
-    // 1 * x → copy x
+    // 1 * x -> copy x
 
     else if op == "*" and lk and cf_table_get(table, left) == 1 { "  " + dest + " = copy " + right }
 
-    // x / 1 → copy x
+    // x / 1 -> copy x
 
     else if op == "/" and rk and cf_table_get(table, right) == 1 { "  " + dest + " = copy " + left }
 
-    // x % 1 → 0
+    // x % 1 -> 0
 
     else if op == "%" and rk and cf_table_get(table, right) == 1 { "  " + dest + " = const 0" }
 
-    // x * 2^n → x << n (strength reduction, emits 2-line replacement)
+    // x * 2^n -> x << n (strength reduction, emits 2-line replacement)
 
     else if op == "*" and rk and cf_is_pow2(cf_table_get(table, right)) {
 
@@ -21743,7 +21743,7 @@ fn cf_simplified_arith(dest: String, line: String, table: String) -> String
 
     }
 
-    // 2^n * x → x << n (commutative)
+    // 2^n * x -> x << n (commutative)
 
     else if op == "*" and lk and cf_is_pow2(cf_table_get(table, left)) {
 
@@ -21765,7 +21765,7 @@ fn cf_simplified_shift(dest: String, line: String, table: String) -> String
 
     let rk = cf_table_has(table, right);
 
-    // x << 0, x >> 0 → copy x
+    // x << 0, x >> 0 -> copy x
 
     if rk and cf_table_get(table, right) == 0 { "  " + dest + " = copy " + left }
 
@@ -21785,31 +21785,31 @@ fn cf_simplified_bitwise(dest: String, line: String, table: String) -> String
 
     let rk = cf_table_has(table, right);
 
-    // x ^ x → 0
+    // x ^ x -> 0
 
     if op == "bxor" and left == right { "  " + dest + " = const 0" }
 
-    // x & x → copy x, x | x → copy x
+    // x & x -> copy x, x | x -> copy x
 
     else if (op == "band" or op == "bor") and left == right { "  " + dest + " = copy " + left }
 
-    // x & 0, 0 & x → 0
+    // x & 0, 0 & x -> 0
 
     else if op == "band" and rk and cf_table_get(table, right) == 0 { "  " + dest + " = const 0" }
 
     else if op == "band" and lk and cf_table_get(table, left) == 0 { "  " + dest + " = const 0" }
 
-    // x | 0, 0 | x → copy x
+    // x | 0, 0 | x -> copy x
 
     else if op == "bor" and rk and cf_table_get(table, right) == 0 { "  " + dest + " = copy " + left }
 
     else if op == "bor" and lk and cf_table_get(table, left) == 0 { "  " + dest + " = copy " + right }
 
-    // x ^ 0 → copy x
+    // x ^ 0 -> copy x
 
     else if op == "bxor" and rk and cf_table_get(table, right) == 0 { "  " + dest + " = copy " + left }
 
-    // 0 ^ x → copy x
+    // 0 ^ x -> copy x
 
     else if op == "bxor" and lk and cf_table_get(table, left) == 0 { "  " + dest + " = copy " + right }
 
@@ -22041,7 +22041,7 @@ fn cf_can_simplify_branch(line: String, table: String) -> bool
 
         if cf_table_has(table, cond) { true }
 
-        // Both targets are the same (branch %c, L, L → goto L)
+        // Both targets are the same (branch %c, L, L -> goto L)
 
         else { cf_branch_then(line) == cf_branch_else(line) }
 
@@ -22535,7 +22535,7 @@ fn optimize_dce(mir: String) -> String
 
 // MIR Unreachable Block Elimination (UBE) Pass
 
-// After branch simplification converts branch→goto, some labels become
+// After branch simplification converts branch->goto, some labels become
 
 // unreachable. This pass removes those blocks and simplifies phi nodes.
 
@@ -22765,7 +22765,7 @@ fn ube_simplify_phi(line: String, targets: String) -> String
 
     let l2_live = ube_is_entry(label2) or ube_has_target(targets, label2);
 
-    // Both values are the same → redundant phi, convert to copy
+    // Both values are the same -> redundant phi, convert to copy
 
     if val1 == val2 { "  " + dest + " = copy " + val1 }
 
@@ -23525,9 +23525,9 @@ fn optimize_pure_fn_cse(mir: String) -> String
 
 // computations within the same basic block.
 
-// - GEP CSE: same (base, offset) → reuse first result
+// - GEP CSE: same (base, offset) -> reuse first result
 
-// - Load CSE: same pointer → reuse first loaded value
+// - Load CSE: same pointer -> reuse first loaded value
 
 // - Cache invalidated by store_ptr and memory-writing function calls.
 
@@ -23537,7 +23537,7 @@ fn optimize_pure_fn_cse(mir: String) -> String
 
 // Extend value table to also track GEP canonical values.
 
-// For gep: %_tN = gep %base, %offset → vtable[%_tN] = "G:resolved_base,resolved_offset"
+// For gep: %_tN = gep %base, %offset -> vtable[%_tN] = "G:resolved_base,resolved_offset"
 
 fn mlcse_update_vtable(vtable: String, line: String) -> String
 
@@ -25109,7 +25109,7 @@ fn optimize_tail_recursive_to_loop(mir: String) -> String
 
 // Check if a phi variable is invariant: back-edge value equals the dest.
 
-// E.g., %s_loop = phi [%s, entry], [%s_loop, else_1] → invariant (always %s)
+// E.g., %s_loop = phi [%s, entry], [%s_loop, else_1] -> invariant (always %s)
 
 // Returns the entry value if invariant, "" otherwise.
 
@@ -25459,7 +25459,7 @@ fn licm_subst_args(args: String, pos: i64, acc: String, inv_map: String, copy_ma
 
     };
 
-// Extract function name from call: "  %_t5 = call @fn_name(args)" → "@fn_name"
+// Extract function name from call: "  %_t5 = call @fn_name(args)" -> "@fn_name"
 
 fn licm_call_fn_name(line: String) -> String
 
@@ -27389,7 +27389,7 @@ fn optimize_if_select(mir: String) -> String
 
 // Redirect goto/branch targets through empty intermediate blocks
 
-// E.g., goto L1 where L1: goto L2 → goto L2
+// E.g., goto L1 where L1: goto L2 -> goto L2
 
 // Check if a label is referenced as a phi predecessor anywhere in the function
 
@@ -27965,7 +27965,7 @@ fn pht_build_phi_map(fn_mir: String, fwd_map: String, pos: i64, phi_map: String)
 
     };
 
-// Replace label in a phi line: ", old_label]" → ", new_label]"
+// Replace label in a phi line: ", old_label]" -> ", new_label]"
 
 fn pht_replace_phi_label(line: String, old_label: String, new_label: String) -> String
 
@@ -28013,7 +28013,7 @@ fn pht_copy_get(copy_map: String, label: String, pos: i64) -> String
 
     };
 
-// Replace both value and label in a phi operand: [old_val, old_label] → [new_val, new_label]
+// Replace both value and label in a phi operand: [old_val, old_label] -> [new_val, new_label]
 
 fn pht_replace_phi_operand(line: String, old_label: String, new_label: String, old_val: String, new_val: String) -> String
 
@@ -28441,7 +28441,7 @@ fn llvm_gen_fn_header(line: String, pos: i64) -> String
 
     let inline_attrs = if ann == "inline" { " alwaysinline" } else { "" };
 
-    // M12 Phase 2b: @effect:IO Net → "bmb-effect"="IO Net" LLVM string attribute
+    // M12 Phase 2b: @effect:IO Net -> "bmb-effect"="IO Net" LLVM string attribute
     let eff_attrs = if ann == "effect" {
         let colon_pos = str_find(raw_ret_type, "@effect:");
         if colon_pos >= 0 {
@@ -28452,7 +28452,7 @@ fn llvm_gen_fn_header(line: String, pos: i64) -> String
 
     let attrs = base_attrs + pure_attrs + inline_attrs + eff_attrs;
 
-    // v0.97: @export annotation → dllexport linkage (Windows) or global visibility (Unix/Linux)
+    // v0.97: @export annotation -> dllexport linkage (Windows) or global visibility (Unix/Linux)
 
     // Without @export: private linkage (better LLVM optimization)
 
@@ -31298,7 +31298,7 @@ fn llvm_gen_call_struct_aware(line: String, pos: i64, dest: String, strings: Str
 
 // Cycle 2934: HOF call — plain function pointer parameter, direct inttoptr + call
 
-// MIR: %_tN = call @f(args) where f: fn_i64 → inttoptr %f to ptr; call i64 %fptr(args)
+// MIR: %_tN = call @f(args) where f: fn_i64 -> inttoptr %f to ptr; call i64 %fptr(args)
 
 fn llvm_gen_hof_call(line: String, pos: i64, dest: String, var_name: String) -> String
 
@@ -31326,7 +31326,7 @@ fn llvm_gen_hof_call(line: String, pos: i64, dest: String, var_name: String) -> 
 
 // v0.95: Generate indirect call through function pointer stored in alloca variable
 
-// MIR: %_tN = call @var_name(args) → loads from alloca, inttoptr, indirect call
+// MIR: %_tN = call @var_name(args) -> loads from alloca, inttoptr, indirect call
 
 fn llvm_gen_indirect_call(line: String, pos: i64, dest: String, var_name: String, str_sb: i64) -> String
 
@@ -31408,7 +31408,7 @@ fn llvm_gen_indirect_call_param(line: String, pos: i64, dest: String, var_name: 
 
     same_mapping(env_ir + SEP() + fni_ir + SEP() + cast_ir + SEP() + call_ir);
 
-// Format arguments for indirect function call: %_t0 → i64 %_t0
+// Format arguments for indirect function call: %_t0 -> i64 %_t0
 
 fn format_indirect_call_args(args: String, pos: i64, acc: String, str_sb: i64) -> String
 
@@ -32688,9 +32688,9 @@ fn llvm_gen_call_with_string_tracking_sb_reg(line: String, pos: i64, dest: Strin
 
     let is_string_fn = is_hardcoded_string_fn or is_dynamic_string_fn_result;
 
-    // M5-5c: function returns Array<String> → dest carries str-ptr array
+    // M5-5c: function returns Array<String> -> dest carries str-ptr array
 
-    // Cycle 2682: function returns Array<f64> → dest carries f64-ptr array
+    // Cycle 2682: function returns Array<f64> -> dest carries f64-ptr array
 
     let is_str_array_fn = is_dynamic_string_array_fn(fn_name, string_fns);
 
@@ -34233,7 +34233,7 @@ fn ast_op_to_icmp(op: String) -> String
 
 = match op { ">=" => "sge", ">" => "sgt", "<" => "slt", "<=" => "sle", "==" => "eq", "!=" => "ne", _ => "" };
 
-// Extract bare name from angle-bracketed AST var: "<name>" → "name"
+// Extract bare name from angle-bracketed AST var: "<name>" -> "name"
 
 fn strip_angle_brackets(s: String) -> String
 
@@ -34267,7 +34267,7 @@ fn contract_ast_to_assumes(ast: String, counter: i64) -> String
 
         if op == "and" {
 
-            // Split: (binop and left right) → handle left, then right
+            // Split: (binop and left right) -> handle left, then right
 
             let left = get_child(ast, 1);
 
@@ -38349,7 +38349,7 @@ fn cx_count_params(params: String, pos: i64, count: i64) -> i64
 
     else { cx_count_params(params, pos + 1, count) };
 
-// Extract params text from signature: "fn name(params) -> ret" → "params"
+// Extract params text from signature: "fn name(params) -> ret" -> "params"
 
 fn cx_extract_params(sig: String, pos: i64) -> String
 
@@ -42010,6 +42010,413 @@ fn lint_check_effect_violations(entries: String, pos: i64, count: i64) -> i64
 
     };
 
+// M12 Phase 3: Effect callee propagation — detect undeclared capability use.
+// Rule: if fn A declares <IO> and calls fn B which declares <IO, Net>, A must also declare Net.
+
+// Extract "IO Net" from "(eff IO Net)" sexp.
+fn eff_clean(eff_sexp: String) -> String
+
+  post it.len() >= 0
+
+= if eff_sexp.len() < 5 { "" }
+
+    else {
+
+        let inner = extract_paren_content(eff_sexp);
+
+        str_trim(inner.slice(3, inner.len()))
+
+    };
+
+// Check if space-separated effect list 'eff' contains name 'name'.
+fn eff_contains_name(eff: String, name: String) -> bool
+
+  post it or not it
+
+= if eff == name { true }
+
+    else if eff == "" { false }
+
+    else { eff_contains_search(eff, name, 0) };
+
+fn eff_contains_search(eff: String, name: String, pos: i64) -> bool
+
+  pre pos >= 0
+
+  post it or not it
+
+= if pos >= eff.len() { false }
+
+    else {
+
+        let end = eff_find_space_or_end(eff, pos);
+
+        let segment = eff.slice(pos, end);
+
+        if segment == name { true }
+
+        else if end >= eff.len() { false }
+
+        else { eff_contains_search(eff, name, end + 1) }
+
+    };
+
+fn eff_find_space_or_end(s: String, pos: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= pos
+
+= if pos >= s.len() { s.len() }
+
+    else if s.byte_at(pos) == 32 { pos }
+
+    else { eff_find_space_or_end(s, pos + 1) };
+
+// Look up function name in effect map ("name\teff\nname2\teff2\n...") -> effect row string.
+// Strips "PLAT:" prefix from platform declarations so callee checks work uniformly.
+fn eff_map_get(map: String, name: String, pos: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 0
+
+= if pos >= map.len() { "" }
+
+    else {
+
+        let eol = callers_find_eol(map, pos);
+
+        let line = map.slice(pos, eol);
+
+        let tab = str_find(line, "\t");
+
+        if tab >= 0 {
+
+            let entry_name = line.slice(0, tab);
+
+            if entry_name == name {
+
+                let raw = line.slice(tab + 1, line.len());
+
+                // Strip PLAT: prefix so callee effect lookups work
+                if str_find(raw, "PLAT:") == 0 { raw.slice(5, raw.len()) }
+
+                else { raw }
+
+            }
+
+            else { eff_map_get(map, name, eol + 1) }
+
+        } else { eff_map_get(map, name, eol + 1) }
+
+    };
+
+// Look up raw effect (with PLAT: prefix if platform-declared).
+fn eff_map_get_raw(map: String, name: String, pos: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 0
+
+= if pos >= map.len() { "" }
+
+    else {
+
+        let eol = callers_find_eol(map, pos);
+
+        let line = map.slice(pos, eol);
+
+        let tab = str_find(line, "\t");
+
+        if tab >= 0 {
+
+            let entry_name = line.slice(0, tab);
+
+            if entry_name == name { line.slice(tab + 1, line.len()) }
+
+            else { eff_map_get_raw(map, name, eol + 1) }
+
+        } else { eff_map_get_raw(map, name, eol + 1) }
+
+    };
+
+// Check if callee's declared effects are covered by caller's declared effects.
+// Returns count of warnings emitted.
+fn check_callee_missing_effects(callee_eff: String, caller_eff: String,
+    fn_name: String, callee_name: String, pos: i64, count: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= callee_eff.len() { count }
+
+    else {
+
+        let end = eff_find_space_or_end(callee_eff, pos);
+
+        let cap = callee_eff.slice(pos, end);
+
+        let new_count = if cap.len() > 0 and not eff_contains_name(caller_eff, cap) {
+
+            let _w = println_str("  [effect_propagation] " + fn_name + ": declares <" + caller_eff + "> but calls " + callee_name + " which uses <" + cap + ">");
+
+            count + 1
+
+        } else { count };
+
+        if end >= callee_eff.len() { new_count }
+
+        else { check_callee_missing_effects(callee_eff, caller_eff, fn_name, callee_name, end + 1, new_count) }
+
+    };
+
+// Check one callee's effect against caller's declared effect.
+fn check_one_callee_effect(callee_name: String, caller_eff: String, fn_name: String, eff_map: String) -> i64
+
+  post it >= 0
+
+= let callee_eff = eff_map_get(eff_map, callee_name, 0);
+
+    if callee_eff == "" or callee_eff == "pure" or callee_eff == "*" { 0 }
+
+    else if caller_eff == "*" { 0 }
+
+    else { check_callee_missing_effects(callee_eff, caller_eff, fn_name, callee_name, 0, 0) };
+
+// Iterate over calls (comma+space separated) and check each against eff_map.
+fn check_calls_for_effects(calls: String, caller_eff: String,
+    fn_name: String, eff_map: String, pos: i64, count: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= calls.len() { count }
+
+    else {
+
+        let end = index_find_comma_or_end(calls, pos);
+
+        let callee = calls.slice(pos, end);
+
+        let new_count = count + check_one_callee_effect(callee, caller_eff, fn_name, eff_map);
+
+        if end >= calls.len() { new_count }
+
+        else { check_calls_for_effects(calls, caller_eff, fn_name, eff_map, end + 2, new_count) }
+
+    };
+
+// Main effect propagation lint pass: for each effect-annotated function,
+// check that all callees' effects are covered by the caller's declared effect row.
+fn lint_check_effect_propagation(entries: String, eff_map: String, pos: i64, count: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= entries.len() { count }
+
+    else {
+
+        let eol = callers_find_eol(entries, pos);
+
+        let line = entries.slice(pos, eol);
+
+        if line.len() == 0 { lint_check_effect_propagation(entries, eff_map, eol + 1, count) }
+
+        else {
+
+            let fn_name = callers_get_field(line, 0, 0, 0);
+
+            let calls = callers_get_field(line, 1, 0, 0);
+
+            // Look up this function's declared effect; use raw to detect platform declarations
+            let raw_caller_eff = eff_map_get_raw(eff_map, fn_name, 0);
+
+            let is_platform = str_find(raw_caller_eff, "PLAT:") == 0;
+
+            let caller_eff = if is_platform { raw_caller_eff.slice(5, raw_caller_eff.len()) }
+
+                             else { raw_caller_eff };
+
+            // Only check non-platform functions with non-empty, non-pure, non-star effects
+            let should_check = not is_platform and caller_eff != "" and caller_eff != "pure" and caller_eff != "*";
+
+            let new_count = if should_check and calls.len() > 0 {
+
+                check_calls_for_effects(calls, caller_eff, fn_name, eff_map, 0, count)
+
+            } else { count };
+
+            lint_check_effect_propagation(entries, eff_map, eol + 1, new_count)
+
+        }
+
+    };
+
+// Scan source for effect-annotated functions, building "name\tIO Net\n" map.
+// M15 Phase 2: Scan inside a platform block for fn declarations with effect rows.
+// Platform-declared functions are marked with "PLAT:" prefix in their effect map entry
+// so they inform callee lookups but are not themselves checked (no real body).
+// Returns pack_result(pos_after_rbrace, updated_acc).
+fn scan_platform_effects(src: String, pos: i64, acc: String) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 1
+
+= let t = next_token_raw(src, pos);
+
+    let k = tok_kind(t);
+
+    if k == TK_EOF() { pack_result(pos, acc) }
+
+    else if k == TK_RBRACE() { pack_result(tok_end(t), acc) }
+
+    else if k == TK_FN() {
+
+        let result = scan_fn_effect_entry(src, tok_end(t));
+
+        let raw_entry = unpack_ast(result);
+
+        // Mark platform entries with "PLAT:" prefix on the effect value
+        let entry = if raw_entry == "" { "" }
+
+                    else {
+
+                        let tab = str_find(raw_entry, "\t");
+
+                        if tab < 0 { "" }
+
+                        else { raw_entry.slice(0, tab + 1) + "PLAT:" + raw_entry.slice(tab + 1, raw_entry.len()) }
+
+                    };
+
+        let new_acc = if entry == "" { acc } else { acc + entry + "\n" };
+
+        scan_platform_effects(src, unpack_pos(result), new_acc)
+
+    }
+
+    else { scan_platform_effects(src, tok_end(t), acc) };
+
+fn build_fn_effect_map(src: String, pos: i64, acc: String) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 0
+
+= let t = next_token_raw(src, pos);
+
+    let k = tok_kind(t);
+
+    if k == TK_EOF() { acc }
+
+    else if k == TK_FN() {
+
+        let result = scan_fn_effect_entry(src, tok_end(t));
+
+        let entry = unpack_ast(result);
+
+        let new_acc = if entry == "" { acc } else { acc + entry + "\n" };
+
+        build_fn_effect_map(src, unpack_pos(result), new_acc)
+
+    }
+
+    else if k == TK_IDENT() {
+
+        // M15 Phase 2: Detect 'platform Name { ... }' and scan for fn effect declarations
+        let ident = get_ident_text(src, pos, t);
+
+        if ident == "platform" {
+
+            let t_name = next_token_raw(src, tok_end(t));
+
+            let after_name = if tok_kind(t_name) == TK_IDENT() { tok_end(t_name) } else { tok_end(t) };
+
+            let t_brace = next_token_raw(src, after_name);
+
+            if tok_kind(t_brace) == TK_LBRACE() {
+
+                let scan_r = scan_platform_effects(src, tok_end(t_brace), acc);
+
+                build_fn_effect_map(src, unpack_pos(scan_r), unpack_ast(scan_r))
+
+            } else { build_fn_effect_map(src, after_name, acc) }
+
+        } else { build_fn_effect_map(src, tok_end(t), acc) }
+
+    }
+
+    else { build_fn_effect_map(src, tok_end(t), acc) };
+
+// After 'fn', try to extract "name\tIO Net" for effect-annotated functions.
+fn scan_fn_effect_entry(src: String, pos: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 1
+
+= let t1 = next_token_raw(src, pos);
+
+    if tok_kind(t1) != TK_IDENT() { pack_result(tok_end(t1), "") }
+
+    else {
+
+        let name_start = skip_ws_comments(src, pos);
+
+        let name_end = scan_ident_end(src, name_start);
+
+        let name = src.slice(name_start, name_end);
+
+        let t2 = next_token_raw(src, name_end);
+
+        if tok_kind(t2) != TK_LPAREN() { pack_result(tok_end(t2), "") }
+
+        else {
+
+            // Skip params using index_collect_params
+            let params_r = index_collect_params(src, tok_end(t2), "");
+
+            let after_rparen = unpack_pos(params_r);
+
+            let t3 = next_token_raw(src, after_rparen);
+
+            if tok_kind(t3) != TK_COLON() { pack_result(after_rparen, "") }
+
+            else {
+
+                let t_lt = next_token_raw(src, tok_end(t3));
+
+                if tok_kind(t_lt) != TK_LT() { pack_result(tok_end(t_lt), "") }
+
+                else {
+
+                    let eff_r = parse_effect_row(src, tok_end(t_lt));
+
+                    let eff_sexp = unpack_ast(eff_r);
+
+                    let clean = eff_clean(eff_sexp);
+
+                    // Only record non-pure, non-star, non-empty effects
+                    let entry = if clean == "" or clean == "pure" or clean == "*" { "" }
+
+                                else { name + "\t" + clean };
+
+                    pack_result(unpack_pos(eff_r), entry)
+
+                }
+
+            }
+
+        }
+
+    };
+
 // Rule: intent documents intent; contracts verify it. If you write intent, also write contracts.
 
 fn lint_check_intent_scan(src: String, pos: i64, count: i64) -> i64
@@ -42108,7 +42515,11 @@ fn lint_file(input: String) -> i64
 
         let w7 = lint_check_effect_violations(entries, 0, 0);
 
-        let total = w1 + w2 + w3 + w4 + w6 + w7;
+        let eff_map = build_fn_effect_map(source, 0, "");
+
+        let w8 = lint_check_effect_propagation(entries, eff_map, 0, 0);
+
+        let total = w1 + w2 + w3 + w4 + w6 + w7 + w8;
 
         let _sep = println_str("---");
 
@@ -43300,6 +43711,459 @@ fn derive_output_name(input: String) -> String
 
 // Bootstrap version - extended CLI
 
+// M13 Phase 3: Extract pre-condition source texts
+fn extract_pre_texts(src: String, rp: i64) -> String
+
+  pre rp >= 0
+
+  post it.len() >= 0
+
+= let t = next_token_raw(src, rp);
+
+    let k = tok_kind(t);
+
+    if k == TK_EQ() or k == TK_EOF() or k == TK_LBRACE() { "" }
+
+    else if k == TK_PRE() {
+
+        let expr_start = tok_end(t);
+
+        let re = parse_expr(src, expr_start);
+
+        if is_error(re) { "" }
+
+        else {
+
+            let txt = str_trim(src.slice(expr_start, unpack_pos(re)));
+
+            let rest = extract_pre_texts(src, unpack_pos(re));
+
+            if rest == "" { txt } else { txt + chr(9) + rest }
+
+        }
+
+    }
+
+    else if k == TK_POST() or k == TK_WHERE() {
+
+        let re2 = parse_expr(src, tok_end(t));
+
+        if is_error(re2) { extract_pre_texts(src, tok_end(t)) }
+
+        else { extract_pre_texts(src, unpack_pos(re2)) }
+
+    }
+
+    else if k == TK_IDENT() and get_ident_text(src, rp, t) == "intent" {
+
+        let t2 = next_token_raw(src, tok_end(t));
+
+        if tok_kind(t2) == TK_COLON() {
+
+            let t3 = next_token_raw(src, tok_end(t2));
+
+            if tok_kind(t3) == TK_STRING_LIT() { extract_pre_texts(src, tok_end(t3)) }
+
+            else { "" }
+
+        } else { "" }
+
+    }
+
+    else { "" };
+
+// M13 Phase 3: Extract post-condition source texts
+fn extract_post_texts(src: String, rp: i64) -> String
+
+  pre rp >= 0
+
+  post it.len() >= 0
+
+= let t = next_token_raw(src, rp);
+
+    let k = tok_kind(t);
+
+    if k == TK_EQ() or k == TK_EOF() or k == TK_LBRACE() { "" }
+
+    else if k == TK_POST() {
+
+        let expr_start = tok_end(t);
+
+        let re = parse_expr(src, expr_start);
+
+        if is_error(re) { "" }
+
+        else {
+
+            let txt = str_trim(src.slice(expr_start, unpack_pos(re)));
+
+            let rest = extract_post_texts(src, unpack_pos(re));
+
+            if rest == "" { txt } else { txt + chr(9) + rest }
+
+        }
+
+    }
+
+    else if k == TK_PRE() or k == TK_WHERE() {
+
+        let re2 = parse_expr(src, tok_end(t));
+
+        if is_error(re2) { extract_post_texts(src, tok_end(t)) }
+
+        else { extract_post_texts(src, unpack_pos(re2)) }
+
+    }
+
+    else if k == TK_IDENT() and get_ident_text(src, rp, t) == "intent" {
+
+        let t2 = next_token_raw(src, tok_end(t));
+
+        if tok_kind(t2) == TK_COLON() {
+
+            let t3 = next_token_raw(src, tok_end(t2));
+
+            if tok_kind(t3) == TK_STRING_LIT() { extract_post_texts(src, tok_end(t3)) }
+
+            else { "" }
+
+        } else { "" }
+
+    }
+
+    else { "" };
+
+// M13 Phase 3: Extract intent: "..." text
+fn extract_intent_tok(src: String, rp: i64) -> String
+
+  pre rp >= 0
+
+  post it.len() >= 0
+
+= let t = next_token_raw(src, rp);
+
+    let k = tok_kind(t);
+
+    if k == TK_EQ() or k == TK_EOF() or k == TK_LBRACE() { "" }
+
+    else if k == TK_IDENT() and get_ident_text(src, rp, t) == "intent" {
+
+        let t2 = next_token_raw(src, tok_end(t));
+
+        if tok_kind(t2) == TK_COLON() {
+
+            let t3 = next_token_raw(src, tok_end(t2));
+
+            if tok_kind(t3) == TK_STRING_LIT() {
+
+                let raw_start = skip_ws_comments(src, tok_end(t2));
+
+                src.slice(raw_start + 1, tok_end(t3) - 1)
+
+            } else { "" }
+
+        } else { "" }
+
+    }
+
+    else if k == TK_PRE() or k == TK_POST() {
+
+        let re2 = parse_expr(src, tok_end(t));
+
+        if is_error(re2) { extract_intent_tok(src, tok_end(t)) }
+
+        else { extract_intent_tok(src, unpack_pos(re2)) }
+
+    }
+
+    else if k == TK_WHERE() { extract_intent_tok(src, skip_where_clause(src, tok_end(t))) }
+
+    else { "" };
+
+// M13 Phase 3: Find tab or end for contract text iteration
+fn rh_find_tab_or_end(s: String, idx: i64) -> i64
+
+  pre idx >= 0
+
+  post it >= idx
+
+= if idx >= s.len() { s.len() }
+
+    else if s.byte_at(idx) == 9 { idx }
+
+    else { rh_find_tab_or_end(s, idx + 1) };
+
+// M13 Phase 3: Emit contract texts as JSON array entries into sb
+fn emit_contract_json(texts: String, sb: i64, idx: i64) -> i64
+
+  pre idx >= 0
+
+  post it == 0
+
+= if idx >= texts.len() { 0 }
+
+    else {
+
+        let eot = rh_find_tab_or_end(texts, idx);
+
+        let txt = texts.slice(idx, eot);
+
+        let _r = if txt.len() > 0 {
+
+            let _q1 = sb_push(sb, "\"");
+
+            let _esc = sb_push(sb, json_esc(txt));
+
+            let _q2 = sb_push(sb, "\"");
+
+            if eot < texts.len() { sb_push(sb, ",") } else { 0 }
+
+        } else { 0 };
+
+        emit_contract_json(texts, sb, eot + 1)
+
+    };
+
+// M13 Phase 3: Emit one function's repair hint JSON.
+// meta = intent_txt + chr(9) + eff_txt (tab-separated)
+fn emit_fn_hint(fname: String, pctexts: String, qctexts: String,
+    meta: String, sb: i64, isfirst: i64) -> i64
+
+  post it == 0
+
+= let _sep = if isfirst > 0 { 0 } else { sb_push(sb, ",") };
+
+    let _o1 = sb_push(sb, "{\"name\":\"");
+
+    let _n1 = sb_push(sb, json_esc(fname));
+
+    let _c1 = sb_push(sb, "\"");
+
+    let meta_tab = str_find(meta, "\t");
+
+    let intent_txt = if meta_tab < 0 { meta } else { meta.slice(0, meta_tab) };
+
+    let eff_txt = if meta_tab < 0 { "" } else { meta.slice(meta_tab + 1, meta.len()) };
+
+    let _eff = if eff_txt != "" {
+
+        let _a = sb_push(sb, ",\"effect\":\"");
+
+        let _b = sb_push(sb, json_esc(eff_txt));
+
+        sb_push(sb, "\"")
+
+    } else { 0 };
+
+    let _int = if intent_txt != "" {
+
+        let _a = sb_push(sb, ",\"intent\":\"");
+
+        let _b = sb_push(sb, json_esc(intent_txt));
+
+        sb_push(sb, "\"")
+
+    } else { 0 };
+
+    let _pci = if pctexts != "" {
+
+        let _a = sb_push(sb, ",\"pre\":[");
+
+        let _b = emit_contract_json(pctexts, sb, 0);
+
+        sb_push(sb, "]")
+
+    } else { 0 };
+
+    let _qci = if qctexts != "" {
+
+        let _a = sb_push(sb, ",\"post\":[");
+
+        let _b = emit_contract_json(qctexts, sb, 0);
+
+        sb_push(sb, "]")
+
+    } else { 0 };
+
+    let _fin = sb_push(sb, "}");
+
+    0;
+
+// M13 Phase 3: Scan source, emit repair hints for contracted functions
+fn repair_hint_scan(src: String, scanpos: i64, sb: i64, isfirst: i64) -> i64
+
+  pre scanpos >= 0
+
+  post it >= 0
+
+= let fn_pos = find_pattern_noa(src, "fn ", scanpos);
+
+    if fn_pos < 0 { 0 }
+
+    else {
+
+        let is_real = if fn_pos == 0 { true }
+
+                      else { let prev = src.byte_at(fn_pos - 1); prev == 10 or prev == 13 or prev == 32 or prev == 59 or prev == 9 };
+
+        if is_real {
+
+            let ns = skip_ws_comments(src, fn_pos + 3);
+
+            let ne = scan_ident_end(src, ns);
+
+            let fname = src.slice(ns, ne);
+
+            if fname != "" and ne > ns {
+
+                let t2 = next_token_raw(src, ne);
+
+                let after_gen = if tok_kind(t2) == TK_LT() { skip_generic_params(src, tok_end(t2)) } else { ne };
+
+                let t2g = next_token_raw(src, after_gen);
+
+                if tok_kind(t2g) == TK_LPAREN() {
+
+                    let prams_r = index_collect_params(src, tok_end(t2g), "");
+
+                    let after_rp = unpack_pos(prams_r);
+
+                    let rtype_r = index_read_ret_type(src, after_rp);
+
+                    let rp = unpack_pos(rtype_r);
+
+                    let eff_r = scan_fn_effect_entry(src, fn_pos + 3);
+
+                    let eff_entry = unpack_ast(eff_r);
+
+                    let eff_txt = if eff_entry == "" { "" }
+
+                                  else {
+
+                                      let tab = str_find(eff_entry, "\t");
+
+                                      if tab >= 0 { eff_entry.slice(tab + 1, eff_entry.len()) } else { "" }
+
+                                  };
+
+                    let pctexts = extract_pre_texts(src, rp);
+
+                    let qctexts = extract_post_texts(src, rp);
+
+                    let intent_txt = extract_intent_tok(src, rp);
+
+                    let has_c = pctexts != "" or qctexts != "" or intent_txt != "";
+
+                    let newisfirst = if has_c {
+
+                        let meta_str = intent_txt + chr(9) + eff_txt;
+
+                        let _e = emit_fn_hint(fname, pctexts, qctexts, meta_str, sb, isfirst);
+
+                        0
+
+                    } else { isfirst };
+
+                    repair_hint_scan(src, fn_pos + 3, sb, newisfirst)
+
+                } else { repair_hint_scan(src, fn_pos + 3, sb, isfirst) }
+
+            } else { repair_hint_scan(src, fn_pos + 3, sb, isfirst) }
+
+        } else { repair_hint_scan(src, fn_pos + 3, sb, isfirst) }
+
+    };
+
+// M13 Phase 3: JSON escape helper
+fn json_esc_sb(s: String, pos: i64, sb: i64) -> i64
+
+  pre pos >= 0
+
+  post it == 0
+
+= if pos >= s.len() { 0 }
+
+    else {
+
+        let ch = s.byte_at(pos);
+
+        let _p = if ch == 34 {
+
+            let _a = sb_push_char(sb, 92);
+
+            sb_push_char(sb, 34)
+
+        } else if ch == 92 {
+
+            let _a = sb_push_char(sb, 92);
+
+            sb_push_char(sb, 92)
+
+        } else if ch == 10 {
+
+            let _a = sb_push_char(sb, 92);
+
+            sb_push_char(sb, 110)
+
+        } else { sb_push_char(sb, ch) };
+
+        json_esc_sb(s, pos + 1, sb)
+
+    };
+
+fn json_esc(s: String) -> String = {
+
+    let sb = sb_new();
+
+    let _x = json_esc_sb(s, 0, sb);
+
+    sb_build(sb)
+
+};
+
+fn repair_hint_run(input: String, src: String) -> i64
+
+  post it >= 0
+
+= {
+
+    let sb = sb_new();
+
+    let pfx = "{\"type\":\"repair_hints\",\"file\":\"";
+
+    let sfx = "\",\"functions\":[";
+
+    let _h1 = sb_push(sb, pfx);
+
+    let _h2 = sb_push(sb, json_esc(input));
+
+    let _h3 = sb_push(sb, sfx);
+
+    let _scan = repair_hint_scan(src, 0, sb, 1);
+
+    let _h4 = sb_push(sb, "]}");
+
+    let _p = println_str(sb_build(sb));
+
+    0
+
+};
+
+fn repair_hint_file(input: String) -> i64
+
+  post it >= 0
+
+= {
+
+    let src = read_file(input);
+
+    if src.len() == 0 { err_no_file(input) }
+
+    else { repair_hint_run(input, src) }
+
+};
+
+
 fn main() -> i64
 
   post it >= 0
@@ -43563,6 +44427,11 @@ fn main() -> i64
         } else if cmd == "classify" and argc >= 3 {
 
             classify_file(get_arg(2))
+
+        } else if cmd == "repair-hint" and argc >= 3 {
+
+            // M13 Phase 3: Structured repair hints — LLM-consumable contract JSON
+            repair_hint_file(get_arg(2))
 
         } else if argc >= 3 {
 

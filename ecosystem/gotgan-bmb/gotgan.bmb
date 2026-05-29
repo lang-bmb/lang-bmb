@@ -460,6 +460,67 @@ fn gotgan_verify() -> i64 = {
 };
 
 // ============================================================
+// Section 7c: Command — add (M14 Phase 3)
+// ============================================================
+
+// Insert a new dependency entry into the [dependencies] section.
+// Returns the updated TOML content.
+fn insert_dep_entry(content: String, entry: String) -> String = {
+    let deps_pos = str_find(content, "[dependencies]");
+    if deps_pos < 0 {
+        // No [dependencies] section — append it
+        content + "\n[dependencies]\n" + entry + "\n"
+    } else {
+        // Find the newline after "[dependencies]" header, insert entry right after
+        let after_header = content.slice(deps_pos + 14, content.len());
+        let rel_nl = str_find(after_header, "\n");
+        let insert_pos = if rel_nl < 0 { content.len() }
+                         else { deps_pos + 14 + rel_nl + 1 };
+        content.slice(0, insert_pos) + entry + "\n" + content.slice(insert_pos, content.len())
+    }
+};
+
+fn gotgan_add(name: String, dep_path: String) -> i64 = {
+    if name.len() == 0 or dep_path.len() == 0 {
+        let _xp = println("Usage: gotgan add <name> <path>");
+        1
+    } else {
+        let cwd = getcwd();
+        let root = find_project_root(cwd, 10);
+        if root.len() == 0 {
+            let _xp = println("Error: no gotgan.toml found");
+            1
+        } else {
+            let toml_path = path_join(root, "gotgan.toml");
+            let content = read_file(toml_path);
+            // Check if dep already exists
+            let already = str_find(content, name + " = ");
+            if already >= 0 {
+                let _xp = println("Error: dependency '" + name + "' already exists in gotgan.toml");
+                1
+            } else {
+                let entry = name + " = { path = \"" + dep_path + "\" }";
+                let new_content = insert_dep_entry(content, entry);
+                let _xw = write_file(toml_path, new_content);
+                let _xp = println("Added: " + entry);
+                // Update gotgan.lock if it exists
+                let lock_path = path_join(root, "gotgan.lock");
+                let _xl = if file_exists(lock_path) > 0 {
+                    let dep_main = path_join(path_join(path_join(root, dep_path), "src"), "main.bmb");
+                    let hash = if file_exists(dep_main) > 0 { compute_sha256_file(dep_main) } else { sha256_zeros() };
+                    let lock_content = read_file(lock_path);
+                    let new_lock = lock_content + name + " = \"" + hash + "\"\n";
+                    let _xlw = write_file(lock_path, new_lock);
+                    let _xlp = println("Updated lock: " + lock_path);
+                    0
+                } else { 0 };
+                0
+            }
+        }
+    }
+};
+
+// ============================================================
 // Section 8: Command — clean
 // ============================================================
 
@@ -555,14 +616,15 @@ fn print_help() -> i64 = {
     let _xh2 = println("Usage: gotgan <command> [args]");
     let _xh3 = println("");
     let _xh4 = println("Commands:");
-    let _xh5 = println("  new <name>  Create a new BMB project");
-    let _xh6 = println("  init        Initialize project in current directory");
-    let _xh7 = println("  build       Build the project");
-    let _xh8 = println("  check       Type-check without building");
-    let _xh9 = println("  clean       Remove build artifacts");
-    let _xha = println("  tree        Display dependency tree");
-    let _xhb = println("  lock        Generate gotgan.lock with SHA-256 hashes of deps");
-    let _xhc = println("  verify      Verify dep hashes against gotgan.lock");
+    let _xh5 = println("  new <name>       Create a new BMB project");
+    let _xh6 = println("  init             Initialize project in current directory");
+    let _xh7 = println("  build            Build the project");
+    let _xh8 = println("  check            Type-check without building");
+    let _xh9 = println("  clean            Remove build artifacts");
+    let _xha = println("  tree             Display dependency tree");
+    let _xhb = println("  lock             Generate gotgan.lock with SHA-256 hashes of deps");
+    let _xhc = println("  verify           Verify dep hashes against gotgan.lock");
+    let _xhd = println("  add <name> <path>  Add a local path dependency");
     0
 };
 
@@ -590,6 +652,10 @@ fn main() -> i64 = {
             gotgan_lock()
         } else if cmd == "verify" {
             gotgan_verify()
+        } else if cmd == "add" {
+            let dep_name = if argc >= 3 { get_arg(2) } else { "" };
+            let dep_path = if argc >= 4 { get_arg(3) } else { "" };
+            gotgan_add(dep_name, dep_path)
         } else {
             let _xu = println("Unknown command: " + cmd);
             let _xh = print_help();

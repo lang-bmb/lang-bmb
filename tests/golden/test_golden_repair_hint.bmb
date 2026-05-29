@@ -1,0 +1,16 @@
+// M13 Phase 3 golden test: contract-annotated function
+// Used with: bootstrap/compiler.exe repair-hint <this_file>
+// Expected JSON output includes name, intent, pre, post arrays
+
+fn safe_div(a: i64, b: i64) -> i64
+    intent: "Divides a by b safely"
+    pre a >= 0
+    pre b > 0
+    post it >= 0
+= a / b;
+
+fn nonneg(x: i64) -> i64
+    post it >= 0
+= if x < 0 { 0 } else { x };
+
+fn main() -> i64 = safe_div(10, 2);
