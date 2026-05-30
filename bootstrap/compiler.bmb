@@ -1118,9 +1118,9 @@ fn TK_EXTERN() -> i64
 
 fn TK_U8_ELEM() -> i64
 
-  post it == 2000000000 + 168
+  post it == 2000000000 + 901
 
-= 2000000000 + 168;
+= 2000000000 + 901;
 
 fn TK_EOF() -> i64
 
@@ -42075,9 +42075,9 @@ fn lint_check_many_params(entries: String, pos: i64, count: i64) -> i64
 
             let param_count = if params_text == "" { 0 } else { cx_count_params(params_text, 0, 1) };
 
-            if param_count > 6 {
+            if param_count > 8 {
 
-                let _w = println_str("  [params] " + name + ": " + int_to_string(param_count) + " parameters (max 6)");
+                let _w = println_str("  [params] " + name + ": " + int_to_string(param_count) + " parameters (max 8)");
 
                 lint_check_many_params(entries, eol + 1, count + 1)
 
@@ -42111,6 +42111,25 @@ fn lint_has_upper(name: String, pos: i64) -> bool
 
     };
 
+// Returns true if name contains at least one lowercase letter (a-z)
+fn lint_has_lower(name: String, pos: i64) -> bool
+
+  pre pos >= 0
+
+  post not it or pos < name.len()
+
+= if pos >= name.len() { false }
+
+    else {
+
+        let b = name.byte_at(pos);
+
+        if b >= 97 and b <= 122 { true }
+
+        else { lint_has_lower(name, pos + 1) }
+
+    };
+
 fn lint_check_naming(entries: String, pos: i64, count: i64) -> i64
 
   pre pos >= 0
@@ -42131,7 +42150,7 @@ fn lint_check_naming(entries: String, pos: i64, count: i64) -> i64
 
             let name = callers_get_field(line, 0, 0, 0);
 
-            if lint_has_upper(name, 0) {
+            if lint_has_upper(name, 0) and lint_has_lower(name, 0) {
 
                 let _w = println_str("  [naming] " + name + ": use snake_case");
 
@@ -45887,7 +45906,7 @@ fn eff_pure_has_eff_callee(calls: String, eff_map: String, pos: i64) -> bool
 
   pre pos >= 0
 
-  post not it or calls.len() > 0
+  post not it or (calls.len() > 0 and eff_map.len() >= 0)
 
 = if pos >= calls.len() { false }
 
