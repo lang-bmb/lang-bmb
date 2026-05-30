@@ -4,6 +4,49 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 
 ---
 
+## 핵심 목표 (Immutable Goals)
+
+> 이 두 목표는 프로젝트 존재 이유다. 어떤 결정도 이 두 기준에 비추어 정당화되어야 한다.
+
+| 순위 | 목표 | 의미 |
+|------|------|------|
+| **1** | **Performance** | 가장 빠른 언어. C/Rust를 추월하거나 동등. 성능 저하 = 버그. |
+| **2** | **AI-Native** | 인간 편의성보다 AI 분석·작성 효율성 우선. 언어 설계, 출력 형식, 도구 전부. |
+
+---
+
+## 개발 레이어 구조 (Development Layers)
+
+> 이 레이어는 **순차가 아니다**. 어떤 레이어에서든 문제가 발견되면 레이어 1부터 재검토한다. 이 흐름은 반복 사이클이다.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  문제 발견 → 1. 언어사양부터 재검토 → 근본 해결 → 다음 사이클     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+| # | 레이어 | 구현 언어 | 현재 상태 |
+|---|--------|-----------|-----------|
+| 1 | **언어사양** (Language Spec) | — | `docs/SPECIFICATION.md` |
+| 2 | **컴파일러** (Compiler) | BMB (`bootstrap/compiler.bmb`) | ✅ 자기 컴파일 (Fixed Point) |
+| 3 | **부트스트랩** (Bootstrap) | BMB | ✅ 3-Stage Fixed Point |
+| 4 | **벤치마크** (Benchmark) | BMB | ✅ P-track 7/7 BMB faster |
+| 5 | **AI-Native** | BMB | 🔄 M12-M15 진행 중 (Effect Row, diagnose) |
+| 6 | **에코시스템** (Ecosystem) | BMB | ✅ M6 Full Dogfooding |
+| 7 | **패키지매니저** (Package Manager) | BMB (`gotgan.bmb`) | ✅ MVP 6 commands |
+| 8 | **핵심패키지** (Core Packages) | BMB | 🔄 stdlib 확장 중 |
+| 9 | **외부 바인딩** (External Bindings) | — | ✅ Python/Node/C#/Java |
+| 10 | **샘플 프로젝트** (Sample Projects) | BMB | 🔄 bmb-algo/benchmark-bmb |
+
+### 반복 사이클 원칙
+
+- 레이어 1→10은 **완료 순서가 아니라 검토 우선순위**다.
+- 어느 레이어에서든 근본 문제가 발견되면 **레이어 1 (언어사양) 부터 재검토**한다.
+- 모든 "한계"는 언어 스펙 변경으로 해결한다. "언어 한계"는 답이 아니다.
+- 사이클마다 10개 레이어 전체에 걸쳐 미비/결함/개선을 도출하고, 다음 사이클 범위를 정의한다.
+
+---
+
 ## Vision v1.0 Framework (2026-05-01 realignment)
 
 > 비전 정렬 사이클 (Cycle 2507) 산출물. 본 § 가 모든 향후 작업 분류의 정상 앵커이며, 옛 Track A/B/C/D 등은 § "Track migration" 표를 따라 재매핑된다.
