@@ -1154,7 +1154,15 @@ fn tok_kind_name(kind: i64) -> String
     else if kind == TK_DOT() { "'.'" }
     else if kind == TK_DOTDOT() { "'..'" }
     else if kind == TK_FAT_ARROW() { "'=>'" }
-    else if kind == TK_PLUS() { "'+'" }
+    else { tok_kind_name_op(kind) };
+
+fn tok_kind_name_op(kind: i64) -> String
+
+  pre kind >= 0
+
+  post it.len() >= 1
+
+= if kind == TK_PLUS() { "'+'" }
     else if kind == TK_MINUS() { "'-'" }
     else if kind == TK_STAR() { "'*'" }
     else if kind == TK_SLASH() { "'/'" }
@@ -1623,21 +1631,67 @@ fn next_token_raw(s: String, pos: i64) -> i64
 
         let c = s.byte_at(p);
 
-        if is_digit(c) { scan_number(s, p) } else if is_ident_start(c) {
+        if is_digit(c) { scan_number(s, p) }
+
+        else if is_ident_start(c) {
 
             let ident_end = scan_ident_end(s, p + 1);
 
             keyword_or_ident(s, p, ident_end)
 
-        } else { match c { 34 => let str_end = scan_string_end(s, p + 1);
+        } else if c == 34 or c == 39 { next_token_str_char(c, s, p) }
 
-            make_tok(TK_STRING_LIT(), str_end), 39 => // Char literal: 'x' or '\n' etc.
+        else if c == 43 or c == 45 or c == 42 or c == 47 or c == 37 { next_token_arith(c, s, p) }
 
-            let ch_end = scan_char_end(s, p + 1);
+        else if c == 60 or c == 62 or c == 33 or c == 46 { next_token_cmp(c, s, p) }
 
-            make_tok(TK_CHAR_LIT(), ch_end), 58 => if p + 1 < s.len() and s.byte_at(p + 1) == 58 { make_tok(TK_DCOLON(), p + 2) } else { make_tok(TK_COLON(), p + 1) }, 61 => if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_EQEQ(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_FAT_ARROW(), p + 2) } else { make_tok(TK_EQ(), p + 1) }, 59 => make_tok(TK_SEMI(), p + 1), 44 => make_tok(TK_COMMA(), p + 1), 40 => make_tok(TK_LPAREN(), p + 1), 41 => make_tok(TK_RPAREN(), p + 1), 43 => if p + 1 < s.len() and s.byte_at(p + 1) == 124 { make_tok(TK_PLUSSAT(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 37 { make_tok(TK_PLUSWRAP(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_PLUSEQ(), p + 2) } else { make_tok(TK_PLUS(), p + 1) }, 45 => if p + 1 < s.len() and s.byte_at(p + 1) == 124 { make_tok(TK_MINUSSAT(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 37 { make_tok(TK_MINUSWRAP(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_ARROW(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_MINUSEQ(), p + 2) } else { make_tok(TK_MINUS(), p + 1) }, 42 => if p + 1 < s.len() and s.byte_at(p + 1) == 124 { make_tok(TK_STARSAT(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 37 { make_tok(TK_STARWRAP(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_STAREQ(), p + 2) } else { make_tok(TK_STAR(), p + 1) }, 47 => if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_SLASHEQ(), p + 2) } else { make_tok(TK_SLASH(), p + 1) }, 37 => if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_PERCENTEQ(), p + 2) } else { make_tok(TK_PERCENT(), p + 1) }, 60 => if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_LTEQ(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 60 { if p + 2 < s.len() and s.byte_at(p + 2) == 61 { make_tok(TK_SHLEQ(), p + 3) } else { make_tok(TK_SHL(), p + 2) } } else { make_tok(TK_LT(), p + 1) }, 62 => if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_GTEQ(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 62 { if p + 2 < s.len() and s.byte_at(p + 2) == 62 { make_tok(TK_LSHR(), p + 3) } else if p + 2 < s.len() and s.byte_at(p + 2) == 61 { make_tok(TK_SHREQ(), p + 3) } else { make_tok(TK_SHR(), p + 2) } } else { make_tok(TK_GT(), p + 1) }, 33 => if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_NEQ(), p + 2) } else { make_tok(TK_EOF(), p) }, 46 => if p + 1 < s.len() and s.byte_at(p + 1) == 46 { if p + 2 < s.len() and s.byte_at(p + 2) == 61 { make_tok(TK_DOTDOTEQ(), p + 3) } else { make_tok(TK_DOTDOT(), p + 2) } } else { make_tok(TK_DOT(), p + 1) }, 91 => make_tok(TK_LBRACKET(), p + 1), 93 => make_tok(TK_RBRACKET(), p + 1), 123 => make_tok(TK_LBRACE(), p + 1), 125 => make_tok(TK_RBRACE(), p + 1), 38 => make_tok(TK_AMP(), p + 1), 63 => make_tok(TK_QUESTION(), p + 1), 94 => make_tok(TK_CARET(), p + 1), 124 => make_tok(TK_PIPE(), p + 1), _ => make_tok(TK_EOF(), p) } }
+        else { next_token_sym(c, s, p) }
 
     };
+
+fn next_token_str_char(c: i64, s: String, p: i64) -> i64
+
+  pre p >= 0
+
+  post it >= 0
+
+= if c == 34 {
+
+      let str_end = scan_string_end(s, p + 1);
+
+      make_tok(TK_STRING_LIT(), str_end)
+
+  } else {
+
+      let ch_end = scan_char_end(s, p + 1);
+
+      make_tok(TK_CHAR_LIT(), ch_end)
+
+  };
+
+fn next_token_arith(c: i64, s: String, p: i64) -> i64
+
+  pre p >= 0
+
+  post it >= 0
+
+= match c { 43 => if p + 1 < s.len() and s.byte_at(p + 1) == 124 { make_tok(TK_PLUSSAT(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 37 { make_tok(TK_PLUSWRAP(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_PLUSEQ(), p + 2) } else { make_tok(TK_PLUS(), p + 1) }, 45 => if p + 1 < s.len() and s.byte_at(p + 1) == 124 { make_tok(TK_MINUSSAT(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 37 { make_tok(TK_MINUSWRAP(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_ARROW(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_MINUSEQ(), p + 2) } else { make_tok(TK_MINUS(), p + 1) }, 42 => if p + 1 < s.len() and s.byte_at(p + 1) == 124 { make_tok(TK_STARSAT(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 37 { make_tok(TK_STARWRAP(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_STAREQ(), p + 2) } else { make_tok(TK_STAR(), p + 1) }, 47 => if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_SLASHEQ(), p + 2) } else { make_tok(TK_SLASH(), p + 1) }, _ => if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_PERCENTEQ(), p + 2) } else { make_tok(TK_PERCENT(), p + 1) } };
+
+fn next_token_cmp(c: i64, s: String, p: i64) -> i64
+
+  pre p >= 0
+
+  post it >= 0
+
+= match c { 60 => if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_LTEQ(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 60 { if p + 2 < s.len() and s.byte_at(p + 2) == 61 { make_tok(TK_SHLEQ(), p + 3) } else { make_tok(TK_SHL(), p + 2) } } else { make_tok(TK_LT(), p + 1) }, 62 => if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_GTEQ(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 62 { if p + 2 < s.len() and s.byte_at(p + 2) == 62 { make_tok(TK_LSHR(), p + 3) } else if p + 2 < s.len() and s.byte_at(p + 2) == 61 { make_tok(TK_SHREQ(), p + 3) } else { make_tok(TK_SHR(), p + 2) } } else { make_tok(TK_GT(), p + 1) }, 33 => if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_NEQ(), p + 2) } else { make_tok(TK_EOF(), p) }, _ => if p + 1 < s.len() and s.byte_at(p + 1) == 46 { if p + 2 < s.len() and s.byte_at(p + 2) == 61 { make_tok(TK_DOTDOTEQ(), p + 3) } else { make_tok(TK_DOTDOT(), p + 2) } } else { make_tok(TK_DOT(), p + 1) } };
+
+fn next_token_sym(c: i64, s: String, p: i64) -> i64
+
+  pre p >= 0
+
+  post it >= 0
+
+= match c { 58 => if p + 1 < s.len() and s.byte_at(p + 1) == 58 { make_tok(TK_DCOLON(), p + 2) } else { make_tok(TK_COLON(), p + 1) }, 61 => if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_EQEQ(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_FAT_ARROW(), p + 2) } else { make_tok(TK_EQ(), p + 1) }, 59 => make_tok(TK_SEMI(), p + 1), 44 => make_tok(TK_COMMA(), p + 1), 40 => make_tok(TK_LPAREN(), p + 1), 41 => make_tok(TK_RPAREN(), p + 1), 91 => make_tok(TK_LBRACKET(), p + 1), 93 => make_tok(TK_RBRACKET(), p + 1), 123 => make_tok(TK_LBRACE(), p + 1), 125 => make_tok(TK_RBRACE(), p + 1), 38 => make_tok(TK_AMP(), p + 1), 63 => make_tok(TK_QUESTION(), p + 1), 94 => make_tok(TK_CARET(), p + 1), 124 => make_tok(TK_PIPE(), p + 1), _ => make_tok(TK_EOF(), p) };
 
 fn get_ident_text(s: String, pos: i64, tok: i64) -> String
 
@@ -3259,32 +3313,42 @@ fn parse_atom(src: String, pos: i64) -> String
     if is_int_literal(kind) { parse_int_lit(src, pos, tok) }
     else if kind == TK_FLOAT_LIT() { parse_float_lit(src, pos, tok) }
     else if kind == TK_TRUE() or kind == TK_FALSE() { parse_bool_lit(tok, kind) }
-    else if kind == TK_IDENT() { parse_ident_or_call(src, pos, tok) }
+    else { parse_atom_mid(src, pos, tok, kind) };
+
+fn parse_atom_mid(src: String, pos: i64, tok: i64, kind: i64) -> String
+
+  pre pos >= 0 and tok >= 0
+
+  post it.len() >= 2
+
+= if kind == TK_IDENT() { parse_ident_or_call(src, pos, tok) }
     else if kind == TK_STRING_LIT() { pack_result(tok_end(tok), "(string " + escape_parens_for_ast(get_string_text(src, pos, tok)) + ")") }
     else if kind == TK_CHAR_LIT() { pack_result(tok_end(tok), "(int " + int_to_string(get_char_value(src, pos)) + ")") }
     else if kind == TK_NOT() { parse_unary(src, tok, "not") }
-    else if kind == TK_BNOT() { parse_unary(src, tok, "bnot") }  // v0.90.1
+    else if kind == TK_BNOT() { parse_unary(src, tok, "bnot") }
     else if kind == TK_MINUS() { parse_unary(src, tok, "-") }
     else if kind == TK_LPAREN() {
         let peek = next_token_raw(src, tok_end(tok));
         if tok_kind(peek) == TK_RPAREN() { pack_result(tok_end(peek), "(unit)") }
         else { parse_paren_expr(src, tok) }
     }
-    else if kind == TK_LBRACE() { parse_block_expr(src, tok_end(tok)) }
-    else if kind == TK_SET() { parse_set_expr(src, tok_end(tok)) }  // v0.90.2
-    else if kind == TK_NULL() { pack_result(tok_end(tok), "(int 0)") }  // v0.90.2: null = 0
+    else { parse_atom_tail(src, pos, tok, kind) };
+
+fn parse_atom_tail(src: String, pos: i64, tok: i64, kind: i64) -> String
+
+  pre pos >= 0 and tok >= 0
+
+  post it.len() >= 2
+
+= if kind == TK_LBRACE() { parse_block_expr(src, tok_end(tok)) }
+    else if kind == TK_SET() { parse_set_expr(src, tok_end(tok)) }
+    else if kind == TK_NULL() { pack_result(tok_end(tok), "(int 0)") }
     else if kind == TK_LBRACKET() { parse_array_or_repeat(src, tok_end(tok)) }
-    // &x just evaluates to x. Parse the inner atom and pass through.
     else if kind == TK_AMP() {
         let peek = next_token_raw(src, tok_end(tok));
-        if tok_kind(peek) == TK_MUT() {
-            // &mut x — skip mut, parse atom
-            parse_atom(src, tok_end(peek))
-        } else {
-            parse_atom(src, tok_end(tok))
-        }
+        if tok_kind(peek) == TK_MUT() { parse_atom(src, tok_end(peek)) }
+        else { parse_atom(src, tok_end(tok)) }
     }
-    // v0.95: fn |params| body — closure/lambda expression
     else if kind == TK_FN() {
         let peek = next_token_raw(src, tok_end(tok));
         if tok_kind(peek) == TK_PIPE() { parse_lambda_expr(src, tok_end(peek)) }
@@ -6206,19 +6270,11 @@ fn parse_return_type(src: String, pos: i64) -> String
 
     }
 
-    // nullable handled by skip_tuple_type_tokens
-
-    else if tok_kind(t4) == TK_LPAREN() {
-
-        skip_tuple_type_tokens(src, tok_end(t4), "i64")
-
-    }
-
     // M5-5c / Cycle 2682: Array<String> / Array<f64> recognition — extracted to helper
 
     else if tok_kind(t4) == TK_IDENT() { parse_return_type_ident(src, pos, t4) }
 
-    else { let after_targs = skip_optional_type_args(src, tok_end(t4)); pack_result(skip_nullable(src, after_targs), "i64") };
+    else { parse_return_type_other(src, t4) };
 
 fn parse_return_type_ident(src: String, pos: i64, t4: i64) -> String
 
@@ -6259,6 +6315,16 @@ fn parse_return_type_ident(src: String, pos: i64, t4: i64) -> String
         } else { let after_targs = skip_optional_type_args(src, ne); pack_result(skip_nullable(src, after_targs), "i64") }
 
     } else { let after_targs = skip_optional_type_args(src, ne); pack_result(skip_nullable(src, after_targs), "i64") };
+
+fn parse_return_type_other(src: String, t4: i64) -> String
+
+  pre t4 >= 0
+
+  post it.len() >= 2
+
+= if tok_kind(t4) == TK_LPAREN() { skip_tuple_type_tokens(src, tok_end(t4), "i64") }
+
+  else { let after_targs = skip_optional_type_args(src, tok_end(t4)); pack_result(skip_nullable(src, after_targs), "i64") };
 
 fn skip_tuple_type_tokens(src: String, pos: i64, type_str: String) -> String
 
@@ -6359,81 +6425,107 @@ fn parse_program_sb(src: String, pos: i64, sb: i64) -> String
   post it.len() >= 1
 
 = let ann = skip_annotation(src, pos);
-    if ann.len() > 0 {
-        let after_ann = pos_after_annotation(src, pos);
-        let tok2 = next_token_raw(src, after_ann);
-        // v0.97: Skip optional "pub" between @annotation and fn.
-        // Cycle 2394: 121 was a stale literal; TK_PUB() is the canonical value.
-        let fn_tok = if tok_kind(tok2) == TK_PUB() { next_token_raw(src, tok_end(tok2)) } else { tok2 };
-        if tok_kind(fn_tok) == TK_FN() {
-            let rf = parse_fn_with_annotation(src, tok_end(fn_tok), ann);
-            if is_error(rf) { rf } else {
-                let _w1 = sb_push(sb, " ");
-                let _w2 = sb_push(sb, unpack_ast(rf));
-                parse_program_sb(src, unpack_pos(rf), sb)
-            }
-        } else { make_error_at("expected 'fn' after @" + ann + ", got " + tok_kind_name(tok_kind(fn_tok)), src, after_ann) }
+    if ann.len() > 0 { parse_program_ann(src, pos, ann, sb) }
+    else { parse_program_tok(src, pos, sb) };
+
+fn parse_program_ann(src: String, pos: i64, ann: String, sb: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 1
+
+= let after_ann = pos_after_annotation(src, pos);
+    let tok2 = next_token_raw(src, after_ann);
+    let fn_tok = if tok_kind(tok2) == TK_PUB() { next_token_raw(src, tok_end(tok2)) } else { tok2 };
+    if tok_kind(fn_tok) == TK_FN() {
+        let rf = parse_fn_with_annotation(src, tok_end(fn_tok), ann);
+        if is_error(rf) { rf } else {
+            let _w1 = sb_push(sb, " ");
+            let _w2 = sb_push(sb, unpack_ast(rf));
+            parse_program_sb(src, unpack_pos(rf), sb)
+        }
+    } else { make_error_at("expected 'fn' after @" + ann + ", got " + tok_kind_name(tok_kind(fn_tok)), src, after_ann) };
+
+fn parse_program_tok(src: String, pos: i64, sb: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 1
+
+= let tok = next_token_raw(src, pos);
+    let kind = tok_kind(tok);
+    if kind == TK_EOF() or kind == TK_FN() or kind == TK_CONST() { parse_program_tok_a(src, tok, sb, kind) }
+    else { parse_program_tok_b(src, pos, tok, sb, kind) };
+
+fn parse_program_tok_a(src: String, tok: i64, sb: i64, kind: i64) -> String
+
+  pre tok >= 0
+
+  post it.len() >= 1
+
+= if kind == TK_EOF() {
+        let _w1 = sb_push(sb, ")");
+        sb_build(sb)
+    } else if kind == TK_FN() {
+        let rf = parse_fn(src, tok_end(tok));
+        if is_error(rf) { rf } else {
+            let _w1 = sb_push(sb, " ");
+            let _w2 = sb_push(sb, unpack_ast(rf));
+            parse_program_sb(src, unpack_pos(rf), sb)
+        }
     } else {
-        let tok = next_token_raw(src, pos);
-        let kind = tok_kind(tok);
-        if kind == TK_EOF() {
-            let _w1 = sb_push(sb, ")");
-            sb_build(sb)
-        } else if kind == TK_FN() {
-            let rf = parse_fn(src, tok_end(tok));
-            if is_error(rf) { rf } else {
-                let _w1 = sb_push(sb, " ");
-                let _w2 = sb_push(sb, unpack_ast(rf));
-                parse_program_sb(src, unpack_pos(rf), sb)
-            }
-        } else if kind == TK_STRUCT() {
-            let end_pos = skip_struct_decl(src, tok_end(tok));
-            parse_program_sb(src, end_pos, sb)
-        } else if kind == TK_EXTERN() {
-            // Skip extern fn declarations (runtime functions are hardcoded)
-            let end_pos = skip_extern_fn(src, tok_end(tok));
-            parse_program_sb(src, end_pos, sb)
-        } else if kind == TK_PUB() {
-            // Skip pub and re-parse (next token should be fn/struct/enum/trait/type)
-            parse_program_sb(src, tok_end(tok), sb)
-        } else if kind == TK_TYPE() {
-            // Skip type alias: type Name = ...;
-            let end_pos = skip_to_semi(src, tok_end(tok));
-            parse_program_sb(src, end_pos, sb)
-        } else if kind == TK_ENUM() {
-            // Skip enum definition: enum Name { ... }
-            let end_pos = skip_struct_decl(src, tok_end(tok));
-            parse_program_sb(src, end_pos, sb)
-        } else if kind == TK_TRAIT() {
-            // Skip trait definition: trait Name { ... }
-            let end_pos = skip_brace_block(src, tok_end(tok));
-            parse_program_sb(src, end_pos, sb)
-        } else if kind == TK_IMPL() {
-            // Skip impl block: impl [Trait for] Type { ... }
-            let end_pos = skip_brace_block(src, tok_end(tok));
-            parse_program_sb(src, end_pos, sb)
-        } else if kind == TK_CONST() {
-            // const NAME[: TYPE] = EXPR;  ->  (fn-const <NAME> () BODY)
-            let cr = parse_const_decl(src, tok_end(tok));
-            if is_error(cr) { cr } else {
-                let _w1 = sb_push(sb, " ");
-                let _w2 = sb_push(sb, unpack_ast(cr));
-                parse_program_sb(src, unpack_pos(cr), sb)
-            }
-        } else if kind == TK_IDENT() and get_ident_text(src, pos, tok) == "platform" {
-
-            // M15 Phase 1: platform Name { ... } — skip (parse-only, no semantic processing yet)
-            let t_name = next_token_raw(src, tok_end(tok));
-            let end_pos = if tok_kind(t_name) == TK_IDENT() {
-                let t_brace = next_token_raw(src, tok_end(t_name));
-                if tok_kind(t_brace) == TK_LBRACE() {
-                    skip_nested_braces(src, tok_end(t_brace), 1)
-                } else { tok_end(t_name) }
-            } else { tok_end(tok) };
-            parse_program_sb(src, end_pos, sb)
-
-        } else { make_error_at("expected 'fn' declaration, got " + tok_kind_name(kind), src, pos) }
+        let cr = parse_const_decl(src, tok_end(tok));
+        if is_error(cr) { cr } else {
+            let _w1 = sb_push(sb, " ");
+            let _w2 = sb_push(sb, unpack_ast(cr));
+            parse_program_sb(src, unpack_pos(cr), sb)
+        }
     };
+
+fn parse_program_tok_b(src: String, pos: i64, tok: i64, sb: i64, kind: i64) -> String
+
+  pre pos >= 0 and tok >= 0
+
+  post it.len() >= 1
+
+= if kind == TK_STRUCT() {
+        let end_pos = skip_struct_decl(src, tok_end(tok));
+        parse_program_sb(src, end_pos, sb)
+    } else if kind == TK_EXTERN() {
+        let end_pos = skip_extern_fn(src, tok_end(tok));
+        parse_program_sb(src, end_pos, sb)
+    } else if kind == TK_PUB() {
+        parse_program_sb(src, tok_end(tok), sb)
+    } else if kind == TK_TYPE() {
+        let end_pos = skip_to_semi(src, tok_end(tok));
+        parse_program_sb(src, end_pos, sb)
+    } else if kind == TK_ENUM() {
+        let end_pos = skip_struct_decl(src, tok_end(tok));
+        parse_program_sb(src, end_pos, sb)
+    } else if kind == TK_TRAIT() {
+        let end_pos = skip_brace_block(src, tok_end(tok));
+        parse_program_sb(src, end_pos, sb)
+    } else if kind == TK_IMPL() {
+        let end_pos = skip_brace_block(src, tok_end(tok));
+        parse_program_sb(src, end_pos, sb)
+    } else if kind == TK_IDENT() and get_ident_text(src, pos, tok) == "platform" {
+        parse_program_platform_body(src, tok, sb)
+    } else { make_error_at("expected 'fn' declaration, got " + tok_kind_name(kind), src, pos) };
+
+fn parse_program_platform_body(src: String, tok: i64, sb: i64) -> String
+
+  pre tok >= 0
+
+  post it.len() >= 1
+
+= let t_name = next_token_raw(src, tok_end(tok));
+    let end_pos = if tok_kind(t_name) == TK_IDENT() {
+        let t_brace = next_token_raw(src, tok_end(t_name));
+        if tok_kind(t_brace) == TK_LBRACE() {
+            skip_nested_braces(src, tok_end(t_brace), 1)
+        } else { tok_end(t_name) }
+    } else { tok_end(tok) };
+    parse_program_sb(src, end_pos, sb);
 
 fn skip_extern_fn(src: String, pos: i64) -> i64
 
@@ -8315,119 +8407,153 @@ fn do_step(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, 
 
 = let b0 = item.byte_at(0);
 
-    // Group by first byte for faster average dispatch
+    if b0 == 69 { step_expr(item, cur_temp, cur_block, cur_exit_label, sb) }
 
-    if b0 == 69 { // 'E'
+    else if b0 == 66 or b0 == 73 { do_step_bi(item, cur_temp, cur_block, cur_exit_label, sb, b0) }
 
-        step_expr(item, cur_temp, cur_block, cur_exit_label, sb) // EX
+    else if b0 == 83 or b0 == 67 { do_step_sc(item, cur_temp, cur_block, cur_exit_label, sb, b0) }
 
-    }
+    else if b0 == 76 or b0 == 65 or b0 == 77 or b0 == 78 or b0 == 86 { do_step_lamv(item, cur_temp, cur_block, cur_exit_label, sb, b0) }
 
-    else { match b0 { 66 => // 'B' — BI, BR, BF, BO, BK
+    else { do_step_ufrgtwx(item, cur_temp, cur_block, cur_exit_label, sb, b0) };
 
-        let b1 = item.byte_at(1);
+fn do_step_bi(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64, b0: i64) -> String
 
-        if b1 == 73 { step_binop_start(item, cur_temp, cur_block, cur_exit_label, sb) }       // BI
+  pre cur_temp >= 0 and cur_block >= 0
 
-        else { match b1 { 82 => step_binop_right(item, cur_temp, cur_block, cur_exit_label, sb), 70 => step_binop_final(item, cur_temp, cur_block, cur_exit_label, sb), 79 => step_bool(item, cur_temp, cur_block, cur_exit_label, sb), 75 => step_break(item, cur_temp, cur_block, cur_exit_label, sb), _ => make_step_leaf(cur_temp) } }, 73 => // 'I' — IN, IS, IT, IE, IX, IZ
+  post it.len() >= 1
 
-        let b1 = item.byte_at(1);
+= let b1 = item.byte_at(1);
 
-        if b1 == 78 { step_int(item, cur_temp, cur_block, cur_exit_label, sb) }            // IN
+    if b0 == 66 {
 
-        else if b1 == 83 { step_if_start(item, cur_temp, cur_block, cur_exit_label, sb) }  // IS
+        if b1 == 73 { step_binop_start(item, cur_temp, cur_block, cur_exit_label, sb) }
 
-        else { match b1 { 84 => step_if_then(item, cur_temp, cur_block, cur_exit_label, sb), 69 => step_if_else(item, cur_temp, cur_block, cur_exit_label, sb), 88 => step_if_final(item, cur_temp, cur_block, cur_exit_label, sb), 90 => step_if_select(item, cur_temp, cur_block, cur_exit_label, sb), _ => make_step_leaf(cur_temp) } }, 83 => // 'S' — ST, SQ, S2, SI, S3, S4, S5, SF, SV, SW
+        else { match b1 { 82 => step_binop_right(item, cur_temp, cur_block, cur_exit_label, sb), 70 => step_binop_final(item, cur_temp, cur_block, cur_exit_label, sb), 79 => step_bool(item, cur_temp, cur_block, cur_exit_label, sb), 75 => step_break(item, cur_temp, cur_block, cur_exit_label, sb), _ => make_step_leaf(cur_temp) } }
 
-        let b1 = item.byte_at(1);
+    } else {
 
-        if b1 == 84 { step_string(item, cur_temp, cur_block, cur_exit_label, sb) }             // ST
+        if b1 == 78 { step_int(item, cur_temp, cur_block, cur_exit_label, sb) }
 
-        else if b1 == 81 { step_seq_start(item, cur_temp, cur_block, cur_exit_label, sb) }     // SQ
+        else if b1 == 83 { step_if_start(item, cur_temp, cur_block, cur_exit_label, sb) }
 
-        else { match b1 { 50 => step_seq_second(item, cur_temp, cur_block, cur_exit_label, sb), 73 => step_set_index_start(item, cur_temp, cur_block, cur_exit_label, sb), 51 => step_set_index_idx(item, cur_temp, cur_block, cur_exit_label, sb), 52 => step_set_index_val(item, cur_temp, cur_block, cur_exit_label, sb), 53 => step_set_index_final(item, cur_temp, cur_block, cur_exit_label, sb), 70 => step_set_field_start(item, cur_temp, cur_block, cur_exit_label, sb), 86 => step_set_var_start(item, cur_temp, cur_block, cur_exit_label, sb), 87 => step_set_var_final(item, cur_temp, cur_block, cur_exit_label, sb), _ => make_step_leaf(cur_temp) } }, 67 => // 'C' — CS, CA, CF, CN, C6
+        else { match b1 { 84 => step_if_then(item, cur_temp, cur_block, cur_exit_label, sb), 69 => step_if_else(item, cur_temp, cur_block, cur_exit_label, sb), 88 => step_if_final(item, cur_temp, cur_block, cur_exit_label, sb), 90 => step_if_select(item, cur_temp, cur_block, cur_exit_label, sb), _ => make_step_leaf(cur_temp) } }
 
-        let b1 = item.byte_at(1);
+    };
 
-        if b1 == 83 { step_call_start(item, cur_temp, cur_block, cur_exit_label, sb) }     // CS
+fn do_step_sc(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64, b0: i64) -> String
 
-        else { match b1 { 65 => step_call_arg(item, cur_temp, cur_block, cur_exit_label, sb), 70 => step_call_final(item, cur_temp, cur_block, cur_exit_label, sb), 78 => step_continue(item, cur_temp, cur_block, cur_exit_label, sb), 54 => step_cast_to_i64(item, cur_temp, cur_block, cur_exit_label, sb), _ => make_step_leaf(cur_temp) } }, 76 => // 'L' — LS, LB
+  pre cur_temp >= 0 and cur_block >= 0
 
-        let b1 = item.byte_at(1);
+  post it.len() >= 1
 
-        if b1 == 83 { step_let_start(item, cur_temp, cur_block, cur_exit_label, sb) }  // LS
+= let b1 = item.byte_at(1);
 
-        else if b1 == 66 { step_let_body(item, cur_temp, cur_block, cur_exit_label, sb) } // LB
+    if b0 == 83 {
 
-        else { make_step_leaf(cur_temp) }, 65 => // 'A' — AS, AF, AI, A2, A3, AL, AR
+        if b1 == 84 { step_string(item, cur_temp, cur_block, cur_exit_label, sb) }
 
-        let b1 = item.byte_at(1);
+        else if b1 == 81 { step_seq_start(item, cur_temp, cur_block, cur_exit_label, sb) }
 
-        if b1 == 83 { step_assign_start(item, cur_temp, cur_block, cur_exit_label, sb) }          // AS
+        else { match b1 { 50 => step_seq_second(item, cur_temp, cur_block, cur_exit_label, sb), 73 => step_set_index_start(item, cur_temp, cur_block, cur_exit_label, sb), 51 => step_set_index_idx(item, cur_temp, cur_block, cur_exit_label, sb), 52 => step_set_index_val(item, cur_temp, cur_block, cur_exit_label, sb), 53 => step_set_index_final(item, cur_temp, cur_block, cur_exit_label, sb), 70 => step_set_field_start(item, cur_temp, cur_block, cur_exit_label, sb), 86 => step_set_var_start(item, cur_temp, cur_block, cur_exit_label, sb), 87 => step_set_var_final(item, cur_temp, cur_block, cur_exit_label, sb), _ => make_step_leaf(cur_temp) } }
 
-        else if b1 == 70 { step_assign_final(item, cur_temp, cur_block, cur_exit_label, sb) }     // AF
+    } else {
 
-        else { match b1 { 73 => step_array_index_start(item, cur_temp, cur_block, cur_exit_label, sb), 50 => step_array_index_idx(item, cur_temp, cur_block, cur_exit_label, sb), 51 => step_array_index_final(item, cur_temp, cur_block, cur_exit_label, sb), 76 => step_array_literal(item, cur_temp, cur_block, cur_exit_label, sb), 82 => step_array_repeat(item, cur_temp, cur_block, cur_exit_label, sb), _ => make_step_leaf(cur_temp) } }, 77 => // 'M' — MS, MA, MF
+        if b1 == 83 { step_call_start(item, cur_temp, cur_block, cur_exit_label, sb) }
 
-        let b1 = item.byte_at(1);
+        else { match b1 { 65 => step_call_arg(item, cur_temp, cur_block, cur_exit_label, sb), 70 => step_call_final(item, cur_temp, cur_block, cur_exit_label, sb), 78 => step_continue(item, cur_temp, cur_block, cur_exit_label, sb), 54 => step_cast_to_i64(item, cur_temp, cur_block, cur_exit_label, sb), _ => make_step_leaf(cur_temp) } }
 
-        if b1 == 83 { step_method_start(item, cur_temp, cur_block, cur_exit_label, sb) }  // MS
+    };
 
-        else { match b1 { 65 => step_method_arg(item, cur_temp, cur_block, cur_exit_label, sb), 70 => step_method_final(item, cur_temp, cur_block, cur_exit_label, sb), _ => make_step_leaf(cur_temp) } }, 78 => // 'N' — NR, NO (nullable methods)
+fn do_step_lamv(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64, b0: i64) -> String
 
-        let b1 = item.byte_at(1);
+  pre cur_temp >= 0 and cur_block >= 0
 
-        if b1 == 82 { step_nullable_result(item, cur_temp, cur_block, cur_exit_label, sb) }  // NR
+  post it.len() >= 1
 
-        else if b1 == 79 { step_nullable_or(item, cur_temp, cur_block, cur_exit_label, sb) } // NO
+= let b1 = item.byte_at(1);
 
-        else { make_step_leaf(cur_temp) }, 86 => // 'V' — VA, VM, VB
+    if b0 == 76 {
 
-        let b1 = item.byte_at(1);
+        if b1 == 83 { step_let_start(item, cur_temp, cur_block, cur_exit_label, sb) }
 
-        if b1 == 65 { step_var(item, cur_temp, cur_block, cur_exit_label, sb) }            // VA
+        else if b1 == 66 { step_let_body(item, cur_temp, cur_block, cur_exit_label, sb) }
 
-        else { match b1 { 77 => step_mut_start(item, cur_temp, cur_block, cur_exit_label, sb), 66 => step_mut_body(item, cur_temp, cur_block, cur_exit_label, sb), _ => make_step_leaf(cur_temp) } }, 85 => // 'U' — UN, UF, UT
+        else { make_step_leaf(cur_temp) }
 
-        let b1 = item.byte_at(1);
+    } else if b0 == 65 {
 
-        if b1 == 78 { step_unary_start(item, cur_temp, cur_block, cur_exit_label, sb) }    // UN
+        if b1 == 83 { step_assign_start(item, cur_temp, cur_block, cur_exit_label, sb) }
 
-        else { match b1 { 70 => step_unary_final(item, cur_temp, cur_block, cur_exit_label, sb), 84 => step_unit(item, cur_temp, cur_block, cur_exit_label, sb), _ => make_step_leaf(cur_temp) } }, 70 => // 'F' — FL, FA, F2, FP, FQ
+        else if b1 == 70 { step_assign_final(item, cur_temp, cur_block, cur_exit_label, sb) }
 
-        let b1 = item.byte_at(1);
+        else { match b1 { 73 => step_array_index_start(item, cur_temp, cur_block, cur_exit_label, sb), 50 => step_array_index_idx(item, cur_temp, cur_block, cur_exit_label, sb), 51 => step_array_index_final(item, cur_temp, cur_block, cur_exit_label, sb), 76 => step_array_literal(item, cur_temp, cur_block, cur_exit_label, sb), 82 => step_array_repeat(item, cur_temp, cur_block, cur_exit_label, sb), _ => make_step_leaf(cur_temp) } }
 
-        if b1 == 76 { step_float(item, cur_temp, cur_block, cur_exit_label, sb) }              // FL
+    } else if b0 == 77 {
 
-        else { match b1 { 65 => step_field_access_start(item, cur_temp, cur_block, cur_exit_label, sb), 50 => step_field_access_final(item, cur_temp, cur_block, cur_exit_label, sb), 80 => step_cast_ptr_f64_start(item, cur_temp, cur_block, cur_exit_label, sb), 81 => step_cast_ptr_f64_finish(item, cur_temp, cur_block, cur_exit_label, sb), _ => make_step_leaf(cur_temp) } }, 82 => // 'R' — RT, RV
+        if b1 == 83 { step_method_start(item, cur_temp, cur_block, cur_exit_label, sb) }
 
-        let b1 = item.byte_at(1);
+        else { match b1 { 65 => step_method_arg(item, cur_temp, cur_block, cur_exit_label, sb), 70 => step_method_final(item, cur_temp, cur_block, cur_exit_label, sb), _ => make_step_leaf(cur_temp) } }
 
-        if b1 == 84 { step_return(item, cur_temp, cur_block, cur_exit_label, sb) }         // RT
+    } else if b0 == 78 {
 
-        else if b1 == 86 { step_return_value(item, cur_temp, cur_block, cur_exit_label, sb) }// RV
+        if b1 == 82 { step_nullable_result(item, cur_temp, cur_block, cur_exit_label, sb) }
 
-        else { make_step_leaf(cur_temp) }, 71 => // 'G' — G2, G3
+        else if b1 == 79 { step_nullable_or(item, cur_temp, cur_block, cur_exit_label, sb) }
 
-        let b1 = item.byte_at(1);
+        else { make_step_leaf(cur_temp) }
 
-        if b1 == 50 { step_set_field_val(item, cur_temp, cur_block, cur_exit_label, sb) }    // G2
+    } else {
 
-        else if b1 == 51 { step_set_field_final(item, cur_temp, cur_block, cur_exit_label, sb) } // G3
+        if b1 == 65 { step_var(item, cur_temp, cur_block, cur_exit_label, sb) }
 
-        else { make_step_leaf(cur_temp) }, 84 => // 'T' — TU
+        else { match b1 { 77 => step_mut_start(item, cur_temp, cur_block, cur_exit_label, sb), 66 => step_mut_body(item, cur_temp, cur_block, cur_exit_label, sb), _ => make_step_leaf(cur_temp) } }
 
-        step_tuple(item, cur_temp, cur_block, cur_exit_label, sb),
+    };
 
-        87 => // 'W' — W3 (cast to i32) v0.95
+fn do_step_ufrgtwx(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64, b0: i64) -> String
 
-        step_cast_to_i32(item, cur_temp, cur_block, cur_exit_label, sb),
+  pre cur_temp >= 0 and cur_block >= 0
 
-        88 => // 'X' — XF (cast to f64) v0.93.6
+  post it.len() >= 1
 
-        step_cast_to_f64(item, cur_temp, cur_block, cur_exit_label, sb),
+= let b1 = item.byte_at(1);
 
-        _ => make_step_leaf(cur_temp) } };
+    if b0 == 85 {
+
+        if b1 == 78 { step_unary_start(item, cur_temp, cur_block, cur_exit_label, sb) }
+
+        else { match b1 { 70 => step_unary_final(item, cur_temp, cur_block, cur_exit_label, sb), 84 => step_unit(item, cur_temp, cur_block, cur_exit_label, sb), _ => make_step_leaf(cur_temp) } }
+
+    } else if b0 == 70 {
+
+        if b1 == 76 { step_float(item, cur_temp, cur_block, cur_exit_label, sb) }
+
+        else { match b1 { 65 => step_field_access_start(item, cur_temp, cur_block, cur_exit_label, sb), 50 => step_field_access_final(item, cur_temp, cur_block, cur_exit_label, sb), 80 => step_cast_ptr_f64_start(item, cur_temp, cur_block, cur_exit_label, sb), 81 => step_cast_ptr_f64_finish(item, cur_temp, cur_block, cur_exit_label, sb), _ => make_step_leaf(cur_temp) } }
+
+    } else if b0 == 82 {
+
+        if b1 == 84 { step_return(item, cur_temp, cur_block, cur_exit_label, sb) }
+
+        else if b1 == 86 { step_return_value(item, cur_temp, cur_block, cur_exit_label, sb) }
+
+        else { make_step_leaf(cur_temp) }
+
+    } else if b0 == 71 {
+
+        if b1 == 50 { step_set_field_val(item, cur_temp, cur_block, cur_exit_label, sb) }
+
+        else if b1 == 51 { step_set_field_final(item, cur_temp, cur_block, cur_exit_label, sb) }
+
+        else { make_step_leaf(cur_temp) }
+
+    } else if b0 == 84 { step_tuple(item, cur_temp, cur_block, cur_exit_label, sb) }
+
+    else if b0 == 87 { step_cast_to_i32(item, cur_temp, cur_block, cur_exit_label, sb) }
+
+    else if b0 == 88 { step_cast_to_f64(item, cur_temp, cur_block, cur_exit_label, sb) }
+
+    else { make_step_leaf(cur_temp) };
 
 // EX: Dispatch based on node type - expand to specific handler
 
@@ -8471,13 +8597,7 @@ fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String
 
         let _w1 = sb_push_mir(sb, "  " + tmp + " = const " + i2s(val));
 
-        make_step_leaf(cur_temp + 1), "string" => let str_content = extract_string_content(ast);
-
-        let tmp = "%_t" + i2s(cur_temp);
-
-        let _w1 = sb_push_mir(sb, "  " + tmp + " = string " + chr(34) + str_content + chr(34));
-
-        make_step_leaf(cur_temp + 1), "var" => let name = extract_name(ast);
+        make_step_leaf(cur_temp + 1), "string" => step_expr_string_leaf(ast, cur_temp, sb), "var" => let name = extract_name(ast);
 
         let tmp = "%_t" + i2s(cur_temp);
 
@@ -8517,87 +8637,13 @@ fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String
 
         make_step(cur_temp, cur_block, cur_exit_label, make_work4("VM", name, value, body, "")), "call" => let name = extract_name(ast);
 
-        make_step(cur_temp, cur_block, cur_exit_label, make_work4("CS", name, ast, "1", "")), "method" => let method_name = get_child(ast, 0);
-
-        let receiver = get_child(ast, 1);
-
-        if is_nullable_method(method_name) {
-
-            make_step(cur_temp, cur_block, cur_exit_label,
-
-                make_work3("EX", receiver, "", "") + work_sep() +
-
-                make_work4("NR", method_name, ast, "", ""))
-
-        } else {
-
-            let fn_name = method_to_runtime_fn(method_name);
-
-            make_step(cur_temp, cur_block, cur_exit_label, make_work("MS", fn_name, receiver, ast, "2", ""))
-
-        }, "block" => let inner = block_inner(ast);
+        make_step(cur_temp, cur_block, cur_exit_label, make_work4("CS", name, ast, "1", "")), "method" => step_expr_method(ast, cur_temp, cur_block, cur_exit_label), "block" => let inner = block_inner(ast);
 
         make_step(cur_temp, cur_block, cur_exit_label, make_work3("EX", inner, "", "")), "unit" => let tmp = "%_t" + i2s(cur_temp);
 
         let _w1 = sb_push_mir(sb, "  " + tmp + " = const 0");
 
-        make_step_leaf(cur_temp + 1), "seq" => let e1 = seq_first(ast);
-
-        let e2 = seq_second(ast);
-
-        make_step(cur_temp, cur_block, cur_exit_label, make_work3("SQ", e1, e2, "")), "assign" => let lhs = assign_lhs_expr(ast);
-
-        let rhs = assign_rhs_expr(ast);
-
-        make_step(cur_temp, cur_block, cur_exit_label, make_work3("AS", lhs, rhs, "")), "while" => let while_exit = "exit_" + i2s(cur_block);
-
-        let result = lower_while_sb(ast, cur_temp, cur_block, sb, "");
-
-        let new_temp = unpack_temp(result);
-
-        let new_block = unpack_block(result);
-
-        make_step(new_temp, new_block, while_exit, ""), "loop" => let loop_exit = "exit_" + i2s(cur_block);
-
-        let result = lower_loop_sb(ast, cur_temp, cur_block, sb, "");
-
-        let new_temp = unpack_temp(result);
-
-        let new_block = unpack_block(result);
-
-        make_step(new_temp, new_block, loop_exit, ""), "for" => let for_exit = "for_end_" + i2s(cur_block);
-
-        let result = lower_for_sb(ast, cur_temp, cur_block, sb, "");
-
-        let new_temp = unpack_temp(result);
-
-        let new_block = unpack_block(result);
-
-        make_step(new_temp, new_block, for_exit, ""), "for_incl" => let for_exit = "for_end_" + i2s(cur_block);
-
-        let result = lower_for_incl_sb(ast, cur_temp, cur_block, sb, "");
-
-        let new_temp = unpack_temp(result);
-
-        let new_block = unpack_block(result);
-
-        make_step(new_temp, new_block, for_exit, ""), "for_step" => let for_exit = "for_end_" + i2s(cur_block);
-
-        let result = lower_for_step_sb(ast, cur_temp, cur_block, sb, "");
-
-        let new_temp = unpack_temp(result);
-
-        let new_block = unpack_block(result);
-
-        make_step(new_temp, new_block, for_exit, ""), "for_step_incl" => let for_exit = "for_end_" + i2s(cur_block);
-
-        let result = lower_for_step_incl_sb(ast, cur_temp, cur_block, sb, "");
-
-        let new_temp = unpack_temp(result);
-
-        let new_block = unpack_block(result);
-
-        make_step(new_temp, new_block, for_exit, ""), "index" => let base = get_child(ast, 0);
+        make_step_leaf(cur_temp + 1), "seq" => step_expr_assign_seq(ast, "seq", cur_temp, cur_block, cur_exit_label), "assign" => step_expr_assign_seq(ast, "assign", cur_temp, cur_block, cur_exit_label), "while" => step_loop_lower_for(ast, "while", cur_temp, cur_block, sb), "loop" => step_loop_lower_for(ast, "loop", cur_temp, cur_block, sb), "for" => step_loop_lower_for(ast, "for", cur_temp, cur_block, sb), "for_incl" => step_loop_lower_for(ast, "for_incl", cur_temp, cur_block, sb), "for_step" => step_loop_lower_for(ast, "for_step", cur_temp, cur_block, sb), "for_step_incl" => step_loop_lower_for(ast, "for_step_incl", cur_temp, cur_block, sb), "index" => let base = get_child(ast, 0);
 
         let idx = get_child(ast, 1);
 
@@ -8693,25 +8739,115 @@ fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String
 
         make_step(cur_temp, cur_block, cur_exit_label, do_expr + work_sep() + cont), "cast_ptr_f64" => let inner = get_child(ast, 0);
 
-        make_step(cur_temp, cur_block, cur_exit_label, make_work3("FP", inner, "", "")), "array_repeat" => make_step(cur_temp, cur_block, cur_exit_label, make_work3("AR", ast, "", "")), "array" => make_step(cur_temp, cur_block, cur_exit_label, make_work3("AL", ast, "", "")), "tuple" => make_step(cur_temp, cur_block, cur_exit_label, make_work3("TU", ast, "", "")), "struct_init" => let result = lower_struct_init_sb(ast, cur_temp, cur_block, sb, "");
+        make_step(cur_temp, cur_block, cur_exit_label, make_work3("FP", inner, "", "")), "array_repeat" => make_step(cur_temp, cur_block, cur_exit_label, make_work3("AR", ast, "", "")), "array" => make_step(cur_temp, cur_block, cur_exit_label, make_work3("AL", ast, "", "")), "tuple" => make_step(cur_temp, cur_block, cur_exit_label, make_work3("TU", ast, "", "")), "struct_init" => step_struct_lower(ast, "struct_init", cur_temp, cur_block, sb, cur_exit_label), "lambda" => step_struct_lower(ast, "lambda", cur_temp, cur_block, sb, cur_exit_label), "enum_val" => step_struct_lower(ast, "enum_val", cur_temp, cur_block, sb, cur_exit_label), _ => make_step_leaf(cur_temp) } };
 
-        let new_temp = unpack_temp(result);
+fn step_loop_lower_for(ast: String, ntype: String, cur_temp: i64, cur_block: i64, sb: i64) -> String
 
-        let new_block = unpack_block(result);
+  pre cur_temp >= 0 and cur_block >= 0
 
-        make_step(new_temp, new_block, cur_exit_label, ""), "lambda" => let result = lower_lambda_sb(ast, cur_temp, cur_block, sb, cur_exit_label);
+  post it.len() >= 1
 
-        let new_temp = unpack_temp(result);
+= let exit_label = if ntype == "while" or ntype == "loop" { "exit_" + i2s(cur_block) } else { "for_end_" + i2s(cur_block) };
 
-        let new_block = unpack_block(result);
+  let result = if ntype == "while" { lower_while_sb(ast, cur_temp, cur_block, sb, "") }
 
-        make_step(new_temp, new_block, cur_exit_label, ""), "enum_val" => let result = lower_enum_val_sb(ast, cur_temp, cur_block, sb, cur_exit_label);
+               else if ntype == "loop" { lower_loop_sb(ast, cur_temp, cur_block, sb, "") }
 
-        let new_temp = unpack_temp(result);
+               else if ntype == "for" { lower_for_sb(ast, cur_temp, cur_block, sb, "") }
 
-        let new_block = unpack_block(result);
+               else if ntype == "for_incl" { lower_for_incl_sb(ast, cur_temp, cur_block, sb, "") }
 
-        make_step(new_temp, new_block, cur_exit_label, ""), _ => make_step_leaf(cur_temp) } };
+               else if ntype == "for_step" { lower_for_step_sb(ast, cur_temp, cur_block, sb, "") }
+
+               else { lower_for_step_incl_sb(ast, cur_temp, cur_block, sb, "") };
+
+  let new_temp = unpack_temp(result);
+
+  let new_block = unpack_block(result);
+
+  make_step(new_temp, new_block, exit_label, "");
+
+fn step_struct_lower(ast: String, ntype: String, cur_temp: i64, cur_block: i64, sb: i64, cur_exit_label: String) -> String
+
+  pre cur_temp >= 0 and cur_block >= 0
+
+  post it.len() >= 1
+
+= let result = if ntype == "struct_init" { lower_struct_init_sb(ast, cur_temp, cur_block, sb, "") }
+
+               else if ntype == "lambda" { lower_lambda_sb(ast, cur_temp, cur_block, sb, cur_exit_label) }
+
+               else { lower_enum_val_sb(ast, cur_temp, cur_block, sb, cur_exit_label) };
+
+  let new_temp = unpack_temp(result);
+
+  let new_block = unpack_block(result);
+
+  make_step(new_temp, new_block, cur_exit_label, "");
+
+fn step_expr_method(ast: String, cur_temp: i64, cur_block: i64, cur_exit_label: String) -> String
+
+  pre cur_temp >= 0 and cur_block >= 0
+
+  post it.len() >= 1
+
+= let method_name = get_child(ast, 0);
+
+  let receiver = get_child(ast, 1);
+
+  if is_nullable_method(method_name) {
+
+      make_step(cur_temp, cur_block, cur_exit_label,
+
+          make_work3("EX", receiver, "", "") + work_sep() +
+
+          make_work4("NR", method_name, ast, "", ""))
+
+  } else {
+
+      let fn_name = method_to_runtime_fn(method_name);
+
+      make_step(cur_temp, cur_block, cur_exit_label, make_work("MS", fn_name, receiver, ast, "2", ""))
+
+  };
+
+fn step_expr_assign_seq(ast: String, ntype: String, cur_temp: i64, cur_block: i64, cur_exit_label: String) -> String
+
+  pre cur_temp >= 0 and cur_block >= 0
+
+  post it.len() >= 1
+
+= if ntype == "assign" {
+
+      let lhs = assign_lhs_expr(ast);
+
+      let rhs = assign_rhs_expr(ast);
+
+      make_step(cur_temp, cur_block, cur_exit_label, make_work3("AS", lhs, rhs, ""))
+
+  } else {
+
+      let e1 = seq_first(ast);
+
+      let e2 = seq_second(ast);
+
+      make_step(cur_temp, cur_block, cur_exit_label, make_work3("SQ", e1, e2, ""))
+
+  };
+
+fn step_expr_string_leaf(ast: String, cur_temp: i64, sb: i64) -> String
+
+  pre cur_temp >= 0
+
+  post it.len() >= 1
+
+= let str_content = extract_string_content(ast);
+
+  let tmp = "%_t" + i2s(cur_temp);
+
+  let _w1 = sb_push_mir(sb, "  " + tmp + " = string " + chr(34) + str_content + chr(34));
+
+  make_step_leaf(cur_temp + 1);
 
 // IN: Integer literal - emit MIR, advance temp
 
@@ -11924,7 +12060,59 @@ fn lower_expr_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: S
 
 = let ntype = get_node_type(ast);
 
-    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else { match ntype { "float" => lower_float_sb(ast, temp_id, block_id, sb), "bool" => lower_bool_sb(ast, temp_id, block_id, sb), "string" => lower_string_sb(ast, temp_id, block_id, sb), _ => match ntype { "var" => lower_var_sb(ast, temp_id, block_id, sb), "binop" => lower_binop_sb(ast, temp_id, block_id, sb, loop_exit), "unary" => lower_unary_sb(ast, temp_id, block_id, sb, loop_exit), "if" => lower_if_sb(ast, temp_id, block_id, sb, loop_exit), "let" => lower_let_sb(ast, temp_id, block_id, sb, loop_exit), "let_mut" => lower_let_mut_sb(ast, temp_id, block_id, sb, loop_exit), "call" => lower_call_sb(ast, temp_id, block_id, sb, loop_exit), "method" => lower_method_sb(ast, temp_id, block_id, sb, loop_exit), "block" => lower_block_sb(ast, temp_id, block_id, sb, loop_exit), "unit" => lower_unit_sb(ast, temp_id, block_id, sb), "seq" => lower_seq_sb(ast, temp_id, block_id, sb, loop_exit), "assign" => lower_assign_sb(ast, temp_id, block_id, sb, loop_exit), "while" => lower_while_sb(ast, temp_id, block_id, sb, loop_exit), "loop" => lower_loop_sb(ast, temp_id, block_id, sb, loop_exit), "for" => lower_for_sb(ast, temp_id, block_id, sb, loop_exit), "for_incl" => lower_for_incl_sb(ast, temp_id, block_id, sb, loop_exit), "for_step" => lower_for_step_sb(ast, temp_id, block_id, sb, loop_exit), "for_step_incl" => lower_for_step_incl_sb(ast, temp_id, block_id, sb, loop_exit), "field" => lower_field_sb(ast, temp_id, block_id, sb, loop_exit), "set_field" => lower_set_field_sb(ast, temp_id, block_id, sb, loop_exit), "index" => lower_index_sb(ast, temp_id, block_id, sb, loop_exit), "ptr_index" => lower_ptr_index_sb(ast, temp_id, block_id, sb, loop_exit), "set_index" => lower_set_index_sb(ast, temp_id, block_id, sb, loop_exit), "set_ptr_index" => lower_ptr_set_index_sb(ast, temp_id, block_id, sb, loop_exit), "ptr_index_u8" => lower_ptr_index_u8_sb(ast, temp_id, block_id, sb, loop_exit), "set_ptr_index_u8" => lower_ptr_set_index_u8_sb(ast, temp_id, block_id, sb, loop_exit), "ptr_index_i32" => lower_ptr_index_i32_sb(ast, temp_id, block_id, sb, loop_exit), "set_ptr_index_i32" => lower_ptr_set_index_i32_sb(ast, temp_id, block_id, sb, loop_exit), "ptr_index_bool" => lower_ptr_index_bool_sb(ast, temp_id, block_id, sb, loop_exit), "set_ptr_index_bool" => lower_ptr_set_index_bool_sb(ast, temp_id, block_id, sb, loop_exit), "ptr_index_f64" => lower_ptr_index_f64_sb(ast, temp_id, block_id, sb, loop_exit), "set_ptr_index_f64" => lower_ptr_set_index_f64_sb(ast, temp_id, block_id, sb, loop_exit), "break" => lower_break_sb(loop_exit, temp_id, block_id, sb), "continue" => lower_continue_sb(loop_exit, temp_id, block_id, sb), "return" => lower_return_sb(ast, temp_id, block_id, sb, loop_exit), "cast_ptr_f64" => lower_cast_ptr_f64_sb(ast, temp_id, block_id, sb, loop_exit), "cast_i64" => lower_cast_i64_sb(ast, temp_id, block_id, sb, loop_exit), "cast_f64" => lower_cast_f64_sb(ast, temp_id, block_id, sb, loop_exit), "cast_i32" => lower_cast_i32_sb(ast, temp_id, block_id, sb, loop_exit), "array_repeat" => lower_array_repeat_sb(ast, temp_id, block_id, sb, loop_exit), "array" => lower_array_literal_sb(ast, temp_id, block_id, sb, loop_exit), "tuple" => lower_tuple_sb(ast, temp_id, block_id, sb, loop_exit), "struct_init" => lower_struct_init_sb(ast, temp_id, block_id, sb, loop_exit), "set_var" => lower_set_var_sb(ast, temp_id, block_id, sb, loop_exit), "lambda" => lower_lambda_sb(ast, temp_id, block_id, sb, loop_exit), "enum_val" => lower_enum_val_sb(ast, temp_id, block_id, sb, loop_exit), _ => pack_ids(temp_id, block_id) } } };
+    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) }
+
+    else if ntype == "float" { lower_float_sb(ast, temp_id, block_id, sb) }
+
+    else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) }
+
+    else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) }
+
+    else { lower_expr_sb_b(ast, ntype, temp_id, block_id, sb, loop_exit) };
+
+fn lower_expr_sb_b(ast: String, ntype: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
+
+  pre temp_id >= 0 and block_id >= 0
+
+  post it >= 0
+
+= if ntype == "var" or ntype == "binop" or ntype == "unary" or ntype == "if" or ntype == "let" or ntype == "let_mut" or ntype == "call" or ntype == "method" or ntype == "block" or ntype == "unit" or ntype == "seq" or ntype == "assign" {
+
+      lower_expr_sb_ctrl(ast, ntype, temp_id, block_id, sb, loop_exit)
+
+  } else if ntype == "while" or ntype == "loop" or ntype == "for" or ntype == "for_incl" or ntype == "for_step" or ntype == "for_step_incl" or ntype == "field" or ntype == "set_field" or ntype == "index" or ntype == "ptr_index" or ntype == "set_index" or ntype == "set_ptr_index" or ntype == "ptr_index_u8" or ntype == "set_ptr_index_u8" or ntype == "ptr_index_i32" or ntype == "set_ptr_index_i32" or ntype == "ptr_index_bool" or ntype == "set_ptr_index_bool" or ntype == "ptr_index_f64" or ntype == "set_ptr_index_f64" {
+
+      lower_expr_sb_loop(ast, ntype, temp_id, block_id, sb, loop_exit)
+
+  } else {
+
+      lower_expr_sb_misc(ast, ntype, temp_id, block_id, sb, loop_exit)
+
+  };
+
+fn lower_expr_sb_ctrl(ast: String, ntype: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
+
+  pre temp_id >= 0 and block_id >= 0
+
+  post it >= 0
+
+= match ntype { "var" => lower_var_sb(ast, temp_id, block_id, sb), "binop" => lower_binop_sb(ast, temp_id, block_id, sb, loop_exit), "unary" => lower_unary_sb(ast, temp_id, block_id, sb, loop_exit), "if" => lower_if_sb(ast, temp_id, block_id, sb, loop_exit), "let" => lower_let_sb(ast, temp_id, block_id, sb, loop_exit), "let_mut" => lower_let_mut_sb(ast, temp_id, block_id, sb, loop_exit), "call" => lower_call_sb(ast, temp_id, block_id, sb, loop_exit), "method" => lower_method_sb(ast, temp_id, block_id, sb, loop_exit), "block" => lower_block_sb(ast, temp_id, block_id, sb, loop_exit), "unit" => lower_unit_sb(ast, temp_id, block_id, sb), "seq" => lower_seq_sb(ast, temp_id, block_id, sb, loop_exit), _ => lower_assign_sb(ast, temp_id, block_id, sb, loop_exit) };
+
+fn lower_expr_sb_loop(ast: String, ntype: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
+
+  pre temp_id >= 0 and block_id >= 0
+
+  post it >= 0
+
+= match ntype { "while" => lower_while_sb(ast, temp_id, block_id, sb, loop_exit), "loop" => lower_loop_sb(ast, temp_id, block_id, sb, loop_exit), "for" => lower_for_sb(ast, temp_id, block_id, sb, loop_exit), "for_incl" => lower_for_incl_sb(ast, temp_id, block_id, sb, loop_exit), "for_step" => lower_for_step_sb(ast, temp_id, block_id, sb, loop_exit), "for_step_incl" => lower_for_step_incl_sb(ast, temp_id, block_id, sb, loop_exit), "field" => lower_field_sb(ast, temp_id, block_id, sb, loop_exit), "set_field" => lower_set_field_sb(ast, temp_id, block_id, sb, loop_exit), "index" => lower_index_sb(ast, temp_id, block_id, sb, loop_exit), "ptr_index" => lower_ptr_index_sb(ast, temp_id, block_id, sb, loop_exit), "set_index" => lower_set_index_sb(ast, temp_id, block_id, sb, loop_exit), "set_ptr_index" => lower_ptr_set_index_sb(ast, temp_id, block_id, sb, loop_exit), "ptr_index_u8" => lower_ptr_index_u8_sb(ast, temp_id, block_id, sb, loop_exit), "set_ptr_index_u8" => lower_ptr_set_index_u8_sb(ast, temp_id, block_id, sb, loop_exit), "ptr_index_i32" => lower_ptr_index_i32_sb(ast, temp_id, block_id, sb, loop_exit), "set_ptr_index_i32" => lower_ptr_set_index_i32_sb(ast, temp_id, block_id, sb, loop_exit), "ptr_index_bool" => lower_ptr_index_bool_sb(ast, temp_id, block_id, sb, loop_exit), "set_ptr_index_bool" => lower_ptr_set_index_bool_sb(ast, temp_id, block_id, sb, loop_exit), "ptr_index_f64" => lower_ptr_index_f64_sb(ast, temp_id, block_id, sb, loop_exit), _ => lower_ptr_set_index_f64_sb(ast, temp_id, block_id, sb, loop_exit) };
+
+fn lower_expr_sb_misc(ast: String, ntype: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
+
+  pre temp_id >= 0 and block_id >= 0
+
+  post it >= 0
+
+= match ntype { "break" => lower_break_sb(loop_exit, temp_id, block_id, sb), "continue" => lower_continue_sb(loop_exit, temp_id, block_id, sb), "return" => lower_return_sb(ast, temp_id, block_id, sb, loop_exit), "cast_ptr_f64" => lower_cast_ptr_f64_sb(ast, temp_id, block_id, sb, loop_exit), "cast_i64" => lower_cast_i64_sb(ast, temp_id, block_id, sb, loop_exit), "cast_f64" => lower_cast_f64_sb(ast, temp_id, block_id, sb, loop_exit), "cast_i32" => lower_cast_i32_sb(ast, temp_id, block_id, sb, loop_exit), "array_repeat" => lower_array_repeat_sb(ast, temp_id, block_id, sb, loop_exit), "array" => lower_array_literal_sb(ast, temp_id, block_id, sb, loop_exit), "tuple" => lower_tuple_sb(ast, temp_id, block_id, sb, loop_exit), "struct_init" => lower_struct_init_sb(ast, temp_id, block_id, sb, loop_exit), "set_var" => lower_set_var_sb(ast, temp_id, block_id, sb, loop_exit), "lambda" => lower_lambda_sb(ast, temp_id, block_id, sb, loop_exit), "enum_val" => lower_enum_val_sb(ast, temp_id, block_id, sb, loop_exit), _ => pack_ids(temp_id, block_id) };
 
 fn lower_int_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64
 
@@ -30919,11 +31107,7 @@ fn llvm_gen_line_structs(line: String, ret_type: String, strings: String, string
 
     else if low_starts_with_at(line, p, "field-store") { llvm_gen_field_store(line, p + 11, struct_reg, str_sb) }
 
-    else if low_starts_with_at(line, p, "mark_f64_ptr") { llvm_handle_mark_f64_ptr(line, p, str_sb) }
-
-    else if low_starts_with_at(line, p, "mark_str_ptr_if") { llvm_handle_mark_str_ptr_if(line, p, str_sb) }
-
-    else if low_starts_with_at(line, p, "mark_str_ptr") { llvm_handle_mark_str_ptr(line, p, str_sb) }
+    else if low_starts_with_at(line, p, "mark_") { llvm_gen_line_mark(line, p, str_sb) }
 
     else if low_starts_with_at(line, p, "mutex-") { same_mapping(llvm_gen_conc_stmt(line, p)) }
 
@@ -30948,6 +31132,18 @@ fn llvm_gen_line_structs(line: String, ret_type: String, strings: String, string
     else if line.byte_at(p) == 40 { same_mapping(llvm_gen_channel_new(line, p)) }
 
     else { same_mapping(line) };
+
+fn llvm_gen_line_mark(line: String, p: i64, str_sb: i64) -> String
+
+  pre p >= 0
+
+  post it.len() >= 0
+
+= if low_starts_with_at(line, p, "mark_f64_ptr") { llvm_handle_mark_f64_ptr(line, p, str_sb) }
+
+  else if low_starts_with_at(line, p, "mark_str_ptr_if") { llvm_handle_mark_str_ptr_if(line, p, str_sb) }
+
+  else { llvm_handle_mark_str_ptr(line, p, str_sb) };
 
 fn llvm_gen_assign_structs(line: String, pos: i64, strings: String, string_fns: String, mapping: String, str_sb: i64, registry: String, struct_reg: String, ptr_sb: i64) -> String
 
@@ -36175,131 +36371,103 @@ fn compile_program(source: String, safe: i64) -> String
 
             let mir = optimize_licm(mir3);
 
-            let header = gen_module_header();
+            let module_ir = compile_gen_ir(mir, struct_reg);
 
-            let decls_raw = gen_runtime_decls();
-
-            let strings = collect_strings_from_mir(mir);
-
-            let string_globals = gen_string_globals(strings);
-
-            let string_fns = collect_string_fns_from_mir(mir);
-
-            let code = gen_program_sb_with_strings_fns_structs(mir, strings, string_fns, struct_reg);
-
-            // v0.96.27: Filter declarations that conflict with user-defined functions
-
-            let decls = filter_conflicting_decls(decls_raw, code);
-
-            // with chained string concat on large strings
-
-            let base = header + SEP();
-
-            let base2 = base + decls;
-
-            // Build with_globals without nesting
-
-            let base3 = base2 + SEP();
-
-            let base4 = base3 + string_globals;
-
-            let with_globals = if string_globals == "" { base2 } else { base4 };
-
-            let final1 = with_globals + DSEP();
-
-            // v0.95: Append metadata for !invariant.load on string struct loads
-
-            // v0.96.46: Full TBAA metadata hierarchy + branch weights for loop optimization
-
-            let tbaa_meta = "!0 = !{}" + SEP() +
-
-                "; TBAA metadata" + SEP() +
-
-                "!900 = !{!\"BMB TBAA\"}" + SEP() +
-
-                "!901 = !{!\"omnipotent char\", !900, i64 0}" + SEP() +
-
-                "!902 = !{!\"long long\", !901, i64 0}" + SEP() +
-
-                "!903 = !{!902, !902, i64 0}" + SEP() +
-
-                "!904 = !{!\"double\", !901, i64 0}" + SEP() +
-
-                "!905 = !{!904, !904, i64 0}" + SEP() +
-
-                "!906 = !{!901, !901, i64 0}" + SEP() +
-
-                "; Branch weights: loop body likely (2000:1)" + SEP() +
-
-                "!907 = !{!\"branch_weights\", i32 2000, i32 1}";
-
-            let module_ir = final1 + code + DSEP() + tbaa_meta;
-
-            // v0.96.25: String concat chain optimization (a+b+c -> sb_new/push/build)
-
-            let concat_opt_ir = optimize_ir_string_concat(module_ir);
-
-            // v0.96.26: Linear recurrence to loop (fibonacci O(2^n) -> O(n))
-
-            let lr2l_ir = optimize_ir_linear_recurrence(concat_opt_ir);
-
-            let cleaned_ir = eliminate_dead_functions_ir(lr2l_ir);
-
-            // v0.96.24: Inject llvm.assume for pre-conditions
-
-            let contracts_map = build_contracts_map(source);
-
-            let assumed_ir = inject_contract_assumes_all(cleaned_ir, contracts_map);
-
-            // v0.96.24: Inject llvm.assume for post-conditions at call sites
-
-            let post_map = build_post_contracts_map(source);
-
-            let post_assumed_ir = inject_post_assumes_all(assumed_ir, post_map);
-
-            // v0.96.30: Return range attributes from postconditions
-
-            let range_ir = annotate_return_ranges(post_assumed_ir, post_map);
-
-            // v0.96.8: Interprocedural memory(read/none) annotation
-
-            let mem_ir = annotate_memory_read_interprocedural(range_ir);
-
-            // v0.96.9: Add speculatable to pure functions
-
-            let spec_ir = annotate_speculatable(mem_ir);
-
-            // v0.96.13: Aggressive inlining for small functions
-
-            let inline_ir = annotate_inlining(spec_ir);
-
-            // v0.96.13: nofree for memory-annotated functions
-
-            let nofree_ir = annotate_nofree(inline_ir);
-
-            // v0.96.24: Cont-pattern loop exit optimization (before tail calls)
-
-            let cont_ir = optimize_cont_loop_exits(nofree_ir);
-
-            // v0.96.14: Tail call annotation for self-recursive functions
-
-            let tail_ir = annotate_tailcalls(cont_ir);
-
-            // v0.96.24: Prune unused runtime declarations
-
-            let pruned_ir = prune_unused_decls(tail_ir);
-
-            // v0.96.46: Append inline main() wrapper — eliminates call overhead
-
-            // Runtime's weak main() won't be extracted from .a archives on Windows
-
-            // This non-weak main() ensures proper linking with runtime .o files
-
-            pruned_ir + DSEP() + "; v0.96.46: Inline main wrapper with runtime init" + SEP() + "declare void @bmb_init_runtime(i32, ptr)" + SEP() + "declare void @bmb_arena_destroy()" + SEP() + "define noundef i32 @main(i32 %argc, ptr %argv) nounwind uwtable \"no-trapping-math\"=\"true\" {" + SEP() + "  call void @bmb_init_runtime(i32 %argc, ptr %argv)" + SEP() + "  %r = call i64 @bmb_user_main()" + SEP() + "  call void @bmb_arena_destroy()" + SEP() + "  %rv = trunc i64 %r to i32" + SEP() + "  ret i32 %rv" + SEP() + "}"
+            compile_transform_ir(module_ir, source)
 
         }
 
     };
+
+fn compile_gen_ir(mir: String, struct_reg: String) -> String
+
+  post it.len() >= 1
+
+= let header = gen_module_header();
+
+  let decls_raw = gen_runtime_decls();
+
+  let strings = collect_strings_from_mir(mir);
+
+  let string_globals = gen_string_globals(strings);
+
+  let string_fns = collect_string_fns_from_mir(mir);
+
+  let code = gen_program_sb_with_strings_fns_structs(mir, strings, string_fns, struct_reg);
+
+  let decls = filter_conflicting_decls(decls_raw, code);
+
+  let base = header + SEP();
+
+  let base2 = base + decls;
+
+  let base3 = base2 + SEP();
+
+  let base4 = base3 + string_globals;
+
+  let with_globals = if string_globals == "" { base2 } else { base4 };
+
+  let final1 = with_globals + DSEP();
+
+  let tbaa_meta = "!0 = !{}" + SEP() +
+
+      "; TBAA metadata" + SEP() +
+
+      "!900 = !{!\"BMB TBAA\"}" + SEP() +
+
+      "!901 = !{!\"omnipotent char\", !900, i64 0}" + SEP() +
+
+      "!902 = !{!\"long long\", !901, i64 0}" + SEP() +
+
+      "!903 = !{!902, !902, i64 0}" + SEP() +
+
+      "!904 = !{!\"double\", !901, i64 0}" + SEP() +
+
+      "!905 = !{!904, !904, i64 0}" + SEP() +
+
+      "!906 = !{!901, !901, i64 0}" + SEP() +
+
+      "; Branch weights: loop body likely (2000:1)" + SEP() +
+
+      "!907 = !{!\"branch_weights\", i32 2000, i32 1}";
+
+  final1 + code + DSEP() + tbaa_meta;
+
+fn compile_transform_ir(module_ir: String, source: String) -> String
+
+  post it.len() >= 1
+
+= let concat_opt_ir = optimize_ir_string_concat(module_ir);
+
+  let lr2l_ir = optimize_ir_linear_recurrence(concat_opt_ir);
+
+  let cleaned_ir = eliminate_dead_functions_ir(lr2l_ir);
+
+  let contracts_map = build_contracts_map(source);
+
+  let assumed_ir = inject_contract_assumes_all(cleaned_ir, contracts_map);
+
+  let post_map = build_post_contracts_map(source);
+
+  let post_assumed_ir = inject_post_assumes_all(assumed_ir, post_map);
+
+  let range_ir = annotate_return_ranges(post_assumed_ir, post_map);
+
+  let mem_ir = annotate_memory_read_interprocedural(range_ir);
+
+  let spec_ir = annotate_speculatable(mem_ir);
+
+  let inline_ir = annotate_inlining(spec_ir);
+
+  let nofree_ir = annotate_nofree(inline_ir);
+
+  let cont_ir = optimize_cont_loop_exits(nofree_ir);
+
+  let tail_ir = annotate_tailcalls(cont_ir);
+
+  let pruned_ir = prune_unused_decls(tail_ir);
+
+  pruned_ir + DSEP() + "; v0.96.46: Inline main wrapper with runtime init" + SEP() + "declare void @bmb_init_runtime(i32, ptr)" + SEP() + "declare void @bmb_arena_destroy()" + SEP() + "define noundef i32 @main(i32 %argc, ptr %argv) nounwind uwtable \"no-trapping-math\"=\"true\" {" + SEP() + "  call void @bmb_init_runtime(i32 %argc, ptr %argv)" + SEP() + "  %r = call i64 @bmb_user_main()" + SEP() + "  call void @bmb_arena_destroy()" + SEP() + "  %rv = trunc i64 %r to i32" + SEP() + "  ret i32 %rv" + SEP() + "}";
 
 // Compile single function source to LLVM IR
 
@@ -47727,11 +47895,7 @@ fn main() -> i64
 
     let argc = arg_count();
 
-    if argc < 2 {
-
-        show_help()
-
-    } else {
+    if argc < 2 { show_help() } else {
 
         let cmd = get_arg(1);
 
@@ -47741,301 +47905,199 @@ fn main() -> i64
 
                 println_str("{\"compiler\":\"bmb\",\"version\":\"0.96.30\",\"variant\":\"bootstrap\",\"backend\":\"llvm-text\"}")
 
-            } else {
-
-                println_str("BMB Bootstrap Compiler v0.96.30")
-
-            };
+            } else { println_str("BMB Bootstrap Compiler v0.96.30") };
 
             0
 
-        } else if cmd == "--help" or cmd == "help" {
+        } else if cmd == "--help" or cmd == "help" { show_help() }
 
-            show_help()
+        else if cmd == "run" or cmd == "build" or cmd == "emit-ir" or cmd == "check" or cmd == "fmt" or cmd == "lint" or cmd == "test" or cmd == "repl" {
 
-        } else if cmd == "run" and argc >= 3 {
+            main_cmd_build(cmd, argc)
 
-            // v0.96.3: Compile and run
+        } else if cmd == "index" or cmd == "query" or cmd == "callers" or cmd == "deps" or cmd == "context" or cmd == "outline" or cmd == "xref" or cmd == "impact" or cmd == "stats" or cmd == "unused" or cmd == "complexity" or cmd == "similar" or cmd == "layers" or cmd == "hotspots" or cmd == "changelog" {
 
-            let runtime = parse_build_runtime(argc);
+            main_cmd_analysis_a(cmd, argc)
 
-            run_file(get_arg(2), runtime)
+        } else if cmd == "body" or cmd == "scope" or cmd == "suggest" or cmd == "interface" or cmd == "chain" or cmd == "inline-candidates" or cmd == "split-candidates" or cmd == "graph" or cmd == "siblings" or cmd == "summary" or cmd == "clusters" or cmd == "rename-check" or cmd == "coverage" or cmd == "pattern" or cmd == "export" or cmd == "diff-calls" or cmd == "classify" {
 
-        } else if cmd == "build" and argc >= 3 {
+            main_cmd_analysis_b(cmd, argc)
 
-            // v0.90: Build to native executable
+        } else if cmd == "repair-hint" or cmd == "verify-repair" or cmd == "diagnose" or cmd == "effect-verify" or cmd == "contracts-check" or cmd == "semantic-duplicate" or cmd == "module-suggest" or cmd == "session-log" {
 
-            let input = get_arg(2);
+            main_cmd_ai(cmd, argc)
 
-            let output = parse_build_output(argc, input);
+        } else if argc >= 3 { compile_file_to(get_arg(1), get_arg(2)) }
 
-            let fast = parse_build_fast(argc);
-
-            let runtime = parse_build_runtime(argc);
-
-            let stats = check_arg_flag(argc, 3, "--stats");
-
-            let safe = if check_arg_flag(argc, 3, "--safe") { 1 } else { 0 };
-
-            build_file_ex(input, output, fast, runtime, stats, safe)
-
-        } else if cmd == "emit-ir" and argc >= 4 {
-
-            emit_ir(get_arg(2), get_arg(3))
-
-        } else if cmd == "emit-ir" and argc >= 3 {
-
-            // Default output name: replace .bmb with .ll
-
-            let input = get_arg(2);
-
-            let output = if input.len() > 4 and input.slice(input.len() - 4, input.len()) == ".bmb" {
-
-                input.slice(0, input.len() - 4) + ".ll"
-
-            } else { input + ".ll" };
-
-            emit_ir(input, output)
-
-        } else if cmd == "check" and argc >= 3 {
-
-            check_entry(get_arg(2))
-
-        } else if cmd == "fmt" and argc >= 3 {
-
-            let check = argc >= 4 and get_arg(3) == "--check";
-
-            fmt_entry(get_arg(2), check)
-
-        } else if cmd == "lint" and argc >= 3 {
-
-            lint_entry(get_arg(2))
-
-        } else if cmd == "test" and argc >= 3 {
-
-            // v0.96.3: Test command - compile, run, compare output
-
-            let runtime = parse_build_runtime(argc);
-
-            test_entry(get_arg(2), runtime)
-
-        } else if cmd == "repl" {
-
-            let runtime = parse_build_runtime(argc);
-
-            repl_start(runtime)
-
-        } else if cmd == "index" and argc >= 3 {
-
-            // v0.95: Index command - extract function signatures for AI tooling
-
-            index_file(get_arg(2))
-
-        } else if cmd == "query" and argc >= 4 {
-
-            // v0.95: Query command - search functions by name pattern
-
-            query_file(get_arg(2), get_arg(3))
-
-        } else if cmd == "callers" and argc >= 4 {
-
-            // v0.95: Callers command - reverse call graph
-
-            callers_file(get_arg(2), get_arg(3))
-
-        } else if cmd == "deps" and argc >= 4 {
-
-            // v0.95: Deps command - transitive dependency analysis
-
-            deps_file(get_arg(2), get_arg(3))
-
-        } else if cmd == "context" and argc >= 4 {
-
-            // v0.95: Context command - gather full AI context
-
-            context_file(get_arg(2), get_arg(3))
-
-        } else if cmd == "outline" and argc >= 3 {
-
-            // v0.95: Outline command - compact project overview
-
-            outline_file(get_arg(2))
-
-        } else if cmd == "xref" and argc >= 4 {
-
-            // v0.95: Xref command - comprehensive cross-reference
-
-            xref_file(get_arg(2), get_arg(3))
-
-        } else if cmd == "impact" and argc >= 4 {
-
-            // v0.95: Impact command - change blast radius
-
-            impact_file(get_arg(2), get_arg(3))
-
-        } else if cmd == "stats" and argc >= 3 {
-
-            // v0.95: Stats command - code statistics
-
-            stats_file(get_arg(2))
-
-        } else if cmd == "unused" and argc >= 3 {
-
-            // v0.95: Unused command - find dead functions
-
-            unused_file(get_arg(2))
-
-        } else if cmd == "complexity" and argc >= 3 {
-
-            // v0.95: Complexity command - per-function metrics
-
-            complexity_file(get_arg(2))
-
-        } else if cmd == "similar" and argc >= 4 {
-
-            // v0.95: Similar command - find similar functions
-
-            similar_file(get_arg(2), get_arg(3))
-
-        } else if cmd == "layers" and argc >= 3 {
-
-            // v0.95: Layers command - architectural layer analysis
-
-            layers_file(get_arg(2))
-
-        } else if cmd == "hotspots" and argc >= 3 {
-
-            // v0.95: Hotspots command - most connected functions
-
-            hotspots_file(get_arg(2))
-
-        } else if cmd == "changelog" and argc >= 4 {
-
-            // v0.95: Changelog command - diff function signatures
-
-            changelog_file(get_arg(2), get_arg(3))
-
-        } else if cmd == "body" and argc >= 4 {
-
-            body_file(get_arg(2), get_arg(3))
-
-        } else if cmd == "scope" and argc >= 4 {
-
-            scope_file(get_arg(2), get_arg(3))
-
-        } else if cmd == "suggest" and argc >= 4 {
-
-            suggest_file(get_arg(2), get_arg(3))
-
-        } else if cmd == "interface" and argc >= 3 {
-
-            interface_file(get_arg(2))
-
-        } else if cmd == "chain" and argc >= 5 {
-
-            chain_file(get_arg(2), get_arg(3), get_arg(4))
-
-        } else if cmd == "inline-candidates" and argc >= 3 {
-
-            inline_candidates_file(get_arg(2))
-
-        } else if cmd == "split-candidates" and argc >= 3 {
-
-            split_candidates_file(get_arg(2))
-
-        } else if cmd == "graph" and argc >= 3 {
-
-            graph_file(get_arg(2))
-
-        } else if cmd == "siblings" and argc >= 4 {
-
-            siblings_file(get_arg(2), get_arg(3))
-
-        } else if cmd == "summary" and argc >= 3 {
-
-            summary_file(get_arg(2))
-
-        } else if cmd == "clusters" and argc >= 3 {
-
-            clusters_file(get_arg(2))
-
-        } else if cmd == "rename-check" and argc >= 4 {
-
-            rename_check_file(get_arg(2), get_arg(3))
-
-        } else if cmd == "coverage" and argc >= 3 {
-
-            coverage_file(get_arg(2))
-
-        } else if cmd == "pattern" and argc >= 3 {
-
-            pattern_file(get_arg(2))
-
-        } else if cmd == "export" and argc >= 3 {
-
-            export_file(get_arg(2))
-
-        } else if cmd == "diff-calls" and argc >= 4 {
-
-            diff_calls_file(get_arg(2), get_arg(3))
-
-        } else if cmd == "classify" and argc >= 3 {
-
-            classify_file(get_arg(2))
-
-        } else if cmd == "repair-hint" and argc >= 3 {
-
-            // M13 Phase 3: Structured repair hints — LLM-consumable contract JSON
-            repair_hint_file(get_arg(2))
-
-        } else if cmd == "verify-repair" and argc >= 3 {
-
-            // M13 Phase 4: Combined verify+repair — all functions with status + contracts
-            verify_repair_file(get_arg(2))
-
-        } else if cmd == "diagnose" and argc >= 3 {
-
-            // M12/M13 unified diagnostic: effect-verify + contracts-check in one JSON
-            diagnose_file(get_arg(2))
-
-        } else if cmd == "effect-verify" and argc >= 3 {
-
-            // M12 Phase 6: Z3 formal verification of effect constraints
-            effect_verify_file(get_arg(2))
-
-        } else if cmd == "contracts-check" and argc >= 3 {
-
-            // M13 Phase 5: Session-persistent contracts check via .bmb-contracts
-            contracts_check_file(get_arg(2))
-
-        } else if cmd == "semantic-duplicate" and argc >= 3 {
-
-            // M14 Phase 4: Find functions with identical call sets (potential duplicates)
-            semantic_duplicate_file(get_arg(2))
-
-        } else if cmd == "module-suggest" and argc >= 3 {
-
-            // M15 Phase 5: Suggest correct module X requires [...] based on actual capability usage
-            module_suggest_file(get_arg(2))
-
-        } else if cmd == "session-log" and argc >= 3 {
-
-            // M13 Phase 6b: Session log — track AI repair iterations across multiple runs
-            session_log_file(get_arg(2))
-
-        } else if argc >= 3 {
-
-            // Legacy mode: compiler input.bmb output.ll
-
-            compile_file_to(get_arg(1), get_arg(2))
-
-        } else {
-
-            show_help()
-
-        }
+        else { show_help() }
 
     };
+
+fn main_cmd_build(cmd: String, argc: i64) -> i64
+
+  pre argc >= 2
+
+  post it >= 0
+
+= if cmd == "run" and argc >= 3 {
+
+        let runtime = parse_build_runtime(argc);
+
+        run_file(get_arg(2), runtime)
+
+    } else if cmd == "build" and argc >= 3 {
+
+        let input = get_arg(2);
+
+        let output = parse_build_output(argc, input);
+
+        let fast = parse_build_fast(argc);
+
+        let runtime = parse_build_runtime(argc);
+
+        let stats = check_arg_flag(argc, 3, "--stats");
+
+        let safe = if check_arg_flag(argc, 3, "--safe") { 1 } else { 0 };
+
+        build_file_ex(input, output, fast, runtime, stats, safe)
+
+    } else if cmd == "emit-ir" and argc >= 4 {
+
+        emit_ir(get_arg(2), get_arg(3))
+
+    } else if cmd == "emit-ir" and argc >= 3 {
+
+        let input = get_arg(2);
+
+        let output = if input.len() > 4 and input.slice(input.len() - 4, input.len()) == ".bmb" {
+
+            input.slice(0, input.len() - 4) + ".ll"
+
+        } else { input + ".ll" };
+
+        emit_ir(input, output)
+
+    } else if cmd == "check" and argc >= 3 { check_entry(get_arg(2)) }
+
+    else if cmd == "fmt" and argc >= 3 {
+
+        let check = argc >= 4 and get_arg(3) == "--check";
+
+        fmt_entry(get_arg(2), check)
+
+    } else if cmd == "lint" and argc >= 3 { lint_entry(get_arg(2)) }
+
+    else if cmd == "test" and argc >= 3 {
+
+        let runtime = parse_build_runtime(argc);
+
+        test_entry(get_arg(2), runtime)
+
+    } else {
+
+        let runtime = parse_build_runtime(argc);
+
+        repl_start(runtime)
+
+    };
+
+fn main_cmd_analysis_a(cmd: String, argc: i64) -> i64
+
+  pre argc >= 2
+
+  post it >= 0
+
+= if cmd == "index" and argc >= 3 { index_file(get_arg(2)) }
+
+    else if cmd == "query" and argc >= 4 { query_file(get_arg(2), get_arg(3)) }
+
+    else if cmd == "callers" and argc >= 4 { callers_file(get_arg(2), get_arg(3)) }
+
+    else if cmd == "deps" and argc >= 4 { deps_file(get_arg(2), get_arg(3)) }
+
+    else if cmd == "context" and argc >= 4 { context_file(get_arg(2), get_arg(3)) }
+
+    else if cmd == "outline" and argc >= 3 { outline_file(get_arg(2)) }
+
+    else if cmd == "xref" and argc >= 4 { xref_file(get_arg(2), get_arg(3)) }
+
+    else if cmd == "impact" and argc >= 4 { impact_file(get_arg(2), get_arg(3)) }
+
+    else if cmd == "stats" and argc >= 3 { stats_file(get_arg(2)) }
+
+    else if cmd == "unused" and argc >= 3 { unused_file(get_arg(2)) }
+
+    else if cmd == "complexity" and argc >= 3 { complexity_file(get_arg(2)) }
+
+    else if cmd == "similar" and argc >= 4 { similar_file(get_arg(2), get_arg(3)) }
+
+    else if cmd == "layers" and argc >= 3 { layers_file(get_arg(2)) }
+
+    else if cmd == "hotspots" and argc >= 3 { hotspots_file(get_arg(2)) }
+
+    else { changelog_file(get_arg(2), get_arg(3)) };
+
+fn main_cmd_analysis_b(cmd: String, argc: i64) -> i64
+
+  pre argc >= 2
+
+  post it >= 0
+
+= if cmd == "body" and argc >= 4 { body_file(get_arg(2), get_arg(3)) }
+
+    else if cmd == "scope" and argc >= 4 { scope_file(get_arg(2), get_arg(3)) }
+
+    else if cmd == "suggest" and argc >= 4 { suggest_file(get_arg(2), get_arg(3)) }
+
+    else if cmd == "interface" and argc >= 3 { interface_file(get_arg(2)) }
+
+    else if cmd == "chain" and argc >= 5 { chain_file(get_arg(2), get_arg(3), get_arg(4)) }
+
+    else if cmd == "inline-candidates" and argc >= 3 { inline_candidates_file(get_arg(2)) }
+
+    else if cmd == "split-candidates" and argc >= 3 { split_candidates_file(get_arg(2)) }
+
+    else if cmd == "graph" and argc >= 3 { graph_file(get_arg(2)) }
+
+    else if cmd == "siblings" and argc >= 4 { siblings_file(get_arg(2), get_arg(3)) }
+
+    else if cmd == "summary" and argc >= 3 { summary_file(get_arg(2)) }
+
+    else if cmd == "clusters" and argc >= 3 { clusters_file(get_arg(2)) }
+
+    else if cmd == "rename-check" and argc >= 4 { rename_check_file(get_arg(2), get_arg(3)) }
+
+    else if cmd == "coverage" and argc >= 3 { coverage_file(get_arg(2)) }
+
+    else if cmd == "pattern" and argc >= 3 { pattern_file(get_arg(2)) }
+
+    else if cmd == "export" and argc >= 3 { export_file(get_arg(2)) }
+
+    else if cmd == "diff-calls" and argc >= 4 { diff_calls_file(get_arg(2), get_arg(3)) }
+
+    else { classify_file(get_arg(2)) };
+
+fn main_cmd_ai(cmd: String, argc: i64) -> i64
+
+  pre argc >= 2
+
+  post it >= 0
+
+= if cmd == "repair-hint" and argc >= 3 { repair_hint_file(get_arg(2)) }
+
+    else if cmd == "verify-repair" and argc >= 3 { verify_repair_file(get_arg(2)) }
+
+    else if cmd == "diagnose" and argc >= 3 { diagnose_file(get_arg(2)) }
+
+    else if cmd == "effect-verify" and argc >= 3 { effect_verify_file(get_arg(2)) }
+
+    else if cmd == "contracts-check" and argc >= 3 { contracts_check_file(get_arg(2)) }
+
+    else if cmd == "semantic-duplicate" and argc >= 3 { semantic_duplicate_file(get_arg(2)) }
+
+    else if cmd == "module-suggest" and argc >= 3 { module_suggest_file(get_arg(2)) }
+
+    else { session_log_file(get_arg(2)) };
 
 // Parse -o flag from build args
 
