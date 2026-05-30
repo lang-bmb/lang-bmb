@@ -1,6 +1,6 @@
-# BMB Session Handoff — 2026-05-30 (Cycles 3315-3323)
+# BMB Session Handoff — 2026-05-30 (Cycles 3315-3323 + 재점검)
 
-> **HEAD**: `ff9c0f8b` (chore(docs): cycle-3323 세션 종료 로그 추가)
+> **HEAD**: `c94458f6` (docs(roadmap): 핵심 목표 + 10-레이어 반복 사이클 구조 추가)
 > **실무 앵커**: `claudedocs/ROADMAP.md` (§ 6 AI-Native Pivot)
 > **전략 계획서**: `claudedocs/plans/ai-native-plan-2026.md`
 
@@ -10,19 +10,20 @@
 
 | 항목 | 상태 |
 |------|------|
-| cargo test --release | ✅ 3800+47+22+2390+23 = 6282, 0 FAILED |
+| cargo test --release | ✅ 6282 PASS, 0 FAILED |
 | Within-gen Fixed Point | ✅ fp3321a.ll == fp3321b.ll (Cycle 3321) |
 | Cross-gen Fixed Point | ✅ S2 IR == S3 IR (Cycle 3322) |
-| bmb lint warnings | ✅ 178 non-recursive (pre-existing) |
+| bmb lint warnings | ✅ 0 (178 non-recursive pre-existing 제외) |
 | Z3 verify | ✅ 144/144 |
-| P-track 7/7 | ✅ ALL ≤1.010× |
+| P-track 7/7 (Rust 컴파일러) | ✅ ALL ≤1.010× BMB faster than C |
+| Bootstrap P-track | ⚠️ csv 1.134×❌ / lexer 1.459×❌ (tuple calloc 오버헤드) |
 | B-axis Claude | ✅ 98.0% (stale: 2026-08-13) |
 | B-axis GPUStack | ✅ 100.0% (2026-05-21) |
 | diagnose compiler.bmb | 352 semantic_duplicate (pre-existing trivial), 0 others |
 
 ---
 
-## 이번 세션 완료 (Cycles 3315-3323)
+## 이번 세션 완료 (Cycles 3315-3323 + 세션 종료)
 
 | 마일스톤 | 완료 사이클 | 내용 |
 |---------|-----------|------|
@@ -35,6 +36,7 @@
 | M15 Phase 6a (enforce_module_caps) | 3321 | `bc_check_module_cap_fn` + `bc_check_module_caps_scan` + cc_build_json 통합 |
 | Cross-gen FP S2==S3 | 3322 | 검증 완료 + `ee17c8e4` |
 | 세션 종료 정리 | 3323 | HANDOFF/ROADMAP 갱신 + `ff9c0f8b` |
+| **docs/ROADMAP.md 핵심목표+10-레이어** | 세션종료 | 핵심 목표(Performance/AI-Native) + 개발 레이어 구조 영속화 + 전체 재점검 `c94458f6` |
 
 ---
 
@@ -102,49 +104,59 @@ enforce_module_caps = true
 
 ## 즉시 실행 가능한 다음 태스크
 
-### [P1] declared 필드 JSON 배열 형식 개선 (1 사이클)
+> 재점검 (2026-05-30) 기준 도출. 10-레이어 구조 기준으로 분류.
+
+### [P1 / L2 컴파일러] declared 필드 JSON 배열 형식 개선 (1 사이클)
 
 **배경**: `module_capability` violation의 `declared` 필드가 공백구분 문자열 (`[IO]` — 중괄호도 없음).
 **방향**: `"declared":["IO","Net"]` JSON 배열 형식으로 개선.
 **파일**: `bootstrap/compiler.bmb` → `bc_check_module_cap_fn` 함수의 JSON 생성 부분.
 **복잡도**: 1 사이클.
 
-### [P2] M15 Phase 6b — diagnose에 module_capability 전용 섹션 추가 (1-2 사이클)
+### [P2 / L5 AI-Native] M15 Phase 6b — diagnose module_capability 전용 섹션 (1-2 사이클)
 
 **배경**: `enforce_module_caps` 결과가 `contracts_check.violations[]`에 섞임.
 **방향**: `"module_capability": {"total_violations":N,"declared":["IO"],"violations":[...]}` 별도 섹션.
 **복잡도**: 2 사이클.
 
-### [P3] count_viol_entries 통합 리팩토링 (1 사이클)
+### [P2 / L4 벤치마크 ← L1 언어사양] bootstrap P-track 회귀 분석 (2-3 사이클)
 
-**배경**: `count_caller_entries`, `count_rule_entries`, `count_fn_a_entries` 세 함수가 동일 패턴 `{"type":` 사용.
-**방향**: 하나의 `count_viol_entries(s, pos)` 함수로 통합하고 기존 3개는 alias 처리.
-**복잡도**: 1 사이클. 순수 리팩토링, 동작 변화 없음.
+**배경**: bootstrap 컴파일러로 컴파일한 벤치마크에서 csv 1.134×❌, lexer 1.459×❌. Rust 컴파일러 기준은 7/7 ✅.
+**원인 가설**: tuple 타입이 항상 heap calloc(2-word) 형태 → 고빈도 호출 시 오버헤드 누적.
+**방향**: IR 비교(bootstrap vs Rust) → 근본 원인이 tuple 표현이면 **L1(언어사양) 재검토** (stack-allocated tuple 가능성).
+**복잡도**: 분석 1 사이클 + 수정 1-2 사이클.
 
-### [P4] M15 Phase 6c — 런타임 sandbox (5-7 사이클)
+### [P3 / L2 컴파일러] count_viol_entries 통합 리팩토링 (1 사이클)
 
-**배경**: 현재는 compile-time 체크만. 실제 런타임에서 capability 강제 필요.
-**방향**: platform 선언 기반 런타임 샌드박싱 — AI 생성 코드 자동 제한.
-**복잡도**: 5-7 사이클. 대규모 변경.
+**배경**: `count_caller_entries`, `count_rule_entries`, `count_fn_a_entries` 세 함수가 동일 패턴.
+**방향**: 하나의 `count_viol_entries(s, pos)` 로 통합, 기존 3개는 alias.
+**복잡도**: 1 사이클. 순수 리팩토링.
 
-### [P5] bmb-mcp diagnose 도구 violations 형식 반영 (1 사이클)
+### [P3 / L6 에코시스템] MCP bmb_diagnose 스키마 신 형식 업데이트 (1 사이클)
 
-**배경**: MCP `bmb_diagnose` 도구의 스키마/설명이 구 형식 (`"rule":`, `"fn_a":`) 기반일 수 있음.
-**방향**: 새 통일 형식 `{"type":"...","function":"..."}` 기준으로 MCP 스키마 문서 업데이트.
+**배경**: MCP `bmb_diagnose` 도구의 스키마/설명이 구 형식 기반일 수 있음.
+**방향**: 신 통일 형식 `{"type":"...","function":"..."}` 기준으로 MCP 스키마 업데이트.
 **파일**: `ecosystem/bmb-mcp/mcp_server.bmb`.
 **복잡도**: 1 사이클.
+
+### [P4 / L5 AI-Native] M15 Phase 6c 런타임 sandbox (5-7 사이클)
+
+**배경**: 현재는 compile-time 체크만. platform 선언 기반 런타임 capability 강제 필요.
+**복잡도**: 5-7 사이클. 대규모. 장기 항목.
 
 ---
 
 ## 미비/결함/개선 도출
 
-| 유형 | 내용 | 심각도 |
-|------|------|--------|
-| 미비 | `declared` 필드 JSON 배열 미완성 (`"declared":[IO]` — 문자열) | P2 |
-| 미비 | module_capability가 contracts_check에 섞임 — 전용 섹션 없음 | P2 |
-| 개선 | count_caller/rule/fn_a_entries 3중복 함수 통합 가능 | P3 |
-| 미비 | MCP bmb_diagnose 스키마가 구 형식 기준일 수 있음 | P3 |
-| 개선 | M15 Phase 6c 런타임 sandbox — 대규모, 장기 | P4 |
+| 레이어 | 유형 | 내용 | 심각도 |
+|--------|------|------|--------|
+| L2 컴파일러 | 미비 | `declared` 필드 JSON 배열 미완성 (`"declared":[IO]` — 문자열) | P1 |
+| L5 AI-Native | 미비 | module_capability가 contracts_check에 섞임 — 전용 섹션 없음 | P2 |
+| L4 벤치마크 | 결함 | bootstrap P-track csv 1.134× / lexer 1.459× 미통과 | P2 |
+| L1 언어사양 | 개선 | tuple 표현이 heap-only → stack-allocated tuple 가능성 검토 필요 | P2 |
+| L2 컴파일러 | 개선 | count_caller/rule/fn_a_entries 3중복 함수 통합 가능 | P3 |
+| L6 에코시스템 | 미비 | MCP bmb_diagnose 스키마가 구 형식 기준일 수 있음 | P3 |
+| L5 AI-Native | 개선 | M15 Phase 6c 런타임 sandbox — 대규모, 장기 | P4 |
 
 ---
 
