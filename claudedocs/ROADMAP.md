@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-30 (**세션 종료 재점검** — docs/ROADMAP.md 핵심목표+10-레이어 구조 영속화. Bootstrap P-track 회귀(csv 1.134×/lexer 1.459×) 발견 → L1 언어사양(tuple heap 표현) 재검토 대상. 다음: declared JSON 배열(P1) + module_capability 섹션(P2) + bootstrap P-track 분석(P2). HEAD `c94458f6`.)
+> 최종 업데이트: 2026-05-30 (**Cycles 3324-3330** — P1 declared JSON 배열 수정(ms_caps_to_json) + M15 Phase 6b module_capability 전용 섹션(mc_build_json) + count_viol_entries 통합 + MCP bmb_diagnose 5섹션 설명 + bootstrap P-track 재측정(Cycle 3234 stale 확인, 실질 6/7 ✅) + build_link gc-sections 추가. HEAD 커밋 대기.)
 > 이전 갱신: 2026-05-30 (**AI-Native Pivot Cycles 3315-3323** — diagnose summary + forbid_function + P1 violations 형식 통일 (`{"type":"...","function":"..."}`) + M15 Phase 6a enforce_module_caps + Cross-gen FP S2==S3 ✅. HEAD `ff9c0f8b`.)
 > 이전 갱신: 2026-05-29 (**AI-Native Pivot Cycles 3306-3314** — [P1] count 필드 + [P4] max_params + [P2] Z3 formal missing_annotation + [P3] cross-gen FP S2==S3 ✅ + violations_count (effect_verify/contracts_check) + semantic_duplicate diagnose 4섹션 통합. HEAD `04520838`.)
 > 이전 갱신: 2026-05-29 (**AI-Native Pivot Cycles 3306-3311** — [P1] lint_effects count 필드 + [P4] max_params 구현 + [P2] Z3 formal missing_annotation (eff_z3_gen_missing_anno_sb) + [P3] cross-gen Fixed Point S2==S3 ✅. HEAD `2c4e35e7`.)

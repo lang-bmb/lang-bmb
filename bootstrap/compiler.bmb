@@ -42822,31 +42822,22 @@ fn count_rule_entries(s: String, pos: i64) -> i64
 
   else { 1 + count_rule_entries(s, found + 8) };
 
-// Count {"type": occurrences in a violations JSON array string (unified effect_verify format).
+// Aliases delegating to count_rule_entries (same implementation, unified).
 fn count_caller_entries(s: String, pos: i64) -> i64
 
   pre pos >= 0
 
   post it >= 0
 
-= let found = find_pattern_noa(s, "{\"type\":", pos);
+= count_rule_entries(s, pos);
 
-  if found < 0 { 0 }
-
-  else { 1 + count_caller_entries(s, found + 8) };
-
-// Count {"type": occurrences in a pairs JSON array string (unified semantic_duplicate format).
 fn count_fn_a_entries(s: String, pos: i64) -> i64
 
   pre pos >= 0
 
   post it >= 0
 
-= let found = find_pattern_noa(s, "{\"type\":", pos);
-
-  if found < 0 { 0 }
-
-  else { 1 + count_fn_a_entries(s, found + 8) };
+= count_rule_entries(s, pos);
 
 // JSON builder for effect_pure_violation: collects violations into sb array.
 fn lint_eff_pure_viol_sb(entries: String, pos: i64, sb: i64, isfirst: i64) -> i64
@@ -44606,7 +44597,7 @@ fn build_link(ir_file: String, output: String, runtime_lib: String, cleanup_file
 
 =
 
-    let link_cmd = "clang -w -O3 -march=native -Wl,--stack,268435456 " + ir_file + " " + runtime_lib + " -o " + output + " -lm -lws2_32";
+    let link_cmd = "clang -w -O3 -march=native -ffunction-sections -fdata-sections -Wl,--gc-sections -Wl,--stack,268435456 " + ir_file + " " + runtime_lib + " -o " + output + " -lm -lws2_32";
 
     let link_result = system(link_cmd);
 
@@ -44614,7 +44605,7 @@ fn build_link(ir_file: String, output: String, runtime_lib: String, cleanup_file
 
         // Try without ws2_32 (Linux/macOS)
 
-        let link_cmd2 = "clang -w -O3 -march=native " + ir_file + " " + runtime_lib + " -o " + output + " -lm -lpthread";
+        let link_cmd2 = "clang -w -O3 -march=native -ffunction-sections -fdata-sections -Wl,--gc-sections " + ir_file + " " + runtime_lib + " -o " + output + " -lm -lpthread";
 
         let link_result2 = system(link_cmd2);
 
@@ -46513,7 +46504,7 @@ fn bc_check_module_cap_fn(fn_name: String, trans_eff: String, module_caps: Strin
 
             let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
 
-            let _j = sb_push(sb, "{\"type\":\"module_capability\",\"function\":\"" + json_esc(fn_name) + "\",\"effect\":\"" + json_esc(cap) + "\",\"declared\":[" + json_esc(module_caps) + "],\"message\":\"function " + json_esc(fn_name) + " uses <" + json_esc(cap) + "> not declared in module requires\"}");
+            let _j = sb_push(sb, "{\"type\":\"module_capability\",\"function\":\"" + json_esc(fn_name) + "\",\"effect\":\"" + json_esc(cap) + "\",\"declared\":[" + ms_caps_to_json(module_caps, 0, 1) + "],\"message\":\"function " + json_esc(fn_name) + " uses <" + json_esc(cap) + "> not declared in module requires\"}");
 
             0
 
@@ -46574,10 +46565,6 @@ fn cc_build_json(input: String, src: String, entries: String, eff_map: String, t
 
     let max_params_str = bc_get(contracts, "max_params", 0);
 
-    let enforce_caps = bc_get(contracts, "enforce_module_caps", 0);
-
-    let module_caps = if enforce_caps == "true" { scan_module_requires(src, 0) } else { "" };
-
     let viol_sb = sb_new();
 
     let f1 = 1;
@@ -46615,14 +46602,7 @@ fn cc_build_json(input: String, src: String, entries: String, eff_map: String, t
 
     } else { f4 };
 
-    // enforce_module_caps check
-    let f6 = if enforce_caps == "true" and module_caps != "" {
-
-        bc_check_module_caps_scan(entries, transitive_map, module_caps, viol_sb, f5, 0)
-
-    } else { f5 };
-
-    let has_viol = f6 == 0;
+    let has_viol = f5 == 0;
 
     let status = if has_viol { "violation" } else { "safe" };
 
@@ -46651,6 +46631,67 @@ fn cc_build_json(input: String, src: String, entries: String, eff_map: String, t
     let _h5 = sb_push(out_sb, "}");
 
     sb_build(out_sb)
+
+};
+
+// Build module_capability JSON section (separate from contracts_check).
+// Returns {"type":"module_capability","status":"...","total_violations":N,"violations":[...]}
+// Status "skipped" when enforce_module_caps not set or no module requires clause.
+fn mc_build_json(input: String, src: String, entries: String, transitive_map: String, contracts: String) -> String
+
+  post it.len() >= 1
+
+= {
+
+    let enforce_caps = bc_get(contracts, "enforce_module_caps", 0);
+
+    if enforce_caps != "true" {
+
+        "{\"type\":\"module_capability\",\"status\":\"skipped\",\"total_violations\":0}"
+
+    } else {
+
+        let module_caps = scan_module_requires(src, 0);
+
+        if module_caps == "" {
+
+            "{\"type\":\"module_capability\",\"status\":\"skipped\",\"total_violations\":0}"
+
+        } else {
+
+            let mc_sb = sb_new();
+
+            let last_isfirst = bc_check_module_caps_scan(entries, transitive_map, module_caps, mc_sb, 1, 0);
+
+            let viol_str = sb_build(mc_sb);
+
+            let viol_count = count_rule_entries(viol_str, 0);
+
+            let has_viol = last_isfirst == 0;
+
+            let status = if has_viol { "violation" } else { "safe" };
+
+            let out_sb = sb_new();
+
+            let _h1 = sb_push(out_sb, "{\"type\":\"module_capability\",\"status\":\"" + status + "\",\"total_violations\":" + int_to_string(viol_count));
+
+            let _h2 = if has_viol {
+
+                let _vb = sb_push(out_sb, ",\"violations\":[");
+
+                let _vc = sb_push(out_sb, viol_str);
+
+                sb_push(out_sb, "]")
+
+            } else { 0 };
+
+            let _h3 = sb_push(out_sb, "}");
+
+            sb_build(out_sb)
+
+        }
+
+    }
 
 };
 
@@ -46941,6 +46982,8 @@ fn diagnose_file(input: String) -> i64
 
         let cc_json = cc_build_json(input, src, entries, eff_map, transitive_map, contracts);
 
+        let mc_json = mc_build_json(input, src, entries, transitive_map, contracts);
+
         let le_json = lint_effects_build_json(input, entries, eff_map, transitive_map);
 
         let sd_json = semdp_build_json(input, entries);
@@ -46949,13 +46992,15 @@ fn diagnose_file(input: String) -> i64
 
         let cc_count = json_extract_int_field(cc_json, "violations_count");
 
+        let mc_count = json_extract_int_field(mc_json, "total_violations");
+
         let le_count = json_extract_int_field(le_json, "count");
 
         let sd_count = json_extract_int_field(sd_json, "pairs_count");
 
-        let total_issues = ev_count + cc_count + le_count + sd_count;
+        let total_issues = ev_count + cc_count + mc_count + le_count + sd_count;
 
-        let summary_json = "{\"total_issues\":" + int_to_string(total_issues) + ",\"effect_issues\":" + int_to_string(ev_count) + ",\"contract_issues\":" + int_to_string(cc_count) + ",\"lint_issues\":" + int_to_string(le_count) + ",\"duplicate_pairs\":" + int_to_string(sd_count) + "}";
+        let summary_json = "{\"total_issues\":" + int_to_string(total_issues) + ",\"effect_issues\":" + int_to_string(ev_count) + ",\"contract_issues\":" + int_to_string(cc_count) + ",\"module_cap_issues\":" + int_to_string(mc_count) + ",\"lint_issues\":" + int_to_string(le_count) + ",\"duplicate_pairs\":" + int_to_string(sd_count) + "}";
 
         let out_sb = sb_new();
 
@@ -46966,6 +47011,8 @@ fn diagnose_file(input: String) -> i64
         let _h3 = sb_push(out_sb, "\",\"effect_verify\":" + ev_json);
 
         let _h4 = sb_push(out_sb, ",\"contracts_check\":" + cc_json);
+
+        let _h4b = sb_push(out_sb, ",\"module_capability\":" + mc_json);
 
         let _h5 = sb_push(out_sb, ",\"lint_effects\":" + le_json);
 
