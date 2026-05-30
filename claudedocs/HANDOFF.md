@@ -1,6 +1,7 @@
-# BMB Session Handoff — 2026-05-30 (Cycles 3324-3330)
+# BMB Session Handoff — 2026-05-30 (Cycle 3331)
 
-> **HEAD**: `f805877f` (feat(diagnose/perf): module_capability 섹션 분리 + declared JSON 배열 + gc-sections)
+> **HEAD**: `(TBD — commit pending)` (fix(diagnose): contracts-check에 module_capability 필드 포함)
+> **이전 HEAD**: `f805877f`
 > **실무 앵커**: `claudedocs/ROADMAP.md` (§ 6 AI-Native Pivot)
 > **전략 계획서**: `claudedocs/plans/ai-native-plan-2026.md`
 
@@ -11,9 +12,9 @@
 | 항목 | 상태 |
 |------|------|
 | cargo test --release | ✅ 6282 PASS, 0 FAILED |
-| Within-gen Fixed Point | ✅ fp3329a.ll == fp3329b.ll (Cycle 3329) |
+| Within-gen Fixed Point | ✅ fp3331a.ll == fp3331b.ll (Cycle 3331) |
 | Cross-gen Fixed Point | ✅ S2 IR == S3 IR (Cycle 3322 — 이전 세션) |
-| bmb lint warnings | ✅ 0 (178 non-recursive pre-existing 제외) |
+| bmb lint warnings | ✅ 0 non-param/postcondition (180 pre-existing 제외) |
 | Z3 verify | ✅ 144/144 |
 | P-track 7/7 (Rust 컴파일러) | ✅ ALL ≤1.010× BMB faster than C |
 | Bootstrap P-track | ✅ 6/7 ✅ (csv 1.039× — 경계선, 측정 노이즈 수준) |
@@ -23,17 +24,23 @@
 
 ---
 
-## 이번 세션 완료 (Cycles 3324-3330)
+## 이번 세션 완료 (Cycle 3331)
 
 | 사이클 | 내용 |
 |--------|------|
-| 3324 | P1 declared 필드 JSON 배열 형식 개선: `json_esc(module_caps)` → `ms_caps_to_json(module_caps, 0, 1)` → `"declared":["pure"]` (무효 JSON 수정) |
-| 3325 | M15 Phase 6b: `module_capability` 전용 섹션 분리 — `mc_build_json` 신규 + `cc_build_json`에서 분리 + `diagnose_file`에 통합 |
-| 3326 | P3 count_viol_entries 통합: `count_caller_entries`, `count_fn_a_entries` → `count_rule_entries` 위임 |
-| 3327 | P3 MCP bmb_diagnose 스키마 업데이트: 5섹션 + violations 통일 형식 설명 |
-| 3328 | P2 bootstrap P-track 회귀 분석: IR IDENTICAL 확인, 레거시 측정값(1.459×/1.134×) STALE 확인 |
-| 3329 | bootstrap build_link 개선: `-ffunction-sections -fdata-sections -Wl,--gc-sections` 추가 |
-| 3330 | HANDOFF + ROADMAP 업데이트 + 커밋 |
+| 3331 | P3 contracts_check_run에 module_capability 포함: `cc_json_prefix_sb` + `cc_combine_mc` 헬퍼 추가 → `contracts-check` 명령이 `"module_capability"` 필드 포함 출력 |
+
+## 이전 세션 완료 (Cycles 3324-3330)
+
+| 사이클 | 내용 |
+|--------|------|
+| 3324 | P1 declared 필드 JSON 배열 형식 개선 |
+| 3325 | M15 Phase 6b: module_capability 전용 섹션 분리 |
+| 3326 | count_viol_entries 통합 |
+| 3327 | MCP bmb_diagnose 스키마 업데이트 |
+| 3328 | bootstrap P-track 재측정 (STALE 확인) |
+| 3329 | build_link gc-sections 추가 |
+| 3330 | HANDOFF + ROADMAP + 커밋 |
 
 ---
 
@@ -107,16 +114,14 @@ enforce_module_caps = true
 **배경**: tuple 반환이 항상 heap calloc(2-word). bootstrap csv 1.039× 경계 원인.
 **방향**: `(i64, i64)` → LLVM struct return (sret) ABI 또는 스택 alloca.
 **복잡도**: 3-5 사이클. 파서 + IR lowering + bootstrap 양쪽.
+**상태**: Human Decision 대기 (csv 1.039× 노이즈 허용 여부).
 
 ### [P2 / L5 AI-Native] M15 Phase 6c 런타임 sandbox (5-7 사이클)
 
 **배경**: 현재는 compile-time 체크만. platform 선언 기반 런타임 capability 강제 필요.
 **복잡도**: 5-7 사이클. 대규모. 장기 항목.
 
-### [P3 / L2 컴파일러] contracts_check_run에 module_capability 포함 (1 사이클)
-
-**배경**: 독립 `contracts-check` 명령이 module_capability를 출력하지 않음.
-**방향**: `contracts_check_run`에서 `mc_build_json` 호출 + 결합 출력.
+### ~~[P3] contracts_check_run에 module_capability 포함~~ ✅ DONE (Cycle 3331)
 
 ---
 
@@ -126,7 +131,7 @@ enforce_module_caps = true
 |--------|------|------|--------|
 | L1 언어사양 | 결함 | tuple heap-only → csv bootstrap 1.039× 근본 원인 | P2 |
 | L5 AI-Native | 미비 | module_capability 런타임 sandbox 미구현 | P4 |
-| L2 컴파일러 | 미비 | contracts_check_run이 module_capability 미포함 | P3 |
+| ~~L2 컴파일러~~ | ~~미비~~ | ~~contracts_check_run이 module_capability 미포함~~ | ✅ DONE Cycle 3331 |
 
 ---
 

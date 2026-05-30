@@ -46634,6 +46634,40 @@ fn cc_build_json(input: String, src: String, entries: String, eff_map: String, t
 
 };
 
+// Copy chars from s[0..limit) into sb, then append mc_suffix and return 0.
+fn cc_json_prefix_sb(s: String, pos: i64, limit: i64, sb: i64) -> i64
+
+  pre pos >= 0
+
+  post it == 0
+
+= if pos >= limit { 0 }
+
+    else {
+
+        let _p = sb_push_char(sb, s.byte_at(pos));
+
+        cc_json_prefix_sb(s, pos + 1, limit, sb)
+
+    };
+
+// Combine contracts_check JSON with module_capability: strip closing "}" and embed mc_json.
+fn cc_combine_mc(cc_json: String, mc_json: String) -> String
+
+  post it.len() >= 1
+
+= {
+
+    let sb = sb_new();
+
+    let _c = cc_json_prefix_sb(cc_json, 0, cc_json.len() - 1, sb);
+
+    let _m = sb_push(sb, ",\"module_capability\":" + mc_json + "}");
+
+    sb_build(sb)
+
+};
+
 // Build module_capability JSON section (separate from contracts_check).
 // Returns {"type":"module_capability","status":"...","total_violations":N,"violations":[...]}
 // Status "skipped" when enforce_module_caps not set or no module requires clause.
@@ -46707,9 +46741,13 @@ fn contracts_check_run(input: String, src: String, contracts: String) -> i64
 
     let transitive_map = build_full_transitive_effect_map(entries, eff_map, 5);
 
-    let json = cc_build_json(input, src, entries, eff_map, transitive_map, contracts);
+    let cc_json = cc_build_json(input, src, entries, eff_map, transitive_map, contracts);
 
-    let _p = println_str(json);
+    let mc_json = mc_build_json(input, src, entries, transitive_map, contracts);
+
+    let combined = cc_combine_mc(cc_json, mc_json);
+
+    let _p = println_str(combined);
 
     0
 
