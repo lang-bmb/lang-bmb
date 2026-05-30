@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-30 (Cycle 3332)
 
-> **HEAD**: TBD (fix(bootstrap): include_dirname_scan pre i >= 0 → pre i >= -1)
+> **HEAD**: `f8326992` (fix(bootstrap): include_dirname_scan pre i >= 0 → pre i >= -1)
 > **이전 HEAD**: `2c3472c6`
 > **실무 앵커**: `claudedocs/ROADMAP.md` (§ 6 AI-Native Pivot)
 > **전략 계획서**: `claudedocs/plans/ai-native-plan-2026.md`
