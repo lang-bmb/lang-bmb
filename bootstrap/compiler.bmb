@@ -1974,57 +1974,61 @@ fn parse_ident_or_call(src: String, pos: i64, tok: i64) -> String
 
         pack_result(unpack_pos(rargs), "(call <" + name + ">" + unpack_ast(rargs) + ")")
 
-    } else if tok_kind(next) == TK_LBRACE() {
+    } else if tok_kind(next) == TK_LBRACE() { parse_ident_lbrace(src, name, tok, next)
 
-        // Two-token lookahead: if IDENT followed by ':', it's struct init
+    } else if tok_kind(next) == TK_DCOLON() { parse_ident_dcolon(src, name, next)
 
-        let peek1 = next_token_raw(src, tok_end(next));
+    } else {
 
-        let peek2 = next_token_raw(src, tok_end(peek1));
+        pack_result(tok_end(tok), "(var <" + name + ">)")
 
-        if tok_kind(peek1) == TK_IDENT() and tok_kind(peek2) == TK_COLON() {
+    };
 
-            parse_struct_init(src, tok_end(next), name)
+fn parse_ident_lbrace(src: String, name: String, tok: i64, next: i64) -> String
+
+  post it.len() >= 2
+
+= let peek1 = next_token_raw(src, tok_end(next));
+
+    let peek2 = next_token_raw(src, tok_end(peek1));
+
+    if tok_kind(peek1) == TK_IDENT() and tok_kind(peek2) == TK_COLON() {
+
+        parse_struct_init(src, tok_end(next), name)
+
+    } else {
+
+        pack_result(tok_end(tok), "(var <" + name + ">)")
+
+    };
+
+fn parse_ident_dcolon(src: String, name: String, dcolon_tok: i64) -> String
+
+  post it.len() >= 2
+
+= let variant_tok = next_token_raw(src, tok_end(dcolon_tok));
+
+    if tok_kind(variant_tok) == TK_IDENT() {
+
+        let variant_name = get_ident_text(src, tok_end(dcolon_tok), variant_tok);
+
+        let after_variant = next_token_raw(src, tok_end(variant_tok));
+
+        if tok_kind(after_variant) == TK_LPAREN() {
+
+            let rargs = parse_args(src, tok_end(after_variant), "");
+
+            pack_result(unpack_pos(rargs), "(call <" + name + "_" + variant_name + ">" + unpack_ast(rargs) + ")")
 
         } else {
 
-            pack_result(tok_end(tok), "(var <" + name + ">)")
-
-        }
-
-    } else if tok_kind(next) == TK_DCOLON() {
-
-        let variant_tok = next_token_raw(src, tok_end(next));
-
-        if tok_kind(variant_tok) == TK_IDENT() {
-
-            let variant_name = get_ident_text(src, tok_end(next), variant_tok);
-
-            let after_variant = next_token_raw(src, tok_end(variant_tok));
-
-            if tok_kind(after_variant) == TK_LPAREN() {
-
-                // Type::method(args) -> static call with mangled name Type_method
-
-                let rargs = parse_args(src, tok_end(after_variant), "");
-
-                pack_result(unpack_pos(rargs), "(call <" + name + "_" + variant_name + ">" + unpack_ast(rargs) + ")")
-
-            } else {
-
-                pack_result(tok_end(variant_tok), "(enum_variant <" + name + "> <" + variant_name + ">)")
-
-            }
-
-        } else {
-
-            make_error_at("expected variant name after '::', got " + tok_kind_name(tok_kind(variant_tok)), src, tok_end(next))
+            pack_result(tok_end(variant_tok), "(enum_variant <" + name + "> <" + variant_name + ">)")
 
         }
 
     } else {
 
-        pack_result(tok_end(tok), "(var <" + name + ">)")
+        make_error_at("expected variant name after '::', got " + tok_kind_name(tok_kind(variant_tok)), src, tok_end(dcolon_tok))
 
     };
 
@@ -2700,6 +2704,11 @@ fn parse_block_let_mut(src: String, pos: i64) -> String
 
 // v0.91: Skip type tokens until '=' in block let binding
 
+fn is_simple_type_tok(k: i64) -> bool
+
+= k == TK_IDENT() or k == TK_I64() or k == TK_I32() or k == TK_F64() or k == TK_BOOL()
+    or k == TK_STRING_TYPE() or k == TK_STAR() or k == TK_AMP() or k == TK_MUT() or k == TK_QUESTION();
+
 fn parse_block_let_skip_type(src: String, pos: i64, name: String, is_mut: bool) -> String
 
   pre pos >= 0
@@ -2710,7 +2719,7 @@ fn parse_block_let_skip_type(src: String, pos: i64, name: String, is_mut: bool) 
     let k = tok_kind(t);
     if k == TK_EQ() {
         parse_block_let_value(src, tok_end(t), name, is_mut)
-    } else if k == TK_IDENT() or k == TK_I64() or k == TK_I32() or k == TK_F64() or k == TK_BOOL() or k == TK_STRING_TYPE() or k == TK_STAR() or k == TK_AMP() or k == TK_MUT() or k == TK_QUESTION() {
+    } else if is_simple_type_tok(k) {
         parse_block_let_skip_type(src, tok_end(t), name, is_mut)
     } else if k == TK_LBRACKET() {
         // M11-C Phase 2: Try to detect [elem_type; N] for auto stack alloc
@@ -3475,6 +3484,90 @@ fn parse_postfix(src: String, pos: i64) -> String
 
     if is_error(rl) { rl } else { parse_postfix_rest(src, unpack_pos(rl), unpack_ast(rl)) };
 
+fn parse_postfix_dot(src: String, pos_after_dot: i64, left: String) -> String
+
+  pre pos_after_dot >= 0
+
+  post it.len() >= 2
+
+= let method_tok = next_token_raw(src, pos_after_dot);
+
+    if tok_kind(method_tok) == TK_IDENT() {
+
+        let method_name = get_ident_text(src, pos_after_dot, method_tok);
+
+        let next = next_token_raw(src, tok_end(method_tok));
+
+        if tok_kind(next) == TK_LPAREN() {
+
+            let rargs = parse_args(src, tok_end(next), "");
+
+            let ast = "(method " + method_name + " " + left + unpack_ast(rargs) + ")";
+
+            parse_postfix_rest(src, unpack_pos(rargs), ast)
+
+        } else {
+
+            let ast = "(field " + left + " " + method_name + ")";
+
+            parse_postfix_rest(src, tok_end(method_tok), ast)
+
+        }
+
+    } else if is_int_literal(tok_kind(method_tok)) {
+
+        let field_text = get_int_text(src, pos_after_dot, method_tok);
+
+        let ast = "(field " + left + " " + field_text + ")";
+
+        parse_postfix_rest(src, tok_end(method_tok), ast)
+
+    } else { make_error_at("expected method name after '.', got " + tok_kind_name(tok_kind(method_tok)), src, pos_after_dot) };
+
+fn parse_postfix_as(src: String, pos_after_as: i64, left: String) -> String
+
+  pre pos_after_as >= 0
+
+  post it.len() >= 2
+
+= let type_tok = next_token_raw(src, pos_after_as);
+
+    if tok_kind(type_tok) == TK_STAR() {
+
+        let t_type_start = tok_end(type_tok);
+
+        let t_type = next_token_raw(src, t_type_start);
+
+        let type_name = src.slice(t_type_start, tok_end(t_type));
+
+        if type_name == "f64" {
+
+            parse_postfix_rest(src, tok_end(t_type), "(cast_ptr_f64 " + left + ")")
+
+        } else {
+
+            parse_postfix_rest(src, tok_end(t_type), left)
+
+        }
+
+    } else if tok_kind(type_tok) == TK_I64() {
+
+        parse_postfix_rest(src, tok_end(type_tok), "(cast_i64 " + left + ")")
+
+    } else if tok_kind(type_tok) == TK_I32() {
+
+        parse_postfix_rest(src, tok_end(type_tok), "(cast_i32 " + left + ")")
+
+    } else if tok_kind(type_tok) == TK_F64() {
+
+        parse_postfix_rest(src, tok_end(type_tok), "(cast_f64 " + left + ")")
+
+    } else {
+
+        parse_postfix_rest(src, tok_end(type_tok), left)
+
+    };
+
 fn parse_postfix_rest(src: String, pos: i64, left: String) -> String
 
   pre pos >= 0
@@ -3483,43 +3576,7 @@ fn parse_postfix_rest(src: String, pos: i64, left: String) -> String
 
 = let tok = next_token_raw(src, pos);
 
-    if tok_kind(tok) == TK_DOT() {
-
-        let method_tok = next_token_raw(src, tok_end(tok));
-
-        if tok_kind(method_tok) == TK_IDENT() {
-
-            let method_name = get_ident_text(src, tok_end(tok), method_tok);
-
-            let next = next_token_raw(src, tok_end(method_tok));
-
-            if tok_kind(next) == TK_LPAREN() {
-
-                // Method call with args: s.slice(0, 1)
-
-                let rargs = parse_args(src, tok_end(next), "");
-
-                let ast = "(method " + method_name + " " + left + unpack_ast(rargs) + ")";
-
-                parse_postfix_rest(src, unpack_pos(rargs), ast)
-
-            } else {
-
-                let ast = "(field " + left + " " + method_name + ")";
-
-                parse_postfix_rest(src, tok_end(method_tok), ast)
-
-            }
-
-        } else if is_int_literal(tok_kind(method_tok)) {
-
-            let field_text = get_int_text(src, tok_end(tok), method_tok);
-
-            let ast = "(field " + left + " " + field_text + ")";
-
-            parse_postfix_rest(src, tok_end(method_tok), ast)
-
-        } else { make_error_at("expected method name after '.', got " + tok_kind_name(tok_kind(method_tok)), src, tok_end(tok)) }
+    if tok_kind(tok) == TK_DOT() { parse_postfix_dot(src, tok_end(tok), left)
 
     } else if tok_kind(tok) == TK_LBRACKET() {
 
@@ -3541,51 +3598,7 @@ fn parse_postfix_rest(src: String, pos: i64, left: String) -> String
 
         }
 
-    } else if tok_kind(tok) == TK_AS() {
-
-        let type_tok = next_token_raw(src, tok_end(tok));
-
-        if tok_kind(type_tok) == TK_STAR() {
-
-            let t_type_start = tok_end(type_tok);
-
-            let t_type = next_token_raw(src, t_type_start);
-
-            let type_name = src.slice(t_type_start, tok_end(t_type));
-
-            if type_name == "f64" {
-
-                parse_postfix_rest(src, tok_end(t_type), "(cast_ptr_f64 " + left + ")")
-
-            } else {
-
-                parse_postfix_rest(src, tok_end(t_type), left)
-
-            }
-
-        } else if tok_kind(type_tok) == TK_I64() {
-
-            // v0.95: also used for i32->i64 sext (identity at MIR level, codegen emits sext)
-
-            parse_postfix_rest(src, tok_end(type_tok), "(cast_i64 " + left + ")")
-
-        } else if tok_kind(type_tok) == TK_I32() {
-
-            // v0.95: as i32 - emit trunc_i32 MIR instruction (i64->i32 narrowing)
-
-            parse_postfix_rest(src, tok_end(type_tok), "(cast_i32 " + left + ")")
-
-        } else if tok_kind(type_tok) == TK_F64() {
-
-            parse_postfix_rest(src, tok_end(type_tok), "(cast_f64 " + left + ")")
-
-        } else {
-
-            // as bool, as String, etc. - no-op in bootstrap
-
-            parse_postfix_rest(src, tok_end(type_tok), left)
-
-        }
+    } else if tok_kind(tok) == TK_AS() { parse_postfix_as(src, tok_end(tok), left)
 
     } else { pack_result(pos, left) };
 
@@ -3977,6 +3990,23 @@ fn parse_if_chain_finish(src: String, pos: i64, else_ast: String, new_prefix: St
 
     };
 
+fn parse_expr_keyword(tok_kind_v: i64, src: String, pos: i64, tok_after: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 2
+
+= if tok_kind_v == TK_IF() { parse_if_expr(src, tok_after) }
+    else if tok_kind_v == TK_LET() { parse_let_expr(src, tok_after, pos) }
+    else if tok_kind_v == TK_WHILE() { parse_while_expr(src, tok_after) }
+    else if tok_kind_v == TK_LOOP() { parse_loop_expr(src, tok_after) }
+    else if tok_kind_v == TK_FOR() { parse_for_expr(src, tok_after) }
+    else if tok_kind_v == TK_BREAK() { pack_result(tok_after, "(break)") }
+    else if tok_kind_v == TK_CONTINUE() { pack_result(tok_after, "(continue)") }
+    else if tok_kind_v == TK_RETURN() { parse_return_expr(src, tok_after) }
+    else if tok_kind_v == TK_MATCH() { parse_match_expr(src, tok_after) }
+    else { parse_or(src, pos) };
+
 fn parse_expr(src: String, pos: i64) -> String
 
   pre pos >= 0
@@ -3984,17 +4014,7 @@ fn parse_expr(src: String, pos: i64) -> String
   post it.len() >= 2
 
 = let tok = next_token_raw(src, pos);
-    let kind = tok_kind(tok);
-    if kind == TK_IF() { parse_if_expr(src, tok_end(tok)) }
-    else if kind == TK_LET() { parse_let_expr(src, tok_end(tok), pos) }
-    else if kind == TK_WHILE() { parse_while_expr(src, tok_end(tok)) }  // v0.60.248
-    else if kind == TK_LOOP() { parse_loop_expr(src, tok_end(tok)) }   // v0.90.31: loop
-    else if kind == TK_FOR() { parse_for_expr(src, tok_end(tok)) }  // v0.95: for-loop
-    else if kind == TK_BREAK() { pack_result(tok_end(tok), "(break)") }  // v0.90.8: break
-    else if kind == TK_CONTINUE() { pack_result(tok_end(tok), "(continue)") }  // v0.90.31: continue
-    else if kind == TK_RETURN() { parse_return_expr(src, tok_end(tok)) }       // v0.90.31: return
-    else if kind == TK_MATCH() { parse_match_expr(src, tok_end(tok)) }       // v0.90.86: match
-    else { parse_or(src, pos) };
+    parse_expr_keyword(tok_kind(tok), src, pos, tok_end(tok));
 
 fn parse_if_expr(src: String, pos: i64) -> String
 
@@ -4221,6 +4241,10 @@ fn parse_let_after_name(src: String, pos: i64, name: String, is_mut: bool) -> St
 
     } else { make_error_at("expected '=' or ':' after let binding name, got " + tok_kind_name(k2), src, pos) };
 
+fn is_let_type_tok(k: i64) -> bool
+
+= is_simple_type_tok(k) or k == TK_LT() or k == TK_GT() or k == TK_COMMA() or k == TK_PLUS();
+
 fn parse_let_skip_type(src: String, pos: i64, name: String, is_mut: bool) -> String
 
   pre pos >= 0
@@ -4232,7 +4256,7 @@ fn parse_let_skip_type(src: String, pos: i64, name: String, is_mut: bool) -> Str
     let k = tok_kind(t);
     if k == TK_EQ() {
         parse_let_value_mut(src, tok_end(t), name, is_mut)
-    } else if k == TK_IDENT() or k == TK_I64() or k == TK_I32() or k == TK_F64() or k == TK_BOOL() or k == TK_STRING_TYPE() or k == TK_STAR() or k == TK_AMP() or k == TK_MUT() or k == TK_QUESTION() or k == TK_LT() or k == TK_GT() or k == TK_COMMA() or k == TK_PLUS() {
+    } else if is_let_type_tok(k) {
         // Skip the type tokens (including generic type args <T>, bounds T: A + B) and continue looking for '='
         parse_let_skip_type(src, tok_end(t), name, is_mut)
     } else if k == TK_LBRACKET() {
@@ -4945,32 +4969,57 @@ fn parse_match_arms(src: String, pos: i64, scrutinee: String, prefix: String, su
             }
         }
     }
-    else if is_int_literal(kind) {
-        let int_text = get_int_text(src, pos, t);
-        parse_match_arm_arrow(src, tok_end(t), scrutinee, "(int " + int_text + ")", prefix, suffix)
-    }
-    else if kind == TK_MINUS() {
-        let t2 = next_token_raw(src, tok_end(t));
+    else { parse_match_lit_arm(kind, src, pos, scrutinee, prefix, suffix) };
+
+fn parse_match_lit_arm(kind: i64, src: String, tok_start: i64, scrutinee: String, prefix: String, suffix: String) -> String
+
+  pre tok_start >= 0
+
+  post it.len() >= 2
+
+= let tok = next_token_raw(src, tok_start);
+
+    let tok_after = tok_end(tok);
+
+    if is_int_literal(kind) {
+
+        let int_text = get_int_text(src, tok_start, tok);
+
+        parse_match_arm_arrow(src, tok_after, scrutinee, "(int " + int_text + ")", prefix, suffix)
+
+    } else if kind == TK_MINUS() {
+
+        let t2 = next_token_raw(src, tok_after);
+
         if is_int_literal(tok_kind(t2)) {
-            let int_text = "-" + get_int_text(src, tok_end(t), t2);
+
+            let int_text = "-" + get_int_text(src, tok_after, t2);
+
             parse_match_arm_arrow(src, tok_end(t2), scrutinee, "(int " + int_text + ")", prefix, suffix)
-        } else { make_error_at("expected integer after '-' in match pattern, got " + tok_kind_name(tok_kind(t2)), src, tok_end(t)) }
-    }
-    else if kind == TK_STRING_LIT() {
-        let str_text = escape_parens_for_ast(get_string_text(src, pos, t));
-        parse_match_arm_arrow(src, tok_end(t), scrutinee, "(string " + str_text + ")", prefix, suffix)
-    }
-    else if kind == TK_TRUE() {
-        parse_match_arm_arrow(src, tok_end(t), scrutinee, "(bool true)", prefix, suffix)
-    }
-    else if kind == TK_FALSE() {
-        parse_match_arm_arrow(src, tok_end(t), scrutinee, "(bool false)", prefix, suffix)
-    }
-    else if kind == TK_CHAR_LIT() {
-        let cv = get_char_value(src, pos);
-        parse_match_arm_arrow(src, tok_end(t), scrutinee, "(int " + int_to_string(cv) + ")", prefix, suffix)
-    }
-    else { make_error_at("expected pattern in match arm, got " + tok_kind_name(kind), src, pos) };
+
+        } else { make_error_at("expected integer after '-' in match pattern, got " + tok_kind_name(tok_kind(t2)), src, tok_after) }
+
+    } else if kind == TK_STRING_LIT() {
+
+        let str_text = escape_parens_for_ast(get_string_text(src, tok_start, tok));
+
+        parse_match_arm_arrow(src, tok_after, scrutinee, "(string " + str_text + ")", prefix, suffix)
+
+    } else if kind == TK_TRUE() {
+
+        parse_match_arm_arrow(src, tok_after, scrutinee, "(bool true)", prefix, suffix)
+
+    } else if kind == TK_FALSE() {
+
+        parse_match_arm_arrow(src, tok_after, scrutinee, "(bool false)", prefix, suffix)
+
+    } else if kind == TK_CHAR_LIT() {
+
+        let cv = get_char_value(src, tok_start);
+
+        parse_match_arm_arrow(src, tok_after, scrutinee, "(int " + int_to_string(cv) + ")", prefix, suffix)
+
+    } else { make_error_at("expected pattern in match arm, got " + tok_kind_name(kind), src, tok_start) };
 
 fn parse_match_arm_arrow(src: String, pos: i64, scrutinee: String, pat_expr: String, prefix: String, suffix: String) -> String
 
@@ -5653,11 +5702,67 @@ fn parse_param(src: String, pos: i64) -> String
         let name = get_ident_text(src, pos, t1);
         let t2 = next_token_raw(src, tok_end(t1));
         if tok_kind(t2) == TK_COLON() {
-            let t3 = next_token_raw(src, tok_end(t2));
-            let kind = tok_kind(t3);
-            if kind == TK_I32() { pack_result(skip_nullable(src, tok_end(t3)), "(param <" + name + "> i32)") } else if kind == TK_I64() { pack_result(skip_nullable(src, tok_end(t3)), "(param <" + name + "> i64)") } else if kind == TK_F64() { pack_result(skip_nullable(src, tok_end(t3)), "(param <" + name + "> f64)") } else if kind == TK_BOOL() { pack_result(skip_nullable(src, tok_end(t3)), "(param <" + name + "> bool)") } else if kind == TK_STRING_TYPE() { pack_result(skip_nullable(src, tok_end(t3)), "(param <" + name + "> String)") } else if kind == TK_STAR() { let t4 = next_token_raw(src, tok_end(t3)); if tok_kind(t4) == TK_IDENT() { let struct_name = get_ident_text(src, tok_end(t3), t4); pack_result(skip_nullable(src, tok_end(t4)), "(param <" + name + "> *" + struct_name + ")") } else if tok_kind(t4) == TK_I32() { pack_result(skip_nullable(src, tok_end(t4)), "(param <" + name + "> *i32)") } else if tok_kind(t4) == TK_I64() { pack_result(skip_nullable(src, tok_end(t4)), "(param <" + name + "> *i64)") } else if tok_kind(t4) == TK_F64() { pack_result(skip_nullable(src, tok_end(t4)), "(param <" + name + "> *f64)") } else if tok_kind(t4) == TK_BOOL() { pack_result(skip_nullable(src, tok_end(t4)), "(param <" + name + "> *bool)") } else { pack_result(skip_nullable(src, tok_end(t3)), "(param <" + name + "> *)") } } else if kind == TK_LBRACKET() { parse_param_array_type(src, tok_end(t3), name) } else if kind == TK_AMP() { parse_param_ref_type(src, tok_end(t3), name) } else if kind == TK_FN() { pack_result(skip_fn_type(src, tok_end(t3)), "(param <" + name + "> fn_i64)") } else if kind == TK_IDENT() { let after_targs = skip_optional_type_args(src, tok_end(t3)); pack_result(skip_nullable(src, after_targs), "(param <" + name + "> i64)") } else { make_error_at("expected parameter type, got " + tok_kind_name(kind), src, tok_end(t2)) }
+            parse_param_type(src, name, tok_end(t2))
         } else { make_error_at("expected ':' after parameter name, got " + tok_kind_name(tok_kind(t2)), src, tok_end(t1)) }
     } else { make_error_at("expected parameter name, got " + tok_kind_name(tok_kind(t1)), src, pos) };
+
+fn is_prim_type_tok(k: i64) -> bool
+
+= k == TK_I32() or k == TK_I64() or k == TK_F64() or k == TK_BOOL() or k == TK_STRING_TYPE();
+
+fn prim_type_name(kind: i64) -> String
+
+= if kind == TK_I32() { "i32" }
+    else if kind == TK_I64() { "i64" }
+    else if kind == TK_F64() { "f64" }
+    else if kind == TK_BOOL() { "bool" }
+    else { "String" };
+
+fn parse_param_type(src: String, name: String, pos: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 2
+
+= let t3 = next_token_raw(src, pos);
+
+    let kind = tok_kind(t3);
+
+    if is_prim_type_tok(kind) {
+
+        pack_result(skip_nullable(src, tok_end(t3)), "(param <" + name + "> " + prim_type_name(kind) + ")")
+
+    } else if kind == TK_STAR() {
+
+        let t4 = next_token_raw(src, tok_end(t3));
+
+        let k4 = tok_kind(t4);
+
+        if k4 == TK_IDENT() {
+
+            let struct_name = get_ident_text(src, tok_end(t3), t4);
+
+            pack_result(skip_nullable(src, tok_end(t4)), "(param <" + name + "> *" + struct_name + ")")
+
+        } else if is_prim_type_tok(k4) and k4 != TK_STRING_TYPE() {
+
+            pack_result(skip_nullable(src, tok_end(t4)), "(param <" + name + "> *" + prim_type_name(k4) + ")")
+
+        } else { pack_result(skip_nullable(src, tok_end(t3)), "(param <" + name + "> *)") }
+
+    } else if kind == TK_LBRACKET() { parse_param_array_type(src, tok_end(t3), name)
+
+    } else if kind == TK_AMP() { parse_param_ref_type(src, tok_end(t3), name)
+
+    } else if kind == TK_FN() { pack_result(skip_fn_type(src, tok_end(t3)), "(param <" + name + "> fn_i64)")
+
+    } else if kind == TK_IDENT() {
+
+        let after_targs = skip_optional_type_args(src, tok_end(t3));
+
+        pack_result(skip_nullable(src, after_targs), "(param <" + name + "> i64)")
+
+    } else { make_error_at("expected parameter type, got " + tok_kind_name(kind), src, pos) };
 
 
 // Skip tokens until ']' and emit param as i64 (array is heap pointer)
@@ -6109,49 +6214,51 @@ fn parse_return_type(src: String, pos: i64) -> String
 
     }
 
-    // M5-5c: recognize Array<String> (and Array<other> falls back to i64)
+    // M5-5c / Cycle 2682: Array<String> / Array<f64> recognition — extracted to helper
 
-    // Cycle 2682: Array<f64> recognition (M5-5c f64 variant)
+    else if tok_kind(t4) == TK_IDENT() { parse_return_type_ident(src, pos, t4) }
 
-    else if tok_kind(t4) == TK_IDENT() {
+    else { let after_targs = skip_optional_type_args(src, tok_end(t4)); pack_result(skip_nullable(src, after_targs), "i64") };
 
-        let name = get_ident_text(src, pos, t4);
+fn parse_return_type_ident(src: String, pos: i64, t4: i64) -> String
 
-        let ne = tok_end(t4);
+  pre pos >= 0
 
-        let t5 = next_token_raw(src, ne);
+  post it.len() >= 2
 
-        if name == "Array" and tok_kind(t5) == TK_LT() {
+= let name = get_ident_text(src, pos, t4);
 
-            let t6 = next_token_raw(src, tok_end(t5));
+    let ne = tok_end(t4);
 
-            if tok_kind(t6) == TK_STRING_TYPE() {
+    let t5 = next_token_raw(src, ne);
 
-                let t7 = next_token_raw(src, tok_end(t6));
+    if name == "Array" and tok_kind(t5) == TK_LT() {
 
-                if tok_kind(t7) == TK_GT() {
+        let t6 = next_token_raw(src, tok_end(t5));
 
-                    pack_result(skip_nullable(src, tok_end(t7)), "Array<String>")
+        if tok_kind(t6) == TK_STRING_TYPE() {
 
-                } else { let after_targs = skip_optional_type_args(src, ne); pack_result(skip_nullable(src, after_targs), "i64") }
+            let t7 = next_token_raw(src, tok_end(t6));
 
-            } else if tok_kind(t6) == TK_F64() {
+            if tok_kind(t7) == TK_GT() {
 
-                let t7 = next_token_raw(src, tok_end(t6));
+                pack_result(skip_nullable(src, tok_end(t7)), "Array<String>")
 
-                if tok_kind(t7) == TK_GT() {
+            } else { let after_targs = skip_optional_type_args(src, ne); pack_result(skip_nullable(src, after_targs), "i64") }
 
-                    pack_result(skip_nullable(src, tok_end(t7)), "Array<f64>")
+        } else if tok_kind(t6) == TK_F64() {
 
-                } else { let after_targs = skip_optional_type_args(src, ne); pack_result(skip_nullable(src, after_targs), "i64") }
+            let t7 = next_token_raw(src, tok_end(t6));
+
+            if tok_kind(t7) == TK_GT() {
+
+                pack_result(skip_nullable(src, tok_end(t7)), "Array<f64>")
 
             } else { let after_targs = skip_optional_type_args(src, ne); pack_result(skip_nullable(src, after_targs), "i64") }
 
         } else { let after_targs = skip_optional_type_args(src, ne); pack_result(skip_nullable(src, after_targs), "i64") }
 
-    }
-
-    else { let after_targs = skip_optional_type_args(src, tok_end(t4)); pack_result(skip_nullable(src, after_targs), "i64") };
+    } else { let after_targs = skip_optional_type_args(src, ne); pack_result(skip_nullable(src, after_targs), "i64") };
 
 fn skip_tuple_type_tokens(src: String, pos: i64, type_str: String) -> String
 
@@ -14224,6 +14331,20 @@ fn rewrite_stack_f64_index(body: String, pos: i64) -> String
 
     };
 
+fn rewrite_all_stack_index(body: String) -> String
+
+  post it.len() >= 0
+
+= let b_i64 = rewrite_stack_i64_index(body, 0);
+
+    let b_u8 = rewrite_stack_u8_index(b_i64, 0);
+
+    let b_i32 = rewrite_stack_i32_index(b_u8, 0);
+
+    let b_bool = rewrite_stack_bool_index(b_i32, 0);
+
+    rewrite_stack_f64_index(b_bool, 0);
+
 fn lower_function_sb(ast: String, safe: i64) -> String
 
   pre safe >= 0
@@ -14244,25 +14365,9 @@ fn lower_function_sb(ast: String, safe: i64) -> String
 
     let body_ast_ptr = rewrite_ptr_index(body_ast_raw, ast, 1);
 
-    // M11-C Phase 3: rewrite stack [i64;N] subscripts to ptr_index
+    // M11-C Phase 3-7: rewrite stack [i64/u8/i32/bool/f64;N] subscripts to ptr_index
 
-    let body_ast_i64 = rewrite_stack_i64_index(body_ast_ptr, 0);
-
-    // M11-C Phase 4: rewrite stack [u8;N] subscripts to ptr_index_u8
-
-    let body_ast_u8 = rewrite_stack_u8_index(body_ast_i64, 0);
-
-    // M11-C Phase 5: rewrite stack [i32;N] subscripts to ptr_index_i32
-
-    let body_ast_i32 = rewrite_stack_i32_index(body_ast_u8, 0);
-
-    // M11-C Phase 6: rewrite stack [bool;N] subscripts to ptr_index_bool
-
-    let body_ast_bool = rewrite_stack_bool_index(body_ast_i32, 0);
-
-    // M11-C Phase 7: rewrite stack [f64;N] subscripts to ptr_index_f64
-
-    let body_ast = rewrite_stack_f64_index(body_ast_bool, 0);
+    let body_ast = rewrite_all_stack_index(body_ast_ptr);
 
     let sb_raw = sb_new();
 
@@ -30058,6 +30163,36 @@ fn has_user_call_in_body(ir: String, pos: i64) -> bool
 
     };
 
+fn run_ir_passes(raw_ir: String, is_recursive: bool, fn_name: String) -> String
+
+  post it.len() >= 0
+
+= let p0 = eliminate_store_load_ir(raw_ir);
+
+    let p0b = eliminate_dead_stores_ir(p0);
+
+    let p1 = eliminate_identity_copies_ir(p0b);
+
+    let p2 = eliminate_zext_trunc_ir(p1);
+
+    let p3 = eliminate_dead_zexts_ir(p2);
+
+    let p4 = eliminate_inttoptr_roundtrips_ir(p3);
+
+    let p5 = eliminate_dead_ptrtoints_ir(p4);
+
+    let p6 = annotate_memory_none_ir(p5);
+
+    let p7 = annotate_memory_read_ir(p6);
+
+    let p8 = if is_recursive or fn_name == "main" { p7 } else { add_norecurse_attr(p7) };
+
+    let p9 = add_nofree_attr(p8);
+
+    let p10 = add_speculatable_attr(p9);
+
+    fix_typed_ret_placeholders_ir(p10);
+
 fn gen_function_sb_structs_reuse(mir: String, strings: String, string_fns: String, registry: String, struct_reg: String, ptr_ret_reg: String, fn_sb: i64, str_sb: i64, ptr_sb: i64) -> String
 
   post it.len() >= 0
@@ -30090,45 +30225,7 @@ fn gen_function_sb_structs_reuse(mir: String, strings: String, string_fns: Strin
 
     let raw_ir = sb_build(fn_sb);
 
-    let pass0 = eliminate_store_load_ir(raw_ir);
-
-    let pass0b = eliminate_dead_stores_ir(pass0);
-
-    let pass1 = eliminate_identity_copies_ir(pass0b);
-
-    let pass2 = eliminate_zext_trunc_ir(pass1);
-
-    let pass3 = eliminate_dead_zexts_ir(pass2);
-
-    let pass4 = eliminate_inttoptr_roundtrips_ir(pass3);
-
-    let pass5 = eliminate_dead_ptrtoints_ir(pass4);
-
-    let pass6 = annotate_memory_none_ir(pass5);
-
-    // v0.93.6: Annotate read-only functions with memory(read)
-
-    let pass7 = annotate_memory_read_ir(pass6);
-
-    // v0.93.4: Add norecurse for non-recursive functions (skip main — already has norecurse from base_attrs)
-
-    let pass8 = if is_recursive or fn_name == "main" { pass7 } else { add_norecurse_attr(pass7) };
-
-    // v0.96.44: Add nofree for functions without free/realloc calls
-
-    let pass9 = add_nofree_attr(pass8);
-
-    // v0.96.44: Add speculatable for memory(none) leaf functions
-
-    let pass10 = add_speculatable_attr(pass9);
-
-    // Cycle 2375: After identity-copy elimination, `%_t0 = add nsw i64 0, 0`
-
-    // aliases can propagate `0` into typed ret slots (`ret double 0`).
-
-    // Substitute type-appropriate literals so the IR type-checks.
-
-    fix_typed_ret_placeholders_ir(pass10);
+    run_ir_passes(raw_ir, is_recursive, fn_name);
 
 fn init_string_params_sb(mir: String, str_sb: i64) -> i64
 
@@ -36427,12 +36524,21 @@ fn index_read_type_text(src: String, pos: i64) -> String
         let end_bracket = index_skip_to_bracket(src, tok_end(t));
         pack_result(skip_nullable_idx(src, end_bracket), "[..]")
     }
-    else if k == TK_IDENT() {
-        let name = src.slice(skip_ws_comments(src, pos), scan_ident_end(src, skip_ws_comments(src, pos)));
-        pack_result(skip_nullable_idx(src, tok_end(t)), name)
-    }
+    else if k == TK_IDENT() { index_read_type_ident(src, pos, tok_end(t)) }
+
     else { pack_result(tok_end(t), "?") };
 
+fn index_read_type_ident(src: String, pos: i64, tok_after: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 1
+
+= let ws = skip_ws_comments(src, pos);
+
+    let name = src.slice(ws, scan_ident_end(src, ws));
+
+    pack_result(skip_nullable_idx(src, tok_after), name);
 
 // Skip to closing bracket
 
@@ -37637,6 +37743,20 @@ fn skip_eff_row_opt(src: String, pos: i64) -> i64
 
 // Find a function in source by name, return packed "start_pos:end_pos" or ""
 
+fn ctx_scan_fn_body(src: String, after_lparen: i64) -> i64
+
+  pre after_lparen >= 0
+
+  post it >= 0
+
+= let params = index_collect_params(src, after_lparen, "");
+
+    let rtype = index_read_ret_type(src, skip_eff_row_opt(src, unpack_pos(params)));
+
+    let eq_pos = skip_contracts(src, unpack_pos(rtype));
+
+    unpack_pos(index_scan_body(src, eq_pos, 0, "", false));
+
 fn ctx_find_fn(src: String, pos: i64, target: String) -> String
 
   pre pos >= 0
@@ -37652,25 +37772,15 @@ fn ctx_find_fn(src: String, pos: i64, target: String) -> String
             if tok_kind(t1) == TK_IDENT() {
                 let name = src.slice(skip_ws_comments(src, tok_end(tok)), scan_ident_end(src, skip_ws_comments(src, tok_end(tok))));
                 if name == target {
-                    // Found! Start from annotation, scan to end of body
                     let fn_start = pos;
                     let t2 = next_token_raw(src, tok_end(t1));
                     if tok_kind(t2) == TK_LPAREN() {
-                        let params = index_collect_params(src, tok_end(t2), "");
-                        let rtype = index_read_ret_type(src, skip_eff_row_opt(src, unpack_pos(params)));
-                        let eq_pos = skip_contracts(src, unpack_pos(rtype));
-                        let body_result = index_scan_body(src, eq_pos, 0, "", false);
-                        pack_result(fn_start, int_to_string(unpack_pos(body_result)))
+                        pack_result(fn_start, int_to_string(ctx_scan_fn_body(src, tok_end(t2))))
                     } else { pack_result(fn_start, int_to_string(tok_end(t1))) }
                 } else {
-                    // Skip this function and continue
                     let t2 = next_token_raw(src, tok_end(t1));
                     if tok_kind(t2) == TK_LPAREN() {
-                        let params = index_collect_params(src, tok_end(t2), "");
-                        let rtype = index_read_ret_type(src, skip_eff_row_opt(src, unpack_pos(params)));
-                        let eq_pos = skip_contracts(src, unpack_pos(rtype));
-                        let body_result = index_scan_body(src, eq_pos, 0, "", false);
-                        ctx_find_fn(src, unpack_pos(body_result), target)
+                        ctx_find_fn(src, ctx_scan_fn_body(src, tok_end(t2)), target)
                     } else { ctx_find_fn(src, tok_end(t1), target) }
                 }
             } else { ctx_find_fn(src, tok_end(tok), target) }
@@ -37687,20 +37797,12 @@ fn ctx_find_fn(src: String, pos: i64, target: String) -> String
                     let fn_start = pos;
                     let t2 = next_token_raw(src, tok_end(t1));
                     if tok_kind(t2) == TK_LPAREN() {
-                        let params = index_collect_params(src, tok_end(t2), "");
-                        let rtype = index_read_ret_type(src, skip_eff_row_opt(src, unpack_pos(params)));
-                        let eq_pos = skip_contracts(src, unpack_pos(rtype));
-                        let body_result = index_scan_body(src, eq_pos, 0, "", false);
-                        pack_result(fn_start, int_to_string(unpack_pos(body_result)))
+                        pack_result(fn_start, int_to_string(ctx_scan_fn_body(src, tok_end(t2))))
                     } else { pack_result(fn_start, int_to_string(tok_end(t1))) }
                 } else {
                     let t2 = next_token_raw(src, tok_end(t1));
                     if tok_kind(t2) == TK_LPAREN() {
-                        let params = index_collect_params(src, tok_end(t2), "");
-                        let rtype = index_read_ret_type(src, skip_eff_row_opt(src, unpack_pos(params)));
-                        let eq_pos = skip_contracts(src, unpack_pos(rtype));
-                        let body_result = index_scan_body(src, eq_pos, 0, "", false);
-                        ctx_find_fn(src, unpack_pos(body_result), target)
+                        ctx_find_fn(src, ctx_scan_fn_body(src, tok_end(t2)), target)
                     } else { ctx_find_fn(src, tok_end(t1), target) }
                 }
             } else { ctx_find_fn(src, tok_end(tok), target) }
@@ -45318,7 +45420,7 @@ fn repair_hint_scan(src: String, scanpos: i64, sb: i64, isfirst: i64) -> i64
 
                     let newisfirst = if has_c {
 
-                        let meta_str = intent_txt + chr(9) + eff_txt;
+                        let meta_str = intent_txt + "\t" + eff_txt;
 
                         let _e = emit_fn_hint(fname, pctexts, qctexts, meta_str, sb, isfirst);
 
@@ -47462,11 +47564,29 @@ fn diagnose_file(input: String) -> i64
 // the full history so AI agents can see convergence across repair rounds.
 
 // Count existing rounds in session log (one "round": per entry)
+fn sl_rounds_from(s: String, pos: i64, n: i64) -> i64
+
+  pre pos >= 0 and n >= 0
+
+  post it >= 0
+
+= if pos >= s.len() { n }
+
+    else {
+
+        let at = str_find(s.slice(pos, s.len()), "\"round\":");
+
+        if at < 0 { n }
+
+        else { sl_rounds_from(s, pos + at + 8, n + 1) }
+
+    };
+
 fn sl_count_rounds(log_src: String) -> i64
 
   post it >= 0
 
-= log_src.count("\"round\":");
+= sl_rounds_from(log_src, 0, 0);
 
 // Build one session-log entry line (compact JSON, no trailing newline)
 fn sl_build_entry(round: i64, ts: i64, total: i64, ev: i64, cc: i64, mc: i64, le: i64, sd: i64) -> String
@@ -47513,6 +47633,26 @@ fn sl_lines_to_array(log_src: String, pos: i64, sb: i64, isfirst: i64) -> i64
     };
 
 // Main session-log logic: runs diagnose, appends to log file, outputs JSON
+fn sl_build_output(input: String, updated_log: String, cur_entry: String) -> i64
+
+  post it == 0
+
+= let out_sb = sb_new();
+
+    let _h1 = sb_push(out_sb, "{\"type\":\"session_log\",\"file\":\"");
+
+    let _h2 = sb_push(out_sb, json_esc(input));
+
+    let _h3 = sb_push(out_sb, "\",\"rounds\":[");
+
+    let _scan = sl_lines_to_array(updated_log, 0, out_sb, 1);
+
+    let _h4 = sb_push(out_sb, "],\"current\":" + cur_entry + "}");
+
+    let _p = println_str(sb_build(out_sb));
+
+    0;
+
 fn session_log_run(input: String, src: String) -> i64
 
   post it >= 0
@@ -47557,7 +47697,7 @@ fn session_log_run(input: String, src: String) -> i64
 
     let round = sl_count_rounds(log_src) + 1;
 
-    let ts = time_ms();
+    let ts = time_ns() / 1000000;
 
     let entry = sl_build_entry(round, ts, total, ev_count, cc_count, mc_count, le_count, sd_count);
 
@@ -47565,21 +47705,7 @@ fn session_log_run(input: String, src: String) -> i64
 
     let _w = write_file(log_path, updated_log);
 
-    let out_sb = sb_new();
-
-    let _h1 = sb_push(out_sb, "{\"type\":\"session_log\",\"file\":\"");
-
-    let _h2 = sb_push(out_sb, json_esc(input));
-
-    let _h3 = sb_push(out_sb, "\",\"rounds\":[");
-
-    let _scan = sl_lines_to_array(updated_log, 0, out_sb, 1);
-
-    let _h4 = sb_push(out_sb, "],\"current\":" + entry + "}");
-
-    let _p = println_str(sb_build(out_sb));
-
-    0
+    sl_build_output(input, updated_log, entry)
 
 };
 
