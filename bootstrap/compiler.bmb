@@ -42116,7 +42116,7 @@ fn lint_has_lower(name: String, pos: i64) -> bool
 
   pre pos >= 0
 
-  post not it or pos < name.len()
+  post not it or (pos < name.len() and name.len() >= 0)
 
 = if pos >= name.len() { false }
 
