@@ -161,6 +161,7 @@ Stage 1 통과 ≠ Stage 2 통과 ≠ Stage 3 통과
 | stale runtime object | 링크 에러 | bmb_runtime.c/bmb_event_loop.c 재빌드 필요 |
 | Stage 2 arena OOM (32G+) | compiler.bmb self-compile 시 메모리 한계 초과 | 문자열 기반 AST의 O(n²) 성장 (Cycle 2634 확인) |
 | **S2가 특정 코드 경로를 제거** (IR 절단, else 분기 소거) | **메타순환 계약 위반**: "실패 시 -1 반환" 함수에 `post it >= 0` → S1이 `range(i64 0,...)` + `llvm.assume` 주입 → S2에서 LLVM이 호출자 `if result >= 0` 조건 항상true로 DCE | `post it >= -1` 로 수정 (Cycle 3232, `ifs_check_flex_both_sides`) |
+| **비결정적 SIGSEGV** (특정 입력에서 ~80% 확률) | **`pre` 계약 재귀 하한 위반**: `pre i >= N` 재귀 함수인데 실제 재귀 하한이 N-1 → `llvm.assume(false)` UB | `pre i >= N-1`로 수정 (Cycle 3332, `include_dirname_scan`) |
 
 **이중 Lowering 시스템 (신규 노드 추가 시 필수 — Cycle 2634)**:
 `bootstrap/compiler.bmb`에는 두 개의 독립 lowering 경로가 있다:
@@ -828,6 +829,7 @@ All PRs must:
 | Stage 2 잘못된 출력 | 부트스트랩 파서 버그 | 골든 테스트로 최소 재현 |
 | S2 IR ≠ S3 IR (고정점 실패) | 코드젠 비결정성 | `diff s3.ll s4.ll` 첫 차이점에서 원인 추적 (binary hash ❌ — GCC MinGW 비결정적) |
 | **S2가 특정 함수 호출을 생략** (IR 절단, 잘못된 `norecurse`/`memory(none)`) | **메타순환 계약 위반**: bootstrap 함수에 `post it >= 0`인데 실패 시 `-1` 반환 → S1 컴파일 시 LLVM `range(i64 0,...)` 속성 + `llvm.assume(ret >= 0)` 주입 → S2에서 `if result >= 0` 분기가 항상 true → LLVM DCE가 else 분기 제거 | "not found" 반환 `-1` (= `0 - 1`) 함수에는 **`post it >= -1`** 사용 (Cycle 3232 발견, `ifs_check_flex_both_sides`) |
+| **비결정적 SIGSEGV** (bare filename 입력 시 ~80% 확률) | **`pre` 계약 재귀 하한 위반**: `pre i >= N` 재귀 함수인데 실제 재귀가 `i = N-1`까지 내려감 → `llvm.assume(i >= N)` 주입 → 마지막 재귀 호출에서 `llvm.assume(false)` = UB → 비결정적 크래시 | `pre i >= N-1`로 수정 (Cycle 3332 발견, `include_dirname_scan pre i >= 0 → pre i >= -1`) |
 
 **⚠️ 메타순환 계약 위반 상세 (Cycle 3232)**:
 `post it >= N` 계약은 bootstrap 컴파일러의 Return Range Attribute 시스템(v0.96.30)에 의해
