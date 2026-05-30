@@ -45330,25 +45330,10 @@ fn json_esc_sb(s: String, pos: i64, sb: i64) -> i64
 
         let ch = s.byte_at(pos);
 
-        let _p = if ch == 34 {
-
-            let _a = sb_push_char(sb, 92);
-
-            sb_push_char(sb, 34)
-
-        } else if ch == 92 {
-
-            let _a = sb_push_char(sb, 92);
-
-            sb_push_char(sb, 92)
-
-        } else if ch == 10 {
-
-            let _a = sb_push_char(sb, 92);
-
-            sb_push_char(sb, 110)
-
-        } else { sb_push_char(sb, ch) };
+        let _p = match ch { 34 => let _a = sb_push_char(sb, 92); sb_push_char(sb, 34),
+            92 => let _a = sb_push_char(sb, 92); sb_push_char(sb, 92),
+            10 => let _a = sb_push_char(sb, 92); sb_push_char(sb, 110),
+            _ => sb_push_char(sb, ch) };
 
         json_esc_sb(s, pos + 1, sb)
 
@@ -46906,7 +46891,7 @@ fn cc_combine_mc(cc_json: String, mc_json: String) -> String
 // Build module_capability JSON section (separate from contracts_check).
 // Returns {"type":"module_capability","status":"...","total_violations":N,"violations":[...]}
 // Status "skipped" when enforce_module_caps not set or no module requires clause.
-fn mc_build_json(_input: String, src: String, entries: String, transitive_map: String, contracts: String) -> String
+fn mc_build_json(input: String, src: String, entries: String, transitive_map: String, contracts: String) -> String
 
   post it.len() >= 1
 
@@ -46916,7 +46901,7 @@ fn mc_build_json(_input: String, src: String, entries: String, transitive_map: S
 
     if enforce_caps != "true" {
 
-        "{\"type\":\"module_capability\",\"status\":\"skipped\",\"total_violations\":0}"
+        "{\"type\":\"module_capability\",\"input\":\"" + json_esc(input) + "\",\"status\":\"skipped\",\"total_violations\":0}"
 
     } else {
 
@@ -46924,7 +46909,7 @@ fn mc_build_json(_input: String, src: String, entries: String, transitive_map: S
 
         if module_caps == "" {
 
-            "{\"type\":\"module_capability\",\"status\":\"skipped\",\"total_violations\":0}"
+            "{\"type\":\"module_capability\",\"input\":\"" + json_esc(input) + "\",\"status\":\"skipped\",\"total_violations\":0}"
 
         } else {
 
@@ -46942,7 +46927,7 @@ fn mc_build_json(_input: String, src: String, entries: String, transitive_map: S
 
             let out_sb = sb_new();
 
-            let _h1 = sb_push(out_sb, "{\"type\":\"module_capability\",\"status\":\"" + status + "\",\"total_violations\":" + int_to_string(viol_count));
+            let _h1 = sb_push(out_sb, "{\"type\":\"module_capability\",\"input\":\"" + json_esc(input) + "\",\"status\":\"" + status + "\",\"total_violations\":" + int_to_string(viol_count));
 
             let _h2 = if has_viol {
 
@@ -47453,6 +47438,142 @@ fn diagnose_file(input: String) -> i64
 
     };
 
+// M13 Phase 6b: Session log — track repair iterations across multiple diagnose runs.
+// Each invocation appends one compact JSON line to <input>.session-log, then outputs
+// the full history so AI agents can see convergence across repair rounds.
+
+// Count existing rounds in session log (one "round": per entry)
+fn sl_count_rounds(log_src: String) -> i64
+
+  post it >= 0
+
+= log_src.count("\"round\":");
+
+// Build one session-log entry line (compact JSON, no trailing newline)
+fn sl_build_entry(round: i64, ts: i64, total: i64, ev: i64, cc: i64, mc: i64, le: i64, sd: i64) -> String
+
+  post it.len() > 0
+
+= "{\"round\":" + int_to_string(round) + ",\"ts\":" + int_to_string(ts) + ",\"total\":" + int_to_string(total) + ",\"ev\":" + int_to_string(ev) + ",\"cc\":" + int_to_string(cc) + ",\"mc\":" + int_to_string(mc) + ",\"le\":" + int_to_string(le) + ",\"sd\":" + int_to_string(sd) + "}";
+
+// Convert JSONL log content to JSON array (each non-empty line is one array element)
+fn sl_lines_to_array(log_src: String, pos: i64, sb: i64, isfirst: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= log_src.len() { 0 }
+
+    else {
+
+        let nl = find_char_from(log_src, pos, 10);
+
+        let line_end = if nl >= log_src.len() { log_src.len() } else { nl };
+
+        let line = log_src.slice(pos, line_end);
+
+        if line.len() > 2 {
+
+            let _sep = if isfirst > 0 { 0 } else { sb_push(sb, ",") };
+
+            let _e = sb_push(sb, line);
+
+            if nl >= log_src.len() { 0 }
+
+            else { sl_lines_to_array(log_src, nl + 1, sb, 0) }
+
+        } else {
+
+            if nl >= log_src.len() { 0 }
+
+            else { sl_lines_to_array(log_src, nl + 1, sb, isfirst) }
+
+        }
+
+    };
+
+// Main session-log logic: runs diagnose, appends to log file, outputs JSON
+fn session_log_run(input: String, src: String) -> i64
+
+  post it >= 0
+
+= {
+
+    let log_path = input + ".session-log";
+
+    let entries = callers_collect_source(src, 0, "");
+
+    let eff_map = build_fn_effect_map(src, 0, "");
+
+    let transitive_map = build_full_transitive_effect_map(entries, eff_map, 5);
+
+    let ev_json = eff_verify_build_json(input, entries, eff_map, transitive_map);
+
+    let contracts_src = read_file(".bmb-contracts");
+
+    let contracts = if contracts_src.len() > 0 { bc_parse_contracts(contracts_src, 0, "") } else { "" };
+
+    let cc_json = cc_build_json(input, src, entries, eff_map, transitive_map, contracts);
+
+    let mc_json = mc_build_json(input, src, entries, transitive_map, contracts);
+
+    let le_json = lint_effects_build_json(input, entries, eff_map, transitive_map);
+
+    let sd_json = semdp_build_json(input, entries);
+
+    let ev_count = json_extract_int_field(ev_json, "violations_count");
+
+    let cc_count = json_extract_int_field(cc_json, "violations_count");
+
+    let mc_count = json_extract_int_field(mc_json, "total_violations");
+
+    let le_count = json_extract_int_field(le_json, "count");
+
+    let sd_count = json_extract_int_field(sd_json, "pairs_count");
+
+    let total = ev_count + cc_count + mc_count + le_count + sd_count;
+
+    let log_src = read_file(log_path);
+
+    let round = sl_count_rounds(log_src) + 1;
+
+    let ts = time_ms();
+
+    let entry = sl_build_entry(round, ts, total, ev_count, cc_count, mc_count, le_count, sd_count);
+
+    let updated_log = log_src + entry + "\n";
+
+    let _w = write_file(log_path, updated_log);
+
+    let out_sb = sb_new();
+
+    let _h1 = sb_push(out_sb, "{\"type\":\"session_log\",\"file\":\"");
+
+    let _h2 = sb_push(out_sb, json_esc(input));
+
+    let _h3 = sb_push(out_sb, "\",\"rounds\":[");
+
+    let _scan = sl_lines_to_array(updated_log, 0, out_sb, 1);
+
+    let _h4 = sb_push(out_sb, "],\"current\":" + entry + "}");
+
+    let _p = println_str(sb_build(out_sb));
+
+    0
+
+};
+
+fn session_log_file(input: String) -> i64
+
+  post it >= 0
+
+= let src = read_file(input);
+
+    if src.len() == 0 { err_no_file(input) }
+
+    else { session_log_run(input, src) };
+
 fn main() -> i64
 
   post it >= 0
@@ -47752,6 +47873,11 @@ fn main() -> i64
             // M15 Phase 5: Suggest correct module X requires [...] based on actual capability usage
             module_suggest_file(get_arg(2))
 
+        } else if cmd == "session-log" and argc >= 3 {
+
+            // M13 Phase 6b: Session log — track AI repair iterations across multiple runs
+            session_log_file(get_arg(2))
+
         } else if argc >= 3 {
 
             // Legacy mode: compiler input.bmb output.ll
@@ -47935,6 +48061,26 @@ fn show_help() -> i64
     println_str("  changelog <old> <new>         Diff function signatures");
 
     println_str("  diff-calls <old> <new>        Compare call graphs");
+
+    println_str("");
+
+    println_str("AI diagnostics (machine JSON output):");
+
+    println_str("  diagnose <file>               Unified check: effects+contracts+lint+duplication");
+
+    println_str("  session-log <file>            Track repair rounds — appends to <file>.session-log");
+
+    println_str("  effect-verify <file>          Z3-based effect constraint check");
+
+    println_str("  contracts-check <file>        Contract violations vs .bmb-contracts");
+
+    println_str("  verify-repair <file>          Per-function contract status + repair hints");
+
+    println_str("  repair-hint <file>            LLM-consumable contract JSON");
+
+    println_str("  module-suggest <file>         Suggest module capability declarations");
+
+    println_str("  semantic-duplicate <file>     Find functionally similar functions");
 
     0
 
