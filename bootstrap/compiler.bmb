@@ -17762,7 +17762,18 @@ fn eliminate_inttoptr_roundtrips_ir(ir: String) -> String
 
     else {
 
-        let aliases = build_inttoptr_aliases(ir, 0, pmap, "");
+        let direct_aliases = build_inttoptr_aliases(ir, 0, pmap, "");
+
+        // Extend: cross-BB alloca+store+load chains
+        let alloca_ptr_map = build_alloca_ptr_map(ir, pmap, 0, "", "");
+
+        let load_pmap = if alloca_ptr_map.len() == 0 { "" }
+
+            else { build_load_pmap(ir, alloca_ptr_map, 0, "") };
+
+        let aliases = if load_pmap.len() == 0 { direct_aliases }
+
+            else { build_inttoptr_aliases(ir, 0, load_pmap, direct_aliases) };
 
         if aliases.len() == 0 { ir }
 
@@ -17779,6 +17790,163 @@ fn eliminate_inttoptr_roundtrips_ir(ir: String) -> String
     }
 
 };
+
+// Build map of single-write alloca i64 vars that hold exactly one ptrtoint value.
+// Scans all store instructions; tracks candidates and excludes multi-write allocas.
+// Returns ",alloca_name=ptr_src," format (same as pmap).
+fn build_alloca_ptr_map(ir: String, pmap: String, pos: i64, candidates: String, excluded: String) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 0
+
+= if pos >= ir.len() { apm_filter(candidates, excluded, 0, "") }
+
+    else {
+
+        let pipe_pos = find_pipe_skip_quotes(ir, pos);
+
+        let trimmed = trim(ir.slice(pos, pipe_pos));
+
+        // Detect "store i64 %X, ptr %v" where %X in pmap
+        let new_cand_excl = if starts_with(trimmed, "store i64 %", 0) {
+
+            let sep_pos = find_pattern_at_slow(trimmed, ", ptr %", 11);
+
+            if sep_pos > 11 {
+
+                let val_name = trimmed.slice(10, sep_pos);
+
+                let alloca_name = trim_end(trimmed.slice(sep_pos + 7, trimmed.len()));
+
+                let ptr_src = lookup_ptr_src(pmap, val_name);
+
+                if ptr_src != "" {
+
+                    let in_excl = find_alias_entry_noa(excluded, alloca_name, 0) >= 0;
+
+                    if in_excl { candidates + "|" + excluded }
+
+                    else {
+
+                        let existing = lookup_ptr_src(candidates, alloca_name);
+
+                        if existing == "" {
+
+                            (candidates + "," + alloca_name + "=" + ptr_src) + "|" + excluded
+
+                        } else if existing == ptr_src {
+
+                            candidates + "|" + excluded
+
+                        } else {
+
+                            candidates + "|" + (excluded + "," + alloca_name + "=!")
+
+                        }
+
+                    }
+
+                } else { candidates + "|" + excluded }
+
+            } else { candidates + "|" + excluded }
+
+        } else { candidates + "|" + excluded };
+
+        let sep_at = str_find(new_cand_excl, "|");
+
+        let new_cand = if sep_at >= 0 { new_cand_excl.slice(0, sep_at) } else { new_cand_excl };
+
+        let new_excl = if sep_at >= 0 { new_cand_excl.slice(sep_at + 1, new_cand_excl.len()) } else { excluded };
+
+        build_alloca_ptr_map(ir, pmap, pipe_pos + 1, new_cand, new_excl)
+
+    };
+
+// Filter alloca_ptr_map candidates by removing excluded entries.
+// candidates format: ",name1=src1,name2=src2" — iterate by comma positions.
+fn apm_filter(candidates: String, excluded: String, pos: i64, acc: String) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 0
+
+= if pos >= candidates.len() { acc }
+
+    else if candidates.byte_at(pos) != 44 {
+
+        apm_filter(candidates, excluded, pos + 1, acc)
+
+    } else {
+
+        let eq_pos = find_char(candidates, pos + 1, 61);
+
+        if eq_pos >= candidates.len() { acc }
+
+        else {
+
+            let alloca_name = candidates.slice(pos + 1, eq_pos);
+
+            let next_comma = find_char(candidates, eq_pos + 1, 44);
+
+            let val_end = next_comma;
+
+            let val = candidates.slice(eq_pos + 1, val_end);
+
+            let in_excl = find_alias_entry_noa(excluded, alloca_name, 0) >= 0;
+
+            let new_acc = if in_excl { acc } else { acc + "," + alloca_name + "=" + val };
+
+            apm_filter(candidates, excluded, val_end, new_acc)
+
+        }
+
+    };
+
+// Build pmap from loads: for each "load i64, ptr %alloca" where alloca is in alloca_ptr_map,
+// records load_dest -> ptr_src. This pmap feeds build_inttoptr_aliases for cross-BB chains.
+fn build_load_pmap(ir: String, alloca_ptr_map: String, pos: i64, acc: String) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 0
+
+= if pos >= ir.len() { acc }
+
+    else {
+
+        let pipe_pos = find_pipe_skip_quotes(ir, pos);
+
+        let ws_start = low_skip_ws(ir, pos);
+
+        let new_acc = if ws_start < pipe_pos and ir.byte_at(ws_start) == 37 {
+
+            let trimmed = trim(ir.slice(pos, pipe_pos));
+
+            // Detect "  %dest = load i64, ptr %alloca_name"
+            let eq_pos = find_pattern_at(trimmed, "= load i64, ptr %", 0);
+
+            if eq_pos > 0 {
+
+                let dest = trim(trimmed.slice(0, eq_pos));
+
+                let alloca_name = trim_end(trimmed.slice(eq_pos + 17, trimmed.len()));
+
+                let ptr_src = lookup_ptr_src(alloca_ptr_map, alloca_name);
+
+                if ptr_src != "" { acc + "," + dest + "=" + ptr_src }
+
+                else { acc }
+
+            } else { acc }
+
+        } else { acc };
+
+        if pipe_pos >= ir.len() { new_acc }
+
+        else { build_load_pmap(ir, alloca_ptr_map, pipe_pos + 1, new_acc) }
+
+    };
 
 // Pass 1: Build ptrtoint map — records which i64 vars came from ptrtoint
 
@@ -36484,6 +36652,14 @@ fn index_scan_body(src: String, pos: i64, depth: i64, calls: String, prev_was_do
 
     }
 
+    else if k == TK_FN() and depth == 0 {
+
+        // Top-level fn keyword without semicolon — new function declaration; stop scanning
+
+        pack_result(pos, calls)
+
+    }
+
     else if k == TK_LBRACE() or k == TK_LPAREN() or k == TK_LBRACKET() {
 
         index_scan_body(src, tok_end(t), depth + 1, calls, false)
@@ -36558,7 +36734,21 @@ fn index_one_fn(src: String, pos: i64, ann: String) -> i64
 
             let params_text = unpack_ast(params);
 
-            let rtype = index_read_ret_type(src, unpack_pos(params));
+            let after_params = unpack_pos(params);
+
+            let t_colon = next_token_raw(src, after_params);
+
+            let pos_for_ret = if tok_kind(t_colon) == TK_COLON() {
+
+                let t_lt = next_token_raw(src, tok_end(t_colon));
+
+                if tok_kind(t_lt) == TK_LT() { unpack_pos(parse_effect_row(src, tok_end(t_lt))) }
+
+                else { after_params }
+
+            } else { after_params };
+
+            let rtype = index_read_ret_type(src, pos_for_ret);
 
             let ret_text = unpack_ast(rtype);
 
@@ -36803,7 +36993,7 @@ fn query_one_fn(src: String, pos: i64, ann: String, pattern: String) -> String
 
             let params_text = unpack_ast(params);
 
-            let rtype = index_read_ret_type(src, unpack_pos(params));
+            let rtype = index_read_ret_type(src, skip_eff_row_opt(src, unpack_pos(params)));
 
             let ret_text = unpack_ast(rtype);
 
@@ -36985,7 +37175,21 @@ fn callers_collect_fn(src: String, pos: i64, ann: String) -> String
 
             let params = index_collect_params(src, tok_end(t2), "");
 
-            let rtype = index_read_ret_type(src, unpack_pos(params));
+            let after_params = unpack_pos(params);
+
+            let t_colon = next_token_raw(src, after_params);
+
+            let pos_for_ret = if tok_kind(t_colon) == TK_COLON() {
+
+                let t_lt = next_token_raw(src, tok_end(t_colon));
+
+                if tok_kind(t_lt) == TK_LT() { unpack_pos(parse_effect_row(src, tok_end(t_lt))) }
+
+                else { after_params }
+
+            } else { after_params };
+
+            let rtype = index_read_ret_type(src, pos_for_ret);
 
             let ret_pos = unpack_pos(rtype);
 
@@ -37410,6 +37614,25 @@ fn deps_count_names(s: String, pos: i64, count: i64) -> i64
 
     else { deps_count_names(s, pos + 1, count) };
 
+// Helper: skip optional ": <effects>" after params, return pos for index_read_ret_type.
+fn skip_eff_row_opt(src: String, pos: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= let tc = next_token_raw(src, pos);
+
+    if tok_kind(tc) == TK_COLON() {
+
+        let tl = next_token_raw(src, tok_end(tc));
+
+        if tok_kind(tl) == TK_LT() { unpack_pos(parse_effect_row(src, tok_end(tl))) }
+
+        else { pos }
+
+    } else { pos };
+
 // v0.95: Context command - gather full AI context for a function
 
 // Find a function in source by name, return packed "start_pos:end_pos" or ""
@@ -37434,7 +37657,7 @@ fn ctx_find_fn(src: String, pos: i64, target: String) -> String
                     let t2 = next_token_raw(src, tok_end(t1));
                     if tok_kind(t2) == TK_LPAREN() {
                         let params = index_collect_params(src, tok_end(t2), "");
-                        let rtype = index_read_ret_type(src, unpack_pos(params));
+                        let rtype = index_read_ret_type(src, skip_eff_row_opt(src, unpack_pos(params)));
                         let eq_pos = skip_contracts(src, unpack_pos(rtype));
                         let body_result = index_scan_body(src, eq_pos, 0, "", false);
                         pack_result(fn_start, int_to_string(unpack_pos(body_result)))
@@ -37444,7 +37667,7 @@ fn ctx_find_fn(src: String, pos: i64, target: String) -> String
                     let t2 = next_token_raw(src, tok_end(t1));
                     if tok_kind(t2) == TK_LPAREN() {
                         let params = index_collect_params(src, tok_end(t2), "");
-                        let rtype = index_read_ret_type(src, unpack_pos(params));
+                        let rtype = index_read_ret_type(src, skip_eff_row_opt(src, unpack_pos(params)));
                         let eq_pos = skip_contracts(src, unpack_pos(rtype));
                         let body_result = index_scan_body(src, eq_pos, 0, "", false);
                         ctx_find_fn(src, unpack_pos(body_result), target)
@@ -37465,7 +37688,7 @@ fn ctx_find_fn(src: String, pos: i64, target: String) -> String
                     let t2 = next_token_raw(src, tok_end(t1));
                     if tok_kind(t2) == TK_LPAREN() {
                         let params = index_collect_params(src, tok_end(t2), "");
-                        let rtype = index_read_ret_type(src, unpack_pos(params));
+                        let rtype = index_read_ret_type(src, skip_eff_row_opt(src, unpack_pos(params)));
                         let eq_pos = skip_contracts(src, unpack_pos(rtype));
                         let body_result = index_scan_body(src, eq_pos, 0, "", false);
                         pack_result(fn_start, int_to_string(unpack_pos(body_result)))
@@ -37474,7 +37697,7 @@ fn ctx_find_fn(src: String, pos: i64, target: String) -> String
                     let t2 = next_token_raw(src, tok_end(t1));
                     if tok_kind(t2) == TK_LPAREN() {
                         let params = index_collect_params(src, tok_end(t2), "");
-                        let rtype = index_read_ret_type(src, unpack_pos(params));
+                        let rtype = index_read_ret_type(src, skip_eff_row_opt(src, unpack_pos(params)));
                         let eq_pos = skip_contracts(src, unpack_pos(rtype));
                         let body_result = index_scan_body(src, eq_pos, 0, "", false);
                         ctx_find_fn(src, unpack_pos(body_result), target)
