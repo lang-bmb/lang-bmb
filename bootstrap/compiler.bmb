@@ -42809,40 +42809,40 @@ fn lint_check_missing_effect_annotations(entries: String, direct_map: String, tr
 
 // ─── diagnose: lint_effects JSON builders ──────────────────────────────────
 
-// Count {"rule": occurrences in a warnings JSON array string.
+// Count {"type": occurrences in a violations/warnings JSON array string (unified format).
 fn count_rule_entries(s: String, pos: i64) -> i64
 
   pre pos >= 0
 
   post it >= 0
 
-= let found = find_pattern_noa(s, "{\"rule\":", pos);
+= let found = find_pattern_noa(s, "{\"type\":", pos);
 
   if found < 0 { 0 }
 
   else { 1 + count_rule_entries(s, found + 8) };
 
-// Count {"caller": occurrences in a violations JSON array string (effect_verify format).
+// Count {"type": occurrences in a violations JSON array string (unified effect_verify format).
 fn count_caller_entries(s: String, pos: i64) -> i64
 
   pre pos >= 0
 
   post it >= 0
 
-= let found = find_pattern_noa(s, "{\"caller\":", pos);
+= let found = find_pattern_noa(s, "{\"type\":", pos);
 
   if found < 0 { 0 }
 
-  else { 1 + count_caller_entries(s, found + 10) };
+  else { 1 + count_caller_entries(s, found + 8) };
 
-// Count {"fn_a": occurrences in a pairs JSON array string (semantic_duplicate format).
+// Count {"type": occurrences in a pairs JSON array string (unified semantic_duplicate format).
 fn count_fn_a_entries(s: String, pos: i64) -> i64
 
   pre pos >= 0
 
   post it >= 0
 
-= let found = find_pattern_noa(s, "{\"fn_a\":", pos);
+= let found = find_pattern_noa(s, "{\"type\":", pos);
 
   if found < 0 { 0 }
 
@@ -42881,7 +42881,7 @@ fn lint_eff_pure_viol_sb(entries: String, pos: i64, sb: i64, isfirst: i64) -> i6
 
                 let _comma = if isfirst == 0 { sb_push(sb, ",") } else { 0 };
 
-                let _j = sb_push(sb, "{\"rule\":\"effect_pure_violation\",\"function\":\"" + json_esc(fn_name) + "\",\"message\":\"pure function calls IO function\"}");
+                let _j = sb_push(sb, "{\"type\":\"effect_pure_violation\",\"function\":\"" + json_esc(fn_name) + "\",\"message\":\"pure function calls IO function\"}");
 
                 0
 
@@ -42913,7 +42913,7 @@ fn check_callee_missing_effects_sb(callee_eff: String, caller_eff: String,
 
             let _comma = if isfirst == 0 { sb_push(sb, ",") } else { 0 };
 
-            let _j = sb_push(sb, "{\"rule\":\"effect_propagation\",\"function\":\"" + json_esc(fn_name) + "\",\"callee\":\"" + json_esc(callee_name) + "\",\"caller_effect\":\"" + caller_eff + "\",\"missing_cap\":\"" + cap + "\"}");
+            let _j = sb_push(sb, "{\"type\":\"effect_propagation\",\"function\":\"" + json_esc(fn_name) + "\",\"callee\":\"" + json_esc(callee_name) + "\",\"caller_effect\":\"" + caller_eff + "\",\"missing_cap\":\"" + cap + "\"}");
 
             0
 
@@ -43046,7 +43046,7 @@ fn lint_missing_eff_sb(entries: String, direct_map: String, transitive_map: Stri
 
                     let _comma = if isfirst == 0 { sb_push(sb, ",") } else { 0 };
 
-                    let _j = sb_push(sb, "{\"rule\":\"missing_effect_annotation\",\"function\":\"" + json_esc(fn_name) + "\",\"inferred_effect\":\"" + trans_eff + "\"}");
+                    let _j = sb_push(sb, "{\"type\":\"missing_effect_annotation\",\"function\":\"" + json_esc(fn_name) + "\",\"inferred_effect\":\"" + trans_eff + "\"}");
 
                     0
 
@@ -45816,7 +45816,7 @@ fn eff_emit_viol_pair(caller_name: String, caller_eff: String, callee_name: Stri
 
         let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
 
-        let _j = sb_push(sb, "{\"caller\":\"" + json_esc(caller_name) + "\",\"callee\":\"" + json_esc(callee_name) + "\",\"caller_effect\":\"" + json_esc(caller_eff) + "\",\"callee_effect\":\"" + json_esc(callee_eff) + "\"}");
+        let _j = sb_push(sb, "{\"type\":\"effect_mismatch\",\"function\":\"" + json_esc(caller_name) + "\",\"callee\":\"" + json_esc(callee_name) + "\",\"caller_effect\":\"" + json_esc(caller_eff) + "\",\"callee_effect\":\"" + json_esc(callee_eff) + "\",\"message\":\"function " + json_esc(caller_name) + " declares <" + json_esc(caller_eff) + "> but calls " + json_esc(callee_name) + " which uses <" + json_esc(callee_eff) + ">\"}");
 
         0
 
@@ -45916,7 +45916,8 @@ fn eff_collect_pure_calls(fn_name: String, calls: String, eff_map: String, pos: 
 
             let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
 
-            let _j = sb_push(sb, "{\"caller\":\"" + json_esc(fn_name) + "\",\"callee\":\"" + json_esc(callee) + "\",\"caller_effect\":\"pure\",\"callee_effect\":\"" + json_esc(callee_eff) + "\"}");
+            let _j = sb_push(sb, "{\"type\":\"pure_violation\",\"function\":\"" + json_esc(fn_name) + "\",\"callee\":\"" + json_esc(callee) + "\",\"callee_effect\":\"" + json_esc(callee_eff) + "\",\"message\":\"@pure function " + json_esc(fn_name) + " calls " + json_esc(callee) + " which uses <" + json_esc(callee_eff) + ">\"}");
+
 
             0
 
@@ -46012,7 +46013,8 @@ fn eff_collect_missing_annot(entries: String, direct_map: String, transitive_map
 
                     let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
 
-                    let _j = sb_push(sb, "{\"caller\":\"" + json_esc(fn_name) + "\",\"callee\":\"\",\"caller_effect\":\"missing\",\"callee_effect\":\"" + json_esc(trans_eff) + "\"}");
+                    let _j = sb_push(sb, "{\"type\":\"missing_annotation\",\"function\":\"" + json_esc(fn_name) + "\",\"missing_effect\":\"" + json_esc(trans_eff) + "\",\"message\":\"function " + json_esc(fn_name) + " uses <" + json_esc(trans_eff) + "> transitively but has no effect annotation\"}");
+
 
                     0
 
@@ -46274,7 +46276,7 @@ fn bc_check_max_params_scan(entries: String, max_n: i64, sb: i64, isfirst: i64, 
 
         let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
 
-        let _j = sb_push(sb, "{\"rule\":\"max_params\",\"function\":\"" + json_esc(fn_name) + "\",\"params\":" + int_to_string(param_count) + ",\"max\":" + int_to_string(max_n) + ",\"message\":\"function " + json_esc(fn_name) + " has " + int_to_string(param_count) + " params (max=" + int_to_string(max_n) + ")\"}");
+        let _j = sb_push(sb, "{\"type\":\"max_params\",\"function\":\"" + json_esc(fn_name) + "\",\"params\":" + int_to_string(param_count) + ",\"max\":" + int_to_string(max_n) + ",\"message\":\"function " + json_esc(fn_name) + " has " + int_to_string(param_count) + " params (max=" + int_to_string(max_n) + ")\"}");
 
         0
 
@@ -46343,7 +46345,7 @@ fn bc_check_post_scan(entries: String, src: String, eff_map: String, pos: i64, s
 
                 let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
 
-                let _j = sb_push(sb, "{\"rule\":\"require_postcondition\",\"function\":\"" + json_esc(fn_name) + "\",\"message\":\"function " + json_esc(fn_name) + " has no postcondition\"}");
+                let _j = sb_push(sb, "{\"type\":\"require_postcondition\",\"function\":\"" + json_esc(fn_name) + "\",\"message\":\"function " + json_esc(fn_name) + " has no postcondition\"}");
 
                 0
 
@@ -46382,13 +46384,52 @@ fn bc_check_forbid_eff(entries: String, transitive_map: String, forbidden: Strin
 
                 let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
 
-                let _j = sb_push(sb, "{\"rule\":\"forbid_effect\",\"function\":\"" + json_esc(fn_name) + "\",\"message\":\"function " + json_esc(fn_name) + " uses <" + json_esc(forbidden) + "> (forbidden by project contracts)\"}");
+                let _j = sb_push(sb, "{\"type\":\"forbid_effect\",\"function\":\"" + json_esc(fn_name) + "\",\"message\":\"function " + json_esc(fn_name) + " uses <" + json_esc(forbidden) + "> (forbidden by project contracts)\"}");
 
                 0
 
             } else { isfirst };
 
             bc_check_forbid_eff(entries, transitive_map, forbidden, sb, new_isfirst, eol + 1)
+
+        }
+
+    };
+
+// Check forbid_function: find functions that directly call a forbidden function.
+fn bc_check_forbid_fn(entries: String, forbidden_fn: String, sb: i64, isfirst: i64, pos: i64) -> i64
+
+  pre pos >= 0 and forbidden_fn.len() >= 1
+
+  post it >= 0
+
+= if pos >= entries.len() { isfirst }
+
+    else {
+
+        let eol = callers_find_eol(entries, pos);
+
+        let line = entries.slice(pos, eol);
+
+        if line.len() == 0 { bc_check_forbid_fn(entries, forbidden_fn, sb, isfirst, eol + 1) }
+
+        else {
+
+            let fn_name = callers_get_field(line, 0, 0, 0);
+
+            let calls = callers_get_field(line, 1, 0, 0);
+
+            let new_isfirst = if fn_name != forbidden_fn and callers_calls_contain(calls, forbidden_fn, 0) {
+
+                let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
+
+                let _j = sb_push(sb, "{\"type\":\"forbid_function\",\"function\":\"" + json_esc(fn_name) + "\",\"forbidden\":\"" + json_esc(forbidden_fn) + "\",\"message\":\"function " + json_esc(fn_name) + " calls forbidden function " + json_esc(forbidden_fn) + "\"}");
+
+                0
+
+            } else { isfirst };
+
+            bc_check_forbid_fn(entries, forbidden_fn, sb, new_isfirst, eol + 1)
 
         }
 
@@ -46438,7 +46479,7 @@ fn bc_check_missing_eff_anno(entries: String, direct_map: String, transitive_map
 
                     let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
 
-                    let _j = sb_push(sb, "{\"rule\":\"require_effect_annotation\",\"function\":\"" + json_esc(fn_name) + "\",\"message\":\"function " + json_esc(fn_name) + " has inferred effects <" + json_esc(trans_eff) + "> but no explicit annotation\"}");
+                    let _j = sb_push(sb, "{\"type\":\"require_effect_annotation\",\"function\":\"" + json_esc(fn_name) + "\",\"message\":\"function " + json_esc(fn_name) + " has inferred effects <" + json_esc(trans_eff) + "> but no explicit annotation\"}");
 
                     0
 
@@ -46465,6 +46506,8 @@ fn cc_build_json(input: String, src: String, entries: String, eff_map: String, t
 
     let forbid_eff = bc_get(contracts, "forbid_effect", 0);
 
+    let forbid_fn = bc_get(contracts, "forbid_function", 0);
+
     let max_params_str = bc_get(contracts, "max_params", 0);
 
     let viol_sb = sb_new();
@@ -46481,12 +46524,19 @@ fn cc_build_json(input: String, src: String, entries: String, eff_map: String, t
 
     } else { f2 };
 
+    // forbid_function check
+    let f3b = if forbid_fn != "" {
+
+        bc_check_forbid_fn(entries, forbid_fn, viol_sb, f3, 0)
+
+    } else { f3 };
+
     // require_effect_annotation: report missing annotations as JSON violations
     let f4 = if req_eff_anno == "true" {
 
-        bc_check_missing_eff_anno(entries, eff_map, transitive_map, 0, viol_sb, f3)
+        bc_check_missing_eff_anno(entries, eff_map, transitive_map, 0, viol_sb, f3b)
 
-    } else { f3 };
+    } else { f3b };
 
     // max_params check
     let f5 = if max_params_str != "" {
@@ -46668,7 +46718,7 @@ fn semdp_inner(name_a: String, calls_a: String, entries: String, pos: i64, sb: i
 
                 let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
 
-                let _j = sb_push(sb, "{\"fn_a\":\"" + json_esc(name_a) + "\",\"fn_b\":\"" + json_esc(name_b_from) + "\",\"shared_calls\":" + shared_s + ",\"total_a\":" + cnt_a_s + ",\"total_b\":" + cnt_b_s + "}");
+                let _j = sb_push(sb, "{\"type\":\"semantic_duplicate\",\"function\":\"" + json_esc(name_a) + "\",\"similar_to\":\"" + json_esc(name_b_from) + "\",\"shared_calls\":" + shared_s + ",\"total_a\":" + cnt_a_s + ",\"total_b\":" + cnt_b_s + "}");
 
                 0
 
@@ -46769,6 +46819,23 @@ fn semantic_duplicate_file(input: String) -> i64
 
     else { semantic_duplicate_run(input, src) };
 
+// Extract an integer field from a JSON string: "field":N  (returns 0 if not found).
+fn json_extract_int_field(json: String, field: String) -> i64
+
+  pre field.len() >= 1
+
+  post it >= 0
+
+= {
+
+    let needle = "\"" + field + "\":";
+
+    let p = find_substr_pos(json, needle, 0);
+
+    if p < 0 { 0 } else { parse_int_from(json, p + needle.len(), 0) }
+
+};
+
 // M12/M13 diagnose: unified effect-verify + contracts-check in one JSON.
 // Computes entries/eff_map/transitive_map once, reuses for both checks.
 fn diagnose_file(input: String) -> i64
@@ -46803,6 +46870,18 @@ fn diagnose_file(input: String) -> i64
 
         let sd_json = semdp_build_json(input, entries);
 
+        let ev_count = json_extract_int_field(ev_json, "violations_count");
+
+        let cc_count = json_extract_int_field(cc_json, "violations_count");
+
+        let le_count = json_extract_int_field(le_json, "count");
+
+        let sd_count = json_extract_int_field(sd_json, "pairs_count");
+
+        let total_issues = ev_count + cc_count + le_count + sd_count;
+
+        let summary_json = "{\"total_issues\":" + int_to_string(total_issues) + ",\"effect_issues\":" + int_to_string(ev_count) + ",\"contract_issues\":" + int_to_string(cc_count) + ",\"lint_issues\":" + int_to_string(le_count) + ",\"duplicate_pairs\":" + int_to_string(sd_count) + "}";
+
         let out_sb = sb_new();
 
         let _h1 = sb_push(out_sb, "{\"type\":\"diagnose\",\"file\":\"");
@@ -46815,7 +46894,9 @@ fn diagnose_file(input: String) -> i64
 
         let _h5 = sb_push(out_sb, ",\"lint_effects\":" + le_json);
 
-        let _h6 = sb_push(out_sb, ",\"semantic_duplicate\":" + sd_json + "}");
+        let _h6 = sb_push(out_sb, ",\"semantic_duplicate\":" + sd_json);
+
+        let _h7 = sb_push(out_sb, ",\"summary\":" + summary_json + "}");
 
         let _p = println_str(sb_build(out_sb));
 

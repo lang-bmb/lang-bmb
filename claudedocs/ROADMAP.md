@@ -1,5 +1,6 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-29 (**AI-Native Pivot Cycles 3306-3314** — [P1] count 필드 + [P4] max_params + [P2] Z3 formal missing_annotation + [P3] cross-gen FP S2==S3 ✅ + violations_count (effect_verify/contracts_check) + semantic_duplicate diagnose 4섹션 통합. HEAD `04520838`.)
+> 최종 업데이트: 2026-05-30 (**AI-Native Pivot Cycles 3315-3319** — diagnose summary 섹션 + forbid_function 규칙 + P1 violations 형식 통일 (effect_verify/contracts_check/lint_effects/semantic_duplicate → `{"type":"...","function":"..."}`) + within-gen FP ✅. HEAD 갱신 예정.)
+> 이전 갱신: 2026-05-29 (**AI-Native Pivot Cycles 3306-3314** — [P1] count 필드 + [P4] max_params + [P2] Z3 formal missing_annotation + [P3] cross-gen FP S2==S3 ✅ + violations_count (effect_verify/contracts_check) + semantic_duplicate diagnose 4섹션 통합. HEAD `04520838`.)
 > 이전 갱신: 2026-05-29 (**AI-Native Pivot Cycles 3306-3311** — [P1] lint_effects count 필드 + [P4] max_params 구현 + [P2] Z3 formal missing_annotation (eff_z3_gen_missing_anno_sb) + [P3] cross-gen Fixed Point S2==S3 ✅. HEAD `2c4e35e7`.)
 > 이전 갱신: 2026-05-29 (**AI-Native Pivot Cycles 3296-3305** — [P2] index/query platform 스킵 + [P3] eff_set_equals + [P1] diagnose CLI(effect_verify+contracts_check+lint_effects 3섹션) + lint_effects_build_json + bmb-mcp bmb_diagnose 도구 + 세션 종료 정리. Within-gen Fixed Point ✅. HEAD `a6543120`.)
 > 이전 갱신: 2026-05-29 (**AI-Native Pivot Cycles 3296-3299** — [P2] index/query platform 블록 스킵 버그 수정 + [P3] module-suggest eff_set_equals 순서-무관 비교 + [P1] diagnose CLI(effect-verify+contracts-check 통합 JSON) + eff_verify_build_json/cc_build_json 빌더 분리. Within-gen Fixed Point ✅. HEAD `78ed63b7`.)
@@ -1600,6 +1601,10 @@ Phase 2 (3-4 cycles): 모듈 capability 선언
 | contracts-check | max_params 규칙 구현 (P4) | ✅ COMPLETE | 3307 |
 | M12 Graded Effect | Phase 6e: Z3 formal missing_annotation via contradiction pairs | ✅ COMPLETE | 3309 |
 | Bootstrap | Cross-gen Fixed Point S2==S3 (P3) | ✅ COMPLETE | 3310 |
+| diagnose | violations_count (effect_verify/contracts_check) + semantic_duplicate 4섹션 통합 | ✅ COMPLETE | 3311-3313 |
+| diagnose | summary 섹션 (total_issues+4축 카운트) | ✅ COMPLETE | 3315 |
+| contracts-check | forbid_function 규칙 구현 | ✅ COMPLETE | 3316 |
+| P1 violations 형식 통일 | effect_verify/contracts_check/lint_effects/semantic_duplicate → `{"type":"...","function":"..."}` | ✅ COMPLETE | 3317-3319 |
 
 ### 실행 타임라인
 
@@ -1611,7 +1616,7 @@ Phase 2 (3-4 cycles): 모듈 capability 선언
 | ~~Cycle 3286-3295~~ | ~~M12 Phase 6b/6c/6d + M15 Phase 5 + sim_count_shared + contracts-check~~ ✅ 완료 |
 | ~~다음 세션 (P1-P3)~~ | ~~diagnose CLI 통합 + index platform 버그 수정 + module-suggest set-equality~~ ✅ 완료 (Cycles 3296-3299, HEAD `78ed63b7`) |
 | ~~다음 세션 (P1-P4)~~ | ~~lint_effects count + max_params + Z3 missing_annotation + cross-gen FP~~ ✅ 완료 (Cycles 3306-3310, HEAD `2c4e35e7`) |
-| 다음 세션 | diagnose violations_count 추가 + semantic_duplicate 통합 + 새 contracts 규칙 |
+| ~~다음 세션~~ | ~~violations_count + semantic_duplicate + summary + forbid_function + violations 형식 통일~~ ✅ 완료 (Cycles 3311-3319, HEAD 갱신 예정) |
 | 장기 (~3개월) | M15 Phase 6 (capability enforcement) + M13 Phase 6 (workflow telemetry) |
 
 ### 리팩토링 원칙
