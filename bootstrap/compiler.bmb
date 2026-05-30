@@ -11573,13 +11573,22 @@ fn lower_array_literal_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loo
 
 // Store each element of array/tuple literal
 
+// arr_ctx = arr_tmp + "|" + int_to_string(base_offset) for lower_elements_with_offset_sb
+
+fn lower_arr_ctx_pack(arr_tmp: String, base_offset: i64) -> String = arr_tmp + "|" + int_to_string(base_offset);
+
+fn lower_arr_ctx_tmp(ctx: String) -> String = ctx.slice(0, find_char(ctx, 0, 124));
+
+fn lower_arr_ctx_offset(ctx: String) -> i64 = parse_int_from(ctx, find_char(ctx, 0, 124) + 1, 0);
+
 fn lower_array_elements_sb(ast: String, idx: i64, count: i64, arr_tmp: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
 
   pre temp_id >= 0 and block_id >= 0 and idx >= 0 and count >= 0
 
   post it >= 0
 
-= lower_elements_with_offset_sb(ast, idx, count, arr_tmp, temp_id, block_id, sb, loop_exit, 2);
+= let arr_ctx = lower_arr_ctx_pack(arr_tmp, 2);
+    lower_elements_with_offset_sb(ast, idx, count, arr_ctx, temp_id, block_id, sb, loop_exit);
 
 fn lower_tuple_elements_sb(ast: String, idx: i64, count: i64, arr_tmp: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
 
@@ -11587,15 +11596,18 @@ fn lower_tuple_elements_sb(ast: String, idx: i64, count: i64, arr_tmp: String, t
 
   post it >= 0
 
-= lower_elements_with_offset_sb(ast, idx, count, arr_tmp, temp_id, block_id, sb, loop_exit, 0);
+= let arr_ctx = lower_arr_ctx_pack(arr_tmp, 0);
+    lower_elements_with_offset_sb(ast, idx, count, arr_ctx, temp_id, block_id, sb, loop_exit);
 
-fn lower_elements_with_offset_sb(ast: String, idx: i64, count: i64, arr_tmp: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String, base_offset: i64) -> i64
+fn lower_elements_with_offset_sb(ast: String, idx: i64, count: i64, arr_ctx: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
 
   pre temp_id >= 0 and block_id >= 0 and idx >= 0 and count >= 0
 
   post it >= 0
 
-= if idx >= count { pack_ids(temp_id, block_id) }
+= let arr_tmp = lower_arr_ctx_tmp(arr_ctx);
+    let base_offset = lower_arr_ctx_offset(arr_ctx);
+    if idx >= count { pack_ids(temp_id, block_id) }
 
     else {
 
@@ -11621,7 +11633,7 @@ fn lower_elements_with_offset_sb(ast: String, idx: i64, count: i64, arr_tmp: Str
 
         let _w3 = sb_push_mir(sb, "  store_ptr " + gep_tmp + ", " + elem_tmp);
 
-        lower_elements_with_offset_sb(ast, idx + 1, count, arr_tmp, new_temp + 2, new_block, sb, loop_exit, base_offset)
+        lower_elements_with_offset_sb(ast, idx + 1, count, arr_ctx, new_temp + 2, new_block, sb, loop_exit)
 
     };
 
@@ -24078,17 +24090,24 @@ fn mlcse_is_read_call(fn_name: String) -> bool
 
     fn_name == "load_u8" or fn_name == "load_i32";
 
+// mlcse_ctx packs pure_set~safe_set (immutable context for mlcse_fn_lines)
+
+fn mlcse_ctx_pack(pure_set: String, safe_set: String) -> String = pure_set + "~" + safe_set;
+
 // Process one function's MIR for memory load + GEP CSE.
 
 // load_cache, gep_cache, and vtable are reset at each label (block boundary).
 
-fn mlcse_fn_lines(fn_mir: String, pos: i64, sb: i64, pure_set: String, safe_set: String, load_cache: String, gep_cache: String, vtable: String, count: i64) -> i64
+fn mlcse_fn_lines(fn_mir: String, pos: i64, sb: i64, mlcse_ctx: String, load_cache: String, gep_cache: String, vtable: String, count: i64) -> i64
 
   pre pos >= 0
 
   post it >= 0
 
-= if pos >= fn_mir.len() { count } else {
+= let pure_set = mlcse_ctx.slice(0, find_char(mlcse_ctx, 0, 126));
+    let mlcse_safe_pos = find_char(mlcse_ctx, 0, 126);
+    let safe_set = mlcse_ctx.slice(mlcse_safe_pos + 1, mlcse_ctx.len());
+    if pos >= fn_mir.len() { count } else {
 
         let pipe = find_pipe_skip_quotes(fn_mir, pos);
 
@@ -24106,7 +24125,7 @@ fn mlcse_fn_lines(fn_mir: String, pos: i64, sb: i64, pure_set: String, safe_set:
 
             if pipe >= fn_mir.len() { count }
 
-            else { mlcse_fn_lines(fn_mir, pipe + 1, sb, pure_set, safe_set, "", "", "", count) }
+            else { mlcse_fn_lines(fn_mir, pipe + 1, sb, mlcse_ctx, "", "", "", count) }
 
         } else {
 
@@ -24154,7 +24173,7 @@ fn mlcse_fn_lines(fn_mir: String, pos: i64, sb: i64, pure_set: String, safe_set:
 
                     if pipe >= fn_mir.len() { count + 1 }
 
-                    else { mlcse_fn_lines(fn_mir, pipe + 1, sb, pure_set, safe_set, load_cache, gep_cache, vt2, count + 1) }
+                    else { mlcse_fn_lines(fn_mir, pipe + 1, sb, mlcse_ctx, load_cache, gep_cache, vt2, count + 1) }
 
                 } else {
 
@@ -24168,7 +24187,7 @@ fn mlcse_fn_lines(fn_mir: String, pos: i64, sb: i64, pure_set: String, safe_set:
 
                     if pipe >= fn_mir.len() { count }
 
-                    else { mlcse_fn_lines(fn_mir, pipe + 1, sb, pure_set, safe_set, load_cache, new_gc, new_vt, count) }
+                    else { mlcse_fn_lines(fn_mir, pipe + 1, sb, mlcse_ctx, load_cache, new_gc, new_vt, count) }
 
                 }
 
@@ -24200,7 +24219,7 @@ fn mlcse_fn_lines(fn_mir: String, pos: i64, sb: i64, pure_set: String, safe_set:
 
                     if pipe >= fn_mir.len() { count + 1 }
 
-                    else { mlcse_fn_lines(fn_mir, pipe + 1, sb, pure_set, safe_set, load_cache, gep_cache, vt2, count + 1) }
+                    else { mlcse_fn_lines(fn_mir, pipe + 1, sb, mlcse_ctx, load_cache, gep_cache, vt2, count + 1) }
 
                 } else {
 
@@ -24216,7 +24235,7 @@ fn mlcse_fn_lines(fn_mir: String, pos: i64, sb: i64, pure_set: String, safe_set:
 
                     if pipe >= fn_mir.len() { count }
 
-                    else { mlcse_fn_lines(fn_mir, pipe + 1, sb, pure_set, safe_set, new_lc, gep_cache, new_vt, count) }
+                    else { mlcse_fn_lines(fn_mir, pipe + 1, sb, mlcse_ctx, new_lc, gep_cache, new_vt, count) }
 
                 }
 
@@ -24230,7 +24249,7 @@ fn mlcse_fn_lines(fn_mir: String, pos: i64, sb: i64, pure_set: String, safe_set:
 
                 if pipe >= fn_mir.len() { count }
 
-                else { mlcse_fn_lines(fn_mir, pipe + 1, sb, pure_set, safe_set, "", gep_cache, new_vt, count) }
+                else { mlcse_fn_lines(fn_mir, pipe + 1, sb, mlcse_ctx, "", gep_cache, new_vt, count) }
 
             } else if is_call {
 
@@ -24264,7 +24283,7 @@ fn mlcse_fn_lines(fn_mir: String, pos: i64, sb: i64, pure_set: String, safe_set:
 
                         if pipe >= fn_mir.len() { count + 1 }
 
-                        else { mlcse_fn_lines(fn_mir, pipe + 1, sb, pure_set, safe_set, load_cache, gep_cache, vt2, count + 1) }
+                        else { mlcse_fn_lines(fn_mir, pipe + 1, sb, mlcse_ctx, load_cache, gep_cache, vt2, count + 1) }
 
                     } else {
 
@@ -24280,7 +24299,7 @@ fn mlcse_fn_lines(fn_mir: String, pos: i64, sb: i64, pure_set: String, safe_set:
 
                         if pipe >= fn_mir.len() { count }
 
-                        else { mlcse_fn_lines(fn_mir, pipe + 1, sb, pure_set, safe_set, new_lc, gep_cache, new_vt, count) }
+                        else { mlcse_fn_lines(fn_mir, pipe + 1, sb, mlcse_ctx, new_lc, gep_cache, new_vt, count) }
 
                     }
 
@@ -24298,7 +24317,7 @@ fn mlcse_fn_lines(fn_mir: String, pos: i64, sb: i64, pure_set: String, safe_set:
 
                     if pipe >= fn_mir.len() { count }
 
-                    else { mlcse_fn_lines(fn_mir, pipe + 1, sb, pure_set, safe_set, new_lc, gep_cache, new_vt, count) }
+                    else { mlcse_fn_lines(fn_mir, pipe + 1, sb, mlcse_ctx, new_lc, gep_cache, new_vt, count) }
 
                 }
 
@@ -24312,7 +24331,7 @@ fn mlcse_fn_lines(fn_mir: String, pos: i64, sb: i64, pure_set: String, safe_set:
 
                 if pipe >= fn_mir.len() { count }
 
-                else { mlcse_fn_lines(fn_mir, pipe + 1, sb, pure_set, safe_set, load_cache, gep_cache, new_vt, count) }
+                else { mlcse_fn_lines(fn_mir, pipe + 1, sb, mlcse_ctx, load_cache, gep_cache, new_vt, count) }
 
             }
 
@@ -24324,9 +24343,10 @@ fn mlcse_function(fn_mir: String, pure_set: String, safe_set: String) -> String
 
   post it.len() <= fn_mir.len()
 
-= let sb = sb_new();
+= let mlcse_ctx = mlcse_ctx_pack(pure_set, safe_set);
+    let sb = sb_new();
 
-    let _count = mlcse_fn_lines(fn_mir, 0, sb, pure_set, safe_set, "", "", "", 0);
+    let _count = mlcse_fn_lines(fn_mir, 0, sb, mlcse_ctx, "", "", "", 0);
 
     let result = sb_build(sb);
 
@@ -25300,7 +25320,7 @@ fn trl_transform_fn(fn_mir: String) -> String
 
                         // Build the transformed function
 
-                        trl_build_transformed(fn_mir, header, body, params, subst_to, phis, tail_call_line, tail_block, fn_name)
+                        trl_build_transformed(header, body, params, subst_to, phis, tail_call_line, fn_name)
 
                     }
 
@@ -25378,7 +25398,7 @@ fn trl_simplify_phi(line: String, call_dest: String, params: String, subst_to: S
 
 // Build the transformed function MIR
 
-fn trl_build_transformed(_fn_mir: String, header: String, body: String, params: String, subst_to: String, phis: String, tail_call_line: String, _tail_block: String, fn_name: String) -> String
+fn trl_build_transformed(header: String, body: String, params: String, subst_to: String, phis: String, tail_call_line: String, fn_name: String) -> String
 
   post it.len() >= 0
 
@@ -25412,7 +25432,7 @@ fn trl_build_transformed(_fn_mir: String, header: String, body: String, params: 
 
     // Emit body lines with substitutions, skipping entry: label and tail call+goto
 
-    let _w10 = trl_emit_body(body, 0, sb, params, subst_to, tail_call_line, fn_name, false, call_dest);
+    let _w10 = trl_emit_body(body, 0, sb, params, subst_to, tail_call_line, false, call_dest);
 
     let result = sb_build(sb);
 
@@ -25426,7 +25446,7 @@ fn trl_build_transformed(_fn_mir: String, header: String, body: String, params: 
 
 // Also simplify phis that reference the removed tail call result
 
-fn trl_emit_body(body: String, pos: i64, sb: i64, params: String, subst_to: String, tail_call_line: String, fn_name: String, skip_next_goto: bool, call_dest: String) -> i64
+fn trl_emit_body(body: String, pos: i64, sb: i64, params: String, subst_to: String, tail_call_line: String, skip_next_goto: bool, call_dest: String) -> i64
 
   pre pos >= 0
 
@@ -25510,7 +25530,7 @@ fn trl_emit_body(body: String, pos: i64, sb: i64, params: String, subst_to: Stri
 
         if pipe >= body.len() { 0 }
 
-        else { trl_emit_body(body, pipe + 1, sb, params, subst_to, tail_call_line, fn_name, new_skip, call_dest) }
+        else { trl_emit_body(body, pipe + 1, sb, params, subst_to, tail_call_line, new_skip, call_dest) }
 
     };
 
@@ -27424,7 +27444,9 @@ fn ifs_check_flex_both_sides(fn_mir: String, branch_line: String, branch_pos: i6
 
                         if ube_is_phi(phi_line) {
 
-                            ifs_flex_emit_select(phi_line, cond, l_then, l_else, then_sb, else_sb, fn_mir, p_phi, sb, goto_target)
+                            let phi_cond = ifs_ctx_pack(phi_line, cond);
+                            let l_ctx = ifs_ctx_pack(l_then, l_else);
+                            ifs_flex_emit_select(phi_cond, l_ctx, then_sb, else_sb, fn_mir, p_phi, sb, goto_target)
 
                         } else { let _tf = sb_free(then_sb); let _ef = sb_free(else_sb); 0 - 1 }
 
@@ -27438,13 +27460,25 @@ fn ifs_check_flex_both_sides(fn_mir: String, branch_line: String, branch_pos: i6
 
     } else { 0 - 1 };
 
+// ifs_flex context packing: phi_cond = phi_line~cond, l_ctx = l_then~l_else
+
+fn ifs_ctx_pack(a: String, b: String) -> String = a + "~" + b;
+
+fn ifs_ctx_first(s: String) -> String = s.slice(0, find_char(s, 0, 126));
+
+fn ifs_ctx_second(s: String) -> String = let p = find_char(s, 0, 126); s.slice(p + 1, s.len());
+
 // Helper: parse phi and emit select for generalized flex patterns
 
-fn ifs_flex_emit_select(phi_line: String, cond: String, l_then: String, l_else: String, then_sb: i64, else_sb: i64, fn_mir: String, p_phi: i64, sb: i64, merge_name: String) -> i64
+fn ifs_flex_emit_select(phi_cond: String, l_ctx: String, then_sb: i64, else_sb: i64, fn_mir: String, p_phi: i64, sb: i64, merge_name: String) -> i64
 
   post it >= 0
 
-= let dest = cf_extract_dest(phi_line);
+= let phi_line = ifs_ctx_first(phi_cond);
+    let cond = ifs_ctx_second(phi_cond);
+    let l_then = ifs_ctx_first(l_ctx);
+    let l_else = ifs_ctx_second(l_ctx);
+    let dest = cf_extract_dest(phi_line);
 
     let eq_pos = find_pattern_at(phi_line, " = ", 0);
 
@@ -30121,6 +30155,77 @@ fn gen_string_globals_acc(strings: String, pos: i64, idx: i64, sb: i64) -> i64
 
     };
 
+// LlvmSCtx: pack/unpack strings+string_fns+registry+struct_reg into single context string
+
+fn llvm_sctx_pack(strings: String, string_fns: String, registry: String, struct_reg: String) -> String
+
+  post it.len() >= 4
+
+= int_to_string(strings.len()) + ":" + strings + int_to_string(string_fns.len()) + ":" + string_fns + int_to_string(registry.len()) + ":" + registry + int_to_string(struct_reg.len()) + ":" + struct_reg;
+
+fn llvm_sctx_colon_pos(ctx: String, pos: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= pos
+
+= if pos >= ctx.len() { pos } else if ctx.byte_at(pos) == 58 { pos } else { llvm_sctx_colon_pos(ctx, pos + 1) };
+
+fn llvm_sctx_parse_len(ctx: String, pos: i64, acc: i64) -> i64
+
+  pre pos >= 0 and acc >= 0
+
+  post it >= 0
+
+= if pos >= ctx.len() { acc } else {
+        let c = ctx.byte_at(pos);
+        if c == 58 { acc } else { llvm_sctx_parse_len(ctx, pos + 1, acc * 10 + (c - 48)) }
+    };
+
+fn llvm_sctx_skip1(ctx: String, pos: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= pos
+
+= let colon = llvm_sctx_colon_pos(ctx, pos);
+    let len = llvm_sctx_parse_len(ctx, pos, 0);
+    colon + 1 + len;
+
+fn llvm_sctx_extract1(ctx: String, pos: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 0
+
+= let colon = llvm_sctx_colon_pos(ctx, pos);
+    let len = llvm_sctx_parse_len(ctx, pos, 0);
+    ctx.slice(colon + 1, colon + 1 + len);
+
+fn llvm_sctx_strings(ctx: String) -> String
+
+  post it.len() >= 0
+
+= llvm_sctx_extract1(ctx, 0);
+
+fn llvm_sctx_string_fns(ctx: String) -> String
+
+  post it.len() >= 0
+
+= llvm_sctx_extract1(ctx, llvm_sctx_skip1(ctx, 0));
+
+fn llvm_sctx_registry(ctx: String) -> String
+
+  post it.len() >= 0
+
+= llvm_sctx_extract1(ctx, llvm_sctx_skip1(ctx, llvm_sctx_skip1(ctx, 0)));
+
+fn llvm_sctx_struct_reg(ctx: String) -> String
+
+  post it.len() >= 0
+
+= llvm_sctx_extract1(ctx, llvm_sctx_skip1(ctx, llvm_sctx_skip1(ctx, llvm_sctx_skip1(ctx, 0))));
+
 // Generate program with string table
 
 fn gen_program_sb_with_strings_fns_structs(mir: String, strings: String, string_fns: String, struct_reg: String) -> String
@@ -30149,7 +30254,9 @@ fn gen_program_sb_with_strings_fns_structs(mir: String, strings: String, string_
 
     let ptr_sb = sb_new();
 
-    let _w1 = gen_program_acc_sb_structs_reuse(mir, 0, strings, string_fns, sb, registry, struct_reg, ptr_ret_reg, fn_sb, str_sb, ptr_sb);
+    let llvm_sctx = llvm_sctx_pack(strings, string_fns, registry, struct_reg);
+
+    let _w1 = gen_program_acc_sb_structs_reuse(mir, 0, llvm_sctx, sb, ptr_ret_reg, fn_sb, str_sb, ptr_sb);
 
     let _ff1 = sb_free(fn_sb);
 
@@ -30159,7 +30266,7 @@ fn gen_program_sb_with_strings_fns_structs(mir: String, strings: String, string_
 
     sb_build(sb);
 
-fn gen_program_acc_sb_structs_reuse(mir: String, pos: i64, strings: String, string_fns: String, sb: i64, registry: String, struct_reg: String, ptr_ret_reg: String, fn_sb: i64, str_sb: i64, ptr_sb: i64) -> i64
+fn gen_program_acc_sb_structs_reuse(mir: String, pos: i64, llvm_sctx: String, sb: i64, ptr_ret_reg: String, fn_sb: i64, str_sb: i64, ptr_sb: i64) -> i64
 
   pre pos >= 0
 
@@ -30173,7 +30280,7 @@ fn gen_program_acc_sb_structs_reuse(mir: String, pos: i64, strings: String, stri
 
         let fn_mir = mir.slice(pos, fn_end);
 
-        let fn_llvm = gen_function_sb_structs_reuse(fn_mir, strings, string_fns, registry, struct_reg, ptr_ret_reg, fn_sb, str_sb, ptr_sb);
+        let fn_llvm = gen_function_sb_structs_reuse(fn_mir, llvm_sctx, ptr_ret_reg, fn_sb, str_sb, ptr_sb);
 
         let len = sb_len(sb);
 
@@ -30183,7 +30290,7 @@ fn gen_program_acc_sb_structs_reuse(mir: String, pos: i64, strings: String, stri
 
         let _restore = bmb_arena_restore();
 
-        if fn_end + 2 >= mir.len() { 0 } else { gen_program_acc_sb_structs_reuse(mir, fn_end + 2, strings, string_fns, sb, registry, struct_reg, ptr_ret_reg, fn_sb, str_sb, ptr_sb) }
+        if fn_end + 2 >= mir.len() { 0 } else { gen_program_acc_sb_structs_reuse(mir, fn_end + 2, llvm_sctx, sb, ptr_ret_reg, fn_sb, str_sb, ptr_sb) }
 
     };
 
@@ -30381,7 +30488,7 @@ fn run_ir_passes(raw_ir: String, is_recursive: bool, fn_name: String) -> String
 
     fix_typed_ret_placeholders_ir(p10);
 
-fn gen_function_sb_structs_reuse(mir: String, strings: String, string_fns: String, registry: String, struct_reg: String, ptr_ret_reg: String, fn_sb: i64, str_sb: i64, ptr_sb: i64) -> String
+fn gen_function_sb_structs_reuse(mir: String, llvm_sctx: String, ptr_ret_reg: String, fn_sb: i64, str_sb: i64, ptr_sb: i64) -> String
 
   post it.len() >= 0
 
@@ -30409,7 +30516,7 @@ fn gen_function_sb_structs_reuse(mir: String, strings: String, string_fns: Strin
 
     let _w0i = init_i64_params_sb(mir, str_sb);
 
-    let _w1 = gen_fn_lines_structs(mir, 0, fn_sb, ret_type, strings, string_fns, "", str_sb, registry, struct_reg, ptr_sb);
+    let _w1 = gen_fn_lines_structs(mir, 0, fn_sb, ret_type, llvm_sctx, "", str_sb, ptr_sb);
 
     let raw_ir = sb_build(fn_sb);
 
@@ -31029,7 +31136,7 @@ fn find_pattern_at_slow(s: String, pat: String, pos: i64) -> i64
 
     find_pattern_noa(s, pat, pos);
 
-fn gen_fn_lines_structs(mir: String, pos: i64, sb: i64, ret_type: String, strings: String, string_fns: String, mapping: String, str_sb: i64, registry: String, struct_reg: String, ptr_sb: i64) -> i64
+fn gen_fn_lines_structs(mir: String, pos: i64, sb: i64, ret_type: String, llvm_sctx: String, mapping: String, str_sb: i64, ptr_sb: i64) -> i64
 
   pre pos >= 0
 
@@ -31041,7 +31148,7 @@ fn gen_fn_lines_structs(mir: String, pos: i64, sb: i64, ret_type: String, string
 
         let line = mir.slice(pos, pipe_pos);
 
-        let result = llvm_gen_fn_line_structs(line, ret_type, strings, string_fns, mapping, str_sb, registry, struct_reg, ptr_sb);
+        let result = llvm_gen_fn_line_structs(line, ret_type, llvm_sctx, mapping, str_sb, ptr_sb);
 
         let is_changed = result.len() > 0 and result.byte_at(0) == 33;
 
@@ -31055,11 +31162,11 @@ fn gen_fn_lines_structs(mir: String, pos: i64, sb: i64, ret_type: String, string
 
         let _w2 = if llvm_line != "" { sb_push(sb, llvm_line) } else { 0 };
 
-        if pipe_pos >= mir.len() { 0 } else { gen_fn_lines_structs(mir, pipe_pos + 1, sb, ret_type, strings, string_fns, new_mapping, str_sb, registry, struct_reg, ptr_sb) }
+        if pipe_pos >= mir.len() { 0 } else { gen_fn_lines_structs(mir, pipe_pos + 1, sb, ret_type, llvm_sctx, new_mapping, str_sb, ptr_sb) }
 
     };
 
-fn llvm_gen_fn_line_structs(line: String, ret_type: String, strings: String, string_fns: String, mapping: String, str_sb: i64, registry: String, struct_reg: String, ptr_sb: i64) -> String
+fn llvm_gen_fn_line_structs(line: String, ret_type: String, llvm_sctx: String, mapping: String, str_sb: i64, ptr_sb: i64) -> String
 
   post it.len() >= 0
 
@@ -31073,17 +31180,18 @@ fn llvm_gen_fn_line_structs(line: String, ret_type: String, strings: String, str
 
     else if line == "}" { same_mapping("}") }
 
-    else { llvm_gen_line_structs(line, ret_type, strings, string_fns, mapping, str_sb, registry, struct_reg, ptr_sb) };
+    else { llvm_gen_line_structs(line, ret_type, llvm_sctx, mapping, str_sb, ptr_sb) };
 
-fn llvm_gen_line_structs(line: String, ret_type: String, strings: String, string_fns: String, mapping: String, str_sb: i64, registry: String, struct_reg: String, ptr_sb: i64) -> String
+fn llvm_gen_line_structs(line: String, ret_type: String, llvm_sctx: String, mapping: String, str_sb: i64, ptr_sb: i64) -> String
 
   post it.len() >= 0
 
-= let p = low_skip_ws(line, 0);
+= let struct_reg = llvm_sctx_struct_reg(llvm_sctx);
+    let p = low_skip_ws(line, 0);
 
     if p >= line.len() { same_mapping_empty() }
 
-    else if line.byte_at(p) == 37 { llvm_gen_assign_structs(line, p, strings, string_fns, mapping, str_sb, registry, struct_reg, ptr_sb) }
+    else if line.byte_at(p) == 37 { llvm_gen_assign_structs(line, p, llvm_sctx, mapping, str_sb, ptr_sb) }
 
     else if low_starts_with_at(line, p, "return") { same_mapping(llvm_gen_return_typed(line, p, ret_type)) }
 
@@ -31145,7 +31253,7 @@ fn llvm_gen_line_mark(line: String, p: i64, str_sb: i64) -> String
 
   else { llvm_handle_mark_str_ptr(line, p, str_sb) };
 
-fn llvm_gen_assign_structs(line: String, pos: i64, strings: String, string_fns: String, mapping: String, str_sb: i64, registry: String, struct_reg: String, ptr_sb: i64) -> String
+fn llvm_gen_assign_structs(line: String, pos: i64, llvm_sctx: String, mapping: String, str_sb: i64, ptr_sb: i64) -> String
 
   pre pos >= 0
 
@@ -31157,15 +31265,19 @@ fn llvm_gen_assign_structs(line: String, pos: i64, strings: String, string_fns: 
 
     let after_eq = low_skip_ws(line, eq_pos + 1);
 
-    llvm_gen_rhs_structs(line, after_eq, dest, strings, string_fns, mapping, str_sb, registry, struct_reg, ptr_sb);
+    llvm_gen_rhs_structs(line, after_eq, dest, llvm_sctx, mapping, str_sb, ptr_sb);
 
-fn llvm_gen_rhs_structs(line: String, pos: i64, dest: String, strings: String, string_fns: String, mapping: String, str_sb: i64, registry: String, struct_reg: String, ptr_sb: i64) -> String
+fn llvm_gen_rhs_structs(line: String, pos: i64, dest: String, llvm_sctx: String, mapping: String, str_sb: i64, ptr_sb: i64) -> String
 
   pre pos >= 0
 
   post it.len() >= 1
 
-= if low_starts_with_at(line, pos, "field-access") {
+= let strings = llvm_sctx_strings(llvm_sctx);
+    let string_fns = llvm_sctx_string_fns(llvm_sctx);
+    let registry = llvm_sctx_registry(llvm_sctx);
+    let struct_reg = llvm_sctx_struct_reg(llvm_sctx);
+    if low_starts_with_at(line, pos, "field-access") {
 
         llvm_gen_field_access(line, pos + 12, dest, struct_reg, str_sb, ptr_sb)
 
@@ -31193,7 +31305,7 @@ fn llvm_gen_rhs_structs(line: String, pos: i64, dest: String, strings: String, s
 
     else if low_starts_with_at(line, pos, "call") {
 
-        llvm_gen_call_struct_aware(line, pos, dest, strings, string_fns, mapping, str_sb, registry, ptr_sb)
+        llvm_gen_call_struct_aware(line, pos, dest, llvm_sctx, mapping, str_sb, ptr_sb)
 
     }
 
@@ -31204,6 +31316,218 @@ fn llvm_gen_rhs_structs(line: String, pos: i64, dest: String, strings: String, s
         llvm_gen_rhs_with_strings_map_and_fns_reg(line, pos, dest, strings, string_fns, mapping, str_sb, registry)
 
     };
+
+fn llvm_gen_rhs_copy_markers(src: String, dest: String, str_sb: i64) -> i64
+
+  pre str_sb >= 0
+
+  post it >= 0
+
+= let is_string = is_string_var_sb(src, str_sb);
+    let is_double = is_double_var_sb(src, str_sb);
+    let is_f64_ptr = is_f64_ptr_sb(src, str_sb);
+    let is_str_ptr = is_str_ptr_sb(src, str_sb);
+    let is_i32 = is_i32_var_sb(src, str_sb);
+    let _w = if is_string { push_string_marker(str_sb, dest) } else if is_double { push_double_marker(str_sb, dest) } else if is_f64_ptr { push_f64_ptr_marker(str_sb, dest) } else if is_str_ptr { push_str_ptr_marker(str_sb, dest) } else if is_i32 { push_i32_marker(str_sb, dest) } else { 0 };
+    if is_double { 1 } else { 0 };
+
+fn llvm_gen_rhs_copy_alloca_markers(src: String, dest: String, str_sb: i64) -> i64
+
+  pre str_sb >= 0
+
+  post it >= 0
+
+= let alloca_is_double = is_double_var_sb(src, str_sb);
+    let alloca_is_string = is_string_var_sb(src, str_sb);
+    let alloca_is_f64_ptr = is_f64_ptr_sb(src, str_sb);
+    let alloca_is_str_ptr = is_str_ptr_sb(src, str_sb);
+    let alloca_is_i32 = is_i32_var_sb(src, str_sb);
+    let _w = if alloca_is_string { push_string_marker(str_sb, dest) }
+        else if alloca_is_f64_ptr { push_f64_ptr_marker(str_sb, dest) }
+        else if alloca_is_str_ptr { push_str_ptr_marker(str_sb, dest) }
+        else if alloca_is_i32 { push_i32_marker(str_sb, dest) }
+        else { 0 };
+    if alloca_is_double { 1 } else { 0 };
+
+fn llvm_gen_rhs_copy_branch(line: String, pos: i64, dest: String, mapping: String, str_sb: i64, registry: String) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 1
+
+= let src_start = low_skip_ws(line, pos + 4);
+    let src = trim_end(line.slice(src_start, line.len()));
+    let is_fnref = src.len() > 1 and src.byte_at(0) == 37
+        and not (is_hof_param_sb(src, str_sb) or is_i64_param_sb(src, str_sb))
+        and find_pattern_at(registry, "@" + src.slice(1, src.len()) + ":", 0) >= 0;
+    if is_fnref {
+        let fn_name = src.slice(1, src.len());
+        let both_sig = lookup_fn_both(registry, fn_name);
+        let is_zero_arg = both_sig.len() > 0 and both_sig.byte_at(both_sig.len() - 1) == 58;
+        if is_zero_arg {
+            let ret_type = lookup_fn_ret(registry, fn_name);
+            let llvm_ret = if ret_type == "double" { "double" } else { "i64" };
+            let _mark = if ret_type == "double" { push_double_marker(str_sb, dest) } else { 0 };
+            same_mapping("  " + dest + " = call " + llvm_ret + " @" + fn_name + "()")
+        } else {
+            same_mapping("  " + dest + " = ptrtoint ptr @" + fn_name + " to i64")
+        }
+    } else if is_user_variable(dest) {
+        let resolved_src = resolve_variable(src, mapping);
+        let _md = llvm_gen_rhs_copy_markers(src, dest, str_sb);
+        let name_mapping = add_mapping(mapping, dest, resolved_src);
+        changed_mapping_empty(name_mapping)
+    } else {
+        let resolved_src = resolve_variable(src, mapping);
+        if resolved_src == "ALLOCA" {
+            let alloca_is_double = llvm_gen_rhs_copy_alloca_markers(src, dest, str_sb);
+            if alloca_is_double {
+                let _w = push_double_marker(str_sb, dest);
+                same_mapping("  " + dest + " = load double, ptr " + src)
+            } else {
+                same_mapping("  " + dest + " = load i64, ptr " + src)
+            }
+        } else {
+            let src_is_double = llvm_gen_rhs_copy_markers(src, dest, str_sb);
+            if src_is_double {
+                same_mapping("  " + dest + " = fadd nsz double 0.0, " + resolved_src)
+            } else {
+                same_mapping("  " + dest + " = add nsw i64 0, " + resolved_src)
+            }
+        }
+    };
+
+fn llvm_gen_rhs_conv_float(line: String, pos: i64, dest: String, str_sb: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 1
+
+= if low_starts_with_at(line, pos, "fptosi") {
+        let src_start = low_skip_ws(line, pos + 6);
+        let src = trim_end(line.slice(src_start, line.len()));
+        if is_double_var_sb(src, str_sb) {
+            same_mapping("  " + dest + " = fptosi double " + src + " to i64")
+        } else {
+            same_mapping("  " + dest + " = add nsw i64 " + src + ", 0")
+        }
+    } else if low_starts_with_at(line, pos, "sitofp") {
+        let src_start = low_skip_ws(line, pos + 6);
+        let src = trim_end(line.slice(src_start, line.len()));
+        let _w = push_double_marker(str_sb, dest);
+        same_mapping("  " + dest + " = sitofp i64 " + src + " to double")
+    } else if low_starts_with_at(line, pos, "trunc_i32") {
+        let src_start = low_skip_ws(line, pos + 9);
+        let src = trim_end(line.slice(src_start, line.len()));
+        let _w = push_i32_marker(str_sb, dest);
+        same_mapping("  " + dest + "_w = trunc i64 " + src + " to i32" + SEP() + "  " + dest + " = sext i32 " + dest + "_w to i64")
+    } else if low_starts_with_at(line, pos, "f+") { let _w = push_double_marker(str_sb, dest); same_mapping(llvm_gen_float_binop("fadd", line, pos + 2, dest)) }
+    else if low_starts_with_at(line, pos, "f-") { let _w = push_double_marker(str_sb, dest); same_mapping(llvm_gen_float_binop("fsub", line, pos + 2, dest)) }
+    else if low_starts_with_at(line, pos, "f*") { let _w = push_double_marker(str_sb, dest); same_mapping(llvm_gen_float_binop("fmul", line, pos + 2, dest)) }
+    else if low_starts_with_at(line, pos, "f/") { let _w = push_double_marker(str_sb, dest); same_mapping(llvm_gen_float_binop("fdiv", line, pos + 2, dest)) }
+    else if low_starts_with_at(line, pos, "f<=") { same_mapping(llvm_gen_float_cmp("ole", line, pos + 3, dest)) }
+    else if low_starts_with_at(line, pos, "f>=") { same_mapping(llvm_gen_float_cmp("oge", line, pos + 3, dest)) }
+    else if low_starts_with_at(line, pos, "f<") { same_mapping(llvm_gen_float_cmp("olt", line, pos + 2, dest)) }
+    else if low_starts_with_at(line, pos, "f>") { same_mapping(llvm_gen_float_cmp("ogt", line, pos + 2, dest)) }
+    else if low_starts_with_at(line, pos, "f==") { same_mapping(llvm_gen_float_cmp("oeq", line, pos + 3, dest)) }
+    else if low_starts_with_at(line, pos, "f!=") { same_mapping(llvm_gen_float_cmp("one", line, pos + 3, dest)) }
+    else { same_mapping("  ; unknown-float: " + line) };
+
+fn llvm_gen_rhs_arith_logic(line: String, pos: i64, dest: String, mapping: String, str_sb: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 1
+
+= if low_starts_with_at(line, pos, "+|") { same_mapping(llvm_gen_sat_binop("llvm.sadd.sat.i64", line, pos + 2, dest)) }
+    else if low_starts_with_at(line, pos, "-|") { same_mapping(llvm_gen_sat_binop("llvm.ssub.sat.i64", line, pos + 2, dest)) }
+    else if low_starts_with_at(line, pos, "*|") { same_mapping(llvm_gen_sat_mul(line, pos + 2, dest)) }
+    else if low_starts_with_at(line, pos, "+%") { same_mapping(llvm_gen_wrap_binop("add", line, pos + 2, dest)) }
+    else if low_starts_with_at(line, pos, "-%") { same_mapping(llvm_gen_wrap_binop("sub", line, pos + 2, dest)) }
+    else if low_starts_with_at(line, pos, "*%") { same_mapping(llvm_gen_wrap_binop("mul", line, pos + 2, dest)) }
+    else if low_starts_with_at(line, pos, "+") { llvm_gen_add_with_strings_sb(line, pos + 1, dest, mapping, str_sb) }
+    else if low_starts_with_at(line, pos, "-") { llvm_gen_binop_sb("sub", "fsub", line, pos + 1, dest, str_sb) }
+    else if low_starts_with_at(line, pos, "*") { llvm_gen_binop_sb("mul", "fmul", line, pos + 1, dest, str_sb) }
+    else if low_starts_with_at(line, pos, "/") { llvm_gen_binop_sb("sdiv", "fdiv", line, pos + 1, dest, str_sb) }
+    else if low_starts_with_at(line, pos, "%") { same_mapping(llvm_gen_binop("srem", line, pos + 1, dest)) }
+    else if low_starts_with_at(line, pos, "bxor") { same_mapping(llvm_gen_binop("xor", line, pos + 4, dest)) }
+    else if low_starts_with_at(line, pos, "band") { same_mapping(llvm_gen_binop("and", line, pos + 4, dest)) }
+    else if low_starts_with_at(line, pos, "bor") { same_mapping(llvm_gen_binop("or", line, pos + 3, dest)) }
+    else if low_starts_with_at(line, pos, "bnot") { same_mapping(llvm_gen_bnot(line, pos + 4, dest)) }
+    else if low_starts_with_at(line, pos, "<<") { same_mapping(llvm_gen_binop("shl", line, pos + 2, dest)) }
+    else if low_starts_with_at(line, pos, ">>>") { same_mapping(llvm_gen_binop("lshr", line, pos + 3, dest)) }
+    else if low_starts_with_at(line, pos, ">>") { same_mapping(llvm_gen_binop("ashr", line, pos + 2, dest)) }
+    else if low_starts_with_at(line, pos, "<=") { llvm_gen_cmp_sb("sle", "ole", line, pos + 2, dest, str_sb) }
+    else if low_starts_with_at(line, pos, ">=") { llvm_gen_cmp_sb("sge", "oge", line, pos + 2, dest, str_sb) }
+    else if low_starts_with_at(line, pos, "<") { llvm_gen_cmp_sb("slt", "olt", line, pos + 1, dest, str_sb) }
+    else if low_starts_with_at(line, pos, ">") { llvm_gen_cmp_sb("sgt", "ogt", line, pos + 1, dest, str_sb) }
+    else if low_starts_with_at(line, pos, "==") { llvm_gen_cmp_with_strings_sb("eq", line, pos + 2, dest, str_sb) }
+    else if low_starts_with_at(line, pos, "!=") { llvm_gen_cmp_with_strings_sb("ne", line, pos + 2, dest, str_sb) }
+    else if low_starts_with_at(line, pos, "and") { same_mapping(llvm_gen_binop("and", line, pos + 3, dest)) }
+    else if low_starts_with_at(line, pos, "or") { same_mapping(llvm_gen_binop("or", line, pos + 2, dest)) }
+    else if low_starts_with_at(line, pos, "not") { same_mapping(llvm_gen_not(line, pos + 3, dest)) }
+    else if low_starts_with_at(line, pos, "neg") { llvm_gen_neg_sb(line, pos + 3, dest, str_sb) }
+    else if low_starts_with_at(line, pos, "phi") { llvm_gen_phi_with_strings_sb(line, pos, dest, str_sb) }
+    else { same_mapping("  ; unknown-arith: " + line) };
+
+fn llvm_gen_rhs_ptr_ops(line: String, pos: i64, dest: String, str_sb: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 1
+
+= if low_starts_with_at(line, pos, "gep_u8") { llvm_gen_gep_u8_sb(line, pos + 6, dest, str_sb) }
+    else if low_starts_with_at(line, pos, "gep_i32") { llvm_gen_gep_i32_sb(line, pos + 7, dest, str_sb) }
+    else if low_starts_with_at(line, pos, "gep_bool") { llvm_gen_gep_bool_sb(line, pos + 8, dest, str_sb) }
+    else if low_starts_with_at(line, pos, "gep_f64") { llvm_gen_gep_f64_sb(line, pos + 7, dest, str_sb) }
+    else if low_starts_with_at(line, pos, "gep") { llvm_gen_gep_sb(line, pos + 3, dest, str_sb) }
+    else if low_starts_with_at(line, pos, "load_ptr_u8") { llvm_gen_load_ptr_u8_sb(line, pos + 11, dest, str_sb) }
+    else if low_starts_with_at(line, pos, "load_ptr_i32") { llvm_gen_load_ptr_i32_sb(line, pos + 12, dest, str_sb) }
+    else if low_starts_with_at(line, pos, "load_ptr_bool") { llvm_gen_load_ptr_bool_sb(line, pos + 13, dest, str_sb) }
+    else if low_starts_with_at(line, pos, "load_ptr_f64") { llvm_gen_load_ptr_f64_sb(line, pos + 12, dest, str_sb) }
+    else if low_starts_with_at(line, pos, "load_ptr") { llvm_gen_load_ptr_sb(line, pos + 8, dest, str_sb) }
+    else if low_starts_with_at(line, pos, "store_ptr_u8") { llvm_gen_store_ptr_u8_sb(line, pos + 12, str_sb) }
+    else if low_starts_with_at(line, pos, "store_ptr_i32") { llvm_gen_store_ptr_i32_sb(line, pos + 13, str_sb) }
+    else if low_starts_with_at(line, pos, "store_ptr_bool") { llvm_gen_store_ptr_bool_sb(line, pos + 14, str_sb) }
+    else if low_starts_with_at(line, pos, "store_ptr_f64") { llvm_gen_store_ptr_f64_sb(line, pos + 13, str_sb) }
+    else if low_starts_with_at(line, pos, "store_ptr") { llvm_gen_store_ptr_sb(line, pos + 9, str_sb) }
+    else { same_mapping("  ; unknown-ptr: " + line) };
+
+fn llvm_gen_rhs_misc_ops(line: String, pos: i64, dest: String, mapping: String, strings: String, string_fns: String, str_sb: i64, registry: String) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 1
+
+= if low_starts_with_at(line, pos, "string") {
+        let str_start = low_skip_ws(line, pos + 6);
+        let str_content = line.slice(str_start + 1, line.len() - 1);
+        let _w = push_string_marker(str_sb, dest);
+        same_mapping(llvm_gen_string_ref(dest, str_content, strings))
+    } else if low_starts_with_at(line, pos, "call") { llvm_gen_call_with_string_tracking_sb_reg(line, pos, dest, str_sb, string_fns, registry) }
+    else if low_starts_with_at(line, pos, "mutex-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
+    else if low_starts_with_at(line, pos, "thread-pool-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
+    else if low_starts_with_at(line, pos, "thread-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
+    else if low_starts_with_at(line, pos, "arc-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
+    else if low_starts_with_at(line, pos, "atomic-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
+    else if low_starts_with_at(line, pos, "channel-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
+    else if low_starts_with_at(line, pos, "sender-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
+    else if low_starts_with_at(line, pos, "rwlock-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
+    else if low_starts_with_at(line, pos, "barrier-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
+    else if low_starts_with_at(line, pos, "condvar-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
+    else if low_starts_with_at(line, pos, "block-on") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
+    else if low_starts_with_at(line, pos, "async-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
+    else if low_starts_with_at(line, pos, "scope-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
+    else if low_starts_with_at(line, pos, "nullable_select") { same_mapping(llvm_gen_nullable_select(line, pos + 15, dest)) }
+    else if low_starts_with_at(line, pos, "select") { same_mapping(llvm_gen_select(line, pos + 6, dest)) }
+    else if low_starts_with_at(line, pos, "closure_new") { llvm_gen_closure_new_sb(line, pos + 11, dest, mapping, str_sb) }
+    else if low_starts_with_at(line, pos, "closure_load") { same_mapping(llvm_gen_closure_load(line, pos + 12, dest)) }
+    else if low_starts_with_at(line, pos, "fn_ref") {
+        let name_start = low_skip_ws(line, pos + 6);
+        let fn_name = trim_end(line.slice(name_start, line.len()));
+        same_mapping("  " + dest + " = ptrtoint ptr " + fn_name + " to i64")
+    }
+    else { same_mapping("  ; unknown: " + line) };
 
 fn llvm_gen_rhs_with_strings_map_and_fns_reg(line: String, pos: i64, dest: String, strings: String, string_fns: String, mapping: String, str_sb: i64, registry: String) -> String
 
@@ -31235,349 +31559,42 @@ fn llvm_gen_rhs_with_strings_map_and_fns_reg(line: String, pos: i64, dest: Strin
 
     } else if low_starts_with_at(line, pos, "copy") {
 
-        let src_start = low_skip_ws(line, pos + 4);
+        llvm_gen_rhs_copy_branch(line, pos, dest, mapping, str_sb, registry)
 
-        let src = trim_end(line.slice(src_start, line.len()));
+    } else if low_starts_with_at(line, pos, "fptosi") or low_starts_with_at(line, pos, "sitofp")
+        or low_starts_with_at(line, pos, "trunc_i32") or low_starts_with_at(line, pos, "f+")
+        or low_starts_with_at(line, pos, "f-") or low_starts_with_at(line, pos, "f*")
+        or low_starts_with_at(line, pos, "f/") or low_starts_with_at(line, pos, "f<")
+        or low_starts_with_at(line, pos, "f>") or low_starts_with_at(line, pos, "f=")
+        or low_starts_with_at(line, pos, "f!") {
 
-        // Cycle 2934: HOF — if src is %name where @name is a known function, emit ptrtoint
+        llvm_gen_rhs_conv_float(line, pos, dest, str_sb)
 
-        // Exclude HOF/i64 params that might share a name with a global function
+    } else if low_starts_with_at(line, pos, "+") or low_starts_with_at(line, pos, "-")
+        or low_starts_with_at(line, pos, "*") or low_starts_with_at(line, pos, "/")
+        or low_starts_with_at(line, pos, "%") or low_starts_with_at(line, pos, "bxor")
+        or low_starts_with_at(line, pos, "band") or low_starts_with_at(line, pos, "bor")
+        or low_starts_with_at(line, pos, "bnot") or low_starts_with_at(line, pos, "<<")
+        or low_starts_with_at(line, pos, ">>>") or low_starts_with_at(line, pos, ">>")
+        or low_starts_with_at(line, pos, "<=") or low_starts_with_at(line, pos, ">=")
+        or low_starts_with_at(line, pos, "<") or low_starts_with_at(line, pos, ">")
+        or low_starts_with_at(line, pos, "==") or low_starts_with_at(line, pos, "!=")
+        or low_starts_with_at(line, pos, "and") or low_starts_with_at(line, pos, "or")
+        or low_starts_with_at(line, pos, "not") or low_starts_with_at(line, pos, "neg")
+        or low_starts_with_at(line, pos, "phi") {
 
-        let is_fnref = src.len() > 1 and src.byte_at(0) == 37
+        llvm_gen_rhs_arith_logic(line, pos, dest, mapping, str_sb)
 
-            and not (is_hof_param_sb(src, str_sb) or is_i64_param_sb(src, str_sb))
+    } else if low_starts_with_at(line, pos, "gep") or low_starts_with_at(line, pos, "load_ptr")
+        or low_starts_with_at(line, pos, "store_ptr") {
 
-            and find_pattern_at(registry, "@" + src.slice(1, src.len()) + ":", 0) >= 0;
+        llvm_gen_rhs_ptr_ops(line, pos, dest, str_sb)
 
-        if is_fnref {
+    } else {
 
-            let fn_name = src.slice(1, src.len());
+        llvm_gen_rhs_misc_ops(line, pos, dest, mapping, strings, string_fns, str_sb, registry)
 
-            // Cycle 3246: Zero-arg functions (const/fn-const) should be called, not ptr-ized
-            // A zero-arg fn has lookup_fn_both result ending with ':' (empty param list)
-            let both_sig = lookup_fn_both(registry, fn_name);
-            let is_zero_arg = both_sig.len() > 0 and both_sig.byte_at(both_sig.len() - 1) == 58;
-
-            if is_zero_arg {
-                let ret_type = lookup_fn_ret(registry, fn_name);
-                let llvm_ret = if ret_type == "double" { "double" } else { "i64" };
-                let _mark = if ret_type == "double" { push_double_marker(str_sb, dest) } else { 0 };
-                same_mapping("  " + dest + " = call " + llvm_ret + " @" + fn_name + "()")
-            } else {
-
-            same_mapping("  " + dest + " = ptrtoint ptr @" + fn_name + " to i64")
-
-            }
-
-        } else if is_user_variable(dest) {
-
-            let resolved_src = resolve_variable(src, mapping);
-
-            let src_is_string = is_string_var_sb(src, str_sb);
-
-            let src_is_double = is_double_var_sb(src, str_sb);
-
-            let src_is_f64_ptr = is_f64_ptr_sb(src, str_sb);
-
-            let src_is_str_ptr = is_str_ptr_sb(src, str_sb);
-
-            // v0.95: Propagate i32 marker through copy
-
-            let src_is_i32 = is_i32_var_sb(src, str_sb);
-
-            let _w = if src_is_string { push_string_marker(str_sb, dest) } else if src_is_double { push_double_marker(str_sb, dest) } else if src_is_f64_ptr { push_f64_ptr_marker(str_sb, dest) } else if src_is_str_ptr { push_str_ptr_marker(str_sb, dest) } else if src_is_i32 { push_i32_marker(str_sb, dest) } else { 0 };
-
-            let name_mapping = add_mapping(mapping, dest, resolved_src);
-
-            changed_mapping_empty(name_mapping)
-
-        } else {
-
-            let resolved_src = resolve_variable(src, mapping);
-
-            if resolved_src == "ALLOCA" {
-
-                let alloca_is_double = is_double_var_sb(src, str_sb);
-
-                let alloca_is_string = is_string_var_sb(src, str_sb);
-
-                let alloca_is_f64_ptr = is_f64_ptr_sb(src, str_sb);
-
-                let alloca_is_str_ptr = is_str_ptr_sb(src, str_sb);
-
-                let alloca_is_i32 = is_i32_var_sb(src, str_sb);
-
-                let _w2 = if alloca_is_string { push_string_marker(str_sb, dest) }
-
-                    else if alloca_is_f64_ptr { push_f64_ptr_marker(str_sb, dest) }
-
-                    else if alloca_is_str_ptr { push_str_ptr_marker(str_sb, dest) }
-
-                    else if alloca_is_i32 { push_i32_marker(str_sb, dest) }
-
-                    else { 0 };
-
-                if alloca_is_double {
-
-                    let _w = push_double_marker(str_sb, dest);
-
-                    same_mapping("  " + dest + " = load double, ptr " + src)
-
-                } else {
-
-                    same_mapping("  " + dest + " = load i64, ptr " + src)
-
-                }
-
-            } else {
-
-                let src_is_string = is_string_var_sb(src, str_sb);
-
-                let src_is_double = is_double_var_sb(src, str_sb);
-
-                let src_is_f64_ptr = is_f64_ptr_sb(src, str_sb);
-
-                let src_is_str_ptr = is_str_ptr_sb(src, str_sb);
-
-                // v0.95: Propagate i32 marker through copy
-
-                let src_is_i32 = is_i32_var_sb(src, str_sb);
-
-                let _w = if src_is_string { push_string_marker(str_sb, dest) } else if src_is_double { push_double_marker(str_sb, dest) } else if src_is_f64_ptr { push_f64_ptr_marker(str_sb, dest) } else if src_is_str_ptr { push_str_ptr_marker(str_sb, dest) } else if src_is_i32 { push_i32_marker(str_sb, dest) } else { 0 };
-
-                if src_is_double {
-
-                    same_mapping("  " + dest + " = fadd nsz double 0.0, " + resolved_src)
-
-                } else {
-
-                    same_mapping("  " + dest + " = add nsw i64 0, " + resolved_src)
-
-                }
-
-            }
-
-        }
-
-    } else if low_starts_with_at(line, pos, "string") {
-
-        let str_start = low_skip_ws(line, pos + 6);
-
-        let str_content = line.slice(str_start + 1, line.len() - 1);
-
-        let _w = push_string_marker(str_sb, dest);
-
-        same_mapping(llvm_gen_string_ref(dest, str_content, strings))
-
-    } else if low_starts_with_at(line, pos, "fptosi") {
-
-        let src_start = low_skip_ws(line, pos + 6);
-
-        let src = trim_end(line.slice(src_start, line.len()));
-
-        // v0.95: Check source type — only emit fptosi for f64, identity for int (i32/i64)
-
-        if is_double_var_sb(src, str_sb) {
-
-            same_mapping("  " + dest + " = fptosi double " + src + " to i64")
-
-        } else {
-
-            same_mapping("  " + dest + " = add nsw i64 " + src + ", 0")
-
-        }
-
-    } else if low_starts_with_at(line, pos, "sitofp") {
-
-        let src_start = low_skip_ws(line, pos + 6);
-
-        let src = trim_end(line.slice(src_start, line.len()));
-
-        let _w = push_double_marker(str_sb, dest);
-
-        same_mapping("  " + dest + " = sitofp i64 " + src + " to double")
-
-    // v0.95: trunc_i32 — string-tracking+registry variant
-
-    } else if low_starts_with_at(line, pos, "trunc_i32") {
-
-        let src_start = low_skip_ws(line, pos + 9);
-
-        let src = trim_end(line.slice(src_start, line.len()));
-
-        let _w = push_i32_marker(str_sb, dest);
-
-        same_mapping("  " + dest + "_w = trunc i64 " + src + " to i32" + SEP() + "  " + dest + " = sext i32 " + dest + "_w to i64")
-
-    } else if low_starts_with_at(line, pos, "f+") { let _w = push_double_marker(str_sb, dest); same_mapping(llvm_gen_float_binop("fadd", line, pos + 2, dest)) }
-
-    else if low_starts_with_at(line, pos, "f-") { let _w = push_double_marker(str_sb, dest); same_mapping(llvm_gen_float_binop("fsub", line, pos + 2, dest)) }
-
-    else if low_starts_with_at(line, pos, "f*") { let _w = push_double_marker(str_sb, dest); same_mapping(llvm_gen_float_binop("fmul", line, pos + 2, dest)) }
-
-    else if low_starts_with_at(line, pos, "f/") { let _w = push_double_marker(str_sb, dest); same_mapping(llvm_gen_float_binop("fdiv", line, pos + 2, dest)) }
-
-    else if low_starts_with_at(line, pos, "f<=") { same_mapping(llvm_gen_float_cmp("ole", line, pos + 3, dest)) }
-
-    else if low_starts_with_at(line, pos, "f>=") { same_mapping(llvm_gen_float_cmp("oge", line, pos + 3, dest)) }
-
-    else if low_starts_with_at(line, pos, "f<") { same_mapping(llvm_gen_float_cmp("olt", line, pos + 2, dest)) }
-
-    else if low_starts_with_at(line, pos, "f>") { same_mapping(llvm_gen_float_cmp("ogt", line, pos + 2, dest)) }
-
-    else if low_starts_with_at(line, pos, "f==") { same_mapping(llvm_gen_float_cmp("oeq", line, pos + 3, dest)) }
-
-    else if low_starts_with_at(line, pos, "f!=") { same_mapping(llvm_gen_float_cmp("one", line, pos + 3, dest)) }
-
-    else if low_starts_with_at(line, pos, "+|") { same_mapping(llvm_gen_sat_binop("llvm.sadd.sat.i64", line, pos + 2, dest)) }
-
-    else if low_starts_with_at(line, pos, "-|") { same_mapping(llvm_gen_sat_binop("llvm.ssub.sat.i64", line, pos + 2, dest)) }
-
-    else if low_starts_with_at(line, pos, "*|") { same_mapping(llvm_gen_sat_mul(line, pos + 2, dest)) }
-
-    else if low_starts_with_at(line, pos, "+%") { same_mapping(llvm_gen_wrap_binop("add", line, pos + 2, dest)) }
-
-    else if low_starts_with_at(line, pos, "-%") { same_mapping(llvm_gen_wrap_binop("sub", line, pos + 2, dest)) }
-
-    else if low_starts_with_at(line, pos, "*%") { same_mapping(llvm_gen_wrap_binop("mul", line, pos + 2, dest)) }
-
-    else if low_starts_with_at(line, pos, "+") { llvm_gen_add_with_strings_sb(line, pos + 1, dest, mapping, str_sb) }
-
-    else if low_starts_with_at(line, pos, "-") { llvm_gen_binop_sb("sub", "fsub", line, pos + 1, dest, str_sb) }
-
-    else if low_starts_with_at(line, pos, "*") { llvm_gen_binop_sb("mul", "fmul", line, pos + 1, dest, str_sb) }
-
-    else if low_starts_with_at(line, pos, "/") { llvm_gen_binop_sb("sdiv", "fdiv", line, pos + 1, dest, str_sb) }
-
-    else if low_starts_with_at(line, pos, "%") { same_mapping(llvm_gen_binop("srem", line, pos + 1, dest)) }
-
-    else if low_starts_with_at(line, pos, "bxor") { same_mapping(llvm_gen_binop("xor", line, pos + 4, dest)) }
-
-    else if low_starts_with_at(line, pos, "band") { same_mapping(llvm_gen_binop("and", line, pos + 4, dest)) }
-
-    else if low_starts_with_at(line, pos, "bor") { same_mapping(llvm_gen_binop("or", line, pos + 3, dest)) }
-
-    else if low_starts_with_at(line, pos, "bnot") { same_mapping(llvm_gen_bnot(line, pos + 4, dest)) }
-
-    else if low_starts_with_at(line, pos, "<<") { same_mapping(llvm_gen_binop("shl", line, pos + 2, dest)) }
-
-    else if low_starts_with_at(line, pos, ">>>") { same_mapping(llvm_gen_binop("lshr", line, pos + 3, dest)) }
-
-    else if low_starts_with_at(line, pos, ">>") { same_mapping(llvm_gen_binop("ashr", line, pos + 2, dest)) }
-
-    else if low_starts_with_at(line, pos, "<=") { llvm_gen_cmp_sb("sle", "ole", line, pos + 2, dest, str_sb) }
-
-    else if low_starts_with_at(line, pos, ">=") { llvm_gen_cmp_sb("sge", "oge", line, pos + 2, dest, str_sb) }
-
-    else if low_starts_with_at(line, pos, "<") { llvm_gen_cmp_sb("slt", "olt", line, pos + 1, dest, str_sb) }
-
-    else if low_starts_with_at(line, pos, ">") { llvm_gen_cmp_sb("sgt", "ogt", line, pos + 1, dest, str_sb) }
-
-    else if low_starts_with_at(line, pos, "==") { llvm_gen_cmp_with_strings_sb("eq", line, pos + 2, dest, str_sb) }
-
-    else if low_starts_with_at(line, pos, "!=") { llvm_gen_cmp_with_strings_sb("ne", line, pos + 2, dest, str_sb) }
-
-    else if low_starts_with_at(line, pos, "and") { same_mapping(llvm_gen_binop("and", line, pos + 3, dest)) }
-
-    else if low_starts_with_at(line, pos, "or") { same_mapping(llvm_gen_binop("or", line, pos + 2, dest)) }
-
-    else if low_starts_with_at(line, pos, "not") { same_mapping(llvm_gen_not(line, pos + 3, dest)) }
-
-    else if low_starts_with_at(line, pos, "neg") { llvm_gen_neg_sb(line, pos + 3, dest, str_sb) }
-
-    else if low_starts_with_at(line, pos, "phi") { llvm_gen_phi_with_strings_sb(line, pos, dest, str_sb) }
-
-    else if low_starts_with_at(line, pos, "call") { llvm_gen_call_with_string_tracking_sb_reg(line, pos, dest, str_sb, string_fns, registry) }
-
-    else if low_starts_with_at(line, pos, "mutex-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
-
-    else if low_starts_with_at(line, pos, "thread-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
-
-    else if low_starts_with_at(line, pos, "arc-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
-
-    else if low_starts_with_at(line, pos, "atomic-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
-
-    else if low_starts_with_at(line, pos, "channel-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
-
-    else if low_starts_with_at(line, pos, "sender-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
-
-    else if low_starts_with_at(line, pos, "rwlock-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
-
-    else if low_starts_with_at(line, pos, "barrier-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
-
-    else if low_starts_with_at(line, pos, "condvar-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
-
-    else if low_starts_with_at(line, pos, "block-on") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
-
-    else if low_starts_with_at(line, pos, "async-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
-
-    else if low_starts_with_at(line, pos, "thread-pool-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
-
-    else if low_starts_with_at(line, pos, "scope-") { same_mapping(llvm_gen_conc_rhs(line, pos, dest)) }
-
-    else if low_starts_with_at(line, pos, "gep_u8") { llvm_gen_gep_u8_sb(line, pos + 6, dest, str_sb) }
-
-    else if low_starts_with_at(line, pos, "gep_i32") { llvm_gen_gep_i32_sb(line, pos + 7, dest, str_sb) }
-
-    else if low_starts_with_at(line, pos, "gep_bool") { llvm_gen_gep_bool_sb(line, pos + 8, dest, str_sb) }
-
-    else if low_starts_with_at(line, pos, "gep_f64") { llvm_gen_gep_f64_sb(line, pos + 7, dest, str_sb) }
-
-    else if low_starts_with_at(line, pos, "gep") { llvm_gen_gep_sb(line, pos + 3, dest, str_sb) }
-
-    else if low_starts_with_at(line, pos, "load_ptr_u8") { llvm_gen_load_ptr_u8_sb(line, pos + 11, dest, str_sb) }
-
-    else if low_starts_with_at(line, pos, "load_ptr_i32") { llvm_gen_load_ptr_i32_sb(line, pos + 12, dest, str_sb) }
-
-    else if low_starts_with_at(line, pos, "load_ptr_bool") { llvm_gen_load_ptr_bool_sb(line, pos + 13, dest, str_sb) }
-
-    else if low_starts_with_at(line, pos, "load_ptr_f64") { llvm_gen_load_ptr_f64_sb(line, pos + 12, dest, str_sb) }
-
-    else if low_starts_with_at(line, pos, "load_ptr") { llvm_gen_load_ptr_sb(line, pos + 8, dest, str_sb) }
-
-    else if low_starts_with_at(line, pos, "store_ptr_u8") { llvm_gen_store_ptr_u8_sb(line, pos + 12, str_sb) }
-
-    else if low_starts_with_at(line, pos, "store_ptr_i32") { llvm_gen_store_ptr_i32_sb(line, pos + 13, str_sb) }
-
-    else if low_starts_with_at(line, pos, "store_ptr_bool") { llvm_gen_store_ptr_bool_sb(line, pos + 14, str_sb) }
-
-    else if low_starts_with_at(line, pos, "store_ptr_f64") { llvm_gen_store_ptr_f64_sb(line, pos + 13, str_sb) }
-
-    else if low_starts_with_at(line, pos, "store_ptr") { llvm_gen_store_ptr_sb(line, pos + 9, str_sb) }
-
-    else if low_starts_with_at(line, pos, "nullable_select") { same_mapping(llvm_gen_nullable_select(line, pos + 15, dest)) }
-
-    else if low_starts_with_at(line, pos, "select") { same_mapping(llvm_gen_select(line, pos + 6, dest)) }
-
-    // v0.95: closure_new @fn, count, %cap0, ... — allocate closure struct
-
-    else if low_starts_with_at(line, pos, "closure_new") {
-
-        llvm_gen_closure_new_sb(line, pos + 11, dest, mapping, str_sb)
-
-    }
-
-    // v0.95: closure_load %__closure, N — load capture from closure struct
-
-    else if low_starts_with_at(line, pos, "closure_load") {
-
-        same_mapping(llvm_gen_closure_load(line, pos + 12, dest))
-
-    }
-
-    // v0.95: fn_ref @name — get function pointer as i64
-
-    else if low_starts_with_at(line, pos, "fn_ref") {
-
-        let name_start = low_skip_ws(line, pos + 6);
-
-        let fn_name = trim_end(line.slice(name_start, line.len()));
-
-        same_mapping("  " + dest + " = ptrtoint ptr " + fn_name + " to i64")
-
-    }
-
-    else { same_mapping("  ; unknown: " + line) };
+    };
 
 fn llvm_gen_nullable_select(line: String, pos: i64, dest: String) -> String
 
@@ -31695,7 +31712,7 @@ fn llvm_gen_copy_struct_aware(line: String, pos: i64, dest: String, mapping: Str
 
     llvm_gen_rhs_with_strings_map_and_fns_reg(line, pos, dest, "", "", mapping, str_sb, registry);
 
-fn llvm_gen_call_struct_aware(line: String, pos: i64, dest: String, strings: String, string_fns: String, mapping: String, str_sb: i64, registry: String, ptr_sb: i64) -> String
+fn llvm_gen_call_struct_aware(line: String, pos: i64, dest: String, llvm_sctx: String, mapping: String, str_sb: i64, ptr_sb: i64) -> String
 
   pre pos >= 0
 
@@ -31728,6 +31745,10 @@ fn llvm_gen_call_struct_aware(line: String, pos: i64, dest: String, strings: Str
         llvm_gen_indirect_call_param(line, pos, dest, var_name, str_sb)
 
     } else {
+
+    let strings = llvm_sctx_strings(llvm_sctx);
+    let string_fns = llvm_sctx_string_fns(llvm_sctx);
+    let registry = llvm_sctx_registry(llvm_sctx);
 
     // First delegate to existing call handler for proper codegen
 
