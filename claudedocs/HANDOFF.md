@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-30 (Cycles 3324-3330)
 
-> **HEAD**: `1f754bed` (커밋 대기 중 — Cycles 3324-3329 변경사항 미커밋)
+> **HEAD**: `f805877f` (feat(diagnose/perf): module_capability 섹션 분리 + declared JSON 배열 + gc-sections)
 > **실무 앵커**: `claudedocs/ROADMAP.md` (§ 6 AI-Native Pivot)
 > **전략 계획서**: `claudedocs/plans/ai-native-plan-2026.md`
 
