@@ -47277,6 +47277,98 @@ fn json_extract_int_field(json: String, field: String) -> i64
 
 };
 
+// Count newlines from pos=0 to limit (exclusive) in src.
+fn count_newlines(src: String, pos: i64, count: i64, limit: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= limit or pos >= src.len() { count }
+
+    else if src.byte_at(pos) == 10 { count_newlines(src, pos + 1, count + 1, limit) }
+
+    else { count_newlines(src, pos + 1, count, limit) };
+
+// Find position of "fn fn_name(" definition. Returns -1 if not found.
+// Verifies preceding char is whitespace to avoid partial-name matches.
+fn find_fn_def_pos(src: String, fn_name: String, pos: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= -1
+
+= if pos >= src.len() { 0 - 1 }
+
+    else {
+
+        let pattern = "fn " + fn_name + "(";
+
+        let found = find_pattern_at_slow(src, pattern, pos);
+
+        if found < 0 { 0 - 1 }
+
+        else {
+
+            let pre_char = if found == 0 { 10 } else { src.byte_at(found - 1) };
+
+            if pre_char == 32 or pre_char == 10 or pre_char == 9 {
+
+                found
+
+            } else {
+
+                find_fn_def_pos(src, fn_name, found + 1)
+
+            }
+
+        }
+
+    };
+
+// Get 1-based line number for a function definition (0 = not found).
+fn get_fn_line(src: String, fn_name: String) -> i64
+
+  post it >= 0
+
+= let pos = find_fn_def_pos(src, fn_name, 0);
+
+    if pos < 0 { 0 }
+
+    else { count_newlines(src, 0, 0, pos) + 1 };
+
+// Inject "line":N into each "function":"NAME" occurrence in json_text.
+// Used to enrich violation JSON with source location.
+fn enrich_violations_with_lines(json: String, src: String, pos: i64, acc: String) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 0
+
+= let pat_pos = find_pattern_at_slow(json, "\"function\":\"", pos);
+
+    if pat_pos < 0 {
+
+        acc + json.slice(pos, json.len())
+
+    } else {
+
+        let name_start = pat_pos + 12;
+
+        let name_end = find_char(json, name_start, 34);
+
+        let fn_name = json.slice(name_start, name_end);
+
+        let line = get_fn_line(src, fn_name);
+
+        let inject = if line > 0 { ",\"line\":" + int_to_string(line) } else { "" };
+
+        let new_acc = acc + json.slice(pos, name_end + 1) + inject;
+
+        enrich_violations_with_lines(json, src, name_end + 1, new_acc)
+
+    };
+
 // M12/M13 diagnose: unified effect-verify + contracts-check in one JSON.
 // Computes entries/eff_map/transitive_map once, reuses for both checks.
 fn diagnose_file(input: String) -> i64
@@ -47295,7 +47387,9 @@ fn diagnose_file(input: String) -> i64
 
         let transitive_map = build_full_transitive_effect_map(entries, eff_map, 5);
 
-        let ev_json = eff_verify_build_json(input, entries, eff_map, transitive_map);
+        let ev_json_raw = eff_verify_build_json(input, entries, eff_map, transitive_map);
+
+        let ev_json = enrich_violations_with_lines(ev_json_raw, src, 0, "");
 
         let contracts_src = read_file(".bmb-contracts");
 
@@ -47305,11 +47399,17 @@ fn diagnose_file(input: String) -> i64
 
         } else { "" };
 
-        let cc_json = cc_build_json(input, src, entries, eff_map, transitive_map, contracts);
+        let cc_json_raw = cc_build_json(input, src, entries, eff_map, transitive_map, contracts);
 
-        let mc_json = mc_build_json(input, src, entries, transitive_map, contracts);
+        let cc_json = enrich_violations_with_lines(cc_json_raw, src, 0, "");
 
-        let le_json = lint_effects_build_json(input, entries, eff_map, transitive_map);
+        let mc_json_raw = mc_build_json(input, src, entries, transitive_map, contracts);
+
+        let mc_json = enrich_violations_with_lines(mc_json_raw, src, 0, "");
+
+        let le_json_raw = lint_effects_build_json(input, entries, eff_map, transitive_map);
+
+        let le_json = enrich_violations_with_lines(le_json_raw, src, 0, "");
 
         let sd_json = semdp_build_json(input, entries);
 
