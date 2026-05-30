@@ -1,6 +1,6 @@
 # BMB Session Handoff — 2026-05-30 (Cycle 3331)
 
-> **HEAD**: `(TBD — commit pending)` (fix(diagnose): contracts-check에 module_capability 필드 포함)
+> **HEAD**: `2c3472c6` (fix(diagnose): contracts-check에 module_capability 필드 포함)
 > **이전 HEAD**: `f805877f`
 > **실무 앵커**: `claudedocs/ROADMAP.md` (§ 6 AI-Native Pivot)
 > **전략 계획서**: `claudedocs/plans/ai-native-plan-2026.md`
@@ -41,6 +41,24 @@
 | 3328 | bootstrap P-track 재측정 (STALE 확인) |
 | 3329 | build_link gc-sections 추가 |
 | 3330 | HANDOFF + ROADMAP + 커밋 |
+
+---
+
+## contracts-check 출력 형식 (Cycle 3331 갱신)
+
+```bash
+$ compiler.exe contracts-check test.bmb
+{
+  "type": "contracts_check",
+  "file": "test.bmb",
+  "status": "safe",
+  "violations_count": 0,
+  "module_capability": { "type":"module_capability", "status":"skipped", "total_violations":0 }
+}
+```
+
+- `module_capability` 필드가 이제 embedded — enforce_module_caps 미설정 시 `"status":"skipped"`
+- `diagnose` 명령의 `contracts_check` 서브섹션은 **기존과 동일** (module_capability 미포함, top-level 별도)
 
 ---
 
