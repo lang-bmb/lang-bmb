@@ -244,7 +244,7 @@ fn has_pattern(s: String, pat: String, pos: i64) -> bool
 
 fn include_dirname_scan(path: String, i: i64) -> i64
 
-  pre i >= 0
+  pre i >= -1
 
   post it >= -1
 

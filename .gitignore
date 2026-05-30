@@ -19,6 +19,7 @@ CLAUDE.md
 dev-docs/
 nul
 .env.local
+cycle.yaml
 
 # Claude Code temp files (known bug: github.com/anthropics/claude-code/issues/8856)
 tmpclaude-*-cwd

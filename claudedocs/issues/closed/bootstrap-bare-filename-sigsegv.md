@@ -1,7 +1,7 @@
 # ISSUE: Bootstrap compiler SIGSEGV on bare filename input
 
 **Discovered:** Cycle 3249 (2026-05-28)  
-**Status:** Open (P3 — non-blocking)  
+**Status:** ✅ CLOSED (Cycle 3332 — Fixed: `include_dirname_scan` precondition `pre i >= 0` → `pre i >= -1`)  
 **Affects:** `bootstrap/compiler.exe` (all subcommands: `emit-ir`, `build`, etc.)
 
 ---

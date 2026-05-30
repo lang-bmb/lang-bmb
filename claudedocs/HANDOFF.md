@@ -1,7 +1,7 @@
-# BMB Session Handoff — 2026-05-30 (Cycle 3331)
+# BMB Session Handoff — 2026-05-30 (Cycle 3332)
 
-> **HEAD**: `2c3472c6` (fix(diagnose): contracts-check에 module_capability 필드 포함)
-> **이전 HEAD**: `f805877f`
+> **HEAD**: TBD (fix(bootstrap): include_dirname_scan pre i >= 0 → pre i >= -1)
+> **이전 HEAD**: `2c3472c6`
 > **실무 앵커**: `claudedocs/ROADMAP.md` (§ 6 AI-Native Pivot)
 > **전략 계획서**: `claudedocs/plans/ai-native-plan-2026.md`
 
@@ -12,7 +12,7 @@
 | 항목 | 상태 |
 |------|------|
 | cargo test --release | ✅ 6282 PASS, 0 FAILED |
-| Within-gen Fixed Point | ✅ fp3331a.ll == fp3331b.ll (Cycle 3331) |
+| Within-gen Fixed Point | ✅ fp3332a.ll == fp3332b.ll (Cycle 3332) |
 | Cross-gen Fixed Point | ✅ S2 IR == S3 IR (Cycle 3322 — 이전 세션) |
 | bmb lint warnings | ✅ 0 non-param/postcondition (180 pre-existing 제외) |
 | Z3 verify | ✅ 144/144 |
@@ -24,7 +24,13 @@
 
 ---
 
-## 이번 세션 완료 (Cycle 3331)
+## 이번 세션 완료 (Cycle 3332)
+
+| 사이클 | 내용 |
+|--------|------|
+| 3332 | bootstrap-bare-filename-sigsegv 수정: `include_dirname_scan` `pre i >= 0` → `pre i >= -1` (LLVM `llvm.assume(false)` UB 제거 — Cycle 3249 ISSUE CLOSED) |
+
+## 이전 세션 완료 (Cycle 3331)
 
 | 사이클 | 내용 |
 |--------|------|
@@ -141,6 +147,8 @@ enforce_module_caps = true
 
 ### ~~[P3] contracts_check_run에 module_capability 포함~~ ✅ DONE (Cycle 3331)
 
+### ~~[P3] bootstrap bare-filename SIGSEGV~~ ✅ DONE (Cycle 3332)
+
 ---
 
 ## 미비/결함/개선 도출
@@ -150,6 +158,7 @@ enforce_module_caps = true
 | L1 언어사양 | 결함 | tuple heap-only → csv bootstrap 1.039× 근본 원인 | P2 |
 | L5 AI-Native | 미비 | module_capability 런타임 sandbox 미구현 | P4 |
 | ~~L2 컴파일러~~ | ~~미비~~ | ~~contracts_check_run이 module_capability 미포함~~ | ✅ DONE Cycle 3331 |
+| ~~bootstrap~~ | ~~결함~~ | ~~bare filename SIGSEGV (`llvm.assume(false)` UB)~~ | ✅ DONE Cycle 3332 |
 
 ---
 
