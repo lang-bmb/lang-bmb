@@ -42372,11 +42372,13 @@ fn eff_subset(a: String, b: String, pos: i64) -> bool
 
         let cap = a.slice(pos, end);
 
-        if not eff_contains_name(b, cap) { false }
+        if eff_contains_name(b, cap) {
 
-        else if end >= a.len() { true }
+            if end >= a.len() { true }
 
-        else { eff_subset(a, b, end + 1) }
+            else { eff_subset(a, b, end + 1) }
+
+        } else { false }
 
     };
 
@@ -43095,7 +43097,7 @@ fn lint_eff_pure_viol_sb(entries: String, pos: i64, sb: i64, isfirst: i64) -> i6
 
                 let _comma = if isfirst == 0 { sb_push(sb, ",") } else { 0 };
 
-                let _j = sb_push(sb, "{\"type\":\"effect_pure_violation\",\"function\":\"" + json_esc(fn_name) + "\",\"message\":\"pure function calls IO function\"}");
+                let _j = sb_push(sb, "{\"type\":\"effect_pure_violation\",\"function\":\"" + json_esc(fn_name) + "\",\"message\":\"pure function calls IO function\",\"fix_suggestion\":\"remove @pure annotation from " + json_esc(fn_name) + ", or ensure all called functions have no side effects\"}");
 
                 0
 
@@ -43127,7 +43129,7 @@ fn check_callee_missing_effects_sb(callee_eff: String, caller_eff: String,
 
             let _comma = if isfirst == 0 { sb_push(sb, ",") } else { 0 };
 
-            let _j = sb_push(sb, "{\"type\":\"effect_propagation\",\"function\":\"" + json_esc(fn_name) + "\",\"callee\":\"" + json_esc(callee_name) + "\",\"caller_effect\":\"" + caller_eff + "\",\"missing_cap\":\"" + cap + "\"}");
+            let _j = sb_push(sb, "{\"type\":\"effect_propagation\",\"function\":\"" + json_esc(fn_name) + "\",\"callee\":\"" + json_esc(callee_name) + "\",\"caller_effect\":\"" + caller_eff + "\",\"missing_cap\":\"" + cap + "\",\"fix_suggestion\":\"add <" + cap + "> to " + json_esc(fn_name) + " annotation: fn " + json_esc(fn_name) + "(): <" + caller_eff + ", " + cap + ">\"}");
 
             0
 
@@ -43260,7 +43262,7 @@ fn lint_missing_eff_sb(entries: String, direct_map: String, transitive_map: Stri
 
                     let _comma = if isfirst == 0 { sb_push(sb, ",") } else { 0 };
 
-                    let _j = sb_push(sb, "{\"type\":\"missing_effect_annotation\",\"function\":\"" + json_esc(fn_name) + "\",\"inferred_effect\":\"" + trans_eff + "\"}");
+                    let _j = sb_push(sb, "{\"type\":\"missing_effect_annotation\",\"function\":\"" + json_esc(fn_name) + "\",\"inferred_effect\":\"" + trans_eff + "\",\"fix_suggestion\":\"annotate as fn " + json_esc(fn_name) + "(): <" + trans_eff + ">\"}");
 
                     0
 
@@ -43287,7 +43289,7 @@ fn lint_effects_build_json(input: String, entries: String, eff_map: String, tran
 
     let f2 = lint_eff_propagation_sb(entries, eff_map, 0, warn_sb, f1);
 
-    let f3 = lint_missing_eff_sb(entries, eff_map, transitive_map, 0, warn_sb, f2);
+    let _f3 = lint_missing_eff_sb(entries, eff_map, transitive_map, 0, warn_sb, f2);
 
     let warnings_str = sb_build(warn_sb);
 
@@ -43354,8 +43356,6 @@ fn scan_module_requires_entry(src: String, pos: i64) -> String
     if tok_kind(t1) != TK_IDENT() { "" }
 
     else {
-
-        let t2 = next_token_raw(src, tok_end(t1));
 
         // Check if next keyword is 'requires'
         let req_pos = skip_ws_comments(src, tok_end(t1));
@@ -45354,7 +45354,11 @@ fn json_esc_sb(s: String, pos: i64, sb: i64) -> i64
 
     };
 
-fn json_esc(s: String) -> String = {
+fn json_esc(s: String) -> String
+
+  post it.len() >= 0
+
+= {
 
     let sb = sb_new();
 
@@ -45772,7 +45776,7 @@ fn eff_z3_gen_edges(entries: String, eff_map: String, pos: i64, sb: i64) -> i64
 
             let is_plat = str_find(raw_eff, "PLAT:") == 0;
 
-            let _x = if not is_plat { eff_z3_gen_calls(fn_name, calls, eff_map, 0, sb) } else { 0 };
+            let _x = if is_plat { 0 } else { eff_z3_gen_calls(fn_name, calls, eff_map, 0, sb) };
 
             eff_z3_gen_edges(entries, eff_map, eol + 1, sb)
 
@@ -46038,7 +46042,7 @@ fn eff_emit_viol_pair(caller_name: String, caller_eff: String, callee_name: Stri
 
         let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
 
-        let _j = sb_push(sb, "{\"type\":\"effect_mismatch\",\"function\":\"" + json_esc(caller_name) + "\",\"callee\":\"" + json_esc(callee_name) + "\",\"caller_effect\":\"" + json_esc(caller_eff) + "\",\"callee_effect\":\"" + json_esc(callee_eff) + "\",\"message\":\"function " + json_esc(caller_name) + " declares <" + json_esc(caller_eff) + "> but calls " + json_esc(callee_name) + " which uses <" + json_esc(callee_eff) + ">\"}");
+        let _j = sb_push(sb, "{\"type\":\"effect_mismatch\",\"function\":\"" + json_esc(caller_name) + "\",\"callee\":\"" + json_esc(callee_name) + "\",\"caller_effect\":\"" + json_esc(caller_eff) + "\",\"callee_effect\":\"" + json_esc(callee_eff) + "\",\"message\":\"function " + json_esc(caller_name) + " declares <" + json_esc(caller_eff) + "> but calls " + json_esc(callee_name) + " which uses <" + json_esc(callee_eff) + ">\",\"fix_suggestion\":\"add <" + json_esc(callee_eff) + "> to " + json_esc(caller_name) + " annotation: fn " + json_esc(caller_name) + "(): <" + json_esc(caller_eff) + ", " + json_esc(callee_eff) + ">\"}");
 
         0
 
@@ -46138,7 +46142,7 @@ fn eff_collect_pure_calls(fn_name: String, calls: String, eff_map: String, pos: 
 
             let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
 
-            let _j = sb_push(sb, "{\"type\":\"pure_violation\",\"function\":\"" + json_esc(fn_name) + "\",\"callee\":\"" + json_esc(callee) + "\",\"callee_effect\":\"" + json_esc(callee_eff) + "\",\"message\":\"@pure function " + json_esc(fn_name) + " calls " + json_esc(callee) + " which uses <" + json_esc(callee_eff) + ">\"}");
+            let _j = sb_push(sb, "{\"type\":\"pure_violation\",\"function\":\"" + json_esc(fn_name) + "\",\"callee\":\"" + json_esc(callee) + "\",\"callee_effect\":\"" + json_esc(callee_eff) + "\",\"message\":\"@pure function " + json_esc(fn_name) + " calls " + json_esc(callee) + " which uses <" + json_esc(callee_eff) + ">\",\"fix_suggestion\":\"remove @pure from " + json_esc(fn_name) + ", or ensure " + json_esc(callee) + " is also @pure\"}");
 
 
             0
@@ -46235,7 +46239,7 @@ fn eff_collect_missing_annot(entries: String, direct_map: String, transitive_map
 
                     let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
 
-                    let _j = sb_push(sb, "{\"type\":\"missing_annotation\",\"function\":\"" + json_esc(fn_name) + "\",\"missing_effect\":\"" + json_esc(trans_eff) + "\",\"message\":\"function " + json_esc(fn_name) + " uses <" + json_esc(trans_eff) + "> transitively but has no effect annotation\"}");
+                    let _j = sb_push(sb, "{\"type\":\"missing_annotation\",\"function\":\"" + json_esc(fn_name) + "\",\"missing_effect\":\"" + json_esc(trans_eff) + "\",\"message\":\"function " + json_esc(fn_name) + " uses <" + json_esc(trans_eff) + "> transitively but has no effect annotation\",\"fix_suggestion\":\"annotate as fn " + json_esc(fn_name) + "(): <" + json_esc(trans_eff) + ">\"}");
 
 
                     0
@@ -46498,7 +46502,7 @@ fn bc_check_max_params_scan(entries: String, max_n: i64, sb: i64, isfirst: i64, 
 
         let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
 
-        let _j = sb_push(sb, "{\"type\":\"max_params\",\"function\":\"" + json_esc(fn_name) + "\",\"params\":" + int_to_string(param_count) + ",\"max\":" + int_to_string(max_n) + ",\"message\":\"function " + json_esc(fn_name) + " has " + int_to_string(param_count) + " params (max=" + int_to_string(max_n) + ")\"}");
+        let _j = sb_push(sb, "{\"type\":\"max_params\",\"function\":\"" + json_esc(fn_name) + "\",\"params\":" + int_to_string(param_count) + ",\"max\":" + int_to_string(max_n) + ",\"message\":\"function " + json_esc(fn_name) + " has " + int_to_string(param_count) + " params (max=" + int_to_string(max_n) + ")\",\"fix_suggestion\":\"split " + json_esc(fn_name) + " into smaller helper functions (current: " + int_to_string(param_count) + " params, max: " + int_to_string(max_n) + ")\"}");
 
         0
 
@@ -46567,7 +46571,7 @@ fn bc_check_post_scan(entries: String, src: String, eff_map: String, pos: i64, s
 
                 let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
 
-                let _j = sb_push(sb, "{\"type\":\"require_postcondition\",\"function\":\"" + json_esc(fn_name) + "\",\"message\":\"function " + json_esc(fn_name) + " has no postcondition\"}");
+                let _j = sb_push(sb, "{\"type\":\"require_postcondition\",\"function\":\"" + json_esc(fn_name) + "\",\"message\":\"function " + json_esc(fn_name) + " has no postcondition\",\"fix_suggestion\":\"add postcondition to " + json_esc(fn_name) + ": post it >= 0\"}");
 
                 0
 
@@ -46606,7 +46610,7 @@ fn bc_check_forbid_eff(entries: String, transitive_map: String, forbidden: Strin
 
                 let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
 
-                let _j = sb_push(sb, "{\"type\":\"forbid_effect\",\"function\":\"" + json_esc(fn_name) + "\",\"message\":\"function " + json_esc(fn_name) + " uses <" + json_esc(forbidden) + "> (forbidden by project contracts)\"}");
+                let _j = sb_push(sb, "{\"type\":\"forbid_effect\",\"function\":\"" + json_esc(fn_name) + "\",\"message\":\"function " + json_esc(fn_name) + " uses <" + json_esc(forbidden) + "> (forbidden by project contracts)\",\"fix_suggestion\":\"refactor " + json_esc(fn_name) + " to avoid using <" + json_esc(forbidden) + "> effect\"}");
 
                 0
 
@@ -46645,7 +46649,7 @@ fn bc_check_forbid_fn(entries: String, forbidden_fn: String, sb: i64, isfirst: i
 
                 let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
 
-                let _j = sb_push(sb, "{\"type\":\"forbid_function\",\"function\":\"" + json_esc(fn_name) + "\",\"forbidden\":\"" + json_esc(forbidden_fn) + "\",\"message\":\"function " + json_esc(fn_name) + " calls forbidden function " + json_esc(forbidden_fn) + "\"}");
+                let _j = sb_push(sb, "{\"type\":\"forbid_function\",\"function\":\"" + json_esc(fn_name) + "\",\"forbidden\":\"" + json_esc(forbidden_fn) + "\",\"message\":\"function " + json_esc(fn_name) + " calls forbidden function " + json_esc(forbidden_fn) + "\",\"fix_suggestion\":\"replace call to " + json_esc(forbidden_fn) + " in " + json_esc(fn_name) + " with an approved alternative\"}");
 
                 0
 
@@ -46735,7 +46739,7 @@ fn bc_check_module_cap_fn(fn_name: String, trans_eff: String, module_caps: Strin
 
             let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
 
-            let _j = sb_push(sb, "{\"type\":\"module_capability\",\"function\":\"" + json_esc(fn_name) + "\",\"effect\":\"" + json_esc(cap) + "\",\"declared\":[" + ms_caps_to_json(module_caps, 0, 1) + "],\"message\":\"function " + json_esc(fn_name) + " uses <" + json_esc(cap) + "> not declared in module requires\"}");
+            let _j = sb_push(sb, "{\"type\":\"module_capability\",\"function\":\"" + json_esc(fn_name) + "\",\"effect\":\"" + json_esc(cap) + "\",\"declared\":[" + ms_caps_to_json(module_caps, 0, 1) + "],\"message\":\"function " + json_esc(fn_name) + " uses <" + json_esc(cap) + "> not declared in module requires\",\"fix_suggestion\":\"add " + json_esc(cap) + " to module requires declaration\"}");
 
             0
 
@@ -46827,7 +46831,7 @@ fn cc_build_json(input: String, src: String, entries: String, eff_map: String, t
     // max_params check
     let f5 = if max_params_str != "" {
 
-        let max_n = parse_int(max_params_str);
+        let max_n = str_to_int(max_params_str);
 
         if max_n > 0 { bc_check_max_params_scan(entries, max_n, viol_sb, f4, 0) } else { f4 }
 
@@ -46902,7 +46906,7 @@ fn cc_combine_mc(cc_json: String, mc_json: String) -> String
 // Build module_capability JSON section (separate from contracts_check).
 // Returns {"type":"module_capability","status":"...","total_violations":N,"violations":[...]}
 // Status "skipped" when enforce_module_caps not set or no module requires clause.
-fn mc_build_json(input: String, src: String, entries: String, transitive_map: String, contracts: String) -> String
+fn mc_build_json(_input: String, src: String, entries: String, transitive_map: String, contracts: String) -> String
 
   post it.len() >= 1
 
@@ -47022,9 +47026,7 @@ fn build_check_module_caps(input: String, source: String) -> i64
 
                 let is_viol = has_pattern(mc_json, "\"status\":\"violation\"", 0);
 
-                if not is_viol { 0 }
-
-                else {
+                if is_viol {
 
                     let err_json = "{\"type\":\"build_error\",\"file\":\"" + json_esc(input) + "\",\"reason\":\"module_capability\",\"module_capability\":" + mc_json + "}";
 
@@ -47032,7 +47034,7 @@ fn build_check_module_caps(input: String, source: String) -> i64
 
                     1
 
-                }
+                } else { 0 }
 
             }
 

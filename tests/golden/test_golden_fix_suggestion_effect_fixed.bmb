@@ -1,0 +1,15 @@
+// M13 Phase 6: fix_suggestion round-trip test — effect_verify FIXED
+// AFTER applying fix_suggestion: "annotate as fn not_annotated(): <IO>"
+// Expected: effect-verify status = "safe"
+
+platform stdlib {
+    fn println_str(s: String): <IO> -> ()
+}
+
+// Fixed: effect annotation added per fix_suggestion
+fn not_annotated(msg: String): <IO> -> i64 = {
+    let _p = println_str(msg);
+    0
+};
+
+fn main() -> i64 = 0;

@@ -1,0 +1,18 @@
+// M13 Phase 6: fix_suggestion round-trip test — effect_verify
+// Tests that fix_suggestion for missing_annotation produces valid BMB syntax.
+// Round-trip: applying the fix clears the violation.
+//
+// VIOLATION CASE: no effect annotation on not_annotated
+// fix_suggestion: "annotate as fn not_annotated(): <IO>"
+
+platform stdlib {
+    fn println_str(s: String): <IO> -> ()
+}
+
+// Violation: no effect annotation but calls IO function
+fn not_annotated(msg: String) -> i64 = {
+    let _p = println_str(msg);
+    0
+};
+
+fn main() -> i64 = 0;

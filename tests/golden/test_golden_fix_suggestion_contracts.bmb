@@ -1,0 +1,13 @@
+// M13 Phase 6: fix_suggestion round-trip test — contracts_check require_postcondition
+// VIOLATION CASE: missing_post has no postcondition
+// fix_suggestion: "add postcondition to missing_post: post it >= 0"
+//
+// Run with: .bmb-contracts containing require_postcondition=true
+
+fn missing_post() -> i64 = 42;
+
+fn has_post() -> i64
+  post it >= 0
+= 42;
+
+fn main() -> i64 = 0;
