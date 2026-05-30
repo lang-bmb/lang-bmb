@@ -46493,6 +46493,70 @@ fn bc_check_missing_eff_anno(entries: String, direct_map: String, transitive_map
 
     };
 
+// Check enforce_module_caps: emit violation for each effect not covered by module requires.
+// Returns new isfirst value after emitting violations.
+fn bc_check_module_cap_fn(fn_name: String, trans_eff: String, module_caps: String, sb: i64, isfirst: i64, pos: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= trans_eff.len() { isfirst }
+
+    else {
+
+        let end = eff_find_space_or_end(trans_eff, pos);
+
+        let cap = trans_eff.slice(pos, end);
+
+        let new_isfirst = if cap.len() > 0 and not eff_contains_name(module_caps, cap) {
+
+            let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
+
+            let _j = sb_push(sb, "{\"type\":\"module_capability\",\"function\":\"" + json_esc(fn_name) + "\",\"effect\":\"" + json_esc(cap) + "\",\"declared\":[" + json_esc(module_caps) + "],\"message\":\"function " + json_esc(fn_name) + " uses <" + json_esc(cap) + "> not declared in module requires\"}");
+
+            0
+
+        } else { isfirst };
+
+        if end >= trans_eff.len() { new_isfirst }
+
+        else { bc_check_module_cap_fn(fn_name, trans_eff, module_caps, sb, new_isfirst, end + 1) }
+
+    };
+
+fn bc_check_module_caps_scan(entries: String, transitive_map: String, module_caps: String, sb: i64, isfirst: i64, pos: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos >= entries.len() or module_caps == "" { isfirst }
+
+    else {
+
+        let eol = callers_find_eol(entries, pos);
+
+        let line = entries.slice(pos, eol);
+
+        if line.len() == 0 { bc_check_module_caps_scan(entries, transitive_map, module_caps, sb, isfirst, eol + 1) }
+
+        else {
+
+            let fn_name = callers_get_field(line, 0, 0, 0);
+
+            let trans_eff = eff_map_get(transitive_map, fn_name, 0);
+
+            let new_isfirst = if trans_eff == "" or trans_eff == "pure" or trans_eff == "*" { isfirst }
+
+            else { bc_check_module_cap_fn(fn_name, trans_eff, module_caps, sb, isfirst, 0) };
+
+            bc_check_module_caps_scan(entries, transitive_map, module_caps, sb, new_isfirst, eol + 1)
+
+        }
+
+    };
+
 // Build contracts_check JSON string (without printing). Used by contracts_check_run and diagnose_file.
 fn cc_build_json(input: String, src: String, entries: String, eff_map: String, transitive_map: String, contracts: String) -> String
 
@@ -46509,6 +46573,10 @@ fn cc_build_json(input: String, src: String, entries: String, eff_map: String, t
     let forbid_fn = bc_get(contracts, "forbid_function", 0);
 
     let max_params_str = bc_get(contracts, "max_params", 0);
+
+    let enforce_caps = bc_get(contracts, "enforce_module_caps", 0);
+
+    let module_caps = if enforce_caps == "true" { scan_module_requires(src, 0) } else { "" };
 
     let viol_sb = sb_new();
 
@@ -46547,7 +46615,14 @@ fn cc_build_json(input: String, src: String, entries: String, eff_map: String, t
 
     } else { f4 };
 
-    let has_viol = f5 == 0;
+    // enforce_module_caps check
+    let f6 = if enforce_caps == "true" and module_caps != "" {
+
+        bc_check_module_caps_scan(entries, transitive_map, module_caps, viol_sb, f5, 0)
+
+    } else { f5 };
+
+    let has_viol = f6 == 0;
 
     let status = if has_viol { "violation" } else { "safe" };
 

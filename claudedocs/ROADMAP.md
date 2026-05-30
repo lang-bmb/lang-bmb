@@ -1,5 +1,5 @@
 # BMB 로드맵 — 철학 정렬 앵커
-> 최종 업데이트: 2026-05-30 (**AI-Native Pivot Cycles 3315-3319** — diagnose summary 섹션 + forbid_function 규칙 + P1 violations 형식 통일 (effect_verify/contracts_check/lint_effects/semantic_duplicate → `{"type":"...","function":"..."}`) + within-gen FP ✅. HEAD 갱신 예정.)
+> 최종 업데이트: 2026-05-30 (**AI-Native Pivot Cycles 3315-3322** — diagnose summary + forbid_function + P1 violations 형식 통일 + M15 Phase 6a enforce_module_caps + Cross-gen FP S2==S3 ✅. HEAD 갱신 예정.)
 > 이전 갱신: 2026-05-29 (**AI-Native Pivot Cycles 3306-3314** — [P1] count 필드 + [P4] max_params + [P2] Z3 formal missing_annotation + [P3] cross-gen FP S2==S3 ✅ + violations_count (effect_verify/contracts_check) + semantic_duplicate diagnose 4섹션 통합. HEAD `04520838`.)
 > 이전 갱신: 2026-05-29 (**AI-Native Pivot Cycles 3306-3311** — [P1] lint_effects count 필드 + [P4] max_params 구현 + [P2] Z3 formal missing_annotation (eff_z3_gen_missing_anno_sb) + [P3] cross-gen Fixed Point S2==S3 ✅. HEAD `2c4e35e7`.)
 > 이전 갱신: 2026-05-29 (**AI-Native Pivot Cycles 3296-3305** — [P2] index/query platform 스킵 + [P3] eff_set_equals + [P1] diagnose CLI(effect_verify+contracts_check+lint_effects 3섹션) + lint_effects_build_json + bmb-mcp bmb_diagnose 도구 + 세션 종료 정리. Within-gen Fixed Point ✅. HEAD `a6543120`.)
@@ -1605,6 +1605,8 @@ Phase 2 (3-4 cycles): 모듈 capability 선언
 | diagnose | summary 섹션 (total_issues+4축 카운트) | ✅ COMPLETE | 3315 |
 | contracts-check | forbid_function 규칙 구현 | ✅ COMPLETE | 3316 |
 | P1 violations 형식 통일 | effect_verify/contracts_check/lint_effects/semantic_duplicate → `{"type":"...","function":"..."}` | ✅ COMPLETE | 3317-3319 |
+| M15 Platform/Capability | Phase 6a: enforce_module_caps contracts 규칙 (위반 시 contracts_check 에러) | ✅ COMPLETE | 3321 |
+| Bootstrap | Cross-gen Fixed Point S2==S3 | ✅ COMPLETE | 3322 |
 
 ### 실행 타임라인
 
