@@ -44321,6 +44321,12 @@ fn build_file_ex(input: String, output: String, fast: bool, runtime_path: String
 
     } else {
 
+        let cap_err = build_check_module_caps(input, source);
+
+        if cap_err > 0 { cap_err }
+
+        else {
+
         let llvm = compile_program(source, safe);
 
         let t1 = time_ns() / 1000000;
@@ -44358,6 +44364,8 @@ fn build_file_ex(input: String, output: String, fast: bool, runtime_path: String
             let _t = print_build_timing(t1 - t0, t2 - t1);
 
             result
+
+        }
 
         }
 
@@ -46752,6 +46760,62 @@ fn contracts_check_run(input: String, src: String, contracts: String) -> i64
     0
 
 };
+
+// Phase 6c: Module capability enforcement at build time.
+// When .bmb-contracts has enforce_module_caps=true, the build command refuses
+// to produce a binary if the source has module capability violations.
+// Returns 0 (no violation, build proceeds) or 1 (violation, build aborted).
+fn build_check_module_caps(input: String, source: String) -> i64
+
+  post it >= 0
+
+= let contracts_src = read_file(".bmb-contracts");
+
+    if contracts_src.len() == 0 { 0 }
+
+    else {
+
+        let contracts = bc_parse_contracts(contracts_src, 0, "");
+
+        let enforce_caps = bc_get(contracts, "enforce_module_caps", 0);
+
+        if enforce_caps != "true" { 0 }
+
+        else {
+
+            let module_caps = scan_module_requires(source, 0);
+
+            if module_caps == "" { 0 }
+
+            else {
+
+                let entries = callers_collect_source(source, 0, "");
+
+                let eff_map = build_fn_effect_map(source, 0, "");
+
+                let transitive_map = build_full_transitive_effect_map(entries, eff_map, 5);
+
+                let mc_json = mc_build_json(input, source, entries, transitive_map, contracts);
+
+                let is_viol = has_pattern(mc_json, "\"status\":\"violation\"", 0);
+
+                if not is_viol { 0 }
+
+                else {
+
+                    let err_json = "{\"type\":\"build_error\",\"file\":\"" + json_esc(input) + "\",\"reason\":\"module_capability\",\"module_capability\":" + mc_json + "}";
+
+                    let _p = println_str(err_json);
+
+                    1
+
+                }
+
+            }
+
+        }
+
+    };
 
 fn contracts_check_file(input: String) -> i64
 
