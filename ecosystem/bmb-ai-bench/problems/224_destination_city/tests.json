@@ -1,0 +1,10 @@
+[
+  {"stdin": "3\nLondon\nNew York City\nNew York City\nLima\nLima\nSao Paulo", "expected_stdout": "Sao Paulo\n"},
+  {"stdin": "2\nD\nB\nB\nZ", "expected_stdout": "Z\n"},
+  {"stdin": "1\nA\nB", "expected_stdout": "B\n"},
+  {"stdin": "3\nA\nB\nB\nC\nC\nD", "expected_stdout": "D\n"},
+  {"stdin": "2\nX\nY\nZ\nX", "expected_stdout": "Y\n"},
+  {"stdin": "1\nParis\nTokyo", "expected_stdout": "Tokyo\n"},
+  {"stdin": "3\nalpha\nbeta\nbeta\ngamma\ngamma\ndelta", "expected_stdout": "delta\n"},
+  {"stdin": "2\nHome\nWork\nWork\nCafe", "expected_stdout": "Cafe\n"}
+]

@@ -1,0 +1,26 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+fn print_running(arr: i64, idx: i64, sum: i64) -> i64
+  pre idx >= 0
+= if idx >= vec_len(arr) { 0 }
+  else {
+    let v = vec_get(arr, idx);
+    let new_sum = sum + v;
+    let _p = println(new_sum);
+    print_running(arr, idx + 1, new_sum)
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let arr = vec_new();
+    let _r = read_into_vec(arr, n);
+    let _p = print_running(arr, 0, 0);
+    0
+};

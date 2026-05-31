@@ -1,0 +1,62 @@
+fn str_eq_loop(a: String, b: String, i: i64) -> i64
+  pre i >= 0
+= if i >= a.len() { 1 }
+  else {
+    if a.byte_at(i) != b.byte_at(i) { 0 }
+    else { str_eq_loop(a, b, i + 1) }
+  };
+
+fn str_eq(a: String, b: String) -> i64
+= if a.len() != b.len() { 0 }
+  else { str_eq_loop(a, b, 0) };
+
+fn find_newline(s: String, pos: i64) -> i64
+  pre pos >= 0
+= if pos >= s.len() { s.len() }
+  else if s.byte_at(pos) == 10 { pos }
+  else { find_newline(s, pos + 1) };
+
+fn in_list(list: String, city: String, pos: i64) -> i64
+  pre pos >= 0
+= if pos >= list.len() { 0 }
+  else {
+    let nl = find_newline(list, pos);
+    let entry = list.slice(pos, nl);
+    if str_eq(entry, city) == 1 { 1 }
+    else if nl >= list.len() { 0 }
+    else { in_list(list, city, nl + 1) }
+  };
+
+fn read_pairs(sb_from: i64, sb_to: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let a = read_line();
+    let b = read_line();
+    let _pa = sb_push(sb_from, a + "\n");
+    let _pb = sb_push(sb_to, b + "\n");
+    read_pairs(sb_from, sb_to, n - 1)
+  };
+
+fn find_dest(from_list: String, to_list: String, pos: i64) -> String
+  pre pos >= 0
+= if pos >= to_list.len() { "" }
+  else {
+    let nl = find_newline(to_list, pos);
+    let city = to_list.slice(pos, nl);
+    if in_list(from_list, city, 0) == 0 { city }
+    else if nl >= to_list.len() { "" }
+    else { find_dest(from_list, to_list, nl + 1) }
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let sb_from = sb_new();
+    let sb_to = sb_new();
+    let _r = read_pairs(sb_from, sb_to, n);
+    let from_list = sb_build(sb_from);
+    let to_list = sb_build(sb_to);
+    let dest = find_dest(from_list, to_list, 0);
+    let _p = println_str(dest);
+    0
+};

@@ -1,0 +1,23 @@
+fn print_val_n(val: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let _p = println(val);
+    print_val_n(val, n - 1)
+  };
+
+fn decode_pairs(n: i64, idx: i64) -> i64
+  pre idx >= 0 and n >= 0
+= if idx >= n { 0 }
+  else {
+    let freq = read_int();
+    let val = read_int();
+    let _p = print_val_n(val, freq);
+    decode_pairs(n, idx + 1)
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let _p = decode_pairs(n, 0);
+    0
+};

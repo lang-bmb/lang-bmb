@@ -1,0 +1,10 @@
+[
+  {"stdin": "4\n4000\n3000\n1000\n2000", "expected_stdout": "2500\n"},
+  {"stdin": "5\n1000\n2000\n3000\n4000\n5000", "expected_stdout": "3000\n"},
+  {"stdin": "3\n6000\n5000\n4000", "expected_stdout": "5000\n"},
+  {"stdin": "4\n48000\n59000\n100000\n112000", "expected_stdout": "79500\n"},
+  {"stdin": "3\n25000\n48000\n57000", "expected_stdout": "48000\n"},
+  {"stdin": "4\n10\n20\n30\n40", "expected_stdout": "25\n"},
+  {"stdin": "5\n100\n200\n300\n400\n500", "expected_stdout": "300\n"},
+  {"stdin": "3\n1\n2\n3", "expected_stdout": "2\n"}
+]

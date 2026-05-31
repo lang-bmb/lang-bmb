@@ -1,0 +1,12 @@
+{
+  "id": "226_shuffle_string",
+  "category": "string",
+  "difficulty": "easy",
+  "tags": ["array", "string"],
+  "bmb_features_tested": ["read_line", "sb_new", "sb_push", "sb_build", "vec_new", "vec_get", "recursive"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #1528 (external)"
+}

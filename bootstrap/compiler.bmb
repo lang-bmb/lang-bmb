@@ -31385,7 +31385,7 @@ fn llvm_gen_rhs_copy_markers(src: String, dest: String, str_sb: i64) -> i64
 
   pre str_sb >= 0
 
-  post it >= 0
+  post it == 0 or it == 1
 
 = let is_string = is_string_var_sb(src, str_sb);
     let is_double = is_double_var_sb(src, str_sb);
@@ -31399,7 +31399,7 @@ fn llvm_gen_rhs_copy_alloca_markers(src: String, dest: String, str_sb: i64) -> i
 
   pre str_sb >= 0
 
-  post it >= 0
+  post it == 0 or it == 1
 
 = let alloca_is_double = is_double_var_sb(src, str_sb);
     let alloca_is_string = is_string_var_sb(src, str_sb);
@@ -44534,7 +44534,112 @@ fn lint_check_negated_condition(src: String, pos: i64, count: i64) -> i64
         lint_check_negated_condition(src, nt_pos + 5, new_count)
     };
 
-// Bundle source-level lint checks (intent, redundant_else_unit, missing_postcondition, todo_comment, magic_number, deep_nesting, missing_precondition, negated_condition)
+fn brwp_body_window() -> i64
+  post it == 1500
+= 1500;
+
+// Check [bool_return_without_post]: -> i64 fn with { 1 } else { 0 } pattern but no 'post it == 0 or it == 1'
+fn lint_brwp_next_fn(src: String, pos: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= -1
+
+= let p = find_pattern_noa(src, "\nfn ", pos);
+
+    if p < 0 { p } else { p + 1 };
+
+fn lint_brwp_check_fn(src: String, fn_pos: i64, fname: String, rp: i64, count: i64) -> i64
+
+  pre fn_pos >= 0 and rp >= 0 and count >= 0
+
+  post it >= 0
+
+= let next_fn = lint_brwp_next_fn(src, rp);
+
+    let body_end = if next_fn > rp { next_fn }
+                   else if rp + brwp_body_window() < src.len() { rp + brwp_body_window() }
+                   else { src.len() };
+
+    let window = src.slice(rp, body_end);
+
+    let has_bool_post = find_pattern_noa(window, "post it == 0 or it == 1", 0) >= 0
+                    or find_pattern_noa(window, "post it == 1 or it == 0", 0) >= 0;
+
+    let tail_off = if window.len() > 100 { window.len() - 100 } else { 0 };
+    let win_tail = window.slice(tail_off, window.len());
+    let has_bool_pat = find_pattern_noa(win_tail, "{ 1 } else { 0 };\n\n", 0) >= 0
+                    or find_pattern_noa(win_tail, "{ 0 } else { 1 };\n\n", 0) >= 0;
+
+    if not has_bool_post and has_bool_pat {
+
+        let line_num = count_line_at(src, fn_pos, 0, 1);
+
+        let _w = println_str("  [bool_return_without_post] line " + int_to_string(line_num) + ": " + fname + ": returns bool-as-i64 without 'post it == 0 or it == 1'");
+
+        count + 1
+
+    } else { count };
+
+// Check [bool_return_without_post]: -> i64 fn with { 1 } else { 0 } pattern but no 'post it == 0 or it == 1'
+fn lint_check_bool_return_without_post(src: String, pos: i64, count: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= let fn_pos = find_pattern_noa(src, "fn ", pos);
+
+    if fn_pos < 0 { count } else {
+
+        let prev_ok = if fn_pos == 0 { true }
+            else { let prev = src.byte_at(fn_pos - 1); prev == 10 or prev == 13 or prev == 32 or prev == 59 or prev == 9 };
+
+        let sol = lint_find_sol(src, fn_pos);
+
+        let not_in_comment = not (find_pattern_noa_range(src, "//", sol, fn_pos) >= 0);
+
+        let is_real_fn = prev_ok and not_in_comment;
+
+        if is_real_fn {
+
+            let name_start = skip_ws_comments(src, fn_pos + 3);
+
+            let name_end = scan_ident_end(src, name_start);
+
+            let fname = src.slice(name_start, name_end);
+
+            if fname != "" and name_end > name_start {
+
+                let t2 = next_token_raw(src, name_end);
+
+                let after_gen = if tok_kind(t2) == TK_LT() { skip_generic_params(src, tok_end(t2)) } else { name_end };
+
+                let t2g = next_token_raw(src, after_gen);
+
+                if tok_kind(t2g) == TK_LPAREN() {
+
+                    let params = index_collect_params(src, tok_end(t2g), "");
+
+                    let rtype = index_read_ret_type(src, unpack_pos(params));
+
+                    let new_count = if unpack_ast(rtype) == "i64" {
+
+                        lint_brwp_check_fn(src, fn_pos, fname, unpack_pos(rtype), count)
+
+                    } else { count };
+
+                    lint_check_bool_return_without_post(src, fn_pos + 3, new_count)
+
+                } else { lint_check_bool_return_without_post(src, fn_pos + 3, count) }
+
+            } else { lint_check_bool_return_without_post(src, fn_pos + 3, count) }
+
+        } else { lint_check_bool_return_without_post(src, fn_pos + 3, count) }
+
+    };
+
+// Bundle source-level lint checks (intent, redundant_else_unit, missing_postcondition, todo_comment, magic_number, deep_nesting, missing_precondition, negated_condition, bool_return_without_post)
 fn lint_source_checks(source: String) -> i64
 
   post it >= 0
@@ -44555,7 +44660,9 @@ fn lint_source_checks(source: String) -> i64
 
     let w17 = lint_check_negated_condition(source, 0, 0);
 
-    w6 + w11 + w12 + w13 + w14 + w15 + w16 + w17;
+    let w18 = lint_check_bool_return_without_post(source, 0, 0);
+
+    w6 + w11 + w12 + w13 + w14 + w15 + w16 + w17 + w18;
 
 fn lint_file(input: String) -> i64
 

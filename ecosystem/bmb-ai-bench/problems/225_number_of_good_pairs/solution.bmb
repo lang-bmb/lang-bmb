@@ -1,0 +1,35 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+fn count_pairs_j(arr: i64, i: i64, j: i64, val: i64, acc: i64) -> i64
+  pre j >= 0 and acc >= 0
+= if j >= vec_len(arr) { acc }
+  else {
+    let v = vec_get(arr, j);
+    let add = if v == val { 1 } else { 0 };
+    count_pairs_j(arr, i, j + 1, val, acc + add)
+  };
+
+fn count_pairs_i(arr: i64, i: i64, acc: i64) -> i64
+  pre i >= 0 and acc >= 0
+= if i >= vec_len(arr) { acc }
+  else {
+    let val = vec_get(arr, i);
+    let new_acc = count_pairs_j(arr, i, i + 1, val, acc);
+    count_pairs_i(arr, i + 1, new_acc)
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let arr = vec_new();
+    let _r = read_into_vec(arr, n);
+    let result = count_pairs_i(arr, 0, 0);
+    let _p = println(result);
+    0
+};

@@ -1,0 +1,45 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+fn find_max(arr: i64, idx: i64, m: i64) -> i64
+  pre idx >= 0
+= if idx >= vec_len(arr) { m }
+  else {
+    let v = vec_get(arr, idx);
+    let new_m = if v > m { v } else { m };
+    find_max(arr, idx + 1, new_m)
+  };
+
+fn find_min(arr: i64, idx: i64, m: i64) -> i64
+  pre idx >= 0
+= if idx >= vec_len(arr) { m }
+  else {
+    let v = vec_get(arr, idx);
+    let new_m = if v < m { v } else { m };
+    find_min(arr, idx + 1, new_m)
+  };
+
+fn sum_array(arr: i64, idx: i64, acc: i64) -> i64
+  pre idx >= 0
+= if idx >= vec_len(arr) { acc }
+  else {
+    sum_array(arr, idx + 1, acc + vec_get(arr, idx))
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let arr = vec_new();
+    let _r = read_into_vec(arr, n);
+    let mx = find_max(arr, 0, 0);
+    let mn = find_min(arr, 0, mx);
+    let total = sum_array(arr, 0, 0);
+    let avg = (total - mx - mn) / (n - 2);
+    let _p = println(avg);
+    0
+};

@@ -1,0 +1,12 @@
+{
+  "id": "222_max_nesting_depth",
+  "category": "string",
+  "difficulty": "easy",
+  "tags": ["string", "stack", "depth"],
+  "bmb_features_tested": ["read_line", "byte_at", "str_len", "recursive"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #1614 (external)"
+}

@@ -1,0 +1,22 @@
+fn max_depth(s: String, idx: i64, depth: i64, max_d: i64) -> i64
+  pre idx >= 0 and depth >= 0
+= if idx >= s.len() { max_d }
+  else {
+    let c = s.byte_at(idx);
+    if c == 40 {
+      let new_depth = depth + 1;
+      let new_max = if new_depth > max_d { new_depth } else { max_d };
+      max_depth(s, idx + 1, new_depth, new_max)
+    } else if c == 41 {
+      max_depth(s, idx + 1, depth - 1, max_d)
+    } else {
+      max_depth(s, idx + 1, depth, max_d)
+    }
+  };
+
+fn main() -> i64 = {
+    let s = read_line();
+    let result = max_depth(s, 0, 0, 0);
+    let _p = println(result);
+    0
+};

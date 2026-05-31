@@ -1,0 +1,41 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+fn find_max1(arr: i64, idx: i64, m: i64) -> i64
+  pre idx >= 0
+= if idx >= vec_len(arr) { m }
+  else {
+    let v = vec_get(arr, idx);
+    let new_m = if v > m { v } else { m };
+    find_max1(arr, idx + 1, new_m)
+  };
+
+fn find_max2(arr: i64, idx: i64, m1: i64, m2: i64, skipped: i64) -> i64
+  pre idx >= 0
+= if idx >= vec_len(arr) { m2 }
+  else {
+    let v = vec_get(arr, idx);
+    if v == m1 and skipped == 0 {
+      find_max2(arr, idx + 1, m1, m2, 1)
+    } else {
+      let new_m2 = if v > m2 { v } else { m2 };
+      find_max2(arr, idx + 1, m1, new_m2, skipped)
+    }
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let arr = vec_new();
+    let _r = read_into_vec(arr, n);
+    let m1 = find_max1(arr, 0, 0);
+    let m2 = find_max2(arr, 0, m1, 0, 0);
+    let result = (m1 - 1) * (m2 - 1);
+    let _p = println(result);
+    0
+};

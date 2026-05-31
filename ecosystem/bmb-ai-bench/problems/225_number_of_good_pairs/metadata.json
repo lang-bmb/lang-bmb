@@ -1,0 +1,12 @@
+{
+  "id": "225_number_of_good_pairs",
+  "category": "array",
+  "difficulty": "easy",
+  "tags": ["array", "math", "counting"],
+  "bmb_features_tested": ["vec_new", "vec_push", "vec_get", "vec_len", "recursive"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #1512 (external)"
+}

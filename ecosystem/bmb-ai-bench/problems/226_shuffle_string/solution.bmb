@@ -1,0 +1,38 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+fn find_src_pos(indices: i64, target: i64, idx: i64) -> i64
+  pre idx >= 0
+= if idx >= vec_len(indices) { 0 }
+  else {
+    if vec_get(indices, idx) == target { idx }
+    else { find_src_pos(indices, target, idx + 1) }
+  };
+
+fn build_shuffled(s: String, indices: i64, sb: i64, i: i64, n: i64) -> i64
+  pre i >= 0 and n >= 0
+= if i >= n { 0 }
+  else {
+    let src = find_src_pos(indices, i, 0);
+    let ch = s.slice(src, src + 1);
+    let _p = sb_push(sb, ch);
+    build_shuffled(s, indices, sb, i + 1, n)
+  };
+
+fn main() -> i64 = {
+    let s = read_line();
+    let n = s.len();
+    let indices = vec_new();
+    let _r = read_into_vec(indices, n);
+    let sb = sb_new();
+    let _b = build_shuffled(s, indices, sb, 0, n);
+    let out = sb_build(sb);
+    let _p = println_str(out);
+    0
+};

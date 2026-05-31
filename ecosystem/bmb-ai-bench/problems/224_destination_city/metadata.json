@@ -1,0 +1,12 @@
+{
+  "id": "224_destination_city",
+  "category": "string",
+  "difficulty": "easy",
+  "tags": ["string", "hash-table"],
+  "bmb_features_tested": ["sb_new", "sb_push", "sb_build", "read_line", "recursive", "byte_at"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #1436 (external)"
+}

@@ -1,0 +1,82 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+fn find_max(arr: i64, idx: i64, m: i64) -> i64
+  pre idx >= 0
+= if idx >= vec_len(arr) { m }
+  else {
+    let v = vec_get(arr, idx);
+    let new_m = if v > m { v } else { m };
+    find_max(arr, idx + 1, new_m)
+  };
+
+fn find_min(arr: i64, idx: i64, m: i64) -> i64
+  pre idx >= 0
+= if idx >= vec_len(arr) { m }
+  else {
+    let v = vec_get(arr, idx);
+    let new_m = if v < m { v } else { m };
+    find_min(arr, idx + 1, new_m)
+  };
+
+fn sum_array(arr: i64, idx: i64, acc: i64) -> i64
+  pre idx >= 0
+= if idx >= vec_len(arr) { acc }
+  else {
+    sum_array(arr, idx + 1, acc + vec_get(arr, idx))
+  };
+
+fn check_ap(arr: i64, mn: i64, step: i64, idx: i64, n: i64) -> i64
+  pre idx >= 0 and n >= 0
+= if idx >= n { 1 }
+  else {
+    let expected = mn + step * idx;
+    let found = count_val(arr, expected, 0, 0);
+    if found != 1 { 0 }
+    else { check_ap(arr, mn, step, idx + 1, n) }
+  };
+
+fn count_val(arr: i64, val: i64, idx: i64, acc: i64) -> i64
+  pre idx >= 0 and acc >= 0
+= if idx >= vec_len(arr) { acc }
+  else {
+    let v = vec_get(arr, idx);
+    let add = if v == val { 1 } else { 0 };
+    count_val(arr, val, idx + 1, acc + add)
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let arr = vec_new();
+    let _r = read_into_vec(arr, n);
+    if n <= 1 { let _p = println(1); 0 }
+    else {
+      let mx = find_max(arr, 0, 0);
+      let mn = find_min(arr, 0, mx);
+      let total = sum_array(arr, 0, 0);
+      let expected_sum = n * (mn + mx) / 2;
+      if total != expected_sum { let _p = println(0); 0 }
+      else {
+        let diff = mx - mn;
+        if diff == 0 {
+          let result = if n == vec_len(arr) { 1 } else { 0 };
+          let _p = println(result);
+          0
+        } else {
+          if diff % (n - 1) != 0 { let _p = println(0); 0 }
+          else {
+            let step = diff / (n - 1);
+            let result = check_ap(arr, mn, step, 0, n);
+            let _p = println(result);
+            0
+          }
+        }
+      }
+    }
+};

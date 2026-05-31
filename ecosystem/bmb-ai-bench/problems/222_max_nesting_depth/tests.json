@@ -1,0 +1,10 @@
+[
+  {"stdin": "(1+(2*3)+((8)/4))+1", "expected_stdout": "3\n"},
+  {"stdin": "(1)+((2))+(((3)))", "expected_stdout": "3\n"},
+  {"stdin": "1+2+3", "expected_stdout": "0\n"},
+  {"stdin": "()", "expected_stdout": "1\n"},
+  {"stdin": "((((()))))","expected_stdout": "5\n"},
+  {"stdin": "(1)(2)(3)", "expected_stdout": "1\n"},
+  {"stdin": "((1+2)*(3+4))", "expected_stdout": "2\n"},
+  {"stdin": "8*1*(2+3)*1+((((1+3))))*(1+2)", "expected_stdout": "4\n"}
+]

@@ -1,0 +1,39 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+fn count_val(arr: i64, val: i64, idx: i64, acc: i64) -> i64
+  pre idx >= 0 and acc >= 0
+= if idx >= vec_len(arr) { acc }
+  else {
+    let v = vec_get(arr, idx);
+    let add = if v == val { 1 } else { 0 };
+    count_val(arr, val, idx + 1, acc + add)
+  };
+
+fn check_equal(t: i64, a: i64, idx: i64) -> i64
+  pre idx >= 0
+= if idx >= vec_len(t) { 1 }
+  else {
+    let val = vec_get(t, idx);
+    let ct = count_val(t, val, 0, 0);
+    let ca = count_val(a, val, 0, 0);
+    if ct != ca { 0 }
+    else { check_equal(t, a, idx + 1) }
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let target = vec_new();
+    let _r1 = read_into_vec(target, n);
+    let arr = vec_new();
+    let _r2 = read_into_vec(arr, n);
+    let result = check_equal(target, arr, 0);
+    let _p = println(result);
+    0
+};

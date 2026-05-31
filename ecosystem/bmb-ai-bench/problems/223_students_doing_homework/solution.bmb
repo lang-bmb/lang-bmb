@@ -1,0 +1,30 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+fn count_active(starts: i64, ends: i64, idx: i64, t: i64, acc: i64) -> i64
+  pre idx >= 0 and acc >= 0
+= if idx >= vec_len(starts) { acc }
+  else {
+    let s = vec_get(starts, idx);
+    let e = vec_get(ends, idx);
+    let active = if s <= t and t <= e { 1 } else { 0 };
+    count_active(starts, ends, idx + 1, t, acc + active)
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let starts = vec_new();
+    let _r1 = read_into_vec(starts, n);
+    let ends = vec_new();
+    let _r2 = read_into_vec(ends, n);
+    let t = read_int();
+    let result = count_active(starts, ends, 0, t, 0);
+    let _p = println(result);
+    0
+};

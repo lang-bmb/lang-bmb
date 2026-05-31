@@ -1,0 +1,35 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+fn count_smaller(arr: i64, val: i64, idx: i64, acc: i64) -> i64
+  pre idx >= 0 and acc >= 0
+= if idx >= vec_len(arr) { acc }
+  else {
+    let v = vec_get(arr, idx);
+    let add = if v < val { 1 } else { 0 };
+    count_smaller(arr, val, idx + 1, acc + add)
+  };
+
+fn print_results(arr: i64, idx: i64) -> i64
+  pre idx >= 0
+= if idx >= vec_len(arr) { 0 }
+  else {
+    let val = vec_get(arr, idx);
+    let cnt = count_smaller(arr, val, 0, 0);
+    let _p = println(cnt);
+    print_results(arr, idx + 1)
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let arr = vec_new();
+    let _r = read_into_vec(arr, n);
+    let _p = print_results(arr, 0);
+    0
+};

@@ -1,0 +1,27 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+fn print_shuffle(arr: i64, idx: i64, n: i64) -> i64
+  pre idx >= 0 and n >= 0
+= if idx >= n { 0 }
+  else {
+    let x = vec_get(arr, idx);
+    let y = vec_get(arr, idx + n);
+    let _p1 = println(x);
+    let _p2 = println(y);
+    print_shuffle(arr, idx + 1, n)
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let arr = vec_new();
+    let _r = read_into_vec(arr, 2 * n);
+    let _p = print_shuffle(arr, 0, n);
+    0
+};
