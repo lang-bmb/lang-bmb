@@ -1,0 +1,19 @@
+// Count U-D and L-R to check balance
+fn scan_moves(s: String, pos: i64, ud: i64, lr: i64) -> i64
+  pre pos >= 0
+= if pos >= s.len() {
+    if ud == 0 and lr == 0 { 1 } else { 0 }
+  } else {
+    let c = s.byte_at(pos);
+    if c == 85 { scan_moves(s, pos + 1, ud + 1, lr) }      // U=85
+    else if c == 68 { scan_moves(s, pos + 1, ud - 1, lr) } // D=68
+    else if c == 76 { scan_moves(s, pos + 1, ud, lr - 1) } // L=76
+    else if c == 82 { scan_moves(s, pos + 1, ud, lr + 1) } // R=82
+    else { scan_moves(s, pos + 1, ud, lr) }
+  };
+
+fn main() -> i64 = {
+    let s = read_line();
+    let _p = println(scan_moves(s, 0, 0, 0));
+    0
+};

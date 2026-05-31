@@ -1,0 +1,14 @@
+// Hamming distance: count differing bits between a and b = popcount(a XOR b)
+fn count_bits(n: i64) -> i64
+  pre n >= 0
+  post it >= 0
+= if n == 0 { 0 }
+  else { (n band 1) + count_bits(n / 2) };
+
+fn main() -> i64 = {
+    let a = read_int();
+    let b = read_int();
+    let xv = a bxor b;
+    let _p = println(count_bits(xv));
+    0
+};

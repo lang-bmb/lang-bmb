@@ -1,0 +1,30 @@
+// Track top-3 distinct values using sentinel -2^62
+fn sentinel() -> i64 = 0 - 4611686018427387904;
+
+// Read n elements tracking top-3 distinct maxima
+fn read_track(n: i64, m1: i64, m2: i64, m3: i64) -> i64
+  pre n >= 0
+= if n == 0 {
+    if m3 != sentinel() { m3 } else { m1 }
+  } else {
+    let x = read_int();
+    if x == m1 or x == m2 or x == m3 {
+      read_track(n - 1, m1, m2, m3)
+    } else if x > m1 {
+      read_track(n - 1, x, m1, m2)
+    } else if x > m2 or m2 == sentinel() {
+      read_track(n - 1, m1, x, m2)
+    } else if x > m3 or m3 == sentinel() {
+      read_track(n - 1, m1, m2, x)
+    } else {
+      read_track(n - 1, m1, m2, m3)
+    }
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let s = sentinel();
+    let result = read_track(n, s, s, s);
+    let _p = println(result);
+    0
+};

@@ -1,0 +1,27 @@
+// Sum of squares of digits
+fn digit_sq_sum(n: i64) -> i64
+  pre n >= 0
+  post it >= 0
+= if n == 0 { 0 }
+  else {
+    let d = n % 10;
+    d * d + digit_sq_sum(n / 10)
+  };
+
+// Detect cycle using two-pointer (slow/fast) on digit square sum chain
+fn is_happy_loop(slow: i64, fast: i64) -> i64
+  pre slow >= 1 and fast >= 1
+= if slow == 1 or fast == 1 { 1 }
+  else {
+    let ns = digit_sq_sum(slow);
+    let nf = digit_sq_sum(digit_sq_sum(fast));
+    if ns == nf { if ns == 1 { 1 } else { 0 } }
+    else { is_happy_loop(ns, nf) }
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let result = is_happy_loop(n, n);
+    let _p = println(result);
+    0
+};

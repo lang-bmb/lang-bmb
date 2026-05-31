@@ -1,0 +1,10 @@
+[
+  {"stdin": "USA", "expected_stdout": "1\n"},
+  {"stdin": "FlaG", "expected_stdout": "0\n"},
+  {"stdin": "leetcode", "expected_stdout": "1\n"},
+  {"stdin": "Google", "expected_stdout": "1\n"},
+  {"stdin": "gOOGLE", "expected_stdout": "0\n"},
+  {"stdin": "A", "expected_stdout": "1\n"},
+  {"stdin": "a", "expected_stdout": "1\n"},
+  {"stdin": "mL", "expected_stdout": "0\n"}
+]

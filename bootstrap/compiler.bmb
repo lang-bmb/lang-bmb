@@ -3106,6 +3106,19 @@ fn parse_block_let_value(src: String, pos: i64, name: String, is_mut: bool) -> S
 
     };
 
+// Emit (seq block_ast rest) if next token is ';', otherwise emit block_ast alone
+fn parse_block_seq_tail(src: String, after_block: i64, block_ast: String) -> String
+
+  pre after_block >= 0
+  post it.len() >= 2
+
+= let t = next_token_raw(src, after_block);
+    if tok_kind(t) == TK_SEMI() {
+        let rest = parse_block_stmts(src, tok_end(t));
+        if is_error(rest) { rest }
+        else { pack_result(unpack_pos(rest), "(seq " + block_ast + " " + unpack_ast(rest) + ")") }
+    } else { pack_result(after_block, block_ast) };
+
 // Parse assignment inside block: { lhs = rhs }; rest
 
 fn parse_block_assign(src: String, pos: i64) -> String
@@ -3146,23 +3159,7 @@ fn parse_block_assign(src: String, pos: i64) -> String
 
                     let after_block = tok_end(t_close);
 
-                    let t4 = next_token_raw(src, after_block);
-
-                    if tok_kind(t4) == TK_SEMI() {
-
-                        let rest = parse_block_stmts(src, tok_end(t4));
-
-                        if is_error(rest) { rest } else {
-
-                            pack_result(unpack_pos(rest), "(seq " + block_ast + " " + unpack_ast(rest) + ")")
-
-                        }
-
-                    } else {
-
-                        pack_result(after_block, block_ast)
-
-                    }
+                    parse_block_seq_tail(src, after_block, block_ast)
 
                 }
 
@@ -3194,23 +3191,7 @@ fn parse_simple_assign_block(src: String, t1: i64, peek1: i64, peek2: i64) -> St
 
             let after_assign = tok_end(t3);
 
-            let t4 = next_token_raw(src, after_assign);
-
-            if tok_kind(t4) == TK_SEMI() {
-
-                let rest = parse_block_stmts(src, tok_end(t4));
-
-                if is_error(rest) { rest } else {
-
-                    pack_result(unpack_pos(rest), "(seq " + assign_ast + " " + unpack_ast(rest) + ")")
-
-                }
-
-            } else {
-
-                pack_result(after_assign, assign_ast)
-
-            }
+            parse_block_seq_tail(src, after_assign, assign_ast)
 
         } else if tok_kind(t3) == TK_SEMI() {
 
@@ -3230,23 +3211,7 @@ fn parse_simple_assign_block(src: String, t1: i64, peek1: i64, peek2: i64) -> St
 
                     let after_block = tok_end(t_close);
 
-                    let t5 = next_token_raw(src, after_block);
-
-                    if tok_kind(t5) == TK_SEMI() {
-
-                        let rest2 = parse_block_stmts(src, tok_end(t5));
-
-                        if is_error(rest2) { rest2 } else {
-
-                            pack_result(unpack_pos(rest2), "(seq " + block_ast + " " + unpack_ast(rest2) + ")")
-
-                        }
-
-                    } else {
-
-                        pack_result(after_block, block_ast)
-
-                    }
+                    parse_block_seq_tail(src, after_block, block_ast)
 
                 }
 
@@ -16831,13 +16796,7 @@ fn llvm_gen_call_reg(line: String, pos: i64, dest: String, registry: String) -> 
 
         let formatted_args = call_arg_formatted(formatted);
 
-        if reg_ret == "void" {
-
-            conversions + "  call void " + emitted_fn + "(" + formatted_args + ")" + SEP() + "  " + dest + " = add nsw i64 0, 0"
-
-        } else { match reg_ret { "ptr" => conversions + "  " + dest + "_ptr = call ptr " + emitted_fn + "(" + formatted_args + ")" + SEP() + "  " + dest + " = ptrtoint ptr " + dest + "_ptr to i64", "double" => conversions + "  " + dest + " = call double " + emitted_fn + "(" + formatted_args + ")", "i32" => // v0.95: i32 return -> call i32, sext to i64
-
-            conversions + "  " + dest + "_i32c = call i32 " + emitted_fn + "(" + formatted_args + ")" + SEP() + "  " + dest + " = sext i32 " + dest + "_i32c to i64", _ => conversions + "  " + dest + " = call " + reg_ret + " " + emitted_fn + "(" + formatted_args + ")" } }
+        llvm_gen_typed_call(dest, emitted_fn, conversions, formatted_args, reg_ret)
 
     } else {
 
@@ -16846,6 +16805,20 @@ fn llvm_gen_call_reg(line: String, pos: i64, dest: String, registry: String) -> 
         llvm_gen_call(line, pos, dest)
 
     } } } } }; // v0.90.9: close i64_to_f64/f64_to_i64 else + match + outer else
+
+// Emit typed call IR for a registry-resolved function
+fn llvm_gen_typed_call(dest: String, fn_name: String, conv: String, args: String, ret_type: String) -> String
+
+  post it.len() >= 1
+
+= if ret_type == "void" {
+      conv + "  call void " + fn_name + "(" + args + ")" + SEP() + "  " + dest + " = add nsw i64 0, 0"
+  } else { match ret_type {
+      "ptr" => conv + "  " + dest + "_ptr = call ptr " + fn_name + "(" + args + ")" + SEP() + "  " + dest + " = ptrtoint ptr " + dest + "_ptr to i64",
+      "double" => conv + "  " + dest + " = call double " + fn_name + "(" + args + ")",
+      "i32" => conv + "  " + dest + "_i32c = call i32 " + fn_name + "(" + args + ")" + SEP() + "  " + dest + " = sext i32 " + dest + "_i32c to i64",
+      _ => conv + "  " + dest + " = call " + ret_type + " " + fn_name + "(" + args + ")"
+  } };
 
 fn get_call_arg_types(fn_name: String) -> String
 
@@ -18204,6 +18177,17 @@ fn eliminate_inttoptr_roundtrips_ir(ir: String) -> String
 
 };
 
+// Update candidates/excluded when alloca_name is not yet excluded.
+// Returns updated "candidates|excluded" pair joined by "|".
+fn apm_merge_candidate(candidates: String, excluded: String, alloca_name: String, ptr_src: String) -> String
+
+  post it.len() >= 1
+
+= let existing = lookup_ptr_src(candidates, alloca_name);
+    if existing == "" { (candidates + "," + alloca_name + "=" + ptr_src) + "|" + excluded }
+    else if existing == ptr_src { candidates + "|" + excluded }
+    else { candidates + "|" + (excluded + "," + alloca_name + "=!") };
+
 // Build map of single-write alloca i64 vars that hold exactly one ptrtoint value.
 // Scans all store instructions; tracks candidates and excludes multi-write allocas.
 // Returns ",alloca_name=ptr_src," format (same as pmap).
@@ -18239,26 +18223,7 @@ fn build_alloca_ptr_map(ir: String, pmap: String, pos: i64, candidates: String, 
                     let in_excl = find_alias_entry_noa(excluded, alloca_name, 0) >= 0;
 
                     if in_excl { candidates + "|" + excluded }
-
-                    else {
-
-                        let existing = lookup_ptr_src(candidates, alloca_name);
-
-                        if existing == "" {
-
-                            (candidates + "," + alloca_name + "=" + ptr_src) + "|" + excluded
-
-                        } else if existing == ptr_src {
-
-                            candidates + "|" + excluded
-
-                        } else {
-
-                            candidates + "|" + (excluded + "," + alloca_name + "=!")
-
-                        }
-
-                    }
+                    else { apm_merge_candidate(candidates, excluded, alloca_name, ptr_src) }
 
                 } else { candidates + "|" + excluded }
 
@@ -21430,6 +21395,24 @@ fn build_const_map_acc(mir: String, pos: i64, sb: i64) -> i64
 
     };
 
+// Push "@fn_name=value," to sb if value is a numeric (int, neg-int, or F: float) constant
+fn const_map_push_if_num(fn_name: String, value: String, sb: i64) -> i64
+
+  post it >= 0
+
+= let first_ch = value.byte_at(0);
+    let is_num = if first_ch >= 48 and first_ch <= 57 { true }
+        else if first_ch == 45 and value.len() > 1 and value.byte_at(1) >= 48 and value.byte_at(1) <= 57 { true }
+        else { first_ch == 70 and value.len() > 2 and value.byte_at(1) == 58 };
+    if is_num {
+        let _w1 = sb_push(sb, "@");
+        let _w2 = sb_push(sb, fn_name);
+        let _w3 = sb_push(sb, "=");
+        let _w4 = sb_push(sb, value);
+        let _w5 = sb_push(sb, ",");
+        0
+    } else { 0 };
+
 // Check if a function MIR is a 0-arg @const returning a constant
 
 // Must have ONLY: entry: | %_tN = const <value> | return %_tN | }
@@ -21495,36 +21478,7 @@ fn try_register_const_fn(fn_mir: String, sb: i64) -> i64
                     let value = trim(fn_mir.slice(value_start, line_end));
 
                     if value.len() == 0 { 0 }
-
-                    else {
-
-                        let first_ch = value.byte_at(0);
-
-                        // Support both integer (123) and float (F:3.14) constants
-
-                        let is_num = if first_ch >= 48 and first_ch <= 57 { true }
-
-                            else if first_ch == 45 and value.len() > 1 and value.byte_at(1) >= 48 and value.byte_at(1) <= 57 { true }
-
-                            else { first_ch == 70 and value.len() > 2 and value.byte_at(1) == 58 };
-
-                        if is_num {
-
-                            let _w1 = sb_push(sb, "@");
-
-                            let _w2 = sb_push(sb, fn_name);
-
-                            let _w3 = sb_push(sb, "=");
-
-                            let _w4 = sb_push(sb, value);
-
-                            let _w5 = sb_push(sb, ",");
-
-                            0
-
-                        } else { 0 }
-
-                    }
+                    else { const_map_push_if_num(fn_name, value, sb) }
 
                 }
 
@@ -26601,6 +26555,31 @@ fn ifs_check_phi_match(phi_val1: String, phi_label1: String, phi_val2: String, p
 
     } else { "" };
 
+// Extract phi node after merge label and match its edges to then/else branches
+fn ifs_check_phi_branch(fn_mir: String, p_merge: i64, cond: String, l_then: String, l_else: String) -> String
+
+  pre p_merge >= 0
+  post it.len() >= 0
+
+= let p6 = ifs_next_pos(fn_mir, p_merge);
+    let line6 = ifs_line_at(fn_mir, p6);
+    if ube_is_phi(line6) {
+        let dest = cf_extract_dest(line6);
+        let eq_pos = find_pattern_at(line6, " = ", 0);
+        let rhs = line6.slice(eq_pos + 3, line6.len());
+        let b1s = find_char(rhs, 0, 91);
+        let b1e = find_char(rhs, b1s, 93);
+        let bracket1 = rhs.slice(b1s, b1e + 1);
+        let b2s = find_char(rhs, b1e + 1, 91);
+        let b2e = find_char(rhs, b2s, 93);
+        let bracket2 = rhs.slice(b2s, b2e + 1);
+        let phi_val1 = ube_phi_val(bracket1);
+        let phi_label1 = ube_phi_label(bracket1);
+        let phi_val2 = ube_phi_val(bracket2);
+        let phi_label2 = ube_phi_label(bracket2);
+        ifs_check_phi_match(phi_val1, phi_label1, phi_val2, phi_label2, l_then, l_else, cond, dest)
+    } else { "" };
+
 // Check if the 7-line pattern matches at the given branch position
 
 // Returns "" if no match, or "cond,val1,val2,dest" if match
@@ -26660,49 +26639,7 @@ fn ifs_check_pattern(fn_mir: String, branch_line: String, branch_pos: i64) -> St
                     let line5 = ifs_line_at(fn_mir, p5);
 
                     if ube_is_label(line5) and ube_label_name(line5) == goto1 {
-
-                        // Line 7: %dest = phi [val1, L_then], [val2, L_else]
-
-                        let p6 = ifs_next_pos(fn_mir, p5);
-
-                        let line6 = ifs_line_at(fn_mir, p6);
-
-                        if ube_is_phi(line6) {
-
-                            let dest = cf_extract_dest(line6);
-
-                            // Parse phi brackets
-
-                            let eq_pos = find_pattern_at(line6, " = ", 0);
-
-                            let rhs = line6.slice(eq_pos + 3, line6.len());
-
-                            let b1s = find_char(rhs, 0, 91);
-
-                            let b1e = find_char(rhs, b1s, 93);
-
-                            let bracket1 = rhs.slice(b1s, b1e + 1);
-
-                            let b2s = find_char(rhs, b1e + 1, 91);
-
-                            let b2e = find_char(rhs, b2s, 93);
-
-                            let bracket2 = rhs.slice(b2s, b2e + 1);
-
-                            let phi_val1 = ube_phi_val(bracket1);
-
-                            let phi_label1 = ube_phi_label(bracket1);
-
-                            let phi_val2 = ube_phi_val(bracket2);
-
-                            let phi_label2 = ube_phi_label(bracket2);
-
-                            // Phi edges must match then/else labels
-
-                            ifs_check_phi_match(phi_val1, phi_label1, phi_val2, phi_label2, l_then, l_else, cond, dest)
-
-                        } else { "" }
-
+                        ifs_check_phi_branch(fn_mir, p5, cond, l_then, l_else)
                     } else { "" }
 
                 } else { "" }
@@ -27491,6 +27428,24 @@ fn ifs_check_else_two_rest(fn_mir: String, p3: i64, cond: String, l_then: String
 
     } else { "" };
 
+// Check merge label + phi after else block; emit select if valid, else free SBs and return -1
+// l_ctx = ifs_ctx_pack(l_then, l_else)
+fn ifs_flex_check_phi_merge(fn_mir: String, else_goto_pos: i64, goto_target: String, cond: String, l_ctx: String, then_sb: i64, else_sb: i64, sb: i64) -> i64
+
+  pre else_goto_pos >= 0
+  post it >= -1
+
+= let p_merge = ifs_next_pos(fn_mir, else_goto_pos);
+    let merge_line = ifs_line_at(fn_mir, p_merge);
+    if ube_is_label(merge_line) and ube_label_name(merge_line) == goto_target {
+        let p_phi = ifs_next_pos(fn_mir, p_merge);
+        let phi_line = ifs_line_at(fn_mir, p_phi);
+        if ube_is_phi(phi_line) {
+            let phi_cond = ifs_ctx_pack(phi_line, cond);
+            ifs_flex_emit_select(phi_cond, l_ctx, then_sb, else_sb, fn_mir, p_phi, sb, goto_target)
+        } else { let _tf = sb_free(then_sb); let _ef = sb_free(else_sb); 0 - 1 }
+    } else { let _tf = sb_free(then_sb); let _ef = sb_free(else_sb); 0 - 1 };
+
 // Generalized flex pattern: both sides have copies + pure instructions (variable lines)
 
 // branch %c, L1, L2 | L1: | <then: copies+pure> | goto L3 | L2: | <else: copies+pure> | goto L3 | L3: | phi
@@ -27544,29 +27499,7 @@ fn ifs_check_flex_both_sides(fn_mir: String, branch_line: String, branch_pos: i6
                 let else_goto_pos = ifs_flex_scan_block(fn_mir, p_else, else_sb, 0, 3, goto_target);
 
                 if else_goto_pos > 0 {
-
-                    // Check merge label + phi
-
-                    let p_merge = ifs_next_pos(fn_mir, else_goto_pos);
-
-                    let merge_line = ifs_line_at(fn_mir, p_merge);
-
-                    if ube_is_label(merge_line) and ube_label_name(merge_line) == goto_target {
-
-                        let p_phi = ifs_next_pos(fn_mir, p_merge);
-
-                        let phi_line = ifs_line_at(fn_mir, p_phi);
-
-                        if ube_is_phi(phi_line) {
-
-                            let phi_cond = ifs_ctx_pack(phi_line, cond);
-                            let l_ctx = ifs_ctx_pack(l_then, l_else);
-                            ifs_flex_emit_select(phi_cond, l_ctx, then_sb, else_sb, fn_mir, p_phi, sb, goto_target)
-
-                        } else { let _tf = sb_free(then_sb); let _ef = sb_free(else_sb); 0 - 1 }
-
-                    } else { let _tf = sb_free(then_sb); let _ef = sb_free(else_sb); 0 - 1 }
-
+                    ifs_flex_check_phi_merge(fn_mir, else_goto_pos, goto_target, cond, ifs_ctx_pack(l_then, l_else), then_sb, else_sb, sb)
                 } else { let _tf = sb_free(then_sb); let _ef = sb_free(else_sb); 0 - 1 }
 
             } else { let _tf = sb_free(then_sb); 0 - 1 }
@@ -44351,6 +44284,34 @@ fn lint_mn_run_end(src: String, p: i64) -> i64
     else if is_digit(src.byte_at(p)) { lint_mn_run_end(src, p + 1) }
     else { p };
 
+// Report magic number if not in contract/const-body context; return updated count
+fn lint_mn_check_candidate(src: String, pos: i64, num_end: i64, sol: i64, count: i64) -> i64
+
+  pre pos >= 0 and num_end >= pos and sol >= 0
+  post it >= count
+
+= let in_comment = find_pattern_noa_range(src, "//", sol, pos) >= 0
+                or find_pattern_noa_range(src, "--", sol, pos) >= 0;
+    if in_comment { count }
+    else {
+        let q_count = lint_mn_count_quotes(src, sol, pos, 0);
+        let in_string = (q_count % 2) == 1;
+        if in_string { count }
+        else {
+            let has_post = find_pattern_noa_range(src, "post ", sol, sol + 12) >= 0;
+            let has_pre  = find_pattern_noa_range(src, "pre ", sol, sol + 10) >= 0;
+            let is_const_body = src.len() > sol and src.byte_at(sol) == 61
+                             and src.len() > sol + 2 and is_digit(src.byte_at(sol + 2));
+            if has_post or has_pre or is_const_body { count }
+            else {
+                let line_num = count_line_at(src, pos, 0, 1);
+                let snippet = src.slice(pos, num_end);
+                let _w = println_str("  [magic_number] line " + int_to_string(line_num) + ": " + snippet);
+                count + 1
+            }
+        }
+    };
+
 // Check for integer literals >= 4 digits outside strings/contracts/comments
 fn lint_check_magic_number(src: String, pos: i64, count: i64) -> i64
 
@@ -44375,31 +44336,8 @@ fn lint_check_magic_number(src: String, pos: i64, count: i64) -> i64
                 lint_check_magic_number(src, num_end, count)
             } else {
                 let sol = lint_find_sol(src, pos);
-                let eol = lint_find_eol(src, pos);
-                let in_comment = find_pattern_noa_range(src, "//", sol, pos) >= 0
-                              or find_pattern_noa_range(src, "--", sol, pos) >= 0;
-                if in_comment {
-                    lint_check_magic_number(src, num_end, count)
-                } else {
-                    let q_count = lint_mn_count_quotes(src, sol, pos, 0);
-                    let in_string = (q_count % 2) == 1;
-                    if in_string {
-                        lint_check_magic_number(src, num_end, count)
-                    } else {
-                        let has_post = find_pattern_noa_range(src, "post ", sol, sol + 12) >= 0;
-                        let has_pre  = find_pattern_noa_range(src, "pre ", sol, sol + 10) >= 0;
-                        let is_const_body = src.len() > sol and src.byte_at(sol) == 61
-                                         and src.len() > sol + 2 and is_digit(src.byte_at(sol + 2));
-                        if has_post or has_pre or is_const_body {
-                            lint_check_magic_number(src, num_end, count)
-                        } else {
-                            let line_num = count_line_at(src, pos, 0, 1);
-                            let snippet = src.slice(pos, num_end);
-                            let _w = println_str("  [magic_number] line " + int_to_string(line_num) + ": " + snippet);
-                            lint_check_magic_number(src, num_end, count + 1)
-                        }
-                    }
-                }
+                let new_count = lint_mn_check_candidate(src, pos, num_end, sol, count);
+                lint_check_magic_number(src, num_end, new_count)
             }
         }
     } else { lint_check_magic_number(src, pos + 1, count) };
@@ -44421,7 +44359,7 @@ fn lint_dn_is_eol(src: String, pos: i64) -> bool
         else { false }
     };
 
-// Check for deeply nested block openers ({ at EOL with depth > 6)
+// Check for deeply nested block openers ({ at EOL with depth > 5)
 fn lint_check_deep_nesting(src: String, pos: i64, depth: i64, in_str: i64, count: i64) -> i64
 
   pre pos >= 0 and depth >= 0
@@ -44443,7 +44381,7 @@ fn lint_check_deep_nesting(src: String, pos: i64, depth: i64, in_str: i64, count
             lint_check_deep_nesting(src, eol + 1, depth, 0, count)
         } else if c == 123 {
             let new_depth = depth + 1;
-            if new_depth > 6 and lint_dn_is_eol(src, pos + 1) {
+            if new_depth > 5 and lint_dn_is_eol(src, pos + 1) {
                 let line_num = count_line_at(src, pos, 0, 1);
                 let _w = println_str("  [deep_nesting] line " + int_to_string(line_num) + ": depth " + int_to_string(new_depth));
                 lint_check_deep_nesting(src, pos + 1, new_depth, 0, count + 1)
@@ -48217,7 +48155,9 @@ fn lmp_check_fn_sb(src: String, fn_pos: i64, sb: i64, isfirst: i64) -> i64
 
                 let line_num = count_line_at(src, fn_pos, 0, 1);
 
-                let _j = sb_push(sb, "{\"type\":\"missing_postcondition\",\"function\":\"" + json_esc(fname) + "\",\"line\":" + int_to_string(line_num) + ",\"ret_type\":\"" + json_esc(ret_str) + "\",\"message\":\"non-unit return with no post condition\",\"fix_suggestion\":\"add post it >= 0 (i64) / post it or not it (bool) / post it.len() >= 0 (String)\"}");
+                let fix_sug = bc_post_suggest(ret_str);
+
+                let _j = sb_push(sb, "{\"type\":\"missing_postcondition\",\"function\":\"" + json_esc(fname) + "\",\"line\":" + int_to_string(line_num) + ",\"ret_type\":\"" + json_esc(ret_str) + "\",\"message\":\"non-unit return with no post condition\",\"fix_suggestion\":\"" + fix_sug + "\"}");
 
                 0
 

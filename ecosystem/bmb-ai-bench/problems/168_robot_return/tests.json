@@ -1,0 +1,10 @@
+[
+  {"stdin": "UD", "expected_stdout": "1\n"},
+  {"stdin": "LL", "expected_stdout": "0\n"},
+  {"stdin": "UDLR", "expected_stdout": "1\n"},
+  {"stdin": "UUDDLLRR", "expected_stdout": "1\n"},
+  {"stdin": "U", "expected_stdout": "0\n"},
+  {"stdin": "UDUD", "expected_stdout": "1\n"},
+  {"stdin": "RLUD", "expected_stdout": "1\n"},
+  {"stdin": "UUDD", "expected_stdout": "1\n"}
+]

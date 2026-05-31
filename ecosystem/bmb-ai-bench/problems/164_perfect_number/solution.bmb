@@ -1,0 +1,26 @@
+// Sum proper divisors of n up to sqrt(n)
+fn div_sum(n: i64, d: i64, acc: i64) -> i64
+  pre n >= 1 and d >= 2 and acc >= 0
+  post it >= 0
+= if d * d > n { acc }
+  else if n % d == 0 {
+    let pair = n / d;
+    let extra = if pair != d { pair } else { 0 };
+    div_sum(n, d + 1, acc + d + extra)
+  }
+  else { div_sum(n, d + 1, acc) };
+
+fn is_perfect(n: i64) -> i64
+  pre n >= 1
+  post it == 0 or it == 1
+= if n == 1 { 0 }
+  else {
+    let s = div_sum(n, 2, 1);
+    if s == n { 1 } else { 0 }
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let _p = println(is_perfect(n));
+    0
+};

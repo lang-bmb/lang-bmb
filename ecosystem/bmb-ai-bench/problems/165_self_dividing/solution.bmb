@@ -1,0 +1,27 @@
+// Check if n is divisible by each digit (no zero digits)
+fn is_self_div_digits(n: i64, orig: i64) -> i64
+  pre n >= 0 and orig >= 1
+  post it == 0 or it == 1
+= if n == 0 { 1 }
+  else {
+    let d = n % 10;
+    if d == 0 { 0 }
+    else if orig % d != 0 { 0 }
+    else { is_self_div_digits(n / 10, orig) }
+  };
+
+fn count_self_div(cur: i64, right: i64, acc: i64) -> i64
+  pre cur >= 0 and acc >= 0
+  post it >= 0
+= if cur > right { acc }
+  else {
+    let add = is_self_div_digits(cur, cur);
+    count_self_div(cur + 1, right, acc + add)
+  };
+
+fn main() -> i64 = {
+    let left = read_int();
+    let right = read_int();
+    let _p = println(count_self_div(left, right, 0));
+    0
+};

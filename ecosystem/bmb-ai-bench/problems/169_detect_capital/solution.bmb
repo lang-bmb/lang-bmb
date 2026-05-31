@@ -1,0 +1,25 @@
+// Count uppercase letters
+fn count_upper(s: String, pos: i64, acc: i64) -> i64
+  pre pos >= 0 and acc >= 0
+  post it >= 0
+= if pos >= s.len() { acc }
+  else {
+    let c = s.byte_at(pos);
+    let is_up = if c >= 65 and c <= 90 { 1 } else { 0 };
+    count_upper(s, pos + 1, acc + is_up)
+  };
+
+fn detect_capital(s: String) -> i64
+= let n = s.len();
+    let up = count_upper(s, 0, 0);
+    let first_up = if n > 0 and s.byte_at(0) >= 65 and s.byte_at(0) <= 90 { 1 } else { 0 };
+    if up == n { 1 }
+    else if up == 0 { 1 }
+    else if up == 1 and first_up == 1 { 1 }
+    else { 0 };
+
+fn main() -> i64 = {
+    let s = read_line();
+    let _p = println(detect_capital(s));
+    0
+};
