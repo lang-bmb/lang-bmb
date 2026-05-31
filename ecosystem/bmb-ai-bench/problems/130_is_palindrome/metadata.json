@@ -1,0 +1,12 @@
+{
+  "id": "130_is_palindrome",
+  "category": "math",
+  "difficulty": "easy",
+  "tags": ["math", "palindrome"],
+  "bmb_features_tested": ["recursive", "modulo", "println_str"],
+  "expected_tools": ["check", "build", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #9 (external)"
+}

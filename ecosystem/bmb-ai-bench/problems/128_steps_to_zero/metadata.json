@@ -1,0 +1,12 @@
+{
+  "id": "128_steps_to_zero",
+  "category": "bit-manipulation",
+  "difficulty": "easy",
+  "tags": ["bit-manipulation", "reverse"],
+  "bmb_features_tested": ["band", "bor", "shift", "recursive", "println"],
+  "expected_tools": ["check", "build", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #190 (external)"
+}

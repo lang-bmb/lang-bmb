@@ -1,0 +1,10 @@
+[
+  {"stdin": "leetcode", "expected_stdout": "0\n"},
+  {"stdin": "loveleetcode", "expected_stdout": "2\n"},
+  {"stdin": "aabb", "expected_stdout": "-1\n"},
+  {"stdin": "abcabc", "expected_stdout": "-1\n"},
+  {"stdin": "a", "expected_stdout": "0\n"},
+  {"stdin": "abcd", "expected_stdout": "0\n"},
+  {"stdin": "aab", "expected_stdout": "2\n"},
+  {"stdin": "abba", "expected_stdout": "-1\n"}
+]

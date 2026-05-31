@@ -1,0 +1,10 @@
+[
+  {"stdin": "hello", "expected_stdout": "olleh\n"},
+  {"stdin": "Hannah", "expected_stdout": "hannaH\n"},
+  {"stdin": "abcde", "expected_stdout": "edcba\n"},
+  {"stdin": "a", "expected_stdout": "a\n"},
+  {"stdin": "ab", "expected_stdout": "ba\n"},
+  {"stdin": "racecar", "expected_stdout": "racecar\n"},
+  {"stdin": "12345", "expected_stdout": "54321\n"},
+  {"stdin": "BMB", "expected_stdout": "BMB\n"}
+]

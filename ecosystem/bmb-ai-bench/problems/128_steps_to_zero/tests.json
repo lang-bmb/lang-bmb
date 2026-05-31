@@ -1,0 +1,10 @@
+[
+  {"stdin": "43261596", "expected_stdout": "964176192\n"},
+  {"stdin": "0", "expected_stdout": "0\n"},
+  {"stdin": "1", "expected_stdout": "2147483648\n"},
+  {"stdin": "2147483648", "expected_stdout": "1\n"},
+  {"stdin": "255", "expected_stdout": "4278190080\n"},
+  {"stdin": "2", "expected_stdout": "1073741824\n"},
+  {"stdin": "128", "expected_stdout": "16777216\n"},
+  {"stdin": "65535", "expected_stdout": "4294901760\n"}
+]

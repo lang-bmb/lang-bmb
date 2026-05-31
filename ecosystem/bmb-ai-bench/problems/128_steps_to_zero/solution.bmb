@@ -1,0 +1,13 @@
+// Reverse Bits — reverse the bits of a 32-bit unsigned integer
+fn reverse_bits(n: i64, result: i64, count: i64) -> i64
+= if count >= 32 { result }
+    else {
+        let bit = n band 1;
+        reverse_bits(n >> 1, (result << 1) bor bit, count + 1)
+    };
+
+fn main() -> i64 = {
+    let n = read_int();
+    println(reverse_bits(n, 0, 0));
+    0
+};

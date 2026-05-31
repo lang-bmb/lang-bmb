@@ -1,0 +1,26 @@
+// Sum of Unique Elements — sum elements that appear exactly once
+fn count_val(v: i64, n: i64, target: i64, i: i64, acc: i64) -> i64
+= if i >= n { acc }
+    else if vec_get(v, i) == target { count_val(v, n, target, i + 1, acc + 1) }
+    else { count_val(v, n, target, i + 1, acc) };
+
+fn sum_unique(v: i64, n: i64, i: i64, acc: i64) -> i64
+= if i >= n { acc }
+    else {
+        let x = vec_get(v, i);
+        let cnt = count_val(v, n, x, 0, 0);
+        let new_acc = if cnt == 1 { acc + x } else { acc };
+        sum_unique(v, n, i + 1, new_acc)
+    };
+
+fn read_into_vec(v: i64, n: i64) -> i64
+= if n == 0 { 0 }
+    else { let x = read_int(); let _p = vec_push(v, x); read_into_vec(v, n - 1) };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    let _r = read_into_vec(v, n);
+    println(sum_unique(v, n, 0, 0));
+    0
+};

@@ -1,0 +1,12 @@
+{
+  "id": "131_longest_palindrome",
+  "category": "string",
+  "difficulty": "easy",
+  "tags": ["string", "frequency", "palindrome"],
+  "bmb_features_tested": ["char_code_at", "recursive", "println"],
+  "expected_tools": ["check", "build", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #409 (external)"
+}

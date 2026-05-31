@@ -1,0 +1,17 @@
+// Arrange Coins — find max complete rows (1+2+...+k <= n)
+// Binary search: largest k where k*(k+1)/2 <= n
+fn max_rows(n: i64, lo: i64, hi: i64) -> i64
+= if lo > hi { lo - 1 }
+    else {
+        let mid = lo + (hi - lo) / 2;
+        let sum = mid * (mid + 1) / 2;
+        if sum == n { mid }
+        else if sum < n { max_rows(n, mid + 1, hi) }
+        else { max_rows(n, lo, mid - 1) }
+    };
+
+fn main() -> i64 = {
+    let n = read_int();
+    println(max_rows(n, 0, n));
+    0
+};

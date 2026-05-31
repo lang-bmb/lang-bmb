@@ -1,0 +1,12 @@
+// Palindrome Number — check if an integer reads the same forwards and backwards
+fn reverse_num(n: i64, acc: i64) -> i64
+= if n == 0 { acc }
+    else { reverse_num(n / 10, acc * 10 + n % 10) };
+
+fn main() -> i64 = {
+    let n = read_int();
+    if n < 0 { println_str("false") }
+    else if reverse_num(n, 0) == n { println_str("true") }
+    else { println_str("false") };
+    0
+};

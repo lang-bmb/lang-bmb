@@ -1,0 +1,27 @@
+// Minimum Absolute Difference — find min |a[i] - a[j]| in array
+fn abs_val(x: i64) -> i64
+= if x < 0 { 0 - x } else { x };
+
+fn min_diff_sorted(v: i64, n: i64, i: i64, best: i64) -> i64
+= if i >= n - 1 { best }
+    else {
+        let diff = abs_val(vec_get(v, i + 1) - vec_get(v, i));
+        let new_best = if diff < best { diff } else { best };
+        min_diff_sorted(v, n, i + 1, new_best)
+    };
+
+fn read_into_vec(v: i64, n: i64) -> i64
+= if n == 0 { 0 }
+    else { let x = read_int(); let _p = vec_push(v, x); read_into_vec(v, n - 1) };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    let _r = read_into_vec(v, n);
+    let _sort = vec_sort(v);
+    let first = vec_get(v, 0);
+    let second = vec_get(v, 1);
+    let init = abs_val(second - first);
+    println(min_diff_sorted(v, n, 0, init));
+    0
+};

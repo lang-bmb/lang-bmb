@@ -1,0 +1,12 @@
+{
+  "id": "129_reverse_bits",
+  "category": "math",
+  "difficulty": "easy",
+  "tags": ["math", "hash-table", "cycle-detection"],
+  "bmb_features_tested": ["recursive", "modulo", "println_str"],
+  "expected_tools": ["check", "build", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #202 (external)"
+}

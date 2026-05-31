@@ -1,0 +1,12 @@
+{
+  "id": "125_house_robber",
+  "category": "dp",
+  "difficulty": "medium",
+  "tags": ["dp", "array"],
+  "bmb_features_tested": ["vec_new", "vec_push", "vec_get", "recursive", "dp"],
+  "expected_tools": ["check", "build", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #198 (external)"
+}

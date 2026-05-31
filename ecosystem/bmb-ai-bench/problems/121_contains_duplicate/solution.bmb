@@ -1,0 +1,27 @@
+// Contains Duplicate — check if any value appears at least twice
+fn has_dup_from(v: i64, target: i64, i: i64, n: i64) -> bool
+= if i >= n { false }
+    else if vec_get(v, i) == target { true }
+    else { has_dup_from(v, target, i + 1, n) };
+
+fn has_dup(v: i64, i: i64, n: i64) -> bool
+= if i >= n { false }
+    else if has_dup_from(v, vec_get(v, i), i + 1, n) { true }
+    else { has_dup(v, i + 1, n) };
+
+fn read_into_vec(v: i64, n: i64) -> i64
+= if n == 0 { v }
+    else {
+        let x = read_int();
+        let _p = vec_push(v, x);
+        read_into_vec(v, n - 1)
+    };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    let _r = read_into_vec(v, n);
+    if has_dup(v, 0, n) { println_str("true") }
+    else { println_str("false") };
+    0
+};

@@ -31467,7 +31467,7 @@ fn llvm_gen_rhs_copy_branch(line: String, pos: i64, dest: String, mapping: Strin
         let resolved_src = resolve_variable(src, mapping);
         if resolved_src == "ALLOCA" {
             let alloca_is_double = llvm_gen_rhs_copy_alloca_markers(src, dest, str_sb);
-            if alloca_is_double {
+            if alloca_is_double > 0 {
                 let _w = push_double_marker(str_sb, dest);
                 same_mapping("  " + dest + " = load double, ptr " + src)
             } else {
@@ -31475,7 +31475,7 @@ fn llvm_gen_rhs_copy_branch(line: String, pos: i64, dest: String, mapping: Strin
             }
         } else {
             let src_is_double = llvm_gen_rhs_copy_markers(src, dest, str_sb);
-            if src_is_double {
+            if src_is_double > 0 {
                 same_mapping("  " + dest + " = fadd nsz double 0.0, " + resolved_src)
             } else {
                 same_mapping("  " + dest + " = add nsw i64 0, " + resolved_src)
@@ -44226,7 +44226,69 @@ fn lint_check_missing_post(src: String, pos: i64, count: i64) -> i64
 
     };
 
-// Bundle source-level lint checks (intent, redundant_else_unit, missing_postcondition)
+// Return the minimum non-negative position, or -1 if both are negative
+fn lint_todo_min_pos(p_todo: i64, p_fixme: i64) -> i64
+
+  post it >= -1
+
+= if p_todo >= 0 and (p_fixme < 0 or p_todo <= p_fixme) { p_todo }
+    else { p_fixme };
+
+// Advance past the TODO/FIXME marker found at position p
+fn lint_todo_next_pos(src: String, p: i64) -> i64
+
+  pre p >= 0
+
+  post it >= 0
+
+= let is_fixme = src.len() >= p + 8 and match_bytes(src, "// FIXME", p, 0);
+    if is_fixme { p + 8 } else { p + 7 };
+
+// Check for TODO and FIXME markers in line comments (unresolved work items)
+fn lint_check_todo_comment(src: String, pos: i64, count: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= let p_todo = find_pattern_noa(src, "// TODO", pos);
+
+    let p_fixme = find_pattern_noa(src, "// FIXME", pos);
+
+    let p = lint_todo_min_pos(p_todo, p_fixme);
+
+    if p < 0 { count }
+
+    else {
+
+        // Skip if inside a string literal: character before "//" is '"'
+        let prev_char = if p > 0 { src.byte_at(p - 1) } else { 0 };
+
+        let is_in_string = prev_char == 34;
+
+        let next_p = lint_todo_next_pos(src, p);
+
+        if is_in_string {
+
+            lint_check_todo_comment(src, next_p, count)
+
+        } else {
+
+            let line_num = count_line_at(src, p, 0, 1);
+
+            let eol = lint_find_eol(src, p);
+
+            let snippet = src.slice(p + 3, eol);
+
+            let _w = println_str("  [todo_comment] line " + int_to_string(line_num) + ": " + snippet);
+
+            lint_check_todo_comment(src, next_p, count + 1)
+
+        }
+
+    };
+
+// Bundle source-level lint checks (intent, redundant_else_unit, missing_postcondition, todo_comment)
 fn lint_source_checks(source: String) -> i64
 
   post it >= 0
@@ -44237,7 +44299,9 @@ fn lint_source_checks(source: String) -> i64
 
     let w12 = lint_check_missing_post(source, 0, 0);
 
-    w6 + w11 + w12;
+    let w13 = lint_check_todo_comment(source, 0, 0);
+
+    w6 + w11 + w12 + w13;
 
 fn lint_file(input: String) -> i64
 
@@ -47887,6 +47951,138 @@ fn enrich_violations_with_lines(json: String, src: String, pos: i64, acc: String
 
     };
 
+// Check if "fn " at fn_pos is a real top-level function declaration (not in a comment).
+fn lmp_is_real_fn(src: String, fn_pos: i64) -> bool
+
+  pre fn_pos >= 0
+
+  post it or not it
+
+= let prev_ok = if fn_pos == 0 { true }
+
+      else { let prev = src.byte_at(fn_pos - 1); prev == 10 or prev == 13 or prev == 32 or prev == 59 or prev == 9 };
+
+    if not prev_ok { false }
+
+    else {
+
+        let sol = lint_find_sol(src, fn_pos);
+
+        not (find_pattern_noa_range(src, "//", sol, fn_pos) >= 0)
+
+    };
+
+// Check one function for missing postcondition, emit JSON to sb if violation found.
+fn lmp_check_fn_sb(src: String, fn_pos: i64, sb: i64, isfirst: i64) -> i64
+
+  pre fn_pos >= 0
+
+  post it >= 0
+
+= let name_start = skip_ws_comments(src, fn_pos + 3);
+
+    let name_end = scan_ident_end(src, name_start);
+
+    let fname = src.slice(name_start, name_end);
+
+    if fname == "" or name_end <= name_start { isfirst }
+
+    else {
+
+        let t2 = next_token_raw(src, name_end);
+
+        let after_gen = if tok_kind(t2) == TK_LT() { skip_generic_params(src, tok_end(t2)) } else { name_end };
+
+        let t2g = next_token_raw(src, after_gen);
+
+        if tok_kind(t2g) != TK_LPAREN() { isfirst }
+
+        else {
+
+            let params = index_collect_params(src, tok_end(t2g), "");
+
+            let rtype = index_read_ret_type(src, unpack_pos(params));
+
+            let ret_str = unpack_ast(rtype);
+
+            let rp = unpack_pos(rtype);
+
+            let is_unit = ret_str == "()" or ret_str == "?" or fname == "main";
+
+            let post_asts = extract_post_asts(src, rp);
+
+            if not is_unit and post_asts == "" {
+
+                let _comma = if isfirst == 0 { sb_push(sb, ",") } else { 0 };
+
+                let line_num = count_line_at(src, fn_pos, 0, 1);
+
+                let _j = sb_push(sb, "{\"type\":\"missing_postcondition\",\"function\":\"" + json_esc(fname) + "\",\"line\":" + int_to_string(line_num) + ",\"ret_type\":\"" + json_esc(ret_str) + "\",\"message\":\"non-unit return with no post condition\",\"fix_suggestion\":\"add post it >= 0 (i64) / post it or not it (bool) / post it.len() >= 0 (String)\"}");
+
+                0
+
+            } else { isfirst }
+
+        }
+
+    };
+
+// Scan source for functions missing postconditions, emit JSON violation objects into sb.
+fn lmp_scan_fn_sb(src: String, pos: i64, sb: i64, isfirst: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= let fn_pos = find_pattern_noa(src, "fn ", pos);
+
+    if fn_pos < 0 { isfirst }
+
+    else {
+
+        let is_real = lmp_is_real_fn(src, fn_pos);
+
+        let new_isfirst = if is_real { lmp_check_fn_sb(src, fn_pos, sb, isfirst) } else { isfirst };
+
+        lmp_scan_fn_sb(src, fn_pos + 3, sb, new_isfirst)
+
+    };
+
+// Build JSON section for missing postcondition violations.
+fn lmp_build_json(input: String, src: String) -> String
+
+  post it.len() >= 1
+
+= {
+
+    let warn_sb = sb_new();
+
+    let _f = lmp_scan_fn_sb(src, 0, warn_sb, 1);
+
+    let warnings_str = sb_build(warn_sb);
+
+    let count = count_rule_entries(warnings_str, 0);
+
+    let out_sb = sb_new();
+
+    let _h1 = sb_push(out_sb, "{\"type\":\"lint_missing_postcondition\",\"file\":\"");
+
+    let _h2 = sb_push(out_sb, json_esc(input));
+
+    let _h3 = sb_push(out_sb, "\",\"count\":");
+
+    let _hc = sb_push(out_sb, int_to_string(count));
+
+    let _h4 = sb_push(out_sb, ",\"violations\":[");
+
+    let _h5 = sb_push(out_sb, warnings_str);
+
+    let _h6 = sb_push(out_sb, "]}");
+
+    sb_build(out_sb)
+
+};
+
 // M12/M13 diagnose: unified effect-verify + contracts-check in one JSON.
 // Computes entries/eff_map/transitive_map once, reuses for both checks.
 fn diagnose_file(input: String) -> i64
@@ -47931,6 +48127,8 @@ fn diagnose_file(input: String) -> i64
 
         let sd_json = semdp_build_json(input, entries);
 
+        let lmp_json = lmp_build_json(input, src);
+
         let ev_count = json_extract_int_field(ev_json, "violations_count");
 
         let cc_count = json_extract_int_field(cc_json, "violations_count");
@@ -47941,9 +48139,11 @@ fn diagnose_file(input: String) -> i64
 
         let sd_count = json_extract_int_field(sd_json, "pairs_count");
 
-        let total_issues = ev_count + cc_count + mc_count + le_count + sd_count;
+        let lmp_count = json_extract_int_field(lmp_json, "count");
 
-        let summary_json = "{\"total_issues\":" + int_to_string(total_issues) + ",\"effect_issues\":" + int_to_string(ev_count) + ",\"contract_issues\":" + int_to_string(cc_count) + ",\"module_cap_issues\":" + int_to_string(mc_count) + ",\"lint_issues\":" + int_to_string(le_count) + ",\"duplicate_pairs\":" + int_to_string(sd_count) + "}";
+        let total_issues = ev_count + cc_count + mc_count + le_count + sd_count + lmp_count;
+
+        let summary_json = "{\"total_issues\":" + int_to_string(total_issues) + ",\"effect_issues\":" + int_to_string(ev_count) + ",\"contract_issues\":" + int_to_string(cc_count) + ",\"module_cap_issues\":" + int_to_string(mc_count) + ",\"lint_issues\":" + int_to_string(le_count) + ",\"duplicate_pairs\":" + int_to_string(sd_count) + ",\"missing_postcondition\":" + int_to_string(lmp_count) + "}";
 
         let out_sb = sb_new();
 
@@ -47960,6 +48160,8 @@ fn diagnose_file(input: String) -> i64
         let _h5 = sb_push(out_sb, ",\"lint_effects\":" + le_json);
 
         let _h6 = sb_push(out_sb, ",\"semantic_duplicate\":" + sd_json);
+
+        let _h6b = sb_push(out_sb, ",\"lint_missing_postcondition\":" + lmp_json);
 
         let _h7 = sb_push(out_sb, ",\"summary\":" + summary_json + "}");
 

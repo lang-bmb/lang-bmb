@@ -1,0 +1,17 @@
+// Is Ugly Number — check if n has no prime factors other than 2, 3, 5
+fn remove_factor(n: i64, f: i64) -> i64
+= if n % f != 0 { n }
+    else { remove_factor(n / f, f) };
+
+fn main() -> i64 = {
+    let n = read_int();
+    if n <= 0 { println_str("false") }
+    else {
+        let r2 = remove_factor(n, 2);
+        let r3 = remove_factor(r2, 3);
+        let r5 = remove_factor(r3, 5);
+        if r5 == 1 { println_str("true") }
+        else { println_str("false") }
+    };
+    0
+};

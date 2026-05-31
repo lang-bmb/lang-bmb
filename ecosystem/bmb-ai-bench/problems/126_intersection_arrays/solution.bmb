@@ -1,0 +1,38 @@
+// Intersection of Two Arrays II — find intersection with duplicates, sorted output
+fn count_in_vec(v: i64, n: i64, target: i64, i: i64, acc: i64) -> i64
+= if i >= n { acc }
+    else if vec_get(v, i) == target { count_in_vec(v, n, target, i + 1, acc + 1) }
+    else { count_in_vec(v, n, target, i + 1, acc) };
+
+fn build_result(v1: i64, n1: i64, v2: i64, n2: i64, res: i64, i: i64) -> i64
+= if i >= n1 { 0 }
+    else {
+        let x = vec_get(v1, i);
+        let c1_before = count_in_vec(v1, i, x, 0, 0);
+        let c2 = count_in_vec(v2, n2, x, 0, 0);
+        let _add = if c1_before < c2 { let _p = vec_push(res, x); 0 } else { 0 };
+        build_result(v1, n1, v2, n2, res, i + 1)
+    };
+
+fn print_vec(v: i64, n: i64, i: i64) -> i64
+= if i >= n { 0 }
+    else { let _p = println(vec_get(v, i)); print_vec(v, n, i + 1) };
+
+fn read_into_vec(v: i64, n: i64) -> i64
+= if n == 0 { 0 }
+    else { let x = read_int(); let _p = vec_push(v, x); read_into_vec(v, n - 1) };
+
+fn main() -> i64 = {
+    let n1 = read_int();
+    let v1 = vec_new();
+    let _r1 = read_into_vec(v1, n1);
+    let n2 = read_int();
+    let v2 = vec_new();
+    let _r2 = read_into_vec(v2, n2);
+    let res = vec_new();
+    let _b = build_result(v1, n1, v2, n2, res, 0);
+    let _sort = vec_sort(res);
+    let sz = vec_len(res);
+    let _p = print_vec(res, sz, 0);
+    0
+};

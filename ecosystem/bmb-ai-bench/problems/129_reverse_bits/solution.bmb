@@ -1,0 +1,16 @@
+// Happy Number — sum of squares of digits, true if eventually reaches 1
+fn digit_sq_sum(n: i64) -> i64
+= if n == 0 { 0 }
+    else { let d = n % 10; d * d + digit_sq_sum(n / 10) };
+
+fn is_happy(n: i64, steps: i64) -> bool
+= if n == 1 { true }
+    else if steps <= 0 { false }
+    else { is_happy(digit_sq_sum(n), steps - 1) };
+
+fn main() -> i64 = {
+    let n = read_int();
+    if is_happy(n, 100) { println_str("true") }
+    else { println_str("false") };
+    0
+};

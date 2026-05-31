@@ -1,0 +1,10 @@
+[
+  {"stdin": "5", "expected_stdout": "2\n"},
+  {"stdin": "8", "expected_stdout": "3\n"},
+  {"stdin": "1", "expected_stdout": "1\n"},
+  {"stdin": "3", "expected_stdout": "2\n"},
+  {"stdin": "6", "expected_stdout": "3\n"},
+  {"stdin": "10", "expected_stdout": "4\n"},
+  {"stdin": "100", "expected_stdout": "13\n"},
+  {"stdin": "7", "expected_stdout": "3\n"}
+]

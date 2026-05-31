@@ -1,0 +1,12 @@
+{
+  "id": "122_reverse_string",
+  "category": "string",
+  "difficulty": "easy",
+  "tags": ["string", "two-pointer"],
+  "bmb_features_tested": ["str_reverse", "read_line", "println_str"],
+  "expected_tools": ["check", "build", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #344 (external)"
+}

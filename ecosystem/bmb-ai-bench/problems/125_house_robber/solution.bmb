@@ -1,0 +1,25 @@
+// House Robber — max money without robbing adjacent houses
+fn rob(v: i64, n: i64, i: i64, prev2: i64, prev1: i64) -> i64
+= if i >= n { prev1 }
+    else {
+        let cur = vec_get(v, i);
+        let with_cur = prev2 + cur;
+        let new_val = if with_cur > prev1 { with_cur } else { prev1 };
+        rob(v, n, i + 1, prev1, new_val)
+    };
+
+fn read_into_vec(v: i64, n: i64) -> i64
+= if n == 0 { v }
+    else {
+        let x = read_int();
+        let _p = vec_push(v, x);
+        read_into_vec(v, n - 1)
+    };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    let _r = read_into_vec(v, n);
+    println(rob(v, n, 0, 0, 0));
+    0
+};

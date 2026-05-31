@@ -1,0 +1,12 @@
+// Number Complement — flip all bits up to the highest set bit
+// Find highest bit, create mask, XOR with mask
+fn highest_bit_mask(n: i64, mask: i64) -> i64
+= if mask >= n { mask }
+    else { highest_bit_mask(n, mask * 2 + 1) };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let mask = highest_bit_mask(n, 1);
+    println(n bxor mask);
+    0
+};

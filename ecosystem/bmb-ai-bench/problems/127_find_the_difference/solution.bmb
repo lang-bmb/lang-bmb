@@ -1,0 +1,12 @@
+// Number of Steps to Reduce a Number to Zero
+// Even: divide by 2; Odd: subtract 1
+fn steps(n: i64, count: i64) -> i64
+= if n == 0 { count }
+    else if n % 2 == 0 { steps(n / 2, count + 1) }
+    else { steps(n - 1, count + 1) };
+
+fn main() -> i64 = {
+    let n = read_int();
+    println(steps(n, 0));
+    0
+};

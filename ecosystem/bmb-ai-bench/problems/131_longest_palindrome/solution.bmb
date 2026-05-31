@@ -1,0 +1,21 @@
+// Longest Palindrome — length of longest palindrome buildable from string chars
+// For each char: use all pairs (even counts), add 1 if any char has odd count
+fn count_char(s: String, c: i64, i: i64, acc: i64) -> i64
+= if i >= s.len() { acc }
+    else if s.char_code_at(i) == c { count_char(s, c, i + 1, acc + 1) }
+    else { count_char(s, c, i + 1, acc) };
+
+fn sum_pairs(s: String, c: i64, acc: i64, has_odd: i64) -> i64
+= if c > 122 {
+        if has_odd > 0 { acc + 1 } else { acc }
+    }
+    else {
+        let cnt = count_char(s, c, 0, 0);
+        sum_pairs(s, c + 1, acc + (cnt / 2) * 2, if cnt % 2 == 1 { 1 } else { has_odd })
+    };
+
+fn main() -> i64 = {
+    let s = read_line();
+    println(sum_pairs(s, 65, 0, 0));
+    0
+};

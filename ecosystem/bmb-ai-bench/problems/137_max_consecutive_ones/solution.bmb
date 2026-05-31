@@ -1,0 +1,20 @@
+// Max Consecutive Ones — find the maximum run of 1s in binary array
+fn max_ones(v: i64, n: i64, i: i64, cur: i64, best: i64) -> i64
+= if i >= n { if cur > best { cur } else { best } }
+    else if vec_get(v, i) == 1 {
+        let new_cur = cur + 1;
+        max_ones(v, n, i + 1, new_cur, if new_cur > best { new_cur } else { best })
+    }
+    else { max_ones(v, n, i + 1, 0, best) };
+
+fn read_into_vec(v: i64, n: i64) -> i64
+= if n == 0 { 0 }
+    else { let x = read_int(); let _p = vec_push(v, x); read_into_vec(v, n - 1) };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    let _r = read_into_vec(v, n);
+    println(max_ones(v, n, 0, 0, 0));
+    0
+};

@@ -1,0 +1,17 @@
+// Count Primes — count primes strictly less than n
+fn is_prime(n: i64, d: i64) -> bool
+= if d * d > n { true }
+    else if n % d == 0 { false }
+    else { is_prime(n, d + 1) };
+
+fn count_primes(n: i64, i: i64, acc: i64) -> i64
+= if i >= n { acc }
+    else if is_prime(i, 2) { count_primes(n, i + 1, acc + 1) }
+    else { count_primes(n, i + 1, acc) };
+
+fn main() -> i64 = {
+    let n = read_int();
+    if n <= 2 { println(0) }
+    else { println(count_primes(n, 2, 0)) };
+    0
+};

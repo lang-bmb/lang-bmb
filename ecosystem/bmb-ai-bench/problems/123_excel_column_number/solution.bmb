@@ -1,0 +1,11 @@
+// Excel Sheet Column Number — convert column label to number
+// A->1, B->2, ..., Z->26, AA->27, AB->28, ...
+fn col_num(s: String, i: i64, acc: i64) -> i64
+= if i >= s.len() { acc }
+    else { col_num(s, i + 1, acc * 26 + s.char_code_at(i) - 64) };
+
+fn main() -> i64 = {
+    let s = read_line();
+    println(col_num(s, 0, 0));
+    0
+};

@@ -1,0 +1,12 @@
+{
+  "id": "133_number_complement",
+  "category": "bit-manipulation",
+  "difficulty": "easy",
+  "tags": ["bit-manipulation", "bxor"],
+  "bmb_features_tested": ["bxor", "recursive", "println"],
+  "expected_tools": ["check", "build", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #476 (external)"
+}
