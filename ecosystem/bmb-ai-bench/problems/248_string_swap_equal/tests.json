@@ -1,0 +1,8 @@
+[
+  {"stdin": "bank\nkanb\n", "expected_stdout": "true\n"},
+  {"stdin": "attack\ndefend\n", "expected_stdout": "false\n"},
+  {"stdin": "kelb\nketb\n", "expected_stdout": "false\n"},
+  {"stdin": "aa\nac\n", "expected_stdout": "false\n"},
+  {"stdin": "abc\nabc\n", "expected_stdout": "true\n"},
+  {"stdin": "abcd\ndcba\n", "expected_stdout": "false\n"}
+]

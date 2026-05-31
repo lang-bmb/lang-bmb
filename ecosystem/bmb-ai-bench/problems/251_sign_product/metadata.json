@@ -1,0 +1,12 @@
+{
+  "id": "251_sign_product",
+  "category": "math",
+  "difficulty": "easy",
+  "tags": ["math", "array"],
+  "bmb_features_tested": ["read_int", "recursive", "println"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #1822 (external)"
+}

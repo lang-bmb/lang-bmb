@@ -1,0 +1,12 @@
+{
+  "id": "253_is_pangram",
+  "category": "string",
+  "difficulty": "easy",
+  "tags": ["string", "counting"],
+  "bmb_features_tested": ["read_line", "byte_at", "len", "bool", "recursive"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #1832 (external)"
+}

@@ -1,0 +1,7 @@
+[
+  {"stdin": "Hello how are you Contestant\n4\n", "expected_stdout": "Hello how are you\n"},
+  {"stdin": "What is the solution to this problem\n4\n", "expected_stdout": "What is the solution\n"},
+  {"stdin": "chopper is not a tanuki\n5\n", "expected_stdout": "chopper is not a tanuki\n"},
+  {"stdin": "one\n1\n", "expected_stdout": "one\n"},
+  {"stdin": "a b c d e\n3\n", "expected_stdout": "a b c\n"}
+]

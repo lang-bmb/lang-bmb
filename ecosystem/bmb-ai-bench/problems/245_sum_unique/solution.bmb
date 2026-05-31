@@ -1,0 +1,36 @@
+fn read_arr(arr: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let x = read_int();
+    let _p = vec_push(arr, x);
+    read_arr(arr, n - 1)
+  };
+
+fn count_val(arr: i64, n: i64, val: i64, i: i64, acc: i64) -> i64
+  pre i >= 0 and acc >= 0
+= if i >= n { acc }
+  else {
+    let v = vec_get(arr, i);
+    let inc = if v == val { 1 } else { 0 };
+    count_val(arr, n, val, i + 1, acc + inc)
+  };
+
+fn sum_unique(arr: i64, n: i64, i: i64, acc: i64) -> i64
+  pre i >= 0 and acc >= 0
+= if i >= n { acc }
+  else {
+    let val = vec_get(arr, i);
+    let c = count_val(arr, n, val, 0, 0);
+    let add = if c == 1 { val } else { 0 };
+    sum_unique(arr, n, i + 1, acc + add)
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let arr = vec_new();
+  let _r = read_arr(arr, n);
+  let result = sum_unique(arr, n, 0, 0);
+  let _p = println(result);
+  0
+};

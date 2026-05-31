@@ -1,0 +1,28 @@
+fn read_arr(arr: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let x = read_int();
+    let _p = vec_push(arr, x);
+    read_arr(arr, n - 1)
+  };
+
+fn min_ops(arr: i64, n: i64, i: i64, prev: i64, ops: i64) -> i64
+  pre i >= 1 and ops >= 0
+= if i >= n { ops }
+  else {
+    let curr = vec_get(arr, i);
+    let need = if curr <= prev { prev + 1 } else { curr };
+    let add = if curr <= prev { prev - curr + 1 } else { 0 };
+    min_ops(arr, n, i + 1, need, ops + add)
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let arr = vec_new();
+  let _r = read_arr(arr, n);
+  let first = vec_get(arr, 0);
+  let result = min_ops(arr, n, 1, first, 0);
+  let _p = println(result);
+  0
+};

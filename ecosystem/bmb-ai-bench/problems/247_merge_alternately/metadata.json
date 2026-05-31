@@ -1,0 +1,12 @@
+{
+  "id": "247_merge_alternately",
+  "category": "string",
+  "difficulty": "easy",
+  "tags": ["string", "two-pointers"],
+  "bmb_features_tested": ["read_line", "len", "slice", "sb_new", "sb_push", "sb_build", "recursive"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #1768 (external)"
+}

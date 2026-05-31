@@ -1,0 +1,29 @@
+fn read_arr(arr: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let x = read_int();
+    let _p = vec_push(arr, x);
+    read_arr(arr, n - 1)
+  };
+
+fn max_asc(arr: i64, n: i64, i: i64, cur: i64, mx: i64) -> i64
+  pre i >= 1 and cur >= 0 and mx >= 0
+= if i >= n { mx }
+  else {
+    let prev = vec_get(arr, i - 1);
+    let curr = vec_get(arr, i);
+    let new_cur = if curr > prev { cur + curr } else { curr };
+    let new_mx = if new_cur > mx { new_cur } else { mx };
+    max_asc(arr, n, i + 1, new_cur, new_mx)
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let arr = vec_new();
+  let _r = read_arr(arr, n);
+  let first = vec_get(arr, 0);
+  let result = max_asc(arr, n, 1, first, first);
+  let _p = println(result);
+  0
+};

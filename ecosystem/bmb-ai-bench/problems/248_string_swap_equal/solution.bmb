@@ -1,0 +1,37 @@
+fn find_diffs(s1: String, s2: String, n: i64, i: i64, diffs: i64) -> i64
+  pre i >= 0
+= if i >= n { 0 }
+  else {
+    let _r = if s1.byte_at(i) != s2.byte_at(i) {
+      let _p = vec_push(diffs, i);
+      0
+    } else { 0 };
+    find_diffs(s1, s2, n, i + 1, diffs)
+  };
+
+fn main() -> i64 = {
+  let s1 = read_line();
+  let s2 = read_line();
+  let n = s1.len();
+  if n != s2.len() {
+    let _p = println_str("false");
+    0
+  } else {
+    let diffs = vec_new();
+    let _f = find_diffs(s1, s2, n, 0, diffs);
+    let cnt = vec_len(diffs);
+    if cnt == 0 {
+      let _p = println_str("true");
+      0
+    } else if cnt == 2 {
+      let d1 = vec_get(diffs, 0);
+      let d2 = vec_get(diffs, 1);
+      let ok = s1.byte_at(d1) == s2.byte_at(d2) and s1.byte_at(d2) == s2.byte_at(d1);
+      if ok { let _p = println_str("true"); 0 }
+      else { let _p = println_str("false"); 0 }
+    } else {
+      let _p = println_str("false");
+      0
+    }
+  }
+};

@@ -1,0 +1,21 @@
+fn is_vowel(c: i64) -> bool
+= c == 97 or c == 101 or c == 105 or c == 111 or c == 117 or
+  c == 65 or c == 69 or c == 73 or c == 79 or c == 85;
+
+fn count_vowels(s: String, i: i64, end: i64) -> i64
+  pre i >= 0
+= if i >= end { 0 }
+  else {
+    let v = if is_vowel(s.byte_at(i)) { 1 } else { 0 };
+    v + count_vowels(s, i + 1, end)
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let n = s.len();
+  let half = n / 2;
+  let c1 = count_vowels(s, 0, half);
+  let c2 = count_vowels(s, half, n);
+  if c1 == c2 { let _p = println_str("true"); 0 }
+  else { let _p = println_str("false"); 0 }
+};

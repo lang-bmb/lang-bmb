@@ -1,0 +1,21 @@
+fn find_end(s: String, n: i64, i: i64, spaces: i64, k: i64) -> i64
+  pre i >= 0 and spaces >= 0
+= if i >= n { n }
+  else {
+    let c = s.byte_at(i);
+    if c == 32 {
+      let new_spaces = spaces + 1;
+      if new_spaces == k { i }
+      else { find_end(s, n, i + 1, new_spaces, k) }
+    } else { find_end(s, n, i + 1, spaces, k) }
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let k = read_int();
+  let n = s.len();
+  let end = find_end(s, n, 0, 0, k);
+  let result = s.slice(0, end);
+  let _p = println_str(result);
+  0
+};

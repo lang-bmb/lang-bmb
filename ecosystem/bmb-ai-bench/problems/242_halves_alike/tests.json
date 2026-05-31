@@ -1,0 +1,10 @@
+[
+  {"stdin": "book", "expected_stdout": "true\n"},
+  {"stdin": "textbook", "expected_stdout": "false\n"},
+  {"stdin": "AbCdEfGh", "expected_stdout": "true\n"},
+  {"stdin": "MerryChristmas", "expected_stdout": "false\n"},
+  {"stdin": "leetcode", "expected_stdout": "true\n"},
+  {"stdin": "aaaa", "expected_stdout": "true\n"},
+  {"stdin": "EAsT", "expected_stdout": "false\n"},
+  {"stdin": "AbCdEf", "expected_stdout": "true\n"}
+]

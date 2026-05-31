@@ -1,0 +1,19 @@
+fn has_letter(s: String, n: i64, c: i64, i: i64) -> bool
+  pre i >= 0
+= if i >= n { false }
+  else if s.byte_at(i) == c { true }
+  else { has_letter(s, n, c, i + 1) };
+
+fn check_all(s: String, n: i64, c: i64) -> bool
+  pre c >= 97
+= if c > 122 { true }
+  else if has_letter(s, n, c, 0) { check_all(s, n, c + 1) }
+  else { false };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let n = s.len();
+  let ok = check_all(s, n, 97);
+  if ok { let _p = println_str("true"); 0 }
+  else { let _p = println_str("false"); 0 }
+};

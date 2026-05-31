@@ -1,0 +1,27 @@
+fn read_arr(arr: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let x = read_int();
+    let _p = vec_push(arr, x);
+    read_arr(arr, n - 1)
+  };
+
+fn count_drops(arr: i64, n: i64, i: i64, acc: i64) -> i64
+  pre i >= 0 and acc >= 0
+= if i >= n { acc }
+  else {
+    let curr = vec_get(arr, i);
+    let next = vec_get(arr, (i + 1) % n);
+    let drop = if curr > next { 1 } else { 0 };
+    count_drops(arr, n, i + 1, acc + drop)
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let arr = vec_new();
+  let _r = read_arr(arr, n);
+  let drops = count_drops(arr, n, 0, 0);
+  if drops <= 1 { let _p = println_str("true"); 0 }
+  else { let _p = println_str("false"); 0 }
+};

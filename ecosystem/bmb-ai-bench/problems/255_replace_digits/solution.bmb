@@ -1,0 +1,19 @@
+fn replace(s: String, n: i64, i: i64, sb: i64) -> i64
+  pre i >= 0
+= if i >= n { 0 }
+  else {
+    let c = s.byte_at(i);
+    let new_c = if i % 2 == 1 { s.byte_at(i - 1) + c - 48 } else { c };
+    let _p = sb_push(sb, chr(new_c));
+    replace(s, n, i + 1, sb)
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let n = s.len();
+  let sb = sb_new();
+  let _r = replace(s, n, 0, sb);
+  let result = sb_build(sb);
+  let _p = println_str(result);
+  0
+};

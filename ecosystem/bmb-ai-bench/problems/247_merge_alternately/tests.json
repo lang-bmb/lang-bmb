@@ -1,0 +1,7 @@
+[
+  {"stdin": "abc\npqr\n", "expected_stdout": "apbqcr\n"},
+  {"stdin": "ab\npqrs\n", "expected_stdout": "apbqrs\n"},
+  {"stdin": "abcd\npq\n", "expected_stdout": "apbqcd\n"},
+  {"stdin": "a\nb\n", "expected_stdout": "ab\n"},
+  {"stdin": "hello\nworld\n", "expected_stdout": "hweolrllod\n"}
+]

@@ -1,0 +1,7 @@
+[
+  {"stdin": "thequickbrownfoxjumpsoverthelazydog\n", "expected_stdout": "true\n"},
+  {"stdin": "leetcode\n", "expected_stdout": "false\n"},
+  {"stdin": "abcdefghijklmnopqrstuvwxyz\n", "expected_stdout": "true\n"},
+  {"stdin": "hello world\n", "expected_stdout": "false\n"},
+  {"stdin": "packmyboxwithfivedozenliquorjugs\n", "expected_stdout": "true\n"}
+]

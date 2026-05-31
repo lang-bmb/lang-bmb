@@ -1,0 +1,40 @@
+fn read_persons(births: i64, deaths: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let b = read_int();
+    let d = read_int();
+    let _pb = vec_push(births, b);
+    let _pd = vec_push(deaths, d);
+    read_persons(births, deaths, n - 1)
+  };
+
+fn count_alive_at(births: i64, deaths: i64, n: i64, year: i64, i: i64, acc: i64) -> i64
+  pre i >= 0 and acc >= 0
+= if i >= n { acc }
+  else {
+    let b = vec_get(births, i);
+    let d = vec_get(deaths, i);
+    let alive = if b <= year and year < d { 1 } else { 0 };
+    count_alive_at(births, deaths, n, year, i + 1, acc + alive)
+  };
+
+fn find_max_year(births: i64, deaths: i64, n: i64, year: i64, best: i64, best_c: i64) -> i64
+  pre year >= 1950 and best_c >= 0
+= if year > 2050 { best }
+  else {
+    let c = count_alive_at(births, deaths, n, year, 0, 0);
+    let new_best = if c > best_c { year } else { best };
+    let new_c = if c > best_c { c } else { best_c };
+    find_max_year(births, deaths, n, year + 1, new_best, new_c)
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let births = vec_new();
+  let deaths = vec_new();
+  let _r = read_persons(births, deaths, n);
+  let result = find_max_year(births, deaths, n, 1950, 1950, 0);
+  let _p = println(result);
+  0
+};

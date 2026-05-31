@@ -1,0 +1,12 @@
+{
+  "id": "246_sorted_rotated",
+  "category": "array",
+  "difficulty": "easy",
+  "tags": ["array", "sorting"],
+  "bmb_features_tested": ["read_int", "vec_new", "vec_push", "vec_get", "recursive", "println_str"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #1752 (external)"
+}

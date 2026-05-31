@@ -1,0 +1,16 @@
+fn max_alt(n: i64, alt: i64, mx: i64) -> i64
+  pre n >= 0
+= if n == 0 { mx }
+  else {
+    let g = read_int();
+    let next = alt + g;
+    let new_mx = if next > mx { next } else { mx };
+    max_alt(n - 1, next, new_mx)
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let result = max_alt(n, 0, 0);
+  let _p = println(result);
+  0
+};

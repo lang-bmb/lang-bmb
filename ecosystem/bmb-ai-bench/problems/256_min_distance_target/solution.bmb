@@ -1,0 +1,29 @@
+fn read_arr(arr: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let x = read_int();
+    let _p = vec_push(arr, x);
+    read_arr(arr, n - 1)
+  };
+
+fn min_dist(arr: i64, n: i64, target: i64, start: i64, i: i64, mx: i64) -> i64
+  pre i >= 0 and mx >= 0
+= if i >= n { mx }
+  else {
+    let val = vec_get(arr, i);
+    let d = if i > start { i - start } else { start - i };
+    let new_mx = if val == target and d < mx { d } else { mx };
+    min_dist(arr, n, target, start, i + 1, new_mx)
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let arr = vec_new();
+  let _r = read_arr(arr, n);
+  let target = read_int();
+  let start = read_int();
+  let result = min_dist(arr, n, target, start, 0, n);
+  let _p = println(result);
+  0
+};

@@ -1,0 +1,42 @@
+fn push_encoded(enc: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let x = read_int();
+    let _p = vec_push(enc, x);
+    push_encoded(enc, n - 1)
+  };
+
+fn build_arr(enc: i64, arr: i64, n: i64, i: i64) -> i64
+  pre i >= 0
+= if i >= n { 0 }
+  else {
+    let prev = vec_get(arr, i);
+    let e = vec_get(enc, i);
+    let _p = vec_push(arr, e bxor prev);
+    build_arr(enc, arr, n, i + 1)
+  };
+
+fn print_arr(sb: i64, arr: i64, n: i64, i: i64) -> i64
+  pre i >= 0
+= if i > n { 0 }
+  else {
+    let _s = if i > 0 { sb_push(sb, " ") } else { 0 };
+    let _v = sb_push(sb, int_to_string(vec_get(arr, i)));
+    print_arr(sb, arr, n, i + 1)
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let first = read_int();
+  let enc = vec_new();
+  let _r = push_encoded(enc, n);
+  let arr = vec_new();
+  let _f = vec_push(arr, first);
+  let _b = build_arr(enc, arr, n, 0);
+  let sb = sb_new();
+  let _p = print_arr(sb, arr, n, 0);
+  let result = sb_build(sb);
+  let _out = println_str(result);
+  0
+};

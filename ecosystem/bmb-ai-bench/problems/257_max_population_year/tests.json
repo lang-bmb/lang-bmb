@@ -1,0 +1,7 @@
+[
+  {"stdin": "2\n1993\n1999\n2000\n2010\n", "expected_stdout": "1993\n"},
+  {"stdin": "2\n1950\n1961\n1960\n1971\n", "expected_stdout": "1960\n"},
+  {"stdin": "1\n1950\n2050\n", "expected_stdout": "1950\n"},
+  {"stdin": "3\n2000\n2010\n2005\n2015\n2010\n2020\n", "expected_stdout": "2005\n"},
+  {"stdin": "1\n2000\n2001\n", "expected_stdout": "2000\n"}
+]

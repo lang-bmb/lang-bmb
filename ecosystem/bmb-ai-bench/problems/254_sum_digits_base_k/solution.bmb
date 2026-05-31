@@ -1,0 +1,12 @@
+fn sum_digits(n: i64, k: i64, acc: i64) -> i64
+  pre n >= 0 and acc >= 0
+= if n == 0 { acc }
+  else { sum_digits(n / k, k, acc + n % k) };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let k = read_int();
+  let result = sum_digits(n, k, 0);
+  let _p = println(result);
+  0
+};

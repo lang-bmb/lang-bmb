@@ -1,0 +1,20 @@
+fn merge(s1: String, s2: String, n1: i64, n2: i64, i: i64, sb: i64) -> i64
+  pre i >= 0
+= if i >= n1 and i >= n2 { 0 }
+  else {
+    let _a = if i < n1 { sb_push(sb, s1.slice(i, i + 1)) } else { 0 };
+    let _b = if i < n2 { sb_push(sb, s2.slice(i, i + 1)) } else { 0 };
+    merge(s1, s2, n1, n2, i + 1, sb)
+  };
+
+fn main() -> i64 = {
+  let s1 = read_line();
+  let s2 = read_line();
+  let n1 = s1.len();
+  let n2 = s2.len();
+  let sb = sb_new();
+  let _m = merge(s1, s2, n1, n2, 0, sb);
+  let result = sb_build(sb);
+  let _p = println_str(result);
+  0
+};
