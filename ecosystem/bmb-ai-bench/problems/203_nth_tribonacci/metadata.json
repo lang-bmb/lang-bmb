@@ -1,0 +1,12 @@
+{
+  "id": "203_nth_tribonacci",
+  "category": "dynamic-programming",
+  "difficulty": "easy",
+  "tags": ["dp", "recursive"],
+  "bmb_features_tested": ["recursive", "arithmetic"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #1137 (external)"
+}

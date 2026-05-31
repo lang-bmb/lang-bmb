@@ -1,0 +1,14 @@
+fn compute(n: i64, prod: i64, sum: i64) -> i64
+  pre n >= 0 and prod >= 0 and sum >= 0
+= if n == 0 { prod - sum }
+  else {
+    let d = n % 10;
+    compute(n / 10, prod * d, sum + d)
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let result = compute(n, 1, 0);
+    let _p = println(result);
+    0
+};

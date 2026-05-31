@@ -1,0 +1,57 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+// Sort ascending (bubble sort)
+fn bubble_pass_asc(v: i64, i: i64, changed: i64) -> i64
+  pre i >= 0
+= if i + 1 >= vec_len(v) { changed }
+  else {
+    let a = vec_get(v, i);
+    let b = vec_get(v, i + 1);
+    if a > b {
+      let _s1 = vec_set(v, i, b);
+      let _s2 = vec_set(v, i + 1, a);
+      bubble_pass_asc(v, i + 1, 1)
+    } else { bubble_pass_asc(v, i + 1, changed) }
+  };
+
+fn bubble_sort_asc(v: i64) -> i64
+= if vec_len(v) <= 1 { 0 }
+  else {
+    let changed = bubble_pass_asc(v, 0, 0);
+    if changed == 1 { bubble_sort_asc(v) } else { 0 }
+  };
+
+fn count_diff(orig: i64, sorted: i64, i: i64, acc: i64) -> i64
+  pre i >= 0 and acc >= 0
+= if i >= vec_len(orig) { acc }
+  else {
+    let diff = if vec_get(orig, i) == vec_get(sorted, i) { 0 } else { 1 };
+    count_diff(orig, sorted, i + 1, acc + diff)
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let orig = vec_new();
+    let _r = read_into_vec(orig, n);
+    let sorted = vec_new();
+    let _r2 = read_from_vec(orig, sorted, 0);
+    let _s = bubble_sort_asc(sorted);
+    let result = count_diff(orig, sorted, 0, 0);
+    let _p = println(result);
+    0
+};
+
+fn read_from_vec(src: i64, dst: i64, i: i64) -> i64
+  pre i >= 0
+= if i >= vec_len(src) { dst }
+  else {
+    let _p = vec_push(dst, vec_get(src, i));
+    read_from_vec(src, dst, i + 1)
+  };

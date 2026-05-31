@@ -1,0 +1,12 @@
+fn steps(n: i64, acc: i64) -> i64
+  pre n >= 0 and acc >= 0
+= if n == 0 { acc }
+  else if n % 2 == 0 { steps(n / 2, acc + 1) }
+  else { steps(n - 1, acc + 1) };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let result = steps(n, 0);
+    let _p = println(result);
+    0
+};

@@ -1,0 +1,12 @@
+{
+  "id": "209_max_69_number",
+  "category": "math",
+  "difficulty": "easy",
+  "tags": ["math", "greedy", "recursive"],
+  "bmb_features_tested": ["recursive", "arithmetic"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #1323 (external)"
+}

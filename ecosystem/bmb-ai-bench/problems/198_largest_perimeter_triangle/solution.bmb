@@ -1,0 +1,53 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+// Sort descending: bubble sort pass
+fn bubble_pass(v: i64, i: i64, changed: i64) -> i64
+  pre i >= 0
+= if i + 1 >= vec_len(v) { changed }
+  else {
+    let a = vec_get(v, i);
+    let b = vec_get(v, i + 1);
+    if a < b {
+      let _s1 = vec_set(v, i, b);
+      let _s2 = vec_set(v, i + 1, a);
+      bubble_pass(v, i + 1, 1)
+    } else {
+      bubble_pass(v, i + 1, changed)
+    }
+  };
+
+fn bubble_sort(v: i64) -> i64
+= if vec_len(v) <= 1 { 0 }
+  else {
+    let changed = bubble_pass(v, 0, 0);
+    if changed == 1 { bubble_sort(v) } else { 0 }
+  };
+
+// After sorting descending, find first triple where arr[i] < arr[i+1] + arr[i+2]
+fn find_triangle(v: i64, i: i64) -> i64
+  pre i >= 0
+= if i + 2 >= vec_len(v) { 0 }
+  else {
+    let a = vec_get(v, i);
+    let b = vec_get(v, i + 1);
+    let c = vec_get(v, i + 2);
+    if b + c > a { a + b + c }
+    else { find_triangle(v, i + 1) }
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    let _r = read_into_vec(v, n);
+    let _s = bubble_sort(v);
+    let result = if n < 3 { 0 } else { find_triangle(v, 0) };
+    let _p = println(result);
+    0
+};

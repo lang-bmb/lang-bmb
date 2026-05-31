@@ -1,0 +1,74 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+// Sort descending via bubble sort
+fn bubble_pass(v: i64, i: i64, changed: i64) -> i64
+  pre i >= 0
+= if i + 1 >= vec_len(v) { changed }
+  else {
+    let a = vec_get(v, i);
+    let b = vec_get(v, i + 1);
+    if a < b {
+      let _s1 = vec_set(v, i, b);
+      let _s2 = vec_set(v, i + 1, a);
+      bubble_pass(v, i + 1, 1)
+    } else { bubble_pass(v, i + 1, changed) }
+  };
+
+fn bubble_sort(v: i64) -> i64
+= if vec_len(v) <= 1 { 0 }
+  else {
+    let changed = bubble_pass(v, 0, 0);
+    if changed == 1 { bubble_sort(v) } else { 0 }
+  };
+
+// Count non-zero stones
+fn count_nonzero(v: i64, i: i64, acc: i64) -> i64
+  pre i >= 0 and acc >= 0
+= if i >= vec_len(v) { acc }
+  else if vec_get(v, i) > 0 { count_nonzero(v, i + 1, acc + 1) }
+  else { count_nonzero(v, i + 1, acc) };
+
+// Simulate: sort desc, smash top two, repeat
+fn simulate(v: i64) -> i64 = {
+    let _s = bubble_sort(v);
+    let n = vec_len(v);
+    if n == 0 { 0 }
+    else if n == 1 { vec_get(v, 0) }
+    else {
+      let y = vec_get(v, 0);
+      let x = vec_get(v, 1);
+      let diff = y - x;
+      let _d1 = vec_set(v, 0, diff);
+      let _d2 = vec_set(v, 1, 0);
+      // Remove zeros by rebuilding (use count to find result)
+      let nz = count_nonzero(v, 0, 0);
+      if nz == 0 { 0 }
+      else if nz == 1 {
+        // Find the nonzero
+        find_nonzero(v, 0)
+      }
+      else { simulate(v) }
+    }
+  };
+
+fn find_nonzero(v: i64, i: i64) -> i64
+  pre i >= 0
+= if i >= vec_len(v) { 0 }
+  else if vec_get(v, i) > 0 { vec_get(v, i) }
+  else { find_nonzero(v, i + 1) };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    let _r = read_into_vec(v, n);
+    let result = simulate(v);
+    let _p = println(result);
+    0
+};

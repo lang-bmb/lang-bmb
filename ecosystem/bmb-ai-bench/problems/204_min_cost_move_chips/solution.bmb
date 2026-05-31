@@ -1,0 +1,17 @@
+fn read_and_count(n: i64, even_cnt: i64, odd_cnt: i64) -> i64
+  pre n >= 0 and even_cnt >= 0 and odd_cnt >= 0
+= if n == 0 {
+    if even_cnt < odd_cnt { even_cnt } else { odd_cnt }
+  }
+  else {
+    let pos = read_int();
+    if pos % 2 == 0 { read_and_count(n - 1, even_cnt + 1, odd_cnt) }
+    else { read_and_count(n - 1, even_cnt, odd_cnt + 1) }
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let result = read_and_count(n, 0, 0);
+    let _p = println(result);
+    0
+};

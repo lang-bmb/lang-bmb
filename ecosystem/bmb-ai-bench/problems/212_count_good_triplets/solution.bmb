@@ -1,0 +1,52 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+fn abs_diff(a: i64, b: i64) -> i64
+= if a >= b { a - b } else { b - a };
+
+fn count_k(arr: i64, j: i64, k: i64, vi: i64, vj: i64, b: i64, c: i64, acc: i64) -> i64
+  pre k >= 0 and acc >= 0
+= if k >= vec_len(arr) { acc }
+  else {
+    let vk = vec_get(arr, k);
+    let good = if abs_diff(vj, vk) <= b and abs_diff(vi, vk) <= c { 1 } else { 0 };
+    count_k(arr, j, k + 1, vi, vj, b, c, acc + good)
+  };
+
+fn count_j(arr: i64, i: i64, j: i64, vi: i64, a: i64, b: i64, c: i64, acc: i64) -> i64
+  pre j >= 0 and acc >= 0
+= if j >= vec_len(arr) { acc }
+  else {
+    let vj = vec_get(arr, j);
+    let new_acc = if abs_diff(vi, vj) <= a {
+      count_k(arr, j, j + 1, vi, vj, b, c, acc)
+    } else { acc };
+    count_j(arr, i, j + 1, vi, a, b, c, new_acc)
+  };
+
+fn count_i(arr: i64, i: i64, a: i64, b: i64, c: i64, acc: i64) -> i64
+  pre i >= 0 and acc >= 0
+= if i >= vec_len(arr) { acc }
+  else {
+    let vi = vec_get(arr, i);
+    let new_acc = count_j(arr, i, i + 1, vi, a, b, c, acc);
+    count_i(arr, i + 1, a, b, c, new_acc)
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let arr = vec_new();
+    let _r = read_into_vec(arr, n);
+    let a = read_int();
+    let b = read_int();
+    let c = read_int();
+    let result = count_i(arr, 0, a, b, c, 0);
+    let _p = println(result);
+    0
+};

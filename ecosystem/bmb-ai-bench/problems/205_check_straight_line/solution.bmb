@@ -1,0 +1,33 @@
+fn read_points(xs: i64, ys: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let x = read_int();
+    let y = read_int();
+    let _px = vec_push(xs, x);
+    let _py = vec_push(ys, y);
+    read_points(xs, ys, n - 1)
+  };
+
+fn check_collinear(xs: i64, ys: i64, i: i64, dx: i64, dy: i64) -> i64
+  pre i >= 0
+= if i >= vec_len(xs) { 1 }
+  else {
+    let cx = vec_get(xs, i) - vec_get(xs, 0);
+    let cy = vec_get(ys, i) - vec_get(ys, 0);
+    // cross product: dx*cy == dy*cx
+    if dx * cy == dy * cx { check_collinear(xs, ys, i + 1, dx, dy) }
+    else { 0 }
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let xs = vec_new();
+    let ys = vec_new();
+    let _r = read_points(xs, ys, n);
+    let dx = vec_get(xs, 1) - vec_get(xs, 0);
+    let dy = vec_get(ys, 1) - vec_get(ys, 0);
+    let result = check_collinear(xs, ys, 2, dx, dy);
+    let _p = println(result);
+    0
+};

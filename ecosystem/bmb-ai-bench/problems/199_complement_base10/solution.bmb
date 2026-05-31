@@ -1,0 +1,28 @@
+// Find the number of bits needed to represent n
+fn bit_len(n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 1 }
+  else { bit_len_helper(n, 0) };
+
+fn bit_len_helper(n: i64, acc: i64) -> i64
+  pre n >= 0 and acc >= 0
+= if n == 0 { acc }
+  else { bit_len_helper(n / 2, acc + 1) };
+
+// Build mask of k ones: (1 << k) - 1
+fn make_mask(k: i64) -> i64
+  pre k >= 0
+= if k == 0 { 0 }
+  else { make_mask(k - 1) * 2 + 1 };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let result = if n == 0 { 1 }
+                 else {
+                   let bits = bit_len(n);
+                   let mask = make_mask(bits);
+                   mask - n
+                 };
+    let _p = println(result);
+    0
+};

@@ -1,0 +1,21 @@
+// Find position of first 6 from left (returns -1 if none)
+fn find_first_six(n: i64, power: i64, pos: i64, best_pos: i64, best_pow: i64) -> i64
+  pre n >= 0 and power >= 1
+= if n == 0 { best_pow }
+  else {
+    let d = n % 10;
+    if d == 6 {
+      find_first_six(n / 10, power * 10, pos + 1, pos, power)
+    } else {
+      find_first_six(n / 10, power * 10, pos + 1, best_pos, best_pow)
+    }
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let pow = find_first_six(n, 1, 0, -1, 0);
+    let result = if pow == 0 { n }
+                 else { n + 3 * pow };
+    let _p = println(result);
+    0
+};

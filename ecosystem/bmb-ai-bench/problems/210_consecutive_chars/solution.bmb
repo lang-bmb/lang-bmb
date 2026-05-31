@@ -1,0 +1,22 @@
+fn max_run(s: String, i: i64, cur_char: i64, cur_len: i64, best: i64) -> i64
+  pre i >= 0 and cur_len >= 0 and best >= 0
+= if i >= s.len() { if cur_len > best { cur_len } else { best } }
+  else {
+    let c = s.byte_at(i);
+    if c == cur_char {
+      let new_len = cur_len + 1;
+      let new_best = if new_len > best { new_len } else { best };
+      max_run(s, i + 1, c, new_len, new_best)
+    } else {
+      let new_best2 = if cur_len > best { cur_len } else { best };
+      max_run(s, i + 1, c, 1, new_best2)
+    }
+  };
+
+fn main() -> i64 = {
+    let s = read_line();
+    let result = if s.len() == 0 { 0 }
+                 else { max_run(s, 1, s.byte_at(0), 1, 1) };
+    let _p = println(result);
+    0
+};

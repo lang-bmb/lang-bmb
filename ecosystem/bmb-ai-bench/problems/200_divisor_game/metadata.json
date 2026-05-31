@@ -1,0 +1,12 @@
+{
+  "id": "200_divisor_game",
+  "category": "math",
+  "difficulty": "easy",
+  "tags": ["math", "game-theory"],
+  "bmb_features_tested": ["arithmetic"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #1025 (external)"
+}

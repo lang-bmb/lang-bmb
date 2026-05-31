@@ -1,0 +1,27 @@
+fn digit_count(n: i64, acc: i64) -> i64
+  pre n >= 0 and acc >= 0
+= if n == 0 { acc }
+  else { digit_count(n / 10, acc + 1) };
+
+fn count_digits(n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 1 } else { digit_count(n, 0) };
+
+fn is_even_digits(n: i64) -> i64
+  pre n >= 0
+= if count_digits(n) % 2 == 0 { 1 } else { 0 };
+
+fn count_even(n: i64, acc: i64) -> i64
+  pre n >= 0 and acc >= 0
+= if n == 0 { acc }
+  else {
+    let x = read_int();
+    count_even(n - 1, acc + is_even_digits(x))
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let result = count_even(n, 0);
+    let _p = println(result);
+    0
+};
