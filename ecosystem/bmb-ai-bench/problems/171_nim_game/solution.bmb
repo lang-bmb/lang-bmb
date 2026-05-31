@@ -1,0 +1,6 @@
+// Nim Game: win if n is not divisible by 4
+fn main() -> i64 = {
+    let n = read_int();
+    if n % 4 != 0 { println(1) } else { println(0) };
+    0
+};

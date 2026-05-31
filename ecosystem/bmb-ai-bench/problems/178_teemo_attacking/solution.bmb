@@ -1,0 +1,29 @@
+// Read timeSeries into vec
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+// Sum poisoned time: for each attack, add min(gap_to_next, duration)
+fn solve(v: i64, n: i64, dur: i64, i: i64, total: i64) -> i64
+  pre i >= 0 and n >= 0
+= if i >= n { total }
+  else if i == n - 1 { total + dur }
+  else {
+    let gap = vec_get(v, i + 1) - vec_get(v, i);
+    let add = if gap < dur { gap } else { dur };
+    solve(v, n, dur, i + 1, total + add)
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let dur = read_int();
+    let v = vec_new();
+    let _r = read_into_vec(v, n);
+    let _p = println(solve(v, n, dur, 0, 0));
+    0
+};

@@ -1,0 +1,12 @@
+{
+  "id": "178_teemo_attacking",
+  "category": "array",
+  "difficulty": "easy",
+  "tags": ["array", "simulation", "recursive"],
+  "bmb_features_tested": ["vec", "vec_get", "recursive", "println"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #495 (external)"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "177_ransom_note",
+  "category": "string",
+  "difficulty": "easy",
+  "tags": ["string", "hash-table", "recursive"],
+  "bmb_features_tested": ["recursive", "read_line", "byte_at", "println"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #383 (external)"
+}

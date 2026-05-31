@@ -1,0 +1,10 @@
+[
+  {"stdin": "Let's take LeetCode contest", "expected_stdout": "s'teL ekat edoCteeL tsetnoc\n"},
+  {"stdin": "God Ding", "expected_stdout": "doG gniD\n"},
+  {"stdin": "Hello", "expected_stdout": "olleH\n"},
+  {"stdin": "a", "expected_stdout": "a\n"},
+  {"stdin": "the sky is blue", "expected_stdout": "eht yks si eulb\n"},
+  {"stdin": "abc def", "expected_stdout": "cba fed\n"},
+  {"stdin": "I love coding", "expected_stdout": "I evol gnidoc\n"},
+  {"stdin": "ab cd ef", "expected_stdout": "ba dc fe\n"}
+]

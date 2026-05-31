@@ -1,0 +1,20 @@
+// Count transitions from space/boundary to non-space
+fn count_seg(s: String, i: i64, in_seg: i64) -> i64
+  pre i >= 0
+= if i >= s.len() { 0 }
+  else {
+    let c = s.byte_at(i);
+    if c == 32 {
+      count_seg(s, i + 1, 0)
+    } else if in_seg == 0 {
+      1 + count_seg(s, i + 1, 1)
+    } else {
+      count_seg(s, i + 1, 1)
+    }
+  };
+
+fn main() -> i64 = {
+    let s = read_line();
+    let _p = println(count_seg(s, 0, 0));
+    0
+};

@@ -1,0 +1,30 @@
+// Reverse characters of s[start..end] into sb
+fn rev_word_sb(s: String, start: i64, end: i64, sb: i64) -> i64
+  pre start >= 0 and end >= start
+= if end <= start { sb }
+  else {
+    let _p = sb_push(sb, s.slice(end - 1, end));
+    rev_word_sb(s, start, end - 1, sb)
+  };
+
+// Process s from pos: output each word reversed
+fn process_words(s: String, pos: i64, word_start: i64, sb: i64) -> i64
+  pre pos >= 0 and word_start >= 0
+= if pos > s.len() { sb }
+  else if pos == s.len() or s.byte_at(pos) == 32 {
+    let _r = rev_word_sb(s, word_start, pos, sb);
+    if pos < s.len() {
+      let _sp = sb_push(sb, " ");
+      process_words(s, pos + 1, pos + 1, sb)
+    } else { sb }
+  } else {
+    process_words(s, pos + 1, word_start, sb)
+  };
+
+fn main() -> i64 = {
+    let s = read_line();
+    let sb = sb_new();
+    let _r = process_words(s, 0, 0, sb);
+    let _p = println_str(sb_build(sb));
+    0
+};

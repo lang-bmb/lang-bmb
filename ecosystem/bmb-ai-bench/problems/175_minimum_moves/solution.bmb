@@ -1,0 +1,19 @@
+// Minimum moves = sum - n * min (decrement-1-equivalent)
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    let _r = read_into_vec(v, n);
+    let s = vec_sum(v);
+    let m = vec_min(v);
+    let _p = println(s - n * m);
+    0
+};

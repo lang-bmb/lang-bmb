@@ -1,0 +1,19 @@
+// Digit to single-char string
+fn digit_str(d: i64) -> String
+= if d == 0 { "0" } else if d == 1 { "1" } else if d == 2 { "2" }
+  else if d == 3 { "3" } else if d == 4 { "4" } else if d == 5 { "5" }
+  else { "6" };
+
+// Convert positive integer to base 7 string
+fn to_base7(n: i64) -> String
+  pre n >= 0
+= if n < 7 { digit_str(n) }
+  else { to_base7(n / 7) + digit_str(n % 7) };
+
+fn main() -> i64 = {
+    let num = read_int();
+    if num == 0 { println_str("0") }
+    else if num < 0 { println_str("-" + to_base7(0 - num)) }
+    else { println_str(to_base7(num)) };
+    0
+};

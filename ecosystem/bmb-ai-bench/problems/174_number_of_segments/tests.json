@@ -1,0 +1,10 @@
+[
+  {"stdin": "Hello, my name is John", "expected_stdout": "5\n"},
+  {"stdin": "Hello", "expected_stdout": "1\n"},
+  {"stdin": "", "expected_stdout": "0\n"},
+  {"stdin": "   ", "expected_stdout": "0\n"},
+  {"stdin": "  a  b", "expected_stdout": "2\n"},
+  {"stdin": "of course  not ", "expected_stdout": "3\n"},
+  {"stdin": "the sky is blue", "expected_stdout": "4\n"},
+  {"stdin": "a", "expected_stdout": "1\n"}
+]

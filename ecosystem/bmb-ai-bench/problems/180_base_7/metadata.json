@@ -1,0 +1,12 @@
+{
+  "id": "180_base_7",
+  "category": "math",
+  "difficulty": "easy",
+  "tags": ["math", "recursive", "string"],
+  "bmb_features_tested": ["recursive", "string", "println_str"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #504 (external)"
+}

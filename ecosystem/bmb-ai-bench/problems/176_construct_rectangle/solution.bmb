@@ -1,0 +1,23 @@
+// Integer sqrt via binary search
+fn isqrt(lo: i64, hi: i64, n: i64) -> i64
+= if lo > hi { lo - 1 }
+  else {
+    let mid = lo + (hi - lo) / 2;
+    if mid * mid <= n { isqrt(mid + 1, hi, n) }
+    else { isqrt(lo, mid - 1, n) }
+  };
+
+// Find largest W <= sqrt(area) such that area % W == 0
+fn find_w(area: i64, w: i64) -> i64
+  pre w >= 1
+= if area % w == 0 { w }
+  else { find_w(area, w - 1) };
+
+fn main() -> i64 = {
+    let area = read_int();
+    let w0 = isqrt(1, area, area);
+    let w = find_w(area, w0);
+    let l = area / w;
+    let _p = println_str(to_string(l) + " " + to_string(w));
+    0
+};

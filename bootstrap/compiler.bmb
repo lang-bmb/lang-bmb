@@ -24886,9 +24886,11 @@ fn trl_param_count(params: String) -> i64
 
 fn trl_count_chars(s: String, pos: i64, ch: i64, count: i64) -> i64
 
+    pre pos >= 0 and count >= 0
+
     post it >= 0
 
-= 
+=
 
     if pos >= s.len() { count }
 
@@ -30141,9 +30143,11 @@ fn count_string_bytes(s: String) -> i64
 
 fn count_string_bytes_acc(s: String, pos: i64, count: i64) -> i64
 
+    pre pos >= 0 and count >= 0
+
     post it >= 0
 
-= 
+=
 
     if pos >= s.len() { count }
 
@@ -32829,6 +32833,8 @@ fn get_closure_cap_count_sb(varname: String, str_sb: i64) -> i64
 = find_closure_count(varname, str_sb, 9);
 
 fn find_closure_count(varname: String, str_sb: i64, n: i64) -> i64
+
+    pre n >= 0
 
     post it >= 0
 
@@ -44200,6 +44206,87 @@ fn lint_check_missing_post(src: String, pos: i64, count: i64) -> i64
 
     };
 
+// Check if params text contains exactly 'n: i64' or 'count: i64' as a param name
+// Returns 1 if found, 0 otherwise
+fn lpr_has_n_or_count_param(params: String) -> i64
+  post it == 0 or it == 1
+= if params.starts_with("n: i64") { 1 }
+  else if params.contains(", n: i64") { 1 }
+  else if params.starts_with("count: i64") { 1 }
+  else if params.contains(", count: i64") { 1 }
+  else { 0 };
+
+// Check [missing_precondition]: function has n: i64 or count: i64 param but no pre condition
+fn lint_check_missing_pre(src: String, pos: i64, count: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= let fn_pos = find_pattern_noa(src, "fn ", pos);
+
+    if fn_pos < 0 { count } else {
+
+        let prev_ok = if fn_pos == 0 { true }
+
+            else { let prev = src.byte_at(fn_pos - 1); prev == 10 or prev == 13 or prev == 32 or prev == 59 or prev == 9 };
+
+        let not_in_comment = if prev_ok {
+
+            let sol = lint_find_sol(src, fn_pos);
+
+            not (find_pattern_noa_range(src, "//", sol, fn_pos) >= 0)
+
+        } else { false };
+
+        let is_real_fn = prev_ok and not_in_comment;
+
+        if is_real_fn {
+
+            let name_start = skip_ws_comments(src, fn_pos + 3);
+
+            let name_end = scan_ident_end(src, name_start);
+
+            let fname = src.slice(name_start, name_end);
+
+            if fname != "" and fname != "main" and name_end > name_start {
+
+                let t2 = next_token_raw(src, name_end);
+
+                let after_gen = if tok_kind(t2) == TK_LT() { skip_generic_params(src, tok_end(t2)) } else { name_end };
+
+                let t2g = next_token_raw(src, after_gen);
+
+                if tok_kind(t2g) == TK_LPAREN() {
+
+                    let params = index_collect_params(src, tok_end(t2g), "");
+
+                    let params_str = unpack_ast(params);
+
+                    let rtype = index_read_ret_type(src, unpack_pos(params));
+
+                    let rp = unpack_pos(rtype);
+
+                    let pre_asts = extract_pre_asts(src, rp);
+
+                    let new_count = if lpr_has_n_or_count_param(params_str) == 1 and pre_asts == "" {
+
+                        let _w = println_str("  [missing_precondition] " + fname + ": n/count param has no pre condition");
+
+                        count + 1
+
+                    } else { count };
+
+                    lint_check_missing_pre(src, fn_pos + 3, new_count)
+
+                } else { lint_check_missing_pre(src, fn_pos + 3, count) }
+
+            } else { lint_check_missing_pre(src, fn_pos + 3, count) }
+
+        } else { lint_check_missing_pre(src, fn_pos + 3, count) }
+
+    };
+
 // Return the minimum non-negative position, or -1 if both are negative
 fn lint_todo_min_pos(p_todo: i64, p_fixme: i64) -> i64
 
@@ -44409,7 +44496,9 @@ fn lint_source_checks(source: String) -> i64
 
     let w15 = lint_check_deep_nesting(source, 0, 0, 0, 0);
 
-    w6 + w11 + w12 + w13 + w14 + w15;
+    let w16 = lint_check_missing_pre(source, 0, 0);
+
+    w6 + w11 + w12 + w13 + w14 + w15 + w16;
 
 fn lint_file(input: String) -> i64
 

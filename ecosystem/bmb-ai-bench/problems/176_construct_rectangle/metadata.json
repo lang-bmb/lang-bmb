@@ -1,0 +1,12 @@
+{
+  "id": "176_construct_rectangle",
+  "category": "math",
+  "difficulty": "easy",
+  "tags": ["math", "recursive"],
+  "bmb_features_tested": ["recursive", "to_string", "println_str"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #492 (external)"
+}

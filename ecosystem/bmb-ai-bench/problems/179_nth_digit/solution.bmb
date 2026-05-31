@@ -1,0 +1,26 @@
+// Compute 10^k
+fn pow10(k: i64) -> i64
+  pre k >= 0
+= if k == 0 { 1 } else { 10 * pow10(k - 1) };
+
+// Find nth digit in 1,2,3,... sequence
+// k = current digit length (starts at 1)
+fn find_digit(n: i64, k: i64) -> i64
+  pre n >= 1 and k >= 1
+= {
+    let range_digits = k * 9 * pow10(k - 1);
+    if n <= range_digits {
+        let idx = (n - 1) / k;
+        let num = pow10(k - 1) + idx;
+        let pos = (n - 1) % k;
+        (num / pow10(k - 1 - pos)) % 10
+    } else {
+        find_digit(n - range_digits, k + 1)
+    }
+};
+
+fn main() -> i64 = {
+    let n = read_int();
+    let _p = println(find_digit(n, 1));
+    0
+};
