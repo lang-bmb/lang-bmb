@@ -1,0 +1,12 @@
+{
+  "id": "190_set_mismatch",
+  "category": "array",
+  "difficulty": "easy",
+  "tags": ["array", "sorting", "counting"],
+  "bmb_features_tested": ["vec_new", "vec_push", "vec_sort", "vec_get", "vec_len", "sb_new", "sb_push", "sb_build", "int_to_string", "println_str"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #645 (external)"
+}

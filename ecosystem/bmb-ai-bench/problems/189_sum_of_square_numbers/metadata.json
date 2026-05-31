@@ -1,0 +1,12 @@
+{
+  "id": "189_sum_of_square_numbers",
+  "category": "math",
+  "difficulty": "easy",
+  "tags": ["math", "two-pointer", "binary-search"],
+  "bmb_features_tested": ["recursive", "read_int", "if_else"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2 -lm",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #633 (external)"
+}

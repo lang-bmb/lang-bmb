@@ -1,0 +1,47 @@
+// Parse integer from string (handles negative)
+fn parse_int_str(s: String, i: i64, acc: i64, neg: i64) -> i64
+  pre i >= 0
+= if i >= s.len() { if neg == 1 { 0 - acc } else { acc } }
+  else {
+    let c = s.byte_at(i);
+    if c == 45 and i == 0 { parse_int_str(s, i + 1, 0, 1) }
+    else if c >= 48 and c <= 57 { parse_int_str(s, i + 1, acc * 10 + (c - 48), neg) }
+    else { if neg == 1 { 0 - acc } else { acc } }
+  };
+
+fn process(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { vec_sum(v) }
+  else {
+    let op = read_line();
+    let sz = vec_len(v);
+    let one_char = op.len() == 1;
+    if one_char and op.byte_at(0) == 67 {
+      // C: remove last
+      if sz > 0 { let _p = vec_pop(v) };
+      process(v, n - 1)
+    } else if one_char and op.byte_at(0) == 68 {
+      // D: double last
+      let last = if sz > 0 { vec_get(v, sz - 1) } else { 0 };
+      let _p = vec_push(v, last * 2);
+      process(v, n - 1)
+    } else if one_char and op.byte_at(0) == 43 {
+      // +: sum last two
+      let a = if sz > 0 { vec_get(v, sz - 1) } else { 0 };
+      let b = if sz > 1 { vec_get(v, sz - 2) } else { 0 };
+      let _p = vec_push(v, a + b);
+      process(v, n - 1)
+    } else {
+      let score = parse_int_str(op, 0, 0, 0);
+      let _p = vec_push(v, score);
+      process(v, n - 1)
+    }
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    let result = process(v, n);
+    let _p = println(result);
+    0
+};

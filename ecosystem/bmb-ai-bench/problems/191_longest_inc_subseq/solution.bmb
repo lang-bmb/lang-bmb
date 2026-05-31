@@ -1,0 +1,29 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+fn scan(v: i64, i: i64, cur: i64, best: i64) -> i64
+  pre i >= 0 and cur >= 1 and best >= 1
+= if i >= vec_len(v) { best }
+  else if vec_get(v, i) > vec_get(v, i - 1) {
+    let nc = cur + 1;
+    let nb = if nc > best { nc } else { best };
+    scan(v, i + 1, nc, nb)
+  } else {
+    scan(v, i + 1, 1, best)
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    let _r = read_into_vec(v, n);
+    let result = if n == 0 { 0 }
+                 else { scan(v, 1, 1, 1) };
+    let _p = println(result);
+    0
+};

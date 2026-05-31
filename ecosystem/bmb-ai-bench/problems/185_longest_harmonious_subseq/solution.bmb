@@ -1,0 +1,35 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+// Two-pointer on sorted array: find max window where max-min==1
+fn find_best(v: i64, l: i64, r: i64, best: i64) -> i64
+  pre l >= 0 and r >= 0 and best >= 0
+= if r >= vec_len(v) { best }
+  else {
+    let diff = vec_get(v, r) - vec_get(v, l);
+    if diff > 1 {
+      find_best(v, l + 1, r, best)
+    } else if diff == 1 {
+      let len = r - l + 1;
+      let nb = if len > best { len } else { best };
+      find_best(v, l, r + 1, nb)
+    } else {
+      find_best(v, l, r + 1, best)
+    }
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    let _r = read_into_vec(v, n);
+    let _s = vec_sort(v);
+    let result = find_best(v, 0, 1, 0);
+    let _p = println(result);
+    0
+};

@@ -1,0 +1,10 @@
+[
+  {"stdin": "aba", "expected_stdout": "1\n"},
+  {"stdin": "abca", "expected_stdout": "1\n"},
+  {"stdin": "abc", "expected_stdout": "0\n"},
+  {"stdin": "a", "expected_stdout": "1\n"},
+  {"stdin": "aa", "expected_stdout": "1\n"},
+  {"stdin": "raceacar", "expected_stdout": "1\n"},
+  {"stdin": "aguokepatgbnvfqmgmlcupuufxoohdfpgjdmysgvtjfleiqv", "expected_stdout": "0\n"},
+  {"stdin": "abcba", "expected_stdout": "1\n"}
+]

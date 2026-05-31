@@ -1,0 +1,28 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+fn find_pivot(v: i64, i: i64, left_sum: i64, total: i64) -> i64
+  pre i >= 0
+= if i >= vec_len(v) { 0 - 1 }
+  else {
+    let val = vec_get(v, i);
+    let right_sum = total - left_sum - val;
+    if left_sum == right_sum { i }
+    else { find_pivot(v, i + 1, left_sum + val, total) }
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    let _r = read_into_vec(v, n);
+    let total = vec_sum(v);
+    let result = find_pivot(v, 0, 0, total);
+    let _p = println(result);
+    0
+};

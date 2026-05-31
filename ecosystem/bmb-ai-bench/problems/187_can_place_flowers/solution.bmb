@@ -1,0 +1,38 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+// Greedy without mutation: track just_planted state
+fn count_placeable(v: i64, i: i64, just_planted: i64, placed: i64) -> i64
+  pre i >= 0 and placed >= 0
+= if i >= vec_len(v) { placed }
+  else if vec_get(v, i) == 1 {
+    count_placeable(v, i + 1, 0, placed)
+  } else if just_planted == 1 {
+    count_placeable(v, i + 1, 0, placed)
+  } else {
+    let next_empty = if i == vec_len(v) - 1 { 1 }
+                     else if vec_get(v, i + 1) == 0 { 1 }
+                     else { 0 };
+    if next_empty == 1 {
+      count_placeable(v, i + 1, 1, placed + 1)
+    } else {
+      count_placeable(v, i + 1, 0, placed)
+    }
+  };
+
+fn main() -> i64 = {
+    let k = read_int();
+    let n = read_int();
+    let v = vec_new();
+    let _r = read_into_vec(v, k);
+    let placeable = count_placeable(v, 0, 0, 0);
+    let result = if placeable >= n { 1 } else { 0 };
+    let _p = println(result);
+    0
+};

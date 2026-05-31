@@ -1,0 +1,28 @@
+// Integer square root: largest r s.t. r*r <= n
+fn isqrt(n: i64, lo: i64, hi: i64) -> i64
+  pre n >= 0 and lo >= 0 and hi >= 0
+= if lo > hi { lo - 1 }
+  else {
+    let mid = (lo + hi) / 2;
+    if mid * mid == n { mid }
+    else if mid * mid < n { isqrt(n, mid + 1, hi) }
+    else { isqrt(n, lo, mid - 1) }
+  };
+
+fn find(c: i64, lo: i64, hi: i64) -> i64
+  pre c >= 0 and lo >= 0 and hi >= 0
+= if lo > hi { 0 }
+  else {
+    let s = lo * lo + hi * hi;
+    if s == c { 1 }
+    else if s < c { find(c, lo + 1, hi) }
+    else { find(c, lo, hi - 1) }
+  };
+
+fn main() -> i64 = {
+    let c = read_int();
+    let hi = isqrt(c, 0, c);
+    let result = find(c, 0, hi);
+    let _p = println(result);
+    0
+};

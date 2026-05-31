@@ -1,0 +1,12 @@
+{
+  "id": "194_alternating_bits",
+  "category": "bit-manipulation",
+  "difficulty": "easy",
+  "tags": ["bit-manipulation", "recursive"],
+  "bmb_features_tested": ["recursive", "read_int", "modulo", "if_else"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #693 (external)"
+}

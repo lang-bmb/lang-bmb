@@ -1,0 +1,23 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+fn max_i64(a: i64, b: i64) -> i64
+= if a >= b { a } else { b };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    let _r = read_into_vec(v, n);
+    let _s = vec_sort(v);
+    let last = vec_len(v) - 1;
+    let a = vec_get(v, last) * vec_get(v, last - 1) * vec_get(v, last - 2);
+    let b = vec_get(v, 0) * vec_get(v, 1) * vec_get(v, last);
+    let _p = println(max_i64(a, b));
+    0
+};

@@ -1,0 +1,12 @@
+{
+  "id": "193_baseball_game",
+  "category": "stack",
+  "difficulty": "easy",
+  "tags": ["stack", "simulation", "recursive"],
+  "bmb_features_tested": ["vec_new", "vec_push", "vec_pop", "vec_get", "vec_len", "vec_sum", "read_line", "byte_at", "recursive"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #682 (external)"
+}

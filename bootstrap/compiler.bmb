@@ -44479,7 +44479,7 @@ fn lint_check_deep_nesting(src: String, pos: i64, depth: i64, in_str: i64, count
         } else { lint_check_deep_nesting(src, pos + 1, depth, in_str, count) }
     };
 
-// Bundle source-level lint checks (intent, redundant_else_unit, missing_postcondition, todo_comment, magic_number, deep_nesting)
+// Bundle source-level lint checks (intent, redundant_else_unit, missing_postcondition, todo_comment, magic_number, deep_nesting, missing_precondition)
 fn lint_source_checks(source: String) -> i64
 
   post it >= 0

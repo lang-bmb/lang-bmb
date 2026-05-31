@@ -1,0 +1,32 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+// Track inc and dec flags (1=still valid, 0=broken)
+fn check_mono(v: i64, i: i64, inc: i64, dec: i64) -> i64
+  pre i >= 0 and inc >= 0 and dec >= 0
+= if i >= vec_len(v) {
+    if inc == 1 or dec == 1 { 1 } else { 0 }
+  }
+  else {
+    let prev = vec_get(v, i - 1);
+    let cur = vec_get(v, i);
+    let new_inc = if cur < prev { 0 } else { inc };
+    let new_dec = if cur > prev { 0 } else { dec };
+    check_mono(v, i + 1, new_inc, new_dec)
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    let _r = read_into_vec(v, n);
+    let result = if n <= 1 { 1 }
+                 else { check_mono(v, 1, 1, 1) };
+    let _p = println(result);
+    0
+};

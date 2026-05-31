@@ -1,0 +1,17 @@
+// Check if n has alternating bits: prev bit != current bit at each position
+fn check_alt(n: i64, prev: i64) -> i64
+  pre n >= 0
+= if n == 0 { 1 }
+  else {
+    let cur = n % 2;
+    if cur == prev { 0 }
+    else { check_alt(n / 2, cur) }
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let first = n % 2;
+    let result = check_alt(n / 2, first);
+    let _p = println(result);
+    0
+};

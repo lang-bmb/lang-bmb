@@ -1,0 +1,22 @@
+fn min_i64(a: i64, b: i64) -> i64
+= if a <= b { a } else { b };
+
+// Read k operations, track min_r and min_c
+fn process_ops(k: i64, min_r: i64, min_c: i64) -> i64
+  pre k >= 0 and min_r >= 0 and min_c >= 0
+= if k == 0 { min_r * min_c }
+  else {
+    let r = read_int();
+    let c = read_int();
+    process_ops(k - 1, min_i64(min_r, r), min_i64(min_c, c))
+  };
+
+fn main() -> i64 = {
+    let m = read_int();
+    let n = read_int();
+    let k = read_int();
+    let result = if k == 0 { m * n }
+                 else { process_ops(k, m, n) };
+    let _p = println(result);
+    0
+};
