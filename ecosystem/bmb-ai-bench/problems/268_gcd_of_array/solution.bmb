@@ -1,0 +1,21 @@
+fn gcd(a: i64, b: i64) -> i64
+  pre a >= 0 and b >= 0
+= if b == 0 { a } else { gcd(b, a - (a / b) * b) };
+
+fn find_min_max(n: i64, i: i64, mn: i64, mx: i64) -> i64
+  pre i >= 0
+= if i >= n { gcd(mn, mx) }
+  else {
+    let v = read_int();
+    let new_mn = if v < mn { v } else { mn };
+    let new_mx = if v > mx { v } else { mx };
+    find_min_max(n, i + 1, new_mn, new_mx)
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let first = read_int();
+  let result = find_min_max(n, 1, first, first);
+  let _p = println(result);
+  0
+};

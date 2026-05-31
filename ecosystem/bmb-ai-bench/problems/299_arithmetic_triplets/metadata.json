@@ -1,0 +1,12 @@
+{
+  "id": "299_equal_sum_subarrays",
+  "category": "array",
+  "difficulty": "easy",
+  "tags": ["array"],
+  "bmb_features_tested": ["read_int", "vec_new", "vec_push", "vec_get", "recursive", "println"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #2395 (external)"
+}

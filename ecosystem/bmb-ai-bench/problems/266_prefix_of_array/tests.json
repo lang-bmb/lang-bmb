@@ -1,0 +1,7 @@
+[
+  {"stdin": "iloveleetcode\n4\ni\nlove\nleetcode\nim\n", "expected_stdout": "1\n"},
+  {"stdin": "iloveleetcode\n4\napples\ni\nlove\nleetcode\n", "expected_stdout": "0\n"},
+  {"stdin": "a\n1\na\n", "expected_stdout": "1\n"},
+  {"stdin": "ab\n2\na\nbc\n", "expected_stdout": "0\n"},
+  {"stdin": "hello\n3\nhel\nlo\nworld\n", "expected_stdout": "1\n"}
+]

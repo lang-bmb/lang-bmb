@@ -1,0 +1,24 @@
+fn abs_val(x: i64) -> i64
+  post it >= 0
+= if x < 0 { 0 - x } else { x };
+
+fn min_val(a: i64, b: i64) -> i64
+= if a < b { a } else { b };
+
+fn type_word(w: String, n: i64, i: i64, pos: i64, acc: i64) -> i64
+  pre i >= 0 and pos >= 0 and acc >= 0
+= if i >= n { acc }
+  else {
+    let c = w.byte_at(i) - 97;
+    let diff = abs_val(c - pos);
+    let cost = min_val(diff, 26 - diff) + 1;
+    type_word(w, n, i + 1, c, acc + cost)
+  };
+
+fn main() -> i64 = {
+  let w = read_line();
+  let n = w.len();
+  let result = type_word(w, n, 0, 0, 0);
+  let _p = println(result);
+  0
+};

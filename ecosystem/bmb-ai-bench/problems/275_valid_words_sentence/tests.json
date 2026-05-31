@@ -1,0 +1,7 @@
+[
+  {"stdin": "5\nplease wait\ngood luck alice and bob\nlook you can see it now\nthere is an apple on the tree\nplease\n", "expected_stdout": "7\n"},
+  {"stdin": "1\na\n", "expected_stdout": "1\n"},
+  {"stdin": "3\nalice and bob are playing stone-game10\nalice and bob are\nalice\n", "expected_stdout": "6\n"},
+  {"stdin": "2\nhello world\nhello\n", "expected_stdout": "2\n"},
+  {"stdin": "1\none two three four five\n", "expected_stdout": "5\n"}
+]

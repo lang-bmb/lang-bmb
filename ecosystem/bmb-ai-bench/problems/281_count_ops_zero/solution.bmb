@@ -1,0 +1,15 @@
+fn count_ops(a: i64, b: i64, ops: i64) -> i64
+  pre a >= 0 and b >= 0 and ops >= 0
+= if a == 0 or b == 0 { ops }
+  else {
+    if a >= b { count_ops(a - b, b, ops + 1) }
+    else { count_ops(a, b - a, ops + 1) }
+  };
+
+fn main() -> i64 = {
+  let a = read_int();
+  let b = read_int();
+  let result = count_ops(a, b, 0);
+  let _p = println(result);
+  0
+};

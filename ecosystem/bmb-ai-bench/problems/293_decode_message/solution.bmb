@@ -1,0 +1,14 @@
+fn max2(a: i64, b: i64) -> i64
+= if a > b { a } else { b };
+
+fn main() -> i64 = {
+  let a = read_int();
+  let b = read_int();
+  let c = read_int();
+  let mx = max2(max2(a, b), c);
+  let total = a + b + c;
+  let ceil_half = (total + 1) / 2;
+  let result = max2(mx, ceil_half);
+  let _p = println(result);
+  0
+};

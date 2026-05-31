@@ -1,0 +1,18 @@
+fn count_char(s: String, c: i64, n: i64, i: i64, acc: i64) -> i64
+  pre i >= 0 and acc >= 0
+= if i >= n { acc }
+  else {
+    let add = if s.byte_at(i) == c { 1 } else { 0 };
+    count_char(s, c, n, i + 1, acc + add)
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let ch = read_line();
+  let c = ch.byte_at(0);
+  let n = s.len();
+  let cnt = count_char(s, c, n, 0, 0);
+  let result = cnt * 100 / n;
+  let _p = println(result);
+  0
+};

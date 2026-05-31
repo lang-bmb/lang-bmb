@@ -1,0 +1,40 @@
+fn has_upper(s: String, c: i64, n: i64, i: i64) -> i64
+  pre i >= 0
+= if i >= n { 0 }
+  else {
+    if s.byte_at(i) == c { 1 }
+    else { has_upper(s, c, n, i + 1) }
+  };
+
+fn has_lower(s: String, c: i64, n: i64, i: i64) -> i64
+  pre i >= 0
+= if i >= n { 0 }
+  else {
+    if s.byte_at(i) == c + 32 { 1 }
+    else { has_lower(s, c, n, i + 1) }
+  };
+
+fn find_greatest(s: String, n: i64, d: i64) -> i64
+  pre d >= -1
+= if d < 0 { 0 - 1 }
+  else {
+    let upper_c = 65 + d;
+    let u = has_upper(s, upper_c, n, 0);
+    let l = has_lower(s, upper_c, n, 0);
+    if u == 1 and l == 1 { upper_c }
+    else { find_greatest(s, n, d - 1) }
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let n = s.len();
+  let best = find_greatest(s, n, 25);
+  let _p = if best < 0 {
+    let _e = println_str("");
+    0
+  } else {
+    let _o = println_str(chr(best));
+    0
+  };
+  0
+};

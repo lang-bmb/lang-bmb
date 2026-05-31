@@ -1,0 +1,42 @@
+fn is_digit(c: i64) -> i64
+= if c >= 48 and c <= 57 { 1 } else { 0 };
+
+fn parse_num(s: String, n: i64, i: i64, acc: i64) -> i64
+  pre i >= 0 and acc >= 0
+= if i >= n { acc }
+  else {
+    let c = s.byte_at(i);
+    if is_digit(c) == 1 { parse_num(s, n, i + 1, acc * 10 + c - 48) }
+    else { acc }
+  };
+
+fn skip_digits(s: String, n: i64, i: i64) -> i64
+  pre i >= 0
+= if i >= n { i }
+  else {
+    if is_digit(s.byte_at(i)) == 1 { skip_digits(s, n, i + 1) }
+    else { i }
+  };
+
+fn check_asc(s: String, n: i64, i: i64, prev: i64) -> i64
+  pre i >= 0
+= if i >= n { 1 }
+  else {
+    let c = s.byte_at(i);
+    if is_digit(c) == 1 {
+      let v = parse_num(s, n, i, 0);
+      if v <= prev { 0 }
+      else {
+        let next_i = skip_digits(s, n, i);
+        check_asc(s, n, next_i, v)
+      }
+    } else { check_asc(s, n, i + 1, prev) }
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let n = s.len();
+  let result = check_asc(s, n, 0, 0 - 1);
+  let _p = println(result);
+  0
+};

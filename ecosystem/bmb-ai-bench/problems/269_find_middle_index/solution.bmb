@@ -1,0 +1,33 @@
+fn read_arr(arr: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let x = read_int();
+    let _p = vec_push(arr, x);
+    read_arr(arr, n - 1)
+  };
+
+fn sum_all(arr: i64, n: i64, i: i64, acc: i64) -> i64
+  pre i >= 0
+= if i >= n { acc }
+  else { sum_all(arr, n, i + 1, acc + vec_get(arr, i)) };
+
+fn find_mid(arr: i64, n: i64, total: i64, i: i64, left: i64) -> i64
+  pre i >= 0
+= if i >= n { 0 - 1 }
+  else {
+    let v = vec_get(arr, i);
+    let right = total - left - v;
+    if left == right { i }
+    else { find_mid(arr, n, total, i + 1, left + v) }
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let arr = vec_new();
+  let _r = read_arr(arr, n);
+  let total = sum_all(arr, n, 0, 0);
+  let result = find_mid(arr, n, total, 0, 0);
+  let _p = println(result);
+  0
+};

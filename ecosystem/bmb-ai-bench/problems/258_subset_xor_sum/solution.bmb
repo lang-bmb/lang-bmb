@@ -1,0 +1,27 @@
+fn read_arr(arr: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let x = read_int();
+    let _p = vec_push(arr, x);
+    read_arr(arr, n - 1)
+  };
+
+fn or_all(arr: i64, n: i64, i: i64, acc: i64) -> i64
+  pre i >= 0 and acc >= 0
+= if i >= n { acc }
+  else { or_all(arr, n, i + 1, acc bor vec_get(arr, i)) };
+
+fn pow2(n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 1 } else { 2 * pow2(n - 1) };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let arr = vec_new();
+  let _r = read_arr(arr, n);
+  let or_val = or_all(arr, n, 0, 0);
+  let result = or_val * pow2(n - 1);
+  let _p = println(result);
+  0
+};

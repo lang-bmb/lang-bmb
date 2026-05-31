@@ -1,0 +1,15 @@
+fn process(n: i64, x: i64) -> i64
+  pre n >= 0
+= if n == 0 { x }
+  else {
+    let op = read_line();
+    let inc = if op.byte_at(1) == 43 { 1 } else { 0 - 1 };
+    process(n - 1, x + inc)
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let result = process(n, 0);
+  let _p = println(result);
+  0
+};

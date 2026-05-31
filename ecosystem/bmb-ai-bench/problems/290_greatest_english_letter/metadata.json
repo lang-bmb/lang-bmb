@@ -1,0 +1,12 @@
+{
+  "id": "290_greatest_english_letter",
+  "category": "string",
+  "difficulty": "easy",
+  "tags": ["string", "hash-table", "enumeration"],
+  "bmb_features_tested": ["read_line", "byte_at", "len", "chr", "println_str", "recursive"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #2309 (external)"
+}

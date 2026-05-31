@@ -1,0 +1,7 @@
+[
+  {"stdin": "l|*e*et|c*o*de|\n", "expected_stdout": "2\n"},
+  {"stdin": "iamprogrammer\n", "expected_stdout": "0\n"},
+  {"stdin": "yo|uar|e**|b|e***aut|iful\n", "expected_stdout": "5\n"},
+  {"stdin": "***\n", "expected_stdout": "3\n"},
+  {"stdin": "|***|\n", "expected_stdout": "0\n"}
+]

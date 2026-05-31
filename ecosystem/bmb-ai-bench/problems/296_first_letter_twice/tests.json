@@ -1,0 +1,7 @@
+[
+  {"stdin": "abccbaacz\n", "expected_stdout": "c\n"},
+  {"stdin": "abcdd\n", "expected_stdout": "d\n"},
+  {"stdin": "aa\n", "expected_stdout": "a\n"},
+  {"stdin": "aabbcc\n", "expected_stdout": "a\n"},
+  {"stdin": "zyzyx\n", "expected_stdout": "z\n"}
+]

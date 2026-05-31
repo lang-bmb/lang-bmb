@@ -1,0 +1,33 @@
+fn read_arr(arr: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let x = read_int();
+    let _p = vec_push(arr, x);
+    read_arr(arr, n - 1)
+  };
+
+fn count_distinct_nonzero(arr: i64, n: i64, v: i64, acc: i64) -> i64
+  pre v >= 1 and acc >= 0
+= if v > 100 { acc }
+  else {
+    let found = has_val(arr, n, v, 0);
+    count_distinct_nonzero(arr, n, v + 1, acc + found)
+  };
+
+fn has_val(arr: i64, n: i64, v: i64, i: i64) -> i64
+  pre i >= 0
+= if i >= n { 0 }
+  else {
+    if vec_get(arr, i) == v { 1 }
+    else { has_val(arr, n, v, i + 1) }
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let arr = vec_new();
+  let _r = read_arr(arr, n);
+  let result = count_distinct_nonzero(arr, n, 1, 0);
+  let _p = println(result);
+  0
+};

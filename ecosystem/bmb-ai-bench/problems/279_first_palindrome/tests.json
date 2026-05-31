@@ -1,0 +1,7 @@
+[
+  {"stdin": "4\nabc\ncar\nada\nracecar\n", "expected_stdout": "ada\n"},
+  {"stdin": "4\nnotapalindrome\nracecar\ntacocat\nmadam\n", "expected_stdout": "racecar\n"},
+  {"stdin": "1\naaa\n", "expected_stdout": "aaa\n"},
+  {"stdin": "3\nabc\ndef\nghi\n", "expected_stdout": "\n"},
+  {"stdin": "2\nabba\nkata\n", "expected_stdout": "abba\n"}
+]

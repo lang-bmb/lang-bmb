@@ -1,0 +1,47 @@
+fn read_arr(arr: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let x = read_int();
+    let _p = vec_push(arr, x);
+    read_arr(arr, n - 1)
+  };
+
+fn count_less(arr: i64, n: i64, target: i64, i: i64, acc: i64) -> i64
+  pre i >= 0 and acc >= 0
+= if i >= n { acc }
+  else {
+    let add = if vec_get(arr, i) < target { 1 } else { 0 };
+    count_less(arr, n, target, i + 1, acc + add)
+  };
+
+fn count_eq(arr: i64, n: i64, target: i64, i: i64, acc: i64) -> i64
+  pre i >= 0 and acc >= 0
+= if i >= n { acc }
+  else {
+    let add = if vec_get(arr, i) == target { 1 } else { 0 };
+    count_eq(arr, n, target, i + 1, acc + add)
+  };
+
+fn print_indices(sb: i64, start: i64, cnt: i64, i: i64) -> i64
+  pre i >= 0 and cnt >= 0
+= if i >= cnt { 0 }
+  else {
+    let _s = if i > 0 { sb_push(sb, " ") } else { 0 };
+    let _v = sb_push(sb, int_to_string(start + i));
+    print_indices(sb, start, cnt, i + 1)
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let target = read_int();
+  let arr = vec_new();
+  let _r = read_arr(arr, n);
+  let less = count_less(arr, n, target, 0, 0);
+  let eq = count_eq(arr, n, target, 0, 0);
+  let sb = sb_new();
+  let _p = print_indices(sb, less, eq, 0);
+  let result = sb_build(sb);
+  let _out = println_str(result);
+  0
+};

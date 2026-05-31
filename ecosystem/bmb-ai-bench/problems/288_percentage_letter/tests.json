@@ -1,0 +1,7 @@
+[
+  {"stdin": "foobar\no\n", "expected_stdout": "33\n"},
+  {"stdin": "jjjj\nk\n", "expected_stdout": "0\n"},
+  {"stdin": "aaab\na\n", "expected_stdout": "75\n"},
+  {"stdin": "a\na\n", "expected_stdout": "100\n"},
+  {"stdin": "abcde\nz\n", "expected_stdout": "0\n"}
+]

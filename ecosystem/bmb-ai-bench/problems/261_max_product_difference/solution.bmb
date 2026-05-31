@@ -1,0 +1,29 @@
+fn read_arr(arr: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let x = read_int();
+    let _p = vec_push(arr, x);
+    read_arr(arr, n - 1)
+  };
+
+fn find_extremes(arr: i64, n: i64, i: i64, max1: i64, max2: i64, min1: i64, min2: i64) -> i64
+  pre i >= 0
+= if i >= n { max1 * max2 - min1 * min2 }
+  else {
+    let v = vec_get(arr, i);
+    let new_max1 = if v > max1 { v } else { max1 };
+    let new_max2 = if v > max1 { max1 } else { if v > max2 { v } else { max2 } };
+    let new_min1 = if v < min1 { v } else { min1 };
+    let new_min2 = if v < min1 { min1 } else { if v < min2 { v } else { min2 } };
+    find_extremes(arr, n, i + 1, new_max1, new_max2, new_min1, new_min2)
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let arr = vec_new();
+  let _r = read_arr(arr, n);
+  let result = find_extremes(arr, n, 0, 0, 0, 100001, 100001);
+  let _p = println(result);
+  0
+};

@@ -1,0 +1,25 @@
+fn count_before(s: String, c: i64, limit: i64, i: i64, acc: i64) -> i64
+  pre i >= 0 and acc >= 0
+= if i >= limit { acc }
+  else {
+    let add = if s.byte_at(i) == c { 1 } else { 0 };
+    count_before(s, c, limit, i + 1, acc + add)
+  };
+
+fn find_first_twice(s: String, n: i64, i: i64) -> i64
+  pre i >= 0
+= if i >= n { 0 - 1 }
+  else {
+    let c = s.byte_at(i);
+    let cnt = count_before(s, c, i, 0, 0);
+    if cnt > 0 { c }
+    else { find_first_twice(s, n, i + 1) }
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let n = s.len();
+  let c = find_first_twice(s, n, 0);
+  let _p = println_str(chr(c));
+  0
+};

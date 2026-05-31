@@ -1,0 +1,12 @@
+{
+  "id": "258_subset_xor_sum",
+  "category": "math",
+  "difficulty": "easy",
+  "tags": ["array", "math", "bit-manipulation"],
+  "bmb_features_tested": ["read_int", "vec_new", "vec_push", "vec_get", "bor", "recursive", "println"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #1863 (external)"
+}

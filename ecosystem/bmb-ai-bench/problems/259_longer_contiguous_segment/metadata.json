@@ -1,0 +1,12 @@
+{
+  "id": "259_longer_contiguous_segment",
+  "category": "string",
+  "difficulty": "easy",
+  "tags": ["string", "two-pointer"],
+  "bmb_features_tested": ["read_str", "byte_at", "len", "recursive", "println"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #1869 (external)"
+}

@@ -1,0 +1,31 @@
+fn read_arr(arr: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let x = read_int();
+    let _p = vec_push(arr, x);
+    read_arr(arr, n - 1)
+  };
+
+fn min_val(a: i64, b: i64) -> i64
+= if a < b { a } else { b };
+
+fn calc_time(arr: i64, n: i64, k: i64, cap_k: i64, i: i64, acc: i64) -> i64
+  pre i >= 0 and acc >= 0
+= if i >= n { acc }
+  else {
+    let t = vec_get(arr, i);
+    let cap = if i <= k { cap_k } else { cap_k - 1 };
+    calc_time(arr, n, k, cap_k, i + 1, acc + min_val(t, cap))
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let k = read_int();
+  let arr = vec_new();
+  let _r = read_arr(arr, n);
+  let cap_k = vec_get(arr, k);
+  let result = calc_time(arr, n, k, cap_k, 0, 0);
+  let _p = println(result);
+  0
+};

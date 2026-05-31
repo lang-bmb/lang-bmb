@@ -1,0 +1,28 @@
+fn count_char(s: String, c: i64, n: i64, i: i64, acc: i64) -> i64
+  pre i >= 0 and acc >= 0
+= if i >= n { acc }
+  else {
+    let b = s.byte_at(i);
+    let add = if b == c { 1 } else { 0 };
+    count_char(s, c, n, i + 1, acc + add)
+  };
+
+fn check_all(s: String, n: i64, i: i64, target: i64) -> i64
+  pre i >= 0 and target >= 0
+= if i >= 26 { 1 }
+  else {
+    let cnt = count_char(s, 97 + i, n, 0, 0);
+    if cnt == 0 { check_all(s, n, i + 1, target) }
+    else {
+      if target == 0 { check_all(s, n, i + 1, cnt) }
+      else { if cnt != target { 0 } else { check_all(s, n, i + 1, target) } }
+    }
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let n = s.len();
+  let result = check_all(s, n, 0, 0);
+  let _p = println(result);
+  0
+};

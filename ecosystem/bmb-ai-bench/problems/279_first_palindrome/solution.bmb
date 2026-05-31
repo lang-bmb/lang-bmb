@@ -1,0 +1,30 @@
+fn is_palindrome(s: String, n: i64, l: i64, r: i64) -> i64
+  pre l >= 0 and r >= 0
+= if l >= r { 1 }
+  else {
+    if s.byte_at(l) != s.byte_at(r) { 0 }
+    else { is_palindrome(s, n, l + 1, r - 1) }
+  };
+
+fn find_first(n: i64) -> i64
+  pre n >= 0
+= if n == 0 {
+    let _e = println_str("");
+    0
+  }
+  else {
+    let w = read_line();
+    let wn = w.len();
+    let ok = if wn == 0 { 0 } else { is_palindrome(w, wn, 0, wn - 1) };
+    if ok == 1 {
+      let _p = println_str(w);
+      0
+    }
+    else { find_first(n - 1) }
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let _r = find_first(n);
+  0
+};

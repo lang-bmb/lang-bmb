@@ -1,0 +1,42 @@
+fn read_arr(arr: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let x = read_int();
+    let _p = vec_push(arr, x);
+    read_arr(arr, n - 1)
+  };
+
+fn count_val(arr: i64, n: i64, v: i64, i: i64, acc: i64) -> i64
+  pre i >= 0 and acc >= 0
+= if i >= n { acc }
+  else {
+    let add = if vec_get(arr, i) == v { 1 } else { 0 };
+    count_val(arr, n, v, i + 1, acc + add)
+  };
+
+fn tally(arr: i64, n: i64, v: i64, max_v: i64, pairs: i64, lefts: i64) -> i64
+  pre v >= 0 and pairs >= 0 and lefts >= 0
+= if v > max_v { pairs * 101 + lefts }
+  else {
+    let cnt = count_val(arr, n, v, 0, 0);
+    let new_pairs = pairs + cnt / 2;
+    let new_lefts = lefts + cnt - (cnt / 2) * 2;
+    tally(arr, n, v + 1, max_v, new_pairs, new_lefts)
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let arr = vec_new();
+  let _r = read_arr(arr, n);
+  let packed = tally(arr, n, 0, 100, 0, 0);
+  let pairs = packed / 101;
+  let lefts = packed - pairs * 101;
+  let sb = sb_new();
+  let _a = sb_push(sb, int_to_string(pairs));
+  let _s = sb_push(sb, " ");
+  let _b = sb_push(sb, int_to_string(lefts));
+  let result = sb_build(sb);
+  let _out = println_str(result);
+  0
+};

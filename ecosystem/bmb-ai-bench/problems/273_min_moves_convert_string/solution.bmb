@@ -1,0 +1,16 @@
+fn count_ops(s: String, n: i64, i: i64, ops: i64) -> i64
+  pre i >= 0 and ops >= 0
+= if i >= n { ops }
+  else {
+    let c = s.byte_at(i);
+    if c == 88 { count_ops(s, n, i + 3, ops + 1) }
+    else { count_ops(s, n, i + 1, ops) }
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let n = s.len();
+  let result = count_ops(s, n, 0, 0);
+  let _p = println(result);
+  0
+};

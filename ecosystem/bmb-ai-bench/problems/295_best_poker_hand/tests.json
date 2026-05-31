@@ -1,0 +1,7 @@
+[
+  {"stdin": "13\n2\n3\n1\n9\na\na\na\na\na\n", "expected_stdout": "Flush\n"},
+  {"stdin": "4\n4\n2\n4\n4\nd\na\nb\nc\nd\n", "expected_stdout": "Three of a Kind\n"},
+  {"stdin": "10\n10\n2\n12\n9\na\nb\nc\nd\na\n", "expected_stdout": "Pair\n"},
+  {"stdin": "1\n2\n3\n4\n5\na\nb\nc\nd\na\n", "expected_stdout": "High Card\n"},
+  {"stdin": "7\n8\n9\n10\n11\nb\nb\nb\nb\nb\n", "expected_stdout": "Flush\n"}
+]

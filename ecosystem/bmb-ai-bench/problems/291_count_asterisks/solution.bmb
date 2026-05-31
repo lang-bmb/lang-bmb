@@ -1,0 +1,17 @@
+fn count_stars(s: String, n: i64, i: i64, in_pair: i64, acc: i64) -> i64
+  pre i >= 0 and in_pair >= 0 and acc >= 0
+= if i >= n { acc }
+  else {
+    let c = s.byte_at(i);
+    let new_in = if c == 124 { if in_pair == 0 { 1 } else { 0 } } else { in_pair };
+    let add = if c == 42 and in_pair == 0 { 1 } else { 0 };
+    count_stars(s, n, i + 1, new_in, acc + add)
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let n = s.len();
+  let result = count_stars(s, n, 0, 0, 0);
+  let _p = println(result);
+  0
+};

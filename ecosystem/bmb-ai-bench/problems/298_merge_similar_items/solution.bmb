@@ -1,0 +1,35 @@
+fn read_arr(arr: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let x = read_int();
+    let _p = vec_push(arr, x);
+    read_arr(arr, n - 1)
+  };
+
+fn count_triplets(arr: i64, n: i64, diff: i64, i: i64, j: i64, k: i64, acc: i64) -> i64
+  pre i >= 0 and j >= 0 and k >= 0 and acc >= 0
+= if i >= n { acc }
+  else {
+    if j >= n { count_triplets(arr, n, diff, i + 1, i + 2, i + 3, acc) }
+    else {
+      if k >= n { count_triplets(arr, n, diff, i, j + 1, j + 2, acc) }
+      else {
+        let vi = vec_get(arr, i);
+        let vj = vec_get(arr, j);
+        let vk = vec_get(arr, k);
+        let ok = if vj - vi == diff and vk - vj == diff { 1 } else { 0 };
+        count_triplets(arr, n, diff, i, j, k + 1, acc + ok)
+      }
+    }
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let arr = vec_new();
+  let _r = read_arr(arr, n);
+  let diff = read_int();
+  let result = count_triplets(arr, n, diff, 0, 1, 2, 0);
+  let _p = println(result);
+  0
+};

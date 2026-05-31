@@ -1,0 +1,25 @@
+fn count_digit(s: String, n: i64, d: i64, i: i64, acc: i64) -> i64
+  pre i >= 0 and acc >= 0
+= if i >= n { acc }
+  else {
+    let add = if s.byte_at(i) - 48 == d { 1 } else { 0 };
+    count_digit(s, n, d, i + 1, acc + add)
+  };
+
+fn check_all(s: String, n: i64, i: i64) -> i64
+  pre i >= 0
+= if i >= n { 1 }
+  else {
+    let d = s.byte_at(i) - 48;
+    let cnt = count_digit(s, n, i, 0, 0);
+    if cnt == d { check_all(s, n, i + 1) }
+    else { 0 }
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let n = s.len();
+  let result = check_all(s, n, 0);
+  let _p = println(result);
+  0
+};

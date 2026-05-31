@@ -1,0 +1,28 @@
+fn find_best(s: String, n: i64, i: i64, best: i64) -> i64
+  pre i >= 0
+= if i + 2 >= n { best }
+  else {
+    let a = s.byte_at(i);
+    let b = s.byte_at(i + 1);
+    let c = s.byte_at(i + 2);
+    let v = a - 48;
+    let ok = if a == b and b == c { 1 } else { 0 };
+    let new_best = if ok == 1 and v > best { v } else { best };
+    find_best(s, n, i + 1, new_best)
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let n = s.len();
+  let best = find_best(s, n, 0, 0 - 1);
+  let _p = if best < 0 {
+    let _e = println_str("");
+    0
+  } else {
+    let d = int_to_string(best);
+    let result = d + d + d;
+    let _o = println_str(result);
+    0
+  };
+  0
+};

@@ -1,0 +1,19 @@
+fn max_run(s: String, c: i64, n: i64, i: i64, cur: i64, best: i64) -> i64
+  pre i >= 0 and cur >= 0 and best >= 0
+= if i >= n { if cur > best { cur } else { best } }
+  else {
+    let b = s.byte_at(i);
+    let new_cur = if b == c { cur + 1 } else { 0 };
+    let new_best = if new_cur > best { new_cur } else { best };
+    max_run(s, c, n, i + 1, new_cur, new_best)
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let n = s.len();
+  let ones = max_run(s, 49, n, 0, 0, 0);
+  let zeros = max_run(s, 48, n, 0, 0, 0);
+  let result = if ones > zeros { 1 } else { 0 };
+  let _p = println(result);
+  0
+};

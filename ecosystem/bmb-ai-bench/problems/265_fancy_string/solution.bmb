@@ -1,0 +1,21 @@
+fn build_fancy(s: String, sb: i64, n: i64, i: i64, prev1: i64, prev2: i64) -> i64
+  pre i >= 0
+= if i >= n { 0 }
+  else {
+    let c = s.byte_at(i);
+    let skip = if c == prev1 and c == prev2 { 1 } else { 0 };
+    let _push = if skip == 1 { 0 } else { sb_push(sb, s.slice(i, i + 1)) };
+    let new_prev1 = if skip == 1 { prev1 } else { c };
+    let new_prev2 = if skip == 1 { prev2 } else { prev1 };
+    build_fancy(s, sb, n, i + 1, new_prev1, new_prev2)
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let n = s.len();
+  let sb = sb_new();
+  let _b = build_fancy(s, sb, n, 0, -1, -2);
+  let result = sb_build(sb);
+  let _out = println_str(result);
+  0
+};

@@ -1,0 +1,26 @@
+fn count_words(s: String, n: i64, i: i64, acc: i64) -> i64
+  pre i >= 0 and acc >= 0
+= if i >= n { acc }
+  else {
+    let c = s.byte_at(i);
+    let add = if c == 32 { 1 } else { 0 };
+    count_words(s, n, i + 1, acc + add)
+  };
+
+fn max_words(num: i64, best: i64) -> i64
+  pre num >= 0 and best >= 0
+= if num == 0 { best }
+  else {
+    let s = read_line();
+    let n = s.len();
+    let w = if n == 0 { 0 } else { count_words(s, n, 0, 1) };
+    let new_best = if w > best { w } else { best };
+    max_words(num - 1, new_best)
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let result = max_words(n, 0);
+  let _p = println(result);
+  0
+};

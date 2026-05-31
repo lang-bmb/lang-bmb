@@ -1,0 +1,31 @@
+fn read_arr(arr: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let x = read_int();
+    let _p = vec_push(arr, x);
+    read_arr(arr, n - 1)
+  };
+
+fn find_max_diff(arr: i64, n: i64, j: i64, mn: i64, best: i64) -> i64
+  pre j >= 0
+= if j >= n { best }
+  else {
+    let v = vec_get(arr, j);
+    let new_best = if v > mn {
+      let diff = v - mn;
+      if diff > best { diff } else { best }
+    } else { best };
+    let new_mn = if v < mn { v } else { mn };
+    find_max_diff(arr, n, j + 1, new_mn, new_best)
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let arr = vec_new();
+  let _r = read_arr(arr, n);
+  let first = vec_get(arr, 0);
+  let raw = find_max_diff(arr, n, 1, first, 0 - 1);
+  let _p = println(raw);
+  0
+};

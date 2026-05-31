@@ -1,0 +1,7 @@
+[
+  {"stdin": "1 box has 3 blue 4 red 6 green and 12 yellow marbles\n", "expected_stdout": "1\n"},
+  {"stdin": "hello world 5 x 5\n", "expected_stdout": "0\n"},
+  {"stdin": "sunset is at 7 51 pm overnight lows will be in the low 50 and 60 s\n", "expected_stdout": "0\n"},
+  {"stdin": "no numbers here\n", "expected_stdout": "1\n"},
+  {"stdin": "a 1 b 2 c 3\n", "expected_stdout": "1\n"}
+]

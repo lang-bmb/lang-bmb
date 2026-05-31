@@ -1,0 +1,67 @@
+fn read5_rank(arr: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let x = read_int();
+    let _p = vec_push(arr, x);
+    read5_rank(arr, n - 1)
+  };
+
+fn read5_suit(arr: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let s = read_line();
+    let c = s.byte_at(0);
+    let _p = vec_push(arr, c);
+    read5_suit(arr, n - 1)
+  };
+
+fn all_same_suit(suits: i64) -> i64 = {
+  let s0 = vec_get(suits, 0);
+  let ok = if vec_get(suits, 1) == s0 and
+              vec_get(suits, 2) == s0 and
+              vec_get(suits, 3) == s0 and
+              vec_get(suits, 4) == s0 { 1 } else { 0 };
+  ok
+};
+
+fn count_rank(ranks: i64, r: i64, i: i64, acc: i64) -> i64
+  pre i >= 0 and acc >= 0
+= if i >= 5 { acc }
+  else {
+    let add = if vec_get(ranks, i) == r { 1 } else { 0 };
+    count_rank(ranks, r, i + 1, acc + add)
+  };
+
+fn max_freq(ranks: i64, r: i64, best: i64) -> i64
+  pre r >= 0 and best >= 0
+= if r > 13 { best }
+  else {
+    let cnt = count_rank(ranks, r, 0, 0);
+    let new_best = if cnt > best { cnt } else { best };
+    max_freq(ranks, r + 1, new_best)
+  };
+
+fn main() -> i64 = {
+  let ranks = vec_new();
+  let _rr = read5_rank(ranks, 5);
+  let suits = vec_new();
+  let _rs = read5_suit(suits, 5);
+  let flush = all_same_suit(suits);
+  let mf = max_freq(ranks, 1, 0);
+  let _p = if flush == 1 {
+    let _f = println_str("Flush"); 0
+  } else {
+    if mf >= 3 {
+      let _t = println_str("Three of a Kind"); 0
+    } else {
+      if mf == 2 {
+        let _pa = println_str("Pair"); 0
+      } else {
+        let _h = println_str("High Card"); 0
+      }
+    }
+  };
+  0
+};

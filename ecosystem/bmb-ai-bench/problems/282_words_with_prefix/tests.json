@@ -1,0 +1,7 @@
+[
+  {"stdin": "6\npay\npay\nattention\npractice\nattend\na\na\n", "expected_stdout": "1\n"},
+  {"stdin": "3\na\naa\naaa\naaaaa\n", "expected_stdout": "3\n"},
+  {"stdin": "3\nxy\nabc\ndef\nghi\n", "expected_stdout": "0\n"},
+  {"stdin": "4\nabc\nabc\nabcdef\nabc\nab\n", "expected_stdout": "3\n"},
+  {"stdin": "2\nhello\nhello\nhelloworld\n", "expected_stdout": "2\n"}
+]

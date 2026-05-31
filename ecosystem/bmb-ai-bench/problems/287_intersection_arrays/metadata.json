@@ -1,0 +1,12 @@
+{
+  "id": "287_largest_same_digit",
+  "category": "string",
+  "difficulty": "easy",
+  "tags": ["string", "sliding-window"],
+  "bmb_features_tested": ["read_line", "byte_at", "len", "int_to_string", "println_str", "recursive"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #2264 (external)"
+}

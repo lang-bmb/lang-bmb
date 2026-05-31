@@ -1,0 +1,30 @@
+fn read_arr(arr: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let x = read_int();
+    let _p = vec_push(arr, x);
+    read_arr(arr, n - 1)
+  };
+
+fn print_twice(sb: i64, arr: i64, n: i64, i: i64, round: i64) -> i64
+  pre i >= 0 and round >= 0
+= if round >= 2 { 0 }
+  else {
+    let is_first = if round == 0 and i == 0 { 1 } else { 0 };
+    let _s = if is_first == 1 { 0 } else { sb_push(sb, " ") };
+    let _v = sb_push(sb, int_to_string(vec_get(arr, i)));
+    if i + 1 >= n { print_twice(sb, arr, n, 0, round + 1) }
+    else { print_twice(sb, arr, n, i + 1, round) }
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let arr = vec_new();
+  let _r = read_arr(arr, n);
+  let sb = sb_new();
+  let _p = print_twice(sb, arr, n, 0, 0);
+  let result = sb_build(sb);
+  let _out = println_str(result);
+  0
+};

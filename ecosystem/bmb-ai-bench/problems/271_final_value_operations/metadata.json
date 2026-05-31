@@ -1,0 +1,12 @@
+{
+  "id": "271_final_value_operations",
+  "category": "string",
+  "difficulty": "easy",
+  "tags": ["array", "string", "simulation"],
+  "bmb_features_tested": ["read_int", "read_line", "byte_at", "recursive", "println"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #2011 (external)"
+}

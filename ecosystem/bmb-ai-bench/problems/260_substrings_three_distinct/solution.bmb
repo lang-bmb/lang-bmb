@@ -1,0 +1,18 @@
+fn count_good(s: String, n: i64, i: i64, acc: i64) -> i64
+  pre i >= 0 and acc >= 0
+= if i + 2 >= n { acc }
+  else {
+    let a = s.byte_at(i);
+    let b = s.byte_at(i + 1);
+    let c = s.byte_at(i + 2);
+    let ok = if a != b and b != c and a != c { 1 } else { 0 };
+    count_good(s, n, i + 1, acc + ok)
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let n = s.len();
+  let result = count_good(s, n, 0, 0);
+  let _p = println(result);
+  0
+};

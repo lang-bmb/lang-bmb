@@ -1,0 +1,25 @@
+fn print_cells(sb: i64, c1: i64, c2: i64, r1: i64, r2: i64, c: i64, r: i64, first: i64) -> i64
+  pre c <= c2 + 1 and first >= 0
+= if c > c2 { 0 }
+  else {
+    if r > r2 { print_cells(sb, c1, c2, r1, r2, c + 1, r1, first) }
+    else {
+      let _sp = if first == 1 { 0 } else { sb_push(sb, " ") };
+      let _c = sb_push(sb, chr(c));
+      let _n = sb_push(sb, int_to_string(r));
+      print_cells(sb, c1, c2, r1, r2, c, r + 1, 0)
+    }
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let c1 = s.byte_at(0);
+  let r1 = s.byte_at(1) - 48;
+  let c2 = s.byte_at(3);
+  let r2 = s.byte_at(4) - 48;
+  let sb = sb_new();
+  let _p = print_cells(sb, c1, c2, r1, r2, c1, r1, 1);
+  let result = sb_build(sb);
+  let _out = println_str(result);
+  0
+};
