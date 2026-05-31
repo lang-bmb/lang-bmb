@@ -26586,6 +26586,21 @@ fn ifs_next_pos(fn_mir: String, pos: i64) -> i64
 
     };
 
+// Match phi labels against then/else branches; returns "cond,val1,val2,dest" or ""
+fn ifs_check_phi_match(phi_val1: String, phi_label1: String, phi_val2: String, phi_label2: String, l_then: String, l_else: String, cond: String, dest: String) -> String
+
+  post it.len() >= 0
+
+= if phi_label1 == l_then and phi_label2 == l_else {
+
+        cond + "," + phi_val1 + "," + phi_val2 + "," + dest
+
+    } else if phi_label1 == l_else and phi_label2 == l_then {
+
+        cond + "," + phi_val2 + "," + phi_val1 + "," + dest
+
+    } else { "" };
+
 // Check if the 7-line pattern matches at the given branch position
 
 // Returns "" if no match, or "cond,val1,val2,dest" if match
@@ -26684,19 +26699,7 @@ fn ifs_check_pattern(fn_mir: String, branch_line: String, branch_pos: i64) -> St
 
                             // Phi edges must match then/else labels
 
-                            if phi_label1 == l_then and phi_label2 == l_else {
-
-                                // Match! val1 is "then" value, val2 is "else" value
-
-                                cond + "," + phi_val1 + "," + phi_val2 + "," + dest
-
-                            } else if phi_label1 == l_else and phi_label2 == l_then {
-
-                                // Swapped order: val2 is "then" value, val1 is "else" value
-
-                                cond + "," + phi_val2 + "," + phi_val1 + "," + dest
-
-                            } else { "" }
+                            ifs_check_phi_match(phi_val1, phi_label1, phi_val2, phi_label2, l_then, l_else, cond, dest)
 
                         } else { "" }
 
@@ -44401,7 +44404,57 @@ fn lint_check_magic_number(src: String, pos: i64, count: i64) -> i64
         }
     } else { lint_check_magic_number(src, pos + 1, count) };
 
-// Bundle source-level lint checks (intent, redundant_else_unit, missing_postcondition, todo_comment, magic_number)
+// Check if everything after pos (until newline) is whitespace or starts a comment
+fn lint_dn_is_eol(src: String, pos: i64) -> bool
+
+  pre pos >= 0
+  post it or not it
+
+= if pos >= src.len() { true }
+    else {
+        let c = src.byte_at(pos);
+        if c == 10 { true }
+        else if c == 13 { true }
+        else if c == 32 { lint_dn_is_eol(src, pos + 1) }
+        else if c == 9 { lint_dn_is_eol(src, pos + 1) }
+        else if c == 47 and src.len() > pos + 1 and src.byte_at(pos + 1) == 47 { true }
+        else { false }
+    };
+
+// Check for deeply nested block openers ({ at EOL with depth > 6)
+fn lint_check_deep_nesting(src: String, pos: i64, depth: i64, in_str: i64, count: i64) -> i64
+
+  pre pos >= 0 and depth >= 0
+  post it >= 0
+
+= if pos >= src.len() { count }
+    else {
+        let c = src.byte_at(pos);
+        if in_str == 1 {
+            if c == 92 { lint_check_deep_nesting(src, pos + 2, depth, 1, count) }
+            else if c == 34 { lint_check_deep_nesting(src, pos + 1, depth, 0, count) }
+            else { lint_check_deep_nesting(src, pos + 1, depth, 1, count) }
+        } else if c == 34 { lint_check_deep_nesting(src, pos + 1, depth, 1, count) }
+        else if c == 47 and src.len() > pos + 1 and src.byte_at(pos + 1) == 47 {
+            let eol = lint_find_eol(src, pos);
+            lint_check_deep_nesting(src, eol + 1, depth, 0, count)
+        } else if c == 45 and src.len() > pos + 1 and src.byte_at(pos + 1) == 45 {
+            let eol = lint_find_eol(src, pos);
+            lint_check_deep_nesting(src, eol + 1, depth, 0, count)
+        } else if c == 123 {
+            let new_depth = depth + 1;
+            if new_depth > 6 and lint_dn_is_eol(src, pos + 1) {
+                let line_num = count_line_at(src, pos, 0, 1);
+                let _w = println_str("  [deep_nesting] line " + int_to_string(line_num) + ": depth " + int_to_string(new_depth));
+                lint_check_deep_nesting(src, pos + 1, new_depth, 0, count + 1)
+            } else { lint_check_deep_nesting(src, pos + 1, new_depth, 0, count) }
+        } else if c == 125 {
+            let new_depth = if depth > 0 { depth - 1 } else { 0 };
+            lint_check_deep_nesting(src, pos + 1, new_depth, 0, count)
+        } else { lint_check_deep_nesting(src, pos + 1, depth, in_str, count) }
+    };
+
+// Bundle source-level lint checks (intent, redundant_else_unit, missing_postcondition, todo_comment, magic_number, deep_nesting)
 fn lint_source_checks(source: String) -> i64
 
   post it >= 0
@@ -44416,7 +44469,9 @@ fn lint_source_checks(source: String) -> i64
 
     let w14 = lint_check_magic_number(source, 0, 0);
 
-    w6 + w11 + w12 + w13 + w14;
+    let w15 = lint_check_deep_nesting(source, 0, 0, 0, 0);
+
+    w6 + w11 + w12 + w13 + w14 + w15;
 
 fn lint_file(input: String) -> i64
 
@@ -47209,6 +47264,32 @@ fn bc_check_max_params_scan(entries: String, max_n: i64, sb: i64, isfirst: i64, 
 
   };
 
+// Return the appropriate post condition suggestion string for a given return type
+fn bc_post_suggest(ret_type: String) -> String
+
+  post it.len() >= 0
+
+= if ret_type == "bool" { "post it or not it" }
+    else if ret_type == "String" { "post it.len() >= 0" }
+    else { "post it >= 0" };
+
+// Extract return type text from a function position in source
+fn bc_ret_type_for_pos(src: String, fn_pos: i64) -> String
+
+  pre fn_pos >= 0
+  post it.len() >= 0
+
+= let ns = skip_ws_comments(src, fn_pos + 3);
+    let ne = scan_ident_end(src, ns);
+    let t_after = next_token_raw(src, ne);
+    let after_gen = if tok_kind(t_after) == TK_LT() { skip_generic_params(src, tok_end(t_after)) } else { ne };
+    let t_lp = next_token_raw(src, after_gen);
+    if tok_kind(t_lp) == TK_LPAREN() {
+        let rp = vr_after_params_pos(src, tok_end(t_lp));
+        let rtype = index_read_ret_type(src, rp);
+        unpack_ast(rtype)
+    } else { "" };
+
 // Check require_postcondition: scan entries for user functions without post clause
 fn bc_check_post_scan(entries: String, src: String, eff_map: String, pos: i64, sb: i64, isfirst: i64) -> i64
 
@@ -47262,11 +47343,15 @@ fn bc_check_post_scan(entries: String, src: String, eff_map: String, pos: i64, s
 
                              };
 
+            let ret_str = if fn_pos >= 0 { bc_ret_type_for_pos(src, fn_pos) } else { "" };
+
             let new_isfirst = if post_texts == "" {
 
                 let _sep = if isfirst == 1 { 0 } else { sb_push(sb, ",") };
 
-                let _j = sb_push(sb, "{\"type\":\"require_postcondition\",\"function\":\"" + json_esc(fn_name) + "\",\"message\":\"function " + json_esc(fn_name) + " has no postcondition\",\"fix_suggestion\":\"add postcondition to " + json_esc(fn_name) + ": post it >= 0\"}");
+                let fix_sug = "add postcondition to " + fn_name + ": " + bc_post_suggest(ret_str);
+
+                let _j = sb_push(sb, "{\"type\":\"require_postcondition\",\"function\":\"" + json_esc(fn_name) + "\",\"message\":\"function " + json_esc(fn_name) + " has no postcondition\",\"fix_suggestion\":\"" + json_esc(fix_sug) + "\"}");
 
                 0
 

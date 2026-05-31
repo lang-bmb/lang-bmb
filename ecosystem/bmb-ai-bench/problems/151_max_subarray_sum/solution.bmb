@@ -1,0 +1,20 @@
+// Maximum Subarray Sum (Kadane's algorithm)
+// Input: n, then n integers. Output: max subarray sum.
+fn kadane(n: i64, i: i64, cur: i64, best: i64) -> i64
+  pre i >= 0
+  post it >= best
+= if i >= n { best }
+  else {
+    let x = read_int();
+    let new_cur = if cur + x > x { cur + x } else { x };
+    let new_best = if new_cur > best { new_cur } else { best };
+    kadane(n, i + 1, new_cur, new_best)
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let first = read_int();
+    let result = kadane(n, 1, first, first);
+    let _p = println(result);
+    0
+};

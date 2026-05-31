@@ -1,0 +1,12 @@
+// Tribonacci: f(0)=0, f(1)=0, f(2)=1, f(n)=f(n-1)+f(n-2)+f(n-3)
+fn trib(n: i64, a: i64, b: i64, c: i64) -> i64
+  pre n >= 0
+  post it >= 0
+= if n == 0 { a }
+  else { trib(n - 1, b, c, a + b + c) };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let _p = println(trib(n, 0, 0, 1));
+    0
+};

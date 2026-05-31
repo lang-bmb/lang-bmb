@@ -1,0 +1,13 @@
+// Digit Product: product of all digits of n (n >= 0)
+fn digit_prod(n: i64, acc: i64) -> i64
+  pre n >= 0
+  post it >= 0
+= if n == 0 { acc }
+  else { digit_prod(n / 10, acc * (n % 10)) };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let result = if n == 0 { 0 } else { digit_prod(n, 1) };
+    let _p = println(result);
+    0
+};

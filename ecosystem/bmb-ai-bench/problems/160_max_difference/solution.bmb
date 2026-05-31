@@ -1,0 +1,20 @@
+// Max difference: max(a[j]-a[i]) for j>i
+// Track min so far and max difference
+fn max_diff(n: i64, i: i64, min_val: i64, best: i64) -> i64
+  pre i >= 0
+= if i >= n { best }
+  else {
+    let x = read_int();
+    let diff = x - min_val;
+    let new_best = if diff > best { diff } else { best };
+    let new_min = if x < min_val { x } else { min_val };
+    max_diff(n, i + 1, new_min, new_best)
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let first = read_int();
+    let result = max_diff(n, 1, first, 0 - 1000000000);
+    let _p = println(result);
+    0
+};

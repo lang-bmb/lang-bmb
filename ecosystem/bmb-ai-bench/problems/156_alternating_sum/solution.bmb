@@ -1,0 +1,15 @@
+// Alternating Sum: a[0] - a[1] + a[2] - ...
+// sign: 1 for +, -1 for -
+fn alt_sum(n: i64, i: i64, sign: i64, acc: i64) -> i64
+  pre i >= 0
+= if i >= n { acc }
+  else {
+    let x = read_int();
+    alt_sum(n, i + 1, 0 - sign, acc + sign * x)
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let _p = println(alt_sum(n, 0, 1, 0));
+    0
+};

@@ -1,0 +1,15 @@
+// Count divisors of n (including 1 and n)
+fn count_div(n: i64, i: i64, cnt: i64) -> i64
+  pre i >= 1
+  post it >= cnt
+= if i * i > n { cnt }
+  else if n % i == 0 {
+    let extra = if i * i == n { 1 } else { 2 };
+    count_div(n, i + 1, cnt + extra)
+  } else { count_div(n, i + 1, cnt) };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let _p = println(count_div(n, 1, 0));
+    0
+};

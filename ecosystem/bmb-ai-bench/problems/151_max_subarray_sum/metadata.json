@@ -1,0 +1,1 @@
+{"id": "151_max_subarray_sum", "category": "dp", "difficulty": "easy", "tags": ["dp", "kadane", "array"], "bmb_features_tested": ["recursive", "read_int", "println"], "expected_tools": ["check", "run"], "c_baseline_flags": "-O2", "perf_target_ratio": 1.1, "version_added": "v0.101", "source": "LeetCode #53 (external)"}

@@ -1,0 +1,1 @@
+{"id": "157_gcd_of_array", "category": "math", "difficulty": "easy", "tags": ["math", "gcd", "recursive"], "bmb_features_tested": ["recursive", "read_int", "println"], "expected_tools": ["check", "run"], "c_baseline_flags": "-O2", "perf_target_ratio": 1.1, "version_added": "v0.101", "source": "LeetCode #1979 (external)"}

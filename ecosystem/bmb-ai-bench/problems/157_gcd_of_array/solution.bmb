@@ -1,0 +1,22 @@
+// GCD of Array: read n numbers, compute overall GCD
+fn gcd(a: i64, b: i64) -> i64
+  pre a >= 0 and b >= 0
+  post it >= 0
+= if b == 0 { a } else { gcd(b, a % b) };
+
+fn read_gcd(n: i64, i: i64, acc: i64) -> i64
+  pre i >= 0
+  post it >= 0
+= if i >= n { acc }
+  else {
+    let x = read_int();
+    read_gcd(n, i + 1, gcd(acc, x))
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let first = read_int();
+    let result = read_gcd(n, 1, first);
+    let _p = println(result);
+    0
+};
