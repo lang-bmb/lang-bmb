@@ -1,0 +1,40 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+fn sum_range(arr: i64, start: i64, len: i64, i: i64, acc: i64) -> i64
+  pre i >= 0 and acc >= 0
+= if i >= len { acc }
+  else {
+    sum_range(arr, start, len, i + 1, acc + vec_get(arr, start + i))
+  };
+
+fn sum_odd_from(arr: i64, n: i64, start: i64, len: i64, acc: i64) -> i64
+  pre len >= 1 and start >= 0 and acc >= 0
+= if start + len > n { acc }
+  else {
+    let s = sum_range(arr, start, len, 0, 0);
+    sum_odd_from(arr, n, start, len + 2, acc + s)
+  };
+
+fn sum_all_starts(arr: i64, n: i64, start: i64, acc: i64) -> i64
+  pre start >= 0 and acc >= 0
+= if start >= n { acc }
+  else {
+    let s = sum_odd_from(arr, n, start, 1, 0);
+    sum_all_starts(arr, n, start + 1, acc + s)
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let arr = vec_new();
+    let _r = read_into_vec(arr, n);
+    let result = sum_all_starts(arr, n, 0, 0);
+    let _p = println(result);
+    0
+};

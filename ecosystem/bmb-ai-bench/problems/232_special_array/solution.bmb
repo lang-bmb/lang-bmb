@@ -1,0 +1,34 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+fn count_gte(arr: i64, n: i64, x: i64, idx: i64, acc: i64) -> i64
+  pre idx >= 0 and acc >= 0
+= if idx >= n { acc }
+  else {
+    let add = if vec_get(arr, idx) >= x { 1 } else { 0 };
+    count_gte(arr, n, x, idx + 1, acc + add)
+  };
+
+fn find_x(arr: i64, n: i64, x: i64) -> i64
+  pre x >= 0
+= if x > n { 0 - 1 }
+  else {
+    let cnt = count_gte(arr, n, x, 0, 0);
+    if cnt == x { x }
+    else { find_x(arr, n, x + 1) }
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let arr = vec_new();
+    let _r = read_into_vec(arr, n);
+    let result = find_x(arr, n, 0);
+    let _p = println(result);
+    0
+};

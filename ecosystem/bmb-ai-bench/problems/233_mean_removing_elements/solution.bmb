@@ -1,0 +1,28 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+fn sum_range(arr: i64, lo: i64, hi: i64, i: i64, acc: i64) -> i64
+  pre i >= 0 and acc >= 0
+= if i >= hi { acc }
+  else {
+    sum_range(arr, lo, hi, i + 1, acc + vec_get(arr, i))
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let arr = vec_new();
+    let _r = read_into_vec(arr, n);
+    let _s = vec_sort(arr);
+    let k = n / 20;
+    let total = sum_range(arr, k, n - k, k, 0);
+    let count = n - 2 * k;
+    let result = total / count;
+    let _p = println(result);
+    0
+};

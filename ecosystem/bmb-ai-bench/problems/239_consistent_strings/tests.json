@@ -1,0 +1,10 @@
+[
+  {"stdin": "ab\n3\nad\nbd\naaab", "expected_stdout": "1\n"},
+  {"stdin": "abc\n2\naabbcc\nbcaaaaaa", "expected_stdout": "2\n"},
+  {"stdin": "cad\n4\ncc\nacd\nb\nca", "expected_stdout": "3\n"},
+  {"stdin": "a\n2\naaa\naab", "expected_stdout": "1\n"},
+  {"stdin": "abc\n1\ndef", "expected_stdout": "0\n"},
+  {"stdin": "xyz\n3\nx\ny\nz", "expected_stdout": "3\n"},
+  {"stdin": "abcde\n5\nabcd\nbcde\nabc\nde\nfg", "expected_stdout": "4\n"},
+  {"stdin": "z\n2\nzz\nza", "expected_stdout": "1\n"}
+]

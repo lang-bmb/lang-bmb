@@ -1,0 +1,33 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+fn is_in_arr(arr: i64, n: i64, val: i64, idx: i64) -> i64
+  pre idx >= 0
+= if idx >= n { 0 }
+  else {
+    if vec_get(arr, idx) == val { 1 }
+    else { is_in_arr(arr, n, val, idx + 1) }
+  };
+
+fn find_missing(arr: i64, n: i64, candidate: i64, k: i64) -> i64
+  pre k >= 1
+= let in_arr = is_in_arr(arr, n, candidate, 0);
+  let new_k = if in_arr == 1 { k } else { k - 1 };
+  if new_k == 0 { candidate }
+  else { find_missing(arr, n, candidate + 1, new_k) };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let arr = vec_new();
+    let _r = read_into_vec(arr, n);
+    let k = read_int();
+    let result = find_missing(arr, n, 1, k);
+    let _p = println(result);
+    0
+};

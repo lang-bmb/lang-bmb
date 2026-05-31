@@ -1,0 +1,12 @@
+{
+  "id": "240_tournament_matches",
+  "category": "math",
+  "difficulty": "easy",
+  "tags": ["math", "simulation"],
+  "bmb_features_tested": ["arithmetic"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #1688 (external)"
+}

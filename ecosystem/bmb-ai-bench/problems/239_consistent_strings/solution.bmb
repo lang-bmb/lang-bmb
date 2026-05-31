@@ -1,0 +1,34 @@
+fn char_in_str(c: i64, s: String, slen: i64, i: i64) -> i64
+  pre i >= 0
+= if i >= slen { 0 }
+  else if s.byte_at(i) == c { 1 }
+  else { char_in_str(c, s, slen, i + 1) };
+
+fn word_ok(word: String, wlen: i64, allowed: String, alen: i64, j: i64) -> i64
+  pre j >= 0
+= if j >= wlen { 1 }
+  else {
+    let c = word.byte_at(j);
+    let in_al = char_in_str(c, allowed, alen, 0);
+    if in_al == 0 { 0 }
+    else { word_ok(word, wlen, allowed, alen, j + 1) }
+  };
+
+fn count_words(n: i64, allowed: String, alen: i64, acc: i64) -> i64
+  pre n >= 0 and acc >= 0
+= if n == 0 { acc }
+  else {
+    let word = read_line();
+    let wlen = word.len();
+    let ok = word_ok(word, wlen, allowed, alen, 0);
+    count_words(n - 1, allowed, alen, acc + ok)
+  };
+
+fn main() -> i64 = {
+    let allowed = read_line();
+    let alen = allowed.len();
+    let n = read_int();
+    let result = count_words(n, allowed, alen, 0);
+    let _p = println(result);
+    0
+};

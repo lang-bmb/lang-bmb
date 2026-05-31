@@ -1,0 +1,10 @@
+[
+  {"stdin": "G()(al)", "expected_stdout": "Goal\n"},
+  {"stdin": "G()()()()(al)", "expected_stdout": "Gooooal\n"},
+  {"stdin": "(al)G(al)()()G", "expected_stdout": "alGalooG\n"},
+  {"stdin": "G", "expected_stdout": "G\n"},
+  {"stdin": "()", "expected_stdout": "o\n"},
+  {"stdin": "(al)", "expected_stdout": "al\n"},
+  {"stdin": "GG", "expected_stdout": "GG\n"},
+  {"stdin": "G()G(al)G", "expected_stdout": "GoGalG\n"}
+]

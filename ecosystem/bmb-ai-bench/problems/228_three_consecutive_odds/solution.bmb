@@ -1,0 +1,28 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+fn check_three_odds(arr: i64, n: i64, i: i64, consecutive: i64) -> i64
+  pre i >= 0 and consecutive >= 0
+= if i >= n { 0 }
+  else {
+    let val = vec_get(arr, i);
+    let is_odd = val % 2;
+    let new_cons = if is_odd == 1 { consecutive + 1 } else { 0 };
+    if new_cons >= 3 { 1 }
+    else { check_three_odds(arr, n, i + 1, new_cons) }
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let arr = vec_new();
+    let _r = read_into_vec(arr, n);
+    let result = check_three_odds(arr, n, 0, 0);
+    let _p = println(result);
+    0
+};

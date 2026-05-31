@@ -1,0 +1,24 @@
+fn find_last_right(s: String, c: i64, j: i64, lo: i64) -> i64
+  pre j >= lo - 1
+= if j < lo { 0 - 1 }
+  else if s.byte_at(j) == c { j }
+  else { find_last_right(s, c, j - 1, lo) };
+
+fn solve_i(s: String, n: i64, i: i64, max_len: i64) -> i64
+  pre i >= 0
+= if i >= n - 1 { max_len }
+  else {
+    let c = s.byte_at(i);
+    let last = find_last_right(s, c, n - 1, i + 1);
+    let len = if last > i { last - i - 1 } else { 0 - 1 };
+    let new_max = if len > max_len { len } else { max_len };
+    solve_i(s, n, i + 1, new_max)
+  };
+
+fn main() -> i64 = {
+    let s = read_line();
+    let n = s.len();
+    let result = solve_i(s, n, 0, 0 - 1);
+    let _p = println(result);
+    0
+};

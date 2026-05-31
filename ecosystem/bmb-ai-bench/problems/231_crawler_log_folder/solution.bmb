@@ -1,0 +1,30 @@
+fn is_parent(s: String) -> i64
+= if s.len() >= 2 {
+    if s.byte_at(0) == 46 and s.byte_at(1) == 46 { 1 } else { 0 }
+  }
+  else { 0 };
+
+fn is_stay(s: String) -> i64
+= if s.len() >= 2 {
+    if s.byte_at(0) == 46 and s.byte_at(1) == 47 { 1 } else { 0 }
+  }
+  else { 0 };
+
+fn process_logs(n: i64, depth: i64) -> i64
+  pre n >= 0 and depth >= 0
+= if n == 0 { depth }
+  else {
+    let s = read_line();
+    let new_depth =
+      if is_parent(s) == 1 { if depth > 0 { depth - 1 } else { 0 } }
+      else if is_stay(s) == 1 { depth }
+      else { depth + 1 };
+    process_logs(n - 1, new_depth)
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let result = process_logs(n, 0);
+    let _p = println(result);
+    0
+};

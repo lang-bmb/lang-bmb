@@ -1,0 +1,5 @@
+fn main() -> i64 = {
+    let n = read_int();
+    let _p = println(n - 1);
+    0
+};

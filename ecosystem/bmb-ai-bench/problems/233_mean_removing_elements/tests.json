@@ -1,0 +1,10 @@
+[
+  {"stdin": "20\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20", "expected_stdout": "10\n"},
+  {"stdin": "20\n5\n5\n5\n5\n5\n5\n5\n5\n5\n5\n5\n5\n5\n5\n5\n5\n5\n5\n5\n5", "expected_stdout": "5\n"},
+  {"stdin": "40\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24\n25\n26\n27\n28\n29\n30\n31\n32\n33\n34\n35\n36\n37\n38\n39\n40", "expected_stdout": "20\n"},
+  {"stdin": "20\n100\n95\n90\n85\n80\n75\n70\n65\n60\n55\n50\n45\n40\n35\n30\n25\n20\n15\n10\n5", "expected_stdout": "52\n"},
+  {"stdin": "20\n1\n1\n1\n1\n1\n10\n10\n10\n10\n10\n10\n10\n10\n10\n10\n100\n100\n100\n100\n100", "expected_stdout": "10\n"},
+  {"stdin": "20\n3\n7\n15\n22\n31\n41\n42\n43\n44\n45\n46\n47\n48\n49\n50\n60\n70\n80\n90\n100", "expected_stdout": "45\n"},
+  {"stdin": "20\n0\n0\n0\n0\n0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n20\n30\n40\n50\n60", "expected_stdout": "5\n"},
+  {"stdin": "20\n10\n10\n10\n10\n10\n10\n10\n10\n10\n10\n10\n10\n10\n10\n10\n10\n10\n10\n10\n10", "expected_stdout": "10\n"}
+]

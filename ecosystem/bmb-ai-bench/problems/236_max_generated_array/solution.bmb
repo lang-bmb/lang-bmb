@@ -1,0 +1,30 @@
+fn build_array(v: i64, i: i64, n: i64) -> i64
+  pre i >= 0
+= if i > n { v }
+  else {
+    let val =
+      if i == 0 { 0 }
+      else if i == 1 { 1 }
+      else if i % 2 == 0 { vec_get(v, i / 2) }
+      else { vec_get(v, i / 2) + vec_get(v, i / 2 + 1) };
+    let _p = vec_push(v, val);
+    build_array(v, i + 1, n)
+  };
+
+fn find_max(v: i64, n: i64, i: i64, best: i64) -> i64
+  pre i >= 0 and best >= 0
+= if i > n { best }
+  else {
+    let val = vec_get(v, i);
+    let new_best = if val > best { val } else { best };
+    find_max(v, n, i + 1, new_best)
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let v = vec_new();
+    let _b = build_array(v, 0, n);
+    let result = find_max(v, n, 0, 0);
+    let _p = println(result);
+    0
+};

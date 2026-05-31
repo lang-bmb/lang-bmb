@@ -1,0 +1,10 @@
+[
+  {"stdin": "3\n9\n29\n49\ncbd", "expected_stdout": "d\n"},
+  {"stdin": "2\n12\n23\nab", "expected_stdout": "a\n"},
+  {"stdin": "4\n9\n29\n49\n50\ncbcd", "expected_stdout": "c\n"},
+  {"stdin": "1\n100\na", "expected_stdout": "a\n"},
+  {"stdin": "3\n4\n9\n15\nzab", "expected_stdout": "b\n"},
+  {"stdin": "4\n10\n20\n30\n40\nabcd", "expected_stdout": "d\n"},
+  {"stdin": "3\n5\n10\n15\nbbb", "expected_stdout": "b\n"},
+  {"stdin": "2\n10\n20\nba", "expected_stdout": "b\n"}
+]

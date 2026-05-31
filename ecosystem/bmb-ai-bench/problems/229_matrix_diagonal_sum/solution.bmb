@@ -1,0 +1,28 @@
+fn read_into_vec(v: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+fn sum_diag(mat: i64, n: i64, i: i64, acc: i64) -> i64
+  pre i >= 0 and acc >= 0
+= if i >= n { acc }
+  else {
+    let primary = vec_get(mat, i * n + i);
+    let secondary = vec_get(mat, i * n + (n - 1 - i));
+    let center = if (n % 2 == 1) and (i == n / 2) { secondary } else { 0 };
+    sum_diag(mat, n, i + 1, acc + primary + secondary - center)
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let mat = vec_new();
+    let total = n * n;
+    let _r = read_into_vec(mat, total);
+    let result = sum_diag(mat, n, 0, 0);
+    let _p = println(result);
+    0
+};

@@ -1,0 +1,34 @@
+fn read_into_vec(v: i64, count: i64) -> i64
+  pre count >= 0
+= if count == 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, count - 1)
+  };
+
+fn row_sum(arr: i64, n: i64, base: i64, j: i64, acc: i64) -> i64
+  pre j >= 0 and acc >= 0
+= if j >= n { acc }
+  else {
+    row_sum(arr, n, base, j + 1, acc + vec_get(arr, base + j))
+  };
+
+fn max_wealth(arr: i64, m: i64, n: i64, i: i64, best: i64) -> i64
+  pre i >= 0 and best >= 0
+= if i >= m { best }
+  else {
+    let s = row_sum(arr, n, i * n, 0, 0);
+    let new_best = if s > best { s } else { best };
+    max_wealth(arr, m, n, i + 1, new_best)
+  };
+
+fn main() -> i64 = {
+    let m = read_int();
+    let n = read_int();
+    let arr = vec_new();
+    let _r = read_into_vec(arr, m * n);
+    let result = max_wealth(arr, m, n, 0, 0);
+    let _p = println(result);
+    0
+};

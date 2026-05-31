@@ -1,0 +1,30 @@
+fn parse(s: String, n: i64, i: i64, sb: i64) -> i64
+  pre i >= 0
+= if i >= n { sb }
+  else {
+    let c = s.byte_at(i);
+    if c == 71 {
+      let _p = sb_push(sb, "G");
+      parse(s, n, i + 1, sb)
+    } else if c == 40 {
+      if s.byte_at(i + 1) == 41 {
+        let _p = sb_push(sb, "o");
+        parse(s, n, i + 2, sb)
+      } else {
+        let _p = sb_push(sb, "al");
+        parse(s, n, i + 4, sb)
+      }
+    } else {
+      parse(s, n, i + 1, sb)
+    }
+  };
+
+fn main() -> i64 = {
+    let s = read_line();
+    let n = s.len();
+    let sb = sb_new();
+    let _p = parse(s, n, 0, sb);
+    let result = sb_build(sb);
+    let _pr = println_str(result);
+    0
+};

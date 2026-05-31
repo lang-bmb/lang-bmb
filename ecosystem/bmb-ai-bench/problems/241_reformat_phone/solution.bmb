@@ -1,0 +1,46 @@
+fn extract_digits(s: String, n: i64, i: i64, sb: i64) -> i64
+  pre i >= 0
+= if i >= n { 0 }
+  else {
+    let c = s.byte_at(i);
+    if c >= 48 and c <= 57 {
+      let _p = sb_push(sb, s.slice(i, i + 1));
+      extract_digits(s, n, i + 1, sb)
+    } else {
+      extract_digits(s, n, i + 1, sb)
+    }
+  };
+
+fn format_groups(sb: i64, digits: String, dlen: i64, pos: i64, is_first: i64) -> i64
+  pre pos >= 0
+= if pos >= dlen { 0 }
+  else {
+    let _d = if is_first == 0 { let _dd = sb_push(sb, "-"); 0 } else { 0 };
+    let remaining = dlen - pos;
+    if remaining == 4 {
+      let _g1 = sb_push(sb, digits.slice(pos, pos + 2));
+      let _d2 = sb_push(sb, "-");
+      let _g2 = sb_push(sb, digits.slice(pos + 2, pos + 4));
+      0
+    } else if remaining <= 3 {
+      let _g = sb_push(sb, digits.slice(pos, pos + remaining));
+      0
+    } else {
+      let _g = sb_push(sb, digits.slice(pos, pos + 3));
+      format_groups(sb, digits, dlen, pos + 3, 0)
+    }
+  };
+
+fn main() -> i64 = {
+    let s = read_line();
+    let n = s.len();
+    let dsb = sb_new();
+    let _e = extract_digits(s, n, 0, dsb);
+    let digits = sb_build(dsb);
+    let dlen = digits.len();
+    let rsb = sb_new();
+    let _f = format_groups(rsb, digits, dlen, 0, 1);
+    let result = sb_build(rsb);
+    let _p = println_str(result);
+    0
+};

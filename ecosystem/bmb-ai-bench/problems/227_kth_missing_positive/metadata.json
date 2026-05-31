@@ -1,0 +1,12 @@
+{
+  "id": "227_kth_missing_positive",
+  "category": "array",
+  "difficulty": "easy",
+  "tags": ["array", "binary-search"],
+  "bmb_features_tested": ["vec_new", "vec_push", "vec_get", "recursive"],
+  "expected_tools": ["check", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #1539 (external)"
+}
