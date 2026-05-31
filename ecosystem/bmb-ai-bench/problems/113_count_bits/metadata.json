@@ -1,0 +1,12 @@
+{
+  "id": "113_count_bits",
+  "category": "bit_manipulation",
+  "difficulty": "easy",
+  "tags": ["bit_manipulation", "dp"],
+  "bmb_features_tested": ["band", "for_in_range", "recursive"],
+  "expected_tools": ["check", "build", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #338 (external)"
+}

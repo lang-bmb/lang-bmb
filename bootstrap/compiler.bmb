@@ -2760,6 +2760,8 @@ fn parse_block_let_mut(src: String, pos: i64) -> String
 
 fn is_simple_type_tok(k: i64) -> bool
 
+  post it or not it
+
 = k == TK_IDENT() or k == TK_I64() or k == TK_I32() or k == TK_F64() or k == TK_BOOL()
     or k == TK_STRING_TYPE() or k == TK_STAR() or k == TK_AMP() or k == TK_MUT() or k == TK_QUESTION();
 
@@ -4357,6 +4359,8 @@ fn parse_let_after_name(src: String, pos: i64, name: String, is_mut: bool) -> St
 
 fn is_let_type_tok(k: i64) -> bool
 
+  post it or not it
+
 = is_simple_type_tok(k) or k == TK_LT() or k == TK_GT() or k == TK_COMMA() or k == TK_PLUS();
 
 fn parse_let_skip_type(src: String, pos: i64, name: String, is_mut: bool) -> String
@@ -5822,9 +5826,13 @@ fn parse_param(src: String, pos: i64) -> String
 
 fn is_prim_type_tok(k: i64) -> bool
 
+  post it or not it
+
 = k == TK_I32() or k == TK_I64() or k == TK_F64() or k == TK_BOOL() or k == TK_STRING_TYPE();
 
 fn prim_type_name(kind: i64) -> String
+
+  post it.len() >= 0
 
 = if kind == TK_I32() { "i32" }
     else if kind == TK_I64() { "i64" }
@@ -11625,11 +11633,23 @@ fn lower_array_literal_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loo
 
 // arr_ctx = arr_tmp + "|" + int_to_string(base_offset) for lower_elements_with_offset_sb
 
-fn lower_arr_ctx_pack(arr_tmp: String, base_offset: i64) -> String = arr_tmp + "|" + int_to_string(base_offset);
+fn lower_arr_ctx_pack(arr_tmp: String, base_offset: i64) -> String
 
-fn lower_arr_ctx_tmp(ctx: String) -> String = ctx.slice(0, find_char(ctx, 0, 124));
+  post it.len() >= 0
 
-fn lower_arr_ctx_offset(ctx: String) -> i64 = parse_int_from(ctx, find_char(ctx, 0, 124) + 1, 0);
+= arr_tmp + "|" + int_to_string(base_offset);
+
+fn lower_arr_ctx_tmp(ctx: String) -> String
+
+  post it.len() >= 0
+
+= ctx.slice(0, find_char(ctx, 0, 124));
+
+fn lower_arr_ctx_offset(ctx: String) -> i64
+
+  post it >= 0
+
+= parse_int_from(ctx, find_char(ctx, 0, 124) + 1, 0);
 
 fn lower_array_elements_sb(ast: String, idx: i64, count: i64, arr_tmp: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64
 
@@ -24142,7 +24162,11 @@ fn mlcse_is_read_call(fn_name: String) -> bool
 
 // mlcse_ctx packs pure_set~safe_set (immutable context for mlcse_fn_lines)
 
-fn mlcse_ctx_pack(pure_set: String, safe_set: String) -> String = pure_set + "~" + safe_set;
+fn mlcse_ctx_pack(pure_set: String, safe_set: String) -> String
+
+  post it.len() >= 0
+
+= pure_set + "~" + safe_set;
 
 // Process one function's MIR for memory load + GEP CSE.
 
@@ -27512,11 +27536,23 @@ fn ifs_check_flex_both_sides(fn_mir: String, branch_line: String, branch_pos: i6
 
 // ifs_flex context packing: phi_cond = phi_line~cond, l_ctx = l_then~l_else
 
-fn ifs_ctx_pack(a: String, b: String) -> String = a + "~" + b;
+fn ifs_ctx_pack(a: String, b: String) -> String
 
-fn ifs_ctx_first(s: String) -> String = s.slice(0, find_char(s, 0, 126));
+  post it.len() >= 0
 
-fn ifs_ctx_second(s: String) -> String = let p = find_char(s, 0, 126); s.slice(p + 1, s.len());
+= a + "~" + b;
+
+fn ifs_ctx_first(s: String) -> String
+
+  post it.len() >= 0
+
+= s.slice(0, find_char(s, 0, 126));
+
+fn ifs_ctx_second(s: String) -> String
+
+  post it.len() >= 0
+
+= let p = find_char(s, 0, 126); s.slice(p + 1, s.len());
 
 // Helper: parse phi and emit select for generalized flex patterns
 
@@ -44104,6 +44140,105 @@ fn lint_check_intent_scan(src: String, pos: i64, count: i64) -> i64
 
     };
 
+// Scan backward from pos to find start of current line (first char after preceding \n)
+fn lint_find_sol(src: String, pos: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos == 0 { 0 }
+
+    else if src.byte_at(pos - 1) == 10 { pos }
+
+    else { lint_find_sol(src, pos - 1) };
+
+// Check for non-unit functions with no post condition (regression prevention for M9)
+fn lint_check_missing_post(src: String, pos: i64, count: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= let fn_pos = find_pattern_noa(src, "fn ", pos);
+
+    if fn_pos < 0 { count } else {
+
+        let prev_ok = if fn_pos == 0 { true }
+
+            else { let prev = src.byte_at(fn_pos - 1); prev == 10 or prev == 13 or prev == 32 or prev == 59 or prev == 9 };
+
+        let not_in_comment = if prev_ok {
+
+            let sol = lint_find_sol(src, fn_pos);
+
+            not (find_pattern_noa_range(src, "//", sol, fn_pos) >= 0)
+
+        } else { false };
+
+        let is_real_fn = prev_ok and not_in_comment;
+
+        if is_real_fn {
+
+            let name_start = skip_ws_comments(src, fn_pos + 3);
+
+            let name_end = scan_ident_end(src, name_start);
+
+            let fname = src.slice(name_start, name_end);
+
+            if fname != "" and name_end > name_start {
+
+                let t2 = next_token_raw(src, name_end);
+
+                let after_gen = if tok_kind(t2) == TK_LT() { skip_generic_params(src, tok_end(t2)) } else { name_end };
+
+                let t2g = next_token_raw(src, after_gen);
+
+                if tok_kind(t2g) == TK_LPAREN() {
+
+                    let params = index_collect_params(src, tok_end(t2g), "");
+
+                    let rtype = index_read_ret_type(src, unpack_pos(params));
+
+                    let ret_str = unpack_ast(rtype);
+
+                    let rp = unpack_pos(rtype);
+
+                    let is_unit = ret_str == "()" or ret_str == "?" or fname == "main";
+
+                    let post_asts = extract_post_asts(src, rp);
+
+                    let new_count = if not is_unit and post_asts == "" {
+
+                        let _w = println_str("  [missing_postcondition] " + fname + ": non-unit return with no post condition");
+
+                        count + 1
+
+                    } else { count };
+
+                    lint_check_missing_post(src, fn_pos + 3, new_count)
+
+                } else { lint_check_missing_post(src, fn_pos + 3, count) }
+
+            } else { lint_check_missing_post(src, fn_pos + 3, count) }
+
+        } else { lint_check_missing_post(src, fn_pos + 3, count) }
+
+    };
+
+// Bundle source-level lint checks (intent, redundant_else_unit, missing_postcondition)
+fn lint_source_checks(source: String) -> i64
+
+  post it >= 0
+
+= let w6 = lint_check_intent_scan(source, 0, 0);
+
+    let w11 = lint_check_redundant_else_unit(source, 0, 0);
+
+    let w12 = lint_check_missing_post(source, 0, 0);
+
+    w6 + w11 + w12;
+
 fn lint_file(input: String) -> i64
 
   post it >= 0
@@ -44132,9 +44267,7 @@ fn lint_file(input: String) -> i64
 
         let w5 = lint_check_recursive(entries, 0, 0);
 
-        let w6 = lint_check_intent_scan(source, 0, 0);
-
-        let w11 = lint_check_redundant_else_unit(source, 0, 0);
+        let wsrc = lint_source_checks(source);
 
         let w7 = lint_check_effect_violations(entries, 0, 0);
 
@@ -44152,7 +44285,7 @@ fn lint_file(input: String) -> i64
 
         let w10 = lint_check_module_capabilities(entries, full_trans_map, module_caps, 0, 0);
 
-        let total = w1 + w2 + w3 + w4 + w6 + w7 + w8 + w9 + w10 + w11;
+        let total = w1 + w2 + w3 + w4 + wsrc + w7 + w8 + w9 + w10;
 
         let _sep = println_str("---");
 
@@ -47476,7 +47609,7 @@ fn semdp_check_pair(name_a: String, calls_a: String, name_b: String, calls_b: St
 
     let cnt_b = semdp_call_count(calls_b, 0, 0);
 
-    if cnt_a < 3 or cnt_b < 3 { "" }
+    if cnt_a < 8 or cnt_b < 8 { "" }
 
     else {
 

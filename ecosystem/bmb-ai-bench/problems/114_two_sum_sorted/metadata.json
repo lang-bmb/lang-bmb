@@ -1,0 +1,12 @@
+{
+  "id": "114_two_sum_sorted",
+  "category": "array",
+  "difficulty": "medium",
+  "tags": ["two_pointers", "array", "sorted"],
+  "bmb_features_tested": ["vec_get", "vec_push", "recursive", "for_in_range"],
+  "expected_tools": ["check", "build", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #167 (external)"
+}

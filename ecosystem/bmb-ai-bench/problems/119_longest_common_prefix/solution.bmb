@@ -1,0 +1,22 @@
+// Longest Common Prefix — find longest prefix shared by all strings
+fn lcp_two(a: String, b: String, i: i64) -> i64 =
+    if i >= a.len() or i >= b.len() { i }
+    else if a.char_code_at(i) != b.char_code_at(i) { i }
+    else { lcp_two(a, b, i + 1) };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let strs = svec_new();
+    for _i in 0..n { svec_push(strs, read_line()) };
+    if n == 0 { println_str("") }
+    else {
+        let first = svec_get(strs, 0);
+        let mut plen = first.len();
+        for s in strs {
+            let new_plen = lcp_two(first, s, 0);
+            if new_plen < plen { plen = new_plen }
+        };
+        println_str(first.slice(0, plen))
+    };
+    0
+};

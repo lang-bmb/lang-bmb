@@ -1,0 +1,12 @@
+{
+  "id": "115_plus_one",
+  "category": "array",
+  "difficulty": "easy",
+  "tags": ["array", "math", "carry"],
+  "bmb_features_tested": ["vec_get", "vec_set", "vec_push", "recursive", "for_in_range"],
+  "expected_tools": ["check", "build", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #66 (external)"
+}

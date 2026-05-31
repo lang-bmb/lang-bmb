@@ -1,0 +1,12 @@
+{
+  "id": "120_jump_game",
+  "category": "greedy",
+  "difficulty": "medium",
+  "tags": ["greedy", "array"],
+  "bmb_features_tested": ["vec_get", "vec_push", "recursive"],
+  "expected_tools": ["check", "build", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #55 (external)"
+}

@@ -1,0 +1,21 @@
+// Maximum Product Subarray — find max product of contiguous subarray
+fn max_i64(a: i64, b: i64) -> i64 = if a > b { a } else { b };
+fn min_i64(a: i64, b: i64) -> i64 = if a < b { a } else { b };
+
+fn scan(arr: i64, n: i64, i: i64, cur_max: i64, cur_min: i64, best: i64) -> i64 =
+    if i >= n { best }
+    else {
+        let x = vec_get(arr, i);
+        let new_max = max_i64(x, max_i64(cur_max * x, cur_min * x));
+        let new_min = min_i64(x, min_i64(cur_max * x, cur_min * x));
+        scan(arr, n, i + 1, new_max, new_min, max_i64(best, new_max))
+    };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let arr = vec_new();
+    for _i in 0..n { vec_push(arr, read_int()) };
+    let first = vec_get(arr, 0);
+    println(scan(arr, n, 1, first, first, first));
+    0
+};

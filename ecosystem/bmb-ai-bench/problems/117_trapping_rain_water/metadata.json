@@ -1,0 +1,12 @@
+{
+  "id": "117_trapping_rain_water",
+  "category": "array",
+  "difficulty": "hard",
+  "tags": ["two_pointers", "array", "classic"],
+  "bmb_features_tested": ["vec_get", "vec_push", "recursive"],
+  "expected_tools": ["check", "build", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #42 (external)"
+}

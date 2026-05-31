@@ -1,0 +1,19 @@
+// Valid Anagram — check if two strings are anagrams of each other
+fn count_char(s: String, c: i64, i: i64, acc: i64) -> i64 =
+    if i >= s.len() { acc }
+    else if s.char_code_at(i) == c { count_char(s, c, i + 1, acc + 1) }
+    else { count_char(s, c, i + 1, acc) };
+
+fn anagram_check(s: String, t: String, i: i64) -> bool =
+    if i >= 26 { true }
+    else if count_char(s, 97 + i, 0, 0) != count_char(t, 97 + i, 0, 0) { false }
+    else { anagram_check(s, t, i + 1) };
+
+fn main() -> i64 = {
+    let s = read_line();
+    let t = read_line();
+    if s.len() != t.len() { println_str("false") }
+    else if anagram_check(s, t, 0) { println_str("true") }
+    else { println_str("false") };
+    0
+};

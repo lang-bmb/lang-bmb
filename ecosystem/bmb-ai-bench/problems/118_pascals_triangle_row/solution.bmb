@@ -1,0 +1,24 @@
+// Pascal's Triangle Row N — in-place right-to-left update
+fn apply_step(row: i64, i: i64) -> () = {
+    if i >= 1 {
+        vec_set(row, i, vec_get(row, i) + vec_get(row, i - 1));
+        apply_step(row, i - 1)
+    }
+};
+
+fn build_row(row: i64, n: i64, step: i64) -> () = {
+    if step <= n {
+        apply_step(row, step);
+        build_row(row, n, step + 1)
+    }
+};
+
+fn main() -> i64 = {
+    let n = read_int();
+    let row = vec_new();
+    for _i in 0..n + 1 { vec_push(row, 0) };
+    vec_set(row, 0, 1);
+    build_row(row, n, 1);
+    for i in 0..n + 1 { println(vec_get(row, i)) };
+    0
+};

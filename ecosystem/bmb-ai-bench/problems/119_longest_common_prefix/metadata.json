@@ -1,0 +1,12 @@
+{
+  "id": "119_longest_common_prefix",
+  "category": "string",
+  "difficulty": "easy",
+  "tags": ["string", "prefix"],
+  "bmb_features_tested": ["svec_new", "svec_get", "svec_push", "char_code_at", "recursive", "read_line"],
+  "expected_tools": ["check", "build", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #14 (external)"
+}

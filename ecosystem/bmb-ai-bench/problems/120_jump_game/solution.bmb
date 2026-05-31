@@ -1,0 +1,18 @@
+// Jump Game — can you reach the last index? Greedy max reach
+fn scan(arr: i64, n: i64, i: i64, max_reach: i64) -> bool =
+    if i >= n { true }
+    else if i > max_reach { false }
+    else {
+        let reach = i + vec_get(arr, i);
+        let new_max = if reach > max_reach { reach } else { max_reach };
+        scan(arr, n, i + 1, new_max)
+    };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let arr = vec_new();
+    for _i in 0..n { vec_push(arr, read_int()) };
+    if scan(arr, n, 0, 0) { println_str("true") }
+    else { println_str("false") };
+    0
+};

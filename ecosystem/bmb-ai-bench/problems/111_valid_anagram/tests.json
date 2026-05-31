@@ -1,0 +1,10 @@
+[
+  {"stdin": "anagram\nnagaram", "expected_stdout": "true\n"},
+  {"stdin": "rat\ncar", "expected_stdout": "false\n"},
+  {"stdin": "a\na", "expected_stdout": "true\n"},
+  {"stdin": "a\nb", "expected_stdout": "false\n"},
+  {"stdin": "ab\nba", "expected_stdout": "true\n"},
+  {"stdin": "abc\nbca", "expected_stdout": "true\n"},
+  {"stdin": "aa\nbb", "expected_stdout": "false\n"},
+  {"stdin": "listen\nsilent", "expected_stdout": "true\n"}
+]

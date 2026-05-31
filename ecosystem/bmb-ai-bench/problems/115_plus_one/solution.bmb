@@ -1,0 +1,24 @@
+// Plus One — add 1 to a number represented as digit array
+fn add_carry(arr: i64, n: i64, i: i64) -> () = {
+    if i < 0 {
+        println(1);
+        for j in 0..n { println(vec_get(arr, j)) }
+    } else {
+        let d = vec_get(arr, i) + 1;
+        if d < 10 {
+            vec_set(arr, i, d);
+            for j in 0..n { println(vec_get(arr, j)) }
+        } else {
+            vec_set(arr, i, 0);
+            add_carry(arr, n, i - 1)
+        }
+    }
+};
+
+fn main() -> i64 = {
+    let n = read_int();
+    let arr = vec_new();
+    for _i in 0..n { vec_push(arr, read_int()) };
+    add_carry(arr, n, n - 1);
+    0
+};

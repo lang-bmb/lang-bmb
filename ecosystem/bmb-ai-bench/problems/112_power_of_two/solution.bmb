@@ -1,0 +1,7 @@
+// Power of Two — check if n is a power of 2 using bitwise AND
+fn main() -> i64 = {
+    let n = read_int();
+    if n > 0 and (n band (n - 1)) == 0 { println_str("true") }
+    else { println_str("false") };
+    0
+};

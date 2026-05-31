@@ -1,0 +1,10 @@
+[
+  {"stdin": "3\nflower\nflow\nflight", "expected_stdout": "fl\n"},
+  {"stdin": "3\ndog\nracecar\ncar", "expected_stdout": "\n"},
+  {"stdin": "1\nhello", "expected_stdout": "hello\n"},
+  {"stdin": "2\nabc\nabc", "expected_stdout": "abc\n"},
+  {"stdin": "3\ninterspecies\ninterstellar\ninteractive", "expected_stdout": "inter\n"},
+  {"stdin": "3\nab\na\nabc", "expected_stdout": "a\n"},
+  {"stdin": "4\nprefix\npre\npress\npretty", "expected_stdout": "pre\n"},
+  {"stdin": "2\nxyz\nxyzabc", "expected_stdout": "xyz\n"}
+]
