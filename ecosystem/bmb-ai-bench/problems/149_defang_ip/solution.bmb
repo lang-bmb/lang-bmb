@@ -1,0 +1,15 @@
+// Defanging IP Address — replace '.' with '[.]'
+fn defang(s: String, i: i64) -> String
+= if i >= s.len() { "" }
+  else {
+    let c = s.byte_at(i);
+    let rest = defang(s, i + 1);
+    if c == 46 { "[.]" + rest }
+    else { s.slice(i, i + 1) + rest }
+  };
+
+fn main() -> i64 = {
+    let ip = read_line();
+    println_str(defang(ip, 0));
+    0
+};

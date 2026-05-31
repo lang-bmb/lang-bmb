@@ -1,0 +1,12 @@
+{
+  "id": "142_reverse_integer",
+  "category": "math",
+  "difficulty": "medium",
+  "tags": ["math", "overflow", "recursive"],
+  "bmb_features_tested": ["recursive", "read_int", "println"],
+  "expected_tools": ["check", "build", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #7 (external)"
+}

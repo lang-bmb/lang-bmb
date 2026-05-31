@@ -1,0 +1,15 @@
+// Running Sum of 1D Array
+fn read_and_sum(n: i64, i: i64, prefix: i64) -> i64
+= if i >= n { 0 }
+  else {
+    let x = read_int();
+    let s = prefix + x;
+    let _p = println(s);
+    read_and_sum(n, i + 1, s)
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let _r = read_and_sum(n, 0, 0);
+    0
+};

@@ -1,0 +1,23 @@
+// Min Cost Climbing Stairs — DP with two rolling vars
+fn read_into_vec(v: i64, n: i64) -> i64
+= if n <= 0 { v }
+  else {
+    let x = read_int();
+    let _p = vec_push(v, x);
+    read_into_vec(v, n - 1)
+  };
+
+fn dp_step(cost: i64, i: i64, p2: i64, p1: i64) -> i64
+= if i >= vec_len(cost) { min(p1, p2) }
+  else {
+    let c = vec_get(cost, i) + min(p1, p2);
+    dp_step(cost, i + 1, p1, c)
+  };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let cost = read_into_vec(vec_new(), n);
+    if n == 1 { println(vec_get(cost, 0)) }
+    else { println(dp_step(cost, 2, vec_get(cost, 0), vec_get(cost, 1))) };
+    0
+};

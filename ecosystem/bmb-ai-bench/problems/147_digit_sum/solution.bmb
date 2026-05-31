@@ -1,0 +1,16 @@
+// Sum of all digits in a number (repeated k times)
+fn digit_sum(n: i64, acc: i64) -> i64
+= if n == 0 { acc }
+  else { digit_sum(n / 10, acc + n % 10) };
+
+fn iterate(n: i64, k: i64) -> i64
+= if k <= 1 { n }
+  else { iterate(digit_sum(n, 0), k - 1) };
+
+fn main() -> i64 = {
+    let n = read_int();
+    let k = read_int();
+    println(iterate(n, k));
+    0
+};
+

@@ -1,0 +1,21 @@
+// GCD of Strings — check if gcd-length prefix divides both strings
+fn gcd(a: i64, b: i64) -> i64
+= if b == 0 { a } else { gcd(b, a % b) };
+
+fn str_divides(base: String, target: String, i: i64) -> bool
+= if i >= target.len() { true }
+  else if base.byte_at(i % base.len()) != target.byte_at(i) { false }
+  else { str_divides(base, target, i + 1) };
+
+fn main() -> i64 = {
+    let s = read_line();
+    let t = read_line();
+    let g = gcd(s.len(), t.len());
+    let cand = s.slice(0, g);
+    if str_divides(cand, s, 0) and str_divides(cand, t, 0) {
+        println_str(cand)
+    } else {
+        println_str("")
+    };
+    0
+};

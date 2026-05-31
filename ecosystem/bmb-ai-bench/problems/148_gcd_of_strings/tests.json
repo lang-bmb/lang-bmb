@@ -1,0 +1,10 @@
+[
+  {"stdin": "ABCABC\nABC", "expected_stdout": "ABC\n"},
+  {"stdin": "ABABAB\nABAB", "expected_stdout": "AB\n"},
+  {"stdin": "LEET\nCODE", "expected_stdout": "\n"},
+  {"stdin": "AAAAAA\nAAA", "expected_stdout": "AAA\n"},
+  {"stdin": "TAUXXTAUXXTAUXXTAUXXTAUXX\nTAUXX", "expected_stdout": "TAUXX\n"},
+  {"stdin": "A\nA", "expected_stdout": "A\n"},
+  {"stdin": "AB\nAB", "expected_stdout": "AB\n"},
+  {"stdin": "ABC\nABCABCABC", "expected_stdout": "ABC\n"}
+]

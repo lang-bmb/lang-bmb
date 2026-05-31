@@ -1,0 +1,12 @@
+{
+  "id": "141_integer_sqrt",
+  "category": "binary_search",
+  "difficulty": "easy",
+  "tags": ["binary_search", "math"],
+  "bmb_features_tested": ["recursive", "read_int", "println"],
+  "expected_tools": ["check", "build", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #69 (external)"
+}

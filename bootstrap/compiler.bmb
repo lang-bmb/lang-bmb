@@ -116,6 +116,44 @@ fn is_ident_start(c: i64) -> bool
 
 = is_alpha(c) or c == 95;
 
+// Named numeric constants — avoid magic numbers in function bodies
+
+fn tok_pack_mul() -> i64
+  post it == 5000000
+= 5000000;
+
+fn int_parse_max() -> i64
+  post it == 1800000000000
+= 1800000000000;
+
+fn int_overflow_val() -> i64
+  post it == 1840000000000
+= 1840000000000;
+
+fn block_id_mul() -> i64
+  post it == 1000000
+= 1000000;
+
+fn ns_per_ms() -> i64
+  post it == 1000000
+= 1000000;
+
+fn cf_not_found() -> i64
+  post it == 0 - 99999999
+= 0 - 99999999;
+
+fn i64_max() -> i64
+  post it == 9223372036854775807
+= 9223372036854775807;
+
+fn index_src_mul() -> i64
+  post it == 10000
+= 10000;
+
+fn llvm_ir_warn_size() -> i64
+  post it == 500000
+= 500000;
+
 fn skip_ws(s: String, pos: i64) -> i64
 
   pre pos >= 0
@@ -1245,7 +1283,7 @@ fn scan_int(s: String, pos: i64, acc: i64) -> i64
 
         if is_digit(c) {
 
-            let new_acc = if acc < 1800000000000 { acc * 10 + (c - 48) } else { 1840000000000 };
+            let new_acc = if acc < int_parse_max() { acc * 10 + (c - 48) } else { int_overflow_val() };
 
             scan_int(s, pos + 1, new_acc)
 
@@ -1261,9 +1299,9 @@ fn pack_int_tok(acc: i64, pos: i64) -> i64
 
   post it >= 0
 
-= if acc >= 1800000000000 { 1840000000000 * 5000000 + pos }
+= if acc >= int_parse_max() { int_overflow_val() * tok_pack_mul() + pos }
 
-    else { acc * 5000000 + pos };
+    else { acc * tok_pack_mul() + pos };
 
 // v0.91: Scan number - detects float if '.' followed by digit
 
@@ -1279,7 +1317,7 @@ fn scan_hex_int(s: String, pos: i64, acc: i64) -> i64
 
         if is_hex_digit(c) {
 
-            let new_acc = if acc < 1800000000000 { acc * 16 + hex_digit_val(c) } else { 1840000000000 };
+            let new_acc = if acc < int_parse_max() { acc * 16 + hex_digit_val(c) } else { int_overflow_val() };
 
             scan_hex_int(s, pos + 1, new_acc)
 
@@ -1301,7 +1339,7 @@ fn scan_bin_int(s: String, pos: i64, acc: i64) -> i64
 
         if c == 48 or c == 49 {
 
-            let new_acc = if acc < 1800000000000 { acc * 2 + (c - 48) } else { 1840000000000 };
+            let new_acc = if acc < int_parse_max() { acc * 2 + (c - 48) } else { int_overflow_val() };
 
             scan_bin_int(s, pos + 1, new_acc)
 
@@ -1325,7 +1363,7 @@ fn scan_oct_int(s: String, pos: i64, acc: i64) -> i64
 
         if c >= 48 and c <= 55 {
 
-            let new_acc = if acc < 1800000000000 { acc * 8 + (c - 48) } else { 1840000000000 };
+            let new_acc = if acc < int_parse_max() { acc * 8 + (c - 48) } else { int_overflow_val() };
 
             scan_oct_int(s, pos + 1, new_acc)
 
@@ -1485,7 +1523,7 @@ fn tok_val(r: i64) -> i64
 
   post it >= 0
 
-= r / 5000000;
+= r / tok_pack_mul();
 
 fn tok_end(r: i64) -> i64
 
@@ -1493,7 +1531,7 @@ fn tok_end(r: i64) -> i64
 
   post it >= 0 and it < 5000000
 
-= r - (r / 5000000) * 5000000;
+= r - (r / tok_pack_mul()) * tok_pack_mul();
 
 fn tok_kind(r: i64) -> i64
 
@@ -1509,7 +1547,7 @@ fn make_tok(kind: i64, endpos: i64) -> i64
 
   post it >= 0
 
-= kind * 5000000 + endpos;
+= kind * tok_pack_mul() + endpos;
 
 // Reduces average comparisons from 9.5 to ~2-3 by checking length first
 
@@ -1701,7 +1739,7 @@ fn get_ident_text(s: String, pos: i64, tok: i64) -> String
 
 =
 
-    let _start = tok_end(tok) - (tok_val(tok) / 5000000);
+    let _start = tok_end(tok) - (tok_val(tok) / tok_pack_mul());
 
     let p = skip_ws_comments(s, pos);
 
@@ -1920,7 +1958,7 @@ fn is_int_literal(kind: i64) -> bool
 
   post it == (kind < 2000000000 + 100 or kind >= 2000000000 + 1000)
 
-= kind < 2000000000 + 100 or kind >= 2000000000 + 1000;
+= kind < TK_FN() or kind >= TK_FN() + 900;
 
 fn parse_int_lit(src: String, pos: i64, tok: i64) -> String
 
@@ -7998,7 +8036,7 @@ fn pack_ids(temp_id: i64, block_id: i64) -> i64
 
   post it >= 0
 
-= temp_id * 1000000 + block_id;
+= temp_id * block_id_mul() + block_id;
 
 fn unpack_temp(packed: i64) -> i64
 
@@ -8006,7 +8044,7 @@ fn unpack_temp(packed: i64) -> i64
 
   post it >= 0
 
-= packed / 1000000;
+= packed / block_id_mul();
 
 fn unpack_block(packed: i64) -> i64
 
@@ -8014,7 +8052,7 @@ fn unpack_block(packed: i64) -> i64
 
   post it >= 0 and it < 1000000
 
-= packed % 1000000;
+= packed % block_id_mul();
 
 // Returns 1 for non-trivial ifs/whiles/loops, 0 for simple nodes
 
@@ -21616,7 +21654,7 @@ fn cf_table_get_at(table: String, key: String, pos: i64) -> i64
 
   post it >= 0 or it < 0
 
-= if pos >= table.len() { 0 - 99999999 } else {
+= if pos >= table.len() { cf_not_found() } else {
 
         let semi = find_char(table, pos, 59);
 
@@ -21646,7 +21684,7 @@ fn cf_table_has(table: String, key: String) -> bool
 
   post it == (cf_table_get(table, key) != 0 - 99999999)
 
-= cf_table_get(table, key) != 0 - 99999999;
+= cf_table_get(table, key) != cf_not_found();
 
 // Check if line is integer constant: %dest = const <digits|minus>
 
@@ -35576,7 +35614,7 @@ fn format_range_attr(has_lo: i64, lo: i64, has_hi: i64, hi_inclusive: i64) -> St
 
         let hi_str = if has_hi == 0 { "-9223372036854775808" }
 
-                    else if hi_inclusive == 9223372036854775807 { "-9223372036854775808" }
+                    else if hi_inclusive == i64_max() { "-9223372036854775808" }
 
                     else { int_to_string(hi_inclusive + 1) };
 
@@ -37300,7 +37338,7 @@ fn index_source(src: String, pos: i64, fn_count: i64, struct_count: i64) -> i64
     } else {
         let tok = next_token_raw(src, pos);
         let kind = tok_kind(tok);
-        if kind == TK_EOF() { fn_count * 10000 + struct_count }
+        if kind == TK_EOF() { fn_count * index_src_mul() + struct_count }
         else if kind == TK_FN() {
             let next_pos = index_one_fn(src, tok_end(tok), "");
             index_source(src, next_pos, fn_count + 1, struct_count)
@@ -37338,9 +37376,9 @@ fn index_file(input: String) -> i64
 
         let counts = index_source(source, 0, 0, 0);
 
-        let fn_count = counts / 10000;
+        let fn_count = counts / index_src_mul();
 
-        let struct_count = counts - fn_count * 10000;
+        let struct_count = counts - fn_count * index_src_mul();
 
         let _sep = println_str("---");
 
@@ -44288,7 +44326,82 @@ fn lint_check_todo_comment(src: String, pos: i64, count: i64) -> i64
 
     };
 
-// Bundle source-level lint checks (intent, redundant_else_unit, missing_postcondition, todo_comment)
+// Count '"' chars between sol and pos (exclusive) to detect string literal context
+fn lint_mn_count_quotes(src: String, p: i64, end: i64, count: i64) -> i64
+
+  pre p <= end
+
+  post it >= 0
+
+= if p >= end { count }
+    else if src.byte_at(p) == 34 { lint_mn_count_quotes(src, p + 1, end, count + 1) }
+    else { lint_mn_count_quotes(src, p + 1, end, count) };
+
+// Find end position of digit run starting at pos
+fn lint_mn_run_end(src: String, p: i64) -> i64
+
+  pre p >= 0
+
+  post it >= p
+
+= if p >= src.len() { src.len() }
+    else if is_digit(src.byte_at(p)) { lint_mn_run_end(src, p + 1) }
+    else { p };
+
+// Check for integer literals >= 4 digits outside strings/contracts/comments
+fn lint_check_magic_number(src: String, pos: i64, count: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= if pos + 2 >= src.len() { count }
+    else if is_digit(src.byte_at(pos))
+         and is_digit(src.byte_at(pos + 1))
+         and is_digit(src.byte_at(pos + 2)) {
+
+        let prev = if pos > 0 { src.byte_at(pos - 1) } else { 0 };
+        let is_continuation = is_alnum_or_underscore(prev);
+
+        if is_continuation {
+            lint_check_magic_number(src, pos + 1, count)
+        } else {
+            let num_end = lint_mn_run_end(src, pos);
+            let num_len = num_end - pos;
+            if num_len < 4 {
+                lint_check_magic_number(src, num_end, count)
+            } else {
+                let sol = lint_find_sol(src, pos);
+                let eol = lint_find_eol(src, pos);
+                let in_comment = find_pattern_noa_range(src, "//", sol, pos) >= 0
+                              or find_pattern_noa_range(src, "--", sol, pos) >= 0;
+                if in_comment {
+                    lint_check_magic_number(src, num_end, count)
+                } else {
+                    let q_count = lint_mn_count_quotes(src, sol, pos, 0);
+                    let in_string = (q_count % 2) == 1;
+                    if in_string {
+                        lint_check_magic_number(src, num_end, count)
+                    } else {
+                        let has_post = find_pattern_noa_range(src, "post ", sol, sol + 12) >= 0;
+                        let has_pre  = find_pattern_noa_range(src, "pre ", sol, sol + 10) >= 0;
+                        let is_const_body = src.len() > sol and src.byte_at(sol) == 61
+                                         and src.len() > sol + 2 and is_digit(src.byte_at(sol + 2));
+                        if has_post or has_pre or is_const_body {
+                            lint_check_magic_number(src, num_end, count)
+                        } else {
+                            let line_num = count_line_at(src, pos, 0, 1);
+                            let snippet = src.slice(pos, num_end);
+                            let _w = println_str("  [magic_number] line " + int_to_string(line_num) + ": " + snippet);
+                            lint_check_magic_number(src, num_end, count + 1)
+                        }
+                    }
+                }
+            }
+        }
+    } else { lint_check_magic_number(src, pos + 1, count) };
+
+// Bundle source-level lint checks (intent, redundant_else_unit, missing_postcondition, todo_comment, magic_number)
 fn lint_source_checks(source: String) -> i64
 
   post it >= 0
@@ -44301,7 +44414,9 @@ fn lint_source_checks(source: String) -> i64
 
     let w13 = lint_check_todo_comment(source, 0, 0);
 
-    w6 + w11 + w12 + w13;
+    let w14 = lint_check_magic_number(source, 0, 0);
+
+    w6 + w11 + w12 + w13 + w14;
 
 fn lint_file(input: String) -> i64
 
@@ -44917,7 +45032,7 @@ fn test_dir(dir: String, runtime_path: String) -> i64
 
 =
 
-    let t0 = time_ns() / 1000000;
+    let t0 = time_ns() / ns_per_ms();
 
     let files = list_dir(dir);
 
@@ -44937,7 +45052,7 @@ fn test_dir(dir: String, runtime_path: String) -> i64
 
             let result = test_dir_each(bmb_files, 0, dir, runtime_path, 0, 0, 0);
 
-            let elapsed = time_ns() / 1000000 - t0;
+            let elapsed = time_ns() / ns_per_ms() - t0;
 
             let _t = { let _r18 = print_str("  elapsed: "); print(elapsed); println_str("ms"); 0 };
 
@@ -45129,7 +45244,7 @@ fn build_file_ex(input: String, output: String, fast: bool, runtime_path: String
 
   post it >= 0
 
-= let t0 = time_ns() / 1000000;
+= let t0 = time_ns() / ns_per_ms();
 
     let source = load_source(input);
 
@@ -45147,7 +45262,7 @@ fn build_file_ex(input: String, output: String, fast: bool, runtime_path: String
 
         let llvm = compile_program(source, safe);
 
-        let t1 = time_ns() / 1000000;
+        let t1 = time_ns() / ns_per_ms();
 
         if is_compile_error(llvm) {
 
@@ -45177,7 +45292,7 @@ fn build_file_ex(input: String, output: String, fast: bool, runtime_path: String
 
             };
 
-            let t2 = time_ns() / 1000000;
+            let t2 = time_ns() / ns_per_ms();
 
             let _t = print_build_timing(t1 - t0, t2 - t1);
 
@@ -45307,7 +45422,7 @@ fn print_compile_stats(llvm: String) -> i64
 
 =
 
-    if llvm.len() > 500000 {
+    if llvm.len() > llvm_ir_warn_size() {
 
         // Large IR: only show byte size to avoid arena exhaustion
 
@@ -45469,7 +45584,7 @@ fn run_file(input: String, runtime_path: String) -> i64
 
 =
 
-    let t0 = time_ns() / 1000000;
+    let t0 = time_ns() / ns_per_ms();
 
     let source = load_source(input);
 
@@ -45481,7 +45596,7 @@ fn run_file(input: String, runtime_path: String) -> i64
 
         let llvm = compile_program(source, 0);
 
-        let t1 = time_ns() / 1000000;
+        let t1 = time_ns() / ns_per_ms();
 
         if is_compile_error(llvm) {
 
@@ -45511,7 +45626,7 @@ fn run_file(input: String, runtime_path: String) -> i64
 
             } else { 1 };
 
-            let t2 = time_ns() / 1000000;
+            let t2 = time_ns() / ns_per_ms();
 
             if link_ok == 0 { println_str("Error: linking failed"); 1 }
 
@@ -48309,7 +48424,7 @@ fn session_log_run(input: String, src: String) -> i64
 
     let round = sl_count_rounds(log_src) + 1;
 
-    let ts = time_ns() / 1000000;
+    let ts = time_ns() / ns_per_ms();
 
     let entry = sl_build_entry(round, ts, total, ev_count, cc_count, mc_count, le_count, sd_count);
 

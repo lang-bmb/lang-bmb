@@ -1,0 +1,12 @@
+[
+  {"stdin": "123", "expected_stdout": "321\n"},
+  {"stdin": "-123", "expected_stdout": "-321\n"},
+  {"stdin": "120", "expected_stdout": "21\n"},
+  {"stdin": "0", "expected_stdout": "0\n"},
+  {"stdin": "1534236469", "expected_stdout": "0\n"},
+  {"stdin": "100", "expected_stdout": "1\n"},
+  {"stdin": "-100", "expected_stdout": "-1\n"},
+  {"stdin": "9", "expected_stdout": "9\n"},
+  {"stdin": "1000000003", "expected_stdout": "0\n"},
+  {"stdin": "12345", "expected_stdout": "54321\n"}
+]

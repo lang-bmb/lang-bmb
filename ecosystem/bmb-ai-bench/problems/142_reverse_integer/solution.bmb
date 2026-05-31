@@ -1,0 +1,15 @@
+// Reverse Integer — reverse digits, return 0 on 32-bit overflow
+fn reverse(x: i64, acc: i64) -> i64
+= if x == 0 { acc }
+  else { reverse(x / 10, acc * 10 + x % 10) };
+
+fn main() -> i64 = {
+    let x = read_int();
+    let sign = if x < 0 { 0 - 1 } else { 1 };
+    let abs_x = if x < 0 { 0 - x } else { x };
+    let rev = reverse(abs_x, 0) * sign;
+    let limit = 2147483647;
+    if rev > limit or rev < 0 - limit - 1 { println(0) }
+    else { println(rev) };
+    0
+};
