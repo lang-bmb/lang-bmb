@@ -1,0 +1,12 @@
+{
+  "id": "108_move_zeroes",
+  "category": "algorithm",
+  "difficulty": "easy",
+  "tags": ["array", "two-pass", "in-place"],
+  "bmb_features_tested": ["vec", "for_in_range", "print_str"],
+  "expected_tools": ["check", "build", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #283 (external)"
+}

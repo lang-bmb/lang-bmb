@@ -1,0 +1,11 @@
+// FizzBuzz — print Fizz/Buzz/FizzBuzz/number for 1..n
+fn main() -> i64 = {
+    let n: i64 = read_int();
+    for i in 1..n+1 {
+        if i % 15 == 0 { print_str("FizzBuzz"); println_str("") }
+        else if i % 3 == 0 { print_str("Fizz"); println_str("") }
+        else if i % 5 == 0 { print_str("Buzz"); println_str("") }
+        else { println(i) }
+    };
+    0
+};

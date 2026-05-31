@@ -3349,12 +3349,24 @@ fn parse_atom_tail(src: String, pos: i64, tok: i64, kind: i64) -> String
         if tok_kind(peek) == TK_MUT() { parse_atom(src, tok_end(peek)) }
         else { parse_atom(src, tok_end(tok)) }
     }
-    else if kind == TK_FN() {
-        let peek = next_token_raw(src, tok_end(tok));
-        if tok_kind(peek) == TK_PIPE() { parse_lambda_expr(src, tok_end(peek)) }
-        else { make_error_at("expected '|' after 'fn' in expression, got " + tok_kind_name(tok_kind(peek)), src, tok_end(tok)) }
-    }
+    else if kind == TK_FN() { parse_atom_fn_expr(src, tok) }
     else { make_error_at("unexpected token in expression", src, pos) };
+
+// v0.95+v0.101: 'fn' in expression context — pipe lambda or arrow lambda
+
+fn parse_atom_fn_expr(src: String, tok: i64) -> String
+
+  pre tok >= 0
+
+  post it.len() >= 2
+
+= let peek = next_token_raw(src, tok_end(tok));
+
+    if tok_kind(peek) == TK_PIPE() { parse_lambda_expr(src, tok_end(peek)) }
+
+    else if tok_kind(peek) == TK_LPAREN() { parse_fn_arrow_lambda(src, tok_end(peek)) }
+
+    else { make_error_at("expected '|' or '(' after 'fn' in expression, got " + tok_kind_name(tok_kind(peek)), src, tok_end(tok)) };
 
 // v0.95: Lambda/closure expression parsing
 // Parses: fn |params...| body  or  fn |params...| { body }
@@ -3439,6 +3451,44 @@ fn parse_lambda_params(src: String, pos: i64, acc: String) -> String
     }
 
     else { make_error_at("expected parameter name or '|' in lambda, got " + tok_kind_name(tok_kind(tok)), src, pos) };
+
+// v0.101: Arrow lambda: fn(params) => expr — alias for fn |params| expr
+// Parses: fn(p1: T1, p2: T2) => body  after opening '(' consumed
+// Reuses parse_params which terminates on ')'.
+
+fn parse_fn_arrow_lambda(src: String, pos: i64) -> String
+
+  pre pos >= 0
+
+  post it.len() >= 2
+
+= let rp = parse_params(src, pos, "");
+
+    if is_error(rp) { rp }
+
+    else {
+
+        let params_str = unpack_ast(rp);
+
+        let after_params = unpack_pos(rp);
+
+        let t = next_token_raw(src, after_params);
+
+        if tok_kind(t) != TK_FAT_ARROW() {
+
+            make_error_at("expected '=>' after fn(...) lambda params, got " + tok_kind_name(tok_kind(t)), src, after_params)
+
+        } else {
+
+            let rb = parse_expr(src, tok_end(t));
+
+            if is_error(rb) { rb }
+
+            else { pack_result(unpack_pos(rb), "(lambda" + params_str + " " + unpack_ast(rb) + ")") }
+
+        }
+
+    };
 
 // [val; count] -> (array_repeat val count)
 
@@ -43954,6 +44004,42 @@ fn ms_caps_to_json(caps: String, pos: i64, isfirst: i64) -> String
 
 // Rule: intent documents intent; contracts verify it. If you write intent, also write contracts.
 
+// v0.101: Detect `else { () }` which is always redundant — use `if cond { expr }` instead.
+// In BMB, if-without-else is valid since Cycle 2822. `else { () }` adds no information.
+
+fn lint_check_redundant_else_unit(src: String, pos: i64, count: i64) -> i64
+
+  pre pos >= 0
+
+  post it >= 0
+
+= let p = find_pattern_noa(src, "} else { () }", pos);
+
+    if p < 0 { count }
+
+    else {
+
+        // Skip if inside a string literal: character before } is '"'
+        let prev_char = if p > 0 { src.byte_at(p - 1) } else { 0 };
+
+        let is_in_string = prev_char == 34;
+
+        if is_in_string {
+
+            lint_check_redundant_else_unit(src, p + 13, count)
+
+        } else {
+
+            let line_num = count_line_at(src, p + 2, 0, 1);
+
+            let _w = println_str("  [redundant_else_unit] line " + int_to_string(line_num) + ": use 'if cond { ... }' directly (no else needed)");
+
+            lint_check_redundant_else_unit(src, p + 13, count + 1)
+
+        }
+
+    };
+
 fn lint_check_intent_scan(src: String, pos: i64, count: i64) -> i64
 
   pre pos >= 0
@@ -44048,6 +44134,8 @@ fn lint_file(input: String) -> i64
 
         let w6 = lint_check_intent_scan(source, 0, 0);
 
+        let w11 = lint_check_redundant_else_unit(source, 0, 0);
+
         let w7 = lint_check_effect_violations(entries, 0, 0);
 
         let eff_map = build_fn_effect_map(source, 0, "");
@@ -44064,7 +44152,7 @@ fn lint_file(input: String) -> i64
 
         let w10 = lint_check_module_capabilities(entries, full_trans_map, module_caps, 0, 0);
 
-        let total = w1 + w2 + w3 + w4 + w6 + w7 + w8 + w9 + w10;
+        let total = w1 + w2 + w3 + w4 + w6 + w7 + w8 + w9 + w10 + w11;
 
         let _sep = println_str("---");
 

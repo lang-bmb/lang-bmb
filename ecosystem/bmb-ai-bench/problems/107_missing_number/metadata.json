@@ -1,0 +1,12 @@
+{
+  "id": "107_missing_number",
+  "category": "algorithm",
+  "difficulty": "easy",
+  "tags": ["math", "sum-formula", "array"],
+  "bmb_features_tested": ["for_in_range", "mutable_binding", "arithmetic"],
+  "expected_tools": ["check", "build", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #268 (external)"
+}

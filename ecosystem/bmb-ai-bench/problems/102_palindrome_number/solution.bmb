@@ -1,0 +1,22 @@
+// Palindrome Number — check if integer reads same forward/backward
+fn is_palindrome(n: i64) -> i64 = {
+    if n < 0 { 0 }
+    else {
+        let mut x = n;
+        let mut rev = 0;
+        while x > 0 {
+            rev = rev * 10 + x % 10;
+            x = x / 10
+        };
+        if rev == n { 1 } else { 0 }
+    }
+};
+fn main() -> i64 = {
+    let t: i64 = read_int();
+    for _i in 0..t {
+        let n: i64 = read_int();
+        if is_palindrome(n) == 1 { println_str("yes") }
+        else { println_str("no") }
+    };
+    0
+};

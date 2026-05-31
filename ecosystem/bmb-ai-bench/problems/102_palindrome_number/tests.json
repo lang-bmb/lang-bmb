@@ -1,0 +1,11 @@
+[
+  {"stdin": "3 121 -121 10", "expected_stdout": "yes\nno\nno\n"},
+  {"stdin": "1 0", "expected_stdout": "yes\n"},
+  {"stdin": "1 1", "expected_stdout": "yes\n"},
+  {"stdin": "1 11", "expected_stdout": "yes\n"},
+  {"stdin": "1 12", "expected_stdout": "no\n"},
+  {"stdin": "1 1221", "expected_stdout": "yes\n"},
+  {"stdin": "1 1231", "expected_stdout": "no\n"},
+  {"stdin": "5 9 99 100 1001 12321", "expected_stdout": "yes\nyes\nno\nyes\nyes\n"},
+  {"stdin": "3 -1 0 1", "expected_stdout": "no\nyes\nyes\n"}
+]

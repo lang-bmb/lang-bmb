@@ -2874,7 +2874,11 @@ test_golden_set_field_index_compound.bmb|135
 test_golden_set_field_index_nested.bmb|BLUE
 test_golden_set_field_chain_simple.bmb|bob
 test_golden_set_field_chain_triple.bmb|done
-test_golden_stack_array_typed.bmb|4
-test_golden_stack_array_f64.bmb|2
+test_golden_stack_array_typed.bmb|0
+test_golden_stack_array_f64.bmb|0
 test_golden_const_array_size.bmb|150
 test_golden_const_compound.bmb|78
+test_golden_fn_arrow_basic.bmb|10
+test_golden_fn_arrow_multi.bmb|10
+test_golden_fn_arrow_capture.bmb|123
+test_golden_fn_arrow_as_arg.bmb|15

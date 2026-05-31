@@ -1,0 +1,9 @@
+[
+  {"stdin": "15", "expected_stdout": "1\n2\nFizz\n4\nBuzz\nFizz\n7\n8\nFizz\nBuzz\n11\nFizz\n13\n14\nFizzBuzz\n"},
+  {"stdin": "1", "expected_stdout": "1\n"},
+  {"stdin": "3", "expected_stdout": "1\n2\nFizz\n"},
+  {"stdin": "5", "expected_stdout": "1\n2\nFizz\n4\nBuzz\n"},
+  {"stdin": "6", "expected_stdout": "1\n2\nFizz\n4\nBuzz\nFizz\n"},
+  {"stdin": "20", "expected_stdout": "1\n2\nFizz\n4\nBuzz\nFizz\n7\n8\nFizz\nBuzz\n11\nFizz\n13\n14\nFizzBuzz\n16\n17\nFizz\n19\nBuzz\n"},
+  {"stdin": "30", "expected_stdout": "1\n2\nFizz\n4\nBuzz\nFizz\n7\n8\nFizz\nBuzz\n11\nFizz\n13\n14\nFizzBuzz\n16\n17\nFizz\n19\nBuzz\nFizz\n22\n23\nFizz\nBuzz\n26\nFizz\n28\n29\nFizzBuzz\n"}
+]

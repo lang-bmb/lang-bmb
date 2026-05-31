@@ -1,0 +1,11 @@
+// Find Duplicate Number — sum(array) - n*(n+1)/2 = duplicate
+fn main() -> i64 = {
+    let n: i64 = read_int();
+    let expected = n * (n + 1) / 2;
+    let mut actual = 0;
+    for _i in 0..n+1 {
+        actual = actual + read_int()
+    };
+    println(actual - expected);
+    0
+};

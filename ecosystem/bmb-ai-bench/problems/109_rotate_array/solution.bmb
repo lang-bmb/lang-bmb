@@ -1,0 +1,25 @@
+// Rotate Array right by k steps
+fn main() -> i64 = {
+    let n: i64 = read_int();
+    let k: i64 = read_int();
+    let v = vec_new();
+    for _i in 0..n {
+        let x = read_int();
+        vec_push(v, x)
+    };
+    let kk = k % n;
+    let mut printed = 0;
+    for i in n-kk..n {
+        if printed > 0 { print_str(" ") } else { () };
+        print(vec_get(v, i));
+        printed = printed + 1
+    };
+    for i in 0..n-kk {
+        if printed > 0 { print_str(" ") } else { () };
+        print(vec_get(v, i));
+        printed = printed + 1
+    };
+    println_str("");
+    vec_free(v);
+    0
+};

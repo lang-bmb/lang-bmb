@@ -1,0 +1,12 @@
+{
+  "id": "105_climbing_stairs",
+  "category": "algorithm",
+  "difficulty": "easy",
+  "tags": ["dp", "fibonacci", "iteration"],
+  "bmb_features_tested": ["mutable_binding", "for_in_range", "conditional"],
+  "expected_tools": ["check", "build", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #70 (external)"
+}

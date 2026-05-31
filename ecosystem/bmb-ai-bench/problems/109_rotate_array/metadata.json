@@ -1,0 +1,12 @@
+{
+  "id": "109_rotate_array",
+  "category": "algorithm",
+  "difficulty": "easy",
+  "tags": ["array", "rotation", "modulo"],
+  "bmb_features_tested": ["vec", "for_in_range", "modulo", "print_str"],
+  "expected_tools": ["check", "build", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #189 (external)"
+}

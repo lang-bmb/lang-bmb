@@ -1,0 +1,11 @@
+// Missing Number — Gauss sum formula: missing = n*(n+1)/2 - sum(array)
+fn main() -> i64 = {
+    let n: i64 = read_int();
+    let expected = n * (n + 1) / 2;
+    let mut actual = 0;
+    for _i in 0..n {
+        actual = actual + read_int()
+    };
+    println(expected - actual);
+    0
+};

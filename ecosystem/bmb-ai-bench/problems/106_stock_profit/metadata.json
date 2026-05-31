@@ -1,0 +1,12 @@
+{
+  "id": "106_stock_profit",
+  "category": "algorithm",
+  "difficulty": "easy",
+  "tags": ["greedy", "array", "sliding-window"],
+  "bmb_features_tested": ["vec", "for_in_range", "mutable_binding"],
+  "expected_tools": ["check", "build", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #121 (external)"
+}

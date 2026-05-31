@@ -1,0 +1,12 @@
+{
+  "id": "101_fizz_buzz",
+  "category": "algorithm",
+  "difficulty": "easy",
+  "tags": ["loop", "modulo", "classic"],
+  "bmb_features_tested": ["for_in_range", "modulo", "print_str"],
+  "expected_tools": ["check", "build", "run"],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #412 (external)"
+}
