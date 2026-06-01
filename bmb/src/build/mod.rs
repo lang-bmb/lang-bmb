@@ -1001,6 +1001,25 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         if matches!(config.opt_level, OptLevel::Release | OptLevel::Aggressive) {
             cmd.arg("-march=native");
         }
+        // Cycle 3555 (D4): disable clang's *runtime* loop unrolling for shared-library
+        // (binding) builds. Root cause: with `-march=native`, clang -O3's cost model
+        // 4×-runtime-unrolls scalar DP inner loops that carry a true loop-carried
+        // dependency (e.g. edit_distance/lcs rolling-row `curr[j]`←`curr[j-1]`), turning a
+        // tight cmov min-reduction into a branchy 4× body whose data-dependent `jl` chains
+        // mispredict heavily → measured 2.5× (edit_distance) / 1.4× (lcs) slowdown vs the
+        // canonical `opt -O2 + llc` pipeline. `-unroll-runtime=false` kills only that
+        // harmful runtime unroll; the *vectorizer's* interleaving is a separate transform
+        // and is preserved, so flat array/reduction kernels (array_sum, max_subarray,
+        // knapsack) stay at parity (measured 0.95–1.04×). Equivalent to per-loop
+        // `!llvm.loop.unroll.disable` on just the DP loops, but with zero codegen change
+        // (Rule 6: build-driver level, not the frozen backend). Scoped to SharedLib only:
+        // P-track executables and the bootstrap self-compile (built as executables) are
+        // untouched, so their tuned timings and the <60s self-compile gate are unaffected.
+        if matches!(config.output_type, OutputType::SharedLib)
+            && matches!(config.opt_level, OptLevel::Release | OptLevel::Aggressive)
+        {
+            cmd.args(["-mllvm", "-unroll-runtime=false"]);
+        }
         // v0.96.40: Use MinGW target on Windows to avoid MSVC header conflicts.
         // Cycle 2492: only when the active clang IS a MinGW driver — MSVC
         // clang on `windows-latest` has no MinGW headers/libs, and forcing

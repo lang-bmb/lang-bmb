@@ -21,6 +21,15 @@ All notable changes to bmb-algo will be documented in this file.
 - Type stubs (`.pyi`): array-taking read-only functions widened from `List[int]` to `Sequence[int]`
   (`IntSeq`) to reflect the accepted input types.
 
+### Performance
+- Scalar dynamic-programming kernels (`edit_distance`, `lcs`) are now **~2.5× / ~1.4× faster** in the
+  shipped shared library. The native build of binding libraries now disables clang's *runtime* loop
+  unrolling (`-mllvm -unroll-runtime=false`), which under `-march=native` was 4×-unrolling DP inner
+  loops that carry a true loop-carried dependency into branchy, mispredicting code. The loop
+  vectorizer's interleaving is preserved, so flat array/reduction kernels (`array_sum`, `max_subarray`,
+  `knapsack`) stay at parity. Combined with the rolling-2row rewrite, `edit_distance` now measures
+  **faster than an equivalent Cython (gcc -O2) build**. Results are byte-identical; checksums verified.
+
 ### Documentation
 - Corrected the Python binding module docstring, which carried unverified "6.8× faster than C /
   1.8× faster than C" claims, to a parity-with-Clang framing (consistent with the README honesty

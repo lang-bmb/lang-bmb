@@ -12,6 +12,14 @@ All notable changes to bmb-compute will be documented in this file.
   million-element inputs. Plain `list` inputs are unchanged; NumPy is optional. Read-only functions
   never mutate the caller's buffer.
 
+### Performance
+- The shared library is now built with clang's runtime loop unrolling disabled
+  (`-mllvm -unroll-runtime=false`), a suite-wide change to the binding build pipeline. bmb-compute's
+  kernels are reduction/vector loops whose vectorization (and interleaving) is preserved by the flag, so
+  this is **performance-neutral here** — `-unroll-runtime=false` disables only the loop unroller, not the
+  vectorizer (cf. bmb-algo's `array_sum`, measured 0.95× = parity under this flag). The change targets
+  the loop-carried-dependency DP kernels in bmb-algo. Noted for release/reproducibility consistency.
+
 ## [0.2.0] - 2026-03-23
 
 ### Added
