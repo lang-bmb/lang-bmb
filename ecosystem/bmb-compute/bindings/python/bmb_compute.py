@@ -8,9 +8,15 @@ Functions: abs, min, max, clamp, sign, ipow, sqrt, factorial,
            dot_product, dist_squared
 """
 
+import array as _array
 import ctypes
 import os
 import sys
+
+try:
+    import numpy as _np
+except ImportError:  # numpy optional — zero-copy path simply won't trigger for ndarrays
+    _np = None
 
 _lib_dir = os.path.dirname(os.path.abspath(__file__))
 _lib_name = {'win32': 'bmb_compute.dll', 'linux': 'libbmb_compute.so', 'darwin': 'libbmb_compute.dylib'}.get(sys.platform, 'libbmb_compute.so')
@@ -99,6 +105,24 @@ _lib.bmb_map_square.restype = ctypes.c_int64
 
 
 def _arr(lst):
+    """Return (address, n, keepalive) for a C-contiguous int64 buffer.
+
+    Zero-copy fast path for NumPy int64 ndarrays and array.array('q'); otherwise a plain
+    sequence is marshalled into a fresh ctypes array. For bulk data this removes the
+    element-by-element marshalling that otherwise dominates the call. The keepalive owns the
+    memory the address points into and must stay referenced until the native call returns.
+
+    Used only by read-only consumers (sum/mean/min/max/range/variance/dot/dist/weighted/
+    median/magnitude); none mutate the buffer, so zero-copy is safe.
+    """
+    if _np is not None and isinstance(lst, _np.ndarray):
+        if lst.dtype == _np.int64 and lst.flags['C_CONTIGUOUS']:
+            return lst.ctypes.data, lst.size, lst
+        c = _np.ascontiguousarray(lst, dtype=_np.int64)
+        return c.ctypes.data, c.size, c
+    if isinstance(lst, _array.array) and lst.itemsize == 8:
+        addr, n = lst.buffer_info()
+        return addr, n, lst
     n = len(lst)
     c = (ctypes.c_int64 * n)(*lst)
     return ctypes.addressof(c), n, c  # keep c alive

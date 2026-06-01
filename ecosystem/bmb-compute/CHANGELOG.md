@@ -2,6 +2,16 @@
 
 All notable changes to bmb-compute will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Zero-copy inputs** for the read-only reductions (`sum`, `mean_scaled`, `min_val`, `max_val`,
+  `range_val`, `variance_scaled`, `dot_product`, `dist_squared`, `weighted_sum`, `median_scaled`,
+  `magnitude_squared`). The shared `_arr` helper now passes NumPy `int64` arrays and `array.array('q')`
+  straight through with no per-element marshalling — ~500× faster than the list path for
+  million-element inputs. Plain `list` inputs are unchanged; NumPy is optional. Read-only functions
+  never mutate the caller's buffer.
+
 ## [0.2.0] - 2026-03-23
 
 ### Added

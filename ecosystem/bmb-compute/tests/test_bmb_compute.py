@@ -776,3 +776,67 @@ class TestNewComputeFunctions:
 
     def test_moving_avg_scaled_k1(self):
         assert bmb_compute.moving_avg_scaled([10, 20, 30], 1) == [10000, 20000, 30000]
+
+
+# ---------------------------------------------------------------------------
+# Zero-copy buffer-protocol inputs (Cycle 3550, D3)
+# ---------------------------------------------------------------------------
+
+import array as _array
+
+try:
+    import numpy as _np
+except ImportError:
+    _np = None
+
+
+class TestZeroCopyInputs:
+    """Read-only reductions must accept NumPy int64 arrays and array.array('q')
+    (passed zero-copy) and return results identical to the list path."""
+
+    LST = [5, 3, 8, 1, 9, 2, 7, 4, 6, 2]
+
+    def _variants(self, lst):
+        out = [("list", lst), ("array.array", _array.array('q', lst))]
+        if _np is not None:
+            out.append(("numpy", _np.array(lst, dtype=_np.int64)))
+        return out
+
+    def test_sum_all_inputs(self):
+        ref = bmb_compute.sum(self.LST)
+        for name, v in self._variants(self.LST):
+            assert bmb_compute.sum(v) == ref, name
+
+    def test_min_max_range_all_inputs(self):
+        for name, v in self._variants(self.LST):
+            assert bmb_compute.min_val(v) == 1, name
+            assert bmb_compute.max_val(v) == 9, name
+            assert bmb_compute.range_val(v) == 8, name
+
+    def test_mean_variance_all_inputs(self):
+        rm = bmb_compute.mean_scaled(self.LST)
+        rv = bmb_compute.variance_scaled(self.LST)
+        for name, v in self._variants(self.LST):
+            assert bmb_compute.mean_scaled(v) == rm, name
+            assert bmb_compute.variance_scaled(v) == rv, name
+
+    def test_dot_product_all_inputs(self):
+        a, b = [1, 2, 3], [4, 5, 6]
+        ref = bmb_compute.dot_product(a, b)
+        av, bv = self._variants(a), self._variants(b)
+        for (name, ca), (_, cb) in zip(av, bv):
+            assert bmb_compute.dot_product(ca, cb) == ref, name
+
+    def test_magnitude_squared_all_inputs(self):
+        ref = bmb_compute.magnitude_squared(self.LST)
+        for name, v in self._variants(self.LST):
+            assert bmb_compute.magnitude_squared(v) == ref, name
+
+    @pytest.mark.skipif(_np is None, reason="numpy not installed")
+    def test_numpy_dtype_and_non_mutation(self):
+        a32 = _np.array(self.LST, dtype=_np.int32)
+        assert bmb_compute.sum(a32) == bmb_compute.sum(self.LST)
+        a = _np.array(self.LST, dtype=_np.int64)
+        before = a.copy()
+        bmb_compute.sum(a); bmb_compute.variance_scaled(a); bmb_compute.max_val(a)
+        assert _np.array_equal(a, before)

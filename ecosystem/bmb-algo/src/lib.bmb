@@ -52,43 +52,45 @@ pub fn bmb_knapsack(weights: i64, values: i64, n: i64, capacity: i64) -> i64
 // Find length of longest common subsequence of two strings
 // a, b: input strings
 // Returns: LCS length
+// Rolling 2-row DP: O(min space) instead of O(m*n).
 @export
 pub fn bmb_lcs(a: String, b: String) -> i64
   post ret >= 0
 = {
     let m = a.len();
     let n = b.len();
-    let dp = malloc((m + 1) * (n + 1) * 8);
-    // Initialize first row and column to 0
-    let mut i = 0;
-    while i <= m {
-        let _s = store_i64(dp + i * (n + 1) * 8, 0);
-        set i = i + 1
-    };
+    let mut prev = malloc((n + 1) * 8);
+    let mut curr = malloc((n + 1) * 8);
+    // Initialize prev row (row 0) to all zeros
     let mut j = 0;
     while j <= n {
-        let _s = store_i64(dp + j * 8, 0);
+        let _s = store_i64(prev + j * 8, 0);
         set j = j + 1
     };
-    // Fill DP table
-    set i = 1;
+    let mut i = 1;
     while i <= m {
+        let _s0 = store_i64(curr, 0);
         set j = 1;
         while j <= n {
             let val = if a.byte_at(i - 1) == b.byte_at(j - 1) {
-                load_i64(dp + (i - 1) * (n + 1) * 8 + (j - 1) * 8) + 1
+                load_i64(prev + (j - 1) * 8) + 1
             } else {
-                let up = load_i64(dp + (i - 1) * (n + 1) * 8 + j * 8);
-                let left = load_i64(dp + i * (n + 1) * 8 + (j - 1) * 8);
+                let up = load_i64(prev + j * 8);
+                let left = load_i64(curr + (j - 1) * 8);
                 if up > left { up } else { left }
             };
-            let _s = store_i64(dp + i * (n + 1) * 8 + j * 8, val);
+            let _s = store_i64(curr + j * 8, val);
             set j = j + 1
         };
+        // Swap rows: prev now holds the row just computed
+        let tmp = prev;
+        set prev = curr;
+        set curr = tmp;
         set i = i + 1
     };
-    let result = load_i64(dp + m * (n + 1) * 8 + n * 8);
-    let _f = free(dp);
+    let result = load_i64(prev + n * 8);
+    let _f1 = free(prev);
+    let _f2 = free(curr);
     result
 };
 
@@ -128,39 +130,46 @@ pub fn bmb_floyd_warshall(dist: i64, n: i64) -> i64
 // Edit Distance (Levenshtein)
 // ============================================================================
 
+// Rolling 2-row DP: O(min space) instead of O(m*n).
+// Only the previous and current rows are needed; this keeps the working set
+// in cache (24KB for n=1000 vs 8MB full m*n table) for large inputs.
 @export
 pub fn bmb_edit_distance(a: String, b: String) -> i64
   post ret >= 0
 = {
     let m = a.len();
     let n = b.len();
-    let dp = malloc((m + 1) * (n + 1) * 8);
-    let mut i = 0;
-    while i <= m {
-        let _s = store_i64(dp + i * (n + 1) * 8, i);
-        set i = i + 1
-    };
+    let mut prev = malloc((n + 1) * 8);
+    let mut curr = malloc((n + 1) * 8);
+    // Initialize prev row = [0, 1, 2, ..., n]
     let mut j = 0;
     while j <= n {
-        let _s = store_i64(dp + j * 8, j);
+        let _s = store_i64(prev + j * 8, j);
         set j = j + 1
     };
-    set i = 1;
+    let mut i = 1;
     while i <= m {
+        let _s0 = store_i64(curr, i);
         set j = 1;
         while j <= n {
             let cost = if a.byte_at(i - 1) == b.byte_at(j - 1) { 0 } else { 1 };
-            let del = load_i64(dp + (i - 1) * (n + 1) * 8 + j * 8) + 1;
-            let ins = load_i64(dp + i * (n + 1) * 8 + (j - 1) * 8) + 1;
-            let sub = load_i64(dp + (i - 1) * (n + 1) * 8 + (j - 1) * 8) + cost;
+            let del = load_i64(prev + j * 8) + 1;
+            let ins = load_i64(curr + (j - 1) * 8) + 1;
+            let sub = load_i64(prev + (j - 1) * 8) + cost;
             let min_val = if del < ins { if del < sub { del } else { sub } } else { if ins < sub { ins } else { sub } };
-            let _s = store_i64(dp + i * (n + 1) * 8 + j * 8, min_val);
+            let _s = store_i64(curr + j * 8, min_val);
             set j = j + 1
         };
+        // Swap rows: prev now holds the row just computed
+        let tmp = prev;
+        set prev = curr;
+        set curr = tmp;
         set i = i + 1
     };
-    let result = load_i64(dp + m * (n + 1) * 8 + n * 8);
-    let _f = free(dp);
+    // After the final swap, the last computed row is in prev
+    let result = load_i64(prev + n * 8);
+    let _f1 = free(prev);
+    let _f2 = free(curr);
     result
 };
 

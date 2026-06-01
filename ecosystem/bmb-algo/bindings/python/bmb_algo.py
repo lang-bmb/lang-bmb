@@ -1,16 +1,22 @@
 """
-bmb-algo: High-performance algorithms powered by BMB
+bmb-algo: compiled algorithms powered by BMB
 https://github.com/iyulab/lang-bmb
 
-BMB beats C AND Rust:
-  knapsack: 6.8x faster than C
-  lcs: 1.8x faster than C
-  floyd_warshall: 1.4x faster than C
+Compile-time contracts prove correctness, then generate native code via LLVM. On the
+LLVM backend BMB runs at parity with Clang -O3 for these kernels; the practical win for
+bulk data is the zero-copy buffer path below (NumPy int64 arrays / array.array('q') are
+passed without per-element marshalling).
 """
 
+import array as _array
 import ctypes
 import os
 import sys
+
+try:
+    import numpy as _np
+except ImportError:  # numpy is optional — the zero-copy path just won't trigger for ndarrays
+    _np = None
 
 __all__ = [
     # DP
@@ -220,12 +226,37 @@ _lib.bmb_two_sum.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
 _lib.bmb_two_sum.restype = ctypes.c_int64
 
 
-def knapsack(weights: list, values: list, capacity: int) -> int:
+def _i64_buffer(seq):
+    """Return ``(address, n, keepalive)`` for a C-contiguous int64 buffer.
+
+    Zero-copy fast path when ``seq`` already exposes an int64 buffer (a NumPy int64
+    ``ndarray`` or ``array.array('q')``); otherwise a plain Python sequence is marshalled
+    into a fresh ctypes array. For bulk data the zero-copy path removes the element-by-element
+    marshalling that otherwise dominates the call (hundreds of x for million-element arrays).
+
+    The returned keepalive object owns the memory the address points into and MUST stay
+    referenced until the native call returns — bind it to a local (e.g. ``_keep``).
+    """
+    if _np is not None and isinstance(seq, _np.ndarray):
+        if seq.dtype == _np.int64 and seq.flags['C_CONTIGUOUS']:
+            return seq.ctypes.data, seq.size, seq
+        # wrong dtype/layout: one contiguous int64 copy (still far cheaper than elementwise)
+        c = _np.ascontiguousarray(seq, dtype=_np.int64)
+        return c.ctypes.data, c.size, c
+    if isinstance(seq, _array.array) and seq.itemsize == 8:
+        addr, n = seq.buffer_info()
+        return addr, n, seq
+    n = len(seq)
+    c_arr = (ctypes.c_int64 * n)(*seq)
+    return ctypes.addressof(c_arr), n, c_arr
+
+
+def knapsack(weights, values, capacity: int) -> int:
     """Solve 0/1 knapsack problem.
 
     Args:
-        weights: List of item weights (positive integers)
-        values: List of item values (positive integers)
+        weights: Sequence of item weights (list, NumPy int64 array, or array.array('q'))
+        values: Sequence of item values (same accepted types)
         capacity: Maximum weight capacity
 
     Returns:
@@ -235,16 +266,10 @@ def knapsack(weights: list, values: list, capacity: int) -> int:
         >>> knapsack([2, 3, 4], [3, 4, 5], 7)
         9
     """
-    n = len(weights)
-    assert len(values) == n, "weights and values must have same length"
-    w_arr = (ctypes.c_int64 * n)(*weights)
-    v_arr = (ctypes.c_int64 * n)(*values)
-    return _lib.bmb_knapsack(
-        ctypes.addressof(w_arr),
-        ctypes.addressof(v_arr),
-        n,
-        capacity
-    )
+    aw, n, _kw = _i64_buffer(weights)
+    av, nv, _kv = _i64_buffer(values)
+    assert nv == n, "weights and values must have same length"
+    return _lib.bmb_knapsack(aw, av, n, capacity)
 
 
 def _safe_call(fn, *args):
@@ -288,40 +313,39 @@ def lcs(a: str, b: str) -> int:
     return result
 
 
-def max_subarray(arr: list) -> int:
+def max_subarray(arr) -> int:
     """Find maximum contiguous subarray sum (Kadane's algorithm).
+
+    Accepts a list, NumPy int64 array, or array.array('q') (zero-copy for the latter two).
 
     Example:
         >>> max_subarray([-2, 1, -3, 4, -1, 2, 1, -5, 4])
         6
     """
-    n = len(arr)
-    c_arr = (ctypes.c_int64 * n)(*arr)
-    return _lib.bmb_max_subarray(ctypes.addressof(c_arr), n)
+    addr, n, _keep = _i64_buffer(arr)
+    return _lib.bmb_max_subarray(addr, n)
 
 
-def coin_change(coins: list, amount: int) -> int:
+def coin_change(coins, amount: int) -> int:
     """Find minimum coins to make amount. Returns -1 if impossible.
 
     Example:
         >>> coin_change([1, 5, 11], 15)
         3
     """
-    n = len(coins)
-    c_arr = (ctypes.c_int64 * n)(*coins)
-    return _lib.bmb_coin_change(ctypes.addressof(c_arr), n, amount)
+    addr, n, _keep = _i64_buffer(coins)
+    return _lib.bmb_coin_change(addr, n, amount)
 
 
-def lis(arr: list) -> int:
+def lis(arr) -> int:
     """Find length of longest strictly increasing subsequence.
 
     Example:
         >>> lis([10, 9, 2, 5, 3, 7, 101, 18])
         4
     """
-    n = len(arr)
-    c_arr = (ctypes.c_int64 * n)(*arr)
-    return _lib.bmb_lis(ctypes.addressof(c_arr), n)
+    addr, n, _keep = _i64_buffer(arr)
+    return _lib.bmb_lis(addr, n)
 
 
 def dijkstra(adj_matrix: list, source: int) -> list:
@@ -441,11 +465,13 @@ def counting_sort(arr: list, max_val: int = None) -> list:
     return list(c_arr)
 
 
-def binary_search(arr: list, target: int) -> int:
-    """Binary search in sorted array. Returns index or -1."""
-    n = len(arr)
-    c_arr = (ctypes.c_int64 * n)(*arr)
-    return _lib.bmb_binary_search(ctypes.addressof(c_arr), n, target)
+def binary_search(arr, target: int) -> int:
+    """Binary search in sorted array. Returns index or -1.
+
+    Zero-copy for NumPy int64 / array.array('q') inputs.
+    """
+    addr, n, _keep = _i64_buffer(arr)
+    return _lib.bmb_binary_search(addr, n, target)
 
 
 def topological_sort(adj_matrix: list) -> list:
@@ -510,11 +536,13 @@ def matrix_transpose(matrix: list) -> list:
     return [[arr[i * n + j] for j in range(n)] for i in range(n)]
 
 
-def is_sorted(arr: list) -> bool:
-    """Check if array is sorted in non-decreasing order."""
-    n = len(arr)
-    c_arr = (ctypes.c_int64 * n)(*arr)
-    return bool(_lib.bmb_is_sorted(ctypes.addressof(c_arr), n))
+def is_sorted(arr) -> bool:
+    """Check if array is sorted in non-decreasing order.
+
+    Zero-copy for NumPy int64 / array.array('q') inputs.
+    """
+    addr, n, _keep = _i64_buffer(arr)
+    return bool(_lib.bmb_is_sorted(addr, n))
 
 
 def bit_popcount(x: int) -> int:
@@ -530,11 +558,10 @@ def array_rotate(arr: list, k: int) -> list:
     return list(c_arr)
 
 
-def unique_count(sorted_arr: list) -> int:
-    """Count distinct values in sorted array."""
-    n = len(sorted_arr)
-    c_arr = (ctypes.c_int64 * n)(*sorted_arr)
-    return _lib.bmb_unique_count(ctypes.addressof(c_arr), n)
+def unique_count(sorted_arr) -> int:
+    """Count distinct values in sorted array (zero-copy for NumPy int64 / array.array('q'))."""
+    addr, n, _keep = _i64_buffer(sorted_arr)
+    return _lib.bmb_unique_count(addr, n)
 
 
 def prefix_sum(arr: list) -> list:
@@ -545,25 +572,26 @@ def prefix_sum(arr: list) -> list:
     return list(c_arr)
 
 
-def array_sum(arr: list) -> int:
-    """Sum of array elements."""
-    n = len(arr)
-    c_arr = (ctypes.c_int64 * n)(*arr)
-    return _lib.bmb_array_sum(ctypes.addressof(c_arr), n)
+def array_sum(arr) -> int:
+    """Sum of array elements.
+
+    Accepts a list, NumPy int64 array, or array.array('q'). The latter two are passed
+    zero-copy — no per-element marshalling — so bulk reductions run at native speed.
+    """
+    addr, n, _keep = _i64_buffer(arr)
+    return _lib.bmb_array_sum(addr, n)
 
 
-def array_min(arr: list) -> int:
-    """Minimum value in array."""
-    n = len(arr)
-    c_arr = (ctypes.c_int64 * n)(*arr)
-    return _lib.bmb_array_min(ctypes.addressof(c_arr), n)
+def array_min(arr) -> int:
+    """Minimum value in array (zero-copy for NumPy int64 / array.array('q'))."""
+    addr, n, _keep = _i64_buffer(arr)
+    return _lib.bmb_array_min(addr, n)
 
 
-def array_max(arr: list) -> int:
-    """Maximum value in array."""
-    n = len(arr)
-    c_arr = (ctypes.c_int64 * n)(*arr)
-    return _lib.bmb_array_max(ctypes.addressof(c_arr), n)
+def array_max(arr) -> int:
+    """Maximum value in array (zero-copy for NumPy int64 / array.array('q'))."""
+    addr, n, _keep = _i64_buffer(arr)
+    return _lib.bmb_array_max(addr, n)
 
 
 def array_reverse(arr: list) -> list:
@@ -601,18 +629,16 @@ def array_fill(n: int, value: int) -> list:
     return list(c_arr)
 
 
-def array_contains(arr: list, target: int) -> bool:
-    """Check if target exists in array."""
-    n = len(arr)
-    c_arr = (ctypes.c_int64 * n)(*arr)
-    return bool(_lib.bmb_array_contains(ctypes.addressof(c_arr), n, target))
+def array_contains(arr, target: int) -> bool:
+    """Check if target exists in array (zero-copy for NumPy int64 / array.array('q'))."""
+    addr, n, _keep = _i64_buffer(arr)
+    return bool(_lib.bmb_array_contains(addr, n, target))
 
 
-def array_index_of(arr: list, target: int) -> int:
-    """Find first index of target. -1 if not found."""
-    n = len(arr)
-    c_arr = (ctypes.c_int64 * n)(*arr)
-    return _lib.bmb_array_index_of(ctypes.addressof(c_arr), n, target)
+def array_index_of(arr, target: int) -> int:
+    """Find first index of target. -1 if not found (zero-copy for NumPy int64 / array.array('q'))."""
+    addr, n, _keep = _i64_buffer(arr)
+    return _lib.bmb_array_index_of(addr, n, target)
 
 
 def shell_sort(arr: list) -> list:
@@ -625,13 +651,12 @@ def shell_sort(arr: list) -> list:
     return list(c_arr)
 
 
-def subset_sum(arr: list, target: int) -> bool:
-    """Check if any subset of arr sums to target."""
-    n = len(arr)
-    if n == 0:
+def subset_sum(arr, target: int) -> bool:
+    """Check if any subset of arr sums to target (zero-copy for NumPy int64 / array.array('q'))."""
+    if len(arr) == 0:
         return target == 0
-    c_arr = (ctypes.c_int64 * n)(*arr)
-    return bool(_lib.bmb_subset_sum(ctypes.addressof(c_arr), n, target))
+    addr, n, _keep = _i64_buffer(arr)
+    return bool(_lib.bmb_subset_sum(addr, n, target))
 
 
 def matrix_det(matrix: list) -> int:
@@ -679,13 +704,12 @@ def bubble_sort(arr: list) -> list:
     return list(c_arr)
 
 
-def array_product(arr: list) -> int:
-    """Product of all elements."""
-    n = len(arr)
-    if n == 0:
+def array_product(arr) -> int:
+    """Product of all elements (zero-copy for NumPy int64 / array.array('q'))."""
+    if len(arr) == 0:
         return 1
-    c_arr = (ctypes.c_int64 * n)(*arr)
-    return _lib.bmb_array_product(ctypes.addressof(c_arr), n)
+    addr, n, _keep = _i64_buffer(arr)
+    return _lib.bmb_array_product(addr, n)
 
 
 def is_palindrome_num(n: int) -> bool:

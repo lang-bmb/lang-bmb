@@ -4,7 +4,27 @@ All notable changes to bmb-algo will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Zero-copy inputs** for array-taking read-only functions (`array_sum`, `array_min`/`array_max`,
+  `max_subarray`, `lis`, `coin_change`, `knapsack`, `binary_search`, `is_sorted`, `unique_count`,
+  `subset_sum`, `array_product`, `array_contains`, `array_index_of`). These now accept a NumPy
+  `int64` array or `array.array('q')` in addition to a `list`; the buffer address is passed straight
+  to native code with no per-element marshalling. For million-element arrays this is ~500× faster
+  than the list path and beats NumPy's own reduction on `array_sum`. Plain `list` inputs are
+  unchanged (fallback path). NumPy is an optional dependency — absent, the path simply doesn't trigger.
+
+### Changed
+- `bmb_edit_distance` and `bmb_lcs` reimplemented with **rolling 2-row DP** (O(n) space instead of
+  O(m·n)). Results are identical (verified against the previous full-table implementation across
+  6000+ fuzz cases and an independent reference); large inputs are ~1.7–2.5× faster as the working
+  set stays cache-resident. Public API and return values unchanged.
+- Type stubs (`.pyi`): array-taking read-only functions widened from `List[int]` to `Sequence[int]`
+  (`IntSeq`) to reflect the accepted input types.
+
 ### Documentation
+- Corrected the Python binding module docstring, which carried unverified "6.8× faster than C /
+  1.8× faster than C" claims, to a parity-with-Clang framing (consistent with the README honesty
+  re-baseline). Added a "How to read these numbers" note and a "Zero-copy inputs" usage section.
 - README benchmark table re-baselined to **median-of-5 measurements** at v0.98 (2026-05-12). Supersedes both v0.2.0 numbers (2026-03-23) and an intermediate Cycle 2754 single-pair sample that turned out to be an outlier.
 - Headline updated to **"Up to ~245× (knapsack(100), median-of-5)"** with a note that the scaling table reaches ~306× at n=300. Earlier "~450×" claim withdrawn — it was a one-shot sample that does not reproduce on this machine under representative load.
 - New baseline includes inter-run spread per row (min-max across 5 runs), exposing variance honestly rather than reporting a single value.

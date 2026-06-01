@@ -26,7 +26,7 @@ Measured at **v0.98** (2026-05-12), **median of 5 runs**. Reproduce with `python
 | **knapsack(100 items, cap ~1300)** | 42 us | 10.2 ms | **~243×** | 235-257× |
 | knapsack(10 items, cap 20) | 2.1 us | 12.9 us | ~6.2× | 6.0-6.5× |
 | prime_count(10000) | 11 us | 329 us | **~31×** | 30-31× |
-| edit_distance | 1.4 us | 9.3 us | **~6.6×** | 4.9-7.0× |
+| edit_distance¹ | 1.4 us | 9.3 us | **~6.6×** | 4.9-7.0× |
 | nqueens(10) | 1.74 ms | 6.90 ms | **~4.0×** | 3.9-4.0× |
 | **quicksort(1000)** | 100 us | 488 us | **~4.9×** | 4.8-4.9× |
 | merge_sort(15) | 2.1 us | 6.5 us | **~3.2×** | 3.0-3.2× |
@@ -34,6 +34,15 @@ Measured at **v0.98** (2026-05-12), **median of 5 runs**. Reproduce with `python
 | quicksort(15) | 2.0 us | 3.4 us | ~1.7× | 1.6-1.7× |
 
 *All timings include ctypes FFI overhead — 50-500-iteration mean per sample, 10-iter warmup. Inter-run variance ~5% on stable runs; `edit_distance` shows occasional outliers (1 of 5 measured 4.87× — Python L1-cache miss susceptibility).*
+
+¹ `edit_distance`/`lcs` were since reimplemented with rolling 2-row DP — correctness identical, large inputs ~1.7–2.5× faster. The small-input row above predates that change; rerun `bench_algo.py --runs=5` to refresh.
+
+> **How to read these numbers.** "vs pure Python" is an anchor — any compiled language beats
+> CPython, so the multiplier alone is not the value proposition. The meaningful comparison is
+> against the ecosystem incumbents (NumPy / Cython): on DP/combinatorial kernels NumPy can't
+> vectorize (e.g. knapsack) bmb-algo is competitive-to-faster, and for bulk reductions the
+> [zero-copy input path](#zero-copy-inputs-numpy--arrayarray) reaches/beats NumPy's own routines.
+> Incumbent-relative measurements: see the lang-bmb `claudedocs/measurements/` AL-3 report.
 
 ### Scaling behavior
 
@@ -94,6 +103,26 @@ bmb_algo.fibonacci(50)                                # 12586269025
 bmb_algo.gcd(12, 8)                                   # 4
 bmb_algo.modpow(2, 10, 1000)                          # 24
 ```
+
+### Zero-copy inputs (NumPy / `array.array`)
+
+Array-taking **read-only** functions (`array_sum`, `array_min/max`, `max_subarray`, `lis`,
+`coin_change`, `knapsack`, `binary_search`, `is_sorted`, `unique_count`, `subset_sum`,
+`array_product`, `array_contains`, `array_index_of`) accept a Python `list`, a NumPy `int64`
+array, or an `array.array('q')`. NumPy/`array` inputs are passed **zero-copy** — their buffer
+address goes straight to the native code with no per-element marshalling:
+
+```python
+import numpy as np, bmb_algo
+a = np.random.randint(0, 1000, size=1_000_000, dtype=np.int64)
+bmb_algo.array_sum(a)        # zero-copy: ~500× faster than passing a Python list,
+                             # and faster than numpy's own a.sum() on this workload
+```
+
+For million-element arrays the list path is dominated by marshalling; the zero-copy path removes
+it entirely. Non-int64 or non-contiguous NumPy arrays are converted with a single contiguous copy
+(still far cheaper than element-by-element). Read-only functions never mutate the caller's buffer.
+Sorting functions (which return a new list) keep the copy path and are unaffected.
 
 ## Full API (55 algorithms)
 

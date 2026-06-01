@@ -909,3 +909,114 @@ class TestNewAlgorithms:
 
     def test_array_product_single(self):
         assert bmb_algo.array_product([42]) == 42
+
+
+# ---------------------------------------------------------------------------
+# Zero-copy buffer-protocol inputs (Cycle 3549, D3)
+# ---------------------------------------------------------------------------
+
+import array as _array
+
+try:
+    import numpy as _np
+except ImportError:
+    _np = None
+
+
+class TestZeroCopyInputs:
+    """Array-taking read-only functions must accept NumPy int64 arrays and
+    array.array('q') and return results identical to the list path (the values
+    are passed zero-copy; correctness must be unchanged)."""
+
+    LST = [5, 3, 8, 1, 9, 2, 7, 4, 6, 0]
+
+    def _variants(self, lst):
+        out = [("list", lst), ("array.array", _array.array('q', lst))]
+        if _np is not None:
+            out.append(("numpy", _np.array(lst, dtype=_np.int64)))
+        return out
+
+    def test_array_sum_all_inputs(self):
+        ref = bmb_algo.array_sum(self.LST)
+        for name, v in self._variants(self.LST):
+            assert bmb_algo.array_sum(v) == ref, name
+
+    def test_array_min_max_all_inputs(self):
+        for name, v in self._variants(self.LST):
+            assert bmb_algo.array_min(v) == 0, name
+            assert bmb_algo.array_max(v) == 9, name
+
+    def test_max_subarray_all_inputs(self):
+        lst = [-2, 1, -3, 4, -1, 2, 1, -5, 4]
+        ref = bmb_algo.max_subarray(lst)
+        for name, v in self._variants(lst):
+            assert bmb_algo.max_subarray(v) == ref, name
+
+    def test_lis_all_inputs(self):
+        lst = [10, 9, 2, 5, 3, 7, 101, 18]
+        ref = bmb_algo.lis(lst)
+        for name, v in self._variants(lst):
+            assert bmb_algo.lis(v) == ref, name
+
+    def test_coin_change_all_inputs(self):
+        coins = [1, 5, 11]
+        ref = bmb_algo.coin_change(coins, 15)
+        for name, v in self._variants(coins):
+            assert bmb_algo.coin_change(v, 15) == ref, name
+
+    def test_knapsack_all_inputs(self):
+        w, vals = [2, 3, 4], [3, 4, 5]
+        ref = bmb_algo.knapsack(w, vals, 7)
+        wv = self._variants(w)
+        vv = self._variants(vals)
+        for (name, cw), (_, cv) in zip(wv, vv):
+            assert bmb_algo.knapsack(cw, cv, 7) == ref, name
+
+    def test_binary_search_all_inputs(self):
+        srt = sorted(self.LST)
+        for name, v in self._variants(srt):
+            assert bmb_algo.binary_search(v, 7) == srt.index(7), name
+
+    def test_is_sorted_all_inputs(self):
+        srt = sorted(self.LST)
+        for name, v in self._variants(srt):
+            assert bmb_algo.is_sorted(v) is True, name
+
+    def test_array_product_all_inputs(self):
+        lst = [1, 2, 3, 4, 5]
+        for name, v in self._variants(lst):
+            assert bmb_algo.array_product(v) == 120, name
+
+    def test_array_contains_index_all_inputs(self):
+        for name, v in self._variants(self.LST):
+            assert bmb_algo.array_contains(v, 8) is True, name
+            assert bmb_algo.array_index_of(v, 8) == self.LST.index(8), name
+
+    def test_unique_count_all_inputs(self):
+        srt = sorted([1, 1, 2, 3, 3, 3, 4])
+        for name, v in self._variants(srt):
+            assert bmb_algo.unique_count(v) == 4, name
+
+    def test_subset_sum_all_inputs(self):
+        lst = [3, 34, 4, 12, 5, 2]
+        for name, v in self._variants(lst):
+            assert bmb_algo.subset_sum(v, 9) is True, name
+
+    @pytest.mark.skipif(_np is None, reason="numpy not installed")
+    def test_numpy_non_contiguous_and_dtype(self):
+        # Non-int64 dtype: must be copied-and-converted, not misread.
+        a32 = _np.array(self.LST, dtype=_np.int32)
+        assert bmb_algo.array_sum(a32) == sum(self.LST)
+        # Non-contiguous view (every other element): ascontiguousarray copy path.
+        big = _np.array(self.LST * 2, dtype=_np.int64)
+        view = big[::2]
+        assert view.flags['C_CONTIGUOUS'] is False
+        assert bmb_algo.array_sum(view) == int(view.sum())
+
+    @pytest.mark.skipif(_np is None, reason="numpy not installed")
+    def test_numpy_input_not_mutated(self):
+        # Read-only functions must not modify the caller's buffer.
+        a = _np.array(self.LST, dtype=_np.int64)
+        before = a.copy()
+        bmb_algo.array_sum(a); bmb_algo.array_min(a); bmb_algo.is_sorted(a)
+        assert _np.array_equal(a, before)
