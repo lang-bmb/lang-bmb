@@ -1,0 +1,28 @@
+{
+  "id": "346_has_duplicate_digit",
+  "category": "math",
+  "difficulty": "easy",
+  "tags": [
+    "math",
+    "digits"
+  ],
+  "bmb_features_tested": [
+    "read_int",
+    "vec_new",
+    "vec_push",
+    "vec_get",
+    "vec_set",
+    "while",
+    "mut",
+    "set",
+    "println"
+  ],
+  "expected_tools": [
+    "check",
+    "run"
+  ],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "digit exercise (external-style)"
+}

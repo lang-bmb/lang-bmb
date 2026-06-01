@@ -1,0 +1,25 @@
+{
+  "id": "328_closest_point_origin",
+  "category": "struct",
+  "difficulty": "easy",
+  "tags": [
+    "struct",
+    "math"
+  ],
+  "bmb_features_tested": [
+    "read_int",
+    "struct",
+    "new",
+    "field_access",
+    "recursive",
+    "println"
+  ],
+  "expected_tools": [
+    "check",
+    "run"
+  ],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "struct exercise (external-style)"
+}

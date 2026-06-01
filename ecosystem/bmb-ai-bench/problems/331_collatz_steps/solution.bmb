@@ -1,0 +1,15 @@
+fn main() -> i64 = {
+  let n = read_int();
+  let mut x = n;
+  let mut steps = 0;
+  while x != 1 {
+    if x % 2 == 0 {
+      set x = x / 2;
+    } else {
+      set x = 3 * x + 1;
+    };
+    set steps = steps + 1;
+  };
+  let _p = println(steps);
+  0
+};

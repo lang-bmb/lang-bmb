@@ -1,0 +1,37 @@
+fn read_arr(arr: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let x = read_int();
+    let _p = vec_push(arr, x);
+    read_arr(arr, n - 1)
+  };
+
+fn merge(a: i64, b: i64, i: i64, j: i64, na: i64, nb: i64, last: i64, acc: i64) -> i64
+  pre i >= 0
+= if i >= na or j >= nb { acc }
+  else {
+    let x = vec_get(a, i);
+    let y = vec_get(b, j);
+    if x < y { merge(a, b, i + 1, j, na, nb, last, acc) }
+    else {
+      if x > y { merge(a, b, i, j + 1, na, nb, last, acc) }
+      else {
+        if x == last { merge(a, b, i + 1, j + 1, na, nb, last, acc) }
+        else { merge(a, b, i + 1, j + 1, na, nb, x, acc + 1) }
+      }
+    }
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let a = vec_new();
+  let _ra = read_arr(a, n);
+  let m = read_int();
+  let b = vec_new();
+  let _rb = read_arr(b, m);
+  let sentinel = 0 - 1000000000;
+  let r = merge(a, b, 0, 0, n, m, sentinel, 0);
+  let _p = println(r);
+  0
+};

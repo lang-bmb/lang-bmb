@@ -1,0 +1,22 @@
+{
+  "id": "351_sum_of_first_n_fib",
+  "category": "math",
+  "difficulty": "easy",
+  "tags": [
+    "math",
+    "fibonacci"
+  ],
+  "bmb_features_tested": [
+    "read_int",
+    "recursive",
+    "println"
+  ],
+  "expected_tools": [
+    "check",
+    "run"
+  ],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "math (external-style)"
+}

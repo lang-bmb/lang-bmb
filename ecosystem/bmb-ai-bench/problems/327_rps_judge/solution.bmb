@@ -1,0 +1,19 @@
+enum Move { Rock, Paper, Scissors }
+
+fn to_move(x: i64) -> Move =
+  if x == 0 { Move::Rock }
+  else { if x == 1 { Move::Paper } else { Move::Scissors } };
+
+fn beats(a: Move, b: Move) -> i64 = match a {
+  Move::Rock => match b { Move::Scissors => 1, Move::Paper => 2, Move::Rock => 0 },
+  Move::Paper => match b { Move::Rock => 1, Move::Scissors => 2, Move::Paper => 0 },
+  Move::Scissors => match b { Move::Paper => 1, Move::Rock => 2, Move::Scissors => 0 }
+};
+
+fn main() -> i64 = {
+  let a = read_int();
+  let b = read_int();
+  let r = beats(to_move(a), to_move(b));
+  let _p = println(r);
+  0
+};

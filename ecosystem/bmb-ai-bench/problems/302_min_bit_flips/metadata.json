@@ -1,0 +1,25 @@
+{
+  "id": "302_min_bit_flips",
+  "category": "bitwise",
+  "difficulty": "easy",
+  "tags": [
+    "bitwise",
+    "math"
+  ],
+  "bmb_features_tested": [
+    "read_int",
+    "bxor",
+    "band",
+    "bshr",
+    "recursive",
+    "println"
+  ],
+  "expected_tools": [
+    "check",
+    "run"
+  ],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #2220 (external)"
+}

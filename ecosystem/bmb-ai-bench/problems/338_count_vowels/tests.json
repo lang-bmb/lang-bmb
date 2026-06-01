@@ -1,0 +1,22 @@
+[
+  {
+    "stdin": "Hello\n",
+    "expected_stdout": "2\n"
+  },
+  {
+    "stdin": "AEIOU\n",
+    "expected_stdout": "5\n"
+  },
+  {
+    "stdin": "xyz\n",
+    "expected_stdout": "0\n"
+  },
+  {
+    "stdin": "Programming\n",
+    "expected_stdout": "3\n"
+  },
+  {
+    "stdin": "BCDFG\n",
+    "expected_stdout": "0\n"
+  }
+]

@@ -1,0 +1,14 @@
+fn sum_bytes(s: String, i: i64, n: i64, acc: i64) -> i64
+  pre i >= 0
+= if i >= n { acc }
+  else { sum_bytes(s, i + 1, n, acc + s.byte_at(i)) };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let t = read_line();
+  let ss = sum_bytes(s, 0, s.len(), 0);
+  let ts = sum_bytes(t, 0, t.len(), 0);
+  let code = ts - ss;
+  let _p = println_str(chr(code));
+  0
+};

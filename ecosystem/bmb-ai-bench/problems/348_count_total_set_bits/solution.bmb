@@ -1,0 +1,16 @@
+fn pc(x: i64) -> i64
+  pre x >= 0
+= if x == 0 { 0 }
+  else { (x band 1) + pc(x >> 1) };
+
+fn total(n: i64, i: i64, acc: i64) -> i64
+  pre i >= 0
+= if i > n { acc }
+  else { total(n, i + 1, acc + pc(i)) };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let r = total(n, 0, 0);
+  let _p = println(r);
+  0
+};

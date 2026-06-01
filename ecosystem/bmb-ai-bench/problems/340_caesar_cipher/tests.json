@@ -1,0 +1,22 @@
+[
+  {
+    "stdin": "abc\n1\n",
+    "expected_stdout": "bcd\n"
+  },
+  {
+    "stdin": "xyz\n3\n",
+    "expected_stdout": "abc\n"
+  },
+  {
+    "stdin": "Hello\n13\n",
+    "expected_stdout": "Uryyb\n"
+  },
+  {
+    "stdin": "abc\n0\n",
+    "expected_stdout": "abc\n"
+  },
+  {
+    "stdin": "Zebra\n1\n",
+    "expected_stdout": "Afcsb\n"
+  }
+]

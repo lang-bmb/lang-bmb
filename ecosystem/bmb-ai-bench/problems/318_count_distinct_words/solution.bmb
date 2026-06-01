@@ -1,0 +1,21 @@
+fn cnt_distinct(parts: SvecHandle, m: i64, i: i64, n: i64, acc: i64) -> i64
+  pre i >= 0
+= if i >= n { acc }
+  else {
+    let w = svec_get(parts, i);
+    if str_hashmap_contains(m, w) == 1 { cnt_distinct(parts, m, i + 1, n, acc) }
+    else {
+      let _a = str_hashmap_inc(m, w, 1);
+      cnt_distinct(parts, m, i + 1, n, acc + 1)
+    }
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let parts = str_split(s, " ");
+  let n = svec_len(parts);
+  let m = str_hashmap_new();
+  let r = cnt_distinct(parts, m, 0, n, 0);
+  let _p = println(r);
+  0
+};

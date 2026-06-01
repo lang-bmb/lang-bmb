@@ -1,0 +1,22 @@
+[
+  {
+    "stdin": "11\n123\n",
+    "expected_stdout": "134\n"
+  },
+  {
+    "stdin": "456\n77\n",
+    "expected_stdout": "533\n"
+  },
+  {
+    "stdin": "0\n0\n",
+    "expected_stdout": "0\n"
+  },
+  {
+    "stdin": "1\n9\n",
+    "expected_stdout": "10\n"
+  },
+  {
+    "stdin": "999\n1\n",
+    "expected_stdout": "1000\n"
+  }
+]

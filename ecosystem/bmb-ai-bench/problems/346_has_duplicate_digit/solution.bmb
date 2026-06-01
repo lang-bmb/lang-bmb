@@ -1,0 +1,25 @@
+fn init_zeros(v: i64, k: i64) -> i64
+  pre k >= 0
+= if k == 0 { 0 }
+  else {
+    let _p = vec_push(v, 0);
+    init_zeros(v, k - 1)
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let freq = vec_new();
+  let _z = init_zeros(freq, 10);
+  let mut x = if n < 0 { 0 - n } else { n };
+  let mut dup = 0;
+  while x > 0 {
+    let d = x % 10;
+    if vec_get(freq, d) > 0 {
+      set dup = 1;
+    };
+    let _s = vec_set(freq, d, vec_get(freq, d) + 1);
+    set x = x / 10;
+  };
+  let _p = println(dup);
+  0
+};

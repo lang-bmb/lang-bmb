@@ -1,0 +1,12 @@
+fn main() -> i64 = {
+  let n = read_int();
+  let hi = n + 1;
+  let mut s = 0;
+  for i in 1..hi {
+    if n % i == 0 {
+      set s = s + i;
+    };
+  };
+  let _p = println(s);
+  0
+};

@@ -1,0 +1,22 @@
+[
+  {
+    "stdin": "121\n",
+    "expected_stdout": "1\n"
+  },
+  {
+    "stdin": "123\n",
+    "expected_stdout": "0\n"
+  },
+  {
+    "stdin": "11\n",
+    "expected_stdout": "1\n"
+  },
+  {
+    "stdin": "1234567890\n",
+    "expected_stdout": "0\n"
+  },
+  {
+    "stdin": "122\n",
+    "expected_stdout": "1\n"
+  }
+]

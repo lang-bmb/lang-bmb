@@ -1,0 +1,22 @@
+[
+  {
+    "stdin": "ab#c\nad#c\n",
+    "expected_stdout": "1\n"
+  },
+  {
+    "stdin": "ab##\nc#d#\n",
+    "expected_stdout": "1\n"
+  },
+  {
+    "stdin": "a#c\nb\n",
+    "expected_stdout": "0\n"
+  },
+  {
+    "stdin": "xywrrmp\nxywrrmu#p\n",
+    "expected_stdout": "1\n"
+  },
+  {
+    "stdin": "a##c\n#a#c\n",
+    "expected_stdout": "1\n"
+  }
+]

@@ -1,0 +1,37 @@
+fn read_row(row: i64, k: i64) -> i64
+  pre k >= 0
+= if k == 0 { 0 }
+  else {
+    let x = read_int();
+    let _p = vec_push(row, x);
+    read_row(row, k - 1)
+  };
+
+fn all_pos(row: i64, i: i64, n: i64) -> i64
+  pre i >= 0
+= if i >= n { 1 }
+  else {
+    if vec_get(row, i) > 0 { all_pos(row, i + 1, n) }
+    else { 0 }
+  };
+
+fn process(outer: i64, m: i64, n: i64, r: i64, acc: i64) -> i64
+  pre r >= 0
+= if r >= m { acc }
+  else {
+    let row = vec_new();
+    let _x = read_row(row, n);
+    let _c = vec_push(outer, row);
+    let stored = vec_get(outer, r);
+    let ap = all_pos(stored, 0, n);
+    process(outer, m, n, r + 1, acc + ap)
+  };
+
+fn main() -> i64 = {
+  let m = read_int();
+  let n = read_int();
+  let outer = vec_new();
+  let r = process(outer, m, n, 0, 0);
+  let _p = println(r);
+  0
+};

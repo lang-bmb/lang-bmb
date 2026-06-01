@@ -1,0 +1,22 @@
+[
+  {
+    "stdin": "a b a c a b\n",
+    "expected_stdout": "3\n"
+  },
+  {
+    "stdin": "hello\n",
+    "expected_stdout": "1\n"
+  },
+  {
+    "stdin": "x x x x\n",
+    "expected_stdout": "1\n"
+  },
+  {
+    "stdin": "the cat the dog\n",
+    "expected_stdout": "3\n"
+  },
+  {
+    "stdin": "one two three\n",
+    "expected_stdout": "3\n"
+  }
+]

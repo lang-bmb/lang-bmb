@@ -1,0 +1,15 @@
+fn has_div(n: i64, d: i64) -> i64
+  pre d >= 2
+= if d * d > n { 0 }
+  else {
+    if n % d == 0 { 1 }
+    else { has_div(n, d + 1) }
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let r = if n < 2 { 0 }
+          else { if has_div(n, 2) == 1 { 0 } else { 1 } };
+  let _p = println(r);
+  0
+};

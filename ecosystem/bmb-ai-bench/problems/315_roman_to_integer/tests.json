@@ -1,0 +1,22 @@
+[
+  {
+    "stdin": "III\n",
+    "expected_stdout": "3\n"
+  },
+  {
+    "stdin": "LVIII\n",
+    "expected_stdout": "58\n"
+  },
+  {
+    "stdin": "MCMXCIV\n",
+    "expected_stdout": "1994\n"
+  },
+  {
+    "stdin": "IV\n",
+    "expected_stdout": "4\n"
+  },
+  {
+    "stdin": "IX\n",
+    "expected_stdout": "9\n"
+  }
+]

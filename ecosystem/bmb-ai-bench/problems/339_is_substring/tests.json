@@ -1,0 +1,22 @@
+[
+  {
+    "stdin": "hello world\nworld\n",
+    "expected_stdout": "1\n"
+  },
+  {
+    "stdin": "abc\nd\n",
+    "expected_stdout": "0\n"
+  },
+  {
+    "stdin": "abcabc\ncab\n",
+    "expected_stdout": "1\n"
+  },
+  {
+    "stdin": "test\ntest\n",
+    "expected_stdout": "1\n"
+  },
+  {
+    "stdin": "ab\nabc\n",
+    "expected_stdout": "0\n"
+  }
+]

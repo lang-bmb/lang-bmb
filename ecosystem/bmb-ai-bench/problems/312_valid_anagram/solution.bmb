@@ -1,0 +1,26 @@
+fn cnt_byte(s: String, i: i64, n: i64, c: i64, acc: i64) -> i64
+  pre i >= 0
+= if i >= n { acc }
+  else {
+    let b = s.byte_at(i);
+    if b == c { cnt_byte(s, i + 1, n, c, acc + 1) }
+    else { cnt_byte(s, i + 1, n, c, acc) }
+  };
+
+fn check(s: String, t: String, c: i64) -> i64
+  pre c >= 97
+= if c > 122 { 1 }
+  else {
+    let cs = cnt_byte(s, 0, s.len(), c, 0);
+    let ct = cnt_byte(t, 0, t.len(), c, 0);
+    if cs == ct { check(s, t, c + 1) }
+    else { 0 }
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let t = read_line();
+  let r = if s.len() == t.len() { check(s, t, 97) } else { 0 };
+  let _p = println(r);
+  0
+};

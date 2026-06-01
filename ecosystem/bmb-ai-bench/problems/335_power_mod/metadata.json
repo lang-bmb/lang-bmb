@@ -1,0 +1,26 @@
+{
+  "id": "335_power_mod",
+  "category": "math",
+  "difficulty": "easy",
+  "tags": [
+    "math",
+    "bitwise",
+    "loop"
+  ],
+  "bmb_features_tested": [
+    "read_int",
+    "while",
+    "mut",
+    "set",
+    "band",
+    "println"
+  ],
+  "expected_tools": [
+    "check",
+    "run"
+  ],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "number theory (external-style)"
+}

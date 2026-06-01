@@ -1,0 +1,27 @@
+fn val(c: i64) -> i64 =
+  if c == 73 { 1 }
+  else { if c == 86 { 5 }
+  else { if c == 88 { 10 }
+  else { if c == 76 { 50 }
+  else { if c == 67 { 100 }
+  else { if c == 68 { 500 }
+  else { 1000 } } } } } };
+
+fn conv(s: String, i: i64, n: i64, acc: i64) -> i64
+  pre i >= 0
+= if i >= n { acc }
+  else {
+    let v = val(s.byte_at(i));
+    if i + 1 < n {
+      let vn = val(s.byte_at(i + 1));
+      if v < vn { conv(s, i + 1, n, acc - v) }
+      else { conv(s, i + 1, n, acc + v) }
+    } else { conv(s, i + 1, n, acc + v) }
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let r = conv(s, 0, s.len(), 0);
+  let _p = println(r);
+  0
+};

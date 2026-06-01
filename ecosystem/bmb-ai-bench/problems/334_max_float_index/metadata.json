@@ -1,0 +1,24 @@
+{
+  "id": "334_max_float_index",
+  "category": "float",
+  "difficulty": "easy",
+  "tags": [
+    "float",
+    "f64"
+  ],
+  "bmb_features_tested": [
+    "read_int",
+    "read_f64",
+    "f64",
+    "recursive",
+    "println"
+  ],
+  "expected_tools": [
+    "check",
+    "run"
+  ],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "f64 exercise (external-style)"
+}

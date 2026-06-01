@@ -1,0 +1,16 @@
+fn scan(n: i64, i: i64, last: i64, acc: i64) -> i64
+  pre i >= 0
+= if i >= n { acc }
+  else {
+    let x = read_int();
+    if x == last { scan(n, i + 1, last, acc) }
+    else { scan(n, i + 1, x, acc + 1) }
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let x0 = read_int();
+  let r = scan(n, 1, x0, 1);
+  let _p = println(r);
+  0
+};

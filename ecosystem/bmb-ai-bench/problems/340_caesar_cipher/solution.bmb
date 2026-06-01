@@ -1,0 +1,19 @@
+fn shift_char(b: i64, k: i64) -> i64 =
+  if b >= 97 and b <= 122 { 97 + (b - 97 + k) % 26 }
+  else { if b >= 65 and b <= 90 { 65 + (b - 65 + k) % 26 } else { b } };
+
+fn build(s: String, i: i64, n: i64, k: i64, acc: String) -> String
+  pre i >= 0
+= if i >= n { acc }
+  else {
+    let c = chr(shift_char(s.byte_at(i), k));
+    build(s, i + 1, n, k, acc + c)
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let k = read_int();
+  let r = build(s, 0, s.len(), k, "");
+  let _p = println_str(r);
+  0
+};

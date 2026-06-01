@@ -1,0 +1,22 @@
+{
+  "id": "308_majority_element",
+  "category": "array",
+  "difficulty": "easy",
+  "tags": [
+    "array",
+    "voting"
+  ],
+  "bmb_features_tested": [
+    "read_int",
+    "recursive",
+    "println"
+  ],
+  "expected_tools": [
+    "check",
+    "run"
+  ],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #169 (external)"
+}

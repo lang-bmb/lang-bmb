@@ -1,0 +1,16 @@
+fn read_count(k: i64, acc: i64) -> i64
+  pre k >= 0
+= if k == 0 { acc }
+  else {
+    let x = read_int();
+    if x < 0 { read_count(k - 1, acc + 1) }
+    else { read_count(k - 1, acc) }
+  };
+
+fn main() -> i64 = {
+  let m = read_int();
+  let n = read_int();
+  let r = read_count(m * n, 0);
+  let _p = println(r);
+  0
+};

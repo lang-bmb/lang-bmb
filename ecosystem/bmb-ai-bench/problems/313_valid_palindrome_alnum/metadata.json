@@ -1,0 +1,26 @@
+{
+  "id": "313_valid_palindrome_alnum",
+  "category": "string",
+  "difficulty": "easy",
+  "tags": [
+    "string",
+    "two-pointer"
+  ],
+  "bmb_features_tested": [
+    "read_line",
+    "byte_at",
+    "len",
+    "and",
+    "or",
+    "recursive",
+    "println"
+  ],
+  "expected_tools": [
+    "check",
+    "run"
+  ],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "LeetCode #125 (external)"
+}

@@ -1,0 +1,22 @@
+[
+  {
+    "stdin": "anagram\nnagaram\n",
+    "expected_stdout": "1\n"
+  },
+  {
+    "stdin": "rat\ncar\n",
+    "expected_stdout": "0\n"
+  },
+  {
+    "stdin": "a\na\n",
+    "expected_stdout": "1\n"
+  },
+  {
+    "stdin": "ab\na\n",
+    "expected_stdout": "0\n"
+  },
+  {
+    "stdin": "listen\nsilent\n",
+    "expected_stdout": "1\n"
+  }
+]

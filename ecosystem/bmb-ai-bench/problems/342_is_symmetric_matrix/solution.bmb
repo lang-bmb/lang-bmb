@@ -1,0 +1,30 @@
+fn read_arr(arr: i64, k: i64) -> i64
+  pre k >= 0
+= if k == 0 { 0 }
+  else {
+    let x = read_int();
+    let _p = vec_push(arr, x);
+    read_arr(arr, k - 1)
+  };
+
+fn get2(arr: i64, n: i64, r: i64, c: i64) -> i64 = vec_get(arr, r * n + c);
+
+fn check(arr: i64, n: i64, r: i64, c: i64) -> i64
+  pre r >= 0
+= if r >= n { 1 }
+  else {
+    if c >= n { check(arr, n, r + 1, 0) }
+    else {
+      if get2(arr, n, r, c) == get2(arr, n, c, r) { check(arr, n, r, c + 1) }
+      else { 0 }
+    }
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let arr = vec_new();
+  let _r = read_arr(arr, n * n);
+  let ans = check(arr, n, 0, 0);
+  let _p = println(ans);
+  0
+};

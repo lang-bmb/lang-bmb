@@ -1,0 +1,37 @@
+fn read_arr(arr: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let x = read_int();
+    let _p = vec_push(arr, x);
+    read_arr(arr, n - 1)
+  };
+
+fn cnt_pos(arr: i64, n: i64, i: i64) -> i64
+  pre i >= 0
+= if i >= n { 0 }
+  else {
+    let x = vec_get(arr, i);
+    if x > 0 { 1 + cnt_pos(arr, n, i + 1) }
+    else { cnt_pos(arr, n, i + 1) }
+  };
+
+fn cnt_neg(arr: i64, n: i64, i: i64) -> i64
+  pre i >= 0
+= if i >= n { 0 }
+  else {
+    let x = vec_get(arr, i);
+    if x < 0 { 1 + cnt_neg(arr, n, i + 1) }
+    else { cnt_neg(arr, n, i + 1) }
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let arr = vec_new();
+  let _r = read_arr(arr, n);
+  let p = cnt_pos(arr, n, 0);
+  let q = cnt_neg(arr, n, 0);
+  let m = if p > q { p } else { q };
+  let _x = println(m);
+  0
+};

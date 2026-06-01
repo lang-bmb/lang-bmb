@@ -1,0 +1,22 @@
+fn read_arr(arr: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let x = read_int();
+    let _p = vec_push(arr, x);
+    read_arr(arr, n - 1)
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let arr = vec_new();
+  let _r = read_arr(arr, n);
+  let mut s = 0;
+  for x in arr {
+    if x % 2 == 0 {
+      set s = s + x;
+    };
+  };
+  let _p = println(s);
+  0
+};

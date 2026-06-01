@@ -1,0 +1,47 @@
+fn read_arr(arr: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let x = read_int();
+    let _p = vec_push(arr, x);
+    read_arr(arr, n - 1)
+  };
+
+fn arr_min(arr: i64, n: i64, i: i64, m: i64) -> i64
+  pre i >= 0
+= if i >= n { m }
+  else {
+    let x = vec_get(arr, i);
+    let nm = if x < m { x } else { m };
+    arr_min(arr, n, i + 1, nm)
+  };
+
+fn arr_max(arr: i64, n: i64, i: i64, m: i64) -> i64
+  pre i >= 0
+= if i >= n { m }
+  else {
+    let x = vec_get(arr, i);
+    let nm = if x > m { x } else { m };
+    arr_max(arr, n, i + 1, nm)
+  };
+
+fn cnt_between(arr: i64, n: i64, i: i64, lo: i64, hi: i64) -> i64
+  pre i >= 0
+= if i >= n { 0 }
+  else {
+    let x = vec_get(arr, i);
+    if x > lo and x < hi { 1 + cnt_between(arr, n, i + 1, lo, hi) }
+    else { cnt_between(arr, n, i + 1, lo, hi) }
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let arr = vec_new();
+  let _r = read_arr(arr, n);
+  let first = vec_get(arr, 0);
+  let lo = arr_min(arr, n, 1, first);
+  let hi = arr_max(arr, n, 1, first);
+  let ans = cnt_between(arr, n, 0, lo, hi);
+  let _p = println(ans);
+  0
+};

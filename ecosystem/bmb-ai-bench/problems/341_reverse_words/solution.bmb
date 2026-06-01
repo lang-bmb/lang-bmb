@@ -1,0 +1,17 @@
+fn build(parts: SvecHandle, i: i64, acc: String, first: i64) -> String
+  pre i >= -1
+= if i < 0 { acc }
+  else {
+    let w = svec_get(parts, i);
+    let sep = if first == 1 { "" } else { " " };
+    build(parts, i - 1, acc + sep + w, 0)
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let parts = str_split(s, " ");
+  let n = svec_len(parts);
+  let r = build(parts, n - 1, "", 1);
+  let _p = println_str(r);
+  0
+};

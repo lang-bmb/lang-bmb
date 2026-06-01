@@ -1,0 +1,14 @@
+fn conv(s: String, i: i64, n: i64, acc: i64) -> i64
+  pre i >= 0
+= if i >= n { acc }
+  else {
+    let b = s.byte_at(i) - 48;
+    conv(s, i + 1, n, acc * 2 + b)
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let r = conv(s, 0, s.len(), 0);
+  let _p = println(r);
+  0
+};

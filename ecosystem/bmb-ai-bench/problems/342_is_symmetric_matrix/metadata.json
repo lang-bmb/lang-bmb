@@ -1,0 +1,25 @@
+{
+  "id": "342_is_symmetric_matrix",
+  "category": "matrix",
+  "difficulty": "easy",
+  "tags": [
+    "matrix",
+    "2d"
+  ],
+  "bmb_features_tested": [
+    "read_int",
+    "vec_new",
+    "vec_push",
+    "vec_get",
+    "recursive",
+    "println"
+  ],
+  "expected_tools": [
+    "check",
+    "run"
+  ],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "2D exercise (external-style)"
+}

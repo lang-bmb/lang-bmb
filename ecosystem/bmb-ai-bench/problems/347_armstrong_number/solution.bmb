@@ -1,0 +1,26 @@
+fn ndigits(n: i64, acc: i64) -> i64
+  pre n >= 0
+= if n == 0 { acc }
+  else { ndigits(n / 10, acc + 1) };
+
+fn ipow(b: i64, e: i64) -> i64
+  pre e >= 0
+= if e == 0 { 1 }
+  else { b * ipow(b, e - 1) };
+
+fn sumpow(n: i64, p: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let d = n % 10;
+    ipow(d, p) + sumpow(n / 10, p)
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let nd = if n == 0 { 1 } else { ndigits(n, 0) };
+  let s = if n == 0 { 0 } else { sumpow(n, nd) };
+  let r = if s == n { 1 } else { 0 };
+  let _p = println(r);
+  0
+};

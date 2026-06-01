@@ -1,0 +1,16 @@
+fn scan(n: i64, i: i64, bestv: f64, besti: i64) -> i64
+  pre i >= 0
+= if i >= n { besti }
+  else {
+    let x = read_f64();
+    if x > bestv { scan(n, i + 1, x, i) }
+    else { scan(n, i + 1, bestv, besti) }
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let x0 = read_f64();
+  let r = if n == 1 { 0 } else { scan(n, 1, x0, 0) };
+  let _p = println(r);
+  0
+};

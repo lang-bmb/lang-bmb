@@ -1,0 +1,20 @@
+fn add(a: String, b: String, i: i64, j: i64, carry: i64, acc: String) -> String
+  pre carry >= 0
+= if i < 0 and j < 0 and carry == 0 { acc }
+  else {
+    let da = if i < 0 { 0 } else { a.byte_at(i) - 48 };
+    let db = if j < 0 { 0 } else { b.byte_at(j) - 48 };
+    let sum = da + db + carry;
+    let d = sum % 10;
+    let c = chr(48 + d);
+    add(a, b, i - 1, j - 1, sum / 10, c + acc)
+  };
+
+fn main() -> i64 = {
+  let a = read_line();
+  let b = read_line();
+  let r = if a.len() == 0 and b.len() == 0 { "0" }
+          else { add(a, b, a.len() - 1, b.len() - 1, 0, "") };
+  let _p = println_str(r);
+  0
+};

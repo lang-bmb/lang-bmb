@@ -1,0 +1,22 @@
+{
+  "id": "343_min_running_balance",
+  "category": "array",
+  "difficulty": "easy",
+  "tags": [
+    "array",
+    "simulation"
+  ],
+  "bmb_features_tested": [
+    "read_int",
+    "recursive",
+    "println"
+  ],
+  "expected_tools": [
+    "check",
+    "run"
+  ],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "simulation (external-style)"
+}

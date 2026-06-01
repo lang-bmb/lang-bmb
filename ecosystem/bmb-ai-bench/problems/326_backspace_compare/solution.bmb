@@ -1,0 +1,33 @@
+fn build(s: String, i: i64, n: i64, out: i64) -> i64
+  pre i >= 0
+= if i >= n { 0 }
+  else {
+    let c = s.byte_at(i);
+    if c == 35 {
+      if vec_len(out) > 0 { let _x = vec_pop(out); build(s, i + 1, n, out) }
+      else { build(s, i + 1, n, out) }
+    } else {
+      let _p = vec_push(out, c);
+      build(s, i + 1, n, out)
+    }
+  };
+
+fn eq(a: i64, b: i64, i: i64, n: i64) -> i64
+  pre i >= 0
+= if i >= n { 1 }
+  else {
+    if vec_get(a, i) == vec_get(b, i) { eq(a, b, i + 1, n) }
+    else { 0 }
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let t = read_line();
+  let a = vec_new();
+  let b = vec_new();
+  let _x = build(s, 0, s.len(), a);
+  let _y = build(t, 0, t.len(), b);
+  let r = if vec_len(a) == vec_len(b) { eq(a, b, 0, vec_len(a)) } else { 0 };
+  let _p = println(r);
+  0
+};

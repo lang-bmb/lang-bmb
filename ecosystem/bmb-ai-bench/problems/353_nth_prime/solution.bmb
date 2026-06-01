@@ -1,0 +1,25 @@
+fn has_div(n: i64, d: i64) -> i64
+  pre d >= 2
+= if d * d > n { 0 }
+  else {
+    if n % d == 0 { 1 }
+    else { has_div(n, d + 1) }
+  };
+
+fn is_prime(x: i64) -> i64 =
+  if x < 2 { 0 }
+  else { if has_div(x, 2) == 1 { 0 } else { 1 } };
+
+fn find(n: i64, cand: i64, count: i64) -> i64
+  pre cand >= 2
+= if is_prime(cand) == 1 {
+    if count + 1 == n { cand }
+    else { find(n, cand + 1, count + 1) }
+  } else { find(n, cand + 1, count) };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let r = find(n, 2, 0);
+  let _p = println(r);
+  0
+};

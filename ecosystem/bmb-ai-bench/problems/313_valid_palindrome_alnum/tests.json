@@ -1,0 +1,22 @@
+[
+  {
+    "stdin": "A man, a plan, a canal: Panama\n",
+    "expected_stdout": "1\n"
+  },
+  {
+    "stdin": "race a car\n",
+    "expected_stdout": "0\n"
+  },
+  {
+    "stdin": " \n",
+    "expected_stdout": "1\n"
+  },
+  {
+    "stdin": "0P\n",
+    "expected_stdout": "0\n"
+  },
+  {
+    "stdin": "ab_a\n",
+    "expected_stdout": "1\n"
+  }
+]

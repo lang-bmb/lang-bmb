@@ -1,0 +1,21 @@
+fn min2(a: i64, b: i64) -> i64 = if a < b { a } else { b };
+
+fn max2(a: i64, b: i64) -> i64 = if a > b { a } else { b };
+
+fn main() -> i64 = {
+  let num = read_int();
+  let a = num / 1000;
+  let b = (num / 100) % 10;
+  let c = (num / 10) % 10;
+  let d = num % 10;
+  let lo_ab = min2(a, b);
+  let hi_ab = max2(a, b);
+  let lo_cd = min2(c, d);
+  let hi_cd = max2(c, d);
+  let s1 = min2(lo_ab, lo_cd);
+  let s2 = min2(max2(lo_ab, lo_cd), min2(hi_ab, hi_cd));
+  let total = a + b + c + d;
+  let ans = total + 9 * (s1 + s2);
+  let _p = println(ans);
+  0
+};

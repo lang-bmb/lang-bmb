@@ -1,0 +1,14 @@
+fn read_xor(n: i64, acc: i64) -> i64
+  pre n >= 0
+= if n == 0 { acc }
+  else {
+    let x = read_int();
+    read_xor(n - 1, acc bxor x)
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let r = read_xor(n, 0);
+  let _p = println(r);
+  0
+};

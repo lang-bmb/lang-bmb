@@ -1,0 +1,35 @@
+fn read_arr(arr: i64, n: i64) -> i64
+  pre n >= 0
+= if n == 0 { 0 }
+  else {
+    let x = read_int();
+    let _p = vec_push(arr, x);
+    read_arr(arr, n - 1)
+  };
+
+fn cnt_val(arr: i64, n: i64, i: i64, v: i64) -> i64
+  pre i >= 0
+= if i >= n { 0 }
+  else {
+    let x = vec_get(arr, i);
+    if x == v { 1 + cnt_val(arr, n, i + 1, v) }
+    else { cnt_val(arr, n, i + 1, v) }
+  };
+
+fn scan_lucky(arr: i64, n: i64, v: i64, best: i64) -> i64
+  pre v >= 0
+= if v < 1 { best }
+  else {
+    let c = cnt_val(arr, n, 0, v);
+    let nb = if c == v { if v > best { v } else { best } } else { best };
+    scan_lucky(arr, n, v - 1, nb)
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let arr = vec_new();
+  let _r = read_arr(arr, n);
+  let ans = scan_lucky(arr, n, 500, 0 - 1);
+  let _p = println(ans);
+  0
+};

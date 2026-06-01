@@ -1,0 +1,22 @@
+[
+  {
+    "stdin": "abcd\nabcde\n",
+    "expected_stdout": "e\n"
+  },
+  {
+    "stdin": "\ny\n",
+    "expected_stdout": "y\n"
+  },
+  {
+    "stdin": "a\naa\n",
+    "expected_stdout": "a\n"
+  },
+  {
+    "stdin": "ae\naea\n",
+    "expected_stdout": "a\n"
+  },
+  {
+    "stdin": "xyz\nzxyw\n",
+    "expected_stdout": "w\n"
+  }
+]

@@ -1,0 +1,14 @@
+fn build(n: i64, acc: String) -> String
+  pre n >= 0
+= if n == 0 { acc }
+  else {
+    let m = (n - 1) % 26;
+    let c = chr(65 + m);
+    build((n - 1) / 26, c + acc)
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let _p = println_str(build(n, ""));
+  0
+};

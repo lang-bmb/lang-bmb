@@ -1,0 +1,14 @@
+fn main() -> i64 = {
+  let a = read_int();
+  let b = read_int();
+  let mut x = a;
+  let mut y = b;
+  while y != 0 {
+    let t = y;
+    set y = x % y;
+    set x = t;
+  };
+  let lcm = a / x * b;
+  let _p = println(lcm);
+  0
+};

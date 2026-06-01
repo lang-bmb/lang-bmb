@@ -1,0 +1,11 @@
+fn go(k: i64, i: i64, prev: i64, cur: i64, acc: i64) -> i64
+  pre i >= 0
+= if i >= k { acc }
+  else { go(k, i + 1, cur, prev + cur, acc + cur) };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let r = go(n, 0, 0, 1, 0);
+  let _p = println(r);
+  0
+};

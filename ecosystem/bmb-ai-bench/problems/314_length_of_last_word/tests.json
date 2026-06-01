@@ -1,0 +1,22 @@
+[
+  {
+    "stdin": "   fly me   to   the moon\n",
+    "expected_stdout": "4\n"
+  },
+  {
+    "stdin": "Hello World\n",
+    "expected_stdout": "5\n"
+  },
+  {
+    "stdin": "luffy is still joyboy\n",
+    "expected_stdout": "6\n"
+  },
+  {
+    "stdin": "a\n",
+    "expected_stdout": "1\n"
+  },
+  {
+    "stdin": "  \n",
+    "expected_stdout": "0\n"
+  }
+]

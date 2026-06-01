@@ -1,0 +1,22 @@
+[
+  {
+    "stdin": "2\n2\n1\n2\n3\n-1\n",
+    "expected_stdout": "1\n"
+  },
+  {
+    "stdin": "2\n2\n1\n1\n1\n1\n",
+    "expected_stdout": "2\n"
+  },
+  {
+    "stdin": "3\n1\n-1\n2\n3\n",
+    "expected_stdout": "2\n"
+  },
+  {
+    "stdin": "1\n2\n0\n1\n",
+    "expected_stdout": "0\n"
+  },
+  {
+    "stdin": "1\n3\n5\n6\n7\n",
+    "expected_stdout": "1\n"
+  }
+]

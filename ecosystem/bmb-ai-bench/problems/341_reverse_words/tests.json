@@ -1,0 +1,22 @@
+[
+  {
+    "stdin": "the sky is blue\n",
+    "expected_stdout": "blue is sky the\n"
+  },
+  {
+    "stdin": "hello\n",
+    "expected_stdout": "hello\n"
+  },
+  {
+    "stdin": "a b c\n",
+    "expected_stdout": "c b a\n"
+  },
+  {
+    "stdin": "one two\n",
+    "expected_stdout": "two one\n"
+  },
+  {
+    "stdin": "x y z w\n",
+    "expected_stdout": "w z y x\n"
+  }
+]

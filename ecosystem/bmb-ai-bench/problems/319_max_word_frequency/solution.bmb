@@ -1,0 +1,29 @@
+fn loop_inc(parts: SvecHandle, m: i64, i: i64, n: i64) -> i64
+  pre i >= 0
+= if i >= n { 0 }
+  else {
+    let w = svec_get(parts, i);
+    let _a = str_hashmap_inc(m, w, 1);
+    loop_inc(parts, m, i + 1, n)
+  };
+
+fn maxf(parts: SvecHandle, m: i64, i: i64, n: i64, best: i64) -> i64
+  pre i >= 0
+= if i >= n { best }
+  else {
+    let w = svec_get(parts, i);
+    let c = str_hashmap_get(m, w);
+    let nb = if c > best { c } else { best };
+    maxf(parts, m, i + 1, n, nb)
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let parts = str_split(s, " ");
+  let n = svec_len(parts);
+  let m = str_hashmap_new();
+  let _x = loop_inc(parts, m, 0, n);
+  let r = maxf(parts, m, 0, n, 0);
+  let _p = println(r);
+  0
+};

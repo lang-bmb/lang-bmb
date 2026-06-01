@@ -1,0 +1,18 @@
+fn scan(s: String, i: i64, n: i64, open: i64, ans: i64) -> i64
+  pre i >= 0
+= if i >= n { ans + open }
+  else {
+    let c = s.byte_at(i);
+    if c == 40 { scan(s, i + 1, n, open + 1, ans) }
+    else {
+      if open > 0 { scan(s, i + 1, n, open - 1, ans) }
+      else { scan(s, i + 1, n, open, ans + 1) }
+    }
+  };
+
+fn main() -> i64 = {
+  let s = read_line();
+  let r = scan(s, 0, s.len(), 0, 0);
+  let _p = println(r);
+  0
+};

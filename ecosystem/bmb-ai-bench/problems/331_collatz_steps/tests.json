@@ -1,0 +1,22 @@
+[
+  {
+    "stdin": "1\n",
+    "expected_stdout": "0\n"
+  },
+  {
+    "stdin": "2\n",
+    "expected_stdout": "1\n"
+  },
+  {
+    "stdin": "6\n",
+    "expected_stdout": "8\n"
+  },
+  {
+    "stdin": "7\n",
+    "expected_stdout": "16\n"
+  },
+  {
+    "stdin": "27\n",
+    "expected_stdout": "111\n"
+  }
+]

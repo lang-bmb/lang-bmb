@@ -1,0 +1,12 @@
+fn jos(n: i64, k: i64) -> i64
+  pre n >= 1
+= if n == 1 { 0 }
+  else { (jos(n - 1, k) + k) % n };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let k = read_int();
+  let r = jos(n, k);
+  let _p = println(r);
+  0
+};

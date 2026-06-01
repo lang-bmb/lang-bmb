@@ -1,0 +1,24 @@
+{
+  "id": "327_rps_judge",
+  "category": "enum",
+  "difficulty": "easy",
+  "tags": [
+    "enum",
+    "match"
+  ],
+  "bmb_features_tested": [
+    "read_int",
+    "enum",
+    "match",
+    "function_call",
+    "println"
+  ],
+  "expected_tools": [
+    "check",
+    "run"
+  ],
+  "c_baseline_flags": "-O2",
+  "perf_target_ratio": 1.1,
+  "version_added": "v0.101",
+  "source": "enum/match exercise (external-style)"
+}

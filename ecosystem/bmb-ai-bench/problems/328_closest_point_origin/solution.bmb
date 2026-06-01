@@ -1,0 +1,26 @@
+struct Pt { x: i64, y: i64 }
+
+fn dist2(p: Pt) -> i64 = p.x * p.x + p.y * p.y;
+
+fn scan(n: i64, i: i64, best: i64) -> i64
+  pre i >= 0
+= if i >= n { best }
+  else {
+    let x = read_int();
+    let y = read_int();
+    let p = new Pt { x: x, y: y };
+    let d = dist2(p);
+    let nb = if d < best { d } else { best };
+    scan(n, i + 1, nb)
+  };
+
+fn main() -> i64 = {
+  let n = read_int();
+  let x0 = read_int();
+  let y0 = read_int();
+  let p0 = new Pt { x: x0, y: y0 };
+  let d0 = dist2(p0);
+  let r = if n == 1 { d0 } else { scan(n, 1, d0) };
+  let _p = println(r);
+  0
+};
