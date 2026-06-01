@@ -50,23 +50,49 @@ The `pre` conditions are verified at compile time by an SMT solver (Z3). At runt
 
 ## Performance
 
-BMB targets parity with — and now often beats — C. All claims are measured, not assumed.
+BMB targets parity with — and on several workloads beats — the best C compilers. All numbers
+below are measured with **checksum-verified identical work** across compilers (not assumed), under
+a single pinned configuration: bootstrap S1 compiler, BMB `opt -O2`, LLVM 21.1.7, GCC MinGW
+(ucrt64), commit `89505a9b`, 2026-06-01. Ratio = BMB time / baseline time; **< 1.0 = BMB faster**.
 
-**7 real-world benchmarks vs Clang -O3** (v0.100.0, latest):
+**vs Clang -O3** — same LLVM backend, the toughest and fairest comparison:
 
-| Benchmark | BMB / Clang ratio | Reading |
-|-----------|------------------|---------|
-| lexer | **0.174×** | 5.7× faster than Clang |
-| sorting | **0.155×** | 6.5× faster than Clang |
-| json_serialize | **0.670×** | 49% faster than Clang |
-| json_parse | **0.875×** | 14% faster than Clang |
-| brainfuck | **0.941×** | 6% faster than Clang |
-| http_parse | **0.934×** | 7% faster than Clang |
-| csv_parse | **0.858×** | 16% faster than Clang |
+| Benchmark | BMB / Clang -O3 | Reading |
+|-----------|-----------------|---------|
+| http_parse | **0.84×** | 1.2× faster |
+| lexer | **0.85×** | 1.2× faster |
+| brainfuck | **0.92×** | 1.08× faster |
+| json_parse | **0.95×** | ~parity |
+| csv_parse | **0.98×** | parity |
+| json_serialize | **1.00×** | parity |
+| sorting | **1.11×** | ~11% slower |
 
-**All 7/7 real-world workloads: BMB faster than Clang -O3.**
+Against the LLVM peer, BMB is **at parity, modestly faster on 3 of 7** (http_parse, lexer,
+brainfuck ~1.1–1.2×), parity on 3, and ~11% slower on sorting. This is the expected result —
+BMB shares the LLVM backend, so it tracks LLVM performance rather than beating it. The honest
+takeaway: a contract-verified language reaches LLVM-backend performance with no overhead.
 
-These results reflect a combination of LLVM backend optimization quality and BMB-specific MIR passes (AndChainCSE, single-load break, match dispatch optimization). Where the advantage comes from IR-equivalent code sharing the same backend, we say so. Where BMB generates better IR than a naïve C translation would produce, we document the technique.
+**vs GCC -O2** — a different backend; results vary by workload:
+
+| Benchmark | BMB / GCC -O2 | | Benchmark | BMB / GCC -O2 |
+|-----------|---------------|-|-----------|---------------|
+| sorting | **0.18×** (5.5× faster) | | brainfuck | 0.86× |
+| lexer | **0.31×** (3.2× faster) | | csv_parse | 1.00× (parity) |
+| http_parse | 0.86× | | **json_parse** | **2.15× (slower)** |
+| json_serialize | 0.89× | | | |
+
+The large sorting/lexer margins are **LLVM-vs-GCC backend** differences (GCC -O2 optimizes those
+loops less aggressively), not a BMB-specific advantage; conversely GCC beats BMB ~2× on
+json_parse. We report the full picture rather than headlining the largest ratio.
+
+> **Correction (2026-06-01)**: an earlier version claimed "7/7 faster than Clang -O3" with
+> figures (e.g. sorting 0.155×, lexer 0.174×) that were actually GCC-relative ratios mislabeled
+> as vs-Clang. A forensic audit (LLVM IR inspection + checksum verification) found the work is
+> real (not DCE'd) but the headline was a **baseline-selection + harness-fairness artifact**:
+> against the LLVM peer (Clang -O3) BMB is at parity. Five benchmark C harnesses were corrected
+> for fairness — inlined char classification (lexer, json_parse; libc `isspace`/`isdigit` were
+> heavier than BMB's inlined comparisons), runtime-opaque input (http_parse, brainfuck; defeats
+> clang const-folding), and matched csv checksum. See [audit](claudedocs/measurements/al1_forensic_audit_2026-06-01.md).
 
 See [Benchmark Details](docs/BENCHMARK.md) for methodology, raw numbers, and noise analysis.
 
@@ -343,7 +369,7 @@ BMB's direction is opposite to Rust:
 
 ## Status
 
-BMB is an **experimental language** in active development (v0.100.0). The compiler self-hosts via a 3-Stage Fixed Point bootstrap, all 7 measured real-world benchmarks beat Clang -O3, and the AI code generation benchmark reaches 100% on GPUStack.
+BMB is an **experimental language** in active development (v0.100.0). The compiler self-hosts via a 3-Stage Fixed Point bootstrap, the 7 measured real-world benchmarks reach parity with Clang -O3 (3/7 modestly faster, 3 parity, 1 ~11% slower; see Performance), and the AI code generation benchmark reaches 100% on GPUStack.
 
 Milestones completed: M1 (Performance Parity), M2 (AI-Ready Infrastructure), M3 (Language Ecosystem — Python/Node/C#/Java/C bindings, MCP server, LSP, playground), M4 (Language Completeness — 70+ builtins, string interpolation, while-let, for-in, compound assignment).
 
