@@ -53,7 +53,7 @@ The `pre` conditions are verified at compile time by an SMT solver (Z3). At runt
 BMB targets parity with — and on several workloads beats — the best C compilers. All numbers
 below are measured with **checksum-verified identical work** across compilers (not assumed), under
 a single pinned configuration: bootstrap S1 compiler, BMB `opt -O2`, LLVM 21.1.7, GCC MinGW
-(ucrt64), commit `89505a9b`, 2026-06-01. Ratio = BMB time / baseline time; **< 1.0 = BMB faster**.
+(ucrt64), commit `a5fd27de` (benchmark-bmb submodule `757f85c`), 2026-06-01. Ratio = BMB time / baseline time; **< 1.0 = BMB faster**.
 
 **vs Clang -O3** — same LLVM backend, the toughest and fairest comparison:
 
